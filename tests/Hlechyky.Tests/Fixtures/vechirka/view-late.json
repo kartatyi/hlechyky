@@ -1,0 +1,235 @@
+{
+  "phase": "late",
+  "round": 8,
+  "rounds": 10,
+  "target": 30,
+  "late": true,
+  "lastGame": false,
+  "paused": null,
+  "map": "selo",
+  "mapV": 1,
+  "until": "2026-09-10T12:07:00.5600000+00:00",
+  "total": 12000,
+  "players": [
+    {
+      "i": 0,
+      "nick": "Оля",
+      "bot": false,
+      "name": "Оля",
+      "away": false,
+      "auto": true,
+      "pos": "m23",
+      "gleks": 1,
+      "coins": 19,
+      "items": [
+        "pick",
+        "gate"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 2,
+      "place": 2,
+      "color": 0
+    },
+    {
+      "i": 2,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Галя",
+      "away": false,
+      "auto": false,
+      "pos": "m22",
+      "gleks": 1,
+      "coins": 25,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 3,
+      "place": 1,
+      "color": 2
+    },
+    {
+      "i": 3,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Грицько",
+      "away": false,
+      "auto": false,
+      "pos": "m10",
+      "gleks": 0,
+      "coins": 79,
+      "items": [
+        "pick"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 1,
+      "place": 3,
+      "color": 3
+    },
+    {
+      "i": 1,
+      "nick": "Петро",
+      "bot": false,
+      "name": "Петро",
+      "away": false,
+      "auto": true,
+      "pos": "m23",
+      "gleks": 0,
+      "coins": 50,
+      "items": [
+        "pick"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 1,
+      "place": 4,
+      "color": 1
+    }
+  ],
+  "cur": null,
+  "stand": "m14",
+  "price": 20,
+  "bank": 1,
+  "duelDone": false,
+  "gates": [],
+  "shops": {
+    "m8": [
+      "charm",
+      "pan",
+      "rope"
+    ],
+    "m26": [
+      "pan",
+      "gate",
+      "pick"
+    ],
+    "y3": [
+      "key",
+      "fork",
+      "gate"
+    ]
+  },
+  "prompt": null,
+  "aim": null,
+  "anim": {
+    "seq": 166,
+    "kind": "late",
+    "who": null,
+    "path": null,
+    "dice": null,
+    "key": null,
+    "to": null,
+    "at": "2026-09-10T12:06:48.5600000+00:00",
+    "ms": 0
+  },
+  "fx": [
+    {
+      "seq": 162,
+      "kind": "coins",
+      "who": 2,
+      "d": -2,
+      "k": null
+    },
+    {
+      "seq": 162,
+      "kind": "coins",
+      "who": 3,
+      "d": -2,
+      "k": null
+    },
+    {
+      "seq": 164,
+      "kind": "mg",
+      "who": 0,
+      "d": 3,
+      "k": null
+    },
+    {
+      "seq": 164,
+      "kind": "mg",
+      "who": 1,
+      "d": 1,
+      "k": null
+    },
+    {
+      "seq": 164,
+      "kind": "mg",
+      "who": 2,
+      "d": 10,
+      "k": null
+    },
+    {
+      "seq": 164,
+      "kind": "mg",
+      "who": 3,
+      "d": 6,
+      "k": null
+    },
+    {
+      "seq": 165,
+      "kind": "coins",
+      "who": 1,
+      "d": 23,
+      "k": null
+    },
+    {
+      "seq": 165,
+      "kind": "coins",
+      "who": 3,
+      "d": 23,
+      "k": null
+    }
+  ],
+  "emo": [],
+  "pick": null,
+  "mg": null,
+  "lateInfo": {
+    "choosers": [
+      1
+    ],
+    "chosen": {},
+    "options": [
+      {
+        "k": "coins",
+        "label": "15 \uD83E\uDE99"
+      },
+      {
+        "k": "feather",
+        "label": "\uD83E\uDEB6 Перо лелеки"
+      },
+      {
+        "k": "pumpkin",
+        "label": "\uD83C\uDF83 Гарбуз"
+      }
+    ]
+  },
+  "final": null,
+  "say": {
+    "id": 17,
+    "text": "Пізній вечір! Монети й пастки — удвічі, скарбничку розбито."
+  },
+  "log": [
+    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, Оля, \uD83E\uDD16 Грицько, Петро",
+    "\uD83C\uDF83 \uD83E\uDD16 Галя → Оля",
+    "\uD83C\uDFFA \uD83E\uDD16 Галя купив золотий глек!",
+    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Грицько, Петро, Оля, \uD83E\uDD16 Галя",
+    "❔ Оля: Ярмарок у селі",
+    "\uD83C\uDFAF icefloe: Оля, \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Петро",
+    "\uD83C\uDFFA Оля купив золотий глек!",
+    "❔ Оля: Баба передала гостинця",
+    "❔ Петро: Злива",
+    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Оля, Петро",
+    "\uD83D\uDC37 Скарбничку розбито: по 23",
+    "\uD83C\uDF19 Пізній вечір"
+  ],
+  "you": {
+    "i": 0,
+    "can": [
+      "here",
+      "emo"
+    ],
+    "toStand": 10,
+    "tip": false
+  }
+}

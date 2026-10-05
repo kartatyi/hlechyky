@@ -267,6 +267,8 @@ public sealed partial class VechirkaCore
     }
 
     public int N => S.P.Count;
+    /// <summary>Рандом вечірки для мізків ботів (той самий ГВЧ — детермінізм за сідом).</summary>
+    public int Rand(int max) => R.Next(max);
     public VechirkaPlayer this[int i] => S.P[i];
     public int Price => S.SaleUntil >= S.Round && S.SaleUntil > 0 ? VechirkaRules.SalePrice : VechirkaRules.GlekPrice;
 

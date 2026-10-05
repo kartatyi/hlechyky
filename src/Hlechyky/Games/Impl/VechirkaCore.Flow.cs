@@ -150,6 +150,9 @@ public sealed partial class VechirkaCore
         BusyFor(VechirkaRules.RouletteMs, "card");
     }
 
+    /// <summary>Що сказав останній тик підгри (кімнаті — чи розсилати вид/кадр).</summary>
+    public TickResult LastMgTick { get; set; } = TickResult.None;
+
     // ---------- вибір міні-гри (§8.2) ----------
 
     void BeginPick(bool _)
@@ -235,7 +238,7 @@ public sealed partial class VechirkaCore
     bool MgStep()
     {
         if (S.M is not { Running: true }) { Results(MinigameResult.Even(S.M?.Seats.Length ?? N, "")); return true; }
-        Mg.Tick();
+        LastMgTick = Mg.Tick();
         if (Mg.Result is not { } res) return false;
         S.M.Running = false;
         Results(res);

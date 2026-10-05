@@ -1,0 +1,253 @@
+{
+  "phase": "done",
+  "round": 11,
+  "rounds": 10,
+  "target": 30,
+  "late": true,
+  "lastGame": false,
+  "paused": null,
+  "map": "selo",
+  "mapV": 1,
+  "until": null,
+  "total": null,
+  "players": [
+    {
+      "i": 0,
+      "nick": "Оля",
+      "bot": false,
+      "name": "Оля",
+      "away": false,
+      "auto": true,
+      "pos": "l2",
+      "gleks": 3,
+      "coins": 11,
+      "items": [
+        "pick",
+        "pan"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 4,
+      "place": 3,
+      "color": 0
+    },
+    {
+      "i": 2,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Галя",
+      "away": false,
+      "auto": false,
+      "pos": "m12",
+      "gleks": 1,
+      "coins": 42,
+      "items": [
+        "pick",
+        "pick"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 3,
+      "place": 4,
+      "color": 2
+    },
+    {
+      "i": 3,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Грицько",
+      "away": false,
+      "auto": false,
+      "pos": "m26",
+      "gleks": 4,
+      "coins": 31,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 1,
+      "place": 1,
+      "color": 3
+    },
+    {
+      "i": 1,
+      "nick": "Петро",
+      "bot": false,
+      "name": "Петро",
+      "away": false,
+      "auto": true,
+      "pos": "m2",
+      "gleks": 3,
+      "coins": 36,
+      "items": [
+        "pick",
+        "key"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 2,
+      "place": 2,
+      "color": 1
+    }
+  ],
+  "cur": null,
+  "stand": "m3",
+  "price": 20,
+  "bank": 15,
+  "duelDone": false,
+  "gates": [],
+  "shops": {
+    "m8": [
+      "pick",
+      "horse",
+      "rope"
+    ],
+    "m26": [
+      "rope",
+      "pick",
+      "horse"
+    ],
+    "y3": [
+      "rope",
+      "key",
+      "fork"
+    ]
+  },
+  "prompt": null,
+  "aim": null,
+  "anim": {
+    "seq": 250,
+    "kind": "summary",
+    "who": null,
+    "path": null,
+    "dice": null,
+    "key": null,
+    "to": null,
+    "at": "2026-09-10T12:09:54.3000000+00:00",
+    "ms": 8000
+  },
+  "fx": [
+    {
+      "seq": 245,
+      "kind": "mg",
+      "who": 0,
+      "d": 2,
+      "k": null
+    },
+    {
+      "seq": 245,
+      "kind": "mg",
+      "who": 1,
+      "d": 20,
+      "k": null
+    },
+    {
+      "seq": 245,
+      "kind": "mg",
+      "who": 2,
+      "d": 6,
+      "k": null
+    },
+    {
+      "seq": 245,
+      "kind": "mg",
+      "who": 3,
+      "d": 12,
+      "k": null
+    },
+    {
+      "seq": 246,
+      "kind": "glek",
+      "who": 3,
+      "d": 1,
+      "k": null
+    },
+    {
+      "seq": 247,
+      "kind": "glek",
+      "who": 1,
+      "d": 1,
+      "k": null
+    },
+    {
+      "seq": 248,
+      "kind": "glek",
+      "who": 0,
+      "d": 1,
+      "k": null
+    }
+  ],
+  "emo": [],
+  "pick": null,
+  "mg": null,
+  "lateInfo": null,
+  "final": {
+    "step": 4,
+    "bonuses": [
+      {
+        "key": "earned",
+        "title": "Багатій",
+        "winners": [
+          3
+        ]
+      },
+      {
+        "key": "steps",
+        "title": "Мандрівник",
+        "winners": [
+          1
+        ]
+      },
+      {
+        "key": "bully",
+        "title": "Задирака",
+        "winners": [
+          0
+        ]
+      }
+    ],
+    "ranking": [
+      {
+        "i": 3,
+        "place": 1
+      },
+      {
+        "i": 1,
+        "place": 2
+      },
+      {
+        "i": 0,
+        "place": 3
+      },
+      {
+        "i": 2,
+        "place": 4
+      }
+    ]
+  },
+  "say": {
+    "id": 29,
+    "text": "Переміг \uD83E\uDD16 Грицько… Люди, ну як так?"
+  },
+  "log": [
+    "\uD83C\uDFFA Петро купив золотий глек!",
+    "\uD83C\uDFAF icefloe: Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро",
+    "\uD83C\uDFFA \uD83E\uDD16 Грицько купив золотий глек!",
+    "\uD83C\uDFFA Петро купив золотий глек!",
+    "\uD83C\uDFAF icefloe: Оля, \uD83E\uDD16 Галя, Петро, \uD83E\uDD16 Грицько",
+    "\uD83C\uDFFA Оля купив золотий глек!",
+    "\uD83C\uDFFA \uD83E\uDD16 Грицько купив золотий глек!",
+    "\uD83C\uDFAF icefloe: Петро, \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя, Оля",
+    "\uD83C\uDFFA Бонусний глек «Багатій»: \uD83E\uDD16 Грицько",
+    "\uD83C\uDFFA Бонусний глек «Мандрівник»: Петро",
+    "\uD83C\uDFFA Бонусний глек «Задирака»: Оля",
+    "\uD83C\uDF89 Глечикова вечірка: \uD83E\uDD16 Грицько — 4 \uD83C\uDFFA, Петро — 3 \uD83C\uDFFA, Оля — 3 \uD83C\uDFFA, \uD83E\uDD16 Галя — 1 \uD83C\uDFFA"
+  ],
+  "you": {
+    "i": 0,
+    "can": [
+      "here"
+    ],
+    "toStand": 26,
+    "tip": false
+  }
+}

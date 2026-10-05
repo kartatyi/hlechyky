@@ -1,0 +1,247 @@
+{
+  "phase": "results",
+  "round": 1,
+  "rounds": 10,
+  "target": 30,
+  "late": false,
+  "lastGame": false,
+  "paused": null,
+  "map": "selo",
+  "mapV": 1,
+  "until": "2026-09-10T12:01:59.9400000+00:00",
+  "total": 6000,
+  "players": [
+    {
+      "i": 0,
+      "nick": "Оля",
+      "bot": false,
+      "name": "Оля",
+      "away": false,
+      "auto": true,
+      "pos": "m11",
+      "gleks": 0,
+      "coins": 11,
+      "items": [
+        "fork"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 3,
+      "color": 0
+    },
+    {
+      "i": 2,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Галя",
+      "away": false,
+      "auto": false,
+      "pos": "m6",
+      "gleks": 0,
+      "coins": 21,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 1,
+      "place": 1,
+      "color": 2
+    },
+    {
+      "i": 3,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Грицько",
+      "away": false,
+      "auto": false,
+      "pos": "l3",
+      "gleks": 0,
+      "coins": 20,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 2,
+      "color": 3
+    },
+    {
+      "i": 1,
+      "nick": "Петро",
+      "bot": false,
+      "name": "Петро",
+      "away": false,
+      "auto": true,
+      "pos": "m8",
+      "gleks": 0,
+      "coins": 2,
+      "items": [
+        "fork"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 4,
+      "color": 1
+    }
+  ],
+  "cur": null,
+  "stand": "l2",
+  "price": 20,
+  "bank": 0,
+  "duelDone": false,
+  "gates": [],
+  "shops": {
+    "m8": [
+      "fork",
+      "rope",
+      "key"
+    ],
+    "m26": [
+      "charm",
+      "key",
+      "gate"
+    ],
+    "y3": [
+      "rope",
+      "gate",
+      "key"
+    ]
+  },
+  "prompt": null,
+  "aim": null,
+  "anim": {
+    "seq": 25,
+    "kind": "results",
+    "who": null,
+    "path": null,
+    "dice": null,
+    "key": null,
+    "to": null,
+    "at": "2026-09-10T12:01:53.9400000+00:00",
+    "ms": 6000
+  },
+  "fx": [
+    {
+      "seq": 21,
+      "kind": "coins",
+      "who": 1,
+      "d": -8,
+      "k": null
+    },
+    {
+      "seq": 21,
+      "kind": "item",
+      "who": 1,
+      "d": 0,
+      "k": "fork"
+    },
+    {
+      "seq": 24,
+      "kind": "mg",
+      "who": 0,
+      "d": 6,
+      "k": null
+    },
+    {
+      "seq": 24,
+      "kind": "mg",
+      "who": 1,
+      "d": 2,
+      "k": null
+    },
+    {
+      "seq": 24,
+      "kind": "mg",
+      "who": 2,
+      "d": 10,
+      "k": null
+    },
+    {
+      "seq": 24,
+      "kind": "mg",
+      "who": 3,
+      "d": 2,
+      "k": null
+    }
+  ],
+  "emo": [],
+  "pick": {
+    "chooser": 1,
+    "options": [
+      "icefloe"
+    ],
+    "chosen": "icefloe",
+    "duel": false
+  },
+  "mg": {
+    "id": "icefloe",
+    "title": "icefloe",
+    "howto": "Виштовхни всіх із крижини й не шубовсни сам: хто довше протримався — той вище. Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка; на телефоні — стік і кнопки",
+    "repeat": false,
+    "x2": false,
+    "duel": null,
+    "stake": 0,
+    "honor": false,
+    "bets": {},
+    "ready": [],
+    "seats": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "names": [
+      "Оля",
+      "Петро",
+      "\uD83E\uDD16 Галя",
+      "\uD83E\uDD16 Грицько"
+    ],
+    "nicks": [
+      "Оля",
+      "Петро",
+      null,
+      null
+    ],
+    "seatNames": null,
+    "sub": null,
+    "status": "finished",
+    "view": null,
+    "results": [
+      {
+        "i": 2,
+        "place": 1,
+        "coins": 10
+      },
+      {
+        "i": 0,
+        "place": 2,
+        "coins": 6
+      },
+      {
+        "i": 1,
+        "place": 3,
+        "coins": 2
+      },
+      {
+        "i": 3,
+        "place": 3,
+        "coins": 2
+      }
+    ],
+    "how": "Finished"
+  },
+  "lateInfo": null,
+  "final": null,
+  "say": {
+    "id": 3,
+    "text": "Петро задрімав — походжу за нього."
+  },
+  "log": [
+    "\uD83C\uDFB2 Порядок: Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро",
+    "\uD83D\uDCA4 Оля задрімав — ходить Глек",
+    "❔ \uD83E\uDD16 Грицько: Весілля",
+    "\uD83D\uDCA4 Петро задрімав — ходить Глек",
+    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, Оля, Петро, \uD83E\uDD16 Грицько"
+  ],
+  "you": null
+}

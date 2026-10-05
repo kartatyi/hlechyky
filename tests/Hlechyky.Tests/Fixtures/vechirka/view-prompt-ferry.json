@@ -1,0 +1,188 @@
+{
+  "phase": "prompt",
+  "round": 4,
+  "rounds": 10,
+  "target": 30,
+  "late": false,
+  "lastGame": false,
+  "paused": null,
+  "map": "selo",
+  "mapV": 1,
+  "until": "2026-09-10T12:04:01.6600000+00:00",
+  "total": 10000,
+  "players": [
+    {
+      "i": 0,
+      "nick": "Оля",
+      "bot": false,
+      "name": "Оля",
+      "away": false,
+      "auto": true,
+      "pos": "m27",
+      "gleks": 0,
+      "coins": 30,
+      "items": [
+        "pick"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 1,
+      "place": 1,
+      "color": 0
+    },
+    {
+      "i": 2,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Галя",
+      "away": false,
+      "auto": false,
+      "pos": "m25",
+      "gleks": 0,
+      "coins": 15,
+      "items": [
+        "pumpkin"
+      ],
+      "bump": false,
+      "charm": false,
+      "mgWins": 1,
+      "place": 4,
+      "color": 2
+    },
+    {
+      "i": 3,
+      "nick": null,
+      "bot": true,
+      "name": "\uD83E\uDD16 Грицько",
+      "away": false,
+      "auto": false,
+      "pos": "m27",
+      "gleks": 0,
+      "coins": 23,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 0,
+      "place": 3,
+      "color": 3
+    },
+    {
+      "i": 1,
+      "nick": "Петро",
+      "bot": false,
+      "name": "Петро",
+      "away": false,
+      "auto": true,
+      "pos": "m24",
+      "gleks": 0,
+      "coins": 23,
+      "items": [],
+      "bump": false,
+      "charm": false,
+      "mgWins": 1,
+      "place": 2,
+      "color": 1
+    }
+  ],
+  "cur": 3,
+  "stand": "l2",
+  "price": 20,
+  "bank": 17,
+  "duelDone": false,
+  "gates": [],
+  "shops": {
+    "m8": [
+      "horse",
+      "charm",
+      "pan"
+    ],
+    "m26": [
+      "charm",
+      "pick",
+      "pan"
+    ],
+    "y3": [
+      "pick",
+      "fork",
+      "pan"
+    ]
+  },
+  "prompt": {
+    "who": 3,
+    "kind": "ferry",
+    "node": "m27",
+    "options": [
+      {
+        "k": "pay:p0",
+        "label": "⛴ Пливемо (10)",
+        "price": 10,
+        "ok": true
+      },
+      {
+        "k": "key:p0",
+        "label": "\uD83D\uDDDD Ключем",
+        "price": null,
+        "ok": false
+      },
+      {
+        "k": "go:m28",
+        "label": "Шляхом",
+        "price": null,
+        "ok": true
+      }
+    ]
+  },
+  "aim": null,
+  "anim": {
+    "seq": 83,
+    "kind": "walk",
+    "who": 3,
+    "path": [
+      "m27"
+    ],
+    "dice": null,
+    "key": null,
+    "to": null,
+    "at": "2026-09-10T12:03:51.1000000+00:00",
+    "ms": 560
+  },
+  "fx": [
+    {
+      "seq": 79,
+      "kind": "item",
+      "who": 2,
+      "d": 0,
+      "k": "pumpkin"
+    }
+  ],
+  "emo": [],
+  "pick": null,
+  "mg": null,
+  "lateInfo": null,
+  "final": null,
+  "say": {
+    "id": 8,
+    "text": "\uD83E\uDD16 Галя знайшов у скрині: Гарбуз."
+  },
+  "log": [
+    "\uD83C\uDFB2 Порядок: Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько, Петро",
+    "\uD83D\uDCA4 Оля задрімав — ходить Глек",
+    "❔ \uD83E\uDD16 Грицько: Весілля",
+    "\uD83D\uDCA4 Петро задрімав — ходить Глек",
+    "\uD83C\uDFAF icefloe: \uD83E\uDD16 Галя, Оля, Петро, \uD83E\uDD16 Грицько",
+    "\uD83D\uDD31 Оля → \uD83E\uDD16 Галя",
+    "❔ \uD83E\uDD16 Галя: Бровко",
+    "\uD83D\uDD31 Петро → \uD83E\uDD16 Грицько",
+    "\uD83C\uDFAF icefloe: Оля, Петро, \uD83E\uDD16 Грицько, \uD83E\uDD16 Галя",
+    "\uD83C\uDFAF icefloe: Петро, Оля, \uD83E\uDD16 Галя, \uD83E\uDD16 Грицько"
+  ],
+  "you": {
+    "i": 0,
+    "can": [
+      "here",
+      "emo"
+    ],
+    "toStand": 14,
+    "tip": false
+  }
+}

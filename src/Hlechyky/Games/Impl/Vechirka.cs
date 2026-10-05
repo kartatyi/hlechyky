@@ -1,0 +1,309 @@
+using System.Text.Json;
+
+namespace Hlechyky.Games.Impl;
+
+/// <summary>
+/// Глечикова вечірка (specs/vechirka.md): настільна гра-дошка на 2–8 (люди + іменні боти лобі), між колами —
+/// міні-ігри каталогу. Тут — кімната: лобі, крісла ↔ P (за ніком, §1.2), повернення (К1), авто-пауза, вид і кадр,
+/// репліки Глека. Правила — у <see cref="VechirkaCore"/>.
+/// </summary>
+public sealed class Vechirka : Game
+{
+    public static readonly GameOption LenOption = new("len", "Вечір",
+        [("30", "≈ 30 хв"), ("45", "≈ 45 хв"), ("60", "≈ 60 хв")], "45");
+    public static readonly GameOption MinisOption = new("minis", "Міні-ігри",
+        [("move", "🏃 рухливі"), ("brain", "🧠 кмітливі"), ("tap", "👆 на реакцію")], "move,brain,tap", Multi: true);
+    public static readonly GameOption BotLevelOption = new("botlvl", "🤖 Боти",
+        [("easy", "легкі"), ("normal", "звичайні"), ("hard", "сильні")], "normal");
+    public static readonly GameOption VoiceOption = new("voice", "Голос Глека",
+        [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap");
+
+    public override GameInfo Info { get; } = new(
+        "vechirka", "Глечикова вечірка", "Глечикову вечірку", GameGroup.Party, 1, 8, TickMs: 20, Start: StartMode.ByHost,
+        Options: [LenOption, MinisOption, BotLevelOption, VoiceOption],
+        Hint: "Настільна вечірка на 2–8: ходиш селом, збираєш шеляги, купуєш у Дядька Глека золоті глеки, а між колами — "
+            + "міні-ігри з нашого каталогу. Пательня, вила й шлагбаум — додаються. Боти — «🤖 + бот».");
+
+    public const int Seats = 8;
+    public static readonly TimeSpan Hold = TimeSpan.FromMinutes(15);
+    const int SayGapMs = 20_000;
+
+    readonly List<string> _lobbyBots = [];
+    VechirkaCore? _core;
+    /// <summary>Крісло кімнати кожного P (null — бот або відпав).</summary>
+    int?[] _seat = [];
+    /// <summary>P, що дивляться поточну міні-гру глядачами (повернулись посеред неї).</summary>
+    readonly HashSet<int> _mgWatch = [];
+    readonly List<(int Seq, int I, string K)> _emo = [];
+    readonly Dictionary<int, DateTimeOffset> _emoAt = [];
+    int _emoSeq;
+    VechirkaLines _lines = VechirkaLines.Book;
+    (int Id, string Text)? _say;
+    int _sayId;
+    DateTimeOffset _lastSay = DateTimeOffset.MinValue;
+    bool _hostPause, _emptySaid;
+    string _sig = "";
+
+    /// <summary>Мізки ботів — замінні для тестів.</summary>
+    public Func<IVechirkaBrain> BrainFactory { get; set; } = () => new VechirkaBot();
+    /// <summary>Міні-ігри — замінні для тестів (S1.4 — справжній хост).</summary>
+    public Func<Vechirka, ulong, IMgRunner> RunnerFactory { get; set; } = (_, seed) => new VechirkaStubMg(seed);
+    public Func<IReadOnlyList<VechirkaPoolEntry>> PoolFactory { get; set; } = () => VechirkaPool.Available;
+
+    public VechirkaCore? Core => _core;
+    public override bool ActsInLobby => true;
+    public override TimeSpan HoldEmpty => Hold;
+
+    // ---------- лобі ----------
+
+    int Humans => Enumerable.Range(0, Info.MaxPlayers).Count(Ctx.Seated);
+
+    /// <summary>Людей стало більше, ніж вміщує, — зайвих ботів знімаємо самі.</summary>
+    void TrimBots()
+    {
+        while (_lobbyBots.Count > 0 && Humans + _lobbyBots.Count > Seats) _lobbyBots.RemoveAt(_lobbyBots.Count - 1);
+    }
+
+    public override string? CanStart()
+    {
+        TrimBots();
+        var n = Humans + _lobbyBots.Count;
+        return n < 2 ? "Треба хоч одного суперника — поклич бота «🤖 + бот»" : n > Seats ? "Забагато гостей" : null;
+    }
+
+    public override void Start()
+    {
+        TrimBots();
+        var o = Ctx.Options;
+        var st = new VechirkaState
+        {
+            Len = int.TryParse(o.GetValueOrDefault("len"), out var len) && len is 30 or 45 or 60 ? len : 45,
+            Minis = [.. GameOption.Split(o.GetValueOrDefault("minis") ?? "move,brain,tap")],
+            Level = (o.GetValueOrDefault("botlvl") ?? "normal") switch
+            {
+                "easy" => LiveBots.Level.Easy, "hard" => LiveBots.Level.Hard, _ => LiveBots.Level.Normal,
+            },
+        };
+        var seats = new List<int?>();
+        for (var s = 0; s < Info.MaxPlayers; s++)
+            if (Ctx.Seated(s) && Ctx.NickOf(s) is { } nick)
+            {
+                st.P.Add(new VechirkaPlayer { Nick = nick, Name = nick });
+                seats.Add(s);
+            }
+        foreach (var b in _lobbyBots) { st.P.Add(new VechirkaPlayer { Bot = true, Name = b }); seats.Add(null); }
+        _seat = [.. seats];
+        _mgWatch.Clear(); _emo.Clear(); _emoAt.Clear(); _say = null; _hostPause = false; _emptySaid = false;
+        _lines = VechirkaLines.Book;
+        var seed = unchecked((ulong)Ctx.Rng.NextInt64());
+        var runner = RunnerFactory(this, seed ^ 0x5EEDUL);
+        _core = new VechirkaCore(VechirkaMap.Load(st.Map), st, runner, PoolFactory()) { Brain = BrainFactory() };
+        _core.Start(seed, Ctx.Clock.UtcNow);
+        Flush();
+    }
+
+    // ---------- крісла ↔ P ----------
+
+    public int? POf(int seat)
+    {
+        for (var i = 0; i < _seat.Length; i++) if (_seat[i] == seat) return i;
+        return null;
+    }
+
+    public int? SeatOfP(int i) => i >= 0 && i < _seat.Length ? _seat[i] : null;
+
+    public override bool LateJoin(string nick) =>
+        _core is { S.Done: false } c && c.S.P.Any(p => !p.Bot && p.Away && Same(p.Nick, nick));
+
+    static bool Same(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    public override void OnJoin(int seat)
+    {
+        if (_core is not { } c) return;
+        var nick = Ctx.NickOf(seat);
+        var i = c.S.P.FindIndex(p => !p.Bot && Same(p.Nick, nick));
+        if (i < 0) return;
+        var p = c.S.P[i];
+        _seat[i] = seat;
+        p.Away = false; p.Auto = false; p.Misses = 0;
+        if (c.S.Phase == "mg") _mgWatch.Add(i);
+        Say("back", ("nick", p.Name));
+        c.Replan(Ctx.Clock.UtcNow);
+        _sig = "";
+    }
+
+    /// <summary>Вийшов — за нього ходить бот. Вечірку це не кінчає ніколи (§1.2).</summary>
+    public override void OnLeave(int seat)
+    {
+        if (_core is not { } c || POf(seat) is not { } i) return;
+        _seat[i] = null;
+        var p = c.S.P[i];
+        p.Away = true;
+        if (c.S.Phase == "mg") _mgWatch.Add(i);
+        Say("away", ("nick", p.Name));
+        c.Replan(Ctx.Clock.UtcNow);
+        _sig = "";
+    }
+
+    // ---------- дії ----------
+
+    public override ActResult Act(int seat, string action, JsonElement payload)
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (_core is not { } c || c.S.Done)
+        {
+            if (action != LiveBots.Toggle) return ActResult.Fail("Вечірка ще не почалась");
+            if (seat != Ctx.HostSeat) return ActResult.Fail("Ботів кличе господар столу");
+            var on = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("on", out var v)
+                ? v.ValueKind == JsonValueKind.True : _lobbyBots.Count == 0;
+            if (on)
+            {
+                if (Humans + _lobbyBots.Count >= Seats) return ActResult.Fail("Місць більше нема");
+                _lobbyBots.Add(VechirkaRules.BotNames.First(b => !_lobbyBots.Contains(b)));
+            }
+            else if (_lobbyBots.Count > 0) _lobbyBots.RemoveAt(_lobbyBots.Count - 1);
+            return ActResult.Done;
+        }
+        if (POf(seat) is not { } i) return ActResult.Fail("Ти в цій вечірці не граєш");
+        switch (action)
+        {
+            case "pause":
+            {
+                if (seat != Ctx.HostSeat) return ActResult.Fail("Паузу ставить господар");
+                if (c.S.Phase is "mg" or "done") return ActResult.Fail("Зараз не можна");
+                var on = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("on", out var v) && v.ValueKind == JsonValueKind.True;
+                _hostPause = on;
+                if (c.S.Paused != "empty") { c.SetPause(on ? "host" : null); Say(on ? "pause" : "unpause"); }
+                _sig = "";
+                return ActResult.Done;
+            }
+            case "emo":
+            {
+                var k = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("k", out var kv) ? kv.GetString() : null;
+                if (k is null || !VechirkaRules.Emo.Contains(k)) return ActResult.Fail("Такої реакції нема");
+                // частіше раз на 2 с — мовчки ігноруємо (не помилка)
+                if (_emoAt.TryGetValue(i, out var at) && now - at < TimeSpan.FromSeconds(2)) return ActResult.Done;
+                _emoAt[i] = now;
+                _emo.Add((++_emoSeq, i, k));
+                while (_emo.Count > 8) _emo.RemoveAt(0);
+                _sig = "";
+                return ActResult.Done;
+            }
+            case "mg" when _mgWatch.Contains(i):
+                return ActResult.Fail("Ти в цій міні-грі не граєш");
+        }
+        try { c.Act(i, action, payload, now); }
+        catch (GameError e) { Flush(); return ActResult.Fail(e.Message); }
+        Flush();
+        return ActResult.Done;
+    }
+
+    // ---------- тик ----------
+
+    public override TickResult Tick()
+    {
+        if (_core is not { } c || c.S.Done) return TickResult.None;
+        var now = Ctx.Clock.UtcNow;
+        // Авто-пауза «стіл порожній»: жодної присутньої людини — фази дошки стоять, міні-гра догравається.
+        var anyone = _seat.Any(s => s is { } x && Ctx.Seated(x));
+        if (!anyone && c.S.Paused != "empty")
+        {
+            c.SetPause("empty");
+            if (!_emptySaid) { _emptySaid = true; Say("empty"); }
+        }
+        else if (anyone && c.S.Paused == "empty")
+        {
+            c.SetPause(_hostPause ? "host" : null);
+            _emptySaid = false;
+        }
+        if (c.S.Paused == "host") _hostPause = true;
+        else if (c.S.Paused is null) _hostPause = false;
+        c.LastMgTick = TickResult.None;
+        c.Advance(now);
+        var sub = c.LastMgTick;
+        if (c.S.Phase != "mg") _mgWatch.Clear();
+        Flush();
+        var sig = Signature(c);
+        var changed = sig != _sig;
+        _sig = sig;
+        if (changed) return TickResult.Both;
+        return sub;
+    }
+
+    static string Signature(VechirkaCore c)
+    {
+        var s = c.S;
+        return $"{s.Seq}|{s.Phase}|{s.Cur}|{s.Pr?.Kind}|{s.Pr?.Who}|{s.Paused}|{s.Until?.Ticks}|{s.Busy is null}|{s.M?.Ready.Count}|{s.M?.Bets.Count}|{s.L?.Chosen.Count}|{s.F?.Step}|{s.Log.Count}|{s.P.Count(p => p.Auto)}|{s.P.Count(p => p.Away)}|{s.Am is null}|{s.Pk?.Chosen}";
+    }
+
+    /// <summary>Події ядра — назовні: репліки в балачку, кінець.</summary>
+    void Flush()
+    {
+        if (_core is not { } c) return;
+        foreach (var o in c.Out)
+            switch (o.Kind)
+            {
+                case "say": Say(o.Key, o.Args); break;
+                case "finish": Finish(c); break;
+            }
+        c.Out.Clear();
+    }
+
+    void Say(string pool, params (string K, string V)[] args) =>
+        Say(pool, args.Length == 0 ? null : args.ToDictionary(a => a.K, a => a.V));
+
+    void Say(string pool, IReadOnlyDictionary<string, string>? args)
+    {
+        var now = Ctx.Clock.UtcNow;
+        var star = VechirkaLines.Starred.Contains(pool);
+        if (!star && now - _lastSay < TimeSpan.FromMilliseconds(SayGapMs)) return;
+        if (_lines.Render(pool, args) is not { } text) return;
+        _lastSay = now;
+        _say = (++_sayId, text);
+        Ctx.Say(text);
+    }
+
+    void Finish(VechirkaCore c)
+    {
+        var scores = new Dictionary<int, long>();
+        var winners = new List<int>();
+        for (var i = 0; i < c.N; i++)
+        {
+            if (_seat[i] is not { } seat || !Ctx.Seated(seat)) continue;
+            scores[seat] = c.Rank(i);
+            if (c.PlaceOf(i) == 1) winners.Add(seat);
+        }
+        var log = "🎉 Глечикова вечірка: " + string.Join(", ",
+            Enumerable.Range(0, c.N).OrderBy(c.PlaceOf).Select(i => $"{c[i].Name} — {c[i].Gleks} 🏺"));
+        Ctx.Finish([.. winners], log, scores);
+    }
+
+    // ---------- вид (§14.1) ----------
+
+    public override object View(int? seat)
+    {
+        if (_core is not { } c)
+        {
+            TrimBots();
+            var n = Humans + _lobbyBots.Count;
+            var len = int.TryParse(Ctx.Options.GetValueOrDefault("len"), out var l) ? l : 45;
+            return new
+            {
+                phase = "lobby",
+                lobby = new { bots = _lobbyBots.Select(b => new { name = b }), rounds = VechirkaRules.Rounds(len, Math.Max(2, n)) },
+            };
+        }
+        return VechirkaView.Build(this, c, seat is { } s ? POf(s) : null, Ctx.Clock.UtcNow);
+    }
+
+    public override object? Frame() =>
+        _core is { S.Phase: "mg" } c && c.S.M is { Running: true } ? new { mg = c.Mg.Frame() } : null;
+
+    public IReadOnlyList<(int Seq, int I, string K)> Emo => _emo;
+    public (int Id, string Text)? LastSay => _say;
+    public bool Watching(int i) => _mgWatch.Contains(i);
+    public string? NickAt(int i) => _seat[i] is { } s && Ctx.Seated(s) ? Ctx.NickOf(s) : null;
+
+    /// <summary>v1 без відновлення після рестарту (§17): Save ядра є, але кімната нічого не пише.</summary>
+    public override string? Save() => null;
+}
