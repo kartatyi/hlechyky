@@ -53,6 +53,21 @@ public class EconomyTests
     }
 
     [Fact]
+    public void Ledger_prefix_ranges_keep_emoji_nicks()
+    {
+        // SQLite порівнює байтами UTF-8: емодзі (F0…) лежать вище за U+FFFF (EF BF BF), тож межа prefix+char.MaxValue їх губила.
+        using var rig = new EconomyRig();
+        IStakes stakes = rig.Economy;
+        stakes.Grant("🎃Оля", 500, "test", "seed:🎃оля");
+        Assert.True(stakes.TrySpend("🎃Оля", 100, "table-buyin:poker", "table-in:ab12cd34:1:🎃оля:1"));
+        var ins = stakes.Moves("table-in:ab12cd34:1:")!;
+        Assert.Equal(new LedgerMove("table-in:ab12cd34:1:🎃оля:1", "🎃Оля", -100), Assert.Single(ins));
+        stakes.Grant("🎃Оля", 10, "stake-win", "stake-win:ab12cd34:1:🎃оля");
+        Assert.True(stakes.Settled("ab12cd34", 1));
+        Assert.Empty(stakes.Moves("table-in:ab12cd34:2:")!);
+    }
+
+    [Fact]
     public void Grant_without_ref_stacks()
     {
         using var rig = new EconomyRig();

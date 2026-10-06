@@ -108,10 +108,17 @@ public sealed class EconomyStore(Db db)
     public int Balance(string nickKey) =>
         (int)db.With(c => Scalar(c, "SELECT balance FROM wallets WHERE nick_key=$n", ("$n", nickKey)));
 
+    /// <summary>
+    /// Верхня межа діапазону «ключ починається з <paramref name="prefix"/>»: той самий префікс з останнім символом +1.
+    /// Не <c>prefix + char.MaxValue</c>: SQLite порівнює рядки байтами UTF-8, U+FFFF — це EF BF BF, а емодзі починаються
+    /// з F0, тож ключ ніка «🎃Оля» опинявся за межею й зникав зі звірки. Префікси тут закінчуються на «:», тож межа — «;».
+    /// </summary>
+    static string PrefixEnd(string prefix) => prefix[..^1] + (char)(prefix[^1] + 1);
+
     /// <summary>Чи є в леджері запис, чий ключ ідемпотентності починається з <paramref name="prefix"/> (діапазон по індексу ref).</summary>
     public bool HasRefPrefix(string prefix) =>
         db.With(c => Scalar(c, "SELECT EXISTS(SELECT 1 FROM ledger WHERE ref >= $p AND ref < $q)",
-            ("$p", prefix), ("$q", prefix + char.MaxValue))) == 1;
+            ("$p", prefix), ("$q", PrefixEnd(prefix)))) == 1;
 
     /// <summary>
     /// Записи леджера, чий ключ починається з <paramref name="prefix"/>: ключ, нік (як у гаманці; нема гаманця — ключ ніка) і
@@ -120,7 +127,7 @@ public sealed class EconomyStore(Db db)
     public List<LedgerMove> Moves(string prefix) => db.With(c =>
     {
         using var cmd = Cmd(c, "SELECT l.ref, COALESCE(w.nick, l.nick_key), l.delta FROM ledger l LEFT JOIN wallets w ON w.nick_key = l.nick_key"
-            + " WHERE l.ref >= $p AND l.ref < $q", ("$p", prefix), ("$q", prefix + char.MaxValue));
+            + " WHERE l.ref >= $p AND l.ref < $q", ("$p", prefix), ("$q", PrefixEnd(prefix)));
         using var r = cmd.ExecuteReader();
         var list = new List<LedgerMove>();
         while (r.Read()) list.Add(new LedgerMove(r.GetString(0), r.GetString(1), r.GetInt32(2)));

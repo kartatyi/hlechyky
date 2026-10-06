@@ -258,7 +258,11 @@ public sealed partial class Rooms
                 // Партії, що почались уже після знімка, — назад; наступна партія столу — з раунду після них (лобі стартує
                 // тим самим раундом, «Ще раз» додає один). Партія, що продовжилась, свій раунд не міняє.
                 if (RefundLater(f, refunds) is { } last && room.Status != RoomStatus.Playing)
+                {
                     room.Round = Math.Max(room.Round, room.Status == RoomStatus.Lobby ? last + 1 : last);
+                    // Банк раунду зі знімка вже звірено вище: з ним у новому раунді наступний знімок ніс би невідповідну пару.
+                    room.Bank = new TableBank();
+                }
                 // Балачку й вечір — уже після Start/Load: Ctx.Say ведучого на старті гри дописав би в балачку зайве.
                 room.Talk.Clear();
                 room.Talk.AddRange(f.Talk.TakeLast(TalkLines));
