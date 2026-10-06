@@ -2256,6 +2256,12 @@
     return !!(v && v.botOffer) && rv.seat != null && r.status !== 'playing' && sameNick(r.host, me.nick);
   }
 
+  function ownLeave(rv) {
+    const m = modules[rv.room.game];
+    if (!m || typeof m.ownLeave !== 'function') return false;
+    try { return !!m.ownLeave(rv); } catch (e) { console.warn('[games] ownLeave', e); return false; }
+  }
+
   function btnsHtml(rv) {
     const r = rv.room;
     const solo = r.maxPlayers === 1;
@@ -2287,7 +2293,8 @@
     // «🤖 + бот» живих ігор (LiveBots.cs): господар сам за столом кличе суперника; гра каже botOffer у виді.
     if (botOffered(rv))
       out.push('<button class="ghost" data-bot="1">' + (rv.view.botWanted ? '🤖 Прогнати бота' : '🤖 + бот') + '</button>');
-    if (rv.seat != null) out.push('<button class="ghost" data-do="LeaveRoom">' + (solo ? 'Закрити' : 'Встати') + '</button>');
+    // Гра може малювати «Встати» сама (mod.ownLeave(rv) → true; покер-кеш — із сумою й підтвердженням) — тоді каркасної нема.
+    if (rv.seat != null) { if (!ownLeave(rv)) out.push('<button class="ghost" data-do="LeaveRoom">' + (solo ? 'Закрити' : 'Встати') + '</button>'); }
     // сісти нема куди (або сидиш за іншим столом) — хоч скажемо, чому кнопок нема
     else if (!solo && !canSit) out.push('<span class="muted small">Дивлюсь збоку</span>');
     return out.join('');
@@ -2323,7 +2330,7 @@
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
       rv.room.options, rv.room.result, rv.room.evening, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
-      botOffered(rv), !!(rv.view && rv.view.botWanted), window.HTournament && HTournament.barSig ? HTournament.barSig(id) : '']);
+      botOffered(rv), !!(rv.view && rv.view.botWanted), ownLeave(rv), window.HTournament && HTournament.barSig ? HTournament.barSig(id) : '']);
     const roomChanged = sig !== card.sig;
     if (roomChanged) {
       card.sig = sig;

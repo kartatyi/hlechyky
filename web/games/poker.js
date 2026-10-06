@@ -115,9 +115,10 @@
     paintSeats(root, el, ctx, v, winSet);
     paintCenter(root, el, ctx, v, winSet);
     paintMine(el, ctx, v, winSet);
-    paintPanel(root, ctx);
+    // Наперед-прапорець — до панелі: спрацював, то панель ходу не малюємо (інакше блимала б перед автоходом).
+    const pre = runPre(root, ctx);
+    paintPanel(root, ctx, pre);
     paintBtns(root, el, ctx, v);
-    runPre(root, ctx);
     active = v.actions ? root : (active === root ? null : active);
   }
 
@@ -342,13 +343,19 @@
     return Math.max(a.raiseMin, Math.min(a.raiseMax, to));
   }
 
-  function paintPanel(root, ctx) {
+  function paintPanel(root, ctx, held) {
     const st = state(root);
     const el = root.querySelector(':scope > .pk');
     const panel = el.querySelector('.pk-panel');
     const v = ctx.view || {};
     const a = v.actions;
     const me = v.me != null && v.seats ? v.seats[v.me] : null;
+    if (a && held) {   // наперед уже походив за мене — панелі нема, поки не прийде новий вид
+      stopArc(panel.querySelector('.pk-parc') || panel);
+      setHtml(panel, '');
+      panel.classList.remove('on');
+      return;
+    }
     if (!a) {
       stopArc(panel.querySelector('.pk-parc') || panel);
       // Наперед: я в роздачі, не мій хід, ще маю що ставити.
@@ -421,12 +428,12 @@
 
   // ---------- дії ----------
 
-  function act(root, a, p) {
+  function act(root, a, p, done) {
     const st = state(root);
     const ctx = st.ctx;
     if (!ctx || st.busy) return;
     st.busy = true;
-    Promise.resolve(ctx.act(a, p)).catch(() => {}).then(() => { st.busy = false; });
+    Promise.resolve(ctx.act(a, p)).catch(() => {}).then(() => { st.busy = false; if (done) done(); });
   }
 
   function doMove(root, kind) {
@@ -444,15 +451,20 @@
   }
 
   /// Наперед-прапорець спрацьовує, щойно дійшла моя черга в тій самій роздачі.
+  /// true — походив (панель ходу тоді не малюємо).
   function runPre(root, ctx) {
     const st = state(root);
     const v = ctx.view || {};
-    if (!st.pre || !v.actions) return;
-    if (st.preHand !== v.hand) { st.pre = null; return; }
+    if (!st.pre || !v.actions || st.busy || !ctx.act) return false;
+    if (st.preHand !== v.hand) { st.pre = null; return false; }
     const pre = st.pre;
     st.pre = null;
-    if (pre === 'cf') act(root, v.actions.check ? 'check' : 'fold');
-    else if (pre === 'ca') act(root, v.actions.check ? 'check' : 'call');
+    // Хід не пройшов, і нового виду нема — панель назад, щоб було чим ходити.
+    const back = () => setTimeout(() => { const c = st.ctx; if (c && c.view === v && v.actions) paintPanel(root, c); }, 400);
+    if (pre === 'cf') act(root, v.actions.check ? 'check' : 'fold', undefined, back);
+    else if (pre === 'ca') act(root, v.actions.check ? 'check' : 'call', undefined, back);
+    else return false;
+    return true;
   }
 
   function step(root, dir) {
@@ -526,6 +538,9 @@
     id: 'poker',
     icon: ICON,
     added: '2026-10-06',
+    // Кеш, партія йде, я за столом: «Встати й забрати N черепків» з підтвердженням малює гра — каркасне «Встати» зайве.
+    ownLeave: (rv) => !!(rv && rv.room && rv.room.status === 'playing' && rv.view && rv.view.format === 'cash'
+      && rv.view.me != null && !rv.view.over),
 
     pad: {
       dirs: true,

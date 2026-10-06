@@ -175,6 +175,7 @@ HGames.register({
   onKey(e, ctx) { return false }, // keydown, коли ця кімната активна; true — оброблено
   status(ctx) { return '' },      // рядок під тілом; порожньо — каркас напише своє
   pad: { dirs: true, a: 'Space', hint: '{dpad} бігати · {a} бомба' },   // джойстик, якщо грі потрібен стік
+  ownLeave(rv) { return false },  // true — «Встати» гра малює сама (покер-кеш), каркасної кнопки під карткою нема
 });
 ```
 
