@@ -369,9 +369,10 @@
     let html = '<div class="pk-acts">'
       + '<button type="button" class="pk-b fold" data-act="fold" title="F">Фолд</button>'
       + (a.check ? '<button type="button" class="pk-b call" data-act="check" title="C">Чек</button>'
-        : '<button type="button" class="pk-b call" data-act="call" title="C">Колл ' + fmt(a.call) + '</button>')
+        : '<button type="button" class="pk-b call" data-act="call" title="C">Колл ' + fmt(a.call) + (a.call >= a.allIn ? ' · олл-ін' : '') + '</button>')
       + (canRaise ? '<button type="button" class="pk-b raise primary" data-act="raise" title="R">' + (bet ? 'Бет ' : 'Рейз до ') + '<span class="pk-amt">' + fmt(st.amt) + '</span></button>' : '')
-      + '<button type="button" class="pk-b allin" data-act="allin" title="A">Олл-ін ' + fmt(a.allIn) + '</button>'
+      // Рейзити не можна — «олл-ін» на сервері лише колл: окремої кнопки нема, колл уже є (клавіша A теж коллить).
+      + (canRaise ? '<button type="button" class="pk-b allin" data-act="allin" title="A">Олл-ін ' + fmt(a.allIn) + '</button>' : '')
       + '<span class="pk-parc"></span></div>';
     if (canRaise && a.raiseMax > a.raiseMin) {
       const qs = [['½', 0.5], ['¾', 0.75], ['банк', 1]].map(([t, f]) => [t, quick(a, myBet, f)]);

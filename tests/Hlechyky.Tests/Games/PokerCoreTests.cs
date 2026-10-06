@@ -108,6 +108,25 @@ public class PokerCoreTests
     }
 
     [Fact]
+    public void AllInWhenRaiseIsClosedIsJustACall()
+    {
+        // A кнопка, B малий, C великий зі стеком 15: A і B коллять, C — неповний олл-ін до 15 (торгів не відкриває)
+        var c = Core(1000, 1000, 15);
+        Deal(c, 0, sb: 5, bb: 10);
+        c.Act(0, "call");
+        c.Act(1, "call");
+        c.Act(2, "allin");
+        Assert.Equal(15, c.CurrentBet);
+        Assert.Equal(0, c.Legal(0)!.RaiseMax);
+        c.Act(0, "allin");               // рейзити не можна — «олл-ін» = колл 15, а не весь стек
+        c.Act(1, "allin");
+        Assert.Equal(985, c.Stack[0]);
+        Assert.Equal(985, c.Stack[1]);
+        Assert.False(c.Runout);
+        Assert.Equal(1, c.Street);
+    }
+
+    [Fact]
     public void FullAllInRaiseReopens()
     {
         var c = Core(1000, 300, 1000);

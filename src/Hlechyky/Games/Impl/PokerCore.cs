@@ -184,7 +184,9 @@ public sealed class PokerCore
                 break;
             case "allin":
                 if (legal.RaiseMax > 0) RaiseTo(p, Bet[p] + Stack[p]);
-                else Put(p, Stack[p]);   // олл-ін, що не дотягує до рейзу (або рейзити вже не можна), — це колл
+                // Рейзити не можна (стек не перекриває колл, торги закрито неповним олл-іном, усі інші в олл-іні) — це колл:
+                // доставити до поточної ставки, а не весь стек (Call уже обрізаний стеком).
+                else Put(p, legal.Call);
                 break;
             case "raise":
                 if (legal.RaiseMax == 0) throw new GameError(legal.Check ? "Рейзити тут не можна — лише чек" : "Рейзити тут не можна — лише колл або фолд");
