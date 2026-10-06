@@ -1768,9 +1768,13 @@
     const v = ctx.view || {};
     const bonus = dec(stampPct(st, st.stamps));
     const cap = v.stampCap || 0;
+    // Записка #28 (Smaug, 05.10): велике число — клейма за весь час (від них бонус, витрати його не чіпають), а скільки
+    // ще можна витратити, стояло дрібним сірим рядком. Тепер вільні — поруч і того самого розміру.
     const head = '<div class="clk-stamps"><b>🔖 ' + stampsShort(st.stamps) + '</b>'
-      + '<span>+' + bonus + ' % до всього</span>'
-      + '<span class="muted small">вільних клейм: ' + count(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
+      + '<span>за весь час · +' + bonus + ' % до всього</span>'
+      + '<span class="clk-free" title="Скільки ще можна витратити на секрети, реліквії й оздобу хати">вільних <b>'
+      + count(st.stampsFree) + '</b></span>'
+      + (v.firings ? '<span class="muted small">починав наново: ' + v.firings + '</span>' : '') + '</div>'
       + info('Почати наново — це спалити глеки, верстати й віхи, а натомість узяти клейма майстра за все, що наліпив '
         + 'за весь час. Перша тисяча клейм дає по +' + dec(st.stampBonus * 100) + ' % до всього назавжди, далі кожне нове '
         + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть, а після 4 млн бонус росте зовсім '
@@ -1974,6 +1978,8 @@
 
   /// Клейма міняються рідко, але розмітку оздоби вони не чіпають: інакше кожне клеймо стирало б недописану вивіску.
   function lookButtons(st) {
+    const free = st.housePane && st.housePane.querySelector('.clk-lookfree b');
+    if (free) { const t = count(st.stampsFree || 0); if (free.textContent !== t) free.textContent = t; }
     for (const b of st.lookBtns || []) {
       const off = !st.mine || b.dataset.on === '1' || +b.dataset.stamp > (st.stampsFree || 0);
       if (b.disabled !== off) b.disabled = off;
@@ -2006,6 +2012,7 @@
       + '" value="' + esc(hs.named || '') + '" placeholder="Хата гончаря" aria-label="Ім\'я хати">'
       + '<button type="button" class="ghost small clk-signgo">Написати</button></span></div>';
     return '<div class="clk-sub">🎨 Оздоба<span class="muted small"> · за клейма, раз і назавжди</span>'
+      + (paid ? '<span class="clk-lookfree"> · 🔖 вільних <b>' + count(st.stampsFree || 0) + '</b></span>' : '')
       + info('Оздоба міняє вигляд хати на сцені й нічого не додає до доходу. Клейма на неї, як і на секрети, '
         + 'не згорають і бонусу не гублять — просто їх стає менше на секрети. Вивіска безплатна, міняй скільки хочеш.')
       + '</div><div class="clk-looks">' + rows + sign + '</div>';
@@ -3212,7 +3219,7 @@
       const owned = st.styleList.filter((s) => s.owned).length;
       st.tabText.shop = '🔨 Майстерня';
       st.tabText.fire = '🔥 Клейма';
-      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + count(st.stamps) : '', 1);
+      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + count(st.stampsFree || 0) : '', 1);
       labelTab(st, 'shop');
       labelTab(st, 'fire');
       paintSections(st, owned);

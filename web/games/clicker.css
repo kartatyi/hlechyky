@@ -594,6 +594,10 @@
 .clk-after:empty { display: none; }
 .clk-stamps { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: center; text-align: center; }
 .clk-stamps b { color: var(--clk-fire); font-size: 1.15em; }
+/* Вільні клейма (записка #28): плашкою, щоб не губились поруч із великим числом за весь час. */
+.clk-stamps .clk-free { padding: 1px 10px; border-radius: 999px; background: var(--panel2); white-space: nowrap; }
+.clk-lookfree { font-size: .92em; font-weight: 400; white-space: nowrap; }
+.clk-lookfree b { color: var(--clk-fire); }
 .clk-note { margin: 0; line-height: 1.4; }
 .clk-secret.owned { opacity: .75; }
 
