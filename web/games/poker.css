@@ -10,6 +10,18 @@
   --pk-back2: #b5583f;
   --pk-chip: var(--accent, #f4c542);
   --pk-gold: #f4c542;
+  --pk-on-felt: #fff;                       /* текст на сукні */
+  --pk-dealer: #fff;                        /* кружечок D */
+  --pk-dealer-ink: #222;
+  --pk-shade: rgba(0, 0, 0, .35);           /* підкладка банку, обідок столу */
+  --pk-shade-deep: rgba(0, 0, 0, .5);       /* плашка стеку */
+  --pk-fly-bg: rgba(0, 0, 0, .65);          /* банк, що летить до переможця */
+  --pk-shadow: rgba(0, 0, 0, .45);
+  --pk-text-shadow: rgba(0, 0, 0, .6);
+  --pk-inset: rgba(0, 0, 0, .4);
+  --pk-card-edge: rgba(0, 0, 0, .25);
+  --pk-slot-edge: rgba(255, 255, 255, .16);
+  --pk-chip-edge: rgba(255, 255, 255, .75);
 }
 
 .pk { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 860px; margin: 0 auto; }
@@ -29,7 +41,7 @@
 .pk .pk-felt {
   border-radius: 50%;
   background: radial-gradient(ellipse at 50% 40%, var(--pk-felt), var(--pk-felt2));
-  box-shadow: 0 0 0 9px var(--pk-rail), 0 0 0 11px rgba(0, 0, 0, .35), inset 0 0 40px rgba(0, 0, 0, .4);
+  box-shadow: 0 0 0 9px var(--pk-rail), 0 0 0 11px var(--pk-shade), inset 0 0 40px var(--pk-inset);
 }
 .pk.lobby .pk-felt { opacity: .7; }
 
@@ -37,21 +49,21 @@
   position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 1;
   display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; width: 72%;
 }
-.pk .pk-pot { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 1.2em; color: #fff; }
-.pk .pk-potsum { background: rgba(0, 0, 0, .35); border-radius: 999px; padding: 2px 12px; font-size: .92em; }
+.pk .pk-pot { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 1.2em; color: var(--pk-on-felt); }
+.pk .pk-potsum { background: var(--pk-shade); border-radius: 999px; padding: 2px 12px; font-size: .92em; }
 .pk .pk-potsum b { font-variant-numeric: tabular-nums; }
 .pk .pk-side { font-size: .75em; opacity: .85; }
 .pk .pk-board { display: flex; gap: 5px; }
-.pk .pk-slot { width: 44px; height: 62px; border-radius: 6px; border: 1px dashed rgba(255, 255, 255, .16); }
+.pk .pk-slot { width: 44px; height: 62px; border-radius: 6px; border: 1px dashed var(--pk-slot-edge); }
 .pk .pk-slot:not(:empty) { border-color: transparent; }
-.pk .pk-msg { color: #fff; font-size: .85em; min-height: 1.2em; display: flex; flex-direction: column; gap: 2px; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+.pk .pk-msg { color: var(--pk-on-felt); font-size: .85em; min-height: 1.2em; display: flex; flex-direction: column; gap: 2px; text-shadow: 0 1px 2px var(--pk-text-shadow); }
 .pk .pk-msg small { opacity: .8; font-size: .9em; }
 
 /* ---- карта ---- */
 .pk .pkc {
   position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
   width: 44px; height: 62px; border-radius: 6px; background: var(--pk-face); color: var(--pk-ink);
-  border: 1px solid rgba(0, 0, 0, .25); box-shadow: 0 1px 3px rgba(0, 0, 0, .45); font-weight: 800; line-height: 1;
+  border: 1px solid var(--pk-card-edge); box-shadow: 0 1px 3px var(--pk-shadow); font-weight: 800; line-height: 1;
   transition: box-shadow .25s, filter .25s, translate .25s; flex: none;
 }
 .pk .pkc b { font-size: 1.15em; }
@@ -83,7 +95,7 @@
 .pk .pk-seat.top .pk-hole { order: 2; margin: -10px 0 0; }
 .pk .pk-box {
   position: relative; z-index: 1; min-width: 86px; max-width: 112px; padding: 4px 8px 3px; text-align: center;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 6px var(--pk-shade);
   transition: box-shadow .2s, opacity .2s;
 }
 .pk .pk-seat.me .pk-box { border-color: var(--accent); }
@@ -100,7 +112,7 @@
   position: absolute; top: -8px; display: grid; place-items: center; border-radius: 999px; font-weight: 800; line-height: 1;
 }
 .pk .pk-dealer {
-  left: -8px; width: 20px; height: 20px; font-size: .72em; background: #fff; color: #222; box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+  left: -8px; width: 20px; height: 20px; font-size: .72em; background: var(--pk-dealer); color: var(--pk-dealer-ink); box-shadow: 0 1px 3px var(--pk-shade-deep);
 }
 .pk .pk-blind { right: -6px; padding: 2px 5px; font-size: .62em; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
 .pk .pk-arc { position: absolute; right: -14px; top: 50%; translate: 0 -50%; }
@@ -110,17 +122,17 @@
 /* ---- фішки ставок і банк до переможця ---- */
 .pk .pk-bet, .pk .pk-fly {
   position: absolute; z-index: 1; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
-  background: rgba(0, 0, 0, .5); color: #fff; border-radius: 999px; padding: 2px 8px 2px 3px; font-size: .8em; font-weight: 700;
+  background: var(--pk-shade-deep); color: var(--pk-on-felt); border-radius: 999px; padding: 2px 8px 2px 3px; font-size: .8em; font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .pk .pk-bet { translate: -50% -50%; transition: transform .45s ease-in, opacity .45s ease-in; }
 .pk .pk-bet i, .pk .pk-fly i {
-  width: 14px; height: 14px; border-radius: 50%; background: var(--pk-chip); border: 2px dashed rgba(255, 255, 255, .75); box-sizing: border-box;
+  width: 14px; height: 14px; border-radius: 50%; background: var(--pk-chip); border: 2px dashed var(--pk-chip-edge); box-sizing: border-box;
 }
 .pk .pk-bet.topot { transform: translate(var(--tx), var(--ty)) scale(.5); opacity: 0; }
 .pk .pk-bet.pop { animation: pk-pop .25s ease-out; }
 @keyframes pk-pop { from { transform: scale(1.35); } to { transform: none; } }
-.pk .pk-fly { left: 50%; top: 50%; z-index: 4; animation: pk-fly 1.1s ease-in-out forwards; pointer-events: none; background: rgba(0, 0, 0, .65); }
+.pk .pk-fly { left: 50%; top: 50%; z-index: 4; animation: pk-fly 1.1s ease-in-out forwards; pointer-events: none; background: var(--pk-fly-bg); }
 @keyframes pk-fly {
   0% { transform: translate(-50%, -50%) scale(1.15); opacity: 0; }
   15% { opacity: 1; }
@@ -157,7 +169,7 @@
 @media (max-width: 560px) {
   .pk .pk-table { height: 372px; }
   /* мій хід: панель липне до низу екрана — не треба гортати до кнопок */
-  .pk .pk-panel.on { position: sticky; bottom: 0; z-index: 5; box-shadow: 0 -6px 16px rgba(0, 0, 0, .45); }
+  .pk .pk-panel.on { position: sticky; bottom: 0; z-index: 5; box-shadow: 0 -6px 16px var(--pk-shadow); }
   .pk .pk-felt, .pk .pk-ring { inset: 38px 40px 44px; }
   .pk .pk-seat { width: 80px; }
   .pk .pk-box { min-width: 0; max-width: 80px; width: 80px; padding: 3px 4px 2px; }

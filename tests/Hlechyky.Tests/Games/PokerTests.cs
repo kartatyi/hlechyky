@@ -308,3 +308,23 @@ public class PokerPerfTests
         Assert.True(sw.ElapsedMilliseconds < 2000, $"1000 тиків за {sw.ElapsedMilliseconds} мс");
     }
 }
+
+/// <summary>Файли клієнта покеру: те, що перевіряється без браузера.</summary>
+public class PokerClientFileTests
+{
+    static string Web(string name)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "liquidsoap", "radio.liq"))) dir = dir.Parent;
+        return File.ReadAllText(Path.Combine(dir!.FullName, "web", "games", name));
+    }
+
+    [Fact]
+    public void CssColorsLiveOnlyInPkVariables()
+    {
+        var css = Web("poker.css");
+        var body = css[(css.IndexOf('}') + 1)..];   // усе після :root { --pk-… }
+        var direct = System.Text.RegularExpressions.Regex.Matches(body, @"#[0-9a-fA-F]{3,8}\b|rgba?\(").Select(m => m.Value).ToList();
+        Assert.True(direct.Count == 0, "прямі кольори поза :root: " + string.Join(" ", direct));
+    }
+}
