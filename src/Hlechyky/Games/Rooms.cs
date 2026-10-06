@@ -600,8 +600,20 @@ public sealed partial class Rooms
         if (room.Occupied > 0) return;
         // Гра, що чекає повернення (HoldEmpty), лишається: її прибере Housekeeping, коли мине час.
         if (room.Status == RoomStatus.Playing && room.Game.HoldEmpty > TimeSpan.Zero) return;
+        lock (room.Sync) SettleAbandoned(room, outbox);
         Drop(room);
         if (!room.Info.Private) outbox.Add(new LobbyChanged());
+    }
+
+    /// <summary>
+    /// Стіл прибирають посеред партії на черепки (усі пішли): спершу Finish — він розрахує банк столу (SettleBank), інакше
+    /// черепки, що лежать за столом, зникли б разом із кімнатою. Під замком кімнати.
+    /// </summary>
+    void SettleAbandoned(Room room, Outbox outbox)
+    {
+        if (room.Status != RoomStatus.Playing || room.Bank.Held <= 0) return;
+        var ctx = (RoomContext)room.Game.Ctx;
+        using (ctx.Collect(outbox)) ctx.Finish([], $"{room.Info.Title}: стіл покинули — черепки зі столу повернуто");
     }
 
     void Drop(Room room)
@@ -1321,9 +1333,8 @@ public sealed partial class Rooms
                 // (Finish → SettleBank) — інакше черепки, що лежать за столом, зникли б разом із ним.
                 if (drop && room.Status == RoomStatus.Playing && room.Bank.Held > 0)
                 {
-                    var ctx = (RoomContext)room.Game.Ctx;
                     var fin = new Outbox();
-                    using (ctx.Collect(fin)) ctx.Finish([], $"{room.Info.Title}: стіл покинули — черепки зі столу повернуто");
+                    SettleAbandoned(room, fin);
                     settled.Add(fin);
                 }
             }
@@ -1457,7 +1468,8 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
     /// <summary>Партія скінчилась, а банк не порожній (гра зламалась чи забула): кожному — що скаже гра, інакше «вніс мінус забрав».</summary>
     void SettleBank()
     {
-        if (room.Bank.Held <= 0) return;
+        // Quiet — Start гри під час продовження після перезапуску: її Finish тут не справжній, банк — зі знімка.
+        if (Quiet || room.Bank.Held <= 0) return;
         IReadOnlyDictionary<string, int>? owed = null;
         try { owed = room.Game.SettleTable(); }
         catch (Exception ex) { rooms.Log.LogWarning(ex, "SettleTable впав у кімнаті {Room}", room.Id); }
