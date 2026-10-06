@@ -155,7 +155,9 @@
 
 /* ---- телефон: стіл вужчий і вищий, панель ходу на всю ширину ---- */
 @media (max-width: 560px) {
-  .pk .pk-table { height: 410px; }
+  .pk .pk-table { height: 372px; }
+  /* мій хід: панель липне до низу екрана — не треба гортати до кнопок */
+  .pk .pk-panel.on { position: sticky; bottom: 0; z-index: 5; box-shadow: 0 -6px 16px rgba(0, 0, 0, .45); }
   .pk .pk-felt, .pk .pk-ring { inset: 38px 40px 44px; }
   .pk .pk-seat { width: 80px; }
   .pk .pk-box { min-width: 0; max-width: 80px; width: 80px; padding: 3px 4px 2px; }

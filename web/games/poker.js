@@ -169,7 +169,7 @@
       if (v.nextBlinds && v.levelAt && !v.over)
         chips.push('далі ' + fmt(v.nextBlinds.sb) + '/' + fmt(v.nextBlinds.bb) + ' через <b data-until="' + ctx.esc(v.levelAt) + '">'
           + untilText(v.levelAt) + '</b>');
-      if (v.tour) chips.push('банк внесків <b>' + fmt(v.tour.pool) + '</b> → ' + v.tour.prizes.map(fmt).join(' / '));
+      if (v.tour) chips.push('банк внесків <b>' + fmt(v.tour.pool) + '</b> · ' + (v.tour.prizes.length > 1 ? 'призи ' : 'приз ') + v.tour.prizes.map(fmt).join(' / '));
     }
     if (v.hand) chips.push('роздача №' + v.hand);
     setHtml(el.querySelector('.pk-top'), chips.map((c) => '<span class="pk-chip">' + c + '</span>').join(''));
