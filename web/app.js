@@ -2422,6 +2422,8 @@
     $('fbNote').textContent = FB_KINDS[fbKind].note;
   }
   const fbStatusChip = (s) => { const [l, cls] = FB_STATUS[s] || [s, '']; return `<span class="chip ${cls}">${esc(l)}</span>`; };
+  /// Номер записки — той самий id, що в базі: «записка #27» однаково зрозуміла людині, розробнику й пошуку («#27»).
+  const fbNo = (id) => `<span class="fbno" title="Номер записки">#${Number(id)}</span>`;
   /// Одне повідомлення переписки. mineDev — чи «свої» тут повідомлення розробника (так бачить адмін); свої — праворуч.
   /// Розробник переставив стан — рядок посередині, а не бульбашка: це подія, а не слова.
   function fbBubble(m, mineDev, fresh) {
@@ -2488,7 +2490,7 @@
     const msgs = x.msgs || [];
     const talk = msgs.some((m) => m.dev);
     return `<div class="fbm${fbMineHot(x) ? ' fresh' : ''}" data-id="${x.id}">
-        <div class="fbm-head">${FB_ICON[x.kind] || '💬'} ${fbStatusChip(x.status)}<span class="muted small">${esc(dayTime(x.at))}</span></div>
+        <div class="fbm-head">${FB_ICON[x.kind] || '💬'} ${fbNo(x.id)} ${fbStatusChip(x.status)}<span class="muted small">${esc(dayTime(x.at))}</span></div>
         <div class="fbt"><div class="fbb me"><div class="fbb-text">${esc(x.text)}</div></div>${msgs.map((m) => fbBubble(m, false, fbMineFresh)).join('')}</div>
         ${talk || typing ? fbSayBox(talk ? 'Відповісти… (Enter)' : 'Доповнити… (Enter)') : '<button type="button" class="ghost fbadd">✏ Доповнити</button>'}
       </div>`;
@@ -3136,8 +3138,10 @@
     // підписи днів під час пошуку лише заважають: знайдене з різних днів стоїть підряд
     box.querySelectorAll('.list > li.lday').forEach((li) => { li.hidden = !!want; });
     let shown = 0;
+    const no = /^#\d+$/.test(want) ? want : '';   // «#2» — саме записка №2, а не ще й #20…#29
     rows.forEach((li) => {
-      const hit = !want || li.textContent.toLowerCase().includes(want);
+      const fbNoEl = no && li.querySelector('.fbno');
+      const hit = !want || (fbNoEl ? fbNoEl.textContent === no : li.textContent.toLowerCase().includes(want));
       li.hidden = !hit;
       if (hit) shown++;
     });
@@ -3287,7 +3291,7 @@
       const hot = fbHot.has(x.id);
       const msgs = x.msgs || [];
       return `<li class="fbi fb-${esc(x.kind)}${hot ? ' hot' : ''}" data-id="${x.id}">
-        <div class="fbi-head">${FB_ICON[x.kind] || '💬'} ${nickHtml(x.nick, 'rnick')}<span class="muted small">${esc(dayTime(x.at))}</span>${hot ? '<span class="chip warn fbi-hot">↩ відповідь</span>' : ''}
+        <div class="fbi-head">${FB_ICON[x.kind] || '💬'} ${fbNo(x.id)} ${nickHtml(x.nick, 'rnick')}<span class="muted small">${esc(dayTime(x.at))}</span>${hot ? '<span class="chip warn fbi-hot">↩ відповідь</span>' : ''}
           <select class="fbi-st" aria-label="Стан">${Object.entries(FB_STATUS).map(([k, [l]]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="fbi-text">${esc(x.text)}</div>
         <div class="fbi-ctx muted small">${x.place ? '📍 ' + esc(x.place) : ''}${x.screen ? ' · ' + esc(x.screen) : ''}${x.ua ? ` · <span title="${esc(x.ua)}">${esc(shortUa(x.ua))}</span>` : ''}</div>
