@@ -519,6 +519,7 @@ public sealed partial class Rooms
     RoomOutcome? LateSeat(Room room, string nick)
     {
         var outbox = new Outbox();
+        string? hello;
         lock (room.Sync)
         {
             if (room.Status != RoomStatus.Playing || room.Info.Solo || room.Has(nick)) return null;
@@ -531,6 +532,8 @@ public sealed partial class Rooms
                 return room.Game.LateJoinRefusal(nick) is { Length: > 0 } why ? RoomOutcome.Fail(why) : null;
             room.Seats[seat] = nick;
             room.LastActivity = _clock.UtcNow;
+            try { hello = room.Game.LateJoinGreeting(nick); }
+            catch (Exception ex) { hello = null; _log.LogWarning(ex, "LateJoinGreeting впав у кімнаті {Room}", room.Id); }
             var ctx = (RoomContext)room.Game.Ctx;
             using (ctx.Collect(outbox))
             {
@@ -542,7 +545,7 @@ public sealed partial class Rooms
         outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
-        return new RoomOutcome(outbox, new RoomReply(true, "Ти знову за столом", room.Id));
+        return new RoomOutcome(outbox, new RoomReply(true, hello ?? "Ти знову за столом", room.Id));
     }
 
     /// <summary>Встати. Посеред партії це техпоразка — гра вирішує сама через OnLeave.</summary>

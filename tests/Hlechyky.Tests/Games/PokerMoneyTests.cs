@@ -45,6 +45,7 @@ public class PokerMoneyTests
         Assert.False(h.Join("Бідний").Ok);
         Assert.Equal("Щоб сісти, треба 250 черепків — у тебе 100", h.Reply.Message);
         Assert.True(h.Join("Іра").Ok, h.Reply.Message);
+        Assert.Equal("Є! Ти за столом: викуп 250 черепків — граєш з наступної роздачі", h.Reply.Message);
         Assert.Equal(750, h.Stakes.Balance("Іра"));
         var g = PokerKit.Game(h);
         var p = g.State.Seats.FindIndex(x => x.Nick == "Іра");

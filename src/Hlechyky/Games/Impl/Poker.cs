@@ -773,6 +773,11 @@ public sealed class Poker : Game
         return bal < _buyin ? $"Щоб сісти, треба {_buyin} {Economy.Economy.Shards(_buyin)} — у тебе {bal}" : null;
     }
 
+    public override string? LateJoinGreeting(string nick) =>
+        Cash && _joining is { } j && string.Equals(j.Nick, nick, StringComparison.OrdinalIgnoreCase)
+            ? $"Є! Ти за столом: викуп {j.Amount} {Economy.Economy.Shards(j.Amount)} — граєш з наступної роздачі"
+            : null;
+
     public override void OnJoin(int seat)
     {
         var nick = Ctx.NickOf(seat)!;
