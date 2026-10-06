@@ -89,6 +89,32 @@ public class PokerMoneyTests
     }
 
     [Fact]
+    public void NewcomerOnLeaversChairSeesNoCardsOfHis()
+    {
+        var h = PokerKit.Table(new { format = "cash" }, 15, "Оля", "Петро", "Іра");
+        h.Stakes.Set("Новий", 1000);
+        h.Start();
+        var g = PokerKit.Game(h);
+        var turn = PokerKit.HumanTurn(h)!.Value;
+        h.Act(turn, "call");
+        var leaverSeat = PokerKit.HumanTurn(h)!.Value;
+        var p = g.State.Seats.FindIndex(x => x.RoomSeat == leaverSeat);
+        var hole = g.State.Core.Hole[p].Select(PokerHand.Code).ToArray();
+        h.Leave(h.NickOf(leaverSeat));
+        Assert.True(h.Join("Новий").Ok, h.Reply.Message);
+        Assert.Equal("Новий", h.Room.Seats[leaverSeat]);
+        Assert.True(g.State.Core.Live);
+        foreach (int? s in new int?[] { leaverSeat, null })
+        {
+            var json = PokerKit.Json(h.View(s));
+            Assert.All(hole, c => Assert.DoesNotContain($"\"{c}\"", json));
+        }
+        Assert.Equal("wait", h.View(leaverSeat).GetProperty("seats")[p].GetProperty("state").GetString());
+        Assert.False(h.View(null).GetProperty("cash").GetProperty("canRebuy").GetBoolean());
+        Assert.True(g.CheckInvariant());
+    }
+
+    [Fact]
     public void RebuyTopsUpBetweenHands()
     {
         var h = PokerKit.Table(new { format = "cash" }, 4, "Оля", "Петро");

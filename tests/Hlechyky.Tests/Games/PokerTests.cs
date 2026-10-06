@@ -258,6 +258,21 @@ public class PokerTests
     }
 
     [Fact]
+    public void RematchStartsAFreshTournament()
+    {
+        var h = PokerKit.Table(new { format = "fun" }, 31, "Оля", "Петро");
+        h.Start();
+        PokerKit.Drive(h, PokerKit.Shove, 50_000);
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(2, h.Finished[0].Result.Scores!.Count);
+        Assert.True(h.Rematch().Ok, h.Reply.Message);
+        var g = PokerKit.Game(h);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(1, g.State.Core.HandNo);
+        Assert.Equal(2 * Poker.StartChips, g.State.Core.Chips);
+    }
+
+    [Fact]
     public void ShowCardsAfterUncontestedWin()
     {
         var h = PokerKit.Table(new { format = "fun" }, 23, "Оля", "Петро");

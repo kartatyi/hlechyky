@@ -334,6 +334,9 @@ public sealed class Poker : Game
         if (Ctx.Rng.NextDouble() < 0.6) Ctx.Say(PokerLines.AllInLine(Ctx.Rng));
     }
 
+    /// <summary>Карти позиції p в цій роздачі — справді того, хто зараз на ній сидить (а не того, хто встав і чиє місце зайняли).</summary>
+    bool Owns(int p) => C.HandNo > 0 && string.Equals(_s.HandNicks[p], _s.Seats[p].Name, StringComparison.OrdinalIgnoreCase);
+
     int PosOf(int seat)
     {
         var nick = Ctx.NickOf(seat);
@@ -362,6 +365,8 @@ public sealed class Poker : Game
                 }
                 C.Act(p, action, to);
                 x.Strikes = 0;
+                x.Away = false;   // походив сам — отже, тут
+                x.AwaySince = null;
                 AfterMove();
                 return ActResult.Done;
             }
@@ -386,7 +391,7 @@ public sealed class Poker : Game
                 return Rebuy(p);
             case "show":
             {
-                if (C.Live || C.Wins.Count != 1 || C.Wins[0].Showdown || C.Wins[0].Winners[0] != p || _s.ShowPos == p)
+                if (C.Live || C.Wins.Count != 1 || C.Wins[0].Showdown || C.Wins[0].Winners[0] != p || _s.ShowPos == p || !Owns(p))
                     throw new GameError("Показати карти можна, коли виграв роздачу без шоудауну");
                 _s.ShowPos = p;
                 _dirty = true;
@@ -724,9 +729,12 @@ public sealed class Poker : Game
         {
             if (C.InHand(p))
             {
+                var (turn, hand) = (C.Turn, C.HandNo);
                 C.ForceFold(p);
                 Ctx.Log($"Покер: {x.Nick} встає посеред роздачі — фолд");
-                AfterMove();
+                // чужий хід не скидаємо: дедлайн того, хто думає, лишається той самий
+                if (C.Live && !C.Runout && C.Turn == turn && C.HandNo == hand) _dirty = true;
+                else AfterMove();
             }
             var amount = C.Stack[p];
             if (!CashOutStack(p)) return;   // гроші не пішли — місце не чіпаємо, фішки лишаються за ним
@@ -862,7 +870,7 @@ public sealed class Poker : Game
         {
             var x = _s.Seats[p];
             var dealt = c.Dealt[p] && c.Hole[p].Length == 2 && c.HandNo > 0;
-            var open = dealt && (p == me
+            var open = dealt && ((p == me && Owns(p))
                 || (c.Live && c.ShowAll && !c.Folded[p])
                 || (!c.Live && (c.Shown[p] || _s.ShowPos == p)));
             var state = x.Name is null ? "empty"
@@ -892,7 +900,7 @@ public sealed class Poker : Game
         }
         string? myHand = null;
         string[]? myBest = null;
-        if (me >= 0 && c.Dealt[me] && c.Hole[me].Length == 2 && c.HandNo > 0)
+        if (me >= 0 && c.Dealt[me] && c.Hole[me].Length == 2 && Owns(me))
         {
             int[] cards = [.. c.Hole[me], .. c.Board];
             if (cards.Length >= 5)
@@ -936,7 +944,7 @@ public sealed class Poker : Game
             runout = c.Live && c.Runout,
             showdown = !c.Live && c.HandNo > 0 && c.Shown.Any(v => v),
             last = _s.Last,
-            canShow = me >= 0 && !c.Live && c.Wins.Count == 1 && !c.Wins[0].Showdown && c.Wins[0].Winners[0] == me && _s.ShowPos != me,
+            canShow = me >= 0 && !c.Live && c.Wins.Count == 1 && !c.Wins[0].Showdown && c.Wins[0].Winners[0] == me && _s.ShowPos != me && Owns(me),
             nextHandAt = c.Live ? null : _s.NextHandAt,
             waiting = Cash && !c.Live && !_s.Over && Enumerable.Range(0, Seats).Count(DealsIn) < 2 ? "Чекаємо, хто підсяде" : null,
             cash = Cash
