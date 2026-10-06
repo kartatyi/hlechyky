@@ -1,0 +1,184 @@
+/* Покер: овальний стіл, карти, фішки й панель ходу. Кольори — змінними; свої оголошуємо в :root з фолбеками. */
+:root {
+  --pk-felt: #1f6a45;
+  --pk-felt2: #12452c;
+  --pk-rail: #5b3b24;
+  --pk-face: #f6f3ea;
+  --pk-ink: #1c2420;
+  --pk-red: var(--danger, #d64545);
+  --pk-back: #8e3a2c;
+  --pk-back2: #b5583f;
+  --pk-chip: var(--accent, #f4c542);
+  --pk-gold: #f4c542;
+}
+
+.pk { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 860px; margin: 0 auto; }
+
+/* ---- шапка: формат, сліпі, гроші ---- */
+.pk .pk-top { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.pk .pk-top:empty { display: none; }
+.pk .pk-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: .86em; color: var(--muted);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+}
+.pk .pk-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---- стіл ---- */
+.pk .pk-table { position: relative; width: 100%; height: clamp(320px, 50vw, 440px); }
+.pk .pk-felt, .pk .pk-ring { position: absolute; inset: 40px 66px; }
+.pk .pk-felt {
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 40%, var(--pk-felt), var(--pk-felt2));
+  box-shadow: 0 0 0 9px var(--pk-rail), 0 0 0 11px rgba(0, 0, 0, .35), inset 0 0 40px rgba(0, 0, 0, .4);
+}
+.pk.lobby .pk-felt { opacity: .7; }
+
+.pk .pk-center {
+  position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; width: 72%;
+}
+.pk .pk-pot { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 1.2em; color: #fff; }
+.pk .pk-potsum { background: rgba(0, 0, 0, .35); border-radius: 999px; padding: 2px 12px; font-size: .92em; }
+.pk .pk-potsum b { font-variant-numeric: tabular-nums; }
+.pk .pk-side { font-size: .75em; opacity: .85; }
+.pk .pk-board { display: flex; gap: 5px; }
+.pk .pk-slot { width: 44px; height: 62px; border-radius: 6px; border: 1px dashed rgba(255, 255, 255, .16); }
+.pk .pk-slot:not(:empty) { border-color: transparent; }
+.pk .pk-msg { color: #fff; font-size: .85em; min-height: 1.2em; display: flex; flex-direction: column; gap: 2px; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+.pk .pk-msg small { opacity: .8; font-size: .9em; }
+
+/* ---- карта ---- */
+.pk .pkc {
+  position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  width: 44px; height: 62px; border-radius: 6px; background: var(--pk-face); color: var(--pk-ink);
+  border: 1px solid rgba(0, 0, 0, .25); box-shadow: 0 1px 3px rgba(0, 0, 0, .45); font-weight: 800; line-height: 1;
+  transition: box-shadow .25s, filter .25s, translate .25s; flex: none;
+}
+.pk .pkc b { font-size: 1.15em; }
+.pk .pkc i { font-style: normal; font-size: 1.3em; }
+.pk .pkc.red { color: var(--pk-red); }
+.pk .pkc.back {
+  background: repeating-linear-gradient(45deg, var(--pk-back) 0 4px, var(--pk-back2) 4px 8px);
+  border: 2px solid var(--pk-face);
+}
+.pk .pkc.sm { width: 24px; height: 34px; font-size: .7em; border-radius: 4px; }
+.pk .pkc.sm.back { border-width: 1.5px; }
+.pk .pkc.lg { width: 60px; height: 84px; font-size: 1.35em; border-radius: 8px; }
+.pk .pkc.win { box-shadow: 0 0 0 2px var(--pk-gold), 0 0 12px var(--pk-gold); translate: 0 -4px; }
+.pk .pkc.dim { filter: brightness(.62) saturate(.7); }
+.pk .pkc.in { animation: pk-in .38s ease-out both; }
+.pk .pkc.deal { animation: pk-deal .32s ease-out both; }
+.pk .pkc.flip { animation: pk-flip .42s ease-out both; }
+@keyframes pk-in { from { opacity: 0; transform: translateY(-18px) scale(.7) rotateY(80deg); } to { opacity: 1; transform: none; } }
+@keyframes pk-deal { from { opacity: 0; transform: translateY(-30px) scale(.6); } to { opacity: 1; transform: none; } }
+@keyframes pk-flip { from { transform: rotateY(90deg); } to { transform: none; } }
+
+/* ---- місце гравця ---- */
+.pk .pk-seat {
+  position: absolute; translate: -50% -50%; z-index: 2; width: 112px;
+  display: flex; flex-direction: column; align-items: center; transition: left .4s, top .4s;
+}
+.pk .pk-seat.me { z-index: 3; }
+.pk .pk-hole { display: flex; gap: 2px; height: 34px; margin-bottom: -10px; z-index: 0; }
+.pk .pk-seat.top .pk-hole { order: 2; margin: -10px 0 0; }
+.pk .pk-box {
+  position: relative; z-index: 1; min-width: 86px; max-width: 112px; padding: 4px 8px 3px; text-align: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  transition: box-shadow .2s, opacity .2s;
+}
+.pk .pk-seat.me .pk-box { border-color: var(--accent); }
+.pk .pk-seat.turn .pk-box { box-shadow: 0 0 0 2px var(--accent), 0 0 14px var(--accent); }
+.pk .pk-seat.fold .pk-box, .pk .pk-seat.fold .pk-hole { opacity: .5; }
+.pk .pk-seat.away .pk-name { color: var(--muted); }
+.pk .pk-seat.won .pk-box { box-shadow: 0 0 0 2px var(--pk-gold), 0 0 16px var(--pk-gold); }
+.pk .pk-name { font-size: .82em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk .pk-stack { font-weight: 800; font-variant-numeric: tabular-nums; font-size: .95em; }
+.pk .pk-stack em { font-style: normal; color: var(--ok); font-size: .85em; }
+.pk .pk-tag { font-size: .72em; color: var(--muted); min-height: 1em; white-space: nowrap; }
+.pk .pk-tag:empty { display: none; }
+.pk .pk-dealer, .pk .pk-blind {
+  position: absolute; top: -8px; display: grid; place-items: center; border-radius: 999px; font-weight: 800; line-height: 1;
+}
+.pk .pk-dealer {
+  left: -8px; width: 20px; height: 20px; font-size: .72em; background: #fff; color: #222; box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+}
+.pk .pk-blind { right: -6px; padding: 2px 5px; font-size: .62em; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+.pk .pk-arc { position: absolute; right: -14px; top: 50%; translate: 0 -50%; }
+.pk .pk-arc .garc { width: 30px; height: 30px; background: var(--panel); border-radius: 50%; }
+.pk .pk-arc .garc b { font-size: .7em; }
+
+/* ---- фішки ставок і банк до переможця ---- */
+.pk .pk-bet, .pk .pk-fly {
+  position: absolute; z-index: 1; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  background: rgba(0, 0, 0, .5); color: #fff; border-radius: 999px; padding: 2px 8px 2px 3px; font-size: .8em; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pk .pk-bet { translate: -50% -50%; transition: transform .45s ease-in, opacity .45s ease-in; }
+.pk .pk-bet i, .pk .pk-fly i {
+  width: 14px; height: 14px; border-radius: 50%; background: var(--pk-chip); border: 2px dashed rgba(255, 255, 255, .75); box-sizing: border-box;
+}
+.pk .pk-bet.topot { transform: translate(var(--tx), var(--ty)) scale(.5); opacity: 0; }
+.pk .pk-bet.pop { animation: pk-pop .25s ease-out; }
+@keyframes pk-pop { from { transform: scale(1.35); } to { transform: none; } }
+.pk .pk-fly { left: 50%; top: 50%; z-index: 4; animation: pk-fly 1.1s ease-in-out forwards; pointer-events: none; background: rgba(0, 0, 0, .65); }
+@keyframes pk-fly {
+  0% { transform: translate(-50%, -50%) scale(1.15); opacity: 0; }
+  15% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.8); opacity: 0; }
+}
+
+/* ---- мої карти й комбінація ---- */
+.pk .pk-mine { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 0; flex-wrap: wrap; }
+.pk .pk-cards { display: flex; gap: 6px; }
+.pk .pk-cards:empty { display: none; }
+.pk .pk-mine.folded .pk-cards { opacity: .45; }
+.pk .pk-combo { font-size: .92em; color: var(--muted); }
+.pk .pk-combo b { color: var(--text); }
+
+/* ---- панель ходу ---- */
+.pk .pk-panel { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.pk .pk-panel:empty { display: none; }
+.pk .pk-panel.on { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.pk .pk-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.pk .pk-b { min-width: 92px; font-weight: 700; }
+.pk .pk-b.fold { color: var(--muted); }
+.pk .pk-parc .garc { width: 36px; height: 36px; }
+.pk .pk-raise { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; width: 100%; }
+.pk .pk-range { flex: 1 1 220px; max-width: 360px; accent-color: var(--accent); }
+.pk .pk-qs { display: flex; gap: 4px; }
+.pk .pk-pres { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: .9em; }
+.pk .pk-pre { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+
+.pk .pk-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.pk .pk-btns:empty { display: none; }
+
+/* ---- телефон: стіл вужчий і вищий, панель ходу на всю ширину ---- */
+@media (max-width: 560px) {
+  .pk .pk-table { height: 410px; }
+  .pk .pk-felt, .pk .pk-ring { inset: 38px 40px 44px; }
+  .pk .pk-seat { width: 80px; }
+  .pk .pk-box { min-width: 0; max-width: 80px; width: 80px; padding: 3px 4px 2px; }
+  .pk .pk-name { font-size: .74em; }
+  .pk .pk-stack { font-size: .85em; }
+  .pk .pk-tag { font-size: .66em; }
+  .pk .pk-hole { height: 28px; }
+  .pk .pkc.sm { width: 20px; height: 28px; font-size: .6em; }
+  .pk .pk-slot, .pk .pkc { width: 34px; height: 48px; font-size: .85em; }
+  .pk .pkc.lg { width: 52px; height: 72px; font-size: 1.2em; }
+  .pk .pk-board { gap: 3px; }
+  .pk .pk-center { width: 92%; }
+  .pk .pk-msg { font-size: .78em; }
+  .pk .pk-bet { font-size: .72em; padding: 1px 6px 1px 2px; }
+  .pk .pk-bet i { width: 11px; height: 11px; }
+  .pk .pk-arc { right: -10px; }
+  .pk .pk-arc .garc { width: 24px; height: 24px; }
+  .pk .pk-acts { width: 100%; }
+  .pk .pk-b { flex: 1 1 40%; min-width: 0; }
+  .pk .pk-btns button { flex: 1 1 40%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk .pkc.in, .pk .pkc.deal, .pk .pkc.flip, .pk .pk-bet.pop, .pk .pk-fly { animation: none; }
+  .pk .pk-bet, .pk .pk-seat { transition: none; }
+}
