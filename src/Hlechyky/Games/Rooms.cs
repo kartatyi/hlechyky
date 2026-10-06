@@ -522,6 +522,8 @@ public sealed partial class Rooms
         lock (room.Sync)
         {
             if (room.Status != RoomStatus.Playing || room.Info.Solo || room.Has(nick)) return null;
+            // Заморожено перед перезапуском: знімок уже на диску, а LateJoin може списати викуп (покер) — не пускаємо.
+            if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             var seat = room.FreeSeat;
             if (seat < 0) return null;
             if (!room.Game.LateJoin(nick))

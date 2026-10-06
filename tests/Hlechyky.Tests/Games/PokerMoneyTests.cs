@@ -262,6 +262,36 @@ public class PokerMoneyTests
     }
 
     [Fact]
+    public void TableMoneyGamesGetNoStandardRewardsButCountResults()
+    {
+        using var rig = new EconomyRig();
+        var info = new Poker().Info;
+        var plain = rig.Finished("p1", info, ["Оля", "Петро"], [0]);
+        rig.Events.Raise(plain);
+        var after = rig.Economy.Balance("Оля");
+        Assert.True(after > 0);
+        rig.Events.Raise(rig.Finished("p2", info, ["Оля", "Петро"], [0]) with { TableMoney = true });
+        Assert.Equal(after, rig.Economy.Balance("Оля"));                 // за стіл на черепки — без нагороди
+        Assert.True(rig.Achievements.Has("Оля", "first-win"));
+        // реальні тексти леджера
+        Assert.Equal("викуп — Покер", rig.Economy.Reason("table-buyin:poker"));
+        Assert.Equal("забрав зі столу — Покер", rig.Economy.Reason("table-cashout:poker"));
+        Assert.Equal("приз турніру — Покер", rig.Economy.Reason("table-prize:poker"));
+    }
+
+    [Fact]
+    public void NoLateBuyInWhileFrozen()
+    {
+        var h = PokerKit.Table(new { format = "cash" }, 16, "Оля", "Петро");
+        h.Stakes.Set("Іра", 1000);
+        h.Start();
+        h.Rooms.Freeze();
+        Assert.False(h.Join("Іра").Ok);
+        Assert.Equal(1000, h.Stakes.Balance("Іра"));
+        Assert.Equal(200, h.Room.Bank.Held);
+    }
+
+    [Fact]
     public void CashTableDoesNotBlockDeploy()
     {
         var h = PokerKit.Table(new { format = "cash" }, 9, "Оля", "Петро");
