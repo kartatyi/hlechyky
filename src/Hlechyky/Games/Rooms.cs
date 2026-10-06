@@ -523,7 +523,10 @@ public sealed partial class Rooms
         {
             if (room.Status != RoomStatus.Playing || room.Info.Solo || room.Has(nick)) return null;
             var seat = room.FreeSeat;
-            if (seat < 0 || !room.Game.LateJoin(nick)) return null;
+            if (seat < 0) return null;
+            if (!room.Game.LateJoin(nick))
+                // Гра може сказати чому («Щоб сісти, треба 100 черепків») — це краще за «місць нема».
+                return room.Game.LateJoinRefusal(nick) is { Length: > 0 } why ? RoomOutcome.Fail(why) : null;
             room.Seats[seat] = nick;
             room.LastActivity = _clock.UtcNow;
             var ctx = (RoomContext)room.Game.Ctx;
@@ -665,6 +668,8 @@ public sealed partial class Rooms
     string? StartRound(Room room, Outbox outbox)
     {
         room.Charged.Clear();
+        // Новий раунд — новий банк столу: минулий Finish уже розрахував його до нуля (SettleBank), а ключі леджера мають раунд.
+        room.Bank = new TableBank();
         if (room.Stake > 0)
         {
             foreach (var nick in room.Seats.Where(s => s is not null).Select(s => s!))
@@ -1299,6 +1304,7 @@ public sealed partial class Rooms
         var removed = 0;
         var lobbyChanged = false;
         var soloChanged = false;
+        var settled = new List<Outbox>();
         foreach (var room in Live())
         {
             bool drop;
@@ -1311,12 +1317,26 @@ public sealed partial class Rooms
                     || (room.Status == RoomStatus.Lobby && room.Occupied < Math.Max(2, room.Info.MinPlayers) && now - room.LastActivity > LobbyLife)
                     || (room.Status == RoomStatus.Finished && room.FinishedAt is { } at && now - at > FinishedLife)
                     || (room.Info.Solo && room.Watchers.IsEmpty && now - room.LastActivity > SoloLife));
+                // Партію на черепки покинули всі й не повернулись: перш ніж прибрати стіл, розрахувати банк столу
+                // (Finish → SettleBank) — інакше черепки, що лежать за столом, зникли б разом із ним.
+                if (drop && room.Status == RoomStatus.Playing && room.Bank.Held > 0)
+                {
+                    var ctx = (RoomContext)room.Game.Ctx;
+                    var fin = new Outbox();
+                    using (ctx.Collect(fin)) ctx.Finish([], $"{room.Info.Title}: стіл покинули — черепки зі столу повернуто");
+                    settled.Add(fin);
+                }
             }
             if (!drop) continue;
             Drop(room);
             removed++;
             lobbyChanged |= !room.Info.Private;
             soloChanged |= !room.OnScreen.IsEmpty;   // дограну щоденну прибрали просто з-перед очей
+        }
+        foreach (var fin in settled)
+        {
+            fin.RunAfter(_log);
+            outbox.AddRange(fin);
         }
         if (lobbyChanged) outbox.Add(new LobbyChanged());
         if (soloChanged) outbox.Add(new SoloChanged());
@@ -1348,6 +1368,12 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
     readonly Random _rng = new(room.Seed);
     Outbox? _out;
 
+    /// <summary>
+    /// Партію продовжують після перезапуску (Start+Load): Start гри знову «бере викупи», але гроші вже за столом —
+    /// банк столу в цей час мовчить і каже «гаразд», а стан і облік приходять зі знімка.
+    /// </summary>
+    internal bool Quiet { get; set; }
+
     public string RoomId => room.Id;
     public int Players => room.Occupied;
     public int Round => room.Round;
@@ -1361,6 +1387,83 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
     public bool Seated(int seat) => NickOf(seat) is not null;
 
     public int? HostSeat => room.SeatOf(room.Host);
+
+    public bool Seeded => rooms.SeedOverride is not null;
+
+    public int Balance(string nick)
+    {
+        try { return rooms.StakesService.Balance(nick); }
+        catch (Exception ex)
+        {
+            rooms.Log.LogWarning(ex, "не дізнався баланс {Nick}", nick);
+            return 0;
+        }
+    }
+
+    public bool BuyIn(string nick, int amount, string kind)
+    {
+        if (Quiet) return true;
+        if (amount <= 0 || !Rooms.Named(nick)) return false;
+        var acc = room.Bank.Of(nick);
+        var n = ++acc.InN;   // і на відмові: ключ леджера не повторюється, повтор не з'їсть удруге
+        bool ok;
+        try
+        {
+            ok = rooms.StakesService.TrySpend(nick, amount, TableMoney.Reason(kind, room.Info.Id),
+                $"table-in:{room.Id}:{room.Round}:{Rooms.NickKey(nick)}:{n}");
+        }
+        catch (Exception ex)
+        {
+            rooms.Log.LogWarning(ex, "викуп {Nick} за столом {Room} не списався", nick, room.Id);
+            ok = false;
+        }
+        if (ok) acc.In += amount;
+        return ok;
+    }
+
+    public bool CashOut(string nick, int amount, string kind)
+    {
+        if (Quiet) return true;
+        if (amount == 0) return true;
+        if (amount < 0 || !Rooms.Named(nick)) return false;
+        if (amount > room.Bank.Held)
+        {
+            rooms.Log.LogWarning("стіл {Room}: {Nick} просить {Amount}, а за столом {Held} — відмовляю", room.Id, nick, amount, room.Bank.Held);
+            return false;
+        }
+        Pay(nick, amount, kind);
+        return true;
+    }
+
+    /// <summary>Виплата зі столу: облік — одразу, гроші — поза замком (як Payout).</summary>
+    void Pay(string nick, int amount, string kind)
+    {
+        var acc = room.Bank.Of(nick);
+        var n = ++acc.OutN;
+        acc.Out += amount;
+        var reason = TableMoney.Reason(kind, room.Info.Id);
+        var refKey = $"table-out:{room.Id}:{room.Round}:{Rooms.NickKey(nick)}:{n}";
+        var stakes = rooms.StakesService;
+        var log = rooms.Log;
+        void Grant()
+        {
+            try { stakes.Grant(nick, amount, reason, refKey); }
+            catch (Exception ex) { log.LogWarning(ex, "виплату зі столу {Nick} не проведено ({Ref})", nick, refKey); }
+        }
+        if (_out is { } outbox) outbox.After(Grant);
+        else Grant();   // поза Start/Act/Tick (не мало б траплятись) — краще одразу, ніж загубити гроші
+    }
+
+    /// <summary>Партія скінчилась, а банк не порожній (гра зламалась чи забула): кожному — що скаже гра, інакше «вніс мінус забрав».</summary>
+    void SettleBank()
+    {
+        if (room.Bank.Held <= 0) return;
+        IReadOnlyDictionary<string, int>? owed = null;
+        try { owed = room.Game.SettleTable(); }
+        catch (Exception ex) { rooms.Log.LogWarning(ex, "SettleTable впав у кімнаті {Room}", room.Id); }
+        rooms.Log.LogWarning("стіл {Room}: партія скінчилась із {Held} черепками за столом — розраховую", room.Id, room.Bank.Held);
+        foreach (var (nick, amount) in room.Bank.Owed(owed, rooms.Log, room.Id)) Pay(nick, amount, TableMoney.Refund);
+    }
 
     /// <summary>Куди складати розсилку, поки гра щось робить. Поза цим блоком контекст мовчить.</summary>
     public IDisposable Collect(Outbox outbox)
@@ -1391,11 +1494,12 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         outbox?.Add(new RoomViews(room.Id));
 
         Payout(winners);
+        SettleBank();
         Store();
 
         var finished = new RoomFinishedEvent(
             room.Id, room.Info.Id, room.Info, room.Round, (string?[])room.Seats.Clone(),
-            room.Result, room.Stake, room.StartedAt ?? now, now, room.Moves);
+            room.Result, room.Stake, room.StartedAt ?? now, now, room.Moves, room.Bank.Used);
         outbox?.After(() => rooms.Events.Raise(finished));
     }
 

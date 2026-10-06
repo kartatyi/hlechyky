@@ -59,7 +59,8 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
 
         var o = opts.CurrentValue;
         var seconds = (e.FinishedAt - e.StartedAt).TotalSeconds;
-        var rewarded = e.Moves >= o.MinRewardMoves || seconds >= o.MinRewardSeconds;
+        // За столом на черепки (банк столу) гроші й так ходили між гравцями — звичайних нагород за партію не даємо.
+        var rewarded = !e.TableMoney && (e.Moves >= o.MinRewardMoves || seconds >= o.MinRewardSeconds);
 
         var rows = seated.Select(x =>
         {

@@ -45,7 +45,9 @@ public sealed record FrozenRoom(
     string? State = null,
     IReadOnlyDictionary<int, JsonElement>? Views = null,
     JsonElement? WatcherView = null,
-    IReadOnlyList<LobbyAct>? LobbyActs = null);
+    IReadOnlyList<LobbyAct>? LobbyActs = null,
+    TableBank? Bank = null,
+    IReadOnlyDictionary<string, int>? Owed = null);
 
 public sealed record FrozenResult(int[] Winners, bool Draw, string Text, IReadOnlyDictionary<int, long>? Scores, string? Verdict)
 {
@@ -149,7 +151,20 @@ public sealed partial class Rooms
                 Nick = e.Nick, Wins = e.Wins, Games = e.Games, Points = e.Points, HasPoints = e.HasPoints, Order = e.Order,
             })],
             room.EveningGames, state, views, watcher,
-            room.Status == RoomStatus.Lobby && room.LobbyActs.Count > 0 ? [.. room.LobbyActs] : null);
+            room.Status == RoomStatus.Lobby && room.LobbyActs.Count > 0 ? [.. room.LobbyActs] : null,
+            room.Bank.Accounts.Count > 0 ? room.Bank.Clone() : null,
+            room.Status == RoomStatus.Playing && room.Bank.Held > 0 ? OwedNow(room) : null);
+    }
+
+    /// <summary>Банк столу на мить знімка: кому скільки належить, якщо партію не продовжать (<see cref="Game.SettleTable"/>).</summary>
+    IReadOnlyDictionary<string, int>? OwedNow(Room room)
+    {
+        try { return room.Game.SettleTable() is { } owed ? new Dictionary<string, int>(owed) : null; }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "SettleTable впав у кімнаті {Room} — при перериванні поверну «вніс мінус забрав»", room.Id);
+            return null;
+        }
     }
 
     /// <summary>Повний вид місця (той, що отримує новенький), а коли стіл сам відновлений — збережений. Під замком кімнати.</summary>
@@ -194,7 +209,7 @@ public sealed partial class Rooms
         var now = _clock.UtcNow;
         var pause = now > tables.At ? now - tables.At : TimeSpan.Zero;
         int count = 0, continued = 0, interrupted = 0, solo = 0, skipped = 0;
-        var refunds = new List<(string Nick, int Amount, string Ref)>();
+        var refunds = new List<(string Nick, int Amount, string Reason, string Ref)>();
         var seated = new List<string>();
         long talk = 0;
 
@@ -262,9 +277,9 @@ public sealed partial class Rooms
         // Нікого з тих, хто сидів, ще нема на зв'язку: відлік grace — як від виходу, тільки довший.
         lock (_lock)
             foreach (var nick in seated) _offline[nick] = now + (RestoreGrace - Grace);
-        foreach (var (nick, amount, reference) in refunds)
+        foreach (var (nick, amount, reason, reference) in refunds)
         {
-            try { _stakes.Grant(nick, amount, "stake-refund", reference); }
+            try { _stakes.Grant(nick, amount, reason, reference); }
             catch (Exception ex) { _log.LogWarning(ex, "ставку {Nick} не повернуто ({Ref})", nick, reference); }
         }
         return new RestoreReport(count, continued, interrupted, solo, skipped);
@@ -297,6 +312,7 @@ public sealed partial class Rooms
         room.FinishedAt = f.FinishedAt;
         room.Moves = f.Moves;
         room.Charged.AddRange(f.Charged);
+        if (f.Bank is { } bank) room.Bank = bank.Clone();
         room.LoggedSeats = f.LoggedSeats;
         room.CalledAt = f.CalledAt;
         game.Ctx = new RoomContext(room, this);
@@ -315,6 +331,8 @@ public sealed partial class Rooms
         try
         {
             // Розсилку старту викидаємо: це не нова партія, а та сама, і Журналу та гаманцям про неї нічого не кажемо.
+            // Банк столу мовчить: викупи Start-у вже за столом, облік — зі знімка (Rebuild).
+            ctx.Quiet = true;
             using (ctx.Collect(new Outbox()))
             {
                 room.Game.Start();
@@ -327,6 +345,7 @@ public sealed partial class Rooms
             _log.LogWarning(ex, "партія в кімнаті {Room} не відновилась зі стану — перериваю", room.Id);
             return false;
         }
+        finally { ctx.Quiet = false; }
         room.Status = RoomStatus.Playing;
         room.Result = null;
         room.FinishedAt = null;
@@ -335,7 +354,7 @@ public sealed partial class Rooms
     }
 
     /// <summary>Партію нема чим продовжити: стіл стоїть дограним із підписом, без результату й рейтингу, ставки — назад.</summary>
-    void Interrupt(Room room, FrozenRoom f, DateTimeOffset now, List<(string, int, string)> refunds)
+    void Interrupt(Room room, FrozenRoom f, DateTimeOffset now, List<(string, int, string, string)> refunds)
     {
         room.Status = RoomStatus.Finished;
         room.FinishedAt = now;
@@ -343,22 +362,45 @@ public sealed partial class Rooms
         // вже в переможця чи повернуті, і повертати їх удруге не можна.
         if (room.Charged.Count > 0 && _stakes.Settled(room.Id, room.Round)) room.Charged.Clear();
         var back = room.Stake > 0 && room.Charged.Count > 0;
+        var table = room.Bank.Held > 0;
         room.Result = new RoomResult([], true,
-            $"{room.Info.Title}: партію перервав перезапуск сайту{(back ? " — ставки повернуто" : "")}", null, InterruptedVerdict);
+            $"{room.Info.Title}: партію перервав перезапуск сайту{(back ? " — ставки повернуто" : table ? " — черепки зі столу повернуто" : "")}",
+            null, InterruptedVerdict);
         foreach (var nick in room.Charged)
-            refunds.Add((nick, room.Stake, $"stake-refund:{room.Id}:{room.Round}:{NickKey(nick)}"));
+            refunds.Add((nick, room.Stake, "stake-refund", $"stake-refund:{room.Id}:{room.Round}:{NickKey(nick)}"));
         room.Charged.Clear();
+        RefundBank(room.Id, room.Round, room.Info.Id, room.Bank, f.Owed, refunds);
         room.Restored = ViewsOf(f);
     }
 
-    /// <summary>Стіл не відновився (гру прибрали, налаштування вже не ті), а ставки за партію, що йшла, списано, — назад.</summary>
-    void Refund(FrozenRoom f, List<(string, int, string)> refunds)
+    /// <summary>
+    /// Банк столу перерваної партії — назад: кожному те, що гра сказала на мить знімка (<see cref="FrozenRoom.Owed"/>), інакше
+    /// «вніс мінус забрав». Ключ — наступний table-out ніка: повтор відновлення з того самого знімка нічого не подвоїть, а
+    /// виплата, що встигла пройти вже після знімка (знімок про всяк випадок), займе той самий ключ і повернення не задублює.
+    /// Облік банку оновлюється тут же — кімната стоїть розрахованою.
+    /// </summary>
+    void RefundBank(string roomId, int round, string gameId, TableBank bank, IReadOnlyDictionary<string, int>? owed,
+        List<(string, int, string, string)> refunds)
     {
+        foreach (var (nick, amount) in bank.Owed(owed, _log, roomId))
+        {
+            var acc = bank.Of(nick);
+            var n = ++acc.OutN;
+            acc.Out += amount;
+            refunds.Add((nick, amount, TableMoney.Reason(TableMoney.Refund, gameId), $"table-out:{roomId}:{round}:{NickKey(nick)}:{n}"));
+        }
+    }
+
+    /// <summary>Стіл не відновився (гру прибрали, налаштування вже не ті), а ставки за партію, що йшла, списано, — назад.</summary>
+    void Refund(FrozenRoom f, List<(string, int, string, string)> refunds)
+    {
+        if (f.Status == RoomStatus.Playing && f.Bank is { } bank)
+            RefundBank(f.Id, f.Round, f.Game, bank.Clone(), f.Owed, refunds);
         if (f.Status != RoomStatus.Playing || f.Stake <= 0 || f.Charged.Count == 0) return;
         try { if (_stakes.Settled(f.Id, f.Round)) return; }
         catch (Exception ex) { _log.LogWarning(ex, "не вдалось перевірити розрахунок столу {Room}", f.Id); }
         foreach (var nick in f.Charged)
-            refunds.Add((nick, f.Stake, $"stake-refund:{f.Id}:{f.Round}:{NickKey(nick)}"));
+            refunds.Add((nick, f.Stake, "stake-refund", $"stake-refund:{f.Id}:{f.Round}:{NickKey(nick)}"));
     }
 
     /// <summary>Налаштування столу в лобі — новій грі тими самими ходами. Не прийнялось (місце вже порожнє) — пропускаємо.</summary>

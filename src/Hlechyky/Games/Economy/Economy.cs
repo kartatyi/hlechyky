@@ -198,6 +198,12 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "stake" => "ставка",
             "stake-win" => "банк за ставку",
             "stake-refund" => "ставку повернуто",
+            // банк столу (гра на N на черепки): хвіст — id гри
+            "table-buyin" => $"викуп — {names.Title(tail)}",
+            "table-fee" => $"внесок — {names.Title(tail)}",
+            "table-cashout" => $"забрав зі столу — {names.Title(tail)}",
+            "table-prize" => $"приз турніру — {names.Title(tail)}",
+            "table-refund" => $"повернуто зі столу — {names.Title(tail)}",
             "clicker" => "обмін глеків на черепки",
             "ad" => tail switch
             {

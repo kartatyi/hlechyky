@@ -131,6 +131,8 @@ public sealed class Room
     public DateTimeOffset LastActivity { get; set; }
     /// <summary>З кого цього раунду списано ставку — щоб виплата й повернення знали, кому й скільки.</summary>
     public List<string> Charged { get; } = [];
+    /// <summary>Банк столу цієї партії (гра на N на черепки, <see cref="IRoomContext.BuyIn"/>): хто скільки вніс і забрав.</summary>
+    public TableBank Bank { get; set; } = new();
     /// <summary>Склад, про який востаннє написали в Журнал «сідають грати». null — ще не писали жодного разу.</summary>
     public string?[]? LoggedSeats { get; set; }
     /// <summary>

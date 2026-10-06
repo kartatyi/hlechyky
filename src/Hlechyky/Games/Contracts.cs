@@ -153,6 +153,32 @@ public interface IRoomContext
     void Score(int seat, double value, int? attempts = null);
     /// <summary>Черепки поза стандартною виплатою за партію (переможець «Скільки?», конкурс). Проходить через стелі економіки.</summary>
     void Award(int seat, int shards, string reason);
+
+    // ---------- банк столу (гра на N на черепки: покер) ----------
+    // Каркас веде облік кожного столу (TableBank): хто скільки вніс і скільки забрав за цю партію. Виплатити більше,
+    // ніж лежить за столом, не дасть; переривання перезапуском повертає кожному своє (Game.Settle). Ключі леджера —
+    // table-in/table-out:{кімната}:{раунд}:{нік}:{n}, n росте на кожну спробу, тож повтор не платить удруге.
+
+    /// <summary>
+    /// Каркас створено з фіксованим сідом (тести, RoomHarness): ігри на гроші тоді тасують детерміновано від
+    /// <see cref="Rng"/>. На проді — false, і колоду тасують <c>RandomNumberGenerator</c> (сід кімнати перебирається).
+    /// </summary>
+    bool Seeded => false;
+
+    /// <summary>Скільки черепків у гаманці ніка зараз (для відмов «бракує»). Без економіки — 0.</summary>
+    int Balance(string nick) => 0;
+
+    /// <summary>
+    /// Списати з гаманця на стіл (викуп, внесок). Синхронно, під замком — як ставка на старті. <paramref name="kind"/> —
+    /// <see cref="TableMoney"/>.BuyIn/Fee. false — не вистачило (нічого не списано).
+    /// </summary>
+    bool BuyIn(string nick, int amount, string kind) => false;
+
+    /// <summary>
+    /// Виплатити зі столу в гаманець (забрав стек, приз). Гроші йдуть поза замком, як виплата ставки. false — каркас
+    /// відмовив: за столом стільки нема (у лог), гра мусить лишити фішки собі.
+    /// </summary>
+    bool CashOut(string nick, int amount, string kind) => false;
 }
 
 /// <summary>
@@ -252,6 +278,19 @@ public abstract class Game
     /// людину на першому ж дзвінку. Кличеться під замком кімнати.
     /// </summary>
     public virtual bool LateJoin(string nick) => false;
+
+    /// <summary>
+    /// Чому <see cref="LateJoin"/> сказав «ні» — людині замість «місць нема» («Щоб сісти, треба 100 черепків»).
+    /// null — звичайна відмова каркаса.
+    /// </summary>
+    public virtual string? LateJoinRefusal(string nick) => null;
+
+    /// <summary>
+    /// Банк столу: кому скільки належить ЗАРАЗ (нік → черепки), якщо партію обірвати — перезапуск без продовження чи
+    /// Finish із неспорожнілим банком. Сума мусить дорівнювати тому, що лежить за столом, інакше (чи null, чи виняток)
+    /// каркас поверне кожному «вніс мінус забрав». Кличеться під замком; чиста, без побічних дій.
+    /// </summary>
+    public virtual IReadOnlyDictionary<string, int>? SettleTable() => null;
 
     /// <summary>Хтось сів посеред партії (після <see cref="LateJoin"/>), можливо на інше крісло, ніж було.</summary>
     public virtual void OnJoin(int seat) { }
@@ -355,7 +394,8 @@ public sealed record RoomFinishedEvent(
     RoomResult Result,
     int Stake,
     DateTimeOffset StartedAt, DateTimeOffset FinishedAt,
-    int Moves);                         // скільки Act прийнято за партію (0 для реалтайму)
+    int Moves,                          // скільки Act прийнято за партію (0 для реалтайму)
+    bool TableMoney = false);           // за столом ходили черепки (банк столу): звичайних нагород за партію не дають
 
 public sealed record SoloScoreEvent(string GameId, string Nick, double Score, ScoreOrder Order, string? Key, DateTimeOffset At,
     int? Attempts = null);
@@ -391,6 +431,19 @@ public interface IStakes
     /// повертати ставки вдруге не можна. Типово — «ні» (без економіки нема чого розраховувати).
     /// </summary>
     bool Settled(string roomId, int round) => false;
+}
+
+/// <summary>Види руху черепків через банк столу (<see cref="IRoomContext.BuyIn"/>/<see cref="IRoomContext.CashOut"/>).</summary>
+public static class TableMoney
+{
+    public const string BuyIn = "buyin";     // «викуп — Покер»
+    public const string Fee = "fee";         // «внесок — Покер»
+    public const string CashOut = "cashout"; // «забрав зі столу — Покер»
+    public const string Prize = "prize";     // «приз турніру — Покер»
+    public const string Refund = "refund";   // «повернуто зі столу — Покер» (переривання, розрахунок обірваної партії)
+
+    /// <summary>Причина в леджері: «table-buyin:poker».</summary>
+    public static string Reason(string kind, string gameId) => $"table-{kind}:{gameId}";
 }
 
 /// <summary>Збережений стан Persistent-ігор (щоденне, клікер).</summary>
