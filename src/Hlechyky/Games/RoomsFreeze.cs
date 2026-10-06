@@ -118,7 +118,10 @@ public sealed partial class Rooms
     /// <summary>Один стіл у знімок. Під замком кімнати. null — тут нічого берегти.</summary>
     FrozenRoom? Freeze(Room room, bool clean)
     {
-        if (room.Occupied == 0) return null;
+        // Порожній стіл не бережемо — крім партії, за якою лежать черепки (турнір на черепки, з-за якого всі встали й
+        // ще можуть вернутись): без знімка банк зник би разом зі столом. Відновлена — або йде далі (і сама розрахується),
+        // або перервана — з поверненням.
+        if (room.Occupied == 0 && !(room.Status == RoomStatus.Playing && room.Bank.Held > 0)) return null;
         // Соло: Persistent-гра й так у сховищі після кожного ходу — бережемо лише кімнату (той самий id у браузері).
         // Решта соло — короткі забіги, яких ніхто не чекатиме назад (а деплой чекає, поки вони скінчаться, — Busy).
         if (room.Info.Solo && (!room.Info.Persistent || room.Key is null)) return null;
@@ -456,6 +459,8 @@ public sealed partial class Rooms
         {
             lock (room.Sync)
             {
+                // Порожній стіл деплою не тримає, навіть із банком столу: людей, чию партію урвало б, нема, а черепки
+                // знімок береже (Freeze) — стіл продовжиться чи при перериванні поверне внески.
                 if (room.Status != RoomStatus.Playing || room.Occupied == 0) continue;
                 if (room.Info.Solo)
                 {

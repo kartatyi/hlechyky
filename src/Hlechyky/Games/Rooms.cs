@@ -1491,6 +1491,14 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
 
     public void Finish(int[] winners, string log, IReadOnlyDictionary<int, long>? scores = null, string? verdict = null)
     {
+        // Quiet — Start гри під час продовження після перезапуску: партія та сама, і її стан зараз прийде зі знімка (Load).
+        // Start міг «не зібрати» гравців (за столом лишилась одна людина чи нікого) і закінчити — це не справжній кінець:
+        // ні результату, ні рядка у Вечорницях, ні розсилки.
+        if (Quiet)
+        {
+            rooms.Log.LogDebug("Finish під час продовження кімнати {Room} — пропускаю: стан прийде зі знімка", room.Id);
+            return;
+        }
         if (room.Status == RoomStatus.Finished)
         {
             rooms.Log.LogWarning("другий Finish у кімнаті {Room} — ігнорую", room.Id);

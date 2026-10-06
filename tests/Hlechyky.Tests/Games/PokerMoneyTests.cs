@@ -358,6 +358,78 @@ public class PokerMoneyTests
         Assert.Equal("🏁 Турнір зупинено: усі пішли", h.Room.Result!.Verdict);
     }
 
+    /// <summary>Тур на черепки, усі встали, стіл чекає з банком — і тут деплой.</summary>
+    static RoomHarness EmptyTour(out string[] nicks)
+    {
+        nicks = ["Оля", "Петро", "Іра"];
+        var h = PokerKit.Table(new { format = "tour", buyin = "250" }, 21, nicks);
+        h.Start();
+        foreach (var n in nicks) h.Leave(n);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Equal(0, h.Room.Occupied);
+        Assert.Equal(750, h.Room.Bank.Held);
+        return h;
+    }
+
+    static void TickAll(Rooms rooms, FakeClock clock, int times)
+    {
+        for (var i = 0; i < times; i++)
+        {
+            clock.AdvanceMs(100);
+            foreach (var room in rooms.TickDue(clock.UtcNow)) rooms.Tick(room);
+        }
+    }
+
+    [Fact]
+    public void EmptyTourWithBankSurvivesDeployAndPaysOut()
+    {
+        var h = EmptyTour(out var nicks);
+        var snap = RoundTrip(h.Rooms.Freeze());
+        Assert.Contains(snap.Rooms, r => r.Id == h.RoomId);     // порожній стіл із банком — у знімку
+        var a = Fresh(h);
+        Assert.Equal(1, a.Restore(snap).Continued);
+        var room = a.Find(h.RoomId)!;
+        Assert.Equal(RoomStatus.Playing, room.Status);
+        Assert.Equal(750, room.Bank.Held);
+        Assert.Equal(2250, Wallets(h, nicks));
+        // ніхто не вернувся: турнір зупиняється за фішками, банк — переможцям, а не в нікуди
+        a.Housekeeping(h.Clock.UtcNow);
+        Assert.NotNull(a.Find(h.RoomId));
+        TickAll(a, h.Clock, 6100);
+        a.Housekeeping(h.Clock.UtcNow);
+        Assert.Equal(RoomStatus.Finished, room.Status);
+        Assert.Equal(0, room.Bank.Held);
+        Assert.Equal(3000, Wallets(h, nicks));
+    }
+
+    [Fact]
+    public void EmptyTourWithBankIsRefundedAfterCrash()
+    {
+        var h = EmptyTour(out var nicks);
+        var snap = RoundTrip(h.Rooms.Capture(clean: false));
+        Assert.Contains(snap.Rooms, r => r.Id == h.RoomId);
+        Assert.Equal(1, Fresh(h).Restore(snap).Interrupted);
+        Assert.All(nicks, n => Assert.Equal(1000, h.Stakes.Balance(n)));
+    }
+
+    [Fact]
+    public void ResumedTourWithOneHumanLeavesNoEveningDraw()
+    {
+        var nicks = new[] { "Оля", "Петро" };
+        var h = PokerKit.Table(new { format = "tour", buyin = "20" }, 22, nicks);
+        h.Start();
+        h.Leave("Петро");
+        Assert.Equal(1, h.Room.Occupied);
+        var snap = RoundTrip(h.Rooms.Freeze());
+        var a = Fresh(h);
+        Assert.Equal(1, a.Restore(snap).Continued);
+        var room = a.Find(h.RoomId)!;
+        Assert.Equal(RoomStatus.Playing, room.Status);
+        Assert.Equal(0, room.EveningGames);
+        Assert.DoesNotContain(room.Evening.Values, e => e.Games > 0);   // старт-«нічия» продовження не пишеться у вечір
+        Assert.Null(room.Result);
+    }
+
     [Fact]
     public void TourEveryoneGoneCountsBlindsOfTheVoidedHand()
     {
