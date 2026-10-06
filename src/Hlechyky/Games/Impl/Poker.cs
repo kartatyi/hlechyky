@@ -666,11 +666,13 @@ public sealed class Poker : Game
     /// <summary>Турнір на черепки, з-за столу пішли всі й не повернулись: місця — за фішками.</summary>
     void EndByChips()
     {
+        // Спершу скасувати роздачу (внесене в неї — назад у стеки), а вже тоді рахувати місця: інакше сліпі й ставки
+        // роздачі, що йшла, не враховано.
+        if (C.Live) C.VoidHand();
         var order = Enumerable.Range(0, Seats).Where(p => _s.Seats[p].State == "play")
             .OrderByDescending(p => C.Stack[p]).ThenBy(p => p).ToList();
         var alive = order.Count;
         for (var i = 0; i < order.Count; i++) _s.Seats[order[i]].Place = i + 1;
-        if (C.Live) C.VoidHand();
         Finale(alive > 0 ? order[0] : -1, "усі пішли з-за столу — місця за фішками", "🏁 Турнір зупинено: усі пішли");
     }
 

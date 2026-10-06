@@ -359,6 +359,33 @@ public class PokerMoneyTests
     }
 
     [Fact]
+    public void TourEveryoneGoneCountsBlindsOfTheVoidedHand()
+    {
+        // Роздача йде, усі пішли: місця — за фішками ПІСЛЯ повернення внесеного в роздачу (сліпі — назад у стеки).
+        var nicks = new[] { "Оля", "Петро" };
+        var h = PokerKit.Table(new { format = "tour", buyin = "20" }, 12, nicks);
+        h.Start();
+        var g = PokerKit.Game(h);
+        foreach (var n in nicks) h.Leave(n);
+        string bigBlind;
+        lock (h.Room.Sync)
+        {
+            var c = g.State.Core;
+            Assert.True(c.Live);
+            c.Stack[c.SbPos] = 990;     // 990 + 10 = 1000
+            c.Stack[c.BbPos] = 985;     // 985 + 20 = 1005 — більше, хоч стек менший
+            bigBlind = g.State.Seats[c.BbPos].Nick!;
+            g.State.BotAt = h.Clock.UtcNow.AddHours(1);              // роздача стоїть
+            g.State.EmptySince = h.Clock.UtcNow - Poker.TourGiveUp;  // наступний тик — зупинка
+        }
+        h.Tick();
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(1, g.State.Seats.Single(x => x.Nick == bigBlind).Place);
+        Assert.Contains(h.Stakes.Calls, c => c.StartsWith($"grant:{bigBlind}:40:table-out:", StringComparison.Ordinal));
+        Assert.Equal(2000, Wallets(h, nicks));
+    }
+
+    [Fact]
     public void AbandonedMoneyTableIsSettledBeforeDrop()
     {
         // гра зламалась і не спорожнила банк: каркас повертає «вніс мінус забрав» перед прибиранням
