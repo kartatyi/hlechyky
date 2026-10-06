@@ -23,7 +23,7 @@ public class PokerMoneyTests
         var h = PokerKit.Table(new { format = "cash", stakes = "1" }, 1, "Оля", "Петро", "Іра");
         h.Stakes.Set("Іра", 60);
         Assert.False(h.Start().Ok);
-        Assert.Equal("У Іра бракує черепків на викуп (100)", h.Reply.Message);
+        Assert.Equal("Бракує черепків на викуп (100): Іра", h.Reply.Message);   // нік без відмінка — і гість теж
         h.Stakes.Set("Іра", 1000);
         Assert.True(h.Start().Ok, h.Reply.Message);
         Assert.Equal(900, h.Stakes.Balance("Оля"));
@@ -307,7 +307,7 @@ public class PokerMoneyTests
         var h = PokerKit.Table(new { format = "tour", buyin = "100", pace = "3" }, 10, nicks);
         h.Stakes.Set("Марко", 40);
         Assert.False(h.Start().Ok);
-        Assert.Equal("У Марко бракує черепків на внесок (100)", h.Reply.Message);
+        Assert.Equal("Бракує черепків на внесок (100): Марко", h.Reply.Message);
         h.Stakes.Set("Марко", 1000);
         Assert.True(h.Start().Ok);
         var total = Wallets(h, nicks) + h.Room.Bank.Held;

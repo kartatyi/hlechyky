@@ -162,9 +162,8 @@ public sealed class Poker : Game
         var poor = humans.Where(n => Ctx.Balance(n) < need).ToList();
         if (poor.Count == 0) return null;
         var what = Cash ? "викуп" : "внесок";
-        return poor.Count == 1
-            ? $"У {poor[0]} бракує черепків на {what} ({need})"
-            : $"Бракує черепків на {what} ({need}): {string.Join(", ", poor)}";
+        // Нік — після двокрапки, у називному: «У гість Оля бракує…» не відмінюється (гості, чужі ніки).
+        return $"Бракує черепків на {what} ({need}): {string.Join(", ", poor)}";
     }
 
     // ---------- старт ----------
