@@ -14,6 +14,9 @@ public sealed class FakeStakes : IStakes
     /// <summary>Усе, що каркас попросив: «spend:Оля:5:stake:room:1:оля», «grant:Оля:10:stake-win:…».</summary>
     public List<string> Calls { get; } = [];
 
+    /// <summary>Леджер: усе, що справді пройшло (ключ, нік, зміна).</summary>
+    public List<LedgerMove> Ledger { get; } = [];
+
     /// <summary>Кличеться на кожній виплаті — щоб тест побачив, у якому оточенні каркас її робить.</summary>
     public Action? OnGrant { get; set; }
 
@@ -31,6 +34,7 @@ public sealed class FakeStakes : IStakes
         if (Balance(nick) < amount) return false;
         _balances[nick] = Balance(nick) - amount;
         Calls.Add($"spend:{nick}:{amount}:{refKey}");
+        Ledger.Add(new LedgerMove(refKey, nick, -amount));
         return true;
     }
 
@@ -40,7 +44,11 @@ public sealed class FakeStakes : IStakes
         if (!_refs.Add(refKey)) return;
         _balances[nick] = Balance(nick) + amount;
         Calls.Add($"grant:{nick}:{amount}:{refKey}");
+        Ledger.Add(new LedgerMove(refKey, nick, amount));
     }
+
+    public IReadOnlyList<LedgerMove>? Moves(string refPrefix) =>
+        [.. Ledger.Where(m => m.Ref.StartsWith(refPrefix, StringComparison.Ordinal))];
 
     /// <summary>Раунд розраховано, якщо за ним уже є виплата чи повернення — як у справжньому леджері.</summary>
     public bool Settled(string roomId, int round) => _refs.Any(r =>

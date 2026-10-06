@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
@@ -242,7 +243,9 @@ public sealed partial class Rooms
                         room.Restored = ViewsOf(f);
                         break;
                     default:
-                        if (tables.Clean && f.State is { Length: > 0 } state && Resume(room, state, now, pause)) continued++;
+                        // Після знімка за столом рухались черепки (не мало б: заморозка все спиняє) — продовжувати не можна:
+                        // ключі леджера пішли б по другому колу, і викуп «пройшов» би без списання. Переривання звірить.
+                        if (tables.Clean && f.State is { Length: > 0 } state && !MovedAfter(f) && Resume(room, state, now, pause)) continued++;
                         else
                         {
                             Interrupt(room, f, now, refunds);
@@ -250,6 +253,12 @@ public sealed partial class Rooms
                         }
                         break;
                 }
+                if (f.Status == RoomStatus.Finished && f.Bank is not null)
+                    RefundBank(f.Id, f.Round, f.Game, room.Bank, null, refunds);   // виплати фіналу, що не встигли пройти
+                // Партії, що почались уже після знімка, — назад; наступна партія столу — з раунду після них (лобі стартує
+                // тим самим раундом, «Ще раз» додає один). Партія, що продовжилась, свій раунд не міняє.
+                if (RefundLater(f, refunds) is { } last && room.Status != RoomStatus.Playing)
+                    room.Round = Math.Max(room.Round, room.Status == RoomStatus.Lobby ? last + 1 : last);
                 // Балачку й вечір — уже після Start/Load: Ctx.Say ведучого на старті гри дописав би в балачку зайве.
                 room.Talk.Clear();
                 room.Talk.AddRange(f.Talk.TakeLast(TalkLines));
@@ -385,20 +394,146 @@ public sealed partial class Rooms
     void RefundBank(string roomId, int round, string gameId, TableBank bank, IReadOnlyDictionary<string, int>? owed,
         List<(string, int, string, string)> refunds)
     {
+        var due = new Dictionary<string, long>(StringComparer.Ordinal);   // NickKey → скільки належить
         foreach (var (nick, amount) in bank.Owed(owed, _log, roomId))
         {
-            var acc = bank.Of(nick);
+            var key = NickKey(nick);
+            due[key] = due.GetValueOrDefault(key) + amount;
+        }
+        var held = bank.Held;
+        // Звірка з леджером: знімок про всяк випадок міг не застати викупів і виплат, що пройшли вже після нього (або
+        // виплати, яку облік уже записав, а гаманець так і не отримав). Правда про гроші — леджер: кожному належить те,
+        // що на знімку, плюс внесене після, мінус отримане після; за столом лежить «списано − виплачено» за леджером.
+        if (Ledger(roomId, round) is { } ledger)
+        {
+            foreach (var (key, l) in ledger)
+                if (!bank.Accounts.ContainsKey(key)) bank.Accounts[key] = new TableAccount { Nick = l.Nick };
+            held = 0;
+            foreach (var (key, acc) in bank.Accounts)
+            {
+                var l = ledger.GetValueOrDefault(key) ?? new LedgerAccount();
+                var drift = (l.In - acc.In) - (l.Out - acc.Out);
+                if (drift != 0)
+                {
+                    _log.LogWarning("стіл {Room}: {Nick} після знімка вніс {In}, отримав {Out} (за леджером) — звіряю",
+                        roomId, acc.Nick, l.In - acc.In, l.Out - acc.Out);
+                    due[key] = due.GetValueOrDefault(key) + drift;
+                }
+                acc.In = (int)l.In;
+                acc.Out = (int)l.Out;
+                acc.InN = Math.Max(acc.InN, l.InN);
+                acc.OutN = Math.Max(acc.OutN, l.OutN);
+                held += l.In - l.Out;
+            }
+        }
+        foreach (var (key, amount) in Fit(due, held, roomId))
+        {
+            var acc = bank.Accounts.TryGetValue(key, out var a) ? a : bank.Accounts[key] = new TableAccount { Nick = key };
             var n = ++acc.OutN;
             acc.Out += amount;
-            refunds.Add((nick, amount, TableMoney.Reason(TableMoney.Refund, gameId), $"table-out:{roomId}:{round}:{NickKey(nick)}:{n}"));
+            refunds.Add((acc.Nick, amount, TableMoney.Reason(TableMoney.Refund, gameId), $"table-out:{roomId}:{round}:{key}:{n}"));
         }
+    }
+
+    /// <summary>
+    /// Повернення рівно в те, що лежить за столом: хто після знімка отримав більше, ніж мав на знімку (виграв і встав), —
+    /// тому нуль, а різницю знято з решти пропорційно (точніше без стану гри не знати). Σ виплат = <paramref name="held"/>.
+    /// </summary>
+    List<(string Key, int Amount)> Fit(Dictionary<string, long> due, long held, string roomId)
+    {
+        var pos = due.Where(d => d.Value > 0).OrderBy(d => d.Key, StringComparer.Ordinal).ToList();
+        var total = pos.Sum(d => d.Value);
+        held = Math.Max(0, held);
+        if (total <= held)
+        {
+            if (total < held) _log.LogWarning("стіл {Room}: за столом {Held}, а належить {Total} — решту не знаю кому", roomId, held, total);
+            return [.. pos.Select(d => (d.Key, (int)d.Value))];
+        }
+        var shares = pos.Select(d => (d.Key, Amount: d.Value * held / total, Frac: d.Value * held % total)).ToList();
+        var left = held - shares.Sum(x => x.Amount);
+        var list = shares.OrderByDescending(x => x.Frac).ThenBy(x => x.Key, StringComparer.Ordinal)
+            .Select((x, i) => (x.Key, Amount: (int)(x.Amount + (i < left ? 1 : 0)))).ToList();
+        return [.. list.Where(x => x.Amount > 0)];
+    }
+
+    sealed class LedgerAccount
+    {
+        public string Nick = "";
+        public long In, Out;
+        public int InN, OutN;
+    }
+
+    /// <summary>
+    /// Банк столу за леджером: ключі table-in/table-out цього столу й раунду, по NickKey — скільки списано й виплачено і
+    /// найбільший номер ключа. null — леджера нема (без економіки) чи він не прочитався: тоді лише знімок.
+    /// </summary>
+    Dictionary<string, LedgerAccount>? Ledger(string roomId, int round)
+    {
+        IReadOnlyList<LedgerMove>? ins, outs;
+        try
+        {
+            ins = _stakes.Moves($"table-in:{roomId}:{round}:");
+            outs = _stakes.Moves($"table-out:{roomId}:{round}:");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "леджер столу {Room} не прочитався — звіряю лише зі знімком", roomId);
+            return null;
+        }
+        if (ins is null || outs is null) return null;
+        var map = new Dictionary<string, LedgerAccount>(StringComparer.Ordinal);
+        void Add(LedgerMove m, string head, bool spent)
+        {
+            var tail = m.Ref[head.Length..];
+            var cut = tail.LastIndexOf(':');
+            if (cut <= 0 || !int.TryParse(tail[(cut + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var n)) return;
+            var key = tail[..cut];
+            if (!map.TryGetValue(key, out var a)) map[key] = a = new LedgerAccount { Nick = m.Nick };
+            if (spent) { a.In += Math.Abs(m.Delta); a.InN = Math.Max(a.InN, n); }
+            else { a.Out += Math.Abs(m.Delta); a.OutN = Math.Max(a.OutN, n); }
+        }
+        foreach (var m in ins) Add(m, $"table-in:{roomId}:{round}:", true);
+        foreach (var m in outs) Add(m, $"table-out:{roomId}:{round}:", false);
+        return map;
+    }
+
+    /// <summary>Чи рухались черепки за столом після знімка (леджер не сходиться з обліком знімка).</summary>
+    bool MovedAfter(FrozenRoom f)
+    {
+        if (Ledger(f.Id, f.Round) is not { } ledger) return false;
+        var bank = f.Bank ?? new TableBank();
+        foreach (var key in ledger.Keys.Union(bank.Accounts.Keys))
+        {
+            var l = ledger.GetValueOrDefault(key) ?? new LedgerAccount();
+            var b = bank.Accounts.GetValueOrDefault(key) ?? new TableAccount();
+            if (l.In != b.In || l.Out != b.Out || l.InN > b.InN || l.OutN > b.OutN) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Раунди, про які знімок нічого не знає (партія почалась уже після нього: лобі → старт, «Ще раз»), а черепки в них
+    /// ходили, — назад «вніс мінус забрав» за леджером. Повертає останній такий раунд (кімната мусить почати після нього,
+    /// інакше ключі леджера повторяться), null — таких нема.
+    /// </summary>
+    int? RefundLater(FrozenRoom f, List<(string, int, string, string)> refunds)
+    {
+        int? last = null;
+        for (var r = f.Status == RoomStatus.Lobby ? f.Round : f.Round + 1; r <= f.Round + 3; r++)
+        {
+            if (Ledger(f.Id, r) is not { Count: > 0 }) continue;
+            RefundBank(f.Id, r, f.Game, new TableBank(), null, refunds);
+            last = r;
+        }
+        return last;
     }
 
     /// <summary>Стіл не відновився (гру прибрали, налаштування вже не ті), а ставки за партію, що йшла, списано, — назад.</summary>
     void Refund(FrozenRoom f, List<(string, int, string, string)> refunds)
     {
-        if (f.Status == RoomStatus.Playing && f.Bank is { } bank)
-            RefundBank(f.Id, f.Round, f.Game, bank.Clone(), f.Owed, refunds);
+        if (f.Status is RoomStatus.Playing or RoomStatus.Finished && f.Bank is { } bank)
+            RefundBank(f.Id, f.Round, f.Game, bank.Clone(), f.Status == RoomStatus.Playing ? f.Owed : null, refunds);
+        RefundLater(f, refunds);
         if (f.Status != RoomStatus.Playing || f.Stake <= 0 || f.Charged.Count == 0) return;
         try { if (_stakes.Settled(f.Id, f.Round)) return; }
         catch (Exception ex) { _log.LogWarning(ex, "не вдалось перевірити розрахунок столу {Room}", f.Id); }

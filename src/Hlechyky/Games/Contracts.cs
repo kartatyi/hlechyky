@@ -437,7 +437,17 @@ public interface IStakes
     /// повертати ставки вдруге не можна. Типово — «ні» (без економіки нема чого розраховувати).
     /// </summary>
     bool Settled(string roomId, int round) => false;
+
+    /// <summary>
+    /// Рухи черепків у леджері, чий ключ ідемпотентності починається з <paramref name="refPrefix"/>. Каркас звіряє з ними
+    /// банк столу, коли повертає столи зі знімка про всяк випадок: викуп чи виплата могли пройти вже після знімка.
+    /// null — леджера нема (типово: без економіки), тоді каркас покладається лише на знімок.
+    /// </summary>
+    IReadOnlyList<LedgerMove>? Moves(string refPrefix) => null;
 }
+
+/// <summary>Запис леджера: ключ, нік і зміна (від'ємна — списано).</summary>
+public sealed record LedgerMove(string Ref, string Nick, int Delta);
 
 /// <summary>Види руху черепків через банк столу (<see cref="IRoomContext.BuyIn"/>/<see cref="IRoomContext.CashOut"/>).</summary>
 public static class TableMoney

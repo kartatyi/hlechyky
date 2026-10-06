@@ -37,6 +37,22 @@ public class EconomyTests
     }
 
     [Fact]
+    public void Ledger_moves_by_ref_prefix_with_wallet_nick()
+    {
+        using var rig = new EconomyRig();
+        IStakes stakes = rig.Economy;
+        stakes.Grant("Оля", 500, "test", "seed:оля");
+        Assert.True(stakes.TrySpend("Оля", 100, "table-buyin:poker", "table-in:ab12cd34:1:оля:1"));
+        stakes.Grant("Оля", 40, "table-cashout:poker", "table-out:ab12cd34:1:оля:1");
+        stakes.Grant("Оля", 7, "table-cashout:poker", "table-out:ab12cd34:10:оля:1");   // інший раунд
+        var ins = stakes.Moves("table-in:ab12cd34:1:")!;
+        Assert.Equal(new LedgerMove("table-in:ab12cd34:1:оля:1", "Оля", -100), Assert.Single(ins));
+        var outs = stakes.Moves("table-out:ab12cd34:1:")!;
+        Assert.Equal(40, Assert.Single(outs).Delta);
+        Assert.Empty(stakes.Moves("table-in:ab12cd34:2:")!);
+    }
+
+    [Fact]
     public void Grant_without_ref_stacks()
     {
         using var rig = new EconomyRig();

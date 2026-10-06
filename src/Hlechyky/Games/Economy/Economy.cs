@@ -157,6 +157,8 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
     public bool Settled(string roomId, int round) =>
         store.HasRefPrefix($"stake-win:{roomId}:{round}:") || store.HasRefPrefix($"stake-refund:{roomId}:{round}:");
 
+    public IReadOnlyList<LedgerMove>? Moves(string refPrefix) => store.Moves(refPrefix);
+
     // ---------- людські тексти ----------
 
     /// <summary>«+5 черепків: перемога в шахах», «−10 черепків: ставка».</summary>

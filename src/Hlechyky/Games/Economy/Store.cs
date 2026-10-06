@@ -113,6 +113,20 @@ public sealed class EconomyStore(Db db)
         db.With(c => Scalar(c, "SELECT EXISTS(SELECT 1 FROM ledger WHERE ref >= $p AND ref < $q)",
             ("$p", prefix), ("$q", prefix + char.MaxValue))) == 1;
 
+    /// <summary>
+    /// Записи леджера, чий ключ починається з <paramref name="prefix"/>: ключ, нік (як у гаманці; нема гаманця — ключ ніка) і
+    /// зміна. Для звірки банку столу зі знімком після перезапуску.
+    /// </summary>
+    public List<LedgerMove> Moves(string prefix) => db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT l.ref, COALESCE(w.nick, l.nick_key), l.delta FROM ledger l LEFT JOIN wallets w ON w.nick_key = l.nick_key"
+            + " WHERE l.ref >= $p AND l.ref < $q", ("$p", prefix), ("$q", prefix + char.MaxValue));
+        using var r = cmd.ExecuteReader();
+        var list = new List<LedgerMove>();
+        while (r.Read()) list.Add(new LedgerMove(r.GetString(0), r.GetString(1), r.GetInt32(2)));
+        return list;
+    });
+
     public WalletRow? Wallet(string nickKey) => db.With(c =>
     {
         using var cmd = Cmd(c, "SELECT nick_key, nick, balance, earned, spent FROM wallets WHERE nick_key=$n", ("$n", nickKey));

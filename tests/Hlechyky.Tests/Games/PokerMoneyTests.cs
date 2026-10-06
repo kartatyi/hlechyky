@@ -342,6 +342,81 @@ public class PokerMoneyTests
         Assert.All(nicks, n => Assert.Equal(1000, h.Stakes.Balance(n)));
     }
 
+    // ---------- знімок про всяк випадок застарів: звірка з леджером ----------
+
+    [Fact]
+    public void CrashAfterWinAndStandUpDoesNotOverpay()
+    {
+        var nicks = new[] { "Оля", "Петро" };
+        var h = PokerKit.Table(new { format = "cash" }, 23, nicks);
+        h.Start();
+        var g = PokerKit.Game(h);
+        var snap = RoundTrip(h.Rooms.Capture(clean: false));
+        // після знімка Петро виграв 50 в Олі й встав із виграшем
+        lock (h.Room.Sync)
+        {
+            var c = g.State.Core;
+            c.Stack[g.State.Seats.FindIndex(x => x.Nick == "Петро")] += 50;
+            c.Stack[g.State.Seats.FindIndex(x => x.Nick == "Оля")] -= 50;
+        }
+        h.Leave("Петро");
+        Assert.Equal(2000, Wallets(h, nicks) + h.Room.Bank.Held);
+        Fresh(h).Restore(snap);                     // процес упав — відновлення з того знімка
+        Assert.Equal(2000, Wallets(h, nicks));      // Олі — те, що в неї лишилось, а не 100 за знімком
+        Fresh(h).Restore(snap);                     // і вдруге — нічого не подвоюється
+        Assert.Equal(2000, Wallets(h, nicks));
+    }
+
+    [Fact]
+    public void CrashAfterLateBuyInRefundsIt()
+    {
+        var nicks = new[] { "Оля", "Петро", "Іра" };
+        var h = PokerKit.Table(new { format = "cash" }, 24, "Оля", "Петро");
+        h.Stakes.Set("Іра", 1000);
+        h.Start();
+        var snap = RoundTrip(h.Rooms.Capture(clean: false));
+        Assert.True(h.Join("Іра").Ok, h.Reply.Message);   // викуп списано вже після знімка
+        Assert.Equal(900, h.Stakes.Balance("Іра"));
+        Fresh(h).Restore(snap);
+        Assert.Equal(1000, h.Stakes.Balance("Іра"));
+        Assert.Equal(3000, Wallets(h, nicks));
+    }
+
+    [Fact]
+    public void CleanSnapshotWithMoneyMovedAfterIsNotContinued()
+    {
+        var nicks = new[] { "Оля", "Петро", "Іра" };
+        var h = PokerKit.Table(new { format = "cash" }, 25, "Оля", "Петро");
+        h.Stakes.Set("Іра", 1000);
+        h.Start();
+        var snap = RoundTrip(h.Rooms.Freeze());
+        h.Rooms.Thaw();                              // перезапуск скасовано, гра йде далі…
+        Assert.True(h.Join("Іра").Ok, h.Reply.Message);
+        var report = Fresh(h).Restore(snap);         // …а відновлюємось чомусь із того чистого знімка
+        Assert.Equal(0, report.Continued);           // ключі леджера пішли б по другому колу — лише переривання
+        Assert.Equal(1, report.Interrupted);
+        Assert.Equal(3000, Wallets(h, nicks));
+    }
+
+    [Fact]
+    public void CrashAfterStartFromLobbySnapshotRefundsAndMovesRound()
+    {
+        var nicks = new[] { "Оля", "Петро" };
+        var h = PokerKit.Table(new { format = "cash" }, 26, nicks);
+        var snap = RoundTrip(h.Rooms.Capture(clean: false));   // ще в лобі
+        h.Start();
+        Assert.Equal(1800, Wallets(h, nicks));
+        var a = Fresh(h);
+        a.Restore(snap);
+        Assert.Equal(2000, Wallets(h, nicks));
+        var room = a.Find(h.RoomId)!;
+        Assert.Equal(RoomStatus.Lobby, room.Status);
+        // новий старт — нові ключі: викуп справді списується, а не «вже списано»
+        Assert.True(a.StartByHost(h.RoomId, room.Host!).Reply.Ok);
+        Assert.Equal(200, room.Bank.Held);
+        Assert.Equal(1800, Wallets(h, nicks));
+    }
+
     [Fact]
     public void TourEveryoneGoneSplitsByChips()
     {
