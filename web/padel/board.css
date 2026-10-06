@@ -212,3 +212,32 @@
   .b-bar .btn.ico .tx { display: none; }
   .board:fullscreen .b-bar .btn.ico .tx, .board.fake-fs .b-bar .btn.ico .tx { display: none; }
 }
+
+/* Брелоки-пульти (tags.js): крапки на табло — на зв'язку (повна), шукаю (блимає), не під'єднано (сіра) */
+.b-tags { display: inline-flex; align-items: center; gap: 5px; }
+.b-tags:empty { display: none; }
+.b-tags .tg { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ta); }
+.b-tags .tg.b { border-color: var(--tb); }
+.b-tags .tg.on.a { background: var(--ta); }
+.b-tags .tg.on.b { background: var(--tb); }
+.b-tags .tg.lost, .b-tags .tg.link { animation: tgBlink 1s steps(2) infinite; }
+.b-tags .tg.saved { border-color: var(--muted); opacity: .55; }
+@keyframes tgBlink { 50% { opacity: .15; } }
+#bdTags { white-space: nowrap; }
+#bdTags.on { border-color: var(--ok); }
+#bdTags .tg-n { font-size: 11px; font-weight: 800; color: var(--ok); margin-left: 1px; }
+.tg-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; transition: box-shadow .15s; }
+.tg-row .grow { flex: 1; min-width: 0; }
+.tg-row .grow b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-row.hit { box-shadow: 0 0 0 2px var(--accent) inset; }
+.tg-btns { display: flex; gap: 6px; flex: none; }
+.tg-ok { color: var(--ok); }
+.tg-wait { color: var(--accent); }
+.tg-hit { color: var(--accent); font-weight: 700; }
+.tg-no { color: var(--danger); font-weight: 600; margin: 4px 0 8px; }
+.tg-tools { display: flex; justify-content: flex-end; margin: 2px 0 8px; }
+.tg-chk { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; cursor: pointer; }
+.tg-chk input { margin-top: 4px; flex: none; }
+.tg-help { margin: 10px 0 0; padding-left: 18px; }
+.tg-help li { margin: 3px 0; }
+@media (max-width: 640px) { .tg-btns .tx { display: none; } }

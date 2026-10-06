@@ -3,7 +3,7 @@
 // бульбашка Глека, голос на цьому пристрої, годинник оренди, статистика після кінця). Рахунок, подачу, бік, підказки
 // й тексти дій рахує сервер (PadelScore) — тут лише показуємо його вид: так два телефони біля корту не розійдуться.
 (function () {
-  const P = window.Padel, esc = P.esc;
+  const P = window.Padel, esc = P.esc, T = P.tags;
   const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
   const THEMES = [['glek', 'Глечики', '🏺'], ['court', 'Корт', '🎾'], ['led', 'LED', '💡']];
   const SIDE = { right: 'подає справа', left: 'подає зліва', choice: 'бік обирають приймаючі' };
@@ -171,11 +171,12 @@
     host.innerHTML = '<div class="bd-bar"><a class="btn sm ghost" href="#board" title="До матчів">←<span class="tx"> Матчі</span></a><span class="grow bd-title" id="bdTitle"></span>'
       + '<span class="bd-watch" id="bdWatch" hidden title="Ти дивишся — керують гравці">👀<span class="tx"> дивишся</span></span>'
       + '<div class="seg" id="bdTheme">' + THEMES.map(([v, l, ic]) => '<button type="button" data-theme="' + v + '" title="' + l + '" class="' + (v === th ? 'on' : '') + '"><span class="ic">' + ic + '</span><span class="tx">' + l + '</span></button>').join('') + '</div>'
+      + (T.ok ? '<button type="button" class="btn sm" data-act="tags" id="bdTags" title="Брелоки-пульти біля корту: натиск — очко"></button>' : '')
       + '<button type="button" class="btn sm" data-act="voice" id="bdVoice"></button>'
       + '<button type="button" class="btn sm" data-act="fs" title="На весь екран — для планшета біля корту">⛶</button></div>'
       + '<div class="board theme-' + esc(th) + '" id="bdBoard">'
       + '<div class="b-top"><div id="bTab"></div><span class="b-status" id="bStatus"></span>'
-      + '<span class="b-right"><span class="b-clock" id="bClock"></span><span class="b-time" id="bTime">0:00</span></span></div>'
+      + '<span class="b-right"><span class="b-tags" id="bTags"></span><span class="b-clock" id="bClock"></span><span class="b-time" id="bTime">0:00</span></span></div>'
       + '<div class="halves"><div class="half a" data-t="0"><div class="tn" id="tn0"></div><div class="pts" id="pts0">0</div><div class="gms" id="gm0"></div></div>'
       + '<div class="net"></div>'
       + '<div class="half b" data-t="1"><div class="tn" id="tn1"></div><div class="pts" id="pts1">0</div><div class="gms" id="gm1"></div></div></div>'
@@ -184,6 +185,7 @@
       + '<div class="card"><div class="mom-h"><b>Хвиля матчу</b><span id="bdStreak" class="muted small"></span></div><div id="bdMom" class="mom-bars"></div></div></div>'
       + '<div id="bdAfter"></div>';
     paintVoice();
+    paintTags();
   }
 
   function paintVoice() {
@@ -413,7 +415,7 @@
   async function toggleFs() {
     const b = $('#bdBoard'); if (!b) return;
     if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* уже вийшли */ } return; }
-    if (b.classList.contains('fake-fs')) { b.classList.remove('fake-fs'); P.wake(false); return; }
+    if (b.classList.contains('fake-fs')) { b.classList.remove('fake-fs'); unwake(); return; }
     try { if (!b.requestFullscreen) throw new Error('нема'); await b.requestFullscreen(); }
     catch { b.classList.add('fake-fs'); }   // айфон і вбудовані вікна — табло просто на весь екран сторінки
     P.wake(true);
@@ -485,6 +487,7 @@
     onLast(m, true);
     glekHello();
     clearInterval(tickT); tickT = setInterval(clock, 1000);
+    if (T.live()) P.wake(true);
   }
 
   function onClick(e) {
@@ -502,6 +505,7 @@
     if (a) {
       const k = a.dataset.act;
       if (k === 'fs') toggleFs();
+      else if (k === 'tags') tagsSheet();
       else if (k === 'voice') { P.pref('voice', !P.pref('voice')); paintVoice(); P.toast(P.pref('voice') ? '🔊 Глек оголошує рахунок на цьому пристрої' : '🔇 Глек мовчить'); }
       else if (k === 'undo') act('undo');
       else if (k === 'until') untilSheet();
@@ -520,14 +524,16 @@
   // Клавіші (кліккер для презентацій — це теж клавіатура): ←/PageUp — першим, →/PageDown — другим, Z — скасувати
   document.addEventListener('keydown', (e) => {
     if (mode !== 'board' || !cur || !visible() || e.repeat) return;
-    if (e.key === 'Escape') { const b = $('#bdBoard'); if (b && b.classList.contains('fake-fs')) { b.classList.remove('fake-fs'); P.wake(false); } return; }
+    if (e.key === 'Escape') { const b = $('#bdBoard'); if (b && b.classList.contains('fake-fs')) { b.classList.remove('fake-fs'); unwake(); } return; }
     if (document.querySelector('.pd-sheet-bg') || (e.target.closest && e.target.closest('input,textarea,select'))) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); point(0); }
     else if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); point(1); }
     else if (e.code === 'KeyZ') { e.preventDefault(); act('undo'); }
   });
-  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) P.wake(false); });
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) unwake(); });
+  /// Екран можна гасити, лише коли на табло не тиснуть брелоки: згаслий телефон їх не чує
+  function unwake() { if (!(mode === 'board' && T.live())) P.wake(false); }
 
   // Геймпад: LB — очко першим, RB — другим (і хрестовина ←/→), B — скасувати
   function gpLoop() {
@@ -544,6 +550,109 @@
     requestAnimationFrame(gpLoop);
   }
   window.addEventListener('gamepadconnected', () => { if (!gpRun) { gpRun = true; requestAnimationFrame(gpLoop); } });
+
+  // ------------------------------------------------------------------ брелоки (tags.js)
+  // Брелок — пульт команди: натиск — очко їй, два швидкі — скасувати останнє. У відповідь пищить: раз — очко є,
+  // двічі — скасовано, довго — не пройшло (табло не відкрите, нема права, матч скінчено, хтось устиг раніше).
+
+  const TEAMS_OF = ['жовтих', 'блакитних'];
+  let tagSh = null, allDev = false;
+  const hits = {};
+
+  function paintTags() {
+    const b = $('#bdTags'), ind = $('#bTags');
+    const ss = [T.slot(0), T.slot(1)], on = ss.filter((s) => s && s.state === 'on').length;
+    if (b) {
+      b.innerHTML = '🔘' + (on ? '<sup class="tg-n">' + on + '</sup>' : '') + '<span class="tx"> Брелоки</span>';
+      b.classList.toggle('on', on > 0);
+    }
+    if (ind) {
+      const tip = { on: 'на зв’язку', link: 'під’єднується', lost: 'відпав — шукаю', saved: 'не під’єднано' };
+      ind.innerHTML = ss.map((s, t) => s ? '<i class="tg ' + (t ? 'b' : 'a') + ' ' + s.state + '" title="Брелок ' + TEAMS_OF[t] + ': ' + (tip[s.state] || '') + '"></i>' : '').join('');
+    }
+  }
+
+  function tagsSheet() {
+    leaveFs();
+    const sh = tagSh = P.sheet('🔘 Брелоки', '<div class="tg-sheet"><div id="tgRows"></div><div class="tg-no" id="tgNo" hidden></div>'
+      + '<div class="tg-tools"><button type="button" class="btn sm" data-tg="swap">⇄ Поміняти брелоки командами</button></div>'
+      + '<label class="tg-chk"><input type="checkbox" data-tg="beep"' + (P.pref('tagBeep') === false ? '' : ' checked') + '>'
+      + '<span>Пікати у відповідь: раз — очко є, двічі — скасовано, довго — не пройшло</span></label>'
+      + '<label class="tg-chk"><input type="checkbox" data-tg="all"' + (allDev ? ' checked' : '') + '>'
+      + '<span>Свого брелока нема в списку? Показувати всі пристрої поруч</span></label>'
+      + '<ul class="tg-help muted small">'
+      + '<li>Один натиск — очко своїй команді, два швидкі — скасувати останнє.</li>'
+      + '<li>Кнопку не тримай: за ~3 секунди брелок вимкнеться (так само й вмикається).</li>'
+      + '<li>Телефон — біля корту, Падельня відкрита на табло: екран сам не згасне. Згаслий телефон брелоків не чує.</li>'
+      + '<li>Перезавантажиш сторінку — брелоки, найпевніше, доведеться під’єднати знову.</li>'
+      + '<li>Поки це віконце відкрите, натиск лише перевіряє брелок — очок не дає.</li></ul></div>',
+    () => { tagSh = null; });
+    tagRows();
+    T.avail().then((ok) => {
+      const no = sh.el.querySelector('#tgNo'); if (!no || ok) return;
+      no.hidden = false; no.textContent = 'Bluetooth вимкнений або його нема на цьому пристрої — увімкни його й відкрий віконце ще раз.';
+    });
+    sh.el.addEventListener('change', (e) => {
+      const k = e.target.dataset && e.target.dataset.tg;
+      if (k === 'beep') P.pref('tagBeep', e.target.checked);
+      else if (k === 'all') allDev = e.target.checked;
+    });
+    sh.el.addEventListener('click', async (e) => {
+      const b = e.target.closest('button[data-tg]'); if (!b) return;
+      const k = b.dataset.tg, row = b.closest('[data-t]'), t = row ? +row.dataset.t : 0;
+      if (k === 'pair') {
+        b.disabled = true;
+        try { if (await T.pair(t, allDev)) P.toast('Брелок ' + TEAMS_OF[t] + ' на зв’язку — тисни, перевір'); }
+        catch (err) { P.toast(err.message, 'bad'); }
+        finally { b.disabled = false; }
+      } else if (k === 'drop') T.drop(t);
+      else if (k === 'beep1') T.beep(t, 'hi', true);
+      else if (k === 'swap') T.swap();
+    });
+  }
+
+  function tagRows() {
+    const box = tagSh && tagSh.el.querySelector('#tgRows'); if (!box) return;
+    const b = (k, l, cls) => '<button type="button" class="btn sm' + (cls ? ' ' + cls : '') + '" data-tg="' + k + '">' + l + '</button>';
+    box.innerHTML = [0, 1].map((t) => {
+      const s = T.slot(t), who = cur ? esc(teamName(cur, t)) : (t ? 'Друга команда' : 'Перша команда');
+      let st, btns;
+      if (!s) { st = '<span class="muted">без брелока</span>'; btns = b('pair', 'Під’єднати', 'pri'); }
+      else if (s.state === 'saved') { st = '<span class="muted">був «' + esc(s.name) + '» — під’єднай знову</span>'; btns = b('pair', 'Під’єднати', 'pri') + b('drop', '✕'); }
+      else if (s.state === 'on') { st = '<b class="tg-ok">на зв’язку</b> · «' + esc(s.name) + '»' + (s.bat != null ? ' · 🔋 ' + s.bat + '%' : ''); btns = b('beep1', '🔔<span class="tx"> Пікнути</span>') + b('drop', '✕'); }
+      else { st = '<span class="tg-wait">шукаю «' + esc(s.name) + '»…</span>'; btns = b('drop', '✕'); }
+      return '<div class="tg-row' + (hits[t] ? ' hit' : '') + '" data-t="' + t + '"><span class="tdot ' + (t ? 'b' : 'a') + '"></span>'
+        + '<div class="grow"><b>' + who + '</b><div class="small">' + st + '</div>' + (hits[t] ? '<div class="tg-hit small">👆 ' + hits[t] + '</div>' : '') + '</div>'
+        + '<div class="tg-btns">' + btns + '</div></div>';
+    }).join('');
+  }
+
+  T.onChange = (t, what) => {
+    paintTags(); tagRows();
+    if (mode !== 'board' || !visible()) return;
+    if (what === 'lost') boardMsg('🔘 Брелок ' + TEAMS_OF[t] + ' відпав — шукаю…', 2600);
+    else if (what === 'back') boardMsg('🔘 Брелок ' + TEAMS_OF[t] + ' знову на зв’язку', 1600);
+    if (what === 'on' || what === 'back') P.wake(true);
+  };
+
+  T.onPress = async (t, two) => {
+    if (tagSh) {   // віконце брелоків відкрите — лише перевірка, котрий тиснуть
+      hits[t] = two ? 'два натиски — на табло це «скасувати»' : 'натиск — на табло це очко';
+      tagRows(); T.beep(t, two ? 'undo' : 'ok');
+      clearTimeout(hits['t' + t]); hits['t' + t] = setTimeout(() => { delete hits[t]; tagRows(); }, 1800);
+      return;
+    }
+    const no = (msg) => { T.beep(t, 'err'); if (msg) { P.toast(msg); boardMsg(msg, 2400); } };
+    if (mode !== 'board' || !cur || !visible()) return no('Брелок: спершу відкрий табло матчу');
+    if (document.querySelector('.pd-sheet-bg')) return no('Брелок: спершу закрий віконце на табло');
+    if (!canCtl(cur)) return no('Рахунок цього матчу ведуть гравці — тут брелок не рахує');
+    if (two) { const m = await act('undo'); T.beep(t, m ? 'undo' : 'err'); return; }
+    if (cur.status !== 'live' || cur.state.over) return no('Гру скінчено: ↶ повернути або ← до матчів');
+    const m = await act('point', { t });
+    T.beep(t, m ? 'ok' : 'err');
+  };
+
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && mode === 'board' && visible() && T.live()) P.wake(true); });
 
   P.on('match', (m) => {
     if (!m || !m.id) return;

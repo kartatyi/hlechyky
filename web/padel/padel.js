@@ -239,7 +239,10 @@
     const print = JSON.stringify(mine);
     if (front === null) { front = print; return; }
     // Після деплою — свіжі файли. Тут нема музики, а стан живе на сервері: перезавантаження нічого не губить.
-    if (print !== front) location.reload();
+    // Крім брелоків: їхнє Bluetooth-з'єднання обірветься — тоді чекаємо, поки їх від'єднають (tags.js).
+    if (print === front) return;
+    if (P.tags && P.tags.busy()) { P.stale = true; return; }
+    location.reload();
   }
 
   function connect() {

@@ -2286,7 +2286,7 @@
     const f = padelFrame = document.createElement('iframe');
     f.className = 'padel-frame';
     f.title = 'Падельня';
-    f.allow = 'fullscreen; screen-wake-lock; autoplay';
+    f.allow = 'fullscreen; screen-wake-lock; autoplay; bluetooth';   // bluetooth — брелоки-пульти табло
     f.src = '/padel/' + hash;
     f.addEventListener('load', () => {
       let path = '';
