@@ -154,6 +154,26 @@ public class ClickerHelpTests
     }
 
     [Fact]
+    public void Thanks_to_a_friend_praised_to_the_cap_is_a_free_word()
+    {
+        // Рецензія clk12: «Подякувати» йшло похвалою й ловило відмову «уже нахвалили на 4 год» — дякувати не виходило.
+        var g = new Tsekh();
+        var petro = g.Potter("Петро");
+        var d = g.Potter("Д");
+        Assert.True(Guild(petro, new { op = "lend", to = "Д" }).Ok);
+        foreach (var nick in new[] { "А", "Б", "В", "Г" })
+            Assert.True(Guild(g.Potter(nick), new { op = "cheer", to = "Петро" }).Ok);
+        Assert.True(Look(g, "Д", "Петро").GetProperty("thank").GetBoolean());
+
+        var r = Guild(d, new { op = "thank", to = "Петро" });
+        Assert.True(r.Ok, r.Message);
+        Assert.StartsWith("💛", r.Message);
+        Assert.False(Look(g, "Д", "Петро").GetProperty("thank").GetBoolean());
+        // Похвала Д на сьогодні лишилась: сказати її пізніше, коли стеля звільниться, ще можна.
+        Assert.True(Look(g, "Д", "Петро").GetProperty("cheer").GetProperty("can").GetBoolean());
+    }
+
+    [Fact]
     public void Mail_rings_the_receiver_and_any_action_takes_it()
     {
         var g = new Tsekh();

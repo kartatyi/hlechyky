@@ -284,6 +284,51 @@ public class ClickerLiveTests
         Assert.Equal(0, Streak(h));
     }
 
+    /// <summary>Глек злетить за <paramref name="inSeconds"/> секунд.</summary>
+    static void FallIn(RoomHarness h, double inSeconds) => Patch(h, s =>
+    {
+        var at = h.Clock.UtcNow.AddSeconds(inSeconds);
+        s["fall"] = new JsonObject { ["at"] = at.ToString("O"), ["until"] = (at + Clicker.FallShown).ToString("O"), ["x"] = 40 };
+    });
+
+    static ActResult Mail(RoomHarness h) => Act(h, "guild", new { op = "mail" });
+
+    [Fact]
+    public void The_guild_bell_taking_mail_is_not_the_potter_being_there()
+    {
+        // Рецензія clk12: дзвоник цеху сам шле guild{op:"mail"}, і ця дія садила гончаря «біля кола» — глек, що
+        // пролетів без нього, знову рвав серію (81dfff0 повертався).
+        var h = Wheel();
+        Patch(h, s => s["fallStreak"] = 7);
+        var seen = Fall(h).GetProperty("seen").GetDateTimeOffset();
+        FallIn(h, 150);
+        h.Clock.AdvanceMs(151 * 1000);                    // глек летить; гончар мовчить уже 2,5 хв
+        Mail(h);                                          // друг надіслав — дзвоник забрав пошту
+        Assert.Equal(seen, Fall(h).GetProperty("seen").GetDateTimeOffset());
+        h.Clock.AdvanceMs(30 * 1000);                     // розбився без нього; повернувся — клацнув
+        Assert.True(Spin(h, 5).Ok);
+
+        Assert.Equal(7, Streak(h));
+        // А тепер він справді тут: мітка присутності пішла вперед.
+        Assert.Equal(h.Clock.UtcNow, Fall(h).GetProperty("seen").GetDateTimeOffset());
+    }
+
+    [Fact]
+    public void A_potter_at_the_wheel_still_breaks_the_streak_whatever_the_bell_does()
+    {
+        var h = Wheel();
+        Patch(h, s => s["fallStreak"] = 4);
+        FallNow(h);
+        h.Clock.AdvanceMs(1000);
+        Assert.True(Spin(h, 5).Ok);                       // бачив глек
+        h.Clock.AdvanceMs(1000);
+        Mail(h);                                          // дзвоник посеред польоту нічого не змінює
+        h.Clock.AdvanceMs(60 * 1000);
+        Assert.True(Spin(h, 5).Ok);
+
+        Assert.Equal(0, Streak(h));
+    }
+
     [Fact]
     public void A_catch_puts_the_next_jug_on_the_shelf()
     {

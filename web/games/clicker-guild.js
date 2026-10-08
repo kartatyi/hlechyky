@@ -596,7 +596,7 @@
         + (arm('gift:' + it.key) ? 'Так, подарувати' : 'Подарувати') + '</button>')).join('') + '</div>';
     }
     if (L.thank) {
-      html += '<div class="clkg-crow"><button type="button" class="ghost clkg-cbtn" data-thank="' + name + '">'
+      html += '<div class="clkg-crow"><button type="button" class="ghost clkg-cbtn" data-thank="' + name + '"' + (c.busy ? ' disabled' : '') + '>'
         + (L.cheer.can && !L.cheer.full ? '👏 Подякувати похвалою' : '💛 Подякувати') + '</button><span class="muted small">' + name + ' тобі помагав(ла)</span></div>';
     }
     return html;
@@ -620,8 +620,10 @@
     if (house) { openHouse(st, api, c.nick); return; }
     const th = e.target.closest('[data-thank]');
     if (th && th.closest('.clkg-cmain')) {
-      if (!human(e)) return;
+      // Подвійний тап не шле двох подяк: поки перша в дорозі, кнопка вимкнена (як «Подарувати» нижче).
+      if (!human(e) || c.busy) return;
       c.busy = true;
+      renderCard(st, api);
       act(st, api, { op: 'thank', to: c.nick }, 'brag').then((r) => cardDone(st, api, c, r, null));
       return;
     }
@@ -1205,11 +1207,21 @@
       st.guildCard = null;
       st.guildChoose = null;
       // Дзвоник цеху (core.js → hgames:clkMail): друг щось надіслав — питаємо пошту дією, а не чекаємо свого кліку.
+      // Дзвоники ближче 1,5 с один до одного зливаються в один хвостовий запит (не губляться: другий друг, що
+      // надіслав за секунду після першого, інакше чекав би до наступної дії гончаря).
       st.guildMailAt = 0;
+      st.guildMailT = 0;
       st.guildMail = () => {
-        if (!st.guildPane || !st.mine || Date.now() - st.guildMailAt < 1500) return;
-        st.guildMailAt = Date.now();
-        api.act(st, 'guild', { op: 'mail' });
+        if (!st.guildPane || !st.mine || st.guildMailT) return;
+        const wait = st.guildMailAt + 1500 - Date.now();
+        const go = () => {
+          st.guildMailT = 0;
+          if (!st.guildPane || !st.mine) return;
+          st.guildMailAt = Date.now();
+          api.act(st, 'guild', { op: 'mail' });
+        };
+        if (wait > 0) st.guildMailT = setTimeout(go, wait);
+        else go();
       };
       document.addEventListener('hgames:clkMail', st.guildMail);
     },
@@ -1255,6 +1267,8 @@
       st.guildChoose = null;
       st.guildChooseBody = null;
       if (st.guildMail) document.removeEventListener('hgames:clkMail', st.guildMail);
+      clearTimeout(st.guildMailT);
+      st.guildMailT = 0;
       st.guildMail = null;
     },
   });

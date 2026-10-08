@@ -354,6 +354,12 @@ public sealed partial class Clicker
 
     // ---------- дія guild { op, … } ----------
 
+    /// <summary>
+    /// Дія, яку клієнт шле сам, без гончаря: дзвоник цеху (clkMail) просить забрати пошту. Вона синхронізує глеки й
+    /// шле вид, але присутністю не рахується (<see cref="_seenAt"/>) — інакше відсутність рвала б серію глеків.
+    /// </summary>
+    static bool QuietAct(string action, JsonElement payload) => action == "guild" && Str(payload, "op") == "mail";
+
     ActResult? ActGuild(string action, JsonElement payload)
     {
         if (action != "guild") return null;

@@ -1150,8 +1150,10 @@
 
   /// «Чи видно сцену» — від IntersectionObserver (не getBoundingClientRect щокадру, див. visible()). Видно — коли хоч
   /// половина сцени між липкою шапкою сайту й нижнім меню; поля спостерігача переставляємо лише з розміром вікна.
+  /// «Сцена на сторінці» (stageLaid) каже ResizeObserver: IntersectionObserver мовчить, коли вже прокручену з екрана
+  /// сцену ще й сховали (перейшли на «Ефір» — «не видно» → «не видно»), і шар глека літав би на чужій сторінці.
   function watchStage(st) {
-    let io = null, sig = '';
+    let io = null, ro = null, sig = '';
     const set = () => {
       const band = viewBand();
       const s = Math.round(band.top) + ':' + Math.round(window.innerHeight - band.bottom);
@@ -1170,7 +1172,24 @@
     if (!window.IntersectionObserver || !st.stage) return null;
     set();
     window.addEventListener('resize', set);
-    return { stop() { window.removeEventListener('resize', set); if (io) io.disconnect(); } };
+    if (window.ResizeObserver) {
+      ro = new ResizeObserver((es) => {
+        const r = es[es.length - 1].contentRect;
+        const laid = r.width > 0 && r.height > 0;
+        if (laid === st.stageLaid) return;
+        st.stageLaid = laid;
+        if (!laid) flyOff(st);
+      });
+      ro.observe(st.stage);
+    }
+    return { stop() { window.removeEventListener('resize', set); if (io) io.disconnect(); if (ro) ro.disconnect(); } };
+  }
+
+  /// Сцени нема на сторінці (картку сховали чи вийняли): шар поверх і «🏺 лови!» гаснуть одразу, а не висять.
+  function flyOff(st) {
+    if (st.flyFall && !st.flyFall.hidden) st.flyFall.hidden = true;
+    if (st.flyGold && !st.flyGold.hidden) st.flyGold.hidden = true;
+    pinCatch(st);
   }
 
   /// Кнопки шару (у body; прибирає unmount). Ловлять тими самими діями, що й на сцені.
@@ -1511,6 +1530,8 @@
     if (visible(st)) paint(st);
     // Картку догорнули далеко з екрана (але вона на сторінці) — глеки однаково летять, поверх усього (записка №29).
     else if (st.stageLaid && st.el.isConnected && !document.hidden) { paintGolden(st); paintFall(st); }
+    // Картки нема на сторінці (інша сторінка сайту) — шару теж нема (aside()).
+    else if (!document.hidden) flyOff(st);
     st.raf = requestAnimationFrame(() => loop(st));
   }
 
@@ -1560,9 +1581,14 @@
   /// Глек долетів до долівки: черепки навсібіч і тихе «трісь».
   /// Що сталось із серією, каже сервер наперед (fall.miss, ті самі гілки, що в Sync): обірвалась, фартух уберіг
   /// чи серії й не було (записка №29). fly — глек летів у шарі поверх: напис там, де його й бачили.
+  /// Гончаря не було (глек злетів після його останньої справжньої дії, а від неї вже минуло понад EVENT_GAP_MS) —
+  /// сервер серію не рве й фартуха не чіпає (Sync, гілка «порожня хата»): тоді просто «трісь».
   function shatter(st, x, fly) {
     const n = st.fallStreak || 0;
-    const text = st.fallMiss === 'apron' ? 'трісь — фартух уберіг серію'
+    const f = st.fall;
+    const empty = st.fallSeen > 0 && f && f.at > st.fallSeen && serverNow(st) - st.fallSeen > EVENT_GAP_MS;
+    const text = empty ? 'трісь'
+      : st.fallMiss === 'apron' ? 'трісь — фартух уберіг серію'
       : st.fallMiss === 'streak' && n > 0 ? 'трісь… серія ' + n + ' обірвалась' : 'трісь';
     if (fly) {
       H.api.sfx('break', { x });
@@ -3386,6 +3412,8 @@
           st.fallGain = v.fall.gain || 0;
           st.fallStreak = v.fall.streak || 0;
           st.fallMiss = v.fall.miss || 'streak';
+          // Коли гончар востаннє справді був біля кола (сервер, Clicker._seenAt): від неї «трісь» знає, чи серія ціла.
+          st.fallSeen = Date.parse(v.fall.seen) || 0;
           st.streakBonus = v.fall.bonus || 0;
         }
         // Дев'яте оновлення: кіт, зірка, вітер, щасливі кліки, бажання й «що нового».

@@ -581,6 +581,20 @@ public sealed partial class Clicker : Game
     /// <summary>Недоліплений глек: пасив рідко дає ціле число, а губити півглека щосекунди — це половина доходу.</summary>
     double _carry;
     DateTimeOffset _lastSync;
+    /// <summary>
+    /// Коли гончар востаннє справді був біля кола — остання дія, що не «тиха». Від неї, а не від <c>_lastSync</c>,
+    /// міряється «дивився чи ні» (кіт, зірка, вітер, глек з полиці): дзвоник цеху сам забирає пошту (clkMail), і якби
+    /// це рахувалось присутністю, глек, що розбився без гончаря, знову рвав би серію (81dfff0). Не зберігається:
+    /// після завантаження — та сама мітка, що й синхронізація.
+    /// </summary>
+    DateTimeOffset _seenAt;
+    /// <summary>Поточна синхронізація тиха (<see cref="QuietAct"/>): рахує глеки, але присутністю не рахується.</summary>
+    bool _quietSync;
+    /// <summary>
+    /// Версія виду після тихої дії: вид, який каркас складає у відповідь на неї (і поки нової дії не було), теж
+    /// синхронізує тихо — інакше Sync() у BuildView однаково посадив би гончаря біля кола.
+    /// </summary>
+    long _quietVersion = -1;
     string _soldDay = "";
     int _soldShards;
     /// <summary>Останнє число, яке вже пішло в таблицю: те саме слати вдруге — марно смикати базу.</summary>
@@ -927,6 +941,7 @@ public sealed partial class Clicker : Game
         _soldDay = Days.Today(Ctx.Clock);
         _soldShards = 0;
         _lastSync = Ctx.Clock.UtcNow;
+        _seenAt = _lastSync;
         _tokens = MaxClicksPerSecond;
         _tokensAt = _lastSync;
         _fairUntil = default;
@@ -981,7 +996,10 @@ public sealed partial class Clicker : Game
 
     ActResult ActInner(int seat, string action, JsonElement payload)
     {
-        Sync();
+        _quietSync = QuietAct(action, payload);
+        _quietVersion = _quietSync ? _viewVersion : -1;
+        try { Sync(); }
+        finally { _quietSync = false; }
         // Звання дня рахуються київськими днями: учорашнє — цехові, сьогоднішнє — з нуля (ClickerTitles.cs).
         TitlesDayRoll(Ctx.Clock.UtcNow);
         // Ачівки, що назбирались у видах (офлайн-прогрес рахується вже на відкритті), — тепер, коли каркас їх прийме.
@@ -1069,7 +1087,10 @@ public sealed partial class Clicker : Game
         var gap = now > from ? now - from : TimeSpan.Zero;
         var paid = gap > OfflineNow ? OfflineNow : gap;
         // Кіт, зірка й вітер — це те, що видно на сцені: поки гончаря не було, вони його не чекали (§A.6).
-        var watching = gap <= EventGap;
+        // «Був» — від останньої справжньої дії: тиха (дзвоник цеху) лише забирає пошту, гончаря біля кола не садить.
+        var seen = _seenAt;
+        var watching = (now > seen ? now - seen : TimeSpan.Zero) <= EventGap;
+        if (!_quietSync) _seenAt = now;
         AwayBegin(gap);
         if (now > from)
         {
@@ -1107,7 +1128,7 @@ public sealed partial class Clicker : Game
             if (asked) _fallSlept = true;
             // Гончаря не було: затих ще до того, як глек злетів, і мовчав довше за EventGap. Глек летів без нього —
             // це не промах, а порожня хата: серію не рвемо й фартуха не чіпаємо (як кіт і зірка, §A.6).
-            else if (!watching && _fall.At > from) { }
+            else if (!watching && _fall.At > seen) { }
             // Шкіряний фартух вибачає один розбитий у серії; другий поспіль — серія таки обірвалась.
             else if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
             else _fallStreak = 0;
@@ -2110,7 +2131,9 @@ public sealed partial class Clicker : Game
         // Пасив рахуємо і на відкритті, а не лише при дії (так каже spec): гончар, який повернувся й
         // просто дивиться на коло, мусить одразу бачити зароблене, а не чекати першого кліка. View
         // каркас кличе під замком кімнати (Rooms.ViewsFor), тож синхронізувати тут безпечно.
-        Sync();
+        _quietSync = _viewVersion == _quietVersion;
+        try { Sync(); }
+        finally { _quietSync = false; }
         var all = AllMult;
         var passive = PassiveBase;
         _memoPassive = passive;
@@ -2194,7 +2217,7 @@ public sealed partial class Clicker : Game
             momentumMax = MomentumMax,
             // Наступний глек з полиці і скільки він дасть, якщо спіймати просто зараз.
             // miss — що станеться, якщо він розіб'ється на очах: клієнт малює чесне «трісь» (записка №29).
-            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss },
+            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss, seen = _seenAt },
             grabbed = _grabbed,
             // Дев'яте оновлення: щасливі кліки за весь час (клієнт малює «✨ ×50» за приростом) і бажання на зірку.
             lucky = _lucky,
@@ -2347,6 +2370,7 @@ public sealed partial class Clicker : Game
         _total = Math.Max(_pots, ToPots(s.Total));
         _carry = double.IsFinite(s.Carry) ? Math.Clamp(s.Carry, 0, 1) : 0;
         _lastSync = s.LastSync == default ? Ctx.Clock.UtcNow : s.LastSync;
+        _seenAt = _lastSync;
         _scored = -1;
         _scoredAt = default;
 

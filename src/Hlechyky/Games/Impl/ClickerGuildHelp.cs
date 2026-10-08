@@ -231,6 +231,8 @@ public sealed partial class ClickerGuildService
         var who = toNick.Trim();
         if (toKey.Length == 0) return ("Кому дякувати? Обери гончаря", false);
         if (toKey == fromKey) return ("Собі дякувати — то вже самохвальство 🙂", false);
+        // Збереження друга — поза замком, як у Boost: з нього видно, чи похвала ще влізе в його стелю наперед.
+        var (lendSaved, cheerSaved, _) = BuffsOfSave(SaveOf(toKey));
         bool cheer;
         lock (_lock)
         {
@@ -241,7 +243,10 @@ public sealed partial class ClickerGuildService
                 return ($"{who} тобі останнім часом нічого не надсилав(ла) — дякувати поки нема за що", false);
             if (help.Thanked.Contains(toKey, StringComparer.Ordinal)) return ($"Ти вже подякував(ла) {who} сьогодні", false);
             if (help.Thanked.Count >= ThanksPerDay) return ("На сьогодні досить подяк — завтра ще", false);
-            cheer = !help.Cheer.Contains(toKey, StringComparer.Ordinal);
+            // Похвалою — лише коли вона справді піде: сьогодні цього друга ще не хвалив і його вже не нахвалили на
+            // всю стелю наперед. Інакше Boost відмовив би («уже нахвалили на 4 год»), і подякувати не вийшло б зовсім.
+            var (_, cheerAhead) = BuffsAheadLocked(s, toKey, lendSaved, cheerSaved, now);
+            cheer = !help.Cheer.Contains(toKey, StringComparer.Ordinal) && cheerAhead < now.AddMinutes(CheerCapMinutes);
             if (!cheer)
             {
                 help.Thanked.Add(toKey);
