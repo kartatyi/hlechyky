@@ -1053,12 +1053,16 @@
     const g = st.golden;
     const b = st.gold;
     // Поки майстер чекає, глек не ловиться (сервер відмовить) — тож і не показуємо.
-    if (!g || !st.mine || guardOn(st)) { if (!b.hidden) b.hidden = true; return; }
+    if (!g || !st.mine || guardOn(st)) { if (!b.hidden) b.hidden = true; flyGold(st, false); return; }
     const now = serverNow(st);
     const show = now >= g.at && now <= g.until && st.goldenGone !== g.at;
-    if (b.hidden === show) {
-      b.hidden = !show;
-      if (show) {
+    // Сцени не видно — той самий глек стоїть поверх усього (записка №29); на сцені його тоді нема: двох глеків не буває.
+    const away = show && aside(st);
+    flyGold(st, away, g, now);
+    const here = show && !away;
+    if (b.hidden === here) {
+      b.hidden = !here;
+      if (here) {
         b.style.left = g.x + '%';
         b.style.top = g.y + '%';
         b.style.setProperty('--clk-left', Math.max(0, (g.until - now) / 1000) + 's');
@@ -1082,12 +1086,18 @@
   function paintFall(st) {
     const f = st.fall;
     const b = st.fallEl;
-    if (!f || !st.mine || guardOn(st)) { if (!b.hidden) b.hidden = true; return; }
+    if (!f || !st.mine || guardOn(st)) { if (!b.hidden) b.hidden = true; flyFall(st, false); pinCatch(st); return; }
     const now = serverNow(st);
     const show = now >= f.at && now <= f.until && st.fallGone !== f.at;
-    if (b.hidden === show) {
-      b.hidden = !show;
-      if (show) {
+    const wasFly = !!st.flyFall && !st.flyFall.hidden;
+    // Сцени не видно (прокрутили, відкрите вікно) — глек летить поверх усього, у смузі справа (записка №29).
+    const away = show && aside(st);
+    flyFall(st, away, f, now);
+    pinCatch(st);
+    const here = show && !away;
+    if (b.hidden === here) {
+      b.hidden = !here;
+      if (here) {
         b.style.left = f.x + '%';
         b.style.setProperty('--clk-fallms', (f.until - f.at) + 'ms');
         // Летить від полиці (її висоту задає css) до долівки: центр глека стає на 92 % висоти сцени.
@@ -1101,12 +1111,158 @@
     // Розбився — але лише той, що розбився щойно і на очах: після довгої відсутності черепків не малюємо.
     if (now > f.until && now - f.until < 1500 && st.fallGone !== f.at && st.fallBroke !== f.at) {
       st.fallBroke = f.at;
-      shatter(st, f.x);
+      shatter(st, f.x, wasFly);
     }
     if (now > f.until + CATCH_GRACE_MS + 5000 && st.fallLooked !== f.until && st.ctx && visible(st)) {
       st.fallLooked = f.until;
       st.ctx.act('look');
     }
+  }
+
+  // ---------- глек поверх усього (записка Smaug №29) ----------
+  //
+  // На телефоні розпис, ремесло під колом, вікно дарунка — усе, що робиться поза колом, ховає сцену, і глек з полиці
+  // розбивався непоміченим (сервер бачить дії — гончар «біля кола», тож серія обривалась). Тепер, поки сцени не видно,
+  // той самий глек (той самий вид, той самий залишок часу) летить у фіксованому шарі вздовж правого краю екрана й
+  // ловиться тією самою дією. Шар — дві кнопки в body: картка кола — container (layout containment), і fixed усередині
+  // неї був би прив'язаний до картки, а не до екрана. Кіт і зірка лишаються на сцені: вони нічого не рвуть.
+
+  /// Сцену зараз не видно: її прокрутили з екрана або над нею відкрите вікно кола. Картку взагалі сховали (інша
+  /// сторінка сайту) — це не «не видно», а «не тут»: тоді й шару нема (сервер у такій відсутності серію не рве).
+  const aside = (st) => !!st.stageLaid && (!st.stageSeen || H.api.overlayOpen(st));
+
+  /// «Чи видно сцену» — від IntersectionObserver (не getBoundingClientRect щокадру, див. visible()). Видно — коли хоч
+  /// половина сцени між липкою шапкою сайту й нижнім меню; поля спостерігача переставляємо лише з розміром вікна.
+  function watchStage(st) {
+    let io = null, sig = '';
+    const set = () => {
+      const band = viewBand();
+      const s = Math.round(band.top) + ':' + Math.round(window.innerHeight - band.bottom);
+      if (s === sig && io) return;
+      sig = s;
+      if (io) io.disconnect();
+      io = new IntersectionObserver((es) => {
+        const e = es[es.length - 1];
+        st.stageLaid = e.boundingClientRect.height > 0;
+        st.stageSeen = e.isIntersecting && e.intersectionRatio >= 0.5;
+      }, { rootMargin: '-' + Math.round(band.top) + 'px 0px -' + Math.round(window.innerHeight - band.bottom) + 'px 0px', threshold: [0, 0.5, 1] });
+      io.observe(st.stage);
+    };
+    st.stageSeen = true;
+    st.stageLaid = false;
+    if (!window.IntersectionObserver || !st.stage) return null;
+    set();
+    window.addEventListener('resize', set);
+    return { stop() { window.removeEventListener('resize', set); if (io) io.disconnect(); } };
+  }
+
+  /// Кнопки шару (у body; прибирає unmount). Ловлять тими самими діями, що й на сцені.
+  function mountFly(st) {
+    const mk = (cls, label, jugHtml) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'clk-fly ' + cls;
+      b.hidden = true;
+      b.setAttribute('aria-label', label);
+      b.title = 'Лови!';
+      b.innerHTML = '<svg class="clk-gold-ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18"/></svg>' + jugHtml;
+      b.addEventListener('contextmenu', (e) => e.preventDefault());
+      document.body.appendChild(b);
+      return b;
+    };
+    st.flyFall = mk('clk-fly-fall', 'Глек падає з полиці — лови!', '<span class="clk-fly-jug"></span>');
+    st.flyFallJug = st.flyFall.querySelector('.clk-fly-jug');
+    st.flyGold = mk('clk-fly-gold', 'Розписний глек — лови!', jugSvg('golden', 'clk-gold-jug', 'flygold'));
+    st.flyFall.addEventListener('pointerdown', (e) => grabFall(st, e));
+    st.flyGold.addEventListener('click', (e) => catchGolden(st, e));
+  }
+
+  /// Глек з полиці в шарі поверх: з'являється з тим самим залишком часу (від'ємна затримка анімації, як на сцені).
+  function flyFall(st, on, f, now) {
+    const b = st.flyFall;
+    if (!b) return;
+    if (!on) { if (!b.hidden) b.hidden = true; return; }
+    if (!b.hidden && st.flyFallAt === f.at) return;
+    st.flyFallAt = f.at;
+    const band = viewBand();
+    st.flyBand = band;
+    b.hidden = false;
+    const h = b.offsetHeight || 68;
+    // Телефон: угорі під шапкою липне мініплашка з «🏺 лови!» — смуга глека починається під нею, щоб не налазити.
+    const top = band.top + (window.innerWidth <= 560 ? 56 : 10);
+    b.style.setProperty('--clk-flytop', top + 'px');
+    b.style.setProperty('--clk-flydrop', Math.max(40, band.bottom - 12 - h - top) + 'px');
+    b.style.setProperty('--clk-fallms', (f.until - f.at) + 'ms');
+    b.style.setProperty('--clk-left', Math.max(0, (f.until - now) / 1000) + 's');
+    b.style.animationDelay = (-(now - f.at)) + 'ms';
+    b.classList.remove('run');
+    void b.offsetWidth;
+    b.classList.add('run');
+    flySignal(st, 'f' + f.at);
+  }
+
+  /// Розписний глек у шарі поверх: стоїть посередині видимої смуги, кільце показує, скільки лишилось.
+  function flyGold(st, on, g, now) {
+    const b = st.flyGold;
+    if (!b) return;
+    if (!on) { if (!b.hidden) b.hidden = true; return; }
+    if (!b.hidden && st.flyGoldAt === g.at) return;
+    st.flyGoldAt = g.at;
+    const band = viewBand();
+    b.hidden = false;
+    b.style.setProperty('--clk-flymid', Math.round((band.top + band.bottom) / 2 - 34) + 'px');
+    b.style.setProperty('--clk-left', Math.max(0, (g.until - now) / 1000) + 's');
+    b.classList.remove('run');
+    void b.offsetWidth;
+    b.classList.add('run');
+    flySignal(st, 'g' + g.at);
+  }
+
+  /// Тихий сигнал, що глек з'явився, а сцени не видно: раз на глек, звуком гри (він сам мовчить, коли звук вимкнено).
+  function flySignal(st, key) {
+    if (st.flySaid === key) return;
+    st.flySaid = key;
+    H.api.sfx('fall-aside');
+  }
+
+  /// Мініплашка (телефон, коло прокручене з екрана) сама ловить, поки в шарі летить глек: поруч із «⤒ до кола»
+  /// з'являється «🏺 лови!» — палець уже вгорі, до смуги справа тягнутись не треба. Окрема кнопка в .clk-pin, а не
+  /// правка pinView: видно її рівно тоді, коли видно плашку (вона дитина .clk-pin).
+  function pinCatch(st) {
+    const b = st.pinLovy;
+    if (!b) return;
+    const kind = st.flyFall && !st.flyFall.hidden ? 'fall' : st.flyGold && !st.flyGold.hidden ? 'gold' : '';
+    if (b.dataset.kind === kind) return;          // щокадру — DOM лише на зміні
+    b.dataset.kind = kind;
+    b.hidden = !kind;
+  }
+
+  function mountPinLovy(st) {
+    const pin = st.el.querySelector('.clk-pin');
+    if (!pin) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'clk-pinlovy';
+    b.hidden = true;
+    b.dataset.kind = '';
+    b.textContent = '🏺 лови!';
+    b.setAttribute('aria-label', 'Лови глек!');
+    b.addEventListener('click', (e) => {
+      if (b.dataset.kind === 'fall') grabFall(st, e);
+      else if (b.dataset.kind === 'gold') catchGolden(st, e);
+    });
+    pin.appendChild(b);
+    st.pinLovy = b;
+  }
+
+  /// Напис біля шару поверх: «+N» над спійманим, «трісь» унизу смуги.
+  function flyPop(st, text, cls, x, y) {
+    const el = document.createElement('span');
+    el.className = 'clk-flypop ' + cls;
+    el.textContent = text;
+    el.style.left = Math.round(Math.max(60, Math.min(window.innerWidth - 60, x))) + 'px';
+    el.style.top = Math.round(y) + 'px';
+    fleeting(document.body, el, 1600);
   }
 
   // ---------- випадковості на сцені: кіт, зірка, вітер (v9 §A.6) ----------
@@ -1336,6 +1492,8 @@
   function loop(st) {
     if (!st.el) { st.raf = 0; return; }
     if (visible(st)) paint(st);
+    // Картку догорнули далеко з екрана (але вона на сторінці) — глеки однаково летять, поверх усього (записка №29).
+    else if (st.stageLaid && st.el.isConnected && !document.hidden) { paintGolden(st); paintFall(st); }
     st.raf = requestAnimationFrame(() => loop(st));
   }
 
@@ -1383,7 +1541,18 @@
   }
 
   /// Глек долетів до долівки: черепки навсібіч і тихе «трісь».
-  function shatter(st, x) {
+  /// Що сталось із серією, каже сервер наперед (fall.miss, ті самі гілки, що в Sync): обірвалась, фартух уберіг
+  /// чи серії й не було (записка №29). fly — глек летів у шарі поверх: напис там, де його й бачили.
+  function shatter(st, x, fly) {
+    const n = st.fallStreak || 0;
+    const text = st.fallMiss === 'apron' ? 'трісь — фартух уберіг серію'
+      : st.fallMiss === 'streak' && n > 0 ? 'трісь… серія ' + n + ' обірвалась' : 'трісь';
+    if (fly) {
+      H.api.sfx('break', { x });
+      const band = st.flyBand || viewBand();
+      flyPop(st, text, 'miss', window.innerWidth - 90, band.bottom - 70);
+      return;
+    }
     for (let i = 0; i < 8; i++) {
       const el = document.createElement('i');
       el.className = 'clk-shard';
@@ -1397,7 +1566,7 @@
       fleeting(st.fx, el, 1500);
     }
     H.api.sfx('break', { x });
-    popAt(st, 'трісь… серія обірвалась', 'miss', Math.min(70, Math.max(20, x)), 78);
+    popAt(st, text, 'miss', Math.min(70, Math.max(20, x)), 78);
   }
 
   // ---------- дії ----------
@@ -1516,6 +1685,11 @@
     if (!human(ev) || !st.golden || !st.mine || guardOn(st)) return;
     st.goldenGone = st.golden.at;      // ховаємо одразу: другий клік по тому самому глеку — лише червоний тост
     st.gold.hidden = true;
+    if (st.flyGold && !st.flyGold.hidden) {
+      const r = st.flyGold.getBoundingClientRect();
+      st.flyGold.hidden = true;
+      flyPop(st, '✨', 'big', r.left + r.width / 2, r.top - 10);
+    }
     order(st, 'catch');
   }
 
@@ -1526,6 +1700,14 @@
     ev.preventDefault();
     const f = st.fall;
     st.fallGone = f.at;
+    // Спіймали в шарі поверх (чи плашкою «лови!»): «+N» там, де його бачили, а не на схованій сцені.
+    if (st.flyFall && !st.flyFall.hidden) {
+      const r = st.flyFall.getBoundingClientRect();
+      st.flyFall.hidden = true;
+      flyPop(st, '+' + short(st.fallGain), 'big', r.left + r.width / 2, r.top - 10);
+      order(st, 'grab');
+      return;
+    }
     const sr = st.stage.getBoundingClientRect();
     const r = st.fallEl.getBoundingClientRect();
     st.fallEl.hidden = true;
@@ -1768,9 +1950,13 @@
     const v = ctx.view || {};
     const bonus = dec(stampPct(st, st.stamps));
     const cap = v.stampCap || 0;
+    // Записка #28 (Smaug, 05.10): велике число — клейма за весь час (від них бонус, витрати його не чіпають), а скільки
+    // ще можна витратити, стояло дрібним сірим рядком. Тепер вільні — поруч і того самого розміру.
     const head = '<div class="clk-stamps"><b>🔖 ' + stampsShort(st.stamps) + '</b>'
-      + '<span>+' + bonus + ' % до всього</span>'
-      + '<span class="muted small">вільних клейм: ' + count(st.stampsFree) + (v.firings ? ' · починав наново: ' + v.firings : '') + '</span></div>'
+      + '<span>за весь час · +' + bonus + ' % до всього</span>'
+      + '<span class="clk-free" title="Скільки ще можна витратити на секрети, реліквії й оздобу хати">вільних <b class="clk-freen">'
+      + '</b></span>'
+      + (v.firings ? '<span class="muted small">починав наново: ' + v.firings + '</span>' : '') + '</div>'
       + info('Почати наново — це спалити глеки, верстати й віхи, а натомість узяти клейма майстра за все, що наліпив '
         + 'за весь час. Перша тисяча клейм дає по +' + dec(st.stampBonus * 100) + ' % до всього назавжди, далі кожне нове '
         + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть, а після 4 млн бонус росте зовсім '
@@ -1779,13 +1965,16 @@
         + (cap ? ' (зараз +' + cap + ')' : '') + '.')
       + scienceLine(st, esc);
     // Два кола секретів (v9 §A.5): родинні — з першого дня, дідівські — на сотні клейм.
+    // Записка #28: вільні клейма й «бракує N 🔖» малює stampButtons() поверх готової розмітки — витрата чи нове клеймо
+    // не перемальовує всю вкладку (розмітка від вільних клейм не залежить, як і оздоба з lookButtons).
     const card = (s) => '<button type="button" class="clk-secret' + (s.owned ? ' owned' : '') + '" data-secret="' + esc(s.key)
-      + '" data-price="' + s.price + '"' + (s.owned || !st.mine || st.stampsFree < s.price ? ' disabled' : '') + '>'
+      + '" data-price="' + s.price + '" data-shut="' + (s.owned ? 1 : 0) + '"' + (s.owned || !st.mine ? ' disabled' : '') + '>'
       + '<b>' + esc(s.name) + '</b><span class="muted small">' + esc(s.desc) + '</span>'
+      + (s.owned ? '' : SHORT_HTML)
       + '<span class="clk-price stamp' + (s.owned ? ' done' : '') + '">' + (s.owned ? '✓ знаєш' : '🔖 ' + count(s.price)) + '</span></button>';
     const ring = (n) => st.secretList.filter((s) => (s.ring || 1) === n);
     const block = (title, note, list) => (list.length
-      ? '<div class="clk-sub">' + title + '<span class="muted small"> · ' + note + '</span></div>'
+      ? '<div class="clk-sub">' + title + '<span class="muted small"> · ' + note + '</span>' + FREE_HTML + '</div>'
         + '<div class="clk-secrets">' + list.map(card).join('') + '</div>'
       : '');
     // Третє коло (v10 §8) — коли перші два вже знаєш або клейм від 20 тисяч: новачкові мільярди лише лякали б.
@@ -1798,9 +1987,41 @@
     if (swap(st.fire._static, head + secrets + relics(st, esc))) {
       st.secretBtns = [...st.fire._static.querySelectorAll('[data-secret]')];
       for (const b of st.secretBtns) b.onclick = () => order(st, 'secret', { key: b.dataset.secret });
-      for (const b of st.fire._static.querySelectorAll('[data-relic]')) b.onclick = () => order(st, 'relic', { key: b.dataset.relic });
+      st.relicBtns = [...st.fire._static.querySelectorAll('[data-relic]')];
+      for (const b of st.relicBtns) b.onclick = () => order(st, 'relic', { key: b.dataset.relic });
+      st.freeNums = [...st.fire._static.querySelectorAll('.clk-freen')];
+      st.stampSig = '';
     }
+    stampButtons(st);
     st.slowAt = 0;
+  }
+
+  /// Вільні клейма в заголовках і «бракує N 🔖» на кнопках витрати (записка #28).
+  const FREE_HTML = '<span class="clk-subfree"> · 🔖 вільних <b class="clk-freen"></b></span>';
+  const SHORT_HTML = '<span class="clk-short" hidden></span>';
+  const shortText = (n) => 'бракує ' + count(n) + ' 🔖';
+
+  /// Наживо, без перемальовування: числа вільних клейм, вимкнені кнопки секретів і реліквій і чому вони вимкнені.
+  /// Кличеться з firePane на кожен вид; DOM чіпаємо лише тоді, коли вільних клейм чи «можна» стало інше.
+  function stampButtons(st) {
+    const free = st.stampsFree || 0;
+    const sig = free + '|' + (st.mine ? 1 : 0);
+    if (st.stampSig === sig) return;
+    st.stampSig = sig;
+    const t = count(free);
+    for (const el of st.freeNums || []) if (el.textContent !== t) el.textContent = t;
+    for (const b of (st.secretBtns || []).concat(st.relicBtns || [])) {
+      const price = +b.dataset.price || 0;
+      const shut = b.dataset.shut === '1';                     // знаєш секрет / реліквія на межі
+      const lack = st.mine && !shut && price > free;
+      const off = !st.mine || shut || lack;
+      if (b.disabled !== off) b.disabled = off;
+      const note = b.querySelector('.clk-short');
+      if (!note) continue;
+      const txt = lack ? shortText(price - free) : '';
+      if (note.hidden === lack) note.hidden = !lack;
+      if (note.textContent !== txt) note.textContent = txt;
+    }
   }
 
   /// Скарбниця роду (v11 §4): реліквії з рівнями за клейма. Кнопка — «наступний рівень за N клейм»; що дає — з
@@ -1811,15 +2032,18 @@
     const cat = st.shopCat && st.shopCat.relics;
     if (!list || !cat) return '';
     const pct = (x) => dec(Math.round(x * 1000) / 10);
-    return '<div class="clk-sub">🗝 Скарбниця роду<span class="muted small"> · реліквії за клейма: рівні без стелі, кожен утричі дорожчий</span></div>'
+    return '<div class="clk-sub">🗝 Скарбниця роду<span class="muted small"> · реліквії за клейма: рівні без стелі, кожен утричі дорожчий</span>'
+      + FREE_HTML + '</div>'
       + '<div class="clk-secrets clk-relics">' + list.map((r) => {
         const c = cat.find((x) => x.key === r.key);
         if (!c) return '';
-        const capped = c.cap > 0 && r.sum >= c.cap - 1e-9;
+        // Межа рівнів: сервер каже can = вистачає клейм і рівень не останній — тож «не можна» при достатніх клеймах = межа.
+        const capped = (c.cap > 0 && r.sum >= c.cap - 1e-9) || (!r.can && (st.stampsFree || 0) >= r.price);
         return '<button type="button" class="clk-secret clk-relic' + (r.level ? ' owned' : '') + '" data-relic="' + esc(r.key) + '"'
-          + (!st.mine || !r.can || capped ? ' disabled' : '') + '>'
+          + ' data-price="' + r.price + '" data-shut="' + (capped ? 1 : 0) + '"' + (!st.mine || capped ? ' disabled' : '') + '>'
           + '<b>' + (RELIC_ICON[r.key] || '🗝') + ' ' + esc(c.name) + (r.level ? ' · рівень ' + r.level : '') + '</b>'
           + '<span class="muted small">' + esc(c.desc) + (r.level ? ' · зараз ' + pct(r.sum) + ' %' : '') + '</span>'
+          + (capped ? '' : SHORT_HTML)
           + '<span class="clk-price stamp">' + (capped ? '✓ на межі' : '🔖 ' + count(r.price)) + '</span></button>';
       }).join('') + '</div>';
   }
@@ -1852,6 +2076,8 @@
     // Коло й полицю малює ремесло (clicker-craft.js), щойно воно завантажилось: виріб на колі й сирці на полиці.
     if (!st.craftWheel) st.jugBox.innerHTML = jug(w, 'wheel', body);
     st.fallJug.innerHTML = jugSvg(w, 'clk-fall-jug', 'fall', body);
+    // Свій slot: градієнти глека на сцені сховані разом із ним (hidden), і шар поверх на них не спирається.
+    if (st.flyFallJug) st.flyFallJug.innerHTML = jugSvg(w, 'clk-fall-jug', 'flyfall', body);
     if (st.craftShelf) return;
     // На полиці — глечики: у розписі, що на колі, і прості (кольору глини); що більша гончарня, то повніша полиця.
     let s = '';
@@ -1974,9 +2200,18 @@
 
   /// Клейма міняються рідко, але розмітку оздоби вони не чіпають: інакше кожне клеймо стирало б недописану вивіску.
   function lookButtons(st) {
+    const free = st.housePane && st.housePane.querySelector('.clk-lookfree b');
+    if (free) { const t = count(st.stampsFree || 0); if (free.textContent !== t) free.textContent = t; }
     for (const b of st.lookBtns || []) {
-      const off = !st.mine || b.dataset.on === '1' || +b.dataset.stamp > (st.stampsFree || 0);
+      const lack = st.mine && b.dataset.on !== '1' && +b.dataset.stamp > (st.stampsFree || 0);
+      const off = !st.mine || b.dataset.on === '1' || lack;
       if (b.disabled !== off) b.disabled = off;
+      // Записка #28: вимкнена через клейма — дрібно каже, скільки бракує (а не лише в title).
+      const note = b.querySelector('.clk-short');
+      if (!note) continue;
+      const txt = lack ? shortText(+b.dataset.stamp - (st.stampsFree || 0)) : '';
+      if (note.hidden === lack) note.hidden = !lack;
+      if (note.textContent !== txt) note.textContent = txt;
     }
   }
 
@@ -1999,13 +2234,14 @@
       + (g.options || []).map((o) => '<button type="button" class="clk-lookopt' + (g.value === o.value ? ' on' : '')
         + (o.owned ? ' owned' : '') + '" data-look="' + esc(g.key) + '" data-val="' + esc(o.value)
         + '" data-stamp="' + (o.owned ? 0 : o.price) + '" data-on="' + (g.value === o.value ? 1 : 0) + '" disabled>'
-        + esc(o.name) + (o.owned ? '' : '<span class="clk-lookprice">🔖' + o.price + '</span>') + '</button>').join('')
+        + esc(o.name) + (o.owned ? '' : '<span class="clk-lookprice">🔖' + o.price + '</span><span class="clk-short" hidden></span>') + '</button>').join('')
       + '</span></div>').join('');
     const sign = '<div class="clk-lookrow sign"><span class="clk-lookname">Вивіска<span class="muted small"> · як зветься твоя хата</span></span>'
       + '<span class="clk-signbox"><input class="clk-signin" type="text" maxlength="' + (hs.nameMax || 24)
       + '" value="' + esc(hs.named || '') + '" placeholder="Хата гончаря" aria-label="Ім\'я хати">'
       + '<button type="button" class="ghost small clk-signgo">Написати</button></span></div>';
     return '<div class="clk-sub">🎨 Оздоба<span class="muted small"> · за клейма, раз і назавжди</span>'
+      + (paid ? '<span class="clk-lookfree"> · 🔖 вільних <b>' + count(st.stampsFree || 0) + '</b></span>' : '')
       + info('Оздоба міняє вигляд хати на сцені й нічого не додає до доходу. Клейма на неї, як і на секрети, '
         + 'не згорають і бонусу не гублять — просто їх стає менше на секрети. Вивіска безплатна, міняй скільки хочеш.')
       + '</div><div class="clk-looks">' + rows + sign + '</div>';
@@ -2786,8 +3022,8 @@
         const st = ctx.clk;
         if (btn !== 'x' || !st) return false;
         const ev = { hpad: true, pointerType: 'mouse', button: 0, preventDefault() {} };
-        if (st.fall && !st.fallEl.hidden) { grabFall(st, ev); return true; }
-        if (st.golden && !st.gold.hidden) { catchGolden(st, ev); return true; }
+        if (st.fall && (!st.fallEl.hidden || (st.flyFall && !st.flyFall.hidden))) { grabFall(st, ev); return true; }
+        if (st.golden && (!st.gold.hidden || (st.flyGold && !st.flyGold.hidden))) { catchGolden(st, ev); return true; }
         // Кіт і зірка теж літають самі по собі — кільцем їх не спіймаєш, тож вони на тому самому Ⓧ.
         if (st.starEl && !st.starEl.hidden) { makeWish(st, ev); return true; }
         if (st.catEl && !st.catEl.hidden) { petCat(st, ev); return true; }
@@ -3012,6 +3248,9 @@
       st.root = root;
       st.boxWatch = keepBox(st);
       st.steady = steadyView(st);
+      mountFly(st);
+      mountPinLovy(st);
+      st.stageWatch = watchStage(st);
       st.pinBar = pinView(st);
       watchCard(st);
       H.mounted.add(st);
@@ -3111,6 +3350,7 @@
           if (Number.isFinite(at) && Number.isFinite(until)) st.fall = { at, until, x: v.fall.x || 40 };
           st.fallGain = v.fall.gain || 0;
           st.fallStreak = v.fall.streak || 0;
+          st.fallMiss = v.fall.miss || 'streak';
           st.streakBonus = v.fall.bonus || 0;
         }
         // Дев'яте оновлення: кіт, зірка, вітер, щасливі кліки, бажання й «що нового».
@@ -3212,7 +3452,7 @@
       const owned = st.styleList.filter((s) => s.owned).length;
       st.tabText.shop = '🔨 Майстерня';
       st.tabText.fire = '🔥 Клейма';
-      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + count(st.stamps) : '', 1);
+      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + count(st.stampsFree || 0) : '', 1);
       labelTab(st, 'shop');
       labelTab(st, 'fire');
       paintSections(st, owned);
@@ -3265,6 +3505,9 @@
       if (st.steady) st.steady.stop();
       if (st.fitWatch) st.fitWatch.stop();
       if (st.pinBar) st.pinBar.stop();
+      if (st.stageWatch) st.stageWatch.stop();
+      for (const b of [st.flyFall, st.flyGold]) if (b) b.remove();
+      st.flyFall = st.flyGold = st.flyFallJug = null;
       if (st.boxWatch) st.boxWatch.disconnect();
       if (st.io) { st.io.disconnect(); st.io = null; }
       for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);
