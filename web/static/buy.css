@@ -13,6 +13,15 @@
 .by-pack.on { background: #4a3a06; border-color: var(--accent2); }
 .by-pack.on b { color: var(--accent); }
 
+/* своя сума: гривні = черепки */
+.by-own { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); }
+.by-own.on { border-color: var(--accent2); background: #4a3a06; }
+.by-own-row { display: flex; align-items: center; gap: 8px; }
+.by-own-f { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; }
+/* 16px — щоб айфон не збільшував сторінку на фокусі */
+.by-own-f input { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; font-size: 16px; font-variant-numeric: tabular-nums; }
+.by-own-f span, .by-eq { color: var(--muted); }
+
 /* кому */
 .by-for { display: flex; flex-direction: column; gap: 6px; }
 .by-seg { display: flex; gap: 6px; }

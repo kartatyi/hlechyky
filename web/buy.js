@@ -16,7 +16,8 @@
   let data = null;                     // останнє GET /api/shards
   let count = 0;                       // скільки оплат чекає продавця
   let wrap = null;                     // відкрите вікно
-  let pack = 0;                        // обраний пакет, грн
+  let pack = 0;                        // обраний пакет чи своя сума, грн
+  let own = false;                     // своя сума, а не пакет
   let gift = false;                    // купуємо другові
   let to = '';                         // кому (нік друга)
   let step = 'pick';                   // pick — пакет і кому, pay — реквізити й «✓ Скинув»
@@ -70,7 +71,7 @@
     const x = opts || {};
     if (!o) return;
     close();
-    pack = 0; gift = !!x.for; to = x.for || ''; step = 'pick'; refusing = 0; note = '';
+    pack = 0; own = false; gift = !!x.for; to = x.for || ''; step = 'pick'; refusing = 0; note = '';
     wrap = document.createElement('div');
     wrap.className = 'modal by-modal';
     wrap.innerHTML = '<div class="card by-card" role="dialog" aria-modal="true" aria-label="Купити черепки"><div class="gwait"><span class="spin"></span> дивлюсь…</div></div>';
@@ -120,7 +121,7 @@
       return '<div class="by-lock">🔒 Черепки купують лише акаунти: гостьовий нік може зайняти хтось інший, і куплене пропало б.</div>'
         + '<div class="row"><button class="primary" type="button" data-acc>Закріпити нік</button></div>';
     }
-    const p = d.packs.find((x) => x.uah === pack);
+    const p = d.packs.find((x) => x.uah === pack) || (own && pack ? { uah: pack, shards: pack * d.rate } : null);
     return (step === 'pay' && p ? payHtml(d, p) : pickHtml(d)) + mineHtml(d);
   }
 
@@ -130,6 +131,7 @@
       + ' на картку чи в банку — і щойно гроші прийдуть, черепки впадуть.</div>'
       + '<div class="by-packs">' + d.packs.map((x) => '<button type="button" class="by-pack' + (x.uah === pack ? ' on' : '') + '" data-pack="' + x.uah
         + '" aria-pressed="' + (x.uah === pack) + '"><b>' + num(x.shards) + ' 🏺</b><span>' + x.uah + ' грн</span></button>').join('') + '</div>'
+      + (d.custom ? ownHtml(d) : '')
       + '<div class="by-for"><span class="muted small">Кому</span><div class="by-seg">'
       + '<button type="button" data-to="me" class="' + (gift ? '' : 'on') + '" aria-pressed="' + !gift + '">Собі</button>'
       + '<button type="button" data-to="friend" class="' + (gift ? 'on' : '') + '" aria-pressed="' + gift + '">🎁 Другові</button></div>'
@@ -141,6 +143,18 @@
       + '</div>'
       + '<div class="row"><button type="button" class="primary" data-next' + (pack ? '' : ' disabled') + '>Далі — до оплати</button></div>'
       + '<div class="muted small">Черепки назад у гривні не міняються.</div>';
+  }
+
+  /// Своя сума: два пов'язані поля — гривні й черепки. Вписав одне — друге рахується саме; черепки округлюються вгору
+  /// до цілої гривні (2 550 🏺 → 26 грн → 2 600 🏺), бо платять цілими гривнями.
+  function ownHtml(d) {
+    const uah = own && pack ? pack : '';
+    return '<div class="by-own' + (own ? ' on' : '') + '"><span class="muted small">Або своя сума — від ' + d.custom.min + ' до ' + num(d.custom.max) + ' грн</span>'
+      + '<div class="by-own-row"><label class="by-own-f"><input type="number" inputmode="numeric" min="' + d.custom.min + '" max="' + d.custom.max
+      + '" step="1" placeholder="' + d.custom.min + '" aria-label="Скільки гривень" data-own="uah" value="' + uah + '"><span>грн</span></label>'
+      + '<span class="by-eq">=</span>'
+      + '<label class="by-own-f"><input type="number" inputmode="numeric" min="0" step="' + d.rate + '" placeholder="' + num(d.custom.min * d.rate).replace(/\s/g, '')
+      + '" aria-label="Скільки черепків" data-own="shards" value="' + (uah ? uah * d.rate : '') + '"><span>🏺</span></label></div></div>';
   }
 
   function payHtml(d, p) {
@@ -271,7 +285,8 @@
     const on = (sel, fn) => box.querySelectorAll(sel).forEach((b) => { b.onclick = (e) => fn(b, e); });
     on('[data-close]', () => close());
     on('[data-acc]', () => { close(); o.askNick(true, 'register', String(o.me.nick || '').replace(/^гість\s*/i, '')); });
-    on('[data-pack]', (b) => { pack = +b.dataset.pack; paint(); });
+    on('[data-pack]', (b) => { pack = +b.dataset.pack; own = false; paint(); });
+    wireOwn(box);
     on('[data-to]', (b) => {
       gift = b.dataset.to === 'friend';
       paint();
@@ -290,7 +305,7 @@
     on('[data-next]', (b) => next(box, b));
     on('[data-back]', () => { step = 'pick'; paint(); });
     on('[data-paid]', (b) => act(b, 'записую…', '/api/shards/paid', { uah: pack, for: gift ? to.trim() : null }, (r) => {
-      if (r && r.ok) { step = 'pick'; pack = 0; gift = false; to = ''; }
+      if (r && r.ok) { step = 'pick'; pack = 0; own = false; gift = false; to = ''; }
     }));
     on('[data-copy]', (b) => copy(b.dataset.copy));
     on('[data-cancel]', (b) => act(b, 'скасовую…', '/api/shards/' + b.dataset.cancel + '/cancel'));
@@ -307,6 +322,24 @@
     on('[data-no]', (b) => act(b, 'позначаю…', '/api/shards/' + b.dataset.no + '/no', { note: note.trim() }, (r) => {
       if (r && r.ok) { refusing = 0; note = ''; }
     }));
+  }
+
+  /// Своя сума: пишемо в одне поле — друге й вибір оновлюються на місці, без перемальовування (інакше губився б курсор).
+  function wireOwn(box) {
+    const ou = box.querySelector('[data-own="uah"]');
+    const os = box.querySelector('[data-own="shards"]');
+    if (!ou || !os) return;
+    const take = (uah) => {
+      own = uah > 0; pack = uah;
+      box.querySelectorAll('[data-pack]').forEach((b) => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); });
+      box.querySelector('.by-own').classList.toggle('on', own);
+      const nb = box.querySelector('[data-next]');
+      if (nb) nb.disabled = !pack;
+    };
+    ou.oninput = () => { const u = Math.max(0, Math.floor(+ou.value) || 0); os.value = u ? u * data.rate : ''; take(u); };
+    os.oninput = () => { const sh = Math.max(0, Math.floor(+os.value) || 0); const u = sh ? Math.ceil(sh / data.rate) : 0; ou.value = u || ''; take(u); };
+    os.onblur = () => { if (own && pack) os.value = pack * data.rate; };
+    for (const i of [ou, os]) i.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); next(box, box.querySelector('[data-next]')); } };
   }
 
   /// «Далі — до оплати»: сервер спершу каже, чи можна (друг — акаунт, оплат не забагато), і лише тоді — реквізити:

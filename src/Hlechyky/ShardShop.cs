@@ -13,9 +13,9 @@ namespace Hlechyky;
 // Купити черепки за гривні — як гроші в Падельні (08.10.2026): покупець обирає пакет, бачить картку й банку продавця
 // (ті самі банки, що в його профілі Падельні), скидає гроші й тисне «✓ Скинув». Продавець бачить замовлення в «чекають»
 // і тисне «✓ Отримав» — черепки падають одразу; «✕ Не прийшло» — відмова з приміткою. Рішення власника: вручну, без
-// API банку; 1 грн = 100 🏺; пакети 50/100/250/500 грн без бонусу; можна купити другові; куплене не йде в «зароблено»
-// (таблиці й ачівки — лише за гру). Черепки назад у гривні не міняються ніколи: інакше гра на черепки стала б грою
-// на гроші.
+// API банку; 1 грн = 100 🏺; пакети 50/100/250/500 грн без бонусу або своя сума (типово 10–5000 грн); можна купити
+// другові; куплене не йде в «зароблено» (таблиці й ачівки — лише за гру). Черепки назад у гривні не міняються ніколи:
+// інакше гра на черепки стала б грою на гроші.
 // =====================================================================================================================
 
 /// <summary>Секція <c>ShardShop</c> конфігу. Порожній <see cref="Seller"/> — купівля закрита.</summary>
@@ -34,8 +34,15 @@ public sealed class ShardShopOptions
     public int[]? Packs { get; set; }
     /// <summary>Скільки оплат одного покупця можуть водночас чекати підтвердження.</summary>
     public int PendingMax { get; set; } = 3;
+    /// <summary>Своя сума (цілі гривні) — від і до. <see cref="CustomMax"/> = 0 — лише пакети.</summary>
+    public int CustomMin { get; set; } = 10;
+    public int CustomMax { get; set; } = 5000;
 
     public int[] PackList => Packs is { Length: > 0 } p ? [.. p.Where(x => x > 0).Distinct().Order()] : DefaultPacks;
+    public bool Custom => CustomMax > 0 && CustomMax >= CustomMin;
+
+    /// <summary>Пакет або своя сума в межах.</summary>
+    public bool Allows(int uah) => uah > 0 && (PackList.Contains(uah) || (Custom && uah >= Math.Max(1, CustomMin) && uah <= CustomMax));
 }
 
 /// <summary>
@@ -216,7 +223,7 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
     bool MayConfirm(ShardActor me, string? seller) => me.Admin || (me.Account && seller is not null && Same(me.Nick, seller));
 
     /// <summary>«10 000» — з нерозривним пробілом, щоб число не рвалось на два рядки.</summary>
-    public static string Num(int n) => n.ToString("#,0", new NumberFormatInfo { NumberGroupSeparator = " " });
+    public static string Num(int n) => n.ToString("#,0", new NumberFormatInfo { NumberGroupSeparator = "\u00a0" });
 
     static string Shards(int n) => $"{Num(n)} {Economy.Shards(n)}";
 
@@ -241,6 +248,7 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
             account = me.Account,
             rate = o.Rate,
             packs = o.PackList.Select(u => new { uah = u, shards = u * o.Rate }).ToList(),
+            custom = o.Custom ? new { min = Math.Max(1, o.CustomMin), max = o.CustomMax } : null,
             pendingMax = o.PendingMax,
             seller = seller is null ? null : new
             {
@@ -268,7 +276,8 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
         if (!me.Account) return (new(false, AccountsOnly, 403), "", "", 0);
         if (Seller() is not { } seller) return (new(false, Closed), "", "", 0);
         if (Same(me.Nick, seller)) return (new(false, "Ти ж продавець — у себе черепки не купують"), "", "", 0);
-        if (uah is not { } u || !O.PackList.Contains(u)) return (new(false, "Такого пакета нема — обери один із запропонованих"), "", "", 0);
+        if (uah is not { } u || !O.Allows(u))
+            return (new(false, O.Custom ? $"Сума — від {Math.Max(1, O.CustomMin)} до {Num(O.CustomMax)} грн, цілими гривнями" : "Такого пакета нема — обери один із запропонованих"), "", "", 0);
         var name = (forNick ?? "").Trim();
         if (name.Length == 0 || Same(name, me.Nick)) return (null, seller, me.Nick, u);
         return db.FindAccount(name) is { } acc

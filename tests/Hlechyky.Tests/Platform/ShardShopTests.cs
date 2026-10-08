@@ -133,13 +133,35 @@ public sealed class ShardShopTests : IDisposable
     [Theory]
     [InlineData(null)]
     [InlineData(0)]
-    [InlineData(75)]
     [InlineData(-50)]
-    public void Only_listed_packs_can_be_bought(int? uah)
+    [InlineData(9)]
+    [InlineData(5001)]
+    public void Own_amount_only_within_bounds(int? uah)
     {
         var r = _shop.Paid(Olia, uah, null);
         Assert.False(r.Ok);
-        Assert.Contains("пакета", r.Message);
+        Assert.Equal("Сума — від 10 до 5\u00a0000 грн, цілими гривнями", r.Message);
+    }
+
+    [Fact]
+    public void Own_amount_buys_at_the_same_rate()
+    {
+        var c = Views.Json(_shop.View(Olia)).GetProperty("custom");
+        Assert.Equal((10, 5000), (c.GetProperty("min").GetInt32(), c.GetProperty("max").GetInt32()));
+        var id = Order(_shop.Paid(Olia, 75, null));
+        Assert.True(_shop.Confirm(Vlad, id).Ok);
+        Assert.Equal(7_500, _eco.Economy.Balance("Оля"));
+        Assert.True(_shop.Paid(Olia, 10, null).Ok);
+        Assert.True(_shop.Paid(Olia, 5000, null).Ok);
+    }
+
+    [Fact]
+    public void Without_own_amount_only_packs()
+    {
+        _opts.CustomMax = 0;
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, Views.Json(_shop.View(Olia)).GetProperty("custom").ValueKind);
+        Assert.Contains("пакета", _shop.Paid(Olia, 75, null).Message);
+        Assert.True(_shop.Paid(Olia, 250, null).Ok);
     }
 
     [Fact]
@@ -165,7 +187,7 @@ public sealed class ShardShopTests : IDisposable
     public void Check_before_the_bank_details_says_the_same_as_paid_and_records_nothing()
     {
         Assert.Contains("не акаунт", _shop.Check(Olia, 50, "Вася").Message);
-        Assert.Contains("пакета", _shop.Check(Olia, 75, null).Message);
+        Assert.Contains("від 10 до", _shop.Check(Olia, 7, null).Message);
         Assert.Equal(403, _shop.Check(new ShardActor("гість Вася", false, false), 50, null).Status);
         var ok = _shop.Check(Olia, 50, "петро");
         Assert.True(ok.Ok, ok.Message);
@@ -206,7 +228,7 @@ public sealed class ShardShopTests : IDisposable
         Assert.Equal(25_000, _eco.Economy.Balance("Оля"));
         var w = Assert.Single(_eco.Outbox.Of<WalletChanged>(), x => x.Nick == "Оля");
         Assert.Equal($"buy:{id}", w.Reason);
-        Assert.Equal("Лови +25 000 черепків: куплено за 250 грн", w.Text);
+        Assert.Equal("Лови +25\u00a0000 черепків: куплено за 250 грн", w.Text);
 
         // Друга вкладка, подвійний тиць — не вдруге
         Assert.Equal("Уже зараховано", _shop.Confirm(Vlad, id).Message);
