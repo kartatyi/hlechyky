@@ -357,7 +357,8 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 Кожна успішна операція → `Outbox.Wallet` (Broadcaster шле `wallet` на всі з'єднання ніка). Причини
 (`reason`) — короткі коди: `listen`, `win:chess`, `draw:chess`, `play:chess`, `solo:mines`, `daily:wordle`,
 `ach:first-win`, `stake`, `stake-win`, `stake-refund`, `clicker`, `award:skilky`, `ad:listen`, `shop:<річ>`,
-`gift:<річ>`… (у старих записах
+`gift:<річ>`, `roulette-bet:<гра>`/`roulette-win:<гра>`/`roulette-back:<гра>` (рулетка, хвіст — `roulette` чи `roulette-solo`,
+підпис «Рулетка — ставка/виграш/ставку повернуто»)… (у старих записах
 ще трапляються `ad:winner`/`ad:entry`/`ad:vote` від конкурсу реклами — тексти для них `Economy.Reason` знає й далі).
 
 ### 6.2 Джерела (усі числа — в `appsettings.json`, секція `Economy`)
@@ -405,6 +406,14 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 прокльон «Цап» · ціль: Петро», в історії — без ніка), відкупитись — 1000 (`curse-ransom:<прокльон>`, ref
 `curse-ransom:<id>`; черепки згорають, тому, хто наслав, нічого не йде — інакше прокльон став би заробітком),
 дізнатися від кого — 300 (`curse-reveal:<прокльон>`, ref `curse-reveal:<id>`).
+
+**Рулетка** ([specs/roulette.md](specs/roulette.md) §3) — не банк столу: дім платить 35:1 зі своєї кишені. Каса
+(`RouletteBook`) списує одним `TrySpend` на гравця за коло в мить «Ставки зроблено!» (`roulette-bet:<гра>`, ref
+`roulette-bet:{кімната}:{epoch}:{коло}:{nick_key}`), а коли кулька лягла, — `Grant` повернення з виграшем
+(`roulette-win:<гра>`, ref `roulette-win:…` з тим самим хвостом); `roulette-back` — лише аварійне повернення списаного,
+коли запис кола зіпсовано. Закрите коло до виплати лежить у `game_state` під ключем `roulette:pending`: після падіння
+процесу каса розраховує його за вже вирішеним числом і платить лише тим, чиє списання є в леджері. Лімітів ставки нема,
+поза стелями (як і ставки на партію).
 
 ## 7. Результати, рейтинги, таблиці
 

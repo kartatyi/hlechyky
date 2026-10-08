@@ -1,0 +1,401 @@
+/* Рулетка: колесо з петриківкою, Глек-круп'є, поле ставок і черепки-фішки. Кольори — змінними (spec roulette.md §8.10);
+   свої оголошуємо в :root з фолбеками, бо модуль читає їх через ctx.css() (колесо малюється на полотні). */
+:root {
+  --rl-felt: #24503a;                 /* сукно поля — темно-зелене з глиняним відтінком */
+  --rl-felt-warm: rgba(197, 118, 58, .14);
+  --rl-line: rgba(255, 244, 220, .32);  /* розмітка поля */
+  --rl-on-felt: #fff8ec;
+  --rl-red: #b3261e;
+  --rl-black: #1d1a18;
+  --rl-green: #2f7d3a;
+  --rl-wood: #7a4a26;
+  --rl-cream: #efe3c6;                /* доріжка кульки — світла полива */
+  --rl-orn1: #c8352b;
+  --rl-orn2: #e8b83a;
+  --rl-orn3: #4f8a3a;
+  --rl-c1: #d9c3a0;
+  --rl-c5: #b5562e;
+  --rl-c25: #3f7f4f;
+  --rl-c100: #2f5fa8;
+  --rl-c500: #2a2420;
+  --rl-gold: #d9a441;
+  --rl-p0: #e0a030;
+  --rl-p1: #3f8fd8;
+  --rl-p2: #5bb85b;
+  --rl-p3: #c45bc4;
+  --rl-p4: #e06a3a;
+  --rl-p5: #40b8b0;
+  --rl-p6: #d84a6a;
+  --rl-p7: #9a8a6a;
+  --rl-hl: rgba(255, 226, 140, .3);   /* підсвітка покритих чисел */
+  --rl-bubble: #fffaf0;
+  --rl-bubble-ink: #3b2a12;
+  --rl-shadow: rgba(0, 0, 0, .45);
+}
+
+.rl { width: 100%; max-width: 1180px; margin: 0 auto; display: grid; gap: 12px; align-items: start; }
+.rl.L-wide { grid-template-columns: 340px minmax(0, 1fr); }
+.rl.L-mid, .rl.L-vert { grid-template-columns: minmax(0, 1fr); }
+.rl-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rl .muted { color: var(--muted); }
+.rl .small { font-size: .82em; }
+
+/* ---------------- сцена: Глек, хмарка, колесо, число, історія ---------------- */
+.rl-stage { display: grid; gap: 6px 8px; align-items: center; min-width: 0; }
+.L-wide .rl-stage {
+  grid-template-columns: 120px minmax(0, 1fr);
+  grid-template-areas: "glek say" "wheel wheel" "big big" "hist hist";
+  position: sticky; top: calc(var(--gtop-h, 0px) + 8px);
+}
+.L-mid .rl-stage {
+  grid-template-columns: 96px 240px minmax(0, 260px);
+  grid-template-areas: "glek wheel say" "big big big" "hist hist hist";
+  justify-content: center;
+}
+.L-vert .rl-stage {
+  grid-template-columns: 72px 180px minmax(0, 1fr);
+  grid-template-areas: "glek wheel say" "big big big" "hist hist hist";
+  gap: 6px;
+}
+.rl-glek { grid-area: glek; position: relative; align-self: center; }
+.L-wide .rl-glek { align-self: start; z-index: 2; }
+.rl-say { grid-area: say; }
+.rl-wheelbox { grid-area: wheel; }
+.rl-big { grid-area: big; }
+.rl-hist { grid-area: hist; }
+
+/* Глек */
+.rl-glek img { display: block; width: 100%; height: auto; transform-origin: 50% 92%; filter: drop-shadow(0 4px 6px var(--rl-shadow)); user-select: none; -webkit-user-drag: none; }
+.rl-badge { position: absolute; right: -6px; top: -8px; font-size: 1.35em; line-height: 1; pointer-events: none; }
+.L-vert .rl-badge { font-size: 1em; right: -4px; top: -6px; }
+.rl-rake { position: absolute; left: 55%; bottom: 2%; font-size: 1.5em; line-height: 1; opacity: 0; pointer-events: none; }
+.L-vert .rl-rake { font-size: 1.05em; }
+
+.rl-glek[data-mood="idle"] img { animation: rl-g-idle 3s ease-in-out infinite; }
+.rl-glek[data-mood="hurry"] img { animation: rl-g-hurry .7s ease-in-out infinite; }
+.rl-glek[data-mood="hurry"] .rl-badge { animation: rl-g-tick 1s steps(2, jump-none) infinite; }
+.rl-glek[data-mood="call"] img { transform: rotate(9deg); }   /* після ривка — стежить за колесом */
+.rl-glek[data-mood="call"].go img { animation: rl-g-call 1.2s ease-out; }
+.rl-glek[data-mood="dance"].go img { animation: rl-g-hopak 3s ease-in-out 2; }
+.rl-glek[data-mood="dance"].go .rl-badge { animation: rl-g-hurry .5s ease-in-out 12; }
+.rl-glek[data-mood="laugh"].go img { animation: rl-g-laugh 2s linear; }
+.rl-glek[data-mood="rake"].go img { animation: rl-g-rake 1.5s ease-in-out; }
+.rl-glek[data-mood="laugh"].go .rl-rake, .rl-glek[data-mood="rake"].go .rl-rake { animation: rl-g-stick 1.5s ease-in-out; }
+.rl-glek[data-mood="clap"].go img { animation: rl-g-clap 1.5s ease-in-out; }
+.rl-glek[data-mood="sigh"] img { transform: scaleY(.92); }
+.rl-glek[data-mood="sigh"].go img { animation: rl-g-sigh 2s ease-in-out; }
+.rl-glek[data-mood="doze"] img { animation: rl-g-doze 4s ease-in-out infinite; }
+.rl-glek[data-mood="doze"] .rl-badge { animation: rl-g-zz 4s ease-in-out infinite; }
+
+/* хмарка репліки */
+.rl-say {
+  position: relative; z-index: 3; align-self: center; justify-self: start; max-width: 100%;
+  background: var(--rl-bubble); color: var(--rl-bubble-ink); border-radius: 12px; padding: 6px 10px;
+  font-size: .86em; line-height: 1.28; box-shadow: 0 4px 14px var(--rl-shadow);
+  opacity: 0; transform: translateY(4px) scale(.96); transition: opacity .25s, transform .25s; pointer-events: none;
+}
+.rl-say::before {
+  content: ""; position: absolute; left: -6px; top: 50%; width: 12px; height: 12px; margin-top: -6px;
+  background: var(--rl-bubble); transform: rotate(45deg); border-radius: 2px;
+}
+.rl-say.on { opacity: 1; transform: none; }
+.L-wide .rl-say { align-self: start; margin-top: 18px; }
+.L-vert .rl-say { font-size: .74em; padding: 5px 7px; border-radius: 10px; }
+.rl-say:empty { display: none; }
+/* Вузький телефон (≤ 440: 320…412): поруч із колесом хмарці лишалось 50…115 px — висока вузька стрічка. Тут Глек і колесо
+   (72 + 6 + 180 = 258 px) по центру, а хмарка — окремим рядком під ними на всю ширину, хвостиком угору до Глека (його
+   середина — 93 px лівіше від середини сцени). Рядок тримає місце й порожнім, щоб поле не стрибало, коли Глек заговорить. */
+@media (max-width: 440px) {
+  .L-vert .rl-stage {
+    grid-template-columns: minmax(0, 1fr) 72px 180px minmax(0, 1fr);
+    grid-template-areas: ". glek wheel ." "say say say say" "big big big big" "hist hist hist hist";
+  }
+  .L-vert .rl-say, .L-vert .rl-say:empty {
+    display: block; justify-self: stretch; margin-top: 4px; min-height: calc(2 * 1.28em + 10px);
+    font-size: .8em; text-align: center;
+  }
+  .L-vert .rl-say:empty { visibility: hidden; }
+  .L-vert .rl-say::before { left: calc(50% - 99px); top: -6px; margin-top: 0; }
+}
+
+/* колесо й кулька */
+.rl-wheelbox { position: relative; aspect-ratio: 1 / 1; border-radius: 50%; justify-self: center; box-shadow: 0 12px 26px var(--rl-shadow), 0 0 0 2px rgba(0, 0, 0, .3); }
+.L-wide .rl-wheelbox { width: 320px; margin-top: -44px; }
+.L-mid .rl-wheelbox { width: 240px; }
+.L-vert .rl-wheelbox { width: 180px; }
+.rl-wheel { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 50%; will-change: transform; }
+.rl-ballrot { position: absolute; inset: 0; pointer-events: none; will-change: transform; }
+.rl-ballrot.hide { visibility: hidden; }
+.rl-drop { position: absolute; inset: 0; }
+.rl-drop.down { transform: translateY(12.75%); }   /* з доріжки (0,82 R) у кишеньку (0,565 R) */
+.rl-ball {
+  position: absolute; left: 50%; top: 9%; width: 5.2%; aspect-ratio: 1 / 1; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #fff6e8 0 9%, #f0b37e 24%, var(--clay, #c5763a) 55%, #6b3415 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .6), inset 0 0 0 .5px rgba(60, 25, 5, .6);
+}
+.rl-conf { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.rl-conf i {
+  position: absolute; left: 50%; top: 45%; width: 7%; height: 5.5%; opacity: 0;
+  clip-path: polygon(10% 24%, 34% 4%, 64% 0%, 90% 16%, 100% 48%, 90% 80%, 64% 100%, 30% 96%, 6% 78%, 0% 46%);
+  background: var(--g, var(--rl-c5));
+}
+.rl-conf.on i { animation: rl-conf 2.8s cubic-bezier(.2, .7, .3, 1) both; }
+
+/* велике число й підсумок кола */
+.rl-big { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.rl-big:empty { display: none; }
+.rl-bigline { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 700; font-size: 1.15em; animation: rl-pop .35s ease-out; }
+.rl-sum { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 8px; font-size: .86em; }
+.rl-res { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
+.rl-res.me { border-color: var(--accent); }
+.rl-res.up b { color: var(--ok); }
+.rl-res.down b { color: var(--danger); }
+
+/* кружечки чисел (історія, підсумок) */
+.rl-num {
+  display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%;
+  font-size: .76em; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .25);
+}
+.rl-num.r { background: var(--rl-red); }
+.rl-num.b { background: var(--rl-black); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .25), 0 0 0 1px rgba(255, 255, 255, .18); }
+.rl-num.g { background: var(--rl-green); }
+.rl-num.new { box-shadow: 0 0 0 2px var(--accent); animation: rl-pop .35s ease-out; }
+.rl-num.xl { width: 46px; height: 46px; font-size: 1.15em; box-shadow: 0 0 0 3px var(--rl-gold), 0 4px 10px var(--rl-shadow); }
+.rl-hist { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; min-width: 0; }
+.L-vert .rl-hist {
+  flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain;
+  padding: 3px 2px; scrollbar-width: none;
+}
+.L-vert .rl-hist::-webkit-scrollbar { display: none; }
+
+.rl-closed { text-align: center; padding: 8px 12px; border-radius: 10px; color: var(--danger); background: var(--panel2); border: 1px solid var(--danger); font-weight: 600; }
+
+/* ---------------- поле ---------------- */
+.rl-board {
+  display: grid; position: relative; padding: 6px; border-radius: 14px; color: var(--rl-on-felt);
+  background: radial-gradient(circle at 25% 15%, var(--rl-felt-warm), transparent 60%), var(--rl-felt);
+  border: 4px solid var(--rl-wood); box-shadow: inset 0 0 26px rgba(0, 0, 0, .35), 0 6px 18px var(--rl-shadow);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.rl-board.h { grid-template-columns: repeat(14, minmax(0, 1fr)); grid-template-rows: repeat(3, 46px) 36px 36px; }
+.rl-board.v { grid-template-columns: 34px repeat(3, minmax(0, 1fr)) 46px; grid-template-rows: repeat(14, 40px); }
+
+.rl-n, .rl-zero { position: relative; display: grid; place-items: center; border: 1px solid var(--rl-line); min-width: 0; transition: background .12s; }
+.rl-n span, .rl-zero span {
+  display: grid; place-items: center; min-width: 27px; height: 27px; padding: 0 3px; border-radius: 50%;
+  font-weight: 800; font-size: .9em; color: #fff; font-variant-numeric: tabular-nums; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .3);
+}
+.rl-n.r span { background: var(--rl-red); }
+.rl-n.b span { background: var(--rl-black); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .3), 0 0 0 1px rgba(255, 255, 255, .2); }
+.rl-zero { background: color-mix(in srgb, var(--rl-green) 70%, transparent); }
+.rl-zero span { background: var(--rl-green); box-shadow: 0 0 0 2px rgba(255, 255, 255, .5); }
+.rl-board.h .rl-zero { border-radius: 40px 0 0 40px; }
+.rl-board.v .rl-zero { border-radius: 40px 40px 0 0; }
+.rl-n.hl, .rl-zero.hl { background: var(--rl-hl); }
+.rl-n.win, .rl-zero.win { background: color-mix(in srgb, var(--rl-gold) 40%, transparent); box-shadow: inset 0 0 0 2px var(--rl-gold); }
+.rl-n.win span, .rl-zero.win span { animation: rl-winpulse 1.2s ease-in-out infinite; }
+.rl-n.win::after, .rl-zero.win::after {   /* глечик-маркер на виграшному числі */
+  content: ""; position: absolute; right: 1px; top: 1px; width: 18px; height: 18px; z-index: 1;
+  background: url(/static/glek.svg) center / contain no-repeat; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .6));
+}
+
+.rl-o {
+  position: relative; min-width: 0; padding: 0; border-radius: 0; border: 1px solid var(--rl-line);
+  background: transparent; color: var(--rl-on-felt); font-weight: 700; font-size: .84em; justify-content: center; align-items: center;
+  white-space: nowrap; overflow: hidden; transition: background .12s;
+}
+.rl-o:hover { background: rgba(255, 255, 255, .06); }
+.rl-o:active { transform: none; }
+.rl-o.hl, .rl-o.cur { background: var(--rl-hl); }
+.rl-o.cur { box-shadow: inset 0 0 0 2px var(--accent); }
+.rl-o .sm { display: none; }
+.rl-o .dia { font-style: normal; }
+.rl-red .dia { color: var(--rl-red); text-shadow: 0 0 2px rgba(255, 255, 255, .55); }
+.rl-black .dia { color: var(--rl-black); text-shadow: 0 0 1px #fff, 0 0 3px rgba(255, 255, 255, .8); }
+.rl-oc { position: absolute; inset: 0; pointer-events: none; }
+.rl-oc .rl-stk { left: 50%; top: 50%; }
+.rl-board.v .rl-o .lg { display: none; }
+.rl-board.v .rl-o .sm { display: inline; }
+.rl-board.v .rl-doz span, .rl-board.v .rl-even .sm { writing-mode: vertical-rl; transform: rotate(180deg); }
+.rl-board.v .rl-even.rl-red .sm, .rl-board.v .rl-even.rl-black .sm { writing-mode: horizontal-tb; transform: none; font-size: 1.5em; }
+.rl-board.v .rl-o { font-size: .8em; }
+
+.rl-hit { position: relative; z-index: 2; cursor: pointer; touch-action: pan-y; -webkit-tap-highlight-color: transparent; }
+.rl-board.off .rl-hit, .rl-board.off .rl-o { cursor: default; }
+.rl-chips { position: relative; z-index: 3; pointer-events: none; }
+
+/* приціл (наведення, дотик) і курсор клавіш на точці решітки */
+.rl-aim, .rl-cur {
+  position: absolute; width: 16px; height: 16px; translate: -50% -50%; border-radius: 50%; z-index: 5;
+  border: 2px solid var(--accent); box-shadow: 0 0 0 2px rgba(0, 0, 0, .35); pointer-events: none;
+}
+.rl-cur { border-style: dashed; width: 20px; height: 20px; }
+
+/* ---------------- черепки (фішки) ---------------- */
+.rl-sh {
+  --shard: polygon(10% 24%, 34% 4%, 64% 0%, 90% 16%, 100% 48%, 90% 80%, 64% 100%, 30% 96%, 6% 78%, 0% 46%);
+  position: absolute; inset: 0; clip-path: var(--shard); background: var(--pc, rgba(0, 0, 0, .5));
+}
+.rl-sh::before {
+  content: ""; position: absolute; inset: 2px; clip-path: var(--shard);
+  background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .45), rgba(255, 255, 255, 0) 52%), var(--g, var(--rl-c1));
+}
+.rl-sh.g500::before { background: linear-gradient(135deg, #f6d27a, var(--rl-gold) 45%, #8a6420); }
+.rl-sh.g500::after {
+  content: ""; position: absolute; inset: 4px; clip-path: var(--shard);
+  background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .28), rgba(255, 255, 255, 0) 50%), var(--rl-c500);
+}
+.g1 { --g: var(--rl-c1); }
+.g5 { --g: var(--rl-c5); }
+.g25 { --g: var(--rl-c25); }
+.g100 { --g: var(--rl-c100); }
+.g500 { --g: var(--rl-c500); }
+.gall { --g: conic-gradient(from 30deg, var(--rl-c5), var(--rl-c25), var(--rl-c100), var(--rl-c500), var(--rl-c1), var(--rl-c5)); }
+
+.rl-stk {
+  position: absolute; width: 23px; height: 23px; z-index: 1;
+  translate: calc(-50% + var(--ox, 0px)) calc(-50% + var(--oy, 0px));
+  transition: transform .6s cubic-bezier(.5, 0, .8, .4), opacity .6s ease-in;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .55));
+}
+.rl-stk .rl-sh { transform: translateY(calc(var(--d, 0) * 2px)); }
+.rl-stk b {
+  position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; font-size: 8.5px; font-weight: 800;
+  letter-spacing: -.03em; color: #fff; text-shadow: 0 0 2px rgba(0, 0, 0, .9), 0 1px 1px rgba(0, 0, 0, .8); line-height: 1;
+}
+.rl-stk.mine { z-index: 2; }
+.rl-stk.other { opacity: .85; }
+.rl-stk.gone { opacity: .55; }
+.rl-stk.win { filter: drop-shadow(0 0 4px var(--rl-gold)) drop-shadow(0 1px 1px rgba(0, 0, 0, .6)); }
+.rl-stk.lose.raking { transform: translate(var(--rx, 0px), var(--ry, 0px)) scale(.3); opacity: 0; }
+.rl-stk.lose.raked { opacity: 0; }
+.rl-stk.pay {
+  --pc: var(--rl-gold); z-index: 3;
+  translate: calc(-50% + var(--ox, 0px) + 11px) calc(-50% + var(--oy, 0px) - 10px);
+  animation: rl-pay .5s ease-out .25s both;
+}
+.rl-more {
+  position: absolute; translate: 4px -24px; z-index: 4; font-size: 9px; font-weight: 800; padding: 0 4px;
+  border-radius: 999px; background: var(--panel); color: var(--text); border: 1px solid var(--line);
+}
+
+/* ---------------- панель фішок і кнопок ---------------- */
+.rl-panel { display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); }
+.L-vert .rl-panel.on {
+  position: sticky; bottom: var(--gdock-h, 0px); z-index: 5; padding: 7px 8px; gap: 6px;
+  box-shadow: 0 -6px 18px var(--rl-shadow);
+}
+.rl-tip { font-size: .84em; color: var(--muted); text-align: center; min-height: 1.25em; line-height: 1.25; }
+.rl-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.rl-clock { flex: none; }
+.rl-clock .garc { width: 40px; height: 40px; }
+.L-vert .rl-clock .garc { width: 34px; height: 34px; font-size: .9em; }
+.rl-chiprow { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+/* Телефон: ряд фішок не переноситься, а стискається — на 320 px поруч із годинником фішки ~34 px замість 40, без вилазу. */
+.L-vert .rl-row { min-width: 0; }
+.L-vert .rl-chiprow { gap: 5px; flex-wrap: nowrap; flex: 0 1 auto; min-width: 0; }
+.rlt-chip {
+  position: relative; width: 46px; height: 46px; padding: 0; flex: none; border-radius: 50%;
+  background: transparent; border: 2px solid transparent; justify-content: center; align-items: center; transition: transform .12s, border-color .12s, opacity .12s;
+}
+/* Стискання флексом (width: auto) на 320 px схлопувало фішки до голих цифр — тож розмір явний: ~30 px на 320, 40 від ~412. */
+.L-vert .rlt-chip { flex: none; width: clamp(30px, calc((100vw - 120px) / 6.6), 40px); height: clamp(30px, calc((100vw - 120px) / 6.6), 40px); align-self: center; }
+.rlt-chip:hover { background: transparent; }
+.rlt-chip .rl-sh { inset: 3px; --pc: rgba(0, 0, 0, .5); }
+.rlt-chip b {
+  position: relative; z-index: 1; font-size: .78em; font-weight: 800; color: #fff;
+  text-shadow: 0 0 2px rgba(0, 0, 0, .9), 0 1px 1px rgba(0, 0, 0, .8);
+}
+.rlt-chip.sel { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 5px 12px var(--rl-shadow); }
+.rlt-chip:disabled { opacity: .35; cursor: not-allowed; }
+.rlt-chip:disabled.sel { transform: none; }
+.rl-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.rl-btns button { padding: 6px 11px; }
+.L-vert .rl-btns button { padding: 6px 9px; }
+.L-vert .rl-btns .lg { display: none; }
+.rl-btns button:disabled { opacity: .45; cursor: default; }
+.rl-btns .rl-go { font-size: 1.04em; padding: 8px 18px; }
+.rl-info { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: space-between; align-items: center; font-size: .86em; color: var(--muted); }
+.rl-info b { color: var(--text); font-variant-numeric: tabular-nums; }
+.rl-stay { display: block; font-size: .9em; opacity: .85; }
+.rl-snd { font-size: .86em; padding: 3px 9px; }
+.rlt-note { color: var(--danger); font-size: .86em; text-align: center; }
+.rl-sit { display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---------------- легенда гравців ---------------- */
+.rlt-legend:empty { display: none; }
+.rlt-legend ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px 8px; font-size: .86em; }
+.rlt-legend li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
+.rlt-legend li.me { border-color: var(--accent); }
+.rlt-legend li.gone { opacity: .6; }
+.rlt-legend .on { color: var(--muted); font-variant-numeric: tabular-nums; }
+.rlt-legend .net { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rlt-legend .net:empty { display: none; }
+.rlt-legend small { color: var(--muted); font-weight: 400; }
+.rl-dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--pc); box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); }
+.net.up { color: var(--ok); }
+.net.down { color: var(--danger); }
+
+/* ---------------- ключові кадри ---------------- */
+@keyframes rl-drop {   /* кулька падає з доріжки на кільце кишеньок, два відскоки */
+  0% { transform: translateY(0); }
+  42% { transform: translateY(12.75%); }
+  56% { transform: translateY(10.4%); }
+  70% { transform: translateY(12.75%); }
+  82% { transform: translateY(11.9%); }
+  100% { transform: translateY(12.75%); }
+}
+@keyframes rl-g-idle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(3deg); } 55% { transform: rotate(-6deg) translateY(-2%); } 80% { transform: rotate(1deg); } }
+@keyframes rl-g-hurry { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes rl-g-tick { 0% { transform: rotate(-12deg); } 100% { transform: rotate(12deg); } }
+@keyframes rl-g-call { 0% { transform: rotate(0); } 22% { transform: rotate(-12deg); } 55% { transform: rotate(5deg); } 100% { transform: rotate(9deg); } }
+@keyframes rl-g-hopak {
+  0%, 100% { transform: none; }
+  8% { transform: translateY(4%) scaleY(.85); }
+  16% { transform: translateY(-18%) rotate(-7deg); }
+  25% { transform: translateY(4%) scaleY(.85); }
+  33% { transform: translateY(-18%) rotate(7deg); }
+  41% { transform: translateY(4%) scaleY(.85); }
+  50% { transform: translateY(-26%); }
+  58% { transform: translateX(-7%) translateY(4%) scaleY(.85); }
+  66% { transform: translateX(7%) translateY(-14%) rotate(9deg); }
+  75% { transform: translateY(4%) scaleY(.85); }
+  83% { transform: translateY(-20%) rotate(-9deg); }
+  91% { transform: translateY(4%) scaleY(.85); }
+}
+@keyframes rl-g-laugh {
+  0%, 100% { transform: none; }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-3%) rotate(-5deg); }
+  20%, 40%, 60%, 80% { transform: translateX(3%) rotate(5deg) translateY(-2%); }
+}
+@keyframes rl-g-rake { 0%, 100% { transform: none; } 30% { transform: rotate(-9deg); } 65% { transform: rotate(6deg); } }
+@keyframes rl-g-stick {
+  0% { opacity: 0; transform: translateX(60%) rotate(-30deg); }
+  20% { opacity: 1; }
+  75% { opacity: 1; transform: translateX(-70%) rotate(-8deg); }
+  100% { opacity: 0; transform: translateX(-90%) rotate(0); }
+}
+@keyframes rl-g-clap { 0%, 40%, 80%, 100% { transform: none; } 20% { transform: translateY(-14%); } 60% { transform: translateY(-10%); } }
+@keyframes rl-g-sigh { 0% { transform: none; } 40% { transform: scaleY(.88) translateY(2%); } 100% { transform: scaleY(.92); } }
+@keyframes rl-g-doze { 0%, 100% { transform: rotate(8deg); } 50% { transform: rotate(10deg) translateY(2%); } }
+@keyframes rl-g-zz { 0% { opacity: 0; transform: translate(0, 0) scale(.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(30%, -120%) scale(1.2); } }
+@keyframes rl-conf {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(.3) rotate(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1) rotate(var(--r, 180deg)); }
+}
+@keyframes rl-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes rl-pay { from { opacity: 0; transform: translateY(-10px) scale(.6); } to { opacity: 1; transform: none; } }
+@keyframes rl-winpulse { 0%, 100% { transform: none; } 50% { transform: scale(1.14); } }
+
+/* Менше руху: колесо й кулька одразу в кінці (це робить модуль), Глек нерухомий — лише бейдж і хмарка, без конфеті. */
+@media (prefers-reduced-motion: reduce) {
+  .rl-glek img, .rl-glek .rl-badge, .rl-rake, .rl-num, .rl-bigline, .rl-stk, .rl-n span, .rl-zero span, .rl-say {
+    animation: none !important; transition: none !important;
+  }
+  .rl-glek img { transform: none !important; }
+  .rl-rake, .rl-conf { display: none; }
+  .rl-wheel, .rl-ballrot, .rl-drop { transition: none !important; animation: none !important; }
+  .rlt-chip.sel { transform: none; }
+}

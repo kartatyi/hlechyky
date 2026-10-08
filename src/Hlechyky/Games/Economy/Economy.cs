@@ -231,6 +231,10 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "curse-ransom" => "Лавка — відкуп від прокльону",
             "curse-reveal" => "Лавка — хто наслав прокльон",
             "liveads" => "прожарка від Дядька Глека",
+            // рулетка (docs/games/specs/roulette.md §3.2): хвіст — roulette чи roulette-solo, підпис для обох однаковий
+            "roulette-bet" => "Рулетка — ставка",
+            "roulette-win" => "Рулетка — виграш",
+            "roulette-back" => "Рулетка — ставку повернуто",
             _ => reason,
         };
     }

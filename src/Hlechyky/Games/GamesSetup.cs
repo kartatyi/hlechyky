@@ -59,6 +59,7 @@ public static class GamesSetup
         Impl.DinoDailySetup.AddDinoDaily(services);          // Забіг дня: привиди друзів і кубок тижня
         Impl.TyrSetup.AddTyr(services);   // «Тир дня»: таблиця дня за очками й очки в «☀ Сьогодні»
         Impl.SkleiSetup.AddSklei(services);                 // «Склей глек»: свої картинки за черепки, малюнки й фото в колоді
+        Impl.RouletteSetup.AddRoulette(services);   // Рулетка: каса (виплати, відновлення)
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         return services;
     }

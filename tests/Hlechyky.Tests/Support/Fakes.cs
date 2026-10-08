@@ -17,6 +17,9 @@ public sealed class FakeStakes : IStakes
     /// <summary>Леджер: усе, що справді пройшло (ключ, нік, зміна).</summary>
     public List<LedgerMove> Ledger { get; } = [];
 
+    /// <summary>Причина кожного руху, що справді пройшов: ключ → «roulette-bet:roulette».</summary>
+    public Dictionary<string, string> Reasons { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Кличеться на кожній виплаті — щоб тест побачив, у якому оточенні каркас її робить.</summary>
     public Action? OnGrant { get; set; }
 
@@ -34,6 +37,7 @@ public sealed class FakeStakes : IStakes
         if (Balance(nick) < amount) return false;
         _balances[nick] = Balance(nick) - amount;
         Calls.Add($"spend:{nick}:{amount}:{refKey}");
+        Reasons[refKey] = reason;
         Ledger.Add(new LedgerMove(refKey, nick, -amount));
         return true;
     }
@@ -44,6 +48,7 @@ public sealed class FakeStakes : IStakes
         if (!_refs.Add(refKey)) return;
         _balances[nick] = Balance(nick) + amount;
         Calls.Add($"grant:{nick}:{amount}:{refKey}");
+        Reasons[refKey] = reason;
         Ledger.Add(new LedgerMove(refKey, nick, amount));
     }
 
