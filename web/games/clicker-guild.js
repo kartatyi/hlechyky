@@ -314,76 +314,353 @@
     const c = cat(st);
     const cap = (c && c.treatCap) || 120;
     const h = v.help;
-    const can = (kind) => st.mine && (kind !== 'lend' || h.lendLeft);
-    const btn = (kind, note) => '<button type="button" class="ghost clkg-help" data-help="' + kind + '"' + (can(kind) ? '' : ' disabled') + '>'
-      + HELP[kind].icon + ' ' + HELP[kind].name + (note ? ' <span class="muted small">· ' + note + '</span>' : '') + '</button>';
+    const esc = (x) => api.esc(st, x);
+    const r = st.guildRoster;
+    const list = r ? sortedFriends(st, api) : [];
+    let friends;
+    if (!r) friends = '<div class="muted small">Завантажую…</div>';
+    else if (!list.length) friends = '<div class="muted small">У цеху поки нікого, крім тебе, — помагати нікому.</div>';
+    else {
+      friends = '<div class="clkg-flist">' + list.slice(0, FRIENDS_INLINE).map((x) => friendBtn(st, api, x)).join('') + '</div>'
+        + (list.length > FRIENDS_INLINE ? '<button type="button" class="ghost small clkg-choose">🔎 Усі друзі · ' + list.length + '</button>' : '');
+    }
     return '<section class="clkg-card">'
       + '<div class="clk-sub">🤝 Помогти другові'
       + info('Село тримається на тому, що сильніший підставляє плече. Гостинець: платиш своїми хвилинами пасиву, '
         + 'а друг дістає вдвічі більше хвилин СВОГО — тож твоя гора його гру не зламає, але день-два росту дасть '
-        + '(не більше ' + cap + ' хв на день на одного). Підмайстер — раз на день, і в друга добу ліплять удвічі швидше. '
-        + 'Похвала — раз на день на друга, і в нього годину все йде на 10 % краще.') + '</div>'
-      + '<div class="clkg-btns">'
-      + btn('treat', 'подаровано ' + (h.treats || 0))
-      + btn('lend', h.lendLeft ? 'один на день' : 'сьогодні вже пішов')
-      + btn('cheer', 'раз на день на друга')
-      + '</div>'
+        + '(не більше ' + cap + ' хв на день на одного). Підмайстер — раз на день, і в друга добу ліплять удвічі швидше; '
+        + 'другий підмайстер (від іншого друга чи завтра) продовжує першого, до 72 год наперед. '
+        + 'Похвала — раз на день на друга: година +10 % до всього, похвали складаються до 4 год.') + '</div>'
+      + '<p class="muted small clk-note">Тапни друга — побачиш, що можеш для нього зробити просто зараз.'
+      + ' <span class="clkg-hint">' + esc((h.lendLeft ? '🧑‍🎓 підмайстер вільний' : '🧑‍🎓 підмайстер сьогодні вже в гостях')
+        + ' · 🎁 гостинців подаровано ' + (h.treats || 0)) + '</span></p>'
+      + friends
       + '<div class="muted small">Тобі сьогодні ще можуть принести ' + h.treatLeft + ' хв гостинців із ' + cap + '.</div>'
       + '</section>';
   }
 
-  /// Вікно допомоги: обрати друга, а для гостинця — ще й розмір (і одразу видно, скільки це твоїх глеків).
-  function renderHelp(st, api) {
-    const kind = st.guildHelp;
+  // ---------- картка друга, «Хто чекає», стрічка цеху (12-те дошліфування) ----------
+
+  const FRIENDS_INLINE = 12;
+  const KIND = {
+    treat: { icon: '🎁', word: 'гостинець' }, lend: { icon: '🧑‍🎓', word: 'підмайстер' }, cheer: { icon: '👏', word: 'похвала' },
+    gift: { icon: '🎁', word: 'дарунок' }, toloka: { icon: '🤝', word: 'толока' }, thanks: { icon: '💛', word: 'дякую' },
+  };
+  const ms = (x) => (typeof x === 'number' ? x : Date.parse(x) || 0);
+  const hhmm = (t) => new Date(t).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+  /// «18:40», «завтра 18:40», «12 жовт. 18:40» — до котрої гріє баф.
+  function at(t, now) {
+    const d = new Date(t);
+    const n = new Date(now);
+    if (d.toDateString() === n.toDateString()) return hhmm(t);
+    if (d.toDateString() === new Date(now + 864e5).toDateString()) return 'завтра ' + hhmm(t);
+    return d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' }) + ' ' + hhmm(t);
+  }
+  /// «щойно», «12 хв тому», «3 год тому», «учора», «5 дн тому».
+  function ago(t, now) {
+    const m = Math.max(0, Math.round((now - t) / 60000));
+    if (m < 2) return 'щойно';
+    if (m < 60) return m + ' хв тому';
+    if (m < 1440) return Math.floor(m / 60) + ' год тому';
+    return m < 2880 ? 'учора' : Math.floor(m / 1440) + ' дн тому';
+  }
+  const ava = (nick, cls) => (window.HPeople && HPeople.ava ? HPeople.ava(nick, 'ava ' + (cls || 'sm')) : '');
+  const fitsNeed = (n, it) => it.ware === n.ware && it.q >= n.q && (!n.style || it.style === n.style);
+  const friendsOf = (st) => ((st.guildRoster && st.guildRoster.potters) || []).filter((p) => !p.me);
+
+  /// Чому цьому другові варто помогти саме зараз — чипи «Хто чекає». Рахує лише з картки (look) і моєї комори.
+  function reasons(st, api, p) {
+    const L = p.look;
     const v = st.guild;
-    if (!kind || !v) return;
-    const esc = (x) => api.esc(st, x);
-    const roster = (st.guildRoster && st.guildRoster.potters) || [];
-    const friends = roster.filter((p) => !p.me);
-    if (!st.guildHelpTo || !friends.some((f) => f.nick === st.guildHelpTo)) st.guildHelpTo = friends.length ? friends[0].nick : '';
-    const cheered = (v.help.cheered || []).map((x) => String(x).toLowerCase());
-    const busy = kind === 'cheer' && cheered.includes(st.guildHelpTo.trim().toLowerCase());
-    let html = '<div class="clk-sub">' + HELP[kind].icon + ' ' + HELP[kind].name + '</div>'
-      + '<p class="muted small clk-note">' + HELP[kind].what + '.</p>';
-    html += friends.length
-      ? '<div class="clkg-friends">' + friends.map((f) => '<button type="button" class="ghost small' + (f.nick === st.guildHelpTo ? ' active' : '')
-        + '" data-hto="' + esc(f.nick) + '">' + RANK_ICON[f.rank] + ' ' + esc(f.nick) + '</button>').join('') + '</div>'
-      : '<div class="muted">У цеху поки нікого, крім тебе, — помагати нікому.</div>';
-    if (!friends.length) html += '';
-    else if (kind === 'treat') {
-      const sizes = (v.help.sizes || []).length ? v.help.sizes : [{ minutes: 10 }, { minutes: 30 }, { minutes: 60 }];
-      html += '<div class="clkg-sizes">' + sizes.map((s) => '<button type="button" class="ghost clkg-size" data-min="' + s.minutes + '">'
-        + '<b>' + s.minutes + ' хв</b><i>' + (s.pots != null ? '−' + api.potsShort(s.pots) : '') + '</i>'
-        + '<u>другові +' + s.minutes * 2 + ' хв його пасиву</u></button>').join('') + '</div>';
-    } else {
-      html += '<div class="clkg-btns"><button type="button" class="primary clkg-send"' + (busy ? ' disabled' : '') + '>'
-        + HELP[kind].icon + ' ' + (kind === 'lend' ? 'Відпустити підмайстра' : 'Сказати добре слово') + '</button>'
-        + (busy ? '<span class="muted small">сьогодні цього друга вже хвалив(ла)</span>' : '') + '</div>';
+    if (!L || !v) return [];
+    const out = [];
+    const t = L.toloka;
+    if (t && Array.isArray(t.needs)) {
+      const mine = itemsOf(st);
+      const laid = ms(t.endsAt) > api.serverNow(st);
+      if (!laid) {
+        const n = t.needs.find((x) => x.left > 0 && mine.some((it) => fitsNeed(x, it)));
+        if (n) out.push({ k: 'toloka', text: 'толока: бракує ' + n.left + ' × ' + wareName(st, n.ware).toLowerCase() + ' — у тебе є' });
+      } else if ((t.helpers || []).length < 3 && !(t.helpers || []).some((h) => h.toLowerCase() === myNick(st).toLowerCase())
+        && t.needs.some((x) => mine.some((it) => fitsNeed(x, it)))) out.push({ k: 'toloka', text: 'толока будується — твій виріб скоротить' });
     }
-    let body;
-    if (api.overlayOpen(st) && st.guildHelpBody && st.guildHelpBody.isConnected) {
-      body = st.guildHelpBody;
-      if (body._sig === html) return;
-      body._sig = html;
-      body.innerHTML = html;
-    } else {
-      body = api.overlay(st, html, { cls: 'clkg-ov', onClose: () => { st.guildHelp = null; st.guildHelpBody = null; } });
-      body._sig = html;
-      st.guildHelpBody = body;
-    }
-    for (const b of body.querySelectorAll('[data-hto]')) b.onclick = () => { st.guildHelpTo = b.dataset.hto; renderHelp(st, api); };
-    const send = (payload, sound) => act(st, api, payload, sound).then((r) => { if (r && r.ok) api.closeOverlay(st); });
-    for (const b of body.querySelectorAll('.clkg-size')) {
-      b.onclick = (e) => { if (human(e) && st.guildHelpTo) send({ op: 'treat', to: st.guildHelpTo, minutes: +b.dataset.min }, 'gift'); };
-    }
-    const one = body.querySelector('.clkg-send');
-    if (one) one.onclick = (e) => { if (human(e) && st.guildHelpTo) send({ op: kind, to: st.guildHelpTo }, kind === 'lend' ? 'wagon' : 'brag'); };
+    if (v.help.lendLeft && L.lend && !L.lend.until && !L.lend.full) out.push({ k: 'lend', text: 'ще без підмайстра' });
+    if (L.cheer && L.cheer.can && !L.cheer.full) out.push({ k: 'cheer', text: 'похвали сьогодні ще не було' });
+    if (L.thank) out.push({ k: 'thanks', text: 'помагав(ла) тобі — подякуй' });
+    return out;
   }
 
-  function openHelp(st, api, kind) {
-    st.guildHelp = kind;
+  /// Друзі в порядку «кому помогти»: онлайн зараз → кому ще можна щось від тебе → з ким нещодавно взаємодіяв → абетка.
+  function sortedFriends(st, api) {
+    const key = (x) => [x.p.look && x.p.look.online ? 0 : 1, x.why.length ? 0 : 1, -ms(x.p.look && x.p.look.lastAt)];
+    return friendsOf(st).map((p) => ({ p, why: reasons(st, api, p) })).sort((a, b) => {
+      const A = key(a);
+      const B = key(b);
+      for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) return A[i] - B[i];
+      return a.p.nick.localeCompare(b.p.nick, 'uk');
+    });
+  }
+
+  function friendBtn(st, api, x, chips) {
+    const esc = (s) => api.esc(st, s);
+    const on = x.p.look && x.p.look.online;
+    return '<button type="button" class="ghost clkg-fbtn" data-card="' + esc(x.p.nick) + '">' + ava(x.p.nick)
+      + '<span class="clkg-fname">' + (on ? '<i class="clkg-on" title="зараз на сайті"></i>' : '') + esc(x.p.nick) + '</span>'
+      + (chips && x.why.length ? '<span class="clkg-chips">' + x.why.map((w) => '<span class="clkg-chip k-' + w.k + '">' + esc(w.text) + '</span>').join('') + '</span>'
+        : x.why.length ? '<span class="clkg-dot" title="' + esc(x.why.map((w) => w.text).join('; ')) + '">' + x.why.length + '</span>' : '')
+      + '</button>';
+  }
+
+  /// «Хто чекає допомоги» нагорі «Села»: до шести друзів, кому можна помогти зараз, з причинами; під ним — стрічка цеху.
+  function waitHtml(st, api) {
+    const r = st.guildRoster;
+    if (!r) return '<section class="clkg-card clkg-wait"><div class="clk-sub">🙋 Хто чекає допомоги</div><div class="muted small">Завантажую…</div></section>';
+    const list = sortedFriends(st, api).filter((x) => x.why.length).slice(0, 6);
+    const feed = feedHtml(st, api, r.feed || []);
+    if (!list.length && !feed) return '';
+    return '<section class="clkg-card clkg-wait">'
+      + (list.length ? '<div class="clk-sub">🙋 Хто чекає допомоги</div><div class="clkg-wlist">' + list.map((x) => friendBtn(st, api, x, true)).join('') + '</div>' : '')
+      + feed + '</section>';
+  }
+
+  /// Стрічка цеху за сьогодні: «Smaug → Микола: підмайстер». Згортається (пам'ятаємо в localStorage).
+  function feedHtml(st, api, feed) {
+    if (!feed.length) return '';
+    const esc = (x) => api.esc(st, x);
+    const now = api.serverNow(st);
+    const open = api.storeGet('clk.guild.feedOpen', '1') !== '0';
+    return '<details class="clkg-feed"' + (open ? ' open' : '') + '><summary class="small">📜 Стрічка цеху сьогодні · ' + feed.length + '</summary>'
+      + feed.map((d) => '<div class="clkg-frow small">' + (KIND[d.kind] ? KIND[d.kind].icon : '•') + ' <b>' + esc(d.from) + '</b> → <b>' + esc(d.to) + '</b>: '
+        + esc(KIND[d.kind] ? KIND[d.kind].word : d.kind) + ' <span class="muted">· ' + esc(ago(ms(d.at), now)) + '</span></div>').join('')
+      + '</details>';
+  }
+
+  /// «Тобі допомогли»: що прийшло за дві доби — з кнопкою «Подякувати» (похвалою, якщо сьогодні можна, інакше словом).
+  function gotHtml(st, api, v) {
+    const now = api.serverNow(st);
+    const thanked = new Set((v.thanked || []).map((x) => String(x).toLowerCase()));
+    const list = (v.got || []).filter((g) => now - ms(g.at) < 48 * 3600e3).slice(0, 5);
+    if (!list.length) return '';
+    const esc = (x) => api.esc(st, x);
+    const cheered = new Set((v.help.cheered || []).map((x) => String(x).toLowerCase()));
+    const seen = new Set();
+    return '<section class="clkg-card clkg-got"><div class="clk-sub">💌 Тобі допомогли</div>' + list.map((g) => {
+      const who = String(g.from || '').toLowerCase();
+      // Кнопка — одна на друга (на найсвіжішому рядку), і не для «дякую» й не для безіменного «друга».
+      const can = st.mine && g.kind !== 'thanks' && g.from !== 'друг' && !thanked.has(who) && !seen.has(who);
+      seen.add(who);
+      return '<div class="clkg-grow small">' + (KIND[g.kind] ? KIND[g.kind].icon : '•') + ' <b>' + esc(g.from) + '</b>: '
+        + esc(KIND[g.kind] ? KIND[g.kind].word : g.kind) + (g.what ? ' · ' + esc(g.what) : '') + ' <span class="muted">· ' + esc(ago(ms(g.at), now)) + '</span>'
+        + (can ? ' <button type="button" class="ghost small clkg-thank" data-thank="' + esc(g.from) + '">'
+          + (cheered.has(who) ? '💛 Подякувати' : '👏 Подякувати похвалою') + '</button>' : '')
+        + '</div>';
+    }).join('') + '</section>';
+  }
+
+  function thank(st, api, nick, btn) {
+    if (btn) btn.disabled = true;
+    act(st, api, { op: 'thank', to: nick }, 'brag').then((r) => {
+      if (r && r.message) api.toast(st, r.message, r.ok ? 'ok' : '');
+      if (r && r.ok) loadRoster(st, api, true);
+      else if (btn) btn.disabled = false;
+    });
+  }
+
+  /// Вибір друга, коли їх більше дванадцяти: пошук за ніком, той самий порядок.
+  function openChooser(st, api, focus) {
+    st.guildChoose = { focus: focus || '', q: '' };
     loadRoster(st, api, true);
-    renderHelp(st, api);
+    renderChooser(st, api);
+  }
+
+  function renderChooser(st, api) {
+    const c = st.guildChoose;
+    if (!c) return;
+    const list = sortedFriends(st, api);
+    const head = '<div class="clk-sub">' + (c.focus === 'gift' ? '🎁 Кому подарувати?' : '🤝 Кому помогти?') + '</div>'
+      + (list.length > FRIENDS_INLINE ? '<input type="search" class="clkg-search" placeholder="Пошук за ніком" value="' + api.esc(st, c.q) + '">' : '');
+    const rows = () => {
+      const q = c.q.trim().toLowerCase();
+      const shown = list.filter((x) => !q || x.p.nick.toLowerCase().includes(q));
+      return !st.guildRoster ? '<div class="muted small">Завантажую…</div>'
+        : shown.length ? shown.map((x) => friendBtn(st, api, x, true)).join('')
+          : '<div class="muted small">' + (list.length ? 'Нікого з таким ніком' : 'У цеху поки нікого, крім тебе.') + '</div>';
+    };
+    let body = st.guildChooseBody;
+    if (!(api.overlayOpen(st) && body && body.isConnected)) {
+      body = api.overlay(st, head + '<div class="clkg-wlist clkg-clist"></div>', { cls: 'clkg-ov', onClose: () => { if (st.guildChoose === c) { st.guildChoose = null; st.guildChooseBody = null; } } });
+      st.guildChooseBody = body;
+      const input = body.querySelector('.clkg-search');
+      if (input) input.oninput = () => { c.q = input.value; draw(); };
+    }
+    const box = body.querySelector('.clkg-clist');
+    const draw = () => {
+      const html = rows();
+      if (box._sig === html) return;
+      box._sig = html;
+      box.innerHTML = html;
+      for (const b of box.querySelectorAll('[data-card]')) b.onclick = () => openCard(st, api, b.dataset.card, c.focus);
+    };
+    draw();
+  }
+
+  /// Картка друга: усе, що можу для нього зробити, в одному вікні. look — з цеху (залишок стелі гостинця, до котрої
+  /// продовжиться підмайстер і похвала), толока — з його хати. Після дії картка лишається: рядок результату й свіжа доступність.
+  function openCard(st, api, nick, focus) {
+    const p = friendsOf(st).find((x) => x.nick.toLowerCase() === String(nick).toLowerCase());
+    const c = { nick: p ? p.nick : nick, rank: p ? p.rank : null, look: p ? p.look : null, house: null, loaded: false,
+      gift: focus === 'gift', msg: '', ok: true, arm: '', armAt: 0, busy: false };
+    st.guildCard = c;
+    const body = api.overlay(st, '<div class="clkg-cmain"></div><div class="clkg-ctol"></div>', {
+      cls: 'clkg-ov clkg-cardov', onClose: () => { if (st.guildCard === c) { st.guildCard = null; st.guildCardBody = null; } },
+    });
+    st.guildCardBody = body;
+    body.onclick = (e) => cardClick(st, api, c, e);
+    renderCard(st, api);
+    refreshCard(st, api, c);
+  }
+
+  function refreshCard(st, api, c) {
+    fetch('/api/games/clicker/house?nick=' + encodeURIComponent(c.nick), { headers: headers(st) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (st.guildCard !== c) return;
+        c.loaded = true;
+        if (d) {
+          c.house = d;
+          c.nick = d.nick || c.nick;
+          if (d.rank != null) c.rank = d.rank;
+          if (d.look) c.look = d.look;
+        }
+        renderCard(st, api);
+        // Толока друга — той самий розділ, що й у хаті (clicker-toloka.js): поточний етап, «Піднести», наступний.
+        const tol = st.guildCardBody && st.guildCardBody.querySelector('.clkg-ctol');
+        if (tol && d && typeof api.tolokaHouse === 'function') api.tolokaHouse(st, tol, d);
+      })
+      .catch(() => { if (st.guildCard === c) { c.loaded = true; renderCard(st, api); } });
+  }
+
+  function cardHtml(st, api, c) {
+    const v = st.guild;
+    const esc = (x) => api.esc(st, x);
+    const now = api.serverNow(st);
+    const L = c.look;
+    const name = esc(c.nick);
+    let status = '';
+    if (L && L.online) status = '<span class="clkg-on"></span> зараз на сайті';
+    else if (L && L.seenAt) status = 'був(ла) ' + esc(ago(ms(L.seenAt), now));
+    let html = '<div class="clkg-chead">' + ava(c.nick, 'xl') + '<div><div class="clk-sub">' + name
+      + (c.rank != null ? ' <span class="muted small">· ' + RANK_ICON[c.rank] + ' ' + esc(rankName(st, c.rank)) + '</span>' : '') + '</div>'
+      + '<div class="muted small">' + status + '</div></div>'
+      + '<button type="button" class="ghost small clkg-chouse" data-house="' + name + '">🏠 Хата</button></div>';
+    if (c.msg) html += '<div class="clkg-cmsg small' + (c.ok ? ' ok' : ' bad') + '" role="status">' + esc(c.msg) + '</div>';
+    if (!v || !v.enabled) return html + '<div class="muted small">Цех зараз зачинений.</div>';
+    if (!L) return html + '<div class="muted small">' + (c.loaded ? 'Цей гончар давно не заходив — картка порожня.' : 'Завантажую…') + '</div>';
+    html += '<div class="clk-sub small">Що можу зробити</div>';
+    const arm = (id) => c.arm === id && Date.now() - c.armAt < CONFIRM_MS;
+    // 🎁 гостинець
+    const sizes = (v.help.sizes || []).length ? v.help.sizes : [{ minutes: 10 }, { minutes: 30 }, { minutes: 60 }];
+    html += '<div class="clkg-crow"><div class="clkg-ctitle">🎁 Гостинець <span class="muted small">· ' + name + ' сьогодні ще влізе ' + L.treatLeft + ' хв</span></div>'
+      + '<div class="clkg-sizes">' + sizes.map((s) => {
+        const give = s.minutes * 2;
+        const why = !st.mine ? 'лише у своєму колі' : give > L.treatLeft ? 'не влізе: ще ' + L.treatLeft + ' хв'
+          : s.pots != null && (st.shown || 0) < s.pots ? 'бракує глеків' : '';
+        const id = 'treat:' + s.minutes;
+        return '<button type="button" class="ghost clkg-size' + (arm(id) ? ' arm' : '') + '" data-csend="' + id + '"' + (why || c.busy ? ' disabled' : '') + '>'
+          + (arm(id) ? '<b>Так, надіслати</b><i>−' + esc(api.potsShort(s.pots || 0)) + '</i><u>натисни ще раз</u>'
+            : '<b>' + s.minutes + ' хв</b><i>' + (s.pots != null ? '−' + esc(api.potsShort(s.pots)) : '') + '</i><u>' + (why || 'другові +' + give + ' хв його пасиву') + '</u>')
+          + '</button>';
+      }).join('') + '</div></div>';
+    // 🧑‍🎓 підмайстер і 👏 похвала — безплатні, один тап.
+    const free = (kind, b, can, cap) => {
+      let note;
+      let ok = st.mine && can && !b.full;
+      if (!can) note = kind === 'lend' ? 'сьогодні твій підмайстер уже в гостях' : 'сьогодні ' + name + ' уже чув(ла) від тебе добре слово';
+      else if (b.full) note = 'у ' + name + ' вже на ' + cap + ' наперед — пізніше';
+      else if (b.until) note = 'у ' + name + ' вже є до ' + at(ms(b.until), now) + ' — твій продовжить до ' + at(ms(b.after), now);
+      else note = (kind === 'lend' ? 'добу ліплення ×2' : 'година +10 % до всього') + ' — до ' + at(ms(b.after), now);
+      if (c.busy) ok = false;
+      return '<div class="clkg-crow"><button type="button" class="ghost clkg-cbtn" data-csend="' + kind + '"' + (ok ? '' : ' disabled') + '>'
+        + HELP[kind].icon + ' ' + HELP[kind].name + '</button><span class="muted small">' + esc(note) + '</span></div>';
+    };
+    html += free('lend', L.lend, v.help.lendLeft, '72 год');
+    html += free('cheer', L.cheer, L.cheer.can, '4 год');
+    // 🎁 виріб із комори
+    const items = itemsOf(st);
+    const left = v.gifts.left;
+    html += '<div class="clkg-crow"><button type="button" class="ghost clkg-cbtn clkg-cgift"' + (st.mine && left > 0 && items.length ? '' : ' disabled') + '>🎁 Подарувати виріб</button>'
+      + '<span class="muted small">' + (left > 0 ? 'ще ' + left + ' сьогодні' : 'сьогодні вже всі три') + (items.length ? '' : ' · комора порожня') + '</span></div>';
+    if (c.gift && left > 0 && items.length) {
+      html += '<div class="clkw-items clkg-pick">' + items.map((it, i) => itemRow(st, api, it, i,
+        '<button type="button" class="ghost small' + (arm('gift:' + it.key) ? ' arm' : '') + '" data-csend="gift:' + esc(it.key) + '"' + (c.busy ? ' disabled' : '') + '>'
+        + (arm('gift:' + it.key) ? 'Так, подарувати' : 'Подарувати') + '</button>')).join('') + '</div>';
+    }
+    if (L.thank) {
+      html += '<div class="clkg-crow"><button type="button" class="ghost clkg-cbtn" data-thank="' + name + '">'
+        + (L.cheer.can && !L.cheer.full ? '👏 Подякувати похвалою' : '💛 Подякувати') + '</button><span class="muted small">' + name + ' тобі помагав(ла)</span></div>';
+    }
+    return html;
+  }
+
+  const CONFIRM_MS = 4000;
+
+  function renderCard(st, api) {
+    const c = st.guildCard;
+    const body = st.guildCardBody;
+    if (!c || !body || !body.isConnected) return;
+    const main = body.querySelector('.clkg-cmain');
+    const html = cardHtml(st, api, c);
+    if (main._sig === html) return;
+    main._sig = html;
+    main.innerHTML = html;
+  }
+
+  function cardClick(st, api, c, e) {
+    const house = e.target.closest('.clkg-chouse');
+    if (house) { openHouse(st, api, c.nick); return; }
+    const th = e.target.closest('[data-thank]');
+    if (th && th.closest('.clkg-cmain')) {
+      if (!human(e)) return;
+      c.busy = true;
+      act(st, api, { op: 'thank', to: c.nick }, 'brag').then((r) => cardDone(st, api, c, r, null));
+      return;
+    }
+    if (e.target.closest('.clkg-cgift')) { c.gift = !c.gift; renderCard(st, api); return; }
+    const b = e.target.closest('[data-csend]');
+    if (!b || b.disabled || !human(e) || c.busy) return;
+    const id = b.dataset.csend;
+    const paid = id.startsWith('treat:') || id.startsWith('gift:');
+    // Платне — з підтвердженням: перший тап озброює кнопку на кілька секунд, другий — шле.
+    if (paid && !(c.arm === id && Date.now() - c.armAt < CONFIRM_MS)) {
+      c.arm = id;
+      c.armAt = Date.now();
+      renderCard(st, api);
+      setTimeout(() => { if (st.guildCard === c && c.arm === id) { c.arm = ''; renderCard(st, api); } }, CONFIRM_MS + 50);
+      return;
+    }
+    c.arm = '';
+    c.busy = true;
+    renderCard(st, api);
+    const L = c.look || {};
+    let payload;
+    let ok;
+    if (id.startsWith('treat:')) payload = { op: 'treat', to: c.nick, minutes: +id.slice(6) };
+    else if (id.startsWith('gift:')) payload = { op: 'gift', nick: c.nick, key: id.slice(5) };
+    else {
+      payload = { op: id, to: c.nick };
+      const b2 = L[id];
+      if (b2 && b2.after) ok = '✓ ' + (id === 'lend' ? 'Підмайстер у ' : 'Похвала гріє ') + c.nick + ' до ' + at(ms(b2.after), api.serverNow(st));
+    }
+    act(st, api, payload, id === 'lend' ? 'wagon' : id === 'cheer' ? 'brag' : 'gift').then((r) => cardDone(st, api, c, r, ok));
+  }
+
+  function cardDone(st, api, c, r, ok) {
+    c.busy = false;
+    if (st.guildCard !== c) return;
+    c.ok = !!(r && r.ok);
+    c.msg = c.ok ? ok || '✓ ' + String((r && r.message) || 'Готово').replace(/^\S+\s/, '') : (r && r.message) || 'Не вийшло — спробуй ще';
+    renderCard(st, api);
+    if (c.ok) { loadRoster(st, api, true); refreshCard(st, api, c); }
   }
 
   // ---------- ранг ----------
@@ -470,6 +747,7 @@
         + '<span class="clkg-pico">' + RANK_ICON[p.rank] + '</span>'
         + '<div class="clkg-pname"><b>' + esc(p.nick) + (p.me ? ' <span class="muted small">(ти)</span>' : '') + badges(p) + '</b>'
         + '<span class="muted small">' + esc(rankName(st, p.rank)) + (p.gave ? ' · на возі ' + p.gave : '') + '</span></div>'
+        + (p.me ? '' : '<button type="button" class="ghost small" data-card="' + esc(p.nick) + '" title="Що можу зробити">🤝</button>')
         + '<button type="button" class="ghost small" data-house="' + esc(p.nick) + '">🏠 Зазирнути в хату</button></div>').join('')
       : '<div class="muted small">Поки нікого — зайди пізніше.</div>';
     return '<section class="clkg-card"><div class="clk-sub">👥 Гончарі цеху <span class="muted small">· ' + r.potters.length + '</span></div>' + rows + '</section>';
@@ -484,8 +762,14 @@
         if (!d || !Array.isArray(d.potters) || !st.guildPane) return;
         st.guildRoster = d;
         paint(st, api);
-        if (st.guildOv === 'gift') renderPicker(st, api);
-        if (st.guildHelp) renderHelp(st, api);
+        // Свіжа картка друга зі списку — лише поки своєї (з хати) ще нема.
+        const c = st.guildCard;
+        if (c && !c.house) {
+          const p = d.potters.find((x) => !x.me && x.nick.toLowerCase() === c.nick.toLowerCase());
+          if (p && p.look) c.look = p.look;
+        }
+        if (c) renderCard(st, api);
+        if (st.guildChoose) renderChooser(st, api);
       })
       .catch(() => { /* без списку просто не буде кому дарувати — спробуємо за хвилину */ });
   }
@@ -587,13 +871,11 @@
       + '</div></div>';
   }
 
-  /// Три кнопки допомоги просто в хаті друга — саме там, де хочеться щось для нього зробити.
+  /// Допомога просто в хаті друга — одна кнопка на його картку (там усе: гостинець, підмайстер, похвала, дарунок).
   function helpButtons(st, d) {
     if (!st.mine || !st.guild || !st.guild.enabled) return '';
-    return '<div class="clkg-btns clkg-hhelp">'
-      + ['treat', 'lend', 'cheer'].map((k) => '<button type="button" class="ghost" data-hhelp="' + k + '">'
-        + HELP[k].icon + ' ' + HELP[k].name + '</button>').join('')
-      + '</div>';
+    return '<div class="clkg-btns clkg-hhelp"><button type="button" class="primary" data-hcard="1">🤝 Що можу зробити для '
+      + HClicker.api.esc(st, d.nick) + '</button></div>';
   }
 
   function openHouse(st, api, nick) {
@@ -628,13 +910,7 @@
           + wallHtml(st, api, d)
           + (mine ? '' : helpButtons(st, d))
           + (mine ? '' : '<div class="muted small">Хата — зі збереження; живе коло друга може бути трохи новішим.</div>');
-        for (const b of body.querySelectorAll('[data-hhelp]')) {
-          b.onclick = (e) => {
-            if (!human(e)) return;
-            st.guildHelpTo = d.nick;
-            openHelp(st, api, b.dataset.hhelp);
-          };
-        }
+        for (const b of body.querySelectorAll('[data-hcard]')) b.onclick = (e) => { if (human(e)) openCard(st, api, d.nick); };
         // Толока друга (v11, clicker-toloka.js): його будова й «🤝 Піднести на толоку».
         if (!mine && typeof api.tolokaHouse === 'function') api.tolokaHouse(st, body, d);
       })
@@ -689,20 +965,7 @@
         + 'Раз на 15 хвилин; виріб лишається в тебе.' + (wait > 0 ? ' Наступна похвала за ' + api.mmss(wait) + '.' : '') + '</p>';
       const best = items.slice().sort((a, b) => b.q - a.q || (b.style ? 1 : 0) - (a.style ? 1 : 0));
       rows = best.map((it, i) => itemRow(st, api, it, i, '<button type="button" class="ghost small" data-brag="' + esc(it.key) + '"' + (wait > 0 ? ' disabled' : '') + '>Похвалитись</button>')).join('');
-    } else {
-      const roster = (st.guildRoster && st.guildRoster.potters) || [];
-      const friends = roster.filter((p) => !p.me);
-      if (!st.guildGiftTo || !friends.some((f) => f.nick === st.guildGiftTo)) st.guildGiftTo = friends.length ? friends[0].nick : '';
-      head = '<div class="clk-sub">🎁 Дарунок другові</div><p class="muted small clk-note">Виріб поїде на полицю дарунків у хаті друга з підписом від тебе. '
-        + 'Сьогодні ще ' + v.gifts.left + '.</p>'
-        + (friends.length
-          ? '<div class="clkg-friends">' + friends.map((f) => '<button type="button" class="ghost small' + (f.nick === st.guildGiftTo ? ' active' : '') + '" data-to="' + esc(f.nick) + '">'
-            + RANK_ICON[f.rank] + ' ' + esc(f.nick) + '</button>').join('') + '</div>'
-          : '<div class="muted">У цеху поки нікого, крім тебе, — дарувати нікому.</div>');
-      rows = friends.length
-        ? items.map((it, i) => itemRow(st, api, it, i, '<button type="button" class="ghost small" data-gift="' + esc(it.key) + '"' + (v.gifts.left > 0 ? '' : ' disabled') + '>Подарувати</button>')).join('')
-        : '';
-    }
+    } else return;
     const html = head + (items.length ? '<div class="clkw-items clkg-pick">' + rows + '</div>' : '<div class="clk-teaser muted small">Комора порожня — спершу обпали щось у горні.</div>');
     let body;
     if (api.overlayOpen(st) && st.guildOvBody && st.guildOvBody.isConnected) {
@@ -724,13 +987,6 @@
     for (const b of body.querySelectorAll('.clkg-giveall')) b.onclick = (e) => giveAll(st, api, e, b);
     for (const b of body.querySelectorAll('[data-brag]')) {
       b.onclick = (e) => { if (human(e)) act(st, api, { op: 'brag', key: b.dataset.brag }, 'brag').then((r) => { if (r && r.ok) api.closeOverlay(st); }); };
-    }
-    for (const b of body.querySelectorAll('[data-to]')) b.onclick = () => { st.guildGiftTo = b.dataset.to; renderPicker(st, api); };
-    for (const b of body.querySelectorAll('[data-gift]')) {
-      b.onclick = (e) => {
-        if (!human(e) || !st.guildGiftTo) return;
-        act(st, api, { op: 'gift', nick: st.guildGiftTo, key: b.dataset.gift }, 'gift');
-      };
     }
   }
 
@@ -782,7 +1038,7 @@
       api.swap(st.guildBody, '<div class="clk-teaser muted">🔒 Цех зараз зачинений. Твій ранг — ' + api.esc(st, rankName(st, v.rank || 0)) + '.</div>');
       return;
     }
-    const html = buffsHtml(st, api, v) + wagonHtml(st, api, v) + helpHtml(st, api, v)
+    const html = buffsHtml(st, api, v) + gotHtml(st, api, v) + waitHtml(st, api) + wagonHtml(st, api, v) + helpHtml(st, api, v)
       + giftsHtml(st, api, v) + rankHtml(st, api, v) + rosterHtml(st, api);
     if (!api.swap(st.guildBody, html)) return;
     const q = (sel) => st.guildBody.querySelector(sel);
@@ -800,10 +1056,15 @@
       };
     }
     const gifting = q('.clkg-gifting');
-    if (gifting) gifting.onclick = () => { loadRoster(st, api, true); openPicker(st, api, 'gift'); };
+    if (gifting) gifting.onclick = () => openChooser(st, api, 'gift');
     const bragging = q('.clkg-bragging');
     if (bragging) bragging.onclick = () => openPicker(st, api, 'brag');
-    for (const b of st.guildBody.querySelectorAll('[data-help]')) b.onclick = () => openHelp(st, api, b.dataset.help);
+    for (const b of st.guildBody.querySelectorAll('[data-card]')) b.onclick = () => openCard(st, api, b.dataset.card);
+    const choose = q('.clkg-choose');
+    if (choose) choose.onclick = () => openChooser(st, api, '');
+    for (const b of st.guildBody.querySelectorAll('[data-thank]')) b.onclick = (e) => { if (human(e)) thank(st, api, b.dataset.thank, b); };
+    const feed = q('.clkg-feed');
+    if (feed) feed.ontoggle = () => api.storeSet('clk.guild.feedOpen', feed.open ? '1' : '0');
     // Кнопка майстерштука тепер буває і в рядку рангу, і всередині «що потрібно» — вішаємо на обидві.
     for (const master of st.guildBody.querySelectorAll('.clkg-master')) {
       master.onclick = (e) => { if (human(e)) act(st, api, { op: 'masterpiece' }, null); };
@@ -838,8 +1099,9 @@
     const fresh = v.shelf.filter((g) => (Date.parse(g.at) || 0) > seen);
     if (fresh.length) {
       api.storeSet('clk.guild.giftAt', String(Math.max(...fresh.map((g) => Date.parse(g.at) || 0))));
-      // Перший вид після встановлення — не тостимо всю полицю, лише запам'ятовуємо.
-      if (seen > 0) {
+      // Перший вид після встановлення — не тостимо всю полицю, лише запам'ятовуємо. Сервер, що вже знає «got»,
+      // скаже про дарунок нижче разом з усією іншою допомогою — двічі не тостимо.
+      if (seen > 0 && !v.gotKnown) {
         const g = fresh[0];
         api.toast(st, '🎁 Дарунок від ' + g.from + ': ' + QUALITY[g.q] + ' ' + wareName(st, g.ware).toLowerCase()
           + (fresh.length > 1 ? ' і ще ' + (fresh.length - 1) : ''), 'ok');
@@ -864,6 +1126,24 @@
       api.feed(st, text);
       api.sfx('gift');
     };
+    if (v.gotKnown) {
+      // Усе, що прийшло від друзів (12-те дошліфування): гостинець, підмайстер, похвала, дарунок, толока, «дякую».
+      const was = +api.storeGet('clk.guild.gotAt', '0') || 0;
+      const fresh2 = v.got.filter((g) => ms(g.at) > was);
+      if (fresh2.length) {
+        api.storeSet('clk.guild.gotAt', String(Math.max(...fresh2.map((g) => ms(g.at)))));
+        if (was > 0) {
+          for (const g of fresh2.slice(0, 3).reverse()) {
+            const text = GOT_TEXT[g.kind] ? GOT_TEXT[g.kind](g) : '';
+            if (!text) continue;
+            api.toast(st, text + (g.kind !== 'thanks' && g.from !== 'друг' ? ' — подякувати можна в «Селі»' : ''), 'ok');
+            api.feed(st, text);
+          }
+          api.sfx('gift');
+        }
+      }
+      return;
+    }
     for (const kind of ['lend', 'cheer']) {
       const b = v.buffs[kind];
       if (!b) continue;
@@ -875,6 +1155,24 @@
     if (t) news('clk.guild.treatAt', Date.parse(t.at) || 0, '🎁 ' + (t.from || 'Друг') + ' прислав гостинець: +' + api.potsShort(t.pots));
   }
 
+  const GOT_TEXT = {
+    treat: (g) => '🎁 ' + g.from + ' прислав(ла) гостинець' + (g.what ? ': ' + g.what : ''),
+    lend: (g) => '🧑‍🎓 ' + g.from + ' прислав(ла) підмайстра — ліплення вдвічі швидше',
+    cheer: (g) => '👏 ' + g.from + ' хвалить твою роботу: +10 % до всього на годину',
+    gift: (g) => '🎁 Дарунок від ' + g.from + (g.what ? ': ' + g.what : ''),
+    toloka: (g) => '🤝 ' + g.from + ' підніс(ла) на твою толоку' + (g.what ? ': ' + g.what : ''),
+    thanks: (g) => '💛 ' + g.from + ' дякує тобі за допомогу',
+  };
+
+  /// ✨ на «Селі»: є допомога, якої ще не бачив у вкладці (будь-який вид). Відкрив «Село» — побачив.
+  function gotNote(st, api) {
+    const v = st.guild;
+    const newest = v && v.got.length ? Math.max(...v.got.map((g) => ms(g.at))) : 0;
+    if (st.tab === 'guild' && newest) api.storeSet('clk.guild.gotSeen', String(newest));
+    const seen = +api.storeGet('clk.guild.gotSeen', '0') || 0;
+    api.tabNote(st, 'guild', 'buff', newest > seen || (!v.gotKnown && (v.buffs.lend || v.buffs.cheer)) ? '✨' : '', 2);
+  }
+
   HClicker.part({
     id: 'guild',
     order: 60,
@@ -884,6 +1182,8 @@
       // Село відкривається, коли з ним уже є про що говорити: двадцять обпалених виробів або цех, що вже щось дав.
       api.showWhen(st, 'guild', (st2, v) => {
         const g = v.guild;
+        // Сервер сам каже, чи «Село» відчинене (з першого обпалу); старий сервер — як було.
+        if (g && typeof g.open === 'boolean') return g.open;
         if (g && (g.rank > 0 || (g.claims && g.claims.length) || (g.shelf && g.shelf.length) || g.given > 0)) return true;
         const m = v.market;
         if (m && m.delivered > 0) return true;
@@ -902,8 +1202,16 @@
       st.guildRosterAt = 0;
       st.guildCds = [];
       st.guildOv = null;
-      st.guildHelp = null;
-      st.guildHelpTo = '';
+      st.guildCard = null;
+      st.guildChoose = null;
+      // Дзвоник цеху (core.js → hgames:clkMail): друг щось надіслав — питаємо пошту дією, а не чекаємо свого кліку.
+      st.guildMailAt = 0;
+      st.guildMail = () => {
+        if (!st.guildPane || !st.mine || Date.now() - st.guildMailAt < 1500) return;
+        st.guildMailAt = Date.now();
+        api.act(st, 'guild', { op: 'mail' });
+      };
+      document.addEventListener('hgames:clkMail', st.guildMail);
     },
 
     update(st, v, api) {
@@ -917,19 +1225,21 @@
         all: g.all || { n: 0, keep: 0 },
         help: g.help || { treatLeft: 0, lendLeft: false, cheered: [], sizes: [], treats: 0 },
         buffs: g.buffs || { lend: null, cheer: null, treat: null },
+        got: g.got || [], gotKnown: Array.isArray(g.got), thanked: g.thanked || [],
       };
       if (st.guild.enabled && !st.guild.day) st.guild.enabled = false;
       if (st.guild.enabled) celebrate(st, api, st.guild);
       api.tabNote(st, 'guild', 'claim', st.guild.claims.length ? '🛒' : '', 1);
-      api.tabNote(st, 'guild', 'buff', st.guild.buffs.lend || st.guild.buffs.cheer ? '✨' : '', 2);
+      gotNote(st, api);
       paint(st, api);
       paintFireWagon(st, api);
       if (st.guildOv) renderPicker(st, api);
-      if (st.guildHelp) renderHelp(st, api);
+      if (st.guildCard) renderCard(st, api);
     },
 
     slow(st, api) {
       if (st.tab !== 'guild' || !st.guild || !st.guild.enabled) return;
+      gotNote(st, api);
       loadRoster(st, api, false);
       countdowns(st, api);
     },
@@ -940,8 +1250,12 @@
       st.guildFireSlot = null;
       st.guildOv = null;
       st.guildOvBody = null;
-      st.guildHelp = null;
-      st.guildHelpBody = null;
+      st.guildCard = null;
+      st.guildCardBody = null;
+      st.guildChoose = null;
+      st.guildChooseBody = null;
+      if (st.guildMail) document.removeEventListener('hgames:clkMail', st.guildMail);
+      st.guildMail = null;
     },
   });
 })();

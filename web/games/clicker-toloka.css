@@ -120,3 +120,10 @@
   .clkl-bi.cur b { animation: none; }
   .clkl-tbar i { transition: none; }
 }
+
+/* Наступний етап, поки поточний будується (12-те дошліфування): ті самі рядки вимог, трохи притишені. */
+.clkl-next { margin-top: .5em; padding-top: .4em; border-top: 1px dashed var(--line); opacity: .92; }
+.clkl-next .clk-sub { margin-bottom: .2em; }
+@media (pointer: coarse) {
+  .clkl-fbtns > button, .clkl-fgo { min-height: 2.5rem; }
+}

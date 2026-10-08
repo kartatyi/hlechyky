@@ -2848,6 +2848,8 @@
           + (a.reward ? ' — лови +' + a.reward + ' 🏺' : '') + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
       });
       c.on('toast', (t) => { if (t && t.text) toast(t.text, t.kind || ''); });
+      // Дзвоник цеху Гончарного кола: другові щось надіслали — відкрите коло саме спитає пошту (clicker-guild.js).
+      c.on('clkMail', (m) => document.dispatchEvent(new CustomEvent('hgames:clkMail', { detail: m || {} })));
       c.on('invite', inviteToast);
       loadWallet();          // черепки видно в шапці з будь-якого розділу, тож питаємо їх одразу
     },

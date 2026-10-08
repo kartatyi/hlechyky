@@ -185,7 +185,8 @@
         + '<div class="clkl-tbar"><i data-from="' + s.laidAt + '" data-to="' + s.endsAt + '"></i></div></div>'
         + helpersLine(st, api, s, true);
       const next = b.stages[s.index + 1];
-      html += '<div class="muted small">' + (next ? 'Далі — «' + esc(next.name) + '»: вироби можна носити в комору заздалегідь.'
+      if (t.next) html += nextHtml(st, api, t.next, b, true);
+      html += '<div class="muted small">' + (next ? 'Вироби на наступний етап можна збирати в комору заздалегідь.'
         : 'Це останній етап: достроїться — і «' + esc(b.name) + '» стоятиме назавжди.') + '</div>';
       return html;
     }
@@ -379,6 +380,32 @@
     });
   }
 
+  /// Наступний етап, поки поточний будується (лише показати — піднести наперед не можна). own — своя толока: «у тебе є»
+  /// дає сервер; у друга — рахуємо з моєї комори тим самим правилом, що й «Піднести».
+  function nextHtml(st, api, nx, cur, own) {
+    const esc = (x) => api.esc(st, x);
+    const b = bdef(st, nx.building);
+    if (!b) return '';
+    const mine = itemsOf(st);
+    const rows = (nx.needs || []).map((n, i) => {
+      const have = own && n.have != null ? n.have : mine.filter((it) => fits(n, it)).reduce((a, it) => a + it.n, 0);
+      const ok = have >= n.n;
+      return '<div class="clkl-need' + (ok ? ' ok' : '') + '">'
+        + '<span class="clkl-nart">' + api.wareSvg(n.ware, { style: n.style, quality: Math.max(1, n.q), cls: 'clkl-ware', slot: 'tx-' + (own ? 'o' : 'f') + i }) + '</span>'
+        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">у тебе є ' + api.count(have) + '</span></div>'
+        + '<span class="clkl-mark">' + (ok ? '✓' : 'ще ' + (n.n - have)) + '</span></div>';
+    });
+    const rich = own && (st.shown || 0) >= nx.pay;
+    rows.push('<div class="clkl-need' + (rich ? ' ok' : '') + '"><span class="clkl-nart clkl-emo">💰</span>'
+      + '<div class="clkl-ntxt"><b>' + esc(api.potsShort(nx.pay)) + '</b><span class="muted small">' + (own ? 'гроші на етап' : 'гроші на етап — його') + '</span></div>'
+      + '<span class="clkl-mark">' + (rich ? '✓' : '') + '</span></div>');
+    rows.push('<div class="clkl-need hours"><span class="clkl-nart clkl-emo">⏳</span>'
+      + '<div class="clkl-ntxt"><b>' + hrs(nx.hours) + '</b><span class="muted small">будується (друзі й рід скоротять)</span></div><span class="clkl-mark"></span></div>');
+    const head = (b.key !== (cur && cur.key) ? b.icon + ' ' + esc(b.name) + ' — ' : '') + 'етап ' + (nx.index + 1) + ' з ' + b.stages.length + ' «' + esc(nx.name) + '»';
+    return '<div class="clkl-next"><div class="clk-sub small">⏭ Наступний етап: ' + head + '</div>'
+      + '<div class="clkl-needs">' + rows.join('') + '</div></div>';
+  }
+
   function onClick(st, api, e) {
     if (e.target.closest('.clkl-lay')) { lay(st, api, e); return; }
     if (e.target.closest('.clkl-festgo')) festival(st, api, e);
@@ -401,6 +428,8 @@
       + ' <span class="muted small">· етап ' + (t.stage + 1) + ' з ' + b.stages.length + ' — «' + esc(sd.name) + '»</span></div>';
     if (laid) html += '<div class="small">🔨 Будується · ще ' + esc(left(api, ends - sn)) + '</div>';
     if (t.helpers.length) html += '<div class="small">🤝 На толоці ' + (laid ? 'були' : 'вже були') + ': <b>' + esc(t.helpers.join(', ')) + '</b></div>';
+    // Поки етап будується — що другові треба на наступний і скільки такого є в мене (лише показати).
+    if (laid && t.next) html += nextHtml(st, api, t.next, b, false);
     const still = t.needs.filter((n) => n.left > 0);
     if (!laid && !still.length) html += '<div class="muted small">Усе, що просили, вже є — другові лишилось закласти етап.</div>';
     if (!open) {
@@ -564,6 +593,8 @@
         waitBig: !!t.waitBig, done: t.done || 0, helped: t.helped || 0,
         festival: t.festival ? { until: ms(t.festival.until), next: ms(t.festival.next), mult: t.festival.mult || 2 } : null,
         allMult: t.allMult || 1,
+        // Поки етап будується — що треба на наступний (сервер дає лише тоді; have — з моєї комори).
+        next: t.next || null,
       };
       stageDone(st, api, prev);
       helpersCame(st, api);
