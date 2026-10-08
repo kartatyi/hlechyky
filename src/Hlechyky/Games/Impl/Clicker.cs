@@ -1022,6 +1022,8 @@ public sealed partial class Clicker : Game
             _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
                 ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActResult.Fail("Тут так не ходять"),
         };
+        // Дія могла почати чи скінчити мінігру — глеки відкладаються під неї або вертаються до свого часу.
+        HoldForMinigame(Ctx.Clock.UtcNow);
         // Звання: лічильники → звання, нові — у Журнал, звіт цехові (раз на хвилину або одразу, коли щось сталось).
         TitlesAfterAct(Ctx.Clock.UtcNow);
         // Таблиця «Гончарі» — це глеки за весь час; те саме число вдруге їй нічого не додасть.
@@ -1109,6 +1111,8 @@ public sealed partial class Clicker : Game
             else _fallStreak = 0;
             ScheduleFall(now);
         }
+        // Мінігра на час (розпис, ручний обпал) — глеки чекають її кінця (записка №29, ClickerFallHold.cs).
+        HoldForMinigame(now);
         // Пробігли — наступні від «зараз»; гончаря не було — теж від «зараз». Зірка ще й чекає ночі (§A.6).
         // Кіт і зірка, що саме зараз на сцені (разом із запасом на пінг), лишаються: інакше дія «погладити» чи
         // «загадати» спершу перепланувала б їх тут і отримала «Зірка вже згасла» — щойно гончар хвилини дві дивився
@@ -1177,6 +1181,7 @@ public sealed partial class Clicker : Game
     void ScheduleGolden(DateTimeOffset from, double? seconds = null)
     {
         var (min, max) = Has("omen") ? (OmenMinSeconds, OmenMaxSeconds) : (GoldenMinSeconds, GoldenMaxSeconds);
+        _goldenPlanned = default;
         // Чорна глина й глиняний свисток скорочують чекання; собака під лавою стереже глек трохи довше.
         var wait = seconds ?? (min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * (Tool("whistle") ? WhistleEvents : 1) * GuestsGoldenWait;
         var at = from + TimeSpan.FromSeconds(wait);
@@ -1194,6 +1199,7 @@ public sealed partial class Clicker : Game
     void ScheduleFall(DateTimeOffset from)
     {
         var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
+        _fallPlanned = default;
         var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * RelicWaitMult("cat3"));
         _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown) + TimeSpan.FromSeconds(Perk(MarkEffect.FallShown)),
             Ctx.Rng.Next(8, 80));
@@ -2184,7 +2190,8 @@ public sealed partial class Clicker : Game
             momentum = MomentumOf(heat),
             momentumMax = MomentumMax,
             // Наступний глек з полиці і скільки він дасть, якщо спіймати просто зараз.
-            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult },
+            // miss — що станеться, якщо він розіб'ється на очах: клієнт малює чесне «трісь» (записка №29).
+            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss },
             grabbed = _grabbed,
             // Дев'яте оновлення: щасливі кліки за весь час (клієнт малює «✨ ×50» за приростом) і бажання на зірку.
             lucky = _lucky,
