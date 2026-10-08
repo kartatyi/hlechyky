@@ -63,6 +63,11 @@
 .clkl-miss { font-size: .76em; line-height: 1.25; flex: 1 1 180px; min-width: 0; }
 .clkl-ready { color: #7bd389; }
 .clkl-help { font-size: .8em; line-height: 1.3; }
+/* Лад у коморі (08.10): підказка про друзів — помітна, не сіра; «бракує» і «Ліпити …» під вимогою. */
+.clkl-hint { margin: .35em 0; padding: .35em .55em; border-left: 3px solid var(--accent2); border-radius: 6px; background: rgba(244, 197, 66, .08); }
+.clkl-lack { color: #ffb27a; font-weight: 700; }
+.clkl-form { align-self: flex-start; margin-top: .3em; min-height: 40px; padding: .3em .7em; font-size: .92em; white-space: nowrap; border: 1px solid var(--accent2); }
+.clkl-onwheel { margin-top: .25em; color: var(--accent2); }
 .clkl-cut { color: #7bd389; font-weight: 700; white-space: nowrap; }
 .clkl-err { color: #ffb27a; }
 
