@@ -522,6 +522,11 @@ public sealed record TableLine(long Id, string Nick, string Text, string Kind, D
 public sealed record TableSaid(string RoomId, TableLine Line) : Outgoing;
 /// <summary>Реакція-емодзі за столом (п. 231): пливе над карткою в усіх, хто на стіл дивиться; у балачку не пишеться.</summary>
 public sealed record TableReact(string RoomId, string Nick, int? Seat, int E) : Outgoing;
+/// <summary>
+/// Гімн переможця (docs/games/specs/anthem.md §2): партія скінчилась перемогою людини з гімном — він звучить у всіх, хто на
+/// стіл дивиться. <paramref name="Round"/> — щоб браузер не зіграв той самий гімн двічі (реконект, дві вкладки).
+/// </summary>
+public sealed record Anthem(string RoomId, int Round, string Nick, string Title, string Emoji, string Url) : Outgoing;
 
 /// <summary>Уся балачка столу одному з'єднанню, щойно воно підписалось на стіл (F5, реконект, зайшов подивитись).</summary>
 public sealed record TableHistory(string RoomId, string ConnectionId, IReadOnlyList<TableLine> Lines) : Outgoing;

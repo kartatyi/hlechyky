@@ -542,11 +542,13 @@
     wireHead(root, nick, mine);
     const g = G();
     const opt = (p) => p.catch(() => null);
-    const [p, ppl, led, wk] = await Promise.all([
+    const [p, ppl, led, wk, anth] = await Promise.all([
       opt(o.api('GET', '/api/games/profile?nick=' + encodeURIComponent(nick))),
       opt(o.api('GET', '/api/people/' + encodeURIComponent(nick))),
       mine ? opt(o.api('GET', '/api/games/ledger?limit=15')) : null,
       opt(o.api('GET', '/api/games/time?period=week')),
+      // 🎺 гімн переможця з Лавки: 404 — гімну нема (або нічого не вдягнуто), рядка теж нема
+      opt(o.api('GET', '/api/lavka/anthem/of/' + encodeURIComponent(nick))),
       g && g.ready ? g.ready().catch(() => {}) : null,
     ]);
     if (stale(t) || whoNick !== nick) return;
@@ -554,7 +556,7 @@
     const week = wk && (wk.people || []).find((x) => same(x.nick, nick));
     const known = !!(p && ((p.wallet && (p.wallet.earned || p.wallet.balance)) || (p.achievements || []).length || p.time || (p.recent || []).length))
       || !!(ppl && ppl.music && (ppl.music.requests.all || ppl.music.likes.count));
-    root.innerHTML = headHtml(nick, mine, ppl)
+    root.innerHTML = headHtml(nick, mine, ppl, anth)
       + (known || mine ? '<div class="who-grid">'
         + walletCard(p, led, mine)
         + timeCard(p, week)
@@ -568,7 +570,14 @@
     root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
   }
 
-  function headHtml(nick, mine, ppl) {
+  /// «🎺 Гімн: Трембіта ▶» — ▶ грає тим самим плеєром, що й за столом (app.js), друге натискання зупиняє.
+  function anthemLine(a) {
+    if (!a || !a.url) return '';
+    return '<div class="wh-anth"><span>🎺 Гімн: <b>' + esc(a.title || 'Свій трек') + '</b></span>'
+      + '<button type="button" class="ghost" data-anth="' + esc(a.url) + '" title="Послухати гімн" aria-label="Послухати гімн">▶</button></div>';
+  }
+
+  function headHtml(nick, mine, ppl, anth) {
     const me = o.me;
     const acct = mine ? (me.account ? (me.google ? 'акаунт · Google прив\'язано' : 'акаунт з паролем') : 'гість — нік ще не закріплений')
       : ppl ? (ppl.account ? 'акаунт' : 'гість') : '';
@@ -584,6 +593,7 @@
       + '<div class="wh-main"><h2 style="--h:' + hue(nick) + '"><span class="' + nickCls(nick).trim() + '">' + esc(nick) + '</span>'
       + (mine ? ' <span class="muted small">· це ти</span>' : '') + '</h2>'
       + titleChip(nick)
+      + anthemLine(anth)
       + '<div class="wh-where">' + whereHtml(nick) + '</div>'
       + (acct ? '<div class="muted small">' + esc(acct) + '</div>' : '') + '</div>'
       + '<div class="wh-acts">' + btns + '</div></section>';
@@ -595,6 +605,8 @@
       else o.askNick(true, m);
     });
     if (!mine) wireActions(root.querySelector('.who-head'), nick, () => {});
+    root.querySelectorAll('.wh-anth [data-anth]').forEach((b) => b.onclick = () => { if (o.toggleAnthem) o.toggleAnthem({ url: b.dataset.anth }); });
+    if (o.paintAnthemBtns) o.paintAnthemBtns(root);
     root.querySelectorAll('.who-head [data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
   }
 

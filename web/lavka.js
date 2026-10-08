@@ -5,7 +5,10 @@
 
   Сервер (Lavka.cs): GET /api/lavka (вітрина + моє), GET /api/lavka/looks (хто як виглядає — публічно),
   POST /api/lavka/buy { item, for? }, /wear { slot, item }, /dedicate { to, phrase }; хаб Fireworks();
-  події look { nick, look } і fireworks { nick }.
+  події look { nick, look } і fireworks { nick }. 🎺 Гімни (docs/games/specs/anthem.md): полиця anthem, свій трек —
+  POST /api/lavka/anthem?start=&len= (тіло — сам файл) або пісня з пошуку радіо — POST /api/lavka/anthem/fetch { trackId }
+  (сервер бере її в кеш і дає previewUrl), далі POST /api/lavka/anthem/track { trackId, start, len, title }; грає їх app.js
+  (playAnthem). Послухати й обрати уривок можна ще до покупки — «Зберегти» спершу купує «Свій трек».
 
   Хто як виглядає, знає цей модуль: web/people.js питає look(nick) для кольору, значка й рамки — тому куплене видно
   скрізь, де є нік: балачки, черга, столи, таблиці, картка, профіль.
@@ -26,15 +29,18 @@
   const preview = {};                  // слот → id речі, яку приміряємо (лише на екрані, нічого не купує)
 
   const TABS = [['icon', '🏺 Значки'], ['frame', '⭕ Рамки'], ['color', '🎨 Колір ніка'], ['title', '🏷 Титули'],
-    ['bg', '🖼 Тло'], ['perk', '✨ Вміння'], ['photo', '📷 Своя фотка'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
-  /// Полиці, яких у подарунку нема: шафа — своя, а прожарку не дарують (її замовляють самі, web/liveads.js).
-  const NO_GIFT = ['mine', 'roast'];
+    ['bg', '🖼 Тло'], ['perk', '✨ Вміння'], ['photo', '📷 Своя фотка'], ['anthem', '🎺 Гімни'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
+  /// Чого в подарунку нема: полиці — шафа своя, а прожарку не дарують (її замовляють самі, web/liveads.js); речі —
+  /// «Свій трек» (його ставлять собі: уривок обирає сама людина, сервер подарунок теж відмовить).
+  const NO_GIFT = ['mine', 'roast', 'own-anthem'];
   const TIER = { 1: 'звичайний', 2: 'рідкісний', 3: 'особливий' };
   const PERK_TEXT = {
     dedication: 'Перед твоїм треком Дядько Глек скаже в ефір: «Цю пісню Оля присвячує Петрові — на удачу». Раз на 3 години.',
     fireworks: 'Кнопка 🎆 біля реакцій: бахнути феєрверк над обкладинкою в усіх — і рядок у балачках. Раз на 10 хвилин.',
     photo: 'Своє фото замість літери чи значка — у профілі, балачках, списках і за столами. Рамка лишається поверх, значок сідає в куточок. Міняти — безкоштовно, раз на добу.',
   };
+  const OWN_ANTHEM = 'own-anthem';
+  const OWN_ANTHEM_TEXT = 'Шматок своєї пісні — з телефона чи з пошуку радіо: 5–15 секунд, звідки захочеш. Звучить за столом, коли виграєш. Міняти — безкоштовно, раз на 2 хвилини.';
 
   // =============================================================================================
   // Відмінки ніка — той самий порядок, що й NickCases.cs на сервері: «дарує Петрові», «для Олі», «гостю Васі».
@@ -174,6 +180,7 @@
       case 'title': return '<span class="lv-titlechip">' + esc(it.art) + '</span>';
       case 'bg': return '<span class="lv-bg bg-' + esc(it.art) + '"></span>';
       case 'perk': return '<span class="lv-emoji">' + (it.id === 'fireworks' ? '🎆' : it.id === 'photo' ? '📷' : '💌') + '</span>';
+      case 'anthem': return '<span class="lv-emoji">' + emo((it.art && it.art.emoji) || '🎺') + '</span>';
     }
     return '';
   }
@@ -199,6 +206,9 @@
       btns = it.season && !it.season.open ? '<button disabled>Не сезон</button>'
         : short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
           : '<button class="primary" data-gift="' + it.id + '">🎁 Подарувати</button>';
+    } else if (it.id === OWN_ANTHEM && tab === 'anthem' && (it.owned || acc)) {
+      // Свій трек — панель: послухати й обрати уривок можна ще до покупки, «Зберегти» спершу купує
+      return ownAnthemPanel(it);
     } else if (it.owned && it.id === 'photo') {
       // фотка — не «готове / ще N хв», а своя полиця: там її ставлять, міняють і прибирають
       state = '✓ твоє' + (perk && perk.url ? ' · фото стоїть' : '');
@@ -208,6 +218,7 @@
       else {
         state = it.worn ? '✓ вдягнуто' : '✓ твоє';
         btns = it.worn ? '<button class="ghost" data-off="' + it.kind + '">Зняти</button>' : '<button class="primary" data-wear="' + it.id + '">Вдягти</button>';
+        if (it.id === OWN_ANTHEM) btns += '<button class="ghost" data-go="#lavka/anthem">🎤 Уривок</button>';
       }
     } else {
       state = it.price + ' 🏺' + (it.season ? ' · ' + season(it.season) : '');
@@ -217,7 +228,10 @@
           : short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
             : '<button class="primary" data-buy="' + it.id + '">Купити</button>';
     }
-    const tryBtn = it.kind !== 'perk' && !gift && !it.worn ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
+    // Гімн не приміряють — його слухають: ▶ грає тут, нічого не вдягаючи. Свій трек слухати ще нема чого.
+    const url = it.kind === 'anthem' && it.art && it.art.url;
+    const tryBtn = url ? '<button class="ghost" type="button" data-anth="' + esc(url) + '" title="Прослухати — нічого не купує">▶</button>'
+      : it.kind !== 'perk' && it.kind !== 'anthem' && !gift && !it.worn ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
     // У подарунку «моє / вдягнуто» ні до чого: річ вибирають для іншої людини.
     const mine = !gift;
     return '<div class="lv-item' + (mine && it.owned ? ' owned' : '') + (mine && it.worn ? ' worn' : '') + (it.earned && !it.owned ? ' locked' : '')
@@ -225,6 +239,8 @@
       + '<div class="lv-art">' + artOf(it) + '</div>'
       + '<div class="lv-name">' + esc(it.title) + (it.tier ? ' <span class="muted small">· ' + TIER[it.tier] + '</span>' : '') + '</div>'
       + (it.kind === 'perk' ? '<div class="muted small lv-desc">' + esc(PERK_TEXT[it.id] || '') + '</div>' : '')
+      + (it.id === OWN_ANTHEM ? '<div class="muted small lv-desc">' + esc(OWN_ANTHEM_TEXT) + '</div>' : '')
+      + (url ? '<div class="muted small lv-dur" data-dur="' + esc(url) + '">' + durText(url) + '</div>' : '')
       + '<div class="lv-state">' + state + '</div>'
       + '<div class="lv-btns">' + tryBtn + btns + '</div></div>';
   }
@@ -261,6 +277,7 @@
     if (giftTo && !same(giftTo, wasGift)) tab = 'icon';
     if (!giftTo && TABS.some(([k]) => k === parts[0])) tab = parts[0];
     if (giftTo && NO_GIFT.includes(tab)) tab = 'icon';
+    if (tab !== 'anthem' || giftTo) { dropCut(); find = null; }
     // Полиці перемикаємо одразу з того, що вже знаємо, а свіже (баланс, шафа) домальовуємо, щойно прийде.
     if (data) paint(); else root.innerHTML = '<div class="gwait"><span class="spin"></span> відчиняю лавку…</div>';
     try { await load(); } catch (e) { if (!data) root.innerHTML = '<section class="panel"><div class="gempty">Лавка зачинена: ' + esc(e.message) + '</div></section>'; return; }
@@ -274,7 +291,7 @@
     const acc = data.account;
     const items = data.items || [];
     // Титули за ачівки не дарують і не купують — у подарунковому режимі їх не показуємо зовсім.
-    const list = tab === 'mine' ? items.filter((x) => x.owned) : items.filter((x) => x.kind === tab && !(giftTo && x.earned));
+    const list = tab === 'mine' ? items.filter((x) => x.owned) : items.filter((x) => x.kind === tab && !(giftTo && (x.earned || NO_GIFT.includes(x.id))));
     // Сезонне, що продається саме зараз (🎃 восени, 🎄 на свята), — першим: воно ненадовго, і в кінці полиці його не видно.
     const now = (x) => (x.season && x.season.open ? 0 : 1);
     if (tab !== 'mine') list.sort((a, b) => now(a) - now(b));
@@ -305,13 +322,19 @@
       + '</section>';
     const tabs = '<nav class="lv-tabs" aria-label="Полиці лавки">' + TABS.filter(([k]) => !(giftTo && NO_GIFT.includes(k))).map(([k, l]) =>
       '<button type="button" data-tab="' + k + '"' + (k === tab ? ' class="on"' : '') + '>' + l + '</button>').join('') + '</nav>';
+    // Свій трек — панель на всю ширину над готовими гімнами, а не одна з карток: акаунту — ще до покупки (спершу послухай).
+    const own = tab === 'anthem' && !giftTo ? shelf.find((x) => x.id === OWN_ANTHEM && (x.owned || acc)) : null;
+    const cardsOf = own ? shelf.filter((x) => x !== own) : shelf;
     const body = tab === 'photo' ? photoPanel()
       : tab === 'roast' ? '<div class="la-host" data-la-host></div>'
       : shelf.length
-      ? '<div class="lv-grid">' + shelf.map(cardHtml).join('') + '</div>' + soon
+      ? (tab === 'anthem' ? anthemHead() : '') + (own ? cardHtml(own) : '')
+        + '<div class="lv-grid">' + cardsOf.map(cardHtml).join('') + '</div>' + soon
       : '<div class="gempty glek">' + (tab === 'mine' ? 'Шафа ще порожня. Обери щось на полицях — і воно лишиться з тобою назавжди.' : 'Тут поки порожньо.') + '</div>';
     root.innerHTML = head + '<section class="panel lv-shelf">' + tabs + body + '</section>';
     wire(root);
+    if (tab === 'anthem') { fillDurs(root); anthemTimer(); }
+    if (o.paintAnthemBtns) o.paintAnthemBtns(root);
     // 🔥 Прожарка в ефірі — свій модуль (web/liveads.js): малює себе сам і сам себе перечитує.
     const la = root.querySelector('[data-la-host]');
     if (la && window.HLiveAds) window.HLiveAds.mount(la);
@@ -340,6 +363,7 @@
     // Файл вибираємо просто в обробнику кліку: Safari відкриває вибір фото лише з живого натиску.
     root.querySelectorAll('[data-ph-pick]').forEach((b) => b.onclick = () => pickPhoto());
     root.querySelectorAll('[data-ph-off]').forEach((b) => b.onclick = (e) => removePhoto(e.currentTarget));
+    wireAnthems(root);
   }
 
   /// «Точно?» своїм віконцем: покупка назавжди, і черепки назад не повертаються.
@@ -367,7 +391,8 @@
       forNick
         ? 'Подарувати <b>' + esc(dative(forNick)) + '</b> «' + esc(it.title) + '» за <b>' + it.price + ' 🏺</b>? Подарунок лишиться в людини назавжди'
           + (it.kind === 'perk' ? '.' : ', а якщо це місце в неї порожнє — одразу вдягнеться.')
-        : '<b>' + esc(it.title) + '</b> за <b>' + it.price + ' 🏺</b>. Річ лишиться твоєю назавжди' + (it.kind === 'perk' ? '.' : ' — і одразу вдягнеться.'),
+        : '<b>' + esc(it.title) + '</b> за <b>' + it.price + ' 🏺</b>. Річ лишиться твоєю назавжди' + (it.kind === 'perk' ? '.' : ' — і одразу вдягнеться.')
+          + (it.id === OWN_ANTHEM ? ' Далі обереш пісню — з телефона чи з пошуку радіо — і шматок, який звучатиме.' : ''),
       forNick ? 'Подарувати' : 'Купити');
     if (!yes) return;
     await o.busy(btn, forNick ? 'дарую…' : 'купую…', async () => {
@@ -658,6 +683,458 @@
     });
   }
 
+  // =============================================================================================
+  // 🎺 Гімни (docs/games/specs/anthem.md). Вдягнутий гімн звучить у всіх за столом, коли людина виграє партію на кількох.
+  // Грає їх app.js (playAnthem — один Audio на сайт, радіо притишується); тут — полиця, ▶ «прослухати, не вдягаючи»,
+  // вимикач гімнів за столом і «Свій трек»: файл з телефона, браузер лише читає тривалість (без декодування — 10 хвилин
+  // стерео в пам'яті це сотні мегабайтів), людина обирає «звідки» і «скільки», а ріже й вирівнює гучність сервер.
+  // =============================================================================================
+
+  const AN_MAX = 40 * 1024 * 1024;     // сервер бере до 40 МБ
+  const AN_MIN_SEC = 3;                // коротше сервер не візьме — і різати нема чого
+  const AN_MAX_SEC = 20 * 60;          // довше — теж ні (ffprobe на сервері)
+  const durs = new Map();              // url готового гімну → секунди (з метаданих файла)
+  let cut = null;                      // з чого ріжемо: файл { name, file, url, … } чи пісня з пошуку { name, id, url, … }; + dur, start, len, title, xhr
+  let find = null;                     // пошук пісні в панелі: { q, last, list, hint, wait, taking, timer, focus }
+  let anInput = null;
+  let anTimer = 0;
+
+  const anthemOn = () => { try { return localStorage.getItem('anthemSound') !== '0'; } catch { return true; } };
+  /// «1:12», «0:07,5» — повзунок «Звідки» ходить по півсекунди.
+  function clock(sec) {
+    const s = Math.max(0, Math.floor(sec * 2) / 2);
+    const m = Math.floor(s / 60);
+    const r = s - m * 60;
+    return m + ':' + String(Math.floor(r)).padStart(2, '0') + (r % 1 ? ',5' : '');
+  }
+  const durText = (url) => (durs.has(url) ? Math.round(durs.get(url)) + ' с' : '');
+  /// Тривалість готових гімнів — з метаданих (preload=metadata тягне лише голову файла); нічого не грає.
+  function fillDurs(root) {
+    root.querySelectorAll('[data-dur]').forEach((el) => {
+      const url = el.dataset.dur;
+      if (durs.has(url)) { el.textContent = durText(url); return; }
+      if (durs.has('?' + url)) return;                 // уже питаємо
+      durs.set('?' + url, 0);
+      const m = new Audio();
+      m.preload = 'metadata';
+      m.muted = true;
+      m.onloadedmetadata = () => {
+        if (Number.isFinite(m.duration) && m.duration > 0) durs.set(url, m.duration);
+        m.removeAttribute('src');
+        document.querySelectorAll('#lavka [data-dur]').forEach((x) => { if (x.dataset.dur === url) x.textContent = durText(url); });
+      };
+      m.src = url;
+    });
+  }
+  /// «о 21:07» — коли можна ставити новий уривок; '' — уже можна.
+  function waitUntil(iso) {
+    const t = Date.parse(iso || '');
+    if (!(t > Date.now())) return '';
+    return new Date(t).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+  }
+  /// Перерва скінчилась — кнопки «Змінити уривок» і «Зберегти» оживають самі, без F5.
+  function anthemTimer() {
+    clearTimeout(anTimer);
+    const t = Date.parse((data && data.ownAnthem && data.ownAnthem.readyAt) || '');
+    if (t > Date.now()) anTimer = setTimeout(() => { if (shown && tab === 'anthem') paint(); }, t - Date.now() + 500);
+  }
+
+  function anthemHead() {
+    if (giftTo) return '<div class="muted small lv-an-head">Готовий гімн звучатиме за столом, коли людина виграє партію.</div>';
+    const on = anthemOn();
+    return '<div class="lv-an-head"><span class="muted small">Твій гімн звучить у всіх за столом, коли виграєш партію на кількох. '
+      + 'Нічия, кооператив і соло — без гімну. ▶ — прослухати, нічого не купуючи.</span>'
+      + '<button type="button" class="ghost lv-an-sound' + (on ? '' : ' off') + '" data-anth-sound aria-pressed="' + on + '" title="Чи грати гімни переможців за столами в цьому браузері">'
+      + (on ? '🎺 Гімни за столом: увімкнено' : '🔇 Гімни за столом: вимкнено') + '</button></div>';
+  }
+
+  const lenMaxOf = (dur) => Math.max(5, Math.min(15, Math.floor(dur)));
+  const startMaxOf = (c) => Math.max(0, Math.floor((c.dur - c.len) * 2) / 2);
+  const spanText = (c) => 'з ' + clock(c.start) + ' до ' + clock(Math.min(c.dur, c.start + c.len));
+
+  function ownAnthemPanel(it) {
+    const oa = data.ownAnthem || {};
+    const wait = it.owned ? waitUntil(oa.readyAt) : '';
+    const state = !it.owned ? it.price + ' 🏺 · спершу послухай: платиш, коли зберігаєш уривок'
+      : (it.worn ? '✓ вдягнуто' : '✓ твоє') + (oa.url ? '' : ' · уривка ще нема — за столом поки тиша');
+    const wearBtn = !it.owned ? ''
+      : it.worn ? '<button class="ghost" type="button" data-off="anthem">Зняти</button>'
+        : '<button class="primary" type="button" data-wear="' + OWN_ANTHEM + '">Вдягти</button>';
+    const now = it.owned && oa.url ? '<div class="lv-an-now"><span>Зараз: <b>«' + esc(oa.title || 'Свій трек') + '»</b></span>'
+      + '<button class="ghost" type="button" data-anth="' + esc(oa.url) + '" data-lbl="Послухати">▶ Послухати</button></div>' : '';
+    const off = wait ? ' disabled' : '';
+    const pick = '<button class="' + (oa.url ? 'ghost' : 'primary') + '" type="button" data-an-find' + off + '>🔎 Знайти пісню</button>'
+      + '<button class="ghost" type="button" data-an-pick' + off + '>📁 Файл з телефона</button>';
+    return '<div class="lv-item lv-anth-own' + (it.owned ? ' owned' : '') + (it.worn ? ' worn' : '') + '" data-id="' + OWN_ANTHEM + '">'
+      + '<div class="lv-an-top"><span class="lv-emoji" aria-hidden="true">🎤</span><div class="lv-an-main"><div class="lv-name">Свій трек</div>'
+      + '<div class="lv-state">' + state + '</div></div>' + (wearBtn ? '<div class="lv-btns">' + wearBtn + '</div>' : '') + '</div>'
+      + now
+      + (cut ? cutHtml(wait, it)
+        : find ? findHtml()
+          : '<div class="lv-btns lv-an-acts">' + (oa.url ? '<span class="muted small">Змінити уривок:</span>' : '') + pick
+            + (wait ? '<span class="muted small">новий уривок можна буде о ' + wait + '</span>' : '') + '</div>')
+      + '<div class="muted small lv-desc">' + esc(OWN_ANTHEM_TEXT) + ' 👂 Уривок чують усі за столом.</div>'
+      + '</div>';
+  }
+
+  function cutHtml(wait, it) {
+    const c = cut;
+    const lenMax = lenMaxOf(c.dur);
+    // Ще не куплено — «Зберегти» спершу спитає про покупку; черепків замало — слухати можна, зберегти ні.
+    const short = it.owned ? 0 : it.price - (data.balance || 0);
+    const save = short > 0 ? '<button type="button" disabled>Бракує ' + short + ' 🏺</button>'
+      : '<button class="primary" type="button" data-an-save' + (wait ? ' disabled title="Новий уривок — раз на 2 хвилини"' : '') + '>Зберегти</button>';
+    return '<div class="lv-an-cut">'
+      + '<div class="lv-an-file"><span class="lv-an-fn">' + (c.file ? '🎵 ' : '📻 ') + esc(c.name) + '</span><span class="muted small">' + clock(c.dur) + '</span></div>'
+      + '<label class="lv-an-range"><span>Звідки</span><input type="range" data-an-start min="0" max="' + startMaxOf(c) + '" step="0.5" value="' + c.start + '"></label>'
+      + '<label class="lv-an-range"><span>Скільки</span><input type="range" data-an-len min="5" max="' + lenMax + '" step="1" value="' + c.len + '"'
+      + (lenMax <= 5 ? ' disabled' : '') + '><b data-an-lenv>' + c.len + ' с</b></label>'
+      + '<div class="lv-an-span" data-an-span>' + spanText(c) + '</div>'
+      + '<label class="lv-an-title"><span>Назва</span><input type="text" data-an-title maxlength="40" placeholder="Свій трек — так підпишеться за столом" value="' + esc(c.title) + '"></label>'
+      + '<div class="lv-btns lv-an-acts"><button class="ghost" type="button" data-anth="' + esc(c.url) + '" data-lbl="Послухати" data-an-try>▶ Послухати</button>'
+      + save + '<button class="ghost" type="button" data-an-cancel>Скасувати</button></div>'
+      + (wait ? '<div class="muted small">зберегти можна буде о ' + wait + '</div>' : '')
+      + (!it.owned ? '<div class="muted small">«Зберегти» купить «Свій трек» за ' + it.price + ' 🏺 — спершу спитаємо.</div>' : '')
+      + '<progress class="lv-an-prog" max="100" value="0"' + (c.xhr ? '' : ' hidden') + '></progress>'
+      + '</div>';
+  }
+
+  // ---------- пісня з пошуку радіо: той самий /api/search, що й для черги, і ті самі рядки результатів ----------
+
+  function findHtml() {
+    return '<div class="lv-an-cut lv-an-find">'
+      + '<div class="lv-an-findrow"><input type="search" data-an-q placeholder="Виконавець чи назва пісні" autocomplete="off" enterkeyhint="search" value="' + esc(find.q) + '">'
+      + '<button class="ghost" type="button" data-an-find-x>Скасувати</button></div>'
+      + '<div class="lv-an-res" data-an-res>' + resHtml() + '</div>'
+      + '<div class="muted small">Пісню сервер візьме сам — до 10 нових на годину. Далі обереш, звідки й скільки грати.</div>'
+      + '</div>';
+  }
+
+  function resHtml() {
+    const f = find;
+    if (f.hint) return '<div class="hint">' + (f.wait ? '<span class="spin"></span>' : '') + esc(f.hint) + '</div>';
+    return f.list.map((r, i) => '<div class="result" role="button" tabindex="0" data-i="' + i + '">'
+      + (r.thumbUrl ? '<img src="' + esc(r.thumbUrl) + '" alt="" loading="lazy">' : '<div></div>')
+      + '<div style="min-width:0"><div class="t">' + esc(r.title) + '</div><div class="a">' + esc(r.artist) + (r.album ? ' · ' + esc(r.album) : '') + '</div></div>'
+      + '<div class="d">' + clock(r.durationSec || 0) + '</div></div>').join('');
+  }
+
+  function paintRes() {
+    const box = document.querySelector('#lavka [data-an-res]');
+    if (!box || !find) return;
+    box.innerHTML = resHtml();
+    box.querySelectorAll('.result').forEach((el) => {
+      const pickIt = () => takeSong(find && find.list[+el.dataset.i]);
+      el.onclick = pickIt;
+      el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickIt(); } };
+    });
+  }
+
+  async function searchSongs(text) {
+    const f = find;
+    if (!f || text === f.last) return;
+    f.last = text;
+    if (!text) { f.list = []; f.hint = ''; paintRes(); return; }
+    f.list = []; f.hint = 'шукаю…'; f.wait = true;
+    paintRes();
+    try {
+      const list = await o.api('GET', '/api/search?q=' + encodeURIComponent(text));
+      if (find !== f || f.last !== text) return;
+      f.list = Array.isArray(list) ? list : [];
+      f.hint = f.list.length ? '' : 'нічого не знайшов — спробуй інакше';
+    } catch (e) {
+      if (find !== f) return;
+      f.hint = 'пошук упав: ' + e.message;
+    }
+    f.wait = false;
+    paintRes();
+  }
+
+  /// «Виконавець — Назва», до 40 знаків і без пів емодзі на зрізі — як скаже й сервер.
+  function songTitle(artist, title) {
+    const a = String(artist || '').trim(), t = String(title || '').trim();
+    let s = a && t ? a + ' — ' + t : a || t;
+    if (s.length > 40) { s = s.slice(0, 40); if (/[\uD800-\uDBFF]$/.test(s)) s = s.slice(0, -1); s = s.trimEnd(); }
+    return s;
+  }
+
+  /// Обрали пісню: сервер бере її в кеш радіо (до хвилини, якщо ще не було) і дає адресу, з якої її слухати цілою.
+  async function takeSong(r) {
+    const f = find;
+    if (!f || !r || f.taking) return;
+    if (r.durationSec > AN_MAX_SEC) { o.toast('Задовга пісня — до 20 хвилин', 'err'); return; }
+    f.taking = true;
+    const keep = { list: f.list, hint: f.hint };
+    f.list = []; f.hint = 'беру «' + (r.title || 'пісню') + '» — це може тривати до хвилини…'; f.wait = true;
+    paintRes();
+    let res = null;
+    try { res = await o.api('POST', '/api/lavka/anthem/fetch', { trackId: r.id }); } catch (e) { if (find === f) o.toast(e.message, 'err'); }
+    if (find !== f) return;                        // скасували, поки качалось
+    f.taking = false;
+    f.wait = false;
+    if (!res || !res.ok || !(res.duration > 0)) { f.list = keep.list; f.hint = keep.hint; paintRes(); return; }
+    dropCut();
+    find = null;
+    const dur = +res.duration;
+    cut = { name: songTitle(res.artist, res.title) || 'пісня', id: res.id, url: res.previewUrl, dur, start: 0,
+      len: Math.min(10, lenMaxOf(dur)), title: songTitle(res.artist, res.title), xhr: null };
+    if (shown && tab === 'anthem') paint();
+  }
+
+  /// Свій файл, що грає в прослуховуванні, — замовкнути: повзунок посунули, і чути вже не те, що збережеться.
+  function quietCut(c) {
+    const now = o.anthemPlaying && o.anthemPlaying();
+    if (c && now && now.url === c.url && o.stopAnthem) o.stopAnthem();
+  }
+  function dropCut() {
+    if (!cut) return;
+    const c = cut;
+    cut = null;
+    quietCut(c);
+    // файл, що саме вантажиться, тримає XHR — сам URL для повзунків уже ні до чого; пісня з радіо — звичайна адреса
+    if (c.file) URL.revokeObjectURL(c.url);
+  }
+
+  function wireAnthems(root) {
+    root.querySelectorAll('[data-anth]').forEach((b) => b.onclick = () => {
+      if (o.toggleAnthem) o.toggleAnthem({ url: b.dataset.anth });
+    });
+    const snd = root.querySelector('[data-anth-sound]');
+    if (snd) snd.onclick = () => {
+      const on = !anthemOn();
+      try { localStorage.setItem('anthemSound', on ? '1' : '0'); } catch { /* приватне вікно — не запам'ятаємо */ }
+      if (!on && o.stopAnthem) o.stopAnthem();
+      o.toast(on ? '🎺 Гімни переможців за столами знову грають' : '🔇 Гімни за столами вимкнено в цьому браузері', on ? 'ok' : '');
+      paint();
+    };
+    // Файл вибираємо просто в обробнику кліку: Safari відкриває вибір файла лише з живого натиску.
+    root.querySelectorAll('[data-an-pick]').forEach((b) => b.onclick = () => pickAnthem());
+    root.querySelectorAll('[data-an-find]').forEach((b) => b.onclick = () => {
+      find = { q: '', last: '', list: [], hint: '', wait: false, taking: false, timer: 0, focus: true };
+      paint();
+    });
+    if (find) {
+      const f = find;
+      const q = root.querySelector('[data-an-q]');
+      const x = root.querySelector('[data-an-find-x]');
+      if (x) x.onclick = () => { clearTimeout(f.timer); find = null; paint(); };
+      if (q) {
+        q.oninput = () => { f.q = q.value; clearTimeout(f.timer); f.timer = setTimeout(() => searchSongs(q.value.trim()), 350); };
+        q.onkeydown = (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); clearTimeout(f.timer); searchSongs(q.value.trim()); }
+          else if (e.key === 'Escape') { e.preventDefault(); clearTimeout(f.timer); find = null; paint(); }
+        };
+        // курсор — лише щойно відкрили: перемальовка після свіжого GET не має смикати клавіатуру на телефоні
+        if (f.focus) { f.focus = false; q.focus(); }
+      }
+      paintRes();
+    }
+    if (!cut) return;
+    const c = cut;
+    const st = root.querySelector('[data-an-start]');
+    const ln = root.querySelector('[data-an-len]');
+    const title = root.querySelector('[data-an-title]');
+    const span = root.querySelector('[data-an-span]');
+    const lenV = root.querySelector('[data-an-lenv]');
+    if (!st || !ln) return;
+    const show = () => { span.textContent = spanText(c); lenV.textContent = c.len + ' с'; };
+    st.oninput = () => { c.start = +st.value; quietCut(c); show(); };
+    ln.oninput = () => {
+      c.len = +ln.value;
+      st.max = String(startMaxOf(c));
+      if (c.start > startMaxOf(c)) c.start = startMaxOf(c);
+      st.value = String(c.start);
+      quietCut(c);
+      show();
+    };
+    title.oninput = () => { c.title = title.value; };
+    const tryBtn = root.querySelector('[data-an-try]');
+    if (tryBtn) tryBtn.onclick = () => { if (o.toggleAnthem) o.toggleAnthem({ url: c.url, title: c.title }, { from: c.start, len: c.len }); };
+    const saveBtn = root.querySelector('[data-an-save]');
+    if (saveBtn) saveBtn.onclick = (e) => saveCut(e.currentTarget);
+    root.querySelector('[data-an-cancel]').onclick = () => { if (c.xhr) c.xhr.abort(); dropCut(); paint(); };
+  }
+
+  /// Вибір файла: на телефоні audio/* і video/* дають і «Файли», і відео з галереї (звук із нього виріже сервер).
+  function pickAnthem() {
+    if (!anInput) {
+      anInput = document.createElement('input');
+      anInput.type = 'file';
+      anInput.accept = 'audio/*,video/*';
+      anInput.hidden = true;
+      anInput.onchange = async () => {
+        const f = anInput.files && anInput.files[0];
+        anInput.value = '';                        // той самий файл вдруге теж має спрацювати
+        if (!f) return;
+        if (f.size > AN_MAX) { o.toast('«' + (f.name || 'файл') + '» завеликий — до 40 МБ', 'err'); return; }
+        if (!f.size) { o.toast('«' + (f.name || 'файл') + '» порожній', 'err'); return; }
+        let m;
+        try { m = await probeMedia(f); } catch (e) { o.toast(e.message, 'err'); return; }
+        if (m.dur < AN_MIN_SEC || m.dur > AN_MAX_SEC) {
+          URL.revokeObjectURL(m.url);
+          o.toast(m.dur < AN_MIN_SEC ? 'Закоротко — треба хоч 3 секунди' : 'Задовге — до 20 хвилин: обріж або візьми інший файл', 'err');
+          return;
+        }
+        dropCut();
+        find = null;
+        const len = Math.min(10, lenMaxOf(m.dur));
+        cut = { name: f.name || 'файл', file: f, url: m.url, dur: m.dur, start: 0, len,
+          title: (data && data.ownAnthem && data.ownAnthem.title) || '', xhr: null };
+        if (shown && tab === 'anthem') paint();
+      };
+      document.body.appendChild(anInput);
+    }
+    anInput.click();
+  }
+
+  /// Тривалість файла — з метаданих схованого <audio> (не декодуючи весь файл); MOV/MP4, який <audio> не бере
+  /// (Chrome і QuickTime), пробуємо ще <video>. URL лишається для «▶ Послухати» і звільняється в dropCut.
+  function probeMedia(file) {
+    return new Promise((done, fail) => {
+      const url = URL.createObjectURL(file);
+      let over = false;
+      const bad = () => {
+        if (over) return;
+        over = true;
+        URL.revokeObjectURL(url);
+        fail(new Error('Браузер не прочитав цей файл — спробуй mp3, m4a чи mp4'));
+      };
+      const tryTag = (tag, next) => {
+        if (over) return;
+        const m = document.createElement(tag);
+        m.preload = 'metadata';
+        m.muted = true;
+        const t = setTimeout(() => { m.onloadedmetadata = m.onerror = null; next(); }, 15000);
+        const free = () => { clearTimeout(t); m.onloadedmetadata = m.onerror = null; m.removeAttribute('src'); try { m.load(); } catch { /* порожній */ } };
+        m.onloadedmetadata = () => {
+          const d = m.duration;
+          free();
+          if (over) return;
+          if (Number.isFinite(d) && d > 0) { over = true; done({ url, dur: d }); } else next();
+        };
+        m.onerror = () => { free(); next(); };
+        m.src = url;
+      };
+      tryTag('audio', () => tryTag('video', bad));
+    });
+  }
+
+  /// «Зберегти»: ще не куплено — спершу віконце Лавки й купівля, далі файл (XHR із прогресом) чи пісня з пошуку (JSON).
+  /// Купили, а нарізка не вдалась — річ уже твоя, уривок лишається на екрані: можна посунути й зберегти ще раз.
+  async function saveCut(btn) {
+    const c = cut;
+    if (!c || c.xhr || c.saving) return;
+    quietCut(c);
+    const it = item(OWN_ANTHEM);
+    if (!it) return;
+    const mustBuy = !it.owned;
+    if (mustBuy && !await ask('Купити?', 'Купити <b>«Свій трек»</b> за <b>' + it.price + ' 🏺</b> і поставити цей уривок? Річ лишиться твоєю назавжди.', 'Купити')) return;
+    if (cut !== c) return;                         // поки думали, уривок скасували
+    // 40 знаків, як рахує сервер; пів емодзі на зрізі encodeURIComponent не прожує (URIError) — його відкидаємо
+    let title = String(c.title || '').trim().slice(0, 40);
+    if (/[\uD800-\uDBFF]$/.test(title)) title = title.slice(0, -1);
+    const doing = c.file ? 'вантажу…' : 'ріжу…';
+    return o.busy(btn, mustBuy ? 'купую…' : doing, async () => {
+      c.saving = true;
+      let bought = false;
+      try {
+        if (mustBuy) {
+          try {
+            const r = await o.api('POST', '/api/lavka/buy', { item: OWN_ANTHEM });
+            bought = true;
+            it.owned = true;
+            it.worn = true;
+            if (r && typeof r.balance === 'number') data.balance = r.balance;
+            if (o.onMine) o.onMine();
+          } catch (e) { o.toast(e.message, 'err'); return; }
+          if (btn.isConnected) btn.innerHTML = '<span class="spin"></span> ' + doing;
+        }
+        const res = c.file ? await uploadCut(c, title, btn) : await cutSong(c, title);
+        if (res.ok) {
+          o.toast((bought ? '🎤 «Свій трек» твій. ' : '') + (res.message || 'Гімн стоїть'), 'ok');
+          if (cut === c) dropCut();
+        } else if (res.message || bought) {
+          o.toast((res.message ? res.message + '. ' : '') + (bought ? '«Свій трек» уже твій — уривок можна зберегти ще раз.' : ''), res.message ? 'err' : '');
+        }
+        if (res.ok || bought) {
+          try { await load(); } catch { /* домалюємо з наступним заходом */ }
+          if (shown) paint();
+        }
+      } finally { c.saving = false; }
+    });
+  }
+
+  /// Пісня з пошуку вже в кеші сервера — шлемо лише id і де різати.
+  async function cutSong(c, title) {
+    try {
+      const r = await o.api('POST', '/api/lavka/anthem/track', { trackId: c.id, start: c.start, len: c.len, title });
+      return { ok: true, message: r && r.message };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+
+  /// Тіло — сам файл (без FormData: нічого розбирати на сервері), назва — у заголовку. XHR, а не fetch: видно прогрес.
+  function uploadCut(c, title, btn) {
+    return new Promise((done) => {
+      const x = c.xhr = new XMLHttpRequest();
+      const bar = () => document.querySelector('#lavka .lv-an-prog');
+      const b0 = bar();
+      if (b0) { b0.hidden = false; b0.value = 0; }
+      x.open('POST', '/api/lavka/anthem?start=' + encodeURIComponent(String(c.start)) + '&len=' + encodeURIComponent(String(c.len)));
+      x.setRequestHeader('Content-Type', 'application/octet-stream');
+      x.setRequestHeader('X-Nick', encodeURIComponent((o.me && o.me.nick) || ''));
+      if (title) x.setRequestHeader('X-Anthem-Title', encodeURIComponent(title));
+      x.upload.onprogress = (e) => { const b = bar(); if (b && e.lengthComputable) b.value = Math.round(100 * e.loaded / e.total); };
+      // файл уже на сервері — далі ffmpeg ріже й вирівнює гучність, це ще кілька секунд
+      x.upload.onload = () => { const b = bar(); if (b) b.removeAttribute('value'); if (btn.isConnected) btn.innerHTML = '<span class="spin"></span> ріжу…'; };
+      const finish = (ok, message) => {
+        c.xhr = null;
+        const b = bar();
+        if (b) b.hidden = true;
+        done({ ok, message });
+      };
+      x.onload = () => {
+        let d = null;
+        try { d = JSON.parse(x.responseText); } catch { /* без тіла */ }
+        const ok = x.status >= 200 && x.status < 300 && !(d && d.ok === false);
+        finish(ok, (d && d.message) || (ok ? '' : 'Не вийшло (HTTP ' + x.status + ')'));
+      };
+      x.onerror = () => finish(false, 'Файл не пішов — зв\'язок обірвався');
+      x.onabort = () => finish(false, '');
+      x.send(c.file);
+    });
+  }
+
+  // ---------- адміну: усі свої треки з кнопкою «Зняти» (там само, у вкладці «📷 Фото» — Лавка в одному місці) ----------
+
+  async function adminAnthems(box) {
+    let r = null;
+    try { r = await o.api('GET', '/api/lavka/anthems'); } catch { box.innerHTML = ''; return; }   // старий сервер — без гімнів
+    const items = Array.isArray(r) ? r : (r && r.items) || [];
+    const P = window.HPeople;
+    const who = (n) => (P && P.nickLink ? P.nickLink(n, 'rnick') : '<b>' + esc(n) + '</b>');
+    box.innerHTML = '<h3 class="lv-adm-h">🎤 Свої гімни</h3><div class="muted small lv-adm-note">Уривки «Свого треку», свіжі згори. «Зняти» прибирає уривок (файл — геть): '
+      + 'за столом людина мовчить, доки не поставить інший. Черепки не повертаються.</div>'
+      + '<ul class="list lv-adm">' + (items.map((x) => '<li class="lv-adm-row lv-adm-an">'
+        + '<button class="ghost" type="button" data-anth="' + esc(x.url) + '" title="Послухати">▶</button>'
+        + '<div class="lv-adm-who">' + who(x.nick) + '<span class="muted small">«' + esc(x.title || 'Свій трек') + '» · ' + esc(when(x.at)) + '</span></div>'
+        + '<button class="ghost" type="button" data-an-down="' + esc(x.nick) + '">Зняти</button></li>').join('')
+        || '<li class="empty glek">Ще ніхто не поставив свій гімн.</li>') + '</ul>';
+    box.querySelectorAll('[data-anth]').forEach((b) => b.onclick = () => { if (o.toggleAnthem) o.toggleAnthem({ url: b.dataset.anth }); });
+    if (o.paintAnthemBtns) o.paintAnthemBtns(box);
+    box.querySelectorAll('[data-an-down]').forEach((b) => b.onclick = async (e) => {
+      const nick = b.dataset.anDown;
+      const btn = e.currentTarget;
+      if (!await ask('Зняти гімн?', 'Уривок <b>' + esc(genitive(nick)) + '</b> зникне, файл видалиться. Людина отримає тост і зможе одразу поставити інший.', 'Зняти')) return;
+      await o.busy(btn, 'знімаю…', async () => {
+        try {
+          const res = await o.api('POST', '/api/lavka/anthems/remove', { nick });
+          o.toast(res.message || 'Знято', 'ok');
+          await adminAnthems(box);
+        } catch (err) { o.toast(err.message, 'err'); }
+      });
+    });
+  }
+
   // ---------- адміну: усі фотки з кнопкою «Зняти» (вкладка «📷 Фото» в Бібліотеці, поруч із «Пропозиціями») ----------
 
   const when = (iso) => new Date(iso).toLocaleString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -674,7 +1151,8 @@
         + '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" title="Відкрити фото"><img class="lv-adm-img" src="' + esc(x.url) + '" alt="фото ' + esc(x.nick) + '" loading="lazy" decoding="async"></a>'
         + '<div class="lv-adm-who">' + who(x.nick) + '<span class="muted small">' + esc(when(x.at)) + ' · ' + Math.max(1, Math.round((x.bytes || 0) / 1024)) + ' КБ</span></div>'
         + '<button class="ghost" type="button" data-down="' + esc(x.nick) + '">Зняти</button></li>').join('')
-        || '<li class="empty glek">Ще ніхто не поставив своє фото.</li>') + '</ul>';
+        || '<li class="empty glek">Ще ніхто не поставив своє фото.</li>') + '</ul>'
+      + '<div class="lv-adm-anth"></div>';
     box.querySelectorAll('[data-down]').forEach((b) => b.onclick = async (e) => {
       const nick = b.dataset.down;
       const btn = e.currentTarget;
@@ -687,6 +1165,7 @@
         } catch (err) { o.toast(err.message, 'err'); }
       });
     });
+    await adminAnthems(box.querySelector('.lv-adm-anth'));
   }
 
   // =============================================================================================
@@ -727,7 +1206,7 @@
     /// Адмінська вкладка «📷 Фото» в Бібліотеці: app.js дає контейнер, решту малює Лавка.
     adminPhotos,
     show(tail) { shown = true; render(tail); },
-    hide() { shown = false; },
+    hide() { shown = false; dropCut(); find = null; },
     tabOf: () => tab,
   };
 })();

@@ -112,6 +112,10 @@
   let onOpenTable = null;                                         // app.js: розгорнути балачку столу
   let onTurn = null;                                              // app.js: за якими столами мій хід, поки я деінде
   let ping = () => {};                                            // app.js: коротке «дзінь»
+  let anthem = null;                                              // app.js: playAnthem(a, opt) — гімн переможця
+  let stopAnthem = () => {};                                      // app.js: замовкнути гімн
+  const anthemsPlayed = new Set();                                // 'стіл:раунд', що вже звучали в цій вкладці
+  let anthemAt = null;                                            // гімн столу, що звучить: { id, round, a, here, started }
   let online = () => [];                                          // app.js: хто зараз на сайті
   let askNick = () => {};                                         // app.js: картка «Хто прийшов?»
   let filter = localStorage.getItem('gamesFilter') || 'all';
@@ -1425,6 +1429,7 @@
 
   function renderView() {
     renderViewNow();
+    anthemPage();
     notifyTable();
     if (staleMods.size) flushStale();   // людина встала з-за столу, чий модуль тим часом оновився
   }
@@ -2088,6 +2093,110 @@
   }
 
   // ---------------------------------------------------------------------------------------------
+  // 🎺 Гімн переможця (docs/games/specs/anthem.md §4). Сервер шле 'anthem' групі столу (гравці й глядачі) і тим, хто
+  // за ним сидить, але зараз деінде на сайті; грає його app.js. Тут — лише чи грати: людина за цим столом (сторінка
+  // столу відкрита або вона сидить за ним), а партія ще не звучала ні в цій вкладці (дубль із сервера), ні в сусідній
+  // вкладці того самого браузера (claimAnthem). Смужка «🎺 Гімн: Оля — «Трембіта»» з'являється, лише коли звук справді
+  // пішов (браузер міг і не дати), — у потоці картки просто над рядком «Перемога: …»: партія щойно скінчилась, тож
+  // невеликий зсув там нікому не заважає, а назва гри, місця й дошка лишаються на виду.
+  // Гімн замовкає, коли за столом почалась нова партія або людина пішла зі сторінки цього столу.
+  // ---------------------------------------------------------------------------------------------
+  function onTablePage(id) { return shown && view.kind === 'room' && view.id === id; }
+  function atTable(id) { return onTablePage(id) || !!(views[id] && views[id].seat != null); }
+
+  // Кілька вкладок одного браузера отримують ту саму подію — грати має одна. Ключ «стіл:раунд» у localStorage зі
+  // штампом часу й позначкою вкладки: хто записав останнім, той і грає (решта, перечитавши, бачать чужу позначку).
+  // Вкладка, де відкрито сам стіл, заявляється одразу, решта — трохи згодом: так гімн звучить там, де на нього дивляться.
+  // Заявки, старші за хвилину, — сміття від закритих вкладок: не заважають і прибираються.
+  const ANTHEM_CLAIM = 'anthemClaim:';
+  const ANTHEM_CLAIM_MS = 60 * 1000;
+  const tabMark = Math.random().toString(36).slice(2, 10);
+  function readClaim(key, now) {
+    const v = localStorage.getItem(key);
+    if (!v) return null;
+    const [at, tab] = v.split(' ');
+    return now - (+at || 0) < ANTHEM_CLAIM_MS ? tab || '' : null;
+  }
+  function claimAnthem(k, here) {
+    return new Promise((done) => {
+      const key = ANTHEM_CLAIM + k;
+      const step = (fn, ms) => setTimeout(() => { try { fn(); } catch { done(true); } }, ms);   // приватне вікно — граємо самі
+      step(() => {
+        const now = Date.now();
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const n = localStorage.key(i);
+          if (n && n.startsWith(ANTHEM_CLAIM) && n !== key && readClaim(n, now) == null) localStorage.removeItem(n);
+        }
+        const owner = readClaim(key, now);
+        if (owner != null && owner !== tabMark) { done(false); return; }
+        localStorage.setItem(key, now + ' ' + tabMark);
+        step(() => done(readClaim(key, Date.now()) === tabMark), 60);
+      }, here ? 0 : 150);
+    });
+  }
+
+  async function onAnthem(a) {
+    if (!a || !a.id || !a.url || !anthem) return;
+    const k = a.id + ':' + (a.round | 0);
+    if (anthemsPlayed.has(k) || !atTable(a.id)) return;
+    anthemsPlayed.add(k);
+    if (!(await claimAnthem(k, onTablePage(a.id))) || !atTable(a.id)) return;
+    const cur = { id: a.id, round: a.round | 0, a, here: onTablePage(a.id), started: false };
+    const prev = anthemAt;
+    anthemAt = cur;                 // до виклику: onEnd може прийти одразу, якщо браузер не дав звуку
+    let ok = false;
+    // Смужка — лише коли play() справді пішов (onStart); браузер відмовив — onEnd без onStart, і смужки не буде
+    const onStart = () => { if (anthemAt === cur) { cur.started = true; paintAnthem(); } };
+    try { ok = !!anthem(a, { onStart, onEnd: () => anthemEnded(cur) }); } catch (e) { console.warn('[games] anthem', e); }
+    if (!ok && anthemAt === cur) anthemAt = prev;
+  }
+  function anthemEnded(cur) {
+    if (anthemAt !== cur) return;
+    anthemAt = null;
+    paintAnthem();
+  }
+  /// Нова партія за столом, де звучить гімн, — «Ще раз» уже почався, гімн минулої не перекрикує гру.
+  function anthemRound(r) {
+    if (!anthemAt || !r || r.id !== anthemAt.id) return;
+    const round = typeof r.round === 'number' ? r.round : null;
+    if ((round != null && round > anthemAt.round) || (r.status === 'playing' && round !== anthemAt.round)) stopAnthem();
+  }
+  /// Пішов зі сторінки столу, на якій гімн звучав, — він замовкає. Хто сидить за столом деінде (Ефір, лобі), чує
+  /// гімн своєї партії й так, аж до кінця.
+  function anthemPage() {
+    if (!anthemAt) return;
+    if (onTablePage(anthemAt.id)) { anthemAt.here = true; if (anthemAt.started) paintAnthem(); }   // картку могли щойно створити
+    else if (anthemAt.here) stopAnthem();
+  }
+  /// Смужка на картці столу, поки звучить гімн (лише після справжнього старту): хто й що, ⏹ і «🔇 Без гімнів».
+  function paintAnthem() {
+    const on = anthemAt && anthemAt.started ? anthemAt : null;
+    document.querySelectorAll('.ganthem').forEach((el) => { if (!on || el.dataset.room !== on.id) el.remove(); });
+    if (!on) return;
+    const card = cards[on.id];
+    if (!card || card.el.querySelector(':scope > .ganthem')) return;
+    const a = on.a;
+    // Нік — лише в називному («Гімн: Оля»): родовий від ніка з кількох слів ламається («Гімн Теста Оля»)
+    const who = a.nick ? ': ' + esc(a.nick) : '';
+    const el = document.createElement('div');
+    el.className = 'ganthem';
+    el.dataset.room = on.id;
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="ganth-t"><span class="ganth-e" aria-hidden="true">🎺</span>Гімн' + who
+      + (a.title ? ' — «' + esc(a.title) + '»' : '') + '</span>'
+      + '<button type="button" class="ganth-stop" title="Зупинити цей гімн" aria-label="Зупинити цей гімн">⏹</button>'
+      + '<button type="button" class="ganth-off" title="Більше не грати гімнів за столами. Увімкнути — у Лавці, на полиці «🎺 Гімни»">🔇 Без гімнів</button>';
+    el.querySelector('.ganth-stop').onclick = () => stopAnthem();
+    el.querySelector('.ganth-off').onclick = () => {
+      try { localStorage.setItem('anthemSound', '0'); } catch { /* приватне вікно — вимкнемо хоч цей */ }
+      stopAnthem();
+      toast('🔇 Гімни за столами вимкнено. Увімкнути — у Лавці, на полиці «🎺 Гімни»');
+    };
+    // просто над «Перемога: …» (на телефоні .gstatus стоїть над полем — order у CSS тримає смужку поруч)
+    card.el.insertBefore(el, card.statusEl.parentNode === card.el ? card.statusEl : null);
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // Картку сховано / показано (прохід №3, п. 240). Стіл, за яким сидиш, лишається змонтованим на складі, коли йдеш
   // у лобі, в інший розділ сайту чи в іншу вкладку браузера, — і реалтайм-гра крутила rAF у порожнечу або сама
   // опитувала offsetParent / ставила IntersectionObserver. Тепер каркас каже сам: ctx.shown — чи картку видно зараз,
@@ -2744,6 +2853,8 @@
       if (o.openTable) onOpenTable = o.openTable;
       if (o.onTurn) onTurn = o.onTurn;
       if (o.ping) ping = o.ping;
+      if (o.anthem) anthem = o.anthem;
+      if (o.stopAnthem) stopAnthem = o.stopAnthem;
       if (o.online) online = o.online;
       if (o.askNick) askNick = o.askNick;
       root = o.root || (o.$ ? o.$('games') : document.getElementById('games'));
@@ -2817,8 +2928,10 @@
         syncWatch();
         notifyTable();                                      // сів, встав, партія почалась — балачці столу це важливо
         checkTurns();                                       // «🎲 Твій хід» у заголовку вкладки й на «Іграх»
+        anthemRound(rv.room);                               // «Ще раз» — гімн минулої партії замовкає
       });
       c.on('tableReact', flyReact);
+      c.on('anthem', onAnthem);
       c.on('frame', (f) => {
         if (!f || !f.id) return;
         const card = cards[f.id];
@@ -2880,6 +2993,7 @@
 
     hide() {
       shown = false;
+      anthemPage();
       syncShown();
       setFull(false);
       document.body.classList.remove('g-room', 'g-arcade');

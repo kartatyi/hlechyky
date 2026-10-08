@@ -106,6 +106,8 @@ public static class LavkaSetup
     public sealed record WearRequest(string? Slot, string? Item);
     public sealed record DedicateRequest(string? To, string? Phrase);
     public sealed record TakeDownRequest(string? Nick);
+    public sealed record AnthemFetchRequest(string? TrackId);
+    public sealed record AnthemTrackRequest(string? TrackId, double? Start, double? Len, string? Title);
 
     public static IServiceCollection AddHlechykyLavka(this IServiceCollection services)
     {
@@ -117,6 +119,12 @@ public static class LavkaSetup
         services.AddSingleton<Lavka>();
         services.TryAddSingleton(_ => new LavkaPhotoDir(Paths.Resolve("data/avatars")));
         services.AddSingleton<LavkaPhotos>();
+        // Свій трек і гімн переможця за столом (docs/games/specs/anthem.md)
+        services.TryAddSingleton(_ => new AnthemDir(Paths.Resolve("data/anthems")));
+        services.TryAddSingleton<IAnthemCutter, FfmpegAnthemCutter>();
+        services.TryAddSingleton<IAnthemSource, YtAnthemSource>();
+        services.AddSingleton<LavkaAnthems>();
+        services.AddHostedService<AnthemPlayer>();
         return services;
     }
 
@@ -133,6 +141,14 @@ public static class LavkaSetup
         api.MapGet("/photo/{file}", (string file, LavkaPhotos photos, HttpContext c) => PhotoFile(file, photos, c));
         api.MapGet("/photos", AdminPhotos);
         api.MapPost("/photos/remove", TakeDown);
+        api.MapPost("/anthem", SetAnthem);
+        api.MapPost("/anthem/fetch", FetchAnthemSource);
+        api.MapPost("/anthem/track", CutAnthemTrack);
+        api.MapGet("/anthem/src/{id}", (string id, LavkaAnthems anthems, HttpContext c) => AnthemSource(id, anthems, c));
+        api.MapGet("/anthem/of/{nick}", (string nick, Lavka lavka) => AnthemOf(nick, lavka));
+        api.MapGet("/anthem/{file}", (string file, LavkaAnthems anthems, HttpContext c) => AnthemFile(file, anthems, c));
+        api.MapGet("/anthems", AdminAnthems);
+        api.MapPost("/anthems/remove", TakeDownAnthem);
         return app;
     }
 
@@ -206,6 +222,118 @@ public static class LavkaSetup
         var r = photos.TakeDown(b.Nick);
         return Reply(new LavkaReply(r.Ok, r.Message));
     }
+
+    // ---------- гімн переможця ----------
+
+    /// <summary>
+    /// POST /api/lavka/anthem?start=&lt;с&gt;&amp;len=&lt;с&gt; — тіло запиту й є пісня чи відео (до 40 МБ), назва — у заголовку
+    /// <c>X-Anthem-Title</c> (encodeURIComponent: заголовки лише ASCII). → { ok, message, url, title, readyAt }; відмова —
+    /// { ok: false, message }. Числа — з крапкою, як їх пише браузер, незалежно від мови сервера.
+    /// </summary>
+    public static async Task<IResult> SetAnthem(HttpContext c, LavkaAnthems anthems)
+    {
+        if (c.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+            limit.MaxRequestBodySize = LavkaAnthems.MaxBytes + 1;
+        static double? Num(HttpContext c, string name) =>
+            double.TryParse(c.Request.Query[name].ToString(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+        string? title = null;
+        var raw = c.Request.Headers["X-Anthem-Title"].ToString();
+        if (raw.Length > 0)
+            try { title = Uri.UnescapeDataString(raw); } catch (UriFormatException) { }
+        LavkaAnthemReply r;
+        try
+        {
+            r = await anthems.SetAsync(Auth.Nick(c), Auth.IsUser(c), Num(c, "start"), Num(c, "len"), title,
+                c.Request.ContentLength, c.Request.Body, c.RequestAborted);
+        }
+        catch (BadHttpRequestException) { r = new(false, LavkaAnthems.TooBig); }   // Kestrel обірвав тіло понад ліміт
+        catch (OperationCanceledException) { return Results.Empty; }              // людина скасувала чи закрила вкладку
+        return r.Ok
+            ? Results.Ok(new { ok = true, message = r.Message, url = r.Url, title = r.Title, readyAt = r.ReadyAt })
+            : Results.BadRequest(new { ok = false, message = r.Message });
+    }
+
+    /// <summary>
+    /// POST /api/lavka/anthem/fetch { trackId } — взяти пісню з пошуку радіо (id з <c>/api/search</c>), щоб послухати й обрати
+    /// уривок. Лише акаунт, «Свій трек» купувати ще не треба; до 10 скачувань на годину. → { ok, message, id, title, artist,
+    /// duration, previewUrl }; відмова — { ok: false, message }.
+    /// </summary>
+    public static async Task<IResult> FetchAnthemSource(HttpContext c, AnthemFetchRequest b, LavkaAnthems anthems)
+    {
+        AnthemSourceReply r;
+        try { r = await anthems.FetchAsync(Auth.Nick(c), Auth.IsUser(c), b.TrackId, c.RequestAborted); }
+        catch (OperationCanceledException) { return Results.Empty; }              // людина пішла, не дочекавшись
+        return r.Ok
+            ? Results.Ok(new { ok = true, message = r.Message, id = r.Id, title = r.Title, artist = r.Artist, duration = r.Duration, previewUrl = r.PreviewUrl })
+            : Results.BadRequest(new { ok = false, message = r.Message });
+    }
+
+    /// <summary>
+    /// POST /api/lavka/anthem/track { trackId, start, len, title } — вирізати уривок із пісні, взятої через <c>/anthem/fetch</c>.
+    /// Ті самі правила, що й для файла (куплений «Свій трек», раз на 2 хв, 5–15 с). → { ok, message, url, title, readyAt }.
+    /// </summary>
+    public static async Task<IResult> CutAnthemTrack(HttpContext c, AnthemTrackRequest b, LavkaAnthems anthems)
+    {
+        LavkaAnthemReply r;
+        try { r = await anthems.CutTrackAsync(Auth.Nick(c), Auth.IsUser(c), b.TrackId, b.Start, b.Len, b.Title, c.RequestAborted); }
+        catch (OperationCanceledException) { return Results.Empty; }
+        return r.Ok
+            ? Results.Ok(new { ok = true, message = r.Message, url = r.Url, title = r.Title, readyAt = r.ReadyAt })
+            : Results.BadRequest(new { ok = false, message = r.Message });
+    }
+
+    /// <summary>
+    /// GET /api/lavka/anthem/src/&lt;id&gt; — ціла пісня з кешу радіо, щоб послухати «звідки» й «скільки» перед нарізкою.
+    /// Лише акаунтам; id — 11 знаків YouTube (регулярка), шляхів назовні нема; перемотка (range), кеш — 5 хв і лише свій.
+    /// </summary>
+    public static IResult AnthemSource(string id, LavkaAnthems anthems, HttpContext c)
+    {
+        if (!Auth.IsUser(c) || anthems.SourcePath(id) is not { } path) return Results.NotFound();
+        c.Response.Headers.CacheControl = "private, max-age=300";
+        c.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return Results.File(path, AudioMime(path), enableRangeProcessing: true);
+    }
+
+    /// <summary>Тип звуку за розширенням файла в кеші (yt-dlp кладе m4a, opus, webm…).</summary>
+    static string AudioMime(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".mp3" => "audio/mpeg",
+        ".m4a" or ".aac" => "audio/mp4",
+        ".opus" or ".ogg" or ".oga" => "audio/ogg",
+        ".webm" => "audio/webm",
+        ".flac" => "audio/flac",
+        ".wav" => "audio/wav",
+        ".mka" => "audio/x-matroska",
+        _ => "application/octet-stream",
+    };
+
+    /// <summary>GET /api/lavka/anthem/of/{nick} — гімн у профілі: { title, emoji, url }; нема гімну, що зазвучить, — 404.</summary>
+    public static IResult AnthemOf(string nick, Lavka lavka) => lavka.AnthemOf(nick) is { } a
+        ? Results.Ok(new { title = a.Title, emoji = a.Emoji, url = a.Url })
+        : Results.NotFound();
+
+    /// <summary>
+    /// GET /api/lavka/anthem/&lt;хеш ніка&gt;-&lt;версія&gt;-&lt;звідки&gt;-&lt;скільки&gt;.mp3 — вирізаний уривок. Лише наш mp3 (ім'я
+    /// перевіряє регулярка), nosniff, кеш на рік (новий уривок — нова адреса), перемотка (range). Чуже ім'я чи нема файла — 404.
+    /// </summary>
+    public static IResult AnthemFile(string file, LavkaAnthems anthems, HttpContext c)
+    {
+        if (anthems.Resolve(file) is not { } path) return Results.NotFound();
+        c.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        c.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return Results.File(path, "audio/mpeg", enableRangeProcessing: true);
+    }
+
+    /// <summary>GET /api/lavka/anthems — адміну: усі свої треки [{ nick, title, url, at }], свіжі згори.</summary>
+    public static IResult AdminAnthems(HttpContext c, LavkaAnthems anthems) => !Auth.IsAdmin(c)
+        ? Results.BadRequest(new { ok = false, message = "Це бачить лише розробник" })
+        : Results.Ok(anthems.All().Select(a => new { nick = a.Nick, title = a.Title, url = a.Url, at = a.At }).ToList());
+
+    /// <summary>POST /api/lavka/anthems/remove { nick } — адмін знімає свій трек. → { ok, message }.</summary>
+    public static IResult TakeDownAnthem(HttpContext c, TakeDownRequest b, LavkaAnthems anthems) => !Auth.IsAdmin(c)
+        ? Results.BadRequest(new { ok = false, message = "Це вміє лише розробник" })
+        : Reply(anthems.TakeDown(b.Nick));
 
     static IResult PhotoReply(LavkaPhotoReply r)
     {

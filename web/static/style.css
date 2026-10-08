@@ -1431,6 +1431,79 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 .lv-adm-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .lv-adm-row button { border: 1px solid var(--line); }
 
+/* =====================================================================================================
+   🎺 Гімн переможця (docs/games/specs/anthem.md): полиця «🎺 Гімни» і «Свій трек» у Лавці (web/lavka.js), рядок у
+   профілі (web/people.js) і смужка на картці столу над рядком статусу, поки гімн звучить (web/games/core.js). Окремим блоком.
+   ===================================================================================================== */
+/* ▶ / ⏹ на будь-якій кнопці гімну (app.js paintAnthemBtns): поки грає — видно, яка саме */
+button[data-anth].on { border-color: var(--accent2); color: var(--accent); }
+.lv-an-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.lv-an-head > .muted { flex: 1 1 260px; line-height: 1.35; }
+.lv-an-head .lv-an-sound { border: 1px solid var(--line); color: var(--text); }
+.lv-an-head .lv-an-sound.off { color: var(--muted); }
+.lv-dur { font-variant-numeric: tabular-nums; min-height: 1.2em; }
+/* «Свій трек», коли куплено, — панель на всю ширину над картками готових гімнів */
+.lv-item.lv-anth-own { align-items: stretch; text-align: left; gap: 10px; padding: 14px; margin-bottom: 10px; }
+.lv-an-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lv-an-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lv-an-main .lv-name { font-size: 1.1em; }
+.lv-anth-own .lv-btns { justify-content: flex-start; align-items: center; margin-top: 0; }
+.lv-anth-own .lv-an-top .lv-btns { flex: none; }
+.lv-an-now { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.lv-an-now > span { min-width: 0; overflow-wrap: anywhere; }
+.lv-an-now button, .wh-anth button { border: 1px solid var(--line); }
+.lv-an-cut { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; background: var(--panel); min-width: 0; }
+.lv-an-file { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.lv-an-fn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-an-range, .lv-an-title { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: .92em; }
+.lv-an-title { grid-template-columns: 64px minmax(0, 1fr); }
+.lv-an-range > span, .lv-an-title > span { color: var(--muted); }
+.lv-an-range input { width: 100%; min-width: 0; margin: 0; accent-color: var(--accent); }
+.lv-an-range b { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.lv-an-title input { width: 100%; min-width: 0; }
+.lv-an-span { font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.lv-an-prog { width: 100%; height: 8px; accent-color: var(--accent); }
+/* пошук пісні в панелі «Свій трек»: ті самі рядки .result, що й у пошуку черги, але в потоці, а не випадним списком */
+.lv-an-findrow { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.lv-an-findrow input { flex: 1; min-width: 0; }
+.lv-an-findrow button { flex: none; border: 1px solid var(--line); }
+.lv-an-res { max-height: 340px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); min-width: 0; }
+.lv-an-res:empty { display: none; }
+.lv-an-res .hint { padding: 10px 12px; color: var(--muted); font-size: .9em; display: flex; gap: 8px; align-items: center; }
+.lv-an-res .result:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lv-an-acts > .muted { align-self: center; }
+.lv-adm-h { margin: 18px 0 6px; font-size: 1.05em; }
+.list.lv-adm li.lv-adm-row.lv-adm-an { grid-template-columns: auto 1fr auto; }
+@media (max-width: 600px) {
+  .lv-an-top { flex-wrap: wrap; }
+  .lv-an-range, .lv-an-title { grid-template-columns: 56px minmax(0, 1fr) auto; gap: 8px; }
+  .lv-an-title { grid-template-columns: 56px minmax(0, 1fr); }
+  .lv-an-res { max-height: 50vh; }
+  .lv-an-res .result { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 8px; padding: 8px; }
+  .lv-an-res .result img { width: 40px; height: 40px; }
+}
+/* профіль: «🎺 Гімн: Трембіта ▶» */
+.wh-anth { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .9em; }
+.wh-anth button { padding: 2px 9px; }
+/* Смужка в потоці картки столу, просто над рядком «Перемога: …» (core.js ставить її перед .gstatus): назва гри, місця
+   й дошка лишаються на виду; партія щойно скінчилась, тож зсув на рядок там нікому не заважає. */
+.gtable > .ganthem {
+  align-self: center; display: flex; align-items: center; gap: 6px; box-sizing: border-box; max-width: 100%; min-width: 0;
+  padding: 4px 4px 4px 12px; border-radius: 999px; font-size: .88em;
+  background: var(--bg2); border: 1px solid var(--accent2); animation: pop .15s ease-out;
+}
+/* на телефоні .gstatus стоїть над полем (order: -1 у games/core.css) — смужка йде з ним, а не лишається під полем */
+@media (max-width: 900px) { .gtable > .ganthem { order: -1; } }
+.ganth-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ganth-e { margin-right: 5px; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.ganthem button { flex: none; padding: 3px 9px; font-size: .92em; border-radius: 999px; }
+.ganthem .ganth-off { color: var(--muted); background: transparent; }
+@media (max-width: 420px) {
+  .gtable > .ganthem { font-size: .82em; gap: 4px; padding-left: 10px; }
+  .ganthem button { padding: 3px 7px; }
+}
+@media (prefers-reduced-motion: reduce) { .ganthem { animation: none; } }
+
 /* ---------- 🔥 Жива реклама: картка прожарки в Лавці (#lavka/roast) і блок у «📣 Реклама» (web/liveads.js) ---------- */
 .la-card { display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 12px; background: var(--bg2); max-width: 720px; }
 .la-top { display: flex; align-items: center; gap: 12px; }

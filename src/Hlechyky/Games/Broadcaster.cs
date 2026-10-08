@@ -236,6 +236,9 @@ public sealed class Broadcaster(
                     sends.Add(new Send(new ToGroup(RoomGroup(rx.RoomId)), "tableReact",
                         new { id = rx.RoomId, nick = rx.Nick, seat = rx.Seat, e = rx.E }));
                     break;
+                case Anthem anthem:
+                    sends.AddRange(AnthemSends(anthem, viewsFor, connectionsOf));
+                    break;
                 case TableHistory history:
                     sends.Add(new Send(new ToConnections([history.ConnectionId]), "tableHistory",
                         new { id = history.RoomId, lines = history.Lines }));
@@ -288,6 +291,29 @@ public sealed class Broadcaster(
             if (!drop) keep.Add(i);
         }
         return keep;
+    }
+
+    /// <summary>
+    /// Гімн — лише тим, хто за столом: групі столу (гравці й глядачі на його сторінці) і тим, хто сидить за ним, але
+    /// зараз деінде на сайті. Реалтайм-стіл браузер поза «Іграми» не тримає в групі (там 25 кадрів на секунду), тож без
+    /// другої адреси переможець, що визирнув в Ефір, власного гімну не почув би. З'єднання з групи (<see cref="RoomBroadcast.Watchers"/> —
+    /// це рівно вона) другий раз не отримують; хто таки отримав двічі (стіл зник між тиком і розсилкою), відсіє браузер
+    /// за ключем «стіл:раунд». В ефір і в лобі гімн не йде.
+    /// </summary>
+    static IEnumerable<Send> AnthemSends(Anthem anthem, Func<string, RoomBroadcast?> viewsFor, Func<string, IReadOnlyList<string>> connectionsOf)
+    {
+        var body = new { id = anthem.RoomId, round = anthem.Round, nick = anthem.Nick, title = anthem.Title, emoji = anthem.Emoji, url = anthem.Url };
+        yield return new Send(new ToGroup(RoomGroup(anthem.RoomId)), "anthem", body);
+        if (viewsFor(anthem.RoomId) is not { } b) yield break;
+        var inGroup = new HashSet<string>(b.Watchers, StringComparer.Ordinal);
+        var away = new List<string>();
+        foreach (var nick in b.Seats)
+        {
+            if (string.IsNullOrEmpty(nick)) continue;
+            foreach (var conn in connectionsOf(nick))
+                if (inGroup.Add(conn)) away.Add(conn);   // Add — заразом і дубль між двома місцями одного ніка
+        }
+        if (away.Count > 0) yield return new Send(new ToConnections(away), "anthem", body);
     }
 
     /// <summary>

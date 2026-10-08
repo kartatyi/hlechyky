@@ -71,6 +71,7 @@ type RoomReply = { ok: boolean; message: string; roomId?: string };
 | `typing` | іншим у Балачках або глядачам столу | `{ nick: string, room: string\|null }` — хтось набирає. Браузер показує «Оля пише…» ~6 с або до першої репліки цього ніка |
 | `look` | усім | `{ nick: string, look: Look\|null }` — хтось вдягнув, зняв чи отримав річ із Лавки. `Look` — як у `GET /api/lavka/looks`: `{ icon, frame, color, title, bg }` (готове до малювання: емодзі, id рамки, відтінок числом або `'rainbow'`, текст титулу, id тла; порожній слот — null); null — не вдягнуто нічого |
 | `fireworks` | усім | `{ nick: string }` — 🎆 хтось запустив феєрверк (хаб `Fireworks`) |
+| `anthem` | глядачам кімнати (група `room:<id>`) і з'єднанням тих, хто сидить за столом, але не в групі (реалтайм-стіл поза «Іграми»); кожному з'єднанню раз | `{ id: string, round: number, nick: string, title: string, emoji: string, url: string }` — 🎺 гімн переможця партії з Лавки ([specs/anthem.md](specs/anthem.md)). `url` — готовий `/static/anthems/<річ>.mp3` або свій уривок `/api/lavka/anthem/<файл>.mp3` (5–15 с). Летить раз на `(id, round)`; браузер грає, лише якщо людина за цим столом (сторінка столу відкрита або сидить за ним — `views[id].seat != null`), сам відкидає вже зіграний `id:round`, а з кількох вкладок одного браузера грає одна (`localStorage 'anthemClaim:<id>:<round>'`). Смужка за столом — лише коли `play()` справді пішов; спільний `Audio` відмикається першим жестом на сторінці (беззвучна тиша), бо iOS/Safari інакше не дасть звуку подієві з сервера |
 
 ```ts
 type TableLine = { id: number; nick: string; text: string; kind: 'chat'|'dj'|'dice'|'coin'|'choose'|'8ball'; at: string };
@@ -86,6 +87,21 @@ type TableLine = { id: number; nick: string; text: string; kind: 'chat'|'dj'|'di
 події — з історії (`chatHistory`, `ChatBefore`) рядок приходить без нього. `kind: 'fx'` —
 `{ id: 0, kind: 'fx', nick, text: '🎆 запускає феєрверк!', at }` усім, у базу не лягає. Тому, кому подарували, ще й
 `toast` `{ text: '🎁 Оля дарує тобі «Срібна рамка»', kind: 'ok' }` на його з'єднання.
+
+Гімни — HTTP поруч із рештою Лавки (`LavkaSetup.cs`): `GET /api/lavka` додає `worn.anthem` (id або null) і
+`ownAnthem: { url, title, readyAt }` (поточний уривок свого треку; `url: null` — ще нема); вдягти чи зняти — той
+самий `POST /api/lavka/wear { slot: 'anthem', item }` (`item: null` — зняти), що й для інших слотів. Свій
+уривок — `POST /api/lavka/anthem?start=<с>&len=<с>` (секунди, крапка), тіло — сирий файл (`application/octet-stream`, до 40 МБ), назва — у заголовку `X-Anthem-Title`
+(`encodeURIComponent`, до 40 знаків); відповідь `{ ok, message, url, title, readyAt }` або 400 `{ ok: false, message }`.
+Пісня з пошуку радіо замість файла: `POST /api/lavka/anthem/fetch { trackId }` (id з `/api/search`, `^[A-Za-z0-9_-]{11}$`;
+будь-який акаунт, купувати не треба; до 10 нових скачувань на годину) → `{ ok, message, id, title, artist, duration, previewUrl }`,
+`GET <previewUrl>` = `/api/lavka/anthem/src/<id>` — ціла пісня (лише акаунтам, range, `private, max-age=300`), далі
+`POST /api/lavka/anthem/track { trackId, start, len, title }` → та сама відповідь, що й для файла. Нарізка (і файла, і
+пісні) вимагає купленого `own-anthem` — сторінка спершу купує звичайним `POST /api/lavka/buy`. Файл людини й пісню з
+кешу ffprobe/ffmpeg читають лише під `-protocol_whitelist file` і `-format_whitelist mp3,mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,ogg,flac,wav,aac`
+(інший контейнер чи плейлист — «Не вдалось прочитати файл — спробуй інший»; так само, коли невідома тривалість і доріжки, і файла).
+Профіль: `GET /api/lavka/anthem/of/<нік>` → `{ title, emoji, url }` або 404. Адмін: `GET /api/lavka/anthems` →
+`[{ nick, title, url, at }]`, `POST /api/lavka/anthems/remove { nick }` → `{ ok, message }`.
 
 ```ts
 type RoomSummary = {

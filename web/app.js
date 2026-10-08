@@ -348,11 +348,17 @@
   const volToPos = (v) => v <= 0 ? 0 : Math.min(100, Math.max(1, Math.round(100 * (1 + 20 * Math.log10(v) / VOL_DB))));
   // Посиденьки (web/voice.js) притишують радіо, коли хтось говорить: множник поверх гучності з повзунка.
   let duckBy = 1;
+  // Гімн переможця притишує радіо своїм множником (до 20 %): Посиденьки й гімн не перетирають одне одному duckBy.
+  let duckAnthem = 1;
+  let anthemEl = null;            // один Audio на весь сайт — для гімнів за столом і прослуховування в Лавці
+  let anth = null;                // що звучить зараз: { a, preview, onEnd, timer } або null
   function setVolPos(p, save) {
     p = Math.min(100, Math.max(0, p));
     vol.value = p;
     const v = posToVol(p);
-    audio.volume = v * duckBy;
+    audio.volume = v * duckBy * duckAnthem;
+    // гімн іде тією ж гучністю, що й радіо: крутнули повзунок — і він за ним
+    if (anth && anthemEl) { try { anthemEl.volume = v; } catch { /* iOS: лише читання */ } anthemEl.muted = p === 0; }
     vol.title = p ? `Гучність ${p} (${(20 * Math.log10(v)).toFixed(1)} дБ) · колесо миші — по кроку` : 'Гучність: тиша';
     if (save) localStorage.setItem('volume', String(v));
   }
@@ -1251,6 +1257,10 @@
   };
   document.addEventListener('pointerdown', wakeAudio, { once: true });
   document.addEventListener('keydown', wakeAudio, { once: true });
+  // Той самий перший жест відмикає й плеєр гімнів (нижче, unlockAnthem): iOS/Safari дає звук без жесту лише елементу,
+  // який уже раз грав із жесту, — а гімн за столом приходить подією з сервера, коли пальця на екрані нема.
+  document.addEventListener('pointerdown', () => unlockAnthem(), { once: true, capture: true });
+  document.addEventListener('keydown', () => unlockAnthem(), { once: true, capture: true });
   function paintPing() {
     const b = $('pingBtn');
     b.textContent = pingOn ? '🔔' : '🔕';
@@ -1263,6 +1273,128 @@
     if (pingOn) ping();
   };
   paintPing();
+
+  // ---------- 🎺 гімн переможця (docs/games/specs/anthem.md §4) ----------
+  // Одне місце на весь сайт: стіл (games/core.js), Лавка й профіль лише кличуть playAnthem. HTMLAudio, а не WebAudio:
+  // свій трек людини — mp3 з сервера, його треба стрімити, а не декодувати. Гучність — як у радіо; радіо на час гімну
+  // притишується до 20 %. Другий гімн за столом, поки грає перший, не перебиває його; прослуховування в Лавці — перебиває
+  // (це людина тисне сама), і друге натискання на той самий ▶ зупиняє.
+  const ANTHEM_DUCK = 0.2;
+  const ANTHEM_MAX_MS = 16000;    // запобіжник: навіть якщо ended не прийде (обірваний потік), радіо повернеться
+  const anthemSound = () => { try { return localStorage.getItem('anthemSound') !== '0'; } catch { return true; } };
+  // Елемент — одразу, а не на першому гімні: відмикати жестом треба саме той, що гратиме.
+  try { anthemEl = new Audio(); } catch { /* браузер без HTMLAudio — гімнів не буде */ }
+  /// Тиша для відмикання: 0,05 с WAV 8 кГц 8 біт моно (400 семплів 0x80), зібрана тут же — без файла й без мережі.
+  function silentWav() {
+    const n = 400;
+    const b = new Uint8Array(44 + n);
+    const v = new DataView(b.buffer);
+    const tag = (at, t) => { for (let i = 0; i < 4; i++) b[at + i] = t.charCodeAt(i); };
+    tag(0, 'RIFF'); v.setUint32(4, 36 + n, true); tag(8, 'WAVE');
+    tag(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+    tag(36, 'data'); v.setUint32(40, n, true);
+    b.fill(0x80, 44);
+    let bin = '';
+    for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+    return 'data:audio/wav;base64,' + btoa(bin);
+  }
+  /// Перший жест на сторінці: беззвучний play() тиші на спільному елементі, одразу пауза й назад гучно. Якщо цим самим
+  /// жестом людина тисне ▶ у Лавці, playAnthem уже поміняв src — тоді нічого не чіпаємо (і його пауза — не наша).
+  function unlockAnthem() {
+    const el = anthemEl;
+    if (!el || anth) return;
+    const src = silentWav();
+    const mine = () => !anth && el.getAttribute('src') === src;
+    const done = () => {
+      if (!mine()) return;
+      try { el.pause(); el.removeAttribute('src'); el.load(); } catch { /* уже порожній */ }
+      el.muted = false;
+    };
+    try {
+      el.muted = true;
+      el.src = src;
+      const pr = el.play();
+      if (pr && pr.then) pr.then(done, done); else done();
+    } catch { done(); }
+  }
+  /// Радіо — на повзунок з усіма притишеннями (Посиденьки × гімн).
+  const radioVolume = () => { audio.volume = posToVol(+vol.value) * duckBy * duckAnthem; };
+  /// a — { url, title?, emoji?, nick? }; opt.preview — людина тисне ▶ сама (вимикач гімнів тоді не діє),
+  /// opt.from/opt.len — грати лише шматок (прослуховування свого файла до завантаження), opt.onStart — браузер справді
+  /// пустив звук (обіцянка play() виконалась; до того смужку за столом не показують), opt.onEnd — коли замовкло (і коли
+  /// браузер відмовив — тоді без onStart). Вертає, чи пробує грати.
+  function playAnthem(a, opt) {
+    opt = opt || {};
+    if (!a || !a.url) return false;
+    if (!opt.preview && (!anthemSound() || anth)) return false;
+    stopAnthem();
+    const el = anthemEl = anthemEl || new Audio();
+    const cur = anth = { a, preview: !!opt.preview, onEnd: opt.onEnd || null, timer: 0 };
+    const started = () => {
+      if (anth !== cur || !opt.onStart) return;
+      try { opt.onStart(); } catch (e) { console.warn('[anthem] onStart', e); }
+    };
+    const end = () => finishAnthem(cur);
+    const from = Math.max(0, +opt.from || 0);
+    const len = Math.max(0, +opt.len || 0);
+    const p = +vol.value;
+    try { el.volume = posToVol(p); } catch { /* iOS: volume лише для читання — там лишається muted */ }
+    const mute = p === 0;
+    // З середини файла: мовчимо, поки не перескочили на «звідки», — інакше на мить чути початок пісні.
+    el.muted = mute || from > 0;
+    el.onloadedmetadata = from > 0 ? () => { try { el.currentTime = from; } catch { el.muted = mute; } } : null;
+    el.onseeked = from > 0 ? () => { el.muted = mute; el.onseeked = null; } : null;
+    el.ontimeupdate = len > 0 ? () => { if (el.currentTime >= from + len) end(); } : null;
+    el.onended = end;
+    el.onerror = end;
+    // pause від попереднього гімну приходить подією вже після нового play() — тоді el.paused хибне, і це не нам
+    el.onpause = () => { if (el.paused) end(); };
+    cur.timer = setTimeout(end, Math.max(ANTHEM_MAX_MS, (len + 4) * 1000));
+    el.preload = 'auto';
+    el.src = a.url;
+    duckAnthem = ANTHEM_DUCK;
+    radioVolume();
+    paintAnthemBtns();
+    let pr = null;
+    try { pr = el.play(); } catch { end(); return false; }
+    // браузер не дав звуку (жесту на сторінці ще не було) — тихо відступаємо, радіо повертаємо; дав — onStart
+    if (pr && pr.then) pr.then(started, end); else started();
+    return true;
+  }
+  function finishAnthem(cur) {
+    if (!cur || anth !== cur) return;
+    anth = null;
+    clearTimeout(cur.timer);
+    const el = anthemEl;
+    if (el) {
+      el.onended = el.onerror = el.onpause = el.ontimeupdate = el.onloadedmetadata = el.onseeked = null;
+      try { el.pause(); el.removeAttribute('src'); el.load(); } catch { /* уже порожній */ }
+    }
+    duckAnthem = 1;
+    radioVolume();
+    paintAnthemBtns();
+    if (cur.onEnd) { try { cur.onEnd(); } catch (e) { console.warn('[anthem] onEnd', e); } }
+  }
+  function stopAnthem() { if (anth) finishAnthem(anth); }
+  /// Що звучить зараз: { url, title, … } або null.
+  const anthemPlaying = () => (anth ? anth.a : null);
+  /// ▶ прослухати / ⏹ зупинити — на одній кнопці (Лавка, профіль, адмінський список).
+  function toggleAnthem(a, opt) {
+    if (anth && a && anth.a.url === a.url) { stopAnthem(); return false; }
+    return playAnthem(a, Object.assign({}, opt, { preview: true }));
+  }
+  /// Кнопки з data-anth="<url>": ▶, поки цей гімн мовчить, ⏹ — поки грає. data-lbl — підпис після значка.
+  function paintAnthemBtns(scope) {
+    const url = anth ? anth.a.url : null;
+    (scope || document).querySelectorAll('button[data-anth]').forEach((b) => {
+      const on = !!url && b.dataset.anth === url;
+      const lbl = b.dataset.lbl || '';
+      b.textContent = on ? '⏹' + (lbl ? ' Стоп' : '') : '▶' + (lbl ? ' ' + lbl : '');
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('on', on);
+    });
+  }
   /// Кнопка до столу біля рядка балачок: «Сісти», поки є куди, інакше «Дивитись». Столу вже нема —
   /// кнопки теж нема: мертве посилання гірше, ніж його відсутність. Що там за стіл, знає HGames.
   /// <c>named</c> — чи назвати гру на самій кнопці; у рядку Журналу вона вже названа в тексті.
@@ -3914,19 +4046,22 @@
     $, esc, api, toast, busy, me, go, askNick, fmt, tm, dayTime, dayLabel, plural, cover, trackRow, wireRows, nickHtml, isMobile,
     dj, sameNick, state: () => state,
     ping: () => ping(),
+    // 🎺 гімн у профілі: прослухати тим самим плеєром, що й за столом
+    toggleAnthem, stopAnthem, anthemPlaying, paintAnthemBtns,
     mention: (nick) => { const inp = $('chatInput'); inp.value = (inp.value ? inp.value.replace(/\s*$/, ' ') : '') + '@' + nick + ' '; if (isMobile()) go('#chat'); else setChatOpen(true); setChatTab('chat'); inp.focus(); },
   });
   // Лавка Дядька Глека (web/lavka.js): вітрина, а ще — хто як вбраний. Своє купив чи вдягнув — перемалювати шапку,
   // ефір (🎆) і чергу (💌): там кнопки вмінь.
   const lavkaChanged = () => { paintNick(); nowSig = ''; queueSig = ''; if (state) render(); };
-  HLavka.init({ $, esc, api, toast, busy, me, go, askNick, onMine: lavkaChanged, onLooks: () => { if (state) renderOnline(); } });
+  HLavka.init({ $, esc, api, toast, busy, me, go, askNick, onMine: lavkaChanged, onLooks: () => { if (state) renderOnline(); },
+    playAnthem, toggleAnthem, stopAnthem, anthemPlaying, paintAnthemBtns });
   HLavka.loadLooks();
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🎙 Посиденьки (web/voice.js): duck — притишити радіо (1 — як на повзунку), onRoster — хто в голосі змінився.
   if (window.HVoice) HVoice.init({
     $, esc, toast, me, askNick,
-    duck: (f) => { duckBy = f; audio.volume = posToVol(+vol.value) * duckBy; },
+    duck: (f) => { duckBy = f; audio.volume = posToVol(+vol.value) * duckBy * duckAnthem; },
     onRoster: () => { if (state) renderOnline(); },
   });
   // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри,
@@ -3934,6 +4069,8 @@
   HGames.init({
     $, esc, toast, busy, api, me, root: $('games'), go, onTable, openTable: () => openTable(true),
     onTurn, ping: () => ping(), online: () => (state && state.online) || [], askNick: () => askNick(true),
+    // 🎺 гімн переможця: стіл каже, що грати, а грає й притишує радіо app.js
+    anthem: (a, opt) => playAnthem(a, opt), stopAnthem,
   });
   setLogFilter(logFilter);
   applyRoute();

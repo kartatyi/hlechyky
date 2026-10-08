@@ -21,6 +21,8 @@ public static class LavkaKind
     public const string Color = "color";
     public const string Title = "title";
     public const string Bg = "bg";
+    /// <summary>Гімн переможця (docs/games/specs/anthem.md): звучить за столом, коли людина виграє партію на кількох.</summary>
+    public const string Anthem = "anthem";
     public const string Perk = "perk";
 }
 
@@ -54,6 +56,18 @@ public sealed record LavkaLook(string? Icon, string? Frame, object? Color, strin
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Photo = null);
 
 /// <summary>
+/// <c>Art</c> гімну: готовий — <c>{ emoji, url }</c> (файл у <c>web/static/anthems</c>), свій трек — <c>{ emoji, own: true }</c>
+/// (адреса в кожного своя, її несе <c>ownAnthem</c> вітрини). Порожніх полів у JSON нема зовсім — браузер розрізняє за ними.
+/// </summary>
+public sealed record LavkaAnthemArt(
+    [property: JsonPropertyName("emoji")] string Emoji,
+    [property: JsonPropertyName("url"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Url = null,
+    [property: JsonPropertyName("own"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Own = null);
+
+/// <summary>Що зіграти за столом, коли людина виграла: назва, емодзі й адреса mp3 (<see cref="Lavka.AnthemOf"/>).</summary>
+public sealed record AnthemPlay(string Title, string Emoji, string Url);
+
+/// <summary>
 /// Каталог Лавки. Живе в коді, а не в базі: ціни й асортимент — рішення власника, і нова річ приходить разом із
 /// клієнтом, який уміє її намалювати. Id — латиницею й наскрізно унікальні (на них тримаються покупки в базі), тому
 /// там, де контракт дав одне слово двом речам, одна з них має інше: колір «Мідь» — <c>cuprum</c> (бо <c>copper</c> —
@@ -65,9 +79,18 @@ public static class LavkaCatalog
     public const string Fireworks = "fireworks";
     /// <summary>Вміння «Своя фотка»: ставити своє фото замість літери чи значка (LavkaPhotos.cs).</summary>
     public const string Photo = "photo";
+    /// <summary>
+    /// «Свій трек»: гімн із власного уривка (LavkaAnthems.cs). Річ полиці гімнів, а не вміння — вдягається й знімається
+    /// звичайним слотом, але мовчить, доки людина не поставила уривок. Єдиний id із дефісом — так його назвав контракт.
+    /// </summary>
+    public const string OwnAnthem = "own-anthem";
+    public const string AnthemUrlPrefix = "/static/anthems/";
 
-    /// <summary>Слоти, які вдягають (усе, крім вмінь), — у тому порядку, як їх показує профіль.</summary>
-    public static readonly IReadOnlyList<string> Slots = [LavkaKind.Icon, LavkaKind.Frame, LavkaKind.Color, LavkaKind.Title, LavkaKind.Bg];
+    /// <summary>
+    /// Слоти, які вдягають (усе, крім вмінь), — у тому порядку, як їх показує профіль. Гімн — останній і не частина
+    /// <see cref="LavkaLook"/>: він звучить, а не малюється, і розсилати його всім на кожне вдягання ні до чого.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Slots = [LavkaKind.Icon, LavkaKind.Frame, LavkaKind.Color, LavkaKind.Title, LavkaKind.Bg, LavkaKind.Anthem];
 
     static LavkaItem Icon(string id, string title, string art, int price, LavkaSeason? season = null) =>
         new(id, LavkaKind.Icon, title, price, art, price switch { <= 150 => 1, <= 250 => 2, _ => 3 }, season);
@@ -77,6 +100,10 @@ public static class LavkaCatalog
     static LavkaItem Title(string id, string title) => new(id, LavkaKind.Title, title, 500, title);
     static LavkaItem Earned(string id, string title, string ach) => new(id, LavkaKind.Title, title, 0, title, Ach: ach);
     static LavkaItem Bg(string id, string title, int price) => new(id, LavkaKind.Bg, title, price, id);
+    // Рівень гімну — з ціни, як у значків: 300 — звичайний, 600 — рідкісний, дорожче — особливий
+    static LavkaItem Anthem(string id, string title, string emoji, int price) =>
+        new(id, LavkaKind.Anthem, title, price, new LavkaAnthemArt(emoji, AnthemUrlPrefix + id + ".mp3"), AnthemTier(price));
+    static int AnthemTier(int price) => price switch { <= 300 => 1, <= 600 => 2, _ => 3 };
 
     public static readonly IReadOnlyList<LavkaItem> All =
     [
@@ -132,6 +159,16 @@ public static class LavkaCatalog
         Bg("stars", "Зоряна ніч", 800), Bg("stripes", "Смуги", 800), Bg("vyshyvanka", "Вишиванка", 1200),
         Bg("petrykivka", "Петриківка", 1200), Bg("trypillia", "Трипілля", 1500),
 
+        // гімни переможця: свої мелодії, синтезовані docs/games/dev/anthems-make.py, — без чужих прав
+        Anthem("fanfare", "Фанфари", "🎺", 300), Anthem("drumroll", "Барабанний дріб", "🥁", 300),
+        Anthem("chiptune", "Вісім біт", "👾", 300), Anthem("trombone", "Сумний тромбон", "🎷", 300),
+        Anthem("dzen", "Дзень-дзелень", "🏺", 300),
+        Anthem("trembita", "Трембіта", "📯", 600), Anthem("bayan", "Баян-туш", "🪗", 600),
+        Anthem("bells", "Дзвони", "🔔", 600), Anthem("applause", "Оплески", "👏", 600),
+        Anthem("hopak", "Гопак", "💃", 1000), Anthem("cosmos", "Космос", "🚀", 1000), Anthem("solemn", "Урочисто", "🎻", 1000),
+        // свій уривок: дорожче за «Свою фотку» — це звук для всіх за столом, а не картинка
+        new(OwnAnthem, LavkaKind.Anthem, "Свій трек", 3000, new LavkaAnthemArt("🎤", Own: true), AnthemTier(3000)),
+
         new(Dedication, LavkaKind.Perk, "Присвята в ефір", 1500, "🎙"),
         new(Fireworks, LavkaKind.Perk, "Феєрверк", 600, "🎆"),
         // своє фото на аватарку (записка Назара, 28.09): куплене вміння назавжди, саме фото міняється раз на добу
@@ -169,6 +206,7 @@ public static class LavkaCatalog
         LavkaKind.Color => $"колір ніка «{i.Title}»",
         LavkaKind.Title => $"титул «{i.Title}»",
         LavkaKind.Bg => $"тло «{i.Title}»",
+        LavkaKind.Anthem => $"гімн «{i.Title}»",
         _ => i.Title,
     };
 
@@ -196,6 +234,16 @@ public sealed record LavkaPhotoRow(string NickKey, string Nick, string File, int
 }
 
 /// <summary>
+/// Свій трек, що стоїть зараз: <paramref name="File"/> — вирізаний mp3 у <c>data/anthems</c> (нове ім'я на кожен уривок),
+/// <paramref name="Title"/> — як людина його назвала (null — без назви), звідки й скільки грає — у мілісекундах.
+/// </summary>
+public sealed record LavkaAnthemRow(string NickKey, string Nick, string File, string? Title, int StartMs, int LenMs, int Bytes,
+    DateTimeOffset At)
+{
+    public string Url => LavkaAnthems.UrlPrefix + File;
+}
+
+/// <summary>
 /// Таблиці Лавки: що в кого є (назавжди), що вдягнуто і коли востаннє користувались вмінням (перерва переживає рестарт).
 /// DDL і SQL живуть тут, від <see cref="Db"/> — лише з'єднання на одну коротку операцію.
 /// </summary>
@@ -211,6 +259,9 @@ public sealed class LavkaStore
             nick_key TEXT NOT NULL, perk TEXT NOT NULL, used_at TEXT NOT NULL, PRIMARY KEY(nick_key, perk));
         CREATE TABLE IF NOT EXISTS lavka_photo(
             nick_key TEXT NOT NULL PRIMARY KEY, nick TEXT NOT NULL, file TEXT NOT NULL, bytes INTEGER NOT NULL, at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS lavka_anthem(
+            nick_key TEXT NOT NULL PRIMARY KEY, nick TEXT NOT NULL, file TEXT NOT NULL, title TEXT,
+            start_ms INTEGER NOT NULL, len_ms INTEGER NOT NULL, bytes INTEGER NOT NULL, at TEXT NOT NULL);
         """;
 
     readonly Db _db;
@@ -342,6 +393,49 @@ public sealed class LavkaStore
         return list;
     }
 
+    // ---------- свій трек: у базі ім'я вирізаного mp3 і як його назвали, сам файл — у data/anthems ----------
+
+    const string AnthemCols = "nick_key, nick, file, title, start_ms, len_ms, bytes, at";
+
+    public LavkaAnthemRow? Anthem(string nick) => _db.With(c =>
+        Anthems(c, $"SELECT {AnthemCols} FROM lavka_anthem WHERE nick_key = $k", ("$k", Key(nick))).FirstOrDefault());
+
+    /// <summary>Свіжі згори — так їх переглядає адмін.</summary>
+    public List<LavkaAnthemRow> AllAnthems() => _db.With(c => Anthems(c, $"SELECT {AnthemCols} FROM lavka_anthem ORDER BY at DESC, nick_key"));
+
+    /// <summary>Поставити уривок; повертає ім'я файла, що стояв досі (його треба прибрати з диска), або null.</summary>
+    public string? SetAnthem(string nick, string file, string? title, int startMs, int lenMs, int bytes, DateTimeOffset at) => _db.With(c =>
+    {
+        using var old = Cmd(c, "SELECT file FROM lavka_anthem WHERE nick_key = $k", ("$k", Key(nick)));
+        var was = old.ExecuteScalar() as string;
+        Exec(c, """
+            INSERT INTO lavka_anthem(nick_key, nick, file, title, start_ms, len_ms, bytes, at) VALUES($k, $n, $f, $t, $s, $l, $b, $at)
+            ON CONFLICT(nick_key) DO UPDATE SET nick = excluded.nick, file = excluded.file, title = excluded.title,
+                start_ms = excluded.start_ms, len_ms = excluded.len_ms, bytes = excluded.bytes, at = excluded.at
+            """, ("$k", Key(nick)), ("$n", nick), ("$f", file), ("$t", title), ("$s", startMs), ("$l", lenMs), ("$b", bytes), ("$at", Iso(at)));
+        return was;
+    });
+
+    /// <summary>Прибрати уривок; повертає ім'я файла, що стояв (null — уривка й не було).</summary>
+    public string? DropAnthem(string nick) => _db.With(c =>
+    {
+        using var old = Cmd(c, "SELECT file FROM lavka_anthem WHERE nick_key = $k", ("$k", Key(nick)));
+        var was = old.ExecuteScalar() as string;
+        if (was is not null) Exec(c, "DELETE FROM lavka_anthem WHERE nick_key = $k", ("$k", Key(nick)));
+        return was;
+    });
+
+    static List<LavkaAnthemRow> Anthems(SqliteConnection c, string sql, params (string Name, object? Value)[] ps)
+    {
+        using var cmd = Cmd(c, sql, ps);
+        using var r = cmd.ExecuteReader();
+        var list = new List<LavkaAnthemRow>();
+        while (r.Read())
+            list.Add(new LavkaAnthemRow(r.GetString(0), r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3),
+                r.GetInt32(4), r.GetInt32(5), r.GetInt32(6), Ts(r.GetString(7))));
+        return list;
+    }
+
     static string Iso(DateTimeOffset t) => t.ToString("O", CultureInfo.InvariantCulture);
     static DateTimeOffset Ts(string s) => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
@@ -426,6 +520,9 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     public static readonly TimeSpan FireworksGap = TimeSpan.FromMinutes(10);
     /// <summary>Фото міняють безкоштовно, але не частіше разу на добу: аватарка — обличчя, а не слайд-шоу.</summary>
     public static readonly TimeSpan PhotoGap = TimeSpan.FromDays(1);
+    /// <summary>Новий уривок свого треку — не частіше разу на 2 хвилини: щоб підправити, але не спамити ffmpeg.</summary>
+    public static readonly TimeSpan AnthemGap = TimeSpan.FromMinutes(2);
+    public const string NoGiftAnthem = "Свій трек дарувати не можна — його ставлять собі";
 
     /// <summary>«Чи вже є», списання і запис — одним шматком: інакше подарунок і купівля тієї самої речі разом заплатили б двічі.</summary>
     readonly object _gate = new();
@@ -438,6 +535,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     {
         LavkaCatalog.Dedication => DedicationGap,
         LavkaCatalog.Photo => PhotoGap,
+        LavkaCatalog.OwnAnthem => AnthemGap,
         _ => FireworksGap,
     };
 
@@ -459,6 +557,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         var mine = account ? store.OwnedBy(nick) : [];
         var achs = account ? econ.AchievementsOf(EconomyStore.Key(nick)).Select(a => a.Key).ToHashSet(StringComparer.Ordinal) : [];
         var wearing = account ? store.WornBy(nick) : new Dictionary<string, string>();
+        var own = account ? store.Anthem(nick) : null;
         object Perk(string id)
         {
             var has = mine.Contains(id);
@@ -480,7 +579,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             {
                 icon = wearing.GetValueOrDefault(LavkaKind.Icon), frame = wearing.GetValueOrDefault(LavkaKind.Frame),
                 color = wearing.GetValueOrDefault(LavkaKind.Color), title = wearing.GetValueOrDefault(LavkaKind.Title),
-                bg = wearing.GetValueOrDefault(LavkaKind.Bg),
+                bg = wearing.GetValueOrDefault(LavkaKind.Bg), anthem = wearing.GetValueOrDefault(LavkaKind.Anthem),
             },
             perks = new
             {
@@ -494,6 +593,8 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
                 },
             },
             phrases = LavkaCatalog.Phrases.Select(p => new { key = p.Key, text = p.Text }),
+            // свій трек: url — уривок, що стоїть зараз (null — ще нема), readyAt — коли можна поставити новий
+            ownAnthem = new { url = own?.Url, title = own?.Title, readyAt = mine.Contains(LavkaCatalog.OwnAnthem) ? ReadyAt(nick, LavkaCatalog.OwnAnthem) : null },
         };
     }
 
@@ -516,6 +617,19 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
 
     /// <summary>Вигляд одного ніка; null — нічого не вдягнуто й фото нема.</summary>
     public LavkaLook? LookOf(string nick) => Look(store.WornBy(nick), store.Photo(nick)?.Url);
+
+    /// <summary>
+    /// Гімн, який зазвучить, коли <paramref name="nick"/> виграє: вдягнутий готовий — його файл; вдягнутий свій трек —
+    /// поставлений уривок (без уривка чи знятий адміном — тиша); нічого не вдягнуто або річ уже не його — null.
+    /// </summary>
+    public AnthemPlay? AnthemOf(string nick)
+    {
+        if (store.Worn(nick, LavkaKind.Anthem) is not { } id || LavkaCatalog.Get(id) is not { Kind: LavkaKind.Anthem, Art: LavkaAnthemArt art } item)
+            return null;
+        if (!store.Owns(nick, item.Id)) return null;
+        if (item.Id != LavkaCatalog.OwnAnthem) return art.Url is { } url ? new AnthemPlay(item.Title, art.Emoji, url) : null;
+        return store.Anthem(nick) is { } own ? new AnthemPlay(string.IsNullOrWhiteSpace(own.Title) ? item.Title : own.Title, art.Emoji, own.Url) : null;
+    }
 
     /// <summary>Річ, якої вже нема в каталозі (або не свого слота), не малюється — і не ламає решту вигляду.</summary>
     static LavkaLook? Look(IReadOnlyDictionary<string, string> worn, string? photo)
@@ -547,6 +661,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             if (to is null) return No($"«{name}» — не акаунт: дарувати можна лише тим, хто закріпив нік");
         }
         if (item.Ach is { } ach) return No($"Цей титул не купується — його дає ачівка «{AchTitle(ach)}»");
+        if (to is not null && item.Id == LavkaCatalog.OwnAnthem) return No(NoGiftAnthem);
 
         var owner = to?.Nick ?? nick;
         lock (_gate)
@@ -589,6 +704,8 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         LavkaKind.Color => $"Колір ніка «{i.Title}» тепер твій назавжди — уже світиться",
         LavkaKind.Title => $"Титул «{i.Title}» тепер твій назавжди — уже біля ніка",
         LavkaKind.Bg => $"Тло «{i.Title}» тепер твоє назавжди — уже в профілі",
+        LavkaKind.Anthem when i.Id == LavkaCatalog.OwnAnthem => "«Свій трек» тепер твій назавжди — обери пісню й уривок, і він зазвучить, коли виграєш",
+        LavkaKind.Anthem => $"Гімн «{i.Title}» тепер твій назавжди — зазвучить за столом, коли виграєш",
         _ when i.Id == LavkaCatalog.Dedication => "«Присвята в ефір» тепер твоя назавжди — закинь пісню й присвяти її комусь",
         _ when i.Id == LavkaCatalog.Photo => "«Своя фотка» тепер твоя назавжди — обери фото, і воно стане аватаркою",
         _ => $"«{i.Title}» тепер твій назавжди — бахай!",
@@ -602,17 +719,19 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         if (!account) return new(false, NotAccount);
         var s = (slot ?? "").Trim().ToLowerInvariant();
         if (!LavkaCatalog.Slots.Contains(s)) return new(false, NoSlot);
+        // Гімн у вигляді не малюється — розсилати всім той самий вигляд через нього ні до чого
+        var seen = s != LavkaKind.Anthem;
         if (string.IsNullOrWhiteSpace(itemId))
         {
             lock (_gate) store.Unwear(nick, s);
-            Announce(nick);
+            if (seen) Announce(nick);
             return new(true, "Знято");
         }
         if (LavkaCatalog.Get(itemId) is not { } item) return new(false, NoItem);
         if (item.Kind != s) return new(false, WrongSlot);
         if (!Has(nick, item)) return new(false, item.Ach is { } ach ? $"Цей титул дає ачівка «{AchTitle(ach)}»" : NotOwned);
         lock (_gate) store.Wear(nick, s, item.Id);
-        Announce(nick);
+        if (seen) Announce(nick);
         return new(true, "Вдягнуто");
     }
 
