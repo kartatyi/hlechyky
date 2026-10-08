@@ -117,15 +117,31 @@
       + '" title="' + esc((i + 1) + '. ' + x.name) + '"><i></i></span>').join('') + '</div>';
   }
 
+  /// «🏺 Ліпити барило» під вимогою, якої бракує: ставить виріб на коло (дія form). Якість ліпленням не обереш —
+  /// вона від горна. Виріб ще не відкритий — кнопки нема; уже на колі — лише позначка.
+  function formBtn(st, api, ware) {
+    const c = st.craft;
+    if (!st.mine || !c || !c.wares) return '';
+    const w = c.wares.find((x) => x.key === ware);
+    if (!w || !w.open) return '';
+    const name = wareName(st, ware).toLowerCase();
+    // «Ліпити макітру», «Ліпити кахлю»: знахідний відмінок жіночого роду (решта виробів його не міняє).
+    const acc = name.split('-').map((p) => p.replace(/а$/, 'у').replace(/я$/, 'ю')).join('-');
+    if (c.ware === ware) return '<span class="small clkl-onwheel">🏺 ' + api.esc(st, name) + ' уже на колі</span>';
+    return '<button type="button" class="ghost small clkl-form" data-lform="' + api.esc(st, ware) + '">🏺 Ліпити ' + api.esc(st, acc) + '</button>';
+  }
+
   function needsHtml(st, api, s) {
     const esc = (x) => api.esc(st, x);
     const rows = s.needs.map((n, i) => {
       const want = Math.max(0, n.n - n.got);
       const ok = n.have >= want;
-      const where = 'у коморі ' + api.count(n.have) + (n.got ? ' · піднесли друзі ' + api.count(n.got) : '');
+      const where = 'у коморі ' + api.count(n.have) + (n.got ? ' · піднесли друзі ' + api.count(n.got) : '')
+        + (ok ? '' : ' · <b class="clkl-lack">бракує ' + api.count(want - n.have) + '</b>');
       return '<div class="clkl-need' + (ok ? ' ok' : '') + '">'
         + '<span class="clkl-nart">' + api.wareSvg(n.ware, { style: n.style, quality: Math.max(1, n.q), cls: 'clkl-ware', slot: 'tn-' + i }) + '</span>'
-        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">' + where + '</span></div>'
+        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">' + where + '</span>'
+        + (ok ? '' : formBtn(st, api, n.ware)) + '</div>'
         + '<span class="clkl-mark">' + (ok ? '✓' : 'ще ' + (want - n.have)) + '</span></div>';
     });
     const rich = (st.shown || 0) >= s.pay;
@@ -157,8 +173,8 @@
     const per = ((c && c.helperCut) || 0.15) * 100;
     const max = (c && c.helpersMax) || 3;
     if (!s.helpers.length) {
-      return '<div class="muted small clkl-help">🤝 Друзі з цеху можуть піднести вироби зі своїх комор — кожен скоротить '
-        + (laid ? 'будову' : 'етап') + ' на ' + Math.round(per) + ' %</div>';
+      return '<div class="small clkl-help clkl-hint">🤝 Друзі з цеху можуть піднести вироби зі своїх комор — кожен скоротить '
+        + (laid ? 'будову' : 'етап') + ' на <b>' + Math.round(per) + ' %</b> (до ' + max + ' друзів)</div>';
     }
     const off = Math.round(Math.min(max, s.helpers.length) * per);
     return '<div class="small clkl-help">🤝 На толоці ' + (laid ? 'були' : 'вже були') + ': <b>' + esc(s.helpers.join(', ')) + '</b> '
@@ -392,7 +408,9 @@
       const ok = have >= n.n;
       return '<div class="clkl-need' + (ok ? ' ok' : '') + '">'
         + '<span class="clkl-nart">' + api.wareSvg(n.ware, { style: n.style, quality: Math.max(1, n.q), cls: 'clkl-ware', slot: 'tx-' + (own ? 'o' : 'f') + i }) + '</span>'
-        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">у тебе є ' + api.count(have) + '</span></div>'
+        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">у тебе є ' + api.count(have)
+        + (ok ? '' : ' · <b class="clkl-lack">бракує ' + api.count(n.n - have) + '</b>') + '</span>'
+        + (own && !ok ? formBtn(st, api, n.ware) : '') + '</div>'
         + '<span class="clkl-mark">' + (ok ? '✓' : 'ще ' + (n.n - have)) + '</span></div>';
     });
     const rich = own && (st.shown || 0) >= nx.pay;
@@ -408,6 +426,8 @@
 
   function onClick(st, api, e) {
     if (e.target.closest('.clkl-lay')) { lay(st, api, e); return; }
+    const f = e.target.closest('[data-lform]');
+    if (f) { if (human(e) && st.mine) api.order(st, 'form', { ware: f.dataset.lform }); return; }
     if (e.target.closest('.clkl-festgo')) festival(st, api, e);
   }
 

@@ -1764,7 +1764,7 @@
       + '</div></div>'
       + '<div class="clkk-rv-sum" style="animation-delay:' + (l.items.length * step + 200) + 'ms"><b>' + summary(cnt) + '</b>'
       + (l.shards ? '<div class="small muted">черепки на засипку: +' + api.potsShort(l.shards) + '</div>' : '')
-      + (l.sold ? '<div class="small muted">комора повна — на базар: +' + api.potsShort(l.sold) + '</div>' : '')
+      + (l.sold ? '<div class="small muted">комора повна — ' + (l.freed ? api.esc(st, l.freed) + '; ' : '') + 'на базар: +' + api.potsShort(l.sold) + '</div>' : '')
       + (!l.helper && l.items.length >= 4 && cnt[3] + cnt[4] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
       + '<button type="button" class="primary clkk-tostore">🧺 В комору</button></div>'
       + '</div>', { cls: 'clkk-ov' });

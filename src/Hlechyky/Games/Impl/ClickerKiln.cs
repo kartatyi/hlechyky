@@ -876,7 +876,7 @@ public sealed partial class Clicker
     sealed record KilnOutRow(string Ware, int Q);
 
     sealed record KilnLastRow(DateTimeOffset At, bool Helper, int Heat, int Over, int Beauty, string? Style, bool Straw,
-        List<KilnOutRow>? Items, double Shards, double Sold);
+        List<KilnOutRow>? Items, double Shards, double Sold, string? Freed = null);
 
     sealed record KilnRow(
         List<string>? Batch = null, string? Style = null, string? Tech = null, int Beauty = 0,
@@ -1126,7 +1126,9 @@ public sealed partial class Clicker
             outs.Add(new KilnOutRow(ware, KilnHeat.QualityOf(shine, paint, Ctx.Rng.NextDouble())));
         }
         double sold = 0, shards = 0;
-        foreach (var grp in outs.Where(o => o.Q > 0).GroupBy(o => (o.Ware, o.Q)))
+        LadNowClear();
+        // Дорожчі — першими: якщо вже вони звільнили місце в коморі, дешевші з того самого горна йдуть на базар самі.
+        foreach (var grp in outs.Where(o => o.Q > 0).GroupBy(o => (o.Ware, o.Q)).OrderByDescending(g => g.Key.Q))
         {
             var n = grp.Count();
             sold += PutItems(grp.Key.Ware, style, grp.Key.Q, n);
@@ -1135,8 +1137,9 @@ public sealed partial class Clicker
         foreach (var o in outs.Where(o => o.Q == 0))
             shards += ToPots(ItemValue(o.Ware, "", 1) * ShardShare);
         Add(shards);
+        var freed = LadTakeNow();
 
-        _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold);
+        _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold, freed);
         _kilnBatches++;
         var whole = outs.Count(o => o.Q > 0);
         var perfect = manual && outs.Count >= PerfectMin && outs.All(o => o.Q >= 3);
@@ -1172,7 +1175,7 @@ public sealed partial class Clicker
         Part(1, "звичайний", "звичайні", "звичайних");
         Part(0, "тріснув", "тріснули", "тріснуло");
         var text = (manual ? "🔥 Горно відкрите: " : "🔥 Підмайстер відкрив горно: ") + string.Join(" · ", parts);
-        if (sold > 0) text += $" · комора повна, на базар +{Short(sold)}";
+        if (sold > 0) text += freed is null ? $" · комора повна, на базар +{Short(sold)}" : $" · комора повна, {freed}, на базар +{Short(sold)}";
         if (!manual)
         {
             _awayBatches++;
@@ -1374,7 +1377,7 @@ public sealed partial class Clicker
                 ? new
                 {
                     at = l.At, helper = l.Helper, heat = l.Heat, over = l.Over, beauty = l.Beauty, style = l.Style ?? "", straw = l.Straw,
-                    items = (l.Items ?? []).Select(o => new object[] { o.Ware, o.Q }), shards = l.Shards, sold = l.Sold,
+                    items = (l.Items ?? []).Select(o => new object[] { o.Ware, o.Q }), shards = l.Shards, sold = l.Sold, freed = l.Freed,
                 }
                 : null,
         };
