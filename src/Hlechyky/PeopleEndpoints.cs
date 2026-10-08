@@ -180,6 +180,8 @@ public static class PeopleEndpoints
         "gift" => "подарунки",
         "buy" => "куплено за гривні",
         "buy-gift" => "куплено в подарунок",
+        "sell" => "продано за гривні",
+        "sell-back" => "повернуто з продажу",
         _ => cat,
     };
 

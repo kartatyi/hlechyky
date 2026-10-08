@@ -401,7 +401,7 @@
       if (giftTo) { tab = b.dataset.tab; paint(); } else o.go('#lavka/' + b.dataset.tab);
     });
     root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
-    root.querySelectorAll('[data-buy-shards]').forEach((b) => b.onclick = () => window.HBuy && HBuy.open());
+    root.querySelectorAll('[data-buy-shards]').forEach((b) => b.onclick = () => window.HBuy && HBuy.open({ tab: 'buy' }));
     const acc = root.querySelector('[data-acc]');
     if (acc) acc.onclick = () => o.askNick(true, 'register', String(o.me.nick || '').replace(/^гість\s*/i, ''));
     root.querySelectorAll('[data-try]').forEach((b) => b.onclick = () => {

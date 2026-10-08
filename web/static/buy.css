@@ -75,3 +75,29 @@
 }
 /* дві кнопки в заголовку картки «Черепки»: праворуч разом, а не розкидані */
 .wcard h3 .wc-more + .wc-more { margin-left: 0; }
+
+/* вкладки: купити / продати / каса */
+.by-tabs { display: flex; gap: 6px; }
+.by-tabs button { flex: 1 1 0; min-width: 0; padding: 7px 6px; font-size: 14px; white-space: nowrap; }
+.by-tabs button.on { background: #4a3a06; border-color: var(--accent2); color: var(--accent); }
+.by-tabs .chip.badge { margin-left: 2px; }
+.by-card h4.by-sect { color: var(--text); font-size: 15px; margin-top: 4px; }
+.by-card h4.by-sect + h4 { margin-top: 0; }
+
+/* продати: «усе», мої банки, форма картки */
+.by-own .by-all { padding: 1px 8px; font-size: 12.5px; margin-left: 4px; }
+.by-bform { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 12px; }
+.by-bform input { width: 100%; min-width: 0; box-sizing: border-box; font-size: 16px; }
+.by-bform .chip { font-size: 12.5px; }
+.by-small { font-size: 13px; padding: 3px 10px; }
+a.by-small { align-self: center; text-decoration: none; }
+.by-ord.st-paid { border-color: var(--accent2); }
+.by-ord .by-sum { font-size: 14px; }
+.by-warn { font-size: 13px; color: var(--accent); }
+@media (max-width: 420px) {
+  .by-tabs button { font-size: 13px; padding: 7px 4px; }
+}
+/* кружечок веде у вікно (каса чи мої продажі), а не в профіль */
+.wallet .by-badge { cursor: pointer; }
+/* «Черепки» з трьома кнопками (Купити/Каса, Продати, Лавка) на телефоні не влазять в один рядок — кнопки переносяться праворуч */
+.wcard h3:has(.wc-more + .wc-more) { flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }

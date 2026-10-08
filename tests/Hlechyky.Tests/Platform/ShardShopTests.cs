@@ -23,9 +23,13 @@ public sealed class ShardShopTests : IDisposable
     sealed class FakeWire : IShardShopWire
     {
         public List<(string Nick, string Text)> Toasts { get; } = [];
-        public List<(string Seller, int Count)> Counts { get; } = [];
+        public List<(string? Seller, int Orders, int Sales)> Counts { get; } = [];
+        public List<string> AdminToasts { get; } = [];
+        public List<string> Sales { get; } = [];
         public void Toast(string nick, string text) => Toasts.Add((nick, text));
-        public void Waiting(string seller, int count) => Counts.Add((seller, count));
+        public void ToastAdmins(string text) => AdminToasts.Add(text);
+        public void Waiting(string? seller, int orders, int sales) => Counts.Add((seller, orders, sales));
+        public void Sale(string nick) => Sales.Add(nick);
     }
 
     readonly EconomyRig _eco = new();
@@ -118,7 +122,7 @@ public sealed class ShardShopTests : IDisposable
         Assert.Equal("Влад", t.Nick);
         Assert.Contains("Від Олі", t.Text);
         Assert.Contains("100 грн", t.Text);
-        Assert.Equal(("Влад", 1), _wire.Counts[^1]);
+        Assert.Equal(("Влад", 1, 0), _wire.Counts[^1]);
 
         var mine = Views.Json(_shop.View(Olia)).GetProperty("mine");
         Assert.Equal(id, mine[0].GetProperty("id").GetInt64());
@@ -209,7 +213,7 @@ public sealed class ShardShopTests : IDisposable
         Assert.Equal("Уже скасовано", _shop.Cancel(Olia, id).Message);
         Assert.False(_shop.Confirm(Vlad, id).Ok);
         Assert.Equal(0, _eco.Economy.Balance("Оля"));
-        Assert.Equal(("Влад", 0), _wire.Counts[^1]);
+        Assert.Equal(("Влад", 0, 0), _wire.Counts[^1]);
     }
 
     // =============================================================================================
@@ -339,8 +343,8 @@ public sealed class ShardShopTests : IDisposable
         Assert.Equal("куплено за гривні", _eco.Economy.Reason("buy:7"));
         Assert.Equal("подарунок — куплені черепки", _eco.Economy.Reason("buy-gift:7"));
         Assert.Equal("куплено за гривні", PeopleEndpoints.CatTitle(PeopleEndpoints.Cat("buy:7")));
-        Assert.True(EconomyStore.Bought("buy-gift:3"));
-        Assert.False(EconomyStore.Bought("table-buyin:poker"));
+        Assert.True(EconomyStore.Exchange("buy-gift:3"));
+        Assert.False(EconomyStore.Exchange("table-buyin:poker"));
     }
 
     // =============================================================================================
@@ -367,6 +371,205 @@ public sealed class ShardShopTests : IDisposable
         Assert.Equal(400, status);
         Assert.Equal("Уже зараховано", body.GetProperty("message").GetString());
         (status, _) = Radio.Reply(ShardShopSetup.Reject(999, As("Влад"), null, _shop));
+        Assert.Equal(404, status);
+    }
+
+    // =============================================================================================
+    // Продаж: гравець виставляє → адмін «✓ Скинув» / «✕ Не куплю» → гравець «✓ Отримав» / «✕ Не прийшло»
+    // =============================================================================================
+
+    static readonly ShardActor Admin = new("гість Адмін", false, true);
+
+    /// <summary>Оля з чесно заробленими 20 000 🏺 і своєю карткою в Падельні.</summary>
+    int _b0;
+
+    void OliaCanSell()
+    {
+        _eco.Economy.Grant("Оля", 20_000, "listen", "test:seed");
+        _b0 = _eco.Economy.Balance("Оля");   // 20 000 і ще нагорода за «Сотню»
+        _banks.Map["оля"] = [new PadelBank("b2", "privat", "", "5168111111111111", null)];
+    }
+
+    static string Status(System.Text.Json.JsonElement v, long id) =>
+        v.EnumerateArray().Single(x => x.GetProperty("id").GetInt64() == id).GetProperty("status").GetString()!;
+
+    string MySale(ShardActor me, long id) => Status(Views.Json(_shop.View(me)).GetProperty("sell").GetProperty("mine"), id);
+
+    [Fact]
+    public void Sell_holds_the_shards_at_once_and_tells_the_admins()
+    {
+        OliaCanSell();
+        var id = Order(_shop.Sell(Olia, 100));
+        Assert.Equal(_b0 - 10_000, _eco.Economy.Balance("Оля"));   // відкладено: витратити вже не вийде
+        var w = _eco.Economy.Wallet("Оля");
+        Assert.Equal((_b0, 0), (w.Earned, w.Spent));          // продаж — не гра: ні «зароблено», ні «витрачено»
+        Assert.Contains("Оля продає 10", Assert.Single(_wire.AdminToasts));
+        Assert.Equal(("Влад", 0, 1), _wire.Counts[^1]);
+        Assert.Equal("wait", MySale(Olia, id));
+
+        // Адмін бачить заявку разом із карткою Олі; гравцям адмінської каси не видно
+        var desk = Views.Json(_shop.View(Admin)).GetProperty("sales");
+        var row = Assert.Single(desk.GetProperty("waiting").EnumerateArray());
+        Assert.Equal(("Оля", 100, 10_000), (row.GetProperty("seller").GetString(), row.GetProperty("uah").GetInt32(), row.GetProperty("shards").GetInt32()));
+        Assert.Equal("5168111111111111", row.GetProperty("banks")[0].GetProperty("card").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, Views.Json(_shop.View(Olia)).GetProperty("sales").ValueKind);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, Views.Json(_shop.View(Vlad)).GetProperty("sales").ValueKind);
+
+        var sell = Views.Json(_shop.View(Olia)).GetProperty("sell");
+        Assert.True(sell.GetProperty("open").GetBoolean());
+        Assert.Equal((100, 10, _b0 - 10_000), (sell.GetProperty("rate").GetInt32(), sell.GetProperty("min").GetInt32(), sell.GetProperty("balance").GetInt32()));
+    }
+
+    [Fact]
+    public void Sell_is_for_accounts_with_a_card_and_enough_shards()
+    {
+        OliaCanSell();
+        Assert.Equal(ShardShop.SellAccountsOnly, _shop.Sell(new ShardActor("гість Вася", false, false), 50).Message);
+        _eco.Economy.Grant("Петро", 20_000, "listen", "test:p");
+        Assert.Equal(ShardShop.NoBanks, _shop.Sell(Petro, 50).Message);   // без картки адмін не знає, куди скинути
+        Assert.Contains("від 10 грн", _shop.Sell(Olia, 5).Message);
+        Assert.Contains("від 10 грн", _shop.Sell(Olia, null).Message);
+        Assert.Contains("вистачить на 200 грн", _shop.Sell(Olia, 300).Message);
+        Assert.Equal(_b0, _eco.Economy.Balance("Оля"));
+
+        _opts.Sell = false;
+        Assert.Equal(ShardShop.SellClosed, _shop.Sell(Olia, 50).Message);
+        _opts.Sell = true;
+
+        // До трьох заявок водночас; четверта — коли адмін розгляне якусь
+        for (var i = 0; i < 3; i++) Order(_shop.Sell(Olia, 10));
+        Assert.Contains("заявки чекають адміна", _shop.Sell(Olia, 10).Message);
+        Assert.Equal(_b0 - 3_000, _eco.Economy.Balance("Оля"));
+    }
+
+    [Fact]
+    public void Admin_pays_then_the_player_confirms_and_the_shards_are_gone()
+    {
+        OliaCanSell();
+        var id = Order(_shop.Sell(Olia, 50));
+        Assert.Equal(ShardShop.AdminOnly, _shop.SalePaid(Vlad, id).Message);   // продавець купівлі — ще не адмін
+        Assert.False(_shop.SaleReceived(Olia, id).Ok);                        // гроші ще не скинуто
+
+        Assert.True(_shop.SalePaid(Admin, id).Ok);
+        Assert.Equal("paid", MySale(Olia, id));
+        Assert.Contains("Адмін скинув 50 грн", _wire.Toasts[^1].Text);
+        Assert.Equal("Оля", _wire.Toasts[^1].Nick);
+        Assert.Contains("Оля", _wire.Sales);
+        Assert.Equal(("Влад", 0, 0), _wire.Counts[^1]);
+        Assert.Equal("Адмін уже скинув гроші — глянь у банк", _shop.CancelSale(Olia, id).Message);
+        Assert.False(_shop.SalePaid(Admin, id).Ok);
+        Assert.False(_shop.SaleReceived(Petro, id).Ok);
+
+        Assert.True(_shop.SaleReceived(Olia, id).Ok);
+        Assert.Equal("done", MySale(Olia, id));
+        Assert.Equal(_b0 - 5_000, _eco.Economy.Balance("Оля"));
+        Assert.Equal(50, Views.Json(_shop.View(Admin)).GetProperty("sales").GetProperty("monthUah").GetInt32());
+
+        // Перерахунок із леджера: баланс той самий, «зароблено» й «витрачено» продаж не чіпає
+        _eco.Economy.Rebuild();
+        var w = _eco.Economy.Wallet("Оля");
+        Assert.Equal((_b0 - 5_000, _b0, 0), (w.Balance, w.Earned, w.Spent));
+    }
+
+    [Fact]
+    public void Cancel_or_refuse_returns_the_shards_exactly_once()
+    {
+        OliaCanSell();
+        var id = Order(_shop.Sell(Olia, 100));
+        Assert.Equal("Скасувати може лише той, хто продає", _shop.CancelSale(Petro, id).Message);
+        Assert.True(_shop.CancelSale(Olia, id).Ok);
+        Assert.Equal(_b0, _eco.Economy.Balance("Оля"));
+        Assert.Equal("Уже скасовано", _shop.CancelSale(Olia, id).Message);
+        Assert.Equal("off", MySale(Olia, id));
+
+        var id2 = Order(_shop.Sell(Olia, 100));
+        Assert.Equal(ShardShop.AdminOnly, _shop.SaleRefuse(Olia, id2, null).Message);
+        Assert.True(_shop.SaleRefuse(Admin, id2, "зараз нема грошей").Ok);
+        Assert.Equal(_b0, _eco.Economy.Balance("Оля"));
+        Assert.Contains("«зараз нема грошей»", _wire.Toasts[^1].Text);
+        Assert.False(_shop.SaleRefuse(Admin, id2, null).Ok);
+        Assert.False(_shop.CancelSale(Olia, id2).Ok);
+        Assert.Equal(_b0, _eco.Economy.Balance("Оля"));
+
+        _eco.Economy.Rebuild();
+        var w = _eco.Economy.Wallet("Оля");
+        Assert.Equal((_b0, _b0, 0), (w.Balance, w.Earned, w.Spent));   // повернене — не «зароблено» вдруге
+    }
+
+    [Fact]
+    public void Not_received_sends_the_sale_back_to_the_admin_with_a_note()
+    {
+        OliaCanSell();
+        var id = Order(_shop.Sell(Olia, 30));
+        Assert.True(_shop.SalePaid(Admin, id).Ok);
+        Assert.False(_shop.SaleMissing(Petro, id, null).Ok);
+        Assert.True(_shop.SaleMissing(Olia, id, "на картці пусто").Ok);
+        Assert.Contains("не прийшли — «на картці пусто»", _wire.AdminToasts[^1]);
+        Assert.Equal(("Влад", 0, 1), _wire.Counts[^1]);
+        var row = Views.Json(_shop.View(Admin)).GetProperty("sales").GetProperty("waiting")[0];
+        Assert.Equal(("wait", "на картці пусто"), (row.GetProperty("status").GetString(), row.GetProperty("note").GetString()));
+        Assert.Equal(_b0 - 3_000, _eco.Economy.Balance("Оля"));   // черепки так і лежать відкладені
+        Assert.Equal(ShardShop.MissingNoCancel, _shop.CancelSale(Olia, id).Message);   // гроші скидали — вирішує адмін
+
+        Assert.True(_shop.SalePaid(Admin, id).Ok);              // знайшов помилку й скинув ще раз
+        Assert.Equal("", Views.Json(_shop.View(Olia)).GetProperty("sell").GetProperty("mine")[0].GetProperty("note").GetString());
+        Assert.True(_shop.SaleReceived(Olia, id).Ok);
+        Assert.Equal(_b0 - 3_000, _eco.Economy.Balance("Оля"));
+    }
+
+    [Fact]
+    public void A_sale_that_lost_its_debit_is_debited_on_paid_and_never_refunded_from_nothing()
+    {
+        OliaCanSell();
+        var store = new ShardShopStore(_eco.Db);
+        // Як після падіння між записом заявки і списанням: заявка є, черепки на місці
+        var lost = store.AddSale(new ShardSale(0, "Оля", 10, 1_000, "wait", _eco.Clock.UtcNow, null, null, null, null, ""));
+        Assert.True(_shop.SaleRefuse(Admin, lost, null).Ok);
+        Assert.Equal(_b0, _eco.Economy.Balance("Оля"));   // повертати нічого — нічого й не впало
+
+        var late = store.AddSale(new ShardSale(0, "Оля", 10, 1_000, "wait", _eco.Clock.UtcNow, null, null, null, null, ""));
+        Assert.True(_shop.SalePaid(Admin, late).Ok);
+        Assert.Equal(_b0 - 1_000, _eco.Economy.Balance("Оля"));   // списано зараз, один раз
+
+        var tooMuch = store.AddSale(new ShardSale(0, "Оля", 1_000, 100_000, "wait", _eco.Clock.UtcNow, null, null, null, null, ""));
+        Assert.Contains("уже нема цих черепків", _shop.SalePaid(Admin, tooMuch).Message);
+        Assert.Equal("no", MySale(Olia, tooMuch));
+        Assert.Equal(_b0 - 1_000, _eco.Economy.Balance("Оля"));
+    }
+
+    [Fact]
+    public void Sale_ledger_reasons_read_like_people_talk_and_stay_out_of_earned_and_spent()
+    {
+        Assert.Equal("продано за гривні", _eco.Economy.Reason("sell:3"));
+        Assert.Equal("повернуто — продаж не відбувся", _eco.Economy.Reason("sell-back:3"));
+        Assert.Equal("повернуто з продажу", PeopleEndpoints.CatTitle(PeopleEndpoints.Cat("sell-back:3")));
+        Assert.True(EconomyStore.Exchange("sell:3"));
+        Assert.True(EconomyStore.Exchange("sell-back:3"));
+        Assert.False(EconomyStore.Exchange("seller-bonus:3"));
+    }
+
+    [Fact]
+    public void Sale_routes_answer_with_ok_and_message()
+    {
+        OliaCanSell();
+        var (status, body) = Radio.Reply(ShardShopSetup.Sell(As("Оля"), new(50), _shop));
+        Assert.Equal(200, status);
+        var id = body.GetProperty("order").GetProperty("id").GetInt64();
+
+        (status, body) = Radio.Reply(ShardShopSetup.Sell(As("гість Вася", account: false), new(50), _shop));
+        Assert.Equal(403, status);
+        Assert.Equal(ShardShop.SellAccountsOnly, body.GetProperty("message").GetString());
+
+        (status, _) = Radio.Reply(ShardShopSetup.SalePaid(id, As("Петро"), _shop));
+        Assert.Equal(403, status);
+        (status, _) = Radio.Reply(ShardShopSetup.SalePaid(id, As("гість Адмін", account: false, admin: true), _shop));
+        Assert.Equal(200, status);
+        (status, _) = Radio.Reply(ShardShopSetup.SaleReceived(id, As("Оля"), _shop));
+        Assert.Equal(200, status);
+        (status, body) = Radio.Reply(ShardShopSetup.CancelSale(id, As("Оля"), _shop));
+        Assert.Equal(400, status);
+        Assert.Equal("Уже продано", body.GetProperty("message").GetString());
+        (status, _) = Radio.Reply(ShardShopSetup.SaleRefuse(999, As("гість Адмін", account: false, admin: true), null, _shop));
         Assert.Equal(404, status);
     }
 }
