@@ -96,6 +96,12 @@ public sealed partial class Clicker
     DateTimeOffset _treatAt;
     string _treatFrom = "";
     double _treatPots;
+    /// <summary>
+    /// Що прийшло від друзів останнім (12-те дошліфування): усі види — гостинець, підмайстер, похвала, дарунок,
+    /// толока, «дякую». З цього клієнт тостить новеньке, ставить ✨ на «Село» і малює «Подякувати».
+    /// </summary>
+    readonly List<GuildGot> _helpGot = [];
+    const int HelpGotKept = 12;
 
     string GuildNick => (Ctx.NickOf(0) ?? "").Trim();
     string GuildKey => ClickerGuildService.Key(Ctx.NickOf(0));
@@ -145,13 +151,24 @@ public sealed partial class Clicker
         DateTimeOffset Lend = default, string? LendFrom = null, DateTimeOffset Cheer = default, string? CheerFrom = null,
         DateTimeOffset Treat = default, string? TreatFrom = null, double TreatPots = 0);
 
+    /// <summary>Одна прийнята допомога: вид, від кого, коли і коротко що саме («+1,2 млн», «миска ×3»).</summary>
+    sealed record GuildGot(string Kind, string From, DateTimeOffset At, string? What = null);
+
     sealed record GuildRow(
         int Rank = 0, long Given = 0, int Claims = 0, int GiftsSent = 0, int GiftsGot = 0,
         List<GuildGift>? Shelf = null, DateTimeOffset BragAt = default, bool AutoOff = false,
-        GuildBuffs? Buffs = null, int TreatsSent = 0);
+        GuildBuffs? Buffs = null, int TreatsSent = 0, List<GuildGot>? Got = null);
 
     GuildRow? SaveGuild() => new(_guildRank, _guildGiven, _guildClaims, _giftsSent, _giftsGot, _giftShelf.ToList(), _bragAt, _autoKilnOff,
-        new GuildBuffs(_lendUntil, _lendFrom, _cheerUntil, _cheerFrom, _treatAt, _treatFrom, _treatPots), _treatsSent);
+        new GuildBuffs(_lendUntil, _lendFrom, _cheerUntil, _cheerFrom, _treatAt, _treatFrom, _treatPots), _treatsSent,
+        _helpGot.Count > 0 ? _helpGot.ToList() : null);
+
+    /// <summary>Запам'ятати прийняту допомогу (найсвіжіше першим, не більше <see cref="HelpGotKept"/>).</summary>
+    void HelpGot(string kind, string from, DateTimeOffset now, string? what = null)
+    {
+        _helpGot.Insert(0, new GuildGot(kind, from, now, what));
+        if (_helpGot.Count > HelpGotKept) _helpGot.RemoveRange(HelpGotKept, _helpGot.Count - HelpGotKept);
+    }
 
     void LoadGuild(GuildRow? row)
     {
@@ -169,16 +186,20 @@ public sealed partial class Clicker
         _autoKilnOff = row.AutoOff;
         if (row.Buffs is { } b)
         {
-            // Баф не може тривати довше, ніж його заведено: правлена руками база не дасть вічного підмайстра.
+            // Баф не може тривати довше за стелю продовжень: правлена руками база не дасть вічного підмайстра.
             var now = Ctx.Clock.UtcNow;
-            _lendUntil = Min(b.Lend, now.AddHours(ClickerGuildService.LendHours));
-            _cheerUntil = Min(b.Cheer, now.AddMinutes(ClickerGuildService.CheerMinutes));
+            _lendUntil = Min(b.Lend, now.AddHours(ClickerGuildService.LendCapHours));
+            _cheerUntil = Min(b.Cheer, now.AddMinutes(ClickerGuildService.CheerCapMinutes));
             _lendFrom = Who(b.LendFrom);
             _cheerFrom = Who(b.CheerFrom);
             _treatAt = Min(b.Treat, now);
             _treatFrom = Who(b.TreatFrom);
             _treatPots = ToPots(b.TreatPots);
         }
+        var known = new HashSet<string>(["treat", "lend", "cheer", "gift", "toloka", "thanks"], StringComparer.Ordinal);
+        foreach (var g in row.Got ?? [])
+            if (g is not null && known.Contains(g.Kind ?? "") && _helpGot.Count < HelpGotKept)
+                _helpGot.Add(new GuildGot(g.Kind!, Who(g.From), Min(g.At, Ctx.Clock.UtcNow), g.What is { } w ? (w.Length > 40 ? w[..40] : w) : null));
     }
 
     static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
@@ -219,6 +240,7 @@ public sealed partial class Clicker
         _treatAt = default;
         _treatFrom = "";
         _treatPots = 0;
+        _helpGot.Clear();
     }
 
     void ResetGuild(DateTimeOffset now)
@@ -274,6 +296,7 @@ public sealed partial class Clicker
             TitlesGiftFrom(g.From, now);
             AlbumOnGift(new ItemInfo(g.Ware, g.Style, g.Quality));
             AwayNote($"🎁 Дарунок від {g.From}: {ItemWords(new ItemInfo(g.Ware, g.Style, g.Quality))}");
+            HelpGot("gift", Who(g.From) is { Length: > 0 } gf ? gf : "друг", now, ItemWords(new ItemInfo(g.Ware, g.Style, g.Quality), style: false));
         }
         if (_giftShelf.Count > ClickerGuildService.ShelfSize)
             _giftShelf.RemoveRange(ClickerGuildService.ShelfSize, _giftShelf.Count - ClickerGuildService.ShelfSize);
@@ -300,16 +323,26 @@ public sealed partial class Clicker
                     _treatFrom = from;
                     _treatPots = gain;
                     AwayNote($"🎁 Гостинець від {from}: +{PotsShort(gain)} — {minutes} хв твого пасиву");
+                    HelpGot("treat", from, now, "+" + PotsShort(gain));
                     break;
                 case "lend":
-                    _lendUntil = now.AddMinutes(minutes);
-                    _lendFrom = from;
+                    // Другий підмайстер продовжує першого, а не перезаписує: +доба до залишку, наперед не більше трьох діб.
+                    _lendFrom = Joined(_lendFrom, from, _lendUntil > now);
+                    _lendUntil = Min((_lendUntil > now ? _lendUntil : now).AddMinutes(minutes), now.AddHours(ClickerGuildService.LendCapHours));
                     AwayNote($"🧑‍🎓 Підмайстер від {from} гостює добу — ліплення вдвічі швидше");
+                    HelpGot("lend", from, now);
                     break;
                 case "cheer":
-                    _cheerUntil = now.AddMinutes(minutes);
-                    _cheerFrom = from;
+                    // Похвала теж складається: +година до залишку, не більше чотирьох годин наперед.
+                    _cheerFrom = Joined(_cheerFrom, from, _cheerUntil > now);
+                    _cheerUntil = Min((_cheerUntil > now ? _cheerUntil : now).AddMinutes(minutes), now.AddMinutes(ClickerGuildService.CheerCapMinutes));
                     AwayNote($"👏 {from} хвалить твою роботу: +10 % до всього на годину");
+                    HelpGot("cheer", from, now);
+                    break;
+                case "thanks":
+                    // Безплатне «дякую»: лише слово — ні глеків, ні бафів.
+                    AwayNote($"💛 {from} дякує тобі за допомогу");
+                    HelpGot("thanks", from, now);
                     break;
             }
         }
@@ -338,6 +371,10 @@ public sealed partial class Clicker
             "treat" => GuildTreat(svc, payload, now),
             "lend" => GuildLend(svc, payload, now),
             "cheer" => GuildCheer(svc, payload, now),
+            // «Подякувати» з того, що прийшло: похвалою, якщо сьогодні ще можна, інакше — безплатним «дякую».
+            "thank" => GuildThank(svc, payload, now),
+            // Дзвоник цеху (clkMail): клієнт лише просить забрати пошту — це робить SyncGuild на будь-якій дії.
+            "mail" => ActResult.Done,
             // Одинадцяте оновлення: піднести вироби на толоку друга (ClickerTolokaHelp.cs).
             "toloka" => GuildToloka(svc, payload, now),
             "brag" => GuildBrag(payload, now),
@@ -536,6 +573,23 @@ public sealed partial class Clicker
         return ActResult.Accept($"👏 Добре слово для {to}: годину все йтиме на 10 % краще");
     }
 
+    /// <summary>«Від Оля, Петро»: баф, що ще гріє, пам'ятає всіх, хто його продовжував (до 40 знаків — далі лише останній).</summary>
+    static string Joined(string was, string from, bool active)
+    {
+        if (!active || was.Length == 0 || was.Split(", ").Contains(from)) return active && was.Length > 0 ? was : from;
+        var both = was + ", " + from;
+        return both.Length > 40 ? from : both;
+    }
+
+    /// <summary>Подякувати другові, що помагав: похвалою (якщо сьогодні ще не хвалив) або словом.</summary>
+    ActResult GuildThank(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)
+    {
+        var to = Str(payload, "to").Trim();
+        var (why, cheer) = svc.Thank(GuildKey, GuildNick, to, now);
+        if (why is not null) return ActResult.Fail(why);
+        return ActResult.Accept(cheer ? $"👏 Подякував(ла) {to} похвалою: годину все йтиме на 10 % краще" : $"💛 {to} отримає твоє «дякую»");
+    }
+
     /// <summary>Похвалитись виробом із комори в Журнал — раз на чверть години.</summary>
     ActResult GuildBrag(JsonElement payload, DateTimeOffset now)
     {
@@ -631,6 +685,14 @@ public sealed partial class Clicker
         return ActResult.Accept(on ? "🔥 Підмайстри палитимуть повну сушарню самі" : "🔥 Горно — лише твоїми руками");
     }
 
+    /// <summary>
+    /// Чи відкрите «Село»: з першого обпаленого виробу (раніше — з двадцяти), або коли цех уже щось дав (ранг,
+    /// внесок, дарунок, допомога друга). Віз і дарунки однаково просять виробів — порожня комора скаже це сама.
+    /// </summary>
+    internal bool GuildOpen =>
+        FiredTotal >= 1 || _guildRank > 0 || _guildGiven > 0 || _guildClaims > 0 || _giftShelf.Count > 0 || _helpGot.Count > 0
+        || _lendUntil > Ctx.Clock.UtcNow || _cheerUntil > Ctx.Clock.UtcNow;
+
     // ---------- вид і каталог ----------
 
     object? ViewGuild(DateTimeOffset now)
@@ -667,6 +729,11 @@ public sealed partial class Clicker
                 // Гостинець — не баф, а подія: клієнт скаже про неї в стрічці, коли побачить нову мить.
                 treat = _treatAt != default ? new { at = _treatAt, from = _treatFrom, pots = _treatPots } : null,
             },
+            // Що прийшло від друзів (усі види) і кому вже подякував сьогодні — для тосту, ✨ і «Подякувати».
+            got = _helpGot.Select(g => new { kind = g.Kind, from = g.From, at = g.At, what = g.What }),
+            thanked = s.Help.Thanked ?? [],
+            // «Село» відкривається з першого обпалу (або коли цех уже щось дав чи приніс).
+            open = GuildOpen,
             shelf = _giftShelf.Select(g => new { from = g.From, ware = g.Ware, style = g.Style, q = g.Quality, at = g.At }),
             rank = _guildRank,
             given = _guildGiven,

@@ -644,7 +644,7 @@ public class ClickerGuildTests
         Patch(petro, _ => { });
         Assert.Equal(before, G(petro).GetProperty("buffs").GetRawText());
 
-        // Правлена руками база: вічного підмайстра не буде — баф обрізається своєю довжиною.
+        // Правлена руками база: вічного підмайстра не буде — баф обрізається стелею продовжень (72 год / 4 год).
         Patch(petro, s => GuildRow(s)["buffs"] = new JsonObject
         {
             ["lend"] = "2099-01-01T00:00:00+00:00",
@@ -652,9 +652,9 @@ public class ClickerGuildTests
             ["cheer"] = "2099-01-01T00:00:00+00:00",
         });
         var buffs = G(petro).GetProperty("buffs");
-        Assert.Equal(petro.Clock.UtcNow.AddHours(ClickerGuildService.LendHours), buffs.GetProperty("lend").GetProperty("until").GetDateTimeOffset());
+        Assert.Equal(petro.Clock.UtcNow.AddHours(ClickerGuildService.LendCapHours), buffs.GetProperty("lend").GetProperty("until").GetDateTimeOffset());
         Assert.Equal(24, buffs.GetProperty("lend").GetProperty("from").GetString()!.Length);
-        Assert.Equal(petro.Clock.UtcNow.AddMinutes(ClickerGuildService.CheerMinutes), buffs.GetProperty("cheer").GetProperty("until").GetDateTimeOffset());
+        Assert.Equal(petro.Clock.UtcNow.AddMinutes(ClickerGuildService.CheerCapMinutes), buffs.GetProperty("cheer").GetProperty("until").GetDateTimeOffset());
 
         // Старе збереження без бафів — просто нема бафів.
         Patch(petro, s => GuildRow(s).Remove("buffs"));
