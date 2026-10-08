@@ -138,6 +138,14 @@
 .clks-away-row svg { width: 30px; height: 30px; flex: none; }
 .clks-away-notes { margin: 0; padding: 6px 10px 6px 26px; text-align: left; font-size: .88em; background: var(--panel); border-radius: 10px; width: 100%; box-sizing: border-box; }
 .clks-away-go { min-width: 60%; margin-top: 4px; }
+/* «Поки тебе не було» (F18, 08.10): на телефоні список гортається, а «До кола!» лишається внизу вікна, не на дні
+   прокрутки; на широкій картці вікно ширше (було 380 px посеред 1152), а нотатки — у два стовпці. */
+.clks-away-go { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 -10px 16px var(--bg2); }
+@container clk (min-width: 900px) {
+  .clks-awayov .clk-ov-box { max-width: 560px; }
+  .clks-away-notes { columns: 2; column-gap: 28px; }
+  .clks-away-notes li { break-inside: avoid; }
+}
 
 /* ---- полиця «Хата»: мальовані значки замість емодзі ---- */
 .clk-ticon svg { width: 26px; height: 34px; display: block; }

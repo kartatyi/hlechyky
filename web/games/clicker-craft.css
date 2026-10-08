@@ -39,7 +39,7 @@
 .clk-step:not(.on) .clk-stico { opacity: .5; }
 .clk-sttxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
 .clk-sttxt b { font-size: .78em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clk-stsub { font-size: .68em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.clk-stsub { font-size: max(12px, .68em); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 /* ⓘ на чипі місткості: веде до секції «🔧 Прокачати», тож стоїть окремо від самого чипа. */
 .clk-step.hasi { padding-right: 24px; }
 .clk .clk-sti {
@@ -100,7 +100,7 @@
   .clk-step + .clk-step::before { left: -5px; top: 14px; transform: none; }
   .clk-sttxt { align-items: center; max-width: 100%; }
   .clk-sttxt b { font-size: .7em; }
-  .clk-stsub { font-size: .64em; }
+  .clk-stsub { font-size: max(12px, .64em); }
   .clkc-next { grid-template-columns: 22px minmax(0, 1fr) auto; padding: 5px 8px 8px; gap: 6px; }
   .clk-nxtext { font-size: .86em; }
 }
