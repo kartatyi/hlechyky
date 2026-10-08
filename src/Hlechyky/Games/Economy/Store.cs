@@ -58,6 +58,16 @@ public sealed class EconomyStore(Db db)
     /// <summary>Ключ гаманця: нік у нижньому регістрі (InvariantCulture), обрізаний. «Оля» і «оля» — один нік.</summary>
     public static string Key(string? nick) => (nick ?? "").Trim().ToLowerInvariant();
 
+    /// <summary>
+    /// Черепки, куплені за гривні (собі чи в подарунок, ShardShop.cs): у балансі вони є, але не в «зароблено» — таблиці
+    /// й ачівки рахують лише те, що набуто грою.
+    /// </summary>
+    public static bool Bought(string reason) =>
+        reason.StartsWith("buy:", StringComparison.Ordinal) || reason.StartsWith("buy-gift:", StringComparison.Ordinal);
+
+    /// <summary><see cref="Bought"/> для SQL: рядок леджера <c>l</c> — не куплене.</summary>
+    const string NotBought = "l.reason NOT LIKE 'buy:%' AND l.reason NOT LIKE 'buy-gift:%'";
+
     static SqliteCommand Cmd(SqliteConnection c, string sql, params (string Name, object? Value)[] ps)
     {
         var cmd = c.CreateCommand();
@@ -179,7 +189,7 @@ public sealed class EconomyStore(Db db)
             VALUES($n, $nk, $d, $e, 0, $t)
             ON CONFLICT(nick_key) DO UPDATE SET balance = balance + $d, earned = earned + $e,
                 nick = $nk, updated_at = $t
-            """, ("$n", nickKey), ("$nk", nick), ("$d", amount), ("$e", Math.Max(0, amount)), ("$t", Iso(now)));
+            """, ("$n", nickKey), ("$nk", nick), ("$d", amount), ("$e", Bought(reason) ? 0 : Math.Max(0, amount)), ("$t", Iso(now)));
 
         return (GrantResult.Applied, BalanceIn(c, nickKey));
     }));
@@ -214,10 +224,10 @@ public sealed class EconomyStore(Db db)
             INSERT OR IGNORE INTO wallets(nick_key, nick, balance, earned, spent, updated_at)
             SELECT nick_key, nick_key, 0, 0, 0, $t FROM ledger GROUP BY nick_key
             """, ("$t", Iso(now)));
-        Exec(c, """
+        Exec(c, $"""
             UPDATE wallets SET
                 balance = (SELECT COALESCE(SUM(delta), 0) FROM ledger l WHERE l.nick_key = wallets.nick_key),
-                earned  = (SELECT COALESCE(SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), 0) FROM ledger l WHERE l.nick_key = wallets.nick_key),
+                earned  = (SELECT COALESCE(SUM(CASE WHEN delta > 0 AND {NotBought} THEN delta ELSE 0 END), 0) FROM ledger l WHERE l.nick_key = wallets.nick_key),
                 spent   = (SELECT COALESCE(SUM(CASE WHEN delta < 0 THEN -delta ELSE 0 END), 0) FROM ledger l WHERE l.nick_key = wallets.nick_key),
                 updated_at = $t
             """, ("$t", Iso(now)));
@@ -292,7 +302,7 @@ public sealed class EconomyStore(Db db)
         using var cmd = Cmd(c, $"""
             SELECT nick, balance, got FROM (
                 SELECT w.nick AS nick, w.balance AS balance,
-                       (SELECT COALESCE(SUM(CASE WHEN l.delta > 0 THEN l.delta ELSE 0 END), 0)
+                       (SELECT COALESCE(SUM(CASE WHEN l.delta > 0 AND {NotBought} THEN l.delta ELSE 0 END), 0)
                         FROM ledger l WHERE l.nick_key = w.nick_key AND l.created_at >= $s) AS got
                 FROM wallets w)
             WHERE {(period ? "got > 0" : "1 = 1")}

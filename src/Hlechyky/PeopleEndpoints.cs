@@ -178,6 +178,8 @@ public static class PeopleEndpoints
         "ban" => "бан-лист",
         "shop" => "Лавка",
         "gift" => "подарунки",
+        "buy" => "куплено за гривні",
+        "buy-gift" => "куплено в подарунок",
         _ => cat,
     };
 

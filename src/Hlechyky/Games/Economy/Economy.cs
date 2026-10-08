@@ -231,6 +231,9 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "curse-ransom" => "Лавка — відкуп від прокльону",
             "curse-reveal" => "Лавка — хто наслав прокльон",
             "liveads" => "прожарка від Дядька Глека",
+            // куплено за гривні (ShardShop.cs): хвіст — номер замовлення
+            "buy" => "куплено за гривні",
+            "buy-gift" => "подарунок — куплені черепки",
             _ => reason,
         };
     }
