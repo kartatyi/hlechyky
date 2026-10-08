@@ -747,7 +747,17 @@
     { key: 'streak', icon: '🤲', name: (st) => 'Серія ' + count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
       + Math.round(st.streakBonus * 100) + ' % більше' },
     { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
+    // Бафи від друзів (цех, clicker-guild.js): з відліком і від кого — отримувач бачить їх просто під колом.
+    { key: 'flend', icon: '🧑‍🎓', name: (st) => 'від ' + friendBuffFrom(st, 'lend'), what: (st) => 'Підмайстер від ' + friendBuffFrom(st, 'lend') + ' у гостях: ліплення вдвічі швидше' },
+    { key: 'fcheer', icon: '👏', name: (st) => 'від ' + friendBuffFrom(st, 'cheer'), what: (st) => 'Похвала від ' + friendBuffFrom(st, 'cheer') + ': +10 % до всього' },
   ];
+
+  const friendBuffFrom = (st, kind) => {
+    const b = st.guild && st.guild.buffs && st.guild.buffs[kind];
+    return (b && b.from) || 'друга';
+  };
+  /// Довгий відлік на плашці (бафи друзів тривають години): «23 год», «47 хв».
+  const longLeft = (min) => (min >= 60 ? Math.floor(min / 60) + ' год' : min + ' хв');
 
   /// Що з бафів діє саме зараз: множник, до коли й скільки триває весь (для смужки). Лише читає стан.
   function buffsNow(st, sn, mom) {
@@ -763,6 +773,13 @@
     // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
     if (st.fallStreak > 1) out.push({ key: 'streak', mult: '+' + Math.round(st.streakBonus * 100) + ' %' });
     if (st.starWish) out.push({ key: 'wish', mult: '×3' });
+    const gb = st.guild && st.guild.enabled && st.guild.buffs;
+    if (gb) {
+      const lend = gb.lend ? Date.parse(gb.lend.until) || 0 : 0;
+      const cheer = gb.cheer ? Date.parse(gb.cheer.until) || 0 : 0;
+      if (sn < lend) out.push({ key: 'flend', mult: '×2', until: lend, span: Math.max(864e5, lend - sn), long: true });
+      if (sn < cheer) out.push({ key: 'fcheer', mult: '+10 %', until: cheer, span: Math.max(36e5, cheer - sn), long: true });
+    }
     return out;
   }
 
@@ -835,11 +852,11 @@
         if (b.el.classList.contains('end')) b.el.classList.remove('end');
       } else if (x.until) {
         const left = x.until - sn;
-        const secs = Math.max(0, Math.ceil(left / 1000));
+        const secs = Math.max(0, Math.ceil(left / (x.long ? 60000 : 1000)));
         if (b.secs !== secs) {
           b.secs = secs;
-          b.sec.textContent = String(secs);
-          b.sec.classList.toggle('w3', secs >= 100);
+          b.sec.textContent = x.long ? longLeft(secs) : String(secs);
+          b.sec.classList.toggle('w3', x.long || secs >= 100);
           if (stepped) buffBar(b, left, x.span);
         }
         // Новий баф чи той самий, але подовжений (ще один розписний глек) — смужка стартує наново від свого залишку.

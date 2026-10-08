@@ -218,3 +218,45 @@
   background: var(--panel); border: 1px dashed var(--accent2);
 }
 .clkg-firewagon[hidden] { display: none; }
+
+/* ---- 12-те дошліфування: картка друга, «Хто чекає», стрічка цеху, «Тобі допомогли» ----
+   Розміри — в em/rem (масштаб столу на великих екранах); цілі для пальця ≥ 2.5rem на сенсорі. */
+.clkg-flist, .clkg-wlist { display: flex; flex-wrap: wrap; gap: .4em; min-width: 0; }
+.clkg-fbtn {
+  display: inline-flex; align-items: center; flex-wrap: wrap; gap: .35em .5em; min-height: 2.25rem;
+  max-width: 100%; text-align: left; white-space: normal;
+}
+.clkg-wlist .clkg-fbtn { flex: 1 1 15em; }
+.clkg-fname { display: inline-flex; align-items: center; gap: .3em; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.clkg-on { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: var(--ok, #4caf50); flex: none; }
+.clkg-dot {
+  min-width: 1.4em; padding: 0 .35em; border-radius: 999px; background: var(--accent2); color: var(--bg, #000);
+  font-size: .8em; font-weight: 700; text-align: center;
+}
+.clkg-chips { display: flex; flex-wrap: wrap; gap: .25em; flex-basis: 100%; }
+.clkg-chip { padding: .1em .55em; border-radius: 999px; background: var(--panel2); font-size: .82em; line-height: 1.45; }
+.clkg-chip.k-toloka { box-shadow: inset 0 0 0 1px var(--accent2); }
+.clkg-chip.k-thanks { color: var(--accent); }
+.clkg-hint { white-space: nowrap; }
+.clkg-feed summary { cursor: pointer; padding: .3em 0; color: var(--muted); }
+.clkg-frow, .clkg-grow { padding: .15em 0; overflow-wrap: anywhere; }
+.clkg-grow .clkg-thank { margin-left: .3em; }
+.clkg-search { width: 100%; margin: .3em 0 .5em; font-size: 1rem; }
+.clkg-chead { display: flex; align-items: center; gap: .6em; }
+.clkg-chead > div { flex: 1 1 auto; min-width: 0; }
+.clkg-chead .clk-sub { overflow-wrap: anywhere; }
+.clkg-cmsg { padding: .35em .6em; border-radius: .5em; background: var(--panel2); margin: .3em 0; }
+.clkg-cmsg.ok { box-shadow: inset 0 0 0 1px var(--accent2); }
+.clkg-cmsg.bad { color: var(--bad, #e57373); }
+.clkg-crow { display: flex; flex-wrap: wrap; align-items: center; gap: .3em .6em; padding: .3em 0; border-top: 1px solid var(--line); min-width: 0; }
+.clkg-crow .clkg-sizes { flex-basis: 100%; margin: .2em 0 0; }
+.clkg-ctitle { flex-basis: 100%; }
+.clkg-cbtn { min-height: 2.25rem; }
+.clkg-size.arm, .clkg-pick button.arm { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+.clkg-ctol:empty { display: none; }
+.clkg-ctol { margin-top: .4em; border-top: 1px solid var(--line); padding-top: .4em; }
+@media (pointer: coarse) {
+  .clkg-fbtn, .clkg-cbtn, .clkg-chouse, .clkg-thank, .clkg-choose, .clkg-feed summary,
+  .clkg-potter .ghost.small, .clkg-pick button, .clkg-sizes .clkg-size { min-height: 2.5rem; }
+  .clkg-potter .ghost.small[data-card] { min-width: 2.5rem; }
+}

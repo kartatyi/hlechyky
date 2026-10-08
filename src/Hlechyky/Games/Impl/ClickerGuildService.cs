@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Hlechyky.Games.Impl;
 
@@ -16,7 +17,7 @@ public sealed record GuildGift(string From, string Ware, string Style, int Quali
 public sealed record GuildBoost(string From, string Kind, int Minutes, DateTimeOffset At);
 
 /// <summary>Що гончар може зробити для друзів сьогодні й скільки гостинців він сам уже прийняв (§E.2).</summary>
-public sealed record GuildHelp(int TreatLeft, bool LendLeft, IReadOnlyList<string> Cheered);
+public sealed record GuildHelp(int TreatLeft, bool LendLeft, IReadOnlyList<string> Cheered, IReadOnlyList<string>? Thanked = null);
 
 /// <summary>Підціль воза: стільки виробів цього виду (будь-який розпис і якість).</summary>
 public sealed record WagonSub(string Ware, int Need, int Have);
@@ -182,6 +183,8 @@ public sealed partial class ClickerGuildService
         public bool Lend { get; set; }
         /// <summary>Кого вже хвалив сьогодні (ключі ніків): кожному другові — раз на день.</summary>
         public List<string> Cheer { get; set; } = [];
+        /// <summary>Кому вже подякував сьогодні (ключі ніків) — «Подякувати» раз на друга (ClickerGuildHelp.cs).</summary>
+        public List<string> Thanked { get; set; } = [];
     }
 
     sealed class TreatRow
@@ -258,6 +261,8 @@ public sealed partial class ClickerGuildService
         }
         // Звань у старому стані не було — порожні списки (ClickerGuildTitles.cs).
         NormalizeTitles(s);
+        // Стрічки цеху й подяк до 12-го дошліфування не було (ClickerGuildHelp.cs).
+        NormalizeHelp(s);
         return s;
     }
 
@@ -492,9 +497,11 @@ public sealed partial class ClickerGuildService
             box.Add(new GuildGift(fromNick.Trim(), item.Ware, item.Style, item.Quality, now));
             if (box.Count > MailMax) box.RemoveRange(0, box.Count - MailMax);
             sent.N++;
+            Deed(s, fromNick, toNick, "gift", now);
             Save();
-            return null;
         }
+        Ring(toNick, "gift", fromNick);
+        return null;
     }
 
     /// <summary>Забрати все зі скриньки (кличе Sync кімнати отримувача). Порожньо — null, і нічого не пишемо.</summary>
@@ -539,7 +546,8 @@ public sealed partial class ClickerGuildService
         var day = Days.Of(now);
         var mine = s.Helps.TryGetValue(nickKey, out var h) && h.Day == day ? h : null;
         var got = s.Treats.TryGetValue(nickKey, out var t) && t.Day == day ? t.Minutes : 0;
-        return new GuildHelp(Math.Max(0, TreatCapMinutes - got), mine is null || !mine.Lend, mine?.Cheer.ToList() ?? []);
+        return new GuildHelp(Math.Max(0, TreatCapMinutes - got), mine is null || !mine.Lend, mine?.Cheer.ToList() ?? [],
+            mine?.Thanked.ToList() ?? []);
     }
 
     /// <summary>Що гончар ще може зробити для друзів сьогодні (і скільки гостинців прийняв сам).</summary>
@@ -560,12 +568,16 @@ public sealed partial class ClickerGuildService
         var who = toNick.Trim();
         if (toKey.Length == 0) return "Кому помагати? Обери гончаря";
         if (toKey == fromKey) return "Самому собі помагати — то просто робота 🙂";
-        if (!SatDownAtWheel(toKey)) return $"{who} ще не сідав за гончарне коло — помагати нікому";
+        // Збереження друга — поза замком (база повільна): з нього ж видно, до котрої в нього вже гріють бафи.
+        var json = SaveOf(toKey);
+        if (string.IsNullOrEmpty(json)) return $"{who} ще не сідав за гончарне коло — помагати нікому";
+        var (lendSaved, cheerSaved, _) = BuffsOfSave(json);
         lock (_lock)
         {
             var s = S();
             var day = Days.Of(now);
             var help = HelpRowFor(s, fromKey, day);
+            var (lendAhead, cheerAhead) = BuffsAheadLocked(s, toKey, lendSaved, cheerSaved, now);
             int carry;
             switch (kind)
             {
@@ -580,12 +592,17 @@ public sealed partial class ClickerGuildService
                     break;
                 case "lend":
                     if (help.Lend) return "Підмайстер у цеху один, і сьогодні він уже пішов у гості";
+                    // Другий підмайстер продовжує першого (ClickerGuild.TakeBoosts) — але наперед не більше трьох діб.
+                    if (lendAhead >= now.AddHours(LendCapHours))
+                        return $"У {who} підмайстри вже розписані на {LendCapHours} год наперед — пришли пізніше";
                     help.Lend = true;
                     carry = LendHours * 60;
                     break;
                 case "cheer":
                     if (help.Cheer.Contains(toKey, StringComparer.Ordinal))
                         return $"{who} сьогодні вже чув(ла) від тебе добре слово — завтра скажеш ще";
+                    if (cheerAhead >= now.AddMinutes(CheerCapMinutes))
+                        return $"{who} уже нахвалили на {CheerCapMinutes / 60} год наперед — скажеш добре слово пізніше";
                     help.Cheer.Add(toKey);
                     carry = CheerMinutes;
                     break;
@@ -595,9 +612,11 @@ public sealed partial class ClickerGuildService
             if (!s.Boosts.TryGetValue(toKey, out var box)) s.Boosts[toKey] = box = [];
             box.Add(new GuildBoost(fromNick.Trim(), kind, carry, now));
             if (box.Count > MailMax) box.RemoveRange(0, box.Count - MailMax);
+            Deed(s, fromNick, who, kind, now);
             Save();
-            return null;
         }
+        Ring(who, kind, fromNick);
+        return null;
     }
 
     /// <summary>Забрати всю допомогу зі скриньки (кличе Sync кімнати отримувача). Порожньо — null, і нічого не пишемо.</summary>
@@ -700,6 +719,20 @@ public sealed partial class ClickerGuildService
         var now = _clock.UtcNow;
         var me = Key(meNick);
         EnsureTitleStats();
+        // Картки друзів (12-те дошліфування): збереження тих, хто заходив за останні дні, — поза замком.
+        var reads = new Dictionary<string, (string? Json, object? Toloka)>(StringComparer.Ordinal);
+        if (me.Length > 0)
+        {
+            List<string> recent;
+            lock (_lock)
+                recent = S().Potters.Where(x => x.Key != me && x.Value.Seen >= now.AddDays(-LookDays))
+                    .OrderByDescending(x => x.Value.Seen).Take(LookMax).Select(x => x.Key).ToList();
+            foreach (var key in recent)
+            {
+                var json = SaveOf(key);
+                reads[key] = (json, json is { Length: > 0 } ? TolokaView(key, json, now) : null);
+            }
+        }
         lock (_lock)
         {
             var s = S();
@@ -717,9 +750,13 @@ public sealed partial class ClickerGuildService
                         // Звання (docs/games/specs/clicker-titles.md): до трьох значків і «перший гончар округи» — золотом.
                         badges = BadgesOf(s, x.Key, now),
                         first = s.TitleHolds.TryGetValue(Clicker.TitleFirst, out var f) && f.Key == x.Key,
+                        // Що я можу для нього зробити (лише для тих, хто заходив нещодавно; решта — null).
+                        look = reads.TryGetValue(x.Key, out var r) ? LookLocked(s, me, x.Key, x.Value.Nick, r.Json, r.Toloka, now) : null,
                     })
                     .ToList(),
                 titles = TitleBoard(s, now),
+                // Стрічка цеху: хто кому що сьогодні зробив.
+                feed = FeedLocked(s, now),
             };
         }
     }
@@ -743,7 +780,7 @@ public sealed partial class ClickerGuildService
     // ---------- хата друга ----------
 
     /// <summary><c>GET /api/games/clicker/house?nick=</c>: публічний знімок зі збереження друга або null.</summary>
-    public object? House(string? nick)
+    public object? House(string? nick, string? meNick = null)
     {
         var key = Key(nick);
         if (key.Length == 0) return null;
@@ -766,7 +803,14 @@ public sealed partial class ClickerGuildService
             display = s.Potters.TryGetValue(key, out var p) ? p.Nick : (nick ?? "").Trim();
             wall = WallOf(s, key, _clock.UtcNow, earned);
         }
-        return HouseSnapshot(display, json, wall, toloka);
+        var house = HouseSnapshot(display, json, wall, toloka);
+        if (house is null || Key(meNick) is not { Length: > 0 } me || me == key) return house;
+        // Картка друга в хаті: що я можу для нього зробити — поруч зі знімком, а не всередині (знімок — чиста функція).
+        object look;
+        lock (_lock) look = LookLocked(S(), me, key, display, json, toloka, _clock.UtcNow);
+        var node = JsonSerializer.SerializeToNode(house, Wire)!.AsObject();
+        node["look"] = JsonSerializer.SerializeToNode(look, Wire);
+        return node;
     }
 
     /// <summary>
@@ -932,8 +976,12 @@ public static class ClickerGuildSetup
 {
     public static IServiceCollection AddClickerGuild(this IServiceCollection services)
     {
+        services.TryAddSingleton<IClickerGuildWire, HubClickerGuildWire>();
         services.AddSingleton(sp => new ClickerGuildService(
-            sp.GetRequiredService<IGameStore>(), sp.GetRequiredService<IClock>(), sp.GetService<ILogger<ClickerGuildService>>()));
+            sp.GetRequiredService<IGameStore>(), sp.GetRequiredService<IClock>(), sp.GetService<ILogger<ClickerGuildService>>())
+        {
+            GuildWire = sp.GetService<IClickerGuildWire>(),
+        });
         return services;
     }
 
@@ -943,8 +991,8 @@ public static class ClickerGuildSetup
         app.MapGet("/api/games/clicker/guild", (HttpContext c, ClickerGuildService guild) => Results.Ok(guild.Roster(Auth.Nick(c))));
 
         // Хата друга: лише публічне зі збереження (див. HouseSnapshot).
-        app.MapGet("/api/games/clicker/house", (string? nick, ClickerGuildService guild) =>
-            guild.House(nick) is { } house
+        app.MapGet("/api/games/clicker/house", (HttpContext c, string? nick, ClickerGuildService guild) =>
+            guild.House(nick, Auth.Nick(c)) is { } house
                 ? Results.Ok(house)
                 : Results.NotFound(new { ok = false, message = "Такої хати нема — гончар ще не сідав за коло" }));
         return app;

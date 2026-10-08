@@ -373,6 +373,10 @@ public sealed partial class Clicker
         {
             built = Buildings.Where(x => _tBuilt.Contains(x.Key)).Select(x => x.Key).ToList(),
             stage,
+            // Поки етап будується — що треба на наступний: вироби (і скільки вже є в коморі), гроші, години. Лише показати.
+            next = b is not null && _tLaidAt != default
+                ? TolokaNextView(TolokaAfter(b, Math.Clamp(_tStage, 0, b.Stages.Length - 1), _tBuilt, _total), n => ItemCount(TolokaMatch(n)))
+                : null,
             // Чекаємо на червоний золотий: мала збудована, велика ще не відкрилась.
             waitBig = b is null && Buildings.Where(x => !x.Big).All(x => _tBuilt.Contains(x.Key)) && _tBuilt.Count < Buildings.Length,
             done = _tDone,

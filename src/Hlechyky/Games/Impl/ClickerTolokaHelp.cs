@@ -15,7 +15,8 @@ public sealed record TolokaParcel(string From, string FromKey, string Building, 
 /// коли достроїться закладений етап (null — етап ще збирають); <see cref="Got"/> — скільки вже піднесли друзі за
 /// кожною вимогою; <see cref="Helpers"/> — хто вже був на цьому етапі.
 /// </summary>
-public sealed record TolokaPeek(ClickerBuilding Building, int Stage, DateTimeOffset? EndsAt, int[] Got, IReadOnlyList<string> Helpers)
+public sealed record TolokaPeek(ClickerBuilding Building, int Stage, DateTimeOffset? EndsAt, int[] Got, IReadOnlyList<string> Helpers,
+    IReadOnlySet<string>? Built = null, double Total = 0)
 {
     public TolokaStage StageRow => Building.Stages[Stage];
 }
@@ -110,7 +111,34 @@ public sealed partial class Clicker
                 }
             }
         }
-        return new TolokaPeek(b, stage, ends, got[..b.Stages[stage].Needs.Length], helpers);
+        return new TolokaPeek(b, stage, ends, got[..b.Stages[stage].Needs.Length], helpers, built, total);
+    }
+
+    /// <summary>
+    /// Що буде після етапу <paramref name="stage"/> будови <paramref name="b"/>: наступний етап тієї ж будови або перший
+    /// етап наступної (за правилами <see cref="TolokaNextOf"/>). null — далі нічого (усе збудовано чи чекає червоного золотого).
+    /// </summary>
+    internal static (ClickerBuilding Building, int Stage)? TolokaAfter(ClickerBuilding b, int stage, IEnumerable<string> built, double total)
+    {
+        if (stage + 1 < b.Stages.Length) return (b, stage + 1);
+        var more = new HashSet<string>(built, StringComparer.Ordinal) { b.Key };
+        return TolokaNextOf(more, total) is { } n ? (n, 0) : null;
+    }
+
+    /// <summary>Наступний етап у формі для дроту (лише показати — піднести наперед не можна). have — для свого виду.</summary>
+    internal static object? TolokaNextView((ClickerBuilding Building, int Stage)? next, Func<TolokaNeed, int>? have)
+    {
+        if (next is not { } x) return null;
+        var st = x.Building.Stages[x.Stage];
+        return new
+        {
+            building = x.Building.Key,
+            index = x.Stage,
+            name = st.Name,
+            pay = st.Pay,
+            hours = st.Hours,
+            needs = st.Needs.Select(n => new { ware = n.Ware, n = n.N, q = n.Q, style = n.Style, have = have?.Invoke(n) }).ToList(),
+        };
     }
 
     /// <summary>Сума важеля реліквії на рівні <paramref name="level"/> — те саме, що <see cref="Relic"/>, для чужого збереження.</summary>
@@ -175,6 +203,7 @@ public sealed partial class Clicker
             var n = Math.Min(p.N, TolokaHelpMax);
             TolokaReceive(from, item, n);
             AwayNote($"🤝 {from} підніс на толоку: {n} × {WareOf(p.Ware)!.Name.ToLowerInvariant()}");
+            HelpGot("toloka", from, now, $"{WareOf(p.Ware)!.Name.ToLowerInvariant()} ×{n}");
         }
     }
 }
@@ -252,11 +281,11 @@ public sealed partial class ClickerGuildService
         var st = peek.StageRow;
         var where = $"«{peek.Building.Name}», етап «{st.Name}»";
         if (!Clicker.TolokaFits(st, item)) return new($"Цей виріб на {where} не йде. Просять: {Clicker.TolokaNeedsText(st)}");
+        int take;
         lock (_lock)
         {
             var s = S();
             var pending = PendingLocked(s, toKey, peek);
-            int take;
             if (peek.EndsAt is not null)
             {
                 var been = peek.Helpers.Contains(fromNick.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -274,9 +303,11 @@ public sealed partial class ClickerGuildService
             if (!s.Toloka.TryGetValue(toKey, out var box)) s.Toloka[toKey] = box = [];
             if (box.Count >= TolokaMailMax) return new($"{who}: скринька толоки повна — хай спершу зайде й прийме вироби");
             box.Add(new TolokaParcel(fromNick.Trim(), fromKey, peek.Building.Key, peek.Stage, item.Ware, item.Style, item.Quality, take, now));
+            Deed(s, fromNick, who, "toloka", now);
             Save();
-            return new(null, take, peek.Building.Name, st.Name);
         }
+        Ring(who, "toloka", fromNick);
+        return new(null, take, peek.Building.Name, st.Name);
     }
 
     /// <summary>Забрати всі посилки толоки (кличе Sync кімнати господаря на дії). Порожньо — null, і нічого не пишемо.</summary>
@@ -316,6 +347,8 @@ public sealed partial class ClickerGuildService
             needs = st.Needs.Select((x, i) => new { ware = x.Ware, n = x.N, q = x.Q, style = x.Style, left = left[i] }).ToList(),
             max = Clicker.TolokaHelpMax,
             treat = Clicker.TolokaTreatMinutes,
+            // Поки етап будується — що треба на наступний (лише показати; «у тебе є» рахує клієнт помічника).
+            next = peek.EndsAt is not null ? Clicker.TolokaNextView(Clicker.TolokaAfter(peek.Building, peek.Stage, peek.Built ?? new HashSet<string>(), peek.Total), null) : null,
         };
     }
 }
