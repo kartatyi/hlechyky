@@ -314,6 +314,44 @@ public class ClickerLiveTests
     }
 
     [Fact]
+    public void The_guild_bell_does_not_cut_the_away_record_in_half()
+    {
+        // Друг надіслав посеред простою — дзвоник тихо забрав пошту; по поверненні запис «поки тебе не було» —
+        // за весь простій, а не лише за хвіст після дзвоника.
+        var h = Wheel();
+        Patch(h, s => s["upgrades"]!["apprentice"] = 25);
+        View(h);
+        h.Clock.Advance(TimeSpan.FromMinutes(40));
+        Mail(h);
+        h.Clock.Advance(TimeSpan.FromMinutes(20));
+        Assert.True(Spin(h, 5).Ok);
+
+        var away = View(h).GetProperty("away");
+        Assert.Equal(3600, away.GetProperty("seconds").GetInt64());
+        Assert.True(away.GetProperty("formed").GetInt32() > 0);
+    }
+
+    [Fact]
+    public void The_guild_bell_does_not_lift_the_offline_cap()
+    {
+        // Стеля простою — на весь простій: дзвоник посеред нього не відкриває ще одну.
+        RoomHarness Away(bool bell)
+        {
+            var h = Wheel();
+            Patch(h, s => s["upgrades"]!["apprentice"] = 25);
+            View(h);
+            h.Clock.Advance(Clicker.OfflineCap - TimeSpan.FromHours(1));
+            if (bell) Mail(h);
+            h.Clock.Advance(Clicker.OfflineCap - TimeSpan.FromHours(1));
+            return h;
+        }
+        var quiet = Away(false);
+        var rung = Away(true);
+        Assert.True(Pots(quiet) > 0);
+        Assert.Equal(Pots(quiet), Pots(rung));
+    }
+
+    [Fact]
     public void A_potter_at_the_wheel_still_breaks_the_streak_whatever_the_bell_does()
     {
         var h = Wheel();

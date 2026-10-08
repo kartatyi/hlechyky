@@ -1085,13 +1085,18 @@ public sealed partial class Clicker : Game
         var from = _lastSync;
         _lastSync = now;
         var gap = now > from ? now - from : TimeSpan.Zero;
-        var paid = gap > OfflineNow ? OfflineNow : gap;
-        // Кіт, зірка й вітер — це те, що видно на сцені: поки гончаря не було, вони його не чекали (§A.6).
         // «Був» — від останньої справжньої дії: тиха (дзвоник цеху) лише забирає пошту, гончаря біля кола не садить.
         var seen = _seenAt;
-        var watching = (now > seen ? now - seen : TimeSpan.Zero) <= EventGap;
+        var absent = now > seen ? now - seen : TimeSpan.Zero;
+        // Стеля простою — на весь простій, а не на кожен відрізок між тихими синхронізаціями: що вже оплатили дзвоники
+        // цеху (від seen до from), те віднімається від стелі.
+        var covered = from > seen ? from - seen : TimeSpan.Zero;
+        var room = OfflineNow > covered ? OfflineNow - covered : TimeSpan.Zero;
+        var paid = gap > room ? room : gap;
+        // Кіт, зірка й вітер — це те, що видно на сцені: поки гончаря не було, вони його не чекали (§A.6).
+        var watching = absent <= EventGap;
         if (!_quietSync) _seenAt = now;
-        AwayBegin(gap);
+        AwayBegin(absent);
         if (now > from)
         {
             // Ярмарок завжди починається з дії (а дія спершу синхронізує), тож він не може початись раніше
@@ -1152,7 +1157,7 @@ public sealed partial class Clicker : Game
         SyncGuild(now, paid);
         SyncGuests(now, paid);
         SyncToloka(now);
-        AwayEnd(now, gap);
+        AwayEnd(now, absent);
     }
 
     /// <summary>Клієнт питає свіжий вид (глек утік, купець повернувся) або каталоги наново (<c>{ catalog: true }</c>).</summary>

@@ -467,11 +467,22 @@ public sealed partial class Clicker
     static readonly TimeSpan AwayLate = TimeSpan.FromMinutes(2);
 
     bool _awayOpen;
+    /// <summary>
+    /// Тихі синхронізації (дзвоник цеху, <see cref="QuietAct"/>) уже почали запис простою: гончар не повертався, тож
+    /// наступна синхронізація дописує той самий запис, а не починає новий. Інакше пошта від друга посеред простою
+    /// розрізала б «поки тебе не було» навпіл, і гончар по поверненні побачив би лише хвіст. Не зберігається: перезапуск
+    /// посеред простою коштує лише неповного запису.
+    /// </summary>
+    bool _awayCarry;
 
-    /// <summary>Кличе Sync: відкрити запис простою до пасиву й закрити після всіх пакетів.</summary>
+    /// <summary>
+    /// Кличе Sync: відкрити запис простою до пасиву й закрити після всіх пакетів. gap — скільки гончаря не було біля
+    /// кола (від останньої справжньої дії, <see cref="_seenAt"/>), а не від останньої синхронізації.
+    /// </summary>
     void AwayBegin(TimeSpan gap)
     {
-        _awayOpen = gap >= AwayFrom;
+        if (_awayCarry) { _awayOpen = true; return; }
+        _awayOpen = gap >= AwayFrom || _quietSync;
         _awayFormed = 0;
         _awayNotes.Clear();
         _awayPotsFrom = _pots;
@@ -483,6 +494,11 @@ public sealed partial class Clicker
     {
         if (!_awayOpen) return;
         _awayOpen = false;
+        // Тиха синхронізація запис не складає: гончаря досі нема, допишемо, коли повернеться.
+        if (_quietSync) { _awayCarry = true; return; }
+        _awayCarry = false;
+        // Тихі синхронізації почали запис, а гончар повернувся раніше, ніж простій став простоєм, — запису не треба.
+        if (gap < AwayFrom) return;
         _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom), _awayFormed, [.. _awayNotes]);
     }
 
