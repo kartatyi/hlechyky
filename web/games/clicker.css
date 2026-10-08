@@ -696,12 +696,18 @@
 }
 
 /* ---- Full HD і ширше (картка від 1500 px — це 1920 у режимі ⛶) ----
-   Скарга v9: «сцена дрібна, коло маленьке, шрифти дрібні» — тут кегль більший, а проміжки менші. */
+   Скарга v9: «сцена дрібна, коло маленьке, шрифти дрібні». Кегль ×1,06 тут був до 08.10, але з балачками картка на
+   Full HD 1152 px і порога не сягала ніколи; тепер на великих екранах більшає все — масштаб столу нижче (.clk-big). */
 @container clk (min-width: 1500px) {
-  /* Кегль ставимо на .clk-lay, а не на .clk: @container міряє ПРЕДКА, тож сам контейнер собі не відповідає. */
-  .clk-lay { font-size: 1.06em; }
   .clk-scene { gap: 6px; }
 }
+
+/* ---- 2K і 4K: стіл більшає разом із вікном (F1, 08.10) ----
+   z = min(вікно/1920, вікно/1000), від 1,05 до 2 — рахує fitTable (clicker.js, bigZoom), він же ставить .clk-big на
+   картку й body та --clk-z на body. Масштабуємо тіло картки, а не каркас: рядок «← Лобі» й балачки лишаються як були.
+   Усередині картка живе у своїх пікселях (3840×2160 — це стіл 1920×1080 удвічі), тож висоту вікна (vh, теж
+   помножену zoom-ом) і зміряні fitTable відступи ділимо на z. */
+.gtable.clk-big > .gbody { zoom: var(--clk-z, 1); }
 
 /* ---- ПК: стіл рівно в один екран, одна прокрутка (v10 §9) ----
    Скарга: «блок з грою більший за сторінку, і щоб доскролити донизу, треба гортати і в блоці гри, і сторінку».
@@ -715,7 +721,7 @@
    на низькому вікні (.pathside) — ще й смуга «Шлях виробу» нагору правої колонки (placeRows у clicker.js).
    Вузьке (< 900) чи низьке (< 700) вікно — як і було: одна прокрутка сторінки, полиця без власної прокрутки. */
 .clk.fit .clk-lay {
-  --clk-h: calc(100vh - var(--clk-above, 140px) - var(--clk-below, 82px));
+  --clk-h: calc((100vh - var(--clk-above, 140px) - var(--clk-below, 82px)) / var(--clk-z, 1));
   --clk-rows: 262px;
   height: var(--clk-h);
   grid-template-columns: clamp(300px, calc((var(--clk-h) - var(--clk-rows)) * .8), 58%) minmax(0, 1fr);
@@ -724,7 +730,7 @@
 }
 /* dvh — висота вікна без панелей браузера, що ховаються (планшет): там 100vh вилазить за екран. */
 @supports (height: 100dvh) {
-  .clk.fit .clk-lay { --clk-h: calc(100dvh - var(--clk-above, 140px) - var(--clk-below, 82px)); }
+  .clk.fit .clk-lay { --clk-h: calc((100dvh - var(--clk-above, 140px) - var(--clk-below, 82px)) / var(--clk-z, 1)); }
 }
 .clk.fit.pathside .clk-lay { --clk-rows: 160px; }
 .clk.fit .clk-scene, .clk.fit .clk-side { position: static; min-height: 0; }
@@ -934,8 +940,34 @@
 }
 /* Сталі рядки лівого стовпчика (див. .clk.fit .clk-lay вище) стали вищими рівно на другий рядок плашок (~40 px):
    без цього стовпчик лишався б ширшим за сцену, і обабіч неї стояли б порожні смуги по 17 px. */
-.clk.fit .clk-lay { --clk-rows: 302px; }
-.clk.fit.pathside .clk-lay { --clk-rows: 200px; }
+.clk.fit .clk-lay { --clk-rows: 182px; }
+.clk.fit.pathside .clk-lay { --clk-rows: 82px; }
+
+/* ---- ПК: сцені вся висота стовпчика (F3/F4, 08.10) ----
+   Було: над сценою число, швидкість і суперник (~100 px), під нею два рядки плашок бафів і стрічка подій (~100 px),
+   під карткою — рядок «усього наліплено…» і «Закрити»; коло на макбуку 172 px. Стало: швидкість і суперник — один
+   рядок; плашки бафів — нагору правої колонки (під смугу «Шлях виробу» на низькому вікні), стрічка подій — у її
+   підвал над прилавком (placeRows у clicker.js); рядок статусу — під прилавком (placeStatus); «Закрити» — у рядок
+   «← Лобі». Під сценою лишається хіба смуга «Шлях виробу» на високому вікні (--clk-rows 182 замість 302). */
+.clk-rr { display: contents; }
+.clk.fit .clk-rr { order: 0; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; max-width: 100%; }
+.clk.fit .clk-rr > .clk-rate { flex: 0 1 auto; min-width: 0; }
+.clk.fit .clk-rr > .clk-rival { flex: 0 1 auto; min-width: 0; max-width: 55%; }
+.clk.fit .clk-rr > .clk-rival[hidden] { display: none !important; }
+.clk.fit .clk-side > .clk-buffs { order: -1; flex: none; height: auto; }
+.clk.fit .clk-side > .clk-buffs[hidden] { display: none !important; }
+.clk.fit .clk-side > .clkf-feed { order: 98; flex: none; }
+.clk.fit .clk-side > .gstatus {
+  order: 100; flex: none; font-size: .78em; color: var(--muted); text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* «Закрити» піднімається в рядок «← Лобі» праворуч (там і так порожньо), а рядок під карткою зникає. :has — щоб
+   рядок «← Лобі» звільнив місце; без нього (старий браузер) усе лишається як було. */
+@supports selector(:has(a)) {
+  .gtable.clk-fit { position: relative; }
+  .gtable.clk-fit > .gbtns { position: absolute; right: 0; bottom: calc(100% + 12px); }
+  .groom:has(> .grbox > .gtable.clk-fit) > .grhead { padding-right: 100px; }
+}
 /* Довгі написи на кнопках («🔥 Почати наново: +1,23 млн клейм», «Продати все звичайне…») на 360 px вилазили за
    картку на 4–9 px: кнопка за замовчуванням не переносить рядок. Тепер переносить і не ширша за свій рядок. */
 .clk .clk-fire, .clk .clkw-sellall { white-space: normal; max-width: 100%; text-align: center; justify-content: center; }
@@ -991,4 +1023,35 @@
   .clk .clk-stsub { font-size: .75em; }
   /* Плитка тут стовпчиком (значок над назвою), ⓘ сидить у верхньому куті — місце праворуч під нього назві не потрібне. */
   .clk .clk-step.hasi { padding-right: 2px; }
+}
+
+/* ---- ярлики вкладок: значок · слово · нотатка (F8, 08.10) ----
+   labelTab (clicker.js) кладе їх окремими шматками. На широкій полиці — той самий рядок «🏺 Ремесло · 📜3». Вузька
+   полиця (телефон, низький ПК із колом на пів картки) — п'ять вкладок в один ряд нарівно, нотатка — бейджем над
+   значком (було: два ряди 3 + 2, 71–86 px висоти). Телефон — значок над словом, ціль від 44 px. */
+.clk .clk-tabs button { position: relative; }
+.clk .clk-tword { margin-left: .3em; }
+.clk .clk-tico:empty + .clk-tword { margin-left: 0; }
+.clk .clk-tnote:not(:empty)::before { content: ' · '; }
+@container clkside (max-width: 700px) {
+  .clk .clk-tabs { flex-wrap: nowrap; }
+  .clk .clk-tabs button { flex: 1 1 0; padding: 7px 4px; overflow: hidden; text-overflow: ellipsis; }
+  .clk .clk-tword { overflow: hidden; text-overflow: ellipsis; }
+  .clk .clk-tnote:not(:empty) {
+    position: absolute; top: 1px; left: calc(50% + .2em); max-width: calc(50% - .3em); overflow: hidden; text-overflow: ellipsis;
+    padding: 0 4px; border-radius: 999px; background: var(--accent2); color: var(--bg); font-size: 11px; font-weight: 700;
+    line-height: 1.35; pointer-events: none;
+  }
+  .clk .clk-tnote:not(:empty)::before { content: none; }
+  .clk .clk-tabs button:has(.clk-tnote:not(:empty)) { padding-top: 12px; }
+}
+@container clkside (max-width: 480px) {
+  .clk .clk-tabs button {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    min-height: 46px; padding: 4px 2px 3px;
+  }
+  .clk .clk-tabs button:has(.clk-tnote:not(:empty)) { padding-top: 4px; }
+  .clk .clk-tico { font-size: 1.3em; line-height: 1.1; }
+  .clk .clk-tword { margin-left: 0; max-width: 100%; font-size: 12px; line-height: 1.2; }
+  .clk .clk-tnote:not(:empty) { top: 0; left: calc(50% + .55em); }
 }

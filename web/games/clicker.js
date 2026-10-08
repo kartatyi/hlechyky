@@ -1574,8 +1574,30 @@
     const notes = st.tabNotes[key] || {};
     const best = Object.keys(notes).sort().map((k) => notes[k]).filter((n) => n.text)
       .sort((a, b) => a.prio - b.prio)[0];
-    const text = (st.tabText[key] || key) + (best ? ' · ' + best.text : '');
-    if (b.textContent !== text) b.textContent = text;
+    const label = st.tabText[key] || key;
+    const note = best ? best.text : '';
+    if (b._label === label && b._note === note) return;
+    b._label = label;
+    b._note = note;
+    // Ярлик — значок · слово · нотатка окремими шматками (F8): на широкій полиці це той самий рядок «🏺 Ремесло · 📜3»,
+    // а у вузькій (телефон, низький ПК) нотатка стає бейджем над значком, і п'ять вкладок лягають в один ряд.
+    const sp = label.indexOf(' ');
+    const ico = sp > 0 ? label.slice(0, sp) : '';
+    const word = sp > 0 ? label.slice(sp + 1) : label;
+    if (!b._parts) {
+      b.textContent = '';
+      b._parts = ['clk-tico', 'clk-tword', 'clk-tnote'].map((c) => {
+        const e = document.createElement('span');
+        e.className = c;
+        b.appendChild(e);
+        return e;
+      });
+      b._parts[0].setAttribute('aria-hidden', 'true');
+    }
+    b._parts[0].textContent = ico;
+    b._parts[1].textContent = word;
+    b._parts[2].textContent = note;
+    b.title = note ? word + ' · ' + note : word;
   }
 
   /// Перебрати гейти: закриті вкладки ховаємо, щойно відкриті — світимо й кажемо про це в стрічці подій.
@@ -2389,6 +2411,8 @@
       b.dataset.tab = key;
       b.dataset.order = String(order || 50);
       b.textContent = label;
+      st.tabText[key] = label;
+      labelTab(st, key);
       const after = [...st.tabs.querySelectorAll('[data-tab]')].find((x) => +(x.dataset.order || 50) > (order || 50));
       st.tabs.insertBefore(b, after || null);
       b.onclick = () => { H.api.sfx('tap'); setTab(st, key); };
@@ -2452,21 +2476,38 @@
       st.ov.onClose = (opts && opts.onClose) || null;
       st.ov.keep = (opts && opts.keep) || null;
       st.ov.el.hidden = false;
-      // Картка буває вища за екран: вікно стає там, куди гравець зараз дивиться, а не вгорі картки.
-      // Видима смуга — між липкою шапкою сайту й нижнім меню (телефон): інакше верх вікна під шапкою, а низ
-      // («Закрити», кнопки дії) під меню.
-      const r = st.el.getBoundingClientRect();
-      const box = st.ov.el.firstElementChild;
-      // Вікно живе в межах картки (.clk-overlay — inset: 0 на ній), тож і низ не нижче за картку.
-      const band = viewBand();
-      const lo = r.top + 12;                                  // верх вікна при marginTop 0
-      let mt = Math.max(0, band.top + 8 - lo);
-      const mh = Math.max(240, Math.min(band.bottom - 8, r.bottom - 12) - (lo + mt));
-      if (lo + mt + mh > r.bottom - 12) mt = Math.max(0, r.bottom - 12 - mh - lo);
-      box.style.marginTop = mt + 'px';
-      box.style.maxHeight = mh + 'px';
+      H.api.placeOverlay(st);
       return st.ov.body;
     },
+    /// Де стоїть вікно і скільки йому висоти — одне правило на всі вікна (F5, 08.10; горно кличе його ж, коли
+    /// домалювало вміст). Вікно — у тій частині картки, яку справді видно: між липкою шапкою сайту й нижнім меню
+    /// телефона і не нижче за саму картку. Не влазить — гортається саме вікно, а не шар під ним (раніше горно
+    /// рахувало висоту від екрана, і на макбуку низ вікна обрізав край картки разом із «🎲 Навмання»).
+    /// Картка вища за екран (телефон), а вікно не влазить під її верх — сторінку підгортаємо рівно на різницю.
+    /// Усе міряне — у видимих пікселях, а пишемо в пікселях картки: під масштабом 2K/4K ділимо на z.
+    placeOverlay(st) {
+      if (!st.ov || st.ov.el.hidden) return;
+      const box = st.ov.el.firstElementChild;
+      const z = zoomOf(st);
+      const pad = 12 * z;                                     // відступ .clk-overlay (css), у видимих px
+      const band = viewBand();
+      box.style.marginTop = '0px';
+      box.style.maxHeight = 'none';
+      let r = st.el.getBoundingClientRect();
+      if (!st.el.classList.contains('fit')) {
+        const want = Math.min(box.getBoundingClientRect().height, band.bottom - band.top - 16);
+        const d = Math.min(r.top + pad + want - (band.bottom - 8), r.top + pad - (band.top + 8));
+        if (d > 0) { window.scrollBy(0, d); r = st.el.getBoundingClientRect(); }
+      }
+      const lo = r.top + pad;                                 // верх вікна при marginTop 0
+      const hi = Math.min(band.bottom - 8, r.bottom - pad);   // нижче — або меню, або край картки
+      const mt = Math.max(0, Math.min(band.top + 8 - lo, hi - lo - 240 * z));
+      const mh = Math.max(Math.min(240 * z, r.height - 2 * pad), hi - lo - mt);
+      box.style.marginTop = Math.round(mt / z) + 'px';
+      box.style.maxHeight = Math.floor(mh / z) + 'px';
+    },
+    /// Масштаб столу на 2K/4K (1 — без нього): частинам, що пишуть у картку пікселі, зміряні getBoundingClientRect.
+    zoom: (st) => zoomOf(st),
     closeOverlay(st) {
       if (!st.ov || st.ov.el.hidden) return;
       st.ov.el.hidden = true;
@@ -2534,15 +2575,20 @@
   /// Вузьке (< 900) чи низьке (< 700) вікно — стіл як був: одна прокрутка сторінки.
   function fitTable(st) {
     const card = cardOf(st);
-    if (!st.el || !card || card.hidden || !card.isConnected) return;
+    if (!st.el || !card || card.hidden || !card.isConnected) { setZoom(st, 1); return; }
     // Спершу дешеві перевірки (без перерахунку розкладки): телефон сюди потрапляє на кожну зміну висоти сторінки.
     let fit = window.innerWidth >= FIT_W && window.innerHeight >= FIT_H;
     if (fit) {
-      if (!st.el.getClientRects().length) return;   // вкладка «Ефір» чи інший розділ — міряти нема чого
+      // Вкладка «Ефір» чи інший розділ — міряти нема чого, а сторінці, що не стіл кола, ширша стеля ні до чого.
+      if (!st.el.getClientRects().length) { setZoom(st, 1); return; }
+      // Масштаб — до міри ширини: від нього залежить, скільки картки лишається в її власних пікселях.
+      setZoom(st, bigZoom());
       fit = st.el.clientWidth >= FIT_W;
     }
+    if (!fit) setZoom(st, 1);
     if (st.el.classList.contains('fit') !== fit) st.el.classList.toggle('fit', fit);
     if (card.classList.contains('clk-fit') !== fit) card.classList.toggle('clk-fit', fit);
+    placeStatus(st, card, fit);
     let side = false;
     if (fit) {
       const lr = st.layEl.getBoundingClientRect();
@@ -2562,11 +2608,64 @@
       // Угору — з запасом у піксель: дробова частина дала б сторінці 1 px прокрутки, а з нею і смугу прокрутки.
       if (st.fitAbove !== above) { st.fitAbove = above; st.el.style.setProperty('--clk-above', above + 'px'); }
       if (st.fitBelow !== below) { st.fitBelow = below; st.el.style.setProperty('--clk-below', below + 'px'); }
-      side = window.innerHeight - above - below < SIDE_PATH_H;
+      // Поріг — у пікселях самої картки: під масштабом 2K стіл 1305 px заввишки — це «1004 px» стола.
+      side = (window.innerHeight - above - below) / zoomOf(st) < SIDE_PATH_H;
     }
     if (st.el.classList.contains('pathside') !== side) st.el.classList.toggle('pathside', side);
     if (!fit) phoneFit(st);
     placeRows(st);
+  }
+
+  /// 2K і 4K (F1, 08.10): стеля сторінки 1600 px лишала стіл 1152 px посеред 2560 чи 3840, а кегль і коло — як на
+  /// Full HD (по 480 і 1120 px порожнечі обабіч). Тепер стіл ширшає разом із вікном, а все в ньому — рівно в z разів:
+  /// zoom на тілі картки (clicker.css, .gtable.clk-big), стеля main — 1600·z (style.css, body.clk-big). Усередині
+  /// картка живе у своїх пікселях: стіл 3840×2160 — це стіл 1920×1080, збільшений удвічі, тож уся верстка й медіазапити
+  /// контейнера лишаються ті самі, що на Full HD. Крок 0,05, щоб дрібна зміна вікна не перемальовувала все; до 1,05 —
+  /// без zoom зовсім (макбуки й Full HD не міняються ні на піксель).
+  const ZOOM_W = 1920, ZOOM_H = 1000, ZOOM_MAX = 2;
+  let zoomOk = null;
+  /// Стандартний zoom (Chrome від 128, Firefox від 126, Safari): прямокутники й clientX — у видимих пікселях, тож
+  /// частка кліку на колі, глеку чи полотні горна сходиться. Старий Chrome рахував прямокутники всередині zoom інакше —
+  /// там краще без масштабу, ніж коло, що ловить клік не там.
+  function zoomWorks() {
+    if (zoomOk !== null) return zoomOk;
+    zoomOk = false;
+    try {
+      if (window.CSS && CSS.supports && CSS.supports('zoom', '2')) {
+        const d = document.createElement('div');
+        d.style.cssText = 'zoom:2;position:absolute;left:-9999px;top:0;visibility:hidden';
+        d.innerHTML = '<div style="width:100px;height:10px"></div>';
+        document.body.appendChild(d);
+        zoomOk = Math.round(d.firstChild.getBoundingClientRect().width) === 200;
+        d.remove();
+      }
+    } catch { zoomOk = false; }
+    return zoomOk;
+  }
+  function bigZoom() {
+    const z = Math.floor(Math.min(window.innerWidth / ZOOM_W, window.innerHeight / ZOOM_H, ZOOM_MAX) * 20) / 20;
+    return z >= 1.05 && zoomWorks() ? z : 1;
+  }
+  const zoomOf = (st) => st.z || 1;
+  function setZoom(st, z) {
+    if (zoomOf(st) === z) return;
+    st.z = z;
+    const card = cardOf(st);
+    const big = z > 1;
+    if (big) document.body.style.setProperty('--clk-z', String(z));
+    else document.body.style.removeProperty('--clk-z');
+    document.body.classList.toggle('clk-big', big);
+    if (card) card.classList.toggle('clk-big', big);
+  }
+
+  /// Рядок «усього наліплено … · обміняно сьогодні …» (статус каркаса) на ПК — у підвал правої колонки (F4): під
+  /// карткою він забирав цілий рядок висоти сцені. Сам елемент той самий (каркас пише в нього за посиланням), лише
+  /// переходить у підвал і назад.
+  function placeStatus(st, card, fit) {
+    const s = card.querySelector(':scope > .gstatus') || (st.shards && st.shards.parentElement.querySelector(':scope > .gstatus'));
+    if (!s) return;
+    if (fit) { if (s.parentElement !== st.sideEl) st.sideEl.appendChild(s); }
+    else if (s.parentElement !== card) { const b = card.querySelector(':scope > .gbody'); if (b) b.after(s); }
   }
 
   /// Частина вікна, яку не закривають липка шапка сайту згори й нижнє меню (телефон) знизу, — у px від верху вікна.
@@ -2625,11 +2724,24 @@
       st.sellRow.append(st.one, st.all);
       st.sellRow.after(st.left);
     }
+    // Стіл в один екран: плашки бафів і стрічка подій ідуть у праву колонку (F3) — плашки нагору (під смугу «Шлях
+    // виробу», коли вона там), стрічка в підвал над прилавком. Під сценою вони з'їдали ~100 px висоти, а сцена за
+    // кожен піксель висоти віддає 0,8 px ширини. Плашки переходять цілим контейнером: що в них — не чіпаємо.
+    const side = fit && st.el.classList.contains('pathside');
+    const buffs = st.buffsEl || (st.buffsEl = st.el.querySelector('.clk-buffs'));
+    const feed = st.el.querySelector('.clkf-feed');
+    if (fit) {
+      if (feed && feed.parentElement !== st.sideEl) st.shards.before(feed);
+      if (buffs && !side && buffs.parentElement !== st.sideEl) st.sideEl.prepend(buffs);
+    } else {
+      if (buffs && buffs.parentElement !== st.sceneEl) st.sellRow.before(buffs);
+      if (feed && feed.parentElement !== st.sceneEl) st.sellRow.before(feed);
+    }
     const path = st.sceneEl.querySelector(':scope > .clk-path') || st.sideEl.querySelector(':scope > .clk-path');
-    if (!path) return;
-    if (fit && st.el.classList.contains('pathside')) {
-      if (path.parentElement !== st.sideEl) st.sideEl.prepend(path);
-    } else if (path.previousElementSibling !== st.stageBox) st.stageBox.after(path);
+    if (side) {
+      if (path && path.parentElement !== st.sideEl) st.sideEl.prepend(path);
+      if (buffs && buffs.previousElementSibling !== path) { if (path) path.after(buffs); else if (buffs.parentElement !== st.sideEl) st.sideEl.prepend(buffs); }
+    } else if (path && path.previousElementSibling !== st.stageBox) st.stageBox.after(path);
   }
 
   /// Погляд стоїть на місці, коли вище щось виросло чи зникло. Chrome і Firefox тримають його самі (scroll anchoring),
@@ -2811,8 +2923,9 @@
         + '<div class="clk-scene">'
         + '<div class="clk-sign"></div>'
         + '<div class="clk-head"><b class="clk-count">0</b><span class="muted small clk-unit">глеків</span></div>'
-        + '<div class="clk-rate muted small"></div>'
-        + '<div class="clk-rival small" hidden></div>'
+        // Швидкість і суперник: окремі рядки скрізь (обгортка display: contents), а на низькому ПК (.pathside) — один рядок.
+        + '<div class="clk-rr"><div class="clk-rate muted small"></div>'
+        + '<div class="clk-rival small" hidden></div></div>'
         // Обгортка сцени: на ПК вона забирає всю висоту, що лишилась у стовпчику, а сцена 4:5 вписується в неї
         // (container-type: size у css). У ній лише сцена й Око майстра — решту тримає keepBox.
         + '<div class="clk-stagebox">'
@@ -3249,8 +3362,12 @@
     status(ctx) {
       const v = ctx.view || {};
       if (v.total == null) return '';
-      return 'усього наліплено ' + short(v.total) + ' · розписних спіймано ' + num(v.caught || 0)
-        + ' · з полиці ' + num(v.grabbed || 0) + ' · обміняно сьогодні ' + num(v.soldToday || 0);
+      // Нулі не пишемо (F14): у новачка рядок був із самих «0» і на телефоні займав два рядки над числом.
+      return ['усього наліплено ' + short(v.total)]
+        .concat(v.caught ? ['розписних спіймано ' + num(v.caught)] : [])
+        .concat(v.grabbed ? ['з полиці ' + num(v.grabbed)] : [])
+        .concat(v.soldToday ? ['обміняно сьогодні ' + num(v.soldToday)] : [])
+        .join(' · ');
     },
 
     unmount(root) {
@@ -3264,6 +3381,10 @@
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       if (st.steady) st.steady.stop();
       if (st.fitWatch) st.fitWatch.stop();
+      // Рядок статусу — каркаса: вертаємо його на місце до того, як каркас перемалює тіло картки; і стелю сторінки теж.
+      const home = cardOf(st);
+      if (home) placeStatus(st, home, false);
+      setZoom(st, 1);
       if (st.pinBar) st.pinBar.stop();
       if (st.boxWatch) st.boxWatch.disconnect();
       if (st.io) { st.io.disconnect(); st.io = null; }
@@ -3271,7 +3392,7 @@
       H.mounted.delete(st);
       if (st.ov) H.api.closeOverlay(st);
       const card = root.closest && root.closest('.gtable');
-      if (card) card.classList.remove('clk-wide', 'clk-fit');
+      if (card) card.classList.remove('clk-wide', 'clk-fit', 'clk-big');
       st.raf = 0;
       st.el = null;
       root._clk = null;

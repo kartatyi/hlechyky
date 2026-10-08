@@ -800,6 +800,9 @@ button.vplay { padding: 3px 8px; }
 body.gfull { --rail: 0px; --rail-gap: 0px; }
 body.gfull #colChat { display: none; }
 body.gfull main { max-width: none; padding: 10px 12px; }
+/* Стіл «Гончарного кола» на 2K/4K (клас і --clk-z ставить clicker.js, лише поки стіл кола на екрані): стеля росте
+   разом із масштабом столу, інакше збільшений стіл лишався б у тих самих 1600 px. */
+body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
 
 /* ---- mobile tabs ---- */
 .mtabs { display: none; }
