@@ -64,10 +64,14 @@
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
 
   /// Розділи Майстерні: колишні вкладки, що тепер згортаються всередині неї. `open` — коли розділ варто
-  /// розгорнути самому (доки гравець не вирішив інакше й не лишив по собі clk.sec.<key>).
+  /// розгорнути самому (доки гравець не вирішив інакше й не лишив по собі SEC_KEY<key>). F10 (08.10): куплене
+  /// назавжди (глина, знаряддя, розписи) на телефоні займало тисячі пікселів між верстатами, тож розділ розгорнутий,
+  /// лише поки там є що купити, а так — згорнутий рядок-підсумок. Ключ новий: старий clk.sec.* ставило й саме
+  /// розгортання (подія toggle приходить уже після прапорця _auto), тож відрізнити вибір гравця від автомата не можна.
+  const SEC_KEY = 'clk.sec2.';
   const SECTIONS = [
-    { key: 'house', title: '🏠 Хата', open: (st) => st.tools.some((t) => t.owned) || st.clays.some((c) => !c.owned && c.price > 0 && c.price <= st.shown) },
-    { key: 'styles', title: '🎨 Розписи', open: (st) => st.styleList.some((x) => x.owned) },
+    { key: 'house', title: '🏠 Хата', open: (st) => st.tools.some((t) => !t.owned) || st.clays.some((c) => !c.owned && c.price > 0) },
+    { key: 'styles', title: '🎨 Розписи', open: (st) => st.styleList.some((x) => !x.owned) },
     { key: 'orders', title: '🐴 Вклад купцям', open: (st) => st.taken.length > 0 },
   ];
 
@@ -1903,11 +1907,11 @@
       const text = x.title + (sum ? ' · ' + sum : '');
       const sm = sec.firstElementChild;
       if (sm.textContent !== text) sm.textContent = text;
-      // Розділ став у пригоді, а гравець його ще не чіпав — розгортаємо раз, самі.
-      if (!sec.open && storeGet('clk.sec.' + x.key, '') === '' && x.open(st)) {
-        sec._auto = true;
-        sec.open = true;
-        sec._auto = false;
+      // Гравець розділ ще не чіпав — розгорнутий, поки там є що купити, і згорнутий, коли все куплено.
+      if (storeGet(SEC_KEY + x.key, '') === '') {
+        let want = false;
+        try { want = !!x.open(st); } catch { want = sec.open; }
+        if (sec.open !== want) { sec._want = want; sec.open = want; }
       }
     }
   }
@@ -3107,8 +3111,13 @@
         pane.classList.remove('clk-pane');
         pane.classList.add('clk-secbody');
         sec.appendChild(pane);
-        sec.open = storeGet('clk.sec.' + x.key, '') === '1';
-        sec.addEventListener('toggle', () => { if (!sec._auto) storeSet('clk.sec.' + x.key, sec.open ? '1' : '0'); });
+        sec.open = storeGet(SEC_KEY + x.key, '') === '1';
+        // Подія toggle приходить після того, як розділ розгорнули чи згорнули: свою (paintSections) пізнаємо за _want.
+        sec.addEventListener('toggle', () => {
+          if (sec._want !== undefined && sec.open === sec._want) { sec._want = undefined; return; }
+          sec._want = undefined;
+          storeSet(SEC_KEY + x.key, sec.open ? '1' : '0');
+        });
       }
       st.house = q('.clk-house');
       st.fire = q('.clk-firebox');
