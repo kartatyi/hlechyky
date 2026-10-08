@@ -1,22 +1,18 @@
 /*
-  Черепки за гривні — window.HBuy. Як гроші в Падельні (08.10.2026), три вкладки:
+  Черепки за гривні — window.HBuy (08.10.2026). Купити й продати за однією схемою, обома керує адмін:
+  людина створює заявку — вона «⏳ в обробці», і її можна скасувати; адмін підтверджує — статус міняється, «Скасувати»
+  зникає. І все.
 
-  ➕ Купити — обираєш пакет, бачиш картку й банку продавця (його банки з профілю Падельні), скидаєш гроші й тиснеш
-  «✓ Скинув». Продавець бачить замовлення в касі й тисне «✓ Отримав» — черепки падають одразу (тост гаманця шле сервер) —
-  або «✕ Не прийшло» з приміткою. Можна купити другові.
+  ➕ Купити — обираєш пакет чи свою суму (і кому — собі чи другові), бачиш картку чи банку сайту, скидаєш гроші й тиснеш
+  «✓ Скинув». Адмін бачить переказ і тисне «✓ Підтвердити» — черепки падають (тост гаманця шле сервер).
+  💸 Продати — виставляєш «N 🏺 за X грн», черепки одразу відкладаються; адмін бачить твою картку (банки з профілю
+  Падельні; нема — впишеш тут же, і вони збережуться в Падельні), переказує гроші й тисне «✓ Підтвердити» — продано.
+  📋 Заявки — лише адміну: що в обробці (купівлі й продажі), картки сайту для покупців, закриті, суми за місяць.
 
-  💸 Продати — купує сайт, керує адмін. Виставляєш «N 🏺 за X грн» — черепки одразу відкладаються; адмін бачить твою
-  картку (ті самі банки з Падельні; нема — впишеш тут же, і вони збережуться в Падельні), скидає гроші й тисне «✓ Скинув»
-  або «✕ Не куплю» (черепки назад). Ти тиснеш «✓ Отримав» — продано; «✕ Не прийшло» — заявка знову в адміна. Поки адмін
-  не скинув — можна скасувати.
-
-  🧾 Каса — продавцю купівлі (оплати, що чекають) і адміну (оплати й заявки на продаж).
-
-  Сервер — ShardShop.cs: GET /api/shards; купівля: POST /api/shards/check { uah, for } («Далі» — перевірка до реквізитів),
-  /paid { uah, for }, /{id}/ok, /{id}/no { note }, /{id}/cancel; продаж: /sell { uah }, /sale/{id}/cancel, /sale/{id}/ok,
-  /sale/{id}/missing { note } — гравець; /sale/{id}/paid, /sale/{id}/no { note } — адмін. Банки — PUT /api/padel/banks.
-  Події хаба: shardOrders { count, sales } — скільки чекає (кружечок на гаманці в шапці продавця й адміна); shardSale —
-  моя заявка змінилась.
+  Сервер — ShardShop.cs: GET /api/shards; купити: POST /api/shards/check { uah, for } («Далі» — перевірка до реквізитів),
+  /paid { uah, for }, /{id}/cancel, адмін — /{id}/ok; продати: /sell { uah }, /sale/{id}/cancel, адмін — /sale/{id}/ok;
+  картки сайту — PUT /api/shards/banks, мої банки — PUT /api/padel/banks. Події хаба: shardOrders { count, sales } —
+  скільки в обробці (кружечок на гаманці в шапці адміна); shardMine — моя заявка змінилась.
 */
 (() => {
   'use strict';
@@ -24,22 +20,19 @@
   let o = null;                        // що дає app.js
   let esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let data = null;                     // останнє GET /api/shards
-  let count = 0;                       // скільки оплат чекає продавця
-  let sales = 0;                       // скільки заявок на продаж чекає адміна
+  let count = 0;                       // купівель в обробці (адміну)
+  let sales = 0;                       // продажів в обробці (адміну)
   let wrap = null;                     // відкрите вікно
-  let tab = 'buy';                     // buy — купити, sell — продати, desk — каса
+  let tab = 'buy';                     // buy — купити, sell — продати, desk — заявки (адміну)
   let pack = 0;                        // обраний пакет чи своя сума, грн
   let own = false;                     // своя сума, а не пакет
   let gift = false;                    // купуємо другові
   let to = '';                         // кому (нік друга)
   let step = 'pick';                   // pick — пакет і кому, pay — реквізити й «✓ Скинув»
-  let refusing = 0;                    // замовлення, для якого відкрите «чому не прийшло»
-  let note = '';
   let sellUah = 0;                     // скільки гривень хочу за черепки
   let sellOwn = false;                 // своя сума, а не пакет
-  let bankForm = false;                // відкрита форма «додати картку»
+  let bankForm = '';                   // відкрита форма картки: mine — моя (продаж), shop — сайту (заявки адміна)
   let bankKind = 'mono';
-  let saleNote = 0;                    // заявка, для якої відкрите поле примітки («не прийшло» гравця чи «не куплю» адміна)
   let loadT = 0;
 
   const BANKS = { mono: 'monobank', privat: 'ПриватБанк', pumb: 'ПУМБ', abank: 'А-Банк', sense: 'Sense Bank', izi: 'izibank', other: 'Інший банк' };
@@ -53,8 +46,8 @@
 
   async function load() {
     try { data = await o.api('GET', '/api/shards'); } catch { data = null; }
-    count = data && data.waiting ? data.waiting.length : 0;
-    sales = data && data.sales ? data.sales.waiting.length : 0;
+    count = data && data.desk ? data.desk.orders.length : 0;
+    sales = data && data.desk ? data.desk.sales.length : 0;
     paintBadge();
     return data;
   }
@@ -71,27 +64,24 @@
     }, 250);
   }
 
-  /// Мої заявки, де адмін уже скинув гроші, а я ще не сказав «✓ Отримав».
-  const myPaid = () => (data && data.sell && data.sell.mine ? data.sell.mine.filter((x) => x.status === 'paid').length : 0);
-  /// Що чекає в касі: оплати — продавцю й адміну, заявки на продаж — адміну.
-  const deskCount = () => (data && data.canConfirm ? count : 0) + (data && data.admin ? sales : 0);
+  const isAdmin = () => !!(data && data.admin);
+  /// Скільки заявок в обробці чекає адміна.
+  const deskCount = () => (isAdmin() ? count + sales : 0);
 
-  /// Кружечок на 🏺 у шапці: продавцю й адміну — скільки чекає в касі; гравцю — скільки грошей уже скинуто на перевірку.
+  /// Кружечок на 🏺 у шапці — адміну: скільки заявок в обробці. Клік веде просто в «Заявки».
   function paintBadge() {
     const w = document.getElementById('hdrWallet');
     if (!w) return;
     let b = w.querySelector('.by-badge');
-    const desk = deskCount();
-    const paid = myPaid();
-    const n = desk + paid;
+    const n = deskCount();
     if (!n) { if (b) b.remove(); return; }
     if (!b) {
       b = document.createElement('span'); b.className = 'chip badge by-badge'; w.appendChild(b);
-      // Кружечок сидить у посиланні на профіль, але веде просто у вікно: у касу, а гравцю — до скинутих грошей
-      b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); open({ tab: deskCount() ? 'desk' : 'sell' }); };
+      // Кружечок сидить у посиланні на профіль, але веде у вікно
+      b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); open({ tab: 'desk' }); };
     }
     b.textContent = n;
-    b.title = [desk ? 'Чекають у касі: ' + desk : '', paid ? 'Адмін скинув гроші — перевір і натисни «✓ Отримав»: ' + paid : ''].filter(Boolean).join(' · ');
+    b.title = 'Заявки в обробці: ' + n;
   }
 
   // ---------------------------------------------------------------- вікно
@@ -100,8 +90,7 @@
     const x = opts || {};
     if (!o) return;
     close();
-    pack = 0; own = false; gift = !!x.for; to = x.for || ''; step = 'pick'; refusing = 0; note = '';
-    sellUah = 0; sellOwn = false; bankForm = false; saleNote = 0;
+    pack = 0; own = false; gift = !!x.for; to = x.for || ''; step = 'pick'; sellUah = 0; sellOwn = false; bankForm = '';
     wrap = document.createElement('div');
     wrap.className = 'modal by-modal';
     wrap.innerHTML = '<div class="card by-card" role="dialog" aria-modal="true" aria-label="Черепки за гривні"><div class="gwait"><span class="spin"></span> дивлюсь…</div></div>';
@@ -112,30 +101,21 @@
     if (!wrap) return;
     tab = firstTab(x.tab);
     // Прийшли з «бракує N»: одразу найменший пакет, якого вистачить
-    if (data && data.packs && x.need) {
-      const p = data.packs.find((q) => q.shards >= x.need) || data.packs[data.packs.length - 1];
+    if (data && x.need) {
+      const p = data.buy.packs.find((q) => q.shards >= x.need) || data.buy.packs[data.buy.packs.length - 1];
       if (p) pack = p.uah;
     }
     paint();
   }
 
-  function tabs(d) {
-    const t = [];
-    if (!d.isSeller) t.push('buy');
-    t.push('sell');
-    if (d.canConfirm || d.admin) t.push('desk');
-    return t;
-  }
+  const tabs = () => (isAdmin() ? ['buy', 'sell', 'desk'] : ['buy', 'sell']);
 
-  /// Яку вкладку відкрити: просили — ту; щось чекає в касі — касу; адмін скинув мені гроші — продаж; інакше — купити.
+  /// Яку вкладку відкрити: просили — ту; адміну, коли щось в обробці, — «Заявки»; інакше — купити.
   function firstTab(want) {
-    const d = data;
-    if (!d) return 'buy';
-    const t = tabs(d);
+    const t = tabs();
     if (want && t.includes(want)) return want;
-    if (deskCount() && t.includes('desk')) return 'desk';
-    if (myPaid()) return 'sell';
-    return t[0];
+    if (deskCount()) return 'desk';
+    return 'buy';
   }
 
   function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); close(); } }
@@ -154,35 +134,18 @@
       + '<button type="button" class="ghost by-x" data-close title="Закрити — Esc" aria-label="Закрити">✕</button></h3>';
     if (!d) h += '<div class="gempty">Сервер не відповів — спробуй трохи згодом.</div>';
     else {
-      const t = tabs(d);
+      const t = tabs();
       if (!t.includes(tab)) tab = t[0];
-      const title = { buy: '➕ Купити', sell: '💸 Продати', desk: '🧾 Каса' };
-      const badge = { buy: 0, sell: myPaid(), desk: deskCount() };
+      const title = { buy: '➕ Купити', sell: '💸 Продати', desk: '📋 Заявки' };
       h += '<div class="by-tabs" role="tablist">' + t.map((k) => '<button type="button" role="tab" data-tab="' + k + '" class="' + (k === tab ? 'on' : '')
-        + '" aria-selected="' + (k === tab) + '">' + title[k] + (badge[k] ? ' <span class="chip badge">' + badge[k] + '</span>' : '') + '</button>').join('') + '</div>';
-      if (tab === 'buy') h += buyerHtml(d);
+        + '" aria-selected="' + (k === tab) + '">' + title[k] + (k === 'desk' && deskCount() ? ' <span class="chip badge">' + deskCount() + '</span>' : '')
+        + '</button>').join('') + '</div>';
+      if (tab === 'buy') h += buyHtml(d);
       else if (tab === 'sell') h += sellHtml(d);
-      else {
-        // Каса: спершу той розділ, де щось чекає (заявки на продаж — коли оплат купівлі нема)
-        const orders = d.canConfirm && (d.open || count) ? sellerHtml(d) : '';
-        const sold = d.admin ? deskSalesHtml(d) : '';
-        h += sales && !count ? sold + orders : orders + sold;
-      }
+      else h += deskHtml(d);
     }
     box.innerHTML = h;
     wire(box);
-  }
-
-  // ---------------------------------------------------------------- купити
-
-  function buyerHtml(d) {
-    if (!d.open) {
-      return '<div class="gempty glek">Купівля черепків ще не відкрита.'
-        + (d.admin ? '<br><span class="muted small">Задай продавця: ShardShop → Seller в appsettings.Local.json.</span>' : '') + '</div>';
-    }
-    if (!d.account) return lockHtml('купують');
-    const p = d.packs.find((x) => x.uah === pack) || (own && pack ? { uah: pack, shards: pack * d.rate } : null);
-    return (step === 'pay' && p ? payHtml(d, p) : pickHtml(d)) + mineHtml(d);
   }
 
   function lockHtml(verb) {
@@ -190,13 +153,34 @@
       + '<div class="row"><button class="primary" type="button" data-acc>Закріпити нік</button></div>';
   }
 
-  function pickHtml(d) {
+  /// Статус заявки для того, хто її створив: в обробці — з «Скасувати», підтверджено — уже без.
+  function statusChip(x, doneText) {
+    if (x.status === 'wait') return '<span class="chip warn">⏳ в обробці</span>';
+    if (x.status === 'done') return '<span class="chip ok">✓ ' + doneText + '</span>';
+    if (x.status === 'no') return '<span class="chip err">✕ відхилено</span>';
+    return '<span class="chip">скасовано</span>';
+  }
+
+  // ---------------------------------------------------------------- купити
+
+  function buyHtml(d) {
+    const b = d.buy;
+    if (!b.open) {
+      return '<div class="gempty glek">Купівля черепків ще не відкрита.'
+        + (d.admin ? '<br><span class="muted small">Впиши картку, куди покупцям скидати гроші, — у вкладці «📋 Заявки».</span>' : '') + '</div>'
+        + (d.account ? mineHtml(b) : '');
+    }
+    if (!d.account) return lockHtml('купують');
+    const p = b.packs.find((x) => x.uah === pack) || (own && pack ? { uah: pack, shards: pack * b.rate } : null);
+    return (step === 'pay' && p ? payHtml(b, p) : pickHtml(b)) + mineHtml(b);
+  }
+
+  function pickHtml(b) {
     const people = online();
-    return '<div class="muted small">1 грн = ' + num(d.rate) + ' 🏺. Скидаєш гроші ' + esc(dat(d.seller.nick))
-      + ' на картку чи в банку — і щойно гроші прийдуть, черепки впадуть.</div>'
-      + '<div class="by-packs">' + d.packs.map((x) => '<button type="button" class="by-pack' + (x.uah === pack ? ' on' : '') + '" data-pack="' + x.uah
+    return '<div class="muted small">1 грн = ' + num(b.rate) + ' 🏺. Скидаєш гроші на картку сайту — щойно адмін побачить переказ, черепки впадуть.</div>'
+      + '<div class="by-packs">' + b.packs.map((x) => '<button type="button" class="by-pack' + (x.uah === pack ? ' on' : '') + '" data-pack="' + x.uah
         + '" aria-pressed="' + (x.uah === pack) + '"><b>' + num(x.shards) + ' 🏺</b><span>' + x.uah + ' грн</span></button>').join('') + '</div>'
-      + (d.custom ? ownHtml(d) : '')
+      + (b.custom ? ownHtml(b) : '')
       + '<div class="by-for"><span class="muted small">Кому</span><div class="by-seg">'
       + '<button type="button" data-to="me" class="' + (gift ? '' : 'on') + '" aria-pressed="' + !gift + '">Собі</button>'
       + '<button type="button" data-to="friend" class="' + (gift ? 'on' : '') + '" aria-pressed="' + gift + '">🎁 Другові</button></div>'
@@ -211,10 +195,10 @@
 
   /// Своя сума: два пов'язані поля — гривні й черепки. Вписав одне — друге рахується саме; черепки округлюються вгору
   /// до цілої гривні (2 550 🏺 → 26 грн → 2 600 🏺), бо платять цілими гривнями.
-  function ownHtml(d) {
+  function ownHtml(b) {
     const uah = own && pack ? pack : '';
-    return '<div class="by-own' + (own ? ' on' : '') + '"><span class="muted small">Або своя сума — від ' + d.custom.min + ' до ' + num(d.custom.max) + ' грн</span>'
-      + pairHtml(d.custom.min, d.custom.max, d.rate, uah) + '</div>';
+    return '<div class="by-own' + (own ? ' on' : '') + '"><span class="muted small">Або своя сума — від ' + b.custom.min + ' до ' + num(b.custom.max) + ' грн</span>'
+      + pairHtml(b.custom.min, b.custom.max, b.rate, uah) + '</div>';
   }
 
   /// Поля «грн = 🏺» (і для купівлі, і для продажу).
@@ -226,15 +210,14 @@
       + '" aria-label="Скільки черепків" data-own="shards" value="' + (uah ? uah * rate : '') + '"><span>🏺</span></label></div>';
   }
 
-  function payHtml(d, p) {
-    const banks = d.seller.banks || [];
+  function payHtml(b, p) {
+    const banks = b.banks || [];
     const who = gift && to ? esc(to.trim()) + ' отримає' : 'отримаєш';
-    return '<div class="by-sum">Скинь <b>' + p.uah + ' грн</b> ' + esc(dat(d.seller.nick)) + ' — ' + who + ' <b>' + num(p.shards) + ' 🏺</b></div>'
-      + (banks.length ? '<div class="by-banks">' + banks.map((b) => bankRow(b, p.uah, 'Глечики: ' + (o.me.nick || ''))).join('') + '</div>'
-        : '<div class="by-lock">Картки чи банки продавця тут ще нема — спитай ' + esc(gen(d.seller.nick)) + ', куди скинути.</div>')
-      + '<div class="muted small">У коментарі до переказу напиши свій нік — так ' + esc(d.seller.nick) + ' швидше знайде платіж.</div>'
+    return '<div class="by-sum">Скинь <b>' + p.uah + ' грн</b> на картку нижче — ' + who + ' <b>' + num(p.shards) + ' 🏺</b></div>'
+      + '<div class="by-banks">' + banks.map((x) => bankRow(x, p.uah, 'Глечики: ' + (o.me.nick || ''))).join('') + '</div>'
+      + '<div class="muted small">У коментарі до переказу напиши свій нік — так адмін швидше знайде платіж.</div>'
       + '<div class="row"><button type="button" class="primary" data-paid>✓ Скинув</button><button type="button" class="ghost" data-back>← Інший пакет</button></div>'
-      + '<div class="muted small">Тисни «Скинув», коли гроші вже пішли. Черепки впадуть, щойно ' + esc(d.seller.nick) + ' побачить переказ.</div>';
+      + '<div class="muted small">Тисни «Скинув», коли гроші вже пішли. Поки адмін не підтвердив — можна скасувати.</div>';
   }
 
   /// Банка mono сама підставить суму й коментар, якщо передати їх у посиланні (a — сума, t — коментар).
@@ -257,22 +240,15 @@
       + (tail || '') + '</div>';
   }
 
-  function statusChip(x) {
-    if (x.status === 'wait') return '<span class="chip warn">⏳ чекає ' + esc(gen(data.seller ? data.seller.nick : 'продавця')) + '</span>';
-    if (x.status === 'done') return '<span class="chip ok">✓ зараховано</span>';
-    if (x.status === 'no') return '<span class="chip err">✕ не прийшло</span>';
-    return '<span class="chip">скасовано</span>';
-  }
-
-  function mineHtml(d) {
-    const list = d.mine || [];
+  function mineHtml(b) {
+    const list = b.mine || [];
     if (!list.length) return '';
     return '<h4>Мої покупки</h4><div class="by-list">' + list.slice(0, 8).map((x) => {
       const mine = same(x.buyer, o.me.nick);
       const who = x.gift ? (mine ? '🎁 ' + esc(dat(x.for)) : '🎁 від ' + esc(gen(x.buyer))) : '';
       return '<div class="by-ord st-' + esc(x.status) + '"><div class="by-ord-h"><b>' + num(x.shards) + ' 🏺</b><span>' + x.uah + ' грн</span>'
-        + (who ? '<span class="muted small">' + who + '</span>' : '') + statusChip(x) + '</div>'
-        + '<div class="muted small">' + esc(o.dayTime(x.at)) + (x.status === 'no' && x.note ? ' · «' + esc(x.note) + '»' : '') + '</div>'
+        + (who ? '<span class="muted small">' + who + '</span>' : '') + statusChip(x, 'зараховано') + '</div>'
+        + '<div class="muted small">' + esc(o.dayTime(x.doneAt || x.at)) + '</div>'
         + (x.status === 'wait' && mine ? '<button type="button" class="ghost by-cancel" data-cancel="' + x.id + '">Скасувати</button>' : '')
         + '</div>';
     }).join('') + '</div>';
@@ -293,11 +269,11 @@
 
   function sellHtml(d) {
     const s = d.sell;
-    if (!s || !s.open) return '<div class="gempty glek">Продаж черепків зараз закритий.</div>' + (s ? mySalesHtml(s) : '');
+    if (!s.open) return '<div class="gempty glek">Продаж черепків зараз закритий.</div>' + (d.account ? mySalesHtml(s) : '');
     if (!d.account) return lockHtml('продають');
     const max = Math.floor(s.balance / s.rate);
-    let h = '<div class="muted small">1 грн = ' + num(s.rate) + ' 🏺. Виставляєш черепки — адмін скидає гроші тобі на картку чи в банку, '
-      + 'а ти тиснеш «✓ Отримав». Поки адмін не скинув, можна скасувати — черепки повернуться.</div>'
+    let h = '<div class="muted small">1 грн = ' + num(s.rate) + ' 🏺. Виставляєш черепки — адмін переказує гроші тобі на картку чи в банку й підтверджує. '
+      + 'Поки не підтвердив, можна скасувати — черепки повернуться.</div>'
       + '<div class="by-sum">У глечику <b>' + num(s.balance) + ' 🏺</b>' + (max >= s.min ? ' — це до <b>' + num(max) + ' грн</b>' : '') + '</div>';
     if (max < s.min) {
       h += '<div class="by-lock">Поки замало: продати можна від ' + num(s.min * s.rate) + ' 🏺 (' + s.min + ' грн).</div>';
@@ -310,137 +286,94 @@
       + '<div class="by-own' + (sellOwn ? ' on' : '') + '"><span class="muted small">' + (packs.length ? 'Або своя сума' : 'Скільки') + ' — від ' + s.min + ' до ' + num(max)
       + ' грн <button type="button" class="ghost by-all" data-sall="' + max + '">усе — ' + num(max) + ' грн</button></span>'
       + pairHtml(s.min, max, s.rate, uah) + '</div>'
-      + '<h4>Куди скинути гроші</h4>' + myBanksHtml(s)
+      + '<h4>Куди переказати гроші</h4>' + banksHtml(s.banks || [], 'mine')
       + '<div class="row"><button type="button" class="primary" data-sell' + (sellUah && (s.banks || []).length ? '' : ' disabled') + '>'
       + (sellUah ? 'Продати ' + num(sellUah * s.rate) + ' 🏺 за ' + num(sellUah) + ' грн' : 'Продати') + '</button></div>';
     return h + mySalesHtml(s);
   }
 
-  /// Мої банки (з профілю Падельні) і форма «додати картку» — сюди адмін скине гроші.
-  function myBanksHtml(s) {
-    const banks = s.banks || [];
+  /// Банки й форма «додати картку». mine — мої з профілю Падельні (куди адмін перекаже), shop — сайту (куди скидають
+  /// покупці; адмін їх і прибирає).
+  function banksHtml(banks, whose) {
+    const shop = whose === 'shop';
     let h = banks.length
-      ? '<div class="by-banks">' + banks.map((b) => bankRow(b, 0, '')).join('') + '</div>'
-      : '<div class="by-lock">Впиши картку чи банку — сюди адмін скине гроші. Збережеться й у Падельні (👤 Я → Мої банки).</div>';
-    if (bankForm || !banks.length) {
-      h += '<div class="by-bform"><div class="by-chips">' + Object.keys(BANKS).map((k) => '<button type="button" class="chip' + (k === bankKind ? ' on' : '')
+      ? '<div class="by-banks">' + banks.map((b, i) => bankRow(b, 0, '', shop
+        ? '<button type="button" class="ghost by-bdel" data-bdel="' + i + '" title="Прибрати" aria-label="Прибрати">✕</button>' : '')).join('') + '</div>'
+      : '<div class="by-lock">' + (shop
+        ? 'Карток сайту ще нема — покупці не знають, куди скидати, і купівля закрита. Впиши картку чи банку.'
+        : 'Впиши картку чи банку — сюди адмін перекаже гроші. Збережеться й у Падельні (👤 Я → Мої банки).') + '</div>';
+    if (bankForm === whose || !banks.length) {
+      h += '<div class="by-bform" data-bform="' + whose + '"><div class="by-chips">' + Object.keys(BANKS).map((k) => '<button type="button" class="chip' + (k === bankKind ? ' on' : '')
         + '" data-bk="' + k + '" aria-pressed="' + (k === bankKind) + '">' + esc(BANKS[k]) + '</button>').join('') + '</div>'
         + '<input type="text" inputmode="numeric" autocomplete="off" maxlength="19" placeholder="Номер картки — 16 цифр" aria-label="Номер картки" data-bcard>'
         + '<input type="text" inputmode="url" maxlength="300" autocomplete="off" placeholder="або посилання на банку: https://send.monobank.ua/jar/…" aria-label="Посилання на банку" data-blink>'
-        + '<div class="row"><button type="button" class="primary" data-bsave>Зберегти</button>'
+        + '<div class="row"><button type="button" class="primary" data-bsave="' + whose + '">Зберегти</button>'
         + (banks.length ? '<button type="button" class="ghost" data-bcancel>Скасувати</button>' : '') + '</div></div>';
     } else {
-      h += '<div class="row"><button type="button" class="ghost by-small" data-badd>+ Інша картка</button>'
-        + '<a class="by-small muted" href="/padel/" target="_blank" rel="noopener">змінити в Падельні ↗</a></div>';
+      h += '<div class="row"><button type="button" class="ghost by-small" data-badd="' + whose + '">+ Ще картка</button>'
+        + (shop ? '' : '<a class="by-small muted" href="/padel/" target="_blank" rel="noopener">змінити в Падельні ↗</a>') + '</div>';
     }
     return h;
-  }
-
-  function saleChip(x) {
-    if (x.status === 'wait') return '<span class="chip warn">⏳ чекає адміна</span>';
-    if (x.status === 'paid') return '<span class="chip warn">💸 адмін скинув</span>';
-    if (x.status === 'done') return '<span class="chip ok">✓ продано</span>';
-    if (x.status === 'no') return '<span class="chip err">✕ не куплено</span>';
-    return '<span class="chip">скасовано</span>';
-  }
-
-  function noteHtml(id, placeholder, label, act) {
-    return '<div class="by-refuse"><input type="text" maxlength="100" placeholder="' + placeholder + '" aria-label="' + label + '" data-snote value="' + esc(note) + '">'
-      + '<div class="row"><button type="button" class="primary" ' + act + '="' + id + '">' + label + '</button><button type="button" class="ghost" data-sunnote>Назад</button></div></div>';
   }
 
   function mySalesHtml(s) {
     const list = s.mine || [];
     if (!list.length) return '';
-    return '<h4>Мої продажі</h4><div class="by-list">' + list.slice(0, 8).map((x) => {
-      let tail = '';
-      if (x.status === 'wait') {
-        tail = (x.note ? '<div class="muted small">ти написав: «' + esc(x.note) + '» — адмін перевіряє</div>' : '')
-          + (x.paidAt ? '' : '<button type="button" class="ghost by-cancel" data-scancel="' + x.id + '">Скасувати</button>');
-      } else if (x.status === 'paid') {
-        tail = '<div class="by-sum">Глянь у банк: прийшло <b>' + num(x.uah) + ' грн</b>?</div>'
-          + (saleNote === x.id
-            ? noteHtml(x.id, 'Що не так? Можна не писати', '✕ Не прийшло', 'data-smissing')
-            : '<div class="row"><button type="button" class="primary" data-sok="' + x.id + '">✓ Отримав</button>'
-              + '<button type="button" class="ghost" data-snoteopen="' + x.id + '">✕ Не прийшло</button></div>');
-      }
-      return '<div class="by-ord st-' + esc(x.status) + '"><div class="by-ord-h"><b>' + num(x.shards) + ' 🏺</b><span>' + num(x.uah) + ' грн</span>' + saleChip(x) + '</div>'
-        + '<div class="muted small">' + esc(o.dayTime(x.paidAt || x.at)) + (x.status === 'no' && x.note ? ' · «' + esc(x.note) + '»' : '') + '</div>'
-        + tail + '</div>';
-    }).join('') + '</div>';
+    return '<h4>Мої продажі</h4><div class="by-list">' + list.slice(0, 8).map((x) => '<div class="by-ord st-' + esc(x.status) + '"><div class="by-ord-h"><b>'
+      + num(x.shards) + ' 🏺</b><span>' + num(x.uah) + ' грн</span>' + statusChip(x, 'продано') + '</div>'
+      + '<div class="muted small">' + esc(o.dayTime(x.doneAt || x.at)) + (x.status === 'done' ? ' · гроші переказано' : '')
+      + (x.status !== 'done' && x.note ? ' · «' + esc(x.note) + '»' : '') + '</div>'
+      + (x.status === 'wait' ? '<button type="button" class="ghost by-cancel" data-scancel="' + x.id + '">Скасувати</button>' : '')
+      + '</div>').join('') + '</div>';
   }
 
-  // ---------------------------------------------------------------- каса: купівля (продавець і адмін)
+  // ---------------------------------------------------------------- заявки (адмін)
 
-  function sellerHtml(d) {
-    const w = d.waiting || [];
-    const banks = (d.seller && d.seller.banks) || [];
-    let h = '<h4 class="by-sect">🛒 Купують' + (d.isSeller || !d.seller ? '' : ' в ' + esc(gen(d.seller.nick))) + '</h4>';
-    if (d.isSeller) {
-      h += banks.length
-        ? '<div class="muted small">Покупці бачать твої банки з Падельні (' + esc(banks.map((b) => BANKS[b.bank] || BANKS.other).join(', '))
-          + '). Звір переказ у банку — і тисни «✓ Отримав».</div>'
-        : '<div class="by-lock">Покупці не бачать, куди скидати: додай картку чи банку в <a href="/padel/" target="_blank" rel="noopener">Падельні → 👤 Я</a>.</div>';
+  function deskHtml(d) {
+    const k = d.desk;
+    if (!k) return '';
+    const orders = k.orders || [];
+    const sold = k.sales || [];
+    let h = '';
+    const buyBlock = '<h4 class="by-sect">🛒 Купують — перевір, чи прийшли гроші' + (orders.length ? ' <span class="chip badge">' + orders.length + '</span>' : '') + '</h4>'
+      + (orders.length ? '<div class="by-list">' + orders.map(orderRow).join('') + '</div>' : '<div class="gempty small">Ніхто нічого не купує.</div>');
+    const sellBlock = '<h4 class="by-sect">💰 Продають — перекажи гроші' + (sold.length ? ' <span class="chip badge">' + sold.length + '</span>' : '') + '</h4>'
+      + (sold.length ? '<div class="by-list">' + sold.map(saleRow).join('') + '</div>' : '<div class="gempty small">Ніхто нічого не продає.</div>');
+    // Спершу той розділ, де щось в обробці
+    h += sold.length && !orders.length ? sellBlock + buyBlock : buyBlock + sellBlock;
+    h += '<h4 class="by-sect">💳 Куди покупцям скидати гроші</h4>' + banksHtml(d.buy.banks || [], 'shop');
+    if (!k.buyOn) h += '<div class="muted small">Купівлю вимкнено в налаштуваннях (ShardShop → Buy).</div>';
+    const closed = [].concat(
+      (k.recentOrders || []).map((x) => ({ at: x.doneAt || x.at, html: closedRow('🛒 ' + esc(x.buyer) + (x.gift ? ' → ' + esc(x.for) : ''), x, 'зараховано') })),
+      (k.recentSales || []).map((x) => ({ at: x.doneAt || x.at, html: closedRow('💰 ' + esc(x.seller), x, 'продано') })),
+    ).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 10);
+    if (closed.length) h += '<h4>Закриті</h4><div class="by-list by-recent">' + closed.map((x) => x.html).join('') + '</div>';
+    if (k.monthIn || k.monthOut) {
+      h += '<div class="muted small">Цього місяця: прийшло за куплене <b>' + num(k.monthIn) + ' грн</b>, виплачено за продане <b>' + num(k.monthOut) + ' грн</b></div>';
     }
-    h += '<h4>Чекають підтвердження' + (w.length ? ' <span class="chip badge">' + w.length + '</span>' : '') + '</h4>'
-      + (w.length ? '<div class="by-list">' + w.map(waitRow).join('') + '</div>' : '<div class="gempty small">Ніхто нічого не скидав — тихо, як у глечику.</div>');
-    const r = d.recent || [];
-    if (r.length) {
-      h += '<h4>Розглянуті</h4><div class="by-list by-recent">' + r.slice(0, 10).map((x) => '<div class="by-ord st-' + esc(x.status) + '"><div class="by-ord-h"><b>'
-        + esc(x.buyer) + (x.gift ? ' → ' + esc(x.for) : '') + '</b><span>' + x.uah + ' грн</span>' + statusChip(x) + '</div>'
-        + '<div class="muted small">' + esc(o.dayTime(x.doneAt || x.at)) + (x.note ? ' · «' + esc(x.note) + '»' : '') + '</div></div>').join('') + '</div>';
-    }
-    if (d.monthUah) h += '<div class="muted small">Цього місяця зараховано: <b>' + num(d.monthUah) + ' грн</b></div>';
     return h;
   }
 
-  function waitRow(x) {
+  function closedRow(who, x, doneText) {
+    return '<div class="by-ord st-' + esc(x.status) + '"><div class="by-ord-h"><b>' + who + '</b><span>' + num(x.uah) + ' грн</span>' + statusChip(x, doneText) + '</div>'
+      + '<div class="muted small">' + esc(o.dayTime(x.doneAt || x.at)) + (x.status === 'done' && x.doneBy ? ' · ' + esc(x.doneBy) : '') + '</div></div>';
+  }
+
+  function orderRow(x) {
     return '<div class="by-ord st-wait"><div class="by-ord-h"><b>' + esc(x.buyer) + (x.gift ? ' → ' + esc(x.for) : '') + '</b>'
-      + '<span class="by-uah">' + x.uah + ' грн</span><span class="muted small">' + num(x.shards) + ' 🏺</span></div>'
-      + '<div class="muted small">натиснуто «Скинув» ' + esc(o.dayTime(x.at)) + '</div>'
-      + (refusing === x.id
-        ? '<div class="by-refuse"><input type="text" maxlength="100" placeholder="Чому? Можна не писати" aria-label="Чому оплата не прийшла" data-note value="' + esc(note) + '">'
-          + '<div class="row"><button type="button" class="primary" data-no="' + x.id + '">✕ Не прийшло</button><button type="button" class="ghost" data-unrefuse>Назад</button></div></div>'
-        : '<div class="row"><button type="button" class="primary" data-ok="' + x.id + '">✓ Отримав</button><button type="button" class="ghost" data-refuse="' + x.id + '">✕ Не прийшло</button></div>')
-      + '</div>';
+      + '<span class="by-uah">' + num(x.uah) + ' грн</span><span class="muted small">' + num(x.shards) + ' 🏺</span></div>'
+      + '<div class="muted small">скинув ' + esc(o.dayTime(x.at)) + ' — звір переказ у банку</div>'
+      + '<div class="row"><button type="button" class="primary" data-ok="' + x.id + '">✓ Підтвердити</button></div></div>';
   }
 
-  // ---------------------------------------------------------------- каса: продаж (адмін)
-
-  function deskSalesHtml(d) {
-    const s = d.sales || {};
-    const w = s.waiting || [];
-    let h = '<h4 class="by-sect">💰 Продають — скинь гроші' + (w.length ? ' <span class="chip badge">' + w.length + '</span>' : '') + '</h4>';
-    h += w.length ? '<div class="by-list">' + w.map(saleWaitRow).join('') + '</div>' : '<div class="gempty small">Ніхто нічого не продає.</div>';
-    const p = s.paid || [];
-    if (p.length) {
-      h += '<h4>Скинуто — чекають «✓ Отримав»</h4><div class="by-list by-recent">' + p.map((x) => '<div class="by-ord st-paid"><div class="by-ord-h"><b>' + esc(x.seller)
-        + '</b><span>' + num(x.uah) + ' грн</span><span class="muted small">' + num(x.shards) + ' 🏺</span>' + saleChip(x) + '</div>'
-        + '<div class="muted small">скинуто ' + esc(o.dayTime(x.paidAt || x.at)) + (x.paidBy ? ' · ' + esc(x.paidBy) : '') + '</div></div>').join('') + '</div>';
-    }
-    const r = s.recent || [];
-    if (r.length) {
-      h += '<h4>Закриті</h4><div class="by-list by-recent">' + r.slice(0, 10).map((x) => '<div class="by-ord st-' + esc(x.status) + '"><div class="by-ord-h"><b>'
-        + esc(x.seller) + '</b><span>' + num(x.uah) + ' грн</span>' + saleChip(x) + '</div>'
-        + '<div class="muted small">' + esc(o.dayTime(x.doneAt || x.at)) + (x.note ? ' · «' + esc(x.note) + '»' : '') + '</div></div>').join('') + '</div>';
-    }
-    if (s.monthUah) h += '<div class="muted small">Цього місяця виплачено: <b>' + num(s.monthUah) + ' грн</b></div>';
-    return h;
-  }
-
-  function saleWaitRow(x) {
+  function saleRow(x) {
     const banks = x.banks || [];
     return '<div class="by-ord st-wait"><div class="by-ord-h"><b>' + esc(x.seller) + '</b>'
       + '<span class="by-uah">' + num(x.uah) + ' грн</span><span class="muted small">' + num(x.shards) + ' 🏺</span></div>'
-      + '<div class="muted small">виставлено ' + esc(o.dayTime(x.at)) + (x.paidAt ? ' · скинуто ' + esc(o.dayTime(x.paidAt)) + (x.paidBy ? ' (' + esc(x.paidBy) + ')' : '') : '') + '</div>'
-      + (x.note ? '<div class="by-warn">⚠ ' + esc(x.seller) + ': «' + esc(x.note) + '» — звір переказ: скинь ще раз або «Не куплю»</div>' : '')
+      + '<div class="muted small">виставлено ' + esc(o.dayTime(x.at)) + ' — перекажи ' + num(x.uah) + ' грн, тоді підтверди</div>'
       + (banks.length ? '<div class="by-banks">' + banks.map((b) => bankRow(b, x.uah, 'Глечики: за ' + num(x.shards) + ' черепків')).join('') + '</div>'
-        : '<div class="by-lock">Картки в ' + esc(gen(x.seller)) + ' уже нема — спитай, куди скинути.</div>')
-      + (saleNote === x.id
-        ? noteHtml(x.id, 'Чому? Можна не писати', '✕ Не куплю', 'data-srefuse')
-        : '<div class="row"><button type="button" class="primary" data-spaid="' + x.id + '">✓ Скинув</button>'
-          + '<button type="button" class="ghost" data-snoteopen="' + x.id + '">✕ Не куплю</button></div>')
-      + '</div>';
+        : '<div class="by-lock">Картки в ' + esc(gen(x.seller)) + ' уже нема — спитай, куди переказати.</div>')
+      + '<div class="row"><button type="button" class="primary" data-sok="' + x.id + '">✓ Підтвердити</button></div></div>';
   }
 
   // ---------------------------------------------------------------- дії
@@ -473,26 +406,21 @@
   function wire(box) {
     const on = (sel, fn) => box.querySelectorAll(sel).forEach((b) => { b.onclick = (e) => fn(b, e); });
     on('[data-close]', () => close());
-    on('[data-tab]', (b) => { tab = b.dataset.tab; refusing = 0; saleNote = 0; note = ''; paint(); });
+    on('[data-tab]', (b) => { tab = b.dataset.tab; bankForm = ''; paint(); });
     on('[data-acc]', () => { close(); o.askNick(true, 'register', String(o.me.nick || '').replace(/^гість\s*/i, '')); });
     on('[data-copy]', (b) => copy(b.dataset.copy));
+    wireBanks(box, on);
     if (tab === 'buy') wireBuy(box, on);
     else if (tab === 'sell') wireSell(box, on);
-    else wireDesk(box, on);
-    const n = box.querySelector('[data-snote]');
-    if (n) n.oninput = () => { note = n.value; };
-    on('[data-snoteopen]', (b) => {
-      saleNote = +b.dataset.snoteopen; note = '';
-      paint();
-      const f = box.querySelector('[data-snote]');
-      if (f) f.focus();
-    });
-    on('[data-sunnote]', () => { saleNote = 0; paint(); });
+    else {
+      on('[data-ok]', (b) => act(b, 'підтверджую…', '/api/shards/' + b.dataset.ok + '/ok'));
+      on('[data-sok]', (b) => act(b, 'підтверджую…', '/api/shards/sale/' + b.dataset.sok + '/ok'));
+    }
   }
 
   function wireBuy(box, on) {
     on('[data-pack]', (b) => { pack = +b.dataset.pack; own = false; paint(); });
-    wirePair(box, () => data.rate, (u) => {
+    wirePair(box, () => data.buy.rate, (u) => {
       own = u > 0; pack = u;
       box.querySelectorAll('[data-pack]').forEach((b) => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); });
       box.querySelector('.by-own').classList.toggle('on', own);
@@ -544,58 +472,48 @@
       if (!sellUah || sellUah < s.min) { o.toast('Продати можна від ' + s.min + ' грн', 'err'); return; }
       act(b, 'виставляю…', '/api/shards/sell', { uah: sellUah }, (r) => { if (r && r.ok) { sellUah = 0; sellOwn = false; } });
     });
+    on('[data-scancel]', (b) => act(b, 'скасовую…', '/api/shards/sale/' + b.dataset.scancel + '/cancel'));
+  }
+
+  /// Форма картки (і моя, і сайту): вибір банку, номер по 4 цифри, зберегти; картку сайту адмін ще й прибирає ✕.
+  function wireBanks(box, on) {
     on('[data-bk]', (b) => {
       bankKind = b.dataset.bk;
       box.querySelectorAll('[data-bk]').forEach((c) => { c.classList.toggle('on', c === b); c.setAttribute('aria-pressed', String(c === b)); });
     });
     const cardIn = box.querySelector('[data-bcard]');
     if (cardIn) cardIn.oninput = () => { const v = card(cardIn.value).slice(0, 19); if (v !== cardIn.value) cardIn.value = v; };
-    on('[data-badd]', () => { bankForm = true; paint(); const c = box.querySelector('[data-bcard]'); if (c) c.focus(); });
-    on('[data-bcancel]', () => { bankForm = false; paint(); });
-    on('[data-bsave]', (b) => saveBank(box, b));
-    on('[data-scancel]', (b) => act(b, 'скасовую…', '/api/shards/sale/' + b.dataset.scancel + '/cancel'));
-    on('[data-sok]', (b) => act(b, 'записую…', '/api/shards/sale/' + b.dataset.sok + '/ok'));
-    on('[data-smissing]', (b) => act(b, 'позначаю…', '/api/shards/sale/' + b.dataset.smissing + '/missing', { note: note.trim() }, (r) => {
-      if (r && r.ok) { saleNote = 0; note = ''; }
-    }));
+    on('[data-badd]', (b) => { bankForm = b.dataset.badd; paint(); const c = box.querySelector('[data-bcard]'); if (c) c.focus(); });
+    on('[data-bcancel]', () => { bankForm = ''; paint(); });
+    on('[data-bsave]', (b) => saveBank(box, b, b.dataset.bsave));
+    on('[data-bdel]', (b) => {
+      const list = (data.buy.banks || []).filter((x, i) => i !== +b.dataset.bdel);
+      if (!confirm(list.length ? 'Прибрати цю картку?' : 'Прибрати останню картку? Купівля закриється, поки не впишеш нову.')) return;
+      putBanks(b, 'shop', list);
+    });
   }
 
-  /// Нова картка чи банка — у профіль Падельні (там само її бачать боржники), до тих, що вже є.
-  async function saveBank(box, btn) {
+  const plain = (b) => ({ bank: b.bank, title: b.title || '', card: b.card || null, link: b.link || null });
+
+  /// Нова картка чи банка — до тих, що вже є: моя — у профіль Падельні, сайту — у /api/shards/banks.
+  async function saveBank(box, btn, whose) {
     const digits = (box.querySelector('[data-bcard]').value || '').replace(/\D/g, '');
     const link = (box.querySelector('[data-blink]').value || '').trim();
     if (!digits && !link) { o.toast('Впиши номер картки або посилання на банку', 'err'); return; }
-    const list = (data.sell.banks || []).map((b) => ({ bank: b.bank, title: b.title || '', card: b.card || null, link: b.link || null }));
-    list.push({ bank: bankKind, title: '', card: digits || null, link: link || null });
+    const was = whose === 'shop' ? data.buy.banks : data.sell.banks;
+    await putBanks(btn, whose, (was || []).concat([{ bank: bankKind, title: '', card: digits || null, link: link || null }]));
+  }
+
+  async function putBanks(btn, whose, list) {
     await o.busy(btn, 'зберігаю…', async () => {
       try {
-        await o.api('PUT', '/api/padel/banks', { banks: list });
-        o.toast('Картку збережено — адмін бачитиме її біля заявки', 'ok');
-        bankForm = false;
+        const r = await o.api('PUT', whose === 'shop' ? '/api/shards/banks' : '/api/padel/banks', { banks: list.map(plain) });
+        o.toast(whose === 'shop' ? (r && r.message) || 'Збережено' : 'Картку збережено — адмін бачитиме її біля заявки', 'ok');
+        bankForm = '';
       } catch (e) { o.toast(e.message, 'err'); return; }
       await load();
       paint();
     });
-  }
-
-  function wireDesk(box, on) {
-    on('[data-ok]', (b) => act(b, 'зараховую…', '/api/shards/' + b.dataset.ok + '/ok'));
-    on('[data-refuse]', (b) => {
-      refusing = +b.dataset.refuse; note = '';
-      paint();
-      const n = box.querySelector('[data-note]');
-      if (n) n.focus();
-    });
-    on('[data-unrefuse]', () => { refusing = 0; paint(); });
-    const n = box.querySelector('[data-note]');
-    if (n) n.oninput = () => { note = n.value; };
-    on('[data-no]', (b) => act(b, 'позначаю…', '/api/shards/' + b.dataset.no + '/no', { note: note.trim() }, (r) => {
-      if (r && r.ok) { refusing = 0; note = ''; }
-    }));
-    on('[data-spaid]', (b) => act(b, 'записую…', '/api/shards/sale/' + b.dataset.spaid + '/paid'));
-    on('[data-srefuse]', (b) => act(b, 'позначаю…', '/api/shards/sale/' + b.dataset.srefuse + '/no', { note: note.trim() }, (r) => {
-      if (r && r.ok) { saleNote = 0; note = ''; }
-    }));
   }
 
   /// Поля «грн = 🏺»: пишемо в одне — друге й вибір оновлюються на місці, без перемальовування (інакше губився б курсор).
@@ -610,7 +528,7 @@
     for (const i of [ou, os]) i.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); enter(); } };
   }
 
-  /// «Далі — до оплати»: сервер спершу каже, чи можна (друг — акаунт, оплат не забагато), і лише тоді — реквізити:
+  /// «Далі — до оплати»: сервер спершу каже, чи можна (друг — акаунт, заявок не забагато), і лише тоді — реквізити:
   /// дізнатись про «не акаунт» після того, як гроші пішли, — найгірше, що тут може статись.
   async function next(box, btn) {
     if (!pack || !btn) return;
@@ -632,32 +550,28 @@
 
   window.HBuy = {
     init(opts) { o = opts; if (o.esc) esc = o.esc; },
-    /// Після /api/me: кружечок у шапці одразу, а не з першим відкриттям вікна (каса, а гравцю — скинуті гроші).
+    /// Після /api/me: адміну — кружечок у шапці одразу, а не з першим відкриттям вікна.
     ready() { if (o && (o.me.account || o.me.role === 'admin')) load(); },
     attach(conn) {
       conn.on('shardOrders', (m) => { count = (m && m.count) || 0; sales = (m && m.sales) || 0; paintBadge(); if (wrap) soon(); });
-      // Адмін скинув гроші чи не купив — кружечок і вікно свіжі без F5, навіть коли вікно закрите
-      conn.on('shardSale', () => soon());
-      // Зарахували (собі чи подарунок), відклали чи повернули — вікно й «У глечику» в Лавці свіжі без F5
+      // Адмін підтвердив мою заявку — вікно свіже без F5
+      conn.on('shardMine', () => { if (wrap) soon(); });
+      // Зарахували, відклали чи повернули — вікно й «У глечику» в Лавці свіжі без F5
       conn.on('wallet', (w) => {
         if (!w || !/^(buy|sell)/.test(String(w.reason || ''))) return;
         if (wrap) soon();
         if (window.HLavka && HLavka.refresh) HLavka.refresh();
       });
-      // Відмова чи підтвердження подарунка приходять тостом — відкрите вікно теж перечитаємо
-      conn.on('toast', () => { if (wrap) soon(); });
     },
     open,
-    /// Продавцю купувати в себе нема чого: «Докупити» в Лавці йому не показуємо.
-    isSeller: () => !!(data && data.isSeller),
-    /// Підпис кнопки в профілі: продавцю й адміну — «Каса» з тим, скільки чекає; решті — «Купити».
+    /// Підпис першої кнопки в профілі: адміну — «Заявки» з тим, скільки в обробці; решті — «Купити».
     label() {
-      if (data && (data.isSeller || data.admin)) { const n = deskCount(); return '🧾 Каса' + (n ? ' · ' + n : ''); }
+      if (isAdmin()) { const n = deskCount(); return '📋 Заявки' + (n ? ' · ' + n : ''); }
       return '➕ Купити';
     },
-    /// Куди веде перша кнопка профілю: продавцю й адміну — у касу, решті — купити.
-    mainTab: () => (data && (data.isSeller || data.admin) ? 'desk' : 'buy'),
-    /// Друга кнопка профілю: «Продати» — з тим, скільки грошей адмін уже скинув на перевірку.
-    sellLabel() { const n = myPaid(); return '💸 Продати' + (n ? ' · ' + n : ''); },
+    /// Куди веде перша кнопка профілю: адміну — у «Заявки», решті — купити.
+    mainTab: () => (isAdmin() ? 'desk' : 'buy'),
+    /// Друга кнопка профілю.
+    sellLabel: () => '💸 Продати',
   };
 })();

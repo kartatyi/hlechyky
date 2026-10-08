@@ -79,7 +79,7 @@ builder.Services.AddHlechykyMcp();   // аі-агенти за столом: POS
 builder.Services.AddHlechykyFeedback();   // «💡 Розробнику»: пропозиції й баги (Feedback.cs)
 builder.Services.AddHlechykyLavka();      // «Лавка Дядька Глека»: вигляд профілю, подарунки, присвята й феєрверк (Lavka.cs)
 builder.Services.AddHlechykyPadel(cfg);  // «Падельня»: табло, турніри, збори, гроші за корт, рейтинг (Padel/)
-builder.Services.AddHlechykyShardShop();  // купити черепки за гривні: пакети, банки продавця з Падельні (ShardShop.cs)
+builder.Services.AddHlechykyShardShop();  // черепки за гривні: купити й продати, керує адмін (ShardShop.cs)
 
 var port = cfg.GetValue<int?>("Site:ListenPort") ?? 8080;
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(port));

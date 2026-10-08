@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Hlechyky.Games;
 using Hlechyky.Games.Economy;
 using Hlechyky.Padel;
@@ -10,43 +11,45 @@ using Microsoft.Extensions.Options;
 namespace Hlechyky;
 
 // =====================================================================================================================
-// Купити черепки за гривні — як гроші в Падельні (08.10.2026): покупець обирає пакет, бачить картку й банку продавця
-// (ті самі банки, що в його профілі Падельні), скидає гроші й тисне «✓ Скинув». Продавець бачить замовлення в «чекають»
-// і тисне «✓ Отримав» — черепки падають одразу; «✕ Не прийшло» — відмова з приміткою. Рішення власника: вручну, без
-// API банку; 1 грн = 100 🏺; пакети 50/100/250/500 грн без бонусу або своя сума (типово 10–5000 грн); можна купити
-// другові; куплене не йде в «зароблено» (таблиці й ачівки — лише за гру).
+// Черепки за гривні (08.10.2026) — купити й продати, обома керує адмін (адмінська кука, нік неважливий). Схема одна, як
+// сказав власник: «людина платить — статус в обробці і можна скасувати; адмін підтверджує — змінюється статус та зникає
+// кнопка скасувати. І все». Ні «не прийшло», ні «не куплю», ні приміток.
 //
-// Продати черепки за гривні — теж як у Падельні, але навпаки (08.10.2026): гравець виставляє заявку «продаю N 🏺 за X грн»,
-// і черепки одразу відкладаються (списуються, витратити їх уже не вийде). Купує сайт — керує адмін (адмінська кука, нік
-// неважливий): бачить картку й банку гравця з його профілю Падельні, скидає гроші й тисне «✓ Скинув» або «✕ Не куплю»
-// (черепки повертаються). Гравець тисне «✓ Отримав» — продано, черепки зникають із гри; «✕ Не прийшло» — заявка знову в
-// адміна з приміткою. Поки адмін не скинув, гравець може скасувати. Курс 1 грн = 100 🏺, від 10 грн, лімітів нема:
-// кожну заявку адмін вирішує сам. Продане й повернуте не йде ні в «зароблено», ні у «витрачено» (EconomyStore.Exchange).
+// Купити: людина обирає пакет (50/100/250/500 грн без бонусу) чи свою суму (типово 10–5000 грн), бачить картку чи банку
+// сайту (адмін вписує їх у «Заявках»), скидає гроші й тисне «✓ Скинув» → «в обробці». Адмін бачить переказ у банку,
+// тисне «✓ Підтвердити» — черепки падають. Можна купити другові. Куплене не йде в «зароблено» (таблиці й ачівки — за гру).
+//
+// Продати: людина виставляє «N 🏺 за X грн» — черепки одразу відкладаються (списуються, витратити їх уже не вийде) →
+// «в обробці». Адмін бачить її картку з профілю Падельні (нема — людина впише її у вікні), переказує гроші й тисне
+// «✓ Підтвердити» — продано, черепки зникають із гри. Скасувати, поки «в обробці», — черепки повертаються.
+//
+// Курс 1 грн = 100 🏺 в обидва боки, до 3 заявок одного гравця водночас, інших лімітів нема. Купівля, продаж і повернення
+// не йдуть ні в «зароблено», ні у «витрачено» (EconomyStore.Exchange).
 // =====================================================================================================================
 
-/// <summary>Секція <c>ShardShop</c> конфігу. Порожній <see cref="Seller"/> — купівля закрита.</summary>
+/// <summary>Секція <c>ShardShop</c> конфігу.</summary>
 public sealed class ShardShopOptions
 {
     public static readonly int[] DefaultPacks = [50, 100, 250, 500];
 
-    /// <summary>Нік продавця: покупець бачить його банки з Падельні, а підтверджує оплату він (або адмін).</summary>
-    public string Seller { get; set; } = "";
-    /// <summary>Скільки черепків за 1 грн.</summary>
+    /// <summary>Купівля відкрита — коли адмін ще й вписав, куди скидати гроші.</summary>
+    public bool Buy { get; set; } = true;
+    /// <summary>Скільки черепків за 1 грн, коли купують.</summary>
     public int Rate { get; set; } = 100;
     /// <summary>
     /// Пакети в гривнях. Без типового значення тут: масив із конфігу біндер ДОПИСУЄ до наявного, і замість
     /// 50/100/250/500 вийшло б вісім пакетів. Тому типові — у <see cref="PackList"/>.
     /// </summary>
     public int[]? Packs { get; set; }
-    /// <summary>Скільки оплат одного покупця можуть водночас чекати підтвердження.</summary>
+    /// <summary>Скільки заявок одного гравця (кожного напрямку) можуть водночас бути в обробці.</summary>
     public int PendingMax { get; set; } = 3;
     /// <summary>Своя сума (цілі гривні) — від і до. <see cref="CustomMax"/> = 0 — лише пакети.</summary>
     public int CustomMin { get; set; } = 10;
     public int CustomMax { get; set; } = 5000;
 
-    /// <summary>Продаж черепків сайту відкритий (керує адмін).</summary>
+    /// <summary>Продаж черепків сайту відкритий.</summary>
     public bool Sell { get; set; } = true;
-    /// <summary>Скільки черепків за 1 грн, коли гравець продає.</summary>
+    /// <summary>Скільки черепків за 1 грн, коли продають.</summary>
     public int SellRate { get; set; } = 100;
     /// <summary>Найменший продаж, грн.</summary>
     public int SellMin { get; set; } = 10;
@@ -62,8 +65,8 @@ public sealed class ShardShopOptions
 }
 
 /// <summary>
-/// Замовлення. <see cref="Status"/>: <c>wait</c> — покупець скинув, чекає продавця; <c>done</c> — зараховано;
-/// <c>no</c> — продавець оплати не знайшов; <c>off</c> — покупець скасував.
+/// Купівля. <see cref="Status"/>: <c>wait</c> — в обробці (людина скинула гроші, чекає адміна); <c>done</c> — адмін
+/// підтвердив, черепки впали; <c>off</c> — людина скасувала.
 /// </summary>
 public sealed record ShardOrder(long Id, string Buyer, string For, int Uah, int Shards, string Status, DateTimeOffset At,
     DateTimeOffset? DoneAt, string? DoneBy, string Note)
@@ -72,14 +75,13 @@ public sealed record ShardOrder(long Id, string Buyer, string For, int Uah, int 
 }
 
 /// <summary>
-/// Заявка на продаж. <see cref="Status"/>: <c>wait</c> — черепки відкладено, чекає адміна; <c>paid</c> — адмін скинув гроші,
-/// чекає «✓ Отримав» гравця; <c>done</c> — продано; <c>no</c> — адмін не купив, черепки повернуто; <c>off</c> — гравець
-/// скасував, черепки повернуто.
+/// Продаж. <see cref="Status"/>: <c>wait</c> — в обробці (черепки відкладено, чекає адміна); <c>done</c> — адмін переказав
+/// гроші й підтвердив, продано; <c>off</c> — людина скасувала, черепки повернуто.
 /// </summary>
 public sealed record ShardSale(long Id, string Seller, int Uah, int Shards, string Status, DateTimeOffset At,
     DateTimeOffset? PaidAt, string? PaidBy, DateTimeOffset? DoneAt, string? DoneBy, string Note);
 
-/// <summary>Сховище замовлень і заявок на продаж. DDL і SQL — тут.</summary>
+/// <summary>Сховище купівель, продажів і банків сайту. DDL і SQL — тут.</summary>
 public sealed class ShardShopStore
 {
     const string Schema = """
@@ -96,6 +98,7 @@ public sealed class ShardShopStore
             done_by TEXT, note TEXT NOT NULL DEFAULT '');
         CREATE INDEX IF NOT EXISTS shard_sales_seller ON shard_sales(seller_key, id);
         CREATE INDEX IF NOT EXISTS shard_sales_status ON shard_sales(status, id);
+        CREATE TABLE IF NOT EXISTS shard_shop(key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL, at TEXT NOT NULL);
         """;
     const string Cols = "id, buyer, for_nick, uah, shards, status, at, done_at, done_by, note";
     const string SaleCols = "id, seller, uah, shards, status, at, paid_at, paid_by, done_at, done_by, note";
@@ -110,6 +113,8 @@ public sealed class ShardShopStore
 
     static string Iso(DateTimeOffset t) => t.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
     static DateTimeOffset Ts(string s) => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+    static DateTimeOffset? TsOrNull(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : Ts(r.GetString(i));
+    static string? StrOrNull(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
 
     static SqliteCommand Cmd(SqliteConnection c, string sql, params (string Name, object? Value)[] ps)
     {
@@ -125,6 +130,14 @@ public sealed class ShardShopStore
         return cmd.ExecuteNonQuery();
     }
 
+    int Count(string sql, params (string Name, object? Value)[] ps) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, sql, ps);
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    });
+
+    // ---------------------------------------------------------------- купівля
+
     List<ShardOrder> Rows(string where, params (string Name, object? Value)[] ps) => _db.With(c =>
     {
         using var cmd = Cmd(c, $"SELECT {Cols} FROM shard_orders {where}", ps);
@@ -132,7 +145,7 @@ public sealed class ShardShopStore
         var list = new List<ShardOrder>();
         while (r.Read())
             list.Add(new ShardOrder(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetInt32(3), r.GetInt32(4), r.GetString(5),
-                Ts(r.GetString(6)), r.IsDBNull(7) ? null : Ts(r.GetString(7)), r.IsDBNull(8) ? null : r.GetString(8), r.GetString(9)));
+                Ts(r.GetString(6)), TsOrNull(r, 7), StrOrNull(r, 8), r.GetString(9)));
         return list;
     });
 
@@ -152,34 +165,25 @@ public sealed class ShardShopStore
     public List<ShardOrder> Of(string nick, int n) =>
         Rows("WHERE buyer_key=$k OR for_key=$k ORDER BY id DESC LIMIT $n", ("$k", Auth.NickKey(nick)), ("$n", n));
 
-    /// <summary>Усі, що чекають продавця, — старші згори: першим перевіряти того, хто чекає найдовше.</summary>
+    /// <summary>Усі в обробці — старші згори: першим перевіряти того, хто чекає найдовше.</summary>
     public List<ShardOrder> Waiting() => Rows("WHERE status='wait' ORDER BY id");
 
-    /// <summary>Розглянуті (зараховані, відмовлені, скасовані) — свіжі згори.</summary>
+    /// <summary>Закриті — свіжі згори.</summary>
     public List<ShardOrder> Recent(int n) => Rows("WHERE status<>'wait' ORDER BY id DESC LIMIT $n", ("$n", n));
 
-    public int WaitingOf(string buyer) => _db.With(c =>
-    {
-        using var cmd = Cmd(c, "SELECT COUNT(*) FROM shard_orders WHERE buyer_key=$k AND status='wait'", ("$k", Auth.NickKey(buyer)));
-        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
-    });
+    public int WaitingOf(string buyer) =>
+        Count("SELECT COUNT(*) FROM shard_orders WHERE buyer_key=$k AND status='wait'", ("$k", Auth.NickKey(buyer)));
 
-    /// <summary>Гривні зараховані з <paramref name="since"/> — продавцю «за місяць».</summary>
-    public int DoneUah(DateTimeOffset since) => _db.With(c =>
-    {
-        using var cmd = Cmd(c, "SELECT COALESCE(SUM(uah), 0) FROM shard_orders WHERE status='done' AND done_at >= $s", ("$s", Iso(since)));
-        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
-    });
+    /// <summary>Гривні, що прийшли за куплене з <paramref name="since"/>, — «за місяць».</summary>
+    public int DoneUah(DateTimeOffset since) =>
+        Count("SELECT COALESCE(SUM(uah), 0) FROM shard_orders WHERE status='done' AND done_at >= $s", ("$s", Iso(since)));
 
     /// <summary>Перевести зі стану <paramref name="from"/> в <paramref name="to"/>; false — замовлення вже не в тому стані.</summary>
-    public bool Move(long id, string from, string to, DateTimeOffset at, string by, string? note = null) => _db.With(c =>
-        Exec(c, "UPDATE shard_orders SET status=$to, done_at=$at, done_by=$by, note=COALESCE($n, note) WHERE id=$id AND status=$from",
-            ("$to", to), ("$at", Iso(at)), ("$by", by), ("$n", note), ("$id", id), ("$from", from)) > 0);
+    public bool Move(long id, string from, string to, DateTimeOffset at, string by) => _db.With(c =>
+        Exec(c, "UPDATE shard_orders SET status=$to, done_at=$at, done_by=$by WHERE id=$id AND status=$from",
+            ("$to", to), ("$at", Iso(at)), ("$by", by), ("$id", id), ("$from", from)) > 0);
 
     // ---------------------------------------------------------------- продаж
-
-    static DateTimeOffset? TsOrNull(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : Ts(r.GetString(i));
-    static string? StrOrNull(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
 
     List<ShardSale> Sales(string where, params (string Name, object? Value)[] ps) => _db.With(c =>
     {
@@ -190,12 +194,6 @@ public sealed class ShardShopStore
             list.Add(new ShardSale(r.GetInt64(0), r.GetString(1), r.GetInt32(2), r.GetInt32(3), r.GetString(4), Ts(r.GetString(5)),
                 TsOrNull(r, 6), StrOrNull(r, 7), TsOrNull(r, 8), StrOrNull(r, 9), r.GetString(10)));
         return list;
-    });
-
-    int Count(string sql, params (string Name, object? Value)[] ps) => _db.With(c =>
-    {
-        using var cmd = Cmd(c, sql, ps);
-        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
     });
 
     public long AddSale(ShardSale s) => _db.With(c =>
@@ -213,45 +211,49 @@ public sealed class ShardShopStore
 
     public ShardSale? GetSale(long id) => Sales("WHERE id=$id", ("$id", id)).FirstOrDefault();
 
-    /// <summary>Мої заявки — свіжі згори.</summary>
+    /// <summary>Мої продажі — свіжі згори.</summary>
     public List<ShardSale> SalesOf(string nick, int n) =>
         Sales("WHERE seller_key=$k ORDER BY id DESC LIMIT $n", ("$k", Auth.NickKey(nick)), ("$n", n));
 
-    /// <summary>Незакриті (чекають адміна чи «✓ Отримав» гравця) — старші згори.</summary>
-    public List<ShardSale> SalesOpen() => Sales("WHERE status IN ('wait','paid') ORDER BY id");
+    /// <summary>В обробці — старші згори: першим платити тому, хто чекає найдовше.</summary>
+    public List<ShardSale> SalesWaitingList() => Sales("WHERE status='wait' ORDER BY id");
 
-    /// <summary>Закриті (продано, не куплено, скасовано) — свіжі згори.</summary>
-    public List<ShardSale> SalesRecent(int n) => Sales("WHERE status IN ('done','no','off') ORDER BY id DESC LIMIT $n", ("$n", n));
+    /// <summary>Закриті — свіжі згори.</summary>
+    public List<ShardSale> SalesRecent(int n) => Sales("WHERE status<>'wait' ORDER BY id DESC LIMIT $n", ("$n", n));
 
-    /// <summary>Скільки заявок чекає адміна — усіх чи одного гравця.</summary>
+    /// <summary>Скільки продажів в обробці — усіх чи одного гравця.</summary>
     public int SalesWaiting(string? nick = null) => nick is null
         ? Count("SELECT COUNT(*) FROM shard_sales WHERE status='wait'")
         : Count("SELECT COUNT(*) FROM shard_sales WHERE seller_key=$k AND status='wait'", ("$k", Auth.NickKey(nick)));
 
-    /// <summary>Гривні, які адмін скинув гравцям з <paramref name="since"/>, — «за місяць».</summary>
+    /// <summary>Гривні, які адмін виплатив гравцям з <paramref name="since"/>, — «за місяць».</summary>
     public int PaidOutUah(DateTimeOffset since) =>
-        Count("SELECT COALESCE(SUM(uah), 0) FROM shard_sales WHERE status IN ('paid','done') AND paid_at >= $s", ("$s", Iso(since)));
+        Count("SELECT COALESCE(SUM(uah), 0) FROM shard_sales WHERE status='done' AND paid_at >= $s", ("$s", Iso(since)));
 
-    /// <summary>«✓ Скинув» адміна: wait → paid. Примітка «не прийшло» з минулого разу вже ні до чого.</summary>
-    public bool SalePaid(long id, DateTimeOffset at, string by) => _db.With(c =>
-        Exec(c, "UPDATE shard_sales SET status='paid', paid_at=$at, paid_by=$by, note='' WHERE id=$id AND status='wait'",
+    /// <summary>«✓ Підтвердити» адміна: wait → done — гроші переказано, продано.</summary>
+    public bool SaleDone(long id, DateTimeOffset at, string by) => _db.With(c =>
+        Exec(c, "UPDATE shard_sales SET status='done', paid_at=$at, paid_by=$by, done_at=$at, done_by=$by WHERE id=$id AND status='wait'",
             ("$at", Iso(at)), ("$by", by), ("$id", id)) > 0);
 
-    /// <summary>
-    /// «✕ Не прийшло» гравця: paid → знову wait, з приміткою для адміна. Коли й хто скидав — лишається: така заявка вже не
-    /// скасовується гравцем (інакше «не прийшло» + «скасувати» повернуло б черепки й тоді, коли гроші насправді прийшли).
-    /// </summary>
-    public bool SaleMissing(long id, string note) => _db.With(c =>
-        Exec(c, "UPDATE shard_sales SET status='wait', note=$n WHERE id=$id AND status='paid'",
-            ("$n", note), ("$id", id)) > 0);
+    /// <summary>Закрити без продажу (скасовано людиною чи черепків уже нема); false — заявка вже не в обробці.</summary>
+    public bool SaleOff(long id, DateTimeOffset at, string by, string note = "") => _db.With(c =>
+        Exec(c, "UPDATE shard_sales SET status='off', done_at=$at, done_by=$by, note=$n WHERE id=$id AND status='wait'",
+            ("$at", Iso(at)), ("$by", by), ("$n", note), ("$id", id)) > 0);
 
-    /// <summary>Закрити: <paramref name="to"/> — done, no чи off; false — заявка вже не в стані <paramref name="from"/>.</summary>
-    public bool CloseSale(long id, string from, string to, DateTimeOffset at, string by, string? note = null) => _db.With(c =>
-        Exec(c, "UPDATE shard_sales SET status=$to, done_at=$at, done_by=$by, note=COALESCE($n, note) WHERE id=$id AND status=$from",
-            ("$to", to), ("$at", Iso(at)), ("$by", by), ("$n", note), ("$id", id), ("$from", from)) > 0);
+    // ---------------------------------------------------------------- банки сайту (куди покупцям скидати гроші)
+
+    public List<PadelBank> ShopBanks() => _db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT value FROM shard_shop WHERE key='banks'");
+        return cmd.ExecuteScalar() is string json ? JsonSerializer.Deserialize<List<PadelBank>>(json) ?? [] : [];
+    });
+
+    public void SetShopBanks(List<PadelBank> banks, DateTimeOffset at) => _db.With(c =>
+        Exec(c, "INSERT INTO shard_shop(key, value, at) VALUES('banks', $v, $at) ON CONFLICT(key) DO UPDATE SET value=excluded.value, at=excluded.at",
+            ("$v", JsonSerializer.Serialize(banks)), ("$at", Iso(at))));
 }
 
-/// <summary>Банки продавця (картка, банка) — у Падельні вони вже є в профілі, тож другий раз їх не вводять.</summary>
+/// <summary>Банки гравця (картка, банка) — у Падельні вони вже є в профілі, тож другий раз їх не вводять.</summary>
 public interface IShardBanks
 {
     IReadOnlyList<PadelBank> Of(string nick);
@@ -262,22 +264,21 @@ public sealed class PadelShardBanks(PadelMoneyStore store) : IShardBanks
     public IReadOnlyList<PadelBank> Of(string nick) => store.Banks(Pid.User(nick));
 }
 
-/// <summary>Сповіщення: тости, лічильники «чекають» продавцю та адмінам (кружечок на гаманці без F5), свіже вікно гравцю.</summary>
+/// <summary>Сповіщення: тости, лічильник «в обробці» адмінам (кружечок на гаманці без F5), свіже вікно людині.</summary>
 public interface IShardShopWire
 {
     void Toast(string nick, string text);
-    /// <summary>Тост адмінам: нова заявка на продаж чи «не прийшло».</summary>
+    /// <summary>Тост адмінам: нова купівля чи продаж.</summary>
     void ToastAdmins(string text);
-    /// <summary>Скільки чекає: <paramref name="orders"/> оплат — продавцю й адмінам, <paramref name="sales"/> заявок на продаж — адмінам.</summary>
-    void Waiting(string? seller, int orders, int sales);
-    /// <summary>Заявка гравця змінилась — його вкладки перечитують вікно й кружечок.</summary>
-    void Sale(string nick);
+    /// <summary>Скільки в обробці — адмінам: купівель і продажів.</summary>
+    void Waiting(int orders, int sales);
+    /// <summary>Заявка людини змінилась — її вкладки перечитують вікно.</summary>
+    void Refresh(string nick);
 }
 
 /// <summary>
-/// Через хаб радіо: тост — подія <c>toast</c> (core.js її вже показує), лічильники — <c>shardOrders</c> на вкладки
-/// продавця і в групу адмінів записок (<see cref="FeedbackDevGroup"/>): адмінська кука теж підтверджує й купує черепки.
-/// Гравцю — <c>shardSale</c>: адмін скинув гроші чи не купив.
+/// Через хаб радіо: тост — подія <c>toast</c> (core.js її вже показує), лічильник — <c>shardOrders</c> у групу адмінів
+/// записок (<see cref="FeedbackDevGroup"/>), людині — <c>shardMine</c>.
 /// </summary>
 public sealed class HubShardShopWire(IHubContext<RadioHub> hub, Presence presence, ILogger<HubShardShopWire> log) : IShardShopWire
 {
@@ -289,24 +290,19 @@ public sealed class HubShardShopWire(IHubContext<RadioHub> hub, Presence presenc
 
     public void ToastAdmins(string text) => _ = SendAsync(hub.Clients.Group(FeedbackDevGroup.Name), "toast", new { text, kind = "ok" });
 
-    public void Waiting(string? seller, int orders, int sales)
-    {
-        var payload = new { count = orders, sales };
-        IReadOnlyList<string> ids = seller is null ? [] : presence.ConnectionsOf(seller);
-        if (ids.Count > 0) _ = SendAsync(hub.Clients.Clients(ids), "shardOrders", payload);
-        _ = SendAsync(hub.Clients.Group(FeedbackDevGroup.Name), "shardOrders", payload);
-    }
+    public void Waiting(int orders, int sales) =>
+        _ = SendAsync(hub.Clients.Group(FeedbackDevGroup.Name), "shardOrders", new { count = orders, sales });
 
-    public void Sale(string nick)
+    public void Refresh(string nick)
     {
         var ids = presence.ConnectionsOf(nick);
-        if (ids.Count > 0) _ = SendAsync(hub.Clients.Clients(ids), "shardSale", new { });
+        if (ids.Count > 0) _ = SendAsync(hub.Clients.Clients(ids), "shardMine", new { });
     }
 
     async Task SendAsync(IClientProxy to, string name, object payload)
     {
         try { await to.SendAsync(name, payload); }
-        catch (Exception ex) { log.LogWarning(ex, "купівля черепків не розіслала {Event}", name); }
+        catch (Exception ex) { log.LogWarning(ex, "черепки за гривні не розіслали {Event}", name); }
     }
 }
 
@@ -318,7 +314,7 @@ public sealed record ShardActor(string Nick, bool Account, bool Admin)
 
 public sealed record ShardReply(bool Ok, string Message, int Status = 200, object? Order = null);
 
-/// <summary>Правила купівлі й продажу: хто може купити чи продати, кому, скільки чекає, хто підтверджує.</summary>
+/// <summary>Правила купівлі й продажу: хто може, скільки в обробці, хто підтверджує.</summary>
 public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, IShardBanks banks, IShardShopWire wire,
     IClock clock, IOptionsMonitor<ShardShopOptions> opts, ILogger<ShardShop> log)
 {
@@ -327,82 +323,68 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
     public const string SellAccountsOnly = "Черепки продають лише акаунти — закріпи нік";
     public const string SellClosed = "Продаж черепків зараз закритий";
     public const string NoBanks = "Спершу впиши, куди скинути гроші: картку чи банку";
-    public const string AdminOnly = "Черепки купує адмін";
-    public const string MissingNoCancel = "Адмін уже скидав гроші — тепер він перевіряє переказ, скасувати не вийде";
-    const int NoteMax = 100, MineMax = 20, RecentMax = 30;
-    // Підтвердження і відмова одного замовлення з двох вкладок не мусять розминутись: нарахування й зміна стану — разом
+    public const string AdminOnly = "Підтверджує адмін";
+    const int MineMax = 20, RecentMax = 30;
+    // Підтвердження і скасування однієї заявки з двох вкладок не мусять розминутись: гроші й зміна стану — разом
     readonly object _gate = new();
 
     ShardShopOptions O => opts.CurrentValue;
 
-    /// <summary>Продавець як акаунт (його нік так, як він його закріпив); не задано чи не акаунт — null.</summary>
-    string? Seller()
-    {
-        var s = (O.Seller ?? "").Trim();
-        return s.Length == 0 ? null : db.FindAccount(s)?.Nick;
-    }
+    bool BuyOpen => O.Buy && store.ShopBanks().Count > 0;
 
     static bool Same(string? a, string? b) => Auth.NickKey(a) == Auth.NickKey(b);
 
-    bool MayConfirm(ShardActor me, string? seller) => me.Admin || (me.Account && seller is not null && Same(me.Nick, seller));
-
     /// <summary>«10 000» — з нерозривним пробілом, щоб число не рвалось на два рядки.</summary>
-    public static string Num(int n) => n.ToString("#,0", new NumberFormatInfo { NumberGroupSeparator = "\u00a0" });
+    public static string Num(int n) => n.ToString("#,0", new NumberFormatInfo { NumberGroupSeparator = " " });
 
     static string Shards(int n) => $"{Num(n)} {Economy.Shards(n)}";
 
     static object View(ShardOrder o) => new
     {
         id = o.Id, buyer = o.Buyer, @for = o.For, gift = o.Gift, uah = o.Uah, shards = o.Shards, status = o.Status,
-        at = o.At.UtcDateTime, doneAt = o.DoneAt?.UtcDateTime, doneBy = o.DoneBy, note = o.Note,
+        at = o.At.UtcDateTime, doneAt = o.DoneAt?.UtcDateTime, doneBy = o.DoneBy,
     };
 
-    /// <summary>Заявка на продаж; <paramref name="withBanks"/> — адміну, щоб знав, куди скидати.</summary>
+    /// <summary>Продаж; <paramref name="withBanks"/> — адміну, щоб знав, куди переказувати.</summary>
     object View(ShardSale s, bool withBanks = false) => new
     {
         id = s.Id, seller = s.Seller, uah = s.Uah, shards = s.Shards, status = s.Status, at = s.At.UtcDateTime,
-        paidAt = s.PaidAt?.UtcDateTime, paidBy = s.PaidBy, doneAt = s.DoneAt?.UtcDateTime, doneBy = s.DoneBy, note = s.Note,
-        banks = withBanks ? BanksOf(s.Seller) : null,
+        doneAt = s.DoneAt?.UtcDateTime, doneBy = s.DoneBy, note = s.Note,
+        banks = withBanks ? BanksView(banks.Of(s.Seller)) : null,
     };
 
-    List<object> BanksOf(string nick) =>
-        [.. banks.Of(nick).Select(b => (object)new { bank = b.Bank, title = b.Title, card = b.Card, link = b.Link })];
+    static List<object> BanksView(IEnumerable<PadelBank> list) =>
+        [.. list.Select(b => (object)new { id = b.Id, bank = b.Bank, title = b.Title, card = b.Card, link = b.Link })];
 
-    /// <summary>Лічильники «чекають» — продавцю (оплати) й адмінам (оплати й заявки на продаж).</summary>
-    void Counts() => wire.Waiting(Seller(), store.Waiting().Count, store.SalesWaiting());
+    /// <summary>Лічильник «в обробці» адмінам.</summary>
+    void Counts() => wire.Waiting(store.Waiting().Count, store.SalesWaiting());
 
     // ---------------------------------------------------------------- вигляд
 
-    /// <summary>GET /api/shards — пакети, банки продавця (лише акаунтам), мої замовлення; продавцю й адміну — черга.</summary>
+    /// <summary>
+    /// GET /api/shards — купити (пакети, картка сайту — лише акаунтам, мої купівлі), продати (мої банки й продажі), адміну —
+    /// «Заявки»: що в обробці (продажі — з банками людини), закриті, суми за місяць і картки сайту.
+    /// </summary>
     public object View(ShardActor me)
     {
-        var seller = Seller();
         var o = O;
-        var canConfirm = MayConfirm(me, seller);
-        var waiting = canConfirm ? store.Waiting() : null;
+        var shop = store.ShopBanks();
+        var since = Periods.Since("month", clock);
         return new
         {
-            open = seller is not null,
             account = me.Account,
-            rate = o.Rate,
-            packs = o.PackList.Select(u => new { uah = u, shards = u * o.Rate }).ToList(),
-            custom = o.Custom ? new { min = Math.Max(1, o.CustomMin), max = o.CustomMax } : null,
-            pendingMax = o.PendingMax,
-            seller = seller is null ? null : new
-            {
-                nick = seller,
-                // Номер картки — лише тим, хто закріпив нік: гість сайту бачить сторінку, але не реквізити
-                banks = me.Account || me.Admin
-                    ? banks.Of(seller).Select(b => new { bank = b.Bank, title = b.Title, card = b.Card, link = b.Link }).ToList()
-                    : null,
-            },
-            isSeller = seller is not null && me.Account && Same(me.Nick, seller),
-            canConfirm,
-            mine = me.Account ? store.Of(me.Nick, MineMax).Select(View).ToList() : [],
-            waiting = waiting?.Select(View).ToList(),
-            recent = canConfirm ? store.Recent(RecentMax).Select(View).ToList() : null,
-            monthUah = canConfirm ? store.DoneUah(Periods.Since("month", clock)) : (int?)null,
             admin = me.Admin,
+            buy = new
+            {
+                open = o.Buy && shop.Count > 0,
+                rate = o.Rate,
+                packs = o.PackList.Select(u => new { uah = u, shards = u * o.Rate }).ToList(),
+                custom = o.Custom ? new { min = Math.Max(1, o.CustomMin), max = o.CustomMax } : null,
+                pendingMax = o.PendingMax,
+                // Номер картки — лише тим, хто закріпив нік: гість сайту бачить сторінку, але не реквізити
+                banks = me.Account || me.Admin ? BanksView(shop) : null,
+                mine = me.Account ? store.Of(me.Nick, MineMax).Select(View).ToList() : [],
+            },
             sell = new
             {
                 open = o.Sell,
@@ -410,152 +392,124 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
                 min = o.SellMinOk,
                 packs = o.PackList.Select(u => new { uah = u, shards = u * o.SellRateOk }).ToList(),
                 balance = me.Account ? economy.Balance(me.Nick) : 0,
-                // Мої банки — куди адмін скине гроші; ті самі, що в профілі Падельні
-                banks = me.Account ? BanksOf(me.Nick) : null,
+                // Мої банки — куди адмін перекаже гроші; ті самі, що в профілі Падельні
+                banks = me.Account ? BanksView(banks.Of(me.Nick)) : null,
                 pendingMax = o.PendingMax,
                 mine = me.Account ? store.SalesOf(me.Nick, MineMax).Select(s => View(s)).ToList() : [],
             },
-            sales = me.Admin ? SalesDesk() : null,
+            desk = me.Admin ? new
+            {
+                orders = store.Waiting().Select(View).ToList(),
+                sales = store.SalesWaitingList().Select(s => View(s, withBanks: true)).ToList(),
+                recentOrders = store.Recent(RecentMax).Select(View).ToList(),
+                recentSales = store.SalesRecent(RecentMax).Select(s => View(s)).ToList(),
+                monthIn = store.DoneUah(since),
+                monthOut = store.PaidOutUah(since),
+                buyOn = o.Buy,
+            } : null,
         };
     }
 
-    /// <summary>Адміну: хто продає (з банками), кому вже скинуто, закриті й скільки виплачено за місяць.</summary>
-    object SalesDesk()
-    {
-        var open = store.SalesOpen();
-        return new
-        {
-            waiting = open.Where(s => s.Status == "wait").Select(s => View(s, withBanks: true)).ToList(),
-            paid = open.Where(s => s.Status == "paid").Select(s => View(s)).ToList(),
-            recent = store.SalesRecent(RecentMax).Select(s => View(s)).ToList(),
-            monthUah = store.PaidOutUah(Periods.Since("month", clock)),
-        };
-    }
+    // ---------------------------------------------------------------- купити
 
-    // ---------------------------------------------------------------- покупець
-
-    /// <summary>Хто, кому й скільки — однаково для «Далі» і «Скинув». Fail — що не так; інакше продавець, отримувач (нік так,
-    /// як закріплений) і пакет.</summary>
-    (ShardReply? Fail, string Seller, string To, int Uah) Validate(ShardActor me, int? uah, string? forNick)
+    /// <summary>Хто, кому й скільки — однаково для «Далі» і «Скинув». Fail — що не так; інакше отримувач (нік так, як
+    /// закріплений) і сума.</summary>
+    (ShardReply? Fail, string To, int Uah) Validate(ShardActor me, int? uah, string? forNick)
     {
-        if (!me.Account) return (new(false, AccountsOnly, 403), "", "", 0);
-        if (Seller() is not { } seller) return (new(false, Closed), "", "", 0);
-        if (Same(me.Nick, seller)) return (new(false, "Ти ж продавець — у себе черепки не купують"), "", "", 0);
+        if (!me.Account) return (new(false, AccountsOnly, 403), "", 0);
+        if (!BuyOpen) return (new(false, Closed), "", 0);
         if (uah is not { } u || !O.Allows(u))
-            return (new(false, O.Custom ? $"Сума — від {Math.Max(1, O.CustomMin)} до {Num(O.CustomMax)} грн, цілими гривнями" : "Такого пакета нема — обери один із запропонованих"), "", "", 0);
+            return (new(false, O.Custom ? $"Сума — від {Math.Max(1, O.CustomMin)} до {Num(O.CustomMax)} грн, цілими гривнями" : "Такого пакета нема — обери один із запропонованих"), "", 0);
         var name = (forNick ?? "").Trim();
-        if (name.Length == 0 || Same(name, me.Nick)) return (null, seller, me.Nick, u);
+        if (name.Length == 0 || Same(name, me.Nick)) return (null, me.Nick, u);
         return db.FindAccount(name) is { } acc
-            ? (null, seller, acc.Nick, u)
-            : (new(false, $"«{name}» — не акаунт: купити можна лише тому, хто закріпив нік"), "", "", 0);
+            ? (null, acc.Nick, u)
+            : (new(false, $"«{name}» — не акаунт: купити можна лише тому, хто закріпив нік"), "", 0);
     }
 
-    ShardReply? TooMany(string buyer, string seller)
+    ShardReply? TooMany(string buyer)
     {
         var waiting = store.WaitingOf(buyer);
         return waiting < O.PendingMax ? null
-            : new(false, $"Уже {waiting} {Plural(waiting, "оплата чекає", "оплати чекають", "оплат чекають")} підтвердження — дочекайся {NickCases.Genitive(seller)}");
+            : new(false, $"Уже {waiting} {Plural(waiting, "купівля", "купівлі", "купівель")} в обробці — дочекайся адміна");
     }
 
     /// <summary>
-    /// POST /api/shards/check { uah, for? } — «Далі — до оплати»: те саме, що перевірить «Скинув», але ДО реквізитів. Інакше
-    /// про «Вася — не акаунт» чи «уже три оплати чекають» людина дізналась би, коли гроші вже пішли. У відповіді — нік
-    /// отримувача так, як він закріплений.
+    /// POST /api/shards/check { uah, for } — «Далі — до оплати»: те саме, що перевірить «Скинув», але ДО реквізитів. Інакше
+    /// про «Вася — не акаунт» чи «уже три в обробці» людина дізналась би, коли гроші вже пішли.
     /// </summary>
     public ShardReply Check(ShardActor me, int? uah, string? forNick)
     {
-        var (fail, seller, to, u) = Validate(me, uah, forNick);
+        var (fail, to, u) = Validate(me, uah, forNick);
         if (fail is not null) return fail;
-        if (TooMany(me.Nick, seller) is { } many) return many;
+        if (TooMany(me.Nick) is { } many) return many;
         return new(true, "", Order: new { @for = to, gift = !Same(to, me.Nick), uah = u, shards = u * O.Rate });
     }
 
-    /// <summary>POST /api/shards/paid { uah, for? } — «✓ Скинув»: замовлення стає в «чекають» продавця.</summary>
+    /// <summary>POST /api/shards/paid { uah, for } — «✓ Скинув»: купівля в обробці, адміни бачать її в «Заявках».</summary>
     public ShardReply Paid(ShardActor me, int? uah, string? forNick)
     {
-        var (fail, seller, to, u) = Validate(me, uah, forNick);
+        var (fail, to, u) = Validate(me, uah, forNick);
         if (fail is not null) return fail;
         ShardOrder order;
         lock (_gate)
         {
-            if (TooMany(me.Nick, seller) is { } many) return many;
+            if (TooMany(me.Nick) is { } many) return many;
             order = new ShardOrder(0, me.Nick, to, u, u * O.Rate, "wait", clock.UtcNow, null, null, "");
             order = order with { Id = store.Add(order) };
         }
-        log.LogInformation("Черепки: {Buyer} скинув {Uah} грн за {Shards} (для {For}), замовлення {Id}", me.Nick, u, order.Shards, to, order.Id);
+        log.LogInformation("Черепки: {Buyer} скинув {Uah} грн за {Shards} (для {For}), купівля {Id}", me.Nick, u, order.Shards, to, order.Id);
         var whom = order.Gift ? $" для {NickCases.Genitive(to)}" : "";
-        wire.Toast(seller, $"💸 Від {NickCases.Genitive(me.Nick)}: скинуто {u} грн за {Num(order.Shards)} 🏺{whom} — перевір і підтверди");
+        wire.ToastAdmins($"💸 Від {NickCases.Genitive(me.Nick)}: скинуто {u} грн за {Num(order.Shards)} 🏺{whom} — перевір і підтверди");
         Counts();
-        return new(true, $"Записав! Щойно {seller} побачить гроші — черепки впадуть{(order.Gift ? " " + NickCases.Dative(to) : "")}", Order: View(order));
+        return new(true, $"В обробці! Щойно адмін побачить гроші — черепки впадуть{(order.Gift ? " " + NickCases.Dative(to) : "")}", Order: View(order));
     }
 
-    /// <summary>POST /api/shards/{id}/cancel — передумав або натиснув «Скинув» передчасно. Лише поки чекає.</summary>
+    /// <summary>POST /api/shards/{id}/cancel — передумав або натиснув «Скинув» передчасно. Лише поки в обробці.</summary>
     public ShardReply Cancel(ShardActor me, long id)
     {
-        if (!me.Account && !me.Admin) return new(false, AccountsOnly, 403);
+        if (!me.Account) return new(false, AccountsOnly, 403);
         lock (_gate)
         {
-            if (store.Get(id) is not { } o) return new(false, "Нема такого замовлення", 404);
-            if (!me.Admin && !Same(o.Buyer, me.Nick)) return new(false, "Скасувати може лише той, хто купував", 403);
-            if (o.Status != "wait") return new(false, Already(o));
+            if (store.Get(id) is not { } o) return new(false, "Нема такої купівлі", 404);
+            if (!Same(o.Buyer, me.Nick)) return new(false, "Скасувати може лише той, хто купував", 403);
+            if (o.Status != "wait") return new(false, Already(o.Status));
             store.Move(id, "wait", "off", clock.UtcNow, me.Nick);
         }
         Counts();
         return new(true, "Скасовано");
     }
 
-    // ---------------------------------------------------------------- продавець
-
-    /// <summary>POST /api/shards/{id}/ok — «✓ Отримав»: черепки падають тому, кому купили.</summary>
+    /// <summary>POST /api/shards/{id}/ok — «✓ Підтвердити» адміна: гроші прийшли, черепки падають тому, кому купили.</summary>
     public ShardReply Confirm(ShardActor me, long id)
     {
-        var seller = Seller();
-        if (!MayConfirm(me, seller)) return new(false, "Підтверджує продавець", 403);
+        if (!me.Admin) return new(false, AdminOnly, 403);
         ShardOrder o;
         lock (_gate)
         {
-            if (store.Get(id) is not { } got) return new(false, "Нема такого замовлення", 404);
-            if (got.Status != "wait") return new(false, Already(got));
+            if (store.Get(id) is not { } got) return new(false, "Нема такої купівлі", 404);
+            if (got.Status != "wait") return new(false, Already(got.Status));
             o = got;
-            // Спершу гроші з ref на замовлення, тоді стан: падіння між ними лишить «чекає», а повторне «Отримав»
+            // Спершу гроші з ref на купівлю, тоді стан: падіння між ними лишить «в обробці», а повторне «Підтвердити»
             // уже не нарахує вдруге (Duplicate) — лише допише стан
             var text = o.Gift ? $"+{Shards(o.Shards)}: подарунок від {NickCases.Genitive(o.Buyer)}" : $"+{Shards(o.Shards)}: куплено за {o.Uah} грн";
             var r = economy.Grant(o.For, o.Shards, (o.Gift ? "buy-gift:" : "buy:") + o.Id, "buy:" + o.Id, text);
             if (r is not (GrantResult.Applied or GrantResult.Duplicate)) return new(false, "Черепки не нарахувались — спробуй ще раз");
             store.Move(id, "wait", "done", clock.UtcNow, me.Nick);
         }
-        log.LogInformation("Черепки: замовлення {Id} підтвердив {Who}: {For} +{Shards}", o.Id, me.Nick, o.For, o.Shards);
-        if (o.Gift) wire.Toast(o.Buyer, $"✓ Оплату {o.Uah} грн підтверджено: {o.For} отримує {Num(o.Shards)} 🏺");
+        log.LogInformation("Черепки: купівлю {Id} підтвердив {Who}: {For} +{Shards}", o.Id, me.Nick, o.For, o.Shards);
+        if (o.Gift) wire.Toast(o.Buyer, $"✓ Підтверджено: {o.For} отримує {Num(o.Shards)} 🏺 за {o.Uah} грн");
+        wire.Refresh(o.Buyer);
         Counts();
-        return new(true, $"Зараховано: {o.For} +{Num(o.Shards)} 🏺");
+        return new(true, $"Підтверджено: {o.For} +{Num(o.Shards)} 🏺");
     }
 
-    /// <summary>POST /api/shards/{id}/no { note? } — «✕ Не прийшло»: покупець бачить відмову й примітку.</summary>
-    public ShardReply Reject(ShardActor me, long id, string? note)
-    {
-        var seller = Seller();
-        if (!MayConfirm(me, seller)) return new(false, "Відмовляє продавець", 403);
-        var text = (note ?? "").Trim();
-        if (text.Length > NoteMax) return new(false, $"Примітка — до {NoteMax} символів");
-        ShardOrder o;
-        lock (_gate)
-        {
-            if (store.Get(id) is not { } got) return new(false, "Нема такого замовлення", 404);
-            if (got.Status != "wait") return new(false, Already(got));
-            o = got;
-            store.Move(id, "wait", "no", clock.UtcNow, me.Nick, text);
-        }
-        wire.Toast(o.Buyer, $"✕ Оплату {o.Uah} грн не знайдено{(text.Length > 0 ? $": «{text}»" : "")}. Глянь, чи пішов переказ, і напиши {NickCases.Dative(seller ?? me.Nick)}");
-        Counts();
-        return new(true, "Позначено: не прийшло");
-    }
-
-    // ---------------------------------------------------------------- продаж: гравець
+    // ---------------------------------------------------------------- продати
 
     static string SellRef(long id) => "sell:" + id;
     static string BackRef(long id) => "sell-back:" + id;
 
-    /// <summary>POST /api/shards/sell { uah } — «продаю»: черепки відкладаються (списуються), заявка йде адміну.</summary>
+    /// <summary>POST /api/shards/sell { uah } — «Продати»: черепки відкладаються (списуються), продаж в обробці.</summary>
     public ShardReply Sell(ShardActor me, int? uah)
     {
         if (!me.Account) return new(false, SellAccountsOnly, 403);
@@ -577,133 +531,71 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
                     : $"У глечику {Shards(have)} — замало: продати можна від {Shards(min * rate)}");
             var waiting = store.SalesWaiting(me.Nick);
             if (waiting >= o.PendingMax)
-                return new(false, $"Уже {waiting} {Plural(waiting, "заявка чекає", "заявки чекають", "заявок чекають")} адміна — дочекайся");
+                return new(false, $"Уже {waiting} {Plural(waiting, "продаж", "продажі", "продажів")} в обробці — дочекайся адміна");
             sale = new ShardSale(0, me.Nick, u, shards, "wait", clock.UtcNow, null, null, null, null, "");
             sale = sale with { Id = store.AddSale(sale) };
-            // Спершу заявка, тоді списання з її номером: падіння між ними лишить заявку без списання, і «✓ Скинув» адміна
-            // спише ще раз (той самий ref — двічі не спише), а повернення без списання не поверне нічого
+            // Спершу заявка, тоді списання з її номером: падіння між ними лишить заявку без списання, і «Підтвердити» адміна
+            // спише ще раз (той самий ref — двічі не спише), а скасування без списання не поверне нічого
             if (!economy.TrySpend(me.Nick, shards, SellRef(sale.Id), SellRef(sale.Id),
-                    $"−{Shards(shards)}: продаю за {u} грн — відкладено, поки адмін не скине гроші"))
+                    $"−{Shards(shards)}: продаю за {u} грн — відкладено, поки адмін не перекаже гроші"))
             {
                 store.DropSale(sale.Id);
                 return new(false, "Черепків уже не вистачає — щось витратилось саме зараз");
             }
         }
-        log.LogInformation("Черепки: {Seller} продає {Shards} за {Uah} грн, заявка {Id}", me.Nick, shards, u, sale.Id);
-        wire.ToastAdmins($"💰 {me.Nick} продає {Num(shards)} 🏺 за {u} грн — скинь гроші й натисни «✓ Скинув»");
+        log.LogInformation("Черепки: {Seller} продає {Shards} за {Uah} грн, продаж {Id}", me.Nick, shards, u, sale.Id);
+        wire.ToastAdmins($"💰 {me.Nick} продає {Num(shards)} 🏺 за {u} грн — перекажи гроші й підтверди");
         Counts();
-        return new(true, $"Виставлено: {Num(shards)} 🏺 за {u} грн. Щойно адмін скине гроші — натиснеш «✓ Отримав»", Order: View(sale));
+        return new(true, $"В обробці: {Num(shards)} 🏺 за {u} грн. Щойно адмін перекаже гроші — продаж підтвердять", Order: View(sale));
     }
 
-    /// <summary>POST /api/shards/sale/{id}/cancel — передумав, поки адмін не скидав грошей: черепки назад.</summary>
+    /// <summary>POST /api/shards/sale/{id}/cancel — передумав, поки в обробці: черепки назад.</summary>
     public ShardReply CancelSale(ShardActor me, long id)
     {
         if (!me.Account) return new(false, SellAccountsOnly, 403);
         lock (_gate)
         {
-            if (store.GetSale(id) is not { } s) return new(false, "Нема такої заявки", 404);
+            if (store.GetSale(id) is not { } s) return new(false, "Нема такого продажу", 404);
             if (!Same(s.Seller, me.Nick)) return new(false, "Скасувати може лише той, хто продає", 403);
-            if (s.Status != "wait") return new(false, Already(s));
-            if (s.PaidAt is not null) return new(false, MissingNoCancel);
+            if (s.Status != "wait") return new(false, Already(s.Status));
             if (Refund(s, $"+{Shards(s.Shards)}: продаж скасовано — черепки назад у глечику") is { } fail) return fail;
-            store.CloseSale(id, "wait", "off", clock.UtcNow, me.Nick);
+            store.SaleOff(id, clock.UtcNow, me.Nick);
         }
         Counts();
         return new(true, "Скасовано — черепки повернулись у глечик");
     }
 
-    /// <summary>POST /api/shards/sale/{id}/ok — «✓ Отримав»: гроші прийшли, продано.</summary>
-    public ShardReply SaleReceived(ShardActor me, long id)
-    {
-        if (!me.Account) return new(false, SellAccountsOnly, 403);
-        ShardSale s;
-        lock (_gate)
-        {
-            if (store.GetSale(id) is not { } got) return new(false, "Нема такої заявки", 404);
-            if (!Same(got.Seller, me.Nick)) return new(false, "Підтверджує той, хто продає", 403);
-            if (got.Status != "paid") return new(false, Already(got));
-            s = got;
-            store.CloseSale(id, "paid", "done", clock.UtcNow, me.Nick);
-        }
-        log.LogInformation("Черепки: заявку {Id} закрито — {Seller} отримав {Uah} грн", s.Id, s.Seller, s.Uah);
-        wire.Sale(s.Seller);
-        return new(true, $"Продано: {Num(s.Shards)} 🏺 за {s.Uah} грн");
-    }
-
-    /// <summary>POST /api/shards/sale/{id}/missing { note? } — «✕ Не прийшло»: заявка знову в адміна, з приміткою.</summary>
-    public ShardReply SaleMissing(ShardActor me, long id, string? note)
-    {
-        if (!me.Account) return new(false, SellAccountsOnly, 403);
-        var text = (note ?? "").Trim();
-        if (text.Length > NoteMax) return new(false, $"Примітка — до {NoteMax} символів");
-        ShardSale s;
-        lock (_gate)
-        {
-            if (store.GetSale(id) is not { } got) return new(false, "Нема такої заявки", 404);
-            if (!Same(got.Seller, me.Nick)) return new(false, "Це не твоя заявка", 403);
-            if (got.Status != "paid") return new(false, Already(got));
-            s = got;
-            store.SaleMissing(id, text.Length > 0 ? text : "гроші не прийшли");
-        }
-        wire.ToastAdmins($"⚠ {s.Seller}: {s.Uah} грн за {Num(s.Shards)} 🏺 не прийшли{(text.Length > 0 ? $" — «{text}»" : "")}. Глянь переказ");
-        wire.Sale(s.Seller);
-        Counts();
-        return new(true, "Позначено: не прийшло — адмін перевірить переказ");
-    }
-
-    // ---------------------------------------------------------------- продаж: адмін
-
-    /// <summary>POST /api/shards/sale/{id}/paid — «✓ Скинув»: адмін скинув гроші, гравець має підтвердити.</summary>
-    public ShardReply SalePaid(ShardActor me, long id)
+    /// <summary>POST /api/shards/sale/{id}/ok — «✓ Підтвердити» адміна: гроші переказано — продано, черепки зникають із гри.</summary>
+    public ShardReply ConfirmSale(ShardActor me, long id)
     {
         if (!me.Admin) return new(false, AdminOnly, 403);
         ShardSale s;
         lock (_gate)
         {
-            if (store.GetSale(id) is not { } got) return new(false, "Нема такої заявки", 404);
-            if (got.Status != "wait") return new(false, Already(got));
+            if (store.GetSale(id) is not { } got) return new(false, "Нема такого продажу", 404);
+            if (got.Status != "wait") return new(false, Already(got.Status));
             s = got;
             // Черепки мусять бути відкладені. Звичайно це повтор (той самий ref — без другого списання); якщо ж заявка пережила
             // падіння до списання, списує зараз, а не вистачило — заявку закрито
             if (!economy.TrySpend(s.Seller, s.Shards, SellRef(id), SellRef(id)))
             {
-                store.CloseSale(id, "wait", "no", clock.UtcNow, me.Nick, "черепків уже нема");
+                store.SaleOff(id, clock.UtcNow, me.Nick, "черепків уже нема");
+                wire.Refresh(s.Seller);
                 Counts();
-                return new(false, $"У {NickCases.Genitive(s.Seller)} уже нема цих черепків — заявку закрито");
+                return new(false, $"У {NickCases.Genitive(s.Seller)} уже нема цих черепків — продаж закрито, гроші не переказуй");
             }
-            store.SalePaid(id, clock.UtcNow, me.Nick);
+            store.SaleDone(id, clock.UtcNow, me.Nick);
         }
-        log.LogInformation("Черепки: заявка {Id} — {Who} скинув {Seller} {Uah} грн", s.Id, me.Nick, s.Seller, s.Uah);
-        wire.Toast(s.Seller, $"💸 Адмін скинув {s.Uah} грн за {Num(s.Shards)} 🏺 — глянь у банк і натисни «✓ Отримав»");
-        wire.Sale(s.Seller);
+        log.LogInformation("Черепки: продаж {Id} — {Who} переказав {Seller} {Uah} грн", s.Id, me.Nick, s.Seller, s.Uah);
+        wire.Toast(s.Seller, $"✓ Продано: адмін переказав {s.Uah} грн за {Num(s.Shards)} 🏺 — глянь у банк");
+        wire.Refresh(s.Seller);
         Counts();
-        return new(true, $"Позначено: {s.Uah} грн скинуто — чекаємо «✓ Отримав» від {NickCases.Genitive(s.Seller)}");
-    }
-
-    /// <summary>POST /api/shards/sale/{id}/no { note? } — «✕ Не куплю»: черепки повертаються гравцю.</summary>
-    public ShardReply SaleRefuse(ShardActor me, long id, string? note)
-    {
-        if (!me.Admin) return new(false, AdminOnly, 403);
-        var text = (note ?? "").Trim();
-        if (text.Length > NoteMax) return new(false, $"Примітка — до {NoteMax} символів");
-        ShardSale s;
-        lock (_gate)
-        {
-            if (store.GetSale(id) is not { } got) return new(false, "Нема такої заявки", 404);
-            if (got.Status != "wait") return new(false, Already(got));
-            s = got;
-            if (Refund(s, $"+{Shards(s.Shards)}: продаж не відбувся — черепки назад у глечику") is { } fail) return fail;
-            store.CloseSale(id, "wait", "no", clock.UtcNow, me.Nick, text);
-        }
-        wire.Toast(s.Seller, $"✕ Адмін не купив {Num(s.Shards)} 🏺{(text.Length > 0 ? $": «{text}»" : "")} — черепки повернулись у глечик");
-        wire.Sale(s.Seller);
-        Counts();
-        return new(true, "Позначено: не куплено, черепки повернуто");
+        return new(true, $"Підтверджено: {NickCases.Dative(s.Seller)} {s.Uah} грн за {Num(s.Shards)} 🏺");
     }
 
     /// <summary>
-    /// Повернути відкладене. Спершу гроші з ref на заявку, тоді стан (як у <see cref="Confirm"/>): повтор не поверне двічі.
-    /// Лише те, що справді списали: заявка без списання (падіння між записом і списанням) повернула б черепки з нічого.
+    /// Повернути відкладене. Спершу гроші з ref на заявку, тоді стан: повтор не поверне двічі. Лише те, що справді
+    /// списали: заявка без списання (падіння між записом і списанням) повернула б черепки з нічого.
     /// </summary>
     ShardReply? Refund(ShardSale s, string text)
     {
@@ -713,22 +605,36 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
         return r is GrantResult.Applied or GrantResult.Duplicate ? null : new(false, "Черепки не повернулись — спробуй ще раз");
     }
 
-    static string Already(ShardSale s) => s.Status switch
-    {
-        "wait" => "Заявка ще чекає адміна",
-        "paid" => "Адмін уже скинув гроші — глянь у банк",
-        "done" => "Уже продано",
-        "no" => "Адмін уже відмовив — черепки повернуто",
-        "off" => "Уже скасовано",
-        _ => "Уже розглянуто",
-    };
+    // ---------------------------------------------------------------- банки сайту
 
-    static string Already(ShardOrder o) => o.Status switch
+    public const int BanksMax = 6;
+
+    /// <summary>PUT /api/shards/banks { banks } — адмін вписує, куди покупцям скидати гроші (ті самі поля, що в Падельні).</summary>
+    public ShardReply SetBanks(ShardActor me, PadelMoney.BankRequest[]? list)
     {
-        "done" => "Уже зараховано",
-        "no" => "Уже позначено, що оплата не прийшла",
+        if (!me.Admin) return new(false, "Картки сайту міняє адмін", 403);
+        var given = list ?? [];
+        if (given.Length > BanksMax) return new(false, $"Банків — до {BanksMax}");
+        var clean = new List<PadelBank>();
+        foreach (var b in given)
+        {
+            var error = PadelMoney.BankError(b);
+            if (error.Length > 0) return new(false, error);
+            var digits = (b.Card ?? "").Replace(" ", "").Replace("-", "").Replace(" ", "");
+            var link = (b.Link ?? "").Trim();
+            clean.Add(new PadelBank("b" + Guid.NewGuid().ToString("N")[..8], b.Bank!.Trim().ToLowerInvariant(), (b.Title ?? "").Trim(),
+                digits.Length > 0 ? digits : null, link.Length > 0 ? link : null));
+        }
+        store.SetShopBanks(clean, clock.UtcNow);
+        log.LogInformation("Черепки: {Who} змінив картки сайту ({Count})", me.Nick, clean.Count);
+        return new(true, clean.Count > 0 ? "Збережено — покупці бачать, куди скидати" : "Карток нема — купівля закрита", Order: BanksView(clean));
+    }
+
+    static string Already(string status) => status switch
+    {
+        "done" => "Уже підтверджено",
         "off" => "Уже скасовано",
-        _ => "Уже розглянуто",
+        _ => "Уже не в обробці",
     };
 
     static string Plural(int n, string one, string few, string many)
@@ -743,7 +649,8 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
 public static class ShardShopSetup
 {
     public sealed record PaidRequest(int? Uah, string? For);
-    public sealed record NoteRequest(string? Note);
+    public sealed record SellRequest(int? Uah);
+    public sealed record BanksRequest(PadelMoney.BankRequest[]? Banks);
 
     public static IServiceCollection AddHlechykyShardShop(this IServiceCollection services)
     {
@@ -761,31 +668,14 @@ public static class ShardShopSetup
         api.MapGet("", View);
         api.MapPost("/check", Check);
         api.MapPost("/paid", Paid);
-        api.MapPost("/{id:long}/ok", Confirm);
-        api.MapPost("/{id:long}/no", Reject);
         api.MapPost("/{id:long}/cancel", Cancel);
+        api.MapPost("/{id:long}/ok", Confirm);
         api.MapPost("/sell", Sell);
         api.MapPost("/sale/{id:long}/cancel", CancelSale);
-        api.MapPost("/sale/{id:long}/ok", SaleReceived);
-        api.MapPost("/sale/{id:long}/missing", SaleMissing);
-        api.MapPost("/sale/{id:long}/paid", SalePaid);
-        api.MapPost("/sale/{id:long}/no", SaleRefuse);
+        api.MapPost("/sale/{id:long}/ok", ConfirmSale);
+        api.MapPut("/banks", SetBanks);
         return app;
     }
-
-    public sealed record SellRequest(int? Uah);
-
-    public static IResult Sell(HttpContext c, SellRequest b, ShardShop shop) => Reply(shop.Sell(ShardActor.Of(c), b.Uah));
-
-    public static IResult CancelSale(long id, HttpContext c, ShardShop shop) => Reply(shop.CancelSale(ShardActor.Of(c), id));
-
-    public static IResult SaleReceived(long id, HttpContext c, ShardShop shop) => Reply(shop.SaleReceived(ShardActor.Of(c), id));
-
-    public static IResult SaleMissing(long id, HttpContext c, NoteRequest? b, ShardShop shop) => Reply(shop.SaleMissing(ShardActor.Of(c), id, b?.Note));
-
-    public static IResult SalePaid(long id, HttpContext c, ShardShop shop) => Reply(shop.SalePaid(ShardActor.Of(c), id));
-
-    public static IResult SaleRefuse(long id, HttpContext c, NoteRequest? b, ShardShop shop) => Reply(shop.SaleRefuse(ShardActor.Of(c), id, b?.Note));
 
     public static object View(HttpContext c, ShardShop shop) => shop.View(ShardActor.Of(c));
 
@@ -793,11 +683,17 @@ public static class ShardShopSetup
 
     public static IResult Paid(HttpContext c, PaidRequest b, ShardShop shop) => Reply(shop.Paid(ShardActor.Of(c), b.Uah, b.For));
 
+    public static IResult Cancel(long id, HttpContext c, ShardShop shop) => Reply(shop.Cancel(ShardActor.Of(c), id));
+
     public static IResult Confirm(long id, HttpContext c, ShardShop shop) => Reply(shop.Confirm(ShardActor.Of(c), id));
 
-    public static IResult Reject(long id, HttpContext c, NoteRequest? b, ShardShop shop) => Reply(shop.Reject(ShardActor.Of(c), id, b?.Note));
+    public static IResult Sell(HttpContext c, SellRequest b, ShardShop shop) => Reply(shop.Sell(ShardActor.Of(c), b.Uah));
 
-    public static IResult Cancel(long id, HttpContext c, ShardShop shop) => Reply(shop.Cancel(ShardActor.Of(c), id));
+    public static IResult CancelSale(long id, HttpContext c, ShardShop shop) => Reply(shop.CancelSale(ShardActor.Of(c), id));
+
+    public static IResult ConfirmSale(long id, HttpContext c, ShardShop shop) => Reply(shop.ConfirmSale(ShardActor.Of(c), id));
+
+    public static IResult SetBanks(HttpContext c, BanksRequest b, ShardShop shop) => Reply(shop.SetBanks(ShardActor.Of(c), b.Banks));
 
     static IResult Reply(ShardReply r)
     {
