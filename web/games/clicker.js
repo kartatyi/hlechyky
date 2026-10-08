@@ -1225,7 +1225,15 @@
     b.hidden = false;
     const h = b.offsetHeight || 68;
     // Телефон: угорі під шапкою липне мініплашка з «🏺 лови!» — смуга глека починається під нею, щоб не налазити.
-    const top = band.top + (window.innerWidth <= 560 ? 56 : 10);
+    let top = band.top + (window.innerWidth <= 560 ? 56 : 10);
+    // Над відкритим вікном кола «✕» лишається вільним: якщо смуга глека йде крізь нього (телефон — вікно на всю
+    // ширину), глек починає політ під ним. Міряємо раз на глек, не щокадру.
+    const ovx = H.api.overlayOpen(st) && st.ov && st.ov.x;
+    if (ovx) {
+      const xr = ovx.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      if (xr.height && xr.right > br.left && xr.left < br.right) top = Math.max(top, Math.round(xr.bottom) + 8);
+    }
     b.style.setProperty('--clk-flytop', top + 'px');
     b.style.setProperty('--clk-flydrop', Math.max(40, band.bottom - 12 - h - top) + 'px');
     b.style.setProperty('--clk-fallms', (f.until - f.at) + 'ms');
