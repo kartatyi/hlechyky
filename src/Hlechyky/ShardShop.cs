@@ -261,28 +261,51 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
 
     // ---------------------------------------------------------------- покупець
 
+    /// <summary>Хто, кому й скільки — однаково для «Далі» і «Скинув». Fail — що не так; інакше продавець, отримувач (нік так,
+    /// як закріплений) і пакет.</summary>
+    (ShardReply? Fail, string Seller, string To, int Uah) Validate(ShardActor me, int? uah, string? forNick)
+    {
+        if (!me.Account) return (new(false, AccountsOnly, 403), "", "", 0);
+        if (Seller() is not { } seller) return (new(false, Closed), "", "", 0);
+        if (Same(me.Nick, seller)) return (new(false, "Ти ж продавець — у себе черепки не купують"), "", "", 0);
+        if (uah is not { } u || !O.PackList.Contains(u)) return (new(false, "Такого пакета нема — обери один із запропонованих"), "", "", 0);
+        var name = (forNick ?? "").Trim();
+        if (name.Length == 0 || Same(name, me.Nick)) return (null, seller, me.Nick, u);
+        return db.FindAccount(name) is { } acc
+            ? (null, seller, acc.Nick, u)
+            : (new(false, $"«{name}» — не акаунт: купити можна лише тому, хто закріпив нік"), "", "", 0);
+    }
+
+    ShardReply? TooMany(string buyer, string seller)
+    {
+        var waiting = store.WaitingOf(buyer);
+        return waiting < O.PendingMax ? null
+            : new(false, $"Уже {waiting} {Plural(waiting, "оплата чекає", "оплати чекають", "оплат чекають")} підтвердження — дочекайся {NickCases.Genitive(seller)}");
+    }
+
+    /// <summary>
+    /// POST /api/shards/check { uah, for? } — «Далі — до оплати»: те саме, що перевірить «Скинув», але ДО реквізитів. Інакше
+    /// про «Вася — не акаунт» чи «уже три оплати чекають» людина дізналась би, коли гроші вже пішли. У відповіді — нік
+    /// отримувача так, як він закріплений.
+    /// </summary>
+    public ShardReply Check(ShardActor me, int? uah, string? forNick)
+    {
+        var (fail, seller, to, u) = Validate(me, uah, forNick);
+        if (fail is not null) return fail;
+        if (TooMany(me.Nick, seller) is { } many) return many;
+        return new(true, "", Order: new { @for = to, gift = !Same(to, me.Nick), uah = u, shards = u * O.Rate });
+    }
+
     /// <summary>POST /api/shards/paid { uah, for? } — «✓ Скинув»: замовлення стає в «чекають» продавця.</summary>
     public ShardReply Paid(ShardActor me, int? uah, string? forNick)
     {
-        if (!me.Account) return new(false, AccountsOnly, 403);
-        if (Seller() is not { } seller) return new(false, Closed);
-        if (Same(me.Nick, seller)) return new(false, "Ти ж продавець — у себе черепки не купують");
-        var o = O;
-        if (uah is not { } u || !o.PackList.Contains(u)) return new(false, "Такого пакета нема — обери один із запропонованих");
-        var to = me.Nick;
-        var name = (forNick ?? "").Trim();
-        if (name.Length > 0 && !Same(name, me.Nick))
-        {
-            if (db.FindAccount(name) is not { } acc) return new(false, $"«{name}» — не акаунт: купити можна лише тому, хто закріпив нік");
-            to = acc.Nick;
-        }
+        var (fail, seller, to, u) = Validate(me, uah, forNick);
+        if (fail is not null) return fail;
         ShardOrder order;
         lock (_gate)
         {
-            var waiting = store.WaitingOf(me.Nick);
-            if (waiting >= o.PendingMax)
-                return new(false, $"Уже {waiting} {Plural(waiting, "оплата чекає", "оплати чекають", "оплат чекають")} підтвердження — дочекайся {NickCases.Genitive(seller)}");
-            order = new ShardOrder(0, me.Nick, to, u, u * o.Rate, "wait", clock.UtcNow, null, null, "");
+            if (TooMany(me.Nick, seller) is { } many) return many;
+            order = new ShardOrder(0, me.Nick, to, u, u * O.Rate, "wait", clock.UtcNow, null, null, "");
             order = order with { Id = store.Add(order) };
         }
         log.LogInformation("Черепки: {Buyer} скинув {Uah} грн за {Shards} (для {For}), замовлення {Id}", me.Nick, u, order.Shards, to, order.Id);
@@ -389,6 +412,7 @@ public static class ShardShopSetup
     {
         var api = app.MapGroup("/api/shards");
         api.MapGet("", View);
+        api.MapPost("/check", Check);
         api.MapPost("/paid", Paid);
         api.MapPost("/{id:long}/ok", Confirm);
         api.MapPost("/{id:long}/no", Reject);
@@ -397,6 +421,8 @@ public static class ShardShopSetup
     }
 
     public static object View(HttpContext c, ShardShop shop) => shop.View(ShardActor.Of(c));
+
+    public static IResult Check(HttpContext c, PaidRequest b, ShardShop shop) => Reply(shop.Check(ShardActor.Of(c), b.Uah, b.For));
 
     public static IResult Paid(HttpContext c, PaidRequest b, ShardShop shop) => Reply(shop.Paid(ShardActor.Of(c), b.Uah, b.For));
 

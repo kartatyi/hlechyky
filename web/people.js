@@ -573,6 +573,7 @@
     wireHead(root, nick, mine);
     o.wireRows(root);
     root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
+    root.querySelectorAll('[data-buy]').forEach((b) => b.onclick = () => window.HBuy && HBuy.open());
   }
 
   /// «🎺 Гімн: Трембіта ▶» — ▶ грає тим самим плеєром, що й за столом (app.js), друге натискання зупиняє.
@@ -633,8 +634,11 @@
       }
     }
     if (mine) body += '<div class="muted small wc-how">Черепки капають за радіо (увімкнений плеєр), партії, щоденний глек і ачівки. '
-      + 'Витрачаються в Лавці Дядька Глека (усе там — назавжди), на бан треку й викуп із бану.</div>';
-    return '<section class="panel wcard"><h3>🏺 Черепки' + (mine && o.me.account ? ' <button type="button" class="ghost wc-more" data-go="#lavka">🛍 Лавка →</button>' : '') + '</h3>' + body + '</section>';
+      + 'Витрачаються в Лавці Дядька Глека (усе там — назавжди), на бан треку й викуп із бану. Можна й купити за гривні.</div>';
+    return '<section class="panel wcard"><h3>🏺 Черепки' + (mine && o.me.account
+      ? (window.HBuy ? ' <button type="button" class="ghost wc-more" data-buy>' + esc(HBuy.label()) + '</button>' : '')
+        + ' <button type="button" class="ghost wc-more" data-go="#lavka">🛍 Лавка →</button>'
+      : '') + '</h3>' + body + '</section>';
   }
 
   function timeCard(p, week) {

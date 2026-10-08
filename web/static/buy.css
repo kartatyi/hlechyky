@@ -1,0 +1,68 @@
+/* Купити черепки (web/buy.js) — вікно поверх сайту. Рядок банку — як у Падельні (web/padel/money.css). */
+.by-modal .card.by-card { width: min(94vw, 460px); gap: 10px; }
+.by-card h3 span { flex: 1; }
+.by-card h4 { margin: 6px 0 0; font-size: 14px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.by-x { padding: 4px 8px; }
+.by-lock { background: var(--bg2); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.45; }
+
+/* пакети */
+.by-packs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.by-pack { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 8px; border-radius: 12px; }
+.by-pack b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.by-pack span { color: var(--muted); font-size: 13px; }
+.by-pack.on { background: #4a3a06; border-color: var(--accent2); }
+.by-pack.on b { color: var(--accent); }
+
+/* кому */
+.by-for { display: flex; flex-direction: column; gap: 6px; }
+.by-seg { display: flex; gap: 6px; }
+.by-seg button { flex: 1; }
+.by-seg button.on { background: #4a3a06; border-color: var(--accent2); color: var(--accent); }
+.by-for .by-to { width: 100%; min-width: 0; box-sizing: border-box; }
+.by-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.by-chips .chip { cursor: pointer; border: 1px solid transparent; font-size: 13px; padding: 4px 10px; color: var(--text); }
+.by-chips .chip.on { border-color: var(--accent2); color: var(--accent); }
+
+/* оплата */
+.by-sum { font-size: 15px; line-height: 1.45; }
+.by-sum b { color: var(--accent); }
+.by-banks { display: flex; flex-direction: column; gap: 6px; }
+.by-bank { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.by-bk { font-size: 11.5px; font-weight: 800; padding: 1px 8px; border-radius: 6px; background: var(--panel3); color: var(--text); white-space: nowrap; }
+.by-bk.by-mono { background: #111; color: #fff; box-shadow: inset 0 0 0 1px #444; }
+.by-bk.by-privat { background: #5c9b1e; color: #fff; }
+.by-bk.by-pumb { background: #c8102e; color: #fff; }
+.by-bk.by-abank { background: #2f9e44; color: #fff; }
+.by-bk.by-sense { background: #e6007e; color: #fff; }
+.by-bk.by-izi { background: #2b6ef3; color: #fff; }
+.by-btitle { font-weight: 600; font-size: 14px; }
+.by-cardno { font-size: 16px; font-weight: 700; letter-spacing: .04em; flex: 1 1 auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.by-copy { font-size: 13px; padding: 4px 10px; }
+.by-jar { display: inline-flex; align-items: center; font-size: 13px; padding: 4px 10px; border-radius: 10px; background: var(--panel2);
+  border: 1px solid var(--line); color: var(--text); text-decoration: none; }
+.by-jar:hover { background: var(--panel3); }
+
+/* замовлення */
+.by-list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow: auto; }
+.by-ord { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.by-ord.st-wait { border-color: var(--accent2); }
+.by-ord.st-off { opacity: .7; }
+.by-ord-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.by-ord-h .chip { margin-left: auto; }
+.by-uah { font-weight: 700; color: var(--accent); }
+.by-refuse { display: flex; flex-direction: column; gap: 6px; }
+.by-refuse input { width: 100%; min-width: 0; box-sizing: border-box; }
+.by-cancel { align-self: flex-start; padding: 2px 8px; font-size: 13px; }
+
+/* кружечок «чекають» на гаманці в шапці — продавцю */
+.wallet .by-badge { margin-left: 4px; }
+/* «➕ Докупити» біля «У глечику» в Лавці */
+.lv-bal .lv-buy { margin-left: 6px; padding: 2px 8px; font-size: 13px; }
+
+@media (max-width: 420px) {
+  .by-modal .card.by-card { padding: 16px; }
+  .by-cardno { font-size: 15px; }
+  .by-pack b { font-size: 16px; }
+}
+/* дві кнопки в заголовку картки «Черепки»: праворуч разом, а не розкидані */
+.wcard h3 .wc-more + .wc-more { margin-left: 0; }

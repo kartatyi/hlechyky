@@ -162,6 +162,23 @@ public sealed class ShardShopTests : IDisposable
     }
 
     [Fact]
+    public void Check_before_the_bank_details_says_the_same_as_paid_and_records_nothing()
+    {
+        Assert.Contains("не акаунт", _shop.Check(Olia, 50, "Вася").Message);
+        Assert.Contains("пакета", _shop.Check(Olia, 75, null).Message);
+        Assert.Equal(403, _shop.Check(new ShardActor("гість Вася", false, false), 50, null).Status);
+        var ok = _shop.Check(Olia, 50, "петро");
+        Assert.True(ok.Ok, ok.Message);
+        var v = Views.Json(ok.Order);
+        Assert.Equal(("Петро", true, 5_000), (v.GetProperty("for").GetString(), v.GetProperty("gift").GetBoolean(), v.GetProperty("shards").GetInt32()));
+        Assert.Empty(Views.Json(_shop.View(Olia)).GetProperty("mine").EnumerateArray());
+        Assert.Empty(_wire.Toasts);
+
+        for (var i = 0; i < 3; i++) Order(_shop.Paid(Olia, 50, null));
+        Assert.Contains("Уже 3 оплати чекають", _shop.Check(Olia, 50, null).Message);
+    }
+
+    [Fact]
     public void Buyer_cancels_only_own_waiting_order()
     {
         var id = Order(_shop.Paid(Olia, 50, null));

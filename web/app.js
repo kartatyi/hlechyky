@@ -4013,6 +4013,7 @@
     conn.on('fbDev', fbOnDev);         // «💡» розробнику: нова записка чи відповідь людини
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
     if (window.HVoice) HVoice.attach(conn);   // 🎙 Посиденьки — web/voice.js
+    if (window.HBuy) HBuy.attach(conn);       // купити черепки — web/buy.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
     // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
     // лишався б без кнопки аж до наступної новини з лобі.
@@ -4191,6 +4192,8 @@
     // 😈 на кого наслати прокльон: хто зараз на сайті (гостей Лавка відсіє сама)
     online: () => (state && state.online) || [] });
   HLavka.loadLooks();
+  // 🏺 Купити черепки за гривні (web/buy.js): вікно з пакетами; продавцю — «чекають підтвердження»
+  if (window.HBuy) HBuy.init({ esc, api, toast, busy, me, askNick, dayTime, online: () => (state && state.online) || [] });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🎙 Посиденьки (web/voice.js): duck — притишити радіо (1 — як на повзунку), onRoster — хто в голосі змінився.
@@ -4238,6 +4241,7 @@
       paintNick();
       connect();
       if (me.account) HLavka.loadMine().then(lavkaChanged);
+      if (window.HBuy) HBuy.ready();
       if (plain) askNick(true, 'register', plain);
       // «💡»: адміну — скільки записок чекає, решті — у скількох своїх записках нова відповідь розробника.
       if (me.role === 'admin') loadFeedbackCount(); else loadMyFeedback(false);
