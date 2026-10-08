@@ -216,7 +216,11 @@
     const mine = myWaitingRoom();
     if (mine && w.online && !(w.room && w.room.id === mine.id)) out.push('<button type="button" data-pa="invite" title="Гукнути за мій стіл">📣 Гукнути</button>');
     if (w.room && w.room.canSit) out.push('<button type="button" data-pa="sit" title="Сісти за той самий стіл">🎲 Підсісти</button>');
-    if (me.account && !isGuestNick(nick)) out.push('<button type="button" data-pa="gift" title="Подарувати щось із Лавки Дядька Глека — лишиться назавжди">🎁 Подарувати</button>');
+    if (me.account && !isGuestNick(nick)) {
+      out.push('<button type="button" data-pa="gift" title="Подарувати щось із Лавки Дядька Глека — лишиться назавжди">🎁 Подарувати</button>');
+      // 😈 прокльон (docs/games/specs/flair.md §1.5): на трьох програшах людини звучить твій звук; від кого — секрет
+      out.push('<button type="button" data-pa="curse" title="Наслати прокльон із Лавки: звучатиме на трьох програшах цієї людини, від кого — секрет">😈 Прокльон</button>');
+    }
     return out.join('');
   }
   function wireActions(box, nick, after) {
@@ -225,6 +229,7 @@
       const g = G();
       if (a === 'profile') o.go('#who/' + encodeURIComponent(nick));
       else if (a === 'gift') o.go('#lavka/gift/' + encodeURIComponent(nick));
+      else if (a === 'curse') o.go('#lavka/curse/' + encodeURIComponent(nick));
       else if (a === 'mention') o.mention(nick);
       else if (a === 'invite') {
         const room = myWaitingRoom();

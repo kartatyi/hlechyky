@@ -525,8 +525,20 @@ public sealed record TableReact(string RoomId, string Nick, int? Seat, int E) : 
 /// <summary>
 /// Гімн переможця (docs/games/specs/anthem.md §2): партія скінчилась перемогою людини з гімном — він звучить у всіх, хто на
 /// стіл дивиться. <paramref name="Round"/> — щоб браузер не зіграв той самий гімн двічі (реконект, дві вкладки).
+/// <paramref name="Fx"/> — святкування перемоги (docs/games/specs/flair.md §3), id або null; коли в переможця є лише
+/// святкування, <paramref name="Title"/>, <paramref name="Emoji"/> і <paramref name="Url"/> — null (анімація без звуку).
+/// <paramref name="Len"/> — скільки звучить гімн, секунди (null — гімну нема чи довжина невідома): святкування в
+/// кожній вкладці триває стільки ж (не довше 15 с), а без неї — 6 с.
 /// </summary>
-public sealed record Anthem(string RoomId, int Round, string Nick, string Title, string Emoji, string Url) : Outgoing;
+public sealed record Anthem(string RoomId, int Round, string Nick, string? Title, string? Emoji, string? Url, string? Fx = null,
+    double? Len = null) : Outgoing;
+
+/// <summary>
+/// Прокльон спрацював (docs/games/specs/flair.md §1.3): <paramref name="Nick"/> програв, і за столом звучить те, що на нього
+/// наслали. Від кого — тут нема. <paramref name="Left"/> — скільки програшів прокльону ще лишилось (0 — розрядився).
+/// Летить тим самим шляхом, що й <see cref="Anthem"/>.
+/// </summary>
+public sealed record Curse(string RoomId, int Round, string Nick, string Title, string Emoji, string Url, int Left) : Outgoing;
 
 /// <summary>Уся балачка столу одному з'єднанню, щойно воно підписалось на стіл (F5, реконект, зайшов подивитись).</summary>
 public sealed record TableHistory(string RoomId, string ConnectionId, IReadOnlyList<TableLine> Lines) : Outgoing;
@@ -541,8 +553,22 @@ public sealed record ToastFor(string Nick, string Text, string Kind) : Outgoing;
 /// <paramref name="To"/> — особистий заклик («Влад кличе тебе в мафію», кнопка «📣 Покликати» і /клич): летить
 /// лише на з'єднання цього ніка й несе <c>personal: true</c>. null — заклик для всіх (<c>personal: false</c>).
 /// </para>
+/// <para>
+/// <paramref name="Ring"/> — «Свій дзвінок» того, хто кличе (docs/games/specs/flair.md §2): лише в особистому заклику;
+/// null — без дзвінка (поля <c>ring</c> на дроті нема).
+/// </para>
 /// </summary>
-public sealed record Invite(string RoomId, string By, string Text, string? To = null) : Outgoing;
+public sealed record Invite(string RoomId, string By, string Text, string? To = null, InviteRing? Ring = null) : Outgoing;
+
+/// <summary>Дзвінок особистого заклику: який гімн і як підписати.</summary>
+public sealed record InviteRing(string Url, string Title, string Emoji);
+
+/// <summary>Чий дзвінок (Лавка). Інтерфейс — щоб заклики жили й перевірялись без Лавки.</summary>
+public interface IRings
+{
+    /// <summary>Дзвінок <paramref name="nick"/>, який зазвучить; null — нема вміння, не обрано або нема чого грати.</summary>
+    InviteRing? RingOf(string nick);
+}
 
 /// <summary>
 /// Рядок-заклик у Балачках (kind <c>invite</c>): <paramref name="Text"/> без ніка — «кличе в мафію», бо нік іде

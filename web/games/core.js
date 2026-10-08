@@ -116,6 +116,12 @@
   let stopAnthem = () => {};                                      // app.js: замовкнути гімн
   const anthemsPlayed = new Set();                                // 'стіл:раунд', що вже звучали в цій вкладці
   let anthemAt = null;                                            // гімн столу, що звучить: { id, round, a, here, started }
+  let fx = null;                                                  // app.js: playFx(host, id, opt) — святкування на картці
+  const anthemsWaiting = new Set();                               // 'стіл:раунд' гімнів, що ще заявляються між вкладками
+  const anthemClaims = new Map();                                 // 'стіл:раунд' → обіцянка заявки гімну: за нею йде й прокльон
+  let curseAt = null;                                             // прокльон, що звучить: { id, round, c, here, started }
+  let curseNext = null;                                           // прокльон у черзі за гімном: { k, c, timer }
+  const fxOn = {};                                                // стіл → { k, stop, timer }: святкування, що йде
   let online = () => [];                                          // app.js: хто зараз на сайті
   let askNick = () => {};                                         // app.js: картка «Хто прийшов?»
   let filter = localStorage.getItem('gamesFilter') || 'all';
@@ -2108,73 +2114,202 @@
   // штампом часу й позначкою вкладки: хто записав останнім, той і грає (решта, перечитавши, бачать чужу позначку).
   // Вкладка, де відкрито сам стіл, заявляється одразу, решта — трохи згодом: так гімн звучить там, де на нього дивляться.
   // Заявки, старші за хвилину, — сміття від закритих вкладок: не заважають і прибираються.
+  // Прокльон іде за гімном своєї партії: грає та вкладка, що взяла гімн; без гімну — заявляється сам, своєю приставкою.
+  // Дзвінок — теж своєю; його заявка живе 8 с — наступний заклик тієї самої людини за той самий стіл має задзвеніти знову.
   const ANTHEM_CLAIM = 'anthemClaim:';
+  const CURSE_CLAIM = 'curseClaim:';
+  const RING_CLAIM = 'ringClaim:';
   const ANTHEM_CLAIM_MS = 60 * 1000;
+  const RING_CLAIM_MS = 8 * 1000;
   const tabMark = Math.random().toString(36).slice(2, 10);
-  function readClaim(key, now) {
+  function readClaim(key, now, ttl) {
     const v = localStorage.getItem(key);
     if (!v) return null;
     const [at, tab] = v.split(' ');
-    return now - (+at || 0) < ANTHEM_CLAIM_MS ? tab || '' : null;
+    return now - (+at || 0) < (ttl || ANTHEM_CLAIM_MS) ? tab || '' : null;
   }
-  function claimAnthem(k, here) {
+  function claimAnthem(k, here, prefix, ttl) {
+    prefix = prefix || ANTHEM_CLAIM;
     return new Promise((done) => {
-      const key = ANTHEM_CLAIM + k;
+      const key = prefix + k;
       const step = (fn, ms) => setTimeout(() => { try { fn(); } catch { done(true); } }, ms);   // приватне вікно — граємо самі
       step(() => {
         const now = Date.now();
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const n = localStorage.key(i);
-          if (n && n.startsWith(ANTHEM_CLAIM) && n !== key && readClaim(n, now) == null) localStorage.removeItem(n);
+          if (n && n.startsWith(prefix) && n !== key && readClaim(n, now, ttl) == null) localStorage.removeItem(n);
         }
-        const owner = readClaim(key, now);
+        const owner = readClaim(key, now, ttl);
         if (owner != null && owner !== tabMark) { done(false); return; }
         localStorage.setItem(key, now + ' ' + tabMark);
-        step(() => done(readClaim(key, Date.now()) === tabMark), 60);
+        step(() => done(readClaim(key, Date.now(), ttl) === tabMark), 60);
       }, here ? 0 : 150);
     });
   }
 
+  // Подія може нести святкування (fx, flair.md §3), а url — бути null (святкування без гімну). Святкування — тихе: його
+  // видно й тоді, коли гімни вимкнено, і в кожній вкладці, де стіл на екрані (заявка між вкладками — лише про звук).
   async function onAnthem(a) {
-    if (!a || !a.id || !a.url || !anthem) return;
+    if (!a || !a.id || (!a.url && !a.fx)) return;
     const k = a.id + ':' + (a.round | 0);
     if (anthemsPlayed.has(k) || !atTable(a.id)) return;
     anthemsPlayed.add(k);
-    if (!(await claimAnthem(k, onTablePage(a.id))) || !atTable(a.id)) return;
-    const cur = { id: a.id, round: a.round | 0, a, here: onTablePage(a.id), started: false };
+    // len — скільки звучить гімн (сервер міряє файл): святкування триває стільки ж у кожній вкладці, а не лише в тій,
+    // де гімн справді грає
+    if (a.fx) startFx(a.id, k, a.fx, a.url ? a.len : null);
+    if (!a.url || !anthem) { curseGo(k); return; }
+    anthemsWaiting.add(k);
+    const claim = claimAnthem(k, onTablePage(a.id));
+    anthemClaims.set(k, claim);
+    setTimeout(() => anthemClaims.delete(k), ANTHEM_CLAIM_MS);
+    const mine = await claim;
+    anthemsWaiting.delete(k);
+    if (!mine || !atTable(a.id)) { curseGo(k); return; }
+    const cur = { id: a.id, round: a.round | 0, k, a, here: onTablePage(a.id), started: false };
     const prev = anthemAt;
     anthemAt = cur;                 // до виклику: onEnd може прийти одразу, якщо браузер не дав звуку
     let ok = false;
-    // Смужка — лише коли play() справді пішов (onStart); браузер відмовив — onEnd без onStart, і смужки не буде
+    // Смужка — лише коли play() справді пішов (onStart); браузер відмовив — onEnd без onStart, і смужки не буде.
     const onStart = () => { if (anthemAt === cur) { cur.started = true; paintAnthem(); } };
     try { ok = !!anthem(a, { onStart, onEnd: () => anthemEnded(cur) }); } catch (e) { console.warn('[games] anthem', e); }
     if (!ok && anthemAt === cur) anthemAt = prev;
+    if (!ok) curseGo(k);
   }
   function anthemEnded(cur) {
-    if (anthemAt !== cur) return;
-    anthemAt = null;
-    paintAnthem();
+    if (cur.started) fxStop(cur.id, cur.k);
+    if (anthemAt === cur) { anthemAt = null; paintAnthem(); }
+    curseGo(cur.k);                 // прокльон тієї самої партії чекав, поки гімн доспіває
   }
-  /// Нова партія за столом, де звучить гімн, — «Ще раз» уже почався, гімн минулої не перекрикує гру.
+  /// Нова партія за столом, де звучить гімн чи прокльон, — «Ще раз» уже почався, минула партія не перекрикує гру.
   function anthemRound(r) {
-    if (!anthemAt || !r || r.id !== anthemAt.id) return;
+    if (!r) return;
     const round = typeof r.round === 'number' ? r.round : null;
-    if ((round != null && round > anthemAt.round) || (r.status === 'playing' && round !== anthemAt.round)) stopAnthem();
+    const old = (x) => x && r.id === x.id && ((round != null && round > x.round) || (r.status === 'playing' && round !== x.round));
+    if (curseNext && old(curseNext.c)) curseDrop();
+    if (old(anthemAt) || old(curseAt)) stopAnthem();
+    const f = fxOn[r.id];
+    if (f && (round != null && round > f.round || r.status === 'playing' && round !== f.round)) fxStop(r.id);
   }
-  /// Пішов зі сторінки столу, на якій гімн звучав, — він замовкає. Хто сидить за столом деінде (Ефір, лобі), чує
-  /// гімн своєї партії й так, аж до кінця.
+  /// Пішов зі сторінки столу, на якій гімн звучав, — він замовкає (і прокльон за ним). Хто сидить за столом деінде
+  /// (Ефір, лобі), чує гімн своєї партії й так, аж до кінця.
   function anthemPage() {
+    if (curseNext && !atTable(curseNext.c.id)) curseDrop();
+    if (curseAt) {
+      if (onTablePage(curseAt.id)) { curseAt.here = true; if (curseAt.started) paintCurse(); }
+      else if (curseAt.here) { if (curseNext && curseNext.c.id === curseAt.id) curseDrop(); stopAnthem(); }
+    }
     if (!anthemAt) return;
     if (onTablePage(anthemAt.id)) { anthemAt.here = true; if (anthemAt.started) paintAnthem(); }   // картку могли щойно створити
-    else if (anthemAt.here) stopAnthem();
+    else if (anthemAt.here) { if (curseNext && curseNext.c.id === anthemAt.id) curseDrop(); stopAnthem(); }
+  }
+
+  // 🎉 Святкування переможця (flair.md §3): шар поверх картки столу (app.js playFx), 6 с без гімну; із гімном — стільки,
+  // скільки він звучить (len з події), але не довше 15 с. Картки нема (людина сидить, а дивиться Ефір) — і святкувати
+  // нема на чому.
+  const FX_MS = 6000;
+  const FX_MAX_MS = 15000;
+  function startFx(id, k, what, len) {
+    const card = cards[id];
+    if (!fx || !card) return;
+    fxStop(id);
+    const ms = +len > 0 ? Math.min(FX_MAX_MS, Math.round(+len * 1000)) : FX_MS;
+    let stop = () => {};
+    try { stop = fx(card.el, what, { ms }) || stop; } catch (e) { console.warn('[games] fx', e); }
+    const round = +k.slice(k.lastIndexOf(':') + 1) || 0;
+    const f = fxOn[id] = { k, round, stop, timer: 0 };
+    f.timer = setTimeout(() => fxStop(id, k), ms);
+  }
+  function fxStop(id, k) {
+    const f = fxOn[id];
+    if (!f || (k && f.k !== k)) return;
+    delete fxOn[id];
+    clearTimeout(f.timer);
+    try { f.stop(); } catch { /* шар уже зник */ }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // 😈 Прокльон (flair.md §1): подія 'curse' { id, round, nick, title, emoji, url, left } — той, хто програв, і що
+  // звучить. Ті самі правила, що й для гімну: лише за цим столом, раз на партію, одна вкладка (та сама, що взяла гімн
+  // цієї партії; без гімну — своя заявка), вимикач 'anthemSound'. Гімн і прокльон однієї партії не перекрикують одне одного: прокльон чекає в черзі з одного,
+  // поки гімн доспіває; гімн, що ще не прийшов, чекаємо 1,5 с — далі прокльон грає сам.
+  // ---------------------------------------------------------------------------------------------
+  const CURSE_WAIT_MS = 1500;
+  const cursesPlayed = new Set();
+  async function onCurse(c) {
+    if (!c || !c.id || !c.url || !anthem) return;
+    const k = c.id + ':' + (c.round | 0);
+    if (cursesPlayed.has(k) || !atTable(c.id)) return;
+    cursesPlayed.add(k);
+    // Гімн цієї партії вже заявлявся — прокльон іде за ним: грає вкладка, що взяла гімн, а програла — мовчить і про
+    // прокльон (інакше гімн звучав би в одній вкладці, а прокльон — в іншій). Гімну нема — прокльон заявляється сам.
+    const anthemClaim = anthemClaims.get(k);
+    const mine = anthemClaim ? await anthemClaim : await claimAnthem(k, onTablePage(c.id), CURSE_CLAIM);
+    if (!mine || !atTable(c.id)) return;
+    if (curseNext) curseDrop();
+    const anthemHere = anthemAt && anthemAt.k === k;
+    if (anthemHere || anthemsWaiting.has(k)) { curseNext = { k, c, timer: 0 }; return; }   // гімн звучить чи от-от
+    if (anthemsPlayed.has(k)) { playCurse(c); return; }                                   // гімн уже був (чи не грав)
+    curseNext = { k, c, timer: setTimeout(() => curseGo(k), CURSE_WAIT_MS) };            // гімн може ще прийти
+  }
+  /// Гімн цієї партії доспівав (чи не заграв, чи не прийшов за 1,5 с) — черга прокльону рушає.
+  function curseGo(k) {
+    const n = curseNext;
+    if (!n || n.k !== k) return;
+    if (anthemAt && anthemAt.k === k) return;     // гімн іще звучить — дочекаємось його кінця
+    if (anthemsWaiting.has(k)) return;            // гімн ще заявляється — curseGo покличе onAnthem
+    curseDrop();
+    if (atTable(n.c.id)) playCurse(n.c);
+  }
+  function curseDrop() {
+    if (!curseNext) return;
+    clearTimeout(curseNext.timer);
+    curseNext = null;
+  }
+  function playCurse(c) {
+    const cur = { id: c.id, round: c.round | 0, c, here: onTablePage(c.id), started: false };
+    const prev = curseAt;
+    curseAt = cur;
+    let ok = false;
+    const onStart = () => { if (curseAt === cur) { cur.started = true; paintCurse(); } };
+    const onEnd = () => { if (curseAt === cur) { curseAt = null; paintCurse(); } };
+    try { ok = !!anthem({ url: c.url, title: c.title, emoji: c.emoji, nick: c.nick }, { onStart, onEnd }); } catch (e) { console.warn('[games] curse', e); }
+    if (!ok && curseAt === cur) curseAt = prev;
+  }
+  /// Смужка «😈 Прокльон «Цап» · ціль: Петро · лишилось 2» там само, де й гімнова, з ⏹ і 🔇. Нік — лише в називному
+  /// і без «програв/програла»: рід із ніка не вгадати.
+  function paintCurse() {
+    const on = curseAt && curseAt.started ? curseAt : null;
+    document.querySelectorAll('.gcurse').forEach((el) => { if (!on || el.dataset.room !== on.id) el.remove(); });
+    if (!on) return;
+    const card = cards[on.id];
+    if (!card || card.el.querySelector(':scope > .gcurse')) return;
+    const c = on.c;
+    const left = c.left | 0;
+    const el = document.createElement('div');
+    el.className = 'ganthem gcurse';
+    el.dataset.room = on.id;
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="ganth-t"><span class="ganth-e" aria-hidden="true">😈</span>Прокльон' + (c.title ? ' «' + esc(c.title) + '»' : '')
+      + (c.nick ? ' · ціль: ' + esc(c.nick) : '') + ' · ' + (left > 0 ? 'лишилось ' + left : 'розрядився') + '</span>'
+      + '<button type="button" class="ganth-stop" title="Зупинити цей прокльон" aria-label="Зупинити цей прокльон">⏹</button>'
+      + '<button type="button" class="ganth-off" title="Більше не грати гімнів, прокльонів і дзвінків. Увімкнути — у Лавці, на полиці «🎺 Гімни»">🔇 Тиша</button>';
+    el.querySelector('.ganth-stop').onclick = () => stopAnthem();
+    el.querySelector('.ganth-off').onclick = soundOff;
+    card.el.insertBefore(el, card.statusEl.parentNode === card.el ? card.statusEl : null);
+  }
+  function soundOff() {
+    try { localStorage.setItem('anthemSound', '0'); } catch { /* приватне вікно — вимкнемо хоч цей */ }
+    curseDrop();
+    stopAnthem();
+    toast('🔇 Гімни, прокльони й дзвінки вимкнено. Увімкнути — у Лавці, на полиці «🎺 Гімни»');
   }
   /// Смужка на картці столу, поки звучить гімн (лише після справжнього старту): хто й що, ⏹ і «🔇 Без гімнів».
   function paintAnthem() {
     const on = anthemAt && anthemAt.started ? anthemAt : null;
-    document.querySelectorAll('.ganthem').forEach((el) => { if (!on || el.dataset.room !== on.id) el.remove(); });
+    document.querySelectorAll('.ganthem:not(.gcurse)').forEach((el) => { if (!on || el.dataset.room !== on.id) el.remove(); });
     if (!on) return;
     const card = cards[on.id];
-    if (!card || card.el.querySelector(':scope > .ganthem')) return;
+    if (!card || card.el.querySelector(':scope > .ganthem:not(.gcurse)')) return;
     const a = on.a;
     // Нік — лише в називному («Гімн: Оля»): родовий від ніка з кількох слів ламається («Гімн Теста Оля»)
     const who = a.nick ? ': ' + esc(a.nick) : '';
@@ -2185,13 +2320,9 @@
     el.innerHTML = '<span class="ganth-t"><span class="ganth-e" aria-hidden="true">🎺</span>Гімн' + who
       + (a.title ? ' — «' + esc(a.title) + '»' : '') + '</span>'
       + '<button type="button" class="ganth-stop" title="Зупинити цей гімн" aria-label="Зупинити цей гімн">⏹</button>'
-      + '<button type="button" class="ganth-off" title="Більше не грати гімнів за столами. Увімкнути — у Лавці, на полиці «🎺 Гімни»">🔇 Без гімнів</button>';
+      + '<button type="button" class="ganth-off" title="Більше не грати гімнів, прокльонів і дзвінків. Увімкнути — у Лавці, на полиці «🎺 Гімни»">🔇 Без гімнів</button>';
     el.querySelector('.ganth-stop').onclick = () => stopAnthem();
-    el.querySelector('.ganth-off').onclick = () => {
-      try { localStorage.setItem('anthemSound', '0'); } catch { /* приватне вікно — вимкнемо хоч цей */ }
-      stopAnthem();
-      toast('🔇 Гімни за столами вимкнено. Увімкнути — у Лавці, на полиці «🎺 Гімни»');
-    };
+    el.querySelector('.ganth-off').onclick = soundOff;
     // просто над «Перемога: …» (на телефоні .gstatus стоїть над полем — order у CSS тримає смужку поруч)
     card.el.insertBefore(el, card.statusEl.parentNode === card.el ? card.statusEl : null);
   }
@@ -2759,7 +2890,11 @@
     if (window.matchMedia('(max-width: 900px)').matches) {
       box.querySelectorAll('.ginvite' + (personal ? '' : ':not(.personal)')).forEach((e) => e.remove());
     }
-    if (personal) ping();
+    // 🔔 Свій дзвінок того, хто кличе (flair.md §2): лише особистий заклик і лише там, де й загальний тост показали б
+    // (не в ⛶ і не на телефоні посеред своєї партії); вимикач гімнів і гімн, що звучить, теж мовчать за нього.
+    const quiet = full || (view.kind === 'room' && window.matchMedia('(max-width: 900px)').matches);
+    if (personal && inv.ring && inv.ring.url && !quiet) ringFor(inv);
+    else if (personal) ping();
     const el = document.createElement('div');
     el.className = 'toast ok ginvite' + (personal ? ' personal' : '');
     el.dataset.room = inv.roomId;
@@ -2778,6 +2913,20 @@
 
   /// Десять секунд: досить, щоб прочитати й натиснути, і не досить, щоб набриднути.
   const INVITE_MS = 10000;
+  /// Дзвінок — перші 4 с уривка з м'яким згасанням, тим самим плеєром, що й гімни; кілька вкладок — дзвенить одна
+  /// (та, що на виду, заявляється першою). Не заграв (вимкнено, гімн звучить, браузер не дав) — звичайне «дзінь».
+  const RING_SEC = 4;
+  async function ringFor(inv) {
+    const r = inv.ring;
+    const k = inv.roomId + ':' + String(inv.by || '').toLowerCase();
+    let mine = true;
+    try { mine = await claimAnthem(k, !document.hidden, RING_CLAIM, RING_CLAIM_MS); } catch { /* граємо самі */ }
+    if (!mine) return;
+    let ok = false;
+    // ring: дзвінок поступається гімнові й прокльонові столу (вони його переб'ють), а сам їх не перебиває
+    try { ok = !!(anthem && anthem({ url: r.url, title: r.title, emoji: r.emoji }, { from: 0, len: RING_SEC, fade: true, ring: true })); } catch (e) { console.warn('[games] ring', e); }
+    if (!ok) ping();
+  }
 
   // =============================================================================================
   // Тости гаманця й ачівок
@@ -2855,6 +3004,7 @@
       if (o.ping) ping = o.ping;
       if (o.anthem) anthem = o.anthem;
       if (o.stopAnthem) stopAnthem = o.stopAnthem;
+      if (o.fx) fx = o.fx;
       if (o.online) online = o.online;
       if (o.askNick) askNick = o.askNick;
       root = o.root || (o.$ ? o.$('games') : document.getElementById('games'));
@@ -2932,6 +3082,7 @@
       });
       c.on('tableReact', flyReact);
       c.on('anthem', onAnthem);
+      c.on('curse', onCurse);
       c.on('frame', (f) => {
         if (!f || !f.id) return;
         const card = cards[f.id];

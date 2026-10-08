@@ -78,7 +78,8 @@ public sealed class TtsLavkaVoice(TtsService tts, IOptionsMonitor<YtDlpOptions> 
 
 /// <summary>
 /// Події Лавки на дроті: вигляд, феєрверк і рядки балачок — усім одразу (як ефір шле свої), тост — лише з'єднанням
-/// того, кому подарували, тим самим шляхом, що й гаманець (<see cref="ToastFor"/> через розсилку ігор).
+/// того, кому подарували, тим самим шляхом, що й гаманець (<see cref="ToastFor"/> через розсилку ігор). Рядок Журналу
+/// (прокльон) — теж через розсилку ігор (<see cref="Journal"/>): так він ляже від імені сайту під фільтр «🎮 Ігри».
 /// </summary>
 public sealed class HubLavkaWire(IHubContext<RadioHub> hub, IOutbox outbox, ILogger<HubLavkaWire> log) : ILavkaWire
 {
@@ -86,6 +87,7 @@ public sealed class HubLavkaWire(IHubContext<RadioHub> hub, IOutbox outbox, ILog
     public void Fireworks(string nick) => All("fireworks", new { nick });
     public void Chat(object line) => All("chat", line);
     public void Toast(string nick, string text) => outbox.Post(new ToastFor(nick, text, "ok"));
+    public void Journal(string text) => outbox.Post(new Journal(text));
 
     void All(string name, object payload) => _ = SendAsync(name, payload);
 
@@ -108,6 +110,9 @@ public static class LavkaSetup
     public sealed record TakeDownRequest(string? Nick);
     public sealed record AnthemFetchRequest(string? TrackId);
     public sealed record AnthemTrackRequest(string? TrackId, double? Start, double? Len, string? Title);
+    public sealed record CurseRequest(string? To, string? Item);
+    public sealed record CurseIdRequest(long? Id);
+    public sealed record RingRequest(string? Item);
 
     public static IServiceCollection AddHlechykyLavka(this IServiceCollection services)
     {
@@ -117,6 +122,8 @@ public static class LavkaSetup
         services.TryAddSingleton<ILavkaVoice, TtsLavkaVoice>();
         services.TryAddSingleton<ILavkaWire, HubLavkaWire>();
         services.AddSingleton<Lavka>();
+        // «Свій дзвінок» для особистих закликів (Calls) — з Лавки
+        services.TryAddSingleton<IRings>(sp => sp.GetRequiredService<Lavka>());
         services.TryAddSingleton(_ => new LavkaPhotoDir(Paths.Resolve("data/avatars")));
         services.AddSingleton<LavkaPhotos>();
         // Свій трек і гімн переможця за столом (docs/games/specs/anthem.md)
@@ -136,6 +143,10 @@ public static class LavkaSetup
         api.MapPost("/buy", Buy);
         api.MapPost("/wear", Wear);
         api.MapPost("/dedicate", Dedicate);
+        api.MapPost("/curse", Curse);
+        api.MapPost("/curse/ransom", Ransom);
+        api.MapPost("/curse/reveal", Reveal);
+        api.MapPost("/ring", Ring);
         api.MapPost("/photo", SetPhoto);
         api.MapDelete("/photo", RemovePhoto);
         api.MapGet("/photo/{file}", (string file, LavkaPhotos photos, HttpContext c) => PhotoFile(file, photos, c));
@@ -173,6 +184,30 @@ public static class LavkaSetup
     /// <summary>POST /api/lavka/dedicate { to, phrase } → { ok, message }; to — нік або «*» (усім).</summary>
     public static async Task<IResult> Dedicate(HttpContext c, DedicateRequest b, Lavka lavka) =>
         Reply(await lavka.DedicateAsync(Auth.Nick(c), Auth.IsUser(c), b.To, b.Phrase));
+
+    // ---------- прокльон і дзвінок (docs/games/specs/flair.md) ----------
+
+    /// <summary>POST /api/lavka/curse { to, item } → { ok, message, balance }: наслати прокльон на акаунт.</summary>
+    public static IResult Curse(HttpContext c, CurseRequest b, Lavka lavka) =>
+        Money(lavka.Curse(Auth.Nick(c), Auth.IsUser(c), b.To, b.Item));
+
+    /// <summary>POST /api/lavka/curse/ransom { id } → { ok, message, balance }: відкупитись від прокльону на собі за 1000.</summary>
+    public static IResult Ransom(HttpContext c, CurseIdRequest b, Lavka lavka) =>
+        Money(lavka.Ransom(Auth.Nick(c), Auth.IsUser(c), b.Id));
+
+    /// <summary>POST /api/lavka/curse/reveal { id } → { ok, message, balance }: дізнатися, від кого прокльон, за 300.</summary>
+    public static IResult Reveal(HttpContext c, CurseIdRequest b, Lavka lavka) =>
+        Money(lavka.Reveal(Auth.Nick(c), Auth.IsUser(c), b.Id));
+
+    /// <summary>POST /api/lavka/ring { item } → { ok, message }: обрати свій гімн дзвінком; порожній item — без дзвінка.</summary>
+    public static IResult Ring(HttpContext c, RingRequest b, Lavka lavka) =>
+        Reply(lavka.SetRing(Auth.Nick(c), Auth.IsUser(c), b.Item));
+
+    static IResult Money(LavkaReply r)
+    {
+        var body = new { ok = r.Ok, message = r.Message, balance = r.Balance ?? 0 };
+        return r.Ok ? Results.Ok(body) : Results.BadRequest(body);
+    }
 
     // ---------- своя фотка ----------
 

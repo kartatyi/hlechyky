@@ -9,6 +9,10 @@
   POST /api/lavka/anthem?start=&len= (тіло — сам файл) або пісня з пошуку радіо — POST /api/lavka/anthem/fetch { trackId }
   (сервер бере її в кеш і дає previewUrl), далі POST /api/lavka/anthem/track { trackId, start, len, title }; грає їх app.js
   (playAnthem). Послухати й обрати уривок можна ще до покупки — «Зберегти» спершу купує «Свій трек».
+  😈 Прокльони, 🔔 дзвінок і 🎉 святкування (docs/games/specs/flair.md): полиця curse — POST /api/lavka/curse { to, item },
+  /curse/ransom { id }, /curse/reveal { id } (GET /api/lavka дає curses.onMe і curses.mine); вміння ring — картка на
+  полиці гімнів, POST /api/lavka/ring { item } (worn.ring); полиця fx — звичайні купити/вдягти/подарувати, ▶ грає
+  святкування на самій картці (app.js playFx).
 
   Хто як виглядає, знає цей модуль: web/people.js питає look(nick) для кольору, значка й рамки — тому куплене видно
   скрізь, де є нік: балачки, черга, столи, таблиці, картка, профіль.
@@ -26,19 +30,45 @@
   let shown = false;
   let tab = 'icon';
   let giftTo = null;                   // режим подарунка: кому
+  let curseTo = null;                  // #lavka/curse/<нік>: на кого насилаємо (з профілю людини)
   const preview = {};                  // слот → id речі, яку приміряємо (лише на екрані, нічого не купує)
 
   const TABS = [['icon', '🏺 Значки'], ['frame', '⭕ Рамки'], ['color', '🎨 Колір ніка'], ['title', '🏷 Титули'],
-    ['bg', '🖼 Тло'], ['perk', '✨ Вміння'], ['photo', '📷 Своя фотка'], ['anthem', '🎺 Гімни'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
-  /// Чого в подарунку нема: полиці — шафа своя, а прожарку не дарують (її замовляють самі, web/liveads.js); речі —
-  /// «Свій трек» (його ставлять собі: уривок обирає сама людина, сервер подарунок теж відмовить).
-  const NO_GIFT = ['mine', 'roast', 'own-anthem'];
+    ['bg', '🖼 Тло'], ['perk', '✨ Вміння'], ['photo', '📷 Своя фотка'], ['anthem', '🎺 Гімни'], ['fx', '🎉 Святкування'],
+    ['curse', '😈 Прокльони'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
+  /// Чого в подарунку нема: полиці — шафа своя, а прожарку не дарують (її замовляють самі, web/liveads.js), прокльон
+  /// насилають, а не дарують; речі — «Свій трек» (його ставлять собі: уривок обирає сама людина, сервер подарунок теж
+  /// відмовить) і «Свій дзвінок» (не дарується, flair.md §2).
+  const NO_GIFT = ['mine', 'roast', 'curse', 'own-anthem', 'ring'];
   const TIER = { 1: 'звичайний', 2: 'рідкісний', 3: 'особливий' };
   const PERK_TEXT = {
     dedication: 'Перед твоїм треком Дядько Глек скаже в ефір: «Цю пісню Оля присвячує Петрові — на удачу». Раз на 3 години.',
     fireworks: 'Кнопка 🎆 біля реакцій: бахнути феєрверк над обкладинкою в усіх — і рядок у балачках. Раз на 10 хвилин.',
     photo: 'Своє фото замість літери чи значка — у профілі, балачках, списках і за столами. Рамка лишається поверх, значок сідає в куточок. Міняти — безкоштовно, раз на добу.',
+    ring: 'Коли ти особисто кличеш когось за стіл («📣 Гукнути» чи /клич), у нього звучать перші 4 секунди твого гімну. Дзвінком стає будь-який твій гімн — готовий чи «Свій трек». Обрати — на полиці «🎺 Гімни».',
   };
+  const RING = 'ring';
+  const RING_SEC = 4;
+  /// Що видно на столі (flair.md §3): підпис під карткою святкування.
+  const FX_TEXT = {
+    confetti: 'Різнокольорове конфеті сиплеться згори.',
+    shards: 'Падають і підстрибують черепки-глечики.',
+    sunflowers: 'Пелюстки й соняшники кружляють у повітрі.',
+    salute: 'Феєрверк над столом — як «🎆 Феєрверк», лише над твоєю перемогою.',
+    glekhopak: 'Дядько Глек вистрибує на стіл і танцює гопак присядкою.',
+  };
+  FX_TEXT.hopak = FX_TEXT.glekhopak;   // у каталозі — glekhopak (hopak уже зайнятий гімном), у spec — hopak
+  /// Що звучить (flair.md §1.1): підпис під карткою прокльону.
+  const CURSE_TEXT = {
+    sadtrombone: '«Уа-уа-уа-уааа» на кожен програш.',
+    boo: 'Зала незадоволено гуде й свистить.',
+    crickets: 'Ніякова тиша: цвіркуни й одинокий кашель.',
+    funeral: 'Перші такти похоронного маршу: тромбон і литаври.',
+    goat: '«Ме-е-е» цапа й дзвіночок на шиї.',
+    clown: 'Клаксон «бі-біп» і свисток, що з\'їжджає вниз.',
+  };
+  const CURSE_RANSOM = 1000;
+  const CURSE_REVEAL = 300;
   const OWN_ANTHEM = 'own-anthem';
   const OWN_ANTHEM_TEXT = 'Шматок своєї пісні — з телефона чи з пошуку радіо: 5–15 секунд, звідки захочеш. Звучить за столом, коли виграєш. Міняти — безкоштовно, раз на 2 хвилини.';
 
@@ -179,11 +209,16 @@
       case 'color': return nickOf(me, { color: it.art });
       case 'title': return '<span class="lv-titlechip">' + esc(it.art) + '</span>';
       case 'bg': return '<span class="lv-bg bg-' + esc(it.art) + '"></span>';
-      case 'perk': return '<span class="lv-emoji">' + (it.id === 'fireworks' ? '🎆' : it.id === 'photo' ? '📷' : '💌') + '</span>';
+      case 'perk': return '<span class="lv-emoji">' + (it.id === 'fireworks' ? '🎆' : it.id === 'photo' ? '📷' : it.id === RING ? '🔔' : '💌') + '</span>';
       case 'anthem': return '<span class="lv-emoji">' + emo((it.art && it.art.emoji) || '🎺') + '</span>';
+      case 'curse': return '<span class="lv-emoji">' + emo(artEmoji(it) || '😈') + '</span>';
+      case 'fx': return '<span class="lv-emoji">' + emo(artEmoji(it) || '🎉') + '</span>';
     }
     return '';
   }
+  /// Емодзі речі: у гімнів і прокльонів art — { emoji, url }, у святкувань — { emoji } або сам рядок.
+  const artEmoji = (it) => (it && it.art ? (typeof it.art === 'string' ? it.art : it.art.emoji || '') : '');
+  const artUrl = (it) => (it && it.art && typeof it.art === 'object' ? it.art.url || '' : '');
   const season = (s) => (s ? (s.open ? '🗓 лише до ' + s.to.split('-').reverse().join('.') : '🗓 повернеться ' + s.from.split('-').reverse().join('.')) : '');
   const readyIn = (iso) => {
     const ms = Date.parse(iso) - Date.now();
@@ -197,7 +232,14 @@
     const gift = !!giftTo;
     let state = '', btns = '';
     const perk = it.kind === 'perk' ? (data.perks || {})[it.id] : null;
-    if (it.earned) {
+    if (it.kind === 'curse') {
+      // Прокльон не купують собі — насилають: ціна за три чужі програші, «Наслати…» питає, на кого
+      state = it.price + ' 🏺 · на 3 програші';
+      const short = it.price - (data.balance || 0);
+      btns = !acc ? '<button disabled title="Лише для акаунтів">Наслати…</button>'
+        : short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
+          : '<button class="primary" type="button" data-curse="' + esc(it.id) + '">' + (curseTo ? 'Наслати' : 'Наслати…') + '</button>';
+    } else if (it.earned) {
       state = it.owned ? (it.worn && !gift ? '✓ вдягнуто' : '✓ здобуто') : '🔒 за ачівку «' + esc(it.earned.achTitle || it.earned.ach) + '»';
       if (it.owned && !gift) btns = it.worn ? '<button class="ghost" data-off="' + it.kind + '">Зняти</button>' : '<button class="primary" data-wear="' + it.id + '">Вдягти</button>';
     } else if (gift) {
@@ -213,6 +255,9 @@
       // фотка — не «готове / ще N хв», а своя полиця: там її ставлять, міняють і прибирають
       state = '✓ твоє' + (perk && perk.url ? ' · фото стоїть' : '');
       btns = '<button class="primary" data-go="#lavka/photo">📷 ' + (perk && perk.url ? 'Фото' : 'Поставити фото') + '</button>';
+    } else if (it.owned && it.id === RING) {
+      state = '✓ твоє';
+      btns = '<button class="primary" data-go="#lavka/anthem">🔔 Обрати дзвінок</button>';
     } else if (it.owned) {
       if (it.kind === 'perk') state = '✓ твоє' + (perk && perk.readyAt && readyIn(perk.readyAt) ? ' · ' + readyIn(perk.readyAt) : ' · готове');
       else {
@@ -228,10 +273,12 @@
           : short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
             : '<button class="primary" data-buy="' + it.id + '">Купити</button>';
     }
-    // Гімн не приміряють — його слухають: ▶ грає тут, нічого не вдягаючи. Свій трек слухати ще нема чого.
-    const url = it.kind === 'anthem' && it.art && it.art.url;
+    // Гімн і прокльон не приміряють — їх слухають: ▶ грає тут, нічого не вдягаючи. Свій трек слухати ще нема чого.
+    // Святкування — дивляться: ▶ грає його просто на цій картці.
+    const url = (it.kind === 'anthem' || it.kind === 'curse') && artUrl(it);
     const tryBtn = url ? '<button class="ghost" type="button" data-anth="' + esc(url) + '" title="Прослухати — нічого не купує">▶</button>'
-      : it.kind !== 'perk' && it.kind !== 'anthem' && !gift && !it.worn ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
+      : it.kind === 'fx' ? '<button class="ghost" type="button" data-fx-try="' + esc(it.id) + '" title="Подивитись — нічого не купує">▶</button>'
+      : !['perk', 'anthem', 'curse'].includes(it.kind) && !gift && !it.worn ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
     // У подарунку «моє / вдягнуто» ні до чого: річ вибирають для іншої людини.
     const mine = !gift;
     return '<div class="lv-item' + (mine && it.owned ? ' owned' : '') + (mine && it.worn ? ' worn' : '') + (it.earned && !it.owned ? ' locked' : '')
@@ -240,6 +287,8 @@
       + '<div class="lv-name">' + esc(it.title) + (it.tier ? ' <span class="muted small">· ' + TIER[it.tier] + '</span>' : '') + '</div>'
       + (it.kind === 'perk' ? '<div class="muted small lv-desc">' + esc(PERK_TEXT[it.id] || '') + '</div>' : '')
       + (it.id === OWN_ANTHEM ? '<div class="muted small lv-desc">' + esc(OWN_ANTHEM_TEXT) + '</div>' : '')
+      + (it.kind === 'fx' && FX_TEXT[it.id] ? '<div class="muted small lv-desc">' + esc(FX_TEXT[it.id]) + '</div>' : '')
+      + (it.kind === 'curse' && CURSE_TEXT[it.id] ? '<div class="muted small lv-desc">' + esc(CURSE_TEXT[it.id]) + '</div>' : '')
       + (url ? '<div class="muted small lv-dur" data-dur="' + esc(url) + '">' + durText(url) + '</div>' : '')
       + '<div class="lv-state">' + state + '</div>'
       + '<div class="lv-btns">' + tryBtn + btns + '</div></div>';
@@ -273,6 +322,7 @@
     const parts = String(tail || '').split('/').map(decodeURIComponent);
     const wasGift = giftTo;
     giftTo = parts[0] === 'gift' && parts[1] ? parts[1] : null;
+    curseTo = parts[0] === 'curse' && parts[1] ? parts[1] : null;
     // Подарунок починаємо зі значків — найдешевшого й найзрозумілішого, а не з полиці, де був сам.
     if (giftTo && !same(giftTo, wasGift)) tab = 'icon';
     if (!giftTo && TABS.some(([k]) => k === parts[0])) tab = parts[0];
@@ -291,7 +341,9 @@
     const acc = data.account;
     const items = data.items || [];
     // Титули за ачівки не дарують і не купують — у подарунковому режимі їх не показуємо зовсім.
-    const list = tab === 'mine' ? items.filter((x) => x.owned) : items.filter((x) => x.kind === tab && !(giftTo && (x.earned || NO_GIFT.includes(x.id))));
+    // «Свій дзвінок» — вміння, але живе на полиці гімнів (дзвінком стає свій гімн): там і купується, і обирається.
+    const list = tab === 'mine' ? items.filter((x) => x.owned)
+      : items.filter((x) => x.kind === tab && x.id !== RING && !(giftTo && (x.earned || NO_GIFT.includes(x.id))));
     // Сезонне, що продається саме зараз (🎃 восени, 🎄 на свята), — першим: воно ненадовго, і в кінці полиці його не видно.
     const now = (x) => (x.season && x.season.open ? 0 : 1);
     if (tab !== 'mine') list.sort((a, b) => now(a) - now(b));
@@ -328,12 +380,14 @@
     const body = tab === 'photo' ? photoPanel()
       : tab === 'roast' ? '<div class="la-host" data-la-host></div>'
       : shelf.length
-      ? (tab === 'anthem' ? anthemHead() : '') + (own ? cardHtml(own) : '')
+      ? (tab === 'anthem' ? anthemHead() : tab === 'curse' ? curseHead() : tab === 'fx' ? fxHead() : '') + (own ? cardHtml(own) : '')
+        + (tab === 'anthem' && !giftTo ? ringPanel() : '')
         + '<div class="lv-grid">' + cardsOf.map(cardHtml).join('') + '</div>' + soon
       : '<div class="gempty glek">' + (tab === 'mine' ? 'Шафа ще порожня. Обери щось на полицях — і воно лишиться з тобою назавжди.' : 'Тут поки порожньо.') + '</div>';
     root.innerHTML = head + '<section class="panel lv-shelf">' + tabs + body + '</section>';
     wire(root);
-    if (tab === 'anthem') { fillDurs(root); anthemTimer(); }
+    if (tab === 'anthem' || tab === 'curse') fillDurs(root);
+    if (tab === 'anthem') anthemTimer();
     if (o.paintAnthemBtns) o.paintAnthemBtns(root);
     // 🔥 Прожарка в ефірі — свій модуль (web/liveads.js): малює себе сам і сам себе перечитує.
     const la = root.querySelector('[data-la-host]');
@@ -364,6 +418,7 @@
     root.querySelectorAll('[data-ph-pick]').forEach((b) => b.onclick = () => pickPhoto());
     root.querySelectorAll('[data-ph-off]').forEach((b) => b.onclick = (e) => removePhoto(e.currentTarget));
     wireAnthems(root);
+    wireFlair(root);
   }
 
   /// «Точно?» своїм віконцем: покупка назавжди, і черепки назад не повертаються.
@@ -741,11 +796,14 @@
 
   function anthemHead() {
     if (giftTo) return '<div class="muted small lv-an-head">Готовий гімн звучатиме за столом, коли людина виграє партію.</div>';
-    const on = anthemOn();
     return '<div class="lv-an-head"><span class="muted small">Твій гімн звучить у всіх за столом, коли виграєш партію на кількох. '
-      + 'Нічия, кооператив і соло — без гімну. ▶ — прослухати, нічого не купуючи.</span>'
-      + '<button type="button" class="ghost lv-an-sound' + (on ? '' : ' off') + '" data-anth-sound aria-pressed="' + on + '" title="Чи грати гімни переможців за столами в цьому браузері">'
-      + (on ? '🎺 Гімни за столом: увімкнено' : '🔇 Гімни за столом: вимкнено') + '</button></div>';
+      + 'Нічия, кооператив і соло — без гімну. ▶ — прослухати, нічого не купуючи.</span>' + soundBtn() + '</div>';
+  }
+  /// Один вимикач на всі звуки Лавки за столом і дзвінки (flair.md §4) — на полицях гімнів і прокльонів.
+  function soundBtn() {
+    const on = anthemOn();
+    return '<button type="button" class="ghost lv-an-sound' + (on ? '' : ' off') + '" data-anth-sound aria-pressed="' + on + '" title="Чи грати за столами гімни й прокльони, а на заклик — дзвінки, у цьому браузері">'
+      + (on ? '🎺 Гімни, прокльони й дзвінки: увімкнено' : '🔇 Гімни, прокльони й дзвінки: вимкнено') + '</button>';
   }
 
   const lenMaxOf = (dur) => Math.max(5, Math.min(15, Math.floor(dur)));
@@ -904,7 +962,7 @@
       const on = !anthemOn();
       try { localStorage.setItem('anthemSound', on ? '1' : '0'); } catch { /* приватне вікно — не запам'ятаємо */ }
       if (!on && o.stopAnthem) o.stopAnthem();
-      o.toast(on ? '🎺 Гімни переможців за столами знову грають' : '🔇 Гімни за столами вимкнено в цьому браузері', on ? 'ok' : '');
+      o.toast(on ? '🎺 Гімни, прокльони й дзвінки знову грають' : '🔇 Гімни, прокльони й дзвінки вимкнено в цьому браузері', on ? 'ok' : '');
       paint();
     };
     // Файл вибираємо просто в обробнику кліку: Safari відкриває вибір файла лише з живого натиску.
@@ -1166,6 +1224,199 @@
       });
     });
     await adminAnthems(box.querySelector('.lv-adm-anth'));
+  }
+
+  // =============================================================================================
+  // 😈 Прокльони, 🔔 свій дзвінок і 🎉 святкування (docs/games/specs/flair.md). Звучать і грають app.js (playAnthem,
+  // playFx) і стіл (games/core.js); тут — полиці: наслати, відкупитись, дізнатися, хто; обрати дзвінок; ▶ святкування.
+  // =============================================================================================
+
+  /// «лишилось 2» / «розрядився» / «відкуплено» — сервер каже state: live | done | ransomed.
+  const leftText = (x) => (x.state === 'ransomed' ? 'відкуплено' : (x.left | 0) > 0 && x.state !== 'done' ? 'лишилось ' + (x.left | 0) : 'розрядився');
+  const curseLive = (x) => (x.left | 0) > 0 && (!x.state || x.state === 'live');
+
+  function fxHead() {
+    if (giftTo) return '<div class="muted small lv-an-head">Святкування гратиме на столі, коли людина виграє партію на кількох.</div>';
+    return '<div class="lv-an-head"><span class="muted small">Святкування грає на картці столу, коли виграєш партію на кількох: '
+      + 'разом із гімном і стільки ж (без гімну — 6 секунд). Воно тихе — вимикач гімнів його не вимикає. ▶ — подивитись тут, нічого не купуючи.</span></div>';
+  }
+
+  /// Нагорі полиці прокльонів: на кого насилаємо (з профілю), вимикач, «На тобі» й «Від тебе».
+  function curseHead() {
+    const cu = (data && data.curses) || {};
+    const onMe = Array.isArray(cu.onMe) ? cu.onMe : [];
+    const mine = Array.isArray(cu.mine) ? cu.mine : [];
+    const bal = data.balance || 0;
+    const to = curseTo ? '<div class="lv-gift lv-cu-to"><span>😈 Ціль прокльону: <b>' + esc(curseTo) + '</b> — обери, який.</span>'
+      + '<button class="ghost" data-go="#lavka/curse">✕ скасувати</button></div>' : '';
+    const row = (x, acts, sub) => '<div class="lv-cu-row' + (curseLive(x) ? '' : ' gone') + '"><span class="lv-cu-emo" aria-hidden="true">' + emo(x.emoji || '😈') + '</span>'
+      + '<div class="lv-cu-main"><b>«' + esc(x.title || x.item || 'Прокльон') + '»</b><span class="muted small">' + sub + '</span></div>'
+      + (acts ? '<div class="lv-btns">' + acts + '</div>' : '') + '</div>';
+    const meRows = onMe.map((x) => {
+      const sub = leftText(x) + ' · ' + (x.from ? 'хто наслав: <b>' + esc(x.from) + '</b>' : 'від кого — секрет');
+      let acts = '';
+      if (curseLive(x)) acts += bal >= CURSE_RANSOM ? '<button class="primary" type="button" data-cu-ransom="' + esc(x.id) + '">😇 Відкупитись за ' + CURSE_RANSOM + '</button>'
+        : '<button type="button" disabled title="Бракує ' + (CURSE_RANSOM - bal) + ' 🏺">😇 Відкупитись за ' + CURSE_RANSOM + '</button>';
+      if (!x.from) acts += bal >= CURSE_REVEAL ? '<button class="ghost" type="button" data-cu-reveal="' + esc(x.id) + '">🕵️ Хто це? ' + CURSE_REVEAL + '</button>'
+        : '<button type="button" disabled title="Бракує ' + (CURSE_REVEAL - bal) + ' 🏺">🕵️ Хто це? ' + CURSE_REVEAL + '</button>';
+      return row(x, acts, sub);
+    }).join('');
+    const mineRows = mine.map((x) => row(x, '', 'ціль: <b>' + esc(x.to || '') + '</b> · ' + leftText(x) + ' · '
+      + (x.revealed ? '🕵️ знає, що це ти' : '🤫 не знає, від кого'))).join('');
+    return to
+      + '<div class="lv-an-head"><span class="muted small">Наслати прокльон на друга з акаунтом — і на трьох його програшах за столом із людьми звучатиме твій. '
+      + 'Від кого — секрет, хіба що заплатить ' + CURSE_REVEAL + ' 🏺; відкупитись — ' + CURSE_RANSOM + ' 🏺. ▶ — прослухати.</span>' + soundBtn() + '</div>'
+      + (meRows ? '<div class="lv-cu-sec"><div class="lv-cu-h">На тобі</div>' + meRows + '</div>' : '')
+      + (mineRows ? '<div class="lv-cu-sec"><div class="lv-cu-h">Від тебе</div>' + mineRows + '</div>' : '');
+  }
+
+  /// «🔔 Свій дзвінок» на полиці гімнів: до покупки — картка з «Купити», після — вибір зі своїх гімнів (▶ 4 с).
+  function ringPanel() {
+    const it = item(RING);
+    if (!it) return '';                                  // сервер старіший за сторінку
+    const p = (data.perks || {})[RING];
+    const owned = !!(it.owned || (p && p.owned));
+    const acc = data.account;
+    const head = (state, btns) => '<div class="lv-item lv-anth-own lv-ring' + (owned ? ' owned' : '') + '" data-id="' + RING + '">'
+      + '<div class="lv-an-top"><span class="lv-emoji" aria-hidden="true">🔔</span><div class="lv-an-main"><div class="lv-name">Свій дзвінок</div>'
+      + '<div class="lv-state">' + state + '</div></div>' + (btns ? '<div class="lv-btns">' + btns + '</div>' : '') + '</div>';
+    if (!owned) {
+      const short = it.price - (data.balance || 0);
+      const btn = !acc ? '<button disabled title="Лише для акаунтів">Купити</button>'
+        : short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
+          : '<button class="primary" type="button" data-buy="' + RING + '">Купити</button>';
+      return head(it.price + ' 🏺 · назавжди', btn) + '<div class="muted small lv-desc">' + esc(PERK_TEXT.ring) + '</div></div>';
+    }
+    const cur = (data.worn && data.worn.ring) || '';
+    const oa = data.ownAnthem || {};
+    // Дзвінком стає свій гімн: куплений готовий або «Свій трек», у якого вже є уривок
+    const mine = (data.items || []).filter((x) => x.kind === 'anthem' && x.owned && (x.id !== OWN_ANTHEM || oa.url))
+      .map((x) => ({ id: x.id, emoji: x.id === OWN_ANTHEM ? '🎤' : artEmoji(x) || '🎺', title: x.id === OWN_ANTHEM ? oa.title || 'Свій трек' : x.title, url: x.id === OWN_ANTHEM ? oa.url : artUrl(x) }));
+    const now = mine.find((x) => x.id === cur);
+    const rows = mine.map((x) => '<div class="lv-ring-row' + (x.id === cur ? ' on' : '') + '"><span class="lv-cu-emo" aria-hidden="true">' + emo(x.emoji) + '</span>'
+      + '<span class="lv-ring-t">' + esc(x.title) + '</span>'
+      + (x.url ? '<button class="ghost" type="button" data-anth="' + esc(x.url) + '" data-lbl="' + RING_SEC + ' с" data-ring-try="' + esc(x.url) + '" title="Послухати, як дзвенітиме">▶ ' + RING_SEC + ' с</button>' : '')
+      + (x.id === cur ? '<span class="lv-ring-cur">✓ дзвінок</span>' : '<button class="primary" type="button" data-ring="' + esc(x.id) + '">Обрати</button>')
+      + '</div>').join('');
+    return head('✓ твоє · ' + (now ? 'дзвінок: «' + esc(now.title) + '»' : 'без дзвінка'), cur ? '<button class="ghost" type="button" data-ring="">Без дзвінка</button>' : '')
+      + (rows ? '<div class="lv-ring-list">' + rows + '</div>' : '<div class="muted small">Дзвінком стає будь-який твій гімн — спершу купи гімн нижче чи постав «Свій трек».</div>')
+      + '<div class="muted small lv-desc">Звучить у того, кого ти особисто кличеш за стіл: перші ' + RING_SEC + ' секунди, м\'яко згасаючи.</div></div>';
+  }
+
+  function wireFlair(root) {
+    // ▶ святкування — просто на картці, де натиснули
+    root.querySelectorAll('[data-fx-try]').forEach((b) => b.onclick = () => {
+      const card = b.closest('.lv-item');
+      if (card && o.playFx) o.playFx(card, b.dataset.fxTry, { ms: 5000 });
+    });
+    root.querySelectorAll('[data-curse]').forEach((b) => b.onclick = (e) => sendCurse(b.dataset.curse, e.currentTarget));
+    root.querySelectorAll('[data-cu-ransom]').forEach((b) => b.onclick = (e) => curseAct('ransom', b.dataset.cuRansom, e.currentTarget));
+    root.querySelectorAll('[data-cu-reveal]').forEach((b) => b.onclick = (e) => curseAct('reveal', b.dataset.cuReveal, e.currentTarget));
+    // ▶ дзвінка — лише перші 4 с і м'яко згасає (поверх загального data-anth з wireAnthems: той грав би весь гімн)
+    root.querySelectorAll('[data-ring-try]').forEach((b) => b.onclick = () => {
+      if (o.toggleAnthem) o.toggleAnthem({ url: b.dataset.ringTry }, { from: 0, len: RING_SEC, fade: true });
+    });
+    root.querySelectorAll('[data-ring]').forEach((b) => b.onclick = (e) => setRing(b.dataset.ring, e.currentTarget));
+  }
+
+  /// Відповідь сервера з ok: false (а не HTTP-помилкою) — теж відмова.
+  const refused = (r) => r && r.ok === false;
+
+  async function setRing(id, btn) {
+    await o.busy(btn, '…', async () => {
+      try {
+        const r = await o.api('POST', '/api/lavka/ring', { item: id || '' });
+        if (refused(r)) { o.toast(r.message || 'Не вийшло', 'err'); return; }
+        o.toast(r && r.message ? r.message : id ? '🔔 Дзвінок обрано' : 'Тепер без дзвінка', 'ok');
+        await load();
+        paint();
+      } catch (e) { o.toast(e.message, 'err'); }
+    });
+  }
+
+  /// На кого наслати: хто зараз на сайті (з акаунтом — гостей тут не буває) або вписати нік.
+  function pickPerson(it) {
+    return new Promise((done) => {
+      const meNick = o.me && o.me.nick;
+      const seen = new Set();
+      const people = ((o.online && o.online()) || []).filter((n) => {
+        const k = key(n);
+        if (!n || same(n, meNick) || /^гість\s/i.test(String(n)) || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      const wrap = document.createElement('div');
+      wrap.className = 'modal lv-ask lv-pick';
+      wrap.innerHTML = '<div class="card" role="dialog" aria-modal="true" aria-label="На кого наслати прокльон"><h3>' + emo(artEmoji(it) || '😈') + ' На кого наслати «' + esc(it.title) + '»?</h3>'
+        + '<div class="muted small">Лише на людину з акаунтом. Почує його на трьох своїх програшах за столом із людьми.</div>'
+        + (people.length ? '<div class="ded-h">Зараз на сайті</div><div class="ded-chips">' + people.map((n) =>
+          '<button type="button" class="chip" data-v="' + esc(n) + '">' + esc(n) + '</button>').join('') + '</div>' : '')
+        + '<label class="lv-pick-in"><span class="muted small">Або нік</span><input type="text" maxlength="40" autocomplete="off" placeholder="Петро"></label>'
+        + '<div class="row"><button class="primary" type="button" data-yes>Далі</button><button class="ghost" type="button" data-no>Не треба</button></div></div>';
+      const inp = wrap.querySelector('input');
+      const close = (v) => { wrap.remove(); document.removeEventListener('keydown', onKey, true); done(v); };
+      const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(null); } };
+      const go = () => { const v = inp.value.trim(); if (v) close(v); else inp.focus(); };
+      wrap.addEventListener('click', (e) => { if (e.target === wrap) close(null); });
+      wrap.querySelectorAll('.ded-chips .chip').forEach((b) => b.onclick = () => {
+        wrap.querySelectorAll('.ded-chips .chip').forEach((x) => x.classList.toggle('on', x === b));
+        inp.value = b.dataset.v;
+      });
+      inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+      wrap.querySelector('[data-yes]').onclick = go;
+      wrap.querySelector('[data-no]').onclick = () => close(null);
+      document.body.appendChild(wrap);
+      document.addEventListener('keydown', onKey, true);
+      (people.length ? wrap.querySelector('.ded-chips .chip') : inp).focus();
+    });
+  }
+
+  async function sendCurse(id, btn) {
+    const it = item(id);
+    if (!it) return;
+    const to = curseTo || await pickPerson(it);
+    if (!to) return;
+    if (same(to, o.me && o.me.nick)) { o.toast('На себе не можна — хіба що з горя', 'err'); return; }
+    const yes = await ask('😈 Наслати прокльон?',
+      'Наслати «' + esc(it.title) + '» за <b>' + it.price + ' 🏺</b>? Ціль: <b>' + esc(to) + '</b> — почує його на трьох своїх '
+        + 'програшах. Від кого — не дізнається, хіба що заплатить.', 'Наслати');
+    if (!yes) return;
+    await o.busy(btn, 'насилаю…', async () => {
+      try {
+        const r = await o.api('POST', '/api/lavka/curse', { to, item: id });
+        if (refused(r)) { o.toast(r.message || 'Не вийшло', 'err'); return; }
+        o.toast((r && r.message) || '😈 Наслано', 'ok');
+        if (o.onMine) o.onMine();
+        if (curseTo) { o.go('#lavka/curse'); return; }    // з профілю: ціль досягнуто — далі звичайна полиця
+        await load();
+        paint();
+      } catch (e) { o.toast(e.message, 'err'); }
+    });
+  }
+
+  /// 😇 відкупитись (1000) чи 🕵️ дізнатися, хто наслав (300): гроші згорають — спершу «точно?».
+  async function curseAct(what, id, btn) {
+    const x = (((data && data.curses) || {}).onMe || []).find((c) => String(c.id) === String(id));
+    const name = x ? '«' + esc(x.title || x.item || 'Прокльон') + '»' : 'прокльон';
+    const ransom = what === 'ransom';
+    const yes = await ask(ransom ? '😇 Відкупитись?' : '🕵️ Хто це?',
+      ransom
+        ? 'Зняти ' + name + ' за <b>' + CURSE_RANSOM + ' 🏺</b>? Черепки згорять — тому, хто наслав, нічого не дістанеться, лише звістка про відкуп.'
+        : 'Дізнатися, хто наслав ' + name + ', за <b>' + CURSE_REVEAL + ' 🏺</b>? Той, хто наслав, теж дізнається, що ти знаєш.',
+      ransom ? 'Відкупитись' : 'Дізнатися');
+    if (!yes) return;
+    // id у відповідь — як прийшов (число з бази); з data-атрибута — рядок
+    const cid = x ? x.id : id;
+    await o.busy(btn, '…', async () => {
+      try {
+        const r = await o.api('POST', '/api/lavka/curse/' + what, { id: cid });
+        if (refused(r)) { o.toast(r.message || 'Не вийшло', 'err'); return; }
+        o.toast((r && r.message) || (ransom ? '😇 Прокльон знято' : '🕵️ Тепер знаєш'), 'ok');
+        if (o.onMine) o.onMine();
+        await load();
+        paint();
+      } catch (e) { o.toast(e.message, 'err'); }
+    });
   }
 
   // =============================================================================================
