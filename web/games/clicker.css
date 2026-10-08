@@ -1017,21 +1017,24 @@
   .clk .clk-bnum { gap: 3px; }
 }
 /* Сталі рядки лівого стовпчика (див. .clk.fit .clk-lay вище) стали вищими рівно на другий рядок плашок (~40 px):
-   без цього стовпчик лишався б ширшим за сцену, і обабіч неї стояли б порожні смуги по 17 px. */
-.clk.fit .clk-lay { --clk-rows: 182px; }
-.clk.fit.pathside .clk-lay { --clk-rows: 82px; }
+   без цього стовпчик лишався б ширшим за сцену, і обабіч неї стояли б порожні смуги по 17 px.
+   +25 px — другий рядок над сценою (суперник під швидкістю, див. .clk-rr нижче). */
+.clk.fit .clk-lay { --clk-rows: 207px; }
+.clk.fit.pathside .clk-lay { --clk-rows: 107px; }
 
 /* ---- ПК: сцені вся висота стовпчика (F3/F4, 08.10) ----
    Було: над сценою число, швидкість і суперник (~100 px), під нею два рядки плашок бафів і стрічка подій (~100 px),
    під карткою — рядок «усього наліплено…» і «Закрити»; коло на макбуку 172 px. Стало: швидкість і суперник — один
    рядок; плашки бафів — нагору правої колонки (під смугу «Шлях виробу» на низькому вікні), стрічка подій — у її
    підвал над прилавком (placeRows у clicker.js); рядок статусу — під прилавком (placeStatus); «Закрити» — у рядок
-   «← Лобі». Під сценою лишається хіба смуга «Шлях виробу» на високому вікні (--clk-rows 182 замість 302). */
+   «← Лобі». Під сценою лишається хіба смуга «Шлях виробу» на високому вікні (--clk-rows 182 замість 302).
+   Швидкість і суперник в один рядок не влазили ніде, навіть на 2K (466 + 331 px у стовпчику 430–550): обидва різали
+   «…» — «не видно ніц» (Smaug, 08.10). Тепер два рядки: швидкість на всю ширину, суперник під нею. Місце під суперника
+   тримаємо й тоді, коли його ще нема (як поза .fit), — інакше сцена смикалась би, щойно приїде таблиця. */
 .clk-rr { display: contents; }
-.clk.fit .clk-rr { order: 0; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; max-width: 100%; }
-.clk.fit .clk-rr > .clk-rate { flex: 0 1 auto; min-width: 0; }
-.clk.fit .clk-rr > .clk-rival { flex: 0 1 auto; min-width: 0; max-width: 55%; }
-.clk.fit .clk-rr > .clk-rival[hidden] { display: none !important; }
+.clk.fit .clk-rr { order: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px 8px; min-width: 0; max-width: 100%; }
+.clk.fit .clk-rr > .clk-rate { flex: 0 1 100%; min-width: 0; }
+.clk.fit .clk-rr > .clk-rival { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .clk.fit .clk-side > .clk-buffs { order: -1; flex: none; height: auto; }
 .clk.fit .clk-side > .clk-buffs[hidden] { display: none !important; }
 .clk.fit .clk-side > .clkf-feed { order: 98; flex: none; }
@@ -1094,7 +1097,12 @@
 .clk.land .clk-scene:has(.clk-stage[hidden]) > .clk-sign { display: none; }
 .clk.land .clk-head { width: 100%; }
 .clk.land .clk-count, .clk.land .clk-count.long { font-size: calc(var(--clk-num) * .62); }
-.clk.land .clk-rate, .clk.land .clk-rival { grid-column: 2; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Швидкість і суперник у півстовпці (~200 px) — переносом, до трьох рядків: в один рядок обидва різали «…». Сцену й смугу
+   це не рухає: зайву висоту бере рядок 1fr, а шість рядків тексту (162 px) ще не дістають до смуги на 844×390. */
+.clk.land .clk-rate, .clk.land .clk-rival {
+  grid-column: 2; width: 100%; height: auto; white-space: normal; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+}
 .clk.land .clk-scene > .clk-path { grid-row: 5; align-self: end; width: 100%; }
 /* Кроки смуги — лише значок і число, як на вузькому телефоні: у половині стовпця назви не влізуть. */
 .clk.land .clk-steps { gap: 3px; }

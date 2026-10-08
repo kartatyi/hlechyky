@@ -884,9 +884,12 @@
     const sec = secondNow(st);
     const heat = heatNow(st);
     const mom = momentumOf(st, heat);
-    const rate = 'за клік +' + short(clickNow(st))
+    // Одиниця та сама, що в лічильнику над рядком, — без слова: «+17,8 золотого» двічі довшало рядок до 466 px, і на
+    // макбуці (стовпчик 465 px) його хвіст різали «…» (Smaug, 08.10). Інша одиниця («+500 ₴» при золотих) — зі словом.
+    const bare = (n) => { const u = unit(n); return Number.isFinite(n) && u.key === st.unitKey ? count(n / u.div) : short(n); };
+    const rate = 'за клік +' + bare(clickNow(st))
       + (st.momentumMax > 1 ? ' · розгін до ×' + dec(st.momentumMax) : '')
-      + (sec > 0 ? ' · без тебе +' + short(sec) + ' за секунду' : ' · підмайстрів ще нема');
+      + (sec > 0 ? ' · без тебе +' + bare(sec) + ' за секунду' : ' · підмайстрів ще нема');
     if (st.rate.textContent !== rate) st.rate.textContent = rate;
 
     paintBuffs(st, sn, mom);
