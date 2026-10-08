@@ -23,6 +23,13 @@ public static class LavkaKind
     public const string Bg = "bg";
     /// <summary>Гімн переможця (docs/games/specs/anthem.md): звучить за столом, коли людина виграє партію на кількох.</summary>
     public const string Anthem = "anthem";
+    /// <summary>Святкування перемоги (docs/games/specs/flair.md §3): анімація на столі переможця. Вдягається, як гімн.</summary>
+    public const string Fx = "fx";
+    /// <summary>
+    /// Прокльон (docs/games/specs/flair.md §1): не вдягають і не мають назавжди — його насилають на іншого, і він звучить
+    /// на трьох його програшах. Звичайним «Купити»/«Подарувати» не продається.
+    /// </summary>
+    public const string Curse = "curse";
     public const string Perk = "perk";
 }
 
@@ -64,8 +71,17 @@ public sealed record LavkaAnthemArt(
     [property: JsonPropertyName("url"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Url = null,
     [property: JsonPropertyName("own"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Own = null);
 
-/// <summary>Що зіграти за столом, коли людина виграла: назва, емодзі й адреса mp3 (<see cref="Lavka.AnthemOf"/>).</summary>
-public sealed record AnthemPlay(string Title, string Emoji, string Url);
+/// <summary>
+/// Що зіграти за столом, коли людина виграла: назва, емодзі й адреса mp3 (<see cref="Lavka.AnthemOf"/>).
+/// <paramref name="Len"/> — скільки звучить, секунди (null — невідомо): з ним святкування триває стільки ж у кожній вкладці.
+/// </summary>
+public sealed record AnthemPlay(string Title, string Emoji, string Url, double? Len = null);
+
+/// <summary><c>Art</c> святкування перемоги: <c>{ emoji }</c> — саму анімацію малює браузер за id речі.</summary>
+public sealed record LavkaFxArt([property: JsonPropertyName("emoji")] string Emoji);
+
+/// <summary>Прокльон спрацював на програші: що зіграти за столом і скільки програшів йому ще лишилось.</summary>
+public sealed record CurseHit(long Id, string Title, string Emoji, string Url, int Left);
 
 /// <summary>
 /// Каталог Лавки. Живе в коді, а не в базі: ціни й асортимент — рішення власника, і нова річ приходить разом із
@@ -85,12 +101,24 @@ public static class LavkaCatalog
     /// </summary>
     public const string OwnAnthem = "own-anthem";
     public const string AnthemUrlPrefix = "/static/anthems/";
+    public const string CurseUrlPrefix = "/static/curses/";
+    /// <summary>
+    /// Вміння «Свій дзвінок» (docs/games/specs/flair.md §2): свій гімн дзвенить у того, кого особисто кличеш за стіл.
+    /// Котрий — лежить у <c>lavka_worn</c> під слотом <see cref="RingSlot"/> (це не вид речі, а місце для id гімну).
+    /// </summary>
+    public const string Ring = "ring";
+    public const string RingSlot = "ring";
+    /// <summary>Скільки програшів «важить» один прокльон.</summary>
+    public const int CurseHits = 3;
+    public const int CursePrice = 500;
 
     /// <summary>
-    /// Слоти, які вдягають (усе, крім вмінь), — у тому порядку, як їх показує профіль. Гімн — останній і не частина
-    /// <see cref="LavkaLook"/>: він звучить, а не малюється, і розсилати його всім на кожне вдягання ні до чого.
+    /// Слоти, які вдягають (усе, крім вмінь і прокльонів), — у тому порядку, як їх показує профіль. Гімн і святкування —
+    /// останні й не частина <see cref="LavkaLook"/>: вони живуть лише за столом переможця, і розсилати їх усім на кожне
+    /// вдягання ні до чого.
     /// </summary>
-    public static readonly IReadOnlyList<string> Slots = [LavkaKind.Icon, LavkaKind.Frame, LavkaKind.Color, LavkaKind.Title, LavkaKind.Bg, LavkaKind.Anthem];
+    public static readonly IReadOnlyList<string> Slots =
+        [LavkaKind.Icon, LavkaKind.Frame, LavkaKind.Color, LavkaKind.Title, LavkaKind.Bg, LavkaKind.Anthem, LavkaKind.Fx];
 
     static LavkaItem Icon(string id, string title, string art, int price, LavkaSeason? season = null) =>
         new(id, LavkaKind.Icon, title, price, art, price switch { <= 150 => 1, <= 250 => 2, _ => 3 }, season);
@@ -104,6 +132,11 @@ public static class LavkaCatalog
     static LavkaItem Anthem(string id, string title, string emoji, int price) =>
         new(id, LavkaKind.Anthem, title, price, new LavkaAnthemArt(emoji, AnthemUrlPrefix + id + ".mp3"), AnthemTier(price));
     static int AnthemTier(int price) => price switch { <= 300 => 1, <= 600 => 2, _ => 3 };
+    // Прокльон грає готовий файл: сумний тромбон — той самий, що й гімн, решта — свої в web/static/curses
+    static LavkaItem Curse(string id, string title, string emoji, string? url = null) =>
+        new(id, LavkaKind.Curse, title, CursePrice, new LavkaAnthemArt(emoji, url ?? CurseUrlPrefix + id + ".mp3"));
+    static LavkaItem Fx(string id, string title, string emoji, int price) =>
+        new(id, LavkaKind.Fx, title, price, new LavkaFxArt(emoji), price switch { <= 400 => 1, <= 600 => 2, _ => 3 });
 
     public static readonly IReadOnlyList<LavkaItem> All =
     [
@@ -169,10 +202,21 @@ public static class LavkaCatalog
         // свій уривок: дорожче за «Свою фотку» — це звук для всіх за столом, а не картинка
         new(OwnAnthem, LavkaKind.Anthem, "Свій трек", 3000, new LavkaAnthemArt("🎤", Own: true), AnthemTier(3000)),
 
+        // святкування перемоги: анімація на столі переможця. «Глек танцює гопак» — glekhopak, бо hopak — уже гімн
+        Fx("confetti", "Конфеті", "🎊", 400), Fx("shards", "Дощ черепків", "🏺", 600), Fx("sunflowers", "Соняшники", "🌻", 600),
+        Fx("salute", "Салют", "🎆", 1000), Fx("glekhopak", "Глек танцює гопак", "💃", 1500),
+
+        // прокльони: синтезовані docs/games/dev/curses-make.py, як і гімни, — без чужих прав
+        Curse("sadtrombone", "Сумний тромбон", "🎷", AnthemUrlPrefix + "trombone.mp3"), Curse("boo", "Бу-у-у", "👎"),
+        Curse("crickets", "Цвіркуни", "🦗"), Curse("funeral", "Похоронний марш", "⚰️"), Curse("goat", "Цап", "🐐"),
+        Curse("clown", "Клоун", "🤡"),
+
         new(Dedication, LavkaKind.Perk, "Присвята в ефір", 1500, "🎙"),
         new(Fireworks, LavkaKind.Perk, "Феєрверк", 600, "🎆"),
         // своє фото на аватарку (записка Назара, 28.09): куплене вміння назавжди, саме фото міняється раз на добу
         new(Photo, LavkaKind.Perk, "Своя фотка", 2000, "📷"),
+        // свій гімн дзвінком особистого заклику за стіл (docs/games/specs/flair.md §2)
+        new(Ring, LavkaKind.Perk, "Свій дзвінок", 500, "🔔"),
     ];
 
     // ToDictionary падає на однакових id — і тоді падає все, що торкнеться каталогу: дубль не проскочить непомітно
@@ -207,6 +251,8 @@ public static class LavkaCatalog
         LavkaKind.Title => $"титул «{i.Title}»",
         LavkaKind.Bg => $"тло «{i.Title}»",
         LavkaKind.Anthem => $"гімн «{i.Title}»",
+        LavkaKind.Fx => $"святкування «{i.Title}»",
+        LavkaKind.Curse => $"прокльон «{i.Title}»",
         _ => i.Title,
     };
 
@@ -215,6 +261,27 @@ public static class LavkaCatalog
 
     /// <summary>Назва в лапках там, де своїх лапок нема: «дарує Петрові «Срібна рамка»», але «дарує Петрові значок «Лис» 🦊».</summary>
     public static string Quoted(LavkaItem i) => i.Kind is LavkaKind.Frame or LavkaKind.Perk ? $"«{Label(i)}»" : Label(i);
+
+    static readonly ConcurrentDictionary<string, double?> Lens = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Скільки секунд звучить готовий файл каталогу (<c>/static/…mp3</c> у <c>web/</c>), з точністю до десятої: міряється
+    /// один раз за кадрами mp3 (<see cref="Mp3Duration"/>, без ffprobe) і пам'ятається до перезапуску. null — файла
+    /// нема чи він не розібрався: тоді святкування триває свої 6 с.
+    /// </summary>
+    public static double? ClipSeconds(string? url) => url is null || !url.StartsWith("/static/", StringComparison.Ordinal) || url.Contains("..")
+        ? null
+        : Lens.GetOrAdd(url, u =>
+        {
+            try
+            {
+                var path = Path.Combine(Paths.Root, "web", u.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                var sec = File.Exists(path) ? Mp3Duration.Seconds(File.ReadAllBytes(path)) : 0;
+                return sec > 0 ? Math.Round(sec, 1) : null;
+            }
+            catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+        });
 }
 
 // =====================================================================================================================
@@ -244,6 +311,21 @@ public sealed record LavkaAnthemRow(string NickKey, string Nick, string File, st
 }
 
 /// <summary>
+/// Прокльон, насланий на акаунт (docs/games/specs/flair.md §1): хто й на кого (ключ і написання ніка), що звучить,
+/// скільки програшів лишилось. Живий — <see cref="Live"/>; розряджений має <paramref name="DoneAt"/>, відкуплений —
+/// <paramref name="RansomedAt"/> (і <c>left = 0</c>), розкритий — <paramref name="RevealedAt"/>.
+/// </summary>
+public sealed record LavkaCurseRow(long Id, string FromKey, string FromNick, string ToKey, string ToNick, string Item, int Left,
+    int Price, DateTimeOffset At, DateTimeOffset? RevealedAt, DateTimeOffset? RansomedAt, DateTimeOffset? DoneAt)
+{
+    public bool Live => Left > 0 && RansomedAt is null && DoneAt is null;
+    /// <summary>Коли перестав діяти; null — ще діє.</summary>
+    public DateTimeOffset? EndedAt => DoneAt ?? RansomedAt;
+    /// <summary>live, done чи ransomed — так його бачить вітрина.</summary>
+    public string State => RansomedAt is not null ? "ransomed" : Live ? "live" : "done";
+}
+
+/// <summary>
 /// Таблиці Лавки: що в кого є (назавжди), що вдягнуто і коли востаннє користувались вмінням (перерва переживає рестарт).
 /// DDL і SQL живуть тут, від <see cref="Db"/> — лише з'єднання на одну коротку операцію.
 /// </summary>
@@ -262,6 +344,12 @@ public sealed class LavkaStore
         CREATE TABLE IF NOT EXISTS lavka_anthem(
             nick_key TEXT NOT NULL PRIMARY KEY, nick TEXT NOT NULL, file TEXT NOT NULL, title TEXT,
             start_ms INTEGER NOT NULL, len_ms INTEGER NOT NULL, bytes INTEGER NOT NULL, at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS lavka_curse(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, from_key TEXT NOT NULL, from_nick TEXT NOT NULL, to_key TEXT NOT NULL,
+            to_nick TEXT NOT NULL, item TEXT NOT NULL, "left" INTEGER NOT NULL, price INTEGER NOT NULL, at TEXT NOT NULL,
+            revealed_at TEXT, ransomed_at TEXT, done_at TEXT);
+        CREATE INDEX IF NOT EXISTS lavka_curse_to ON lavka_curse(to_key, id);
+        CREATE INDEX IF NOT EXISTS lavka_curse_from ON lavka_curse(from_key, id);
         """;
 
     readonly Db _db;
@@ -436,6 +524,78 @@ public sealed class LavkaStore
         return list;
     }
 
+    // ---------- прокльони: живі, розряджені й відкуплені — один рядок на кожне насилання ----------
+
+    const string CurseCols = "id, from_key, from_nick, to_key, to_nick, item, \"left\", price, at, revealed_at, ransomed_at, done_at";
+    const string LiveSql = "\"left\" > 0 AND ransomed_at IS NULL AND done_at IS NULL";
+
+    /// <summary>Записати насланий прокльон; повертає id рядка (на ньому тримається ref оплати).</summary>
+    public long AddCurse(string from, string to, string item, int left, int price, DateTimeOffset at) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, """
+            INSERT INTO lavka_curse(from_key, from_nick, to_key, to_nick, item, "left", price, at) VALUES($fk, $fn, $tk, $tn, $i, $l, $p, $at);
+            SELECT last_insert_rowid();
+            """, ("$fk", Key(from)), ("$fn", from), ("$tk", Key(to)), ("$tn", to), ("$i", item), ("$l", left), ("$p", price), ("$at", Iso(at)));
+        return (long)cmd.ExecuteScalar()!;
+    });
+
+    /// <summary>Прибрати щойно записаний прокльон, за який так і не заплатили.</summary>
+    public void DropCurse(long id) => _db.With(c => Exec(c, "DELETE FROM lavka_curse WHERE id = $id", ("$id", id)));
+
+    public LavkaCurseRow? Curse(long id) => _db.With(c =>
+        Curses(c, $"SELECT {CurseCols} FROM lavka_curse WHERE id = $id", ("$id", id)).FirstOrDefault());
+
+    /// <summary>Живі прокльони на ніку, найстаріші першими (FIFO).</summary>
+    public List<LavkaCurseRow> LiveOn(string nick) => _db.With(c =>
+        Curses(c, $"SELECT {CurseCols} FROM lavka_curse WHERE to_key = $k AND {LiveSql} ORDER BY id", ("$k", Key(nick))));
+
+    /// <summary>Чи є на ніку хоч один живий прокльон — для кожного програшу, тож без вибірки рядків.</summary>
+    public bool Cursed(string nick) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, $"SELECT 1 FROM lavka_curse WHERE to_key = $k AND {LiveSql} LIMIT 1", ("$k", Key(nick)));
+        return cmd.ExecuteScalar() is not null;
+    });
+
+    /// <summary>Прокльони на ніку (<paramref name="on"/>) чи від ніка: живі й ті, що скінчились не раніше за <paramref name="since"/>.</summary>
+    public List<LavkaCurseRow> CursesOf(string nick, bool on, DateTimeOffset since) => _db.With(c =>
+        Curses(c, $"""
+            SELECT {CurseCols} FROM lavka_curse WHERE {(on ? "to_key" : "from_key")} = $k
+                AND (({LiveSql}) OR COALESCE(done_at, ransomed_at) >= $since)
+            ORDER BY id
+            """, ("$k", Key(nick)), ("$since", Iso(since))));
+
+    /// <summary>Мінус один програш; на нулі — розряджений. Повертає, скільки лишилось, або null — прокльон уже не живий.</summary>
+    public int? HitCurse(long id, DateTimeOffset at) => _db.With(c =>
+    {
+        var hit = Exec(c, $"""
+            UPDATE lavka_curse SET "left" = "left" - 1, done_at = CASE WHEN "left" - 1 <= 0 THEN $at ELSE done_at END
+            WHERE id = $id AND {LiveSql}
+            """, ("$id", id), ("$at", Iso(at)));
+        if (hit == 0) return (int?)null;
+        using var cmd = Cmd(c, "SELECT \"left\" FROM lavka_curse WHERE id = $id", ("$id", id));
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    });
+
+    /// <summary>Відкуп: прокльон знято (left = 0). false — він уже не живий.</summary>
+    public bool RansomCurse(long id, DateTimeOffset at) => _db.With(c =>
+        Exec(c, $"UPDATE lavka_curse SET \"left\" = 0, ransomed_at = $at WHERE id = $id AND {LiveSql}", ("$id", id), ("$at", Iso(at))) > 0);
+
+    /// <summary>Розкриття: тепер ціль знає, від кого. false — уже розкритий.</summary>
+    public bool RevealCurse(long id, DateTimeOffset at) => _db.With(c =>
+        Exec(c, "UPDATE lavka_curse SET revealed_at = $at WHERE id = $id AND revealed_at IS NULL", ("$id", id), ("$at", Iso(at))) > 0);
+
+    static List<LavkaCurseRow> Curses(SqliteConnection c, string sql, params (string Name, object? Value)[] ps)
+    {
+        using var cmd = Cmd(c, sql, ps);
+        using var r = cmd.ExecuteReader();
+        var list = new List<LavkaCurseRow>();
+        DateTimeOffset? At(int i) => r.IsDBNull(i) ? null : Ts(r.GetString(i));
+        while (r.Read())
+            list.Add(new LavkaCurseRow(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5),
+                r.GetInt32(6), r.GetInt32(7), Ts(r.GetString(8)), At(9), At(10), At(11)));
+        return list;
+    }
+
     static string Iso(DateTimeOffset t) => t.ToString("O", CultureInfo.InvariantCulture);
     static DateTimeOffset Ts(string s) => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
@@ -488,6 +648,8 @@ public interface ILavkaWire
     void Fireworks(string nick);
     void Chat(object line);
     void Toast(string nick, string text);
+    /// <summary>Рядок у Журнал під фільтром «🎮 Ігри» (від імені сайту, як рядки ігор). Типово — нікуди.</summary>
+    void Journal(string text) { }
 }
 
 /// <summary>Відповідь Лавки: чи вдалось, що сказати людині і (для купівлі) скільки черепків лишилось.</summary>
@@ -503,7 +665,7 @@ public sealed record LavkaReply(bool Ok, string Message, int? Balance = null);
 /// тож і оплата за неї — теж раз, хоч би скільки разів клацнули і хоч би що впало посередині.
 /// </summary>
 public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, Db db, Presence presence,
-    ILavkaAir air, ILavkaVoice voice, ILavkaWire wire, IClock clock, ILogger<Lavka> log)
+    ILavkaAir air, ILavkaVoice voice, ILavkaWire wire, IClock clock, ILogger<Lavka> log) : IRings
 {
     public const string NotAccount = "Закріпи нік — тоді Лавка твоя";
     public const string NoItem = "Такої речі в Лавці нема";
@@ -523,6 +685,22 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     /// <summary>Новий уривок свого треку — не частіше разу на 2 хвилини: щоб підправити, але не спамити ffmpeg.</summary>
     public static readonly TimeSpan AnthemGap = TimeSpan.FromMinutes(2);
     public const string NoGiftAnthem = "Свій трек дарувати не можна — його ставлять собі";
+    public const string NoGiftRing = "Свій дзвінок дарувати не можна — він дзвонить твоїм гімном";
+    public const string CurseNotSold = "Прокльони не купують і не дарують — їх насилають: «😈 Наслати…» на полиці прокльонів";
+    public const string NoRing = "Спершу купи «Свій дзвінок»";
+    public const string CurseToGuest = "Прокльон — лише на того, хто з акаунтом";
+    public const string CurseSelf = "На себе не можна — хіба що з горя";
+    public const string NotYourCurse = "Це не твій прокльон";
+    public const string CurseGone = "Цей прокльон уже не діє";
+    public const string CurseAgain = "Твій прокльон на цю людину ще діє — хай спершу розрядиться";
+    public const string CurseFull = "На цій людині вже три прокльони — більше не влізе";
+    /// <summary>Скільки живих прокльонів від різних людей влазить на одну ціль.</summary>
+    public const int CursesPerTarget = 3;
+    /// <summary>Відкупитись — удвічі дорожче за прокльон: черепки згорають, тому, хто наслав, нічого не йде.</summary>
+    public const int RansomPrice = 1000;
+    public const int RevealPrice = 300;
+    /// <summary>Скільки днів розряджений чи відкуплений прокльон видно на вітрині (і його ще можна розкрити).</summary>
+    public static readonly TimeSpan CurseMemory = TimeSpan.FromDays(7);
 
     /// <summary>«Чи вже є», списання і запис — одним шматком: інакше подарунок і купівля тієї самої речі разом заплатили б двічі.</summary>
     readonly object _gate = new();
@@ -558,6 +736,9 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         var achs = account ? econ.AchievementsOf(EconomyStore.Key(nick)).Select(a => a.Key).ToHashSet(StringComparer.Ordinal) : [];
         var wearing = account ? store.WornBy(nick) : new Dictionary<string, string>();
         var own = account ? store.Anthem(nick) : null;
+        var since = clock.UtcNow - CurseMemory;
+        var onMe = account ? store.CursesOf(nick, on: true, since) : [];
+        var fromMe = account ? store.CursesOf(nick, on: false, since) : [];
         object Perk(string id)
         {
             var has = mine.Contains(id);
@@ -580,6 +761,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
                 icon = wearing.GetValueOrDefault(LavkaKind.Icon), frame = wearing.GetValueOrDefault(LavkaKind.Frame),
                 color = wearing.GetValueOrDefault(LavkaKind.Color), title = wearing.GetValueOrDefault(LavkaKind.Title),
                 bg = wearing.GetValueOrDefault(LavkaKind.Bg), anthem = wearing.GetValueOrDefault(LavkaKind.Anthem),
+                fx = wearing.GetValueOrDefault(LavkaKind.Fx), ring = wearing.GetValueOrDefault(LavkaCatalog.RingSlot),
             },
             perks = new
             {
@@ -595,8 +777,33 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             phrases = LavkaCatalog.Phrases.Select(p => new { key = p.Key, text = p.Text }),
             // свій трек: url — уривок, що стоїть зараз (null — ще нема), readyAt — коли можна поставити новий
             ownAnthem = new { url = own?.Url, title = own?.Title, readyAt = mine.Contains(LavkaCatalog.OwnAnthem) ? ReadyAt(nick, LavkaCatalog.OwnAnthem) : null },
+            // прокльони: на мені (від кого — лише розкриті) і від мене; розряджені й відкуплені видно ще 7 днів
+            curses = new
+            {
+                onMe = onMe.Select(c => new CurseOnMe(c.Id, c.Item, CurseTitle(c.Item), CurseEmoji(c.Item), c.Left, c.At,
+                    c.RevealedAt is null ? null : c.FromNick, c.State)),
+                mine = fromMe.Select(c => new
+                {
+                    id = c.Id, to = c.ToNick, item = c.Item, title = CurseTitle(c.Item), emoji = CurseEmoji(c.Item), left = c.Left,
+                    at = c.At, revealed = c.RevealedAt is not null, state = c.State,
+                }),
+            },
         };
     }
+
+    /// <summary>Рядок «На тобі»: <c>from</c> у JSON є лише тоді, коли ціль заплатила за розкриття.</summary>
+    sealed record CurseOnMe(
+        [property: JsonPropertyName("id")] long Id,
+        [property: JsonPropertyName("item")] string Item,
+        [property: JsonPropertyName("title")] string Title,
+        [property: JsonPropertyName("emoji")] string Emoji,
+        [property: JsonPropertyName("left")] int Left,
+        [property: JsonPropertyName("at")] DateTimeOffset At,
+        [property: JsonPropertyName("from"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? From,
+        [property: JsonPropertyName("state")] string State);
+
+    static string CurseTitle(string item) => LavkaCatalog.Get(item)?.Title ?? item;
+    static string CurseEmoji(string item) => LavkaCatalog.Get(item)?.Art is LavkaAnthemArt a ? a.Emoji : "😈";
 
     /// <summary>Вигляд усіх, у кого щось вдягнуто (<c>GET /api/lavka/looks</c>): нік → що малювати.</summary>
     public Dictionary<string, LavkaLook> Looks()
@@ -622,13 +829,55 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     /// Гімн, який зазвучить, коли <paramref name="nick"/> виграє: вдягнутий готовий — його файл; вдягнутий свій трек —
     /// поставлений уривок (без уривка чи знятий адміном — тиша); нічого не вдягнуто або річ уже не його — null.
     /// </summary>
-    public AnthemPlay? AnthemOf(string nick)
+    public AnthemPlay? AnthemOf(string nick) => store.Worn(nick, LavkaKind.Anthem) is { } id ? Playable(nick, id) : null;
+
+    /// <summary>
+    /// Гімн <paramref name="id"/> так, як він зазвучить у <paramref name="nick"/>: річ — гімн, вона його, а свій трек — з
+    /// поставленим уривком. null — зіграти нічого (не гімн, не куплений, уривка нема).
+    /// </summary>
+    AnthemPlay? Playable(string nick, string id)
     {
-        if (store.Worn(nick, LavkaKind.Anthem) is not { } id || LavkaCatalog.Get(id) is not { Kind: LavkaKind.Anthem, Art: LavkaAnthemArt art } item)
-            return null;
+        if (LavkaCatalog.Get(id) is not { Kind: LavkaKind.Anthem, Art: LavkaAnthemArt art } item) return null;
         if (!store.Owns(nick, item.Id)) return null;
-        if (item.Id != LavkaCatalog.OwnAnthem) return art.Url is { } url ? new AnthemPlay(item.Title, art.Emoji, url) : null;
-        return store.Anthem(nick) is { } own ? new AnthemPlay(string.IsNullOrWhiteSpace(own.Title) ? item.Title : own.Title, art.Emoji, own.Url) : null;
+        if (item.Id != LavkaCatalog.OwnAnthem)
+            return art.Url is { } url ? new AnthemPlay(item.Title, art.Emoji, url, LavkaCatalog.ClipSeconds(url)) : null;
+        return store.Anthem(nick) is { } own
+            ? new AnthemPlay(string.IsNullOrWhiteSpace(own.Title) ? item.Title : own.Title, art.Emoji, own.Url, own.LenMs > 0 ? own.LenMs / 1000.0 : null)
+            : null;
+    }
+
+    /// <summary>Святкування, яке злетить над столом, коли <paramref name="nick"/> виграє: id вдягнутого й свого; інакше null.</summary>
+    public string? FxOf(string nick) =>
+        store.Worn(nick, LavkaKind.Fx) is { } id && LavkaCatalog.Get(id) is { Kind: LavkaKind.Fx } item && store.Owns(nick, item.Id) ? item.Id : null;
+
+    /// <summary>
+    /// Дзвінок <paramref name="nick"/> для особистого заклику (docs/games/specs/flair.md §2): є вміння, обрано гімн, і він
+    /// зазвучить (свій, а свій трек — з уривком). Інакше null — заклик летить без дзвінка.
+    /// </summary>
+    public AnthemPlay? RingOf(string nick) =>
+        store.Owns(nick, LavkaCatalog.Ring) && store.Worn(nick, LavkaCatalog.RingSlot) is { } id ? Playable(nick, id) : null;
+
+    InviteRing? IRings.RingOf(string nick) => RingOf(nick) is { } p ? new InviteRing(p.Url, p.Title, p.Emoji) : null;
+
+    /// <summary>
+    /// Обрати дзвінок (<c>POST /api/lavka/ring</c>): <paramref name="itemId"/> — свій гімн (готовий куплений або «Свій трек»
+    /// з уривком); порожньо — без дзвінка.
+    /// </summary>
+    public LavkaReply SetRing(string nick, bool account, string? itemId)
+    {
+        if (!account) return new(false, NotAccount);
+        if (!store.Owns(nick, LavkaCatalog.Ring)) return new(false, NoRing);
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            lock (_gate) store.Unwear(nick, LavkaCatalog.RingSlot);
+            return new(true, "Дзвінок вимкнено — кличеш без звуку");
+        }
+        if (LavkaCatalog.Get(itemId) is not { } item) return new(false, NoItem);
+        if (item.Kind != LavkaKind.Anthem) return new(false, "Дзвінком стає лише гімн");
+        if (!store.Owns(nick, item.Id)) return new(false, "Дзвінком стає лише свій гімн — спершу купи його");
+        if (Playable(nick, item.Id) is not { } play) return new(false, "Спершу постав уривок «Свого треку»");
+        lock (_gate) store.Wear(nick, LavkaCatalog.RingSlot, item.Id);
+        return new(true, $"🔔 Тепер твій дзвінок — «{play.Title}»");
     }
 
     /// <summary>Річ, якої вже нема в каталозі (або не свого слота), не малюється — і не ламає решту вигляду.</summary>
@@ -661,7 +910,9 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             if (to is null) return No($"«{name}» — не акаунт: дарувати можна лише тим, хто закріпив нік");
         }
         if (item.Ach is { } ach) return No($"Цей титул не купується — його дає ачівка «{AchTitle(ach)}»");
+        if (item.Kind == LavkaKind.Curse) return No(CurseNotSold);
         if (to is not null && item.Id == LavkaCatalog.OwnAnthem) return No(NoGiftAnthem);
+        if (to is not null && item.Id == LavkaCatalog.Ring) return No(NoGiftRing);
 
         var owner = to?.Nick ?? nick;
         lock (_gate)
@@ -706,10 +957,147 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         LavkaKind.Bg => $"Тло «{i.Title}» тепер твоє назавжди — уже в профілі",
         LavkaKind.Anthem when i.Id == LavkaCatalog.OwnAnthem => "«Свій трек» тепер твій назавжди — обери пісню й уривок, і він зазвучить, коли виграєш",
         LavkaKind.Anthem => $"Гімн «{i.Title}» тепер твій назавжди — зазвучить за столом, коли виграєш",
+        LavkaKind.Fx => $"Святкування «{i.Title}» тепер твоє назавжди — злетить над столом, коли виграєш",
+        _ when i.Id == LavkaCatalog.Ring => "«Свій дзвінок» тепер твій назавжди — обери гімн, і він задзвенить тому, кого кличеш за стіл",
         _ when i.Id == LavkaCatalog.Dedication => "«Присвята в ефір» тепер твоя назавжди — закинь пісню й присвяти її комусь",
         _ when i.Id == LavkaCatalog.Photo => "«Своя фотка» тепер твоя назавжди — обери фото, і воно стане аватаркою",
         _ => $"«{i.Title}» тепер твій назавжди — бахай!",
     };
+
+    // ---------- прокльони (docs/games/specs/flair.md §1) ----------
+
+    /// <summary>
+    /// Наслати прокльон <paramref name="itemId"/> на акаунт <paramref name="toNick"/>: 500 🏺, звучить на трьох його програшах.
+    /// Від однієї людини на одну ціль — один живий, на ціль — щонайбільше три від різних людей. Ціль дістає тост без
+    /// автора, Журнал — рядок «😈 Петро тепер під прокльоном. Хто наслав — секрет»; хто наслав — ніде не видно.
+    /// Нік — лише в називному («Ціль: Тест Оля»): відмінки ламаються на ніках із кількох слів, а рід угадувати нема з чого.
+    /// </summary>
+    public LavkaReply Curse(string nick, bool account, string? toNick, string? itemId)
+    {
+        LavkaReply No(string message) => new(false, message, economy.Balance(nick));
+
+        if (!account) return No(NotAccount);
+        var name = Clean(toNick);
+        if (name.Length == 0) return No("Кого проклясти?");
+        if (Auth.NickKey(name) == Auth.NickKey(nick)) return No(CurseSelf);
+        if (db.FindAccount(name) is not { } to) return No(CurseToGuest);
+        if (LavkaCatalog.Get(itemId) is not { Kind: LavkaKind.Curse } item) return No("Такого прокльону в Лавці нема");
+
+        long id;
+        lock (_gate)
+        {
+            var live = store.LiveOn(to.Nick);
+            if (live.Any(c => c.FromKey == Auth.NickKey(nick))) return No(CurseAgain);
+            if (live.Select(c => c.FromKey).Distinct(StringComparer.Ordinal).Count() >= CursesPerTarget) return No(CurseFull);
+            if (economy.Balance(nick) < item.Price) return No($"Бракує {Math.Max(1, item.Price - economy.Balance(nick))} 🏺");
+            // ref тримається на id рядка — тож спершу рядок, потім гроші; не списалось (чи впало) — рядка й не було
+            id = store.AddCurse(nick, to.Nick, item.Id, LavkaCatalog.CurseHits, item.Price, clock.UtcNow);
+            bool paid;
+            try
+            {
+                // у тості гаманця — і ціль; в історії лишається «Лавка — прокльон «Цап»» (Reason)
+                paid = economy.TrySpend(nick, item.Price, "curse:" + item.Id, $"curse:{id}",
+                    economy.Text(-item.Price, "curse:" + item.Id) + " · ціль: " + to.Nick);
+            }
+            catch
+            {
+                store.DropCurse(id);   // не заплачений прокльон не має лишитись живим
+                throw;
+            }
+            if (!paid)
+            {
+                store.DropCurse(id);
+                return No($"Бракує {Math.Max(1, item.Price - economy.Balance(nick))} 🏺");
+            }
+        }
+
+        // Черепки вже списано: розсилка може спіткнутись, але зробити прокльон невдалим вона не має права.
+        try
+        {
+            wire.Toast(to.Nick, $"😈 На тебе наклали {LavkaCatalog.Label(item)} на {LavkaCatalog.CurseHits} програші. Від кого — секрет. Відкупитись — у Лавці");
+            wire.Journal($"😈 {to.Nick} тепер під прокльоном. Хто наслав — секрет");
+        }
+        catch (Exception ex) { log.LogWarning(ex, "Лавка не розповіла про прокльон {Id}", id); }
+        return new(true, $"😈 Прокльон «{item.Title}» наслано. Ціль: {to.Nick} — почує його на трьох своїх програшах. Від кого — секрет",
+            economy.Balance(nick));
+    }
+
+    /// <summary>Відкупитись від живого прокльону на собі: 1000 🏺 згорають (тому, хто наслав, нічого), прокльон знято.</summary>
+    public LavkaReply Ransom(string nick, bool account, long? id)
+    {
+        LavkaReply No(string message) => new(false, message, economy.Balance(nick));
+
+        if (!account) return No(NotAccount);
+        LavkaCurseRow curse;
+        lock (_gate)
+        {
+            if (CurseOn(nick, id) is not { } c) return No(NotYourCurse);
+            if (!c.Live) return No(CurseGone);
+            if (!economy.TrySpend(nick, RansomPrice, "curse-ransom:" + c.Item, $"curse-ransom:{c.Id}"))
+                return No($"Бракує {Math.Max(1, RansomPrice - economy.Balance(nick))} 🏺");
+            store.RansomCurse(c.Id, clock.UtcNow);
+            curse = c;
+        }
+        try { wire.Toast(curse.FromNick, $"😇 Від твого прокльону «{CurseTitle(curse.Item)}» відкупились. Ціль: {curse.ToNick}"); }
+        catch (Exception ex) { log.LogWarning(ex, "тост про відкуп {Id} не полетів", curse.Id); }
+        return new(true, $"😇 {Capital(LavkaCatalog.Label(curse.Item))} знято — більше не звучить", economy.Balance(nick));
+    }
+
+    /// <summary>Дізнатись, від кого прокльон на собі: 300 🏺, живий чи той, що скінчився за останні 7 днів.</summary>
+    public LavkaReply Reveal(string nick, bool account, long? id)
+    {
+        LavkaReply No(string message) => new(false, message, economy.Balance(nick));
+
+        if (!account) return No(NotAccount);
+        LavkaCurseRow curse;
+        lock (_gate)
+        {
+            if (CurseOn(nick, id) is not { } c) return No(NotYourCurse);
+            if (c.RevealedAt is not null) return No($"Ти вже знаєш — це {c.FromNick}");
+            if (c.EndedAt is { } ended && ended < clock.UtcNow - CurseMemory) return No(CurseGone);
+            if (!economy.TrySpend(nick, RevealPrice, "curse-reveal:" + c.Item, $"curse-reveal:{c.Id}"))
+                return No($"Бракує {Math.Max(1, RevealPrice - economy.Balance(nick))} 🏺");
+            store.RevealCurse(c.Id, clock.UtcNow);
+            curse = c;
+        }
+        try { wire.Toast(curse.FromNick, $"🕵️ Твій прокльон «{CurseTitle(curse.Item)}» розкрито: {curse.ToNick} знає, що він від тебе"); }
+        catch (Exception ex) { log.LogWarning(ex, "тост про розкриття {Id} не полетів", curse.Id); }
+        return new(true, $"🕵️ Хто наслав «{CurseTitle(curse.Item)}»: {curse.FromNick}", economy.Balance(nick));
+    }
+
+    /// <summary>Прокльон <paramref name="id"/>, що лежить саме на <paramref name="nick"/>; чужий чи неіснуючий — null.</summary>
+    LavkaCurseRow? CurseOn(string nick, long? id) =>
+        id is { } n && store.Curse(n) is { } c && c.ToKey == Auth.NickKey(nick) ? c : null;
+
+    /// <summary>Чи є на ніку живий прокльон — кандидат у прокляті програші.</summary>
+    public bool Cursed(string nick) => store.Cursed(nick);
+
+    /// <summary>
+    /// <paramref name="nick"/> програв за столом: найстаріший живий прокльон на ньому (FIFO) втрачає один програш, тому,
+    /// хто наслав, — тост. null — живих прокльонів нема. Кличе <see cref="AnthemPlayer"/>.
+    /// </summary>
+    public CurseHit? HitCurse(string nick)
+    {
+        LavkaCurseRow? curse = null;
+        int left = 0;
+        lock (_gate)
+        {
+            foreach (var c in store.LiveOn(nick))
+                if (store.HitCurse(c.Id, clock.UtcNow) is { } l) { (curse, left) = (c, l); break; }
+        }
+        if (curse is null) return null;
+        var item = LavkaCatalog.Get(curse.Item);
+        var art = item?.Art as LavkaAnthemArt;
+        try
+        {
+            var what = $"😈 Твій прокльон «{CurseTitle(curse.Item)}» спрацював";
+            wire.Toast(curse.FromNick, left > 0 ? $"{what} (лишилось {left}). Ціль: {curse.ToNick}" : $"{what} і розрядився. Ціль: {curse.ToNick}");
+        }
+        catch (Exception ex) { log.LogWarning(ex, "тост про прокльон {Id} не полетів", curse.Id); }
+        return art?.Url is { } url ? new CurseHit(curse.Id, item!.Title, art.Emoji, url, left) : null;
+    }
+
+    static string Capital(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     // ---------- вдягнути ----------
 
@@ -719,8 +1107,8 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         if (!account) return new(false, NotAccount);
         var s = (slot ?? "").Trim().ToLowerInvariant();
         if (!LavkaCatalog.Slots.Contains(s)) return new(false, NoSlot);
-        // Гімн у вигляді не малюється — розсилати всім той самий вигляд через нього ні до чого
-        var seen = s != LavkaKind.Anthem;
+        // Гімн і святкування у вигляді не малюються — розсилати всім той самий вигляд через них ні до чого
+        var seen = s is not (LavkaKind.Anthem or LavkaKind.Fx);
         if (string.IsNullOrWhiteSpace(itemId))
         {
             lock (_gate) store.Unwear(nick, s);

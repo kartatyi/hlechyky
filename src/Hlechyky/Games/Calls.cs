@@ -7,7 +7,8 @@ namespace Hlechyky.Games;
 /// ще раз» (<see cref="Again"/>). Перевірки й паузи живуть тут, а не в хабі, щоб їх можна було перевірити тестом без
 /// SignalR; розсилає, як і все в іграх, Broadcaster.
 /// </summary>
-public sealed class Calls(Rooms rooms, Presence presence, IClock clock)
+/// <param name="rings">«Свій дзвінок» того, хто кличе особисто (Лавка); null — заклики без дзвінків (тести, сервер без Лавки).</param>
+public sealed class Calls(Rooms rooms, Presence presence, IClock clock, IRings? rings = null)
 {
     /// <summary>Той самий — тому самому не частіше: двічі поспіль «📣» в одну людину — це вже не заклик, а стукіт у шибку.</summary>
     public static readonly TimeSpan PairGap = TimeSpan.FromSeconds(30);
@@ -140,9 +141,16 @@ public sealed class Calls(Rooms rooms, Presence presence, IClock clock)
 
         var into = Into(room.Info.Accusative);
         var outbox = new Outbox();
-        outbox.Add(new Invite(room.Id, by, $"{by} кличе тебе {into}", target));
+        outbox.Add(new Invite(room.Id, by, $"{by} кличе тебе {into}", target, RingOf(by)));
         outbox.Add(new InviteLine(room.Id, by, $"кличе тебе {into}", now, target));
         return (new RoomOutcome(outbox, new RoomReply(true, $"📣 Заклик полетів: {target}", room.Id)), target, room.Info);
+    }
+
+    /// <summary>Дзвінок того, хто кличе. Зламана база Лавки коштує лише дзвінка — заклик однаково летить.</summary>
+    InviteRing? RingOf(string by)
+    {
+        try { return rings?.RingOf(by); }
+        catch (Exception) { return null; }
     }
 
     /// <summary>

@@ -209,9 +209,12 @@ public sealed class Broadcaster(
                     break;
                 case Invite invite:
                     // Особистий заклик — лише на з'єднання того, кого кличуть; загальний — усім (свій браузер відкине сам).
+                    // «Свій дзвінок» — лише в особистому: загальний заклик дзвенів би всім щоразу, як хтось ставить стіл.
                     sends.Add(invite.To is { } to
-                        ? new Send(new ToConnections(connectionsOf(to)), "invite",
-                            new { roomId = invite.RoomId, by = invite.By, text = invite.Text, personal = true })
+                        ? new Send(new ToConnections(connectionsOf(to)), "invite", invite.Ring is { } ring
+                            ? new { roomId = invite.RoomId, by = invite.By, text = invite.Text, personal = true,
+                                ring = new { url = ring.Url, title = ring.Title, emoji = ring.Emoji } }
+                            : new { roomId = invite.RoomId, by = invite.By, text = invite.Text, personal = true })
                         : new Send(new ToAll(), "invite",
                             new { roomId = invite.RoomId, by = invite.By, text = invite.Text, personal = false }));
                     break;
@@ -237,7 +240,19 @@ public sealed class Broadcaster(
                         new { id = rx.RoomId, nick = rx.Nick, seat = rx.Seat, e = rx.E }));
                     break;
                 case Anthem anthem:
-                    sends.AddRange(AnthemSends(anthem, viewsFor, connectionsOf));
+                    sends.AddRange(TableSends(anthem.RoomId, "anthem", new
+                    {
+                        id = anthem.RoomId, round = anthem.Round, nick = anthem.Nick, title = anthem.Title, emoji = anthem.Emoji,
+                        url = anthem.Url, fx = anthem.Fx, len = anthem.Len,
+                    }, viewsFor, connectionsOf));
+                    break;
+                case Curse curse:
+                    // від кого прокльон — на дріт не йде: його знає лише Лавка
+                    sends.AddRange(TableSends(curse.RoomId, "curse", new
+                    {
+                        id = curse.RoomId, round = curse.Round, nick = curse.Nick, title = curse.Title, emoji = curse.Emoji,
+                        url = curse.Url, left = curse.Left,
+                    }, viewsFor, connectionsOf));
                     break;
                 case TableHistory history:
                     sends.Add(new Send(new ToConnections([history.ConnectionId]), "tableHistory",
@@ -298,13 +313,13 @@ public sealed class Broadcaster(
     /// зараз деінде на сайті. Реалтайм-стіл браузер поза «Іграми» не тримає в групі (там 25 кадрів на секунду), тож без
     /// другої адреси переможець, що визирнув в Ефір, власного гімну не почув би. З'єднання з групи (<see cref="RoomBroadcast.Watchers"/> —
     /// це рівно вона) другий раз не отримують; хто таки отримав двічі (стіл зник між тиком і розсилкою), відсіє браузер
-    /// за ключем «стіл:раунд». В ефір і в лобі гімн не йде.
+    /// за ключем «стіл:раунд». В ефір і в лобі гімн не йде. Прокльон (<see cref="Curse"/>) летить так само.
     /// </summary>
-    static IEnumerable<Send> AnthemSends(Anthem anthem, Func<string, RoomBroadcast?> viewsFor, Func<string, IReadOnlyList<string>> connectionsOf)
+    static IEnumerable<Send> TableSends(string roomId, string ev, object body, Func<string, RoomBroadcast?> viewsFor,
+        Func<string, IReadOnlyList<string>> connectionsOf)
     {
-        var body = new { id = anthem.RoomId, round = anthem.Round, nick = anthem.Nick, title = anthem.Title, emoji = anthem.Emoji, url = anthem.Url };
-        yield return new Send(new ToGroup(RoomGroup(anthem.RoomId)), "anthem", body);
-        if (viewsFor(anthem.RoomId) is not { } b) yield break;
+        yield return new Send(new ToGroup(RoomGroup(roomId)), ev, body);
+        if (viewsFor(roomId) is not { } b) yield break;
         var inGroup = new HashSet<string>(b.Watchers, StringComparer.Ordinal);
         var away = new List<string>();
         foreach (var nick in b.Seats)
@@ -313,7 +328,7 @@ public sealed class Broadcaster(
             foreach (var conn in connectionsOf(nick))
                 if (inGroup.Add(conn)) away.Add(conn);   // Add — заразом і дубль між двома місцями одного ніка
         }
-        if (away.Count > 0) yield return new Send(new ToConnections(away), "anthem", body);
+        if (away.Count > 0) yield return new Send(new ToConnections(away), ev, body);
     }
 
     /// <summary>

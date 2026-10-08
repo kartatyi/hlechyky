@@ -304,9 +304,10 @@ public interface IRoomContext
 | `Wallet(nick, balance, delta, reason)` | усім з'єднанням ніка | `wallet` |
 | `Achievement(nick, key…)` | усім з'єднанням ніка + рядок у Журнал | `achievement` |
 | `Toast(nick, text, kind)` | усім з'єднанням ніка | `toast` (рідко: «ставку повернуто») |
-| `Invite(roomId, by, text, to?)` | усім; з `to` — усім з'єднанням цього ніка | `invite` з `personal: false`: «Влад кличе в мафію» з кнопкою «Сісти» (свій же заклик відкидає браузер — тільки він знає, хто за цією вкладкою); з `to` — `personal: true`, «Влад кличе тебе в мафію» (`Calls`: «📣 Покликати», `/клич`) |
+| `Invite(roomId, by, text, to?, ring?)` | усім; з `to` — усім з'єднанням цього ніка | `invite` з `personal: false`: «Влад кличе в мафію» з кнопкою «Сісти» (свій же заклик відкидає браузер — тільки він знає, хто за цією вкладкою); з `to` — `personal: true`, «Влад кличе тебе в мафію» (`Calls`: «📣 Покликати», `/клич`), а з `ring` — ще й `ring: { url, title, emoji }` (🔔 «Свій дзвінок» того, хто кличе, через `IRings` — Лавку; [specs/flair.md](specs/flair.md) §2) |
 | `InviteLine(roomId, by, text, at, to?)` | усім; з `to` — усім з'єднанням цього ніка | `chat` з kind `invite`: «кличе в мафію» від імені `by`, з `roomId`. Загальний лягає в базу (`Db.AddChat`), як звичайна репліка; особистий (`to`) — `id: 0`, `personal: true` і в базу не лягає |
-| `Anthem(roomId, round, nick, title, emoji, url)` | групі `room:<id>` | `anthem`: `{ id, round, nick, title, emoji, url }` — 🎺 гімн переможця з Лавки ([specs/anthem.md](specs/anthem.md)); кладе `AnthemPlayer`, не `Rooms` |
+| `Anthem(roomId, round, nick, title?, emoji?, url?, fx?, len?)` | групі `room:<id>` і тим, хто сидить за столом, але не в групі | `anthem`: `{ id, round, nick, title, emoji, url, fx, len }` — 🎺 гімн і 🎉 святкування переможця з Лавки ([specs/anthem.md](specs/anthem.md), [specs/flair.md](specs/flair.md) §3; лише святкування — `title`/`emoji`/`url` null); кладе `AnthemPlayer`, не `Rooms` |
+| `Curse(roomId, round, nick, title, emoji, url, left)` | так само, як `Anthem` | `curse`: `{ id, round, nick, title, emoji, url, left }` — 😈 прокльон на того, хто програв ([specs/flair.md](specs/flair.md) §1); від кого — не на дроті |
 
 `rooms` (`LobbyChanged`) летить **першим** у пачці, хоч би де воно лежало в `Outbox`: знімок лобі
 рахується від живого стану, а не від місця в черзі. Інакше рядок «Оля і Петро сіли грати» доходив би до
@@ -320,7 +321,9 @@ public interface IRoomContext
 Окрім `Rooms`/`TickEngine`, в Outbox кладуть сервіси-підписники `GameEvents.RoomFinished` (подію `Rooms` кидає вже
 поза замком, `outbox.After`): нагороди (`Rewards`), ачівки, турнір, `CrownKeeper` вечірки й `AnthemPlayer` — гімн
 переможця (`Games/AnthemPlayer.cs`, `IHostedService`: соло, кооп, нічия й перемога бота — тиша; кілька переможців
-з гімнами — `Round % N`; щонайбільше один гімн на `(RoomId, Round)`). Підписник винятків назовні не кидає:
+з гімнами чи святкуваннями — `Round % N`) і прокльон (лише коли за столом хоча б двоє різних людей; з кількох проклятих
+серед тих, хто програв, — `Round % N`, з прокльонів на людині — найстаріший). Щонайбільше один гімн і один прокльон на
+`(RoomId, Round)`; гімн і прокльон — під окремими try/catch. Підписник винятків назовні не кидає:
 try/catch + `LogWarning`: подія — звичайний multicast-делегат, і виняток одного підписника не дав би подію
 тим, хто за ним. Їхні повідомлення (`IOutbox.Post`) їдуть тією самою пачкою, що й фінальний вид столу.
 
@@ -394,6 +397,14 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 (`shop:fanfare`… `shop:solemn`, у гаманці «Лавка — гімн «Трембіта»»; дарувати можна) і «Свій трек» за 3000
 (`shop:own-anthem`; не дарується). Новий уривок свого треку (`POST /api/lavka/anthem`, не частіше разу на 2 хв)
 черепків не коштує, а зняте адміном не повертається, як і своя фотка.
+
+Полиці [specs/flair.md](specs/flair.md): **🎉 святкування** (`fx`) — звичайні `shop:`/`gift:` за 400 (конфеті), 600
+(черепки, соняшники), 1000 (салют), 1500 (Глек танцює гопак, id `glekhopak`); **🔔 «Свій дзвінок»** — вміння `shop:ring`
+за 500, не дарується. **😈 Прокльони** живуть поза `shop:`/`gift:`: наслати — `TrySpend(500, "curse:<прокльон>",
+"curse:<id рядка lavka_curse>")` (рядок пишеться першим, не списалось чи списання впало — рядок прибирається; тост гаманця «Лавка —
+прокльон «Цап» · ціль: Петро», в історії — без ніка), відкупитись — 1000 (`curse-ransom:<прокльон>`, ref
+`curse-ransom:<id>`; черепки згорають, тому, хто наслав, нічого не йде — інакше прокльон став би заробітком),
+дізнатися від кого — 300 (`curse-reveal:<прокльон>`, ref `curse-reveal:<id>`).
 
 ## 7. Результати, рейтинги, таблиці
 

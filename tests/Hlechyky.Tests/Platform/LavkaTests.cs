@@ -157,8 +157,10 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(17, all.Count(i => i.Kind == LavkaKind.Color));       // 16 кольорів і веселка
         Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Title));       // 8 купованих і 5 за ачівки
         Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Bg));
-        Assert.Equal(["dedication", "fireworks", "photo"], all.Where(i => i.Kind == LavkaKind.Perk).Select(i => i.Id));
+        Assert.Equal(["dedication", "fireworks", "photo", "ring"], all.Where(i => i.Kind == LavkaKind.Perk).Select(i => i.Id));
         Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Anthem));     // 12 готових гімнів і «Свій трек» (AnthemTests)
+        Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Fx));          // святкування перемоги (FlairTests)
+        Assert.Equal(6, all.Count(i => i.Kind == LavkaKind.Curse));       // прокльони (FlairTests)
         // id латиницею — без пробілів і великих літер; дефіс — лише в «own-anthem», так його назвав контракт гімнів
         Assert.All(all, i => Assert.Matches("^[a-z]+(-[a-z]+)?$", i.Id));
         Assert.Equal([LavkaCatalog.OwnAnthem], all.Where(i => i.Id.Contains('-')).Select(i => i.Id));
@@ -274,7 +276,7 @@ public sealed class LavkaTests : IDisposable
         Assert.True(_r.Buy("Оля", "fireworks").Ok);
         var e = Views.Json(LavkaSetup.Shop(As("Оля"), _r.Lavka));
 
-        Assert.Equal(["account", "balance", "items", "worn", "perks", "phrases", "ownAnthem"], e.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["account", "balance", "items", "worn", "perks", "phrases", "ownAnthem", "curses"], e.EnumerateObject().Select(p => p.Name));
         Assert.True(e.GetProperty("account").GetBoolean());
         Assert.Equal(_r.Balance("Оля"), e.GetProperty("balance").GetInt32());
 
@@ -295,7 +297,7 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(0, sky.GetProperty("tier").GetInt32());
 
         var worn = e.GetProperty("worn");
-        Assert.Equal(["icon", "frame", "color", "title", "bg", "anthem"], worn.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["icon", "frame", "color", "title", "bg", "anthem", "fx", "ring"], worn.EnumerateObject().Select(p => p.Name));
         Assert.Equal("fox", worn.GetProperty("icon").GetString());
         Assert.Equal("sky", worn.GetProperty("color").GetString());
         Assert.Equal(JsonValueKind.Null, worn.GetProperty("frame").ValueKind);

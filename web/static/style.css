@@ -1507,6 +1507,112 @@ button[data-anth].on { border-color: var(--accent2); color: var(--accent); }
 }
 @media (prefers-reduced-motion: reduce) { .ganthem { animation: none; } }
 
+/* =====================================================================================================
+   😈 Прокльони, 🔔 свій дзвінок і 🎉 святкування (docs/games/specs/flair.md): полиці Лавки (web/lavka.js), смужка
+   прокльону на столі (web/games/core.js) і шар святкування поверх картки (web/app.js playFx). Окремим блоком.
+   ===================================================================================================== */
+.lv-cu-to { margin-bottom: 10px; }
+.lv-cu-sec { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.lv-cu-h { font-weight: 700; font-size: .95em; }
+.lv-cu-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--bg2); min-width: 0; }
+.lv-cu-row.gone { opacity: .7; }
+.lv-cu-emo { flex: none; font-size: 1.6em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.lv-cu-main { flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.lv-cu-row .lv-btns { margin-top: 0; justify-content: flex-end; }
+/* «🔔 Свій дзвінок» — панель на полиці гімнів, як «Свій трек»; рядок на гімн: ▶ 4 с і «Обрати» */
+.lv-ring-list { display: flex; flex-direction: column; gap: 6px; }
+.lv-ring-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: var(--panel); min-width: 0; }
+.lv-ring-row.on { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.lv-ring-row .lv-cu-emo { font-size: 1.3em; }
+.lv-ring-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-ring-row button { flex: none; padding: 4px 10px; font-size: .88em; }
+.lv-ring-row .ghost { border: 1px solid var(--line); }
+.lv-ring-cur { flex: none; color: var(--ok); font-size: .88em; padding: 0 4px; }
+/* вибір, на кого наслати: ті самі чипи, що й у присвяті, і поле для ніка */
+.lv-pick-in { display: flex; flex-direction: column; gap: 4px; }
+.lv-pick-in input { width: 100%; min-width: 0; box-sizing: border-box; }
+/* смужка прокльону — там само, де й гімнова (.ganthem), лише інша облямівка */
+.gtable > .ganthem.gcurse { border-color: #8a3a6a; }
+@media (max-width: 420px) { .lv-ring-row { gap: 6px; padding: 6px; } .lv-ring-row button { padding: 4px 8px; } }
+
+/* ---- 🎉 шар святкування поверх картки: не ловить дотиків, гасне сам; частинки — <i> з CSS-змінними з app.js ---- */
+.gfx-on { position: relative; }
+.gfx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 7; border-radius: inherit; transition: opacity .4s; }
+.gfx.out { opacity: 0; }
+.gfx i, .gfx b { position: absolute; display: block; font-style: normal; pointer-events: none; }
+.gfx i { will-change: transform; }
+.fx-shards i.gl, .fx-sunflowers i.sf, .fx-note, .fx-badge { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; line-height: 1; }
+/* 🎊 конфеті: падає згори, крутиться й гойдається */
+.fx-confetti i { top: 0; background: var(--c); border-radius: 2px; animation: fx-fall var(--d) linear var(--dl) infinite both; }
+@keyframes fx-fall {
+  0% { transform: translate3d(0, -24px, 0) rotate(0) rotateY(0); }
+  50% { transform: translate3d(var(--sx), calc(var(--fh) * .5), 0) rotate(calc(var(--r) * .5)) rotateY(540deg); }
+  100% { transform: translate3d(0, calc(var(--fh) + 24px), 0) rotate(var(--r)) rotateY(1080deg); }
+}
+/* 🏺 черепки: падають, б'ються об низ картки й підстрибують двічі */
+.fx-shards i { top: 0; animation: fx-drop var(--d) linear var(--dl) infinite both; }
+.fx-shards i.gl { font-size: var(--s); }
+.fx-shards i.sh { width: var(--s); height: calc(var(--s) * .7); background: linear-gradient(135deg, #e09a5c, #a65a2a 55%, #6e3412); }
+@keyframes fx-drop {
+  0% { transform: translate3d(0, -40px, 0) rotate(0); opacity: 1; animation-timing-function: cubic-bezier(.55, 0, 1, .45); }
+  45% { transform: translate3d(calc(var(--sx) * .5), calc(var(--fh) - var(--s) - 4px), 0) rotate(calc(var(--r) * .5)); animation-timing-function: cubic-bezier(0, .55, .45, 1); }
+  60% { transform: translate3d(calc(var(--sx) * .8), calc(var(--fh) - var(--s) - 4px - var(--bh)), 0) rotate(calc(var(--r) * .8)); animation-timing-function: cubic-bezier(.55, 0, 1, .45); }
+  74% { transform: translate3d(var(--sx), calc(var(--fh) - var(--s) - 4px), 0) rotate(var(--r)); animation-timing-function: cubic-bezier(0, .55, .45, 1); }
+  81% { transform: translate3d(var(--sx), calc(var(--fh) - var(--s) - 4px - var(--bh) * .3), 0) rotate(var(--r)); animation-timing-function: cubic-bezier(.55, 0, 1, .45); }
+  88% { transform: translate3d(var(--sx), calc(var(--fh) - var(--s) - 4px), 0) rotate(var(--r)); opacity: 1; }
+  100% { transform: translate3d(var(--sx), calc(var(--fh) - var(--s) - 4px), 0) rotate(var(--r)); opacity: 0; }
+}
+/* 🌻 пелюстки й соняшники: кружляють і гойдаються, поки спускаються */
+.fx-sunflowers i { top: 0; animation: fx-swirl var(--d) ease-in-out var(--dl) infinite both; }
+.fx-sunflowers i.pt { width: 9px; height: 15px; border-radius: 50% 50% 50% 50% / 70% 70% 30% 30%; background: radial-gradient(circle at 50% 30%, #ffe066, #f2b200 70%, #d18c00); }
+.fx-sunflowers i.sf { font-size: var(--s); }
+@keyframes fx-swirl {
+  0% { transform: translate3d(0, -36px, 0) rotate(0); opacity: 0; }
+  8% { opacity: 1; }
+  25% { transform: translate3d(var(--sx), calc(var(--fh) * .22), 0) rotate(calc(var(--r) * .25)); }
+  50% { transform: translate3d(calc(var(--sx) * -1), calc(var(--fh) * .48), 0) rotate(calc(var(--r) * .5)); }
+  75% { transform: translate3d(var(--sx), calc(var(--fh) * .74), 0) rotate(calc(var(--r) * .75)); }
+  100% { transform: translate3d(0, calc(var(--fh) + 36px), 0) rotate(var(--r)); opacity: .9; }
+}
+/* 🎆 салют — спалахи .fw (той самий, що й над обкладинкою), лише всередині шару */
+.fx-salute .fw { z-index: 1; }
+/* 💃 Дядько Глек вистрибує знизу на стіл і танцює гопак: присядка, вибрик то лівою, то правою */
+.fx-hopak .fx-glek {
+  position: absolute; left: 50%; bottom: 6px; width: var(--gs); height: calc(var(--gs) * 1.25); margin-left: calc(var(--gs) / -2);
+  animation: fx-hop-in .75s cubic-bezier(.25, .9, .35, 1) both;
+}
+.fx-dance { position: absolute; inset: 0; transform-origin: 50% 100%; animation: fx-squat .8s ease-in-out .75s infinite; }
+.fx-dance img { position: absolute; left: 0; top: 0; width: 100%; height: var(--gs); z-index: 1; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .45)); }
+.fx-leg { top: calc(var(--gs) * .84); width: 11%; height: calc(var(--gs) * .38); background: #5a2f14; border-radius: 4px 4px 2px 2px; transform-origin: 50% 0; }
+.fx-leg::after { content: ''; position: absolute; bottom: -3px; left: -35%; width: 170%; height: 28%; background: #9a1f1f; border-radius: 45% 55% 35% 35%; }
+.fx-leg.l { left: 30%; animation: fx-kick-l .8s ease-in-out .75s infinite; }
+.fx-leg.r { right: 30%; animation: fx-kick-r .8s ease-in-out .75s infinite; }
+@keyframes fx-hop-in {
+  0% { transform: translateY(calc(var(--fh) * .9)) scale(.9); }
+  55% { transform: translateY(calc(var(--gs) * -.7)) scale(1.04); }
+  80% { transform: translateY(0) scale(1.08, .9); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes fx-squat {
+  0%, 50%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-5%, 16%); }
+  75% { transform: translate(5%, 16%); }
+}
+@keyframes fx-kick-l { 0%, 50%, 100% { transform: rotate(0) scaleY(1); } 25% { transform: rotate(78deg) scaleY(1); } 75% { transform: rotate(0) scaleY(.45); } }
+@keyframes fx-kick-r { 0%, 50%, 100% { transform: rotate(0) scaleY(1); } 25% { transform: rotate(0) scaleY(.45); } 75% { transform: rotate(-78deg) scaleY(1); } }
+.fx-note { left: 50%; bottom: calc(var(--gs) * 1.2); font-size: 1.3em; opacity: 0; animation: fx-note 1.8s ease-out var(--dl) infinite; }
+@keyframes fx-note {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(.6); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--sx)), calc(var(--gs) * -.9)) scale(1.1); }
+}
+/* prefers-reduced-motion: app.js малює замість руху нерухомий значок на ~2 с; рух тут — про всяк випадок теж вимкнено */
+.fx-badge {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 3em; padding: 14px;
+  border-radius: 50%; background: rgba(0, 0, 0, .35); box-shadow: 0 0 0 1px var(--accent2);
+}
+@media (prefers-reduced-motion: reduce) { .gfx i, .gfx b, .gfx .fx-glek, .gfx .fx-dance { animation: none !important; } }
+
 /* ---------- 🔥 Жива реклама: картка прожарки в Лавці (#lavka/roast) і блок у «📣 Реклама» (web/liveads.js) ---------- */
 .la-card { display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 12px; background: var(--bg2); max-width: 720px; }
 .la-top { display: flex; align-items: center; gap: 12px; }

@@ -124,15 +124,20 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
 
     /// <summary>
     /// Списати. Атомарно: або вистачило, або нічого не сталось. Повтор із тим самим ref — true без
-    /// другого списання (щоб подвійний старт партії не з'їв дві ставки).
+    /// другого списання (щоб подвійний старт партії не з'їв дві ставки). <paramref name="text"/> — свій рядок тоста
+    /// гаманця замість того, що дає <see cref="Reason"/> («…прокльон «Цап» · ціль: Петро»: кого — у коді причини нема,
+    /// тож в історії гаманця лишається сама причина).
     /// </summary>
-    public bool TrySpend(string nick, int amount, string reason, string? refKey = null)
+    public bool TrySpend(string nick, int amount, string reason, string? refKey = null) => TrySpend(nick, amount, reason, refKey, null);
+
+    /// <inheritdoc cref="TrySpend(string, int, string, string?)"/>
+    public bool TrySpend(string nick, int amount, string reason, string? refKey, string? text)
     {
         if (amount <= 0) return true;
         var key = Key(nick);
         if (key.Length == 0) return false;
         var (ok, duplicate, balance) = store.Spend(key, nick, amount, reason, refKey, clock.UtcNow);
-        if (ok && !duplicate) Announce(nick, balance, -amount, reason, null);
+        if (ok && !duplicate) Announce(nick, balance, -amount, reason, text);
         return ok;
     }
 
@@ -221,6 +226,10 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             // Лавка Дядька Глека: купівля собі й подарунок (хвіст — id речі з LavkaCatalog)
             "shop" => $"Лавка — {LavkaCatalog.Label(tail)}",
             "gift" => $"подарунок — {LavkaCatalog.Label(tail)}",
+            // прокльони (docs/games/specs/flair.md §1): наслати (хвіст — id прокльону), відкупитись, дізнатися від кого
+            "curse" => $"Лавка — {LavkaCatalog.Label(tail)}",
+            "curse-ransom" => "Лавка — відкуп від прокльону",
+            "curse-reveal" => "Лавка — хто наслав прокльон",
             "liveads" => "прожарка від Дядька Глека",
             _ => reason,
         };

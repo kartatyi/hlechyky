@@ -332,7 +332,9 @@ public sealed class AnthemTests : IDisposable
 
         Give("Оля", 1000);
         Assert.True(Buy("Оля", "trembita").Ok);
-        Assert.Equal(new AnthemPlay("Трембіта", "📯", "/static/anthems/trembita.mp3"), _lavka.AnthemOf("Оля"));
+        Assert.Equal(new AnthemPlay("Трембіта", "📯", "/static/anthems/trembita.mp3", LavkaCatalog.ClipSeconds("/static/anthems/trembita.mp3")),
+            _lavka.AnthemOf("Оля"));
+        Assert.InRange(_lavka.AnthemOf("Оля")!.Len ?? 0, 1, 15);                  // довжина — з кадрів самого mp3
 
         OwnTrack("Оля");
         Assert.Equal(LavkaCatalog.OwnAnthem, _store.Worn("Оля", LavkaKind.Anthem));
@@ -340,7 +342,7 @@ public sealed class AnthemTests : IDisposable
 
         var r = await Up("Оля", Mp3(5000), 30, 10, "  Наша  ");
         Assert.True(r.Ok, r.Message);
-        Assert.Equal(new AnthemPlay("Наша", "🎤", r.Url!), _lavka.AnthemOf("Оля"));
+        Assert.Equal(new AnthemPlay("Наша", "🎤", r.Url!, _store.Anthem("Оля")!.LenMs / 1000.0), _lavka.AnthemOf("Оля"));
         Assert.StartsWith("/api/lavka/anthem/", r.Url);
 
         Assert.True(_anthems.TakeDown("Оля").Ok);
@@ -373,7 +375,7 @@ public sealed class AnthemTests : IDisposable
         _eco.Events.Raise(_eco.Finished("r1", Ttt, ["Оля", "Петро"], [0], round: 3));
 
         var a = Assert.Single(Played);
-        Assert.Equal(new Anthem("r1", 3, "Оля", "Трембіта", "📯", "/static/anthems/trembita.mp3"), a);
+        Assert.Equal(new Anthem("r1", 3, "Оля", "Трембіта", "📯", "/static/anthems/trembita.mp3", Len: LavkaCatalog.ClipSeconds("/static/anthems/trembita.mp3")), a);
     }
 
     [Fact]
@@ -485,13 +487,14 @@ public sealed class AnthemTests : IDisposable
         Assert.Equal(new ToGroup("room:r7"), s.Target);
         Assert.Equal("anthem", s.Event);
         var body = Views.Json(s.Payload);
-        Assert.Equal(["id", "round", "nick", "title", "emoji", "url"], body.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["id", "round", "nick", "title", "emoji", "url", "fx", "len"], body.EnumerateObject().Select(p => p.Name));
         Assert.Equal("r7", body.GetProperty("id").GetString());
         Assert.Equal(3, body.GetProperty("round").GetInt32());
         Assert.Equal("Оля", body.GetProperty("nick").GetString());
         Assert.Equal("Трембіта", body.GetProperty("title").GetString());
         Assert.Equal("📯", body.GetProperty("emoji").GetString());
         Assert.Equal("/static/anthems/trembita.mp3", body.GetProperty("url").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("fx").ValueKind);   // святкування нема (FlairTests)
     }
 
     [Fact]

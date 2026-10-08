@@ -672,6 +672,116 @@
     setTimeout(() => tag.remove(), 2500);
   }
 
+  // ---------- 🎉 святкування перемоги (docs/games/specs/flair.md §3) ----------
+  // Шар поверх картки (стіл переможця; у Лавці — картка речі після ▶): pointer-events: none — ходити й тиснути не
+  // заважає. Без бібліотек: частинки — <i> з CSS-анімацією, усе своє — у змінних style (--fh — висота картки). Вузлів —
+  // не більше 80; після кінця шар зникає цілком. prefers-reduced-motion — замість руху нерухомий значок на ~2 с.
+  const FX_EMOJI = { confetti: '🎊', shards: '🏺', sunflowers: '🌻', salute: '🎆', hopak: '💃', glekhopak: '💃' };
+  const FX_MS = 6000;             // без гімну
+  const FX_MAX_MS = 15000;        // і не довше за це, хоч який довгий гімн
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const FX_DRAW = {
+    /// 🎊 різнокольорові смужки сиплються згори, крутяться й гойдаються
+    confetti(layer) {
+      let html = '';
+      for (let i = 0; i < 56; i++) {
+        const d = rnd(2.2, 3.8);
+        html += `<i style="left:${rnd(0, 98).toFixed(1)}%;--c:hsl(${Math.floor(rnd(0, 360))} 90% 62%);--d:${d.toFixed(2)}s;--dl:${rnd(0, 2.4).toFixed(2)}s;`
+          + `--sx:${rnd(-40, 40).toFixed(0)}px;--r:${rnd(-720, 720).toFixed(0)}deg;width:${rnd(5, 9).toFixed(0)}px;height:${rnd(9, 14).toFixed(0)}px"></i>`;
+      }
+      layer.innerHTML = html;
+    },
+    /// 🏺 глечики й глиняні черепки падають, б'ються об низ картки й підстрибують
+    shards(layer) {
+      let html = '';
+      for (let i = 0; i < 22; i++) {
+        const s = rnd(16, 30).toFixed(0);
+        const pos = `left:${rnd(2, 92).toFixed(1)}%;--s:${s}px;--d:${rnd(2.4, 3.4).toFixed(2)}s;--dl:${rnd(0, 2.6).toFixed(2)}s;`
+          + `--sx:${rnd(-50, 50).toFixed(0)}px;--r:${rnd(-200, 200).toFixed(0)}deg;--bh:${rnd(18, 46).toFixed(0)}px`;
+        html += i % 3 === 0 ? `<i class="gl" style="${pos}">🏺</i>`
+          : `<i class="sh" style="${pos};clip-path:polygon(${rnd(0, 30).toFixed(0)}% 0,100% ${rnd(0, 40).toFixed(0)}%,${rnd(60, 100).toFixed(0)}% 100%,0 ${rnd(50, 90).toFixed(0)}%)"></i>`;
+      }
+      layer.innerHTML = html;
+    },
+    /// 🌻 пелюстки й соняшники кружляють, гойдаючись, поки падають
+    sunflowers(layer) {
+      let html = '';
+      for (let i = 0; i < 36; i++) {
+        const sf = i % 4 === 0;
+        html += `<i class="${sf ? 'sf' : 'pt'}" style="left:${rnd(0, 94).toFixed(1)}%;--d:${rnd(3.2, 5).toFixed(2)}s;--dl:${rnd(0, 3).toFixed(2)}s;`
+          + `--sx:${rnd(20, 60).toFixed(0) * (Math.random() < 0.5 ? -1 : 1)}px;--r:${(Math.random() < 0.5 ? -1 : 1) * Math.floor(rnd(300, 600))}deg${sf ? ';--s:' + rnd(18, 30).toFixed(0) + 'px' : ''}">${sf ? '🌻' : ''}</i>`;
+      }
+      layer.innerHTML = html;
+    },
+    /// 🎆 той самий спалах, що й у вміння «Феєрверк» (.fw), лише над столом і раз за разом, доки триває
+    salute(layer, w, h, timers) {
+      const R = Math.min(w, h);
+      const burst = () => {
+        const b = document.createElement('div');
+        b.className = 'fw';
+        b.style.left = (w * rnd(0.15, 0.85)).toFixed(0) + 'px';
+        b.style.top = (h * rnd(0.12, 0.55)).toFixed(0) + 'px';
+        const hue0 = Math.floor(rnd(0, 360));
+        let html = '';
+        for (let i = 0; i < 14; i++) {
+          const a = (i / 14) * Math.PI * 2 + rnd(0, 0.2);
+          const r = R * rnd(0.14, 0.24) + 20;
+          html += `<i style="--dx:${(Math.cos(a) * r).toFixed(1)}px;--dy:${(Math.sin(a) * r).toFixed(1)}px;--c:hsl(${(hue0 + i * 9) % 360} 95% 66%)"></i>`;
+        }
+        b.innerHTML = html;
+        layer.appendChild(b);
+        setTimeout(() => b.remove(), 1400);
+      };
+      burst();
+      timers.push(setInterval(burst, 420));   // живих разом — до чотирьох спалахів по 14 іскор
+    },
+    /// 💃 Дядько Глек вистрибує знизу на стіл і танцює гопак: присядка, вибрик то лівою, то правою; над ним ноти
+    hopak(layer, w, h) {
+      const gs = Math.round(Math.min(140, Math.max(56, Math.min(w, h) * 0.32)));
+      layer.style.setProperty('--gs', gs + 'px');
+      layer.innerHTML = '<div class="fx-glek"><div class="fx-dance"><b class="fx-leg l"></b><b class="fx-leg r"></b>'
+        + '<img src="/static/glek.svg" alt=""></div></div>'
+        + ['🎶', '🎵', '🎶'].map((n, i) => `<i class="fx-note" style="--dl:${(0.9 + i * 0.55).toFixed(2)}s;--sx:${(i - 1) * gs * 0.5}px">${n}</i>`).join('');
+    },
+  };
+  /// host — картка; id — святкування; opt.ms — скільки триває (типово 6 с, не довше 15). Вертає stop(): шар м'яко гасне.
+  function playFx(host, id, opt) {
+    if (!host || !FX_EMOJI[id]) return () => {};
+    opt = opt || {};
+    const old = host.querySelector(':scope > .gfx');
+    if (old) { if (old._stop) old._stop(true); else old.remove(); }
+    host.classList.add('gfx-on');
+    const w = host.clientWidth || 300;
+    const h = host.clientHeight || 300;
+    const layer = document.createElement('div');
+    // у каталозі гопак — glekhopak (id hopak уже в гімна), малюється тим самим
+    layer.className = 'gfx fx-' + (FX_DRAW[id] ? id : 'hopak');
+    layer.setAttribute('aria-hidden', 'true');
+    layer.style.setProperty('--fh', h + 'px');
+    host.appendChild(layer);
+    const timers = [];
+    let over = false;
+    const stop = (now) => {
+      if (over) return;
+      over = true;
+      timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
+      if (now === true) { layer.remove(); return; }
+      layer.classList.add('out');
+      setTimeout(() => layer.remove(), 450);
+    };
+    layer._stop = stop;
+    let ms = Math.min(FX_MAX_MS, Math.max(1000, +opt.ms || FX_MS));
+    const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (still) {
+      layer.innerHTML = '<span class="fx-badge">' + FX_EMOJI[id] + '</span>';
+      ms = Math.min(ms, 2000);
+    } else {
+      try { (FX_DRAW[id] || FX_DRAW.hopak)(layer, w, h, timers); } catch (e) { console.warn('[fx]', e); }
+    }
+    timers.push(setTimeout(() => stop(), ms));
+    return () => stop();
+  }
+
   /// Кому й як присвятити — віконце з кнопок (без вільного тексту: Глек читає це вголос на всіх).
   function openDedication(it) {
     if (!it) return;
@@ -1321,18 +1431,24 @@
   /// Радіо — на повзунок з усіма притишеннями (Посиденьки × гімн).
   const radioVolume = () => { audio.volume = posToVol(+vol.value) * duckBy * duckAnthem; };
   /// a — { url, title?, emoji?, nick? }; opt.preview — людина тисне ▶ сама (вимикач гімнів тоді не діє),
-  /// opt.from/opt.len — грати лише шматок (прослуховування свого файла до завантаження), opt.onStart — браузер справді
+  /// opt.from/opt.len — грати лише шматок (прослуховування свого файла до завантаження; дзвінок — перші 4 с),
+  /// opt.fade — шматок у кінці м'яко згасає (дзвінок), opt.ring — це дзвінок заклику: він не перебиває того, що звучить,
+  /// а гімн чи прокльон столу (не ▶) перебиває його самого, opt.onStart — браузер справді
   /// пустив звук (обіцянка play() виконалась; до того смужку за столом не показують), opt.onEnd — коли замовкло (і коли
   /// браузер відмовив — тоді без onStart). Вертає, чи пробує грати.
   function playAnthem(a, opt) {
     opt = opt || {};
     if (!a || !a.url) return false;
-    if (!opt.preview && (!anthemSound() || anth)) return false;
+    // Гімн і прокльон столу не чекають, поки доспіває чужий дзвінок: 4 с дзвінка менш важливі за кінець партії
+    const busy = anth && !(anth.ring && !opt.ring);
+    if (!opt.preview && (!anthemSound() || busy)) return false;
     stopAnthem();
     const el = anthemEl = anthemEl || new Audio();
-    const cur = anth = { a, preview: !!opt.preview, onEnd: opt.onEnd || null, timer: 0 };
+    const cur = anth = { a, preview: !!opt.preview, ring: !!opt.ring && !opt.preview, onEnd: opt.onEnd || null, timer: 0 };
     const started = () => {
-      if (anth !== cur || !opt.onStart) return;
+      if (anth !== cur) return;
+      if (opt.fade && len > 0) fadeOut(cur, el, len);
+      if (!opt.onStart) return;
       try { opt.onStart(); } catch (e) { console.warn('[anthem] onStart', e); }
     };
     const end = () => finishAnthem(cur);
@@ -1362,10 +1478,27 @@
     if (pr && pr.then) pr.then(started, end); else started();
     return true;
   }
+  /// 🔔 Дзвінок (flair.md §2): останні ANTHEM_FADE с шматка — гучність плавно вниз, а не обрив. Рахуємо від справжнього
+  /// старту (onStart), а не від play(): мережа могла тягнути файл. iOS гучність не дає — там просто зупиниться в кінці.
+  const ANTHEM_FADE = 0.8;
+  function fadeOut(cur, el, len) {
+    const v0 = el.volume;
+    cur.fadeT = setTimeout(() => {
+      const t0 = Date.now();
+      cur.fadeI = setInterval(() => {
+        if (anth !== cur) { clearInterval(cur.fadeI); return; }
+        const k = Math.max(0, 1 - (Date.now() - t0) / (ANTHEM_FADE * 1000));
+        try { el.volume = v0 * k; } catch { /* iOS: лише читання */ }
+        if (k <= 0) clearInterval(cur.fadeI);
+      }, 50);
+    }, Math.max(0, (len - ANTHEM_FADE) * 1000));
+  }
   function finishAnthem(cur) {
     if (!cur || anth !== cur) return;
     anth = null;
     clearTimeout(cur.timer);
+    clearTimeout(cur.fadeT);
+    clearInterval(cur.fadeI);
     const el = anthemEl;
     if (el) {
       el.onended = el.onerror = el.onpause = el.ontimeupdate = el.onloadedmetadata = el.onseeked = null;
@@ -4054,7 +4187,9 @@
   // ефір (🎆) і чергу (💌): там кнопки вмінь.
   const lavkaChanged = () => { paintNick(); nowSig = ''; queueSig = ''; if (state) render(); };
   HLavka.init({ $, esc, api, toast, busy, me, go, askNick, onMine: lavkaChanged, onLooks: () => { if (state) renderOnline(); },
-    playAnthem, toggleAnthem, stopAnthem, anthemPlaying, paintAnthemBtns });
+    playAnthem, toggleAnthem, stopAnthem, anthemPlaying, paintAnthemBtns, playFx,
+    // 😈 на кого наслати прокльон: хто зараз на сайті (гостей Лавка відсіє сама)
+    online: () => (state && state.online) || [] });
   HLavka.loadLooks();
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
@@ -4071,6 +4206,8 @@
     onTurn, ping: () => ping(), online: () => (state && state.online) || [], askNick: () => askNick(true),
     // 🎺 гімн переможця: стіл каже, що грати, а грає й притишує радіо app.js
     anthem: (a, opt) => playAnthem(a, opt), stopAnthem,
+    // 🎉 святкування переможця — шар поверх картки столу (flair.md §3)
+    fx: (host, id, opt) => playFx(host, id, opt),
   });
   setLogFilter(logFilter);
   applyRoute();
