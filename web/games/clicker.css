@@ -1055,3 +1055,14 @@
   .clk .clk-tword { margin-left: 0; max-width: 100%; font-size: 12px; line-height: 1.2; }
   .clk .clk-tnote:not(:empty) { top: 0; left: calc(50% + .55em); }
 }
+
+/* Ряд значків вкладок під мініплашкою (F7, pinTabs у clicker.js): окремим рядком під усім, що в плашці. */
+.clk-pin { flex-wrap: wrap; }
+.clk .clk-pintabs {
+  flex: 0 0 100%; display: flex; justify-content: center; gap: 4px; margin-top: 4px; pointer-events: none;
+}
+.clk .clk-pintabs button {
+  pointer-events: auto; width: 44px; height: 44px; padding: 0; font-size: 20px; line-height: 1; border-radius: 12px;
+  border: 1px solid var(--line); background: rgba(12, 24, 18, .94); box-shadow: 0 4px 12px rgba(0, 0, 0, .45);
+}
+.clk .clk-pintabs button.active { border-color: var(--accent2); background: #4a3a06; }

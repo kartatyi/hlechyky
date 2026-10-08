@@ -2411,10 +2411,10 @@
       b.dataset.tab = key;
       b.dataset.order = String(order || 50);
       b.textContent = label;
-      st.tabText[key] = label;
-      labelTab(st, key);
       const after = [...st.tabs.querySelectorAll('[data-tab]')].find((x) => +(x.dataset.order || 50) > (order || 50));
       st.tabs.insertBefore(b, after || null);
+      st.tabText[key] = label;
+      labelTab(st, key);
       b.onclick = () => { H.api.sfx('tap'); setTab(st, key); };
       const pane = document.createElement('div');
       pane.className = 'clk-pane';
@@ -2823,6 +2823,58 @@
     return anchor;
   }
 
+  /// Ряд вкладок під мініплашкою (F7, 08.10): на телефоні «Майстерня» пізньої гри — 9 000 px, «Село» — 6 900, і щоб
+  /// перейти на іншу вкладку з глибини, треба було гортати назад тисячі пікселів (плашка вела лише до кола). Тепер під
+  /// плашкою — значки вкладок: дотик перемикає вкладку й ставить її початок під плашку. Ряд живе окремо від pinView:
+  /// стежить лише за тим, чи плашку показали, і щоразу збирає значки з наявних ярликів (гейти, активна).
+  function pinTabs(st) {
+    const pin = st.el.querySelector('.clk-pin');
+    if (!pin || !window.MutationObserver) return null;
+    const row = document.createElement('div');
+    row.className = 'clk-pintabs';
+    row.setAttribute('role', 'tablist');
+    row.setAttribute('aria-label', 'Вкладки');
+    pin.appendChild(row);
+    const build = () => {
+      const tabs = [...st.tabs.querySelectorAll('[data-tab]')].filter((b) => !b.hidden);
+      row.replaceChildren(...tabs.map((t) => {
+        const ico = (t.querySelector('.clk-tico') || {}).textContent || '';
+        const word = (t.querySelector('.clk-tword') || t).textContent || '';
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'ghost' + (t.dataset.tab === st.tab ? ' active' : '');
+        x.dataset.tab = t.dataset.tab;
+        x.title = word;
+        x.setAttribute('aria-label', word);
+        x.textContent = ico || word.slice(0, 1);
+        return x;
+      }));
+    };
+    row.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-tab]');
+      if (!b) return;
+      H.api.sfx('tap');
+      setTab(st, b.dataset.tab);
+      build();
+      // Початок вкладки — під плашкою з рядом (шапка сайту + ~100 px), а не під самою шапкою: інакше її закриє ряд.
+      // Міряємо в наступному кадрі: нова панель іншої висоти вже стала на місце. Поки гортаємо, браузер не тримає
+      // якір прокрутки в картці: панель, що домальовує себе (Альбом), інакше «доправляла» сторінку ще на 100+ px.
+      st.el.style.overflowAnchor = 'none';
+      clearTimeout(st.pinAnchorT);
+      st.pinAnchorT = setTimeout(() => { st.el.style.overflowAnchor = ''; }, 1500);
+      requestAnimationFrame(() => {
+        const head = document.querySelector('body > header');
+        const top = (head ? Math.max(0, head.getBoundingClientRect().bottom) : 0) + 100;
+        const y = window.scrollY + st.tabs.getBoundingClientRect().top - top;
+        const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollTo({ top: Math.max(0, y), behavior: calm ? 'auto' : 'smooth' });
+      });
+    });
+    const mo = new MutationObserver(() => { if (!pin.hidden) build(); });
+    mo.observe(pin, { attributes: true, attributeFilter: ['hidden'] });
+    return { stop() { mo.disconnect(); row.remove(); } };
+  }
+
   /// Мініплашка: коло прокрутили з екрана (гравець пішов до полиць) — згори липне «🏺 число · ⤒ до кола», і дотик
   /// вертає до кола. Число плашка не рахує: копіює текст лічильника (st.count / st.unit), щойно той змінився, і лише
   /// поки її видно. На ПК, де стіл стоїть в один екран, коло з екрана не зникає — плашки там і не буде.
@@ -3126,6 +3178,7 @@
       st.boxWatch = keepBox(st);
       st.steady = steadyView(st);
       st.pinBar = pinView(st);
+      st.pinTabs = pinTabs(st);
       watchCard(st);
       H.mounted.add(st);
       for (const p of H.parts) mountPart(st, p);
@@ -3386,6 +3439,7 @@
       if (home) placeStatus(st, home, false);
       setZoom(st, 1);
       if (st.pinBar) st.pinBar.stop();
+      if (st.pinTabs) st.pinTabs.stop();
       if (st.boxWatch) st.boxWatch.disconnect();
       if (st.io) { st.io.disconnect(); st.io = null; }
       for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);

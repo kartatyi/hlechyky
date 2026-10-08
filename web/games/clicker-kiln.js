@@ -482,18 +482,27 @@
     const esc = (x) => api.esc(st, x);
     const last = api.storeGet('clk.tech', '');
     const card = (t) => '<button type="button" class="clkk-card' + (t.key === last ? ' on' : '')
-      + (t.home && t.home === k.style ? ' home' : '') + '" data-pick="' + esc(t.key) + '">'
-      + '<span class="clkk-cicon">' + (TECH_ICON[t.key] || '🎨') + (fresh.includes(t.key) ? '<i class="clkk-new">нове</i>' : '') + '</span>'
-      + '<b>' + esc(t.name) + '</b><span class="muted small">' + esc(HOWTO[t.key] || t.desc) + '</span>'
+      + (t.home && t.home === k.style ? ' home' : '') + '" data-pick="' + esc(t.key) + '" title="' + esc(HOWTO[t.key] || t.desc) + '">'
+      + '<span class="clkk-ctop"><span class="clkk-cicon">' + (TECH_ICON[t.key] || '🎨') + (fresh.includes(t.key) ? '<i class="clkk-new">нове</i>' : '') + '</span>'
+      + '<b>' + esc(t.name) + '</b></span><span class="muted small clkk-cdesc">' + esc(HOWTO[t.key] || t.desc) + '</span>'
       + (t.home && t.home === k.style ? '<span class="clkk-home small">рідна техніка: +10 краси</span>' : '') + '</button>';
     const locked = all.filter((t) => !k.techs.includes(t.key));
+    // Компактні плитки (F5/F6): значок, назва й два рядки опису; повний опис — за ⓘ у шапці вікна, «Навмання» — теж
+    // у шапці. Було: дев'ять високих карток — 1 400 px одним стовпцем на телефоні, а на макбуку вікно вище за картку.
     const body = api.overlay(st, '<div class="clkk-pick">'
-      + '<div class="clk-sub">🖌 Чим розписувати</div>'
+      + '<div class="clkk-phead"><div class="clk-sub">🖌 Чим розписувати</div>'
+      + '<button type="button" class="ghost clkk-more" aria-pressed="false" title="Як малювати кожною технікою" aria-label="Як малювати кожною технікою">ⓘ</button>'
+      + '<button type="button" class="ghost clkk-any">🎲 Навмання</button></div>'
       + '<p class="muted small">Розпис лягає на всю партію: що краще вийде, то більше дзвінких і розкішних виробів.</p>'
       + '<div class="clkk-cards">' + open.map(card).join('') + '</div>'
-      + '<div class="clkk-prow"><button type="button" class="ghost clkk-any">🎲 Навмання</button></div>'
       + (locked.length ? '<div class="muted small clkk-locked">Ще попереду: ' + locked.map((t) => esc(t.name) + ' — ' + esc(t.unlock)).join(' · ') + '</div>' : '')
-      + '</div>', { cls: 'clkk-ov' });
+      + '</div>', { cls: 'clkk-ov clkk-pickov' });
+    const more = body.querySelector('.clkk-more');
+    more.onclick = () => {
+      const on = more.getAttribute('aria-pressed') !== 'true';
+      more.setAttribute('aria-pressed', String(on));
+      body.querySelector('.clkk-pick').classList.toggle('full', on);
+    };
     // Вікно — за спільним правилом кола: вміст уже домальовано, тож перемірюємо.
     api.placeOverlay(st);
     markTechsSeen(st, api);
