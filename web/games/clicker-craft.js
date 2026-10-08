@@ -429,7 +429,7 @@
     // 5. Замовлення вже можна здати.
     const ready = ((st.fair && st.fair.orders) || []).filter((o) => o.until > sn && o.have >= o.n)[0];
     if (ready && st.fairDeliver) {
-      return { icon: '📜', text: 'Здати замовлення · +' + api.short(ready.pay), sub: ready.whoText || '', btn: '🤝 Здати',
+      return { key: 'deliver', icon: '📜', text: 'Здати замовлення · +' + api.short(ready.pay), sub: ready.whoText || '', btn: '🤝 Здати',
         run: (ev) => st.fairDeliver(ready.id, ev) };
     }
     // 6. Сушарня повна, а сохне ще довго — підмайстри стоять, і це затор.
@@ -441,7 +441,7 @@
     const items = c.items.reduce((s2, it) => s2 + it.n, 0);
     if (items > 0 && items >= c.storeCap / 2) {
       const sum = c.items.reduce((s2, it) => s2 + it.value * it.n, 0);
-      return { icon: '📦', text: 'Продати ' + items + ' ' + word(items) + ' · +' + api.short(sum), sub: 'комора майже повна',
+      return { key: 'sell', icon: '📦', text: 'Продати ' + items + ' ' + word(items) + ' · +' + api.short(sum), sub: 'комора майже повна',
         btn: 'Продати все', arm: 'Точно все? Ще раз', run: () => api.order(st, 'bazaar', { all: true }) };
     }
     // 7.5. Перше коло гравець мусить пройти цілим: поки він не обпалив жодного виробу, сушарня важливіша
@@ -460,6 +460,28 @@
     }
     // 9. Нічого термінового — просто ліпи.
     return { icon: '🏺', text: 'Крути коло — ліпиться ' + wareName(st, c.ware).toLowerCase(), sub: 'кожен клік — одна робота' };
+  }
+
+  /// Друга кнопка рядка «Далі» — лише на два щохвилинні випадки, до яких на телефоні від кола 900+ px прокрутки:
+  /// готове замовлення й повна комора. Решта порад лишається одна — смуга не має перетворитись на другу панель.
+  /// Дії ті самі, що й кнопки на ярмарку й у коморі (і «Продати все» так само питає двічі).
+  function secondStep(st, api, n) {
+    const c = st.craft;
+    if (!c || !n || !st.mine) return null;
+    const sn = api.serverNow(st);
+    const ready = st.fairDeliver && ((st.fair && st.fair.orders) || []).filter((o) => o.until > sn && o.have >= o.n)[0];
+    if (ready && n.key !== 'deliver') {
+      return { key: 'deliver', btn: '🤝 Здати', title: 'Здати замовлення · +' + api.short(ready.pay),
+        run: (ev) => st.fairDeliver(ready.id, ev) };
+    }
+    const items = c.items.reduce((s2, it) => s2 + it.n, 0);
+    if (items > 0 && items >= c.storeCap && n.key !== 'sell') {
+      const sum = c.items.reduce((s2, it) => s2 + it.value * it.n, 0);
+      return { key: 'sell', btn: '📦 Продати все', arm: 'Точно все? Ще раз',
+        title: 'Комора повна: продати ' + items + ' ' + api.plural(items, 'виріб', 'вироби', 'виробів') + ' · +' + api.short(sum),
+        run: () => api.order(st, 'bazaar', { all: true }) };
+    }
+    return null;
   }
 
   function goToGoal(st, api, g) {
@@ -589,6 +611,17 @@
     if (ui.nxBtn.disabled !== off) ui.nxBtn.disabled = off;
     if (ui.nxBtn.classList.contains('armed') !== !!ui.armed) ui.nxBtn.classList.toggle('armed', !!ui.armed);
     setBar(ui.nxBar, n.pct != null ? n.pct / 100 : 0);
+    const m = secondStep(st, api, n);
+    ui.next2 = m;
+    const b2 = ui.nxBtn2;
+    if (ui.armed2 && Date.now() > ui.armed2) ui.armed2 = 0;
+    const label2 = m ? m.btn : '';
+    if (!ui.armed2 && b2.textContent !== label2) b2.textContent = label2;
+    if (b2.hidden !== !m) b2.hidden = !m;
+    const title2 = m ? m.title : '';
+    if (b2.title !== title2) b2.title = title2;
+    if (b2.classList.contains('armed') !== !!ui.armed2) b2.classList.toggle('armed', !!ui.armed2);
+    if (ui.nx.classList.contains('two') !== !!m) ui.nx.classList.toggle('two', !!m);
   }
 
   // ---------- підказки «перший раз» ----------
@@ -641,20 +674,22 @@
     ui.tipT = setTimeout(() => { el.classList.add('out'); setTimeout(close, 400); }, TIP_MS);
   }
 
-  function runNext(st, api, ev) {
+  function runNext(st, api, ev, two) {
     const ui = st.craftUi;
-    const n = ui.next;
+    const n = two ? ui.next2 : ui.next;
+    const btn = two ? ui.nxBtn2 : ui.nxBtn;
+    const armKey = two ? 'armed2' : 'armed';
     if (!n || !n.run || !st.mine) return;
     // Незворотне (продати все) питаємо двічі — як і кнопка в коморі.
-    if (n.arm && (!ui.armed || Date.now() > ui.armed)) {
-      ui.armed = Date.now() + 3000;
-      ui.nxBtn.textContent = n.arm;
-      ui.nxBtn.classList.add('armed');
-      setTimeout(() => { if (st.craftUi === ui && Date.now() >= ui.armed) { ui.armed = 0; paintNext(st, api); } }, 3050);
+    if (n.arm && (!ui[armKey] || Date.now() > ui[armKey])) {
+      ui[armKey] = Date.now() + 3000;
+      btn.textContent = n.arm;
+      btn.classList.add('armed');
+      setTimeout(() => { if (st.craftUi === ui && Date.now() >= ui[armKey]) { ui[armKey] = 0; paintNext(st, api); } }, 3050);
       return;
     }
-    ui.armed = 0;
-    ui.nxBtn.classList.remove('armed');
+    ui[armKey] = 0;
+    btn.classList.remove('armed');
     api.sfx('tap');
     n.run(ev);
   }
@@ -723,15 +758,23 @@
     const sum = c.items.reduce((s, it) => s + it.value * it.n, 0);
     const now = api.serverNow(st);
 
-    // Сушарня — між горном і коморою: видно, що вже сохне й скільки лишилось.
+    // Сушарня — між горном і коморою: видно, що вже сохне й скільки лишилось. На телефоні сорок шість однакових
+    // значків «сухий» займали ~260 px між горном і коморою, тож це згортка: смуга «34 з 46» і кілька значків, а сітка —
+    // за ▸. На ПК згортка відкрита, поки гравець сам її не закриє (st.rackOpen, до кінця монтування).
+    const dryN = c.rack.filter((r) => r.dryAt <= now).length;
+    const peek = c.rack.slice(0, 6).map((r, i2) => wareSvg(api, r.ware, { raw: true, dry: r.dryAt <= now, clay: clayBody(st, r.clay),
+      slot: 'speek-' + i2, cls: 'clkw-mini' })).join('');
     const rack = c.rack.length
-      ? '<section class="clkw-rack-sec"><div class="clk-sub">🧺 Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</div><div class="clkw-rackrow">'
+      ? '<details class="clkw-rack-sec" data-key="rack"><summary><b>🧺 Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</b>'
+        + (dryN ? '<span class="clkw-rackdry small">сухих ' + dryN + '</span>' : '')
+        + '<span class="clkw-peek" aria-hidden="true">' + peek + (c.rack.length > 6 ? '<i>…</i>' : '') + '</span></summary>'
+        + '<div class="clkw-rackrow">'
         + c.rack.map((r, i2) => {
           const dry = r.dryAt <= now;
           return '<span class="clkw-rackitem' + (dry ? ' dry' : '') + '">'
             + wareSvg(api, r.ware, { raw: true, dry, clay: clayBody(st, r.clay), slot: 'strack-' + i2, cls: 'clkw-mini' })
             + '<span class="small">' + (dry ? 'сухий' : '<span class="clk-cd" data-at="' + r.dryAt + '" data-done="сухий"></span>') + '</span></span>';
-        }).join('') + '</div></section>'
+        }).join('') + '</div></details>'
       : '';
 
     // Комора: рядок на виріб, а розписи й якості — за ▾. Так чотирнадцять глеків читаються одним поглядом.
@@ -773,6 +816,12 @@
       : '<div class="clk-teaser muted small">Комора порожня — сюди лягають вироби з горна.</div>';
 
     if (api.swap(st.storeBody, rack + head + items)) {
+      const fold = st.storeBody.querySelector('.clkw-rack-sec');
+      if (fold) {
+        const narrow = window.matchMedia && window.matchMedia('(max-width: 480px), (pointer: coarse)').matches;
+        fold.open = st.rackOpen != null ? st.rackOpen : !narrow;
+        fold.ontoggle = () => { st.rackOpen = fold.open; };
+      }
       for (const b of st.storeBody.querySelectorAll('[data-sq]')) {
         const q = +b.dataset.sq;
         let armed = 0;
@@ -859,12 +908,15 @@
       bar.innerHTML = '<div class="clk-steps"></div>'
         + '<div class="clkc-next"><span class="clk-nxico"></span>'
         + '<span class="clk-nxtxt"><b class="clk-nxtext"></b><span class="clk-nxsub small"></span></span>'
-        + '<button type="button" class="primary clk-nxbtn" hidden></button><i class="clk-nxbar"><i></i></i></div>';
+        + '<button type="button" class="primary clk-nxbtn" hidden></button>'
+        + '<button type="button" class="ghost clk-nxbtn clk-nxbtn2" hidden></button><i class="clk-nxbar"><i></i></i></div>';
       st.stage.insertAdjacentElement('afterend', bar);
       st.craftUi = { el: bar, steps: bar.querySelector('.clk-steps'), nx: bar.querySelector('.clkc-next'),
         nxIco: bar.querySelector('.clk-nxico'), nxText: bar.querySelector('.clk-nxtext'), nxSub: bar.querySelector('.clk-nxsub'),
-        nxBtn: bar.querySelector('.clk-nxbtn'), nxBar: bar.querySelector('.clk-nxbar i'), next: null, armed: 0 };
+        nxBtn: bar.querySelector('.clk-nxbtn'), nxBar: bar.querySelector('.clk-nxbar i'), next: null, armed: 0,
+        nxBtn2: bar.querySelector('.clk-nxbtn2'), next2: null, armed2: 0 };
       st.craftUi.nxBtn.onclick = (ev) => runNext(st, api, ev);
+      st.craftUi.nxBtn2.onclick = (ev) => runNext(st, api, ev, true);
       st.craftUi.tip = null;
       st.craftUi.tipT = 0;
       // «Ремесло» — одна вкладка на все ремесло: горно зверху, далі сушарня з коморою, знизу замовлення.

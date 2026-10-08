@@ -82,8 +82,8 @@
 .clka-cell.star { border-color: rgba(244, 197, 66, .5); }
 .clka-w { width: 28px; height: 30px; max-width: 100%; }
 .clka-w.shadow, .clka-big.shadow { filter: brightness(0) opacity(.36); }
-.clka-star { position: absolute; right: 1px; top: -2px; font-style: normal; font-size: 10px; color: #f4c542; text-shadow: 0 0 3px rgba(0, 0, 0, .8); }
-.clka-pin { position: absolute; left: 0; bottom: -3px; font-style: normal; font-size: 9px; }
+.clka-star { position: absolute; right: 1px; top: -2px; font-style: normal; font-size: 11px; color: #f4c542; text-shadow: 0 0 3px rgba(0, 0, 0, .8); }
+.clka-pin { position: absolute; left: 0; bottom: -3px; font-style: normal; font-size: 11px; }
 .clka-cell.shown { border-color: var(--accent2); }
 .clka-cell.new { animation: clkanew 2.4s ease-out; z-index: 1; }
 .clka-cell.new::after {

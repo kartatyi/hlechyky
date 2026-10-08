@@ -175,18 +175,37 @@
 .clkk-tbtn.home { box-shadow: inset 0 0 10px rgba(244, 197, 66, .3); }
 .clkk-tbtn.locked { opacity: .45; font-size: 15px; }
 .clkk-new {
-  position: absolute; top: -6px; right: -6px; font-size: 9px; font-style: normal; line-height: 1; padding: 2px 4px;
+  position: absolute; top: -6px; right: -6px; font-size: 11px; font-style: normal; line-height: 1; padding: 2px 4px;
   border-radius: 6px; background: var(--accent2); color: #24170a; font-weight: 700;
 }
 .clkk-painthint { line-height: 1.3; }
 .clkk-auto { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 
-/* Вибір техніки — картки на все вікно. */
+/* Вибір техніки — компактні плитки (F5/F6, 08.10): значок і назва в рядок, два рядки опису (решта — за ⓘ у шапці),
+   на ПК вікно ширше — 4–5 плиток у ряд, на телефоні два стовпці; «🎲 Навмання» — у шапці, а не на дні прокрутки. */
 .clkk-pick { display: flex; flex-direction: column; gap: 8px; }
+.clkk-pick > p { margin: 0; }
+.clkk-ov.clkk-pickov .clk-ov-box { max-width: 880px; }
+.clkk-phead { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-right: 40px; }
+.clkk-phead .clk-sub { flex: 1 1 auto; margin: 0; }
+.clkk-more { min-width: 36px; padding: 4px 8px; }
+.clkk-more[aria-pressed="true"] { border-color: var(--accent2); color: var(--accent); }
 .clkk-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .clkk-card {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 8px 10px; text-align: left;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 7px 9px; text-align: left;
   border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
+}
+.clkk-ctop { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.clkk-ctop b { min-width: 0; overflow-wrap: break-word; line-height: 1.2; font-size: .95em; }
+.clkk-ctop .clkk-cicon { font-size: 20px; }
+.clkk-cdesc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.3; }
+.clkk-pick.full .clkk-cdesc { display: block; -webkit-line-clamp: unset; }
+@container clk (max-width: 480px) {
+  .clkk-cards { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .clkk-card { padding: 6px 7px; }
+  .clkk-ctop { gap: 4px; }
+  .clkk-ctop b { font-size: .88em; }
+  .clkk-ctop .clkk-cicon { font-size: 18px; }
 }
 .clkk-card > * { max-width: 100%; white-space: normal; overflow-wrap: break-word; }
 .clkk-card.on { border-color: var(--accent2); }

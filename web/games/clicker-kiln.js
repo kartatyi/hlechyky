@@ -302,7 +302,7 @@
   /// Ручний обпал почався (чи сторінку оновили посеред нього) — горно, термометр, вітер і кнопки мусять бути на очах
   /// (записка користувача 4в): на телефоні горно далеко під колом, а на ПК панель «Ремесла» гортається сама в собі.
   /// Раз на обпал, коли панель горна справді видно; далі гравець гортає як хоче — ми не смикаємо сторінку.
-  function showBurn(st) {
+  function showBurn(st, api) {
     const kb = st.kb;
     const box = st.kUi && st.kUi.top;
     if (!kb || !box || !box.getClientRects().length) return;
@@ -317,33 +317,14 @@
     if (sc && sc !== st.el) {
       const b = sc.getBoundingClientRect();
       const d = fitDelta(box.getBoundingClientRect(), b.top + 4, b.bottom - 4);
-      if (d) sc.scrollBy({ top: d, behavior });
+      // Панель — усередині картки, а під масштабом 2K/4K її прокрутка — у пікселях картки.
+      if (d) sc.scrollBy({ top: d / ((api && api.zoom && api.zoom(st)) || 1), behavior });
       return;
     }
     // Сторінка: між шапкою сайту (і мініплашкою кола під нею) та нижньою панеллю телефона.
     const band = viewBand(st, true);
     const d = fitDelta(box.getBoundingClientRect(), band.top, band.bottom);
     if (d) window.scrollBy({ top: d, behavior });
-  }
-
-  /// Вікно частини (мінігра, вибір техніки, відкриття горна) — у видиму смугу: заголовок не під шапкою сайту, кнопки
-  /// не під нижньою панеллю телефона. Ядро ставить вікно на 12 px від верху екрана (шапки воно не знає); тут — від
-  /// шапки. Не влазить униз, бо картка на телефоні починається нижче шапки, — сторінку підгортаємо рівно на різницю.
-  function placeBox(st, body) {
-    const box = body && body.closest('.clk-ov-box');
-    if (!box || !st.el) return;
-    const band = viewBand(st, false);
-    box.style.maxHeight = Math.max(240, band.bottom - band.top - 8) + 'px';
-    const card = st.el.getBoundingClientRect();
-    const pad = 12;                                         // відступ .clk-overlay (clicker.css)
-    let top = card.top;
-    if (!st.el.classList.contains('fit')) {
-      const h = box.getBoundingClientRect().height;
-      const over = top + pad + h - band.bottom;
-      const d = Math.min(over, top + pad - band.top);
-      if (d > 0) { window.scrollBy(0, d); top -= d; }
-    }
-    box.style.marginTop = Math.max(0, Math.min(band.top - top - pad + 2, card.height - 160)) + 'px';
   }
 
   function doAct(st, api, a) {
@@ -501,19 +482,29 @@
     const esc = (x) => api.esc(st, x);
     const last = api.storeGet('clk.tech', '');
     const card = (t) => '<button type="button" class="clkk-card' + (t.key === last ? ' on' : '')
-      + (t.home && t.home === k.style ? ' home' : '') + '" data-pick="' + esc(t.key) + '">'
-      + '<span class="clkk-cicon">' + (TECH_ICON[t.key] || '🎨') + (fresh.includes(t.key) ? '<i class="clkk-new">нове</i>' : '') + '</span>'
-      + '<b>' + esc(t.name) + '</b><span class="muted small">' + esc(HOWTO[t.key] || t.desc) + '</span>'
+      + (t.home && t.home === k.style ? ' home' : '') + '" data-pick="' + esc(t.key) + '" title="' + esc(HOWTO[t.key] || t.desc) + '">'
+      + '<span class="clkk-ctop"><span class="clkk-cicon">' + (TECH_ICON[t.key] || '🎨') + (fresh.includes(t.key) ? '<i class="clkk-new">нове</i>' : '') + '</span>'
+      + '<b>' + esc(t.name) + '</b></span><span class="muted small clkk-cdesc">' + esc(HOWTO[t.key] || t.desc) + '</span>'
       + (t.home && t.home === k.style ? '<span class="clkk-home small">рідна техніка: +10 краси</span>' : '') + '</button>';
     const locked = all.filter((t) => !k.techs.includes(t.key));
+    // Компактні плитки (F5/F6): значок, назва й два рядки опису; повний опис — за ⓘ у шапці вікна, «Навмання» — теж
+    // у шапці. Було: дев'ять високих карток — 1 400 px одним стовпцем на телефоні, а на макбуку вікно вище за картку.
     const body = api.overlay(st, '<div class="clkk-pick">'
-      + '<div class="clk-sub">🖌 Чим розписувати</div>'
+      + '<div class="clkk-phead"><div class="clk-sub">🖌 Чим розписувати</div>'
+      + '<button type="button" class="ghost clkk-more" aria-pressed="false" title="Як малювати кожною технікою" aria-label="Як малювати кожною технікою">ⓘ</button>'
+      + '<button type="button" class="ghost clkk-any">🎲 Навмання</button></div>'
       + '<p class="muted small">Розпис лягає на всю партію: що краще вийде, то більше дзвінких і розкішних виробів.</p>'
       + '<div class="clkk-cards">' + open.map(card).join('') + '</div>'
-      + '<div class="clkk-prow"><button type="button" class="ghost clkk-any">🎲 Навмання</button></div>'
       + (locked.length ? '<div class="muted small clkk-locked">Ще попереду: ' + locked.map((t) => esc(t.name) + ' — ' + esc(t.unlock)).join(' · ') + '</div>' : '')
-      + '</div>', { cls: 'clkk-ov' });
-    placeBox(st, body);
+      + '</div>', { cls: 'clkk-ov clkk-pickov' });
+    const more = body.querySelector('.clkk-more');
+    more.onclick = () => {
+      const on = more.getAttribute('aria-pressed') !== 'true';
+      more.setAttribute('aria-pressed', String(on));
+      body.querySelector('.clkk-pick').classList.toggle('full', on);
+    };
+    // Вікно — за спільним правилом кола: вміст уже домальовано, тож перемірюємо.
+    api.placeOverlay(st);
     markTechsSeen(st, api);
     const go = (tech) => { rememberTech(api, tech); api.closeOverlay(st); startPaint(st, api, tech); };
     for (const el of body.querySelectorAll('[data-pick]')) el.onclick = () => go(el.dataset.pick);
@@ -1138,17 +1129,19 @@
 
   /// Полотно мусить лишатись КВАДРАТНИМ (інакше візерунок літербоксить) і вміщатись у вікно разом із кнопками.
   /// Вікно ж обмежене висотою картки, а не екрана, тож рахуємо вільне місце самі: CSS такого не знає.
-  function fitCanvas(st, svg) {
+  function fitCanvas(st, api, svg) {
     try {
       const wrap = svg.parentElement;
       const paint = wrap.parentElement;
+      // Прямокутники — у видимих пікселях, а ширина полотна — у пікселях картки: під масштабом 2K/4K ділимо на z.
+      const z = (api.zoom && api.zoom(st)) || 1;
       let used = 0;
-      for (const el of paint.children) if (el !== wrap) used += el.getBoundingClientRect().height + 6;
+      for (const el of paint.children) if (el !== wrap) used += el.getBoundingClientRect().height / z + 6;
       // Вікно обмежене і карткою, і видимою смугою екрана — між шапкою сайту й нижньою панеллю телефона (на 390×664
       // «Готово» ховалось під панеллю). 28 — відступи самого вікна.
       const band = viewBand(st, false);
-      const card = (st.ov && st.ov.el && st.ov.el.clientHeight) || window.innerHeight;
-      const room = Math.min(band.bottom - band.top - 8, card - 24) - 28 - used;
+      const card = (st.ov && st.ov.el && st.ov.el.clientHeight) || window.innerHeight / z;
+      const room = Math.min((band.bottom - band.top - 8) / z, card - 24) - 28 - used;
       // Ширина головна, але вікно мусить уміститись разом із кнопками: на низькому екрані полотно меншає, до 220.
       const wide = Math.min(460, Math.floor(wrap.clientWidth || 460));
       const side = Math.max(220, Math.min(wide, Math.floor(room)));
@@ -1173,8 +1166,9 @@
     });
     const svg = body.querySelector('.clkk-canvas');
     svg.style.setProperty('--clkk-slip', slipOf(st));
-    fitCanvas(st, svg);
-    placeBox(st, body);
+    fitCanvas(st, api, svg);
+    // Вікно — за спільним правилом кола: вміст уже домальовано, тож перемірюємо.
+    api.placeOverlay(st);
     const limit = limitOf(p);
     const g = {
       p, svg, trail: svg.querySelector('.clkk-trail'), disc: svg.querySelector('.clkk-disc'), shine: svg.querySelector('.clkk-shine'),
@@ -1774,7 +1768,8 @@
       + (!l.helper && l.items.length >= 4 && cnt[3] + cnt[4] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
       + '<button type="button" class="primary clkk-tostore">🧺 В комору</button></div>'
       + '</div>', { cls: 'clkk-ov' });
-    placeBox(st, body);
+    // Вікно — за спільним правилом кола: вміст уже домальовано, тож перемірюємо.
+    api.placeOverlay(st);
     body.querySelector('.clkk-tostore').onclick = () => {
       api.closeOverlay(st);
       // Вкладку не перемикаємо (горно й комора тепер в одній): просто підсвічуємо крок «Комора» у смузі.
@@ -1834,7 +1829,7 @@
       st.kTabAt = st.tab;
       if (st.kb && kilnVisible(st)) {
         paintBurn(st, api, false);
-        if (!st.kb.shown && st.mine) showBurn(st);
+        if (!st.kb.shown && st.mine) showBurn(st, api);
       } else if (st.kb) {
         // Вкладку сховали посеред обпалу — модель однаково доходить до кінця й відкриває горно.
         const m = model(st);
