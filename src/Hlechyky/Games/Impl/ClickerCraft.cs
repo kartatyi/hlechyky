@@ -202,7 +202,10 @@ public sealed partial class Clicker
         return taken;
     }
 
-    /// <summary>Покласти в комору. Що не влізло — одразу продано на базарі; повертає, скільки глеків за це прийшло.</summary>
+    /// <summary>
+    /// Покласти в комору. Що не влізло — міняється з дешевшими незахищеними (лад у коморі, ClickerLad.cs), а решта
+    /// одразу продана на базарі; повертає, скільки глеків за все продане прийшло.
+    /// </summary>
     internal double PutItems(string ware, string style, int quality, int n)
     {
         if (n <= 0 || WareOf(ware) is null || quality is < 1 or > QualityMax) return 0;
@@ -215,9 +218,11 @@ public sealed partial class Clicker
         }
         var over = n - put;
         if (over <= 0) return 0;
-        var pots = ItemValue(ware, style, quality) * over;
-        Add(pots);
-        return pots;
+        var pots = LadSwap(ware, style, quality, ref over);
+        if (over <= 0) return pots;
+        var rest = ItemValue(ware, style, quality) * over;
+        Add(rest);
+        return pots + rest;
     }
 
     /// <summary>Висохлі сирці — для горна; мокрі лишаються на сушарні.</summary>
@@ -485,6 +490,7 @@ public sealed partial class Clicker
         _awayOpen = gap >= AwayFrom || _quietSync;
         _awayFormed = 0;
         _awayNotes.Clear();
+        LadAwayClear();
         _awayPotsFrom = _pots;
     }
 
@@ -498,7 +504,8 @@ public sealed partial class Clicker
         if (_quietSync) { _awayCarry = true; return; }
         _awayCarry = false;
         // Тихі синхронізації почали запис, а гончар повернувся раніше, ніж простій став простоєм, — запису не треба.
-        if (gap < AwayFrom) return;
+        if (gap < AwayFrom) { LadAwayClear(); return; }
+        LadAwayFlush(_awayNotes);
         _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom), _awayFormed, [.. _awayNotes]);
     }
 
