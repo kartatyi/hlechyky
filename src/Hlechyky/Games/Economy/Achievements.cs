@@ -380,8 +380,11 @@ public sealed class Achievements
         if (totalMinutes >= 6_000) Unlock(nick, "listener-100h");
     }
 
+    /// <summary>«Сотня» — за набуте грою: черепки, куплені за гривні, у «зароблено» не йдуть (ShardShop.cs), тож
+    /// купити ачівку не вийде. Гаманець читаємо лише тоді, коли сотня на руках уже є, а ачівку ще не видано.</summary>
     void OnBalance(string nick, int balance)
     {
-        if (balance >= 100) Unlock(nick, "rich-100");
+        if (balance < 100 || _granted.ContainsKey($"{Economy.Key(nick)}|rich-100")) return;
+        if (_economy.Wallet(nick).Earned >= 100) Unlock(nick, "rich-100");
     }
 }

@@ -365,7 +365,8 @@
     const head = '<section class="panel lv-head">'
       + '<div class="lv-top"><div class="lv-sign"><img src="/static/glek.svg" alt=""><div><h2>Лавка Дядька Глека</h2>'
       + '<div class="muted small">Усе, що купиш, — твоє назавжди. Черепки капають за радіо, партії й щоденний глек.</div></div></div>'
-      + '<div class="lv-bal">У глечику <b>' + (data.balance != null ? data.balance : '—') + ' 🏺</b></div></div>'
+      + '<div class="lv-bal">У глечику <b>' + (data.balance != null ? data.balance : '—') + ' 🏺</b>'
+      + (acc && window.HBuy ? '<button type="button" class="ghost lv-buy" data-buy-shards title="Купити черепки за гривні">➕ Докупити</button>' : '') + '</div></div>'
       + (giftTo ? '<div class="lv-gift"><span>🎁 Подарунок для <b>' + esc(genitive(giftTo)) + '</b> — обери річ. Подарувати можна лише те, чого в людини ще нема.</span>'
         + '<button class="ghost" data-go="#lavka">✕ скасувати</button></div>' : '')
       + (!acc ? '<div class="lv-guest"><span>🔒 Лавка — для акаунтів: гостьовий нік може зайняти хтось інший, і куплене пропало б.</span>'
@@ -400,6 +401,7 @@
       if (giftTo) { tab = b.dataset.tab; paint(); } else o.go('#lavka/' + b.dataset.tab);
     });
     root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
+    root.querySelectorAll('[data-buy-shards]').forEach((b) => b.onclick = () => window.HBuy && HBuy.open({ tab: 'buy' }));
     const acc = root.querySelector('[data-acc]');
     if (acc) acc.onclick = () => o.askNick(true, 'register', String(o.me.nick || '').replace(/^гість\s*/i, ''));
     root.querySelectorAll('[data-try]').forEach((b) => b.onclick = () => {
