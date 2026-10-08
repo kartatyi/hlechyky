@@ -479,6 +479,13 @@
 .clk-up:not(:disabled):hover, .clk-mark:not(:disabled):hover, .clk-secret:not(:disabled):hover { background: var(--panel3); }
 .clk-up:disabled .clk-umain, .clk-up:disabled .clk-uico, .clk-mark:disabled .clk-umain, .clk-mark:disabled .clk-uico { opacity: .72; }
 .clk-up.maxed { opacity: .6; }
+/* «Докачано · N» — згортка в кінці полиці: усередині ті самі рядки й та сама сітка, що й у полиці (див. clkside нижче). */
+.clk-done { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
+.clk-done > summary { cursor: pointer; font-size: .92em; color: var(--muted); list-style: none; padding: 4px 2px; }
+.clk-done > summary::-webkit-details-marker { display: none; }
+.clk-done > summary::before { content: '▸ '; }
+.clk-done[open] > summary::before { content: '▾ '; }
+.clk-donebody { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
 .clk-uico { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: rgba(0, 0, 0, .22); position: relative; }
 .clk-mark .clk-uico { width: 28px; height: 28px; }
 .clk-uico svg { width: 90%; height: 90%; display: block; }
@@ -656,7 +663,8 @@
    і до колишніх 1300 ніколи не дотягувалась, а місце на другий стовпець було. */
 @container clkside (min-width: 560px) {
   .clk-shop { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; align-content: start; }
-  .clk-shop .clk-teaser { grid-column: 1 / -1; }
+  .clk-shop .clk-teaser, .clk-shop .clk-done { grid-column: 1 / -1; }
+  .clk-donebody { display: grid; grid-template-columns: 1fr 1fr; }
   .clk-marks { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 }
 
@@ -689,7 +697,7 @@
 }
 @container clkside (min-width: 1250px) {
   /* auto-fill, а не два стовпці: на 1346 px виходить три по ~443, на 2560 — чотири. */
-  .clk-shop { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+  .clk-shop, .clk-donebody { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
   .clk-secrets { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
   .clk-styles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .clk-clays { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
@@ -790,7 +798,8 @@
   /* Заголовки згорток («🏠 Хата», «торг ▾», «що потрібно ▾»…): висоту дає відступ, а не display — flex на <summary>
      старий Safari не бере. */
   .clk .clk-sec > summary, .clk .clkf-bid > summary, .clk .clkk-styles > summary, .clk .clkk-other > summary,
-  .clk .clkk-strawsec > summary, .clk .clka-ringsec > summary, .clk .clkg-need > summary, .clk .clkt-sec > summary {
+  .clk .clkk-strawsec > summary, .clk .clka-ringsec > summary, .clk .clkg-need > summary, .clk .clkt-sec > summary,
+  .clk .clk-done > summary {
     padding-top: 11px; padding-bottom: 11px;
   }
   /* Назви кроків смуги стоять по центру плитки: без межі ширини довга («Баранець-свищик») вилазила з обох боків і
@@ -994,8 +1003,62 @@
       calc((100svh - var(--clk-ph-top, 240px) - var(--clk-ph-path, 124px) - var(--gdock-h, 64px) - 6px) * .8)));
   }
 }
-/* Лежачи (844×390): сцена 432×540 не влазила між шапкою й меню — коло було за екраном. Тепер сцена не вища за
-   видиму смугу вікна: догорнув до неї — і коло вже під пальцем. */
+/* ---- телефон лежачи (.clk.land, ставить fitTable: дотик, висота ≤ 500, картка від 640) ----
+   Було на 844×390: сцена 211×264 і коло 104 px нижче рядка статистики, «Далі» під нижнім меню, вкладки 31 px.
+   Стало: лівий стовпець липне між шапкою й меню (--clk-land-top/--clk-land-bot міряє landFit) і сам ділиться на два:
+   сцена на всю його висоту, а поруч — лічильник, швидкість, суперник і смуга «Шлях виробу» з рядком «Далі». Права
+   колонка гортається сторінкою. Рядок-дубль «🏺 Гончарне коло 👁» і статистику каркаса ховаємо, прилавок, плашки й
+   стрічку — нагору правої колонки (placeRows). */
+.gtable.clk-land > .gseats, .gtable.clk-land > .gstatus { display: none; }
+.clk.land .clk-scene {
+  --clk-land-h: calc(100svh - var(--clk-land-top, 56px) - var(--clk-land-bot, 58px) - 8px);
+  height: var(--clk-land-h); box-sizing: border-box;
+  display: grid; grid-template-columns: calc(var(--clk-land-h) * .8) minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto; column-gap: 10px; row-gap: 4px; align-items: start;
+}
+.clk.land .clk-scene > * { grid-column: 2; order: 0; min-width: 0; max-width: 100%; }
+.clk.land .clk-scene > .clk-stagebox { grid-column: 1; grid-row: 1 / -1; align-self: center; width: 100%; }
+.clk.land .clk-stage { width: 100%; max-width: none; }
+.clk.land .clk-eye { max-height: var(--clk-land-h); overflow-y: auto; }
+/* Вивіска — на небо сцени, ліворуч від кнопок звуку (як на ПК): у правій половині на неї нема висоти. */
+.clk.land .clk-scene > .clk-sign {
+  grid-column: 1; grid-row: 1; z-index: 2; justify-self: start; margin: 6px 0 0 6px; max-width: calc(100% - 92px);
+}
+.clk.land .clk-scene:has(.clk-stage[hidden]) > .clk-sign { display: none; }
+.clk.land .clk-head { width: 100%; }
+.clk.land .clk-count, .clk.land .clk-count.long { font-size: calc(var(--clk-num) * .62); }
+.clk.land .clk-rate, .clk.land .clk-rival { grid-column: 2; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk.land .clk-scene > .clk-path { grid-row: 5; align-self: end; width: 100%; }
+/* Кроки смуги — лише значок і число, як на вузькому телефоні: у половині стовпця назви не влізуть. */
+.clk.land .clk-steps { gap: 3px; }
+.clk.land .clk-step { flex-direction: column; align-items: center; gap: 1px; padding: 3px 2px 6px; text-align: center; }
+.clk.land .clk-step + .clk-step::before { left: -5px; top: 14px; transform: none; }
+.clk.land .clk-sttxt { align-items: center; max-width: 100%; }
+.clk.land .clk-sttxt b { display: none; }
+/* «Далі»: порада рядком, кнопки — другим рядком на всю ширину (дві — порівну). */
+.clk.land .clkc-next, .clk.land .clkc-next.two {
+  grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr); grid-auto-flow: row; height: auto; padding: 5px 8px 8px; gap: 4px 6px;
+}
+.clk.land .clk-nxtxt { grid-column: 2 / -1; }
+.clk.land .clk-nxbtn { grid-row: 2; grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; }
+.clk.land .clkc-next.two .clk-nxbtn { grid-column: 1 / 3; }
+.clk.land .clkc-next.two .clk-nxbtn2, .clk.land .clkc-next.two .clk-nxbtn[hidden] + .clk-nxbtn2 { grid-column: 3; }
+.clk.land .clkc-next.two .clk-nxbtn[hidden] + .clk-nxbtn2 { grid-column: 1 / -1; }
+/* Права колонка: плашки · вкладки · стрічка й прилавок · панель (вкладки — у першому екрані, прилавок — раз на день). */
+.clk.land .clk-side > .clk-buffs { order: -3; }
+.clk.land .clk-side > .clk-tabs { order: -2; }
+.clk.land .clk-side > .clkf-feed, .clk.land .clk-shards { order: -1; }
+.clk.land .clk-shards { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; }
+.clk.land .clk-shards:empty { display: none; }
+.clk.land .clk-shards .clk-left { flex: 1 1 100%; text-align: center; }
+.clk.land .clk-tabs button { min-height: 40px; }
+/* Два стовпці (картка від 640 px): сцена липне, права колонка йде повз неї. Вужча картка (932×430 з відкритими
+   балачками — 484 px) — сцена тим самим екраном угорі, полиця під нею, без липкості: інакше полиця їхала б під сцену. */
+@container clk (min-width: 640px) {
+  .clk.land .clk-lay { grid-template-columns: minmax(0, 60%) minmax(0, 1fr); gap: 10px 14px; }
+  .clk.land .clk-scene { position: sticky; top: calc(var(--clk-land-top, 56px) + 4px); }
+}
+/* Лежачи без режиму .land (картка вужча за 640): сцена не вища за видиму смугу вікна — догорнув, і коло під пальцем. */
 @media (pointer: coarse) and (max-height: 500px) and (min-width: 561px) {
   .clk .clk-stage { max-width: min(var(--clk-stage-w, 620px), max(180px, calc((100svh - 56px - var(--gdock-h, 64px) - 12px) * .8))); }
 }

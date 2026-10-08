@@ -1666,6 +1666,9 @@
       if (pay < bestPay) { bestPay = pay; best = k; }
     }
     let teaser = '';
+    // Докачане до межі («досить») не купиш — у пізній грі шість таких рядків (~330 px на телефоні) стояли між тим, що
+    // купується щохвилини. Їх — в одну згортку в кінці списку; відкрита чи ні — пам'ятає swap() за data-key.
+    const done = [];
     const cards = keys.filter((k) => {
       // !== false, а не просто open: старий сервер (хвилина деплою) цього поля не шле — показуємо все.
       if (ups[k].open !== false) return true;
@@ -1681,7 +1684,7 @@
       const next = nm ? ' · наступна віха на ' + nm.level + ': «' + nm.name + '» — ' + nm.desc : '';
       // Компактний рядок: значок · назва з рівнем і описом · ціна; смужка знизу — скільки ціни вже назбирано.
       const icon = H.api.upIcon ? H.api.upIcon(k) : '';
-      return '<button type="button" class="clk-up' + (k === best ? ' best' : '') + (u.kind === 'skill' ? ' skill' : '') + (maxed ? ' maxed' : '')
+      const html = '<button type="button" class="clk-up' + (k === best ? ' best' : '') + (u.kind === 'skill' ? ' skill' : '') + (maxed ? ' maxed' : '')
         + '" data-buy="' + esc(k) + '" title="' + esc(u.name + ' — ' + u.desc + (pay ? ' · окупиться за ' + pay : '') + next) + '" disabled>'
         // Рівень — плашкою на значку (як лічильник будівель), щоб назва мала весь рядок.
         + '<span class="clk-uico">' + icon + '<span class="clk-lvl' + (u.level ? '' : ' zero') + '">' + (u.level ? u.level + (u.max > 0 ? '/' + u.max : '') : '0') + '</span></span>'
@@ -1693,6 +1696,8 @@
         + (pay ? '<span class="clk-pay">' + (k === best ? '★ ' : '') + 'окуп. ' + pay + '</span>' : '') + '</span>'
         + '<i class="clk-ubar"><i></i></i>'
         + '</button>';
+      if (maxed) { done.push(html); return ''; }
+      return html;
     }).join('');
     // Гончарі світу (v11): щабель відмикає будова Толоки, а не попередній рівень.
     const gate = teaser && st.shopCat && st.shopCat.gates && st.shopCat.gates[teaser];
@@ -1703,7 +1708,11 @@
           : 'Далі на драбині ще є верстати: наступний відкриється після першого рівня «' + esc(ups[prevIdle(ups, teaser)].name) + '»')
         + '</div>'
       : '';
-    if (swap(st.shop, cards + more)) {
+    const fold = done.length
+      ? '<details class="clk-done" data-key="done"><summary>Докачано · ' + done.length + '</summary><div class="clk-donebody">'
+        + done.join('') + '</div></details>'
+      : '';
+    if (swap(st.shop, cards + more + fold)) {
       st.buys = [...st.shop.querySelectorAll('[data-buy]')];
       for (const b of st.buys) {
         b._price = b.querySelector('.clk-price');
@@ -2541,6 +2550,11 @@
   /// лишилось би 113 px, а так — 150 px.
   const SIDE_PATH_H = 800;
   const PHONE_NEXT_H = 6 + 50 + 6 + 4;   // телефон: зазор, рядок «Далі» (50 px), зазор сцени й запас над меню
+  /// Телефон лежачи (844×390, 932×430): вікно нижче FIT_H, тож стіл ішов однією прокруткою, і коло (104 px) з'являлось
+  /// лише після прокрутки, а «Далі» лежало під нижнім меню. Тут свій режим .land: сцена ліворуч липне між шапкою й
+  /// меню на всю їхню відстань, права колонка гортається сторінкою (див. .clk.land у clicker.css).
+  const LAND_MQ = window.matchMedia ? window.matchMedia('(pointer: coarse) and (max-height: 500px) and (min-width: 561px)') : null;
+  const LAND_W = 440;         // вужче — сцені поруч із лічильником нема місця (з 640 px ще й два стовпці, див. css)
 
   /// Обгортка сцени тримає лише сцену й Око майстра. Частини ставлять свої рядки «одразу після сцени»
   /// (st.stage.insertAdjacentElement('afterend', …) — так робить смуга «Шлях виробу» в clicker-craft.js), і такий
@@ -2616,8 +2630,29 @@
       side = (window.innerHeight - above - below) / zoomOf(st) < SIDE_PATH_H;
     }
     if (st.el.classList.contains('pathside') !== side) st.el.classList.toggle('pathside', side);
+    landFit(st, card, !fit && !!LAND_MQ && LAND_MQ.matches && st.el.clientWidth >= LAND_W);
     if (!fit) phoneFit(st);
     placeRows(st);
+  }
+
+  /// Режим «лежачи»: висоту сцени дає смуга між липкою шапкою й нижнім меню (--clk-land-top/--clk-land-bot). Щойно
+  /// стіл став лежачим (відкрили коло чи повернули телефон), сторінка доїжджає так, щоб сцена стала під шапку: над нею
+  /// лише рядок «← Лобі», і без цього коло з «Далі» лягали б під меню. Далі прокрутку веде гравець.
+  function landFit(st, card, land) {
+    const was = st.el.classList.contains('land');
+    if (was !== land) { st.el.classList.toggle('land', land); card.classList.toggle('clk-land', land); }
+    if (!land) return;
+    const band = viewBand();
+    const top = Math.round(band.top), bot = Math.round(window.innerHeight - band.bottom);
+    if (st.landTop !== top) { st.landTop = top; st.el.style.setProperty('--clk-land-top', top + 'px'); }
+    if (st.landBot !== bot) { st.landBot = bot; st.el.style.setProperty('--clk-land-bot', bot + 'px'); }
+    if (!was) {
+      requestAnimationFrame(() => {
+        if (!st.el || !st.el.classList.contains('land')) return;
+        const y = window.scrollY + st.layEl.getBoundingClientRect().top - top - 4;
+        if (y > window.scrollY + 1) window.scrollTo({ top: y, behavior: 'auto' });
+      });
+    }
   }
 
   /// 2K і 4K (F1, 08.10): стеля сторінки 1600 px лишала стіл 1152 px посеред 2560 чи 3840, а кегль і коло — як на
@@ -2719,7 +2754,8 @@
   /// нагору правої колонки. Поза цим режимом усе вертається під сцену, як було.
   function placeRows(st) {
     if (!st.el || !st.sellRow || !st.one) return;
-    const fit = st.el.classList.contains('fit');
+    // Лежачи сцена — лише коло з шапкою й смугою: прилавок, плашки й стрічка йдуть у праву колонку, як і на ПК.
+    const fit = st.el.classList.contains('fit') || st.el.classList.contains('land');
     // Сам .clk-sell лишається під сценою: перед ним ставить себе стрічка подій (clicker-fair.js). Ходять лише кнопки
     // й рядок «сьогодні ще …» — ті самі елементи, тож обробники й st.one / st.all не міняються.
     if (fit) {
