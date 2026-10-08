@@ -264,8 +264,8 @@
 }
 
 /* ---- глек поверх усього (записка Smaug №29): сцени не видно — той самий глек летить смугою вздовж правого краю
-   екрана, над вікнами кола (вони всередині картки, а картка — container, тож свій шар), але під тостами й модалками
-   сайту (20+). Шар — лише сама кнопка: натиски повз неї йдуть у вікна під нею. top і --clk-flydrop ставить clicker.js
+   екрана, над вікнами кола (вони всередині картки, а картка — isolation: isolate, тож свій шар), але під тостами й
+   модалками сайту (20+). Шар — лише сама кнопка: натиски повз неї йдуть у вікна під нею. top і --clk-flydrop ставить clicker.js
    (видима смуга між шапкою сайту й нижнім меню). */
 .clk-fly {
   position: fixed; z-index: 19; right: calc(10px + env(safe-area-inset-right, 0px)); top: var(--clk-flytop, 80px);
@@ -686,7 +686,10 @@
 }
 
 /* ---- частини сьомого оновлення: шари сцени й модальна панель (clicker.js → api.layer / api.overlay) ---- */
-.clk { position: relative; }
+/* isolation: картка — свій шар накладання. container-type його не створює, тож вікна кола (z 30) змагались із шаром
+   глека (z 19, у body) на рівні сторінки й накривали глек, що летів над вікном (QA clk12). Тепер усе z картки —
+   всередині неї: вікна під шапкою й меню сайту, а глек поверх картки. */
+.clk { position: relative; isolation: isolate; }
 .clk-layer-back { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .clk-layer-front { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 .clk-layer-front > div > * { pointer-events: auto; }
@@ -708,7 +711,7 @@
 .clk-news ul { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .clk-news li { display: flex; gap: 9px; align-items: flex-start; font-size: .92em; line-height: 1.4; }
 .clk-news-ico { flex: 0 0 auto; width: 1.5em; font-size: 1.15em; text-align: center; }
-.clk-news .clk-news-ok { width: 100%; }
+.clk-news .clk-news-ok { width: 100%; min-height: 44px; }
 /* Пояснення під секретами: клейма, витрачені на секрети, бонус не гублять. */
 .clk-secnote { margin: 6px 2px 0; line-height: 1.35; }
 /* Наука майстра під рядком клейм: від кого вчимось і коли знову. */

@@ -1230,13 +1230,17 @@
     const h = b.offsetHeight || 68;
     // Телефон: угорі під шапкою липне мініплашка з «🏺 лови!» — смуга глека починається під нею, щоб не налазити.
     let top = band.top + (window.innerWidth <= 560 ? 56 : 10);
-    // Над відкритим вікном кола «✕» лишається вільним: якщо смуга глека йде крізь нього (телефон — вікно на всю
-    // ширину), глек починає політ під ним. Міряємо раз на глек, не щокадру.
+    // Над відкритим вікном кола «✕» лишається вільним, а під мініплашкою — ряд значків вкладок (pinTabs) і «🏺 лови!»:
+    // якщо смуга глека йде крізь них (телефон), глек починає політ під ними. Міряємо раз на глек, не щокадру.
+    const br = b.getBoundingClientRect();
     const ovx = H.api.overlayOpen(st) && st.ov && st.ov.x;
-    if (ovx) {
-      const xr = ovx.getBoundingClientRect();
-      const br = b.getBoundingClientRect();
-      if (xr.height && xr.right > br.left && xr.left < br.right) top = Math.max(top, Math.round(xr.bottom) + 8);
+    const busy = [ovx, ...(st.el ? st.el.querySelectorAll('.clk-pin .clk-pintabs, .clk-pin .clk-pinbtn') : [])];
+    for (const el of busy) {
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.height && r.bottom > band.top && r.top < band.bottom && r.right > br.left && r.left < br.right) {
+        top = Math.max(top, Math.round(r.bottom) + 8);
+      }
     }
     b.style.setProperty('--clk-flytop', top + 'px');
     b.style.setProperty('--clk-flydrop', Math.max(40, band.bottom - 12 - h - top) + 'px');

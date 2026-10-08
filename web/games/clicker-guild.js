@@ -1172,7 +1172,9 @@
     const newest = v && v.got.length ? Math.max(...v.got.map((g) => ms(g.at))) : 0;
     if (st.tab === 'guild' && newest) api.storeSet('clk.guild.gotSeen', String(newest));
     const seen = +api.storeGet('clk.guild.gotSeen', '0') || 0;
-    api.tabNote(st, 'guild', 'buff', newest > seen || (!v.gotKnown && (v.buffs.lend || v.buffs.cheer)) ? '✨' : '', 2);
+    // Пріоритет 1, як у готових гостей і віза: свіжа допомога — подія, що гасне, щойно «Село» відкрили, а гості
+    // нікуди не дінуться; з пріоритетом 2 гравець із гостями ✨ так і не бачив (QA clk12).
+    api.tabNote(st, 'guild', 'buff', newest > seen || (!v.gotKnown && (v.buffs.lend || v.buffs.cheer)) ? '✨' : '', 1);
   }
 
   HClicker.part({
