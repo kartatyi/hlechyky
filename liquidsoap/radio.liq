@@ -61,10 +61,12 @@ radio.on_track(synchronous=false, notify)
 # chunk: the Windows build leaks native memory on every write to a listener — with the default 1 KB chunks ~40 MB a
 # minute per listener (measured 30.09.2026), with 64 KB (~2.7 s of audio per write) ~20 times less. start.ps1's
 # watchdog restarts liquidsoap when it grows too big anyway (quietly, when nobody listens).
+# burst must be bigger than chunk: with the default burst (65534) < chunk a new listener got nothing until the next
+# full chunk — «Врубити» waited 1–5 s. 128 KB of prebuffer = first bytes in 0.03–0.14 s, the same leak (measured 07.10).
 air = output.harbor(
   id="radio",
   %ffmpeg(format="mp3", %audio(codec="libmp3lame", b="192k", samplerate=44100, channels=2)),
-  port=harbor_port, mount="radio.mp3", chunk=65536,
+  port=harbor_port, mount="radio.mp3", chunk=65536, burst=131072,
   encoding="UTF-8",
   headers=[("icy-name", "Hlechyky"), ("icy-description", "Spilne radio dlia svoikh"), ("Cache-Control", "no-cache")],
   radio)
