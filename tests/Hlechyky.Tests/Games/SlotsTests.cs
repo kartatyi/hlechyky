@@ -117,9 +117,10 @@ public class SlotsTests
     public void MaxBet_and_custom_bets_limit_the_set()
     {
         var k = new SlotsKit(opts: o => { o.Bets = [5, 10, 1000]; o.MaxBet = 100; });
-        Assert.Equal([5, 10], k.View.GetProperty("bets").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal([10], k.View.GetProperty("bets").EnumerateArray().Select(x => x.GetInt32()));   // 5 — нижче найменшої
         Assert.False(k.Spin(1000).Ok);
-        Assert.True(k.Spin(5).Ok);
+        Assert.False(k.Spin(5).Ok);
+        Assert.True(k.Spin(10).Ok);
     }
 
     [Fact]
@@ -165,6 +166,14 @@ public class SlotsTests
         Assert.Equal(10_000 + 10, k.Stakes.Balance("Оля"));
         Assert.Empty(k.Bank.Pending());
         Assert.True(k.Spin(10).Ok);                           // наступний оберт — як завжди
+    }
+
+    [Fact]
+    public void Bets_below_ten_from_the_config_are_dropped()
+    {
+        // Рецензія 09.10: на ставці 1 округлення виплат дає cascade 149 %, cluster 158 % RTP.
+        Assert.Equal([10, 50], new SlotsOptions { Bets = [1, 5, 10, 50] }.AllowedBets());
+        Assert.Equal(SlotsOptions.DefaultBets, new SlotsOptions { Bets = [1, 5] }.AllowedBets());
     }
 
     [Fact]
