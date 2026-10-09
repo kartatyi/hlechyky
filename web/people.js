@@ -576,8 +576,7 @@
     wireHead(root, nick, mine);
     o.wireRows(root);
     root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
-    root.querySelectorAll('[data-buy]').forEach((b) => b.onclick = () => window.HBuy && HBuy.open({ tab: HBuy.mainTab() }));
-    root.querySelectorAll('[data-sell]').forEach((b) => b.onclick = () => window.HBuy && HBuy.open({ tab: 'sell' }));
+    if (window.HBuy) HBuy.wireTrade(root);
   }
 
   /// «🎺 Гімн: Трембіта ▶» — ▶ грає тим самим плеєром, що й за столом (app.js), друге натискання зупиняє.
@@ -624,6 +623,8 @@
     const w = (p && p.wallet) || {};
     let body = '<div class="wc-big">🏺 ' + (w.balance != null ? lbNum(w.balance) : '—') + '</div>'
       + '<div class="muted small">зароблено ' + (w.earned != null ? lbNum(w.earned) : '—') + ' · витрачено ' + (w.spent != null ? lbNum(w.spent) : '—') + '</div>';
+    // Купити / продати за гривні (адміну ще «Заявки») — великим рядом під балансом, а не дрібно в заголовку
+    if (mine && o.me.account && window.HBuy) body += HBuy.tradeHtml();
     if (mine && led) {
       const month = led.month || [];
       if (month.length) {
@@ -644,9 +645,7 @@
     if (mine) body += '<div class="muted small wc-how">Черепки капають за радіо (увімкнений плеєр), партії, щоденний глек і ачівки. '
       + 'Витрачаються в Лавці Дядька Глека (усе там — назавжди), на бан треку й викуп із бану.' + trade + '</div>';
     return '<section class="panel wcard"><h3>🏺 Черепки' + (mine && o.me.account
-      ? (window.HBuy ? (buyOn || o.me.role === 'admin' ? ' <button type="button" class="ghost wc-more" data-buy>' + esc(HBuy.label()) + '</button>' : '')
-          + (sellOn ? ' <button type="button" class="ghost wc-more" data-sell title="Продати черепки за гривні">' + esc(HBuy.sellLabel()) + '</button>' : '') : '')
-        + ' <button type="button" class="ghost wc-more" data-go="#lavka">🛍 Лавка →</button>'
+      ? ' <button type="button" class="ghost wc-more" data-go="#lavka">🛍 Лавка →</button>'
       : '') + '</h3>' + body + '</section>';
   }
 

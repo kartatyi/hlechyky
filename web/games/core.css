@@ -111,6 +111,42 @@
 .ggroup { margin: 8px 0 0; font-family: var(--display); font-size: .98em; font-weight: 600; color: var(--text); }
 .ggroup:first-of-type { margin-top: 2px; }
 
+/* ---- теми каталогу (09.10): підзаголовки тихіші за заголовок розділу, другий ряд чипів — менший і тихіший ---- */
+.gtheme { margin: 2px 0 -4px; font-size: .8em; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.gtheme-n { font-weight: 400; opacity: .7; }
+.gthemes { display: flex; gap: 4px; flex-wrap: wrap; margin-top: -4px; }
+.gtchip { cursor: pointer; border: 1px solid transparent; background: transparent; padding: 3px 9px; font-size: .78em; }
+.gtchip .gtc-n { margin-left: 4px; opacity: .6; font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .gtchip:hover { color: var(--text); background: var(--panel2); } }
+.gtchip.on { background: var(--panel2); color: var(--text); border-color: var(--line); }
+/* Телефон: теми — один рядок із прокруткою вбік усередині рядка, сама сторінка вбік не їде. */
+@media (max-width: 900px) {
+  .gthemes { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin-right: -4px; padding-right: 4px; }
+  .gthemes::-webkit-scrollbar { display: none; }
+  .gtchip { flex: none; }
+}
+@media (pointer: coarse) { .gtchip { padding: 5px 10px; } }
+/* Теми розділу на широкому — блоки в сітці з колонками плитки (як .gtiles): тема на 1–3 плитки стає поруч із сусідньою,
+   а не займає цілий ряд. Блок тягнеться на min(плиток, колонок), плитки всередині — у колонках батька (subgrid), тож
+   ширина й вирівнювання однакові в усіх темах. Порядок тем — як у THEMES (без dense: що не влізло — з нового ряду).
+   --cols — скільки колонок вміщає сітка: n колонок по 212 px із проміжком 8 px = 220n − 8 px. */
+.gthemegrid { container-type: inline-size; display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 10px 8px; }
+.gtblock { --cols: 1; grid-column: span min(var(--n), var(--cols)); display: grid; grid-template-columns: subgrid; row-gap: 6px; align-content: start; min-width: 0; }
+.gtblock > .gtheme { grid-column: 1 / -1; margin: 0; }
+.gtblock > .gtiles { grid-column: 1 / -1; grid-template-columns: subgrid; }
+@container (min-width: 432px) { .gtblock { --cols: 2; } }
+@container (min-width: 652px) { .gtblock { --cols: 3; } }
+@container (min-width: 872px) { .gtblock { --cols: 4; } }
+@container (min-width: 1092px) { .gtblock { --cols: 5; } }
+@container (min-width: 1312px) { .gtblock { --cols: 6; } }
+@container (min-width: 1532px) { .gtblock { --cols: 7; } }
+@container (min-width: 1752px) { .gtblock { --cols: 8; } }
+/* Телефон і вузьке вікно: як і було — теми одна під одною, плитки списком. */
+@media (max-width: 900px) {
+  .gthemegrid { grid-template-columns: 1fr; row-gap: 10px; }
+  .gthemegrid .gtblock { --cols: 1; }
+}
+
 /* ---- «⭐ Часто граємо»: швидкий запуск того, у що компанія грає найбільше ---- */
 .gfavs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .gfav { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
