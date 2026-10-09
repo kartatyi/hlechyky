@@ -448,6 +448,31 @@ public class LelkaTests
     }
 
     [Fact]
+    public void Shared_table_dead_after_restart_lets_people_go()
+    {
+        // перезапуск без чистого знімка: партію перервано, стіл стоїть Finished, а люди ще «за ним»
+        var k = new LelkaKit(("Оля", 1000), ("Петро", 1000));
+        var dead = k.H.RoomId;
+        var snap = k.H.Rooms.Capture(clean: false);
+        var rooms = new Rooms(k.H.Registry, k.H.Clock, new GameEvents(), k.H.Stakes, new FakeStore(), RoomHarness.WithService(k.Book)) { SeedOverride = 5 };
+        Assert.Equal(1, rooms.Restore(snap).Interrupted);
+        Assert.Equal(RoomStatus.Finished, rooms.Find(dead)!.Status);
+
+        // «Сісти до Лелеки» — не «Ти вже за цим столом» за мертвим, а новий живий стіл; з мертвого відпустило
+        var olya = rooms.Create("Оля", "lelka", null);
+        Assert.True(olya.Reply.Ok, olya.Reply.Message);
+        Assert.NotEqual(dead, olya.Reply.RoomId);
+        Assert.Equal(RoomStatus.Playing, rooms.Find(olya.Reply.RoomId!)!.Status);
+        Assert.Null(rooms.Find(dead)!.SeatOf("Оля"));
+        // другий — за той самий живий, а мертвий, спорожнівши, зникає
+        var petro = rooms.Create("Петро", "lelka", null);
+        Assert.True(petro.Reply.Ok, petro.Reply.Message);
+        Assert.Equal(olya.Reply.RoomId, petro.Reply.RoomId);
+        Assert.Null(rooms.Find(dead));
+        Assert.Equal("Ти вже за цим столом", rooms.Create("Оля", "lelka", null).Reply.Message);
+    }
+
+    [Fact]
     public void Leaving_keeps_the_bet_flying()
     {
         var k = Two();

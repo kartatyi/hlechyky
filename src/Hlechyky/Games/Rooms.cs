@@ -249,7 +249,8 @@ public sealed partial class Rooms
         if (_registry.Info(gameId) is not { } info) return RoomOutcome.Fail(Say.NoGame);
         if (Closed(gameId) is { } off) return RoomOutcome.Fail(off);
         if (info.Solo) return OpenSolo(nick, gameId, null);
-        if (_registry.Shared(gameId) && SharedSeat(nick, gameId) is { } shared) return shared;
+        Outbox? freed = null;
+        if (_registry.Shared(gameId) && SharedSeat(nick, gameId, out freed) is { } shared) return shared;
 
         var stake = ReadStake(info, options);
         if (stake > 0 && _stakes.Balance(nick) < stake) return RoomOutcome.Fail(Say.NoShards);
@@ -278,9 +279,10 @@ public sealed partial class Rooms
             raced = _registry.Shared(gameId) && _rooms.Any(r => SharedOpen(r, gameId));
             if (!raced) _rooms.Add(room);
         }
-        if (raced) return SharedSeat(nick, gameId) ?? RoomOutcome.Fail(Say.TooMany);
+        if (raced) return SharedSeat(nick, gameId, out _) ?? RoomOutcome.Fail(Say.TooMany);
 
         var outbox = new Outbox();
+        if (freed is not null) outbox.Adopt(freed);   // з мертвого спільного столу людину відпустили — їм теж новий вид
         // «Можна почати вже» — лише коли гра й справді пустить: доміно, дурень, c4x самотужки без Глеків не стартують.
         string? cant = null;
         if (info.MinPlayers <= 1)
@@ -331,20 +333,35 @@ public sealed partial class Rooms
         r.Info.Id == gameId && r.Status is RoomStatus.Lobby or RoomStatus.Playing && r.FreeSeat >= 0;
 
     /// <summary>
-    /// «Новий стіл» спільної гри: людина вже за ним (і за перерваним) — просто «ти тут»; є живий стіл із місцем — сідає туди (Join, посеред
+    /// «Новий стіл» спільної гри: людина вже за живим — просто «ти тут»; є живий стіл із місцем — сідає туди (Join, посеред
     /// партії — LateJoin). null — такого столу нема, тоді Create ставить новий. Глядачем дивитись можна й повний стіл.
+    /// <para>
+    /// Мертвий стіл (Finished — перезапуск без чистого знімка перериває партію) спільним не годиться: спільна гра не
+    /// закінчується й «Ще раз» не має, тож людину з нього відпускаємо (Leave — порожній стіл зникне) і ведемо за живий
+    /// або новий. <paramref name="freed"/> — розсилка того «встав», коли далі ставиться новий стіл.
+    /// </para>
     /// </summary>
-    RoomOutcome? SharedSeat(string nick, string gameId)
+    RoomOutcome? SharedSeat(string nick, string gameId, out Outbox? freed)
     {
+        freed = null;
         Room? mine, open;
         lock (_lock)
         {
-            // і перерваний (перезапуск без чистого знімка) — людина й так за ним, а там «Ще раз»
             mine = _rooms.FirstOrDefault(r => r.Info.Id == gameId && r.Has(nick));
             open = _rooms.Where(r => SharedOpen(r, gameId)).OrderByDescending(r => r.Seats.Count(s => s is not null)).FirstOrDefault();
         }
-        if (mine is not null) return new RoomOutcome(new Outbox(), new RoomReply(true, "Ти вже за цим столом", mine.Id));
-        return open is null ? null : Join(open.Id, nick);
+        if (mine is not null && mine.Status != RoomStatus.Finished)
+            return new RoomOutcome(new Outbox(), new RoomReply(true, "Ти вже за цим столом", mine.Id));
+        if (mine is not null)
+        {
+            var left = Leave(mine.Id, nick);
+            if (!left.Reply.Ok) return left;
+            freed = left.Out;
+        }
+        if (open is null) return null;
+        var joined = Join(open.Id, nick);
+        if (freed is not null) { freed.Adopt(joined.Out); joined = joined with { Out = freed }; freed = null; }
+        return joined;
     }
 
     /// <summary>
