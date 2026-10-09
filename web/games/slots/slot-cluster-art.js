@@ -651,6 +651,27 @@
     + `<circle cx="20" cy="12.5" r="3.6" fill="#3a2a7a" stroke="${INK}" stroke-width="1.2"/><ellipse cx="20" cy="18" rx="4" ry="3.4" fill="#4a3a8a" stroke="${INK}" stroke-width="1.2"/>`
     + `<ellipse cx="20" cy="25.5" rx="5.2" ry="6.2" fill="url(#scl-flyb)" stroke="${INK}" stroke-width="1.4"/><ellipse cx="18.4" cy="23.5" rx="1.6" ry="2.2" fill="#fff" opacity=".8"/>`);
 
+  // Перелесник — вогняний дух купальської ночі: личко-вогник з віночком, крильця, хвіст полум'я. Летить праворуч
+  // (голова — x 101 з 140, тобто 72 % ширини: туди механіка ставить точку польоту й центр обертання).
+  // Класи для CSS: .pe-glow (пульс), .pe-tail (полум'я тріпоче), .pe-wing.u/.d (махають), .pe-eye (кліпає)
+  const PERELESNYK = own('sclP', 'viewBox="0 0 140 84" class="scl-perel" aria-hidden="true"',
+    lg('scl-pe-tail', [[0, '#ff2a1a', 0], [0.35, '#ff4a12', 0.75], [0.75, '#ff8a1a'], [1, '#ffc93a']], 0, 0, 1, 0)
+    + rg('scl-pe-head', [[0, '#fffbe0'], [0.45, '#ffe066'], [0.85, '#ff9a1a'], [1, '#ff6a12']], 0.42, 0.38, 0.62)
+    + lg('scl-pe-wing', [[0, '#fff3b0', 0.9], [1, '#ff7a1a', 0.55]]),
+    `<g class="pe-glow"><ellipse cx="86" cy="42" rx="58" ry="34" fill="url(#scl-h-o)"/><circle cx="101" cy="42" r="30" fill="url(#scl-h-y)"/></g>`
+    + `<g class="pe-tail">`
+    + `<path d="M92,26 C70,18 44,24 4,30 C30,38 30,46 8,56 C44,58 70,66 92,58Z" fill="url(#scl-pe-tail)" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>`
+    + `<path d="M92,32 C74,28 54,32 28,36 C46,42 46,44 30,50 C54,52 74,56 92,52Z" fill="#ffc93a" opacity=".92"/>`
+    + `<path d="M92,37 C80,36 68,38 54,40 C64,42 64,43 56,45 C68,46 80,48 92,47Z" fill="#fff6c8"/></g>`
+    + `<g class="pe-wing u"><path d="M95,30 C86,12 96,2 112,4 C110,14 106,24 101,30Z" fill="url(#scl-pe-wing)" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/><path d="M98,26 C96,16 100,10 106,8" stroke="#fff6c8" stroke-width="1.4" fill="none" opacity=".8"/></g>`
+    + `<g class="pe-wing d"><path d="M95,54 C86,72 96,82 112,80 C110,70 106,60 101,54Z" fill="url(#scl-pe-wing)" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/></g>`
+    + `<path d="M88,32 C90,22 95,26 96,18 C99,25 102,21 104,14 C106,22 110,25 108,32Z" fill="#ff7a1a" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>`
+    + `<circle cx="101" cy="42" r="16.5" fill="url(#scl-pe-head)" stroke="${INK}" stroke-width="2.6"/>`
+    + [[90, 28, '#ff4fa8'], [97, 25.5, '#5b90ff'], [104, 25.5, '#fff'], [111, 28, '#ffd25a']].map(([x, y, c]) => `<circle cx="${x}" cy="${y}" r="3.2" fill="${c}" stroke="${INK}" stroke-width="1.3"/><circle cx="${x}" cy="${y}" r="1" fill="#ffc93a"/>`).join('')
+    + `<g class="pe-eye"><ellipse cx="104" cy="40" rx="2.3" ry="3.3" fill="${INK}"/><ellipse cx="111.5" cy="40" rx="2.1" ry="3.1" fill="${INK}"/><circle cx="103.3" cy="38.8" r=".9" fill="#fff"/><circle cx="110.8" cy="38.8" r=".9" fill="#fff"/></g>`
+    + `<ellipse cx="99" cy="47" rx="3.4" ry="2" fill="#ff5a7a" opacity=".55"/><ellipse cx="114" cy="47" rx="2.6" ry="1.8" fill="#ff5a7a" opacity=".55"/>`
+    + `<path d="M104,48 Q108.5,52.5 113,48" stroke="${INK}" stroke-width="1.8" fill="none" stroke-linecap="round"/>`);
+
   const SPARK = own('sclK', 'viewBox="0 0 20 20" class="scl-spark" aria-hidden="true"', '',
     `<circle cx="10" cy="10" r="10" fill="url(#scl-h-g)"/><g transform="translate(10 10) scale(.7)"><path d="${STAR4}" fill="#fff6c8"/></g><circle cx="10" cy="10" r="1.8" fill="#fff"/>`);
 
@@ -706,6 +727,7 @@
       meter: meter,           // (level 0..1) → SVG шкали; бутони .bud.b1/.b2/.b3 мають .open на рівнях 1/3, 2/3, 1
       meterSet: meterSet,     // (svgEl, level) — плавно оновити наявну шкалу без перерисовки
       firefly: FIREFLY,
+      perelesnyk: PERELESNYK, // вогняний дух сюрпризу «Перелесник»: летить праворуч, голова на 72 % ширини
       mermaid: MERMAID,       // клас .go на <svg> — виринає й махає гребенем
       frame: FRAME,           // .scl-frame — під клітинками, поле = квадрат 0..700, рамка виступає на 44/700
       spark: SPARK,
