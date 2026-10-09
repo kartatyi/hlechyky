@@ -1,4 +1,5 @@
 ﻿using Hlechyky;
+using Hlechyky.Bets;
 using Hlechyky.Games;
 using Hlechyky.Games.Economy;
 using Hlechyky.Mcp;
@@ -83,6 +84,7 @@ builder.Services.AddHlechykyFeedback();   // «💡 Розробнику»: пр
 builder.Services.AddHlechykyLavka();      // «Лавка Дядька Глека»: вигляд профілю, подарунки, присвята й феєрверк (Lavka.cs)
 builder.Services.AddHlechykyPadel(cfg);  // «Падельня»: табло, турніри, збори, гроші за корт, рейтинг (Padel/)
 builder.Services.AddHlechykyShardShop();  // черепки за гривні: купити й продати, керує адмін (ShardShop.cs)
+builder.Services.AddHlechykyBets();       // «🎲 Ставки»: події, ставки на столах, пропозиції, «Глек у мінусі» (Bets/)
 
 var port = cfg.GetValue<int?>("Site:ListenPort") ?? 8080;
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(port));
@@ -121,6 +123,7 @@ app.MapHlechykyFeedback();
 app.MapHlechykyLavka();
 app.MapHlechykyPadel();
 app.MapHlechykyShardShop();
+app.MapHlechykyBets();
 ChatFiles.Map(app);   // файли в Балачках: POST /api/chat/file, GET /api/chat/file/<хеш>/<ім'я>
 app.MapFront();    // відбиток web/: відкрита сторінка сама бачить, що після деплою змінилось (Front.cs)
 app.MapHub<RadioHub>("/hub");
