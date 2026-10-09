@@ -799,7 +799,9 @@
       let r = await conn.invoke(method, ...args);
       if (r && !r.ok && String(r.message || '').startsWith(RESTARTING) && (await afterRestart())) r = await conn.invoke(method, ...args);
       if (!r) return { ok: true, message: '' };
-      // «Не всі готові» (✋) — не помилка: про це спитає вікно «почати все одно?» (startAsked), тост тут лише заважав би.
+      // «Не всі готові» (✋) — не помилка: питаємо «почати все одно?» (startAsked) тут, щоб і «Ще раз» з модулів ігор
+      // (ралі з трасою, Вогник, Цеглинки…) не мовчав. Відповідь — уже повторного виклику (чи ця, якщо «Чекати»).
+      if (!r.ok && r.notReady && r.notReady.length && (method === 'Rematch' || method === 'StartRoom')) return await startAsked(args[0], method, r);
       if (!r.ok) { if (!(r.notReady && r.notReady.length)) errToast(r.message || 'От халепа — не вийшло'); }
       else if (r.message) toast(r.message, 'ok');
       return r;
@@ -860,15 +862,15 @@
 
   /// «Не готові: Оля, Петро. Почати все одно?» — після відмови StartRoom / Rematch з notReady (Rooms.Unready).
   /// [Почати] повторює той самий виклик без питань (…Anyway), [Чекати] — просто закриває вікно.
-  async function startAsked(id, method, nicks) {
+  async function startAsked(id, method, r) {
     const ok = await ask({
       title: 'Не всі готові',
-      html: 'Не готові: <b>' + nicks.map(esc).join(', ') + '</b>.<br>Почати все одно?',
+      html: 'Не готові: <b>' + r.notReady.map(esc).join(', ') + '</b>.<br>Почати все одно?',
       ok: 'Почати', cancel: 'Чекати',
     });
-    if (!ok) return;
+    if (!ok) return r;
     const again = method === 'Rematch' ? 'RematchAnyway' : 'StartRoomAnyway';
-    await call(again, id);
+    return await call(again, id);
   }
 
   /// Сісти за стіл. Сидиш за іншим — раніше кнопки просто не було, і доводилось іти назад, вставати,
@@ -2834,8 +2836,6 @@
           }
           return r;
         });
-        // «Почати» / «Ще раз», а хтось не натиснув ✋: вікно бачить саме той, хто тиснув.
-        if (r && !r.ok && r.notReady && r.notReady.length) await startAsked(id, b.dataset.do, r.notReady);
       });
       card.btns.querySelectorAll('[data-ready]').forEach((b) => b.onclick = (e) =>
         busy(e.currentTarget, '…', () => call('ReadyRoom', id, b.dataset.ready === '1')));
