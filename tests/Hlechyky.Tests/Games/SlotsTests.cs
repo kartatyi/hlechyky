@@ -147,6 +147,27 @@ public class SlotsTests
     }
 
     [Fact]
+    public void Exception_after_the_charge_keeps_the_win_by_the_ledger()
+    {
+        // Рецензія m9: Take на виняток давав false, гра робила Forget — а списання таки пройшло, і виграш губився.
+        var k = new SlotsKit();
+        var win = SlotsKit.StopsWhere((_, u) => u == 10);
+        var rng = k.Rig();
+        rng.Stops(win);
+        k.Stakes.ThrowAfterSpend = true;
+        Assert.True(k.Spin(10).Ok, k.H.Reply.Message);        // звірились із леджером — оберт пройшов
+        Assert.Equal(10_000 - 10 + 20, k.Stakes.Balance("Оля"));
+        Assert.Empty(k.Bank.Pending());
+
+        rng.Stops(win);
+        k.Stakes.ThrowBeforeSpend = true;
+        Assert.False(k.Spin(10).Ok);                          // не списалось — і не грали
+        Assert.Equal(10_000 + 10, k.Stakes.Balance("Оля"));
+        Assert.Empty(k.Bank.Pending());
+        Assert.True(k.Spin(10).Ok);                           // наступний оберт — як завжди
+    }
+
+    [Fact]
     public void Gamble_win_doubles_and_lose_burns()
     {
         var k = new SlotsKit();

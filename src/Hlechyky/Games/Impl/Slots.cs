@@ -193,7 +193,15 @@ public abstract class SlotGame : Game
             bank.Unfeed(bet, jackpot);
             return ActResult.Fail(ClosedText);
         }
-        if (!bank.Take(nick, bet, $"slot-bet:{Info.Id}", reference + ":bet"))
+        var taken = bank.Charge(nick, bet, $"slot-bet:{Info.Id}", reference + ":bet");
+        if (taken is null)
+        {
+            // Списання могло й пройти: запис журналу (і внесок у Скарбничку) лишаємо — підмітання звірить із леджером
+            // і доплатить виграш або прибере запис. Ключ цього оберту більше не беремо.
+            State.Seq = seq;
+            return ActResult.Fail(ClosedText);
+        }
+        if (taken == false)
         {
             if (journal) bank.Forget(reference);
             bank.Unfeed(bet, jackpot);
@@ -251,7 +259,13 @@ public abstract class SlotGame : Game
         var stake = g.Amount;
         var pending = new SlotPending(reference, nick, Info.Id, stake, ok ? stake * 2 : 0, 0, Ctx.Clock.UtcNow);
         if (ok && !bank.Open(pending)) return ActResult.Fail(ClosedText);
-        if (!bank.Take(nick, stake, $"slot-bet:{Info.Id}", reference + ":bet"))
+        var taken = bank.Charge(nick, stake, $"slot-bet:{Info.Id}", reference + ":bet");
+        if (taken is null)
+        {
+            g.Open = false;   // як і в оберті: запис лишається підмітанню, Ворожка на цьому закінчилась
+            return ActResult.Fail(ClosedText);
+        }
+        if (taken == false)
         {
             if (ok) bank.Forget(reference);
             g.Open = false;

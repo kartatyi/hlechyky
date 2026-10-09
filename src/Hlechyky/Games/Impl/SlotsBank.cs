@@ -225,14 +225,31 @@ public sealed class SlotsBank : BackgroundService
         }
     }
 
-    /// <summary>Списати ставку. Виняток — false.</summary>
-    public bool Take(string nick, int amount, string reason, string refKey)
+    /// <summary>Списати ставку: true — списано, false — бракує або не списалось (див. <see cref="Charge"/>).</summary>
+    public bool Take(string nick, int amount, string reason, string refKey) => Charge(nick, amount, reason, refKey) == true;
+
+    /// <summary>
+    /// Списати ставку: true — списано, false — бракує. Виняток (таймаут, збій після коміту) — звіряємось із леджером за
+    /// ключем, як відновлення: списання є — true, нема — false; леджер теж мовчить — null (не знаємо: запис журналу
+    /// не чіпати, підмітання за 2 хв саме гляне в леджер і доплатить або прибере).
+    /// </summary>
+    public bool? Charge(string nick, int amount, string reason, string refKey)
     {
         try { return _stakes.TrySpend(nick, amount, reason, refKey); }
         catch (Exception ex)
         {
-            _log?.LogWarning(ex, "слоти: ставка {Nick} ({Ref}) не списалась", nick, refKey);
-            return false;
+            _log?.LogWarning(ex, "слоти: ставка {Nick} ({Ref}) — виняток, звіряю з леджером", nick, refKey);
+            try
+            {
+                var moves = _stakes.Moves(refKey);
+                if (moves is null) return false;   // без економіки — і ставки не було
+                return moves.Any(m => m.Ref == refKey && m.Delta < 0);
+            }
+            catch (Exception ex2)
+            {
+                _log?.LogWarning(ex2, "слоти: леджер {Ref} теж не відповів", refKey);
+                return null;
+            }
         }
     }
 
@@ -429,10 +446,10 @@ public sealed class SlotsBank : BackgroundService
 public static class SlotLines
 {
     public static string Jackpot(string nick, string title, int amount) =>
-        $"🎰 {nick} розбив Скарбничку Глека в «{title}»: +{amount} {Shards(amount)}! Глек пішов по нову. Й по валер'янку";
+        $"🎰 Скарбничка Глека в «{title}» — до {nick}: +{amount} {Shards(amount)}! Глек пішов по нову. Й по валер'янку";
 
     public static string Big(string nick, string title, double mult, int win) =>
-        $"🎰 {nick} зірвав ×{Math.Floor(mult)} в «{title}» — +{win} {Shards(win)}. Глек перевіряє, чи ручка не відкручена";
+        $"🎰 {nick} — ×{Math.Floor(mult)} у «{title}»: +{win} {Shards(win)}. Глек перевіряє, чи ручка не відкручена";
 
     static string Shards(int n)
     {
