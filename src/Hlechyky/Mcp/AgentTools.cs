@@ -87,7 +87,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
 
     public object GameList() => new
     {
-        games = registry.Catalog.Select(g => new
+        games = registry.Catalog.Where(g => rooms.Closed(g.Id) is null).Select(g => new
         {
             id = g.Id,
             title = g.Title,

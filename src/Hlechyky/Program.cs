@@ -97,6 +97,7 @@ app.Services.GetRequiredService<TablesKeeper>().RestoreAtStart();
 app.Services.GetRequiredService<Broadcaster>().Flushed += app.Services.GetRequiredService<VoiceChat>().OnFlushed;
 
 app.UseHlechykyAuth();
+app.UsePadelSwitch();   // Padel:Enabled = false — /padel/, хаб і API Падельні відповідають 404 (крім «Моїх банків»)
 app.UseDefaultFiles();
 var front = app.Services.GetRequiredService<FrontPrint>();
 app.UseStaticFiles(new StaticFileOptions

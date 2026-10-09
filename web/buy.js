@@ -313,7 +313,7 @@
         ? '<button type="button" class="ghost by-bdel" data-bdel="' + i + '" title="Прибрати" aria-label="Прибрати">✕</button>' : '')).join('') + '</div>'
       : '<div class="by-lock">' + (shop
         ? 'Карток сайту ще нема — покупці не знають, куди скидати, і купівля закрита. Впиши картку чи банку.'
-        : 'Впиши картку чи банку — сюди адмін перекаже гроші. Збережеться й у Падельні (👤 Я → Мої банки).') + '</div>';
+        : 'Впиши картку чи банку — сюди адмін перекаже гроші.' + (o.me.padel === false ? '' : ' Збережеться й у Падельні (👤 Я → Мої банки).')) + '</div>';
     if (bankForm === whose || !banks.length) {
       h += '<div class="by-bform" data-bform="' + whose + '"><div class="by-chips">' + Object.keys(BANKS).map((k) => '<button type="button" class="chip' + (k === bankKind ? ' on' : '')
         + '" data-bk="' + k + '" aria-pressed="' + (k === bankKind) + '">' + esc(BANKS[k]) + '</button>').join('') + '</div>'
@@ -323,7 +323,7 @@
         + (banks.length ? '<button type="button" class="ghost" data-bcancel>Скасувати</button>' : '') + '</div></div>';
     } else {
       h += '<div class="row"><button type="button" class="ghost by-small" data-badd="' + whose + '">+ Ще картка</button>'
-        + (shop ? '' : '<a class="by-small muted" href="/padel/" target="_blank" rel="noopener">змінити в Падельні ↗</a>') + '</div>';
+        + (shop || o.me.padel === false ? '' : '<a class="by-small muted" href="/padel/" target="_blank" rel="noopener">змінити в Падельні ↗</a>') + '</div>';
     }
     return h;
   }

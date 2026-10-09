@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Padel;
 
@@ -32,6 +33,27 @@ public static class PadelSetup
         app.MapHub<PadelHub>("/hub/padel");
         PadelPlaySetup.Start(app.Services);
         PadelMoneySetup.Start(app.Services);
+        return app;
+    }
+
+    /// <summary>
+    /// Вимикач (<see cref="PadelOptions.Enabled"/>): вимкнено — сторінка, хаб і API відповідають 404, крім «Моїх банків».
+    /// Program.cs ставить його перед статикою, інакше /padel/ віддалась би файлом.
+    /// </summary>
+    public static WebApplication UsePadelSwitch(this WebApplication app)
+    {
+        var opts = app.Services.GetRequiredService<IOptionsMonitor<PadelOptions>>();
+        app.Use(async (c, next) =>
+        {
+            var p = c.Request.Path;
+            if (!opts.CurrentValue.Enabled && !p.StartsWithSegments("/api/padel/banks")
+                && (p.StartsWithSegments("/padel") || p.StartsWithSegments("/api/padel") || p.StartsWithSegments("/hub/padel")))
+            {
+                c.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            await next();
+        });
         return app;
     }
 

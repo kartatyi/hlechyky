@@ -113,6 +113,7 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         foreach (var g in list)
         {
             if (registry.Info(g) is not { } info) return "Нема такої гри";
+            if (rooms.Closed(g) is not null) return $"«{info.Title}» на сайті вимкнено";
             if (!Fits(info)) return $"«{info.Title}» — не для турніру: потрібна гра, у яку грають щонайменше вдвох";
         }
         return null;

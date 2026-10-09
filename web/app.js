@@ -2501,7 +2501,21 @@
     return i < 0 ? { head: raw, tail: '' } : { head: raw.slice(0, i), tail: raw.slice(i + 1) };
   }
   const hashFor = (r) => (r === 'lib' ? '#lib/' + libTab : r === 'stats' ? HPeople.statsHash()
-    : r === 'who' ? '#who/' + encodeURIComponent(me.nick || '') : '#' + r);
+    : r === 'who' ? '#who/' + encodeURIComponent(me.nick || '') : r === 'games' && me.games === false ? '#padel' : '#' + r);
+
+  /// Вимкнене в конфігу сайту: без ігор кнопка «🎮 Ігри» веде в Падельню (вона жила в лобі ігор), без обох — кнопки нема.
+  function paintSwitches() {
+    const noGames = me.games === false;
+    document.querySelectorAll('#mainNav button[data-route="games"], .mtabs button[data-route="games"]').forEach((b) => {
+      b.hidden = noGames && me.padel === false;
+      if (!noGames) return;
+      const ico = b.querySelector('.ico'), lbl = b.querySelector('.lbl');
+      if (ico) ico.textContent = '🍳';
+      if (lbl) lbl.textContent = 'Падельня';
+      else if (ico && ico.nextSibling && ico.nextSibling.nodeType === 3) ico.nextSibling.textContent = 'Падельня ';
+      b.title = 'Табло з рахунком, турніри американо, збори на гру — клавіша 3';
+    });
+  }
   function go(hash) {
     if (location.hash === hash) applyRoute(); else location.hash = hash;
   }
@@ -2509,12 +2523,17 @@
   let lastHash = null;
   function applyRoute() {
     let { head, tail } = parseHash();
+    // Вимкнене в конфігу сайту (/api/me → games, padel) — адреса веде в Ефір
+    if (head === 'padel' && me.padel === false) {
+      history.replaceState(null, '', '#efir');
+      ({ head, tail } = parseHash());
+    }
     // Падельня — шар поверх сайту, а не розділ: під нею лишається той, з якого прийшли (разом із прокруткою).
     // Відкрили одразу #padel (F5, закладка) — під нею лобі ігор.
     padelView(head === 'padel', tail);
     if (head === 'padel') {
       if (lastHash !== null) return;
-      head = 'games'; tail = '';
+      head = me.games === false ? 'efir' : 'games'; tail = '';
     }
     const moved = MOVED[head + '/' + tail] || (head === 'games' && tail === 'profile' ? '#who/' + encodeURIComponent(me.nick || '') : null);
     if (moved) {
@@ -2525,6 +2544,10 @@
     if (lastHash !== null && lastHash !== location.hash) window.scrollTo(0, 0);
     lastHash = location.hash;
     let r = ROUTES.includes(head) ? head : 'efir';
+    if (r === 'games' && me.games === false) {
+      history.replaceState(null, '', '#efir');
+      r = 'efir';
+    }
     // На широкому екрані балачки — панель збоку, а не розділ: #chat лише розгортає її.
     if (r === 'chat' && !isMobile()) {
       setChatOpen(true);
@@ -4265,6 +4288,11 @@
     me.email = m.email || '';
     me.banPrice = m.banPrice || 0;
     me.shards = m.shards || null;   // { buy, sell } — черепки за гривні увімкнено в конфігу (web/buy.js)
+    me.games = m.games !== false;   // розділ «Ігри» (Games:Enabled)
+    me.padel = m.padel !== false;   // Падельня (Padel:Enabled)
+    paintSwitches();
+    // Адресу намалювали ще до /api/me: вимкнене — переводимо в Ефір
+    if ((!me.games && parseHash().head === 'games') || (!me.padel && parseHash().head === 'padel')) applyRoute();
     me.night = m.night || null;
     paintNight();
     loadGoogle(m.googleClientId);

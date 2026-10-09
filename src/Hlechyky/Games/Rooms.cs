@@ -171,6 +171,12 @@ public sealed partial class Rooms
     /// <summary>Сід кімнати замість випадкового — щоб тест міг відтворити партію. Проду не потрібен.</summary>
     public int? SeedOverride { get; set; }
 
+    /// <summary>
+    /// Гру вимкнено в конфігу (<see cref="GamesOptions"/>): текст відмови; null — грається. Питаємо на вході в гру
+    /// (стіл, соло, сісти, почати, ще раз) — ходи за столами, що вже грають, не чіпаємо: партію дограють.
+    /// </summary>
+    public string? Closed(string? gameId) => _services.GetService<IOptionsMonitor<GamesOptions>>()?.CurrentValue.Refusal(gameId);
+
     // ---------- лобі ----------
 
     /// <summary>Усі неприватні кімнати для події <c>rooms</c>.</summary>
@@ -241,6 +247,7 @@ public sealed partial class Rooms
     {
         if (!Named(nick)) return RoomOutcome.Fail(Say.NoNick);
         if (_registry.Info(gameId) is not { } info) return RoomOutcome.Fail(Say.NoGame);
+        if (Closed(gameId) is { } off) return RoomOutcome.Fail(off);
         if (info.Solo) return OpenSolo(nick, gameId, null);
 
         var stake = ReadStake(info, options);
@@ -322,6 +329,7 @@ public sealed partial class Rooms
     {
         if (!Named(nick)) return RoomOutcome.Fail(Say.NoNick);
         if (_registry.Info(gameId) is not { } info) return RoomOutcome.Fail(Say.NoGame);
+        if (Closed(gameId) is { } off) return RoomOutcome.Fail(off);
         if (!info.Solo) return Create(nick, gameId, null);
 
         Game game;
@@ -464,6 +472,7 @@ public sealed partial class Rooms
         if (!Named(nick)) return RoomOutcome.Fail(Say.NoNick);
         if (Find(id) is not { } room) return RoomOutcome.Fail(Say.NoRoom);
         if (room.Info.Private) return RoomOutcome.Fail(Say.NoRoom);
+        if (Closed(room.Info.Id) is { } off) return RoomOutcome.Fail(off);
 
         lock (_lock)
         {
@@ -632,6 +641,7 @@ public sealed partial class Rooms
     public RoomOutcome StartByHost(string id, string nick)
     {
         if (Find(id) is not { } room) return RoomOutcome.Fail(Say.NoRoom);
+        if (Closed(room.Info.Id) is { } off) return RoomOutcome.Fail(off);
         var outbox = new Outbox();
         lock (room.Sync)
         {
@@ -652,6 +662,7 @@ public sealed partial class Rooms
     public RoomOutcome Rematch(string id, string nick)
     {
         if (Find(id) is not { } room) return RoomOutcome.Fail(Say.NoRoom);
+        if (Closed(room.Info.Id) is { } off) return RoomOutcome.Fail(off);
         var outbox = new Outbox();
         lock (room.Sync)
         {

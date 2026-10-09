@@ -28,6 +28,11 @@ public static class Pid
 /// <summary>Налаштування з appsettings, розділ "Padel". Ціни — гривні, цілі.</summary>
 public sealed class PadelOptions
 {
+    /// <summary>
+    /// Падельня загалом (наживо). false — сторінки /padel/, хаба й API нема (404), картки в лобі теж, нагадування мовчать.
+    /// Лишаються «Мої банки» (/api/padel/banks): туди адмін переказує за продані черепки (ShardShop.cs).
+    /// </summary>
+    public bool Enabled { get; set; } = true;
     /// <summary>Корт за годину (один корт). Рішення власника 01.10: 1000 грн.</summary>
     public int CourtPerHour { get; set; } = 1000;
     /// <summary>Оренда ракетки — за гру, не за годину. Рішення власника 01.10: 150 грн.</summary>

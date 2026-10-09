@@ -41,7 +41,7 @@ public static class PadelMoneySetup
 /// базу без тостів); нагадування — раз на хвилину, лише про збори, що ще не почались.
 /// </summary>
 public sealed class PadelMoneyTicker(PadelGather gather, PadelRating rating, IHostApplicationLifetime life,
-    ILogger<PadelMoneyTicker> log) : IDisposable
+    IOptionsMonitor<PadelOptions> options, ILogger<PadelMoneyTicker> log) : IDisposable
 {
     Timer? _remind, _badges;
     int _busyRemind, _busyBadges;
@@ -49,7 +49,9 @@ public sealed class PadelMoneyTicker(PadelGather gather, PadelRating rating, IHo
     public void Begin()
     {
         _badges = new Timer(_ => Run(ref _busyBadges, rating.CheckBadges, "відзнаки"), null, TimeSpan.FromSeconds(2), PadelRating.Fresh);
-        _remind = new Timer(_ => Run(ref _busyRemind, gather.Remind, "нагадування"), null, TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1));
+        // Вимкнену Падельню (Padel:Enabled) не нагадуємо: зібратись на збір уже нема куди
+        _remind = new Timer(_ => { if (options.CurrentValue.Enabled) Run(ref _busyRemind, gather.Remind, "нагадування"); },
+            null, TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1));
         life.ApplicationStopping.Register(Dispose);
     }
 

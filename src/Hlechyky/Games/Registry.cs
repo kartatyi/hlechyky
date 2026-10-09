@@ -25,7 +25,9 @@ public sealed record CatalogGame(
     /// <summary>Ім'я файла модуля без розширення: завантажувач бере <c>/games/{Module}.js</c>. Кілька ігор можуть ділити один.</summary>
     string Module,
     /// <summary>Гри нема в каталозі лобі (<see cref="IUnlistedGame"/>, стенди): стіл відкривають посиланням <c>#games/new/&lt;id&gt;</c>.</summary>
-    bool Unlisted = false);
+    bool Unlisted = false,
+    /// <summary>Гру вимкнено в конфігу (<see cref="GamesOptions"/>): у лобі її нема, а назву балачки й статистика ще знають.</summary>
+    bool Off = false);
 
 /// <summary>
 /// Відповідь каталогу: ігри, дозволені ставки й відбитки файлів модулів (<c>"games/bomber.js" → "3f9a0c…"</c>, Front.cs) —

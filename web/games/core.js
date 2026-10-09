@@ -1635,11 +1635,12 @@
     const seen = new Set();
     for (const g of catalog.games) {
       if (g.unlisted) continue;   // стенди розробника (mgprobe) — лише посиланням #games/new/<id>
+      if (g.off) continue;        // вимкнено в конфігу сайту (Games:Off) — сервер однаково не відкриє
       const f = familyOf[g.id];
       if (f) {
         if (seen.has(f.id)) continue;
         seen.add(f.id);
-        const list = f.games.map(([id, label]) => ({ g: byId[id], label })).filter((x) => x.g);
+        const list = f.games.map(([id, label]) => ({ g: byId[id], label })).filter((x) => x.g && !x.g.off);
         if (list.length > 1) {
           out.push({
             kind: 'family', f, list, ids: list.map((x) => x.g.id), group: list[0].g.group, title: f.title, hint: f.hint,
@@ -1728,7 +1729,7 @@
   // (раз на рендер лобі, не частіше ніж раз на 20 с) і подія головного хаба padelLive (app.js → HGames.padel).
   let padelLobby = null, padelAt = 0;
   function loadPadel() {
-    if (Date.now() - padelAt < 20000) return;
+    if (me.padel === false || Date.now() - padelAt < 20000) return;
     padelAt = Date.now();
     api('GET', '/api/padel/lobby').then((x) => HGames.padel(x)).catch(() => { /* сервер без Падельні — лишається тиха картка */ });
   }
@@ -1741,6 +1742,7 @@
     return day.charAt(0).toUpperCase() + day.slice(1) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
   function padelCard() {
+    if (me.padel === false) return '';   // Падельню вимкнено в конфігу сайту (Padel:Enabled)
     const x = padelLobby || {};
     const live = x.live || [], tours = x.tours || [], next = x.next;
     if (!live.length && !tours.length && !next) {
@@ -1755,7 +1757,7 @@
       + '</div><button class="primary" data-go="#padel">Відкрити</button></div>';
   }
   function todayHtml() {
-    const list = (daily && daily.puzzles) || [];
+    const list = ((daily && daily.puzzles) || []).filter((p) => !(byId[p.game] && byId[p.game].off));
     const cards = list.map((p) => {
       const solved = p.me && p.me.solved;
       // Щоденні «більше — краще» (Скільки? дня) міряються очками, а не спробами: старий сервер points не шле.

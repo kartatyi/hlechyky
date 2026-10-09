@@ -10,6 +10,7 @@ public static class GamesSetup
 {
     public static IServiceCollection AddHlechykyGames(this IServiceCollection services)
     {
+        services.AddOptions<GamesOptions>().BindConfiguration("Games");   // вимикач ігор: увесь розділ і окремі (GamesSwitch.cs)
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<GameEvents>();
         // Явна фабрика: у реєстру є ще один, необов'язковий параметр (додаткові збірки для тестів),
@@ -67,8 +68,10 @@ public static class GamesSetup
     public static WebApplication MapHlechykyGames(this WebApplication app)
     {
         // Лобі будується з каталогу, а не з хардкоду в JS: додав клас гри — вона з'явилась на сайті.
-        app.MapGet("/api/games/catalog", (Registry registry, FrontPrint front, GameAdded added) =>
-            new Catalog(registry.Catalog, Rooms.Stakes, front.Games(), added.Map(registry.Catalog)));
+        // Вимкнене в конфігу (Games:Enabled / Games:Off) — з позначкою off: у лобі його нема, а назву знають балачки
+        app.MapGet("/api/games/catalog", (Registry registry, Rooms rooms, FrontPrint front, GameAdded added) =>
+            new Catalog([.. registry.Catalog.Select(g => rooms.Closed(g.Id) is null ? g : g with { Off = true })],
+                Rooms.Stakes, front.Games(), added.Map(registry.Catalog)));
         GameNews.Map(app);                                  // /api/games/news — «бачив що нового»
         TablesKeeper.Map(app);                              // /api/internal/freeze, thaw, busy — лише з цієї машини з ключем
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
