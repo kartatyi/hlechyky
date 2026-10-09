@@ -1,0 +1,195 @@
+/* Розбиті глеки — анімації символів і сцен, рамка, палітра. Усе під .slot-slot-cascade. */
+.slot-slot-cascade {
+  --sc-ink: #3b1b10;          /* обведення */
+  --sc-wood: #b8763c;
+  --sc-wood-l: #e8b47a;
+  --sc-wood-d: #6e3a18;
+  --sc-back: #4a2612;         /* задня стінка стелажа */
+  --sc-gold: #f9c73a;
+  --sc-cream: #fff6e2;
+  --sc-blue: #2f6fe0;
+  --sc-red: #e03b2c;
+  --sc-text: #ffe27a;         /* цифри на лічильнику */
+}
+
+.slot-slot-cascade .sym { overflow: visible; }
+.slot-slot-cascade .sym [class^="a-"],
+.slot-slot-cascade .sc-scene [class^="sc-"] { transform-box: fill-box; }
+.slot-slot-cascade .a-bob { transform-origin: 50% 100%; }
+.slot-slot-cascade .a-shadow { transform-origin: 50% 50%; }
+.slot-slot-cascade .a-glint { transform-origin: 50% 50%; }
+.slot-slot-cascade .a-lid { transform-origin: 50% 100%; }
+.slot-slot-cascade .a-stir { transform-origin: 0% 100%; }
+.slot-slot-cascade .a-fire, .slot-slot-cascade .a-fire2 { transform-origin: 50% 100%; }
+.slot-slot-cascade .a-aura, .slot-slot-cascade .a-rays { transform-origin: 50% 50%; }
+.slot-slot-cascade .a-spark { opacity: 0; }
+
+/* ---------- виграш: кераміка підстрибує й дзвенить ---------- */
+.slot-slot-cascade .win .a-bob { animation: sc-bob .9s cubic-bezier(.3, .7, .4, 1) infinite; }
+.slot-slot-cascade .win .a-shadow { animation: sc-shadow .9s cubic-bezier(.3, .7, .4, 1) infinite; }
+@keyframes sc-bob {
+  0%   { transform: translateY(0) scale(1, 1); }
+  12%  { transform: translateY(0) scale(1.1, .88); }
+  38%  { transform: translateY(-16%) scale(.95, 1.06) rotate(-6deg); }
+  52%  { transform: translateY(-17%) scale(.97, 1.04) rotate(6deg); }
+  74%  { transform: translateY(0) scale(1.08, .92) rotate(0); }
+  84%  { transform: translateY(0) scale(.98, 1.02) rotate(-2deg); }
+  92%  { transform: translateY(0) rotate(1.5deg); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes sc-shadow {
+  0%, 12%, 74%, 100% { transform: scale(1); opacity: 1; }
+  45% { transform: scale(.7); opacity: .55; }
+}
+/* кахлі — «дзинь»: виштовх і дрібне тремтіння */
+.slot-slot-cascade .win .sc-k1 .a-bob, .slot-slot-cascade .win .sc-k2 .a-bob,
+.slot-slot-cascade .win .sc-k3 .a-bob, .slot-slot-cascade .win .sc-k4 .a-bob { animation: sc-ting .8s ease-out infinite; transform-origin: 50% 55%; }
+.slot-slot-cascade .win .sc-k1 .a-shadow, .slot-slot-cascade .win .sc-k2 .a-shadow,
+.slot-slot-cascade .win .sc-k3 .a-shadow, .slot-slot-cascade .win .sc-k4 .a-shadow { animation: none; }
+@keyframes sc-ting {
+  0%   { transform: scale(1) rotate(0); }
+  18%  { transform: scale(1.14) rotate(-7deg); }
+  32%  { transform: scale(1.1) rotate(6deg); }
+  46%  { transform: scale(1.08) rotate(-4deg); }
+  60%  { transform: scale(1.04) rotate(2deg); }
+  76%  { transform: scale(1) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+/* горщик — кришка підскакує */
+.slot-slot-cascade .win .a-lid { animation: sc-lid .45s ease-in-out infinite; }
+@keyframes sc-lid {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  35% { transform: translateY(-14%) rotate(-8deg); }
+  65% { transform: translateY(-6%) rotate(6deg); }
+}
+/* макітра — макогін мішає */
+.slot-slot-cascade .win .a-stir { animation: sc-stir .9s ease-in-out infinite; }
+@keyframes sc-stir { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-14deg); } 70% { transform: rotate(10deg); } }
+/* куманець — котиться-дзвенить */
+.slot-slot-cascade .win .sc-kumanets .a-bob { animation: sc-ring 1s ease-in-out infinite; transform-origin: 50% 60%; }
+@keyframes sc-ring {
+  0%, 100% { transform: rotate(0) scale(1); }
+  15% { transform: rotate(-16deg) scale(1.08); }
+  35% { transform: rotate(14deg) scale(1.1) translateY(-6%); }
+  55% { transform: rotate(-9deg) scale(1.05); }
+  75% { transform: rotate(5deg) scale(1.02); }
+}
+/* глек — найвищий стрибок із пів-обертом «дзень» */
+.slot-slot-cascade .win .sc-glek .a-bob { animation: sc-glek 1.1s cubic-bezier(.3, .7, .4, 1) infinite; }
+@keyframes sc-glek {
+  0%   { transform: translateY(0) scale(1, 1); }
+  10%  { transform: translateY(0) scale(1.12, .86); }
+  35%  { transform: translateY(-22%) scale(.94, 1.08) rotate(-10deg); }
+  50%  { transform: translateY(-24%) scale(1.04) rotate(10deg); }
+  70%  { transform: translateY(0) scale(1.1, .9) rotate(0); }
+  80%  { transform: translateY(-4%) scale(.98, 1.03) rotate(-3deg); }
+  90%  { transform: translateY(0) scale(1.02, .98) rotate(1deg); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+/* горно — дихає вогнем, сяйво крутиться */
+.slot-slot-cascade .win .sc-furnace .a-bob { animation: sc-breathe 1s ease-in-out infinite; }
+@keyframes sc-breathe { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.08, 1.04); } 60% { transform: scale(1.04, 1.07); } }
+.slot-slot-cascade .win .a-fire { animation: sc-fire .35s ease-in-out infinite alternate; }
+.slot-slot-cascade .win .a-fire2 { animation: sc-fire .28s ease-in-out infinite alternate-reverse; }
+@keyframes sc-fire { from { transform: scale(.92, .85); } to { transform: scale(1.12, 1.35); } }
+.slot-slot-cascade .win .a-rays { animation: sc-spin 4s linear infinite; }
+.slot-slot-cascade .win .a-aura { animation: sc-pulse .8s ease-in-out infinite alternate; }
+.slot-slot-cascade .win .a-spark { animation: sc-spark 1.2s ease-out infinite; }
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+@keyframes sc-pulse { from { transform: scale(.92); opacity: .7; } to { transform: scale(1.12); opacity: 1; } }
+@keyframes sc-spark { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(0, -900%); opacity: 0; } }
+/* писанка — гойдається й сяє */
+.slot-slot-cascade .win .sc-pysanka .a-bob { animation: sc-rock 1.1s ease-in-out infinite; transform-origin: 50% 90%; }
+@keyframes sc-rock {
+  0%, 100% { transform: rotate(0) scale(1); }
+  25% { transform: rotate(-12deg) scale(1.08); }
+  50% { transform: rotate(0) scale(1.12) translateY(-5%); }
+  75% { transform: rotate(12deg) scale(1.08); }
+}
+.slot-slot-cascade .win .sc-pysanka .a-shadow { animation: none; }
+/* золота писанка-множник: промені крутяться завжди (повільно), на виграші — швидше */
+.slot-slot-cascade .sc-mult-gold .a-rays { animation: sc-spin 14s linear infinite; }
+.slot-slot-cascade .win .sc-mult-gold .a-rays { animation-duration: 3s; }
+
+/* ---------- блиск у спокої ---------- */
+.slot-slot-cascade .glint .a-glint { animation: sc-glint 2s ease-in-out infinite; }
+@keyframes sc-glint {
+  0%   { transform: scale(0) rotate(0); opacity: 0; }
+  10%  { transform: scale(1.2) rotate(30deg); opacity: 1; }
+  26%  { transform: scale(.9) rotate(70deg); opacity: .9; }
+  40%  { transform: scale(.1) rotate(100deg); opacity: 0; }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+/* ---------- сцени (≤12 анімованих елементів на кожній) ---------- */
+.slot-slot-cascade .sc-ray { animation: sc-ray 6s ease-in-out infinite alternate; }
+@keyframes sc-ray { from { opacity: .65; } to { opacity: 1; } }
+.slot-slot-cascade .sc-halo { animation: sc-halo 5s ease-in-out infinite alternate; transform-origin: 50% 50%; }
+@keyframes sc-halo { from { transform: scale(.9); opacity: .75; } to { transform: scale(1.1); opacity: 1; } }
+.slot-slot-cascade .sc-mote { animation: sc-mote 8s ease-in-out infinite; }
+@keyframes sc-mote {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  20%  { opacity: .95; }
+  50%  { transform: translate(22px, -30px); opacity: .5; }
+  80%  { opacity: .9; }
+  100% { transform: translate(-10px, -60px); opacity: 0; }
+}
+.slot-slot-cascade .sc-tail { animation: sc-tail 3.4s ease-in-out infinite; transform-origin: 0% 100%; }
+@keyframes sc-tail { 0%, 70%, 100% { transform: rotate(0); } 80% { transform: rotate(-12deg); } 90% { transform: rotate(6deg); } }
+.slot-slot-cascade .sc-ember { animation: sc-ember 2.6s ease-in-out infinite alternate; }
+@keyframes sc-ember { from { opacity: .3; } to { opacity: .7; } }
+
+.slot-slot-cascade .sc-flame { transform-origin: 50% 100%; }
+.slot-slot-cascade .sc-fl-a { animation: sc-flame .5s ease-in-out infinite alternate; }
+.slot-slot-cascade .sc-fl-b { animation: sc-flame .37s ease-in-out infinite alternate-reverse; }
+.slot-slot-cascade .sc-fl-c { animation: sc-flame .62s ease-in-out infinite alternate; }
+@keyframes sc-flame { from { transform: scale(.94, .9) skewX(-2deg); } to { transform: scale(1.06, 1.12) skewX(2deg); } }
+.slot-slot-cascade .sc-heat { animation: sc-heat 1.8s ease-in-out infinite alternate; }
+@keyframes sc-heat { from { opacity: .7; } to { opacity: 1; } }
+.slot-slot-cascade .sc-twinkle { animation: sc-ember 3s ease-in-out infinite alternate; }
+.slot-slot-cascade .sc-spark { animation: sc-rise 3s ease-out infinite; opacity: 0; }
+@keyframes sc-rise {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  10%  { opacity: 1; }
+  50%  { transform: translate(18px, -230px); }
+  100% { transform: translate(-14px, -460px); opacity: 0; }
+}
+
+/* ---------- рамка поля: дерев'яний стелаж (CSS-варіант) ----------
+ * .sc-frame — обгортка поля: дерев'яна рамка з карнизом. Усередині — сітка з класом .sc-shelves:
+ * темна задня стінка + 5 полиць (по одній під кожним рядом; висота ряду = 20% висоти сітки). */
+.slot-slot-cascade .sc-frame {
+  position: relative; box-sizing: border-box;
+  padding: var(--sc-frame-pad, 24px 14px 14px);
+  border: 3px solid var(--sc-ink); border-radius: 18px;
+  background: linear-gradient(180deg, var(--sc-wood-l), var(--sc-wood) 45%, var(--sc-wood-d));
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, .35), inset 0 -5px 0 rgba(0, 0, 0, .25), 0 12px 28px rgba(20, 8, 4, .45);
+}
+.slot-slot-cascade .sc-frame::before { /* карниз із розписом: синя хвилька з крапками */
+  content: ''; position: absolute; left: 3%; right: 3%; top: 1.2%; height: 3.2%; pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 30%, #ffd23a 0 18%, transparent 20%) 0 0 / 22px 100% repeat-x,
+    radial-gradient(ellipse 50% 40% at 50% 100%, transparent 62%, var(--sc-blue) 64% 80%, transparent 82%) 11px 0 / 22px 100% repeat-x;
+}
+.slot-slot-cascade .sc-shelves {
+  border: 2px solid var(--sc-ink); border-radius: 4px;
+  background:
+    linear-gradient(180deg, transparent 0 88%, #e8b47a 88% 90%, #b8763c 90% 95%, #6e3a18 95% 100%) 0 0 / 100% 20%,
+    linear-gradient(180deg, rgba(0, 0, 0, .25), transparent 18%) 0 0 / 100% 20%,
+    repeating-linear-gradient(90deg, transparent 0 calc(100% / 6 - 2px), rgba(20, 8, 4, .45) calc(100% / 6 - 2px) calc(100% / 6)),
+    linear-gradient(180deg, #5a3018, var(--sc-back));
+}
+
+/* лічильник-дощечка: обгортка .sc-counter-box з SVG extras.counter і текстом .sc-counter-text поверх */
+.slot-slot-cascade .sc-counter-box { position: relative; aspect-ratio: 3 / 1; }
+.slot-slot-cascade .sc-counter-box > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.slot-slot-cascade .sc-counter-text {
+  position: absolute; left: 29.2%; top: 21%; width: 65%; height: 57.5%;
+  display: flex; align-items: center; justify-content: center;
+  font: 900 1em/1 'Onest', system-ui, sans-serif; color: var(--sc-text);
+  -webkit-text-stroke: .08em var(--sc-ink); paint-order: stroke fill;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-slot-cascade .sc-scene * { animation: none !important; }
+}

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Азарт — прев'ю розділу</title>
+<style>
+  @font-face { font-family: 'Onest'; font-weight: 100 900; font-display: swap; src: url('/static/fonts/onest-cyrillic-wght-normal.woff2') format('woff2'); unicode-range: U+0400-045F, U+0490-0491; }
+  @font-face { font-family: 'Onest'; font-weight: 100 900; font-display: swap; src: url('/static/fonts/onest-latin-wght-normal.woff2') format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+  :root { --bg: #0f1f18; --bg2: #16291f; --panel: #1c3328; --panel2: #234032; --line: #2f4d3d; --text: #ecf1ea; --muted: #9db3a5; --accent: #f4c542; --ink: #2a1e03; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: radial-gradient(1200px 600px at 20% -10%, #1d3a2c 0%, var(--bg) 55%); background-color: var(--bg); color: var(--text); font: 15px/1.45 'Onest', system-ui, sans-serif; min-height: 100vh; }
+  .page { max-width: 1500px; margin: 0 auto; padding: 22px 22px 40px; }
+  h1 { margin: 0; font: 900 34px/1.1 'Onest', sans-serif; }
+  h1 small { display: block; font-size: 14px; font-weight: 500; color: var(--muted); margin-top: 6px; }
+  h2 { font: 800 20px/1 'Onest', sans-serif; margin: 30px 0 14px; display: flex; align-items: center; gap: 10px; }
+  h2 .cnt { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .top { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; margin-top: 18px; }
+  .card { background: linear-gradient(180deg, var(--panel), var(--bg2)); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; position: relative; overflow: hidden; }
+  /* скарбничка */
+  .jp { display: flex; align-items: center; gap: 20px; background: radial-gradient(120% 140% at 0% 0%, #4a3410 0%, #23190a 45%, #12100a 100%); border-color: #6b4f16; }
+  .jp::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(255, 235, 160, .14) 50%, transparent 60%); background-size: 250% 100%; animation: shine 6s ease-in-out infinite; pointer-events: none; }
+  @keyframes shine { 0% { background-position: 120% 0; } 60%, 100% { background-position: -120% 0; } }
+  .jp-ico { font-size: 66px; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .5)); animation: bob 3.2s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-5px) rotate(-3deg); } }
+  .jp-l { font-size: 13px; color: #e8c98a; text-transform: lowercase; letter-spacing: .05em; font-weight: 700; }
+  .jp-v { font: 900 52px/1.05 'Onest', sans-serif; font-variant-numeric: tabular-nums; color: var(--accent); text-shadow: 0 0 22px rgba(244, 197, 66, .45), 0 4px 0 #5a3d08; }
+  .jp-s { font-size: 13px; color: #c9b48a; }
+  /* заноси тижня */
+  .wins h3 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; }
+  .wins h3 span { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .wrow { display: grid; grid-template-columns: 30px 1fr auto auto; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, .05); font-size: 14px; }
+  .wrow:first-of-type { border-top: 0; }
+  .av { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #10221a; font-size: 13px; }
+  .wrow .g { color: var(--muted); font-size: 12px; display: block; }
+  .wrow .x { color: #d9a8ff; font-weight: 800; }
+  .wrow .a { color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
+  /* чипи */
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 22px; }
+  .chip { font: 700 14px/1 'Onest', sans-serif; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; cursor: pointer; }
+  .chip:hover { border-color: var(--accent); }
+  .chip.on { background: var(--accent); color: var(--ink); border-color: var(--accent); }
+  /* афіші слотів */
+  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+  .poster { display: block; text-decoration: none; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; transition: transform .25s, box-shadow .25s, border-color .25s; }
+  .poster:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 18px 40px rgba(0, 0, 0, .45), 0 0 0 1px var(--accent); }
+  .pimg { position: relative; aspect-ratio: 360 / 240; overflow: hidden; background: #08130e; }
+  .pimg > svg { width: 100%; height: 100%; display: block; transition: transform .5s; }
+  .poster:hover .pimg > svg { transform: scale(1.04); }
+  .pph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: radial-gradient(circle at 50% 30%, hsl(var(--h) 45% 32%), hsl(var(--h) 50% 10%)); }
+  .pph b { font: 900 34px/1 'Onest', sans-serif; color: var(--accent); -webkit-text-stroke: 1.5px #2a1e03; paint-order: stroke fill; text-shadow: 0 4px 0 #3a1f08; text-align: center; padding: 0 16px; }
+  .pph span { font-size: 13px; color: rgba(255, 255, 255, .6); }
+  .badge { position: absolute; top: 12px; left: 12px; font: 800 12px/1 'Onest', sans-serif; padding: 6px 10px; border-radius: 999px; background: #e5533d; color: #fff; text-transform: lowercase; box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
+  .play { position: absolute; right: 14px; bottom: 14px; font: 900 15px/1 'Onest', sans-serif; padding: 12px 18px; border-radius: 999px; background: linear-gradient(#ffe58a, #f4c542 45%, #c9921e); color: var(--ink); box-shadow: 0 6px 18px rgba(0, 0, 0, .5); opacity: 0; transform: translateY(8px); transition: .25s; text-transform: lowercase; }
+  .poster:hover .play { opacity: 1; transform: none; }
+  .pinfo { padding: 12px 16px 14px; }
+  .pt { font: 800 18px/1.2 'Onest', sans-serif; display: flex; justify-content: space-between; gap: 8px; }
+  .vol { font-size: 14px; letter-spacing: -2px; white-space: nowrap; }
+  .vol i { font-style: normal; opacity: .22; }
+  .pm { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .pv { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  /* інші теми */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .tile { display: flex; gap: 14px; align-items: center; padding: 16px; border-radius: 18px; background: linear-gradient(180deg, var(--panel), var(--bg2)); border: 1px solid var(--line); }
+  .tile .e { font-size: 40px; width: 58px; height: 58px; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, .05); }
+  .tile b { display: block; font-size: 16px; }
+  .tile small { color: var(--muted); font-size: 13px; }
+  .pill { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 999px; text-transform: lowercase; }
+  .pill.ok { background: rgba(123, 211, 137, .16); color: #7bd389; }
+  .pill.wip { background: rgba(244, 197, 66, .14); color: var(--accent); }
+  .pill.new { background: rgba(229, 83, 61, .18); color: #ff8a73; }
+  .sec[hidden] { display: none; }
+  .note { margin-top: 28px; color: var(--muted); font-size: 12px; }
+  .note a { color: var(--accent); }
+  @media (max-width: 860px) {
+    .top { grid-template-columns: 1fr; }
+    .page { padding: 16px 16px 30px; }
+    h1 { font-size: 28px; }
+    .jp-v { font-size: 38px; } .jp-ico { font-size: 48px; }
+    .slots { grid-template-columns: 1fr; }
+    .play { opacity: 1; transform: none; padding: 10px 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>🎰 Азарт<small>грається наодинці, на черепки 🏺 · Глек пильнує, щоб було чесно</small></h1>
+  <div class="top">
+    <div class="card jp"><div class="jp-ico">🏺</div><div><div class="jp-l">скарбничка Глека</div><div class="jp-v" id="jp">—</div><div class="jp-s">росте з кожного оберту в усіх автоматах</div></div></div>
+    <div class="card wins"><h3>заноси тижня <span>найбільші за 7 днів</span></h3><div id="wins"></div></div>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="sec" data-sec="slots"><h2>🎰 Слоти <span class="cnt">4 автомати</span></h2><div class="slots" id="slots"></div></div>
+  <div class="sec" data-sec="roulette"><h2>🎡 Рулетка</h2><div class="tiles"><div class="tile"><div class="e">🎡</div><div><b>Європейська рулетка</b><small>одне зеро, ставки на поле</small><br><span class="pill ok">є</span></div></div></div></div>
+  <div class="sec" data-sec="bets"><h2>🎲 Ставки</h2><div class="tiles"><div class="tile"><div class="e">🎲</div><div><b>Ставки</b><small>на події й на столи друзів</small><br><span class="pill wip">у роботі</span></div></div></div></div>
+  <div class="sec" data-sec="fast"><h2>⚡ Швидкі</h2><div class="tiles"><div class="tile"><div class="e">🪽</div><div><b>Лелека</b><small>злітає — встигни забрати</small><br><span class="pill new">нова</span></div></div></div></div>
+  <div class="sec" data-sec="cards"><h2>🃏 Карти</h2><div class="tiles"><div class="tile"><div class="e">🃏</div><div><b>Покер</b><small>турнір і кеш-стіл на черепки</small><br><span class="pill ok">є</span></div></div></div></div>
+  <div class="note">прев'ю розділу · клік по афіші — <a href="proto.html">стенд автомата</a></div>
+</div>
+<script src="kit.js"></script>
+<script>
+(function () {
+  const SLOTS = [
+    { id: 'slot-glek', title: 'Однорукий Глек', mech: '3×3, 5 ліній · класика + ризик-гра «Ворожка»', vol: 1, volT: 'низька', badge: 'класика' },
+    { id: 'slot-cascade', title: 'Розбиті глеки', mech: '6×5, платить будь-де від 8 · каскади, писанки-множники', vol: 3, volT: 'висока', badge: 'нове' },
+    { id: 'slot-hold', title: 'Козацький скарб', mech: '5×3, 20 ліній · дукати → «Утримуй і вигравай»', vol: 3, volT: 'висока', badge: 'нове' },
+    { id: 'slot-cluster', title: 'Цвіт папороті', mech: '7×7, кластери від 5 · шкала папороті з чарами', vol: 2, volT: 'середня', badge: 'нове' },
+  ];
+  const CH = [['all', 'Усе'], ['slots', 'Слоти'], ['roulette', 'Рулетка'], ['bets', 'Ставки'], ['fast', 'Швидкі'], ['cards', 'Карти']];
+  const WINS = [
+    ['smaug', 'Розбиті глеки', 412, 41200], ['владік', 'Козацький скарб', 1000, 20000], ['микола', 'Однорукий Глек', 120, 12000],
+    ['гість_42', 'Цвіт папороті', 186, 9300], ['smaug', 'Однорукий Глек', 48, 4800], ['владік', 'Розбиті глеки', 77, 3850],
+  ];
+  const esc = SlotKit.esc, fmt = SlotKit.fmt;
+  const hue = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+  document.getElementById('wins').innerHTML = WINS.map(([n, g, x, a]) =>
+    '<div class="wrow"><span class="av" style="background:hsl(' + hue(n) + ' 60% 65%)">' + esc(n[0].toUpperCase()) + '</span><span><b>' + esc(n) + '</b><span class="g">' + esc(g) + '</span></span><span class="x">×' + x + '</span><span class="a">' + fmt(a) + ' 🏺</span></div>').join('');
+  const jp = document.getElementById('jp');
+  const tick = () => { jp.textContent = fmt(SlotKit.jackpot()); };
+  tick(); setInterval(tick, 1000);
+  const chips = document.getElementById('chips');
+  let cur = 'all';
+  function chipsDraw() {
+    chips.innerHTML = CH.map(([k, t]) => '<button class="chip' + (k === cur ? ' on' : '') + '" data-k="' + k + '">' + t + '</button>').join('');
+    document.querySelectorAll('.sec').forEach((s) => { s.hidden = cur !== 'all' && s.dataset.sec !== cur; });
+  }
+  chips.addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (b) { cur = b.dataset.k; chipsDraw(); } });
+  chipsDraw();
+  function draw() {
+    const A = window.SlotArt || {};
+    document.getElementById('slots').innerHTML = SLOTS.map((s) => {
+      const art = A[s.id], title = (art && art.title) || s.title;
+      const img = art && art.poster ? art.poster : '<div class="pph" style="--h:' + hue(s.id) + '"><b>' + esc(title) + '</b><span>афіша ще малюється</span></div>';
+      return '<a class="poster" href="proto.html?m=' + s.id + '"><div class="pimg">' + img + '<span class="badge">' + esc(s.badge) + '</span><span class="play">▶ грати</span></div>'
+        + '<div class="pinfo"><div class="pt"><span>' + esc(title) + '</span><span class="vol" title="волатильність: ' + s.volT + '">' + '⚡'.repeat(s.vol) + '<i>' + '⚡'.repeat(3 - s.vol) + '</i></span></div>'
+        + '<div class="pm">' + esc(s.mech) + '</div><div class="pv">волатильність — ' + s.volT + '</div></div></a>';
+    }).join('');
+  }
+  draw();
+  // афіші — з файлів арту, які вже є (нема — лишається заглушка)
+  SLOTS.forEach((s) => {
+    const el = document.createElement('script'); el.src = s.id + '-art.js?' + Date.now();
+    el.onload = () => {
+      const a = window.SlotArt && SlotArt[s.id];
+      if (a && a.extras && a.extras.defs && !document.getElementById('sk-defs-' + s.id)) {
+        const d = document.createElement('div'); d.id = 'sk-defs-' + s.id; d.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden'; d.innerHTML = a.extras.defs; document.body.appendChild(d);
+      }
+      draw();
+    };
+    el.onerror = () => el.remove();
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = s.id + '-art.css'; document.head.appendChild(css);
+    document.head.appendChild(el);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+/* Однорукий Глек — розкладка корпусу, лампочки, ручка, табло, ворожка.
+   Корпус — extras.cabinet арту (viewBox 420×640); усе всередині .gl-cab-in стоїть у координатах extras.layout. */
+.slot-slot-glek { --gl-copper: #d98c4e; --gl-copper-l: #f6c08a; --gl-copper-d: #7a3f17; --gl-ink: #2b1420; --gl-paper: #fff6e0; --gl-paper-d: #e8d6b0; }
+.slot-slot-glek .sk-scene { background: radial-gradient(120% 90% at 50% 0%, #3a2414 0%, #1d140c 55%, #0d0906 100%); }
+
+.gl-stage { position: relative; display: flex; align-items: center; justify-content: center; gap: 34px; width: 100%; height: 100%; }
+.gl-cab { position: relative; flex: none; }
+.gl-cab-in { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.gl-cab-in > div { position: absolute; }
+.gl-cab-bg { inset: 0; pointer-events: none; filter: drop-shadow(0 24px 30px rgba(0, 0, 0, .55)); }
+.gl-cab-bg > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+/* вікно барабанів */
+.gl-win { overflow: hidden; background: linear-gradient(90deg, var(--gl-paper-d), var(--gl-paper) 25%, #fffdf6 50%, var(--gl-paper) 75%, var(--gl-paper-d)); z-index: 1; }
+.gl-reelhost { position: absolute; inset: 0; }
+.slot-slot-glek .sk-reel { background: linear-gradient(90deg, rgba(0, 0, 0, .10), rgba(0, 0, 0, 0) 18%, rgba(255, 255, 255, .25) 50%, rgba(0, 0, 0, 0) 82%, rgba(0, 0, 0, .10)); }
+.slot-slot-glek .sk-reel::before { content: ''; position: absolute; right: -4px; top: 0; bottom: 0; width: 4px; background: linear-gradient(90deg, #3a1d0c, #6e3a1c, #3a1d0c); }
+.slot-slot-glek .sk-reel:last-child::before { display: none; }
+.slot-slot-glek .sk-cell > svg { overflow: visible; }
+.gl-glass { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.gl-glass > svg { width: 100%; height: 100%; display: block; }
+.gl-win:has(.gl-glass) .sk-shade { display: none; }
+.slot-slot-glek .sk-lines { z-index: 4; }
+.slot-slot-glek .sk-float { z-index: 6; font-size: 26px; }
+.slot-slot-glek .sk-cell.dim { opacity: .55; }
+
+/* логотип і табло */
+.gl-logo { display: flex; align-items: center; justify-content: center; z-index: 2; }
+.gl-logo > svg { max-width: 100%; max-height: 100%; display: block; overflow: visible; }
+.gl-logo .sk-logo-ph { font-size: 34px; text-align: center; }
+.gl-tablo { display: flex; align-items: center; justify-content: center; gap: 10px; z-index: 2; }
+.gl-tablo-l { font: 800 11px/1 'Onest', sans-serif; color: var(--gl-copper-l); text-transform: lowercase; letter-spacing: .08em; }
+.gl-digits { display: flex; gap: 3px; font: 900 27px/1 'Onest', sans-serif; font-variant-numeric: tabular-nums; }
+.gl-dw { position: relative; width: .7em; height: 1.22em; overflow: hidden; border-radius: 4px; color: #1c1006;
+  background: linear-gradient(180deg, #0b0703 0%, #3a2c1e 16%, #fbf4e2 42%, #fbf4e2 58%, #3a2c1e 84%, #0b0703 100%); box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); }
+.gl-dw::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0, 0, 0, .3); }
+.gl-dc { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; height: 1000%; transition: transform .32s cubic-bezier(.3, 1.45, .6, 1); }
+.gl-dc i { font-style: normal; height: 10%; display: flex; align-items: center; justify-content: center; }
+.gl-dw.off .gl-dc { opacity: 0; }
+
+/* лампочки: 4 фази, анімується лише opacity шару */
+.gl-bulbs { inset: 0; pointer-events: none; z-index: 2; }
+.gl-phase { position: absolute; inset: 0; will-change: opacity; animation: gl-chase 1.6s steps(1) infinite; animation-delay: calc(var(--k) * -.4s); }
+.gl-bulb { position: absolute; width: 18px; height: 18px; }
+.gl-bulb > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.gl-bulb:not(.on) .lit { opacity: 0; }
+@keyframes gl-chase { 0% { opacity: 1; } 25% { opacity: .18; } 50% { opacity: .18; } 75% { opacity: .55; } }
+.slot-slot-glek.sk-busy .gl-phase { animation-duration: .48s; animation-delay: calc(var(--k) * -.12s); }
+.gl-stage.gl-winning .gl-phase { animation: gl-wave .8s steps(1) infinite; animation-delay: calc((var(--k) % 2) * -.4s); }
+.gl-stage.gl-winning .gl-phase:nth-child(2n) { animation-delay: -.4s; }
+@keyframes gl-wave { 0% { opacity: 1; } 50% { opacity: .15; } }
+.gl-stage.gl-big .gl-phase { animation-duration: .5s; }
+.gl-stage.gl-tease .gl-phase { animation-duration: .36s; animation-delay: calc(var(--k) * -.09s); }
+
+/* ручка */
+.gl-handle { width: 60px; height: 200px; cursor: grab; touch-action: none; z-index: 4; }
+.gl-handle:active { cursor: grabbing; }
+.gl-handle > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.gl-handle.spring .arm > *, .gl-handle.spring .knob { transition: transform .55s cubic-bezier(.3, 1.9, .5, 1); }
+.gl-handle.snap .arm > *, .gl-handle.snap .knob { transition: transform .16s cubic-bezier(.5, 0, .9, .5); }
+.slot-slot-glek.sk-busy .gl-handle { cursor: default; }
+
+/* табличка «що платить» (лише широко) */
+.gl-board { width: 220px; padding: 16px 16px 14px; border-radius: 18px; background: linear-gradient(180deg, rgba(58, 22, 30, .94), rgba(30, 10, 16, .94));
+  box-shadow: 0 0 0 3px #2b1420, 0 0 0 6px #e8b83e, 0 0 0 8px #2b1420, 0 18px 40px rgba(0, 0, 0, .5); }
+.gl-board-t { font: 900 18px/1 'Onest', sans-serif; color: #f5c33b; text-transform: lowercase; text-align: center; margin-bottom: 10px; }
+.gl-board-r { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 0; border-bottom: 1px dashed rgba(245, 195, 59, .22); }
+.gl-board-s { display: flex; gap: 1px; }
+.gl-board-s .sk-cell { position: relative; width: 34px; height: 34px; --S: 34px; }
+.gl-board-r b { font: 800 17px/1 'Onest', sans-serif; color: #ffe58a; font-variant-numeric: tabular-nums; }
+.gl-board-n { margin-top: 10px; font-size: 12px; color: #f6d9a8; text-align: center; opacity: .85; }
+
+/* кнопка ворожки в HUD */
+.gl-gamble-btn { height: 46px; padding: 0 18px; border-radius: 23px; border: 2px solid #d78bff; background: linear-gradient(180deg, #5b2a86, #34154f);
+  font-weight: 800; font-size: 15px; text-transform: lowercase; box-shadow: 0 0 18px rgba(215, 139, 255, .45); animation: gl-gpulse 1.4s ease-in-out infinite; white-space: nowrap; }
+.gl-gamble-btn span { font-size: 18px; }
+@keyframes gl-gpulse { 50% { box-shadow: 0 0 28px rgba(215, 139, 255, .85); } }
+
+/* Ворожка — поверх вікна й табло, у координатах корпусу */
+.gl-fortune { left: 30px; top: 150px; width: 360px; height: 440px; z-index: 6; border-radius: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  padding: 10px; background: radial-gradient(circle at 50% 25%, #4b2470, #170a26 75%); box-shadow: 0 0 0 3px #d78bff, 0 0 0 6px #2b1420, inset 0 0 40px rgba(0, 0, 0, .6);
+  opacity: 0; transform: scale(.92); transition: opacity .3s, transform .35s cubic-bezier(.3, 1.5, .5, 1); }
+.gl-fortune.in { opacity: 1; transform: none; }
+.gl-fortune.out { opacity: 0; transform: scale(.95); }
+.gl-f-who { display: flex; align-items: center; gap: 8px; }
+.gl-f-who > svg { width: 96px; height: 96px; display: block; overflow: visible; }
+.gl-f-say { max-width: 170px; font-size: 13px; font-weight: 700; color: #f1ddff; background: rgba(0, 0, 0, .4); padding: 6px 10px; border-radius: 12px 12px 12px 2px; }
+.gl-ph-fortune { width: 90px; height: 96px; border-radius: 50% 50% 14px 14px; background: radial-gradient(circle at 50% 35%, #8b4fc0, #3b1d5a); display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 0 3px #d78bff; }
+.gl-ph-fortune span { font-size: 40px; } .gl-ph-fortune b { color: #f1ddff; font-size: 11px; }
+.gl-f-main { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.gl-f-card { position: relative; width: 84px; height: 120px; transform-style: preserve-3d; transition: transform .6s cubic-bezier(.4, 1.3, .5, 1); perspective: 600px; }
+.gl-f-card.flip { transform: rotateY(180deg); }
+.gl-f-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.gl-f-face > svg { width: 100%; height: 100%; display: block; }
+.gl-f-front { transform: rotateY(180deg); }
+.gl-fortune.ok .gl-f-card { filter: drop-shadow(0 0 14px rgba(244, 197, 66, .9)); }
+.gl-fortune.bad .gl-f-card { filter: grayscale(.6) brightness(.7); }
+.gl-f-stake { font-size: 13px; color: #f1ddff; text-align: center; }
+.gl-f-stake b { color: #ffe58a; font-size: 18px; }
+.gl-f-next { color: #c9a8e8; }
+.gl-f-btns { display: flex; gap: 8px; }
+.gl-f-btns button, .gl-f-take { height: 42px; padding: 0 14px; border-radius: 13px; font-weight: 800; font-size: 15px; text-transform: lowercase; border: 2px solid rgba(0, 0, 0, .45); }
+.gl-f-r { background: linear-gradient(#e5533d, #9c2015); }
+.gl-f-b { background: linear-gradient(#3a3a3a, #111); }
+.gl-f-take { background: linear-gradient(#f4c542, #b88a1c); color: #2a1e03 !important; }
+.gl-fortune button:disabled { opacity: .45; cursor: default; }
+.gl-f-hist { display: flex; gap: 4px; min-height: 20px; }
+.gl-f-hist span { width: 18px; height: 20px; border-radius: 4px; background: #fbf4e2; font-size: 13px; text-align: center; line-height: 20px; color: #111; }
+.gl-f-hist span.r { color: #d4312a; }
+.gl-f-left { font-size: 11px; color: #c9a8e8; }
+
+.sk-port .gl-gamble-btn { height: 40px; }

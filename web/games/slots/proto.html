@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Азарт — стенд автоматів</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+  html, body { margin: 0; background: #0f1f18; color: #ecf1ea; font: 14px/1.45 'Onest', system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  .wrap { display: flex; gap: 18px; padding: 14px; align-items: flex-start; justify-content: center; }
+  .frame { position: relative; flex: none; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px #2f4d3d, 0 20px 50px rgba(0, 0, 0, .5); background: #08130e; }
+  .ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #9db3a5; font-size: 18px; text-align: center; padding: 20px; }
+  .ph b { color: #f4c542; font-size: 26px; }
+  .dev { width: 270px; flex: none; display: flex; flex-direction: column; gap: 12px; }
+  .dev section { background: #16291f; border: 1px solid #2f4d3d; border-radius: 14px; padding: 12px; }
+  .dev h3 { margin: 0 0 8px; font-size: 12px; font-weight: 700; color: #9db3a5; text-transform: lowercase; letter-spacing: .05em; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btns button, .btns a { font: inherit; font-size: 13px; color: #ecf1ea; background: #234032; border: 1px solid #2f4d3d; border-radius: 10px; padding: 6px 10px; cursor: pointer; text-decoration: none; }
+  .btns button:hover, .btns a:hover { border-color: #f4c542; }
+  .btns .on { background: #f4c542; color: #2a1e03; border-color: #f4c542; }
+  .btns button:disabled { opacity: .4; cursor: default; }
+  .btns .soon { opacity: .55; }
+  .stat { font-size: 12px; color: #9db3a5; font-variant-numeric: tabular-nums; }
+  .stat b { color: #ecf1ea; }
+  .back { color: #9db3a5; font-size: 13px; }
+  .back a { color: #f4c542; }
+  @media (max-width: 800px) {
+    .wrap { flex-direction: column; padding: 0; gap: 10px; align-items: stretch; }
+    .frame { border-radius: 0; box-shadow: none; width: 100% !important; }
+    .dev { width: auto; padding: 0 10px 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="frame" id="frame"></div>
+  <div class="dev">
+    <section><h3>автомат</h3><div class="btns" id="mbar"></div></section>
+    <section><h3>розмір рамки</h3><div class="btns" id="sbar"></div></section>
+    <section><h3>сценарії показу</h3><div class="btns" id="demo"></div></section>
+    <section><h3>стенд</h3><div class="btns"><button id="spin">▶ звичайний оберт</button><button id="cash">баланс +5000</button></div>
+      <div class="stat" id="stat" style="margin-top:8px"></div></section>
+    <div class="back"><a href="index.html">← лобі «Азарт»</a> · <a id="artlink" href="art.html">аркуш арту</a></div>
+  </div>
+</div>
+<script src="kit.js"></script>
+<script>
+(function () {
+  const IDS = ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'];
+  const NAMES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті' };
+  const SIZES = { fhd: ['Full HD', 1500, 900], laptop: ['ноут', 950, 620], phone: ['телефон', 360, 740] };
+  const q = new URLSearchParams(location.search);
+  let cur = IDS.includes(q.get('m')) ? q.get('m') : IDS[0];
+  let size = SIZES[q.get('s')] ? q.get('s') : (innerWidth < 800 ? 'phone' : innerWidth < 1800 ? 'laptop' : 'fhd');
+  const frame = document.getElementById('frame');
+  let inst = null, loading = 0;
+  const loaded = {};
+  const v = Date.now();
+  const nameOf = (id) => (window.SlotArt && SlotArt[id] && SlotArt[id].title) || NAMES[id];
+
+  function loadCss(href) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href + '?' + v; document.head.appendChild(l); }
+  function loadJs(src) { return new Promise((res) => { const s = document.createElement('script'); s.src = src + '?' + v; s.onload = () => res(true); s.onerror = () => { s.remove(); res(false); }; document.head.appendChild(s); }); }
+  async function ensure(id) {
+    if (loaded[id]) return loaded[id];
+    loaded[id] = (async () => {
+      loadCss(id + '-art.css');
+      await loadJs(id + '-art.js');
+      const ok = await loadJs(id + '.js');
+      if (ok) loadCss(id + '.css');
+      return ok;
+    })();
+    return loaded[id];
+  }
+  function bars() {
+    document.getElementById('mbar').innerHTML = IDS.map((id) => '<button data-m="' + id + '" class="' + (id === cur ? 'on' : '') + (SlotKit.machines[id] || !loaded[id] ? '' : ' soon') + '">' + nameOf(id) + '</button>').join('');
+    document.getElementById('sbar').innerHTML = Object.keys(SIZES).map((k) => '<button data-s="' + k + '"' + (k === size ? ' class="on"' : '') + '>' + SIZES[k][0] + ' <span style="opacity:.6">' + SIZES[k][1] + '×' + SIZES[k][2] + '</span></button>').join('');
+    document.getElementById('artlink').href = 'art.html?m=' + cur;
+  }
+  function applySize() {
+    const [, w, h] = SIZES[size];
+    frame.style.width = w + 'px'; frame.style.height = h + 'px';
+  }
+  function demos() {
+    const m = SlotKit.machines[cur], el = document.getElementById('demo');
+    const names = m && m.demo ? Object.keys(m.demo) : [];
+    el.innerHTML = names.length ? names.map((n) => '<button data-d="' + n + '">' + n + '</button>').join('') : '<span class="stat">нема</span>';
+  }
+  async function show(id) {
+    cur = id; const my = ++loading;
+    history.replaceState(null, '', '?m=' + id + '&s=' + size);
+    if (inst) { inst.destroy(); inst = null; }
+    frame.innerHTML = '<div class="ph">вантажу…</div>';
+    bars();
+    const ok = await ensure(id);
+    if (my !== loading) return;
+    frame.innerHTML = '';
+    if (!ok || !SlotKit.machines[id]) {
+      frame.innerHTML = '<div class="ph"><b>' + nameOf(id) + '</b>ще малюється 🎨<span style="font-size:13px">нема ' + id + '.js</span></div>';
+      demos(); bars(); return;
+    }
+    inst = SlotKit.mount(frame, id, { balance: 10000 });
+    window.slot = inst;
+    demos(); bars();
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.m) { show(b.dataset.m); b.blur(); }
+    else if (b.dataset.s) { size = b.dataset.s; applySize(); bars(); history.replaceState(null, '', '?m=' + cur + '&s=' + size); }
+    else if (b.dataset.d) { if (inst) inst.demo(b.dataset.d); }
+    else if (b.id === 'spin') { if (inst) inst.spin(); }
+    else if (b.id === 'cash') { if (inst) inst.addBalance(5000); }
+    if (b.closest('.dev')) b.blur();
+  });
+  setInterval(() => {
+    const c = inst && inst.ctx;
+    document.getElementById('stat').innerHTML = c
+      ? 'баланс <b>' + SlotKit.fmt(c.balance) + '</b> · ставка <b>' + c.bet + '</b> · ' + (c.busy ? '<b>грає</b>' : 'спокій') + '<br>rAF-циклів: <b>' + SlotKit.stats.loops + '</b> · кадрів усього: ' + SlotKit.stats.raf
+      : '—';
+  }, 500);
+  applySize(); show(cur);
+})();
+</script>
+</body>
+</html>
