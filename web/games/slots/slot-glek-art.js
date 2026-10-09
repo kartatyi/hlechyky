@@ -100,7 +100,10 @@
     lg('sg-cardback', 0, 0, 1, 1, [[0, '#b81c34'], [1, '#5a0a1c']]) +
     lg('sg-spade', 0, 0, 0, 1, [[0, '#5e4c6a'], [.5, '#2e2236'], [1, '#140c18']]) +
     lg('sg-tablo', 0, 0, 0, 1, [[0, '#0c0608'], [1, '#2c1418']]) +
-    lg('sg-teal', 0, 0, 0, 1, [[0, '#2f7280'], [1, '#14343e']]);
+    lg('sg-teal', 0, 0, 0, 1, [[0, '#2f7280'], [1, '#14343e']]) +
+    rg('sg-ternova', .5, .3, .8, [[0, '#6a2a4c'], [.55, '#341028'], [1, '#1c0612']]) +
+    lg('sg-shirt', 0, 0, 0, 1, [[0, '#fffdf6'], [1, '#e6d9be']]) +
+    lg('sg-vest', 0, 0, 1, 1, [[0, '#3a2a52'], [1, '#160e24']]);
   const PATS =
     '<pattern id="sg-cardpat" width="12" height="12" patternUnits="userSpaceOnUse">' + stitch(1.5, 1.5, 1.8, ROMB5, { x: '#f5c33b', o: '#ffe9a8' }) + '</pattern>' +
     '<clipPath id="sg-clip-melon"><ellipse rx="34" ry="27"/></clipPath>';
@@ -376,43 +379,103 @@
       '<ellipse cx="' + (red ? 20 : 19) + '" cy="' + (red ? 38 : 56) + '" rx="3.4" ry="5.5" transform="rotate(25 20 45)" fill="#fff" opacity=".55"/></svg>';
   }
 
-  /* ворожка */
-  let beads = '';
-  for (let i = 0; i <= 8; i++) { const t = i / 8, x = (1 - t) * (1 - t) * 58 + 2 * (1 - t) * t * 80 + t * t * 102, y = (1 - t) * (1 - t) * 116 + 2 * (1 - t) * t * 132 + t * t * 116; beads += '<circle cx="' + r2(x) + '" cy="' + r2(y) + '" r="3.4" fill="#e3122a" stroke="' + I + '" stroke-width="1.2"/><circle cx="' + r2(x - 1) + '" cy="' + r2(y - 1.1) + '" r="1" fill="#fff" opacity=".8"/>'; }
-  const rose = (x, y) => '<ellipse cx="' + (x - 6) + '" cy="' + (y + 3) + '" rx="4" ry="2.2" transform="rotate(-25 ' + (x - 6) + ' ' + (y + 3) + ')" fill="#3f9a3a"/><ellipse cx="' + (x + 6) + '" cy="' + (y + 3) + '" rx="4" ry="2.2" transform="rotate(25 ' + (x + 6) + ' ' + (y + 3) + ')" fill="#3f9a3a"/><circle cx="' + x + '" cy="' + y + '" r="4.6" fill="#ffd23a" stroke="' + I + '" stroke-width="1.2"/><circle cx="' + x + '" cy="' + y + '" r="2" fill="#e86a1a"/>';
-  const fanCard = (rot) => '<g transform="rotate(' + rot + ' 80 168)"><path d="' + rr(68, 108, 24, 34, 3.5) + '" fill="url(#sg-cardback)" stroke="' + I + '" stroke-width="1.8"/><path d="' + rr(71.5, 111.5, 17, 27, 2) + '" fill="none" stroke="#f5c33b" stroke-width="1.2"/><path d="M80 118l4 6.5-4 6.5-4-6.5Z" fill="#f5c33b"/></g>';
+  /* ворожка: тернова хустка (темне тло, троянди, торочки), вузол під підборіддям; біла вишита сорочка, керсетка, коралі з дукачем */
+  const q2 = (a, b, c, t) => (1 - t) * (1 - t) * a + 2 * (1 - t) * t * b + t * t * c;
+  function strand(x0, y0, cx, cy, x1, y1, n, r) {
+    let h = '';
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, x = r2(q2(x0, cx, x1, t)), y = r2(q2(y0, cy, y1, t));
+      h += '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="#e3122a" stroke="' + I + '" stroke-width="1.1"/><circle cx="' + r2(x - r * .3) + '" cy="' + r2(y - r * .35) + '" r="' + r2(r * .32) + '" fill="#fff" opacity=".8"/>';
+    }
+    return h;
+  }
+  /* троянда з листям: червоно-рожеві пелюстки по колу, завиток усередині */
+  function trRose(x, y, r, rot) {
+    let h = '<g transform="translate(' + x + ' ' + y + ') rotate(' + (rot || 0) + ')">';
+    h += '<path d="M' + r2(-r * .9) + ' ' + r2(r * .5) + 'C' + r2(-r * 1.9) + ' ' + r2(r * .6) + ' ' + r2(-r * 2.1) + ' ' + r2(r * 1.4) + ' ' + r2(-r * 2.2) + ' ' + r2(r * 1.6) + 'C' + r2(-r * 1.5) + ' ' + r2(r * 1.8) + ' ' + r2(-r * .9) + ' ' + r2(r * 1.2) + ' ' + r2(-r * .9) + ' ' + r2(r * .5) + 'Z" fill="#3f9a3a"/>';
+    h += '<path d="M' + r2(r * .9) + ' ' + r2(-r * .4) + 'C' + r2(r * 1.8) + ' ' + r2(-r * .8) + ' ' + r2(r * 2.1) + ' ' + r2(-r * 1.5) + ' ' + r2(r * 2.2) + ' ' + r2(-r * 1.8) + 'C' + r2(r * 1.4) + ' ' + r2(-r * 1.8) + ' ' + r2(r * .8) + ' ' + r2(-r * 1.2) + ' ' + r2(r * .9) + ' ' + r2(-r * .4) + 'Z" fill="#2f7a2e"/>';
+    for (let i = 0; i < 6; i++) { const a = i * 60 * Math.PI / 180; h += '<circle cx="' + r2(Math.cos(a) * r * .55) + '" cy="' + r2(Math.sin(a) * r * .55) + '" r="' + r2(r * .55) + '" fill="' + (i % 2 ? '#e2335a' : '#d01c40') + '"/>'; }
+    h += '<circle r="' + r2(r * .62) + '" fill="#ff6a8e"/>';
+    h += '<path d="M' + r2(-r * .45) + ' 0A' + r2(r * .45) + ' ' + r2(r * .45) + ' 0 1 1 ' + r2(r * .2) + ' ' + r2(r * .4) + 'M' + r2(-r * .15) + ' ' + r2(-r * .1) + 'A' + r2(r * .2) + ' ' + r2(r * .2) + ' 0 1 1 ' + r2(r * .1) + ' ' + r2(r * .2) + '" fill="none" stroke="#9a0a2c" stroke-width="' + r2(Math.max(.9, r * .14)) + '" stroke-linecap="round"/>';
+    return h + '</g>';
+  }
+  /* торочки: короткі нитки донизу вздовж відрізка */
+  function fringe(x0, y0, x1, y1, len, step) {
+    const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / step));
+    let d = '';
+    for (let i = 0; i <= n; i++) { const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n; d += 'M' + r2(x) + ' ' + r2(y) + 'l' + r2((i % 2 ? .6 : -.6)) + ' ' + len; }
+    return '<path d="' + d + '" stroke="#5a1028" stroke-width="1.5" stroke-linecap="round" fill="none"/>';
+  }
+  const SCARF = 'url(#sg-ternova)';
+  const diamondD = 'M35 20L60 50L35 80L10 50Z';
+  const clubD = 'M35 18A13 13 0 0 1 46 39A13 13 0 1 1 40 61L44 80H26L30 61A13 13 0 1 1 24 39A13 13 0 0 1 35 18Z';
+  /* карта лицем: біле поле, велика масть угорі (низ тримають руки), хрестик-вишивка в масті */
+  const faceCard = (rot, suit) => {
+    const red = suit === 'h' || suit === 'd', d = { h: heartD, d: diamondD, s: spadeD, c: clubD }[suit];
+    // масть — у лівій верхній частині: її не закриває наступна карта віяла
+    return '<g transform="rotate(' + rot + ' 80 156)"><path d="' + rr(67.5, 101, 28, 47, 3.6) + '" fill="' + I + '" opacity=".4"/><path d="' + rr(66, 99, 28, 47, 3.6) + '" fill="url(#sg-card)" stroke="' + I + '" stroke-width="2.4"/>' +
+      '<path transform="translate(75 113) scale(.32) translate(-35 -50)" d="' + d + '" fill="' + (red ? 'url(#sg-red)' : 'url(#sg-spade)') + '" stroke="' + I + '" stroke-width="5" stroke-linejoin="round"/>' +
+      stitch(72.3, 110.6, 1.8, ['.x.', 'x.x', '.x.'], { x: red ? '#fff6e0' : '#e3122a' }) + '</g>';
+  };
   const fortune = '<svg viewBox="0 0 160 160" class="sg sg-fortune" aria-hidden="true">' +
     '<ellipse cx="80" cy="156" rx="64" ry="6" fill="url(#sg-shadow)"/>' +
     '<g class="a-sway">' +
-    '<path d="M20 160C22 128 46 112 80 112C114 112 138 128 140 160Z" fill="url(#sg-teal)" stroke="' + I + '" stroke-width="3" stroke-linejoin="round"/>' +
-    stitch(36, 140, 3.2, ['x.x.x.x.x.x.x.x.x.x.x.x.x.x', '.o.o.o.o.o.o.o.o.o.o.o.o.o.'], { x: '#e3122a', o: '#f5c33b' }) +
-    // хустка ззаду
-    '<path d="M80 12C43 12 29 44 31 76C32 98 25 112 16 124C40 126 58 117 64 106H96C102 117 120 126 144 124C135 112 128 98 129 76C131 44 117 12 80 12Z" fill="url(#sg-scarf)" stroke="' + I + '" stroke-width="3" stroke-linejoin="round"/>' +
-    rose(42, 52) + rose(118, 52) + rose(36, 96) + rose(124, 96) + rose(80, 22) + rose(58, 30) + rose(102, 30) +
+    // хустка ззаду (спадає на потилицю, з торочками)
+    '<path d="M80 18C53 18 39 42 41 68C42 84 43 96 48 106H112C117 96 118 84 119 68C121 42 107 18 80 18Z" fill="' + SCARF + '" stroke="' + I + '" stroke-width="2.6" stroke-linejoin="round"/>' +
+    fringe(49, 106, 111, 106, 6, 3) +
+    trRose(46, 94, 5, 20) + trRose(114, 92, 5, -30) +
+    // сорочка
+    '<path d="M20 160C22 128 46 112 80 112C114 112 138 128 140 160Z" fill="url(#sg-shirt)" stroke="' + I + '" stroke-width="2.6" stroke-linejoin="round"/>' +
+    // вишиті рукави
+    stitch(24, 136, 3, ['.x.x.', 'xoxox', '.x.x.', 'xoxox', '.x.x.'], { x: '#d81b2c', o: I }) +
+    stitch(121, 136, 3, ['.x.x.', 'xoxox', '.x.x.', 'xoxox', '.x.x.'], { x: '#d81b2c', o: I }) +
+    // керсетка
+    '<path d="M34 160C35 138 46 122 64 115L74 160Z" fill="url(#sg-vest)" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
+    '<path d="M126 160C125 138 114 122 96 115L86 160Z" fill="url(#sg-vest)" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
+    '<path d="M39 158C40 140 49 128 64 120M121 158C120 140 111 128 96 120" fill="none" stroke="#f5c33b" stroke-width="1.4" stroke-dasharray="2.4 2" opacity=".85"/>' +
+    // комір сорочки з вишивкою
+    stitch(68.5, 112.5, 2.6, ['xoxoxoxox'], { x: '#d81b2c', o: I }) +
+    // коралі, дукач
+    strand(62, 116, 80, 132, 98, 116, 11, 2.4) +
+    strand(60, 118, 80, 140, 100, 118, 13, 2.5) +
+    '<path d="M80 129v4" stroke="#b07a1c" stroke-width="1.4"/><circle cx="80" cy="137" r="5.2" fill="url(#sg-gold-v)" stroke="' + I + '" stroke-width="1.4"/><circle cx="80" cy="137" r="2.6" fill="none" stroke="#b07a1c" stroke-width="1"/>' +
     '<g class="a-head">' +
     '<ellipse cx="80" cy="72" rx="26" ry="29" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.6"/>' +
-    '<path d="M56 56C62 47 71 45 80 45C89 45 98 47 104 56C96 51 88 50 80 51C72 50 64 51 56 56Z" fill="#e2dcea" stroke="' + I + '" stroke-width="1.6"/>' +
-    '<path d="M50 60C52 38 66 30 80 30C94 30 108 38 110 60C104 47 93 43 80 43C67 43 56 47 50 60Z" fill="url(#sg-scarf)" stroke="' + I + '" stroke-width="2.6" stroke-linejoin="round"/>' +
-    stitch(60.5, 34.5, 2.6, ['x.x.x.x.x.x.x.x'], { x: '#ffd23a' }) +
+    // сиве волосся ледь з-під хустки
+    '<path d="M60 58C66 51 73 50 80 50C87 50 94 51 100 58C94 55 87 54 80 54C73 54 66 55 60 58Z" fill="#e2dcea" stroke="' + I + '" stroke-width="1.2"/>' +
+    // хустка спереду: м'яко облягає голову, край над чолом без обідка
+    '<path d="M51 94C43 78 43 50 57 36C65 28 73 24 80 24C87 24 95 28 103 36C117 50 117 78 109 94C108 80 105 66 99 58C93 51 87 50 80 50C73 50 67 51 61 58C55 66 52 80 51 94Z" fill="' + SCARF + '" stroke="' + I + '" stroke-width="2.4" stroke-linejoin="round"/>' +
+    '<path d="M52 92C52 80 55 66 61 58C67 51 73 50 80 50C87 50 93 51 99 58C105 66 108 80 108 92" fill="none" stroke="#d0305a" stroke-width="1.6" stroke-dasharray="3 1.6" stroke-linecap="round"/>' +
+    '<path d="M60 34C68 28 74 26 80 26" fill="none" stroke="#8a3a60" stroke-width="2.4" stroke-linecap="round" opacity=".8"/>' +
+    '<path d="M74 26C78 34 79 42 80 49" fill="none" stroke="#120408" stroke-width="1.6" stroke-linecap="round" opacity=".6"/>' +
+    trRose(66, 38, 7, -15) + trRose(104, 52, 6, 40) + trRose(49, 70, 4.2, 70) + trRose(90, 31, 4.2, 10) +
+    '<g fill="#e2335a" opacity=".9"><circle cx="58" cy="52" r="1.3"/><circle cx="112" cy="72" r="1.3"/><circle cx="96" cy="40" r="1.2"/><circle cx="47" cy="84" r="1.2"/></g>' +
     // очі хитрі
     '<path d="M61 71Q69 65 77 71Q69 75 61 71Z" fill="#fff" stroke="' + I + '" stroke-width="1.6"/>' +
     '<path d="M84 71Q92 65 100 71Q92 75 84 71Z" fill="#fff" stroke="' + I + '" stroke-width="1.6"/>' +
     '<g class="a-peek"><circle cx="71" cy="70.4" r="2.9" fill="' + I + '"/><circle cx="94" cy="70.4" r="2.9" fill="' + I + '"/><circle cx="72" cy="69.4" r="1" fill="#fff"/><circle cx="95" cy="69.4" r="1" fill="#fff"/></g>' +
     '<path d="M60 70Q69 62 78 70" fill="none" stroke="' + I + '" stroke-width="2.8" stroke-linecap="round"/>' +
     '<path d="M83 70Q92 63 101 70" fill="none" stroke="' + I + '" stroke-width="2.8" stroke-linecap="round"/>' +
-    '<path d="M58 59Q66 49 76 56" fill="none" stroke="#8a7a90" stroke-width="3.2" stroke-linecap="round"/>' +
-    '<path d="M85 61Q93 60 101 63" fill="none" stroke="#9a8aa0" stroke-width="3" stroke-linecap="round"/>' +
-    '<path d="M56 75q3 2 5 1M104 75q-3 2-5 1" fill="none" stroke="#b06a4a" stroke-width="1.2" stroke-linecap="round" opacity=".7"/>' +
+    '<path d="M62 62Q68 57 76 60" fill="none" stroke="#8a7a90" stroke-width="3" stroke-linecap="round"/>' +
+    '<path d="M85 63Q93 62 99 64" fill="none" stroke="#8a7a90" stroke-width="3" stroke-linecap="round"/>' +
+    '<path d="M57 75q3 2 5 1M103 75q-3 2-5 1" fill="none" stroke="#b06a4a" stroke-width="1.2" stroke-linecap="round" opacity=".7"/>' +
     '<circle cx="64" cy="84" r="6" fill="#ff7a6a" opacity=".45"/><circle cx="97" cy="84" r="6" fill="#ff7a6a" opacity=".45"/>' +
     '<ellipse cx="81" cy="81" rx="5.2" ry="4.6" fill="#ec9c74" stroke="' + I + '" stroke-width="1.8"/><circle cx="79.4" cy="79.6" r="1.3" fill="#fff" opacity=".7"/>' +
     '<path d="M69 91Q80 98 92 89" fill="none" stroke="' + I + '" stroke-width="2.4" stroke-linecap="round"/>' +
     '<rect x="83" y="92" width="3.6" height="3.4" rx=".8" fill="#ffd23a" stroke="' + I + '" stroke-width=".9"/>' +
-    '<path d="M70 102C74 98 86 98 90 102C88 108 72 108 70 102Z" fill="url(#sg-scarf)" stroke="' + I + '" stroke-width="2" stroke-linejoin="round"/>' +
-    '</g>' + beads +
-    fanCard(-20) + fanCard(0) + fanCard(20) +
-    '<ellipse cx="66" cy="146" rx="9" ry="7.5" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.2"/>' +
-    '<ellipse cx="94" cy="146" rx="9" ry="7.5" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.2"/>' +
-    '<path d="M62 142q4-2 8 0M90 142q4-2 8 0" fill="none" stroke="#b06a4a" stroke-width="1.2" stroke-linecap="round"/>' +
+    // хустка під підборіддям, вузол і два кінці з торочками
+    '<path d="M52 92C57 102 67 107 80 107C93 107 103 102 108 92C108 104 96 113 80 113C64 113 52 104 52 92Z" fill="' + SCARF + '" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
+    '<path d="M77 111L60 128L68 132L80 114Z" fill="' + SCARF + '" stroke="' + I + '" stroke-width="2" stroke-linejoin="round"/>' + fringe(60, 128, 68, 132, 5, 2.2) +
+    '<path d="M83 111L101 126L94 131L80 114Z" fill="' + SCARF + '" stroke="' + I + '" stroke-width="2" stroke-linejoin="round"/>' + fringe(94, 131, 101, 126, 5, 2.2) +
+    trRose(67, 124, 3.2, 0) + trRose(94, 123, 3.2, 30) +
+    '<ellipse cx="80" cy="111" rx="6.5" ry="5.2" fill="#6a2448" stroke="' + I + '" stroke-width="2"/><path d="M76 109q4-2 8 0" fill="none" stroke="#b0507a" stroke-width="1.4" stroke-linecap="round"/>' +
+    '</g>' +
+    faceCard(-40, 'h') + faceCard(-20, 's') + faceCard(0, 'd') + faceCard(20, 'c') + faceCard(40, 'h') +
+    '<ellipse cx="70" cy="148" rx="9.5" ry="7.6" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.2"/>' +
+    '<ellipse cx="90" cy="148" rx="9.5" ry="7.6" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.2"/>' +
+    '<path d="M65 144q4-2 8 0M87 144q4-2 8 0" fill="none" stroke="#b06a4a" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<ellipse cx="76" cy="141" rx="3.2" ry="4.4" transform="rotate(-20 76 141)" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="1.6"/>' +
+    '<ellipse cx="84" cy="141" rx="3.2" ry="4.4" transform="rotate(20 84 141)" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="1.6"/>' +
     '</g></svg>';
 
   /* ---------- сцена: ярмарок увечері (1600×900) ---------- */
