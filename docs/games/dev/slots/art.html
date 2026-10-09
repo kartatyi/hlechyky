@@ -32,8 +32,8 @@
   const bar = document.getElementById('bar'), out = document.getElementById('out');
   bar.innerHTML = ids.map((id) => '<a href="?m=' + id + '"' + (id === m ? ' class="on"' : '') + '>' + id + '</a>').join('')
     + '<button id="bw">win</button><button id="bg">glint</button><span class="muted" id="st"></span>';
-  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = m + '-art.css?' + Date.now(); document.head.appendChild(css);
-  const s = document.createElement('script'); s.src = m + '-art.js?' + Date.now();
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '../../../../web/games/slots/' + m + '-art.css?' + Date.now(); document.head.appendChild(css);
+  const s = document.createElement('script'); s.src = '../../../../web/games/slots/' + m + '-art.js?' + Date.now();
   s.onerror = () => { out.textContent = 'Нема ' + m + '-art.js'; };
   s.onload = draw; document.head.appendChild(s);
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

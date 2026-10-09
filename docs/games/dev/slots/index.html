@@ -98,7 +98,8 @@
   <div class="sec" data-sec="cards"><h2>🃏 Карти</h2><div class="tiles"><div class="tile"><div class="e">🃏</div><div><b>Покер</b><small>турнір і кеш-стіл на черепки</small><br><span class="pill ok">є</span></div></div></div></div>
   <div class="note">прев'ю розділу · клік по афіші — <a href="proto.html">стенд автомата</a></div>
 </div>
-<script src="kit.js"></script>
+<!-- Стенд розробника (не віддається сайтом): відкривати файлом, ресурси — з web/games/slots/. -->
+<script src="../../../../web/games/slots/kit.js"></script>
 <script>
 (function () {
   const SLOTS = [
@@ -140,7 +141,7 @@
   draw();
   // афіші — з файлів арту, які вже є (нема — лишається заглушка)
   SLOTS.forEach((s) => {
-    const el = document.createElement('script'); el.src = s.id + '-art.js?' + Date.now();
+    const el = document.createElement('script'); el.src = '../../../../web/games/slots/' + s.id + '-art.js?' + Date.now();
     el.onload = () => {
       const a = window.SlotArt && SlotArt[s.id];
       if (a && a.extras && a.extras.defs && !document.getElementById('sk-defs-' + s.id)) {
@@ -149,7 +150,7 @@
       draw();
     };
     el.onerror = () => el.remove();
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = s.id + '-art.css'; document.head.appendChild(css);
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '../../../../web/games/slots/' + s.id + '-art.css'; document.head.appendChild(css);
     document.head.appendChild(el);
   });
 })();

@@ -1,5 +1,5 @@
 /* SlotKit — спільний програвач слотів і HUD розділу «🎰 Азарт».
-   Звичайний скрипт (не модуль), глобал window.SlotKit. API — у KIT.md.
+   Звичайний скрипт (не модуль), глобал window.SlotKit. API — у docs/games/dev/slots/KIT.md (там же стенди proto.html / index.html / art.html — відкривати файлом).
    Автомат оголошує себе SlotKit.define({...}), стенд/лобі монтує SlotKit.mount(el, id, opts).
    Правила: у спокої — нуль rAF (лише CSS), rAF живе тільки під час обертів/підрахунку/частинок. */
 (function () {

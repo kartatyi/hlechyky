@@ -290,10 +290,33 @@ public class SlotsTests
         var other = new SlotGlek();
         other.Load(json);
         Assert.Equal(5, other.State.Seq);
-        Assert.Equal(k.G.State.Last!.ToJsonString(), other.State.Last!.ToJsonString());
+        Assert.Equal(SlotGame.FieldOnly(k.G.State.Last)!.ToJsonString(), other.State.Last!.ToJsonString());   // лише поле
         Assert.Equal(k.G.State.Spins, other.State.Spins);
         Assert.NotEqual(epoch, other.State.Epoch);
         Assert.Equal(json, other.Save());
+    }
+
+    [Fact]
+    public void Save_keeps_only_the_field_of_the_last_spin_and_the_gamble()
+    {
+        // Рецензія m8: у збереження йшов цілий сценарій (у кластері до 45 КБ) — клієнтові ж після перезавантаження
+        // потрібне лише поле, щоб поставити барабани; старий оберт він не програє, а Ворожка відновлюється з gamble.
+        var k = new SlotsKit();
+        var rng = k.Rig();
+        rng.Stops(SlotsKit.StopsWhere((_, u) => u == 10));
+        Assert.True(k.Spin(10).Ok);
+        Assert.True(k.View.GetProperty("last").GetProperty("script").GetProperty("steps").GetArrayLength() > 1);
+        var json = k.G.Save()!;
+        var other = new SlotGlek();
+        other.Load(json);
+        var steps = other.State.Last!["steps"]!.AsArray();
+        Assert.Single(steps);
+        Assert.Equal("spin", steps[0]!["t"]!.GetValue<string>());
+        Assert.Equal(k.G.State.Last!["win"]!.ToJsonString(), other.State.Last!["win"]!.ToJsonString());
+        Assert.Equal(1, other.State.Seq);
+        Assert.True(other.State.Gamble!.Open);
+        Assert.Equal(20, other.State.Gamble.Amount);
+        Assert.True(k.View.GetProperty("last").GetProperty("script").GetProperty("steps").GetArrayLength() > 1);   // у пам'яті — цілий
     }
 
     [Fact]

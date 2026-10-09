@@ -104,7 +104,32 @@ public abstract class SlotGame : Game
         Refresh();
     }
 
-    public override string? Save() => JsonSerializer.Serialize(State, Json);
+    /// <summary>
+    /// У збереження — без цілого сценарію: після перезавантаження клієнт старий оберт не програє, лише ставить його поле
+    /// (перший крок spin/set), тож решта кроків (каскади, респіни, бонус — до ~45 КБ у кластері) у базі зайва.
+    /// Повний сценарій живе в пам'яті для виду поточної вкладки.
+    /// </summary>
+    public override string? Save()
+    {
+        var full = State.Last;
+        try
+        {
+            State.Last = FieldOnly(full);
+            return JsonSerializer.Serialize(State, Json);
+        }
+        finally { State.Last = full; }
+    }
+
+    /// <summary>Сценарій → лише поле останнього оберту (перший крок spin/set) і виграш.</summary>
+    public static JsonObject? FieldOnly(JsonObject? script)
+    {
+        if (script is null) return null;
+        var field = (script["steps"] as JsonArray)?.FirstOrDefault(s => s?["t"]?.GetValueKind() == JsonValueKind.String
+            && s["t"]!.GetValue<string>() is "spin" or "set");
+        var trimmed = new JsonObject { ["steps"] = field is null ? new JsonArray() : new JsonArray(field.DeepClone()) };
+        if (script["win"] is { } win) trimmed["win"] = win.DeepClone();
+        return trimmed;
+    }
 
     public override void Load(string json)
     {
