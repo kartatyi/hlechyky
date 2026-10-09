@@ -309,11 +309,8 @@
     const bud = cl.meterEl && cl.meterEl.querySelector('.bud.b' + n);
     if (bud) ctx.fx.at(bud, { kind: 'sclspark', n: 18, speed: 300, size: 9, gravity: 60, life: 1 });
   }
-  // центр елемента в px сцени (дизайну)
-  function rel(ctx, el) {
-    const st = ctx.cl.st, a = st.getBoundingClientRect(), b = el.getBoundingClientRect(), k = a.width / st.offsetWidth || 1;
-    return [(b.left - a.left + b.width / 2) / k, (b.top - a.top + b.height / 2) / k];
-  }
+  // центр елемента в px сцени (дизайну) — помічник кіта
+  function rel(ctx, el) { return ctx.rel(el, ctx.cl.st); }
   function headEl(ctx) { return ctx.cl.meterEl && (ctx.cl.meterEl.querySelector('.m-head') || ctx.cl.meterEl); }
 
   // крапельки: від згаслих клітинок до голівки шкали (WAAPI, без rAF)
@@ -529,8 +526,7 @@
     // після каскадів старі виграшні клітинки вже впали/зникли — кіт не має перебирати їх у спокої
     onSpinEnd(ctx) { ctx.lastWins = null; ctx.clearWin(); },
     onCascade(ctx, n) {
-      ctx.reels.cells().forEach((e) => e && e.classList.remove('dim'));   // після падіння поле знову світле
-      if (n < 2) return;
+      if (n < 2) return;   // dim після падіння знімає кіт
       ctx.cl.st.querySelectorAll('.scl-chain').forEach((e) => { e.textContent = 'каскад ×' + n; e.classList.remove('on'); void e.offsetWidth; e.classList.add('on'); });
     },
     onWin(ctx, step) {

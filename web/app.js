@@ -4607,6 +4607,7 @@
     me.shards = m.shards || null;   // { buy, sell } — черепки за гривні увімкнено в конфігу (web/buy.js)
     me.games = m.games !== false;   // розділ «Ігри» (Games:Enabled)
     me.padel = m.padel !== false;   // Падельня (Padel:Enabled)
+    me.slots = m.slots !== false;   // автомати (Slots:Enabled): false — лобі ховає «🍒 Слоти»
     paintSwitches();
     // Адресу намалювали ще до /api/me: вимкнене — переводимо в Ефір
     if ((!me.games && parseHash().head === 'games') || (!me.padel && parseHash().head === 'padel')) applyRoute();

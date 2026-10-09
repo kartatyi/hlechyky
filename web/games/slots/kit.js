@@ -41,6 +41,21 @@
 
   // ---------- Скарбничка Глека (мок): однакова в лобі й на автоматі ----------
   SK.jackpot = () => 1250000 + Math.floor((Date.now() - Date.UTC(2026, 9, 9)) / 1000 * 1.3);
+  // Живе: сайт (web/games/slot.js) кладе сюди відповідь /api/slots/feed — { jackpot, mustHit?, lines: [рядок…] }.
+  // Поки SK.live нема (стенд), тікер показує мок вище.
+  SK.live = SK.live || null;
+  SK.setLive = function (o) { SK.live = Object.assign(SK.live || {}, o || {}); };
+  // Свій вид частинок із будь-якого SVG (напр. extras.spark): SK.svgParticle('spark', svg) → 'spark' для fx.burst({kind})
+  SK.svgParticle = function (name, svg) {
+    if (!svg) return null;
+    let src = String(svg); if (!/xmlns=/.test(src)) src = src.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    const img = new Image(); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    SK.particles[name] = function (g, p) {
+      if (img.complete && img.naturalWidth) g.drawImage(img, -p.s, -p.s, p.s * 2, p.s * 2);
+      else { g.fillStyle = p.color || '#ffe58a'; g.beginPath(); g.arc(0, 0, p.s * 0.5, 0, 7); g.fill(); }
+    };
+    return name;
+  };
   SK.feed = [
     'smaug виніс 24 600 🏺 у «Розбитих глеках»',
     'владік зловив три Глеки — 30 000 🏺',
@@ -169,7 +184,7 @@
       const kind = o.kind || 'coin', a = (o.angle != null ? o.angle : -Math.PI / 2) + (Math.random() - 0.5) * (o.spread != null ? o.spread : 2.2);
       const sp = (o.speed || 520) * (0.45 + Math.random() * 0.75);
       const p = { kind, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: Math.random() * 6, vr: (Math.random() - 0.5) * 10,
-        spin: Math.random() * 6, vs: 4 + Math.random() * 8, s: (o.size || 12) * (0.7 + Math.random() * 0.6), life: o.life || 2.6, age: 0,
+        spin: Math.random() * 6, vs: 4 + Math.random() * 8, s: (o.size || 12) * (0.7 + Math.random() * 0.6), life: o.life || 2.6, age: 0, img: o.img, data: o.data,
         g: o.gravity != null ? o.gravity : 1100, color: o.color || (kind === 'shard' ? CLAY[SK.rnd.int(4)] : kind === 'confetti' ? CONF[SK.rnd.int(CONF.length)] : null) };
       if (kind === 'shard') { const n = 3 + SK.rnd.int(2); p.pts = []; for (let i = 0; i < n; i++) { const t = i / n * 6.283 + Math.random() * 0.8; const rr = 0.5 + Math.random() * 0.6; p.pts.push([Math.cos(t) * rr, Math.sin(t) * rr]); } }
       if (kind === 'spark') { p.g = o.gravity != null ? o.gravity : 120; p.life = o.life || 0.9; }
@@ -378,6 +393,7 @@
     const cols = o.cols, rows = o.rows, S = o.size, gap = o.gap == null ? 6 : o.gap;
     const W = cols * S + (cols - 1) * gap, H = rows * S + (rows - 1) * gap;
     const keysPool = o.pool || Object.keys((ctx.art && ctx.art.symbols) || {});
+    const pickInit = weighted(o.weights || ctx.machine.weights, keysPool);
     const el = div('sk-grid'); el.style.width = W + 'px'; el.style.height = H + 'px'; el.style.setProperty('--S', S + 'px');
     host.appendChild(el);
     const colEls = []; for (let c = 0; c < cols; c++) { const ce = div('sk-col'); ce.style.cssText = 'left:' + c * (S + gap) + 'px;width:' + S + 'px;height:' + H + 'px'; el.appendChild(ce); colEls.push(ce); }
@@ -435,23 +451,27 @@
       }
       els.forEach((e) => e.remove());
       ctx.reels.clearLines();
-      const falls = [];
+      const falls = [], fresh = [], moved = [];
       cells = cells.map((col, c) => {
         const keep = col.map((e, r) => [e, r]).filter(([, r]) => !rem.has(c + ',' + r));
         const k = rows - keep.length, ncol = [];
-        for (let r = 0; r < k; r++) { const e = mk(c, r, step.grid[c][r]); ncol.push(e); falls.push(fallIn(e, c, r, k + 0.5, c * 40 + (k - 1 - r) * 30)); }
+        for (let r = 0; r < k; r++) { const e = mk(c, r, step.grid[c][r]); ncol.push(e); fresh.push([c, r]); falls.push(fallIn(e, c, r, k + 0.5, c * 40 + (k - 1 - r) * 30)); }
         keep.forEach(([e, r0], i) => {
           const r = k + i, key = step.grid[c][r];
           if (key != null && e._key !== key) { e._key = key; e.dataset.k = key; e.replaceChildren(ctx.symNode(key)); }
           e.classList.remove('win');
           const [x, y] = pos(c, r); e.style.transform = 'translate(' + x + 'px,' + y + 'px)';
-          if (r !== r0) falls.push(fallIn(e, c, r, r - r0, c * 40));
+          if (r !== r0) { moved.push([c, r]); falls.push(fallIn(e, c, r, r - r0, c * 40)); }
           ncol.push(e);
         });
         return ncol;
       });
       await Promise.all(falls);
       ctx.sound('stop', { pitch: 1.3 });
+      // хто новий, а хто зсунувся (поле ПІСЛЯ падіння) — для своєї пружинки; також подія 'drop'
+      ctx.lastDrop = { fresh, moved };
+      ctx.emit('drop', ctx.lastDrop);
+      return ctx.lastDrop;
     }
     async function morph(list) {
       list.forEach(([c, r, key]) => {
@@ -471,8 +491,15 @@
       get busy() { return false; },
     };
     addLines(api, lines);
-    setNow(o.initial || ctx.keepGrid && { grid: ctx.keepGrid } || { grid: Array.from({ length: cols }, () => Array.from({ length: rows }, () => SK.rnd.pick(keysPool))) });
+    setNow(o.initial || ctx.keepGrid && { grid: ctx.keepGrid } || { grid: Array.from({ length: cols }, () => Array.from({ length: rows }, pickInit)) });
     return api;
+  }
+  // weights: { ключ: вага } — початкове поле не з рівномірного пулу; нема — рівномірно з pool
+  function weighted(w, pool) {
+    const ks = w ? Object.keys(w).filter((k) => w[k] > 0) : [];
+    if (!ks.length) return () => SK.rnd.pick(pool);
+    const tot = ks.reduce((a, k) => a + w[k], 0);
+    return () => { let x = Math.random() * tot; for (const k of ks) { x -= w[k]; if (x < 0) return k; } return ks[ks.length - 1]; };
   }
   // Барабани теж уміють morph (напр. дикі, що з'являються)
   function reelsMorph(api, ctx) {
@@ -499,7 +526,11 @@
       await ctx.rollMeter(ctx.meter + amount, Math.min(cap, ctx.rollMs(amount)));
       await ctx.wait(s.hold != null ? s.hold : 350);
     },
-    async cascade(s, ctx) { await ctx.reels.cascade(s); if (s.n) ctx.emit('cascade', s.n); },
+    async cascade(s, ctx) {
+      await ctx.reels.cascade(s);
+      ctx.reels.cells().forEach((e) => e && e.classList.remove('dim'));   // після падіння поле знову світле
+      if (s.n) ctx.emit('cascade', s.n);
+    },
     async morph(s, ctx) { await ctx.reels.morph(s.cells); },
     async banner(s, ctx) { await ctx.banner(s.text, s); },
     async pause(s, ctx) { await ctx.wait(s.ms || 500); },
@@ -543,6 +574,30 @@
     },
   };
 
+  // Скарбничка Глека: найбільше свято. Сума не входить у script.win — кіт зараховує її сам.
+  SK.steps.jackpot = async function (s, ctx) {
+    const amt = Math.max(0, Math.round(s.amount || 0));
+    ctx.emit('jackpot', amt);
+    ctx.sound('bonus');
+    const ov = ctx.overlay('sk-big sk-jackpot', '<div class="sk-big-rays"></div><div class="sk-big-c"><div class="sk-jk-pot">🏺</div>'
+      + '<div class="sk-big-t">Скарбничка Глека!</div><div class="sk-big-n">0</div><div class="sk-big-x">' + esc(s.sub || 'уся — тобі') + '</div></div>');
+    ov.dataset.tier = 'jackpot';
+    const N = ov.querySelector('.sk-big-n');
+    const rr = () => ctx.root.getBoundingClientRect();
+    const burst = (k) => { const r = rr(); ctx.fx.burst(r.width / 2, r.height * 0.42, { kind: k, n: k === 'coin' ? 60 : 90, speed: 1000, size: k === 'coin' ? 15 : 10 }); };
+    burst('confetti'); burst('coin');
+    ctx.fx.rain({ kind: 'coin', ms: 9000, rate: 44, size: 15 });
+    const tick = ctx.interval(() => burst('confetti'), 1500);
+    await ctx.roll(0, amt, clamp(ctx.rollMs(amt) + 2600, 3200, 8000), (v) => { N.textContent = fmt(v); });
+    ctx.clearTimer(tick);
+    N.classList.add('done'); ctx.sound('big'); burst('coin');
+    ctx.addBalance(amt); ctx.sound('coin');
+    if (SK.live && SK.live.jackpot != null) SK.live.jackpot = 0;   // впала — тікер підхопить нову суму з наступного опитування
+    await ctx.wait(3200, true);
+    ctx.fx.stopRain();
+    await ctx.closeOverlay(ov);
+  };
+
   // ---------- Монтування ----------
   // SlotKit.mount(el, idАбоАвтомат, {api, balance, onBalance}) → екземпляр
   SK.mount = function (host, idOrMachine, opts) {
@@ -555,7 +610,7 @@
     const timers = new Set(), intervals = new Set(), offs = [];
     const handlers = {};
     const tplCache = new Map();
-    const bets = machine.bets || SK.BETS;
+    const bets = (opts.bets && opts.bets.length ? opts.bets : null) || machine.bets || SK.BETS;
 
     // спільні градієнти арту — один раз на сторінку
     if (art && art.extras && art.extras.defs && !document.getElementById('sk-defs-' + id)) {
@@ -571,8 +626,9 @@
     const box = $('.sk-box'), area = $('.sk-area'), hud = $('.sk-hud'), layer = $('.sk-layer'), sceneEl = $('.sk-scene'), ticker = $('.sk-ticker');
 
     let skipFns = [];
+    const anims = new Set();
     const ctx = {
-      id, machine, art, root, box, area, hud, layer, loop,
+      id, machine, art, root, box, area, hud, layer, loop, api: opts.api || null, bets,
       bet: opts.bet && bets.includes(opts.bet) ? opts.bet : bets[Math.min(2, bets.length - 1)],
       balance: opts.balance != null ? opts.balance : 10000,
       state: machine.initialState ? machine.initialState() : {},
@@ -589,10 +645,32 @@
       listen(target, ev, fn, o) { target.addEventListener(ev, fn, o); offs.push(() => target.removeEventListener(ev, fn, o)); },
       // Чекання, яке пропускається тапом/пробілом (skippable=true — лише тапом, без турбо)
       wait(ms, tapOnly) {
-        const real = tapOnly ? ms : (ctx.turbo ? ms * 0.5 : ms);
+        const real = ctx.turbo ? ms * (tapOnly ? 0.6 : 0.5) : ms;   // заставки (tapOnly) у турбо — трохи коротші
         return new Promise((res) => { let done = false; const fin = () => { if (done) return; done = true; skipFns = skipFns.filter((f) => f !== fin); res(); }; ctx.timeout(fin, real); skipFns.push(fin); });
       },
-      skip() { const f = skipFns; skipFns = []; f.forEach((x) => x()); },
+      skip() { const f = skipFns; skipFns = []; f.forEach((x) => x()); anims.forEach((a) => { try { a.finish(); } catch (e) { /* уже знята */ } }); anims.clear(); },
+      // WAAPI, яку пропуск (тап/пробіл) доводить до кінця; у турбо — коротша. → Animation
+      animate(el, kf, o) {
+        o = Object.assign({}, typeof o === 'number' ? { duration: o } : o);
+        if (ctx.turbo && o.duration) o.duration *= 0.6;
+        const a = el.animate(kf, o); anims.add(a);
+        a.finished.then(() => anims.delete(a), () => anims.delete(a));
+        return a;
+      },
+      // політ html від from до to (елементи будь-де в автоматі; масштаб кіта врахований) → Promise
+      flyTo(from, to, html, o) {
+        o = o || {};
+        const f = div('sk-fly ' + (o.cls || ''), html || ''), [x0, y0] = ctx.rel(from, box), [x1, y1] = ctx.rel(to, box);
+        f.style.left = x0 + 'px'; f.style.top = y0 + 'px';
+        layer.appendChild(f);
+        const dx = x1 - x0, dy = y1 - y0, arc = o.arc != null ? o.arc : -Math.min(160, Math.hypot(dx, dy) * 0.3);
+        const a = ctx.animate(f, [
+          { transform: 'translate(-50%,-50%) scale(' + (o.from || 1) + ')', opacity: 1 },
+          { transform: 'translate(calc(-50% + ' + dx / 2 + 'px),calc(-50% + ' + (dy / 2 + arc) + 'px)) scale(' + ((o.from || 1) + (o.to || 0.6)) / 2 * 1.15 + ')', opacity: 1, offset: 0.5 },
+          { transform: 'translate(calc(-50% + ' + dx + 'px),calc(-50% + ' + dy + 'px)) scale(' + (o.to || 0.6) + ')', opacity: o.fade === false ? 1 : 0.2 },
+        ], { duration: o.ms || 650, easing: o.easing || 'cubic-bezier(.45,0,.3,1)', delay: o.delay || 0, fill: 'forwards' });
+        return a.finished.catch(() => {}).then(() => { f.remove(); if (o.burst && to.isConnected) ctx.fx.at(to, o.burst); });
+      },
       symHtml(key) {
         const s = art && art.symbols && art.symbols[key];
         return s && s.svg ? s.svg : '<div class="sk-ph" style="--h:' + hue(key) + '"><span>' + esc(key) + '</span></div>';
@@ -617,6 +695,42 @@
         return r;
       },
       cell(c, r) { return ctx.reels.cell(c, r); },
+      // тихо перетворити клітинку без очікування (morph чекає ~450 мс на крок)
+      morphCell(c, r, key) {
+        const e = ctx.reels && ctx.reels.cell(c, r); if (!e) return null;
+        e._key = key; e.dataset.k = key; e.replaceChildren(ctx.symNode(key));
+        e.classList.remove('sk-morph', 'win', 'dim', 'glint'); void e.offsetWidth; e.classList.add('sk-morph');
+        return e;
+      },
+      // центр елемента в px дизайну відносно base (за замовчуванням ctx.area) — для польотів між елементами
+      rel(el, base) {
+        base = base || area;   // base може бути й box (коробка дизайну) — тоді px від її лівого верхнього кута
+        const a = base.getBoundingClientRect(), b = el.getBoundingClientRect(), k = (a.width / (base.offsetWidth || a.width)) || 1;
+        return [(b.left - a.left + b.width / 2) / k, (b.top - a.top + b.height / 2) / k];
+      },
+      // клітинка поля в px поля ctx.reels.el: { x, y, w, h }
+      cellBox(c, r) {
+        const R = ctx.reels, [x, y] = R.center(c, r), w = R.cellW || R.size, h = R.size;
+        return { x: x - w / 2, y: y - h / 2, w, h };
+      },
+      // своя сітка поверх ctx.reels: шар із гніздом на кожну клітинку; hide — сховати барабани під ним
+      gridLayer(cls, o) {
+        const R = ctx.reels; if (!R) return null;
+        const L = div('sk-glayer ' + (cls || '')); const slots = [];
+        for (let c = 0; c < R.cols; c++) {
+          slots.push([]);
+          for (let r = 0; r < R.rows; r++) {
+            const b = ctx.cellBox(c, r), e = div('sk-gslot');
+            e.style.cssText = 'left:' + b.x + 'px;top:' + b.y + 'px;width:' + b.w + 'px;height:' + b.h + 'px';
+            e.dataset.c = c; e.dataset.r = r; L.appendChild(e); slots[c].push(e);
+          }
+        }
+        R.el.appendChild(L);
+        const api = { el: L, slot: (c, r) => slots[c] && slots[c][r], hide(on) { ctx.hideReels(on); }, remove() { L.remove(); ctx.hideReels(false); } };
+        if (o && o.hide) api.hide(true);
+        return api;
+      },
+      hideReels(on) { if (!ctx.reels) return; ctx.reels.hidden = !!on; ctx.reels.el.classList.toggle('sk-rhide', !!on); },
       clearWin() {
         if (!ctx.reels) return;
         ctx.reels.cells().forEach((e) => e && e.classList.remove('win', 'glint', 'dim'));
@@ -688,6 +802,8 @@
         await ctx.closeOverlay(b);
       },
       addBalance(n) { ctx.balance += n; updateHud(); if (opts.onBalance) opts.onBalance(ctx.balance); },
+      // баланс від сервера (сайт): поставити як є, без анімації
+      setBalance(n) { if (n == null || !isFinite(n)) return; ctx.balance = n; updateHud(); },
       say(text, ms) { const m = hud.querySelector('.sk-msg'); if (!m) return; m.textContent = text; m.classList.remove('pulse'); void m.offsetWidth; m.classList.add('pulse'); if (ms) ctx.timeout(() => { if (m.textContent === text) m.textContent = ''; }, ms); },
       spin: () => doSpin(),
       updateHud: () => updateHud(),
@@ -757,7 +873,8 @@
       closeMenus();
       const unit = machine.payUnit || 1;
       const rows = (machine.paytable || []).map((row) => {
-        const pays = Object.keys(row.pays || {}).sort((a, b) => b - a).map((n) => '<div><i>' + esc(n) + (row.unit || '×') + '</i> <b>' + fmt(row.pays[n] * unit * ctx.bet) + '</b></div>').join('');
+        // row.labels: { 12: '12+', 10: '10–11' } — свій підпис кількості замість «N×»/«N+»
+        const pays = Object.keys(row.pays || {}).sort((a, b) => parseFloat(b) - parseFloat(a)).map((n) => '<div><i>' + esc(row.labels && row.labels[n] != null ? row.labels[n] : n + (row.unit || '×')) + '</i> <b>' + fmt(row.pays[n] * unit * ctx.bet) + '</b></div>').join('');
         return '<div class="sk-pt-row"><div class="sk-pt-sym sk-cell">' + ctx.symHtml(row.key) + '</div><div class="sk-pt-txt"><div class="sk-pt-n">' + esc(ctx.symName(row.key)) + '</div>' + (row.note ? '<div class="sk-pt-note">' + esc(row.note) + '</div>' : '') + '</div><div class="sk-pt-pay">' + pays + '</div></div>';
       }).join('');
       let linesH = '';
@@ -777,10 +894,25 @@
     }
 
     // ----- тікер «Скарбничка Глека» -----
-    ticker.innerHTML = '<span class="sk-jp"><i>🏺</i> скарбничка Глека <b class="sk-jp-v"></b></span><span class="sk-feed"><span class="sk-feed-t"></span></span>';
-    let feedI = SK.rnd.int(SK.feed.length);
-    const tickJp = () => { ticker.querySelector('.sk-jp-v').textContent = fmt(SK.jackpot()); };
-    const tickFeed = () => { const t = ticker.querySelector('.sk-feed-t'); t.classList.remove('in'); void t.offsetWidth; t.textContent = SK.feed[feedI++ % SK.feed.length]; t.classList.add('in'); };
+    ticker.innerHTML = '<span class="sk-jp"><i>🏺</i> скарбничка Глека <b class="sk-jp-v"></b><small class="sk-jp-must"></small></span><span class="sk-feed"><span class="sk-feed-t"></span></span>';
+    let feedI = SK.rnd.int(SK.feed.length), jpShown = null;
+    const jpEl = ticker.querySelector('.sk-jp-v'), mustEl = ticker.querySelector('.sk-jp-must');
+    // Живу суму (SK.live) показуємо, що м'яко доростає до свіжої: раз на секунду чверть різниці
+    const tickJp = () => {
+      const L = SK.live;
+      if (!L || L.jackpot == null) { jpEl.textContent = fmt(SK.jackpot()); return; }
+      const t = L.jackpot;
+      jpShown = jpShown == null || t < jpShown ? t : Math.min(t, jpShown + Math.max(1, Math.ceil((t - jpShown) / 4)));
+      jpEl.textContent = fmt(jpShown);
+      const m = L.mustHit > 0 ? 'впаде до ' + fmt(L.mustHit) : '';
+      if (mustEl.textContent !== m) mustEl.textContent = m;
+    };
+    const feedNow = () => (SK.live ? SK.live.lines || [] : SK.feed);
+    const tickFeed = () => {
+      const t = ticker.querySelector('.sk-feed-t'), list = feedNow();
+      if (!list.length) { t.textContent = ''; return; }
+      t.classList.remove('in'); void t.offsetWidth; t.textContent = list[feedI++ % list.length]; t.classList.add('in');
+    };
     tickJp(); tickFeed(); ctx.interval(tickJp, 1000); ctx.interval(tickFeed, 7000);
 
     // ----- сцена -----
@@ -821,7 +953,7 @@
     let glintT = 0;
     function glintLoop() {
       glintT = ctx.timeout(() => {
-        if (!ctx.busy && ctx.reels && !document.hidden) {
+        if (!ctx.busy && ctx.reels && !ctx.reels.hidden && !ctx.fs && ctx.sceneNow !== 'bonus' && !document.hidden) {
           const cs = ctx.reels.cells().filter((e) => e && !e.classList.contains('win'));
           const e = SK.rnd.pick(cs); if (e) { e.classList.add('glint'); ctx.timeout(() => e.classList.remove('glint'), 1100); }
         }
@@ -876,11 +1008,15 @@
       ctx.busy = false; ctx.script = null;
       if (script && script.state) ctx.state = script.state;
       updateHud();
+      // після каскадів старі виграшні клітинки вже впали — у спокої перебирати нема чого
+      if (machine.cycleWins === false || (script && script.steps && script.steps.some((s) => s.t === 'cascade'))) ctx.lastWins = null;
       ctx.emit('spinEnd', script);
       if (ctx.pendingOrient) fit();
       startCycle();
       if (ctx.auto) {
-        const hadBonus = script && script.steps && script.steps.some((s) => s.t === 'bonusIn');
+        // бонус: script.bonus, крок bonusIn або свої кроки з machine.bonusSteps (напр. ['holdIn'])
+        const bsteps = ['bonusIn'].concat(machine.bonusSteps || []);
+        const hadBonus = script && (script.bonus || (script.steps && script.steps.some((s) => bsteps.includes(s.t))));
         if (hadBonus && ctx.autoStopBonus) ctx.auto = 0;
         else if (ctx.balance < ctx.bet) ctx.auto = 0;
         else { if (ctx.auto !== Infinity) ctx.auto--; if (ctx.auto) ctx.timeout(() => { if (ctx.auto && !ctx.busy) doSpin(); }, ctx.turbo ? 200 : 550); }
@@ -931,7 +1067,9 @@
     }
 
     // ----- клавіатура й пад -----
+    const seen = () => root.isConnected && root.offsetParent !== null && !document.hidden;
     ctx.listen(window, 'keydown', (e) => {
+      if (!seen()) return;
       if (e.code !== 'Space' && e.key !== ' ') { if (e.key === 'Escape') { closeMenus(); const m = layer.querySelector('.sk-modal'); if (m) m.remove(); } return; }
       const tg = e.target; if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.isContentEditable)) return;
       e.preventDefault(); if (!e.repeat) act();
@@ -940,7 +1078,7 @@
     const padPoll = () => {
       const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
       if (!pads.length) { ctx.clearTimer(padT); padT = 0; return; }
-      const down = pads.some((p) => p.buttons[0] && p.buttons[0].pressed);
+      const down = seen() && pads.some((p) => p.buttons[0] && p.buttons[0].pressed);
       if (down && !padPrev) act();
       padPrev = down;
     };

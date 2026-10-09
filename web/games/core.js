@@ -47,6 +47,7 @@
   let focusSent;                // що востаннє сказали FocusRoom: id кімнати або null; undefined — ще нічого
   let away = false;             // вкладка давно схована або людина давно нічого не чіпала
   let wallet = null;            // баланс черепків, null — ще не питали
+  const quietW = new Map();     // приставка причини → скільки модулів просять тиші (слоти: 'slot-' на кожен оберт)
   let newsSeen = null;          // гра → версія «що нового», яку вже бачили; null — ще не питали сервер
   let played = null;            // Set ігор, у які я хоч раз грав (сервер, /api/games/news); null — не знаємо
   const newsShown = new Set();  // кому вже показали в цій вкладці (щоб не вискакувало двічі, поки летить POST)
@@ -1702,6 +1703,7 @@
     for (const g of catalog.games) {
       if (g.unlisted) continue;   // стенди розробника (mgprobe) — лише посиланням #games/new/<id>
       if (g.off) continue;        // вимкнено в конфігу сайту (Games:Off) — сервер однаково не відкриє
+      if (me.slots === false && SLOT_INFO[g.id]) continue;   // автомати на перерві (Slots:Enabled) — тема «🍒 Слоти» зникає
       const f = familyOf[g.id];
       if (f) {
         if (seen.has(f.id)) continue;
@@ -1742,6 +1744,77 @@
     if (e.solo) return '<button class="primary" data-solo="' + esc(e.g.id) + '">Грати</button>';
     return '<button data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '">+ Стіл</button>';
   }
+  // ---------------------------------------------------------------------------------------------
+  // Азарт: афіші слотів і шапка розділу (Скарбничка Глека + «Заноси тижня» з /api/slots/feed)
+  // Афіша — статичний svg у web/games/slots/posters/<id>.svg (вирізаний з SlotArt[id].poster), щоб лобі не тягло арт.
+  const SLOT_INFO = {
+    'slot-glek': { mech: '3 барабани · 5 ліній · Ворожка ×2', vol: 1 },
+    'slot-cascade': { mech: 'від 8 однакових · каскади · писанки-множники', vol: 3 },
+    'slot-hold': { mech: '20 ліній · утримуй і вигравай · 4 скарби', vol: 3 },
+    'slot-cluster': { mech: 'поле 7×7 · кластери від 5 · шкала папороті', vol: 2 },
+  };
+  const VOL = ['', 'низька', 'середня', 'висока'];
+  function posterHtml(e) {
+    const id = e.g.id, inf = SLOT_INFO[id] || { mech: e.hint, vol: 2 };
+    const now = playingIn(id);
+    return '<div class="gposter' + (isNewGame(id) ? ' fresh' : '') + '" data-pre="' + esc(id) + '">'
+      + '<img class="gp-img" src="/games/slots/posters/' + esc(id) + '.svg" alt="" loading="lazy" decoding="async">'
+      + '<div class="gp-txt"><div class="gp-t"><b>' + esc(e.title) + '</b>' + badgeOf(e) + '</div>'
+      + '<div class="gp-m">' + esc(inf.mech) + '</div>'
+      + (now.length ? '<div class="gp-now" title="' + esc(whoTitle(now)) + '"><i class="gdot"></i>' + esc(whoShort(now, 2)) + ' <span class="muted">крутить</span></div>' : '')
+      + '<div class="gp-f"><span class="gp-v" title="волатильність: ' + VOL[inf.vol] + '">' + '<i>⚡</i>'.repeat(inf.vol)
+      + '<i class="off">⚡</i>'.repeat(3 - inf.vol) + '<span class="muted"> ' + VOL[inf.vol] + '</span></span>'
+      + '<button class="primary gp-play" data-solo="' + esc(id) + '">Грати</button></div></div></div>';
+  }
+  let azFeed = null, azAt = 0, azShown = null, azT = 0, azN = 0;
+  const azFmt = (n) => Math.round(n || 0).toLocaleString('uk-UA').replace(/,/g, ' ');
+  const AZ_TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті' };
+  function azWinsHtml() {
+    const w = (azFeed && azFeed.wins) || [];
+    if (!w.length) return '<div class="muted small gaz-empty">Цього тижня ще ніхто не заносив. Може, ти перший?</div>';
+    return '<ol class="gaz-list">' + w.slice(0, 6).map((x) => '<li><b>' + esc(x.nick) + '</b><span class="muted">'
+      + esc(x.jackpot ? 'Скарбничка' : (byId[x.game] && byId[x.game].title) || AZ_TITLES[x.game] || x.game) + '</span>'
+      + '<span class="gaz-x">' + (x.jackpot ? '🏺' : '×' + (Math.round(x.mult * 10) / 10)) + '</span>'
+      + '<span class="gaz-sum">' + azFmt(x.jackpot || x.win) + ' 🏺</span></li>').join('') + '</ol>';
+  }
+  function azartHeadHtml() {
+    if (me.slots === false) return '';
+    return '<div class="gaz-head"><div class="gaz-jp"><span class="gaz-jp-l">🏺 Скарбничка Глека</span>'
+      + '<b class="gaz-jp-v">' + (azShown != null ? azFmt(azShown) : '…') + '</b>'
+      + '<small class="gaz-must">' + (azFeed && azFeed.mustHit > 0 ? 'впаде до ' + azFmt(azFeed.mustHit) : '') + '</small>'
+      + '<span class="muted small">1 % кожної ставки — сюди; будь-який оберт може її зірвати</span></div>'
+      + '<div class="gaz-wins"><h6>🔥 Заноси тижня</h6><div class="gaz-wl">' + azWinsHtml() + '</div></div></div>';
+  }
+  async function azFetch() {
+    try {
+      const f = await api('GET', '/api/slots/feed');
+      if (!f) return;
+      const fresh = !azFeed || JSON.stringify(azFeed.wins) !== JSON.stringify(f.wins);
+      azFeed = f; azAt = Date.now();
+      if (azShown == null || f.jackpot < azShown) azShown = f.jackpot;
+      const el = root && root.querySelector('.gaz-head');
+      if (!el) return;
+      el.querySelector('.gaz-must').textContent = f.mustHit > 0 ? 'впаде до ' + azFmt(f.mustHit) : '';
+      if (fresh) el.querySelector('.gaz-wl').innerHTML = azWinsHtml();
+    } catch (e) { /* мережа — наступного разу */ }
+  }
+  /// Опитування лише поки шапку Азарту видно (лобі, вкладка): раз на 7 с запит, раз на секунду сума м'яко доростає.
+  function azartWatch() {
+    if (azT || !(root && root.querySelector('.gaz-head'))) return;
+    if (Date.now() - azAt > 6000) azFetch();
+    azT = setInterval(() => {
+      const el = root && root.querySelector('.gaz-head');
+      if (!el || !shown || view.kind !== 'lobby') { clearInterval(azT); azT = 0; return; }
+      if (document.hidden) return;
+      if (++azN % 7 === 0) azFetch();
+      if (azFeed && azShown != null && azShown < azFeed.jackpot) {
+        azShown = Math.min(azFeed.jackpot, azShown + Math.max(1, Math.ceil((azFeed.jackpot - azShown) / 4)));
+      }
+      const v = el.querySelector('.gaz-jp-v'), t = azShown != null ? azFmt(azShown) : '…';
+      if (v.textContent !== t) v.textContent = t;
+    }, 1000);
+  }
+
   function tileHtml(e) {
     const now = e.solo ? playingIn(e.g.id) : [];
     const fresh = isNewGame(e.ids[0]);
@@ -1889,11 +1962,14 @@
     // Каталог: на «Усі» без пошуку — розділами з заголовками, а в розділі — темами з підзаголовками (у темі спершу те,
     // у що грають). Обраний розділ — другий ряд чипів тем: «Усе в розділі» — так само темами, обрана тема — лише її плитки.
     // Пошук — просто знайдене, без тем.
-    const tilesOf = (items) => '<div class="gtiles">' + items.map(tileHtml).join('') + '</div>';
+    // Тема «🍒 Слоти» — афіші автоматів, а не звичайні плитки
+    const tilesOf = (items, tid) => tid === 'slots'
+      ? '<div class="gposters">' + items.map(posterHtml).join('') + '</div>'
+      : '<div class="gtiles">' + items.map(tileHtml).join('') + '</div>';
     // Теми розділу — блоки в одній сітці з колонками плитки: дрібні стають поруч, якщо влазять (--n — скільки плиток).
-    const byThemes = (ths) => '<div class="gthemegrid">' + ths.map(({ t, items }) => '<div class="gtblock" style="--n:' + items.length + '">'
+    const byThemes = (ths) => '<div class="gthemegrid">' + ths.map(({ t, items }) => '<div class="gtblock' + (t.id === 'slots' ? ' gt-slots' : '') + '" style="--n:' + items.length + '">'
       + '<h5 class="gtheme">' + t.icon + ' ' + esc(t.title) + ' <span class="gtheme-n">· ' + items.length + '</span></h5>'
-      + tilesOf(items) + '</div>').join('') + '</div>';
+      + tilesOf(items, t.id) + '</div>').join('') + '</div>';
     const ths = filter !== 'all' && !want ? themesIn(filter, list) : [];
     if (theme && !want && (ths.length < 2 || !ths.some((x) => x.t.id === theme))) theme = '';   // на пошуку тему не губимо
     const themeRow = ths.length > 1
@@ -1909,9 +1985,9 @@
           ? GROUPS.filter((g) => g.id !== 'all').map((g) => {
             const part = list.filter((e) => e.group === g.id);
             return part.length ? '<h4 class="ggroup">' + g.icon + ' ' + esc(g.title) + ' <span class="muted small">· ' + part.length + '</span></h4>'
-              + byThemes(themesIn(g.id, part)) : '';
+              + (g.id === 'azart' ? azartHeadHtml() : '') + byThemes(themesIn(g.id, part)) : '';
           }).join('')
-          : theme ? tilesOf(ths.find((x) => x.t.id === theme).items) : byThemes(ths);
+          : (filter === 'azart' ? azartHeadHtml() : '') + (theme ? tilesOf(ths.find((x) => x.t.id === theme).items, theme) : byThemes(ths));
 
     const links = [['#stats/games', '🏆 Таблиці ігор'], ['#stats/time', '⏱ Хто скільки грав'], ['#lavka', '🛍 Лавка Дядька Глека']]
       .concat(extraPanels.filter((p) => p.id !== 'svoya').map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
@@ -1964,6 +2040,7 @@
     });
     box.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => go(b.dataset.go));
     box.querySelectorAll('[data-nick]').forEach((b) => b.onclick = () => askNick());
+    azartWatch();
   }
 
   function renderExtra(box, id) {
@@ -3055,6 +3132,12 @@
       if (shown && view.kind === 'lobby' && padelCard() !== was) renderView();
     },
 
+    /// Тихий гаманець: поки модуль просить (on), тости гаманця з причиною на prefix не вилазять (шапка оновлюється).
+    quietWallet(prefix, on) {
+      const n = (quietW.get(prefix) || 0) + (on ? 1 : -1);
+      if (n > 0) quietW.set(prefix, n); else quietW.delete(prefix);
+    },
+
     register(mod) {
       if (!mod || !mod.id) { console.warn('[games] register без id'); return; }
       modules[mod.id] = mod;
@@ -3198,7 +3281,9 @@
         // своє число ліпимо лише тоді, коли тексту нема, інакше виходило «+5 🏺 +5 черепків: …».
         // Прихід — «Лови +5 …» (якщо сервер сам уже не сказав «Лови»), витрата — як є.
         const line = w.text || (w.delta > 0 ? '+' : '') + w.delta;
-        if (w.delta) toast('🏺 ' + (w.delta > 0 && !/^лови/i.test(line) ? 'Лови ' + line : line), w.delta > 0 ? 'ok' : '');
+        document.dispatchEvent(new CustomEvent('hgames:wallet', { detail: w }));   // слоти тримають свій баланс за ним
+        const hush = [...quietW.keys()].some((p) => String(w.reason || '').startsWith(p));   // автомат сам показує ставку й виграш
+        if (w.delta && !hush) toast('🏺 ' + (w.delta > 0 && !/^лови/i.test(line) ? 'Лови ' + line : line), w.delta > 0 ? 'ok' : '');
       });
       c.on('achievement', (a) => {
         if (!a) return;

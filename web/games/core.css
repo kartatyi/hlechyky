@@ -626,3 +626,46 @@ body.g-imm:not(.g-land) .gbody > canvas.gcanvas { max-width: min(100%, calc((var
   position: sticky; bottom: -12px; z-index: 1; margin: 0 -22px -22px; padding: 12px 22px 22px;
   background: var(--panel); border-radius: 0 0 var(--radius) var(--radius); box-shadow: 0 -10px 16px -12px rgba(0, 0, 0, .6);
 }
+
+/* ---- Азарт: шапка (Скарбничка Глека, заноси тижня) і афіші слотів ---- */
+.gaz-head { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.4fr); gap: 10px; margin: 4px 0 12px; }
+.gaz-jp, .gaz-wins { border-radius: 14px; padding: 12px 14px; background: linear-gradient(160deg, rgba(244, 197, 66, .16), rgba(197, 118, 58, .08)); border: 1px solid rgba(244, 197, 66, .35); min-width: 0; }
+.gaz-jp { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.gaz-jp-l { font-weight: 700; }
+.gaz-jp-v { font-size: 34px; line-height: 1.1; font-weight: 900; color: var(--accent, #f4c542); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.gaz-must { color: var(--clay, #c5763a); font-weight: 700; min-height: 0; }
+.gaz-must:empty { display: none; }
+.gaz-wins { background: var(--card2, rgba(255, 255, 255, .03)); border-color: var(--line, rgba(255, 255, 255, .1)); }
+.gaz-wins h6 { margin: 0 0 6px; font-size: 14px; }
+.gaz-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 13px; }
+.gaz-list li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto auto; gap: 8px; align-items: baseline; }
+.gaz-list li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gaz-x { font-weight: 800; color: var(--clay, #c5763a); }
+.gaz-sum { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.gtblock.gt-slots { grid-column: 1 / -1; }
+.gposters { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.gposter { position: relative; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: #0d1712;
+  border: 1px solid var(--line, rgba(255, 255, 255, .1)); transition: transform .15s, box-shadow .15s; min-width: 0; }
+.gposter:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, .35); }
+.gposter.fresh { border-color: var(--accent, #f4c542); }
+.gp-img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; background: #10201a; }
+.gp-txt { display: grid; gap: 3px; padding: 8px 10px 10px; color: #f3ead2; }
+.gp-t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 15px; }
+.gp-m { font-size: 12px; color: #cfc6a8; }
+.gp-f { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 12px; }
+.gp-v { white-space: nowrap; }
+.gp-v i { font-style: normal; letter-spacing: -2px; }
+.gp-v i.off { opacity: .25; filter: grayscale(1); }
+.gp-now { font-size: 12px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gp-play { margin-left: auto; position: static; }
+.gp-play::after { content: ''; position: absolute; inset: 0; }   /* уся афіша — кнопка «Грати» */
+@media (max-width: 700px) {
+  .gaz-head { grid-template-columns: 1fr; }
+  .gaz-jp-v { font-size: 28px; }
+  .gposters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .gp-txt { padding: 6px 8px 8px; }
+  .gp-t { font-size: 13px; }
+  .gp-m { font-size: 11px; }
+  .gp-play { padding: 4px 10px; }
+}
+@media (max-width: 340px) { .gposters { grid-template-columns: 1fr; } }

@@ -12,8 +12,13 @@
   ].map((s) => s.split(' '));
   // Лінії: рядок кожного барабана. 1 — середня, 2 — верхня, 3 — нижня, 4 і 5 — діагоналі.
   const LINES = [[1, 1, 1], [0, 0, 0], [2, 2, 2], [0, 1, 2], [2, 1, 0]];
-  // Виплати — у ставках на лінію (ставка ÷ 5)
-  const PAY = { glek: { 3: 600 }, seven: { 3: 120 }, horseshoe: { 3: 60 }, bell: { 3: 40 }, melon: { 3: 25 }, plum: { 3: 12 }, pear: { 3: 10 }, cherry: { 3: 8, 2: 1 } };
+  // Виплати — у ставках на лінію (ставка ÷ 5). Як на сервері (docs/games/specs/slots.md §1, RTP 95,5 %);
+  // на сайті slot.js ще й підставляє view.table.pay через _setPay — щоб ⓘ і табло не розійшлись із касою.
+  const PAY = { glek: { 3: 600 }, seven: { 3: 150 }, horseshoe: { 3: 75 }, bell: { 3: 45 }, melon: { 3: 30 }, plum: { 3: 14 }, pear: { 3: 12 }, cherry: { 3: 10, 2: 1 } };
+  function setPay(pay) {
+    if (!pay) return;
+    Object.keys(pay).forEach((k) => { if (!PAY[k]) return; Object.keys(PAY[k]).forEach((n) => delete PAY[k][n]); Object.assign(PAY[k], pay[k]); });
+  }
   const WILD = 'glek';
 
   function gridOf(stops) { return stops.map((s, c) => R3.map((r) => REELS[c][(s + r) % REELS[c].length])); }
@@ -203,8 +208,11 @@
   function openGamble(ctx) {
     if (ctx.busy || !ctx.lastWin) return;
     clearGambleBtn(ctx);
-    const stake0 = ctx.lastWin; let stake = stake0, round = 0; const MAX = 5; const hist = [];
-    ctx.addBalance(-stake0); ctx.busy = true; ctx.updateHud(); ctx.clearWin();
+    // srv — сайт: карту тягне сервер, гроші рухає він же (ctx.api.gamble/collect), локально не списуємо й не нараховуємо
+    const srv = ctx.api && ctx.api.gamble ? ctx.api : null;
+    const stake0 = ctx.lastWin; let stake = stake0, round = 0, open = true; const MAX = 5; const hist = [];
+    if (!srv) ctx.addBalance(-stake0);
+    ctx.busy = true; ctx.updateHud(); ctx.clearWin();
     const cab = ctx.area.querySelector('.gl-cab-in');
     const ov = document.createElement('div'); ov.className = 'gl-fortune sk-noskip';
     ov.innerHTML = '<div class="gl-f-who">' + ex(ctx, 'fortune') + '<div class="gl-f-say">червона чи чорна?</div></div>'
@@ -228,24 +236,32 @@
       setDigits(ctx, stake);
     };
     const close = (take) => {
-      if (take && stake) { ctx.addBalance(stake); ctx.sound('coin'); ctx.meter = stake; ctx.emit('meter', stake); ctx.root.querySelector('.sk-win-v').textContent = SK.fmt(stake); }
+      if (srv && take && open) srv.collect();
+      if (take && stake) { if (!srv) ctx.addBalance(stake); ctx.sound('coin'); ctx.meter = stake; ctx.emit('meter', stake); ctx.root.querySelector('.sk-win-v').textContent = SK.fmt(stake); }
       ov.classList.remove('in'); ov.classList.add('out');
       ctx.timeout(() => { ov.remove(); ctx.busy = false; ctx.lastWin = 0; ctx.updateHud(); setDigits(ctx, take ? stake : 0); }, 350);
     };
-    const pick = (guess) => {
+    const unlock = () => { lock = false; ov.querySelectorAll('button').forEach((b) => { b.disabled = false; }); };
+    const pick = async (guess) => {
       if (lock) return; lock = true;
       ov.querySelectorAll('.gl-f-btns button, .gl-f-take').forEach((b) => { b.disabled = true; });
-      const res = Math.random() < 0.5 ? 'r' : 'b';
+      let res, g = null;
+      if (srv) {
+        g = await srv.gamble(guess);
+        if (!g || !g.card) { if (g && g.open === false) { stake = 0; open = false; close(false); } else unlock(); return; }
+        res = g.card;
+      } else res = Math.random() < 0.5 ? 'r' : 'b';
       front.innerHTML = ex(ctx, 'card', res);
       card.classList.add('flip'); ctx.sound('flip');
       ctx.timeout(() => {
         hist.unshift(res); if (hist.length > 6) hist.pop();
-        if (res === guess) {
-          stake *= 2; round++; ctx.sound('win'); ctx.fx.at(card, { kind: 'coin', n: 18 + round * 6, speed: 520 });
+        if (g) { open = !!g.open; if (g.balance != null) ctx.setBalance(g.balance); }
+        if (g ? g.ok : res === guess) {
+          if (g) { stake = g.amount; round = g.steps; } else { stake *= 2; round++; } ctx.sound('win'); ctx.fx.at(card, { kind: 'coin', n: 18 + round * 6, speed: 520 });
           $('.gl-f-say').textContent = SK.rnd.pick(SAY.gwin); ov.classList.add('ok', 'win');
           upd();
-          if (round >= MAX) { ctx.timeout(() => close(true), 1300); return; }
-          ctx.timeout(() => { card.classList.remove('flip'); ov.classList.remove('ok', 'win'); lock = false; ov.querySelectorAll('button').forEach((b) => { b.disabled = false; }); }, 900);
+          if (round >= MAX || !open) { ctx.timeout(() => close(true), 1300); return; }
+          ctx.timeout(() => { card.classList.remove('flip'); ov.classList.remove('ok', 'win'); unlock(); }, 900);
         } else {
           stake = 0; ctx.sound('lose'); ov.classList.add('bad');
           $('.gl-f-say').textContent = SK.rnd.pick(SAY.glose); upd();
@@ -287,7 +303,7 @@
       'Три Глеки': demoBy((x) => x.g3),
       'Ворожка': demoBy((x) => x.m >= 2 && x.m < 8, { gamble: true }),
     },
-    _all: all, _evaluate: evaluate,
+    _all: all, _evaluate: evaluate, _setPay: setPay,
 
     build(ctx) {
       const port = ctx.orient === 'port', L = layOf(ctx), W = L.window;

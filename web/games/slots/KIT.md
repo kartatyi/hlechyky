@@ -129,3 +129,25 @@ gravity, color, life})` (x,y — px відносно `ctx.root`), `ctx.fx.at(el,
 `SlotKit.TIERS` — 10×/25×/50× («Великий / Мега / Епічний занос»), ескалація під час підрахунку. Виграш ≤ 6 с,
 тап/пробіл — до кінця. Жодних підставлених «майже»: очікування — лише за правдою сценарію.
 У спокої — нуль rAF (`SlotKit.stats.loops` на стенді має бути 0); анімації спокою — лише CSS transform/opacity.
+
+## 10. Сайт і нові помічники (09.10, інтеграція)
+На сайті автомат монтує `web/games/slot.js` (один модуль на всі `slot-*`): `SlotKit.mount(el, id, { balance, bet, bets, api })`,
+`api.spin` → сервер (`act('spin')` і новий `last.seq`), `api.gamble(pick)` / `api.collect()` — Ворожка (див.
+`slot-glek.js`: є `ctx.api` — гроші рухає сервер, без `ctx.api` — мок стенду). Баланс — `ctx.setBalance(n)` від сервера.
+- Крок **`jackpot`** `{ amount }` — свято «Скарбничка Глека!», кіт сам додає суму до балансу (у `script.win` її нема).
+- Тікер: `SlotKit.setLive({ jackpot, mustHit?, lines })` — живі сума («впаде до N», якщо є `mustHit`) і рядки заносів;
+  без `SlotKit.live` — мок `SK.jackpot()`/`SK.feed` (стенд).
+- `opts.bets` — набір ставок з сервера (інакше `machine.bets`/`SK.BETS`).
+- `ctx.morphCell(c, r, key)` — перетворити без очікування; `ctx.rel(el, base?)` — центр у px дизайну (base — `ctx.area`
+  чи `ctx.box`); `ctx.flyTo(from, to, html, {ms, cls, arc, from, to, burst, delay})` → Promise — політ між елементами;
+  `ctx.animate(el, keyframes, opts)` — WAAPI, яку тап/пробіл доводить до кінця, у турбо коротша.
+- `ctx.gridLayer(cls, {hide})` → `{ el, slot(c, r), hide(on), remove() }` — своя сітка гнізд поверх поля;
+  `ctx.hideReels(on)`, `ctx.cellBox(c, r)`. Блиск у спокої не бігає по схованому полю, у бонус-сцені й під час вільних.
+- Частинки: `SlotKit.svgParticle('spark', svg)` — вид з будь-якого SVG; у `fx.burst` свої поля `img`, `data` летять у `p`.
+- `DropGrid`: `weights` ({ключ: вага}) в опціях `makeReels` чи в `define` — початкове поле з вагами; `cascade` повертає
+  й кладе в `ctx.lastDrop` `{ fresh, moved }` (+ подія `drop`); після каскаду кіт сам знімає `dim`, а перебір виграшів у
+  спокої вимкнено, якщо в сценарії був `cascade` (чи `cycleWins: false`).
+- Автогра стоїть на бонусі: `script.bonus`, крок `bonusIn` або свої кроки з `bonusSteps: ['holdIn']` у `define`.
+- `wait(ms, true)` у турбо тепер ×0,6 (звичайний — ×0,5).
+- `paytable[].labels` — свій підпис кількості: `{ 12: '12+', 10: '10–11' }`.
+- Пробіл і пад діють лише коли автомат видно (на сайті картка буває на складі за лобі).
