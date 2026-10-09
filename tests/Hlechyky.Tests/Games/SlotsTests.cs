@@ -38,12 +38,12 @@ public sealed class SlotsKit
     public SlotsBank Bank { get; }
     public RoomHarness H { get; }
 
-    public SlotsKit(string nick = "Оля", int wallet = 10_000, int seed = 42, Action<SlotsOptions>? opts = null)
+    public SlotsKit(string nick = "Оля", int wallet = 10_000, int seed = 42, Action<SlotsOptions>? opts = null, string game = "slot-glek")
     {
         opts?.Invoke(Options);
         Stakes.Set(nick, wallet);
         Bank = new SlotsBank(Stakes, Store, () => Options, Clock, Wire, defer: a => a());
-        H = new RoomHarness("slot-glek", services: RoomHarness.WithService(Bank), seed: seed);
+        H = new RoomHarness(game, services: RoomHarness.WithService(Bank), seed: seed);
         var r = H.Solo(nick);
         Assert.True(r.Ok, r.Message);
     }
@@ -296,9 +296,9 @@ public class SlotsTests
     [Fact]
     public void Jackpot_is_paid_reset_and_announced()
     {
-        var k = new SlotsKit(wallet: 10_000);
+        var k = new SlotsKit(wallet: 10_000, opts: o => o.JackpotMustHit = 0);
         for (var i = 0; i < 10; i++) k.Spin(100);
-        Assert.Equal(10_000 + 10, k.Bank.Pot);   // по 1 % з десяти ставок по 100
+        Assert.Equal(10_000 + 10, k.Bank.Pot);   // по 1 % з десяти ставок по 100 (без межі — увесь внесок у суму)
         var rng = k.Rig();
         rng.Stops(SlotsKit.StopsWhere((_, u) => u == 0)).Jackpot();
         var before = k.Stakes.Balance("Оля");

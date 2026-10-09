@@ -137,6 +137,7 @@ public abstract class SlotGame : Game
             maxBet = o.MaxBet,
             balance = seat is null ? 0 : State.Wallet,
             jackpot = _bank?.Pot ?? 0,
+            mustHit = o.MustHitOn ? o.JackpotMustHit : (int?)null,   // «має впасти до» (null — межі нема)
             last = State.Last is null ? null : new { seq = State.Seq, script = State.Last.DeepClone() },
             gamble = g is null ? null : new
             {
@@ -325,6 +326,22 @@ public sealed class SlotGlek : SlotGame
         "slot-glek", "Однорукий Глек", "Однорукого Глека", GameGroup.Solo, 1, 1, Start: StartMode.Immediate,
         Private: true, Persistent: true, Score: ScoreOrder.HigherIsBetter,
         Hint: "Ретро-автомат на 5 ліній: смикай ручку, лови три Глеки, а після виграшу — Ворожка ×2", Client: "slot");
+
+    protected override ISlotMath SlotMath => MathImpl;
+}
+
+/// <summary>
+/// «Цвіт папороті»: поле 7×7, кластери від 5, каскади, шкала папороті (світлячки, русалка, цвіт + 5 вільних) — усе в
+/// одному оберті. Математика — <see cref="SlotClusterMath"/>.
+/// </summary>
+public sealed class SlotCluster : SlotGame
+{
+    static readonly SlotClusterMath MathImpl = new();
+
+    public override GameInfo Info { get; } = new(
+        "slot-cluster", "Цвіт папороті", "Цвіт папороті", GameGroup.Solo, 1, 1, Start: StartMode.Immediate,
+        Private: true, Persistent: true, Score: ScoreOrder.HigherIsBetter,
+        Hint: "Купальська ніч на полі 7×7: кластери квітів, каскади, світлячки й русалка, а цвіт папороті — вільні оберти", Client: "slot");
 
     protected override ISlotMath SlotMath => MathImpl;
 }
