@@ -25,6 +25,9 @@ namespace Hlechyky;
 //
 // Курс 1 грн = 100 🏺 в обидва боки, до 3 заявок одного гравця водночас, інших лімітів нема. Купівля, продаж і повернення
 // не йдуть ні в «зароблено», ні у «витрачено» (EconomyStore.Exchange).
+//
+// Вимикачі — ShardShop:Buy і ShardShop:Sell (наживо, без перезапуску): вимкнене не приймає нових заявок, кнопки зникають
+// (/api/me → shards), а те, що вже в обробці, людина ще бачить і може скасувати, адмін — підтвердити.
 // =====================================================================================================================
 
 /// <summary>Секція <c>ShardShop</c> конфігу.</summary>
@@ -376,6 +379,8 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
             admin = me.Admin,
             buy = new
             {
+                // on — увімкнено в конфігу (ShardShop:Buy); open — ще й адмін вписав, куди скидати гроші
+                on = o.Buy,
                 open = o.Buy && shop.Count > 0,
                 rate = o.Rate,
                 packs = o.PackList.Select(u => new { uah = u, shards = u * o.Rate }).ToList(),
@@ -387,6 +392,7 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
             },
             sell = new
             {
+                on = o.Sell,
                 open = o.Sell,
                 rate = o.SellRateOk,
                 min = o.SellMinOk,
@@ -406,6 +412,7 @@ public sealed class ShardShop(ShardShopStore store, Economy economy, Db db, ISha
                 monthIn = store.DoneUah(since),
                 monthOut = store.PaidOutUah(since),
                 buyOn = o.Buy,
+                sellOn = o.Sell,
             } : null,
         };
     }

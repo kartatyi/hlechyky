@@ -108,7 +108,17 @@
     paint();
   }
 
-  const tabs = () => (isAdmin() ? ['buy', 'sell', 'desk'] : ['buy', 'sell']);
+  /// Увімкнено в конфігу (ShardShop:Buy / Sell): свіже з /api/shards, а до нього — з /api/me. Не знаємо — увімкнено.
+  const switchOn = (k) => (data ? !!data[k].on : !(o && o.me.shards && o.me.shards[k] === false));
+  const buyOn = () => switchOn('buy');
+  const sellOn = () => switchOn('sell');
+
+  /// Вимкнену вкладку ще видно, поки в ній є мої заявки: свою «в обробці» людина мусить бачити й могти скасувати.
+  const tabs = () => [
+    buyOn() || (data && data.buy.mine.length) ? 'buy' : null,
+    sellOn() || (data && data.sell.mine.length) ? 'sell' : null,
+    isAdmin() ? 'desk' : null,
+  ].filter(Boolean);
 
   /// Яку вкладку відкрити: просили — ту; адміну, коли щось в обробці, — «Заявки»; інакше — купити.
   function firstTab(want) {
@@ -133,6 +143,7 @@
     let h = '<h3><img src="/static/glek.svg" alt=""><span>Черепки за гривні</span>'
       + '<button type="button" class="ghost by-x" data-close title="Закрити — Esc" aria-label="Закрити">✕</button></h3>';
     if (!d) h += '<div class="gempty">Сервер не відповів — спробуй трохи згодом.</div>';
+    else if (!tabs().length) h += '<div class="gempty glek">Обмін черепків на гривні на цьому сайті вимкнено.</div>';
     else {
       const t = tabs();
       if (!t.includes(tab)) tab = t[0];
@@ -165,9 +176,10 @@
 
   function buyHtml(d) {
     const b = d.buy;
+    if (!b.on) return '<div class="gempty glek">Купівлю черепків вимкнено.</div>' + (d.account ? mineHtml(b) : '');
     if (!b.open) {
       return '<div class="gempty glek">Купівля черепків ще не відкрита.'
-        + (d.admin ? '<br><span class="muted small">Впиши картку, куди покупцям скидати гроші, — у вкладці «📋 Заявки».</span>' : '') + '</div>'
+        + (d.admin ?'<br><span class="muted small">Впиши картку, куди покупцям скидати гроші, — у вкладці «📋 Заявки».</span>' : '') + '</div>'
         + (d.account ? mineHtml(b) : '');
     }
     if (!d.account) return lockHtml('купують');
@@ -343,6 +355,7 @@
     h += sold.length && !orders.length ? sellBlock + buyBlock : buyBlock + sellBlock;
     h += '<h4 class="by-sect">💳 Куди покупцям скидати гроші</h4>' + banksHtml(d.buy.banks || [], 'shop');
     if (!k.buyOn) h += '<div class="muted small">Купівлю вимкнено в налаштуваннях (ShardShop → Buy).</div>';
+    if (!k.sellOn) h += '<div class="muted small">Продаж вимкнено в налаштуваннях (ShardShop → Sell).</div>';
     const closed = [].concat(
       (k.recentOrders || []).map((x) => ({ at: x.doneAt || x.at, html: closedRow('🛒 ' + esc(x.buyer) + (x.gift ? ' → ' + esc(x.for) : ''), x, 'зараховано') })),
       (k.recentSales || []).map((x) => ({ at: x.doneAt || x.at, html: closedRow('💰 ' + esc(x.seller), x, 'продано') })),
@@ -564,6 +577,8 @@
       });
     },
     open,
+    buyOn,
+    sellOn,
     /// Підпис першої кнопки в профілі: адміну — «Заявки» з тим, скільки в обробці; решті — «Купити».
     label() {
       if (isAdmin()) { const n = deskCount(); return '📋 Заявки' + (n ? ' · ' + n : ''); }

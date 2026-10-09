@@ -113,6 +113,25 @@ public sealed class ShardShopTests : IDisposable
     }
 
     [Fact]
+    public void Switched_off_in_config_new_requests_stop_but_pending_ones_can_still_be_closed()
+    {
+        Assert.True(Buy(Olia).GetProperty("on").GetBoolean());
+        Assert.True(SellView(Olia).GetProperty("on").GetBoolean());
+        var id = Order(_shop.Paid(Olia, 50, null));
+
+        _opts.Buy = false;
+        _opts.Sell = false;
+        Assert.False(Buy(Olia).GetProperty("on").GetBoolean());
+        Assert.False(SellView(Olia).GetProperty("on").GetBoolean());
+        Assert.False(Desk().GetProperty("buyOn").GetBoolean());
+        Assert.False(Desk().GetProperty("sellOn").GetBoolean());
+        Assert.Equal(ShardShop.Closed, _shop.Paid(Olia, 50, null).Message);
+        // Заявка, що вже в обробці, лишається у «Мої купівлі», і адмін її ще підтверджує
+        Assert.Single(Buy(Olia).GetProperty("mine").EnumerateArray());
+        Assert.True(_shop.Confirm(Admin, id).Ok);
+    }
+
+    [Fact]
     public void Site_cards_are_set_by_the_admin_only_and_checked_like_in_padel()
     {
         Assert.Equal(403, _shop.SetBanks(Olia, [SiteCard]).Status);

@@ -4264,6 +4264,7 @@
     me.google = !!m.google;
     me.email = m.email || '';
     me.banPrice = m.banPrice || 0;
+    me.shards = m.shards || null;   // { buy, sell } — черепки за гривні увімкнено в конфігу (web/buy.js)
     me.night = m.night || null;
     paintNight();
     loadGoogle(m.googleClientId);

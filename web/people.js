@@ -637,11 +637,15 @@
           + '<span class="muted small">' + esc(o.dayTime(x.at)) + '</span></div>').join('') + '</div>';
       }
     }
+    // Купити й продати за гривні — кожне можна вимкнути в конфігу (ShardShop:Buy / Sell); адміну «Заявки» лишаються
+    const buyOn = !!(window.HBuy && HBuy.buyOn());
+    const sellOn = !!(window.HBuy && HBuy.sellOn());
+    const trade = buyOn && sellOn ? ' Можна купити й продати за гривні.' : buyOn ? ' Можна докупити за гривні.' : sellOn ? ' Можна продати за гривні.' : '';
     if (mine) body += '<div class="muted small wc-how">Черепки капають за радіо (увімкнений плеєр), партії, щоденний глек і ачівки. '
-      + 'Витрачаються в Лавці Дядька Глека (усе там — назавжди), на бан треку й викуп із бану. Можна купити й продати за гривні.</div>';
+      + 'Витрачаються в Лавці Дядька Глека (усе там — назавжди), на бан треку й викуп із бану.' + trade + '</div>';
     return '<section class="panel wcard"><h3>🏺 Черепки' + (mine && o.me.account
-      ? (window.HBuy ? ' <button type="button" class="ghost wc-more" data-buy>' + esc(HBuy.label()) + '</button>'
-          + ' <button type="button" class="ghost wc-more" data-sell title="Продати черепки за гривні">' + esc(HBuy.sellLabel()) + '</button>' : '')
+      ? (window.HBuy ? (buyOn || o.me.role === 'admin' ? ' <button type="button" class="ghost wc-more" data-buy>' + esc(HBuy.label()) + '</button>' : '')
+          + (sellOn ? ' <button type="button" class="ghost wc-more" data-sell title="Продати черепки за гривні">' + esc(HBuy.sellLabel()) + '</button>' : '') : '')
         + ' <button type="button" class="ghost wc-more" data-go="#lavka">🛍 Лавка →</button>'
       : '') + '</h3>' + body + '</section>';
   }
