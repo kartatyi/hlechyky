@@ -19,7 +19,7 @@ namespace Hlechyky;
 /// </para>
 /// Години й дні тижня — київські (<see cref="Days.Kyiv"/>), періоди — <see cref="Periods"/>, як і в решті «Хто скільки».
 /// </summary>
-public sealed class Litopys(Db db, GameNames names, IClock clock, IOptionsMonitor<SiteOptions> site)
+public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptionsMonitor<SiteOptions> site)
 {
     /// <summary>Скільки живе порахована відповідь.</summary>
     public static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(60);
@@ -856,6 +856,9 @@ public sealed class Litopys(Db db, GameNames names, IClock clock, IOptionsMonito
         api.MapGet("/overview", (string? period, Litopys l) => l.Overview(period));
         api.MapGet("/games", (string? period, Litopys l) => l.Games(period));
         api.MapGet("/music", (string? period, Litopys l) => l.Music(period));
+        MapGlek(api);     // 🏺 Глек — LitopysGlek.cs
+        MapCharts(api);   // 📈 Графіки й 📖 Рекорди — LitopysCharts.cs
+        MapNews(api);     // 📰 Газета, 📅 місяць тому, 🎯 цілі, 🔔 нове — LitopysNews.cs
         api.MapGet("/person/{nick}", (string nick, Litopys l) =>
         {
             // Kestrel розкодовує шлях увесь, крім «/»: нік зі скісною приходить як «%2F»
@@ -864,4 +867,8 @@ public sealed class Litopys(Db db, GameNames names, IClock clock, IOptionsMonito
         });
         return app;
     }
+
+    static partial void MapGlek(RouteGroupBuilder api);
+    static partial void MapCharts(RouteGroupBuilder api);
+    static partial void MapNews(RouteGroupBuilder api);
 }

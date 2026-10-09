@@ -342,14 +342,28 @@
   // =============================================================================================
 
   const STATS_TABS = [['overview', '✨ Огляд'], ['music', '🎵 Музика'], ['games', '🎮 Ігри'], ['time', '⏱ Час']];
+  /// Вкладки з інших файлів (stats-*.js, HPeople.statsTab): { key, label, run, after } — стають одразу за after.
+  const extraTabs = [];
+  /// Позначки біля назв вкладок (HPeople.statsBadge): ключ → html, напр. «нове».
+  const tabBadges = new Map();
+  /// Що ще малювати вгорі «✨ Огляду» (HPeople.overviewTop): fn(el, t) — сама ходить по дані й сама заповнює el.
+  const overviewTops = [];
+  function allTabs() {
+    const list = STATS_TABS.map(([k, l]) => ({ key: k, label: l }));
+    extraTabs.forEach((x) => {
+      const i = list.findIndex((y) => y.key === x.after);
+      list.splice(i < 0 ? list.length : i + 1, 0, x);
+    });
+    return list;
+  }
+  const knownTab = (k) => allTabs().some((x) => x.key === k);
   let statsTab = ls('statsTab', 'overview');
-  if (!STATS_TABS.some(([k]) => k === statsTab)) statsTab = 'overview';
   let token = 0;                       // щоб запізніла відповідь не малювала поверх свіжішої вкладки
   const stale = (t) => t !== token;
   const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
   function renderStats(tail) {
-    const want = STATS_TABS.some(([k]) => k === tail) ? tail : statsTab;
+    const want = knownTab(tail) ? tail : knownTab(statsTab) ? statsTab : 'overview';
     if (want !== tail) history.replaceState(null, '', '#stats/' + want);
     statsTab = want;
     lsSet('statsTab', statsTab);
@@ -358,11 +372,9 @@
     const fresh = ls('statsOverviewSeen', '') !== '1';
     const root = document.getElementById('stats');
     root.innerHTML = '<div class="sthead panel-lite">'
-      + '<nav class="sttabs" id="statsTabs" aria-label="Що рахуємо">' + STATS_TABS.map(([k, l]) =>
-        '<button type="button" data-t="' + k + '"' + (k === statsTab ? ' class="on"' : '') + '>' + l
-        + (k === 'overview' && fresh ? ' <span class="stnew">нове</span>' : '') + '</button>').join('') + '</nav>'
+      + '<nav class="sttabs" id="statsTabs" aria-label="Що рахуємо">' + tabsHtml(fresh) + '</nav>'
       + periodSeg() + '</div><div class="stbody"></div>';
-    root.querySelectorAll('.sttabs [data-t]').forEach((b) => b.onclick = () => o.go('#stats/' + b.dataset.t));
+    wireTabs(root);
     root.querySelectorAll('.stper [data-p]').forEach((b) => b.onclick = () => {
       period = b.dataset.p;
       lsSet('statsPeriod', period);
@@ -371,12 +383,28 @@
     });
     drawStatsBody();
   }
+  function tabsHtml(fresh) {
+    return allTabs().map(({ key: k, label: l }) =>
+      '<button type="button" data-t="' + k + '"' + (k === statsTab ? ' class="on"' : '') + '>' + l
+      + (tabBadges.get(k) || (k === 'overview' && fresh ? ' <span class="stnew">нове</span>' : '')) + '</button>').join('');
+  }
+  function wireTabs(root) {
+    root.querySelectorAll('.sttabs [data-t]').forEach((b) => b.onclick = () => o.go('#stats/' + b.dataset.t));
+  }
+  /// Перемалювати лише рядок вкладок (змінились позначки), не чіпаючи відкритого вмісту.
+  function repaintTabs() {
+    const nav = document.getElementById('statsTabs');
+    if (!nav || shownKind !== 'stats') return;
+    nav.innerHTML = tabsHtml(ls('statsOverviewSeen', '') !== '1');
+    wireTabs(nav.parentNode);
+  }
   function drawStatsBody() {
     const body = document.querySelector('#stats .stbody');
     if (!body) return;
     const t = ++token;
     body.innerHTML = '<div class="gwait"><span class="spin"></span> рахую…</div>';
-    const run = { overview: statsOverview, games: statsGames, time: statsTime, music: statsMusic }[statsTab] || statsOverview;
+    const extra = extraTabs.find((x) => x.key === statsTab);
+    const run = extra ? (b, tt) => Promise.resolve(extra.run(b, tt)) : { overview: statsOverview, games: statsGames, time: statsTime, music: statsMusic }[statsTab] || statsOverview;
     run(body, t).catch((e) => { if (!stale(t)) body.innerHTML = '<div class="gempty">Ой-йой, не порахувалось: ' + esc(e.message) + '</div>'; });
   }
 
@@ -510,7 +538,7 @@
     const rivals = (d.rivals || []).length
       ? '<div class="ov-rivals">' + d.rivals.map(rivalRow).join('') + '</div>'
       : '<div class="gempty">' + cap(PERIOD_WORD[period]) + ' ніхто ще нікого не обіграв за одним столом. Гайда за стіл!</div>';
-    body.innerHTML = '<div class="ov">'
+    body.innerHTML = '<div class="ov">' + (overviewTops.length ? '<div class="ov-top"></div>' : '')
       + '<section class="panel stbox ov-hero"><h3>' + esc(PERIOD_HEAD[period]) + (since ? ' <span class="muted small">' + esc(since) + '</span>' : '') + '</h3>' + ovTiles(d) + '</section>'
       + '<section class="panel stbox"><h3>🏅 Звання <span class="muted small">' + PERIOD_WORD[period] + '</span></h3>'
       + (good.length ? '<div class="ov-tgrid">' + good.map(titleCard).join('') + '</div>'
@@ -527,6 +555,12 @@
       + '<section class="panel stbox"><h3>🦄 Рідкісні ачівки <span class="muted small">за весь час</span></h3>' + rareHtml(d.rare) + '</section>'
       + '</div></div>';
     // картинку з перла вже могли прибрати з диска (ChatFiles:MaxGb) — як у Балачках, кажемо про це словами
+    const top = body.querySelector('.ov-top');
+    overviewTops.forEach((fn) => {
+      const el = document.createElement('div');
+      top.appendChild(el);
+      try { Promise.resolve(fn(el, t)).catch((e) => console.warn('ov-top', e)); } catch (e) { console.warn('ov-top', e); }
+    });
     const img = body.querySelector('.pearl-img');
     if (img) img.onerror = () => { const s = document.createElement('div'); s.className = 'muted small'; s.textContent = '🗑 картинку вже прибрано'; img.closest('.pearl-a').replaceWith(s); };
   }
@@ -1090,6 +1124,30 @@
       if (o.esc) esc = o.esc;
     },
     hue, hueRaw, nickCls, badge, emo, ava, avaHtml, nickLink, dur, lbNum, shards,
+    /// Помічники для stats-*.js — ті самі, що малюють «Хто скільки» тут, щоб ніки, числа й періоди були однакові.
+    kit: {
+      api: (m, u, b) => o.api(m, u, b), me: () => o.me, go: (h) => o.go(h),
+      esc: (s) => esc(s), same, ls, lsSet, hue, ava, nickLink, nickTxt, nickList, medal, cap,
+      num, plural, cnt, big, dur, durShort, shards, lbNum, iconOf, titleOf, bucketLabel, spark,
+      period: () => period, PERIOD_WORD, PERIOD_HEAD, DOW, DOW_LONG, DOW_IN, atHour,
+      /// Відповідь запізнилась — вкладку вже перемкнули чи період змінили: не малювати.
+      stale: (t) => stale(t),
+    },
+    /// Нова вкладка «Хто скільки»: run(body, t) малює в body (t — для kit.stale). after — за якою стати.
+    statsTab(key, label, run, after) {
+      if (knownTab(key)) return;
+      extraTabs.push({ key, label, run, after: after || 'overview' });
+      repaintTabs();
+    },
+    /// Позначка біля вкладки (html, напр. ' <span class="stnew">нове</span>'); null — прибрати.
+    statsBadge(key, html) {
+      if (html) tabBadges.set(key, html); else tabBadges.delete(key);
+      repaintTabs();
+    },
+    /// Блок угорі «✨ Огляду»: fn(el, t) сам ходить по дані й заповнює el.
+    overviewTop(fn) { overviewTops.push(fn); },
+    /// Чи відкрито зараз «Хто скільки» і яку вкладку.
+    statsShown: () => (shownKind === 'stats' ? statsTab : null),
     /// Куди веде кнопка «📊 Хто скільки»: на вкладку, де людина була востаннє.
     statsHash: () => '#stats/' + statsTab,
     show(kind, tail) {
