@@ -294,13 +294,16 @@
       <button type="button" data-k="bug">🐞 Баг</button>
     </div>
     <textarea id="fbText" maxlength="2000" rows="5" autocomplete="off"></textarea>
+    <div class="fbatt" data-slot="new"></div>
     <div class="muted small" id="fbNote"></div>
     <div class="row fbrow">
       <button class="primary" type="submit" id="fbSend">Надіслати</button>
+      <button class="ghost fbclip" type="button" data-slot="new" title="Прикріпити скрін чи файл до 10 МБ (або Ctrl+V, або перетягни сюди)" aria-label="Прикріпити файл">📎 Файл</button>
       <button class="ghost" type="button" id="fbClose">Закрити</button>
       <span class="muted small fbcount" id="fbCount">0 / 2000</span>
     </div>
     <details id="fbMine" hidden><summary>Мої записки <span id="fbMineN" class="muted small"></span></summary><div id="fbMineList" class="fbmine"></div></details>
+    <input type="file" id="fbFileInput" multiple hidden>
   </form>
 </div>
 

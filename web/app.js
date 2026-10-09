@@ -133,6 +133,50 @@
     finally { if (btn.isConnected) { btn.disabled = false; btn.classList.remove('busy'); btn.innerHTML = html; } }
   }
 
+  // ---------- журнал помилок для записок 💡 ----------
+  // Останні помилки JS і невдалі запити до сервера живуть лише в пам'яті вкладки й самі нікуди не йдуть: їх бере
+  // записка «💡 Розробнику» (fbDiag), щоб розробник бачив, що саме зламалось, а не перепитував. Однакове підряд —
+  // одним рядком з лічильником: гра, що падає щокадру, інакше витіснила б усе інше.
+  const DIAG_KEEP = 15;
+  const diagErrs = [];
+  const diagReqs = [];
+  let diagDrops = 0;              // скільки разів рвався зв'язок із сервером (хаб)
+  const diagStart = Date.now();
+  const diagCut = (s, n) => String(s ?? '').slice(0, n);
+  function diagPush(list, item) {
+    const last = list[list.length - 1];
+    if (last && last.m === item.m && last.s === item.s) { last.n = (last.n || 1) + 1; last.t = item.t; return; }
+    list.push(item);
+    if (list.length > DIAG_KEEP) list.shift();
+  }
+  const diagStr = (x) => {
+    if (x instanceof Error) return x.message;
+    if (x && typeof x === 'object') { try { return JSON.stringify(x); } catch { return String(x); } }
+    return String(x);
+  };
+  window.addEventListener('error', (e) => {
+    const el = e.target;
+    // скрипт чи стиль, що не приїхав (картинки не рахуємо: обкладинки й аватарки ламаються часто й без бага)
+    if (el && el !== window && (el.tagName === 'SCRIPT' || el.tagName === 'LINK')) {
+      diagPush(diagErrs, { t: Date.now(), m: 'не завантажилось: ' + diagCut((el.src || el.href || '').replace(location.origin, ''), 200) });
+      return;
+    }
+    if (el && el !== window) return;
+    const src = e.filename ? `${diagCut(e.filename.replace(location.origin, ''), 120)}:${e.lineno}:${e.colno}` : '';
+    diagPush(diagErrs, { t: Date.now(), m: diagCut(e.message, 300), s: src, st: diagCut(e.error && e.error.stack, 800) });
+  }, true);
+  window.addEventListener('unhandledrejection', (e) => {
+    const r = e.reason;
+    diagPush(diagErrs, { t: Date.now(), m: 'проміс: ' + diagCut(diagStr(r), 300), st: diagCut(r && r.stack, 800) });
+  });
+  for (const lvl of ['error', 'warn']) {
+    const orig = console[lvl].bind(console);
+    console[lvl] = (...a) => {
+      try { diagPush(diagErrs, { t: Date.now(), m: (lvl === 'warn' ? 'warn: ' : 'console: ') + diagCut(a.map(diagStr).join(' '), 300) }); } catch { /* журнал — не головне */ }
+      orig(...a);
+    };
+  }
+
   // ---------- api ----------
   async function api(method, path, body) {
     // Лише дивишся (ще не назвався) — дивитись можна все, а робити щось — спершу назвись.
@@ -140,14 +184,24 @@
       askNick(true);
       throw new Error('Агов, спершу назвись — тоді й тисни');
     }
-    const r = await fetch(path, {
-      method,
-      headers: { 'Content-Type': 'application/json', 'X-Nick': encodeURIComponent(me.nick) },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    const what = `${method} ${String(path).split('?')[0]}`;
+    let r;
+    try {
+      r = await fetch(path, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'X-Nick': encodeURIComponent(me.nick) },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (e) {
+      diagPush(diagReqs, { t: Date.now(), m: what, s: 'нема зв\'язку', e: diagCut(e.message, 200) });
+      throw e;
+    }
     let data = null;
     try { data = await r.json(); } catch { /* no body */ }
-    if (!r.ok) throw Object.assign(new Error((data && data.message) || `HTTP ${r.status}`), { data });
+    if (!r.ok) {
+      diagPush(diagReqs, { t: Date.now(), m: what, s: r.status, e: diagCut(data && data.message, 200) });
+      throw Object.assign(new Error((data && data.message) || `HTTP ${r.status}`), { data });
+    }
     return data;
   }
   const queueTrack = (id) => api('POST', `/api/queue/track/${id}`).then(ok).catch(fail);
@@ -2721,9 +2775,9 @@
   // відтворити. Кожна записка — переписка: у «Моїх записках» видно все, що відповів розробник, і там же можна
   // відписати. У скількох записках є непрочитана відповідь — число на 💡; нове прилітає хабом (fbUnread), без F5.
   const FB_KINDS = {
-    idea: { ph: 'Що варто додати? Наприклад: «щоб у балачках можна було закріпити повідомлення»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
-    change: { ph: 'Що змінити й чому? Наприклад: «на телефоні черга завелика — хай згортається»', note: 'Разом із текстом піде, де ти на сайті, — щоб розробник зрозумів, про що мова.' },
-    bug: { ph: 'Що робиш → що стається → що мало б статися. Наприклад: «тисну Скіп — нічого, а мало перемкнути»', note: 'Разом із текстом піде, де ти на сайті, розмір екрана й браузер — так баг легше знайти.' },
+    idea: { ph: 'Що варто додати? Наприклад: «щоб у балачках можна було закріпити повідомлення»', note: 'Скрін чи картинку — 📎 або Ctrl+V. Разом піде, де ти на сайті й з чого заходиш, — щоб розробник зрозумів, про що мова.' },
+    change: { ph: 'Що змінити й чому? Наприклад: «на телефоні черга завелика — хай згортається»', note: 'Скрін чи картинку — 📎 або Ctrl+V. Разом піде, де ти на сайті й з чого заходиш, — щоб розробник зрозумів, про що мова.' },
+    bug: { ph: 'Що робиш → що стається → що мало б статися. Наприклад: «тисну Скіп — нічого, а мало перемкнути»', note: 'Скрін чи запис екрана — 📎 або Ctrl+V. Разом піде, де ти на сайті, пристрій, браузер і останні помилки сторінки — так баг легше знайти.' },
   };
   const FB_STATUS = { new: ['нове', ''], seen: ['переглянуто', ''], planned: ['у планах', 'warn'], done: ['зроблено', 'ok'], nope: ['не буде', 'err'] };
   const FB_ICON = { idea: '💡', change: '✏', bug: '🐞' };
@@ -2736,6 +2790,207 @@
     const d = Math.round((window.devicePixelRatio || 1) * 100) / 100;
     return `${window.innerWidth}×${window.innerHeight} · ${d}x · екран ${screen.width}×${screen.height}`;
   };
+
+  // ---- «на чому й що було»: збирається само в мить записки, бачить лише розробник (Feedback.cs, FeedbackItem.Diag) ----
+  // Щоб не перепитувати «а з чого ти?», «який браузер?», «а помилка якась вилазила?». Рядок браузера (ua) іде й так;
+  // тут — те, чого з нього не витягнеш: телефон це чи ні, чим керують, як вікно, де людина на сайті, що зламалось.
+  /// Windows 11 і модель телефона рядок браузера не каже — Chrome дає їх лише на прохання (і не одразу): питаємо раз.
+  let fbHi = null;
+  function fbAskHi() {
+    if (fbHi || !navigator.userAgentData || !navigator.userAgentData.getHighEntropyValues) return;
+    fbHi = {};
+    navigator.userAgentData.getHighEntropyValues(['platformVersion', 'model', 'fullVersionList'])
+      .then((v) => { fbHi = v || {}; }).catch(() => {});
+  }
+  function fbOs(ua) {
+    let m;
+    if ((m = /Android (\d+(?:\.\d+)?)/.exec(ua))) return 'Android ' + m[1];
+    if ((m = /(?:iPhone|iPad|iPod).*? OS (\d+)[_.](\d+)/.exec(ua))) return 'iOS ' + m[1] + '.' + m[2];
+    if (/Windows NT 10/.test(ua)) {
+      const pv = fbHi && fbHi.platformVersion ? parseInt(fbHi.platformVersion, 10) : 0;
+      return pv >= 13 ? 'Windows 11' : pv > 0 ? 'Windows 10' : 'Windows 10/11';
+    }
+    if ((m = /Windows NT ([\d.]+)/.exec(ua))) return 'Windows NT ' + m[1];
+    if (/Macintosh/.test(ua)) return navigator.maxTouchPoints > 1 ? 'iPadOS' : 'macOS';
+    if (/CrOS/.test(ua)) return 'ChromeOS';
+    if (/SteamOS|Steam Deck/i.test(ua) || (window.HPad && HPad.deck)) return 'SteamOS (Steam Deck)';
+    if (/Linux/.test(ua)) return 'Linux';
+    return '';
+  }
+  function fbBrowser(ua) {
+    const rx = [[/Edg(?:A|iOS)?\/([\d.]+)/, 'Edge'], [/OPR\/([\d.]+)/, 'Opera'], [/YaBrowser\/([\d.]+)/, 'Яндекс'],
+      [/SamsungBrowser\/([\d.]+)/, 'Samsung Internet'], [/FxiOS\/([\d.]+)/, 'Firefox'], [/Firefox\/([\d.]+)/, 'Firefox'],
+      [/CriOS\/([\d.]+)/, 'Chrome'], [/Chrome\/([\d.]+)/, 'Chrome'], [/Version\/([\d.]+).*Safari/, 'Safari']];
+    for (const [re, name] of rx) { const m = re.exec(ua); if (m) return `${name} ${m[1].split('.').slice(0, 2).join('.')}`; }
+    return '';
+  }
+  function fbKindOfDevice(ua) {
+    if (/iPad|Tablet/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) || (/Android/.test(ua) && !/Mobile/.test(ua))) return 'планшет';
+    if ((navigator.userAgentData && navigator.userAgentData.mobile) || /Mobi|iPhone|iPod/.test(ua)) return 'телефон';
+    return "комп'ютер";
+  }
+  /// Усе разом — об'єктом; сервер дописує збірку й акаунт (srv) і віддає назад лише розробнику.
+  function fbDiag() {
+    const ua = navigator.userAgent;
+    const mm = (q) => { try { return matchMedia(q).matches; } catch { return false; } };
+    const c = navigator.connection;
+    let game = null;
+    try {
+      const a = window.HGames && HGames.active();
+      if (a) game = { game: a.id, room: a.ctx && a.ctx.room ? a.ctx.room.id : undefined, title: HGames.titleOf ? HGames.titleOf(a.id) : undefined };
+    } catch { /* без гри */ }
+    let vol;
+    try { vol = +$('volume').value; } catch { /* нема повзунка */ }
+    const iso = (t) => new Date(t).toISOString();
+    return {
+      dev: {
+        kind: fbKindOfDevice(ua), os: fbOs(ua), browser: fbBrowser(ua), model: (fbHi && fbHi.model) || undefined,
+        touch: navigator.maxTouchPoints || 0, pointer: mm('(pointer: coarse)') ? 'палець' : mm('(pointer: fine)') ? 'миша' : 'інше',
+        pads: window.HPad ? HPad.pads : 0, app: mm('(display-mode: standalone)') || navigator.standalone === true,
+        lang: navigator.language, tz: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } })(),
+        cpu: navigator.hardwareConcurrency || undefined, mem: navigator.deviceMemory || undefined,
+        net: c ? { type: c.effectiveType, down: c.downlink, rtt: c.rtt, save: c.saveData || undefined } : undefined,
+        online: navigator.onLine, dark: mm('(prefers-color-scheme: dark)'),
+      },
+      view: {
+        win: `${innerWidth}×${innerHeight}`, scr: `${screen.width}×${screen.height}`,
+        dpr: Math.round((window.devicePixelRatio || 1) * 100) / 100,
+        orient: (screen.orientation && screen.orientation.type) || undefined,
+      },
+      site: {
+        place: location.hash || '#efir', game, account: !!me.account, role: me.role,
+        hub: conn ? String(conn.state || '') : 'нема', drops: diagDrops, up: Math.round((Date.now() - diagStart) / 60000),
+        stale: !$('updBar').hidden, app: front && front['app.js'] ? String(front['app.js']).slice(0, 8) : undefined,
+        radio: playState, vol,
+      },
+      errs: diagErrs.map((e) => ({ ...e, t: iso(e.t) })),
+      reqs: diagReqs.map((e) => ({ ...e, t: iso(e.t) })),
+    };
+  }
+
+  // ---- вкладення: скрін, запис екрана, будь-що до 10 МБ (FeedbackFiles.cs) ----
+  // Файл вантажиться одразу, як його вибрали (📎, Ctrl+V, перетягнути), і чекає на сервері; із запискою чи відповіддю
+  // летять лише id. Кожне поле має свій «слот»: new — нова записка, m:<id> — відповідь у «Моїх записках»,
+  // a:<id> — відповідь розробника у вкладці. Стан — тут, а не в DOM: списки перемальовуються, а вкладення лишаються.
+  const FBF_MAX = 10 * 1024 * 1024;   // як FeedbackFiles.MaxBytes
+  const FBF_COUNT = 5;                // як Feedback.MaxFiles
+  const fbAtt = new Map();
+  const fbAttList = (slot) => fbAtt.get(slot) || [];
+  function fbChip(a, i) {
+    const pic = a.thumb ? `<img src="${esc(a.thumb)}" alt="">` : `<span class="ico">${fileIcon(a.name)}</span>`;
+    const bar = a.xhr ? `<progress max="100" value="${a.pct}"></progress>` : '';
+    return `<span class="fbchip${a.xhr ? ' up' : ''}" data-i="${i}" title="${esc(a.name)} · ${fileSize(a.size)}">${pic}<span class="fn">${esc(a.name)}</span>${bar}<button type="button" class="fbchip-x" title="Прибрати" aria-label="Прибрати">✕</button></span>`;
+  }
+  function fbAttPaint(slot) {
+    const html = fbAttList(slot).map(fbChip).join('');
+    document.querySelectorAll('.fbatt').forEach((box) => { if (box.dataset.slot === slot) box.innerHTML = html; });
+  }
+  const fbAttPaintIn = (root) => root.querySelectorAll('.fbatt').forEach((box) => fbAttPaint(box.dataset.slot));
+  function fbAttDrop(slot, i) {
+    const list = fbAttList(slot);
+    const a = list[i];
+    if (!a) return;
+    list.splice(i, 1);
+    if (a.xhr) a.xhr.abort();
+    if (a.thumb) URL.revokeObjectURL(a.thumb);
+    fbAttPaint(slot);
+  }
+  function fbAttClear(slot) {
+    for (const a of fbAttList(slot)) if (a.thumb) URL.revokeObjectURL(a.thumb);
+    fbAtt.delete(slot);
+    fbAttPaint(slot);
+  }
+  function fbUpload(slot, files) {
+    if (!me.nick || /^гість$/i.test(me.nick.trim())) { askNick(true); return; }
+    if (!fbAtt.has(slot)) fbAtt.set(slot, []);
+    const list = fbAtt.get(slot);
+    for (const f of [...(files || [])]) {
+      if (list.length >= FBF_COUNT) { toast(`До ${FBF_COUNT} файлів за раз`, 'err'); break; }
+      if (f.size > FBF_MAX) { toast(`«${f.name}» завеликий — до 10 МБ`, 'err'); continue; }
+      if (!f.size) { toast(`«${f.name}» порожній`, 'err'); continue; }
+      const a = { name: f.name || 'скрін.png', size: f.size, pct: 0, id: 0, thumb: /^image\//.test(f.type) ? URL.createObjectURL(f) : '' };
+      list.push(a);
+      a.done = new Promise((resolve) => {
+        const x = a.xhr = new XMLHttpRequest();
+        const end = (err) => {
+          a.xhr = null;
+          if (err) { toast(err, 'err'); const i = list.indexOf(a); if (i >= 0) fbAttDrop(slot, i); } else fbAttPaint(slot);
+          resolve();
+        };
+        x.open('POST', '/api/feedback/file');
+        x.setRequestHeader('Content-Type', 'application/octet-stream');
+        x.setRequestHeader('X-Nick', encodeURIComponent(me.nick));
+        x.setRequestHeader('X-File-Name', encodeURIComponent(a.name));
+        x.upload.onprogress = (e) => {
+          if (!e.lengthComputable) return;
+          a.pct = Math.round(e.loaded / e.total * 100);
+          // лише смужку, не весь слот: перемальовування на кожен шматок смикало б картинки
+          document.querySelectorAll('.fbatt').forEach((box) => {
+            if (box.dataset.slot !== slot) return;
+            const p = box.querySelector(`.fbchip[data-i="${list.indexOf(a)}"] progress`);
+            if (p) p.value = a.pct;
+          });
+        };
+        x.onload = () => {
+          let d = null;
+          try { d = JSON.parse(x.responseText); } catch { /* без тіла */ }
+          if (x.status >= 200 && x.status < 300 && d && d.file) { a.id = d.file.id; end(null); } else end((d && d.message) || `«${a.name}» не пішов (HTTP ${x.status})`);
+        };
+        x.onerror = () => end(`«${a.name}» не пішов — зв'язок обірвався`);
+        x.onabort = () => { a.xhr = null; resolve(); };
+        x.send(f);
+      });
+    }
+    fbAttPaint(slot);
+  }
+  /// Дочекатись, поки все в слоті довантажиться; віддає id того, що доїхало.
+  async function fbAttReady(slot) {
+    await Promise.all(fbAttList(slot).map((a) => a.done));
+    return fbAttList(slot).filter((a) => a.id).map((a) => a.id);
+  }
+  // Один прихований вибір файлів на всі 📎: запам'ятовуємо, для якого слота його відкрили.
+  let fbPickSlot = 'new';
+  function fbPick(slot) {
+    if (!me.nick || /^гість$/i.test(me.nick.trim())) { askNick(true); return; }
+    fbPickSlot = slot;
+    $('fbFileInput').click();
+  }
+  $('fbFileInput').onchange = () => { fbUpload(fbPickSlot, $('fbFileInput').files); $('fbFileInput').value = ''; };
+  document.addEventListener('click', (e) => {
+    const x = e.target.closest && e.target.closest('.fbchip-x');
+    if (x) { fbAttDrop(x.closest('.fbatt').dataset.slot, +x.closest('.fbchip').dataset.i); return; }
+    const clip = e.target.closest && e.target.closest('.fbclip');
+    if (clip) fbPick(clip.dataset.slot);
+  });
+  /// Файли з буфера (Ctrl+V скріна) у поле — у його слот; текст вставляється як завжди.
+  function fbPasteTo(el, slot) {
+    el.addEventListener('paste', (e) => {
+      const files = e.clipboardData && e.clipboardData.files;
+      if (!files || !files.length) return;
+      e.preventDefault();
+      fbUpload(slot(), files);
+    });
+  }
+  /// Перетягнути файли на записку: у відповідь тієї записки, над якою відпустили, інакше — у нову (лише у вікні).
+  function fbDropZone(el, fallback) {
+    const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    const slotAt = (e) => {
+      const card = e.target.closest && e.target.closest('[data-id]');
+      const say = card && card.querySelector('.fbsay');
+      return say ? say.dataset.slot : fallback();
+    };
+    el.addEventListener('dragover', (e) => { if (hasFiles(e) && slotAt(e)) e.preventDefault(); });
+    el.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      const slot = slotAt(e);
+      if (!slot) return;
+      e.preventDefault();
+      fbUpload(slot, e.dataTransfer.files);
+    });
+  }
+  fbDropZone($('lib'), () => null);   // вкладка «Пропозиції»: лише у відповідь записці, над якою відпустили
+  /// Файли в записці чи повідомленні — тими самими картками, що й у Балачках, лише меншими.
+  const fbFilesHtml = (files) => (files && files.length ? `<div class="fbfiles">${files.map(fileHtml).join('')}</div>` : '');
   let fbMineUnread = 0;         // у скількох своїх записках нова відповідь (людині; адміну 💡 рахує інше)
   // Повідомлення розробника, нові на момент показу: сервер уже вважає їх прочитаними, а підсвітка тримається, поки
   // вікно відкрите — інакше перше ж перемальовування (сама відписала) гасило б її посеред читання.
@@ -2757,10 +3012,12 @@
     if (m.kind === 'status') return `<div class="fbx-st${hl}">Стан записки: ${fbStatusChip(m.text)}<span>${at}</span></div>`;
     const mine = !!m.dev === mineDev;
     const who = !mine && m.dev ? '<div class="fbb-who">Розробник</div>' : '';
-    return `<div class="fbb ${mine ? 'me' : 'them'}${hl}">${who}<div class="fbb-text">${linkify(m.text)}</div><div class="fbb-at">${at}</div></div>`;
+    const text = m.text ? `<div class="fbb-text">${linkify(m.text)}</div>` : '';
+    return `<div class="fbb ${mine ? 'me' : 'them'}${hl}">${who}${text}${fbFilesHtml(m.files)}<div class="fbb-at">${at}</div></div>`;
   }
-  /// Поле відповіді під запискою. Не <form>: «Мої записки» живуть усередині форми нової записки, а форма у формі не буває.
-  const fbSayBox = (ph) => `<div class="fbsay"><textarea rows="1" maxlength="${FB_MAX_MSG}" placeholder="${esc(ph)}" aria-label="Відповісти"></textarea><button type="button" class="ghost">Тяпнути</button></div>`;
+  /// Поле відповіді під запискою (зі своїм 📎 і вкладеннями). Не <form>: «Мої записки» живуть усередині форми нової
+  /// записки, а форма у формі не буває.
+  const fbSayBox = (ph, slot) => `<div class="fbsay" data-slot="${esc(slot)}"><button type="button" class="ghost fbclip" data-slot="${esc(slot)}" title="Прикріпити скрін чи файл (або Ctrl+V)" aria-label="Прикріпити файл">📎</button><textarea rows="1" maxlength="${FB_MAX_MSG}" placeholder="${esc(ph)}" aria-label="Відповісти"></textarea><button type="button" class="ghost fbsend">Тяпнути</button></div><div class="fbatt" data-slot="${esc(slot)}"></div>`;
   const fbGrow = (t) => { t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight + 2, 160)}px`; };
   /// Недописане в полях відповіді (і курсор) переживає перемальовування: нове повідомлення прилітає й тоді, коли пишеш.
   function fbDrafts(root) {
@@ -2772,6 +3029,7 @@
     return map;
   }
   function fbRestore(root, drafts) {
+    fbAttPaintIn(root);
     for (const [id, d] of drafts) {
       const t = root.querySelector(`[data-id="${id}"] .fbsay textarea`);
       if (!t) continue;
@@ -2780,20 +3038,22 @@
       if (d.focus) { t.focus(); try { t.setSelectionRange(d.at, d.at); } catch { /* не текст */ } }
     }
   }
-  /// Enter — тяпнути, Shift+Enter — новий рядок; send(id, text, textarea) — куди саме.
+  /// Enter — тяпнути, Shift+Enter — новий рядок; send(id, text, textarea, slot) — куди саме. Самий файл без слів — теж можна.
   function fbWireSay(root, send) {
     root.querySelectorAll('[data-id] .fbsay').forEach((box) => {
       const id = box.closest('[data-id]').dataset.id;
+      const slot = box.dataset.slot;
       const t = box.querySelector('textarea');
-      const b = box.querySelector('button');
+      const b = box.querySelector('.fbsend');
       const go = () => {
         const text = t.value.trim();
-        if (!text) { t.focus(); return; }
-        busy(b, '…', () => send(id, text, t));
+        if (!text && !fbAttList(slot).length) { t.focus(); return; }
+        busy(b, '…', () => send(id, text, t, slot));
       };
       b.onclick = go;
       t.addEventListener('input', () => fbGrow(t));
       t.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); go(); } });
+      fbPasteTo(t, () => slot);
     });
   }
   function paintFbBadge(n) {
@@ -2814,10 +3074,12 @@
   function fbMineCard(x, typing) {
     const msgs = x.msgs || [];
     const talk = msgs.some((m) => m.dev);
+    const slot = `m:${x.id}`;
+    const open = talk || typing || fbAttList(slot).length;   // вкладення, що чекають, — поле лишається розгорнутим
     return `<div class="fbm${fbMineHot(x) ? ' fresh' : ''}" data-id="${x.id}">
         <div class="fbm-head">${FB_ICON[x.kind] || '💬'} ${fbNo(x.id)} ${fbStatusChip(x.status)}<span class="muted small">${esc(dayTime(x.at))}</span></div>
-        <div class="fbt"><div class="fbb me"><div class="fbb-text">${esc(x.text)}</div></div>${msgs.map((m) => fbBubble(m, false, fbMineFresh)).join('')}</div>
-        ${talk || typing ? fbSayBox(talk ? 'Відповісти… (Enter)' : 'Доповнити… (Enter)') : '<button type="button" class="ghost fbadd">✏ Доповнити</button>'}
+        <div class="fbt"><div class="fbb me"><div class="fbb-text">${esc(x.text)}</div>${fbFilesHtml(x.files)}</div>${msgs.map((m) => fbBubble(m, false, fbMineFresh)).join('')}</div>
+        ${open ? fbSayBox(talk ? 'Відповісти… (Enter)' : 'Доповнити… (Enter)', slot) : '<button type="button" class="ghost fbadd">✏ Доповнити</button>'}
       </div>`;
   }
   async function loadMyFeedback(open) {
@@ -2840,7 +3102,7 @@
     fbWireSay(list, sayMine);
     list.querySelectorAll('.fbadd').forEach((b) => b.onclick = () => {
       const card = b.closest('[data-id]');
-      b.outerHTML = fbSayBox('Доповнити… (Enter)');
+      b.outerHTML = fbSayBox('Доповнити… (Enter)', `m:${card.dataset.id}`);
       fbWireSay(card, sayMine);
       card.querySelector('.fbsay textarea').focus();
     });
@@ -2850,10 +3112,13 @@
       if (open) list.querySelector('.fbm.fresh')?.scrollIntoView({ block: 'nearest' });
     }
   }
-  async function sayMine(id, text, t) {
+  async function sayMine(id, text, t, slot) {
     try {
-      await api('POST', `/api/feedback/${id}/msg`, { text });
+      const files = await fbAttReady(slot);
+      if (!text && !files.length) return;   // файл не доїхав, а слів нема — тост про файл уже був
+      await api('POST', `/api/feedback/${id}/msg`, { text, files });
       t.value = '';
+      fbAttClear(slot);
       await loadMyFeedback(false);
     } catch (err) { fail(err); }
   }
@@ -2867,6 +3132,7 @@
     paintFbBadge(n);
   }
   function openFeedback() {
+    fbAskHi();
     setFbKind(fbKind);
     $('fbCount').textContent = `${$('fbText').value.length} / 2000`;
     $('fbModal').hidden = false;
@@ -2886,17 +3152,23 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('fbModal').hidden) closeFeedback(); });
   $('fbKinds').querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { setFbKind(b.dataset.k); $('fbText').focus(); });
   $('fbText').addEventListener('input', () => { $('fbCount').textContent = `${$('fbText').value.length} / 2000`; });
+  fbPasteTo($('fbText'), () => 'new');
+  fbDropZone($('fbForm'), () => 'new');
   $('fbForm').onsubmit = (e) => {
     e.preventDefault();
     const text = $('fbText').value.trim();
     if (text.length < 5) { toast('Тяпни трохи більше — хоч кілька слів', 'err'); $('fbText').focus(); return; }
     busy($('fbSend'), 'надсилаю…', async () => {
       try {
+        const files = await fbAttReady('new');
+        let diag = null;
+        try { diag = fbDiag(); } catch (e) { diag = { broken: diagCut(e && e.message, 200) }; }   // записка важливіша за подробиці
         const r = await api('POST', '/api/feedback', {
           kind: fbKind, text, place: location.hash || '#efir', screen: fbScreen(),
-          ua: navigator.userAgent.slice(0, 300),
+          ua: navigator.userAgent.slice(0, 300), diag, files,
         });
         ok(r);
+        fbAttClear('new');
         $('fbText').value = '';
         $('fbCount').textContent = '0 / 2000';
         loadMyFeedback(true);
@@ -3593,6 +3865,47 @@
     const p = /Android/.test(s) ? 'Android' : /iPhone|iPad/.test(s) ? 'iOS' : /Windows/.test(s) ? 'Windows' : /Mac OS X/.test(s) ? 'Mac' : /Linux/.test(s) ? 'Linux' : '';
     return [b, p].filter(Boolean).join(' · ');
   }
+  /// «На чому й що було» (fbDiag) для розробника: рядок-підсумок, а під ним — розгортка з усім. Записки до 09.10 — без
+  /// неї, для них лишається старий рядок (місце, екран, браузер).
+  function fbDiagHtml(x) {
+    const d = x.diag || {};
+    const dev = d.dev || {}, v = d.view || {}, s = d.site || {}, srv = d.srv || {};
+    const errs = d.errs || [], reqs = d.reqs || [];
+    const yes = (b) => (b ? 'так' : 'ні');
+    const join = (...a) => a.filter((p) => p !== undefined && p !== null && p !== '').join(' · ');
+    const devIco = dev.kind === 'телефон' ? '📱' : dev.kind === 'планшет' ? '📲' : '💻';
+    const where = join(s.place, s.game ? join(s.game.title || s.game.game, s.game.room ? 'стіл ' + s.game.room : '') : '');
+    const sum = join(where ? '📍 ' + where : '', `${devIco} ${join(dev.model, dev.os) || dev.kind || '?'}`, dev.browser, v.win,
+      s.stale ? '🕰 стара сторінка' : '', s.drops ? `📡 обривів ${s.drops}` : '');
+    const warn = errs.length ? ` <span class="chip err">⚠ ${errs.length}</span>` : '';
+    const net = dev.net ? join(dev.net.type, dev.net.down != null ? dev.net.down + ' Мбіт/с' : '', dev.net.rtt != null ? dev.net.rtt + ' мс' : '', dev.net.save ? 'економія трафіку' : '') : '';
+    const rows = [
+      ['Пристрій', join(dev.kind, dev.model, dev.os)],
+      ['Браузер', join(dev.browser, dev.app ? 'встановлено як застосунок' : '')],
+      ['Вікно', join(`${v.win} у вікні`, `екран ${v.scr}`, v.dpr ? v.dpr + 'x' : '', v.orient)],
+      ['Керування', join(dev.pointer, dev.touch ? `дотиків ${dev.touch}` : '', dev.pads ? `джойстиків ${dev.pads}` : '')],
+      ['Мова й час', join(dev.lang, dev.tz)],
+      ['Мережа', join(dev.online === false ? 'офлайн' : '', net)],
+      ['Залізо', join(dev.cpu ? `ядер ${dev.cpu}` : '', dev.mem ? `пам'яті ~${dev.mem} ГБ` : '')],
+      ['Тема', dev.dark === undefined ? '' : dev.dark ? 'темна в системі' : 'світла в системі'],
+      ['Де', where],
+      ['Хто', join(srv.account ?? s.account ? 'акаунт' : 'гість', srv.admin || s.role === 'admin' ? 'адмін' : '')],
+      ['Сайт', join(srv.build ? 'збірка ' + srv.build : '', s.app ? 'app.js ' + s.app : '', s.up != null ? `сторінці ${s.up} хв` : '', s.stale ? 'сайт оновився, а сторінка стара' : '')],
+      ['Зв\'язок', join(s.hub, `обривів ${s.drops || 0}`)],
+      ['Радіо', join(s.radio, s.vol != null ? `гучність ${s.vol}` : '')],
+    ].filter(([, val]) => val);
+    const time = (t) => { try { return new Date(t).toLocaleTimeString('uk-UA'); } catch { return ''; } };
+    const line = (e, body) => `<li><time>${esc(time(e.t))}</time> ${body}${e.n > 1 ? ` <b>×${+e.n}</b>` : ''}</li>`;
+    const errList = errs.length ? `<div class="fbdiag-h">Помилки на сторінці</div><ol class="fbdiag-log">${errs.slice().reverse().map((e) =>
+      line(e, `${esc(e.m)}${e.s ? ` <code>${esc(e.s)}</code>` : ''}${e.st ? `<pre>${esc(e.st)}</pre>` : ''}`)).join('')}</ol>` : '';
+    const reqList = reqs.length ? `<div class="fbdiag-h">Невдалі запити</div><ol class="fbdiag-log">${reqs.slice().reverse().map((e) =>
+      line(e, `<code>${esc(e.m)}</code> → ${esc(e.s)}${e.e ? ' — ' + esc(e.e) : ''}`)).join('')}</ol>` : '';
+    return `<details class="fbdiag"><summary class="muted small">🔧 ${esc(sum)}${warn}</summary>
+      <dl>${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
+      ${errList}${reqList}
+      ${x.ua ? `<div class="fbdiag-ua muted small">${esc(x.ua)}</div>` : ''}
+    </details>`;
+  }
   function readAsDev() {
     const ids = fbWaitRead;
     fbWaitRead = [];
@@ -3622,9 +3935,10 @@
         <div class="fbi-head">${FB_ICON[x.kind] || '💬'} ${fbNo(x.id)} ${nickHtml(x.nick, 'rnick')}<span class="muted small">${esc(dayTime(x.at))}</span>${hot ? '<span class="chip warn fbi-hot">↩ відповідь</span>' : ''}
           <select class="fbi-st" aria-label="Стан">${Object.entries(FB_STATUS).map(([k, [l]]) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="fbi-text">${esc(x.text)}</div>
-        <div class="fbi-ctx muted small">${x.place ? '📍 ' + esc(x.place) : ''}${x.screen ? ' · ' + esc(x.screen) : ''}${x.ua ? ` · <span title="${esc(x.ua)}">${esc(shortUa(x.ua))}</span>` : ''}</div>
+        ${fbFilesHtml(x.files)}
+        ${x.diag ? fbDiagHtml(x) : `<div class="fbi-ctx muted small">${x.place ? '📍 ' + esc(x.place) : ''}${x.screen ? ' · ' + esc(x.screen) : ''}${x.ua ? ` · <span title="${esc(x.ua)}">${esc(shortUa(x.ua))}</span>` : ''}</div>`}
         ${msgs.length ? `<div class="fbt">${msgs.map((m) => fbBubble(m, true, fbDevFresh)).join('')}</div>` : ''}
-        ${fbSayBox('Відповісти… (Enter)')}
+        ${fbSayBox('Відповісти… (Enter)', `a:${x.id}`)}
       </li>`;
     };
     const empty = fbFilter === 'new' ? 'Нових записок нема — усе прочитано.' : 'Тут поки порожньо.';
@@ -3644,10 +3958,13 @@
         try { await api('PATCH', `/api/feedback/${li.dataset.id}`, { status: e.target.value }); await done(li.dataset.id); } catch (err) { fail(err); }
       };
     });
-    fbWireSay(box, async (id, text, t) => {
+    fbWireSay(box, async (id, text, t, slot) => {
       try {
-        ok(await api('POST', `/api/feedback/${id}/msg`, { text }));
+        const files = await fbAttReady(slot);
+        if (!text && !files.length) return;
+        ok(await api('POST', `/api/feedback/${id}/msg`, { text, files }));
         t.value = '';
+        fbAttClear(slot);
         await done(id);
       } catch (err) { fail(err); }
     });
@@ -4148,7 +4465,7 @@
       lostSaid = false;
     };
     conn.onreconnected(resync);
-    conn.onreconnecting(() => lost('Ой-йой, зв\'язок зник — підключаюсь…'));
+    conn.onreconnecting(() => { diagDrops++; lost('Ой-йой, зв\'язок зник — підключаюсь…'); });
     // Автоповтор здається лише в рідкісних випадках (сервер закрив з'єднання назовсім) — тоді стартуємо його самі.
     const restart = () => conn.start().then(resync).catch(() => setTimeout(restart, 5000));
     conn.onclose(() => { lost('Ой-йой, зв\'язок урвався — підключаюсь наново…'); setTimeout(restart, 1000); });

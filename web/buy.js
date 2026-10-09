@@ -70,6 +70,7 @@
 
   /// Кружечок на 🏺 у шапці — адміну: скільки заявок в обробці. Клік веде просто в «Заявки».
   function paintBadge() {
+    paintDeskBtn();
     const w = document.getElementById('hdrWallet');
     if (!w) return;
     let b = w.querySelector('.by-badge');
@@ -82,6 +83,27 @@
     }
     b.textContent = n;
     b.title = 'Заявки в обробці: ' + n;
+  }
+
+  // ---------------------------------------------------------------- кнопки в картці «🏺 Черепки» профілю
+
+  /// Ряд великих кнопок під балансом: ➕ Купити (золота), 💸 Продати, адміну — 📋 Заявки з кружечком.
+  /// Вимкнене в конфігу (ShardShop:Buy / Sell) не показується; адміну «Заявки» лишаються завжди.
+  function tradeHtml() {
+    const admin = data ? isAdmin() : !!(o && o.me.role === 'admin');
+    const b = [];
+    if (buyOn()) b.push('<button type="button" class="primary" data-shards="buy" title="Купити черепки за гривні">➕ Купити за гривні</button>');
+    if (sellOn()) b.push('<button type="button" data-shards="sell" title="Продати черепки за гривні">💸 Продати за гривні</button>');
+    if (admin) b.push('<button type="button" data-shards="desk" title="Заявки на купівлю й продаж черепків">📋 Заявки' + deskBadge() + '</button>');
+    return b.length ? '<div class="wc-trade">' + b.join('') + '</div>' : '';
+  }
+  const deskBadge = () => (deskCount() ? ' <span class="chip badge">' + deskCount() + '</span>' : '');
+  function wireTrade(root) {
+    root.querySelectorAll('[data-shards]').forEach((b) => b.onclick = () => open({ tab: b.dataset.shards }));
+  }
+  /// Кружечок на «📋 Заявки» в профілі — свіжий без F5, як і в шапці.
+  function paintDeskBtn() {
+    document.querySelectorAll('.wc-trade [data-shards="desk"]').forEach((b) => { b.innerHTML = '📋 Заявки' + deskBadge(); });
   }
 
   // ---------------------------------------------------------------- вікно
@@ -579,14 +601,7 @@
     open,
     buyOn,
     sellOn,
-    /// Підпис першої кнопки в профілі: адміну — «Заявки» з тим, скільки в обробці; решті — «Купити».
-    label() {
-      if (isAdmin()) { const n = deskCount(); return '📋 Заявки' + (n ? ' · ' + n : ''); }
-      return '➕ Купити';
-    },
-    /// Куди веде перша кнопка профілю: адміну — у «Заявки», решті — купити.
-    mainTab: () => (isAdmin() ? 'desk' : 'buy'),
-    /// Друга кнопка профілю.
-    sellLabel: () => '💸 Продати',
+    tradeHtml,
+    wireTrade,
   };
 })();

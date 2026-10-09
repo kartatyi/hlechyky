@@ -81,6 +81,9 @@ builder.Services.AddHlechykyEconomy();
 builder.Services.AddHlechykyWords();
 builder.Services.AddHlechykyMcp();   // аі-агенти за столом: POST /mcp
 builder.Services.AddHlechykyFeedback();   // «💡 Розробнику»: пропозиції й баги (Feedback.cs)
+// файли в записках: data/feedbackfiles, не більше FeedbackFiles:MaxGb разом (FeedbackFiles.cs)
+builder.Services.AddSingleton(_ => new FeedbackFilesDir(Paths.Resolve("data/feedbackfiles"), (long)(cfg.GetValue("FeedbackFiles:MaxGb", 3.0) * 1024 * 1024 * 1024)));
+builder.Services.AddSingleton<FeedbackFiles>();
 builder.Services.AddHlechykyLavka();      // «Лавка Дядька Глека»: вигляд профілю, подарунки, присвята й феєрверк (Lavka.cs)
 builder.Services.AddHlechykyPadel(cfg);  // «Падельня»: табло, турніри, збори, гроші за корт, рейтинг (Padel/)
 builder.Services.AddHlechykyShardShop();  // черепки за гривні: купити й продати, керує адмін (ShardShop.cs)
@@ -120,6 +123,7 @@ app.MapHlechykyGames();
 app.MapHlechykyEconomy();
 app.MapHlechykyMcp();
 app.MapHlechykyFeedback();
+FeedbackFiles.Map(app);   // файли в записках: POST /api/feedback/file, GET /api/feedback/file/<id>/<ключ>/<ім'я>
 app.MapHlechykyLavka();
 app.MapHlechykyPadel();
 app.MapHlechykyShardShop();

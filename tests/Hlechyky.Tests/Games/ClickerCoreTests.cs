@@ -299,7 +299,10 @@ public class ClickerCoreTests
     [InlineData(25, 1.3)]
     [InlineData(37, 1.54)]
     [InlineData(100, 2.8)]
-    public void The_streak_adds_ten_percent_up_to_ten_and_two_after(int streak, double bonus)
+    [InlineData(101, 2.81)]
+    [InlineData(191, 3.71)]
+    [InlineData(700, 8.8)]
+    public void The_streak_adds_ten_percent_up_to_ten_two_up_to_hundred_and_one_after(int streak, double bonus)
     {
         var h = Wheel();
         Patch(h, s => s["fallStreak"] = streak);

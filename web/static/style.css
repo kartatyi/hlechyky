@@ -1157,7 +1157,52 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 }
 .fbsay textarea:focus { border-color: var(--accent2); }
 .fbsay button { flex: none; }
+.fbsay .fbclip { padding: 6px 8px; }
 .fbm .fbadd { align-self: flex-start; font-size: .85em; padding: 4px 10px; }
+
+/* ---- вкладення до записки чи відповіді: картки «що прикріплено» під полем (поки вантажиться — зі смужкою) ---- */
+.fbatt { display: flex; flex-wrap: wrap; gap: 6px; }
+.fbatt:empty { display: none; }
+.fbchip {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 3px 4px 3px 3px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); font-size: .82em;
+}
+.fbchip img { width: 36px; height: 36px; object-fit: cover; border-radius: 7px; display: block; }
+.fbchip .ico { font-size: 1.5em; line-height: 1; padding: 0 4px; }
+.fbchip .fn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fbchip progress { position: absolute; left: 4px; right: 4px; bottom: 2px; width: auto; height: 3px; }
+.fbchip.up { opacity: .8; }
+.fbchip-x { flex: none; padding: 2px 6px; font-size: .9em; background: none; border: 0; color: var(--muted); cursor: pointer; }
+.fbchip-x:hover { color: var(--danger); }
+/* файли в самій записці й у бульбашках — ті самі картки, що в Балачках (fileHtml), лише менші */
+.fbfiles { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin: 4px 0 2px; }
+.fbfiles .mfile { display: block; max-width: 100%; }
+.fbfiles .mfile.img { line-height: 0; border-radius: 8px; overflow: hidden; background: var(--bg2); }
+.fbfiles .mfile.img img { display: block; width: auto !important; height: auto; max-width: min(100%, 240px); max-height: 180px; }
+.fbfiles .mfile.vid { max-height: 220px; max-width: min(100%, 320px); border-radius: 8px; background: #000; }
+.fbfiles .mfile.aud { width: min(100%, 280px); height: 36px; }
+.fbfiles .mfile.doc, .fbfiles .mfile-dl { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; text-decoration: none; color: var(--text); }
+.fbfiles .mfile.doc { padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); }
+.fbfiles .mfile.doc:hover { border-color: var(--accent2); }
+.fbfiles .mfile .fn, .fbfiles .mfile-dl .fn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fbfiles .mfile .fs, .fbfiles .mfile-dl .fs { color: var(--muted); font-size: .82em; white-space: nowrap; }
+.fbfiles .mfile-dl { font-size: .8em; color: var(--muted); }
+
+/* ---- «🔧 на чому й що було» під запискою у вкладці розробника ---- */
+.fbdiag summary { cursor: pointer; overflow-wrap: anywhere; }
+.fbdiag summary .chip { font-size: .9em; }
+.fbdiag dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 6px 0 0; font-size: .85em; }
+.fbdiag dt { color: var(--muted); }
+.fbdiag dd { margin: 0; overflow-wrap: anywhere; }
+.fbdiag-h { margin-top: 8px; font-size: .82em; font-weight: 700; color: var(--muted); }
+.fbdiag-log { margin: 2px 0 0; padding-left: 18px; font-size: .82em; display: flex; flex-direction: column; gap: 3px; }
+/* рядки списків бібліотеки (.list li) — сітка з тлом при наведенні, а тут звичайний нумерований список */
+.list .fbdiag-log li, .fbdiag-log li { display: list-item; padding: 0; font-size: 1em; background: none; overflow-wrap: anywhere; }
+.fbdiag-log time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fbdiag-log code { font-size: .95em; color: var(--muted); }
+.fbdiag-log pre { margin: 2px 0 0; padding: 4px 6px; max-height: 120px; overflow: auto; font-size: .9em; background: var(--panel); border-radius: 6px; white-space: pre-wrap; }
+.fbdiag-ua { margin-top: 6px; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .fbdiag dl { grid-template-columns: 1fr; } .fbdiag dt { margin-top: 4px; } }
 
 /* ---- вкладка розробника «💡 Пропозиції й баги» ---- */
 .fbseg { flex-wrap: wrap; }

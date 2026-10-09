@@ -395,6 +395,7 @@ web/static/curses/        прокльони Лавки (mp3; перегенер
 | `ShardShop:Packs` | пакети в гривнях (типово 50/100/250/500); `ShardShop:CustomMin`/`CustomMax` — своя сума, `CustomMax: 0` — лише пакети |
 | `ShardShop:SellMin` | найменший продаж, грн |
 | `ShardShop:PendingMax` | скільки заявок одного гравця (кожного напрямку) водночас в обробці |
+| `FeedbackFiles:MaxGb` | скільки гігабайт файлів записок «💡 Розробнику» тримати в `data\feedbackfiles` (типово 3): що понад — найстаріше стирається. Файл до 10 МБ, до 5 на записку чи відповідь, 30 файлів і 100 МБ на годину з ніка; вибраний, але так і не надісланий, прибирається через добу |
 | `Google:ClientId` | OAuth Client ID для кнопки «Вхід через Google» (console.cloud.google.com → Credentials → Web application, Authorized JavaScript origins: сайт і `http://localhost:8080`); порожній — кнопки нема |
 
 Зміни в `appsettings*.json` підхоплюються без рестарту.
