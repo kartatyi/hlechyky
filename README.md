@@ -388,7 +388,7 @@ web/static/curses/        прокльони Лавки (mp3; перегенер
 | `Bets:Events`, `Bets:Tables` | окремо: сторінка подій (адмін додає, найчастіше з Polymarket, і розраховує) і ставки на столах перед партією |
 | `Bets:Margin` | маржа Глека: кеф = (1 − Margin) / ймовірність |
 | `Bets:MaxEventBet`, `Bets:MaxTableBet` | стеля на одну людину в одній події / на одну партію столу, 🏺; `0` — без стелі |
-| `Bets:MinBet`, `Bets:MinOdds`, `Bets:MaxOdds` | найменша ставка і межі кефа |
+| `Bets:MinBet`, `Bets:MinOdds`, `Bets:MaxOdds` | найменша ставка і межі кефа (типово ×1,05…×100; нижче ×1,01 конфіг не пустить) |
 | `Bets:Polymarket:BaseUrl`, `CacheSeconds`, `TimeoutSeconds` | огляд Polymarket (сервер ходить сам, без ключа): адреса gamma-api, скільки тримати відповідь у кеші й скільки чекати |
 | `Bets:SuggestPending` | скільки пропозицій однієї людини водночас чекають адміна |
 | `ShardShop:Rate`, `ShardShop:SellRate` | скільки черепків за 1 грн, коли купують і коли продають |

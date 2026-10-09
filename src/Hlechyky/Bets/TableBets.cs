@@ -87,11 +87,15 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
         if (!O.TablesOn) return Off;
         if (t is null) return Games.Say.NoRoom;
         if (InTour(t.Id)) return "На турнірних столах ставок нема";
+        // Бота кликали, а він ще не сів: скільки їх буде й на яких місцях, гра вирішить лише на старті — кефи нема з чого рахувати.
+        if (t.BotCalled) return BotFirst;
         if (t.Humans < 2) return "Ставки — коли за столом хоча б двоє";
         if (t.Humans < t.Info.MinPlayers) return "Ставки — коли всі сядуть";
         if (t.Status == RoomStatus.Playing) return "Партія йде — ставки на наступну приймаються після неї";
         return null;
     }
+
+    public const string BotFirst = "З ботом ставки — після першої партії, коли видно склад";
 
     bool InTour(string roomId) => services.GetService<Tournament>()?.Holds(roomId) == true;
 
@@ -255,7 +259,7 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
     {
         var o = O;
         var t = rooms.BetTableOf(roomId ?? "", me.Nick, connId);
-        if (!o.TablesOn || t is null || t.Humans < 2 && t.Status != RoomStatus.Finished || InTour(t.Id))
+        if (!o.TablesOn || t is null || t.Humans < 2 && t.Status != RoomStatus.Finished && !t.BotCalled || InTour(t.Id))
             return new { ok = true, on = o.TablesOn, show = false };
         var why = Closed(t);
         if (why is null && !me.Account) why = BetBook.AccountsOnly;
@@ -274,7 +278,7 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
         return new
         {
             ok = true, on = true,
-            show = markets.Count > 0 || bets.Count > 0 || done is not null,
+            show = markets.Count > 0 || bets.Count > 0 || done is not null || t.BotCalled,   // з ботом — щоб панель сказала, чому ставок ще нема
             account = me.Account,
             can = why is null,
             why,

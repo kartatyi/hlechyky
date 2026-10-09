@@ -1,5 +1,4 @@
-/* «🎲 Ставки» — сторінка подій (web/bets.js). Поле суми — те саме, що в «Черепки за гривні» (buy.css: .by-own-f). */
-body.route-bets #viewBets { display: flex; animation: fadein .15s ease-out; }
+/* «🎲 Ставки» — сторінка подій (web/bets.js), панель розділу ігор #games/x:bets. Поле суми — те саме, що в «Черепки за гривні» (buy.css: .by-own-f). */
 .bets { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .bets h3 { margin: 4px 0 8px; font-size: 1.05em; }
 .bets h3 .count { color: var(--muted); font-weight: 400; }
@@ -170,13 +169,6 @@ body.route-bets #viewBets { display: flex; animation: fadein .15s ease-out; }
   .bt-eopt > button { grid-area: x; }
   .modal .card.bt-ed { padding: 16px; }
 }
-@media (prefers-reduced-motion: reduce) { body.route-bets #viewBets { animation: none; } }
-/* У шапці «🎲» — шостий розділ: з підписом він з'їдав ~100 px міні-плеєра, а на 1000 px «Ефір» вилазив за край.
-   Тож підпис — лише на дуже широкому екрані, решта бачить кубик і підказку. */
-@media (max-width: 1500px) { header #navBets .lbl { display: none; } }
 .bt-stake .by-own-row { max-width: 360px; }
-/* …а на «Ефірі» між 1000 і 1100 px підписи розділів уже й так налазили на «▶ Врубити» — з кубиком тим паче. */
-@media (max-width: 1100px) {
-  header .vswitch .lbl { display: none; }
-  header .vswitch button { padding: 6px 10px; font-size: 1.05em; }
-}
+/* Плитка «Ставки на події» в каталозі «🎰 Азарт» (core.js, tile панелі): кружечок пропозицій адміну — поруч із числом. */
+.gt-link .gt-pl .badge { margin-left: 4px; }

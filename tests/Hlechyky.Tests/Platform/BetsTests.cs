@@ -113,7 +113,8 @@ public sealed class BetsTests : IDisposable
         Assert.Equal(9.2, BetMath.Odds(0.1, _opts));
         Assert.Equal(100, BetMath.Odds(0.001, _opts));         // стеля
         Assert.Equal(100, BetMath.Odds(0, _opts));             // «світ думає 0%» — не нескінченність
-        Assert.Equal(1.01, BetMath.Odds(0.99, _opts));         // 0,93 → нижня межа
+        Assert.Equal(1.05, BetMath.Odds(0.99, _opts));         // 0,93 → нижня межа ×1,05
+        Assert.Equal(1.05, BetMath.Odds(0.9, _opts));          // 1,022 — теж під межею
         Assert.Equal(1.23, BetMath.Clamp(1.234, _opts));
         Assert.True(BetMath.Fits(2.4, _opts));
         Assert.False(BetMath.Fits(2.456, _opts));

@@ -135,7 +135,7 @@
     azart: [
       { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'] },
       { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo'] },
-      { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },
+      { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },   // не гра: плитку «Ставки на події» ставить панель web/bets.js (tile)
       { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka'] },
       { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker'] },
     ],
@@ -1446,10 +1446,20 @@
       });
       return;
     }
+    // Панель може мати й свою адресу всередині: #games/x:<id>/<що завгодно> — те, що після «/», панель отримує в ctx.sub.
+    const xi = t.indexOf('/');
     const next = t.startsWith('room/') ? { kind: 'room', id: decodeURIComponent(t.slice(5)) }
-      : t.startsWith('x:') ? { kind: 'panel', id: t }
+      : t.startsWith('x:') ? { kind: 'panel', id: xi < 0 ? t : t.slice(0, xi), sub: xi < 0 ? '' : t.slice(xi + 1) }
         : { kind: 'lobby', id: '' };
     const same = next.kind === view.kind && next.id === view.id;
+    // Та сама панель, інша адреса всередині: панель з route() перемикається сама (без перемонтування й втрати полів),
+    // решта — малюється наново.
+    if (same && next.kind === 'panel' && next.sub !== view.sub) {
+      const p = extraPanels.find((x) => 'x:' + x.id === next.id);
+      view = next;
+      if (p && p.route && chromeFor === next.id) { p.route(next.sub); return; }
+      chromeFor = null;
+    }
     view = next;
     if (view.kind !== 'room') setFull(false);
     if (!same) chromeFor = null;          // повернулись у підрозділ — перечитуємо профіль/таблицю
@@ -1536,7 +1546,9 @@
     syncArcade();
     // Лобі малює свої секції-панелі саме, а панелі ігор (турнір, пакети) — просто вміст,
     // тож панель під них дає сам контейнер.
-    v.classList.toggle('boxed', view.kind === 'panel');
+    // Панель зі своїми секціями (bare: ставки) — без спільної підкладки, як і лобі.
+    const xp = view.kind === 'panel' ? extraPanels.find((p) => 'x:' + p.id === view.id) : null;
+    v.classList.toggle('boxed', view.kind === 'panel' && !(xp && xp.bare));
     syncWatch();
     if (room) {
       // Кімнати ще не знаємо (зайшли за посиланням): підписка принесе її сама, а як не принесе —
@@ -1735,6 +1747,12 @@
       const at = placeOf(g.id, g.id, g.group);
       out.push({ kind: 'game', g, ids: [g.id], group: at.group, theme: at.theme, title: g.title, hint: g.hint || '', min: g.minPlayers, max: g.maxPlayers, solo: g.maxPlayers === 1 });
     }
+    // Плитка-посилання на панель (registerPanel з tile: { group, theme, title?, hint?, live? }): стоїть у темі каталогу
+    // поруч з іграми, шукається за назвою, але не гра — ні «часто граємо» (ids порожні), ні «N ігор», ні «+ Стіл».
+    for (const p of extraPanels) {
+      if (!p.tile || (p.visible && !p.visible())) continue;
+      out.push({ kind: 'link', p, ids: [], group: p.tile.group, theme: p.tile.theme, title: p.tile.title || p.title, hint: p.tile.hint || '', min: 0, max: 0, solo: false });
+    }
     return out;
   }
   /// Скільки столів у цю гру (разом з усіма режимами) дограли за 30 днів — нею сортуємо й збираємо «часто граємо».
@@ -1759,6 +1777,16 @@
     return '<button data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '">+ Стіл</button>';
   }
   function tileHtml(e) {
+    if (e.kind === 'link') {
+      let live = '';
+      try { live = e.p.tile.live ? e.p.tile.live() || '' : ''; } catch (err) { console.warn('[games] плитка ' + e.p.id, err); }
+      const href = '#games/x:' + e.p.id;
+      return '<div class="gtile gt-link">'
+        + '<div class="gt-head"><span class="gemo">' + (e.p.tile.icon || e.p.icon || '📋') + '</span><b>' + esc(e.title) + '</b></div>'
+        + '<div class="gt-hint muted small"><span>' + esc(e.hint) + '</span></div>'
+        + '<div class="gt-btns"><span class="gt-pl muted small">' + live + '</span>'
+        + '<button class="primary" data-go="' + esc(href) + '">Відкрити</button></div></div>';
+    }
     const now = e.solo ? playingIn(e.g.id) : [];
     const fresh = isNewGame(e.ids[0]);
     const extra = e.ids.includes('svoya') && extraPanels.some((p) => p.id === 'svoya')
@@ -1930,14 +1958,14 @@
           : theme ? tilesOf(ths.find((x) => x.t.id === theme).items) : byThemes(ths);
 
     const links = [['#stats/games', '🏆 Таблиці ігор'], ['#stats/time', '⏱ Хто скільки грав'], ['#lavka', '🛍 Лавка Дядька Глека']]
-      .concat(extraPanels.filter((p) => p.id !== 'svoya').map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
+      .concat(extraPanels.filter((p) => p.id !== 'svoya' && (!p.visible || p.visible())).map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
       .concat(extraPanels.some((p) => p.id === 'svoya') ? [['#games/x:svoya', '🎯 Пакети Своєї гри']] : []);
 
     box.innerHTML = todayHtml()
       + '<section class="gpanel"><h3>🔥 Живі столи'
       + (rooms.length ? ' <span class="muted small">· ' + rooms.length + '</span>' : '') + '</h3>'
       + live + soloLine + '</section>'
-      + '<section class="gpanel"><h3>Каталог <span class="muted small">· ' + all.length + ' ігор</span></h3>'
+      + '<section class="gpanel"><h3>Каталог <span class="muted small">· ' + all.filter((e) => e.kind !== 'link').length + ' ігор</span></h3>'
       + favRow
       + '<div class="gfilters">'
       + GROUPS.filter((g) => g.id === 'all' || all.some((x) => x.group === g.id))
@@ -1994,7 +2022,7 @@
     catch (e) { console.warn('[games] панель ' + id, e); host.innerHTML = '<div class="gempty">Ой-йой, панель зламалась.</div>'; }
   }
 
-  const panelCtx = () => ({ me, esc, toast, busy, api, call, ui, css: cssVar, catalog });
+  const panelCtx = () => ({ me, esc, toast, busy, api, call, ui, css: cssVar, catalog, sub: view.kind === 'panel' ? view.sub || '' : '' });
 
   // =============================================================================================
   // Попап створення столу
@@ -3118,6 +3146,9 @@
     },
 
     has: (id) => !!modules[id],
+
+    /// Панель змінила свою плитку в каталозі (з'явилась, зникла, нове число) — лобі перемальовується, якщо його видно.
+    panelTileChanged() { if (shown && view.kind === 'lobby' && root && root.querySelector('.gtiles')) renderView(); },
 
     /// Новий знімок турніру (tournament.js): смужка відліку на столі щойно дограної гри.
     tournamentChanged() { for (const id in cards) refreshCard(id); },

@@ -42,6 +42,20 @@ public sealed class TestBetsFull : TestBetsGame
         "t-bets3", "Тестові ставки на трьох", "тестові ставки", GameGroup.Party, 2, 3, Start: StartMode.WhenFull);
 }
 
+/// <summary>Те саме з «🤖 + бот» у лобі (справжній SoloBot): поки бот лише покликаний, ставок нема.</summary>
+public sealed class TestBetsBot : TestBetsGame
+{
+    readonly Hlechyky.Games.Impl.SoloBot _solo = new();
+
+    public override GameInfo Info { get; } = new(
+        "t-bets-bot", "Тестові ставки з ботом", "тестові ставки", GameGroup.Party, 2, 4, Start: StartMode.ByHost);
+
+    public override bool ActsInLobby => true;
+
+    public override ActResult Act(int seat, string action, JsonElement payload) =>
+        action == Hlechyky.Games.Impl.LiveBots.Toggle ? _solo.Switch(Ctx, seat, payload, 4) : base.Act(seat, action, payload);
+}
+
 /// <summary>
 /// Ставки на столах (bets-contract §4): справжні Rooms (RoomHarness) і справжній BetBook на тимчасовій базі, розсилка —
 /// заглушки. Кефи, заборони, повернення на зміні складу, коротка партія, розрахунок, повтор, звірка після перезапуску.
@@ -483,6 +497,40 @@ public sealed class TableBetsTests : IDisposable
         s[SeatOf(Vlad)] = 30; s[SeatOf(Olia)] = 5; s[SeatOf(Ivan)] = 5;
         End([SeatOf(Vlad)], s);
         Assert.Equal(mid, Balance(Petro));
+    }
+
+    [Fact]
+    public void Bot_called_in_the_lobby_closes_bets_until_the_first_party_shows_the_crew()
+    {
+        Table("t-bets-bot");
+        _h.Join(Vlad.Nick);
+        Watch();
+        Assert.False(View(Petro, SpecConn).GetProperty("show").GetBoolean());   // сам і без бота — панелі нема, як і було
+        Assert.True(_h.Act(0, "bot").Ok);
+        var v = View(Petro, SpecConn);
+        Assert.True(v.GetProperty("show").GetBoolean());                        // панель є — і каже, чому не ставлять
+        Assert.False(v.GetProperty("can").GetBoolean());
+        Assert.Equal(TableBets.BotFirst, v.GetProperty("why").GetString());
+
+        // підсів друг, а бот лишився покликаним — однаково чекаємо першої партії
+        _h.Join(Olia.Nick);
+        Assert.Equal(TableBets.BotFirst, View(Petro, SpecConn).GetProperty("why").GetString());
+        var before = Balance(Petro);
+        var r = Bet(Petro, "win", K(Vlad), 10, SpecConn);
+        Assert.False(r.Ok);
+        Assert.Equal(TableBets.BotFirst, r.Message);
+        Assert.Equal(before, Balance(Petro));
+
+        // прогнали бота — ставлять як завжди
+        Assert.True(_h.Act(0, "bot", new { on = false }).Ok);
+        Assert.True(View(Petro, SpecConn).GetProperty("can").GetBoolean());
+
+        // зіграли — після партії ставки на «Ще раз» як і раніше
+        Assert.True(_h.Start().Ok);
+        End([0]);
+        v = View(Petro, SpecConn);
+        Assert.True(v.GetProperty("can").GetBoolean(), v.GetProperty("why").ToString());
+        Assert.True(Bet(Petro, "win", K(Vlad), 10, SpecConn).Ok);
     }
 
     [Fact]

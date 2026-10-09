@@ -23,7 +23,8 @@ public sealed class BetsOptions
     /// <summary>Стеля на одну людину на одну партію столу; 0 — без стелі.</summary>
     public int MaxTableBet { get; set; } = 500;
     public int MinBet { get; set; } = 1;
-    public double MinOdds { get; set; } = 1.01;
+    /// <summary>Найменший кеф: ×1,05 — на майже певне Глек хоч щось платить, а не «поставив 100 — виграв 101».</summary>
+    public double MinOdds { get; set; } = 1.05;
     public double MaxOdds { get; set; } = 100;
     public PolymarketOptions Polymarket { get; set; } = new();
     /// <summary>Скільки пропозицій однієї людини водночас чекають адміна.</summary>

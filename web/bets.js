@@ -1,10 +1,12 @@
 /*
   «🎲 Ставки» — window.HBets (09.10.2026, контракт D:/or-wt/_tools/bets-contract.md §6). Банкує Дядько Глек: кеф
-  фіксується в мить ставки, зіграло — Глек платить ставка × кеф, ні — ставка згорає. Тут лише сторінка подій
-  (#bets/<вкладка>); ставки на столах живуть у картці столу (web/games/core.js).
+  фіксується в мить ставки, зіграло — Глек платить ставка × кеф, ні — ставка згорає. Тут лише сторінка подій;
+  ставки на столах живуть у картці столу (web/games/bets-table.js).
 
-  Вкладки: «Події» (#bets), «Мої ставки» (#bets/mine), «Глек у мінусі» (#bets/glek), «💡 Запропонувати»
-  (#bets/suggest), адміну — «🛠 Керування» (#bets/admin/<pm|list|inbox>).
+  Сторінка — панель розділу ігор (HGames.registerPanel, рішення 09.10): у каталозі «🎰 Азарт» → тема «🎲 Ставки» стоїть
+  плитка «Ставки на події» (скільки відкритих подій, адміну — кружечок пропозицій), а сама сторінка — #games/x:bets.
+  Вкладки: «Події» (#games/x:bets), «Мої ставки» (…/mine), «Глек у мінусі» (…/glek), «💡 Запропонувати» (…/suggest),
+  адміну — «🛠 Керування» (…/admin/<pm|list|inbox>). Старі адреси #bets/… app.js перекидає сюди.
 
   Сервер — src/Hlechyky/Bets/ (BetEvents.cs): GET /api/bets (голий об'єкт), /api/bets/glek (голий), /api/bets/mine і
   /api/bets/admin ({ok,message,data}); POST /api/bets/events/{id}/bet { option, stake, odds, key } — odds = кеф, який
@@ -23,7 +25,7 @@
   let mine = null;                     // останнє GET /api/bets/mine (data)
   let glek = null;                     // останнє GET /api/bets/glek
   let adm = null;                      // останнє GET /api/bets/admin (data)
-  let shown = false;
+  let hostEl = null;                   // куди змонтувала панель core.js (.gxpanel)
   let tab = 'events';
   let admTab = 'pm';
   let pending = 0;                     // пропозицій чекає (адміну)
@@ -87,13 +89,17 @@
     v = Number(v || 0);
     return v >= 1e6 ? (v / 1e6).toFixed(1).replace('.', ',') + ' млн $' : v >= 1e3 ? Math.round(v / 1e3) + ' тис $' : Math.round(v) + ' $';
   }
-  const lim = () => (data && data.limits) || { min: 1, maxEvent: 0, minOdds: 1.01, maxOdds: 100, margin: 0.08 };
+  const lim = () => (data && data.limits) || { min: 1, maxEvent: 0, minOdds: 1.05, maxOdds: 100, margin: 0.08 };
   const clampOdds = (x) => Math.min(lim().maxOdds, Math.max(lim().minOdds, Math.round(x * 100) / 100));
   const oddsOf = (p) => (p > 0 ? clampOdds((1 - lim().margin) / p) : lim().maxOdds);
   const parseNum = (s) => { const v = parseFloat(String(s || '').replace(',', '.').replace(/[^\d.]/g, '')); return isNaN(v) ? null : v; };
   const isAdmin = () => !!(data ? data.admin : o && o.me.role === 'admin');
   const isAcc = () => !!(data ? data.account : o && o.me.account);
-  const root = () => document.getElementById('bets');
+  const HREF = '#games/x:bets';
+  const root = () => (hostEl && hostEl.isConnected ? hostEl : null);
+  /// Сторінку видно: панель змонтована й розділ ігор відкритий (core.js панелі не каже, що її сховали).
+  const isShown = () => !!root() && document.body.classList.contains('route-games');
+  const eventsOn = () => !!(o && o.me.bets && o.me.bets.events);
 
   async function get(path) {
     const r = await o.api('GET', path);
@@ -102,7 +108,7 @@
 
   // ---------------------------------------------------------------- завантаження
 
-  async function loadMain() { data = await get('/api/bets'); if (data.pendingSuggestions != null) setPending(data.pendingSuggestions); }
+  async function loadMain() { data = await get('/api/bets'); if (data.pendingSuggestions != null) setPending(data.pendingSuggestions); paintTile(); }
   async function loadTab() {
     if (tab === 'mine' && isAcc()) mine = await get('/api/bets/mine?limit=200');
     else if (tab === 'glek') glek = await get('/api/bets/glek');
@@ -115,7 +121,8 @@
   /// Подія хаба сиплеться пачкою (ставка — одразу кілька людей) — перечитуємо раз, коли вщухне.
   function soon() {
     clearTimeout(reloadT);
-    reloadT = setTimeout(() => { if (shown) reload(); else data = null; }, 400);
+    // сторінки не видно — однаково перечитуємо: плитка в каталозі показує, скільки подій відкрито
+    reloadT = setTimeout(() => { if (isShown()) reload(); else if (eventsOn()) loadMain().catch(() => {}); else data = null; }, 400);
   }
   function fail(e) {
     const r = root();
@@ -131,10 +138,12 @@
     if (tab === 'admin' && ADM_TABS.some(([k]) => k === parts[1])) admTab = parts[1];
     const r = root();
     if (!r) return;
+    if (o.me.bets && !eventsOn() && !isAdmin()) { r.innerHTML = '<section class="panel"><div class="gempty glek">Ставки на події зараз вимкнено.</div></section>'; return; }
     if (data) paint(); else r.innerHTML = '<div class="gwait"><span class="spin"></span> Глек гортає зошит зі ставками…</div>';
-    try { if (!data) await loadMain(); await loadTab(); } catch (e) { if (!data) { fail(e); return; } o.toast(e.message, 'err'); }
-    if (!shown) return;
-    if (tab === 'admin' && !isAdmin()) { o.go('#bets'); return; }
+    // головне — щоразу свіже (баланс, нові події), але поки летить, людина бачить те, що вже було
+    try { await loadMain(); await loadTab(); } catch (e) { if (!data) { fail(e); return; } o.toast(e.message, 'err'); }
+    if (!isShown()) return;
+    if (tab === 'admin' && !isAdmin()) { o.go(HREF); return; }
     paint();
     if (tab === 'suggest' && isAcc() && !feedState('sug').asked) loadFeed('sug');
     if (tab === 'admin' && admTab === 'pm' && !feedState('adm').asked) loadFeed('adm');
@@ -149,7 +158,7 @@
   /// а лише запам'ятовуємо й домальовуємо, щойно відпустить поле. Те, що зробила сама людина, малюємо одразу.
   function paint(soft) {
     const r = root();
-    if (!r || !data || !shown) return;
+    if (!r || !data || !isShown()) return;
     if (soft && typing()) { late = true; return; }
     late = false;
     const head = '<section class="panel bt-head">'
@@ -158,7 +167,7 @@
       + (data.account ? '<div class="bt-bal">У глечику <b>' + num(data.balance) + ' 🏺</b></div>' : '') + '</div>'
       + (news.length ? '<div class="bt-news">' + news.map((x) => '<div>' + esc(x.text) + ' <span class="muted small">' + pad2(x.at.getHours()) + ':' + pad2(x.at.getMinutes()) + '</span></div>').join('') + '</div>' : '')
       + '<nav class="bt-tabs" aria-label="Ставки">' + TABS.filter(([k]) => k !== 'admin' || data.admin).map(([k, l]) =>
-        '<button type="button" data-go="#bets' + (k === 'events' ? '' : '/' + k) + '"' + (k === tab ? ' class="on"' : '') + '>' + l
+        '<button type="button" data-go="' + HREF + (k === 'events' ? '' : '/' + k) + '"' + (k === tab ? ' class="on"' : '') + '>' + l
         + (k === 'admin' && pending ? ' <span class="chip badge">' + pending + '</span>' : '') + '</button>').join('') + '</nav>'
       + '</section>';
     const body = tab === 'mine' ? mineHtml() : tab === 'glek' ? glekHtml() : tab === 'suggest' ? suggestHtml()
@@ -320,7 +329,7 @@
       + '<div><div class="muted small">Зараз у грі</div><b class="bt-big">' + num(inPlay) + ' 🏺</b></div>'
       + '<div class="muted small bt-net-say">' + (net > 0 ? 'Глек на тебе косо поглядає.' : net < 0 ? 'Глек тобі вдячний — глечик повніший.' : hist.length ? 'Вийшов у нуль — Глек чухає потилицю.' : 'Ще не ставив — Глек чекає.') + '</div></div>'
       + '<h3>⏳ Чекають результату <span class="count">' + (open.length || '') + '</span></h3>'
-      + (open.length ? '<div class="bt-bets">' + open.map((x) => betRow(x.bet, x.eventTitle)).join('') + '</div>' : '<div class="gempty">Нічого не чекає. <a href="#bets">Глянь події</a>.</div>')
+      + (open.length ? '<div class="bt-bets">' + open.map((x) => betRow(x.bet, x.eventTitle)).join('') + '</div>' : '<div class="gempty">Нічого не чекає. <a href="' + HREF + '">Глянь події</a>.</div>')
       + '<h3>📜 Історія</h3>'
       + (hist.length ? '<div class="bt-bets">' + hist.map((x) => betRow(x.bet, x.eventTitle)).join('') + '</div>' : '<div class="gempty">Порожньо.</div>')
       + '</section>';
@@ -440,7 +449,7 @@
         '<div class="bt-bet st-' + esc(s.status) + '"><div class="bt-bet-h"><span class="bt-bet-t">' + esc(s.text || s.pmSlug) + '</span>'
         + (s.status === 'new' ? '<span class="chip warn">⏳ чекає</span>' : s.status === 'added' ? '<span class="chip ok">✓ додано</span>' : '<span class="chip err">відхилено</span>') + '</div>'
         + '<div class="muted small">' + when(s.at) + (s.pmUrl ? ' · <a href="' + esc(s.pmUrl) + '" target="_blank" rel="noopener noreferrer">Polymarket ↗</a>' : '')
-        + (s.status === 'rejected' && s.reason ? ' · ' + esc(s.reason) : '') + (s.status === 'added' && s.eventId ? ' · <a href="#bets">до подій</a>' : '') + '</div></div>').join('') + '</div>'
+        + (s.status === 'rejected' && s.reason ? ' · ' + esc(s.reason) : '') + (s.status === 'added' && s.eventId ? ' · <a href="' + HREF + '">до подій</a>' : '') + '</div></div>').join('') + '</div>'
         : '<div class="gempty">Ще нічого не пропонував.</div>') + '</section>';
   }
 
@@ -463,7 +472,7 @@
 
   function adminHtml() {
     if (!adm) return '<section class="panel bt-sect"><div class="gwait"><span class="spin"></span> мить…</div></section>';
-    const sub = '<nav class="bt-cats bt-adm-tabs">' + ADM_TABS.map(([k, l]) => '<button type="button" data-go="#bets/admin/' + k + '"' + (k === admTab ? ' class="on"' : '') + '>' + l
+    const sub = '<nav class="bt-cats bt-adm-tabs">' + ADM_TABS.map(([k, l]) => '<button type="button" data-go="' + HREF + '/admin/' + k + '"' + (k === admTab ? ' class="on"' : '') + '>' + l
       + (k === 'inbox' && pending ? ' <span class="chip badge">' + pending + '</span>' : '') + '</button>').join('')
       + '<button type="button" class="primary bt-own" data-own>➕ Своя подія</button></nav>';
     let body;
@@ -804,7 +813,7 @@
         const r = ed.id ? await o.api('PUT', '/api/bets/events/' + ed.id, body) : await o.api('POST', '/api/bets/events', body);
         o.toast((r.message || 'Збережено'), 'ok');
         closeEditor();
-        if (tab === 'admin' && admTab !== 'list') o.go('#bets/admin/list'); else await admReload();
+        if (tab === 'admin' && admTab !== 'list') o.go(HREF + '/admin/list'); else await admReload();
       } catch (e) { o.toast(e.message, 'err'); }
     });
   }
@@ -908,21 +917,65 @@
     r.querySelectorAll('input[type=search]').forEach((i) => { i.onblur = () => { if (late) setTimeout(() => { if (!typing()) paint(); }, 0); }; });
   }
 
-  /// Кружечок на «🎲 Ставки» в шапці й на вкладках — адміну, скільки пропозицій чекає.
+  /// Кружечок на плитці «🎲 Ставки на події» і на вкладці «🛠 Керування» — адміну, скільки пропозицій чекає.
   function setPending(n) {
     pending = n || 0;
     document.querySelectorAll('[data-bets-count]').forEach((el) => { el.textContent = pending; el.hidden = !pending || !isAdmin(); });
   }
 
+  // ---------------------------------------------------------------- плитка в каталозі ігор
+
+  const openCount = () => (data ? (data.events || []).filter((e) => e.accepting).length : null);
+  function openText(n) {
+    if (n == null) return 'Глек гортає зошит…';
+    return n ? n + ' ' + plural(n, 'подія відкрита', 'події відкриті', 'подій відкрито') : 'поки нема на що ставити';
+  }
+  function tileLive() {
+    return '<span data-bets-open>' + esc(openText(openCount())) + '</span>'
+      + ' <span class="chip badge" data-bets-count title="Пропозицій чекає"' + (pending && isAdmin() ? '' : ' hidden') + '>' + pending + '</span>';
+  }
+  /// Число на плитці — на місці, без перемальовування лобі (там людина може гортати чи шукати).
+  function paintTile() {
+    const t = openText(openCount());
+    document.querySelectorAll('[data-bets-open]').forEach((el) => { if (el.textContent !== t) el.textContent = t; });
+  }
+
+  const panel = {
+    id: 'bets',
+    title: 'Ставки',
+    icon: '🎲',
+    bare: true,       // свої секції-панелі, як у лобі
+    visible: eventsOn,
+    tile: {
+      group: 'azart', theme: 'bets', icon: '🎲', title: 'Ставки на події',
+      hint: 'Хто виграє, що станеться: Глек дає кеф, ставиш черепки. Події від адміна й з Polymarket',
+      live: tileLive,
+    },
+    mount(host, ctx) {
+      hostEl = host;
+      host.classList.add('bets');
+      pick = null;
+      render(ctx.sub);
+    },
+    /// Інша вкладка тієї самої сторінки (#games/x:bets/<вкладка>) — без перемонтування.
+    route(sub) { pick = null; render(sub); },
+  };
+  if (window.HGames) HGames.registerPanel(panel);
+
   window.HBets = {
     init(opts) { o = opts; if (o.esc) esc = o.esc; },
     /// Після /api/me: адміну — лічильник пропозицій одразу, а не з першим відкриттям сторінки.
+    /// Після /api/me: плитка в каталозі з'являється чи зникає (Bets:Events), а число подій і адміну лічильник
+    /// пропозицій — одразу, а не з першим відкриттям сторінки.
     async ready() {
-      if (!o || !o.me.bets || !o.me.bets.events || o.me.role !== 'admin') return;
+      if (!o) return;
+      if (window.HGames && HGames.panelTileChanged) HGames.panelTileChanged();
+      if (isShown()) { render(String(location.hash).split('x:bets/')[1] || ''); return; }
+      if (!eventsOn()) return;
       try { await loadMain(); } catch { /* нема — то й нема */ }
     },
     attach(conn) {
-      conn.on('betEvents', () => { if (shown || data) soon(); });
+      conn.on('betEvents', () => { if (isShown() || data || eventsOn()) soon(); });
       conn.on('betMine', (m) => {
         if (!m || !m.text) return;
         news.unshift({ text: m.text, at: new Date() });
@@ -932,10 +985,8 @@
       });
       conn.on('betSuggest', (m) => {
         setPending((m && m.count) || 0);
-        if (shown && tab === 'admin') soon(); else if (shown) paint(true);
+        if (isShown() && tab === 'admin') soon(); else if (isShown()) paint(true);
       });
     },
-    show(tail) { shown = true; render(tail); },
-    hide() { shown = false; pick = null; },
   };
 })();

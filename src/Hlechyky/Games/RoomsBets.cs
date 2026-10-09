@@ -19,10 +19,11 @@ public interface ITableBetsHook
 /// <summary>
 /// Стіл очима ставок — знімок під замком кімнати. <see cref="Bots"/> — бот на вільному місці (відомо лише після партії:
 /// у лобі гра ще не вирішила, де сидітимуть боти). <see cref="Crew"/> — підпис складу й налаштувань: ставку приймаємо,
-/// лише якщо він не змінився, поки її записували.
+/// лише якщо він не змінився, поки її записували. <see cref="BotCalled"/> — у лобі натиснуто «🤖 + бот»: хто сяде і чи
+/// сяде взагалі, видно лише з першої партії, тож до неї ставок нема.
 /// </summary>
 public sealed record BetTable(string Id, GameInfo Info, RoomStatus Status, int Round, string?[] Seats, string?[] Bots,
-    int? MySeat, bool Watching, DateTimeOffset? FinishedAt, string Crew)
+    int? MySeat, bool Watching, DateTimeOffset? FinishedAt, string Crew, bool BotCalled = false)
 {
     /// <summary>
     /// Партія, на яку зараз ставлять: у лобі — та, що почнеться (раунд не зміниться ні від «Почати», ні від повного столу),
@@ -58,8 +59,33 @@ public sealed partial class Rooms
                 for (var i = 0; i < bots.Length; i++) bots[i] = room.Seats[i] is null ? room.SafeSeatBot(i) : null;
             return new BetTable(room.Id, room.Info, room.Status, room.Round, (string?[])room.Seats.Clone(), bots,
                 string.IsNullOrEmpty(nick) ? null : room.SeatOf(nick),
-                connId is not null && room.Watchers.ContainsKey(connId), room.FinishedAt, CrewSign(room));
+                connId is not null && room.Watchers.ContainsKey(connId), room.FinishedAt, CrewSign(room),
+                room.Status == RoomStatus.Lobby && BotCalled(room));
         }
+    }
+
+    /// <summary>
+    /// Чи кликали в лобі «🤖 + бот» і не прогнали. Гра тримає це в собі (SoloBot.Wanted) і назовні не каже, а каркас
+    /// пам'ятає всі прийняті дії лобі (<see cref="Room.LobbyActs"/>) — проганяємо їх: <c>{on}</c> ставить, без нього — перемикає.
+    /// </summary>
+    static bool BotCalled(Room room)
+    {
+        var on = false;
+        foreach (var a in room.LobbyActs)
+        {
+            if (a.Action != Impl.LiveBots.Toggle) continue;
+            bool? set = null;
+            if (a.Payload is { } raw)
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                    if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object && doc.RootElement.TryGetProperty("on", out var p))
+                        set = p.ValueKind == System.Text.Json.JsonValueKind.True;
+                }
+                catch (System.Text.Json.JsonException) { /* кривий payload гра теж прочитала як «перемкнути» */ }
+            on = set ?? !on;
+        }
+        return on;
     }
 
     /// <summary>

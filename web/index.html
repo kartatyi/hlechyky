@@ -45,7 +45,6 @@
     <button data-route="lib" title="Що вже було, улюблене, плейлисти — клавіша 2"><span class="ico">🎵</span><span class="lbl">Бібліотека</span></button>
     <button data-route="games" title="Столи й ігри — клавіша 3"><span class="ico">🎮</span><span class="lbl">Ігри</span><span id="navGames" class="count" hidden></span></button>
     <button data-route="stats" title="Хто скільки закидає, грає й тусить — клавіша 4"><span class="ico">📊</span><span class="lbl">Хто скільки</span></button>
-    <button data-route="bets" id="navBets" title="Ставки в Дядька Глека — клавіша 5" hidden><span class="ico">🎲</span><span class="lbl">Ставки</span><span class="count" data-bets-count hidden></span></button>
   </nav>
   <span id="hdrTitle" class="hdrtitle">Ефір</span>
   <div class="mini" id="mini">
@@ -190,9 +189,6 @@
     <!-- Лавка Дядька Глека (#lavka/<полиця>, #lavka/gift/<нік>): значки, рамки, колір ніка, титули, тло, вміння —
          усе назавжди, за черепки. Малює web/lavka.js. -->
     <div class="view" id="viewLavka"><div id="lavka" class="lavka"></div></div>
-
-    <!-- «🎲 Ставки» (#bets/<вкладка>): події від адміна, мої ставки, «Глек у мінусі», пропозиції. Малює web/bets.js. -->
-    <div class="view" id="viewBets"><div id="bets" class="bets"></div></div>
   </div>
 
   <aside class="panel chat" id="colChat">
@@ -236,7 +232,6 @@
   <button data-route="lib"><span class="ico">🎵</span>Бібліотека</button>
   <button data-route="games"><span class="ico">🎮</span>Ігри <span id="mNavGames" class="chip badge turn" hidden>хід</span></button>
   <button data-route="stats"><span class="ico">📊</span>Хто скільки</button>
-  <button data-route="bets" id="mNavBets" hidden><span class="ico">🎲</span>Ставки <span class="chip badge" data-bets-count hidden></span></button>
   <button data-route="chat" id="mtabChat"><span class="ico">💬</span>Балачки <span id="mChatBadge" class="chip badge" hidden>0</span></button>
 </nav>
 
