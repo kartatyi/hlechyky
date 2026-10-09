@@ -49,7 +49,7 @@ public class SlotClusterTests(ITestOutputHelper output)
         var cl = Assert.Single(Clusters(g));
         Assert.Equal("comb", K[cl.Sym]);
         Assert.Equal(5, cl.Cells.Length);
-        Assert.Equal(150, SlotClusterMath.PayOf(cl.Sym, 5, Bet));  // 1,5 ставки
+        Assert.Equal(100, SlotClusterMath.PayOf(cl.Sym, 5, Bet));  // 1 ставка
 
         var d = Plain();                                           // драбинка навскіс — не кластер
         for (var i = 0; i < 6; i++) d[i * 7 + i] = Sym("comb");
@@ -83,10 +83,10 @@ public class SlotClusterTests(ITestOutputHelper output)
     {
         var comb = Sym("comb");
         Assert.Equal(0, SlotClusterMath.PayOf(comb, 4, Bet));
-        Assert.Equal(150, SlotClusterMath.PayOf(comb, 5, Bet));
-        Assert.Equal(800, SlotClusterMath.PayOf(comb, 10, Bet));   // 9–10 — сходинка «9»
-        Assert.Equal(10_000, SlotClusterMath.PayOf(comb, 49, Bet));
-        Assert.Equal(3, SlotClusterMath.PayOf(Sym("f1"), 6, 10));  // 0,25 × 10 = 2,5 → 3, як Math.round
+        Assert.Equal(100, SlotClusterMath.PayOf(comb, 5, Bet));
+        Assert.Equal(450, SlotClusterMath.PayOf(comb, 10, Bet));   // 9–10 — сходинка «9»
+        Assert.Equal(6000, SlotClusterMath.PayOf(comb, 49, Bet));
+        Assert.Equal(2, SlotClusterMath.PayOf(Sym("f1"), 6, 10));  // 0,2 × 10 — рівно, без округлення (було 0,25 → 2,5 → 3)
         Assert.Equal(1, SlotClusterMath.PayOf(Sym("f1"), 5, 1));   // не менше черепка
     }
 
@@ -94,7 +94,8 @@ public class SlotClusterTests(ITestOutputHelper output)
 
     sealed class Seen
     {
-        public int Cascades, MaxChain, Lv1, Lv2, Lv3, Boom, Bonus, FsAdd, FsAddSum, Spins;
+        public int Cascades, MaxChain, Lv1, Lv2, Lv3, Boom, Bonus, FsAdd, FsAddSum, Spins, Pere, PereFs, PereMade;
+        public readonly int[] PereLeaves = new int[5];
     }
 
     static string[][] Grid(JsonNode n) => [.. n.AsArray().Select(col => col!.AsArray().Select(x => x!.GetValue<string>()).ToArray())];
@@ -190,7 +191,7 @@ public class SlotClusterTests(ITestOutputHelper output)
                     Assert.Equal(chain, s["n"]!.GetValue<int>());
                     Assert.Equal(meter, s["from"]!.GetValue<int>());
                     var fern = s["fern"]!.GetValue<int>();
-                    Assert.Equal(boom ? meter : Math.Min(50, meter + rem.Count), fern);
+                    Assert.Equal(boom ? meter : Math.Min(SlotClusterMath.MeterMax, meter + rem.Count), fern);
                     meter = fern;
                     // поле після падіння: у кожній колонці незгаслі зберегли порядок і лежать унизу
                     var after = Grid(s["grid"]!);
@@ -202,6 +203,42 @@ public class SlotClusterTests(ITestOutputHelper output)
                     g = after;
                     lastWin = null;
                     seen.Cascades++;
+                    break;
+                }
+                case "morph":
+                {
+                    // перелесник: одразу після spin, до пошуку кластерів; 2–4 листки на недикі клітинки свого шляху
+                    Assert.Equal("perelesnyk", s["why"]!.GetValue<string>());
+                    Assert.Equal("spin", kinds[i - 1]);
+                    var path = s["path"]!.AsArray().Select(Cell).ToList();
+                    Assert.Equal(SlotClusterMath.PereFlight, path.Count);
+                    Assert.All(path, x => { Assert.InRange(x.C, 0, 6); Assert.InRange(x.R, 0, 6); });
+                    // ламана від краю до краю: щокроку на клітинку вперед (по колонках чи рядках) і на 0/±1 убік
+                    bool Flight(bool byCol)
+                    {
+                        var dir = byCol ? path[1].C - path[0].C : path[1].R - path[0].R;
+                        if (Math.Abs(dir) != 1 || (byCol ? path[0].C : path[0].R) != (dir > 0 ? 0 : 6)) return false;
+                        for (var j = 1; j < path.Count; j++)
+                        {
+                            var (a, b) = (path[j - 1], path[j]);
+                            if ((byCol ? b.C - a.C : b.R - a.R) != dir || Math.Abs(byCol ? b.R - a.R : b.C - a.C) > 1) return false;
+                        }
+                        return true;
+                    }
+                    Assert.True(Flight(true) || Flight(false));
+                    var cells = s["cells"]!.AsArray().Select(x => (C: x![0]!.GetValue<int>(), R: x[1]!.GetValue<int>(), Key: x[2]!.GetValue<string>())).ToList();
+                    Assert.InRange(cells.Count, SlotClusterMath.PereMin, SlotClusterMath.PereMax);
+                    Assert.All(cells, x => Assert.Equal("fern", x.Key));
+                    Assert.All(cells, x => Assert.False(Wild(g![x.C][x.R])));
+                    var at = cells.Select(x => path.IndexOf((x.C, x.R))).ToList();
+                    Assert.All(at, j => Assert.True(j >= 0));                  // лише на шляху
+                    Assert.Equal(at.OrderBy(x => x).Distinct(), at);           // у порядку польоту, без повторів
+                    var had = Clusters(Bytes(g!)).Count > 0;
+                    foreach (var x in cells) g![x.C][x.R] = x.Key;
+                    if (!had && Clusters(Bytes(g!)).Count > 0) seen.PereMade++;
+                    seen.Pere++;
+                    if (inBonus) seen.PereFs++;
+                    seen.PereLeaves[cells.Count]++;
                     break;
                 }
                 case "lvl":
@@ -296,6 +333,7 @@ public class SlotClusterTests(ITestOutputHelper output)
         var info = script["info"]!;
         Assert.Equal(inBonus, info["bonus"]!.GetValue<bool>());
         Assert.Equal(seen.MaxChain, info["chain"]!.GetValue<int>());
+        Assert.Equal(seen.Pere, info["pere"]?.GetValue<int>() ?? 0);
         return seen;
     }
 
@@ -312,12 +350,16 @@ public class SlotClusterTests(ITestOutputHelper output)
             var s = Replay(Script(m, Bet, seed), Bet);
             all.Cascades += s.Cascades; all.Lv1 += s.Lv1; all.Lv2 += s.Lv2; all.Lv3 += s.Lv3; all.Boom += s.Boom;
             all.Bonus += s.Bonus; all.FsAdd += s.FsAdd; all.MaxChain = Math.Max(all.MaxChain, s.MaxChain);
+            all.Pere += s.Pere; all.PereFs += s.PereFs; all.PereMade += s.PereMade;
+            for (var j = 0; j < 5; j++) all.PereLeaves[j] += s.PereLeaves[j];
         }
-        output.WriteLine($"1500 обертів: каскадів {all.Cascades}, найдовший {all.MaxChain}, світлячки {all.Lv1}, русалка {all.Lv2}, цвіт {all.Lv3}, бонусів {all.Bonus}, +3 {all.FsAdd}");
+        output.WriteLine($"1500 обертів: каскадів {all.Cascades}, найдовший {all.MaxChain}, світлячки {all.Lv1}, русалка {all.Lv2}, цвіт {all.Lv3}, бонусів {all.Bonus}, +3 {all.FsAdd}, перелесників {all.Pere} (у вільних {all.PereFs}, листків 2/3/4: {all.PereLeaves[2]}/{all.PereLeaves[3]}/{all.PereLeaves[4]}, склали виграш з нічого {all.PereMade})");
         Assert.True(all.Cascades > 500);
         Assert.True(all.MaxChain >= 3);
         Assert.True(all.Lv1 > 50 && all.Lv2 > 10 && all.Lv3 > 3);
         Assert.True(all.Bonus > 3);
+        Assert.True(all.Pere > 60 && all.PereFs > 0 && all.PereMade > 10);
+        Assert.All(all.PereLeaves[2..], x => Assert.True(x > 15));
     }
 
     [Fact]
@@ -346,13 +388,18 @@ public class SlotClusterTests(ITestOutputHelper output)
     public void Same_seed_gives_the_same_script_and_play_matches_spin()
     {
         var m = new SlotClusterMath();
-        for (var seed = 0; seed < 200; seed++)
+        var pere = 0;
+        for (var seed = 0; seed < 300; seed++)
         {
             var a = Script(m, 50, seed).ToJsonString();
             Assert.Equal(a, Script(m, 50, seed).ToJsonString());
             var p = m.Play(50, new SeededSlotRng(new Random(seed)), false);
-            Assert.Equal(JsonNode.Parse(a)!["win"]!.GetValue<long>(), p.Win);   // без сценарію — той самий оберт
+            var j = JsonNode.Parse(a)!;
+            Assert.Equal(j["win"]!.GetValue<long>(), p.Win);   // без сценарію — той самий оберт (і той самий перелесник)
+            Assert.Equal(j["info"]!["pere"]?.GetValue<int>() ?? 0, p.Pere);
+            pere += p.Pere;
         }
+        Assert.True(pere > 10);
         Assert.NotEqual(Script(m, 50, 1).ToJsonString(), Script(m, 50, 2).ToJsonString());
     }
 
@@ -379,14 +426,57 @@ public class SlotClusterTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Table_is_the_mock_paytable()
+    public void Table_has_the_paytable_levels_and_perelesnyk()
     {
         var t = new SlotClusterMath().Table();
-        Assert.Equal(100, t["pay"]!["comb"]!["16"]!.GetValue<double>());
+        Assert.Equal(60, t["pay"]!["comb"]!["16"]!.GetValue<double>());
         Assert.Equal(0.2, t["pay"]!["f1"]!["5"]!.GetValue<double>());
+        Assert.Equal(22, t["weights"]!["f1"]!.GetValue<double>());
         Assert.Equal("fern", t["wild"]!.GetValue<string>());
         Assert.Equal(5000, t["cap"]!.GetValue<int>());
-        Assert.Equal(new[] { 11, 30, 50 }, t["levels"]!.AsArray().Select(x => x!.GetValue<int>()));
+        Assert.Equal(new[] { 11, 30, 52 }, t["levels"]!.AsArray().Select(x => x!.GetValue<int>()));
+        var pe = t["pere"]!;
+        Assert.Equal(SlotClusterMath.PereChance, pe["chance"]!.GetValue<double>());
+        Assert.Equal(12, pe["oneIn"]!.GetValue<int>());
+        Assert.Equal(2, pe["min"]!.GetValue<int>());
+        Assert.Equal(4, pe["max"]!.GetValue<int>());
+        Assert.True(pe["fs"]!.GetValue<bool>());
+        Assert.Contains("Перелесник", t["rules"]!.GetValue<string>());
+    }
+
+    // ---------- перелесник і ставки ----------
+
+    [Fact]
+    public void Perelesnyk_flies_over_about_one_field_in_twelve()
+    {
+        var m = new SlotClusterMath();
+        var rng = new SeededSlotRng(new Random(5));
+        long fields = 0, pere = 0;
+        for (var i = 0; i < 100_000; i++)
+        {
+            var r = m.Play(Bet, rng, false);
+            fields += 1 + r.FreeSpins;          // і у вільних — той самий шанс
+            pere += r.Pere;
+        }
+        var p = (double)pere / fields;
+        output.WriteLine($"перелесник: {pere} з {fields} полів = 1 з {1 / p:F2}");
+        // σ частки на ~100 тис. полів ≈ 0,09 п. п.; допуск ±0,35 п. п. — ≈ 4σ
+        Assert.InRange(p, SlotClusterMath.PereChance - 0.0035, SlotClusterMath.PereChance + 0.0035);
+    }
+
+    [Fact]
+    public void Every_bet_from_10_to_500_pays_the_same_multiple_no_rounding()
+    {
+        // усі виплати кратні 0,1 ставки, а ставки — 10…500 (кратні 10): × ставку — ціле, округлення нема
+        foreach (var row in SlotClusterMath.Pay)
+            foreach (var v in row) Assert.Equal(Math.Round(v * 10), v * 10, 9);
+        var m = new SlotClusterMath();
+        for (var seed = 0; seed < 1500; seed++)
+        {
+            var w10 = m.Play(10, new SeededSlotRng(new Random(seed)), false).Win;
+            foreach (var bet in new[] { 20, 50, 100, 200, 500 })
+                Assert.Equal(w10 * bet / 10, m.Play(bet, new SeededSlotRng(new Random(seed)), false).Win);
+        }
     }
 
     // ---------- на сервері ----------
@@ -422,7 +512,7 @@ public class SlotClusterTests(ITestOutputHelper output)
         const int parts = 8;
         var m = new SlotClusterMath();
         var res = new (double Won, double Sq, long Hit, long L1, long L2, long L3, long Big, long Max)[parts];
-        Parallel.For(0, parts, p =>
+        Parallel.For(0, parts, new ParallelOptions { MaxDegreeOfParallelism = 4 }, p =>
         {
             var rng = new SeededSlotRng(new Random(seed * 1000 + p));
             double won = 0, sq = 0;
@@ -447,10 +537,11 @@ public class SlotClusterTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// RTP бази — оцінка з 56 млн обертів по 100 (specs/slots.md §2): 95,2 % ± 0,1 %. σ оберту ≈ 7,1 ставки, тож похибка
-    /// на 200 тис. — 1,6 % (тест: ±3 %, 2σ), на 5 млн — 0,32 % (Perf: ±0,5 %).
+    /// RTP бази — оцінка з 44 млн обертів по 100 (specs/slots.md §2): 97,0 % ± 0,1 %. σ оберту ≈ 6,1 ставки, тож похибка
+    /// на 200 тис. — 1,4 % (тест: ±3 %, 2,2σ), на 5 млн — 0,27 % (Perf: ±0,8 %, 3σ; сід 2 дає 96,33 %, −2,5σ — тому
+    /// не ±0,5 %, що було б лотереєю).
     /// </summary>
-    const double Rtp = 0.952;
+    const double Rtp = 0.970;
 
     void Print(string what, (double Rtp, double Hit, double Lv1, double Lv2, double Lv3, double Big, double Max, double Sd) r) =>
         output.WriteLine($"slot-cluster {what}: RTP {r.Rtp:P2}, виграш {r.Hit:P2}, світлячки {r.Lv1:P2} (1 з {1 / r.Lv1:F1}), русалка {r.Lv2:P2} (1 з {1 / r.Lv2:F0}), цвіт {r.Lv3:P3} (1 з {1 / r.Lv3:F0}), ≥10× {r.Big:P2}, найбільше {r.Max:F1}×, σ {r.Sd:F2}");
@@ -461,20 +552,20 @@ public class SlotClusterTests(ITestOutputHelper output)
         var r = Simulate(200_000, 1);
         Print("200 тис.", r);
         Assert.InRange(r.Rtp, Rtp - 0.03, Rtp + 0.03);
-        Assert.InRange(r.Hit, 0.39, 0.42);
-        Assert.InRange(r.Lv1, 0.09, 0.115);
-        Assert.InRange(r.Lv2, 0.027, 0.036);
-        Assert.InRange(r.Lv3, 0.0085, 0.012);
+        Assert.InRange(r.Hit, 0.465, 0.48);         // ≥ 45 % (було 40,7 %)
+        Assert.InRange(r.Lv1, 0.137, 0.157);        // 1 з 6,8 (було 1 з 9,8)
+        Assert.InRange(r.Lv2, 0.046, 0.055);        // 1 з 19,8 (було 1 з 32)
+        Assert.InRange(r.Lv3, 0.0125, 0.0153);      // 1 з 72 (було 1 з 99)
         Assert.True(r.Max <= 5000);
     }
 
     [Fact, Trait("Category", "Perf")]
-    public void Five_million_spins_within_half_a_percent()
+    public void Five_million_spins_within_three_sigma()
     {
         var r = Simulate(5_000_000, 2);
         Print("5 млн", r);
-        Assert.InRange(r.Rtp, Rtp - 0.005, Rtp + 0.005);
-        Assert.InRange(r.Hit, 0.402, 0.411);
-        Assert.InRange(r.Lv3, 0.0095, 0.0109);
+        Assert.InRange(r.Rtp, Rtp - 0.008, Rtp + 0.008);
+        Assert.InRange(r.Hit, 0.468, 0.476);
+        Assert.InRange(r.Lv3, 0.0133, 0.0145);
     }
 }
