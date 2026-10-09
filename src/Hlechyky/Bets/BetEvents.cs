@@ -227,6 +227,10 @@ public sealed class BetEvents(BetsStore store, BetBook book, Economy economy, Po
             if (!keys.Add(key)) return (null, "Варіант двічі");
             result.Add(new BetOption(key, title, odds, p));
         }
+        // Кефи всі з цін, а певняк уперся в найменший кеф: ставка на всі разом була б у плюсі — підрівнюємо (рецензія 09.10).
+        // Вписані адміном — як вписав.
+        if (list.All(x => x.Odds is null))
+            result = [.. result.Zip(BetMath.NoArb([.. result.Select(x => x.Odds)], o), (x, k) => x with { Odds = k })];
         return (result, null);
     }
 
@@ -418,7 +422,7 @@ public sealed class BetEvents(BetsStore store, BetBook book, Economy economy, Po
     object DraftView(PmDraft d) => new
     {
         slug = d.Slug, title = d.Title, description = d.Description, url = d.Url, closesAt = d.EndDate?.UtcDateTime, market = d.Market,
-        options = d.Options.Select(o => new { title = o.Title, worldP = o.P, odds = BetMath.Odds(o.P, O) }).ToList(),
+        options = d.Options.Zip(BetMath.NoArb([.. d.Options.Select(o => BetMath.Odds(o.P, O))], O), (o, k) => new { title = o.Title, worldP = o.P, odds = k }).ToList(),
         markets = d.Markets.Select(m => new { id = m.Id, question = m.Question, options = m.Options.Select(o => new { title = o.Title, p = o.P }).ToList() }).ToList(),
     };
 

@@ -100,7 +100,7 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
     bool InTour(string roomId) => services.GetService<Tournament>()?.Holds(roomId) == true;
 
     /// <summary>Заборона ставити на свій програш (§4.3): гравцю — ні на суперника в дуелі, ні на нічию, ні на себе «останнім».</summary>
-    static string? Forbidden(BetTable t, string nick, string market, TableOption o)
+    public static string? Forbidden(BetTable t, string nick, string market, TableOption o)
     {
         if (t.MySeat is null) return null;   // глядач — на будь-що
         var me = Auth.NickKey(nick);
@@ -108,6 +108,7 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
         {
             TableMarkets.Draw => "Гравцеві на нічию не можна — це ставка на свій програш",
             TableMarkets.Last when o.Key == me => "На себе «останнім» не можна",
+            TableMarkets.Win when o.Key == TableMarkets.Bot => "Гравцеві на ботів не можна — це ставка на свій програш",
             TableMarkets.Win when Duel(t) && o.Key != me => "На суперника не можна — це ставка на свій програш",
             _ => null,
         };
@@ -127,6 +128,9 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
     sealed class GameStats
     {
         public int Games, Draws;
+        /// <summary>Партії, де переможців кілька (Дурень, Мафія, Козел парами): «хто виграє» там не ринок — повернули б усе.</summary>
+        public int Decided, ManyWinners;
+        public bool ManyWin => ManyWinners >= 3 && ManyWinners * 3 >= Decided;
         public ScoreOrder Order = ScoreOrder.None;
         public readonly Dictionary<string, (int Games, int Wins, int Scored, int Lasts)> Of = new(StringComparer.Ordinal);
         public DateTimeOffset At;
@@ -148,6 +152,9 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
         {
             s.Games++;
             if (p.All(r => r.Outcome == "draw")) s.Draws++;
+            var wins = p.Count(r => r.Outcome == "win");
+            if (wins > 0) s.Decided++;
+            if (wins > 1) s.ManyWinners++;
             foreach (var r in p)
             {
                 var x = s.Of.GetValueOrDefault(r.NickKey);
@@ -220,10 +227,16 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
             }).Concat(Enumerable.Repeat(1.0 / n, bots)).ToArray();
             win = Normalize(raw);
         }
-        var winOpts = people.Select((p, i) => Option(Auth.NickKey(p), p, "виграє " + p, win[i], p, o)).ToList();
-        if (bots > 0) winOpts.Add(Option(TableMarkets.Bot, botTitle, "виграє " + botTitle, win.Skip(people.Count).Sum(), null, o));
-        list.Add(new TableMarket(TableMarkets.Win, "🏆 Хто виграє", winOpts));
-        if (draw > 0) list.Add(new TableMarket(TableMarkets.Draw, "🤝 Нічия", [Option(TableMarkets.Draw, "нічия", "нічия", draw, null, o)]));
+        if (!st.ManyWin)
+        {
+            var winOpts = people.Select((p, i) => Option(Auth.NickKey(p), p, "виграє " + p, win[i], p, o)).ToList();
+            if (bots > 0) winOpts.Add(Option(TableMarkets.Bot, botTitle, "виграє " + botTitle, win.Skip(people.Count).Sum(), null, o));
+            if (draw > 0) winOpts.Add(Option(TableMarkets.Draw, "нічия", "нічия", draw, null, o));
+            // Перемоги й нічия виключають одне одного: на всі разом — не в плюс, навіть коли певняк уперся в найменший кеф.
+            winOpts = [.. winOpts.Zip(BetMath.NoArb([.. winOpts.Select(x => x.Odds)], o), (x, k) => x with { Odds = k })];
+            list.Add(new TableMarket(TableMarkets.Win, "🏆 Хто виграє", [.. winOpts.Where(x => x.Key != TableMarkets.Draw)]));
+            if (draw > 0) list.Add(new TableMarket(TableMarkets.Draw, "🤝 Нічия", [winOpts[^1]]));
+        }
 
         if (n >= 3 && st.Order != ScoreOrder.None)
         {
@@ -433,6 +446,8 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
             case TableMarkets.Win:
                 // Нічия: у дуелі рейтингової гри це окремий варіант (ставки на перемогу програли), деінде — ніхто не виграв, назад
                 if (winners.Length == 0) return DrawGame(e.Info) ? BetVerdict.Lost : BetVerdict.Back;
+                // Переможців кілька (Дурень, Мафія, пари): кефи рахувались на одного — інакше ставка на всіх у плюс. Назад.
+                if (winners.Length > 1) return BetVerdict.Back;
                 if (b.Option == TableMarkets.Bot)
                     return winners.Any(w => w < e.Seats.Count && e.Seats[w] is null) ? BetVerdict.Won : BetVerdict.Lost;
                 return SeatOf(e, b.Option) is { } seat && winners.Contains(seat) ? BetVerdict.Won : BetVerdict.Lost;
