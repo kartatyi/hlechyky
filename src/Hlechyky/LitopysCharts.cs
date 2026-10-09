@@ -482,7 +482,7 @@ public sealed partial class Litopys
         var dj = DjKeys();
         var list = new List<Rec>();
         void Add(string key, string icon, string title, string what, IEnumerable<Entry> entries, Func<double, string> text,
-            bool withPrev = true, bool site = false, Func<string, string>? who = null)
+            bool site = false, Func<string, string>? who = null)
         {
             var (top, prev) = Crown(site ? entries : entries.Where(e => !dj.Contains(e.Key)));
             if (top.Count == 0) return;
@@ -490,8 +490,7 @@ public sealed partial class Litopys
             var at = top.Max(t => t.At);
             list.Add(new Rec(key, icon, title, what, top.Take(3).Select(t => who(t.Key)).ToList(), top[0].Value, text(top[0].Value),
                 top[0].At, top[0].Note, now - at <= RecordFresh,
-                withPrev && prev is not null ? [who(prev.Key)] : null, withPrev ? prev is null ? null : text(prev.Value) : null,
-                withPrev ? prev?.At : null, site));
+                prev is null ? null : [who(prev.Key)], prev is null ? null : text(prev.Value), prev?.At, site));
         }
         string Tail(string reason) => reason.IndexOf(':') is var i and >= 0 ? reason[(i + 1)..] : "";
         string Source(string reason) => Head(reason) switch
@@ -528,7 +527,7 @@ public sealed partial class Litopys
 
         // по днях — заявка на кінець кожного дня (час — київська північ дня: рекорд дня свіжий, поки той день недавно)
         IEnumerable<Entry> PerDay<T>(IEnumerable<T> rows, Func<T, string> key, Func<T, DateTimeOffset> at) =>
-            rows.GroupBy(x => (Key: key(x), Day: kyivDay(at(x)))).Select(g => new Entry(g.Key.Key, g.Count(), dayStart(g.Key.Day), g.Key.Day));
+            rows.GroupBy(x => (Key: key(x), Day: kyivDay(at(x)))).Select(g => new Entry(g.Key.Key, g.Count(), dayStart(g.Key.Day)));
         Add("games-day", "🎲", "Найбільше партій за день", "партії за столами однієї людини за київську добу",
             PerDay(multi, r => r.Key, r => r.At), v => Count((long)v, "партія", "партії", "партій"));
         Add("chat-day", "💬", "Найбільше реплік за день", "балачки однієї людини за добу",
@@ -536,10 +535,10 @@ public sealed partial class Litopys
         Add("songs-day", "🎵", "Найбільше пісень за день", "скільки пісень людина закинула в ефір за добу",
             PerDay(raw.Requests, q => q.Key, q => q.At), v => Count((long)v, "пісня", "пісні", "пісень"));
         Add("long-day", "⏱", "Найдовший день на сайті", "скільки часу людина пробула на сайті за одну добу",
-            raw.Time.Where(t => t.Place == "site").Select(t => new Entry(t.Key, t.Sec, dayStart(t.Day), t.Day)), Dur);
+            raw.Time.Where(t => t.Place == "site").Select(t => new Entry(t.Key, t.Sec, dayStart(t.Day))), Dur);
         Add("night", "🦉", "Нічний марафон", "найбільше дій (партії, репліки, пісні, ❤) з 00:00 до 05:00 за одну ніч",
             raw.Actions().Where(a => TimeZoneInfo.ConvertTime(a.At, Days.Kyiv).Hour < OwlUntil)
-                .GroupBy(a => (a.Key, Day: kyivDay(a.At))).Select(g => new Entry(g.Key.Key, g.Count(), dayStart(g.Key.Day), g.Key.Day)),
+                .GroupBy(a => (a.Key, Day: kyivDay(a.At))).Select(g => new Entry(g.Key.Key, g.Count(), dayStart(g.Key.Day))),
             v => Count((long)v, "дія", "дії", "дій"));
 
         // 🌋 день сайту: тримач — сам день
@@ -564,9 +563,11 @@ public sealed partial class Litopys
             v => Num(v) + " Ело");
 
         // 💎 і ❤ — накопичуються з часом, тож «перебив» тут нема кого
-        var pearl = raw.Chat.Where(m => m.Likes > 0).ToList();
-        Add("pearl", "💎", "Найлайкнутіша репліка", "репліка в Балачках, яку вподобали найбільше",
-            pearl.Select(m => new Entry(m.Key, m.Likes, m.At, Quote(m))), v => Count((long)v, "вподобайка", "вподобайки", "вподобайок"), withPrev: false);
+        // одна репліка, а не кілька однаково вподобаних: при рівних — свіжіша
+        if (raw.Chat.Where(m => m.Likes > 0 && !dj.Contains(m.Key)).OrderByDescending(m => m.Likes).ThenByDescending(m => m.At).FirstOrDefault() is { } pearl)
+            list.Add(new Rec("pearl", "💎", "Найлайкнутіша репліка", "репліка в Балачках, яку вподобали найбільше", [raw.Nick(pearl.Key)],
+                pearl.Likes, Count(pearl.Likes, "вподобайка", "вподобайки", "вподобайок"), pearl.At, Quote(pearl), now - pearl.At <= RecordFresh,
+                null, null, null));
         var hits = Hits();
         if (hits.Count > 0)
         {
@@ -631,9 +632,9 @@ public sealed partial class Litopys
         records = RecordList().Select(r => new
         {
             key = r.Key, icon = r.Icon, title = r.Title, what = r.What, nicks = r.Site ? [] : r.Nicks, site = r.Site,
-            day = r.Site ? r.Nicks.FirstOrDefault() : null,
+            day = Days.Of(r.At),
             value = r.Value, text = r.Text, at = r.At, note = r.Note, fresh = r.Fresh,
-            prev = r.PrevNicks is null ? null : new { nicks = r.Site ? [] : r.PrevNicks, day = r.Site ? r.PrevNicks.FirstOrDefault() : null, text = r.PrevText, at = r.PrevAt },
+            prev = r.PrevNicks is null ? null : new { nicks = r.Site ? [] : r.PrevNicks, day = r.PrevAt is { } pa ? Days.Of(pa) : null, text = r.PrevText, at = r.PrevAt },
         }),
         freshDays = (int)RecordFresh.TotalDays,
     };
