@@ -1044,7 +1044,7 @@
     // Аналоговий стік, якщо браузер його дає: приціл по діагоналі й тонко, а не чотирма стрілками pad.js.
     if (now - st.padAt < 60000 && navigator.getGamepads) {
       let pads = [];
-      try { pads = navigator.getGamepads() || []; } catch { pads = []; }
+      try { pads = window.HPad && HPad.list ? HPad.list() : (navigator.getGamepads() || []); } catch { pads = []; }   // без керма й лише у фокусі
       for (const gp of pads) {
         if (!gp || !gp.axes || gp.axes.length < 2) continue;
         const ax = gp.axes[0], ay = gp.axes[1], m = Math.hypot(ax, ay);

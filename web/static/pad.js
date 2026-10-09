@@ -20,6 +20,8 @@
     за чим сервер упізнає автоклікер.
   - Підказки самі не набридають: смужка внизу з'являється, коли в руках пад, і ховається Select'ом.
     Велика довідка сама відкривається один раз і лише на Деку (див. `deck()`).
+  - Кермо, педалі й КПП — не пади (див. `sim()`), а поки вікно сайту не в фокусі, пад грає в щось інше:
+    тоді не тиснемо нічого. Ігри, що читають стік самі, беруть пади з `HPad.list()` — там обидва правила.
 */
 (() => {
   'use strict';
@@ -50,6 +52,7 @@
   let navDir = '';                 // напрямок, який зараз тримають (для автоповтору навігації)
   let navAt = 0;
   let gameDir = '';                // напрямок, відданий грі (щоб зняти клавішу на відпусканні)
+  let dirStale = false;            // напрямок тримали ще без фокуса вікна — не рахується, поки не відпустять
   let aKey = '';                   // клавіша гри, яку зараз тримає кнопка дії
   let aBtn = -1;                   // яка саме кнопка її тримає (з anyBtn це будь-яка з восьми)
   let pressed = null;              // елемент, на якому Ⓐ тримає pointerdown (коло Гончарного)
@@ -115,16 +118,48 @@
     }));
   }
 
+  // ---------- пад чи кермо ----------
+
+  /// Кермо, педалі, КПП і авіаручку браузер теж віддає як пад, але для сайту це не пади: у Logitech G29 передачі
+  /// КПП — кнопки 12–18, тобто якраз хрестовина стандартної розкладки, а вісь керма — лівий стік. На них грають
+  /// в ETS2, а не в «Глечики», тож такі пристрої пропускаємо геть — ні кільця, ні 🎮 у шапці.
+  /// Упізнаємо за назвою (у кермах вона майже завжди є: «… Racing Wheel», «… Wheel Base», «… Pedals»), а про
+  /// запас — за USB-ідентифікатором відомих керм.
+  const SIM_NAME = /wheel|racing|driving force|steering|pedal|shifter|handbrake|hotas|throttle|flight|yoke|rudder|simucube|simagic|cammus/i;
+  const SIM_VENDOR = ['0eb7', '346e'];    // Fanatec, Moza — роблять лише кермо й педалі
+  const SIM_PRODUCT = [                   // Logitech і Thrustmaster роблять і пади, тож тут лише їхні керма
+    '046d:c24f', '046d:c260', '046d:c262', '046d:c266', '046d:c26e', '046d:c29b', '046d:c299', '046d:c29a',
+    '046d:c298', '046d:c294', '046d:c295', '046d:ca03',
+    '044f:b65d', '044f:b65e', '044f:b669', '044f:b66e', '044f:b677', '044f:b67f', '044f:b696',
+  ];
+  /// «вендор:продукт» з id пада. Chrome пише «… (Vendor: 046d Product: c24f)», Firefox — «46d-c24f-…» без нулів попереду.
+  function usb(id) {
+    const m = /Vendor:\s*([0-9a-f]{1,4})\s+Product:\s*([0-9a-f]{1,4})/i.exec(id) || /^([0-9a-f]{1,4})-([0-9a-f]{1,4})-/i.exec(id);
+    return m ? m[1].toLowerCase().padStart(4, '0') + ':' + m[2].toLowerCase().padStart(4, '0') : '';
+  }
+  function sim(p) {
+    const id = String(p.id || '');
+    if (SIM_NAME.test(id)) return true;
+    const u = usb(id);
+    return !!u && (SIM_VENDOR.includes(u.slice(0, 4)) || SIM_PRODUCT.includes(u));
+  }
+
+  /// Пади, які сайт слухає: під'єднані й не кермо.
+  function gamepads() {
+    const list = (navigator.getGamepads && navigator.getGamepads()) || [];
+    const out = [];
+    for (const p of list) if (p && p.connected && !sim(p)) out.push(p);
+    return out;
+  }
+
   // ---------- опитування пада ----------
 
   function scan() {
-    const list = (navigator.getGamepads && navigator.getGamepads()) || [];
     let n = 0, names = '';
-    for (const p of list) { if (p && p.connected) { n++; names += ' ' + (p.id || ''); } }
+    for (const p of gamepads()) { n++; names += ' ' + (p.id || ''); }
     if (n !== pads || names !== padNames) { pads = n; padNames = names; if (!pads) sleep(); }
     if (pads && !raf) raf = requestAnimationFrame(poll);
     paintTip();
-    return list;
   }
 
   /// 🎮 у шапці — вхід у довідку без жодної кнопки пада. Показуємо його лише тим, кому він потрібен:
@@ -154,11 +189,9 @@
 
   function poll() {
     raf = 0;
-    const list = (navigator.getGamepads && navigator.getGamepads()) || [];
     const down = new Array(NBUT).fill(false);
     let ax = 0, ay = 0, rx = 0, ry = 0, live = 0;
-    for (const p of list) {
-      if (!p || !p.connected) continue;
+    for (const p of gamepads()) {
       live++;
       const bs = p.buttons || [];
       for (let i = 0; i < NBUT && i < bs.length; i++) if (bs[i] && bs[i].pressed) down[i] = true;
@@ -169,11 +202,22 @@
       if (Math.abs(a[3] || 0) > Math.abs(ry)) ry = a[3] || 0;
     }
     if (!live) { pads = 0; sleep(); return; }
+    // Вікно не в фокусі — пад зараз грає в щось інше (сайт на другому моніторі, гра поверх браузера), а Chrome
+    // віддає натиски й тоді. Нічого не тиснемо, а затиснуте запам'ятовуємо як уже затиснуте: інакше воно
+    // стало б натиском, щойно повернешся на сторінку. Напрямок так само чекає, поки його відпустять.
+    if (!document.hasFocus()) {
+      prev = down;
+      dirStale = true;
+      releaseAll();
+      raf = requestAnimationFrame(poll);
+      return;
+    }
 
     const now = performance.now();
     // Спершу вмикаємо режим пада (він може поставити кільце на перше місце) і лише потім
     // роздаємо натиски: інакше найперший рух стіка рахувався б від порожнечі.
-    const dirNow = down[UP] ? 'up' : down[DOWN] ? 'down' : down[LEFT] ? 'left' : down[RIGHT] ? 'right' : stick(ax, ay);
+    let dirNow = down[UP] ? 'up' : down[DOWN] ? 'down' : down[LEFT] ? 'left' : down[RIGHT] ? 'right' : stick(ax, ay);
+    if (dirStale) { if (dirNow) dirNow = ''; else dirStale = false; }
     let acted = !!dirNow;
     for (let i = 0; i < NBUT; i++) if (down[i] !== prev[i]) { acted = true; break; }
     if (acted) setOn(true);
@@ -953,6 +997,8 @@
     human: (ev) => !!ev && (ev.isTrusted || ev.hpad === true),
     get on() { return on; },
     get pads() { return pads; },
+    /// Пади для ігор, що читають стік самі: без керма й педалей і порожньо, поки вікно не в фокусі.
+    list: () => (document.hasFocus() ? gamepads() : []),
     get deck() { return deck(); },
     help: openHelp,
     hints: paintHints,

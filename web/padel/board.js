@@ -540,10 +540,13 @@
     const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean);
     if (!pads.length) { gpRun = false; return; }
     const map = [[4, 0], [5, 1], [14, 0], [15, 1], [1, 'undo']];
+    // Кермо (передачі КПП — ті самі кнопки 12–18) і пад, коли вікно не в фокусі, очок не дають
+    const off = !document.hasFocus();
     for (const p of pads) {
+      if (/wheel|racing|pedal|shifter/i.test(p.id || '')) continue;
       for (const [i, a] of map) {
         const pr = !!(p.buttons[i] && p.buttons[i].pressed), k = p.index + ':' + i;
-        if (pr && !gpPrev[k] && mode === 'board' && visible() && !document.querySelector('.pd-sheet-bg')) { if (a === 'undo') act('undo'); else point(a); }
+        if (pr && !gpPrev[k] && !off && mode === 'board' && visible() && !document.querySelector('.pd-sheet-bg')) { if (a === 'undo') act('undo'); else point(a); }
         gpPrev[k] = pr;
       }
     }

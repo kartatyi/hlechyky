@@ -1088,7 +1088,8 @@
     const padPoll = () => {
       const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
       if (!pads.length) { ctx.clearTimer(padT); padT = 0; return; }
-      const down = seen() && pads.some((p) => p.buttons[0] && p.buttons[0].pressed);
+      const use = window.HPad && HPad.list ? HPad.list() : pads;   // без керма й лише у фокусі: X на кермі в ETS2 не крутить
+      const down = seen() && use.some((p) => p.buttons[0] && p.buttons[0].pressed);
       if (down && !padPrev) act();
       padPrev = down;
     };

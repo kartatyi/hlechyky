@@ -1553,7 +1553,7 @@
     const pad = window.HPad;
     if (!pad || !pad.on || !canAct(st) || !navigator.getGamepads) { if (st.padDir !== -1) { st.padDir = -1; want(st); } return; }
     let list;
-    try { list = navigator.getGamepads() || []; } catch { list = []; }
+    try { list = pad.list ? pad.list() : (navigator.getGamepads() || []); } catch { list = []; }   // без керма й лише у фокусі
     let dx = 0, dy = 0, ax = 0, ay = 0, seen = false;
     for (const p of list) {
       if (!p || !p.connected) continue;

@@ -734,7 +734,7 @@
   /// Аналоговий стік пада: 16 секторів замість чотирьох синтезованих стрілок.
   function readPad(st) {
     if (!window.HPad || !(HPad.pads > 0) || !navigator.getGamepads) { st.padA = null; return; }
-    const list = navigator.getGamepads() || [];
+    const list = HPad.list ? HPad.list() : (navigator.getGamepads() || []);   // без керма й лише у фокусі
     let gp = null;
     for (let i = 0; i < list.length; i++) if (list[i] && list[i].connected !== false) { gp = list[i]; break; }
     if (!gp || !gp.axes || gp.axes.length < 2) { st.padA = null; return; }
