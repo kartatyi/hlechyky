@@ -235,6 +235,10 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "roulette-bet" => "Рулетка — ставка",
             "roulette-win" => "Рулетка — виграш",
             "roulette-back" => "Рулетка — ставку повернуто",
+            // Лелека (docs/games/specs/lelka.md §4)
+            "lelka-bet" => "Лелека — ставка",
+            "lelka-win" => "Лелека — забрав",
+            "lelka-back" => "Лелека — ставку повернуто",
             // куплено за гривні (ShardShop.cs): хвіст — номер замовлення
             "buy" => "куплено за гривні",
             "buy-gift" => "подарунок — куплені черепки",

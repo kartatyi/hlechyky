@@ -249,6 +249,7 @@ public sealed partial class Rooms
         if (_registry.Info(gameId) is not { } info) return RoomOutcome.Fail(Say.NoGame);
         if (Closed(gameId) is { } off) return RoomOutcome.Fail(off);
         if (info.Solo) return OpenSolo(nick, gameId, null);
+        if (_registry.Shared(gameId) && SharedSeat(nick, gameId) is { } shared) return shared;
 
         var stake = ReadStake(info, options);
         if (stake > 0 && _stakes.Balance(nick) < stake) return RoomOutcome.Fail(Say.NoShards);
@@ -265,6 +266,7 @@ public sealed partial class Rooms
 
         room.Seats[0] = nick;
         room.Host = nick;
+        var raced = false;
         // Перевірка й додавання — однією секцією: інакше дві вкладки одного ніка створять два столи,
         // а дванадцятеро одночасних творців проб'ють MaxRooms.
         lock (_lock)
@@ -272,8 +274,11 @@ public sealed partial class Rooms
             if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (_rooms.Any(r => !r.Info.Solo && r.Has(nick))) return RoomOutcome.Fail(Say.Seated);
             if (_rooms.Count(r => !r.Info.Solo) >= MaxRooms) return RoomOutcome.Fail(Say.TooMany);
-            _rooms.Add(room);
+            // Спільний стіл, що з'явився, поки будували цей (двоє натиснули разом), — туди; наш так і не народився.
+            raced = _registry.Shared(gameId) && _rooms.Any(r => SharedOpen(r, gameId));
+            if (!raced) _rooms.Add(room);
         }
+        if (raced) return SharedSeat(nick, gameId) ?? RoomOutcome.Fail(Say.TooMany);
 
         var outbox = new Outbox();
         // «Можна почати вже» — лише коли гра й справді пустить: доміно, дурень, c4x самотужки без Глеків не стартують.
@@ -319,6 +324,26 @@ public sealed partial class Rooms
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
         return new RoomOutcome(outbox, reply);
+    }
+
+    /// <summary>Стіл спільної гри (<see cref="ISharedTable"/>), за який ще можна сісти: живий і з вільним місцем.</summary>
+    static bool SharedOpen(Room r, string gameId) =>
+        r.Info.Id == gameId && r.Status is RoomStatus.Lobby or RoomStatus.Playing && r.FreeSeat >= 0;
+
+    /// <summary>
+    /// «Новий стіл» спільної гри: людина вже за ним — просто «ти тут»; є живий стіл із місцем — сідає туди (Join, посеред
+    /// партії — LateJoin). null — такого столу нема, тоді Create ставить новий. Глядачем дивитись можна й повний стіл.
+    /// </summary>
+    RoomOutcome? SharedSeat(string nick, string gameId)
+    {
+        Room? mine, open;
+        lock (_lock)
+        {
+            mine = _rooms.FirstOrDefault(r => r.Info.Id == gameId && r.Status is RoomStatus.Lobby or RoomStatus.Playing && r.Has(nick));
+            open = _rooms.Where(r => SharedOpen(r, gameId)).OrderByDescending(r => r.Seats.Count(s => s is not null)).FirstOrDefault();
+        }
+        if (mine is not null) return new RoomOutcome(new Outbox(), new RoomReply(true, "Ти вже за цим столом", mine.Id));
+        return open is null ? null : Join(open.Id, nick);
     }
 
     /// <summary>

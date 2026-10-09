@@ -219,6 +219,9 @@ public static class AchievementCatalog
         new("roulette-allin",    "Ва-банк",           "Рулетка: увесь гаманець (від 50 черепків) на одне коло — і виграш", "💥", 30),
         new("roulette-red5",     "Червоне вп'яте",    "Рулетка: п'ять своїх кіл поспіль на червоне — і щоразу червоне", "🔴", 20),
         new("roulette-hopak",    "Глек танцює гопак", "Рулетка: виграш 1000 черепків і більше за одне коло", "💃", 20),
+        // Лелека — гра просить сама (specs/lelka.md §5), лише тим, хто в мить падіння сидить
+        new("lelka-10",          "Вище хмар",         "Лелека: забрав на ×10 і вище", "🪶", 20),
+        new("lelka-brave",       "На волосинку",      "Лелека: забрав щонайбільше за 0,1 до падіння", "🫣", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
