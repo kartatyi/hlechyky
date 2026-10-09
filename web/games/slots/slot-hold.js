@@ -1,6 +1,8 @@
 /* Козацький скарб (slot-hold): 5×3, 20 ліній, дукати → «Утримуй і вигравай» (3 респіни-свічки, Булава, Пірнач,
    джекпоти Міні/Мажор/Гетьманський скарб). Механіка й мок-математика — тут; арт — slot-hold-art.js (SlotArt['slot-hold']).
-   Сценарій — чисті дані: spin → win? → holdIn → (respin, double?, collect?)×N → holdCount → grand? → holdOut. */
+   Сценарій — чисті дані: spin → morph(why: 'rain')? → win? → holdIn → (respin, double?, collect?)×N → holdCount → grand? → holdOut.
+   «Дукатний дощ» (сюрприз базової гри, вирішує сервер): після зупинки 1–4 дукати падають на клітинки без дуката й поза
+   виграшними рядами — своя сцена в STEPS.morph (хмара, дукати падають поштучно, «Скарб відкрито!» на 6+). */
 (function () {
   'use strict';
   const SK = window.SlotKit, ID = 'slot-hold';
@@ -34,6 +36,11 @@
     sabre: { 5: 400, 4: 100, 3: 30 }, mug: { 5: 300, 4: 80, 3: 24 }, pipe: { 5: 240, 4: 60, 3: 22 },
     s1: { 5: 90, 4: 24, 3: 10 }, s2: { 5: 90, 4: 24, 3: 10 }, s3: { 5: 80, 4: 20, 3: 8 }, s4: { 5: 80, 4: 20, 3: 8 },
   };
+
+  // ⓘ і дощ моку — з view.table сервера (slot.js кличе _setPay); без сервера (стенд) — числа зі spec
+  let T = null;
+  const RAIN = { chance: 1 / 16, counts: { 1: 0.7, 2: 0.22, 3: 0.06, 4: 0.02 }, coins: { c1: 5, c2: 5, c3: 3, c5: 5, cmini: 2 } };
+  const rainT = () => (T && T.rain) || RAIN;
 
   function gridOf(stops) { return stops.map((s, c) => R3.map((r) => REELS[c][(s + r) % REELS[c].length])); }
   function evalLine(keys) {
@@ -130,11 +137,40 @@
     return { steps, total: total + grand, full, respins: n };
   }
 
+  // ---------- «Дукатний дощ» (мок для стенду; на сайті — сервер) ----------
+  function wpick(w) {
+    let t = 0; for (const k in w) t += +w[k];
+    let x = Math.random() * t;
+    for (const k in w) { x -= +w[k]; if (x < 0) return k; }
+    return Object.keys(w)[0];
+  }
+  const rainCount = () => +wpick(rainT().counts);
+  // як сервер: лише клітинки без дуката й поза виграшними рядами, кожна вільна — рівноймовірно
+  function rainOn(grid, ev, n) {
+    const busy = new Set();
+    ev.items.forEach((it) => it.cells.forEach(([c, r]) => busy.add(c + ',' + r)));
+    const free = [];
+    grid.forEach((col, c) => col.forEach((k, r) => { if (!isCoin(k) && !busy.has(c + ',' + r)) free.push([c, r]); }));
+    const cells = [];
+    for (let i = 0; i < n && free.length; i++) {
+      const [c, r] = free.splice(SK.rnd.int(free.length), 1)[0], k = wpick(rainT().coins);
+      grid[c][r] = k; cells.push([c, r, k, COINV[k]]);
+    }
+    return cells;
+  }
+
+  // bo — підкрутки показу (стенд): rain — скільки дукатів дощу (0 — без дощу); без bo — дощ випадковий, як на сервері
   function scriptFor(stops, bet, state, bo) {
-    const grid = gridOf(stops), ev = evaluate(grid), lb = bet / 20;
+    const grid = gridOf(stops), lb = bet / 20;
+    let ev = evaluate(grid);
+    const tease = ev.tease;
+    const nRain = bo && bo.rain != null ? bo.rain : !bo && Math.random() < rainT().chance ? rainCount() : 0;
+    const rain = nRain ? rainOn(grid, ev, nRain) : [];
+    if (rain.length) ev = evaluate(grid);   // ряди ті самі (дощ їх не чіпає), дукатів — більше
     const items = ev.items.map((it) => ({ line: it.line, cells: it.cells, sym: it.sym, amount: Math.round(it.u * lb) }));
     let win = items.reduce((a, it) => a + it.amount, 0);
-    const steps = [{ t: 'spin', stops, tease: ev.tease }];
+    const steps = [{ t: 'spin', stops, tease }];
+    if (rain.length) steps.push({ t: 'morph', cells: rain, why: 'rain' });
     if (items.length) steps.push({ t: 'win', items, amount: win });
     let hold = null, capped = false;
     if (ev.coins.length >= 6) {
@@ -149,6 +185,7 @@
     }
     const S = { bet, steps, win, state: state || {}, hold: !!hold, full: !!(hold && hold.full) };
     if (capped) S.capped = true;
+    if (rain.length) S.rain = rain.length;
     return S;
   }
 
@@ -167,7 +204,7 @@
   // повне поле — лише там, де його й показуємо
   const demoBy = (pred, bo) => (bet, state) => {
     let s = null;
-    for (let i = 0; i < 40; i++) { s = scriptFor(pickBy(pred), bet, state, bo); if (!s.full || (bo && bo.fill)) break; }
+    for (let i = 0; i < 40; i++) { s = scriptFor(pickBy(pred), bet, state, bo || { rain: 0 }); if (!s.full || (bo && bo.fill)) break; }
     return s;
   };
   // бонус, що дав виграш у межах [lo, hi) ставок
@@ -176,7 +213,7 @@
       const trig = pool().filter((x) => x.coins >= (minCoins || 6) && x.m < 2);
       let best = null;
       for (let i = 0; i < 400; i++) {
-        const s = scriptFor(SK.rnd.pick(trig).stops, bet, state, bo), m = s.win / bet;
+        const s = scriptFor(SK.rnd.pick(trig).stops, bet, state, Object.assign({ rain: 0 }, bo)), m = s.win / bet;
         if (m >= lo && m < hi && !s.full) return s;
         if (!best || Math.abs(m - lo) < Math.abs(best.win / bet - lo)) best = s;
       }
@@ -186,9 +223,9 @@
 
   const SAY = {
     idle: ['шість дукатів — і скриня твоя', 'дукати самі не прийдуть — крути', 'козак без скарбу — як люлька без тютюну'],
-    win: ['дзень!', 'козацька удача', 'є копієчка', 'на тютюн вистачить'],
-    big: ['оце так здобич!', 'кошовий заздрить', 'тримай кишеню ширше'],
     tease: ['ще один дукат…', 'не дихай — одного бракує'],
+    rain: ['з неба — дукати!', 'хмара з грошима — бачив таке?', 'дощ дукатами — підставляй шапку', 'небо сьогодні платить'],
+    open: ['дощ доніс шостий — скриня!', 'скарб відкрито! оце злива', 'відчиняй скриню, козаче!'],
     trigger: ['скриня! тримай, не впусти', 'о, запахло скарбом'],
     reset: ['ще три свічки!', 'дзень! горить знову', 'тримається козак'],
     last: ['остання свічка…', 'ну ж бо, ну ж бо…'],
@@ -199,6 +236,26 @@
     grand: ['гетьманський скарб! ти шо, гетьман?'],
   };
   const pick = (a) => SK.rnd.pick(a);
+
+  // ⓘ: правила; дощ і шанси респіну — з view.table сервера (на стенді — числа зі spec)
+  const pct = (x) => String(Math.round(x * 1000) / 10).replace('.', ',') + ' %';
+  function rulesHtml() {
+    const rn = rainT(), rs = T && T.respin;
+    const rainTxt = (T && T.rain && T.rain.text) || ('Дукатний дощ: після зупинки в 1 з ' + Math.round(1 / rn.chance)
+      + ' обертів на поле падає 1–4 дукати — лише на клітинки поза виграшними лініями, тож виграш ліній не меншає.');
+    let resp = '';
+    if (rs) {
+      const cv = rs.coins ? Object.keys(rs.coins).sort((a, b) => a - b).map((v) => '×' + v + ' ' + pct(rs.coins[v])).join(', ') : '';
+      resp = ' На кожному респіні в порожньому гнізді щось падає з шансом <b>' + pct(rs.land) + '</b>; з того, що впало: Булава '
+        + pct(rs.mace) + ', Пірнач ' + pct(rs.pirnach) + ', Міні ' + pct(rs.mini) + ', Мажор ' + pct(rs.major) + (cv ? ', дукати ' + cv : '') + '.';
+    }
+    const jp = JP;
+    return '<b>20 ліній</b>, ставка ділиться між ними порівну; платить однаковий ряд зліва направо від першого барабана. '
+      + '<b>6+ дукатів</b> на полі (разом із дощем) — «утримуй і вигравай»: дукати лишаються, решта гнізд крутиться; <b>3 респіни</b>, '
+      + 'кожен новий дукат знову дає 3. <b>Булава</b> збирає номінали всіх дукатів у себе, <b>Пірнач</b> — усі дукати й булави ×2. '
+      + 'Дукати «Міні» ×' + jp.mini + ' і «Мажор» ×' + jp.major + ' ставки; усі 15 гнізд — <b>Гетьманський скарб</b>: оберт віддає ×' + jp.grand + ' ставки.'
+      + resp + '<br><br>🌧 ' + rainTxt;
+  }
 
   // ---------- арт: дукати з номіналами як символи барабанів; заглушки ----------
   function ensureSyms() {
@@ -330,15 +387,136 @@
     ctx.clearWin();
   }
 
+  // ---------- «Дукатний дощ»: хмара над скринею, дукати падають поштучно, клітинка «приймає» ----------
+  const CLOUD = '<svg viewBox="0 0 320 132" class="sh-cloud-svg" aria-hidden="true"><defs>'
+    + '<linearGradient id="shr-cl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6c5a8e"/><stop offset=".6" stop-color="#3a2c55"/><stop offset="1" stop-color="#211836"/></linearGradient>'
+    + '<radialGradient id="shr-gl" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffe38a" stop-opacity=".9"/><stop offset="1" stop-color="#ffb400" stop-opacity="0"/></radialGradient></defs>'
+    + '<ellipse class="a-rglow" cx="160" cy="112" rx="150" ry="22" fill="url(#shr-gl)"/>'
+    + '<path d="M44 106Q14 106 16 83Q19 61 46 63Q47 33 82 31Q98 6 134 15Q158-2 188 15Q216 4 236 29Q270 25 276 55Q306 59 304 84Q302 106 274 106Z" fill="url(#shr-cl)" stroke="#ffd447" stroke-width="3.5" stroke-linejoin="round"/>'
+    + '<path d="M70 58Q74 40 96 40M150 26Q170 14 190 26M236 44Q256 42 262 58" fill="none" stroke="#a796c9" stroke-width="5" stroke-linecap="round" opacity=".55"/>'
+    + '<g fill="#ffe27a"><circle class="a-rsp1" cx="96" cy="118" r="4"/><circle class="a-rsp2" cx="160" cy="124" r="5"/><circle class="a-rsp3" cx="226" cy="118" r="4"/></g></svg>';
+  function rainLayer(ctx) {
+    const h = H(ctx), fr = h.stage.querySelector('.sh-frame');
+    const L = document.createElement('div'); L.className = 'sh-rainl';
+    L.innerHTML = '<div class="sh-cloud">' + CLOUD + '</div>';
+    fr.appendChild(L);
+    return L;
+  }
+  // клітинка барабана стає дукатом — так само, як reelsMorph кіта (dataset.k читають holdIn, onTease, підсвітка)
+  function putCoin(ctx, c, r, key) {
+    const e = ctx.reels && ctx.reels.cell(c, r); if (!e) return null;
+    if (ctx.reels.poke) ctx.reels.poke(c, r, key);
+    e._key = key; e.dataset.k = key; e.replaceChildren(ctx.symNode(key));
+    e.classList.remove('win', 'dim', 'glint', 'sk-morph');
+    return e;
+  }
+  function onField(ctx) { return ctx.reels ? ctx.reels.cells().filter((e) => e && isCoin(e.dataset.k)) : []; }
+  async function rainScene(s, ctx) {
+    const h = H(ctx), cells = s.cells || [];
+    if (!h || !h.stage || !ctx.reels || !cells.length) { await SK.steps.morph(s, ctx); return; }
+    // тап/пробіл: ctx.skip доводить поточне до кінця — а ми ще й решту дукатів кладемо одразу
+    let skipped = false;
+    const sk0 = ctx.skip;
+    ctx.skip = function () { skipped = true; return sk0.apply(this, arguments); };
+    const S = h.S, calm = SK.calm && SK.calm();
+    const L = rainLayer(ctx), cloud = L.firstChild;
+    try {
+      ctx.emit('surprise', 'rain', s);
+      ctx.react('surprise', { why: 'rain', say: false });
+      ctx.say(pick(SAY.rain), 2400);
+      h.stage.classList.add('sh-raining');
+      ctx.sound('whoosh');
+      ctx.animate(cloud, [{ transform: 'translate(-50%, -45%) scale(.55)', opacity: 0 }, { transform: 'translate(-50%, 0) scale(1)', opacity: 1 }],
+        { duration: 340, easing: 'cubic-bezier(.3, 1.5, .5, 1)', fill: 'both' });
+      ctx.timeout(() => cloud.classList.add('on'), 340);
+      await ctx.wait(280);
+      const n = cells.length, stag = n > 2 ? 250 : 300, fall = 520;
+      const cw = S * 3.2, cx = COLS * S / 2, cy = -S * 0.42;   // низ хмари (px поля)
+      const one = async ([c, r, key, v], i) => {
+        if (i) await ctx.wait(i * stag);
+        const tx = (c + 0.5) * S, ty = (r + 0.5) * S;
+        if (!skipped && L.isConnected) {
+          const sx = cx + (tx - cx) * 0.62 + (Math.random() - 0.5) * 0.12 * cw, dx = sx - tx, dy = cy - ty;
+          const d = document.createElement('div'); d.className = 'sh-drop';
+          d.style.left = tx + 'px'; d.style.top = ty + 'px';
+          d.innerHTML = '<div class="sh-drop-i glint">' + ctx.symHtml(key) + '</div>';
+          L.appendChild(d);
+          const spin = Math.max(2, Math.round(fall / 190));
+          const a = ctx.animate(d, [
+            { transform: 'translate(-50%, -50%) translate(' + dx.toFixed(1) + 'px, ' + dy.toFixed(1) + 'px) scale(.5)', opacity: 0 },
+            { opacity: 1, offset: 0.14 },
+            { transform: 'translate(-50%, -50%) translate(0, 0) scale(1)', opacity: 1 },
+          ], { duration: fall, easing: 'cubic-bezier(.55, 0, .9, .55)', fill: 'both' });
+          if (!calm) ctx.animate(d.firstChild, [{ transform: 'scaleX(1)' }, { transform: 'scaleX(.14)' }, { transform: 'scaleX(1)' }], { duration: fall / spin, iterations: spin });
+          ctx.fx.at(d, { kind: 'spark', n: 6, speed: 150, size: 7, gravity: 260 });
+          ctx.sound('clink', { p: 1.3 + i * 0.08 });
+          await a.finished.catch(() => {});
+          d.remove();
+        }
+        const e = putCoin(ctx, c, r, key);
+        if (!e || skipped) return;
+        // удар: клітинка «приймає» дукат — сплющення, кільце-спалах, іскри, номінал спалахує
+        anim(e, 'sh-catch', 700, ctx);
+        const ring = document.createElement('div'); ring.className = 'sh-ring';
+        ring.style.left = tx + 'px'; ring.style.top = ty + 'px'; L.appendChild(ring);
+        ctx.timeout(() => ring.remove(), 700);
+        const f = document.createElement('div'); f.className = 'sh-plus sh-rplus' + (key === 'cmini' ? ' big' : '');
+        f.textContent = key === 'cmini' ? 'Міні!' : '×' + v;
+        f.style.left = tx + 'px'; f.style.top = ty + 'px'; L.appendChild(f);
+        ctx.timeout(() => f.remove(), 1100);
+        ctx.fx.at(e, { kind: 'spark', n: calm ? 8 : 16, speed: 380, size: 9 });
+        ctx.fx.at(e, { kind: 'coin', n: 4, speed: 300, size: 9, life: 1.1 });
+        ctx.fx.at(e, { kind: 'dust', n: 4, speed: 80, size: 14 });
+        ctx.sound('dzen', { p: 1 + i * 0.09 });
+        ctx.shake(0.22 + i * 0.07);
+      };
+      await Promise.all(cells.map(one));
+      // що не впало (тап посеред дощу) — уже на місці; хмара тане
+      cells.forEach(([c, r, key]) => { const e = ctx.reels.cell(c, r); if (e && e.dataset.k !== key) putCoin(ctx, c, r, key); });
+      cloud.classList.remove('on');
+      const out = ctx.animate(cloud, [{ transform: 'translate(-50%, 0) scale(1)', opacity: 1 }, { transform: 'translate(-50%, -30%) scale(.8)', opacity: 0 }],
+        { duration: 300, easing: 'ease-in', fill: 'both' });
+      h.stage.classList.remove('sh-raining');
+      await ctx.wait(skipped ? 60 : 260);
+      // 6+ дукатів після дощу — окремий момент «Скарб відкрито!» (ескалація), далі holdIn
+      const field = onField(ctx);
+      if (field.length >= 6) {
+        h.rainOpened = true;
+        ctx.sound('bell'); ctx.flash('#ffd447', { power: 0.9, ms: 520 }); ctx.shake(1.4);
+        ctx.react('surprise', { mood: 'wow', ms: 2200, say: false });
+        ctx.say(pick(SAY.open), 2800);
+        field.forEach((e, i) => { e.classList.add('sh-hot'); ctx.timeout(() => ctx.fx.at(e, { kind: 'spark', n: calm ? 6 : 12, speed: 340, size: 9 }), i * 60); });
+        const o = document.createElement('div'); o.className = 'sh-open';
+        o.innerHTML = '<b>' + field.length + '</b><span>дукатів — скарб відкрито!</span>';
+        L.appendChild(o);
+        ctx.animate(o, [{ transform: 'translate(-50%, -50%) scale(.3)', opacity: 0 }, { transform: 'translate(-50%, -50%) scale(1.15)', opacity: 1, offset: 0.45 }, { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 }],
+          { duration: 520, easing: 'cubic-bezier(.3, 1.4, .5, 1)', fill: 'both' });
+        await ctx.wait(skipped ? 300 : 1100);
+        field.forEach((e) => e.classList.remove('sh-hot'));
+      }
+      await out.finished.catch(() => {});
+    } finally {
+      ctx.skip = sk0;
+      L.remove();
+      h.stage.classList.remove('sh-raining');
+    }
+  }
+
   // ---------- кроки ----------
   const STEPS = {
+    // «Дукатний дощ» — своя сцена; інші morph (без why чи чужі) — як у кіті
+    async morph(s, ctx) {
+      if (s.why === 'rain') return rainScene(s, ctx);
+      return SK.steps.morph(s, ctx);
+    },
     async holdIn(s, ctx) {
       const h = H(ctx);
+      const rained = h.rainOpened; h.rainOpened = false;   // дощ уже сказав «скарб відкрито» — не повторюємось
       ctx.clearWin();
       ctx.showWin([{ cells: s.coins.map(([c, r]) => [c, r]) }], true);
       h.stage.classList.add('sh-trig');
-      ctx.sound('bell'); ctx.say(pick(SAY.trigger), 3000);
-      await ctx.wait(1300);
+      ctx.sound('bell'); if (!rained) ctx.say(pick(SAY.trigger), 3000);
+      await ctx.wait(rained ? 650 : 1300);
       h.stage.classList.remove('sh-trig');
       ctx.sound('bonus');
       const ov = ctx.overlay('sh-chest-ov',
@@ -347,7 +525,10 @@
         + '<div class="sh-chest-hint">тисни, щоб почати</div></div>');
       await ctx.wait(450, true);
       ov.classList.add('open'); ctx.sound('lid');
-      ctx.timeout(() => { const b = ov.querySelector('.sh-chest-box'); if (b) ctx.fx.at(b, { kind: 'coin', n: 46, speed: 720 }); ctx.sound('coin'); }, 900);
+      ctx.timeout(() => {
+        const b = ov.querySelector('.sh-chest-box'); if (b) ctx.fx.at(b, { kind: 'coin', n: 46, speed: 720 });
+        ctx.sound('coin'); ctx.flash('#ffd98a', { power: 0.6 }); ctx.shake(0.8);
+      }, 900);
       ctx.setScene('bonus');
       await ctx.wait(ctx.auto ? 2000 : 3200, true);
       enterHold(ctx, s.coins);
@@ -464,6 +645,7 @@
       ctx.sound('big');
       await ctx.roll(0, s.total, Math.min(3000, ctx.rollMs(s.total) * 0.6 + 500), (v) => { n.textContent = fmt(v); });
       ctx.fx.at(n, { kind: 'coin', n: 44, speed: 700 });
+      if (s.total >= 10 * ctx.bet) { ctx.flash('#ffe08a', { power: 0.55 }); ctx.shake(0.6); }
       await ctx.wait(1700, true);
       leaveHold(ctx);
       ctx.setScene('base');
@@ -485,12 +667,19 @@
       { key: 'cossack', pays: PAY.cossack, note: 'найдорожчий' },
       { key: 'horse', pays: PAY.horse }, { key: 'sabre', pays: PAY.sabre }, { key: 'mug', pays: PAY.mug }, { key: 'pipe', pays: PAY.pipe },
       { key: 's1', pays: PAY.s1, note: 'і вишита вина' }, { key: 's3', pays: PAY.s3, note: 'і вишита трефа' },
-      { key: 'c5', pays: {}, note: '6+ дукатів будь-де — «утримуй і вигравай»' },
+      { key: 'c5', pays: {}, note: '6+ дукатів будь-де (разом із дощем) — «утримуй і вигравай»' },
     ],
-    rules: '<b>20 ліній</b>, ставка ділиться між ними порівну; платить однаковий ряд зліва направо від першого барабана. '
-      + '<b>6+ дукатів</b> — «утримуй і вигравай»: дукати лишаються, решта гнізд крутиться; <b>3 респіни</b>, кожен новий дукат знову дає 3. '
-      + '<b>Булава</b> збирає номінали всіх дукатів у себе, <b>Пірнач</b> — усі дукати ×2. Дукати «Міні» ×20 і «Мажор» ×100 ставки; '
-      + 'усі 15 гнізд — <b>Гетьманський скарб</b> ×1000.',
+    rules: () => rulesHtml(),
+    // Глек-ведучий кіта говорить за дрібні виграші — наші слова, рідше (кіт тротлить)
+    say: {
+      win: ['дзень!', 'козацька удача', 'є копієчка', 'на тютюн вистачить'],
+      small: ['хоч на люльку', 'копієчка до копієчки'],
+      nice: ['оце по-козацьки!', 'кошовий кивнув'],
+      big: ['оце так здобич!', 'кошовий заздрить', 'тримай кишеню ширше'],
+      dry: ['козак терпить — і отаманом стає', 'дукати сплять — хай поспать'],
+      surprise: SAY.rain,
+    },
+    surprises: { rain: { title: 'Дукатний дощ', own: true } },
     initialState: () => ({}),
     spin(bet, state) { return scriptFor(REELS.map((s) => SK.rnd.int(s.length)), bet, state); },
     demo: {
@@ -505,7 +694,21 @@
       'Гетьманський скарб': demoBy((x) => x.coins >= 8 && x.m < 2, { pLand: 0.2, saves: 99, fill: true }),
       'Великий занос': (bet, state) => {
         const l = pool().filter((x) => x.m >= 10 && x.m < 25 && x.coins < 6);
-        return l.length ? scriptFor(SK.rnd.pick(l).stops, bet, state) : bonusIn(10, 25, { saves: 1 })(bet, state);
+        return l.length ? scriptFor(SK.rnd.pick(l).stops, bet, state, { rain: 0 }) : bonusIn(10, 25, { saves: 1 })(bet, state);
+      },
+      // дощ, що не довів до скрині: 1–3 дукати на поле з кількома дукатами
+      'Дукатний дощ': (bet, state) => {
+        const x = SK.rnd.pick(pool().filter((p) => p.coins >= 1 && p.coins <= 3 && p.m < 2));
+        return scriptFor(x.stops, bet, state, { rain: Math.min(3, 5 - x.coins) });
+      },
+      // дощ доніс шостий (сьомий) дукат — «Скарб відкрито!» → скриня
+      'Дощ → скарб': (bet, state) => {
+        for (let i = 0; i < 40; i++) {
+          const x = SK.rnd.pick(pool().filter((p) => (p.coins === 4 || p.coins === 5) && p.m < 2));
+          const s = scriptFor(x.stops, bet, state, { rain: 6 - x.coins + (Math.random() < 0.35 ? 1 : 0), saves: 1 });
+          if (!s.full) return s;
+        }
+        return scriptFor(pickBy((p) => p.coins === 4), bet, state, { rain: 2, saves: 1 });
       },
       'Мега занос': bonusIn(25, 50, { saves: 1, plan: [{ at: 1, k: 'pirnach' }] }),
       'Епічний занос': bonusIn(50, 400, { saves: 2, rich: true, plan: [{ at: 1, k: 'mace' }, { at: 2, k: 'pirnach' }] }, 7),
@@ -513,6 +716,12 @@
     bonusSteps: ['holdIn'],
     // на сайті slot.js підставляє view.table: pay ({ sym: { "5": … } }) і jackpots ({ mini, major, grand })
     _setPay(pay, table) {
+      if (table) T = table;
+      // стрічки — з сервера (щоб ніколи не розійтися з зупинками); масиви ті самі, що в kit (machine.reels)
+      if (table && Array.isArray(table.reels)) {
+        table.reels.forEach((st, c) => { if (REELS[c] && Array.isArray(st) && st.length) { REELS[c].length = 0; st.forEach((k) => REELS[c].push(String(k))); } });
+        POOL = null;
+      }
       if (pay) Object.keys(pay).forEach((k) => { if (!PAY[k]) return; Object.keys(PAY[k]).forEach((n) => delete PAY[k][n]); Object.keys(pay[k]).forEach((n) => { PAY[k][n] = +pay[k][n]; }); });
       const jp = table && table.jackpots; if (jp) ['mini', 'major', 'grand'].forEach((k) => { if (jp[k] != null) JP[k] = +jp[k]; });
       const cv = table && table.coins; if (cv) Object.keys(cv).forEach((k) => { if (k in COINV) COINV[k] = +cv[k]; });
@@ -554,7 +763,7 @@
     steps: STEPS,
     onBet(ctx) { setJp(ctx); },
     onSpinStart(ctx) {
-      const h = H(ctx); if (h) h.stage.classList.remove('sh-tease', 'sh-winning');
+      const h = H(ctx); if (h) { h.stage.classList.remove('sh-tease', 'sh-winning'); h.rainOpened = false; }
     },
     onTease(ctx) {
       const h = H(ctx); if (!h) return;
@@ -569,9 +778,13 @@
       if (any) ctx.sound('dzen', { p: 0.8 + c * 0.05 });
       if (c === COLS - 1) { h.stage.classList.remove('sh-tease'); ctx.reels.cells().forEach((e) => e && e.classList.remove('sh-hot')); }
     },
-    onWin(ctx, step) {
+    onWin(ctx) {
       const h = H(ctx); if (h) h.stage.classList.add('sh-winning');
-      ctx.say(pick(step.amount >= 10 * ctx.bet ? SAY.big : SAY.win), 3000);
+    },
+    // після перезавантаження slot.js ставить поле за stops (до дощу) — дукати дощу кладемо тихо
+    onRestore(ctx, script) {
+      const m = script && (script.steps || []).find((x) => x.t === 'morph' && x.why === 'rain');
+      if (m && ctx.reels) (m.cells || []).forEach(([c, r, key]) => putCoin(ctx, c, r, key));
     },
     unbuild(ctx) { ctx.sh = Object.assign({}, ctx.sh, { stage: null }); },
   });
