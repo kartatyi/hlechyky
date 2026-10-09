@@ -48,7 +48,8 @@ public sealed record FrozenRoom(
     JsonElement? WatcherView = null,
     IReadOnlyList<LobbyAct>? LobbyActs = null,
     TableBank? Bank = null,
-    IReadOnlyDictionary<string, int>? Owed = null);
+    IReadOnlyDictionary<string, int>? Owed = null,
+    IReadOnlyList<string>? Ready = null);
 
 public sealed record FrozenResult(int[] Winners, bool Draw, string Text, IReadOnlyDictionary<int, long>? Scores, string? Verdict)
 {
@@ -157,7 +158,8 @@ public sealed partial class Rooms
             room.EveningGames, state, views, watcher,
             room.Status == RoomStatus.Lobby && room.LobbyActs.Count > 0 ? [.. room.LobbyActs] : null,
             room.Bank.Accounts.Count > 0 ? room.Bank.Clone() : null,
-            room.Status == RoomStatus.Playing && room.Bank.Held > 0 ? OwedNow(room) : null);
+            room.Status == RoomStatus.Playing && room.Bank.Held > 0 ? OwedNow(room) : null,
+            room.Ready.Count > 0 && room.Status != RoomStatus.Playing ? [.. room.Ready] : null);
     }
 
     /// <summary>Банк столу на мить знімка: кому скільки належить, якщо партію не продовжать (<see cref="Game.SettleTable"/>).</summary>
@@ -331,6 +333,8 @@ public sealed partial class Rooms
         if (f.Bank is { } bank) room.Bank = bank.Clone();
         room.LoggedSeats = f.LoggedSeats;
         room.CalledAt = f.CalledAt;
+        // «✋ Готовий» переживає перезапуск: стіл той самий, склад той самий — питати людей наново нема за що.
+        foreach (var nick in f.Ready ?? []) if (room.Has(nick)) room.Ready.Add(nick);
         game.Ctx = new RoomContext(room, this);
         game.Configure(effective);
         return room;

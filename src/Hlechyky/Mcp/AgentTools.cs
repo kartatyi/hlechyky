@@ -158,16 +158,24 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         return Run(s, () => rooms.Leave(id, s.Nick));
     }
 
-    public Task<object> StartGame(AgentSession s, string? roomId)
+    /// <summary>Без <paramref name="force"/> — як людина: хтось не готовий («✋ Готовий») → відмова зі списком notReady.</summary>
+    public Task<object> StartGame(AgentSession s, string? roomId, bool force = false)
     {
         if (Which(s, roomId) is not { } id) return Task.FromResult(NoRoom());
-        return Run(s, () => rooms.StartByHost(id, s.Nick));
+        return Run(s, () => rooms.StartByHost(id, s.Nick, force));
     }
 
-    public Task<object> Rematch(AgentSession s, string? roomId)
+    public Task<object> Rematch(AgentSession s, string? roomId, bool force = false)
     {
         if (Which(s, roomId) is not { } id) return Task.FromResult(NoRoom());
-        return Run(s, () => rooms.Rematch(id, s.Nick));
+        return Run(s, () => rooms.Rematch(id, s.Nick, force));
+    }
+
+    /// <summary>«✋ Готовий» агента: люди за столом бачать, що він чекає саме на них.</summary>
+    public Task<object> Ready(AgentSession s, string? roomId, bool on)
+    {
+        if (Which(s, roomId) is not { } id) return Task.FromResult(NoRoom());
+        return Run(s, () => rooms.SetReady(id, s.Nick, on));
     }
 
     // =========================================================================================
@@ -416,6 +424,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
             ok = outcome.Reply.Ok,
             message = outcome.Reply.Message,
             room = outcome.Reply.RoomId ?? id,
+            notReady = outcome.Reply.NotReady,
             state,
         };
     }

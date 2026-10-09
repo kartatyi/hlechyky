@@ -33,7 +33,7 @@ public static class Endpoints
         var api = app.MapGroup("/api");
 
         api.MapGet("/me", (HttpContext c, TrackBans bans, IGoogleVerifier google, Curfew curfew, IOptionsMonitor<ShardShopOptions> shop,
-            IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel,
+            IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel, IOptionsMonitor<Bets.BetsOptions> bets,
             IOptionsMonitor<Games.Impl.SlotsOptions> slots,
             IOptionsMonitor<Games.Impl.LelkaOptions> lelka) => new
         {
@@ -45,6 +45,8 @@ public static class Endpoints
             padel = padel.CurrentValue.Enabled,
             slots = slots.CurrentValue.Enabled,   // автомати (Slots:Enabled): false — лобі ховає «🍒 Слоти», оберт відмовляє
             lelka = lelka.CurrentValue.Enabled,   // Лелека (Lelka:Enabled): false — тайла нема, ставок не приймає
+            // «🎲 Ставки»: сторінка з подіями й панель ставок на столах (Bets:Enabled + Bets:Events / Bets:Tables)
+            bets = new { events = bets.CurrentValue.EventsOn, tables = bets.CurrentValue.TablesOn },
             night = curfew.ForMe(c),   // нічний відбій — лише тим, кого стосується; решті null
             account = Auth.IsUser(c),
             hasPassword = Auth.Me(c)?.HasPassword ?? false,

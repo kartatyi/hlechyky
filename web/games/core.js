@@ -136,7 +136,7 @@
     azart: [
       { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'] },
       { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo'] },
-      { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },
+      { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },   // не гра: плитку «Ставки на події» ставить панель web/bets.js (tile)
       { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka'] },
       { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker'] },
     ],
@@ -237,6 +237,8 @@
   }
   const seatCount = (room) => (room.seats ? room.seats.length : room.maxPlayers || 0);
   const takenSeats = (room) => { let n = 0; for (let i = 0; i < seatCount(room); i++) if (nickAt(room, i)) n++; return n; };
+  /// «✋ Готовий»: сервер шле room.ready — місця готових людей (Room.Summary), лише в лобі й після партії.
+  const readyAt = (room, i) => !!(room && room.ready && room.ready.indexOf(i) >= 0);
   const freeSeat = (room) => { for (let i = 0; i < seatCount(room); i++) if (!nickAt(room, i)) return i; return -1; };
   /// Стіл у лобі стартує з руки господаря: гра «byHost»; гра «одразу», яку «⚙ Налаштування» вернули в лобі; і повний
   /// стіл гри «коли всі сіли» — так буває лише після «⚙ Налаштувань» (Rooms.Reconfigure), підсісти вже нікому.
@@ -797,7 +799,8 @@
       let r = await conn.invoke(method, ...args);
       if (r && !r.ok && String(r.message || '').startsWith(RESTARTING) && (await afterRestart())) r = await conn.invoke(method, ...args);
       if (!r) return { ok: true, message: '' };
-      if (!r.ok) errToast(r.message || 'От халепа — не вийшло');
+      // «Не всі готові» (✋) — не помилка: про це спитає вікно «почати все одно?» (startAsked), тост тут лише заважав би.
+      if (!r.ok) { if (!(r.notReady && r.notReady.length)) errToast(r.message || 'От халепа — не вийшло'); }
       else if (r.message) toast(r.message, 'ok');
       return r;
     } catch (e) {
@@ -853,6 +856,19 @@
       document.addEventListener('keydown', onKey, true);
       wrap.querySelector('[data-yes]').focus();
     });
+  }
+
+  /// «Не готові: Оля, Петро. Почати все одно?» — після відмови StartRoom / Rematch з notReady (Rooms.Unready).
+  /// [Почати] повторює той самий виклик без питань (…Anyway), [Чекати] — просто закриває вікно.
+  async function startAsked(id, method, nicks) {
+    const ok = await ask({
+      title: 'Не всі готові',
+      html: 'Не готові: <b>' + nicks.map(esc).join(', ') + '</b>.<br>Почати все одно?',
+      ok: 'Почати', cancel: 'Чекати',
+    });
+    if (!ok) return;
+    const again = method === 'Rematch' ? 'RematchAnyway' : 'StartRoomAnyway';
+    await call(again, id);
   }
 
   /// Сісти за стіл. Сидиш за іншим — раніше кнопки просто не було, і доводилось іти назад, вставати,
@@ -1431,10 +1447,20 @@
       });
       return;
     }
+    // Панель може мати й свою адресу всередині: #games/x:<id>/<що завгодно> — те, що після «/», панель отримує в ctx.sub.
+    const xi = t.indexOf('/');
     const next = t.startsWith('room/') ? { kind: 'room', id: decodeURIComponent(t.slice(5)) }
-      : t.startsWith('x:') ? { kind: 'panel', id: t }
+      : t.startsWith('x:') ? { kind: 'panel', id: xi < 0 ? t : t.slice(0, xi), sub: xi < 0 ? '' : t.slice(xi + 1) }
         : { kind: 'lobby', id: '' };
     const same = next.kind === view.kind && next.id === view.id;
+    // Та сама панель, інша адреса всередині: панель з route() перемикається сама (без перемонтування й втрати полів),
+    // решта — малюється наново.
+    if (same && next.kind === 'panel' && next.sub !== view.sub) {
+      const p = extraPanels.find((x) => 'x:' + x.id === next.id);
+      view = next;
+      if (p && p.route && chromeFor === next.id) { p.route(next.sub); return; }
+      chromeFor = null;
+    }
     view = next;
     if (view.kind !== 'room') setFull(false);
     if (!same) chromeFor = null;          // повернулись у підрозділ — перечитуємо профіль/таблицю
@@ -1521,7 +1547,9 @@
     syncArcade();
     // Лобі малює свої секції-панелі саме, а панелі ігор (турнір, пакети) — просто вміст,
     // тож панель під них дає сам контейнер.
-    v.classList.toggle('boxed', view.kind === 'panel');
+    // Панель зі своїми секціями (bare: ставки) — без спільної підкладки, як і лобі.
+    const xp = view.kind === 'panel' ? extraPanels.find((p) => 'x:' + p.id === view.id) : null;
+    v.classList.toggle('boxed', view.kind === 'panel' && !(xp && xp.bare));
     syncWatch();
     if (room) {
       // Кімнати ще не знаємо (зайшли за посиланням): підписка принесе її сама, а як не принесе —
@@ -1721,6 +1749,12 @@
       const at = placeOf(g.id, g.id, g.group);
       out.push({ kind: 'game', g, ids: [g.id], group: at.group, theme: at.theme, title: g.title, hint: g.hint || '', min: g.minPlayers, max: g.maxPlayers, solo: g.maxPlayers === 1 });
     }
+    // Плитка-посилання на панель (registerPanel з tile: { group, theme, title?, hint?, live? }): стоїть у темі каталогу
+    // поруч з іграми, шукається за назвою, але не гра — ні «часто граємо» (ids порожні), ні «N ігор», ні «+ Стіл».
+    for (const p of extraPanels) {
+      if (!p.tile || (p.visible && !p.visible())) continue;
+      out.push({ kind: 'link', p, ids: [], group: p.tile.group, theme: p.tile.theme, title: p.tile.title || p.title, hint: p.tile.hint || '', min: 0, max: 0, solo: false });
+    }
     return out;
   }
   /// Скільки столів у цю гру (разом з усіма режимами) дограли за 30 днів — нею сортуємо й збираємо «часто граємо».
@@ -1816,6 +1850,16 @@
   }
 
   function tileHtml(e) {
+    if (e.kind === 'link') {
+      let live = '';
+      try { live = e.p.tile.live ? e.p.tile.live() || '' : ''; } catch (err) { console.warn('[games] плитка ' + e.p.id, err); }
+      const href = '#games/x:' + e.p.id;
+      return '<div class="gtile gt-link">'
+        + '<div class="gt-head"><span class="gemo">' + (e.p.tile.icon || e.p.icon || '📋') + '</span><b>' + esc(e.title) + '</b></div>'
+        + '<div class="gt-hint muted small"><span>' + esc(e.hint) + '</span></div>'
+        + '<div class="gt-btns"><span class="gt-pl muted small">' + live + '</span>'
+        + '<button class="primary" data-go="' + esc(href) + '">Відкрити</button></div></div>';
+    }
     const now = e.solo ? playingIn(e.g.id) : [];
     const fresh = isNewGame(e.ids[0]);
     const extra = e.ids.includes('svoya') && extraPanels.some((p) => p.id === 'svoya')
@@ -1990,14 +2034,14 @@
           : (filter === 'azart' ? azartHeadHtml() : '') + (theme ? tilesOf(ths.find((x) => x.t.id === theme).items, theme) : byThemes(ths));
 
     const links = [['#stats/games', '🏆 Таблиці ігор'], ['#stats/time', '⏱ Хто скільки грав'], ['#lavka', '🛍 Лавка Дядька Глека']]
-      .concat(extraPanels.filter((p) => p.id !== 'svoya').map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
+      .concat(extraPanels.filter((p) => p.id !== 'svoya' && (!p.visible || p.visible())).map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
       .concat(extraPanels.some((p) => p.id === 'svoya') ? [['#games/x:svoya', '🎯 Пакети Своєї гри']] : []);
 
     box.innerHTML = todayHtml()
       + '<section class="gpanel"><h3>🔥 Живі столи'
       + (rooms.length ? ' <span class="muted small">· ' + rooms.length + '</span>' : '') + '</h3>'
       + live + soloLine + '</section>'
-      + '<section class="gpanel"><h3>Каталог <span class="muted small">· ' + all.length + ' ігор</span></h3>'
+      + '<section class="gpanel"><h3>Каталог <span class="muted small">· ' + all.filter((e) => e.kind !== 'link').length + ' ігор</span></h3>'
       + favRow
       + '<div class="gfilters">'
       + GROUPS.filter((g) => g.id === 'all' || all.some((x) => x.group === g.id))
@@ -2055,7 +2099,7 @@
     catch (e) { console.warn('[games] панель ' + id, e); host.innerHTML = '<div class="gempty">Ой-йой, панель зламалась.</div>'; }
   }
 
-  const panelCtx = () => ({ me, esc, toast, busy, api, call, ui, css: cssVar, catalog });
+  const panelCtx = () => ({ me, esc, toast, busy, api, call, ui, css: cssVar, catalog, sub: view.kind === 'panel' ? view.sub || '' : '' });
 
   // =============================================================================================
   // Попап створення столу
@@ -2197,13 +2241,15 @@
     const el = document.createElement('div');
     el.className = 'gtable';
     el.dataset.room = id;
-    el.innerHTML = '<div class="gseats"></div><div class="gbody"></div><div class="gstatus"></div><div class="gbtns"></div>';
+    // .gextra — місце під кнопками для панелей лобі й «після партії» (🎲 ставки столу); порожнє не займає місця.
+    el.innerHTML = '<div class="gseats"></div><div class="gbody"></div><div class="gstatus"></div><div class="gbtns"></div><div class="gextra"></div>';
     const card = {
       id, el,
       head: el.querySelector('.gseats'),
       body: el.querySelector('.gbody'),
       statusEl: el.querySelector('.gstatus'),
       btns: el.querySelector('.gbtns'),
+      extra: el.querySelector('.gextra'),
       mod: null, mounted: false, ctx: null,
       sig: '',
     };
@@ -2524,6 +2570,7 @@
     const c = cards[id];
     if (!c) return;
     if (c.mounted && c.mod && c.mod.unmount) { try { c.mod.unmount(c.body, c.ctx); } catch (e) { console.warn('[games] unmount', e); } }
+    if (window.HTableBets) HTableBets.drop(id);
     c.el.remove();
     delete cards[id];
   }
@@ -2598,9 +2645,12 @@
         const turn = room.status === 'playing' && turnOf(rv) === i;
         // data-nick — людям (не ботам): за ним 🎙 Посиденьки (web/voice.js) підсвічують, хто за столом говорить.
         const human = nickAt(room, i);
+        // ✋ — готовий до партії (Rooms.SetReady); бот готовий завжди. Посеред партії позначки нема: питати вже пізно.
+        const ready = room.status !== 'playing' && takenSeats(room) > 1 && (human ? readyAt(room, i) : !!nick);
         chips.push('<span class="gseat ' + seatClassOf(rv, i) + (nick ? '' : ' free') + (turn ? ' turn' : '')
-          + (i === rv.seat ? ' me' : '') + '"' + (human ? ' data-nick="' + esc(human) + '"' : '') + '><i>' + esc(seatNameOf(rv, i)) + '</i>'
-          + esc(nick || 'вільно') + '</span>');
+          + (i === rv.seat ? ' me' : '') + (ready ? ' ready' : '') + '"' + (human ? ' data-nick="' + esc(human) + '"' : '')
+          + (ready ? ' title="готовий"' : '') + '>' + (ready ? '<b class="gready-mark" aria-label="готовий">✋</b>' : '')
+          + '<i>' + esc(seatNameOf(rv, i)) + '</i>' + esc(nick || 'вільно') + '</span>');
       }
       if (fold) chips.push('<span class="gseat free gfreeall">вільно ×' + free + '</span>');
       if (taken > 4) chips.push('<button type="button" class="gseat gmany" data-many title="Показати всіх за столом">👥 '
@@ -2698,6 +2748,16 @@
     if (rv.seat != null && r.status === 'lobby' && sameNick(r.host, me.nick) && takenSeats(r) >= r.minPlayers
       && (hostStarts(r) || (botOffered(rv) && rv.view.botWanted)))
       out.push('<button class="primary" data-do="StartRoom">Почати</button>');
+    // «✋ Готовий» — у лобі й після партії, коли за столом є ще хтось живий: «Почати» і «Ще раз» спитають тих, хто ні.
+    // На столі турніру — ні: наступну гру турнір ставить сам і нікого не питає. Поруч — скільки людей уже готові.
+    if (!solo && !(tour && tour.hold) && rv.seat != null && r.status !== 'playing' && takenSeats(r) > 1) {
+      const on = readyAt(r, rv.seat);
+      let n = 0;
+      for (let i = 0; i < seatCount(r); i++) if (nickAt(r, i) && readyAt(r, i)) n++;
+      out.push('<button type="button" class="ghost gready' + (on ? ' on' : '') + '" data-ready="' + (on ? '0' : '1') + '" aria-pressed="'
+        + on + '" title="' + (on ? 'Зняти «готовий»' : 'Сказати столу, що ти готовий') + '">✋ Готовий'
+        + '<span class="gready-n">' + n + '/' + takenSeats(r) + '</span></button>');
+    }
     // «⚙ Налаштування» — опції столу між партіями, без «встати й поставити новий». Лише господареві.
     // На столі турніру між іграми — ні: наступну гру ставить турнір (tour.hold), як і з «Ану ще раз».
     if (!solo && !(tour && tour.hold) && rv.seat != null && r.status !== 'playing' && sameNick(r.host, me.nick) && ((gameOf(r.game) || {}).options || []).length)
@@ -2741,7 +2801,7 @@
     if (!mod) loadGame(rv.room.game);   // лінивий вантаж (п. 241): модуль приїде — register() перемалює картку
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
-      rv.room.options, rv.room.result, rv.room.evening, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
+      rv.room.options, rv.room.result, rv.room.evening, rv.room.ready, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
       botOffered(rv), !!(rv.view && rv.view.botWanted), ownLeave(rv), window.HTournament && HTournament.barSig ? HTournament.barSig(id) : '']);
     const roomChanged = sig !== card.sig;
     if (roomChanged) {
@@ -2754,21 +2814,28 @@
       card.btns.querySelectorAll('[data-do]').forEach((b) => b.onclick = async (e) => {
         // «Сісти» йде через joinRoom: він сам спитає, чи вставати з попереднього столу, і сам крутить кнопку.
         if (b.dataset.do === 'JoinRoom') { await joinRoom(id, e.currentTarget); return; }
-        await busy(e.currentTarget, '…', async () => {
+        const r = await busy(e.currentTarget, '…', async () => {
           const r = await call(b.dataset.do, id);
           if (r.ok && b.dataset.do === 'LeaveRoom') {
             // приватну соло-кімнату сервер із лобі не прибере — прибираємо картку самі
             if (views[id] && views[id].loose) { dropCard(id); delete views[id]; pinned.delete(id); }
             if (view.kind === 'room' && view.id === id) go('#games'); else renderView();
           }
+          return r;
         });
+        // «Почати» / «Ще раз», а хтось не натиснув ✋: вікно бачить саме той, хто тиснув.
+        if (r && !r.ok && r.notReady && r.notReady.length) await startAsked(id, b.dataset.do, r.notReady);
       });
+      card.btns.querySelectorAll('[data-ready]').forEach((b) => b.onclick = (e) =>
+        busy(e.currentTarget, '…', () => call('ReadyRoom', id, b.dataset.ready === '1')));
       card.btns.querySelectorAll('[data-set]').forEach((b) => b.onclick = () => openSettings(id));
       card.btns.querySelectorAll('[data-bot]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, '…', () => {
         const v = views[id] && views[id].view;
         return call('Act', id, 'bot', { on: !(v && v.botWanted) });
       }));
       card.el.classList.toggle('mine', rv.seat != null);
+      // 🎲 Ставки столу (web/games/bets-table.js) — у .gextra під кнопками; дані панель тягне сама з хаба.
+      if (window.HTableBets) { try { HTableBets.paint(card.extra, rv); } catch (e) { console.warn('[games] bets', e); } }
     }
 
     if (!card.mod) {
@@ -3166,6 +3233,9 @@
 
     has: (id) => !!modules[id],
 
+    /// Панель змінила свою плитку в каталозі (з'явилась, зникла, нове число) — лобі перемальовується, якщо його видно.
+    panelTileChanged() { if (shown && view.kind === 'lobby' && root && root.querySelector('.gtiles')) renderView(); },
+
     /// Новий знімок турніру (tournament.js): смужка відліку на столі щойно дограної гри.
     tournamentChanged() { for (const id in cards) refreshCard(id); },
     /// Модуль гри всередині іншого модуля (вечірка, mgprobe) — див. function embed вище.
@@ -3262,6 +3332,7 @@
         anthemRound(rv.room);                               // «Ще раз» — гімн минулої партії замовкає
       });
       c.on('tableReact', flyReact);
+      c.on('tableBets', (x) => { if (window.HTableBets && x) HTableBets.changed(x.room); });
       c.on('anthem', onAnthem);
       c.on('curse', onCurse);
       c.on('frame', (f) => {

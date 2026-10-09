@@ -35,8 +35,11 @@ public sealed class ShardShopOptions
 {
     public static readonly int[] DefaultPacks = [50, 100, 250, 500];
 
-    /// <summary>Купівля відкрита — коли адмін ще й вписав, куди скидати гроші.</summary>
-    public bool Buy { get; set; } = true;
+    /// <summary>
+    /// Купівля відкрита — коли адмін ще й вписав, куди скидати гроші. Типово вимкнено: сайт опенсорсний, і гроші за
+    /// черепки вмикає той, хто його тримає (свій appsettings.Local.json).
+    /// </summary>
+    public bool Buy { get; set; }
     /// <summary>Скільки черепків за 1 грн, коли купують.</summary>
     public int Rate { get; set; } = 100;
     /// <summary>
@@ -50,8 +53,8 @@ public sealed class ShardShopOptions
     public int CustomMin { get; set; } = 10;
     public int CustomMax { get; set; } = 5000;
 
-    /// <summary>Продаж черепків сайту відкритий.</summary>
-    public bool Sell { get; set; } = true;
+    /// <summary>Продаж черепків сайту відкритий. Типово вимкнено — як і купівля.</summary>
+    public bool Sell { get; set; }
     /// <summary>Скільки черепків за 1 грн, коли продають.</summary>
     public int SellRate { get; set; } = 100;
     /// <summary>Найменший продаж, грн.</summary>

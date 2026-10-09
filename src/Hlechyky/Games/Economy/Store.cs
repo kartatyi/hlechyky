@@ -66,8 +66,19 @@ public sealed class EconomyStore(Db db)
     /// </summary>
     public static bool Exchange(string reason) => ExchangeReasons.Any(p => reason.StartsWith(p, StringComparison.Ordinal));
 
-    /// <summary><see cref="Exchange"/> для SQL: рядок леджера <c>l</c> — не обмін.</summary>
-    static readonly string NotExchange = string.Join(" AND ", ExchangeReasons.Select(p => $"l.reason NOT LIKE '{p}%'"));
+    static readonly string[] BetReasons = ["bet:", "bet-win:", "bet-back:"];
+
+    /// <summary>
+    /// Ставки в Глека (Bets/): ставка, виграш і повернення. Як і обмін, у балансі є, а в «зароблено/витрачено» — ні: інакше
+    /// таблиця «хто заробив» стала б таблицею «кому пощастило з кефом».
+    /// </summary>
+    public static bool Bet(string reason) => BetReasons.Any(p => reason.StartsWith(p, StringComparison.Ordinal));
+
+    /// <summary>Поза «зароблено/витрачено»: обмін на гривні й ставки в Глека.</summary>
+    public static bool OffBook(string reason) => Exchange(reason) || Bet(reason);
+
+    /// <summary><see cref="OffBook"/> для SQL: рядок леджера <c>l</c> — не обмін і не ставка в Глека.</summary>
+    static readonly string NotExchange = string.Join(" AND ", ExchangeReasons.Concat(BetReasons).Select(p => $"l.reason NOT LIKE '{p}%'"));
 
     static SqliteCommand Cmd(SqliteConnection c, string sql, params (string Name, object? Value)[] ps)
     {
@@ -190,7 +201,7 @@ public sealed class EconomyStore(Db db)
             VALUES($n, $nk, $d, $e, 0, $t)
             ON CONFLICT(nick_key) DO UPDATE SET balance = balance + $d, earned = earned + $e,
                 nick = $nk, updated_at = $t
-            """, ("$n", nickKey), ("$nk", nick), ("$d", amount), ("$e", Exchange(reason) ? 0 : Math.Max(0, amount)), ("$t", Iso(now)));
+            """, ("$n", nickKey), ("$nk", nick), ("$d", amount), ("$e", OffBook(reason) ? 0 : Math.Max(0, amount)), ("$t", Iso(now)));
 
         return (GrantResult.Applied, BalanceIn(c, nickKey));
     }));
@@ -210,7 +221,7 @@ public sealed class EconomyStore(Db db)
         var changed = Exec(c, """
             UPDATE wallets SET balance = balance - $a, spent = spent + $s, nick = $nk, updated_at = $t
             WHERE nick_key = $n AND balance >= $a
-            """, ("$a", amount), ("$s", Exchange(reason) ? 0 : amount), ("$nk", nick), ("$t", Iso(now)), ("$n", nickKey));
+            """, ("$a", amount), ("$s", OffBook(reason) ? 0 : amount), ("$nk", nick), ("$t", Iso(now)), ("$n", nickKey));
         if (changed == 0) return (false, false, BalanceIn(c, nickKey));
 
         Exec(c, "INSERT INTO ledger(nick_key, delta, reason, ref, created_at) VALUES($n, $d, $r, $f, $t)",

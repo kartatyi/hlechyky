@@ -2589,6 +2589,11 @@
       if (lastHash !== null) return;
       head = me.games === false ? 'efir' : 'games'; tail = '';
     }
+    // «🎲 Ставки» жили вкладкою в шапці (#bets/<вкладка>), тепер — панель у розділі «🎰 Азарт» ігор (web/bets.js)
+    if (head === 'bets') {
+      history.replaceState(null, '', '#games/x:bets' + (tail ? '/' + tail : ''));
+      ({ head, tail } = parseHash());
+    }
     const moved = MOVED[head + '/' + tail] || (head === 'games' && tail === 'profile' ? '#who/' + encodeURIComponent(me.nick || '') : null);
     if (moved) {
       history.replaceState(null, '', moved);
@@ -4391,6 +4396,7 @@
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
     if (window.HVoice) HVoice.attach(conn);   // 🎙 Посиденьки — web/voice.js
     if (window.HBuy) HBuy.attach(conn);       // купити черепки — web/buy.js
+    if (window.HBets) HBets.attach(conn);     // 🎲 Ставки — web/bets.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
     // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
     // лишався б без кнопки аж до наступної новини з лобі.
@@ -4571,6 +4577,7 @@
   HLavka.loadLooks();
   // 🏺 Купити черепки за гривні (web/buy.js): вікно з пакетами; продавцю — «чекають підтвердження»
   if (window.HBuy) HBuy.init({ esc, api, toast, busy, me, askNick, dayTime, online: () => (state && state.online) || [] });
+  if (window.HBets) HBets.init({ esc, api, toast, busy, me, go, askNick });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🛡 Модерація Балачок (web/moder.js): 📌 плашка, поле вводу під 🔇, кнопки адміна, вкладка в Бібліотеці
@@ -4608,6 +4615,7 @@
     me.games = m.games !== false;   // розділ «Ігри» (Games:Enabled)
     me.padel = m.padel !== false;   // Падельня (Padel:Enabled)
     me.slots = m.slots !== false;   // автомати (Slots:Enabled): false — лобі ховає «🍒 Слоти»
+    me.bets = m.bets || { events: false, tables: false };   // 🎲 Ставки (Bets:*) — web/bets.js і столи
     paintSwitches();
     // Адресу намалювали ще до /api/me: вимкнене — переводимо в Ефір
     if ((!me.games && parseHash().head === 'games') || (!me.padel && parseHash().head === 'padel')) applyRoute();
@@ -4629,6 +4637,7 @@
       connect();
       if (me.account) HLavka.loadMine().then(lavkaChanged);
       if (window.HBuy) HBuy.ready();
+      if (window.HBets) HBets.ready();
       if (plain) askNick(true, 'register', plain);
       // «💡»: адміну — скільки записок чекає, решті — у скількох своїх записках нова відповідь розробника.
       if (me.role === 'admin') loadFeedbackCount(); else loadMyFeedback(false);

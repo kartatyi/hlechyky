@@ -47,6 +47,7 @@ public sealed partial class Rooms
 
             room.Options = next;
             room.LastActivity = _clock.UtcNow;
+            CrewChanged(room, outbox);
             outbox.Add(new TableSaid(room.Id, AppendTalk(room, DjName, Line(nick, changed, next, fresh), "dj")));
         }
         outbox.Add(new LobbyChanged());
