@@ -19,11 +19,16 @@ public sealed class LelkaKit
     public LelkaBook Book { get; }
     public RoomHarness H { get; }
 
-    public LelkaKit(params (string Nick, int Wallet)[] people)
+    public LelkaKit(params (string Nick, int Wallet)[] people) : this(null, null, null, people) { }
+
+    /// <param name="stakes">Що дати касі замість <see cref="Stakes"/> (обгортка-лічильник, справжня економіка).</param>
+    /// <param name="defer">Черга каси; типово — одразу.</param>
+    public LelkaKit(Func<FakeStakes, IStakes>? stakes, Func<FakeStore, IGameStore>? store, Action<Action>? defer,
+        params (string Nick, int Wallet)[] people)
     {
         foreach (var (nick, wallet) in people) Stakes.Set(nick, wallet);
         H = null!;
-        Book = new LelkaBook(Stakes, Store, defer: a => a(), options: new FixedOptions<LelkaOptions>(Options), outbox: Site,
+        Book = new LelkaBook(stakes?.Invoke(Stakes) ?? Stakes, store?.Invoke(Store) ?? Store, defer: defer ?? (a => a()), options: new FixedOptions<LelkaOptions>(Options), outbox: Site,
             held: (table, round) => LelkaBook.HeldBy(H.Rooms, table, round));
         H = new RoomHarness("lelka", services: RoomHarness.WithService(Book), seed: 11);
         foreach (var (nick, _) in people)

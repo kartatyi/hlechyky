@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace Hlechyky.Games.Impl;
@@ -10,7 +11,7 @@ public sealed class LelkaBet
     public int? Auto { get; set; }
     public int? Out { get; set; }
     public int Win { get; set; }
-    /// <summary>Каса вже списала ставку (після закриття прийому).</summary>
+    /// <summary>Каса вже списала ставку (після закриття прийому; відповідь черги каси приходить за мить після зльоту).</summary>
     public bool Taken { get; set; }
 }
 
@@ -42,7 +43,8 @@ public sealed class LelkaState
 /// <summary>
 /// Лелека — crash на всіх (docs/games/specs/lelka.md). Дядько Глек веде стіл за розкладом: ставки 8 с → політ (множник
 /// e^(0,075·t)) → «шубовсть» 2 с → пауза 3 с → ставки… Точка падіння вирішена на початку прийому (видно лише її sha256),
-/// seed — після падіння. Гроші — через <see cref="LelkaBook"/>: списання при закритті прийому, виграш — щойно забрав.
+/// seed — після падіння. Гроші — через <see cref="LelkaBook"/>: списання при закритті прийому, виграш — щойно забрано.
+/// Тік у базу не ходить: усе грошове — у черзі каси, відповіді стіл забирає зі своєї скриньки (<see cref="Inbox"/>) на тіку.
 /// Один спільний стіл на сайт: <see cref="ISharedTable"/> — «Сісти» веде за наявний стіл, якщо він є.
 /// </summary>
 public sealed class Lelka : Game, ISharedTable
@@ -70,6 +72,8 @@ public sealed class Lelka : Game, ISharedTable
     LelkaState S = new();
     LelkaBook? _book;
     bool _dirty, _settledOnLoad;
+    /// <summary>Відповіді черги каси (списання, гаманці) — стан столу міняємо лише під замком кімнати, на тіку чи дії.</summary>
+    readonly ConcurrentQueue<Action> _inbox = new();
     DateTimeOffset _framedAt;
 
     /// <summary>Шов лише для тестів: точка падіння наступних раундів (соті), seed тоді нічого не важить.</summary>
@@ -111,6 +115,7 @@ public sealed class Lelka : Game, ISharedTable
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_book is null) return ActResult.Fail(ClosedText);
+        Inbox();
         if (action is not (ActBet or ActCancel or ActCash or ActAuto)) return ActResult.Fail("Тут так не ходять");
         if (Ctx.NickOf(seat) is not { } nick) return ActResult.Fail("Тут так не ходять");
         var key = Rooms.NickKey(nick);
@@ -171,19 +176,20 @@ public sealed class Lelka : Game, ISharedTable
     ActResult Cash(string key, DateTimeOffset now)
     {
         if (S.Phase != Flight) return ActResult.Fail(S.Phase == Bets ? "Лелека ще на землі" : "Пізно — лелека вже впустила глека");
-        if (BetOf(key) is not { Taken: true } bet) return ActResult.Fail("Твоєї ставки в цьому польоті нема");
-        if (bet.Out is { } was) return ActResult.Fail($"Уже забрав на ×{Fmt(was)}");
+        if (BetOf(key) is not { } bet) return ActResult.Fail("Твоєї ставки в цьому польоті нема");
+        if (!bet.Taken) return ActResult.Fail("Каса ще списує ставку — ще мить");
+        if (bet.Out is { } was) return ActResult.Fail($"Уже забрано на ×{Fmt(was)}");
         var m = CentsNow(now);
         if (m >= S.Crash) return ActResult.Fail("Пізно — лелека вже впустила глека");
         CashOut(bet, m);
-        return ActResult.Accept($"Забрав на ×{Fmt(m)}: +{bet.Win} 🏺");
+        return ActResult.Accept($"Є! ×{Fmt(m)}: +{bet.Win} 🏺");
     }
 
     ActResult Auto(string key, JsonElement payload, DateTimeOffset now)
     {
         if (S.Phase is not (Bets or Flight) || (S.Phase == Bets && !Open(now))) return ActResult.Fail("Зараз не можна");
         if (BetOf(key) is not { } bet) return ActResult.Fail("Спершу постав");
-        if (bet.Out is not null) return ActResult.Fail("Ти вже забрав");
+        if (bet.Out is not null) return ActResult.Fail("Уже забрано");
         int? auto = null;
         var x = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("x", out var xe) ? xe : default;
         if (x.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null) && ReadAuto(x, out auto) is { } bad) return ActResult.Fail(bad);
@@ -213,6 +219,7 @@ public sealed class Lelka : Game, ISharedTable
     public override TickResult Tick()
     {
         var now = Now;
+        Inbox();
         switch (S.Phase)
         {
             case Bets when S.Until is { } u && now >= u:
@@ -227,6 +234,15 @@ public sealed class Lelka : Game, ISharedTable
                 _dirty = true;
                 break;
             case Pause when S.Until is { } u && now >= u:
+                // Вимкнено — новий прийом не відкриваємо: стіл тихо стоїть, доки не ввімкнуть (без порожніх раундів).
+                if (Opts.Enabled) OpenBets(now);
+                else
+                {
+                    S.Until = null;
+                    _dirty = true;
+                }
+                break;
+            case Pause when S.Until is null && Opts.Enabled:
                 OpenBets(now);
                 break;
         }
@@ -257,48 +273,96 @@ public sealed class Lelka : Game, ISharedTable
         S.Phase = Bets;
         S.Until = now.AddMilliseconds(BetMs);
         S.StartAt = null;
-        for (var seat = 0; seat < Info.MaxPlayers; seat++) Refresh(seat);
+        // Свіжі гаманці — з черги каси (не з тіку); прийдуть за мить, а доти — ті, що були.
+        if (_book is not null)
+        {
+            var nicks = new List<string>();
+            for (var seat = 0; seat < Info.MaxPlayers; seat++)
+                if (Ctx.NickOf(seat) is { } nick) nicks.Add(nick);
+            _book.Balances(nicks, all => _inbox.Enqueue(() => Wallets(all)));
+            Inbox();
+        }
         _dirty = true;
     }
 
-    /// <summary>«Злітаємо!»: запис у касу, тоді списання кожному. Не списалось — ставку знято, людині рядок.</summary>
+    /// <summary>Гаманці з черги каси: вільне = гаманець − ще не списана ставка цього прийому.</summary>
+    void Wallets(IReadOnlyDictionary<string, int> all)
+    {
+        foreach (var (nick, wallet) in all)
+        {
+            var key = Rooms.NickKey(nick);
+            S.Wallets[key] = wallet - Reserved(key);
+        }
+        _dirty = true;
+    }
+
+    /// <summary>Забрати відповіді черги каси (під замком кімнати).</summary>
+    void Inbox()
+    {
+        while (_inbox.TryDequeue(out var apply)) apply();
+    }
+
+    /// <summary>
+    /// «Злітаємо!»: лелека летить одразу, а запис у касу й списання кожному — у черзі каси (<see cref="LelkaBook.Launch"/>).
+    /// Поки відповіді нема, ставка летить, але забрати її не можна (автозабір спрацює за своїм множником, щойно списалось).
+    /// Не записалось — ставки знято; комусь не списалось — його ставку знято, людині рядок (<see cref="Launched"/>).
+    /// </summary>
     void Close(DateTimeOffset now)
     {
         S.Phase = Flight;
         S.StartAt = now;
         S.Until = null;
         _dirty = true;
-        var bets = S.Bets.ToList();
-        if (bets.Count > 0)
+        if (S.Bets.Count > 0)
         {
-            var pending = new LelkaRound(Table, S.Round, Info.Id, S.Crash, now, [.. bets.Select(b => new LelkaPay(b.Nick, b.Amount, b.Auto, null))]);
-            if (_book is null || !_book.Open(pending))
+            if (_book is null)
             {
-                foreach (var b in bets) S.Notes[Rooms.NickKey(b.Nick)] = "Каса заїла — ставку не взято, черепки цілі";
+                foreach (var b in S.Bets) S.Notes[Rooms.NickKey(b.Nick)] = "Каса заїла — ставку не взято, черепки цілі";
                 S.Bets.Clear();
                 Ctx.Say(LelkaLines.BookStuck);
             }
             else
             {
-                foreach (var b in bets)
-                {
-                    var key = Rooms.NickKey(b.Nick);
-                    var wallet0 = _book.Balance(b.Nick);
-                    if (_book.Take(b.Nick, b.Amount, LelkaBook.BetRef(Table, S.Round, b.Nick)))
-                    {
-                        b.Taken = true;
-                        S.Wallets[key] = Math.Max(0, wallet0 - b.Amount);
-                        continue;
-                    }
-                    S.Wallets[key] = wallet0;
-                    S.Notes[key] = $"Черепків не стало — ставку ({b.Amount}) знято";
-                    S.Bets.Remove(b);
-                }
-                if (S.Bets.Count == 0) _book.Drop(pending.Table, pending.Round);
-                else S.Pending = pending with { Pays = [.. S.Bets.Select(b => new LelkaPay(b.Nick, b.Amount, b.Auto, null))] };
+                var pending = new LelkaRound(Table, S.Round, Info.Id, S.Crash, now, [.. S.Bets.Select(b => new LelkaPay(b.Nick, b.Amount, b.Auto, null))]);
+                S.Pending = pending;
+                _book.Launch(pending, res => _inbox.Enqueue(() => Launched(pending, res)));
+                Inbox();
             }
         }
         Fly(now);
+    }
+
+    /// <summary>Відповідь каси на зліт: хто списався — летить по-справжньому, хто ні — ставку знято.</summary>
+    void Launched(LelkaRound pending, IReadOnlyList<LelkaTake>? res)
+    {
+        if (S.Round != pending.Round || !string.Equals(Table, pending.Table, StringComparison.Ordinal)) return;
+        _dirty = true;
+        if (res is null)
+        {
+            foreach (var b in S.Bets) S.Notes[Rooms.NickKey(b.Nick)] = "Каса заїла — ставку не взято, черепки цілі";
+            S.Bets.Clear();
+            S.Pending = null;
+            Ctx.Say(LelkaLines.BookStuck);
+            return;
+        }
+        foreach (var t in res)
+        {
+            var key = Rooms.NickKey(t.Nick);
+            var stake = pending.Pays.FirstOrDefault(p => Rooms.NickKey(p.Nick) == key)?.Stake ?? 0;
+            var b = BetOf(key);
+            if (t.Ok)
+            {
+                if (b is not null) b.Taken = true;
+                S.Wallets[key] = Math.Max(0, t.Wallet - stake);
+                continue;
+            }
+            S.Wallets[key] = t.Wallet;
+            S.Notes[key] = $"Черепків не стало — ставку ({stake}) знято";
+            if (b is not null) S.Bets.Remove(b);
+        }
+        if (S.Pending is { } p && p.Round == pending.Round)
+            S.Pending = S.Bets.Count == 0 ? null : p with { Pays = [.. S.Bets.Select(b => new LelkaPay(b.Nick, b.Amount, b.Auto, null))] };
+        // Автозабори, до яких долетіли, поки каса списувала, — зараз, за їхнім множником (Fly на цьому ж тіку).
     }
 
     /// <summary>Тик польоту: автозаборі (за своїм множником, якщо до нього долетіли), тоді — чи не впала.</summary>
@@ -328,8 +392,10 @@ public sealed class Lelka : Game, ISharedTable
     void Crash(DateTimeOffset now, bool quiet)
     {
         foreach (var b in S.Bets.Where(b => b.Out is null)) b.Win = 0;
+        // Ставка, на яку каса ще не відповіла, — без «Return»: розрахунок гляне в леджер і вирішить, як сироті
+        // (автозабір ≤ точки — платить, падіння одразу — програш, інакше ставку назад; забрати ж людина не могла).
         if (S.Pending is { } p && !quiet)
-            _book?.Settle(p with { Pays = [.. S.Bets.Where(b => b.Taken).Select(b => new LelkaPay(b.Nick, b.Amount, b.Auto, b.Win))] });
+            _book?.Settle(p with { Pays = [.. S.Bets.Select(b => new LelkaPay(b.Nick, b.Amount, b.Auto, b.Taken ? b.Win : null))] });
         S.Pending = null;
         S.Phase = Crashed;
         S.Until = now.AddMilliseconds(CrashMs);
@@ -356,12 +422,12 @@ public sealed class Lelka : Game, ISharedTable
         if (star is not null)
         {
             Ctx.Say(string.Format(Pick(LelkaLines.BigWin), star.Nick, Fmt(star.Out!.Value), star.Win));
-            journal = $"🪶 Лелека: {star.Nick} забрав на ×{Fmt(star.Out!.Value)} — +{star.Win} 🏺";
+            journal = $"🪶 Лелека: {star.Nick} — ×{Fmt(star.Out!.Value)}, +{star.Win} 🏺";
         }
         else if (flop is not null)
         {
             Ctx.Say(string.Format(Pick(S.Crash <= 100 ? LelkaLines.Instant : LelkaLines.Flop), flop.Nick, x, flop.Amount));
-            journal = $"🪶 Лелека: {flop.Nick} пролетів із {flop.Amount} 🏺 — глек упав на ×{x}";
+            journal = $"🪶 Лелека: {flop.Nick} — мінус {flop.Amount} 🏺, глек упав на ×{x}";
         }
         else if (S.Crash <= 100 && taken.Count > 0) Ctx.Say(Pick(LelkaLines.Instant0));
         if (journal is not null && (S.JournalAt is not { } at || now - at >= JournalGap))
@@ -506,23 +572,23 @@ public static class LelkaLines
     /// <summary>{0} — нік, {1} — множник, {2} — виграш.</summary>
     public static readonly string[] BigWin =
     [
-        "{0} зіскочив з лелеки на ×{1} і несе додому {2} 🏺 — оце нерви!",
-        "Ого! {0} забрав на ×{1}: {2} 🏺. Лелека аж озирнулась",
+        "{0} зіскакує з лелеки на ×{1} і несе додому {2} 🏺 — оце нерви!",
+        "Ого! {0} забирає на ×{1}: {2} 🏺. Лелека аж озирнулась",
         "{0} — ×{1}, {2} 🏺. Я б так не зміг, у мене руки глиняні",
     ];
 
     /// <summary>{0} — нік, {1} — точка падіння, {2} — ставка.</summary>
     public static readonly string[] Flop =
     [
-        "{0} пролетів із {2} 🏺 — глек гепнувся на ×{1}. Шубовсть!",
+        "{0} — мінус {2} 🏺: глек гепнувся на ×{1}. Шубовсть!",
         "Ой-ой, {0}: {2} 🏺 полетіли з глеком на ×{1}. Лелека не винна",
-        "{0} чекав ще трошки — і ще трошки — і ×{1}. Дзень! Мінус {2} 🏺",
+        "{0} чекає ще трошки — і ще трошки — і ×{1}. Дзень! Мінус {2} 🏺",
     ];
 
     public static readonly string[] Instant =
     [
         "{0}, лелека гикнула ще на землі — ×{1}, і {2} 🏺 у черепки",
-        "Злетіли й одразу шубовсть! {0} лишився без {2} 🏺",
+        "Злетіли й одразу шубовсть! {0}: мінус {2} 🏺",
     ];
 
     public static readonly string[] Instant0 =

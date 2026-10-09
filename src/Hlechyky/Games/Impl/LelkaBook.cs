@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 
@@ -26,6 +27,9 @@ public sealed record LelkaPay(string Nick, int Stake, int? Auto, int? Return);
 /// </summary>
 public sealed record LelkaRound(string Table, int Round, string GameId, int Crash, DateTimeOffset At, IReadOnlyList<LelkaPay> Pays);
 
+/// <summary>Чим скінчилось списання одного гравця на зльоті: <c>Wallet</c> — гаманець до списання.</summary>
+public sealed record LelkaTake(string Nick, bool Ok, int Wallet);
+
 /// <summary>
 /// Каса Лелеки (docs/games/specs/lelka.md §4) — за зразком <see cref="RouletteBook"/>: дім платить зі своєї кишені, тож
 /// гра ходить до <see cref="IStakes"/> сама, а кожен закритий раунд лежить у сховищі (<see cref="StoreKey"/>), поки його
@@ -35,6 +39,12 @@ public sealed record LelkaRound(string Table, int Round, string GameId, int Cras
 /// Сирота (стіл зник посеред польоту й не повернувся) розраховується чесно за вже вирішеною точкою: хто забрав — свій
 /// виграш; автозабір ≤ точки падіння — ставка × автозабір (він би спрацював); раунд «одразу ×1,00» — програш; решті
 /// ставку повертаємо (польоту ніхто не бачив до кінця).
+/// </para>
+/// <para>
+/// Тік спільний для всіх реалтайм-ігор (<see cref="TickEngine"/>), тож гра в базу з тіку не ходить: запис раунду, списання,
+/// запис забраного, виплати й гаманці — у черзі каси (<see cref="Launch"/>, <see cref="Cash"/>, <see cref="Settle"/>,
+/// <see cref="Balances"/>), по одному завданню, у порядку надходження, поза замком кімнати. Порядок важить: списання
+/// раунду завжди раніше за його виплати. Відповіді черга віддає гравцеві колбеком, а стіл приймає їх на наступному тіку.
 /// </para>
 /// </summary>
 public sealed class LelkaBook : BackgroundService
@@ -56,7 +66,13 @@ public sealed class LelkaBook : BackgroundService
     readonly IOutbox? _outbox;
     readonly DateTimeOffset _startedAt;
     readonly object _gate = new();
+    readonly ConcurrentQueue<Action> _queue = new();
+    int _draining;
 
+    /// <param name="defer">
+    /// Як виконати роботу каси поза тіком: типово — своя черга на пулі потоків (по одному завданню, у порядку надходження);
+    /// тести — <c>a =&gt; a()</c> (одразу) чи збирач у список (щоб довести, що тік касу не чекає).
+    /// </param>
     public LelkaBook(IStakes stakes, IGameStore store, IClock? clock = null, ILogger<LelkaBook>? log = null,
         Action<Action>? defer = null, Func<string, int, bool>? held = null, IOptionsMonitor<LelkaOptions>? options = null,
         IOutbox? outbox = null)
@@ -65,11 +81,33 @@ public sealed class LelkaBook : BackgroundService
         _store = store;
         _clock = clock ?? new SystemClock();
         _log = log;
-        _defer = defer ?? (a => ThreadPool.QueueUserWorkItem(_ => a()));
+        _defer = defer ?? Serial;
         _held = held;
         _opts = options;
         _outbox = outbox;
         _startedAt = _clock.UtcNow;
+    }
+
+    /// <summary>Поставити роботу в чергу каси: один виконавець на пулі потоків, завдання — строго по черзі.</summary>
+    void Serial(Action work)
+    {
+        _queue.Enqueue(work);
+        if (Interlocked.CompareExchange(ref _draining, 1, 0) == 0) ThreadPool.QueueUserWorkItem(_ => DrainQueue());
+    }
+
+    void DrainQueue()
+    {
+        while (true)
+        {
+            while (_queue.TryDequeue(out var work))
+            {
+                try { work(); }
+                catch (Exception ex) { _log?.LogWarning(ex, "лелека: завдання каси впало"); }
+            }
+            Volatile.Write(ref _draining, 0);
+            // Хтось устиг покласти завдання між останнім TryDequeue і скиданням прапорця — добираємо самі.
+            if (_queue.IsEmpty || Interlocked.CompareExchange(ref _draining, 1, 0) != 0) return;
+        }
     }
 
     /// <summary>Поточні налаштування (наживо).</summary>
@@ -86,7 +124,7 @@ public sealed class LelkaBook : BackgroundService
         }
     }
 
-    /// <summary>Записати раунд у сховище — синхронно, ДО першого списання. false — не записалось: ставки не беремо.</summary>
+    /// <summary>Записати раунд у сховище — ДО першого списання (гра кличе через <see cref="Launch"/>). false — не записалось: ставки не беремо.</summary>
     public bool Open(LelkaRound round)
     {
         try
@@ -119,10 +157,46 @@ public sealed class LelkaBook : BackgroundService
     public void Drop(string table, int round) => Remove(table, round);
 
     /// <summary>
-    /// Людина забрала: виграш — у запис раунду (синхронно, щоб і сирота знав) і в гаманець (відкладено, поза замком
-    /// кімнати). Ключ той самий, що й у розрахунку, — двічі не заплатить.
+    /// «Злітаємо!» — у черзі каси: запис раунду в сховище (до першого списання), тоді списання кожному. <paramref name="done"/>
+    /// кличеться з черги: null — запис не ліг (нічого не списано), інакше — чим скінчилось у кожного. Ніхто не заплатив —
+    /// запис прибрано. Ключі леджера ті самі, що й раніше: повтор нічого не з'їсть.
     /// </summary>
-    public void Cash(string table, int round, string nick, int ret)
+    public void Launch(LelkaRound round, Action<IReadOnlyList<LelkaTake>?> done) => _defer(() =>
+    {
+        if (!Open(round))
+        {
+            done(null);
+            return;
+        }
+        var res = new List<LelkaTake>(round.Pays.Count);
+        foreach (var pay in round.Pays)
+        {
+            var wallet = Balance(pay.Nick);
+            res.Add(new LelkaTake(pay.Nick, Take(pay.Nick, pay.Stake, BetRef(round.Table, round.Round, pay.Nick)), wallet));
+        }
+        if (res.TrueForAll(r => !r.Ok)) Drop(round.Table, round.Round);
+        done(res);
+    });
+
+    /// <summary>Гаманці людей за столом — у черзі каси; <paramref name="done"/> кличеться з черги (нік → черепків).</summary>
+    public void Balances(IReadOnlyList<string> nicks, Action<IReadOnlyDictionary<string, int>> done)
+    {
+        if (nicks.Count == 0) return;
+        _defer(() =>
+        {
+            var all = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var nick in nicks) all[nick] = Balance(nick);
+            done(all);
+        });
+    }
+
+    /// <summary>
+    /// Людина забрала — у черзі каси: виграш спершу в запис раунду (щоб і сирота знав), тоді в гаманець. Ключ той самий,
+    /// що й у розрахунку, — двічі не заплатить; черга та сама, що й у списань, — раніше за списання не заплатить.
+    /// </summary>
+    public void Cash(string table, int round, string nick, int ret) => _defer(() => CashNow(table, round, nick, ret));
+
+    void CashNow(string table, int round, string nick, int ret)
     {
         try
         {
@@ -140,11 +214,8 @@ public sealed class LelkaBook : BackgroundService
         }
         catch (Exception ex) { _log?.LogWarning(ex, "лелека: забране {Nick} не записалось у раунд {Table}:{Round}", nick, table, round); }
         if (ret <= 0) return;
-        _defer(() =>
-        {
-            try { _stakes.Grant(nick, ret, "lelka-win:lelka", WinRef(table, round, nick)); }
-            catch (Exception ex) { _log?.LogWarning(ex, "лелека: виграш {Nick} не пройшов — доплатить розрахунок", nick); }
-        });
+        try { _stakes.Grant(nick, ret, "lelka-win:lelka", WinRef(table, round, nick)); }
+        catch (Exception ex) { _log?.LogWarning(ex, "лелека: виграш {Nick} не пройшов — доплатить розрахунок", nick); }
     }
 
     /// <summary>Розрахувати раунд і прибрати запис — відкладено (поза замком кімнати).</summary>
