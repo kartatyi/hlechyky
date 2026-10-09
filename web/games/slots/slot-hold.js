@@ -12,13 +12,14 @@
   const JP = { mini: 20, major: 100, grand: 1000 };
   const isCoin = (k) => Object.prototype.hasOwnProperty.call(COINV, k);
 
-  // Стрічки (по 30). Бунчука нема на першому барабані. Дукатів по 5–6 — висока волатильність, бонус ≈ раз на 120–150 обертів, RTP мока ≈ 0,9.
+  // Стрічки (по 30) — ті самі, що на сервері (SlotHoldMath.Reels, математика 98 % від 10.10.2026): сервер шле лише зупинки.
+  // Бунчука нема на першому барабані, на третьому — два; дукати ×1…×5 і Міні (×10, ×25, Мажор — лише в респінах).
   const REELS = [
-    's1 s2 c1 s3 pipe s4 s1 mug s2 s3 horse s4 s1 c5 sabre s2 s3 s4 cossack s1 pipe c2 s2 s3 mug s4 sabre s1 c3 horse',
-    's2 s3 c2 s1 wild s4 mug s2 c1 s4 s3 pipe s1 horse s4 s2 sabre s1 s3 cossack s4 c5 s2 pipe s1 mug s3 c10 s4 c1',
-    's3 c1 s4 s1 horse s2 cmini s3 pipe s4 wild s1 c2 s2 mug s1 s3 sabre s4 c5 s1 cossack s2 s3 pipe s4 s1 mug c25 s2',
-    's4 s1 c3 s2 sabre s3 c1 c2 s4 pipe s1 wild s2 horse s3 mug s4 s1 cmajor s2 cossack s3 c1 s4 pipe s2 s1 c5 mug s3',
-    's1 c2 s3 s2 mug s4 c1 s1 horse s3 wild s2 s4 pipe s1 sabre c1 s3 s2 cossack s4 c3 s1 mug s3 c25 s2 pipe s4 cmini',
+    's1 s2 c1 s3 pipe s4 s1 mug s2 s3 horse s4 s1 c2 sabre s2 s3 s4 cossack s1 pipe c5 s2 s1 mug s4 sabre s2 s3 s1',
+    's2 s3 c2 c1 wild s4 mug s2 s1 s4 s3 pipe s1 horse s4 s2 sabre s1 s3 cossack s4 c5 s2 pipe s1 mug s3 c5 s4 s2',
+    's3 c1 s4 s1 horse s2 cmini c2 pipe s4 wild s1 s3 s2 mug s1 s3 sabre s4 c5 s1 cossack s2 s3 pipe wild s1 s3 s4 s2',
+    's4 s1 c3 s2 sabre s3 c1 c2 s4 pipe s1 wild s2 horse s3 mug s4 s1 c3 s2 cossack s3 s1 s4 pipe s2 s1 c5 mug s3',
+    's1 c2 s3 s2 mug s4 c1 s1 horse s3 wild s2 s4 pipe s1 sabre s2 s3 s2 cossack s4 c3 s1 mug s3 s1 s2 pipe s4 cmini',
   ].map((s) => s.split(' '));
   // 20 ліній: рядок кожного барабана
   const LINES = [
@@ -27,11 +28,11 @@
     [1, 2, 1, 0, 1], [0, 1, 1, 1, 0], [2, 1, 1, 1, 2], [0, 1, 0, 1, 0], [2, 1, 2, 1, 2],
     [1, 1, 0, 1, 1], [1, 1, 2, 1, 1], [0, 0, 2, 0, 0], [2, 2, 0, 2, 2], [0, 2, 0, 2, 0],
   ];
-  // Виплати — у ставках на лінію (ставка ÷ 20)
+  // Виплати — у ставках на лінію (ставка ÷ 20); на сайті їх підміняє view.table.pay
   const PAY = {
-    wild: { 5: 3000, 4: 400, 3: 75 }, cossack: { 5: 1250, 4: 250, 3: 60 }, horse: { 5: 625, 4: 150, 3: 50 },
-    sabre: { 5: 500, 4: 125, 3: 40 }, mug: { 5: 375, 4: 100, 3: 30 }, pipe: { 5: 300, 4: 75, 3: 25 },
-    s1: { 5: 150, 4: 40, 3: 15 }, s2: { 5: 150, 4: 40, 3: 15 }, s3: { 5: 125, 4: 30, 3: 12 }, s4: { 5: 125, 4: 30, 3: 12 },
+    wild: { 5: 3000, 4: 400, 3: 75 }, cossack: { 5: 1000, 4: 200, 3: 50 }, horse: { 5: 500, 4: 120, 3: 40 },
+    sabre: { 5: 400, 4: 100, 3: 30 }, mug: { 5: 300, 4: 80, 3: 24 }, pipe: { 5: 240, 4: 60, 3: 22 },
+    s1: { 5: 90, 4: 24, 3: 10 }, s2: { 5: 90, 4: 24, 3: 10 }, s3: { 5: 80, 4: 20, 3: 8 }, s4: { 5: 80, 4: 20, 3: 8 },
   };
 
   function gridOf(stops) { return stops.map((s, c) => R3.map((r) => REELS[c][(s + r) % REELS[c].length])); }
