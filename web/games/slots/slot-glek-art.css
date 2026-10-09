@@ -163,3 +163,22 @@
 @media (prefers-reduced-motion: reduce) {
   .sg *, .sg { animation: none !important; }
 }
+
+/* ---------- виграш: кожен символ «входить» у виграш по-своєму (раз, ~0,55 с), далі — його вічна анімація вище ---------- */
+.sk-cell.win > .sg { transform-origin: 50% 80%; animation: .55s cubic-bezier(.3, 1.4, .5, 1) 1 both; }
+.sk-cell.win > .sg-cherry { animation-name: sg-in-cherry; }     /* вишні — розгойдались на гілці */
+.sk-cell.win > .sg-pear { animation-name: sg-in-pear; }         /* груша — хлюп і сплющилась */
+.sk-cell.win > .sg-plum { animation-name: sg-in-plum; }         /* слива — перекотилась */
+.sk-cell.win > .sg-melon { animation-name: sg-in-melon; }       /* кавун — гупнув згори */
+.sk-cell.win > .sg-bell { animation-name: sg-in-bell; }         /* дзвоник — дзень! */
+.sk-cell.win > .sg-horseshoe { animation-name: sg-in-horseshoe; } /* підкова — перевернулась монеткою */
+.sk-cell.win > .sg-seven { animation-name: sg-in-seven; }       /* сімка — вискочила на глядача */
+.sk-cell.win > .sg-glek { animation-name: sg-in-glek; }         /* Глек — підскочив і крутнувся */
+@keyframes sg-in-cherry { 0% { transform: rotate(0); } 30% { transform: rotate(-16deg) scale(1.12); } 60% { transform: rotate(10deg) scale(1.06); } 100% { transform: none; } }
+@keyframes sg-in-pear { 0% { transform: none; } 30% { transform: scale(1.24, .78); } 60% { transform: scale(.9, 1.16) translateY(-6px); } 100% { transform: none; } }
+@keyframes sg-in-plum { 0% { transform: translateX(-10%) rotate(-40deg); } 60% { transform: translateX(3%) rotate(8deg) scale(1.08); } 100% { transform: none; } }
+@keyframes sg-in-melon { 0% { transform: translateY(-16%) scale(.9); } 45% { transform: translateY(0) scale(1.18, .84); } 70% { transform: scale(.96, 1.06); } 100% { transform: none; } }
+@keyframes sg-in-bell { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(22deg) scale(1.2); } 55% { transform: rotate(-14deg) scale(1.1); } 80% { transform: rotate(6deg); } 100% { transform: none; } }
+@keyframes sg-in-horseshoe { 0% { transform: scaleX(1); } 40% { transform: scaleX(-1.15) scaleY(1.15); } 100% { transform: none; } }
+@keyframes sg-in-seven { 0% { transform: scale(1); } 35% { transform: scale(1.4) rotate(-6deg); } 65% { transform: scale(.94) rotate(3deg); } 100% { transform: none; } }
+@keyframes sg-in-glek { 0% { transform: none; } 35% { transform: translateY(-14%) scale(1.22) rotate(-10deg); } 65% { transform: translateY(0) scale(1.1, .9) rotate(4deg); } 100% { transform: none; } }
