@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Hlechyky.Games;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
@@ -15,10 +17,13 @@ namespace Hlechyky;
 /// <paramref name="Reply"/> — стара одна відповідь розробника. Лишилась у схемі заради старих баз: при старті вона
 /// один раз стає першим повідомленням переписки, а нове туди вже не пишеться. <paramref name="AuthorRead"/> і
 /// <paramref name="DevRead"/> — id останнього повідомлення, яке бачили автор і розробник: усе новіше — непрочитане.
+/// <paramref name="Diag"/> — JSON «на чому й що було» (пристрій, браузер, стан сайту, останні помилки): браузер збирає
+/// його сам у мить записки, сервер дописує своє (<see cref="FeedbackSetup"/>) — щоб не перепитувати «а з чого ти?».
 /// </para>
 /// </summary>
 public sealed record FeedbackItem(long Id, string Nick, string Kind, string Text, string? Place, string? Screen, string? Ua,
-    string Status, string? Reply, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long AuthorRead = 0, long DevRead = 0);
+    string Status, string? Reply, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long AuthorRead = 0, long DevRead = 0,
+    string? Diag = null);
 
 /// <summary>
 /// Одне повідомлення переписки в записці. <paramref name="Dev"/> — від розробника (адміна), інакше — від автора.
@@ -32,6 +37,19 @@ public sealed record FeedbackMsg(long Id, long FeedbackId, string Nick, bool Dev
 /// відписала, а розробник ще не бачив. <paramref name="Count"/> — скільки записок разом (одна може бути і тим, і тим).
 /// </summary>
 public sealed record FeedbackCount(int Count, int New, int Replies);
+
+/// <summary>
+/// Файл у записці (FeedbackFiles.cs). Спершу він «чекає» (<paramref name="FeedbackId"/> = null): людина вибрала його, а
+/// записку ще не тяпнула. Із запискою чи повідомленням летять лише id — і файл прив'язується: до самої записки
+/// (<paramref name="MsgId"/> = null) чи до повідомлення переписки. <paramref name="Hash"/> — ім'я на диску (за вмістом),
+/// <paramref name="Key"/> — випадковий ключ в адресі: файл бачать лише ті, кому її показали (автор і розробник).
+/// </summary>
+public sealed record FeedbackFile(long Id, long? FeedbackId, long? MsgId, string Nick, string Hash, string Key, string Name,
+    long Size, string Type, int? W, int? H, DateTimeOffset At)
+{
+    public const string UrlPrefix = "/api/feedback/file/";
+    public string Url => $"{UrlPrefix}{Id}/{Key}/{Uri.EscapeDataString(Name)}";
+}
 
 /// <summary>Таблиці записок і переписки. DDL і SQL живуть тут, від <see cref="Db"/> — лише з'єднання на одну коротку операцію.</summary>
 public sealed class FeedbackStore
@@ -48,9 +66,17 @@ public sealed class FeedbackStore
             dev INTEGER NOT NULL DEFAULT 0, kind TEXT NOT NULL DEFAULT 'text', text TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS ix_feedback_msg_note ON feedback_msg(feedback_id, id);
         CREATE INDEX IF NOT EXISTS ix_feedback_msg_nick ON feedback_msg(nick_key, created_at);
+        CREATE TABLE IF NOT EXISTS feedback_file(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, feedback_id INTEGER, msg_id INTEGER, nick TEXT NOT NULL, nick_key TEXT NOT NULL,
+            hash TEXT NOT NULL, key TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, type TEXT NOT NULL, w INTEGER, h INTEGER,
+            created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS ix_feedback_file_note ON feedback_file(feedback_id, id);
+        CREATE INDEX IF NOT EXISTS ix_feedback_file_nick ON feedback_file(nick_key, created_at);
+        CREATE INDEX IF NOT EXISTS ix_feedback_file_hash ON feedback_file(hash);
         """;
-    const string Cols = "id, nick, kind, text, place, screen, ua, status, reply, created_at, updated_at, author_read, dev_read";
+    const string Cols = "id, nick, kind, text, place, screen, ua, status, reply, created_at, updated_at, author_read, dev_read, diag";
     const string MsgCols = "id, feedback_id, nick, dev, kind, text, created_at";
+    const string FileCols = "id, feedback_id, msg_id, nick, hash, key, name, size, type, w, h, created_at";
 
     /// <summary>Непрочитане автором: є повідомлення розробника, новіше за те, що автор бачив.</summary>
     const string AuthorUnreadSql = "EXISTS(SELECT 1 FROM feedback_msg m WHERE m.feedback_id = f.id AND m.dev = 1 AND m.id > f.author_read)";
@@ -83,6 +109,7 @@ public sealed class FeedbackStore
             // Бази, створені до переписки: хто що бачив — з нуля, тобто «ще нічого».
             AddColumn(c, "author_read", "INTEGER NOT NULL DEFAULT 0");
             AddColumn(c, "dev_read", "INTEGER NOT NULL DEFAULT 0");
+            AddColumn(c, "diag", "TEXT");
             Exec(c, ReplyToMsgSql);
             return 0;
         });
@@ -95,14 +122,22 @@ public sealed class FeedbackStore
         Exec(c, $"ALTER TABLE feedback ADD COLUMN {name} {type}");
     }
 
-    public long Add(string nick, string kind, string text, string? place, string? screen, string? ua, DateTimeOffset now) => _db.With(c =>
+    /// <summary>Нова записка; <paramref name="files"/> — свої файли, що чекали, прив'язуються в тій самій транзакції.</summary>
+    public long Add(string nick, string kind, string text, string? place, string? screen, string? ua, DateTimeOffset now,
+        string? diag = null, IReadOnlyCollection<long>? files = null) => _db.With(c =>
     {
-        using var cmd = Cmd(c, """
-            INSERT INTO feedback(nick, nick_key, kind, text, place, screen, ua, status, created_at, updated_at)
-            VALUES($n, $k, $kind, $t, $p, $s, $ua, 'new', $now, $now);
+        using var tx = c.BeginTransaction();
+        long id;
+        using (var cmd = Cmd(c, """
+            INSERT INTO feedback(nick, nick_key, kind, text, place, screen, ua, status, created_at, updated_at, diag)
+            VALUES($n, $k, $kind, $t, $p, $s, $ua, 'new', $now, $now, $diag);
             SELECT last_insert_rowid();
-            """, ("$n", nick), ("$k", Auth.NickKey(nick)), ("$kind", kind), ("$t", text), ("$p", place), ("$s", screen), ("$ua", ua), ("$now", Iso(now)));
-        return (long)cmd.ExecuteScalar()!;
+            """, ("$n", nick), ("$k", Auth.NickKey(nick)), ("$kind", kind), ("$t", text), ("$p", place), ("$s", screen), ("$ua", ua),
+            ("$now", Iso(now)), ("$diag", diag)))
+            id = (long)cmd.ExecuteScalar()!;
+        Attach(c, nick, id, null, files);
+        tx.Commit();
+        return id;
     });
 
     /// <summary>Скільки записок нік залишив, починаючи з <paramref name="since"/> — для обмеження частоти.</summary>
@@ -154,7 +189,8 @@ public sealed class FeedbackStore
     /// Нове повідомлення в записку. Той, хто пише, бачить усю розмову до свого повідомлення включно — тож його бік
     /// одразу «прочитав»; записка піднімається (updated_at), як розмова в месенджері.
     /// </summary>
-    public long AddMsg(long feedbackId, string nick, bool dev, string kind, string text, DateTimeOffset now) => _db.With(c =>
+    public long AddMsg(long feedbackId, string nick, bool dev, string kind, string text, DateTimeOffset now,
+        IReadOnlyCollection<long>? files = null) => _db.With(c =>
     {
         using var tx = c.BeginTransaction();
         long id;
@@ -163,6 +199,7 @@ public sealed class FeedbackStore
             SELECT last_insert_rowid();
             """, ("$f", feedbackId), ("$n", nick), ("$k", Auth.NickKey(nick)), ("$d", dev ? 1 : 0), ("$kind", kind), ("$t", text), ("$now", Iso(now))))
             id = (long)cmd.ExecuteScalar()!;
+        Attach(c, nick, feedbackId, id, files);
         Exec(c, $"UPDATE feedback SET updated_at = $now, {(dev ? "dev_read" : "author_read")} = $m WHERE id = $f",
             ("$now", Iso(now)), ("$m", id), ("$f", feedbackId));
         tx.Commit();
@@ -240,6 +277,109 @@ public sealed class FeedbackStore
         return new FeedbackCount(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2));
     });
 
+    // ---------- файли ----------
+
+    /// <summary>Файл, що чекає на записку: вибрали, а записку ще не тяпнули.</summary>
+    public FeedbackFile AddFile(string nick, string hash, string key, string name, long size, string type, int? w, int? h, DateTimeOffset now) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, """
+            INSERT INTO feedback_file(nick, nick_key, hash, key, name, size, type, w, h, created_at)
+            VALUES($n, $k, $hash, $key, $name, $size, $type, $w, $h, $now);
+            SELECT last_insert_rowid();
+            """, ("$n", nick), ("$k", Auth.NickKey(nick)), ("$hash", hash), ("$key", key), ("$name", name), ("$size", size),
+            ("$type", type), ("$w", w), ("$h", h), ("$now", Iso(now)));
+        return new FeedbackFile((long)cmd.ExecuteScalar()!, null, null, nick, hash, key, name, size, type, w, h, now);
+    });
+
+    /// <summary>
+    /// Прив'язати файли, що чекають, до записки (і повідомлення). Лише свої й лише ті, що ще ніде не лежать: чужий id
+    /// чи файл з іншої записки тихо пропускається — перетягнути чуже собі в записку так не вийде.
+    /// </summary>
+    static void Attach(SqliteConnection c, string nick, long feedbackId, long? msgId, IReadOnlyCollection<long>? files)
+    {
+        if (files is not { Count: > 0 }) return;
+        var (inList, ps) = InList(files);
+        Exec(c, $"UPDATE feedback_file SET feedback_id = $f, msg_id = $m WHERE feedback_id IS NULL AND nick_key = $k AND id IN ({inList})",
+            [("$f", feedbackId), ("$m", msgId), ("$k", Auth.NickKey(nick)), .. ps]);
+    }
+
+    /// <summary>Скільки з цих файлів нік може прикріпити: свої й ті, що ще чекають.</summary>
+    public int Pending(string nick, IReadOnlyCollection<long> ids) => ids.Count == 0 ? 0 : _db.With(c =>
+    {
+        var (inList, ps) = InList(ids);
+        using var cmd = Cmd(c, $"SELECT COUNT(*) FROM feedback_file WHERE feedback_id IS NULL AND nick_key = $k AND id IN ({inList})",
+            [("$k", Auth.NickKey(nick)), .. ps]);
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    });
+
+    /// <summary>Файли кількох записок за раз — і самих записок, і їхньої переписки.</summary>
+    public Dictionary<long, List<FeedbackFile>> Files(IReadOnlyCollection<long> feedbackIds) => _db.With(c =>
+    {
+        var map = new Dictionary<long, List<FeedbackFile>>();
+        if (feedbackIds.Count == 0) return map;
+        var (inList, ps) = InList(feedbackIds);
+        foreach (var f in ReadFiles(c, $"SELECT {FileCols} FROM feedback_file WHERE feedback_id IN ({inList}) ORDER BY id", ps))
+        {
+            var note = f.FeedbackId!.Value;
+            if (!map.TryGetValue(note, out var list)) map[note] = list = [];
+            list.Add(f);
+        }
+        return map;
+    });
+
+    public FeedbackFile? File(long id) => _db.With(c => ReadFiles(c, $"SELECT {FileCols} FROM feedback_file WHERE id = $id", ("$id", id)).FirstOrDefault());
+
+    /// <summary>Скільки файлів і байтів нік виклав, починаючи з <paramref name="since"/> — для обмеження частоти.</summary>
+    public (int Count, long Bytes) FilesSince(string nick, DateTimeOffset since) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT COUNT(*), IFNULL(SUM(size), 0) FROM feedback_file WHERE nick_key = $k AND created_at >= $since",
+            ("$k", Auth.NickKey(nick)), ("$since", Iso(since)));
+        using var r = cmd.ExecuteReader();
+        r.Read();
+        return (r.GetInt32(0), r.GetInt64(1));
+    });
+
+    /// <summary>
+    /// Прибрати файли, що чекали й не дочекались до <paramref name="before"/> (вибрали й передумали, закрили вкладку).
+    /// Повертає імена на диску, на які більше ніщо не посилається, — їх можна стерти.
+    /// </summary>
+    public List<string> DropStale(DateTimeOffset before) => _db.With(c =>
+    {
+        using var tx = c.BeginTransaction();
+        var hashes = new List<string>();
+        using (var cmd = Cmd(c, "SELECT DISTINCT hash FROM feedback_file WHERE feedback_id IS NULL AND created_at < $b", ("$b", Iso(before))))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read()) hashes.Add(r.GetString(0));
+        if (hashes.Count == 0) return hashes;
+        Exec(c, "DELETE FROM feedback_file WHERE feedback_id IS NULL AND created_at < $b", ("$b", Iso(before)));
+        var free = new List<string>();
+        foreach (var h in hashes)
+            using (var cmd = Cmd(c, "SELECT 1 FROM feedback_file WHERE hash = $h LIMIT 1", ("$h", h)))
+                if (cmd.ExecuteScalar() is null) free.Add(h);
+        tx.Commit();
+        return free;
+    });
+
+    static (string InList, (string, object?)[] Ps) InList(IReadOnlyCollection<long> ids)
+    {
+        var list = ids.Distinct().ToList();
+        var names = list.Select((_, i) => "$i" + i).ToArray();
+        return (string.Join(',', names), list.Select((id, i) => (names[i], (object?)id)).ToArray());
+    }
+
+    static List<FeedbackFile> ReadFiles(SqliteConnection c, string sql, params (string, object?)[] ps)
+    {
+        using var cmd = Cmd(c, sql, ps);
+        using var r = cmd.ExecuteReader();
+        var list = new List<FeedbackFile>();
+        static long? L(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetInt64(i);
+        static int? I(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetInt32(i);
+        while (r.Read())
+            list.Add(new FeedbackFile(r.GetInt64(0), L(r, 1), L(r, 2), r.GetString(3), r.GetString(4), r.GetString(5), r.GetString(6),
+                r.GetInt64(7), r.GetString(8), I(r, 9), I(r, 10), Ts(r.GetString(11))));
+        return list;
+    }
+
     static List<FeedbackItem> Read(SqliteConnection c, string sql, params (string, object?)[] ps)
     {
         using var cmd = Cmd(c, sql, ps);
@@ -248,7 +388,7 @@ public sealed class FeedbackStore
         static string? S(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
         while (r.Read())
             list.Add(new FeedbackItem(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), S(r, 4), S(r, 5), S(r, 6),
-                r.GetString(7), S(r, 8), Ts(r.GetString(9)), Ts(r.GetString(10)), r.GetInt64(11), r.GetInt64(12)));
+                r.GetString(7), S(r, 8), Ts(r.GetString(9)), Ts(r.GetString(10)), r.GetInt64(11), r.GetInt64(12), S(r, 13)));
         return list;
     }
 
@@ -307,13 +447,18 @@ public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? w
     /// <summary>Скільки своїх записок показувати людині.</summary>
     public const int MineLimit = 30;
     public const int AdminLimit = 300;
+    /// <summary>Файлів на одну записку чи повідомлення: скрін, другий скрін, запис екрана — і досить.</summary>
+    public const int MaxFiles = 5;
+    /// <summary>Діагностика — кілька кілобайт JSON; більше — щось не те, і таке не зберігаємо зовсім (обрізаний JSON не прочитаєш).</summary>
+    public const int MaxDiag = 16_000;
 
     public sealed record Result(bool Ok, string Message, long Id = 0);
 
-    /// <summary>Записка разом із перепискою.</summary>
-    public sealed record Thread(FeedbackItem Item, IReadOnlyList<FeedbackMsg> Msgs);
+    /// <summary>Записка разом із перепискою й файлами (і самої записки, і повідомлень).</summary>
+    public sealed record Thread(FeedbackItem Item, IReadOnlyList<FeedbackMsg> Msgs, IReadOnlyList<FeedbackFile>? Files = null);
 
-    public Result Submit(string nick, string? kind, string? text, string? place, string? screen, string? ua)
+    public Result Submit(string nick, string? kind, string? text, string? place, string? screen, string? ua,
+        string? diag = null, IReadOnlyList<long>? files = null)
     {
         // Голий «гість» — це ще ніхто: відповідь розробника не буде кому показати.
         if (Nameless(nick)) return new(false, "Спершу назвись — тоді розробник знатиме, кому відповісти");
@@ -326,7 +471,9 @@ public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? w
         if (store.Recent(nick, text, now.AddMinutes(-30))) return new(false, "Це вже тяпнуто — розробник побачить");
         if (store.CountSince(nick, now.AddHours(-1)) >= PerHour) return new(false, "За годину досить записок — решту тяпнеш трохи згодом");
         if (store.CountSince(nick, now.AddDays(-1)) >= PerDay) return new(false, "На сьогодні записок досить — завтра продовжимо");
-        var id = store.Add(nick, kind, text, Short(place, 200), Short(screen, 40), Short(ua, 300), now);
+        if (FilesProblem(nick, files) is { } bad) return new(false, bad);
+        var d = diag is { Length: > 0 and <= MaxDiag } ? diag : null;
+        var id = store.Add(nick, kind, text, Short(place, 200), Short(screen, 40), Short(ua, 300), now, d, files);
         wire?.Dev(DevCount());
         return new(true, kind == "bug" ? "Дякую! Баг записано — розробник погляне" : "Дякую! Розробник прочитає", id);
     }
@@ -335,19 +482,22 @@ public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? w
     /// Повідомлення в переписку. Автор пише лише у свої записки, розробник (<paramref name="dev"/>) — у будь-яку.
     /// Стан від відповіді людини не міняється (у «зроблено» теж можна відписати «дякую»), а перша відповідь
     /// розробника на нову записку робить її «переглянутою» — у фільтрі «нові» лишається лише непрочитане.
+    /// Повідомлення може бути й самим файлом (<paramref name="files"/>) — скрін без слів теж відповідь.
     /// </summary>
-    public Result Say(long id, string nick, bool dev, string? text)
+    public Result Say(long id, string nick, bool dev, string? text, IReadOnlyList<long>? files = null)
     {
         if (!dev && Nameless(nick)) return new(false, "Спершу назвись — тоді й відповідай");
         if (store.Get(id) is not { } item) return new(false, "Такої записки нема");
         if (!dev && Auth.NickKey(nick) != Auth.NickKey(item.Nick)) return new(false, "Це не твоя записка — відповісти тут може лише її автор");
         var t = Clean(text, MaxMsg + 1);
-        if (t.Length == 0) return new(false, "Порожнє не тяпнеш — напиши хоч слово");
+        var withFiles = files is { Count: > 0 };
+        if (t.Length == 0 && !withFiles) return new(false, "Порожнє не тяпнеш — напиши хоч слово");
         if (t.Length > MaxMsg) return new(false, $"Задовго: до {MaxMsg} символів. Решту — наступним повідомленням");
         var now = clock.UtcNow;
-        if (store.RecentMsg(id, nick, t, now - MsgTwice)) return new(false, "Це вже тяпнуто");
+        if (t.Length > 0 && !withFiles && store.RecentMsg(id, nick, t, now - MsgTwice)) return new(false, "Це вже тяпнуто");
         if (!dev && store.MsgsSince(nick, now.AddHours(-1)) >= MsgPerHour) return new(false, "За годину досить повідомлень — решту тяпнеш трохи згодом");
-        store.AddMsg(id, nick, dev, "text", t, now);
+        if (FilesProblem(nick, files) is { } bad) return new(false, bad);
+        store.AddMsg(id, nick, dev, "text", t, now, files);
         if (dev && item.Status == "new") store.SetStatus(id, "seen", now);
         if (dev) wire?.Author(item.Nick, Unread(item.Nick));
         wire?.Dev(DevCount());
@@ -365,8 +515,23 @@ public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? w
     /// <summary>Записки разом із перепискою — одним запитом на всі.</summary>
     public List<Thread> WithMsgs(List<FeedbackItem> items)
     {
-        var msgs = store.Msgs(items.Select(x => x.Id).ToList());
-        return items.Select(x => new Thread(x, msgs.TryGetValue(x.Id, out var list) ? list : [])).ToList();
+        var ids = items.Select(x => x.Id).ToList();
+        var msgs = store.Msgs(ids);
+        var files = store.Files(ids);
+        return items.Select(x => new Thread(x, msgs.TryGetValue(x.Id, out var list) ? list : [],
+            files.TryGetValue(x.Id, out var fs) ? fs : [])).ToList();
+    }
+
+    /// <summary>
+    /// Що не так із файлами до записки чи повідомлення; null — усе гаразд. Файл, що вже прибрався (чекав понад добу),
+    /// чи чужий — це не мовчки «без файла», а прохання вибрати ще раз: людина ж бачила його в записці.
+    /// </summary>
+    string? FilesProblem(string nick, IReadOnlyList<long>? files)
+    {
+        if (files is not { Count: > 0 }) return null;
+        var ids = files.Distinct().ToList();
+        if (ids.Count > MaxFiles) return $"Файлів забагато — до {MaxFiles} за раз";
+        return store.Pending(nick, ids) == ids.Count ? null : "Якийсь файл загубився — прибери його й вибери ще раз";
     }
 
     /// <summary>
@@ -483,9 +648,9 @@ public sealed class HubFeedbackWire(IHubContext<RadioHub> hub, Presence presence
 
 public static class FeedbackSetup
 {
-    public sealed record FeedbackBody(string? Kind, string? Text, string? Place, string? Screen, string? Ua);
+    public sealed record FeedbackBody(string? Kind, string? Text, string? Place, string? Screen, string? Ua, JsonObject? Diag = null, long[]? Files = null);
     public sealed record FeedbackPatch(string? Status, string? Reply);
-    public sealed record MsgBody(string? Text);
+    public sealed record MsgBody(string? Text, long[]? Files = null);
     public sealed record ReadBody(long? Id, long[]? Ids);
 
     public static IServiceCollection AddHlechykyFeedback(this IServiceCollection services)
@@ -508,18 +673,48 @@ public static class FeedbackSetup
         var x = t.Item;
         var read = admin ? x.DevRead : x.AuthorRead;
         bool Fresh(FeedbackMsg m) => m.Dev != admin && m.Id > read;
+        var files = t.Files ?? [];
         return new
         {
             id = x.Id, nick = x.Nick, kind = x.Kind, text = x.Text, status = x.Status, reply = x.Reply,
             at = x.CreatedAt, updatedAt = x.UpdatedAt,
             // де й на чому — лише адміну: людині своє «Mozilla/5.0…» ні до чого
             place = admin ? x.Place : null, screen = admin ? x.Screen : null, ua = admin ? x.Ua : null,
+            diag = admin ? Diag(x.Diag) : null,
+            files = files.Where(f => f.MsgId is null).Select(FileView),
             msgs = t.Msgs.Select(m => new
             {
                 id = m.Id, dev = m.Dev, kind = m.Kind, text = m.Text, at = m.At, nick = admin || !m.Dev ? m.Nick : null, fresh = Fresh(m),
+                files = files.Where(f => f.MsgId == m.Id).Select(FileView),
             }),
             unread = t.Msgs.Any(Fresh),
         };
+    }
+
+    static object FileView(FeedbackFile f) => new { id = f.Id, name = f.Name, size = f.Size, type = f.Type, w = f.W, h = f.H, url = f.Url };
+
+    /// <summary>Діагностика як JSON-об'єкт для браузера розробника; зіпсоване (руками в базі) — просто нема.</summary>
+    static JsonNode? Diag(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try { return JsonNode.Parse(json); }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Що браузер зібрав сам, плюс те, що знає лише сервер: з якого коміту зібраний (сторінка могла лишитись від
+    /// старого деплою) і чи це акаунт, бо гість у браузері й гість на сервері — не завжди те саме.
+    /// </summary>
+    static string? DiagJson(HttpContext c, JsonObject? fromBrowser)
+    {
+        var d = fromBrowser ?? new JsonObject();
+        d["srv"] = new JsonObject
+        {
+            ["build"] = Deploy.ReadMark(Paths.Root, Deploy.BuiltFile) is { Length: > 0 } sha ? Deploy.Short(sha) : null,
+            ["account"] = Auth.IsUser(c),
+            ["admin"] = Auth.IsAdmin(c),
+        };
+        return d.ToJsonString();
     }
 
     static object DevView(FeedbackCount n) => new { count = n.Count, @new = n.New, replies = n.Replies };
@@ -532,7 +727,7 @@ public static class FeedbackSetup
 
         api.MapPost("", (HttpContext c, FeedbackBody b, Feedback fb) =>
         {
-            var r = fb.Submit(Auth.Nick(c), b.Kind, b.Text, b.Place, b.Screen, b.Ua);
+            var r = fb.Submit(Auth.Nick(c), b.Kind, b.Text, b.Place, b.Screen, b.Ua, DiagJson(c, b.Diag), b.Files);
             return r.Ok ? Results.Ok(new { ok = true, id = r.Id, message = r.Message }) : Fail(r.Message);
         });
 
@@ -550,7 +745,7 @@ public static class FeedbackSetup
         api.MapPost("/{id:long}/msg", (HttpContext c, long id, MsgBody b, Feedback fb) =>
         {
             var admin = Auth.IsAdmin(c);
-            var r = fb.Say(id, Auth.Nick(c), admin, b.Text);
+            var r = fb.Say(id, Auth.Nick(c), admin, b.Text, b.Files);
             if (!r.Ok) return Fail(r.Message);
             return Results.Ok(new { ok = true, message = r.Message, item = fb.One(id) is { } t ? View(t, admin) : null });
         });
