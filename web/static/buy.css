@@ -76,16 +76,19 @@
 
 /* кружечок «в обробці» на гаманці в шапці — адміну */
 .wallet .by-badge { margin-left: 4px; }
-/* «➕ Докупити» біля «У глечику» в Лавці */
-.lv-bal .lv-buy { margin-left: 6px; padding: 2px 8px; font-size: 13px; }
+/* «➕ Докупити» біля «У глечику» в Лавці — помітна золота обвідка, а не сірий текст */
+.lv-bal .lv-buy { margin-left: 8px; padding: 7px 14px; font-size: 15px; font-weight: 600; background: #4a3a06; border-color: var(--accent2); color: var(--accent); }
+.lv-bal .lv-buy:hover { background: #5c4808; color: var(--accent); }
 
 @media (max-width: 420px) {
   .by-modal .card.by-card { padding: 16px; }
   .by-cardno { font-size: 15px; }
   .by-pack b { font-size: 16px; }
 }
-/* дві кнопки в заголовку картки «Черепки»: праворуч разом, а не розкидані */
-.wcard h3 .wc-more + .wc-more { margin-left: 0; }
+/* картка «🏺 Черепки» в профілі: ➕ Купити / 💸 Продати / 📋 Заявки — великим рядом під балансом */
+.wc-trade { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 2px; }
+.wc-trade button { flex: 1 1 150px; justify-content: center; min-height: 46px; padding: 10px 14px; font-size: 1.02em; font-weight: 600; }
+.wc-trade .chip.badge { font-size: .8em; min-width: 20px; }
 
 /* вкладки: купити / продати / заявки */
 .by-tabs { display: flex; gap: 6px; }
@@ -111,5 +114,3 @@ a.by-small { align-self: center; text-decoration: none; }
 }
 /* кружечок веде у вікно («Заявки»), а не в профіль */
 .wallet .by-badge { cursor: pointer; }
-/* «Черепки» з трьома кнопками (Купити чи Заявки, Продати, Лавка) на телефоні не влазять в один рядок — кнопки переносяться праворуч */
-.wcard h3:has(.wc-more + .wc-more) { flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
