@@ -221,6 +221,9 @@ public sealed class LelkaBook : BackgroundService
     /// <summary>Розрахувати раунд і прибрати запис — відкладено (поза замком кімнати).</summary>
     public void Settle(LelkaRound round) => _defer(() =>
     {
+        // Підсумок — спершу в запис: упаде розрахунок, і сирота заплатить за ним (тим, хто пролетів, — 0),
+        // а не «ставку назад», як ще живій ставці.
+        Record(round);
         try { SettleNow(round); }
         catch (Exception ex) { _log?.LogWarning(ex, "лелека: раунд {Table}:{Round} не розрахувався", round.Table, round.Round); }
     });
@@ -377,6 +380,36 @@ public sealed class LelkaBook : BackgroundService
         }
         if (clean) Remove(round.Table, round.Round);
         return clean;
+    }
+
+    /// <summary>Записати кінцеві «Return» раунду в запис каси (забране, якого ще нема в підсумку, лишається з запису).</summary>
+    void Record(LelkaRound round)
+    {
+        try
+        {
+            lock (_gate)
+            {
+                var all = Read();
+                var key = Key(round.Table, round.Round);
+                if (!all.TryGetValue(key, out var old)) return;
+                var had = old.Pays.ToDictionary(p => Rooms.NickKey(p.Nick), p => p.Return);
+                all[key] = old with
+                {
+                    Pays = [.. round.Pays.Select(p => p.Return is null && had.GetValueOrDefault(Rooms.NickKey(p.Nick)) is { } r ? p with { Return = r } : p)],
+                };
+                Write(all);
+            }
+        }
+        catch (Exception ex) { _log?.LogWarning(ex, "лелека: підсумок раунду {Table}:{Round} не записався", round.Table, round.Round); }
+    }
+
+    /// <summary>Зупинка сервера: дочекатись черги каси (забране й розрахунки), щоб не лишити їх сиротами.</summary>
+    public override async Task StopAsync(CancellationToken ct)
+    {
+        await base.StopAsync(ct);
+        var until = DateTime.UtcNow.AddSeconds(5);
+        while ((!_queue.IsEmpty || Volatile.Read(ref _draining) == 1) && DateTime.UtcNow < until && !ct.IsCancellationRequested)
+            await Task.Delay(20, CancellationToken.None);
     }
 
     void Remove(string table, int round)

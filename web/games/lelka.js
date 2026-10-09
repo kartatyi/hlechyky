@@ -1117,7 +1117,7 @@
       const okH = h === String(p.hash).toLowerCase();
       const c = await crashOf(String(p.seed).toLowerCase());
       const okC = Math.abs(c - p.crash) < 0.005;
-      out.innerHTML = (okH ? '✅ відбиток збігся' : '❌ відбиток НЕ збігся') + '<br>' + (okC ? '✅' : '⚠') + ' за формулою ×' + fmtM(c) + ', на столі ×' + fmtM(p.crash);
+      out.innerHTML = (okH ? '✅ відбиток збігся' : '❌ відбиток НЕ збігся') + (p.early ? '' : ' (відбитка до падіння не бачив — зайшов посеред раунду)') + '<br>' + (okC ? '✅' : '⚠') + ' за формулою ×' + fmtM(c) + ', на столі ×' + fmtM(p.crash);
     } catch (e) { out.textContent = 'Не вийшло перевірити: ' + e.message; }
   }
 
@@ -1151,7 +1151,12 @@
       st.round = s.round;
       if (st.phase === s.phase && s.phase === 'bets') enter(root, st, s, 'pause');
     }
-    if (s.seed && s.crash && (!st.prev || st.prev.round !== s.round)) st.prev = { round: s.round, hash: s.hash, seed: s.seed, crash: s.crash };
+    // Звіряємо з відбитком, який стіл показав ДО падіння, а не з тим, що прийшов разом із seed (інакше перевірка кругова).
+    if (s.hash && !s.seed) st.pre = { round: s.round, hash: s.hash };
+    if (s.seed && s.crash && (!st.prev || st.prev.round !== s.round)) {
+      const early = !!(st.pre && st.pre.round === s.round);
+      st.prev = { round: s.round, hash: early ? st.pre.hash : s.hash, early, seed: s.seed, crash: s.crash };
+    }
     const first = st.phase == null;
     if (s.phase !== st.phase) {
       const prev = st.phase;
