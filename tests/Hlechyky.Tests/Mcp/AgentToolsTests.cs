@@ -158,7 +158,14 @@ public class AgentToolsTests
     {
         var (v, room, agents) = await Village();
 
-        Assert.False(Ok(await v.Tools.StartGame(agents[1], room)));
+        Assert.False(Ok(await v.Tools.StartGame(agents[1], room, force: true)));
+        // Без force — як людина: хтось за столом не сказав «✋ Готовий», і агент бачить, хто саме.
+        var wait = await v.Tools.StartGame(agents[0], room);
+        Assert.False(Ok(wait));
+        var notReady = Views.Json(wait).GetProperty("notReady").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Equal(agents.Count - 1, notReady.Count);
+        Assert.DoesNotContain(agents[0].Nick, notReady);
+        foreach (var a in agents.Skip(1)) Assert.True(Ok(await v.Tools.Ready(a, room, true)));
         Assert.True(Ok(await v.Tools.StartGame(agents[0], room)));
         Assert.Equal("intro", Phase(v, agents[0]));
     }
@@ -183,7 +190,7 @@ public class AgentToolsTests
     public async Task Four_agents_play_a_night_and_a_vote_through_the_short_tools()
     {
         var (v, room, agents) = await Village(new { pace = "fast" });
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
         v.Until(() => Phase(v, agents[0]) == "night");
 
         var mafia = agents.First(a => Role(v, a) == "mafia");
@@ -216,7 +223,7 @@ public class AgentToolsTests
     public async Task An_agent_never_sees_a_stranger_role()
     {
         var (v, room, agents) = await Village();
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
         var civil = agents.First(a => Role(v, a) == "civil");
 
         var players = J(v.Tools.Look(civil, null)).GetProperty("view").GetProperty("players").EnumerateArray();
@@ -230,7 +237,7 @@ public class AgentToolsTests
     public async Task A_spectator_gets_the_spectator_view_and_no_hints()
     {
         var (v, room, agents) = await Village();
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
         var watcher = await v.Agent("Стороння");
 
         var look = J(v.Tools.Look(watcher, room));
@@ -244,7 +251,7 @@ public class AgentToolsTests
     public async Task The_hint_follows_the_phase_and_the_role()
     {
         var (v, room, agents) = await Village(new { pace = "fast" });
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
         v.Until(() => Phase(v, agents[0]) == "night");
         var sheriff = agents.First(a => Role(v, a) == "sheriff");
 
@@ -260,7 +267,7 @@ public class AgentToolsTests
     public async Task An_unknown_action_comes_back_as_a_refusal_not_as_a_crash()
     {
         var (v, room, agents) = await Village();
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
 
         var r = await v.Tools.Act(agents[0], null, "танцювати", default);
 
@@ -271,7 +278,7 @@ public class AgentToolsTests
     public async Task A_move_without_a_seat_is_refused_before_it_reaches_the_game()
     {
         var (v, room, agents) = await Village();
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
 
         var r = await v.Tools.MafiaMove(agents[0], null, "kill", null, null);
 
@@ -315,7 +322,7 @@ public class AgentToolsTests
     public async Task At_the_table_agents_talk_in_the_table_talk_and_the_village_chat_stays_clean()
     {
         var (v, room, agents) = await Village();
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
 
         var said = J(await v.Tools.TableSay(agents[1], null, "я мирний, клянусь"));
         Assert.True(said.GetProperty("ok").GetBoolean(), said.ToString());
@@ -331,7 +338,7 @@ public class AgentToolsTests
     public async Task What_others_said_while_the_agent_was_thinking_is_not_lost_after_it_speaks()
     {
         var (v, room, agents) = await Village();
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
         v.Tools.TableRead(agents[0], null, 40, onlyNew: true);          // дочитав усе, що було
         await v.Tools.TableSay(agents[1], null, "це Петро, точно");       // поки агент думав, інші сказали своє
         await v.Tools.TableSay(agents[0], null, "а я кажу — ні");         // агент нарешті сказав своє
@@ -363,7 +370,7 @@ public class AgentToolsTests
     public async Task A_spectator_agent_is_not_let_to_speak_during_the_game()
     {
         var (v, room, agents) = await Village();
-        await v.Tools.StartGame(agents[0], room);
+        await v.Tools.StartGame(agents[0], room, force: true);
         var watcher = await v.Agent("Стороння");
 
         var r = await v.Tools.TableSay(watcher, room, "а я знаю, хто мафія");

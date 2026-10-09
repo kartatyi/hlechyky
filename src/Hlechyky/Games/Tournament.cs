@@ -304,7 +304,7 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         }
         if (info.Start == StartMode.ByHost)
         {
-            var started = rooms.StartByHost(id, here[0]);
+            var started = rooms.StartByHost(id, here[0], force: true);   // турнір не чекає «✋ Готовий»: він сам усіх і посадив
             outs.Adopt(started.Out);
             if (!started.Reply.Ok)
             {

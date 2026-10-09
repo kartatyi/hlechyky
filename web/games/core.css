@@ -167,6 +167,13 @@
 .gstatus.my { color: var(--accent); }
 .gstatus.done { color: var(--text); font-weight: 600; }
 .gbtns { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+/* ✋ Готовий (Rooms.SetReady): позначка на чіпі місця і кнопка-перемикач із лічильником «2/4». */
+.gseat.ready { box-shadow: 0 0 0 1px var(--ok) inset; }
+.gready-mark { font-weight: normal; margin-right: 4px; }
+.gbtns .gready .gready-n { margin-left: 6px; font-size: .8em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gbtns .gready.on { color: var(--ok); box-shadow: 0 0 0 1px var(--ok) inset; }
+/* Місце під кнопками для панелей лобі й «після партії» (🎲 ставки столу): порожнє не займає місця. */
+.gextra:empty { display: none; }
 
 /* ---- дошка з клітинок (хрестики, чотири в ряд, сапер) ---- */
 /* Спільна дошка з клітинок (хрестики, чотири в ряд, сапер). Шахи, шашки й ерудит ставлять
