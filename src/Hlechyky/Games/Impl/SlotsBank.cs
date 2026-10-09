@@ -40,11 +40,18 @@ public sealed class SlotsOptions
 
     public static readonly int[] DefaultBets = [10, 20, 50, 100, 200, 500];
 
-    /// <summary>Ставки, які справді можна поставити: з конфігу (чи типові), додатні, не вище <see cref="MaxBet"/>.</summary>
+    /// <summary>
+    /// Найменша ставка: на дрібніших округлення виплат (не менше 1 черепка, «,5 — угору») задирає RTP понад 100 %
+    /// (рецензія 09.10: ставка 1 — cascade 149 %, cluster 158 %; ставка 5 — cluster 99,6 %).
+    /// </summary>
+    public const int MinBet = 10;
+
+    /// <summary>Ставки, які справді можна поставити: з конфігу (чи типові), не менше <see cref="MinBet"/>, не вище <see cref="MaxBet"/>.</summary>
     public int[] AllowedBets()
     {
         var src = Bets is { Length: > 0 } b ? b : DefaultBets;
-        return [.. src.Where(x => x > 0 && (MaxBet <= 0 || x <= MaxBet)).Distinct().Order()];
+        var ok = src.Where(x => x >= MinBet && (MaxBet <= 0 || x <= MaxBet)).Distinct().Order().ToArray();
+        return ok.Length > 0 ? ok : [.. DefaultBets.Where(x => MaxBet <= 0 || x <= MaxBet)];
     }
 }
 

@@ -1075,6 +1075,7 @@
     const el = st.el.info;
     if (!open) { el.hidden = true; return; }
     const s = cur(st) || {}, p = st.prev, c = st.ctx, L = limits(st);
+    st.infoP = p;   // «Перевірити» звіряє саме той політ, що намальований на панелі, а не новіший
     el.innerHTML = '<div class="lk-card"><button type="button" class="lk-x0" aria-label="Закрити">✕</button>'
       + '<h3>Лелека — як грати</h3><ul>'
       + '<li>Глек веде стіл сам: <b>8 с ставки</b> → політ → «шубовсть» 2 с → пауза 3 с. Підсісти можна будь-коли; встав — ставка летить далі (автозабір спрацює й без тебе).</li>'
@@ -1109,7 +1110,7 @@
     return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
   async function verify(root, st) {
-    const p = st.prev, out = st.el.info.querySelector('.lk-res');
+    const p = st.infoP || st.prev, out = st.el.info.querySelector('.lk-res');
     if (!p || !out) return;
     if (!window.crypto || !crypto.subtle) { out.textContent = 'Цей браузер не рахує sha256 (потрібен https)'; return; }
     try {
@@ -1117,7 +1118,7 @@
       const okH = h === String(p.hash).toLowerCase();
       const c = await crashOf(String(p.seed).toLowerCase());
       const okC = Math.abs(c - p.crash) < 0.005;
-      out.innerHTML = (okH ? '✅ відбиток збігся' : '❌ відбиток НЕ збігся') + '<br>' + (okC ? '✅' : '⚠') + ' за формулою ×' + fmtM(c) + ', на столі ×' + fmtM(p.crash);
+      out.innerHTML = (okH ? '✅ відбиток збігся' : '❌ відбиток НЕ збігся') + (p.early ? '' : ' (відбитка до падіння не бачив — зайшов посеред раунду)') + '<br>' + (okC ? '✅' : '⚠') + ' за формулою ×' + fmtM(c) + ', на столі ×' + fmtM(p.crash);
     } catch (e) { out.textContent = 'Не вийшло перевірити: ' + e.message; }
   }
 
@@ -1151,7 +1152,12 @@
       st.round = s.round;
       if (st.phase === s.phase && s.phase === 'bets') enter(root, st, s, 'pause');
     }
-    if (s.seed && s.crash && (!st.prev || st.prev.round !== s.round)) st.prev = { round: s.round, hash: s.hash, seed: s.seed, crash: s.crash };
+    // Звіряємо з відбитком, який стіл показав ДО падіння, а не з тим, що прийшов разом із seed (інакше перевірка кругова).
+    if (s.hash && !s.seed) st.pre = { round: s.round, hash: s.hash };
+    if (s.seed && s.crash && (!st.prev || st.prev.round !== s.round)) {
+      const early = !!(st.pre && st.pre.round === s.round);
+      st.prev = { round: s.round, hash: early ? st.pre.hash : s.hash, early, seed: s.seed, crash: s.crash };
+    }
     const first = st.phase == null;
     if (s.phase !== st.phase) {
       const prev = st.phase;

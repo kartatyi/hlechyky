@@ -453,7 +453,7 @@ public sealed class TableBetsTests : IDisposable
     }
 
     [Fact]
-    public void Company_draw_returns_win_bets_and_team_winners_all_win()
+    public void Company_draw_and_several_winners_return_win_bets()
     {
         Lobby3();
         var before = Balance(Petro);
@@ -463,15 +463,52 @@ public sealed class TableBetsTests : IDisposable
         Assert.Equal(before, Balance(Petro));
         Assert.Contains(Talk(), l => l.Contains("ніхто не виграв"));
 
-        // команда з двох: обидві ставки зіграли
-        var ov = Odds(Petro, "win", K(Vlad), SpecConn);
-        var oo = Odds(Petro, "win", K(Olia), SpecConn);
-        Assert.True(Bet(Petro, "win", K(Vlad), 10, SpecConn).Ok);
-        Assert.True(Bet(Petro, "win", K(Olia), 10, SpecConn).Ok);
-        Assert.True(Bet(Petro, "win", K(Ivan), 10, SpecConn).Ok);
+        // команда з двох: кефи рахувались на одного переможця — інакше ставка на всіх трьох у гарантованому плюсі
+        // (рецензія 09.10: +252 на 300). Тож переможців кілька — ставки «хто виграє» назад.
+        Assert.True(Bet(Petro, "win", K(Vlad), 100, SpecConn).Ok);
+        Assert.True(Bet(Petro, "win", K(Olia), 100, SpecConn).Ok);
+        Assert.True(Bet(Petro, "win", K(Ivan), 100, SpecConn).Ok);
         Assert.True(_h.Rematch().Ok);
         End([SeatOf(Vlad), SeatOf(Olia)]);
-        Assert.Equal(before - 30 + BetMath.Payout(10, ov) + BetMath.Payout(10, oo), Balance(Petro));
+        Assert.Equal(before, Balance(Petro));
+    }
+
+    [Fact]
+    public void Game_that_usually_has_several_winners_offers_no_win_market()
+    {
+        for (var i = 0; i < 5; i++)
+            _eco.Store.AddResults([
+                new ResultRow("many" + i, "t-bets", 1, K(Vlad), Vlad.Nick, "win", null, null, 0, _eco.Clock.UtcNow),
+                new ResultRow("many" + i, "t-bets", 1, K(Olia), Olia.Nick, "win", null, null, 0, _eco.Clock.UtcNow),
+                new ResultRow("many" + i, "t-bets", 1, K(Ivan), Ivan.Nick, "loss", null, null, 0, _eco.Clock.UtcNow),
+            ]);
+        Lobby3();
+        var keys = View(Petro, SpecConn).GetProperty("markets").EnumerateArray().Select(m => m.GetProperty("key").GetString());
+        Assert.DoesNotContain("win", keys);
+    }
+
+    [Fact]
+    public void Seated_player_cannot_bet_on_the_bots()
+    {
+        // Козел / Дурень з Глеками: двоє людей і два боти. Ставка гравця на ботів — ставка на свій програш.
+        var t = new BetTable("r", new TestBetsGame().Info, RoomStatus.Finished, 1, ["Влад", "Оля", null, null], [null, null, "Глек", "Глек"],
+            0, false, null, "");
+        var bot = new TableOption(TableMarkets.Bot, "🤖 боти", "виграють боти", 0.5, 1.84, null);
+        Assert.Contains("ботів", TableBets.Forbidden(t, "Влад", TableMarkets.Win, bot));
+        Assert.Null(TableBets.Forbidden(t with { MySeat = null }, "Петро", TableMarkets.Win, bot));   // глядачеві — можна
+    }
+
+    [Fact]
+    public void No_arb_lowers_the_other_odds_when_a_sure_thing_hits_the_minimum()
+    {
+        // 99 / 1: ×1,05 і ×92 — Σ 1/кеф = 0,963, ставка на обидва в плюсі
+        var odds = BetMath.NoArb([BetMath.Odds(0.99, _opts), BetMath.Odds(0.01, _opts)], _opts);
+        Assert.Equal(1.05, odds[0]);
+        Assert.True(odds.Sum(k => 1 / k) >= 1, string.Join(" ", odds));
+        Assert.True(odds[1] > 1.05);
+        // звичайні кефи не чіпає
+        var fair = new[] { BetMath.Odds(0.5, _opts), BetMath.Odds(0.5, _opts) };
+        Assert.Equal(fair, BetMath.NoArb(fair, _opts));
     }
 
     [Fact]

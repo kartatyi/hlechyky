@@ -2121,7 +2121,7 @@
     st.rematchAt = now;
     if (st.daily) st.goNext = now;
     Promise.resolve(HGames.call('Rematch', ctx.room.id))
-      .then((r) => { if (r && r.ok === false && r.message) ctx.toast(r.message, 'err'); })
+      .then((r) => { if (r && r.ok === false && r.message && !(r.notReady && r.notReady.length)) ctx.toast(r.message, 'err'); })
       .catch(() => {});
   }
 

@@ -76,6 +76,23 @@ public static class BetMath
     public static double Clamp(double odds, BetsOptions o) =>
         double.IsNaN(odds) ? o.MinOddsOk : Math.Clamp(Math.Round(odds, 2, MidpointRounding.AwayFromZero), o.MinOddsOk, o.MaxOddsOk);
 
+    /// <summary>
+    /// Кефи варіантів, з яких виграє рівно один, — без гарантованого плюсу: коли певняк уперся в найменший кеф, а Σ 1/кеф
+    /// вийшла &lt; 1, кефи вище найменшого опускаються, доки Σ 1/кеф не стане ≥ 1. Без кефа на межі — як були (Σ &lt; 1 тоді
+    /// від того, що варіанти Polymarket показано не всі, а не від межі).
+    /// </summary>
+    public static double[] NoArb(double[] odds, BetsOptions o)
+    {
+        var sum = odds.Sum(k => 1 / k);
+        var min = o.MinOddsOk;
+        if (odds.Length < 2 || sum >= 1 || !odds.Any(k => k <= min + 1e-9)) return odds;
+        var low = odds.Where(k => k <= min + 1e-9).Sum(k => 1 / k);
+        var free = sum - low;
+        if (free <= 0) return odds;
+        var f = (1 - low) / free;   // > 1: у стільки разів дорожчі (нижчі кефи) варіанти вище найменшого
+        return [.. odds.Select(k => k <= min + 1e-9 ? k : Math.Max(min, Math.Floor(k / f * 100) / 100))];
+    }
+
     /// <summary>Чи кеф уже в межах і з 2 знаками (саме такий зберігається на ставці).</summary>
     public static bool Fits(double odds, BetsOptions o) =>
         !double.IsNaN(odds) && odds >= o.MinOddsOk - 1e-9 && odds <= o.MaxOddsOk + 1e-9 && Math.Abs(Math.Round(odds, 2) - odds) < 1e-9;
