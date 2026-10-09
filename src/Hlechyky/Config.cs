@@ -36,7 +36,10 @@ public sealed class SiteOptions
 
 public sealed class AuthOptions
 {
+    /// <summary>Ключ ?k= — лише для деву (dev.ps1, стенди). На проді порожній: тоді ?k= нікуди не веде.</summary>
     public string AdminKey { get; set; } = "";
+    /// <summary>Ніки акаунтів-адмінів (без регістру). На проді — ["владік"]. Ще адмін — accounts.role = 'admin'.</summary>
+    public string[] AdminNicks { get; set; } = [];
 }
 
 /// <summary>Вхід через Google. Client ID публічний (він і так у сторінці), секрет для ID-токенів не потрібен. Порожній — кнопки нема.</summary>

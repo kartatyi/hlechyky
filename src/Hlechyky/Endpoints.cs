@@ -94,6 +94,16 @@ public static class Endpoints
         api.MapPost("/account/password", (HttpContext c, PasswordRequest req, Accounts accounts) =>
             Auth.Me(c) is { } me ? Signed(c, accounts.SetPassword(me, req.Current, req.Password), accounts) : Fail("Спершу зайди в акаунт"));
 
+        // Нова сіль — старі сесії всюди мертві; ця вкладка лишається в акаунті (Signed кладе свіжу куку).
+        api.MapPost("/account/logout-all", (HttpContext c, PasswordRequest req, Accounts accounts) =>
+        {
+            if (Auth.Me(c) is not { } me) return Fail("Спершу зайди в акаунт");
+            if (Auth.TooManyTries(c)) return Fail("Забагато спроб — зачекай п'ять хвилин");
+            var r = accounts.SignOutEverywhere(me, req.Current);
+            if (r.Account is null) Auth.CountMiss(c); else Auth.ForgetMisses(c);
+            return Signed(c, r, accounts);
+        });
+
         api.MapPost("/account/logout", (HttpContext c) =>
         {
             Auth.SignOut(c);

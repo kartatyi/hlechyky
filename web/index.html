@@ -239,7 +239,7 @@
 
 <!-- Хто прийшов: зайти в акаунт (паролем чи через Google), зареєструвати нік або піти гостем (тоді нік
      буде «гість Вася»). Для того, хто вже в акаунті, ця ж картка — «Ти — Влад»: вийти, змінити пароль,
-     прив'язати Google. Кнопку Google малює її бібліотека в #googleBtn / #googleLink, коли є Client ID. -->
+     вийти на всіх пристроях, прив'язати Google. Кнопку Google малює її бібліотека в #googleBtn / #googleLink, коли є Client ID. -->
 <div id="nickModal" class="modal" hidden>
   <form id="nickForm" class="card">
     <h3><img src="/static/glek.svg" alt=""><span id="nickTitle">Хто прийшов?</span></h3>
@@ -257,6 +257,7 @@
     <div class="row">
       <button id="nickSave" class="primary" type="submit">Заходжу</button>
       <button id="nickPass" class="ghost" type="button" hidden>Змінити пароль</button>
+      <button id="nickAll" class="ghost" type="button" hidden title="Старі сесії на інших пристроях більше не пускають">Вийти на всіх пристроях</button>
       <button id="nickLater" class="ghost" type="button" hidden>Не зараз</button>
     </div>
     <div id="googleBox" class="gbox" hidden>
