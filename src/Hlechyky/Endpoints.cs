@@ -33,7 +33,7 @@ public static class Endpoints
         var api = app.MapGroup("/api");
 
         api.MapGet("/me", (HttpContext c, TrackBans bans, IGoogleVerifier google, Curfew curfew, IOptionsMonitor<ShardShopOptions> shop,
-            IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel) => new
+            IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel, IOptionsMonitor<Bets.BetsOptions> bets) => new
         {
             nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice,
             // вимкнене в конфігу — кнопок і вкладок нема: черепки за гривні (ShardShop:Buy / Sell, web/buy.js),
@@ -41,6 +41,8 @@ public static class Endpoints
             shards = new { buy = shop.CurrentValue.Buy, sell = shop.CurrentValue.Sell },
             games = games.CurrentValue.Enabled,
             padel = padel.CurrentValue.Enabled,
+            // «🎲 Ставки»: сторінка з подіями й панель ставок на столах (Bets:Enabled + Bets:Events / Bets:Tables)
+            bets = new { events = bets.CurrentValue.EventsOn, tables = bets.CurrentValue.TablesOn },
             night = curfew.ForMe(c),   // нічний відбій — лише тим, кого стосується; решті null
             account = Auth.IsUser(c),
             hasPassword = Auth.Me(c)?.HasPassword ?? false,

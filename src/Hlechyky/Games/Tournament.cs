@@ -304,7 +304,7 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         }
         if (info.Start == StartMode.ByHost)
         {
-            var started = rooms.StartByHost(id, here[0]);
+            var started = rooms.StartByHost(id, here[0], force: true);   // турнір не чекає «✋ Готовий»: він сам усіх і посадив
             outs.Adopt(started.Out);
             if (!started.Reply.Ok)
             {
@@ -488,6 +488,12 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         }
         catch (Exception) { /* зіпсований запис — просто без корони */ }
         lock (_lock) { return _crown ??= loaded; }
+    }
+
+    /// <summary>Стіл турніру — теперішній чи щойно дограний (між іграми): ставок на ньому не буває (bets-contract §4.1).</summary>
+    public bool Holds(string roomId)
+    {
+        lock (_lock) return _t is { } t && t.Stage != Done && (t.Room == roomId || t.Prev == roomId);
     }
 
     public object Snapshot()

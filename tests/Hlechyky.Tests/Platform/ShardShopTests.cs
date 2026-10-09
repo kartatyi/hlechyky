@@ -36,7 +36,8 @@ public sealed class ShardShopTests : IDisposable
     readonly EconomyRig _eco = new();
     readonly FakeBanks _banks = new();
     readonly FakeWire _wire = new();
-    readonly ShardShopOptions _opts = new();
+    // Типово купівля й продаж вимкнені (appsettings.json і клас) — тут вмикаємо явно
+    readonly ShardShopOptions _opts = new() { Buy = true, Sell = true };
     readonly ShardShop _shop;
 
     static readonly ShardActor Vlad = new("Влад", true, false);

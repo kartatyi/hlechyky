@@ -36,7 +36,9 @@ public sealed record RoomSummary(
     DateTimeOffset CreatedAt,
     DateTimeOffset? StartedAt,
     DateTimeOffset? FinishedAt,
-    EveningDto? Evening = null);
+    EveningDto? Evening = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<int>? Ready = null);
 
 /// <summary>
 /// «Рахунок вечора» (п. 225): скільки партій дограли за цим столом за всі «Ану ще раз» і хто скільки взяв.
@@ -167,6 +169,17 @@ public sealed class Room
     /// </summary>
     public List<LobbyAct> LobbyActs { get; } = [];
 
+    /// <summary>
+    /// «✋ Готовий»: ніки тих, хто сидить і сказав, що готовий до партії (у лобі чи до «Ще раз»). Скидається для всіх на
+    /// будь-якій зміні складу, налаштувань і на старті партії (<see cref="Rooms.Unready"/>), тож «готовий» завжди
+    /// означає «готовий саме до такого столу». Ботів тут нема — вони готові завжди. Лише під <see cref="Sync"/>.
+    /// </summary>
+    public HashSet<string> Ready { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Люди за столом, які ще не готові, крім <paramref name="except"/> (той, хто тисне, готовий сам). Під <see cref="Sync"/>.</summary>
+    public List<string> NotReady(string? except) =>
+        [.. Seats.OfType<string>().Where(n => !Ready.Contains(n) && !string.Equals(n, except, StringComparison.OrdinalIgnoreCase))];
+
     /// <summary>Записати дограну партію у вечір (кличе RoomContext.Finish під замком). Соло сюди не йде.</summary>
     public void TallyEvening(int[] winners, IReadOnlyDictionary<int, long>? scores)
     {
@@ -245,6 +258,14 @@ public sealed class Room
             Id, Info.Id, Status.ToString().ToLowerInvariant(), slots, names, Host,
             Info.MinPlayers, Info.MaxPlayers, Options, Stake, Round, Watchers.Count,
             Result is { } r ? new RoomResultDto(r.Winners, r.Draw, r.Text, r.Verdict) : null,
-            CreatedAt, StartedAt, FinishedAt, EveningSummary());
+            CreatedAt, StartedAt, FinishedAt, EveningSummary(), ReadySeats());
+    }
+
+    /// <summary>Місця готових людей — лише поки готовність щось значить (лобі чи дограний стіл); інакше поле на дріт не йде.</summary>
+    int[]? ReadySeats()
+    {
+        if (Ready.Count == 0 || Status == RoomStatus.Playing || Info.Solo) return null;
+        var seats = Enumerable.Range(0, Seats.Length).Where(i => Seats[i] is { } n && Ready.Contains(n)).ToArray();
+        return seats.Length > 0 ? seats : null;
     }
 }
