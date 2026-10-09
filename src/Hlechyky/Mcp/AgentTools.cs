@@ -41,7 +41,7 @@ public sealed class NoFlush : IAgentFlush
 /// Ролі, нічний чат і таємні голоси приходять рівно так, як людині за тим самим місцем.
 /// </summary>
 public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, IAgentFlush flush, Db? db = null,
-    ChatFlood? flood = null, IClock? clock = null)
+    ChatFlood? flood = null, IClock? clock = null, ChatModeration? moderation = null)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -295,6 +295,7 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
             (said, kind) = (r.Text!, r.Kind);
         }
         if (rooms.TalkRefusal(id, null, s.Nick) is { } why) return Fail(why);
+        if (moderation?.WriteRefusal(s.Nick, account: true, ip: null) is { } muted) return Fail(muted);
         if (flood?.Check(s.Nick, text ?? "", (clock ?? SystemTime).UtcNow, "table:" + id) is { } tooMuch) return Fail(tooMuch);
         var (outbox, error) = rooms.TableSay(id, null, s.Nick, said, kind);
         if (error is not null) return Fail(error);

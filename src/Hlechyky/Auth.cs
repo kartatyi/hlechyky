@@ -104,7 +104,8 @@ public static class Auth
     static readonly ConcurrentDictionary<string, (int Count, DateTime Since)> Misses = new();
     const int MaxMisses = 5;
     static readonly TimeSpan MissWindow = TimeSpan.FromMinutes(5);
-    static string Ip(HttpContext c) => c.Connection.RemoteIpAddress?.ToString() ?? "?";
+    /// <summary>Адреса людини (за Caddy — справжня, з X-Forwarded-For); «?» — невідома.</summary>
+    public static string Ip(HttpContext c) => c.Connection.RemoteIpAddress?.ToString() ?? "?";
 
     public static bool TooManyTries(HttpContext c) =>
         Misses.TryGetValue(Ip(c), out var m) && m.Count >= MaxMisses && DateTime.UtcNow - m.Since < MissWindow;

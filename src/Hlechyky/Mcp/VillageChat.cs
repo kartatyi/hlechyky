@@ -9,7 +9,7 @@ namespace Hlechyky.Mcp;
 /// для неї є балачка столу (<see cref="AgentTools.TableSay"/>).
 /// </summary>
 public sealed class VillageChat(Db db, IHubContext<RadioHub> hub, DjBrain brain, IClock clock, ILogger<VillageChat> log,
-    ChatFlood? flood = null) : IAgentChat
+    ChatFlood? flood = null, ChatModeration? moderation = null) : IAgentChat
 {
     /// <summary>Та сама пауза між командами, що й у хабі: /кубик від бота не має сипатись частіше, ніж від людини.</summary>
     static readonly TimeSpan CommandGap = TimeSpan.FromMilliseconds(1200);
@@ -43,6 +43,9 @@ public sealed class VillageChat(Db db, IHubContext<RadioHub> hub, DjBrain brain,
     {
         text = text.Trim();
         if (text.Length == 0) return new ChatSendResult(false, "Порожнє нікому не цікаво", null);
+        // Заборони адміна — ті самі, що й для людей: агент говорить від свого ніка, адреси в нього нема.
+        if (moderation?.WriteRefusal(nick, account: true, ip: null) is { } muted) return new ChatSendResult(false, muted, null);
+        if (moderation?.SlowRefusal(nick) is { } slow) return new ChatSendResult(false, slow, null);
         // Обрізаємо по символах, але не посеред смайла — так само, як це робить хаб.
         if (text.Length > 500) text = text[..(char.IsHighSurrogate(text[499]) ? 499 : 500)];
 
@@ -61,6 +64,7 @@ public sealed class VillageChat(Db db, IHubContext<RadioHub> hub, DjBrain brain,
             }
         }
         if (flood?.Check(nick, text, clock.UtcNow) is { } tooMuch) return new ChatSendResult(false, tooMuch, null);
+        moderation?.NoteSaid(nick);
 
         var message = db.AddChat(nick, said, kind);
         var line = new AgentChatLine(message.Id, message.Nick, message.Text, message.Kind, message.At);

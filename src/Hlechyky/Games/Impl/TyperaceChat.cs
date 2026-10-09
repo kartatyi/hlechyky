@@ -72,7 +72,7 @@ public sealed partial class TyperaceChat(Db? db, IClock clock)
                 }
                 using (var cmd = c.CreateCommand())
                 {
-                    cmd.CommandText = "SELECT id, nick, text, created_at FROM chat WHERE kind = 'chat' AND room_id IS NULL ORDER BY id DESC LIMIT $n";
+                    cmd.CommandText = "SELECT id, nick, text, created_at FROM chat WHERE kind = 'chat' AND room_id IS NULL AND deleted_at IS NULL ORDER BY id DESC LIMIT $n";
                     cmd.Parameters.AddWithValue("$n", Scan);
                     using var r = cmd.ExecuteReader();
                     while (r.Read()) raw.Add((r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3)));

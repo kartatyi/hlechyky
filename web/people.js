@@ -221,6 +221,8 @@
       // 😈 прокльон (docs/games/specs/flair.md §1.5): на трьох програшах людини звучить твій звук; від кого — секрет
       out.push('<button type="button" data-pa="curse" title="Наслати прокльон із Лавки: звучатиме на трьох програшах цієї людини, від кого — секрет">😈 Прокльон</button>');
     }
+    // адміну — 🔇 / 🚫 / 🧹 (web/moder.js)
+    if (window.HModer) out.push(HModer.cardHtml(nick));
     return out.join('');
   }
   function wireActions(box, nick, after) {
@@ -240,6 +242,7 @@
       }
       if (after) after(a);
     });
+    if (window.HModer) HModer.wireCard(box, nick, () => { if (after) after('mod'); });
   }
 
   // =============================================================================================

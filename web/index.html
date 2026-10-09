@@ -159,6 +159,7 @@
         <button data-tab="ads" id="adsTab" hidden><span class="ico">📣</span>Реклама</button>
         <button data-tab="feedback" id="fbTab" hidden><span class="ico">💡</span>Пропозиції <span id="fbTabBadge" class="chip badge" hidden>0</span></button>
         <button data-tab="photos" id="photosTab" hidden><span class="ico">📷</span>Фото</button>
+        <button data-tab="mod" id="modTab" hidden><span class="ico">🛡</span>Модерація</button>
       </nav>
       <section class="panel libpage">
         <div class="libhead">
@@ -203,6 +204,7 @@
       <button type="button" class="chip" data-lf="radio">📻 Радіо</button>
       <button type="button" class="chip" data-lf="games">🎮 Ігри</button>
     </div>
+    <div id="pinBar" class="pinbar" hidden></div>
     <div id="messages" class="messages"></div>
     <div id="log" class="messages" hidden></div>
     <div id="tablePane" class="tpane" hidden></div>
@@ -343,6 +345,8 @@
 <script src="/voice.js"></script>
 <!-- купити черепки за гривні: вікно з пакетами й банками продавця — до app.js, той кличе HBuy.init() і attach(conn) -->
 <script src="/buy.js"></script>
+<!-- 🛡 модерація Балачок: 📌, 🔇, 🚫, 🐢, кнопки адміна — до app.js, той кличе HModer.init() і attach(conn) -->
+<script src="/moder.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

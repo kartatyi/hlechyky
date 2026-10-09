@@ -160,6 +160,17 @@ public sealed partial class ChatFiles(Db db, ChatFlood flood, IClock clock, Chat
         return File.Exists(path) ? path : null;
     }
 
+    /// <summary>Стерти файл з диска — адмін прибрав репліку з ним (<see cref="ChatModeration"/>), а більше ніде його нема.</summary>
+    public void Drop(string hash)
+    {
+        if (!HashName().IsMatch(hash)) return;
+        lock (_gate)
+        {
+            var f = new FileInfo(Path.Combine(dir.Path, hash));
+            if (f.Exists && TryDelete(f)) log?.LogInformation("Балачки: файл {Hash} стерто — адмін прибрав репліку", hash);
+        }
+    }
+
     /// <summary>Тримаємо теку в межах <see cref="ChatFilesDir.MaxTotalBytes"/>: найстаріші (за останнім кидком) — геть.</summary>
     public void Evict(string? keep = null)
     {
@@ -230,10 +241,15 @@ public sealed partial class ChatFiles(Db db, ChatFlood flood, IClock clock, Chat
     public static WebApplication Map(WebApplication app)
     {
         // Тіло запиту — сам файл; ім'я, підпис і відповідь — у заголовках (encodeURIComponent: заголовки лише ASCII).
-        app.MapPost("/api/chat/file", async (HttpContext c, ChatFiles files, IHubContext<RadioHub> hub, DjBrain brain) =>
+        app.MapPost("/api/chat/file", async (HttpContext c, ChatFiles files, IHubContext<RadioHub> hub, DjBrain brain, ChatModeration mod) =>
         {
             if (c.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
                 limit.MaxRequestBodySize = MaxBytes + 1;
+            // Заборони адміна (🔇, 🚫, файли всім, 🐢) — ще до тіла: нема чого тягнути 32 МБ, щоб відмовити.
+            var admin = Auth.IsAdmin(c);
+            if (!admin && (mod.WriteRefusal(Auth.Nick(c), Auth.IsUser(c), Auth.Ip(c)) ?? mod.MediaRefusal(Auth.Nick(c), Auth.IsUser(c), Auth.Ip(c))
+                    ?? mod.SlowRefusal(Auth.Nick(c))) is { } refused)
+                return Results.BadRequest(new { ok = false, message = refused });
             static string? H(HttpContext c, string name)
             {
                 var v = c.Request.Headers[name].ToString();
@@ -250,6 +266,7 @@ public sealed partial class ChatFiles(Db db, ChatFlood flood, IClock clock, Chat
             catch (BadHttpRequestException) { res = new(false, TooBig); }   // Kestrel обірвав тіло понад ліміт
             catch (OperationCanceledException) { return Results.Empty; }   // людина скасувала чи закрила вкладку
             if (!res.Ok || res.Line is not { } line) return Results.BadRequest(new { ok = false, message = res.Message });
+            if (!admin) mod.NoteSaid(line.Nick);
             await hub.Clients.All.SendAsync("chat", line);
             if (line.Text.Length > 0) brain.OnChat(line.Nick, line.Text);
             return Results.Ok(new { ok = true, id = line.Id });

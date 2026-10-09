@@ -1618,7 +1618,7 @@
     el.className = 'msg ' + (isLog ? 'system' : m.kind === 'dj' || m.kind === 'padel' ? 'dj'
       : m.kind === 'dice' || m.kind === 'coin' ? 'dice'
         : m.kind === 'tables' ? 'tables' : m.kind === 'invite' ? 'invite' : m.kind === 'note' ? 'note'
-          : DEEDS[m.kind] ? 'deed ' + m.kind : mine ? 'mine' : '');
+          : m.kind === 'mod' ? 'modline' : DEEDS[m.kind] ? 'deed ' + m.kind : mine ? 'mine' : '');
     if (DEEDS[m.kind]) {
       // Подарували чи присвятили мені — підсвічуємо, як особистий заклик.
       if (m.to && sameNick(m.to, me.nick)) el.classList.add('tome');
@@ -1630,6 +1630,9 @@
       // рядок ховається сам. Особистий заклик (personal) бачить лише той, кого кликали, — його й підсвічуємо.
       if (m.personal) el.classList.add('tome');
       el.innerHTML = `<span class="iv-ico">📣</span>${nickHtml(m.nick, 'n', true)}<span class="t">${esc(m.text)}</span><span class="time">${tm(m.at)}</span>`;
+    } else if (m.kind === 'mod') {
+      // Адмін когось обмежив чи щось перемкнув на всі Балачки (ChatModeration.cs): рядок від сайту, без ніка.
+      el.innerHTML = `<span class="t">${esc(m.text)}</span><span class="time">${tm(m.at)}</span>`;
     } else if (m.kind === 'note') {
       // Особиста відповідь сервера («📣 Покликав Олю») — як /столи: бачиш лише ти, у базі її нема.
       el.innerHTML = `<span class="t">${linkify(m.text)}</span><span class="time">лише тобі</span>`;
@@ -1697,7 +1700,7 @@
     const isLog = m.kind === 'system';
     const el = document.createElement('div');
     fillMessage(el, m, sameNick(m.nick, me.nick), live);
-    if (!isLog && m.kind !== 'tables' && m.kind !== 'invite' && m.id > 0) decorateMessage(el, m);
+    if (!isLog && m.kind !== 'tables' && m.kind !== 'invite' && m.kind !== 'mod' && m.id > 0) decorateMessage(el, m);
     // Рядок про живий стіл («Новий стіл: Мафія», «Оля і Петро сіли грати») носить його id — лишаємо
     // слот під кнопку, щоб до столу можна було дійти прямо звідси (PLAN.md §7.4).
     if (m.roomId && m.kind !== 'tables') {
@@ -2140,7 +2143,8 @@
     const acts = document.createElement('span');
     acts.className = 'macts';
     acts.innerHTML = '<button type="button" class="ghost" data-a="like" title="❤ Вподобати (подвійний клік — теж)">❤</button>'
-      + '<button type="button" class="ghost" data-a="reply" title="Відповісти">↩</button>';
+      + '<button type="button" class="ghost" data-a="reply" title="Відповісти">↩</button>'
+      + (window.HModer ? HModer.msgActs() : '');   // адміну — 📌 і 🗑 (web/moder.js)
     el.appendChild(acts);
     const likes = document.createElement('button');
     likes.type = 'button';
@@ -2193,6 +2197,28 @@
     $('replyBar').querySelector('.rb-text').innerHTML = `↩ Відповідь <b>${esc(replyTo.nick)}</b>: ${esc(text.slice(0, 80))}`;
     if (chatTab !== 'chat') setChatTab('chat');
     $('chatInput').focus();
+  }
+
+  /// Адмін прибрав репліки (ChatModeration.cs): геть з Балачок, а цитати на них — «🗑 видалене повідомлення».
+  function removeMessages(ids) {
+    const box = $('messages');
+    for (const id of ids) {
+      const el = box.querySelector(`.msg[data-id="${id}"]`);
+      if (el) {
+        // пішла голова групи — наступний рядок того самого ніка знову показує нік
+        const next = el.nextElementSibling;
+        if (next && next.classList.contains('cont') && !el.classList.contains('cont')) next.classList.remove('cont');
+        const prev = el.previousElementSibling;
+        el.remove();
+        // день лишився без жодного рядка — геть і його підпис
+        if (prev && prev.classList.contains('msg-day') && (!prev.nextElementSibling || prev.nextElementSibling.classList.contains('msg-day'))) prev.remove();
+      }
+      box.querySelectorAll(`.rq[data-to="${id}"]`).forEach((q) => {
+        const b = q.querySelector('b');
+        q.innerHTML = '↪ ' + (b ? b.outerHTML + ' ' : '') + '<i>🗑 видалене повідомлення</i>';
+      });
+      if (replyTo && replyTo.id === id) clearReply();
+    }
   }
 
   function clearReply() {
@@ -2271,6 +2297,7 @@
     if (btn) {
       if (btn.classList.contains('mlikes') || btn.dataset.a === 'like') likeMessage(+el.dataset.id);
       else if (btn.dataset.a === 'reply') setReply(el);
+      else if ((btn.dataset.a === 'pin' || btn.dataset.a === 'del') && window.HModer) HModer.act(btn.dataset.a, el);
       el.classList.remove('act');
       return;
     }
@@ -2315,6 +2342,8 @@
     if (!files.length) return;
     if (!conn || !me.nick) { askNick(true); return; }
     if (!me.account) { toast('Файли кидають лише ті, хто з акаунтом — зареєструй нік', 'err'); askNick(true); return; }
+    const blocked = window.HModer && HModer.mediaBlock();   // 🔇 / 🚫 від адміна (web/moder.js)
+    if (blocked) { toast(blocked, 'err'); return; }
     for (const f of files) {
       if (f.size > FILE_MAX) toast(`«${f.name}» завеликий — до 32 МБ`, 'err');
       else if (!f.size) toast(`«${f.name}» порожній`, 'err');
@@ -2359,6 +2388,8 @@
   }
   $('fileBtn').onclick = () => {
     if (!me.account) { throwFiles([{ size: 1 }]); return; }   // гість — та сама підказка «зареєструй нік»
+    const blocked = window.HModer && HModer.mediaBlock();
+    if (blocked) { toast(blocked, 'err'); return; }
     $('fileInput').click();
   };
   $('fileInput').onchange = () => { throwFiles($('fileInput').files); $('fileInput').value = ''; };
@@ -2421,6 +2452,7 @@
     // «Стіл» є лише тоді, коли балачка столу живе в панелі; інакше вона — шторка, і вкладки нема.
     if (tab === 'table' && table.mode !== 'rail') tab = 'chat';
     chatTab = tab;
+    if (window.HModer) HModer.tab(tab);   // 📌 плашка — лише над Балачками
     $('chatTabs').querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     $('messages').hidden = tab !== 'chat';
     $('log').hidden = tab !== 'log';
@@ -2451,9 +2483,9 @@
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
   // балачок на телефоні). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
   const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat'];
-  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos'];
+  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod'];
   const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки' };
-  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото людей' };
+  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото людей', mod: 'Модерація Балачок' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
   // Старі адреси (закладки, посилання в балачках) ведуть туди, куди переїхали їхні сторінки.
@@ -3506,6 +3538,9 @@
       } else if (libTab === 'photos') {
         await HLavka.adminPhotos(box);   // «Своя фотка» з Лавки: переглянути й зняти (lavka.js)
         return;
+      } else if (libTab === 'mod') {
+        await HModer.renderTab(box);     // «🛡 Модерація»: файли всім, 🐢, 📌, хто обмежений, журнал (web/moder.js)
+        return;
       }
       wireRows(box);
     } catch (e) { box.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
@@ -4001,6 +4036,8 @@
       }
       tourRoom = room || (tourRoom === null ? '' : tourRoom);
     });
+    conn.on('chatDeleted', (ids) => removeMessages(ids || []));   // адмін прибрав репліки (web/moder.js)
+    if (window.HModer) HModer.attach(conn);   // 📌, 🐢, 🔇, 🚫 — подія chatMod
     conn.on('chatLikes', (x) => {
       const el = x && $('messages').querySelector(`.msg[data-id="${x.id}"]`);
       if (el) paintLikes(el, x.likes || []);
@@ -4196,6 +4233,8 @@
   if (window.HBuy) HBuy.init({ esc, api, toast, busy, me, askNick, dayTime, online: () => (state && state.online) || [] });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
+  // 🛡 Модерація Балачок (web/moder.js): 📌 плашка, поле вводу під 🔇, кнопки адміна, вкладка в Бібліотеці
+  if (window.HModer) HModer.init({ esc, toast, busy, me, dayTime, conn: () => conn, tableInput: () => tc.input });
   // 🎙 Посиденьки (web/voice.js): duck — притишити радіо (1 — як на повзунку), onRoster — хто в голосі змінився.
   if (window.HVoice) HVoice.init({
     $, esc, toast, me, askNick,
@@ -4231,8 +4270,9 @@
     $('adsTab').hidden = me.role !== 'admin';
     $('fbTab').hidden = me.role !== 'admin';
     $('photosTab').hidden = me.role !== 'admin';
-    // на #lib/ads, записки чи фото зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
-    if ((libTab === 'ads' || libTab === 'feedback' || libTab === 'photos') && me.role !== 'admin') go('#lib/history');
+    $('modTab').hidden = me.role !== 'admin';
+    // на #lib/ads, записки, фото чи модерацію зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
+    if ((libTab === 'ads' || libTab === 'feedback' || libTab === 'photos' || libTab === 'mod') && me.role !== 'admin') go('#lib/history');
     if (me.account || me.nick) {
       // Нік без приставки з часів до акаунтів: сервер уже зве нас «гість …» — запропонуємо закріпити його паролем.
       const plain = !me.account && me.nick && m.nick !== me.nick ? me.nick : null;

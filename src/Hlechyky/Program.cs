@@ -56,6 +56,9 @@ builder.Services.AddSingleton<ChatFlood>();   // один лічильник ф�
 // файли в Балачках: data/chatfiles, не більше ChatFiles:MaxGb разом (ChatFiles.cs)
 builder.Services.AddSingleton(_ => new ChatFilesDir(Paths.Resolve("data/chatfiles"), (long)(cfg.GetValue("ChatFiles:MaxGb", 10.0) * 1024 * 1024 * 1024)));
 builder.Services.AddSingleton<ChatFiles>();
+// модерація Балачок: 🗑, 🔇, 🚫, 🐢, 📌 — лише адмін (ChatModeration.cs)
+builder.Services.AddSingleton<ChatModStore>();
+builder.Services.AddSingleton<ChatModeration>();
 builder.Services.AddSingleton<VoiceChat>();   // Посиденьки: хто де говорить, листи між браузерами (VoiceChat.cs)
 builder.Services.AddSingleton<Hlechyky.Turn.TurnServer>();   // ретранслятор TURN: друзі за «сірим» NAT говорять через цей ПК
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Hlechyky.Turn.TurnServer>());

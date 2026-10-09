@@ -1696,3 +1696,44 @@ body.g-imm .toasts { top: calc(6px + env(safe-area-inset-top)); bottom: auto; }
   body.kbd .tchat.drawer.open { bottom: calc(var(--kb, 0px) + 6px); }
   body.kbd .tchat.drawer.open .tc-body { max-height: min(45dvh, 380px, calc(var(--vvh, 100dvh) - 70px)); }
 }
+
+/* ---- 🛡 модерація Балачок (web/moder.js, ChatModeration.cs) ---- */
+/* рядок «🔇 Олі заборонено писати на годину» — від сайту, без ніка, посередині */
+.msg.modline { text-align: center; color: var(--muted); font-size: .86em; margin: 4px 0; padding: 3px 10px; background: var(--bg2); border-radius: 10px; }
+/* 📌 закріплене над Балачками */
+.pinbar { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 6px 10px; font-size: .88em; background: var(--bg2); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; cursor: pointer; }
+.pinbar[hidden] { display: none; }
+.pinbar:hover { background: var(--panel2); }
+.pinbar .pb-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinbar .pb-t b { color: var(--text); }
+.pinbar .pb-x { padding: 0 6px; font-size: .9em; }
+/* 🔇: поле вводу каже, до коли; 📎 під 🚫 — блідий */
+#chatForm.muted input, .tc-form input:disabled { font-style: italic; }
+#chatForm input:disabled { opacity: .75; cursor: not-allowed; }
+#fileBtn.off { opacity: .4; }
+.rq i { font-style: normal; color: var(--muted); }
+/* картка людини: 🔇 / 🚫 / 🧹 і строк */
+.pc-mod { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 2px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.pc-mod .pm-row, .pc-mod .pm-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pc-mod .pm-pick[hidden] { display: none; }
+.pc-mod .chip, .modtab .chip { cursor: pointer; border: 1px solid var(--line); font-size: .82em; padding: 3px 10px; }
+.pc-mod .chip:hover, .modtab .chip:hover { color: var(--text); }
+.modtab .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+/* вкладка «🛡 Модерація» */
+.modtab .mt-sec { margin-bottom: 20px; }
+.modtab h3 { margin: 0 0 8px; font-size: 1em; }
+.modtab .mt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.modtab .mt-k { flex: 0 0 170px; font-weight: 600; }
+.modtab .mt-now { min-width: 0; }
+.modtab .mt-now.off { color: var(--accent); }
+.modtab .mt-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.modtab .mt-form { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.modtab .mt-form input { flex: 1 1 140px; min-width: 0; }
+.modtab .mt-lim { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.modtab .mt-lim > .muted { flex: 1 1 220px; }
+.modtab .mt-log li { display: block; font-size: .9em; }
+.modtab .mt-log li > .muted { display: inline-block; min-width: 110px; white-space: nowrap; }
+.modtab li.empty { display: block; }
+@media (max-width: 900px) {
+  .modtab .mt-k { flex-basis: 100%; }
+}

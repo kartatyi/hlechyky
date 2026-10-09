@@ -116,6 +116,9 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE chat ADD COLUMN topic TEXT"); } catch (SqliteException) { /* exists */ }
         // файл у репліці (JSON ChatFile): картинка, відео, звук чи будь-що на скачування (ChatFiles.cs)
         try { Exec(c, "ALTER TABLE chat ADD COLUMN file TEXT"); } catch (SqliteException) { /* exists */ }
+        // адмін прибрав репліку (ChatModeration.cs): рядок лишається в базі, але в Балачках його вже нема
+        try { Exec(c, "ALTER TABLE chat ADD COLUMN deleted_at TEXT"); } catch (SqliteException) { /* exists */ }
+        try { Exec(c, "ALTER TABLE chat ADD COLUMN deleted_by TEXT"); } catch (SqliteException) { /* exists */ }
         Exec(c, "CREATE TABLE IF NOT EXISTS migrations(key TEXT PRIMARY KEY, done_at TEXT NOT NULL)");
         Once(c, "chat-hide-glek-2026-09", HideGlekSql);
         Once(c, "chat-topic-2026-09", TopicSql);
@@ -954,8 +957,14 @@ public sealed class Db
     /// <summary>Види рядків, які лежать у базі, але в Балачках не показуються (див. <see cref="HideGlekSql"/>).</summary>
     public static readonly IReadOnlyList<string> HiddenKinds = ["dj-auto", "dj-game"];
 
-    /// <summary>Умова «це репліка в Балачках» (людина, Глек, кубик), а не рядок Журналу чи схований старий шум.</summary>
-    const string Talk = "kind NOT IN ('system', 'dj-auto', 'dj-game')";
+    /// <summary>
+    /// Умова «це репліка в Балачках» (людина, Глек, кубик), а не рядок Журналу, схований старий шум чи те, що прибрав
+    /// адмін (<see cref="DeleteChat"/>).
+    /// </summary>
+    const string Talk = "kind NOT IN ('system', 'dj-auto', 'dj-game') AND deleted_at IS NULL";
+
+    /// <summary>Що показати в цитаті над відповіддю на репліку, яку прибрав адмін.</summary>
+    public const string DeletedQuote = "🗑 видалене повідомлення";
 
     /// <summary>Уривок повідомлення для цитати над відповіддю: весь текст не потрібен, лише щоб упізнати.</summary>
     static string? Quote(string? text)
@@ -973,7 +982,7 @@ public sealed class Db
     {
         using var c = Open();
         using var cmd = Cmd(c, $"""
-            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic, m.file, p.file FROM (
+            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic, m.file, p.file, p.deleted_at FROM (
                 SELECT id, nick, text, kind, created_at, room_id, reply_to, topic, file FROM (
                     SELECT * FROM chat WHERE {Talk} ORDER BY id DESC LIMIT $nc)
                 UNION ALL
@@ -994,7 +1003,7 @@ public sealed class Db
     {
         using var c = Open();
         using var cmd = Cmd(c, $"""
-            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic, m.file, p.file FROM (
+            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic, m.file, p.file, p.deleted_at FROM (
                 SELECT * FROM chat WHERE id < $before AND {(log ? "kind = 'system'" : Talk)} ORDER BY id DESC LIMIT $n
             ) m
             LEFT JOIN chat p ON p.id = m.reply_to
@@ -1011,7 +1020,8 @@ public sealed class Db
             while (r.Read())
                 rows.Add((r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4),
                     r.IsDBNull(5) ? null : r.GetString(5), r.IsDBNull(6) ? null : r.GetInt64(6),
-                    r.IsDBNull(7) ? null : r.GetString(7), r.IsDBNull(8) ? null : QuoteText(r.GetString(8), r.IsDBNull(11) ? null : r.GetString(11)),
+                    r.IsDBNull(7) ? null : r.GetString(7),
+                    r.IsDBNull(8) ? null : !r.IsDBNull(12) ? DeletedQuote : QuoteText(r.GetString(8), r.IsDBNull(11) ? null : r.GetString(11)),
                     r.IsDBNull(9) ? null : r.GetString(9), FileOf(r.IsDBNull(10) ? null : r.GetString(10))));
         }
         var likes = LikesFor(c, rows.Where(x => x.Kind != "system").Select(x => x.Id).ToList());
@@ -1045,9 +1055,9 @@ public sealed class Db
     public List<string>? ToggleChatLike(long chatId, string nick)
     {
         using var c = Open();
-        using (var k = Cmd(c, "SELECT kind FROM chat WHERE id=$id", ("$id", chatId)))
+        using (var k = Cmd(c, $"SELECT kind FROM chat WHERE id=$id AND {Talk}", ("$id", chatId)))
         {
-            if (k.ExecuteScalar() is not string kind || kind == "system" || HiddenKinds.Contains(kind)) return null;
+            if (k.ExecuteScalar() is not string) return null;
         }
         // Лайк прив'язаний до ніка без регістру: «Оля» і «оля» — одна людина, як і скрізь на сайті. Порівнюємо в C#:
         // COLLATE NOCASE у SQLite знає лише латиницю.
@@ -1062,6 +1072,77 @@ public sealed class Db
         }
         tx.Commit();
         return LikesFor(c, [chatId]).TryGetValue(chatId, out var l) ? l : [];
+    }
+
+    // ---- модерація Балачок (ChatModeration.cs) ----
+
+    /// <summary>Одна репліка Балачок так, як її віддає історія (для 📌). null — нема, рядок Журналу чи вже прибрана.</summary>
+    public ChatMessage? ChatById(long id)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+            SELECT m.id, m.nick, m.text, m.kind, m.created_at, m.room_id, m.reply_to, p.nick, p.text, m.topic, m.file, p.file, p.deleted_at
+            FROM (SELECT * FROM chat WHERE id = $id AND {Talk}) m
+            LEFT JOIN chat p ON p.id = m.reply_to
+            """, ("$id", id));
+        return ReadChat(c, cmd).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Прибрати репліку з Балачок: у базі рядок лишається (хто, коли, хто прибрав), але історія, відповіді й ❤ його вже
+    /// не бачать. null — такої нема, це Журнал або її вже прибрали.
+    /// </summary>
+    public DeletedChat? DeleteChat(long id, string by)
+    {
+        using var c = Open();
+        DeletedChat? gone = null;
+        using (var q = Cmd(c, $"SELECT id, nick, text, kind, file FROM chat WHERE id = $id AND {Talk}", ("$id", id)))
+        using (var r = q.ExecuteReader())
+            if (r.Read()) gone = ReadDeleted(r);
+        if (gone is null) return null;
+        Exec(c, "UPDATE chat SET deleted_at = $now, deleted_by = $by WHERE id = $id AND deleted_at IS NULL", ("$now", Now()), ("$by", by), ("$id", id));
+        return gone;
+    }
+
+    /// <summary>
+    /// 🧹 Прибрати все, що людина сама написала в Балачках (репліки, файли, кубики, присвяти, заклики), починаючи з
+    /// <paramref name="since"/> (null — за весь час). Рядки адміна про обмеження, Глека й Падельні не чіпаємо.
+    /// </summary>
+    public List<DeletedChat> DeleteChatBy(string nick, DateTimeOffset? since, string by)
+    {
+        using var c = Open();
+        var gone = new List<DeletedChat>();
+        foreach (var spelling in Spellings(c, "chat", "nick", Auth.NickKey(nick)))
+        {
+            using var q = Cmd(c, $"""
+                SELECT id, nick, text, kind, file FROM chat
+                WHERE nick = $n AND {Talk} AND kind NOT IN ('mod', 'dj', 'padel'){(since is null ? "" : " AND created_at >= $since")}
+                """, ("$n", spelling), ("$since", since?.ToUniversalTime().ToString("o")));
+            using var r = q.ExecuteReader();
+            while (r.Read()) gone.Add(ReadDeleted(r));
+        }
+        if (gone.Count == 0) return gone;
+        var now = Now();
+        using var tx = c.BeginTransaction();
+        foreach (var g in gone)
+        {
+            using var u = Cmd(c, "UPDATE chat SET deleted_at = $now, deleted_by = $by WHERE id = $id AND deleted_at IS NULL", ("$now", now), ("$by", by), ("$id", g.Id));
+            u.Transaction = tx;
+            u.ExecuteNonQuery();
+        }
+        tx.Commit();
+        return [.. gone.OrderBy(g => g.Id)];
+    }
+
+    static DeletedChat ReadDeleted(SqliteDataReader r) =>
+        new(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), FileOf(r.IsDBNull(4) ? null : r.GetString(4)));
+
+    /// <summary>Чи лежить цей файл ще в якійсь живій репліці (той самий файл кидали двічі — копія на диску одна).</summary>
+    public bool ChatFileInUse(string hash)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, "SELECT 1 FROM chat WHERE file LIKE $p AND deleted_at IS NULL LIMIT 1", ("$p", "%\"" + hash + "\"%"));
+        return cmd.ExecuteScalar() is not null;
     }
 
     // ---- «Вгадай мелодію»: що більше не давати ----

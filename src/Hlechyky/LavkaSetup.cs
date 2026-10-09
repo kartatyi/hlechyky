@@ -182,8 +182,11 @@ public static class LavkaSetup
         Reply(lavka.Wear(Auth.Nick(c), Auth.IsUser(c), b.Slot, b.Item));
 
     /// <summary>POST /api/lavka/dedicate { to, phrase } → { ok, message }; to — нік або «*» (усім).</summary>
-    public static async Task<IResult> Dedicate(HttpContext c, DedicateRequest b, Lavka lavka) =>
-        Reply(await lavka.DedicateAsync(Auth.Nick(c), Auth.IsUser(c), b.To, b.Phrase));
+    /// <remarks>Присвята — це слова людини в ефірі й у Балачках: кому адмін заборонив писати, той і не присвячує.</remarks>
+    public static async Task<IResult> Dedicate(HttpContext c, DedicateRequest b, Lavka lavka, ChatModeration? mod = null) =>
+        !Auth.IsAdmin(c) && mod?.WriteRefusal(Auth.Nick(c), Auth.IsUser(c), Auth.Ip(c)) is { } muted
+            ? Reply(new LavkaReply(false, muted))
+            : Reply(await lavka.DedicateAsync(Auth.Nick(c), Auth.IsUser(c), b.To, b.Phrase));
 
     // ---------- прокльон і дзвінок (docs/games/specs/flair.md) ----------
 

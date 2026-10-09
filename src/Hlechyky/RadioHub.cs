@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
 
-public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock, Calls calls, Lavka lavka, VoiceChat voice) : Hub
+public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms rooms, Broadcaster broadcaster, IClock clock, RateGate rates, DjBrain brain, Tournament tournament, ChatFlood flood, Curfew curfew, Games.Economy.PlayClock playClock, Calls calls, Lavka lavka, VoiceChat voice, ChatModeration moderation) : Hub
 {
     static readonly HashSet<string> Emojis = ["🔥", "❤️", "😂", "🕺", "🤘", "😴", "🤮", "🫠"];
     static readonly ConcurrentDictionary<string, DateTime> LastReaction = new();
@@ -27,7 +27,9 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         presence.Set(Context.ConnectionId, nick);
         rooms.NoteOnline(nick);
         if (http is not null && Auth.IsUser(http)) db.TouchAccount(nick);
+        if (http is not null) moderation.NoteIp(nick, Auth.Ip(http));
         await Clients.Caller.SendAsync("chatHistory", db.RecentChat(100, 120));
+        await Clients.Caller.SendAsync("chatMod", moderation.State());   // 📌, 🐢, файли всім і хто обмежений
         // Лобі не має ціни підключення: якщо знімок чомусь не склався, людина все одно заходить слухати.
         List<RoomSummary> lobby;
         try { lobby = rooms.Snapshot(); }
@@ -87,6 +89,8 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         text = Cut(text);
         if (text.Length == 0) return null;
         var nick = Nick();
+        var admin = IsAdmin();
+        if (!admin && Muted(nick) is { } muted) return muted;
         // «.кубик 20» з української розкладки — та сама /кубик. Далі все, і лічильник флуду теж, бачить уже скісну:
         // інакше «.кубик» двічі поспіль упирався б у «Це вже тяпнуто», а /кубик — ні.
         text = ChatCommands.FromDot(text) ?? text;
@@ -107,7 +111,9 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
             if (await Called(r, nick)) return null;
             (chatText, kind) = (r.Text!, r.Kind);
         }
+        if (!admin && moderation.SlowRefusal(nick) is { } slow) return slow;
         if (flood.Check(nick, text, clock.UtcNow) is { } tooMuch) return tooMuch;
+        if (!admin) moderation.NoteSaid(nick);
         // Відповідь має сенс лише для звичайної репліки: кубик чи монетка «у відповідь» — це вже просто кубик.
         await Clients.All.SendAsync("chat", db.AddChat(nick, chatText, kind, replyTo: kind == "chat" ? replyTo : null));
         if (kind == "chat") brain.OnChat(nick, chatText); // Глек вирішить сам, чи це до нього; кубик не його справа
@@ -124,6 +130,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         text = Cut(text);
         if (text.Length == 0) return null;
         var nick = Nick();
+        if (!IsAdmin() && Muted(nick) is { } muted) return muted;
         text = ChatCommands.FromDot(text) ?? text;   // «.кубик» — те саме, що й у Балачках
         var (said, kind) = (text, "chat");
         if (text.StartsWith('/'))
@@ -170,6 +177,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         LastTyping[Context.ConnectionId] = now;
         var nick = Nick();
         if (nick == Auth.Guest) return;   // безіменному «гостю» нема кого показувати
+        if (!IsAdmin() && Muted(nick) is not null) return;   // кому заборонили писати, той і «пише…» не світить
         if (string.IsNullOrEmpty(roomId))
         {
             await Clients.Others.SendAsync("typing", new { nick, room = (string?)null });
@@ -252,6 +260,53 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         if (presence.SetListening(Context.ConnectionId, on)) await Clients.All.SendAsync("state", engine.Snapshot());
     }
 
+    // ---------- Модерація Балачок (ChatModeration.cs) — лише адмін ----------
+
+    /// <summary>🗑 Прибрати репліку з Балачок — в усіх одразу; файл з неї теж стирається.</summary>
+    public Task<ModReply> ModDelete(long id) => Moderate(by => moderation.Delete(by, id));
+
+    /// <summary>📌 Закріпити репліку вгорі Балачок; <paramref name="id"/> 0 — відкріпити.</summary>
+    public Task<ModReply> ModPin(long id) => Moderate(by => moderation.Pin(by, id));
+
+    /// <summary>🔇 (<c>mute</c>) чи 🚫 (<c>media</c>) людині на <paramref name="minutes"/> хвилин; 0 — поки не зняти.</summary>
+    public Task<ModReply> ModLimit(string nick, string kind, int minutes) => Moderate(by => moderation.Limit(by, nick, kind, minutes));
+
+    /// <summary>Зняти з людини 🔇 чи 🚫 раніше строку.</summary>
+    public Task<ModReply> ModLift(string nick, string kind) => Moderate(by => moderation.Lift(by, nick, kind));
+
+    /// <summary>🧹 Прибрати все, що людина написала за <paramref name="hours"/> годин (0 — за весь час).</summary>
+    public Task<ModReply> ModClean(string nick, int hours) => Moderate(by => moderation.Clean(by, nick, hours));
+
+    /// <summary>🚫 Файли всім: хвилини (0 — поки не ввімкнути, -1 — увімкнути назад).</summary>
+    public Task<ModReply> ModMediaAll(int minutes) => Moderate(by => moderation.MediaAll(by, minutes));
+
+    /// <summary>🐢 Повільний режим: секунд між репліками (0 — вимкнути) на стільки хвилин (0 — поки не вимкнути).</summary>
+    public Task<ModReply> ModSlow(int seconds, int minutes) => Moderate(by => moderation.Slow(by, seconds, minutes));
+
+    /// <summary>Для вкладки «🛡 Модерація»: стан, обмеження з адресами й журнал. null — не адмін.</summary>
+    public ChatModOverview? ModOverview() => IsAdmin() ? moderation.Overview() : null;
+
+    async Task<ModReply> Moderate(Func<string, ModOutcome> act)
+    {
+        if (!IsAdmin()) return new(false, ChatModeration.NotAdmin);
+        if (!Allow(input: false)) return new(false, Games.Say.TooFast);
+        var r = act(Nick());
+        if (!r.Ok) return new(false, r.Message);
+        if (r.Deleted is { Count: > 0 } ids) await Clients.All.SendAsync("chatDeleted", ids);
+        if (r.Line is { } line) await Clients.All.SendAsync("chat", line);
+        if (r.Changed) await Clients.All.SendAsync("chatMod", moderation.State());
+        return new(true, r.Message);
+    }
+
+    /// <summary>Чи заборонив адмін цьому ніку писати (текст відмови) — гостя ловимо й за адресою.</summary>
+    string? Muted(string nick)
+    {
+        var http = Context.GetHttpContext();
+        return moderation.WriteRefusal(nick, http is not null && Auth.IsUser(http), http is null ? null : Auth.Ip(http));
+    }
+
+    bool IsAdmin() => Context.GetHttpContext() is { } http && Auth.IsAdmin(http);
+
     /// <summary>Гість перейменовується як хоче (приставка лишається); в акаунта нік один, і зміна — це вже інший вхід.</summary>
     public async Task SetNick(string nick)
     {
@@ -260,6 +315,7 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
         var old = presence.Get(Context.ConnectionId);
         if (old == fresh) return;
         presence.Set(Context.ConnectionId, fresh);
+        if (http is not null) moderation.NoteIp(fresh, Auth.Ip(http));
         rooms.NoteOnline(Nick());
         await Clients.All.SendAsync("state", engine.Snapshot());
         // Свідома зміна ніка — це те саме, що встати з-за столу: grace тут ні до чого.
