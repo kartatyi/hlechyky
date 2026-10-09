@@ -282,6 +282,9 @@
         if (r && r.data && r.data.balance != null) { data.balance = r.data.balance; paintWallet(r.data.balance); }
         pick = null;
         await reload();
+        // Ставку бахнули з клавіатури (Enter у полі суми) — фокус лишився в полі, і reload відклав перемальовку до blur.
+        // Своя ставка — не чужа подія хаба: показуємо новий баланс і «мої ставки» одразу.
+        paint();
       } catch (err) {
         const d = err.data && err.data.data;
         if (d && d.odds != null) {
