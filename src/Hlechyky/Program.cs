@@ -71,6 +71,7 @@ builder.Services.AddSingleton<TrackCache>();
 builder.Services.AddSingleton<SpareList>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SpareList>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TrackCache>());
+builder.Services.AddHostedService<LiquidsoapGuard>();   // завислий годинник ефіру → start.ps1 radio за ~20 с, а не за 2–3 хв
 builder.Services.AddSingleton<DjBrain>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<DjBrain>());
 // Підстраховка автодеплою: підбирає зелену збірку, вебхук про яку не дійшов (Deploy.cs)
