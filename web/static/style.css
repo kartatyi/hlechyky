@@ -1098,6 +1098,175 @@ kbd {
   .stp { grid-template-columns: 1.4em 20px minmax(60px, 7em) 1fr auto; }
 }
 
+/* ---- «📊 Хто скільки»: огляд, усі ігри, таблиці, виконавці (Litopys.cs) ---- */
+.stnew { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: .68em; font-weight: 700; vertical-align: 2px; }
+.stcol { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.who-t { color: hsl(var(--h) 72% 76%); font-weight: 600; }
+
+/* ✨ огляд */
+.ov { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ov-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.ov-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.ov-tile { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px; border-radius: 12px; background: var(--panel2); overflow: hidden; }
+.ov-tile > b { padding-right: 1.4em; font-family: var(--display); font-size: 1.45em; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-tl { color: var(--muted); font-size: .8em; line-height: 1.25; }
+.ov-ti { position: absolute; top: 8px; right: 10px; font-size: 1.15em; opacity: .85; }
+.ov-spark { display: flex; align-items: flex-end; gap: 2px; height: 26px; margin-top: 6px; }
+.ov-spark i { flex: 1; min-width: 2px; border-radius: 2px 2px 0 0; background: var(--accent); opacity: .7; }
+.ov-spark i:hover { opacity: 1; }
+.ov-spark i.z { background: var(--line); opacity: .6; }
+
+.ov-tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.ovt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--panel2); min-width: 0; }
+.ovt.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.ovt.roast { background: linear-gradient(135deg, rgba(229, 115, 115, .13), rgba(229, 115, 115, .04)), var(--panel2); }
+.ovt-ic { font-size: 1.7em; line-height: 1.1; flex: none; }
+.ovt-b { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ovt-name { font-family: var(--display); font-weight: 700; font-size: .98em; }
+.ovt-you { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: .72em; font-weight: 700; vertical-align: 1px; }
+.ovt-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.ovt-who .nk { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.ovt-who .who-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.ovt-val { color: var(--accent); font-variant-numeric: tabular-nums; }
+.ovt.roast .ovt-val { color: #f0a0a0; }
+.ovt-what, .ovt-next { color: var(--muted); font-size: .8em; line-height: 1.3; }
+.ovt-next .who-n { font-weight: 600; }
+.ov-roast-h { margin: 8px 0 0; font-family: var(--display); font-size: .98em; font-weight: 600; }
+
+.ov-rivals { display: flex; flex-direction: column; gap: 6px; }
+.ovr { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 4px 10px; padding: 8px 10px; border-radius: 10px; background: var(--panel2); }
+.ovr.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.ovr-a, .ovr-b { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.ovr-b { justify-content: flex-end; }
+.ovr-a .who-n, .ovr-b .who-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ovr-s { font-family: var(--display); font-size: 1.2em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ovr-bar { grid-column: 1 / -1; display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--bg2); }
+.ovr-bar i { display: block; height: 100%; background: hsl(var(--h) 60% 55%); }
+.ovr-bar i + i { box-shadow: -1px 0 0 var(--panel2); }
+.ovr-g { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); font-size: .78em; }
+.ovr-g .gemo { margin-right: 3px; }
+.ovr-g .gico, .gla-t .gico, .fun-f .gico { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; }
+
+.heat { display: grid; grid-template-columns: 1.8em repeat(24, minmax(0, 1fr)); gap: 2px; font-size: .72em; }
+.heat .hh { color: var(--muted); text-align: left; font-variant-numeric: tabular-nums; }
+.heat .hd { color: var(--muted); align-self: center; }
+.heat i { display: block; aspect-ratio: 1; border-radius: 3px; background: hsl(44 89% 61% / var(--a)); min-height: 8px; }
+.heat i.z { background: var(--bg2); }
+.heat i:hover { outline: 1px solid var(--text); }
+.heat-cap { font-size: .88em; color: var(--muted); }
+.heat-cap b { color: var(--text); font-weight: 600; }
+
+.pearl { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.pearl blockquote { position: relative; margin: 0; padding: 12px 14px 12px 40px; border-radius: 12px; background: var(--panel2); font-size: 1.05em; line-height: 1.4; overflow-wrap: anywhere; }
+.pearl blockquote::before { content: '“'; position: absolute; left: 10px; top: -4px; font-family: Georgia, serif; font-size: 2.6em; color: var(--accent); opacity: .7; }
+.pearl blockquote p { margin: 0; white-space: pre-wrap; }
+.pearl-img { display: block; max-width: 100%; max-height: 260px; margin-top: 6px; border-radius: 8px; }
+.pearl figcaption { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.pearl figcaption .who-n { font-weight: 600; }
+.pearl-l { margin-left: auto; color: var(--danger); }
+
+.ov-rare { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.ovra { display: flex; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--panel2); min-width: 0; }
+.ovra .gicon { font-size: 1.5em; line-height: 1.1; }
+.ovra-b { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ovra-who { font-size: .82em; }
+
+/* 🎮 усі ігри */
+.glall { display: flex; flex-direction: column; gap: 4px; }
+.gla { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; width: 100%; padding: 7px 10px; border-radius: 10px; border: 1px solid transparent; background: var(--panel2); color: var(--text); text-align: left; font: inherit; font-size: .9em; cursor: pointer; }
+.gla:hover { border-color: var(--line); }
+.gla.on { border-color: var(--accent2); background: var(--panel3); }
+.gla-t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gla-n { color: var(--muted); font-size: .85em; white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+.gla-c { grid-column: 1 / -1; font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gla-bar { grid-column: 1 / -1; height: 3px; border-radius: 999px; background: var(--bg2); overflow: hidden; }
+.gla-bar i { display: block; height: 100%; background: var(--clay); }
+.glall-box { max-height: calc(100vh - 200px); max-height: calc(100dvh - 200px); overflow: auto; }
+.glbnote:empty { display: none; }
+.glseason:empty { display: none; }
+.glseason h4 { margin: 6px 0; font-family: var(--display); font-weight: 600; }
+
+/* таблиці гри — справжня <table>: стовпці рівні в кожному рядку */
+.lbt-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+.lbt { width: 100%; border-collapse: separate; border-spacing: 0 3px; font-size: .92em; }
+.lbt th { color: var(--muted); font-weight: 500; font-size: .8em; text-transform: uppercase; letter-spacing: .6px; padding: 0 10px 2px; text-align: right; white-space: nowrap; }
+.lbt td { padding: 6px 10px; background: var(--panel2); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lbt td:first-child { border-radius: 8px 0 0 8px; }
+.lbt td:last-child { border-radius: 0 8px 8px 0; }
+.lbt .n { width: 2.2em; text-align: center; color: var(--muted); padding-left: 6px; padding-right: 6px; }
+.lbt tr.top1 .n, .lbt tr.top2 .n, .lbt tr.top3 .n { font-size: 1.15em; }
+.lbt .who { text-align: left; width: 100%; max-width: 0; }
+.lbt td.who .glb-who { display: flex; max-width: 100%; }
+.lbt td.main { color: var(--accent); font-weight: 700; }
+.lbt tr.top1 td { background: linear-gradient(90deg, rgba(244, 197, 66, .16), rgba(244, 197, 66, .03)), var(--panel2); }
+.lbt tr.me td { box-shadow: 0 1px 0 var(--accent2) inset, 0 -1px 0 var(--accent2) inset; }
+.lbt tr.me td:first-child { box-shadow: 1px 0 0 var(--accent2) inset, 0 1px 0 var(--accent2) inset, 0 -1px 0 var(--accent2) inset; }
+.lbt tr.me td:last-child { box-shadow: -1px 0 0 var(--accent2) inset, 0 1px 0 var(--accent2) inset, 0 -1px 0 var(--accent2) inset; }
+.lbt .pct { min-width: 7.5em; }
+.lbt-pct { position: relative; display: block; min-width: 6.5em; height: 1.35em; border-radius: 6px; background: var(--bg2); overflow: hidden; text-align: center; }
+.lbt-pct i { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(123, 211, 137, .35); }
+.lbt-pct span { position: relative; font-size: .88em; line-height: 1.35rem; }
+.lbt.season .t { text-align: left; white-space: normal; font-weight: 600; vertical-align: top; width: 1%; min-width: 9em; }
+.lbt.season tr:not(.first) td.who { border-radius: 0; }
+
+/* 🎤 виконавці */
+.starts { display: flex; flex-direction: column; gap: 4px; }
+.sta { display: grid; grid-template-columns: 1.6em minmax(0, 1fr) minmax(40px, 30%) 2.6em; gap: 8px; align-items: center; padding: 4px 6px; font-size: .93em; }
+.sta .n { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.sta-m { display: flex; flex-direction: column; min-width: 0; }
+.sta-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sta-fans { font-size: .8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sta > b { color: var(--accent); font-variant-numeric: tabular-nums; text-align: right; }
+/* число в кінці рядка — сталої ширини, щоб смужки починались і кінчались рівно */
+.stp { grid-template-columns: 1.6em 20px minmax(70px, 9em) 1fr 3.4em; }
+.stp > b { text-align: right; white-space: nowrap; }
+.stpeople.long .stp { grid-template-columns: 1.6em 20px minmax(70px, 9em) 1fr 6.6em; }
+.pearl-a { display: inline-block; max-width: 100%; }
+
+/* ✨ цікавинки в профілі */
+.fun-titles { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fun-titles .chip { color: var(--text); font-size: .82em; padding: 3px 9px; }
+.chip.roast { background: rgba(229, 115, 115, .16); }
+.chip.rare { color: var(--accent); }
+.fun-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.fun-f { position: relative; display: flex; flex-direction: column; gap: 1px; padding: 8px 10px 8px 38px; border-radius: 10px; background: var(--bg2); min-width: 0; }
+.fun-i { position: absolute; left: 10px; top: 9px; font-size: 1.2em; }
+.fun-l { color: var(--muted); font-size: .78em; }
+.fun-f > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fun-s { color: var(--muted); font-size: .78em; }
+.fun-when { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1.2fr); gap: 16px; }
+.fun-bars { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 2px; height: 70px; align-items: end; }
+.fun-bars .fb { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+.fun-bars .fb i { display: block; border-radius: 3px 3px 0 0; background: var(--panel3); }
+.fun-bars .fb.top i { background: var(--accent); }
+.fun-bars .fb em { font-style: normal; color: var(--muted); font-size: .68em; height: 1.3em; line-height: 1.3em; text-align: left; white-space: nowrap; }
+.fun-rivals { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+.fun-r { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 6px 10px; border-radius: 10px; background: var(--bg2); }
+.fun-r .who-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.fun-r b { font-variant-numeric: tabular-nums; }
+.fun-r .ovr-bar { height: 4px; }
+.fun-rare { display: flex; flex-wrap: wrap; gap: 6px; }
+.fun-rare .chip { color: var(--text); font-size: .82em; padding: 3px 9px; }
+
+@media (max-width: 1100px) { .ov-two { grid-template-columns: 1fr; } .glall-box { max-height: none; } .glsel { order: -1; } }
+@media (max-width: 640px) {
+  .ov-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ov-tile > b { font-size: 1.25em; }
+  .ov-tgrid, .ov-rare { grid-template-columns: 1fr; }
+  .heat { font-size: .62em; gap: 1px; grid-template-columns: 1.7em repeat(24, minmax(0, 1fr)); }
+  .heat i { border-radius: 2px; min-height: 6px; }
+  .lbt .opt { display: none; }
+  .stp { grid-template-columns: 1.4em 20px minmax(60px, 7em) 1fr 3.2em; }
+  .stpeople.long .stp { grid-template-columns: 1.4em 20px minmax(60px, 7em) 1fr 6.4em; }
+  .lbt td, .lbt th { padding-left: 7px; padding-right: 7px; }
+  .lbt .pct, .lbt-pct { min-width: 4.4em; }
+  .lbt .who { min-width: 7.5em; }
+  .sttabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .sttabs button { flex: none; padding: 6px 9px; font-size: .94em; }
+  .fun-when { grid-template-columns: 1fr; }
+  .fun-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* ---- лише дивишся (ще не назвався): черепків ще нема, тож і «🏺 —» у шапці ні до чого ---- */
 body.preview header .mechip .wallet { display: none; }
 /* У «Тиші» кнопок нема — реакції стоять першими, і розділювач зліва від них зайвий. */
