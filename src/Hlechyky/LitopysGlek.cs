@@ -20,7 +20,7 @@ namespace Hlechyky;
 /// </summary>
 public sealed partial class Litopys
 {
-    /// <summary>Ігри, де Дядько Глек — ведучий: веде Мафію, читає Дотепи й Байкарів, коментує «Скільки?», роздає ролі в Шпигуні.</summary>
+    /// <summary>Ігри, де Дядько Глек — ведучий: веде Мафію, читає Додепи й Байкарів, коментує «Скільки?», роздає ролі в Шпигуні.</summary>
     public static readonly string[] GlekHosts = ["mafia", "dotepy", "bluff", "skilky", "spy"];
 
     /// <summary>Скільки треків має замовити людина, щоб потрапити в «👅 Чий смак кращий»: на трьох треках ❤ — то лотерея.</summary>

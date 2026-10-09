@@ -163,7 +163,7 @@
     const hosted = t.hosted.length
       ? '<div class="gk-chips">' + t.hosted.map((x) => '<span class="chip gk-chip">' + k.iconOf(x.game) + ' ' + esc(x.title || k.titleOf(x.game))
         + ' · <b>' + cnt(x.rounds, 'партія', 'партії', 'партій') + '</b></span>').join('') + '</div>'
-      : '<div class="muted small">' + cap(P) + ' я нічого не вів — ні Мафії, ні Дотепів. Кличте, я голосний.</div>';
+      : '<div class="muted small">' + cap(P) + ' я нічого не вів — ні Мафії, ні Додепів. Кличте, я голосний.</div>';
     return box('🔥 Прожарки й балачки', P,
       '<div class="ov-tiles">'
       + tile('🔥', num(t.roasts), plural(t.roasts, 'прожарку написав', 'прожарки написав', 'прожарок написав') + ' · в ефір — ' + num(t.aired))
