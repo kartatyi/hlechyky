@@ -1,0 +1,141 @@
+/* Розбиті глеки — сцена автомата: стелаж, табличка каскаду, дощечка множника, тріск, політ писанок, бонус.
+   Палітра — змінні --sc-* з slot-cascade-art.css. Спокій — без анімацій. */
+.slot-slot-cascade .sc-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.slot-slot-cascade .sc-land { gap: 20px; }
+.slot-slot-cascade .sc-port { flex-direction: column; gap: 8px; }
+
+/* ----- стелаж ----- */
+.slot-slot-cascade .sc-frame-box { position: relative; flex: none; }
+.slot-slot-cascade .sc-frame-in { position: absolute; left: 0; top: 0; width: 640px; height: 560px; transform-origin: 0 0; }
+.slot-slot-cascade .sc-frame-in.sc-frame { padding: 0; }
+.slot-slot-cascade .sc-frame-bg, .slot-slot-cascade .sc-frame-bg > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.slot-slot-cascade .sc-field { position: absolute; left: 20px; top: 34px; width: 600px; height: 500px; }
+.slot-slot-cascade .sc-field .sk-grid { overflow: visible; }
+.slot-slot-cascade .sc-field .sk-cell { overflow: visible; }
+.slot-slot-cascade .sc-field .sk-cell > svg { width: 92%; height: 92%; margin-top: -6%; }
+.slot-slot-cascade .sc-field .sk-col { border-radius: 4px; }
+.slot-slot-cascade .sc-tease .sc-frame-box { animation: sc-shelf-tease .55s ease-in-out infinite alternate; }
+@keyframes sc-shelf-tease { from { transform: none; } to { transform: translateY(-2px) rotate(-.25deg); } }
+
+/* ----- бокові колонки (широко) ----- */
+.slot-slot-cascade .sc-side { width: 270px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.slot-slot-cascade .sc-logo { width: 100%; }
+.slot-slot-cascade .sc-logo > svg { width: 100%; height: auto; display: block; }
+.slot-slot-cascade .sc-port .sc-logo { width: 300px; margin-bottom: -4px; }
+.slot-slot-cascade .sc-row { display: flex; align-items: center; justify-content: center; gap: 12px; }
+
+.slot-slot-cascade .sc-hints { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.slot-slot-cascade .sc-hint { display: flex; align-items: center; gap: 10px; padding: 7px 12px; min-height: 44px; box-sizing: border-box;
+  border-radius: 14px; background: rgba(42, 18, 10, .62); border: 2px solid rgba(232, 180, 122, .45); color: var(--sc-cream);
+  font: 600 14px/1.25 'Onest', system-ui, sans-serif; }
+.slot-slot-cascade .sc-hint b { color: var(--sc-text); }
+.slot-slot-cascade .sc-hint-n { flex: none; width: 40px; text-align: center; font: 900 24px/1 'Onest', sans-serif; color: var(--sc-text);
+  -webkit-text-stroke: 1.5px var(--sc-ink); paint-order: stroke fill; }
+.slot-slot-cascade .sc-hint-i { position: relative; flex: none; width: 40px; height: 40px; }
+.slot-slot-cascade .sc-hint-i > svg { width: 100%; height: 100%; display: block; }
+
+/* ----- дощечка множника ----- */
+.slot-slot-cascade .sc-mult { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 260px; }
+.slot-slot-cascade .sc-port .sc-mult { width: 190px; }
+.slot-slot-cascade .sc-counter-box { width: 100%; transition: filter .3s; }
+.slot-slot-cascade .sc-counter-ph { position: absolute; inset: 0; border-radius: 16px; border: 3px solid var(--sc-ink);
+  background: linear-gradient(180deg, var(--sc-wood-l), var(--sc-wood) 50%, var(--sc-wood-d)); }
+.slot-slot-cascade .sc-counter-text { font-size: 44px; opacity: .55; transition: opacity .3s; font-variant-numeric: tabular-nums; }
+.slot-slot-cascade .sc-port .sc-counter-text { font-size: 32px; }
+.slot-slot-cascade .sc-mult.on .sc-counter-text { opacity: 1; }
+.slot-slot-cascade .sc-mult.gold .sc-counter-text { color: #fff6c0; text-shadow: 0 0 14px rgba(255, 210, 80, .9); }
+.slot-slot-cascade .sc-mult.bump .sc-counter-box { animation: sc-bump .42s cubic-bezier(.3, 1.8, .5, 1); }
+.slot-slot-cascade .sc-mult-l { font: 700 13px/1 'Onest', sans-serif; color: var(--sc-cream); padding: 4px 10px 5px; border-radius: 10px; background: rgba(42, 18, 10, .7); }
+.slot-slot-cascade .sc-l-fs { display: none; color: var(--sc-text); }
+.slot-slot-cascade.sk-infs .sc-l-fs { display: inline; }
+.slot-slot-cascade.sk-infs .sc-l-base { display: none; }
+@keyframes sc-bump { 0% { transform: scale(1); } 35% { transform: scale(1.18) rotate(-2deg); } 100% { transform: scale(1); } }
+
+/* ----- табличка «каскад ×N» ----- */
+.slot-slot-cascade .sc-casc { display: flex; align-items: baseline; gap: 10px; padding: 8px 20px 10px; border-radius: 16px;
+  background: linear-gradient(180deg, var(--sc-wood-l), var(--sc-wood) 45%, var(--sc-wood-d)); border: 3px solid var(--sc-ink);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4), inset 0 -4px 0 rgba(0, 0, 0, .25), 0 6px 14px rgba(0, 0, 0, .35);
+  color: var(--sc-cream); font: 800 18px/1 'Onest', system-ui, sans-serif; transition: background .3s, box-shadow .3s; }
+.slot-slot-cascade .sc-casc:not(.on) b { opacity: .45; }
+.slot-slot-cascade .sc-casc small { font: inherit; text-shadow: 0 1px 0 var(--sc-ink); }
+.slot-slot-cascade .sc-casc b { font: 900 38px/1 'Onest', sans-serif; color: var(--sc-text); -webkit-text-stroke: 2px var(--sc-ink); paint-order: stroke fill; min-width: 54px; }
+.slot-slot-cascade .sc-port .sc-casc { padding: 6px 12px 8px; font-size: 15px; }
+.slot-slot-cascade .sc-port .sc-casc b { font-size: 30px; min-width: 40px; }
+.slot-slot-cascade .sc-casc.hot { background: linear-gradient(180deg, #ffd27a, #e07a2a 45%, #8a2e10);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .5), 0 0 22px rgba(255, 150, 40, .7), 0 6px 14px rgba(0, 0, 0, .35); }
+.slot-slot-cascade .sc-casc.pop b { display: inline-block; animation: sc-bump .4s cubic-bezier(.3, 1.8, .5, 1); }
+
+/* ----- тріск ----- */
+.slot-slot-cascade .sk-cell.sc-cracking > svg { animation: sc-shake .32s linear forwards; }
+@keyframes sc-shake {
+  0% { transform: none; } 15% { transform: translate(-3px, 1px) rotate(-4deg); } 30% { transform: translate(3px, -1px) rotate(4deg); }
+  45% { transform: translate(-2px, 0) rotate(-3deg); } 60% { transform: translate(2px, 1px) rotate(2deg); } 100% { transform: scale(1.1); }
+}
+.slot-slot-cascade .sc-crackl { position: absolute; inset: 6%; pointer-events: none; z-index: 2; }
+.slot-slot-cascade .sc-crackl > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.slot-slot-cascade .sc-crackl path { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 100;
+  animation: sc-crk .24s ease-out forwards; }
+.slot-slot-cascade .sc-crk-o path { stroke: #fff6d8; stroke-width: 6; opacity: .8; }
+.slot-slot-cascade .sc-crk path { stroke: #2a1206; stroke-width: 3; }
+@keyframes sc-crk { to { stroke-dashoffset: 0; } }
+.slot-slot-cascade .sk-cell.sc-gone > * { visibility: hidden; }
+.slot-slot-cascade .sk-cell.sc-gone::after { content: ''; position: absolute; left: 15%; top: 15%; width: 70%; height: 70%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 246, 216, .95), rgba(255, 210, 120, .4) 45%, transparent 70%); animation: sc-puff .26s ease-out forwards; }
+@keyframes sc-puff { from { transform: scale(.5); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+
+/* приземлення з пружинкою */
+.slot-slot-cascade .sk-cell.sc-land > svg { animation: sc-land .34s cubic-bezier(.3, .6, .4, 1); transform-origin: 50% 100%; }
+@keyframes sc-land { 0% { transform: scale(1.08, .82); } 45% { transform: scale(.95, 1.07); } 75% { transform: scale(1.02, .98); } 100% { transform: none; } }
+
+/* ----- писанки: політ до дощечки ----- */
+.slot-slot-cascade .sk-cell.sc-spent > svg { opacity: .28; transition: opacity .25s; }
+.slot-slot-cascade .sc-fly { position: absolute; z-index: 25; pointer-events: none; will-change: transform; }
+.slot-slot-cascade .sc-fly > div, .slot-slot-cascade .sc-fly svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.slot-slot-cascade .sc-xpop { position: absolute; z-index: 26; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap;
+  font: 900 64px/1 'Onest', system-ui, sans-serif; color: #fff; -webkit-text-stroke: 3px var(--sc-ink); paint-order: stroke fill;
+  text-shadow: 0 5px 0 #6b2a0c, 0 0 30px rgba(255, 200, 80, .7); animation: sc-xpop .45s cubic-bezier(.3, 1.7, .5, 1); }
+.slot-slot-cascade .sc-xpop i { font-style: normal; color: var(--sc-text); font-size: .8em; }
+.slot-slot-cascade .sc-xpop .sc-xp-m { color: var(--sc-text); }
+.slot-slot-cascade .sc-xpop.gold .sc-xp-m { color: #fff3a0; text-shadow: 0 0 24px #ffd23a; }
+.slot-slot-cascade .sc-xpop.done { animation: sc-xpop .35s cubic-bezier(.3, 1.7, .5, 1); }
+.slot-slot-cascade .sc-xpop.out { opacity: 0; transition: opacity .35s; }
+@keyframes sc-xpop { from { transform: translate(-50%, -50%) scale(.3); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+/* ----- горна, заноси ----- */
+.slot-slot-cascade .sc-hot .sc-frame-box::after { content: ''; position: absolute; inset: -10px; border-radius: 26px; pointer-events: none;
+  box-shadow: 0 0 0 4px rgba(255, 170, 60, .8), 0 0 50px 14px rgba(255, 120, 30, .55); animation: sc-hot .5s ease-in-out infinite alternate; }
+@keyframes sc-hot { from { opacity: .55; } to { opacity: 1; } }
+
+/* ----- бонус: заставка й підсумок ----- */
+.slot-slot-cascade .sk-ov.sc-bin, .slot-slot-cascade .sk-ov.sc-bout { background: radial-gradient(circle at 50% 45%, rgba(120, 40, 8, .55), rgba(10, 4, 2, .82) 70%); }
+.slot-slot-cascade .sc-bin-glow { position: absolute; left: 50%; top: 45%; width: 720px; height: 720px; margin: -360px 0 0 -360px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 190, 80, .22) 0 10deg, transparent 10deg 24deg);
+  -webkit-mask: radial-gradient(circle, #000 20%, transparent 68%); mask: radial-gradient(circle, #000 20%, transparent 68%);
+  animation: sc-rays 14s linear infinite; }
+@keyframes sc-rays { to { transform: rotate(360deg); } }
+.slot-slot-cascade .sc-bin-card { position: relative; text-align: center; padding: 26px 56px 30px; border-radius: 30px; max-width: 86%;
+  background: radial-gradient(circle at 50% 0%, #7a3414, #3a160a 70%); border: 3px solid #ffb347;
+  box-shadow: 0 0 0 6px rgba(42, 18, 10, .7), 0 22px 60px rgba(0, 0, 0, .6), 0 0 80px rgba(255, 140, 40, .45);
+  transform: scale(.4) rotate(-6deg); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1); }
+.slot-slot-cascade .sk-ov.in .sc-bin-card { transform: none; }
+.slot-slot-cascade .sk-ov.out .sc-bin-card { transform: scale(1.15); transition-duration: .3s; }
+.slot-slot-cascade .sc-bin-furn { position: relative; width: 150px; height: 150px; margin: -96px auto 4px; }
+.slot-slot-cascade .sc-bin-furn > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.slot-slot-cascade .sc-bin-t { font: 900 34px/1.1 'Onest', system-ui, sans-serif; color: var(--sc-text); -webkit-text-stroke: 2px var(--sc-ink); paint-order: stroke fill; }
+.slot-slot-cascade .sc-bin-n { font: 900 120px/1.05 'Onest', system-ui, sans-serif; color: #fff; -webkit-text-stroke: 4px #6b2a0c; paint-order: stroke fill;
+  text-shadow: 0 7px 0 #3a1206, 0 0 40px rgba(255, 170, 60, .8); font-variant-numeric: tabular-nums; }
+.slot-slot-cascade .sc-bin-n.pop { animation: sc-bump .5s cubic-bezier(.3, 1.8, .5, 1); }
+.slot-slot-cascade .sc-bin-s { font: 800 24px/1 'Onest', sans-serif; color: var(--sc-cream); }
+.slot-slot-cascade .sc-bin-p { margin-top: 14px; font: 600 16px/1.3 'Onest', sans-serif; color: #ffd9a8; }
+.slot-slot-cascade .sc-bin-hint { margin-top: 12px; font: 600 13px/1 'Onest', sans-serif; color: #ffd9a8; opacity: .7; }
+.slot-slot-cascade.sk-port .sc-bin-card { padding: 20px 22px 24px; }
+.slot-slot-cascade.sk-port .sc-bin-t { font-size: 28px; }
+.slot-slot-cascade.sk-port .sc-bin-n { font-size: 96px; }
+
+/* вільні оберти: стелаж теплішає */
+.slot-slot-cascade.sk-infs .sc-frame-box::before { content: ''; position: absolute; inset: -6px; border-radius: 24px; pointer-events: none;
+  box-shadow: 0 0 36px 8px rgba(255, 130, 40, .35); }
+
+/* очікування: горна на полиці жевріють */
+.slot-slot-cascade .sk-cell.sc-wait::before { content: ''; position: absolute; inset: -8%; z-index: -1; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 170, 60, .75), rgba(255, 110, 30, .3) 45%, transparent 70%); animation: sc-hot .45s ease-in-out infinite alternate; }
