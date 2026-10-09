@@ -18,6 +18,23 @@ public sealed class SlotsOptions
     public double JackpotPct { get; set; } = 1;
     /// <summary>З чого Скарбничка починає (і після виграшу).</summary>
     public int JackpotSeed { get; set; } = 10000;
+    /// <summary>
+    /// «Має впасти до»: оберт, на якому сума досягла б цієї межі, зриває Скарбничку гарантовано (0 — межі нема).
+    /// Частина кожного внеску тоді відкладається на наступний старт (<see cref="SeedShare"/>), щоб у середньому
+    /// виплачувалось рівно внесене (specs/slots.md §4).
+    /// </summary>
+    public int JackpotMustHit { get; set; } = 100_000;
+
+    /// <summary>Межа діє: задана й більша за початкову суму.</summary>
+    public bool MustHitOn => JackpotMustHit > 0 && JackpotMustHit > JackpotSeed && JackpotSeed > 0;
+
+    /// <summary>
+    /// Яка частка внеску йде не в суму, а в запас на наступний старт: f = 1 / (1 + ln(межа ÷ старт)). Чому так: при шансі
+    /// p = внесок ÷ сума сума на мить падіння розподілена як P(не впала до x) = старт ÷ x, тож у середньому Скарбничка
+    /// падає на старт × (1 + ln(межа ÷ старт)) (з межею — 33 026 при 10 000 / 100 000); запас за цикл (f × усі внески)
+    /// мусить покрити старт: f × E[виплата] = старт. Без межі — 0 (старт дає дім, як і було).
+    /// </summary>
+    public double SeedShare => MustHitOn ? 1 / (1 + Math.Log((double)JackpotMustHit / JackpotSeed)) : 0;
     /// <summary>Виграш Скарбнички — ще й в ефір голосом Глека (подією живої реклами).</summary>
     public bool OnAir { get; set; } = true;
 
@@ -75,6 +92,8 @@ public sealed class SlotsBank : BackgroundService
     sealed class Saved
     {
         public double Pot { get; set; }
+        /// <summary>Відкладене з внесків на наступні старти мінус уже взяте на них (може бути й від'ємним — тоді доклав дім).</summary>
+        public double Reserve { get; set; }
         public Dictionary<string, SlotPending> Pending { get; set; } = new(StringComparer.Ordinal);
     }
 
@@ -126,22 +145,35 @@ public sealed class SlotsBank : BackgroundService
 
     // ---------- Скарбничка ----------
 
+    /// <summary>Відкладено на наступні старти (див. <see cref="SlotsOptions.SeedShare"/>).</summary>
+    public double Reserve { get { lock (_gate) return _s.Reserve; } }
+
     /// <summary>
-    /// Внесок ставки й таємничий шанс: p = внесок ÷ сума (після внеску). Виграв — сума обнуляється до початкової
-    /// й одразу пишеться в сховище (разом із журналом це робить <see cref="Open"/>), повертається виграш; ні — 0.
+    /// Внесок ставки й таємничий шанс: p = внесок у суму ÷ сума (після внеску). З межею (<see cref="SlotsOptions.JackpotMustHit"/>)
+    /// частка <see cref="SlotsOptions.SeedShare"/> внеску йде в запас на наступний старт, а оберт, на якому сума дійшла б
+    /// до межі, зриває Скарбничку гарантовано (той, хто доклав останній внесок). Виграв — сума обнуляється до початкової
+    /// (надлишок понад межу переходить у нову суму) й одразу пишеться в сховище (разом із журналом це робить
+    /// <see cref="Open"/>), повертається виграш; ні — 0.
     /// </summary>
     public int Feed(int bet, ISlotRng rng)
     {
         lock (_gate)
         {
-            var add = bet * Math.Max(0, O.JackpotPct) / 100.0;
-            if (add <= 0) return 0;
+            var o = O;
+            var put = bet * Math.Max(0, o.JackpotPct) / 100.0;
+            if (put <= 0) return 0;
+            var share = o.SeedShare;
+            var add = put * (1 - share);
+            _s.Reserve += put * share;
             _s.Pot += add;
             _dirty = true;
-            var p = add / _s.Pot;
-            if (rng.NextDouble() >= p) return 0;
-            var won = (int)Math.Floor(_s.Pot);
-            _s.Pot = Math.Max(0, O.JackpotSeed);
+            var must = o.MustHitOn && _s.Pot >= o.JackpotMustHit;
+            if (!must && rng.NextDouble() >= add / _s.Pot) return 0;
+            var seed = Math.Max(0, o.JackpotSeed);
+            var won = (int)Math.Floor(must ? Math.Min(_s.Pot, o.JackpotMustHit) : _s.Pot);
+            var over = _s.Pot - won;   // копійки й надлишок понад межу — у нову суму, не губимо
+            _s.Pot = seed + over;
+            _s.Reserve -= seed;
             return won;
         }
     }
@@ -151,8 +183,17 @@ public sealed class SlotsBank : BackgroundService
     {
         lock (_gate)
         {
-            _s.Pot = Math.Max(0, _s.Pot - bet * Math.Max(0, O.JackpotPct) / 100.0);
-            if (jackpot > 0) _s.Pot += jackpot - Math.Max(0, O.JackpotSeed);
+            var o = O;
+            var put = bet * Math.Max(0, o.JackpotPct) / 100.0;
+            var share = o.SeedShare;
+            if (jackpot > 0)
+            {
+                var seed = Math.Max(0, o.JackpotSeed);
+                _s.Pot += jackpot - seed;
+                _s.Reserve += seed;
+            }
+            _s.Pot = Math.Max(0, _s.Pot - put * (1 - share));
+            _s.Reserve -= put * share;
             _dirty = true;
         }
     }
@@ -321,6 +362,7 @@ public sealed class SlotsBank : BackgroundService
         {
             on = o.Enabled,
             jackpot = Pot,
+            mustHit = o.MustHitOn ? o.JackpotMustHit : (int?)null,   // null — поля нема (JsonIgnore у SlotsSetup)
             bets = o.AllowedBets(),
             wins = Week().Select(w => new { nick = w.Nick, game = w.Game, mult = w.Mult, win = w.Win, jackpot = w.Jackpot, at = w.At.UtcDateTime }),
         };
@@ -439,6 +481,9 @@ public static class SlotsSetup
     /// <c>GET /api/slots/feed</c> → <c>{ on, jackpot, bets, wins }</c>. Живе оновлення суми — опитуванням раз на 5–10 с
     /// (лише ті, хто дивиться лобі «Азарт» чи автомат; відповідь з пам'яті), а не подією хабу на кожен оберт усім.
     /// </summary>
+    /// <summary>Як сайт (camelCase), але без null-полів: <c>mustHit</c> нема, коли межу вимкнено.</summary>
+    public static readonly JsonSerializerOptions FeedJson = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+
     public static void MapSlots(WebApplication app) =>
-        app.MapGet("/api/slots/feed", (SlotsBank bank) => Results.Json(bank.FeedView()));
+        app.MapGet("/api/slots/feed", (SlotsBank bank) => Results.Json(bank.FeedView(), FeedJson));
 }
