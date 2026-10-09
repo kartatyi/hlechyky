@@ -2482,9 +2482,9 @@
   // ---------- маршрути ----------
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
   // балачок на телефоні). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
-  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat'];
+  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'bets', 'chat'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod'];
-  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки' };
+  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', bets: 'Ставки', chat: 'Балачки' };
   const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото людей', mod: 'Модерація Балачок' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
@@ -2515,7 +2515,10 @@
       else if (ico && ico.nextSibling && ico.nextSibling.nodeType === 3) ico.nextSibling.textContent = 'Падельня ';
       b.title = 'Табло з рахунком, турніри американо, збори на гру — клавіша 3';
     });
+    // «🎲 Ставки» — лише коли події ввімкнено (Bets:Enabled і Bets:Events)
+    for (const id of ['navBets', 'mNavBets']) $(id).hidden = !betsOn();
   }
+  const betsOn = () => !!(me.bets && me.bets.events);
   function go(hash) {
     if (location.hash === hash) applyRoute(); else location.hash = hash;
   }
@@ -2544,7 +2547,7 @@
     if (lastHash !== null && lastHash !== location.hash) window.scrollTo(0, 0);
     lastHash = location.hash;
     let r = ROUTES.includes(head) ? head : 'efir';
-    if (r === 'games' && me.games === false) {
+    if ((r === 'games' && me.games === false) || (r === 'bets' && me.bets && !me.bets.events)) {
       history.replaceState(null, '', '#efir');
       r = 'efir';
     }
@@ -2578,6 +2581,7 @@
     if (r === 'games') HGames.show(head === 'games' ? tail : ''); else HGames.hide();
     if (r === 'stats' || r === 'who') HPeople.show(r, tail); else HPeople.hide();
     if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
+    if (window.HBets) { if (r === 'bets') HBets.show(tail); else HBets.hide(); }
     if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
     if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
@@ -2710,6 +2714,7 @@
     else if (e.key === '2') { e.preventDefault(); go(hashFor('lib')); }
     else if (e.key === '3') { e.preventDefault(); go(hashFor('games')); }
     else if (e.key === '4') { e.preventDefault(); go(hashFor('stats')); }
+    else if (e.key === '5' && betsOn()) { e.preventDefault(); go(hashFor('bets')); }
   });
   // ---------- «💡 Розробнику»: пропозиції й баги ----------
   // Записка йде в базу (Feedback.cs) разом із тим, де людина на сайті, розміром екрана й браузером — так баг легше
@@ -4074,6 +4079,7 @@
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
     if (window.HVoice) HVoice.attach(conn);   // 🎙 Посиденьки — web/voice.js
     if (window.HBuy) HBuy.attach(conn);       // купити черепки — web/buy.js
+    if (window.HBets) HBets.attach(conn);     // 🎲 Ставки — web/bets.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
     // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
     // лишався б без кнопки аж до наступної новини з лобі.
@@ -4254,6 +4260,7 @@
   HLavka.loadLooks();
   // 🏺 Купити черепки за гривні (web/buy.js): вікно з пакетами; продавцю — «чекають підтвердження»
   if (window.HBuy) HBuy.init({ esc, api, toast, busy, me, askNick, dayTime, online: () => (state && state.online) || [] });
+  if (window.HBets) HBets.init({ esc, api, toast, busy, me, go, askNick });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🛡 Модерація Балачок (web/moder.js): 📌 плашка, поле вводу під 🔇, кнопки адміна, вкладка в Бібліотеці
@@ -4290,9 +4297,10 @@
     me.shards = m.shards || null;   // { buy, sell } — черепки за гривні увімкнено в конфігу (web/buy.js)
     me.games = m.games !== false;   // розділ «Ігри» (Games:Enabled)
     me.padel = m.padel !== false;   // Падельня (Padel:Enabled)
+    me.bets = m.bets || { events: false, tables: false };   // 🎲 Ставки (Bets:*) — web/bets.js і столи
     paintSwitches();
     // Адресу намалювали ще до /api/me: вимкнене — переводимо в Ефір
-    if ((!me.games && parseHash().head === 'games') || (!me.padel && parseHash().head === 'padel')) applyRoute();
+    if ((!me.games && parseHash().head === 'games') || (!me.padel && parseHash().head === 'padel') || (!betsOn() && parseHash().head === 'bets')) applyRoute();
     me.night = m.night || null;
     paintNight();
     loadGoogle(m.googleClientId);
@@ -4311,6 +4319,7 @@
       connect();
       if (me.account) HLavka.loadMine().then(lavkaChanged);
       if (window.HBuy) HBuy.ready();
+      if (window.HBets) HBets.ready();
       if (plain) askNick(true, 'register', plain);
       // «💡»: адміну — скільки записок чекає, решті — у скількох своїх записках нова відповідь розробника.
       if (me.role === 'admin') loadFeedbackCount(); else loadMyFeedback(false);
