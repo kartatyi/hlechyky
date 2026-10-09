@@ -200,8 +200,9 @@ public sealed partial class Clicker : Game
     /// <summary>Скільки спокійних полиць треба пройти для ачівки «Майстер кивнув».</summary>
     public const int CalmShelvesForAchievement = 10;
 
-    /// <summary>Серія глеків з полиці: перші десять по +10 %, далі +2 % за кожен — і без стелі.</summary>
-    public const double StreakFarBonus = 0.02;
+    /// <summary>Серія глеків з полиці: перші десять по +10 %, далі +2 % за кожен до сотні, після сотні +1 % — і без стелі.</summary>
+    public const double StreakFarBonus = 0.02, StreakSlowBonus = 0.01;
+    public const int StreakSlowFrom = 100;
     /// <summary>Скільки спійманих поспіль варті дивовижі.</summary>
     public static readonly int[] StreakWonders = [10, 25, 50, 100];
     public const int LongStreakForAchievement = 50;
@@ -799,10 +800,12 @@ public sealed partial class Clicker : Game
     }
 
     /// <summary>
-    /// Що додає серія: перші десять спійманих по +10 %, далі по +2 % за кожен — і стелі більше нема
-    /// (дев'яте оновлення §A.3). Серія на 37 — це +154 %.
+    /// Що додає серія: перші десять спійманих по +10 %, до сотні по +2 %, далі по +1 % за кожен — і стелі нема
+    /// (дев'яте оновлення §A.3, сходинка на сотні — 09.10). Серія на 37 — це +154 %, на 700 — +880 %.
     /// </summary>
-    double StreakMult => StreakBonus * Math.Min(_fallStreak, StreakMax) + StreakFarBonus * Math.Max(0, _fallStreak - StreakMax);
+    double StreakMult => StreakBonus * Math.Min(_fallStreak, StreakMax)
+        + StreakFarBonus * Math.Clamp(_fallStreak - StreakMax, 0, StreakSlowFrom - StreakMax)
+        + StreakSlowBonus * Math.Max(0, _fallStreak - StreakSlowFrom);
 
     TimeSpan OfflineNow
     {

@@ -774,7 +774,7 @@
     else if (sn < st.inspireUntil) out.push({ key: 'inspire', mult: '×' + st.inspireMult, until: st.inspireUntil, span: st.inspireSpan || 20000 });
     if (windOn(st, sn)) out.push({ key: 'wind', mult: '×' + dec(st.windMult), until: st.windUntil, span: Math.max(1000, st.windUntil - st.windAt) });
     if (st.momentumMax > 1 && mom > 1.05) out.push({ key: 'heat', mult: '×' + dec(mom), level: (mom - 1) / (st.momentumMax - 1) });
-    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, далі +2 % — відсоток рахує сервер (fall.bonus).
+    // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, до сотні +2 %, далі +1 % — відсоток рахує сервер (fall.bonus).
     if (st.fallStreak > 1) out.push({ key: 'streak', mult: '+' + Math.round(st.streakBonus * 100) + ' %' });
     if (st.starWish) out.push({ key: 'wish', mult: '×3' });
     const gb = st.guild && st.guild.enabled && st.guild.buffs;
