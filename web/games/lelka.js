@@ -501,7 +501,7 @@
     return {
       W, H, sc, gy, x0, y0, S: H * 0.55, narrow,
       ox: x0 + 72 * sc, oy: y0 - 30 * sc,                   // початок сліду — дзьоб у гнізді
-      x1: W * (narrow ? 0.72 : 0.7), y1: H * (narrow ? 0.52 : 0.36),
+      x1: W * (narrow ? 0.72 : 0.78), y1: H * (narrow ? 0.52 : 0.42),
     };
   }
 
@@ -936,6 +936,18 @@
   function sync(root, st) {
     const s = cur(st);
     if (!s || !st.g) return;
+    // стіл перервано (перезапуск без чистого знімка) — каркас дає «Ще раз»; старий вид не крутимо
+    const dead = st.ctx.room && st.ctx.room.status === 'finished';
+    st.el.box.classList.toggle('dead', !!dead);
+    if (dead) {
+      stopLoop(st); ticker(st, false); toneStop(st);
+      st.phase = null;
+      st.el.cap.textContent = 'стіл зупинився';
+      st.el.m.textContent = '×' + fmtM(s.crash || s.m || 1);
+      st.el.sub.textContent = 'Глек перезапускався — «Ще раз» поставить новий політ';
+      st.el.go.disabled = true; st.el.gt.textContent = 'Стіл зупинився'; st.el.gs.textContent = ''; st.el.go._m = 'dead'; st.el.go.className = 'lk-go M-wait';
+      return;
+    }
     syncClock(st, s);
     if (s.phase === 'bets' && isFinite(tms(s.until)) && st.betRound !== s.round) {
       st.betRound = s.round;

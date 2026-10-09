@@ -72,7 +72,7 @@
   cursor: pointer; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .18); padding: 0; }
 .lk-tb:hover { background: rgba(60, 40, 90, .85); }
 
-.lk-big { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; white-space: nowrap; }
+.lk-big { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%); text-align: center; white-space: nowrap; }
 .lk-cap { font: 800 clamp(12px, 1.6vw, 18px)/1.1 var(--display, sans-serif); letter-spacing: .14em; text-transform: uppercase; color: #ffd9a8;
   text-shadow: 0 2px 0 var(--lk-ink); min-height: 1em; }
 .lk-m { font: 900 clamp(48px, 9vw, 132px)/1 var(--display, sans-serif); letter-spacing: -.02em; font-variant-numeric: tabular-nums;
@@ -118,6 +118,9 @@
 .lk-coin { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff6c0, #f5c33b 45%, #b8720e);
   box-shadow: 0 0 0 1.5px var(--lk-ink); animation: lk-coin 1.2s cubic-bezier(.2, .7, .4, 1) both; }
 @keyframes lk-coin { 0% { transform: translate(0, 0) scale(.4); opacity: 1 } 60% { opacity: 1 } 100% { transform: translate(var(--cx), calc(var(--cy) + 70px)) scale(1); opacity: 0 } }
+
+.lk.dead .lk-w1, .lk.dead .lk-w2 { animation: none; }
+.lk.dead .lk-m { color: #c9c3d6 !important; }
 
 /* ---------------- панель ---------------- */
 .lk-panel { grid-area: panel; display: grid; gap: 10px; align-items: stretch;
