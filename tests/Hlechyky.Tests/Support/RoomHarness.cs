@@ -97,6 +97,15 @@ public sealed class RoomHarness
 
     public RoomReply Rematch(string? nick = null) => Take(Rooms.Rematch(RoomId, nick ?? Seated()));
 
+    /// <summary>«Почати» так, як тисне людина: <paramref name="force"/> false — спершу спитати «✋ Готовий».</summary>
+    public RoomReply Start(bool force) => Take(Rooms.StartByHost(RoomId, Room.Host, force));
+
+    /// <summary>«Ану ще раз» від <paramref name="nick"/> так, як тисне людина (<paramref name="force"/> — «почати все одно»).</summary>
+    public RoomReply Rematch(string nick, bool force) => Take(Rooms.Rematch(RoomId, nick, force));
+
+    /// <summary>«✋ Готовий» від <paramref name="nick"/>.</summary>
+    public RoomReply Ready(string nick, bool on = true) => Take(Rooms.SetReady(RoomId, nick, on));
+
     /// <summary>Хід із місця seat. Payload серіалізується так само, як його передасть хаб.</summary>
     public ActResult Act(int seat, string action, object? payload = null)
     {

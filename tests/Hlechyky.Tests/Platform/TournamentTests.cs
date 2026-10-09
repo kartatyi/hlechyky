@@ -112,6 +112,16 @@ public class TournamentTests
     // ---------------------------------------------------------------- місця
 
     [Fact]
+    public void Tournament_table_starts_without_asking_who_is_ready()
+    {
+        // «✋ Готовий» турнір не питає: усіх за стіл посадив він сам, і чекати «готовий» від кожного — зупинити вечір.
+        var s = new Setup("Оля", "Петро").Started(["t-party", "ttt"], "Оля", "Петро");
+        var room = s.H.Rooms.Find(s.RoomId)!;
+        Assert.Equal("t-party", room.Info.Id);
+        Assert.Equal(RoomStatus.Playing, room.Status);
+    }
+
+    [Fact]
     public void Places_follow_the_score_and_ties_share()
     {
         var places = Tournament.Places(["Оля", "Петро", "Ганна"], new Dictionary<int, long> { [0] = 50, [1] = 120, [2] = 50 }, [1]);

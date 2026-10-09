@@ -448,9 +448,21 @@ public sealed class RadioHub(Presence presence, RadioEngine engine, Db db, Rooms
 
     public Task<RoomReply> LeaveRoom(string roomId) => Act(() => rooms.Leave(roomId ?? "", Nick()));
 
-    public Task<RoomReply> StartRoom(string roomId) => Play(GameOf(roomId), () => rooms.StartByHost(roomId ?? "", Nick()));
+    /// <summary>
+    /// «Почати» / «Ану ще раз» спершу питають «✋ Готовий»: хтось не готовий — відмова з <see cref="RoomReply.NotReady"/>,
+    /// і браузер питає «почати все одно?». Окремі методи «…Anyway» (а не аргумент force), щоб старий клієнт, який шле
+    /// один аргумент, не впав на прив'язці: він просто покаже тост «Ще не готові: …».
+    /// </summary>
+    public Task<RoomReply> StartRoom(string roomId) => Play(GameOf(roomId), () => rooms.StartByHost(roomId ?? "", Nick(), force: false));
 
-    public Task<RoomReply> Rematch(string roomId) => Play(GameOf(roomId), () => rooms.Rematch(roomId ?? "", Nick()));
+    public Task<RoomReply> StartRoomAnyway(string roomId) => Play(GameOf(roomId), () => rooms.StartByHost(roomId ?? "", Nick(), force: true));
+
+    public Task<RoomReply> Rematch(string roomId) => Play(GameOf(roomId), () => rooms.Rematch(roomId ?? "", Nick(), force: false));
+
+    public Task<RoomReply> RematchAnyway(string roomId) => Play(GameOf(roomId), () => rooms.Rematch(roomId ?? "", Nick(), force: true));
+
+    /// <summary>«✋ Готовий» за столом, за яким сидиш: <paramref name="on"/> — бажаний стан, не перемикач (подвійний клік не гасить).</summary>
+    public Task<RoomReply> ReadyRoom(string roomId, bool on) => Act(() => rooms.SetReady(roomId ?? "", Nick(), on));
 
     /// <summary>«⚙ Налаштування» господаря між партіями (<see cref="Games.Rooms.Reconfigure"/>). Опції — сирим JSON, як у CreateRoom.</summary>
     public Task<RoomReply> ConfigureRoom(string roomId, Dictionary<string, JsonElement>? options) =>
