@@ -4,7 +4,7 @@
 // до біта. Де є соло-проходження (solo: один герой за раз, кнопки брам «все разом» тримаються) — звіряємо і його.
 // Node на машині нема, тож обидві половини звіряються з одним записаним файлом.
 //
-// Запуск (рівні з розв'язками віддає лише адмінові — у dev AdminKey=dev, кука ставиться з ?k=dev):
+// Запуск (рівні з розв'язками віддає лише адмінові — у dev AdminKey=dev, ?k=dev заводить в акаунт «адмін»):
 //   python D:/or-wt/_tools/cdp2.py --port 9683 --url "http://127.0.0.1:8227/?k=dev#games" --js docs/games/dev/vohnyk-parity.js
 // Друкує рядок на проходження: OK / MISMATCH, і підсумок «16/16».
 if (!window.VohnykSim) {
@@ -17,7 +17,7 @@ if (!window.VohnykSim) {
   });
 }
 const res = await fetch('/api/games/vohnyk/levels', { credentials: 'same-origin' });
-if (!res.ok) return ['MISMATCH /api/games/vohnyk/levels → ' + res.status + ' (потрібна адмінська кука: відкрий ?k=dev)'];
+if (!res.ok) return ['MISMATCH /api/games/vohnyk/levels → ' + res.status + ' (потрібен адмін: відкрий ?k=dev)'];
 const levels = await res.json();
 const out = [];
 let ok = 0, all = 0;

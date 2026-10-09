@@ -39,6 +39,7 @@
   background: var(--panel); border-radius: var(--radius); padding: 16px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
 }
+.gpanel { scroll-margin-top: 72px; }   /* «Глянути» з «Що нового на сайті» гортає до каталогу — не під шапку */
 .gpanel h3 { margin: 0; font-family: var(--display); font-size: 1.05em; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .gfilters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .gchip { cursor: pointer; border: 1px solid transparent; padding: 4px 11px; font-size: .88em; }
@@ -111,6 +112,42 @@
 .ggroup { margin: 8px 0 0; font-family: var(--display); font-size: .98em; font-weight: 600; color: var(--text); }
 .ggroup:first-of-type { margin-top: 2px; }
 
+/* ---- теми каталогу (09.10): підзаголовки тихіші за заголовок розділу, другий ряд чипів — менший і тихіший ---- */
+.gtheme { margin: 2px 0 -4px; font-size: .8em; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.gtheme-n { font-weight: 400; opacity: .7; }
+.gthemes { display: flex; gap: 4px; flex-wrap: wrap; margin-top: -4px; }
+.gtchip { cursor: pointer; border: 1px solid transparent; background: transparent; padding: 3px 9px; font-size: .78em; }
+.gtchip .gtc-n { margin-left: 4px; opacity: .6; font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .gtchip:hover { color: var(--text); background: var(--panel2); } }
+.gtchip.on { background: var(--panel2); color: var(--text); border-color: var(--line); }
+/* Телефон: теми — один рядок із прокруткою вбік усередині рядка, сама сторінка вбік не їде. */
+@media (max-width: 900px) {
+  .gthemes { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin-right: -4px; padding-right: 4px; }
+  .gthemes::-webkit-scrollbar { display: none; }
+  .gtchip { flex: none; }
+}
+@media (pointer: coarse) { .gtchip { padding: 5px 10px; } }
+/* Теми розділу на широкому — блоки в сітці з колонками плитки (як .gtiles): тема на 1–3 плитки стає поруч із сусідньою,
+   а не займає цілий ряд. Блок тягнеться на min(плиток, колонок), плитки всередині — у колонках батька (subgrid), тож
+   ширина й вирівнювання однакові в усіх темах. Порядок тем — як у THEMES (без dense: що не влізло — з нового ряду).
+   --cols — скільки колонок вміщає сітка: n колонок по 212 px із проміжком 8 px = 220n − 8 px. */
+.gthemegrid { container-type: inline-size; display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 10px 8px; }
+.gtblock { --cols: 1; grid-column: span min(var(--n), var(--cols)); display: grid; grid-template-columns: subgrid; row-gap: 6px; align-content: start; min-width: 0; }
+.gtblock > .gtheme { grid-column: 1 / -1; margin: 0; }
+.gtblock > .gtiles { grid-column: 1 / -1; grid-template-columns: subgrid; }
+@container (min-width: 432px) { .gtblock { --cols: 2; } }
+@container (min-width: 652px) { .gtblock { --cols: 3; } }
+@container (min-width: 872px) { .gtblock { --cols: 4; } }
+@container (min-width: 1092px) { .gtblock { --cols: 5; } }
+@container (min-width: 1312px) { .gtblock { --cols: 6; } }
+@container (min-width: 1532px) { .gtblock { --cols: 7; } }
+@container (min-width: 1752px) { .gtblock { --cols: 8; } }
+/* Телефон і вузьке вікно: як і було — теми одна під одною, плитки списком. */
+@media (max-width: 900px) {
+  .gthemegrid { grid-template-columns: 1fr; row-gap: 10px; }
+  .gthemegrid .gtblock { --cols: 1; }
+}
+
 /* ---- «⭐ Часто граємо»: швидкий запуск того, у що компанія грає найбільше ---- */
 .gfavs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .gfav { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
@@ -167,6 +204,13 @@
 .gstatus.my { color: var(--accent); }
 .gstatus.done { color: var(--text); font-weight: 600; }
 .gbtns { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+/* ✋ Готовий (Rooms.SetReady): позначка на чіпі місця і кнопка-перемикач із лічильником «2/4». */
+.gseat.ready { box-shadow: 0 0 0 1px var(--ok) inset; }
+.gready-mark { font-weight: normal; margin-right: 4px; }
+.gbtns .gready .gready-n { margin-left: 6px; font-size: .8em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gbtns .gready.on { color: var(--ok); box-shadow: 0 0 0 1px var(--ok) inset; }
+/* Місце під кнопками для панелей лобі й «після партії» (🎲 ставки столу): порожнє не займає місця. */
+.gextra:empty { display: none; }
 
 /* ---- дошка з клітинок (хрестики, чотири в ряд, сапер) ---- */
 /* Спільна дошка з клітинок (хрестики, чотири в ряд, сапер). Шахи, шашки й ерудит ставлять
@@ -590,3 +634,47 @@ body.g-imm:not(.g-land) .gbody > canvas.gcanvas { max-width: min(100%, calc((var
   position: sticky; bottom: -12px; z-index: 1; margin: 0 -22px -22px; padding: 12px 22px 22px;
   background: var(--panel); border-radius: 0 0 var(--radius) var(--radius); box-shadow: 0 -10px 16px -12px rgba(0, 0, 0, .6);
 }
+
+/* ---- Азарт: шапка (Скарбничка Глека, заноси тижня) і афіші слотів ---- */
+.gaz-head { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.4fr); gap: 10px; margin: 4px 0 12px; }
+.gaz-jp, .gaz-wins { border-radius: 14px; padding: 12px 14px; background: linear-gradient(160deg, rgba(244, 197, 66, .16), rgba(197, 118, 58, .08)); border: 1px solid rgba(244, 197, 66, .35); min-width: 0; }
+.gaz-jp { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.gaz-jp-l { font-weight: 700; }
+.gaz-jp-v { font-size: 34px; line-height: 1.1; font-weight: 900; color: var(--accent, #f4c542); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.gaz-must { color: var(--clay, #c5763a); font-weight: 700; min-height: 0; }
+.gaz-must:empty { display: none; }
+.gaz-wins { background: var(--card2, rgba(255, 255, 255, .03)); border-color: var(--line, rgba(255, 255, 255, .1)); }
+.gaz-wins h6 { margin: 0 0 6px; font-size: 14px; }
+.gaz-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 13px; }
+.gaz-list li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto auto; gap: 8px; align-items: baseline; }
+.gaz-list li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gaz-x { font-weight: 800; color: var(--clay, #c5763a); }
+.gaz-sum { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.gtblock.gt-slots { grid-column: 1 / -1; }
+/* афіші — на всю ширину блоку «Слоти» (блок — subgrid лобі, без 1 / -1 вони сідали в одну колонку стовпчиком) */
+.gposters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.gposter { position: relative; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: #0d1712;
+  border: 1px solid var(--line, rgba(255, 255, 255, .1)); transition: transform .15s, box-shadow .15s; min-width: 0; }
+.gposter:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, .35); }
+.gposter.fresh { border-color: var(--accent, #f4c542); }
+.gp-img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; background: #10201a; }
+.gp-txt { display: grid; gap: 3px; padding: 8px 10px 10px; color: #f3ead2; }
+.gp-t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 15px; }
+.gp-m { font-size: 12px; color: #cfc6a8; }
+.gp-f { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 12px; }
+.gp-v { white-space: nowrap; }
+.gp-v i { font-style: normal; letter-spacing: -2px; }
+.gp-v i.off { opacity: .25; filter: grayscale(1); }
+.gp-now { font-size: 12px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gp-play { margin-left: auto; position: static; }
+.gp-play::after { content: ''; position: absolute; inset: 0; }   /* уся афіша — кнопка «Грати» */
+@media (max-width: 700px) {
+  .gaz-head { grid-template-columns: 1fr; }
+  .gaz-jp-v { font-size: 28px; }
+  .gposters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .gp-txt { padding: 6px 8px 8px; }
+  .gp-t { font-size: 13px; }
+  .gp-m { font-size: 11px; }
+  .gp-play { padding: 4px 10px; }
+}
+@media (max-width: 340px) { .gposters { grid-template-columns: 1fr; } }

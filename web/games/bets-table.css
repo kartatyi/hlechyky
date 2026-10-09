@@ -1,0 +1,63 @@
+/* 🎲 Ставки на столі (bets-table.js): згортувана панель у .gextra картки. Класи — з префіксом tb-, щоб не зачепити
+   сторінку «🎲 Ставки» (web/bets*.js). Телефон 360 px — без горизонтального скролу: усе переноситься, ніки обрізаються. */
+.gextra .tb { margin-top: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg2); min-width: 0; max-width: 100%; box-sizing: border-box; }
+.tb-head { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 12px; cursor: pointer;
+  border-radius: 12px; color: var(--text); font-weight: 600; min-width: 0; }
+.tb-head:hover { background: var(--panel); }
+.tb-head:focus-visible { outline: 2px solid var(--accent2); outline-offset: -2px; }
+.tb-t { white-space: nowrap; }
+.tb-sum { flex: 1 1 auto; min-width: 0; color: var(--muted); font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-chev { color: var(--muted); transition: transform .15s; }
+.tb.open .tb-chev { transform: rotate(180deg); }
+.tb-body { display: none; padding: 0 12px 10px; flex-direction: column; gap: 8px; }
+.tb.open .tb-body { display: flex; }
+
+.tb-why { color: var(--muted); font-size: 13px; line-height: 1.4; }
+.tb-mk { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tb-mk-t { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.tb-opts { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.tb-opt { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 6px 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel2); color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+.tb-opt:hover:not(:disabled) { border-color: var(--accent2); }
+.tb-opt.on { background: #4a3a06; border-color: var(--accent2); }
+.tb-opt:disabled { opacity: .45; cursor: not-allowed; }
+.tb-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-k { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tb-no { font-size: 12px; color: var(--muted); }
+.tb-ro { display: flex; flex-direction: column; gap: 4px; font-size: 13px; overflow-wrap: anywhere; }
+.tb-ro b { color: var(--accent); font-weight: 600; }
+
+/* Сума — як красиві числові поля buy.js: темне поле, велике число, 🏺 праворуч, без стрілочок браузера. */
+.tb-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--accent2); border-radius: 12px; background: var(--panel2); }
+.tb-pick { font-size: 13px; overflow-wrap: anywhere; }
+.tb-pick b { color: var(--accent); }
+.tb-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tb-f { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; padding-right: 12px; cursor: text;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; transition: border-color .15s, box-shadow .15s; }
+.tb-f:focus-within { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(217, 169, 47, .18); }
+/* 16px і більше — щоб айфон не збільшував сторінку на фокусі */
+.tb-f input { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; padding: 8px 0 8px 12px; margin: 0;
+  font: inherit; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text);
+  background: transparent; border: 0; outline: none; -moz-appearance: textfield; appearance: textfield; }
+.tb-f input::-webkit-outer-spin-button, .tb-f input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.tb-f input::placeholder { color: var(--muted); opacity: .45; font-weight: 600; }
+.tb-f span { color: var(--muted); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.tb-go { flex: none; white-space: nowrap; }
+.tb-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tb-chips .chip { border: 1px solid var(--line); cursor: pointer; font: inherit; font-size: 13px; padding: 3px 10px; }
+.tb-chips .chip:hover { border-color: var(--accent2); color: var(--accent); }
+.tb-x { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; padding: 2px 6px; }
+.tb-win { font-size: 13px; color: var(--muted); }
+.tb-win b { color: var(--ok); }
+
+.tb-list, .tb-done { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tb-lt, .tb-done summary { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.tb-done summary { cursor: pointer; }
+.tb-bet { display: flex; align-items: baseline; gap: 6px; font-size: 13.5px; min-width: 0; }
+.tb-who { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-l { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-s { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tb-bet.st-won .tb-s { color: var(--ok); }
+.tb-bet.st-lost .tb-s { color: var(--danger); }
+
+@media (prefers-reduced-motion: reduce) { .tb-chev, .tb-f { transition: none; } }

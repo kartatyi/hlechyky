@@ -31,14 +31,29 @@ public sealed class FakeStakes : IStakes
 
     public int Balance(string nick) => _balances.TryGetValue(nick, out var b) ? b : 0;
 
+    /// <summary>Наступне списання пройде, а тоді кине виняток (таймаут після коміту) — і скинеться.</summary>
+    public bool ThrowAfterSpend { get; set; }
+    /// <summary>Наступне списання кине виняток, нічого не списавши, — і скинеться.</summary>
+    public bool ThrowBeforeSpend { get; set; }
+
     public bool TrySpend(string nick, int amount, string reason, string refKey)
     {
+        if (ThrowBeforeSpend)
+        {
+            ThrowBeforeSpend = false;
+            throw new InvalidOperationException("база не відповіла");
+        }
         if (!_refs.Add(refKey)) return true;   // уже списано цим ключем
         if (Balance(nick) < amount) return false;
         _balances[nick] = Balance(nick) - amount;
         Calls.Add($"spend:{nick}:{amount}:{refKey}");
         Reasons[refKey] = reason;
         Ledger.Add(new LedgerMove(refKey, nick, -amount));
+        if (ThrowAfterSpend)
+        {
+            ThrowAfterSpend = false;
+            throw new TimeoutException("списалось, а відповідь загубилась");
+        }
         return true;
     }
 

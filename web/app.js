@@ -219,22 +219,24 @@
     gnick: 'Google тебе підтвердив. Обери нік — під ним тебе тут знатимуть, пароль не потрібен.',
     me: 'Вийти — і ти знову гість. Глеки й ачівки лишаються за ніком, зайдеш — усе на місці.',
     password: 'Новий пароль — хоча б 6 символів. Інші вкладки з цим акаунтом доведеться перезайти.',
+    everywhere: 'Усі інші браузери й телефони вийдуть з акаунта — і той, до кого могла втрапити твоя кука. Тут лишаєшся.',
   };
   const NICK_BUTTONS = {
     login: 'Зайти', register: 'Зареєструватись', guest: 'Заходжу як гість', gnick: 'Заходжу',
-    me: 'Вийти з акаунта', password: 'Зберегти пароль',
+    me: 'Вийти з акаунта', password: 'Зберегти пароль', everywhere: 'Вийти на всіх пристроях',
   };
   let nickMode = 'register';
   let pendingGoogle = null;   // ID-токен від Google, поки новенький обирає нік
   const guestBody = (n) => String(n || '').replace(/^гість\s*/i, '').trim();
   function setNickMode(mode) {
     nickMode = mode;
-    const isMe = mode === 'me' || mode === 'password';
+    const isMe = mode === 'me' || mode === 'password' || mode === 'everywhere';
     $('nickTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
     $('nickTabs').hidden = isMe || mode === 'gnick';
     $('nickInput').hidden = isMe;
-    $('passCurrent').hidden = mode !== 'password' || !me.hasPassword;
-    $('passInput').hidden = mode === 'guest' || mode === 'gnick' || mode === 'me';
+    $('passCurrent').hidden = (mode !== 'password' && mode !== 'everywhere') || !me.hasPassword;
+    $('passCurrent').placeholder = mode === 'everywhere' ? 'твій пароль' : 'теперішній пароль';
+    $('passInput').hidden = mode === 'guest' || mode === 'gnick' || mode === 'me' || mode === 'everywhere';
     $('passInput').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
     $('passInput').placeholder = mode === 'password' ? 'новий пароль' : 'пароль';
     $('nickTitle').textContent = isMe ? `Ти — ${me.nick}` : 'Хто прийшов?';
@@ -243,6 +245,7 @@
     $('nickSave').classList.toggle('primary', mode !== 'me');
     $('nickPass').hidden = mode !== 'me';
     $('nickPass').textContent = me.hasPassword ? 'Змінити пароль' : 'Поставити пароль';
+    $('nickAll').hidden = mode !== 'me';
     $('nickErr').hidden = true;
     paintMeInfo();
     paintGoogle();
@@ -269,7 +272,7 @@
     $('nickLater').textContent = me.nick ? 'Не зараз' : 'Лише подивлюсь';
     $('nickModal').hidden = false;
     if (!$('nickInput').hidden) setTimeout(() => $('nickInput').focus(), 50);
-    else if (nickMode === 'password') setTimeout(() => ($('passCurrent').hidden ? $('passInput') : $('passCurrent')).focus(), 50);
+    else if (nickMode === 'password' || nickMode === 'everywhere') setTimeout(() => ($('passCurrent').hidden ? $('passInput') : $('passCurrent')).focus(), 50);
   }
   function paintNick() {
     const b = $('meBtn');
@@ -291,6 +294,13 @@
         await api('POST', '/api/account/logout');
         localStorage.removeItem('nick');
         location.reload();
+        return;
+      }
+      if (nickMode === 'everywhere') {
+        // Сервер міняє сіль акаунта: старі сесії мертві, а цій вкладці кладе свіжу куку.
+        await busy($('nickSave'), 'Виходжу…', () => api('POST', '/api/account/logout-all', { current: $('passCurrent').value }));
+        $('nickModal').hidden = true;
+        toast('Є! Усі інші пристрої вийшли з акаунта', 'ok');
         return;
       }
       if (nickMode === 'password') {
@@ -335,6 +345,7 @@
   $('nickForm').onsubmit = (e) => { e.preventDefault(); saveNick(); };
   $('nickTabs').querySelectorAll('button').forEach((b) => b.onclick = () => { setNickMode(b.dataset.mode); $('nickInput').focus(); });
   $('nickPass').onclick = () => askNick(true, 'password');
+  $('nickAll').onclick = () => askNick(true, 'everywhere');
   $('nickLater').onclick = () => { $('nickModal').hidden = true; };
   // Без ніка профільний чип — це «назватись», а не сторінка порожнього профілю.
   $('meBtn').addEventListener('click', (e) => { if (!me.nick) { e.preventDefault(); askNick(true); } });
@@ -2589,6 +2600,11 @@
       if (lastHash !== null) return;
       head = me.games === false ? 'efir' : 'games'; tail = '';
     }
+    // «🎲 Ставки» жили вкладкою в шапці (#bets/<вкладка>), тепер — панель у розділі «🎰 Азарт» ігор (web/bets.js)
+    if (head === 'bets') {
+      history.replaceState(null, '', '#games/x:bets' + (tail ? '/' + tail : ''));
+      ({ head, tail } = parseHash());
+    }
     const moved = MOVED[head + '/' + tail] || (head === 'games' && tail === 'profile' ? '#who/' + encodeURIComponent(me.nick || '') : null);
     if (moved) {
       history.replaceState(null, '', moved);
@@ -4391,6 +4407,7 @@
     HGames.attach(conn);           // усе про ігри — у web/games/core.js
     if (window.HVoice) HVoice.attach(conn);   // 🎙 Посиденьки — web/voice.js
     if (window.HBuy) HBuy.attach(conn);       // купити черепки — web/buy.js
+    if (window.HBets) HBets.attach(conn);     // 🎲 Ставки — web/bets.js
     // Після HGames.attach: спершу хай каркас оновить свій список столів, а тоді вже перемальовуємо
     // кнопки в рядках. Історія балачок приходить раніше за перше лобі, тож без цього рядок про стіл
     // лишався б без кнопки аж до наступної новини з лобі.
@@ -4571,6 +4588,9 @@
   HLavka.loadLooks();
   // 🏺 Купити черепки за гривні (web/buy.js): вікно з пакетами; продавцю — «чекають підтвердження»
   if (window.HBuy) HBuy.init({ esc, api, toast, busy, me, askNick, dayTime, online: () => (state && state.online) || [] });
+  if (window.HBets) HBets.init({ esc, api, toast, busy, me, go, askNick });
+  // ✨ «Що нового на сайті» (web/sitenews.js): раз на реліз тим, хто вже бував; ready() — після /api/me
+  if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🛡 Модерація Балачок (web/moder.js): 📌 плашка, поле вводу під 🔇, кнопки адміна, вкладка в Бібліотеці
@@ -4607,11 +4627,15 @@
     me.shards = m.shards || null;   // { buy, sell } — черепки за гривні увімкнено в конфігу (web/buy.js)
     me.games = m.games !== false;   // розділ «Ігри» (Games:Enabled)
     me.padel = m.padel !== false;   // Падельня (Padel:Enabled)
+    me.slots = m.slots !== false;   // автомати (Slots:Enabled): false — лобі ховає «🍒 Слоти»
+    me.lelka = m.lelka !== false;   // Лелека (Lelka:Enabled): false — плитки «Лелека» в лобі нема
+    me.bets = m.bets || { events: false, tables: false };   // 🎲 Ставки (Bets:*) — web/bets.js і столи
     paintSwitches();
     // Адресу намалювали ще до /api/me: вимкнене — переводимо в Ефір
     if ((!me.games && parseHash().head === 'games') || (!me.padel && parseHash().head === 'padel')) applyRoute();
     me.night = m.night || null;
     paintNight();
+    if (window.HSiteNews) HSiteNews.ready();
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
     $('fbTab').hidden = me.role !== 'admin';
@@ -4628,6 +4652,7 @@
       connect();
       if (me.account) HLavka.loadMine().then(lavkaChanged);
       if (window.HBuy) HBuy.ready();
+      if (window.HBets) HBets.ready();
       if (plain) askNick(true, 'register', plain);
       // «💡»: адміну — скільки записок чекає, решті — у скількох своїх записках нова відповідь розробника.
       if (me.role === 'admin') loadFeedbackCount(); else loadMyFeedback(false);

@@ -127,4 +127,20 @@ public sealed class Accounts(Db db, IOptionsMonitor<SiteOptions> site)
         db.SetAccountPassword(me.Nick, Auth.HashPassword(password!, out var salt), salt);
         return Ok(db.FindAccount(me.Nick)!);
     }
+
+    /// <summary>
+    /// «Вийти на всіх пристроях»: нова сіль — і всі сесійні куки зі старою вже нічиї. Сіль водночас і сіль пароля,
+    /// тож у кого пароль є, той його й вводить: хеш перераховуємо з новою сіллю, сам пароль не міняється.
+    /// </summary>
+    public Outcome SignOutEverywhere(Account me, string? current)
+    {
+        if (!me.HasPassword)
+        {
+            db.SetAccountPassword(me.Nick, "", Auth.NewSalt());
+            return Ok(db.FindAccount(me.Nick)!);
+        }
+        if (!Auth.VerifyPassword(current ?? "", me.PassHash, me.PassSalt)) return Fail("Халепа: не той пароль", 401);
+        db.SetAccountPassword(me.Nick, Auth.HashPassword(current!, out var salt), salt);
+        return Ok(db.FindAccount(me.Nick)!);
+    }
 }

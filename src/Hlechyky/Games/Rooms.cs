@@ -6,8 +6,14 @@ using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Games;
 
-/// <summary>Відповідь хаба тому, хто натиснув (PROTOCOL §1). Порожній Message — тоста не буде.</summary>
-public sealed record RoomReply(bool Ok, string Message = "", string? RoomId = null)
+/// <summary>
+/// Відповідь хаба тому, хто натиснув (PROTOCOL §1). Порожній Message — тоста не буде. <c>NotReady</c> — «Почати» чи
+/// «Ще раз» без force, а за столом є не готові (<see cref="Rooms.StartByHost"/>): клієнт питає «почати все одно?».
+/// Старий клієнт поля не знає й просто покаже Message тостом.
+/// </summary>
+public sealed record RoomReply(bool Ok, string Message = "", string? RoomId = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? NotReady = null)
 {
     public static readonly RoomReply Done = new(true);
     public static RoomReply Fail(string message) => new(false, message);
@@ -120,6 +126,7 @@ static class Say
     public const string Broken = "ой-йой, партія зламалась — вибачте";
     /// <summary>Сервер «заморозив» столи перед перезапуском (<see cref="Rooms.Freeze"/>): за мить буде той самий стіл.</summary>
     public const string Restarting = "⏳ Сайт оновлюється — за пару секунд продовжимо";
+    public static string NotReady(IReadOnlyList<string> nicks) => "Ще не готові: " + string.Join(", ", nicks);
 }
 
 /// <summary>
@@ -249,6 +256,8 @@ public sealed partial class Rooms
         if (_registry.Info(gameId) is not { } info) return RoomOutcome.Fail(Say.NoGame);
         if (Closed(gameId) is { } off) return RoomOutcome.Fail(off);
         if (info.Solo) return OpenSolo(nick, gameId, null);
+        Outbox? freed = null;
+        if (_registry.Shared(gameId) && SharedSeat(nick, gameId, out freed) is { } shared) return shared;
 
         var stake = ReadStake(info, options);
         if (stake > 0 && _stakes.Balance(nick) < stake) return RoomOutcome.Fail(Say.NoShards);
@@ -265,6 +274,7 @@ public sealed partial class Rooms
 
         room.Seats[0] = nick;
         room.Host = nick;
+        var raced = false;
         // Перевірка й додавання — однією секцією: інакше дві вкладки одного ніка створять два столи,
         // а дванадцятеро одночасних творців проб'ють MaxRooms.
         lock (_lock)
@@ -272,10 +282,14 @@ public sealed partial class Rooms
             if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (_rooms.Any(r => !r.Info.Solo && r.Has(nick))) return RoomOutcome.Fail(Say.Seated);
             if (_rooms.Count(r => !r.Info.Solo) >= MaxRooms) return RoomOutcome.Fail(Say.TooMany);
-            _rooms.Add(room);
+            // Спільний стіл, що з'явився, поки будували цей (двоє натиснули разом), — туди; наш так і не народився.
+            raced = _registry.Shared(gameId) && _rooms.Any(r => SharedOpen(r, gameId));
+            if (!raced) _rooms.Add(room);
         }
+        if (raced) return SharedSeat(nick, gameId, out _) ?? RoomOutcome.Fail(Say.TooMany);
 
         var outbox = new Outbox();
+        if (freed is not null) outbox.Adopt(freed);   // з мертвого спільного столу людину відпустили — їм теж новий вид
         // «Можна почати вже» — лише коли гра й справді пустить: доміно, дурень, c4x самотужки без Глеків не стартують.
         string? cant = null;
         if (info.MinPlayers <= 1)
@@ -319,6 +333,42 @@ public sealed partial class Rooms
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
         return new RoomOutcome(outbox, reply);
+    }
+
+    /// <summary>Стіл спільної гри (<see cref="ISharedTable"/>), за який ще можна сісти: живий і з вільним місцем.</summary>
+    static bool SharedOpen(Room r, string gameId) =>
+        r.Info.Id == gameId && r.Status is RoomStatus.Lobby or RoomStatus.Playing && r.FreeSeat >= 0;
+
+    /// <summary>
+    /// «Новий стіл» спільної гри: людина вже за живим — просто «ти тут»; є живий стіл із місцем — сідає туди (Join, посеред
+    /// партії — LateJoin). null — такого столу нема, тоді Create ставить новий. Глядачем дивитись можна й повний стіл.
+    /// <para>
+    /// Мертвий стіл (Finished — перезапуск без чистого знімка перериває партію) спільним не годиться: спільна гра не
+    /// закінчується й «Ще раз» не має, тож людину з нього відпускаємо (Leave — порожній стіл зникне) і ведемо за живий
+    /// або новий. <paramref name="freed"/> — розсилка того «встав», коли далі ставиться новий стіл.
+    /// </para>
+    /// </summary>
+    RoomOutcome? SharedSeat(string nick, string gameId, out Outbox? freed)
+    {
+        freed = null;
+        Room? mine, open;
+        lock (_lock)
+        {
+            mine = _rooms.FirstOrDefault(r => r.Info.Id == gameId && r.Has(nick));
+            open = _rooms.Where(r => SharedOpen(r, gameId)).OrderByDescending(r => r.Seats.Count(s => s is not null)).FirstOrDefault();
+        }
+        if (mine is not null && mine.Status != RoomStatus.Finished)
+            return new RoomOutcome(new Outbox(), new RoomReply(true, "Ти вже за цим столом", mine.Id));
+        if (mine is not null)
+        {
+            var left = Leave(mine.Id, nick);
+            if (!left.Reply.Ok) return left;
+            freed = left.Out;
+        }
+        if (open is null) return null;
+        var joined = Join(open.Id, nick);
+        if (freed is not null) { freed.Adopt(joined.Out); joined = joined with { Out = freed }; freed = null; }
+        return joined;
     }
 
     /// <summary>
@@ -514,6 +564,9 @@ public sealed partial class Rooms
                 (room.Status, room.Result, room.FinishedAt, room.Round, room.Restored) = was;
                 return new RoomOutcome(outbox, RoomReply.Fail(no));
             }
+            if (room.Status != RoomStatus.Playing) CrewChanged(room, outbox);
+            // Повний стіл стартував сам: ставки з лобі ставились іще без цього гравця — назад.
+            else BetsCrewChanged(room, outbox, room.Round);
         }
         outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));
@@ -596,6 +649,7 @@ public sealed partial class Rooms
             }
         }
         room.Seats[seat] = null;
+        CrewChanged(room, outbox);
         if (string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase))
             room.Host = room.Seats.FirstOrDefault(s => s is not null) ?? room.Host;
         if (!room.Info.Private) outbox.Add(new LobbyChanged());
@@ -637,8 +691,12 @@ public sealed partial class Rooms
 
     // ---------- партія ----------
 
-    /// <summary>Господар тисне «Почати» в грі з <see cref="StartMode.ByHost"/>.</summary>
-    public RoomOutcome StartByHost(string id, string nick)
+    /// <summary>
+    /// Господар тисне «Почати» в грі з <see cref="StartMode.ByHost"/>. <paramref name="force"/> false — спершу спитати
+    /// «✋ Готовий»: хтось не готовий → відмова зі списком (<see cref="RoomReply.NotReady"/>). Типово true: турнір,
+    /// тести й решта внутрішніх викликів починають, не питаючи; хаб і агенти передають, що натиснула людина.
+    /// </summary>
+    public RoomOutcome StartByHost(string id, string nick, bool force = true)
     {
         if (Find(id) is not { } room) return RoomOutcome.Fail(Say.NoRoom);
         if (Closed(room.Info.Id) is { } off) return RoomOutcome.Fail(off);
@@ -650,6 +708,7 @@ public sealed partial class Rooms
             if (room.Status != RoomStatus.Lobby) return RoomOutcome.Fail(room.Status == RoomStatus.Playing ? Say.Waiting : Say.Played);
             if (room.Occupied < room.Info.MinPlayers) return RoomOutcome.Fail(Say.TooFew(room.Info.MinPlayers));
             if (room.Game.CanStart() is { } why) return RoomOutcome.Fail(why);
+            if (Unready(room, nick, force, outbox) is { } wait) return new RoomOutcome(outbox, wait);
             if (StartRound(room, outbox) is { } no) return new RoomOutcome(outbox, RoomReply.Fail(no));
         }
         outbox.Add(new LobbyChanged());
@@ -658,8 +717,11 @@ public sealed partial class Rooms
         return new RoomOutcome(outbox, new RoomReply(true, "", room.Id));
     }
 
-    /// <summary>«Ще раз» тим самим складом: місця зсуваються, щоб починав інший, раунд росте, ставка списується знову.</summary>
-    public RoomOutcome Rematch(string id, string nick)
+    /// <summary>
+    /// «Ще раз» тим самим складом: місця зсуваються, щоб починав інший, раунд росте, ставка списується знову. Тисне
+    /// будь-хто за столом; <paramref name="force"/> — як у <see cref="StartByHost"/>.
+    /// </summary>
+    public RoomOutcome Rematch(string id, string nick, bool force = true)
     {
         if (Find(id) is not { } room) return RoomOutcome.Fail(Say.NoRoom);
         if (Closed(room.Info.Id) is { } off) return RoomOutcome.Fail(off);
@@ -671,6 +733,7 @@ public sealed partial class Rooms
             if (room.Status != RoomStatus.Finished) return RoomOutcome.Fail(Say.NotFinished);
             if (room.Occupied < room.Info.MinPlayers) return RoomOutcome.Fail(Say.TooFew(room.Info.MinPlayers));
             if (room.Game.CanStart() is { } why) return RoomOutcome.Fail(why);
+            if (Unready(room, nick, force, outbox) is { } wait) return new RoomOutcome(outbox, wait);
 
             // Зсуваємо тих, хто сидить, по зайнятих місцях: у грі на двох це звичайний обмін ✕↔◯,
             // у компанії — «наступний починає», а порожні місця лишаються порожніми.
@@ -710,6 +773,7 @@ public sealed partial class Rooms
         var now = _clock.UtcNow;
         room.Restored = null;   // нова партія — і вид знову від гри, а не той, що пережив перезапуск
         room.LobbyActs.Clear();
+        room.Ready.Clear();     // «✋ Готовий» — до цієї партії; до наступної кожен скаже знову
         room.Status = RoomStatus.Playing;
         room.StartedAt = now;
         room.FinishedAt = null;
@@ -809,6 +873,8 @@ public sealed partial class Rooms
             {
                 room.LastActivity = _clock.UtcNow;
                 if (before == RoomStatus.Lobby && room.Status == RoomStatus.Lobby) RememberLobbyAct(room, seat, action ?? "", payload);
+                // «🤖 + бот» міняє, з ким грати, — як новий гравець за столом. Решта вибору в лобі (машинка, сигнал) — ні.
+                if (before != RoomStatus.Playing && room.Status != RoomStatus.Playing && action == Impl.LiveBots.Toggle) CrewChanged(room, outbox);
                 Persist(room, outbox);
                 // реалтайм шле види з тика — але в лобі й за дограним столом тика нема, тож налаштування розсилаємо одразу
                 if (counts || before != RoomStatus.Playing) outbox.Add(new RoomViews(room.Id));

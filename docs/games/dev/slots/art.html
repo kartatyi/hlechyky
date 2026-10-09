@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Аркуш арту</title>
+<style>
+  @font-face { font-family: 'Onest'; font-weight: 100 900; src: url('../../../../web/static/fonts/onest-cyrillic-wght-normal.woff2') format('woff2'); unicode-range: U+0400-045F, U+0490-0491; }
+  @font-face { font-family: 'Onest'; font-weight: 100 900; src: url('../../../../web/static/fonts/onest-latin-wght-normal.woff2') format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+  body { margin: 0; padding: 16px; background: #0f1f18; color: #ecf1ea; font: 14px/1.5 'Onest', system-ui, sans-serif; }
+  h2 { font-size: 16px; margin: 24px 0 8px; color: #f4c542; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; position: sticky; top: 0; background: #0f1f18; padding: 8px 0; z-index: 5; }
+  .bar a, .bar button { color: #ecf1ea; background: #234032; border: 1px solid #2f4d3d; border-radius: 10px; padding: 6px 12px; cursor: pointer; text-decoration: none; font: inherit; }
+  .bar .on { background: #f4c542; color: #2a1e03; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .cell { display: inline-flex; align-items: center; justify-content: center; position: relative; }
+  .cell > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .sym { text-align: center; font-size: 12px; color: #9db3a5; }
+  .tier { font-size: 11px; opacity: .7; }
+  .box { border: 1px solid #2f4d3d; border-radius: 8px; overflow: hidden; position: relative; }
+  .box > svg { width: 100%; height: 100%; display: block; }
+  .muted { color: #9db3a5; }
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+<div id="out" class="muted">Вантажу…</div>
+<script>
+(function () {
+  const ids = ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'];
+  const m = new URLSearchParams(location.search).get('m') || ids[0];
+  const bar = document.getElementById('bar'), out = document.getElementById('out');
+  bar.innerHTML = ids.map((id) => '<a href="?m=' + id + '"' + (id === m ? ' class="on"' : '') + '>' + id + '</a>').join('')
+    + '<button id="bw">win</button><button id="bg">glint</button><span class="muted" id="st"></span>';
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '../../../../web/games/slots/' + m + '-art.css?' + Date.now(); document.head.appendChild(css);
+  const s = document.createElement('script'); s.src = '../../../../web/games/slots/' + m + '-art.js?' + Date.now();
+  s.onerror = () => { out.textContent = 'Нема ' + m + '-art.js'; };
+  s.onload = draw; document.head.appendChild(s);
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function svgOf(v, args) {
+    try { const r = typeof v === 'function' ? v.apply(null, args || []) : v; return typeof r === 'string' && r.trim().startsWith('<svg') ? r : null; }
+    catch (e) { return null; }
+  }
+  function draw() {
+    const A = (window.SlotArt || {})[m];
+    if (!A) { out.textContent = 'SlotArt[' + m + '] не зареєстровано'; return; }
+    const ex = A.extras || {};
+    let h = (ex.defs ? '<div style="position:absolute;width:0;height:0;overflow:hidden">' + ex.defs + '</div>' : '');
+    h += '<div class="slot-' + m + '">';
+    h += '<h2>' + esc(A.title || m) + ' — символи</h2>';
+    for (const size of [44, 96, 160]) {
+      h += '<div class="row" style="margin-bottom:12px">' + Object.entries(A.symbols || {}).map(([k, v]) =>
+        '<div class="sym"><div class="cell" style="width:' + size + 'px;height:' + size + 'px">' + v.svg + '</div>'
+        + (size === 96 ? '<div>' + esc(k) + ' · ' + esc(v.name || '') + '</div><div class="tier">' + esc(v.tier || '') + '</div>' : '') + '</div>').join('') + '</div>';
+    }
+    h += '<h2>Логотип</h2><div class="row"><div class="box" style="width:520px;max-width:100%;border:0">' + (A.logo || '—') + '</div></div>';
+    h += '<h2>Афіша</h2><div class="row"><div class="box" style="width:360px;height:240px">' + (A.poster || '—') + '</div>'
+      + '<div class="box" style="width:180px;height:120px">' + (A.poster || '—') + '</div></div>';
+    const sc = A.scene || {};
+    for (const k of ['base', 'bonus']) {
+      if (!sc[k]) continue;
+      h += '<h2>Сцена: ' + k + '</h2><div class="row"><div class="box" style="width:720px;max-width:100%;aspect-ratio:16/9">' + sc[k] + '</div>'
+        + '<div class="box" style="width:180px;height:380px">' + sc[k] + '</div></div>';
+    }
+    const keys = Object.keys(ex).filter((k) => k !== 'defs');
+    if (keys.length) {
+      h += '<h2>Extras</h2><div class="row">';
+      for (const k of keys) {
+        const v = ex[k];
+        const samples = typeof v === 'function' ? [['×5'], ['×100'], ['Міні'], ['r'], ['b'], ['back']] : [[]];
+        const seen = new Set();
+        for (const a of samples) {
+          const svg = svgOf(v, a);
+          if (!svg || seen.has(svg)) continue; seen.add(svg);
+          h += '<div class="sym on"><div class="cell" style="width:120px;height:120px">' + svg + '</div><div>' + esc(k) + (a.length ? '(' + esc(a[0]) + ')' : '') + '</div></div>';
+        }
+        if (!seen.size) h += '<div class="sym"><div class="muted">' + esc(k) + ': ' + esc(typeof v) + '</div></div>';
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+    out.innerHTML = h; out.classList.remove('muted');
+    document.getElementById('st').textContent = Object.keys(A.symbols || {}).length + ' символів';
+  }
+  const tog = (cls) => document.querySelectorAll('.cell').forEach((c) => c.classList.toggle(cls));
+  document.getElementById('bw').onclick = () => tog('win');
+  document.getElementById('bg').onclick = () => tog('glint');
+})();
+</script>
+</body>
+</html>

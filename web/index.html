@@ -32,8 +32,10 @@
 <link rel="stylesheet" href="/static/pad.css">
 <link rel="stylesheet" href="/games/core.css">
 <link rel="stylesheet" href="/games/tournament.css">
+<link rel="stylesheet" href="/games/bets-table.css">
 <link rel="stylesheet" href="/static/voice.css">
 <link rel="stylesheet" href="/static/buy.css">
+<link rel="stylesheet" href="/static/bets.css">
 </head>
 <body class="route-efir">
 <header>
@@ -237,7 +239,7 @@
 
 <!-- Хто прийшов: зайти в акаунт (паролем чи через Google), зареєструвати нік або піти гостем (тоді нік
      буде «гість Вася»). Для того, хто вже в акаунті, ця ж картка — «Ти — Влад»: вийти, змінити пароль,
-     прив'язати Google. Кнопку Google малює її бібліотека в #googleBtn / #googleLink, коли є Client ID. -->
+     вийти на всіх пристроях, прив'язати Google. Кнопку Google малює її бібліотека в #googleBtn / #googleLink, коли є Client ID. -->
 <div id="nickModal" class="modal" hidden>
   <form id="nickForm" class="card">
     <h3><img src="/static/glek.svg" alt=""><span id="nickTitle">Хто прийшов?</span></h3>
@@ -255,6 +257,7 @@
     <div class="row">
       <button id="nickSave" class="primary" type="submit">Заходжу</button>
       <button id="nickPass" class="ghost" type="button" hidden>Змінити пароль</button>
+      <button id="nickAll" class="ghost" type="button" hidden title="Старі сесії на інших пристроях більше не пускають">Вийти на всіх пристроях</button>
       <button id="nickLater" class="ghost" type="button" hidden>Не зараз</button>
     </div>
     <div id="googleBox" class="gbox" hidden>
@@ -338,6 +341,7 @@
 <!-- каркас ігор — до app.js: той кличе HGames.init() на старті -->
 <script src="/games/core.js"></script>
 <script src="/games/tournament.js"></script>
+<script src="/games/bets-table.js"></script>
 <!-- люди й цифри: профілі, картка по кліку на нік, «📊 Хто скільки» — до app.js, той кличе HPeople.init() -->
 <script src="/people.js"></script>
 <!-- Лавка: хто як вбраний (людям — кольори й значки) і сама вітрина — до app.js, той кличе HLavka.init() -->
@@ -348,8 +352,12 @@
 <script src="/voice.js"></script>
 <!-- купити черепки за гривні: вікно з пакетами й банками продавця — до app.js, той кличе HBuy.init() і attach(conn) -->
 <script src="/buy.js"></script>
+<!-- «🎲 Ставки» — сторінка подій -->
+<script src="/bets.js"></script>
 <!-- 🛡 модерація Балачок: 📌, 🔇, 🚫, 🐢, кнопки адміна — до app.js, той кличе HModer.init() і attach(conn) -->
 <script src="/moder.js"></script>
+<!-- ✨ «Що нового на сайті»: раз на реліз — до app.js, той кличе HSiteNews.init() і ready() -->
+<script src="/sitenews.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

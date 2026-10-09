@@ -1,0 +1,191 @@
+/* Козацький скарб — розкладка (табличка джекпотів, рамка, бокові панелі), «Утримуй і вигравай» (гнізда, свічки,
+   скриня, Булава/Пірнач, підрахунок), Гетьманський скарб. Анімації — transform/opacity; у спокої нічого не крутиться,
+   крім CSS-сцени арту. */
+.slot-slot-hold { --sh-txt: #fff3c0; --sh-emer: #c4ffd8; --sh-sapph: #bfe0ff; }
+
+.sh-stage { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: Onest, system-ui, sans-serif; color: var(--sh-txt); }
+.sh-stage::before { content: ''; position: absolute; inset: -60px; pointer-events: none; opacity: 0; transition: opacity .8s;
+  background: radial-gradient(60% 60% at 50% 55%, rgba(2, 3, 14, .15), rgba(2, 3, 14, .62)); }
+.sh-stage.sh-bonus::before { opacity: 1; }
+.sh-land { gap: 6px; }
+.sh-port { gap: 4px; justify-content: flex-start; padding-top: 6px; }
+
+/* табличка джекпотів */
+.sh-jp { position: relative; flex: none; width: 500px; aspect-ratio: 600 / 130; }
+.sh-port .sh-jp { width: 404px; }
+.sh-jp > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.sh-jp .jp { transform-box: fill-box; transform-origin: 50% 50%; transition: filter .4s; }
+.sh-jp .jp.hit { animation: sh-jphit .75s cubic-bezier(.3, 1.6, .5, 1) 2; }
+.sh-jp .jp.lit { filter: brightness(1.35) saturate(1.25); }
+.sh-grand .sh-jp .jp-grand { animation: sh-jphit .75s cubic-bezier(.3, 1.6, .5, 1) infinite; }
+@keyframes sh-jphit { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.14); } 65% { transform: scale(.97); } }
+
+/* середина: бокові панелі й поле */
+.sh-mid { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; flex: none; }
+.sh-side { width: 214px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; align-self: stretch; }
+.sh-logo { width: 214px; display: flex; justify-content: center; transition: opacity .5s, transform .5s; }
+.sh-logo > svg { width: 100%; height: auto; display: block; overflow: visible; }
+.sh-port .sh-logo { width: 300px; }
+.sh-bottom { position: relative; width: 404px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; padding-top: 6px; }
+
+/* рамка й поле */
+.sh-frame { flex: none; margin: calc(var(--S) * .2); }
+.sh-reelhost, .sh-hold { position: absolute; inset: 0; z-index: 1; }
+.sh-reelhost { transition: opacity .45s; }
+.slot-slot-hold .sk-reel { border-radius: 0; }
+.slot-slot-hold .sk-lines { z-index: 4; }
+.slot-slot-hold .sk-cell > svg { width: 92%; height: 92%; }
+.slot-slot-hold .sk-cell.dim { opacity: .4; }
+.sh-frame::after { content: ''; position: absolute; inset: -6px; border-radius: 10px; pointer-events: none; z-index: 3; opacity: 0; transition: opacity .3s;
+  box-shadow: 0 0 0 3px #ffd447, 0 0 36px 10px rgba(255, 190, 40, .55); }
+.sh-tease .sh-frame::after, .sh-slow .sh-frame::after { animation: sh-glowp .5s ease-in-out infinite alternate; }
+.sh-trig .sh-frame::after { opacity: 1; }
+@keyframes sh-glowp { from { opacity: .35; } to { opacity: 1; } }
+.slot-slot-hold .sk-cell.sh-hot > svg { animation: sh-hot .5s ease-in-out infinite alternate; }
+@keyframes sh-hot { from { transform: scale(1); } to { transform: scale(1.12); } }
+.slot-slot-hold .sk-cell.sh-landcoin > svg { animation: sh-pop .5s cubic-bezier(.3, 1.7, .5, 1); }
+.sh-trig .sk-cell.win > svg { animation: sh-hot .35s ease-in-out infinite alternate; }
+
+/* «Утримуй і вигравай»: гнізда */
+.sh-hold { pointer-events: none; opacity: 0; transition: opacity .45s; }
+.sh-bonus .sh-hold { opacity: 1; }
+.sh-bonus .sh-reelhost { opacity: 0; }
+.sh-hc { position: absolute; display: flex; align-items: center; justify-content: center; }
+.sh-hci { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.sh-hci > svg { width: 92%; height: 92%; display: block; overflow: visible; }
+.sh-hc:not(.full) .sh-hci > svg { width: 100%; height: 100%; }
+.sh-hc.full { z-index: 1; }
+.sh-hc.spin { overflow: hidden; }
+.sh-strip { position: absolute; left: 0; top: 0; width: 100%; animation: sh-roll .24s linear infinite; animation-delay: var(--d, 0s); }
+.sh-sq { height: var(--S); display: flex; align-items: center; justify-content: center; opacity: .8; }
+.sh-sq > svg { width: 92%; height: 100%; transform: scaleY(1.18); display: block; }
+.sh-hc.spin::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(#0a0612 0%, rgba(10, 6, 18, 0) 30%, rgba(10, 6, 18, 0) 70%, #0a0612 100%); }
+@keyframes sh-roll { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+.sh-slow .sh-strip { animation-duration: .4s; }
+.sh-hc.sh-tease { z-index: 2; }
+.sh-hc.sh-tease::before { content: ''; position: absolute; inset: 3px; border-radius: 10px; z-index: 2; pointer-events: none;
+  box-shadow: inset 0 0 0 3px #ffd447, 0 0 22px 4px rgba(255, 190, 40, .7); animation: sh-glowp .32s ease-in-out infinite alternate; }
+.sh-hc.sh-tease .sh-strip { animation-duration: .55s; }
+.sh-hc.sh-land .sh-hci { animation: sh-landb .35s ease-out; }
+@keyframes sh-landb { 0% { transform: translateY(-10%); } 60% { transform: translateY(3%); } 100% { transform: none; } }
+.sh-hc.sh-stick .sh-hci { animation: sh-stick .8s cubic-bezier(.3, 1.6, .5, 1); }
+.sh-hc.sh-stick::after { content: ''; position: absolute; inset: -20%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 240, 170, .95), rgba(255, 200, 60, .5) 35%, rgba(255, 180, 40, 0) 68%); animation: sh-flash .8s ease-out forwards; }
+@keyframes sh-stick { 0% { transform: scale(1.7); opacity: 0; } 35% { transform: scale(.88); opacity: 1; } 65% { transform: scale(1.07); } 100% { transform: none; } }
+@keyframes sh-flash { 0% { opacity: 1; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.3); } }
+@keyframes sh-pop { 0% { transform: scale(1); } 40% { transform: scale(1.22); } 100% { transform: scale(1); } }
+.sh-hc.sh-power .sh-hci { animation: sh-power .5s ease-in-out infinite alternate; }
+.sh-hc.sh-power::after { content: ''; position: absolute; inset: -14%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(200, 255, 230, .6), rgba(120, 220, 255, 0) 65%); animation: sh-glowp .4s ease-in-out infinite alternate; }
+@keyframes sh-power { from { transform: scale(1) rotate(-4deg); } to { transform: scale(1.16) rotate(4deg); } }
+.sh-hc.sh-dbl .sh-hci { animation: sh-dbl .65s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes sh-dbl { 0% { transform: scale(1); } 30% { transform: scale(1.3) rotate(-6deg); } 100% { transform: none; } }
+.sh-hc.sh-give .sh-hci { animation: sh-give .5s ease-out; }
+@keyframes sh-give { 0% { transform: none; } 40% { transform: scale(.85); } 100% { transform: none; } }
+.sh-hc.sh-count .sh-hci { animation: sh-stick .55s cubic-bezier(.3, 1.6, .5, 1); }
+.sh-counting .sh-hc.full:not(.done) .sh-hci { opacity: 1; }
+.sh-hc.done .sh-hci { opacity: .42; transition: opacity .3s; }
+.sh-wave .sh-hc.full .sh-hci { transition: transform .3s; }
+
+/* числа, що летять і спливають */
+.sh-fly, .sh-plus { position: absolute; z-index: 6; pointer-events: none; white-space: nowrap; font-weight: 900; transform: translate(-50%, -50%);
+  font-size: calc(var(--S) * .26); color: var(--sh-emer); -webkit-text-stroke: 1.5px #08351f; paint-order: stroke fill; }
+.sh-fly { transition: transform .5s cubic-bezier(.55, 0, .75, .6), opacity .18s .38s; }
+.sh-fly.go { opacity: 0; }
+.sh-plus { color: #ffe27a; -webkit-text-stroke-color: #4a2304; animation: sh-plus 1.05s ease-out forwards; }
+.sh-plus.x2 { color: var(--sh-sapph); -webkit-text-stroke-color: #0c1e52; }
+.sh-plus.big { font-size: calc(var(--S) * .36); }
+@keyframes sh-plus { 0% { opacity: 0; transform: translate(-50%, -20%) scale(.6); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -110%) scale(1); } }
+
+/* свічки респінів і «у скрині» */
+.sh-cand, .sh-sum { display: none; }
+.sh-bonus .sh-cand, .sh-bonus .sh-sum { display: flex; }
+.sh-bonus .sh-hint { display: none; }
+.sh-cand { flex-direction: column; align-items: center; gap: 2px; }
+.sh-cand-svg { width: 200px; aspect-ratio: 180 / 108; }
+.sh-cand-svg > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.sh-cand-t { font-weight: 900; font-size: 24px; letter-spacing: .5px; color: #ffe27a; -webkit-text-stroke: 1.2px #3f220e; paint-order: stroke fill; }
+.sh-cand.reset .sh-cand-svg { animation: sh-stick .7s cubic-bezier(.3, 1.6, .5, 1); }
+.sh-cand.out .sh-cand-svg { animation: sh-out .45s ease-out; }
+.sh-cand.last .sh-cand-t { color: #ff8a6a; animation: sh-glowp .45s ease-in-out infinite alternate; }
+@keyframes sh-out { 0% { transform: none; } 30% { transform: translateX(-3px) rotate(-1.5deg); } 60% { transform: translateX(3px) rotate(1deg); } 100% { transform: none; } }
+.sh-sum { flex-direction: column; align-items: center; padding: 10px 22px 12px; border-radius: 18px; min-width: 170px;
+  background: linear-gradient(#3a1f0d, #1d0e05); box-shadow: inset 0 0 0 3px #c0700c, inset 0 0 0 5px #2b1509, 0 10px 24px rgba(0, 0, 0, .45); }
+.sh-sum small { font-size: 16px; font-weight: 800; letter-spacing: 1px; opacity: .8; }
+.sh-sum b { font-size: 40px; font-weight: 900; color: #ffe27a; line-height: 1.1; }
+.sh-sum.bump b { animation: sh-pop .4s cubic-bezier(.3, 1.7, .5, 1); }
+.sh-port .sh-bonus-row { display: flex; }
+.sh-port.sh-bonus .sh-bottom { flex-direction: row; justify-content: center; align-items: center; gap: 16px; }
+.sh-port.sh-bonus .sh-logo { display: none; }
+.sh-port .sh-cand-svg { width: 170px; }
+.sh-port .sh-cand-t { font-size: 20px; }
+.sh-port .sh-sum { min-width: 150px; padding: 8px 16px 10px; }
+.sh-port .sh-sum b { font-size: 32px; }
+
+/* підказка в спокої */
+.sh-hint { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 14px 14px 16px; border-radius: 18px; width: 100%;
+  background: linear-gradient(rgba(30, 16, 6, .82), rgba(14, 8, 3, .82)); box-shadow: inset 0 0 0 2px rgba(255, 212, 71, .45), 0 10px 24px rgba(0, 0, 0, .4); }
+.sh-hint-c { width: 78px; height: 78px; }
+.sh-hint-c > svg, .sh-hint-sp span > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.sh-hint-t { font-size: 19px; font-weight: 700; line-height: 1.2; }
+.sh-hint-t b { color: #ffe27a; font-weight: 900; }
+.sh-hint-sp { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 4px 8px; text-align: left; font-size: 15px; font-style: normal; }
+.sh-hint-sp i { font-style: normal; opacity: .9; }
+.sh-hint-sp span { width: 44px; height: 44px; }
+.sh-port .sh-hint { flex-direction: row; flex-wrap: wrap; justify-content: center; padding: 8px 10px; gap: 4px 10px; }
+.sh-port .sh-hint-c { width: 52px; height: 52px; }
+.sh-port .sh-hint-t { font-size: 17px; max-width: 220px; }
+.sh-port .sh-hint-sp { grid-template-columns: 34px auto 34px auto; font-size: 13px; }
+.sh-port .sh-hint-sp span { width: 34px; height: 34px; }
+
+/* скриня на вході */
+.sh-chest-ov { background: radial-gradient(circle at 50% 45%, rgba(30, 16, 4, .72), rgba(3, 4, 16, .9)); }
+.sh-chest-card { position: relative; text-align: center; font-family: Onest, system-ui, sans-serif; }
+.sh-chest-rays { position: absolute; left: 50%; top: 150px; width: 900px; height: 900px; margin: -450px 0 0 -450px; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: repeating-conic-gradient(rgba(255, 214, 90, .26) 0deg 9deg, rgba(255, 214, 90, 0) 9deg 22deg);
+  -webkit-mask: radial-gradient(circle, #000 15%, transparent 68%); mask: radial-gradient(circle, #000 15%, transparent 68%); transition: opacity .6s .7s; }
+.sh-chest-ov.open .sh-chest-rays { opacity: 1; animation: sh-spin 24s linear infinite; }
+.sh-chest-box { position: relative; width: 340px; height: 289px; margin: 0 auto; transform: scale(.5) translateY(60px); transition: transform .55s cubic-bezier(.3, 1.5, .5, 1); }
+.sk-ov.in .sh-chest-box { transform: none; }
+.sh-chest-box > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.sh-chest-t { margin-top: 10px; font-size: 58px; font-weight: 900; line-height: 1; color: #ffd447; letter-spacing: .5px;
+  -webkit-text-stroke: 2.5px #2b1509; paint-order: stroke fill; text-shadow: 0 5px 0 #7a3c06, 0 10px 26px rgba(0, 0, 0, .6); opacity: 0; transform: scale(.6); transition: opacity .4s 1s, transform .5s 1s cubic-bezier(.3, 1.6, .5, 1); }
+.sh-chest-s { margin-top: 12px; font-size: 22px; font-weight: 700; color: var(--sh-txt); opacity: 0; transition: opacity .4s 1.3s; }
+.sh-chest-hint { margin-top: 14px; font-size: 15px; opacity: 0; transition: opacity .4s 2s; }
+.sh-chest-ov.open .sh-chest-t { opacity: 1; transform: none; }
+.sh-chest-ov.open .sh-chest-s { opacity: 1; }
+.sh-chest-ov.open .sh-chest-hint { opacity: .6; }
+.sk-port .sh-chest-box { width: 260px; height: 221px; }
+.sk-port .sh-chest-t { font-size: 36px; }
+.sk-port .sh-chest-s { font-size: 17px; }
+
+/* Гетьманський скарб */
+.sh-grand-ov { background: radial-gradient(circle at 50% 45%, rgba(90, 50, 0, .55), rgba(10, 4, 0, .85)); }
+.sh-grand-card { position: relative; text-align: center; font-family: Onest, system-ui, sans-serif; }
+.sh-grand-rays { position: absolute; left: 50%; top: 120px; width: 1000px; height: 1000px; margin: -500px 0 0 -500px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(rgba(255, 220, 100, .32) 0deg 8deg, rgba(255, 220, 100, 0) 8deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 12%, transparent 66%); mask: radial-gradient(circle, #000 12%, transparent 66%); animation: sh-spin 18s linear infinite; }
+.sh-grand-coin { position: relative; width: 230px; height: 230px; margin: 0 auto; animation: sh-grandc 1.6s ease-in-out infinite; }
+.sh-grand-coin > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+@keyframes sh-grandc { 0%, 100% { transform: scale(1) rotate(-4deg); } 50% { transform: scale(1.08) rotate(4deg); } }
+.sh-grand-t { position: relative; margin-top: 8px; font-size: 64px; font-weight: 900; line-height: 1; color: #ffd447;
+  -webkit-text-stroke: 3px #2b1509; paint-order: stroke fill; text-shadow: 0 6px 0 #a5560a, 0 12px 30px rgba(0, 0, 0, .6); animation: sh-pop 1s cubic-bezier(.3, 1.7, .5, 1); }
+.sh-grand-s { position: relative; margin-top: 10px; font-size: 22px; font-weight: 700; color: var(--sh-txt); }
+.sh-grand-n { position: relative; margin-top: 10px; font-size: 76px; font-weight: 900; color: #fff6c8; -webkit-text-stroke: 3px #5a2a04; paint-order: stroke fill; font-variant-numeric: tabular-nums; }
+.sk-port .sh-grand-coin { width: 160px; height: 160px; }
+.sk-port .sh-grand-t { font-size: 38px; }
+.sk-port .sh-grand-s { font-size: 16px; }
+.sk-port .sh-grand-n { font-size: 50px; }
+
+/* заглушки, коли арту бракує */
+.sh-ph { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-weight: 900; color: #3a1d06; }
+.sh-ph-coin { border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff1a8, #ffcb3a 45%, #c0700c); }
+.sh-ph-mace { border-radius: 50%; background: radial-gradient(circle at 35% 30%, #c4ffd8, #22ac4a); }
+.sh-ph-pir { border-radius: 50%; background: radial-gradient(circle at 35% 30%, #bfe0ff, #2f7bf0); }
+.sh-ph-empty { border-radius: 12px; background: #1d1424; box-shadow: inset 0 4px 10px #000; }
+.sh-ph-jp { gap: 10px; color: #ffe27a; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sh-chest-rays, .sh-grand-rays, .sh-grand-coin { animation: none !important; }
+}

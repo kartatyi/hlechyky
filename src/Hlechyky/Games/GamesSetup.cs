@@ -61,6 +61,8 @@ public static class GamesSetup
         Impl.TyrSetup.AddTyr(services);   // «Тир дня»: таблиця дня за очками й очки в «☀ Сьогодні»
         Impl.SkleiSetup.AddSklei(services);                 // «Склей глек»: свої картинки за черепки, малюнки й фото в колоді
         Impl.RouletteSetup.AddRoulette(services);   // Рулетка: каса (виплати, відновлення)
+        Impl.SlotsSetup.AddSlots(services);         // Слоти: каса-Скарбничка, заноси, Slots:* (specs/slots.md)
+        Impl.LelkaSetup.AddLelka(services);         // Лелека: налаштування Lelka:* і каса
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         return services;
     }
@@ -87,6 +89,7 @@ public static class GamesSetup
         Impl.WordleSetup.MapWordle(app);                    // /api/games/wordle/stats — серія й розподіл спроб
         Impl.DinoDailySetup.MapDinoDaily(app);              // /api/games/dino-daily/cup — кубок тижня
         Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
+        Impl.SlotsSetup.MapSlots(app);                      // /api/slots/feed — Скарбничка й заноси тижня
         return app;
     }
 }

@@ -235,12 +235,24 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "roulette-bet" => "Рулетка — ставка",
             "roulette-win" => "Рулетка — виграш",
             "roulette-back" => "Рулетка — ставку повернуто",
+            // слоти (docs/games/specs/slots.md §2): хвіст — id автомата; Ворожка — теж ставка й виграш
+            "slot-bet" => $"{names.Title(tail)} — ставка",
+            "slot-win" => $"{names.Title(tail)} — виграш",
+            "slot-jackpot" => "Скарбничка Глека!",
+            // Лелека (docs/games/specs/lelka.md §4)
+            "lelka-bet" => "Лелека — ставка",
+            "lelka-win" => "Лелека — забрав",
+            "lelka-back" => "Лелека — ставку повернуто",
             // куплено за гривні (ShardShop.cs): хвіст — номер замовлення
             "buy" => "куплено за гривні",
             "buy-gift" => "подарунок — куплені черепки",
             // продано за гривні: хвіст — номер заявки; не відбулось — черепки повертаються
             "sell" => "продано за гривні",
             "sell-back" => "повернуто — продаж не відбувся",
+            // ставки в Глека (Bets/): хвіст — джерело, event чи table
+            "bet" => tail == "table" ? "🎲 ставка на столі" : "🎲 ставка на подію",
+            "bet-win" => tail == "table" ? "🎲 ставка на столі зіграла" : "🎲 ставка на подію зіграла",
+            "bet-back" => "🎲 ставку повернуто",
             _ => reason,
         };
     }

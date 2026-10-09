@@ -1,0 +1,16 @@
+/* Слоти на сайті: автомат SlotKit на всю ігрову зону картки (вписується сам — масштабом). */
+.slot-card { padding: 0; }
+/* назва автомата вже є в рядку «← Лобі · …» над карткою й на табло самого автомата — рядок картки зайвий */
+.gtable:has(> .slot-card) > .gseats { display: none; }
+.slotwrap {
+  position: relative; width: 100%;
+  height: calc(var(--gfit-h, 100vh) - var(--slot-top, 170px) - 12px);
+  min-height: 380px; max-height: 960px;
+  border-radius: 14px; overflow: hidden; background: #0b1410;
+}
+@supports (height: 100dvh) {
+  .slotwrap { height: calc(var(--gfit-h, 100dvh) - var(--slot-top, 170px) - 12px); }
+}
+.slotwrap > .sk-root { position: absolute; inset: 0; }
+.slot-load { display: flex; align-items: center; justify-content: center; height: 100%; color: #cfc7a6; }
+@media (max-width: 600px) { .slotwrap { border-radius: 10px; min-height: 520px; } }

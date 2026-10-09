@@ -33,7 +33,9 @@ public static class Endpoints
         var api = app.MapGroup("/api");
 
         api.MapGet("/me", (HttpContext c, TrackBans bans, IGoogleVerifier google, Curfew curfew, IOptionsMonitor<ShardShopOptions> shop,
-            IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel) => new
+            IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel, IOptionsMonitor<Bets.BetsOptions> bets,
+            IOptionsMonitor<Games.Impl.SlotsOptions> slots,
+            IOptionsMonitor<Games.Impl.LelkaOptions> lelka) => new
         {
             nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice,
             // вимкнене в конфігу — кнопок і вкладок нема: черепки за гривні (ShardShop:Buy / Sell, web/buy.js),
@@ -41,6 +43,10 @@ public static class Endpoints
             shards = new { buy = shop.CurrentValue.Buy, sell = shop.CurrentValue.Sell },
             games = games.CurrentValue.Enabled,
             padel = padel.CurrentValue.Enabled,
+            slots = slots.CurrentValue.Enabled,   // автомати (Slots:Enabled): false — лобі ховає «🍒 Слоти», оберт відмовляє
+            lelka = lelka.CurrentValue.Enabled,   // Лелека (Lelka:Enabled): false — тайла нема, ставок не приймає
+            // «🎲 Ставки»: сторінка з подіями й панель ставок на столах (Bets:Enabled + Bets:Events / Bets:Tables)
+            bets = new { events = bets.CurrentValue.EventsOn, tables = bets.CurrentValue.TablesOn },
             night = curfew.ForMe(c),   // нічний відбій — лише тим, кого стосується; решті null
             account = Auth.IsUser(c),
             hasPassword = Auth.Me(c)?.HasPassword ?? false,
@@ -87,6 +93,16 @@ public static class Endpoints
         // Новий пароль — нова сіль, тож і нова кука: Signed кладе її, щоб ця ж вкладка не вилетіла.
         api.MapPost("/account/password", (HttpContext c, PasswordRequest req, Accounts accounts) =>
             Auth.Me(c) is { } me ? Signed(c, accounts.SetPassword(me, req.Current, req.Password), accounts) : Fail("Спершу зайди в акаунт"));
+
+        // Нова сіль — старі сесії всюди мертві; ця вкладка лишається в акаунті (Signed кладе свіжу куку).
+        api.MapPost("/account/logout-all", (HttpContext c, PasswordRequest req, Accounts accounts) =>
+        {
+            if (Auth.Me(c) is not { } me) return Fail("Спершу зайди в акаунт");
+            if (Auth.TooManyTries(c)) return Fail("Забагато спроб — зачекай п'ять хвилин");
+            var r = accounts.SignOutEverywhere(me, req.Current);
+            if (r.Account is null) Auth.CountMiss(c); else Auth.ForgetMisses(c);
+            return Signed(c, r, accounts);
+        });
 
         api.MapPost("/account/logout", (HttpContext c) =>
         {

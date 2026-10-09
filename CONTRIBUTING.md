@@ -20,7 +20,7 @@ powershell -ExecutionPolicy Bypass -File start.ps1 start
 - `setup.ps1` качає yt-dlp, ffmpeg і liquidsoap у `tools\` (близько 150 МБ) і створює `appsettings.Local.json` та `liquidsoap\.env` з випадковими ключами. Ці два файли в `.gitignore`, вони тільки твої.
 - Він же качає великий український словник (`data\words\uk-all.txt`, 18 МБ стисненого, 80 МБ на диску) — з нього Ерудит перевіряє слова. Пропустив або не вийшло: сайт працює, Ерудит вмикає режим «малий словник». Малі списки (Глек-слово, Віселиця) уже в репозиторії.
 - `start.ps1 start` підіймає liquidsoap (ефір, потік на `http://127.0.0.1:8001/radio.mp3`) і сервер у фоні (лог у `logs\server.log`, `logs\liquidsoap.log`); без `tools\caddy\caddy.exe` Caddy пропускає. `start.ps1 status`, `stop`, `logs` теж працюють. Можна й просто `dotnet run --project src\Hlechyky`: сайт працює, але ефір у шапці червоний, треки не грають. Для верстки, пошуку, чату, плейлистів цього досить.
-- Далі http://localhost:8080. Адмінка: `http://localhost:8080/?k=<AdminKey>`, ключ у своєму `appsettings.Local.json`.
+- Далі http://localhost:8080. Адмінка: `http://localhost:8080/?k=<AdminKey>` (ключ у своєму `appsettings.Local.json`) — заводить в акаунт «адмін». Це для локальної розробки: на проді `Auth:AdminKey` порожній, а адмін — акаунт із `Auth:AdminNicks`.
 - Last.fm необов'язковий: без ключа Дядько Глек радить тільки з YouTube Music. Ключ безкоштовний (https://www.last.fm/api/account/create), вписується в `LastFm:ApiKey` у `appsettings.Local.json`.
 
 ## Де що лежить
@@ -36,6 +36,7 @@ powershell -ExecutionPolicy Bypass -File start.ps1 start
 
 1. Онови `main` (`git pull`) і зроби гілку: `git switch -c <що-робиш>`.
 2. Одна зміна на гілку. Перевір локально: `dotnet build` без помилок, сайт відкривається, фіча працює на телефоні теж, якщо це інтерфейс.
+   Тести: під свою зміну пиши тест у `tests/Hlechyky.Tests`. `.\test.ps1` (чи `test.cmd`) ганяє лише тести з файлів, які ти змінив у гілці, а `.\test.ps1 -All` — увесь набір: його проганяємо перед PR. Тести за назвою: `.\test.ps1 Clicker`.
 3. Запуш гілку і відкрий Pull Request на GitHub. В описі: що зробив, навіщо, як перевірити. Для інтерфейсу скриншот або гіфка.
 4. GitHub Actions збирає проєкт на кожен PR. Червоний хрестик правимо до мерджу.
 5. Мерджить власник. Далі прод оновлюється сам: GitHub Actions збирає `main`, і якщо збірка зелена — сайт за хвилину-дві підтягує твій код і перезапускається (черга при цьому не губиться). Зламана збірка на прод не потрапляє.

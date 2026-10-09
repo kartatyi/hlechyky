@@ -12,13 +12,18 @@ namespace Hlechyky;
 /// що й решта, і його глеки лежать під «гість Вася», доки він не зареєструється.
 /// Усе добро тримається за ніком, як і було: зареєстрував «Влад» — і глеки, ачівки та статистика, що
 /// вже лежали під «влад», твої без жодного переносу (ключ той самий, що й у гаманців — <see cref="NickKey"/>).
-/// Адмінка як була: одне відкриття ?k=&lt;AdminKey&gt; кладе окрему куку на рік; якщо в цей момент
-/// ти в акаунті, роль адміна дописується й самому акаунту, тож на іншому пристрої досить просто зайти.
+/// Адмін — це акаунт: нік у Auth:AdminNicks (на проді — «владік») або accounts.role = 'admin'. Окремої
+/// адмінської куки нема: стару hlechyky_auth сервер не читає й стирає. Тож украдена сесія = адмінка, і від
+/// цього — «Вийти на всіх пристроях» у картці «Ти — …» (нова сіль акаунта, старі куки мертві).
+/// ?k=&lt;AdminKey&gt; — лише для деву (dev.ps1, стенди, агенти): з порожнім AdminKey, як на проді, просто веде
+/// на /. З ключем гостя заводить в акаунт «<see cref="DevAdmin"/>», а того, хто вже в акаунті, робить адміном.
 /// </summary>
 public static class Auth
 {
-    /// <summary>Кука адміна. Ім'я старе навмисно: у діючих адмінів вона не протухає від появи акаунтів.</summary>
+    /// <summary>Колишня кука адміна. Ролі більше не дає — лише стирається, де лишилась.</summary>
     public const string CookieName = "hlechyky_auth";
+    /// <summary>Акаунт, у який ?k= заводить гостя на деві: без пароля, з роллю admin.</summary>
+    public const string DevAdmin = "адмін";
     public const string SessionCookie = "hlechyky_session";
     public const string Guest = "гість";
     /// <summary>Приставка гостя. З пробілом: «гість Вася» читається як людина, а не як логін.</summary>
@@ -133,8 +138,19 @@ public static class Auth
         c.Response.Cookies.Append(SessionCookie, Protector(c).Protect($"session|{NickKey(a.Nick)}|{a.PassSalt}"), Year(c));
         c.Items["account"] = a;
         c.Items["nick"] = a.Nick;
-        if (a.Role == "admin") c.Items["role"] = "admin";
+        c.Items["role"] = IsAdminAccount(a, Options(c)) ? "admin" : "member";
     }
+
+    static AuthOptions Options(HttpContext c) => c.RequestServices.GetRequiredService<IOptionsMonitor<AuthOptions>>().CurrentValue;
+
+    /// <summary>Адмін — акаунт із ніком у Auth:AdminNicks або з роллю admin у базі. Гість адміном не буває.</summary>
+    public static bool IsAdminAccount(Account a, AuthOptions o) =>
+        a.Role == "admin" || o.AdminNicks.Any(n => NickKey(n) == NickKey(a.Nick));
+
+    /// <summary>?k= з ключем: порівняння за сталий час, порожній ключ у конфігу не підходить ні до чого.</summary>
+    public static bool AdminKeyMatches(string? given, string? adminKey) =>
+        !string.IsNullOrEmpty(adminKey) &&
+        CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(given ?? ""), System.Text.Encoding.UTF8.GetBytes(adminKey));
 
     public static void SignOut(HttpContext c)
     {
@@ -155,7 +171,10 @@ public static class Auth
         return a is not null && a.PassSalt == parts[2] ? a : null;
     }
 
-    public static IApplicationBuilder UseHlechykyAuth(this IApplicationBuilder app) => app.Use(async (ctx, next) =>
+    public static IApplicationBuilder UseHlechykyAuth(this IApplicationBuilder app) => app.Use(Gate);
+
+    /// <summary>Хто прийшов: акаунт із сесійної куки, роль, нік гостя. Окремо від UseHlechykyAuth — щоб тести ганяли без сервера.</summary>
+    public static async Task Gate(HttpContext ctx, Func<Task> next)
     {
         var path = ctx.Request.Path;
         if (path.StartsWithSegments("/api/liq"))
@@ -178,27 +197,29 @@ public static class Auth
         var protector = Protector(ctx);
         var db = ctx.RequestServices.GetRequiredService<Db>();
         var account = SessionAccount(ctx, protector, db);
+        var options = Options(ctx);
+
+        // Стара адмінська кука нічого не дає: стираємо, щоб не лежала роками в браузері.
+        if (ctx.Request.Cookies.ContainsKey(CookieName)) ctx.Response.Cookies.Delete(CookieName);
 
         if (ctx.Request.Query.TryGetValue("k", out var k))
         {
-            var adminKey = ctx.RequestServices.GetRequiredService<IOptionsMonitor<AuthOptions>>().CurrentValue.AdminKey;
-            if (!string.IsNullOrEmpty(adminKey) && k.ToString() == adminKey)
+            // Лише дев: на проді AdminKey порожній, і ?k= — просто дорога на головну.
+            if (AdminKeyMatches(k.ToString(), options.AdminKey))
             {
-                ctx.Response.Cookies.Append(CookieName, protector.Protect("admin"), Year(ctx));
-                if (account is not null) db.SetAccountRole(account.Nick, "admin");
+                if (account is null)
+                {
+                    if (db.FindAccount(DevAdmin) is null) db.AddAccount(DevAdmin, "", NewSalt());
+                    account = db.FindAccount(DevAdmin)!;
+                }
+                db.SetAccountRole(account.Nick, "admin");
+                SignIn(ctx, db.FindAccount(account.Nick)!);
             }
             ctx.Response.Redirect("/");
             return;
         }
 
-        var role = "member";
-        if (ctx.Request.Cookies.TryGetValue(CookieName, out var cookie))
-        {
-            try { if (protector.Unprotect(cookie) == "admin") role = "admin"; }
-            catch { /* stale or foreign cookie: plain member */ }
-        }
-        if (account?.Role == "admin") role = "admin";
-        ctx.Items["role"] = role;
+        ctx.Items["role"] = account is not null && IsAdminAccount(account, options) ? "admin" : "member";
 
         if (account is not null)
         {
@@ -220,5 +241,5 @@ public static class Auth
             else ctx.Items["nick"] = GuestNick(raw);
         }
         await next();
-    });
+    }
 }
