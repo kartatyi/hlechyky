@@ -98,8 +98,6 @@ public sealed partial class Litopys
     static string Song(string? artist, string? title) =>
         string.IsNullOrWhiteSpace(title) ? (artist ?? "").Trim() : string.IsNullOrWhiteSpace(artist) ? title.Trim() : artist.Trim() + " — " + title.Trim();
 
-    static string Shards(long n) => Count(n, "черепок", "черепки", "черепків");
-
     /// <summary>«у «Блеф»», «в шахи» — після ніка (на приголосну), як у закликах за стіл.</summary>
     string Into(string game) => Calls.Into(names.Accusative(game), afterConsonant: true);
 
