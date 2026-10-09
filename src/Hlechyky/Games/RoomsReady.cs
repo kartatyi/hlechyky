@@ -60,11 +60,14 @@ public sealed partial class Rooms
 
     /// <summary>
     /// Стіл став іншим, ніж той, до якого казали «готовий»: хтось сів чи встав, «🤖 + бот», нові налаштування. Кличеться
-    /// під замком кімнати. Сюди ж ставки на столі (bets-contract §4.1) додадуть повернення відкритих ставок.
+    /// під замком кімнати. Розсилку робить той, хто кличе (RoomViews/LobbyChanged він і так шле); outbox — для ставок
+    /// на столі (bets-contract §4.1): відкриті ставки на наступну партію повертаються. Посеред партії її ставки не
+    /// чіпаємо — хто встав, той програв; а ставок на наступну тоді ще й нема.
     /// </summary>
     void CrewChanged(Room room, Outbox outbox)
     {
-        _ = outbox;   // розсилку робить той, хто кличе (RoomViews/LobbyChanged він і так шле); outbox — для ставок
         room.Ready.Clear();
+        if (room.Status != RoomStatus.Playing)
+            BetsCrewChanged(room, outbox, room.Status == RoomStatus.Finished ? room.Round + 1 : room.Round);
     }
 }

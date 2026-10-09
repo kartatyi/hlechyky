@@ -2372,6 +2372,7 @@
     const c = cards[id];
     if (!c) return;
     if (c.mounted && c.mod && c.mod.unmount) { try { c.mod.unmount(c.body, c.ctx); } catch (e) { console.warn('[games] unmount', e); } }
+    if (window.HTableBets) HTableBets.drop(id);
     c.el.remove();
     delete cards[id];
   }
@@ -2635,6 +2636,8 @@
         return call('Act', id, 'bot', { on: !(v && v.botWanted) });
       }));
       card.el.classList.toggle('mine', rv.seat != null);
+      // 🎲 Ставки столу (web/games/bets-table.js) — у .gextra під кнопками; дані панель тягне сама з хаба.
+      if (window.HTableBets) { try { HTableBets.paint(card.extra, rv); } catch (e) { console.warn('[games] bets', e); } }
     }
 
     if (!card.mod) {
@@ -3119,6 +3122,7 @@
         anthemRound(rv.room);                               // «Ще раз» — гімн минулої партії замовкає
       });
       c.on('tableReact', flyReact);
+      c.on('tableBets', (x) => { if (window.HTableBets && x) HTableBets.changed(x.room); });
       c.on('anthem', onAnthem);
       c.on('curse', onCurse);
       c.on('frame', (f) => {

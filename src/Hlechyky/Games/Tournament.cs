@@ -490,6 +490,12 @@ public sealed class Tournament(Rooms rooms, Registry registry, GameEvents events
         lock (_lock) { return _crown ??= loaded; }
     }
 
+    /// <summary>Стіл турніру — теперішній чи щойно дограний (між іграми): ставок на ньому не буває (bets-contract §4.1).</summary>
+    public bool Holds(string roomId)
+    {
+        lock (_lock) return _t is { } t && t.Stage != Done && (t.Room == roomId || t.Prev == roomId);
+    }
+
     public object Snapshot()
     {
         var crown = Crown();

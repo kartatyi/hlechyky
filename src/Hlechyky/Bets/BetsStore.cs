@@ -349,4 +349,25 @@ public sealed class BetsStore
     public bool CloseSuggestion(long id, string status, string reason, long? eventId, DateTimeOffset at) => _db.With(c =>
         Exec(c, "UPDATE bet_suggestions SET status=$st, reason=$r, event_id=$e, done_at=$at WHERE id=$id AND status='new'",
             ("$st", status), ("$r", reason), ("$e", eventId), ("$at", Iso(at)), ("$id", id)) > 0);
+    // ---------------------------------------------------------------- кефи столу
+
+    /// <summary>Рядок історії гри для кефів столу: партія (стіл і раунд), хто, чим скінчилось, очки (якщо гра їх дає).</summary>
+    public sealed record GameRow(string Room, int Round, string NickKey, string Outcome, double? Score);
+
+    /// <summary>
+    /// Останні <paramref name="n"/> мультиплеєрних результатів гри, свіжі згори — з них стіл рахує, хто скільки вигравав,
+    /// як часто нічия і хто бував останнім. Таблиця <c>game_results</c> — економіки; тут лише читаємо.
+    /// </summary>
+    public List<GameRow> GameHistory(string game, int n) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, """
+            SELECT room_id, round, nick_key, outcome, score FROM game_results
+            WHERE game = $g AND outcome <> 'solo' ORDER BY id DESC LIMIT $n
+            """, ("$g", game), ("$n", n));
+        using var r = cmd.ExecuteReader();
+        var list = new List<GameRow>();
+        while (r.Read())
+            list.Add(new GameRow(r.GetString(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetDouble(4)));
+        return list;
+    });
 }

@@ -522,6 +522,8 @@ public sealed partial class Rooms
                 return new RoomOutcome(outbox, RoomReply.Fail(no));
             }
             if (room.Status != RoomStatus.Playing) CrewChanged(room, outbox);
+            // Повний стіл стартував сам: ставки з лобі ставились іще без цього гравця — назад.
+            else BetsCrewChanged(room, outbox, room.Round);
         }
         outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));

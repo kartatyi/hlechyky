@@ -53,6 +53,11 @@ public static class BetsSetup
         services.TryAddSingleton(sp => new Polymarket(sp.GetRequiredService<IOptionsMonitor<BetsOptions>>(), sp.GetRequiredService<IClock>(),
             sp.GetRequiredService<ILogger<Polymarket>>()));
         services.AddSingleton<BetEvents>();
+        // Ставки на столах: Rooms бере хук ліниво (сервіс сам залежить від Rooms); хост — звірка й розрахунок партій.
+        services.TryAddSingleton<ITableBetsWire, HubTableBetsWire>();
+        services.AddSingleton<TableBets>();
+        services.AddSingleton<ITableBetsHook>(sp => sp.GetRequiredService<TableBets>());
+        services.AddHostedService(sp => sp.GetRequiredService<TableBets>());
         return services;
     }
 
