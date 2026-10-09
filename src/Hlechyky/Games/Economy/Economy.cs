@@ -235,6 +235,10 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "roulette-bet" => "Рулетка — ставка",
             "roulette-win" => "Рулетка — виграш",
             "roulette-back" => "Рулетка — ставку повернуто",
+            // слоти (docs/games/specs/slots.md §2): хвіст — id автомата; Ворожка — теж ставка й виграш
+            "slot-bet" => $"{names.Title(tail)} — ставка",
+            "slot-win" => $"{names.Title(tail)} — виграш",
+            "slot-jackpot" => "Скарбничка Глека!",
             // куплено за гривні (ShardShop.cs): хвіст — номер замовлення
             "buy" => "куплено за гривні",
             "buy-gift" => "подарунок — куплені черепки",

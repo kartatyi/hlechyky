@@ -277,6 +277,19 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
 
     public void Kick() { try { _signal.Release(); } catch (SemaphoreFullException) { } }
 
+    readonly System.Collections.Concurrent.ConcurrentQueue<(string Kind, string Nick, LiveFact Fact)> _told = new();
+
+    /// <summary>
+    /// Подія ззовні (Скарбничка слотів, specs/slots.md §4): стає в чергу подій і проходить ті самі фільтри, що й знайдені
+    /// в базі (відмова від прожарок, ліміт на годину, пауза на нік), шаблон — <c>events.&lt;kind&gt;</c> у lines.json.
+    /// Значення «nick» вимовляється, як решта ніків (<see cref="LiveLines.Say"/>). Будить цикл, щоб не чекати свого кроку.
+    /// </summary>
+    public void Tell(string kind, string nick, LiveFact fact)
+    {
+        if (_told.Count < 20) _told.Enqueue((kind, nick, fact));
+        Kick();
+    }
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -553,6 +566,12 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
     {
         var found = new List<(string Kind, string Nick, LiveFact Fact)>();
         var lines = Lines;
+        while (_told.TryDequeue(out var told))
+        {
+            var values = new Dictionary<string, string>(told.Fact.Values, StringComparer.Ordinal);
+            if (values.TryGetValue("nick", out var said)) values["nick"] = lines.Say(said);
+            found.Add((told.Kind, told.Nick, told.Fact with { Values = values }));
+        }
 
         var maxResult = store.Scalar("SELECT COALESCE(MAX(id), 0) FROM game_results");
         if (_resultsMark is { } rm && maxResult > rm)
