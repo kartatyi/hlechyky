@@ -110,3 +110,43 @@
 .gl-f-left { font-size: 11px; color: #c9a8e8; }
 
 .sk-port .gl-gamble-btn { height: 40px; }
+
+/* ---------- «Глек чхнув» 🤧 — у координатах корпусу (.gl-cab-in, 420×640) ---------- */
+.gl-cab-in > .gl-sz { inset: 0; pointer-events: none; z-index: 7; }
+.gl-sz > div { position: absolute; }
+.gl-sz-g { left: 140px; top: 16px; width: 140px; height: 140px; opacity: 0; transform-origin: 50% 80%; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .55)); }
+.gl-sz-g > svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.gl-sz-g .a-rays { display: none; }
+.gl-sz-m { position: absolute; left: 50%; top: 84%; width: 2px; height: 2px; }
+.gl-sz .sg-glek .a-brow, .gl-sz .sg-glek .a-wink, .gl-sz .sg-glek .a-stache { transition: transform .16s ease-out; }
+.gl-sz.s1 .sg-glek .a-brow { transform: translateY(-6px); }
+.gl-sz.s1 .sg-glek .a-wink { transform: scaleY(.35); }
+.gl-sz.s3 .sg-glek .a-wink { transform: scaleY(.08); }
+.gl-sz.s3 .sg-glek .a-brow { transform: translateY(3px); }
+.gl-sz.s3 .sg-glek .a-stache { transform: translateY(-3px) scale(1.22, 1.12); }
+/* «а… а…» — бульбашка праворуч від Глека */
+.gl-sz-b { left: 270px; top: 34px; padding: 6px 12px; border-radius: 16px 16px 16px 4px; background: #fff6e0; color: #2b1420; font: 900 22px/1 'Onest', sans-serif;
+  box-shadow: 0 0 0 3px #2b1420, 0 6px 14px rgba(0, 0, 0, .4); opacity: 0; transform: scale(.6); transition: opacity .12s, transform .2s cubic-bezier(.3, 1.6, .5, 1); white-space: nowrap; }
+.gl-sz-b.on { opacity: 1; transform: none; }
+/* АПЧХИ! — над вікном барабанів */
+.gl-sz-a { left: 210px; top: 158px; display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; z-index: 2; }
+.gl-sz-a b { font: 900 58px/1 'Onest', sans-serif; letter-spacing: .02em; color: #fff3b0; -webkit-text-stroke: 3px #2b1420; paint-order: stroke fill;
+  text-shadow: 0 4px 0 #2b1420, 0 0 22px rgba(140, 210, 255, .9); white-space: nowrap; }
+.gl-sz-a small { font: 800 14px/1 'Onest', sans-serif; color: #e6f6ff; background: rgba(20, 50, 80, .85); padding: 5px 10px; border-radius: 10px; box-shadow: 0 0 0 2px #8fd0ff; white-space: nowrap; }
+/* хмарка чиху — летить з рота Глека на барабани */
+.gl-sz-cloud { left: 60px; top: 110px; width: 300px; height: 250px; opacity: 0; transform-origin: 50% 8%; }
+.gl-sz-cloud i { position: absolute; border-radius: 50%; background: radial-gradient(circle, rgba(225, 243, 255, .95) 0%, rgba(160, 212, 245, .6) 45%, rgba(160, 212, 245, 0) 70%); }
+.gl-sz-cloud i:nth-child(1) { left: 90px; top: 0; width: 120px; height: 110px; }
+.gl-sz-cloud i:nth-child(2) { left: 20px; top: 60px; width: 130px; height: 120px; }
+.gl-sz-cloud i:nth-child(3) { left: 150px; top: 55px; width: 140px; height: 130px; }
+.gl-sz-cloud i:nth-child(4) { left: 70px; top: 120px; width: 160px; height: 130px; }
+.gl-sz-cloud i:nth-child(5) { left: -10px; top: 150px; width: 110px; height: 100px; }
+.gl-sz-cloud i:nth-child(6) { left: 200px; top: 150px; width: 110px; height: 100px; }
+/* «пчих!» на клітинці, що стає Глеком */
+.gl-pchyh { position: absolute; inset: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; z-index: 3; }
+.gl-pchyh i { position: absolute; inset: -12%; border-radius: 50%; background: radial-gradient(circle, rgba(240, 250, 255, .95) 0%, rgba(190, 230, 255, .55) 45%, rgba(190, 230, 255, 0) 70%); }
+.gl-pchyh b { position: relative; margin-top: -54%; font: 900 19px/1 'Onest', sans-serif; color: #fff; -webkit-text-stroke: 2px #1f4f78; paint-order: stroke fill; transform: rotate(-8deg); }
+/* чхнуті Глеки лишаються «мокрими» до наступного оберту — видно, звідки дикі */
+.slot-slot-glek .sk-cell.gl-snz::before { content: ''; position: absolute; inset: 7%; border-radius: 50%; z-index: -1; pointer-events: none;
+  background: radial-gradient(circle, rgba(170, 225, 255, .5), rgba(170, 225, 255, 0) 70%); box-shadow: 0 0 0 2px rgba(120, 200, 255, .55), 0 0 14px rgba(120, 200, 255, .45); }
+@media (prefers-reduced-motion: reduce) { .gl-sz-cloud { display: none; } }
