@@ -121,14 +121,14 @@
   // ── Гребінь (символ comb, координати 0..100)
   function combBody() {
     let s = '';
-    s += rep(9, (i) => { const a = (-162 + i * 18) * Math.PI / 180; return `<circle cx="${f(50 + 34 * Math.cos(a))}" cy="${f(53 + 41 * Math.sin(a))}" r="3.8" fill="url(#scl-gold)" stroke="${INK}" stroke-width="2"/>`; });
-    s += rep(8, (i) => { const x = 22 + i * 8; return `<path d="M${x - 3},57 L${x - 3},83 Q${x},90 ${x + 3},83 L${x + 3},57Z" fill="url(#scl-nacre)" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>`; });
-    s += `<path d="M18,53 C14,32 30,13 50,13 C70,13 86,32 82,53 Z" fill="url(#scl-shell)" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>`;
-    s += rep(7, (i) => { const a = (-150 + i * 20) * Math.PI / 180; return `<path d="M50,50 L${f(50 + 30 * Math.cos(a))},${f(52 + 36 * Math.sin(a))}" stroke="${i % 2 ? '#e58ac0' : '#5fc4dc'}" stroke-width="2.2" stroke-linecap="round" opacity=".9"/>`; });
-    s += `<path d="M26,42 C25,30 33,21 44,18" stroke="#fff" stroke-width="3.2" fill="none" stroke-linecap="round" opacity=".85"/>`;
-    s += `<rect x="13" y="49" width="74" height="10" rx="5" fill="url(#scl-gold)" stroke="${INK}" stroke-width="3"/>`;
-    s += rep(6, (i) => `<circle cx="${f(24 + i * 10.4)}" cy="54" r="2.4" fill="url(#scl-pearl)" stroke="${INK}" stroke-width="1"/>`);
-    s += `<ellipse cx="32" cy="41" rx="4.4" ry="3.2" fill="#36d6c8" stroke="${INK}" stroke-width="2"/><ellipse cx="68" cy="41" rx="4.4" ry="3.2" fill="#36d6c8" stroke="${INK}" stroke-width="2"/>`;
+    s += rep(9, (i) => { const a = (-162 + i * 18) * Math.PI / 180; return `<circle cx="${f(50 + 44 * Math.cos(a))}" cy="${f(54 + 41 * Math.sin(a))}" r="4" fill="url(#scl-gold)" stroke="${INK}" stroke-width="2"/>`; });
+    s += rep(10, (i) => { const x = 14 + i * 8; return `<path d="M${x - 3},57 L${x - 3},83 Q${x},90 ${x + 3},83 L${x + 3},57Z" fill="url(#scl-nacre)" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/>`; });
+    s += `<path d="M7,55 C5,30 27,12 50,12 C73,12 95,30 93,55 Z" fill="url(#scl-shell)" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>`;
+    s += rep(7, (i) => { const a = (-150 + i * 20) * Math.PI / 180; return `<path d="M50,50 L${f(50 + 40 * Math.cos(a))},${f(52 + 37 * Math.sin(a))}" stroke="${i % 2 ? '#e58ac0' : '#5fc4dc'}" stroke-width="2.2" stroke-linecap="round" opacity=".9"/>`; });
+    s += `<path d="M17,44 C17,30 28,19 42,16" stroke="#fff" stroke-width="3.2" fill="none" stroke-linecap="round" opacity=".85"/>`;
+    s += `<rect x="4" y="49" width="92" height="11" rx="5.5" fill="url(#scl-gold)" stroke="${INK}" stroke-width="3"/>`;
+    s += rep(8, (i) => `<circle cx="${f(14 + i * 10.3)}" cy="54.5" r="2.4" fill="url(#scl-pearl)" stroke="${INK}" stroke-width="1"/>`);
+    s += `<ellipse cx="25" cy="42" rx="5" ry="3.2" fill="#36d6c8" stroke="${INK}" stroke-width="2"/><ellipse cx="75" cy="42" rx="5" ry="3.2" fill="#36d6c8" stroke="${INK}" stroke-width="2"/>`;
     s += `<circle cx="50" cy="34" r="12" fill="url(#scl-gold)" stroke="${INK}" stroke-width="2.6"/>`;
     s += `<g class="a-pearl"><circle cx="50" cy="34" r="8.4" fill="url(#scl-pearl)" stroke="${INK}" stroke-width="2"/><circle cx="47" cy="31" r="2.6" fill="#fff"/></g>`;
     return s;
@@ -249,7 +249,7 @@
     ring += rep(20, (i) => { const a = i * 18 * Math.PI / 180, R = 27 + (i % 2 ? 4 : -3.5); const x = 50 + R * Math.cos(a), y = 44 + R * Math.sin(a); return `<ellipse cx="${f(x)}" cy="${f(y)}" rx="9" ry="4.2" transform="rotate(${f(i * 18 + 90 + (i % 2 ? 28 : -28))} ${f(x)} ${f(y)})" fill="url(#scl-leaf)" stroke="${INK}" stroke-width="1.8"/>`; });
     const fls = [[-90, 'p', 0.42], [-128, 'd', 0.36], [-52, 'd', 0.36], [-160, 'c', 0.33], [-20, 'c', 0.33], [160, 's', 0.28], [20, 's', 0.28], [90, 'p', 0.34]];
     ring += fls.map(([a, k, sc]) => at(50 + 27 * Math.cos(a * Math.PI / 180), 44 + 27 * Math.sin(a * Math.PI / 180), sc, a + 90, MINI[k])).join('');
-    s += `<circle cx="50" cy="44" r="21" fill="#10184a"/><circle cx="50" cy="44" r="21" fill="url(#scl-h-b)" opacity=".55"/><ellipse cx="44" cy="37" rx="6" ry="3" fill="#ffe9a8" opacity=".55" transform="rotate(-20 44 37)"/><path d="M41,53 Q50,50 59,53" stroke="#9cc0ff" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".45"/>`;
+    s += `<circle cx="50" cy="44" r="21" fill="#2a4aa8"/><circle cx="50" cy="44" r="21" fill="url(#scl-h-b)" opacity=".8"/><circle cx="50" cy="46" r="17" fill="url(#scl-h-g)" opacity=".75"/><ellipse cx="44" cy="37" rx="6" ry="3" fill="#ffe9a8" opacity=".55" transform="rotate(-20 44 37)"/><path d="M41,53 Q50,50 59,53" stroke="#9cc0ff" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".45"/>`;
     s += `<g class="a-ring">${ring}</g>` + GLINT(24, 20);
     return s;
   })()) };

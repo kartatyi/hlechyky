@@ -1,0 +1,115 @@
+/* Цвіт папороті (slot-cluster): сцена автомата, шкала, чари. Арт символів і рамки — slot-cluster-art.css */
+.slot-slot-cluster .scl-stage { position: absolute; inset: 0; font-family: Onest, system-ui, sans-serif; color: var(--scl-text, #fff4d6); }
+
+/* ліва колонка (широко) */
+.scl-side { position: absolute; left: 22px; top: 16px; width: 340px; display: flex; flex-direction: column; gap: 14px; }
+.scl-side .scl-logo { width: 340px; }
+.scl-logo svg { width: 100%; height: auto; display: block; }
+.scl-stage.port .scl-logo { position: absolute; left: 50%; top: 2px; width: 290px; height: 70px; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; }
+.scl-stage.port .scl-logo svg { max-height: 70px; width: auto; max-width: 100%; }
+.scl-legend { display: flex; flex-direction: column; gap: 8px; }
+.scl-lv { display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 8px; border-radius: 16px; background: rgba(18, 10, 53, .55);
+  border: 2px solid rgba(154, 136, 255, .22); transition: background .35s, border-color .35s, opacity .35s; opacity: .78; }
+.scl-lv i { flex: 0 0 48px; width: 48px; height: 48px; display: block; font-style: normal; }
+.scl-lv i svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.scl-lv b { display: block; font-size: 19px; font-weight: 800; letter-spacing: .01em; }
+.scl-lv small { display: block; font-size: 14px; opacity: .78; margin-top: 1px; }
+.scl-lv.on { opacity: 1; background: rgba(40, 90, 50, .62); border-color: var(--scl-fern, #7df06a); box-shadow: 0 0 18px rgba(125, 240, 106, .35); }
+.scl-lv[data-n="3"].on { background: rgba(110, 30, 80, .6); border-color: var(--scl-bloom, #ff4fa8); box-shadow: 0 0 22px rgba(255, 79, 168, .45); }
+.scl-lv.hot { animation: scl-hot .5s ease-out 3; }
+@keyframes scl-hot { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
+
+.scl-chain { font-size: 22px; font-weight: 900; color: var(--scl-gold, #ffc93a); text-shadow: 0 2px 0 #3a1a00, 0 0 12px rgba(255, 201, 58, .6); min-height: 30px; opacity: 0; }
+.scl-chain.on { animation: scl-chain 1.6s ease-out forwards; }
+@keyframes scl-chain { 0% { opacity: 0; transform: scale(.6); } 15% { opacity: 1; transform: scale(1.18); } 30% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+.scl-stage.port .scl-chain { position: absolute; right: 6px; top: -30px; font-size: 17px; z-index: 6; }
+
+/* шкала папороті */
+.scl-mwrap { position: absolute; z-index: 3; transform-origin: 50% 100%; }
+.scl-mwrap > svg, .scl-mrot > svg { width: 100%; height: 100%; display: block; }
+.scl-mwrap.gulp { animation: scl-gulp .35s ease-out; }
+@keyframes scl-gulp { 40% { transform: scale(1.035, 1.02); } }
+.scl-stage.port .scl-mwrap { transform-origin: 0 50%; }
+.scl-stage.port .scl-mwrap.gulp { animation-name: scl-gulpp; }
+@keyframes scl-gulpp { 40% { transform: scale(1.02, 1.08); } }
+.scl-mrot { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(90deg); }
+.scl-meter-ph { width: 100%; height: 100%; border-radius: 40px; background: rgba(18, 10, 53, .6); }
+.scl-mlab { position: absolute; z-index: 3; font-size: 12px; font-weight: 800; white-space: nowrap; padding: 1px 7px; border-radius: 10px;
+  background: rgba(18, 10, 53, .7); border: 1.5px solid rgba(154, 136, 255, .3); opacity: .75; transform: translateX(-50%); transition: opacity .3s, border-color .3s; }
+.scl-mlab.land { transform: translateY(-50%); font-size: 14px; white-space: normal; max-width: 112px; line-height: 1.15; padding: 4px 9px; }
+.scl-mlab.on { opacity: 1; border-color: var(--scl-fern, #7df06a); color: #eaffd8; }
+.scl-mlab[data-n="3"].on { border-color: var(--scl-bloom, #ff4fa8); color: #ffe0f0; }
+.scl-mlab.hot { animation: scl-hot .5s ease-out 3; }
+
+/* поле у вінку */
+.scl-board { position: absolute; z-index: 2; }
+.scl-gridhost { position: absolute; inset: 0; z-index: 1; }
+.scl-fxl { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.slot-slot-cluster .sk-cell.scl-under > * { opacity: 0; }
+.slot-slot-cluster .sk-cell.scl-tgt > svg { animation: scl-tgt .32s ease-in-out infinite alternate; }
+@keyframes scl-tgt { from { transform: scale(1); } to { transform: scale(1.14) rotate(-6deg); } }
+
+/* спалах сцени на рівні */
+.scl-flash { position: absolute; inset: -10%; z-index: 4; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(190, 255, 150, .55), rgba(125, 240, 106, .18) 38%, transparent 70%); }
+.scl-flash.n2 { background: radial-gradient(circle at 50% 70%, rgba(150, 230, 255, .55), rgba(80, 160, 255, .2) 40%, transparent 72%); }
+.scl-flash.n3 { background: radial-gradient(circle at 50% 50%, rgba(255, 240, 200, .8), rgba(255, 79, 168, .32) 35%, transparent 72%); }
+.scl-flash.go { animation: scl-flash .9s ease-out 1; }
+@keyframes scl-flash { 0% { opacity: 0; } 18% { opacity: 1; } 100% { opacity: 0; } }
+
+/* підпис рівня посеред поля */
+.scl-call { position: absolute; left: 50%; top: 9%; z-index: 8; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center;
+  padding: 10px 26px 12px; border-radius: 22px; background: rgba(12, 8, 40, .82); border: 3px solid var(--scl-fern, #7df06a);
+  box-shadow: 0 0 30px rgba(125, 240, 106, .5); animation: scl-call-in .45s cubic-bezier(.3, 1.6, .5, 1) both; white-space: nowrap; }
+.scl-call.n2 { border-color: #8fd8ff; box-shadow: 0 0 30px rgba(143, 216, 255, .55); }
+.scl-call.n3 { top: 1%; border-color: var(--scl-bloom, #ff4fa8); box-shadow: 0 0 36px rgba(255, 79, 168, .65); }
+.scl-call i { width: 64px; height: 64px; margin: -40px 0 2px; display: block; font-style: normal; }
+.scl-call i svg { width: 100%; height: 100%; overflow: visible; }
+.scl-call b { font-size: 38px; font-weight: 900; line-height: 1.05; color: #fff8d8; text-shadow: 0 3px 0 var(--scl-ink, #1e1046), 0 0 16px rgba(255, 230, 140, .6); }
+.scl-call small { font-size: 17px; font-weight: 700; opacity: .9; }
+.scl-call.out { animation: scl-call-out .35s ease-in forwards; }
+.scl-stage.port .scl-call { top: 6%; padding: 6px 16px 8px; }
+.scl-stage.port .scl-call b { font-size: 27px; }
+.scl-stage.port .scl-call small { font-size: 13px; }
+.scl-stage.port .scl-call i { width: 48px; height: 48px; margin-top: -30px; }
+@keyframes scl-call-in { from { opacity: 0; transform: translateX(-50%) scale(.4); } }
+@keyframes scl-call-out { to { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(.9); } }
+
+/* летючі: крапельки шкали і світлячки */
+.scl-fly-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.scl-drop { position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; will-change: transform, opacity; }
+.scl-drop svg, .scl-ff svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.scl-ff { position: absolute; left: -26px; top: -26px; width: 52px; height: 52px; will-change: transform, opacity; }
+.scl-fly-ph { width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle, #f8ffc4, rgba(200, 255, 120, .4) 40%, transparent 70%); }
+
+/* русалка виринає під полем */
+.scl-mer { position: absolute; left: 50%; bottom: -12%; width: 56%; aspect-ratio: 1; transform: translateX(-50%); opacity: 0; transition: opacity .25s; }
+.scl-mer.in { opacity: 1; }
+.scl-mer.out { animation: scl-mer-out .6s ease-in forwards; }
+.scl-mer svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.scl-mer-ph { font-size: 120px; text-align: center; }
+@keyframes scl-mer-out { to { opacity: 0; transform: translateX(-50%) translateY(20%); } }
+
+/* цвіт 3×3 */
+.scl-bigbloom { position: absolute; z-index: 2; transform: scale(0); }
+.scl-bigbloom > svg { position: relative; width: 100%; height: 100%; display: block; overflow: visible; }
+.scl-bigbloom.in { animation: scl-bb-in .9s cubic-bezier(.25, 1.5, .5, 1) forwards; }
+.scl-bigbloom.in > svg .a-rays { animation: scl-spin 6s linear infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+.scl-bigbloom.boom { animation: scl-bb-boom .7s ease-out forwards; }
+.scl-bb-rays { position: absolute; inset: -30%; border-radius: 50%; animation: scl-spin 5s linear infinite;
+  background: repeating-conic-gradient(rgba(255, 240, 180, .38) 0 8deg, transparent 8deg 22deg);
+  -webkit-mask: radial-gradient(circle, #000 25%, transparent 68%); mask: radial-gradient(circle, #000 25%, transparent 68%); }
+@keyframes scl-bb-in { 0% { transform: scale(0) rotate(-90deg); } 70% { transform: scale(1.12) rotate(6deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes scl-bb-boom { 0% { transform: scale(1); opacity: 1; } 35% { transform: scale(1.35); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+.scl-stage.shake { animation: scl-shake .5s ease-out; }
+@keyframes scl-shake { 15% { transform: translate(-6px, 3px); } 30% { transform: translate(5px, -4px); } 45% { transform: translate(-4px, -2px); } 60% { transform: translate(3px, 3px); } 80% { transform: translate(-1px, 1px); } }
+
+/* заставка бонусу */
+.scl-bin .scl-bin-bloom { position: relative; width: 150px; height: 150px; margin: -10px auto 4px; }
+.scl-bin .scl-bin-bloom > svg { position: relative; width: 100%; height: 100%; overflow: visible; }
+.scl-bin .sk-ov-t { color: #ffd6ec; }
+.scl-bin .sk-ov-s { max-width: 320px; margin: 0 auto; }
+/* телефон: підписи бутонів тісно — менші й трохи розсунуті */
+.scl-stage.port .scl-mlab { font-size: 11px; padding: 1px 5px; }
+.scl-stage.port .scl-mlab[data-n="1"] { transform: translateX(-66%); }
+.scl-stage.port .scl-mlab[data-n="2"] { transform: translateX(-38%); }
