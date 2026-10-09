@@ -902,7 +902,8 @@
       const c = s.crash || s.m || 1;
       cap = s.phase === 'crash' ? 'шубовсть!' : 'пролетіли на';
       main = '×' + fmtM(c);
-      sub = s.phase === 'crash' ? 'пролетіли!' : (isFinite(left) ? 'наступний політ за ' + Math.ceil(left / 1000) + ' с' : 'наступний політ скоро');
+      const off = st.ctx && st.ctx.view && st.ctx.view.on === false;
+      sub = s.phase === 'crash' ? 'пролетіли!' : off ? 'лелека відпочиває' : (isFinite(left) ? 'наступний політ за ' + Math.ceil(left / 1000) + ' с' : 'наступний політ скоро');
       col = '#ff5a4a';
       cls = 'B-boom';
     }
@@ -926,12 +927,13 @@
       if (mine && mine.amount) return { mode: 'cancel', t: 'Скасувати ставку', s: fmtN(mine.amount) + ' 🏺' + (mine.auto ? ' · авто ×' + fmtM(mine.auto) : '') + ' · чекаємо зльоту' };
       return { mode: 'bet', t: 'Поставити ' + fmtN(st.amount) + ' 🏺', s: st.autoOn ? 'автозабір на ×' + fmtM(st.autoX) : 'пробіл — теж «Поставити»' };
     }
-    if (mine && mine.out) return { mode: 'won', t: 'Забрав на ×' + fmtM(mine.out), s: '+' + fmtN(mine.win != null ? mine.win : mine.amount * mine.out) + ' 🏺' };
+    if (mine && mine.out) return { mode: 'won', t: 'Забрано на ×' + fmtM(mine.out), s: '+' + fmtN(mine.win != null ? mine.win : mine.amount * mine.out) + ' 🏺' };
     if (s.phase === 'flight' && mine && mine.amount) {
       if (st.cashing === s.round) return { mode: 'cash busy', t: 'Забираю…', s: '×' + fmtM(m) };
       return { mode: 'cash', t: 'Забрати ×' + fmtM(m), s: '= ' + fmtN(Math.floor(mine.amount * m)) + ' 🏺' };
     }
-    if ((s.phase === 'crash' || s.phase === 'pause') && mine && mine.amount) return { mode: 'lost', t: 'Пролетів…', s: '−' + fmtN(mine.amount) + ' 🏺 · наступний політ скоро' };
+    if ((s.phase === 'crash' || s.phase === 'pause') && mine && mine.amount) return { mode: 'lost', t: 'Шубовсть…', s: '−' + fmtN(mine.amount) + ' 🏺 · наступний політ скоро' };
+    if (v.on === false && s.phase !== 'flight') return { mode: 'wait', t: 'Лелека відпочиває', s: 'ставок зараз не приймаю — зазирни згодом' };
     return { mode: 'wait', t: 'Чекаю наступний політ', s: s.phase === 'flight' ? 'цей уже в небі — ставки після падіння' : 'ставки відкриються за мить' };
   }
 
@@ -973,7 +975,7 @@
     st.el.bl.innerHTML = bets.length ? bets.map((b) => {
       let cls = 's-fly', txt;
       if (b.out) { cls = 's-out'; txt = '×' + fmtM(b.out) + ' <b>+' + fmtN(b.win != null ? b.win : b.amount * b.out) + '</b>'; }
-      else if (done) { cls = 's-lost'; txt = 'пролетів'; }
+      else if (done) { cls = 's-lost'; txt = 'шубовсть'; }
       else if (s.phase === 'bets') { cls = 's-wait'; txt = b.auto ? 'авто ×' + fmtM(b.auto) : 'чекає зльоту'; }
       else txt = 'летить…' + (b.auto ? ' <i>авто ×' + fmtM(b.auto) + '</i>' : '');
       return '<div class="lk-br ' + cls + (b.nick === me ? ' me' : '') + '"><span class="nk">' + c.esc(b.nick) + '</span>'
@@ -1076,11 +1078,11 @@
     el.innerHTML = '<div class="lk-card"><button type="button" class="lk-x0" aria-label="Закрити">✕</button>'
       + '<h3>Лелека — як грати</h3><ul>'
       + '<li>Глек веде стіл сам: <b>8 с ставки</b> → політ → «шубовсть» 2 с → пауза 3 с. Підсісти можна будь-коли; встав — ставка летить далі (автозабір спрацює й без тебе).</li>'
-      + '<li>Під час ставок поставив ' + L.min + '–' + (L.max > 0 ? fmtN(L.max) : '∞') + ' 🏺 (скасувати — лише поки приймають ставки).</li>'
+      + '<li>Під час ставок — постав ' + L.min + '–' + (L.max > 0 ? fmtN(L.max) : '∞') + ' 🏺 (скасувати — лише поки приймають ставки).</li>'
       + '<li>Лелека злітає, множник росте: <b>m = e<sup>0,075·t</sup></b> (×2 ≈ 9 с, ×10 ≈ 31 с, ×100 ≈ 61 с).</li>'
       + '<li><b>Забрати</b> будь-коли до падіння: виграш = ставка × множник у мить, коли сервер отримав натиск. Пробіл чи A на паді — теж.</li>'
       + '<li><b>Автозабрати на ×X</b> (×1,01 … ×1000) — сервер забере сам рівно на ×X. Міняти можна й посеред польоту.</li>'
-      + '<li>Не встиг до падіння — ставка пролетіла. Перевага дому 4 %: P(падіння ≥ x) = 0,96 / x, стеля ×1000; ≈5 % польотів падають одразу на ×1,00.</li></ul>'
+      + '<li>Не встигнеш до падіння — ставка пролітає. Перевага дому 4 %: P(падіння ≥ x) = 0,96 / x, стеля ×1000; ≈5 % польотів падають одразу на ×1,00.</li></ul>'
       + '<h3>Чесно наперед</h3>'
       + '<p>Точку падіння Глек вирішує на початку раунду й одразу показує її відбиток <code>hash = sha256(seed)</code>. Після падіння — сам <code>seed</code>: перевір, що відбиток збігається, а точка падіння виходить з формули.</p>'
       + '<p class="lk-f">' + FORMULA + '</p>'

@@ -50,15 +50,20 @@
   // ---------- Скарбничка й заноси (тікер у автоматі) ----------
   let feedT = 0;
   const fmt = (n) => Math.round(n || 0).toLocaleString('uk-UA').replace(/,/g, ' ');
+  const fmtX = (x) => (Math.round((x || 0) * 10) / 10).toLocaleString('uk-UA', { maximumFractionDigits: 1 }).replace(/\s/g, ' ');
   function feedLines(f) {
     const out = (f.wins || []).slice(0, 12).map((w) => w.jackpot
-      ? w.nick + ' зірвав Скарбничку Глека — ' + fmt(w.jackpot) + ' 🏺'
-      : w.nick + ' виніс ' + fmt(w.win) + ' 🏺 у «' + (TITLES[w.game] || w.game) + '» · ×' + (Math.round(w.mult * 10) / 10));
+      ? 'Скарбничка Глека — до ' + w.nick + ': ' + fmt(w.jackpot) + ' 🏺'
+      : w.nick + ' — +' + fmt(w.win) + ' 🏺 у «' + (TITLES[w.game] || w.game) + '» · ×' + fmtX(w.mult));
     out.push('Глек каже: крутіть, черепки самі не розіб’ються');
     return out;
   }
   async function pollFeed() {
     if (document.hidden || !roots.size || !window.SlotKit) return;
+    // Автомат схований за лобі (картка лишається змонтованою) — тікер ніхто не бачить, не питаємо.
+    let seen = false;
+    roots.forEach((st, root) => { if (root.offsetParent) seen = true; });
+    if (!seen) return;
     try {
       const r = await fetch('/api/slots/feed', { cache: 'no-store' });
       if (!r.ok) return;
@@ -69,6 +74,8 @@
   function feedOn() { if (!feedT) { feedT = setInterval(pollFeed, FEED_MS); pollFeed(); } }
   function feedOff() { if (feedT && !roots.size) { clearInterval(feedT); feedT = 0; } }
   const onVis = () => { if (!document.hidden && roots.size) pollFeed(); };
+  // Повернулись із лобі до автомата — тікер свіжий одразу, а не за 7 с.
+  window.addEventListener('hashchange', () => setTimeout(() => { if (roots.size) pollFeed(); }, 50));
   document.addEventListener('visibilitychange', onVis);
   // Подія гаманця сайту (core.js): ачівки й решта приходів теж у балансі автомата. Під час оберту не чіпаємо —
   // кіт сам знімає ставку й додає виграш, а по кінці (spinEnd) ставимо останнє від гаманця.

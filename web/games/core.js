@@ -1732,6 +1732,7 @@
       if (g.unlisted) continue;   // стенди розробника (mgprobe) — лише посиланням #games/new/<id>
       if (g.off) continue;        // вимкнено в конфігу сайту (Games:Off) — сервер однаково не відкриє
       if (me.slots === false && SLOT_INFO[g.id]) continue;   // автомати на перерві (Slots:Enabled) — тема «🍒 Слоти» зникає
+      if (me.lelka === false && g.id === 'lelka') continue;  // Лелека відпочиває (Lelka:Enabled) — плитки нема
       const f = familyOf[g.id];
       if (f) {
         if (seen.has(f.id)) continue;
@@ -1776,6 +1777,8 @@
   }
   function tileBtn(e) {
     if (e.solo) return '<button class="primary" data-solo="' + esc(e.g.id) + '">Грати</button>';
+    // Спільний стіл на сайт (Лелека, shared у каталозі): не «ставити», а сісти за той, що вже літає (сервер сам знайде чи поставить).
+    if (e.g && e.g.shared) return '<button class="primary" data-shared="' + esc(e.g.id) + '">' + (e.g.id === 'lelka' ? 'Сісти до Лелеки' : 'Сісти за стіл') + '</button>';
     return '<button data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '">+ Стіл</button>';
   }
   // ---------------------------------------------------------------------------------------------
@@ -1808,7 +1811,7 @@
     if (!w.length) return '<div class="muted small gaz-empty">Цього тижня ще ніхто не заносив. Може, ти перший?</div>';
     return '<ol class="gaz-list">' + w.slice(0, 6).map((x) => '<li><b>' + esc(x.nick) + '</b><span class="muted">'
       + esc(x.jackpot ? 'Скарбничка' : (byId[x.game] && byId[x.game].title) || AZ_TITLES[x.game] || x.game) + '</span>'
-      + '<span class="gaz-x">' + (x.jackpot ? '🏺' : '×' + (Math.round(x.mult * 10) / 10)) + '</span>'
+      + '<span class="gaz-x">' + (x.jackpot ? '🏺' : '×' + (Math.round(x.mult * 10) / 10).toLocaleString('uk-UA', { maximumFractionDigits: 1 })) + '</span>'
       + '<span class="gaz-sum">' + azFmt(x.jackpot || x.win) + ' 🏺</span></li>').join('') + '</ol>';
   }
   function azartHeadHtml() {
@@ -1816,7 +1819,7 @@
     return '<div class="gaz-head"><div class="gaz-jp"><span class="gaz-jp-l">🏺 Скарбничка Глека</span>'
       + '<b class="gaz-jp-v">' + (azShown != null ? azFmt(azShown) : '…') + '</b>'
       + '<small class="gaz-must">' + (azFeed && azFeed.mustHit > 0 ? 'впаде до ' + azFmt(azFeed.mustHit) : '') + '</small>'
-      + '<span class="muted small">1 % кожної ставки — сюди; будь-який оберт може її зірвати</span></div>'
+      + '<span class="muted small">з кожної ставки — дещиця сюди; будь-який оберт може її розбити</span></div>'
       + '<div class="gaz-wins"><h6>🔥 Заноси тижня</h6><div class="gaz-wl">' + azWinsHtml() + '</div></div></div>';
   }
   async function azFetch() {
@@ -1972,7 +1975,8 @@
     // Розділ, якого вже нема (усі його ігри вимкнено), — назад на «Усі»; тема, якої в розділі нема, — на «Усе в розділі».
     if (filter !== 'all' && !all.some((e) => e.group === filter)) filter = 'all';
     const match = (e) => (filter === 'all' || e.group === filter)
-      && (!want || (e.title + ' ' + e.hint + ' ' + (e.list || []).map((x) => x.g.title + ' ' + x.label).join(' ')).toLowerCase().includes(want));
+      && (!want || (e.title + ' ' + e.hint + ' ' + (e.list || []).map((x) => x.g.title + ' ' + x.label).join(' ')
+        + (SLOT_INFO[e.ids[0]] ? ' слот слоти автомат автомати 🍒' : '')).toLowerCase().includes(want));   // назви автоматів без «слот»
     const list = all.filter(match).sort(byPlays);
 
     // Соло-ігри в каталозі стоять останніми, тож хто в них зараз, видно й тут, нагорі.
@@ -1997,9 +2001,9 @@
     const favs = popular ? all.filter((e) => playsOf(e) >= 2).sort(byPlays).slice(0, 6) : [];
     const favRow = favs.length && filter === 'all' && !want
       ? '<div class="gfavs"><span class="muted small">⭐ Часто граємо:</span>' + favs.map((e) => {
-        const act = e.solo ? 'data-solo="' + esc(e.g.id) + '"' : 'data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '"';
+        const act = e.solo ? 'data-solo="' + esc(e.g.id) + '"' : e.g && e.g.shared ? 'data-shared="' + esc(e.g.id) + '"' : 'data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '"';
         return '<button class="gfav" data-pre="' + esc(e.ids.join(' ')) + '" ' + act + ' title="' + esc(playsOf(e) + ' ' + (playsOf(e) % 10 >= 2 && playsOf(e) % 10 <= 4 && (playsOf(e) % 100 < 12 || playsOf(e) % 100 > 14) ? 'партії' : 'партій') + ' за місяць') + '">'
-          + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b><span class="muted small">' + (e.solo ? 'грати' : '+ стіл') + '</span></button>';
+          + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b><span class="muted small">' + (e.solo ? 'грати' : e.g && e.g.shared ? 'сісти' : '+ стіл') + '</span></button>';
       }).join('') + '</div>'
       : '';
 
@@ -2073,6 +2077,13 @@
         const e = all.find((x) => x.kind === 'family' && x.f.id === k.slice(2));
         if (e) openCreate(gameOf(defaultMode(e)), e);
       } else openCreate(gameOf(k), null);
+    });
+    box.querySelectorAll('[data-shared]').forEach((b) => b.onclick = (e) => {
+      if (!me.nick) { askNick(); return; }
+      busy(e.currentTarget, 'мить…', async () => {
+        const r = await openRoom('CreateRoom', b.dataset.shared, {});
+        if (r.ok && r.roomId) go('#games/room/' + encodeURIComponent(r.roomId));
+      });
     });
     box.querySelectorAll('[data-solo]').forEach((b) => b.onclick = (e) => {
       if (!me.nick) { askNick(); return; }
