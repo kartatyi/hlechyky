@@ -331,7 +331,7 @@ public sealed partial class Rooms
         r.Info.Id == gameId && r.Status is RoomStatus.Lobby or RoomStatus.Playing && r.FreeSeat >= 0;
 
     /// <summary>
-    /// «Новий стіл» спільної гри: людина вже за ним — просто «ти тут»; є живий стіл із місцем — сідає туди (Join, посеред
+    /// «Новий стіл» спільної гри: людина вже за ним (і за перерваним) — просто «ти тут»; є живий стіл із місцем — сідає туди (Join, посеред
     /// партії — LateJoin). null — такого столу нема, тоді Create ставить новий. Глядачем дивитись можна й повний стіл.
     /// </summary>
     RoomOutcome? SharedSeat(string nick, string gameId)
@@ -339,7 +339,8 @@ public sealed partial class Rooms
         Room? mine, open;
         lock (_lock)
         {
-            mine = _rooms.FirstOrDefault(r => r.Info.Id == gameId && r.Status is RoomStatus.Lobby or RoomStatus.Playing && r.Has(nick));
+            // і перерваний (перезапуск без чистого знімка) — людина й так за ним, а там «Ще раз»
+            mine = _rooms.FirstOrDefault(r => r.Info.Id == gameId && r.Has(nick));
             open = _rooms.Where(r => SharedOpen(r, gameId)).OrderByDescending(r => r.Seats.Count(s => s is not null)).FirstOrDefault();
         }
         if (mine is not null) return new RoomOutcome(new Outbox(), new RoomReply(true, "Ти вже за цим столом", mine.Id));

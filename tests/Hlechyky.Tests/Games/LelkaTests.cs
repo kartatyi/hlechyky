@@ -437,6 +437,12 @@ public class LelkaTests
         var mine = k.H.Rooms.Create("Оля", "lelka", null);
         Assert.True(mine.Reply.Ok);
         Assert.Equal(k.H.RoomId, mine.Reply.RoomId);
+        // повний стіл — новий; хто вже за повним, той і далі «за цим столом»
+        for (var i = 2; i < Lelka.MaxSeats; i++) Assert.True(k.H.Rooms.Create($"гравець {i}", "lelka", null).Reply.Ok);
+        var extra = k.H.Rooms.Create("Зайвий", "lelka", null);
+        Assert.True(extra.Reply.Ok, extra.Reply.Message);
+        Assert.NotEqual(k.H.RoomId, extra.Reply.RoomId);
+        Assert.Equal(k.H.RoomId, k.H.Rooms.Create("гравець 5", "lelka", null).Reply.RoomId);
         Assert.True(new Registry().Catalog.Single(g => g.Id == "lelka").Shared);
         Assert.False(new Registry().Catalog.Single(g => g.Id == "roulette").Shared);
     }
