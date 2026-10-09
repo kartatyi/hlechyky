@@ -4,17 +4,18 @@
   'use strict';
   const SK = window.SlotKit, ID = 'slot-glek';
   const R3 = [0, 1, 2];
-  // Стрічки барабанів (по 32): вишні 7, груша 6, слива 6, кавун 4, дзвоник 3, підкова 3, сімка 2 (стоять поруч), Глек 1.
+  // Стрічки барабанів (по 34) — ті самі, що SlotGlekMath.Reels на сервері (він дає лише stops): вишні 9, груша 8,
+  // слива 7, кавун 3, дзвоник 2, підкова 2, сімка 2 (стоять поруч), Глек 1.
   const REELS = [
-    'cherry pear seven seven plum cherry melon bell pear cherry plum horseshoe cherry pear melon plum glek cherry bell pear plum horseshoe melon cherry pear plum bell cherry melon horseshoe pear plum',
-    'plum cherry bell pear seven seven cherry melon plum horseshoe pear cherry glek plum melon cherry pear bell plum cherry horseshoe pear melon plum cherry bell pear melon cherry plum horseshoe pear',
-    'pear melon cherry plum horseshoe cherry pear glek bell plum cherry seven seven pear melon cherry plum bell horseshoe pear cherry plum melon pear cherry bell plum horseshoe cherry melon pear plum',
+    'plum cherry seven seven pear cherry plum pear cherry melon plum pear cherry bell plum pear cherry melon plum pear cherry horseshoe glek pear cherry plum melon cherry pear plum bell cherry pear horseshoe',
+    'plum melon pear cherry plum bell pear cherry melon plum pear cherry pear seven seven cherry plum horseshoe cherry pear plum melon cherry pear plum glek cherry pear bell plum cherry pear horseshoe cherry',
+    'horseshoe pear cherry bell plum pear cherry melon pear cherry plum horseshoe pear cherry plum bell melon cherry pear plum cherry plum pear cherry seven seven pear plum cherry melon pear glek cherry plum',
   ].map((s) => s.split(' '));
   // Лінії: рядок кожного барабана. 1 — середня, 2 — верхня, 3 — нижня, 4 і 5 — діагоналі.
   const LINES = [[1, 1, 1], [0, 0, 0], [2, 2, 2], [0, 1, 2], [2, 1, 0]];
-  // Виплати — у ставках на лінію (ставка ÷ 5). Як на сервері (docs/games/specs/slots.md §1, RTP 95,5 %);
+  // Виплати — у ставках на лінію (ставка ÷ 5). Як на сервері (docs/games/specs/slots.md §1, RTP 97 % з чихом Глека);
   // на сайті slot.js ще й підставляє view.table.pay через _setPay — щоб ⓘ і табло не розійшлись із касою.
-  const PAY = { glek: { 3: 600 }, seven: { 3: 150 }, horseshoe: { 3: 75 }, bell: { 3: 45 }, melon: { 3: 30 }, plum: { 3: 14 }, pear: { 3: 12 }, cherry: { 3: 10, 2: 1 } };
+  const PAY = { glek: { 3: 500 }, seven: { 3: 120 }, horseshoe: { 3: 60 }, bell: { 3: 40 }, melon: { 3: 26 }, plum: { 3: 10 }, pear: { 3: 8 }, cherry: { 3: 7, 2: 1 } };
   function setPay(pay) {
     if (!pay) return;
     Object.keys(pay).forEach((k) => { if (!PAY[k]) return; Object.keys(PAY[k]).forEach((n) => delete PAY[k][n]); Object.assign(PAY[k], pay[k]); });
@@ -49,12 +50,12 @@
     return Object.assign({ bet, steps, win, state: state || {}, glek3: items.some((it) => it.sym === WILD && it.n === 3) }, extra || {});
   }
 
-  // Усі 32×32×32 зупинки — для сценаріїв показу (рахуються раз, ~10 мс)
+  // Усі зупинки (34×34×34) — для сценаріїв показу (рахуються раз, ~10 мс)
   let ALL = null;
   function all() {
     if (ALL) return ALL;
     ALL = [];
-    for (let a = 0; a < 32; a++) for (let b = 0; b < 32; b++) for (let c = 0; c < 32; c++) {
+    for (let a = 0; a < REELS[0].length; a++) for (let b = 0; b < REELS[1].length; b++) for (let c = 0; c < REELS[2].length; c++) {
       const ev = evaluate(gridOf([a, b, c]));
       ALL.push({ stops: [a, b, c], m: ev.u / 5, n: ev.items.length, g3: ev.items.some((it) => it.sym === WILD && it.n === 3), tease: ev.tease.length > 0 });
     }
