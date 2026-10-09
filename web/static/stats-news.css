@@ -8,7 +8,7 @@
   .sn-top:not(.sn-solo) { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
   .sn-side { grid-template-columns: minmax(0, 1fr); }
 }
-.sn-top .sn-side:empty { display: none; }
+.sn-top.sn-solo .sn-side { display: none; }
 
 /* ---------- газета: шапка з подвійною лінійкою, засічки, як на справжньому папері ---------- */
 .sn-paper {
