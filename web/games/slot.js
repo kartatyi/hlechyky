@@ -174,6 +174,8 @@
       if (st.placed || !sp || !st.inst || !st.inst.ctx.reels) return;
       st.placed = true;
       try { st.inst.ctx.reels.set(sp); } catch (e) { /* інше поле — лишаємо випадкове */ }
+      // поле за stops — до сюрпризів сценарію (напр. «Дукатний дощ»): автомат докладає своє (хук onRestore(ctx, script))
+      st.inst.ctx.emit('restore', v.last.script);
     };
     place();
     st.inst.ctx.on('resize', place);
