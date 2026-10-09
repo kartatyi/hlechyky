@@ -114,7 +114,7 @@
       { id: 'shoot', title: 'Стрілялки', icon: '🎯', ids: ['duel', 'tyr', 'tanks', 'bomber', 'glekomet'] },
       { id: 'race', title: 'Перегони й м’яч', icon: '🏎', ids: ['rally', 'hockey', 'pong', 'typerace'] },
       { id: 'arcade', title: 'Аркадна класика', icon: '🕹', ids: ['snake', 'tron', 'bricks', 'dino', 'curve', 'territory'] },
-      { id: 'push', title: 'Штовханина', icon: '🥊', ids: ['icefloe', 'thinice', 'brid', 'bakhne'] },
+      { id: 'stand', title: 'Хто вистоїть', icon: '🧊', ids: ['icefloe', 'thinice', 'brid', 'bakhne'] },
       { id: 'grab', title: 'Хапай і збирай', icon: '🧺', ids: ['grushi', 'hostyntsi', 'skyrta', 'sklei'] },
       { id: 'crowd', title: 'Юрма', icon: '🎭', ids: ['crowd'] },
       { id: 'coop', title: 'Разом', icon: '🤝', ids: ['vohnyk'] },
@@ -1890,8 +1890,10 @@
     // у що грають). Обраний розділ — другий ряд чипів тем: «Усе в розділі» — так само темами, обрана тема — лише її плитки.
     // Пошук — просто знайдене, без тем.
     const tilesOf = (items) => '<div class="gtiles">' + items.map(tileHtml).join('') + '</div>';
-    const byThemes = (ths) => ths.map(({ t, items }) => '<h5 class="gtheme">' + t.icon + ' ' + esc(t.title)
-      + ' <span class="gtheme-n">· ' + items.length + '</span></h5>' + tilesOf(items)).join('');
+    // Теми розділу — блоки в одній сітці з колонками плитки: дрібні стають поруч, якщо влазять (--n — скільки плиток).
+    const byThemes = (ths) => '<div class="gthemegrid">' + ths.map(({ t, items }) => '<div class="gtblock" style="--n:' + items.length + '">'
+      + '<h5 class="gtheme">' + t.icon + ' ' + esc(t.title) + ' <span class="gtheme-n">· ' + items.length + '</span></h5>'
+      + tilesOf(items) + '</div>').join('') + '</div>';
     const ths = filter !== 'all' && !want ? themesIn(filter, list) : [];
     if (theme && !want && (ths.length < 2 || !ths.some((x) => x.t.id === theme))) theme = '';   // на пошуку тему не губимо
     const themeRow = ths.length > 1
