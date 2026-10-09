@@ -60,6 +60,7 @@
     { id: 'live', title: 'Швидкі', icon: '⚡' },
     { id: 'party', title: 'Компанія', icon: '🎉' },
     { id: 'solo', title: 'Соло', icon: '🏺' },
+    { id: 'azart', title: 'Азарт', icon: '🎰' },   // лише на клієнті: розділ гри дає THEMES, серверна group не міняється
   ];
 
   // Родини: одна гра в кількох режимах на різну кількість людей. У каталозі — одна плитка, режим обирається у
@@ -97,6 +98,69 @@
   const familyOf = {};
   for (const f of FAMILIES) for (const [id] of f.games) familyOf[id] = f;
 
+  // Теми: кожен розділ каталогу ділиться на підрозділи (рішення 09.10). Порядок тут — порядок на екрані.
+  // У ids — id гри, а якщо гра в родині (FAMILIES), то id родини. Розділ, де тут стоїть гра, головніший за серверну
+  // group: так рулетка з покером переїхали в «🎰 Азарт», а сервер про це не знає. Ігор, яких ще нема (слоти, лелька),
+  // тут не боїмося — порожня тема просто не показується. Гра, якої в THEMES нема (нова), не зникає: стає в «✨ Інше»
+  // в кінці свого серверного розділу, а в консоль летить нагадування розробнику — впиши її в тему.
+  const THEMES = {
+    board: [
+      { id: 'chess', title: 'Шахи й шашки', icon: '♟', ids: ['chess', 'checkers', 'reversi'] },
+      { id: 'cards', title: 'Карти й доміно', icon: '🃏', ids: ['durak', 'domino'] },
+      { id: 'field', title: 'На полі', icon: '⭕', ids: ['ttt', 'c4', 'battleship', 'mines'] },
+      { id: 'words', title: 'Слова', icon: '🔤', ids: ['scrabble'] },
+    ],
+    live: [
+      { id: 'shoot', title: 'Стрілялки', icon: '🎯', ids: ['duel', 'tyr', 'tanks', 'bomber', 'glekomet'] },
+      { id: 'race', title: 'Перегони й м’яч', icon: '🏎', ids: ['rally', 'hockey', 'pong', 'typerace'] },
+      { id: 'arcade', title: 'Аркадна класика', icon: '🕹', ids: ['snake', 'tron', 'bricks', 'dino', 'curve', 'territory'] },
+      { id: 'push', title: 'Штовханина', icon: '🥊', ids: ['icefloe', 'thinice', 'brid', 'bakhne'] },
+      { id: 'grab', title: 'Хапай і збирай', icon: '🧺', ids: ['grushi', 'hostyntsi', 'skyrta', 'sklei'] },
+      { id: 'crowd', title: 'Юрма', icon: '🎭', ids: ['crowd'] },
+      { id: 'coop', title: 'Разом', icon: '🤝', ids: ['vohnyk'] },
+    ],
+    party: [
+      { id: 'draw', title: 'Слова й малюнки', icon: '✏', ids: ['pictionary', 'telephone', 'hangman', 'wordle-race', 'pozyvni', 'dotepy'] },
+      { id: 'bluff', title: 'Хитрість і блеф', icon: '🕵', ids: ['mafia', 'spy', 'bluff', 'dice'] },
+      { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'geese'] },
+      { id: 'party', title: 'Вечірка', icon: '🎲', ids: ['vechirka'] },
+    ],
+    solo: [
+      { id: 'clicker', title: 'Гончарне коло', icon: '🏺', ids: ['clicker'] },
+      { id: 'train', title: 'Тренування', icon: '🏃', ids: ['bricks-sprint', 'typerace-solo', 'geo-solo'] },
+      // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
+      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
+        'tyr-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
+    ],
+    azart: [
+      { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'] },
+      { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo'] },
+      { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },
+      { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka'] },
+      { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker'] },
+    ],
+  };
+  const OTHER_THEME = { id: 'other', title: 'Інше', icon: '✨' };
+  const themeOf = {};   // id гри чи родини → { group, theme }
+  for (const [group, list] of Object.entries(THEMES)) for (const t of list) for (const id of t.ids) themeOf[id] = { group, theme: t.id };
+  const themeWarned = new Set();
+  /// Де гра в каталозі: розділ і тема. key — id родини чи гри; srvGroup — серверна group (на випадок «✨ Інше»).
+  function placeOf(key, id, srvGroup) {
+    const p = themeOf[key] || themeOf[id] || (familyOf[id] && themeOf[familyOf[id].id]);
+    if (p) return p;
+    if (!themeWarned.has(key)) {
+      themeWarned.add(key);
+      console.warn('[ігри] «' + key + '» нема в THEMES (core.js) — стоїть у «✨ Інше» розділу ' + srvGroup + '. Впиши її в тему.');
+    }
+    return { group: srvGroup, theme: OTHER_THEME.id };
+  }
+  /// Теми розділу з їхніми плитками, порожні відкинуто: [{ t, items }]. items — у тому ж порядку, що й part.
+  function themesIn(group, part) {
+    return (THEMES[group] || []).concat([OTHER_THEME])
+      .map((t) => ({ t, items: part.filter((e) => e.theme === t.id) }))
+      .filter((x) => x.items.length);
+  }
+
   /// «🆕 нова гра» — 14 днів від дати, яку модуль каже полем added, і лише тим, хто в неї ще не грав.
   /// «оновлено» — 7 днів від news.v і лише тим, хто вже грав: новенькому все одно все нове.
   /// Нова гра мусить казати added: без нього нема «🆕», а її «Нова гра: …» вилазить як «оновлено».
@@ -125,6 +189,8 @@
   let online = () => [];                                          // app.js: хто зараз на сайті
   let askNick = () => {};                                         // app.js: картка «Хто прийшов?»
   let filter = localStorage.getItem('gamesFilter') || 'all';
+  let theme = '';                                                 // тема в обраному розділі; '' — «Усе в розділі»
+  try { theme = localStorage.getItem('gamesTheme') || ''; } catch { /* приватне вікно */ }
   let find = '';
   try { ['gamesPanel', 'gamesTimePeriod', 'gamesLbPeriod'].forEach((k) => localStorage.removeItem(k)); } catch { /* переїхало в «Хто скільки» */ }
 
@@ -1629,7 +1695,7 @@
   // Каталог родинами: одна плитка на гру, скільки б режимів у неї не було (FAMILIES)
   // ---------------------------------------------------------------------------------------------
 
-  /// Записи каталогу: { kind: 'game'|'family', ids, group, title, hint, icon, min, max, solo, g?, f?, list? }.
+  /// Записи каталогу: { kind: 'game'|'family', ids, group, theme, title, hint, icon, min, max, solo, g?, f?, list? }.
   function entries() {
     const out = [];
     const seen = new Set();
@@ -1642,14 +1708,16 @@
         seen.add(f.id);
         const list = f.games.map(([id, label]) => ({ g: byId[id], label })).filter((x) => x.g && !x.g.off);
         if (list.length > 1) {
+          const at = placeOf(f.id, list[0].g.id, list[0].g.group);
           out.push({
-            kind: 'family', f, list, ids: list.map((x) => x.g.id), group: list[0].g.group, title: f.title, hint: f.hint,
+            kind: 'family', f, list, ids: list.map((x) => x.g.id), group: at.group, theme: at.theme, title: f.title, hint: f.hint,
             min: Math.min(...list.map((x) => x.g.minPlayers)), max: Math.max(...list.map((x) => x.g.maxPlayers)), solo: false,
           });
           continue;
         }
       }
-      out.push({ kind: 'game', g, ids: [g.id], group: g.group, title: g.title, hint: g.hint || '', min: g.minPlayers, max: g.maxPlayers, solo: g.maxPlayers === 1 });
+      const at = placeOf(g.id, g.id, g.group);
+      out.push({ kind: 'game', g, ids: [g.id], group: at.group, theme: at.theme, title: g.title, hint: g.hint || '', min: g.minPlayers, max: g.maxPlayers, solo: g.maxPlayers === 1 });
     }
     return out;
   }
@@ -1784,6 +1852,8 @@
     const mineFirst = rooms.slice().sort((a, b) => (seatOfMe(b) != null ? 1 : 0) - (seatOfMe(a) != null ? 1 : 0));
     const want = find.trim().toLowerCase();
     const all = entries();
+    // Розділ, якого вже нема (усі його ігри вимкнено), — назад на «Усі»; тема, якої в розділі нема, — на «Усе в розділі».
+    if (filter !== 'all' && !all.some((e) => e.group === filter)) filter = 'all';
     const match = (e) => (filter === 'all' || e.group === filter)
       && (!want || (e.title + ' ' + e.hint + ' ' + (e.list || []).map((x) => x.g.title + ' ' + x.label).join(' ')).toLowerCase().includes(want));
     const list = all.filter(match).sort(byPlays);
@@ -1816,16 +1886,30 @@
       }).join('') + '</div>'
       : '';
 
-    // Каталог: на «Усі» без пошуку — групами з заголовками (у групі спершу те, у що грають), інакше — просто знайдене.
-    const grouped = filter === 'all' && !want;
+    // Каталог: на «Усі» без пошуку — розділами з заголовками, а в розділі — темами з підзаголовками (у темі спершу те,
+    // у що грають). Обраний розділ — другий ряд чипів тем: «Усе в розділі» — так само темами, обрана тема — лише її плитки.
+    // Пошук — просто знайдене, без тем.
+    const tilesOf = (items) => '<div class="gtiles">' + items.map(tileHtml).join('') + '</div>';
+    const byThemes = (ths) => ths.map(({ t, items }) => '<h5 class="gtheme">' + t.icon + ' ' + esc(t.title)
+      + ' <span class="gtheme-n">· ' + items.length + '</span></h5>' + tilesOf(items)).join('');
+    const ths = filter !== 'all' && !want ? themesIn(filter, list) : [];
+    if (theme && !want && (ths.length < 2 || !ths.some((x) => x.t.id === theme))) theme = '';   // на пошуку тему не губимо
+    const themeRow = ths.length > 1
+      ? '<div class="gthemes" role="group" aria-label="Теми розділу">'
+        + [{ t: { id: '', icon: '', title: 'Усе в розділі' }, items: list }].concat(ths)
+          .map(({ t, items }) => '<button class="chip gtchip' + (theme === t.id ? ' on' : '') + '" data-theme="' + t.id + '">'
+            + (t.icon ? t.icon + ' ' : '') + esc(t.title) + '<span class="gtc-n">' + items.length + '</span></button>').join('')
+        + '</div>'
+      : '';
     const tiles = !list.length ? ''
-      : grouped
-        ? GROUPS.filter((g) => g.id !== 'all').map((g) => {
-          const part = list.filter((e) => e.group === g.id);
-          return part.length ? '<h4 class="ggroup">' + g.icon + ' ' + esc(g.title) + ' <span class="muted small">· ' + part.length + '</span></h4>'
-            + '<div class="gtiles">' + part.map(tileHtml).join('') + '</div>' : '';
-        }).join('')
-        : '<div class="gtiles">' + list.map(tileHtml).join('') + '</div>';
+      : want ? tilesOf(list)
+        : filter === 'all'
+          ? GROUPS.filter((g) => g.id !== 'all').map((g) => {
+            const part = list.filter((e) => e.group === g.id);
+            return part.length ? '<h4 class="ggroup">' + g.icon + ' ' + esc(g.title) + ' <span class="muted small">· ' + part.length + '</span></h4>'
+              + byThemes(themesIn(g.id, part)) : '';
+          }).join('')
+          : theme ? tilesOf(ths.find((x) => x.t.id === theme).items) : byThemes(ths);
 
     const links = [['#stats/games', '🏆 Таблиці ігор'], ['#stats/time', '⏱ Хто скільки грав'], ['#lavka', '🛍 Лавка Дядька Глека']]
       .concat(extraPanels.filter((p) => p.id !== 'svoya').map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
@@ -1843,13 +1927,20 @@
           + (g.icon ? g.icon + ' ' : '') + esc(g.title) + '</button>').join('')
       + '<input class="gfind" type="search" placeholder="знайти гру" value="' + esc(find) + '" autocomplete="off">'
       + '</div>'
+      + themeRow
       + (tiles || '<div class="gempty">Овва, нічого схожого не знайшлось. Спробуй інакше або зніми фільтр.</div>')
       + '<div class="glinks">' + links.map(([h, l]) => '<a href="' + h + '">' + esc(l) + '</a>').join('<span>·</span>') + '</div>'
       + '</section>';
 
     box.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => {
+      if (filter !== b.dataset.filter) theme = '';   // інший розділ — з «Усе в розділі»
       filter = b.dataset.filter;
-      try { localStorage.setItem('gamesFilter', filter); } catch { /* приватне вікно */ }
+      try { localStorage.setItem('gamesFilter', filter); localStorage.setItem('gamesTheme', theme); } catch { /* приватне вікно */ }
+      renderView();
+    });
+    box.querySelectorAll('[data-theme]').forEach((b) => b.onclick = () => {
+      theme = b.dataset.theme;
+      try { localStorage.setItem('gamesTheme', theme); } catch { /* приватне вікно */ }
       renderView();
     });
     box.querySelector('.gfind').oninput = (e) => { find = e.target.value; renderView(); };

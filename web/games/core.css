@@ -111,6 +111,22 @@
 .ggroup { margin: 8px 0 0; font-family: var(--display); font-size: .98em; font-weight: 600; color: var(--text); }
 .ggroup:first-of-type { margin-top: 2px; }
 
+/* ---- теми каталогу (09.10): підзаголовки тихіші за заголовок розділу, другий ряд чипів — менший і тихіший ---- */
+.gtheme { margin: 2px 0 -4px; font-size: .8em; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.gtheme-n { font-weight: 400; opacity: .7; }
+.gthemes { display: flex; gap: 4px; flex-wrap: wrap; margin-top: -4px; }
+.gtchip { cursor: pointer; border: 1px solid transparent; background: transparent; padding: 3px 9px; font-size: .78em; }
+.gtchip .gtc-n { margin-left: 4px; opacity: .6; font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .gtchip:hover { color: var(--text); background: var(--panel2); } }
+.gtchip.on { background: var(--panel2); color: var(--text); border-color: var(--line); }
+/* Телефон: теми — один рядок із прокруткою вбік усередині рядка, сама сторінка вбік не їде. */
+@media (max-width: 900px) {
+  .gthemes { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin-right: -4px; padding-right: 4px; }
+  .gthemes::-webkit-scrollbar { display: none; }
+  .gtchip { flex: none; }
+}
+@media (pointer: coarse) { .gtchip { padding: 5px 10px; } }
+
 /* ---- «⭐ Часто граємо»: швидкий запуск того, у що компанія грає найбільше ---- */
 .gfavs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .gfav { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
