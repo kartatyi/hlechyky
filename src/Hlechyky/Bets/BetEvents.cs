@@ -36,6 +36,7 @@ public sealed class BetEvents(BetsStore store, BetBook book, Economy economy, Po
 {
     public const string AdminOnly = "Події веде адмін";
     public const string Off = "Ставки на події зараз вимкнено";
+    public const string AllOff = "Ставки зараз вимкнено";
     public const string SuggestAccountsOnly = "Пропонувати можуть лише акаунти — закріпи нік";
     public const int TitleMax = 200, DescriptionMax = 2000, OptionTitleMax = 120, OptionsMax = 120, SuggestMax = 300;
     const int MineMax = 100, DoneMax = 20, AdminMax = 200;
@@ -103,7 +104,7 @@ public sealed class BetEvents(BetsStore store, BetBook book, Economy economy, Po
             balance = me.Account ? economy.Balance(me.Nick) : 0,
             limits = Limits(),
             events = o.EventsOn || me.Admin ? store.LiveEvents().Select(e => EventView(e, me, false)).ToList() : [],
-            done = store.DoneEvents(DoneMax).Select(e => EventView(e, me, false)).ToList(),
+            done = o.EventsOn || me.Admin ? store.DoneEvents(DoneMax).Select(e => EventView(e, me, false)).ToList() : [],
             suggestions = me.Account ? store.SuggestionsOf(me.Nick, 20).Select(SuggestionView).ToList() : [],
             suggestPending = o.SuggestPending,
             pendingSuggestions = me.Admin ? store.PendingAll() : (int?)null,
@@ -128,6 +129,7 @@ public sealed class BetEvents(BetsStore store, BetBook book, Economy economy, Po
     public BetReply Mine(BetActor me, int? limit)
     {
         if (!me.Account) return new(false, BetBook.AccountsOnly, 403);
+        if (!O.Enabled && !me.Admin) return new(false, AllOff, 404);
         var all = store.Of(me.Nick, Math.Clamp(limit ?? MineMax, 1, 500));
         var titles = all.Where(b => b.Source == BetSources.Event).Select(b => b.Ref).Distinct()
             .Select(r => long.TryParse(r, out var id) ? store.Event(id) : null).OfType<BetEvent>().ToDictionary(e => e.Ref, e => e.Title);

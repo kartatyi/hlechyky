@@ -148,6 +148,14 @@ public sealed class BetBook(BetsStore store, Economy economy, IClock clock, IOpt
     BetClosed? Close(Bet b, BetVerdict verdict, string note)
     {
         var now = clock.UtcNow;
+        // Падіння між грошима й станом лишає ставку відкритою, хоча виграш чи повернення вже впали. Наступний, хто її
+        // закриває, може вирішити інакше (подію скасували замість розрахунку, звірка повертає ставку столу) — тоді
+        // ключ іншої причини не дублікат, і людина отримала б і виграш, і повернення. Гроші вже пішли — так і закриваємо.
+        if (store.PaidRef(b.Id) is { } paid && paid != verdict)
+        {
+            log.LogWarning("Ставки: {Id} уже має {Paid} у леджері — закриваю так, а не {Verdict}", b.Id, paid, verdict);
+            verdict = paid;
+        }
         switch (verdict)
         {
             case BetVerdict.Won:

@@ -231,6 +231,26 @@ public sealed class BetsTests : IDisposable
     }
 
     [Fact]
+    public void A_win_paid_before_a_crash_is_not_refunded_on_top_and_a_refund_is_not_paid_as_a_win()
+    {
+        // виграш упав, стан не записався; після перезапуску подію скасовують / звірка повертає ставку столу
+        var won = _book.Place("Влад", true, new BetPlace("event", "77", "event", "o1", "Подія — Реал", 2, 100)).Bet!;
+        Assert.Equal(GrantResult.Applied, _eco.Economy.Grant("Влад", 200, "bet-win:event", BetBook.WinRef(won.Id)));
+        var s = _book.Refund("event", "77", "подію скасовано");
+        Assert.Equal(BetVerdict.Won, Assert.Single(s.Closed).Verdict);
+        Assert.Equal(1100, Balance("Влад"));
+        Assert.Equal("won", _store.Bet(won.Id)!.Status);
+        Assert.Null(_book.Refund(won, "ще раз"));
+
+        // і навпаки: повернення вже впало — розрахунок «зіграло» не доплачує виграш зверху
+        var back = _book.Place("Оля", true, new BetPlace("event", "78", "event", "o1", "Подія — Барса", 3, 50)).Bet!;
+        Assert.Equal(GrantResult.Applied, _eco.Economy.Grant("Оля", 50, "bet-back:event", BetBook.BackRef(back.Id)));
+        Assert.Equal(BetVerdict.Back, Assert.Single(_book.Settle("event", "78", _ => BetVerdict.Won).Closed).Verdict);
+        Assert.Equal(1000, Balance("Оля"));
+        Assert.Equal("back", _store.Bet(back.Id)!.Status);
+    }
+
+    [Fact]
     public void Refund_returns_every_open_stake_once()
     {
         _book.Place("Влад", true, new BetPlace("table", "r5:1", "win", "Оля", "Оля", 2, 30));
@@ -341,6 +361,21 @@ public sealed class BetsTests : IDisposable
         Assert.True(_bets.Cancel(Admin, id, null).Ok);
         Assert.Equal(1000, Balance("Влад"));
         Assert.Equal(BetBook.AccountsOnly, Bet(Guest, id, "o1", 10).Message);
+    }
+
+    [Fact]
+    public void Whole_section_off_hides_events_my_bets_and_stats_from_people_but_not_from_the_admin()
+    {
+        var id = OpenEvent();
+        Assert.True(Bet(Vlad, id, "o1", 100).Ok);
+        Assert.True(_bets.Settle(Admin, id, "o1").Ok);
+        _opts.Enabled = false;
+        var v = Views.Json(_bets.View(Vlad));
+        Assert.Empty(v.GetProperty("events").EnumerateArray());
+        Assert.Empty(v.GetProperty("done").EnumerateArray());
+        Assert.Equal(BetEvents.AllOff, _bets.Mine(Vlad, null).Message);
+        Assert.Single(Views.Json(_bets.View(Admin)).GetProperty("done").EnumerateArray());
+        Assert.True(_bets.Mine(Admin with { Account = true }, null).Ok);
     }
 
     [Fact]
@@ -461,6 +496,9 @@ public sealed class BetsTests : IDisposable
            ]},
           {"title":"Dynamo vs Shakhtar","slug":"dyn-shakh","endDate":"2026-10-20T18:00:00Z","volume":10,"active":true,"closed":false,"markets":[
              {"id":"9","question":"Dynamo vs Shakhtar","outcomes":"[\"Dynamo\", \"Shakhtar\"]","outcomePrices":"[\"0.45\", \"0.55\"]","closed":false,"active":true}
+           ]},
+          {"title":"All closed","slug":"all-closed","active":true,"closed":false,"markets":[
+             {"id":"11","question":"Done?","outcomes":"[\"Yes\", \"No\"]","outcomePrices":"[\"1\", \"0\"]","closed":true,"active":true}
            ]}
         ]
         """;

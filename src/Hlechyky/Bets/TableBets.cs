@@ -331,15 +331,15 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
         if (!placed.Duplicate)
         {
             // Поки ставка писалась, стіл міг змінитись (сів, встав, налаштування — їхнє повернення вже пройшло повз неї)
-            // або партія — початись іншим складом. Той самий склад, що вже грає цю партію, — ставка чесна.
+            // або партія — початись. Прийом закривається на старті (§4.1), тож ставка, що дописалась уже в партію, — назад.
             var now = rooms.BetTableOf(t.Id);
-            var stale = now is null || now.Crew != t.Crew
-                || (now.Status == RoomStatus.Playing ? Rooms.BetRef(now.Id, now.Round) : now.NextRef) != t.NextRef;
+            var started = now is { Status: RoomStatus.Playing };
+            var stale = now is null || started || now.Crew != t.Crew || now.NextRef != t.NextRef;
             if (stale)
             {
                 book.Refund(bet, Changed);
                 wire.Changed(t.Id);
-                return new(false, "Стіл змінився, поки ти ставив — ставку повернуто", 409);
+                return new(false, started ? "Партія вже почалась — ставку повернуто" : "Стіл змінився, поки ти ставив — ставку повернуто", 409);
             }
             Talk(t.Id, $"🎲 {me.Nick} ставить {Num(bet.Stake)} 🏺 на «{opt.Phrase}» {BetMath.Show(bet.Odds)}");
             wire.Changed(t.Id);

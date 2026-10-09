@@ -187,6 +187,8 @@ public sealed class Polymarket
     {
         if (Str(e, "slug") is not { Length: > 0 } slug || Str(e, "title") is not { Length: > 0 } title) return null;
         var (options, markets, _) = Options(e, null);
+        // Подія «відкрита», а всі її ринки вже закриті (чи лишився один кандидат) — чернетка вийшла б порожня, ставити нема на що
+        if (options.Count < 2) return null;
         var count = e.TryGetProperty("markets", out var ms) && ms.ValueKind == JsonValueKind.Array ? ms.GetArrayLength() : 0;
         return new PmCard(slug, title, EventUrl(slug), Date(e, "endDate"), Num(e, "volume") ?? 0, Num(e, "volume24hr") ?? 0, Str(e, "image"),
             count, options.Take(3).ToList());

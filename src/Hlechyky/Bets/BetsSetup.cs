@@ -89,7 +89,9 @@ public static class BetsSetup
 
     public static IResult Mine(int? limit, HttpContext c, BetEvents bets) => Reply(bets.Mine(BetActor.Of(c), limit));
 
-    public static object Glek(BetEvents bets) => bets.Glek();
+    /// <summary>Розділ вимкнено — і статистики нема (адміну лишається).</summary>
+    public static IResult Glek(HttpContext c, BetEvents bets, IOptionsMonitor<BetsOptions> opts) =>
+        opts.CurrentValue.Enabled || Auth.IsAdmin(c) ? Results.Ok(bets.Glek()) : Reply(new(false, BetEvents.AllOff, 404));
 
     public static IResult Create(HttpContext c, BetEvents.EventRequest b, BetEvents bets) => Reply(bets.Create(BetActor.Of(c), b));
 

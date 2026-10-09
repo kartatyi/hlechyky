@@ -162,6 +162,16 @@ public sealed class BetsStore
     public List<Bet> Of(string nick, int n) =>
         Bets("WHERE nick_key=$k AND status<>'new' ORDER BY id DESC LIMIT $n", ("$k", Auth.NickKey(nick)), ("$n", n));
 
+    /// <summary>
+    /// Що вже впало людині за ставку в леджері: виграш, повернення чи нічого (null). Стан ставки пишеться після грошей,
+    /// тож після падіння посередині правду знає лише леджер.
+    /// </summary>
+    public BetVerdict? PaidRef(long id) => _db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT ref FROM ledger WHERE ref IN ($w, $b) LIMIT 1", ("$w", BetBook.WinRef(id)), ("$b", BetBook.BackRef(id)));
+        return cmd.ExecuteScalar() is string r ? (r == BetBook.WinRef(id) ? BetVerdict.Won : BetVerdict.Back) : (BetVerdict?)null;
+    });
+
     /// <summary>Закрити відкриту ставку; false — її вже розрахував хтось інший.</summary>
     public bool Close(long id, string status, int payout, DateTimeOffset at, string note) => _db.With(c =>
         Exec(c, "UPDATE bets SET status=$st, payout=$p, settled_at=$at, note=$n WHERE id=$id AND status='open'",
