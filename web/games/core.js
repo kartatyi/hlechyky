@@ -3132,6 +3132,9 @@
       if (shown && view.kind === 'lobby' && padelCard() !== was) renderView();
     },
 
+    /// Гаманець шапки (живий, з події wallet і /api/me); null — ще не прийшов. Слоти беруть його за баланс автомата.
+    get wallet() { return wallet; },
+
     /// Тихий гаманець: поки модуль просить (on), тости гаманця з причиною на prefix не вилазять (шапка оновлюється).
     quietWallet(prefix, on) {
       const n = (quietW.get(prefix) || 0) + (on ? 1 : -1);

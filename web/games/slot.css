@@ -1,5 +1,7 @@
 /* Слоти на сайті: автомат SlotKit на всю ігрову зону картки (вписується сам — масштабом). */
 .slot-card { padding: 0; }
+/* назва автомата вже є в рядку «← Лобі · …» над карткою й на табло самого автомата — рядок картки зайвий */
+.gtable:has(> .slot-card) > .gseats { display: none; }
 .slotwrap {
   position: relative; width: 100%;
   height: calc(var(--gfit-h, 100vh) - var(--slot-top, 170px) - 12px);

@@ -643,7 +643,8 @@ body.g-imm:not(.g-land) .gbody > canvas.gcanvas { max-width: min(100%, calc((var
 .gaz-x { font-weight: 800; color: var(--clay, #c5763a); }
 .gaz-sum { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
 .gtblock.gt-slots { grid-column: 1 / -1; }
-.gposters { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+/* афіші — на всю ширину блоку «Слоти» (блок — subgrid лобі, без 1 / -1 вони сідали в одну колонку стовпчиком) */
+.gposters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .gposter { position: relative; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: #0d1712;
   border: 1px solid var(--line, rgba(255, 255, 255, .1)); transition: transform .15s, box-shadow .15s; min-width: 0; }
 .gposter:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, .35); }

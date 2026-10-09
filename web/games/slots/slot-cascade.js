@@ -5,15 +5,16 @@
   'use strict';
   const SK = window.SlotKit, ID = 'slot-cascade', COLS = 6, ROWS = 5;
   const LOW = ['k1', 'k2', 'k3', 'k4'], HIGH = ['bowl', 'pot', 'makitra', 'kumanets', 'glek'], PAYING = LOW.concat(HIGH);
-  // Виплати в ставках: [8–9, 10–11, 12+] однакових будь-де
+  // Виплати в ставках: [8–9, 10–11, 12+] однакових будь-де — як на сервері (SlotCascadeMath.Pay10); на сайті slot.js
+  // ще й підставляє view.table через _setPay, щоб ⓘ не розійшлась із касою
   const PAY = {
-    k1: [0.3, 0.9, 2.5], k2: [0.5, 1, 4], k3: [0.6, 1.2, 5], k4: [1, 1.5, 8],
+    k1: [0.3, 0.8, 2.5], k2: [0.4, 1, 4], k3: [0.6, 1.2, 5], k4: [1, 1.5, 8],
     bowl: [1.2, 2, 10], pot: [1.5, 2.5, 12], makitra: [2, 5, 15], kumanets: [2.5, 10, 25], glek: [10, 25, 50],
   };
   const FURN = 'furnace', FURN_PAY = { 4: 3, 5: 5, 6: 100 };
   const MULTS = [2, 3, 5, 10, 25, 50, 100];
   // Ваги символів (pys — писанка; її число — з ваг M_*)
-  const W_BASE = { k1: 20, k2: 19, k3: 18, k4: 17, bowl: 12, pot: 10, makitra: 8, kumanets: 6, glek: 4.5, furnace: 2.3, pys: 0.45 };
+  const W_BASE = { k1: 20, k2: 19, k3: 18, k4: 17, bowl: 12, pot: 10, makitra: 8, kumanets: 6, glek: 4.5, furnace: 2.4, pys: 0.45 };
   const W_FS = { k1: 20, k2: 19, k3: 18, k4: 17, bowl: 12, pot: 10, makitra: 8, kumanets: 6, glek: 4.5, furnace: 1.9, pys: 1.6 };
   const M_BASE = { 2: 40, 3: 26, 5: 18, 10: 10, 25: 4, 50: 1.5, 100: 0.5 };
   const M_FS = { 2: 34, 3: 26, 5: 20, 10: 12, 25: 5, 50: 2, 100: 1 };
@@ -203,6 +204,14 @@
       + '</div>';
   }
 
+  function payRows() {
+    return PAYING.slice().reverse().map((k) => ({ key: k, unit: '+', pays: { 12: PAY[k][2], 10: PAY[k][1], 8: PAY[k][0] }, labels: { 12: '12+', 10: '10–11', 8: '8–9' }, note: k === 'glek' ? 'найдорожчий' : '' }))
+      .concat([
+        { key: FURN, pays: FURN_PAY, labels: { 6: '6+', 5: '5', 4: '4' }, note: '4+ будь-де — 10 вільних обертів; у бонусі 3+ — ще 5' },
+        { key: 'x10', pays: {}, note: 'писанка ×2…×100: наприкінці каскаду летить на дощечку й множить його виграш' },
+      ]);
+  }
+
   SK.define({
     id: ID,
     title: 'Розбиті глеки',
@@ -210,11 +219,13 @@
     spinStyle: 'drop',
     payUnit: 1,
     sounds: { win: 'bell' },
-    paytable: PAYING.slice().reverse().map((k) => ({ key: k, unit: '+', pays: { 12: PAY[k][2], 10: PAY[k][1], 8: PAY[k][0] }, note: k === 'glek' ? 'найдорожчий' : '' }))
-      .concat([
-        { key: FURN, pays: FURN_PAY, unit: '', note: '4+ будь-де — 10 вільних обертів; у бонусі 3+ — ще 5' },
-        { key: 'x10', pays: {}, note: 'писанка ×2…×100: наприкінці каскаду летить на дощечку й множить його виграш' },
-      ]),
+    paytable: payRows(),
+    _setPay(pay) {
+      if (!pay) return;
+      PAYING.forEach((k) => { const p = pay[k]; if (p && p['8'] != null) PAY[k] = [+p['8'], +p['10'], +p['12']]; });
+      if (pay[FURN]) { Object.keys(FURN_PAY).forEach((n) => delete FURN_PAY[n]); Object.keys(pay[FURN]).forEach((n) => { FURN_PAY[n] = +pay[FURN][n]; }); }
+      SK.machines[ID].paytable = payRows();
+    },
     rules: '<b>6×5</b>, ліній нема: платять <b>8 і більше однакових будь-де</b> на полицях (8–9, 10–11, 12+). '
       + 'Виграшний посуд б\'ється, решта падає, згори падають нові — і так, поки є виграш (<b>каскад</b>). '
       + '<b>Писанка</b> — множник: наприкінці каскаду всі писанки летять на дощечку й додаються, сума множить виграш оберту. '

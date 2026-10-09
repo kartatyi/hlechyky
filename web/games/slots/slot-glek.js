@@ -210,7 +210,10 @@
     clearGambleBtn(ctx);
     // srv — сайт: карту тягне сервер, гроші рухає він же (ctx.api.gamble/collect), локально не списуємо й не нараховуємо
     const srv = ctx.api && ctx.api.gamble ? ctx.api : null;
-    const stake0 = ctx.lastWin; let stake = stake0, round = 0, open = true; const MAX = 5; const hist = [];
+    // resume — Ворожка, що лишилась відкритою на сервері (перезавантаження): та сама сума, кроки й історія
+    const rs = ctx.glGamble; ctx.glGamble = null;
+    const stake0 = ctx.lastWin; let stake = stake0, round = (rs && rs.steps) || 0, open = true; const MAX = 5;
+    const hist = rs && rs.hist ? rs.hist.slice(0, 6) : [];   // сервер: новіші спершу
     if (!srv) ctx.addBalance(-stake0);
     ctx.busy = true; ctx.updateHud(); ctx.clearWin();
     const cab = ctx.area.querySelector('.gl-cab-in');
@@ -231,7 +234,7 @@
       $('.gl-f-v').textContent = SK.fmt(stake) + ' 🏺';
       $('.gl-f-next').textContent = round < MAX ? ' → вгадаєш: ' + SK.fmt(stake * 2) : '';
       $('.gl-f-take b').textContent = SK.fmt(stake);
-      $('.gl-f-left').textContent = round < MAX ? 'ще можна ' + (MAX - round) + ' ' + (MAX - round === 1 ? 'раз' : 'рази') : 'більше не можна';
+      $('.gl-f-left').textContent = round < MAX ? 'ще можна ' + (MAX - round) + ' ' + (MAX - round === 1 ? 'раз' : MAX - round < 5 ? 'рази' : 'разів') : 'більше не можна';
       $('.gl-f-hist').innerHTML = hist.map((s) => '<span class="' + s + '">' + (s === 'r' ? '♥' : '♠') + '</span>').join('');
       setDigits(ctx, stake);
     };
@@ -304,6 +307,12 @@
       'Ворожка': demoBy((x) => x.m >= 2 && x.m < 8, { gamble: true }),
     },
     _all: all, _evaluate: evaluate, _setPay: setPay,
+    // сайт: view.gamble.open після перезавантаження — кнопка «Ворожка» знову з тією сумою
+    _resumeGamble(ctx, g) {
+      if (!g || !g.open || !(g.amount > 0) || ctx.busy) return;
+      ctx.lastWin = g.amount; ctx.glGamble = g; setDigits(ctx, g.amount);
+      gambleButton(ctx);
+    },
 
     build(ctx) {
       const port = ctx.orient === 'port', L = layOf(ctx), W = L.window;

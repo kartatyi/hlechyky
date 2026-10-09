@@ -135,9 +135,20 @@
     let win = items.reduce((a, it) => a + it.amount, 0);
     const steps = [{ t: 'spin', stops, tease: ev.tease }];
     if (items.length) steps.push({ t: 'win', items, amount: win });
-    let hold = null;
-    if (ev.coins.length >= 6) { hold = holdSim(ev.coins, bet, bo); steps.push(...hold.steps); win += hold.total; }
-    return { bet, steps, win, state: state || {}, hold: !!hold, full: !!(hold && hold.full) };
+    let hold = null, capped = false;
+    if (ev.coins.length >= 6) {
+      hold = holdSim(ev.coins, bet, bo);
+      // як сервер (SlotHoldMath): повне поле — оберт віддає рівно стелю (grand = доплата), інакше скриня обрізається стелею
+      const capW = JP.grand * bet, cnt = hold.steps.find((s) => s.t === 'holdCount'), out = hold.steps.find((s) => s.t === 'holdOut');
+      const gr = hold.steps.find((s) => s.t === 'grand');
+      if (gr) { gr.amount = Math.max(0, capW - win - cnt.total); out.total = cnt.total + gr.amount; }
+      else if (win + out.total > capW) { out.total = Math.max(0, capW - win); capped = true; }
+      hold.total = out.total;
+      steps.push(...hold.steps); win += hold.total;
+    }
+    const S = { bet, steps, win, state: state || {}, hold: !!hold, full: !!(hold && hold.full) };
+    if (capped) S.capped = true;
+    return S;
   }
 
   // ---------- сценарії показу: випадкові зупинки, відібрані за ознакою ----------
@@ -433,14 +444,15 @@
       ctx.say(pick(SAY.grand), 4000);
       const ov = ctx.overlay('sh-grand-ov',
         '<div class="sh-grand-card"><div class="sh-grand-rays"></div><div class="sh-grand-coin">' + ex(ctx, 'coin', 'Гетьман') + '</div>'
-        + '<div class="sh-grand-t">гетьманський скарб!</div><div class="sh-grand-s">усі п\'ятнадцять гнізд — твої</div><div class="sh-grand-n">0</div></div>');
+        + '<div class="sh-grand-t">гетьманський скарб!</div><div class="sh-grand-s">усі п\'ятнадцять гнізд — твої · ' + JP.grand + '× ставки</div><div class="sh-grand-n">0</div></div>');
       ctx.sound('big'); ctx.fx.rain({ kind: 'coin', ms: 4200, rate: 34, size: 14 });
       const n = ov.querySelector('.sh-grand-n');
       await ctx.wait(500, true);
-      const from = ctx.meter;
-      await ctx.roll(0, s.amount, 3200, (v) => { n.textContent = fmt(v); });
+      // s.amount — доплата до стелі (сервер), а свято показує весь скарб: 1000× ставки = лічильник + доплата
+      const from = ctx.meter, full = from + s.amount;
+      await ctx.roll(0, full, 3200, (v) => { n.textContent = fmt(v); });
       ctx.sound('level'); ctx.fx.at(n, { kind: 'coin', n: 60, speed: 760 });
-      await ctx.rollMeter(from + s.amount, 500);
+      await ctx.rollMeter(full, 500);
       await ctx.wait(2000, true);
       await ctx.closeOverlay(ov);
     },
@@ -496,6 +508,13 @@
       },
       'Мега занос': bonusIn(25, 50, { saves: 1, plan: [{ at: 1, k: 'pirnach' }] }),
       'Епічний занос': bonusIn(50, 400, { saves: 2, rich: true, plan: [{ at: 1, k: 'mace' }, { at: 2, k: 'pirnach' }] }, 7),
+    },
+    bonusSteps: ['holdIn'],
+    // на сайті slot.js підставляє view.table: pay ({ sym: { "5": … } }) і jackpots ({ mini, major, grand })
+    _setPay(pay, table) {
+      if (pay) Object.keys(pay).forEach((k) => { if (!PAY[k]) return; Object.keys(PAY[k]).forEach((n) => delete PAY[k][n]); Object.keys(pay[k]).forEach((n) => { PAY[k][n] = +pay[k][n]; }); });
+      const jp = table && table.jackpots; if (jp) ['mini', 'major', 'grand'].forEach((k) => { if (jp[k] != null) JP[k] = +jp[k]; });
+      const cv = table && table.coins; if (cv) Object.keys(cv).forEach((k) => { if (k in COINV) COINV[k] = +cv[k]; });
     },
     _pool: pool, _evaluate: evaluate, _holdSim: holdSim, _scriptFor: scriptFor, _reels: REELS,
 

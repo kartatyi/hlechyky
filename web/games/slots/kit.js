@@ -511,6 +511,9 @@
 
   // ---------- Спільні кроки сценарію ----------
   // Кожен крок: async (step, ctx). Автомат додає свої в machine.steps (вони мають пріоритет).
+  // «Найбільший можливий виграш»: стеля оберту (table.cap, що slot.js кладе в machine.table) — підпис банера
+  SK.CAP_TEXT = 'Найбільший можливий виграш';
+  function capSub(ctx) { const t = ctx.machine && ctx.machine.table, cap = (t && t.cap) || ctx.machine.cap; return cap ? 'стеля — ' + cap + '× ставки' : ''; }
   SK.steps = {
     async spin(s, ctx) { await ctx.reels.spin(s); },
     async set(s, ctx) { ctx.reels.set(s); },
@@ -532,7 +535,11 @@
       if (s.n) ctx.emit('cascade', s.n);
     },
     async morph(s, ctx) { await ctx.reels.morph(s.cells); },
-    async banner(s, ctx) { await ctx.banner(s.text, s); },
+    async banner(s, ctx) {
+      const sc = ctx.script;
+      if (sc && (sc.capped || sc.cap === true) && /стел/i.test(s.text || '')) { await ctx.banner(SK.CAP_TEXT, Object.assign({}, s, { sub: capSub(ctx) || s.sub, ms: Math.max(s.ms || 0, 2200) })); return; }
+      await ctx.banner(s.text, s);
+    },
     async pause(s, ctx) { await ctx.wait(s.ms || 500); },
     async sound(s, ctx) { ctx.sound(s.name); },
     async clear(s, ctx) { ctx.clearWin(); },
@@ -776,7 +783,8 @@
           });
         });
       },
-      rollMeter(to, ms) { const from = ctx.meter; ctx.meter = to; return ctx.roll(from, to, ms, (v) => setMeter(v)); },
+      // стеля (script.capped / cap: true): лічильник не показує більше, ніж зараховано (script.win + Скарбничка)
+      rollMeter(to, ms) { const sc = ctx.script; if (sc && (sc.capped || sc.cap === true) && sc.win != null) to = Math.min(to, sc.win + (sc.jackpot || 0)); const from = ctx.meter; ctx.meter = to; return ctx.roll(from, to, ms, (v) => setMeter(v)); },
       setScene(which) {
         ctx.sceneNow = which;
         const sc = art && art.scene || {};
@@ -1016,7 +1024,7 @@
       if (ctx.auto) {
         // бонус: script.bonus, крок bonusIn або свої кроки з machine.bonusSteps (напр. ['holdIn'])
         const bsteps = ['bonusIn'].concat(machine.bonusSteps || []);
-        const hadBonus = script && (script.bonus || (script.steps && script.steps.some((s) => bsteps.includes(s.t))));
+        const hadBonus = script && (script.bonus || script.hold || (script.steps && script.steps.some((s) => bsteps.includes(s.t))));
         if (hadBonus && ctx.autoStopBonus) ctx.auto = 0;
         else if (ctx.balance < ctx.bet) ctx.auto = 0;
         else { if (ctx.auto !== Infinity) ctx.auto--; if (ctx.auto) ctx.timeout(() => { if (ctx.auto && !ctx.busy) doSpin(); }, ctx.turbo ? 200 : 550); }
@@ -1033,6 +1041,8 @@
     async function finish(script) {
       const total = script.win || 0;
       ctx.lastWin = total;
+      // стеля без свого банера в сценарії (hold, cluster) — кіт каже сам
+      if ((script.capped || script.cap === true) && !(script.steps || []).some((s) => s.t === 'banner')) await ctx.banner(SK.CAP_TEXT, { sub: capSub(ctx), ms: 2200 });
       if (total > 0) {
         if (ctx.meter !== total) await ctx.rollMeter(total, ctx.meter ? 400 : ctx.rollMs(total));
         if (total >= SK.TIERS[0].x * ctx.bet) await bigWin(total);

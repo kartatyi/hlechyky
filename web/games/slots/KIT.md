@@ -147,7 +147,14 @@ gravity, color, life})` (x,y — px відносно `ctx.root`), `ctx.fx.at(el,
 - `DropGrid`: `weights` ({ключ: вага}) в опціях `makeReels` чи в `define` — початкове поле з вагами; `cascade` повертає
   й кладе в `ctx.lastDrop` `{ fresh, moved }` (+ подія `drop`); після каскаду кіт сам знімає `dim`, а перебір виграшів у
   спокої вимкнено, якщо в сценарії був `cascade` (чи `cycleWins: false`).
-- Автогра стоїть на бонусі: `script.bonus`, крок `bonusIn` або свої кроки з `bonusSteps: ['holdIn']` у `define`.
+- Автогра стоїть на бонусі: `script.bonus`, `script.hold` (сервер slot-hold), крок `bonusIn` або свої кроки з
+  `bonusSteps: ['holdIn']` у `define`.
+- Стеля (`script.capped` чи `cap: true`): лічильник не піднімається вище `script.win` (+ Скарбничка), банер
+  «Найбільший можливий виграш» (`SK.CAP_TEXT`, підпис — `machine.table.cap`): свій крок `banner` зі «Стеля…» кіт
+  перейменовує, без нього — показує сам наприкінці.
+- Таблиця з сервера: `slot.js` кладе `view.table` у `machine.table` і кличе `machine._setPay(table.pay, table)` — кожен
+  автомат оновлює свої `PAY` і `paytable` (ⓘ). Баланс автомата — гаманець шапки (`HGames.wallet`/подія), не `view.balance`.
+- `_resumeGamble(ctx, view.gamble)` (slot-glek): Ворожка, відкрита до перезавантаження, — знову кнопка з тією сумою.
 - `wait(ms, true)` у турбо тепер ×0,6 (звичайний — ×0,5).
 - `paytable[].labels` — свій підпис кількості: `{ 12: '12+', 10: '10–11' }`.
 - Пробіл і пад діють лише коли автомат видно (на сайті картка буває на складі за лобі).

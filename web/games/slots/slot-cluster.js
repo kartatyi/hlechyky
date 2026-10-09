@@ -488,6 +488,14 @@
     const ch = cl.st.querySelectorAll('.scl-chain'); ch.forEach((e) => { e.textContent = ''; e.classList.remove('on'); });
   }
 
+  function payRows() {
+    return PAYS.slice().reverse().map((k) => ({
+      key: k, unit: '+',
+      pays: { 5: PAY[k][0], 8: PAY[k][3], 11: PAY[k][5], 16: PAY[k][7] },
+      note: k === 'comb' ? 'найдорожчий' : null,
+    })).concat([{ key: WILD, pays: {}, note: 'дикий — входить у будь-який кластер' }]);
+  }
+
   SK.define({
     id: ID,
     title: 'Цвіт папороті',
@@ -495,11 +503,13 @@
     spinStyle: 'drop',
     payUnit: 1,
     sounds: { win: 'win' },
-    paytable: PAYS.slice().reverse().map((k) => ({
-      key: k, unit: '+',
-      pays: { 5: PAY[k][0], 8: PAY[k][3], 11: PAY[k][5], 16: PAY[k][7] },
-      note: k === 'comb' ? 'найдорожчий' : null,
-    })).concat([{ key: WILD, pays: {}, note: 'дикий — входить у будь-який кластер' }]),
+    paytable: payRows(),
+    // на сайті slot.js підставляє view.table.pay ({ sym: { "5": …, "16": … } }) — ⓘ не розійдеться з касою
+    _setPay(pay) {
+      if (!pay) return;
+      Object.keys(PAY).forEach((k) => { const p = pay[k]; if (p) PAY[k] = SIZES.map((n, i) => (p[n] != null ? +p[n] : PAY[k][i])); });
+      SK.machines[ID].paytable = payRows();
+    },
     rules: '<b>Кластер</b> — 5 і більше однакових, що стикаються боками (не навскіс). Виграшні згасають, решта падає, згори нові — і знову. '
       + '<b>Листок папороті</b> — дикий. Кожен згаслий символ кладе крапельку в <b>шкалу папороті</b>; рівні, раз за оберт кожен: '
       + '<b>1 · світлячки</b> — 3–6 клітинок стають дикими; <b>2 · русалка</b> — один вид квітів стає іншим; '

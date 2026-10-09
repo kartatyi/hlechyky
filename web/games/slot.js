@@ -73,6 +73,9 @@
   // Подія гаманця сайту (core.js): ачівки й решта приходів теж у балансі автомата. Під час оберту не чіпаємо —
   // кіт сам знімає ставку й додає виграш, а по кінці (spinEnd) ставимо останнє від гаманця.
   let walletBal = null;
+  // живий баланс шапки: остання подія гаманця або HGames.wallet; view.balance — лише на мить останньої дії автомата
+  // (після перезавантаження міг устаріти: Скарбничка, ачівки, інші вкладки)
+  const liveBal = () => (walletBal != null ? walletBal : window.HGames && HGames.wallet != null ? HGames.wallet : null);
   document.addEventListener('hgames:wallet', (e) => {
     const b = e.detail && e.detail.balance;
     if (b == null) return;
@@ -122,7 +125,7 @@
     else if (L && L.seq > st.seenSeq) st.seenSeq = L.seq;   // оберт з іншої вкладки — не програємо
     const g = v.gamble;
     if (st.waitG && g && (g.n || 0) > st.waitG.n) st.waitG.done(Object.assign({}, g, { balance: v.balance }));
-    if (st.inst && !st.inst.busy && !st.waitSpin && v.balance != null && walletBal == null) st.inst.ctx.setBalance(v.balance);
+    if (st.inst && !st.inst.busy && !st.waitSpin) { const b = liveBal() != null ? liveBal() : v.balance; if (b != null) st.inst.ctx.setBalance(b); }
   }
 
   // ---------- висота: автомат на всю ігрову зону ----------
@@ -151,11 +154,12 @@
     }
     if (st.dead) return;
     const v = st.ctx.view || {};
-    if (v.table && v.table.pay && machine._setPay) machine._setPay(v.table.pay);
+    // ⓘ і табло — з view.table сервера (кожен автомат має _setPay), стеля для банера — machine.table.cap
+    if (v.table) { machine.table = v.table; if (v.table.pay && machine._setPay) machine._setPay(v.table.pay, v.table); }
     st.wrap.innerHTML = '';
     if (v.jackpot != null) SlotKit.setLive({ jackpot: v.jackpot });
     if (!SlotKit.live.lines) SlotKit.setLive({ lines: [] });
-    st.inst = SlotKit.mount(st.wrap, id, { balance: v.balance != null ? v.balance : 0, bet: v.bet, bets: v.bets, api: makeApi(st) });
+    st.inst = SlotKit.mount(st.wrap, id, { balance: liveBal() != null ? liveBal() : v.balance != null ? v.balance : 0, bet: v.bet, bets: v.bets, api: makeApi(st) });
     // поле останнього оберту — без програвання
     const sp = v.last && v.last.script && (v.last.script.steps || []).find((s) => s.t === 'spin' || s.t === 'set');
     const place = () => {
@@ -165,7 +169,9 @@
     };
     place();
     st.inst.ctx.on('resize', place);
-    st.inst.ctx.on('spinEnd', () => { const b = walletBal != null ? walletBal : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
+    // Ворожка лишилась відкритою (перезавантаження посеред неї) — кнопка знову з тією сумою
+    if (v.gamble && v.gamble.open && machine._resumeGamble) machine._resumeGamble(st.inst.ctx, v.gamble);
+    st.inst.ctx.on('spinEnd', () => { const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
     fitH(st);
     feedOn();
   }
