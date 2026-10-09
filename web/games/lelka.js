@@ -1,0 +1,1327 @@
+/*
+  Лелека — crash на всіх (Азарт → 📈 Швидкі). Стіл веде Дядько Глек за розкладом: ставки → політ → «шубовсть» →
+  пауза. Правила, гроші й точка падіння — на сервері (Impl/Lelka.cs, docs/games/specs/lelka.md); тут сцена й наміри.
+
+  Кадр (frame, ~10/с) і вид (room): { phase: 'bets'|'flight'|'crash'|'pause', round, now, until, startAt, k, m,
+    crash, hash, seed, bets: [{ nick, amount, auto, out, win }], history: [{ round, crash }] }
+  Вид ще: mine: { amount, auto, out, win } | null, wallet, limits: { min, max }.
+  Наміри: act('bet', { amount, auto }), act('cancel'), act('cash'), act('auto', { x }).
+
+  Множник між кадрами — локально: m = e^(k·t), t від startAt за годинником сервера (поправка з `now`).
+  rAF — лише в польоті; у спокої сцена жива самими CSS-анімаціями (≤ 12). Звук — WebAudio-синт, за замовчуванням
+  вимкнений (кнопка 🔈 на сцені).
+*/
+(() => {
+  'use strict';
+
+  const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
+    + '<path d="M1.6 14.2C6 13.6 9.6 10.6 12.2 4.6" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linecap="round"/>'
+    + '<path d="M10.6 5.2l2.8-2.6 1.4 1.2" fill="none" stroke="var(--clay)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '<path d="M11.4 7.4h2.2l.4 1.2c1 .5 1.3 1.6 1 2.6-.4 1.3-1.4 1.9-2.5 1.9s-2.1-.6-2.5-1.9c-.3-1 0-2.1 1-2.6z" fill="var(--clay)"/></svg>';
+
+  const INK = '#24142e';
+  const PH = { bets: 0, flight: 1, crash: 2, pause: 3 };
+  const K_DEF = 0.075;
+  const QUICK = [10, 50, 100, 500];
+  const AUTOQ = [1.5, 2, 3, 10];
+  const MILES = [[2, '×2!'], [5, '×5!'], [10, '×10 — оце летить!'], [50, '×50 — лелека в космосі!'],
+    [100, '×100!!'], [200, '×200 — повз Місяць!'], [500, '×500 — куди ти, лелеко?!']];
+  let uid = 0;
+
+  // ---------------------------------------------------------------------------------------------
+  // Дрібниці
+  // ---------------------------------------------------------------------------------------------
+  const r1 = (n) => Math.round(n * 10) / 10;
+  const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+  const tms = (x) => (typeof x === 'number' ? x : x ? Date.parse(x) : NaN);
+  const fmtM = (m) => (m >= 1000 ? Math.floor(m).toString() : (Math.floor(m * 100) / 100).toFixed(2)).replace('.', ',');
+  const fmtN = (n) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const parseX = (s) => { const x = parseFloat(String(s).replace(',', '.').replace(/[^\d.]/g, '')); return isFinite(x) ? x : NaN; };
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('lelka_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('lelka_' + k, JSON.stringify(v)); } catch (e) { /* приватне вікно */ } },
+  };
+  function hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+  function mix(stops, x) {   // stops: [[x, '#rrggbb'], …] за зростанням x
+    if (x <= stops[0][0]) return stops[0][1];
+    for (let i = 1; i < stops.length; i++) {
+      if (x <= stops[i][0]) {
+        const a = hex2rgb(stops[i - 1][1]), b = hex2rgb(stops[i][1]);
+        const t = (x - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]);
+        return 'rgb(' + a.map((v, j) => Math.round(v + (b[j] - v) * t)).join(',') + ')';
+      }
+    }
+    return stops[stops.length - 1][1];
+  }
+  // колір множника за ln(m): білий → золотий → помаранчевий → червоний
+  const M_COL = [[0, '#ffffff'], [Math.log(2), '#ffe27a'], [Math.log(5), '#ffb02e'], [Math.log(20), '#ff6a2a'], [Math.log(100), '#ff3048']];
+  const TR_COL = [[0, '#fff1b8'], [Math.log(2), '#ffd75a'], [Math.log(5), '#ffb02e'], [Math.log(20), '#ff6a2a'], [Math.log(100), '#ff3048']];
+  const SKY_TOP = [[0, '#3a2466'], [0.9, '#2b2a72'], [1.8, '#16194d'], [2.8, '#090b26'], [3.8, '#040311']];
+  const SKY_BOT = [[0, '#ff9550'], [0.9, '#d66c8c'], [1.8, '#40407e'], [2.8, '#1b1d55'], [3.8, '#120a2c']];
+
+  // ---------------------------------------------------------------------------------------------
+  // Арт (SVG). Координати сцени = CSS-пікселі сцени (viewBox = W×H), тож оверлеї кладуться тими ж числами.
+  // ---------------------------------------------------------------------------------------------
+  function rng(seed) { let s = seed % 2147483647 || 1; return () => ((s = s * 16807 % 2147483647) - 1) / 2147483646; }
+
+  function defs(p) {
+    const stops = (st) => st.map((s) => '<stop offset="' + s[0] + '" stop-color="' + s[1] + '"' + (s[2] != null ? ' stop-opacity="' + s[2] + '"' : '') + '/>').join('');
+    const lg = (id, x2, y2, st) => '<linearGradient id="' + p + id + '" x1="0" y1="0" x2="' + x2 + '" y2="' + y2 + '">' + stops(st) + '</linearGradient>';
+    const rg = (id, st, fx, fy, r) => '<radialGradient id="' + p + id + '"' + (fx != null ? ' cx="' + fx + '" cy="' + fy + '" fx="' + fx + '" fy="' + fy + '"' : '') + (r ? ' r="' + r + '"' : '') + '>' + stops(st) + '</radialGradient>';
+    return '<defs>'
+      + '<linearGradient id="' + p + 'sky" x1="0" y1="0" x2="0" y2="1"><stop class="lk-s0" offset="0" stop-color="' + SKY_TOP[0][1] + '"/><stop class="lk-s1" offset="1" stop-color="' + SKY_BOT[0][1] + '"/></linearGradient>'
+      + rg('sun', [[0, '#fff9d2'], [0.4, '#ffd25a'], [1, '#ff7a2a']])
+      + rg('glow', [[0, '#ffc46a', 0.6], [0.5, '#ff9a4a', 0.22], [1, '#ff8a3a', 0]])
+      + lg('hill1', 0, 1, [[0, '#8a4a7c'], [1, '#43264f']])
+      + lg('hill2', 0, 1, [[0, '#4a2a50'], [1, '#1c1226']])
+      + lg('wall', 0, 1, [[0, '#fff8ec'], [0.7, '#f2dfc8'], [1, '#d6b496']])
+      + lg('straw', 0, 1, [[0, '#ffe08a'], [0.45, '#e0a84e'], [1, '#93602a']])
+      + rg('win', [[0, '#fff6c0'], [0.55, '#ffc94d'], [1, '#e8782a']])
+      + rg('wglow', [[0, '#ffcf5a', 0.55], [1, '#ffcf5a', 0]])
+      + rg('clay', [[0, '#ffd6a8'], [0.3, '#f59c56'], [0.72, '#cc6a30'], [1, '#8a3e1c']], '.36', '.32', '.82')
+      + lg('clayl', 0, 1, [[0, '#f6b47a'], [1, '#bf6630']])
+      + rg('body', [[0, '#ffffff'], [0.5, '#f4f6fb'], [0.82, '#d5dbe8'], [1, '#a9b2c6']], '.42', '.28', '.75')
+      + lg('cov', 0, 1, [[0, '#ffffff'], [1, '#d3d9e6']])
+      + lg('cov2', 0, 1, [[0, '#dfe3ee'], [1, '#aab2c4']])
+      + lg('prim', 0, 1, [[0, '#4a3f62'], [0.5, '#221a30'], [1, '#0c0812']])
+      + lg('beak', 1, 0.3, [[0, '#ff9a4a'], [0.45, '#f2482a'], [1, '#b81c18']])
+      + lg('scarf', 0, 1, [[0, '#ff5a5a'], [1, '#b0101e']])
+      + rg('glass', [[0, '#ffffff', 0.04], [0.75, '#bfe8ff', 0.16], [1, '#e8f8ff', 0.5]])
+      + '<linearGradient id="' + p + 'tr" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"><stop class="lk-t0" offset="0" stop-color="#fff" stop-opacity="0"/><stop class="lk-t0" offset=".45" stop-color="#fff" stop-opacity=".55"/><stop class="lk-t1" offset="1" stop-color="#fff"/></linearGradient>'
+      + '<linearGradient id="' + p + 'trw" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"><stop offset=".3" stop-color="#fffbe8" stop-opacity="0"/><stop offset="1" stop-color="#fffbe8" stop-opacity=".9"/></linearGradient>'
+      + rg('moon', [[0, '#fffbe8'], [0.7, '#e8e2c8'], [1, '#b9b294']], '.38', '.35')
+      + rg('planet', [[0, '#9ff0e0'], [0.5, '#3aa6b8'], [1, '#1b3f6e']], '.35', '.3')
+      + rg('cloud', [[0, '#fff3f6'], [1, '#e7b9cf']], '.4', '.3')
+      + '</defs>';
+  }
+
+  // вишивка хрестиком на поясі Глека (як у слотах)
+  function stitch(x0, y0, s, rows, cols) {
+    const by = {};
+    rows.forEach((row, j) => {
+      for (let i = 0; i < row.length; i++) {
+        const c = cols[row[i]]; if (!c) continue;
+        const x = x0 + i * s, y = y0 + j * s, a = s * 0.16, b = s * 0.68;
+        (by[c] = by[c] || []).push('M' + r1(x + a) + ' ' + r1(y + a) + 'l' + r1(b) + ' ' + r1(b) + 'M' + r1(x + a + b) + ' ' + r1(y + a) + 'l' + r1(-b) + ' ' + r1(b));
+      }
+    });
+    return Object.keys(by).map((c) => '<path d="' + by[c].join('') + '" stroke="' + c + '" stroke-width="' + r1(s * 0.34) + '" stroke-linecap="round" fill="none"/>').join('');
+  }
+
+  // Дядько Глек у координатах 128×128 (як маскот slot-glek-art.js): вуса, оселедець, навушники, вишитий пояс
+  function glekBody(p) {
+    const I = INK, U = (id) => 'url(#' + p + id + ')';
+    return '<path d="M92 44C118 44 120 88 94 96" fill="none" stroke="' + I + '" stroke-width="15" stroke-linecap="round"/>'
+      + '<path d="M92 44C118 44 120 88 94 96" fill="none" stroke="' + U('clayl') + '" stroke-width="8.5" stroke-linecap="round"/>'
+      + '<path d="M46 22h36v10c14 6 24 22 24 42c0 22-14 40-42 40c-28 0-42-18-42-40c0-20 10-36 24-42z" fill="' + U('clay') + '" stroke="' + I + '" stroke-width="4.5" stroke-linejoin="round"/>'
+      + '<path d="M96 56c6 10 6 26 0 36c-5 9-14 16-26 18c16-8 28-26 26-54z" fill="#6e2c10" opacity=".28"/>'
+      + '<path d="M34.7 40H93.3Q96.5 45 98.6 50.5H29.4Q31.5 45 34.7 40Z" fill="#f6ead0" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>'
+      + stitch(35, 41, 3, ['.x...x...x...x...x..', 'xox.xox.xox.xox.xox.', '.x...x...x...x...x..'], { x: '#e3122a', o: I })
+      + '<rect x="41" y="14" width="46" height="14" rx="6" fill="' + U('clayl') + '" stroke="' + I + '" stroke-width="4.5"/>'
+      + '<ellipse cx="64" cy="19.5" rx="16" ry="3.4" fill="#4a1e0c" opacity=".75"/>'
+      + '<path d="M60 16c-4-11-19-14-28-5c9-4 17-2 21 7z" fill="#2b1a0e" stroke="' + I + '" stroke-width="2" stroke-linejoin="round"/>'
+      + '<path d="M33 64c0-12 6-22 14-27" fill="none" stroke="#ffe0c0" stroke-width="4.5" stroke-linecap="round" opacity=".65"/>'
+      + '<path d="M25 73C21 37 107 37 103 73" fill="none" stroke="' + I + '" stroke-width="9" stroke-linecap="round"/>'
+      + '<path d="M25 73C21 37 107 37 103 73" fill="none" stroke="#33463e" stroke-width="5" stroke-linecap="round"/>'
+      + '<rect x="13" y="64" width="18" height="29" rx="7" fill="#2a3a33" stroke="' + I + '" stroke-width="3"/><rect x="17" y="68" width="10" height="21" rx="4" fill="none" stroke="#f4c542" stroke-width="2"/>'
+      + '<rect x="97" y="64" width="18" height="29" rx="7" fill="#2a3a33" stroke="' + I + '" stroke-width="3"/><rect x="101" y="68" width="10" height="21" rx="4" fill="none" stroke="#f4c542" stroke-width="2"/>'
+      + '<g class="lk-gw"><ellipse cx="52" cy="70" rx="8.6" ry="9.2" fill="#fffaf0" stroke="' + I + '" stroke-width="2.4"/><circle cx="53.4" cy="70" r="4.6" fill="#1a0e12"/><circle cx="55.2" cy="68" r="1.7" fill="#fff"/></g>'
+      + '<ellipse cx="76" cy="70" rx="8.6" ry="9.2" fill="#fffaf0" stroke="' + I + '" stroke-width="2.4"/><circle cx="74.6" cy="70" r="4.6" fill="#1a0e12"/><circle cx="76.4" cy="68" r="1.7" fill="#fff"/>'
+      + '<path d="M42 59Q49 52 59 56M86 59Q79 52 69 56" fill="none" stroke="#2b1a0e" stroke-width="4.6" stroke-linecap="round"/>'
+      + '<circle cx="41" cy="85" r="5.5" fill="#ff7a5a" opacity=".55"/><circle cx="87" cy="85" r="5.5" fill="#ff7a5a" opacity=".55"/>'
+      + '<path d="M51 99Q64 116 77 99Q64 103 51 99Z" fill="#6a1a10" stroke="' + I + '" stroke-width="2.4" stroke-linejoin="round"/><path d="M58 106Q64 112 70 106Q64 104 58 106Z" fill="#ff6a5a"/>'
+      + '<path d="M64 88c-6-6-18-4-24 4c-4 6-8 10-12 8c4-2 6-8 10-12c8-8 22-8 26 0c4-8 18-8 26 0c4 4 6 10 10 12c-4 2-8-2-12-8c-6-8-18-10-24-4z" fill="#2b1a0e" stroke="' + I + '" stroke-width="1.6" stroke-linejoin="round"/>'
+      + '<ellipse cx="64" cy="82" rx="5.4" ry="4.2" fill="#a34e22" stroke="' + I + '" stroke-width="1.8"/><circle cx="62.4" cy="80.6" r="1.4" fill="#ffd0a8"/>';
+  }
+
+  // Глек на мотузці: (0,0) — вузлик у дзьобі; Глек висить нижче (≈54×56 у одиницях лелеки).
+  const POT_K = 0.42;
+  function potArt(p, bare) {
+    return (bare ? '' : '<path d="M0 0C3 6 -3 12 0 19" fill="none" stroke="' + INK + '" stroke-width="4.4" stroke-linecap="round"/><path d="M0 0C3 6 -3 12 0 19" fill="none" stroke="#c9a26a" stroke-width="2.2" stroke-linecap="round"/>')
+      + '<g transform="translate(0 ' + (bare ? 0 : 16) + ') scale(' + POT_K + ') translate(-64 -16)">' + glekBody(p) + '</g>';
+  }
+  // простий глечик на тин (догори дном)
+  function jug(x, y, s) {
+    return '<g transform="translate(' + r1(x) + ' ' + r1(y) + ') scale(' + r1(s * 100) / 100 + ')">'
+      + '<path d="M-5 0H5L6 -4C14 -7 16 -16 14 -22C12 -30 6 -33 0 -33C-6 -33 -12 -30 -14 -22C-16 -16 -14 -7 -6 -4Z" fill="url(#Pclay)" stroke="' + INK + '" stroke-width="2" stroke-linejoin="round"/>'
+      + '<path d="M-13 -19H13" stroke="#fff0d2" stroke-width="2.6"/><ellipse cx="-6" cy="-24" rx="2" ry="4" fill="#fff" opacity=".4"/></g>';
+  }
+
+  // Лелека дивиться праворуч, летить шиєю вперед; (0,0) — середина тулуба; кінчик дзьоба — BEAK.
+  const BEAK = [137, -10];
+  function storkArt(p) {
+    const I = INK, U = (id) => 'url(#' + p + id + ')';
+    // крило з плеча (0,0) догори-назад: чорні махові з «пальцями» + біле покривне пір'я
+    const wing = (cls, far) => '<g class="' + cls + '">'
+      + '<path d="M-6 2C-24 -18 -40 -50 -44 -88L-36 -84L-36 -100L-26 -90L-22 -106L-14 -94L-6 -108L-2 -94L8 -104L10 -88C16 -60 18 -30 12 0Z" fill="' + U('prim') + '" stroke="' + I + '" stroke-width="2.8" stroke-linejoin="round"/>'
+      + '<path d="M-30 -86L-22 -60M-18 -98L-12 -66M-4 -100L-2 -68M6 -96L6 -66" stroke="#5a4e78" stroke-width="1.4" opacity=".7"/>'
+      + '<path d="M-6 2C-20 -14 -30 -40 -31 -62C-18 -57 -4 -60 9 -67C15 -44 16 -22 12 0Z" fill="' + U(far ? 'cov2' : 'cov') + '" stroke="' + I + '" stroke-width="2.6" stroke-linejoin="round"/>'
+      + '<path d="M-26 -48Q-18 -43 -10 -48Q-2 -53 7 -51M-20 -28Q-12 -23 -4 -28Q4 -33 11 -31" stroke="#b9c1d3" stroke-width="1.8" fill="none" stroke-linecap="round"/>'
+      + (far ? '' : '<path d="M-22 -54C-18 -40 -12 -24 -4 -10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" opacity=".9"/>')
+      + '</g>';
+    const legs = 'M-34 8C-52 10 -72 13 -98 13M-98 13l-8 -5M-98 13l-9 3M-34 12C-54 17 -72 21 -96 23M-96 23l-8 -4M-96 23l-8 4';
+    return '<g class="lk-legs"><path d="' + legs + '" fill="none" stroke="' + I + '" stroke-width="7.6" stroke-linecap="round" stroke-linejoin="round"/>'
+      + '<path d="' + legs + '" fill="none" stroke="#e8432a" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/></g>'
+      + '<g transform="translate(-4 -16) scale(.92)">' + wing('lk-w2', true) + '</g>'
+      // контури шиї й голови — під тулубом, тож стик зливається
+      + '<path d="M34 -8C50 -12 60 -18 80 -18" fill="none" stroke="' + I + '" stroke-width="19.5" stroke-linecap="round"/>'
+      + '<circle cx="84" cy="-19" r="14.6" fill="' + I + '"/>'
+      + '<path d="M-40 -8L-72 -15Q-78 -7 -68 -2L-77 3Q-74 12 -62 11L-40 10Z" fill="' + U('body') + '" stroke="' + I + '" stroke-width="3" stroke-linejoin="round"/>'
+      + '<path d="M-46 2C-44 -14 -18 -22 12 -20C34 -18 50 -10 52 0C52 12 32 20 4 20C-22 20 -46 14 -46 2Z" fill="' + U('body') + '" stroke="' + I + '" stroke-width="3.2"/>'
+      + '<path d="M-40 8C-20 18 20 20 47 5C41 15 26 20 4 20C-20 20 -36 16 -40 8Z" fill="#9aa4ba" opacity=".45"/>'
+      + '<path d="M-30 -11C-14 -17 6 -18 24 -15" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/>'
+      // шарф, що майорить (×10+)
+      + '<g class="lk-gear"><g class="lk-scarf"><path d="M42 -12C22 -24 4 -16 -16 -27C-28 -32 -40 -27 -50 -34L-47 -22C-36 -18 -26 -22 -15 -15C3 -5 22 -9 42 -3Z" fill="' + U('scarf') + '" stroke="' + I + '" stroke-width="2.4" stroke-linejoin="round"/>'
+      + '<path d="M-44 -28l3 3M-40 -27l-3 3M-24 -24l3 3M-20 -23l-3 3M-4 -17l3 3M0 -16l-3 3" stroke="#fff3c0" stroke-width="1.6" stroke-linecap="round"/></g></g>'
+      + '<path d="M34 -8C50 -12 60 -18 80 -18" fill="none" stroke="#fbfcff" stroke-width="13" stroke-linecap="round"/>'
+      + '<path d="M38 -3C50 -7 62 -12 78 -12" fill="none" stroke="#cdd4e2" stroke-width="3.6" stroke-linecap="round"/>'
+      + '<circle cx="84" cy="-19" r="12" fill="' + U('body') + '"/>'
+      + '<g class="lk-gear"><path d="M38 -20C44 -23 51 -23 55 -19L57 -3C51 -1 44 -1 38 -3Z" fill="' + U('scarf') + '" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>'
+      + '<path d="M41 -12H54" stroke="#fff3c0" stroke-width="1.6" stroke-dasharray="2 2.4"/></g>'
+      // дзьоб
+      + '<path d="M90 -25C104 -23 121 -17 139 -10C121 -11 104 -13 90 -14Z" fill="' + U('beak') + '" stroke="' + I + '" stroke-width="2.4" stroke-linejoin="round"/>'
+      + '<path d="M90 -14C104 -12 121 -10 137 -9C121 -5 104 -5 91 -7Z" fill="#c42a1c" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>'
+      + '<path d="M95 -21C106 -19 116 -16 126 -13" stroke="#ffd0a8" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".85"/>'
+      // око з бліком (кліпає)
+      + '<ellipse cx="87" cy="-21" rx="6.4" ry="5.2" fill="#2a1e2e"/>'
+      + '<g class="lk-eye"><circle cx="87" cy="-21.5" r="4.4" fill="#fffaf0" stroke="' + I + '" stroke-width="1.4"/><circle cx="88.4" cy="-21.5" r="2.7" fill="#1a0e12"/><circle cx="89.4" cy="-22.6" r="1.1" fill="#fff"/></g>'
+      + '<path d="M81 -29Q86 -32 92 -28.5" stroke="' + I + '" stroke-width="2.2" fill="none" stroke-linecap="round"/>'
+      // льотні окуляри (×10+)
+      + '<g class="lk-gear"><path d="M72 -14C74 -28 86 -33 96 -27" fill="none" stroke="' + I + '" stroke-width="5.6" stroke-linecap="round"/><path d="M72 -14C74 -28 86 -33 96 -27" fill="none" stroke="#7a4a22" stroke-width="3.2" stroke-linecap="round"/>'
+      + '<circle cx="88" cy="-22" r="7.4" fill="#8fd4ff" fill-opacity=".38" stroke="' + I + '" stroke-width="4.4"/><circle cx="88" cy="-22" r="7.4" fill="none" stroke="#e8b83e" stroke-width="2.2"/>'
+      + '<path d="M84 -26Q86 -28 89 -28" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/></g>'
+      // космос: банка-шолом (×50+)
+      + '<g class="lk-astro"><rect x="64" y="-44" width="40" height="44" rx="12" fill="' + U('glass') + '" stroke="#e8f8ff" stroke-width="2.4" stroke-opacity=".85"/>'
+      + '<rect x="62" y="-50" width="44" height="9" rx="3.5" fill="#cfd5df" stroke="' + I + '" stroke-width="2.2"/><path d="M66 -45.5H102" stroke="#8a93a6" stroke-width="1.4"/>'
+      + '<path d="M70 -32Q70 -39 77 -40" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/><path d="M98 -12Q100 -8 97 -5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity=".6"/></g>'
+      + '<g transform="translate(6 -12)">' + wing('lk-w1', false) + '</g>';
+  }
+
+  function cloud(x, y, s, o) {
+    return '<g transform="translate(' + r1(x) + ' ' + r1(y) + ') scale(' + r1(s * 100) / 100 + ')" opacity="' + o + '">'
+      + '<ellipse cx="0" cy="10" rx="70" ry="16" fill="#c792b8"/>'
+      + '<circle cx="-34" cy="0" r="22" fill="url(#P)"/><circle cx="-4" cy="-12" r="30" fill="url(#P)"/>'
+      + '<circle cx="30" cy="-2" r="24" fill="url(#P)"/><circle cx="52" cy="6" r="15" fill="url(#P)"/>'
+      + '<rect x="-56" y="0" width="112" height="16" rx="8" fill="url(#P)"/></g>';
+  }
+
+  // хата-мазанка під солом'яною стріхою; (0,0) — лівий низ призьби
+  function hata(x, gy, s, smoke) {
+    let straw = '';
+    for (let i = 0; i < 9; i++) {
+      const bx = -8 + i * 16.5, tx = 55 + (bx - 55) * 0.28;
+      straw += 'M' + r1(bx) + ' -50Q' + r1((bx + tx) / 2 + (bx < 55 ? -4 : 4)) + ' -82 ' + r1(tx) + ' -108';
+    }
+    let fringe = 'M-15 -50';
+    for (let fx = -15; fx < 126; fx += 7) fringe += 'L' + r1(fx + 3.5) + ' -43L' + r1(fx + 7) + ' -49';
+    let h = '<g transform="translate(' + r1(x) + ' ' + r1(gy) + ') scale(' + r1(s * 100) / 100 + ')">'
+      + '<circle cx="32" cy="-30" r="34" fill="url(#Pwglow)"/><circle cx="80" cy="-30" r="34" fill="url(#Pwglow)"/>'
+      + '<rect x="2" y="-10" width="106" height="11" rx="3" fill="#9a4e30" stroke="' + INK + '" stroke-width="2.6"/>'
+      + '<rect x="6" y="-58" width="98" height="49" rx="3" fill="url(#Pwall)" stroke="' + INK + '" stroke-width="3"/>'
+      + '<path d="M8 -13H102" stroke="#3a6fb0" stroke-width="3.4" opacity=".85"/>'
+      + '<rect x="20" y="-44" width="22" height="20" rx="2" fill="url(#Pwin)" stroke="' + INK + '" stroke-width="2.4"/>'
+      + '<path d="M31 -44V-24M20 -34H42" stroke="' + INK + '" stroke-width="1.6"/>'
+      + '<rect x="12" y="-45" width="7" height="22" fill="#3a6fb0" stroke="' + INK + '" stroke-width="1.6"/><rect x="43" y="-45" width="7" height="22" fill="#3a6fb0" stroke="' + INK + '" stroke-width="1.6"/>'
+      + '<rect x="70" y="-44" width="22" height="20" rx="2" fill="url(#Pwin)" stroke="' + INK + '" stroke-width="2.4"/>'
+      + '<path d="M81 -44V-24M70 -34H92" stroke="' + INK + '" stroke-width="1.6"/>'
+      + '<rect x="53" y="-38" width="13" height="29" rx="2" fill="#7a4524" stroke="' + INK + '" stroke-width="2.2"/>'
+      + '<circle cx="17" cy="-52" r="2" fill="#e3122a"/><circle cx="23" cy="-53" r="1.6" fill="#3f9a3a"/><circle cx="87" cy="-53" r="1.6" fill="#3f9a3a"/><circle cx="93" cy="-52" r="2" fill="#e3122a"/>'
+      + '<path d="M-16 -50C-8 -84 22 -112 55 -115C88 -112 118 -84 126 -50Q55 -40 -16 -50Z" fill="url(#Pstraw)" stroke="' + INK + '" stroke-width="3" stroke-linejoin="round"/>'
+      + '<path d="' + straw + '" stroke="#9a6a2a" stroke-width="1.6" fill="none" opacity=".55"/>'
+      + '<path d="' + fringe + '" stroke="#9a6a2a" stroke-width="2" fill="none" stroke-linejoin="round"/>'
+      + '<path d="M0 -64C8 -86 28 -104 50 -108" stroke="#fff3b8" stroke-width="4.5" fill="none" stroke-linecap="round" opacity=".55"/>'
+      + '<path d="M44 -116C50 -122 60 -122 66 -116" stroke="#93602a" stroke-width="4" fill="none" stroke-linecap="round"/>'
+      + '<rect x="78" y="-134" width="13" height="30" fill="#e9d6c0" stroke="' + INK + '" stroke-width="2.4"/><rect x="75.5" y="-138" width="18" height="6" rx="1.5" fill="#c9b49e" stroke="' + INK + '" stroke-width="2"/>';
+    if (smoke) h += '<g class="lk-smoke"><circle cx="85" cy="-148" r="7" fill="#d8c6e0" opacity=".55"/><circle cx="91" cy="-164" r="9" fill="#d8c6e0" opacity=".4"/><circle cx="85" cy="-184" r="11" fill="#d8c6e0" opacity=".25"/></g>';
+    return h + '</g>';
+  }
+
+  function sunflower(x, gy, s, h) {
+    const t = gy - h * s;
+    return '<path d="M' + r1(x) + ' ' + r1(gy) + 'V' + r1(t) + '" stroke="#2f5a26" stroke-width="' + r1(3 * s) + '"/>'
+      + '<path d="M' + r1(x) + ' ' + r1(gy - h * s * .45) + 'q' + r1(9 * s) + ' ' + r1(-8 * s) + ' ' + r1(14 * s) + ' ' + r1(-2 * s) + 'q' + r1(-8 * s) + ' ' + r1(6 * s) + ' ' + r1(-14 * s) + ' ' + r1(2 * s) + 'z" fill="#3f8a32"/>'
+      + '<circle cx="' + r1(x) + '" cy="' + r1(t) + '" r="' + r1(9 * s) + '" fill="none" stroke="#ffc927" stroke-width="' + r1(8 * s) + '" stroke-dasharray="' + r1(3.4 * s) + ' ' + r1(1.6 * s) + '"/>'
+      + '<circle cx="' + r1(x) + '" cy="' + r1(t) + '" r="' + r1(6.5 * s) + '" fill="#5a2e14" stroke="' + INK + '" stroke-width="' + r1(1.4 * s) + '"/>';
+  }
+
+  // журавель над криницею; (x, gy) — підніжжя стовпа
+  function zhuravel(x, gy, s) {
+    const S = (n) => r1(n * s);
+    const ax = x - 58 * s, ay = gy - 70 * s, px = x, py = gy - 112 * s, bx = x + 104 * s, by = gy - 178 * s;
+    return '<path d="M' + r1(x) + ' ' + r1(gy) + 'V' + r1(py + 4 * s) + 'M' + r1(x) + ' ' + r1(py + 8 * s) + 'l' + S(-7) + ' ' + S(-12) + 'M' + r1(x) + ' ' + r1(py + 8 * s) + 'l' + S(7) + ' ' + S(-12) + '" stroke="#4a2a1a" stroke-width="' + S(6) + '" stroke-linecap="round" fill="none"/>'
+      + '<path d="M' + r1(ax) + ' ' + r1(ay) + 'L' + r1(bx) + ' ' + r1(by) + '" stroke="#5a341c" stroke-width="' + S(4.4) + '" stroke-linecap="round"/>'
+      + '<circle cx="' + r1(ax) + '" cy="' + r1(ay + 4 * s) + '" r="' + S(8) + '" fill="#6a5a6e" stroke="' + INK + '" stroke-width="' + S(2) + '"/>'
+      + '<path d="M' + r1(bx) + ' ' + r1(by) + 'V' + r1(gy - 52 * s) + '" stroke="#3a2a20" stroke-width="' + S(1.6) + '"/>'
+      + '<path d="M' + r1(bx - 7 * s) + ' ' + r1(gy - 54 * s) + 'h' + S(14) + 'l' + S(-2) + ' ' + S(12) + 'h' + S(-10) + 'Z" fill="#7a5a3a" stroke="' + INK + '" stroke-width="' + S(1.8) + '"/>'
+      + '<rect x="' + r1(bx - 24 * s) + '" y="' + r1(gy - 30 * s) + '" width="' + S(48) + '" height="' + S(30) + '" rx="' + S(3) + '" fill="#7a4a26" stroke="' + INK + '" stroke-width="' + S(2.4) + '"/>'
+      + '<path d="M' + r1(bx - 24 * s) + ' ' + r1(gy - 20 * s) + 'h' + S(48) + 'M' + r1(bx - 24 * s) + ' ' + r1(gy - 10 * s) + 'h' + S(48) + '" stroke="#4a2a14" stroke-width="' + S(1.6) + '"/>'
+      + '<rect x="' + r1(px - 3 * s) + '" y="' + r1(py - 3 * s) + '" width="' + S(6) + '" height="' + S(6) + '" fill="#2b1a0e"/>';
+  }
+
+  // тин: кілки й лоза, що плететься через них; глечики на кілках
+  function tyn(W, fy, sc) {
+    const step = 40 * sc, fh = 30 * sc;
+    let posts = '', rods = '', jugs = '';
+    const xs = [];
+    for (let x = -12; x < W + step; x += step) xs.push(x);
+    xs.forEach((x, i) => {
+      posts += 'M' + r1(x) + ' ' + r1(fy + 4) + 'V' + r1(fy - fh - 7 * sc);
+      if (i % 4 === 2) jugs += jug(x, fy - fh - 7 * sc + 2, sc * 0.62);
+    });
+    for (let j = 0; j < 4; j++) {
+      const yy = fy - fh * (0.12 + j * 0.24);
+      let d = 'M' + r1(xs[0]) + ' ' + r1(yy);
+      for (let i = 1; i < xs.length; i++) d += 'Q' + r1((xs[i - 1] + xs[i]) / 2) + ' ' + r1(yy + ((i + j) % 2 ? 3.4 : -3.4) * sc) + ' ' + r1(xs[i]) + ' ' + r1(yy);
+      rods += d;
+    }
+    return '<path d="' + posts + '" stroke="' + INK + '" stroke-width="' + r1(6.4 * sc) + '" stroke-linecap="round"/>'
+      + '<path d="' + posts + '" stroke="#6a4024" stroke-width="' + r1(3.8 * sc) + '" stroke-linecap="round"/>'
+      + '<path d="' + rods + '" stroke="#3a2010" stroke-width="' + r1(5.6 * sc) + '" fill="none" stroke-linecap="round"/>'
+      + '<path d="' + rods + '" stroke="#a8743c" stroke-width="' + r1(3.4 * sc) + '" fill="none" stroke-linecap="round"/>'
+      + '<path d="' + rods + '" stroke="#e0b070" stroke-width="' + r1(1 * sc) + '" fill="none" opacity=".6" transform="translate(0 ' + r1(-1 * sc) + ')"/>'
+      + jugs;
+  }
+
+  // лелече гніздо на стовпі: товста миска з гілля; (x, y) — верх гнізда. front — передній край (поверх лелеки)
+  function nest(x, y, k, front, len) {
+    const S = (n) => r1(n * k), X = (n) => r1(x + n * k), Y = (n) => r1(y + n * k);
+    const sticks = (seed, n, y0, y1, col, w) => {
+      const R = rng(seed);
+      let d = '';
+      for (let i = 0; i < n; i++) {
+        const sx = -70 + R() * 140, sy = y0 + R() * (y1 - y0), a = (R() - 0.5) * 0.9, l = 18 + R() * 26;
+        d += 'M' + X(sx) + ' ' + Y(sy) + 'l' + S(Math.cos(a) * l * (R() < 0.5 ? -1 : 1)) + ' ' + S(Math.sin(a) * l);
+      }
+      return '<path d="' + d + '" stroke="' + col + '" stroke-width="' + S(w) + '" stroke-linecap="round"/>';
+    };
+    if (front) {
+      return '<path d="M' + X(-72) + ' ' + Y(-4) + 'Q' + X(0) + ' ' + Y(10) + ' ' + X(72) + ' ' + Y(-4) + 'Q' + X(66) + ' ' + Y(24) + ' ' + X(0) + ' ' + Y(30) + 'Q' + X(-66) + ' ' + Y(24) + ' ' + X(-72) + ' ' + Y(-4) + 'Z" fill="#7a4a24" stroke="' + INK + '" stroke-width="' + S(2.8) + '" stroke-linejoin="round"/>'
+        + sticks(31, 16, 2, 24, '#4a2a14', 3.6) + sticks(57, 14, 0, 22, '#c08a4a', 2.4) + sticks(83, 6, 4, 18, '#e8c080', 1.6)
+        + '<path d="M' + X(-74) + ' ' + Y(-2) + 'l' + S(-14) + ' ' + S(-8) + 'M' + X(70) + ' ' + Y(0) + 'l' + S(16) + ' ' + S(-10) + 'M' + X(-40) + ' ' + Y(24) + 'l' + S(-10) + ' ' + S(12) + 'M' + X(34) + ' ' + Y(26) + 'l' + S(8) + ' ' + S(12) + '" stroke="#5a341c" stroke-width="' + S(3) + '" stroke-linecap="round"/>';
+    }
+    return '<path d="M' + X(-5) + ' ' + Y(20) + 'L' + X(-7) + ' ' + Y(len || 400) + 'H' + X(7) + 'L' + X(5) + ' ' + Y(20) + 'Z" fill="#5a341c" stroke="' + INK + '" stroke-width="' + S(2.2) + '"/>'
+      + '<path d="M' + X(-70) + ' ' + Y(-2) + 'Q' + X(-60) + ' ' + Y(-22) + ' ' + X(0) + ' ' + Y(-22) + 'Q' + X(60) + ' ' + Y(-22) + ' ' + X(70) + ' ' + Y(-2) + 'Q' + X(0) + ' ' + Y(12) + ' ' + X(-70) + ' ' + Y(-2) + 'Z" fill="#3e2412" stroke="' + INK + '" stroke-width="' + S(2.4) + '"/>'
+      + sticks(11, 10, -18, -4, '#8a5a2c', 2.6);
+  }
+
+  function scene(g, p) {
+    const { W, H, gy, sc, ss, x0, y0 } = g;
+    const R = rng(1234 + Math.round(W));
+    const P = (s) => s.replace(/url\(#P/g, 'url(#' + p);
+    let s = defs(p) + '<rect width="' + W + '" height="' + H + '" fill="url(#' + p + 'sky)"/>';
+    // зорі (екранні, з'являються вище хмар) — 6 мерехтять лише в польоті
+    s += '<g class="lk-stars" opacity="0">';
+    for (let i = 0; i < 90; i++) s += '<circle cx="' + r1(R() * W) + '" cy="' + r1(R() * H) + '" r="' + r1(0.6 + R() * 1.5) + '" fill="#fff" opacity="' + r1(0.4 + R() * 0.6) + '"/>';
+    for (let i = 0; i < 6; i++) {
+      const x = r1(R() * W), y = r1(R() * H * 0.8), r = r1(4 + R() * 4);
+      s += '<path class="lk-tw" style="animation-delay:-' + r1(R() * 3) + 's" transform="translate(' + x + ' ' + y + ')" d="M0 -' + r + 'Q0 0 ' + r + ' 0Q0 0 0 ' + r + 'Q0 0 -' + r + ' 0Q0 0 0 -' + r + 'Z" fill="#fff"/>';
+    }
+    s += '</g>';
+    // космос: супутник, планета, комета, Місяць — на своїх «висотах» (alt = ln m)
+    const S6 = g.S * 0.6, sy = (fa) => H * 0.45 - fa * S6;
+    s += '<g class="lk-space" opacity="0">'
+      + '<g transform="translate(' + r1(W * 0.82) + ' ' + r1(sy(3.5)) + ') scale(' + sc + ')"><path d="M-10 -6L-46 -30M-8 4L-50 6M6 8L30 40" stroke="#cfd6e4" stroke-width="2"/>'
+      + '<circle r="14" fill="#d8dee9" stroke="' + INK + '" stroke-width="2.6"/><ellipse cx="-4" cy="-5" rx="5" ry="3.4" fill="#fff" opacity=".7"/></g>'
+      + '<g transform="translate(' + r1(W * 0.16) + ' ' + r1(sy(4.1)) + ') scale(' + sc + ')">'
+      + '<ellipse rx="92" ry="18" fill="none" stroke="#f5c33b" stroke-width="7" opacity=".55" transform="rotate(-14)"/>'
+      + '<circle r="52" fill="url(#' + p + 'planet)" stroke="' + INK + '" stroke-width="3"/>'
+      + '<path d="M-48 -10C-20 -2 20 -18 50 -6M-44 18C-14 26 18 12 46 20" stroke="#bff7ee" stroke-width="5" fill="none" opacity=".35"/>'
+      + '<path d="M-88 8A92 18 0 0 0 88 -32" transform="rotate(-2)" fill="none" stroke="#f5c33b" stroke-width="7" opacity=".85"/></g>'
+      + '<g transform="translate(' + r1(W * 0.55) + ' ' + r1(sy(4.7)) + ') scale(' + sc + ') rotate(-24)"><path d="M0 0L-160 -6L-160 6Z" fill="#9ff0e0" opacity=".35"/><circle r="9" fill="#e9fffb"/></g>'
+      + '<g transform="translate(' + r1(W * 0.74) + ' ' + r1(sy(5.3)) + ') scale(' + r1(sc * 1.25 * 100) / 100 + ')">'
+      + '<circle r="110" fill="#fffbe8" opacity=".08"/><circle r="84" fill="url(#' + p + 'moon)" stroke="' + INK + '" stroke-width="3"/>'
+      + '<circle cx="-26" cy="-20" r="16" fill="#cfc7a6"/><circle cx="24" cy="18" r="22" fill="#d6cfb0"/><circle cx="-12" cy="40" r="10" fill="#cfc7a6"/><circle cx="36" cy="-34" r="8" fill="#cfc7a6"/></g>'
+      + '</g>';
+    // сонце сідає за пагорби
+    const sx = W * (g.narrow ? 0.7 : 0.62), syy = gy - H * 0.13;
+    s += '<g class="lk-sun"><circle class="lk-sglow" cx="' + r1(sx) + '" cy="' + r1(syy) + '" r="' + r1(H * 0.5) + '" fill="url(#' + p + 'glow)"/>'
+      + '<circle cx="' + r1(sx) + '" cy="' + r1(syy) + '" r="' + r1(H * 0.16) + '" fill="url(#' + p + 'sun)"/>'
+      + '<path d="M' + r1(sx - H * 0.12) + ' ' + r1(syy + H * 0.04) + 'h' + r1(H * 0.24) + 'M' + r1(sx - H * 0.14) + ' ' + r1(syy + H * 0.08) + 'h' + r1(H * 0.28) + '" stroke="#ff9a5a" stroke-width="' + r1(3 * sc) + '" opacity=".6" stroke-linecap="round"/></g>';
+    // хмари: дві копії поруч для безшовного зсуву; у спокої повільно дрейфують (CSS)
+    let cl = '';
+    const C = rng(77);
+    for (let i = 0; i < 11; i++) {
+      const fa = 0.3 + i * 0.22, x = C() * W, y = H * 0.45 - fa * g.S * 1.2 + (C() - 0.5) * H * 0.1;
+      cl += cloud(x, y, sc * (0.7 + C() * 0.7), r1(0.75 + C() * 0.25));
+    }
+    cl = cl.replace(/url\(#P\)/g, 'url(#' + p + 'cloud)');
+    s += '<g class="lk-clouds"><g class="lk-cd"><g>' + cl + '</g><g transform="translate(' + W + ' 0)">' + cl + '</g></g></g>';
+    // далекі пагорби з церквою
+    const hy = gy - H * 0.11;
+    s += '<g class="lk-hills"><path d="M-40 ' + r1(hy) + 'Q' + r1(W * 0.15) + ' ' + r1(hy - H * 0.13) + ' ' + r1(W * 0.34) + ' ' + r1(hy - H * 0.02) + 'T' + r1(W * 0.7) + ' ' + r1(hy - H * 0.04) + 'T' + r1(W + 60) + ' ' + r1(hy - H * 0.08) + 'V' + r1(H * 1.6) + 'H-40Z" fill="url(#' + p + 'hill1)"/>';
+    if (W > 640) {
+      const cx = W * 0.86, cy = hy - H * 0.07, k = sc * 0.8;
+      s += '<g transform="translate(' + r1(cx) + ' ' + r1(cy) + ') scale(' + r1(k * 100) / 100 + ')" fill="#2c1838">'
+        + '<rect x="-30" y="-40" width="60" height="44"/><rect x="-14" y="-62" width="28" height="24"/>'
+        + '<path d="M-16 -62C-16 -78 0 -80 0 -96C0 -80 16 -78 16 -62Z" fill="#f5c33b" stroke="' + INK + '" stroke-width="2"/>'
+        + '<path d="M0 -96V-110M-5 -104H5" stroke="#f5c33b" stroke-width="2.4"/>'
+        + '<path d="M-38 -40C-38 -50 -28 -52 -28 -60C-28 -52 -18 -50 -18 -40Z" fill="#f5c33b" stroke="' + INK + '" stroke-width="2"/>'
+        + '<path d="M18 -40C18 -50 28 -52 28 -60C28 -52 38 -50 38 -40Z" fill="#f5c33b" stroke="' + INK + '" stroke-width="2"/></g>';
+    }
+    // далекі хати на пагорбі — глибина
+    let far = '';
+    for (let i = 0; i < (g.narrow ? 1 : 3); i++) far += hata(W * (0.36 + i * 0.13) + (R() - 0.5) * 30, hy - H * (0.03 + R() * 0.02), sc * 0.36, false);
+    s += '<g opacity=".8">' + P(far) + '</g>';
+    s += '</g>';
+    // село: земля, хати під стріхою, журавель, тин із глечиками, гніздо на стовпі, соняшники
+    let v = '<path d="M-60 ' + r1(gy - 10) + 'Q' + r1(W * 0.25) + ' ' + r1(gy - 26) + ' ' + r1(W * 0.5) + ' ' + r1(gy - 12) + 'T' + r1(W + 60) + ' ' + r1(gy - 14) + 'V' + r1(gy + H) + 'H-60Z" fill="url(#' + p + 'hill2)"/>';
+    const hs = sc * (g.narrow ? 0.62 : 0.95), hw = 124 * hs;
+    const hx0 = x0 + BEAK[0] * ss + (g.narrow ? 10 : 40) * sc, hx1 = W - (g.narrow ? 10 : 210 * sc);   // хати — за Глеком, що висить у дзьобі
+    const n = Math.max(1, Math.floor((hx1 - hx0) / (hw * 1.2)));
+    for (let i = 0; i < n; i++) {
+      const hx = hx0 + i * ((hx1 - hx0) / n) + (R() - 0.3) * hw * 0.25;
+      v += hata(hx, gy - 6, hs * (0.86 + R() * 0.2), i === n - 1);
+    }
+    if (!g.narrow) v += zhuravel(W - 140 * sc, gy - 2, sc * 0.95);
+    v += tyn(W, gy + 6, sc * (g.narrow ? 0.75 : 1));
+    v += nest(x0, y0, ss, false, (gy - y0) / ss + 30);
+    let sf = '';
+    for (let i = 0; i < Math.max(3, Math.floor(W / 150)); i++) sf += sunflower(x0 + 90 * ss + R() * (W - x0 - 90 * ss), gy + 14 * sc + R() * 10 * sc, sc * (0.8 + R() * 0.4), 48 + R() * 20);
+    v += '<g class="lk-sfl">' + sf + '</g>';
+    s += '<g class="lk-village">' + P(v) + '</g>';
+    // слід: світний, від прозорого до кольору множника, з м'яким сяйвом (три штрихи замість blur)
+    const tr = 'url(#' + p + 'tr)';
+    s += '<g class="lk-trail">'
+      + '<path class="lk-tg2" fill="none" stroke="' + tr + '" stroke-width="' + r1(34 * sc) + '" stroke-linecap="round" stroke-linejoin="round" opacity=".16"/>'
+      + '<path class="lk-tg" fill="none" stroke="' + tr + '" stroke-width="' + r1(15 * sc) + '" stroke-linecap="round" stroke-linejoin="round" opacity=".38"/>'
+      + '<path class="lk-tl" fill="none" stroke="' + tr + '" stroke-width="' + r1(Math.max(3.4, 6 * sc)) + '" stroke-linecap="round" stroke-linejoin="round"/>'
+      + '<path class="lk-tc" fill="none" stroke="url(#' + p + 'trw)" stroke-width="' + r1(Math.max(1.2, 2 * sc)) + '" stroke-linecap="round" stroke-linejoin="round"/>'
+      + '<g class="lk-auto" style="display:none"><path class="lk-al" stroke="#9be7a6" stroke-width="1.6" stroke-dasharray="7 6"/><text class="lk-at" fill="#9be7a6" font-size="' + r1(Math.max(11, 14 * sc)) + '" font-weight="700"></text></g>'
+      + '<g class="lk-dots"></g></g>';
+    // лелека з Глеком
+    s += '<g class="lk-stork"><g class="lk-sk">' + storkArt(p)
+      + '<g class="lk-hic" opacity="0"><path d="M76 -96h48a10 10 0 0 1 10 10v12a10 10 0 0 1 -10 10h-24l-12 11 2 -11h-14a10 10 0 0 1 -10 -10v-12a10 10 0 0 1 10 -10z" fill="#fff" stroke="' + INK + '" stroke-width="2.6"/>'
+      + '<text x="100" y="-73" text-anchor="middle" font-size="20" font-weight="900" fill="' + INK + '">ік!</text></g></g></g>'
+      + '<g class="lk-pot"><g class="lk-pi">' + potArt(p) + '</g></g>';
+    s += '<g class="lk-nestf">' + nest(x0, y0, ss, true) + '</g>';
+    // падіння: Глек летить униз, черепки
+    s += '<g class="lk-drop" style="display:none"><g class="lk-di">' + potArt(p, true) + '</g></g><g class="lk-shards"></g>';
+    return s;
+  }
+
+  // бризки черепків: уламки глини (і кілька з вишитим поясом), пил, іскри
+  function shardsHtml(sc) {
+    const R = rng(Date.now() % 100000 + 7);
+    const cols = ['#e8773d', '#c45a2a', '#a9461f', '#ffb98a', '#d9703a', '#f59c56'];
+    let h = '<ellipse class="lk-dust" rx="' + r1(70 * sc) + '" ry="' + r1(26 * sc) + '" fill="#f3d9c0" opacity="0"/>'
+      + '<ellipse class="lk-dust d2" cy="' + r1(-14 * sc) + '" rx="' + r1(44 * sc) + '" ry="' + r1(30 * sc) + '" fill="#e8c4a4" opacity="0"/>';
+    for (let i = 0; i < 20; i++) {
+      const side = i % 2 ? 1 : -1, d = (30 + R() * 190) * sc;
+      const sx = side * d, up = (50 + R() * 140) * sc;
+      const z = (7 + R() * 11) * sc;
+      const pts = [[0, -z], [z * (0.6 + R() * 0.6), -z * 0.1], [z * 0.3, z * (0.5 + R() * 0.3)], [-z * (0.5 + R() * 0.5), z * (0.2 + R() * 0.5)]];
+      const band = i % 6 === 0;
+      h += '<g class="lk-sh" style="--sx:' + r1(sx) + 'px;--up:' + r1(-up) + 'px;--hx:' + r1(sx * 0.5) + 'px;--r:' + Math.round((R() - 0.5) * 900) + 'deg;animation-delay:' + Math.round(R() * 70) + 'ms">'
+        + '<path d="M' + pts.map((q) => r1(q[0]) + ' ' + r1(q[1])).join('L') + 'Z" fill="' + (band ? '#f6ead0' : cols[i % cols.length]) + '" stroke="' + INK + '" stroke-width="' + r1(1.8 * sc) + '" stroke-linejoin="round"/>'
+        + (band ? '<path d="M' + r1(-z * 0.4) + ' 0l' + r1(z * 0.3) + ' ' + r1(z * 0.3) + 'M' + r1(-z * 0.1) + ' 0l' + r1(-z * 0.3) + ' ' + r1(z * 0.3) + '" stroke="#e3122a" stroke-width="' + r1(1.6 * sc) + '"/>'
+          : '<path d="M' + r1(-z * 0.2) + ' ' + r1(-z * 0.5) + 'L' + r1(z * 0.2) + ' ' + r1(-z * 0.1) + '" stroke="#ffe0c0" stroke-width="' + r1(1.6 * sc) + '" opacity=".7"/>')
+        + '</g>';
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = -Math.PI * (0.15 + R() * 0.7), d = (50 + R() * 80) * sc;
+      h += '<path class="lk-spk" style="--sx:' + r1(Math.cos(a) * d) + 'px;--sy:' + r1(Math.sin(a) * d) + 'px;animation-delay:' + Math.round(R() * 80) + 'ms" d="M0 ' + r1(-6 * sc) + 'L' + r1(1.6 * sc) + ' 0L0 ' + r1(6 * sc) + 'L' + r1(-1.6 * sc) + ' 0Z" fill="#fff3c0"/>';
+    }
+    return h;
+  }
+
+  const FEATHER = '<svg viewBox="0 0 24 48" aria-hidden="true"><path d="M12 46C12 32 12.5 16 13 3" stroke="#8b93a8" stroke-width="1.6" fill="none"/>'
+    + '<path d="M13 3C23 12 22 30 12 40C3 30 4 12 13 3Z" fill="#fff" stroke="' + INK + '" stroke-width="1.4"/>'
+    + '<path d="M12.6 12l6 -3M12.4 20l7 -3M12.2 28l6 -2M12.6 14l-5 -3M12.4 22l-6 -3" stroke="#c9cfdc" stroke-width="1"/></svg>';
+
+  // ---------------------------------------------------------------------------------------------
+  // Звук (WebAudio-синт; лише коли гравець увімкнув)
+  // ---------------------------------------------------------------------------------------------
+  function audio(st) {
+    if (!st.sound) return null;
+    if (!st.ac) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      st.ac = new AC();
+      st.master = st.ac.createGain(); st.master.gain.value = 0.5; st.master.connect(st.ac.destination);
+    }
+    if (st.ac.state === 'suspended') st.ac.resume();
+    return st.ac;
+  }
+  function toneStart(st) {
+    const ac = audio(st); if (!ac || st.tone) return;
+    const o = ac.createOscillator(), o2 = ac.createOscillator(), g = ac.createGain();
+    o.type = 'triangle'; o2.type = 'sine'; o.frequency.value = 160; o2.frequency.value = 240;
+    g.gain.value = 0; g.gain.linearRampToValueAtTime(0.05, ac.currentTime + 0.3);
+    o.connect(g); o2.connect(g); g.connect(st.master); o.start(); o2.start();
+    st.tone = { o, o2, g };
+  }
+  function toneSet(st, m) {
+    if (!st.tone || !st.ac) return;
+    const f = Math.min(1500, 160 * Math.pow(m, 0.55)), t = st.ac.currentTime;
+    st.tone.o.frequency.setTargetAtTime(f, t, 0.05);
+    st.tone.o2.frequency.setTargetAtTime(f * 1.5 + Math.sin(t * 9) * 6, t, 0.05);
+    st.tone.g.gain.setTargetAtTime(Math.min(0.09, 0.04 + Math.log(m) * 0.012), t, 0.1);
+  }
+  function toneStop(st) {
+    if (!st.tone || !st.ac) { st.tone = null; return; }
+    const { o, o2, g } = st.tone, t = st.ac.currentTime;
+    g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0, t, 0.04);
+    o.stop(t + 0.3); o2.stop(t + 0.3); st.tone = null;
+  }
+  function ping(st, freqs, dur, vol) {
+    const ac = audio(st); if (!ac) return;
+    freqs.forEach((f, i) => {
+      const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + i * 0.07;
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol || 0.18, t + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t + (dur || 0.6));
+      o.connect(g); g.connect(st.master); o.start(t); o.stop(t + (dur || 0.6) + 0.05);
+    });
+  }
+  function crack(st) {
+    const ac = audio(st); if (!ac) return;
+    const len = Math.floor(ac.sampleRate * 0.5), buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3) * (i % 900 < 300 ? 1 : 0.4);
+    const n = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain(), t = ac.currentTime;
+    n.buffer = buf; bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = 0.8; g.gain.value = 0.5;
+    n.connect(bp); bp.connect(g); g.connect(st.master); n.start(t);
+    const o = ac.createOscillator(), og = ac.createGain();
+    o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+    og.gain.setValueAtTime(0.35, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    o.connect(og); og.connect(st.master); o.start(t); o.stop(t + 0.4);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Стан: що зараз (кадр чи вид — новіший), моє, годинник
+  // ---------------------------------------------------------------------------------------------
+  const key = (s) => (s ? (s.round || 0) * 10 + (PH[s.phase] || 0) : -1);
+  function cur(st) {
+    const c = st.ctx || {}, f = c.frame, v = c.view;
+    const s = f && f.phase && key(f) >= key(v) ? f : v && v.phase ? v : f && f.phase ? f : null;
+    return s;
+  }
+  function mineOf(st, s) {
+    const c = st.ctx, v = c.view || {}, nick = c.me && c.me.nick;
+    const row = nick && s && (s.bets || []).find((b) => b.nick === nick);
+    if (row) return { amount: row.amount, auto: row.auto, out: row.out, win: row.win };
+    if (v.mine && v.round === s.round && v.mine.amount) return v.mine;
+    return null;
+  }
+  function syncClock(st, s) {
+    const n = tms(s.now);
+    if (!isFinite(n)) return;
+    const sample = n - Date.now();
+    // найменша затримка = найбільший зсув; повільно відпускаємо, щоб пережити зміну годинника
+    st.off = st.off == null ? sample : Math.max(sample, st.off - 3);
+  }
+  const snow = (st) => Date.now() + (st.off || 0);
+  function localM(st, s) {
+    if (!s) return 1;
+    if (s.phase === 'crash' || s.phase === 'pause') return s.crash || s.m || 1;
+    if (s.phase !== 'flight') return 1;
+    const k = s.k || K_DEF, a = tms(s.startAt);
+    let m = isFinite(a) ? Math.exp(k * Math.max(0, snow(st) - a) / 1000) : (s.m || 1);
+    if (s.m && m < s.m) m = s.m;
+    return m;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Каркас DOM
+  // ---------------------------------------------------------------------------------------------
+  function skeleton(root, st) {
+    const amt = store.get('amt', 50), ax = store.get('ax', 2), aon = store.get('aon', false);
+    st.amount = amt; st.autoX = ax; st.autoOn = aon;
+    root.innerHTML = '<div class="lk">'
+      + '<div class="lk-stage"><svg class="lk-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>'
+      + '<div class="lk-ov"><div class="lk-hist"></div>'
+      + '<div class="lk-tools"><button type="button" class="lk-tb lk-snd" title="Звук">🔈</button><button type="button" class="lk-tb lk-ib" title="Правила й чесність">ⓘ</button></div>'
+      + '<div class="lk-big"><div class="lk-cap"></div><div class="lk-m">×1,00</div><div class="lk-sub"></div><div class="lk-bar"><i></i></div></div>'
+      + '<div class="lk-mile"></div><div class="lk-fx"></div></div></div>'
+      + '<div class="lk-panel">'
+      + '<div class="lk-box lk-amt"><div class="lk-lab">ставка, 🏺</div><div class="lk-row"><button type="button" class="lk-pm" data-a="minus">−</button>'
+      + '<input class="lk-in" inputmode="numeric" autocomplete="off" aria-label="Сума ставки"><button type="button" class="lk-pm" data-a="plus">+</button></div>'
+      + '<div class="lk-q">' + QUICK.map((q) => '<button type="button" data-q="' + q + '">' + q + '</button>').join('')
+      + '<button type="button" data-a="half">½</button><button type="button" data-a="dbl">×2</button></div></div>'
+      + '<div class="lk-box lk-au"><label class="lk-lab lk-sw"><input type="checkbox" class="lk-aon"> <span>автозабрати на</span></label>'
+      + '<div class="lk-row"><span class="lk-x">×</span><input class="lk-ax" inputmode="decimal" autocomplete="off" aria-label="Автозабір на множнику"></div>'
+      + '<div class="lk-q">' + AUTOQ.map((q) => '<button type="button" data-x="' + q + '">×' + String(q).replace('.', ',') + '</button>').join('') + '</div></div>'
+      + '<button type="button" class="lk-go"><span class="lk-gt"></span><small class="lk-gs"></small></button>'
+      + '<div class="lk-foot"><span class="lk-wal"></span><button type="button" class="lk-hash" title="Перевірка чесності"></button></div>'
+      + '</div>'
+      + '<div class="lk-bets"><div class="lk-bh"><b>Ставки столу</b><span class="lk-bn"></span></div><div class="lk-bl"></div></div>'
+      + '<div class="lk-info" hidden></div>'
+      + '</div>';
+    const q = (s) => root.querySelector(s);
+    st.el = {
+      box: q('.lk'), stage: q('.lk-stage'), svg: q('.lk-svg'), hist: q('.lk-hist'), big: q('.lk-big'), cap: q('.lk-cap'),
+      m: q('.lk-m'), sub: q('.lk-sub'), bar: q('.lk-bar i'), mile: q('.lk-mile'), fx: q('.lk-fx'),
+      amt: q('.lk-in'), aon: q('.lk-aon'), ax: q('.lk-ax'), go: q('.lk-go'), gt: q('.lk-gt'), gs: q('.lk-gs'),
+      wal: q('.lk-wal'), hash: q('.lk-hash'), bn: q('.lk-bn'), bl: q('.lk-bl'), info: q('.lk-info'), snd: q('.lk-snd'),
+    };
+    st.el.amt.value = amt; st.el.ax.value = fmtM(ax); st.el.aon.checked = aon;
+    wire(root, st);
+  }
+
+  function wire(root, st) {
+    const el = st.el;
+    const on = (n, ev, fn) => { n.addEventListener(ev, fn); st.offs.push(() => n.removeEventListener(ev, fn)); };
+    on(el.go, 'click', () => primary(root, st));
+    on(root.querySelector('.lk-amt'), 'click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      const L = limits(st);
+      let a = st.amount;
+      if (b.dataset.q) a = +b.dataset.q;
+      else if (b.dataset.a === 'half') a = Math.floor(a / 2);
+      else if (b.dataset.a === 'dbl') a = a * 2;
+      else if (b.dataset.a === 'plus') a = a + (a < 100 ? 10 : a < 1000 ? 50 : 100);
+      else if (b.dataset.a === 'minus') a = a - (a <= 100 ? 10 : a <= 1000 ? 50 : 100);
+      setAmount(st, a, L);
+    });
+    on(el.amt, 'change', () => setAmount(st, parseInt(el.amt.value.replace(/\D/g, ''), 10) || 0, limits(st)));
+    on(el.amt, 'keydown', (e) => { if (e.key === 'Enter') { el.amt.blur(); } });
+    on(root.querySelector('.lk-au'), 'click', (e) => {
+      const b = e.target.closest('button[data-x]'); if (!b) return;
+      setAuto(root, st, +b.dataset.x, true);
+    });
+    on(el.ax, 'change', () => setAuto(root, st, parseX(el.ax.value), st.autoOn));
+    on(el.ax, 'keydown', (e) => { if (e.key === 'Enter') el.ax.blur(); });
+    on(el.aon, 'change', () => setAuto(root, st, st.autoX, el.aon.checked));
+    on(el.snd, 'click', () => {
+      st.sound = !st.sound; store.set('snd', st.sound);
+      el.snd.textContent = st.sound ? '🔊' : '🔈';
+      if (st.sound) { audio(st); if (st.live) toneStart(st); } else toneStop(st);
+    });
+    on(root.querySelector('.lk-ib'), 'click', () => info(root, st, true));
+    on(el.hash, 'click', () => info(root, st, true));
+    on(el.info, 'click', (e) => {
+      if (e.target === el.info || e.target.closest('.lk-x0')) info(root, st, false);
+      if (e.target.closest('.lk-chk')) verify(root, st);
+    });
+  }
+
+  function limits(st) {
+    const v = (st.ctx && st.ctx.view) || {};
+    const L = v.limits || {};
+    return { min: L.min || 10, max: L.max == null ? 2000 : L.max, wallet: typeof v.wallet === 'number' ? v.wallet : null };
+  }
+  function setAmount(st, a, L) {
+    a = Math.max(L.min, Math.round(a) || 0);
+    if (L.max > 0) a = Math.min(a, L.max);
+    if (L.wallet != null && a > L.wallet) a = Math.max(L.min, Math.floor(L.wallet));
+    st.amount = a; st.el.amt.value = a; store.set('amt', a);
+    paintPanel(st, cur(st), true);
+  }
+  function setAuto(root, st, x, onOff) {
+    if (!isFinite(x) || x < 1.01) x = 1.01;
+    if (x > 1000) x = 1000;
+    x = Math.round(x * 100) / 100;
+    const changed = x !== st.autoX || onOff !== st.autoOn;
+    st.autoX = x; st.autoOn = !!onOff;
+    st.el.ax.value = fmtM(x); st.el.aon.checked = st.autoOn;
+    store.set('ax', x); store.set('aon', st.autoOn);
+    const s = cur(st), mine = s && mineOf(st, s);
+    if (changed && mine && !mine.out && s && (s.phase === 'bets' || s.phase === 'flight') && st.ctx.mine) {
+      st.ctx.act('auto', { x: st.autoOn ? x : null });
+    }
+    paintPanel(st, s, true);
+    if (s) drawStatic(st, s);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Дії
+  // ---------------------------------------------------------------------------------------------
+  function primary(root, st) {
+    const s = cur(st), c = st.ctx;
+    if (st.dead && !st.busy) {
+      st.busy = true;
+      Promise.resolve(HGames.call('CreateRoom', 'lelka', {})).then((r) => {
+        st.busy = false;
+        if (r && r.ok && r.roomId) location.hash = '#games/room/' + encodeURIComponent(r.roomId);
+      }, () => { st.busy = false; });
+      return true;
+    }
+    if (!s || !c || !c.mine || st.busy) return false;
+    const mine = mineOf(st, s);
+    let p = null;
+    if (s.phase === 'bets') {
+      if (mine && mine.amount) p = c.act('cancel');
+      else p = c.act('bet', { amount: st.amount, auto: st.autoOn ? st.autoX : null });
+    } else if (s.phase === 'flight' && mine && !mine.out) {
+      st.cashing = s.round;
+      p = c.act('cash');
+      paintPanel(st, s, true);
+    }
+    if (!p) return false;
+    st.busy = true;
+    const done = () => { st.busy = false; paintPanel(st, cur(st), true); };
+    Promise.resolve(p).then((r) => { if (r && r.ok === false) st.cashing = null; done(); }, () => { st.cashing = null; done(); });
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Геометрія сцени
+  // ---------------------------------------------------------------------------------------------
+  function geom(st) {
+    const r = st.el.stage.getBoundingClientRect();
+    const W = Math.max(280, Math.round(r.width)), H = Math.max(200, Math.round(r.height));
+    const narrow = W < 520;
+    const sc = clamp(Math.min(H / 480, W / 640), 0.5, 1.3);
+    const ss = sc * (narrow ? 1.3 : 1.5);                  // лелека й Глек — головні, вдвічі більші за сцену
+    const gy = H * 0.94, x0 = Math.max(82 * ss + 6, W * 0.1), y0 = gy - (narrow ? 64 : 78) * sc;
+    return {
+      W, H, sc, ss, gy, x0, y0, S: H * 0.55, narrow,
+      // слід веде тулуб лелеки (не дзьоб: лелека велика й закрила б короткий слід); початок — лелека в гнізді
+      ox: x0, oy: y0 - 14 * ss,
+      x1: Math.max(x0 + W * 0.3, W - 150 * ss), y1: H * (narrow ? 0.66 : 0.6),
+    };
+  }
+
+  function build(root, st) {
+    const g = geom(st);
+    if (st.g && st.g.W === g.W && st.g.H === g.H) return false;
+    st.g = g;
+    st.p = 'lk' + (++uid) + '-';
+    st.el.stage.classList.toggle('wide', !g.narrow);
+    st.el.stage.style.setProperty('--lkf', Math.round(clamp(g.W * 0.12, 44, 132)) + 'px');   // множник — за шириною сцени, не вікна
+    st.gearLv = -1;
+    const svg = st.el.svg;
+    svg.setAttribute('viewBox', '0 0 ' + g.W + ' ' + g.H);
+    svg.innerHTML = scene(g, st.p);
+    const q = (s) => svg.querySelector(s);
+    st.sv = {
+      s0: q('.lk-s0'), s1: q('.lk-s1'), stars: q('.lk-stars'), space: q('.lk-space'), sun: q('.lk-sun'), clouds: q('.lk-clouds'),
+      hills: q('.lk-hills'), village: q('.lk-village'), nestf: q('.lk-nestf'), tg2: q('.lk-tg2'), tc: q('.lk-tc'), tg: q('.lk-tg'), tl: q('.lk-tl'),
+      tr: q('linearGradient[id$="tr"]'), t0: [...svg.querySelectorAll('.lk-t0')], t1: q('.lk-t1'), trw: q('linearGradient[id$="trw"]'),
+      auto: q('.lk-auto'), al: q('.lk-al'), at: q('.lk-at'), dots: q('.lk-dots'),
+      stork: q('.lk-stork'), sk: q('.lk-sk'), hic: q('.lk-hic'), pot: q('.lk-pot'), pi: q('.lk-pi'), drop: q('.lk-drop'), di: q('.lk-di'), shards: q('.lk-shards'),
+    };
+    return true;
+  }
+
+  const tf = (n, x, y) => { const v = 'translate(' + r1(x) + 'px,' + r1(y) + 'px)'; if (n.style.transform !== v) n.style.transform = v; };
+
+  /// Камера й лелека для множника m (у польоті) або спокою (m=1, cam=0).
+  function draw(st, m, fly, s) {
+    const g = st.g, v = st.sv;
+    if (!g || !v) return;
+    const k = (s && s.k) || K_DEF;
+    const cam = fly ? Math.log(m) : (st.camHold || 0);
+    const t = fly ? Math.log(m) / k : 0;
+    // шарф і окуляри з ×10, банка-шолом з ×50
+    const lv = fly ? m : Math.exp(cam), gear = lv >= 50 ? 2 : lv >= 10 ? 1 : 0;
+    if (st.gearLv !== gear) { st.gearLv = gear; v.sk.classList.toggle('gear', gear >= 1); v.sk.classList.toggle('astro', gear >= 2); }
+    // небо
+    const top = mix(SKY_TOP, cam), bot = mix(SKY_BOT, cam);
+    if (v.s0._c !== top) { v.s0.setAttribute('stop-color', top); v.s0._c = top; }
+    if (v.s1._c !== bot) { v.s1.setAttribute('stop-color', bot); v.s1._c = bot; }
+    const S = g.S;
+    tf(v.village, -Math.min(t * 10, g.W * 0.2), cam * S * 1.5);
+    tf(v.nestf, -Math.min(t * 10, g.W * 0.2), cam * S * 1.5);
+    tf(v.hills, -Math.min(t * 4, g.W * 0.08), cam * S * 1.1);
+    tf(v.sun, 0, cam * S * 0.9);
+    tf(v.clouds, -((t * 46) % g.W), cam * S * 1.2);
+    tf(v.stars, 0, cam * S * 0.06);
+    tf(v.space, 0, cam * S * 0.6);
+    const so = r1(clamp((cam - 1.5) / 1.0, 0, 1)), po = r1(clamp((cam - 2.6) / 0.7, 0, 1));
+    if (v.stars._o !== so) { v.stars.setAttribute('opacity', so); v.stars._o = so; }
+    if (v.space._o !== po) { v.space.setAttribute('opacity', po); v.space._o = po; }
+    // слід
+    const ox = g.ox, oy = g.oy;
+    if (!fly || m <= 1.0001) {
+      v.tl.setAttribute('d', ''); v.tg.setAttribute('d', ''); v.tg2.setAttribute('d', ''); v.tc.setAttribute('d', '');
+      v.auto.style.display = 'none';
+      st.ang = 0;
+      if (!st.crashing) placeStork(st, ox, oy, 0, true);
+      return;
+    }
+    const xmax = Math.max(7, t), ymax = Math.max(1.6, m);
+    const fx = (u) => ox + (u / xmax) * (g.x1 - ox);
+    const fy = (mm) => oy - ((mm - 1) / (ymax - 1)) * (oy - g.y1);
+    const N = 36;
+    let d = '';
+    for (let i = 0; i <= N; i++) {
+      const u = (t * i) / N;
+      d += (i ? 'L' : 'M') + r1(fx(u)) + ' ' + r1(fy(Math.exp(k * u)));
+    }
+    const px = fx(t), py = fy(m);
+    v.tl.setAttribute('d', d); v.tg.setAttribute('d', d); v.tg2.setAttribute('d', d); v.tc.setAttribute('d', d);
+    // градієнт сліду — від прозорого в гнізді до кольору множника біля Глека
+    [v.tr, v.trw].forEach((n) => { n.setAttribute('x1', r1(ox)); n.setAttribute('y1', r1(oy)); n.setAttribute('x2', r1(px)); n.setAttribute('y2', r1(py)); });
+    const tc = mix(TR_COL, Math.log(m));
+    if (v.t1._c !== tc) { v.t0.forEach((n) => n.setAttribute('stop-color', tc)); v.t1.setAttribute('stop-color', tc); v.t1._c = tc; }
+    // лінія автозабору
+    const mine = s && mineOf(st, s);
+    const ax = mine && !mine.out && s.phase === 'flight' ? mine.auto : null;
+    if (ax && ax <= ymax * 1.8 && ax > 1) {
+      const ay = fy(ax);
+      if (ay > 8) {
+        v.auto.style.display = '';
+        v.al.setAttribute('d', 'M' + r1(ox) + ' ' + r1(ay) + 'H' + r1(g.W - 8));
+        v.at.setAttribute('x', r1(g.W - 10)); v.at.setAttribute('y', r1(ay - 5)); v.at.setAttribute('text-anchor', 'end');
+        const tx = 'твій автозабір ×' + fmtM(ax);
+        if (v.at.textContent !== tx) v.at.textContent = tx;
+      } else v.auto.style.display = 'none';
+    } else v.auto.style.display = 'none';
+    // крапки на сліді — хто де забрав
+    if (s) {
+      const outs = (s.bets || []).filter((b) => b.out);
+      const sig = outs.map((b) => b.nick + b.out).join('|') + '@' + Math.round(ymax * 50) + ':' + Math.round(xmax * 10);
+      if (sig !== st.dotSig) {
+        st.dotSig = sig;
+        v.dots.innerHTML = outs.map((b) => {
+          const u = Math.log(b.out) / k;
+          return '<circle cx="' + r1(fx(u)) + '" cy="' + r1(fy(b.out)) + '" r="' + r1(Math.max(3, 5 * g.sc)) + '" fill="#9be7a6" stroke="' + INK + '" stroke-width="1.6"/>';
+        }).join('');
+      }
+    }
+    // кут — дотична до кривої
+    const dx = (g.x1 - ox) / xmax, dy = -(k * m / (ymax - 1)) * (oy - g.y1);
+    const ang = clamp(Math.atan2(dy, dx) * 180 / Math.PI, -58, -4);
+    st.ang = ang;
+    placeStork(st, px, py, ang, false, t);
+  }
+
+  function placeStork(st, px, py, ang, rest, t) {
+    const v = st.sv, sc = st.g.ss;
+    const a = (ang * 0.75) * Math.PI / 180;
+    const bx = BEAK[0] * sc, by = BEAK[1] * sc;
+    // (px, py) — тулуб; Глек висить із кінчика дзьоба
+    const kx = px + (bx * Math.cos(a) - by * Math.sin(a)), ky = py + (bx * Math.sin(a) + by * Math.cos(a));
+    const tr = 'translate(' + r1(px) + ' ' + r1(py) + ') rotate(' + r1(ang * 0.75) + ') scale(' + sc + ')';
+    if (v.stork._t !== tr) { v.stork.setAttribute('transform', tr); v.stork._t = tr; }
+    const sw = rest ? 0 : Math.sin((t || 0) * 5) * 7;
+    const pt = 'translate(' + r1(kx) + ' ' + r1(ky) + ') scale(' + sc + ') rotate(' + r1(sw) + ')';
+    if (v.pot._t !== pt) { v.pot.setAttribute('transform', pt); v.pot._t = pt; }
+    st.potAt = [kx, ky]; st.tip = [kx, ky];
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Фази
+  // ---------------------------------------------------------------------------------------------
+  function setPhaseClass(st, ph) {
+    const b = st.el.box;
+    ['bets', 'flight', 'crash', 'pause'].forEach((p) => b.classList.toggle('P-' + p, p === ph));
+  }
+
+  function enter(root, st, s, prev) {
+    setPhaseClass(st, s.phase);
+    const v = st.sv, el = st.el;
+    if (s.phase === 'bets' || s.phase === 'pause') {
+      if (s.phase === 'bets') {
+        st.crashing = false; st.camHold = 0;
+        el.stage.classList.add('lk-ease');
+        v.sk.classList.remove('gone', 'hic'); v.sk.classList.add('rest', 'land');
+        v.pot.style.display = ''; v.drop.style.display = 'none'; v.shards.innerHTML = ''; v.dots.innerHTML = ''; st.dotSig = '';
+        st.miles = 0;
+        timer(st, () => { el.stage.classList.remove('lk-ease'); v.sk.classList.remove('land'); }, 1300);
+        draw(st, 1, false, s);
+        bar(st, s);
+      }
+    }
+    if (s.phase === 'flight') {
+      el.stage.classList.remove('lk-ease');
+      v.sk.classList.remove('rest', 'gone', 'hic', 'land');
+      if (prev === 'bets') { v.sk.classList.add('up'); timer(st, () => v.sk.classList.remove('up'), 800); }
+      v.pot.style.display = ''; v.drop.style.display = 'none'; v.shards.innerHTML = '';
+      st.crashing = false;
+      if (st.sound) toneStart(st);
+    }
+    if (s.phase === 'crash' || (s.phase === 'pause' && prev === 'flight')) {
+      toneStop(st);
+      const m = s.crash || s.m || 1;
+      st.camHold = Math.log(m);
+      if (prev === 'flight') boom(root, st, s, m);
+      else if (!st.crashing) { draw(st, m, m > 1.0001, s); v.sk.classList.add('gone'); v.pot.style.display = 'none'; st.crashing = true; }
+      const mine = mineOf(st, s);
+      if (mine && mine.amount && !mine.out && st.lostRound !== s.round) {
+        st.lostRound = s.round;
+        pop(st, '−' + fmtN(mine.amount) + ' 🏺', 'lost', bigX(st), (bigBottom(st) + 26) / st.g.H);
+      }
+    }
+  }
+
+  // низ великого напису в координатах сцени — «ДЗЕНЬ!» і «−100» кладемо нижче, щоб не налазили
+  function bigBottom(st) {
+    const b = st.el.big.getBoundingClientRect(), r = st.el.stage.getBoundingClientRect();
+    return b.height ? b.bottom - r.top : st.g.H * 0.45;
+  }
+  const bigX = (st) => (st.g.narrow ? 0.5 : 0.36);
+
+  function boom(root, st, s, m) {
+    const v = st.sv, el = st.el, g = st.g;
+    st.crashing = true;
+    draw(st, m, m > 1.0001, s);
+    // лелека гикає
+    v.sk.classList.add('hic');
+    const [px, py] = st.potAt || [g.ox, g.oy];
+    v.pot.style.display = 'none';
+    v.drop.style.display = '';
+    const top = py + 16 * g.ss;
+    v.drop.setAttribute('transform', 'translate(' + r1(px) + ' ' + r1(top) + ') scale(' + g.ss + ')');
+    const gy = g.H - 12 * g.sc;
+    v.di.style.setProperty('--dy', r1((gy - top - 40 * g.ss) / g.ss) + 'px');
+    v.di.style.setProperty('--dx', r1(-30 - Math.random() * 30) + 'px');
+    v.di.classList.remove('go'); void v.di.getBBox(); v.di.classList.add('go');
+    st.sx = px;
+    timer(st, () => {
+      v.drop.style.display = 'none';
+      const sx = px - 45 * g.ss;
+      v.shards.setAttribute('transform', 'translate(' + r1(sx) + ' ' + r1(gy) + ')');
+      v.shards.innerHTML = shardsHtml(g.sc);
+      el.stage.classList.remove('shake'); void el.stage.offsetWidth; el.stage.classList.add('shake');
+      const lo = bigBottom(st) + 90;
+      pop(st, 'ДЗЕНЬ!', 'dzen', clamp(sx / g.W, 0.14, 0.86), clamp(Math.max(gy - 70 * g.sc, lo), 0, g.H - 26) / g.H);
+      crack(st);
+    }, 700);
+    timer(st, () => { v.sk.classList.remove('hic'); v.sk.classList.add('gone'); }, 760);
+  }
+
+  function bar(st, s) {
+    const u = tms(s.until), i = st.el.bar;
+    if (!isFinite(u)) { i.style.transition = 'none'; i.style.width = '0%'; return; }
+    const left = Math.max(0, u - snow(st)), total = st.betMs || 8000;
+    i.style.transition = 'none';
+    i.style.width = clamp(left / total * 100, 0, 100) + '%';
+    void i.offsetWidth;
+    i.style.transition = 'width ' + left + 'ms linear';
+    i.style.width = '0%';
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Великий напис, кнопка, панель, списки
+  // ---------------------------------------------------------------------------------------------
+  function big(st, s, m) {
+    const el = st.el;
+    let cap = '', main = '', sub = '', col = '#fff', cls = '';
+    const left = Math.max(0, tms(s.until) - snow(st));
+    if (s.phase === 'bets') {
+      cap = 'ставки';
+      main = isFinite(left) ? 'злітаємо за ' + Math.ceil(left / 1000) : 'ставки';
+      sub = 'роби ставку — Глек уже в дзьобі';
+      cls = 'B-wait';
+    } else if (s.phase === 'flight') {
+      main = '×' + fmtM(m);
+      col = mix(M_COL, Math.log(m));
+      sub = m >= 200 ? 'повз Місяць!' : m >= 50 ? 'лелека в космосі!' : m >= 10 ? 'вище хмар!' : '';
+      cls = 'B-fly';
+    } else {
+      const c = s.crash || s.m || 1;
+      cap = s.phase === 'crash' ? 'шубовсть!' : 'пролетіли на';
+      main = '×' + fmtM(c);
+      sub = s.phase === 'crash' ? 'пролетіли!' : (isFinite(left) ? 'наступний політ за ' + Math.ceil(left / 1000) + ' с' : 'наступний політ скоро');
+      col = '#ff5a4a';
+      cls = 'B-boom';
+    }
+    if (el.cap.textContent !== cap) el.cap.textContent = cap;
+    if (el.m.textContent !== main) el.m.textContent = main;
+    if (el.sub.textContent !== sub) el.sub.textContent = sub;
+    if (el.m._c !== col) { el.m.style.color = col; el.m._c = col; }
+    if (el.big._cls !== cls) {
+      el.big.classList.remove('B-wait', 'B-fly', 'B-boom'); el.big.classList.add(cls); el.big._cls = cls;
+    }
+    const hot = s.phase === 'flight' ? (m >= 10 ? 3 : m >= 5 ? 2 : m >= 2 ? 1 : 0) : 0;
+    if (el.big._h !== hot) { el.big.dataset.hot = hot; el.big._h = hot; }
+  }
+
+  function btnState(st, s, m) {
+    const c = st.ctx;
+    if (!c.mine) return { mode: 'sit', t: 'Сядь за стіл, щоб ставити', s: 'дивишся як глядач' };
+    const mine = mineOf(st, s), v = c.view || {};
+    if (s.phase === 'bets' && v.on === false && !(mine && mine.amount)) return { mode: 'wait', t: 'Ставки вимкнено', s: 'Глек відпочиває — політ без ставок' };
+    if (s.phase === 'bets') {
+      if (mine && mine.amount) return { mode: 'cancel', t: 'Скасувати ставку', s: fmtN(mine.amount) + ' 🏺' + (mine.auto ? ' · авто ×' + fmtM(mine.auto) : '') + ' · чекаємо зльоту' };
+      return { mode: 'bet', t: 'Поставити ' + fmtN(st.amount) + ' 🏺', s: st.autoOn ? 'автозабір на ×' + fmtM(st.autoX) : 'пробіл — теж «Поставити»' };
+    }
+    if (mine && mine.out) return { mode: 'won', t: 'Забрав на ×' + fmtM(mine.out), s: '+' + fmtN(mine.win != null ? mine.win : mine.amount * mine.out) + ' 🏺' };
+    if (s.phase === 'flight' && mine && mine.amount) {
+      if (st.cashing === s.round) return { mode: 'cash busy', t: 'Забираю…', s: '×' + fmtM(m) };
+      return { mode: 'cash', t: 'Забрати ×' + fmtM(m), s: '= ' + fmtN(Math.floor(mine.amount * m)) + ' 🏺' };
+    }
+    if ((s.phase === 'crash' || s.phase === 'pause') && mine && mine.amount) return { mode: 'lost', t: 'Пролетів…', s: '−' + fmtN(mine.amount) + ' 🏺 · наступний політ скоро' };
+    return { mode: 'wait', t: 'Чекаю наступний політ', s: s.phase === 'flight' ? 'цей уже в небі — ставки після падіння' : 'ставки відкриються за мить' };
+  }
+
+  function paintBtn(st, s, m) {
+    const b = btnState(st, s, m), el = st.el;
+    if (el.go._m !== b.mode) {
+      el.go.className = 'lk-go M-' + b.mode.replace(' ', ' M-');
+      el.go._m = b.mode;
+    }
+    const dis = !/^(bet|cancel|cash)$/.test(b.mode) || (st.busy && b.mode !== 'cash');
+    if (el.go.disabled !== dis) el.go.disabled = dis;
+    if (el.gt.textContent !== b.t) el.gt.textContent = b.t;
+    if (el.gs.textContent !== b.s) el.gs.textContent = b.s;
+    const pulse = b.mode === 'cash' ? (m >= 5 ? '3' : m >= 2 ? '2' : '1') : '';
+    if (el.go.dataset.p !== pulse) el.go.dataset.p = pulse;
+  }
+
+  function paintPanel(st, s, force) {
+    if (!s) return;
+    const L = limits(st), el = st.el;
+    paintBtn(st, s, localM(st, s));
+    const note = st.ctx.view && st.ctx.view.note;
+    const wal = 'баланс <b>' + (L.wallet == null ? '—' : fmtN(L.wallet)) + '</b> 🏺 · ставка ' + L.min + '–' + (L.max > 0 ? fmtN(L.max) : '∞')
+      + (note ? ' · <span class="lk-note">' + st.ctx.esc(note) + '</span>' : '');
+    if (force || el.wal._h !== wal) { el.wal.innerHTML = wal; el.wal._h = wal; }
+    const h = s.hash ? '🔒 #' + (s.round || '') + ' ' + String(s.hash).slice(0, 10) + '…' : '🔒 перевірка чесності';
+    if (el.hash.textContent !== h) el.hash.textContent = h;
+  }
+
+  function paintBets(st, s) {
+    const c = st.ctx, me = c.me && c.me.nick;
+    const bets = (s.bets || []).slice().sort((a, b) => (b.nick === me) - (a.nick === me) || (b.amount - a.amount));
+    const sig = s.phase + '|' + bets.map((b) => b.nick + ':' + b.amount + ':' + b.auto + ':' + b.out).join(',');
+    if (sig === st.betSig) return;
+    st.betSig = sig;
+    const total = bets.reduce((a, b) => a + (b.amount || 0), 0);
+    st.el.bn.textContent = bets.length ? bets.length + ' · ' + fmtN(total) + ' 🏺' : '';
+    const done = s.phase === 'crash' || s.phase === 'pause';
+    st.el.bl.innerHTML = bets.length ? bets.map((b) => {
+      let cls = 's-fly', txt;
+      if (b.out) { cls = 's-out'; txt = '×' + fmtM(b.out) + ' <b>+' + fmtN(b.win != null ? b.win : b.amount * b.out) + '</b>'; }
+      else if (done) { cls = 's-lost'; txt = 'пролетів'; }
+      else if (s.phase === 'bets') { cls = 's-wait'; txt = b.auto ? 'авто ×' + fmtM(b.auto) : 'чекає зльоту'; }
+      else txt = 'летить…' + (b.auto ? ' <i>авто ×' + fmtM(b.auto) + '</i>' : '');
+      return '<div class="lk-br ' + cls + (b.nick === me ? ' me' : '') + '"><span class="nk">' + c.esc(b.nick) + '</span>'
+        + '<span class="am">' + fmtN(b.amount) + '</span><span class="st">' + txt + '</span></div>';
+    }).join('') : '<div class="lk-empty">' + (s.phase === 'bets' ? 'Ще ніхто не ставив — будь першим' : 'У цьому польоті ставок нема') + '</div>';
+  }
+
+  function paintHist(st, s) {
+    const h = (s.history || []).slice().sort((a, b) => (b.round || 0) - (a.round || 0)).slice(0, 20);
+    const sig = h.map((x) => x.round + ':' + x.crash).join(',');
+    if (sig === st.histSig) return;
+    const fresh = st.histSig != null;
+    st.histSig = sig;
+    st.el.hist.innerHTML = h.map((x, i) => '<span class="lk-h ' + (x.crash >= 10 ? 'c2' : x.crash >= 2 ? 'c1' : 'c0') + (i === 0 && fresh ? ' new' : '')
+      + '" title="політ #' + x.round + '">' + fmtM(x.crash) + '</span>').join('');
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Ефекти: пір'їнки, вигуки, віхи
+  // ---------------------------------------------------------------------------------------------
+  function timer(st, fn, ms) { const id = setTimeout(() => { st.timers = st.timers.filter((x) => x !== id); fn(); }, ms); st.timers.push(id); return id; }
+
+  function feather(st, nick, out, me) {
+    const fx = st.el.fx;
+    while (fx.querySelectorAll('.lk-fe').length > 9) fx.querySelector('.lk-fe').remove();
+    const [x, y] = st.tip || [st.g.ox, st.g.oy];
+    const d = document.createElement('div');
+    d.className = 'lk-fe' + (me ? ' me' : '');
+    d.style.left = r1(Math.min(x - 10 + (Math.random() - 0.5) * 30, st.g.W - 130)) + 'px';
+    d.style.top = r1(y - 10) + 'px';
+    d.style.setProperty('--fall', r1(Math.min(st.g.H * 0.55, st.g.H - y + 20)) + 'px');
+    d.innerHTML = '<i>' + FEATHER + '</i><span>' + st.ctx.esc(nick) + ' <b>×' + fmtM(out) + '</b></span>';
+    fx.appendChild(d);
+    timer(st, () => d.remove(), 6200);
+  }
+
+  function pop(st, text, cls, fx, fy) {
+    const d = document.createElement('div');
+    d.className = 'lk-pop ' + cls;
+    d.style.left = r1(fx * 100) + '%'; d.style.top = r1(fy * 100) + '%';
+    d.textContent = text;
+    st.el.fx.appendChild(d);
+    timer(st, () => d.remove(), cls === 'lost' ? 2600 : 1800);
+  }
+
+  function coins(st) {
+    const fx = st.el.fx, [x, y] = st.tip || [st.g.W / 2, st.g.H / 2];
+    for (let i = 0; i < 14; i++) {
+      const c = document.createElement('i');
+      c.className = 'lk-coin';
+      c.style.left = r1(x) + 'px'; c.style.top = r1(y) + 'px';
+      const a = Math.random() * Math.PI * 2, d = 50 + Math.random() * 110;
+      c.style.setProperty('--cx', r1(Math.cos(a) * d) + 'px');
+      c.style.setProperty('--cy', r1(Math.sin(a) * d * 0.7 - 40) + 'px');
+      c.style.animationDelay = Math.round(Math.random() * 120) + 'ms';
+      fx.appendChild(c);
+      timer(st, () => c.remove(), 1400);
+    }
+  }
+
+  function outs(st, s, quiet) {
+    const me = st.ctx.me && st.ctx.me.nick;
+    (s.bets || []).forEach((b) => {
+      if (!b.out) return;
+      const id = s.round + ':' + b.nick;
+      if (st.seen.has(id)) return;
+      st.seen.add(id);
+      if (quiet) return;
+      feather(st, b.nick, b.out, b.nick === me);
+      if (b.nick === me) {
+        st.cashing = null;
+        const win = b.win != null ? b.win : Math.floor(b.amount * b.out);
+        pop(st, '+' + fmtN(win) + ' 🏺', 'win', 0.5, 0.6);
+        coins(st);
+        ping(st, [1320, 1760, 2093], 0.7, 0.16);
+      } else ping(st, [1568], 0.35, 0.06);
+    });
+  }
+
+  function miles(st, m) {
+    let n = st.miles || 0;
+    const was = n;
+    while (n < MILES.length && m >= MILES[n][0]) n++;
+    if (n === was) return;
+    st.miles = n;
+    if (m > MILES[n - 1][0] * 1.25) return;     // підсіли посеред польоту — старі віхи не кричимо
+    const el = st.el.mile;
+    el.textContent = MILES[n - 1][1];
+    el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+    ping(st, [880 * Math.pow(1.12, n)], 0.25, 0.05);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // ⓘ — правила й перевірка
+  // ---------------------------------------------------------------------------------------------
+  function info(root, st, open) {
+    const el = st.el.info;
+    if (!open) { el.hidden = true; return; }
+    const s = cur(st) || {}, p = st.prev, c = st.ctx, L = limits(st);
+    el.innerHTML = '<div class="lk-card"><button type="button" class="lk-x0" aria-label="Закрити">✕</button>'
+      + '<h3>Лелека — як грати</h3><ul>'
+      + '<li>Глек веде стіл сам: <b>8 с ставки</b> → політ → «шубовсть» 2 с → пауза 3 с. Підсісти можна будь-коли; встав — ставка летить далі (автозабір спрацює й без тебе).</li>'
+      + '<li>Під час ставок поставив ' + L.min + '–' + (L.max > 0 ? fmtN(L.max) : '∞') + ' 🏺 (скасувати — лише поки приймають ставки).</li>'
+      + '<li>Лелека злітає, множник росте: <b>m = e<sup>0,075·t</sup></b> (×2 ≈ 9 с, ×10 ≈ 31 с, ×100 ≈ 61 с).</li>'
+      + '<li><b>Забрати</b> будь-коли до падіння: виграш = ставка × множник у мить, коли сервер отримав натиск. Пробіл чи A на паді — теж.</li>'
+      + '<li><b>Автозабрати на ×X</b> (×1,01 … ×1000) — сервер забере сам рівно на ×X. Міняти можна й посеред польоту.</li>'
+      + '<li>Не встиг до падіння — ставка пролетіла. Перевага дому 4 %: P(падіння ≥ x) = 0,96 / x, стеля ×1000; ≈5 % польотів падають одразу на ×1,00.</li></ul>'
+      + '<h3>Чесно наперед</h3>'
+      + '<p>Точку падіння Глек вирішує на початку раунду й одразу показує її відбиток <code>hash = sha256(seed)</code>. Після падіння — сам <code>seed</code>: перевір, що відбиток збігається, а точка падіння виходить з формули.</p>'
+      + '<p class="lk-f">' + FORMULA + '</p>'
+      + '<div class="lk-kv"><span>зараз</span><b>#' + c.esc(s.round || '—') + '</b><code>' + c.esc(s.hash || '—') + '</code></div>'
+      + (p ? '<div class="lk-kv"><span>минулий</span><b>#' + c.esc(p.round) + ' · ×' + fmtM(p.crash) + '</b><code>hash ' + c.esc(p.hash || '—') + '</code><code>seed ' + c.esc(p.seed || '—') + '</code></div>'
+        + '<button type="button" class="lk-chk">Перевірити минулий політ</button><div class="lk-res"></div>' : '<p class="muted">Минулого польоту ще не бачили — перевірка з’явиться після першого падіння.</p>')
+      + '</div>';
+    el.hidden = false;
+  }
+
+  // Формула — docs/games/specs/lelka.md §2 (сервер — LelkaCore.cs), точно на BigInt.
+  const FORMULA = '<code>hash = sha256(seed)</code> — SHA-256 від UTF-8 байтів рядка seed (64 hex). Точка падіння: '
+    + '<code>n</code> = ціле з перших 13 hex-символів seed (52 біти); <code>cents = ⌊96 · 2<sup>52</sup> / (2<sup>52</sup> − n)⌋</code>, '
+    + 'обмежене 100 … 100000; <code>crash = cents / 100</code>. Звідси P(падіння ≥ x) = 0,96 / x: за будь-якого автозабору гравцям вертається 96 %.';
+  async function crashOf(seed) {
+    const n = BigInt('0x' + String(seed).slice(0, 13)), two52 = 1n << 52n;
+    let cents = 96n * two52 / (two52 - n);
+    if (cents < 100n) cents = 100n;
+    if (cents > 100000n) cents = 100000n;
+    return Number(cents) / 100;
+  }
+  async function sha256(s) {
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+  async function verify(root, st) {
+    const p = st.prev, out = st.el.info.querySelector('.lk-res');
+    if (!p || !out) return;
+    if (!window.crypto || !crypto.subtle) { out.textContent = 'Цей браузер не рахує sha256 (потрібен https)'; return; }
+    try {
+      const h = await sha256(p.seed);
+      const okH = h === String(p.hash).toLowerCase();
+      const c = await crashOf(String(p.seed).toLowerCase());
+      const okC = Math.abs(c - p.crash) < 0.005;
+      out.innerHTML = (okH ? '✅ відбиток збігся' : '❌ відбиток НЕ збігся') + '<br>' + (okC ? '✅' : '⚠') + ' за формулою ×' + fmtM(c) + ', на столі ×' + fmtM(p.crash);
+    } catch (e) { out.textContent = 'Не вийшло перевірити: ' + e.message; }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Головний цикл
+  // ---------------------------------------------------------------------------------------------
+  function sync(root, st) {
+    const s = cur(st);
+    if (!s || !st.g) return;
+    // стіл перервано (перезапуск без чистого знімка): сервер такий стіл спільним не вважає й відпускає з нього —
+    // кнопка веде за живий (CreateRoom('lelka')); старий вид не крутимо
+    const dead = st.ctx.room && st.ctx.room.status === 'finished';
+    st.dead = !!dead;
+    st.el.box.classList.toggle('dead', !!dead);
+    if (dead) {
+      stopLoop(st); ticker(st, false); toneStop(st);
+      st.phase = null;
+      st.el.cap.textContent = 'стіл зупинився';
+      st.el.m.textContent = '×' + fmtM(s.crash || s.m || 1);
+      st.el.sub.textContent = 'Глек перезапускався — сідай за живий стіл';
+      st.el.go.disabled = !!st.busy; st.el.gt.textContent = 'Сісти за живий стіл'; st.el.gs.textContent = 'цей стіл уже не літає'; st.el.go._m = 'dead'; st.el.go.className = 'lk-go M-bet';
+      return;
+    }
+    syncClock(st, s);
+    if (s.phase === 'bets' && isFinite(tms(s.until)) && st.betRound !== s.round) {
+      st.betRound = s.round;
+      st.betMs = 8000;
+    }
+    if (s.round !== st.round) {
+      if (st.round != null) st.seen.clear();
+      st.round = s.round;
+      if (st.phase === s.phase && s.phase === 'bets') enter(root, st, s, 'pause');
+    }
+    if (s.seed && s.crash && (!st.prev || st.prev.round !== s.round)) st.prev = { round: s.round, hash: s.hash, seed: s.seed, crash: s.crash };
+    const first = st.phase == null;
+    if (s.phase !== st.phase) {
+      const prev = st.phase;
+      st.phase = s.phase;
+      enter(root, st, s, first ? null : prev);
+    }
+    outs(st, s, first);
+    paintHist(st, s);
+    paintBets(st, s);
+    paintPanel(st, s);
+    const live = s.phase === 'flight' && st.shown !== false;
+    if (!live) { big(st, s, localM(st, s)); if (s.phase !== 'flight') stopLoop(st); }
+    else startLoop(st);
+    ticker(st, s.phase === 'bets' || s.phase === 'pause' || s.phase === 'crash');
+  }
+
+  function drawStatic(st, s) {
+    if (s.phase === 'flight') return;
+    if (s.phase === 'bets') draw(st, 1, false, s);
+  }
+
+  function startLoop(st) {
+    if (st.live) return;
+    st.live = true;
+    if (st.sound) toneStart(st);
+    const step = () => {
+      st.raf = 0;
+      if (!st.live) return;
+      const s = cur(st);
+      if (!s || s.phase !== 'flight') { st.live = false; return; }
+      const m = localM(st, s);
+      draw(st, m, true, s);
+      big(st, s, m);
+      paintBtn(st, s, m);
+      miles(st, m);
+      toneSet(st, m);
+      st.raf = requestAnimationFrame(step);
+    };
+    st.raf = requestAnimationFrame(step);
+  }
+  function stopLoop(st) {
+    st.live = false;
+    if (st.raf) cancelAnimationFrame(st.raf);
+    st.raf = 0;
+  }
+  function ticker(st, on) {
+    if (on && !st.iv) {
+      st.iv = setInterval(() => {
+        const s = cur(st);
+        if (!s) return;
+        big(st, s, 1);
+        paintBtn(st, s, 1);
+        const left = tms(s.until) - snow(st);
+        if (s.phase === 'bets' && left > 0 && left < 3200) {
+          const sec = Math.ceil(left / 1000);
+          if (st.tickSec !== sec) { st.tickSec = sec; ping(st, [660], 0.08, 0.05); }
+        }
+        const card = st.root && st.root.closest('.gtable'), se = card && card.querySelector('.gstatus'), t = status(st.ctx);
+        if (se && t && se.textContent !== t) se.textContent = t;
+      }, 250);
+    } else if (!on && st.iv) { clearInterval(st.iv); st.iv = 0; }
+  }
+
+  function layout(root, st) {
+    const w = root.getBoundingClientRect().width || window.innerWidth;
+    const lay = w >= 760 ? 'wide' : 'vert';
+    if (lay !== st.layout) {
+      st.layout = lay;
+      st.el.box.classList.toggle('L-wide', lay === 'wide');
+      st.el.box.classList.toggle('L-vert', lay !== 'wide');
+    }
+    // широко — гра на всю висоту ігрової зони: сцена росте, панель компактна знизу, ставки праворуч на всю висоту
+    if (lay === 'wide') {
+      let f = null;
+      try { f = HGames.ui && HGames.ui.fit ? HGames.ui.fit() : null; } catch (e) { f = null; }
+      const top = root.getBoundingClientRect().top + (window.scrollY || 0);
+      const hh = Math.round(clamp((f ? f.h - f.dock : window.innerHeight) - top - 14, 560, 1150));
+      if (st.boxH !== hh) { st.boxH = hh; st.el.box.style.height = hh + 'px'; }
+    } else if (st.boxH) { st.boxH = 0; st.el.box.style.height = ''; }
+    if (build(root, st)) {
+      st.phase = null; st.betSig = null;
+      sync(root, st);
+      const s = cur(st);
+      if (s && s.phase === 'flight') draw(st, localM(st, s), true, s);
+    }
+  }
+
+  function status(ctx) {
+    const st = ctx && ctx._lk, s = st && cur(st);
+    if (!s) return 'Лелека';
+    const left = Math.max(0, tms(s.until) - snow(st));
+    if (s.phase === 'bets') return 'Ставки: ще ' + (isFinite(left) ? Math.ceil(left / 1000) : '…') + ' с';
+    if (s.phase === 'flight') return 'Летить ×' + fmtM(localM(st, s));
+    return 'Пролетіли на ×' + fmtM(s.crash || s.m || 1);
+  }
+
+  function setup(root, ctx) {
+    let st = root._lk;
+    if (!st) {
+      st = root._lk = { root, timers: [], offs: [], seen: new Set(), sound: store.get('snd', false), shown: ctx.shown !== false };
+      ctx._lk = st;
+      st.ctx = ctx;
+      skeleton(root, st);
+      st.el.snd.textContent = st.sound ? '🔊' : '🔈';
+      if (window.ResizeObserver) {
+        st.ro = new ResizeObserver(() => { clearTimeout(st.roT); st.roT = setTimeout(() => layout(root, st), 80); });
+        st.ro.observe(root);
+      }
+      try { if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, () => layout(root, st)); } catch (e) { /* старий каркас */ }
+    }
+    st.ctx = ctx; ctx._lk = st;
+    return st;
+  }
+
+  HGames.register({
+    id: 'lelka',
+    added: '2026-10-09',
+    icon: ICON,
+    seatNames: (i) => 'місце ' + (i + 1),
+    pad: {
+      a: 'Space',
+      hint: '{a} поставити / забрати',
+      when: (ctx) => ctx.mine,
+    },
+    mount(root, ctx) {
+      const st = setup(root, ctx);
+      layout(root, st);
+      sync(root, st);
+    },
+    update(root, ctx) {
+      const st = setup(root, ctx);
+      if (!st.g) layout(root, st);
+      sync(root, st);
+    },
+    frame(root, ctx) {
+      const st = root._lk;
+      if (!st || !st.g) return;
+      st.ctx = ctx;
+      sync(root, st);
+    },
+    visible(root, ctx, on) {
+      const st = root._lk;
+      if (!st) return;
+      st.shown = on;
+      if (on) layout(root, st);
+      if (!on) stopLoop(st);
+      sync(root, st);
+    },
+    onKey(e, ctx) {
+      if (e.repeat || !(e.code === 'Space' || e.key === ' ')) return false;
+      const st = ctx._lk;
+      if (!st) return false;
+      primary(st.root, st);
+      return true;
+    },
+    status,
+    unmount(root) {
+      const st = root._lk;
+      if (!st) return;
+      stopLoop(st);
+      ticker(st, false);
+      st.timers.forEach(clearTimeout); st.timers = [];
+      clearTimeout(st.roT);
+      if (st.ro) st.ro.disconnect();
+      try { if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, null); } catch (e) { /* старий каркас */ }
+      st.offs.forEach((f) => f()); st.offs = [];
+      toneStop(st);
+      if (st.ac) { try { st.ac.close(); } catch (e) { /* уже закритий */ } }
+      if (st.ctx) st.ctx._lk = null;
+      root._lk = null;
+    },
+    // для перевірок: формула й форматування без DOM
+    qa: { fmtM, crashOf, sha256, localM },
+  });
+})();

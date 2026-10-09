@@ -27,7 +27,9 @@ public sealed record CatalogGame(
     /// <summary>Гри нема в каталозі лобі (<see cref="IUnlistedGame"/>, стенди): стіл відкривають посиланням <c>#games/new/&lt;id&gt;</c>.</summary>
     bool Unlisted = false,
     /// <summary>Гру вимкнено в конфігу (<see cref="GamesOptions"/>): у лобі її нема, а назву балачки й статистика ще знають.</summary>
-    bool Off = false);
+    bool Off = false,
+    /// <summary>Один спільний стіл на сайт (<see cref="ISharedTable"/>): «Сісти» веде за наявний, якщо він є.</summary>
+    bool Shared = false);
 
 /// <summary>
 /// Відповідь каталогу: ігри, дозволені ставки й відбитки файлів модулів (<c>"games/bomber.js" → "3f9a0c…"</c>, Front.cs) —
@@ -73,6 +75,9 @@ public sealed class Registry
 
     public GameInfo? Info(string id) => _byId.TryGetValue(id, out var g) ? g.Info : null;
 
+    /// <summary>Гра тримає один спільний стіл на сайт (<see cref="ISharedTable"/>).</summary>
+    public bool Shared(string id) => _byId.TryGetValue(id, out var g) && typeof(ISharedTable).IsAssignableFrom(g.Type);
+
     /// <summary>Новий екземпляр гри під нову кімнату; null — такої гри нема.</summary>
     public Game? Create(string id) =>
         _byId.TryGetValue(id, out var g) ? (Game)Activator.CreateInstance(g.Type)! : null;
@@ -85,7 +90,8 @@ public sealed class Registry
         File.Exists(Paths.Resolve($"web/games/{i.Module}.css")),
         typeof(IDailyGame).IsAssignableFrom(type),
         i.Module,
-        typeof(IUnlistedGame).IsAssignableFrom(type));
+        typeof(IUnlistedGame).IsAssignableFrom(type),
+        Shared: typeof(ISharedTable).IsAssignableFrom(type));
 
     /// <summary>«WhenFull» → «whenFull», «Board» → «board»: на дроті camelCase, як і решта JSON.</summary>
     static string Camel(string s) => char.ToLowerInvariant(s[0]) + s[1..];

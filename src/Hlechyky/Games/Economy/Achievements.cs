@@ -224,6 +224,9 @@ public static class AchievementCatalog
         new("slot-epic",     "Епічний занос",   "Слоти: виграш від ×50 ставки за один оберт", "🌋", 25),
         new("slot-jackpot",  "Розбив Скарбничку", "Слоти: зірвав Скарбничку Глека", "🐷", 40),
         new("slot-vorozhka", "Ворожчин улюбленець", "Однорукий Глек: Ворожка вгадала п'ять разів поспіль", "🔮", 25),
+        // Лелека — гра просить сама (specs/lelka.md §5), лише тим, хто в мить падіння сидить
+        new("lelka-10",          "Вище хмар",         "Лелека: забрав на ×10 і вище", "🪶", 20),
+        new("lelka-brave",       "На волосинку",      "Лелека: забрав щонайбільше за 0,1 до падіння", "🫣", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

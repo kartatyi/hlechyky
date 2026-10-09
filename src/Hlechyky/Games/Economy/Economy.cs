@@ -239,6 +239,10 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "slot-bet" => $"{names.Title(tail)} — ставка",
             "slot-win" => $"{names.Title(tail)} — виграш",
             "slot-jackpot" => "Скарбничка Глека!",
+            // Лелека (docs/games/specs/lelka.md §4)
+            "lelka-bet" => "Лелека — ставка",
+            "lelka-win" => "Лелека — забрав",
+            "lelka-back" => "Лелека — ставку повернуто",
             // куплено за гривні (ShardShop.cs): хвіст — номер замовлення
             "buy" => "куплено за гривні",
             "buy-gift" => "подарунок — куплені черепки",
