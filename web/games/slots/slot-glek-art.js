@@ -407,7 +407,16 @@
     return '<path d="' + d + '" stroke="#5a1028" stroke-width="1.5" stroke-linecap="round" fill="none"/>';
   }
   const SCARF = 'url(#sg-ternova)';
-  const fanCard = (rot) => '<g transform="rotate(' + rot + ' 80 182)"><path d="' + rr(70, 128, 20, 29, 3) + '" fill="url(#sg-cardback)" stroke="' + I + '" stroke-width="1.7"/><path d="' + rr(73, 131, 14, 23, 2) + '" fill="none" stroke="#f5c33b" stroke-width="1.1"/><path d="M80 137l3.6 5.5-3.6 5.5-3.6-5.5Z" fill="#f5c33b"/></g>';
+  const diamondD = 'M35 20L60 50L35 80L10 50Z';
+  const clubD = 'M35 18A13 13 0 0 1 46 39A13 13 0 1 1 40 61L44 80H26L30 61A13 13 0 1 1 24 39A13 13 0 0 1 35 18Z';
+  /* карта лицем: біле поле, велика масть угорі (низ тримають руки), хрестик-вишивка в масті */
+  const faceCard = (rot, suit) => {
+    const red = suit === 'h' || suit === 'd', d = { h: heartD, d: diamondD, s: spadeD, c: clubD }[suit];
+    // масть — у лівій верхній частині: її не закриває наступна карта віяла
+    return '<g transform="rotate(' + rot + ' 80 156)"><path d="' + rr(67.5, 101, 28, 47, 3.6) + '" fill="' + I + '" opacity=".4"/><path d="' + rr(66, 99, 28, 47, 3.6) + '" fill="url(#sg-card)" stroke="' + I + '" stroke-width="2.4"/>' +
+      '<path transform="translate(75 113) scale(.32) translate(-35 -50)" d="' + d + '" fill="' + (red ? 'url(#sg-red)' : 'url(#sg-spade)') + '" stroke="' + I + '" stroke-width="5" stroke-linejoin="round"/>' +
+      stitch(72.3, 110.6, 1.8, ['.x.', 'x.x', '.x.'], { x: red ? '#fff6e0' : '#e3122a' }) + '</g>';
+  };
   const fortune = '<svg viewBox="0 0 160 160" class="sg sg-fortune" aria-hidden="true">' +
     '<ellipse cx="80" cy="156" rx="64" ry="6" fill="url(#sg-shadow)"/>' +
     '<g class="a-sway">' +
@@ -421,9 +430,9 @@
     stitch(24, 136, 3, ['.x.x.', 'xoxox', '.x.x.', 'xoxox', '.x.x.'], { x: '#d81b2c', o: I }) +
     stitch(121, 136, 3, ['.x.x.', 'xoxox', '.x.x.', 'xoxox', '.x.x.'], { x: '#d81b2c', o: I }) +
     // керсетка
-    '<path d="M42 160C43 140 50 126 64 117L72 160Z" fill="url(#sg-vest)" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
-    '<path d="M118 160C117 140 110 126 96 117L88 160Z" fill="url(#sg-vest)" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
-    '<path d="M47 158C48 142 54 130 64 122M113 158C112 142 106 130 96 122" fill="none" stroke="#f5c33b" stroke-width="1.4" stroke-dasharray="2.4 2" opacity=".85"/>' +
+    '<path d="M34 160C35 138 46 122 64 115L74 160Z" fill="url(#sg-vest)" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
+    '<path d="M126 160C125 138 114 122 96 115L86 160Z" fill="url(#sg-vest)" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
+    '<path d="M39 158C40 140 49 128 64 120M121 158C120 140 111 128 96 120" fill="none" stroke="#f5c33b" stroke-width="1.4" stroke-dasharray="2.4 2" opacity=".85"/>' +
     // комір сорочки з вишивкою
     stitch(68.5, 112.5, 2.6, ['xoxoxoxox'], { x: '#d81b2c', o: I }) +
     // коралі, дукач
@@ -461,10 +470,12 @@
     trRose(67, 124, 3.2, 0) + trRose(94, 123, 3.2, 30) +
     '<ellipse cx="80" cy="111" rx="6.5" ry="5.2" fill="#6a2448" stroke="' + I + '" stroke-width="2"/><path d="M76 109q4-2 8 0" fill="none" stroke="#b0507a" stroke-width="1.4" stroke-linecap="round"/>' +
     '</g>' +
-    fanCard(-20) + fanCard(0) + fanCard(20) +
-    '<ellipse cx="67" cy="153" rx="9" ry="7.2" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.2"/>' +
-    '<ellipse cx="93" cy="153" rx="9" ry="7.2" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.2"/>' +
-    '<path d="M63 149q4-2 8 0M89 149q4-2 8 0" fill="none" stroke="#b06a4a" stroke-width="1.2" stroke-linecap="round"/>' +
+    faceCard(-40, 'h') + faceCard(-20, 's') + faceCard(0, 'd') + faceCard(20, 'c') + faceCard(40, 'h') +
+    '<ellipse cx="70" cy="148" rx="9.5" ry="7.6" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.2"/>' +
+    '<ellipse cx="90" cy="148" rx="9.5" ry="7.6" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="2.2"/>' +
+    '<path d="M65 144q4-2 8 0M87 144q4-2 8 0" fill="none" stroke="#b06a4a" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<ellipse cx="76" cy="141" rx="3.2" ry="4.4" transform="rotate(-20 76 141)" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="1.6"/>' +
+    '<ellipse cx="84" cy="141" rx="3.2" ry="4.4" transform="rotate(20 84 141)" fill="url(#sg-skin)" stroke="' + I + '" stroke-width="1.6"/>' +
     '</g></svg>';
 
   /* ---------- сцена: ярмарок увечері (1600×900) ---------- */
