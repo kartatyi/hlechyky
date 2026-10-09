@@ -1075,6 +1075,7 @@
     const el = st.el.info;
     if (!open) { el.hidden = true; return; }
     const s = cur(st) || {}, p = st.prev, c = st.ctx, L = limits(st);
+    st.infoP = p;   // «Перевірити» звіряє саме той політ, що намальований на панелі, а не новіший
     el.innerHTML = '<div class="lk-card"><button type="button" class="lk-x0" aria-label="Закрити">✕</button>'
       + '<h3>Лелека — як грати</h3><ul>'
       + '<li>Глек веде стіл сам: <b>8 с ставки</b> → політ → «шубовсть» 2 с → пауза 3 с. Підсісти можна будь-коли; встав — ставка летить далі (автозабір спрацює й без тебе).</li>'
@@ -1109,7 +1110,7 @@
     return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
   async function verify(root, st) {
-    const p = st.prev, out = st.el.info.querySelector('.lk-res');
+    const p = st.infoP || st.prev, out = st.el.info.querySelector('.lk-res');
     if (!p || !out) return;
     if (!window.crypto || !crypto.subtle) { out.textContent = 'Цей браузер не рахує sha256 (потрібен https)'; return; }
     try {

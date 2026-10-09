@@ -46,6 +46,7 @@
 
   // ---------- тихий гаманець ----------
   function quiet(on) { if (window.HGames && HGames.quietWallet) HGames.quietWallet('slot-', on); }
+  function release() { if (window.HGames && HGames.releaseWallet) HGames.releaseWallet(); }
 
   // ---------- Скарбничка й заноси (тікер у автоматі) ----------
   let feedT = 0;
@@ -112,7 +113,7 @@
         const g0 = (st.ctx.view && st.ctx.view.gamble) || {};
         return new Promise((res) => {
           let t = 0;
-          const done = (g) => { clearTimeout(t); st.waitG = null; res(g); };
+          const done = (g) => { clearTimeout(t); st.waitG = null; res(g); setTimeout(release, 1200); };   // карта відкрилась — тоді й шапка
           t = setTimeout(() => done({ open: g0.open !== false }), 9000);
           st.waitG = { n: g0.n || 0, done };
           st.ctx.act('gamble', { pick }).then((r) => {
@@ -178,7 +179,7 @@
     st.inst.ctx.on('resize', place);
     // Ворожка лишилась відкритою (перезавантаження посеред неї) — кнопка знову з тією сумою
     if (v.gamble && v.gamble.open && machine._resumeGamble) machine._resumeGamble(st.inst.ctx, v.gamble);
-    st.inst.ctx.on('spinEnd', () => { const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
+    st.inst.ctx.on('spinEnd', () => { release(); const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
     fitH(st);
     feedOn();
   }

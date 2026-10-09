@@ -227,6 +227,8 @@
 .lk-res { margin-top: 6px; font-weight: 700; }
 
 @media (max-width: 420px) {
+  /* телефон: кнопка ставки мусить влізти над нижніми вкладками без прокрутки (рецензія 09.10: 375×812 — була під ними) */
+  .lk-stage { height: clamp(200px, 30vh, 330px); }
   .lk-big { top: 21%; }
   .lk-mile { top: 44%; }
   .lk-hist { right: 84px; }

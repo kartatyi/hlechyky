@@ -1393,6 +1393,12 @@
   }
   /// Гаманець живе в шапці сайту (#hdrWallet), а не в лобі: черепки витрачають і поза іграми.
   /// Поки балансу нема — малюємо «—», а не ховаємо рядок: інакше шапка стрибала б на кожному вході.
+  let walletHold = 0;
+  function releaseWallet() {
+    if (walletHold) { clearTimeout(walletHold); walletHold = 0; }
+    paintWallet();
+  }
+
   function paintWallet() {
     const el = document.querySelector('#hdrWallet b');
     if (el) el.textContent = wallet == null ? '—' : String(wallet);
@@ -3216,8 +3222,11 @@
     /// Тихий гаманець: поки модуль просить (on), тости гаманця з причиною на prefix не вилазять (шапка оновлюється).
     quietWallet(prefix, on) {
       const n = (quietW.get(prefix) || 0) + (on ? 1 : -1);
-      if (n > 0) quietW.set(prefix, n); else quietW.delete(prefix);
+      if (n > 0) quietW.set(prefix, n); else { quietW.delete(prefix); releaseWallet(); }
     },
+
+    /// Притриманий виграш (тихий гаманець) — у шапку зараз: автомат доказав оберт.
+    releaseWallet() { releaseWallet(); },
 
     register(mod) {
       if (!mod || !mod.id) { console.warn('[games] register без id'); return; }
@@ -3361,7 +3370,11 @@
       c.on('wallet', (w) => {
         if (!w) return;
         wallet = w.balance;
-        paintWallet();
+        // Виграш автомата шапка показує, коли барабани спинились (releaseWallet зі слота), а не за 0,3 с після «крутити» —
+        // інакше результат видно наперед. Списання ставки — одразу.
+        const hold = w.delta > 0 && [...quietW.keys()].some((p) => String(w.reason || '').startsWith(p));
+        if (hold) { clearTimeout(walletHold); walletHold = setTimeout(releaseWallet, 20000); }
+        else if (!walletHold) paintWallet();
         // сервер уже присилає готовий рядок «+5 черепків: перемога — Хрестики-нолики»;
         // своє число ліпимо лише тоді, коли тексту нема, інакше виходило «+5 🏺 +5 черепків: …».
         // Прихід — «Лови +5 …» (якщо сервер сам уже не сказав «Лови»), витрата — як є.
