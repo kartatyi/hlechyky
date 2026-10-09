@@ -4589,6 +4589,8 @@
   // 🏺 Купити черепки за гривні (web/buy.js): вікно з пакетами; продавцю — «чекають підтвердження»
   if (window.HBuy) HBuy.init({ esc, api, toast, busy, me, askNick, dayTime, online: () => (state && state.online) || [] });
   if (window.HBets) HBets.init({ esc, api, toast, busy, me, go, askNick });
+  // ✨ «Що нового на сайті» (web/sitenews.js): раз на реліз тим, хто вже бував; ready() — після /api/me
+  if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🛡 Модерація Балачок (web/moder.js): 📌 плашка, поле вводу під 🔇, кнопки адміна, вкладка в Бібліотеці
@@ -4633,6 +4635,7 @@
     if ((!me.games && parseHash().head === 'games') || (!me.padel && parseHash().head === 'padel')) applyRoute();
     me.night = m.night || null;
     paintNight();
+    if (window.HSiteNews) HSiteNews.ready();
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
     $('fbTab').hidden = me.role !== 'admin';

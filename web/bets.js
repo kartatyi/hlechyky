@@ -950,7 +950,7 @@
     bare: true,       // свої секції-панелі, як у лобі
     visible: eventsOn,
     tile: {
-      group: 'azart', theme: 'bets', icon: '🎲', title: 'Ставки на події',
+      group: 'azart', theme: 'bets', icon: '🎲', title: 'Ставки на події', added: '2026-10-09',
       hint: 'Хто виграє, що станеться: Глек дає кеф, ставиш черепки. Події від адміна й з Polymarket',
       live: tileLive,
     },

@@ -1865,8 +1865,11 @@
       let live = '';
       try { live = e.p.tile.live ? e.p.tile.live() || '' : ''; } catch (err) { console.warn('[games] плитка ' + e.p.id, err); }
       const href = '#games/x:' + e.p.id;
-      return '<div class="gtile gt-link">'
-        + '<div class="gt-head"><span class="gemo">' + (e.p.tile.icon || e.p.icon || '📋') + '</span><b>' + esc(e.title) + '</b></div>'
+      // Панель — не гра, «грав» про неї не знаємо: «🆕» усім два тижні від tile.added.
+      const fresh = !!e.p.tile.added && daysSince(e.p.tile.added) <= NEW_DAYS;
+      return '<div class="gtile gt-link' + (fresh ? ' fresh' : '') + '">'
+        + '<div class="gt-head"><span class="gemo">' + (e.p.tile.icon || e.p.icon || '📋') + '</span><b>' + esc(e.title) + '</b>'
+        + (fresh ? '<span class="gnew" title="Нове на сайті — глянь">🆕 нове</span>' : '') + '</div>'
         + '<div class="gt-hint muted small"><span>' + esc(e.hint) + '</span></div>'
         + '<div class="gt-btns"><span class="gt-pl muted small">' + live + '</span>'
         + '<button class="primary" data-go="' + esc(href) + '">Відкрити</button></div></div>';
@@ -3255,6 +3258,22 @@
 
     /// Панель змінила свою плитку в каталозі (з'явилась, зникла, нове число) — лобі перемальовується, якщо його видно.
     panelTileChanged() { if (shown && view.kind === 'lobby' && root && root.querySelector('.gtiles')) renderView(); },
+
+    /// Лобі на розділі (чип «🎰 Азарт» тощо) — з «Що нового на сайті» (web/sitenews.js).
+    openSection(id) {
+      if (!GROUPS.some((g) => g.id === id)) return;
+      filter = id;
+      theme = '';
+      try { localStorage.setItem('gamesFilter', filter); localStorage.setItem('gamesTheme', theme); } catch { /* приватне вікно */ }
+      if (shown && view.kind === 'lobby' && root) renderView();
+      go('#games');
+      // Каталог нижче за «Сьогодні» й живі столи — гортаємо до нього, а то розділ відкрився, а видно не його.
+      setTimeout(() => {
+        const chip = root && root.querySelector('[data-filter="' + id + '"]');
+        const sec = chip && chip.closest('section');
+        if (sec) sec.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }, 250);
+    },
 
     /// Новий знімок турніру (tournament.js): смужка відліку на столі щойно дограної гри.
     tournamentChanged() { for (const id in cards) refreshCard(id); },
