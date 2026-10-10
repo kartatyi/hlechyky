@@ -63,6 +63,7 @@ public static class GamesSetup
         Impl.RouletteSetup.AddRoulette(services);   // Рулетка: каса (виплати, відновлення)
         Impl.SlotsSetup.AddSlots(services);         // Слоти: каса-Скарбничка, заноси, Slots:* (specs/slots.md)
         Impl.LelkaSetup.AddLelka(services);         // Лелека: налаштування Lelka:* і каса
+        Impl.BlackjackSetup.AddBlackjack(services); // Двадцять одно: налаштування Blackjack:* і каса (specs/blackjack.md)
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         return services;
     }

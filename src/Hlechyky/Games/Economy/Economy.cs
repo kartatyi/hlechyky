@@ -243,6 +243,12 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "lelka-bet" => "Лелека — ставка",
             "lelka-win" => "Лелека — забрав",
             "lelka-back" => "Лелека — ставку повернуто",
+            // Двадцять одно (docs/games/specs/blackjack.md §3.2): хвіст — blackjack чи blackjack-solo, підпис однаковий
+            "blackjack-bet" => "Двадцять одно — ставка",
+            "blackjack-double" => "Двадцять одно — подвоєння",
+            "blackjack-split" => "Двадцять одно — спліт",
+            "blackjack-pay" => "Двадцять одно — виплата",
+            "blackjack-back" => "Двадцять одно — ставку повернуто",
             // куплено за гривні (ShardShop.cs): хвіст — номер замовлення
             "buy" => "куплено за гривні",
             "buy-gift" => "подарунок — куплені черепки",
