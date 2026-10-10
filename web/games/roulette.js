@@ -1,15 +1,17 @@
 /*
-  Рулетка — європейське колесо (0–36, одне зеро) і Дядько Глек за ним. Дві гри, один модуль:
-  `roulette` (спільний стіл, Глек крутить за розкладом) і `roulette-solo` (своє колесо, «Крутити»).
+  Рулетка — європейське колесо (0–36, одне зеро) або американське «🇺🇸 з 00» (0, 00, 1–36) і Дядько Глек за ним.
+  Дві гри, один модуль: `roulette` (спільний стіл, Глек крутить за розкладом; колесо — опція столу) і `roulette-solo`
+  (своє колесо, «Крутити»; колесо — перемикач, дія `wheel`). 00 на дроті — число 37 у `n`, у ключах полів — «00».
   Правила, гроші й число — на сервері (Impl/Roulette*.cs); тут лише стіл, фішки й наміри.
   Форма виду й дій — docs/games/specs/roulette.md §5–§6, розкладка й анімації — §8.
 
-  Вид: { mode, phase, until, leftMs, phaseMs, spin: { no, n, c, until, leftMs, ms } | null, history: [{ n, c }],
+  Вид: { mode, wheel: 'eu'|'us', phase, until, leftMs, phaseMs, spin: { no, n, c, until, leftMs, ms } | null, history: [{ n, c }],
          players: [{ nick, seat, color, here, mine, total, bets: [{ spot, amount }] }], onTable,
          last: { no, n, c, staked, paid, big, results: [{ nick, color, staked, paid, net, hits }] } | null,
-         glek: { mood, say, seq }, me: { wallet, onTable, free, canUndo, canRepeat, repeatCost, canDouble, note } | null,
+         glek: { mood, say, seq }, me: { wallet, onTable, free, canUndo, canRepeat, repeatCost, canDouble, canWheel, note } | null,
          closed }
-  Наміри: act('bet', { spot, amount }), act('undo'), act('clear'), act('repeat'), act('double'), act('spin', { again? }).
+  Наміри: act('bet', { spot, amount }), act('undo'), act('clear'), act('repeat'), act('double'), act('spin', { again? }),
+          act('wheel', { wheel: 'eu'|'us' }) (соло).
 
   Час — від приходу виду (leftMs), а не з годинника сервера. Анімації — CSS (transition/keyframes), жодного rAF;
   колесо й кулька крутяться переходом transform і лягають рівно на spin.n (§8.5).
@@ -25,13 +27,20 @@
   // Колесо й поле (те саме, що RouletteCore на сервері)
   // ---------------------------------------------------------------------------------------------
 
+  /// 00 у числах виду (spin.n, history, last.n) — 37; у ключах полів — «00» (RouletteCore.DoubleZero).
+  const ZZ = 37;
   const WHEEL = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14,
     31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+  /// Американське колесо за годинниковою від зеро; 00 навпроти зеро.
+  const WHEEL_US = [0, 28, 9, 26, 30, 11, 7, 20, 32, 17, 5, 22, 34, 15, 3, 24, 36, 13, 1, ZZ, 27, 10, 25, 29, 12, 8,
+    19, 31, 18, 6, 21, 33, 16, 4, 23, 35, 14, 2];
+  const wheelOf = (us) => (us ? WHEEL_US : WHEEL);
+  const stepOf = (us) => 360 / wheelOf(us).length;
   const REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-  const colorOf = (n) => (n === 0 ? 'g' : REDS.has(n) ? 'r' : 'b');
+  const colorOf = (n) => (n === 0 || n === ZZ ? 'g' : REDS.has(n) ? 'r' : 'b');
+  const nameOf = (n) => (n === ZZ ? '00' : String(n));
   const COLOR_WORD = { r: 'червоне', b: 'чорне', g: 'зеро' };
-  const STEP = 360 / 37;
-  const PAYS = { straight: 35, split: 17, street: 11, corner: 8, line: 5, column: 2, dozen: 2,
+  const PAYS = { straight: 35, split: 17, street: 11, corner: 8, five: 6, line: 5, column: 2, dozen: 2,
     red: 1, black: 1, even: 1, odd: 1, low: 1, high: 1 };
   const CHIPS = [1, 5, 25, 100, 500, 'all'];
   /// Зовнішні поля в порядку курсора (§8.7): дюжини, рівні гроші, колонки «2:1».
@@ -69,9 +78,10 @@
   const signed = (n) => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '0');
 
   function typeOf(spot) { return String(spot || '').split(':')[0]; }
+  /// Числа з ключа: «00» → 37 (Number('00') дав би 0).
   function numsOf(spot) {
     const rest = String(spot || '').split(':')[1];
-    return rest ? rest.split('-').map(Number) : [];
+    return rest ? rest.split('-').map((s) => (s === '00' ? ZZ : Number(s))) : [];
   }
 
   /// Які числа покриває поле.
@@ -87,6 +97,7 @@
       case 'odd': return range(1, 36).filter((n) => n % 2 === 1);
       case 'low': return range(1, 18);
       case 'high': return range(19, 36);
+      case 'five': return [0, ZZ, 1, 2, 3];
       default: return numsOf(spot);
     }
   }
@@ -94,11 +105,13 @@
   /// Людська назва поля (як RouletteCore.Label).
   function label(spot) {
     const t = typeOf(spot), ns = numsOf(spot);
+    const dots = () => ns.map(nameOf).join('·');
     switch (t) {
-      case 'straight': return ns[0] === 0 ? 'Зеро' : 'Число ' + ns[0];
-      case 'split': return 'Спліт ' + ns.join('·');
-      case 'street': return 'Вулиця ' + ns.join('·');
-      case 'corner': return spot === 'corner:0-1-2-3' ? 'Перші чотири' : 'Кут ' + ns.join('·');
+      case 'straight': return ns[0] === 0 ? 'Зеро' : ns[0] === ZZ ? 'Подвійне зеро' : 'Число ' + ns[0];
+      case 'split': return 'Спліт ' + dots();
+      case 'street': return 'Вулиця ' + dots();
+      case 'corner': return spot === 'corner:0-1-2-3' ? 'Перші чотири' : 'Кут ' + dots();
+      case 'five': return 'П\'ятірка 0·00·1·2·3';
       case 'line': return 'Лінія ' + ns[0] + '–' + ns[ns.length - 1];
       case 'column': return 'Колонка ' + ns[0];
       case 'dozen': return 'Дюжина ' + (12 * (ns[0] - 1) + 1) + '–' + 12 * ns[0];
@@ -113,8 +126,24 @@
   }
   const tipOf = (spot) => label(spot) + ' — ' + (PAYS[typeOf(spot)] || 0) + ':1';
 
+  /// Зеро-зона американського поля (§13.4): 0 — половина з боку колонки 1, 00 — з боку колонки 3; на межі з рядом
+  /// 1·2·3 під числом 2 — дрібніші точки (2,5 і 3,5 — спліти 0-2 і 00-2, 3 — трійка 0-00-2).
+  const US_ZERO_ROW = [1.5, 3, 4.5];
+  const US_EDGE = { 0: 'five', 1: 'split:0-1', 2: 'street:0-1-2', 2.5: 'split:0-2', 3: 'street:0-00-2', 3.5: 'split:00-2',
+    4: 'street:00-2-3', 5: 'split:00-3' };
+  const US_EDGE_ROW = [0, 1, 2, 2.5, 3, 3.5, 4, 5];
+  const ZERO_PT = {
+    eu: { 'straight:0': { x: 3, y: -1 }, 'corner:0-1-2-3': { x: 0, y: 0 }, 'split:0-1': { x: 1, y: 0 }, 'street:0-1-2': { x: 2, y: 0 },
+      'split:0-2': { x: 3, y: 0 }, 'street:0-2-3': { x: 4, y: 0 }, 'split:0-3': { x: 5, y: 0 } },
+    us: { 'straight:0': { x: 1.5, y: -1 }, 'split:0-00': { x: 3, y: -1 }, 'straight:00': { x: 4.5, y: -1 } },
+  };
+  for (const x of US_EDGE_ROW) ZERO_PT.us[US_EDGE[x]] = { x, y: 0 };
+
   /// Решітка напівкроків §8.3: x 0..5 (колонки), y 0..23 (ряди), y = −1 — клітинка зеро. → ключ поля або null.
-  function spotAt(x, y) {
+  /// Американське поле (us) має в рядах y = −1 і y = 0 свої точки (US_ZERO_ROW, US_EDGE).
+  function spotAt(x, y, us) {
+    if (us && y < 0) return x < 2.25 ? 'straight:0' : x < 3.75 ? 'split:0-00' : 'straight:00';
+    if (us && y === 0) return US_EDGE[x] || null;
     if (y < 0) return 'straight:0';
     if (x < 0 || x > 5 || y > 23) return null;
     if (y === 0) {
@@ -138,27 +167,23 @@
   }
 
   /// Точка решітки внутрішнього поля (де лежить стос); зовнішні — null.
-  function pointOf(spot) {
+  function pointOf(spot, us) {
+    const zero = ZERO_PT[us ? 'us' : 'eu'][spot];
+    if (zero) return zero;
     const t = typeOf(spot), ns = numsOf(spot);
     const cell = (n) => ({ c: (n - 1) % 3, r: Math.floor((n - 1) / 3) });
-    if (!ns.length || ns.some((n) => !(n >= 0 && n <= 36))) return null;
+    if (!ns.length || ns.some((n) => !(n >= 1 && n <= 36))) return null;   // нулі — лише з ZERO_PT свого колеса
     if (t === 'straight') {
-      if (ns[0] === 0) return { x: 3, y: -1 };
       const { c, r } = cell(ns[0]);
       return { x: 2 * c + 1, y: 2 * r + 1 };
     }
     if (t === 'split') {
       const [a, b] = ns;
-      if (a === 0) return { x: 2 * (b - 1) + 1, y: 0 };
       const { c, r } = cell(a);
       return b === a + 1 ? { x: 2 * c + 2, y: 2 * r + 1 } : { x: 2 * c + 1, y: 2 * r + 2 };
     }
-    if (t === 'street') {
-      if (ns[0] === 0) return { x: ns[2] === 2 ? 2 : 4, y: 0 };
-      return { x: 0, y: 2 * cell(ns[0]).r + 1 };
-    }
+    if (t === 'street') return { x: 0, y: 2 * cell(ns[0]).r + 1 };
     if (t === 'corner') {
-      if (ns[0] === 0) return { x: 0, y: 0 };
       const { c, r } = cell(ns[0]);
       return { x: 2 * c + 2, y: 2 * r + 2 };
     }
@@ -174,8 +199,12 @@
   }
 
   /// Дотик у шарі поля → точка решітки. u — вздовж рядів (0..13, перша одиниця — зеро), v — поперек (0..3).
-  function latticeAt(u, v) {
-    if (u < 1) return { x: 3, y: -1 };
+  function latticeAt(u, v, us) {
+    if (u < 1) {
+      if (!us) return { x: 3, y: -1 };
+      // американське: 0 — половина з боку колонки 1, 00 — з боку колонки 3, смужка посередині — спліт 0-00
+      return { x: Math.abs(v - 1.5) < 0.25 ? 3 : v < 1.5 ? 1.5 : 4.5, y: -1 };
+    }
     const c = Math.max(0, Math.min(2, Math.floor(v)));
     const r = Math.max(0, Math.min(11, Math.floor(u - 1)));
     const fc = v - c, fr = u - 1 - r;
@@ -183,15 +212,17 @@
     let y = 2 * r + 1 + (fr < 0.22 ? -1 : fr > 0.78 ? 1 : 0);
     if (x > 5) x = 5;     // зовнішній край третьої колонки — ставки нема, лишаємось на числі
     if (y > 23) y = 23;   // край біля «2:1» — так само
+    // американське: верхній край числа 2 межує і з 0, і з 00 — спліт 0-2, трійка 0-00-2, спліт 00-2
+    if (us && y === 0 && c === 1 && fc >= 0.22 && fc <= 0.78) x = fc < 0.4 ? 2.5 : fc < 0.6 ? 3 : 3.5;
     return { x, y };
   }
 
   /// Кути колеса й кульки для нового кола (§8.5): колесо за годинниковою, кулька проти, кулька над кишенькою n.
-  function landAngles(W0, B0, n, delta) {
-    const i = WHEEL.indexOf(n);
+  function landAngles(W0, B0, n, delta, us) {
+    const i = wheelOf(us).indexOf(n);
     const W1 = W0 + 720 + delta;
     const base = B0 - 1800;
-    const target = mod(W1 + i * STEP, 360);
+    const target = mod(W1 + i * stepOf(us), 360);
     const B1 = base - mod(base - target, 360);
     return { W1, B1, i };
   }
@@ -210,7 +241,7 @@
         ctx: null, el: null, layout: '', W: 0, B: 0, spinNo: null, animNo: null, landAt: 0, landedNo: null,
         timers: [], untilKey: '', untilAt: 0, arcIso: '', pending: [], pid: 0, hover: null, press: null,
         cur: { x: 1, y: 1 }, curOn: false, out: -1, chip, seq: undefined, sayT: 0, snap: null, ghost: null,
-        rakedNo: null, lastNo: undefined, busy: {}, nodes: [], tick: 0, ro: null, sitAsked: 0,
+        rakedNo: null, lastNo: undefined, busy: {}, nodes: [], tick: 0, ro: null, sitAsked: 0, us: false,
       };
     }
     return root._rl;
@@ -257,7 +288,7 @@
       + '<div class="rl-main">'
       + '<div class="rl-closed" hidden>Каса зачинена — спробуй трохи згодом</div>'
       + '<div class="rl-board">'
-      + '<div class="rl-zero g" data-n="0"><span>0</span></div>' + nums + outs
+      + '<div class="rl-zero g" data-n="0"><span>0</span></div><div class="rl-zero g zz" data-n="' + ZZ + '"><span>00</span></div>' + nums + outs
       + '<div class="rl-hit" aria-label="Поле ставок"></div>'
       + '<div class="rl-chips" aria-hidden="true"></div>'
       + '</div>'
@@ -275,7 +306,9 @@
     };
     box.querySelectorAll('[data-n]').forEach((e) => { st.el.cells[e.dataset.n] = e; });
     box.querySelectorAll('.rl-o').forEach((e) => { st.el.outs[e.dataset.spot] = e; });
-    drawWheel(st.el.wheel, ctx);
+    st.us = !!(ctx && ctx.view && ctx.view.wheel === 'us');
+    st.el.board.classList.toggle('us', st.us);
+    drawWheel(st.el.wheel, ctx, st.us);
     wire(root, st);
     fitLayout(root, st, true);
     if (window.ResizeObserver) {
@@ -310,6 +343,7 @@
     el.board.classList.toggle('h', !vert);
     const area = (e, a) => { if (e.style.gridArea !== a) e.style.gridArea = a; };
     area(el.cells[0], vert ? '1 / 2 / 2 / 5' : '1 / 1 / 4 / 2');
+    area(el.cells[ZZ], vert ? '1 / 2 / 2 / 5' : '1 / 1 / 4 / 2');   // 00 — та сама зона, половина (roulette.css, .us)
     for (let n = 1; n <= 36; n++) {
       const c = (n - 1) % 3, r = Math.floor((n - 1) / 3);
       area(el.cells[n], vert ? (2 + r) + ' / ' + (2 + c) + ' / ' + (3 + r) + ' / ' + (3 + c)
@@ -387,7 +421,9 @@
     c.fill('evenodd');
   }
 
-  function drawWheel(cv, ctx) {
+  /// Колесо: європейське (37 кишеньок) чи американське (38, з зеленою 00 навпроти зеро) — us.
+  function drawWheel(cv, ctx, us) {
+    const W = wheelOf(us), P = W.length;
     const css = (n, d) => (ctx && ctx.css ? ctx.css(n, d) : d) || d;
     const col = {
       red: css('--rl-red', '#b3261e'), black: css('--rl-black', '#1d1a18'), green: css('--rl-green', '#2f7d3a'),
@@ -404,7 +440,7 @@
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     c.clearRect(0, 0, S, S);
     c.translate(R, R);
-    const A = Math.PI * 2 / 37;
+    const A = Math.PI * 2 / P;
     const ang = (i) => -Math.PI / 2 + i * A;
 
     // 1. Дерев'яний обід
@@ -455,29 +491,29 @@
     }
 
     // 4. Кільце чисел і 5. кишеньки
-    const fill = (n) => (n === 0 ? col.green : REDS.has(n) ? col.red : col.black);
-    for (let i = 0; i < 37; i++) {
+    const fill = (n) => (colorOf(n) === 'g' ? col.green : REDS.has(n) ? col.red : col.black);
+    for (let i = 0; i < P; i++) {
       const a0 = ang(i) - A / 2, a1 = ang(i) + A / 2;
       c.beginPath();
       c.arc(0, 0, R * 0.76, a0, a1);
       c.arc(0, 0, R * 0.635, a1, a0, true);
       c.closePath();
-      c.fillStyle = fill(WHEEL[i]);
+      c.fillStyle = fill(W[i]);
       c.fill();
       c.beginPath();
       c.arc(0, 0, R * 0.635, a0, a1);
       c.arc(0, 0, R * 0.5, a1, a0, true);
       c.closePath();
       const pg = c.createRadialGradient(0, 0, R * 0.5, 0, 0, R * 0.635);
-      pg.addColorStop(0, shade(WHEEL[i] === 0 ? col.green : REDS.has(WHEEL[i]) ? col.red : col.black, -0.55));
-      pg.addColorStop(1, shade(WHEEL[i] === 0 ? col.green : REDS.has(WHEEL[i]) ? col.red : col.black, -0.2));
+      pg.addColorStop(0, shade(fill(W[i]), -0.55));
+      pg.addColorStop(1, shade(fill(W[i]), -0.2));
       c.fillStyle = pg;
       c.fill();
     }
     // перегородки кишеньок
     c.strokeStyle = shade(col.gold, 0.25);
     c.lineWidth = 1.1;
-    for (let i = 0; i < 37; i++) {
+    for (let i = 0; i < P; i++) {
       const a = ang(i) - A / 2;
       c.beginPath();
       c.moveTo(Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5);
@@ -493,12 +529,12 @@
     c.fillStyle = '#fff';
     c.textAlign = 'center';
     c.textBaseline = 'middle';
-    c.font = '700 11.5px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
-    for (let i = 0; i < 37; i++) {
+    c.font = '700 ' + (P > 37 ? 11 : 11.5) + 'px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+    for (let i = 0; i < P; i++) {
       c.save();
       c.rotate(i * A);
       c.translate(0, -R * 0.698);
-      c.fillText(String(WHEEL[i]), 0, 0.5);
+      c.fillText(nameOf(W[i]), 0, 0.5);
       c.restore();
     }
 
@@ -608,9 +644,9 @@
   }
 
   function restBall(st, n, down) {
-    const i = WHEEL.indexOf(n);
+    const i = wheelOf(st.us).indexOf(n);
     if (i < 0) return;
-    st.B = st.W + i * STEP;
+    st.B = st.W + i * stepOf(st.us);
     setRot(st.el.wheel, st.W, 0);
     setRot(st.el.ballrot, st.B, 0);
     st.el.drop.style.animation = 'none';
@@ -636,7 +672,7 @@
       restBall(st, sp.n);
       return;
     }
-    const { W1, B1 } = landAngles(st.W, st.B, sp.n, Math.random() * 360);
+    const { W1, B1 } = landAngles(st.W, st.B, sp.n, Math.random() * 360, st.us);
     st.W = W1;
     st.B = B1;
     st.animNo = sp.no;
@@ -656,7 +692,7 @@
       if (!root._rl) return;
       st.landedNo = no;
       el.drop.classList.add('down');
-      if (st.ctx && st.ctx.mine) { sound(st, 'tsok'); if (n === 0) later(st, () => sound(st, 'bom'), 140); }
+      if (st.ctx && st.ctx.mine) { sound(st, 'tsok'); if (n === 0 || n === ZZ) later(st, () => sound(st, 'bom'), 140); }
       paint(root, st.ctx);
     }, T);
   }
@@ -729,6 +765,7 @@
     }
     el.box.classList.toggle('solo', v.mode === 'solo');
     el.box.classList.toggle('watch', !ctx.mine);
+    syncKind(st, ctx, v);
     syncTime(st, v);
     syncWheel(root, st, ctx, v);
     syncGlek(root, st, ctx, v);
@@ -739,6 +776,21 @@
     paintPanel(st, ctx, v);
     paintLegend(st, ctx, v);
     chime(st, ctx, v);
+  }
+
+  /// Колесо змінилось (соло перемкнули, чи вид прийшов уперше): перемалювати колесо й зеро-зону поля, курсор — на
+  /// початок; кулька лежала в кишеньці старого колеса — ховаємо до наступного кола.
+  function syncKind(st, ctx, v) {
+    const us = v.wheel === 'us';
+    st.el.board.classList.toggle('us', us);
+    st.el.box.classList.toggle('us', us);
+    if (us === st.us) return;
+    st.us = us;
+    drawWheel(st.el.wheel, ctx, us);
+    st.cur = { x: 1, y: 1 };
+    st.hover = null;
+    st.press = null;
+    st.el.ballrot.classList.add('hide');
   }
 
   /// Соло: розрахунок прибирає ставки зі столу разом із фазою — стоси минулого кола показуємо ще мить самі.
@@ -772,7 +824,7 @@
   }
 
   function numBall(n, c, cls) {
-    return '<b class="rl-num ' + (c || colorOf(n)) + (cls ? ' ' + cls : '') + '">' + n + '</b>';
+    return '<b class="rl-num ' + (c || colorOf(n)) + (cls ? ' ' + cls : '') + '">' + nameOf(n) + '</b>';
   }
 
   function paintStage(st, ctx, v) {
@@ -788,7 +840,7 @@
     const sp = v.spin;
     const show = sp && landed(st, v) && (v.phase === 'result' || v.mode === 'solo');
     if (show) {
-      const word = sp.n === 0 ? 'зеро!' : COLOR_WORD[sp.c || colorOf(sp.n)];
+      const word = sp.n === 0 ? 'зеро!' : sp.n === ZZ ? 'подвійне зеро!' : COLOR_WORD[sp.c || colorOf(sp.n)];
       big = '<div class="rl-bigline">' + numBall(sp.n, sp.c, 'xl') + '<span>' + word + '</span></div>';
       const last = v.last && v.last.no === sp.no ? v.last : null;
       if (last && (last.results || []).length) {
@@ -843,7 +895,7 @@
     let inner = '';
     const outer = {};
     for (const [spot, list] of bySpot) {
-      const pt = pointOf(spot);
+      const pt = pointOf(spot, st.us);
       let html = '';
       const shown = list.slice(0, 4);
       shown.forEach((it, k) => {
@@ -874,9 +926,9 @@
     }
     // наведення / дотик / курсор: точка прицілу на решітці
     const aim = st.press ? st.press.spot : st.hover;
-    const curSpot = st.curOn ? (st.out >= 0 ? OUTSIDE[st.out] : spotAt(st.cur.x, st.cur.y)) : null;
+    const curSpot = st.curOn ? (st.out >= 0 ? OUTSIDE[st.out] : spotAt(st.cur.x, st.cur.y, st.us)) : null;
     for (const [spot, cls] of [[aim, 'rl-aim'], [curSpot, 'rl-cur']]) {
-      const pt = spot && pointOf(spot);
+      const pt = spot && pointOf(spot, st.us);
       if (!pt) continue;
       const pos = placeOf(pt, vert);
       inner += '<span class="' + cls + '" style="left:' + pos.left.toFixed(3) + '%;top:' + pos.top.toFixed(3) + '%"></span>';
@@ -890,7 +942,7 @@
     // підсвітка покритих чисел і зовнішнього поля
     const lit = new Set(aim ? covers(aim) : (curSpot ? covers(curSpot) : []));
     const winN = res ? res.n : (v.mode === 'solo' && v.spin && landed(st, v) && !st.pending.length && !((myRow(v) || {}).bets || []).length ? v.spin.n : null);
-    for (let n = 0; n <= 36; n++) {
+    for (let n = 0; n <= ZZ; n++) {
       const c = el.cells[n];
       c.classList.toggle('hl', lit.has(n));
       c.classList.toggle('win', winN === n);
@@ -947,7 +999,8 @@
         const s = seats[i];
         if (!(typeof s === 'string' ? s : s && s.nick)) free++;
       }
-      html = '<div class="rl-tip">' + (st.press || st.hover ? ctx.esc(tipOf((st.press && st.press.spot) || st.hover)) : 'Ставлять ті, хто сидить. Глядачам — найкращі місця') + '</div>'
+      html = '<div class="rl-tip">' + (st.press || st.hover ? ctx.esc(tipOf((st.press && st.press.spot) || st.hover))
+        : (st.us ? '🇺🇸 Американське колесо, з 00. ' : '') + 'Ставлять ті, хто сидить. Глядачам — найкращі місця') + '</div>'
         + '<div class="rl-sit">' + (solo ? '' : free > 0 && ctx.playing
           ? '<button type="button" class="primary" data-do="sit">🪑 Сісти за стіл</button>'
           : '<span class="muted">Місць нема — дивись</span>') + '</div>';
@@ -960,7 +1013,7 @@
     const free = freeOf(st, v), onTable = onTableOf(st, v);
     const flash = st.flash && Date.now() < st.flash.until ? st.flash.text : '';
     const tip = st.press ? tipOf(st.press.spot) : st.hover ? tipOf(st.hover) : flash ? flash
-      : st.curOn ? tipOf(st.out >= 0 ? OUTSIDE[st.out] : spotAt(st.cur.x, st.cur.y) || 'straight:0')
+      : st.curOn ? tipOf(st.out >= 0 ? OUTSIDE[st.out] : spotAt(st.cur.x, st.cur.y, st.us) || 'straight:0')
         : v.closed ? 'Каса зачинена — спробуй трохи згодом'
           : can ? (ctx.ui.coarse() ? 'Торкнись поля — фішка ляже. Край клітинки — спліт, ріжок — кут' : 'Клікни поле — фішка ляже. Край клітинки — спліт, ріжок — кут')
             : v.phase === 'spin' ? 'Ставки зроблено — колесо крутиться' : v.phase === 'result' ? 'Глек рахує виграші — ставки за мить' : '';
@@ -992,12 +1045,23 @@
     html = '<div class="rl-tip">' + ctx.esc(tip) + '</div>'
       + '<div class="rl-row">' + clock + '<div class="rl-chiprow" role="radiogroup" aria-label="Фішка">' + chips + '</div></div>'
       + '<div class="rl-btns">' + btns + '</div>'
-      + '<div class="rl-info"><span>' + info + '</span>' + soundBtn() + '</div>'
+      + '<div class="rl-info"><span>' + info + '</span><span class="rl-tools">' + wheelBtn(st, v, solo) + soundBtn() + '</span></div>'
       + (me.note ? '<div class="rlt-note">' + ctx.esc(me.note) + '</div>' : '');
     setHtml(el.panel, html);
     el.panel.classList.add('on');
     const host = el.panel.querySelector('.rl-clock');
     if (host && st.arcIso) ctx.ui.timerArc(host, st.arcIso, v.phaseMs || 25000);
+  }
+
+  /// Колесо: соло — перемикач (лише з порожнім полем, поки не крутиться — me.canWheel), стіл — мітка «🇺🇸 з 00».
+  function wheelBtn(st, v, solo) {
+    const us = v.wheel === 'us';
+    if (!solo) return us ? '<span class="rl-tag" title="Американське колесо: 0 і 00 — дім бере 5,26 %">🇺🇸 з 00</span>' : '';
+    const can = !!(v.me && v.me.canWheel) && !st.pending.length && !st.busy.wheel;
+    const title = !can ? 'Колесо міняють з порожнім полем, поки воно не крутиться'
+      : us ? 'Назад на європейське: одне зеро, повертає 97,3 %' : 'Американське: 0 і 00 — повертає 94,7 %, Глек бере вдвічі більше';
+    return '<button type="button" class="ghost rl-wh' + (us ? ' on' : '') + '" data-do="wheel" aria-pressed="' + us + '"'
+      + (can ? '' : ' disabled') + ' title="' + title + '">' + (us ? '🇺🇸 з 00' : '🇪🇺 одне зеро') + '</button>';
   }
 
   function soundBtn() {
@@ -1068,6 +1132,17 @@
     Promise.resolve(ctx.act(name, payload)).then(done, done);
   }
 
+  /// Соло: перемкнути колесо (сервер перевіряє ще раз: порожнє поле, не крутиться).
+  function flipWheel(root, ctx) {
+    const st = state(root);
+    const v = ctx.view;
+    if (!v || v.mode !== 'solo' || !ctx.mine || st.busy.wheel || !(v.me && v.me.canWheel) || st.pending.length) return;
+    st.busy.wheel = true;
+    paint(root, ctx);
+    const done = () => { st.busy.wheel = false; if (root._rl) paint(root, st.ctx); };
+    Promise.resolve(ctx.act('wheel', { wheel: v.wheel === 'us' ? 'eu' : 'us' })).then(done, done);
+  }
+
   function pickChip(root, ctx, c) {
     const st = state(root);
     st.chip = String(c);
@@ -1091,8 +1166,8 @@
     const u = vert ? (e.clientY - r.top) / r.height * 13 : (e.clientX - r.left) / r.width * 13;
     const vv = vert ? (e.clientX - r.left) / r.width * 3 : (r.bottom - e.clientY) / r.height * 3;
     if (u < 0 || u > 13 || vv < 0 || vv > 3) return null;
-    const p = latticeAt(u, vv);
-    return spotAt(p.x, p.y);
+    const p = latticeAt(u, vv, st.us);
+    return spotAt(p.x, p.y, st.us);
   }
 
   function wire(root, st) {
@@ -1114,6 +1189,7 @@
         paint(root, c);
         return;
       }
+      if (t.dataset.do === 'wheel') { flipWheel(root, c); return; }
       if (t.dataset.do === 'sit' && c.room) { t.disabled = true; HGames.call('JoinRoom', c.room.id).finally(() => { t.disabled = false; }); }
     });
     // зовнішні поля: наведення — підсвітка й мітка
@@ -1180,7 +1256,20 @@
     if (!d) return;
     // з краю поля вниз — у ряд зовнішніх (вертикально — з останнього ряду, горизонтально — з нижнього краю)
     if (code === 'ArrowDown' && ((vert && y >= 23) || (!vert && x <= 0))) { st.out = 0; paint(root, ctx); return; }
-    if (y < 0) { if (d[1] > 0) y = 0; }
+    if (st.us) {
+      // американське поле: у рядах нулів свої точки (§13.4) — крок по них, а між рядами — до найближчої
+      const stops = (yy) => (yy < 0 ? US_ZERO_ROW : yy === 0 ? US_EDGE_ROW : [0, 1, 2, 3, 4, 5]);
+      const near = (list, xx) => list.reduce((b, s) => (Math.abs(s - xx) < Math.abs(b - xx) ? s : b), list[0]);
+      if (d[0]) {
+        const list = stops(y);
+        const i = list.indexOf(near(list, x));
+        x = list[Math.max(0, Math.min(list.length - 1, i + d[0]))];
+      }
+      if (d[1]) {
+        y = Math.max(-1, Math.min(23, y + d[1]));
+        x = near(stops(y), x);
+      }
+    } else if (y < 0) { if (d[1] > 0) { y = 0; x = Math.round(x); } }
     else {
       x = Math.max(0, Math.min(5, x + d[0]));
       y = Math.max(-1, Math.min(23, y + d[1]));
@@ -1191,7 +1280,7 @@
 
   function cursorSpot(st) {
     if (!st.curOn) return null;
-    return st.out >= 0 ? OUTSIDE[st.out] : spotAt(st.cur.x, st.cur.y);
+    return st.out >= 0 ? OUTSIDE[st.out] : spotAt(st.cur.x, st.cur.y, st.us);
   }
 
   function onKey(e, ctx) {
@@ -1357,7 +1446,7 @@
       case 'result': {
         const sp = v.spin, last = v.last;
         if (!sp || (st && !landed(st, v))) return 'Ставки зроблено — крутиться…';
-        const head = 'Випало ' + (sp.n === 0 ? 'зеро' : sp.n + ' ' + COLOR_WORD[sp.c || colorOf(sp.n)]);
+        const head = 'Випало ' + (sp.n === 0 ? 'зеро' : sp.n === ZZ ? '00' : sp.n + ' ' + COLOR_WORD[sp.c || colorOf(sp.n)]);
         const r = last && last.no === sp.no && ctx.me ? (last.results || []).find((x) => x.nick === ctx.me.nick) : null;
         return r ? head + ' · ти ' + signed(r.net) : head;
       }
@@ -1387,6 +1476,16 @@
   const api = {
     icon: ICON,
     added: '2026-10-08',
+    news: {
+      v: '2026-10-10',
+      title: 'Рулетка: американське колесо «🇺🇸 з 00»',
+      items: [
+        '🇺🇸 Новий стіл «з 00»: обираєш колесо, коли ставиш стіл; сам на сам — перемикач під полем (лише з порожнім полем)',
+        '🟢 38 кишеньок: зелене 00 навпроти зеро, порядок — американський; на полі 0 і 00 поруч, спліт 0·00, трійки біля нулів',
+        '🖐 «П\'ятірка» 0·00·1·2·3 платить 6:1 — найгірша ставка в казино, і Глек про це скаже',
+        '📉 Чесно: американське повертає 94,7 % (п\'ятірка — 92,1 %), європейське — 97,3 %. Глек забирає вдвічі більше',
+      ],
+    },
     seatNames: (i) => 'місце ' + (i + 1),
     seatClass: ['x', 'o', 'c', 'd', 'x', 'o', 'c', 'd'],
     pad: {
@@ -1448,7 +1547,7 @@
     },
 
     // Для перевірки (qa): решітка, покриття й кути колеса — без DOM.
-    geom: { WHEEL, colorOf, spotAt, pointOf, latticeAt, covers, label, landAngles, placeOf },
+    geom: { WHEEL, WHEEL_US, ZZ, colorOf, nameOf, spotAt, pointOf, latticeAt, covers, label, landAngles, placeOf },
   };
 
   HGames.register(Object.assign({ id: 'roulette' }, api));
