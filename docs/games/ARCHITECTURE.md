@@ -362,7 +362,8 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 (`reason`) — короткі коди: `listen`, `win:chess`, `draw:chess`, `play:chess`, `solo:mines`, `daily:wordle`,
 `ach:first-win`, `stake`, `stake-win`, `stake-refund`, `clicker`, `award:skilky`, `ad:listen`, `shop:<річ>`,
 `gift:<річ>`, `roulette-bet:<гра>`/`roulette-win:<гра>`/`roulette-back:<гра>` (рулетка, хвіст — `roulette` чи `roulette-solo`,
-підпис «Рулетка — ставка/виграш/ставку повернуто»)… (у старих записах
+підпис «Рулетка — ставка/виграш/ставку повернуто»), `blackjack-bet|double|split|pay|back:<гра>` («Двадцять одно — ставка/
+подвоєння/спліт/виплата/ставку повернуто», хвіст — `blackjack` чи `blackjack-solo`)… (у старих записах
 ще трапляються `ad:winner`/`ad:entry`/`ad:vote` від конкурсу реклами — тексти для них `Economy.Reason` знає й далі).
 
 ### 6.2 Джерела (усі числа — в `appsettings.json`, секція `Economy`)
@@ -418,6 +419,13 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 коли запис кола зіпсовано. Закрите коло до виплати лежить у `game_state` під ключем `roulette:pending`: після падіння
 процесу каса розраховує його за вже вирішеним числом і платить лише тим, чиє списання є в леджері. Лімітів ставки нема,
 поза стелями (як і ставки на партію).
+
+**Двадцять одно** ([specs/blackjack.md](specs/blackjack.md) §3) — каса за зразком рулетки (`BlackjackBook`), але списань за
+роздачу кілька: ставка в мить «Роздаю!» (`blackjack-bet:<гра>`), подвоєння й спліти — посеред ходу (`blackjack-double`,
+`blackjack-split`), усі з ref `blackjack-bet:{кімната}:{epoch}:{роздача}:{крок}:{nick_key}` (`b`, `d`, `s1`, `s2`). Виплата —
+одним `Grant` за бокс, коли Глек показав карти (`blackjack-pay`). Роздача лежить у `game_state` під `blackjack:pending` від
+першого списання до виплати: дограна (є підсумки) — сирота платить за ними; обірвана посеред ходів — повертає все списане
+(`blackjack-back`). Ставка — `Blackjack:MinBet`…`MaxBet`.
 
 ## 7. Результати, рейтинги, таблиці
 
