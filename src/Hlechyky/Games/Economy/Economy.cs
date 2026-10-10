@@ -238,6 +238,7 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             // слоти (docs/games/specs/slots.md §2): хвіст — id автомата; Ворожка — теж ставка й виграш
             "slot-bet" => $"{names.Title(tail)} — ставка",
             "slot-win" => $"{names.Title(tail)} — виграш",
+            "slot-buy" => $"{names.Title(tail)} — купив бонус",
             "slot-jackpot" => "Скарбничка Глека!",
             // Лелека (docs/games/specs/lelka.md §4)
             "lelka-bet" => "Лелека — ставка",
