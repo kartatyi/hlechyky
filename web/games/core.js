@@ -134,11 +134,11 @@
         'tyr-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
-      { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'] },
-      { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo'] },
+      { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'] },
+      { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo', 'kolo'] },
       { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },   // не гра: плитку «Ставки на події» ставить панель web/bets.js (tile)
-      { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka'] },
-      { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker'] },
+      { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka', 'kavuny'] },
+      { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker', 'blackjack', 'blackjack-solo'] },
     ],
   };
   const OTHER_THEME = { id: 'other', title: 'Інше', icon: '✨' };
@@ -1741,6 +1741,8 @@
       if (g.off) continue;        // вимкнено в конфігу сайту (Games:Off) — сервер однаково не відкриє
       if (me.slots === false && SLOT_INFO[g.id]) continue;   // автомати на перерві (Slots:Enabled) — тема «🍒 Слоти» зникає
       if (me.lelka === false && g.id === 'lelka') continue;  // Лелека відпочиває (Lelka:Enabled) — плитки нема
+      if (me.kolo === false && g.id === 'kolo') continue;    // Гончарне колесо відпочиває (Kolo:Enabled) — плитки нема
+      if (me.kavuny === false && g.id === 'kavuny') continue;  // ярмарок зачинено (Kavuny:Enabled) — плитки нема
       const f = familyOf[g.id];
       if (f) {
         if (seen.has(f.id)) continue;
@@ -1786,7 +1788,7 @@
   function tileBtn(e) {
     if (e.solo) return '<button class="primary" data-solo="' + esc(e.g.id) + '">Грати</button>';
     // Спільний стіл на сайт (Лелека, shared у каталозі): не «ставити», а сісти за той, що вже літає (сервер сам знайде чи поставить).
-    if (e.g && e.g.shared) return '<button class="primary" data-shared="' + esc(e.g.id) + '">' + (e.g.id === 'lelka' ? 'Сісти до Лелеки' : 'Сісти за стіл') + '</button>';
+    if (e.g && e.g.shared) return '<button class="primary" data-shared="' + esc(e.g.id) + '">' + (e.g.id === 'lelka' ? 'Сісти до Лелеки' : e.g.id === 'kolo' ? 'Сісти до колеса' : 'Сісти за стіл') + '</button>';
     return '<button data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '">+ Стіл</button>';
   }
   // ---------------------------------------------------------------------------------------------
@@ -1797,6 +1799,7 @@
     'slot-cascade': { mech: 'від 8 однакових · каскади · писанки-множники', vol: 3 },
     'slot-hold': { mech: '20 ліній · утримуй і вигравай · 4 скарби', vol: 3 },
     'slot-cluster': { mech: 'поле 7×7 · кластери від 5 · шкала папороті', vol: 2 },
+    'slot-slidy': { mech: 'полиця 6×6 · кластери від 5 · сліди ×2…×128', vol: 3 },
   };
   const VOL = ['', 'низька', 'середня', 'висока'];
   function posterHtml(e) {
@@ -1813,7 +1816,7 @@
   }
   let azFeed = null, azAt = 0, azShown = null, azT = 0, azN = 0;
   const azFmt = (n) => Math.round(n || 0).toLocaleString('uk-UA').replace(/,/g, ' ');
-  const AZ_TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті' };
+  const AZ_TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті', 'slot-slidy': 'Сліди на полиці' };
   function azWinsHtml() {
     const w = (azFeed && azFeed.wins) || [];
     if (!w.length) return '<div class="muted small gaz-empty">Цього тижня ще ніхто не заносив. Може, ти перший?</div>';

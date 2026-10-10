@@ -22,6 +22,10 @@ public static class RouletteLines
     public static readonly string[] Zero =
         ["Зеро! Усе зовнішнє — до Глека в глечик", "Нуль! Хе-хе, черепки до мене — на новий глечик", "Зеро, любі мої. Каса дякує"];
 
+    /// <summary>Випало 00 (американське колесо) і хтось програв.</summary>
+    public static readonly string[] ZeroZero =
+        ["Подвійне зеро! Двічі нуль — двічі до Глека", "00! Американське колесо годує Глека", "Нуль і ще нуль — каса танцює"];
+
     public static readonly string[] Clap = ["Ну ви сьогодні й розійшлись — плачу!", "Каса плаче, а Глек платить"];
 
     public static readonly string[] Rake = ["Що впало, те пропало — до мене в глечик", "Червоне, чорне — а черепки мої"];
@@ -34,11 +38,21 @@ public static class RouletteLines
     public const string AllInWon = "{0} ставить усе — і бере! Оце нерви";
     public const string AllInLost = "{0} ставить усе… а кулька каже «ні». Тримайся";
 
+    /// <summary>Американське колесо: Глек чесно попереджає (стіл «🇺🇸 з 00» на старті, соло — на перемиканні).</summary>
+    public const string UsWarning = "На американському колесі я забираю вдвічі більше. Любиш ризик — прошу";
+    /// <summary>Соло: назад на європейське.</summary>
+    public const string EuBack = "Європейське колесо — одне зеро. Розумний вибір, хоч Глекові й шкода";
+
     public const string BookStuck = "Каса заїла — це коло не крутимо";
     public const string NobodyPaid = "Черепків ні в кого не стало — не кручу";
 
-    /// <summary>Число вголос — перше речення після розрахунку: «17, червоне!», «Зеро!».</summary>
-    public static string Number(int n) => n == 0 ? "Зеро!" : $"{n}, {(RouletteCore.ColorOf(n) == "r" ? "червоне" : "чорне")}!";
+    /// <summary>Число вголос — перше речення після розрахунку: «17, червоне!», «Зеро!», «Подвійне зеро!».</summary>
+    public static string Number(int n) => n switch
+    {
+        0 => "Зеро!",
+        RouletteCore.DoubleZero => "Подвійне зеро!",
+        _ => $"{n}, {(RouletteCore.ColorOf(n) == "r" ? "червоне" : "чорне")}!",
+    };
 
     public static string Pick(string[] bank, Random rng) => bank[rng.Next(bank.Length)];
 }

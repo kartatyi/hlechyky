@@ -4703,6 +4703,8 @@
     me.padel = m.padel !== false;   // Падельня (Padel:Enabled)
     me.slots = m.slots !== false;   // автомати (Slots:Enabled): false — лобі ховає «🍒 Слоти»
     me.lelka = m.lelka !== false;   // Лелека (Lelka:Enabled): false — плитки «Лелека» в лобі нема
+    me.kolo = m.kolo !== false;     // Гончарне колесо (Kolo:Enabled): false — плитки в лобі нема
+    me.kavuny = m.kavuny !== false; // Кавуни на ярмарку (Kavuny:Enabled): false — плитки в лобі нема
     me.bets = m.bets || { events: false, tables: false };   // 🎲 Ставки (Bets:*) — web/bets.js і столи
     paintSwitches();
     // Адресу намалювали ще до /api/me: вимкнене — переводимо в Ефір

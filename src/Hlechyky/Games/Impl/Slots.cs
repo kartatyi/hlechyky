@@ -69,7 +69,7 @@ public sealed class SlotState
 /// </summary>
 public abstract class SlotGame : Game
 {
-    public const string ActSpin = "spin", ActGamble = "gamble", ActCollect = "collect";
+    public const string ActSpin = "spin", ActGamble = "gamble", ActCollect = "collect", ActBuy = "buy";
     public const int GambleMax = 5;
     public const string OffText = "Автомати на перерві — Глек змащує барабани";
     public const string ClosedText = "Автомати зачинені — каса не відповідає";
@@ -172,6 +172,7 @@ public abstract class SlotGame : Game
             best = State.Best,
             spins = State.Spins,
             table = SlotMath.Table(),
+            buy = BuyPrice(o) is { } price ? new { price } : null,   // «Купити бонус»: ціна в ставках (null — не продається)
         };
     }
 
@@ -179,12 +180,13 @@ public abstract class SlotGame : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
-        if (action is not (ActSpin or ActGamble or ActCollect)) return ActResult.Fail("Тут так не ходять");
+        if (action is not (ActSpin or ActGamble or ActCollect or ActBuy)) return ActResult.Fail("Тут так не ходять");
         if (_bank is null) return ActResult.Fail(ClosedText);
         if (Ctx.NickOf(seat) is not { } nick) return ActResult.Fail("Тут так не ходять");
         return action switch
         {
-            ActSpin => Spin(seat, nick, payload),
+            ActSpin => Spin(seat, nick, payload, false),
+            ActBuy => Spin(seat, nick, payload, true),
             ActGamble => Gamble(seat, nick, payload),
             _ => Collect(),
         };
@@ -192,33 +194,46 @@ public abstract class SlotGame : Game
 
     string Ref(int seq) => $"slot:{Ctx.RoomId}-{State.Epoch}:{seq}";
 
-    ActResult Spin(int seat, string nick, JsonElement payload)
+    /// <summary>Ціна купленого бонусу в ставках, якщо купівля зараз увімкнена в цьому автоматі; інакше null.</summary>
+    int? BuyPrice(SlotsOptions o) => SlotMath is ISlotBuyBonus b && o.BuyBonus ? o.BuyPriceFor(b.BuyMinPrice) : null;
+
+    /// <summary>
+    /// Оберт (<paramref name="buy"/> = false) або куплений бонус: та сама послідовність грошей, лише списується ціна
+    /// (ставка × <see cref="SlotsOptions.BuyPrice"/>) з причиною <c>slot-buy</c>, а сценарій — <see cref="ISlotBuyBonus.Buy"/>.
+    /// Внесок у Скарбничку — з усієї списаної суми (кожна ставка кладе свій відсоток).
+    /// </summary>
+    ActResult Spin(int seat, string nick, JsonElement payload, bool buy)
     {
         var bank = _bank!;
         var o = bank.O;
         if (!o.Enabled) return ActResult.Fail(OffText);
         // Повтор того самого запиту (клієнт шле seq, який бачив): оберт уже пішов — нічого не робимо, вид і так новий.
         if (Int(payload, "seq") is { } seen && seen != State.Seq) return ActResult.Done;
+        var price = buy ? BuyPrice(o) : 1;
+        if (price is null) return ActResult.Fail("Бонус тут не продається — крути, горно саме розгориться");
         var bets = o.AllowedBets();
         if (Int(payload, "bet") is not { } bet || !bets.Contains(bet))
             return ActResult.Fail($"Така ставка не йде: {string.Join(", ", bets)}");
+        var cost = bet * price.Value;
         var wallet = bank.Balance(nick);
         State.Wallet = wallet;
-        if (wallet < bet) return ActResult.Fail($"Бракує черепків: у гаманці {wallet}, а ставка {bet}");
+        if (wallet < cost)
+            return ActResult.Fail(buy ? $"Бракує черепків: у гаманці {wallet}, а бонус коштує {cost}" : $"Бракує черепків: у гаманці {wallet}, а ставка {bet}");
 
         var seq = State.Seq + 1;
         var reference = Ref(seq);
         var rng = R;
-        var outcome = SlotMath.Spin(bet, rng, State.MathState);
-        var jackpot = bank.Feed(bet, rng);
-        var pending = new SlotPending(reference, nick, Info.Id, bet, outcome.Win, jackpot, Ctx.Clock.UtcNow);
+        var outcome = buy ? ((ISlotBuyBonus)SlotMath).Buy(bet, rng) : SlotMath.Spin(bet, rng, State.MathState);
+        if (buy) outcome.Script["price"] = cost;
+        var jackpot = bank.Feed(cost, rng);
+        var pending = new SlotPending(reference, nick, Info.Id, cost, outcome.Win, jackpot, Ctx.Clock.UtcNow);
         var journal = outcome.Win > 0 || jackpot > 0;
         if (journal && !bank.Open(pending))
         {
-            bank.Unfeed(bet, jackpot);
+            bank.Unfeed(cost, jackpot);
             return ActResult.Fail(ClosedText);
         }
-        var taken = bank.Charge(nick, bet, $"slot-bet:{Info.Id}", reference + ":bet");
+        var taken = bank.Charge(nick, cost, buy ? $"slot-buy:{Info.Id}" : $"slot-bet:{Info.Id}", reference + ":bet");
         if (taken is null)
         {
             // Списання могло й пройти: запис журналу (і внесок у Скарбничку) лишаємо — підмітання звірить із леджером
@@ -232,9 +247,9 @@ public abstract class SlotGame : Game
         if (taken == false)
         {
             if (journal) bank.Forget(reference);
-            bank.Unfeed(bet, jackpot);
+            bank.Unfeed(cost, jackpot);
             State.Wallet = bank.Balance(nick);
-            return ActResult.Fail($"Бракує черепків: у гаманці {State.Wallet}, а ставка {bet}");
+            return ActResult.Fail(buy ? $"Бракує черепків: у гаманці {State.Wallet}, а бонус коштує {cost}" : $"Бракує черепків: у гаманці {State.Wallet}, а ставка {bet}");
         }
         if (journal) bank.Close(pending);   // не вийшло — запис лишився, підмітання доплатить тими самими ключами
 
@@ -250,11 +265,12 @@ public abstract class SlotGame : Game
         State.MathState = outcome.State;
         State.Gamble = SlotMath.Gamble && outcome.Win > 0 ? new SlotGamble { Amount = outcome.Win, Open = true } : null;
         State.Spins++;
-        State.Staked += bet;
+        State.Staked += cost;
         State.Won += outcome.Win + jackpot;
-        State.Wallet = wallet - bet + outcome.Win + jackpot;
+        State.Wallet = wallet - cost + outcome.Win + jackpot;
 
-        var mult = Math.Round(outcome.Mult(bet), 2);
+        // множник заносу — від того, що заплачено: у купленому бонусі це ціна, а не ставка (інакше «×30» за бонус, що коштував 100×)
+        var mult = Math.Round(outcome.Mult(cost), 2);
         if (mult > State.Best) State.Best = mult;
         var day = Days.Today(Ctx.Clock).ToString();
         if (day != State.Day) { State.Day = day; State.DayBest = 0; }
@@ -266,7 +282,7 @@ public abstract class SlotGame : Game
         if (mult >= 10) Ach(seat, "slot-big");
         if (mult >= 50) Ach(seat, "slot-epic");
         if (jackpot > 0) Ach(seat, "slot-jackpot");
-        bank.Brag(nick, Info.Id, Info.Title, bet, outcome.Win, jackpot);
+        bank.Brag(nick, Info.Id, Info.Title, cost, outcome.Win, jackpot);
         return ActResult.Done;
     }
 

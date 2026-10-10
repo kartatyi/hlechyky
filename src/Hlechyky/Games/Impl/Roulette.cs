@@ -75,6 +75,11 @@ public sealed class RouletteGlek
 public sealed class RouletteState
 {
     public string Phase { get; set; } = RouletteGame.Bets;
+    /// <summary>
+    /// Колесо: «eu» (одне зеро) чи «us» (0 і 00, §13). Стіл — з опції, обраної при створенні; соло — перемикач гравця
+    /// (дія <c>wheel</c>), живе тут і переживає перезапуск. Старий стан без поля — європейське.
+    /// </summary>
+    public string Wheel { get; set; } = RouletteGame.WheelEu;
     public DateTimeOffset? Until { get; set; }
     /// <summary>Лічильник закритих кіл: росте на кожне закриття, і на невдале — ключ леджера не повторюється.</summary>
     public int SpinNo { get; set; }
@@ -84,7 +89,7 @@ public sealed class RouletteState
     public PendingSpin? Pending { get; set; }
     public List<RoulettePaid> Paid { get; set; } = [];
     public RouletteSpin? Spin { get; set; }
-    /// <summary>Останні числа, найновіше першим.</summary>
+    /// <summary>Останні числа, найновіше першим; 00 — 37.</summary>
     public List<int> History { get; set; } = [];
     public RouletteLast? Last { get; set; }
     public Dictionary<string, List<RouletteChip>> LastBets { get; set; } = [];
@@ -102,7 +107,8 @@ public sealed class RouletteState
 }
 
 /// <summary>
-/// Рулетка — європейська, одне зеро, Дядько Глек за колесом (docs/games/specs/roulette.md). Спільне для столу й соло:
+/// Рулетка — європейська (одне зеро) або американська «🇺🇸 з 00» (§13), Дядько Глек за колесом
+/// (docs/games/specs/roulette.md). Спільне для столу й соло:
 /// ставки, дії, закриття кола (каса <see cref="RouletteBook"/>), розрахунок, вид, Save/Load. Різниця — лише фази:
 /// стіл крутить Глек за розкладом (<see cref="Roulette"/>), соло — коли тиснеш «Крутити» (<see cref="RouletteSolo"/>).
 /// Види шлються з тика (після Act у реалтаймі каркас їх не шле), тож ставка доходить до всіх за ≤ 250 мс.
@@ -116,9 +122,17 @@ public abstract class RouletteGame : Game
 
     public const string Idle = "idle", Bets = "bets", Spinning = "spin", Result = "result";
     public const string ActBet = "bet", ActUndo = "undo", ActClear = "clear", ActRepeat = "repeat", ActDouble = "double", ActSpin = "spin";
+    /// <summary>Соло: перемкнути колесо (<c>{ "wheel": "us" | "eu" }</c>), лише з порожнім полем у <c>bets</c>.</summary>
+    public const string ActWheel = "wheel";
+    public const string WheelEu = "eu", WheelUs = "us";
+    /// <summary>Опція столу (<see cref="GameOption"/>): колесо.</summary>
+    public const string WheelOption = "wheel";
 
     public const string ClosedText = "Каса зачинена — спробуй трохи згодом";
     public const string TooManyText = "Досить — у тебе вже 60 ставок на полі";
+    public const string TableWheelText = "Колесо цього столу обрали, коли його ставили — американське шукай за іншим столом";
+    public const string WheelBetsText = "Спершу зніми ставки з поля — тоді міняй колесо";
+    public const string WheelWhichText = "Не зрозумів, яке колесо: eu чи us";
 
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -127,13 +141,17 @@ public abstract class RouletteGame : Game
     bool _dirty;
     /// <summary>Load сам дорахував коло, яке каса вже виплатила: дедлайн — від «зараз», Resumed його не зсуває.</summary>
     bool _settledOnLoad;
+    /// <summary>Стіл поставили з опцією «🇺🇸 з 00» (соло опцій не має — там перемикач у стані).</summary>
+    bool _optionUs;
 
-    /// <summary>Шов лише для тестів: «випаде 17». Поза 0..36 — помилка.</summary>
+    /// <summary>Шов лише для тестів: «випаде 17». Поза колесом (0..36, американське — 0..37, де 37 — це 00) — помилка.</summary>
     public Func<int>? Rig { get; set; }
     /// <summary>Для тестів: стан гри.</summary>
     public RouletteState State => S;
 
     protected abstract bool Solo { get; }
+    /// <summary>Американське колесо (0 і 00).</summary>
+    public bool Us => S.Wheel == WheelUs;
     int SpinLen => Solo ? SoloSpinMs : SpinMs;
     DateTimeOffset Now => Ctx.Clock.UtcNow;
 
@@ -143,6 +161,7 @@ public abstract class RouletteGame : Game
     {
         try { _book = Ctx?.Services?.GetService<RouletteBook>(); }
         catch { _book = null; }
+        _optionUs = options.GetValueOrDefault(WheelOption) == WheelUs;
     }
 
     /// <summary>
@@ -163,8 +182,12 @@ public abstract class RouletteGame : Game
             Glek = keep.Glek,
             Epoch = NewEpoch(),
             LastActionAt = Now,
+            // Стіл — колесо з опції; соло — те, що гравець перемкнув.
+            Wheel = Solo ? keep.Wheel : _optionUs ? WheelUs : WheelEu,
         };
         OpenBets(afterSigh: false);
+        // Американський стіл: Глек чесно попереджає, щойно стіл поставили.
+        if (!Solo && Us) Glek("idle", RouletteLines.UsWarning);
     }
 
     public override object? Frame() => null;
@@ -174,8 +197,9 @@ public abstract class RouletteGame : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_book is null) return ActResult.Fail(ClosedText);
-        if (action is not (ActBet or ActUndo or ActClear or ActRepeat or ActDouble or ActSpin)) return ActResult.Fail("Тут так не ходять");
+        if (action is not (ActBet or ActUndo or ActClear or ActRepeat or ActDouble or ActSpin or ActWheel)) return ActResult.Fail("Тут так не ходять");
         if (action == ActSpin && !Solo) return ActResult.Fail("Тут колесо крутить Глек — за розкладом");
+        if (action == ActWheel && !Solo) return ActResult.Fail(TableWheelText);
         var now = Now;
         if (Solo && S.Phase == Spinning) return ActResult.Fail("Колесо крутиться — дочекайся");
         if (!Solo && (S.Phase == Spinning || (S.Phase == Bets && S.Until is { } u && now >= u)))
@@ -193,6 +217,7 @@ public abstract class RouletteGame : Game
             ActClear => Clear(key),
             ActRepeat => Repeat(seat, nick, key, wallet),
             ActDouble => Double(key, wallet),
+            ActWheel => ChangeWheel(key, payload),
             _ => Spin(seat, nick, key, payload, wallet),
         };
         if (!result.Ok) return result;
@@ -204,7 +229,7 @@ public abstract class RouletteGame : Game
 
     ActResult Bet(int seat, string nick, string key, JsonElement payload, int wallet)
     {
-        if (RouletteCore.Read(payload, out var spot) is { } bad) return ActResult.Fail(bad);
+        if (RouletteCore.Read(payload, out var spot, Us) is { } bad) return ActResult.Fail(bad);
         if (payload.TryGetProperty("amount", out var a) is false || a.ValueKind != JsonValueKind.Number || !a.TryGetInt32(out var amount) || amount < 1)
             return ActResult.Fail("Ставка — ціле число черепків, від 1");
         var hand = HandOf(key);
@@ -269,6 +294,31 @@ public abstract class RouletteGame : Game
         if (cost > free) return ActResult.Fail($"Бракує черепків, щоб подвоїти: треба ще {cost}, вільних {Math.Max(0, free)}");
         if (TooBig(hand, hand.Bets) is { } big) return ActResult.Fail(big);
         Put(hand, Clone(hand.Bets));
+        return ActResult.Done;
+    }
+
+    /// <summary>
+    /// Соло: перемкнути колесо. Лише в <c>bets</c> (фаза перевірена в <see cref="Act"/>) і з порожнім полем — ставки не
+    /// переїжджають з колеса на колесо. Те саме колесо — нічого не робить. Минулі ставки («Повторити») тримають лише поля,
+    /// що є й на новому колесі.
+    /// </summary>
+    ActResult ChangeWheel(string key, JsonElement payload)
+    {
+        var want = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("wheel", out var w) && w.ValueKind == JsonValueKind.String
+            ? (w.GetString() ?? "").Trim().ToLowerInvariant()
+            : null;
+        if (want is not (WheelEu or WheelUs)) return ActResult.Fail(WheelWhichText);
+        if (want == S.Wheel) return ActResult.Done;
+        if (HandOf(key) is { } hand && hand.Total > 0) return ActResult.Fail(WheelBetsText);
+        S.Wheel = want;
+        var us = Us;
+        foreach (var k in S.LastBets.Keys.ToList())
+        {
+            var keep = S.LastBets[k].Where(c => RouletteCore.Valid(c.Spot, us)).ToList();
+            if (keep.Count == 0) S.LastBets.Remove(k);
+            else S.LastBets[k] = keep;
+        }
+        Glek("idle", us ? RouletteLines.UsWarning : RouletteLines.EuBack);
         return ActResult.Done;
     }
 
@@ -417,11 +467,15 @@ public abstract class RouletteGame : Game
 
     // ---------- коло ----------
 
-    /// <summary>Номер кишеньки: рівномірно 0..36, у мить закриття. Сід кімнати — лише в тестах (<see cref="IRoomContext.Seeded"/>).</summary>
+    /// <summary>
+    /// Номер кишеньки: рівномірно 0..36 (американське — 0..37, де 37 — це 00), у мить закриття. Сід кімнати — лише в
+    /// тестах (<see cref="IRoomContext.Seeded"/>).
+    /// </summary>
     public int Draw()
     {
-        var n = Rig?.Invoke() ?? (Ctx.Seeded ? Ctx.Rng.Next(37) : RandomNumberGenerator.GetInt32(37));
-        if (n is < 0 or > 36) throw new GameError("Кулька вискочила з колеса");
+        var pockets = RouletteCore.Pockets(Us);
+        var n = Rig?.Invoke() ?? (Ctx.Seeded ? Ctx.Rng.Next(pockets) : RandomNumberGenerator.GetInt32(pockets));
+        if (n < 0 || n >= pockets) throw new GameError("Кулька вискочила з колеса");
         return n;
     }
 
@@ -533,9 +587,10 @@ public abstract class RouletteGame : Game
         {
             mood = "dance";
             big = dancer.R.Nick;
-            say = RouletteLines.Number(n) + " " + string.Format(Pick(RouletteLines.Dance), big, n);
+            say = RouletteLines.Number(n) + " " + string.Format(Pick(RouletteLines.Dance), big, RouletteCore.Name(n));
         }
         else if (n == 0 && lost > 0) { mood = "laugh"; say = Pick(RouletteLines.Zero); }
+        else if (n == RouletteCore.DoubleZero && lost > 0) { mood = "laugh"; say = Pick(RouletteLines.ZeroZero); }
         else if (paidOut > staked) { mood = "clap"; say = RouletteLines.Number(n) + " " + Pick(RouletteLines.Clap); }
         else { mood = "rake"; say = RouletteLines.Number(n) + " " + Pick(RouletteLines.Rake); }
 
@@ -562,7 +617,7 @@ public abstract class RouletteGame : Game
         {
             if (SeatOf(Key(r.Nick)) is not { } seat) continue;
             if (r.Hits.Any(h => RouletteCore.Type(h) == "straight")) Ctx.Award(seat, 0, "ach:roulette-straight");
-            if (r.Hits.Contains("straight:0")) Ctx.Award(seat, 0, "ach:roulette-zero");
+            if (r.Hits.Contains("straight:0") || r.Hits.Contains("straight:00")) Ctx.Award(seat, 0, "ach:roulette-zero");
             if (p.Wallet0 >= 50 && p.Stake == p.Wallet0 && r.Net > 0) Ctx.Award(seat, 0, "ach:roulette-allin");
             if (S.Red.GetValueOrDefault(Key(r.Nick)) >= 5) Ctx.Award(seat, 0, "ach:roulette-red5");
             if (r.Net >= 1000) Ctx.Award(seat, 0, "ach:roulette-hopak");
@@ -584,7 +639,7 @@ public abstract class RouletteGame : Game
         if (star.R is not null && (S.JournalAt is not { } at || now - at >= JournalGap))
         {
             S.JournalAt = now;
-            Ctx.Log($"🎡 {(Solo ? "Рулетка сам на сам" : "Рулетка")}: {star.R.Nick} виграє {star.R.Net} черепків — випало {n}");
+            Ctx.Log($"🎡 {(Solo ? "Рулетка сам на сам" : "Рулетка")}: {star.R.Nick} виграє {star.R.Net} черепків — випало {RouletteCore.Name(n)}");
         }
     }
 
@@ -635,6 +690,7 @@ public abstract class RouletteGame : Game
         return new
         {
             mode = Solo ? "solo" : "table",
+            wheel = S.Wheel,
             phase = S.Phase,
             until,
             leftMs = until is { } u ? Left(u, now) : (int?)null,
@@ -707,6 +763,8 @@ public abstract class RouletteGame : Game
             canRepeat = open && repeatCost > 0 && repeatCost <= free,
             repeatCost,
             canDouble = open && onTable > 0 && onTable <= free,
+            // Соло: колесо перемикається лише з порожнім полем, поки не крутиться (§13.3). Стіл — ніколи.
+            canWheel = Solo && open && onTable == 0,
             note = S.Notes.GetValueOrDefault(key),
         };
     }
@@ -727,6 +785,9 @@ public abstract class RouletteGame : Game
         if (s.Phase is not (Idle or Bets or Spinning or Result) || (s.Phase == Spinning && s.Spin is null))
             throw new InvalidOperationException($"невідома фаза рулетки: {s.Phase}");
         if (Solo && s.Phase is Idle or Result) s.Phase = Bets;
+        // Стіл — колесо з опції (Configure іде раніше за Load); соло — збережений перемикач, чуже значення — європейське.
+        if (!Solo) s.Wheel = _optionUs ? WheelUs : WheelEu;
+        else if (s.Wheel is not (WheelEu or WheelUs)) s.Wheel = WheelEu;
         s.Epoch = NewEpoch();
         S = s;
         // Соло каркас зберігає лише після дії, а кулька лягає в тику — тож у сховищі коло могло лишитись у «spin», хоча
@@ -833,7 +894,13 @@ public sealed class Roulette : RouletteGame
     public override GameInfo Info { get; } = new(
         "roulette", "Рулетка", "рулетку", GameGroup.Party, 1, 8, TickMs: TickMs, Start: StartMode.Immediate, Hidden: true,
         Score: ScoreOrder.HigherIsBetter, Coop: true,
-        Hint: "Дядько Глек крутить колесо для всіх: ставиш черепки — і молишся на кульку. Європейська, одне зеро");
+        Options:
+        [
+            new GameOption(WheelOption, "Колесо",
+                [(WheelEu, "🇪🇺 одне зеро"), (WheelUs, "🇺🇸 з 00")], WheelEu),
+        ],
+        Hint: "Дядько Глек крутить колесо для всіх: ставиш черепки — і молишся на кульку. Європейське з одним зеро — "
+            + "чи 🇺🇸 з 00, де Глек забирає вдвічі більше");
 
     protected override bool Solo => false;
 

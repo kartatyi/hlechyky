@@ -1,0 +1,21 @@
+/* Сліди на полиці — анімації слідів від глини. Посуд, горно, сцени й палітра --sc-* — з арту «Розбитих глеків»
+   (slot-cascade-art.css: корінь автомата має ще й клас .slot-slot-cascade). Спокій — без анімацій, крім променів ×64+. */
+.slot-slot-slidy .sl-trace { overflow: visible; display: block; }
+.slot-slot-slidy .sl-t-rays { transform-box: fill-box; transform-origin: 50% 50%; animation: sl-rays 12s linear infinite; }
+@keyframes sl-rays { to { transform: rotate(360deg); } }
+
+/* щойно лишився / виріс — штамп у полицю */
+.slot-slot-slidy .sl-tr.stamp > * { animation: sl-stamp .42s cubic-bezier(.3, 1.7, .5, 1); }
+@keyframes sl-stamp { 0% { transform: scale(1.6); opacity: 0; } 55% { transform: scale(.9); opacity: 1; } 100% { transform: none; } }
+/* слід під виграшним кластером — спалах */
+.slot-slot-slidy .sl-tr.hot > * { animation: sl-hot .5s ease-in-out infinite alternate; }
+@keyframes sl-hot { from { transform: scale(1); filter: brightness(1); } to { transform: scale(1.12); filter: brightness(1.5) drop-shadow(0 0 10px #ffd23a); } }
+
+/* заглушка, якщо арту нема */
+.slot-slot-slidy .sl-tph { width: 80%; height: 80%; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 40% 30%, #ffe08a, #c8742a 60%, #6e2a10); color: #fff; font: 900 30px/1 'Onest', sans-serif; }
+.slot-slot-slidy .sl-tph[data-v="1"] { background: rgba(40, 18, 8, .4); }
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-slot-slidy .sl-t-rays, .slot-slot-slidy .sl-tr.hot > * { animation: none; }
+}

@@ -238,11 +238,26 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             // слоти (docs/games/specs/slots.md §2): хвіст — id автомата; Ворожка — теж ставка й виграш
             "slot-bet" => $"{names.Title(tail)} — ставка",
             "slot-win" => $"{names.Title(tail)} — виграш",
+            "slot-buy" => $"{names.Title(tail)} — купив бонус",
             "slot-jackpot" => "Скарбничка Глека!",
             // Лелека (docs/games/specs/lelka.md §4)
             "lelka-bet" => "Лелека — ставка",
             "lelka-win" => "Лелека — забрав",
             "lelka-back" => "Лелека — ставку повернуто",
+            // Гончарне колесо (docs/games/specs/kolo.md §3)
+            "kolo-bet" => "Гончарне колесо — ставка",
+            "kolo-win" => "Гончарне колесо — виграш",
+            "kolo-back" => "Гончарне колесо — ставку повернуто",
+            // Кавуни на ярмарку (docs/games/specs/kavuny.md §4)
+            "kavuny-bet" => "Кавуни — ставка",
+            "kavuny-win" => "Кавуни — забрав",
+            "kavuny-back" => "Кавуни — ставку повернуто",
+            // Двадцять одно (docs/games/specs/blackjack.md §3.2): хвіст — blackjack чи blackjack-solo, підпис однаковий
+            "blackjack-bet" => "Двадцять одно — ставка",
+            "blackjack-double" => "Двадцять одно — подвоєння",
+            "blackjack-split" => "Двадцять одно — спліт",
+            "blackjack-pay" => "Двадцять одно — виплата",
+            "blackjack-back" => "Двадцять одно — ставку повернуто",
             // куплено за гривні (ShardShop.cs): хвіст — номер замовлення
             "buy" => "куплено за гривні",
             "buy-gift" => "подарунок — куплені черепки",

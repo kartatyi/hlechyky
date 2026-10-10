@@ -38,6 +38,21 @@ public sealed class SlotsOptions
     /// <summary>Виграш Скарбнички — ще й в ефір голосом Глека (подією живої реклами).</summary>
     public bool OnAir { get; set; } = true;
 
+    /// <summary>
+    /// «Купити бонус» в автоматах, що його вміють (<see cref="ISlotBuyBonus"/>; зараз — «Сліди на полиці»). Типово
+    /// вимкнено (вирішує власник): кнопки нема, дія <c>buy</c> відмовляє.
+    /// </summary>
+    public bool BuyBonus { get; set; }
+
+    /// <summary>
+    /// Ціна купленого бонусу в ставках (Вова: 100×). Дешевше за безпечну ціну автомата (<see cref="ISlotBuyBonus.BuyMinPrice"/>:
+    /// з нею RTP купівлі не вищий за RTP бази) не буває — така підтягується до неї; дорожче за 1000× — урізається.
+    /// </summary>
+    public int BuyPrice { get; set; } = 100;
+
+    /// <summary>Ціна купленого бонусу для автомата з найменшою безпечною ціною <paramref name="min"/>.</summary>
+    public int BuyPriceFor(int min) => Math.Clamp(BuyPrice, Math.Max(1, min), Math.Max(1000, min));
+
     public static readonly int[] DefaultBets = [10, 20, 50, 100, 200, 500];
 
     /// <summary>

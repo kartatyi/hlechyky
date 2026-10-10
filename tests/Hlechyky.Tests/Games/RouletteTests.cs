@@ -1014,10 +1014,10 @@ public class RouletteTests
         k.Round(17);
         k.Bet(0, "red", 5);
         var v = k.View(0);
-        string[] fields = ["mode", "phase", "until", "leftMs", "phaseMs", "spin", "history", "players", "onTable", "last", "glek", "me", "closed"];
+        string[] fields = ["mode", "wheel", "phase", "until", "leftMs", "phaseMs", "spin", "history", "players", "onTable", "last", "glek", "me", "closed"];
         Assert.Equal(fields.Order(), v.EnumerateObject().Select(p => p.Name).Order());
         Assert.Equal(["nick", "seat", "color", "here", "mine", "total", "bets"], v.GetProperty("players")[0].EnumerateObject().Select(p => p.Name));
-        Assert.Equal(["wallet", "onTable", "free", "canUndo", "canRepeat", "repeatCost", "canDouble", "note"],
+        Assert.Equal(["wallet", "onTable", "free", "canUndo", "canRepeat", "repeatCost", "canDouble", "canWheel", "note"],
             v.GetProperty("me").EnumerateObject().Select(p => p.Name));
         Assert.Equal(["no", "n", "c", "staked", "paid", "results", "big"], v.GetProperty("last").EnumerateObject().Select(p => p.Name));
         Assert.Equal(["nick", "color", "staked", "paid", "net", "hits"],
@@ -1025,6 +1025,8 @@ public class RouletteTests
         Assert.Equal(["mood", "say", "seq"], v.GetProperty("glek").EnumerateObject().Select(p => p.Name));
         Assert.Equal(["n", "c"], v.GetProperty("history")[0].EnumerateObject().Select(p => p.Name));
         Assert.False(v.GetProperty("closed").GetBoolean());
+        Assert.Equal("eu", v.GetProperty("wheel").GetString());
+        Assert.False(v.GetProperty("me").GetProperty("canWheel").GetBoolean());
 
         k.To(Spin);
         Assert.Equal(["no", "n", "c", "until", "leftMs", "ms"], k.View(0).GetProperty("spin").EnumerateObject().Select(p => p.Name));

@@ -7,8 +7,11 @@
 (function () {
   'use strict';
   const BASE = '/games/slots/';
-  const IDS = ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'];
-  const TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті' };
+  const IDS = ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'];
+  const TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті', 'slot-slidy': 'Сліди на полиці' };
+  // дата релізу автомата (лобі ставить «🆕» два тижні); нема — перша хвиля
+  const ADDED = { 'slot-slidy': '2026-10-10' };
+  // арт, який автомат позичає в сусіда (посуд «Сліди на полиці» — з «Розбитих глеків»): вантажиться перед своїм
   const FEED_MS = 7000;
   const roots = new Map();   // root картки → стан
   const files = {};          // url → Promise
@@ -36,9 +39,13 @@
     });
     return files[url];
   }
+  const DEPS = { 'slot-slidy': ['slot-cascade-art'] };
   async function load(id) {
-    css('kit.css'); css(id + '-art.css'); const c = css(id + '.css');
+    css('kit.css');
+    (DEPS[id] || []).forEach((d) => css(d + '.css'));
+    css(id + '-art.css'); const c = css(id + '.css');
     await js('kit.js');
+    for (const d of DEPS[id] || []) await js(d + '.js');
     await Promise.all([js(id + '-art.js'), js(id + '.js'), c]);
     if (!window.SlotKit || !SlotKit.machines || !SlotKit.machines[id]) throw new Error('нема автомата ' + id);
     return SlotKit.machines[id];
@@ -88,7 +95,7 @@
     const b = e.detail && e.detail.balance;
     if (b == null) return;
     walletBal = b;
-    roots.forEach((st) => { if (st.inst && !st.inst.busy && !st.waitSpin) st.inst.ctx.setBalance(b); });
+    roots.forEach((st) => { if (st.inst && !st.inst.busy && !st.waitSpin && !st.hold) st.inst.ctx.setBalance(b); });
   });
 
   // ---------- сервер замість моку ----------
@@ -122,18 +129,33 @@
         });
       },
       collect() { return st.ctx.act('collect'); },
+      // «Купити бонус» (view.buy): як spin, лише дія buy — повертає сценарій купленого бонусу або null (відмова)
+      buy(bet) {
+        const v = st.ctx.view || {};
+        const seq = v.last ? v.last.seq : 0;
+        return new Promise((res) => {
+          let t = 0;
+          // поки сценарій купленого бонусу не дограно, баланс не чіпаємо: кіт сам зніме ціну й додасть виграш (st.hold)
+          const done = (script) => { clearTimeout(t); st.waitSpin = null; if (!script) st.hold = false; res(script || null); };
+          st.hold = true;
+          t = setTimeout(() => done(null), 12000);
+          st.waitSpin = { seq, done };
+          st.ctx.act('buy', { bet, seq }).then((r) => { if (!r || r.ok === false) done(null); else check(st); });
+        });
+      },
     };
   }
   // свіжий вид: дочекані оберт / хід Ворожки, баланс, Скарбничка
   function check(st) {
     const v = st.ctx.view || {};
     if (v.jackpot != null && window.SlotKit && SlotKit.setLive) SlotKit.setLive({ jackpot: v.jackpot });
+    if (st.machine) st.machine.buy = v.buy || null;   // «Купити бонус» вмикають наживо (Slots:BuyBonus)
     const L = v.last;
     if (st.waitSpin && L && L.seq > st.waitSpin.seq) { st.seenSeq = L.seq; st.waitSpin.done(L.script); }
     else if (L && L.seq > st.seenSeq) st.seenSeq = L.seq;   // оберт з іншої вкладки — не програємо
     const g = v.gamble;
     if (st.waitG && g && (g.n || 0) > st.waitG.n) st.waitG.done(Object.assign({}, g, { balance: v.balance }));
-    if (st.inst && !st.inst.busy && !st.waitSpin) { const b = liveBal() != null ? liveBal() : v.balance; if (b != null) st.inst.ctx.setBalance(b); }
+    if (st.inst && !st.inst.busy && !st.waitSpin && !st.hold) { const b = liveBal() != null ? liveBal() : v.balance; if (b != null) st.inst.ctx.setBalance(b); }
   }
 
   // ---------- висота: автомат на всю ігрову зону ----------
@@ -164,6 +186,8 @@
     const v = st.ctx.view || {};
     // ⓘ і табло — з view.table сервера (кожен автомат має _setPay), стеля для банера — machine.table.cap
     if (v.table) { machine.table = v.table; if (v.table.pay && machine._setPay) machine._setPay(v.table.pay, v.table); }
+    machine.buy = v.buy || null;
+    st.machine = machine;
     st.wrap.innerHTML = '';
     if (v.jackpot != null) SlotKit.setLive({ jackpot: v.jackpot });
     if (!SlotKit.live.lines) SlotKit.setLive({ lines: [] });
@@ -181,7 +205,7 @@
     st.inst.ctx.on('resize', place);
     // Ворожка лишилась відкритою (перезавантаження посеред неї) — кнопка знову з тією сумою
     if (v.gamble && v.gamble.open && machine._resumeGamble) machine._resumeGamble(st.inst.ctx, v.gamble);
-    st.inst.ctx.on('spinEnd', () => { release(); const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
+    st.inst.ctx.on('spinEnd', () => { st.hold = false; release(); const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
     fitH(st);
     feedOn();
   }
@@ -224,6 +248,8 @@
     // скриня з дукатом
     'slot-hold': svg('<path d="M2 7h12v6.4H2zM2 7c0-2.6 2.4-4 6-4s6 1.4 6 4" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"/>'
       + '<circle cx="8" cy="9.6" r="2" fill="var(--clay)"/><path d="M2 9.6h4M10 9.6h4" stroke="var(--accent)" stroke-width=".9"/>'),
+    // слід на полиці: випалене коло з горщиком над ним
+    'slot-slidy': svg('<ellipse cx="8" cy="12.6" rx="6.2" ry="2.6" fill="var(--clay)"/><path d="M5.2 4.2h5.6l-.5 1.4c1.4.8 2 2 2 3.3 0 1.9-1.6 2.9-4.3 2.9S3.7 10.8 3.7 8.9c0-1.3.6-2.5 2-3.3z" fill="none" stroke="var(--accent)" stroke-width="1.3" stroke-linejoin="round"/>'),
     // квітка папороті
     'slot-cluster': svg('<g fill="var(--clay)"><circle cx="8" cy="3.6" r="2"/><circle cx="12.2" cy="6.8" r="2"/><circle cx="10.6" cy="11.8" r="2"/>'
       + '<circle cx="5.4" cy="11.8" r="2"/><circle cx="3.8" cy="6.8" r="2"/></g><circle cx="8" cy="8" r="2.1" fill="var(--accent)"/>'),
@@ -252,5 +278,7 @@
   const news = (id) => ({ v: NEWS_V, title: TITLES[id] + ': щедріше й веселіше', items: NEWS[id].concat(NEWS_ALL) });
 
   const api = { mount, update, unmount, status, added: '2026-10-09' };
-  if (window.HGames) for (const id of IDS) HGames.register(Object.assign({ id, icon: ICONS[id], news: news(id) }, api));
+  // «Що нового» — лише в автоматів, про які є новини (NEWS); новий автомат замість цього має «🆕» за датою (ADDED)
+  if (window.HGames) for (const id of IDS) HGames.register(Object.assign({ id, icon: ICONS[id] }, api,
+    NEWS[id] ? { news: news(id) } : {}, ADDED[id] ? { added: ADDED[id] } : {}));
 })();
