@@ -362,7 +362,8 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 (`reason`) — короткі коди: `listen`, `win:chess`, `draw:chess`, `play:chess`, `solo:mines`, `daily:wordle`,
 `ach:first-win`, `stake`, `stake-win`, `stake-refund`, `clicker`, `award:skilky`, `ad:listen`, `shop:<річ>`,
 `gift:<річ>`, `roulette-bet:<гра>`/`roulette-win:<гра>`/`roulette-back:<гра>` (рулетка, хвіст — `roulette` чи `roulette-solo`,
-підпис «Рулетка — ставка/виграш/ставку повернуто»)… (у старих записах
+підпис «Рулетка — ставка/виграш/ставку повернуто»), `kolo-bet:kolo`/`kolo-win:kolo`/`kolo-back:kolo` (Гончарне колесо,
+підпис «Гончарне колесо — ставка/виграш/ставку повернуто»)… (у старих записах
 ще трапляються `ad:winner`/`ad:entry`/`ad:vote` від конкурсу реклами — тексти для них `Economy.Reason` знає й далі).
 
 ### 6.2 Джерела (усі числа — в `appsettings.json`, секція `Economy`)
@@ -418,6 +419,11 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 коли запис кола зіпсовано. Закрите коло до виплати лежить у `game_state` під ключем `roulette:pending`: після падіння
 процесу каса розраховує його за вже вирішеним числом і платить лише тим, чиє списання є в леджері. Лімітів ставки нема,
 поза стелями (як і ставки на партію).
+
+**Гончарне колесо** ([specs/kolo.md](specs/kolo.md) §3) — так само поза банком столу: каса `KoloBook` списує одним
+`TrySpend` на гравця за коло (`kolo-bet:kolo`, ref `kolo-bet:{кімната}:{epoch}:{коло}:{nick_key}`), а коли круг став, —
+`Grant` ставка × множник (`kolo-win:kolo`). Усе грошове — у черзі каси, не в тіку; закрите коло лежить під `kolo:pending`,
+сирота розраховується за вже вирішеним сегментом. Межі — `Kolo:MinBet`/`Kolo:MaxBet` на множник.
 
 ## 7. Результати, рейтинги, таблиці
 
