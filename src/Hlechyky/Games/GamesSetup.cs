@@ -64,6 +64,7 @@ public static class GamesSetup
         Impl.SlotsSetup.AddSlots(services);         // Слоти: каса-Скарбничка, заноси, Slots:* (specs/slots.md)
         Impl.LelkaSetup.AddLelka(services);         // Лелека: налаштування Lelka:* і каса
         Impl.KoloSetup.AddKolo(services);           // Гончарне колесо: налаштування Kolo:* і каса (specs/kolo.md)
+        Impl.KavunySetup.AddKavuny(services);       // Кавуни на ярмарку: налаштування Kavuny:* і каса
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         return services;
     }

@@ -363,7 +363,7 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 `ach:first-win`, `stake`, `stake-win`, `stake-refund`, `clicker`, `award:skilky`, `ad:listen`, `shop:<річ>`,
 `gift:<річ>`, `roulette-bet:<гра>`/`roulette-win:<гра>`/`roulette-back:<гра>` (рулетка, хвіст — `roulette` чи `roulette-solo`,
 підпис «Рулетка — ставка/виграш/ставку повернуто»), `kolo-bet:kolo`/`kolo-win:kolo`/`kolo-back:kolo` (Гончарне колесо,
-підпис «Гончарне колесо — ставка/виграш/ставку повернуто»)… (у старих записах
+підпис «Гончарне колесо — ставка/виграш/ставку повернуто»), `kavuny-bet|win|back:kavuny` (Кавуни на ярмарку, specs/kavuny.md §4)… (у старих записах
 ще трапляються `ad:winner`/`ad:entry`/`ad:vote` від конкурсу реклами — тексти для них `Economy.Reason` знає й далі).
 
 ### 6.2 Джерела (усі числа — в `appsettings.json`, секція `Economy`)

@@ -230,6 +230,9 @@ public static class AchievementCatalog
         // Гончарне колесо — гра просить сама (specs/kolo.md §7), лише тим, хто в мить, коли колесо стало, сидить
         new("kolo-30",           "Глек удався!",      "Гончарне колесо: виграла ставка на ×30", "🏺", 25),
         new("kolo-crack",        "Черепки на щастя",  "Гончарне колесо: був зі ставкою, коли колесо тріснуло", "💔", 10),
+        // Кавуни на ярмарку — гра просить сама (specs/kavuny.md §6)
+        new("kavuny-10",         "Кавунова гора",     "Кавуни на ярмарку: забрав на ×10 і вище", "🍉", 20),
+        new("kavuny-glek",       "Глеків кавун",      "Кавуни на ярмарку: розрізав Глеків кавун", "🔪", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

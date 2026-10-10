@@ -248,6 +248,10 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "kolo-bet" => "Гончарне колесо — ставка",
             "kolo-win" => "Гончарне колесо — виграш",
             "kolo-back" => "Гончарне колесо — ставку повернуто",
+            // Кавуни на ярмарку (docs/games/specs/kavuny.md §4)
+            "kavuny-bet" => "Кавуни — ставка",
+            "kavuny-win" => "Кавуни — забрав",
+            "kavuny-back" => "Кавуни — ставку повернуто",
             // куплено за гривні (ShardShop.cs): хвіст — номер замовлення
             "buy" => "куплено за гривні",
             "buy-gift" => "подарунок — куплені черепки",
