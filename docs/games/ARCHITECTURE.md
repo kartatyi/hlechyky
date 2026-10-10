@@ -363,7 +363,8 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 `ach:first-win`, `stake`, `stake-win`, `stake-refund`, `clicker`, `award:skilky`, `ad:listen`, `shop:<річ>`,
 `gift:<річ>`, `roulette-bet:<гра>`/`roulette-win:<гра>`/`roulette-back:<гра>` (рулетка, хвіст — `roulette` чи `roulette-solo`,
 підпис «Рулетка — ставка/виграш/ставку повернуто»), `kolo-bet:kolo`/`kolo-win:kolo`/`kolo-back:kolo` (Гончарне колесо,
-підпис «Гончарне колесо — ставка/виграш/ставку повернуто»), `kavuny-bet|win|back:kavuny` (Кавуни на ярмарку, specs/kavuny.md §4)… (у старих записах
+підпис «Гончарне колесо — ставка/виграш/ставку повернуто»), `kavuny-bet|win|back:kavuny` (Кавуни на ярмарку, specs/kavuny.md §4), `blackjack-bet|double|split|pay|back:<гра>` («Двадцять одно — ставка/
+подвоєння/спліт/виплата/ставку повернуто», хвіст — `blackjack` чи `blackjack-solo`)… (у старих записах
 ще трапляються `ad:winner`/`ad:entry`/`ad:vote` від конкурсу реклами — тексти для них `Economy.Reason` знає й далі).
 
 ### 6.2 Джерела (усі числа — в `appsettings.json`, секція `Economy`)
@@ -424,6 +425,13 @@ List<(string Nick, int Balance, int Earned)> Top(int n, string by = "balance");
 `TrySpend` на гравця за коло (`kolo-bet:kolo`, ref `kolo-bet:{кімната}:{epoch}:{коло}:{nick_key}`), а коли круг став, —
 `Grant` ставка × множник (`kolo-win:kolo`). Усе грошове — у черзі каси, не в тіку; закрите коло лежить під `kolo:pending`,
 сирота розраховується за вже вирішеним сегментом. Межі — `Kolo:MinBet`/`Kolo:MaxBet` на множник.
+
+**Двадцять одно** ([specs/blackjack.md](specs/blackjack.md) §3) — каса за зразком рулетки (`BlackjackBook`), але списань за
+роздачу кілька: ставка в мить «Роздаю!» (`blackjack-bet:<гра>`), подвоєння й спліти — посеред ходу (`blackjack-double`,
+`blackjack-split`), усі з ref `blackjack-bet:{кімната}:{epoch}:{роздача}:{крок}:{nick_key}` (`b`, `d`, `s1`, `s2`). Виплата —
+одним `Grant` за бокс, коли Глек показав карти (`blackjack-pay`). Роздача лежить у `game_state` під `blackjack:pending` від
+першого списання до виплати: дограна (є підсумки) — сирота платить за ними; обірвана посеред ходів — повертає все списане
+(`blackjack-back`). Ставка — `Blackjack:MinBet`…`MaxBet`.
 
 ## 7. Результати, рейтинги, таблиці
 

@@ -1,0 +1,243 @@
+/* «Двадцять одно в Глека»: сукно, Глек-круп'є, бокси гравців, карти (як у покері) і панель ходу. Кольори — змінними;
+   свої оголошуємо в :root з фолбеками. Телефон (375 px): усе в один стовпець, бокси — по два в ряд, кнопки ≥ 40 px. */
+:root {
+  --bj-felt: #1f6a45;
+  --bj-felt2: #12452c;
+  --bj-rail: #5b3b24;
+  --bj-on-felt: #fff8ec;
+  --bj-line: rgba(255, 244, 220, .28);
+  --bj-face: #f6f3ea;
+  --bj-ink: #1c2420;
+  --bj-red: var(--danger, #d64545);
+  --bj-back: #8e3a2c;
+  --bj-back2: #b5583f;
+  --bj-gold: #f4c542;
+  --bj-shade: rgba(0, 0, 0, .35);
+  --bj-shadow: rgba(0, 0, 0, .45);
+  --bj-card-edge: rgba(0, 0, 0, .25);
+  --bj-slot-edge: rgba(255, 255, 255, .2);
+  --bj-bubble: #fffaf0;
+  --bj-bubble-ink: #3b2a12;
+  --bj-win: #7fdc8a;
+  --bj-lose: #ff9b8f;
+  --bj-p0: #e0a030;
+  --bj-p1: #3f8fd8;
+  --bj-p2: #5bb85b;
+  --bj-p3: #c45bc4;
+  --bj-p4: #e06a3a;
+  --bj-c10: #d9c3a0;
+  --bj-c25: #3f7f4f;
+  --bj-c50: #b5562e;
+  --bj-c100: #2f5fa8;
+  --bj-c500: #2a2420;
+}
+
+.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 900px; margin: 0 auto; min-width: 0; }
+.bj .muted { color: var(--muted); }
+
+/* ---- шапка ---- */
+.bj-top { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.bj-top:empty { display: none; }
+.bj-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: .86em; color: var(--muted);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+}
+.bj-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---- сукно ---- */
+.bj-felt {
+  position: relative; border-radius: 22px; padding: 12px 12px 14px;
+  background: radial-gradient(ellipse at 50% 20%, var(--bj-felt), var(--bj-felt2));
+  box-shadow: 0 0 0 7px var(--bj-rail), 0 0 0 9px var(--bj-shade), inset 0 0 40px var(--bj-shade);
+  margin: 9px; color: var(--bj-on-felt);
+}
+.bj-stage {
+  display: grid; grid-template-columns: 92px minmax(0, 1fr); grid-template-areas: "glek dealer" "glek say";
+  gap: 4px 12px; align-items: center; min-height: 120px;
+}
+.bj-glek { grid-area: glek; position: relative; align-self: center; }
+.bj-glek img { display: block; width: 100%; height: auto; transform-origin: 50% 92%; filter: drop-shadow(0 4px 6px var(--bj-shadow)); user-select: none; -webkit-user-drag: none; }
+.bj-badge { position: absolute; right: -6px; top: -8px; font-size: 1.3em; line-height: 1; pointer-events: none; }
+.bj-dealer { grid-area: dealer; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 72px; }
+.bj-dtot:empty { display: none; }
+.bj-say {
+  grid-area: say; position: relative; justify-self: start; max-width: 100%;
+  background: var(--bj-bubble); color: var(--bj-bubble-ink); border-radius: 12px; padding: 6px 10px;
+  font-size: .86em; line-height: 1.28; box-shadow: 0 4px 14px var(--bj-shadow);
+  opacity: 0; transform: translateY(4px) scale(.96); transition: opacity .25s, transform .25s; pointer-events: none; min-height: 1.3em;
+}
+.bj-say::before {
+  content: ""; position: absolute; left: -6px; top: 50%; width: 12px; height: 12px; margin-top: -6px;
+  background: var(--bj-bubble); transform: rotate(45deg); border-radius: 2px;
+}
+.bj-say.on { opacity: 1; transform: none; }
+.bj-rules {
+  text-align: center; font-size: .72em; letter-spacing: .02em; opacity: .75; margin: 6px 0 8px;
+  border-top: 1px dashed var(--bj-line); border-bottom: 1px dashed var(--bj-line); padding: 3px 0;
+}
+
+/* ---- карти (як у покері) ---- */
+.bj-cards { display: flex; align-items: center; min-height: 56px; }
+.bj-cards > .bjc + .bjc { margin-left: -12px; }
+.bjc {
+  position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  width: 40px; height: 56px; border-radius: 6px; background: var(--bj-face); color: var(--bj-ink);
+  border: 1px solid var(--bj-card-edge); box-shadow: 0 1px 3px var(--bj-shadow); font-weight: 800; line-height: 1; flex: none;
+}
+.bjc b { font-size: 1.05em; }
+.bjc i { font-style: normal; font-size: 1.2em; }
+.bjc.red { color: var(--bj-red); }
+.bjc.back { background: repeating-linear-gradient(45deg, var(--bj-back) 0 4px, var(--bj-back2) 4px 8px); border: 2px solid var(--bj-face); }
+.bj-dcards .bjc { width: 48px; height: 68px; font-size: 1.12em; }
+.bj-dcards > .bjc + .bjc { margin-left: -10px; }
+.bj-slot { width: 48px; height: 68px; border-radius: 6px; border: 1px dashed var(--bj-slot-edge); flex: none; }
+.bj-slot + .bj-slot { margin-left: 6px; }
+.bjc.in { animation: bj-deal .34s ease-out both; }
+.bjc.flip { animation: bj-flip .42s ease-out both; }
+@keyframes bj-deal { from { opacity: 0; transform: translateY(-26px) scale(.65) rotate(-8deg); } to { opacity: 1; transform: none; } }
+@keyframes bj-flip { from { transform: rotateY(90deg); } to { transform: none; } }
+
+.bj-tot {
+  display: inline-block; min-width: 2.2em; text-align: center; padding: 2px 8px; border-radius: 999px;
+  background: var(--bj-shade); color: var(--bj-on-felt); font-weight: 800; font-variant-numeric: tabular-nums; font-size: .9em;
+}
+.bj-tot.bust { color: var(--bj-lose); }
+.bj-tot.bj { color: var(--bj-gold); }
+
+/* ---- бокси ---- */
+.bj-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.bj-empty { grid-column: 1 / -1; text-align: center; opacity: .85; padding: 18px 6px; font-size: .9em; }
+.bj-box {
+  --pc: var(--bj-p0);
+  min-width: 0; border-radius: 12px; padding: 6px 8px 8px; background: rgba(0, 0, 0, .18);
+  border: 1px solid var(--bj-line); border-top: 3px solid var(--pc); transition: box-shadow .2s, opacity .2s;
+}
+.bj-box.p1 { --pc: var(--bj-p1); }
+.bj-box.p2 { --pc: var(--bj-p2); }
+.bj-box.p3 { --pc: var(--bj-p3); }
+.bj-box.p4 { --pc: var(--bj-p4); }
+.bj-box.mine { background: rgba(0, 0, 0, .28); }
+.bj-box.away { opacity: .62; }
+.bj-box.turn { box-shadow: 0 0 0 2px var(--accent), 0 0 14px var(--accent); }
+.bj-box.won { box-shadow: 0 0 0 2px var(--bj-gold), 0 0 12px var(--bj-gold); }
+.bj-bhead { display: flex; align-items: center; gap: 6px; font-size: .84em; margin-bottom: 4px; min-width: 0; }
+.bj-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--pc); flex: none; }
+.bj-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.bj-bet, .bj-net { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bj-box.won .bj-net { color: var(--bj-win); }
+.bj-box.lost .bj-net { color: var(--bj-lose); }
+.bj-hand { display: flex; flex-direction: column; gap: 3px; padding: 3px 4px; border-radius: 8px; }
+.bj-hand + .bj-hand { margin-top: 4px; border-top: 1px dashed var(--bj-line); }
+.bj-hand.active { background: rgba(255, 255, 255, .1); outline: 2px solid var(--accent); outline-offset: -2px; }
+.bj-hmeta { display: flex; align-items: center; gap: 6px; font-size: .8em; flex-wrap: wrap; }
+.bj-stake { opacity: .85; font-variant-numeric: tabular-nums; }
+.bj-out { font-weight: 800; }
+.bj-hand.o-win .bj-out, .bj-hand.o-bj .bj-out { color: var(--bj-win); }
+.bj-hand.o-lose .bj-out, .bj-hand.o-bust .bj-out { color: var(--bj-lose); }
+.bj-hand.o-bj .bj-out { color: var(--bj-gold); }
+
+/* ---- панель ---- */
+.bj-panel { display: flex; flex-direction: column; gap: 8px; padding: 0 4px; }
+.bj-panel:empty { display: none; }
+.bj-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.bj-info { font-size: .92em; line-height: 1.35; }
+.bj-info b.ok { color: var(--ok); }
+.bj-info b.bad { color: var(--danger); }
+.bj-clock { flex: none; }
+.bj-clock .garc { width: 40px; height: 40px; }
+.bj-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.bj-btns button { min-height: 42px; flex: 1 1 auto; }
+.bj-moves button { flex: 1 1 calc(50% - 6px); font-size: 1em; }
+.bj-go { flex: 2 1 auto !important; font-weight: 800; }
+.bj-chiprow { display: flex; gap: 6px; flex-wrap: nowrap; }
+.bj-chipbtn {
+  flex: 0 1 48px; aspect-ratio: 1; min-width: 36px; min-height: 40px; border-radius: 50%; padding: 0; display: grid; place-items: center;
+  border: 3px dashed rgba(255, 255, 255, .7); color: #fff; font-weight: 800; font-size: .82em; background: var(--bj-c25);
+  box-shadow: 0 2px 4px var(--bj-shadow); cursor: pointer; transition: transform .15s;
+}
+.bj-chipbtn.c10 { background: var(--bj-c10); color: #3b2a12; border-color: rgba(59, 42, 18, .45); }
+.bj-chipbtn.c25 { background: var(--bj-c25); }
+.bj-chipbtn.c50 { background: var(--bj-c50); }
+.bj-chipbtn.c100 { background: var(--bj-c100); }
+.bj-chipbtn.c500 { background: var(--bj-c500); border-color: var(--bj-gold); }
+.bj-chipbtn.cmax { background: linear-gradient(135deg, var(--bj-gold), var(--bj-c50)); color: #2a1a08; }
+.bj-chipbtn.sel { transform: translateY(-3px); box-shadow: 0 0 0 2px var(--accent), 0 4px 8px var(--bj-shadow); }
+.bj-chipbtn:disabled { opacity: .38; cursor: default; transform: none; }
+.bj-hint { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: .92em; }
+.bj-hintbtn { align-self: flex-start; min-height: 40px; }
+.bj-note { color: var(--accent); font-size: .88em; }
+
+/* ---- низ: рекорди, налаштування, чесна колода ---- */
+.bj-foot { display: flex; flex-direction: column; gap: 6px; padding: 0 4px; font-size: .84em; }
+.bj-rec { line-height: 1.4; }
+.bj-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.bj-small { min-height: 40px; font-size: .9em; }
+.bj-fair { position: relative; }
+.bj-fairbox {
+  position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .88em;
+  line-height: 1.4; box-shadow: 0 4px 16px var(--bj-shadow);
+}
+.bj-fairbox h4 { margin: 0 0 6px; }
+.bj-fairbox p { margin: 6px 0; }
+.bj-hash { word-break: break-all; font-size: .9em; }
+.bj-x { position: absolute; right: 6px; top: 6px; min-width: 40px; min-height: 40px; }
+.bj-verdict:empty { display: none; }
+
+/* ---- Глек: настрій ---- */
+.bj-glek[data-mood="idle"] img { animation: bj-g-idle 3s ease-in-out infinite; }
+.bj-glek[data-mood="hurry"] img { animation: bj-g-pulse .7s ease-in-out infinite; }
+.bj-glek[data-mood="deal"].go img { animation: bj-g-deal 1s ease-out; }
+.bj-glek[data-mood="flip"] img { transform: rotate(6deg); }
+.bj-glek[data-mood="dance"].go img { animation: bj-g-hopak 3s ease-in-out 2; }
+.bj-glek[data-mood="bj"].go img, .bj-glek[data-mood="rake"].go img { animation: bj-g-laugh 1.6s linear; }
+.bj-glek[data-mood="bust"].go img { animation: bj-g-bust 1.2s ease-out; }
+.bj-glek[data-mood="clap"].go img { animation: bj-g-clap 1.5s ease-in-out; }
+.bj-glek[data-mood="sigh"] img { transform: scaleY(.92); }
+.bj-glek[data-mood="doze"] img { animation: bj-g-doze 4s ease-in-out infinite; }
+.bj-glek[data-mood="doze"] .bj-badge { animation: bj-g-zz 4s ease-in-out infinite; }
+@keyframes bj-g-idle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(3deg); } 55% { transform: rotate(-6deg) translateY(-2%); } 80% { transform: rotate(1deg); } }
+@keyframes bj-g-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes bj-g-deal { 0% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 60% { transform: rotate(6deg); } 100% { transform: rotate(0); } }
+@keyframes bj-g-hopak {
+  0%, 100% { transform: none; }
+  12% { transform: translateY(4%) scaleY(.85); }
+  25% { transform: translateY(-18%) rotate(-7deg); }
+  37% { transform: translateY(4%) scaleY(.85); }
+  50% { transform: translateY(-26%); }
+  62% { transform: translateX(-7%) translateY(4%) scaleY(.85); }
+  75% { transform: translateX(7%) translateY(-14%) rotate(9deg); }
+  87% { transform: translateY(4%) scaleY(.85); }
+}
+@keyframes bj-g-laugh {
+  0%, 100% { transform: none; }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-3%) rotate(-5deg); }
+  20%, 40%, 60%, 80% { transform: translateX(3%) rotate(5deg) translateY(-2%); }
+}
+@keyframes bj-g-bust { 0% { transform: none; } 30% { transform: scale(1.12) rotate(-6deg); } 60% { transform: scaleY(.88) translateY(3%); } 100% { transform: none; } }
+@keyframes bj-g-clap { 0%, 40%, 80%, 100% { transform: none; } 20% { transform: translateY(-14%); } 60% { transform: translateY(-10%); } }
+@keyframes bj-g-doze { 0%, 100% { transform: rotate(8deg); } 50% { transform: rotate(10deg) translateY(2%); } }
+@keyframes bj-g-zz { 0% { opacity: 0; transform: translate(0, 0) scale(.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(30%, -120%) scale(1.2); } }
+
+/* ---- телефон ---- */
+@media (max-width: 520px) {
+  .bj-felt { margin: 7px 4px; padding: 10px 8px 12px; border-radius: 16px; box-shadow: 0 0 0 5px var(--bj-rail), 0 0 0 7px var(--bj-shade), inset 0 0 30px var(--bj-shade); }
+  .bj-stage { grid-template-columns: 64px minmax(0, 1fr); min-height: 96px; gap: 4px 8px; }
+  .bj-badge { font-size: 1em; right: -4px; top: -6px; }
+  .bj-say { font-size: .76em; padding: 5px 8px; }
+  .bj-dcards .bjc, .bj-slot { width: 40px; height: 56px; font-size: 1em; }
+  .bj-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .bj-box { padding: 5px 6px 6px; }
+  .bjc { width: 34px; height: 48px; font-size: .9em; }
+  .bj-cards > .bjc + .bjc { margin-left: -13px; }
+  .bj-rules { font-size: .66em; }
+  .bj-moves button { flex-basis: calc(50% - 6px); }
+}
+@media (max-width: 360px) {
+  .bj-boxes { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Менше руху: Глек нерухомий, карти без польотів — лише бейдж настрою й хмарка. */
+@media (prefers-reduced-motion: reduce) {
+  .bj-glek img, .bj-glek .bj-badge, .bjc, .bj-say, .bj-chipbtn { animation: none !important; transition: none !important; }
+  .bj-glek img { transform: none !important; }
+}

@@ -138,7 +138,7 @@
       { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo', 'kolo'] },
       { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },   // не гра: плитку «Ставки на події» ставить панель web/bets.js (tile)
       { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka', 'kavuny'] },
-      { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker'] },
+      { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker', 'blackjack', 'blackjack-solo'] },
     ],
   };
   const OTHER_THEME = { id: 'other', title: 'Інше', icon: '✨' };
