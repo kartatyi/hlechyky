@@ -135,7 +135,7 @@
     ],
     azart: [
       { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'] },
-      { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo'] },
+      { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo', 'kolo'] },
       { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },   // не гра: плитку «Ставки на події» ставить панель web/bets.js (tile)
       { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka'] },
       { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker'] },
@@ -1741,6 +1741,7 @@
       if (g.off) continue;        // вимкнено в конфігу сайту (Games:Off) — сервер однаково не відкриє
       if (me.slots === false && SLOT_INFO[g.id]) continue;   // автомати на перерві (Slots:Enabled) — тема «🍒 Слоти» зникає
       if (me.lelka === false && g.id === 'lelka') continue;  // Лелека відпочиває (Lelka:Enabled) — плитки нема
+      if (me.kolo === false && g.id === 'kolo') continue;    // Гончарне колесо відпочиває (Kolo:Enabled) — плитки нема
       const f = familyOf[g.id];
       if (f) {
         if (seen.has(f.id)) continue;
@@ -1786,7 +1787,7 @@
   function tileBtn(e) {
     if (e.solo) return '<button class="primary" data-solo="' + esc(e.g.id) + '">Грати</button>';
     // Спільний стіл на сайт (Лелека, shared у каталозі): не «ставити», а сісти за той, що вже літає (сервер сам знайде чи поставить).
-    if (e.g && e.g.shared) return '<button class="primary" data-shared="' + esc(e.g.id) + '">' + (e.g.id === 'lelka' ? 'Сісти до Лелеки' : 'Сісти за стіл') + '</button>';
+    if (e.g && e.g.shared) return '<button class="primary" data-shared="' + esc(e.g.id) + '">' + (e.g.id === 'lelka' ? 'Сісти до Лелеки' : e.g.id === 'kolo' ? 'Сісти до колеса' : 'Сісти за стіл') + '</button>';
     return '<button data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '">+ Стіл</button>';
   }
   // ---------------------------------------------------------------------------------------------
