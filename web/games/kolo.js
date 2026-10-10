@@ -150,8 +150,8 @@
     const lay = w >= 760 ? 'wide' : 'vert';
     if (lay === st.layout) return false;
     st.layout = lay;
-    st.el.box.classList.toggle('L-wide', lay === 'wide');
-    st.el.box.classList.toggle('L-vert', lay !== 'wide');
+    st.el.box.classList.toggle('ko-wide', lay === 'wide');
+    st.el.box.classList.toggle('ko-vert', lay !== 'wide');
     return true;
   }
 

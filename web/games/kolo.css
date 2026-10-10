@@ -13,27 +13,27 @@
 }
 
 .ko { width: 100%; max-width: 1180px; margin: 0 auto; display: grid; gap: 12px; align-items: start; position: relative; }
-.ko.L-wide { grid-template-columns: 360px minmax(0, 1fr); }
-.ko.L-vert { grid-template-columns: minmax(0, 1fr); }
+.ko.ko-wide { grid-template-columns: 360px minmax(0, 1fr); }
+.ko.ko-vert { grid-template-columns: minmax(0, 1fr); }
 .ko .muted { color: var(--muted); }
 .ko .small { font-size: .82em; }
 .ko-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
 /* ---------------- сцена: Глек, хмарка, круг ---------------- */
 .ko-stage { position: relative; display: grid; gap: 6px 8px; align-items: center; min-width: 0; }
-.L-wide .ko-stage {
+.ko-wide .ko-stage {
   grid-template-columns: 96px minmax(0, 1fr);
   grid-template-areas: "glek say" "wheel wheel" "bar bar";
   position: sticky; top: calc(var(--gtop-h, 0px) + 8px);
 }
-.L-vert .ko-stage {
+.ko-vert .ko-stage {
   grid-template-columns: 64px minmax(0, 1fr);
   grid-template-areas: "glek wheel" "say say" "bar bar";
 }
 .ko-glek { grid-area: glek; position: relative; align-self: start; }
 .ko-glek img { display: block; width: 100%; height: auto; transform-origin: 50% 92%; filter: drop-shadow(0 4px 6px var(--ko-shadow)); user-select: none; -webkit-user-drag: none; }
 .ko-badge { position: absolute; right: -6px; top: -8px; font-size: 1.3em; line-height: 1; pointer-events: none; }
-.L-vert .ko-badge { font-size: 1em; right: -4px; top: -6px; }
+.ko-vert .ko-badge { font-size: 1em; right: -4px; top: -6px; }
 .ko-glek[data-mood="idle"] img { animation: ko-g-idle 3s ease-in-out infinite; }
 .ko-glek[data-mood="hurry"] img { animation: ko-g-hurry .7s ease-in-out infinite; }
 .ko-glek[data-mood="call"] img { transform: rotate(9deg); }
@@ -58,15 +58,15 @@
   background: var(--ko-bubble); transform: rotate(45deg); border-radius: 2px;
 }
 .ko-say.on { opacity: 1; transform: none; }
-.L-wide .ko-say { align-self: start; margin-top: 14px; }
+.ko-wide .ko-say { align-self: start; margin-top: 14px; }
 /* телефон: хмарка окремим рядком під кругом на всю ширину; рядок тримає місце й порожнім, щоб кнопки не стрибали */
-.L-vert .ko-say { justify-self: stretch; text-align: center; font-size: .8em; min-height: calc(2 * 1.28em + 12px); }
-.L-vert .ko-say::before { left: 24px; top: -6px; }
+.ko-vert .ko-say { justify-self: stretch; text-align: center; font-size: .8em; min-height: calc(2 * 1.28em + 12px); }
+.ko-vert .ko-say::before { left: 24px; top: -6px; }
 
 .ko-wheelbox { grid-area: wheel; position: relative; aspect-ratio: 1 / 1; border-radius: 50%; justify-self: center;
   box-shadow: 0 12px 26px var(--ko-shadow), 0 0 0 2px rgba(0, 0, 0, .3); }
-.L-wide .ko-wheelbox { width: 320px; }
-.L-vert .ko-wheelbox { width: min(240px, 100%); }
+.ko-wide .ko-wheelbox { width: 320px; }
+.ko-vert .ko-wheelbox { width: min(240px, 100%); }
 .ko-wheel { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 50%; will-change: transform; }
 /* «палець майстра» вгорі: тут стає сегмент */
 .ko-finger { position: absolute; left: 50%; top: -6px; width: 0; height: 0; transform: translateX(-50%); z-index: 2;
@@ -78,7 +78,7 @@
   box-shadow: inset 0 -3px 8px rgba(90, 44, 14, .35), 0 3px 10px rgba(0, 0, 0, .35); pointer-events: none; }
 .ko-hx { font-family: var(--display); font-size: 2.1em; line-height: 1; font-weight: 800; }
 .ko-hs { font-size: .72em; opacity: .8; margin-top: 2px; }
-.L-vert .ko-hx { font-size: 1.6em; }
+.ko-vert .ko-hx { font-size: 1.6em; }
 .ko-hub.land { animation: ko-pop .35s ease-out; }
 .ko-hub.h2 .ko-hx { color: var(--ko-c2); }
 .ko-hub.h3 .ko-hx { color: var(--ko-c3); }
@@ -114,13 +114,13 @@
 
 /* ---------------- кнопки множників ---------------- */
 .ko-picks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.L-vert .ko-picks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ko-vert .ko-picks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ko-pick {
   position: relative; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 2px;
   min-height: 108px; padding: 8px 8px 6px; border-radius: 12px; white-space: normal; text-align: center;
   border: 2px solid rgba(0, 0, 0, .25); color: #fff; box-shadow: 0 3px 0 rgba(0, 0, 0, .3);
 }
-.L-vert .ko-pick { min-height: 92px; }
+.ko-vert .ko-pick { min-height: 92px; }
 .ko-pick.p2 { background: linear-gradient(180deg, var(--ko-c2), #2c4f86); }
 .ko-pick.p3 { background: linear-gradient(180deg, var(--ko-c3), #2a6a3e); }
 .ko-pick.p6 { background: linear-gradient(180deg, var(--ko-c6), #a8761c); color: #2a1e03; }
@@ -157,11 +157,11 @@
 .ko-q button { min-width: 48px; height: 40px; justify-content: center; }
 .ko-acts { display: flex; gap: 6px; margin-left: auto; }
 .ko-acts button { height: 40px; }
-.L-vert .ko-panel { display: grid; grid-template-columns: minmax(0, 1fr); }
-.L-vert .ko-amt .ko-in { flex: 1 1 auto; width: auto; min-width: 0; }
-.L-vert .ko-q button { flex: 1 1 0; min-width: 0; padding: 0 4px; }
-.L-vert .ko-acts { margin: 0; }
-.L-vert .ko-acts button { flex: 1 1 0; justify-content: center; }
+.ko-vert .ko-panel { display: grid; grid-template-columns: minmax(0, 1fr); }
+.ko-vert .ko-amt .ko-in { flex: 1 1 auto; width: auto; min-width: 0; }
+.ko-vert .ko-q button { flex: 1 1 0; min-width: 0; padding: 0 4px; }
+.ko-vert .ko-acts { margin: 0; }
+.ko-vert .ko-acts button { flex: 1 1 0; justify-content: center; }
 .ko-line { font-size: .88em; line-height: 1.4; }
 .ko-note { color: var(--danger); }
 
