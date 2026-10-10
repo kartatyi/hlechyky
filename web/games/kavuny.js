@@ -190,12 +190,11 @@
     if (!rotten) shine(g, r, 0.28);
   }
   function kavun(g, r, t, glek) {
-    if (glek || true) {   // золотистий блиск
-      const a = 0.25 + 0.2 * Math.sin((t || 0) * 6);
-      const gl = g.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.5);
-      gl.addColorStop(0, 'rgba(255,215,90,' + (glek ? a + 0.25 : a) + ')'); gl.addColorStop(1, 'rgba(255,215,90,0)');
-      g.fillStyle = gl; g.beginPath(); g.arc(0, 0, r * 1.5, 0, Math.PI * 2); g.fill();
-    }
+    // золотистий блиск (рідкісний овоч)
+    const a = 0.25 + 0.2 * Math.sin((t || 0) * 6);
+    const gl = g.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.5);
+    gl.addColorStop(0, 'rgba(255,215,90,' + (glek ? a + 0.25 : a) + ')'); gl.addColorStop(1, 'rgba(255,215,90,0)');
+    g.fillStyle = gl; g.beginPath(); g.arc(0, 0, r * 1.5, 0, Math.PI * 2); g.fill();
     g.fillStyle = radial(g, r, ['#9ee07a', '#3a9a3a', '#14501c']); outline(g, r);
     g.beginPath(); g.ellipse(0, 0, r * 1.05, r * 0.95, 0, 0, Math.PI * 2); g.fill();
     g.save(); g.clip();
@@ -446,7 +445,7 @@
     if (v.phase === 'idle' && v.hash) st.nextHash = v.hash;
     if (r) {
       if (st.rno !== r.no) {
-        st.rno = r.no; st.fruits = new Map(); st.local = []; st.pending.clear(); st.endShown = null; st.tier = 0; st.dead = 0;
+        st.rno = r.no; st.fruits = new Map(); st.local = []; st.pending.clear(); st.endShown = null; st.tier = 0; st.dead = 0; st.goAt = 0; st.cashAt = 0;
         if (st.nextHash) st.pre[r.no] = st.nextHash;
         say(st, pick(SAY.start));
         big(st, '');
@@ -461,9 +460,10 @@
           if (f.k === 'K') say(st, pick(SAY.glek));
           if (f.at % (K(st).wave) === 0) throwGlek(st);
         }
+        // розрізане сервером (авторізання): множник уже враховано, а серп показуємо, коли овоч трохи злетить
         if (f.cut && !o.srv) {
           o.srv = true;
-          if (!o.cut) cutFx(st, o, null, true);
+          if (!o.cut) o.later = true;
         }
       }
       if ((r.tier || 0) > st.tier) { st.tier = r.tier; say(st, pick(SAY.tier)); }
@@ -479,7 +479,7 @@
   }
 
   function ended(st, v, l) {
-    st.dead = performance.now();
+    st.dead = performance.now(); st.cashAt = 0;
     if (l.why === 'rot') {
       if (l.rot) {
         const t0 = tms(l.t0);
@@ -511,7 +511,7 @@
     if (!live(st) || !st.g) return;
     const T = snow(st), u = st.g.u;
     for (const f of st.fruits.values()) {
-      if (f.cut || f.rot || f.k === 'x') continue;
+      if (f.cut || f.srv || f.rot || f.k === 'x') continue;
       const p = where(st, f, T);
       if (!p || p.s > 1.05) continue;
       const r = (KINDS[f.k] || KINDS.a).r * u + slack;
@@ -532,7 +532,7 @@
     const T = snow(st);
     let best = null, by = -1;
     for (const f of st.fruits.values()) {
-      if (f.cut || f.rot || f.k === 'x') continue;
+      if (f.cut || f.srv || f.rot || f.k === 'x') continue;
       const p = where(st, f, T);
       if (!p || p.s > 1.02) continue;
       if (p.y > by) { by = p.y; best = { f, p }; }
@@ -572,7 +572,7 @@
   }
   function flush(st) {
     if (!st.pending.size || st.flushT) return;
-    const wait = Math.max(0, 80 - (performance.now() - (st.sentAt || 0)));
+    const wait = Math.max(0, 80 - (performance.now() - (st.sentAt || -1e9)));
     st.flushT = setTimeout(() => {
       st.flushT = 0;
       if (!st.pending.size || !live(st)) { st.pending.clear(); return; }
@@ -598,7 +598,11 @@
   function mode(st) {
     const v = cur(st);
     if (!v) return { m: 'wait', t: '…', s: '' };
-    if (st.rotUntil && performance.now() < st.rotUntil) return { m: 'lost', t: '✕', s: 'гнилий гарбуз' };
+    const now = performance.now();
+    if (st.rotUntil && now < st.rotUntil) return { m: 'lost', t: '✕', s: 'гнилий гарбуз' };
+    // відповідь на дію вже є, а вид із тіка — ще ні: не даємо натиснути вдруге
+    if (live(st) && st.cashAt && now - st.cashAt < 1500) return { m: 'wait', t: 'Забрано!', s: 'Глек рахує черепки' };
+    if (!live(st) && st.goAt && now - st.goAt < 1500) return { m: 'wait', t: 'Глек замахується…', s: 'зараз полетить' };
     if (live(st)) {
       const m = shownM(st), r = v.round;
       if (m <= 1.0001) return { m: 'wait', t: 'Ріж!', s: 'забрати — після першого розрізу' };
@@ -652,14 +656,15 @@
       return;
     }
     if (st.rotUntil && performance.now() < st.rotUntil) return;
+    if (st.goAt && performance.now() - st.goAt < 1500) return;
     if (v.on === false) return;
     st.busy = true; paint(st);
     st.ctx.act('start', { amount: st.amount, auto: st.autoOn ? st.autoX : null, autocut: !!st.knife })
-      .catch(() => null).then(() => { st.busy = false; paint(st); });
+      .catch(() => null).then((r) => { st.busy = false; if (r && r.ok && !live(st)) st.goAt = performance.now(); paint(st); setTimeout(() => paint(st), 1600); });
   }
   function cash(st) {
     if (!live(st) || st.busy) return;
-    if (shownM(st) <= 1.0001) return;
+    if (shownM(st) <= 1.0001 || (st.cashAt && performance.now() - st.cashAt < 1500)) return;
     // ще не надіслане — спершу (інакше «Забрати» обжене свої ж розрізи)
     if (st.pending.size) {
       clearTimeout(st.flushT); st.flushT = 0;
@@ -667,7 +672,7 @@
       try { st.ctx.input('cut', { ids }); } catch (e) { /* старий каркас */ }
     }
     st.busy = true; paint(st);
-    st.ctx.act('cash').catch(() => null).then(() => { st.busy = false; paint(st); });
+    st.ctx.act('cash').catch(() => null).then((r) => { st.busy = false; if (r && r.ok && live(st)) st.cashAt = performance.now(); paint(st); });
   }
 
   function say(st, text) {
@@ -777,6 +782,7 @@
       const p = where(st, f, T);
       if (!p) { if ((T - f.t0 - f.at) > K(st).fly * 1.2) st.fruits.delete(id); continue; }
       alive = true;
+      if (f.later && !f.cut && p.s >= 0.26) { f.later = false; cutFx(st, f, { dx: 1, dy: -0.35 }, true); }
       if (f.cut) continue;
       const r = (KINDS[f.k] || KINDS.a).r * G.u;
       g.save(); g.translate(p.x, p.y); g.rotate(p.rot);
