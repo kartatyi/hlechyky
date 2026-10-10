@@ -43,6 +43,9 @@ http://:8000 {
 	handle /radio.mp3 {
 		reverse_proxy 127.0.0.1:8001 {
 			flush_interval -1
+			# Без цього Caddy ріже потік на шматки (Transfer-Encoding: chunked), а FMOD у ETS2/ATS такого не грає
+			# («A HTTP error occurred»). identity = суцільний потік до кінця з'єднання, як віддавав Icecast.
+			header_down Transfer-Encoding identity
 		}
 	}
 	handle {
