@@ -153,7 +153,7 @@ public sealed partial class Litopys
             using (var r = cmd.ExecuteReader())
                 while (r.Read()) tables.Add(r.GetString(0));
 
-            using (var cmd = Cmd(c, "SELECT nick_key, game FROM daily_results WHERE solved = 1 AND day = $d", ("$d", day)))
+            using (var cmd = Cmd(c, $"SELECT nick_key, game FROM daily_results WHERE solved = 1 AND day = $d AND {Bots.NotBot("nick_key")}", ("$d", day)))
             using (var r = cmd.ExecuteReader())
                 while (r.Read()) d.Solved.Add((r.GetString(0), r.GetString(1)));
 
@@ -171,10 +171,10 @@ public sealed partial class Litopys
                 }
 
             // ачівка «уперше на сайті» — коли раніше за цей день її не мав ніхто
-            using (var cmd = Cmd(c, """
+            using (var cmd = Cmd(c, $"""
                 SELECT a.nick_key, a.nick, a.key,
-                       NOT EXISTS (SELECT 1 FROM achievements b WHERE b.key = a.key AND b.unlocked_at < $s)
-                FROM achievements a WHERE a.unlocked_at >= $s AND a.unlocked_at < $e ORDER BY a.unlocked_at
+                       NOT EXISTS (SELECT 1 FROM achievements b WHERE b.key = a.key AND b.unlocked_at < $s AND {Bots.NotBot("b.nick_key")})
+                FROM achievements a WHERE a.unlocked_at >= $s AND a.unlocked_at < $e AND {Bots.NotBot("a.nick_key")} ORDER BY a.unlocked_at
                 """, ("$s", s), ("$e", e)))
             using (var r = cmd.ExecuteReader())
                 while (r.Read()) data.Ach.Add((r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt64(3) != 0));
@@ -723,7 +723,7 @@ public sealed partial class Litopys
         // ---- ачівка, яку мають майже всі, а я ні ----
         var ach = db.With(c =>
         {
-            using var cmd = Cmd(c, "SELECT key, nick_key FROM achievements");
+            using var cmd = Cmd(c, $"SELECT key, nick_key FROM achievements WHERE {Bots.NotBot("nick_key")}");
             using var r = cmd.ExecuteReader();
             var list = new List<(string Key, string Who)>();
             while (r.Read()) list.Add((r.GetString(0), r.GetString(1)));

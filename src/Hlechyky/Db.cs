@@ -100,6 +100,7 @@ public sealed class Db
         using var c = Open();
         Exec(c, Schema);
         Exec(c, GamesSchema);
+        Exec(c, Bots.Schema);   // хто з ніків — бот (аі-агенти /mcp): «Хто скільки» їх не показує
         // migrations for DBs created before these columns existed
         try { Exec(c, "ALTER TABLE plays ADD COLUMN via TEXT"); } catch (SqliteException) { /* exists */ }
         // справжня довжина файлу (каталог YouTube бреше на секунду-дві) і пік підключень до потоку за трек
@@ -122,6 +123,7 @@ public sealed class Db
         Exec(c, "CREATE TABLE IF NOT EXISTS migrations(key TEXT PRIMARY KEY, done_at TEXT NOT NULL)");
         Once(c, "chat-hide-glek-2026-09", HideGlekSql);
         Once(c, "chat-topic-2026-09", TopicSql);
+        Once(c, "bot-nicks-agents-2026-10", Bots.SeedSql(DateTimeOffset.UtcNow));
         // «👎 більше не давати» у «Вгадай мелодію»: такі треки (і та сама пісня з інших завантажень) гра не бере
         Exec(c, "CREATE TABLE IF NOT EXISTS melody_dislikes(track_id TEXT NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(track_id, nick))");
         Exec(c, "CREATE TABLE IF NOT EXISTS chat_likes(chat_id INTEGER NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(chat_id, nick))");

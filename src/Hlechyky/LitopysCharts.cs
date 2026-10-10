@@ -62,7 +62,7 @@ public sealed partial class Litopys
     List<(string Key, DateTimeOffset At)> Solves() => Cached("ch:solves", () => db.With(c =>
     {
         var list = new List<(string, DateTimeOffset)>();
-        using var cmd = Cmd(c, "SELECT nick_key, created_at FROM daily_results WHERE solved = 1");
+        using var cmd = Cmd(c, $"SELECT nick_key, created_at FROM daily_results WHERE solved = 1 AND {Bots.NotBot("nick_key")}");
         using var r = cmd.ExecuteReader();
         while (r.Read()) list.Add((r.GetString(0), Ts(r.GetString(1))));
         return list;
@@ -187,7 +187,7 @@ public sealed partial class Litopys
             using (var cmd = Cmd(c, "SELECT nick_key, balance FROM wallets"))
             using (var r = cmd.ExecuteReader())
                 while (r.Read()) wallets[r.GetString(0)] = r.GetInt32(1);
-            using (var cmd = Cmd(c, "SELECT nick_key, delta, reason, created_at FROM ledger ORDER BY id"))
+            using (var cmd = Cmd(c, $"SELECT nick_key, delta, reason, created_at FROM ledger WHERE {Bots.NotBot("nick_key")} ORDER BY id"))
             using (var r = cmd.ExecuteReader())
                 while (r.Read()) bank.Ledger.Add(new LRow(r.GetString(0), r.GetInt32(1), r.GetString(2), Ts(r.GetString(3))));
         });
@@ -340,7 +340,8 @@ public sealed partial class Litopys
         var order = new List<(string, int)>();
         db.With(c =>
         {
-            using var cmd = Cmd(c, "SELECT room_id, round, game, nick_key, nick, outcome, created_at FROM game_results WHERE outcome <> 'solo' ORDER BY id");
+            // партія з ботом лишається з одним рядком — Ело її не рахує (rows.Count != 2)
+            using var cmd = Cmd(c, $"SELECT room_id, round, game, nick_key, nick, outcome, created_at FROM game_results WHERE outcome <> 'solo' AND {Bots.NotBot("nick_key")} ORDER BY id");
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -612,7 +613,7 @@ public sealed partial class Litopys
                 var artist = r.GetString(1);
                 var by = Str(r, 5);
                 list.Add(new Hit((artist.Length > 0 ? artist + " — " : "") + r.GetString(2), r.GetInt32(3),
-                    by is null || DjKeys().Contains(Auth.NickKey(by)) ? null : by.Trim(), Ts(r.GetString(4))));
+                    by is null || DjKeys().Contains(Auth.NickKey(by)) || BotSet().Has(by) ? null : by.Trim(), Ts(r.GetString(4))));
             }
         return list;
     });
@@ -620,7 +621,7 @@ public sealed partial class Litopys
     List<(string Key, string Ach, DateTimeOffset At)> Achs() => db.With(c =>
     {
         var list = new List<(string, string, DateTimeOffset)>();
-        using var cmd = Cmd(c, "SELECT nick_key, key, unlocked_at FROM achievements");
+        using var cmd = Cmd(c, $"SELECT nick_key, key, unlocked_at FROM achievements WHERE {Bots.NotBot("nick_key")}");
         using var r = cmd.ExecuteReader();
         while (r.Read()) list.Add((r.GetString(0), r.GetString(1), Ts(r.GetString(2))));
         return list;

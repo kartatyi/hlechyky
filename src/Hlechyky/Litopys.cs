@@ -112,6 +112,13 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
 
     HashSet<string> DjKeys() => [Auth.NickKey(site.CurrentValue.DjName), Auth.NickKey(PeopleEndpoints.AutoDjNick)];
 
+    /// <summary>
+    /// Боти (аі-агенти з /mcp, імена з «🤖») — <see cref="Bots"/>. «Хто скільки» — про людей (записка #31): їхні рядки
+    /// відсіюємо там, де читаємо з бази, — у сирих подіях (<see cref="Load"/>), ачівках, Гонці, Біржі й Ело. Партія людини
+    /// з ботом лишається людині (партія, перемога, черепки), але бот не стає її суперником у «Хто кого».
+    /// </summary>
+    Bots.Set BotSet() => Cached("bots", () => Bots.Load(db));
+
     /// <summary>Сирі події періоду — з кешу: «Огляд», «Усі ігри», музика й профілі беруть ті самі рядки.</summary>
     Raw RawOf(string period) => Cached("raw:" + period, () => Load(Periods.Since(period, clock), Periods.FirstDay(period, clock)));
 
@@ -120,6 +127,7 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
         var raw = new Raw { Since = since, FirstDay = firstDay };
         var s = Iso(since);
         var dj = DjKeys();
+        var bots = BotSet();
         // нік → як його писати: спершу як у гаманці, потім — найсвіжіше написання з подій
         void Seen(string key, string nick)
         {
@@ -139,6 +147,7 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
                 while (r.Read())
                 {
                     var key = r.GetString(3);
+                    if (bots.Has(key)) continue;
                     Seen(key, r.GetString(4));
                     raw.Results.Add(new Res(r.GetString(0), r.GetInt32(1), r.GetString(2), key, r.GetString(5),
                         r.IsDBNull(6) ? null : r.GetDouble(6), Ts(r.GetString(7))));
@@ -154,7 +163,7 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
                 {
                     var nick = r.GetString(1);
                     var key = Auth.NickKey(nick);
-                    if (key.Length == 0 || dj.Contains(key)) continue;
+                    if (key.Length == 0 || dj.Contains(key) || bots.Has(key)) continue;
                     Seen(key, nick);
                     raw.Chat.Add(new Msg(r.GetInt64(0), key, r.GetString(2), Str(r, 3), Ts(r.GetString(4)), r.GetInt32(5)));
                 }
@@ -170,7 +179,7 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
                 {
                     var nick = r.GetString(0);
                     var key = Auth.NickKey(nick);
-                    if (key.Length == 0 || dj.Contains(key)) continue;
+                    if (key.Length == 0 || dj.Contains(key) || bots.Has(key)) continue;
                     Seen(key, nick);
                     raw.Requests.Add(new Req(key, Str(r, 1) ?? "", Str(r, 2), Ts(r.GetString(3))));
                 }
@@ -180,25 +189,29 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
                 while (r.Read())
                 {
                     var key = Auth.NickKey(r.GetString(0));
+                    if (bots.Has(key)) continue;
                     Seen(key, r.GetString(0));
                     raw.Likes.Add(new Act(key, Ts(r.GetString(1))));
                 }
 
             using (var cmd = Cmd(c, "SELECT nick_key, delta, reason, created_at FROM ledger WHERE created_at >= $s", ("$s", s)))
             using (var r = cmd.ExecuteReader())
-                while (r.Read()) raw.Ledger.Add(new Led(r.GetString(0), r.GetInt32(1), r.GetString(2), Ts(r.GetString(3))));
+                while (r.Read())
+                    if (!bots.Has(r.GetString(0))) raw.Ledger.Add(new Led(r.GetString(0), r.GetInt32(1), r.GetString(2), Ts(r.GetString(3))));
 
             using (var cmd = Cmd(c, """
                 SELECT nick_key, substr(key, 6), day, n FROM economy_counters
                 WHERE key LIKE 'time:%' AND ($f IS NULL OR day >= $f) AND n > 0
                 """, ("$f", firstDay)))
             using (var r = cmd.ExecuteReader())
-                while (r.Read()) raw.Time.Add(new Tm(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
+                while (r.Read())
+                    if (!bots.Has(r.GetString(0))) raw.Time.Add(new Tm(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
 
             using (var cmd = Cmd(c, "SELECT nick_key, nick, game FROM daily_results WHERE solved = 1 AND ($f IS NULL OR day >= $f)", ("$f", firstDay)))
             using (var r = cmd.ExecuteReader())
                 while (r.Read())
                 {
+                    if (bots.Has(r.GetString(0))) continue;
                     Seen(r.GetString(0), r.GetString(1));
                     raw.Solved.Add((r.GetString(0), r.GetString(2)));
                 }
@@ -208,7 +221,7 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
                 while (r.Read())
                 {
                     var key = Auth.NickKey(r.GetString(0));
-                    if (key.Length == 0 || dj.Contains(key)) continue;
+                    if (key.Length == 0 || dj.Contains(key) || bots.Has(key)) continue;
                     Seen(key, r.GetString(0));
                     raw.Bans.Add(new Act(key, Ts(r.GetString(1))));
                 }
@@ -222,7 +235,7 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
                 while (r.Read())
                 {
                     var key = Auth.NickKey(r.GetString(0));
-                    if (key.Length == 0) continue;
+                    if (key.Length == 0 || bots.Has(key)) continue;
                     Seen(key, r.GetString(0));
                     raw.Listened[key] = raw.Listened.GetValueOrDefault(key) + r.GetInt32(1);
                 }
@@ -615,7 +628,7 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
     {
         var rows = db.With(c =>
         {
-            using var cmd = Cmd(c, "SELECT key, nick, unlocked_at FROM achievements");
+            using var cmd = Cmd(c, $"SELECT key, nick, unlocked_at FROM achievements WHERE {Bots.NotBot("nick_key")}");
             using var r = cmd.ExecuteReader();
             var list = new List<(string Key, string Nick, string At)>();
             while (r.Read()) list.Add((r.GetString(0), r.GetString(1), r.GetString(2)));
@@ -636,7 +649,7 @@ public sealed partial class Litopys(Db db, GameNames names, IClock clock, IOptio
     /// <summary>Скільки людей має кожну ачівку — для «рідкісна: лише в N» у профілі.</summary>
     Dictionary<string, int> AchievementHolders() => Cached("ach-holders", () => db.With(c =>
     {
-        using var cmd = Cmd(c, "SELECT key, COUNT(*) FROM achievements GROUP BY key");
+        using var cmd = Cmd(c, $"SELECT key, COUNT(*) FROM achievements WHERE {Bots.NotBot("nick_key")} GROUP BY key");
         using var r = cmd.ExecuteReader();
         var map = new Dictionary<string, int>(StringComparer.Ordinal);
         while (r.Read()) map[r.GetString(0)] = r.GetInt32(1);
