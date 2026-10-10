@@ -51,8 +51,11 @@ public sealed partial class Clicker
     public const double FindBonus = 0.01, MuseumFullBonus = 0.05;
     /// <summary>Стільки уламків склеюються в річ, якої в музеї ще нема.</summary>
     public const int ShardsForGlue = 5;
-    /// <summary>Обпалених виробів одного виду для рівнів майстерності 1…10.</summary>
-    public static readonly long[] MasteryAt = [5, 15, 40, 100, 250, 600, 1_500, 4_000, 10_000, 25_000];
+    /// <summary>
+    /// Обпалених виробів одного виду для рівнів майстерності 1…10. Верх (10.10) — до 3 500, а не 25 000: лідери обпалюють
+    /// ~3–4 тисячі виробу за кілька тижнів, і «Золоті руки» мусять даватись за тиждень зосередженої гри, а не за рік.
+    /// </summary>
+    public static readonly long[] MasteryAt = [5, 15, 40, 100, 200, 400, 700, 1_200, 2_000, 3_500];
     public const double MasteryWorkStep = 0.06, MasteryValueStep = 0.10;
     /// <summary>«Золоті руки»: на десятому рівні ціна виробу ще ×1,25 зверху.</summary>
     public const double MasteryTopValue = 1.25;

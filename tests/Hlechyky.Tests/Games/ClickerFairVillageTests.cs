@@ -106,7 +106,7 @@ public class ClickerFairVillageTests
     public void Respect_goes_on_past_the_fifth_star_to_the_tenth()
     {
         Assert.Equal(11, Clicker.FairRepLevels.Length);
-        Assert.Equal([0, 8, 25, 60, 120, 220, 380, 620, 1000, 1600, 2500], Clicker.FairRepLevels);
+        Assert.Equal([0, 8, 25, 60, 120, 220, 380, 500, 640, 790, 950], Clicker.FairRepLevels);
         // Пороги ростуть, і кожен наступний — більший за попередній (інакше рівень «перескочив би»).
         for (var i = 1; i < Clicker.FairRepLevels.Length; i++)
             Assert.True(Clicker.FairRepLevels[i] > Clicker.FairRepLevels[i - 1]);
@@ -165,7 +165,7 @@ public class ClickerFairVillageTests
     {
         var h = Wheel();
         Board(h, Order(h, 100, "opishnia", "pot", 1, 2));
-        Rep(h, "opishnia", 2_498);
+        Rep(h, "opishnia", 948);
         Items(h, ("pot||1", 2));
         Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:potter-rep10");
         var r = Fair(h, new { op = "deliver", id = 100 });

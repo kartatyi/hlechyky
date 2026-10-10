@@ -390,10 +390,11 @@ public class ClickerFairTests
         Assert.Equal(5, Clicker.FairLevelOf(220));
         // v9: шана йде далі п'ятої зірки — до десятої.
         Assert.Equal(6, Clicker.FairLevelOf(380));
-        Assert.Equal(7, Clicker.FairLevelOf(620));
-        Assert.Equal(8, Clicker.FairLevelOf(1_000));
-        Assert.Equal(9, Clicker.FairLevelOf(1_600));
-        Assert.Equal(10, Clicker.FairLevelOf(2_500));
+        // 10.10: верх нижчий — десята зірка за тиждень, а не за місяць.
+        Assert.Equal(7, Clicker.FairLevelOf(500));
+        Assert.Equal(8, Clicker.FairLevelOf(640));
+        Assert.Equal(9, Clicker.FairLevelOf(790));
+        Assert.Equal(10, Clicker.FairLevelOf(950));
         Assert.Equal(10, Clicker.FairLevelOf(100_000));
     }
 

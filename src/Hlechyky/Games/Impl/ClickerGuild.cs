@@ -558,8 +558,9 @@ public sealed partial class Clicker
         var to = Str(payload, "to").Trim();
         if (svc.Boost(GuildKey, GuildNick, to, "treat", minutes, now) is { } why) return ActResult.Fail(why);
         _pots -= cost;
-        _treatsSent++;
-        if (_treatsSent == TreatsForAchievement) Achieve("potter-treat");
+        // Лічильник гостинців обпал не чіпає (FireGuild порожній) — ачівка на переході через поріг, а не на рівності.
+        var treatsBefore = _treatsSent++;
+        if (treatsBefore < TreatsForAchievement && _treatsSent >= TreatsForAchievement) Achieve("potter-treat");
         Wonder("treat");
         return ActResult.Accept($"🎁 Гостинець для {to}: −{PotsShort(cost)} у тебе, "
             + $"{minutes * ClickerGuildService.TreatBack} хв його власного пасиву — йому");

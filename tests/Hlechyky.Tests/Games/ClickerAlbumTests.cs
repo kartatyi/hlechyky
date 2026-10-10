@@ -333,14 +333,14 @@ public class ClickerAlbumTests
     [InlineData(15, 2)]
     [InlineData(40, 3)]
     [InlineData(100, 4)]
-    [InlineData(250, 5)]
-    [InlineData(600, 6)]
-    [InlineData(1_499, 6)]
-    [InlineData(1_500, 7)]
-    [InlineData(4_000, 8)]
-    [InlineData(10_000, 9)]
-    [InlineData(24_999, 9)]
-    [InlineData(25_000, 10)]
+    [InlineData(200, 5)]
+    [InlineData(400, 6)]
+    [InlineData(699, 6)]
+    [InlineData(700, 7)]
+    [InlineData(1_200, 8)]
+    [InlineData(2_000, 9)]
+    [InlineData(3_499, 9)]
+    [InlineData(3_500, 10)]
     [InlineData(10_000_000, 10)]
     public void Mastery_levels_follow_the_thresholds(long fired, int level) => Assert.Equal(level, Clicker.MasteryLevel(fired));
 
@@ -510,7 +510,7 @@ public class ClickerAlbumTests
     public void Golden_hands_come_with_the_tenth_mastery_level()
     {
         var h = Wheel();
-        Patch(h, s => s["craft"]!["firedBy"] = new JsonObject { ["pot"] = 24_995 });
+        Patch(h, s => s["craft"]!["firedBy"] = new JsonObject { ["pot"] = 3_495 });
         Assert.Equal(9, Album(h).GetProperty("mastery")[0].GetInt32());
         Assert.DoesNotContain(h.Awards, x => x.Reason == "ach:potter-mastery");
         Rack(h, 6);
