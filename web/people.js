@@ -657,6 +657,9 @@
     ['tries', 'спроб'], ['ms', 'час'], ['balance', '🏺 є зараз'], ['earned', 'зароблено'], ['count', 'разів']];
   const LB_TIPS = { elo: 'рейтинг Ело', wins: 'перемог', losses: 'поразок', draws: 'нічиїх', balance: 'скільки черепків у глечику зараз' };
   let lbGame = ls('gamesLbGame', 'shards');
+  /// Таблиця черепків: за чим упорядкувати — 'balance' (є зараз) чи 'earned' (зароблено за період); клік по заголовку
+  /// (записка #30). Порожньо — як вирішить сервер: за весь час «є зараз», за день/тиждень/місяць — «зароблено».
+  let shardSort = ls('shardsSort', '');
   let boardToken = 0;
   const asList = (r) => (Array.isArray(r) ? r : (r && (r.rows || r.top || r.items || r.list)) || []);
   const GROUP_TITLES = { board: '♟ Настільні', live: '⚡ Швидкі', party: '🎉 Компанія', solo: '🏺 Соло' };
@@ -762,7 +765,8 @@
     note.textContent = '';
     season.innerHTML = '';
     if (game === 'dice') seasonDice(season, bt);   // «Під глеком»: смішні звання партій за період (прохід №3, №130)
-    const r = await o.api('GET', '/api/games/leaderboard?game=' + encodeURIComponent(game) + '&period=' + encodeURIComponent(period)).catch((e) => ({ error: e }));
+    const sortQ = game === 'shards' && shardSort ? '&sort=' + encodeURIComponent(shardSort) : '';
+    const r = await o.api('GET', '/api/games/leaderboard?game=' + encodeURIComponent(game) + '&period=' + encodeURIComponent(period) + sortQ).catch((e) => ({ error: e }));
     if (bt !== boardToken || !box.isConnected) return;
     if (r && r.error) { box.innerHTML = '<div class="gempty">Ой-йой, не порахувалось: ' + esc(r.error.message) + '</div>'; return; }
     const rows = asList(r);
@@ -774,11 +778,13 @@
     note.textContent = notes.join(' ');
     if (!rows.length) { box.innerHTML = '<div class="gempty">' + cap(PERIOD_WORD[period]) + ' тут ще ніхто не відзначився.</div>'; return; }
     const games = (x) => (x.games != null ? x.games : (x.wins || 0) + (x.losses || 0) + (x.draws || 0));
-    // [заголовок, клітинка, підказка, клас: opt — ховаємо на телефоні, main — головне число]
+    // [заголовок, клітинка, підказка, клас: opt — ховаємо на телефоні, main — головне число; ключ сортування — клік по заголовку]
     let cols;
     if (kind === 'shards') {
-      cols = [['🏺 є зараз', (x) => lbNum(x.balance), LB_TIPS.balance, period === 'all' ? 'main' : ''],
-        ['зароблено ' + PERIOD_WORD[period], (x) => lbNum(x.earned), 'черепки, що прийшли за період (без обміну на гривні)', period === 'all' ? '' : 'main']];
+      const by = r.sort || (period === 'all' ? 'balance' : 'earned');
+      cols = [['🏺 є зараз', (x) => lbNum(x.balance), LB_TIPS.balance + ' · натисни — упорядкувати за цим', by === 'balance' ? 'main' : '', 'balance'],
+        ['зароблено ' + PERIOD_WORD[period], (x) => lbNum(x.earned), 'черепки, що прийшли за період (без обміну на гривні) · натисни — упорядкувати за цим', by === 'earned' ? 'main' : '', 'earned']]
+        .map((c) => [c[0] + (c[4] === by ? ' ▾' : ' ↕'), c[1], c[2], c[3], c[4]]);   // ↕ — підказка, що можна клацнути
     } else if (kind === 'rated') {
       cols = [['Ело', (x) => x.elo, LB_TIPS.elo, 'main'], ['партій', (x) => games(x), 'усього партій', 'opt'],
         ['В', (x) => x.wins, LB_TIPS.wins, 'opt'], ['Н', (x) => x.draws, LB_TIPS.draws, 'opt'], ['П', (x) => x.losses, LB_TIPS.losses, 'opt'],
@@ -796,11 +802,22 @@
         .map(([k, l]) => [k === 'earned' ? 'зароблено ' + PERIOD_WORD[period] : l, (x) => esc(k === 'ms' ? secs(x[k]) : (x[k] == null ? '—' : lbNum(x[k]))), LB_TIPS[k] || '', '']);
     }
     box.innerHTML = '<div class="lbt-wrap"><table class="lbt"><thead><tr><th class="n">#</th><th class="who">хто</th>'
-      + cols.map(([h, , tip, cls]) => '<th' + (cls ? ' class="' + cls + '"' : '') + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>'
+      + cols.map(([h, , tip, cls, sk]) => '<th' + (cls || sk ? ' class="' + [cls, sk ? 'srt' : ''].filter(Boolean).join(' ') + '"' : '') + (tip ? ' title="' + esc(tip) + '"' : '')
+        + (sk ? ' data-sort="' + sk + '" tabindex="0" role="button"' : '') + '>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>'
       + rows.map((x, i) => '<tr class="' + (i < 3 ? 'top' + (i + 1) : '') + (same(x.nick, o.me.nick) ? ' me' : '') + '"><td class="n">' + medal(i) + '</td>'
         + '<td class="who"><span class="glb-who">' + ava(x.nick || '', 'ava sm') + nickLink(x.nick || '') + '</span></td>'
         + cols.map(([, cell, , cls]) => '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + cell(x) + '</td>').join('') + '</tr>').join('')
       + '</tbody></table></div>';
+    box.querySelectorAll('th[data-sort]').forEach((th) => {
+      const go = () => {
+        if (th.classList.contains('main')) return;
+        shardSort = th.dataset.sort;
+        lsSet('shardsSort', shardSort);
+        drawBoard(body);
+      };
+      th.onclick = go;
+      th.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+    });
   }
 
   /// «Блефер сезону» — звання партій «Під глеком» (сервер: /api/games/dice/season). «Сьогодні» рахуємо як тиждень.

@@ -68,6 +68,60 @@ public class LeaderboardsTests
         Assert.Equal(2, today[0].GetProperty("earned").GetInt32());
     }
 
+    static List<string> Nicks(JsonElement rows) => rows.EnumerateArray().Select(r => r.GetProperty("nick").GetString()!).ToList();
+
+    /// <summary>Записка #30 (Smaug): черепки сортуються кліком — «є зараз» чи «зароблено» за весь час.</summary>
+    [Fact]
+    public void Shards_for_all_time_sort_by_balance_or_by_earned()
+    {
+        using var rig = new EconomyRig();
+        // суми до сотні: «Сотня» (rich-100) доклала б черепків
+        rig.Economy.Grant("Оля", 90, "win:ttt");
+        Assert.True(rig.Economy.TrySpend("Оля", 85, "lavka:x"));
+        rig.Economy.Grant("Петро", 30, "listen");
+        rig.Economy.Grant("Яся", 20, "buy:1");   // куплене за гривні — у балансі, але не «зароблено»
+
+        var byDefault = Json(rig.Boards.Leaderboard("shards", "all", null));
+        Assert.Equal("balance", byDefault.GetProperty("sort").GetString());
+        Assert.Equal(["Петро", "Яся", "Оля"], Nicks(byDefault.GetProperty("rows")));
+
+        var earned = Json(rig.Boards.Leaderboard("shards", "all", null, "earned"));
+        Assert.Equal("earned", earned.GetProperty("sort").GetString());
+        var rows = earned.GetProperty("rows");
+        Assert.Equal(["Оля", "Петро", "Яся"], Nicks(rows));
+        Assert.Equal(90, rows[0].GetProperty("earned").GetInt32());
+        Assert.Equal(5, rows[0].GetProperty("balance").GetInt32());
+        Assert.Equal(0, rows[2].GetProperty("earned").GetInt32());
+
+        // невідоме — як без нього
+        Assert.Equal("balance", Json(rig.Boards.Leaderboard("shards", "all", null, "elo")).GetProperty("sort").GetString());
+    }
+
+    [Fact]
+    public void Shards_for_a_day_count_only_today_and_sort_by_either_column()
+    {
+        using var rig = new EconomyRig();
+        rig.Economy.Grant("Петро", 95, "win:ttt", "петро:позавчора");
+        rig.Economy.Grant("Оля", 50, "win:ttt", "оля:позавчора");
+        rig.Economy.Grant("Сем", 80, "win:ttt", "сем:позавчора");
+        rig.Clock.Advance(TimeSpan.FromHours(48));
+        rig.Economy.Grant("Петро", 2, "listen", "петро:сьогодні");
+        rig.Economy.Grant("Оля", 5, "listen", "оля:сьогодні");
+
+        var byDefault = Json(rig.Boards.Leaderboard("shards", "day", null));
+        Assert.Equal("earned", byDefault.GetProperty("sort").GetString());
+        var rows = byDefault.GetProperty("rows");
+        // Сем сьогодні нічого не заробив — у таблиці дня його нема; зароблене — лише сьогоднішнє
+        Assert.Equal(["Оля", "Петро"], Nicks(rows));
+        Assert.Equal(5, rows[0].GetProperty("earned").GetInt32());
+        Assert.Equal(55, rows[0].GetProperty("balance").GetInt32());
+
+        var byBalance = Json(rig.Boards.Leaderboard("shards", "day", null, "balance")).GetProperty("rows");
+        Assert.Equal(["Петро", "Оля"], Nicks(byBalance));
+        Assert.Equal(2, byBalance[0].GetProperty("earned").GetInt32());
+        Assert.Equal(97, byBalance[0].GetProperty("balance").GetInt32());
+    }
+
     [Fact]
     public void Solo_table_for_a_day_does_not_show_an_older_record()
     {

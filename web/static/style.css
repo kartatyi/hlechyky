@@ -1209,6 +1209,9 @@ kbd {
 .lbt .who { text-align: left; width: 100%; max-width: 0; }
 .lbt td.who .glb-who { display: flex; max-width: 100%; }
 .lbt td.main { color: var(--accent); font-weight: 700; }
+.lbt th.srt { cursor: pointer; user-select: none; }
+.lbt th.srt:hover, .lbt th.srt:focus-visible { color: var(--text); }
+.lbt th.srt.main { color: var(--accent); cursor: default; }
 .lbt tr.top1 td { background: linear-gradient(90deg, rgba(244, 197, 66, .16), rgba(244, 197, 66, .03)), var(--panel2); }
 .lbt tr.me td { box-shadow: 0 1px 0 var(--accent2) inset, 0 -1px 0 var(--accent2) inset; }
 .lbt tr.me td:first-child { box-shadow: 1px 0 0 var(--accent2) inset, 0 1px 0 var(--accent2) inset, 0 -1px 0 var(--accent2) inset; }
