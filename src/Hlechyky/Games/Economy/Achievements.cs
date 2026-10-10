@@ -227,6 +227,9 @@ public static class AchievementCatalog
         // Лелека — гра просить сама (specs/lelka.md §5), лише тим, хто в мить падіння сидить
         new("lelka-10",          "Вище хмар",         "Лелека: забрав на ×10 і вище", "🪶", 20),
         new("lelka-brave",       "На волосинку",      "Лелека: забрав щонайбільше за 0,1 до падіння", "🫣", 25),
+        // Кавуни на ярмарку — гра просить сама (specs/kavuny.md §6)
+        new("kavuny-10",         "Кавунова гора",     "Кавуни на ярмарку: забрав на ×10 і вище", "🍉", 20),
+        new("kavuny-glek",       "Глеків кавун",      "Кавуни на ярмарку: розрізав Глеків кавун", "🔪", 15),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
