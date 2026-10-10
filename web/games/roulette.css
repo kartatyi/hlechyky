@@ -192,6 +192,15 @@
 .rl-zero span { background: var(--rl-green); box-shadow: 0 0 0 2px rgba(255, 255, 255, .5); }
 .rl-board.h .rl-zero { border-radius: 40px 0 0 40px; }
 .rl-board.v .rl-zero { border-radius: 40px 40px 0 0; }
+/* Американське поле (§13.4): зеро-зона ділиться навпіл — 0 з боку колонки 1 (1-4-7…), 00 з боку колонки 3. */
+.rl-zero.zz { display: none; }
+.rl-board.us .rl-zero.zz { display: grid; }
+.rl-board.us.v .rl-zero { width: 50%; }
+.rl-board.us.v .rl-zero:not(.zz) { justify-self: start; border-radius: 40px 0 0 0; }
+.rl-board.us.v .rl-zero.zz { justify-self: end; border-radius: 0 40px 0 0; }
+.rl-board.us.h .rl-zero { height: 50%; }
+.rl-board.us.h .rl-zero:not(.zz) { align-self: end; border-radius: 0 0 0 40px; }
+.rl-board.us.h .rl-zero.zz { align-self: start; border-radius: 40px 0 0 0; }
 .rl-n.hl, .rl-zero.hl { background: var(--rl-hl); }
 .rl-n.win, .rl-zero.win { background: color-mix(in srgb, var(--rl-gold) 40%, transparent); box-shadow: inset 0 0 0 2px var(--rl-gold); }
 .rl-n.win span, .rl-zero.win span { animation: rl-winpulse 1.2s ease-in-out infinite; }
@@ -320,6 +329,12 @@
 .rl-info b { color: var(--text); font-variant-numeric: tabular-nums; }
 .rl-stay { display: block; font-size: .9em; opacity: .85; }
 .rl-snd { font-size: .86em; padding: 3px 9px; }
+.rl-tools { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* Колесо: соло — перемикач «🇪🇺 одне зеро / 🇺🇸 з 00», стіл — мітка американського колеса. */
+.rl-wh { font-size: .86em; padding: 3px 9px; min-height: 40px; }
+.rl-wh.on { border-color: var(--danger); color: var(--text); }
+.rl-wh:disabled { opacity: .5; cursor: default; }
+.rl-tag { font-size: .86em; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--danger); color: var(--text); white-space: nowrap; }
 .rlt-note { color: var(--danger); font-size: .86em; text-align: center; }
 .rl-sit { display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
 

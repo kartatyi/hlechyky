@@ -17,13 +17,13 @@ public sealed class RouletteKit
     public RoomHarness H { get; }
 
     public RouletteKit(string game = "roulette", int seed = 7, IGameStore? store = null, Func<FakeStakes, IStakes>? wrap = null,
-        params (string Nick, int Wallet)[] people)
+        object? options = null, params (string Nick, int Wallet)[] people)
     {
         Stakes = new FakeStakes();
         foreach (var (nick, wallet) in people) Stakes.Set(nick, wallet);
         Store = store ?? new FakeStore();
         Book = new RouletteBook(wrap?.Invoke(Stakes) ?? Stakes, Store, defer: a => a());
-        H = new RoomHarness(game, services: RoomHarness.WithService(Book), seed: seed);
+        H = new RoomHarness(game, options, services: RoomHarness.WithService(Book), seed: seed);
         foreach (var (nick, _) in people)
         {
             var reply = game == "roulette-solo" ? H.Solo(nick) : H.Join(nick);
@@ -33,6 +33,9 @@ public sealed class RouletteKit
 
     public static RouletteKit Table(params (string Nick, int Wallet)[] people) => new("roulette", people: people);
     public static RouletteKit Solo(string nick = "Оля", int wallet = 1000) => new("roulette-solo", people: [(nick, wallet)]);
+
+    /// <summary>Стіл «🇺🇸 з 00» (опція <c>wheel: us</c>, §13).</summary>
+    public static RouletteKit TableUs(params (string Nick, int Wallet)[] people) => new("roulette", options: new { wheel = "us" }, people: people);
 
     public RouletteGame G => (RouletteGame)H.Room.Game;
     public RouletteState S => G.State;
