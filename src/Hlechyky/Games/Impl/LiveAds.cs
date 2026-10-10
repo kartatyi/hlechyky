@@ -610,7 +610,8 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
 
         var local = TimeZoneInfo.ConvertTime(now, Days.Kyiv);
         var c = curfew.CurrentValue;
-        if (local.Hour == c.From && local.Minute < 15 && _curfewDay != Days.Of(now) && c.Nicks.Count > 0)
+        if (local.Hour == c.From && local.Minute < 15 && _curfewDay != Days.Of(now) && c.Nicks.Count > 0
+            && Curfew.NightStart(now, c.From, c.To, c.Days) is not null)   // вихідна ніч — відбою нема, оголошувати нічого
         {
             _curfewDay = Days.Of(now);
             var night = c.Nicks.Where(n => presence.IsOnline(n) && !store.OptedOut(n)).ToList();

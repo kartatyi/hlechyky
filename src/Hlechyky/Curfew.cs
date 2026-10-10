@@ -20,6 +20,18 @@ public sealed class CurfewOptions
     /// <summary>З котрої години й до котрої за Києвом. From більше за To — через північ (23 → 6).</summary>
     public int From { get; set; } = 0;
     public int To { get; set; } = 6;
+    /// <summary>
+    /// У які ночі відбій — дні тижня ранку, яким ніч закінчується (mon,tue,…,sun через кому). Типово будні: ночі
+    /// на суботу й неділю вільні. Порожньо — щоночі.
+    /// </summary>
+    public string Days { get; set; } = "mon,tue,wed,thu,fri";
+    /// <summary>
+    /// Указ Дядька Глека: велике вікно, яке гравці зі списку побачать один раз (з будь-якого пристрою). Новий указ —
+    /// нова <see cref="NoticeV"/>. Порожній текст — указу нема. Абзаци — через порожній рядок.
+    /// </summary>
+    public string NoticeV { get; set; } = "";
+    public string NoticeTitle { get; set; } = "";
+    public string Notice { get; set; } = "";
     /// <summary>Що бачать ті, кого це стосується: плашка на сайті й відмова в грі. Порожньо — загальний текст.</summary>
     public string Text { get; set; } = "";
 }
@@ -42,7 +54,7 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
 
     /// <summary>Що кажемо гравцеві під відбоєм — і на плашці, і у відмові.</summary>
     public string Text => string.IsNullOrWhiteSpace(O.Text)
-        ? $"Пора спати! З {O.From:00}:00 до {O.To:00}:00 Гончарне коло для тебе зачинене. Це нічне правило лише для кількох гравців — решта грає як звичайно."
+        ? $"Пора спати! У будні з {O.From:00}:00 до {O.To:00}:00 Гончарне коло для тебе зачинене. Це нічне правило лише для кількох гравців — решта грає як звичайно."
         : O.Text.Trim();
 
     string Refused => "🌙 " + Text;
@@ -64,9 +76,24 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
         Listed(nick) || (http is not null && Auth.IsGuestNick(nick) && Marked(http));
 
     /// <summary>Коли почалась теперішня ніч (UTC); null — зараз не відбій.</summary>
-    public DateTimeOffset? NightStart() => NightStart(clock.UtcNow, O.From, O.To);
+    public DateTimeOffset? NightStart() => NightStart(clock.UtcNow, O.From, O.To, O.Days);
 
-    public static DateTimeOffset? NightStart(DateTimeOffset now, int from, int to)
+    static readonly string[] DayNames = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+    /// <summary>Дні тижня з рядка <see cref="CurfewOptions.Days"/>; null — щоночі.</summary>
+    public static HashSet<DayOfWeek>? ParseDays(string? days)
+    {
+        var set = new HashSet<DayOfWeek>();
+        foreach (var d in (days ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var i = Array.FindIndex(DayNames, n => d.StartsWith(n, StringComparison.OrdinalIgnoreCase));
+            if (i >= 0) set.Add((DayOfWeek)i);
+        }
+        return set.Count == 0 ? null : set;
+    }
+
+    /// <param name="days">Ночі, коли діє відбій, — за днем ранку, яким ніч закінчується; null чи порожньо — щоночі.</param>
+    public static DateTimeOffset? NightStart(DateTimeOffset now, int from, int to, string? days = null)
     {
         if (from == to) return null;
         var local = TimeZoneInfo.ConvertTime(now, Days.Kyiv);
@@ -80,6 +107,8 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
         else if (h >= from) day = local.Date;
         else if (h < to) day = local.Date.AddDays(-1);
         else return null;
+        var morning = from < to ? day : day.AddDays(1);
+        if (ParseDays(days) is { } on && !on.Contains(morning.DayOfWeek)) return null;   // вихідна ніч
         var start = day.AddHours(from);
         if (Days.Kyiv.IsInvalidTime(start)) start = start.AddHours(1);   // година, якої нема через перехід на літній час
         return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(start, Days.Kyiv), TimeSpan.Zero);
@@ -116,7 +145,14 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
                 HttpOnly = true, Secure = c.Request.IsHttps, SameSite = SameSiteMode.Lax, IsEssential = true,
                 Expires = DateTimeOffset.UtcNow.AddDays(365),
             });
-        return Applies(nick, c) ? new { from = O.From, to = O.To, text = Text } : null;
+        if (!Applies(nick, c)) return null;
+        return new
+        {
+            from = O.From, to = O.To, text = Text,
+            days = ParseDays(O.Days)?.Select(d => (int)d).Order().ToArray(),   // 0 — неділя, як getDay() у браузері; null — щоночі
+            notice = Listed(nick) && !string.IsNullOrWhiteSpace(O.Notice) && !string.IsNullOrWhiteSpace(O.NoticeV)
+                ? new { v = O.NoticeV.Trim(), title = O.NoticeTitle.Trim(), text = O.Notice.Trim() } : null,
+        };
     }
 
     /// <summary>Позначка чинна, лише поки той, на кого її поставили, досі в списку.</summary>

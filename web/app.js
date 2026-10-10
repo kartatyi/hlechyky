@@ -4619,24 +4619,81 @@
   }
 
   // ---------- нічний відбій ----------
-  // Кого він стосується, каже /api/me (night: { from, to, text }), решті там null. Котра година в Києві — рахуємо
-  // тут і щопівхвилини: плашка має з'явитись опівночі й зникнути о шостій без перезавантаження сторінки.
-  // Не пускає за стіл однаково сервер; плашка лише каже, чому.
-  function kyivHour() {
+  // Кого він стосується, каже /api/me (night: { from, to, days, text, notice }), решті там null. Котра година й день
+  // у Києві — рахуємо тут і щопівхвилини: плашка має з'явитись опівночі й зникнути о шостій без перезавантаження.
+  // days — у які ночі (день ранку, 0 — неділя), null — щоночі. Не пускає за стіл однаково сервер; плашка лише каже, чому.
+  const WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function kyivNow() {
     for (const timeZone of ['Europe/Kyiv', 'Europe/Kiev']) {
-      try { return Number(new Intl.DateTimeFormat('en-GB', { timeZone, hour: 'numeric', hourCycle: 'h23' }).format(new Date())); }
-      catch { /* стара база зон — пробуємо стару назву */ }
+      try {
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h23', weekday: 'short' }).formatToParts(new Date());
+        const get = (t) => parts.find((x) => x.type === t)?.value;
+        return { h: Number(get('hour')), d: WEEK.indexOf(get('weekday')) };
+      } catch { /* стара база зон — пробуємо стару назву */ }
     }
-    return new Date().getHours();
+    const now = new Date();
+    return { h: now.getHours(), d: now.getDay() };
   }
   function paintNight() {
     const n = me.night;
-    const h = kyivHour();
-    const on = !!n && (n.from <= n.to ? h >= n.from && h < n.to : h >= n.from || h < n.to);
+    const { h, d } = kyivNow();
+    let on = !!n && (n.from <= n.to ? h >= n.from && h < n.to : h >= n.from || h < n.to);
+    if (on && Array.isArray(n.days)) {
+      const morning = n.from < n.to || h < n.to ? d : (d + 1) % 7;   // ночі на суботу й неділю — вихідні
+      on = n.days.includes(morning);
+    }
     if (on) $('nightBar').querySelector('.nb-text').textContent = n.text;
     $('nightBar').hidden = !on;
   }
   setInterval(paintNight, 30000);
+
+  // Указ Дядька Глека (night.notice: { v, title, text }) — велике вікно тим, кого відбій стосується, один раз на v.
+  // «Бачив» пам'ятає сервер (/api/games/news, ключ curfew-notice), тож з телефона вдруге не вискочить.
+  // Не лізе поверх гри й інших вікон — чекає, як «Що нового на сайті».
+  let ukazWaiting = false;
+  async function ukaz() {
+    const u = me.night?.notice;
+    if (!u || ukazWaiting) return;
+    let local = '';
+    try { local = localStorage.getItem('ukazSeen') || ''; } catch { /* приватне вікно */ }
+    if (local === u.v) return;
+    ukazWaiting = true;
+    try {
+      const r = await api('GET', '/api/games/news');
+      if (r?.seen?.['curfew-notice'] === u.v) { try { localStorage.setItem('ukazSeen', u.v); } catch { /* */ } return; }
+    } catch { /* сервер мовчить — покажемо */ }
+    const free = () => !document.hidden && !/^#games\/(room|x:)/.test(location.hash || '') && !document.querySelector('.modal:not([hidden])');
+    const t = setInterval(() => {
+      if (!free()) return;
+      clearInterval(t);
+      showUkaz(u);
+    }, 2500);
+  }
+  function showUkaz(u) {
+    const text = u.text.split(/\n\s*\n/).map((p) => '<p>' + esc(p.trim()).replace(/\n/g, '<br>') + '</p>').join('');
+    const wrap = document.createElement('div');
+    wrap.className = 'modal ukaz';
+    wrap.innerHTML = '<div class="card" role="dialog" aria-modal="true">'
+      + '<div class="uk-seal" aria-hidden="true">ПОМИЛУВАНО</div>'
+      + '<img class="uk-glek" src="/static/glek.svg" alt="">'
+      + '<div class="uk-kick">📜 Указ Дядька Глека</div>'
+      + (u.title ? '<h3 class="uk-title">' + esc(u.title) + '</h3>' : '')
+      + '<div class="uk-text">' + text + '</div>'
+      + '<div class="row"><button class="primary" type="button" data-ok data-pad-first>Слава Глеку! 🙇</button></div></div>';
+    // «Бачив» — лише коли закрив сам: указ разовий, і перезавантаження сторінки посеред показу не мало б його з'їсти
+    const close = () => {
+      if (!wrap.isConnected) return;
+      wrap.remove();
+      document.removeEventListener('keydown', onKey, true);
+      try { localStorage.setItem('ukazSeen', u.v); } catch { /* приватне вікно */ }
+      api('POST', '/api/games/news', { game: 'curfew-notice', v: u.v }).catch(() => { /* наступного разу ще раз */ });
+    };
+    const onKey = (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && e.target.matches('[data-ok], body'))) { e.preventDefault(); e.stopPropagation(); close(); } };
+    wrap.querySelector('[data-ok]').onclick = close;
+    document.body.appendChild(wrap);
+    document.addEventListener('keydown', onKey, true);
+    wrap.querySelector('[data-ok]').focus();
+  }
 
   // ---------- boot ----------
   setPlayUi();
@@ -4711,6 +4768,7 @@
     if ((!me.games && parseHash().head === 'games') || (!me.padel && parseHash().head === 'padel')) applyRoute();
     me.night = m.night || null;
     paintNight();
+    ukaz();
     if (window.HSiteNews) HSiteNews.ready();
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';

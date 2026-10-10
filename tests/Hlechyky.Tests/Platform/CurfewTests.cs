@@ -41,6 +41,27 @@ public class CurfewTests
     }
 
     [Fact]
+    public void Weekend_nights_are_free_by_morning_day()
+    {
+        const string weekdays = "mon,tue,wed,thu,fri";
+        var sat = new DateTimeOffset(2026, 10, 9, 21, 30, 0, TimeSpan.Zero);    // субота 10.10, 00:30 за Києвом
+        var sun = new DateTimeOffset(2026, 10, 10, 21, 30, 0, TimeSpan.Zero);   // неділя 11.10, 00:30
+        var mon = new DateTimeOffset(2026, 10, 11, 21, 30, 0, TimeSpan.Zero);   // понеділок 12.10, 00:30
+        Assert.Null(Curfew.NightStart(sat, 0, 6, weekdays));
+        Assert.Null(Curfew.NightStart(sun, 0, 6, weekdays));
+        Assert.NotNull(Curfew.NightStart(mon, 0, 6, weekdays));
+        Assert.NotNull(Curfew.NightStart(sat, 0, 6, ""));                       // порожньо — щоночі
+        // Ніч через північ рахується за ранком: п'ятниця 23:30 — уже ніч на суботу, неділя 23:30 — на понеділок
+        Assert.Null(Curfew.NightStart(new DateTimeOffset(2026, 10, 9, 20, 30, 0, TimeSpan.Zero), 23, 6, weekdays));
+        Assert.NotNull(Curfew.NightStart(new DateTimeOffset(2026, 10, 11, 20, 30, 0, TimeSpan.Zero), 23, 6, weekdays));
+
+        var (curfew, _) = Make(sat);
+        Assert.Null(curfew.Refusal("владік", null, "clicker"));
+        var (weekday, _) = Make(mon);
+        Assert.NotNull(weekday.Refusal("владік", null, "clicker"));
+    }
+
+    [Fact]
     public void Only_listed_players_are_sent_to_sleep_and_only_at_night()
     {
         var (curfew, clock) = Make(Night);
