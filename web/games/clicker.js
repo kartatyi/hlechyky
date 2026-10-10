@@ -198,6 +198,15 @@
     const digits = Math.abs(v) < 10 ? 2 : Math.abs(v) < 100 ? 1 : 0;
     return nf(digits).format(cut(v, digits)) + ' ' + BIG[i];
   }
+  /// Те саме на знак коротше — для бейджа вкладки: «37 млн», «3,7 млн». На телефоні бейдж має ~58 px (09.10).
+  function few(n) {
+    if (!Number.isFinite(n) || Math.abs(n) < 1e6) return count(n);
+    const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
+    if (i >= BIG.length) return expo(n);
+    const v = n / Math.pow(1000, i + 2);
+    const digits = Math.abs(v) < 10 ? 1 : 0;
+    return nf(digits).format(cut(v, digits)) + ' ' + BIG[i];
+  }
   /// Золотий / золоті / золотих; дробове — «золотого». Після скорочення («1,2 млн») — «золотих», як і глеки.
   const goldWord = (g) => {
     if (!Number.isFinite(g) || Math.abs(g) >= 1e6) return 'золотих';
@@ -742,13 +751,16 @@
   // стрибає), праворуч дрібно назва — обрізатись може лише вона; під ними смужка часу, що тане. Порядок — що скоро
   // скінчиться, те першим; останні п'ять секунд плашка світиться. Розмітка плашок складається раз: щосекунди
   // міняється лише текст числа (коли він справді інший), а смужка тане сама — WAAPI на transform, без JS щокадру.
+  // Назва — слово й хвіст (tail): на маку «Серія 886» різалась до «Серія …» (09.10), і саме число серії, яке варто
+  // бачити, зникало першим. Тепер хвіст стоїть окремо й не ріжеться ніколи; вузька клітинка ховає значок, ще вужча —
+  // слово (clicker.css, @container clkbuff).
   const BUFF_END_MS = 5000;
   const BUFF_KINDS = [
     { key: 'fair', icon: '🎪', name: () => 'Ярмарок', what: (st) => 'Ярмарок: усе ×' + dec(st.fairMult) },
     { key: 'inspire', icon: '✨', name: () => 'Натхнення', what: (st) => 'Натхнення: клік ×' + st.inspireMult },
     { key: 'wind', icon: '🌬', name: () => 'Вітер із поля', what: (st) => 'Вітер із поля: без тебе все ×' + dec(st.windMult) },
     { key: 'heat', icon: '🌀', name: () => 'Розгін', what: () => 'Розгін кола: що частіше клацаєш, то більший клік; смужка — наскільки коло гаряче' },
-    { key: 'streak', icon: '🤲', name: (st) => 'Серія ' + count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
+    { key: 'streak', icon: '🤲', name: () => 'Серія', tail: (st) => count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
       + Math.round(st.streakBonus * 100) + ' % більше' },
     { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
     // Бафи від друзів (цех, clicker-guild.js): з відліком і від кого — отримувач бачить їх просто під колом.
@@ -798,10 +810,11 @@
       el.hidden = true;
       el.innerHTML = '<span class="clk-bico" aria-hidden="true">' + k.icon + '</span>'
         + '<b class="clk-bnum"><span class="clk-bmul"></span><span class="clk-bsec"></span></b>'
-        + '<span class="clk-bname"></span><i class="clk-bbar" aria-hidden="true"></i>';
+        + '<span class="clk-bname"><span class="clk-bw"></span><span class="clk-bt"></span></span><i class="clk-bbar" aria-hidden="true"></i>';
       st.buffs.appendChild(el);
       els[k.key] = { el, kind: k, mul: el.querySelector('.clk-bmul'), sec: el.querySelector('.clk-bsec'),
-        name: el.querySelector('.clk-bname'), bar: el.querySelector('.clk-bbar'), until: 0, anim: null, level: -1, order: '', secs: -1 };
+        word: el.querySelector('.clk-bw'), tail: el.querySelector('.clk-bt'), name: '',
+        bar: el.querySelector('.clk-bbar'), until: 0, anim: null, level: -1, order: '', secs: -1 };
     }
     st.buffEls = els;
     return els;
@@ -836,9 +849,13 @@
       const x = now.find((y) => y.key === k.key);
       if (b.el.hidden) b.el.hidden = false;
       if (b.mul.textContent !== x.mult) { b.mul.textContent = x.mult; b.el.title = k.what(st); }
-      const name = x.held ? '⏸ чекає' : k.name(st);
-      if (b.name.textContent !== name) {
-        b.name.textContent = name;
+      // Стоїть під Оком майстра — «⏸» хвостом (css ставить його перед словом): у найвужчій клітинці лишається саме він.
+      const word = x.held ? 'чекає' : k.name(st);
+      const tail = x.held ? '⏸' : k.tail ? k.tail(st) : '';
+      if (b.name !== word + '|' + tail) {
+        b.name = word + '|' + tail;
+        b.word.textContent = word;
+        b.tail.textContent = tail;
         b.el.title = k.what(st) + (x.held ? ' — стоїть, поки не відповіси майстрові' : '');
       }
       if (b.el.classList.contains('held') !== !!x.held) b.el.classList.toggle('held', !!x.held);
@@ -1812,6 +1829,10 @@
   };
 
   /// Підпис ярлика = базова назва вкладки плюс короткі нотатки частин, за абеткою їхніх ключів.
+  /// «🏛», «🏗» і «♨» без VS16 Windows малює чорно-білим значком тексту — у золотому бейджі вкладки це «▬1» (09.10).
+  /// Дописуємо селектор кольорового емодзі, якщо його ще нема.
+  const colorEmoji = (s) => s.replace(/[\u2668\u{1F3D7}\u{1F3DB}](?!\uFE0F)/gu, '$&\uFE0F');
+
   function labelTab(st, key) {
     const b = st.tabs && st.tabs.querySelector('[data-tab="' + key + '"]');
     if (!b) return;
@@ -1819,7 +1840,7 @@
     const best = Object.keys(notes).sort().map((k) => notes[k]).filter((n) => n.text)
       .sort((a, b) => a.prio - b.prio)[0];
     const label = st.tabText[key] || key;
-    const note = best ? best.text : '';
+    const note = best ? colorEmoji(best.text) : '';
     if (b._label === label && b._note === note) return;
     b._label = label;
     b._note = note;
@@ -3743,7 +3764,9 @@
       const owned = st.styleList.filter((s) => s.owned).length;
       st.tabText.shop = '🔨 Майстерня';
       st.tabText.fire = '🔥 Клейма';
-      H.api.tabNote(st, 'fire', 'stamps', st.stamps ? '🔖' + count(st.stampsFree || 0) : '', 1);
+      // Вільні клейма — голим числом (без «🔖»: вкладка й так «Клейма») і коротко: «🔖37,2 млн» на телефоні різався
+      // до «🔖37,…». Нуль не показуємо — бейдж «0» нічого не каже.
+      H.api.tabNote(st, 'fire', 'stamps', st.stamps && st.stampsFree > 0 ? few(st.stampsFree) : '', 1);
       labelTab(st, 'shop');
       labelTab(st, 'fire');
       paintSections(st, owned);
