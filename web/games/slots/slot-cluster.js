@@ -7,27 +7,33 @@
   const C = 7, R = 7;
   const LOW = ['f1', 'f2', 'f3', 'f4'], HIGH = ['wreath', 'candle', 'fire', 'comb'], PAYS = LOW.concat(HIGH);
   const WILD = 'fern', BLOOM = 'bloom';
-  // ваги падіння символів (звичайна гра)
-  const W8 = { f1: 19, f2: 18, f3: 18, f4: 17, wreath: 10, candle: 9, fire: 7, comb: 5, fern: 1.3 };
+  // ваги падіння символів (звичайна гра) — як на сервері (SlotClusterMath.Weights); на сайті _tune бере їх з view.table
+  const W8 = { f1: 22, f2: 19, f3: 17, f4: 14, wreath: 10, candle: 9, fire: 7, comb: 5, fern: 1.35 };
   let FS_FERN = 2.2;                 // у вільних листків папороті більше
   // розміри кластера → сходинка виплати; виплати — у ставках
   const SIZES = [5, 6, 7, 8, 9, 11, 13, 16];
-  const PAY = {
-    f1: [0.2, 0.25, 0.3, 0.4, 0.6, 1, 2, 5],
-    f2: [0.2, 0.3, 0.4, 0.6, 0.8, 1.5, 3, 8],
-    f3: [0.3, 0.4, 0.5, 0.7, 1, 2, 4, 10],
-    f4: [0.3, 0.4, 0.6, 0.8, 1.2, 2.5, 5, 12],
-    wreath: [0.6, 0.8, 1, 1.5, 2.5, 4, 8, 20],
-    candle: [0.8, 1, 1.5, 2, 3, 5, 10, 30],
-    fire: [1, 1.5, 2, 3, 4, 8, 15, 50],
-    comb: [1.5, 2, 3, 5, 8, 15, 30, 100],
+  const PAY = {   // spec §1.2 («98 %», 09.10.2026); на сайті — з view.table.pay (_setPay)
+    f1: [0.2, 0.2, 0.3, 0.3, 0.4, 0.7, 1.2, 3],
+    f2: [0.2, 0.2, 0.3, 0.4, 0.5, 1, 2, 5],
+    f3: [0.2, 0.3, 0.4, 0.5, 0.7, 1.2, 2.3, 6],
+    f4: [0.3, 0.3, 0.4, 0.6, 0.8, 1.5, 2.6, 8],
+    wreath: [0.5, 0.6, 0.8, 1, 1.5, 2.3, 5, 12],
+    candle: [0.6, 0.8, 1, 1.5, 2, 2.6, 6, 20],
+    fire: [0.8, 1, 1.5, 2, 2.5, 4.5, 10, 30],
+    comb: [1, 1.5, 2, 3, 4.5, 8, 20, 60],
   };
-  const LV = [11, 30, 50]; let MAX = 50;         // крапельки шкали; рівні — бутони шкали (мок ≈ RTP 0,98, влучань 40 %, світлячки 1/10, русалка 1/30, цвіт 1/95)
+  // крапельки шкали; рівні — бутони шкали. Сервер (spec §2): RTP бази 97 %, виграш 47 % обертів, цвіт ≈ 1 з 72;
+  // мок стенду — приблизно те саме (гроші рахує сервер). На сайті — з view.table.levels (_tune)
+  const LV = [11, 30, 52]; let MAX = 52;
+  // перелесник (сюрприз): на кожному полі (і у вільних) з шансом 1 з 12 летить від краю до краю й лишає 2–4 листки
+  const PERE = { chance: 1 / 12, min: 2, max: 4, flight: 7 };
   const FS_N = 5, FS_ADD = 3, FS_CAP = 15;
   const NAMES = ['Світлячки', 'Русалка', 'Цвіт папороті'];
   const SUBS = ['світлячки роблять дикі', 'русалка міняє квіти', 'дикий цвіт 3×3 і 5 вільних'];
   const BLOOM_AREA = []; for (let c = 2; c <= 4; c++) for (let r = 2; r <= 4; r++) BLOOM_AREA.push([c, r]);
   const BOOM_AREA = []; for (let c = 1; c <= 5; c++) for (let r = 1; r <= 5; r++) BOOM_AREA.push([c, r]);
+
+  let serverRules = '';   // view.table.rules (готовий HTML для ⓘ) — на сайті; на стенді — свій текст з тих самих чисел
 
   // ---------- Мок-математика ----------
   const rnd = Math.random;
@@ -103,6 +109,34 @@
     return rnd() < 0.7 ? opts[0] : opts[Math.floor(rnd() * opts.length)];
   }
 
+  // перелесник: ламана від краю до протилежного краю (по клітинці на колонку чи рядок, щокроку вбік на 0/±1),
+  // 2–4 листки на недикі клітинки шляху в порядку польоту — як SlotClusterMath.Perelesnyk
+  function planPere(g) {
+    let path = [], free = [];
+    for (let t = 0; ; t++) {
+      const dir = Math.floor(rnd() * 4); let side = Math.floor(rnd() * 7);
+      path = []; free = [];
+      for (let i = 0; i < PERE.flight; i++) {
+        if (i > 0) side = Math.max(0, Math.min(6, side + Math.floor(rnd() * 3) - 1));
+        const along = dir % 2 === 0 ? i : PERE.flight - 1 - i;
+        const p = dir < 2 ? [along, side] : [side, along];
+        path.push(p); if (!isW(g[p[0]][p[1]])) free.push(i);
+      }
+      if (free.length >= PERE.min || t >= 9) break;
+    }
+    if (!free.length) return null;
+    const n = PERE.min + Math.floor(rnd() * (PERE.max - PERE.min + 1));
+    const at = shuffle(free.slice()).slice(0, n).sort((a, b) => a - b);
+    return { t: 'morph', why: 'perelesnyk', cells: at.map((i) => [path[i][0], path[i][1], WILD]), path };
+  }
+  function pereMaybe(S) {
+    if (rnd() >= PERE.chance) return;
+    const st = planPere(S.grid); if (!st) return;
+    st.cells.forEach(([c, r, k]) => { S.grid[c][r] = k; });
+    S.steps.push(st); S.info.pere = (S.info.pere || 0) + 1;
+    if (S.fs) S.info.pereFs = (S.info.pereFs || 0) + 1;
+  }
+
   // Розіграш поля до кінця: каскади, рівні шкали. S: {grid, meter, done, steps, pick, bet, fs, info}
   function resolve(S) {
     let won = 0, chain = 0, boom = false;
@@ -164,6 +198,7 @@
     const info = { chain: 0, lv: [0, 0, 0], maxCl: 0, bonus: false };
     const S = { grid: fresh(), meter: 0, done: [false, false, false], steps: [], pick, bet, fs: false, info };
     S.steps.push({ t: 'spin', grid: copy(S.grid) });
+    pereMaybe(S);
     let total = resolve(S);
     if (S.bloom) {
       info.bonus = true;
@@ -178,6 +213,7 @@
         S.steps.push({ t: 'fs', left: S.fsLeft });
         S.grid = Array.from({ length: C }, () => Array.from({ length: R }, pf)); S.bloom = false;
         S.steps.push({ t: 'spin', grid: copy(S.grid) });
+        pereMaybe(S);
         fsWon += resolve(S);
       }
       S.steps.push({ t: 'bonusOut', total: fsWon, title: 'Цвіт папороті приніс' });
@@ -204,9 +240,9 @@
     };
   }
   function sim(n, bet) {   // для перевірки: SlotKit.machines['slot-cluster']._sim(20000)
-    bet = bet || 100; let tot = 0, hit = 0, lv = [0, 0, 0], big = 0; const t0 = performance.now();
-    for (let i = 0; i < n; i++) { const s = simulate(bet); tot += s.win; if (s.win) hit++; s.info.lv.forEach((v, j) => { if (v) lv[j]++; }); if (s.win >= 10 * bet) big++; }
-    return { rtp: +(tot / n / bet).toFixed(3), hit: +(hit / n).toFixed(3), lv1: +(lv[0] / n).toFixed(4), lv2: +(lv[1] / n).toFixed(4), lv3: +(lv[2] / n).toFixed(4), big: +(big / n).toFixed(4), ms: Math.round(performance.now() - t0) };
+    bet = bet || 100; let tot = 0, hit = 0, lv = [0, 0, 0], big = 0, pere = 0; const t0 = performance.now();
+    for (let i = 0; i < n; i++) { const s = simulate(bet); tot += s.win; if (s.win) hit++; s.info.lv.forEach((v, j) => { if (v) lv[j]++; }); if (s.win >= 10 * bet) big++; if (s.info.pere) pere++; }
+    return { rtp: +(tot / n / bet).toFixed(3), hit: +(hit / n).toFixed(3), lv1: +(lv[0] / n).toFixed(4), lv2: +(lv[1] / n).toFixed(4), lv3: +(lv[2] / n).toFixed(4), big: +(big / n).toFixed(4), pere: +(pere / n).toFixed(4), ms: Math.round(performance.now() - t0) };
   }
 
   // ---------- Звук ----------
@@ -214,6 +250,7 @@
   SK.sound.add('scl-fly', (h) => { h.tone(1400, h.t, 0.35, 'sine', 0.06, 2600); h.tone(2100, h.t + 0.08, 0.3, 'sine', 0.04, 3200); });
   SK.sound.add('scl-splash', (h) => { h.noise(h.t, 0.5, 900, 0.6, 0.35); h.noise(h.t + 0.1, 0.4, 3000, 0.7, 0.15); h.tone(300, h.t, 0.3, 'sine', 0.15, 120); });
   SK.sound.add('scl-boom', (h) => { h.noise(h.t, 0.7, 500, 0.5, 0.55); h.tone(110, h.t, 0.6, 'sine', 0.5, 40); [784, 988, 1175, 1568].forEach((f, i) => h.tone(f, h.t + 0.15 + i * 0.07, 0.6, 'triangle', 0.08)); });
+  SK.sound.add('scl-ember', (h) => { h.noise(h.t, 0.22, 2600, 0.9, 0.16, 'highpass'); h.tone(660, h.t, 0.25, 'triangle', 0.1, 1320); h.tone(1980, h.t + 0.05, 0.16, 'sine', 0.05, 2640); });
   SK.sound.add('scl-puff', (h) => { h.noise(h.t, 0.18, 4200, 0.8, 0.12, 'highpass'); h.tone(1568, h.t, 0.18, 'sine', 0.06, 2093); });
 
   // ---------- Частинки: золота зірочка художника ----------
@@ -244,6 +281,14 @@
   }
   const U = [1 / 3, 2 / 3, 1];
   const budY = (u) => 300 - u * 262;   // y бутона у viewBox шкали (0 0 90 320)
+  // крапельки → частка шкали: бутони арту стоять на 1/3, 2/3, 1 довжини, а рівні — на LV (11 · 30 · 52), тож шкала
+  // ламана — кожен бутон розкривається рівно тоді, коли рівень доступний
+  function meterU(v) {
+    v = Math.max(0, Math.min(MAX, v));
+    let a = 0, ua = 0;
+    for (let i = 0; i < 3; i++) { if (v <= LV[i]) return ua + (U[i] - ua) * (v - a) / ((LV[i] - a) || 1); a = LV[i]; ua = U[i]; }
+    return 1;
+  }
 
   function iconOf(ctx, n) {
     if (n === 1) return ctx.extra('firefly') || '✨';
@@ -254,7 +299,7 @@
     const L = layOf(ctx), cl = ctx.cl = ctx.cl || { fern: 0 };
     const st = document.createElement('div'); st.className = 'scl-stage' + (L.port ? ' port' : ''); ctx.area.appendChild(st);
     cl.st = st;
-    const meter = ctx.extra('meter', cl.fern / MAX) || '<div class="scl-meter-ph"></div>';
+    const meter = ctx.extra('meter', meterU(cl.fern)) || '<div class="scl-meter-ph"></div>';
     const legend = [1, 2, 3].map((n) => '<div class="scl-lv" data-n="' + n + '"><i>' + iconOf(ctx, n) + '</i><span><b>' + NAMES[n - 1] + '</b><small>' + SUBS[n - 1] + '</small></span></div>').join('');
     let h = '';
     if (L.port) {
@@ -293,7 +338,7 @@
   function setFern(ctx, v, sound) {
     const cl = ctx.cl, was = cl.fern; cl.fern = v;
     const ms = ctx.art && ctx.art.extras && ctx.art.extras.meterSet;
-    if (cl.meterEl && ms) ms(cl.meterEl, v / MAX);
+    if (cl.meterEl && ms) ms(cl.meterEl, meterU(v));
     paintLevels(ctx);
     const wrap = cl.st.querySelector('.scl-mwrap');
     if (v > was && wrap) { wrap.classList.remove('gulp'); void wrap.offsetWidth; wrap.classList.add('gulp'); }
@@ -339,7 +384,7 @@
     if (step.boom) {
       const big = cl.fxl.querySelector('.scl-bigbloom');
       ctx.sound('scl-boom');
-      cl.st.classList.remove('shake'); void cl.st.offsetWidth; cl.st.classList.add('shake');
+      ctx.shake(1.3); ctx.flash('#ffe0f0', { power: 0.7, ms: 520 });
       flash(ctx, 3);
       if (big) { big.classList.add('boom'); ctx.fx.at(big, { kind: 'sclspark', n: 70, speed: 900, size: 14, gravity: 200, life: 1.4 }); ctx.fx.at(big, { kind: 'confetti', n: 40, speed: 800 }); }
       const [cx, cy] = ctx.reels.center(3, 3);
@@ -451,7 +496,88 @@
     await ctx.wait(1500);
   }
 
+  // ---------- Перелесник (сюрприз) ----------
+  // Вогняний дух влітає з-за краю, летить точно по s.path (центри клітинок) і, пролітаючи над клітинкою з s.cells,
+  // лишає там листок папороті з іскристим спалахом; вилітає за протилежний край. Один WAAPI-політ (ctx.animate:
+  // тап доводить до кінця, турбо коротший), листки — за прогресом польоту; після польоту дозасвічуємо, що лишилось,
+  // тож поле завжди рівно spin.grid + cells — наступний win рахується на ньому.
+  async function perelesnyk(s, ctx) {
+    const cl = ctx.cl, L = cl.L, path = s.path, step = L.S + L.g;
+    ctx.emit('surprise', 'perelesnyk', s);
+    ctx.react('surprise', { why: 'perelesnyk' });
+    ctx.clearWin();
+    const pts = path.map(([c, r]) => { const e = ctx.cell(c, r); return e ? rel(ctx, e) : null; });
+    if (pts.some((p) => !p)) { await SK.steps.morph(s, ctx); return; }
+    // вхід і вихід — на 1,6 клітинки за краями вздовж головного напрямку польоту
+    const [x0, y0] = pts[0], [x6, y6] = pts[pts.length - 1], dl = Math.hypot(x6 - x0, y6 - y0) || 1;
+    const ux = (x6 - x0) / dl, uy = (y6 - y0) / dl, out = step * 1.6;
+    const way = [[x0 - ux * out, y0 - uy * out]].concat(pts, [[x6 + ux * out, y6 + uy * out]]);
+    const n = way.length, len = [0];
+    for (let i = 1; i < n; i++) len.push(len[i - 1] + Math.hypot(way[i][0] - way[i - 1][0], way[i][1] - way[i - 1][1]));
+    const tot = len[n - 1] || 1;
+    // кут — уздовж відрізка, без стрибків через ±180°; летить ліворуч — дзеркалимо, щоб личко не було догори дриґом
+    const flip = ux < -0.5 ? -1 : 1, ang = [];
+    for (let i = 0; i < n; i++) {
+      const j = Math.min(i, n - 2);
+      let a = Math.atan2(way[j + 1][1] - way[j][1], way[j + 1][0] - way[j][0]) * 180 / Math.PI + (flip < 0 ? 180 : 0);
+      if (i) { while (a - ang[i - 1] > 180) a -= 360; while (a - ang[i - 1] < -180) a += 360; }
+      ang.push(a);
+    }
+    const sz = L.S * 2;
+    const sp = document.createElement('div'); sp.className = 'scl-pere';
+    sp.style.cssText = 'width:' + sz + 'px;height:' + (sz * 0.6) + 'px;left:' + (-sz * 0.72) + 'px;top:' + (-sz * 0.3) + 'px';
+    sp.innerHTML = ctx.extra('perelesnyk') || '<div class="scl-pere-ph"></div>';
+    cl.fly.appendChild(sp);
+    // ярлик над полем: хто це прилетів
+    const tag = document.createElement('div'); tag.className = 'scl-pere-tag'; tag.innerHTML = '<b>Перелесник!</b><small>лишає листки папороті</small>';
+    cl.board.appendChild(tag);
+    ctx.timeout(() => { tag.classList.add('out'); ctx.timeout(() => tag.remove(), 400); }, ctx.turbo ? 900 : 1500);
+    ctx.sound('whoosh');
+    ctx.flash('#ffb14a', { power: 0.35, ms: 380 });
+    const kf = way.map((p, i) => ({
+      transform: 'translate(' + p[0].toFixed(1) + 'px,' + p[1].toFixed(1) + 'px) rotate(' + ang[i].toFixed(1) + 'deg) scale(' + flip + ',1)',
+      opacity: i === 0 || i === n - 1 ? 0 : 1, offset: len[i] / tot,
+    }));
+    // у вільних — коротше; турбо — ctx.animate сам ×0,6
+    const a = ctx.animate(sp, kf, { duration: ctx.fs ? 1050 : 1450, easing: 'linear', fill: 'both' });
+    // листок — коли дух над клітинкою: індекс клітинки в path → частка шляху (+1 — точка входу)
+    const drops = s.cells.map(([c, r, key]) => {
+      const i = path.findIndex(([pc, pr]) => pc === c && pr === r);
+      return { c, r, key, at: i < 0 ? 1 : len[i + 1] / tot, done: false };
+    });
+    const drop = (d) => {
+      if (d.done) return; d.done = true;
+      morphCell(ctx, d.c, d.r, d.key, SK.calm() ? 8 : 18);
+      const e = ctx.cell(d.c, d.r);
+      if (e) {
+        e.classList.remove('scl-pered'); void e.offsetWidth; e.classList.add('scl-pered');
+        ctx.timeout(() => e.classList.remove('scl-pered'), 1300);
+        ctx.fx.at(e, { kind: 'spark', n: 8, speed: 260, size: 7, gravity: 120, life: 0.6 });
+      }
+      ctx.sound('scl-ember');
+    };
+    let k = 0;
+    const iv = ctx.interval(() => {
+      const t = a.effect && a.effect.getComputedTiming().progress;
+      if (t == null) return;
+      drops.forEach((d) => { if (t >= d.at - 0.01) drop(d); });
+      // хвіст іскор за духом (телефон і зменшений рух — удвічі рідше)
+      if (k++ % (SK.calm() || ctx.orient === 'port' ? 2 : 1) === 0 && t > 0.04 && t < 0.96) ctx.fx.at(sp, { kind: 'sclspark', n: 2, speed: 90, size: 7, gravity: -30, life: 0.55 });
+    }, 40);
+    await a.finished.catch(() => {});
+    ctx.clearTimer(iv);
+    drops.forEach(drop);            // тап/пропуск — решта листків одразу
+    sp.remove();
+    ctx.shake(0.3);
+    await ctx.wait(ctx.fs ? 160 : 260);
+  }
+
   const steps = {
+    // morph з why: 'perelesnyk' — своя вистава; решта (і без шляху) — як у кіта
+    async morph(s, ctx) {
+      if (s.why === 'perelesnyk' && Array.isArray(s.path) && s.path.length && ctx.cl && ctx.cl.fly) return perelesnyk(s, ctx);
+      return SK.steps.morph(s, ctx);
+    },
     async lvl(s, ctx) {
       ctx.clearWin();
       flash(ctx, s.n);
@@ -459,7 +585,7 @@
       ctx.cl.st.querySelectorAll('.scl-lv[data-n="' + s.n + '"],.scl-mlab[data-n="' + s.n + '"]').forEach((e) => { e.classList.remove('hot'); void e.offsetWidth; e.classList.add('hot'); });
       ctx.sound('level');
       await ctx.wait(800);
-      if (s.n === 1) { ctx.say(SK.rnd.pick(['світлячки злетілись!', 'летять, летять — і все дике']), 2500); await flies(ctx, s); }
+      if (s.n === 1) { if (Math.random() < 0.4) ctx.say(SK.rnd.pick(['світлячки злетілись!', 'летять, летять — і все дике', 'світлячки на купала не спізнюються']), 2500); await flies(ctx, s); }
       else if (s.n === 2) await mermaid(ctx, s);
       else await bloomIn(ctx, s);
     },
@@ -473,6 +599,7 @@
   // бонус: своя заставка з цвітом
   async function bonusIn(s, ctx) {
     ctx.setScene('bonus');
+    ctx.flash('#ff9ad0', { power: 0.8, ms: 600 }); ctx.shake(0.8);
     const ov = ctx.overlay('sk-bonus-in scl-bin',
       '<div class="sk-ov-card"><div class="scl-bin-bloom"><div class="scl-bb-rays"></div>' + ctx.symHtml(BLOOM) + '</div>'
       + '<div class="sk-ov-t">' + s.title + '</div><div class="sk-ov-n">' + s.count + '</div><div class="sk-ov-s">' + s.sub + '</div>'
@@ -484,7 +611,7 @@
 
   function clearFx(ctx) {
     const cl = ctx.cl; if (!cl || !cl.st) return;
-    cl.st.querySelectorAll('.scl-bigbloom,.scl-mer,.scl-call,.scl-ff,.scl-drop').forEach((e) => e.remove());
+    cl.st.querySelectorAll('.scl-bigbloom,.scl-mer,.scl-call,.scl-ff,.scl-drop,.scl-pere,.scl-pere-tag').forEach((e) => e.remove());
     const ch = cl.st.querySelectorAll('.scl-chain'); ch.forEach((e) => { e.textContent = ''; e.classList.remove('on'); });
   }
 
@@ -504,20 +631,45 @@
     payUnit: 1,
     sounds: { win: 'win' },
     paytable: payRows(),
-    // на сайті slot.js підставляє view.table.pay ({ sym: { "5": …, "16": … } }) — ⓘ не розійдеться з касою
-    _setPay(pay) {
-      if (!pay) return;
-      Object.keys(PAY).forEach((k) => { const p = pay[k]; if (p) PAY[k] = SIZES.map((n, i) => (p[n] != null ? +p[n] : PAY[k][i])); });
-      SK.machines[ID].paytable = payRows();
+    // на сайті slot.js підставляє view.table.pay ({ sym: { "5": …, "16": … } }) і сам view.table — ⓘ, шкала, ваги
+    // демо й перелесник не розійдуться з сервером
+    _setPay(pay, table) {
+      const m = SK.machines[ID];
+      if (pay) Object.keys(PAY).forEach((k) => { const p = pay[k]; if (p) PAY[k] = SIZES.map((n, i) => (p[n] != null ? +p[n] : PAY[k][i])); });
+      if (table) {
+        if (Array.isArray(table.levels) && table.levels.length === 3) m._tune({ lv: table.levels.map(Number), w: table.weights || null, fsf: table.fsFern });
+        else if (table.weights) m._tune({ w: table.weights, fsf: table.fsFern });
+        const pe = table.pere;
+        if (pe) Object.assign(PERE, { chance: +pe.chance || PERE.chance, min: pe.min || PERE.min, max: pe.max || PERE.max, flight: pe.flight || PERE.flight });
+        if (typeof table.rules === 'string' && table.rules) serverRules = table.rules;
+      }
+      m.paytable = payRows();
     },
-    rules: '<b>Кластер</b> — 5 і більше однакових, що стикаються боками (не навскіс). Виграшні згасають, решта падає, згори нові — і знову. '
-      + '<b>Листок папороті</b> — дикий. Кожен згаслий символ кладе крапельку в <b>шкалу папороті</b>; рівні, раз за оберт кожен: '
-      + '<b>1 · світлячки</b> — 3–6 клітинок стають дикими; <b>2 · русалка</b> — один вид квітів стає іншим; '
-      + '<b>3 · цвіт папороті</b> — дикий 3×3 посеред поля, вибухає, далі <b>5 вільних обертів</b>, де шкала не скидається (знову до цвіту — +3).',
+    rules: () => serverRules || ('<b>Кластер</b> — 5 і більше однакових, що стикаються боками (не навскіс). Виграшні згасають, решта падає, згори нові — і знову. '
+      + '<b>Листок папороті</b> — дикий. '
+      + '<b>Перелесник</b> — на початку кожного оберту (і вільного) з шансом 1 з ' + Math.round(1 / PERE.chance) + ' пролітає полем і лишає ' + PERE.min + '–' + PERE.max + ' листки папороті. '
+      + 'Кожен згаслий символ кладе крапельку в <b>шкалу папороті</b>; рівні, раз за оберт кожен: '
+      + '<b>' + LV[0] + ' · світлячки</b> — 3–6 клітинок стають дикими; <b>' + LV[1] + ' · русалка</b> — один вид квітів стає іншим; '
+      + '<b>' + LV[2] + ' · цвіт папороті</b> — дикий 3×3 посеред поля, вибухає, далі <b>5 вільних обертів</b>, де шкала не скидається (знову до цвіту — +3, разом до 15).'),
+    // сюрприз: вистава своя (steps.morph), кіт лише знає назву
+    surprises: { perelesnyk: { title: 'Перелесник!', sub: 'лишає листки папороті', own: true } },
+    // репліки Глека-ведучого під купальську ніч (кіт сам тротлить і не повторює)
+    say: {
+      small: ['пелюсточка до пелюсточки', 'на віночок ще не тягне', 'дрібненько, як роса'],
+      win: ['квіти зійшлись', 'отакий букет!', 'лови віночок'],
+      nice: ['гарно розцвіло!', 'аж папороть зашелестіла', 'файний букет'],
+      big: ['оце купала!', 'весь луг твій!', 'та тут на весілля вистачить'],
+      surprise: ['перелесник! не лови — обпечешся', 'вогник полетів, листки лишив', 'то перелесник, на купала вони такі', 'ой, хтось пролетів!'],
+      bonus: ['цвіт папороті! всю ніч шукали', 'знайшли таки цвіт!'],
+      dry: ['папороть цвіте раз на рік, а квіти — щооберта', 'кожен оберт — нова ніч, нічого не пам’ятає', 'може, по воду до русалки? я почекаю'],
+      idle: ['туман над лугом… крутимо?', 'світлячки нудьгують'],
+    },
     initialState: () => ({}),
     spin(bet, state) { return simulate(bet, state); },
     demo: {
-      'Малий кластер': demoBy((x, m) => m > 0 && m < 3 && x.chain === 1 && !x.lv[0]),
+      'Малий кластер': demoBy((x, m) => m > 0 && m < 3 && x.chain === 1 && !x.lv[0] && !x.pere),
+      'Перелесник': demoBy((x, m) => x.pere && !x.bonus && m > 0 && m < 10, null, (x, m) => (x.pere ? 10 + Math.min(m, 9) : 0) - (x.bonus ? 50 : 0)),
+      'Перелесник + цвіт': demoBy((x) => x.pere && x.bonus, RICH, (x) => (x.bonus ? 100 : 0) + (x.pere ? 50 : 0) + x.lv[1], 4000),
       'Каскад 3+': demoBy((x, m) => x.chain >= 3 && !x.lv[1] && m < 10, RICH, (x) => x.chain),
       'Світлячки': demoBy((x, m) => x.lv[0] && !x.lv[1] && m < 10, RICH, (x) => x.lv[0] * 5 - x.lv[1] * 9),
       'Русалка': demoBy((x) => x.lv[1] && !x.lv[2], RICH, (x) => x.lv[1] * 5 - x.lv[2] * 9),
@@ -526,7 +678,7 @@
       'Мега занос': demoBy((x, m) => m >= 25 && m < 50 && !x.bonus, HOT2, (x, m) => (x.bonus ? -1 : m < 50 ? m : 50 - m)),
       'Епічний занос': demoBy((x, m) => m >= 50 && !x.bonus, HOT2, (x, m) => (x.bonus ? -1 : m), 7000),
     },
-    _tune(o) { if (o.w) { for (const k in W8) delete W8[k]; Object.assign(W8, o.w); } if (o.lv) { LV.splice(0, 3, ...o.lv); MAX = LV[2]; } if (o.pay) Object.assign(PAY, o.pay); if (o.fsf) FS_FERN = o.fsf; },
+    _tune(o) { if (o.w) { for (const k in W8) delete W8[k]; Object.keys(o.w).forEach((k) => { if (k !== BLOOM) W8[k] = +o.w[k]; }); } if (o.lv) { LV.splice(0, 3, ...o.lv); MAX = LV[2]; } if (o.pay) Object.assign(PAY, o.pay); if (o.fsf) FS_FERN = o.fsf; },
     _sim: sim, _simulate: simulate, _clusters: clusters,
     build,
     steps,

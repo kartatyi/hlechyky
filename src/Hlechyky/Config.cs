@@ -30,7 +30,8 @@ public sealed class SiteOptions
     /// <summary>Genitive form ("порада Дядька Глека").</summary>
     public string DjNameGen { get; set; } = "Дядька Глека";
     public string PublicStreamUrl { get; set; } = "";
-    public int StreamDelaySeconds { get; set; } = 6;
+    /// <summary>На скільки ефір у плеєрі відстає від liquidsoap: burst у radio.liq (192 КБ ≈ 8,2 с при 192 кбіт/с).</summary>
+    public int StreamDelaySeconds { get; set; } = 8;
     public int ListenPort { get; set; } = 8080;
 }
 
@@ -89,6 +90,11 @@ public sealed class LiquidsoapOptions
     public int SpareRefreshMinutes { get; set; } = 30;
     /// <summary>Скільки треків максимум у запасці.</summary>
     public int SpareMax { get; set; } = 300;
+    /// <summary>
+    /// Годинник ефіру стоїть стільки секунд — сервер сам перезапускає liquidsoap (<see cref="LiquidsoapGuard"/>).
+    /// 0 — не стежити (тоді лишається наглядач start.ps1: раз на хвилину, дві перевірки поспіль).
+    /// </summary>
+    public int FreezeRestartSeconds { get; set; } = 20;
 }
 
 public sealed class LastFmOptions

@@ -53,6 +53,7 @@ builder.Services.AddSingleton<ArtistQuality>();
 builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<Curfew>();      // нічний відбій для окремих гравців (Curfew.cs)
+builder.Services.AddSingleton<Litopys>();     // «✨ Огляд», «Усі ігри», виконавці, слухачі й цікавинки людини (Litopys.cs)
 builder.Services.AddSingleton<ChatFlood>();   // один лічильник флуду на Балачки, столи й агентів
 // файли в Балачках: data/chatfiles, не більше ChatFiles:MaxGb разом (ChatFiles.cs)
 builder.Services.AddSingleton(_ => new ChatFilesDir(Paths.Resolve("data/chatfiles"), (long)(cfg.GetValue("ChatFiles:MaxGb", 10.0) * 1024 * 1024 * 1024)));
@@ -71,6 +72,7 @@ builder.Services.AddSingleton<TrackCache>();
 builder.Services.AddSingleton<SpareList>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<SpareList>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TrackCache>());
+builder.Services.AddHostedService<LiquidsoapGuard>();   // завислий годинник ефіру → start.ps1 radio за ~20 с, а не за 2–3 хв
 builder.Services.AddSingleton<DjBrain>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<DjBrain>());
 // Підстраховка автодеплою: підбирає зелену збірку, вебхук про яку не дійшов (Deploy.cs)
@@ -119,6 +121,7 @@ app.UseStaticFiles(new StaticFileOptions
 });
 app.MapHlechyky();
 app.MapPeople();   // люди й статистика: картка людини, «Хто скільки», історія, свій гаманець, «Часто граємо»
+Litopys.Map(app);   // /api/stats/overview|games|music|person — «Літопис» для «Хто скільки» й профілю
 app.MapHlechykyGames();
 app.MapHlechykyEconomy();
 app.MapHlechykyMcp();

@@ -307,7 +307,7 @@
   /// лишається «клавішами» — повільно й точно.
   function stickNow() {
     let ax = 0, ay = 0;
-    const list = (navigator.getGamepads && navigator.getGamepads()) || [];
+    const list = window.HPad && HPad.list ? HPad.list() : ((navigator.getGamepads && navigator.getGamepads()) || []);   // без керма й лише у фокусі
     for (const p of list) {
       if (!p || !p.connected) continue;
       const a = p.axes || [];

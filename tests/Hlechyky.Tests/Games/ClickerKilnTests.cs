@@ -1069,35 +1069,36 @@ public class ClickerKilnTests
     }
 
     [Fact]
-    public void An_all_ringing_batch_of_four_is_an_achievement_and_three_are_not()
+    public void A_flawless_batch_of_six_is_an_achievement_and_five_are_not()
     {
+        // 10.10: бездоганний — від шести виробів, без тріщин і з дзвінкими чи розкішними від 40 % (Clicker.IsPerfectBatch).
         var awarded = false;
-        var threeRinging = false;
-        for (var seed = 1; seed < 3000 && !(awarded && threeRinging); seed++)
+        var fiveFlawless = false;
+        for (var seed = 1; seed < 3000 && !(awarded && fiveFlawless); seed++)
         {
             var h = Wheel(seed);
-            var n = seed % 2 == 0 ? 4 : 3;
-            if (n == 4 && awarded) continue;
-            if (n == 3 && threeRinging) continue;
+            var n = seed % 2 == 0 ? 6 : 5;
+            if (n == 6 && awarded) continue;
+            if (n == 5 && fiveFlawless) continue;
             Patch(h, s => s["kiln"] = new JsonObject { ["beauty"] = 100 });
             Rack(h, dry: n);
             Assert.True(Burn(h).Ok);
-            // v9: розкішний (4) — теж дзвінкий і навіть кращий, тож «усе горно дзвінке» — це Q ≥ 3.
-            var all = Kiln(h).GetProperty("last").GetProperty("items").EnumerateArray().All(i => i[1].GetInt32() >= 3);
+            var q = Kiln(h).GetProperty("last").GetProperty("items").EnumerateArray().Select(i => i[1].GetInt32()).ToList();
+            var flawless = q.All(x => x > 0) && q.Count(x => x >= 3) * 10 >= q.Count * 4;
             var got = h.Awards.Any(a => a.Reason == "ach:potter-kiln-perfect");
-            if (n == 4)
+            if (n == 6)
             {
-                Assert.Equal(all, got);
+                Assert.Equal(flawless, got);
                 awarded |= got;
             }
             else
             {
                 Assert.False(got);
-                threeRinging |= all;
+                fiveFlawless |= flawless;
             }
         }
         Assert.True(awarded);
-        Assert.True(threeRinging);
+        Assert.True(fiveFlawless);
     }
 
     [Fact]

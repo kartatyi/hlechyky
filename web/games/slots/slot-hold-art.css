@@ -209,4 +209,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .slot-slot-hold .sh-scene *, .slot-slot-hold .sh-coin-r3 .a-rays, .slot-slot-hold .sh-jackpots .a-rays { animation: none !important; }
+  /* виграшні рухи символів — один раз, без зациклення */
+  .slot-slot-hold .win [class^="a-"], .slot-slot-hold .win [class*=" a-"] { animation-iteration-count: 1 !important; }
 }

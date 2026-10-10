@@ -47,8 +47,8 @@ public static class EconomySetup
     {
         var api = app.MapGroup("/api/games");
 
-        api.MapGet("/leaderboard", (string? game, string? period, string? day, Leaderboards boards) =>
-            boards.Leaderboard(game, period, day));
+        api.MapGet("/leaderboard", (string? game, string? period, string? day, string? sort, Leaderboards boards) =>
+            boards.Leaderboard(game, period, day, sort));
 
         api.MapGet("/profile", (string? nick, HttpContext c, Leaderboards boards) =>
             boards.Profile(string.IsNullOrWhiteSpace(nick) ? Auth.Nick(c) : nick.Trim()));

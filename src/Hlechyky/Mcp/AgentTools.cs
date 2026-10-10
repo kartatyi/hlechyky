@@ -81,8 +81,21 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
         if (!string.IsNullOrEmpty(s.Nick) && !string.Equals(s.Nick, clean, StringComparison.OrdinalIgnoreCase))
             await flush.FlushAsync(rooms.DropNick(s.Nick)).ConfigureAwait(false);
         s.Nick = clean;
+        Remember(s);
         rooms.NoteOnline(clean);
         return new { ok = true, nick = clean };
+    }
+
+    /// <summary>
+    /// Нік агента — у <c>bot_nicks</c> (<see cref="Bots.Mark"/>): «📊 Хто скільки» показує лише людей (записка #31). Раз на
+    /// нік сесії; нік з акаунтом — людський, такий не пишемо.
+    /// </summary>
+    public void Remember(AgentSession s)
+    {
+        if (db is null || string.IsNullOrEmpty(s.Nick) || s.Nick == Auth.Guest || s.Remembered == s.Nick) return;
+        try { Bots.Mark(db, s.Nick, "mcp", clock?.UtcNow ?? DateTimeOffset.UtcNow); }
+        catch { /* не записалось — спробуємо з наступним інструментом */ return; }
+        s.Remembered = s.Nick;
     }
 
     public object GameList() => new

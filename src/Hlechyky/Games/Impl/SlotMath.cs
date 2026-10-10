@@ -84,39 +84,50 @@ public interface ISlotBuyBonus
 }
 
 /// <summary>
-/// «Однорукий Глек»: 3 барабани × 3 рядки, 5 ліній, стрічки по 32 (ті самі, що в моку slot-glek.js), Глек — дикий.
-/// Платить однаковий ряд зліва направо від першого барабана; на лінії — один виграш. Виплати — у ставках на лінію
-/// (ставка ÷ 5). Таблицю підібрано під RTP бази 95,50 % (точно, перебором усіх 32³ зупинок), виграш у 38,4 % обертів.
+/// «Однорукий Глек»: 3 барабани × 3 рядки, 5 ліній, стрічки по 34, Глек — дикий. Платить однаковий ряд зліва направо
+/// від першого барабана; на лінії — один виграш. Виплати — у ставках на лінію (ставка ÷ 5). Після зупинки з шансом
+/// 1 з 12 Дядько Глек чхає 🤧 — 1–3 клітинки (не Глеки) стають дикими Глеками, і лінії рахуються на зміненому полі.
+/// RTP бази 97,0 % (96,996 % — точно, перебором усіх 34³ зупинок × усіх варіантів чиху), виграш у 52,45 % обертів.
 /// </summary>
 public sealed class SlotGlekMath : ISlotMath
 {
     public const string Wild = "glek";
     public const int Lines = 5;
 
-    // Стрічки барабанів (по 32): вишні 7, груша 6, слива 6, кавун 4, дзвоник 3, підкова 3, сімка 2 (поруч), Глек 1.
-    // Дослівно з моку — клієнт крутить ті самі стрічки, тож символи над і під лінією чесні.
+    // Стрічки барабанів (по 34): вишні 9, груша 8, слива 7, кавун 3, дзвоник 2, підкова 2, сімка 2 (поруч), Глек 1.
+    // Фрукти розкидані рівно (однакові не стоять поруч, крім сімок), щоб частіше складались ряди. Клієнт крутить ті
+    // самі стрічки (REELS у slot-glek.js чи view.table.reels) — символи над і під лінією чесні.
     public static readonly string[][] Reels =
     [
-        "cherry pear seven seven plum cherry melon bell pear cherry plum horseshoe cherry pear melon plum glek cherry bell pear plum horseshoe melon cherry pear plum bell cherry melon horseshoe pear plum".Split(' '),
-        "plum cherry bell pear seven seven cherry melon plum horseshoe pear cherry glek plum melon cherry pear bell plum cherry horseshoe pear melon plum cherry bell pear melon cherry plum horseshoe pear".Split(' '),
-        "pear melon cherry plum horseshoe cherry pear glek bell plum cherry seven seven pear melon cherry plum bell horseshoe pear cherry plum melon pear cherry bell plum horseshoe cherry melon pear plum".Split(' '),
+        "plum cherry seven seven pear cherry plum pear cherry melon plum pear cherry bell plum pear cherry melon plum pear cherry horseshoe glek pear cherry plum melon cherry pear plum bell cherry pear horseshoe".Split(' '),
+        "plum melon pear cherry plum bell pear cherry melon plum pear cherry pear seven seven cherry plum horseshoe cherry pear plum melon cherry pear plum glek cherry pear bell plum cherry pear horseshoe cherry".Split(' '),
+        "horseshoe pear cherry bell plum pear cherry melon pear cherry plum horseshoe pear cherry plum bell melon cherry pear plum cherry plum pear cherry seven seven pear plum cherry melon pear glek cherry plum".Split(' '),
     ];
 
     /// <summary>Лінії: рядок кожного барабана. 0 — середня, 1 — верхня, 2 — нижня, 3 і 4 — діагоналі.</summary>
     public static readonly int[][] PayLines = [[1, 1, 1], [0, 0, 0], [2, 2, 2], [0, 1, 2], [2, 1, 0]];
 
-    /// <summary>Виплати в ставках на лінію: символ → (скільки в ряд → множник). Мок мав 600/120/60/40/25/12/10/8+1 (RTP 80 %).</summary>
+    /// <summary>
+    /// Виплати в ставках на лінію: символ → (скільки в ряд → множник). 09.10 (98 %): частіші дрібні фрукти на стрічках
+    /// і чих Глека, тож верх зрізано на 17–20 % (було 600/150/75/45/30/14/12/10+1, стрічки по 32 — RTP 95,5 %).
+    /// </summary>
     public static readonly Dictionary<string, Dictionary<int, int>> Pay = new(StringComparer.Ordinal)
     {
-        ["glek"] = new() { [3] = 600 },
-        ["seven"] = new() { [3] = 150 },
-        ["horseshoe"] = new() { [3] = 75 },
-        ["bell"] = new() { [3] = 45 },
-        ["melon"] = new() { [3] = 30 },
-        ["plum"] = new() { [3] = 14 },
-        ["pear"] = new() { [3] = 12 },
-        ["cherry"] = new() { [3] = 10, [2] = 1 },
+        ["glek"] = new() { [3] = 500 },
+        ["seven"] = new() { [3] = 120 },
+        ["horseshoe"] = new() { [3] = 60 },
+        ["bell"] = new() { [3] = 40 },
+        ["melon"] = new() { [3] = 26 },
+        ["plum"] = new() { [3] = 10 },
+        ["pear"] = new() { [3] = 8 },
+        ["cherry"] = new() { [3] = 7, [2] = 1 },
     };
+
+    /// <summary>Чих: 1 з <see cref="SneezeOdds"/> обертів (rng.Next(12) == 11 — одне з 12 рівноймовірних).</summary>
+    public const int SneezeOdds = 12;
+
+    /// <summary>Скільки клітинок чхне: ваги для 1, 2, 3 (з 20: 70 % / 25 % / 5 %).</summary>
+    public static readonly int[] SneezeWeights = [14, 5, 1];
 
     public int Cap => 1000;
     public bool Gamble => true;
@@ -135,31 +146,90 @@ public sealed class SlotGlekMath : ISlotMath
     /// <summary>Символ клітинки: стовпчик c, рядок r (0 — верх) при зупинці барабана на позиції stops[c].</summary>
     public static string At(int[] stops, int c, int r) => Reels[c][(stops[c] + r) % Reels[c].Length];
 
-    /// <summary>Сума виплат по всіх лініях у ставках на лінію (для точного RTP перебором).</summary>
-    public static int Units(int[] stops)
+    /// <summary>Поле після зупинки: [стовпчик, рядок].</summary>
+    public static string[,] Field(int[] stops)
+    {
+        var f = new string[3, 3];
+        for (var c = 0; c < 3; c++) for (var r = 0; r < 3; r++) f[c, r] = At(stops, c, r);
+        return f;
+    }
+
+    /// <summary>Сума виплат по всіх лініях у ставках на лінію для поля (для точного RTP перебором).</summary>
+    public static int Units(string[,] f)
     {
         var u = 0;
         foreach (var ln in PayLines)
-            if (Line(At(stops, 0, ln[0]), At(stops, 1, ln[1]), At(stops, 2, ln[2])) is { } w) u += w.Pay;
+            if (Line(f[0, ln[0]], f[1, ln[1]], f[2, ln[2]]) is { } w) u += w.Pay;
         return u;
+    }
+
+    /// <summary>Сума виплат без чиху — лише зупинки.</summary>
+    public static int Units(int[] stops) => Units(Field(stops));
+
+    /// <summary>Клітинки, що можуть чхнути: усі, де не Глек, у порядку стовпчик → рядок.</summary>
+    public static List<(int C, int R)> SneezeTargets(string[,] f)
+    {
+        var list = new List<(int, int)>(9);
+        for (var c = 0; c < 3; c++) for (var r = 0; r < 3; r++) if (f[c, r] != Wild) list.Add((c, r));
+        return list;
+    }
+
+    /// <summary>
+    /// Чи чхне Глек і які клітинки: шанс 1 з 12, кількість — за <see cref="SneezeWeights"/> (не більше, ніж є не-Глеків),
+    /// клітинки — рівномірно серед не-Глеків (частковий Фішер — Єйтс). Не залежить ні від чого, крім rng.
+    /// </summary>
+    public static List<(int C, int R)> Sneeze(string[,] f, ISlotRng rng)
+    {
+        if (rng.Next(SneezeOdds) != SneezeOdds - 1) return [];
+        var x = rng.Next(SneezeWeights.Sum());
+        var m = 1;
+        for (var i = 0; i < SneezeWeights.Length; i++) { if (x < SneezeWeights[i]) { m = i + 1; break; } x -= SneezeWeights[i]; }
+        var pool = SneezeTargets(f);
+        m = Math.Min(m, pool.Count);
+        var picked = new List<(int, int)>(m);
+        for (var i = 0; i < m; i++)
+        {
+            var j = i + rng.Next(pool.Count - i);
+            (pool[i], pool[j]) = (pool[j], pool[i]);
+            picked.Add(pool[i]);
+        }
+        return picked;
     }
 
     public SlotOutcome Spin(int bet, ISlotRng rng, JsonObject state)
     {
         int[] stops = [rng.Next(Reels[0].Length), rng.Next(Reels[1].Length), rng.Next(Reels[2].Length)];
-        return ScriptFor(stops, bet, state);
+        return ScriptFor(stops, bet, state, Sneeze(Field(stops), rng));
     }
 
-    /// <summary>Сценарій для заданих зупинок — поле за полем як scriptFor у моку.</summary>
-    public SlotOutcome ScriptFor(int[] stops, int bet, JsonObject state)
+    /// <summary>
+    /// Сценарій для заданих зупинок (і чиху) — поле за полем як scriptFor у моку: spin → morph (чих) → win.
+    /// Виграш рахується на полі ПІСЛЯ чиху — рівно тому, що клієнт бачить після кроку morph.
+    /// </summary>
+    public SlotOutcome ScriptFor(int[] stops, int bet, JsonObject state, IReadOnlyList<(int C, int R)>? sneeze = null)
     {
+        var f = Field(stops);
+        // Очікування — лише чесно: на якійсь лінії перші два вже «сімка/Глек», і третій барабан справді вирішує.
+        // Рахується на полі зупинки (барабани крутяться до чиху).
+        static bool Big(string k) => k is Wild or "seven";
+        var tease = new JsonArray();
+        if (PayLines.Any(ln => Big(f[0, ln[0]]) && Big(f[1, ln[1]]))) tease.Add(2);
+
+        var morph = new JsonArray();
+        foreach (var (c, r) in sneeze ?? [])
+        {
+            if (f[c, r] == Wild) continue;   // Глек Глеком не чхає (Sneeze таких не дає — захист для тестових сценаріїв)
+            f[c, r] = Wild;
+            morph.Add(new JsonArray(c, r, Wild));
+        }
+
         var items = new JsonArray();
         long win = 0;
         var glek3 = false;
         for (var i = 0; i < PayLines.Length; i++)
         {
             var ln = PayLines[i];
-            if (Line(At(stops, 0, ln[0]), At(stops, 1, ln[1]), At(stops, 2, ln[2])) is not { } w) continue;
+            if (Line(f[0, ln[0]], f[1, ln[1]], f[2, ln[2]]) is not { } w) continue;
             // як Math.round(u × ставка ÷ 5) у моку; для ставок, кратних 5, — рівно
             var amount = (long)Math.Round(w.Pay * (double)bet / Lines, MidpointRounding.AwayFromZero);
             var cells = new JsonArray();
@@ -168,15 +238,11 @@ public sealed class SlotGlekMath : ISlotMath
             win += amount;
             if (w.Sym == Wild && w.N == 3) glek3 = true;
         }
-        // Стеля — недосяжна для цих стрічок (найбільше 122,8×), але чесно обрізаємо, якщо таблицю колись піднімуть.
+        // Стеля — недосяжна (найбільше 303,6× — чих на поле з двома лініями сімок і Глеків), але чесно обрізаємо.
         var capped = Math.Min(win, (long)Cap * bet);
 
-        // Очікування — лише чесно: на якійсь лінії перші два вже «сімка/Глек», і третій барабан справді вирішує.
-        static bool Big(string k) => k is Wild or "seven";
-        var tease = new JsonArray();
-        if (PayLines.Any(ln => Big(At(stops, 0, ln[0])) && Big(At(stops, 1, ln[1])))) tease.Add(2);
-
         var steps = new JsonArray { new JsonObject { ["t"] = "spin", ["stops"] = new JsonArray(stops[0], stops[1], stops[2]), ["tease"] = tease } };
+        if (morph.Count > 0) steps.Add(new JsonObject { ["t"] = "morph", ["cells"] = morph, ["why"] = "sneeze" });
         if (items.Count > 0) steps.Add(new JsonObject { ["t"] = "win", ["items"] = items, ["amount"] = capped });
         var script = new JsonObject
         {
@@ -186,7 +252,11 @@ public sealed class SlotGlekMath : ISlotMath
             ["state"] = new JsonObject(),
             ["glek3"] = glek3,
         };
-        return new SlotOutcome(script, (int)capped, glek3 ? ["glek3"] : [], new JsonObject());
+        if (morph.Count > 0) script["sneeze"] = morph.Count;
+        var flags = new List<string>();
+        if (glek3) flags.Add("glek3");
+        if (morph.Count > 0) flags.Add("sneeze");
+        return new SlotOutcome(script, (int)capped, flags, new JsonObject());
     }
 
     public JsonObject Table()
@@ -202,6 +272,22 @@ public sealed class SlotGlekMath : ISlotMath
         foreach (var r in Reels) reels.Add(new JsonArray([.. r.Select(s => (JsonNode)JsonValue.Create(s)!)]));
         var lines = new JsonArray();
         foreach (var l in PayLines) lines.Add(new JsonArray(l[0], l[1], l[2]));
-        return new JsonObject { ["reels"] = reels, ["lines"] = lines, ["pay"] = pay, ["payUnit"] = 1.0 / Lines, ["wild"] = Wild, ["cap"] = Cap };
+        var tot = SneezeWeights.Sum();
+        var cells = new JsonObject();
+        for (var i = 0; i < SneezeWeights.Length; i++) cells[(i + 1).ToString()] = Math.Round(100.0 * SneezeWeights[i] / tot, 1);
+        return new JsonObject
+        {
+            ["reels"] = reels, ["lines"] = lines, ["pay"] = pay, ["payUnit"] = 1.0 / Lines, ["wild"] = Wild, ["cap"] = Cap,
+            // ⓘ «Глек чхнув»: шанс на оберт (1 з oneIn), скільки клітинок (відсотки серед чихів), що робить
+            ["sneeze"] = new JsonObject
+            {
+                ["oneIn"] = SneezeOdds,
+                ["p"] = Math.Round(1.0 / SneezeOdds, 4),
+                ["cells"] = cells,
+                ["min"] = 1,
+                ["max"] = SneezeWeights.Length,
+                ["text"] = $"Після зупинки з шансом 1 з {SneezeOdds} Дядько Глек чхає 🤧 — 1–{SneezeWeights.Length} клітинки (не Глеки) стають дикими Глеками, і лінії рахуються вже на зміненому полі. Шанс завжди однаковий — не залежить ні від програшів, ні від гаманця.",
+            },
+        };
     }
 }

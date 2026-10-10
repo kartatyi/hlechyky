@@ -967,10 +967,13 @@
    множник і секунди (tabular-nums, стала ширина), праворуч дрібно назва — обрізається лише вона; під ними смужка часу
    (transform: scaleX — тане сама через WAAPI, clicker.js → buffBar). Останні п'ять секунд — .end: колір і пульс.
    Блок стоїть останнім і з .clk попереду — перебиває старі правила .clk-buffs/.clk-buff вище (їхні кольори лишаються). */
+/* Клітинка від 180 px (було 150): на маку (SF ширший за Segoe) «✨ ×25 │ 54 с Натхнення» і «🤲 +1066 % Серія 886» —
+   до ~178 px, і в 150 назви різались до «Натхне…», «Серія …» (09.10). Вужча клітинка (вузьке вікно, телефон) —
+   див. @container clkbuff нижче: спершу ховається значок, далі слово назви. */
 .clk .clk-buffs {
   --clk-bh: 2.25em;
   display: grid; gap: 4px; align-content: start; justify-content: stretch; overflow: hidden;
-  grid-template-columns: repeat(auto-fill, minmax(min(150px, calc((100% - 4px) / 2)), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(180px, calc((100% - 4px) / 2)), 1fr));
   font-size: .82em; height: auto; min-height: var(--clk-bh); width: 100%;
 }
 /* Порожньо — місце на один рядок лишається (як і було): поява першого бафу нічого під ним не зсуває. */
@@ -979,16 +982,39 @@
   position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; height: var(--clk-bh);
   box-sizing: border-box; padding: 0 7px 3px; border-radius: 9px; overflow: hidden;
   font-size: 1em; font-weight: 600; line-height: 1.1; white-space: nowrap; animation: none; text-overflow: clip;
+  container: clkbuff / inline-size;
 }
 .clk .clk-buff[hidden] { display: none; }
 .clk .clk-bico { flex: none; font-size: 1.05em; line-height: 1; }
 .clk .clk-bnum { flex: none; display: flex; align-items: baseline; gap: 5px; font-size: 1.22em; font-weight: 800; font-variant-numeric: tabular-nums; }
 .clk .clk-bmul { min-width: 2.4ch; }
-.clk .clk-bsec { min-width: 2ch; text-align: right; }
-.clk .clk-bsec.w3 { min-width: 3ch; }
+/* Секунди відділені рискою: «×25 54 с» читалось як «×2554» — пробіл у нас ще й розділювач тисяч. */
+.clk .clk-bsec { min-width: calc(2ch + 6px); padding-left: 5px; border-left: 1px solid rgba(255, 255, 255, .22); text-align: right; }
+.clk .clk-bsec.w3 { min-width: calc(3ch + 6px); }
 .clk .clk-bsec:empty { display: none; }
 .clk .clk-bsec::after { content: '\00a0с'; font-size: .62em; font-weight: 600; opacity: .8; }
-.clk .clk-bname { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .8em; font-weight: 600; opacity: .85; text-align: right; }
+/* Назва — слово (ріжеться «…») і хвіст (число серії, «⏸»), що не ріжеться ніколи. */
+.clk .clk-bname {
+  flex: 1 1 0; min-width: 0; display: flex; justify-content: flex-end; align-items: baseline; gap: .3em;
+  font-size: .8em; font-weight: 600; opacity: .85;
+}
+.clk .clk-bw { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clk .clk-bt { flex: none; font-variant-numeric: tabular-nums; }
+.clk .clk-bw:empty, .clk .clk-bt:empty { display: none; }
+.clk .clk-buff.held .clk-bt { order: -1; }
+/* Вузька клітинка: місце назві віддає значок (назва зрозуміліша). Ще вужча (третина вузької колонки, телефон 320) —
+   навпаки: значок вертається, а слово йде — лишаються значок, числа й хвіст: «✨ ×25 │ 54 с», «🤲 +1066 % 886».
+   Пороги — ширина вмісту (клітинка без 14 px відступів). Найдовші плашки в Arial (≈ SF на маку й айфоні, цифри там
+   ще на ~6 % ширші): «🤲 +1066 % Серія 1 234» — 160 px зі значком і 137 без нього, «✨ ×25 │ 54 с Натхнення» — 155 і 132. */
+@container clkbuff (max-width: 162.98px) {
+  .clk .clk-bico { display: none; }
+}
+@container clkbuff (max-width: 139.98px) {
+  .clk .clk-bico { display: inline; }
+  .clk .clk-bw { display: none; }
+  .clk .clk-bnum { gap: 3px; }
+  .clk .clk-bsec { padding-left: 3px; }
+}
 /* Смужка часу: на всю ширину плашки внизу, тане справа наліво. Масштаб, а не ширина — розкладка не перераховується. */
 .clk .clk-bbar {
   position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: currentColor; opacity: .75;
@@ -1004,17 +1030,11 @@
 @keyframes clkbuffend { from { opacity: 1; } to { opacity: .62; } }
 /* Під полицею Ока майстра ярмарок і натхнення стоять (05.10): плашка на місці, але пригашена — секунди не біжать. */
 .clk .clk-buff.held { opacity: .7; }
-/* На ПК, коли стіл стоїть в один екран (.fit), висота рядка стала — два рядки по три й більше плашок (усі шість бафів
-   влазять): інакше поява натхнення стискала б сцену й коло під пальцем. Вузький стовпчик (низьке вікно, ~300 px) —
-   значки ховаються, щоб множник і секунди влізли цілими в третину стовпчика. */
+/* На ПК, коли стіл стоїть в один екран (.fit), щонайменше три плашки в рядок: вузька права колонка не ставить їх
+   стовпчиком по дві. Що не влазить у третину колонки — ховає значок чи слово (@container clkbuff вище). */
 .clk.fit .clk-buffs {
-  grid-template-columns: repeat(auto-fill, minmax(min(150px, calc((100% - 8px) / 3)), 1fr));
-  height: calc(var(--clk-bh) * 2 + 4px); min-height: 0; container: clkbuffs / inline-size;
-}
-@container clkbuffs (max-width: 380px) {
-  .clk .clk-bico { display: none; }
-  .clk .clk-buff { padding: 0 5px 3px; }
-  .clk .clk-bnum { gap: 3px; }
+  grid-template-columns: repeat(auto-fill, minmax(min(180px, calc((100% - 8px) / 3)), 1fr));
+  height: calc(var(--clk-bh) * 2 + 4px); min-height: 0;
 }
 /* Сталі рядки лівого стовпчика (див. .clk.fit .clk-lay вище) стали вищими рівно на другий рядок плашок (~40 px):
    без цього стовпчик лишався б ширшим за сцену, і обабіч неї стояли б порожні смуги по 17 px.
@@ -1167,33 +1187,39 @@
 
 /* ---- ярлики вкладок: значок · слово · нотатка (F8, 08.10) ----
    labelTab (clicker.js) кладе їх окремими шматками. На широкій полиці — той самий рядок «🏺 Ремесло · 📜3». Вузька
-   полиця (телефон, низький ПК із колом на пів картки) — п'ять вкладок в один ряд нарівно, нотатка — бейджем над
-   значком (було: два ряди 3 + 2, 71–86 px висоти). Телефон — значок над словом, ціль від 44 px. */
+   полиця (телефон, низький ПК із колом на пів картки) — п'ять вкладок в один ряд нарівно, нотатка — бейджем
+   (було: два ряди 3 + 2, 71–86 px висоти). Телефон — значок над словом, ціль від 44 px.
+   Бейдж — у правому верхньому куті вкладки, на її верхній рамці, як лічильник на значку застосунку (09.10). Був
+   «від середини»: у рядку «значок слово» він лягав на слово («Ремесло» під «🔥27»), довгий різався до «🔖3…», а
+   вкладка з бейджем мала інший відступ згори — її слово сиділо на 2–3 px нижче за сусідні. Тепер місце під бейджі —
+   відступ самого ряду вкладок, однаковий завжди: поява бейджа нічого не зсуває, а бейдж має всю ширину вкладки.
+   У рядку вкладки завширшки за словом, а вільне місце ділиться порівну (flex: 1 1 auto): нарівно «Майстерня»
+   різалась до «Майсте…» на макбуці, а проміжки між короткими «Альбом» і «Село» були вдвічі ширші за решту. */
 .clk .clk-tabs button { position: relative; }
 .clk .clk-tword { margin-left: .3em; }
 .clk .clk-tico:empty + .clk-tword { margin-left: 0; }
 .clk .clk-tnote:not(:empty)::before { content: ' · '; }
 @container clkside (max-width: 700px) {
-  .clk .clk-tabs { flex-wrap: nowrap; }
-  .clk .clk-tabs button { flex: 1 1 0; padding: 7px 4px; overflow: hidden; text-overflow: ellipsis; }
-  .clk .clk-tword { overflow: hidden; text-overflow: ellipsis; }
+  .clk .clk-tabs { flex-wrap: nowrap; padding-top: 9px; }
+  .clk .clk-tabs button {
+    flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-width: 0; padding: 7px 6px; overflow: visible;
+  }
+  .clk .clk-tico { flex: none; line-height: 1.2; }
+  .clk .clk-tword { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+  /* Обвідка кольору ряду відділяє бейдж від рамки активної вкладки, як вирізка під лічильник. */
   .clk .clk-tnote:not(:empty) {
-    position: absolute; top: 1px; left: calc(50% + .2em); max-width: calc(50% - .3em); overflow: hidden; text-overflow: ellipsis;
-    padding: 0 4px; border-radius: 999px; background: var(--accent2); color: var(--bg); font-size: 11px; font-weight: 700;
-    line-height: 1.35; pointer-events: none;
+    position: absolute; top: -8px; right: 1px; max-width: calc(100% - 2px); overflow: hidden; text-overflow: ellipsis;
+    padding: 0 4px; border-radius: 999px; background: var(--accent2); color: var(--bg); font-size: 10.5px; font-weight: 700;
+    line-height: 15px; white-space: nowrap; pointer-events: none; box-shadow: 0 0 0 2px var(--panel);
   }
   .clk .clk-tnote:not(:empty)::before { content: none; }
-  .clk .clk-tabs button:has(.clk-tnote:not(:empty)) { padding-top: 12px; }
 }
 @container clkside (max-width: 480px) {
-  .clk .clk-tabs button {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-    min-height: 46px; padding: 4px 2px 3px;
-  }
-  .clk .clk-tabs button:has(.clk-tnote:not(:empty)) { padding-top: 4px; }
+  /* Нарівно, але не вужче за слово (min-width: auto): на андроїді 360 «Майстерня» різалась до «Майстер…», а
+     «Село» поруч мало зайві 30 px. */
+  .clk .clk-tabs button { flex: 1 1 0; min-width: auto; flex-direction: column; gap: 1px; min-height: 46px; padding: 5px 2px 3px; }
   .clk .clk-tico { font-size: 1.3em; line-height: 1.1; }
   .clk .clk-tword { margin-left: 0; max-width: 100%; font-size: 12px; line-height: 1.2; }
-  .clk .clk-tnote:not(:empty) { top: 0; left: calc(50% + .55em); }
 }
 
 /* Ряд значків вкладок під мініплашкою (F7, pinTabs у clicker.js): окремим рядком під усім, що в плашці. */

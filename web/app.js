@@ -465,33 +465,105 @@
     listening = on;
     if (conn && conn.state === 'Connected') conn.invoke('SetListening', on).catch(() => {});
   }
-  function stopAudio() {
-    tellListening(false);
+  // Обрив — не кінець: ефір перезапускається (наглядач ловить завислий liquidsoap), мережа блимає, телефон міняє
+  // Wi-Fi на мобільний. Плеєр сам підключається знову, доки людина не натисне «Вирубити». Завислий потік (з'єднання
+  // живе, а байти не йдуть) браузер помилкою не вважає — тож дивимось, чи рухається currentTime.
+  let retryTimer = 0;   // чекаємо наступну спробу
+  let retryN = 0;       // котра спроба поспіль: пауза 1, 2, 4, 8, 15 с
+  let failingSince = 0; // коли звук пропав; за 5 хв без звуку здаємось
+  let lastT = -1, lastMove = 0;
+  // Після обриву ефір найчастіше щойно перезапущений, і запас, який liquidsoap дає новому слухачеві (burst у radio.liq),
+  // ще неповний: плеєр, рушивши одразу, жив би впритул і запинався на кожному стику шматків (09.10: чотири запинки за
+  // 20 с). Тож після автоматичного перепідключення перші секунди тримаємо паузу — браузер тим часом докачує запас.
+  let holdNext = false, holdTimer = 0;
+  // STALL_MS: перші байти приходять за 0,03–0,14 с, а запас плеєра — 8 с; 8 с без руху — ефір завис чи зник.
+  const STALL_MS = 8000, GIVE_UP_MS = 5 * 60000, HOLD_MS = 5000;
+  function dropSrc() {
+    clearTimeout(holdTimer);
+    holdTimer = 0;
     audio.pause();
     audio.removeAttribute('src');
     audio.load();
+  }
+  function stopAudio() {
+    clearTimeout(retryTimer);
+    retryTimer = 0; retryN = 0; failingSince = 0; holdNext = false;
+    tellListening(false);
+    dropSrc();
     playState = 'idle';
     setPlayUi();
   }
-  // auto — після «Оновити» на плашці (resumeAudio): жесту на цій сторінці ще не було, і браузер може не дати звуку.
-  async function startAudio(auto) {
+  async function connectStream(auto) {
     const url = state?.streamUrl || '';
-    if (!url) { toast('Халепа: адреса потоку не налаштована', 'err'); return; }
-    playState = 'connecting';
-    setPlayUi();
     audio.src = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
+    lastT = -1; lastMove = Date.now();
     try { await audio.play(); }
     catch (e) {
-      if (auto) { stopAudio(); toast('Сайт оновлено. Сам звук браузер не врубив — тисни «▶ Врубити»'); return; }
-      playState = 'idle'; setPlayUi(); toast('Халепа: потік не врубився — ' + e.message, 'err');
+      if (playState === 'idle' || e.name === 'AbortError') return;   // вирубили або вже нова спроба
+      if (e.name === 'NotAllowedError') {
+        stopAudio();
+        toast(auto ? 'Сайт оновлено. Сам звук браузер не врубив — тисни «▶ Врубити»' : 'Халепа: браузер не дав звуку — ' + e.message, auto ? '' : 'err');
+        return;
+      }
+      reconnectStream('error');
     }
   }
+  function reconnectStream(why) {
+    if (playState === 'idle' || retryTimer) return;
+    const now = Date.now();
+    if (!failingSince) failingSince = now;
+    if (now - failingSince > GIVE_UP_MS) { stopAudio(); toast('Ефір мовчить уже 5 хвилин. Спробуй «▶ Врубити» трохи згодом', 'err'); return; }
+    if (retryN === 0) toast(why === 'stall' ? 'Ефір замовк — підключаюсь знову…' : 'Потік обірвався — підключаюсь знову…');
+    playState = 'connecting';
+    setPlayUi();
+    dropSrc();
+    holdNext = true;
+    retryTimer = setTimeout(() => { retryTimer = 0; if (playState !== 'idle') connectStream(false); }, Math.min(15000, 1000 * 2 ** retryN++));
+  }
+  function holdThenPlay() {
+    audio.pause();
+    holdTimer = setTimeout(async () => {
+      holdTimer = 0;
+      if (playState === 'idle') return;
+      lastMove = Date.now();
+      try { await audio.play(); }
+      catch (e) {
+        if (playState === 'idle' || e.name === 'AbortError') return;
+        if (e.name === 'NotAllowedError') { stopAudio(); toast('Браузер не дав звуку після обриву — тисни «▶ Врубити»', 'err'); return; }
+        reconnectStream('error');
+      }
+    }, HOLD_MS);
+  }
+  setInterval(() => {
+    if (playState === 'idle' || retryTimer || holdTimer) return;
+    const t = audio.currentTime, now = Date.now();
+    if (t !== lastT) {
+      lastT = t; lastMove = now;
+      if (t > 10) { retryN = 0; failingSince = 0; }   // грає вже 10 с — наступний обрив знову з короткої паузи
+      return;
+    }
+    if (audio.paused && playState === 'live') return;   // паузу поставила система (дзвінок, навушники) — не завис
+    if (now - lastMove > STALL_MS) reconnectStream('stall');
+  }, 2000);
+  // auto — після «Оновити» на плашці (resumeAudio): жесту на цій сторінці ще не було, і браузер може не дати звуку.
+  function startAudio(auto) {
+    if (!state?.streamUrl) { toast('Халепа: адреса потоку не налаштована', 'err'); return; }
+    clearTimeout(retryTimer);
+    retryTimer = 0; retryN = 0; failingSince = 0; holdNext = false;
+    playState = 'connecting';
+    setPlayUi();
+    connectStream(auto);
+  }
   $('playBtn').onclick = () => { if (playState !== 'idle') stopAudio(); else startAudio(false); };
-  audio.addEventListener('playing', () => { playState = 'live'; setPlayUi(); updateMediaSession(); tellListening(true); });
+  audio.addEventListener('playing', () => {
+    if (holdNext) { holdNext = false; holdThenPlay(); return; }
+    playState = 'live'; setPlayUi(); updateMediaSession(); tellListening(true);
+  });
   audio.addEventListener('pause', () => tellListening(false));
   audio.addEventListener('waiting', () => { if (playState === 'live') { playState = 'connecting'; setPlayUi(); } });
-  audio.addEventListener('error', () => { if (playState !== 'idle') { stopAudio(); toast('Ой-йой, потік обірвався. Натисни «Врубити» ще раз', 'err'); } });
-  audio.addEventListener('ended', () => { if (playState !== 'idle') { stopAudio(); toast('Ой-йой, потік закінчився. Натисни «Врубити» ще раз', 'err'); } });
+  // без src — це ми самі його зняли (dropSrc), а не обрив
+  audio.addEventListener('error', () => { if (audio.getAttribute('src')) reconnectStream('error'); });
+  audio.addEventListener('ended', () => { if (audio.getAttribute('src')) reconnectStream('error'); });
   /// В ефірі справжній трек: замовлення, вибір Глека чи трек запаски (нове не вантажиться — грає знайоме з кешу).
   const trackOnAir = (n) => n.source === 'user' || n.source === 'autodj' || n.source === 'spare';
   function updateMediaSession() {
@@ -4591,6 +4663,8 @@
   if (window.HBets) HBets.init({ esc, api, toast, busy, me, go, askNick });
   // ✨ «Що нового на сайті» (web/sitenews.js): раз на реліз тим, хто вже бував; ready() — після /api/me
   if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
+  // 🛞 Скіп кнопкою керма (web/wheelskip.js): граєш в ETS2/ATS — кнопка на кермі робить те саме, що ⏭
+  if (window.HWheelSkip) HWheelSkip.init({ esc, toast, skip: () => skipNow() });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🛡 Модерація Балачок (web/moder.js): 📌 плашка, поле вводу під 🔇, кнопки адміна, вкладка в Бібліотеці

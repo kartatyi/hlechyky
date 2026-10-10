@@ -64,9 +64,8 @@
 .sk-bet button:disabled { opacity: .35; cursor: default; }
 .sk-winbox { position: relative; align-items: center; text-align: center; }
 .sk-win-v { color: var(--sk-gold); font-size: 30px !important; text-shadow: 0 0 14px rgba(244, 197, 66, .35); }
-.sk-msg { position: absolute; left: 0; right: 0; bottom: -18px; font-size: 12px; color: var(--sk-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sk-msg.pulse { animation: sk-msg 2.4s ease-out; }
-@keyframes sk-msg { 0% { color: var(--sk-gold); transform: scale(1.08); } 30% { transform: none; } 100% { color: var(--sk-muted); } }
+/* .sk-msg — лише для читалок: репліки тепер у бульбашці Дядька Глека (.sk-bub) */
+.sk-msg { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .sk-ico { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .1); background: var(--sk-panel); font-size: 20px; line-height: 1; }
 .sk-ico.on { border-color: var(--sk-gold); }
 .sk-tog { height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid rgba(255, 255, 255, .1); background: var(--sk-panel); font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; text-transform: lowercase; }
@@ -88,6 +87,15 @@
 .sk-spin.busy .sk-spin-i { animation: sk-rot .7s linear infinite; }
 .sk-spin.poor { filter: grayscale(.8) brightness(.8); animation: none; }
 .sk-spin.shake { animation: sk-shake .4s; }
+/* натиск: сплющення й хвиля; автогра — кільце, що біжить */
+.sk-spin.press { animation: sk-press .38s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes sk-press { 0% { transform: scale(1); } 28% { transform: scale(1.08, .8); } 60% { transform: scale(.95, 1.06); } 100% { transform: scale(1); } }
+.sk-ripple { position: absolute; inset: -4px; border-radius: 50%; border: 4px solid rgba(255, 236, 160, .9); pointer-events: none; animation: sk-ripple .6s ease-out forwards; }
+@keyframes sk-ripple { from { transform: scale(.85); opacity: .9; } to { transform: scale(1.7); opacity: 0; } }
+.sk-spin.auto::before { content: ''; position: absolute; inset: -13px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 0deg, rgba(255, 236, 160, .95), rgba(244, 197, 66, 0) 35%, rgba(255, 236, 160, .95) 50%, rgba(244, 197, 66, 0) 85%, rgba(255, 236, 160, .95));
+  -webkit-mask: radial-gradient(circle, transparent 0 calc(50% - 4px), #000 calc(50% - 3px)); mask: radial-gradient(circle, transparent 0 calc(50% - 4px), #000 calc(50% - 3px));
+  animation: sk-rot 1.6s linear infinite; }
 @keyframes sk-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); box-shadow: 0 0 0 5px rgba(42, 30, 3, .85), 0 0 0 9px rgba(244, 197, 66, .8), 0 0 34px rgba(244, 197, 66, .55), inset 0 -6px 12px rgba(120, 70, 0, .45); } }
 @keyframes sk-rot { to { transform: rotate(360deg); } }
 @keyframes sk-shake { 0%, 100% { transform: none; } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
@@ -111,7 +119,8 @@
 .sk-port .sk-spin { width: 96px; height: 96px; justify-self: end; }
 .sk-port .sk-extra { justify-content: center; min-height: 0; }
 .sk-port .sk-extra:empty { display: none; }
-.sk-port .sk-msg { bottom: 3px; font-size: 11px; padding: 0 6px; }
+>>>>
+
 .sk-port .sk-menu { right: auto; left: 0; }
 
 /* меню автогри */
@@ -133,8 +142,8 @@
   background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .0) 0 18px, rgba(255, 255, 255, .07) 18px 22px); }
 .sk-shade { position: absolute; inset: 0; pointer-events: none; z-index: 2;
   background: linear-gradient(180deg, rgba(0, 0, 0, .62) 0%, rgba(0, 0, 0, .12) 22%, rgba(255, 255, 255, .06) 46%, rgba(255, 255, 255, .06) 54%, rgba(0, 0, 0, .12) 78%, rgba(0, 0, 0, .62) 100%); }
-.sk-reel.sk-bump { animation: sk-bump .22s ease-out; }
-@keyframes sk-bump { 40% { filter: brightness(1.15); } }
+.sk-reel.sk-bump { animation: sk-bump .3s ease-out; }
+@keyframes sk-bump { 35% { transform: translateY(5px) scaleY(.985); } 70% { transform: translateY(-2px); } }
 .sk-glow { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .25s;
   box-shadow: inset 0 0 0 5px #ffb11f, inset 0 0 40px 14px rgba(255, 150, 20, .85); background: rgba(255, 196, 60, .22); }
 .sk-reel.sk-tease > .sk-glow { opacity: 1; animation: sk-glow .45s ease-in-out infinite alternate; }
@@ -155,9 +164,12 @@
 .sk-line { fill: none; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1400; animation: sk-draw .5s ease-out; }
 .sk-dot { stroke: rgba(20, 10, 2, .7); stroke-width: 3; }
 @keyframes sk-draw { from { stroke-dashoffset: 1400; } to { stroke-dashoffset: 0; } }
-.sk-float { position: absolute; z-index: 6; transform: translate(-50%, -50%); font-weight: 900; font-size: 30px; color: var(--sk-gold);
-  -webkit-text-stroke: 1.5px rgba(30, 14, 2, .9); paint-order: stroke fill; pointer-events: none; animation: sk-float 1.6s ease-out forwards; white-space: nowrap; }
-@keyframes sk-float { 0% { opacity: 0; transform: translate(-50%, -20%) scale(.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -120%) scale(1); } }
+.sk-float { position: absolute; z-index: 6; transform: translate(-50%, -50%); font-weight: 900; font-size: 36px; color: var(--sk-gold);
+  -webkit-text-stroke: 2px rgba(30, 14, 2, .95); paint-order: stroke fill; text-shadow: 0 3px 0 rgba(58, 31, 8, .9), 0 0 16px rgba(255, 214, 90, .75);
+  pointer-events: none; animation: sk-float 1.6s ease-out forwards; white-space: nowrap; }
+.sk-float-s { font-size: 26px; text-shadow: 0 2px 0 rgba(58, 31, 8, .9); }
+.sk-float-b { font-size: 48px; color: #fff3b8; }
+@keyframes sk-float { 0% { opacity: 0; transform: translate(-50%, -20%) scale(.5); } 16% { opacity: 1; transform: translate(-50%, -50%) scale(1.25); } 28% { transform: translate(-50%, -55%) scale(1); } 72% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -130%) scale(1); } }
 
 /* заглушка символу (поки нема арту) */
 .sk-ph { width: 82%; height: 82%; border-radius: 50%; display: flex; align-items: center; justify-content: center;
@@ -241,7 +253,7 @@
 .sk-port .sk-pt { grid-template-columns: 1fr; }
 
 @media (prefers-reduced-motion: reduce) {
-  .sk-spin, .sk-big-rays, .sk-ov-hint { animation: none !important; }
+  .sk-spin, .sk-big-rays, .sk-big-rays2, .sk-ov-hint, .sk-spin.auto::before, .sk-host, .sk-host *, .sk-big-n.roll { animation: none !important; }
 }
 
 /* ---- Скарбничка Глека: тікер «впаде до» й свято кроку jackpot ---- */
@@ -262,3 +274,119 @@
 .sk-rhide > .sk-reel, .sk-rhide > .sk-col, .sk-rhide > .sk-cell { opacity: 0; transition: opacity .35s; }
 @media (prefers-reduced-motion: reduce) { .sk-jk-pot { animation: none; } }
 .sk-fly { position: absolute; pointer-events: none; z-index: 6; will-change: transform; }
+
+/* ======== s98: сік виграшів, Дядько Глек-ведучий (KIT.md §11) ======== */
+/* монети в лічильник і в баланс; удар/світіння лічильників */
+.sk-coin { display: block; width: 26px; height: 26px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6c4 0, #f4c542 42%, #b07b14 82%);
+  box-shadow: inset 0 0 0 2px #8d6512, 0 0 10px rgba(255, 214, 90, .75); }
+.sk-port .sk-coin { width: 20px; height: 20px; }
+.sk-bal { position: relative; }
+.sk-stat::after { content: ''; position: absolute; inset: -8px; border-radius: 20px; pointer-events: none; opacity: 0;
+  background: radial-gradient(closest-side, rgba(255, 214, 90, .55), rgba(255, 214, 90, 0)); }
+.sk-stat.sk-hit b { animation: sk-hit .3s cubic-bezier(.3, 1.6, .5, 1); }
+.sk-stat.sk-hit::after { animation: sk-glowa .45s ease-out; }
+.sk-stat.sk-shine b { animation: sk-hit .42s cubic-bezier(.3, 1.6, .5, 1) 3; }
+.sk-stat.sk-shine::after { animation: sk-glowa 1.3s ease-out; }
+.sk-winbox.sk-punch b { animation: sk-punchn .5s cubic-bezier(.3, 1.6, .5, 1); }
+.sk-winbox.sk-punch::after { animation: sk-glowa .8s ease-out; }
+@keyframes sk-hit { 40% { transform: scale(1.2); } }
+@keyframes sk-punchn { 0% { transform: scale(1.6); } 100% { transform: none; } }
+@keyframes sk-glowa { 25% { opacity: 1; } 100% { opacity: 0; } }
+
+/* легкий щабель «Гарно!» — слово над полем */
+.sk-nice { position: absolute; z-index: 7; pointer-events: none; will-change: transform, opacity; }
+.sk-nice b { display: block; white-space: nowrap; font-size: 96px; font-weight: 900; line-height: 1; color: #fff3b8;
+  -webkit-text-stroke: 3px #5a2e08; paint-order: stroke fill; text-shadow: 0 6px 0 #5a2e08, 0 0 34px rgba(255, 214, 90, .85); }
+.sk-port .sk-nice b { font-size: 56px; -webkit-text-stroke: 2px #5a2e08; }
+.sk-layer > .sk-nice, .sk-layer > .sk-flash { pointer-events: none; }
+
+/* спалах (ctx.flash) */
+.sk-flash { position: absolute; inset: 0; z-index: 8; opacity: 0; background: radial-gradient(circle at 50% 45%, var(--c, #fff), rgba(255, 255, 255, 0) 75%); }
+
+/* очікування: пульсуюча рамка колонки «серцебиттям» */
+.sk-tframe { position: absolute; inset: 0; z-index: 4; pointer-events: none; border-radius: inherit;
+  box-shadow: inset 0 0 0 4px #ffe58a, inset 0 0 34px 8px rgba(255, 170, 30, .85); animation: sk-heart .62s ease-in-out infinite; }
+@keyframes sk-heart { 0% { opacity: .5; transform: scale(1); } 14% { opacity: 1; transform: scale(1.025); } 28% { opacity: .7; transform: scale(1); } 42% { opacity: 1; transform: scale(1.015); } 70%, 100% { opacity: .5; transform: scale(1); } }
+
+/* занос: другі промені, пульс числа, щаблі */
+.sk-big-rays2 { position: absolute; left: 50%; top: 45%; width: 1400px; height: 1400px; margin: -700px 0 0 -700px; opacity: .35;
+  background: repeating-conic-gradient(from 10deg, rgba(255, 255, 255, .28) 0 3deg, transparent 3deg 26deg); animation: sk-rot 14s linear infinite reverse;
+  -webkit-mask: radial-gradient(circle, #000 0, transparent 55%); mask: radial-gradient(circle, #000 0, transparent 55%); }
+.sk-big[data-tier="mega"] .sk-big-rays { animation-duration: 15s; opacity: .62; }
+.sk-big[data-tier="epic"] .sk-big-rays { animation-duration: 10s; opacity: .72; }
+.sk-big[data-tier="legend"] .sk-big-rays { animation-duration: 6s; opacity: .85;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 107, 107, .4) 0 6deg, transparent 6deg 15deg, rgba(94, 200, 255, .4) 15deg 21deg, transparent 21deg 30deg); }
+.sk-big[data-tier="epic"] .sk-big-rays2, .sk-big[data-tier="legend"] .sk-big-rays2 { animation-duration: 7s; opacity: .55; }
+.sk-big[data-tier="legend"] { background: radial-gradient(circle at 50% 45%, rgba(70, 24, 90, .62), rgba(4, 6, 14, .9) 70%); }
+.sk-big[data-tier="legend"] .sk-big-t { background-image: linear-gradient(90deg, #ff8a8a, #ffd34a 25%, #8ef0a0 50%, #7fd4ff 75%, #e2a8ff); font-size: 66px; }
+.sk-port .sk-big[data-tier="legend"] .sk-big-t { font-size: 34px; }
+.sk-big-n.roll { animation: sk-npulse .4s ease-in-out infinite alternate; }
+@keyframes sk-npulse { to { transform: scale(1.06); } }
+
+/* Дядько Глек-ведучий: у лівому куті лічильника «виграш»; під час заносу — над шаром (sk-hostup) */
+.sk-host { position: absolute; left: 10px; bottom: 4px; width: 62px; height: 70px; z-index: 3; pointer-events: none; transform-origin: 50% 100%; }
+.sk-root.sk-hostup .sk-host { z-index: 22; }
+.sk-host svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.sk-port .sk-host { left: 3px; bottom: 3px; width: 38px; height: 43px; }
+.sk-port .sk-winbox { padding-left: 40px; }
+.sk-h-body, .sk-h-eye, .sk-h-brow, .sk-h-o, .sk-h-smile, .sk-h-mous, .sk-h-z { transform-box: fill-box; transform-origin: 50% 50%; }
+.sk-h-eye { animation: sk-h-blink 5.3s infinite; }
+.sk-h-o, .sk-h-z { opacity: 0; }
+@keyframes sk-h-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+.sk-host.talk .sk-h-mous { animation: sk-h-talk .2s ease-in-out infinite alternate; }
+.sk-host.talk .sk-h-smile { animation: sk-h-talk2 .2s ease-in-out infinite alternate; }
+@keyframes sk-h-talk { to { transform: translateY(1.5px) scaleY(.88); } }
+@keyframes sk-h-talk2 { to { transform: scaleY(1.7); } }
+@keyframes sk-h-hop { 0%, 100% { transform: none; } 40% { transform: translateY(-9px) scale(1.04, .97); } }
+/* підморгує */
+.sk-host[data-mood="wink"] { animation: sk-h-hop .5s ease-out; }
+.sk-host[data-mood="wink"] .sk-h-eye.r { animation: sk-h-wink .9s ease-in-out; }
+@keyframes sk-h-wink { 0%, 100% { transform: scaleY(1); } 25%, 70% { transform: scaleY(.1); } }
+/* радіє */
+.sk-host[data-mood="joy"] { animation: sk-h-joy .45s ease-in-out 3; }
+.sk-host[data-mood="joy"] .sk-h-brow, .sk-host[data-mood="dance"] .sk-h-brow, .sk-host[data-mood="wow"] .sk-h-brow { transform: translateY(-4px); }
+.sk-host[data-mood="joy"] .sk-h-eye, .sk-host[data-mood="dance"] .sk-h-eye { animation: none; transform: scaleY(.45); }
+@keyframes sk-h-joy { 0%, 100% { transform: none; } 30% { transform: scale(1.08, .9); } 60% { transform: translateY(-13px) scale(.96, 1.05); } }
+/* танцює (занос) */
+.sk-host[data-mood="dance"] { animation: sk-h-dance .5s ease-in-out infinite alternate; }
+@keyframes sk-h-dance { 0% { transform: rotate(-12deg); } 50% { transform: translateY(-11px) scale(1.05); } 100% { transform: rotate(12deg); } }
+/* дивується (бонус, сюрприз) */
+.sk-host[data-mood="wow"] { animation: sk-h-hop .45s ease-out; }
+.sk-host[data-mood="wow"] .sk-h-eye { animation: none; transform: scale(1.25); }
+.sk-host[data-mood="wow"] .sk-h-o { opacity: 1; }
+.sk-host[data-mood="wow"] .sk-h-smile { opacity: 0; }
+/* визирає (очікування) */
+.sk-host[data-mood="peek"] { transform: rotate(-6deg) scale(1.06); transition: transform .25s; }
+.sk-host[data-mood="peek"] .sk-h-eye { animation: none; transform: scale(1.15); }
+/* «сухий період» */
+.sk-host[data-mood="meh"] { transform: rotate(7deg); transition: transform .3s; }
+.sk-host[data-mood="meh"] .sk-h-smile { transform: scaleY(-.5); }
+/* позіхає */
+.sk-host[data-mood="yawn"] { animation: sk-h-yawn 3s ease-in-out; }
+.sk-host[data-mood="yawn"] .sk-h-o { animation: sk-h-yawno 3s ease-in-out; }
+.sk-host[data-mood="yawn"] .sk-h-smile { animation: sk-h-hide 3s; }
+.sk-host[data-mood="yawn"] .sk-h-eye { animation: sk-h-yawne 3s ease-in-out; }
+@keyframes sk-h-yawn { 0%, 100% { transform: none; } 30%, 60% { transform: rotate(-6deg) scale(1.03, 1.06); } }
+@keyframes sk-h-yawno { 0%, 100% { opacity: 0; transform: scale(.3); } 25%, 60% { opacity: 1; transform: scale(1.3, 1.7); } }
+@keyframes sk-h-hide { 20%, 65% { opacity: 0; } }
+@keyframes sk-h-yawne { 25%, 60% { transform: scaleY(.15); } }
+/* дрімає в довгому спокої: лише CSS */
+.sk-host[data-mood="doze"] { transform: rotate(5deg); }
+.sk-host[data-mood="doze"] .sk-h-eye { animation: none; transform: scaleY(.12); }
+.sk-host[data-mood="doze"] .sk-h-body { animation: sk-h-breath 3.2s ease-in-out infinite; }
+.sk-host[data-mood="doze"] .sk-h-z { animation: sk-h-z 3.2s ease-out infinite; }
+@keyframes sk-h-breath { 50% { transform: scale(1.03, .98); } }
+@keyframes sk-h-z { 0% { opacity: 0; transform: translate(0, 6px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(6px, -10px); } }
+
+/* бульбашка репліки (ctx.say) — над Глеком, у межах HUD */
+.sk-bub { position: absolute; left: 0; top: 0; z-index: 23; pointer-events: none; width: max-content; max-width: 340px;
+  padding: 8px 14px; border-radius: 16px; background: #f7f0de; color: #2a1e03; font-size: 15px; font-weight: 700; line-height: 1.25;
+  box-shadow: 0 0 0 2px #6b3b12, 0 8px 20px rgba(0, 0, 0, .45);
+  opacity: 0; transform: translateY(calc(-100% + 8px)) scale(.9); transform-origin: var(--tail, 30px) 100%;
+  transition: opacity .18s, transform .28s cubic-bezier(.3, 1.6, .5, 1); }
+.sk-bub.on { opacity: 1; transform: translateY(-100%); }
+.sk-bub::after { content: ''; position: absolute; left: calc(var(--tail, 30px) - 8px); bottom: -9px; border: 9px solid transparent; border-bottom: 0; border-top-color: #f7f0de; }
+.sk-port .sk-bub { max-width: 260px; font-size: 13px; padding: 7px 12px; }
+.sk-root:has(.sk-modal) .sk-bub { display: none; }
+@media (prefers-reduced-motion: reduce) { .sk-bub { transition: opacity .18s; } .sk-tframe { animation: none; opacity: .9; } }

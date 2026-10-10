@@ -13,68 +13,224 @@ public class SlotsSimTests(ITestOutputHelper output)
 {
     const int Bet = 100;
 
-    /// <summary>Точно: усі 32³ зупинок рівноймовірні.</summary>
-    static (double Rtp, double Hit, double Max) Exact()
+    /// <summary>Підсумок математики slot-glek: RTP і частоти — частки обертів, Max і Sd — у ставках.</summary>
+    public sealed record GlekStats(double Rtp, double BaseRtp, double Hit, double Ge1, double Ge10, double Ge50, double Sneeze, double Max, double Sd)
     {
-        long units = 0, hits = 0, max = 0;
-        var n = 0;
-        for (var a = 0; a < 32; a++)
-            for (var b = 0; b < 32; b++)
-                for (var c = 0; c < 32; c++, n++)
-                {
-                    var u = SlotGlekMath.Units([a, b, c]);
-                    units += u;
-                    if (u > 0) hits++;
-                    max = Math.Max(max, u);
-                }
-        return (units / 5.0 / n, (double)hits / n, max / 5.0);
+        /// <summary>RTP з округленням виплати лінії round(множник × ставка ÷ 5) для кожної ставки з <see cref="Bets"/>.</summary>
+        public Dictionary<int, double> ByBet { get; init; } = [];
     }
 
-    static (double Rtp, double Hit, double Max) Simulate(int spins, int seed)
+    /// <summary>Ставки, на яких перевіряємо округлення: типовий набір і найменша дозволена.</summary>
+    static readonly int[] Bets = [.. SlotsOptions.DefaultBets.Append(SlotsOptions.MinBet).Distinct()];
+
+    /// <summary>
+    /// Перебір усіх наслідків генератора: функцію ганяємо стільки разів, скільки є шляхів викликів Next, кожен шлях —
+    /// з імовірністю Π 1/max. Так чих перевіряється рівно тим кодом, що грає на сервері (<see cref="SlotGlekMath.Sneeze"/>).
+    /// </summary>
+    public sealed class TreeRng : ISlotRng
+    {
+        readonly List<int> _path = [], _max = [];
+        int _pos;
+
+        public int Next(int max)
+        {
+            if (_pos == _path.Count) { _path.Add(0); _max.Add(max); }
+            Assert.Equal(_max[_pos], max);
+            return _path[_pos++];
+        }
+
+        public double NextDouble() => throw new InvalidOperationException("чих не бере NextDouble");
+
+        public static List<(T Value, double P)> All<T>(Func<ISlotRng, T> f)
+        {
+            var rng = new TreeRng();
+            var res = new List<(T, double)>();
+            while (true)
+            {
+                rng._pos = 0;
+                var v = f(rng);
+                Assert.Equal(rng._path.Count, rng._pos);   // шлях не довший, ніж справді взяли
+                var p = 1.0;
+                for (var i = 0; i < rng._pos; i++) p /= rng._max[i];
+                res.Add((v, p));
+                while (rng._path.Count > 0 && rng._path[^1] + 1 == rng._max[^1]) { rng._path.RemoveAt(rng._path.Count - 1); rng._max.RemoveAt(rng._max.Count - 1); }
+                if (rng._path.Count == 0) return res;
+                rng._path[^1]++;
+            }
+        }
+    }
+
+    static string Key(IEnumerable<(int C, int R)> cells) => string.Join(" ", cells.Select(x => $"{x.C}{x.R}").Order());
+
+    /// <summary>Точний розподіл чиху для поля: набір клітинок (ключ «cr cr …», порожній — не чхнув) → імовірність.</summary>
+    public static Dictionary<string, (List<(int C, int R)> Cells, double P)> SneezeDist(string[,] f)
+    {
+        var d = new Dictionary<string, (List<(int, int)>, double)>();
+        foreach (var (cells, p) in TreeRng.All(rng => SlotGlekMath.Sneeze(f, rng)))
+        {
+            var k = Key(cells);
+            d[k] = d.TryGetValue(k, out var x) ? (x.Item1, x.Item2 + p) : (cells, p);
+        }
+        return d;
+    }
+
+    static readonly Lazy<GlekStats> ExactCache = new(ExactCore);
+
+    /// <summary>Точно: усі 34³ зупинок рівноймовірні × усі наслідки чиху (з тими вагами, що дає сам код).</summary>
+    public static GlekStats Exact() => ExactCache.Value;
+
+    static GlekStats ExactCore()
+    {
+        var reels = SlotGlekMath.Reels;
+        var total = (double)reels[0].Length * reels[1].Length * reels[2].Length;
+        var byMask = new Dictionary<int, List<(List<(int C, int R)> Cells, double P)>>();
+        double ev = 0, ev2 = 0, baseEv = 0, hit = 0, ge1 = 0, ge10 = 0, ge50 = 0, sneeze = 0, max = 0;
+        var won = new double[Bets.Length];
+        for (var a = 0; a < reels[0].Length; a++)
+            for (var b = 0; b < reels[1].Length; b++)
+                for (var c = 0; c < reels[2].Length; c++)
+                {
+                    var f = SlotGlekMath.Field([a, b, c]);
+                    baseEv += SlotGlekMath.Units(f) / 5.0 / total;
+                    var mask = 0;
+                    for (var i = 0; i < 9; i++) if (f[i / 3, i % 3] == SlotGlekMath.Wild) mask |= 1 << i;
+                    if (!byMask.TryGetValue(mask, out var dist)) byMask[mask] = dist = [.. SneezeDist(f).Values];
+                    foreach (var (cells, p) in dist)
+                    {
+                        var g = (string[,])f.Clone();
+                        foreach (var (cc, rr) in cells) g[cc, rr] = SlotGlekMath.Wild;
+                        var w = p / total;
+                        var units = 0;
+                        foreach (var ln in SlotGlekMath.PayLines)
+                            if (SlotGlekMath.Line(g[0, ln[0]], g[1, ln[1]], g[2, ln[2]]) is { } lw)
+                            {
+                                units += lw.Pay;
+                                for (var j = 0; j < Bets.Length; j++)
+                                    won[j] += w * Math.Round(lw.Pay * (double)Bets[j] / SlotGlekMath.Lines, MidpointRounding.AwayFromZero) / Bets[j];
+                            }
+                        var x = units / 5.0;
+                        ev += w * x; ev2 += w * x * x;
+                        if (x > 0) hit += w;
+                        if (x >= 1) ge1 += w;
+                        if (x >= 10) ge10 += w;
+                        if (x >= 50) ge50 += w;
+                        if (cells.Count > 0) sneeze += w;
+                        max = Math.Max(max, x);
+                    }
+                }
+        return new GlekStats(ev, baseEv, hit, ge1, ge10, ge50, sneeze, max, Math.Sqrt(ev2 - ev * ev))
+        {
+            ByBet = Bets.Select((b, j) => (b, won[j])).ToDictionary(x => x.b, x => x.Item2),
+        };
+    }
+
+    static GlekStats Simulate(int spins, int seed)
     {
         var math = new SlotGlekMath();
         var rng = new SeededSlotRng(new Random(seed));
         var state = new JsonObject();
-        long won = 0, hits = 0, max = 0;
+        long won = 0, hits = 0, max = 0, ge1 = 0, ge10 = 0, sneezes = 0;
         for (var i = 0; i < spins; i++)
         {
             var o = math.Spin(Bet, rng, state);
             won += o.Win;
             if (o.Win > 0) hits++;
+            if (o.Win >= Bet) ge1++;
+            if (o.Win >= 10 * Bet) ge10++;
+            if (o.Flags.Contains("sneeze")) sneezes++;
             max = Math.Max(max, o.Win);
         }
-        return ((double)won / ((long)spins * Bet), (double)hits / spins, (double)max / Bet);
+        double n = spins;
+        return new GlekStats(won / (n * Bet), 0, hits / n, ge1 / n, ge10 / n, 0, sneezes / n, (double)max / Bet, 0);
     }
 
     [Fact]
     public void Exact_rtp_of_one_armed_glek()
     {
-        var (rtp, hit, max) = Exact();
-        output.WriteLine($"slot-glek точно: RTP {rtp:P3}, виграш {hit:P2} (1 з {1 / hit:F2}), найбільше {max}×");
-        Assert.InRange(rtp, 0.945, 0.965);
-        Assert.InRange(hit, 0.30, 0.42);
-        Assert.True(max <= new SlotGlekMath().Cap);
+        var s = Exact();
+        output.WriteLine($"slot-glek точно: RTP {s.Rtp:P3} (без чиху {s.BaseRtp:P3}), виграш {s.Hit:P2} (1 з {1 / s.Hit:F2}), ≥ 1× {s.Ge1:P2}, " +
+            $"≥ 10× {s.Ge10:P3}, ≥ 50× {s.Ge50:P4}, чих {s.Sneeze:P3} (1 з {1 / s.Sneeze:F2}), найбільше {s.Max}×, σ {s.Sd:F2}");
+        Assert.InRange(s.Rtp, 0.968, 0.972);              // база 97 % (+ Скарбничка 1 % = 98 %)
+        Assert.InRange(s.Hit, 0.45, 0.60);                // частіше призи: було 38,4 %
+        Assert.InRange(s.Ge1, 0.26, 0.40);                // виграш ≥ 1× ставки: було 20,6 %
+        Assert.Equal(1.0 / SlotGlekMath.SneezeOdds, s.Sneeze, 9);
+        Assert.InRange(s.Sd, 0, 5);                       // волатильність низька (у кластера σ ≈ 7)
+        Assert.True(s.Max <= new SlotGlekMath().Cap);
+    }
+
+    [Fact]
+    public void Exact_rtp_holds_on_every_bet_with_rounding()
+    {
+        // Виграш лінії — round(множник × ставка ÷ 5): для ставок, кратних 5, рівно (усі з набору), решта — не вище
+        // 98 % разом зі Скарбничкою. Рахується тим самим перебором, що й Exact.
+        var exact = Exact();
+        foreach (var (bet, rtp) in exact.ByBet)
+        {
+            output.WriteLine($"slot-glek ставка {bet}: RTP бази {rtp:P3}");
+            Assert.InRange(rtp, 0.968, 0.98);
+            if (bet % SlotGlekMath.Lines == 0) Assert.Equal(exact.Rtp, rtp, 9);
+        }
     }
 
     [Fact]
     public void Two_hundred_thousand_spins_land_near_the_exact_rtp()
     {
+        // σ оберту ≈ 4,1 ставки → стандартна похибка RTP на 200 тис. ≈ 0,93 %; ±2,5 % — це 2,7σ.
         var exact = Exact();
-        var (rtp, hit, max) = Simulate(200_000, 1);
-        output.WriteLine($"slot-glek 200 тис.: RTP {rtp:P3}, виграш {hit:P2}, найбільше {max}×");
-        Assert.InRange(rtp, exact.Rtp - 0.02, exact.Rtp + 0.02);
-        Assert.InRange(hit, exact.Hit - 0.01, exact.Hit + 0.01);
-        Assert.True(max <= 1000);
+        var s = Simulate(200_000, 1);
+        output.WriteLine($"slot-glek 200 тис.: RTP {s.Rtp:P3}, виграш {s.Hit:P2}, ≥ 1× {s.Ge1:P2}, ≥ 10× {s.Ge10:P3}, чих {s.Sneeze:P3}, найбільше {s.Max}×");
+        Assert.InRange(s.Rtp, exact.Rtp - 0.025, exact.Rtp + 0.025);
+        Assert.InRange(s.Hit, exact.Hit - 0.01, exact.Hit + 0.01);
+        Assert.InRange(s.Ge1, exact.Ge1 - 0.01, exact.Ge1 + 0.01);
+        Assert.InRange(s.Sneeze, exact.Sneeze - 0.003, exact.Sneeze + 0.003);   // σ частки 1/12 на 200 тис. ≈ 0,06 %
+        Assert.True(s.Max <= 1000);
     }
 
     [Fact, Trait("Category", "Perf")]
     public void Five_million_spins_within_half_a_percent()
     {
+        // σ RTP на 5 млн ≈ 0,19 % → ±0,5 % — 2,7σ.
         var exact = Exact();
-        var (rtp, hit, max) = Simulate(5_000_000, 2);
-        output.WriteLine($"slot-glek 5 млн: RTP {rtp:P3}, виграш {hit:P2}, найбільше {max}×");
-        Assert.InRange(rtp, exact.Rtp - 0.005, exact.Rtp + 0.005);
-        Assert.InRange(hit, exact.Hit - 0.002, exact.Hit + 0.002);
+        var s = Simulate(5_000_000, 2);
+        output.WriteLine($"slot-glek 5 млн: RTP {s.Rtp:P3}, виграш {s.Hit:P2}, ≥ 1× {s.Ge1:P2}, ≥ 10× {s.Ge10:P3}, чих {s.Sneeze:P3}, найбільше {s.Max}×");
+        Assert.InRange(s.Rtp, exact.Rtp - 0.005, exact.Rtp + 0.005);
+        Assert.InRange(s.Hit, exact.Hit - 0.002, exact.Hit + 0.002);
+        Assert.InRange(s.Sneeze, exact.Sneeze - 0.0007, exact.Sneeze + 0.0007);
+    }
+
+    [Fact]
+    public void Sneeze_distribution_is_exactly_as_written()
+    {
+        // Поле без Глеків: 11/12 — нічого; чих — 1, 2 чи 3 клітинки з вагами 14/5/1 (з 20), кожен набір рівноймовірний.
+        int[] stops = [0, 0, 0];
+        var f = SlotGlekMath.Field(stops);
+        Assert.DoesNotContain(SlotGlekMath.Wild, f.Cast<string>());
+        var d = SneezeDist(f);
+        Assert.Equal(1 + 9 + 36 + 84, d.Count);
+        Assert.Equal(11.0 / 12, d[""].P, 12);
+        var w = SlotGlekMath.SneezeWeights;
+        double[] per = [0, w[0] / 20.0 / 9, w[1] / 20.0 / 36, w[2] / 20.0 / 84];
+        foreach (var (k, (cells, p)) in d.Where(x => x.Key != ""))
+            Assert.Equal(per[cells.Count] / 12, p, 12);
+        Assert.Equal(1.0, d.Values.Sum(x => x.P), 12);
+    }
+
+    [Fact]
+    public void Sneeze_never_touches_a_glek_and_takes_one_to_three_cells()
+    {
+        // Поле з Глеком на кожному барабані — чих лише серед шести інших.
+        var stops = Enumerable.Range(0, 3).Select(c => (Array.IndexOf(SlotGlekMath.Reels[c], SlotGlekMath.Wild) + 33) % 34).ToArray();
+        var f = SlotGlekMath.Field(stops);
+        Assert.Equal(3, f.Cast<string>().Count(x => x == SlotGlekMath.Wild));
+        var d = SneezeDist(f);
+        Assert.Equal(1 + 6 + 15 + 20, d.Count);
+        foreach (var (cells, _) in d.Values)
+        {
+            Assert.InRange(cells.Count, 0, 3);
+            Assert.Equal(cells.Count, cells.Distinct().Count());
+            Assert.All(cells, x => Assert.NotEqual(SlotGlekMath.Wild, f[x.C, x.R]));
+        }
+        Assert.Equal(1.0 / 12, d.Values.Where(x => x.Cells.Count > 0).Sum(x => x.P), 12);
     }
 
     [Fact]

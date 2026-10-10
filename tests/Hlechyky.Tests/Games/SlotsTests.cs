@@ -15,6 +15,18 @@ public sealed class ScriptRng : ISlotRng
     public ScriptRng Card(string c) { Ints.Enqueue(c == "r" ? 0 : 1); return this; }
     public ScriptRng Jackpot() { Doubles.Enqueue(0); return this; }
 
+    /// <summary>slot-glek: Глек не чхає (rng.Next(12) ≠ 11).</summary>
+    public ScriptRng Calm() { Ints.Enqueue(0); return this; }
+
+    /// <summary>slot-glek: Глек чхає на <paramref name="cells"/> клітинок; <paramref name="picks"/> — Next частковому Фішеру — Єйтсу.</summary>
+    public ScriptRng Sneeze(int cells, params int[] picks)
+    {
+        Ints.Enqueue(SlotGlekMath.SneezeOdds - 1);
+        Ints.Enqueue(SlotGlekMath.SneezeWeights.Take(cells - 1).Sum());   // перше число, що дає стільки клітинок
+        foreach (var x in picks) Ints.Enqueue(x);
+        return this;
+    }
+
     public int Next(int max) => Ints.Count > 0 ? Ints.Dequeue() % max : 0;
     public double NextDouble() => Doubles.Count > 0 ? Doubles.Dequeue() : 0.999;
 }
@@ -55,9 +67,10 @@ public sealed class SlotsKit
     /// <summary>Зупинки з виграшем рівно <paramref name="units"/> ставок на лінію (чи першим, що задовольняє умову).</summary>
     public static int[] StopsWhere(Func<int[], int, bool> pred)
     {
-        for (var a = 0; a < 32; a++)
-            for (var b = 0; b < 32; b++)
-                for (var c = 0; c < 32; c++)
+        var reels = SlotGlekMath.Reels;
+        for (var a = 0; a < reels[0].Length; a++)
+            for (var b = 0; b < reels[1].Length; b++)
+                for (var c = 0; c < reels[2].Length; c++)
                 {
                     int[] s = [a, b, c];
                     if (pred(s, SlotGlekMath.Units(s))) return s;
@@ -180,9 +193,9 @@ public class SlotsTests
     public void Gamble_win_doubles_and_lose_burns()
     {
         var k = new SlotsKit();
-        var win = SlotsKit.StopsWhere((_, u) => u == 10);    // три вишні на одній лінії: 10 × ставка/5
+        var win = SlotsKit.StopsWhere((_, u) => u == 10);    // 10 × ставка/5 (напр. три сливи на лінії)
         var rng = k.Rig();
-        rng.Stops(win).Card("r");
+        rng.Stops(win).Calm().Card("r");
         Assert.True(k.Spin(10).Ok);
         var g = k.View.GetProperty("gamble");
         Assert.True(g.GetProperty("open").GetBoolean());
@@ -276,6 +289,193 @@ public class SlotsTests
         Assert.Equal(3, v.GetProperty("table").GetProperty("reels").GetArrayLength());
     }
 
+    // ---------- «Глек чхнув» 🤧 (specs/slots.md §1, §3) ----------
+
+    /// <summary>
+    /// Програти сценарій як клієнт: поле — зі стрічок <c>view.table.reels</c> за <c>stops</c>, потім кроки <c>morph</c>;
+    /// кожен <c>win</c> перевіряється на тому полі, яке клієнт бачить у ту мить. Повертає кількість чхнутих клітинок.
+    /// </summary>
+    static int Replay(JsonElement view)
+    {
+        var table = view.GetProperty("table");
+        var reels = table.GetProperty("reels").EnumerateArray().Select(r => r.EnumerateArray().Select(x => x.GetString()!).ToArray()).ToArray();
+        var lines = table.GetProperty("lines").EnumerateArray().Select(l => l.EnumerateArray().Select(x => x.GetInt32()).ToArray()).ToArray();
+        var wild = table.GetProperty("wild").GetString()!;
+        var s = view.GetProperty("last").GetProperty("script");
+        var bet = s.GetProperty("bet").GetInt32();
+        var steps = s.GetProperty("steps").EnumerateArray().ToList();
+        Assert.Equal("spin", steps[0].GetProperty("t").GetString());
+        var stops = steps[0].GetProperty("stops").EnumerateArray().Select(x => x.GetInt32()).ToArray();
+        var f = new string[3, 3];
+        for (var c = 0; c < 3; c++) for (var r = 0; r < 3; r++) f[c, r] = reels[c][(stops[c] + r) % reels[c].Length];
+        var sneezed = 0;
+        long paid = 0;
+        var winSteps = 0;
+        foreach (var st in steps.Skip(1))
+        {
+            switch (st.GetProperty("t").GetString())
+            {
+                case "morph":
+                    Assert.Equal(0, winSteps);                                  // чих — до виграшу
+                    Assert.Equal("sneeze", st.GetProperty("why").GetString());
+                    foreach (var cell in st.GetProperty("cells").EnumerateArray())
+                    {
+                        int c = cell[0].GetInt32(), r = cell[1].GetInt32();
+                        Assert.Equal(wild, cell[2].GetString());
+                        Assert.NotEqual(wild, f[c, r]);                         // чхає лише не-Глек, і двічі ту саму — ні
+                        f[c, r] = wild;
+                        sneezed++;
+                    }
+                    break;
+                case "win":
+                    winSteps++;
+                    // усе, що платить на цьому полі, — у items, і нічого понад те
+                    var expect = new Dictionary<int, (string Sym, int N, int Pay)>();
+                    for (var i = 0; i < lines.Length; i++)
+                        if (SlotGlekMath.Line(f[0, lines[i][0]], f[1, lines[i][1]], f[2, lines[i][2]]) is { } w) expect[i] = w;
+                    var items = st.GetProperty("items").EnumerateArray().ToList();
+                    Assert.Equal(expect.Keys.Order(), items.Select(x => x.GetProperty("line").GetInt32()).Order());
+                    foreach (var it in items)
+                    {
+                        var w = expect[it.GetProperty("line").GetInt32()];
+                        Assert.Equal(w.Sym, it.GetProperty("sym").GetString());
+                        var pay = table.GetProperty("pay").GetProperty(w.Sym).GetProperty(w.N.ToString()).GetInt32();
+                        Assert.Equal((long)Math.Round(pay * bet / 5.0, MidpointRounding.AwayFromZero), it.GetProperty("amount").GetInt64());
+                        var cells = it.GetProperty("cells").EnumerateArray().ToList();
+                        Assert.Equal(w.N, cells.Count);
+                        foreach (var cell in cells)
+                        {
+                            var k = f[cell[0].GetInt32(), cell[1].GetInt32()];
+                            Assert.True(k == w.Sym || k == wild, $"{k} у ряду {w.Sym}");
+                        }
+                        paid += it.GetProperty("amount").GetInt64();
+                    }
+                    Assert.Equal(Math.Min(paid, 1000L * bet), st.GetProperty("amount").GetInt64());
+                    break;
+            }
+        }
+        Assert.True(winSteps <= 1);
+        Assert.Equal(Math.Min(paid, 1000L * bet), s.GetProperty("win").GetInt64());
+        if (winSteps == 0)   // без кроку win — і справді нічого не платить
+            Assert.All(lines, ln => Assert.Null(SlotGlekMath.Line(f[0, ln[0]], f[1, ln[1]], f[2, ln[2]])));
+        Assert.Equal(sneezed, s.TryGetProperty("sneeze", out var sn) ? sn.GetInt32() : 0);
+        Assert.InRange(sneezed, 0, 3);
+        return sneezed;
+    }
+
+    [Fact]
+    public void Sneeze_turns_cells_into_wild_gleks_before_the_win()
+    {
+        // Порожнє поле, де один чих у центр дає виграш: між spin і win — morph, виграш — на зміненому полі.
+        var k = new SlotsKit();
+        static int WithCenter(int[] s) { var f = SlotGlekMath.Field(s); f[1, 1] = SlotGlekMath.Wild; return SlotGlekMath.Units(f); }
+        var stops = SlotsKit.StopsWhere((s, u) => u == 0 && SlotGlekMath.At(s, 1, 1) != SlotGlekMath.Wild
+            && SlotGlekMath.At(s, 0, 1) == "seven" && SlotGlekMath.At(s, 2, 1) == "seven" && WithCenter(s) == 120);
+        var targets = SlotGlekMath.SneezeTargets(SlotGlekMath.Field(stops));
+        k.Rig().Stops(stops).Sneeze(1, targets.IndexOf((1, 1)));   // 1 з 12 випав, одна клітинка — центр
+        Assert.True(k.Spin(10).Ok);
+        var v = k.View;
+        var s = v.GetProperty("last").GetProperty("script");
+        var steps = s.GetProperty("steps").EnumerateArray().ToList();
+        Assert.Equal(["spin", "morph", "win"], steps.Select(x => x.GetProperty("t").GetString()));
+        Assert.Equal("[[1,1,\"glek\"]]", steps[1].GetProperty("cells").GetRawText());
+        Assert.Equal(1, Replay(v));
+        Assert.Equal(240, s.GetProperty("win").GetInt32());   // сімка-Глек-сімка на середній: 120 × 10 ÷ 5
+        Assert.Equal(1, s.GetProperty("sneeze").GetInt32());
+    }
+
+    [Fact]
+    public void Without_a_sneeze_there_is_no_morph()
+    {
+        var k = new SlotsKit();
+        k.Rig().Stops(SlotsKit.StopsWhere((_, u) => u == 10)).Calm();
+        Assert.True(k.Spin(10).Ok);
+        var s = k.View.GetProperty("last").GetProperty("script");
+        Assert.Equal(["spin", "win"], s.GetProperty("steps").EnumerateArray().Select(x => x.GetProperty("t").GetString()));
+        Assert.False(s.TryGetProperty("sneeze", out _));
+        Assert.Equal(20, s.GetProperty("win").GetInt32());
+    }
+
+    [Fact]
+    public void Three_sneezed_cells_can_make_three_gleks()
+    {
+        // Чих на всю верхню лінію — три Глеки (500) + усе, що ще склалося; glek3 і ачівки — як за справжніх.
+        var k = new SlotsKit(wallet: 1000);
+        var stops = SlotsKit.StopsWhere((s, u) => u == 0);
+        var t = SlotGlekMath.SneezeTargets(SlotGlekMath.Field(stops));
+        // частковий Фішер — Єйтс: i-те взяте = i + Next(n − i) у перемішаному списку
+        var pool = t.ToList();
+        var picks = new List<int>();
+        foreach (var want in new[] { (0, 0), (1, 0), (2, 0) })
+        {
+            var j = pool.IndexOf(want, picks.Count);
+            picks.Add(j - picks.Count);
+            (pool[picks.Count - 1], pool[j]) = (pool[j], pool[picks.Count - 1]);
+        }
+        k.Rig().Stops(stops).Sneeze(3, [.. picks]);
+        Assert.True(k.Spin(10).Ok);
+        var v = k.View;
+        Assert.Equal(3, Replay(v));
+        var s = v.GetProperty("last").GetProperty("script");
+        Assert.True(s.GetProperty("glek3").GetBoolean());
+        Assert.True(s.GetProperty("win").GetInt32() >= 1000);
+        Assert.Contains(k.H.Awards, a => a.Reason == "ach:slot-big");
+    }
+
+    [Fact]
+    public void Every_spin_replays_like_the_client_sees_it()
+    {
+        // 3000 справжніх обертів за сідом: кожен сценарій програється як у клієнта і сходиться з виплатою; чих — ≈ 1 з 12.
+        var k = new SlotsKit(wallet: 1_000_000, seed: 5);
+        var n = 3000;
+        int sneezes = 0, cells = 0;
+        for (var i = 0; i < n; i++)
+        {
+            Assert.True(k.Spin(10).Ok);
+            var c = Replay(k.View);
+            if (c > 0) { sneezes++; cells += c; }
+        }
+        // 1/12 від 3000 = 250, σ ≈ 15 → ±60 (4σ); середня кількість клітинок 1,35
+        Assert.InRange(sneezes, 190, 310);
+        Assert.InRange((double)cells / sneezes, 1.15, 1.6);
+    }
+
+    [Fact]
+    public void Same_seed_same_sneezes()
+    {
+        static (string All, int Sneezes) Run()
+        {
+            var k = new SlotsKit(seed: 11, wallet: 1_000_000);
+            var all = new List<string>();
+            var sneezes = 0;
+            for (var i = 0; i < 300; i++)
+            {
+                k.Spin(10);
+                var s = k.View.GetProperty("last").GetProperty("script");
+                all.Add(s.ToString());
+                if (s.TryGetProperty("sneeze", out _)) sneezes++;
+            }
+            return (string.Join("\n", all), sneezes);
+        }
+        var a = Run();
+        Assert.True(a.Sneezes > 0);
+        Assert.Equal(a, Run());
+    }
+
+    [Fact]
+    public void Table_tells_about_the_sneeze()
+    {
+        var t = new SlotsKit().View.GetProperty("table");
+        var sn = t.GetProperty("sneeze");
+        Assert.Equal(12, sn.GetProperty("oneIn").GetInt32());
+        Assert.Equal(1, sn.GetProperty("min").GetInt32());
+        Assert.Equal(3, sn.GetProperty("max").GetInt32());
+        Assert.Equal(100.0, sn.GetProperty("cells").EnumerateObject().Sum(x => x.Value.GetDouble()), 6);
+        Assert.Contains("1 з 12", sn.GetProperty("text").GetString());
+        Assert.Equal(500, t.GetProperty("pay").GetProperty("glek").GetProperty("3").GetInt32());
+        Assert.Equal(SlotGlekMath.Reels[0].Length, t.GetProperty("reels")[0].GetArrayLength());
+    }
+
     [Fact]
     public void Same_seed_same_spins()
     {
@@ -333,10 +533,10 @@ public class SlotsTests
     {
         var k = new SlotsKit(wallet: 1000);
         var rng = k.Rig();
-        rng.Stops(SlotsKit.StopsWhere((_, u) => u >= 600));   // три Глеки на лінії — ≥ 120×
+        rng.Stops(SlotsKit.StopsWhere((_, u) => u >= 500));   // три Глеки на лінії — ≥ 100×
         Assert.True(k.Spin(10).Ok);
         var mult = k.View.GetProperty("last").GetProperty("script").GetProperty("win").GetInt32() / 10.0;
-        Assert.True(mult >= 120);
+        Assert.True(mult >= 100);
         Assert.True(k.View.GetProperty("last").GetProperty("script").GetProperty("glek3").GetBoolean());
         Assert.Contains(k.H.Scores, s => s.Score == mult);
         Assert.Contains(k.H.Awards, a => a.Reason == "ach:slot-big");

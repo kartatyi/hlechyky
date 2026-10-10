@@ -1,0 +1,68 @@
+/* «📊 Хто скільки» — «📈 Графіки» (🏁 Гонка, 📈 Біржа, 📊 Ело) і «📖 Рекорди» (web/stats-charts.js). Класи — з префіксом sc-. */
+.sc { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sc .stbox, .sc-book { min-width: 0; }
+.sc-slot { min-width: 0; }
+.sc-up { color: var(--ok); font-weight: 700; }
+.sc-dn { color: var(--danger); font-weight: 700; }
+.sc-new { font-size: .95em; }
+
+/* 🏁 Гонка */
+.sc-rt .sc-mv { width: 1%; text-align: center; }
+.sc-rt th.sc-mv { text-transform: none; letter-spacing: 0; }
+.sc-more { margin: 4px 2px 0; }
+.sc-notes { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.sc-note { font-size: .93em; }
+.sc-formula { margin-top: 8px; line-height: 1.4; }
+
+/* 📈 Біржа */
+.sc-chart { min-width: 0; }
+.sc-cap { margin: 6px 2px 0; line-height: 1.4; }
+.sc-movers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.sc-mcol { background: var(--panel2); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.sc-mcol h4 { margin: 0 0 8px; font-size: .92em; }
+.sc-mover { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+.sc-mover.me { box-shadow: 0 0 0 1px var(--accent2) inset; border-radius: 8px; padding: 4px; }
+.sc-mover-b { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sc-mover-h { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; min-width: 0; }
+.sc-mover-h > a, .sc-mover-h > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; font-weight: 600; }
+.sc-mover-h b { font-size: 1.1em; font-variant-numeric: tabular-nums; }
+.sc-mrest { margin-top: 8px; line-height: 1.6; }
+
+/* 📊 Ело */
+.sc-bar { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.sc-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+.sc-chip { flex: none; background: var(--panel2); color: var(--text); border: 1px solid transparent; border-radius: 999px; padding: 4px 11px;
+  font: inherit; font-size: .84em; cursor: pointer; white-space: nowrap; }
+.sc-chip:hover { border-color: var(--line); }
+.sc-chip.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.sc-per .sc-chip { font-size: .78em; padding: 3px 10px; }
+.sc-et { margin-top: 10px; }
+
+/* 📖 Рекорди */
+.sc-intro { margin: 0 0 12px; }
+.sc-freshn { color: var(--accent); font-weight: 600; }
+.sc-recs { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.sc-rec { position: relative; display: flex; flex-direction: column; gap: 4px; background: var(--panel2); border: 1px solid transparent;
+  border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.sc-rec.fresh { border-color: var(--accent2); background: linear-gradient(160deg, rgba(244, 197, 66, .12), rgba(244, 197, 66, 0) 60%), var(--panel2); }
+.sc-rec.me { box-shadow: 0 0 0 1px var(--accent) inset; }
+.sc-rh { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sc-ri { font-size: 1.3em; flex: none; }
+.sc-rtt { font-weight: 700; font-size: .92em; flex: 1; min-width: 0; }
+.sc-fresh { flex: none; font-size: .72em; font-weight: 700; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 1px 7px;
+  animation: scPop .5s ease-out both; }
+.sc-who { min-width: 0; overflow-wrap: anywhere; }
+.sc-day { font-weight: 600; }
+.sc-val { font-size: 1.25em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.sc-rnote { overflow-wrap: anywhere; }
+.sc-quote { margin: 2px 0; padding: 4px 10px; border-left: 3px solid var(--clay); font-style: italic; overflow-wrap: anywhere; }
+.sc-prev { border-top: 1px dashed var(--line); padding-top: 4px; margin-top: 2px; overflow-wrap: anywhere; }
+
+@keyframes scPop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sc-fresh { animation: none; } }
+
+@media (max-width: 560px) {
+  .sc-movers { grid-template-columns: 1fr; }
+  .sc-recs { grid-template-columns: 1fr; }
+  .sc-rt td.sc-mv, .sc-rt th.sc-mv { padding-left: 4px; padding-right: 6px; font-size: .9em; }
+}

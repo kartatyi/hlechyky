@@ -130,7 +130,7 @@
     const c = cat(st);
     const d = def(st, g.key);
     if (!c || !d) return '';
-    const levels = c.levels || [0, 5, 15, 35, 70, 120, 190, 280, 400, 550, 750];
+    const levels = c.levels || [0, 5, 15, 35, 70, 120, 190, 260, 330, 400, 480];
     const top = levels.length - 1;
     const from = levels[g.level];
     const to = levels[Math.min(top, g.level + 1)];
