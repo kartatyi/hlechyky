@@ -31,6 +31,8 @@ public sealed class CurfewOptions
     /// </summary>
     public string NoticeV { get; set; } = "";
     public string NoticeTitle { get; set; } = "";
+    /// <summary>Кому з <see cref="Nicks"/> показати указ. Порожньо — усім зі списку.</summary>
+    public List<string> NoticeNicks { get; set; } = [];
     public string Notice { get; set; } = "";
     /// <summary>Що бачать ті, кого це стосується: плашка на сайті й відмова в грі. Порожньо — загальний текст.</summary>
     public string Text { get; set; } = "";
@@ -150,10 +152,12 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
         {
             from = O.From, to = O.To, text = Text,
             days = ParseDays(O.Days)?.Select(d => (int)d).Order().ToArray(),   // 0 — неділя, як getDay() у браузері; null — щоночі
-            notice = Listed(nick) && !string.IsNullOrWhiteSpace(O.Notice) && !string.IsNullOrWhiteSpace(O.NoticeV)
+            notice = Listed(nick) && NoticeFor(nick) && !string.IsNullOrWhiteSpace(O.Notice) && !string.IsNullOrWhiteSpace(O.NoticeV)
                 ? new { v = O.NoticeV.Trim(), title = O.NoticeTitle.Trim(), text = O.Notice.Trim() } : null,
         };
     }
+
+    bool NoticeFor(string nick) => O.NoticeNicks.Count == 0 || O.NoticeNicks.Any(n => Auth.NickKey(n) == Auth.NickKey(nick));
 
     /// <summary>Позначка чинна, лише поки той, на кого її поставили, досі в списку.</summary>
     bool Marked(HttpContext http)

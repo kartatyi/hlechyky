@@ -152,4 +152,24 @@ public class CurfewTests
         Assert.Null(curfew.ForMe(stranger));
         Assert.Equal("", stranger.Response.Headers.SetCookie.ToString());
     }
+
+    [Fact]
+    public void Notice_goes_only_to_notice_nicks_when_they_are_set()
+    {
+        var options = new FixedOptions<CurfewOptions>(new CurfewOptions
+        {
+            Nicks = ["владік", "не дефолтний розробник"], NoticeV = "v1", Notice = "Помилувано!", NoticeNicks = ["Владік"],
+        });
+        var curfew = new Curfew(options, new EphemeralDataProtectionProvider(), new FakeClock { UtcNow = Night });
+        object? NoticeOf(string nick)
+        {
+            var c = new DefaultHttpContext();
+            c.Items["account"] = new Account(nick, "", "salt", "member");
+            c.Items["nick"] = nick;
+            var me = curfew.ForMe(c)!;
+            return me.GetType().GetProperty("notice")!.GetValue(me);
+        }
+        Assert.NotNull(NoticeOf("владік"));
+        Assert.Null(NoticeOf("не дефолтний розробник"));   // під відбоєм, але указ не про нього
+    }
 }
