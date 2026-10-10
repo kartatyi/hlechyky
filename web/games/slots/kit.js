@@ -1131,9 +1131,11 @@
         e.stopPropagation(); ctx.auto = Number(b.dataset.n); ctx.autoStopBonus = m.querySelector('input').checked; m.remove(); updateHud(); if (!ctx.busy) doSpin();
       }));
       m.addEventListener('click', (e) => e.stopPropagation());
-      ctx.timeout(() => ctx.listen(document, 'click', closeMenus), 0);
     }
     function closeMenus() { root.querySelectorAll('.sk-menu').forEach((m) => m.remove()); }
+    // клік деінде закриває меню; слухач один на автомат — раніше кожне відкриття вішало ще один, і з другого разу
+    // той самий клік по «авто» відкривав меню й тут-таки його закривав (записка #44)
+    ctx.listen(document, 'click', (e) => { if (!(e.target.closest && e.target.closest('.sk-autowrap'))) closeMenus(); });
 
     function openPaytable() {
       closeMenus();
