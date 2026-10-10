@@ -256,6 +256,24 @@ public class KavunyCoreTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// Ті самі seed прогнано через <c>kavunyCheck</c> з web/games/kavuny.js (Node, crypto.subtle + BigInt) — браузер і сервер
+    /// рахують однаково. Парні — стеля ×2, непарні — ×100.
+    /// </summary>
+    [Theory]
+    [InlineData("kv-0", 200, "sddsbsbbdpgagsbsagsgag", 200)]
+    [InlineData("kv-1", 10_000, "gpbapappdggagsaagsbsdsskbdakax", 310)]
+    [InlineData("kv-12", 200, "gsspdsK", 234)]
+    [InlineData("kv-25", 10_000, "x", 100)]
+    [InlineData("kv-39", 10_000, "kabagdkasbaKsadagbdbpggbbssppdsadgx", 531)]
+    [InlineData("kv-17", 10_000, "dpksskssbsbdsgapsabbpksbadsgggdbssbbpsabkadsbbbdakbbbsbkakabsgbgsgsdbssaagsbddbsapbgaasagpdgpddssddddsdgbsbbgpgkdggsasgkadabababbsgksKdgdssdggsksapsksbsbadbdsabsssddpbabskdpasgaasksbsabgksbppsbaggsgssbbssaabbssgssgbx", 7377)]
+    public void Browser_check_and_server_agree(string seed, int cap, string codes, int potential)
+    {
+        var seq = KavunyCore.Generate(seed, cap);
+        Assert.Equal(codes, seq.Codes);
+        Assert.Equal(potential, seq.Potential);
+    }
+
     [Fact]
     public void Schedule_is_waves_of_growing_size()
     {
