@@ -845,7 +845,8 @@ public abstract class BlackjackGame : Game
             free = (int)Math.Max(0, (long)wallet - (open ? bet?.Amount ?? 0 : 0)),
             staked = mine?.Staked ?? 0,
             canBet = open && o.Enabled,
-            canDeal = open && o.Enabled && ((bet?.Amount ?? 0) > 0 || (Solo && rebet > 0)),
+            // без ставки на сукні «Роздавай!»/«Роздати» бере ставку минулої роздачі
+            canDeal = open && o.Enabled && ((bet?.Amount ?? 0) > 0 || (rebet > 0 && rebet <= wallet)),
             canRebet = open && o.Enabled && rebet > 0 && rebet <= wallet,
             rebet,
             actions,
