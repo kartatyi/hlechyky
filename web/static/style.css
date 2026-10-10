@@ -118,23 +118,6 @@ header .volwrap { order: 5; flex: none; position: relative; display: flex; align
 header #volume { width: 110px; accent-color: var(--accent); }
 header #volBtn { padding: 5px 6px; font-size: .95em; pointer-events: none; }
 header #listeners { order: 6; flex: none; }
-/* 🛞 скіп кнопкою керма (web/wheelskip.js): кермо буває лише на компі — на телефоні й вузькому кнопки нема */
-header .wswrap { order: 7; flex: none; position: relative; }
-header #wsBtn { padding: 5px 6px; font-size: .95em; opacity: .55; }
-header #wsBtn.on, header #wsBtn[aria-expanded="true"] { opacity: 1; }
-header .ws-pop {
-  position: absolute; top: calc(100% + 8px); right: -8px; width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); z-index: 8;
-  font-size: .9em; line-height: 1.35; cursor: default;
-}
-header .ws-pop[hidden] { display: none; }
-.ws-head { font-weight: 700; }
-.ws-wait small, .ws-tip { color: var(--muted); }
-.ws-tip { font-size: .9em; }
-.ws-ok { color: var(--ok); }
-.ws-bad { color: var(--accent); }
-.ws-acts { display: flex; gap: 6px; }
-@media (pointer: coarse), (max-width: 900px) { header .wswrap { display: none; } }
 
 /* ---- «я» в шапці: аватарка, нік і черепки одним чипом ---- */
 .ava {
@@ -1063,6 +1046,15 @@ kbd {
 .who-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; align-items: start; }
 .wcard { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .wcard.wide { grid-column: 1 / -1; }
+/* 🚚 для далекобійників (web/trucker.js): лише в своєму профілі; кермо й ETS2 — справа компа, на телефоні картки нема */
+.trucker .tr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.trucker .tr-row > span { flex: 1 1 200px; }
+.trucker .tr-wheel { display: flex; flex-direction: column; gap: 6px; }
+.trucker .tr-ok { color: var(--ok); }
+.trucker .tr-bad { color: var(--accent); }
+.trucker .tr-hand summary { cursor: pointer; }
+.trucker .tr-hand pre { margin: 6px 0 0; padding: 6px 8px; background: var(--bg2); border-radius: 8px; white-space: pre-wrap; word-break: break-all; }
+@media (pointer: coarse) { .trucker { display: none; } }
 .wcard h3 { margin: 0; font-family: var(--display); font-size: 1.05em; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .wcard h4 { margin: 6px 0 0; font-family: var(--display); font-size: .95em; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .wc-more { margin-left: auto; padding: 2px 9px; font-size: .78em; }

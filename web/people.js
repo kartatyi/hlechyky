@@ -935,12 +935,14 @@
         + musicCard(ppl, nick, mine)
         + gamesCard(p, mine)
         + achCard(p, mine, fun)
+        + (mine && window.HTrucker ? HTrucker.cardHtml() : '')
         + '</div>'
         : '<section class="panel"><div class="gempty glek">Про ' + esc(nick) + ' тут поки нічого не знають — ні пісень, ні ігор. Схоже, усе ще попереду.</div></section>');
     wireHead(root, nick, mine);
     o.wireRows(root);
     root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
     if (window.HBuy) HBuy.wireTrade(root);
+    if (mine && window.HTrucker) HTrucker.wire(root);
   }
 
   /// «🎺 Гімн: Трембіта ▶» — ▶ грає тим самим плеєром, що й за столом (app.js), друге натискання зупиняє.

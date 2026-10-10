@@ -4663,8 +4663,8 @@
   if (window.HBets) HBets.init({ esc, api, toast, busy, me, go, askNick });
   // ✨ «Що нового на сайті» (web/sitenews.js): раз на реліз тим, хто вже бував; ready() — після /api/me
   if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
-  // 🛞 Скіп кнопкою керма (web/wheelskip.js): граєш в ETS2/ATS — кнопка на кермі робить те саме, що ⏭
-  if (window.HWheelSkip) HWheelSkip.init({ esc, toast, skip: () => skipNow() });
+  // 🚚 Для далекобійників (web/trucker.js): картка в профілі — бат радіо для ETS2/ATS і скіп кнопкою керма (те саме, що ⏭)
+  if (window.HTrucker) HTrucker.init({ esc, toast, skip: () => skipNow() });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🛡 Модерація Балачок (web/moder.js): 📌 плашка, поле вводу під 🔇, кнопки адміна, вкладка в Бібліотеці
