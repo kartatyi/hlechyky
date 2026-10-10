@@ -491,6 +491,8 @@ public sealed partial class Clicker
     public const double StyleOrderSeconds = 180, StyleOrderPay = 1.6;
     /// <summary>Скільки пасиву купець просить у дорогу: від двох до десяти хвилин.</summary>
     public const double InvestMinSeconds = 120, InvestMaxSeconds = 600;
+    /// <summary>Те саме в хвилинах гри (<see cref="PlayMinute"/>, 10.10) — купець бере більше з двох.</summary>
+    public const double InvestPlayMin = 0.5, InvestPlayMax = 2, StylePlay = 1.5;
 
     static readonly string[] Merchants =
     [
@@ -511,6 +513,7 @@ public sealed partial class Clicker
         _board.Clear();
         _boardUntil = now + BoardEvery;
         var passive = PassiveBase;
+        var play = PlayMinute;
         var styles = _styles.Order(StringComparer.Ordinal).ToList();
         var size = BoardSizeNow;
         for (var i = 0; i < size; i++)
@@ -519,13 +522,15 @@ public sealed partial class Clicker
             if (i == size - 1 && styles.Count > 0)
             {
                 var style = styles[Ctx.Rng.Next(styles.Count)];
-                var need = Nice(Math.Max(200, passive * StyleOrderSeconds));
+                var need = Nice(Math.Max(Math.Max(200, passive * StyleOrderSeconds), play * StylePlay));
                 _board.Add(new(++_orderId, "style", merchant, need, ToPots(need * StyleOrderPay), 0, style, _boardUntil));
                 continue;
             }
             var minutes = OrderMinutes[Ctx.Rng.Next(OrderMinutes.Length)];
             var seconds = InvestMinSeconds + Ctx.Rng.NextDouble() * (InvestMaxSeconds - InvestMinSeconds);
-            var ask = Nice(Math.Max(100 + Ctx.Rng.Next(0, 300), passive * seconds));
+            // 10.10: щонайменше пів хвилини — дві хвилини гри: десять хвилин пасиву в пізній грі — менше за клік.
+            var ask = Nice(Math.Max(Math.Max(100 + Ctx.Rng.Next(0, 300), passive * seconds),
+                play * (InvestPlayMin + (seconds - InvestMinSeconds) / (InvestMaxSeconds - InvestMinSeconds) * (InvestPlayMax - InvestPlayMin))));
             _board.Add(new(++_orderId, "invest", merchant, ask, ToPots(ask * (InvestBase + minutes / 30.0 * InvestPerHalfHour)), minutes, "", _boardUntil));
         }
     }

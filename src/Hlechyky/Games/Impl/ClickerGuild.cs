@@ -349,8 +349,9 @@ public sealed partial class Clicker
     }
 
     /// <summary>Скільки глеків несе гостинець на стільки хвилин: свій пасив, а на голому колі — дно з кліків.</summary>
+    /// <remarks>10.10: хвилина гостинця — щонайменше 1/<see cref="FairPlayQuarter"/> хвилини гри: пасив у пізній грі нічого не важить.</remarks>
     double TreatGain(double minutes) =>
-        ToPots(Math.Max(PassiveBase * minutes * 60, ClickBase * minutes * WagonClicksPerMinute));
+        ToPots(Math.Max(Math.Max(PassiveBase * minutes * 60, ClickBase * minutes * WagonClicksPerMinute), PlayMinute * minutes / FairPlayQuarter));
 
     // ---------- дія guild { op, … } ----------
 
@@ -505,7 +506,8 @@ public sealed partial class Clicker
         if (minutes <= 0) return 0;
         var byPassive = PassiveBase * minutes * 60;
         var floor = ClickBase * minutes * WagonClicksPerMinute;
-        return ToPots(Math.Max(byPassive, floor));
+        // 10.10: віз з'їдав вироби дорожче, ніж привозив, — хвилина воза тепер щонайменше чверть хвилини гри.
+        return ToPots(Math.Max(Math.Max(byPassive, floor), PlayMinute * minutes / FairPlayQuarter));
     }
 
     ActResult GuildClaim(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)

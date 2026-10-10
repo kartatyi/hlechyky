@@ -244,7 +244,16 @@ public sealed partial class Clicker
     double GuestPayMult(GuestOrderRow o) => GuestOf(o.Guest).PayMult * (1 + GuestPayPerLevel * GuestLevel(o.Guest)) * (1 + Relic("seal2"));
 
     /// <summary>Скільки замовлення заплатить, якщо віддати рівно те, що просять (у виді — як обіцянка).</summary>
-    double GuestPay(GuestOrderRow o) => Math.Max(1, ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * GuestPayMult(o)));
+    double GuestPay(GuestOrderRow o) => Math.Max(1, Math.Max(ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * GuestPayMult(o)), GuestPlayPay(o)));
+
+    /// <summary>
+    /// Скільки хвилин гри (<see cref="PlayMinute"/>) за виріб на кожну одиницю множника гостя (10.10): ×8–×12 ціни виробу —
+    /// це кілька годин пасиву, а в пізній грі замовлення гостей важили 0,1 % заробітку. Гість платить більше з двох;
+    /// шана, печатка й «гончарі світу ×12» важать і тут.
+    /// </summary>
+    public const double GuestPlayPerWare = 0.2;
+
+    double GuestPlayPay(GuestOrderRow o) => PlayPay(GuestPlayPerWare * o.Count * GuestPayMult(o));
 
     /// <summary>
     /// Хто прийде з наступним замовленням. Спершу ті, чийого замовлення на дворі ще нема; серед них — зважено на користь
@@ -383,7 +392,7 @@ public sealed partial class Clicker
             if (left <= 0) break;
         }
         TakeItems(match, o.Count);
-        var pay = Math.Max(1, ToPots(sum * GuestPayMult(o)));
+        var pay = Math.Max(1, Math.Max(ToPots(sum * GuestPayMult(o)), GuestPlayPay(o)));
         Add(pay);
         _gOrders.RemoveAt(i);
         _gDelivered++;

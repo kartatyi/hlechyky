@@ -421,8 +421,8 @@ public class ClickerFairVillageTests
             {
                 knocked = true;
                 Assert.Contains("перекинув", r.Message);
-                // Рівно двадцята частина — і ні глеком більше.
-                Assert.Equal(1_000_000 * (1 - Clicker.FairBearLoss), Pots(h), 1);
+                // Двадцята частина, але з 10.10 не більше двох хвилин гри.
+                Assert.Equal(1_000_000 - Math.Min(1_000_000 * Clicker.FairBearLoss, ClickerPlay.Pay(h, Clicker.FairBearPlayMax)), Pots(h), 1);
             }
         }
         Assert.True(doubled && knocked, "за дюжину сідів ведмідь мусив зіграти в обидва боки");

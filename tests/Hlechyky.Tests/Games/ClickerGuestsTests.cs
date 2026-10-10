@@ -422,8 +422,10 @@ public class ClickerGuestsTests
         Items(h, ("jug||3", 2));
         var value = ItemValue(h, "jug||3");
         var before = Pots(h);
+        // З 10.10 гість платить більше з двох: ціну виробів чи хвилини гри (GuestPlayPerWare за виріб на одиницю множника).
+        var play = ClickerPlay.Pay(h, Clicker.GuestPlayPerWare * 2 * 8);
         Assert.True(Give(h, 7).Ok);
-        Assert.Equal(before + Math.Floor(value * 2 * 8), Pots(h));
+        Assert.Equal(before + Math.Max(Math.Floor(value * 2 * 8), play), Pots(h));
     }
 
     [Fact]
@@ -438,8 +440,9 @@ public class ClickerGuestsTests
         Assert.Equal(mult, Orders(h).Single().GetProperty("mult").GetDouble(), 9);
         var value = ItemValue(h, "candle||2");
         var before = Pots(h);
+        var play = ClickerPlay.Pay(h, Clicker.GuestPlayPerWare * 2 * mult);
         Assert.True(Give(h, 7).Ok);
-        Assert.Equal(before + Math.Floor(value * 2 * mult), Pots(h));
+        Assert.Equal(before + Math.Max(Math.Floor(value * 2 * mult), play), Pots(h));
     }
 
     [Fact]

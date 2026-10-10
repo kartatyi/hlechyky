@@ -269,10 +269,12 @@ public class ClickerFairTests
         var v2 = ItemValue(h, "bowl||2");
         var v3 = ItemValue(h, "bowl||3");
         var before = Pots(h);
+        // З 10.10 село платить більше з двох: ціну виробів чи хвилини гри (FairPlayPerWare за виріб на одиницю множника).
+        var play = ClickerPlay.Pay(h, Clicker.FairPlayPerWare * 2 * 2.25);
         var r = Fair(h, new { op = "deliver", id = 100 });
         Assert.True(r.Ok, r.Message);
         Assert.StartsWith("🤝", r.Message);
-        Assert.Equal(before + (long)((v2 + v3) * 2.25), Pots(h));
+        Assert.Equal(before + Math.Floor(Math.Max((v2 + v3) * 2.25, play)), Pots(h));
         Assert.Equal(4, ItemN(h, "bowl||1"));                   // звичайні не годяться — лишились
         Assert.Equal(0, ItemN(h, "bowl||2"));
         Assert.Equal(2, ItemN(h, "bowl||3"));
@@ -289,7 +291,8 @@ public class ClickerFairTests
         Items(h, ("pot||1", 2), ("pot||2", 5));
         var o = OrderView(h, 100)!.Value;
         Assert.Equal(7, o.GetProperty("have").GetInt32());
-        Assert.Equal((long)(ItemValue(h, "pot||1") * 3 * 2.0), o.GetProperty("pay").GetInt64());
+        Assert.Equal((long)Math.Max(Math.Floor(ItemValue(h, "pot||1") * 3 * 2.0), ClickerPlay.Pay(h, Clicker.FairPlayPerWare * 3 * 2.0)),
+            o.GetProperty("pay").GetInt64());
         Assert.Equal(2 + 3, o.GetProperty("rep").GetInt32());
     }
 
@@ -303,9 +306,10 @@ public class ClickerFairTests
         Items(h, ("pot||1", 2));
         var v = ItemValue(h, "pot||1");
         var before = Pots(h);
+        var play = ClickerPlay.Pay(h, Clicker.FairPlayPerWare * 2 * 2.0);
         var r = Fair(h, new { op = "deliver", id = 100, bid = "down" });
         Assert.StartsWith("🥰", r.Message);
-        Assert.Equal(before + (long)(v * 2 * 2.0 * Clicker.FairDownPay), Pots(h));
+        Assert.Equal(before + Math.Floor(Math.Max(v * 2 * 2.0, play) * Clicker.FairDownPay), Pots(h));
         Assert.Equal((2 + 2) * 2, RepOf(h, "vasylkiv"));
     }
 
@@ -558,20 +562,24 @@ public class ClickerFairTests
     }
 
     [Fact]
-    public void The_magpie_brings_three_minutes_of_passive()
+    public void The_magpie_brings_three_minutes_of_passive_or_a_pot_from_the_shelf()
     {
         var h = Wheel();
+        // З 10.10 — щонайменше «звичайний» глек з полиці: на голому колі він більший за шістдесят кліків.
+        var shelf = View(h).GetProperty("fall").GetProperty("gain").GetDouble();
+        Assert.True(shelf > Clicker.FairMagpieClicks);
         Guest(h, "magpie");
         Assert.True(Fair(h, new { op = "guest" }).Ok);
-        Assert.Equal(Clicker.FairMagpieClicks, Pots(h));             // голе коло: шістдесят кліків
+        Assert.Equal(shelf, Pots(h));
 
         var rich = Wheel();
         Patch(rich, s => s["upgrades"]!["kiln"] = 100);
         var passive = View(rich).GetProperty("baseSecond").GetDouble();
+        var shelfRich = View(rich).GetProperty("fall").GetProperty("gain").GetDouble();
         var before = Pots(rich);
         Guest(rich, "magpie");
         Assert.True(Fair(rich, new { op = "guest" }).Ok);
-        Assert.Equal(before + (long)(passive * Clicker.FairMagpieSeconds), Pots(rich));
+        Assert.Equal(before + Math.Max((long)(passive * Clicker.FairMagpieSeconds), shelfRich), Pots(rich));
     }
 
     [Fact]
@@ -648,8 +656,10 @@ public class ClickerFairTests
         Assert.Equal("Обери один із двох варіантів", Fair(h, new { op = "choose", id = 7, pick = 2 }).Message);
         var r = Fair(h, new { op = "choose", id = 7, pick = 1 });
         Assert.StartsWith("🐈 Серед черепків знайшлась загублена монета", r.Message);
-        Assert.Contains("+24 глеки", r.Message);                    // голе коло: дві хвилини ≈ 24 кліки
-        Assert.Equal(24, Pots(h));
+        // Голе коло: дві хвилини ≈ 24 кліки, а з 10.10 щонайменше чверть хвилини гри за кожну хвилину.
+        var gain = Math.Max(24, ClickerPlay.Pay(h, 2 / Clicker.FairPlayQuarter));
+        Assert.Contains($"+{Clicker.PotsShort(gain)}", r.Message);
+        Assert.Equal(gain, Pots(h));
         var m = Market(h);
         Assert.Equal(JsonValueKind.Null, m.GetProperty("event").ValueKind);
         Assert.InRange((m.GetProperty("eventAt").GetDateTimeOffset() - h.Clock.UtcNow).TotalMinutes, 30, 60);

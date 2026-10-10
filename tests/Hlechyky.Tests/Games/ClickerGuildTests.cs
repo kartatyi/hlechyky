@@ -203,6 +203,10 @@ public class ClickerGuildTests
         Assert.Equal(200.0, G(h).GetProperty("day").GetProperty("pct").GetDouble());
     }
 
+    /// <summary>Скільки віз платить за стільки хвилин на голому колі: 20 кліків на хвилину або (10.10) чверть хвилини гри.</summary>
+    static long Wagon(RoomHarness h, double minutes) =>
+        (long)Math.Floor(Math.Max(minutes * 20, ClickerPlay.Minute(h) * minutes / Clicker.FairPlayQuarter));
+
     [Fact]
     public void A_claim_pays_minutes_of_own_passive_once_per_tier_and_the_first_is_an_achievement()
     {
@@ -216,7 +220,7 @@ public class ClickerGuildTests
         var claim = G(h).GetProperty("claims")[0];
         Assert.Equal(1, claim.GetProperty("tier").GetInt32());
         // Голе коло: пасиву нема, тож дно — 20 кліків на хвилину; хвилини множаться на паї (§E.1).
-        var bronze = (long)(10 * Clicker.WagonShare(claim.GetProperty("mine").GetInt32()) * 20);
+        var bronze = Wagon(h, 10 * Clicker.WagonShare(claim.GetProperty("mine").GetInt32()));
         Assert.Equal(bronze, claim.GetProperty("pots").GetInt64());
         var before = Pots(h);
         var r = Guild(h, new { op = "claim" });
@@ -230,7 +234,7 @@ public class ClickerGuildTests
         Fill(h, g, "Оля", 3);
         before = Pots(h);
         var gold = G(h).GetProperty("claims")[0];
-        var add = (long)((35 - 10) * Clicker.WagonShare(gold.GetProperty("mine").GetInt32()) * 20);
+        var add = Wagon(h, (35 - 10) * Clicker.WagonShare(gold.GetProperty("mine").GetInt32()));
         Assert.True(Guild(h, new { op = "claim", day = D10 }).Ok);
         Assert.Equal(before + add, Pots(h));
         Assert.Single(h.Awards, a => a.Reason == "ach:potter-wagon");
@@ -256,9 +260,9 @@ public class ClickerGuildTests
         Assert.True(mineBig >= 36, $"Оля поклала {mineBig}");
         Assert.Equal(3, G(big).GetProperty("claims")[0].GetProperty("share").GetDouble());
         Assert.Equal(0.5, G(small).GetProperty("claims")[0].GetProperty("share").GetDouble());
-        // На тому самому возі внесок вирішує: шестеро паїв різниці.
-        Assert.Equal(6 * G(small).GetProperty("claims")[0].GetProperty("pots").GetInt64(),
-            G(big).GetProperty("claims")[0].GetProperty("pots").GetInt64());
+        // На тому самому возі внесок вирішує: шестеро паїв різниці (з точністю до округлення вниз).
+        var smallPots = G(small).GetProperty("claims")[0].GetProperty("pots").GetInt64();
+        Assert.InRange(G(big).GetProperty("claims")[0].GetProperty("pots").GetInt64(), 6 * smallPots, 6 * smallPots + 6);
         var r = Guild(big, new { op = "claim" });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("3 паї", r.Message);
@@ -298,7 +302,7 @@ public class ClickerGuildTests
         var before = Pots(h);
         var share = Clicker.WagonShare(view.GetProperty("claims")[0].GetProperty("mine").GetInt32());
         Assert.True(Guild(h, new { op = "claim" }).Ok);
-        Assert.Equal(before + (long)(20 * share * 20), Pots(h));
+        Assert.Equal(before + Wagon(h, 20 * share), Pots(h));
 
         // Ще день — той віз поїхав назавжди.
         var g2 = new Tsekh();

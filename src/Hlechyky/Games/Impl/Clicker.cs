@@ -26,23 +26,29 @@ public enum MarkEffect
     Passive,
     /// <summary>Стеля розгону +N.</summary>
     Momentum,
-    /// <summary>Розгін тримається ще +N с.</summary>
-    Temper,
+    /// <summary>
+    /// Ярмарок і натхнення розписного глека тривають ще +частку (10.10; до того — «розгін тримається ще +N с», але вже
+    /// з лопаткою й «Гартом кола» повний розгін тримається від одного кліку за секунду, тож сім віх не давали нічого).
+    /// </summary>
+    Buff,
     /// <summary>Ще частка кліків б'є в ×50.</summary>
     Lucky,
     /// <summary>Глек з полиці +частка (поруч із кошиком).</summary>
     Fall,
     /// <summary>Ярмарок розписного глека ще +N.</summary>
     Fair,
-    /// <summary>Щедрий купець ще +N год пасиву.</summary>
+    /// <summary>Щедрий купець ще +N хвилин гри (10.10; було «+N год пасиву» — у пізній грі це секунда кліків).</summary>
     Merchant,
-    /// <summary>Коло крутиться без тебе ще +N год (разом не більше доби).</summary>
+    /// <summary>
+    /// Коло крутиться без тебе ще +N год (разом не більше доби) — і комора під полицею ловить ще частку глеків, що
+    /// попадали без тебе (<see cref="Clicker.NightShelfShare"/>, 10.10: доба вже впиралась у стелю, і віхи мовчали).
+    /// </summary>
     Night,
-    /// <summary>Розписний глек стоїть на колі ще +N с.</summary>
-    GoldenShown,
-    /// <summary>Глек з полиці летить ще +N с.</summary>
-    FallShown,
-    /// <summary>Око майстра платить ще +N год пасиву.</summary>
+    /// <summary>Розписний глек приходить частіше: −частка чекання (10.10; було «стоїть довше» — уважному нічого).</summary>
+    GoldenOften,
+    /// <summary>Глек з полиці падає частіше: −частка чекання (10.10; було «летить довше»).</summary>
+    FallOften,
+    /// <summary>Око майстра платить ще +N хвилин гри (10.10; було «+N год пасиву»).</summary>
     Eye,
     /// <summary>Увесь клік ×2, разом із пасивом у ньому («Обома руками»).</summary>
     ClickDouble,
@@ -182,8 +188,14 @@ public sealed partial class Clicker : Game
     /// (4 віхи купця, чорна глина) ≈ 100 тис. золотих.
     /// </summary>
     public const double MerchantSeconds = 4 * 3600;
-    /// <summary>Купець із віхами «щедрий купець ще +1 год» (десяте оновлення; до 30.09 — +1 хв).</summary>
-    double MerchantSecondsNow => MerchantSeconds + 3600 * Perk(MarkEffect.Merchant);
+    /// <summary>Години пасиву в купці (його дно на ранньому колі, де пасив ще важить).</summary>
+    double MerchantSecondsNow => MerchantSeconds;
+
+    /// <summary>
+    /// Скільки хвилин гри (<see cref="PlayMinute"/>) несе щедрий купець, з віхами «ще +N хвилин гри» (10.10). Чотири
+    /// години пасиву в пізній грі — секунда кліків (smaug: купець 1,3 % заробітку), тож платить більше з двох.
+    /// </summary>
+    public const double MerchantPlay = 1;
     public const int GoldenForAchievement = 50;
 
     /// <summary>Що буде в розписному глеку. Вирішується, коли глек з'являється, а гравцеві показується, лише коли впіймав.</summary>
@@ -224,6 +236,8 @@ public sealed partial class Clicker : Game
     /// <summary>Гостинець від кота: п'ять хвилин пасиву, три в'язки соломи, дзвінкий виріб або плюс один до серії.</summary>
     public enum CatGift { Passive, Straw, Ware, Streak }
     public const double CatPassiveSeconds = 300;
+    /// <summary>Скільки «звичайних» глеків з полиці намуркотів кіт, коли це більше за п'ять хвилин пасиву.</summary>
+    public const double CatFalls = 5;
     public const int CatStraw = 3;
 
     /// <summary>Зірка падає лише вночі за київським часом — сцена й так темна.</summary>
@@ -253,8 +267,10 @@ public sealed partial class Clicker : Game
     /// рядки v10, а подарунок v10 дасть TakeGiftV10 (він сам знає, чи вже давав).
     /// «v11.1» (08.10) — дошліфовка за записками #28/#29 (глек поверх усього, допомога друзям, екрани): без подарунка;
     /// хто пропустив v11, тому клієнт допише рядки «Толоки», а подарунок v11 дасть TakeGiftV11.
+    /// «v11.2» (10.10) — «хвилина гри», комора під полицею, перероблені віхи й ачівки за тиждень: без подарунка; хто
+    /// пропустив v11.1, тому клієнт допише й ті рядки.
     /// </summary>
-    public const string NewsVersion = "v11.1";
+    public const string NewsVersion = "v11.2";
 
     // ---------- розгін кола ----------
 
@@ -333,14 +349,14 @@ public sealed partial class Clicker : Game
         new("wheel", "Швидше коло", "+1 глек за клік", 15, ClickerKind.Click,
             Marks: [new(10, "Ножний привід", MarkEffect.HandsDouble), new(25, "Легка рука", MarkEffect.Hand, 0.01),
                 new(50, "Руки майстра", MarkEffect.Hand, 0.02), new(75, "Тверда рука", MarkEffect.Hand, 0.03),
-                new(100, "Коло-дзиґа", MarkEffect.Momentum, 1), new(125, "Довгий розгін", MarkEffect.Temper, 3),
+                new(100, "Коло-дзиґа", MarkEffect.Momentum, 1), new(125, "Довгий розгін", MarkEffect.Buff, MarkBuff),
                 new(150, "Фартова рука", MarkEffect.Lucky, 0.02), new(200, "Обома руками", MarkEffect.ClickDouble)]),
         new("apprentice", "Підмайстер", "+0,5 глека за секунду", 100, ClickerKind.Idle, Rate: 0.5,
             Marks: [new(10, "Учні з Опішні"), new(25, "Кухоль узвару"), new(50, "Цехова грамота"),
                 M(75, "Учень із Косова", MarkEffect.Hand), M(100, "Учень став майстром", MarkEffect.Passive)]),
         new("kiln", "Піч", "+3 глеки за секунду", 1_000, ClickerKind.Idle, Rate: 3,
             Marks: [new(10, "Дубові дрова"), new(25, "Двоярусний горн"), new(50, "Вічний вогонь"),
-                M(75, "Жар не спадає", MarkEffect.Temper), M(100, "Піч на всю ніч", MarkEffect.Night)]),
+                M(75, "Жар не спадає", MarkEffect.Buff), M(100, "Піч на всю ніч", MarkEffect.Night)]),
         new("clay", "Гарна глина", "×1,25 до всього", 10_000, ClickerKind.Mult, MaxLevel: 5),
         new("flywheel", "Маховик", "Швидкі кліки поспіль розкручують коло: +0,5 до стелі розгону", 250, ClickerKind.Skill, MaxLevel: 8),
         new("basket", "Кошик під полицею", "+20 % до глеків, що падають з полиці", 2_500, ClickerKind.Skill, MaxLevel: 10),
@@ -351,28 +367,28 @@ public sealed partial class Clicker : Game
         Tier("workshop", "Гончарня", 100_000, 25, "Новий дах", "Полиці до стелі", "Вивіска на всю вулицю",
             M(150, "Друга майстерня", MarkEffect.Passive), M(200, "Ліхтар над дверима", MarkEffect.Night), M(250, "Комора під полицею", MarkEffect.Fall), M(300, "Гончарня на весь квартал", MarkEffect.Passive)),
         Tier("fair", "Ярмарок у Сорочинцях", 2_000_000, 150, "Намет із прапорцем", "Ярмаркові зазивали", "Гоголь приїхав",
-            M(150, "Ярмарковий оркестр", MarkEffect.Fair), M(200, "Свій ряд на ярмарку", MarkEffect.Merchant), M(250, "Гоголь задивився", MarkEffect.GoldenShown), M(300, "Ярмарок на три дні", MarkEffect.Fair)),
+            M(150, "Ярмарковий оркестр", MarkEffect.Fair), M(200, "Свій ряд на ярмарку", MarkEffect.Merchant), M(250, "Гоголь задивився", MarkEffect.GoldenOften), M(300, "Ярмарок на три дні", MarkEffect.Fair)),
         Tier("artel", "Артіль в Опішні", 50_000_000, 900, "Спільна глина", "Артільний кошовий", "Знак Опішні",
-            M(150, "Артільна пісня", MarkEffect.Hand), M(200, "Гуртом легше", MarkEffect.Passive), M(250, "Опішнянський ритм", MarkEffect.Temper), M(300, "Артіль на все Полтавське", MarkEffect.Passive)),
+            M(150, "Артільна пісня", MarkEffect.Hand), M(200, "Гуртом легше", MarkEffect.Passive), M(250, "Опішнянський ритм", MarkEffect.Buff), M(300, "Артіль на все Полтавське", MarkEffect.Passive)),
         Tier("chumaks", "Чумацький обоз", 1_000_000_000, 5_000, "Сіль у дорогу", "Круторогі воли", "Чумацький Шлях",
-            M(150, "Нічний перехід", MarkEffect.Night), M(200, "Сіль — то гроші", MarkEffect.Merchant), M(250, "Воли не спиняються", MarkEffect.Temper), M(300, "До самого моря", MarkEffect.Night)),
+            M(150, "Нічний перехід", MarkEffect.Night), M(200, "Сіль — то гроші", MarkEffect.Merchant), M(250, "Воли не спиняються", MarkEffect.Buff), M(300, "До самого моря", MarkEffect.Night)),
         Tier("pit", "Глинище", 25_000_000_000, 32_000, "Голуба глина", "Кінний підйомник", "Глибокий пласт",
             M(150, "Жила без дна", MarkEffect.Passive), M(200, "М'яка глина під полицею", MarkEffect.Fall), M(250, "Щасливий пласт", MarkEffect.Lucky), M(300, "Глинище на всю долину", MarkEffect.Passive)),
         Tier("school", "Школа гончарів", 500_000_000_000, 200_000, "Підручник гончаря", "Майстер-клас", "Випускний у глині",
             M(150, "Урок розгону", MarkEffect.Momentum), M(200, "Іспит на руки", MarkEffect.Hand), M(250, "Кафедра гончарства", MarkEffect.Passive), M(300, "Гончарна академія", MarkEffect.Hand)),
         Tier("chaika", "Чайка до Царграда", 12_000_000_000_000, 1_200_000, "Козацька чайка", "Попутний вітер", "Царградський базар",
-            M(150, "Вітер у вітрилах", MarkEffect.Temper), M(200, "Царградський купець", MarkEffect.Merchant), M(250, "Улов із палуби", MarkEffect.Fall), M(300, "Нічна вахта", MarkEffect.Night)),
+            M(150, "Вітер у вітрилах", MarkEffect.Buff), M(200, "Царградський купець", MarkEffect.Merchant), M(250, "Улов із палуби", MarkEffect.Fall), M(300, "Нічна вахта", MarkEffect.Night)),
         Tier("museum", "Музей гончарства", 250_000_000_000_000, 7_000_000, "Екскурсовод", "Вітрина скарбів", "Ніч у музеї",
-            M(150, "Скляна вітрина", MarkEffect.FallShown), M(200, "Запасник музею", MarkEffect.Fall), M(250, "Наглядач залу", MarkEffect.Eye), M(300, "Зала розписних глеків", MarkEffect.GoldenShown)),
+            M(150, "Скляна вітрина", MarkEffect.FallOften), M(200, "Запасник музею", MarkEffect.Fall), M(250, "Наглядач залу", MarkEffect.Eye), M(300, "Зала розписних глеків", MarkEffect.GoldenOften)),
         Tier("tsar", "Цар-глек", 5_000_000_000_000_000, 45_000_000, "Глек на всю хату", "Глек на все село", "Глек видно з Місяця",
             M(150, "Глек на всю губернію", MarkEffect.Passive), M(200, "Царський ярмарок", MarkEffect.Fair), M(250, "Цар-глек із секретом", MarkEffect.Lucky), M(300, "Глек на всі сторони світу", MarkEffect.Fall)),
         // Дев'яте оновлення: три щаблі після Цар-глека — ×22 ціни й ×6,5 доходу, щоб було заради чого грати далі.
         Tier("sloboda", "Гончарна слобода", 1e17, 3e8, "Своя вулиця", "Ярмарок під хатою", "Слобідський герб",
             M(150, "Ліхтарі на вулиці", MarkEffect.Night), M(200, "Ярмарок щонеділі", MarkEffect.Merchant), M(250, "Слобідський сторож", MarkEffect.Eye), M(300, "Слобода не спить", MarkEffect.Night)),
         Tier("kontrakty", "Контрактовий ярмарок", 2.5e18, 2e9, "Контракт із Києвом", "Гостиний двір", "Лаврські купці",
-            M(150, "Контракт на рік", MarkEffect.Merchant), M(200, "Заморські купці", MarkEffect.Fair), M(250, "Довгий торг", MarkEffect.FallShown), M(300, "Контракт із половиною світу", MarkEffect.Fall)),
+            M(150, "Контракт на рік", MarkEffect.Merchant), M(200, "Заморські купці", MarkEffect.Fair), M(250, "Довгий торг", MarkEffect.FallOften), M(300, "Контракт із половиною світу", MarkEffect.Fall)),
         Tier("sich", "Гончарня на Січі", 6e19, 1.3e10, "Курінь гончарів", "Козацька печатка", "Клейнод",
-            M(150, "Козацька витривалість", MarkEffect.Temper), M(200, "Січова скарбниця", MarkEffect.Fall), M(250, "Гетьманська булава", MarkEffect.Momentum), M(300, "Слава на віки", MarkEffect.Night)),
+            M(150, "Козацька витривалість", MarkEffect.Buff), M(200, "Січова скарбниця", MarkEffect.Fall), M(250, "Гетьманська булава", MarkEffect.Momentum), M(300, "Слава на віки", MarkEffect.Night)),
         // Десяте оновлення «Глек на весь світ» (docs/games/specs/clicker-v10.md §3): дванадцять щаблів історії
         // гончарства й торгівлі — від гетьманського Батурина до Опішні. Ціна ×10, дохід ×5,5 на щабель.
         Tier("baturyn", "Батуринська кахельня", 6e20, 7e10, "Зелена полива", "Кахлі з гербом", "Піч на весь палац",
@@ -384,7 +400,7 @@ public sealed partial class Clicker : Game
         Tier("mezhyhirya", "Межигірська фабрика", 6e23, 1.2e13, "Київський фаянс", "Сині квіти на білому", "Сервіз для генерал-губернатора",
             M(150, "Фаянс на весь Поділ", MarkEffect.Passive), M(200, "Фабричний гудок", MarkEffect.Momentum)),
         Tier("voyage", "Кругосвітнє плавання", 6e24, 6.6e13, "Капітан із Ніжина", "Глеки на екваторі", "Три роки навколо світу",
-            M(150, "Пасат у вітрилах", MarkEffect.Temper), M(200, "Вахта до світанку", MarkEffect.Night)),
+            M(150, "Пасат у вітрилах", MarkEffect.Buff), M(200, "Вахта до світанку", MarkEffect.Night)),
         Tier("railway", "Глиняна чавунка", 6e25, 3.6e14, "Вагон соломи", "Паровоз «Глечик»", "Вокзал із куполом",
             M(150, "Нічний потяг", MarkEffect.Night), M(200, "Експрес без зупинок", MarkEffect.Momentum)),
         Tier("ocean", "Пароплав за океан", 6e26, 2e15, "Скриня переселенця", "Хата в канадській прерії", "Глеки для діаспори",
@@ -392,7 +408,7 @@ public sealed partial class Clicker : Game
         Tier("trypillia", "Трипільська експедиція", 6e27, 1.1e16, "Черепок із Трипілля", "Археолог Хвойка", "Сім тисяч років глини",
             M(150, "Спіраль на вінцях", MarkEffect.Fall), M(200, "Прадавній обпал", MarkEffect.Lucky)),
         Tier("mirgorod", "Миргородська школа кераміки", 6e28, 6e16, "Школа біля калюжі", "Майстер-керамік", "Диплом із Миргорода",
-            M(150, "Учні з усієї губернії", MarkEffect.Hand), M(200, "Миргородська полива", MarkEffect.GoldenShown)),
+            M(150, "Учні з усієї губернії", MarkEffect.Hand), M(200, "Миргородська полива", MarkEffect.GoldenOften)),
         Tier("exchange", "Одеська біржа", 6e29, 3.3e17, "Курс глека", "Бички й ведмеді", "Глек — тверда валюта",
             M(150, "Бичачий ринок", MarkEffect.Eye), M(200, "Золоті ф'ючерси", MarkEffect.Fair)),
         Tier("expo", "Всесвітня виставка в Парижі", 6e30, 1.8e18, "Павільйон із вишивкою", "Золота медаль", "Черга до павільйону",
@@ -434,9 +450,11 @@ public sealed partial class Clicker : Game
     // ---------- віхи-модифікатори (десяте оновлення) ----------
 
     /// <summary>Скільки дає одна віха свого ефекту — це й є всі «ручки» балансу віх (docs/games/specs/clicker-v10.md §4).</summary>
-    public const double MarkPassive = 0.25, MarkHand = 0.01, MarkMomentum = 0.5, MarkTemper = 1, MarkLucky = 0.01,
-        MarkFall = 0.25, MarkFair = 1, MarkMerchantHours = 1, MarkNightHours = 1, MarkGoldenSeconds = 3,
-        MarkFallSeconds = 0.5, MarkEyeHours = 3;
+    /// <remarks>10.10: «Гарт», «видно довше», купець і Око перероблені — заміри на прод-збереженнях smaug і владіка показали
+    /// нуль (розгін і так повний, уважний гравець і так ловить, а години пасиву — секунда гри).</remarks>
+    public const double MarkPassive = 0.25, MarkHand = 0.01, MarkMomentum = 0.5, MarkBuff = 0.1, MarkLucky = 0.01,
+        MarkFall = 0.25, MarkFair = 1, MarkMerchantMinutes = 0.5, MarkNightHours = 1, MarkGoldenOften = 0.04,
+        MarkFallOften = 0.04, MarkEyeMinutes = 2;
 
     /// <summary>Віха-модифікатор із сумою за замовчуванням для свого ефекту.</summary>
     static ClickerMark M(int level, string name, MarkEffect effect) => new(level, name, effect, effect switch
@@ -444,15 +462,15 @@ public sealed partial class Clicker : Game
         MarkEffect.Passive => MarkPassive,
         MarkEffect.Hand => MarkHand,
         MarkEffect.Momentum => MarkMomentum,
-        MarkEffect.Temper => MarkTemper,
+        MarkEffect.Buff => MarkBuff,
         MarkEffect.Lucky => MarkLucky,
         MarkEffect.Fall => MarkFall,
         MarkEffect.Fair => MarkFair,
-        MarkEffect.Merchant => MarkMerchantHours,
+        MarkEffect.Merchant => MarkMerchantMinutes,
         MarkEffect.Night => MarkNightHours,
-        MarkEffect.GoldenShown => MarkGoldenSeconds,
-        MarkEffect.FallShown => MarkFallSeconds,
-        MarkEffect.Eye => MarkEyeHours,
+        MarkEffect.GoldenOften => MarkGoldenOften,
+        MarkEffect.FallOften => MarkFallOften,
+        MarkEffect.Eye => MarkEyeMinutes,
         _ => 1,
     });
 
@@ -768,6 +786,40 @@ public sealed partial class Clicker : Game
     /// <summary>Глеків за секунду без тебе просто зараз — з ярмарком і вітром із поля, якщо вони тривають.</summary>
     public double PerSecond => PassiveBase * (FairOn ? FairMultNow : 1) * (WindOn ? WindMult : 1);
 
+    // ---------- хвилина гри (10.10) ----------
+
+    /// <summary>Скільки кліків за секунду вважаємо «звичайною грою» для <see cref="PlayMinute"/>.</summary>
+    public const double PlayCps = 5;
+
+    /// <summary>Частка кліків, що б'є в ×50: рівні «Щасливого кліка» й віхи.</summary>
+    double LuckyShare => LuckyChance * Level("lucky") + Perk(MarkEffect.Lucky);
+
+    /// <summary>Скільки в середньому чекати глека з полиці (як у <see cref="ScheduleFall"/>).</summary>
+    double FallWaitAvg
+    {
+        get
+        {
+            var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
+            return (min + max) / 2.0 * ClayNow.Events * RelicWaitMult("cat3") * (1 - Perk(MarkEffect.FallOften));
+        }
+    }
+
+    /// <summary>
+    /// Хвилина гри: скільки глеків гончар робить за хвилину звичайної гри без бафів — глеки з полиці (зі своєю серією й
+    /// кошиком) плюс клік на повному розгоні, з щасливими, <see cref="PlayCps"/> кліків за секунду. Мірка для всього,
+    /// що раніше платило «хвилинами пасиву»: у пізній грі година гри — це десять-п'ятнадцять тисяч годин пасиву
+    /// (10.10, заміри smaug і владіка), і купець, Око, гості, села, купці хати, віз, гостинці платили копійки. Мірка
+    /// своя в кожного: багатий не ламає гру бідному, а бідному вона й так менша.
+    /// </summary>
+    public double PlayMinute =>
+        60 * (FallGain(plain: true) / FallWaitAvg + ClickBase * MomentumMax * (1 + LuckyShare * (LuckyMult - 1)) * PlayCps);
+
+    /// <summary>Стільки хвилин гри — у глеках.</summary>
+    internal double PlayPay(double minutes) => ToPots(PlayMinute * minutes);
+
+    /// <summary>«хвилину / хвилини / хвилин» — для описів віх (половина — «хвилини»).</summary>
+    static string MinutesWord(double n) => n % 1 != 0 ? "хвилини" : Plural(n, "хвилину", "хвилини", "хвилин");
+
     /// <summary>Стеля розгону: ×1 без маховика (коло не розганяється), +0,5 за кожен його рівень — до ×5.</summary>
     public double MomentumMax => 1 + FlywheelStep * Level("flywheel") + Perk(MarkEffect.Momentum);
 
@@ -775,7 +827,7 @@ public sealed partial class Clicker : Game
     /// За скільки секунд розгін спадає в e разів: <see cref="HeatTau"/>, з лопаткою — удвічі довше, і ще по
     /// секунді за кожен рівень «Гарту кола» (дев'яте оновлення): коло тримає розгін, поки рука переводить подих.
     /// </summary>
-    double Tau => (Tool("paddle") ? HeatTau * PaddleTau : HeatTau) + TemperTau * Level("temper") + Perk(MarkEffect.Temper);
+    double Tau => (Tool("paddle") ? HeatTau * PaddleTau : HeatTau) + TemperTau * Level("temper");
 
     /// <summary>Скільки секунд до згасання розгону додає один рівень «Гарту кола».</summary>
     public const double TemperTau = 1;
@@ -791,11 +843,12 @@ public sealed partial class Clicker : Game
     /// Що дасть глек з полиці, якщо спіймати його просто зараз: дві хвилини пасиву й сотня кліків, помножені на
     /// кошик, серію і ярмарок, плюс дно. Ця сама сума їде у вид — клієнт малює її над спійманим глеком, не чекаючи відповіді.
     /// </summary>
-    double FallGain()
+    /// <param name="plain">Без ярмарку й бажання на зірку — «звичайний» глек для <see cref="PlayMinute"/> і всього, що платить глеками з полиці.</param>
+    double FallGain(bool plain = false)
     {
         var raw = PassiveBase * FallSeconds + ClickBase * FallClicks;
-        var mult = (1 + BasketBonus * Level("basket") + Perk(MarkEffect.Fall) + GuestsFallBonus + Relic("basket3")) * (1 + StreakMult) * (FairOn ? FairMultNow : 1)
-            * ClayNow.Loot * HouseFallMult * (_starWish ? StarFallMult : 1);
+        var mult = (1 + BasketBonus * Level("basket") + Perk(MarkEffect.Fall) + GuestsFallBonus + Relic("basket3")) * (1 + StreakMult)
+            * (!plain && FairOn ? FairMultNow : 1) * ClayNow.Loot * HouseFallMult * (!plain && _starWish ? StarFallMult : 1);
         return ToPots(raw * mult) + FallFloor;
     }
 
@@ -1111,6 +1164,9 @@ public sealed partial class Clicker : Game
             var wind = watching ? Overlap(from, now, _wind.At, _wind.Until) : TimeSpan.Zero;
             if (wind > paid) wind = paid;
             Earn(PassiveBase * (paid.TotalSeconds + (FairMultNow - 1) * fair.TotalSeconds + (WindMult - 1) * wind.TotalSeconds));
+            // Комора під полицею (віхи Ночі, 10.10): поки гончаря нема, глеки з полиці падають у комору — і вона ловить
+            // частку їх. Без цього година без гончаря — секунда його гри, і віхи Ночі за стелею доби мовчали.
+            if (!watching && paid > TimeSpan.Zero) ShelfStore(paid);
         }
         // Бафи чекають лише під полицею майстра. Полиці нема (зіпсований ключ у базі) — ідуть далі від «зараз», як
         // ярмарок і мусить: з дії, після синхронізації (див. вище).
@@ -1163,6 +1219,24 @@ public sealed partial class Clicker : Game
         AwayEnd(now, absent);
     }
 
+    /// <summary>Скільки глеків з полиці, що впали без гончаря, ловить комора: <see cref="NightShelfShare"/> за кожну віху Ночі.</summary>
+    public const double NightShelfShare = 0.03;
+
+    double ShelfShare => NightShelfShare * Perk(MarkEffect.Night) / MarkNightHours;
+
+    /// <summary>Комора за оплачений простій: стільки глеків, скільки впало б за цей час, × частка, × «звичайний» глек.</summary>
+    void ShelfStore(TimeSpan paid)
+    {
+        if (!(ShelfShare > 0)) return;
+        var gain = ToPots(paid.TotalSeconds / FallWaitAvg * FallGain(plain: true) * ShelfShare);
+        if (!(gain >= 1)) return;
+        Add(gain);
+        _shelfAway += gain;
+    }
+
+    /// <summary>Скільки комора наловила за цей простій — для записки «поки тебе не було».</summary>
+    double _shelfAway;
+
     /// <summary>Клієнт питає свіжий вид (глек утік, купець повернувся) або каталоги наново (<c>{ catalog: true }</c>).</summary>
     ActResult Look(JsonElement payload)
     {
@@ -1214,15 +1288,15 @@ public sealed partial class Clicker : Game
         var (min, max) = Has("omen") ? (OmenMinSeconds, OmenMaxSeconds) : (GoldenMinSeconds, GoldenMaxSeconds);
         _goldenPlanned = default;
         // Чорна глина й глиняний свисток скорочують чекання; собака під лавою стереже глек трохи довше.
-        var wait = seconds ?? (min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * (Tool("whistle") ? WhistleEvents : 1) * GuestsGoldenWait;
+        var wait = seconds ?? (min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * (Tool("whistle") ? WhistleEvents : 1) * GuestsGoldenWait
+            * (1 - Perk(MarkEffect.GoldenOften));
         var at = from + TimeSpan.FromSeconds(wait);
         // Кидок 40/30/30 на користь ярмарку (26.09): купець і натхнення по 30.
         var roll = Ctx.Rng.Next(100);
         var kind = roll < 40 ? GoldenKind.Fair : roll < 70 ? GoldenKind.Merchant : GoldenKind.Inspire;
         // Де саме на сцені: лівий верхній кут у відсотках. Глек завширшки ~58 px, сцена на телефоні ~300 px —
         // тож праворуч лишаємо чверть, щоб він не вилазив за картку.
-        var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero) + HouseGoldenExtra
-            + TimeSpan.FromSeconds(Perk(MarkEffect.GoldenShown));
+        var shown = GoldenShown + (Adorned("dog") ? DogGuard : TimeSpan.Zero) + HouseGoldenExtra;
         _golden = new GoldenRow(at, at + shown, kind, Ctx.Rng.Next(4, 77), Ctx.Rng.Next(2, 70));
     }
 
@@ -1231,9 +1305,9 @@ public sealed partial class Clicker : Game
     {
         var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
         _fallPlanned = default;
-        var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * RelicWaitMult("cat3"));
-        _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown) + TimeSpan.FromSeconds(Perk(MarkEffect.FallShown)),
-            Ctx.Rng.Next(8, 80));
+        var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * RelicWaitMult("cat3")
+            * (1 - Perk(MarkEffect.FallOften)));
+        _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown), Ctx.Rng.Next(8, 80));
     }
 
     // ---------- випадковості на сцені: кіт, зірка, вітер (§A.6) ----------
@@ -1458,7 +1532,11 @@ public sealed partial class Clicker : Game
     /// подарунок, а плата за руку: полиця, що прийшла через підозру, пильний крок чи паузу, не платить нічого,
     /// інакше автоклікер із господарем при ньому доїв би майстра щодві хвилини.
     /// </summary>
-    double EyeGain => PassiveBase * (EyeSeconds + 3600 * Perk(MarkEffect.Eye)) + ClickBase * EyeClicks;
+    /// <remarks>10.10: ще <see cref="EyePlay"/> хвилин гри й віхи «+N хвилин гри» — доба пасиву в пізній грі важила 0,8 % заробітку.</remarks>
+    double EyeGain => PassiveBase * EyeSeconds + ClickBase * EyeClicks + PlayMinute * (EyePlay + Perk(MarkEffect.Eye));
+
+    /// <summary>Скільки хвилин гри платить пройдена спокійна полиця понад добу пасиву.</summary>
+    public const double EyePlay = 10;
 
     /// <summary>Серія стала довшою на один — спійманим глеком чи котом: ачівки й дивовижі одні на обох.</summary>
     void StreakUp()
@@ -1580,15 +1658,15 @@ public sealed partial class Clicker : Game
             MarkEffect.Hand => $"клік бере ще +{Pct(m.Amount)} пасиву",
             MarkEffect.Passive => $"пасив +{Pct(m.Amount)}",
             MarkEffect.Momentum => $"стеля розгону +{Num(m.Amount)}",
-            MarkEffect.Temper => $"розгін тримається ще +{Num(m.Amount)} с",
+            MarkEffect.Buff => $"ярмарок і натхнення тривають ще +{Pct(m.Amount)}",
             MarkEffect.Lucky => $"ще +{Pct(m.Amount)} кліків б'є в ×50",
             MarkEffect.Fall => $"глек з полиці +{Pct(m.Amount)}",
             MarkEffect.Fair => $"ярмарок розписного глека ще +{Num(m.Amount)}",
-            MarkEffect.Merchant => $"щедрий купець ще +{Num(m.Amount)} год пасиву",
-            MarkEffect.Night => $"коло крутиться без тебе ще +{Num(m.Amount)} год",
-            MarkEffect.GoldenShown => $"розписний глек стоїть на колі ще +{Num(m.Amount)} с",
-            MarkEffect.FallShown => $"глек з полиці летить ще +{Num(m.Amount)} с",
-            MarkEffect.Eye => $"Око майстра платить ще +{Num(m.Amount)} год пасиву",
+            MarkEffect.Merchant => $"щедрий купець ще +{Num(m.Amount)} {MinutesWord(m.Amount)} гри",
+            MarkEffect.Night => $"коло крутиться без тебе ще +{Num(m.Amount)} год, а комора ловить ще {Pct(NightShelfShare)} глеків з полиці",
+            MarkEffect.GoldenOften => $"розписний глек приходить на {Pct(m.Amount)} частіше",
+            MarkEffect.FallOften => $"глек з полиці падає на {Pct(m.Amount)} частіше",
+            MarkEffect.Eye => $"Око майстра платить ще +{Num(m.Amount)} {MinutesWord(m.Amount)} гри",
             _ => "",
         };
     }
@@ -1685,7 +1763,8 @@ public sealed partial class Clicker : Game
 
     /// <summary>Скільки триває бонус розписного глека: «Довгий ярмарок» подовжує і ярмарок, і натхнення вдвічі.</summary>
     // «Дідова скрипка» (реліквія v11) — ще кілька відсотків до кожного бонусу, до ×2.
-    TimeSpan BuffLonger(TimeSpan span) => (Has("longfair") ? span * 2 : span) * (1 + Relic("fiddle"));
+    // Віхи «ярмарок і натхнення тривають ще +10 %» (10.10) — поруч зі скрипкою, понад її стелю.
+    TimeSpan BuffLonger(TimeSpan span) => (Has("longfair") ? span * 2 : span) * (1 + Relic("fiddle") + Perk(MarkEffect.Buff));
 
     /// <summary>Розписний глек: впіймав у вікні — бонус, запізнився — він уже втік.</summary>
     ActResult Catch()
@@ -1714,7 +1793,8 @@ public sealed partial class Clicker : Game
                 break;
             default:
                 // Години золота за секунду: купець мусить важити поруч із ярмарком і натхненням (30.09).
-                var gain = ToPots(PassiveBase * MerchantSecondsNow * ClayNow.Loot) + 13;
+                var gain = Math.Max(ToPots(PassiveBase * MerchantSecondsNow * ClayNow.Loot) + 13,
+                    ToPots(PlayMinute * (MerchantPlay + Perk(MarkEffect.Merchant)) * ClayNow.Loot));
                 Add(gain);
                 text = $"🧺 Щедрий купець: +{PotsShort(gain)}";
                 break;
@@ -1906,7 +1986,8 @@ public sealed partial class Clicker : Game
                 text = $"🐈 Кіт збив глек із полиці й сам його спіймав — серія {_fallStreak}";
                 break;
             default:
-                var gain = ToPots(PassiveBase * CatPassiveSeconds);
+                // П'ять глеків з полиці (10.10): п'ять хвилин пасиву в пізній грі — менше за один клік.
+                var gain = Math.Max(ToPots(PassiveBase * CatPassiveSeconds), ToPots(FallGain(plain: true) * CatFalls));
                 Add(gain);
                 text = gain > 0
                     ? $"🐈 Кіт намуркотів на {PotsShort(gain)} — п'ять хвилин роботи задарма"
@@ -1946,7 +2027,7 @@ public sealed partial class Clicker : Game
         // Гривню пояснює лише блок v10 у вікні новин, а його бачить той, хто v10 (чи v10.1) ще не бачив. Хто вже бачив —
         // тому новини v11 гривню не пояснюють, і його церемонія (скажімо, «Червоні золоті»), якщо ще чекає, лишається.
         // Хто бачив v11, той блок v10 або вже бачив, або прочитав у вікні v11 — v11.1 його не показує.
-        if (_news is not ("v10" or "v10.1" or "v11")) _coinSeen = Math.Max(_coinSeen, CoinLevel);
+        if (_news is not ("v10" or "v10.1" or "v11" or "v11.1")) _coinSeen = Math.Max(_coinSeen, CoinLevel);
         _news = NewsVersion;
         // Подарунки: округи (v9.2), десятого й одинадцятого оновлень — кожен раз на гончаря; хто пропустив старі,
         // забирає їх разом із новим.

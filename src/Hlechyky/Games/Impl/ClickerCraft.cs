@@ -492,6 +492,7 @@ public sealed partial class Clicker
         _awayNotes.Clear();
         LadAwayClear();
         _awayPotsFrom = _pots;
+        _shelfAway = 0;
     }
 
     double _awayPotsFrom;
@@ -505,6 +506,14 @@ public sealed partial class Clicker
         _awayCarry = false;
         // Тихі синхронізації почали запис, а гончар повернувся раніше, ніж простій став простоєм, — запису не треба.
         if (gap < AwayFrom) { LadAwayClear(); return; }
+        // Комора під полицею (віхи Ночі) — одним рядком за весь простій, хоч би скільки тихих синхронізацій його різали.
+        // Запис уже закритий (_awayOpen = false вище), тож кладемо прямо першим рядком, а не через AwayNoteFirst.
+        if (_shelfAway >= 1)
+        {
+            _awayNotes.Insert(0, $"🫙 Комора під полицею наловила глеків, що падали без тебе: +{PotsShort(_shelfAway)}");
+            if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
+        }
+        _shelfAway = 0;
         LadAwayFlush(_awayNotes);
         _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom), _awayFormed, [.. _awayNotes]);
     }

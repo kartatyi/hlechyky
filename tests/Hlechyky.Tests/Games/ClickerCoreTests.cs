@@ -88,14 +88,16 @@ public class ClickerCoreTests
         Human(h);
         Assert.False(Free(h));
         Assert.True(Guard(h).GetProperty("pays").GetBoolean());
-        Assert.Equal(5 * 86_400 + 1 * 10_000, Guard(h).GetProperty("gain").GetDouble());
+        // Доба пасиву, десять тисяч кліків і (з 10.10) EyePlay хвилин гри.
+        var eye = Math.Floor(5 * 86_400 + 1 * 10_000 + ClickerPlay.Minute(h) * Clicker.EyePlay);
+        Assert.Equal(eye, Guard(h).GetProperty("gain").GetDouble());
 
         var before = Pots(h);
         var r = PotterHands.Pass(h);
 
         Assert.True(r.Ok);
         Assert.Contains("відсипав", r.Message);
-        Assert.Equal(before + 442_000, Pots(h));
+        Assert.Equal(before + eye, Pots(h));
         Assert.True(Free(h));
     }
 
@@ -159,12 +161,13 @@ public class ClickerCoreTests
         PotterHands.Miss(h);
         Assert.Equal(1, Guard(h).GetProperty("misses").GetInt32());
         Assert.True(Guard(h).GetProperty("pays").GetBoolean());
-        Assert.Equal(221_000, Guard(h).GetProperty("gain").GetDouble());
+        var half = Math.Floor((442_000 + ClickerPlay.Minute(h) * Clicker.EyePlay) * 0.5);
+        Assert.Equal(half, Guard(h).GetProperty("gain").GetDouble());
 
         var before = Pots(h);
         var r = PotterHands.Pass(h);
         Assert.Contains("половину", r.Message);
-        Assert.Equal(before + 221_000, Pots(h));
+        Assert.Equal(before + half, Pots(h));
     }
 
     [Fact]
@@ -212,7 +215,7 @@ public class ClickerCoreTests
 
         Patch(h, _ => { });                            // Save → Load без правок
         Assert.True(Guard(h).GetProperty("pays").GetBoolean());
-        Assert.Equal(442_000, Guard(h).GetProperty("gain").GetDouble());
+        Assert.Equal(Math.Floor(442_000 + ClickerPlay.Minute(h) * Clicker.EyePlay), Guard(h).GetProperty("gain").GetDouble());
     }
 
     [Fact]
@@ -512,12 +515,14 @@ public class ClickerCoreTests
         Levels(h, ("kiln", 100));                      // 300 глеків за секунду
         EventNow(h, "cat", Clicker.CatShown, a: (int)Clicker.CatGift.Passive);
         var before = Pots(h);
+        // П'ять хвилин пасиву — або (10.10) CatFalls «звичайних» глеків з полиці, що більше.
+        var shelf = View(h).GetProperty("fall").GetProperty("gain").GetDouble();
 
         var r = Act(h, "pet");
 
         Assert.True(r.Ok);
         Assert.Contains("🐈", r.Message);
-        Assert.Equal(before + 300 * 300, Pots(h));
+        Assert.Equal(before + Math.Max(300 * 300, shelf * Clicker.CatFalls), Pots(h));
     }
 
     [Fact]
