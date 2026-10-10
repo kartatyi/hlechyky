@@ -826,12 +826,14 @@ public class ClickerHouseTests
         [
             "eye", "streak", "lucky", "cat", "star", "fire", "kiln-perfect", "paint-90",
             "album-row-stars", "stove-full", "mastery-10", "lord-order", "holiday-guest", "rep-10", "wagon-gold", "treat",
+            // 10.10: етап Толоки й новий гість — на сіль, бурштин і стрічку (кидки були, а дивовиж за ними не було).
+            "toloka", "guests",
         ];
         Assert.Equal(16, Clicker.Wonders.Length);
         Assert.Equal(16, Clicker.Wonders.Select(w => w.Key).Distinct().Count());
         foreach (var w in Clicker.Wonders)
         {
-            Assert.InRange(w.Triggers.Length, 1, 3);
+            Assert.InRange(w.Triggers.Length, 1, 5);
             Assert.All(w.Triggers, t => Assert.Contains(t, known));
             Assert.False(string.IsNullOrWhiteSpace(w.Name), w.Key);
             Assert.True(w.Tale.Length > 40, w.Key);

@@ -369,8 +369,11 @@ public class ClickerProgressTests
     {
         var h = Wheel();
         JugNow(h, Clicker.GoldenKind.Merchant);
+        // Чотири години пасиву на голому колі — нуль і 13 зверху; з 10.10 — щонайменше MerchantPlay хвилин гри.
+        var play = ClickerPlay.Pay(h, Clicker.MerchantPlay);
         Assert.True(Act(h, "catch").Ok);
-        Assert.Equal(13, Pots(h));
+        Assert.Equal(Math.Max(13, play), Pots(h));
+        Assert.True(play > 13);
     }
 
     [Fact]

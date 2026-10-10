@@ -830,7 +830,13 @@ public sealed partial class Clicker
     public const int WorkStepsMax = 600;
     /// <summary>Тріснутий виріб — черепки на засипку доріжки: частка ціни простого звичайного.</summary>
     public const double ShardShare = 0.15;
-    public const int HomeBonus = 10, PerfectMin = 4;
+    public const int HomeBonus = 10;
+    /// <summary>
+    /// Бездоганний обпал («Дзвінке горно», дивовижа, звання): власноруч, у горні щонайменше <see cref="PerfectMin"/> виробів,
+    /// жодної тріщини, і з них не менше <see cref="PerfectRingTenths"/> десятих — дзвінкі чи розкішні (Q ≥ 3). Раніше вимагали
+    /// дзвінкими всі: дзвінкий випадає з шансом ≈ 0,3·S², а горно саме набирає 18–26 виробів — такого не бувало ніколи.
+    /// </summary>
+    public const int PerfectMin = 6, PerfectRingTenths = 4;
     /// <summary>Від якої краси розпис — уже дивовижа, і від якої варто обіцяти розкішні вироби.</summary>
     public const int PaintWonder = 90, PaintLux = 50;
 
@@ -1104,6 +1110,14 @@ public sealed partial class Clicker
         return ActResult.Accept($"🌾 Солома: +{can} — тепер {_straw} {Plural(_straw, "в'язка", "в'язки", "в'язок")}");
     }
 
+    /// <summary>Бездоганна партія: <see cref="PerfectMin"/>+ виробів, жодного тріснутого, і дзвінких чи розкішних — від <see cref="PerfectRingTenths"/> десятих.</summary>
+    public static bool IsPerfectBatch(IReadOnlyCollection<int> qualities)
+    {
+        if (qualities.Count < PerfectMin || qualities.Any(q => q <= 0)) return false;
+        var ringing = qualities.Count(q => q >= 3);
+        return ringing * 10 >= qualities.Count * PerfectRingTenths;
+    }
+
     /// <summary>
     /// Горно відкрите: кожен виріб — тріщина (лише вручну, від перегріву; солома ділить шанс на чотири) або якість
     /// (<see cref="KilnHeat.Quality"/>). Цілі — у комору (<see cref="PutItems"/>) і в лічильник (<see cref="AddFired"/>);
@@ -1142,13 +1156,13 @@ public sealed partial class Clicker
         _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold, freed);
         _kilnBatches++;
         var whole = outs.Count(o => o.Q > 0);
-        var perfect = manual && outs.Count >= PerfectMin && outs.All(o => o.Q >= 3);
+        var perfect = manual && IsPerfectBatch(outs.Select(o => o.Q).ToList());
         if (perfect)
         {
             Achieve("potter-kiln-perfect");
             Wonder("kiln-perfect");
         }
-        // Звання: «Бездоганне горно» — такі обпали поспіль, «Перепалив» — обпали з тріщинами (лише власноруч).
+        // Звання: «Бездоганне горно» — десять таких обпалів за весь час, «Перепалив» — обпали з тріщинами (лише власноруч).
         TitlesOnKiln(manual, perfect, outs.Any(o => o.Q == 0));
         if (outs.Any(o => o.Q == 4)) Achieve("potter-q4");
         if (!manual && ++_kilnAuto == AutoBatchesAch) Achieve("potter-stoker");

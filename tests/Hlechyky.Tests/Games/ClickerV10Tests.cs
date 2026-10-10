@@ -137,14 +137,14 @@ public class ClickerV10Tests
         Assert.Equal(6, CountOf(MarkEffect.Fair));
         Assert.Equal(7, CountOf(MarkEffect.Merchant));
         Assert.Equal(11, CountOf(MarkEffect.Night));
-        Assert.Equal(3, CountOf(MarkEffect.GoldenShown));
-        Assert.Equal(2, CountOf(MarkEffect.FallShown));
+        Assert.Equal(3, CountOf(MarkEffect.GoldenOften));
+        Assert.Equal(2, CountOf(MarkEffect.FallOften));
         Assert.Equal(3, CountOf(MarkEffect.Eye));
         Assert.Equal(1, CountOf(MarkEffect.ClickDouble));
         Assert.Equal(1, CountOf(MarkEffect.HandsDouble));
         Assert.Equal(3.75, SumOf(MarkEffect.Passive), 9);
         Assert.Equal(3, SumOf(MarkEffect.Momentum), 9);
-        Assert.Equal(9, SumOf(MarkEffect.Temper), 9);
+        Assert.Equal(7 * Clicker.MarkBuff, SumOf(MarkEffect.Buff), 9);
         Assert.Equal(0.05, SumOf(MarkEffect.Lucky), 9);
         Assert.Equal(0.12, SumOf(MarkEffect.Hand), 9);
         // 45 старих ×2 (разом із трьома «старими» віхами кола) + 57 плану віх + 60 нових щаблів.
@@ -241,14 +241,17 @@ public class ClickerV10Tests
     }
 
     [Fact]
-    public void Momentum_and_temper_marks_raise_the_ceiling_and_hold_the_spin_longer()
+    public void Momentum_marks_raise_the_ceiling_and_buff_marks_hold_the_fair_longer()
     {
         var h = Rich(("wheel", 200), ("flywheel", 8), ("school", 150));
         var max = Num(h, "momentumMax");
         var tau = Num(h, "heatTau");
+        var span = View(h).GetProperty("fair").GetProperty("span").GetDouble();
         Marks(h, "wheel:100", "wheel:125", "school:150");
         Assert.Equal(max + 1.5, Num(h, "momentumMax"), 9);
-        Assert.Equal(tau + 3, Num(h, "heatTau"), 9);
+        // 10.10: «Довгий розгін» більше не тягне розгін (він і так повний), а подовжує ярмарок і натхнення.
+        Assert.Equal(tau, Num(h, "heatTau"), 9);
+        Assert.Equal(span * (1 + Clicker.MarkBuff), View(h).GetProperty("fair").GetProperty("span").GetDouble(), 6);
     }
 
     [Fact]
@@ -301,18 +304,33 @@ public class ClickerV10Tests
     }
 
     [Fact]
-    public void Shown_marks_keep_the_painted_pot_and_the_falling_pot_longer()
+    public void Often_marks_bring_the_painted_pot_and_the_falling_pot_sooner()
     {
+        // Найдовше чекання за 150 розкладів: з віхою воно не доходить до стелі без віхи, а без віхи — доходить.
+        static (double golden, double fall) Longest(RoomHarness h)
+        {
+            double g = 0, f = 0;
+            for (var i = 0; i < 150; i++)
+            {
+                Patch(h, s => { s.Remove("golden"); s.Remove("fall"); });
+                var v = View(h);
+                g = Math.Max(g, (v.GetProperty("golden").GetProperty("at").GetDateTimeOffset() - h.Clock.UtcNow).TotalSeconds);
+                f = Math.Max(f, (v.GetProperty("fall").GetProperty("at").GetDateTimeOffset() - h.Clock.UtcNow).TotalSeconds);
+            }
+            return (g, f);
+        }
+        var bare = Rich(("fair", 250), ("museum", 150));
         var h = Rich(("fair", 250), ("museum", 150));
         Marks(h, "fair:250", "museum:150");
-        // Нові вікна рахуються з наступного розкладу: після спійманого/утеклого — тут беремо їх з виду наступних.
-        Patch(h, s => { s.Remove("golden"); s.Remove("fall"); });
-        var g = View(h).GetProperty("golden");
-        var shown = (g.GetProperty("until").GetDateTimeOffset() - g.GetProperty("at").GetDateTimeOffset()).TotalSeconds;
-        Assert.Equal(Clicker.GoldenShown.TotalSeconds + 3, shown, 3);
-        var f = View(h).GetProperty("fall");
-        var fall = (f.GetProperty("until").GetDateTimeOffset() - f.GetProperty("at").GetDateTimeOffset()).TotalSeconds;
-        Assert.Equal(Clicker.FallShown.TotalSeconds + 0.5, fall, 3);
+        var goldenCap = Clicker.GoldenMaxSeconds * (1 - Clicker.MarkGoldenOften);
+        var fallCap = Clicker.FallMaxSeconds * (1 - Clicker.MarkFallOften);
+        var (g0, f0) = Longest(bare);
+        var (g1, f1) = Longest(h);
+        Assert.True(g0 > goldenCap && f0 > fallCap, $"без віх: {g0:0.#} с і {f0:0.#} с");
+        Assert.True(g1 <= goldenCap + 0.01 && f1 <= fallCap + 0.01, $"з віхами: {g1:0.#} с і {f1:0.#} с");
+        // Вікно, щоб спіймати, лишилось як було: віхи більше не тягнуть його.
+        var gv = View(h).GetProperty("golden");
+        Assert.Equal(Clicker.GoldenShown.TotalSeconds, (gv.GetProperty("until").GetDateTimeOffset() - gv.GetProperty("at").GetDateTimeOffset()).TotalSeconds, 3);
     }
 
     [Fact]

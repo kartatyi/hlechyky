@@ -222,10 +222,10 @@ public class ClickerTitlesTests
     }
 
     [Fact]
-    public void Twenty_flawless_firings_in_a_row_and_the_kiln_counters_become_titles()
+    public void Ten_flawless_firings_and_the_kiln_counters_become_titles()
     {
         var h = Wheel();
-        PatchTitles(h, t => { t["perfectRun"] = Clicker.FlawlessRun; t["cracked"] = Clicker.OverburnCracks; t["catKnocks"] = Clicker.CatKnockTimes; });
+        PatchTitles(h, t => { t["perfectRun"] = Clicker.FlawlessKilns; t["cracked"] = Clicker.OverburnCracks; t["catKnocks"] = Clicker.CatKnockTimes; });
         Assert.True(Look(h).Ok);
         Assert.Contains("flawless", Earned(h));
         Assert.Contains("x4", Earned(h));

@@ -70,16 +70,17 @@ public class ClickerReviewTests
         Patch(h, s => { s["guard"]!["left"] = 0; s["guard"]!["clicks"] = ClickerGuard.CalmMin / 2 - 1; });
         Human(h);                                       // цей клік — останній із половини
         Assert.True(Guard(h).GetProperty("pays").GetBoolean());
-        Assert.Equal((5 * 86_400 + 10_000) * 0.5, Guard(h).GetProperty("gain").GetDouble(), 0);
+        Assert.Equal(Math.Floor((5 * 86_400 + 10_000 + ClickerPlay.Minute(h) * Clicker.EyePlay) * 0.5), Guard(h).GetProperty("gain").GetDouble(), 0);
 
         var g = Wheel("Галя");
         Levels(g, ("apprentice", 10));
         Patch(g, s => { s["guard"]!["left"] = 0; s["guard"]!["clicks"] = ClickerGuard.CalmMax; });
         Human(g);
-        Assert.Equal(5 * 86_400 + 10_000, Guard(g).GetProperty("gain").GetDouble());
+        var eye = Math.Floor(5 * 86_400 + 10_000 + ClickerPlay.Minute(g) * Clicker.EyePlay);
+        Assert.Equal(eye, Guard(g).GetProperty("gain").GetDouble());
         var before = Pots(g);
         Assert.Contains("відсипав", PotterHands.Pass(g).Message);
-        Assert.Equal(before + 442_000, Pots(g));
+        Assert.Equal(before + eye, Pots(g));
     }
 
     [Fact]

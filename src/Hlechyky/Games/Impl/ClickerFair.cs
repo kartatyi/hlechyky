@@ -60,9 +60,11 @@ public sealed partial class Clicker
     public const double FairDownPay = 0.85, FairUpPay = 1.3, FairUpChance = 0.45, FairUpPerLevel = 0.07, FairUpMax = 0.9;
     /// <summary>
     /// Шана: пороги рівнів 0–10 (v9). Перші шість — ті самі, що були, тож наявні очки нікуди не діваються:
-    /// у кого назбиралось 300, той одразу на шостому рівні, а не «втратив прогрес».
+    /// у кого назбиралось 300, той одразу на шостому рівні, а не «втратив прогрес». Верх (7–10) знижено 10.10: було
+    /// 620/1000/1600/2500, а лідери набирають у найкращому селі ~50 очок на добу — десятий рівень був би за місяць.
+    /// Тепер від ~600 очок лідера до 950 — тиждень.
     /// </summary>
-    public static readonly int[] FairRepLevels = [0, 8, 25, 60, 120, 220, 380, 620, 1000, 1600, 2500];
+    public static readonly int[] FairRepLevels = [0, 8, 25, 60, 120, 220, 380, 500, 640, 790, 950];
     /// <summary>Кожен рівень шани в будь-якому селі — +3 % до всього (v9: було +1 %, і шану ніхто не помічав).</summary>
     public const double FairRepAll = 0.03;
     /// <summary>Шана села додає до множника замовлення: +0,1 за рівень, а панові — +0,2.</summary>
@@ -75,6 +77,11 @@ public sealed partial class Clicker
     /// <summary>З якого рівня село шле гостинці й що саме в них: хвилини пасиву за рівень, в'язки соломи.</summary>
     public const int FairGiftFrom = 6, FairGiftStraw = 5;
     public const double FairGiftMinutes = 5;
+    /// <summary>
+    /// Хвилина подарунка чи пригоди — це щонайменше 1/<see cref="FairPlayQuarter"/> хвилини гри (10.10): так гостинець із
+    /// села чи «+5 хвилин» від пригоди важать і тоді, коли пасив уже дрібниця.
+    /// </summary>
+    public const double FairPlayQuarter = 4;
     /// <summary>Скільки гостинець висить у стрічці (далі його видно лише лічильником на картці села).</summary>
     public static readonly TimeSpan FairGiftShown = TimeSpan.FromMinutes(10);
 
@@ -89,6 +96,8 @@ public sealed partial class Clicker
     /// <summary>Нові гості: дяк додає красу наступному розпису, мандрівний гончар — обпалені до майстерності, ведмідь грає навпіл.</summary>
     public const int FairDyakBeauty = 20, FairWanderFired = 25;
     public const double FairBearPay = 2, FairBearLoss = 0.05;
+    /// <summary>Скільки хвилин гри щонайбільше забирає ведмідь, що перекинув полицю.</summary>
+    public const double FairBearPlayMax = 2;
 
     public const int FairGuestMinSeconds = 8 * 60, FairGuestMaxSeconds = 20 * 60;
     public static readonly TimeSpan FairGuestShown = TimeSpan.FromSeconds(20);
@@ -526,7 +535,16 @@ public sealed partial class Clicker
 
     /// <summary>Скільки замовлення заплатить «як є», якщо здати рівно те, що просять (у виді — як обіцянка).</summary>
     double MktPay(FairOrderRow o) =>
-        Math.Max(1, ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * MktMult(o)));
+        Math.Max(1, Math.Max(ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * MktMult(o)), MktPlayPay(o)));
+
+    /// <summary>
+    /// Скільки хвилин гри (<see cref="PlayMinute"/>) за виріб на кожну одиницю множника замовлення (10.10): ціна виробу —
+    /// хвилини пасиву, і в пізній грі замовлення важили 0,05–0,14 % заробітку. Село платить більше з двох; множник
+    /// (шана, Косів, базарний день) важить і тут — на звичайному замовленні ×3–×4 це ≈1,2 хвилини гри за виріб.
+    /// </summary>
+    public const double FairPlayPerWare = 0.35;
+
+    double MktPlayPay(FairOrderRow o) => PlayPay(FairPlayPerWare * o.Count * MktMult(o));
 
     void MktAddOrder(DateTimeOffset now, bool lord = false)
     {
@@ -613,7 +631,7 @@ public sealed partial class Clicker
         // Ведмідь витанцював удачу — і згорає на першому ж замовленні, скільки б його не берегли.
         var bear = _mktBear;
         _mktBear = false;
-        var pay = Math.Max(1, ToPots(sum * MktMult(o) * haggle * (bear ? FairBearPay : 1)));
+        var pay = Math.Max(1, ToPots(Math.Max(sum * MktMult(o), MktPlayPay(o)) * haggle * (bear ? FairBearPay : 1)));
         Add(pay);
         _mktOrders.RemoveAt(i);
         _mktDelivered++;
@@ -650,8 +668,9 @@ public sealed partial class Clicker
         _mktGuest = new FairGuestRow(kind, at, at + FairGuestShown, x, y);
     }
 
+    // 10.10: щонайменше «звичайний» глек з полиці — три хвилини пасиву в пізній грі були менші за клік.
     double MktMagpie() =>
-        Math.Max(FairMagpieFloor, ToPots(Math.Max(PassiveBase * FairMagpieSeconds, ClickBase * FairMagpieClicks)));
+        Math.Max(FairMagpieFloor, ToPots(Math.Max(Math.Max(PassiveBase * FairMagpieSeconds, ClickBase * FairMagpieClicks), FallGain(plain: true))));
 
     void MktBuffAdd(string kind, double mult, TimeSpan span, string src, DateTimeOffset now)
     {
@@ -709,7 +728,8 @@ public sealed partial class Clicker
                 }
                 else
                 {
-                    var loss = ToPots(_pots * FairBearLoss);
+                    // Не більше кількох хвилин гри (10.10): п'ята частина гаманця в smaug — більше, ніж за годину дають села.
+                    var loss = Math.Min(ToPots(_pots * FairBearLoss), PlayPay(FairBearPlayMax));
                     if (loss > 0) _pots -= loss;
                     text = loss > 0
                         ? $"🐻 Ведмідь перекинув полицю: −{PotsShort(loss)}"
@@ -765,7 +785,8 @@ public sealed partial class Clicker
                 {
                     // П'ять хвилин пасиву за рівень; на голому колі (пасиву ще нема) — кліками, як у сороки.
                     var sec = FairGiftMinutes * 60 * level;
-                    var gain = Math.Max(FairMagpieFloor, ToPots(Math.Max(PassiveBase * sec, ClickBase * sec / 5)));
+                    // 10.10: щонайменше чверть хвилини гри за кожну хвилину — пасив у пізній грі нічого не важить.
+                    var gain = Math.Max(FairMagpieFloor, ToPots(Math.Max(Math.Max(PassiveBase * sec, ClickBase * sec / 5), PlayMinute * sec / 60 / FairPlayQuarter)));
                     Add(gain);
                     what = $"+{PotsShort(gain)} за поміч селу";
                     break;
@@ -842,7 +863,7 @@ public sealed partial class Clicker
                     if (sec > 0)
                     {
                         // На голому колі пасиву нема — тоді кліками: хвилина ≈ дванадцять.
-                        var gain = Math.Max(5, ToPots(Math.Max(PassiveBase * sec, ClickBase * sec / 5)));
+                        var gain = Math.Max(5, ToPots(Math.Max(Math.Max(PassiveBase * sec, ClickBase * sec / 5), PlayMinute * sec / 60 / FairPlayQuarter)));
                         Add(gain);
                         notes.Add($"+{PotsShort(gain)}");
                     }

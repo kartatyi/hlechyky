@@ -422,8 +422,10 @@ public class ClickerGuestsTests
         Items(h, ("jug||3", 2));
         var value = ItemValue(h, "jug||3");
         var before = Pots(h);
+        // З 10.10 гість платить більше з двох: ціну виробів чи хвилини гри (GuestPlayPerWare за виріб на одиницю множника).
+        var play = ClickerPlay.Pay(h, Clicker.GuestPlayPerWare * 2 * 8);
         Assert.True(Give(h, 7).Ok);
-        Assert.Equal(before + Math.Floor(value * 2 * 8), Pots(h));
+        Assert.Equal(before + Math.Max(Math.Floor(value * 2 * 8), play), Pots(h));
     }
 
     [Fact]
@@ -438,8 +440,9 @@ public class ClickerGuestsTests
         Assert.Equal(mult, Orders(h).Single().GetProperty("mult").GetDouble(), 9);
         var value = ItemValue(h, "candle||2");
         var before = Pots(h);
+        var play = ClickerPlay.Pay(h, Clicker.GuestPlayPerWare * 2 * mult);
         Assert.True(Give(h, 7).Ok);
-        Assert.Equal(before + Math.Floor(value * 2 * mult), Pots(h));
+        Assert.Equal(before + Math.Max(Math.Floor(value * 2 * mult), play), Pots(h));
     }
 
     [Fact]
@@ -513,10 +516,10 @@ public class ClickerGuestsTests
         Assert.Equal(0, Clicker.GuestLevelOf(4));
         Assert.Equal(1, Clicker.GuestLevelOf(5));
         Assert.Equal(5, Clicker.GuestLevelOf(120));
-        Assert.Equal(9, Clicker.GuestLevelOf(749));
-        Assert.Equal(10, Clicker.GuestLevelOf(750));
+        Assert.Equal(9, Clicker.GuestLevelOf(479));
+        Assert.Equal(10, Clicker.GuestLevelOf(480));
         Assert.Equal(10, Clicker.GuestLevelOf(1_000_000));
-        Assert.Equal(new[] { 0, 5, 15, 35, 70, 120, 190, 280, 400, 550, 750 }, Clicker.GuestRepLevels);
+        Assert.Equal(new[] { 0, 5, 15, 35, 70, 120, 190, 260, 330, 400, 480 }, Clicker.GuestRepLevels);
     }
 
     [Fact]
@@ -668,7 +671,7 @@ public class ClickerGuestsTests
     {
         var h = Wheel();
         Late(h);
-        SetYard(h, ["tsargrad"], rep: [("tsargrad", 745)], orders: [Order(h, 7, "tsargrad", "jug", 2, 1)]);
+        SetYard(h, ["tsargrad"], rep: [("tsargrad", 475)], orders: [Order(h, 7, "tsargrad", "jug", 2, 1)]);
         Items(h, ("jug||2", 1));
         var r = Give(h, 7);
         Assert.True(r.Ok);

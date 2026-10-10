@@ -427,6 +427,19 @@ public sealed partial class Clicker
         _achQueue.Clear();
     }
 
+    /// <summary>
+    /// Ачівки за поріг, який гончар уже переступив, але переходу через нього гра не бачила: пороги знижено (10.10 —
+    /// майстерність, шана сіл і гостей), або лічильник прийшов зі збереження вже за порогом. Кличеться на завантаженні,
+    /// після черги ачівок; видає найближча дія, а вдруге платформа ту саму ачівку не дає.
+    /// </summary>
+    void AchievementsOwed()
+    {
+        if (_firedBy.Values.Any(n => MasteryLevel(n) >= MasteryAt.Length)) Achieve("potter-mastery");
+        if (FairVillages.Any(v => MktLevel(v.Key) >= FairRepTop)) Achieve("potter-rep10");
+        if (_gLevel.Any(l => l >= GuestRepTop)) Achieve(GuestAchMax);
+        if (_treatsSent >= TreatsForAchievement) Achieve("potter-treat");
+    }
+
     // ---------- Око майстра для мінігор ----------
 
     /// <summary>
@@ -492,6 +505,7 @@ public sealed partial class Clicker
         _awayNotes.Clear();
         LadAwayClear();
         _awayPotsFrom = _pots;
+        _shelfAway = 0;
     }
 
     double _awayPotsFrom;
@@ -505,6 +519,14 @@ public sealed partial class Clicker
         _awayCarry = false;
         // Тихі синхронізації почали запис, а гончар повернувся раніше, ніж простій став простоєм, — запису не треба.
         if (gap < AwayFrom) { LadAwayClear(); return; }
+        // Комора під полицею (віхи Ночі) — одним рядком за весь простій, хоч би скільки тихих синхронізацій його різали.
+        // Запис уже закритий (_awayOpen = false вище), тож кладемо прямо першим рядком, а не через AwayNoteFirst.
+        if (_shelfAway >= 1)
+        {
+            _awayNotes.Insert(0, $"🫙 Комора під полицею наловила глеків, що падали без тебе: +{PotsShort(_shelfAway)}");
+            if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
+        }
+        _shelfAway = 0;
         LadAwayFlush(_awayNotes);
         _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom), _awayFormed, [.. _awayNotes]);
     }

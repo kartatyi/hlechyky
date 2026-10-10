@@ -37,7 +37,9 @@ public sealed partial class Clicker
     public const string GiftKey = "v9.2";
     public const int GiftMinutes = 180;
 
-    public const int TenThousand = 10_000, HundredStreak = 100, FlawlessRun = 20;
+    public const int TenThousand = 10_000, HundredStreak = 100;
+    /// <summary>«Бездоганне горно»: стільки бездоганних ручних обпалів за весь час (не поспіль — раніше було 20 поспіль, і не вибив ніхто).</summary>
+    public const int FlawlessKilns = 10;
     public const int SleepyMissed = 300, HooksBroken = 100, CatKnockTimes = 10, OverburnCracks = 25, ApprenticeFired = 1000;
     public const int NicholasGifts = 3, CircleMin = 2;
     /// <summary>«В останню мить»: спіймати розписний глек не раніше, ніж за стільки до втечі.</summary>
@@ -82,7 +84,7 @@ public sealed partial class Clicker
         new("album", "📚", "Повний альбом", "Відкрити всі клітинки альбому", TitleRare),
         new("stars", "🌟", "Зоряний альбом", "Зірка в кожній клітинці альбому", TitleRare),
         new("wonders", "🧿", "Усі дива", "Знайти всі дивовижі", TitleRare),
-        new("flawless", "🏆", "Бездоганне горно", "20 обпалів горна поспіль власноруч — і все дзвінке", TitleRare),
+        new("flawless", "🏆", "Бездоганне горно", "Десять бездоганних обпалів горна власноруч: без тріщин, і щонайменше 40 % — дзвінкі чи розкішні", TitleRare),
         new("suns", "🌞", "Три сонця", "Щасливий клік, коли разом тривають натхнення і ярмарок", TitleRare),
         new("moment", "⏱", "В останню мить", "Спіймати розписний глек за пів секунди до того, як він утече", TitleRare),
         // Таємні: ключі навмисно ні про що не кажуть — каталог їде до кожного клієнта.
@@ -133,7 +135,7 @@ public sealed partial class Clicker
     /// <summary>Обрані значки біля ніка (порожньо — найрідкісніші самі).</summary>
     readonly List<string> _titleShow = [];
     /// <summary>Лічильники, яких гра раніше не вела: рахуються з дня звань.</summary>
-    int _goldenMissed, _brokenBusy, _catKnocks, _cracked, _perfectRun;
+    int _goldenMissed, _brokenBusy, _catKnocks, _cracked, _perfectKilns;
     DateTimeOffset _lastFireAt;
     /// <summary>Від кого приходили дарунки (ключі ніків) — для «Кругової поруки».</summary>
     readonly HashSet<string> _giftFrom = new(StringComparer.Ordinal);
@@ -161,7 +163,7 @@ public sealed partial class Clicker
     {
         _titles.Clear();
         _titleShow.Clear();
-        _goldenMissed = _brokenBusy = _catKnocks = _cracked = _perfectRun = 0;
+        _goldenMissed = _brokenBusy = _catKnocks = _cracked = _perfectKilns = 0;
         _lastFireAt = default;
         _giftFrom.Clear();
         _giftToDay = "";
@@ -281,11 +283,11 @@ public sealed partial class Clicker
         if (lastPrice >= PennyFrom && second > 0 && _pots < second) TitleEarn("x7");
     }
 
-    /// <summary>Горно відкрите: бездоганні ручні обпали поспіль і обпали з тріщинами. Палій (не власноруч) нічого не міняє.</summary>
+    /// <summary>Горно відкрите: бездоганні ручні обпали (за весь час, небездоганний не скидає) і обпали з тріщинами. Палій (не власноруч) нічого не міняє.</summary>
     void TitlesOnKiln(bool manual, bool perfect, bool cracked)
     {
         if (!manual) return;
-        _perfectRun = perfect ? _perfectRun + 1 : 0;
+        if (perfect) _perfectKilns++;
         if (cracked) _cracked++;
     }
 
@@ -322,7 +324,7 @@ public sealed partial class Clicker
         if (AlbumOpenCount(_albumCells) >= AlbumSize) TitleEarn("album");
         if (AlbumStarCount(_albumStars) >= AlbumSize) TitleEarn("stars");
         if (_wonders.Count >= Wonders.Length) TitleEarn("wonders");
-        if (_perfectRun >= FlawlessRun) TitleEarn("flawless");
+        if (_perfectKilns >= FlawlessKilns) TitleEarn("flawless");
         if (_goldenMissed >= SleepyMissed) TitleEarn("x1");
         if (_brokenBusy >= HooksBroken) TitleEarn("x2");
         if (_catKnocks >= CatKnockTimes) TitleEarn("x3");
@@ -429,7 +431,7 @@ public sealed partial class Clicker
             ["album"] = [AlbumOpenCount(_albumCells), AlbumSize],
             ["stars"] = [AlbumStarCount(_albumStars), AlbumSize],
             ["wonders"] = [_wonders.Count, Wonders.Length],
-            ["flawless"] = [Math.Min(_perfectRun, FlawlessRun), FlawlessRun],
+            ["flawless"] = [Math.Min(_perfectKilns, FlawlessKilns), FlawlessKilns],
             ["x1"] = [Math.Min(_goldenMissed, SleepyMissed), SleepyMissed],
             ["x2"] = [Math.Min(_brokenBusy, HooksBroken), HooksBroken],
             ["x3"] = [Math.Min(_catKnocks, CatKnockTimes), CatKnockTimes],
@@ -478,7 +480,7 @@ public sealed partial class Clicker
 
     TitlesRow SaveTitles() => new(
         new Dictionary<string, DateTimeOffset>(_titles, StringComparer.Ordinal), _titleShow.ToList(),
-        _goldenMissed, _brokenBusy, _catKnocks, _cracked, _perfectRun,
+        _goldenMissed, _brokenBusy, _catKnocks, _cracked, _perfectKilns,
         _lastFireAt, _giftFrom.Order(StringComparer.Ordinal).ToList(), _giftToDay, _giftTo.Order(StringComparer.Ordinal).ToList(),
         _tDay, _tDayStart, _tClicks, _tNight, _tCatch, _tRooster,
         _gifts.Order(StringComparer.Ordinal).ToList());
@@ -507,7 +509,8 @@ public sealed partial class Clicker
         _brokenBusy = Math.Max(0, row.BrokenBusy);
         _catKnocks = Math.Max(0, row.CatKnocks);
         _cracked = Math.Max(0, row.Cracked);
-        _perfectRun = Math.Max(0, row.PerfectRun);
+        // Колись тут лежала серія поспіль; тепер — усі бездоганні обпали. Стара серія — чесний початок лічби.
+        _perfectKilns = Math.Max(0, row.PerfectRun);
         _lastFireAt = row.LastFire > now ? now : row.LastFire;
         foreach (var k in row.GiftFrom ?? []) if (k is { Length: > 0 and <= 64 }) _giftFrom.Add(k);
         _giftToDay = row.GiftDay ?? "";

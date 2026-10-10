@@ -550,7 +550,7 @@
     if (k.repEl.parentElement !== slot) slot.appendChild(k.repEl);
     const c = cat(st);
     if (!c) return;
-    const levels = (c && c.levels) || [0, 8, 25, 60, 120, 220, 380, 620, 1000, 1600, 2500];
+    const levels = (c && c.levels) || [0, 8, 25, 60, 120, 220, 380, 500, 640, 790, 950];
     const top = levels.length - 1;
     const giftFrom = m.giftFrom || (c && c.giftFrom) || 6;
     const pay = Math.round(((c && c.payPerLevel) || 0.1) * 100) / 100;

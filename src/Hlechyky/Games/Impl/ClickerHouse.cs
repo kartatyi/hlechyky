@@ -360,9 +360,11 @@ public sealed partial class Clicker
         new("pipe", "Свищик на дві дірки",
             "Ліпив пташку онукові, а вона засвистіла на два голоси: один веселий, другий ніби трохи ображений.",
             ["paint-90", "holiday-guest"]),
+        // Толока й гості (10.10): їхні кидки Wonder("toloka") і Wonder("guests") ні до чого не вели, а сіль, бурштин і
+        // стрічка трималися лише на рідкісних подіях (повна шана, гість на свято, золотий віз) — пізня гра їх не діставала.
         new("salt", "Чумацька сіль у горщику",
             "Чумак розплатився не грішми, а жменею солі. Горщик стоїть на полиці, і сіль у ньому не кінчається — бо її ніхто не чіпає.",
-            ["wagon-gold", "treat"]),
+            ["wagon-gold", "treat", "toloka", "guests"]),
         // Напевно, а не кидком (записка Smaug 27.09: «зібрала зірку, а в дивовижах нема»): зірка падає лише вночі й
         // рідко, а кидок 8 % означав десяток ночей чекання — під силуетом же було написано просто «коли впіймаєш зірку».
         new("sky-stone", "Скалка з неба",
@@ -382,7 +384,7 @@ public sealed partial class Clicker
             ["lord-order", "treat", "wagon-gold"]),
         new("amber", "Бджола в бурштині",
             "Дід казав: то не бурштин, то мед, який забув розтанути. Бджола всередині виглядає цілком згодною.",
-            ["rep-10", "holiday-guest"]),
+            ["rep-10", "holiday-guest", "toloka", "guests"]),
         new("ash", "Хрестик із попелу",
             "Виклався сам собою на черені після доброго обпалу. Змітати не стали — домели навколо.",
             ["fire", "kiln-perfect", "stove-full"]),
@@ -397,7 +399,7 @@ public sealed partial class Clicker
             ["mastery-10", "album-row-stars", "eye"]),
         new("ribbon", "Стрічка з ярмарку",
             "Хтось прив'язав до воза на щастя й не зізнався. Віз відтоді не грузне навіть у найглибшій багнюці.",
-            ["wagon-gold", "treat", "holiday-guest"]),
+            ["wagon-gold", "treat", "holiday-guest", "toloka", "guests"]),
     ];
 
     /// <summary>Звідки дивовижа береться — словами, без чисел: «шанси» гравцеві знати нецікаво, а привід — дуже.</summary>
@@ -419,6 +421,8 @@ public sealed partial class Clicker
         ["rep-10"] = "за повну шану села",
         ["wagon-gold"] = "за щедрий віз від цеху",
         ["treat"] = "коли пошлеш гостинець другові",
+        ["toloka"] = "коли толока докінчить етап будови",
+        ["guests"] = "коли на двір прибуде новий гість",
     };
 
     /// <summary>Знайдені дивовижі й коли саме: час потрібен клієнтові, щоб показати картку з байкою один раз.</summary>
@@ -491,6 +495,8 @@ public sealed partial class Clicker
     public const double StyleOrderSeconds = 180, StyleOrderPay = 1.6;
     /// <summary>Скільки пасиву купець просить у дорогу: від двох до десяти хвилин.</summary>
     public const double InvestMinSeconds = 120, InvestMaxSeconds = 600;
+    /// <summary>Те саме в хвилинах гри (<see cref="PlayMinute"/>, 10.10) — купець бере більше з двох.</summary>
+    public const double InvestPlayMin = 0.5, InvestPlayMax = 2, StylePlay = 1.5;
 
     static readonly string[] Merchants =
     [
@@ -511,6 +517,7 @@ public sealed partial class Clicker
         _board.Clear();
         _boardUntil = now + BoardEvery;
         var passive = PassiveBase;
+        var play = PlayMinute;
         var styles = _styles.Order(StringComparer.Ordinal).ToList();
         var size = BoardSizeNow;
         for (var i = 0; i < size; i++)
@@ -519,13 +526,15 @@ public sealed partial class Clicker
             if (i == size - 1 && styles.Count > 0)
             {
                 var style = styles[Ctx.Rng.Next(styles.Count)];
-                var need = Nice(Math.Max(200, passive * StyleOrderSeconds));
+                var need = Nice(Math.Max(Math.Max(200, passive * StyleOrderSeconds), play * StylePlay));
                 _board.Add(new(++_orderId, "style", merchant, need, ToPots(need * StyleOrderPay), 0, style, _boardUntil));
                 continue;
             }
             var minutes = OrderMinutes[Ctx.Rng.Next(OrderMinutes.Length)];
             var seconds = InvestMinSeconds + Ctx.Rng.NextDouble() * (InvestMaxSeconds - InvestMinSeconds);
-            var ask = Nice(Math.Max(100 + Ctx.Rng.Next(0, 300), passive * seconds));
+            // 10.10: щонайменше пів хвилини — дві хвилини гри: десять хвилин пасиву в пізній грі — менше за клік.
+            var ask = Nice(Math.Max(Math.Max(100 + Ctx.Rng.Next(0, 300), passive * seconds),
+                play * (InvestPlayMin + (seconds - InvestMinSeconds) / (InvestMaxSeconds - InvestMinSeconds) * (InvestPlayMax - InvestPlayMin))));
             _board.Add(new(++_orderId, "invest", merchant, ask, ToPots(ask * (InvestBase + minutes / 30.0 * InvestPerHalfHour)), minutes, "", _boardUntil));
         }
     }

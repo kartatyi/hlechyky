@@ -349,8 +349,9 @@ public sealed partial class Clicker
     }
 
     /// <summary>Скільки глеків несе гостинець на стільки хвилин: свій пасив, а на голому колі — дно з кліків.</summary>
+    /// <remarks>10.10: хвилина гостинця — щонайменше 1/<see cref="FairPlayQuarter"/> хвилини гри: пасив у пізній грі нічого не важить.</remarks>
     double TreatGain(double minutes) =>
-        ToPots(Math.Max(PassiveBase * minutes * 60, ClickBase * minutes * WagonClicksPerMinute));
+        ToPots(Math.Max(Math.Max(PassiveBase * minutes * 60, ClickBase * minutes * WagonClicksPerMinute), PlayMinute * minutes / FairPlayQuarter));
 
     // ---------- дія guild { op, … } ----------
 
@@ -505,7 +506,8 @@ public sealed partial class Clicker
         if (minutes <= 0) return 0;
         var byPassive = PassiveBase * minutes * 60;
         var floor = ClickBase * minutes * WagonClicksPerMinute;
-        return ToPots(Math.Max(byPassive, floor));
+        // 10.10: віз з'їдав вироби дорожче, ніж привозив, — хвилина воза тепер щонайменше чверть хвилини гри.
+        return ToPots(Math.Max(Math.Max(byPassive, floor), PlayMinute * minutes / FairPlayQuarter));
     }
 
     ActResult GuildClaim(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)
@@ -556,8 +558,9 @@ public sealed partial class Clicker
         var to = Str(payload, "to").Trim();
         if (svc.Boost(GuildKey, GuildNick, to, "treat", minutes, now) is { } why) return ActResult.Fail(why);
         _pots -= cost;
-        _treatsSent++;
-        if (_treatsSent == TreatsForAchievement) Achieve("potter-treat");
+        // Лічильник гостинців обпал не чіпає (FireGuild порожній) — ачівка на переході через поріг, а не на рівності.
+        var treatsBefore = _treatsSent++;
+        if (treatsBefore < TreatsForAchievement && _treatsSent >= TreatsForAchievement) Achieve("potter-treat");
         Wonder("treat");
         return ActResult.Accept($"🎁 Гостинець для {to}: −{PotsShort(cost)} у тебе, "
             + $"{minutes * ClickerGuildService.TreatBack} хв його власного пасиву — йому");
