@@ -668,6 +668,7 @@ public sealed class Db
     {
         var dj = djNames.Select(Auth.NickKey).Where(k => k.Length > 0).ToHashSet();
         using var c = Open();
+        var bots = Bots.Load(c);   // «Хто скільки» — про людей (записка #31)
         // За період — лише проміжок часу (без INDEXED BY планувальник іде індексом ніків через усю таблицю, аби не
         // сортувати: місяць рахувався б у п'ятнадцять разів довше); за весь час — самим покривним індексом ніків.
         using var cmd = since > DateTimeOffset.MinValue
@@ -693,7 +694,7 @@ public sealed class Db
                 djCount += count;
                 continue;
             }
-            if (by is null) continue;   // людське замовлення без імені — нема кому записати
+            if (by is null || bots.Has(by)) continue;   // людське замовлення без імені — нема кому записати; бот — не людина
             var key = Auth.NickKey(by);
             people[key] = people.TryGetValue(key, out var was)
                 ? (last > was.Last ? by : was.Nick, was.Count + count, Math.Max(last, was.Last))

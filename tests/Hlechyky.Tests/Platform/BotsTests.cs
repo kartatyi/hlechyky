@@ -121,6 +121,18 @@ public class BotsTests
         Assert.Equal(["Оля"], NicksOf(people));
     }
 
+    [Fact]
+    public void Music_top_has_no_bots()
+    {
+        using var rig = new Rig();
+        Track(rig.Db, "t1");
+        Play(rig.Db, "t1", "user", Agent, Now.AddHours(-1));
+        Play(rig.Db, "t1", "user", Agent, Now.AddHours(-2));
+        Play(rig.Db, "t1", "user", "Оля", Now.AddHours(-3));
+        var (people, _) = rig.Db.TopRequesters(DateTimeOffset.MinValue, []);
+        Assert.Equal(["Оля"], people.Select(p => p.Nick));
+    }
+
     // ---------- «Хто скільки» v3 ----------
 
     [Fact]
