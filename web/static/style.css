@@ -1209,7 +1209,8 @@ kbd {
 .lbt .who { text-align: left; width: 100%; max-width: 0; }
 .lbt td.who .glb-who { display: flex; max-width: 100%; }
 .lbt td.main { color: var(--accent); font-weight: 700; }
-.lbt th.srt { cursor: pointer; user-select: none; }
+/* заголовки, що сортують (черепки): довгий «зароблено за весь час» переноситься, щоб на телефоні таблиця влазила */
+.lbt th.srt { cursor: pointer; user-select: none; white-space: normal; vertical-align: bottom; line-height: 1.25; }
 .lbt th.srt:hover, .lbt th.srt:focus-visible { color: var(--text); }
 .lbt th.srt.main { color: var(--accent); cursor: default; }
 .lbt tr.top1 td { background: linear-gradient(90deg, rgba(244, 197, 66, .16), rgba(244, 197, 66, .03)), var(--panel2); }
