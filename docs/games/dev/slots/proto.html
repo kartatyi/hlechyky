@@ -48,8 +48,9 @@
 <script src="../../../../web/games/slots/kit.js"></script>
 <script>
 (function () {
-  const IDS = ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'];
-  const NAMES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті' };
+  const IDS = ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'];
+  const NAMES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті', 'slot-slidy': 'Сліди на полиці' };
+  const DEPS = { 'slot-slidy': ['slot-cascade-art'] };   // посуд «Слідів» — з арту «Розбитих глеків» (як у web/games/slot.js)
   const SIZES = { fhd: ['Full HD', 1500, 900], laptop: ['ноут', 950, 620], phone: ['телефон', 360, 740] };
   const q = new URLSearchParams(location.search);
   let cur = IDS.includes(q.get('m')) ? q.get('m') : IDS[0];
@@ -65,6 +66,7 @@
   async function ensure(id) {
     if (loaded[id]) return loaded[id];
     loaded[id] = (async () => {
+      for (const d of DEPS[id] || []) { loadCss(d + '.css'); await loadJs(d + '.js'); }
       loadCss(id + '-art.css');
       await loadJs(id + '-art.js');
       const ok = await loadJs(id + '.js');

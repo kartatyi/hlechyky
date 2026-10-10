@@ -1,0 +1,130 @@
+/* Сліди на полиці — сцена автомата: полиця 6×6 у рамці, сліди під посудом і значки ×N поверх, бокові таблички,
+   «купити бонус». Палітра — --sc-* з арту «Розбитих глеків». Спокій — без анімацій.
+   Кнопки: на телефоні (420 px дизайну → ~375 px екрана, масштаб 0,6–0,7) — не нижчі за 66 px дизайну (≥ 40 px). */
+.slot-slot-slidy .sl-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.slot-slot-slidy .sl-land { gap: 20px; }
+.slot-slot-slidy .sl-port { flex-direction: column; justify-content: flex-start; gap: 6px; padding-top: 2px; }
+
+/* ----- полиця ----- */
+.slot-slot-slidy .sl-frame-box { position: relative; flex: none; }
+.slot-slot-slidy .sl-frame-in { position: absolute; left: 0; top: 0; width: 600px; height: 600px; transform-origin: 0 0; }
+.slot-slot-slidy .sl-frame-bg, .slot-slot-slidy .sl-frame-bg > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.slot-slot-slidy .sl-frame-ph { border-radius: 16px; border: 4px solid var(--sc-ink); background: linear-gradient(180deg, #5a3018, #3a1c0c); }
+.slot-slot-slidy .sl-field { position: absolute; left: 18px; top: 30px; width: 564px; height: 564px; }
+.slot-slot-slidy .sl-traces, .slot-slot-slidy .sl-badges, .slot-slot-slidy .sl-gridhost { position: absolute; inset: 0; }
+.slot-slot-slidy .sl-traces, .slot-slot-slidy .sl-badges { pointer-events: none; }
+.slot-slot-slidy .sl-badges { z-index: 5; }
+.slot-slot-slidy .sl-tr { position: absolute; display: flex; align-items: center; justify-content: center; }
+.slot-slot-slidy .sl-tr > svg { width: 94%; height: 94%; margin-top: 4%; }
+.slot-slot-slidy .sl-field .sk-grid { overflow: visible; }
+.slot-slot-slidy .sl-field .sk-cell { overflow: visible; }
+.slot-slot-slidy .sl-field .sk-cell > svg { width: 82%; height: 82%; margin-top: -6%; }
+.slot-slot-slidy .sl-field .sk-col { border-radius: 4px; }
+.slot-slot-slidy .sl-tease .sl-frame-box { animation: sl-shelf .55s ease-in-out infinite alternate; }
+@keyframes sl-shelf { from { transform: none; } to { transform: translateY(-2px) rotate(-.25deg); } }
+
+/* значок ×N у куті клітинки — поверх посуду */
+.slot-slot-slidy .sl-bd { position: absolute; display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 4px 6px 0; box-sizing: border-box;
+  font: 900 24px/1 'Onest', system-ui, sans-serif; color: #fff; -webkit-text-stroke: 4px var(--sc-ink); paint-order: stroke fill; }
+.slot-slot-slidy .sl-bd:empty { display: none; }
+.slot-slot-slidy .sl-bd[data-v="2"] { color: #f2d2b0; }
+.slot-slot-slidy .sl-bd[data-v="4"] { color: #ffc49a; }
+.slot-slot-slidy .sl-bd[data-v="8"] { color: #ffb070; }
+.slot-slot-slidy .sl-bd[data-v="16"] { color: #ffd27a; }
+.slot-slot-slidy .sl-bd[data-v="32"], .slot-slot-slidy .sl-bd[data-v="64"] { color: #ffe066; font-size: 27px; }
+.slot-slot-slidy .sl-bd[data-v="128"] { color: #fff6b0; font-size: 28px; text-shadow: 0 0 10px #ffd23a; }
+.slot-slot-slidy .sl-bd.stamp { animation: sl-stamp .42s cubic-bezier(.3, 1.7, .5, 1); }
+.slot-slot-slidy .sl-bd.hot { animation: sl-hot .5s ease-in-out infinite alternate; }
+
+/* тріск */
+.slot-slot-slidy .sk-cell.sl-cracking > svg { animation: sl-shake .22s linear forwards; }
+@keyframes sl-shake { 0% { transform: none; } 25% { transform: translate(-3px, 1px) rotate(-5deg); } 50% { transform: translate(3px, -1px) rotate(5deg); }
+  75% { transform: translate(-2px, 0) rotate(-3deg); } 100% { transform: scale(1.1); } }
+.slot-slot-slidy .sk-cell.sl-gone > * { visibility: hidden; }
+
+/* «×M» над кластером */
+.slot-slot-slidy .sl-xpop { position: absolute; z-index: 26; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap;
+  font: 900 56px/1 'Onest', system-ui, sans-serif; color: #fff; -webkit-text-stroke: 3px var(--sc-ink); paint-order: stroke fill;
+  text-shadow: 0 4px 0 #6b2a0c, 0 0 24px rgba(255, 200, 80, .7); animation: sl-xpop 1.9s ease-out forwards; }
+.slot-slot-slidy .sl-xpop.gold { color: #fff3a0; text-shadow: 0 4px 0 #6b2a0c, 0 0 30px #ffd23a; }
+@keyframes sl-xpop { 0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  75% { transform: translate(-50%, -70%) scale(1); opacity: 1; } 100% { transform: translate(-50%, -110%) scale(.9); opacity: 0; } }
+
+/* ----- бокові колонки (широко) ----- */
+.slot-slot-slidy .sl-side { width: 300px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.slot-slot-slidy .sl-logo { width: 100%; }
+.slot-slot-slidy .sl-logo > svg { width: 100%; height: auto; display: block; }
+.slot-slot-slidy .sl-hints { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.slot-slot-slidy .sl-hint { display: flex; align-items: center; gap: 10px; padding: 7px 12px; min-height: 48px; box-sizing: border-box;
+  border-radius: 14px; background: rgba(42, 18, 10, .66); border: 2px solid rgba(232, 180, 122, .45); color: var(--sc-cream);
+  font: 600 15px/1.25 'Onest', system-ui, sans-serif; }
+.slot-slot-slidy .sl-hint b { color: var(--sc-text); }
+.slot-slot-slidy .sl-hint-n { flex: none; width: 44px; text-align: center; font: 900 26px/1 'Onest', sans-serif; color: var(--sc-text);
+  -webkit-text-stroke: 1.5px var(--sc-ink); paint-order: stroke fill; }
+.slot-slot-slidy .sl-hint-i { position: relative; flex: none; width: 44px; height: 44px; }
+.slot-slot-slidy .sl-hint-i > svg { width: 100%; height: 100%; display: block; }
+
+/* драбинка слідів */
+.slot-slot-slidy .sl-ladbox { width: 100%; box-sizing: border-box; padding: 10px 12px 12px; border-radius: 16px; text-align: center;
+  background: rgba(42, 18, 10, .66); border: 2px solid rgba(232, 180, 122, .45); color: var(--sc-cream); font: 700 15px/1.2 'Onest', sans-serif; }
+.slot-slot-slidy .sl-lad-t { color: var(--sc-text); margin-bottom: 6px; font-weight: 800; }
+.slot-slot-slidy .sl-lad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.slot-slot-slidy .sl-lad i { display: block; aspect-ratio: 1; opacity: .38; filter: grayscale(.7); transition: opacity .3s, filter .3s; }
+.slot-slot-slidy .sl-lad i.on { opacity: 1; filter: none; }
+.slot-slot-slidy .sl-lad i > svg { width: 100%; height: 100%; display: block; }
+.slot-slot-slidy .sl-lad-s { margin-top: 6px; font-weight: 600; font-size: 13px; }
+.slot-slot-slidy .sl-l-fs { display: none; color: var(--sc-text); }
+.slot-slot-slidy.sk-infs .sl-l-fs { display: inline; }
+.slot-slot-slidy.sk-infs .sl-l-base { display: none; }
+
+/* табло: найбільший слід і каскад */
+.slot-slot-slidy .sl-top, .slot-slot-slidy .sl-casc { display: flex; align-items: baseline; justify-content: center; gap: 10px; padding: 8px 18px 10px;
+  border-radius: 16px; background: linear-gradient(180deg, var(--sc-wood-l), var(--sc-wood) 45%, var(--sc-wood-d)); border: 3px solid var(--sc-ink);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4), inset 0 -4px 0 rgba(0, 0, 0, .25), 0 6px 14px rgba(0, 0, 0, .35);
+  color: var(--sc-cream); font: 800 17px/1 'Onest', system-ui, sans-serif; min-width: 200px; box-sizing: border-box; }
+.slot-slot-slidy .sl-top small, .slot-slot-slidy .sl-casc small { font: inherit; text-shadow: 0 1px 0 var(--sc-ink); }
+.slot-slot-slidy .sl-top b, .slot-slot-slidy .sl-casc b { font: 900 34px/1 'Onest', sans-serif; color: var(--sc-text); -webkit-text-stroke: 2px var(--sc-ink); paint-order: stroke fill; }
+.slot-slot-slidy .sl-casc:not(.on) b { opacity: .45; }
+.slot-slot-slidy .sl-casc.hot { background: linear-gradient(180deg, #ffd27a, #e07a2a 45%, #8a2e10); }
+
+/* купити бонус */
+.slot-slot-slidy .sl-buy { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 220px; min-height: 90px;
+  padding: 8px 18px; border-radius: 18px; border: 3px solid var(--sc-ink); cursor: pointer; color: #3a1206;
+  background: linear-gradient(180deg, #fff3a0, #f9c73a 45%, #c8741a); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .6), 0 6px 14px rgba(0, 0, 0, .35);
+  font: 900 20px/1 'Onest', system-ui, sans-serif; text-transform: uppercase; }
+.slot-slot-slidy .sl-buy b { font: 900 22px/1 'Onest', sans-serif; text-transform: none; }
+.slot-slot-slidy .sl-buy[hidden] { display: none; }
+.slot-slot-slidy .sl-buy:disabled { filter: grayscale(.7) brightness(.8); cursor: default; }
+
+/* ----- телефон ----- */
+.slot-slot-slidy .sl-prow { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; box-sizing: border-box; padding: 0 6px; }
+.slot-slot-slidy .sl-port .sl-logo { width: 200px; flex: none; }
+.slot-slot-slidy .sl-pinfo { display: flex; flex-direction: column; gap: 6px; }
+.slot-slot-slidy .sl-port .sl-top, .slot-slot-slidy .sl-port .sl-casc { min-width: 180px; padding: 4px 10px 6px; font-size: 14px; }
+.slot-slot-slidy .sl-port .sl-top b, .slot-slot-slidy .sl-port .sl-casc b { font-size: 26px; }
+.slot-slot-slidy .sl-pbot { gap: 12px; }
+.slot-slot-slidy .sl-port .sl-lad { width: 176px; }
+.slot-slot-slidy .sl-port .sl-buy { min-width: 0; flex: 1; max-width: 210px; min-height: 76px; font-size: 17px; }
+.slot-slot-slidy .sl-port .sl-buy b { font-size: 20px; }
+
+/* ----- спитати про купівлю ----- */
+.slot-slot-slidy .sk-ov.sl-ask { background: rgba(10, 4, 2, .72); display: flex; align-items: center; justify-content: center; }
+.slot-slot-slidy .sl-ask-c { text-align: center; padding: 24px 30px 26px; border-radius: 26px; max-width: 86%; box-sizing: border-box;
+  background: radial-gradient(circle at 50% 0%, #7a3414, #3a160a 70%); border: 3px solid #ffb347; color: var(--sc-cream);
+  box-shadow: 0 0 0 6px rgba(42, 18, 10, .7), 0 22px 60px rgba(0, 0, 0, .6); }
+.slot-slot-slidy .sl-ask-t { font: 900 34px/1.1 'Onest', system-ui, sans-serif; color: var(--sc-text); -webkit-text-stroke: 2px var(--sc-ink); paint-order: stroke fill; }
+.slot-slot-slidy .sl-ask-s { margin-top: 10px; font: 600 17px/1.3 'Onest', sans-serif; }
+.slot-slot-slidy .sl-ask-p { margin-top: 12px; font: 900 40px/1 'Onest', sans-serif; color: #fff; }
+.slot-slot-slidy .sl-ask-p small { font-size: 16px; color: #ffd9a8; font-weight: 700; }
+.slot-slot-slidy .sl-ask-b { display: flex; gap: 14px; justify-content: center; margin-top: 18px; }
+.slot-slot-slidy .sl-ask-b button { min-width: 140px; min-height: 76px; border-radius: 16px; border: 3px solid var(--sc-ink); cursor: pointer;
+  font: 900 24px/1 'Onest', system-ui, sans-serif; }
+.slot-slot-slidy .sl-ask-yes { background: linear-gradient(180deg, #fff3a0, #f9c73a 45%, #c8741a); color: #3a1206; }
+.slot-slot-slidy .sl-ask-no { background: linear-gradient(180deg, #e8b47a, #b8763c 50%, #6e3a18); color: var(--sc-cream); }
+
+/* вільні оберти: полиця теплішає; заноси */
+.slot-slot-slidy.sk-infs .sl-frame-box::before { content: ''; position: absolute; inset: -6px; border-radius: 24px; pointer-events: none;
+  box-shadow: 0 0 36px 8px rgba(255, 130, 40, .35); }
+.slot-slot-slidy .sk-cell.sl-wait::before { content: ''; position: absolute; inset: -8%; z-index: -1; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 170, 60, .75), rgba(255, 110, 30, .3) 45%, transparent 70%); animation: sl-glow .45s ease-in-out infinite alternate; }
+@keyframes sl-glow { from { opacity: .55; } to { opacity: 1; } }

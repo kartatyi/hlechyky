@@ -134,7 +134,7 @@
         'tyr-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
-      { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster'] },
+      { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'] },
       { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo'] },
       { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },   // не гра: плитку «Ставки на події» ставить панель web/bets.js (tile)
       { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka'] },
@@ -1797,6 +1797,7 @@
     'slot-cascade': { mech: 'від 8 однакових · каскади · писанки-множники', vol: 3 },
     'slot-hold': { mech: '20 ліній · утримуй і вигравай · 4 скарби', vol: 3 },
     'slot-cluster': { mech: 'поле 7×7 · кластери від 5 · шкала папороті', vol: 2 },
+    'slot-slidy': { mech: 'полиця 6×6 · кластери від 5 · сліди ×2…×128', vol: 3 },
   };
   const VOL = ['', 'низька', 'середня', 'висока'];
   function posterHtml(e) {
@@ -1813,7 +1814,7 @@
   }
   let azFeed = null, azAt = 0, azShown = null, azT = 0, azN = 0;
   const azFmt = (n) => Math.round(n || 0).toLocaleString('uk-UA').replace(/,/g, ' ');
-  const AZ_TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті' };
+  const AZ_TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті', 'slot-slidy': 'Сліди на полиці' };
   function azWinsHtml() {
     const w = (azFeed && azFeed.wins) || [];
     if (!w.length) return '<div class="muted small gaz-empty">Цього тижня ще ніхто не заносив. Може, ти перший?</div>';
