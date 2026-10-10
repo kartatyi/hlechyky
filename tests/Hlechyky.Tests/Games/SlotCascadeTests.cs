@@ -35,6 +35,9 @@ public sealed class CascadeRng : ISlotRng
         return this;
     }
 
+    /// <summary>Сире число для NextDouble (напр. вибір символу гончаря за його вагами).</summary>
+    public CascadeRng Raw(double x) { _q.Enqueue(x); return this; }
+
     /// <summary>Ціле поле (30 клітинок по колонках) — для вільного оберту.</summary>
     public CascadeRng Field(bool free, string[][] g) => Keys(free, [.. g.SelectMany(c => c)]);
 
@@ -70,7 +73,8 @@ public class SlotCascadeTests(ITestOutputHelper output)
     [InlineData("glek", 12, 500)]
     [InlineData("glek", 20, 500)]
     [InlineData("k1", 8, 3)]
-    [InlineData("k4", 10, 15)]
+    [InlineData("k4", 10, 12)]
+    [InlineData("k3", 9, 5)]
     [InlineData("kumanets", 12, 250)]
     public void Pays_eight_or_more_anywhere_by_tier(string sym, int n, long expected)
     {
@@ -108,7 +112,7 @@ public class SlotCascadeTests(ITestOutputHelper output)
         Assert.Equal(1, (int)s[2]["n"]!);
         Assert.Equal(2, (int)s[4]["n"]!);
         Assert.Equal("k1", (string)s[3]["items"]![0]!["sym"]!);
-        Assert.Equal(10 + 3, o.Win);
+        Assert.Equal(8 + 3, o.Win);
 
         // падіння: у кожній колонці ті, що лишились (у тому ж порядку), — знизу, нові — згори
         var removed = s[2]["remove"]!.AsArray().Select(p => (c: (int)p![0]!, r: (int)p![1]!)).ToHashSet();
@@ -157,7 +161,7 @@ public class SlotCascadeTests(ITestOutputHelper output)
     public void Furnaces_open_the_bonus_where_eggs_add_up_for_the_whole_round_and_three_retrigger()
     {
         var rng = new CascadeRng();
-        // вільний 1: 8 k1 і ×5 → acc 5; вільний 2: 8 k2 і ×3 → acc 8, виграш × 8; вільний 3: 8 k3 без писанок → без множника,
+        // вільний 1: 8 k1 і ×5 → acc 5; вільний 2: 8 k2 і ×3 → acc 8, виграш × 8; вільний 3: 8 k3 (0,5) без писанок → без множника,
         // і 3 горна → ще 5 обертів. Після кожного виграшу 8 нових клітинок — з черги (наповнювач без виграшу).
         string[] refill = ["bowl", "pot", "makitra", "kumanets", "glek", "bowl", "pot", "makitra"];
         rng.Field(true, Grid(("x5", 1), ("k1", 8))).Keys(true, refill);
@@ -187,7 +191,7 @@ public class SlotCascadeTests(ITestOutputHelper output)
 
         var outStep = s.Last();
         Assert.Equal("bonusOut", T(outStep));
-        long fsWin = 3 * 5 + 4 * 8 + 6;              // k1 3×5, k2 4×8, k3 6 без множника
+        long fsWin = 3 * 5 + 4 * 8 + 5;              // k1 3×5, k2 4×8, k3 5 без множника
         Assert.Equal(fsWin, L(outStep["total"]));
         Assert.Equal(15, (int)outStep["spins"]!);
         Assert.Equal(8, (int)outStep["acc"]!);
@@ -272,13 +276,20 @@ public class SlotCascadeTests(ITestOutputHelper output)
         Assert.Equal(Run(5), Run(5));
         Assert.NotEqual(Run(5), Run(6));
 
-        // запис сценарію й швидкий прохід тягнуть ті самі числа
+        // запис сценарію й швидкий прохід тягнуть ті самі числа — і з гончарем (він бере rng так само)
         var a = new SeededSlotRng(new Random(9));
         var b = new SeededSlotRng(new Random(9));
-        for (var i = 0; i < 3000; i++) Assert.Equal(m.Spin(10, a, new JsonObject()).Win, m.Fast(10, b));
+        var potter = 0;
+        for (var i = 0; i < 3000; i++)
+        {
+            var o = m.Spin(10, a, new JsonObject());
+            if (Steps(o).Any(x => T(x) == "morph")) potter++;
+            Assert.Equal(o.Win, m.Fast(10, b));
+        }
+        Assert.True(potter > 50, $"гончар {potter}");
     }
 
-    static readonly HashSet<string> StepTypes = ["spin", "win", "cascade", "mult", "furn", "bonusIn", "fs", "bonusOut", "banner"];
+    static readonly HashSet<string> StepTypes = ["spin", "morph", "win", "cascade", "mult", "furn", "bonusIn", "fs", "bonusOut", "banner"];
 
     [Fact]
     public void Script_has_the_mock_shape_and_its_money_adds_up()
@@ -318,9 +329,180 @@ public class SlotCascadeTests(ITestOutputHelper output)
                 Assert.Equal(fs, L(s[^1]["total"]));
             }
             mults += s.Count(x => T(x) == "mult");
+            Replay(s);
         }
         Assert.True(bonuses > 10, $"бонусів {bonuses}");
         Assert.True(mults > 10, $"писанок {mults}");
+    }
+
+    // ---------------------------------------------------------------- «Гончар доліпив»
+
+    static string[][] G(JsonNode? grid) => [.. grid!.AsArray().Select(c => c!.AsArray().Select(x => (string)x!).ToArray())];
+    static int CountOf(string[][] g, string k) => g.Sum(col => col.Count(x => x == k));
+    static HashSet<(int, int)> Where(string[][] g, Func<string, bool> f) =>
+        [.. Enumerable.Range(0, M.Cols).SelectMany(c => Enumerable.Range(0, M.Rows).Where(r => f(g[c][r])).Select(r => (c, r)))];
+    static HashSet<(int, int)> Pairs(JsonNode? cells) => [.. cells!.AsArray().Select(p => ((int)p![0]!, (int)p[1]!))];
+
+    static void Calm(string[][] g) => Assert.All(M.Paying, k => Assert.True(CountOf(g, k) < M.MinCount, $"{k} {CountOf(g, k)}"));
+
+    /// <summary>
+    /// Програє базову частину сценарію, як клієнт: поле spin → morph → win/cascade… → mult → furn, і звіряє кожен крок із
+    /// полем на руках (виграш — рівно групи 8+ на ньому, падіння — по колонках, писанки й горна — ті, що лежать).
+    /// </summary>
+    static void Replay(List<JsonObject> s)
+    {
+        var g = G(s[0]["grid"]);
+        HashSet<(int, int)>? won = null;
+        var calm = false;
+        void SettleOnce() { if (!calm) { Calm(g); calm = true; } }
+        for (var i = 1; i < s.Count; i++)
+        {
+            var x = s[i];
+            switch (T(x))
+            {
+                case "morph":
+                    Assert.Equal(1, i);
+                    Assert.Equal("potter", (string)x["why"]!);
+                    var key = (string)x["cells"]![0]![2]!;
+                    Assert.True(CountOf(g, key) < M.MinCount);
+                    foreach (var c in x["cells"]!.AsArray())
+                    {
+                        int cc = (int)c![0]!, r = (int)c[1]!;
+                        Assert.Equal(key, (string)c[2]!);
+                        Assert.Contains(g[cc][r], M.Paying);   // горна й писанки гончар не чіпає
+                        Assert.NotEqual(key, g[cc][r]);
+                        g[cc][r] = key;
+                    }
+                    Assert.Equal(M.MinCount, CountOf(g, key));
+                    break;
+                case "win":
+                    won = [];
+                    var paid = new HashSet<string>();
+                    foreach (var it in x["items"]!.AsArray())
+                    {
+                        var sym = (string)it!["sym"]!;
+                        var on = Where(g, k => k == sym);
+                        Assert.True(on.SetEquals(Pairs(it["cells"])), $"клітинки {sym}");
+                        Assert.Equal(on.Count, (int)it["n"]!);
+                        Assert.True(on.Count >= M.MinCount);
+                        won.UnionWith(on);
+                        paid.Add(sym);
+                    }
+                    Assert.All(M.Paying.Where(k => !paid.Contains(k)), k => Assert.True(CountOf(g, k) < M.MinCount));
+                    break;
+                case "cascade":
+                    var rem = Pairs(x["remove"]);
+                    Assert.True(won!.SetEquals(rem));
+                    var next = G(x["grid"]);
+                    for (var c = 0; c < M.Cols; c++)
+                    {
+                        var keep = Enumerable.Range(0, M.Rows).Where(r => !rem.Contains((c, r))).Select(r => g[c][r]).ToList();
+                        Assert.Equal(keep, next[c].Skip(M.Rows - keep.Count));
+                    }
+                    g = next;
+                    won = null;
+                    break;
+                case "mult":
+                    SettleOnce();
+                    var eggs = Where(g, k => k[0] == 'x');
+                    Assert.True(eggs.SetEquals(Pairs(x["cells"])));
+                    Assert.All(x["cells"]!.AsArray(), c => Assert.Equal("x" + (int)c![2]!, g[(int)c[0]!][(int)c[1]!]));
+                    break;
+                case "furn":
+                    SettleOnce();
+                    Assert.True(Where(g, k => k == M.Furnace).SetEquals(Pairs(x["cells"])));
+                    return;   // далі — бонус (свої поля)
+                default:
+                    SettleOnce();
+                    return;
+            }
+        }
+        SettleOnce();
+    }
+
+    [Fact]
+    public void Potter_shapes_exactly_eight_from_crockery_on_a_dead_first_drop()
+    {
+        // поле без виграшу: ×10, 2 горна, 5 k1, решта — наповнювач; гончар (напевно), символ за вагами: 0,1 × 120 = 12 → k1
+        var first = Grid(("x10", 1), ("furnace", 2), ("k1", 5));
+        var o = new M().ScriptFor(first, 10, new CascadeRng().Raw(0.1), potter: true);
+        var s = Steps(o);
+        Assert.Equal(["spin", "morph", "win", "cascade", "mult"], s.Select(T));
+        // Next(n) підставного rng = 0 → перші три клітинки посуду, що не k1 (писанку й горна оминає): (1,3), (1,4), (2,0)
+        Assert.Equal(["1,3,k1", "1,4,k1", "2,0,k1"], s[1]["cells"]!.AsArray().Select(c => $"{(int)c![0]!},{(int)c[1]!},{(string)c[2]!}"));
+        var item = s[2]["items"]!.AsArray().Single()!;
+        Assert.Equal(("k1", 8), ((string)item["sym"]!, (int)item["n"]!));
+        Assert.Equal(3, L(item["amount"]));
+        Assert.Equal(10, (int)s[4]["to"]!);       // писанка лишилась і множить виграш гончаря
+        Assert.Equal(30, o.Win);
+        Assert.Equal("k1", (string)o.Script["meta"]!["potter"]!);
+        Assert.Equal("x10", G(s[0]["grid"])[0][0]);
+        Assert.Equal(["furnace", "furnace"], G(s[0]["grid"])[0][1..3]);
+        Replay(s);
+
+        // поле з виграшем — гончар не потрібен навіть «напевно»
+        var won = new M().ScriptFor(Grid(("glek", 8)), 10, new CascadeRng(), potter: true);
+        Assert.DoesNotContain(Steps(won), x => T(x) == "morph");
+        Assert.Null(won.Script["meta"]!["potter"]);
+    }
+
+    [Fact]
+    public void Potter_comes_only_on_the_first_base_drop_without_a_win_with_its_chance()
+    {
+        var m = new M();
+        var rng = new SeededSlotRng(new Random(21));
+        int dead = 0, potter = 0, small = 0, bonusPotter = 0;
+        for (var i = 0; i < 20_000; i++)
+        {
+            var o = m.Spin(10, rng, new JsonObject());
+            var s = Steps(o);
+            var first = G(s[0]["grid"]);
+            var deadFirst = M.Paying.All(k => CountOf(first, k) < M.MinCount);
+            if (deadFirst) dead++;
+            var at = s.Select((x, j) => (x, j)).Where(p => T(p.x) == "morph").Select(p => p.j).ToList();
+            Replay(s);
+            if (at.Count == 0) { Assert.Null(o.Script["meta"]!["potter"]); continue; }
+            Assert.Equal([1], at);                    // один раз, одразу після першого падіння, ніколи у вільних
+            Assert.True(deadFirst);
+            Assert.Equal("win", T(s[2]));
+            var key = (string)o.Script["meta"]!["potter"]!;
+            var g = G(s[0]["grid"]);
+            var eggsAndFurn = Where(g, k => !M.Paying.Contains(k));
+            foreach (var c in s[1]["cells"]!.AsArray()) g[(int)c![0]!][(int)c[1]!] = (string)c[2]!;
+            Assert.True(eggsAndFurn.SetEquals(Where(g, k => !M.Paying.Contains(k))));   // писанки й горна — ті самі
+            var item = s[2]["items"]!.AsArray().Single()!;     // платить саме доліплена вісімка, і лише вона
+            Assert.Equal((key, 8), ((string)item["sym"]!, (int)item["n"]!));
+            potter++;
+            if (key is "k1" or "k2" or "k3" or "k4") small++;
+            if ((bool)o.Script["meta"]!["bonus"]!) bonusPotter++;
+        }
+        var rate = (double)potter / dead;
+        output.WriteLine($"мертве перше падіння {dead} з 20 тис., гончар {potter} ({rate:P2} від мертвих, {potter / 200.0:F2} % обертів), черепки {small}, з бонусом {bonusPotter}");
+        // σ частки ≈ √(0,09 × 0,91 / 12 800) ≈ 0,25 % — ±1 % ≈ 4σ
+        Assert.InRange(rate, M.PotterChance - 0.01, M.PotterChance + 0.01);
+        Assert.InRange((double)small / potter, 0.7, 0.9);  // черепки — 80 % ваг гончаря
+    }
+
+    [Fact]
+    public void Every_default_bet_pays_in_exact_proportion_so_bet_ten_is_not_richer()
+    {
+        // Виплати — у десятих ставки, а всі типові ставки кратні 10: max(1, round(u × ставка)) нічого не округлює
+        foreach (var bet in SlotsOptions.DefaultBets)
+            for (var sym = 0; sym < M.Paying.Length; sym++)
+                foreach (var n in new[] { 8, 10, 12 })
+                {
+                    var tier = n >= 12 ? 2 : n >= 10 ? 1 : 0;
+                    Assert.Equal(0, M.Pay10[sym][tier] * bet % 10);
+                    Assert.Equal(M.Pay10[sym][tier] * bet / 10, M.Amount(sym, n, bet));
+                }
+        // той самий сід на будь-якій ставці — ті самі оберти, виграш рівно пропорційний (і стеля теж) → RTP однаковий
+        var m = new M();
+        foreach (var bet in SlotsOptions.DefaultBets)
+        {
+            var a = new SeededSlotRng(new Random(17));
+            var b = new SeededSlotRng(new Random(17));
+            for (var i = 0; i < 10_000; i++) Assert.Equal(m.Fast(10, a) * bet, m.Fast(bet, b) * 10);
+        }
     }
 
     // ---------------------------------------------------------------- автомат на платформі
@@ -370,7 +552,13 @@ public class SlotCascadeTests(ITestOutputHelper output)
         Assert.Empty(k.Bank.Pending());
         Assert.Equal(JsonValueKind.Null, k.View.GetProperty("gamble").ValueKind);
         Assert.True(k.H.Act(0, "gamble", new { pick = "r" }) is { Ok: false });
-        Assert.Equal(5000, k.View.GetProperty("table").GetProperty("cap").GetInt32());
+        var table = k.View.GetProperty("table");
+        Assert.Equal(5000, table.GetProperty("cap").GetInt32());
+        Assert.Equal(M.PotterChance, table.GetProperty("potter").GetProperty("chance").GetDouble());
+        Assert.Equal(8, table.GetProperty("potter").GetProperty("size").GetInt32());
+        Assert.InRange(table.GetProperty("potter").GetProperty("syms").EnumerateObject().Sum(x => x.Value.GetDouble()), 99.5, 100.5);
+        Assert.Equal(M.FreeSpins, table.GetProperty("free").GetInt32());
+        Assert.Equal(0.5, table.GetProperty("pay").GetProperty("k3").GetProperty("8").GetDouble());
         output.WriteLine($"бонусів за 400: {bonus}");
     }
 
@@ -389,7 +577,7 @@ public class SlotCascadeTests(ITestOutputHelper output)
 
     // ---------------------------------------------------------------- симуляції (цифри — у specs/slots.md)
 
-    sealed record Sim(double Rtp, double Sd, double Hit, double BonusEvery, double AvgBonus, double Max, long Capped);
+    sealed record Sim(double Rtp, double Sd, double Hit, double BonusEvery, double AvgBonus, double Max, long Capped, double Potter, double Big10, double Big50, double Big100);
 
     static Sim Simulate(int spins, int seed)
     {
@@ -398,24 +586,27 @@ public class SlotCascadeTests(ITestOutputHelper output)
         var rng = new SeededSlotRng(new Random(seed));
         var p = new M.Probe();
         double won = 0, sq = 0, max = 0, bonusWon = 0;
-        long hits = 0;
+        long hits = 0, b10 = 0, b50 = 0, b100 = 0;
         for (var i = 0; i < spins; i++)
         {
             var before = p.Bonuses;
             var w = m.Fast(bet, rng, p) / (double)bet;
             won += w; sq += w * w;
             if (w > 0) hits++;
+            if (w >= 10) b10++;
+            if (w >= 50) b50++;
+            if (w >= 100) b100++;
             if (p.Bonuses > before) bonusWon += w;
             max = Math.Max(max, w);
         }
         var mean = won / spins;
         return new Sim(mean, Math.Sqrt(sq / spins - mean * mean), (double)hits / spins, (double)spins / Math.Max(1, p.Bonuses),
-            bonusWon / Math.Max(1, p.Bonuses), max, p.Capped);
+            bonusWon / Math.Max(1, p.Bonuses), max, p.Capped, (double)p.Potter / spins, (double)b10 / spins, (double)b50 / spins, (double)b100 / spins);
     }
 
     /// <summary>
     /// Розшарована оцінка: база (вхід у бонус і горно рахуються, сам бонус — ні) + частота входу × середній бонус з
-    /// окремого прогону бонусів. Розкид утричі менший за прямий: бонус (≈ 20 % RTP) не залежить від рідкісного входу.
+    /// окремого прогону бонусів. Розкид утричі менший за прямий: бонус (≈ 22 % RTP) не залежить від рідкісного входу.
     /// </summary>
     static (double Rtp, double Se, double BonusEvery, double AvgFree) Stratified(int spins, int bonuses, int seed)
     {
@@ -433,20 +624,25 @@ public class SlotCascadeTests(ITestOutputHelper output)
         return (ma + q * mb, se, 1 / q, mb);
     }
 
-    const double Target = 0.95;
+    const double Target = 0.97;
+
+    static string Line(Sim s) => $"RTP {s.Rtp:P3} (σ оберту {s.Sd:F2}), виграш {s.Hit:P2}, бонус 1 з {s.BonusEvery:F1}, " +
+        $"середній бонус {s.AvgBonus:F1}×, гончар {s.Potter:P2}, ≥10× {s.Big10:P2}, ≥50× {s.Big50:P3}, ≥100× {s.Big100:P3}, " +
+        $"найбільше {s.Max:F1}×, стеля {s.Capped}";
 
     [Fact]
     public void Two_hundred_thousand_spins()
     {
-        // Висока волатильність: розкид виграшу за оберт ≈ 7,5 ставки → похибка середнього на 200 тис. ≈ 1,7 %, тож ±2 %
-        // — це лише ~1,2σ. Прямий прогін перевіряємо з ±5 % (~3σ), а точність ±2 % — розшарованою оцінкою на 1 млн обертів
-        // бази й 50 тис. бонусів (σ ≈ 0,55 %, ±2 % ≈ 3,6σ; ≈ 5 с).
+        // Висока волатильність: розкид виграшу за оберт ≈ 6,5 ставки → похибка середнього на 200 тис. ≈ 1,5 %, тож ±2 %
+        // — це лише ~1,4σ. Прямий прогін перевіряємо з ±5 % (> 3σ), а точність ±2 % — розшарованою оцінкою на 1 млн обертів
+        // бази й 50 тис. бонусів (σ ≈ 0,5 %, ±2 % ≈ 4σ; ≈ 5 с). Виграш ≈ 41,2 % (σ на 200 тис. ≈ 0,11 %), бонус ≈ 1 з 125
+        // (≈ 1600 входів, σ ≈ 2,5 %), гончар ≈ 5,7 % обертів.
         var s = Simulate(200_000, 1);
-        output.WriteLine($"slot-cascade 200 тис.: RTP {s.Rtp:P2} (σ оберту {s.Sd:F1}), виграш {s.Hit:P1}, бонус 1 з {s.BonusEvery:F0}, " +
-                         $"середній бонус {s.AvgBonus:F1}×, найбільше {s.Max:F1}×, стеля {s.Capped}");
+        output.WriteLine("slot-cascade 200 тис.: " + Line(s));
         Assert.InRange(s.Rtp, Target - 0.05, Target + 0.05);
-        Assert.InRange(s.Hit, 0.33, 0.39);
-        Assert.InRange(s.BonusEvery, 150, 205);
+        Assert.InRange(s.Hit, 0.405, 0.42);
+        Assert.InRange(s.BonusEvery, 110, 142);
+        Assert.InRange(s.Potter, 0.053, 0.062);
         Assert.True(s.Max <= 5000);
 
         var st = Stratified(1_000_000, 50_000, 2);
@@ -457,13 +653,13 @@ public class SlotCascadeTests(ITestOutputHelper output)
     [Fact, Trait("Category", "Perf")]
     public void Five_million_spins_within_half_a_percent()
     {
-        // Прямий прогін 5 млн: σ середнього ≈ 0,33 % — ±1 % (3σ). ±0,5 % — розшарованою оцінкою: 10 млн обертів бази
-        // (без самих бонусів) і 500 тис. бонусів окремо, σ ≈ 0,16 % (±0,5 % ≈ 3σ).
+        // Прямий прогін 5 млн: σ середнього ≈ 0,3 % — ±1 % (> 3σ). ±0,5 % — розшарованою оцінкою: 10 млн обертів бази
+        // (без самих бонусів) і 500 тис. бонусів окремо, σ ≈ 0,15 % (±0,5 % > 3σ).
         var s = Simulate(5_000_000, 3);
-        output.WriteLine($"slot-cascade 5 млн: RTP {s.Rtp:P3} (σ оберту {s.Sd:F2}), виграш {s.Hit:P2}, бонус 1 з {s.BonusEvery:F1}, " +
-                         $"середній бонус {s.AvgBonus:F1}×, найбільше {s.Max:F1}×, стеля {s.Capped}");
+        output.WriteLine("slot-cascade 5 млн: " + Line(s));
         Assert.InRange(s.Rtp, Target - 0.01, Target + 0.01);
-        Assert.InRange(s.BonusEvery, 165, 190);
+        Assert.InRange(s.Hit, 0.409, 0.415);
+        Assert.InRange(s.BonusEvery, 119, 131);
 
         var st = Stratified(10_000_000, 500_000, 4);
         output.WriteLine($"розшаровано (10 млн + 500 тис. бонусів): RTP {st.Rtp:P3} ± {st.Se:P3}, бонус 1 з {st.BonusEvery:F1}, вільні в середньому {st.AvgFree:F2}×");

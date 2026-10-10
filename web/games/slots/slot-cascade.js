@@ -8,16 +8,20 @@
   // Виплати в ставках: [8–9, 10–11, 12+] однакових будь-де — як на сервері (SlotCascadeMath.Pay10); на сайті slot.js
   // ще й підставляє view.table через _setPay, щоб ⓘ не розійшлась із касою
   const PAY = {
-    k1: [0.3, 0.8, 2.5], k2: [0.4, 1, 4], k3: [0.6, 1.2, 5], k4: [1, 1.5, 8],
-    bowl: [1.2, 2, 10], pot: [1.5, 2.5, 12], makitra: [2, 5, 15], kumanets: [2.5, 10, 25], glek: [10, 25, 50],
+    k1: [0.3, 0.7, 2.5], k2: [0.4, 0.8, 4], k3: [0.5, 1, 5], k4: [0.8, 1.2, 8],
+    bowl: [1, 2, 10], pot: [1.5, 2.5, 12], makitra: [2, 5, 15], kumanets: [2.5, 10, 25], glek: [10, 25, 50],
   };
   const FURN = 'furnace', FURN_PAY = { 4: 3, 5: 5, 6: 100 };
   const MULTS = [2, 3, 5, 10, 25, 50, 100];
   // Ваги символів (pys — писанка; її число — з ваг M_*)
-  const W_BASE = { k1: 20, k2: 19, k3: 18, k4: 17, bowl: 12, pot: 10, makitra: 8, kumanets: 6, glek: 4.5, furnace: 2.4, pys: 0.45 };
-  const W_FS = { k1: 20, k2: 19, k3: 18, k4: 17, bowl: 12, pot: 10, makitra: 8, kumanets: 6, glek: 4.5, furnace: 1.9, pys: 1.6 };
+  const W_BASE = { k1: 20, k2: 19, k3: 18, k4: 17, bowl: 12, pot: 10, makitra: 8, kumanets: 6, glek: 4.5, furnace: 2.6, pys: 0.45 };
+  const W_FS = { k1: 20, k2: 19, k3: 18, k4: 17, bowl: 12, pot: 10, makitra: 8, kumanets: 6, glek: 4.5, furnace: 1.9, pys: 1.45 };
   const M_BASE = { 2: 40, 3: 26, 5: 18, 10: 10, 25: 4, 50: 1.5, 100: 0.5 };
-  const M_FS = { 2: 34, 3: 26, 5: 20, 10: 12, 25: 5, 50: 2, 100: 1 };
+  const M_FS = { 2: 36, 3: 28, 5: 20, 10: 10, 25: 4, 50: 1.5, 100: 0.5 };
+  // «Гончар доліпив» — як на сервері (SlotCascadeMath.PotterChance / PotterWeights; на сайті шанс і частки — з view.table.potter):
+  // перше падіння бази без виграшу → з шансом 9 % гончар переліплює посуд (не горна й не писанки) у рівно 8 одного символу
+  const POTTER = 0.09, POTTER_SIZE = 8;
+  const POTTER_W = { k1: 30, k2: 26, k3: 22, k4: 18, bowl: 10, pot: 7, makitra: 4, kumanets: 2, glek: 1 };
   const POOL = PAYING.concat([FURN]);
   const isM = (k) => typeof k === 'string' && /^x\d+$/.test(k);
   const mv = (k) => +k.slice(1);
@@ -102,12 +106,30 @@
     steps.push({ t: 'bonusOut', total: win, spins, acc });
     return { steps, win, nm, acc, spins, maxCasc };
   }
+  // Гончар доліплює (порт SlotCascadeMath.Potter): символ за вагами, випадкові клітинки іншого посуду стають ним, поки на
+  // полі не буде рівно 8. Горна й писанки не чіпає. → { grid, step } або null (нема з чого ліпити)
+  function potterMorph(grid, key) {
+    const need = POTTER_SIZE - grid.flat().filter((k) => k === key).length, pool = [];
+    grid.forEach((col, c) => col.forEach((k, r) => { if (PAYING.includes(k) && k !== key) pool.push([c, r]); }));
+    if (need <= 0 || pool.length < need) return null;
+    for (let j = 0; j < need; j++) { const k = j + SK.rnd.int(pool.length - j); [pool[j], pool[k]] = [pool[k], pool[j]]; }
+    const pick = pool.slice(0, need);
+    pick.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const g = grid.map((col) => col.slice());
+    pick.forEach(([c, r]) => { g[c][r] = key; });
+    return { grid: g, step: { t: 'morph', cells: pick.map(([c, r]) => [c, r, key]), why: 'potter' } };
+  }
   function makeScript(bet, state, o) {
     o = Object.assign({ w: W_BASE, m: M_BASE }, o || {});
-    const grid = randGrid(o); if (o.force) o.force(grid);
+    let grid = randGrid(o); if (o.force) o.force(grid);
     const tease = teaseFor(grid, 4);
     const steps = [{ t: 'spin', grid, tease }];
     const meta = { casc: 0, mults: [], bonus: false, tease: tease.length > 0, fsMults: 0, acc: 0 };
+    // o.potter: true — гончар напевно (демо), false — ніколи; інакше 9 % на мертвому першому падінні
+    if (o.potter !== false && !evaluate(grid, bet).length && (o.potter || Math.random() < POTTER)) {
+      const pm = potterMorph(grid, o.potterKey || SK.rnd.weighted(POTTER_W));
+      if (pm) { grid = pm.grid; steps.push(pm.step); meta.potter = pm.step.cells[0][2]; }
+    }
     const t = tumble(grid, bet, o, 0); steps.push(...t.steps);
     let win = t.win; meta.casc = t.casc; if (t.mult) meta.mults.push(t.mult.to);
     const fc = furnCells(t.grid);
@@ -141,13 +163,27 @@
   const W_LOWS = { k1: 30, k2: 28, k3: 26, k4: 24, bowl: 8, pot: 6, makitra: 4, kumanets: 3, glek: 2, furnace: 0.6, pys: 0 };
   const NOPYS = Object.assign({}, W_BASE, { pys: 0, furnace: 1 });
 
+  // Свої репліки — лише на рідкісне (каскад 3+, писанка, горно, гончар); решту говорить Дядько Глек-ведучий кіта з
+  // книги machine.say (BOOK) — кіт сам тротлить (дрібне ~35 % і не частіше 9 с), тож автомат не тараторить на кожен виграш
   const SAY = {
     idle: ['полиці повні — бий посуд', 'тут платять за биті глеки', 'вісім однакових — і дзень!'],
-    win: ['дзень!', 'тріснуло — заплатили', 'бий-бий, ще наліплю'],
     casc: ['ще падає!', 'та воно саме б\'ється!', 'каскад пішов — не зупиняй'],
-    big: ['оце погром!', 'весь стелаж — у черепки', 'гончар плаче, а ти радієш'],
     tease: ['ану ще одне горно…', 'не дихай…', 'жар близько…'],
     mult: ['писанка множить!', 'на писанку — і в кишеню', 'крашанки не б\'ються, а множать'],
+  };
+  const BOOK = {
+    small: ['черепок до черепка', 'дзенькнуло дрібненько', 'на глину вистачить', 'посуд б\'ється — на щастя'],
+    win: ['дзень!', 'тріснуло — заплатили', 'бий-бий, ще наліплю', 'оце дзенькнуло'],
+    nice: ['гарний погром!', 'аж полиця задзвеніла', 'файно б\'ється!'],
+    big: ['оце погром!', 'весь стелаж — у черепки', 'гончар плаче, а ти радієш', 'та тут на нову хату'],
+    bonus: ['горно розпалилось!', 'дрова є — палимо', 'гайда до печі!'],
+    idle: SAY.idle,
+  };
+  // гончар: репліка за тим, що доліпив (ключ у morph / meta.potter)
+  const POTTER_SAY = {
+    low: ['гончар не витримав — доліпив кахлів', 'порожньо? гончар підсобив', 'з глини — та в черепки'],
+    high: ['гончар доліпив до вісімки', 'свіженьке, ще глина тепла', 'руки золоті, а посуд — твій'],
+    glek: ['сам гончар ліпив глеки — вісім!', 'глеки від гончаря — оце подарунок'],
   };
 
   // ---------- черепки: картинки з extras.shards(key) для частинок ----------
@@ -212,6 +248,94 @@
       ]);
   }
 
+  // ⓘ: рядок про гончаря — з view.table.potter сервера ({ chance, size, syms у %}), без нього — з констант моку
+  let potterTable = null;
+  function potterRule() {
+    const t = potterTable || {}, ch = t.chance != null ? t.chance : POTTER, size = t.size || POTTER_SIZE;
+    let syms = t.syms;
+    if (!syms) { const sum = PAYING.reduce((a, k) => a + POTTER_W[k], 0); syms = {}; PAYING.forEach((k) => { syms[k] = 100 * POTTER_W[k] / sum; }); }
+    const pc = (v) => String(Math.round(v * 10) / 10).replace('.', ',') + ' %';
+    const low = LOW.reduce((a, k) => a + (+syms[k] || 0), 0);
+    return '<b>Гончар доліпив</b>: коли перше падіння оберту без виграшу, з шансом <b>' + pc(ch * 100) + '</b> приходить гончар і '
+      + 'переліплює кілька клітинок посуду так, що на полиці стає рівно <b>' + size + '</b> однакових — і вони платять, далі каскад. '
+      + 'Що доліпить: кахлі — ' + pc(low) + ', миска ' + pc(+syms.bowl || 0) + ', горщик ' + pc(+syms.pot || 0) + ', макітра ' + pc(+syms.makitra || 0)
+      + ', куманець ' + pc(+syms.kumanets || 0) + ', глек ' + pc(+syms.glek || 0) + '. Горна й писанки гончар не чіпає; '
+      + 'у вільних обертах його нема, а шанс не залежить від попередніх обертів. ';
+  }
+
+  // ---------- «Гончар доліпив»: гончарне коло з руками над полицею, грудка глини летить у кожну клітинку з cells по черзі,
+  // клітинка крутиться на колі й стає потрібним посудом (пил глини, іскри), автомат здригається. ≈ 1,7–2,2 с, турбо ≈ 1,2 с,
+  // тап/пробіл — одразу до кінця. Поле після вистави = поле сервера після morph (кожна клітинка — ctx.morphCell) ----------
+  const potterLine = (key) => SK.rnd.pick(POTTER_SAY[key === 'glek' ? 'glek' : LOW.includes(key) ? 'low' : 'high']);
+  async function potterScene(s, ctx) {
+    const cells = s.cells || [];
+    const key = (cells[0] && cells[0][2]) || (ctx.script && ctx.script.meta && ctx.script.meta.potter) || 'k1';
+    ctx.emit('surprise', 'potter', s); ctx.react('surprise', { say: false });
+    const st = stageOf(ctx), fb = st && st.querySelector('.sc-frame-box');
+    if (!fb || !cells.length) { await ctx.reels.morph(cells); return; }
+    // тап/пробіл (ctx.skip) розв'язує всі очікування разом — ця «довга» обіцянка ставить cut, і решта клітинок
+    // перетворюється миттєво; зареєстрована першою, тож cut стоїть раніше, ніж прокинуться інші чекання
+    let cut = false; ctx.wait(60000, true).then(() => { cut = true; });
+    const done = new Set();
+    const morphOne = (c, r, k) => {
+      if (done.has(c + ',' + r)) return null; done.add(c + ',' + r);
+      const e = ctx.morphCell(c, r, k); if (e) e.classList.remove('sk-morph');   // свій оберт на колі замість кітового «пух»
+      return e;
+    };
+    const L = document.createElement('div'); L.className = 'sc-pt';
+    L.innerHTML = '<div class="sc-pt-pot"><div class="sc-pt-art">' + (ctx.extra('potter') || '<div class="sc-pt-ph"></div>') + '</div>'
+      + '<div class="sc-pt-sign"><b>Гончар доліпив!</b><small>' + ctx.symName(key) + ' ×' + POTTER_SIZE + '</small></div></div>';
+    fb.appendChild(L); st.classList.add('sc-potting');
+    const targets = cells.map(([c, r]) => ctx.cell(c, r)).filter(Boolean);
+    targets.forEach((e) => e.classList.add('sc-pt-target'));
+    const pot = L.querySelector('.sc-pt-pot'), art = L.querySelector('.sc-pt-art');
+    const C = 'translate(-50%,-50%) ';
+    ctx.sound('whoosh'); ctx.flash('#ffd9a8', { power: 0.45, ms: 380 });
+    ctx.animate(pot, [{ transform: C + 'scale(.2) rotate(-14deg)', opacity: 0 }, { transform: C + 'scale(1.08) rotate(3deg)', opacity: 1, offset: 0.65 },
+      { transform: C + 'scale(1)', opacity: 1 }], { duration: 420, easing: 'cubic-bezier(.3,1.4,.5,1)', fill: 'forwards' });
+    ctx.say(potterLine(key), 2800);
+    await ctx.wait(280);
+    const up = -fb.offsetHeight * 0.35, UP = 'translate(-50%,calc(-50% + ' + up.toFixed(0) + 'px)) scale(.5)';
+    if (!cut) {
+      ctx.animate(pot, [{ transform: C + 'scale(1)', opacity: 1 }, { transform: UP, opacity: 1 }], { duration: 240, easing: 'ease-in-out', fill: 'forwards' });
+      await ctx.wait(170);
+    }
+    ctx.shake(0.35);
+    const n = cells.length, gap = Math.max(80, Math.min(170, 700 / n));
+    await Promise.all(cells.map(([c, r, k], i) => (async () => {
+      if (!cut && i) await ctx.wait(gap * i);
+      const e = ctx.cell(c, r);
+      if (cut || !e) { morphOne(c, r, k); return; }
+      await ctx.flyTo(art, e, '<i class="sc-pt-blob"></i>', { ms: 240, from: 0.55, to: 1, fade: false, arc: -50 });
+      if (cut) { morphOne(c, r, k); return; }
+      e.classList.add('sc-pt-wheel');
+      ctx.sound('click');
+      const old = e.firstElementChild;
+      if (old) await ctx.animate(old, [{ transform: 'none' }, { transform: 'translateY(-6%) scaleX(.06)' }], { duration: 150, easing: 'ease-in' }).finished.catch(() => {});
+      const ne = morphOne(c, r, k);
+      ctx.sound('coin', { pitch: 1 + i * 0.07 });
+      ctx.fx.at(e, { kind: 'dust', n: 8, speed: 220, size: 16, spread: 3, color: '#c98a5a' });
+      ctx.fx.at(e, { kind: 'shard', n: 4, speed: 320, size: 7, life: 0.9 });
+      ctx.fx.at(e, { kind: 'spark', n: 6, speed: 260, size: 7, color: '#ffe9b0' });
+      const nv = ne && ne.firstElementChild;
+      if (nv && !cut) {
+        await ctx.animate(nv, [{ transform: 'translateY(-6%) scaleX(.06)' }, { transform: 'translateY(-3%) scale(1.16,.94)', offset: 0.6 },
+          { transform: 'none' }], { duration: 240, easing: 'ease-out' }).finished.catch(() => {});
+      }
+      e.classList.remove('sc-pt-wheel');
+    })()));
+    cells.forEach(([c, r, k]) => morphOne(c, r, k));   // страховка: поле — рівно серверне
+    targets.forEach((e) => e.classList.remove('sc-pt-wheel'));
+    ctx.shake(0.6); ctx.sound('thud');
+    if (!cut) {
+      await ctx.wait(100);
+      await ctx.animate(pot, [{ transform: UP, opacity: 1 }, { transform: 'translate(-50%,calc(-50% + ' + (up - 90).toFixed(0) + 'px)) scale(.3)', opacity: 0 }],
+        { duration: 260, easing: 'ease-in', fill: 'forwards' }).finished.catch(() => {});
+    }
+    L.remove(); st.classList.remove('sc-potting');
+    targets.forEach((e) => e.classList.remove('sc-pt-target'));
+  }
+
   SK.define({
     id: ID,
     title: 'Розбиті глеки',
@@ -220,17 +344,22 @@
     payUnit: 1,
     sounds: { win: 'bell' },
     paytable: payRows(),
-    _setPay(pay) {
+    _setPay(pay, table) {
+      if (table && table.potter) potterTable = table.potter;
       if (!pay) return;
       PAYING.forEach((k) => { const p = pay[k]; if (p && p['8'] != null) PAY[k] = [+p['8'], +p['10'], +p['12']]; });
       if (pay[FURN]) { Object.keys(FURN_PAY).forEach((n) => delete FURN_PAY[n]); Object.keys(pay[FURN]).forEach((n) => { FURN_PAY[n] = +pay[FURN][n]; }); }
       SK.machines[ID].paytable = payRows();
     },
-    rules: '<b>6×5</b>, ліній нема: платять <b>8 і більше однакових будь-де</b> на полицях (8–9, 10–11, 12+). '
+    rules: () => '<b>6×5</b>, ліній нема: платять <b>8 і більше однакових будь-де</b> на полицях (8–9, 10–11, 12+). '
       + 'Виграшний посуд б\'ється, решта падає, згори падають нові — і так, поки є виграш (<b>каскад</b>). '
+      + potterRule()
       + '<b>Писанка</b> — множник: наприкінці каскаду всі писанки летять на дощечку й додаються, сума множить виграш оберту. '
       + '<b>Горно</b>: 4+ — 10 вільних обертів; у вільних 3+ горна — ще 5, а писанки <b>не згорають</b>: множник росте до кінця бонусу '
       + 'й множить кожен оберт, де впала нова писанка. Висока волатильність: часто тихо, зате як піде — то стелажем.',
+    // свою виставу гончаря робить steps.morph (own) — кіт лише кидає подію й не дублює банер
+    surprises: { potter: { title: 'Гончар доліпив!', own: true } },
+    say: BOOK,
     initialState: () => ({}),
     spin(bet, state) { return makeScript(bet, state); },
     demo: {
@@ -243,6 +372,9 @@
       'Великий занос': demoBy((m, x) => !m.bonus && x >= 10 && x < 25, { w: W_RICH }),
       'Мега занос': demoBy((m, x) => !m.bonus && x >= 25 && x < 50, { w: W_RICH }),
       'Епічний занос': demoBy((m, x) => !m.bonus && x >= 50 && x < 600, { w: W_RICH }),
+      'Гончар доліпив': demoBy((m) => m.potter && !m.bonus, { potter: true }),
+      'Гончар + каскад': demoBy((m) => m.potter && m.casc >= 2 && !m.bonus, { potter: true, w: W_LOWS }),
+      'Гончар: глеки': demoBy((m) => m.potter === 'glek' && !m.bonus, { potter: true, potterKey: 'glek', w: NOPYS }),
     },
     _make: makeScript, _evaluate: evaluate, _tease: teaseFor,
 
@@ -281,7 +413,7 @@
 
     steps: {
       async spin(s, ctx) {
-        ctx.sc.casc = 0; setCasc(ctx, 0);
+        ctx.sc.casc = 0; ctx.sc.teased = false; setCasc(ctx, 0);
         if (!ctx.fs) { ctx.sc.mult = 0; setCounter(ctx, 0); }
         await ctx.reels.spin(s);
         const st = stageOf(ctx); if (st) st.classList.remove('sc-tease');
@@ -290,8 +422,13 @@
         await ctx.reels.cascade(s);
         land(ctx, Array.from(new Set(s.remove.map((p) => p[0]))));
         ctx.sc.casc = s.n || ctx.sc.casc + 1; setCasc(ctx, ctx.sc.casc);
-        if (ctx.sc.casc === 3) ctx.say(SK.rnd.pick(SAY.casc), 2200);
+        if (ctx.sc.casc === 3 && Math.random() < 0.6) ctx.say(SK.rnd.pick(SAY.casc), 2200);
         ctx.emit('cascade', ctx.sc.casc);
+      },
+      // «Гончар доліпив» — своя вистава; інші morph (без why чи чужий why) — як у кіта
+      async morph(s, ctx) {
+        if (s.why === 'potter') return potterScene(s, ctx);
+        return SK.steps.morph(s, ctx);
       },
       // писанки світяться → летять на дощечку → сума множить виграш каскаду
       async mult(s, ctx) {
@@ -299,7 +436,8 @@
         ctx.clearWin();
         const eggs = s.cells.map(([c, r]) => ctx.cell(c, r)).filter(Boolean);
         eggs.forEach((e) => e.classList.add('win'));
-        ctx.sound('level'); ctx.say(SK.rnd.pick(SAY.mult), 2600);
+        ctx.sound('level');
+        if (s.to >= 10 || Math.random() < 0.35) ctx.say(SK.rnd.pick(SAY.mult), 2600);
         await ctx.wait(560);
         const box = st.querySelector('.sc-counter-box'), K = ctx.scale || 1;
         const sr = st.getBoundingClientRect(), tr = box.getBoundingClientRect();
@@ -357,7 +495,8 @@
         s.cells.forEach(([c, r]) => { const e = ctx.cell(c, r); if (e) ctx.fx.at(e, { kind: 'spark', n: 22, speed: 380, size: 10, angle: -Math.PI / 2, spread: 1.4, gravity: -40, color: '#ffb347', life: 1.3 }); });
         ctx.sound('bonus');
         if (st) st.classList.add('sc-hot');
-        ctx.say(s.fs ? 'ще дровець — +5 обертів!' : 'горно розгоряється!', 2500);
+        ctx.flash('#ffb347', { power: s.fs ? 0.35 : 0.5 }); ctx.shake(s.fs ? 0.4 : 0.7);
+        if (s.fs) ctx.say('ще дровець — +5 обертів!', 2500);   // вхід у бонус коментує Глек-ведучий кіта (подія bonus)
         if (s.amount) await ctx.rollMeter(ctx.meter + s.amount, Math.min(1500, ctx.rollMs(s.amount)));
         await ctx.wait(s.fs ? 900 : 1300);
         if (st) st.classList.remove('sc-hot');
@@ -382,7 +521,7 @@
       ctx.timeout(() => ember(false), 2000);
       await ctx.wait(350, true);
       await ctx.roll(0, s.count, 700, (v) => { n.textContent = Math.round(v); });
-      n.classList.add('pop');
+      n.classList.add('pop'); ctx.flash('#ffb347', { power: 0.6 }); ctx.shake(1.1);
       await ctx.wait(ctx.auto ? 1500 : 2700, true);
       await ctx.closeOverlay(ov);
     },
@@ -395,7 +534,12 @@
       ctx.sound('big');
       await ctx.roll(0, total, Math.min(4000, ctx.rollMs(total) + 600), (v) => { n.textContent = fmt(v); });
       n.classList.add('pop');
-      if (total > 0) { ctx.fx.at(n, { kind: 'coin', n: 46, speed: 720 }); ctx.fx.at(n, { kind: 'shard', n: 16, speed: 600, size: 12 }); }
+      if (total > 0) {
+        ctx.fx.at(n, { kind: 'coin', n: 46, speed: 720 }); ctx.fx.at(n, { kind: 'shard', n: 16, speed: 600, size: 12 });
+        const m = total / ctx.bet;
+        ctx.flash('#ffe27a', { power: m >= 25 ? 0.7 : 0.45 }); ctx.shake(m >= 25 ? 1.4 : m >= 10 ? 0.9 : 0.5);
+        ctx.coinsTo(n, null, { amount: total });   // монети з підсумку летять у «виграш»
+      }
       await ctx.wait(1900, true);
       await ctx.closeOverlay(ov);
       ctx.setScene('base');
@@ -435,7 +579,8 @@
     onTease(ctx) {
       const st = stageOf(ctx); if (st) st.classList.add('sc-tease');
       ctx.reels.cells().forEach((e) => { if (e && e._key === FURN) e.classList.add('win', 'sc-wait'); });
-      ctx.say(SK.rnd.pick(SAY.tease), 2000);
+      if (!ctx.sc.teased && Math.random() < 0.5) ctx.say(SK.rnd.pick(SAY.tease), 2000);
+      ctx.sc.teased = true;
     },
     onReelStop(ctx, c) {
       land(ctx, [c]);
@@ -444,10 +589,7 @@
         ctx.reels.cells().forEach((e) => { if (e && e.classList.contains('sc-wait')) e.classList.remove('win', 'sc-wait'); });
       }
     },
-    onWin(ctx, step) {
-      if (ctx.sc.casc >= 2) return;
-      ctx.say(SK.rnd.pick(step.amount >= 10 * ctx.bet ? SAY.big : SAY.win), 2600);
-    },
-    onBigwin(ctx) { const st = stageOf(ctx); if (st) st.classList.add('sc-big'); ctx.say(SK.rnd.pick(SAY.big), 4000); },
+    // виграші й заноси коментує Дядько Глек-ведучий кіта (книга BOOK) — тут лише сцена
+    onBigwin(ctx) { const st = stageOf(ctx); if (st) st.classList.add('sc-big'); },
   });
 })();

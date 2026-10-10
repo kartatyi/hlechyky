@@ -8,11 +8,54 @@
   SK.version = 1;
   SK.machines = SK.machines || {};
   SK.BETS = [10, 20, 50, 100, 200, 500];
+  // Сходинки виграшу (× ставки). light — легкий щабель без повноекранного шару (слово над полем, сплеск, ≤ 1,2 с);
+  // решта — оверлей «заносу» з ескалацією. Перший нелегкий щабель — поріг «великого» (SK.bigX()).
   SK.TIERS = [
+    { x: 5, key: 'nice', label: 'Гарно!', light: true },
     { x: 10, key: 'big', label: 'Великий занос' },
     { x: 25, key: 'mega', label: 'Мега занос' },
     { x: 50, key: 'epic', label: 'Епічний занос' },
+    { x: 100, key: 'legend', label: 'Легендарний занос' },
   ];
+  SK.bigX = () => { const t = SK.TIERS.find((q) => !q.light); return t ? t.x : 10; };
+  SK.niceX = () => { const t = SK.TIERS.find((q) => q.light); return t ? t.x : Infinity; };
+  // Книга реплік Дядька Глека-ведучого: подія → рядки. Автомат перевизначає своїм machine.say (той самий вигляд;
+  // false — кіт мовчить). Гумор без брехні: жодних «ось-ось виграєш» чи «автомат гарячий» — шанси не залежать від історії.
+  SK.SAY = {
+    small: ['копієчка до копієчки', 'дрібно, зате своє', 'черепок до черепка', 'на глечик молока є', 'лови дрібненьке'],
+    win: ['є!', 'лови!', 'оце діло', 'файно лягло', 'отак і живем'],
+    nice: ['гарно!', 'овва, гарно лягло', 'аж вуса підскочили', 'оце я розумію', 'файно!'],
+    big: ['отакої! занос!', 'тримайте мене семеро', 'та я аж глазур’ю вкрився', 'оце гончар!', 'гайда святкувати'],
+    legend: ['легенда! запишу в літопис', 'про таке пісні складають', 'я такого й не пам’ятаю'],
+    bonus: ['овва! бонус', 'а це вже свято', 'ну, понеслась!', 'гайда, гайда!'],
+    jackpot: ['скарбничка розбилась — на щастя!', 'усе тобі, до черепка'],
+    surprise: ['отакої, сюрприз!', 'а це звідки взялось?', 'бачили? я бачив!'],
+    dry: ['барабани сьогодні мовчазні', 'кожен оберт — з чистого аркуша, автомат нічого не пам’ятає', 'може, перекур? я почекаю', 'черепки не горять — можна й меншу ставку'],
+    idle: ['хтось тут крутить, чи я сам?', 'а-а-ах… задрімав трохи', 'ну шо, ану ще раз?'],
+  };
+  // Дядько Глек-ведучий: свій простий SVG (арт автомата на сайті вантажиться лише поточний). Частини з класами —
+  // для CSS-настроїв (kit.css, .sk-host[data-mood]): .sk-h-body, .sk-h-eye.l/.r, .sk-h-brow, .sk-h-smile, .sk-h-o, .sk-h-z
+  SK.HOST_SVG = '<svg viewBox="0 0 100 112" class="sk-h">'
+    + '<defs><radialGradient id="skHclay" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#e9a066"/><stop offset=".55" stop-color="#c16a32"/><stop offset="1" stop-color="#7d3c18"/></radialGradient></defs>'
+    + '<g class="sk-h-body">'
+    + '<ellipse cx="50" cy="108" rx="30" ry="4" fill="rgba(0,0,0,.35)"/>'
+    + '<path d="M32 24C31 36 9 44 9 68C9 92 28 106 50 106C72 106 91 92 91 68C91 44 69 36 68 24Z" fill="url(#skHclay)" stroke="#4a220c" stroke-width="3"/>'
+    + '<path d="M16 86Q33 78 50 86T84 86" fill="none" stroke="#f4e2b8" stroke-width="3" stroke-linecap="round" opacity=".75"/>'
+    + '<path d="M22 94l5 4 5-4 5 4 5-4 5 4 5-4 5 4 5-4 5 4 5-4" fill="none" stroke="#3a1a08" stroke-width="2" stroke-linejoin="round" opacity=".55"/>'
+    + '<ellipse cx="50" cy="22" rx="25" ry="8" fill="#d98c4e" stroke="#4a220c" stroke-width="3"/>'
+    + '<ellipse cx="50" cy="21" rx="18" ry="4" fill="#3a1a08"/>'
+    + '<ellipse cx="28" cy="70" rx="7" ry="4" fill="#ff8a7a" opacity=".45"/><ellipse cx="72" cy="70" rx="7" ry="4" fill="#ff8a7a" opacity=".45"/>'
+    + '<g class="sk-h-eye l"><ellipse cx="38" cy="55" rx="7.5" ry="8.5" fill="#fffaf0" stroke="#3a1a08" stroke-width="2"/><circle class="sk-h-pup" cx="39" cy="56" r="3.8" fill="#2a1406"/><circle cx="40.3" cy="54.4" r="1.3" fill="#fff"/></g>'
+    + '<g class="sk-h-eye r"><ellipse cx="62" cy="55" rx="7.5" ry="8.5" fill="#fffaf0" stroke="#3a1a08" stroke-width="2"/><circle class="sk-h-pup" cx="61" cy="56" r="3.8" fill="#2a1406"/><circle cx="62.3" cy="54.4" r="1.3" fill="#fff"/></g>'
+    + '<g class="sk-h-brow"><path d="M30 44Q37 39 44 43" fill="none" stroke="#3a1a08" stroke-width="3" stroke-linecap="round"/><path d="M56 43Q63 39 70 44" fill="none" stroke="#3a1a08" stroke-width="3" stroke-linecap="round"/></g>'
+    + '<path class="sk-h-smile" d="M41 79Q50 87 59 79" fill="#5a1a0a" stroke="#3a1a08" stroke-width="2.5" stroke-linecap="round"/>'
+    + '<ellipse class="sk-h-o" cx="50" cy="81" rx="5" ry="6" fill="#5a1a0a" stroke="#3a1a08" stroke-width="2.5"/>'
+    + '<path class="sk-h-mous" d="M50 70C44 66 36 67 31 73C35 72 39 75 44 75C47 75 49 73 50 72C51 73 53 75 56 75C61 75 65 72 69 73C64 67 56 66 50 70Z" fill="#2e1608"/>'
+    + '</g>'
+    + '<g class="sk-h-z" fill="#f7f0de" font-family="Onest,sans-serif" font-weight="900"><text x="80" y="30" font-size="16">z</text><text x="90" y="16" font-size="12">z</text></g>'
+    + '</svg>';
+  // зменшений рух (системне налаштування): без трусіння, менше частинок
+  SK.calm = () => { try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } };
   // Розміри «дизайну» (у px до масштабування). Автомат малює в .sk-area саме таких розмірів.
   SK.LAYOUT = {
     land: { w: 1280, h: 800, ticker: 34, hud: 120 },
@@ -101,7 +144,21 @@
       lever: (h) => { h.noise(h.t, 0.14, 380, 0.8, 0.4); h.tone(95, h.t + 0.05, 0.18, 'sine', 0.45, 48); },
       tick: (h, o) => h.tone(1300 + (o.p || 0) * 1400, h.t, 0.028, 'square', 0.05),
       click: (h) => h.tone(900, h.t, 0.03, 'square', 0.05),
-      win: (h) => arp(h.t, [523, 659, 784, 1047], 0.07, 0.25, 'triangle', 0.2),
+      // виграш — арпеджіо за розміром: o.m — множник ставки (довше й вище для більших)
+      win: (h, o) => { const m = o.m || 1, n = 3 + Math.min(4, Math.floor(Math.log2(1 + m))); arp(h.t, [523, 659, 784, 1047, 1319, 1568, 2093].slice(0, n), 0.065, 0.25, 'triangle', 0.18); },
+      win1: (h) => { h.tone(784, h.t, 0.14, 'triangle', 0.13); h.tone(1047, h.t + 0.07, 0.22, 'triangle', 0.12); },
+      // фанфара щабля: o.lvl 0..4 — кожен щабель вище
+      fanfare: (h, o) => {
+        const k = Math.pow(2, (o.lvl || 0) * 2 / 12);
+        [392, 494, 587].forEach((f) => h.tone(f * k, h.t, 0.5, 'sawtooth', 0.05));
+        arp(h.t + 0.12, [523, 659, 784, 1047].map((f) => f * k), 0.07, 0.4, 'square', 0.07);
+        [523, 659, 784, 1047].forEach((f) => h.tone(f * k, h.t + 0.45, 1.0, 'triangle', 0.08));
+        h.noise(h.t, 0.5, 6000, 0.6, 0.1, 'highpass');
+      },
+      clink: (h, o) => { const p = 1 + (o.p || 0) * 0.5 + Math.random() * 0.15; h.tone(2350 * p, h.t, 0.05, 'square', 0.035); h.tone(3520 * p, h.t + 0.02, 0.12, 'sine', 0.06); },
+      heart: (h) => { h.tone(70, h.t, 0.16, 'sine', 0.55, 45); h.tone(62, h.t + 0.2, 0.2, 'sine', 0.42, 40); },
+      whoosh: (h) => { h.noise(h.t, 0.35, 1200, 0.7, 0.25); h.tone(300, h.t, 0.3, 'sine', 0.06, 900); },
+      thud: (h) => { h.noise(h.t, 0.12, 300, 0.9, 0.35); h.tone(80, h.t, 0.2, 'sine', 0.35, 40); },
       bell: (h) => { h.tone(1318, h.t, 1.3, 'sine', 0.22); h.tone(2637, h.t, 0.8, 'sine', 0.08); h.tone(3951, h.t, 0.4, 'sine', 0.04); },
       big: (h) => { arp(h.t, [392, 523, 659, 784, 1047, 1319], 0.08, 0.3, 'triangle', 0.2); [523, 659, 784].forEach((f) => h.tone(f, h.t + 0.5, 1.1, 'sawtooth', 0.05)); },
       level: (h) => { arp(h.t, [659, 784, 988, 1319], 0.06, 0.35, 'square', 0.08); h.noise(h.t, 0.4, 5000, 0.5, 0.12, 'highpass'); },
@@ -167,6 +224,8 @@
   };
   P.confetti = P.confetti || function (g, p) { g.scale(1, Math.abs(Math.cos(p.spin)) + 0.1); g.fillStyle = p.color; g.fillRect(-p.s, -p.s * 0.45, p.s * 2, p.s * 0.9); };
   P.spark = P.spark || function (g, p) { g.globalCompositeOperation = 'lighter'; g.globalAlpha *= 0.9; g.fillStyle = p.color || '#ffd27a'; g.beginPath(); g.arc(0, 0, p.s * 0.5, 0, 7); g.fill(); };
+  // пил приземлення: м'яка хмарка, що росте й тане
+  P.dust = P.dust || function (g, p) { const k = 1 + p.age * 2.2; g.globalAlpha *= 0.45; g.fillStyle = p.color || '#d9c7a4'; g.beginPath(); g.arc(0, 0, p.s * 0.6 * k, 0, 7); g.fill(); };
   const CONF = ['#f4c542', '#e5533d', '#4fb0e8', '#7bd389', '#f7f0de', '#d78bff'];
   const CLAY = ['#c5763a', '#a85a2a', '#d98c4e', '#8e4a22'];
 
@@ -188,6 +247,7 @@
         g: o.gravity != null ? o.gravity : 1100, color: o.color || (kind === 'shard' ? CLAY[SK.rnd.int(4)] : kind === 'confetti' ? CONF[SK.rnd.int(CONF.length)] : null) };
       if (kind === 'shard') { const n = 3 + SK.rnd.int(2); p.pts = []; for (let i = 0; i < n; i++) { const t = i / n * 6.283 + Math.random() * 0.8; const rr = 0.5 + Math.random() * 0.6; p.pts.push([Math.cos(t) * rr, Math.sin(t) * rr]); } }
       if (kind === 'spark') { p.g = o.gravity != null ? o.gravity : 120; p.life = o.life || 0.9; }
+      if (kind === 'dust') { p.g = o.gravity != null ? o.gravity : -40; p.life = o.life || 0.6; p.vs = 0; }
       parts.push(p);
     }
     const api = {
@@ -196,6 +256,8 @@
       at(el, o) { const r = el.getBoundingClientRect(), rr = root.getBoundingClientRect(); api.burst(r.left - rr.left + r.width / 2, r.top - rr.top + r.height / 2, o); },
       // дощ згори впродовж ms
       rain(o) { o = o || {}; ensure(); emitters.push({ until: performance.now() + (o.ms || 2000), rate: o.rate || 40, acc: 0, o }); },
+      // фонтан знизу посередині впродовж ms (заноси)
+      fountain(o) { o = o || {}; ensure(); emitters.push({ until: performance.now() + (o.ms || 2000), rate: o.rate || 30, acc: 0, up: true, o }); },
       stopRain() { emitters.length = 0; },
       get count() { return parts.length; },
       clear() { parts.length = 0; emitters.length = 0; },
@@ -204,7 +266,12 @@
       if (!cv) return false;
       for (let i = emitters.length - 1; i >= 0; i--) {
         const e = emitters[i]; if (t > e.until) { emitters.splice(i, 1); continue; }
-        e.acc += dt * e.rate; while (e.acc >= 1) { e.acc--; make(Math.random() * W, -20, Object.assign({ angle: Math.PI / 2, spread: 0.6, speed: 160 }, e.o)); }
+        e.acc += dt * e.rate;
+        while (e.acc >= 1) {
+          e.acc--;
+          if (e.up) make(W / 2 + (Math.random() - 0.5) * W * 0.3, H + 10, Object.assign({ angle: -Math.PI / 2, spread: 0.7, speed: Math.max(700, H * 1.5), gravity: 1300 }, e.o));
+          else make(Math.random() * W, -20, Object.assign({ angle: Math.PI / 2, spread: 0.6, speed: 160 }, e.o));
+        }
       }
       g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
       for (let i = parts.length - 1; i >= 0; i--) {
@@ -336,6 +403,7 @@
       r.fast = false; r.el.classList.remove('sk-fast', 'sk-tease');
       if (r.teasing && spinning && spinning.stopRise) { spinning.stopRise(); spinning.stopRise = null; }
       r.el.classList.remove('sk-bump'); void r.el.offsetWidth; r.el.classList.add('sk-bump');
+      ctx.landFx(r.el, c);
       ctx.sound('stop', { pitch: 1 - c * 0.04 }); ctx.emit('reelStop', c);
     }
     // Швидка зупинка (тап/пробіл під час оберту)
@@ -352,6 +420,8 @@
       return true;
     }
     function cell(c, r) { const q = reels[c]; return q.pool[mod(Math.round(q.p) + r, POOL)]; }
+    // morph на барабані: ключ і в послідовність — інакше grid()/перебудова/початок наступного оберту повертають старий символ
+    function poke(c, r, key) { const q = reels[c]; if (q && q.landed) q.seq[Math.round(q.p) + r] = key; }
     function center(c, r) {
       const x = c * (CW + gap) + CW / 2, cc = (r + 0.5) * S - rows * S / 2;
       return [x, cyl ? H / 2 + R * Math.sin(cc / R) : H / 2 + cc];
@@ -363,7 +433,7 @@
     setNow(init);
     const api = {
       kind: 'reels', el, cols, rows, size: S, cellW: CW, gap, width: W, height: H,
-      spin, slam, set: setNow, cell, center, grid, linesEl: lines,
+      spin, slam, set: setNow, cell, center, grid, poke, linesEl: lines, colEl: (c) => reels[c] && reels[c].el,
       get stops() { return stopsNow; },
       get busy() { return !!spinning; },
       cells() { const a = []; for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) a.push(cell(c, r)); return a; },
@@ -433,7 +503,7 @@
         const delay = 260 + c * stag + extra;
         if (tease.has(c)) ctx.timeout(() => { colEls[c].classList.add('sk-tease'); ctx.emit('tease', c); }, dur(delay - (ctx.turbo ? 700 : 1300)));
         const landed = Promise.all(col.map((e, r) => fallIn(e, c, r, rows + 1, delay + (rows - 1 - r) * 28)));
-        ins.push(landed.then(() => { colEls[c].classList.remove('sk-tease'); ctx.sound('stop', { pitch: 1.2 - c * 0.03 }); ctx.emit('reelStop', c); }));
+        ins.push(landed.then(() => { colEls[c].classList.remove('sk-tease'); ctx.landFx(colEls[c], c); ctx.sound('stop', { pitch: 1.2 - c * 0.03 }); ctx.emit('reelStop', c); }));
       });
       cells = next;
       return Promise.all(outs.concat(ins));
@@ -504,7 +574,7 @@
   // Барабани теж уміють morph (напр. дикі, що з'являються)
   function reelsMorph(api, ctx) {
     api.morph = async function (list) {
-      list.forEach(([c, r, key]) => { const e = api.cell(c, r); e._key = key; e.dataset.k = key; e.replaceChildren(ctx.symNode(key)); e.classList.remove('sk-morph'); void e.offsetWidth; e.classList.add('sk-morph'); });
+      list.forEach(([c, r, key]) => { const e = api.cell(c, r); api.poke(c, r, key); e._key = key; e.dataset.k = key; e.replaceChildren(ctx.symNode(key)); e.classList.remove('sk-morph'); void e.offsetWidth; e.classList.add('sk-morph'); });
       ctx.sound('coin'); await ctx.wait(ctx.turbo ? 250 : 450);
     };
   }
@@ -523,9 +593,13 @@
       ctx.showWin(items);
       ctx.lastWins = items;
       ctx.emit('win', s);
-      const m = amount / ctx.bet;
-      ctx.sound(m >= 5 ? 'big' : (ctx.machine.sounds && ctx.machine.sounds.win) || 'win');
-      const cap = ctx.script && ctx.script.win >= SK.TIERS[0].x * ctx.bet ? 700 : 2600;
+      const m = amount / ctx.bet, own = ctx.machine.sounds && ctx.machine.sounds.win;
+      ctx.sound(m >= SK.niceX() ? 'big' : own || (m < 1 ? 'win1' : 'win'), { m });
+      // монети летять із виграшних клітинок у лічильник «виграш» (кількість — від суми, зі стелею)
+      const cells = []; items.forEach((it) => (it.cells || []).forEach((q) => cells.push(q)));
+      if (amount > 0 && cells.length) ctx.coinsTo(cells, null, { amount });
+      if (amount > 0) ctx.react(m < 1 ? 'small' : 'win', { amount, m });
+      const cap = ctx.script && ctx.script.win >= SK.bigX() * ctx.bet ? 700 : 2600;
       await ctx.rollMeter(ctx.meter + amount, Math.min(cap, ctx.rollMs(amount)));
       await ctx.wait(s.hold != null ? s.hold : 350);
     },
@@ -534,7 +608,19 @@
       ctx.reels.cells().forEach((e) => e && e.classList.remove('dim'));   // після падіння поле знову світле
       if (s.n) ctx.emit('cascade', s.n);
     },
-    async morph(s, ctx) { await ctx.reels.morph(s.cells); },
+    // morph з why — «сюрприз» (Глек чхнув, Гончар доліпив…): подія 'surprise' (хук onSurprise(ctx, why, step)); якщо
+    // автомат описав його в machine.surprises[why] = { title, sub?, say?, own? } і не робить свого (own / step.own,
+    // які може поставити й обробник події) — кіт сам: спалах, банер, Глек дивується. Невідомий why — як раніше.
+    async morph(s, ctx) {
+      const sp = s.why && ctx.machine.surprises && ctx.machine.surprises[s.why];
+      if (s.why) { ctx.emit('surprise', s.why, s); ctx.react('surprise', { why: s.why, say: sp && !sp.own && !s.own ? sp.say || null : false }); }
+      if (sp && !sp.own && !s.own) {
+        ctx.sound('whoosh'); ctx.flash('#ffe9a8', { power: 0.5 });
+        if (sp.title) await ctx.banner(sp.title, { sub: sp.sub, ms: 900, kind: 'surprise' });
+      }
+      await ctx.reels.morph(s.cells);
+      if (sp) (s.cells || []).forEach(([c, r]) => { const e = ctx.cell(c, r); if (e) ctx.fx.at(e, { kind: 'spark', n: 10, speed: 320, size: 8 }); });
+    },
     async banner(s, ctx) {
       const sc = ctx.script;
       if (sc && (sc.capped || sc.cap === true) && /стел/i.test(s.text || '')) { await ctx.banner(SK.CAP_TEXT, Object.assign({}, s, { sub: capSub(ctx) || s.sub, ms: Math.max(s.ms || 0, 2200) })); return; }
@@ -546,7 +632,7 @@
     async bonusIn(s, ctx) {
       ctx.fs = { left: s.count || 0, total: s.count || 0, won: 0 };
       ctx.root.classList.add('sk-infs'); ctx.updateHud();
-      ctx.sound('bonus');
+      ctx.sound('bonus'); ctx.react('bonus');
       if (ctx.machine.bonusIn) { await ctx.machine.bonusIn(s, ctx); return; }
       ctx.setScene('bonus');
       const ov = ctx.overlay('sk-bonus-in',
@@ -585,7 +671,7 @@
   SK.steps.jackpot = async function (s, ctx) {
     const amt = Math.max(0, Math.round(s.amount || 0));
     ctx.emit('jackpot', amt);
-    ctx.sound('bonus');
+    ctx.sound('bonus'); ctx.react('jackpot'); ctx.flash('#ffe08a'); ctx.shake(1.2);
     const ov = ctx.overlay('sk-big sk-jackpot', '<div class="sk-big-rays"></div><div class="sk-big-c"><div class="sk-jk-pot">🏺</div>'
       + '<div class="sk-big-t">Скарбничка Глека!</div><div class="sk-big-n">0</div><div class="sk-big-x">' + esc(s.sub || 'уся — тобі') + '</div></div>');
     ov.dataset.tier = 'jackpot';
@@ -598,7 +684,7 @@
     await ctx.roll(0, amt, clamp(ctx.rollMs(amt) + 2600, 3200, 8000), (v) => { N.textContent = fmt(v); });
     ctx.clearTimer(tick);
     N.classList.add('done'); ctx.sound('big'); burst('coin');
-    ctx.addBalance(amt); ctx.sound('coin');
+    ctx.payout(amt, { glow: true });
     if (SK.live && SK.live.jackpot != null) SK.live.jackpot = 0;   // впала — тікер підхопить нову суму з наступного опитування
     await ctx.wait(3200, true);
     ctx.fx.stopRain();
@@ -675,7 +761,7 @@
           { transform: 'translate(-50%,-50%) scale(' + (o.from || 1) + ')', opacity: 1 },
           { transform: 'translate(calc(-50% + ' + dx / 2 + 'px),calc(-50% + ' + (dy / 2 + arc) + 'px)) scale(' + ((o.from || 1) + (o.to || 0.6)) / 2 * 1.15 + ')', opacity: 1, offset: 0.5 },
           { transform: 'translate(calc(-50% + ' + dx + 'px),calc(-50% + ' + dy + 'px)) scale(' + (o.to || 0.6) + ')', opacity: o.fade === false ? 1 : 0.2 },
-        ], { duration: o.ms || 650, easing: o.easing || 'cubic-bezier(.45,0,.3,1)', delay: o.delay || 0, fill: 'forwards' });
+        ], { duration: o.ms || 650, easing: o.easing || 'cubic-bezier(.45,0,.3,1)', delay: o.delay || 0, fill: 'both' });   // both: під час delay стоїть на старті
         return a.finished.catch(() => {}).then(() => { f.remove(); if (o.burst && to.isConnected) ctx.fx.at(to, o.burst); });
       },
       symHtml(key) {
@@ -705,6 +791,7 @@
       // тихо перетворити клітинку без очікування (morph чекає ~450 мс на крок)
       morphCell(c, r, key) {
         const e = ctx.reels && ctx.reels.cell(c, r); if (!e) return null;
+        if (ctx.reels.poke) ctx.reels.poke(c, r, key);
         e._key = key; e.dataset.k = key; e.replaceChildren(ctx.symNode(key));
         e.classList.remove('sk-morph', 'win', 'dim', 'glint'); void e.offsetWidth; e.classList.add('sk-morph');
         return e;
@@ -755,18 +842,20 @@
         });
         if (machine.dimLosers !== false) R.cells().forEach((e) => e && e.classList.toggle('dim', !winSet.has(e)));
         R.showLines(ls);
+        // «+N» біля клітинок: дрібний (< ставки) — скромно, від 5× — великий
         if (!noFloat) items.forEach((it) => {
           if (!it.amount || !it.cells || !it.cells.length) return;
           const mid = it.cells[Math.floor(it.cells.length / 2)];
           const [x, y] = R.center(mid[0], mid[1]);
-          const f = div('sk-float', '+' + fmt(it.amount)); f.style.left = x + 'px'; f.style.top = y + 'px';
+          const fm = it.amount / ctx.bet;
+          const f = div('sk-float' + (fm < 1 ? ' sk-float-s' : fm >= SK.niceX() ? ' sk-float-b' : ''), '+' + fmt(it.amount)); f.style.left = x + 'px'; f.style.top = y + 'px';
           if (it.line != null) f.style.color = SK.lineColor(it.line);
           R.el.appendChild(f); ctx.timeout(() => f.remove(), 1600);
         });
       },
       rollMs(amount) { const m = amount / ctx.bet; return clamp(500 + 650 * Math.log2(1 + m), 500, 6000); },
-      // Загальний лічильник: from→to за ms, onUpd(v). Пропуск — тап/пробіл.
-      roll(from, to, ms, onUpd) {
+      // Загальний лічильник: from→to за ms, onUpd(v). Пропуск — тап/пробіл. snd — звук тіку ('tick' | 'clink' — монети).
+      roll(from, to, ms, onUpd, snd) {
         if (ctx.turbo) ms *= 0.6;
         return new Promise((res) => {
           const t0 = performance.now(); let lastTick = 0, done = false;
@@ -777,14 +866,14 @@
             const u = clamp((t - t0) / ms, 0, 1), e = 1 - Math.pow(1 - u, 2.2);
             onUpd(from + (to - from) * e);
             const gapMs = 140 - 100 * u;
-            if (t - lastTick > gapMs) { lastTick = t; ctx.sound('tick', { p: u }); }
+            if (t - lastTick > gapMs) { lastTick = t; ctx.sound(snd || 'tick', { p: u }); }
             if (u >= 1) { fin(); return false; }
             return true;
           });
         });
       },
       // стеля (script.capped / cap: true): лічильник не показує більше, ніж зараховано (script.win + Скарбничка)
-      rollMeter(to, ms) { const sc = ctx.script; if (sc && (sc.capped || sc.cap === true) && sc.win != null) to = Math.min(to, sc.win + (sc.jackpot || 0)); const from = ctx.meter; ctx.meter = to; return ctx.roll(from, to, ms, (v) => setMeter(v)); },
+      rollMeter(to, ms) { const sc = ctx.script; if (sc && (sc.capped || sc.cap === true) && sc.win != null) to = Math.min(to, sc.win + (sc.jackpot || 0)); const from = ctx.meter; ctx.meter = to; return ctx.roll(from, to, ms, (v) => setMeter(v), 'clink'); },
       setScene(which) {
         ctx.sceneNow = which;
         const sc = art && art.scene || {};
@@ -812,7 +901,8 @@
       addBalance(n) { ctx.balance += n; updateHud(); if (opts.onBalance) opts.onBalance(ctx.balance); },
       // баланс від сервера (сайт): поставити як є, без анімації
       setBalance(n) { if (n == null || !isFinite(n)) return; ctx.balance = n; updateHud(); },
-      say(text, ms) { const m = hud.querySelector('.sk-msg'); if (!m) return; m.textContent = text; m.classList.remove('pulse'); void m.offsetWidth; m.classList.add('pulse'); if (ms) ctx.timeout(() => { if (m.textContent === text) m.textContent = ''; }, ms); },
+      // репліка Дядька Глека-ведучого — бульбашка над ним (без ms — 3,5 с); '' — сховати. .sk-msg лишається для читалок.
+      say(text, ms) { say(text, ms); },
       spin: () => doSpin(),
       updateHud: () => updateHud(),
     };
@@ -848,6 +938,7 @@
       hud.querySelector('.sk-bm').disabled = ctx.busy || bi <= 0;
       hud.querySelector('.sk-bp').disabled = ctx.busy || bi >= bets.length - 1;
       spinBtn.classList.toggle('busy', ctx.busy);
+      spinBtn.classList.toggle('auto', !!ctx.auto);
       spinBtn.classList.toggle('poor', !ctx.busy && ctx.balance < ctx.bet);
       hud.querySelector('.sk-spin-t').textContent = ctx.busy ? (ctx.auto ? 'стоп' : 'швидше') : 'крутити';
       root.classList.toggle('sk-busy', ctx.busy);
@@ -860,6 +951,170 @@
     ctx.listen(hud.querySelector('.sk-info'), 'click', () => openPaytable());
     ctx.listen(hud.querySelector('.sk-auto'), 'click', () => { if (ctx.auto) { ctx.auto = 0; updateHud(); } else openAutoMenu(); });
     ctx.listen(spinBtn, 'click', () => act());
+
+    // ----- сік: трусіння, спалах, монети, баланс, приземлення -----
+    const winbox = hud.querySelector('.sk-winbox'), balEl = hud.querySelector('.sk-bal-v');
+    const lite = () => (ctx.orient === 'port' ? 0.6 : 1) * (SK.calm() ? 0.5 : 1);   // телефон і зменшений рух — менше частинок
+    const restart = (el, cls) => { if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+    // трусіння всього автомата: CSS translate (окрема властивість, не чіпає масштаб коробки); power ≈ 0,3…3
+    ctx.shake = function (power) {
+      if (SK.calm()) return null;
+      const p = clamp(power == null ? 1 : power, 0.2, 3), a = 6 * p, n = 7, kf = [{ translate: '0px 0px' }];
+      for (let i = 1; i < n; i++) { const k = 1 - i / n; kf.push({ translate: ((Math.random() * 2 - 1) * a * k).toFixed(1) + 'px ' + ((Math.random() * 2 - 1) * a * 0.6 * k).toFixed(1) + 'px' }); }
+      kf.push({ translate: '0px 0px' });
+      return ctx.animate(box, kf, { duration: 240 + 110 * p, easing: 'linear' });
+    };
+    // спалах поверх усього: color — колір (за замовчуванням білий), o.power 0..1, o.ms
+    ctx.flash = function (color, o) {
+      o = o || {};
+      const f = div('sk-flash'); f.style.setProperty('--c', color || '#fff'); layer.appendChild(f);
+      const a = ctx.animate(f, [{ opacity: 0 }, { opacity: (o.power || 0.75) * (SK.calm() ? 0.4 : 1), offset: 0.2 }, { opacity: 0 }], { duration: o.ms || 420, easing: 'ease-out' });
+      a.finished.catch(() => {}).then(() => f.remove());
+      return a;
+    };
+    let clinkAt = 0;
+    const hit = (target) => {
+      restart(target.closest('.sk-stat') || target, 'sk-hit');
+      const t = performance.now(); if (t - clinkAt > 45) { clinkAt = t; ctx.sound('clink'); }
+    };
+    // монети летять: from — [[c,r]…] (клітинки поля), елемент або масив елементів; target — куди (за замовчуванням
+    // лічильник «виграш»); o: { amount | m (множник) | n, ms, gap } → Promise (усі долетіли). Тап доводить до кінця.
+    ctx.coinsTo = function (from, target, o) {
+      o = o || {};
+      target = target || hud.querySelector('.sk-win-v');
+      const list = Array.isArray(from) && !(from.length === 2 && typeof from[0] === 'number') ? from : [from];
+      const srcs = list.map((x) => (Array.isArray(x) ? ctx.reels && ctx.reels.cell(x[0], x[1]) : x)).filter((e) => e && e.isConnected);
+      if (!srcs.length || !target || !root.isConnected) return Promise.resolve();
+      const m = o.amount != null ? o.amount / ctx.bet : o.m != null ? o.m : 2;
+      const n = Math.max(1, Math.round((o.n != null ? o.n : clamp(2 + 3 * Math.log2(1 + m), 2, 14)) * lite()));
+      const ps = [];
+      for (let i = 0; i < n; i++) {
+        ps.push(ctx.flyTo(srcs[i % srcs.length], target, '<i class="sk-coin"></i>',
+          { ms: (o.ms || 600) + Math.random() * 160, delay: (o.gap || 55) * i, from: m < 1 ? 0.75 : 1, to: 0.55, cls: 'sk-coinfly', arc: -(50 + Math.random() * 110) })
+          .then(() => hit(target)));
+      }
+      return Promise.all(ps);
+    };
+    // виплата в баланс: число підкручується, баланс світиться (o.glow — яскравіше)
+    ctx.payout = function (n, o) {
+      o = o || {};
+      const from = ctx.balance; ctx.addBalance(n); ctx.sound('coin');
+      const to = ctx.balance;
+      restart(balEl.closest('.sk-stat'), o.glow ? 'sk-glow' : 'sk-hit');
+      if (n <= 0 || SK.calm()) return;
+      const t0 = performance.now(), ms = o.glow ? 900 : 450;
+      loop.add((t) => {
+        if (ctx.balance !== to || !root.isConnected) return false;   // баланс уже інший (ставка, сервер) — updateHud написав правду
+        const u = clamp((t - t0) / ms, 0, 1); balEl.textContent = fmt(from + (to - from) * (1 - Math.pow(1 - u, 2)));
+        return u < 1;
+      });
+    };
+    // приземлення барабана/колонки: пил і кілька іскор біля низу
+    ctx.landFx = function (col) {
+      if (SK.calm() || !col || !col.isConnected) return;
+      const r = col.getBoundingClientRect(), rr = root.getBoundingClientRect(), k = lite() * (ctx.turbo ? 0.5 : 1);
+      const x = r.left - rr.left + r.width / 2, y = r.bottom - rr.top - 4;
+      ctx.fx.burst(x, y, { kind: 'dust', n: Math.max(2, Math.round(6 * k)), speed: 120, angle: -Math.PI / 2, spread: 3, size: r.width * 0.12 });
+      ctx.fx.burst(x, y, { kind: 'spark', n: Math.max(1, Math.round(4 * k)), speed: 260, spread: 1.6, size: 6, life: 0.5 });
+    };
+    // натиск «крутити»: сплющення й хвиля
+    function pressFx() {
+      restart(spinBtn, 'press');
+      const w = div('sk-ripple'); spinBtn.appendChild(w); ctx.timeout(() => w.remove(), 650);
+      ctx.timeout(() => spinBtn.classList.remove('press'), 420);   // інакше клас глушить «дихання» в спокої
+    }
+
+    // ----- Дядько Глек-ведучий: маленький глек у куті HUD, реакції — лише CSS-класи (у спокої нуль rAF) -----
+    const gh = div('sk-host', SK.HOST_SVG); gh.setAttribute('aria-hidden', 'true');
+    const bub = div('sk-bub', '<span></span>'); bub.setAttribute('role', 'status');
+    winbox.appendChild(gh); hud.appendChild(bub);
+    let moodT = 0, bubT = 0, talkT = 0, sayAt = 0, kitSayAt = 0;
+    const lastLine = {};
+    function setMood(md, ms) {
+      if (moodT) { ctx.clearTimer(moodT); moodT = 0; }
+      gh.removeAttribute('data-mood'); void gh.offsetWidth;
+      if (md) gh.dataset.mood = md;
+      if (md && ms) moodT = ctx.timeout(() => { moodT = 0; if (gh.dataset.mood === md) gh.removeAttribute('data-mood'); }, ms);
+    }
+    function say(text, ms) {
+      const m = hud.querySelector('.sk-msg'); if (m) m.textContent = text || '';
+      if (bubT) { ctx.clearTimer(bubT); bubT = 0; }
+      if (!text) { bub.classList.remove('on'); return; }
+      sayAt = performance.now();
+      bub.firstChild.textContent = text;
+      // над Глеком, у межах HUD; хвостик — на Глека
+      const hw = hud.offsetWidth, bw = Math.min(bub.offsetWidth || 200, hw - 16);
+      const [hx, hy] = ctx.rel(gh, hud), x = clamp(hx - 36, 8, hw - bw - 8);
+      bub.style.left = x + 'px'; bub.style.top = (hy - gh.offsetHeight / 2 - 6) + 'px';
+      bub.style.setProperty('--tail', clamp(hx - x, 14, bw - 14) + 'px');
+      restart(bub, 'on');
+      gh.classList.add('talk'); if (talkT) ctx.clearTimer(talkT); talkT = ctx.timeout(() => gh.classList.remove('talk'), Math.min(1400, 300 + text.length * 40));
+      bubT = ctx.timeout(() => { bubT = 0; bub.classList.remove('on'); }, ms || 3500);
+    }
+    const MOOD = { small: 'wink', win: 'wink', nice: 'joy', big: 'dance', mega: 'dance', epic: 'dance', legend: 'dance', jackpot: 'dance',
+      bonus: 'wow', surprise: 'wow', tease: 'peek', dry: 'meh', idle: 'yawn', doze: 'doze', calm: '' };
+    const MOOD_MS = { wink: 1000, joy: 1600, wow: 1800, meh: 2400, yawn: 3000 };
+    const BOOK = { mega: 'big', epic: 'big' };
+    const STRONG = new Set(['nice', 'big', 'mega', 'epic', 'legend', 'jackpot', 'bonus', 'surprise']);
+    // реакція Глека: настрій + (не завжди) репліка з SK.SAY / machine.say. data: { say: рядок|масив|false, mood, ms, chance }
+    ctx.react = function (ev, data) {
+      data = data || {};
+      const md = data.mood !== undefined ? data.mood : MOOD[ev];
+      if (md !== undefined) setMood(md, data.ms != null ? data.ms : MOOD_MS[md] || 0);
+      if (data.say === false) return;
+      const now = performance.now(), strong = STRONG.has(ev);
+      let line = typeof data.say === 'string' ? data.say : Array.isArray(data.say) && data.say.length ? SK.rnd.pick(data.say) : null;
+      if (!line) {
+        if (machine.say === false) return;
+        const key = BOOK[ev] || ev, own = machine.say && machine.say[key], list = own && own.length ? own : SK.SAY[key];
+        if (!list || !list.length) return;
+        if (now - sayAt < (strong ? 1500 : 2500)) return;                       // автомат щойно сказав своє — не перебиваємо
+        if (!strong && (now - kitSayAt < 9000 || Math.random() > (data.chance != null ? data.chance : 0.35))) return;   // не на кожен оберт
+        line = list.length > 1 ? SK.rnd.pick(list.filter((t) => t !== lastLine[key])) : list[0];
+        lastLine[key] = line;
+      }
+      kitSayAt = now; say(line, strong ? 3200 : 2600);
+    };
+    // очікування (tease): пульсуюча рамка колонки, серцебиття, іскри вздовж — лише коли сценарій дав tease
+    const teasing = new Map();
+    function stopTease(c) { const t = teasing.get(c); if (!t) return; ctx.clearTimer(t.iv); ctx.clearTimer(t.hb); t.fr.remove(); teasing.delete(c); }
+    ctx.on('tease', (c) => {
+      if (teasing.has(c) || !ctx.reels || !ctx.reels.colEl) return;
+      const col = ctx.reels.colEl(c); if (!col) return;
+      const fr = div('sk-tframe'); col.appendChild(fr);
+      ctx.sound('heart');
+      const iv = ctx.interval(() => {
+        if (!col.isConnected || SK.calm()) return;
+        const r = col.getBoundingClientRect(), rr = root.getBoundingClientRect(), x = (Math.random() < 0.5 ? r.left : r.right) - rr.left;
+        ctx.fx.burst(x, r.top - rr.top + Math.random() * r.height, { kind: 'spark', n: ctx.orient === 'port' ? 2 : 3, speed: 150, size: 7, spread: 6.28, gravity: 40, life: 0.55 });
+      }, 120);
+      const hb = ctx.interval(() => ctx.sound('heart'), 620);
+      teasing.set(c, { iv, hb, fr });
+      ctx.react('tease', { say: false });
+    });
+    ctx.on('reelStop', (c) => stopTease(c));
+    // дрімота в довгому спокої й «сухий період» (жодних обіцянок — лише гумор)
+    let idleT = 0, dozeT = 0, dry = 0, dryAt = 0;
+    function idleArm() {
+      if (idleT) ctx.clearTimer(idleT);
+      if (dozeT) ctx.clearTimer(dozeT);
+      idleT = dozeT = 0;
+      if (gh.dataset.mood === 'doze' || gh.dataset.mood === 'yawn') setMood('');
+      idleT = ctx.timeout(() => {
+        idleT = 0; if (ctx.busy) return;
+        ctx.react('idle', { chance: 0.5 });
+        dozeT = ctx.timeout(() => { dozeT = 0; if (!ctx.busy) setMood('doze'); }, 30000);
+      }, 25000);
+    }
+    ctx.on('spinStart', () => { idleArm(); if (gh.dataset.mood === 'peek' || gh.dataset.mood === 'meh') setMood(''); });
+    ctx.on('spinEnd', (script) => {
+      Array.from(teasing.keys()).forEach(stopTease);
+      if (gh.dataset.mood === 'peek') setMood('');
+      if (script && script.win > 0) dry = 0;
+      else if (++dry >= 10 && performance.now() - dryAt > 90000) { dryAt = performance.now(); dry = 0; ctx.react('dry', { chance: 1 }); }
+      idleArm();
+    });
+    ctx.listen(root, 'pointerdown', () => { if (gh.dataset.mood === 'doze' || gh.dataset.mood === 'yawn') idleArm(); });
 
     function openAutoMenu() {
       closeMenus();
@@ -993,6 +1248,7 @@
         if (ctx.reels && ctx.reels.slam()) return;
         ctx.skip(); return;
       }
+      pressFx();
       doSpin();
     }
     async function doSpin(given) {
@@ -1045,35 +1301,73 @@
       if ((script.capped || script.cap === true) && !(script.steps || []).some((s) => s.t === 'banner')) await ctx.banner(SK.CAP_TEXT, { sub: capSub(ctx), ms: 2200 });
       if (total > 0) {
         if (ctx.meter !== total) await ctx.rollMeter(total, ctx.meter ? 400 : ctx.rollMs(total));
-        if (total >= SK.TIERS[0].x * ctx.bet) await bigWin(total);
-        ctx.addBalance(total); ctx.sound('coin');
+        const x = total / ctx.bet;
+        if (x >= SK.bigX()) await bigWin(total);
+        else if (x >= SK.niceX()) await niceWin(total);
+        ctx.payout(total, { glow: x >= SK.niceX() });
       }
     }
-    // Сходинки заносів з ескалацією
+    const TIER_COL = { nice: '#ffe08a', big: '#ffe08a', mega: '#ffb27a', epic: '#e2b8ff', legend: '#bff7ff' };
+    // Легкий щабель «Гарно!» (5×): без шару — велике слово над полем, сплеск монет із виграшних клітинок, удар лічильника; ≤ 1,2 с
+    async function niceWin(total) {
+      const t = SK.TIERS.find((q) => q.light) || { key: 'nice', label: 'Гарно!' };
+      ctx.emit('nicewin', total);
+      ctx.react(t.key); ctx.sound('fanfare', { lvl: 0 });
+      const fld = ctx.reels && ctx.reels.el && !ctx.reels.hidden ? ctx.reels.el : area;
+      const [x, y] = ctx.rel(fld, box);
+      const w = div('sk-nice', '<b>' + esc(t.label) + '</b>'); w.style.left = x + 'px'; w.style.top = y + 'px';
+      layer.appendChild(w);
+      const seenEls = new Set(), k = lite();
+      (ctx.lastWins || []).forEach((it) => (it.cells || []).forEach(([c, r]) => { const e = ctx.reels && ctx.reels.cell(c, r); if (e && e.isConnected) seenEls.add(e); }));
+      const src = seenEls.size ? Array.from(seenEls).slice(0, 10) : [fld];
+      src.forEach((e) => ctx.fx.at(e, { kind: 'coin', n: Math.max(2, Math.round((seenEls.size ? 6 : 24) * k)), speed: 560, size: 11 }));
+      restart(winbox, 'sk-punch'); ctx.shake(0.35);
+      await ctx.animate(w, [
+        { transform: 'translate(-50%,-50%) scale(.3) rotate(-8deg)', opacity: 0 },
+        { transform: 'translate(-50%,-50%) scale(1.18) rotate(2deg)', opacity: 1, offset: 0.22 },
+        { transform: 'translate(-50%,-52%) scale(1)', opacity: 1, offset: 0.7 },
+        { transform: 'translate(-50%,-68%) scale(1.04)', opacity: 0 },
+      ], { duration: 1100, easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {});
+      w.remove();
+    }
+    // Сходинки заносів з ескалацією: промені, спалах і трусіння на кожному щаблі, пульс числа, фонтан монет,
+    // фанфара щораз вище; наприкінці монети злітають у баланс 🏺
     async function bigWin(total) {
-      const bet = ctx.bet, tiers = SK.TIERS.filter((t) => total >= t.x * bet);
+      const bet = ctx.bet, tiers = SK.TIERS.filter((t) => !t.light && total >= t.x * bet);
       const top = tiers[tiers.length - 1];
-      const ms = { big: 3200, mega: 4800, epic: 6000 }[top.key];
-      const ov = ctx.overlay('sk-big', '<div class="sk-big-rays"></div><div class="sk-big-c"><div class="sk-big-t">' + tiers[0].label + '</div><div class="sk-big-n">0</div><div class="sk-big-x"></div></div>');
+      const ms = { big: 3200, mega: 4400, epic: 5200, legend: 6000 }[top.key] || 6000;
+      const ov = ctx.overlay('sk-big', '<div class="sk-big-rays"></div><div class="sk-big-rays2"></div><div class="sk-big-c"><div class="sk-big-t">' + esc(tiers[0].label) + '</div><div class="sk-big-n roll">0</div><div class="sk-big-x"></div></div>');
       const T = ov.querySelector('.sk-big-t'), N = ov.querySelector('.sk-big-n'), X = ov.querySelector('.sk-big-x');
       let lvl = 0; ov.dataset.tier = tiers[0].key;
-      ctx.sound('big'); ctx.emit('bigwin', tiers[0].key);
-      ctx.fx.rain({ kind: 'coin', ms: ms, rate: 26, size: 13 });
-      const burst = () => { const r = root.getBoundingClientRect(); ctx.fx.burst(r.width / 2, r.height * 0.45, { kind: 'confetti', n: 70, speed: 900, size: 9 }); ctx.fx.burst(r.width / 2, r.height * 0.45, { kind: 'shard', n: 18, speed: 700, size: 14 }); };
-      burst();
+      root.classList.add('sk-hostup');
+      const k = lite();
+      const step = (i) => {
+        const key = tiers[i].key;
+        ctx.sound('fanfare', { lvl: Math.max(0, SK.TIERS.indexOf(tiers[i]) - 1) }); ctx.emit('bigwin', key); ctx.react(key);
+        ctx.flash(TIER_COL[key], { power: 0.55 + i * 0.1 }); ctx.shake(0.7 + i * 0.5);
+        burst();
+      };
+      const burst = () => { const r = root.getBoundingClientRect(); ctx.fx.burst(r.width / 2, r.height * 0.45, { kind: 'confetti', n: Math.round(70 * k), speed: 900, size: 9 }); ctx.fx.burst(r.width / 2, r.height * 0.45, { kind: 'shard', n: Math.round(18 * k), speed: 700, size: 14 }); };
+      ctx.fx.rain({ kind: 'coin', ms: ms, rate: 22 * k, size: 13 });
+      ctx.fx.fountain({ kind: 'coin', ms: ms * 0.85, rate: 16 * k, size: 13 });
+      step(0);
       await ctx.roll(0, total, ms, (v) => {
         N.textContent = fmt(v); X.textContent = '×' + (v / bet).toFixed(1).replace('.0', '');
         while (lvl < tiers.length - 1 && v >= tiers[lvl + 1].x * bet) {
           lvl++; T.textContent = tiers[lvl].label; ov.dataset.tier = tiers[lvl].key;
-          T.classList.remove('punch'); void T.offsetWidth; T.classList.add('punch');
-          ctx.sound('level'); ctx.emit('bigwin', tiers[lvl].key); burst();
+          restart(T, 'punch'); step(lvl);
         }
-      });
+      }, 'clink');
       if (lvl < tiers.length - 1) { lvl = tiers.length - 1; T.textContent = top.label; ov.dataset.tier = top.key; }
-      N.classList.add('done');
-      await ctx.wait(2400, true);
+      N.classList.remove('roll'); N.classList.add('done'); ctx.sound('big');
+      await ctx.wait(2000, true);
       ctx.fx.stopRain();
+      // монети з числа злітають у баланс; шар тим часом тане
+      const fly = ctx.coinsTo(N, balEl, { n: 14, m: 10, ms: 650, gap: 30 });
       await ctx.closeOverlay(ov);
+      await Promise.race([fly, ctx.wait(500)]);
+      root.classList.remove('sk-hostup');
+      ctx.react('nice', { say: false, mood: 'joy' });
     }
 
     // ----- клавіатура й пад -----

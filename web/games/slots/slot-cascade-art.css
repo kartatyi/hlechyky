@@ -98,6 +98,41 @@
 @keyframes sc-spin { to { transform: rotate(360deg); } }
 @keyframes sc-pulse { from { transform: scale(.92); opacity: .7; } to { transform: scale(1.12); opacity: 1; } }
 @keyframes sc-spark { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(0, -900%); opacity: 0; } }
+/* кахлі — кожна по-своєму (синя лишилась «дзинь» вище): зелена перевертається, жовта — желе, червона б'ється серцем */
+.slot-slot-cascade .win .sc-k2 .a-bob { animation: sc-flip .95s ease-in-out infinite; }
+@keyframes sc-flip {
+  0%, 100% { transform: translateY(0) scaleX(1); }
+  22% { transform: translateY(-7%) scaleX(.12); }
+  44% { transform: translateY(-9%) scaleX(1.08); }
+  62% { transform: translateY(0) scale(1.06, .95); }
+  78% { transform: translateY(0) scale(1); }
+}
+.slot-slot-cascade .win .sc-k3 .a-bob { animation: sc-jelly .8s ease-in-out infinite; }
+@keyframes sc-jelly {
+  0%, 100% { transform: scale(1); }
+  18% { transform: scale(1.16, .84); }
+  38% { transform: scale(.88, 1.13); }
+  58% { transform: scale(1.06, .95); }
+  78% { transform: scale(.98, 1.02); }
+}
+.slot-slot-cascade .win .sc-k4 .a-bob { animation: sc-beat .9s ease-out infinite; }
+@keyframes sc-beat {
+  0%, 100% { transform: scale(1); }
+  14% { transform: scale(1.17); }
+  28% { transform: scale(1.02); }
+  42% { transform: scale(1.12); }
+  70% { transform: scale(1); }
+}
+/* миска — крутиться дзиґою на денці */
+.slot-slot-cascade .win .sc-bowl .a-bob { animation: sc-wobble 1s ease-in-out infinite; transform-origin: 50% 85%; }
+@keyframes sc-wobble {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  15% { transform: translateY(-9%) rotate(-14deg); }
+  35% { transform: translateY(-4%) rotate(11deg); }
+  55% { transform: translateY(0) rotate(-7deg); }
+  75% { transform: rotate(4deg); }
+  90% { transform: rotate(-1.5deg); }
+}
 /* писанка — гойдається й сяє */
 .slot-slot-cascade .win .sc-pysanka .a-bob { animation: sc-rock 1.1s ease-in-out infinite; transform-origin: 50% 90%; }
 @keyframes sc-rock {
@@ -190,6 +225,29 @@
   -webkit-text-stroke: .08em var(--sc-ink); paint-order: stroke fill;
 }
 
+/* ---------- гончарне коло з руками (extras.potter, сюрприз «Гончар доліпив») ---------- */
+.slot-slot-cascade .sc-pt-svg [class^="sc-pt-"] { transform-box: fill-box; }
+.slot-slot-cascade .sc-pt-disc { transform-origin: 50% 50%; animation: sc-spin .45s linear infinite; }
+.slot-slot-cascade .sc-pt-clay { transform-origin: 50% 100%; animation: sc-pt-rise .5s ease-in-out infinite alternate; }
+@keyframes sc-pt-rise { from { transform: scale(1.07, .9); } to { transform: scale(.95, 1.07); } }
+.slot-slot-cascade .sc-pt-shine { animation: sc-pt-shine .42s linear infinite; }
+@keyframes sc-pt-shine { from { transform: translateX(0); } to { transform: translateX(96px); } }
+.slot-slot-cascade .sc-pt-hand { animation: sc-pt-press .26s ease-in-out infinite alternate; }
+.slot-slot-cascade .sc-pt-hand-r { animation-delay: -.13s; }
+@keyframes sc-pt-press { from { transform: translateX(-7px); } to { transform: translateX(3px); } }
+.slot-slot-cascade .sc-pt-drop { opacity: 0; --dx: -40px; animation: sc-pt-drop .7s ease-out infinite; }
+.slot-slot-cascade .sc-pt-d2 { --dx: 44px; animation-delay: -.25s; }
+.slot-slot-cascade .sc-pt-d3 { --dx: 8px; animation-delay: -.5s; }
+@keyframes sc-pt-drop { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(var(--dx), -46px); opacity: 0; } }
+.slot-slot-cascade .sc-pt-whirl { animation: sc-pt-whirl .3s ease-in-out infinite alternate; }
+@keyframes sc-pt-whirl { from { opacity: .25; } to { opacity: .95; } }
+
 @media (prefers-reduced-motion: reduce) {
   .slot-slot-cascade .sc-scene * { animation: none !important; }
+  .slot-slot-cascade .sc-pt-svg * { animation: none !important; }
+  /* виграш без стрибків і тремтіння: лише тихе «дихання» */
+  .slot-slot-cascade .win .a-bob, .slot-slot-cascade .win .a-shadow, .slot-slot-cascade .win .a-lid, .slot-slot-cascade .win .a-stir,
+  .slot-slot-cascade .win .a-fire, .slot-slot-cascade .win .a-fire2, .slot-slot-cascade .win .a-rays, .slot-slot-cascade .win .a-spark { animation: none !important; }
+  .slot-slot-cascade .win .a-bob { animation: sc-calm 1.4s ease-in-out infinite alternate !important; transform-origin: 50% 50%; }
 }
+@keyframes sc-calm { from { transform: scale(1); } to { transform: scale(1.05); } }

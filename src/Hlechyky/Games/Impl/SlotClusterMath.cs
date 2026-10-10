@@ -7,6 +7,8 @@ namespace Hlechyky.Games.Impl;
 /// входить у будь-який кластер), каскади, шкала папороті з трьома рівнями (раз за оберт кожен): 1 — світлячки (3–6
 /// клітинок стають дикими), 2 — русалка (один вид квітів стає іншим), 3 — цвіт папороті (дикий 3×3 посередині, вибух
 /// 5×5, далі 5 вільних обертів, де шкала не скидається; знову до цвіту — +3, до 15). Усе — в одному оберті.
+/// З 09.10.2026 («98 %»): перелесник — на кожному полі з шансом 1 з 12 лишає 2–4 листки (крок morph), нові ваги, пороги
+/// 11/30/52 і виплати: RTP бази 97 % (+ Скарбничка 1 %), виграш ≈ 47 % обертів, цвіт ≈ 1 з 72 (specs/slots.md §1.2, §2).
 /// Повний порт моку <c>web/games/slots/slot-cluster.js</c> (simulate/resolve/clusters/planFlies/planMermaid) — сценарій
 /// поле за полем тієї самої форми; розбіжності — у specs/slots.md §9.
 /// </summary>
@@ -21,8 +23,11 @@ public sealed class SlotClusterMath : ISlotMath
     const int PayCount = 8;
     static readonly byte[] Low = [0, 1, 2, 3];
 
-    /// <summary>Ваги падіння (звичайна гра) — дослівно W8 з моку.</summary>
-    public static readonly double[] Weights = [19, 18, 18, 17, 10, 9, 7, 5, 1.3];
+    /// <summary>
+    /// Ваги падіння (звичайна гра). З 09.10.2026 (98 %): квіти нерівні — f1 частіший, f4 рідший (кластери частіші, виграш
+    /// ≈ 47 % обертів), листок трохи частіший; до того — W8 моку 19, 18, 18, 17, 10, 9, 7, 5, 1,3.
+    /// </summary>
+    public static readonly double[] Weights = [22, 19, 17, 14, 10, 9, 7, 5, 1.35];
     /// <summary>У вільних листків папороті більше: вага листка × це (FS_FERN моку).</summary>
     public const double FsFern = 2.2;
 
@@ -30,23 +35,24 @@ public sealed class SlotClusterMath : ISlotMath
     public static readonly int[] Sizes = [5, 6, 7, 8, 9, 11, 13, 16];
 
     /// <summary>
-    /// Виплати у ставках за сходинками <see cref="Sizes"/>. Мок (RTP ≈ 98 % на його симуляції) мав: f1 0,2…5 · f2 0,2…8 ·
-    /// f3 0,3…10 · f4 0,3…12 · wreath 0,6…20 · candle 0,8…30 · fire 1…50 · comb 1,5…100 (див. specs/slots.md §1.2).
+    /// Виплати у ставках за сходинками <see cref="Sizes"/>. Усі — кратні 0,1, тож на ставках 10…500 (кратних 10)
+    /// округлення нема й RTP однаковий. До 09.10.2026 (мок): f1 0,2…5 · f2 0,2…8 · f3 0,3…10 · f4 0,3…12 ·
+    /// wreath 0,6…20 · candle 0,8…30 · fire 1…50 · comb 1,5…100 (specs/slots.md §1.2 — «було → стало»).
     /// </summary>
     public static readonly double[][] Pay =
     [
-        [0.2, 0.25, 0.3, 0.4, 0.6, 1, 2, 5],          // f1
-        [0.2, 0.3, 0.4, 0.6, 0.8, 1.5, 3, 8],         // f2
-        [0.3, 0.4, 0.5, 0.7, 1, 2, 4, 10],            // f3
-        [0.3, 0.4, 0.6, 0.8, 1.2, 2.5, 5, 12],        // f4
-        [0.6, 0.8, 1, 1.5, 2.5, 4, 8, 20],            // wreath
-        [0.8, 1, 1.5, 2, 3, 5, 10, 30],               // candle
-        [1, 1.5, 2, 3, 4, 8, 15, 50],                 // fire
-        [1.5, 2, 3, 5, 8, 15, 30, 100],               // comb
+        [0.2, 0.2, 0.3, 0.3, 0.4, 0.7, 1.2, 3],       // f1
+        [0.2, 0.2, 0.3, 0.4, 0.5, 1, 2, 5],           // f2
+        [0.2, 0.3, 0.4, 0.5, 0.7, 1.2, 2.3, 6],       // f3
+        [0.3, 0.3, 0.4, 0.6, 0.8, 1.5, 2.6, 8],       // f4
+        [0.5, 0.6, 0.8, 1, 1.5, 2.3, 5, 12],          // wreath
+        [0.6, 0.8, 1, 1.5, 2, 2.6, 6, 20],            // candle
+        [0.8, 1, 1.5, 2, 2.5, 4.5, 10, 30],           // fire
+        [1, 1.5, 2, 3, 4.5, 8, 20, 60],               // comb
     ];
 
     /// <summary>Рівні шкали (крапельки): світлячки, русалка, цвіт. Шкала — до останнього.</summary>
-    public static readonly int[] Levels = [11, 30, 50];
+    public static readonly int[] Levels = [11, 30, 52];
     public static int MeterMax => Levels[^1];
     public const int FsCount = 5, FsAdd = 3, FsMax = 15;
     public const int Guard = 80;
@@ -55,6 +61,14 @@ public sealed class SlotClusterMath : ISlotMath
     public const double FlyPlain = 0.35;
     /// <summary>Русалка: з цим шансом — найвигідніша заміна, інакше — будь-яка.</summary>
     public const double MermaidBest = 0.7;
+
+    /// <summary>
+    /// Перелесник: на початку кожного оберту (і вільного теж) з цим шансом вогняний перелесник пролітає полем ламаною
+    /// від краю до краю (<see cref="PereFlight"/> клітинок, по одній на колонку чи рядок) і лишає на своєму шляху
+    /// <see cref="PereMin"/>–<see cref="PereMax"/> листків папороті (на недикі клітинки). Шанс не залежить ні від чого.
+    /// </summary>
+    public const double PereChance = 1.0 / 12;
+    public const int PereMin = 2, PereMax = 4, PereFlight = 7;
 
     static readonly double[] CumBase = Cum(Weights, 1);
     static readonly double[] CumFs = Cum(Weights, FsFern);
@@ -159,7 +173,7 @@ public sealed class SlotClusterMath : ISlotMath
     {
         public long Win;
         public bool Bonus, Capped;
-        public int Chain, MaxCl, FreeSpins;
+        public int Chain, MaxCl, FreeSpins, Pere;
         public long FsWon;
         public readonly int[] Lv = new int[3];
         public JsonObject? Script;
@@ -196,6 +210,7 @@ public sealed class SlotClusterMath : ISlotMath
         var S = new Run(bet, rng, script, (long)Cap * bet);
         Fill(S);
         S.Steps?.Add(new JsonObject { ["t"] = "spin", ["grid"] = GridJson(S.Grid) });
+        Perelesnyk(S);
         var total = Resolve(S);
         var info = S.Info;
         if (S.Bloom && !info.Capped)
@@ -218,6 +233,7 @@ public sealed class SlotClusterMath : ISlotMath
                 Fill(S);
                 S.Bloom = false;
                 S.Steps?.Add(new JsonObject { ["t"] = "spin", ["grid"] = GridJson(S.Grid) });
+                Perelesnyk(S);
                 fsWon += Resolve(S);
             }
             S.Steps?.Add(new JsonObject { ["t"] = "bonusOut", ["total"] = fsWon, ["title"] = "Цвіт папороті приніс" });
@@ -236,6 +252,7 @@ public sealed class SlotClusterMath : ISlotMath
                 ["bonus"] = info.Bonus,
             };
             if (info.Bonus) inf["fsWon"] = info.FsWon;
+            if (info.Pere > 0) inf["pere"] = info.Pere;
             info.Script = new JsonObject
             {
                 ["bet"] = bet,
@@ -247,6 +264,45 @@ public sealed class SlotClusterMath : ISlotMath
             if (info.Capped) info.Script["cap"] = true;
         }
         return info;
+    }
+
+    /// <summary>
+    /// Перелесник (сюрприз на початку оберту, до пошуку кластерів): шлях — ламана від краю до протилежного краю, по
+    /// клітинці на кожну колонку (чи рядок), щокроку вбік на 0 або ±1; листки — на 2–4 випадкові недикі клітинки шляху
+    /// (у порядку польоту). Крок <c>{ t: 'morph', cells: [[c, r, 'fern']…], why: 'perelesnyk', path: [[c, r]×7] }</c>.
+    /// Кидок шансу — завжди один NextDouble на поле, хоч би що було на полі й у гаманці; Play без сценарію — тим самим порядком.
+    /// </summary>
+    void Perelesnyk(Run S)
+    {
+        var rng = S.Rng;
+        if (rng.NextDouble() >= PereChance) return;
+        var n = PereMin + rng.Next(PereMax - PereMin + 1);
+        Span<int> path = stackalloc int[PereFlight];
+        var free = new List<int>(PereFlight);
+        for (var tries = 0; ; tries++)
+        {
+            var dir = rng.Next(4);          // 0 → зліва направо, 1 ← справа наліво, 2 ↓ згори вниз, 3 ↑ знизу вгору
+            var side = rng.Next(7);
+            free.Clear();
+            for (var i = 0; i < PereFlight; i++)
+            {
+                if (i > 0) side = Math.Clamp(side + rng.Next(3) - 1, 0, 6);
+                var along = dir % 2 == 0 ? i : PereFlight - 1 - i;
+                path[i] = dir < 2 ? along * R + side : side * R + along;
+                if (!IsWild(S.Grid[path[i]])) free.Add(i);
+            }
+            if (free.Count >= PereMin || tries >= 9) break;   // на шляху самі листки — летить іншим (практично ніколи)
+        }
+        if (free.Count == 0) return;
+        var at = Sample(free, n, rng);
+        Array.Sort(at);                                       // у порядку польоту
+        var cells = new int[at.Length];
+        for (var i = 0; i < at.Length; i++) { cells[i] = path[at[i]]; S.Grid[cells[i]] = Fern; }
+        S.Info.Pere++;
+        if (S.Steps is null) return;
+        var pj = new JsonArray();
+        foreach (var p in path) pj.Add(new JsonArray(p / R, p % R));
+        S.Steps.Add(new JsonObject { ["t"] = "morph", ["cells"] = MorphJson(cells, _ => Fern), ["why"] = "perelesnyk", ["path"] = pj });
     }
 
     void Fill(Run S)
@@ -462,6 +518,16 @@ public sealed class SlotClusterMath : ISlotMath
         return a;
     }
 
+    /// <summary>Правила для ⓘ (та сама розмітка, що rules у slot-cluster.js) — числа з констант.</summary>
+    string Rules() =>
+        "<b>Кластер</b> — 5 і більше однакових, що стикаються боками (не навскіс). Виграшні згасають, решта падає, згори нові — і знову. "
+        + "<b>Листок папороті</b> — дикий. "
+        + $"<b>Перелесник</b> — на початку кожного оберту (і вільного) з шансом 1 з {Math.Round(1 / PereChance)} пролітає полем і лишає {PereMin}–{PereMax} листки папороті. "
+        + "Кожен згаслий символ кладе крапельку в <b>шкалу папороті</b>; рівні, раз за оберт кожен: "
+        + $"<b>{Levels[0]} · світлячки</b> — 3–6 клітинок стають дикими; <b>{Levels[1]} · русалка</b> — один вид квітів стає іншим; "
+        + $"<b>{Levels[2]} · цвіт папороті</b> — дикий 3×3 посеред поля, вибухає, далі <b>{FsCount} вільних обертів</b>, де шкала не скидається "
+        + $"(знову до цвіту — +{FsAdd}, разом до {FsMax}). Найбільший виграш за оберт — {Cap}× ставки.";
+
     public JsonObject Table()
     {
         var pay = new JsonObject();
@@ -481,6 +547,13 @@ public sealed class SlotClusterMath : ISlotMath
             ["levels"] = new JsonArray([.. Levels.Select(x => (JsonNode)x)]),
             ["fs"] = new JsonObject { ["count"] = FsCount, ["add"] = FsAdd, ["max"] = FsMax },
             ["cap"] = Cap,
+            // перелесник: шанс на кожне поле (і вільне теж), листків min–max, довжина польоту
+            ["pere"] = new JsonObject
+            {
+                ["chance"] = PereChance, ["oneIn"] = (int)Math.Round(1 / PereChance), ["min"] = PereMin, ["max"] = PereMax,
+                ["flight"] = PereFlight, ["fs"] = true,
+            },
+            ["rules"] = Rules(),
         };
     }
 }
