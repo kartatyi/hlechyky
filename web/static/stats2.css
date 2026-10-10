@@ -1,0 +1,27 @@
+/* Графіки «Хто скільки» (web/stchart.js, HChart.line): сітка, лінії, підказка й легенда. */
+.hch { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.hch-plot { position: relative; width: 100%; min-width: 0; }
+.hch-svg { display: block; width: 100%; height: auto; touch-action: pan-y; user-select: none; }
+.hch-grid { stroke: var(--line); stroke-width: 1; opacity: .7; }
+.hch-grid.zero { stroke: var(--muted); opacity: .5; }
+.hch-y, .hch-x { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.hch-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .9; transition: opacity .15s; }
+.hch-line.me { stroke-width: 3.2; opacity: 1; }
+.hch-line.focus { stroke-width: 3.6; opacity: 1; }
+.hch-line.dim { opacity: .18; }
+.hch-cur { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.hch-tip { position: absolute; top: 4px; z-index: 2; pointer-events: none; min-width: 120px; max-width: 220px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; font-size: .8em;
+  box-shadow: 0 6px 18px rgb(0 0 0 / .35); }
+.hch-tip-x { color: var(--muted); margin-bottom: 3px; }
+.hch-tip-r { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.hch-tip-r span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hch-tip-r.me span, .hch-tip-r.me b { color: var(--accent); }
+.hch-tip-r i, .hch-chip i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.hch-tip-r b { font-variant-numeric: tabular-nums; }
+.hch-leg { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.hch-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--panel2); color: var(--text); border: 1px solid transparent;
+  border-radius: 999px; padding: 2px 9px; font: inherit; font-size: .78em; cursor: pointer; max-width: 160px; }
+.hch-chip.on { border-color: var(--accent); }
+.hch-chip.me { font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .hch-line { transition: none; } }

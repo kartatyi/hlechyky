@@ -100,6 +100,7 @@ public sealed class Db
         using var c = Open();
         Exec(c, Schema);
         Exec(c, GamesSchema);
+        Exec(c, Bots.Schema);   // хто з ніків — бот (аі-агенти /mcp): «Хто скільки» їх не показує
         // migrations for DBs created before these columns existed
         try { Exec(c, "ALTER TABLE plays ADD COLUMN via TEXT"); } catch (SqliteException) { /* exists */ }
         // справжня довжина файлу (каталог YouTube бреше на секунду-дві) і пік підключень до потоку за трек
@@ -122,6 +123,7 @@ public sealed class Db
         Exec(c, "CREATE TABLE IF NOT EXISTS migrations(key TEXT PRIMARY KEY, done_at TEXT NOT NULL)");
         Once(c, "chat-hide-glek-2026-09", HideGlekSql);
         Once(c, "chat-topic-2026-09", TopicSql);
+        Once(c, "bot-nicks-agents-2026-10", Bots.SeedSql(DateTimeOffset.UtcNow));
         // «👎 більше не давати» у «Вгадай мелодію»: такі треки (і та сама пісня з інших завантажень) гра не бере
         Exec(c, "CREATE TABLE IF NOT EXISTS melody_dislikes(track_id TEXT NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(track_id, nick))");
         Exec(c, "CREATE TABLE IF NOT EXISTS chat_likes(chat_id INTEGER NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(chat_id, nick))");
@@ -666,6 +668,7 @@ public sealed class Db
     {
         var dj = djNames.Select(Auth.NickKey).Where(k => k.Length > 0).ToHashSet();
         using var c = Open();
+        var bots = Bots.Load(c);   // «Хто скільки» — про людей (записка #31)
         // За період — лише проміжок часу (без INDEXED BY планувальник іде індексом ніків через усю таблицю, аби не
         // сортувати: місяць рахувався б у п'ятнадцять разів довше); за весь час — самим покривним індексом ніків.
         using var cmd = since > DateTimeOffset.MinValue
@@ -691,7 +694,7 @@ public sealed class Db
                 djCount += count;
                 continue;
             }
-            if (by is null) continue;   // людське замовлення без імені — нема кому записати
+            if (by is null || bots.Has(by)) continue;   // людське замовлення без імені — нема кому записати; бот — не людина
             var key = Auth.NickKey(by);
             people[key] = people.TryGetValue(key, out var was)
                 ? (last > was.Last ? by : was.Nick, was.Count + count, Math.Max(last, was.Last))

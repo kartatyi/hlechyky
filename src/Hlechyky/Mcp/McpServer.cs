@@ -163,6 +163,7 @@ public sealed class McpServer(AgentTools tools, AgentSessions sessions, RateGate
         var session = Session(ctx);
         if (session is null) return Ok(id, Content(new { ok = false, message = "Забагато агентів за раз — спробуй згодом" }, true));
         sessions.Touch(session);
+        tools.Remember(session);   // агент з ?nick= теж бот — «Хто скільки» його не покаже
         if (!rates.Allow(session.ConnectionId, input: false, clock.UtcNow.ToUnixTimeSeconds()))
             return Ok(id, Content(new { ok = false, message = Hlechyky.Games.Say.TooFast }, true));
 

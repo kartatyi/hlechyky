@@ -285,10 +285,10 @@ public sealed class EconomyStore(Db db)
     /// <summary>Сума секунд кожного ніка в кожному місці від дня <paramref name="fromDay"/> включно (null — за весь час).</summary>
     public List<TimeTotal> TimeTotals(string? fromDay = null, string? nickKey = null) => db.With(c =>
     {
-        using var cmd = Cmd(c, """
+        using var cmd = Cmd(c, $"""
             SELECT e.nick_key, COALESCE(w.nick, e.nick_key), substr(e.key, 6), SUM(e.n) FROM economy_counters e
             LEFT JOIN wallets w ON w.nick_key = e.nick_key
-            WHERE e.key LIKE 'time:%' AND ($f IS NULL OR e.day >= $f) AND ($k IS NULL OR e.nick_key = $k)
+            WHERE e.key LIKE 'time:%' AND ($f IS NULL OR e.day >= $f) AND ($k IS NULL OR e.nick_key = $k) AND {Bots.NotBot("e.nick_key")}
             GROUP BY e.nick_key, e.key HAVING SUM(e.n) > 0
             """, ("$f", fromDay), ("$k", nickKey));
         using var r = cmd.ExecuteReader();
@@ -316,7 +316,7 @@ public sealed class EconomyStore(Db db)
                 SELECT w.nick AS nick, w.balance AS balance,
                        (SELECT COALESCE(SUM(CASE WHEN l.delta > 0 AND {NotExchange} THEN l.delta ELSE 0 END), 0)
                         FROM ledger l WHERE l.nick_key = w.nick_key AND l.created_at >= $s) AS got
-                FROM wallets w)
+                FROM wallets w WHERE {Bots.NotBot("w.nick_key")})
             WHERE {(period ? "got > 0" : "1 = 1")}
             ORDER BY {(byBalance ? "balance DESC, got DESC" : "got DESC, balance DESC")}
             LIMIT $n
@@ -471,12 +471,12 @@ public sealed class EconomyStore(Db db)
     /// <summary>Таблиця не-рейтингової гри: скільки перемог/нічиїх/поразок за період.</summary>
     public List<(string Nick, int Wins, int Draws, int Losses)> TopWins(string game, DateTimeOffset since, int n) => db.With(c =>
     {
-        using var cmd = Cmd(c, """
+        using var cmd = Cmd(c, $"""
             SELECT nick,
                    SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END),
                    SUM(CASE WHEN outcome = 'draw' THEN 1 ELSE 0 END),
                    SUM(CASE WHEN outcome = 'loss' THEN 1 ELSE 0 END)
-            FROM game_results WHERE game = $g AND outcome <> 'solo' AND created_at >= $s
+            FROM game_results WHERE game = $g AND outcome <> 'solo' AND created_at >= $s AND {Bots.NotBot("nick_key")}
             GROUP BY nick_key ORDER BY 2 DESC, 3 DESC LIMIT $n
             """, ("$g", game), ("$s", Iso(since)), ("$n", n));
         using var r = cmd.ExecuteReader();
@@ -490,7 +490,7 @@ public sealed class EconomyStore(Db db)
     {
         using var cmd = Cmd(c, $"""
             SELECT nick, {(higherIsBetter ? "MAX(score)" : "MIN(score)")}, SUM(tries)
-            FROM game_results WHERE game = $g AND outcome = 'solo' AND score IS NOT NULL AND created_at >= $s
+            FROM game_results WHERE game = $g AND outcome = 'solo' AND score IS NOT NULL AND created_at >= $s AND {Bots.NotBot("nick_key")}
             GROUP BY nick_key ORDER BY 2 {(higherIsBetter ? "DESC" : "ASC")} LIMIT $n
             """, ("$g", game), ("$s", Iso(since)), ("$n", n));
         using var r = cmd.ExecuteReader();
@@ -581,9 +581,9 @@ public sealed class EconomyStore(Db db)
 
     public List<RatingRow> TopRatings(string game, int n) => db.With(c =>
     {
-        using var cmd = Cmd(c, """
+        using var cmd = Cmd(c, $"""
             SELECT nick_key, nick, game, elo, games, wins, losses, draws FROM ratings
-            WHERE game = $g AND games > 0 ORDER BY elo DESC, wins DESC LIMIT $n
+            WHERE game = $g AND games > 0 AND {Bots.NotBot("nick_key")} ORDER BY elo DESC, wins DESC LIMIT $n
             """, ("$g", game), ("$n", n));
         using var r = cmd.ExecuteReader();
         var list = new List<RatingRow>();
@@ -743,9 +743,9 @@ public sealed class EconomyStore(Db db)
     /// <summary>Усе розв'язане за день (для таблиці «щоденне» без розбивки за іграми).</summary>
     public List<DailyRow> DailyOfDay(string day, int n) => db.With(c =>
     {
-        using var cmd = Cmd(c, """
+        using var cmd = Cmd(c, $"""
             SELECT day, game, nick_key, nick, solved, attempts, ms FROM daily_results
-            WHERE day = $d AND solved = 1 ORDER BY game, attempts ASC, ms ASC LIMIT $n
+            WHERE day = $d AND solved = 1 AND {Bots.NotBot("nick_key")} ORDER BY game, attempts ASC, ms ASC LIMIT $n
             """, ("$d", day), ("$n", n));
         using var r = cmd.ExecuteReader();
         var list = new List<DailyRow>();

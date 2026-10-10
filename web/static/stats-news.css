@@ -1,0 +1,89 @@
+/* «📊 Хто скільки» — stats-news.js: «📰 Глечицький вісник», «📅 Місяць тому», «🎯 Мої цілі», крапка «нове» на 📊. */
+
+/* газета на всю ширину, «місяць тому» й цілі — під нею поруч; на дуже широкому — колонкою праворуч */
+.sn-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 16px; }
+.sn-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; min-width: 0; }
+.sn-side:has(> [hidden]) { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1700px) {
+  .sn-top:not(.sn-solo) { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  .sn-side { grid-template-columns: minmax(0, 1fr); }
+}
+.sn-top.sn-solo .sn-side { display: none; }
+
+/* ---------- газета: шапка з подвійною лінійкою, засічки, як на справжньому папері ---------- */
+.sn-paper {
+  --sn-paper: color-mix(in srgb, var(--panel) 90%, var(--accent) 10%);
+  --sn-serif: Georgia, 'Times New Roman', 'PT Serif', serif;
+  background: var(--sn-paper);
+  transition: opacity .18s ease;
+}
+.sn-paper.sn-turn { opacity: .55; }
+.sn-mast { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  padding-bottom: 8px; border-bottom: 3px double color-mix(in srgb, var(--text) 45%, transparent); }
+.sn-title { text-align: center; min-width: 0; }
+.sn-name { font-family: var(--sn-serif); font-weight: 700; font-size: 1.55em; letter-spacing: .02em; line-height: 1.15; }
+.sn-meta { color: var(--muted); font-size: .8em; margin-top: 2px; }
+.sn-meta b { color: var(--accent); font-weight: 600; }
+.sn-nav { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: transparent;
+  color: var(--text); cursor: pointer; font-size: .9em; }
+.sn-nav:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.sn-nav:disabled { opacity: .3; cursor: default; }
+.sn-weather { font-size: .85em; padding: 2px 0 6px; border-bottom: 1px solid var(--line); }
+.sn-flag { font-size: .85em; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+
+.sn-ico { flex: none; width: 1.5em; text-align: center; }
+.sn-sub { color: var(--muted); font-size: .88em; margin: 0; }
+.sn-go { flex: none; align-self: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: transparent;
+  color: var(--muted); cursor: pointer; }
+.sn-go:hover { color: var(--accent); border-color: var(--accent); }
+
+.sn-lead { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 10px; border-bottom: 1px solid var(--line); }
+.sn-lead-h { display: flex; gap: 10px; align-items: flex-start; }
+.sn-lead-h .sn-ico { font-size: 1.6em; line-height: 1.2; }
+.sn-lead h4 { margin: 0; flex: 1; min-width: 0; font-family: var(--sn-serif); font-size: 1.45em; line-height: 1.25; font-weight: 700; overflow-wrap: anywhere; }
+.sn-lead .sn-sub { padding-left: 2.6em; font-style: italic; }
+
+.sn-items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; }
+.sn-items li { display: flex; gap: 8px; align-items: flex-start; padding: 8px 0; border-bottom: 1px dashed var(--line); min-width: 0; }
+.sn-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sn-h { font-family: var(--sn-serif); font-weight: 600; line-height: 1.3; }
+.sn-items .sn-sub { margin-top: 2px; }
+.sn-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sn-fresh, .sn-open, .sn-act { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 999px;
+  padding: 5px 12px; cursor: pointer; font: inherit; font-size: .85em; }
+.sn-fresh:hover, .sn-open:hover, .sn-act:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---------- місяць тому ---------- */
+.sn-ago-list, .sn-goals-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sn-ago-list li { display: flex; gap: 6px; font-size: .9em; min-width: 0; overflow-wrap: anywhere; }
+.sn-open { align-self: flex-start; }
+
+/* ---------- цілі ---------- */
+.sn-goals-list li { display: flex; gap: 8px; align-items: center; font-size: .9em; min-width: 0; }
+.sn-bar { height: 5px; margin-top: 5px; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
+.sn-bar i { display: block; height: 100%; width: var(--w); border-radius: inherit; background: var(--accent); }
+.sn-act { flex: none; white-space: nowrap; }
+
+/* ---------- крапка «нове» на кнопці 📊 ---------- */
+#mainNav button[data-route="stats"].sn-dot, .mtabs button[data-route="stats"].sn-dot { position: relative; }
+#mainNav button[data-route="stats"].sn-dot::after, .mtabs button[data-route="stats"].sn-dot::after {
+  content: ''; position: absolute; top: 4px; right: 6px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--bg); animation: sn-blink 2.4s ease-in-out infinite;
+}
+@keyframes sn-blink { 50% { opacity: .35; transform: scale(.8); } }
+
+@media (max-width: 800px) {
+  .sn-side { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .sn-items { grid-template-columns: minmax(0, 1fr); }
+  .sn-name { font-size: 1.25em; }
+  .sn-lead h4 { font-size: 1.2em; }
+  .sn-lead .sn-sub { padding-left: 0; }
+  .sn-goals-list li { flex-wrap: wrap; }
+  .sn-goals-list .sn-act { margin-left: 2em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sn-paper { transition: none; }
+  #mainNav button[data-route="stats"].sn-dot::after, .mtabs button[data-route="stats"].sn-dot::after { animation: none; }
+}

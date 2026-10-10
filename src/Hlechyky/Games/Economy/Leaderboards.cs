@@ -42,20 +42,33 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
         return best;
     }
 
-    /// <summary>GET /api/games/leaderboard?game=&amp;period=day|week|month|all[&amp;day=]</summary>
-    public object Leaderboard(string? game, string? period, string? day)
+    /// <summary>Як можна впорядкувати таблицю черепків: «є зараз» і «зароблено за період».</summary>
+    public static readonly string[] ShardSorts = ["balance", "earned"];
+
+    /// <summary>
+    /// Порядок таблиці черепків: те, що попросили (клік по заголовку, записка #30), інакше як було — за весь час «є
+    /// зараз», за день/тиждень/місяць — «зароблено».
+    /// </summary>
+    public static string ShardSort(string period, string? sort) =>
+        sort is not null && ShardSorts.Contains(sort) ? sort : period == "all" ? "balance" : "earned";
+
+    /// <summary>GET /api/games/leaderboard?game=&amp;period=day|week|month|all[&amp;day=][&amp;sort=balance|earned]</summary>
+    public object Leaderboard(string? game, string? period, string? day, string? sort = null)
     {
         var p = Norm(period);
         var since = Since(p);
         game = string.IsNullOrWhiteSpace(game) ? "shards" : game.Trim();
 
         if (game == "shards")
+        {
+            var by = ShardSort(p, sort);
             return new
             {
-                game, title = "Черепки", kind = "shards", period = p,
-                rows = store.TopShards(Rows, since, byBalance: p == "all")
+                game, title = "Черепки", kind = "shards", period = p, sort = by,
+                rows = store.TopShards(Rows, since, byBalance: by == "balance")
                     .Select(r => new { nick = r.Nick, balance = r.Balance, earned = r.Earned }),
             };
+        }
 
         if (game == "daily")
         {

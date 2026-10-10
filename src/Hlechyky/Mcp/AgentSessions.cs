@@ -21,6 +21,8 @@ public sealed class AgentSession
     public System.Collections.Concurrent.ConcurrentDictionary<string, long> SeenTable { get; } = new(StringComparer.Ordinal);
     /// <summary>Версія протоколу, про яку домовились на initialize.</summary>
     public string Protocol { get; set; } = "";
+    /// <summary>Нік, уже записаний у боти (<see cref="AgentTools.Remember"/>): щоб не ходити в базу з кожним ходом.</summary>
+    public string? Remembered { get; set; }
     public int Calls { get; set; }
 
     /// <summary>Псевдо-з'єднання для Presence: у списку слухачів агент має бути видимий, як і людина.</summary>
