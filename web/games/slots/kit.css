@@ -286,8 +286,8 @@
   background: radial-gradient(closest-side, rgba(255, 214, 90, .55), rgba(255, 214, 90, 0)); }
 .sk-stat.sk-hit b { animation: sk-hit .3s cubic-bezier(.3, 1.6, .5, 1); }
 .sk-stat.sk-hit::after { animation: sk-glowa .45s ease-out; }
-.sk-stat.sk-glow b { animation: sk-hit .42s cubic-bezier(.3, 1.6, .5, 1) 3; }
-.sk-stat.sk-glow::after { animation: sk-glowa 1.3s ease-out; }
+.sk-stat.sk-shine b { animation: sk-hit .42s cubic-bezier(.3, 1.6, .5, 1) 3; }
+.sk-stat.sk-shine::after { animation: sk-glowa 1.3s ease-out; }
 .sk-winbox.sk-punch b { animation: sk-punchn .5s cubic-bezier(.3, 1.6, .5, 1); }
 .sk-winbox.sk-punch::after { animation: sk-glowa .8s ease-out; }
 @keyframes sk-hit { 40% { transform: scale(1.2); } }
