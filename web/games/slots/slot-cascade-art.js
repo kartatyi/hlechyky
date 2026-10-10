@@ -716,6 +716,43 @@
       + '</svg>';
   }
 
+  // ---------- гончарне коло з руками (сюрприз «Гончар доліпив») ----------
+  // viewBox 0 0 240 220, руки виходять за краї (overflow visible). Анімовані: .sc-pt-disc (диск крутиться), .sc-pt-clay
+  // (глина тягнеться вгору), .sc-pt-shine (відблиск біжить по глині — здається, що крутиться), .sc-pt-hand (руки тиснуть),
+  // .sc-pt-drop (бризки глини), .sc-pt-whirl (риски швидкості) — CSS у slot-cascade-art.css
+  function potter() {
+    const CLAY = 'M88 157 C84 132 96 112 108 100 C104 92 106 85 110 80 L130 80 C134 85 136 92 132 100 C144 112 156 132 152 157 Z';
+    const hand = '<path d="M-18 96 L50 104 L52 142 L-18 150 Z" fill="#fff6e2" ' + st(3) + '/>'
+      + '<path d="M38 104 L39 143" stroke="#e03b2c" stroke-width="7" stroke-dasharray="4 3"/>'
+      + '<path d="M27 103 L27 145" stroke="#2a1206" stroke-width="3" stroke-dasharray="3 4"/>'
+      + '<path d="M48 106 C62 98 80 100 92 110 C99 116 99 132 92 138 C80 146 62 144 50 138 Z" fill="#f2c08f" ' + st(3) + '/>'
+      + '<path d="M58 106 C63 93 79 90 88 99 C82 101 70 104 58 106 Z" fill="#f2c08f" ' + st(3) + '/>'
+      + '<path d="M93 120 L82 121 M93 129 L82 129" stroke="' + O + '" stroke-width="2" opacity=".55" stroke-linecap="round"/>';
+    return '<svg viewBox="0 0 240 220" class="sc-pt-svg" overflow="visible" xmlns="http://www.w3.org/2000/svg">'
+      + '<defs><radialGradient id="sc-pt-clay" cx=".35" cy=".3" r=".85"><stop offset="0" stop-color="#eba872"/><stop offset=".55" stop-color="#c16a32"/><stop offset="1" stop-color="#7d3c18"/></radialGradient>'
+      + '<linearGradient id="sc-pt-wood" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e8b47a"/><stop offset="1" stop-color="#9a5626"/></linearGradient>'
+      + '<clipPath id="sc-pt-cc"><path d="' + CLAY + '"/></clipPath></defs>'
+      + '<ellipse cx="120" cy="208" rx="92" ry="9" fill="#2a0f06" opacity=".35"/>'
+      + '<path d="M64 206 L90 168 M176 206 L150 168" stroke="' + O + '" stroke-width="14" stroke-linecap="round"/>'
+      + '<path d="M64 206 L90 168 M176 206 L150 168" stroke="#8a4a20" stroke-width="8" stroke-linecap="round"/>'
+      + '<rect x="112" y="160" width="16" height="46" fill="#5a3018" ' + st(3) + '/>'
+      + '<ellipse cx="120" cy="164" rx="96" ry="20" fill="#6a3816" ' + st(3.5) + '/>'
+      + '<g transform="translate(120 157) scale(1 .21)"><g class="sc-pt-disc"><circle r="96" fill="url(#sc-pt-wood)"/>'
+      + '<path d="M0 -92 V92 M-92 0 H92 M-65 -65 L65 65 M-65 65 L65 -65" stroke="#7a4420" stroke-width="6" opacity=".6"/>'
+      + '<circle r="34" fill="#c58a52"/><circle cx="60" cy="-40" r="9" fill="#fff6e2" opacity=".55"/></g></g>'
+      + '<ellipse cx="120" cy="157" rx="96" ry="20" fill="none" stroke="' + O + '" stroke-width="3.5"/>'
+      + '<g class="sc-pt-clay"><path d="' + CLAY + '" fill="url(#sc-pt-clay)" ' + st(3.5) + '/>'
+      + '<g clip-path="url(#sc-pt-cc)"><rect class="sc-pt-shine" x="64" y="76" width="12" height="86" fill="#fff" opacity=".38"/></g>'
+      + '<g fill="none" stroke="#7a2e14" stroke-width="2.4" opacity=".5"><path d="M92 141 Q120 147 148 141"/><path d="M96 124 Q120 130 144 124"/><path d="M104 108 Q120 112 136 108"/></g>'
+      + '<ellipse cx="120" cy="80" rx="10" ry="3" fill="#7a2e14" ' + st(2.5) + '/></g>'
+      + '<g fill="#c16a32" ' + st(1.5) + '><circle class="sc-pt-drop" cx="102" cy="98" r="4.5"/><circle class="sc-pt-drop sc-pt-d2" cx="140" cy="106" r="3.6"/>'
+      + '<circle class="sc-pt-drop sc-pt-d3" cx="120" cy="84" r="3"/></g>'
+      + '<g class="sc-pt-hand">' + hand + '</g>'
+      + '<g transform="translate(240 0) scale(-1 1)"><g class="sc-pt-hand sc-pt-hand-r">' + hand + '</g></g>'
+      + '<g class="sc-pt-whirl" fill="none" stroke="#fff6e2" stroke-width="3.5" stroke-linecap="round"><path d="M14 168 Q32 186 62 191"/><path d="M226 168 Q208 186 178 191"/></g>'
+      + '</svg>';
+  }
+
   window.SlotArt = window.SlotArt || {};
   window.SlotArt['slot-cascade'] = {
     title: 'Розбиті глеки',
@@ -729,6 +766,7 @@
       multiplier,             // ('×5') → писанка з числом; ×2–×5 проста, ×10–×25 розписна, ×50+ золота з сяйвом
       counter: COUNTER,       // дощечка лічильника (див. коментар над COUNTER)
       frame: FRAME,           // стелаж 6×5 (див. коментар над frame())
+      potter,                 // () → гончарне коло з руками для сюрпризу «Гончар доліпив» (див. коментар над potter())
     },
   };
 })();

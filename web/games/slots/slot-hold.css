@@ -186,6 +186,43 @@
 .sh-ph-empty { border-radius: 12px; background: #1d1424; box-shadow: inset 0 4px 10px #000; }
 .sh-ph-jp { gap: 10px; color: #ffe27a; }
 
+/* «Дукатний дощ»: небо темніє, хмара із золотою облямівкою, дукати падають поштучно, клітинка «приймає» удар;
+   6+ — «Скарб відкрито!». Шар .sh-rainl — у рамці поверх барабанів (px поля, --S — клітинка). */
+.sh-stage.sh-raining::before { opacity: 1; transition-duration: .35s; }
+.sh-rainl { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.sh-cloud { position: absolute; left: 50%; top: calc(var(--S) * -1.45); width: calc(var(--S) * 3.2); transform: translate(-50%, 0); }
+.sh-cloud-svg { width: 100%; height: auto; display: block; overflow: visible; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .45)); }
+.sh-cloud.on .sh-cloud-svg { animation: sh-cloudbob 1.1s ease-in-out infinite alternate; }
+.sh-cloud .a-rglow { animation: sh-glowp .5s ease-in-out infinite alternate; }
+.sh-cloud [class^="a-rsp"] { transform-box: fill-box; animation: sh-rsp .7s ease-in infinite; }
+.sh-cloud .a-rsp2 { animation-delay: -.25s; }
+.sh-cloud .a-rsp3 { animation-delay: -.5s; }
+@keyframes sh-cloudbob { from { transform: translateY(0) scale(1); } to { transform: translateY(-5px) scale(1.02, .98); } }
+@keyframes sh-rsp { 0% { opacity: 0; transform: translateY(-6px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(22px); } }
+.sh-drop { position: absolute; width: calc(var(--S) * .92); height: calc(var(--S) * .92); z-index: 2; }
+.sh-drop::before { content: ''; position: absolute; left: 39%; width: 22%; bottom: 50%; height: 150%; border-radius: 50% 50% 45% 45%;
+  background: linear-gradient(rgba(255, 214, 90, 0), rgba(255, 236, 160, .75)); }
+.sh-drop-i { position: relative; width: 100%; height: 100%; }
+.sh-drop-i > svg { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 0 10px rgba(255, 210, 80, .8)); }
+.sh-ring { position: absolute; width: calc(var(--S) * 1.05); height: calc(var(--S) * 1.05); border-radius: 50%; transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 4px rgba(255, 226, 122, .95), 0 0 26px 8px rgba(255, 190, 40, .65), inset 0 0 30px 10px rgba(255, 240, 170, .7);
+  animation: sh-ring .62s ease-out forwards; }
+@keyframes sh-ring { 0% { opacity: 1; transform: translate(-50%, -50%) scale(.35); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.3); } }
+.sh-plus.sh-rplus { font-size: calc(var(--S) * .34); }
+.sh-plus.sh-rplus.big { font-size: calc(var(--S) * .4); color: #c4ffd8; -webkit-text-stroke-color: #08351f; }
+.slot-slot-hold .sk-cell.sh-catch > svg { animation: sh-catch .62s cubic-bezier(.3, 1.6, .5, 1); }
+.slot-slot-hold .sh-catch .a-glint { animation: sh-glint 1.1s ease-out both; }
+.slot-slot-hold .sh-catch .a-shine { animation: sh-shine 1s ease-in-out both; }
+@keyframes sh-catch { 0% { transform: translateY(-10%) scale(1.2, .74); } 35% { transform: translateY(3%) scale(1.12, .84); }
+  65% { transform: translateY(-4%) scale(.94, 1.08); } 100% { transform: none; } }
+.sh-open { position: absolute; left: 50%; top: 50%; z-index: 3; display: flex; flex-direction: column; align-items: center; white-space: nowrap;
+  padding: calc(var(--S) * .08) calc(var(--S) * .3) calc(var(--S) * .14); border-radius: calc(var(--S) * .22);
+  background: radial-gradient(closest-side, rgba(34, 16, 2, .94), rgba(34, 16, 2, .78)); box-shadow: 0 0 40px 14px rgba(255, 190, 40, .45); }
+.sh-open b { font-size: calc(var(--S) * .95); font-weight: 900; line-height: 1; color: #ffd447; -webkit-text-stroke: 3px #2b1509; paint-order: stroke fill;
+  text-shadow: 0 5px 0 #a5560a, 0 0 26px rgba(255, 210, 80, .8); }
+.sh-open span { font-size: calc(var(--S) * .27); font-weight: 900; color: #fff3c0; -webkit-text-stroke: 1.5px #2b1509; paint-order: stroke fill; }
+
 @media (prefers-reduced-motion: reduce) {
   .sh-chest-rays, .sh-grand-rays, .sh-grand-coin { animation: none !important; }
+  .sh-cloud-svg, .sh-cloud-svg *, .slot-slot-hold .sk-cell.sh-catch > svg { animation: none !important; }
 }

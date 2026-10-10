@@ -139,3 +139,40 @@
 /* очікування: горна на полиці жевріють */
 .slot-slot-cascade .sk-cell.sc-wait::before { content: ''; position: absolute; inset: -8%; z-index: -1; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle, rgba(255, 170, 60, .75), rgba(255, 110, 30, .3) 45%, transparent 70%); animation: sc-hot .45s ease-in-out infinite alternate; }
+
+/* ----- «Гончар доліпив»: гончарне коло з руками над полицею, табличка, грудки глини, оберт клітинки на колі ----- */
+.slot-slot-cascade .sc-pt { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
+.slot-slot-cascade .sc-pt-pot { position: absolute; left: 50%; top: 47%; width: 46%; display: flex; flex-direction: column; align-items: center;
+  transform: translate(-50%, -50%); opacity: 0; will-change: transform; }
+.slot-slot-cascade .sc-pt-art { position: relative; width: 100%; aspect-ratio: 240 / 220; }
+.slot-slot-cascade .sc-pt-art::before { content: ''; position: absolute; inset: -16%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 220, 150, .8), rgba(255, 170, 80, .28) 45%, transparent 70%); }
+.slot-slot-cascade .sc-pt-art > svg { position: relative; width: 100%; height: 100%; display: block; overflow: visible; }
+.slot-slot-cascade .sc-pt-ph { position: absolute; inset: 20%; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #eba872, #c16a32 55%, #7d3c18); }
+.slot-slot-cascade .sc-pt-sign { position: relative; margin-top: -6px; padding: 8px 22px 10px; border-radius: 16px; text-align: center; white-space: nowrap;
+  background: linear-gradient(180deg, var(--sc-wood-l), var(--sc-wood) 45%, var(--sc-wood-d)); border: 3px solid var(--sc-ink);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4), inset 0 -4px 0 rgba(0, 0, 0, .25), 0 8px 18px rgba(0, 0, 0, .45); }
+.slot-slot-cascade .sc-pt-sign b { display: block; font: 900 40px/1.05 'Onest', system-ui, sans-serif; color: var(--sc-text);
+  -webkit-text-stroke: 2px var(--sc-ink); paint-order: stroke fill; }
+.slot-slot-cascade .sc-pt-sign small { display: block; margin-top: 3px; font: 800 18px/1 'Onest', system-ui, sans-serif; color: var(--sc-cream);
+  text-shadow: 0 1px 0 var(--sc-ink); }
+.slot-slot-cascade.sk-port .sc-pt-pot { width: 62%; }
+.slot-slot-cascade.sk-port .sc-pt-sign { padding: 6px 14px 8px; }
+.slot-slot-cascade.sk-port .sc-pt-sign b { font-size: 28px; }
+.slot-slot-cascade.sk-port .sc-pt-sign small { font-size: 15px; }
+/* решта полиці пригасає, клітинки, які ліпитимуть, жевріють */
+.slot-slot-cascade .sc-field .sk-cell > svg { transition: opacity .2s; }
+.slot-slot-cascade .sc-potting .sc-field .sk-cell:not(.sc-pt-target) > svg { opacity: .38; }
+.slot-slot-cascade .sk-cell.sc-pt-target::before { content: ''; position: absolute; inset: 2%; z-index: -1; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 220, 150, .6), rgba(255, 170, 80, .2) 45%, transparent 70%); }
+/* грудка глини, що летить з кола в клітинку (ctx.flyTo кладе її в шар кіта) */
+.sc-pt-blob { display: block; width: 34px; height: 30px; border-radius: 50% 50% 46% 54% / 58% 52% 48% 42%; border: 3px solid #3b1b10;
+  background: radial-gradient(circle at 36% 32%, #eba872, #c16a32 55%, #7d3c18); box-shadow: 0 4px 10px rgba(0, 0, 0, .35); }
+/* мале гончарне коло під клітинкою, поки вона крутиться */
+.slot-slot-cascade .sk-cell.sc-pt-wheel::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: 1%; height: 15%; z-index: -1;
+  border-radius: 50%; border: 3px solid #3b1b10; pointer-events: none;
+  background: repeating-linear-gradient(90deg, #e8b47a 0 9px, #9a5626 9px 15px); animation: sc-pt-strip .18s linear infinite; }
+@keyframes sc-pt-strip { from { background-position: 0 0; } to { background-position: 15px 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .slot-slot-cascade .sk-cell.sc-pt-wheel::after { animation: none; }
+}

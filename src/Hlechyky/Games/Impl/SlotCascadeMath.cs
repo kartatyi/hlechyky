@@ -10,8 +10,10 @@ namespace Hlechyky.Games.Impl;
 /// накопичене), 3+ горна — ще 5 обертів (до 50 разом). Увесь бонус рахується в тому ж оберті.
 ///
 /// Порт моку <c>web/games/slots/slot-cascade.js</c> (makeScript / tumble / bonus) — сценарій тієї самої форми, поле за
-/// полем (docs/games/specs/slots.md, розділ «Розбиті глеки»). Таблицю виплат і вагу горна підправлено під RTP бази ≈ 95 %
-/// і бонус ≈ 1 з 176. Стеля — 5000× за оберт: досягли посеред бонусу — бонус закінчується, банер «Стеля».
+/// полем (docs/games/specs/slots.md, розділ «Розбиті глеки»). «Гончар доліпив»: на першому падінні базового оберту без
+/// виграшу з шансом <see cref="PotterChance"/> гончар переліплює кілька клітинок посуду в групу рівно 8 (крок <c>morph</c>).
+/// Математика — під RTP бази ≈ 97 % (з 09.10; було 95 %): виграш ≈ 41 % обертів, бонус ≈ 1 з 125. Стеля — 5000× за оберт:
+/// досягли посеред бонусу — бонус закінчується, банер «Стеля».
 /// </summary>
 public sealed class SlotCascadeMath : ISlotMath
 {
@@ -31,16 +33,17 @@ public sealed class SlotCascadeMath : ISlotMath
 
     /// <summary>
     /// Виплати в ДЕСЯТИХ частках ставки за [8–9, 10–11, 12+] однакових будь-де. Ставки кратні 10 — виплати рівні.
-    /// Від моку відрізняються лише k1 10–11 (0,9 → 0,8) і k2 8–9 (0,5 → 0,4): мок давав ≈ 96,8 %, з частішим горном —
-    /// ≈ 99 %; так — RTP бази ≈ 95,0 % (розклад по групах і симуляції — specs/slots.md, «Розбиті глеки»).
+    /// 09.10 (98 %): виграші частіші (гончар, горно), тож дрібні групи дешевші — k1 10–11 0,8 → 0,7, k2 10–11 1 → 0,8,
+    /// k3 0,6/1,2 → 0,5/1, k4 1/1,5 → 0,8/1,2, миска 8–9 1,2 → 1; від горщика й вище — без змін (розклад по групах і
+    /// симуляції — specs/slots.md, «Розбиті глеки»).
     /// </summary>
     public static readonly int[][] Pay10 =
     [
-        [3, 8, 25],      // k1
-        [4, 10, 40],     // k2
-        [6, 12, 50],     // k3
-        [10, 15, 80],    // k4
-        [12, 20, 100],   // bowl
+        [3, 7, 25],      // k1
+        [4, 8, 40],      // k2
+        [5, 10, 50],     // k3
+        [8, 12, 80],     // k4
+        [10, 20, 100],   // bowl
         [15, 25, 120],   // pot
         [20, 50, 150],   // makitra
         [25, 100, 250],  // kumanets
@@ -59,10 +62,33 @@ public sealed class SlotCascadeMath : ISlotMath
         public double MultTotal { get; } = mult.Sum();
     }
 
-    // Ваги — з моку (W_BASE / W_FS, M_BASE / M_FS), крім горна в базі: 2,3 → 2,4, щоб бонус випадав ≈ 1 з 176 (було ≈ 1 з 204).
+    // Ваги посуду — з моку (W_BASE / W_FS). Горно в базі: мок 2,3 → 2,4 (1 з 176) → 2,6 (09.10: бонус ≈ 1 з 125). У вільних
+    // писанки рідші й скромніші (1,6 → 1,45; ×10 і вище — рідше): вільні в середньому ≈ 22,5× замість ≈ 33×, м'якша стеля.
     //                                             k1  k2  k3  k4 bowl pot mak kum glek furn  pys
-    public static readonly Weights Base = new([20, 19, 18, 17, 12, 10, 8, 6, 4.5, 2.4, 0.45], [40, 26, 18, 10, 4, 1.5, 0.5]);
-    public static readonly Weights Free = new([20, 19, 18, 17, 12, 10, 8, 6, 4.5, 1.9, 1.6], [34, 26, 20, 12, 5, 2, 1]);
+    public static readonly Weights Base = new([20, 19, 18, 17, 12, 10, 8, 6, 4.5, 2.6, 0.45], [40, 26, 18, 10, 4, 1.5, 0.5]);
+    public static readonly Weights Free = new([20, 19, 18, 17, 12, 10, 8, 6, 4.5, 1.9, 1.45], [36, 28, 20, 10, 4, 1.5, 0.5]);
+
+    /// <summary>
+    /// Шанс «Гончар доліпив» на першому падінні базового оберту без виграшу (≈ 64 % обертів) — ≈ 5,7 % усіх обертів,
+    /// 1 з 17,5. Не залежить ні від чого, крім цього падіння.
+    /// </summary>
+    public const double PotterChance = 0.09;
+
+    /// <summary>Ваги символу, який доліплює гончар (за <see cref="Paying"/>): переважно черепки й дрібний посуд.</summary>
+    public static readonly double[] PotterWeights = [30, 26, 22, 18, 10, 7, 4, 2, 1];
+
+    readonly Weights _base, _free;
+    readonly double _potter;
+    readonly double[] _potterW;
+    readonly double _potterTotal;
+
+    public SlotCascadeMath() : this(Base, Free, PotterChance, PotterWeights) { }
+
+    /// <summary>Інші ваги й шанс гончаря — лише для підбору математики й тестів; на сервері — типовий конструктор.</summary>
+    public SlotCascadeMath(Weights baseW, Weights freeW, double potterChance, double[] potterWeights)
+    {
+        _base = baseW; _free = freeW; _potter = potterChance; _potterW = potterWeights; _potterTotal = potterWeights.Sum();
+    }
 
     public int Cap => 5000;
     public bool Gamble => false;
@@ -167,6 +193,8 @@ public sealed class SlotCascadeMath : ISlotMath
         /// <summary>Скільки разів горно платило 4 / 5 / 6+.</summary>
         public long[] Furn { get; } = new long[3];
         public long Spins, Bonuses, FreeSpinsPlayed, Capped;
+        /// <summary>Скільки разів гончар доліпив групу.</summary>
+        public long Potter;
         /// <summary>Не грати бонус (рахується лише вхід і виплата горна) — для розшарованої оцінки RTP.</summary>
         public bool SkipBonus { get; init; }
     }
@@ -274,30 +302,44 @@ public sealed class SlotCascadeMath : ISlotMath
     /// <summary>Лише виграш, без сценарію (симуляції). Ті самі виклики rng, що й <see cref="Spin"/>.</summary>
     public long Fast(int bet, ISlotRng rng, Probe? probe = null) => Play(bet, rng, null, false, probe).Win;
 
-    /// <summary>Оберт із заданим першим полем (тести; [c][r] ключами моку). Далі падіння й бонус — з rng.</summary>
-    public SlotOutcome ScriptFor(string[][] first, int bet, ISlotRng rng)
+    /// <summary>
+    /// Оберт із заданим першим полем (тести; [c][r] ключами моку). Далі падіння й бонус — з rng. Гончар:
+    /// <c>false</c> — не приходить (поле рівно таке), <c>true</c> — приходить напевно (якщо нема виграшу), <c>null</c> — як у
+    /// <see cref="Spin"/>, за шансом.
+    /// </summary>
+    public SlotOutcome ScriptFor(string[][] first, int bet, ISlotRng rng, bool? potter = false)
     {
         var g = new int[Cells];
         for (var c = 0; c < Cols; c++)
             for (var r = 0; r < Rows; r++) g[c * Rows + r] = Code(first[c][r]);
-        return Play(bet, rng, g, true, null).Outcome!;
+        return Play(bet, rng, g, true, null, potter).Outcome!;
     }
 
     readonly record struct Result(long Win, SlotOutcome? Outcome);
 
-    Result Play(int bet, ISlotRng rng, int[]? first, bool rec, Probe? probe)
+    Result Play(int bet, ISlotRng rng, int[]? first, bool rec, Probe? probe, bool? potter = null)
     {
         var capAmt = (long)Cap * bet;
-        var grid = first ?? RandGrid(Base, rng);
+        var grid = first ?? RandGrid(_base, rng);
         var tease = Tease(grid, BonusFurnaces);
         var steps = rec ? new JsonArray { new JsonObject { ["t"] = "spin", ["grid"] = GridJson(grid), ["tease"] = Ints(tease) } } : null;
         if (probe is not null) probe.Spins++;
 
-        var t = Run(grid, bet, Base, false, 0, rng, steps, probe);
+        // «Гончар доліпив»: перше падіння без виграшу — з шансом _potter гончар переліплює кілька клітинок у групу рівно 8
+        string? potterKey = null;
+        if (potter != false && !HasWin(grid) && (potter == true || rng.NextDouble() < _potter))
+        {
+            grid = (int[])grid.Clone();
+            potterKey = Potter(grid, rng, steps);
+            if (potterKey is not null && probe is not null) probe.Potter++;
+        }
+
+        var t = Run(grid, bet, _base, false, 0, rng, steps, probe);
         var win = t.Win;
         var mults = new JsonArray();
         if (t.MultTo > 0) mults.Add(t.MultTo);
         var meta = new JsonObject { ["casc"] = t.Casc, ["mults"] = mults, ["bonus"] = false, ["tease"] = tease.Count > 0, ["fsMults"] = 0, ["acc"] = 0 };
+        if (potterKey is not null) meta["potter"] = potterKey;
         var capped = false;
         var bonus = false;
 
@@ -316,7 +358,7 @@ public sealed class SlotCascadeMath : ISlotMath
                 if (probe.SkipBonus) return new Result(Math.Min(win, capAmt), null);
             }
 
-            var (fsWin, spins, acc, nm) = FreeRound(bet, rng, steps, probe, capAmt - win);
+            var (fsWin, spins, acc, nm) = FreeRound(bet, _free, rng, steps, probe, capAmt - win);
             if (win + fsWin >= capAmt) capped = true;
             var fsShown = capped ? Math.Max(0, capAmt - win) : fsWin;
             if (capped) steps?.Add(CapBanner());
@@ -356,7 +398,7 @@ public sealed class SlotCascadeMath : ISlotMath
     /// Вільні оберти (bonus у моку): 10 обертів на вагах <see cref="Free"/>, писанки накопичуються на весь бонус, 3+ горна
     /// після каскаду — ще 5 (поки всього менше 50). Досягли <paramref name="room"/> (залишок до стелі) — бонус закінчується.
     /// </summary>
-    static (long Win, int Spins, int Acc, int Mults) FreeRound(int bet, ISlotRng rng, JsonArray? steps, Probe? probe, long room)
+    static (long Win, int Spins, int Acc, int Mults) FreeRound(int bet, Weights free, ISlotRng rng, JsonArray? steps, Probe? probe, long room)
     {
         steps?.Add(new JsonObject { ["t"] = "bonusIn", ["count"] = FreeSpins });
         int left = FreeSpins, total = FreeSpins, acc = 0, nm = 0, spins = 0;
@@ -365,9 +407,9 @@ public sealed class SlotCascadeMath : ISlotMath
         {
             left--; spins++;
             steps?.Add(new JsonObject { ["t"] = "fs", ["left"] = left });
-            var g = RandGrid(Free, rng);
+            var g = RandGrid(free, rng);
             steps?.Add(new JsonObject { ["t"] = "spin", ["grid"] = GridJson(g), ["tease"] = Ints(total < MaxFreeSpins ? Tease(g, RetriggerFurnaces) : []) });
-            var ft = Run(g, bet, Free, true, acc, rng, steps, probe);
+            var ft = Run(g, bet, free, true, acc, rng, steps, probe);
             fsWin += ft.Win;
             if (ft.MultTo > 0) { nm++; acc = ft.MultTo; }
             var fc = Count(ft.Grid, FurnaceCode);
@@ -384,7 +426,46 @@ public sealed class SlotCascadeMath : ISlotMath
     }
 
     /// <summary>Лише вільні оберти (без стелі й без сценарію) — для розшарованої оцінки RTP у тестах.</summary>
-    public long FastBonus(int bet, ISlotRng rng, Probe? probe = null) => FreeRound(bet, rng, null, probe, long.MaxValue).Win;
+    public long FastBonus(int bet, ISlotRng rng, Probe? probe = null) => FreeRound(bet, _free, rng, null, probe, long.MaxValue).Win;
+
+    /// <summary>Чи є на полі група 8+ символу, що платить.</summary>
+    static bool HasWin(int[] g)
+    {
+        Span<int> counts = stackalloc int[Paying.Length];
+        counts.Clear();
+        foreach (var k in g) if (k < FurnaceCode && ++counts[k] >= MinCount) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Гончар доліплює: символ за вагами <see cref="PotterWeights"/>, і стільки випадкових клітинок посуду (не горна, не
+    /// писанок, не цього символу) стають ним, щоб на полі було рівно 8. Інші групи від цього лише меншають — платить саме
+    /// ця. Крок сценарію <c>{ t: 'morph', cells: [[c, r, key]…], why: 'potter' }</c> — перед <c>win</c>.
+    /// </summary>
+    string? Potter(int[] grid, ISlotRng rng, JsonArray? steps)
+    {
+        var s = Pick(_potterW, _potterTotal, rng);
+        var need = MinCount - Count(grid, s);
+        Span<int> pool = stackalloc int[Cells];
+        var n = 0;
+        for (var i = 0; i < Cells; i++) if (grid[i] < FurnaceCode && grid[i] != s) pool[n++] = i;
+        if (need <= 0 || n < need) return null;
+        for (var j = 0; j < need; j++)
+        {
+            var k = j + rng.Next(n - j);
+            (pool[j], pool[k]) = (pool[k], pool[j]);
+            grid[pool[j]] = s;
+        }
+        if (steps is not null)
+        {
+            var picked = pool[..need].ToArray();
+            Array.Sort(picked);
+            var cells = new JsonArray();
+            foreach (var i in picked) cells.Add(new JsonArray(i / Rows, i % Rows, Paying[s]));
+            steps.Add(new JsonObject { ["t"] = "morph", ["cells"] = cells, ["why"] = "potter" });
+        }
+        return Paying[s];
+    }
 
     JsonObject CapBanner() => new() { ["t"] = "banner", ["text"] = $"Стеля {Cap}×!", ["sub"] = "більше один оберт не дає", ["ms"] = 2200 };
 
@@ -403,10 +484,15 @@ public sealed class SlotCascadeMath : ISlotMath
         pay[Furnace] = new JsonObject { ["6"] = FurnacePay(6), ["5"] = FurnacePay(5), ["4"] = FurnacePay(4) };
         var mults = new JsonArray();
         foreach (var m in Mults) mults.Add(m);
+        // «Гончар доліпив» для ⓘ: шанс на оберті без виграшу, розмір групи й імовірність кожного символу (%)
+        var syms = new JsonObject();
+        for (var s = 0; s < Paying.Length; s++) syms[Paying[s]] = Math.Round(100 * PotterWeights[s] / PotterWeights.Sum(), 1);
+        var potter = new JsonObject { ["chance"] = PotterChance, ["size"] = MinCount, ["syms"] = syms };
         return new JsonObject
         {
             ["cols"] = Cols, ["rows"] = Rows, ["min"] = MinCount, ["pay"] = pay, ["payUnit"] = 1, ["mults"] = mults,
             ["free"] = FreeSpins, ["retrigger"] = Retrigger, ["maxFree"] = MaxFreeSpins, ["cap"] = Cap,
+            ["bonusAt"] = BonusFurnaces, ["retriggerAt"] = RetriggerFurnaces, ["potter"] = potter,
         };
     }
 }
