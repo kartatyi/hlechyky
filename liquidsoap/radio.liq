@@ -62,11 +62,16 @@ radio.on_track(synchronous=false, notify)
 # minute per listener (measured 30.09.2026), with 64 KB (~2.7 s of audio per write) ~20 times less. start.ps1's
 # watchdog restarts liquidsoap when it grows too big anyway (quietly, when nobody listens).
 # burst must be bigger than chunk: with the default burst (65534) < chunk a new listener got nothing until the next
-# full chunk — «Врубити» waited 1–5 s. 128 KB of prebuffer = first bytes in 0.03–0.14 s, the same leak (measured 07.10).
+# full chunk — «Врубити» waited 1–5 s.
+# burst must also outlast TWO chunks: harbor wakes every listener once per chunk, but a listener whose own buffer is
+# a hair short of chunk at that moment waits for the next wake-up, so data comes 2.7 s apart and, every 15–25 s,
+# 5.4 s apart (measured 09.10). With burst=131072 (5.46 s) the player's reserve fell to −0.07 s on those gaps and the
+# air stuttered for 1–3 s («радіо зависає»). 192 KB = 8.2 s: reserve ≥ +2.7 s for every listener, the same leak, the
+# air is 8 s behind live (Site:StreamDelaySeconds).
 air = output.harbor(
   id="radio",
   %ffmpeg(format="mp3", %audio(codec="libmp3lame", b="192k", samplerate=44100, channels=2)),
-  port=harbor_port, mount="radio.mp3", chunk=65536, burst=131072,
+  port=harbor_port, mount="radio.mp3", chunk=65536, burst=196608,
   encoding="UTF-8",
   headers=[("icy-name", "Hlechyky"), ("icy-description", "Spilne radio dlia svoikh"), ("Cache-Control", "no-cache")],
   radio)

@@ -355,7 +355,8 @@ web/static/curses/        прокльони Лавки (mp3; перегенер
 | `Site:Name` | назва в інтерфейсі |
 | `Site:DjName`, `Site:DjNameGen` | як звати авто-DJ (називний і родовий відмінок) |
 | `Site:PublicStreamUrl` | адреса потоку для плеєра на сайті |
-| `Site:StreamDelaySeconds` | поправка прогрес-бару на буфер потоку |
+| `Site:StreamDelaySeconds` | поправка прогрес-бару на буфер потоку (burst у `radio.liq`: 192 КБ ≈ 8 с) |
+| `Liquidsoap:FreezeRestartSeconds` | годинник ефіру стоїть стільки секунд — сервер сам перезапускає liquidsoap (`start.ps1 radio`); 0 — лише наглядач раз на хвилину |
 | `YtDlp:CookiesFile` | шлях до `cookies.txt` залогіненого акаунту; береться лише для відео 18+ (див. "Джерела треків") |
 | `YtDlp:CookiesFromBrowser` | те саме, але читати куки з браузера (`firefox`); працює, лише якщо там залогінений YouTube |
 | `YtDlp:MaxDurationSeconds` | ліміт довжини треку для не-адмінів |

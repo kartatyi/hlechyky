@@ -10,7 +10,9 @@
               новий сервер підніме їх із тими самими id; сам простій — лише підміна теки й старт (~2 с), а Caddy цей
               час притримує запити. Caddy і liquidsoap не чіпає (слухачі не відвалюються); змінився Caddyfile — reload
   back      — відкат: попередня збірка (build.prev) назад у build\ і перезапуск (deploy.ps1, коли новий сервер не піднявся)
-  radio     — перезапустити liquidsoap (після правок liquidsoap\radio.liq); ефір замовкне на кілька секунд
+  radio     — перезапустити liquidsoap (після правок liquidsoap\radio.liq); ефір замовкне на кілька секунд.
+              -Why "<чому>" — це не рука, а збій (так кличе сервер, коли годинник ефіру став): рядок у logs\watchdog.log
+              і знімок завислого логу logs\liquidsoap.frozen-*.log
   status    — що працює
   logs      — хвіст логу сервера
   autostart — завдання «Hlechyky» у Планувальнику: при вході у Windows і щохвилини запускає watchdog
@@ -20,7 +22,8 @@
   liquidsoap живе в tools\liquidsoap (звичайна Windows-збірка, качає setup.ps1) і сам віддає потік на 127.0.0.1:8001/radio.mp3 —
   ні Docker, ні Icecast більше не потрібні. Без tools\caddy\caddy.exe крок Caddy пропускається. Дивись CONTRIBUTING.md.
 #>
-param([ValidateSet('build', 'start', 'stop', 'restart', 'back', 'radio', 'status', 'logs', 'autostart', 'watchdog')][string]$Cmd = 'status')
+param([ValidateSet('build', 'start', 'stop', 'restart', 'back', 'radio', 'status', 'logs', 'autostart', 'watchdog')][string]$Cmd = 'status',
+    [string]$Why = '')
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
@@ -59,7 +62,9 @@ $LiqLog = Join-Path $Root 'logs\liquidsoap.log'
 $LiqErrLog = Join-Path $Root 'logs\liquidsoap.err.log'
 $SpareList = Join-Path $Root 'data\spare.m3u'
 # Windows-збірка liquidsoap тече пам'яттю на кожного слухача (див. radio.liq, chunk). Понад Quiet МБ — перезапуск, щойно
-# ніхто не слухає; понад Hard — перезапуск будь-що (слухачі перепідключаться).
+# ніхто не слухає; понад Hard — перезапуск будь-що (слухачі перепідключаться). Міряємо виділене (private bytes), не
+# робочий набір: витеклого ніхто не торкається, Windows виносить його в pagefile, і 9.10.2026 процес тримав 5,9 ГБ при
+# робочому наборі 85 МБ — наглядач цього просто не бачив.
 $LiqMemQuietMB = 800
 $LiqMemHardMB = 2500
 
@@ -244,6 +249,8 @@ function Start-Liquidsoap {
 }
 
 function Stop-Liquidsoap {
+    # Тут liquidsoap не живе (D:\or-dev, воркдерева): за портом 1234 знайшовся б ЖИВИЙ ефір проду
+    if (-not (Test-Path $Liq)) { Write-Host "liquidsoap пропускаю: нема $Liq"; return }
     $p = Get-Liquidsoap
     if (-not $p) { $p = Find-Listener ([int](Read-LiqEnv).TELNET_PORT) 'liquidsoap' }
     if ($p) { Stop-Process -Id $p.Id -Force; Remove-Item $LiqPidFile -ErrorAction SilentlyContinue; Write-Host 'liquidsoap зупинено' }
@@ -389,6 +396,20 @@ function Get-LiqClock([int]$Port) {
     return $null
 }
 
+# Знімок завислого ефіру, щоб колись знайти причину: хвіст logs\liquidsoap.log (Start-Liquidsoap перекладе його в
+# .prev.log, а наступний перезапуск затре) і clock.dump. logs\liquidsoap.frozen-<час>.log, п'ять найсвіжіших.
+function Save-FrozenLog {
+    try {
+        $dir = Join-Path $Root 'logs'
+        $f = Join-Path $dir ('liquidsoap.frozen-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        $tail = if (Test-Path $LiqLog) { @(Get-Content $LiqLog -Tail 400 -Encoding UTF8) } else { @() }
+        $dump = Invoke-LiqTelnet ([int](Read-LiqEnv).TELNET_PORT) 'clock.dump'
+        Set-Content $f ($tail + '' + '--- clock.dump ---' + $(if ($dump) { $dump } else { '(telnet не відповів)' })) -Encoding UTF8
+        Get-ChildItem $dir -Filter 'liquidsoap.frozen-*.log' | Sort-Object Name -Descending | Select-Object -Skip 5 | Remove-Item -ErrorAction SilentlyContinue
+    }
+    catch { }
+}
+
 # liquidsoap: процесу нема — запустити; процес є, а потік (harbor) не слухає 3 хв або годинник ефіру стоїть 2 перевірки
 # поспіль — перезапустити. Падає раз у раз (скажімо, помилка в radio.liq) — не молотимо щохвилини, як і з сервером.
 function Watch-Radio($st, [long]$now) {
@@ -410,7 +431,7 @@ function Watch-Radio($st, [long]$now) {
         if ($frozen) { $st.clockMisses++ } else { $st.clockMisses = 0 }
         $listening = [bool](Get-NetTCPConnection -State Listen -LocalPort ([int]$v.HARBOR_PORT) -ErrorAction SilentlyContinue)
         if ($listening) { $st.mountMisses = 0 } else { $st.mountMisses++ }
-        $mb = [int]($p.WorkingSet64 / 1MB)
+        $mb = [int]($p.PrivateMemorySize64 / 1MB)   # виділене, не робочий набір (див. $LiqMemQuietMB)
         $fat = $false
         if ($mb -ge $LiqMemQuietMB) {
             $n = if ((Invoke-LiqTelnet ([int]$v.TELNET_PORT) 'listeners') -match '^\s*(\d+)') { [int]$Matches[1] } else { -1 }
@@ -422,6 +443,7 @@ function Watch-Radio($st, [long]$now) {
             elseif ($fat) { "з'їв $mb МБ пам'яті (витік Windows-збірки)" + $(if ($mb -lt $LiqMemHardMB) { ', а зараз ніхто не слухає' } else { '' }) }
             else { "потік :$($v.HARBOR_PORT) не слухає вже $($st.mountMisses) хв" }
         Write-Watch "liquidsoap працює, але $why — перезапускаю"
+        if ($st.clockMisses -ge 2) { Save-FrozenLog }
         Stop-Liquidsoap | Out-Null
         $st.liqRestartAt = $now
         $st.mountMisses = 0
@@ -527,7 +549,10 @@ try {
             if (-not (Invoke-Freeze 3)) { Use-CleanTables }
             Stop-Server; Restore-PrevBuild; Start-Liquidsoap; Start-Server; Start-Caddy
         }
-        'radio'   { Stop-Liquidsoap; Start-Sleep 1; Start-Liquidsoap }
+        'radio'   {
+            if ($Why -and (Test-Path $Liq)) { Save-FrozenLog; Write-Watch "liquidsoap: $Why — перезапускаю" }
+            Stop-Liquidsoap; Start-Sleep 1; Start-Liquidsoap
+        }
         'status'  {
             $p = Get-Server
             Write-Host ("Сервер:     " + $(if ($p) { "працює (pid $($p.Id))" } else { 'зупинений' }))
