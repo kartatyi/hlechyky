@@ -2471,6 +2471,7 @@ public sealed partial class Clicker : Game
         foreach (var key in s.Achievements ?? []) if (key is { Length: > 0 and < 64 } && !_achQueue.Contains(key)) _achQueue.Add(key);
         // Що належить напевно, але в хаті не лежить (зірку спіймано, а Скалки нема) — після черги ачівок, щоб її не стерло.
         WondersOwed();
+        AchievementsOwed();
         _viewVersion++;
         // Після Load каталогів у виді нема (вид до збереження й після мусить збігатись): клієнт без них сам попросить look { catalog: true }.
         _catalogWanted = false;

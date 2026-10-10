@@ -427,6 +427,19 @@ public sealed partial class Clicker
         _achQueue.Clear();
     }
 
+    /// <summary>
+    /// Ачівки за поріг, який гончар уже переступив, але переходу через нього гра не бачила: пороги знижено (10.10 —
+    /// майстерність, шана сіл і гостей), або лічильник прийшов зі збереження вже за порогом. Кличеться на завантаженні,
+    /// після черги ачівок; видає найближча дія, а вдруге платформа ту саму ачівку не дає.
+    /// </summary>
+    void AchievementsOwed()
+    {
+        if (_firedBy.Values.Any(n => MasteryLevel(n) >= MasteryAt.Length)) Achieve("potter-mastery");
+        if (FairVillages.Any(v => MktLevel(v.Key) >= FairRepTop)) Achieve("potter-rep10");
+        if (_gLevel.Any(l => l >= GuestRepTop)) Achieve(GuestAchMax);
+        if (_treatsSent >= TreatsForAchievement) Achieve("potter-treat");
+    }
+
     // ---------- Око майстра для мінігор ----------
 
     /// <summary>
