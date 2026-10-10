@@ -67,7 +67,7 @@
 .sh-hc.sh-tease::before { content: ''; position: absolute; inset: 3px; border-radius: 10px; z-index: 2; pointer-events: none;
   box-shadow: inset 0 0 0 3px #ffd447, 0 0 22px 4px rgba(255, 190, 40, .7); animation: sh-glowp .32s ease-in-out infinite alternate; }
 .sh-hc.sh-tease .sh-strip { animation-duration: .55s; }
-.sh-hc.sh-land .sh-hci { animation: sh-landb .35s ease-out; }
+.sh-hc.sh-settle .sh-hci { animation: sh-landb .35s ease-out; }
 @keyframes sh-landb { 0% { transform: translateY(-10%); } 60% { transform: translateY(3%); } 100% { transform: none; } }
 .sh-hc.sh-stick .sh-hci { animation: sh-stick .8s cubic-bezier(.3, 1.6, .5, 1); }
 .sh-hc.sh-stick::after { content: ''; position: absolute; inset: -20%; border-radius: 50%; pointer-events: none;

@@ -559,7 +559,7 @@
           ctx.sound('dzen', { p: 1 + (i % 5) * 0.06 }); ctx.fx.at(e, { kind: 'spark', n: 18, speed: 420 });
           if (x[2] === 'mini' || x[2] === 'major') { jpFlash(ctx, x[2], true); ctx.say(pick(SAY[x[2]]), 2200); }
           updSum(ctx, true);
-        } else { setCell(ctx, c, r); anim(e, 'sh-land', 400, ctx); if (c !== (order[i + 1] || [])[0]) ctx.sound('stop', { pitch: 1.25 - c * 0.04 }); }
+        } else { setCell(ctx, c, r); anim(e, 'sh-settle', 400, ctx); if (c !== (order[i + 1] || [])[0]) ctx.sound('stop', { pitch: 1.25 - c * 0.04 }); }
       }
       if (rise && rise.stop) rise.stop(); else if (typeof rise === 'function') rise();
       h.stage.classList.remove('sh-slow');

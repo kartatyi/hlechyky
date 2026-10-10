@@ -1000,7 +1000,10 @@
       o = o || {};
       const from = ctx.balance; ctx.addBalance(n); ctx.sound('coin');
       const to = ctx.balance;
-      restart(balEl.closest('.sk-stat'), o.glow ? 'sk-glow' : 'sk-hit');
+      // НЕ «sk-glow»: це окремий шар підсвітки барабана (.sk-glow — absolute, inset 0, opacity 0), і з ним баланс зникав
+      // до перезавантаження (записки #42, #43). Класи стану — лише ті, що не мають власного правила в kit.css.
+      const st = balEl.closest('.sk-stat'); if (st) st.classList.remove('sk-hit', 'sk-shine');
+      restart(st, o.glow ? 'sk-shine' : 'sk-hit');
       if (n <= 0 || SK.calm()) return;
       const t0 = performance.now(), ms = o.glow ? 900 : 450;
       loop.add((t) => {
