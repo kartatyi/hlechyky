@@ -67,8 +67,19 @@ public sealed class EconomyRig : IDisposable
     public EconomyTicker Ticker { get; }
     public SqliteGameStore GameStore { get; }
 
-    public EconomyRig()
+    /// <summary>
+    /// Гравці тестів «Хто скільки» з акаунтами: статистика показує лише людей з акаунтом (<see cref="Bots"/>), тож
+    /// тест таблиць і Літопису бере <c>new EconomyRig(people: true)</c>. Нік поза списком — гість.
+    /// </summary>
+    public static readonly string[] Cast =
+    [
+        "Оля", "Петро", "Яся", "Сем", "Микола", "Владік", "Влад", "Марко", "Іван", "Сова", "Smaug",
+        "Ветеран", "Свій", "Новий", "Інший", "Друг", "Балакун",
+    ];
+
+    public EconomyRig(bool people = false)
     {
+        if (people) Db.Accounts(Cast);
         var opts = new FixedOptions<EconomyOptions>(Options);
         Store = new EconomyStore(Db);
         Names = new GameNames([]);

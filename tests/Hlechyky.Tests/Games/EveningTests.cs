@@ -176,7 +176,7 @@ public class CoopBoardTests
     [Fact]
     public void Coop_snake_board_lists_records_like_solo()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         var reg = RoomHarness.NewRegistry();
         var names = new Hlechyky.Games.Economy.GameNames(reg);
         Assert.True(names.Get("snake-coop")!.Coop);

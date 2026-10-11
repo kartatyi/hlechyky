@@ -24,7 +24,7 @@ public class BotsTests
 
     sealed class Rig : IDisposable
     {
-        public readonly EconomyRig E = new();
+        public readonly EconomyRig E = new(people: true);
         public readonly Litopys L;
 
         public Rig()
@@ -65,8 +65,56 @@ public class BotsTests
         Assert.True(bots.Has("кум панас"));
         Assert.True(bots.Has("🤖 Дід Панас"));      // вбудований бот — за значком
         Assert.True(bots.Has(Hlechyky.Games.Impl.LiveBots.Name));
-        Assert.False(bots.Has("Smaug"));
-        Assert.False(bots.Has("Дядько Глек"));      // Глек — не бот: його «Хто скільки» відділяє сам
+        Assert.True(bots.Has("Smaug"));             // без акаунта — гість
+        t.Db.Accounts("Smaug");
+        Assert.False(Bots.Load(t.Db).Has("Smaug"));
+    }
+
+    [Fact]
+    public void Hand_typed_claudes_stay_bots_even_if_someone_takes_the_nick()
+    {
+        using var t = new TempDb();
+        t.Db.Accounts("Клодік", "Клод (справжній)");
+        var bots = Bots.Load(t.Db);
+        Assert.True(bots.Has("клодік"));
+        Assert.True(bots.Has("Клод (справжній)"));
+        Assert.True(bots.Has("микола і його клод"));
+        Assert.True(bots.Has("гість Клод"));
+    }
+
+    // ---------- гості (11.10): у статистиці лише акаунти ----------
+
+    [Fact]
+    public void Guests_and_old_nicks_without_an_account_are_not_in_stats()
+    {
+        using var rig = new Rig();
+        string[] guests = ["гість Іван", "Даша", "Клодік"];
+        var at = Now.AddHours(-1);
+        foreach (var g in guests)
+        {
+            rig.E.Economy.Grant(g, 300, "listen");
+            rig.Result("t-" + g, 1, "ttt", g, "win", at);
+            rig.Result("t-" + g, 1, "ttt", "Петро", "loss", at);
+            Chat(rig.Db, g, "привіт від " + g, at);
+            Track(rig.Db, "t-" + g);
+            Play(rig.Db, "t-" + g, "user", g, at);
+            rig.Ach(g, "first-win", at);
+        }
+        rig.E.Economy.Grant("Оля", 30, "listen");
+        Chat(rig.Db, "Оля", "я тут", at);
+        rig.E.Store.AddTime([new TimeRow("гість іван", PlayClock.Site, "2026-09-26", 9000),
+            new TimeRow("оля", PlayClock.Site, "2026-09-26", 60)]);
+
+        Assert.Equal(["Оля"], NicksOf(Json(rig.E.Boards.Leaderboard("shards", "all", null)).GetProperty("rows")));
+        Assert.Equal(["Петро"], NicksOf(Json(rig.E.Boards.Leaderboard("ttt", "all", null)).GetProperty("rows")));
+        Assert.Equal(["Оля"], NicksOf(Json(rig.E.Boards.Time("all")).GetProperty("people")));
+        Assert.Empty(rig.Db.TopRequesters(DateTimeOffset.MinValue, []).People);
+
+        var ov = Json(rig.L.Overview("week"));
+        Assert.Equal(1, ov.GetProperty("totals").GetProperty("messages").GetInt32());
+        var all = ov + " " + Json(rig.L.Race("week")) + " " + Json(rig.L.Bourse("week", null))
+                  + " " + Json(rig.L.Records());
+        foreach (var g in guests) Assert.DoesNotContain(g, all);
     }
 
     [Fact]

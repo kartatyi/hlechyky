@@ -124,6 +124,7 @@ public sealed class Db
         Once(c, "chat-hide-glek-2026-09", HideGlekSql);
         Once(c, "chat-topic-2026-09", TopicSql);
         Once(c, "bot-nicks-agents-2026-10", Bots.SeedSql(DateTimeOffset.UtcNow));
+        Once(c, "bot-nicks-claudes-2026-10", Bots.SeedSql(Bots.Claudes, DateTimeOffset.UtcNow));
         // «👎 більше не давати» у «Вгадай мелодію»: такі треки (і та сама пісня з інших завантажень) гра не бере
         Exec(c, "CREATE TABLE IF NOT EXISTS melody_dislikes(track_id TEXT NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(track_id, nick))");
         Exec(c, "CREATE TABLE IF NOT EXISTS chat_likes(chat_id INTEGER NOT NULL, nick TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(chat_id, nick))");

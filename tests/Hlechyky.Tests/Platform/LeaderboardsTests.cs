@@ -19,7 +19,7 @@ public class LeaderboardsTests
     [Fact]
     public void Shards_table_shows_balance_and_earnings()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 30, "listen");
         rig.Economy.Grant("Петро", 10, "listen");
 
@@ -34,14 +34,14 @@ public class LeaderboardsTests
     [Fact]
     public void Shards_are_the_default_table()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         Assert.Equal("shards", Json(rig.Boards.Leaderboard(null, null, null)).GetProperty("game").GetString());
     }
 
     [Fact]
     public void Period_day_does_not_see_yesterdays_earnings()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 7, "listen");
         rig.Clock.Advance(TimeSpan.FromHours(24));
 
@@ -57,7 +57,7 @@ public class LeaderboardsTests
     [Fact]
     public void Todays_shard_table_keeps_whoever_earned_today()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 7, "listen", "listen:оля:вчора");
         rig.Clock.Advance(TimeSpan.FromHours(24));
         rig.Economy.Grant("Петро", 2, "listen", "listen:петро:сьогодні");
@@ -74,7 +74,7 @@ public class LeaderboardsTests
     [Fact]
     public void Shards_for_all_time_sort_by_balance_or_by_earned()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         // суми до сотні: «Сотня» (rich-100) доклала б черепків
         rig.Economy.Grant("Оля", 90, "win:ttt");
         Assert.True(rig.Economy.TrySpend("Оля", 85, "lavka:x"));
@@ -100,7 +100,7 @@ public class LeaderboardsTests
     [Fact]
     public void Shards_for_a_day_count_only_today_and_sort_by_either_column()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Петро", 95, "win:ttt", "петро:позавчора");
         rig.Economy.Grant("Оля", 50, "win:ttt", "оля:позавчора");
         rig.Economy.Grant("Сем", 80, "win:ttt", "сем:позавчора");
@@ -125,7 +125,7 @@ public class LeaderboardsTests
     [Fact]
     public void Solo_table_for_a_day_does_not_show_an_older_record()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Names.Learn(Clicker);
         rig.Events.Raise(new SoloScoreEvent("clicker", "Оля", 900, ScoreOrder.HigherIsBetter, "clicker:оля", rig.Clock.UtcNow));
         rig.Clock.Advance(TimeSpan.FromDays(30));
@@ -146,7 +146,7 @@ public class LeaderboardsTests
     [Fact]
     public void Solo_table_orders_scores_above_the_long_ceiling()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Names.Learn(Clicker);
         var now = rig.Clock.UtcNow;
         // ще вчора в базі лежала стеля long — сьогоднішнє більше число мусить її переписати
@@ -165,7 +165,7 @@ public class LeaderboardsTests
     [Fact]
     public void Multiplayer_game_with_a_score_is_not_a_solo_table()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         // ерудет чи дурень цілком природно виставлять Score: очки за партію є, але таблиця в них — перемоги
         var scored = EconomyRig.Info("scrabble", "Ерудет", "ерудет", score: ScoreOrder.HigherIsBetter);
         rig.Names.Learn(scored);
@@ -181,7 +181,7 @@ public class LeaderboardsTests
     [Fact]
     public void Rated_game_table_shows_elo_and_streak()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Events.Raise(rig.Finished("r1", Chess, ["Оля", "Петро"], [0]));
         rig.Events.Raise(rig.Finished("r2", Chess, ["Оля", "Петро"], [0], round: 2));
 
@@ -197,7 +197,7 @@ public class LeaderboardsTests
     [Fact]
     public void Unrated_multiplayer_table_counts_wins()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Events.Raise(rig.Finished("r1", Ttt, ["Оля", "Петро"], [0]));
         rig.Events.Raise(rig.Finished("r2", Ttt, ["Оля", "Петро"], [1], round: 2));
 
@@ -210,7 +210,7 @@ public class LeaderboardsTests
     [Fact]
     public void Solo_table_keeps_the_best_result_and_counts_tries()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Names.Learn(Clicker);
         var now = rig.Clock.UtcNow;
         rig.Events.Raise(new SoloScoreEvent("clicker", "Оля", 120, ScoreOrder.HigherIsBetter, "clicker:оля", now));
@@ -229,7 +229,7 @@ public class LeaderboardsTests
     [Fact]
     public void Daily_table_lists_who_solved_today()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Names.Learn(EconomyRig.Info("wordle", "Глек-слово", "Глек-слово", GameGroup.Solo, 1, score: ScoreOrder.LowerIsBetter));
         rig.Daily.Record("wordle", "Оля", solved: true, attempts: 3, ms: 0);
         rig.Daily.Record("wordle", "Петро", solved: true, attempts: 2, ms: 0);
@@ -245,7 +245,7 @@ public class LeaderboardsTests
     [Fact]
     public void Profile_carries_wallet_ratings_achievements_and_history()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Events.Raise(rig.Finished("r1", Chess, ["Оля", "Петро"], [0]));
 
         var e = Json(rig.Boards.Profile("оля"));
@@ -263,7 +263,7 @@ public class LeaderboardsTests
     [Fact]
     public void Wallet_of_an_unknown_nick_is_empty_but_well_formed()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         var e = Json(rig.Boards.Wallet("Ніхто"));
         Assert.Equal("Ніхто", e.GetProperty("nick").GetString());
         Assert.Equal(0, e.GetProperty("balance").GetInt32());
@@ -274,7 +274,7 @@ public class LeaderboardsTests
     [Fact]
     public void Loss_breaks_the_streak_but_a_draw_does_not()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Events.Raise(rig.Finished("r1", Ttt, ["Оля", "Петро"], [0]));
         rig.Events.Raise(rig.Finished("r2", Ttt, ["Оля", "Петро"], [], draw: true, round: 2));
         rig.Events.Raise(rig.Finished("r3", Ttt, ["Оля", "Петро"], [0], round: 3));
@@ -288,7 +288,7 @@ public class LeaderboardsTests
     [Fact]
     public void Unknown_game_gives_an_empty_table_not_an_error()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         var e = Json(rig.Boards.Leaderboard("немає-такої", "all", null));
         Assert.Equal(0, e.GetProperty("rows").GetArrayLength());
     }

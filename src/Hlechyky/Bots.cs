@@ -15,6 +15,12 @@ namespace Hlechyky;
 /// </para>
 /// Дядько Глек — не бот у цьому сенсі: його рядки (діджей, реклама, прожарки) «Хто скільки» відділяє сам (DjKeys), а
 /// вкладка «🏺 Глек» показує його свідомо.
+/// <para>
+/// Гостей у «Хто скільки» теж нема (11.10, користувач): людина в статистиці — це акаунт. Гість — будь-який нік без
+/// акаунта: і «гість Іван», і старі ніки ще до акаунтів («Іван», «Даша»), і Клодіки, що писали в Балачки руками
+/// («Клодік», «Клод (справжній)», «микола і його клод»). Тож <see cref="NotBot"/> і <see cref="Set.Has"/> пускають лише
+/// ніки з <c>accounts</c>, і то не з <c>bot_nicks</c>.
+/// </para>
 /// </summary>
 public static class Bots
 {
@@ -37,9 +43,20 @@ public static class Bots
         "Скажений Макогін", "Скажений Кум", "Гнат Шершень", "Остап Сірник",
     ];
 
-    /// <summary>SQL міграції: записати <see cref="Agents"/> (раз — потім адмін може й прибрати рядок).</summary>
-    public static string SeedSql(DateTimeOffset at) =>
-        string.Join("\n", Agents.Select(n =>
+    /// <summary>
+    /// Клодіки й інші аі, що писали в Балачки на проді (07.09–09.10) без /mcp: без акаунта їх і так не видно, але якщо
+    /// хтось колись займе такий нік акаунтом — однаково не людина.
+    /// </summary>
+    public static readonly string[] Claudes =
+    [
+        "Клодік", "Клод (справжній)", "микола і його клод", "cursor", "гість Клод",
+    ];
+
+    /// <summary>SQL міграції: записати ніки (раз — потім адмін може й прибрати рядок).</summary>
+    public static string SeedSql(DateTimeOffset at) => SeedSql(Agents, at);
+
+    public static string SeedSql(IEnumerable<string> nicks, DateTimeOffset at) =>
+        string.Join("\n", nicks.Select(n =>
             $"INSERT OR IGNORE INTO bot_nicks(nick_key, nick, kind, created_at) VALUES('{Esc(Auth.NickKey(n))}', '{Esc(n)}', 'mcp', '{at.ToUniversalTime():o}');"));
 
     static string Esc(string s) => s.Replace("'", "''");
@@ -49,34 +66,42 @@ public static class Bots
         nickOrKey is not null && nickOrKey.TrimStart().StartsWith(Mark0, StringComparison.Ordinal);
 
     /// <summary>
-    /// Умова SQL «<paramref name="col"/> — не бот»: для стовпця з ключем ніка (trim + lower, як у гаманців). Для стовпців
-    /// із сирим ніком не годиться: SQLite <c>lower()</c> не знає кирилиці — там <see cref="Set.Has"/> у пам'яті.
+    /// Умова SQL «<paramref name="col"/> — людина»: акаунт і не бот. Для стовпця з ключем ніка (trim + lower, як у
+    /// гаманців). Для стовпців із сирим ніком не годиться: SQLite <c>lower()</c> не знає кирилиці — там
+    /// <see cref="Set.Has"/> у пам'яті.
     /// </summary>
     public static string NotBot(string col) =>
-        $"({col} NOT IN (SELECT nick_key FROM bot_nicks) AND {col} NOT LIKE '{Mark0}%')";
+        $"({col} IN (SELECT nick_key FROM accounts) AND {col} NOT IN (SELECT nick_key FROM bot_nicks) AND {col} NOT LIKE '{Mark0}%')";
 
-    /// <summary>Ключі ботів з бази — для фільтра в пам'яті.</summary>
-    public sealed class Set(HashSet<string> keys)
+    /// <summary>Ключі ботів і акаунтів з бази — для фільтра в пам'яті.</summary>
+    public sealed class Set(HashSet<string> keys, HashSet<string> people)
     {
-        public static readonly Set Empty = new([]);
         public int Count => keys.Count;
-        /// <summary>Бот? Приймає ключ або сирий нік: ключ рахується тут.</summary>
+        /// <summary>Не людина (бот чи гість)? Приймає ключ або сирий нік: ключ рахується тут.</summary>
         public bool Has(string? nickOrKey)
         {
             if (string.IsNullOrEmpty(nickOrKey)) return false;
             if (Looks(nickOrKey)) return true;
-            return keys.Count > 0 && keys.Contains(Auth.NickKey(nickOrKey));
+            var key = Auth.NickKey(nickOrKey);
+            return keys.Contains(key) || !people.Contains(key);
         }
+
+        /// <summary>Саме бот (не гість): <c>bot_nicks</c> чи «🤖».</summary>
+        public bool Bot(string? nickOrKey) =>
+            !string.IsNullOrEmpty(nickOrKey) && (Looks(nickOrKey) || keys.Contains(Auth.NickKey(nickOrKey)));
     }
 
-    public static Set Load(SqliteConnection c)
+    public static Set Load(SqliteConnection c) =>
+        new(Keys(c, "SELECT nick_key FROM bot_nicks"), Keys(c, "SELECT nick_key FROM accounts"));
+
+    static HashSet<string> Keys(SqliteConnection c, string sql)
     {
         var keys = new HashSet<string>(StringComparer.Ordinal);
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT nick_key FROM bot_nicks";
+        cmd.CommandText = sql;
         using var r = cmd.ExecuteReader();
         while (r.Read()) keys.Add(r.GetString(0));
-        return new Set(keys);
+        return keys;
     }
 
     public static Set Load(Db db) => db.With(Load);

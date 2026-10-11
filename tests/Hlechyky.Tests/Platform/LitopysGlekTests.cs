@@ -22,7 +22,7 @@ public class LitopysGlekTests
 
     sealed class Rig : IDisposable
     {
-        public readonly EconomyRig E = new();
+        public readonly EconomyRig E = new(people: true);
         public readonly Litopys L;
         int _id;
 

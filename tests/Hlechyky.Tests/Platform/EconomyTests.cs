@@ -12,7 +12,7 @@ public class EconomyTests
     [Fact]
     public void Grant_with_same_ref_applies_once()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         Assert.Equal(GrantResult.Applied, rig.Economy.Grant("Оля", 5, "win:chess", "game:r1:1:оля"));
         Assert.Equal(GrantResult.Duplicate, rig.Economy.Grant("Оля", 5, "win:chess", "game:r1:1:оля"));
         Assert.Equal(5, rig.Economy.Balance("Оля"));
@@ -21,7 +21,7 @@ public class EconomyTests
     [Fact]
     public void Round_is_settled_once_paid_or_refunded_and_only_that_round()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         IStakes stakes = rig.Economy;
         Assert.False(stakes.Settled("ab12cd34", 1));
         rig.Economy.TrySpend("Оля", 0, "stake", "stake:ab12cd34:1:оля");   // списання ставки — ще не розрахунок
@@ -39,7 +39,7 @@ public class EconomyTests
     [Fact]
     public void Ledger_moves_by_ref_prefix_with_wallet_nick()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         IStakes stakes = rig.Economy;
         stakes.Grant("Оля", 500, "test", "seed:оля");
         Assert.True(stakes.TrySpend("Оля", 100, "table-buyin:poker", "table-in:ab12cd34:1:оля:1"));
@@ -56,7 +56,7 @@ public class EconomyTests
     public void Ledger_prefix_ranges_keep_emoji_nicks()
     {
         // SQLite порівнює байтами UTF-8: емодзі (F0…) лежать вище за U+FFFF (EF BF BF), тож межа prefix+char.MaxValue їх губила.
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         IStakes stakes = rig.Economy;
         stakes.Grant("🎃Оля", 500, "test", "seed:🎃оля");
         Assert.True(stakes.TrySpend("🎃Оля", 100, "table-buyin:poker", "table-in:ab12cd34:1:🎃оля:1"));
@@ -70,7 +70,7 @@ public class EconomyTests
     [Fact]
     public void Grant_without_ref_stacks()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 3, "listen");
         rig.Economy.Grant("Оля", 3, "listen");
         Assert.Equal(6, rig.Economy.Balance("Оля"));
@@ -79,7 +79,7 @@ public class EconomyTests
     [Fact]
     public void Nick_key_ignores_case_and_spaces()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 7, "listen");
         Assert.Equal(7, rig.Economy.Balance("  оля "));
         Assert.True(rig.Economy.TrySpend("ОЛЯ", 7, "stake"));
@@ -89,7 +89,7 @@ public class EconomyTests
     [Fact]
     public void Spend_fails_when_short_and_leaves_balance_alone()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Петро", 4, "listen");
         Assert.False(rig.Economy.TrySpend("Петро", 5, "stake", "stake:r1:1:петро"));
         Assert.Equal(4, rig.Economy.Balance("Петро"));
@@ -102,7 +102,7 @@ public class EconomyTests
     [Fact]
     public void Spend_with_same_ref_takes_money_once()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 20, "listen");
         Assert.True(rig.Economy.TrySpend("Оля", 5, "stake", "stake:r1:1:оля"));
         Assert.True(rig.Economy.TrySpend("Оля", 5, "stake", "stake:r1:1:оля"));
@@ -112,7 +112,7 @@ public class EconomyTests
     [Fact]
     public void Twenty_parallel_spends_of_one_at_balance_ten_succeed_exactly_ten_times()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 10, "listen");
 
         var ok = 0;
@@ -128,7 +128,7 @@ public class EconomyTests
     [Fact]
     public void Cap_stops_grants_past_the_daily_limit()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         for (var i = 0; i < 12; i++)
             Assert.Equal(GrantResult.Applied, rig.Economy.GrantCapped("Оля", 1, "listen", $"listen:оля:d:{i}", "listen", 12));
         Assert.Equal(GrantResult.Capped, rig.Economy.GrantCapped("Оля", 1, "listen", "listen:оля:d:12", "listen", 12));
@@ -138,7 +138,7 @@ public class EconomyTests
     [Fact]
     public void Cap_counts_shards_when_units_are_shards()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         Assert.Equal(GrantResult.Applied, rig.Economy.GrantCapped("Оля", 25, "award:skilky", "a:1", "award", 30, 25));
         Assert.Equal(GrantResult.Capped, rig.Economy.GrantCapped("Оля", 10, "award:skilky", "a:2", "award", 30, 10));
         Assert.Equal(GrantResult.Applied, rig.Economy.GrantCapped("Оля", 5, "award:skilky", "a:3", "award", 30, 5));
@@ -148,7 +148,7 @@ public class EconomyTests
     [Fact]
     public void Cap_resets_with_the_kyiv_day()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.GrantSequenced("Оля", 1, "listen", n => $"listen:оля:{Days.Today(rig.Clock)}:{n}", "listen", 1);
         Assert.Equal(GrantResult.Capped,
             rig.Economy.GrantSequenced("Оля", 1, "listen", n => $"listen:оля:{Days.Today(rig.Clock)}:{n}", "listen", 1));
@@ -162,7 +162,7 @@ public class EconomyTests
     [Fact]
     public void Rebuild_restores_wallets_from_the_ledger()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 10, "listen");
         rig.Economy.TrySpend("Оля", 4, "stake");
         rig.Db.Exec("UPDATE wallets SET balance = 999, earned = 0, spent = 0 WHERE nick_key = 'оля'");
@@ -179,7 +179,7 @@ public class EconomyTests
     [Fact]
     public void Every_move_of_money_reaches_the_outbox_with_human_text()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Names.Learn(EconomyRig.Info("chess", "Шахи", "шахи"));
 
         rig.Economy.Grant("Оля", 5, "win:chess");
@@ -198,7 +198,7 @@ public class EconomyTests
     [Fact]
     public void Duplicate_and_capped_grants_stay_silent()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 5, "listen", "r1");
         rig.Outbox.Clear();
         rig.Economy.Grant("Оля", 5, "listen", "r1");
@@ -219,7 +219,7 @@ public class EconomyTests
     [Fact]
     public void Top_lists_the_richest_first()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 30, "listen");
         rig.Economy.Grant("Петро", 10, "listen");
         var top = rig.Economy.Top(5);
@@ -231,7 +231,7 @@ public class EconomyTests
     [Fact]
     public void Stakes_interface_is_the_same_economy()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         IStakes stakes = rig.Economy;
         stakes.Grant("Оля", 10, "stake-refund", "stake-refund:r1:1:оля");
         stakes.Grant("Оля", 10, "stake-refund", "stake-refund:r1:1:оля");
@@ -243,7 +243,7 @@ public class EconomyTests
     [Fact]
     public void A_broken_subscriber_does_not_undo_a_spend()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Economy.Grant("Оля", 10, "listen");
         rig.Economy.Changed += (_, _) => throw new InvalidOperationException("ачівка спіткнулась");
 
@@ -270,7 +270,7 @@ public class EconomyTests
     [Fact]
     public void Grant_of_nothing_says_so_instead_of_pretending_it_paid()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         Assert.Equal(GrantResult.Skipped, rig.Economy.Grant("Оля", 0, "ach:first-win"));
         Assert.Equal(GrantResult.Skipped, rig.Economy.Grant("   ", 5, "listen"));
         Assert.Equal(0, rig.Economy.Balance("Оля"));

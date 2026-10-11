@@ -20,7 +20,7 @@ public class LitopysChartsTests
 
     sealed class Rig : IDisposable
     {
-        public readonly EconomyRig E = new();
+        public readonly EconomyRig E = new(people: true);
         public readonly Litopys L;
 
         public Rig()
@@ -177,6 +177,7 @@ public class LitopysChartsTests
         using var rig = new Rig();
         for (var i = 0; i < Litopys.BourseLines + 2; i++)
         {
+            rig.Db.Accounts("гравець " + i);
             rig.Ledger("гравець " + i, 100 + i, "listen", Now.AddHours(-1));
             rig.Wallet("гравець " + i, 100 + i);
         }
@@ -273,7 +274,9 @@ public class LitopysChartsTests
                 while (r.Read()) d[(r.GetString(0), r.GetString(1))] = (r.GetInt32(2), r.GetInt32(3));
                 return d;
             });
-            var rated = live.Where(kv => names.Get(kv.Key.Item1) is { Rated: true, MaxPlayers: 2 }).ToList();
+            // гостей і ботів у книзі нема — звіряємо людей
+            var bots = Bots.Load(db);
+            var rated = live.Where(kv => names.Get(kv.Key.Item1) is { Rated: true, MaxPlayers: 2 } && !bots.Has(kv.Key.Item2)).ToList();
             Assert.NotEmpty(rated);
             var diff = rated.Where(kv => !replay.TryGetValue(kv.Key, out var v) || v != kv.Value)
                 .Select(kv => $"{kv.Key}: ratings {kv.Value}, реплей {(replay.TryGetValue(kv.Key, out var v) ? v.ToString() : "—")}").ToList();

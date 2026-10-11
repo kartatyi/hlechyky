@@ -161,6 +161,7 @@ public sealed partial class Litopys
     Dictionary<string, (string Key, string Nick)> Muses() => Cached("glek-muses", () => db.With(c =>
     {
         var dj = DjKeys();
+        var bots = BotSet();
         var best = new Dictionary<string, (string Key, string Nick, int N, string First)>(StringComparer.Ordinal);
         using var cmd = Cmd(c, """
             SELECT t.artist, t.title, p.requested_by, COUNT(*), MIN(p.started_at) FROM plays p JOIN tracks t ON t.id = p.track_id
@@ -170,7 +171,7 @@ public sealed partial class Litopys
         while (r.Read())
         {
             var key = Auth.NickKey(r.GetString(2));
-            if (key.Length == 0 || dj.Contains(key)) continue;
+            if (key.Length == 0 || dj.Contains(key) || bots.Has(key)) continue;
             var artist = r.GetString(0);
             var label = string.IsNullOrWhiteSpace(artist) ? r.GetString(1) : $"{artist} — {r.GetString(1)}";
             var (n, first) = (r.GetInt32(3), r.GetString(4));
@@ -387,12 +388,15 @@ public sealed partial class Litopys
         var g = LoadGlek(raw.Since);
         var dj = DjKeys();
         string Nick(string key) => raw.Nicks.TryGetValue(key, out var n) || g.Nicks.TryGetValue(key, out n) ? n : key;
+        // люди — акаунти без ботів (Bots): замовлення, вподобайки, «не те» й прожарки гостей сюди не йдуть
+        var bots = BotSet();
+        bool Person(string? key) => key is { Length: > 0 } && !dj.Contains(key) && !bots.Has(key);
 
         var glekPlays = g.Plays.Where(x => x.Source == "autodj").ToList();
-        var peoplePlays = g.Plays.Where(x => x.Source == "user" && !x.Voice && x.ByKey is { Length: > 0 } k && !dj.Contains(k)).ToList();
+        var peoplePlays = g.Plays.Where(x => x.Source == "user" && !x.Voice && Person(x.ByKey)).ToList();
         var voice = g.Plays.Where(x => x.Source == "user" && x.Voice && x.ByKey is { } k && dj.Contains(k)).ToList();
         // чужі вподобайки: своє замовлення людина лайкає сама — то не оцінка смаку
-        int LikesOn(Play x) => g.LikesOf.TryGetValue(x.Id, out var who) ? who.Count(w => w != x.ByKey) : 0;
+        int LikesOn(Play x) => g.LikesOf.TryGetValue(x.Id, out var who) ? who.Count(w => w != x.ByKey && Person(w)) : 0;
 
         // ---------- 🎛 діджей ----------
         var air = new
@@ -406,7 +410,7 @@ public sealed partial class Litopys
             glekLikes = glekPlays.Sum(LikesOn),
             peopleLikes = peoplePlays.Sum(LikesOn),
             tips = peoplePlays.Count(x => x.Tip),
-            rejects = g.Feedback.Count,
+            rejects = g.Feedback.Count(f => f.Key is null || Person(f.Key)),
         };
 
         var muses = Muses();
@@ -436,7 +440,7 @@ public sealed partial class Litopys
         var artistName = byArtist
             .ToDictionary(x => x.Key, x => x.GroupBy(y => y.Artist!.Trim()).OrderByDescending(y => y.Count()).First().Key, StringComparer.Ordinal);
         var artistPlays = byArtist.ToDictionary(x => x.Key, x => x.Count(), StringComparer.Ordinal);
-        var flops = g.Feedback.GroupBy(f => f.ArtistKey)
+        var flops = g.Feedback.Where(f => f.Key is null || Person(f.Key)).GroupBy(f => f.ArtistKey)
             .Select(x => new
             {
                 artist = artistName.GetValueOrDefault(x.Key) ?? x.Key,
@@ -450,7 +454,7 @@ public sealed partial class Litopys
             .OrderByDescending(x => x.n).ThenBy(x => x.artist, StringComparer.Ordinal).Take(GlekRows).ToList();
 
         // ---------- ⚔ проти вас ----------
-        var critics = g.Feedback.Where(f => f.Key is not null).GroupBy(f => f.Key!)
+        var critics = g.Feedback.Where(f => Person(f.Key)).GroupBy(f => f.Key!)
             .Select(x => new { nick = Nick(x.Key), n = x.Count(), skip = x.Count(f => f.Kind == "skip"), dismiss = x.Count(f => f.Kind == "dismiss") })
             .OrderByDescending(x => x.n).ThenBy(x => x.nick, StringComparer.Ordinal).Take(GlekRows).ToList();
 
@@ -474,11 +478,11 @@ public sealed partial class Litopys
         // ---------- 🔥 прожарки й балачки ----------
         var roasts = g.Ads.Where(a => a.Kind == "roast" && a.Status != "failed").ToList();
         var targets = roasts.Where(a => !string.IsNullOrEmpty(a.TargetKey) || !string.IsNullOrEmpty(a.Target))
-            .GroupBy(a => a.TargetKey is { Length: > 0 } k ? k : Auth.NickKey(a.Target!))
+            .GroupBy(a => a.TargetKey is { Length: > 0 } k ? k : Auth.NickKey(a.Target!)).Where(x => Person(x.Key))
             .Select(x => new { nick = Nick(x.Key), written = x.Count(), aired = x.Count(a => a.Status == "aired") })
             .OrderByDescending(x => x.written).ThenByDescending(x => x.aired).ThenBy(x => x.nick, StringComparer.Ordinal).Take(GlekRows).ToList();
         var paid = g.Ads.Where(a => a.Price > 0 && a.Status != "failed").ToList();
-        var buyers = paid.Where(a => !a.Anon && a.BuyerKey is { Length: > 0 }).GroupBy(a => a.BuyerKey!)
+        var buyers = paid.Where(a => !a.Anon && Person(a.BuyerKey)).GroupBy(a => a.BuyerKey!)
             .Select(x => new { nick = Nick(x.Key), n = x.Count(), shards = x.Sum(a => a.Price) })
             .OrderByDescending(x => x.shards).ThenBy(x => x.nick, StringComparer.Ordinal).Take(GlekRows).ToList();
         var anon = paid.Where(a => a.Anon).ToList();

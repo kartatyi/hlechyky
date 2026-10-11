@@ -13,7 +13,7 @@ public class PlayClockTests
 
     sealed class Rig : IDisposable
     {
-        public EconomyRig Eco { get; } = new();
+        public EconomyRig Eco { get; } = new(people: true);
         public PlayClock Clock { get; }
         public Rig() => Clock = new PlayClock(Eco.Store, Eco.Clock, NullLogger<PlayClock>.Instance);
         public void Wait(double seconds) => Eco.Clock.Advance(seconds);

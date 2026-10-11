@@ -23,7 +23,7 @@ public class LitopysNewsTests
 
     sealed class Rig : IDisposable
     {
-        public readonly EconomyRig E = new();
+        public readonly EconomyRig E = new(people: true);
         public readonly Litopys L;
 
         public Rig()

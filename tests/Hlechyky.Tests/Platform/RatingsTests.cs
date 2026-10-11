@@ -30,7 +30,7 @@ public class RatingsTests
     [Fact]
     public void Equal_players_start_at_a_thousand()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         Assert.Equal(1000, rig.Ratings.Of("Оля", "chess").Elo);
         Assert.Equal(0, rig.Ratings.Of("Оля", "chess").Games);
     }
@@ -45,7 +45,7 @@ public class RatingsTests
     [Fact]
     public void First_ten_games_move_the_rating_by_fortyeight()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         var (a, b) = rig.Ratings.Apply("chess", ("оля", "Оля"), ("петро", "Петро"), 1);
         Assert.Equal(1024, a.Elo);
         Assert.Equal(976, b.Elo);
@@ -54,7 +54,7 @@ public class RatingsTests
     [Fact]
     public void After_ten_games_a_win_between_equals_is_sixteen()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         WarmUp(rig, "Оля", "Петро");
         Assert.Equal(1000, rig.Ratings.Of("Оля", "chess").Elo);
         Assert.Equal(10, rig.Ratings.Of("Оля", "chess").Games);
@@ -67,7 +67,7 @@ public class RatingsTests
     [Fact]
     public void Draw_between_equals_changes_nothing()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         WarmUp(rig, "Оля", "Петро");
         var (a, b) = rig.Ratings.Apply("chess", ("оля", "Оля"), ("петро", "Петро"), 0.5);
         Assert.Equal(1000, a.Elo);
@@ -78,7 +78,7 @@ public class RatingsTests
     [Fact]
     public void Wins_losses_and_draws_are_counted()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Ratings.Apply("chess", ("оля", "Оля"), ("петро", "Петро"), 1);
         rig.Ratings.Apply("chess", ("оля", "Оля"), ("петро", "Петро"), 0.5);
         rig.Ratings.Apply("chess", ("оля", "Оля"), ("петро", "Петро"), 0);
@@ -93,7 +93,7 @@ public class RatingsTests
     [Fact]
     public void Finished_rated_game_updates_both_ratings()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Events.Raise(rig.Finished("r1", Chess, ["Оля", "Петро"], [0]));
 
         Assert.Equal(1024, rig.Ratings.Of("Оля", "chess").Elo);
@@ -103,7 +103,7 @@ public class RatingsTests
     [Fact]
     public void Unrated_game_leaves_ratings_alone()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Events.Raise(rig.Finished("r1", Ttt, ["Оля", "Петро"], [0]));
         Assert.Equal(0, rig.Ratings.Of("Оля", "ttt").Games);
     }
@@ -111,7 +111,7 @@ public class RatingsTests
     [Fact]
     public void Repeated_finish_does_not_move_the_rating_twice()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         var e = rig.Finished("r1", Chess, ["Оля", "Петро"], [0]);
         rig.Events.Raise(e);
         rig.Events.Raise(e);
@@ -121,7 +121,7 @@ public class RatingsTests
     [Fact]
     public void Leaving_the_table_is_an_ordinary_loss()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Events.Raise(rig.Finished("r1", Chess, ["Оля", "Петро"], [1], moves: 2, seconds: 3));
         Assert.Equal(1, rig.Ratings.Of("Петро", "chess").Wins);
         Assert.Equal(1, rig.Ratings.Of("Оля", "chess").Losses);
@@ -130,7 +130,7 @@ public class RatingsTests
     [Fact]
     public void Top_of_the_table_is_sorted_by_elo()
     {
-        using var rig = new EconomyRig();
+        using var rig = new EconomyRig(people: true);
         rig.Events.Raise(rig.Finished("r1", Chess, ["Оля", "Петро"], [0]));
         var top = rig.Ratings.Top("chess");
         Assert.Equal("Оля", top[0].Nick);

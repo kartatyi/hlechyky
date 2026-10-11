@@ -338,15 +338,17 @@ public sealed partial class Litopys
         var book = new EloBook();
         var rounds = new Dictionary<(string Room, int Round), List<(string Game, string Key, string Nick, string Outcome, DateTimeOffset At)>>();
         var order = new List<(string, int)>();
+        var bots = BotSet();
         db.With(c =>
         {
-            // партія з ботом лишається з одним рядком — Ело її не рахує (rows.Count != 2)
-            using var cmd = Cmd(c, $"SELECT room_id, round, game, nick_key, nick, outcome, created_at FROM game_results WHERE outcome <> 'solo' AND {Bots.NotBot("nick_key")} ORDER BY id");
+            // партія з ботом лишається з одним рядком — Ело її не рахує (rows.Count != 2). Партія з гостем рахується, як
+            // і в живих ratings, — інакше Ело людини розійшлося б зі справжнім; лише лінії гостя в книзі нема (Add).
+            using var cmd = Cmd(c, "SELECT room_id, round, game, nick_key, nick, outcome, created_at FROM game_results WHERE outcome <> 'solo' ORDER BY id");
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
                 var game = r.GetString(2);
-                if (names.Get(game) is not { Rated: true, MaxPlayers: 2 }) continue;
+                if (names.Get(game) is not { Rated: true, MaxPlayers: 2 } || bots.Bot(r.GetString(3))) continue;
                 var k = (r.GetString(0), r.GetInt32(1));
                 if (!rounds.TryGetValue(k, out var list)) { rounds[k] = list = []; order.Add(k); }
                 list.Add((game, r.GetString(3), r.GetString(4), r.GetString(5), Ts(r.GetString(6))));
@@ -369,6 +371,7 @@ public sealed partial class Litopys
             if (!book.Games.TryGetValue(a.Game, out var g)) book.Games[a.Game] = g = new(StringComparer.Ordinal);
             void Add(string key, string nick, (int Elo, int Games) v, double s, DateTimeOffset at)
             {
+                if (bots.Has(key)) return;
                 if (!g.TryGetValue(key, out var l)) g[key] = l = [];
                 l.Add(new EloPoint(at, v.Elo, v.Games, s));
                 book.Nicks[key] = nick.Trim();

@@ -18,7 +18,7 @@ public class StatsTests
 
     static EconomyRig Rig()
     {
-        var rig = new EconomyRig();
+        var rig = new EconomyRig(people: true);
         rig.Clock.UtcNow = Now;
         return rig;
     }

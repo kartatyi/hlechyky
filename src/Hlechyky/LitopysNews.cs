@@ -166,7 +166,7 @@ public sealed partial class Litopys
                 while (r.Read())
                 {
                     var key = r.GetString(0).Length > 0 ? r.GetString(0) : Auth.NickKey(Str(r, 1) ?? "");
-                    if (key.Length == 0 || dj.Contains(key)) continue;
+                    if (key.Length == 0 || dj.Contains(key) || BotSet().Has(key)) continue;   // прожарений гість — не новина
                     data.Ads.Add((key, Str(r, 2), !r.IsDBNull(3) && r.GetInt32(3) != 0, r.GetString(4)));
                 }
 
