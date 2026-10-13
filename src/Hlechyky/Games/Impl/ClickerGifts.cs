@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Games.Impl;
@@ -24,8 +25,15 @@ public sealed class ClickerGift
     public int Streak { get; set; }
     /// <summary>Скільки черепків у гаманець — нагородою, без денної стелі.</summary>
     public int Shards { get; set; }
-    /// <summary>Що сказати гончареві в тості. Порожньо — «🎁 Подарунок від майстерні».</summary>
+    /// <summary>Короткий рядок у тост, коли листа нема. Порожньо — «🎁 Подарунок від майстерні».</summary>
     public string Note { get; set; } = "";
+    /// <summary>Заголовок листа.</summary>
+    public string Title { get; set; } = "";
+    /// <summary>
+    /// Лист від Дядька Глека: вікно в колі з кнопкою «Дякую», доки гончар його не закриє (з будь-якого пристрою). Абзаци —
+    /// через порожній рядок. Порожньо — листа нема, лише тост.
+    /// </summary>
+    public string Letter { get; set; } = "";
 }
 
 public sealed partial class Clicker
@@ -35,15 +43,19 @@ public sealed partial class Clicker
 
     /// <summary>Id виданих подарунків. Зберігається: подарунок не повториться ні після перезапуску, ні з іншого пристрою.</summary>
     readonly HashSet<string> _takenGifts = new(StringComparer.Ordinal);
+    /// <summary>Id подарунків, чий лист гончар ще не закрив. Зберігається: лист дочекається його й на іншому пристрої.</summary>
+    readonly HashSet<string> _letters = new(StringComparer.Ordinal);
+
+    List<ClickerGift> Gifts => Ctx.Services.GetService<IOptionsMonitor<ClickerOptions>>()?.CurrentValue.Gifts ?? [];
 
     /// <summary>
     /// Видати подарунки, що чекають цього гончаря (з конфігу, <see cref="ClickerOptions.Gifts"/>). Кличеться після
-    /// вдалої справжньої дії: гончар тут і побачить тост. Повертає, що сказати, або порожньо.
+    /// вдалої справжньої дії: гончар тут і побачить. Повертає рядок для тосту (подарунки без листа) або порожньо.
     /// </summary>
     string TakeGifts()
     {
-        var gifts = Ctx.Services.GetService<IOptionsMonitor<ClickerOptions>>()?.CurrentValue.Gifts;
-        if (gifts is not { Count: > 0 } || Ctx.NickOf(0) is not { Length: > 0 } nick) return "";
+        var gifts = Gifts;
+        if (gifts.Count == 0 || Ctx.NickOf(0) is not { Length: > 0 } nick) return "";
         var said = new List<string>();
         foreach (var gift in gifts)
         {
@@ -51,20 +63,42 @@ public sealed partial class Clicker
                 || _takenGifts.Contains(gift.Id))
                 continue;
             _takenGifts.Add(gift.Id);
-            var what = new List<string>();
-            if (gift.Streak > 0)
-            {
-                _fallStreak += gift.Streak;
-                what.Add($"+{gift.Streak} до серії (тепер {_fallStreak})");
-            }
+            if (gift.Streak > 0) _fallStreak += gift.Streak;
             if (gift.Shards > 0 && Ctx.Services.GetService<IStakes>() is { } stakes)
-            {
                 stakes.Grant(nick, gift.Shards, GiftReason, $"clicker-gift:{gift.Id}");
-                what.Add($"+{gift.Shards} черепків");
-            }
+            // З листом — вікно в колі (вид, letter); без нього — тост.
+            if (gift.Letter.Trim().Length > 0) { _letters.Add(gift.Id); continue; }
             var note = gift.Note.Trim().Length > 0 ? gift.Note.Trim() : "🎁 Подарунок від майстерні";
-            said.Add(what.Count > 0 ? $"{note}: {string.Join(", ", what)}" : note);
+            var what = GiftWhat(gift);
+            said.Add(what.Length > 0 ? $"{note}: {what}" : note);
         }
         return string.Join(" · ", said);
+    }
+
+    static string GiftWhat(ClickerGift gift) => string.Join(" · ",
+        new[] { gift.Streak > 0 ? $"+{gift.Streak} до серії" : "", gift.Shards > 0 ? $"+{gift.Shards} черепків" : "" }
+            .Where(s => s.Length > 0));
+
+    /// <summary>Перший непрочитаний лист — у вид. Запис з конфігу прибрали — і листа нема.</summary>
+    object? LetterView()
+    {
+        if (_letters.Count == 0) return null;
+        foreach (var gift in Gifts)
+            if (_letters.Contains(gift.Id) && gift.Letter.Trim().Length > 0)
+                return new
+                {
+                    id = gift.Id,
+                    title = gift.Title.Trim().Length > 0 ? gift.Title.Trim() : "Лист від Дядька Глека",
+                    text = gift.Letter.Trim(),
+                    gift = GiftWhat(gift),
+                };
+        return null;
+    }
+
+    /// <summary>Гончар закрив лист (<c>letter {id}</c>) — більше його не показуємо.</summary>
+    ActResult SeenLetter(JsonElement payload)
+    {
+        _letters.Remove(Str(payload, "id"));
+        return ActResult.Done;
     }
 }

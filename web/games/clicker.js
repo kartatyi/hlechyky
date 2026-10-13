@@ -2909,6 +2909,36 @@
     return true;
   }
 
+  /// Лист від Дядька Глека, що прийшов із подарунком майстерні (ClickerGifts.cs): чекає черги, як церемонія гривні, —
+  /// після «що нового» й чужих вікон. Закрив — сервер його більше не шле (letter {id}), і на іншому пристрої теж.
+  function letterLater(st) {
+    clearTimeout(st.letterT);
+    st.letterT = setTimeout(() => {
+      if (!st.el || !st.letter || st.letterShown === st.letter.id) return;
+      if (!showLetter(st)) letterLater(st);
+    }, 1000);
+  }
+
+  function showLetter(st) {
+    if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st) || st.news === NEWS_VERSION) return false;
+    const l = st.letter;
+    const esc = st.ctx.esc;
+    // Абзаци — через порожній рядок, перенос усередині абзацу — <br>.
+    const paras = String(l.text || '').split(/\n\s*\n/).filter((x) => x.trim())
+      .map((x) => '<p>' + esc(x.trim()).replace(/\n/g, '<br>') + '</p>').join('');
+    // Заголовок довгий — відступ праворуч, щоб не ліз під ✕ вікна (на телефоні).
+    const html = '<div class="clk-news clk-letter"><h3 style="padding-right:30px">✉️ ' + esc(l.title || 'Лист від Дядька Глека') + '</h3>' + paras
+      + (l.gift ? '<p><b>🎁 ' + esc(l.gift) + '</b></p>' : '')
+      + '<button type="button" class="primary clk-news-ok">Дякую, Глеку!</button></div>';
+    const id = l.id;
+    st.letterShown = id;
+    const body = H.api.overlay(st, html, { cls: 'clk-newsbox', onClose: () => order(st, 'letter', { id }) });
+    const ok = body.querySelector('.clk-news-ok');
+    if (ok) ok.onclick = () => H.api.closeOverlay(st);
+    H.api.sfx('rare');
+    return true;
+  }
+
   /// Вікно чекає своєї черги: «поки тебе не було», мінігра чи Око майстра важливіші за новини. Пробуємо, доки
   /// не покажемо (чи доки сервер не скаже, що гончар уже бачив), — інакше той, хто хвилину читав «поки тебе не
   /// було», новин так і не побачив би до першого кліка.
@@ -4035,6 +4065,12 @@
           coinLater(st);
         }
         if (!(st.coin > st.coinSeen)) st.coinAsked = false;
+        // Лист від Дядька Глека з подарунком майстерні (ClickerGifts.cs) — раз на лист, коли коло видно й вікно вільне.
+        st.letter = v.letter || null;
+        if (st.letter && ctx.mine && st.letterAsked !== st.letter.id) {
+          st.letterAsked = st.letter.id;
+          letterLater(st);
+        }
         if (st.news === NEWS_VERSION && !st.newsAsked && ctx.mine) {
           st.newsAsked = true;
           newsLater(st);
@@ -4115,6 +4151,7 @@
       clearTimeout(st.eyeArm);
       clearTimeout(st.newsT);
       clearTimeout(st.coinT);
+      clearTimeout(st.letterT);
       cancelAnimationFrame(st.raf);
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       if (st.steady) st.steady.stop();

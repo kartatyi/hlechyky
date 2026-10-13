@@ -52,8 +52,7 @@ public class ClickerGiftsTests
         var r = Spin(h);
         Assert.True(r.Ok);
         Assert.Contains("Дядько Глек вибачається", r.Message);
-        Assert.Contains("+1120 до серії (тепер 1463)", r.Message);
-        Assert.Contains("+5000 черепків", r.Message);
+        Assert.Contains("+1120 до серії · +5000 черепків", r.Message);
         Assert.Equal(1463, Streak(h));
         Assert.Equal(5000, stakes.Balance("Smaug"));
         Assert.Equal(Clicker.GiftReason, stakes.Reasons["clicker-gift:streak-1013-smaug"]);
@@ -102,5 +101,31 @@ public class ClickerGiftsTests
 
         Assert.Contains("вибачається", h.Act(0, "sight", new { on = true }).Message);
         Assert.Equal(1120, Streak(h));
+    }
+
+    [Fact]
+    public void A_gift_with_a_letter_shows_the_letter_until_it_is_closed()
+    {
+        var gift = Sorry("smaug", 1120, 5000);
+        gift.Title = "Лист від Дядька Глека";
+        gift.Letter = "Шановна пані Smaug!\n\nПишу носиком.";
+        var (h, stakes) = Wheel("Smaug", gift);
+        Patch(h, s => s["fallStreak"] = 343);
+
+        var r = Spin(h);
+        Assert.DoesNotContain("вибачається", r.Message);   // з листом — без тосту: вікно скаже більше
+        Assert.Equal(1463, Streak(h));
+        Assert.Equal(5000, stakes.Balance("Smaug"));
+        var letter = h.View(0).GetProperty("letter");
+        Assert.Equal("streak-1013-smaug", letter.GetProperty("id").GetString());
+        Assert.Equal("Лист від Дядька Глека", letter.GetProperty("title").GetString());
+        Assert.StartsWith("Шановна пані Smaug!", letter.GetProperty("text").GetString());
+        Assert.Equal("+1120 до серії · +5000 черепків", letter.GetProperty("gift").GetString());
+
+        Patch(h, _ => { });                                    // лист чекає й після перезапуску
+        Assert.Equal(JsonValueKind.Object, h.View(0).GetProperty("letter").ValueKind);
+        Assert.True(h.Act(0, "letter", new { id = "streak-1013-smaug" }).Ok);
+        Assert.True(!h.View(0).TryGetProperty("letter", out var gone) || gone.ValueKind == JsonValueKind.Null);
+        Assert.Equal(1463, Streak(h));                         // закрив лист — подарунок лишається
     }
 }

@@ -1023,6 +1023,7 @@ public sealed partial class Clicker : Game
         _fallSlept = false;
         ResetLate(default);
         _takenGifts.Clear();
+        _letters.Clear();
         // Новачкові «що нового» ні до чого — для нього нове все; новини бачить той, чиє збереження старше за випуск.
         _news = NewsVersion;
         _coinSeen = 0;
@@ -1083,6 +1084,8 @@ public sealed partial class Clicker : Game
             "news" => SeenNews(payload),
             // «Бачив» вікно-церемонію гривні чи червоних золотих (v10 §6).
             "coin" => SeenCoin(payload),
+            // Закрив лист від Дядька Глека, що прийшов із подарунком майстерні (ClickerGifts.cs).
+            "letter" => SeenLetter(payload),
             // Клієнт питає свіжий вид, коли розписний глек утік чи глек з полиці розбився: наступний розклад знає лише сервер.
             "look" => LookHouse(payload) ?? Look(payload),
             "fire" => Fire(),
@@ -2370,6 +2373,8 @@ public sealed partial class Clicker : Game
             // Гроші (v10 §6): до якої одиниці доріс і яку церемонію вже бачив.
             coin = CoinLevel,
             coinSeen = _coinSeen,
+            // Лист від Дядька Глека з подарунком майстерні (ClickerGifts.cs): поки не закрив.
+            letter = LetterView(),
             // Звання округи (ClickerTitles.cs): що маю, значки, мої числа, прогрес.
             titles = TitlesView(Ctx.Clock.UtcNow),
             // Хата: глина, знаряддя, прикраси й дошка купців (ClickerHouse.cs).
@@ -2477,8 +2482,8 @@ public sealed partial class Clicker : Game
         double FairHeld = 0, double InspireHeld = 0,
         // Коли гончар пішов від кола (ClickerLate.cs, 13.10). Старе збереження — він тут.
         DateTimeOffset GoneAt = default,
-        // Id подарунків майстерні, що вже видані (ClickerGifts.cs). Старе збереження — жодного.
-        List<string>? Gifts = null);
+        // Id подарунків майстерні, що вже видані, і тих, чий лист ще не закрито (ClickerGifts.cs). Старе — жодного.
+        List<string>? Gifts = null, List<string>? Letters = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2493,7 +2498,8 @@ public sealed partial class Clicker : Game
             _stampsExtra, _scienceAt, SaveTitles(), SaveGuests(), _coinSeen,
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
             _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt,
-            _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList()),
+            _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList(),
+            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList()),
         Wire);
 
     public override void Load(string json)
@@ -2559,6 +2565,8 @@ public sealed partial class Clicker : Game
         ResetLate(s.GoneAt);
         _takenGifts.Clear();
         if (s.Gifts is { } gifts) foreach (var id in gifts) if (!string.IsNullOrEmpty(id)) _takenGifts.Add(id);
+        _letters.Clear();
+        if (s.Letters is { } letters) foreach (var id in letters) if (!string.IsNullOrEmpty(id)) _letters.Add(id);
 
         // Розгін переживає F5 теж (він однаково спаде за кілька секунд), а глек з полиці — або той, що вже
         // на розкладі, або, для збережень із часів до полиці, новий.
