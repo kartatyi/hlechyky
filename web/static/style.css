@@ -239,7 +239,8 @@ body.chat-collapsed #colChat { padding: 0; visibility: hidden; transition: paddi
 /* Розділ = один вид у лівій колонці. Перемикає їх лише клас маршруту на body. */
 .view { display: none; flex-direction: column; gap: 18px; min-width: 0; }
 body.route-efir #viewEfir, body.route-lib #viewLib, body.route-games #viewGames,
-body.route-stats #viewStats, body.route-who #viewWho, body.route-lavka #viewLavka { display: flex; animation: fadein .15s ease-out; }
+body.route-stats #viewStats, body.route-who #viewWho, body.route-lavka #viewLavka,
+body.route-history #viewHistory { display: flex; animation: fadein .15s ease-out; }
 /* Один рівень карток: секція — панель без рамки, з тонким світлом ізсередини;
    усе, що всередині неї, сидить на bg2 без власних рамок. Подвійних рамок не лишилось.
    Балачки — теж панель, хоч і aside: без нього вони висять прозорі просто на тлі сторінки. */

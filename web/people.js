@@ -936,6 +936,8 @@
         + gamesCard(p, mine)
         + achCard(p, mine, fun)
         + (mine && window.HTrucker ? HTrucker.cardHtml() : '')
+        // 📜 Версія сайту й шлях до його історії (web/history.js)
+        + (mine && window.HHistory ? HHistory.cardHtml() : '')
         + '</div>'
         : '<section class="panel"><div class="gempty glek">Про ' + esc(nick) + ' тут поки нічого не знають — ні пісень, ні ігор. Схоже, усе ще попереду.</div></section>');
     wireHead(root, nick, mine);

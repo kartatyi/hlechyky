@@ -1,0 +1,39 @@
+/* «📜 Історія Глечиків» (web/history.js): стрічка версій від найновішої, по епохах. */
+.hist { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.hist-head p { margin: 6px 0 12px; color: var(--muted); line-height: 1.5; }
+.hist-kick { font-family: var(--display); font-size: 1.45em; font-weight: 700; }
+.hist-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.hist-stats span { background: var(--bg2); border-radius: 999px; padding: 5px 12px; font-size: .9em; color: var(--muted); }
+.hist-stats b { color: var(--accent); font-weight: 700; }
+
+.hist-era-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.hist-era h2 { margin: 0; font-family: var(--display); font-size: 1.2em; }
+.hist-intro { margin: 10px 0 14px; padding: 10px 14px; border-left: 3px solid var(--clay); background: var(--bg2);
+  border-radius: 0 10px 10px 0; font-style: italic; line-height: 1.5; }
+.hist-intro span { display: block; margin-top: 6px; font-style: normal; font-size: .85em; color: var(--muted); text-align: right; }
+
+/* Версія: дата ліворуч, зміст праворуч; лінія часу — рамка лівої колонки. */
+.hist-ver { display: grid; grid-template-columns: 108px 1fr; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.hist-era > .hist-ver:first-of-type { border-top: 0; }
+.hist-when { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+.hist-when b { font-variant-numeric: tabular-nums; font-size: .95em; }
+.hist-when span { font-size: .78em; color: var(--muted); }
+.hist-ver.named .hist-when b { color: var(--accent); }
+.hist-name { display: inline-block; margin-bottom: 4px; padding: 2px 10px; border-radius: 999px; background: var(--accent);
+  color: var(--accent-ink); font-weight: 700; font-size: .85em; }
+.hist-lead { margin: 2px 0 8px; font-weight: 600; line-height: 1.45; }
+.hist-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.hist-items li { display: flex; gap: 9px; align-items: flex-start; line-height: 1.45; font-size: .94em; }
+.hist-ico { flex: 0 0 1.5em; text-align: center; font-size: 1.1em; }
+
+/* Підпис версії у своєму профілі. */
+.hist-mine { display: block; margin-top: 4px; color: var(--muted); font-size: .88em; text-decoration: none; text-align: center; }
+.hist-mine:hover, .hist-mine:focus-visible { color: var(--accent); }
+.hist-mine b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 560px) {
+  .hist-ver { grid-template-columns: 1fr; gap: 6px; }
+  .hist-when { flex-direction: row; align-items: baseline; gap: 8px; }
+}
+/* У сітці профілю — на всю ширину, під усіма картками. */
+.who-grid > .hist-mine { grid-column: 1 / -1; }

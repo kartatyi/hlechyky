@@ -20,23 +20,18 @@
   let hadNick = false;
   try { hadNick = !!localStorage.getItem('nick'); } catch { /* приватне вікно */ }
 
+  // Версія сайту (web/history-data.js) — той самий день; другий реліз того ж дня — 2026.10.13.2.
   const NEWS = {
-    v: '2026-10-10',
-    lead: '«📊 Хто скільки» переродився — тепер туди варто зазирати.',
+    v: '2026.10.13',
+    lead: 'У Глечиків тепер є своя історія — і номер версії.',
     items: [
-      { icon: '📰', when: () => true,
-        html: '<b>«Глечицький вісник».</b> Щодня свіжа газета від Дядька Глека: хто кого розгромив, хто зірвав банк, кого прожарили. Архів — аж з 7 вересня, а поруч — що було рівно місяць тому.',
-        go: ['Читати', (o) => o.go('#stats/overview')] },
-      { icon: '🎯', when: () => true,
-        html: '<b>Твої цілі.</b> Скільки бракує до звання тижня, кого ось-ось обженеш у «Хто кого» й у Гонці, чий рекорд поруч.' },
-      { icon: '🏺', when: () => true,
-        html: '<b>Вкладка «Глек».</b> Що він ставить і на чиїх піснях учиться, хто його головний критик, чий смак кращий, кого він смажить і скільки заробив (і програв) у казино.',
-        go: ['До Глека', (o) => o.go('#stats/glek')] },
-      { icon: '📈', when: () => true,
-        html: '<b>Графіки й рекорди.</b> Гонка тижня за всі ігри зі стрілками, хто піднявся; біржа черепків — хто багатіє, хто спускає; Ело в часі; Книга рекордів Глечиків.',
-        go: ['Глянути', (o) => o.go('#stats/charts')] },
-      { icon: '✨', when: () => true,
-        html: '<b>Огляд, звання й підколи</b>, «⚔ Хто кого», коли ми тусимо, перл Балачок, а в профілі — цікавинки про людину. Таблиці ігор нарешті рівні, а черепки сортуються кліком по заголовку — хто скільки має чи хто скільки заробив, за день чи за весь час. Ботів у таблицях більше нема — лише люди. Є що нове — на 📊 світиться крапка.' },
+      { icon: '📜', when: () => true,
+        html: "<b>Історія Глечиків.</b> Усе, що з'являлось на сайті від першого ефіру 9 вересня: 21 версія, понад півтори сотні змін і коментарі Дядька Глека до кожної епохи.",
+        go: ['Читати', (o) => o.go('#history')] },
+      { icon: '🏷', when: () => true,
+        html: '<b>Версія сайту.</b> Внизу свого профілю («Я») — «Глечики 2026.10.13». Клік — і ти в історії.' },
+      { icon: '📊', when: () => true,
+        html: '<b>«Хто скільки» — лише люди з акаунтами.</b> Гості й Клодіки більше не потрапляють у таблиці, газету, гонку й рекорди.' },
     ],
   };
 
@@ -83,7 +78,8 @@
       + '<ul class="snews-list">' + items.map((it, i) => '<li><span class="snews-ico" aria-hidden="true">' + it.icon + '</span><div>'
         + it.html + (it.go ? ' <button class="ghost snews-go" type="button" data-go="' + i + '">' + esc(it.go[0]) + ' →</button>' : '')
         + '</div></li>').join('') + '</ul>'
-      + '<div class="row"><button class="primary" type="button" data-ok data-pad-first>Ясно!</button></div></div>';
+      + '<div class="row"><button class="primary" type="button" data-ok data-pad-first>Ясно!</button>'
+      + (window.HHistory ? '<a class="ghost snews-hist" href="#history" data-hist>📜 Уся історія</a>' : '') + '</div></div>';
     const close = () => {
       if (!wrap.isConnected) return;
       wrap.remove();
@@ -92,6 +88,8 @@
     const onKey = (e) => { if (e.key === 'Escape' || (e.key === 'Enter' && e.target.matches('[data-ok], body'))) { e.preventDefault(); e.stopPropagation(); close(); } };
     wrap.addEventListener('click', (e) => {
       if (e.target === wrap) { close(); return; }
+      // «📜 Уся історія» — звичайне посилання на #history: картку лише прибираємо, перехід зробить сам браузер.
+      if (e.target.closest('[data-hist]')) { close(); return; }
       const b = e.target.closest('[data-go]');
       if (!b) return;
       close();

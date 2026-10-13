@@ -2618,10 +2618,10 @@
 
   // ---------- маршрути ----------
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
-  // балачок на телефоні). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
-  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat'];
+  // балачок на телефоні), #history (📜 історія сайту, web/history.js). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
+  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod'];
-  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки' };
+  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія' };
   const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото людей', mod: 'Модерація Балачок' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
@@ -2720,6 +2720,7 @@
     if (r === 'games') HGames.show(head === 'games' ? tail : ''); else HGames.hide();
     if (r === 'stats' || r === 'who') HPeople.show(r, tail); else HPeople.hide();
     if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
+    if (window.HHistory) { if (r === 'history') HHistory.show(); else HHistory.hide(); }
     if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
     if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
@@ -4720,6 +4721,8 @@
   if (window.HBets) HBets.init({ esc, api, toast, busy, me, go, askNick });
   // ✨ «Що нового на сайті» (web/sitenews.js): раз на реліз тим, хто вже бував; ready() — після /api/me
   if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
+  // 📜 Історія Глечиків (web/history.js): сторінка #history і версія сайту в «Я»
+  if (window.HHistory) HHistory.init({ esc, go });
   // 🚚 Для далекобійників (web/trucker.js): картка в профілі — бат радіо для ETS2/ATS і скіп кнопкою керма (те саме, що ⏭)
   if (window.HTrucker) HTrucker.init({ esc, toast, skip: () => skipNow() });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)

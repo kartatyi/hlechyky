@@ -36,6 +36,7 @@
 <link rel="stylesheet" href="/static/voice.css">
 <link rel="stylesheet" href="/static/buy.css">
 <link rel="stylesheet" href="/static/bets.css">
+<link rel="stylesheet" href="/static/history.css">
 <!-- «📊 Хто скільки»: графіки (stchart.js) і вкладки з окремих файлів stats-*.js -->
 <link rel="stylesheet" href="/static/stats2.css">
 <link rel="stylesheet" href="/static/stats-glek.css">
@@ -194,6 +195,8 @@
     <!-- Лавка Дядька Глека (#lavka/<полиця>, #lavka/gift/<нік>): значки, рамки, колір ніка, титули, тло, вміння —
          усе назавжди, за черепки. Малює web/lavka.js. -->
     <div class="view" id="viewLavka"><div id="lavka" class="lavka"></div></div>
+    <!-- 📜 Історія Глечиків (#history): що й коли з'являлось на сайті, по версіях. Малює web/history.js. -->
+    <div class="view" id="viewHistory"><div id="history" class="hist"></div></div>
   </div>
 
   <aside class="panel chat" id="colChat">
@@ -368,6 +371,9 @@
 <script src="/moder.js"></script>
 <!-- ✨ «Що нового на сайті»: раз на реліз — до app.js, той кличе HSiteNews.init() і ready() -->
 <script src="/sitenews.js"></script>
+<!-- 📜 Історія Глечиків: дані версій і сторінка #history — до app.js, той кличе HHistory.init() -->
+<script src="/history-data.js"></script>
+<script src="/history.js"></script>
 <!-- 🚚 для далекобійників: бат радіо для ETS2/ATS і скіп кнопкою керма — картка в профілі; до app.js, той кличе HTrucker.init() -->
 <script src="/trucker.js"></script>
 <script src="/app.js"></script>
