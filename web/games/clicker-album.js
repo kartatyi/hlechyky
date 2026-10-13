@@ -390,7 +390,13 @@
     const rowPct = pct(api, bonusOf(st, 'starRow', 0.05));
     const top = String(Math.round(bonusOf(st, 'masteryTop', 1.25) * 100) / 100).replace('.', ',');
     const at = (cat(st) && cat(st).masteryAt) || MASTERY_AT;
-    return '<div class="clka-legend">'
+    // Легенда — своя згортка, згорнута з початку (13.10): позначки вчать раз, а місце (~110 px на телефоні) вони займали
+    // щоразу. Заголовок перелічує самі позначки — видно, що тут пояснення саме їх.
+    return '<section class="clka-legsec"' + api.fold('a.legend', true) + '>'
+      + api.foldHead('★ ⭐ м4 🖐★ <span class="muted">— що означають позначки</span>', 'small')
+      + '<div class="clka-legend">'
+      + '<span class="clka-lg">клітинка +' + pct(api, bonusOf(st, 'cell', 0.005)) + ', повний рядок +' + pct(api, bonusOf(st, 'row', 0.05))
+      + ', повний стовпчик +' + pct(api, bonusOf(st, 'column', 0.06)) + ' · тап — картка</span>'
       + '<span class="clka-lg"><i class="clka-lgstar">★</i> у клітинці — вийшов з горна дзвінким чи розкішним · +' + starPct + '</span>'
       + '<span class="clka-lg"><b>★5</b> біля назви — скільки зірок у рядку</span>'
       + '<span class="clka-lg"><b>⭐</b> — зірки в усіх розписах · ще +' + rowPct + '</span>'
@@ -400,7 +406,7 @@
         + 'Що рівніше тримаєш жар у зеленій смузі горна й що гарніший розпис партії, то частіше виходять дзвінкі; розкішні бувають '
         + 'лише з розписаної партії. Підмайстер-палій теж інколи дає дзвінкі. Клітинка без зірки — просто обпали такий самий виріб '
         + 'ще раз. Тап по назві виробу — які розписи цього рядка ще без зірки.')
-      + '</div>';
+      + '</div></section>';
   }
 
   /// Картка рядка: тап по назві виробу (на телефоні підказок при наведенні нема). Що означають позначки саме тут і
@@ -455,8 +461,8 @@
     st.albumUi.show._sig = sig;
     // Поки в альбомі порожньо — нема чого й виставляти.
     if (!a.open) { st.albumUi.show.innerHTML = ''; return; }
-    let h = '<div class="clk-sub">📌 Виставка · ' + a.show.length + ' з ' + max
-      + '<span class="muted small"> · що поставиш на видноту, те гості побачать на полиці в хаті</span></div>'
+    let h = api.foldHead('📌 Виставка · ' + a.show.length + ' з ' + max
+      + api.info('Що поставиш на видноту, те гості побачать на полиці в хаті.'))
       + '<div class="clka-show">';
     for (let i = 0; i < max; i++) {
       const s = a.show[i];
@@ -554,10 +560,12 @@
       const w = QUALITY_PL[q] || QUALITY_PL[2];
       if (n) byQ.push(n + ' ' + api.plural(n, w[0], w[1], w[2]));
     }
-    const html = '<div class="clk-sub">Кахляна піч · ' + a.stove.length + ' з 12 · +' + pct(api, a.stoveBonus)
-      + '<span class="muted small"> · добра +' + pct(api, tileBonus(st, 2)) + ', дзвінка +' + pct(api, tileBonus(st, 3))
-      + (topQuality(st) >= 4 ? ', розкішна +' + pct(api, tileBonus(st, 4)) : '')
-      + ' · повна піч ще +' + pct(api, bonusOf(st, 'stoveFull', 0.05)) + ', уся з дзвінких — +' + pct(api, bonusOf(st, 'stoveRing', 0.1)) + ' замість</span></div>'
+    if (a.stoveRing) st.albumUi.stove.dataset.fdef = '0'; else delete st.albumUi.stove.dataset.fdef;
+    const html = api.foldHead('🧱 Кахляна піч · ' + a.stove.length + ' з 12 · +' + pct(api, a.stoveBonus)
+      + (a.stoveRing ? '<span class="muted small"> · уся дзвінка 🔥</span>' : '')
+      + api.info('Кахля в печі: добра +' + pct(api, tileBonus(st, 2)) + ', дзвінка +' + pct(api, tileBonus(st, 3))
+        + (topQuality(st) >= 4 ? ', розкішна +' + pct(api, tileBonus(st, 4)) : '')
+        + '. Повна піч — ще +' + pct(api, bonusOf(st, 'stoveFull', 0.05)) + ', а вся з дзвінких — +' + pct(api, bonusOf(st, 'stoveRing', 0.1)) + ' замість.'))
       + '<div class="clka-stovebox">' + stoveSvg(api, a.stove, 'tab', 'clka-stove', st.mine) + '<div class="clka-stoveside">'
       + (byQ.length ? '<div class="small clka-stovecount">У печі: ' + esc(byQ.join(', ')) + '</div>' : '')
       + '<p class="muted small clk-note">Косів славиться кахлями — ними облицьовували печі. Гніздо приймає кахлю в будь-якому розписі: '
@@ -619,10 +627,11 @@
     if (st.albumUi.museum._sig === sig) return;
     st.albumUi.museum._sig = sig;
     const esc = (x) => api.esc(st, x);
-    const html = '<div class="clk-sub">Трипільський музей · ' + found + ' з 8<span class="muted small"> · знахідка +'
-      + pct(api, bonusOf(st, 'find', 0.01)) + ', усі вісім ще +' + pct(api, bonusOf(st, 'museumFull', 0.05)) + '</span></div>'
-      + '<p class="muted small clk-note">Кожен виліплений виріб — це копаний у глинищі пласт: інколи там трапляється щось трипільське. '
-      + 'Друга така сама річ — уламок; ' + glue + ' уламків склеюються в те, чого бракує.</p>'
+    if (found >= 8) st.albumUi.museum.dataset.fdef = '0'; else delete st.albumUi.museum.dataset.fdef;
+    const html = api.foldHead('🏺 Трипільський музей · ' + found + ' з 8<span class="muted small"> · знахідка +'
+      + pct(api, bonusOf(st, 'find', 0.01)) + ', усі вісім ще +' + pct(api, bonusOf(st, 'museumFull', 0.05)) + '</span>'
+      + api.info('Кожен виліплений виріб — це копаний у глинищі пласт: інколи там трапляється щось трипільське. '
+        + 'Друга така сама річ — уламок; ' + glue + ' уламків склеюються в те, чого бракує.'))
       + '<div class="clka-museum">' + finds.map((f, i) => {
         const have = (a.finds >> i) & 1;
         return '<button type="button" class="clka-find' + (have ? ' have' : '') + '" data-i="' + i + '">'
@@ -804,11 +813,12 @@
       pane.classList.add('clka-pane');
       pane.innerHTML = '<div class="clka">'
         + '<div class="clka-head"></div>'
-        + '<section class="clka-sec"><div class="clk-sub">Альбом виробів<span class="muted small clka-gridhint"></span></div>'
+        // Кожен розділ — згортка (13.10): заголовок лишається, решта ховається за тапом по ньому (api.fold).
+        + '<section class="clka-sec"' + api.fold('a.grid') + '>' + api.foldHead('Альбом виробів<span class="muted small clka-gridhint"></span>')
         + '<div class="clka-legendbox"></div><div class="clka-worldbar"></div><div class="clka-gridbox"></div></section>'
-        + '<section class="clka-sec clka-showsec"></section>'
-        + '<section class="clka-sec clka-stovesec"></section>'
-        + '<section class="clka-sec clka-museumsec"></section>'
+        + '<section class="clka-sec clka-showsec"' + api.fold('a.show') + '></section>'
+        + '<section class="clka-sec clka-stovesec"' + api.fold('a.stove') + '></section>'
+        + '<section class="clka-sec clka-museumsec"' + api.fold('a.museum') + '></section>'
         + '</div>';
       st.albumUi = {
         pane,
@@ -841,8 +851,9 @@
       st.albumPrevStars = (a.stars || []).slice();
       noticeFind(st, api);
       st.albumSeen = true;
-      const hint = ' · клітинка +' + pct(api, bonusOf(st, 'cell', 0.005)) + ', повний рядок +' + pct(api, bonusOf(st, 'row', 0.05))
-        + ', повний стовпчик +' + pct(api, bonusOf(st, 'column', 0.06)) + ' · тап — картка';
+      // Заголовок видно й згорнутим (13.10) — тож у ньому лічильники, а ставки клітинок і рядків переїхали в легенду.
+      const n = a.size || a.cells.length * cols(st);
+      const hint = ' · ' + a.open + ' з ' + n + ' · ★ ' + a.starOpen + (a.worldSize > 0 && worldNear(st) ? ' · 🌍 ' + a.worldOpen + ' з ' + a.worldSize : '');
       if (st.albumUi.hint.textContent !== hint) st.albumUi.hint.textContent = hint;
       api.swap(st.albumUi.legend, legendHtml(st, api));
       paintHead(st, api);

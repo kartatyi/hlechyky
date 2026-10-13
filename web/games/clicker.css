@@ -469,6 +469,8 @@
 .clk-left { text-align: center; }
 /* На ПК в один екран кнопки прилавка переходять у підвал правої колонки (.clk-shards), а тут лишається порожньо. */
 .clk-sell:empty, .clk-shards:empty { display: none; }
+/* Черепки на сьогодні скінчились — кнопок обміну не показуємо (clicker.js), а порожній рядок під ними не тримаємо. */
+.clk .clk-sell button[hidden], .clk .clk-shards button[hidden], .clk .clk-sell.out { display: none; }
 
 /* ---- вкладки ---- */
 /* Вкладок уже сім: один рядок із горизонтальною прокруткою (активну жива хата докручує в поле зору), а не два ряди. */
@@ -491,6 +493,18 @@
 .clk-sec > summary::before { content: '▸ '; color: var(--muted); }
 .clk-sec[open] > summary::before { content: '▾ '; }
 .clk-secbody { display: flex; flex-direction: column; gap: 8px; width: 100%; padding-top: 6px; }
+
+/* ---- згортки карток (13.10, clicker.js → foldCss): тап по заголовку .clk-fh згортає картку [data-fold] до нього ----
+   Що згорнуте — пише окремий <style id="clk-folds"> (правила за ключами), тут лише вигляд заголовка. */
+.clk [data-fold] > .clk-fh {
+  align-self: stretch; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  border-radius: 6px; outline-offset: 2px;
+}
+.clk [data-fold] > .clk-fh::before {
+  content: '▾'; display: inline-block; width: 1.05em; color: var(--muted); font-weight: 400; text-align: left;
+}
+@media (hover: hover) { .clk [data-fold] > .clk-fh:hover::before { color: var(--accent2); } }
+.clk [data-fold] > .clk-fh:focus-visible { outline: 2px solid var(--accent2); }
 
 /* ---- ⓘ: довгий абзац згортається в один значок, а не займає екран ---- */
 .clk-info { display: inline-block; vertical-align: middle; margin-left: 4px; }
@@ -619,6 +633,18 @@
 .clk-tool.owned { opacity: .72; }
 .clk-tool.decor { border-style: dashed; }
 .clk-ticon { font-size: 1.3em; line-height: 1; }
+/* Куплені знаряддя й прикраси — плашками в рядок, далі найдешевші некуплені й «ще N ▸» (13.10). */
+.clk-owned { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.clk-ownchip {
+  display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 999px; font-size: .8em;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+}
+.clk-ownchip .clk-ticon, .clk-ownchip svg { font-size: 1em; width: 1.2em; height: 1.2em; }
+.clk-more > summary { cursor: pointer; list-style: none; color: var(--muted); font-size: .86em; padding: 3px 2px; }
+.clk-more > summary::-webkit-details-marker { display: none; }
+.clk-more > summary::before { content: '▸ '; }
+.clk-more[open] > summary::before { content: '▾ '; }
+.clk-more[open] > summary { margin-bottom: 6px; }
 
 /* ---- дошка купців ---- */
 .clk-orders, .clk-takens { display: flex; flex-direction: column; gap: 8px; width: 100%; }
@@ -668,6 +694,11 @@
 .clk-lookopt .clk-short[hidden] { display: none; }
 .clk-note { margin: 0; line-height: 1.4; }
 .clk-secret.owned { opacity: .75; }
+/* Кола секретів і скарбниця — згортки (13.10). Знаний секрет — без рядка ціни: «✓» у куті, картка нижча на рядок. */
+.clk-fsec { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; }
+.clk-okmark { color: var(--ok); }
+.clk-secret.owned:not(.clk-relic) { padding-bottom: 8px; padding-right: 24px; }
+.clk-secret.owned:not(.clk-relic) .clk-price { top: 7px; right: 8px; bottom: auto; }
 
 /* ---- телефон: картка на 380 px не має розповзатись ---- */
 @media (max-width: 480px) {
@@ -713,7 +744,7 @@
 .clk-news-ico { flex: 0 0 auto; width: 1.5em; font-size: 1.15em; text-align: center; }
 .clk-news .clk-news-ok { width: 100%; min-height: 44px; }
 /* Пояснення під секретами: клейма, витрачені на секрети, бонус не гублять. */
-.clk-secnote { margin: 6px 2px 0; line-height: 1.35; }
+.clk-secnote { margin: 0 2px; line-height: 1.35; }
 /* Наука майстра під рядком клейм: від кого вчимось і коли знову. */
 .clk-science { margin: 4px 2px 8px; line-height: 1.35; text-align: center; }
 

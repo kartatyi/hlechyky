@@ -300,6 +300,9 @@
 .clka-lg b.clka-lv.max { color: #f4c542; }
 .clka-lgstar { font-style: normal; color: #f4c542; font-weight: 700; }
 .clka-legend .clk-info { margin-left: 0; }
+/* Легенда — згортка всередині «Альбому виробів» (13.10). */
+.clka-legsec { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.clka-legsec > .clk-fh { font-weight: 400; }
 .clka-rowcard { display: flex; flex-direction: column; gap: 6px; }
 .clka-note { margin: 0; line-height: 1.4; }
 .clka-misses { display: flex; flex-wrap: wrap; gap: 4px; }

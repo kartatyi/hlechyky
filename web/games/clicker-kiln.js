@@ -627,10 +627,12 @@
     if (!l || k.state === 'burning') { api.swap(ui.last, ''); return; }
     const cnt = [0, 0, 0, 0, 0];
     for (const it of l.items) cnt[it[1]]++;
-    const html = '<div class="clkk-lastbox"><div class="clk-sub">Останнє горно</div><div class="clkk-lastitems">'
+    // Згортка (13.10): згорнута — лише заголовок із підсумком партії.
+    const html = '<div class="clkk-lastbox"' + api.fold('k.last') + '>'
+      + api.foldHead('Останнє горно <span class="muted small">· ' + summary(cnt) + '</span>') + '<div class="clkk-lastitems">'
       + l.items.slice(0, 24).map((it, i) => '<span class="clkk-li q' + it[1] + '" title="' + api.esc(st, wareName(st, it[0]) + ' — ' + QNAME[it[1]]) + '">'
         + (it[1] === 0 ? shardSvg() : api.wareSvg(it[0], { style: l.style, quality: it[1], slot: 'kl-' + i, cls: 'clkk-lisvg' })) + '</span>').join('')
-      + '</div><div class="small">' + summary(cnt) + '</div>'
+      + '</div>'
       + '<div class="muted small">' + (l.helper ? 'палив підмайстер' : 'жар у смузі ' + l.heat + ' %' + (l.beauty ? ' · краса ' + l.beauty : '') + (l.straw ? ' · солома' : ''))
       + (l.shards ? ' · черепки +' + api.potsShort(l.shards) : '') + (l.sold ? ' · базар +' + api.potsShort(l.sold) : '') + '</div>'
       + '<button type="button" class="ghost small clkk-replay">Показати відкриття</button></div>';

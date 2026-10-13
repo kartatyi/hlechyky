@@ -183,11 +183,19 @@
 @media (max-width: 420px) {
   .clkg-card { padding: 8px; }
   .clkg-req { grid-template-columns: minmax(0, 1fr) 56px 64px; }
-  .clkg-potter { flex-wrap: wrap; }
-  .clkg-potter button { margin-left: auto; }
   .clkg-buff { font-size: .8em; }
   .clkg-sizes .clkg-size { flex: 1 1 100%; }
 }
+/* Гончар — один рядок і на телефоні (13.10): кнопка хати на вузькій полиці — лише «🏠» (підпис у title), а не другий
+   рядок під ніком на кожного з п'ятнадцяти. */
+.clkg-potter .clkg-hbtn { flex: none; }
+@container clkside (max-width: 520px) {
+  .clkg-hword { display: none; }
+  .clkg-wagon { max-width: 300px; }
+  .clkg-potter .clkg-hbtn { min-width: 2.25rem; }
+}
+/* «Хто чекає допомоги»: причини — у тому самому рядку за ніком, а не кожна з нового (було три рядки на друга). */
+.clkg-wlist .clkg-chips { flex-basis: auto; }
 
 @media (prefers-reduced-motion: reduce) {
   .clkg-ware, .clkg-wagon.roll .clkg-wheel, .clkg-flag, .clkg-claim, .clkg-fire, .clkg-buff { animation: none; }

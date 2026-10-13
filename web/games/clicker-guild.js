@@ -250,8 +250,8 @@
     const prev = v.prev
       ? '<div class="muted small">Учора: ' + (v.prev.tier ? TIER_ICON[v.prev.tier] + ' ' + TIER[v.prev.tier] : 'до бронзи не дотягли — не біда') + ', разом ' + v.prev.total + '</div>'
       : '';
-    return '<section class="clkg-card clkg-day">'
-      + '<div class="clk-sub">🐴 Віз цеху на ярмарок · <span class="muted small">від\'їде за <span class="clkg-cd" data-at="' + Date.parse(w.endsAt) + '"></span></span>'
+    return '<section class="clkg-card clkg-day"' + api.fold('g.wagon') + '>'
+      + '<div class="clk-sub clk-fh" tabindex="0">🐴 Віз цеху на ярмарок · <span class="muted small">від\'їде за <span class="clkg-cd" data-at="' + Date.parse(w.endsAt) + '"></span></span>'
       + info('Село — це всі гончарі сайту разом: один віз на день, дарунки одне одному, хати в гості. Бронза — ціль і всі '
         + 'підцілі; срібло — півтори цілі; золото — дві. Ціль росте з кількістю вчорашніх гончарів (' + w.potters + '). '
         + 'Пропущений день нічого не забирає.') + '</div>'
@@ -285,8 +285,8 @@
         + api.wareSvg(g.ware, { style: g.style, quality: g.q, cls: 'clkg-mid', slot: 'gsh-' + i })
         + '<i>від ' + esc(g.from) + '</i></span>').join('') + '</div>'
       : '<div class="muted small">Полиця дарунків порожня.</div>';
-    return '<section class="clkg-card">'
-      + '<div class="clk-sub">🎁 Дарунки <span class="muted small">· сьогодні ще ' + v.gifts.left + ' з ' + per + ' · подаровано ' + v.gifts.sent
+    return '<section class="clkg-card"' + api.fold('g.gifts') + '>'
+      + '<div class="clk-sub clk-fh" tabindex="0">🎁 Дарунки <span class="muted small">· сьогодні ще ' + v.gifts.left + ' з ' + per + ' · подаровано ' + v.gifts.sent
       + ' · отримано ' + v.gifts.got + '</span></div>'
       + '<div class="clkg-btns"><button type="button" class="ghost clkg-gifting"' + (st.mine && v.gifts.left > 0 && itemsOf(st).length ? '' : ' disabled') + '>🎁 Подарувати виріб другові</button>'
       + '<button type="button" class="ghost clkg-bragging"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🏺 Похвалитись</button>'
@@ -324,8 +324,8 @@
       friends = '<div class="clkg-flist">' + list.slice(0, FRIENDS_INLINE).map((x) => friendBtn(st, api, x)).join('') + '</div>'
         + (list.length > FRIENDS_INLINE ? '<button type="button" class="ghost small clkg-choose">🔎 Усі друзі · ' + list.length + '</button>' : '');
     }
-    return '<section class="clkg-card">'
-      + '<div class="clk-sub">🤝 Помогти другові'
+    return '<section class="clkg-card"' + api.fold('g.help') + '>'
+      + '<div class="clk-sub clk-fh" tabindex="0">🤝 Помогти другові'
       + info('Село тримається на тому, що сильніший підставляє плече. Гостинець: платиш своїми хвилинами пасиву, '
         + 'а друг дістає вдвічі більше хвилин СВОГО — тож твоя гора його гру не зламає, але день-два росту дасть '
         + '(не більше ' + cap + ' хв на день на одного). Підмайстер — раз на день, і в друга добу ліплять удвічі швидше; '
@@ -384,8 +384,8 @@
       } else if ((t.helpers || []).length < 3 && !(t.helpers || []).some((h) => h.toLowerCase() === myNick(st).toLowerCase())
         && t.needs.some((x) => mine.some((it) => fitsNeed(x, it)))) out.push({ k: 'toloka', text: 'толока будується — твій виріб скоротить' });
     }
-    if (v.help.lendLeft && L.lend && !L.lend.until && !L.lend.full) out.push({ k: 'lend', text: 'ще без підмайстра' });
-    if (L.cheer && L.cheer.can && !L.cheer.full) out.push({ k: 'cheer', text: 'похвали сьогодні ще не було' });
+    if (v.help.lendLeft && L.lend && !L.lend.until && !L.lend.full) out.push({ k: 'lend', text: 'без підмайстра' });
+    if (L.cheer && L.cheer.can && !L.cheer.full) out.push({ k: 'cheer', text: 'ще без похвали' });   // коротко: обидві причини — один рядок під ніком (13.10)
     if (L.thank) out.push({ k: 'thanks', text: 'помагав(ла) тобі — подякуй' });
     return out;
   }
@@ -414,12 +414,13 @@
   /// «Хто чекає допомоги» нагорі «Села»: до шести друзів, кому можна помогти зараз, з причинами; під ним — стрічка цеху.
   function waitHtml(st, api) {
     const r = st.guildRoster;
-    if (!r) return '<section class="clkg-card clkg-wait"><div class="clk-sub">🙋 Хто чекає допомоги</div><div class="muted small">Завантажую…</div></section>';
+    if (!r) return '<section class="clkg-card clkg-wait"' + api.fold('g.wait') + '>' + api.foldHead('🙋 Хто чекає допомоги') + '<div class="muted small">Завантажую…</div></section>';
     const list = sortedFriends(st, api).filter((x) => x.why.length).slice(0, 6);
     const feed = feedHtml(st, api, r.feed || []);
     if (!list.length && !feed) return '';
-    return '<section class="clkg-card clkg-wait">'
-      + (list.length ? '<div class="clk-sub">🙋 Хто чекає допомоги</div><div class="clkg-wlist">' + list.map((x) => friendBtn(st, api, x, true)).join('') + '</div>' : '')
+    // Згортка — лише з заголовком: сама стрічка цеху й так згортається своїм ▾.
+    return '<section class="clkg-card clkg-wait"' + (list.length ? api.fold('g.wait') : '') + '>'
+      + (list.length ? api.foldHead('🙋 Хто чекає допомоги <span class="muted small">· ' + list.length + '</span>') + '<div class="clkg-wlist">' + list.map((x) => friendBtn(st, api, x, true)).join('') + '</div>' : '')
       + feed + '</section>';
   }
 
@@ -444,7 +445,7 @@
     const esc = (x) => api.esc(st, x);
     const cheered = new Set((v.help.cheered || []).map((x) => String(x).toLowerCase()));
     const seen = new Set();
-    return '<section class="clkg-card clkg-got"><div class="clk-sub">💌 Тобі допомогли</div>' + list.map((g) => {
+    return '<section class="clkg-card clkg-got"' + api.fold('g.got') + '>' + api.foldHead('💌 Тобі допомогли <span class="muted small">· ' + list.length + '</span>') + list.map((g) => {
       const who = String(g.from || '').toLowerCase();
       // Кнопка — одна на друга (на найсвіжішому рядку), і не для «дякую» й не для безіменного «друга».
       const can = st.mine && g.kind !== 'thanks' && g.from !== 'друг' && !thanked.has(who) && !seen.has(who);
@@ -685,8 +686,8 @@
 
     // Цехмістр: вище нема куди — самий рядок і перки.
     if (!v.next) {
-      return '<section class="clkg-card">'
-        + '<div class="clk-sub">' + RANK_ICON[v.rank] + ' Ранг: ' + esc(rankName(st, v.rank)) + '</div>'
+      return '<section class="clkg-card"' + api.fold('g.rank', true) + '>'
+        + api.foldHead(RANK_ICON[v.rank] + ' Ранг: ' + esc(rankName(st, v.rank)))
         + '<div class="muted small">🎖️ Вище в селі лише небо.</div>' + perkBox + '</section>';
     }
 
@@ -707,8 +708,8 @@
     const perk = c && c.ranks && c.ranks[n.rank] ? c.ranks[n.rank].perk : '';
     const ready = n.ready && p.have;
     // Одним рядком: хто ти зараз, куди йдеш і як далеко зайшов. Умови — за «що потрібно ▾».
-    return '<section class="clkg-card">'
-      + '<div class="clk-sub">' + RANK_ICON[v.rank] + ' Ранг: ' + esc(rankName(st, v.rank))
+    return '<section class="clkg-card"' + api.fold('g.rank') + '>'
+      + '<div class="clk-sub clk-fh" tabindex="0">' + RANK_ICON[v.rank] + ' Ранг: ' + esc(rankName(st, v.rank))
       + '<span class="muted small"> · далі «' + esc(rankName(st, n.rank)) + '»</span>'
       + info('Ранг у селі росте від роботи: обпалені вироби, покладене на віз, розписи в колекції — і майстерштук, '
         + 'який треба виліпити, обпалити дзвінким і принести. Кожен ранг дає перк назавжди.') + '</div>'
@@ -737,7 +738,7 @@
   function rosterHtml(st, api) {
     const esc = (x) => api.esc(st, x);
     const r = st.guildRoster;
-    if (!r) return '<section class="clkg-card"><div class="clk-sub">👥 Гончарі цеху</div><div class="muted small">Кличемо гончарів…</div></section>';
+    if (!r) return '<section class="clkg-card"' + api.fold('g.potters', true) + '>' + api.foldHead('👥 Гончарі цеху') + '<div class="muted small">Кличемо гончарів…</div></section>';
     // Значки звань (clicker-titles.md): до трьох біля ніка, «Перший гончар округи» — золотим ніком із короною.
     const badges = (p) => {
       // Корона вже стоїть перед золотим ніком — вдруге серед значків її не треба.
@@ -750,9 +751,11 @@
         + '<div class="clkg-pname"><b>' + esc(p.nick) + (p.me ? ' <span class="muted small">(ти)</span>' : '') + badges(p) + '</b>'
         + '<span class="muted small">' + esc(rankName(st, p.rank)) + (p.gave ? ' · на возі ' + p.gave : '') + '</span></div>'
         + (p.me ? '' : '<button type="button" class="ghost small" data-card="' + esc(p.nick) + '" title="Що можу зробити">🤝</button>')
-        + '<button type="button" class="ghost small" data-house="' + esc(p.nick) + '">🏠 Зазирнути в хату</button></div>').join('')
+        + '<button type="button" class="ghost small clkg-hbtn" data-house="' + esc(p.nick) + '" title="Зазирнути в хату">🏠<span class="clkg-hword"> Зазирнути в хату</span></button></div>').join('')
       : '<div class="muted small">Поки нікого — зайди пізніше.</div>';
-    return '<section class="clkg-card"><div class="clk-sub">👥 Гончарі цеху <span class="muted small">· ' + r.potters.length + '</span></div>' + rows + '</section>';
+    // Згорнуто з початку (13.10): п'ятнадцять рядків — це екран і більше, а до друзів ведуть ще «Хто чекає» й «Помогти другові».
+    return '<section class="clkg-card"' + api.fold('g.potters', true) + '>'
+      + api.foldHead('👥 Гончарі цеху <span class="muted small">· ' + r.potters.length + ' · хто де і в чию хату зазирнути</span>') + rows + '</section>';
   }
 
   function loadRoster(st, api, force) {

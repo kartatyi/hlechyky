@@ -489,7 +489,9 @@
       + '<span class="clkf-on">×' + o.n + '</span></div>'
       + '<div class="clkf-obody">'
       + '<div class="clkf-oline">' + line + (o.sour ? ' <span class="clkf-sour" title="Образився на «накинути»">😤</span>' : '') + '</div>'
-      + '<div class="clkf-obar"><i style="width:' + share + '%"></i><span>є ' + Math.min(o.have, 999) + ' з ' + o.n + '</span></div>'
+      // «Бракує N» — у самій смужці, а «торг» — у рядку кнопок (13.10): картка нижча на два рядки, а на телефоні їх шість.
+      + '<div class="clkf-obar"><i style="width:' + share + '%"></i><span>є ' + Math.min(o.have, 999) + ' з ' + o.n
+      + (ready ? '' : ' · бракує ' + (o.n - o.have) + ' — виліпи й обпали') + '</span></div>'
       + '<div class="clkf-obtns">'
       + '<button type="button" class="primary small" data-bid="as" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🤝 Здати</button>'
       + '<span class="clkf-otime small muted">⏳ <i class="clkf-cd" data-at="' + o.until + '" data-done="поїхав"></i></span>'
@@ -498,7 +500,6 @@
       + '<button type="button" class="ghost small" data-bid="up" data-id="' + o.id + '"' + (off || o.sour ? ' disabled' : '') + '>💰 Накинути · вийде в ' + chance + ' % випадків</button>'
       + '</details>'
       + '</div>'
-      + (ready ? '' : '<div class="clkf-ohint muted small">бракує ' + (o.n - o.have) + ' — виліпи й обпали</div>')
       + '</div></div>';
   }
 
@@ -511,7 +512,7 @@
     const live = k.orders.filter((o) => o.until > sn);
     const c = cat(st);
     const board = m.boardMax || 4;
-    const head = '<div class="clk-sub clkf-title">📜 Замовлення' + (live.length ? ' · ' + live.length + ' з ' + board : '')
+    const head = '<div class="clk-sub clk-fh clkf-title" tabindex="0">📜 Замовлення' + (live.length ? ' · ' + live.length + ' з ' + board : '')
       + '<span class="muted small"> · платять більше за базар і дають шану селу'
       + (m.bell ? ', ярмарковий дзвін кличе їх частіше' : '') + '</span></div>'
       + (k.bazaar && k.bazaar.until > sn
@@ -554,8 +555,11 @@
     const top = levels.length - 1;
     const giftFrom = m.giftFrom || (c && c.giftFrom) || 6;
     const pay = Math.round(((c && c.payPerLevel) || 0.1) * 100) / 100;
-    const html = '<div class="clk-sub clkf-title">🤝 Шана сіл'
+    // Згорнута шана (13.10) — рядок сіл із зірками, щоб і без карток було видно, де скільки.
+    const peek = m.rep.map((r) => { const vv = villageOf(st, r.key); return vv ? vv.emoji + r.level : ''; }).join(' ');
+    const html = '<div class="clk-sub clk-fh clkf-title" tabindex="0">🤝 Шана сіл'
       + (m.allMult > 1 ? '<span class="muted small"> · разом +' + api.dec((m.allMult - 1) * 100) + ' % до всього</span>' : '')
+      + (peek ? '<span class="muted small clkf-peek"> · ' + peek + '</span>' : '')
       + api.info('Кожна зірка в будь-якому селі — +3 % до всього, а ще +' + api.dec(pay)
         + ' до множника плати за замовлення цього села (панові — вдвічі більше). З ' + giftFrom
         + '-ї зірки село раз на день шле гостинець: глеки, солому або дзвінкий виріб у своєму розписі.') + '</div>'
@@ -707,9 +711,12 @@
       layer.appendChild(k.guestEl);
       k.ordersEl = document.createElement('div');
       k.ordersEl.className = 'clkf-store';
+      k.ordersEl.dataset.fold = 'c.orders';
       // Шана сіл — це про людей, а не про склад: її місце в «Селі» (туди її кладе paintRep).
       k.repEl = document.createElement('div');
       k.repEl.className = 'clkf-repbox';
+      k.repEl.dataset.fold = 'g.rep';
+      k.repEl.dataset.fdef = '0';          // довідка про села: згорнута, поки гравець сам не розгорне (13.10)
       // Смуга «Шлях виробу» здає замовлення своєю кнопкою «Далі» — щоб не лізти в чужі нутрощі, даємо їй дію.
       st.fairDeliver = (id, ev) => deliver(st, api, ev || { isTrusted: false }, id, 'as');
       ensureStore(st, api);

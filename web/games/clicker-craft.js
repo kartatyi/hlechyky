@@ -765,7 +765,7 @@
     const peek = c.rack.slice(0, 6).map((r, i2) => wareSvg(api, r.ware, { raw: true, dry: r.dryAt <= now, clay: clayBody(st, r.clay),
       slot: 'speek-' + i2, cls: 'clkw-mini' })).join('');
     const rack = c.rack.length
-      ? '<details class="clkw-rack-sec" data-key="rack"><summary><b>🧺 Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</b>'
+      ? '<details class="clkw-rack-sec clk-fkeep" data-key="rack"><summary><b>🧺 Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</b>'
         + (dryN ? '<span class="clkw-rackdry small">сухих ' + dryN + '</span>' : '')
         + '<span class="clkw-peek" aria-hidden="true">' + peek + (c.rack.length > 6 ? '<i>…</i>' : '') + '</span></summary>'
         + '<div class="clkw-rackrow">'
@@ -791,8 +791,9 @@
     // Продаж гуртом: «Продати все» і, коли є що лишити, — вужчі кнопки. Кожна написана тими самими словами, що й
     // рядки комори («★ звичайний», «★★★ дзвінкий»), і одразу каже, скільки виробів забере й за скільки.
     const sells = sellButtons(c.items);
-    const head = '<div class="clk-sub">📦 Комора · ' + total + ' ' + api.plural(total, 'виріб', 'вироби', 'виробів')
-      + (total ? ' · разом ~' + api.short(sum) : '') + '</div>'
+    // Комора — згортка (13.10); сушарня над нею (clk-fkeep) лишається видною й тоді, коли комору згорнули.
+    const head = api.foldHead('📦 Комора · ' + total + ' ' + api.plural(total, 'виріб', 'вироби', 'виробів')
+      + (total ? ' · разом ~' + api.short(sum) : ''))
       + (total
         ? '<div class="clkw-sells">' + sells.map((b, i) => '<button type="button" data-sq="' + b.q + '"'
           + ' class="' + (i ? 'ghost small' : 'primary') + ' clkw-sellall"' + (st.mine ? '' : ' disabled') + '>'
@@ -873,7 +874,11 @@
             + (st.mine ? '' : ' disabled') + '>' + api.potsShort(u.price) + '</button>')
         + '</div>';
     }).join('');
-    const html = '<div class="clk-sub">🔧 Прокачати' + api.info(UPS_INFO) + '</div><div class="clkw-ups">' + rows + '</div>';
+    // Згортка (13.10): усе на межі — згорнута, поки гравець сам не розгорне; у заголовку — скільки ще можна прокачати.
+    const open = (c.ups || []).filter((u) => u.level < u.max).length;
+    if (!open && (c.ups || []).length) st.upsBody.dataset.fdef = '0'; else delete st.upsBody.dataset.fdef;
+    const html = api.foldHead('🔧 Прокачати<span class="muted small"> · ' + (open ? 'ще ' + open + ' з ' + c.ups.length : 'усе на межі') + '</span>'
+      + api.info(UPS_INFO)) + '<div class="clkw-ups">' + rows + '</div>';
     if (api.swap(st.upsBody, html)) {
       for (const b of st.upsBody.querySelectorAll('[data-up]')) {
         b.onclick = () => api.order(st, 'craft', { op: 'up', key: b.dataset.up });
@@ -926,10 +931,12 @@
         + '<div class="clkc-slot" data-slot="store"></div><div class="clkc-slot" data-slot="fair"></div>';
       st.storeBody = document.createElement('div');
       st.storeBody.className = 'clkw-store';
+      st.storeBody.dataset.fold = 'c.store';
       api.slot(st, 'store').appendChild(st.storeBody);
       // Секція «🔧 Прокачати» — одразу під коморою: сушарня, горно й комора ростуть тут, а не десь у довідці.
       st.upsBody = document.createElement('section');
       st.upsBody.className = 'clkw-upsec';
+      st.upsBody.dataset.fold = 'c.ups';
       api.slot(st, 'store').appendChild(st.upsBody);
       st.storeCds = [];
       // Ремесла ще нема, поки нема чого ремеслити: новачок бачить лише Майстерню, а смуга веде його сама.

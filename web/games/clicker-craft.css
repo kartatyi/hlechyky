@@ -161,6 +161,8 @@
   background: var(--panel); border: 1px solid var(--line);
 }
 .clkw-up.done { opacity: .7; border-color: rgba(244, 197, 66, .35); }
+/* Докачане до межі — без опису (13.10): що воно дає, каже «зараз: …», а рядок нижчий на два. */
+.clkw-up.done .clkw-uptxt > .muted { display: none; }
 .clkw-uptxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 .clkw-uphead { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .clkw-uphead b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

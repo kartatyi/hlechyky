@@ -241,17 +241,19 @@
       const from = (c && c.smallFrom) || 1e15;
       api.swap(k.el, '<div class="clk-teaser muted small clkl-soon">🏗 Толока відкриється на ' + esc(api.potsShort(from)) + ' за весь час</div>');
       k.el.classList.add('closed');
+      delete k.el.dataset.fold;                // обіцянка без заголовка — згортати нема чого (і нема за що взятись)
       k.cds = [];
       return;
     }
     k.el.classList.remove('closed');
+    k.el.dataset.fold = 'g.toloka';
     if (!c) {
-      api.swap(k.el, '<div class="clk-sub">🏗 Толока</div><div class="muted small">Село сходиться на толоку…</div>');
+      api.swap(k.el, api.foldHead('🏗 Толока') + '<div class="muted small">Село сходиться на толоку…</div>');
       return;
     }
     const t = k.v;
     const bonus = Math.round((t.allMult - 1) * 100);
-    let html = '<div class="clk-sub clkl-title">🏗 Толока<span class="muted small"> · збудовано ' + t.built.length + ' з ' + c.buildings.length
+    let html = '<div class="clk-sub clk-fh clkl-title" tabindex="0">🏗 Толока<span class="muted small"> · збудовано ' + t.built.length + ' з ' + c.buildings.length
       + (bonus > 0 ? ' · +' + bonus + ' % до всього' : '') + '</span>' + api.info(esc(infoText(st))) + '</div>'
       + builtRow(st, api);
     if (t.stage) html += stageHtml(st, api);

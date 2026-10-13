@@ -43,9 +43,12 @@
 .clkd-obar i { display: block; height: 100%; background: linear-gradient(90deg, #3d5c9e, #6f8fe0); border-radius: 7px; transition: width .4s; }
 .clkd-order.ready .clkd-obar i { background: linear-gradient(90deg, #4c9a3f, #7bd389); }
 .clkd-obar span {
-  position: absolute; inset: 0; text-align: center; font-size: 10.5px; line-height: 14px; font-weight: 600; color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .7);
+  position: absolute; inset: 0 4px; text-align: center; font-size: 10.5px; line-height: 14px; font-weight: 600; color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.clkd-obar .clkd-bt { display: none; font-weight: 600; }
+/* <em>, а не <i>: «.clkd-obar i» — це заливка смужки. */
+.clkd-obar .clkd-bt em { font-style: normal; font-variant-numeric: tabular-nums; }
 .clkd-obtns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; }
 .clkd-obtns > button { padding: 3px 10px; white-space: nowrap; }
 .clkd-skip.armed { color: #ffb27a; border-color: #8a4a2a; }
@@ -87,6 +90,9 @@
 .clkd-perk { font-size: .72em; line-height: 1.25; color: #cfe0ff; }
 
 .clkd-soon { padding: 4px 8px; border: 1px dashed rgba(111, 143, 224, .45); border-radius: 10px; }
+/* Згортка «Гості й шана» всередині двору (13.10). */
+.clkd-gsec { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding-top: 4px; border-top: 1px solid rgba(111, 143, 224, .25); }
+.clkd-gsec > .clk-fh .muted { letter-spacing: .5px; }
 
 @keyframes clkdbob { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-3px) rotate(3deg); } }
 @keyframes clkddrop { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -97,7 +103,9 @@
 @container clk (max-width: 420px) {
   .clkd-orders, .clkd-guests { grid-template-columns: minmax(0, 1fr); }
   .clkd-obtns > button { min-height: 40px; padding: 6px 12px; }
-  .clkd-otime { flex: 1 1 100%; text-align: right; }
+  /* Час — у смужці (.clkd-bt), а не окремим рядком під кнопками. */
+  .clkd-otime { display: none; }
+  .clkd-obar .clkd-bt { display: inline; }
 }
 
 @media (prefers-reduced-motion: reduce) {

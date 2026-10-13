@@ -99,7 +99,6 @@
     const f = k.fresh[o.id];
     if (f === 0) k.fresh[o.id] = Date.now();
     const fresh = f === 0 || (f > 0 && Date.now() - f < FRESH_CARD_MS);
-    const hint = o.q >= 4 ? ' — розкішні бувають лише з розписаної партії' : ' — виліпи й обпали';
     // Одне речення: хто, що хоче, скільки заплатить і скільки шани; множник — у чипі з поясненням. «просить: миска ×2»,
     // а не «хоче миска ×2»: назва виробу стоїть у називному, і з двокрапкою це не різатиме око на мисках і макітрах.
     const line = '<b>' + esc(who) + '</b> просить: <b>' + esc(wareName(st, o.ware).toLowerCase()) + ' ×' + o.n + '</b>'
@@ -112,7 +111,10 @@
       + '<span class="clkd-on">×' + o.n + '</span><span class="clkd-oemo" aria-hidden="true">' + ((d && d.emoji) || '🏛') + '</span></div>'
       + '<div class="clkd-obody">'
       + '<div class="clkd-oline">' + line + '</div>'
-      + '<div class="clkd-obar"><i style="width:' + share + '%"></i><span>є ' + Math.min(o.have, 999) + ' з ' + o.n + '</span></div>'
+      // «Бракує N» — у смужці, а на телефоні там і час (13.10): рядок «⏳» під кнопками й рядок «бракує» — мінус два рядки.
+      + '<div class="clkd-obar"><i style="width:' + share + '%"></i><span>є ' + Math.min(o.have, 999) + ' з ' + o.n
+      + (ready ? '' : ' · бракує ' + (o.n - o.have))
+      + '<b class="clkd-bt"> · ⏳ <em class="clkd-cd" data-at="' + o.until + '" data-done="відплив"></em></b></span></div>'
       + '<div class="clkd-obtns">'
       + '<button type="button" class="primary small clkd-give" data-give="' + o.id + '"' + (st.mine && ready ? '' : ' disabled') + '>🤝 Віддати</button>'
       + '<button type="button" class="ghost small clkd-skip' + (armed ? ' armed' : '') + '" data-skip="' + o.id + '"' + (st.mine ? '' : ' disabled')
@@ -121,7 +123,7 @@
       + (armed ? 'Точно?' : 'Відпустити') + '</button>'
       + '<span class="clkd-otime small muted" title="Скільки ще гість чекатиме">⏳ <i class="clkd-cd" data-at="' + o.until + '" data-done="відплив"></i></span>'
       + '</div>'
-      + (ready ? '' : '<div class="clkd-ohint muted small">бракує ' + (o.n - o.have) + hint + '</div>')
+      + (ready || o.q < 4 ? '' : '<div class="clkd-ohint muted small">розкішні бувають лише з розписаної партії</div>')
       + '</div></div>';
   }
 
@@ -161,13 +163,13 @@
     const c = cat(st);
     const esc = (x) => api.esc(st, x);
     if (!c) {
-      api.swap(k.el, '<div class="clk-sub">🏛 Гостинний двір</div><div class="muted small">Гості з\'являються на порозі…</div>');
+      api.swap(k.el, api.foldHead('🏛 Гостинний двір') + '<div class="muted small">Гості з\'являються на порозі…</div>');
       return;
     }
     const v = k.v;
     const sn = api.serverNow(st);
     const live = v.orders.filter((o) => o.until > sn);
-    const head = '<div class="clk-sub clkd-title">🏛 Гостинний двір<span class="muted small"> · на дворі ' + live.length + ' з ' + v.slots
+    const head = '<div class="clk-sub clk-fh clkd-title" tabindex="0">🏛 Гостинний двір<span class="muted small"> · на дворі ' + live.length + ' з ' + v.slots
       + (v.allMult > 1.0001 ? ' · шана гостей +' + api.dec((v.allMult - 1) * 100) + ' % до всього' : '') + '</span>'
       + api.info(esc(infoText(st))) + '</div>';
     const react = k.react && Date.now() - k.react.at < REACT_MS
@@ -184,10 +186,19 @@
     }
     const met = new Set(v.list.map((g) => g.key));
     const soon = c.list.find((g) => !met.has(g.key));
-    const html = head + react + orders
-      + '<div class="clkd-guests">' + v.list.map((g) => guestCard(st, api, g)).join('') + '</div>'
-      + (soon ? '<div class="clkd-soon muted small">⛵ Хто далі: ' + soon.emoji + ' <b>' + esc(soon.name) + '</b> · щабель «'
+    // Гості з шаною — своя згортка всередині двору (13.10), згорнута з початку: шість карток по сто пікселів на телефоні,
+    // а щодня потрібні лише замовлення. Згорнута — рядок значків із рівнями шани, тож видно, хто де, і без карток.
+    const peek = v.list.map((g) => { const d = def(st, g.key); return d ? d.emoji + g.level : ''; }).join(' ');
+    const guests = v.list.length
+      ? '<section class="clkd-gsec"' + api.fold('g.guests', true) + '>'
+        + api.foldHead('Гості й шана <span class="muted small">· ' + peek + '</span>', 'small')
+        + '<div class="clkd-guests">' + v.list.map((g) => guestCard(st, api, g)).join('') + '</div>'
+        + (soon ? '<div class="clkd-soon muted small">⛵ Хто далі: ' + soon.emoji + ' <b>' + esc(soon.name) + '</b> · щабель «'
+          + esc(soon.tierName) + '»</div>' : '')
+        + '</section>'
+      : (soon ? '<div class="clkd-soon muted small">⛵ Хто далі: ' + soon.emoji + ' <b>' + esc(soon.name) + '</b> · щабель «'
         + esc(soon.tierName) + '»</div>' : '');
+    const html = head + react + orders + guests;
     if (api.swap(k.el, html)) k.cds = [...k.el.querySelectorAll('.clkd-cd')];
     countdowns(st, api);
   }
@@ -335,6 +346,7 @@
     if (!k.el) {
       k.el = document.createElement('section');
       k.el.className = 'clkg-card clkd';
+      k.el.dataset.fold = 'g.dvir';
       k.el.hidden = true;
       k.el.addEventListener('click', (e) => onClick(st, api, e));
     }

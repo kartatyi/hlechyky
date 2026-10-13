@@ -72,7 +72,9 @@
   const SEC_KEY = 'clk.sec2.';
   const SECTIONS = [
     { key: 'house', title: '🏠 Хата', open: (st) => st.tools.some((t) => !t.owned) || st.clays.some((c) => !c.owned && c.price > 0) },
-    { key: 'styles', title: '🎨 Розписи', open: (st) => st.styleList.some((x) => !x.owned) },
+    // Розпис світу без першого рівня свого щабля не купиш («привезуть із …»), тож він розділ сам не розгортає (13.10):
+    // інакше в пізній грі «Розписи» стояли розгорнутими (~1 000 px на телефоні) заради п'яти сірих карток.
+    { key: 'styles', title: '🎨 Розписи', open: (st) => st.styleList.some((x) => !x.owned && (!x.tier || (st.ups && st.ups[x.tier] && st.ups[x.tier].level > 0))) },
     { key: 'orders', title: '🐴 Вклад купцям', open: (st) => st.taken.length > 0 },
   ];
 
@@ -265,6 +267,71 @@
 
   const storeGet = (k, dflt) => { try { return localStorage.getItem(k) || dflt; } catch { return dflt; } };
   const storeSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватне вікно — пам'ятати нема де */ } };
+
+  // ---------- згортки (13.10) ----------
+
+  /// Будь-яка картка кола з data-fold="ключ" згортається до свого заголовка (прямий нащадок .clk-fh): тап по ньому.
+  /// Стан — не клас на картці, а один <style> на сторінку з правилами за ключами: частини перемальовують свої картки
+  /// через innerHTML скільки завгодно, а згорнуте лишається згорнутим без жодного гачка в них. data-fdef="0" — картка
+  /// згорнута, поки гравець сам її не розгорне (там зараз нема що робити: усе куплено, музей повний). Вибір гравця
+  /// пам'ятаємо, лише коли він не збігається з типовим: типове буває змінним (докупив — і «усе куплено» знову згорнеться).
+  const FOLD_KEY = 'clk.fold';
+  let folds = null;
+  function foldMap() {
+    if (!folds) { try { folds = JSON.parse(storeGet(FOLD_KEY, '{}')) || {}; } catch { folds = {}; } }
+    return folds;
+  }
+  function foldCss() {
+    let el = document.getElementById('clk-folds');
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'clk-folds';
+      document.head.appendChild(el);
+    }
+    const f = foldMap();
+    const sel = (k) => '[data-fold="' + String(k).replace(/[^\w.-]/g, '') + '"]';
+    const shut = [];
+    const open = [];
+    for (const k of Object.keys(f)) (f[k] ? shut : open).push(sel(k));
+    const all = shut.concat('[data-fdef="0"]' + (open.length ? ':not(' + open.join(', ') + ')' : '')).map((s) => '.clk ' + s);
+    // .clk-fkeep — сусід заголовка, що лишається й у згорнутій картці (сушарня над коморою).
+    // Комора, прокачка й розділи альбому поза екраном не розкладаються (content-visibility: auto, css) і до першого
+    // показу тримають місце 480 px — згорнутим це місце заголовка, інакше прокрутка стрибала б на сотні пікселів.
+    el.textContent = all.map((s) => s + ' > :not(.clk-fh):not(.clk-fkeep)').join(',\n') + ' { display: none !important; }\n'
+      + all.map((s) => s + ' > .clk-fh::before').join(',\n') + " { content: '▸'; }\n"
+      + all.join(',\n') + ' { contain-intrinsic-block-size: auto 44px !important; }\n';
+  }
+  const isFolded = (card) => {
+    const v = foldMap()[card.dataset.fold];
+    return v === undefined ? card.dataset.fdef === '0' : !!v;
+  };
+  function toggleFold(st, card) {
+    const want = !isFolded(card);
+    const f = foldMap();
+    if (want === (card.dataset.fdef === '0')) delete f[card.dataset.fold];
+    else f[card.dataset.fold] = want ? 1 : 0;
+    storeSet(FOLD_KEY, JSON.stringify(f));
+    foldCss();
+    H.api.sfx(want ? 'close' : 'open');
+    // Розгорнули — числа й кнопки всередині оживають того ж кадру.
+    st.slowAt = 0;
+  }
+  /// Тап по заголовку згортки. Кнопки, ⓘ й поля в самому заголовку лишаються своїми — їх не перехоплюємо.
+  function foldClick(st, e) {
+    const h = e.target.closest && e.target.closest('.clk-fh');
+    const card = h && h.parentElement;
+    if (!card || !card.dataset.fold || !st.el.contains(h)) return;
+    const own = e.target.closest('button, a, input, select, textarea, label, details');
+    if (own && h.contains(own)) return;
+    if (e.type === 'keydown') {
+      if (e.key !== 'Enter' || e.target !== h) return;
+      e.preventDefault();
+    }
+    toggleFold(st, card);
+  }
+  /// Розмітка для частин: атрибути картки й заголовок. closed — згорнута, поки гравець сам не розгорне.
+  const foldAttr = (key, closed) => ' data-fold="' + key + '"' + (closed ? ' data-fdef="0"' : '');
+  const foldHead = (inner, cls) => '<div class="clk-sub clk-fh' + (cls ? ' ' + cls : '') + '" tabindex="0">' + inner + '</div>';
 
   // ---------- глеки й розписи ----------
 
@@ -2131,8 +2198,10 @@
 
     const marks = st.markList.slice().sort((a, b) => a.price - b.price);
     const mhtml = marks.length
-      ? '<div class="clk-sub">Віхи' + (st.marksAll ? ' · ' + num(st.marksOwned) + ' з ' + num(st.marksAll) : '')
-        + '<span class="muted small"> · одноразово, назавжди (до обпалу; з «Пам\'яттю рук» лишаються)</span></div><div class="clk-marks">'
+      ? foldHead('Віхи' + (st.marksAll ? ' · ' + num(st.marksOwned) + ' з ' + num(st.marksAll) : '')
+        + '<span class="muted small"> · ' + marks.length + ' ' + plural(marks.length, 'відкрита', 'відкриті', 'відкритих') + '</span>'
+        + info('Віха купується раз і діє назавжди — до обпалу; з секретом «Пам\'ять рук» лишається й після нього.'))
+        + '<div class="clk-marks">'
         + marks.map((m) => '<button type="button" class="clk-mark" data-mark="' + esc(m.key) + '" data-price="' + m.price + '" title="'
           + esc(m.name + ' — ' + m.desc) + '" disabled>'
           + (H.api.upIcon ? '<span class="clk-uico">' + H.api.upIcon(m.on || String(m.key).split(':')[0]) + '</span>' : '')
@@ -2183,9 +2252,12 @@
     const html = '<div class="clk-sub">Розписи · ' + (owned - worldOwned) + ' з ' + home.length
       + '<span class="muted small"> · кожен +5 % до всього, лишаються й після обпалу</span></div>'
       + '<div class="clk-styles">' + home.map(card).join('') + '</div>'
-      + (world.length ? '<div class="clk-sub clk-worldsub">🌍 Розписи світу · ' + worldOwned + ' з ' + world.length
-        + '<span class="muted small"> · теж +5 % до всього; кожен привозять, коли маєш перший рівень його щабля</span></div>'
-        + '<div class="clk-styles clk-styles-world">' + world.map(card).join('') + '</div>' : '')
+      // Розписи світу — згортка (13.10): поки жодного нема й жодного ще не купиш, це п'ять сірих «привезуть із …» —
+      // згорнуті, поки гравець сам не розгорне.
+      + (world.length ? '<section class="clk-fsec"' + foldAttr('s.world', !worldOwned && world.every((s) => !(st.ups && st.ups[s.tier] && st.ups[s.tier].level > 0))) + '>'
+        + foldHead('🌍 Розписи світу · ' + worldOwned + ' з ' + world.length
+        + '<span class="muted small"> · теж +5 % до всього; кожен привозять, коли маєш перший рівень його щабля</span>', 'clk-worldsub')
+        + '<div class="clk-styles clk-styles-world">' + world.map(card).join('') + '</div></section>' : '')
       + (owned ? '<button type="button" class="ghost small clk-plain"' + (st.wear ? '' : ' disabled') + '>Простий глиняний на колі</button>' : '');
     if (swap(st.styles, html)) {
       st.styleBtns = [...st.styles.querySelectorAll('[data-style]')];
@@ -2226,19 +2298,25 @@
       + '" data-price="' + s.price + '" data-shut="' + (s.owned ? 1 : 0) + '"' + (s.owned || !st.mine ? ' disabled' : '') + '>'
       + '<b>' + esc(s.name) + '</b><span class="muted small">' + esc(s.desc) + '</span>'
       + (s.owned ? '' : SHORT_HTML)
-      + '<span class="clk-price stamp' + (s.owned ? ' done' : '') + '">' + (s.owned ? '✓ знаєш' : '🔖 ' + count(s.price)) + '</span></button>';
+      + (s.owned ? '<span class="clk-price stamp done" title="знаєш">✓</span>' : '<span class="clk-price stamp">🔖 ' + count(s.price) + '</span>') + '</button>';
     const ring = (n) => st.secretList.filter((s) => (s.ring || 1) === n);
-    const block = (title, note, list) => (list.length
-      ? '<div class="clk-sub">' + title + '<span class="muted small"> · ' + note + '</span>' + FREE_HTML + '</div>'
-        + '<div class="clk-secrets">' + list.map(card).join('') + '</div>'
-      : '');
+    // Коло секретів — згортка (13.10): коло, де все вже знаєш, згорнуте, поки сам не розгорнеш, — у пізній грі три
+    // кола по вісім карток (~1 200 px на телефоні) стояли між клеймами й скарбницею, а купити там уже нічого.
+    const block = (key, title, note, list, tail) => {
+      if (!list.length) return '';
+      const have = list.filter((s) => s.owned).length;
+      return '<section class="clk-fsec"' + foldAttr('fire.' + key, have === list.length) + '>'
+        + foldHead(title + ' · ' + have + ' з ' + list.length
+          + (have < list.length ? '<span class="muted small"> · ' + note + '</span>' + FREE_HTML : ' <span class="clk-okmark">✓</span>'))
+        + '<div class="clk-secrets">' + list.map(card).join('') + '</div>' + (tail || '') + '</section>';
+    };
     // Третє коло (v10 §8) — коли перші два вже знаєш або клейм від 20 тисяч: новачкові мільярди лише лякали б.
     const firstTwo = ring(1).concat(ring(2));
     const third = firstTwo.every((s) => s.owned) || st.stamps >= 20000 ? ring(3) : [];
-    const secrets = block('Родинні секрети', 'за клейма, назавжди', ring(1))
-      + block('Дідівські секрети', 'друге коло — те, що дід тримав у скрині', ring(2))
-      + block('Прадідівські секрети', 'третє коло — на мільйони клейм, для тих, хто пройшов усе', third)
-      + '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: він лишається, хоч витрать усі.</div>';
+    const secrets = block('ring1', 'Родинні секрети', 'за клейма, назавжди', ring(1),
+      '<div class="muted small clk-secnote">Клейма на секрети не згорають і бонус не гублять: він лишається, хоч витрать усі.</div>')
+      + block('ring2', 'Дідівські секрети', 'друге коло — те, що дід тримав у скрині', ring(2))
+      + block('ring3', 'Прадідівські секрети', 'третє коло — на мільйони клейм, для тих, хто пройшов усе', third);
     if (swap(st.fire._static, head + secrets + relics(st, esc))) {
       st.secretBtns = [...st.fire._static.querySelectorAll('[data-secret]')];
       for (const b of st.secretBtns) b.onclick = () => order(st, 'secret', { key: b.dataset.secret });
@@ -2287,8 +2365,8 @@
     const cat = st.shopCat && st.shopCat.relics;
     if (!list || !cat) return '';
     const pct = (x) => dec(Math.round(x * 1000) / 10);
-    return '<div class="clk-sub">🗝 Скарбниця роду<span class="muted small"> · реліквії за клейма: рівні без стелі, кожен утричі дорожчий</span>'
-      + FREE_HTML + '</div>'
+    return '<section class="clk-fsec"' + foldAttr('fire.relics') + '>'
+      + foldHead('🗝 Скарбниця роду<span class="muted small"> · реліквії за клейма: рівні без стелі, кожен утричі дорожчий</span>' + FREE_HTML)
       + '<div class="clk-secrets clk-relics">' + list.map((r) => {
         const c = cat.find((x) => x.key === r.key);
         if (!c) return '';
@@ -2300,7 +2378,7 @@
           + '<span class="muted small">' + esc(c.desc) + (r.level ? ' · зараз ' + pct(r.sum) + ' %' : '') + '</span>'
           + (capped ? '' : SHORT_HTML)
           + '<span class="clk-price stamp">' + (capped ? '✓ на межі' : '🔖 ' + count(r.price)) + '</span></button>';
-      }).join('') + '</div>';
+      }).join('') + '</div></section>';
   }
 
   /// Наука майстра у вкладці Клейма: від кого вчимось, скільки в нього клейм і коли наука знову готова. Хто сам
@@ -2344,6 +2422,7 @@
 
   /// Саму хату (стіни, знаряддя, прикраси, підмайстрів, світ за хатою, день і ніч) малює жива хата — clicker-scene.js
   /// у свій шар .clk-house. Тут лишились тільки запасні значки для полиці «Хата», поки та частина не завантажилась.
+  const NEXT_SHOWN = 4;                   // скільки некуплених знарядь чи прикрас видно картками, решта — за «ще N ▸»
   const TOOL_ICON = { paddle: '🥄', string: '🧵', sponge: '🧽', ribs: '📏', lantern: '🏮', apron: '🥼', bucket: '🪣', whistle: '🎶', scales: '⚖️', iron: '🔖' };
 
   // ---------- хата: полиця з глиною, знаряддям і прикрасами ----------
@@ -2422,22 +2501,45 @@
     const inputs = st.houseVer + '|' + (st.stamps > 0 ? 1 : 0) + '|' + (H.api.toolIcon ? 1 : 0) + (H.api.decorIcon ? 1 : 0) + (H.api.wonderIcon ? 1 : 0);
     if (st.housePane._sig != null && st.housePane._in === inputs) { lookButtons(st); return; }
     st.housePane._in = inputs;
-    const clays = '<div class="clk-sub">Глина на колі<span class="muted small"> · купується раз; замішана відлежується 10 хв</span></div>'
-      + '<div class="clk-clays">' + st.clays.map((c) => '<button type="button" class="clk-clay' + (c.on ? ' on' : '') + (c.owned ? ' owned' : '')
+    // Кожна частина хати — своя згортка (13.10): усе куплене — згорнуте, поки гравець сам не розгорне. У новачка
+    // розгорнута хата займала ~2 600 px на телефоні: десять знарядь і шість прикрас карткою кожне.
+    const sec = (key, closed, head, body) => '<section class="clk-fsec"' + foldAttr(key, closed) + '>' + foldHead(head) + body + '</section>';
+    const have = (list, own) => list.filter(own).length + ' з ' + list.length;
+    const paidClays = st.clays.filter((c) => c.price > 0);
+    const clays = sec('h.clays', paidClays.every((c) => c.owned), 'Глина на колі <span class="muted small">· ' + have(paidClays, (c) => c.owned)
+      + ' · купується раз; замішана відлежується 10 хв</span>',
+      '<div class="clk-clays">' + st.clays.map((c) => '<button type="button" class="clk-clay' + (c.on ? ' on' : '') + (c.owned ? ' owned' : '')
         + '" data-clay="' + esc(c.key) + '" data-price="' + c.price + '" data-owned="' + (c.owned ? 1 : 0) + '" data-on="' + (c.on ? 1 : 0) + '" disabled>'
         + jugSvg('', 'clk-mini', 'clay-' + (c.key || 'plain'), c.body || '')
         + '<b>' + esc(c.name) + '</b><span class="muted small">' + esc(c.desc) + '</span>'
-        + '<span class="clk-price' + (c.owned ? ' done' : '') + '"></span></button>').join('') + '</div>';
-    const tools = '<div class="clk-sub">Знаряддя гончаря<span class="muted small"> · раз і назавжди, видно на стіні</span></div>'
-      + '<div class="clk-tools">' + st.tools.map((t) => '<button type="button" class="clk-tool' + (t.owned ? ' owned' : '')
+        + '<span class="clk-price' + (c.owned ? ' done' : '') + '"></span></button>').join('') + '</div>');
+    // Знаряддя й прикраси (13.10): куплене — плашками в один рядок (воно вже на стіні, натискати там нічого), з
+    // некупленого — NEXT_SHOWN найдешевших картками, решта — за «ще N ▸». У новачка вісімнадцять знарядь і дванадцять
+    // прикрас карткою кожне — це ~1 700 px на телефоні.
+    const shelf = (key, list, label, icon, card) => {
+      const mine = list.filter((x) => x.owned);
+      const rest = list.filter((x) => !x.owned).sort((a, b) => a.price - b.price);
+      const more = rest.slice(NEXT_SHOWN);
+      return (mine.length ? '<div class="clk-owned"><span class="muted small">' + label + '</span>'
+        + mine.map((x) => '<span class="clk-ownchip" title="' + esc(x.name + ' — ' + x.desc) + '">' + icon(x) + ' ' + esc(x.name) + '</span>').join('') + '</div>' : '')
+        + (rest.length ? '<div class="clk-tools">' + rest.slice(0, NEXT_SHOWN).map(card).join('') + '</div>' : '')
+        + (more.length ? '<details class="clk-more" data-key="' + key + '"><summary>ще ' + more.length + ' — дорожчі</summary>'
+          + '<div class="clk-tools">' + more.map(card).join('') + '</div></details>' : '');
+    };
+    const toolIcon = (t) => (H.api.toolIcon && H.api.toolIcon(t.key)) || TOOL_ICON[t.key] || '🔧';
+    const decorIcon = (d) => (H.api.decorIcon ? H.api.decorIcon(d.key) : '✨');
+    const tools = sec('h.tools', st.tools.every((t) => t.owned), 'Знаряддя гончаря <span class="muted small">· ' + have(st.tools, (t) => t.owned)
+      + ' · раз і назавжди, видно на стіні</span>',
+      shelf('more-tools', st.tools, 'на стіні:', toolIcon, (t) => '<button type="button" class="clk-tool' + (t.owned ? ' owned' : '')
         + '" data-house="tool" data-key="' + esc(t.key) + '" data-price="' + t.price + '" data-owned="' + (t.owned ? 1 : 0) + '" disabled>'
-        + '<span class="clk-ticon">' + ((H.api.toolIcon && H.api.toolIcon(t.key)) || TOOL_ICON[t.key] || '🔧') + '</span><b>' + esc(t.name) + '</b><span class="muted small">' + esc(t.desc) + '</span>'
-        + '<span class="clk-price' + (t.owned ? ' done' : '') + '">' + (t.owned ? '✓ на стіні' : short(t.price)) + '</span></button>').join('') + '</div>';
-    const decor = '<div class="clk-sub">Прикраси хати<span class="muted small"> · +2 % до всього кожна, лишаються назавжди</span></div>'
-      + '<div class="clk-tools">' + st.decorList.map((d) => '<button type="button" class="clk-tool decor' + (d.owned ? ' owned' : '')
+        + '<span class="clk-ticon">' + toolIcon(t) + '</span><b>' + esc(t.name) + '</b><span class="muted small">' + esc(t.desc) + '</span>'
+        + '<span class="clk-price' + (t.owned ? ' done' : '') + '">' + (t.owned ? '✓ на стіні' : short(t.price)) + '</span></button>'));
+    const decor = sec('h.decor', st.decorList.every((d) => d.owned), 'Прикраси хати <span class="muted small">· ' + have(st.decorList, (d) => d.owned)
+      + ' · +2 % до всього кожна, лишаються назавжди</span>',
+      shelf('more-decor', st.decorList, 'у хаті:', decorIcon, (d) => '<button type="button" class="clk-tool decor' + (d.owned ? ' owned' : '')
         + '" data-house="adorn" data-key="' + esc(d.key) + '" data-price="' + d.price + '" data-owned="' + (d.owned ? 1 : 0) + '" disabled>'
         + (H.api.decorIcon ? '<span class="clk-ticon">' + H.api.decorIcon(d.key) + '</span>' : '') + '<b>' + esc(d.name) + '</b><span class="muted small">' + esc(d.desc) + '</span>'
-        + '<span class="clk-price' + (d.owned ? ' done' : '') + '">' + (d.owned ? '✓ у хаті' : short(d.price)) + '</span></button>').join('') + '</div>';
+        + '<span class="clk-price' + (d.owned ? ' done' : '') + '">' + (d.owned ? '✓ у хаті' : short(d.price)) + '</span></button>'));
     if (swap(st.housePane, clays + tools + decor + looksHtml(st, esc) + wondersHtml(st, esc))) {
       st.clayBtns = [...st.housePane.querySelectorAll('[data-clay]')];
       for (const b of st.clayBtns) {
@@ -2495,11 +2597,13 @@
       + '<span class="clk-signbox"><input class="clk-signin" type="text" maxlength="' + (hs.nameMax || 24)
       + '" value="' + esc(hs.named || '') + '" placeholder="Хата гончаря" aria-label="Ім\'я хати">'
       + '<button type="button" class="ghost small clk-signgo">Написати</button></span></div>';
-    return '<div class="clk-sub">🎨 Оздоба<span class="muted small"> · за клейма, раз і назавжди</span>'
+    // Згортка, згорнута з початку (13.10): оздоба — лише вигляд хати, доходу не додає, а рядків у ній з десяток.
+    return '<section class="clk-fsec"' + foldAttr('h.looks', true) + '>'
+      + foldHead('🎨 Оздоба<span class="muted small"> · за клейма, раз і назавжди</span>'
       + (paid ? '<span class="clk-lookfree"> · 🔖 вільних <b>' + count(st.stampsFree || 0) + '</b></span>' : '')
       + info('Оздоба міняє вигляд хати на сцені й нічого не додає до доходу. Клейма на неї, як і на секрети, '
-        + 'не згорають і бонусу не гублять — просто їх стає менше на секрети. Вивіска безплатна, міняй скільки хочеш.')
-      + '</div><div class="clk-looks">' + rows + sign + '</div>';
+        + 'не згорають і бонусу не гублять — просто їх стає менше на секрети. Вивіска безплатна, міняй скільки хочеш.'))
+      + '<div class="clk-looks">' + rows + sign + '</div></section>';
   }
 
   /// Дивовижі: знайдене — з байкою, решта — силуети з підказкою, звідки їх ждати.
@@ -2508,17 +2612,25 @@
     // Дивовижі приходять із рідкісних подій пізньої гри: поки гончар не палив жодного разу, це просто шум.
     if (!w || !w.list || (!w.found && !st.stamps)) return '';
     const pct = Math.round((w.bonus || 0.01) * 100 * w.found);
-    const cells = w.list.map((x) => '<div class="clk-wonder' + (x.found ? ' found' : '') + '">'
+    const cell = (x) => '<div class="clk-wonder' + (x.found ? ' found' : '') + '">'
       + '<div class="clk-wtop"><span class="clk-wicon' + (x.found ? '' : ' sil') + '">' + wonderIcon(x.key) + '</span>'
       + '<b>' + (x.found && x.name ? esc(x.name) : '· · ·') + '</b></div>'
-      + '<span class="muted small">' + esc(x.found ? x.tale : x.from) + '</span></div>').join('');
-    return '<div class="clk-sub">✨ Дивовижі · ' + w.found + '/' + w.total
+      + '<span class="muted small">' + esc(x.found ? x.tale : x.from) + '</span></div>';
+    // Знайдені — картками, незнайдені (силует і «звідки чекати») — за «ще N ▸» (13.10): шістнадцять карток у стовпчик
+    // на телефоні — це ~1 800 px, а щодня там нічого не робиш.
+    const found = w.list.filter((x) => x.found);
+    const lost = w.list.filter((x) => !x.found);
+    const cells = (found.length ? '<div class="clk-wonders">' + found.map(cell).join('') + '</div>' : '')
+      + (lost.length ? '<details class="clk-more" data-key="more-wonders"><summary>ще ' + lost.length + ' не знайдено — звідки їх чекати</summary>'
+        + '<div class="clk-wonders">' + lost.map(cell).join('') + '</div></details>' : '');
+    return '<section class="clk-fsec"' + foldAttr('h.wonders', w.found >= w.total) + '>'
+      + foldHead('✨ Дивовижі · ' + w.found + '/' + w.total
       + (w.found ? '<span class="muted small"> · +' + pct + ' % до всього</span>' : '')
       + info('Дивовижі знаходяться самі, коли в хаті стається щось рідкісне: добрий обпал, довга серія, щедрий віз, '
         + 'гість на свято. Під силуетом — звідки вона може прийти: це як пощастить, а не щоразу (Люстро в знаряддях — удвічі '
         + 'частіше). Лише Скалка з неба приходить напевно — з першою ж спійманою зіркою. Кожна дивовижа додає +1 % до всього '
-        + 'й лишається в хаті назавжди.')
-      + '</div><div class="clk-wonders">' + cells + '</div>';
+        + 'й лишається в хаті назавжди.'))
+      + cells + '</section>';
   }
 
   /// Кнопки оздоби й вивіски: вибір гурту летить дією look, ім'я — дією name.
@@ -2898,6 +3010,8 @@
     storeGet, storeSet,
     guardOn: (st) => guardOn(st),
     info,
+    /// Згортка картки (13.10): '<section class="…"' + api.fold('ключ', згорнута?) + '>' + api.foldHead('заголовок') + …
+    fold: foldAttr, foldHead,
     esc: (st, x) => ((st.ctx && st.ctx.esc) || ((y) => String(y)))(x),
     order: (st, action, payload) => order(st, action, payload),
     /// Дія з відповіддю (Promise): для мінігор, яким треба знати результат. Накопичені кліки летять першими.
@@ -3574,7 +3688,7 @@
         + '<button type="button" class="ghost" data-mode="1">×1</button>'
         + '<button type="button" class="ghost" data-mode="10">×10</button>'
         + '<button type="button" class="ghost" data-mode="max">макс</button></div>'
-        + '<div class="clk-markbox"></div><div class="clk-shop"></div>'
+        + '<div class="clk-markbox"' + foldAttr('shop.marks') + '></div><div class="clk-shop"></div>'
         // Колишні вкладки «Хата», «Розписи» й «Купці» — згорнуті розділи Майстерні: усе, що купують за глеки, в одному місці.
         + SECTIONS.map((x) => '<details class="clk-sec" data-sec="' + x.key + '"><summary>' + x.title + '</summary></details>').join('')
         + '</div>'
@@ -3721,6 +3835,9 @@
       st.ov.el.addEventListener('pointerdown', (e) => { st.ovDownBack = e.target === st.ov.el; });
       st.ov.el.addEventListener('click', (e) => { if (e.target === st.ov.el && st.ovDownBack !== false) H.api.closeOverlay(st); });
       st.root = root;
+      foldCss();
+      st.el.addEventListener('click', (e) => foldClick(st, e));
+      st.el.addEventListener('keydown', (e) => foldClick(st, e));
       st.boxWatch = keepBox(st);
       st.steady = steadyView(st);
       mountFly(st);
@@ -3929,6 +4046,10 @@
         ? 'сьогодні ще ' + num(st.canSell) + ' ' + shards(st.canSell) + ', по ' + num(st.rateOf) + ' глеків за черепок'
         : 'на сьогодні черепки скінчились, приходь завтра';
       if (st.left.textContent !== left) st.left.textContent = left;
+      // Денну стелю вичерпано — дві вимкнені кнопки до завтра нічого не роблять, лише забирають рядок (13.10): на ПК
+      // це рядок із ~300 px панелі вкладки на низькому вікні. Лишається сам рядок «приходь завтра».
+      const out = st.canSell <= 0;
+      if (st.one.hidden !== out) { st.one.hidden = out; st.all.hidden = out; st.sellRow.classList.toggle('out', out); }
 
       const owned = st.styleList.filter((s) => s.owned).length;
       st.tabText.shop = '🔨 Майстерня';

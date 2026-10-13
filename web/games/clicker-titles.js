@@ -56,7 +56,8 @@
   }
 
   function openSet() {
-    try { return new Set(JSON.parse(HClicker.api.storeGet(OPEN_KEY, '["top"]'))); } catch (e) { return new Set(['top']); }
+    // Групи згорнуті, поки гравець сам не розгорне (13.10): «Перші в окрузі» — тринадцять рядків, екран на телефоні.
+    try { return new Set(JSON.parse(HClicker.api.storeGet(OPEN_KEY, '[]'))); } catch (e) { return new Set(); }
   }
 
   // ---------- малюнок ----------
@@ -174,11 +175,11 @@
     if (!st.titlesEl || !st.titles) return;
     const c = cat(st);
     if (!c) {
-      api.swap(st.titlesEl, '<section class="clkg-card clkt"><div class="clk-sub">🎖 Звання округи</div><div class="muted small">Кличемо звання…</div></section>');
+      api.swap(st.titlesEl, '<section class="clkg-card clkt"' + api.fold('g.titles') + '>' + api.foldHead('🎖 Звання округи') + '<div class="muted small">Кличемо звання…</div></section>');
       return;
     }
-    const html = '<section class="clkg-card clkt"><div class="clk-sub">🎖 Звання округи <span class="muted small">· у тебе '
-      + st.titles.mine.length + '</span></div>' + mineHtml(st, api)
+    const html = '<section class="clkg-card clkt"' + api.fold('g.titles') + '>' + api.foldHead('🎖 Звання округи <span class="muted small">· у тебе '
+      + st.titles.mine.length + '</span>') + mineHtml(st, api)
       + KINDS.map((k) => kindHtml(st, api, k)).join('') + '</section>';
     api.swap(st.titlesEl, html);
   }
