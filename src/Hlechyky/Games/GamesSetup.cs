@@ -11,6 +11,7 @@ public static class GamesSetup
     public static IServiceCollection AddHlechykyGames(this IServiceCollection services)
     {
         services.AddOptions<GamesOptions>().BindConfiguration("Games");   // вимикач ігор: увесь розділ і окремі (GamesSwitch.cs)
+        services.AddOptions<Impl.ClickerOptions>().BindConfiguration("Clicker");   // подарунки гончарям (ClickerGifts.cs)
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<GameEvents>();
         // Явна фабрика: у реєстру є ще один, необов'язковий параметр (додаткові збірки для тестів),

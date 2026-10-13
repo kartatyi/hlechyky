@@ -1022,6 +1022,7 @@ public sealed partial class Clicker : Game
         _goldenSlept = false;
         _fallSlept = false;
         ResetLate(default);
+        _takenGifts.Clear();
         // Новачкові «що нового» ні до чого — для нього нове все; новини бачить той, чиє збереження старше за випуск.
         _news = NewsVersion;
         _coinSeen = 0;
@@ -1108,6 +1109,9 @@ public sealed partial class Clicker : Game
         HoldForMinigame(Ctx.Clock.UtcNow);
         // Звання: лічильники → звання, нові — у Журнал, звіт цехові (раз на хвилину або одразу, коли щось сталось).
         TitlesAfterAct(Ctx.Clock.UtcNow);
+        // Подарунок майстерні (ClickerGifts.cs) — після вдалої справжньої дії: гончар тут і побачить тост.
+        if (!quiet && result.Ok && TakeGifts() is { Length: > 0 } gift)
+            result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + gift : gift);
         // Таблиця «Гончарі» — це глеки за весь час; те саме число вдруге їй нічого не додасть.
         if (result.Ok && WorthScoring())
         {
@@ -2472,7 +2476,9 @@ public sealed partial class Clicker : Game
         // Секунди ярмарку й натхнення, що чекають відповіді майстрові (05.10). Старе збереження — нічого не чекає.
         double FairHeld = 0, double InspireHeld = 0,
         // Коли гончар пішов від кола (ClickerLate.cs, 13.10). Старе збереження — він тут.
-        DateTimeOffset GoneAt = default);
+        DateTimeOffset GoneAt = default,
+        // Id подарунків майстерні, що вже видані (ClickerGifts.cs). Старе збереження — жодного.
+        List<string>? Gifts = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2486,7 +2492,8 @@ public sealed partial class Clicker : Game
             _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news,
             _stampsExtra, _scienceAt, SaveTitles(), SaveGuests(), _coinSeen,
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
-            _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt),
+            _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt,
+            _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList()),
         Wire);
 
     public override void Load(string json)
@@ -2550,6 +2557,8 @@ public sealed partial class Clicker : Game
         _fairHeld = HeldOf(s.FairHeld);
         _inspireHeld = HeldOf(s.InspireHeld);
         ResetLate(s.GoneAt);
+        _takenGifts.Clear();
+        if (s.Gifts is { } gifts) foreach (var id in gifts) if (!string.IsNullOrEmpty(id)) _takenGifts.Add(id);
 
         // Розгін переживає F5 теж (він однаково спаде за кілька секунд), а глек з полиці — або той, що вже
         // на розкладі, або, для збережень із часів до полиці, новий.
