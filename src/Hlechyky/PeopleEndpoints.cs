@@ -176,6 +176,7 @@ public static class PeopleEndpoints
         "clicker" => "обмін глеків",
         "ad" => "реклама",
         "award" => "нагороди в іграх",
+        Feedback.GiftReason => "від Дядька Глека за записки",
         "ban" => "бан-лист",
         "shop" => "Лавка",
         "gift" => "подарунки",

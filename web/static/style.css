@@ -1366,6 +1366,28 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 .fbb.fresh { box-shadow: inset 0 0 0 1.5px var(--accent2); background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); }
 .fbx-st { align-self: center; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; font-size: .8em; color: var(--muted); }
 .fbx-st.fresh { color: var(--text); }
+/* Дядько Глек у переписці: теплі глиняні тони замість звичайної бульбашки розробника, черепки — подією посередині. */
+.fbb.glek { background: color-mix(in srgb, #c47a4a 22%, var(--panel2)); border: 1px solid color-mix(in srgb, #c47a4a 45%, transparent); }
+.fbb-who.glek { color: #e0a35a; }
+.fbx-gift {
+  align-self: center; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; max-width: 92%;
+  padding: 4px 12px; border-radius: 999px; font-size: .85em; text-align: center;
+  background: color-mix(in srgb, #f4c542 14%, var(--panel2)); border: 1px solid color-mix(in srgb, #f4c542 45%, transparent);
+}
+.fbx-gift b { color: #f4c542; }
+.fbx-gift span { font-size: .85em; color: var(--muted); }
+.fbx-gift.fresh { box-shadow: 0 0 0 1.5px var(--accent2); }
+/* Розробнику під полем відповіді: «від Дядька Глека» й черепки автору. */
+.fbdev { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: .82em; }
+.fbas { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.fbgift { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.fbgift .fbgn { padding: 2px 8px; font-size: 1em; }
+.fbgift .fbgn.on { border-color: #f4c542; color: #f4c542; }
+.fbgift .fbshards {
+  width: 76px; padding: 3px 6px; font: inherit; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.fbdev.on .fbshards { border-color: #f4c542; }
 .fbsay { display: flex; gap: 6px; align-items: flex-end; }
 .fbsay textarea, .fbcard .fbsay textarea {
   flex: 1; width: auto; min-width: 0; min-height: 36px; max-height: 160px; resize: none; padding: 7px 10px;

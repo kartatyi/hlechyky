@@ -28,7 +28,9 @@ public sealed record FeedbackItem(long Id, string Nick, string Kind, string Text
 /// <summary>
 /// Одне повідомлення переписки в записці. <paramref name="Dev"/> — від розробника (адміна), інакше — від автора.
 /// <paramref name="Kind"/>: <c>text</c> — те, що написали; <c>status</c> — розробник переставив стан, і
-/// <paramref name="Text"/> тоді — ключ стану (<c>done</c>…): людина бачить це в переписці й на 💡, як відповідь.
+/// <paramref name="Text"/> тоді — ключ стану (<c>done</c>…): людина бачить це в переписці й на 💡, як відповідь;
+/// <c>shards</c> — Дядько Глек дав авторові черепки за записку, <paramref name="Text"/> — скільки.
+/// Розробник може писати й від імені Дядька Глека: тоді <paramref name="Nick"/> — <see cref="Feedback.Glek"/>.
 /// </summary>
 public sealed record FeedbackMsg(long Id, long FeedbackId, string Nick, bool Dev, string Kind, string Text, DateTimeOffset At);
 
@@ -187,10 +189,11 @@ public sealed class FeedbackStore
 
     /// <summary>
     /// Нове повідомлення в записку. Той, хто пише, бачить усю розмову до свого повідомлення включно — тож його бік
-    /// одразу «прочитав»; записка піднімається (updated_at), як розмова в месенджері.
+    /// одразу «прочитав»; записка піднімається (updated_at), як розмова в месенджері. <paramref name="uploader"/> —
+    /// чиї файли прив'язувати, коли повідомлення підписане не своїм ніком (розробник пише як Дядько Глек).
     /// </summary>
     public long AddMsg(long feedbackId, string nick, bool dev, string kind, string text, DateTimeOffset now,
-        IReadOnlyCollection<long>? files = null) => _db.With(c =>
+        IReadOnlyCollection<long>? files = null, string? uploader = null) => _db.With(c =>
     {
         using var tx = c.BeginTransaction();
         long id;
@@ -199,7 +202,7 @@ public sealed class FeedbackStore
             SELECT last_insert_rowid();
             """, ("$f", feedbackId), ("$n", nick), ("$k", Auth.NickKey(nick)), ("$d", dev ? 1 : 0), ("$kind", kind), ("$t", text), ("$now", Iso(now))))
             id = (long)cmd.ExecuteScalar()!;
-        Attach(c, nick, feedbackId, id, files);
+        Attach(c, uploader ?? nick, feedbackId, id, files);
         Exec(c, $"UPDATE feedback SET updated_at = $now, {(dev ? "dev_read" : "author_read")} = $m WHERE id = $f",
             ("$now", Iso(now)), ("$m", id), ("$f", feedbackId));
         tx.Commit();
@@ -420,9 +423,22 @@ public interface IFeedbackWire
     void Dev(FeedbackCount count);
 }
 
-/// <summary>Правила записок: що можна написати, як часто, хто кому відповідає і що з того непрочитане.</summary>
-public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? wire = null)
+/// <summary>
+/// Правила записок: що можна написати, як часто, хто кому відповідає і що з того непрочитане. <paramref name="purse"/> —
+/// гаманці (черепки від Дядька Глека за баги й добрі пропозиції); без економіки — null, і черепків не дати.
+/// </summary>
+public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? wire = null, IStakes? purse = null)
 {
+    /// <summary>
+    /// Від чийого імені ще може писати розробник: людина бачить у переписці не «Розробник», а самого Дядька Глека.
+    /// Підробити не вийде — повідомлення розробника (dev) пише лише адмін.
+    /// </summary>
+    public const string Glek = "Дядько Глек";
+    /// <summary>Причина в леджері (хвіст — номер записки): гаманець і «Хто скільки» пишуть «за записку розробнику».</summary>
+    public const string GiftReason = "glek-note";
+    /// <summary>Черепків за раз: вистачить і на щедре «дякую», а зайвий нуль на клавіатурі не роздасть скарбницю.</summary>
+    public const int MaxGift = 5000;
+
     /// <summary>Що додати, що змінити, що зламалось.</summary>
     public static readonly IReadOnlyList<string> Kinds = ["idea", "change", "bug"];
     /// <summary>нове → переглянуто → у планах → зроблено / не буде.</summary>
@@ -483,24 +499,42 @@ public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? w
     /// Стан від відповіді людини не міняється (у «зроблено» теж можна відписати «дякую»), а перша відповідь
     /// розробника на нову записку робить її «переглянутою» — у фільтрі «нові» лишається лише непрочитане.
     /// Повідомлення може бути й самим файлом (<paramref name="files"/>) — скрін без слів теж відповідь.
+    /// <para>
+    /// Лише розробнику: <paramref name="glek"/> — написати від імені Дядька Глека, <paramref name="shards"/> — дати автору
+    /// черепки за записку (знайшов баг, підкинув добру ідею). Черепки дає завжди Глек: окремим рядком у переписці й
+    /// тостом гаманця автору. Подарунок можна й без слів. Спершу гроші, потім рядок: якщо гаманець спіткнеться, у
+    /// переписці не з'явиться обіцянка, якої ніхто не виконав.
+    /// </para>
     /// </summary>
-    public Result Say(long id, string nick, bool dev, string? text, IReadOnlyList<long>? files = null)
+    public Result Say(long id, string nick, bool dev, string? text, IReadOnlyList<long>? files = null, bool glek = false, int shards = 0)
     {
         if (!dev && Nameless(nick)) return new(false, "Спершу назвись — тоді й відповідай");
         if (store.Get(id) is not { } item) return new(false, "Такої записки нема");
         if (!dev && Auth.NickKey(nick) != Auth.NickKey(item.Nick)) return new(false, "Це не твоя записка — відповісти тут може лише її автор");
+        if (!dev && (glek || shards != 0)) return new(false, "Від Дядька Глека пише лише розробник");
+        if (shards is < 0 or > MaxGift) return new(false, $"Черепків за раз — від 1 до {MaxGift}");
+        if (shards > 0 && purse is null) return new(false, "Гаманців нема — черепків не дати");
         var t = Clean(text, MaxMsg + 1);
         var withFiles = files is { Count: > 0 };
-        if (t.Length == 0 && !withFiles) return new(false, "Порожнє не тяпнеш — напиши хоч слово");
+        if (t.Length == 0 && !withFiles && shards == 0) return new(false, "Порожнє не тяпнеш — напиши хоч слово");
         if (t.Length > MaxMsg) return new(false, $"Задовго: до {MaxMsg} символів. Решту — наступним повідомленням");
         var now = clock.UtcNow;
-        if (t.Length > 0 && !withFiles && store.RecentMsg(id, nick, t, now - MsgTwice)) return new(false, "Це вже тяпнуто");
+        var who = dev && glek ? Glek : nick;
+        var amount = shards.ToString(CultureInfo.InvariantCulture);
+        if (t.Length > 0 && !withFiles && store.RecentMsg(id, who, t, now - MsgTwice)) return new(false, "Це вже тяпнуто");
+        if (shards > 0 && store.RecentMsg(id, Glek, amount, now - MsgTwice)) return new(false, "Ці черепки вже пішли");
         if (!dev && store.MsgsSince(nick, now.AddHours(-1)) >= MsgPerHour) return new(false, "За годину досить повідомлень — решту тяпнеш трохи згодом");
         if (FilesProblem(nick, files) is { } bad) return new(false, bad);
-        store.AddMsg(id, nick, dev, "text", t, now, files);
+        if (t.Length > 0 || withFiles) store.AddMsg(id, who, dev, "text", t, now, files, nick);
+        if (shards > 0)
+        {
+            purse!.Grant(item.Nick, shards, $"{GiftReason}:{id}", $"{GiftReason}:{id}:{now.ToUnixTimeMilliseconds()}");
+            store.AddMsg(id, Glek, true, "shards", amount, now);
+        }
         if (dev && item.Status == "new") store.SetStatus(id, "seen", now);
         if (dev) wire?.Author(item.Nick, Unread(item.Nick));
         wire?.Dev(DevCount());
+        if (shards > 0) return new(true, $"Дядько Глек дав {item.Nick} +{shards} {Games.Economy.Economy.Shards(shards)}", id);
         return new(true, dev ? "Відповідь пішла — автор побачить на 💡" : "Тяпнуто — розробник побачить", id);
     }
 
@@ -650,7 +684,8 @@ public static class FeedbackSetup
 {
     public sealed record FeedbackBody(string? Kind, string? Text, string? Place, string? Screen, string? Ua, JsonObject? Diag = null, long[]? Files = null);
     public sealed record FeedbackPatch(string? Status, string? Reply);
-    public sealed record MsgBody(string? Text, long[]? Files = null);
+    /// <summary><c>Glek</c> і <c>Shards</c> — лише розробнику: від імені Дядька Глека і черепки автору записки.</summary>
+    public sealed record MsgBody(string? Text, long[]? Files = null, bool? Glek = null, int? Shards = null);
     public sealed record ReadBody(long? Id, long[]? Ids);
 
     public static IServiceCollection AddHlechykyFeedback(this IServiceCollection services)
@@ -685,6 +720,8 @@ public static class FeedbackSetup
             msgs = t.Msgs.Select(m => new
             {
                 id = m.Id, dev = m.Dev, kind = m.Kind, text = m.Text, at = m.At, nick = admin || !m.Dev ? m.Nick : null, fresh = Fresh(m),
+                // від Дядька Глека — людина бачить його самого, а не «Розробник»
+                glek = m.Dev && m.Nick == Feedback.Glek,
                 files = files.Where(f => f.MsgId == m.Id).Select(FileView),
             }),
             unread = t.Msgs.Any(Fresh),
@@ -745,7 +782,7 @@ public static class FeedbackSetup
         api.MapPost("/{id:long}/msg", (HttpContext c, long id, MsgBody b, Feedback fb) =>
         {
             var admin = Auth.IsAdmin(c);
-            var r = fb.Say(id, Auth.Nick(c), admin, b.Text, b.Files);
+            var r = fb.Say(id, Auth.Nick(c), admin, b.Text, b.Files, b.Glek == true, b.Shards ?? 0);
             if (!r.Ok) return Fail(r.Message);
             return Results.Ok(new { ok = true, message = r.Message, item = fb.One(id) is { } t ? View(t, admin) : null });
         });

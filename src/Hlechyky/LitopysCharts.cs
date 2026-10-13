@@ -231,6 +231,7 @@ public sealed partial class Litopys
         var h when h is "shop" or "gift" || h.StartsWith("curse", StringComparison.Ordinal) => "🛍 Лавка",
         var h when h.StartsWith("ban", StringComparison.Ordinal) || h == "unban" => "🚫 бани треків",
         "liveads" => "🔥 прожарки",
+        Feedback.GiftReason => "💡 записки розробнику",
         var h when h.StartsWith("buy", StringComparison.Ordinal) => "💵 купив за гривні",
         var h when h.StartsWith("sell", StringComparison.Ordinal) => "💵 продав за гривні",
         var h => h,

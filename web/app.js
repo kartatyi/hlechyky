@@ -3090,14 +3090,50 @@
   const fbNo = (id) => `<span class="fbno" title="Номер записки">#${Number(id)}</span>`;
   /// Одне повідомлення переписки. mineDev — чи «свої» тут повідомлення розробника (так бачить адмін); свої — праворуч.
   /// Розробник переставив стан — рядок посередині, а не бульбашка: це подія, а не слова.
+  /// Дядько Глек (m.glek): розробник написав від його імені — підписаний ним самим і з обох боків, а черепки за записку
+  /// (kind 'shards') — подією посередині, як стан: це подарунок, а не слова.
   function fbBubble(m, mineDev, fresh) {
     const at = esc(dayTime(m.at));
     const hl = fresh.has(m.id) ? ' fresh' : '';
     if (m.kind === 'status') return `<div class="fbx-st${hl}">Стан записки: ${fbStatusChip(m.text)}<span>${at}</span></div>`;
+    if (m.kind === 'shards') {
+      const n = Math.max(0, Number(m.text) || 0);
+      return `<div class="fbx-gift${hl}">🏺 Дядько Глек ${mineDev ? 'дав' : 'дарує тобі'} <b>+${esc(plural(n, 'черепок', 'черепки', 'черепків'))}</b> за записку<span>${at}</span></div>`;
+    }
     const mine = !!m.dev === mineDev;
-    const who = !mine && m.dev ? '<div class="fbb-who">Розробник</div>' : '';
+    const who = m.glek ? '<div class="fbb-who glek">🏺 Дядько Глек</div>' : !mine && m.dev ? '<div class="fbb-who">Розробник</div>' : '';
     const text = m.text ? `<div class="fbb-text">${linkify(m.text)}</div>` : '';
-    return `<div class="fbb ${mine ? 'me' : 'them'}${hl}">${who}${text}${fbFilesHtml(m.files)}<div class="fbb-at">${at}</div></div>`;
+    return `<div class="fbb ${mine ? 'me' : 'them'}${m.glek ? ' glek' : ''}${hl}">${who}${text}${fbFilesHtml(m.files)}<div class="fbb-at">${at}</div></div>`;
+  }
+  /// Розробнику під полем відповіді: писати від імені Дядька Глека (вибір пам'ятаємо) і скільки черепків дати автору.
+  /// Кнопки — часті суми; натиснув ту саму ще раз — подарунок знято. Сума видна й на «Тяпнути», щоб Enter не роздав
+  /// черепків непомітно.
+  const FB_GIFTS = [50, 100, 250, 500];
+  let fbAsGlek = false;
+  try { fbAsGlek = localStorage.getItem('fbAsGlek') === '1'; } catch { /* приватне вікно */ }
+  const fbDevRow = () => `<div class="fbdev"><label class="fbas"><input type="checkbox" class="fbglek"${fbAsGlek ? ' checked' : ''}> 🏺 від Дядька Глека</label>
+      <span class="fbgift"><span class="muted">черепки:</span>${FB_GIFTS.map((n) => `<button type="button" class="ghost fbgn" data-n="${n}">${n}</button>`).join('')}<input type="number" class="fbshards" min="0" max="5000" step="10" inputmode="numeric" placeholder="0" aria-label="Скільки черепків дати автору"></span></div>`;
+  const fbGiftOf = (li) => Math.max(0, Math.floor(Number(li.querySelector('.fbshards')?.value) || 0));
+  function fbWireDev(root) {
+    root.querySelectorAll('[data-id] .fbdev').forEach((row) => {
+      const li = row.closest('[data-id]');
+      const input = row.querySelector('.fbshards');
+      const send = li.querySelector('.fbsay .fbsend');
+      const paint = () => {
+        const n = fbGiftOf(li);
+        row.classList.toggle('on', n > 0);
+        row.querySelectorAll('.fbgn').forEach((b) => b.classList.toggle('on', +b.dataset.n === n));
+        if (send && !send.disabled) send.textContent = n > 0 ? `Тяпнути · 🏺${n}` : 'Тяпнути';
+      };
+      row.querySelectorAll('.fbgn').forEach((b) => b.onclick = () => { input.value = fbGiftOf(li) === +b.dataset.n ? '' : b.dataset.n; paint(); });
+      input.addEventListener('input', paint);
+      row.querySelector('.fbglek').onchange = (e) => {
+        fbAsGlek = e.target.checked;
+        try { localStorage.setItem('fbAsGlek', fbAsGlek ? '1' : '0'); } catch { /* приватне вікно */ }
+        root.querySelectorAll('.fbglek').forEach((c) => { c.checked = fbAsGlek; });
+      };
+      paint();
+    });
   }
   /// Поле відповіді під запискою (зі своїм 📎 і вкладеннями). Не <form>: «Мої записки» живуть усередині форми нової
   /// записки, а форма у формі не буває.
@@ -3131,7 +3167,7 @@
       const b = box.querySelector('.fbsend');
       const go = () => {
         const text = t.value.trim();
-        if (!text && !fbAttList(slot).length) { t.focus(); return; }
+        if (!text && !fbAttList(slot).length && !fbGiftOf(box.closest('[data-id]'))) { t.focus(); return; }
         busy(b, '…', () => send(id, text, t, slot));
       };
       b.onclick = go;
@@ -4023,6 +4059,7 @@
         ${x.diag ? fbDiagHtml(x) : `<div class="fbi-ctx muted small">${x.place ? '📍 ' + esc(x.place) : ''}${x.screen ? ' · ' + esc(x.screen) : ''}${x.ua ? ` · <span title="${esc(x.ua)}">${esc(shortUa(x.ua))}</span>` : ''}</div>`}
         ${msgs.length ? `<div class="fbt">${msgs.map((m) => fbBubble(m, true, fbDevFresh)).join('')}</div>` : ''}
         ${fbSayBox('Відповісти… (Enter)', `a:${x.id}`)}
+        ${fbDevRow()}
       </li>`;
     };
     const empty = fbFilter === 'new' ? 'Нових записок нема — усе прочитано.' : 'Тут поки порожньо.';
@@ -4044,14 +4081,18 @@
     });
     fbWireSay(box, async (id, text, t, slot) => {
       try {
+        const li = t.closest('[data-id]');
+        const shards = fbGiftOf(li);
+        const glek = !!li.querySelector('.fbglek')?.checked;
         const files = await fbAttReady(slot);
-        if (!text && !files.length) return;
-        ok(await api('POST', `/api/feedback/${id}/msg`, { text, files }));
+        if (!text && !files.length && !shards) return;
+        ok(await api('POST', `/api/feedback/${id}/msg`, { text, files, glek, shards }));
         t.value = '';
         fbAttClear(slot);
         await done(id);
       } catch (err) { fail(err); }
     });
+    fbWireDev(box);
     if (!document.hidden) readAsDev();
   }
   // улюблене: типово — моє (згори те, що лайкнуто останнім), «Усі» — спільний список; вибір пам'ятаємо

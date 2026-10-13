@@ -231,6 +231,8 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "curse-ransom" => "Лавка — відкуп від прокльону",
             "curse-reveal" => "Лавка — хто наслав прокльон",
             "liveads" => "прожарка від Дядька Глека",
+            // «💡 Розробнику»: Дядько Глек дякує черепками за баг чи добру ідею (хвіст — номер записки, Feedback.Say)
+            Feedback.GiftReason => $"Дядько Глек — за записку #{tail}",
             // рулетка (docs/games/specs/roulette.md §3.2): хвіст — roulette чи roulette-solo, підпис для обох однаковий
             "roulette-bet" => "Рулетка — ставка",
             "roulette-win" => "Рулетка — виграш",
