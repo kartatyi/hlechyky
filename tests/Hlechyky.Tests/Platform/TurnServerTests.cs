@@ -239,7 +239,7 @@ public sealed class TurnServerTests : IAsyncLifetime
     {
         foreach (var a in new[] { "10.1.2.3", "192.168.88.254", "172.20.0.1", "127.0.0.1", "169.254.1.1", "100.64.0.1", "224.0.0.1", "0.0.0.0" })
             Assert.True(StunMessage.IsPrivate(IPAddress.Parse(a)), a);
-        foreach (var a in new[] { "134.249.147.16", "8.8.8.8", "172.32.0.1", "100.128.0.1" })
+        foreach (var a in new[] { "9.9.9.9", "8.8.8.8", "172.32.0.1", "100.128.0.1" })
             Assert.False(StunMessage.IsPrivate(IPAddress.Parse(a)), a);
     }
 

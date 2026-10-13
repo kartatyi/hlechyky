@@ -2,7 +2,7 @@
 
 Спільне радіо для своїх: один потік, спільна черга, чат, і Дядько Глек — авто-DJ, який радить схоже і крутить своє, коли черга порожня.
 
-- Сайт: `https://hlechyky.pp.ua`, відкритий для всіх: зайшов, назвав нік, слухаєш. Нік із паролем або через Google — твій і лише твій; без них ти «гість Вася» (див. «Акаунти»). Старе `http://134.249.147.16:8080` теж працює.
+- Сайт: `https://hlechyky.pp.ua`, відкритий для всіх: зайшов, назвав нік, слухаєш. Нік із паролем або через Google — твій і лише твій; без них ти «гість Вася» (див. «Акаунти»). Старий вхід напряму по IP сервера на порт `8080` теж працює.
 - Потік на сайті: `https://hlechyky.pp.ua/radio.mp3` (через Caddy). Для ETS2 і плеєрів: `http://hlechyky.pp.ua:8000/radio.mp3` (простий http через той самий Caddy).
 - Адмін — це акаунт: нік у `Auth:AdminNicks` (на проді «владік») або `accounts.role = 'admin'`. Заходить як усі (Google чи пароль), окремого ключа на проді нема. Ключі (Last.fm тощо) лежать у `appsettings.Local.json`, він не в гіті.
 - Код: https://github.com/kartatyi/hlechyky. Хочеш щось доробити: [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -105,7 +105,7 @@ Spotify як джерело не годиться: рекомендації й �
 
 Браузер шле те, що вміє (webm/opus, у Safari mp4), сервер переганяє це ffmpeg'ом у моно-mp3 просто в `cache\` (там же, де треки, тож liquidsoap бачить файл без окремого монтування) і заразом підтягує гучність до `Voice:LoudnessLufs` — інакше голос між треками ледь чути. Файл зветься `voice-<id>.mp3`, і саме по префіксу `voice-` голосове впізнають і сервер, і фронт: зокрема Дядько Глек не бере голосове за сід — від чийогось "привіт усім" схожої музики не підбереш, тож поради лишаються від останнього справжнього треку.
 
-Мікрофон браузер дає тільки на https (або на `localhost`), тож на `http://134.249.147.16:8080` кнопки не буде.
+Мікрофон браузер дає тільки на https (або на `localhost`), тож на голому `http://<IP сервера>:8080` кнопки не буде.
 
 ### Посиденьки (голосовий чат)
 
@@ -292,7 +292,7 @@ powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # авто�
 Вимкнути — `Deploy:Enabled: false` в `appsettings.Local.json` (підхоплюється наживо, без перезапуску); при порожньому `WebhookSecret` ендпоінт узагалі відповідає 404. Що прилітало від GitHub і з якою відповіддю видно в Settings → Webhooks → Recent Deliveries, там же кнопка Redeliver, якщо сервер саме лежав.
 ### Домен і https (Caddy)
 
-`hlechyky.pp.ua` куплений на nic.ua, DNS там же (name servers NIC.UA, записи `@` і `www` типу A на 134.249.147.16). У name servers на nic.ua своя дата закінчення, окремо від домену: не дай їй проскочити.
+`hlechyky.pp.ua` куплений на nic.ua, DNS там же (name servers NIC.UA, записи `@` і `www` типу A на зовнішню IP сервера). У name servers на nic.ua своя дата закінчення, окремо від домену: не дай їй проскочити.
 
 Caddy (`tools\caddy\caddy.exe`, конфіг `Caddyfile`) слухає 80/443, сам бере і оновлює сертифікат Let's Encrypt (лежить у `data\caddy\`), проксує сайт на :8080, `/radio.mp3` на liquidsoap 127.0.0.1:8001 і слухає простий http на :8000 для ETS2, `www` перекидає на голий домен, http на https. Лог: `logs\caddy.log`; якщо Caddy не стартує, причина в `logs\caddy.err.log`.
 
@@ -481,7 +481,7 @@ Discover — пад бачить одразу; Chrome із Discover у Game Mode
 - В черзі "відео 18+, YouTube віддає його тільки залогіненому акаунту": потрібні куки, дивись `YtDlp:CookiesFile` у "Джерела треків". Перевірити вручну: `tools\yt-dlp\yt-dlp.exe --cookies data\cookies.txt --simulate <url>`.
 - Посилання Spotify не розбирається: `curl https://open.spotify.com/embed/track/<id>` має містити `__NEXT_DATA__` з `entity.name`; якщо Spotify змінив embed, лишається oEmbed (тільки назва без артиста).
 - Альбом чи плейлист не відкривається: `curl https://open.spotify.com/embed/album/<id>` (чи `embed/playlist/<id>`) має містити `__NEXT_DATA__` з `entity.trackList`; для YouTube Music розбір сторінок перевіряють фікстури в `tests/Hlechyky.Tests/Fixtures/albums` — впав тест `AlbumsTests`, значить YouTube Music переклав сторінку. Скільки знайшлось і чого нема — рядок `spotify album|playlist … у YouTube Music` у `logs/server.log`.
-- `https://hlechyky.pp.ua` не відкривається, а `:8080` працює: дивись `logs\caddy.log`. Для сертифіката Let's Encrypt має ходити на 80 або 443 ззовні (NAT на MikroTik, Windows Firewall). Перевірити зовні: https://check-host.net/check-tcp?host=134.249.147.16:443.
+- `https://hlechyky.pp.ua` не відкривається, а `:8080` працює: дивись `logs\caddy.log`. Для сертифіката Let's Encrypt має ходити на 80 або 443 ззовні (NAT на MikroTik, Windows Firewall). Перевірити зовні: https://check-host.net/check-tcp?host=hlechyky.pp.ua:443.
 - Сайт відкривається, а потік на сайті мовчить: `curl --max-time 6 https://hlechyky.pp.ua/radio.mp3 -o x.mp3` має принести десятки кілобайт; якщо ні, дивись `start.ps1 status` і `logs\liquidsoap.log`; напряму: `curl --max-time 6 http://127.0.0.1:8001/radio.mp3 -o x.mp3`.
 - Ефір червоний у шапці сайту: liquidsoap не відповідає, дивись `logs\liquidsoap.log` (і `.prev.log` після перезапуску).
 - Хочеться подивитись, що liquidsoap тримає: `request.all`, `request.metadata <rid>`, `userq.queue`, `autoq.queue`, `radio.metadata` через telnet на 1234.
