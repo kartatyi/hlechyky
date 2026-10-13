@@ -1575,38 +1575,59 @@
   /// Тло хати — дим, вогонь, хмари, вітрила, візки, прапорці, маятники — крокує 15 разів на секунду і все разом, а не
   /// щокадру кожне саме по собі. Chrome щокадру обслуговує кожну SVG-анімацію (стилі, розкладка SVG, перемальовування),
   /// і в пізній хаті їх ~70: на телефоні це було 30 кадрів/с проти 48 з тлом «на 15» (заміри 13.10, CPU ×4). Живе —
-  /// люди, худоба, майстер, кіт, усе ігрове — лишається плавним: його в списку нема.
+  /// люди, худоба, майстер, кіт, усе ігрове — лишається плавним: його в списку нема. (Живе «на 30» і лічильник у тих
+  /// самих кадрах пробували — процесора йшло більше, а не менше: кожен ручний крок анімації — повна перекладка шарів.)
   /// Як: CSS-анімацію ставимо на паузу (Web Animations) і самі пересуваємо їй час. Лише записи — читання playState
   /// чи стилю між ними змусило б браузер перераховувати стилі на кожну анімацію окремо (так було ще гірше).
-  /// Лише нескінченні: скінченна на паузі не дійшла б до animationend. Нові (хата перемалювалась) — раз на секунду.
+  /// Лише нескінченні: скінченна на паузі не дійшла б до animationend. Нові (хата перемалювалась) ловимо за
+  /// animationstart: getAnimations по всій картці — ~5 мс на телефоні, тож цілком — на старті й раз на 3 с (про запас,
+  /// якщо подія проскочила до першого кадру).
   const DECOR = new Set(['clks-smoke', 'clks-ember', 'clkflame', 'clks-drift', 'clks-sail', 'clks-farsail', 'clks-cart',
     'clks-train', 'clks-lane', 'clks-twinkle', 'clks-ripple', 'clks-glint', 'clks-beam', 'clks-flag', 'clks-sway',
     'clks-pend', 'clks-hoist', 'clks-spin', 'clkkhsmoke', 'clkksmoke', 'clkkrsmoke', 'clkkflicker', 'clkkflame']);
-  const DECOR_MS = 66;
-  const DECOR_SCAN_MS = 1000;
+  const DECOR_MS = 1000 / 15;
+  const DECOR_SCAN_MS = 3000;
 
   function paintDecor(st) {
     if (!st.el.getAnimations) return;
     const t = performance.now();
-    const d = st.decor || (st.decor = { list: [], at: 0, scanAt: -1e9 });
-    if (t - d.scanAt >= DECOR_SCAN_MS) { d.scanAt = t; scanDecor(st, d, t); }
-    if (t - d.at < DECOR_MS) return;
-    d.at = t;
+    let d = st.decor;
+    if (!d) {
+      d = st.decor = { list: [], tick: 0, scanAt: t, fresh: new Set() };
+      st.el.addEventListener('animationstart', (e) => { if (DECOR.has(e.animationName)) d.fresh.add(e.target); });
+      scanDecor(st, d, t, st.el.getAnimations({ subtree: true }));
+    }
+    if (d.fresh.size) {
+      const got = [];
+      for (const el of d.fresh) if (el.isConnected) got.push(...el.getAnimations());
+      d.fresh.clear();
+      scanDecor(st, d, t, got);
+    }
+    if (t - d.scanAt >= DECOR_SCAN_MS) { d.scanAt = t; scanDecor(st, d, t, st.el.getAnimations({ subtree: true }), true); }
+    const tick = Math.floor(t / DECOR_MS);
+    if (tick === d.tick) return;
+    d.tick = tick;
     // Хата поза екраном (clicker-scene.js ставить .clks-off) — її тло стоїть; CSS тут уже не командує, бо пауза наша.
     const off = !!st.stage && st.stage.classList.contains('clks-off');
+    // Спершу всі читання, потім усі записи: playState перераховує стилі, якщо після останнього запису щось змінилось, —
+    // упереміш це було б ~70 перерахунків на крок, а так один. Скасовану (хату сховали чи перемалювали — CSS створив
+    // нову) прибираємо: запис currentTime її б «воскресив», і та сама анімація крутилась би двічі.
+    let gone = false;
+    for (const x of d.list) if (x.a.playState === 'idle') x.gone = gone = true;
+    if (gone) d.list = d.list.filter((x) => !x.gone);
     for (const x of d.list) if (!(off && x.inStage)) x.a.currentTime = t + x.shift;
   }
 
-  function scanDecor(st, d, t) {
-    const live = st.el.getAnimations({ subtree: true });
-    const have = new Set(live);
-    d.list = d.list.filter((x) => have.has(x.a));
+  /// full — повний перелік анімацій картки: заодно забуваємо ті, яких уже нема.
+  function scanDecor(st, d, t, anims, full) {
+    if (full) { const have = new Set(anims); d.list = d.list.filter((x) => have.has(x.a)); }
     const known = new Set(d.list.map((x) => x.a));
-    for (const a of live) {
+    for (const a of anims) {
       if (known.has(a) || !DECOR.has(a.animationName) || a.effect.getTiming().iterations !== Infinity) continue;
       const shift = (a.currentTime || 0) - t;
       a.pause();
       d.list.push({ a, shift, inStage: !!st.stage && st.stage.contains(a.effect.target) });
+      known.add(a);
     }
   }
 
