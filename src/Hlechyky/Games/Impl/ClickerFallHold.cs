@@ -74,7 +74,8 @@ public sealed partial class Clicker
 
     /// <summary>
     /// Що буде, якщо цей глек з полиці розіб'ється на очах у гончаря: «streak» — серія обірветься, «apron» — фартух
-    /// уберіже серію, «none» — серії й нема. Клієнт малює «трісь» саме за цим, а не вгадує (ті самі гілки, що в Sync).
+    /// уберіже серію, «none» — серії й нема, «away» — глек летить без гончаря, серія ціла (ClickerLate.cs: повернувся
+    /// посеред його польоту). Клієнт малює «трісь» саме за цим, а не вгадує (ті самі гілки, що в Sync).
     /// </summary>
-    string FallMiss => _fallStreak <= 0 ? "none" : Tool("apron") && !_apronUsed ? "apron" : "streak";
+    string FallMiss => _fallStreak <= 0 ? "none" : Unwitnessed(_fall) ? "away" : Tool("apron") && !_apronUsed ? "apron" : "streak";
 }

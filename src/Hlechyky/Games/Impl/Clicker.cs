@@ -1021,6 +1021,7 @@ public sealed partial class Clicker : Game
         _starWish = false;
         _goldenSlept = false;
         _fallSlept = false;
+        ResetLate(default);
         // Новачкові «що нового» ні до чого — для нього нове все; новини бачить той, чиє збереження старше за випуск.
         _news = NewsVersion;
         _coinSeen = 0;
@@ -1052,10 +1053,13 @@ public sealed partial class Clicker : Game
 
     ActResult ActInner(int seat, string action, JsonElement payload)
     {
-        _quietSync = QuietAct(action, payload);
+        var quiet = QuietAct(action, payload);
+        _quietSync = quiet;
         _quietVersion = _quietSync ? _viewVersion : -1;
         try { Sync(); }
         finally { _quietSync = false; }
+        // Справжня дія — гончар знову біля кола (ClickerLate.cs). Після Sync: глек, що пролетів без нього, уже вирішено.
+        if (!quiet) _backSpared = Back(Ctx.Clock.UtcNow);
         // Звання дня рахуються київськими днями: учорашнє — цехові, сьогоднішнє — з нуля (ClickerTitles.cs).
         TitlesDayRoll(Ctx.Clock.UtcNow);
         // Ачівки, що назбирались у видах (офлайн-прогрес рахується вже на відкритті), — тепер, коли каркас їх прийме.
@@ -1068,8 +1072,10 @@ public sealed partial class Clicker : Game
             "buy" => Buy(payload),
             "mark" => BuyMark(payload),
             "sell" => Sell(payload),
-            "catch" => Catch(),
-            "grab" => Grab(),
+            "catch" => Catch(payload),
+            "grab" => Grab(payload),
+            // Коло зникло з очей чи знову видно (ClickerLate.cs): глек, що злетів без гончаря, серії не рве.
+            "sight" => Sight(payload),
             // Випадковості на сцені (v9): погладити кота, загадати бажання на зірку, «бачив, що нового».
             "pet" => Pet(),
             "wish" => Wish(),
@@ -1178,8 +1184,13 @@ public sealed partial class Clicker : Game
         if (now > _golden.Until + CatchGrace)
         {
             // Під полицею Ока глек однаково не ловився: після «кивнув» перепланувати від «зараз» (§A.2).
+            _fled = null;
             if (asked) _goldenSlept = true;
-            else _goldenMissed++;              // «Соня» (звання): утік неспійманим
+            else
+            {
+                _goldenMissed++;               // «Соня» (звання): утік неспійманим
+                _fled = _golden;               // натиск, що застряг у дорозі, ще може його спіймати (ClickerLate.cs)
+            }
             ScheduleGolden(now);
         }
         // Глек з полиці, якого ніхто не спіймав, — розбитий: серія обірвалась. Спійманий сюди не доходить —
@@ -1188,14 +1199,22 @@ public sealed partial class Clicker : Game
         {
             // Під полицею Ока ловити було нічим: серію за це не рвемо й дамо новий глек, щойно майстер кивне.
             // «Руки-крюки» (звання): розбився, поки гончар клацав коло — останній клік припав на політ глека.
-            if (!asked && _heatAt >= _fall.At && _heatAt <= _fall.Until + CatchGrace) _brokenBusy++;
+            var busy = !asked && _heatAt >= _fall.At && _heatAt <= _fall.Until + CatchGrace;
+            if (busy) _brokenBusy++;
+            _broken = null;
             if (asked) _fallSlept = true;
-            // Гончаря не було: затих ще до того, як глек злетів, і мовчав довше за EventGap. Глек летів без нього —
-            // це не промах, а порожня хата: серію не рвемо й фартуха не чіпаємо (як кіт і зірка, §A.6).
-            else if (!watching && _fall.At > seen) { }
-            // Шкіряний фартух вибачає один розбитий у серії; другий поспіль — серія таки обірвалась.
-            else if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
-            else _fallStreak = 0;
+            // Гончаря не було: затих ще до того, як глек злетів, і мовчав довше за EventGap, або пішов від кола раніше,
+            // ніж глек злетів (ClickerLate.cs: інший розділ, схована вкладка, обрив). Глек летів без нього — це не
+            // промах, а порожня хата: серію не рвемо й фартуха не чіпаємо (як кіт і зірка, §A.6).
+            else if ((!watching && _fall.At > seen) || Unwitnessed(_fall)) { if (_fallStreak > 0) _spared++; }
+            else
+            {
+                // Натиск, що застряг у дорозі, ще може цей глек залатати — пам'ятаємо, що було до (ClickerLate.cs).
+                _broken = new BrokenFall(_fall, _fallStreak, _apronUsed, busy);
+                // Шкіряний фартух вибачає один розбитий у серії; другий поспіль — серія таки обірвалась.
+                if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
+                else _fallStreak = 0;
+            }
             ScheduleFall(now);
         }
         // Мінігра на час (розпис, ручний обпал) — глеки чекають її кінця (записка №29, ClickerFallHold.cs).
@@ -1767,21 +1786,32 @@ public sealed partial class Clicker : Game
     TimeSpan BuffLonger(TimeSpan span) => (Has("longfair") ? span * 2 : span) * (1 + Relic("fiddle") + Perk(MarkEffect.Buff));
 
     /// <summary>Розписний глек: впіймав у вікні — бонус, запізнився — він уже втік.</summary>
-    ActResult Catch()
+    ActResult Catch(JsonElement payload)
     {
         var now = Ctx.Clock.UtcNow;
-        if (now < _golden.At - EarlyGrace || now > _golden.Until + CatchGrace)
-            return ActResult.Fail("Розписний глек уже втік");
+        var pressed = PressedAt(payload, now);
+        if (now < _golden.At - EarlyGrace || now > _golden.Until + CatchGrace || Stale(pressed, _golden.At))
+            return CatchLate(pressed, now) ?? ActResult.Fail("Розписний глек уже втік");
         // Глек ловиться скриптом так само легко, як клацається коло (вид знає, де й коли він стоїть), тож і тут
         // Око майстра: поки коло стоїть чи чекає відповіді, глеки не ловляться, а кожен спійманий наближає
         // перевірку. Хто лише ловить глеки й не клацає, зустріне майстра тут, а не в Spin.
         if (_guard.Locked(now) || _guard.Pending)
             return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
+        var golden = _golden;
+        _fled = null;
+        _caughtGolden = golden;
+        // Наступний — до відповіді: поки розписний стоїть на колі, майстер не питає (AskAfter → BonusOn).
+        ScheduleGolden(now);
+        return Caught(golden, now, now, "");
+    }
 
+    /// <summary>Спійманий розписний: ярмарок, натхнення чи купець. <paramref name="pressed"/> — коли натиснули (для «В останню мить»).</summary>
+    ActResult Caught(GoldenRow golden, DateTimeOffset now, DateTimeOffset pressed, string tail)
+    {
         // «В останню мить» (звання): за пів секунди до втечі чи вже в запасі на дорогу.
-        if (now >= _golden.Until - LastMoment) TitleEarn("moment");
+        if (pressed >= golden.Until - LastMoment) TitleEarn("moment");
         string text;
-        switch (_golden.Kind)
+        switch (golden.Kind)
         {
             case GoldenKind.Fair:
                 _fairUntil = now + BuffLonger(FairFor);
@@ -1802,8 +1832,7 @@ public sealed partial class Clicker : Game
         _caught++;
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_caught == GoldenForAchievement) Ctx.Award(0, 0, "ach:potter-golden");
-        ScheduleGolden(now);
-        return ActResult.Accept(text + AskAfter(now));
+        return ActResult.Accept(text + tail + AskAfter(now));
     }
 
     /// <summary>
@@ -1854,14 +1883,25 @@ public sealed partial class Clicker : Game
     /// не встиг — він уже черепки. Те саме Око майстра, що й у розписного: скрипт бачить у виді, коли й де
     /// впаде, тож поки коло стоїть чи майстер чекає — не ловиться, а кожен спійманий наближає перевірку.
     /// </summary>
-    ActResult Grab()
+    ActResult Grab(JsonElement payload)
     {
         var now = Ctx.Clock.UtcNow;
-        if (now < _fall.At - EarlyGrace || now > _fall.Until + CatchGrace)
-            return ActResult.Fail("Глек уже розбився");
+        // Натиск із миттю (ClickerLate.cs): спізнився — може залатати розбитий; давніший за цей глек — повтор, не цей.
+        var pressed = PressedAt(payload, now);
+        if (now < _fall.At - EarlyGrace || now > _fall.Until + CatchGrace || Stale(pressed, _fall.At))
+            return GrabLate(pressed, now) ?? ActResult.Fail("Глек уже розбився");
         if (_guard.Locked(now) || _guard.Pending)
             return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
+        _broken = null;
+        _caughtFall = _fall;
+        // Наступний — на полицю ще до відповіді: поки глек летить, майстер не питає (AskAfter → BonusOn).
+        ScheduleFall(now);
+        return Grabbed(now, "🤲 Спіймав!");
+    }
 
+    /// <summary>Спійманий глек з полиці: жменя глеків, серія +1. Наступний на полицю ставить той, хто кличе, — до цього.</summary>
+    ActResult Grabbed(DateTimeOffset now, string head)
+    {
         var wished = _starWish;
         var gain = FallGain();
         Add(gain);
@@ -1872,8 +1912,7 @@ public sealed partial class Clicker : Game
         TitlesGrab(now);
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
-        ScheduleFall(now);
-        return ActResult.Accept($"🤲 Спіймав! +{PotsShort(gain)}"
+        return ActResult.Accept($"{head} +{PotsShort(gain)}"
             + (wished ? " · зірка не збрехала (×3)" : "")
             + (_fallStreak > 1 ? $" · серія {_fallStreak}" : "") + AskAfter(now));
     }
@@ -2306,7 +2345,8 @@ public sealed partial class Clicker : Game
             momentumMax = MomentumMax,
             // Наступний глек з полиці і скільки він дасть, якщо спіймати просто зараз.
             // miss — що станеться, якщо він розіб'ється на очах: клієнт малює чесне «трісь» (записка №29).
-            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss, seen = _seenAt },
+            // gone — сервер вважає, що гончар пішов від кола (ClickerLate.cs): клієнт, що коло бачить, скаже «я тут» знову.
+            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss, seen = _seenAt, gone = _goneAt != default },
             grabbed = _grabbed,
             // Дев'яте оновлення: щасливі кліки за весь час (клієнт малює «✨ ×50» за приростом) і бажання на зірку.
             lucky = _lucky,
@@ -2430,7 +2470,9 @@ public sealed partial class Clicker : Game
         // Одинадцяте оновлення: Толока й рівні родових реліквій. Старе збереження — «ще не було».
         TolokaRow? Toloka = null, Dictionary<string, int>? Relics = null,
         // Секунди ярмарку й натхнення, що чекають відповіді майстрові (05.10). Старе збереження — нічого не чекає.
-        double FairHeld = 0, double InspireHeld = 0);
+        double FairHeld = 0, double InspireHeld = 0,
+        // Коли гончар пішов від кола (ClickerLate.cs, 13.10). Старе збереження — він тут.
+        DateTimeOffset GoneAt = default);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2444,7 +2486,7 @@ public sealed partial class Clicker : Game
             _lucky, _cat, _star, _wind, _petted, _starWish, _goldenSlept, _fallSlept, _news,
             _stampsExtra, _scienceAt, SaveTitles(), SaveGuests(), _coinSeen,
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
-            _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds),
+            _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt),
         Wire);
 
     public override void Load(string json)
@@ -2507,6 +2549,7 @@ public sealed partial class Clicker : Game
         // Бафи, що чекають відповіді майстрові (05.10). Полиці раптом нема — відпустить перший же Sync.
         _fairHeld = HeldOf(s.FairHeld);
         _inspireHeld = HeldOf(s.InspireHeld);
+        ResetLate(s.GoneAt);
 
         // Розгін переживає F5 теж (він однаково спаде за кілька секунд), а глек з полиці — або той, що вже
         // на розкладі, або, для збережень із часів до полиці, новий.

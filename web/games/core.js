@@ -812,6 +812,13 @@
   }
   const send = (method, ...args) => { if (conn && conn.state === 'Connected') conn.invoke(method, ...args).catch(() => {}); };
 
+  /// Тихий виклик хаба: без тостів і без чекання зв'язку, а сам виклик іде в сокет одразу (у тому ж порядку, що й інші
+  /// тихі). Зв'язку нема чи він урвався посеред виклику — null: повторити, коли повернеться, чи забути, вирішує гра.
+  async function tell(method, ...args) {
+    if (!linked()) return null;
+    try { return (await conn.invoke(method, ...args)) || { ok: true, message: '' }; } catch { return null; }
+  }
+
   const PIN_TTL = 5000;
 
   /// Соло і щоденні кімнати приватні: у списку лобі їх нема, тож єдиний спосіб їх побачити —
@@ -2637,6 +2644,9 @@
     // Ім'я на місці: людина або бот гри (SeatBot, «🤖 бот»), — для підписів на полі, де nickOf бота не знає.
     ctx.nameOf = (i) => nickAt(room, i) || botAt(room, i);
     ctx.act = (action, payload) => call('Act', room.id, action, payload === undefined ? null : payload);
+    // Тиха дія (без тостів, null — зв'язку нема): гра сама вирішує, чи повторити. online — чи є зв'язок просто зараз.
+    ctx.tell = (action, payload) => tell('Act', room.id, action, payload === undefined ? null : payload);
+    ctx.online = linked;
     ctx.input = (action, payload) => send('Input', room.id, action, payload === undefined ? null : payload);
     // Повний вид (Game.Snapshot) ще раз, лише мені — коли в легкому виді розсилки бракує того, чого модуль не має
     // (прохід №3, п. 247). Не частіше ніж раз на 1,5 с: вид сам прийде подією 'room'.

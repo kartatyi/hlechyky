@@ -1133,8 +1133,23 @@ public sealed partial class Rooms
     public Outbox Unwatch(string id, string connId)
     {
         var outbox = new Outbox();
-        if (Find(id) is { } room) room.Watchers.TryRemove(connId, out _);
+        if (Find(id) is { } room && room.Watchers.TryRemove(connId, out _)) NoWatchers(room);
         return outbox;
+    }
+
+    /// <summary>Останній глядач пішов — сказати грі (<see cref="Game.Unwatched"/>). Кривий гачок гри хабу не заважає.</summary>
+    void NoWatchers(Room room)
+    {
+        if (!room.Watchers.IsEmpty) return;
+        try
+        {
+            lock (room.Sync)
+                if (room.Watchers.IsEmpty) room.Game.Unwatched();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "гра {Room} не прийняла «ніхто не дивиться»", room.Id);
+        }
     }
 
     /// <summary>
@@ -1147,7 +1162,7 @@ public sealed partial class Rooms
         var left = false;
         foreach (var room in Live())
         {
-            room.Watchers.TryRemove(connId, out _);
+            if (room.Watchers.TryRemove(connId, out _)) NoWatchers(room);
             left |= room.OnScreen.TryRemove(connId, out _);
         }
         if (left) outbox.Add(new SoloChanged());

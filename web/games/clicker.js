@@ -57,6 +57,7 @@
   const HOLD_MS = 3000;                   // тримали довше — це вже не клік
   const RING = 295.3;                     // довжина кільця розгону (2π · 47)
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
+  const LATE_GRAB_MS = 2 * 60 * 1000;     // натиск на глек без зв'язку чекає стільки (Clicker.LateGrab)
   const CLOCK_KEEP_MS = 60 * 1000;        // серверне «зараз» — від найменш запізнілого виду за стільки (див. update)
   const NEWS_VERSION = 'v11.2';           // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   const PV = 10;                          // версія протоколу (Clicker.ProtocolVersion): ми вміємо доповнювати худий вид
@@ -442,6 +443,9 @@
         rateOf: 100, canSell: 0, mine: false, wear: null,
         golden: null, goldenGone: 0, lookedFor: 0,
         fall: null, fallGone: 0, fallBroke: 0, fallLooked: 0, fallGain: 0, fallStreak: 0, streakBonus: 0,
+        // Натиски на глеки, що ще не дійшли до сервера (grab — з полиці, catch — розписний), і що ми сказали про коло на
+        // очах (sight; undefined — ще нічого). Див. ClickerLate.cs.
+        pend: { grab: null, catch: null }, sightSaid: undefined, sightBusy: false, ioSeen: false,
         // Дев'яте оновлення: вітер із поля (пасив ×3), натхнення з відсотком пасиву в кліку, щасливі кліки,
         // кіт-мандрівник, зірка й бажання, «що нового».
         windAt: 0, windUntil: 0, windMult: 3, inspireShare: 0,
@@ -491,9 +495,12 @@
     if (!window.IntersectionObserver || !st.el) return;
     st.io = new IntersectionObserver((entries) => {
       const on = entries[entries.length - 1].isIntersecting;
-      if (on === st.onScreen) return;
+      const first = !st.ioSeen;
+      st.ioSeen = true;
+      if (on === st.onScreen && !first) return;
       st.onScreen = on;
       if (on) st.slowAt = 0;
+      sight(st);
     }, { rootMargin: '200px 0px' });
     st.io.observe(st.el);
   }
@@ -1667,7 +1674,8 @@
   function shatter(st, x, fly) {
     const n = st.fallStreak || 0;
     const f = st.fall;
-    const empty = st.fallSeen > 0 && f && f.at > st.fallSeen && serverNow(st) - st.fallSeen > EVENT_GAP_MS;
+    const empty = st.fallMiss === 'away'
+      || (st.fallSeen > 0 && f && f.at > st.fallSeen && serverNow(st) - st.fallSeen > EVENT_GAP_MS);
     const text = empty ? 'трісь'
       : st.fallMiss === 'apron' ? 'трісь — фартух уберіг серію'
       : st.fallMiss === 'streak' && n > 0 ? 'трісь… серія ' + n + ' обірвалась' : 'трісь';
@@ -1695,8 +1703,11 @@
 
   // ---------- дії ----------
 
-  function flush(st) {
+  /// now — слати тихим викликом (ctx.tell іде в сокет одразу): пачка мусить випередити «пішов від кола» чи натиск на
+  /// глек, а звичайний act чекає зв'язку асинхронно й приїхав би після них. Зв'язку нема — пачка лишається на таймер.
+  function flush(st, now) {
     if (!st.hands.length || !st.ctx) return;
+    if (now && st.ctx.online && !st.ctx.online()) return;
     // Поки майстер чекає, сервер кліків однаково не зарахує: не шлемо і не обіцяємо їх на лічильнику.
     if (guardOn(st)) { st.hands.length = 0; st.handsGain = 0; return; }
     const c = st.hands.splice(0, MAX_BATCH);
@@ -1713,7 +1724,8 @@
     // кадрами вебсокета, і якби ми чекали відповіді, між ними лічильник встигав би показати їх двічі.
     // Лишається тільки невдача: тоді виду не буде взагалі, і порахувати назад мусимо ми.
     // pv — сервер тоді шле худий вид (тексти магазину — раз, у shopCatalog).
-    st.ctx.act('spin', { c: wire, pv: PV }).then((r) => { if (!r || !r.ok) back(); }, back);
+    const send = now && st.ctx.tell ? st.ctx.tell : st.ctx.act;
+    send('spin', { c: wire, pv: PV }).then((r) => { if (!r || !r.ok) back(); }, back);
   }
 
   /// Точка на колі 0…1000 — так її чекає сервер.
@@ -1814,7 +1826,7 @@
       st.flyGold.hidden = true;
       flyPop(st, '✨', 'big', r.left + r.width / 2, r.top - 10);
     }
-    order(st, 'catch');
+    pressJug(st, 'catch');
   }
 
   /// Спіймали глек з полиці: ховаємо, малюємо «+N» (суму знає вид — fall.gain) і золоті іскри там, де він був.
@@ -1829,7 +1841,7 @@
       const r = st.flyFall.getBoundingClientRect();
       st.flyFall.hidden = true;
       flyPop(st, '+' + short(st.fallGain), 'big', r.left + r.width / 2, r.top - 10);
-      order(st, 'grab');
+      pressJug(st, 'grab');
       return;
     }
     const sr = st.stage.getBoundingClientRect();
@@ -1841,7 +1853,70 @@
       popAt(st, '+' + short(st.fallGain), 'big', x, Math.max(6, y - 8));
       sparks(st, st.fx, 14, true, x, y);
     }
-    order(st, 'grab');
+    pressJug(st, 'grab');
+  }
+
+  // ---------- натиск без зв'язку й коло на очах (ClickerLate.cs) ----------
+  //
+  // Натиск на глек летить із миттю натиску (t — серверний годинник за нашою оцінкою). Зв'язку нема чи він урвався
+  // посеред виклику — тримаємо натиск і шлемо знову, щойно повернеться, але не довше LATE_GRAB_MS: сервер зарахує глек
+  // за цією миттю, навіть якщо вже встиг записати його розбитим. Той самий натиск удруге сервер не платить.
+
+  /// Спіймали глек (grab — з полиці, catch — розписний): звук одразу, натиск — на сервер.
+  function pressJug(st, action) {
+    if (!st.ctx || !st.mine) return;
+    H.api.sfx(ORDER_SFX[action], { action });
+    st.pend[action] = { t: Math.round(serverNow(st)), dropAt: Date.now() + LATE_GRAB_MS, busy: false, told: false };
+    pressSend(st, action);
+  }
+
+  function pressSend(st, action) {
+    const p = st.pend[action];
+    if (!p || p.busy || !st.ctx) return;
+    if (Date.now() > p.dropAt) {
+      st.pend[action] = null;
+      st.ctx.toast((action === 'grab' ? 'Глек' : 'Розписний глек') + ' так і не долетів до сервера: дві хвилини не було зв\'язку', 'err');
+      return;
+    }
+    // Старий каркас (core.js ще з кешу) тихого виклику не знає — тоді як раніше: з тостами й без повтору.
+    if (!st.ctx.tell) { st.pend[action] = null; flush(st); st.ctx.act(action, { t: p.t }); return; }
+    p.busy = true;
+    flush(st, true);
+    st.ctx.tell(action, { t: p.t }).then((r) => {
+      p.busy = false;
+      if (st.pend[action] !== p) return;
+      // Зв'язку нема чи сайт саме оновлюється — повторить таймер (pressRetry), щойно зв'язок повернеться.
+      if (!r || (!r.ok && String(r.message || '').startsWith('⏳'))) {
+        if (!p.told && st.ctx) { p.told = true; st.ctx.toast('📡 Зловив! Зарахую, щойно повернеться зв\'язок', 'ok'); }
+        return;
+      }
+      st.pend[action] = null;
+      if (r.message && st.ctx) st.ctx.toast(r.message, r.ok ? 'ok' : 'err');
+    });
+  }
+
+  function pressRetry(st) {
+    for (const action of ['grab', 'catch']) if (st.pend[action]) pressSend(st, action);
+  }
+
+  /// Сервер не бачить екрана: щойно коло зникло з очей (інший розділ сайту, лобі, інша гра, схована вкладка чи
+  /// застосунок), кажемо тихою дією — глек, що злетить без нас, серії не порве. Видно знову — кажемо й це (сервер тоді
+  /// скаже, якщо глек тим часом упав сам). Не долетіло — повторить таймер: шлемо, доки сказане не зрівняється з видимим.
+  function sight(st) {
+    if (!st.ctx || !st.mine || st.sightBusy || !st.ctx.tell) return;
+    if (st.io && !st.ioSeen) return;               // спостерігач ще не відповів: «видно» поки лише здогад
+    const on = visible(st);
+    if (on === st.sightSaid) return;
+    // Кліки, що ще в пачці, — першими: прийшовши після «пішов», вони посадили б гончаря назад до кола.
+    if (!on) flush(st, true);
+    st.sightBusy = true;
+    st.ctx.tell('sight', { on }).then((r) => {
+      st.sightBusy = false;
+      if (!r) return;
+      st.sightSaid = on;
+      if (r.ok && r.message && st.ctx) st.ctx.toast(r.message, 'ok');
+      sight(st);                                  // поки летіло, могло змінитись
+    });
   }
 
   function fire(st) {
@@ -3609,7 +3684,10 @@
       H.api.showWhen(st, 'fire', (st2) => st2.stamps > 0 || (st2.total || 0) + Math.max(0, st2.shown - st2.base) >= 1e8);
       setTab(st, st.panes[st.tab] ? st.tab : 'shop', false);
       setMode(st, ['1', '10', 'max'].includes(st.mode) ? st.mode : '1');
-      st.timer = setInterval(() => flush(st), BATCH_MS);
+      st.timer = setInterval(() => { flush(st); pressRetry(st); sight(st); }, BATCH_MS);
+      // Сховали вкладку чи застосунок — «пішов» летить одразу: на телефоні сторінку зараз заморозять.
+      st.onVis = () => sight(st);
+      document.addEventListener('visibilitychange', st.onVis);
       st.front = q('.clk-layer-front');
       st.back = q('.clk-layer-back');
       st.ov = { el: q('.clk-overlay'), body: q('.clk-ov-body'), x: q('.clk-ov-x'), onClose: null };
@@ -3730,6 +3808,9 @@
           st.fallMiss = v.fall.miss || 'streak';
           // Коли гончар востаннє справді був біля кола (сервер, Clicker._seenAt): від неї «трісь» знає, чи серія ціла.
           st.fallSeen = Date.parse(v.fall.seen) || 0;
+          // Що сервер думає про коло на очах: він міг і сам вирішити «пішов» (ніхто не стежив за кімнатою — обрив,
+          // інший розділ), а ми про це не знаємо. Звіряємось — sight() скаже «я тут» знову, якщо коло видно.
+          if (typeof v.fall.gone === 'boolean' && !st.sightBusy) st.sightSaid = !v.fall.gone;
           st.streakBonus = v.fall.bonus || 0;
         }
         // Дев'яте оновлення: кіт, зірка, вітер, щасливі кліки, бажання й «що нового».
@@ -3881,6 +3962,13 @@
     unmount(root) {
       const st = root._clk;
       if (!st) return;
+      if (st.onVis) document.removeEventListener('visibilitychange', st.onVis);
+      // Картку прибрали — коло зникло з очей (пачку кліків — першою).
+      if (st.sightSaid && st.ctx && st.mine && st.ctx.tell) {
+        flush(st, true);
+        st.ctx.tell('sight', { on: false });
+        st.sightSaid = false;
+      }
       clearInterval(st.timer);
       clearTimeout(st.eyeArm);
       clearTimeout(st.newsT);

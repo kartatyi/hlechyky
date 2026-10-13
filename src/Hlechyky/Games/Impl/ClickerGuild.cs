@@ -359,7 +359,9 @@ public sealed partial class Clicker
     /// Дія, яку клієнт шле сам, без гончаря: дзвоник цеху (clkMail) просить забрати пошту. Вона синхронізує глеки й
     /// шле вид, але присутністю не рахується (<see cref="_seenAt"/>) — інакше відсутність рвала б серію глеків.
     /// </summary>
-    static bool QuietAct(string action, JsonElement payload) => action == "guild" && Str(payload, "op") == "mail";
+    static bool QuietAct(string action, JsonElement payload) => (action == "guild" && Str(payload, "op") == "mail")
+        // «Коло зникло з очей» (ClickerLate.cs) — тим паче не присутність.
+        || (action == "sight" && !Flag(payload, "on"));
 
     ActResult? ActGuild(string action, JsonElement payload)
     {
