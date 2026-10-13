@@ -606,11 +606,15 @@
       c.textContent = '';
       t = st.countNum = document.createElement('span');
       t.className = 'clk-cnum';
+      t.appendChild(document.createTextNode(''));
       c.appendChild(t);
       st.countKey = null;
       st.countShape = null;
     }
-    t.textContent = text;
+    // Міняємо текст у тому самому вузлі, а не textContent: той щоразу виймає старий вузол і вставляє новий, а вставка
+    // в дерево — привід для браузера перевіряти селектори над ним (до 60 разів на секунду).
+    if (t.firstChild && t.firstChild.nodeType === 3 && !t.firstChild.nextSibling) t.firstChild.data = text;
+    else t.textContent = text;
     const z = text.replace(/\d/g, '0');
     const key = z.replace(/,0*/, '');
     const shape = key === st.countKey && st.countShape && st.countShape.length >= z.length ? st.countShape : z;
@@ -978,7 +982,9 @@
     const e = st.eye;
     const g = st.guard;
     const on = guardOn(st) && st.mine;
-    if (st.stage.hidden !== on) st.stage.hidden = on;
+    // Клас на сцені замість .clk-scene:has(.clk-stage[hidden]) у css: :has із нащадком змушував Chrome на кожну вставку
+    // в сцену (нове число щокадру, «+N») перераховувати стилі всієї хати — ~1 900 елементів, на телефоні 7 кадрів/с.
+    if (st.stage.hidden !== on) { st.stage.hidden = on; st.sceneEl.classList.toggle('nostage', on); }
     if (e.el.hidden === on) e.el.hidden = !on;
     if (!on) return;
 
@@ -1307,6 +1313,7 @@
     if (b.dataset.kind === kind) return;          // щокадру — DOM лише на зміні
     b.dataset.kind = kind;
     b.hidden = !kind;
+    b.parentElement.classList.toggle('lovy', !!kind);   // .clk-pin.lovy ховає «⤒ до кола» (clicker.css) — без :has
   }
 
   function mountPinLovy(st) {
@@ -1558,12 +1565,50 @@
     return Math.min(Math.floor(gap * (sc.share || 0)), (sc.cap || 0) * natural);
   }
 
+  /// Тло хати — дим, вогонь, хмари, вітрила, візки, прапорці, маятники — крокує 15 разів на секунду і все разом, а не
+  /// щокадру кожне саме по собі. Chrome щокадру обслуговує кожну SVG-анімацію (стилі, розкладка SVG, перемальовування),
+  /// і в пізній хаті їх ~70: на телефоні це було 30 кадрів/с проти 48 з тлом «на 15» (заміри 13.10, CPU ×4). Живе —
+  /// люди, худоба, майстер, кіт, усе ігрове — лишається плавним: його в списку нема.
+  /// Як: CSS-анімацію ставимо на паузу (Web Animations) і самі пересуваємо їй час. Лише записи — читання playState
+  /// чи стилю між ними змусило б браузер перераховувати стилі на кожну анімацію окремо (так було ще гірше).
+  /// Лише нескінченні: скінченна на паузі не дійшла б до animationend. Нові (хата перемалювалась) — раз на секунду.
+  const DECOR = new Set(['clks-smoke', 'clks-ember', 'clkflame', 'clks-drift', 'clks-sail', 'clks-farsail', 'clks-cart',
+    'clks-train', 'clks-lane', 'clks-twinkle', 'clks-ripple', 'clks-glint', 'clks-beam', 'clks-flag', 'clks-sway',
+    'clks-pend', 'clks-hoist', 'clks-spin', 'clkkhsmoke', 'clkksmoke', 'clkkrsmoke', 'clkkflicker', 'clkkflame']);
+  const DECOR_MS = 66;
+  const DECOR_SCAN_MS = 1000;
+
+  function paintDecor(st) {
+    if (!st.el.getAnimations) return;
+    const t = performance.now();
+    const d = st.decor || (st.decor = { list: [], at: 0, scanAt: -1e9 });
+    if (t - d.scanAt >= DECOR_SCAN_MS) { d.scanAt = t; scanDecor(st, d, t); }
+    if (t - d.at < DECOR_MS) return;
+    d.at = t;
+    // Хата поза екраном (clicker-scene.js ставить .clks-off) — її тло стоїть; CSS тут уже не командує, бо пауза наша.
+    const off = !!st.stage && st.stage.classList.contains('clks-off');
+    for (const x of d.list) if (!(off && x.inStage)) x.a.currentTime = t + x.shift;
+  }
+
+  function scanDecor(st, d, t) {
+    const live = st.el.getAnimations({ subtree: true });
+    const have = new Set(live);
+    d.list = d.list.filter((x) => have.has(x.a));
+    const known = new Set(d.list.map((x) => x.a));
+    for (const a of live) {
+      if (known.has(a) || !DECOR.has(a.animationName) || a.effect.getTiming().iterations !== Infinity) continue;
+      const shift = (a.currentTime || 0) - t;
+      a.pause();
+      d.list.push({ a, shift, inStage: !!st.stage && st.stage.contains(a.effect.target) });
+    }
+  }
+
   /// Цикл живе від mount до unmount. Картку каркас монтує ще до того, як вставить у сторінку (повторне
   /// відкриття з готовим видом), тож «не в документі» — це не кінець, а «ще не видно»: чекаємо, не малюючи.
   /// Раніше цикл на цьому й зупинявся — і пасив між діями не тікав, а розписний глек так і не з'являвся б.
   function loop(st) {
     if (!st.el) { st.raf = 0; return; }
-    if (visible(st)) paint(st);
+    if (visible(st)) { paintDecor(st); paint(st); }
     // Картку догорнули далеко з екрана (але вона на сторінці) — глеки однаково летять, поверх усього (записка №29).
     else if (st.stageLaid && st.el.isConnected && !document.hidden) { paintGolden(st); paintFall(st); }
     // Картки нема на сторінці (інша сторінка сайту) — шару теж нема (aside()).
@@ -2958,7 +3003,11 @@
     }
     if (!fit) setZoom(st, 1);
     if (st.el.classList.contains('fit') !== fit) st.el.classList.toggle('fit', fit);
-    if (card.classList.contains('clk-fit') !== fit) card.classList.toggle('clk-fit', fit);
+    if (card.classList.contains('clk-fit') !== fit) {
+      card.classList.toggle('clk-fit', fit);
+      const room = card.closest('.groom');
+      if (room) room.classList.toggle('clk-fitroom', fit);
+    }
     placeStatus(st, card, fit);
     let side = false;
     if (fit) {
@@ -3856,6 +3905,8 @@
       if (st.ov) H.api.closeOverlay(st);
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.remove('clk-wide', 'clk-fit', 'clk-big');
+      const room = card && card.closest('.groom');
+      if (room) room.classList.remove('clk-fitroom');
       st.raf = 0;
       st.el = null;
       root._clk = null;

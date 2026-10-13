@@ -58,7 +58,7 @@
 }
 .clk .clk-pinlovy[hidden] { display: none; }
 /* Поки є «лови!», «⤒ до кола» ховаємо: дві кнопки мусять влізти в 360 px. */
-.clk .clk-pin:has(.clk-pinlovy:not([hidden])) .clk-pingo { display: none; }
+.clk .clk-pin.lovy .clk-pingo { display: none; }
 @media (prefers-reduced-motion: reduce) { .clk .clk-pinlovy { animation: none; } }
 @keyframes clk-pinin { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .clk .clk-pinbtn { animation: none; } }
@@ -827,7 +827,7 @@
 /* Вузький стовпчик (низьке вікно): вивіска ліворуч — по центру їй лишилось би 130 px між краєм і кнопками звуку. */
 .clk.fit.pathside .clk-sign { align-self: flex-start; margin-left: 8px; max-width: calc(100% - 100px); }
 /* Поки Око майстра стоїть замість сцени, класти вивіску нема на що — вертаємо їй рядок. */
-.clk.fit .clk-scene:has(.clk-stage[hidden]) .clk-sign { order: 0; top: 0; margin-bottom: 0; }
+.clk.fit .clk-scene.nostage .clk-sign { order: 0; top: 0; margin-bottom: 0; }
 /* Вузький стовпчик: «999 999 999 999 глеків» у 2,4em ширше за нього — тут число знову меншає (висота шапки та сама). */
 .clk.fit.pathside .clk-count.long { font-size: calc(var(--clk-num) * .75); }
 /* Права колонка: [смуга «Шлях виробу»] · вкладки · одна панель, що гортається · підвал із прилавком. */
@@ -1062,13 +1062,12 @@
   order: 100; flex: none; font-size: .78em; color: var(--muted); text-align: center;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* «Закрити» піднімається в рядок «← Лобі» праворуч (там і так порожньо), а рядок під карткою зникає. :has — щоб
-   рядок «← Лобі» звільнив місце; без нього (старий браузер) усе лишається як було. */
-@supports selector(:has(a)) {
-  .gtable.clk-fit { position: relative; }
-  .gtable.clk-fit > .gbtns { position: absolute; right: 0; bottom: calc(100% + 12px); }
-  .groom:has(> .grbox > .gtable.clk-fit) > .grhead { padding-right: 100px; }
-}
+/* «Закрити» піднімається в рядок «← Лобі» праворуч (там і так порожньо), а рядок під карткою зникає. .clk-fitroom
+   ставить clicker.js разом із .clk-fit — щоб рядок «← Лобі» звільнив місце (раніше :has, а він на кожну зміну в колі
+   перевіряв усю кімнату). */
+.gtable.clk-fit { position: relative; }
+.gtable.clk-fit > .gbtns { position: absolute; right: 0; bottom: calc(100% + 12px); }
+.groom.clk-fitroom > .grhead { padding-right: 100px; }
 /* Довгі написи на кнопках («🔥 Почати наново: +1,23 млн клейм», «Продати все звичайне…») на 360 px вилазили за
    картку на 4–9 px: кнопка за замовчуванням не переносить рядок. Тепер переносить і не ширша за свій рядок. */
 .clk .clk-fire, .clk .clkw-sellall { white-space: normal; max-width: 100%; text-align: center; justify-content: center; }
@@ -1087,7 +1086,7 @@
     order: 1; position: relative; top: 6px; z-index: 2; margin-bottom: calc(-1.75em - 6px);
     align-self: flex-start; margin-left: 8px; max-width: calc(100% - 104px);
   }
-  .clk .clk-scene:has(.clk-stage[hidden]) .clk-sign { order: 0; top: 0; margin: 0; align-self: center; max-width: 100%; }
+  .clk .clk-scene.nostage .clk-sign { order: 0; top: 0; margin: 0; align-self: center; max-width: 100%; }
   .clk .clk-stage {
     max-width: min(var(--clk-stage-w, 620px), max(250px,
       calc((100svh - var(--clk-ph-top, 240px) - var(--clk-ph-path, 124px) - var(--gdock-h, 64px) - 6px) * .8)));
@@ -1114,7 +1113,7 @@
 .clk.land .clk-scene > .clk-sign {
   grid-column: 1; grid-row: 1; z-index: 2; justify-self: start; margin: 6px 0 0 6px; max-width: calc(100% - 92px);
 }
-.clk.land .clk-scene:has(.clk-stage[hidden]) > .clk-sign { display: none; }
+.clk.land .clk-scene.nostage > .clk-sign { display: none; }
 .clk.land .clk-head { width: 100%; }
 .clk.land .clk-count, .clk.land .clk-count.long { font-size: calc(var(--clk-num) * .62); }
 /* Швидкість і суперник у півстовпці (~200 px) — переносом, до трьох рядків: в один рядок обидва різали «…». Сцену й смугу
