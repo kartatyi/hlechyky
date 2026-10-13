@@ -1649,6 +1649,8 @@
   /// Лише нескінченні: скінченна на паузі не дійшла б до animationend. Нові (хата перемалювалась) ловимо за
   /// animationstart: getAnimations по всій картці — ~5 мс на телефоні, тож цілком — на старті й раз на 3 с (про запас,
   /// якщо подія проскочила до першого кадру).
+  /// Горно на свій ручний обпал — не тло: на нього дивляться впритул, і полум'я «на 15» рвалось (скарга 14.10). Поки
+  /// палиш сам (.clkk.burn), його вогонь і дим крутить браузер, а коли догорить — знову крокують разом з тлом.
   const DECOR = new Set(['clks-smoke', 'clks-ember', 'clkflame', 'clks-drift', 'clks-sail', 'clks-farsail', 'clks-cart',
     'clks-train', 'clks-lane', 'clks-twinkle', 'clks-ripple', 'clks-glint', 'clks-beam', 'clks-flag', 'clks-sway',
     'clks-pend', 'clks-hoist', 'clks-spin', 'clkkhsmoke', 'clkksmoke', 'clkkrsmoke', 'clkkflicker', 'clkkflame']);
@@ -1658,19 +1660,20 @@
   function paintDecor(st) {
     if (!st.el.getAnimations) return;
     const t = performance.now();
+    const burn = !!(st.kUi && st.kUi.root && st.kUi.root.classList.contains('burn'));
     let d = st.decor;
     if (!d) {
       d = st.decor = { list: [], tick: 0, scanAt: t, fresh: new Set() };
       st.el.addEventListener('animationstart', (e) => { if (DECOR.has(e.animationName)) d.fresh.add(e.target); });
-      scanDecor(st, d, t, st.el.getAnimations({ subtree: true }));
+      scanDecor(st, d, t, st.el.getAnimations({ subtree: true }), false, burn);
     }
     if (d.fresh.size) {
       const got = [];
       for (const el of d.fresh) if (el.isConnected) got.push(...el.getAnimations());
       d.fresh.clear();
-      scanDecor(st, d, t, got);
+      scanDecor(st, d, t, got, false, burn);
     }
-    if (t - d.scanAt >= DECOR_SCAN_MS) { d.scanAt = t; scanDecor(st, d, t, st.el.getAnimations({ subtree: true }), true); }
+    if (t - d.scanAt >= DECOR_SCAN_MS) { d.scanAt = t; scanDecor(st, d, t, st.el.getAnimations({ subtree: true }), true, burn); }
     const tick = Math.floor(t / DECOR_MS);
     if (tick === d.tick) return;
     d.tick = tick;
@@ -1682,18 +1685,27 @@
     let gone = false;
     for (const x of d.list) if (x.a.playState === 'idle') x.gone = gone = true;
     if (gone) d.list = d.list.filter((x) => !x.gone);
-    for (const x of d.list) if (!(off && x.inStage)) x.a.currentTime = t + x.shift;
+    for (const x of d.list) {
+      // Горно під ручним обпалом — пускаємо самопливом; догоріло — знову на паузу й до спільного кроку (фаза вогню
+      // при цьому стрибне, але оком того не видно: клас горна саме міняється з «палає» на «холоне»).
+      if (x.kiln && burn) { if (!x.free) { x.free = true; x.a.play(); } continue; }
+      if (x.free) { x.free = false; x.a.pause(); }
+      if (!(off && x.inStage)) x.a.currentTime = t + x.shift;
+    }
   }
 
-  /// full — повний перелік анімацій картки: заодно забуваємо ті, яких уже нема.
-  function scanDecor(st, d, t, anims, full) {
+  /// full — повний перелік анімацій картки: заодно забуваємо ті, яких уже нема. burn — гравець палить горно сам:
+  /// анімації самого горна беремо в список, але на паузу не ставимо (їх відпускає paintDecor).
+  function scanDecor(st, d, t, anims, full, burn) {
     if (full) { const have = new Set(anims); d.list = d.list.filter((x) => have.has(x.a)); }
     const known = new Set(d.list.map((x) => x.a));
     for (const a of anims) {
       if (known.has(a) || !DECOR.has(a.animationName) || a.effect.getTiming().iterations !== Infinity) continue;
       const shift = (a.currentTime || 0) - t;
-      a.pause();
-      d.list.push({ a, shift, inStage: !!st.stage && st.stage.contains(a.effect.target) });
+      const kiln = !!a.effect.target.closest('.clkk-svg');
+      const free = kiln && burn;
+      if (!free) a.pause();
+      d.list.push({ a, shift, kiln, free, inStage: !!st.stage && st.stage.contains(a.effect.target) });
       known.add(a);
     }
   }
