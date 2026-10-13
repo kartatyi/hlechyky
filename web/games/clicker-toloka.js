@@ -454,18 +454,24 @@
     if (laid && t.next) html += nextHtml(st, api, t.next, b, false);
     const still = t.needs.filter((n) => n.left > 0);
     if (!laid && !still.length) html += '<div class="muted small">Усе, що просили, вже є — другові лишилось закласти етап.</div>';
+    // Гостинець толоки: хвилини гри за виріб, лише за перші treatCap виробів на етап друга (13.10).
+    const cap = t.treatCap || 20;
+    const treat = t.treatLeft == null ? 'за кожен виріб — гостинець толоки'
+      : t.treatLeft > 0 ? 'гостинець толоки — ' + api.count(t.treat || 2) + ' хв гри за виріб, ще за ' + t.treatLeft + ' із ' + cap + ' на цей етап'
+        : 'гостинець за цей етап уже взято (' + cap + ' виробів) — далі поміч без гостинця';
     if (!open) {
       // Кнопка жива, лише коли в моїй коморі є хоч щось, що цей етап іще приймає.
       const mine0 = itemsOf(st);
       const any = t.needs.some((n) => (laid || n.left > 0) && mine0.some((it) => fits(n, it)));
       return html + '<div class="clkg-btns"><button type="button" class="primary clkl-fgo"' + (can && any ? '' : ' disabled') + '>🤝 Піднести на толоку</button>'
-        + '<span class="muted small">' + (any || !(laid || still.length) ? 'за кожен виріб — гостинець толоки: ' + (t.treat || 10) + ' хв твого пасиву'
+        + '<span class="muted small">' + (any || !(laid || still.length) ? treat
           : 'у твоїй коморі нема того, що просить цей етап') + '</span></div>'
         + (err ? '<div class="small clkl-err">' + esc(err) + '</div>' : '');
     }
     html += laid
       ? '<p class="muted small clk-note">Етап уже будується: вироби ляжуть у комору друга на наступні етапи, а твоя поміч скоротить будову. Раз на етап.</p>'
       : '<p class="muted small clk-note">Вироби йдуть у вимоги етапу; беремо не більше, ніж ще бракує. До ' + (t.max || 10) + ' за раз.</p>';
+    html += '<p class="muted small clk-note">🎁 ' + treat.charAt(0).toUpperCase() + treat.slice(1) + '.</p>';
     const mine = itemsOf(st);
     html += '<div class="clkl-fneeds">' + t.needs.map((n, i) => {
       const room = laid ? (t.max || 10) : n.left;

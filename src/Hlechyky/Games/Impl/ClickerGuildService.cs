@@ -730,7 +730,7 @@ public sealed partial class ClickerGuildService
             foreach (var key in recent)
             {
                 var json = SaveOf(key);
-                reads[key] = (json, json is { Length: > 0 } ? TolokaView(key, json, now) : null);
+                reads[key] = (json, json is { Length: > 0 } ? TolokaView(key, json, now, me) : null);
             }
         }
         lock (_lock)
@@ -794,7 +794,7 @@ public sealed partial class ClickerGuildService
         string display;
         object[] wall;
         // Толока друга (v11): що будує і чого ще бракує — для «🤝 Піднести на толоку» в його хаті.
-        var toloka = json is { Length: > 0 } ? TolokaView(key, json, _clock.UtcNow) : null;
+        var toloka = json is { Length: > 0 } ? TolokaView(key, json, _clock.UtcNow, Key(meNick)) : null;
         // Стіна звань: зароблене назавжди — зі збереження, «перші в окрузі» й звання дня — з цеху.
         var earned = Clicker.TitleStatsFromSave(json).Earned;
         lock (_lock)

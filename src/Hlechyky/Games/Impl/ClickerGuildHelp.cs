@@ -200,7 +200,7 @@ public sealed partial class ClickerGuildService
         var key = Key(nick);
         if (key.Length == 0 || key == me) return null;
         var json = SaveOf(key);
-        var toloka = json is { Length: > 0 } ? TolokaView(key, json, now) : null;
+        var toloka = json is { Length: > 0 } ? TolokaView(key, json, now, me) : null;
         lock (_lock)
         {
             var s = S();

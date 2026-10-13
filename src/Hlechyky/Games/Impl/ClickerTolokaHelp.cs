@@ -21,15 +21,19 @@ public sealed record TolokaPeek(ClickerBuilding Building, int Stage, DateTimeOff
     public TolokaStage StageRow => Building.Stages[Stage];
 }
 
-/// <summary>Що вийшло з посилкою: відмова або скільки виробів пішло, на яку будову й етап.</summary>
-public sealed record TolokaSent(string? Error, int N = 0, string Building = "", string Stage = "");
+/// <summary>
+/// Що вийшло з посилкою: відмова або скільки виробів пішло, на яку будову й етап; <see cref="Treat"/> — за скільки з
+/// них помічникові гостинець (стеля на етап друга, <see cref="Clicker.TolokaTreatCap"/>).
+/// </summary>
+public sealed record TolokaSent(string? Error, int N = 0, string Building = "", string Stage = "", int Treat = 0);
 
 /// <summary>
 /// Друзі на толоці (пакет A одинадцятого оновлення, docs/games/specs/clicker-v11.md §2, як зроблено —
 /// clicker-v11-a.md). Помічник підносить вироби зі своєї комори на поточний етап друга (<c>guild {op:"toloka"}</c>),
 /// пошта цеху везе їх навіть до того, хто зараз не грає, а господар на першій дії приймає посилку через
 /// <see cref="TolokaReceive"/>: вироби йдуть у рядки вимог, а сам друг скорочує будову (−15 %, до трьох друзів).
-/// Помічникові — «гостинець толоки»: 10 хв власного пасиву за кожен виріб.
+/// Помічникові — «гостинець толоки»: <see cref="TolokaTreatPlay"/> хв гри за виріб, лише за перші
+/// <see cref="TolokaTreatCap"/> виробів на етап друга.
 ///
 /// Чому помічник дивиться у збереження друга, а не в його кімнату: цех не тримає посилань на кімнати (два замки в
 /// різному порядку — і сервер став). Збереження пишеться після кожної дії, а годинник етапу, що достроївся офлайн,
@@ -39,8 +43,14 @@ public sealed partial class Clicker
 {
     /// <summary>Стільки виробів можна піднести одним разом.</summary>
     public const int TolokaHelpMax = 10;
-    /// <summary>Гостинець толоки: стільки хвилин власного пасиву помічникові за кожен піднесений виріб.</summary>
-    public const int TolokaTreatMinutes = 10;
+    /// <summary>
+    /// Гостинець толоки: стільки хвилин гри (<see cref="PlayMinute"/>) помічникові за кожен піднесений виріб — як за виріб
+    /// у замовленні села. 13.10: було 10 хв гостинця (= 2,5 хв гри) без жодної стелі, а етап друга бере ~140 виробів
+    /// разом — комору зливали другові за гроші. Тепер 2 хв гри і лише за перші <see cref="TolokaTreatCap"/>.
+    /// </summary>
+    public const double TolokaTreatPlay = 2;
+    /// <summary>Гостинець — лише за стільки виробів від одного помічника на етап друга; далі поміч без гостинця.</summary>
+    public const int TolokaTreatCap = 20;
 
     static readonly JsonSerializerOptions TolokaWire = new(JsonSerializerDefaults.Web);
 
@@ -177,10 +187,13 @@ public sealed partial class Clicker
         if (r.Error is { } why) return ActResult.Fail(why);
         TakeItems(x => x == it, r.N);
         TolokaHelped(r.N);
-        var gain = TreatGain(TolokaTreatMinutes * r.N);
+        // Хвилина гостинця — чверть хвилини гри (TreatGain), тож хвилини гри множимо на FairPlayQuarter.
+        var gain = r.Treat > 0 ? TreatGain(TolokaTreatPlay * FairPlayQuarter * r.Treat) : 0;
         Add(gain);
-        return ActResult.Accept($"🤝 {r.N} × {WareOf(it.Ware)!.Name.ToLowerInvariant()} — на толоку до {to} («{r.Stage}»). "
-            + $"Гостинець толоки: +{PotsShort(gain)}");
+        var head = $"🤝 {r.N} × {WareOf(it.Ware)!.Name.ToLowerInvariant()} — на толоку до {to} («{r.Stage}»). ";
+        return ActResult.Accept(head + (r.Treat >= r.N ? $"Гостинець толоки: +{PotsShort(gain)}"
+            : r.Treat > 0 ? $"Гостинець толоки за {r.Treat}: +{PotsShort(gain)} — на цей етап більше без гостинця"
+            : $"Гостинець за цей етап уже взято ({TolokaTreatCap} виробів) — далі поміч без гостинця"));
     }
 
     /// <summary>
@@ -215,6 +228,36 @@ public sealed partial class ClickerGuildService
     {
         /// <summary>Посилки на толоку за ніком господаря — він забере їх на першій дії (пакет A v11).</summary>
         public Dictionary<string, List<TolokaParcel>> Toloka { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>
+        /// Скільки виробів із гостинцем помічник уже підніс на етап друга: друг → помічник → етап і скільки. Новий етап
+        /// друга лічить з нуля (рядок перезаписується), тож тут лише по рядку на пару друзів.
+        /// </summary>
+        public Dictionary<string, Dictionary<string, TolokaTreatRow>> TolokaTreats { get; set; } = new(StringComparer.Ordinal);
+    }
+
+    sealed class TolokaTreatRow
+    {
+        /// <summary>«будова:етап» друга, на який рахуємо.</summary>
+        public string Spot { get; set; } = "";
+        public int N { get; set; }
+    }
+
+    static string SpotOf(TolokaPeek peek) => peek.Building.Key + ":" + peek.Stage;
+
+    /// <summary>За скільки виробів <paramref name="fromKey"/> ще дістане гостинець на цьому етапі друга (під замком).</summary>
+    static int TreatLeftLocked(State s, string toKey, string fromKey, string spot) =>
+        s.TolokaTreats.TryGetValue(toKey, out var by) && by.TryGetValue(fromKey, out var row) && row.Spot == spot
+            ? Math.Max(0, Clicker.TolokaTreatCap - row.N)
+            : Clicker.TolokaTreatCap;
+
+    /// <summary>Записати посилку на лічильник гостинця й повернути, за скільки з неї гостинець (під замком).</summary>
+    static int TreatTakeLocked(State s, string toKey, string fromKey, string spot, int n)
+    {
+        if (!s.TolokaTreats.TryGetValue(toKey, out var by)) s.TolokaTreats[toKey] = by = new(StringComparer.Ordinal);
+        if (!by.TryGetValue(fromKey, out var row) || row.Spot != spot) by[fromKey] = row = new TolokaTreatRow { Spot = spot };
+        var treat = Math.Clamp(Clicker.TolokaTreatCap - row.N, 0, n);
+        row.N += treat;
+        return treat;
     }
 
     /// <summary>Скільки посилок може чекати в одній скриньці толоки: більше — хай господар спершу зайде.</summary>
@@ -281,7 +324,7 @@ public sealed partial class ClickerGuildService
         var st = peek.StageRow;
         var where = $"«{peek.Building.Name}», етап «{st.Name}»";
         if (!Clicker.TolokaFits(st, item)) return new($"Цей виріб на {where} не йде. Просять: {Clicker.TolokaNeedsText(st)}");
-        int take;
+        int take, treat;
         lock (_lock)
         {
             var s = S();
@@ -303,11 +346,12 @@ public sealed partial class ClickerGuildService
             if (!s.Toloka.TryGetValue(toKey, out var box)) s.Toloka[toKey] = box = [];
             if (box.Count >= TolokaMailMax) return new($"{who}: скринька толоки повна — хай спершу зайде й прийме вироби");
             box.Add(new TolokaParcel(fromNick.Trim(), fromKey, peek.Building.Key, peek.Stage, item.Ware, item.Style, item.Quality, take, now));
+            treat = TreatTakeLocked(s, toKey, fromKey, SpotOf(peek), take);
             Deed(s, fromNick, who, "toloka", now);
             Save();
         }
         Ring(who, "toloka", fromNick);
-        return new(null, take, peek.Building.Name, st.Name);
+        return new(null, take, peek.Building.Name, st.Name, treat);
     }
 
     /// <summary>Забрати всі посилки толоки (кличе Sync кімнати господаря на дії). Порожньо — null, і нічого не пишемо.</summary>
@@ -325,17 +369,20 @@ public sealed partial class ClickerGuildService
     /// <summary>
     /// Толока друга для його хати (кнопка «🤝 Піднести на толоку»): будова, етап, чи вже будується, хто був і скільки
     /// ще бракує за кожною вимогою — з урахуванням посилок у дорозі. Лише те, що треба помічникові. null — будови нема.
+    /// <paramref name="me"/> — ключ того, хто дивиться: скільки виробів із гостинцем йому ще лишилось на цьому етапі.
     /// </summary>
-    object? TolokaView(string key, string json, DateTimeOffset now)
+    object? TolokaView(string key, string json, DateTimeOffset now, string me)
     {
         if (Clicker.TolokaPeekSave(json, now) is not { } peek) return null;
         int[] left;
         List<string> coming;
+        int treatLeft;
         lock (_lock)
         {
             var pending = PendingLocked(S(), key, peek);
             left = TolokaLeft(peek, pending);
             coming = pending.Select(p => p.From).ToList();
+            treatLeft = TreatLeftLocked(S(), key, me, SpotOf(peek));
         }
         var st = peek.StageRow;
         return new
@@ -346,7 +393,10 @@ public sealed partial class ClickerGuildService
             helpers = peek.Helpers.Concat(coming).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             needs = st.Needs.Select((x, i) => new { ware = x.Ware, n = x.N, q = x.Q, style = x.Style, left = left[i] }).ToList(),
             max = Clicker.TolokaHelpMax,
-            treat = Clicker.TolokaTreatMinutes,
+            // Гостинець: хвилин гри за виріб, стеля на етап і скільки з неї лишилось тому, хто дивиться.
+            treat = Clicker.TolokaTreatPlay,
+            treatCap = Clicker.TolokaTreatCap,
+            treatLeft,
             // Поки етап будується — що треба на наступний (лише показати; «у тебе є» рахує клієнт помічника).
             next = peek.EndsAt is not null ? Clicker.TolokaNextView(Clicker.TolokaAfter(peek.Building, peek.Stage, peek.Built ?? new HashSet<string>(), peek.Total), null) : null,
         };

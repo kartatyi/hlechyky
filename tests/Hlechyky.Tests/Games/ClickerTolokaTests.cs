@@ -632,6 +632,57 @@ public class ClickerTolokaTests
     }
 
     [Fact]
+    public void The_toloka_treat_is_two_play_minutes_a_ware_and_only_for_twenty_wares_a_stage()
+    {
+        var g = new Tsekh();
+        var owner = g.Potter("Оля");
+        Give(owner, 1e20);
+        Row(owner, built: ["well"]);                                  // вітряк, «Кам'яний підмурок»: 20 макітер, 15 тарілок
+        g.Publish(owner, "Оля");
+        var friend = g.Potter("Микола");
+        g.Potter("Назар");
+        Items(friend, ("makitra||2", 20), ("dish||1", 15));
+        double Gain(string key, int n, out string message)
+        {
+            var was = Pots(friend);
+            var r = Bring(friend, "Оля", key, n);
+            Assert.True(r.Ok, r.Message);
+            message = r.Message!;
+            return Pots(friend) - was;
+        }
+        void Near(double minutes, double gain) =>
+            Assert.InRange(gain, ClickerPlay.Pay(friend, minutes) - 1, ClickerPlay.Pay(friend, minutes) + 1);
+        int TreatLeft(string me) => Views.Json(g.Svc.House("Оля", me)).GetProperty("toloka").GetProperty("treatLeft").GetInt32();
+
+        Near(Clicker.TolokaTreatPlay * 10, Gain("makitra||2", 10, out var m));
+        Assert.Contains("Гостинець толоки: +", m);
+        Near(Clicker.TolokaTreatPlay * 5, Gain("makitra||2", 5, out _));
+        Assert.Equal(5, TreatLeft("Микола"));
+        Assert.Equal(Clicker.TolokaTreatCap, TreatLeft("Назар"));
+
+        // Десять тарілок, а гостинця лишилось на п'ять: пішли всі, гостинець — за п'ять.
+        Near(Clicker.TolokaTreatPlay * 5, Gain("dish||1", 10, out m));
+        Assert.Contains("за 5", m);
+        Assert.Equal(5, Item(friend, "dish||1"));
+        // Стеля: вироби йдуть далі (другові вони потрібні), гостинця — нуль.
+        Assert.Equal(0, Gain("makitra||2", 5, out m));
+        Assert.Contains("уже взято", m);
+        Assert.Equal(0, Item(friend, "makitra||2"));
+        Assert.Equal(0, TreatLeft("Микола"));
+
+        // Новий етап друга — лічба з нуля.
+        Assert.True(owner.Act(0, "look").Ok);
+        Items(owner, ("dish||1", 15));
+        Assert.True(Toloka(owner, "lay").Ok);
+        g.Publish(owner, "Оля");
+        g.Advance(TimeSpan.FromHours(3));                             // «Крила з полотна»: свічники й свищики
+        Assert.Equal(Clicker.TolokaTreatCap, TreatLeft("Микола"));
+        Items(friend, ("candle||2", 4));
+        Near(Clicker.TolokaTreatPlay * 4, Gain("candle||2", 4, out _));
+        Assert.Equal(Clicker.TolokaTreatCap - 4, TreatLeft("Микола"));
+    }
+
+    [Fact]
     public void Toloka_mail_waits_in_the_guild_state_across_a_restart()
     {
         var g = new Tsekh();
