@@ -782,17 +782,34 @@
 
   // ---------- піч у хаті ----------
 
+  /// Піч малюється на шарі під колом, куди дотик не доходить, — тож поверх неї прозора кнопка на шарі над сценою (як
+  /// кіт): підказка й тап «в Альбом, до печі». Без неї піч стояла німа: «нащо ця пічка?» (записка #45).
   function paintHouseStove(st, api) {
     const g = st.albumHouse;
     if (!g) return;
     const a = st.album;
-    const sig = JSON.stringify(a.stove);
+    const btn = st.albumStoveBtn;
+    const sig = JSON.stringify(a.stove) + '|' + a.stoveBonus;
     if (g._sig === sig) return;
     g._sig = sig;
+    if (btn) btn.hidden = !a.stove.length;
     if (!a.stove.length) { g.innerHTML = ''; return; }
     // Жива хата (360×450): праворуч, під іконою (y 188…230) і над горном (y від 272) — піч ~35×48.
-    g.innerHTML = '<g class="clka-hstove" transform="translate(300 226) scale(.16)"><title>Кахляна піч · ' + a.stove.length + ' з 12</title>'
+    g.innerHTML = '<g class="clka-hstove" transform="translate(300 226) scale(.16)">'
       + stoveSvg(api, a.stove, 'house', '', false).replace('<svg class="" viewBox="0 0 220 300" aria-hidden="true">', '').replace(/<\/svg>$/, '') + '</g>';
+    if (btn) {
+      const t = 'Кахляна піч · ' + a.stove.length + ' з 12 · +' + pct(api, a.stoveBonus) + ' до всього — відкрити в Альбомі';
+      btn.title = t;
+      btn.setAttribute('aria-label', t);
+    }
+  }
+
+  function openStove(st, api) {
+    const sec = st.albumUi && st.albumUi.stove;
+    if (!sec) return;
+    api.showTab(st, 'album');
+    api.unfold(st, sec);
+    requestAnimationFrame(() => sec.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
 
   // ---------- частина ----------
@@ -833,6 +850,11 @@
       };
       // Розписи купуються за глеки, тож живуть у Майстерні поруч із рештою покупок (їх туди кладе ядро).
       st.albumHouse = api.layer(st, 'back', 'album');
+      st.albumHouse._sig = null;     // кнопка над піччю — нова й схована: перший вид мусить її показати
+      const front = api.layer(st, 'front', 'album');
+      front.innerHTML = '<button type="button" class="clka-hstovebtn" hidden></button>';
+      st.albumStoveBtn = front.firstChild;
+      st.albumStoveBtn.addEventListener('click', () => openStove(st, api));
     },
 
     update(st, v, api) {
@@ -868,6 +890,7 @@
       clearTimeout(st.albumFlashT);
       st.albumUi = null;
       st.albumHouse = null;
+      st.albumStoveBtn = null;
     },
   });
 })();

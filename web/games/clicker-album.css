@@ -257,6 +257,12 @@
 
 /* ---- піч у хаті ---- */
 .clka-hstove { filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .4)); }
+/* Прозора кнопка над піччю (шар над сценою, % сцени 360×450: піч — x 300…335, y 226…274): підказка й тап в Альбом. */
+.clka-hstovebtn {
+  position: absolute; left: 83.3%; top: 50.2%; width: 9.8%; height: 10.7%; padding: 0; border: none; border-radius: 6px;
+  background: transparent; cursor: pointer; touch-action: manipulation;
+}
+.clka-hstovebtn:hover, .clka-hstovebtn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(244, 197, 66, .75); }
 
 @media (max-width: 480px) {
   .clka-head { padding: 8px 10px; }

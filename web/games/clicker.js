@@ -3054,6 +3054,8 @@
     info,
     /// Згортка картки (13.10): '<section class="…"' + api.fold('ключ', згорнута?) + '>' + api.foldHead('заголовок') + …
     fold: foldAttr, foldHead,
+    /// Розгорнути картку-згортку, якщо згорнута (кнопка «туди» з іншого місця кола — напр. піч у хаті → Альбом).
+    unfold: (st, card) => { if (card && card.dataset.fold && isFolded(card)) toggleFold(st, card); },
     esc: (st, x) => ((st.ctx && st.ctx.esc) || ((y) => String(y)))(x),
     order: (st, action, payload) => order(st, action, payload),
     /// Дія з відповіддю (Promise): для мінігор, яким треба знати результат. Накопичені кліки летять першими.
