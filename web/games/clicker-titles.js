@@ -137,7 +137,9 @@
         if (!t) { hidden++; continue; }
         const p = v.progress[key];
         const who = own ? '✓' + (v.earned[key] ? ' <span class="muted">' + esc(date(v.earned[key])) + '</span>' : '') : first(st, api, key);
-        rows += rowHtml(st, api, t, who, !own && p && p[1] > 1 ? bar(api, p[0], p[1]) : '', own);
+        // Уже не вибити (напр. «Вічний учень» після майстерштука) — кажемо прямо, а не лишаємо порожнє місце смуги.
+        const gone = !own && v.gone.includes(key) ? '<span class="muted small">уже не взяти: майстерштук здано, а ранг у цеху назад не падає</span>' : '';
+        rows += rowHtml(st, api, t, who, gone || (!own && p && p[1] > 1 ? bar(api, p[0], p[1]) : ''), own);
       } else {
         const who = own ? '✓' : '<span class="muted">—</span>';
         rows += rowHtml(st, api, raw, who, '', own);
@@ -270,7 +272,7 @@
       if (!t) return;
       st.titles = {
         mine: t.mine || [], earned: t.earned || {}, show: t.show || [], badges: t.badges || [], values: t.values || {},
-        progress: t.progress || {}, secrets: t.secrets || {}, gift: !!t.gift,
+        progress: t.progress || {}, gone: t.gone || [], secrets: t.secrets || {}, gift: !!t.gift,
       };
       mountBlock(st);
       if (st.mine) celebrate(st, api);

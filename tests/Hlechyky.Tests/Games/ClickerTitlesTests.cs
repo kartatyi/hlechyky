@@ -319,11 +319,14 @@ public class ClickerTitlesTests
         Assert.True(Look(h).Ok);
         Assert.Contains(Clicker.TitleApprentice, Mine(h));
         Assert.Contains(Journal(h), t => t.Contains("«Вічний учень»"));
+        Assert.Empty(Keys(T(h).GetProperty("gone")));
 
         Patch(h, s => s["guild"]!["rank"] = 1);
         Assert.True(Look(h).Ok);
         Assert.DoesNotContain(Clicker.TitleApprentice, Mine(h));
         Assert.DoesNotContain(Clicker.TitleApprentice, Earned(h));
+        // Уже не вибити — і клієнт про це знає (записка #46: «що треба для цього?»).
+        Assert.Equal([Clicker.TitleApprentice], Keys(T(h).GetProperty("gone")));
         // І назад не оголошуємо: позначка «вже казали» лишилась.
         Assert.Single(Journal(h), t => t.Contains("«Вічний учень»"));
     }
@@ -397,6 +400,29 @@ public class ClickerTitlesTests
         Assert.True(Look(b).Ok);
         Assert.Contains("hunter", Mine(a));
         Assert.DoesNotContain("hunter", Mine(b));
+    }
+
+    [Fact]
+    public void The_collector_counts_the_world_columns_too()
+    {
+        static void Cells(RoomHarness h, JsonObject cells) => Patch(h, s =>
+        {
+            if (s["album"] is not JsonObject a) s["album"] = a = new JsonObject();
+            a["cells"] = cells;
+        });
+        static JsonArray Home() => new("", "gavarets", "vasylkiv", "bubnivka", "kosiv", "opishnia", "mezhyhirya", "petrykivka", "trypillia");
+        var g = new Okruha();
+        var v = g.Potter("владік");
+        var s = g.Potter("Smaug");
+        // Домашніх у владіка більше (10 проти 9), зате в Smaug ще два розписи світу — разом 11.
+        Cells(v, new JsonObject { ["pot"] = Home(), ["jug"] = new JsonArray("kosiv") });
+        Assert.True(Look(v).Ok);
+        Assert.Contains("collector", Mine(v));
+        Cells(s, new JsonObject { ["pot"] = Home(), ["jug"] = new JsonArray("jingdezhen", "iznik") });
+        Assert.True(Look(s).Ok);
+        Assert.Contains("collector", Mine(s));
+        Assert.True(Look(v).Ok);
+        Assert.DoesNotContain("collector", Mine(v));
     }
 
     [Fact]

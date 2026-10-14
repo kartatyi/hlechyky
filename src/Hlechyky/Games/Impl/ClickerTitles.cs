@@ -60,7 +60,7 @@ public sealed partial class Clicker
         // «Перші в окрузі»: одне на округу, переходить до того, в кого більше.
         new("first", "👑", "Перший гончар округи", "Найбільше клейм в окрузі", TitleTop),
         new("hunter", "🎯", "Мисливець за розписними", "Найбільше спійманих розписних глеків", TitleTop),
-        new("collector", "📒", "Збирач", "Найбільше клітинок в альбомі", TitleTop),
+        new("collector", "📒", "Збирач", "Найбільше клітинок в альбомі, з розписами світу", TitleTop),
         new("lord", "🏛", "Пан на хаті", "Найбільше оздоби в хаті", TitleTop),
         new("sage", "🧙", "Знавець секретів", "Найбільше родинних секретів", TitleTop),
         new("kilnlord", "🔥", "Володар горна", "Найбільше обпалених виробів", TitleTop),
@@ -217,7 +217,9 @@ public sealed partial class Clicker
     {
         ["first"] = _stamps,
         ["hunter"] = _caught,
-        ["collector"] = AlbumOpenCount(_albumCells),
+        // Уся сітка, зі стовпчиками світу: домашні 135 клітинок у двох гончарів рівні, і різнилися б лише світом
+        // (записка #47 — у smaug увесь Цзиндечжень, а звання тримав той, хто зібрав домашнє першим).
+        ["collector"] = AlbumOpenCount(_albumCells) + AlbumWorldOpen(_albumCells),
         ["lord"] = _decor.Count,
         ["sage"] = _secrets.Count,
         ["kilnlord"] = FiredTotal,
@@ -447,6 +449,9 @@ public sealed partial class Clicker
             badges = Badges(mine, _titleShow),
             values,
             progress,
+            // Звання, яких цьому гончареві вже не вибити: «Вічний учень» — після першого майстерштука (ранг не падає).
+            // Без цього рядок лишався порожнім, і незрозуміло, чого бракує (записка #46).
+            gone = _guildRank > 0 ? new[] { TitleApprentice } : [],
             // Свої таємні — з назвою й значком: вивіска мусить знати, що малювати, ще до списку цеху.
             secrets = mine.Select(TitleDef).OfType<ClickerTitle>().Where(t => t.Kind == TitleSecret)
                 .ToDictionary(t => t.Key, t => (object)new { icon = t.Icon, name = t.Name, desc = t.Desc }, StringComparer.Ordinal),
