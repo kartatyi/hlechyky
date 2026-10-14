@@ -58,9 +58,12 @@ public sealed record LavkaItem(string Id, string Kind, string Title, int Price, 
 /// Що вдягнуто, готове до малювання (<c>color</c> — відтінок числом або назва візерунка: «rainbow», «zhar»). Так його бачать усі.
 /// <paramref name="Photo"/> — адреса своєї фотки з версією (<c>/api/lavka/photo/…</c>); нема фото — поля в JSON нема
 /// зовсім: старий клієнт і старі перевірки бачать вигляд рівно таким, яким він був до фоток.
+/// Своє тло (записка #49): <paramref name="Bg"/> = <c>own</c>, а <paramref name="BgUrl"/> — адреса картинки
+/// (<c>/api/lavka/bg/…</c>); з візерунком чи без тла поля <c>bgUrl</c> нема зовсім — так само, як <c>photo</c>.
 /// </summary>
 public sealed record LavkaLook(string? Icon, string? Frame, object? Color, string? Title, string? Bg,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Photo = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Photo = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BgUrl = null);
 
 /// <summary>
 /// <c>Art</c> гімну: готовий — <c>{ emoji, url }</c> (файл у <c>web/static/anthems</c>), свій трек — <c>{ emoji, own: true }</c>
@@ -95,6 +98,14 @@ public static class LavkaCatalog
     public const string Fireworks = "fireworks";
     /// <summary>Вміння «Своя фотка»: ставити своє фото замість літери чи значка (LavkaPhotos.cs).</summary>
     public const string Photo = "photo";
+    /// <summary>
+    /// «Своє тло» (записка #49): своя картинка-банер у шапці профілю (LavkaBackgrounds.cs). Як «Свій трек» — річ полиці
+    /// тла, а не вміння: вдягається в той самий слот, що й візерунки (вдягнув візерунок — своє знялось, і навпаки), але
+    /// її <c>Art</c> — лише маркер <see cref="OwnBgArt"/>: адреса картинки в кожного своя, її несе <c>bgUrl</c> вигляду.
+    /// Купується назавжди, картинка міняється раз на добу — як «Своя фотка».
+    /// </summary>
+    public const string OwnBg = "bgphoto";
+    public const string OwnBgArt = "own";
     /// <summary>
     /// «Свій трек»: гімн із власного уривка (LavkaAnthems.cs). Річ полиці гімнів, а не вміння — вдягається й знімається
     /// звичайним слотом, але мовчить, доки людина не поставила уривок. Єдиний id із дефісом — так його назвав контракт.
@@ -193,6 +204,8 @@ public static class LavkaCatalog
 
         Bg("stars", "Зоряна ніч", 800), Bg("stripes", "Смуги", 800), Bg("vyshyvanka", "Вишиванка", 1200),
         Bg("petrykivka", "Петриківка", 1200), Bg("trypillia", "Трипілля", 1500),
+        // своя картинка замість візерунка (записка #49 від Smaug): дорожче за «Свою фотку» — тло більше й видніше
+        new(OwnBg, LavkaKind.Bg, "Своє тло", 2500, OwnBgArt),
 
         // гімни переможця: свої мелодії, синтезовані docs/games/dev/anthems-make.py, — без чужих прав
         Anthem("fanfare", "Фанфари", "🎺", 300), Anthem("drumroll", "Барабанний дріб", "🥁", 300),
@@ -251,6 +264,7 @@ public static class LavkaCatalog
         LavkaKind.Frame => $"{i.Title} рамка",
         LavkaKind.Color => $"колір ніка «{i.Title}»",
         LavkaKind.Title => $"титул «{i.Title}»",
+        LavkaKind.Bg when i.Id == OwnBg => i.Title,
         LavkaKind.Bg => $"тло «{i.Title}»",
         LavkaKind.Anthem => $"гімн «{i.Title}»",
         LavkaKind.Fx => $"святкування «{i.Title}»",
@@ -262,7 +276,7 @@ public static class LavkaCatalog
     public static string Label(string id) => Get(id) is { } i ? Label(i) : id;
 
     /// <summary>Назва в лапках там, де своїх лапок нема: «дарує Петрові «Срібна рамка»», але «дарує Петрові значок «Лис» 🦊».</summary>
-    public static string Quoted(LavkaItem i) => i.Kind is LavkaKind.Frame or LavkaKind.Perk ? $"«{Label(i)}»" : Label(i);
+    public static string Quoted(LavkaItem i) => i.Kind is LavkaKind.Frame or LavkaKind.Perk || i.Id == OwnBg ? $"«{Label(i)}»" : Label(i);
 
     static readonly ConcurrentDictionary<string, double?> Lens = new(StringComparer.Ordinal);
 
@@ -296,10 +310,13 @@ public sealed record LavkaWornRow(string NickKey, string Nick, string Slot, stri
 /// <summary>
 /// Своя фотка, що стоїть зараз: <paramref name="File"/> — ім'я в <c>data/avatars</c> (хеш ніка + версія вмісту),
 /// <paramref name="At"/> — коли поставлено. <see cref="Url"/> змінюється разом із фото — кеш браузера не заважає.
+/// Своє тло лежить такими ж рядками, лише в <c>data/backgrounds</c> і з адресою <see cref="LavkaBackgrounds.UrlPrefix"/>
+/// (<paramref name="Prefix"/>).
 /// </summary>
-public sealed record LavkaPhotoRow(string NickKey, string Nick, string File, int Bytes, DateTimeOffset At)
+public sealed record LavkaPhotoRow(string NickKey, string Nick, string File, int Bytes, DateTimeOffset At,
+    string Prefix = LavkaPhotos.UrlPrefix)
 {
-    public string Url => LavkaPhotos.UrlPrefix + File;
+    public string Url => Prefix + File;
 }
 
 /// <summary>
@@ -342,6 +359,8 @@ public sealed class LavkaStore
         CREATE TABLE IF NOT EXISTS lavka_perk(
             nick_key TEXT NOT NULL, perk TEXT NOT NULL, used_at TEXT NOT NULL, PRIMARY KEY(nick_key, perk));
         CREATE TABLE IF NOT EXISTS lavka_photo(
+            nick_key TEXT NOT NULL PRIMARY KEY, nick TEXT NOT NULL, file TEXT NOT NULL, bytes INTEGER NOT NULL, at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS lavka_bgphoto(
             nick_key TEXT NOT NULL PRIMARY KEY, nick TEXT NOT NULL, file TEXT NOT NULL, bytes INTEGER NOT NULL, at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS lavka_anthem(
             nick_key TEXT NOT NULL PRIMARY KEY, nick TEXT NOT NULL, file TEXT NOT NULL, title TEXT,
@@ -443,43 +462,66 @@ public sealed class LavkaStore
     public void ForgetPerk(string nick, string perk) => _db.With(c =>
         Exec(c, "DELETE FROM lavka_perk WHERE nick_key = $k AND perk = $p", ("$k", Key(nick)), ("$p", perk)));
 
-    // ---------- своя фотка: у базі лише ім'я файла (з версією), саме фото — у data/avatars ----------
+    // ---------- своя фотка й своє тло: у базі лише ім'я файла (з версією), сама картинка — у data/avatars чи data/backgrounds ----------
+    // Таблиці однакові, тож і SQL один; ім'я таблиці — лише одна з двох констант нижче, ніколи не з запиту.
 
     const string PhotoCols = "nick_key, nick, file, bytes, at";
+    const string PhotoTable = "lavka_photo";
+    const string BgTable = "lavka_bgphoto";
 
-    public LavkaPhotoRow? Photo(string nick) => _db.With(c =>
-        Photos(c, $"SELECT {PhotoCols} FROM lavka_photo WHERE nick_key = $k", ("$k", Key(nick))).FirstOrDefault());
+    public LavkaPhotoRow? Photo(string nick) => PicOf(PhotoTable, nick);
 
     /// <summary>Свіжі згори — так їх переглядає адмін.</summary>
-    public List<LavkaPhotoRow> AllPhotos() => _db.With(c => Photos(c, $"SELECT {PhotoCols} FROM lavka_photo ORDER BY at DESC, nick_key"));
+    public List<LavkaPhotoRow> AllPhotos() => AllPics(PhotoTable);
 
     /// <summary>Поставити фото; повертає ім'я файла, що стояв досі (його треба прибрати з диска), або null.</summary>
-    public string? SetPhoto(string nick, string file, int bytes, DateTimeOffset at) => _db.With(c =>
+    public string? SetPhoto(string nick, string file, int bytes, DateTimeOffset at) => SetPic(PhotoTable, nick, file, bytes, at);
+
+    /// <summary>Прибрати фото; повертає ім'я файла, що стояв (null — фото й не було).</summary>
+    public string? DropPhoto(string nick) => DropPic(PhotoTable, nick);
+
+    /// <summary>Своє тло, що стоїть зараз (записка #49); null — картинки нема. Решта — так само, як у фото.</summary>
+    public LavkaPhotoRow? BgPhoto(string nick) => PicOf(BgTable, nick);
+
+    public List<LavkaPhotoRow> AllBgPhotos() => AllPics(BgTable);
+
+    public string? SetBgPhoto(string nick, string file, int bytes, DateTimeOffset at) => SetPic(BgTable, nick, file, bytes, at);
+
+    public string? DropBgPhoto(string nick) => DropPic(BgTable, nick);
+
+    static string PrefixOf(string table) => table == BgTable ? LavkaBackgrounds.UrlPrefix : LavkaPhotos.UrlPrefix;
+
+    LavkaPhotoRow? PicOf(string table, string nick) => _db.With(c =>
+        Pics(c, table, $"SELECT {PhotoCols} FROM {table} WHERE nick_key = $k", ("$k", Key(nick))).FirstOrDefault());
+
+    List<LavkaPhotoRow> AllPics(string table) => _db.With(c => Pics(c, table, $"SELECT {PhotoCols} FROM {table} ORDER BY at DESC, nick_key"));
+
+    string? SetPic(string table, string nick, string file, int bytes, DateTimeOffset at) => _db.With(c =>
     {
-        using var old = Cmd(c, "SELECT file FROM lavka_photo WHERE nick_key = $k", ("$k", Key(nick)));
+        using var old = Cmd(c, $"SELECT file FROM {table} WHERE nick_key = $k", ("$k", Key(nick)));
         var was = old.ExecuteScalar() as string;
-        Exec(c, """
-            INSERT INTO lavka_photo(nick_key, nick, file, bytes, at) VALUES($k, $n, $f, $b, $at)
+        Exec(c, $"""
+            INSERT INTO {table}(nick_key, nick, file, bytes, at) VALUES($k, $n, $f, $b, $at)
             ON CONFLICT(nick_key) DO UPDATE SET nick = excluded.nick, file = excluded.file, bytes = excluded.bytes, at = excluded.at
             """, ("$k", Key(nick)), ("$n", nick), ("$f", file), ("$b", bytes), ("$at", Iso(at)));
         return was;
     });
 
-    /// <summary>Прибрати фото; повертає ім'я файла, що стояв (null — фото й не було).</summary>
-    public string? DropPhoto(string nick) => _db.With(c =>
+    string? DropPic(string table, string nick) => _db.With(c =>
     {
-        using var old = Cmd(c, "SELECT file FROM lavka_photo WHERE nick_key = $k", ("$k", Key(nick)));
+        using var old = Cmd(c, $"SELECT file FROM {table} WHERE nick_key = $k", ("$k", Key(nick)));
         var was = old.ExecuteScalar() as string;
-        if (was is not null) Exec(c, "DELETE FROM lavka_photo WHERE nick_key = $k", ("$k", Key(nick)));
+        if (was is not null) Exec(c, $"DELETE FROM {table} WHERE nick_key = $k", ("$k", Key(nick)));
         return was;
     });
 
-    static List<LavkaPhotoRow> Photos(SqliteConnection c, string sql, params (string Name, object? Value)[] ps)
+    static List<LavkaPhotoRow> Pics(SqliteConnection c, string table, string sql, params (string Name, object? Value)[] ps)
     {
         using var cmd = Cmd(c, sql, ps);
         using var r = cmd.ExecuteReader();
         var list = new List<LavkaPhotoRow>();
-        while (r.Read()) list.Add(new LavkaPhotoRow(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3), Ts(r.GetString(4))));
+        var prefix = PrefixOf(table);
+        while (r.Read()) list.Add(new LavkaPhotoRow(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3), Ts(r.GetString(4)), prefix));
         return list;
     }
 
@@ -676,6 +718,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     public const string NoSlot = "Нема такого місця";
     public const string WrongSlot = "Ця річ не для цього місця";
     public const string NotOwned = "Спершу купи — тоді вдягнеш";
+    public const string NoOwnBg = "Спершу постав картинку — тоді вдягнеш своє тло";
     public const string NoSong = "Спершу закинь пісню — присвята прозвучить перед нею";
     public const string Mute = "Глек зараз мовчить";
     public const string Fx = "🎆 бахає феєрверк!";
@@ -714,7 +757,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     static TimeSpan Gap(string perk) => perk switch
     {
         LavkaCatalog.Dedication => DedicationGap,
-        LavkaCatalog.Photo => PhotoGap,
+        LavkaCatalog.Photo or LavkaCatalog.OwnBg => PhotoGap,
         LavkaCatalog.OwnAnthem => AnthemGap,
         _ => FireworksGap,
     };
@@ -777,6 +820,12 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
                 },
             },
             phrases = LavkaCatalog.Phrases.Select(p => new { key = p.Key, text = p.Text }),
+            // своє тло: url — картинка, що стоїть зараз (null — ще нема), readyAt — коли можна поставити нову
+            ownBg = new
+            {
+                url = account ? store.BgPhoto(nick)?.Url : null,
+                readyAt = mine.Contains(LavkaCatalog.OwnBg) ? ReadyAt(nick, LavkaCatalog.OwnBg) : null,
+            },
             // свій трек: url — уривок, що стоїть зараз (null — ще нема), readyAt — коли можна поставити новий
             ownAnthem = new { url = own?.Url, title = own?.Title, readyAt = mine.Contains(LavkaCatalog.OwnAnthem) ? ReadyAt(nick, LavkaCatalog.OwnAnthem) : null },
             // прокльони: на мені (від кого — лише розкриті) і від мене; розряджені й відкуплені видно ще 7 днів
@@ -812,20 +861,28 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     {
         var looks = new Dictionary<string, LavkaLook>(StringComparer.Ordinal);
         var photos = store.AllPhotos().ToDictionary(p => p.NickKey, StringComparer.Ordinal);
+        // своє тло видно лише вдягнутим, тож без рядка в lavka_worn воно вигляду не дає
+        var bgs = store.AllBgPhotos().ToDictionary(p => p.NickKey, p => p.Url, StringComparer.Ordinal);
         foreach (var person in store.AllWorn().GroupBy(r => r.NickKey))
         {
             photos.Remove(person.Key, out var photo);
-            if (Look(person.ToDictionary(r => r.Slot, r => r.Item, StringComparer.Ordinal), photo?.Url) is { } look)
+            if (Look(person.ToDictionary(r => r.Slot, r => r.Item, StringComparer.Ordinal), photo?.Url, bgs.GetValueOrDefault(person.Key)) is { } look)
                 looks[person.First().Nick] = look;
         }
         // фото без жодної вдягнутої речі — теж вигляд
         foreach (var photo in photos.Values)
-            if (Look(new Dictionary<string, string>(), photo.Url) is { } look) looks[photo.Nick] = look;
+            if (Look(new Dictionary<string, string>(), photo.Url, null) is { } look) looks[photo.Nick] = look;
         return looks;
     }
 
     /// <summary>Вигляд одного ніка; null — нічого не вдягнуто й фото нема.</summary>
-    public LavkaLook? LookOf(string nick) => Look(store.WornBy(nick), store.Photo(nick)?.Url);
+    public LavkaLook? LookOf(string nick)
+    {
+        var worn = store.WornBy(nick);
+        // картинку тла питаємо лише тоді, коли своє тло справді вдягнуто
+        var bg = worn.GetValueOrDefault(LavkaKind.Bg) == LavkaCatalog.OwnBg ? store.BgPhoto(nick)?.Url : null;
+        return Look(worn, store.Photo(nick)?.Url, bg);
+    }
 
     /// <summary>
     /// Гімн, який зазвучить, коли <paramref name="nick"/> виграє: вдягнутий готовий — його файл; вдягнутий свій трек —
@@ -882,12 +939,17 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         return new(true, $"🔔 Тепер твій дзвінок — «{play.Title}»");
     }
 
-    /// <summary>Річ, якої вже нема в каталозі (або не свого слота), не малюється — і не ламає решту вигляду.</summary>
-    static LavkaLook? Look(IReadOnlyDictionary<string, string> worn, string? photo)
+    /// <summary>
+    /// Річ, якої вже нема в каталозі (або не свого слота), не малюється — і не ламає решту вигляду. Своє тло без
+    /// картинки (ще не поставив, прибрав, адмін зняв) — теж: профіль просто без тла.
+    /// </summary>
+    static LavkaLook? Look(IReadOnlyDictionary<string, string> worn, string? photo, string? bgUrl)
     {
         object? Art(string slot) => worn.TryGetValue(slot, out var id) && LavkaCatalog.Get(id) is { } i && i.Kind == slot ? i.Art : null;
+        var bg = Art(LavkaKind.Bg) as string;
+        if (bg == LavkaCatalog.OwnBgArt && bgUrl is null) bg = null;
         var look = new LavkaLook(Art(LavkaKind.Icon) as string, Art(LavkaKind.Frame) as string, Art(LavkaKind.Color),
-            Art(LavkaKind.Title) as string, Art(LavkaKind.Bg) as string, photo);
+            Art(LavkaKind.Title) as string, bg, photo, bg == LavkaCatalog.OwnBgArt ? bgUrl : null);
         return look is { Icon: null, Frame: null, Color: null, Title: null, Bg: null, Photo: null } ? null : look;
     }
 
@@ -930,7 +992,9 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             if (!economy.TrySpend(nick, item.Price, reason, $"lavka:{Auth.NickKey(owner)}:{item.Id}"))
                 return No($"Бракує {Math.Max(1, item.Price - economy.Balance(nick))} 🏺");
             store.Own(owner, item.Id, to is null ? "buy" : "gift", to is null ? null : nick, item.Price, clock.UtcNow);
-            if (item.Kind != LavkaKind.Perk && (to is null || store.Worn(owner, item.Kind) is null)) store.Wear(owner, item.Kind, item.Id);
+            // своє тло без картинки вдягати нема чого: воно вдягнеться саме, щойно людина її поставить
+            if (item.Kind != LavkaKind.Perk && item.Id != LavkaCatalog.OwnBg && (to is null || store.Worn(owner, item.Kind) is null))
+                store.Wear(owner, item.Kind, item.Id);
         }
 
         // Черепки вже списано: розсилка може спіткнутись, але зробити купівлю невдалою вона не має права.
@@ -956,6 +1020,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         LavkaKind.Frame => $"«{i.Title} рамка» тепер твоя назавжди — уже на аватарці",
         LavkaKind.Color => $"Колір ніка «{i.Title}» тепер твій назавжди — уже світиться",
         LavkaKind.Title => $"Титул «{i.Title}» тепер твій назавжди — уже біля ніка",
+        LavkaKind.Bg when i.Id == LavkaCatalog.OwnBg => "«Своє тло» тепер твоє назавжди — обери картинку, і вона ляже в шапку профілю",
         LavkaKind.Bg => $"Тло «{i.Title}» тепер твоє назавжди — уже в профілі",
         LavkaKind.Anthem when i.Id == LavkaCatalog.OwnAnthem => "«Свій трек» тепер твій назавжди — обери пісню й уривок, і він зазвучить, коли виграєш",
         LavkaKind.Anthem => $"Гімн «{i.Title}» тепер твій назавжди — зазвучить за столом, коли виграєш",
@@ -1120,6 +1185,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         if (LavkaCatalog.Get(itemId) is not { } item) return new(false, NoItem);
         if (item.Kind != s) return new(false, WrongSlot);
         if (!Has(nick, item)) return new(false, item.Ach is { } ach ? $"Цей титул дає ачівка «{AchTitle(ach)}»" : NotOwned);
+        if (item.Id == LavkaCatalog.OwnBg && store.BgPhoto(nick) is null) return new(false, NoOwnBg);
         lock (_gate) store.Wear(nick, s, item.Id);
         if (seen) Announce(nick);
         return new(true, "Вдягнуто");

@@ -126,6 +126,9 @@ public static class LavkaSetup
         services.TryAddSingleton<IRings>(sp => sp.GetRequiredService<Lavka>());
         services.TryAddSingleton(_ => new LavkaPhotoDir(Paths.Resolve("data/avatars")));
         services.AddSingleton<LavkaPhotos>();
+        // Своє тло (записка #49) — так само, лише своя тека
+        services.TryAddSingleton(_ => new LavkaBgDir(Paths.Resolve("data/backgrounds")));
+        services.AddSingleton<LavkaBackgrounds>();
         // Свій трек і гімн переможця за столом (docs/games/specs/anthem.md)
         services.TryAddSingleton(_ => new AnthemDir(Paths.Resolve("data/anthems")));
         services.TryAddSingleton<IAnthemCutter, FfmpegAnthemCutter>();
@@ -152,6 +155,11 @@ public static class LavkaSetup
         api.MapGet("/photo/{file}", (string file, LavkaPhotos photos, HttpContext c) => PhotoFile(file, photos, c));
         api.MapGet("/photos", AdminPhotos);
         api.MapPost("/photos/remove", TakeDown);
+        api.MapPost("/bg", SetBg);
+        api.MapDelete("/bg", RemoveBg);
+        api.MapGet("/bg/{file}", (string file, LavkaBackgrounds bgs, HttpContext c) => BgFile(file, bgs, c));
+        api.MapGet("/bgs", AdminBgs);
+        api.MapPost("/bgs/remove", TakeDownBg);
         api.MapPost("/anthem", SetAnthem);
         api.MapPost("/anthem/fetch", FetchAnthemSource);
         api.MapPost("/anthem/track", CutAnthemTrack);
@@ -231,9 +239,12 @@ public static class LavkaSetup
     /// GET /api/lavka/photo/&lt;хеш ніка&gt;-&lt;версія&gt;.&lt;jpg|png|webp&gt; — саме фото. Тип — за магічними байтами файла,
     /// nosniff, кеш на рік: нове фото — нова адреса, тож старе з кешу ніде не вилізе. Чуже ім'я чи нема файла — 404.
     /// </summary>
-    public static IResult PhotoFile(string file, LavkaPhotos photos, HttpContext c)
+    public static IResult PhotoFile(string file, LavkaPhotos photos, HttpContext c) => PicFile(photos.Resolve(file), c);
+
+    /// <summary>Віддати картинку з диска: тип — за магічними байтами, nosniff, кеш на рік. Нема шляху чи не картинка — 404.</summary>
+    static IResult PicFile(string? path, HttpContext c)
     {
-        if (photos.Resolve(file) is not { } path) return Results.NotFound();
+        if (path is null) return Results.NotFound();
         Span<byte> head = stackalloc byte[16];
         int n;
         try
@@ -258,6 +269,37 @@ public static class LavkaSetup
     {
         if (!Auth.IsAdmin(c)) return Results.BadRequest(new { ok = false, message = "Це вміє лише розробник" });
         var r = photos.TakeDown(b.Nick);
+        return Reply(new LavkaReply(r.Ok, r.Message));
+    }
+
+    // ---------- своє тло (записка #49): ті самі правила, що й у фотки, лише банер і своя тека ----------
+
+    /// <summary>
+    /// POST /api/lavka/bg — тіло запиту й є картинка (JPEG/PNG/WebP, до <see cref="LavkaBackgrounds.MaxBytes"/>), обрізана
+    /// браузером банером 3:1. → { ok, message, url, readyAt }; поставлене тло одразу вдягається.
+    /// </summary>
+    public static async Task<IResult> SetBg(HttpContext c, LavkaBackgrounds bgs)
+    {
+        var bytes = await ReadCapped(c.Request.Body, LavkaBackgrounds.MaxBytes + 1, c.RequestAborted);
+        return PhotoReply(bgs.Set(Auth.Nick(c), Auth.IsUser(c), bytes));
+    }
+
+    /// <summary>DELETE /api/lavka/bg — прибрати своє тло. → { ok, message, url: null, readyAt }.</summary>
+    public static IResult RemoveBg(HttpContext c, LavkaBackgrounds bgs) => PhotoReply(bgs.Remove(Auth.Nick(c), Auth.IsUser(c)));
+
+    /// <summary>GET /api/lavka/bg/&lt;хеш ніка&gt;-&lt;версія&gt;.&lt;jpg|png|webp&gt; — саме тло; заголовки — як у фото.</summary>
+    public static IResult BgFile(string file, LavkaBackgrounds bgs, HttpContext c) => PicFile(bgs.Resolve(file), c);
+
+    /// <summary>GET /api/lavka/bgs — адміну: усі свої тла (нік, адреса, коли, розмір), свіжі згори.</summary>
+    public static IResult AdminBgs(HttpContext c, LavkaBackgrounds bgs) => !Auth.IsAdmin(c)
+        ? Results.BadRequest(new { ok = false, message = "Це бачить лише розробник" })
+        : Results.Ok(new { items = bgs.All().Select(p => new { nick = p.Nick, url = p.Url, at = p.At, bytes = p.Bytes }) });
+
+    /// <summary>POST /api/lavka/bgs/remove { nick } — адмін знімає тло. → { ok, message }.</summary>
+    public static IResult TakeDownBg(HttpContext c, TakeDownRequest b, LavkaBackgrounds bgs)
+    {
+        if (!Auth.IsAdmin(c)) return Results.BadRequest(new { ok = false, message = "Це вміє лише розробник" });
+        var r = bgs.TakeDown(b.Nick);
         return Reply(new LavkaReply(r.Ok, r.Message));
     }
 

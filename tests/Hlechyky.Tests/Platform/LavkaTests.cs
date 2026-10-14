@@ -156,7 +156,7 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(4, all.Count(i => i.Kind == LavkaKind.Frame));
         Assert.Equal(18, all.Count(i => i.Kind == LavkaKind.Color));       // 16 кольорів, жар і веселка
         Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Title));       // 8 купованих і 5 за ачівки
-        Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Bg));
+        Assert.Equal(6, all.Count(i => i.Kind == LavkaKind.Bg));          // 5 візерунків і «Своє тло» (LavkaBgTests)
         Assert.Equal(["dedication", "fireworks", "photo", "ring"], all.Where(i => i.Kind == LavkaKind.Perk).Select(i => i.Id));
         Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Anthem));     // 12 готових гімнів і «Свій трек» (AnthemTests)
         Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Fx));          // святкування перемоги (FlairTests)
@@ -185,6 +185,7 @@ public sealed class LavkaTests : IDisposable
     [InlineData("stars", 800, 0)]
     [InlineData("vyshyvanka", 1200, 0)]
     [InlineData("trypillia", 1500, 0)]
+    [InlineData("bgphoto", 2500, 0)]
     [InlineData("dedication", 1500, 0)]
     [InlineData("fireworks", 600, 0)]
     public void Prices_and_tiers_follow_the_contract(string id, int price, int tier)
@@ -280,7 +281,7 @@ public sealed class LavkaTests : IDisposable
         Assert.True(_r.Buy("Оля", "fireworks").Ok);
         var e = Views.Json(LavkaSetup.Shop(As("Оля"), _r.Lavka));
 
-        Assert.Equal(["account", "balance", "items", "worn", "perks", "phrases", "ownAnthem", "curses"], e.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["account", "balance", "items", "worn", "perks", "phrases", "ownBg", "ownAnthem", "curses"], e.EnumerateObject().Select(p => p.Name));
         Assert.True(e.GetProperty("account").GetBoolean());
         Assert.Equal(_r.Balance("Оля"), e.GetProperty("balance").GetInt32());
 
