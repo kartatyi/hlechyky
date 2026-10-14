@@ -1576,6 +1576,10 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 @media (max-width: 600px) {
   .who-head.lv-bgd.bg-own::before { background: linear-gradient(180deg, rgba(10, 14, 12, .5), rgba(10, 14, 12, .72)); }
 }
+/* На ПК шапка без тла ~110 px заввишки — від банера 3:1 лишалась тонка смужка посередині. Зі своїм тлом вона вища. */
+@media (min-width: 601px) {
+  .who-head.lv-bgd.bg-own { min-height: clamp(160px, 18vw, 240px); }
+}
 .bg-trypillia {
   background:
     radial-gradient(circle at 100% 50%, transparent 20%, #c0703a 21% 33%, transparent 34% 49%, #c0703a 50% 62%, transparent 63%) 0 0 / 48px 48px,
