@@ -2622,7 +2622,7 @@
   const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod'];
   const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія' };
-  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото людей', mod: 'Модерація Балачок' };
+  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото й тла людей', mod: 'Модерація Балачок' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
   // Старі адреси (закладки, посилання в балачках) ведуть туди, куди переїхали їхні сторінки.

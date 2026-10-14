@@ -1568,6 +1568,14 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
     radial-gradient(ellipse 20px 7px at 86% 12%, #388e3c 97%, transparent),
     linear-gradient(180deg, #161210, #0f0c0b) !important;
 }
+/* своє тло (записка #49): картинка банером 3:1 у style, cover по центру — на телефоні шапка вища й вужча, видно середину.
+   Фото буває світлим, тож тінь густіша, ніж на візерунках, а на вузькому екрані (кнопки знизу) — рівна по всій ширині. */
+.bg-own { background-size: cover !important; background-position: center !important; background-repeat: no-repeat !important; background-color: #151a17 !important; }
+.who-head.lv-bgd.bg-own::before { background: linear-gradient(90deg, rgba(10, 14, 12, .78) 0%, rgba(10, 14, 12, .5) 55%, rgba(10, 14, 12, .28)); }
+.lv-preview.bg-own::before { background: linear-gradient(90deg, rgba(10, 14, 12, .75), rgba(10, 14, 12, .3)) !important; }
+@media (max-width: 600px) {
+  .who-head.lv-bgd.bg-own::before { background: linear-gradient(180deg, rgba(10, 14, 12, .5), rgba(10, 14, 12, .72)); }
+}
 .bg-trypillia {
   background:
     radial-gradient(circle at 100% 50%, transparent 20%, #c0703a 21% 33%, transparent 34% 49%, #c0703a 50% 62%, transparent 63%) 0 0 / 48px 48px,
@@ -1642,6 +1650,7 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 .lv-emoji { font-size: 2.5em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
 .lv-art .lv-nick { font-family: var(--display); font-size: 1.15em; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lv-bg { display: block; width: 100%; height: 64px; border-radius: 10px; }
+.lv-bg-empty { display: grid; place-items: center; background: var(--panel3); border: 1px dashed var(--line); color: var(--muted); font-size: 1.6em; }
 .lv-art .lv-titlechip { align-self: center; font-size: .95em; padding: 3px 12px; }
 .lv-btns .ghost { border: 1px solid var(--line); }
 .lv-name { font-weight: 700; }
@@ -1707,6 +1716,20 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
   .lv-ph-main .lv-btns { justify-content: center; }
 }
 
+/* ---- полиця тла: «🖼 Своє тло» — панель над візерунками (банер + опис + кнопки) ---- */
+.lv-ownbg { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 14px; margin-bottom: 12px; border-radius: 12px; background: var(--bg2); border: 1px solid transparent; }
+.lv-ownbg.owned { border-color: #3d6a4d; }
+.lv-ownbg.worn { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2) inset; }
+.lv-ownbg-art { flex: none; width: 270px; max-width: 100%; aspect-ratio: 3 / 1; border-radius: 10px; }
+.lv-ownbg-art.lv-bg-empty { display: flex; flex-direction: column; gap: 2px; height: auto; }
+.lv-ownbg-art.lv-bg-empty .muted { font-size: .5em; }
+@media (max-width: 600px) {
+  .lv-ownbg { flex-direction: column; text-align: center; }
+  .lv-ownbg-art { width: 100%; }
+  .lv-ownbg .lv-ph-main { min-width: 0; width: 100%; }
+  .lv-ownbg .lv-btns { justify-content: center; }
+}
+
 /* ---- вікно обрізки: квадратне полотно, поза колом — затемнено ---- */
 .lv-crop .card { width: min(94vw, 380px); max-height: 96vh; max-height: 96dvh; overflow: auto; }
 .lv-crop-stage {
@@ -1723,11 +1746,19 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 .lv-crop-zoom { display: flex; align-items: center; gap: 8px; font-size: .9em; color: var(--muted); }
 .lv-crop-zoom input { flex: 1; min-width: 0; accent-color: var(--accent); }
 @media (max-height: 640px) { .lv-crop-stage { width: min(78vw, 250px); height: min(78vw, 250px); } }
+/* своє тло: банер 3:1 на всю ширину картки; пунктир посередині — що лишиться видно в шапці на телефоні */
+.lv-crop.wide .card { width: min(96vw, 560px); }
+.lv-crop.wide .lv-crop-stage { width: 100%; height: auto; aspect-ratio: 3 / 1; border-radius: 10px; }
+.lv-crop-frame { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .75); }
+.lv-crop-mid { position: absolute; top: 0; bottom: 0; left: 14%; right: 14%; pointer-events: none; border-left: 2px dashed rgba(255, 255, 255, .6); border-right: 2px dashed rgba(255, 255, 255, .6); }
 
 /* ---- адміну: усі фотки з кнопкою «Зняти» ---- */
 .lv-adm-note { margin-bottom: 10px; }
 .list.lv-adm li.lv-adm-row { grid-template-columns: 56px 1fr auto; gap: 12px; }
 .list .lv-adm-img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; display: block; background: var(--panel3); }
+.list.lv-adm li.lv-adm-row.wide { grid-template-columns: 132px 1fr auto; }
+.list .lv-adm-img.wide { width: 132px; height: 44px; border-radius: 6px; }
+.lv-adm-h { margin: 18px 0 6px; font-size: 1.05em; }
 .lv-adm-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .lv-adm-row button { border: 1px solid var(--line); }
 

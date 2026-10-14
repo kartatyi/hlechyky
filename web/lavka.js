@@ -13,6 +13,8 @@
   /curse/ransom { id }, /curse/reveal { id } (GET /api/lavka дає curses.onMe і curses.mine); вміння ring — картка на
   полиці гімнів, POST /api/lavka/ring { item } (worn.ring); полиця fx — звичайні купити/вдягти/подарувати, ▶ грає
   святкування на самій картці (app.js playFx).
+  🖼 Своє тло (записка #49): річ полиці bg (id bgphoto, art own) — POST /api/lavka/bg (тіло — банер 3:1, обрізаний тут),
+  DELETE /api/lavka/bg; GET /api/lavka дає ownBg { url, readyAt }, вигляд інших — bg: 'own' + bgUrl. Адміну — /api/lavka/bgs.
 
   Хто як виглядає, знає цей модуль: web/people.js питає look(nick) для кольору, значка й рамки — тому куплене видно
   скрізь, де є нік: балачки, черга, столи, таблиці, картка, профіль.
@@ -71,6 +73,12 @@
   const CURSE_REVEAL = 300;
   const OWN_ANTHEM = 'own-anthem';
   const OWN_ANTHEM_TEXT = 'Шматок своєї пісні — з телефона чи з пошуку радіо: 5–15 секунд, звідки захочеш. Звучить за столом, коли виграєш. Міняти — безкоштовно, раз на 2 хвилини.';
+  /// «Своє тло» (записка #49): річ полиці тла, art = 'own', а картинка — у data.ownBg.url (у вигляді інших — bgUrl).
+  const OWN_BG = 'bgphoto';
+  const OWN_BG_TEXT = 'Своя картинка в шапці профілю замість візерунка — банером 3:1. Поверх лягає темна тінь, тож нік і кнопки читаються. Вдягнеш візерунок — своє зніметься (картинка лишиться). Міняти — безкоштовно, раз на добу.';
+  /// Адреса свого тла — лише наша й з версією: у style="background-image:url(…)" іншого не пускаємо.
+  const BG_URL = /^\/api\/lavka\/bg\/[0-9a-f]{16}-[0-9a-f]{12}\.(jpg|png|webp)$/;
+  const bgUrlOk = (u) => (BG_URL.test(String(u || '')) ? u : null);
 
   // =============================================================================================
   // Відмінки ніка — той самий порядок, що й NickCases.cs на сервері: «дарує Петрові», «для Олі», «гостю Васі».
@@ -185,12 +193,21 @@
   const artCls = (color) => (window.HPeople && window.HPeople.artCls ? window.HPeople.artCls(color)
     : color === 'rainbow' || color === 'zhar' ? color : '');
   /// Як виглядала б людина, якби вдягла ще й те, що зараз приміряє. Своя фотка не приміряється — вона або стоїть, або ні.
+  /// Своє тло — як візерунок, але з адресою картинки (bgUrl); без картинки його ніби й нема.
   function lookWith(extra) {
     const w = Object.assign({}, (data && data.worn) || {}, extra || {});
     const art = (slot) => { const it = item(w[slot]); return it ? it.art : null; };
     const ph = data && data.perks && data.perks.photo;
-    return { icon: art('icon'), frame: art('frame'), color: art('color'), title: art('title'), bg: art('bg'), photo: (ph && ph.url) || null };
+    const own = bgUrlOk(data && data.ownBg && data.ownBg.url);
+    let bg = art('bg');
+    if (bg === 'own' && !own) bg = null;
+    const l = { icon: art('icon'), frame: art('frame'), color: art('color'), title: art('title'), bg, photo: (ph && ph.url) || null };
+    if (bg === 'own') l.bgUrl = own;
+    return l;
   }
+  /// Клас і стиль тла для шапки: візерунок — класом, своє тло — ще й картинкою (cover по центру, style.css .bg-own).
+  const bgCls = (l) => (l && l.bg && (l.bg !== 'own' || bgUrlOk(l.bgUrl)) ? ' bg-' + esc(l.bg) : '');
+  const bgStyle = (l) => (l && l.bg === 'own' && bgUrlOk(l.bgUrl) ? ' style="background-image:url(\'' + l.bgUrl + '\')"' : '');
   function avaOf(nick, l, cls) {
     // той самий кружечок, що й скрізь на сайті (people.js), лише без data-ava: це вітрина, а не людина
     if (window.HPeople && window.HPeople.avaHtml) return window.HPeople.avaHtml(nick, l, cls);
@@ -212,7 +229,12 @@
       case 'frame': return avaOf(me, Object.assign(lookWith(), { frame: it.art }), 'ava xxl');
       case 'color': return nickOf(me, { color: it.art });
       case 'title': return '<span class="lv-titlechip">' + esc(it.art) + '</span>';
-      case 'bg': return '<span class="lv-bg bg-' + esc(it.art) + '"></span>';
+      case 'bg':
+        if (it.id === OWN_BG) {
+          const u = bgUrlOk(data && data.ownBg && data.ownBg.url);
+          return u ? '<span class="lv-bg bg-own"' + bgStyle({ bg: 'own', bgUrl: u }) + '></span>' : '<span class="lv-bg lv-bg-empty">🖼</span>';
+        }
+        return '<span class="lv-bg bg-' + esc(it.art) + '"></span>';
       case 'perk': return '<span class="lv-emoji">' + (it.id === 'fireworks' ? '🎆' : it.id === 'photo' ? '📷' : it.id === RING ? '🔔' : '💌') + '</span>';
       case 'anthem': return '<span class="lv-emoji">' + emo((it.art && it.art.emoji) || '🎺') + '</span>';
       case 'curse': return '<span class="lv-emoji">' + emo(artEmoji(it) || '😈') + '</span>';
@@ -252,6 +274,9 @@
       btns = it.season && !it.season.open ? '<button disabled>Не сезон</button>'
         : short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
           : '<button class="primary" data-gift="' + it.id + '">🎁 Подарувати</button>';
+    } else if (it.id === OWN_BG && tab === 'bg') {
+      // Своє тло — панель на всю ширину над візерунками: купити, обрати картинку, вдягти, прибрати
+      return ownBgPanel(it);
     } else if (it.id === OWN_ANTHEM && tab === 'anthem' && (it.owned || acc)) {
       // Свій трек — панель: послухати й обрати уривок можна ще до покупки, «Зберегти» спершу купує
       return ownAnthemPanel(it);
@@ -259,6 +284,10 @@
       // фотка — не «готове / ще N хв», а своя полиця: там її ставлять, міняють і прибирають
       state = '✓ твоє' + (perk && perk.url ? ' · фото стоїть' : '');
       btns = '<button class="primary" data-go="#lavka/photo">📷 ' + (perk && perk.url ? 'Фото' : 'Поставити фото') + '</button>';
+    } else if (it.owned && it.id === OWN_BG && !(data.ownBg && data.ownBg.url)) {
+      // у шафі: без картинки вдягати нічого — веде на полицю тла
+      state = '✓ твоє — картинку ще не обрано';
+      btns = '<button class="primary" data-go="#lavka/bg">🖼 Обрати картинку</button>';
     } else if (it.owned && it.id === RING) {
       state = '✓ твоє';
       btns = '<button class="primary" data-go="#lavka/anthem">🔔 Обрати дзвінок</button>';
@@ -282,7 +311,8 @@
     const url = (it.kind === 'anthem' || it.kind === 'curse') && artUrl(it);
     const tryBtn = url ? '<button class="ghost" type="button" data-anth="' + esc(url) + '" title="Прослухати — нічого не купує">▶</button>'
       : it.kind === 'fx' ? '<button class="ghost" type="button" data-fx-try="' + esc(it.id) + '" title="Подивитись — нічого не купує">▶</button>'
-      : !['perk', 'anthem', 'curse'].includes(it.kind) && !gift && !it.worn ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
+      : !['perk', 'anthem', 'curse'].includes(it.kind) && !gift && !it.worn && !(it.id === OWN_BG && !(data.ownBg && data.ownBg.url))
+        ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
     // У подарунку «моє / вдягнуто» ні до чого: річ вибирають для іншої людини.
     const mine = !gift;
     return '<div class="lv-item' + (mine && it.owned ? ' owned' : '') + (mine && it.worn ? ' worn' : '') + (it.earned && !it.owned ? ' locked' : '')
@@ -291,6 +321,7 @@
       + '<div class="lv-name">' + esc(it.title) + (it.tier ? ' <span class="muted small">· ' + TIER[it.tier] + '</span>' : '') + '</div>'
       + (it.kind === 'perk' ? '<div class="muted small lv-desc">' + esc(PERK_TEXT[it.id] || '') + '</div>' : '')
       + (it.id === OWN_ANTHEM ? '<div class="muted small lv-desc">' + esc(OWN_ANTHEM_TEXT) + '</div>' : '')
+      + (it.id === OWN_BG ? '<div class="muted small lv-desc">' + esc(OWN_BG_TEXT) + '</div>' : '')
       + (it.kind === 'fx' && FX_TEXT[it.id] ? '<div class="muted small lv-desc">' + esc(FX_TEXT[it.id]) + '</div>' : '')
       + (it.kind === 'curse' && CURSE_TEXT[it.id] ? '<div class="muted small lv-desc">' + esc(CURSE_TEXT[it.id]) + '</div>' : '')
       + (url ? '<div class="muted small lv-dur" data-dur="' + esc(url) + '">' + durText(url) + '</div>' : '')
@@ -302,7 +333,7 @@
     const me = (o && o.me && o.me.nick) || 'Ти';
     const l = lookWith(preview);
     const trying = Object.keys(preview).length;
-    return '<div class="lv-preview' + (l.bg ? ' bg-' + esc(l.bg) : '') + '">'
+    return '<div class="lv-preview' + bgCls(l) + '"' + bgStyle(l) + '>'
       + avaOf(me, l, 'ava xxl')
       + '<div class="lv-pv-who">' + nickOf(me, l) + (l.title ? '<span class="lv-titlechip">' + esc(l.title) + '</span>' : '')
       + '<span class="muted small">' + (trying ? 'Приміряєш — нічого ще не куплено' : 'Так тебе бачать інші') + '</span></div>'
@@ -380,7 +411,10 @@
     const tabs = '<nav class="lv-tabs" aria-label="Полиці лавки">' + TABS.filter(([k]) => !(giftTo && NO_GIFT.includes(k))).map(([k, l]) =>
       '<button type="button" data-tab="' + k + '"' + (k === tab ? ' class="on"' : '') + '>' + l + '</button>').join('') + '</nav>';
     // Свій трек — панель на всю ширину над готовими гімнами, а не одна з карток: акаунту — ще до покупки (спершу послухай).
-    const own = tab === 'anthem' && !giftTo ? shelf.find((x) => x.id === OWN_ANTHEM && (x.owned || acc)) : null;
+    // Своє тло — так само над візерунками (у подарунку — звичайна картка).
+    const own = giftTo ? null
+      : tab === 'anthem' ? shelf.find((x) => x.id === OWN_ANTHEM && (x.owned || acc))
+        : tab === 'bg' ? shelf.find((x) => x.id === OWN_BG) : null;
     const cardsOf = own ? shelf.filter((x) => x !== own) : shelf;
     const body = tab === 'photo' ? photoPanel()
       : tab === 'roast' ? '<div class="la-host" data-la-host></div>'
@@ -421,8 +455,10 @@
     root.querySelectorAll('[data-wear]').forEach((b) => b.onclick = (e) => wear(item(b.dataset.wear).kind, b.dataset.wear, e.currentTarget));
     root.querySelectorAll('[data-off]').forEach((b) => b.onclick = (e) => wear(b.dataset.off, null, e.currentTarget));
     // Файл вибираємо просто в обробнику кліку: Safari відкриває вибір фото лише з живого натиску.
-    root.querySelectorAll('[data-ph-pick]').forEach((b) => b.onclick = () => pickPhoto());
+    root.querySelectorAll('[data-ph-pick]').forEach((b) => b.onclick = () => pickPhoto('photo'));
     root.querySelectorAll('[data-ph-off]').forEach((b) => b.onclick = (e) => removePhoto(e.currentTarget));
+    root.querySelectorAll('[data-bg-pick]').forEach((b) => b.onclick = () => pickPhoto('bg'));
+    root.querySelectorAll('[data-bg-off]').forEach((b) => b.onclick = (e) => removeBg(e.currentTarget));
     wireAnthems(root);
     wireFlair(root);
   }
@@ -448,12 +484,14 @@
   async function buy(id, forNick, btn) {
     const it = item(id);
     if (!it) return;
+    const noWear = it.kind === 'perk' || it.id === OWN_BG;   // своє тло вдягається, щойно поставиш картинку
     const yes = await ask(forNick ? '🎁 Подарунок' : 'Купити?',
       forNick
         ? 'Подарувати <b>' + esc(dative(forNick)) + '</b> «' + esc(it.title) + '» за <b>' + it.price + ' 🏺</b>? Подарунок лишиться в людини назавжди'
-          + (it.kind === 'perk' ? '.' : ', а якщо це місце в неї порожнє — одразу вдягнеться.')
-        : '<b>' + esc(it.title) + '</b> за <b>' + it.price + ' 🏺</b>. Річ лишиться твоєю назавжди' + (it.kind === 'perk' ? '.' : ' — і одразу вдягнеться.')
-          + (it.id === OWN_ANTHEM ? ' Далі обереш пісню — з телефона чи з пошуку радіо — і шматок, який звучатиме.' : ''),
+          + (noWear ? '.' : ', а якщо це місце в неї порожнє — одразу вдягнеться.')
+        : '<b>' + esc(it.title) + '</b> за <b>' + it.price + ' 🏺</b>. Річ лишиться твоєю назавжди' + (noWear ? '.' : ' — і одразу вдягнеться.')
+          + (it.id === OWN_ANTHEM ? ' Далі обереш пісню — з телефона чи з пошуку радіо — і шматок, який звучатиме.' : '')
+          + (it.id === OWN_BG ? ' Далі обереш картинку — вона ляже банером у шапку профілю.' : ''),
       forNick ? 'Подарувати' : 'Купити');
     if (!yes) return;
     await o.busy(btn, forNick ? 'дарую…' : 'купую…', async () => {
@@ -489,6 +527,62 @@
   const PH_OUT = 256;                  // сторона картинки, яку шлемо на сервер
   const PH_MAX = 190 * 1024;           // сервер бере до 200 КБ — лишаємо запас
   const PH_ZOOM = 4;                   // найбільше збільшення в обрізці
+  /// Що обрізаємо: фотку (кружечок 256×256) чи своє тло (банер 3:1, 1200×400; сервер бере до 400 КБ — шлемо до 300).
+  const CROP = {
+    photo: {
+      title: '📷 Своя фотка', w: PH_OUT, h: PH_OUT, max: PH_MAX, url: '/api/lavka/photo', other: 'Інше фото', saved: 'Фото стоїть',
+      hint: 'Посунь фото мишкою чи пальцем, збільш коліщатком, щипком або повзунком. <b>Фото бачать усі на сайті.</b>',
+    },
+    bg: {
+      title: '🖼 Своє тло', w: 1200, h: 400, max: 300 * 1024, url: '/api/lavka/bg', other: 'Інша картинка', saved: 'Тло стоїть',
+      hint: 'Посунь картинку й збільш, як треба. Пунктир — що видно в шапці на телефоні (вона там вужча). <b>Тло бачать усі на сайті.</b>',
+    },
+  };
+
+  /// Полиця тла: своє тло — панель на всю ширину над візерунками, як «Свій трек» над гімнами.
+  function ownBgPanel(it) {
+    const p = data.ownBg || {};
+    const url = bgUrlOk(p.url);
+    const short = it.price - (data.balance || 0);
+    let state, btns;
+    if (!it.owned) {
+      state = it.price + ' 🏺 · назавжди';
+      btns = !data.account ? '<button disabled title="Лише для акаунтів">Купити</button>'
+        : short > 0 ? '<button disabled>Бракує ' + short + ' 🏺</button>'
+          : '<button class="primary" data-buy="' + OWN_BG + '">Купити</button>';
+    } else {
+      const wait = p.readyAt && Date.parse(p.readyAt) > Date.now() ? readyIn(p.readyAt) : '';
+      state = !url ? '✓ твоє — картинку ще не обрано' : it.worn ? '✓ вдягнуто' : '✓ картинка є — зараз не вдягнута';
+      if (wait) state += ' · нова — ' + wait;
+      btns = '<button class="primary" type="button" data-bg-pick' + (wait ? ' disabled title="Нову картинку — раз на добу"' : '') + '>🖼 '
+        + (url ? 'Змінити картинку' : 'Обрати картинку') + '</button>'
+        + (url ? (it.worn ? '<button class="ghost" data-off="bg">Зняти</button>' : '<button class="ghost" data-wear="' + OWN_BG + '">Вдягти</button>')
+          + '<button class="ghost" type="button" data-bg-off>Прибрати картинку</button>' : '');
+    }
+    return '<div class="lv-ownbg' + (it.owned ? ' owned' : '') + (it.worn && url ? ' worn' : '') + '" data-id="' + OWN_BG + '">'
+      + (url ? '<div class="lv-ownbg-art bg-own"' + bgStyle({ bg: 'own', bgUrl: url }) + '></div>'
+        : '<div class="lv-ownbg-art lv-bg-empty"><span>🖼</span><span class="muted small">банер 3:1</span></div>')
+      + '<div class="lv-ph-main"><div class="lv-name">🖼 Своє тло</div>'
+      + '<div class="muted small lv-desc">' + esc(OWN_BG_TEXT) + '</div>'
+      + '<div class="lv-state">' + state + '</div>'
+      + '<div class="lv-btns">' + btns + '</div></div></div>';
+  }
+
+  async function removeBg(btn) {
+    const p = (data && data.ownBg) || {};
+    const yes = await ask('Прибрати картинку?', 'Своє тло зникне з профілю, файл видалиться. Поставити нову можна буде '
+      + (p.readyAt && Date.parse(p.readyAt) > Date.now() ? '<b>' + esc(readyIn(p.readyAt)) + '</b> — раз на добу.' : 'будь-коли.'), 'Прибрати');
+    if (!yes) return;
+    await o.busy(btn, 'прибираю…', async () => {
+      try {
+        const r = await o.api('DELETE', '/api/lavka/bg');
+        o.toast(r.message || 'Тло прибрано', 'ok');
+        await load();
+        paint();
+        if (o.onMine) o.onMine();
+      } catch (e) { o.toast(e.message, 'err'); }
+    });
+  }
 
   function photoPanel() {
     const it = item('photo');
@@ -522,8 +616,10 @@
   }
 
   let phInput = null;
+  let phMode = 'photo';                // що обрізатимемо, коли файл оберуть: photo чи bg (CROP)
   /// Вибір файла. На телефоні accept="image/*" дає галерею чи камеру, а Safari сам перетворює HEIC на JPEG.
-  function pickPhoto() {
+  function pickPhoto(mode) {
+    phMode = CROP[mode] ? mode : 'photo';
     if (!phInput) {
       phInput = document.createElement('input');
       phInput.type = 'file';
@@ -535,7 +631,7 @@
         if (!f) return;
         let src;
         try { src = await loadImage(f); } catch (e) { o.toast(e.message, 'err'); return; }
-        cropper(src);
+        cropper(src, phMode);
       };
       document.body.appendChild(phInput);
     }
@@ -557,67 +653,75 @@
     });
   }
 
-  /// Шматок src (квадрат sx, sy, side у пікселях фото) → canvas out×out. Зменшуємо вдвічі за крок: одним махом із
-  /// 4000 px до 256 браузер (особливо Safari) дає «пісок» замість обличчя.
-  function shrink(src, sx, sy, side, out) {
-    let from = src.img, fx = sx, fy = sy, fs = side;
-    while (fs / 2 >= out * 1.4) {
-      const n = Math.round(fs / 2);
+  /// Шматок src (прямокутник sx, sy, sw×sh у пікселях фото) → canvas outW×outH. Зменшуємо вдвічі за крок: одним махом
+  /// із 4000 px до 256 браузер (особливо Safari) дає «пісок» замість обличчя.
+  function shrink(src, sx, sy, sw, sh, outW, outH) {
+    let from = src.img, fx = sx, fy = sy, fw = sw, fh = sh;
+    while (fw / 2 >= outW * 1.4) {
+      const nw = Math.round(fw / 2), nh = Math.max(1, Math.round(fh / 2));
       const t = document.createElement('canvas');
-      t.width = t.height = n;
+      t.width = nw;
+      t.height = nh;
       const g = t.getContext('2d');
       g.imageSmoothingQuality = 'high';
-      g.drawImage(from, fx, fy, fs, fs, 0, 0, n, n);
-      from = t; fx = 0; fy = 0; fs = n;
+      g.drawImage(from, fx, fy, fw, fh, 0, 0, nw, nh);
+      from = t; fx = 0; fy = 0; fw = nw; fh = nh;
     }
     const c = document.createElement('canvas');
-    c.width = c.height = out;
+    c.width = outW;
+    c.height = outH;
     const g = c.getContext('2d');
     g.fillStyle = '#1b211d';                   // JPEG прозорості не знає: прозоре тло PNG стане темним, а не чорним
-    g.fillRect(0, 0, out, out);
+    g.fillRect(0, 0, outW, outH);
     g.imageSmoothingQuality = 'high';
-    g.drawImage(from, fx, fy, fs, fs, 0, 0, out, out);
+    g.drawImage(from, fx, fy, fw, fh, 0, 0, outW, outH);
     return c;
   }
 
   const toBlob = (c, type, q) => new Promise((done) => c.toBlob(done, type, q));
   /// WebP — якщо canvas справді дав WebP (старий Safari мовчки віддає PNG), інакше JPEG; якість — поки не влізе.
-  async function encode(c) {
+  async function encode(c, max) {
     const probe = await toBlob(c, 'image/webp', 0.85);
     const webp = !!probe && probe.type === 'image/webp';
     for (const q of [0.85, 0.75, 0.6, 0.45]) {
       const b = webp && q === 0.85 ? probe : await toBlob(c, webp ? 'image/webp' : 'image/jpeg', q);
-      if (b && b.size <= PH_MAX) return b;
+      if (b && b.size <= max) return b;
     }
     return null;
   }
 
-  /// Кругле вікно обрізки: тягнути (миша, палець), збільшувати (коліщатко, щипок, повзунок, клавіші), «Зберегти».
-  function cropper(src) {
+  /// Вікно обрізки: тягнути (миша, палець), збільшувати (коліщатко, щипок, повзунок, клавіші), «Зберегти». Фотка —
+  /// квадрат із колом, своє тло — банер 3:1 (CROP[mode]: розмір, ліміт, куди слати).
+  function cropper(src, mode) {
+    const m = CROP[mode] || CROP.photo;
+    const wide = m.w !== m.h;
     const wrap = document.createElement('div');
-    wrap.className = 'modal lv-crop';
-    wrap.innerHTML = '<div class="card" role="dialog" aria-modal="true" aria-label="Своя фотка: обрізати"><h3>📷 Своя фотка</h3>'
-      + '<div class="lv-crop-stage" tabindex="0" aria-label="Фото. Стрілки — посунути, плюс і мінус — збільшити"><canvas></canvas><i class="lv-crop-ring"></i></div>'
+    wrap.className = 'modal lv-crop' + (wide ? ' wide' : '');
+    wrap.innerHTML = '<div class="card" role="dialog" aria-modal="true" aria-label="' + esc(m.title) + ': обрізати"><h3>' + esc(m.title) + '</h3>'
+      + '<div class="lv-crop-stage" tabindex="0" aria-label="Картинка. Стрілки — посунути, плюс і мінус — збільшити"><canvas></canvas>'
+      + (wide ? '<i class="lv-crop-frame"></i><i class="lv-crop-mid"></i>' : '<i class="lv-crop-ring"></i>') + '</div>'
       + '<label class="lv-crop-zoom"><span aria-hidden="true">🔍−</span><input type="range" min="1" max="' + PH_ZOOM + '" step="0.01" value="1" aria-label="Збільшення"><span aria-hidden="true">+</span></label>'
-      + '<div class="muted small">Посунь фото мишкою чи пальцем, збільш коліщатком, щипком або повзунком. <b>Фото бачать усі на сайті.</b></div>'
-      + '<div class="row"><button class="primary" type="button" data-yes>Зберегти</button><button class="ghost" type="button" data-other>Інше фото</button>'
+      + '<div class="muted small">' + m.hint + '</div>'
+      + '<div class="row"><button class="primary" type="button" data-yes>Зберегти</button><button class="ghost" type="button" data-other>' + esc(m.other) + '</button>'
       + '<button class="ghost" type="button" data-no>Скасувати</button></div></div>';
     document.body.appendChild(wrap);
     const stage = wrap.querySelector('.lv-crop-stage');
     const cv = stage.querySelector('canvas');
     const zoom = wrap.querySelector('input[type=range]');
-    const S = stage.clientWidth || 280;        // сторона вікна в CSS-пікселях
+    const S = stage.clientWidth || 280;        // ширина вікна в CSS-пікселях
+    const SH = Math.round(S * m.h / m.w);     // і висота — у пропорції того, що шлемо
     const dpr = Math.min(3, window.devicePixelRatio || 1);
-    cv.width = cv.height = Math.round(S * dpr);
+    cv.width = Math.round(S * dpr);
+    cv.height = Math.round(SH * dpr);
     const ctx = cv.getContext('2d');
     ctx.imageSmoothingQuality = 'high';
-    const base = S / Math.min(src.w, src.h);  // коротша сторона фото якраз заповнює вікно
+    const base = Math.max(S / src.w, SH / src.h);  // фото якраз покриває вікно — без порожніх смуг
     let z = 1;
-    let ox = (S - src.w * base) / 2, oy = (S - src.h * base) / 2;   // де лівий верхній кут фото відносно вікна
+    let ox = (S - src.w * base) / 2, oy = (SH - src.h * base) / 2;   // де лівий верхній кут фото відносно вікна
     const k = () => base * z;
     const clamp = () => {
       ox = Math.min(0, Math.max(S - src.w * k(), ox));
-      oy = Math.min(0, Math.max(S - src.h * k(), oy));
+      oy = Math.min(0, Math.max(SH - src.h * k(), oy));
     };
     let raf = 0;
     const draw = () => {
@@ -676,13 +780,13 @@
       const r = stage.getBoundingClientRect();
       zoomTo(z * Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
     }, { passive: false });
-    zoom.oninput = () => zoomTo(+zoom.value, S / 2, S / 2);
+    zoom.oninput = () => zoomTo(+zoom.value, S / 2, SH / 2);
     stage.addEventListener('keydown', (e) => {
       const step = e.shiftKey ? 40 : 10;
       const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };   // фото їде туди, куди стрілка
       if (moves[e.key]) { ox += moves[e.key][0]; oy += moves[e.key][1]; clamp(); redraw(); }
-      else if (e.key === '+' || e.key === '=') zoomTo(z * 1.1, S / 2, S / 2);
-      else if (e.key === '-') zoomTo(z / 1.1, S / 2, S / 2);
+      else if (e.key === '+' || e.key === '=') zoomTo(z * 1.1, S / 2, SH / 2);
+      else if (e.key === '-') zoomTo(z / 1.1, S / 2, SH / 2);
       else return;
       e.preventDefault();
     });
@@ -696,17 +800,19 @@
     document.addEventListener('keydown', onKey, true);
     wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
     wrap.querySelector('[data-no]').onclick = close;
-    wrap.querySelector('[data-other]').onclick = () => { close(); pickPhoto(); };
+    wrap.querySelector('[data-other]').onclick = () => { close(); pickPhoto(mode); };
     wrap.querySelector('[data-yes]').onclick = (e) => o.busy(e.currentTarget, 'зберігаю…', async () => {
-      const side = S / k();
-      const sx = Math.max(0, Math.min(src.w - side, -ox / k()));
-      const sy = Math.max(0, Math.min(src.h - side, -oy / k()));
-      const blob = await encode(shrink(src, sx, sy, side, PH_OUT));
-      if (!blob) { o.toast('Не вдалось стиснути фото — спробуй інше', 'err'); return; }
+      const sw = S / k(), sh = SH / k();
+      const sx = Math.max(0, Math.min(src.w - sw, -ox / k()));
+      const sy = Math.max(0, Math.min(src.h - sh, -oy / k()));
+      // мале фото не роздуваємо: банер — не ширший за те, що було в обраному шматку
+      const outW = Math.max(1, Math.min(m.w, Math.round(sw))), outH = Math.max(1, Math.round(outW * m.h / m.w));
+      const blob = await encode(shrink(src, sx, sy, sw, sh, wide ? outW : m.w, wide ? outH : m.h), m.max);
+      if (!blob) { o.toast('Не вдалось стиснути картинку — спробуй іншу', 'err'); return; }
       try {
-        const r = await upload(blob);
+        const r = await upload(blob, m.url);
         close();
-        o.toast(r.message || 'Фото стоїть', 'ok');
+        o.toast(r.message || m.saved, 'ok');
         await load();
         paint();
         if (o.onMine) o.onMine();
@@ -716,8 +822,8 @@
   }
 
   /// Тіло запиту — сама картинка: так найменше байтів і нічого розбирати на сервері, крім магічних байтів.
-  async function upload(blob) {
-    const r = await fetch('/api/lavka/photo', {
+  async function upload(blob, url) {
+    const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': blob.type || 'application/octet-stream', 'X-Nick': encodeURIComponent((o.me && o.me.nick) || '') },
       body: blob,
@@ -1216,7 +1322,7 @@
         + '<div class="lv-adm-who">' + who(x.nick) + '<span class="muted small">' + esc(when(x.at)) + ' · ' + Math.max(1, Math.round((x.bytes || 0) / 1024)) + ' КБ</span></div>'
         + '<button class="ghost" type="button" data-down="' + esc(x.nick) + '">Зняти</button></li>').join('')
         || '<li class="empty glek">Ще ніхто не поставив своє фото.</li>') + '</ul>'
-      + '<div class="lv-adm-anth"></div>';
+      + '<div class="lv-adm-bg"></div><div class="lv-adm-anth"></div>';
     box.querySelectorAll('[data-down]').forEach((b) => b.onclick = async (e) => {
       const nick = b.dataset.down;
       const btn = e.currentTarget;
@@ -1229,7 +1335,38 @@
         } catch (err) { o.toast(err.message, 'err'); }
       });
     });
+    await adminBgs(box.querySelector('.lv-adm-bg'));
     await adminAnthems(box.querySelector('.lv-adm-anth'));
+  }
+
+  /// Адміну: свої тла (записка #49) — окремим блоком під фотками, з тим самим «Зняти».
+  async function adminBgs(box) {
+    if (!box) return;
+    let items = [];
+    try { items = ((await o.api('GET', '/api/lavka/bgs')) || {}).items || []; }
+    catch (e) { box.innerHTML = '<div class="empty">Тла не відкрились: ' + esc(e.message) + '</div>'; return; }
+    const P = window.HPeople;
+    const who = (n) => (P && P.nickLink ? P.nickLink(n, 'rnick') : '<b>' + esc(n) + '</b>');
+    box.innerHTML = '<h3 class="lv-adm-h">🖼 Своє тло</h3>'
+      + '<div class="muted small lv-adm-note">Картинки в шапках профілів, свіжі згори. «Зняти» прибирає картинку (файл — геть), '
+      + 'а річ лишається: людина одразу може поставити іншу.</div>'
+      + '<ul class="list lv-adm">' + (items.map((x) => '<li class="lv-adm-row wide">'
+        + '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" title="Відкрити тло"><img class="lv-adm-img wide" src="' + esc(x.url) + '" alt="тло ' + esc(x.nick) + '" loading="lazy" decoding="async"></a>'
+        + '<div class="lv-adm-who">' + who(x.nick) + '<span class="muted small">' + esc(when(x.at)) + ' · ' + Math.max(1, Math.round((x.bytes || 0) / 1024)) + ' КБ</span></div>'
+        + '<button class="ghost" type="button" data-bg-down="' + esc(x.nick) + '">Зняти</button></li>').join('')
+        || '<li class="empty glek">Ще ніхто не поставив своє тло.</li>') + '</ul>';
+    box.querySelectorAll('[data-bg-down]').forEach((b) => b.onclick = async (e) => {
+      const nick = b.dataset.bgDown;
+      const btn = e.currentTarget;
+      if (!await ask('Зняти тло?', 'Тло <b>' + esc(genitive(nick)) + '</b> зникне з профілю, файл видалиться. Річ лишиться — людина зможе одразу поставити іншу картинку.', 'Зняти')) return;
+      await o.busy(btn, 'знімаю…', async () => {
+        try {
+          const res = await o.api('POST', '/api/lavka/bgs/remove', { nick });
+          o.toast(res.message || 'Знято', 'ok');
+          await adminBgs(box);
+        } catch (err) { o.toast(err.message, 'err'); }
+      });
+    });
   }
 
   // =============================================================================================

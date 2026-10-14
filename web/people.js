@@ -970,7 +970,10 @@
           + '<button type="button" data-acc="login">🔑 Зайти в акаунт</button><button type="button" class="ghost" data-acc="guest">✏ Інше ім\'я</button>')
       : actionsHtml(nick, true);
     const l = lookOf(nick);
-    return '<section class="panel who-head' + (l && l.bg ? ' lv-bgd bg-' + esc(l.bg) : '') + '">' + ava(nick, 'ava xxl')
+    // Своє тло (записка #49): bg = own і bgUrl — картинка банером (cover по центру), лише з нашою адресою з версією
+    const own = l && l.bg === 'own' && /^\/api\/lavka\/bg\/[0-9a-f]{16}-[0-9a-f]{12}\.(jpg|png|webp)$/.test(String(l.bgUrl || '')) ? l.bgUrl : null;
+    const bg = l && l.bg && (l.bg !== 'own' || own) ? ' lv-bgd bg-' + esc(l.bg) : '';
+    return '<section class="panel who-head' + bg + '"' + (own ? ' style="background-image:url(\'' + own + '\')"' : '') + '>' + ava(nick, 'ava xxl')
       + '<div class="wh-main"><h2 style="--h:' + hue(nick) + '"><span class="' + nickCls(nick).trim() + '">' + esc(nick) + '</span>'
       + (mine ? ' <span class="muted small">· це ти</span>' : '') + '</h2>'
       + titleChip(nick)
