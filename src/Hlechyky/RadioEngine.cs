@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 
 namespace Hlechyky;
@@ -44,6 +43,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     readonly YtDlpService _ytdlp;
     readonly YtMusicClient _ytm;
     readonly Albums _albums;
+    readonly SongLinks _links;
     readonly LiquidsoapClient _liq;
     readonly AutoDj _autoDj;
     readonly RoomTaste _taste;
@@ -94,12 +94,12 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     /// <summary>Під що саме підбирали: «те, що зараз грає», «останнє, що грало» чи «те, що тут замовляли».</summary>
     string _suggestSeedNote = "";
 
-    public RadioEngine(Db db, YtDlpService ytdlp, YtMusicClient ytm, Albums albums, LiquidsoapClient liq, AutoDj autoDj, RoomTaste taste, LastFmClient lastFm,
+    public RadioEngine(Db db, YtDlpService ytdlp, YtMusicClient ytm, Albums albums, SongLinks links, LiquidsoapClient liq, AutoDj autoDj, RoomTaste taste, LastFmClient lastFm,
         Presence presence, IHubContext<RadioHub> hub, ILogger<RadioEngine> log,
         IOptionsMonitor<SiteOptions> site, IOptionsMonitor<YtDlpOptions> yt, IOptionsMonitor<AutoDjOptions> adj,
         IOptionsMonitor<VoiceOptions> voice)
     {
-        _db = db; _ytdlp = ytdlp; _ytm = ytm; _albums = albums; _liq = liq; _autoDj = autoDj; _taste = taste; _lastFm = lastFm; _presence = presence; _hub = hub; _log = log;
+        _db = db; _ytdlp = ytdlp; _ytm = ytm; _albums = albums; _links = links; _liq = liq; _autoDj = autoDj; _taste = taste; _lastFm = lastFm; _presence = presence; _hub = hub; _log = log;
         _site = site; _yt = yt; _adj = adj; _voice = voice;
     }
 
@@ -377,47 +377,12 @@ public sealed class RadioEngine : BackgroundService, IOnAir
     {
         input = input.Trim();
         if (input.Length == 0) throw new InvalidOperationException("порожній запит");
-        if (SpotifyResolver.IsSpotify(input))
-        {
-            var sp = await SpotifyResolver.ResolveAsync(input, ct);
-            var label = string.IsNullOrWhiteSpace(sp.Artist) ? sp.Title : $"{sp.Artist} — {sp.Title}";
-            var r = await _albums.MatchTrackAsync(sp, strict: false, ct);
-            if (r is null) throw new InvalidOperationException($"не знайшов «{label}» на YouTube Music");
-            _log.LogInformation("spotify {Id} = {Label} -> YTM {Yt} ({YtLabel})", sp.Id, label, r.Id, $"{r.Artist} — {r.Title}");
-            return AutoDj.ToTrack(r);
-        }
+        // Spotify-трек чи YouTube з YTM — спільний з пошуком Лавки крок; Spotify без пари в YTM кидає з поясненням
+        if (await _links.ResolveLinkAsync(input, ct) is { } hit) return AutoDj.ToTrack(hit);
         if (Uri.TryCreate(input, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
-        {
-            var vid = YouTubeId(uri);
-            if (vid is not null)
-            {
-                try
-                {
-                    var r = await _ytm.LookupAsync(vid, ct);
-                    if (r is not null && r.DurationSec > 0) return AutoDj.ToTrack(r);
-                }
-                catch (Exception ex) { _log.LogDebug(ex, "YTM lookup failed for {Id}", vid); }
-            }
             return await _ytdlp.FetchInfoAsync(input, ct);
-        }
         var found = await _ytm.SearchSongsAsync(input, 1, ct);
         return found.Count > 0 ? AutoDj.ToTrack(found[0]) : throw new InvalidOperationException("нічого не знайшов");
-    }
-
-    static string? YouTubeId(Uri u)
-    {
-        var host = u.Host.ToLowerInvariant();
-        if (host.EndsWith("youtu.be", StringComparison.Ordinal))
-        {
-            var seg = u.AbsolutePath.Trim('/').Split('/').FirstOrDefault();
-            return seg is { Length: 11 } ? seg : null;
-        }
-        if (!host.EndsWith("youtube.com", StringComparison.Ordinal)) return null;
-        var q = QueryHelpers.ParseQuery(u.Query);
-        if (q.TryGetValue("v", out var v) && v.ToString() is { Length: 11 } vid) return vid;
-        var segs = u.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segs.Length >= 2 && segs[0] is "shorts" or "embed" or "live" && segs[1].Length == 11) return segs[1];
-        return null;
     }
 
     public (bool Ok, string Message) Remove(string itemId, string nick, bool isAdmin)

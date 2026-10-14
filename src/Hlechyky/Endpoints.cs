@@ -115,8 +115,8 @@ public static class Endpoints
 
         api.MapGet("/state", (RadioEngine e, Db db) => new { state = e.Snapshot(), chat = db.RecentChat(100) });
 
-        api.MapGet("/search", async (string? q, YtMusicClient ytm, CancellationToken ct) =>
-            string.IsNullOrWhiteSpace(q) ? [] : await ytm.SearchSongsAsync(q.Trim(), 12, ct));
+        // текст — пошук у YT Music; посилання на трек (Spotify, YouTube) — та сама пісня, яку взяв би ефір (записка #48)
+        api.MapGet("/search", (string? q, SongLinks links, CancellationToken ct) => links.SearchAsync(q, ct));
 
         api.MapPost("/queue", async (HttpContext c, AddRequest req, RadioEngine e, CancellationToken ct) =>
             Reply(await e.AddAsync(Auth.Nick(c), Auth.IsAdmin(c), req.Input, req.Pick, ct)));

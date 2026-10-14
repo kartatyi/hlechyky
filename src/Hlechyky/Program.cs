@@ -43,6 +43,7 @@ builder.Services.AddSingleton<Accounts>();
 builder.Services.AddSingleton<IGoogleVerifier, GoogleVerifier>();
 builder.Services.AddSingleton<YtMusicClient>();
 builder.Services.AddSingleton<Albums>();
+builder.Services.AddSingleton<SongLinks>();
 builder.Services.AddSingleton<YtDlpService>();
 builder.Services.AddSingleton<VoiceService>();
 builder.Services.AddSingleton<LastFmClient>();
