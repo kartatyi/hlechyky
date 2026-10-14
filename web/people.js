@@ -44,13 +44,17 @@
   }
   /// Що людина вдягла в Лавці Дядька Глека (web/lavka.js): значок, рамку, колір ніка, титул, тло профілю.
   const lookOf = (nick) => (window.HLavka && nick ? window.HLavka.look(nick) : null);
-  /// Колір ніка: куплений у Лавці, а як нема — сталий із хешу. «Веселка» переливається класом rainbow,
-  /// а --h лишається своїм — ним фарбуються смужки в таблицях.
+  /// Колір ніка: куплений у Лавці, а як нема — сталий із хешу. Візерунки малюються класом: «Веселка» переливається
+  /// (rainbow), «Жар» горить сталим градієнтом із помаранчевого в червоний (zhar), а --h лишається своїм — ним
+  /// фарбуються смужки в таблицях.
+  const ART_CLS = { rainbow: 'rainbow', zhar: 'zhar' };
+  /// Клас візерунка кольору з Лавки (без пробілу) або '' — для звичайного відтінку числом.
+  const artCls = (color) => (typeof color === 'string' && Object.prototype.hasOwnProperty.call(ART_CLS, color) ? ART_CLS[color] : '');
   function hue(nick) {
     const l = lookOf(nick);
     return l && typeof l.color === 'number' ? l.color : hueRaw(nick);
   }
-  const nickCls = (nick) => { const l = lookOf(nick); return l && l.color === 'rainbow' ? ' rainbow' : ''; };
+  const nickCls = (nick) => { const l = lookOf(nick); const c = l ? artCls(l.color) : ''; return c ? ' ' + c : ''; };
   /// Значок як HTML. Прапор малюємо самі: Windows прапорів-емодзі не має — показав би «UA».
   const emo = (icon) => (icon === '🇺🇦' ? '<i class="fl-ua" role="img" aria-label="прапор України"></i>' : esc(icon));
   /// Своя фотка з Лавки. lazy — у довгих списках («Хто скільки», балачки) фото тягнуться, лише коли доїхали до екрана.
@@ -74,7 +78,7 @@
       : l && l.icon ? emo(l.icon) : blank ? '' : esc(n ? [...n][0].toUpperCase() : '?');
     const h = l && typeof l.color === 'number' ? l.color : hueRaw(nick);
     return '<span' + (id ? ' id="' + id + '"' : '') + ' class="' + (cls || 'ava') + (ph ? ' ph' : l && l.icon ? ' ico' : '')
-      + (l && l.frame ? ' fr fr-' + esc(l.frame) : '') + (l && l.color === 'rainbow' ? ' rainbow' : '') + '"'
+      + (l && l.frame ? ' fr fr-' + esc(l.frame) : '') + (l && artCls(l.color) ? ' ' + artCls(l.color) : '') + '"'
       + (who != null ? ' data-ava="' + esc(who) + '"' : '') + ' style="--h:' + h + '" aria-hidden="true">' + ch + '</span>';
   }
   /// Аватарка людини так, як її бачать усі: значок, рамка, колір і фото — з Лавки.
@@ -1144,7 +1148,7 @@
       o = opts;
       if (o.esc) esc = o.esc;
     },
-    hue, hueRaw, nickCls, badge, emo, ava, avaHtml, nickLink, dur, lbNum, shards,
+    hue, hueRaw, nickCls, artCls, ART_CLS, badge, emo, ava, avaHtml, nickLink, dur, lbNum, shards,
     /// Помічники для stats-*.js — ті самі, що малюють «Хто скільки» тут, щоб ніки, числа й періоди були однакові.
     kit: {
       api: (m, u, b) => o.api(m, u, b), me: () => o.me, go: (h) => o.go(h),

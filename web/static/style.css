@@ -1497,6 +1497,19 @@ header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 }
 @keyframes lv-slide { to { background-position: 200% 0; } }
 @media (prefers-reduced-motion: reduce) { .rainbow, .ava.fr-alive { animation: none !important; } }
+/* ---- нік «Жар» (записка #50): сталий градієнт із помаранчевого в червоний, без анімації — головному потоку легко.
+   Без background-clip:text (старі браузери) лишається теплий запасний колір. Чип онлайну має своє тло, тож там —
+   суцільний жар із жевріючою тінню, а аватарка — статичний темніший градієнт під білу літеру. ---- */
+.who-n.zhar, .msg .n.who-n.zhar, .who-t.zhar, .wh-main h2 .zhar, .pc-who b.zhar, .lv-nick.zhar { color: #ff7a3d; }
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .who-n.zhar:not(.chip), .msg .n.who-n.zhar, .who-t.zhar, .wh-main h2 .zhar, .pc-who b.zhar, .lv-nick.zhar {
+    background: linear-gradient(90deg, #ffb347, #ff7a2f 50%, #ff3b30);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+}
+.pc-who b.zhar { width: fit-content; max-width: 100%; }
+.online .chip.zhar { color: #ff8a45; text-shadow: 0 0 6px rgba(255, 70, 40, .45); }
+.ava.zhar { --ava-bg: linear-gradient(135deg, hsl(32 85% 40%), hsl(16 82% 38%) 50%, hsl(2 72% 36%)); color: #fff; }
 /* значок перед ніком у балачках */
 .nico { font-style: normal; margin-right: 3px; font-size: .95em; -webkit-text-fill-color: initial; }
 /* 🇺🇦 малюємо самі: Windows прапорів-емодзі не має і показує замість нього літери «UA» */

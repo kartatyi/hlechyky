@@ -49,13 +49,13 @@ public sealed record LavkaSeason(string From, string To)
 
 /// <summary>
 /// Річ із Лавки. <paramref name="Art"/> — те, чим її малює браузер: емодзі значка, id рамки й тла, відтінок кольору
-/// (число) або «rainbow», текст титулу. <paramref name="Ach"/> — титул за ачівку: не купується, з'являється в шафі сам.
+/// (число) або назва візерунка («rainbow», «zhar»), текст титулу. <paramref name="Ach"/> — титул за ачівку: не купується, з'являється в шафі сам.
 /// </summary>
 public sealed record LavkaItem(string Id, string Kind, string Title, int Price, object Art, int Tier = 0,
     LavkaSeason? Season = null, string? Ach = null);
 
 /// <summary>
-/// Що вдягнуто, готове до малювання (<c>color</c> — відтінок числом або «rainbow»). Так його бачать усі.
+/// Що вдягнуто, готове до малювання (<c>color</c> — відтінок числом або назва візерунка: «rainbow», «zhar»). Так його бачать усі.
 /// <paramref name="Photo"/> — адреса своєї фотки з версією (<c>/api/lavka/photo/…</c>); нема фото — поля в JSON нема
 /// зовсім: старий клієнт і старі перевірки бачать вигляд рівно таким, яким він був до фоток.
 /// </summary>
@@ -181,6 +181,8 @@ public static class LavkaCatalog
         Color("grass", "Трава", 85), Color("emerald", "Смарагд", 110), Color("mint", "М'ята", 135), Color("wave", "Морська хвиля", 158),
         Color("turquoise", "Бірюза", 178), Color("sky", "Небо", 195), Color("cornflower", "Волошка", 212), Color("sapphire", "Сапфір", 228),
         Color("lilac", "Бузок", 248), Color("violet", "Фіалка", 270), Color("fuchsia", "Фуксія", 292), Color("raspberry", "Малина", 318),
+        // «Жар» — сталий градієнт із помаранчевого в червоний (записка #50 від Smaug), ціна — рішення власника
+        new("zhar", LavkaKind.Color, "Жар", 750, "zhar"),
         new("rainbow", LavkaKind.Color, "Веселка", 1500, "rainbow"),
 
         Title("nightowl", "Нічна сова"), Title("soul", "Душа компанії"), Title("quiet", "Тихий слухач"),

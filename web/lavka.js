@@ -147,7 +147,8 @@
       const n = el.dataset.who;
       if (!mine(n)) return;
       el.style.setProperty('--h', P.hue(n));
-      el.classList.toggle('rainbow', P.nickCls(n) !== '');
+      const c = P.nickCls(n).trim();
+      for (const k of Object.values(P.ART_CLS || { rainbow: 'rainbow' })) el.classList.toggle(k, k === c);
       // значок перед ніком — лише там, де його просили (data-nb: балачки)
       if (el.dataset.nb) {
         const old = el.querySelector(':scope > .nico');
@@ -159,7 +160,7 @@
     document.querySelectorAll('[data-ava]').forEach((el) => {
       const n = el.dataset.ava;
       if (!mine(n)) return;
-      const base = [...el.classList].filter((c) => !/^(ico|ph|fr|fr-.+|rainbow)$/.test(c)).join(' ');
+      const base = [...el.classList].filter((c) => !/^(ico|ph|fr|fr-.+|rainbow|zhar)$/.test(c)).join(' ');
       el.outerHTML = P.ava(n, base, el.id || undefined);
     });
     // Решту (хто онлайн) app.js перемальовує сам — там ніки з приставками, і простіше намалювати наново.
@@ -180,6 +181,9 @@
 
   const item = (id) => ((data && data.items) || []).find((x) => x.id === id) || null;
   const emo = (icon) => (window.HPeople && window.HPeople.emo ? window.HPeople.emo(icon) : esc(icon));
+  /// Клас візерунка кольору («Веселка», «Жар») — той самий, що в people.js.
+  const artCls = (color) => (window.HPeople && window.HPeople.artCls ? window.HPeople.artCls(color)
+    : color === 'rainbow' || color === 'zhar' ? color : '');
   /// Як виглядала б людина, якби вдягла ще й те, що зараз приміряє. Своя фотка не приміряється — вона або стоїть, або ні.
   function lookWith(extra) {
     const w = Object.assign({}, (data && data.worn) || {}, extra || {});
@@ -194,11 +198,11 @@
     const letter = n ? [...n][0].toUpperCase() : '?';
     const hue = l && typeof l.color === 'number' ? l.color : window.HPeople ? window.HPeople.hueRaw(nick) : 200;
     return '<span class="' + (cls || 'ava') + (l && l.frame ? ' fr fr-' + esc(l.frame) : '') + (l && l.icon ? ' ico' : '')
-      + (l && l.color === 'rainbow' ? ' rainbow' : '') + '" style="--h:' + hue + '" aria-hidden="true">' + (l && l.icon ? emo(l.icon) : esc(letter)) + '</span>';
+      + (l && artCls(l.color) ? ' ' + artCls(l.color) : '') + '" style="--h:' + hue + '" aria-hidden="true">' + (l && l.icon ? emo(l.icon) : esc(letter)) + '</span>';
   }
   function nickOf(nick, l) {
     const hue = l && typeof l.color === 'number' ? l.color : window.HPeople ? window.HPeople.hueRaw(nick) : 200;
-    return '<b class="lv-nick' + (l && l.color === 'rainbow' ? ' rainbow' : '') + '" style="--h:' + hue + '">' + esc(nick) + '</b>';
+    return '<b class="lv-nick' + (l && artCls(l.color) ? ' ' + artCls(l.color) : '') + '" style="--h:' + hue + '">' + esc(nick) + '</b>';
   }
   /// Маленька вітрина речі: як вона виглядатиме саме на тобі.
   function artOf(it) {

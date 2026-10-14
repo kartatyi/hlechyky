@@ -154,7 +154,7 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(all.Count, all.Select(i => i.Id).Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(45, all.Count(i => i.Kind == LavkaKind.Icon));        // 24 звичайних + 21 сезонний (календар на весь рік з 28.09)
         Assert.Equal(4, all.Count(i => i.Kind == LavkaKind.Frame));
-        Assert.Equal(17, all.Count(i => i.Kind == LavkaKind.Color));       // 16 кольорів і веселка
+        Assert.Equal(18, all.Count(i => i.Kind == LavkaKind.Color));       // 16 кольорів, жар і веселка
         Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Title));       // 8 купованих і 5 за ачівки
         Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Bg));
         Assert.Equal(["dedication", "fireworks", "photo", "ring"], all.Where(i => i.Kind == LavkaKind.Perk).Select(i => i.Id));
@@ -178,6 +178,7 @@ public sealed class LavkaTests : IDisposable
     [InlineData("gold", 2500, 0)]
     [InlineData("alive", 5000, 0)]
     [InlineData("sky", 250, 0)]
+    [InlineData("zhar", 750, 0)]
     [InlineData("rainbow", 1500, 0)]
     [InlineData("nightowl", 500, 0)]
     [InlineData("meloman", 0, 0)]
@@ -203,6 +204,9 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(212, LavkaCatalog.Get("cornflower")!.Art);
         Assert.Equal(0, LavkaCatalog.Get("ember")!.Art);
         Assert.Equal("rainbow", LavkaCatalog.Get("rainbow")!.Art);
+        Assert.Equal("zhar", LavkaCatalog.Get("zhar")!.Art);
+        Assert.Equal(LavkaKind.Color, LavkaCatalog.Get("zhar")!.Kind);
+        Assert.Equal("Жар", LavkaCatalog.Get("zhar")!.Title);
         Assert.Equal("Нічна сова", LavkaCatalog.Get("nightowl")!.Art);
         Assert.Equal("petrykivka", LavkaCatalog.Get("petrykivka")!.Art);
         // id без регістру й країв: браузер пришле як є
