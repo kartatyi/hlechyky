@@ -77,6 +77,7 @@ public abstract partial class SlotGame : Game
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     SlotsBank? _bank;
+    GlekBonus? _bonus;
 
     /// <summary>Математика цього автомата.</summary>
     protected abstract ISlotMath SlotMath { get; }
@@ -96,6 +97,8 @@ public abstract partial class SlotGame : Game
         try { _bank = Ctx?.Services?.GetService<SlotsBank>(); }
         catch { _bank = null; }
         ConfigureTourney();   // турнір тижня (SlotTourneyGame.cs)
+        try { _bonus = Ctx?.Services?.GetService<GlekBonus>(); }
+        catch { _bonus = null; }
     }
 
     /// <summary>Відкриття автомата (і «Ще раз»): статистика й останній сценарій лишаються, епоха — нова.</summary>
@@ -177,6 +180,7 @@ public abstract partial class SlotGame : Game
             buy = BuyPrice(o) is { } price ? new { price } : null,   // «Купити бонус»: ціна в ставках (null — не продається)
             saldo = SaldoWire(seat),   // пакет 5: чесне сальдо всіх автоматів (null — сервісу нема)
             tourney = TourneyView(seat),   // турнір тижня (SlotTourneyGame.cs); null — вимкнено
+            dobavka = _bonus?.View(seat is { } s ? Ctx.NickOf(s) : null),   // доплата Глека: { pct, cap, left } (null — нема)
         };
     }
 
@@ -239,18 +243,22 @@ public abstract partial class SlotGame : Game
         var outcome = buy ? ((ISlotBuyBonus)SlotMath).Buy(bet, rng) : SlotMath.Spin(bet, rng, State.MathState);
         if (buy) outcome.Script["price"] = cost;
         var jackpot = bank.Feed(cost, rng);
-        var pending = new SlotPending(reference, nick, Info.Id, cost, outcome.Win, jackpot, Ctx.Clock.UtcNow);
-        var journal = outcome.Win > 0 || jackpot > 0;
+        // Доплата Глека: +N % до виграшу (стеля на день) — одразу в журнал, щоб відновлення після падіння платило те саме
+        var bonus = outcome.Win > 0 && _bonus is { } gb ? gb.Take(nick, outcome.Win) : 0;
+        var win = outcome.Win + bonus;
+        var pending = new SlotPending(reference, nick, Info.Id, cost, win, jackpot, Ctx.Clock.UtcNow);
+        var journal = win > 0 || jackpot > 0;
         if (journal && !bank.Open(pending))
         {
             bank.Unfeed(cost, jackpot);
+            if (bonus > 0) _bonus!.Return(nick, bonus);
             return ActResult.Fail(ClosedText);
         }
         var taken = bank.Charge(nick, cost, buy ? $"slot-buy:{Info.Id}" : $"slot-bet:{Info.Id}", reference + ":bet");
         if (taken is null)
         {
             // Списання могло й пройти: запис журналу (і внесок у Скарбничку) лишаємо — підмітання звірить із леджером
-            // і доплатить виграш або прибере запис. Ключ цього оберту більше не беремо. Старий сценарій і Ворожку —
+            // і доплатить виграш (з доплатою Глека — з обліку її не знімаємо) або прибере запис. Ключ цього оберту більше не беремо. Старий сценарій і Ворожку —
             // геть: інакше вид дав би «last» з новим seq і минулим обертом, і клієнт програв би його як новий.
             State.Seq = seq;
             State.Last = null;
@@ -261,12 +269,20 @@ public abstract partial class SlotGame : Game
         {
             if (journal) bank.Forget(reference);
             bank.Unfeed(cost, jackpot);
+            if (bonus > 0) _bonus!.Return(nick, bonus);
             State.Wallet = bank.Balance(nick);
             return ActResult.Fail(buy ? $"Бракує черепків: у гаманці {State.Wallet}, а бонус коштує {cost}" : $"Бракує черепків: у гаманці {State.Wallet}, а ставка {bet}");
         }
         if (journal) bank.Close(pending);   // не вийшло — запис лишився, підмітання доплатить тими самими ключами
 
         var script = outcome.Script;
+        if (bonus > 0)
+        {
+            // перед «jackpot»: кіт спершу докручує лічильник на доплату, тоді Скарбничка
+            ((JsonArray)script["steps"]!).Add(new JsonObject { ["t"] = "dobavka", ["amount"] = bonus, ["base"] = outcome.Win });
+            script["win"] = win;
+            script["dobavka"] = bonus;
+        }
         if (jackpot > 0)
         {
             ((JsonArray)script["steps"]!).Add(new JsonObject { ["t"] = "jackpot", ["amount"] = jackpot });
@@ -276,14 +292,15 @@ public abstract partial class SlotGame : Game
         State.Bet = bet;
         State.Last = script;
         State.MathState = outcome.State;
-        State.Gamble = SlotMath.Gamble && outcome.Win > 0 ? new SlotGamble { Amount = outcome.Win, Open = true } : null;
+        State.Gamble = SlotMath.Gamble && win > 0 ? new SlotGamble { Amount = win, Open = true } : null;
         State.Spins++;
         State.Staked += cost;
-        State.Won += outcome.Win + jackpot;
-        State.Wallet = wallet - cost + outcome.Win + jackpot;
+        State.Won += win + jackpot;
+        State.Wallet = wallet - cost + win + jackpot;
 
-        // множник заносу — від того, що заплачено: у купленому бонусі це ціна, а не ставка (інакше «×30» за бонус, що коштував 100×)
-        var mult = Math.Round(outcome.Mult(cost), 2);
+        // множник заносу — від того, що заплачено: у купленому бонусі це ціна, а не ставка (інакше «×30» за бонус, що коштував 100×);
+        // виграш — з доплатою Глека (те, що людина бачить)
+        var mult = Math.Round(cost > 0 ? (double)win / cost : 0, 2);
         if (mult > State.Best) State.Best = mult;
         var day = Days.Today(Ctx.Clock).ToString();
         if (day != State.Day) { State.Day = day; State.DayBest = 0; }
@@ -295,7 +312,7 @@ public abstract partial class SlotGame : Game
         if (mult >= 10) Ach(seat, "slot-big");
         if (mult >= 50) Ach(seat, "slot-epic");
         if (jackpot > 0) Ach(seat, "slot-jackpot");
-        bank.Brag(nick, Info.Id, Info.Title, cost, outcome.Win, jackpot);
+        bank.Brag(nick, Info.Id, Info.Title, cost, win, jackpot);
         return ActResult.Done;
     }
 

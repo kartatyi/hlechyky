@@ -556,7 +556,7 @@ public sealed class HubSlotsWire(Db db, IHubContext<RadioHub> hub, IOptionsMonit
     }
 }
 
-/// <summary>Підключення слотів у <see cref="GamesSetup"/>: опції, каса-Скарбничка, Балачки, <c>/api/slots/feed</c>.</summary>
+/// <summary>Підключення слотів у <see cref="GamesSetup"/>: опції, каса-Скарбничка, доплата Глека, Балачки, <c>/api/slots/feed</c>.</summary>
 public static class SlotsSetup
 {
     public static IServiceCollection AddSlots(IServiceCollection services)
@@ -571,6 +571,14 @@ public static class SlotsSetup
         });
         services.AddHostedService(sp => sp.GetRequiredService<SlotsBank>());
         SlotTourneySetup.Add(services);   // турнір тижня на фішках (SlotTourney.cs)
+        // Доплата Глека (+6 % до виграшу в слотах і Лелеці, стеля на день) — секція «Azart»
+        services.AddOptions<AzartBonusOptions>().BindConfiguration("Azart");
+        services.AddSingleton(sp =>
+        {
+            var opts = sp.GetRequiredService<IOptionsMonitor<AzartBonusOptions>>();
+            return new GlekBonus(new EconomyDayCounters(sp.GetRequiredService<Hlechyky.Games.Economy.EconomyStore>()), () => opts.CurrentValue,
+                sp.GetService<IClock>(), log: sp.GetService<ILogger<GlekBonus>>());
+        });
         return services;
     }
 

@@ -691,6 +691,33 @@
     await ctx.closeOverlay(ov);
   };
 
+  // Доплата Глека (+N % до виграшу, стеля на день): табличка «🏺 Глек докинув +N» над лічильником виграшу, монетки,
+  // лічильник докручується до base + N. script.win уже з доплатою — finish() нічого не додає. ≤ 1,2 с (турбо, calm — швидше).
+  SK.steps.dobavka = async function (s, ctx) {
+    const amt = Math.max(0, Math.round(s.amount || 0));
+    if (!amt) return;
+    const base = Math.max(0, Math.round(s.base != null ? s.base : ctx.meter));
+    const calm = SK.calm(), fast = ctx.turbo || calm;
+    ctx.emit('dobavka', amt);
+    const wb = ctx.hud.querySelector('.sk-winbox') || ctx.hud;
+    const [x, y] = ctx.rel(wb, ctx.box);
+    const tag = div('sk-dobavka', '🏺 Глек докинув <b>+' + fmt(amt) + '</b>');
+    tag.style.left = x + 'px'; tag.style.top = y + 'px';
+    ctx.layer.appendChild(tag);
+    ctx.sound('coin');
+    if (!calm) ctx.fx.at(wb, { kind: 'coin', n: fast ? 6 : 12, speed: 460, size: 10 });
+    const ms = calm ? 700 : 1150;   // ctx.animate у турбо сам ×0,6
+    const a = ctx.animate(tag, calm ? [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }] : [
+      { transform: 'translate(-50%,-60%) scale(.6)', opacity: 0 },
+      { transform: 'translate(-50%,-125%) scale(1.08)', opacity: 1, offset: 0.2 },
+      { transform: 'translate(-50%,-130%) scale(1)', opacity: 1, offset: 0.8 },
+      { transform: 'translate(-50%,-150%) scale(1)', opacity: 0 },
+    ], { duration: ms, easing: 'ease-out', fill: 'forwards' });
+    await ctx.rollMeter(base + amt, fast ? 260 : 520);
+    await a.finished.catch(() => {});
+    tag.remove();
+  };
+
   // ---------- Монтування ----------
   // SlotKit.mount(el, idАбоАвтомат, {api, balance, onBalance}) → екземпляр
   SK.mount = function (host, idOrMachine, opts) {
@@ -1197,7 +1224,13 @@
           return g + '</div></div>';
         }).join('') + '</div>';
       }
-      const rules = typeof machine.rules === 'function' ? machine.rules(ctx) : (machine.rules || '');
+      let rules = typeof machine.rules === 'function' ? machine.rules(ctx) : (machine.rules || '');
+      // доплата Глека (сайт кладе вид у machine.dobavka: { pct, cap, left })
+      const dob = machine.dobavka;
+      if (dob && dob.pct > 0) {
+        rules = '<p class="sk-pt-dob">🏺 Глек доплачує ' + fmt(dob.pct) + ' % до кожного виграшу' + (dob.cap > 0 ? ' (до ' + fmt(dob.cap) + ' 🏺 на день)' : '')
+          + (dob.cap > 0 && dob.left != null ? '<br><small>доплати сьогодні ще ' + fmt(dob.left) + ' 🏺</small>' : '') + '</p>' + rules;
+      }
       const ov = div('sk-modal', '<div class="sk-modal-c"><button class="sk-x" aria-label="закрити">✕</button><h3>' + esc(machine.title || id) + ' — виплати</h3>'
         + '<div class="sk-pt-bet">за ставки ' + fmt(ctx.bet) + ' 🏺</div><div class="sk-pt">' + rows + '</div>' + linesH + '<div class="sk-pt-rules">' + rules + '</div></div>');
       layer.appendChild(ov);

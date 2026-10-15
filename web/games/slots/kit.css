@@ -407,3 +407,9 @@
 .sk-saldo b.down { color: #ff7a6b; }
 .sk-port .sk-saldo { font-size: 11px; padding: 2px 8px; gap: 4px; }
 .sk-port .sk-jp-l { display: none; }
+/* доплата Глека — табличка над лічильником виграшу (крок dobavka) */
+.sk-dobavka { position: absolute; z-index: 8; pointer-events: none; white-space: nowrap; transform: translate(-50%,-130%);
+  padding: 4px 12px; border-radius: 999px; font-weight: 800; font-size: 18px; color: #3a1d05;
+  background: linear-gradient(#ffe9a6, #f5b942); border: 2px solid #8a4a10; box-shadow: 0 4px 14px rgba(0,0,0,.35), 0 0 18px rgba(255,214,90,.55); }
+.sk-dobavka b { color: #7a2a00; }
+.sk-port .sk-dobavka { font-size: 14px; padding: 3px 9px; }
