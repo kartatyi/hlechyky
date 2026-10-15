@@ -14,7 +14,7 @@ namespace Hlechyky.Games.Economy;
 /// тож кожен старт сервера проходить список наново, а платить лише тим, кому за цим ярликом ще не платив (і акаунтам,
 /// що з'явились після минулого старту, — теж). Порожній ярлик — нічого.
 /// </summary>
-public sealed class Regift(EconomyStore store, Economy economy, IOptionsMonitor<EconomyOptions> opts, IOutbox outbox,
+public sealed class Regift(EconomyStore store, Economy economy, IOptionsMonitor<EconomyOptions> opts,
     ILogger<Regift> log) : BackgroundService
 {
     /// <summary>Кому що прийшло цим проходом.</summary>
@@ -59,24 +59,10 @@ public sealed class Regift(EconomyStore store, Economy economy, IOptionsMonitor<
             }
             catch (Exception ex) { log.LogWarning(ex, "подарунок-перерахунок для {Nick} не пройшов", nick); }
         }
+        // У Балачки Глек про це не пише (без постів Глека в чаті): людина бачить тост гаманця, а пояснення — у «Що нового».
         if (lines.Count > 0)
-        {
             log.LogInformation("подарунок-перерахунок «{Id}»: {N} людям, ачівки +{Ach}, подарунки +{Gift}",
                 id, lines.Count, lines.Sum(l => (long)l.Achievements), lines.Sum(l => (long)l.Gift));
-            try
-            {
-                outbox.Post(new Journal($"🎁 Дядько Глек перебудував економіку: за все тепер ×{Math.Max(1, o.Boost)} черепків, " +
-                    $"ачівки перераховано за новим курсом, а кожному ще й подарунок ({lines.Count} {People(lines.Count)})"));
-            }
-            catch (Exception ex) { log.LogWarning(ex, "не розповів про подарунок-перерахунок"); }
-        }
         return lines;
-    }
-
-    static string People(int n)
-    {
-        var abs = Math.Abs(n);
-        if (abs % 100 is >= 11 and <= 14) return "людей";
-        return (abs % 10) switch { 1 => "людина", 2 or 3 or 4 => "людини", _ => "людей" };
     }
 }

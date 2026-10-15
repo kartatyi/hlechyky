@@ -130,7 +130,7 @@ public class EconomyBoostTests
     // ---------- подарунок-перерахунок ----------
 
     static Regift Regift(EconomyRig rig) =>
-        new(rig.Store, rig.Economy, new FixedOptions<EconomyOptions>(rig.Options), rig.Outbox, NullLogger<Regift>.Instance);
+        new(rig.Store, rig.Economy, new FixedOptions<EconomyOptions>(rig.Options), NullLogger<Regift>.Instance);
 
     [Fact]
     public void Regift_tops_up_old_achievements_and_gives_every_account_the_same_gift_once()
@@ -156,7 +156,7 @@ public class EconomyBoostTests
         Assert.Equal(5000, rig.Paid("Сем", "regift:x10"));
         Assert.Equal(0, rig.Paid("гість Вася", "regift"));
         Assert.Equal(EconomyRig.Cast.Length, lines.Count);
-        Assert.Single(rig.Outbox.Of<Journal>(), j => j.Text.Contains("перебудував економіку"));
+        Assert.DoesNotContain(rig.Outbox.Of<Journal>(), j => j.Text.Contains("Глек"));   // у Балачки — ні слова
 
         // другий старт із тим самим ярликом нічого не подвоює
         rig.Outbox.Clear();
