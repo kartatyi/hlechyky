@@ -312,7 +312,7 @@ public static class AdSetup
     /// ротації порожньо, — реклама господаря чи переможець конкурсу. Обох прибрано разом із конкурсом, тож тепер
     /// там завжди null: поле лишилось, щоб клієнти, які його читають, не спіткнулись.
     /// </summary>
-    public static object LibraryView(AdLibrary library, AdJingle jingle, IVoiceSaver voice, AdOptions o)
+    public static object LibraryView(AdLibrary library, AdJingle jingle, IVoiceSaver voice, AdOptions o, Func<int, int>? earn = null)
     {
         var (every, minutes) = jingle.Frequency();
         var (spareEvery, spareMinutes) = jingle.SpareFrequency();
@@ -327,7 +327,8 @@ public static class AdSetup
             everyTracks = every, minMinutes = minutes, since = jingle.Since,
             spareEveryTracks = spareEvery, spareMinMinutes = spareMinutes,
             jingle = o.Enabled && o.Jingle,
-            reward = new { amount = Math.Max(0, o.ListenReward), dailyCap = o.ListenDailyCap },
+            // у черепках, які людина справді отримає: база × Economy:Boost
+            reward = new { amount = (earn ?? (n => n))(Math.Max(0, o.ListenReward)), dailyCap = (earn ?? (n => n))(o.ListenDailyCap) },
             fallback = (object?)null,
             maxMb = voice.MaxUploadBytes / (1024 * 1024),
         };
@@ -373,8 +374,8 @@ public static class AdSetup
             Auth.IsAdmin(c) ? Reply(jingle.PlayNow()) : Deny());
 
         // ---- бібліотека реклам і ротація: тільки господар ----
-        app.MapGet("/api/ads/library", (HttpContext c, AdLibrary library, AdJingle jingle, IVoiceSaver voice, IOptionsMonitor<AdOptions> opts) =>
-            Auth.IsAdmin(c) ? Results.Ok(LibraryView(library, jingle, voice, opts.CurrentValue)) : Deny());
+        app.MapGet("/api/ads/library", (HttpContext c, AdLibrary library, AdJingle jingle, IVoiceSaver voice, IOptionsMonitor<AdOptions> opts, Economy.Economy economy) =>
+            Auth.IsAdmin(c) ? Results.Ok(LibraryView(library, jingle, voice, opts.CurrentValue, economy.Earn)) : Deny());
 
         // Тіло — сам аудіофайл (будь-який формат, який з'їсть ffmpeg); назва — у ?title=
         app.MapPost("/api/ads/library", async (HttpContext c, string? title, AdLibrary library, IVoiceSaver voice, CancellationToken ct) =>

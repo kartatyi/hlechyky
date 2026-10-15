@@ -145,7 +145,7 @@ public sealed class Leaderboards(EconomyStore store, Ratings ratings, Achievemen
             achievements = achievements.Of(nick).Select(a => new
             {
                 key = a.Info.Key, title = a.Info.Title, text = a.Info.Text, icon = a.Info.Icon,
-                reward = a.Info.Reward, at = a.At,
+                reward = achievements.Reward(a.Info), at = a.At,
             }),
             recent = store.RecentResults(key, 15).Select(r => new
             {

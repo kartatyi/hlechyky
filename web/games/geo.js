@@ -39,7 +39,10 @@
   /// підліт) кадр — готовий «атлас» мапи, розтягнутий під масштаб: одна drawImage замість тисяч точок.
   const SETTLE_MS = 140;
   const RULES = 'Фото звідкись з України — тицьни на мапі, де це знято. За кілометр і ближче — 5000 очок, '
-    + 'за 100 км — 2885, за 500 — 313, далі крихти. За кожні 5000 очок партії — 🏺 черепок (до 30 на день).';
+    + 'за 100 км — 2885, за 500 — 313, далі крихти. За кожні 5000 очок партії — 🏺 ';
+  /// Черепки за очки множаться на Economy:Boost (/api/me → ctx.me.boost), денна стеля (Economy:AwardDailyCap = 30) — теж.
+  const boostOf = (ctx) => Math.max(1, (ctx && ctx.me && ctx.me.boost) || 1);
+  const rulesFor = (ctx) => RULES + (boostOf(ctx) > 1 ? boostOf(ctx) + ' черепків' : 'черепок') + ' (до ' + 30 * boostOf(ctx) + ' на день).';
   const PLACE = ['перше', 'друге', 'третє', 'четверте', 'п’яте', 'шосте', 'сьоме', 'восьме', 'дев’яте', 'десяте'];
 
   const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
@@ -1057,7 +1060,7 @@
     const seated = ctx.mine && ctx.playing;
     const show = seated && (phase === 'between' || phase === 'guess' || phase === 'reveal');
     let label = '', dis = true, h = '';
-    if (phase === 'lobby') h = RULES;
+    if (phase === 'lobby') h = rulesFor(ctx);
     else if (phase === 'between') { label = 'Готуйсь…'; h = 'Фото проявляється — за мить мапа оживе'; }
     else if (phase === 'guess') {
       const pinned = st.pin && st.pinRound === v.round;
@@ -1134,7 +1137,7 @@
       .sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b)
       .map((i) => {
         // черепки за очки — так само, як рахує сервер (GeoMatch.PointsPerShard)
-        const shards = done ? Math.floor((sc[i] || 0) / 5000) : 0;
+        const shards = done ? Math.floor((sc[i] || 0) / 5000) * boostOf(ctx) : 0;
         const gone = left.includes(i);
         const won = crown && done && win.includes(i);
         return '<div class="geosrow ' + SEAT_CLASS[i % 10] + (won ? ' win' : '') + (gone ? ' gone' : '') + (ctx.mine && i === ctx.seat ? ' me' : '') + '">'

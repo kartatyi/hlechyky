@@ -82,9 +82,9 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             {
                 var (amount, reason) = row.Outcome switch
                 {
-                    "win" => (o.WinReward, $"win:{e.GameId}"),
-                    "draw" => (o.DrawReward, $"draw:{e.GameId}"),
-                    _ => (o.PlayReward, $"play:{e.GameId}"),
+                    "win" => (o.Earn(o.WinReward), $"win:{e.GameId}"),
+                    "draw" => (o.Earn(o.DrawReward), $"draw:{e.GameId}"),
+                    _ => (o.Earn(o.PlayReward), $"play:{e.GameId}"),
                 };
                 // виняток на одному ніку не має лишати решту без черепків
                 try
@@ -197,12 +197,13 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
         if (e.Reason.StartsWith("daily:", StringComparison.Ordinal))
         {
             // головоломка може не називати суму — тоді платимо типову з налаштувань;
-            // раз на день на головоломку — це вже забезпечує сам ref
-            var shards = e.Shards > 0 ? e.Shards : o.DailyReward;
+            // раз на день на головоломку — це вже забезпечує сам ref. Сума гри — теж база: × Boost.
+            var shards = o.Earn(e.Shards > 0 ? e.Shards : o.DailyReward);
             economy.Grant(e.Nick, shards, e.Reason, $"{e.Reason}:{day}:{nickKey}");
         }
         else if (e.Shards > 0)
         {
+            // Коло множить саме (курс і стелю воно показує людині), тож його суму беремо як є — лише стеля × Boost.
             if (e.Reason == "clicker" || e.Reason.StartsWith("clicker:", StringComparison.Ordinal))
                 economy.GrantSequenced(e.Nick, e.Shards, "clicker", n => $"clicker:{nickKey}:{day}:{n}",
                     "clicker", ClickerCap(e.Reason, o), e.Shards);
@@ -210,24 +211,28 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             // двокрапки — номер партії в кімнаті, тож «Ще раз» за тим самим столом платить заново, а повтор
             // тієї самої події — ні.
             else if (e.Reason.StartsWith("points:", StringComparison.Ordinal))
-                economy.Grant(e.Nick, e.Shards, $"points:{e.GameId}", $"points:{e.GameId}:{e.RoomId}:{e.Reason[7..]}:{nickKey}");
+                economy.Grant(e.Nick, o.Earn(e.Shards), $"points:{e.GameId}", $"points:{e.GameId}:{e.RoomId}:{e.Reason[7..]}:{nickKey}");
             else if (!e.Reason.StartsWith("ach:", StringComparison.Ordinal))
-                economy.GrantCapped(e.Nick, e.Shards, $"award:{e.Reason}",
-                    $"award:{e.RoomId}:{e.Reason}:{nickKey}", "award", o.AwardDailyCap, e.Shards);
+            {
+                var shards = o.Earn(e.Shards);
+                economy.GrantCapped(e.Nick, shards, $"award:{e.Reason}",
+                    $"award:{e.RoomId}:{e.Reason}:{nickKey}", "award", o.Earn(o.AwardDailyCap), shards);
+            }
         }
         achievements.OnAward(e);
     }
 
     /// <summary>
     /// Денна стеля обміну в гончарному колі. Клейма майстра піднімають її, і гра каже власне число в причині
-    /// («clicker:34»); вірити йому можна лише в межах від <see cref="EconomyOptions.ClickerDailyCap"/> до
-    /// <see cref="EconomyOptions.ClickerDailyCapMax"/> — усе, що поза ними, ріжемо.
+    /// («clicker:340»); вірити йому можна лише в межах від <see cref="EconomyOptions.ClickerDailyCap"/> до
+    /// <see cref="EconomyOptions.ClickerDailyCapMax"/> (обидві × <see cref="EconomyOptions.Boost"/>, як і число гри) —
+    /// усе, що поза ними, ріжемо.
     /// </summary>
     static int ClickerCap(string reason, EconomyOptions o)
     {
-        var floor = o.ClickerDailyCap;
+        var floor = o.Earn(o.ClickerDailyCap);
         if (floor <= 0) return floor;                 // обмін вимкнено — клейма його не вмикають
-        var ceiling = Math.Max(floor, o.ClickerDailyCapMax);
+        var ceiling = Math.Max(floor, o.Earn(o.ClickerDailyCapMax));
         return reason.Length > 8 && int.TryParse(reason.AsSpan(8), out var asked)
             ? Math.Clamp(asked, floor, ceiling)
             : floor;

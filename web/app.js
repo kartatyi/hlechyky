@@ -4808,6 +4808,7 @@
     me.google = !!m.google;
     me.email = m.email || '';
     me.banPrice = m.banPrice || 0;
+    me.boost = m.boost || 1;        // Economy:Boost — множник заробітку; ігри з черепками за очки множать на нього
     me.shards = m.shards || null;   // { buy, sell } — черепки за гривні увімкнено в конфігу (web/buy.js)
     me.games = m.games !== false;   // розділ «Ігри» (Games:Enabled)
     me.padel = m.padel !== false;   // Падельня (Padel:Enabled)

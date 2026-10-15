@@ -656,6 +656,23 @@ public sealed class EconomyStore(Db db)
         return list;
     });
 
+    // ---------- подарунок-перерахунок (Regift) ----------
+
+    /// <summary>Люди: акаунти, що не боти (<see cref="Bots.NotBot"/>), — ключ і нік акаунта.</summary>
+    public List<(string Key, string Nick)> People() => db.With(c =>
+    {
+        using var cmd = Cmd(c, $"SELECT a.nick_key, a.nick FROM accounts a WHERE {Bots.NotBot("a.nick_key")} ORDER BY a.nick_key");
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, string)>();
+        while (r.Read()) list.Add((r.GetString(0), r.GetString(1)));
+        return list;
+    });
+
+    /// <summary>Скільки ніку прийшло за ачівки за весь час: самі ачівки (<c>ach:*</c>) і минулі перерахунки (<c>regift-ach:*</c>).</summary>
+    public long PaidForAchievements(string nickKey) => db.With(c =>
+        Scalar(c, "SELECT COALESCE(SUM(delta), 0) FROM ledger WHERE nick_key=$n AND delta > 0 " +
+            "AND (substr(reason, 1, 4) = 'ach:' OR substr(reason, 1, 11) = 'regift-ach:')", ("$n", nickKey)));
+
     // ---------- щоденне ----------
 
     /// <summary>

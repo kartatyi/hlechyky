@@ -78,6 +78,9 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
 
     public int Balance(string nick) => store.Balance(Key(nick));
 
+    /// <summary>База × <see cref="EconomyOptions.Boost"/>: скільки справді приносить заробіток із базовою ціною <paramref name="n"/>.</summary>
+    public int Earn(int n) => O.Earn(n);
+
     public WalletRow Wallet(string nick)
     {
         var key = Key(nick);
@@ -236,6 +239,9 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "curse-ransom" => "Лавка — відкуп від прокльону",
             "curse-reveal" => "Лавка — хто наслав прокльон",
             "liveads" => "прожарка від Дядька Глека",
+            // подарунок-перерахунок після ×10 (Regift.cs): хвіст — ярлик
+            "regift-ach" => "Дядько Глек перерахував ачівки за новим курсом",
+            "regift" => "подарунок від Дядька Глека",
             // «💡 Розробнику»: Дядько Глек дякує черепками за баг чи добру ідею (хвіст — номер записки, Feedback.Say)
             Feedback.GiftReason => $"Дядько Глек — за записку #{tail}",
             // рулетка (docs/games/specs/roulette.md §3.2): хвіст — roulette чи roulette-solo, підпис для обох однаковий

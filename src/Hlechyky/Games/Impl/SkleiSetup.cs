@@ -20,7 +20,10 @@ public static class SkleiSetup
                 Geo = sp.GetService<GeoPhotos>(),
                 Spend = economy is null ? null : (nick, n, reason, refKey) => economy.TrySpend(nick, n, reason, refKey),
                 Grant = economy is null ? null : (nick, n, reason, refKey) =>
-                    economy.GrantCapped(nick, n, reason, refKey, "sklei-author", SkleiDeck.AuthorDailyCap),
+                    economy.GrantCapped(nick,
+                        // +1 автору — заробіток (× Economy:Boost), а повернення ціни картинки — ні; стеля рахує рази
+                        refKey.StartsWith("sklei-author:", StringComparison.Ordinal) ? economy.Earn(n) : n,
+                        reason, refKey, "sklei-author", SkleiDeck.AuthorDailyCap),
                 Unlock = achievements is null ? null : (nick, key) => achievements.Unlock(nick, key),
             };
         });
@@ -52,7 +55,8 @@ public static class SkleiSetup
     {
         var nick = Auth.Nick(c);
         var account = Auth.IsUser(c);
-        var balance = account && sp.GetService<Hlechyky.Games.Economy.Economy>() is { } eco ? eco.Balance(nick) : 0;
+        var economy = sp.GetService<Hlechyky.Games.Economy.Economy>();
+        var balance = account && economy is not null ? economy.Balance(nick) : 0;
         return Results.Json(new
         {
             builtin = SkleiBuiltin.All.Select(b => new { id = b.Id, title = b.Title, url = SkleiBuiltin.Picture(b.Id, b.Title).Url }),
@@ -60,6 +64,7 @@ public static class SkleiSetup
             arts = deck.Arts.Count,
             own = deck.Own.OrderByDescending(o => o.Id).Select(Own),
             price = SkleiDeck.Price,
+            author = economy?.Earn(1) ?? 1,   // скільки приносить автору чужа склеєна картинка (+1 × Economy:Boost)
             account,
             balance,
             admin = Auth.IsAdmin(c),

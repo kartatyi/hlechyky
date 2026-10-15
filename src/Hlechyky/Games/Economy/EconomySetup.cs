@@ -40,6 +40,9 @@ public static class EconomySetup
             sp.GetRequiredService<IClock>(), sp.GetService<ILogger<AzartSaldo>>()));
         services.AddSingleton<IAzartSaldo>(sp => sp.GetRequiredService<AzartSaldo>());
         services.AddHostedService(sp => sp.GetRequiredService<AzartSaldo>());
+        // разовий подарунок-перерахунок за ярликом Economy:RegiftId (15.10.2026, ×10): ачівки за новим курсом + рівний подарунок
+        services.AddSingleton<Regift>();
+        services.AddHostedService(sp => sp.GetRequiredService<Regift>());
 
         // Каркас реєструє заглушки через TryAdd і робить це раніше — тому саме Replace, а не TryAdd.
         services.Replace(ServiceDescriptor.Singleton<IStakes>(sp => sp.GetRequiredService<Economy>()));
