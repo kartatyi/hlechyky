@@ -104,6 +104,12 @@ public sealed class Pictionary : Game
     readonly int[] _gained = new int[Seats];
     readonly List<int> _guessed = [];
     readonly HashSet<string> _used = new(StringComparer.Ordinal);
+    /// <summary>
+    /// Пам'ять баченого між партіями й столами (пакет 1): слово ходу після нього бачать усі, хто сидить, а три
+    /// запропоновані — художник. 🏠-слів столу це не стосується.
+    /// </summary>
+    GameSeen? _seen;
+    const string SeenGame = "pictionary";
     readonly HashSet<int> _left = [];
     readonly Dictionary<int, DateTimeOffset> _lastGuess = [];
     readonly Dictionary<int, DateTimeOffset> _lastSync = [];
@@ -180,6 +186,8 @@ public sealed class Pictionary : Game
         _duo = options.TryGetValue("mode", out var m) && m == Duo;
         _store = Ctx.Services.GetService<PictionaryStore>();
         if (_words.Count == 0) throw new GameError("Нема словника, піктіонарі відпочиває");
+        // Пам'ять «вже було» фон читає з бази заздалегідь — щоб перше «Почати» вже її мало.
+        (_seen ??= GameSeen.Of(Ctx.Services)).Prefetch(SeenGame);
     }
 
     public override void Start()
@@ -307,8 +315,10 @@ public sealed class Pictionary : Game
     /// <summary>Три (удвох — одне) слова на вибір; якщо є свіже слово компанії не від художника — одне з них 🏠.</summary>
     string[] Deal(int count, string[] skip)
     {
-        var picked = _words.Pick(Ctx.Rng, _topics, _used, count);
-        if (picked.Length == 0) picked = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, count);
+        _seen ??= GameSeen.Of(Ctx.Services);
+        var seen = _seen.Peek(SeenGame, GameSeen.Table(Ctx, Seats));
+        var picked = _words.Pick(Ctx.Rng, _topics, _used, count, seen);
+        if (picked.Length == 0) picked = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, count, seen);
         _choiceHome = new bool[picked.Length];
         if (picked.Length > 0 && HomeFor(_drawer, skip) is { } hw)
         {
@@ -316,6 +326,10 @@ public sealed class Pictionary : Game
             picked[i] = hw.Word;
             _choiceHome[i] = true;
         }
+        // Запропоновані словникові бачив художник (🏠-слово столу не пишемо).
+        if (Ctx.NickOf(_drawer) is { Length: > 0 } artist)
+            _seen.Remember(SeenGame, [GameSeen.NickKey(artist)],
+                picked.Where((_, k) => !_choiceHome[k]).Select(PictionaryWords.Normalize), Now);
         return picked;
     }
 
@@ -735,6 +749,9 @@ public sealed class Pictionary : Game
         }
         if (_word.Length > 0) AddFeed(-1, "word", _word);
         else AddFeed(_drawer, "skip", null);
+        // Слово ходу тепер бачили всі, хто сидить (своє 🏠-слово столу — ні, воно не зі словника).
+        if (_word.Length > 0 && _homeNow is null)
+            (_seen ??= GameSeen.Of(Ctx.Services)).Remember(SeenGame, GameSeen.Table(Ctx, Seats), [PictionaryWords.Normalize(_word)], Now);
         // малюнок ходу — у галерею наприкінці й на «📌 в альбом» (штрихами, п. 26/32)
         if (_word.Length > 0 && _sketch.Count > 0)
             _art.Add(new Art(_turn + 1, _drawer, NickOrEmpty(_drawer), _word, _homeNow is not null, PackedAll(), (int[])_turnReacts.Clone()));

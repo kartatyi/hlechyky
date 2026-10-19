@@ -94,6 +94,9 @@ public sealed class Pozyvni : Game
     int SecondTeamWords => _cards == SmallCards ? 5 : 8;
     /// <summary>Слова, які вже були за цим столом: наступна партія бере інші, поки в темах є свіжі.</summary>
     readonly HashSet<string> _used = new(StringComparer.Ordinal);
+    /// <summary>Пам'ять баченого між партіями й столами (пакет 1): поле бачать усі, хто сидить.</summary>
+    GameSeen? _seen;
+    const string SeenGame = "pozyvni";
 
     // ---------- склад ----------
     /// <summary>Місце → сторона (<see cref="Red"/>/<see cref="Blue"/>); null — місце не грає.</summary>
@@ -157,6 +160,8 @@ public sealed class Pozyvni : Game
             : _clockOption is "auto" or "" && _cards == SmallCards ? SmallClockSec * 1000 : 0;
         _mode = options.GetValueOrDefault("mode") is ModeTeams or ModeCoop ? options["mode"] : ModeAuto;
         if (_words.Count < Cards) throw new GameError("Замало слів для столу, позивні відпочивають");
+        // Пам'ять «вже було» фон читає з бази заздалегідь — щоб перше «Почати» вже її мало.
+        (_seen ??= GameSeen.Of(Ctx.Services)).Prefetch(SeenGame);
     }
 
     /// <summary>«Дві команди» з трьома людьми не почнеш — кажемо це до старту, а не нічиєю після.</summary>
@@ -180,8 +185,11 @@ public sealed class Pozyvni : Game
         if (_board.Length != _cards) { _board = new string[_cards]; _key = new string[_cards]; _open = new bool[_cards]; }
         Array.Clear(_open);
 
-        var picked = _words.Pick(Ctx.Rng, _topics, _used, _cards);
-        if (picked.Length < _cards) picked = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, _cards);
+        _seen ??= GameSeen.Of(Ctx.Services);
+        var table = GameSeen.Table(Ctx, Seats);
+        var seen = _seen.Peek(SeenGame, table);
+        var picked = _words.Pick(Ctx.Rng, _topics, _used, _cards, seen);
+        if (picked.Length < _cards) picked = PictionaryWords.Default.Pick(Ctx.Rng, null, _used, _cards, seen);
         if (picked.Length < _cards)
         {
             Ctx.Finish([], $"{Info.Title}: слів на стіл не набралось");
@@ -193,6 +201,7 @@ public sealed class Pozyvni : Game
             _board[i] = picked[i];
             _used.Add(PictionaryWords.Normalize(picked[i]));
         }
+        _seen.Remember(SeenGame, table, picked.Select(PictionaryWords.Normalize), Now);
 
         // Першою ходить та команда, у якої дев'ять слів. Після «Ще раз» це ті, хто програв: реванш
         // має сенс лише тоді, коли фора дістається не переможцям.

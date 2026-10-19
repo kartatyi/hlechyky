@@ -218,6 +218,12 @@ public sealed class Dotepy : Game
     // сервіси
     IDotepyVoice _voice = DotepyNoVoice.Instance;
     DotepySeen _seen = DotepySeen.Shared;
+    /// <summary>
+    /// Пам'ять баченого між партіями, столами й деплоями (пакет 1) — джерело правди; <see cref="DotepySeen"/> лишився
+    /// швидким шаром процесу. Завдання раунду бачать усі, хто сидить.
+    /// </summary>
+    GameSeen? _seenDb;
+    const string SeenGame = "dotepy";
     IReadOnlyList<DotepyPrompt> _bank = [];
     /// <summary>Банк, звужений до тем столу (опція <c>themes</c>); тем не обрано чи вони порожні — увесь банк.</summary>
     IReadOnlyList<DotepyPrompt> _pool = [];
@@ -347,6 +353,8 @@ public sealed class Dotepy : Game
             catch (Exception) { /* голос — чужий код; не вийшло — граємо текстом */ }
         }
         _seen = Ctx.Services.GetService<DotepySeen>() ?? DotepySeen.Shared;
+        // Пам'ять «вже було» фон читає з бази заздалегідь — щоб перше «Почати» вже її мало.
+        (_seenDb ??= GameSeen.Of(Ctx.Services)).Prefetch(SeenGame);
         _bank = Ctx.Services.GetService<DotepyPrompts>()?.List ?? DotepyBank.All;
         _pool = ByThemes(_bank, _themeTags);
         _spiceNas = _pool.Any(p => Tagged(p, TagNas)) && _pool.Any(p => !Tagged(p, TagNas));
@@ -621,16 +629,25 @@ public sealed class Dotepy : Game
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
         var seen = _seen.Snapshot();
+        _seenDb ??= GameSeen.Of(Ctx.Services);
+        var table = GameSeen.Table(Ctx, MaxSeats);
+        var known = _seenDb.Peek(SeenGame, table);
+        GameSeen.Seen Known(DotepyPrompt p) => !_used.Contains(p.Id) && known.TryGetValue(p.Id, out var k) ? k : default;
         // ранг свіжості: 0 — нове, 1 — бачене сервером, 2 — зігране тут; усередині — звичайні раніше за фінальні.
         // Бачені сервером — від найдавнішого: коли банк пройдено по колу, першим повторюється те, що грали давно,
         // а не те, що щойно було на сусідньому столі. Тасування — лише розв'язання нічиїх.
         int Rank(DotepyPrompt p) => (_used.Contains(p.Id) ? 4 : seen.ContainsKey(p.Id) ? 2 : 0) + (!final && p.Final ? 1 : 0);
         long Stamp(DotepyPrompt p) => !_used.Contains(p.Id) && seen.TryGetValue(p.Id, out var at) ? at : 0;
-        var ordered = pool.Select((p, i) => (p, i)).OrderBy(x => Rank(x.p)).ThenBy(x => Stamp(x.p)).ThenBy(x => x.i).Select(x => x.p).ToList();
+        // Пам'ять між партіями (база) — перед усім цим: спершу те, що бачило найменше людей за столом, при рівності — бачене
+        // давніше. Зігране тут лишається найгіршим; порожня історія — порядок рівно як був.
+        var ordered = pool.Select((p, i) => (p, i))
+            .OrderBy(x => _used.Contains(x.p.Id)).ThenBy(x => Known(x.p).By).ThenBy(x => Known(x.p).Last)
+            .ThenBy(x => Rank(x.p)).ThenBy(x => Stamp(x.p)).ThenBy(x => x.i).Select(x => x.p).ToList();
         var picked = new List<DotepyPrompt>(count);
         for (var i = 0; i < count && ordered.Count > 0; i++) picked.Add(ordered[i % ordered.Count]);
         foreach (var p in picked) _used.Add(p.Id);
         _seen.Mark(picked.Select(p => p.Id));
+        _seenDb.Remember(SeenGame, table, picked.Select(p => p.Id), Now);
         return picked;
     }
 

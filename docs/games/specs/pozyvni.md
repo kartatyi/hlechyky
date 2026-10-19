@@ -299,3 +299,11 @@
 
 Тести: `Captains_chat_*`, `A_captains_line_*`, `Only_a_captain_writes_to_the_captains_chat`,
 `Together_against_the_table_there_is_no_captains_chat`, `A_new_captain_sees_what_was_said_before_*` (11 нових).
+
+## Пакет 1 (19.10): 🧠 пам'ять баченого між партіями
+
+Раніше «вже було» жило лише на столі (`_used`): за 28 партій вечорами показали ~700 з 1314 слів — і пішли повтори між
+столами й після деплою. Тепер поле, щойно роздане, пишеться в спільну пам'ять `GameSeen` (таблиця `game_seen`, гра
+`pozyvni`, ключ — `PictionaryWords.Normalize`) для всіх, хто сидить. Наступна партія бере спершу слова, які бачило
+найменше людей за столом, при рівності — бачені давніше; `_used` столу лишився. Порожня історія — роздача як була.
+Тести: `GameSeenGamesTests.Pozyvni_*`.
