@@ -68,6 +68,11 @@ public static class GamesSetup
         Impl.KavunySetup.AddKavuny(services);       // Кавуни на ярмарку: налаштування Kavuny:* і каса
         Impl.BlackjackSetup.AddBlackjack(services); // Двадцять одно: налаштування Blackjack:* і каса (specs/blackjack.md)
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
+        // Сила гравців у кожній грі з game_results — для «команд за силою» (Impl/TeamSplit.cs), фоном
+        services.AddSingleton(sp => new Economy.SkillBoard(sp.GetService<Db>(), sp.GetService<GameEvents>(),
+            sp.GetService<ILogger<Economy.SkillBoard>>()));
+        services.AddSingleton<Economy.ISkills>(sp => sp.GetRequiredService<Economy.SkillBoard>());
+        services.AddHostedService(sp => sp.GetRequiredService<Economy.SkillBoard>());
         return services;
     }
 
