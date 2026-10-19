@@ -386,7 +386,13 @@ public sealed partial class Clicker
             foreach (var k in arr.EnumerateArray())
             {
                 if (k.ValueKind != JsonValueKind.String || k.GetString() is not { } key) continue;
-                if (!mine.Contains(key)) return ActResult.Fail("Такого звання в тебе нема");
+                // Обране раніше, але вже не твоє (перехопили «перше в окрузі»), просто випадає. Інакше воно займало
+                // невидиме місце серед трьох, і ні зняти, ні поставити нове не виходило (записка #54).
+                if (!mine.Contains(key))
+                {
+                    if (_titleShow.Contains(key)) continue;
+                    return ActResult.Fail("Такого звання в тебе нема");
+                }
                 if (!keys.Contains(key)) keys.Add(key);
             }
         if (keys.Count > BadgesMax) return ActResult.Fail($"Біля ніка — не більше {BadgesMax} значків");
@@ -445,7 +451,8 @@ public sealed partial class Clicker
         {
             mine,
             earned = _titles.Where(x => x.Key != TitleApprentice || ApprenticeNow).ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal),
-            show = _titleShow,
+            // Лише те, що ще є: клієнт рахує з цього «до трьох», а втраченого звання він не намалює.
+            show = _titleShow.Where(mine.Contains).ToList(),
             badges = Badges(mine, _titleShow),
             values,
             progress,

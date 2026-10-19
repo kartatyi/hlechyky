@@ -389,6 +389,37 @@ public class ClickerTitlesTests
     }
 
     [Fact]
+    public void A_lost_first_title_frees_its_badge_slot_and_does_not_block_the_choice()
+    {
+        // Записка #54: «перше в окрузі» перехопили, а воно лишилось серед обраних невидимим — «макс. 3, а в мене 2»,
+        // і зняти чи поставити звання не виходило («Такого звання в тебе нема»).
+        var g = new Okruha();
+        var m = g.Potter("Микола");
+        var v = g.Potter("Владік");
+        Patch(m, s => s["stamps"] = 5783);
+        PatchTitles(m, t => t["earned"] = new JsonObject { ["tenk"] = Thursday, ["hundred"] = Thursday, ["sich"] = Thursday });
+        Patch(v, s => s["stamps"] = 2510);
+        Assert.True(Look(m).Ok);
+        Assert.True(Look(v).Ok);
+        Assert.True(m.Act(0, "titles", new { op = "show", keys = new[] { "first", "tenk", "hundred" } }).Ok);
+
+        Patch(v, s => s["stamps"] = 6000);
+        Assert.True(Look(v).Ok);
+        Assert.True(Look(m).Ok);
+        Assert.DoesNotContain("first", Mine(m));
+        Assert.Equal(["tenk", "hundred"], Keys(T(m).GetProperty("show")));
+
+        // Старий клієнт ще шле втрачене — воно просто випадає.
+        Assert.True(m.Act(0, "titles", new { op = "show", keys = new[] { "first", "tenk" } }).Ok);
+        Assert.Equal(["tenk"], Keys(T(m).GetProperty("show")));
+        // Три своїх — уміщаються.
+        Assert.True(m.Act(0, "titles", new { op = "show", keys = new[] { "tenk", "hundred", "sich" } }).Ok);
+        Assert.Equal(["tenk", "hundred", "sich"], Badges(m));
+        // А чуже, якого серед обраних не було, — як і раніше ні.
+        Assert.False(m.Act(0, "titles", new { op = "show", keys = new[] { "first" } }).Ok);
+    }
+
+    [Fact]
     public void An_equal_number_leaves_the_title_where_it_was()
     {
         var g = new Okruha();

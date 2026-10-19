@@ -198,7 +198,8 @@
       if (!human(e) || !st.titles) return;
       const key = chip.dataset.tshow;
       const max = (cat(st) && cat(st).badgesMax) || 3;
-      let show = st.titles.show.slice();
+      // Лише те, що ще є: перехоплене «перше в окрузі» не видно, і місця серед трьох воно не займає (записка #54).
+      let show = st.titles.show.filter((k) => st.titles.mine.includes(k));
       if (show.includes(key)) show = show.filter((k) => k !== key);
       else if (show.length >= max) { api.toast(st, 'Біля ніка — до ' + max + ' значків: спершу зніми якийсь', 'warn'); return; }
       else show.push(key);
