@@ -345,9 +345,9 @@ public class BomberSweep3Tests
     [Fact]
     public void Teams_of_two_on_four_and_nobody_on_three()
     {
-        var h = Table(4, new { teams = "1" });
+        var h = Table(4, new { teams = "2" });
         Assert.Equal([0, 1, 0, 1, -1, -1], h.View(null).GetProperty("teams").EnumerateArray().Select(e => e.GetInt32()).ToArray());
-        var three = Table(3, new { teams = "1" });
+        var three = Table(3, new { teams = "2" });
         Assert.False(three.View(null).TryGetProperty("teams", out _));
         Assert.Contains("Команд не буде", three.View(null).GetProperty("note").GetString());
     }
@@ -399,7 +399,7 @@ public class BomberSweep3Tests
     [Fact]
     public void Team_party_ends_with_the_whole_team_winning()
     {
-        var h = Table(4, new { teams = "1" });
+        var h = Table(4, new { teams = "2" });
         for (var round = 0; round < 3; round++)
         {
             Ready(h);

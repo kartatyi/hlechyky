@@ -34,10 +34,13 @@ public sealed class Icefloe : Game, IPartyMinigame
 
     /// <summary>Команди (п. 182): типово кожен сам за себе.</summary>
     static readonly GameOption TeamsOption = new("teams", "Команди",
-        [("off", "Кожен сам за себе"), ("on", "🔵🔴 Сині проти рудих (4, 6 чи 8)")], "off");
+        [("off", "Кожен сам за себе"), ("on", "🔵🔴 Сині проти рудих за силою (4, 6 чи 8)"),
+         ("seat", "🔵🔴 Сині проти рудих як сіли (4, 6 чи 8)")], "off");
     public const string TeamsText = "Команди — лише парно: 4, 6 чи 8 за столом";
     public static readonly string[] TeamNames = ["сині", "руді"];
-    bool _teamsOpt;
+    bool _teamsOpt, _teamsBySeat;
+    /// <summary>Хто з ким грав минулої партії — «Ще раз» за силою ділить трохи по-новому (TeamSplit).</summary>
+    readonly TeamSplit.Memory _split = new();
     /// <summary>Команда, що взяла минулий раунд (−1 — нема або кожен сам за себе).</summary>
     int _roundTeam = -1;
     static readonly string[] Names = ["синій", "рудий", "зелений", "жовтий", "бузковий", "м’ятний", "рожевий", "сірий"];
@@ -153,7 +156,8 @@ public sealed class Icefloe : Game, IPartyMinigame
     {
         _needOpt = options.TryGetValue("wins", out var v) && int.TryParse(v, out var n) && n is >= 1 and <= 3 ? n : 0;
         _need = NeedFor(2);
-        _teamsOpt = options.TryGetValue("teams", out var t) && t == "on";
+        _teamsOpt = options.TryGetValue("teams", out var t) && t is "on" or "seat";
+        _teamsBySeat = t == "seat";
         _solo.Configure(options);
         _party = PartyMode.Read(options);
         if (_party is not null) { _needOpt = 1; _teamsOpt = false; }
@@ -171,12 +175,19 @@ public sealed class Icefloe : Game, IPartyMinigame
     /// <summary>Грають командами (після «Почати» — за складом на старті; у лобі — за опцією).</summary>
     public bool Teams => _teamsOpt;
 
-    /// <summary>Команди по черзі за місцями: перший, хто сів, — синій, другий — рудий, третій — синій…</summary>
+    /// <summary>
+    /// Команди: «за силою» — рівні суми сил людей і ботів, щоразу трохи по-новому (TeamSplit); «як сіли» — по черзі
+    /// за місцями: перший, хто сів, — синій, другий — рудий, третій — синій…
+    /// </summary>
     void DealTeams(IcefloeCore c)
     {
-        var k = 0;
-        for (var i = 0; i < IcefloeCore.Seats; i++)
-            c.Bodies[i].Team = _teamsOpt && c.Bodies[i].Plays ? k++ % 2 : -1;
+        for (var i = 0; i < IcefloeCore.Seats; i++) c.Bodies[i].Team = -1;
+        if (!_teamsOpt) return;
+        var plays = Enumerable.Range(0, IcefloeCore.Seats).Where(i => c.Bodies[i].Plays).ToArray();
+        var split = _teamsBySeat ? TeamSplit.Alternate(plays.Length)
+            : TeamSplit.ForSeats(Ctx, Info.Id, plays, s => IsBot(s) ? _party?.Level ?? _solo.Level : null, _split);
+        for (var k = 0; k < plays.Length; k++) c.Bodies[plays[k]].Team = split[k];
+        if (!_teamsBySeat) Ctx.Log(TeamSplit.Note);
     }
 
     public override void Start()
@@ -513,7 +524,8 @@ public sealed class Icefloe : Game, IPartyMinigame
         var r = new int?[IcefloeCore.Seats];
         var k = 0;
         for (var i = 0; i < IcefloeCore.Seats; i++)
-            if (lobby ? Ctx.Seated(i) : c.Bodies[i].Plays) r[i] = lobby ? k++ % 2 : c.Bodies[i].Team;
+            // у лобі «за силою» команд ще нема — їх ділять на старті
+            if (lobby ? Ctx.Seated(i) : c.Bodies[i].Plays) r[i] = lobby ? _teamsBySeat ? k++ % 2 : null : c.Bodies[i].Team;
         return r;
     }
 
@@ -537,6 +549,7 @@ public sealed class Icefloe : Game, IPartyMinigame
             need = Need,
             roundsMax = RoundsMax,
             teams = TeamsOf(c, lobby),
+            teamsBy = _teamsOpt ? _teamsBySeat ? "seat" : "power" : null,
             roundTeam = lobby ? -1 : _roundTeam,
             wins,
             pushouts,

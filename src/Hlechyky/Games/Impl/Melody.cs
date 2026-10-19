@@ -73,7 +73,7 @@ public sealed class Melody : Game
             new GameOption("cat", "Пісні", MelodyCategories.Values(MelodyClassics.Default), MelodyCategories.All, Multi: true),
             new GameOption("grow", "Уривок", [("0", "звучить одразу весь"), ("1", "з першої ноти: 3 → 6 → 10 с")], "0"),
             new GameOption("choices", "Підказка", [("0", "без варіантів"), ("1", "4 виконавці в останні 5 с")], "0"),
-            new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "дві команди (від 6)")], "0"),
+            new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "дві команди за силою (від 6)"), ("2", "дві команди як сіли (від 6)")], "0"),
             new GameOption("duel", "Останній трек", [("0", "для всіх"), ("1", "дуель двох лідерів")], "0"),
         ],
         Hint: "Звучить уривок пісні — з радіо або зі світової класики. Пиши виконавця й назву — хто перший, той бере більше");
@@ -107,7 +107,9 @@ public sealed class Melody : Game
     int _clipSec = 15;
     /// <summary>Обрані категорії (<see cref="MelodyCategories"/>); порожньо не буває — «усе» розгортається в усі.</summary>
     IReadOnlyList<string> _categories = MelodyCategories.Radio;
-    bool _grow, _choicesOn, _teamsOn, _duelOn;
+    bool _grow, _choicesOn, _teamsOn, _teamsBySeat, _duelOn;
+    /// <summary>Хто з ким грав минулої партії — «Ще раз» за силою ділить трохи по-новому (TeamSplit).</summary>
+    readonly TeamSplit.Memory _split = new();
 
     // ---------- підготовка (фон) ----------
     CancellationTokenSource? _cts;
@@ -172,7 +174,8 @@ public sealed class Melody : Game
         if (options.TryGetValue("clip", out var c) && int.TryParse(c, out var cn) && ClipChoices.Contains(cn)) _clipSec = cn;
         _grow = options.GetValueOrDefault("grow") == "1";
         _choicesOn = options.GetValueOrDefault("choices") == "1";
-        _teamsOn = options.GetValueOrDefault("teams") == "1";
+        _teamsOn = options.GetValueOrDefault("teams") is TeamSplit.ByStrength or TeamSplit.BySeat;
+        _teamsBySeat = options.GetValueOrDefault("teams") == TeamSplit.BySeat;
         _duelOn = options.GetValueOrDefault("duel") == "1";
     }
 
@@ -529,7 +532,10 @@ public sealed class Melody : Game
 
     int TeamOf(int seat) => _teams ? _team[seat] : -1;
 
-    /// <summary>Команди на старті: від шести за столом, непарні місця — одна команда, парні — друга; вийшло криво (усі на парних) — по черзі.</summary>
+    /// <summary>
+    /// Команди на старті, від шести за столом. «За силою» — рівні суми сил, щоразу трохи по-новому (TeamSplit);
+    /// «як сіли» — непарні місця одна команда, парні — друга; вийшло криво (усі на парних) — по черзі.
+    /// </summary>
     void SetupTeams()
     {
         _teams = false;
@@ -544,6 +550,13 @@ public sealed class Melody : Game
             return;
         }
         _teams = true;
+        if (!_teamsBySeat)
+        {
+            var split = TeamSplit.ForSeats(Ctx, Info.Id, seated, _ => null, _split);
+            for (var i = 0; i < seated.Count; i++) _team[seated[i]] = split[i];
+            Ctx.Log(TeamSplit.Note);
+            return;
+        }
         foreach (var s in seated) _team[s] = s % 2;
         var odd = seated.Count(s => s % 2 == 1);
         if (Math.Abs(seated.Count - 2 * odd) > 2)

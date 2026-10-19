@@ -1891,6 +1891,7 @@
     if (!ctx.playing) {
       if (ctx.room && ctx.room.status === 'lobby') {
         const host = ctx.room.host && ctx.me && String(ctx.room.host).toLowerCase() === String(ctx.me.nick).toLowerCase();
+        if (v.teams && v.teamsBy === 'power') return '🔵🔴 Командами за силою: Глек поділить порівну на старті; треба 4, 6 чи 8. Раунд бере команда — прикривай спину';
         if (v.teams) return '🔵🔴 Командами: сідай по черзі — 1-й, 3-й, 5-й… сині, 2-й, 4-й… руді; треба 4, 6 чи 8. Раунд бере команда — прикривай спину';
         return host ? 'Тисни «Почати», коли всі сіли (2–8)' : 'Сумо на кризі. Стартує господар, коли зібралось 2–8';
       }
