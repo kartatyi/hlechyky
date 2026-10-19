@@ -26,6 +26,10 @@
   const CODE = /^[2-9TJQKA][shdc]$/;
   const CHIPS = [10, 25, 50, 100, 500, 'max'];
   const OUT = { bj: 'Блекджек!', win: 'Виграш', push: 'Нічия', lose: 'Програш', bust: 'Перебір' };
+  /// Підсумок руки словами. 21 проти блекджека Глека — програш за правилом (старшинство за Глеком), а голе «Програш»
+  /// поряд із двома «21» читалось як помилка рахунку (записка #60).
+  const outText = (h, v) => (h.outcome === 'lose' && h.total === 21 && v.dealer && v.dealer.bj
+    ? (h.bj ? '21 на 21 — Глекові' : 'У Глека блекджек') : OUT[h.outcome]);
   const BADGE = { idle: '👋', hurry: '⏳', deal: '🃏', flip: '👀', bj: '😎', dance: '💃', bust: '💥', clap: '👏', rake: '🪵', sigh: '😮‍💨', doze: '💤' };
   const SAY_MS = 4000;
 
@@ -73,7 +77,7 @@
       + '<div class="bj-say" aria-live="polite"></div>'
       + '<div class="bj-dealer"><div class="bj-cards bj-dcards"></div><div class="bj-dtot"></div></div>'
       + '</div>'
-      + '<div class="bj-rules">Блекджек 1:1 · Глек добирає на м’яких 17 · ×2 на 9–11 · спліт до 3 рук</div>'
+      + '<div class="bj-rules">Блекджек 1:1 · блекджек на блекджек — Глекові · Глек добирає на м’яких 17 · ×2 на 9–11 · спліт до 3 рук</div>'
       + '<div class="bj-boxes"></div>'
       + '</div>'
       + '<div class="bj-panel"></div>'
@@ -184,7 +188,7 @@
         return '<div class="' + hc.join(' ') + '"><div class="bj-cards">'
           + h.cards.map((c, ci) => cardOnce(st, 'b' + bi + 'h' + hi + 'c' + ci, c)).join('') + '</div>'
           + '<div class="bj-hmeta"><span class="bj-tot">' + tot + '</span><span class="bj-stake">' + fmt(h.bet * (h.doubled ? 2 : 1))
-          + (h.doubled ? ' ×2' : '') + '</span>' + (h.outcome ? '<span class="bj-out">' + OUT[h.outcome] + '</span>' : '') + '</div></div>';
+          + (h.doubled ? ' ×2' : '') + '</span>' + (h.outcome ? '<span class="bj-out">' + outText(h, v) + '</span>' : '') + '</div></div>';
       }).join('');
       return '<div class="' + cls.join(' ') + '">' + head + hands + '</div>';
     }).join('');
