@@ -58,4 +58,39 @@ public class GameSeenGamesTests
         Assert.Equal(PozyvniBoard(Services(null, s => s.AddSingleton(Words()))),
             PozyvniBoard(Services(temp, s => s.AddSingleton(Words()))));
     }
+
+    // ---------- Піктіонарі ----------
+
+    static (RoomHarness H, string[] Choices) PictionaryOffer(IServiceProvider services)
+    {
+        var h = new RoomHarness("pictionary", seed: 7, services: services);
+        foreach (var n in Nicks) h.Join(n);
+        h.Start();
+        var drawer = h.View(null).GetProperty("drawer").GetInt32();
+        return (h, [.. h.View(drawer).GetProperty("choices").EnumerateArray().Select(e => e.GetString()!)]);
+    }
+
+    [Fact]
+    public void Pictionary_OffersUnseenWordsFirst_AndRemembersThemForTheArtist()
+    {
+        using var temp = new TempDb();
+        // Оля бачила 57 слів із 60 — художнику пропонують саме три небачені.
+        new GameSeen(temp.Db).Seed("pictionary", [GameSeen.NickKey("Оля")], Bank.Take(57), Yesterday);
+        var (h, choices) = PictionaryOffer(Services(temp, s => s.AddSingleton(Words())));
+        Assert.Equal(Bank.Skip(57).Order(), choices.Order());
+
+        var drawer = h.View(null).GetProperty("drawer").GetInt32();
+        var artist = new GameSeen(temp.Db).Peek("pictionary", [GameSeen.NickKey(Nicks[drawer])]);
+        Assert.All(choices, w => Assert.True(artist.ContainsKey(w)));   // запропоноване бачив художник
+        var other = Nicks.First(n => n != Nicks[drawer] && n != "Оля");
+        Assert.Empty(new GameSeen(temp.Db).Peek("pictionary", [GameSeen.NickKey(other)]));   // а решта — ще ні
+    }
+
+    [Fact]
+    public void Pictionary_EmptyHistoryOffersAsBefore()
+    {
+        using var temp = new TempDb();
+        Assert.Equal(PictionaryOffer(Services(null, s => s.AddSingleton(Words()))).Choices,
+            PictionaryOffer(Services(temp, s => s.AddSingleton(Words()))).Choices);
+    }
 }
