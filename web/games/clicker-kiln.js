@@ -630,13 +630,28 @@
     // Згортка (13.10): згорнута — лише заголовок із підсумком партії.
     const html = '<div class="clkk-lastbox"' + api.fold('k.last') + '>'
       + api.foldHead('Останнє горно <span class="muted small">· ' + summary(cnt) + '</span>') + '<div class="clkk-lastitems">'
-      + l.items.slice(0, 24).map((it, i) => '<span class="clkk-li q' + it[1] + '" title="' + api.esc(st, wareName(st, it[0]) + ' — ' + QNAME[it[1]]) + '">'
-        + (it[1] === 0 ? shardSvg() : api.wareSvg(it[0], { style: l.style, quality: it[1], slot: 'kl-' + i, cls: 'clkk-lisvg' })) + '</span>').join('')
+      + grouped(l.items).slice(0, 24).map((g, i) => '<span class="clkk-li q' + g.q + '" title="'
+        + api.esc(st, wareName(st, g.ware) + ' — ' + QNAME[g.q] + (g.n > 1 ? ' ×' + g.n : '')) + '">'
+        + (g.q === 0 ? shardSvg() : api.wareSvg(g.ware, { style: l.style, quality: g.q, slot: 'kl-' + i, cls: 'clkk-lisvg' }))
+        + (g.n > 1 ? '<b class="clkk-li-n">×' + g.n + '</b>' : '') + '</span>').join('')
       + '</div>'
       + '<div class="muted small">' + (l.helper ? 'палив підмайстер' : 'жар у смузі ' + l.heat + ' %' + (l.beauty ? ' · краса ' + l.beauty : '') + (l.straw ? ' · солома' : ''))
       + (l.shards ? ' · черепки +' + api.potsShort(l.shards) : '') + (l.sold ? ' · базар +' + api.potsShort(l.sold) : '') + '</div>'
       + '<button type="button" class="ghost small clkk-replay">Показати відкриття</button></div>';
     if (api.swap(ui.last, html)) ui.last.querySelector('.clkk-replay').onclick = () => reveal(st, api, l, true);
+  }
+
+  /// Однакові вироби (той самий виріб і якість) — однією клітинкою «×N»: три десятки мисок по одній не читались
+  /// (записка #57). Від найкращих до тріснутих, а всередині якості — як лягли в піч.
+  function grouped(items) {
+    const by = new Map();
+    for (const it of items) {
+      const k = it[0] + '|' + it[1];
+      const g = by.get(k);
+      if (g) g.n++;
+      else by.set(k, { ware: it[0], q: it[1], n: 1 });
+    }
+    return [...by.values()].sort((a, b) => b.q - a.q);
   }
 
   function summary(cnt) {
@@ -1753,18 +1768,23 @@
   function reveal(st, api, l, replay) {
     const cnt = [0, 0, 0, 0, 0];
     for (const it of l.items) cnt[it[1]]++;
+    const groups = grouped(l.items);
     const quick = reduced();
-    const step = quick ? 0 : Math.max(120, Math.min(320, 3200 / Math.max(1, l.items.length)));
+    const step = quick ? 0 : Math.max(120, Math.min(320, 3200 / Math.max(1, groups.length)));
     const body = api.overlay(st, '<div class="clkk-reveal' + (quick ? ' quick' : '') + '">'
       + '<div class="clk-sub">' + (l.helper ? '🧑‍🏭 Підмайстер відкрив горно' : '🔥 Горно відкрите') + '</div>'
       + '<div class="muted small">' + (l.helper ? 'усі звичайні, без тріщин' : 'жар у смузі ' + l.heat + ' %' + (l.beauty ? ' · краса ' + l.beauty : '') + (l.straw ? ' · солома' : ''))
       + ' · ' + api.esc(st, styleName(st, l.style)) + '</div>'
+      // Підсумок — одразу вгорі (записка #57): унизу він з'являвся лише після всіх виробів, і у великому горні до нього
+      // ще треба було гортати.
+      + '<div class="clkk-rv-tally">' + summary(cnt) + '</div>'
       + '<div class="clkk-rv-door"><div class="clkk-rv-grid">'
-      + l.items.map((it, i) => '<div class="clkk-rv q' + it[1] + '" style="animation-delay:' + (i * step) + 'ms">'
-        + (it[1] === 0 ? shardSvg() : api.wareSvg(it[0], { style: l.style, quality: it[1], slot: 'rv-' + i, cls: 'clkk-rvsvg' }))
-        + '<span class="small">' + (STARS[it[1]] || '') + ' ' + api.esc(st, wareName(st, it[0])) + '</span></div>').join('')
+      + groups.map((g, i) => '<div class="clkk-rv q' + g.q + '" style="animation-delay:' + (i * step) + 'ms">'
+        + (g.q === 0 ? shardSvg() : api.wareSvg(g.ware, { style: l.style, quality: g.q, slot: 'rv-' + i, cls: 'clkk-rvsvg' }))
+        + (g.n > 1 ? '<b class="clkk-rv-n">×' + g.n + '</b>' : '')
+        + '<span class="small">' + (STARS[g.q] || '') + ' ' + api.esc(st, wareName(st, g.ware)) + '</span></div>').join('')
       + '</div></div>'
-      + '<div class="clkk-rv-sum" style="animation-delay:' + (l.items.length * step + 200) + 'ms"><b>' + summary(cnt) + '</b>'
+      + '<div class="clkk-rv-sum" style="animation-delay:' + (groups.length * step + 200) + 'ms">'
       + (l.shards ? '<div class="small muted">черепки на засипку: +' + api.potsShort(l.shards) + '</div>' : '')
       + (l.sold ? '<div class="small muted">комора повна — ' + (l.freed ? api.esc(st, l.freed) + '; ' : '') + 'на базар: +' + api.potsShort(l.sold) + '</div>' : '')
       + (!l.helper && l.items.length >= 4 && cnt[3] + cnt[4] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
@@ -1787,8 +1807,8 @@
     api.sfx('open');
     if (quick) return;
     const timers = [];
-    l.items.forEach((it, i) => {
-      if (it[1] >= 3 || it[1] === 0) timers.push(setTimeout(() => api.sfx(it[1] >= 3 ? 'ding' : 'crack'), i * step + 150));
+    groups.forEach((g, i) => {
+      if (g.q >= 3 || g.q === 0) timers.push(setTimeout(() => api.sfx(g.q >= 3 ? 'ding' : 'crack'), i * step + 150));
     });
     const prev = st.ov.onClose;
     st.ov.onClose = () => { timers.forEach(clearTimeout); if (prev) prev(); };
