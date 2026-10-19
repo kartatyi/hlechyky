@@ -60,15 +60,16 @@ public class Bricks : Game
     public static int CapOf(int sudden) => sudden + (BricksCore.Cap - BricksCore.Sudden);
 
     static readonly GameInfo TableInfo = new(
-        "bricks", "Цеглини", "цеглини", GameGroup.Live, 2, Seats, TickMs: 40, Start: StartMode.ByHost,
+        "bricks", "Цеглини", "цеглини", GameGroup.Live, 1, Seats, TickMs: 40, Start: StartMode.ByHost,
         Options:
         [
             new GameOption("wins", "Партія до", [("1", "одного раунду"), ("2", "двох виграних"), ("3", "трьох виграних")], "1"),
             new GameOption("speed", "Темп", [("calm", "Спокійно"), ("normal", "Звичайно"), ("fast", "Швидко")], "normal"),
             new GameOption("garbage", "Сміття", [("normal", "Звичайне"), ("hard", "Люте"), ("none", "Без сміття — хто довше")], "normal"),
             GroundOption(GroundLong),
+            LiveBots.LevelsOption,
         ],
-        Hint: "Падають цеглинки з чотирьох квадратиків. Закрив два ряди й більше — суперникові знизу лізе сміття. Хто завалився — вибув, останній бере раунд");
+        Hint: "Падають цеглинки з чотирьох квадратиків. Закрив два ряди й більше — суперникові знизу лізе сміття. Хто завалився — вибув, останній бере раунд. Самому — з 🤖 ботами");
 
     static readonly GameInfo RatedInfo = new(
         "bricks-duel", "Цеглини: дуель на рейтинг", "рейтингову дуель у цеглини", GameGroup.Live, 2, 2, TickMs: 40, Rated: true,
@@ -113,7 +114,38 @@ public class Bricks : Game
     /// <summary>Партію віддано тому, хто лишився за столом сам (решта встали) — підсумок так і скаже.</summary>
     bool _byLeave;
 
+    /// <summary>
+    /// «🤖 + боти» (лише стіл <c>bricks</c>; у рейтинговій дуелі ботів нема): сам — троє ботів, стіл на чотирьох;
+    /// удвох — двоє, утрьох — один (<see cref="SoloBot.Count"/>). Стіну бота веде сервер (<see cref="BricksBotDriver"/>).
+    /// </summary>
+    public const int SoloBots = 3;
+    readonly SoloBot _solo = new(SoloBots);
+    /// <summary>Місця ботів у цій партії (порожньо — партія людська).</summary>
+    int[] _bots = [];
+    readonly BricksBotDriver?[] _brain = new BricksBotDriver?[Seats];
+    /// <summary>Скільки людей сіло на старті партії: одна з ботами — партія без нагород, з вердиктом.</summary>
+    int _humans;
+
+    public IReadOnlyList<int> Bots => _bots;
+    public LiveBots.Level BotLevel => _solo.Level;
+    bool IsBot(int seat) => _brain[seat] is not null;
+
     public override string SeatName(int seat) => seat >= 0 && seat < Names.Length ? Names[seat] : base.SeatName(seat);
+
+    public override bool ActsInLobby => !Info.Rated;
+
+    public override string? CanStart() => Info.Rated ? null : _solo.CanStart(Ctx, Seats);
+
+    /// <summary>Куди сядуть боти: перші вільні місця, скільки треба до повного «1 + SoloBots».</summary>
+    int[] BotSeats() => Info.Rated || !_solo.Active(Ctx, Seats) ? []
+        : [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, Seats))];
+
+    /// <summary>«🤖 бот бірюза» — з кольором стіни, щоб троє ботів не плутались у підсумку.</summary>
+    public override string? SeatBot(int seat) =>
+        seat is >= 0 and < Seats && !Ctx.Seated(seat) && Array.IndexOf(_phase == PhaseLobby ? BotSeats() : _bots, seat) >= 0
+            ? BotName(seat) : null;
+
+    static string BotName(int seat) => $"{LiveBots.Name} {Names[seat]}";
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
@@ -124,6 +156,7 @@ public class Bricks : Game
         _mode = _garbage switch { "hard" => BricksCore.ModeHard, "none" => BricksCore.ModeNone, _ => BricksCore.ModeNormal };
         if (options.TryGetValue("ground", out var gr) && gr is GroundLong or GroundShort) _ground = gr;
         _sudden = SuddenOf(_ground);
+        _solo.Configure(options);
     }
 
     /// <summary>Скільки тиків стіни (60 Гц) триває етап темпу.</summary>
@@ -135,6 +168,10 @@ public class Bricks : Game
         _finalRanks = null;
         _byLeave = false;
         Array.Clear(_left);
+        _bots = BotSeats();
+        _humans = SoloBot.Humans(Ctx, Seats);
+        Array.Clear(_brain);
+        foreach (var s in _bots) _brain[s] = new BricksBotDriver(_solo.Level, Ctx.Rng.Next());
         foreach (var st in _seats)
         {
             st.Wins = st.MatchLines = st.MatchSent = st.MatchRecv = 0;
@@ -154,8 +191,9 @@ public class Bricks : Game
         for (var s = 0; s < Seats; s++)
         {
             var st = _seats[s];
-            st.Plays = Ctx.Seated(s);
-            st.Nick = st.Plays ? Ctx.NickOf(s) : null;
+            // бот грає, поки за столом є хоч одна людина; встали всі — партію й так закінчує OnLeave
+            st.Plays = Ctx.Seated(s) || IsBot(s);
+            st.Nick = Ctx.Seated(s) ? Ctx.NickOf(s) : IsBot(s) ? BotName(s) : null;
             if (st.Plays) st.MatchNick = st.Nick;
             st.Rank = 0;
             st.NeedFix = false;
@@ -164,6 +202,7 @@ public class Bricks : Game
             st.LastEvT = -1;
             st.LastEvN = 0;
             st.Core.Reset(_seed, _mode, _stageTicks);
+            _brain[s]?.Reset();
         }
         _phase = PhaseStart;
         _startIn = StartTicks;
@@ -185,6 +224,11 @@ public class Bricks : Game
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (seat < 0 || seat >= Seats) return ActResult.Fail("Ти тут не граєш");
+        if (action == LiveBots.Toggle)
+        {
+            if (Info.Rated) return ActResult.Fail("У рейтинговій дуелі ботів нема");
+            return _phase is PhaseLobby or PhaseOver ? _solo.Switch(Ctx, seat, payload, Seats) : ActResult.Fail("Партія вже йде");
+        }
         switch (action)
         {
             case "j":
@@ -261,7 +305,7 @@ public class Bricks : Game
                 if (c.Sent > st.BestShot) { st.BestShot = c.Sent; st.BestShotTo = target; }
                 Credit(target, c.Sent, seat, ripeNow: false);
             }
-            if (c.Lines == 4 && !st.FourAsked)
+            if (c.Lines == 4 && !st.FourAsked && !IsBot(seat))
             {
                 st.FourAsked = true;
                 Ctx.Award(seat, 0, "ach:bricks-four");
@@ -419,7 +463,19 @@ public class Bricks : Game
         var order = played.OrderBy(s => _finalRanks[s]).ThenBy(s => s).ToList();
         var scores = played.ToDictionary(s => s, s => (long)_seats[s].MatchLines);
         var log = $"{Info.Title}: " + string.Join(" : ", order.Select(s => $"{_seats[s].MatchNick} {_seats[s].Wins}"));
-        Ctx.Finish(winners, log, scores);
+        if (_bots.Length == 0 || _humans >= 2)
+        {
+            // людська партія чи боти доповнили стіл двох-трьох: звичайний кінець, бот-переможець — своїм місцем
+            Ctx.Finish(winners, log, scores);
+            return;
+        }
+        // Сам із ботами — без нагород: переміг бот — winners порожні й вердикт; людина — вердикт із рівнем.
+        var people = winners.Where(s => !IsBot(s)).ToArray();
+        var verdict = people.Length == 0
+            ? $"🤖 Цеглини взяв {(winners.Length > 0 ? _seats[winners[0]].MatchNick : LiveBots.Name)}"
+            : winners.Length == 1 ? $"🏆 {_seats[people[0]].MatchNick} — перемога над {LiveBots.Of(_solo.Level)}и ботами"
+            : $"🤝 {_seats[people[0]].MatchNick} нарівні з {LiveBots.Of(_solo.Level)}и ботами";
+        Ctx.Finish(people, log, scores, verdict);
     }
 
     /// <summary>Місця тих, хто грав у партії хоч один раунд.</summary>
@@ -471,6 +527,12 @@ public class Bricks : Game
         _phaseDirty = true;
         if (_phase == PhaseOver) return;
         var others = Enumerable.Range(0, Seats).Where(s => s != seat && Ctx.Seated(s)).ToArray();
+        // З ботами партія йде далі, поки за столом є хоч одна людина: боти й далі сміттять і вибувають.
+        if (others.Length >= 1 && _bots.Length > 0)
+        {
+            CheckRound();
+            return;
+        }
         if (others.Length <= 1)
         {
             // Журнал каже те саме, що й картка: хто лишився — бере партію, бо суперник пішов.
@@ -544,8 +606,13 @@ public class Bricks : Game
         var wall = Wall();
         // Спершу довести всі стіни мовчунів, а тоді вже роздавати місця: хто впав за цей тик — упав разом.
         var driven = 0;
+        // Боти тиснуть свої клавіші тут же, на тому самому годиннику: їхня стіна — та сама «мовчазна», лише з натисками.
         for (var s = 0; s < Seats; s++)
-            if (_seats[s].Plays && BricksJournal.Drive(_seats[s], wall)) driven |= 1 << s;
+            if (_seats[s].Plays && (_brain[s] is { } bot ? bot.Drive(_seats[s].Core, wall) : BricksJournal.Drive(_seats[s], wall)))
+            {
+                driven |= 1 << s;
+                _seats[s].Dirty = true;
+            }
         if (driven != 0)
         {
             var down = 0;
@@ -583,6 +650,7 @@ public class Bricks : Game
         {
             var st = _seats[s];
             if (!st.Plays || !BricksJournal.FixDue(st, _rt)) continue;
+            if (IsBot(s)) { st.NeedFix = false; continue; }   // у бота нема браузера, якому звіряти
             st.Epoch++;
             st.NeedFix = false;
             st.LastFixAt = _rt;
@@ -706,6 +774,12 @@ public class Bricks : Game
             rules = Rules,
             boards,
             result,
+            // «🤖 + боти» (LiveBots.cs): кнопку малює core.js; bot — місця ботів (у лобі — куди сядуть)
+            botOffer = !Info.Rated && _phase is PhaseLobby or PhaseOver && _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botFill = Info.Rated ? 0 : _solo.Fill,
+            botLvl = _solo.LevelKey,
+            bot = _phase == PhaseLobby ? BotSeats() : (int[])_bots.Clone(),
         };
     }
 

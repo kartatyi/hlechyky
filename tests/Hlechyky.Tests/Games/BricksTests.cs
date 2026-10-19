@@ -891,16 +891,17 @@ public class BricksTests(ITestOutputHelper output)
         [.. frames.SelectMany(f => f.GetProperty("ev").EnumerateArray()).Where(e => e[0].GetString() == kind)];
 
     [Fact]
-    public void Catalog_lists_bricks_as_live_2_to_4_byhost_tick_40_with_three_options_and_css()
+    public void Catalog_lists_bricks_as_live_1_to_4_byhost_tick_40_with_options_bot_level_and_css()
     {
         var game = Assert.Single(new Registry().Catalog, g => g.Id == "bricks");
         Assert.Equal("live", game.Group);
-        Assert.Equal((2, 4, 40), (game.MinPlayers, game.MaxPlayers, game.TickMs));
+        // MinPlayers 1 — сам із «🤖 + боти» (пакет 2); сам без ботів «Почати» не пускає CanStart (BricksBotTests)
+        Assert.Equal((1, 4, 40), (game.MinPlayers, game.MaxPlayers, game.TickMs));
         Assert.Equal("byHost", game.Start);
         Assert.False(game.Hidden);
         Assert.False(game.Rated);
-        Assert.Equal(["wins", "speed", "garbage", "ground"], game.Options.Select(o => o.Key));
-        Assert.Equal(["1", "normal", "normal", "5"], game.Options.Select(o => o.Default));
+        Assert.Equal(["wins", "speed", "garbage", "ground", "botlvl"], game.Options.Select(o => o.Key));
+        Assert.Equal(["1", "normal", "normal", "5", "normal"], game.Options.Select(o => o.Default));
         Assert.Equal("bricks", game.Module);
         Assert.True(game.HasCss);
         Assert.True(File.Exists(Paths.Resolve("web/games/bricks.js")));
