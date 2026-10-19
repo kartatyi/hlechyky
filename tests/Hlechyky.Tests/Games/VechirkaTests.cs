@@ -222,6 +222,74 @@ public sealed class VechirkaTests
         Assert.Contains(c[bot].Name, res.Verdict);
     }
 
+    // ---------- пакет 1: хто пішов до фіналу ----------
+
+    /// <summary>Четверо людей до фіналу; <paramref name="leaver"/> (якщо є) стає лідером і встає перед кінцем.</summary>
+    static (RoomHarness H, VechirkaCore C) FourToFinal(string? leaver)
+    {
+        var h = Table(4, 0, seed: 5);
+        Assert.True(h.Start().Ok);
+        var c = Game(h).Core!;
+        var limit = c.S.Rounds * 4 * 30 + c.S.Rounds * 20 + c.S.Rounds * 120;
+        Assert.True(Until(h, () => c.S.Phase is "final" or "done", limit), $"застрягли: {c.S.Phase} {c.S.Round}/{c.S.Rounds}");
+        if (leaver is not null)
+        {
+            c.S.P[c.S.P.FindIndex(p => p.Nick == leaver)].Gleks = 99;
+            h.Leave(leaver);
+        }
+        Assert.True(Until(h, () => h.Room.Status == RoomStatus.Finished, 120));
+        return (h, c);
+    }
+
+    /// <summary>Скільки 🏺 за місце дали ніку (0 — нічого).</summary>
+    static int PlaceBonus(RoomHarness h, string nick) =>
+        h.Awards.Where(a => a.Nick == nick && a.Reason.StartsWith("vechirka:place:")).Sum(a => a.Shards);
+
+    [Fact]
+    public void Leader_who_left_before_the_final_is_named_head_and_nobody_moves_up_into_the_bonus()
+    {
+        var (h, c) = FourToFinal("Іван");
+        var g = Game(h);
+        var ivan = c.S.P.FindIndex(p => p.Nick == "Іван");
+        Assert.Equal(1, c.PlaceOf(ivan));
+        var res = h.Room.Result!;
+        Assert.False(res.Draw);
+        // переможець кімнати — найкраща з присутніх людей
+        var others = Enumerable.Range(0, c.N).Where(i => i != ivan).OrderBy(c.PlaceOf).ToList();
+        Assert.Contains(g.SeatOfP(others[0])!.Value, res.Winners);
+        Assert.Contains("Голова вечірки — Іван (пішли до фіналу)", res.Verdict);
+        Assert.Contains($"з тих, хто дограв, найкраще — {c[others[0]].Name}", res.Verdict);
+        Assert.StartsWith("🎉 Глечикова вечірка: Іван (пішли до фіналу) — ", res.Text);
+        // хто пішов — без бонусу; решта — бонус свого справжнього місця серед усіх людей (2-ге → 10, 3-тє → 5, 4-те → 0)
+        Assert.Equal(0, PlaceBonus(h, "Іван"));
+        Assert.DoesNotContain(h.Awards, a => a.Nick == "Іван");
+        int[] bonus = [20, 10, 5, 0];
+        foreach (var i in others)
+        {
+            var place = 1 + Enumerable.Range(0, c.N).Count(j => c.Rank(j) > c.Rank(i));
+            Assert.Equal(bonus[place - 1], PlaceBonus(h, c[i].Nick!));
+        }
+        Assert.Equal(10, PlaceBonus(h, c[others[0]].Nick!));
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:vechirka-win");
+    }
+
+    [Fact]
+    public void Nobody_left_the_bonuses_and_the_head_are_as_before()
+    {
+        var (h, c) = FourToFinal(null);
+        var res = h.Room.Result!;
+        Assert.Null(res.Verdict);
+        Assert.DoesNotContain("пішли до фіналу", res.Text);
+        int[] bonus = [20, 10, 5, 0];
+        for (var i = 0; i < c.N; i++)
+        {
+            var place = 1 + Enumerable.Range(0, c.N).Count(j => c.Rank(j) > c.Rank(i));
+            Assert.Equal(bonus[place - 1], PlaceBonus(h, c[i].Nick!));
+            Assert.Equal(c.PlaceOf(i) == 1, h.Awards.Any(a => a.Nick == c[i].Nick && a.Reason == "ach:vechirka-win"));
+            if (c.PlaceOf(i) == 1) Assert.Contains(Game(h).SeatOfP(i)!.Value, res.Winners);
+        }
+    }
+
     [Fact]
     public void Host_who_paused_and_left_does_not_keep_the_table_paused()
     {
