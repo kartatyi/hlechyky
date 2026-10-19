@@ -53,7 +53,7 @@ public sealed class Bomber : Game, IPartyMinigame
             new GameOption("ghosts", "Підірвані", [("0", "чекають раунду"), ("1", "👻 привидами з помстою")], "0"),
             new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3")], "0"),
             new GameOption("ff", "Свої бомби", [("0", "своїх не ранять"), ("1", "дружній вогонь")], "0"),
-            LiveBots.LevelOption,
+            LiveBots.LevelsOption,
         ],
         Hint: "Ставиш бомби, ламаєш ящики, підриваєш суперників. Останній живий бере раунд. Самому — з трьома 🤖 ботами");
 
@@ -65,7 +65,7 @@ public sealed class Bomber : Game, IPartyMinigame
     /// собою, на людину не гуртом, і вижити серед хаосу цікавіше. З опцією «команди» це якраз 2×2: людина з ботом проти двох.
     /// </summary>
     public const int SoloBots = 3;
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     /// <summary>Місця ботів цієї партії (після неї — теж, для підсумку).</summary>
     readonly bool[] _isBot = new bool[BomberCore.Seats];
     BomberBot[] _brains = [];
@@ -134,10 +134,10 @@ public sealed class Bomber : Game, IPartyMinigame
     /// <summary>Нік для рядка Журналу; бот — «🤖 бот».</summary>
     string Nick(int s) => Ctx.NickOf(s) ?? (_isBot[s] ? LiveBots.Name : SeatName(s));
 
-    /// <summary>Куди сядуть боти, якщо їх покликали (і людина сама): перші вільні місця.</summary>
+    /// <summary>Куди сядуть боти, якщо їх покликали: перші вільні місця, скільки треба до повного «1 + SoloBots».</summary>
     int[] BotSeats() => _party is { } pm ? [.. pm.Bots.Where(s => s < BomberCore.Seats && !Ctx.Seated(s))]
         : !_solo.Active(Ctx, BomberCore.Seats) ? []
-        : [.. Enumerable.Range(0, BomberCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)];
+        : [.. Enumerable.Range(0, BomberCore.Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, BomberCore.Seats))];
 
     public override bool ActsInLobby => true;
 
@@ -460,7 +460,9 @@ public sealed class Bomber : Game, IPartyMinigame
             score = string.Join(" : ", winners.Concat(rest).Select(s => $"{Nick(s)} {_wins[s]}"));
         }
         var log = winners.Length > 0 ? $"{Info.Title}: {score}" : $"{Info.Title}: {score} — нічия";
-        if (_botGame) FinishSolo(winners, log, score);
+        // Сам із ботами — без нагород, з вердиктом. Боти доповнили стіл двох і більше людей — звичайний кінець:
+        // бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (_botGame && SoloBot.Humans(Ctx, BomberCore.Seats) < 2) FinishSolo(winners, log, score);
         else Ctx.Finish(winners, log);
         return TickResult.Both;
     }
@@ -582,6 +584,7 @@ public sealed class Bomber : Game, IPartyMinigame
         // «🤖 + бот»: кнопку малює core.js; bot — місця ботів цієї партії (у лобі — куди сядуть)
         v["botOffer"] = _solo.Offer(Ctx, BomberCore.Seats);
         v["botWanted"] = _solo.Wanted;
+        v["botFill"] = _solo.Fill;
         v["botLvl"] = _solo.LevelKey;
         v["bot"] = _started ? Enumerable.Range(0, BomberCore.Seats).Where(s => _isBot[s]).ToArray() : BotSeats();
         return v;

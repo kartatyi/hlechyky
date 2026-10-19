@@ -90,20 +90,21 @@ public class BomberBotTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Only_the_host_calls_bots_and_a_friend_sends_them_away()
+    public void Only_the_host_calls_bots_and_friends_leave_fewer_of_them()
     {
         var h = new RoomHarness("bomber");
         h.Join("Оля");
         h.Join("Петро");
         Assert.False(h.Act(1, LiveBots.Toggle, new { on = true }).Ok);           // не господар
-        Assert.False(h.Act(0, LiveBots.Toggle, new { on = true }).Ok);           // удвох бот не потрібен
-        h.Leave("Петро");
-        Assert.True(h.Act(0, LiveBots.Toggle, new { on = true }).Ok);
-        h.Join("Петро");                                                          // підсів друг — партія людська
+        Assert.True(h.Act(0, LiveBots.Toggle, new { on = true }).Ok);            // удвох — боти доповнять до чотирьох
+        Assert.Equal([2, 3], h.View(0).GetProperty("bot").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal(4, h.View(0).GetProperty("botFill").GetInt32());
+        h.Join("Ігор");                                                           // підсів третій — бот один
+        Assert.Equal([3], h.View(0).GetProperty("bot").EnumerateArray().Select(x => x.GetInt32()));
+        h.Join("Ганна");                                                          // повний стіл — партія людська
         Assert.True(h.Start().Ok, h.Reply.Message);
-        Assert.Null(h.Room.SafeSeatBot(2));
         Assert.Empty(h.View(0).GetProperty("bot").EnumerateArray());
-        Assert.False(h.View(0).GetProperty("p")[2].GetProperty("alive").GetBoolean());
+        Assert.False(h.Act(0, LiveBots.Toggle, new { on = true }).Ok);           // посеред партії не кличуть
     }
 
     [Fact]

@@ -55,7 +55,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
 
     public override GameInfo Info { get; } = new(
         "hostyntsi", "Гостинці", "гостинці", GameGroup.Live, 1, Seats, TickMs: TickMs,
-        Start: StartMode.ByHost, Options: [LiveBots.LevelOption],
+        Start: StartMode.ByHost, Options: [LiveBots.LevelsOption],
         Hint: "З гори котяться гостинці — хапай, коли пливе навпроти. Кошик на вісім: дрібноту пропускай, жару не чіпай. Самому — з 🤖 ботами");
 
     /// <summary>
@@ -103,7 +103,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
     readonly Player[] _p = [.. Enumerable.Range(0, Seats).Select(_ => new Player())];
     readonly List<Gift> _gifts = [];
     readonly List<Ev> _ev = [];
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     int[] _bots = [];
     readonly HostyntsiBot?[] _brain = new HostyntsiBot?[Seats];
     bool _botGame;
@@ -171,7 +171,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
         .Any(s => Ctx.Seated(s) && !_startNicks.Contains(Ctx.NickOf(s) ?? "", StringComparer.OrdinalIgnoreCase)));
 
     int[] BotSeats() => _solo.Active(Ctx, Seats)
-        ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+        ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, Seats))] : [];
 
     bool IsBot(int seat) => Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat);
 
@@ -503,7 +503,9 @@ public sealed class Hostyntsi : Game, IPartyMinigame
             Ctx.Say(_winners.Length == 1
                 ? $"{Name(_winners[0])} несе додому найповніший кошик — {_p[_winners[0]].Total}"
                 : $"Поділили гостинці по-братськи: {string.Join(" і ", _winners.Select(Name))}");
-        if (!_botGame)
+        // Сам із ботами — без серії й нагород, з вердиктом (нижче). Боти доповнили стіл двох і більше людей —
+        // звичайний кінець: бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (!_botGame || _startPlayers >= 2)
         {
             _series.Record(Ctx, _winners);
             Ctx.Finish(_winners, log, scores);
@@ -560,7 +562,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
         }
         _ph = PhOver;
         _winners = left;
-        if (!_botGame) _series.Record(Ctx, left);
+        if (!_botGame || _startPlayers >= 2) _series.Record(Ctx, left);
         Ctx.Finish(left, $"{Info.Title}: {nick} встав з-за столу, партію не дограли",
             left.ToDictionary(s => s, s => (long)_p[s].Total));
     }
@@ -613,6 +615,7 @@ public sealed class Hostyntsi : Game, IPartyMinigame
             turn = (int?)null,
             botOffer = _solo.Offer(Ctx, Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _solo.LevelKey,
             bot = lobby ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
             frame = Shot(lobby),

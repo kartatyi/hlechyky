@@ -171,7 +171,7 @@ public class IcefloeBotTests
     }
 
     [Fact]
-    public void A_friend_sitting_down_sends_the_bots_away()
+    public void A_friend_sitting_down_leaves_one_bot_and_a_third_sends_them_away()
     {
         var h = new RoomHarness("icefloe");
         h.Join("Оля");
@@ -179,9 +179,19 @@ public class IcefloeBotTests
         h.Join("Петро");
         Assert.True(h.Start().Ok, h.Reply.Message);
         var g = G(h);
-        Assert.Empty(g.Bots);
-        Assert.False(g.BotGame);
-        Assert.False(g.Core.Bodies[2].Plays);
+        Assert.Equal([2], g.Bots);
+        Assert.True(g.BotGame);
+        Assert.True(g.Core.Bodies[2].Plays);
+        Assert.False(g.Core.Bodies[3].Plays);
+
+        var full = new RoomHarness("icefloe");
+        full.Join("Оля");
+        full.Act(0, LiveBots.Toggle, new { on = true });
+        full.Join("Петро");
+        full.Join("Ігор");
+        Assert.True(full.Start().Ok, full.Reply.Message);
+        Assert.Empty(G(full).Bots);
+        Assert.False(G(full).BotGame);
     }
 
     [Fact]

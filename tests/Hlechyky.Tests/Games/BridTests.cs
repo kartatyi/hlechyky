@@ -457,15 +457,24 @@ public class BridTests
     }
 
     [Fact]
-    public void Friend_sitting_down_sends_the_bot_away()
+    public void Friend_sitting_down_leaves_one_bot_and_a_third_sends_them_away()
     {
         var h = new RoomHarness("brid", null, 1);
         h.Join("Оля");
         Assert.True(h.Act(0, LiveBots.Toggle, new { on = true }).Ok);
         h.Join("Петро");
         Assert.True(h.Start().Ok, h.Reply.Message);
-        Assert.Empty(Game(h).Bots);
-        Assert.False(Game(h).BotGame);
+        Assert.Equal([2], Game(h).Bots);
+        Assert.True(Game(h).BotGame);
+
+        var full = new RoomHarness("brid", null, 1);
+        full.Join("Оля");
+        Assert.True(full.Act(0, LiveBots.Toggle, new { on = true }).Ok);
+        full.Join("Петро");
+        full.Join("Ігор");
+        Assert.True(full.Start().Ok, full.Reply.Message);
+        Assert.Empty(Game(full).Bots);
+        Assert.False(Game(full).BotGame);
     }
 
     // ---------- детермінізм і швидкість ----------

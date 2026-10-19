@@ -116,7 +116,7 @@ public sealed partial class Crowd : Game
         [
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("crowd", "Юрма", [("auto", "Як на ярмарку"), ("small", "Рідка (20)"), ("big", "Тиснява (48)")], "auto"),
-            LiveBots.LevelOption,
+            LiveBots.LevelsOption,
         ],
         Hint: "Ярмарок, повно люду — і десь серед них твої друзі. Скупись за списком або вистеж їх із рогатки. Ніхто не знає, хто з селян живий. Самому — з 🤖 ботами");
 
@@ -821,12 +821,14 @@ public sealed partial class Crowd : Game
         _dirty = true;
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
         var line = string.Join(" : ", order.Select(i => $"{BotNick(i)} {_s[i].Total}"));
-        if (_bots.Length > 0)
+        // Сам із ботами — без очок у таблицю й нагород (вердикт). Боти доповнили стіл двох і більше людей — звичайний
+        // кінець, але без таблиці очок: бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (_bots.Length > 0 && SoloBot.Humans(Ctx, Seats) < 2)
         {
             FinishWithBots(winners, line);
             return;
         }
-        foreach (var i in active) Ctx.Score(i, _s[i].Total);
+        if (_bots.Length == 0) foreach (var i in active) Ctx.Score(i, _s[i].Total);
         Ctx.Finish(winners, winners.Length > 0 ? $"{Info.Title}: {line}" : $"{Info.Title}: {line} — нічия");
     }
 
@@ -868,7 +870,7 @@ public sealed partial class Crowd : Game
         _left = 0;
         _endWhy = "left";
         _winners = [.. rest];
-        foreach (var i in rest) Ctx.Score(i, _s[i].Total);
+        if (_bots.Length == 0) foreach (var i in rest) Ctx.Score(i, _s[i].Total);   // з ботами — без таблиці очок
         Ctx.Finish([.. rest], rest.Count == 1
             ? $"{Info.Title}: усі розійшлись — {_s[rest[0]].Nick} лишається на ярмарку сам-на-сам із юрмою"
             : $"{Info.Title}: усі розійшлись");
@@ -965,6 +967,7 @@ public sealed partial class Crowd : Game
             turn = (int?)null,
             botOffer = _solo.Offer(Ctx, Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _solo.LevelKey,
             bot = BotView(),
         };

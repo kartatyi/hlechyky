@@ -419,7 +419,7 @@ public sealed class Territory : Game
         Options:
         [
             new GameOption("round", "Раунд", [("90", "90 с"), ("60", "60 с — швидко, на двох"), ("150", "150 с — для компанії"), ("40", "до 40 % поля (не довше 3 хв)")], "90"),
-            LiveBots.LevelOption,
+            LiveBots.LevelsOption,
         ],
         Hint: "Виїжджай зі своєї землі, обводь шматок поля і повертайся — обведене твоє. Перерізали твій слід — усе згоріло. До шести за столом. Самому — з 🤖 ботами");
 
@@ -431,7 +431,7 @@ public sealed class Territory : Game
     public const int SoloBots = 2;
     /// <summary>Імена ботів — у чоловічому роді кольору наділу: «🤖 бот зелений» (як «🤖 бот рудий» у Крижині).</summary>
     static readonly string[] BotColours = ["жовтий", "зелений", "глиняний", "блакитний", "рожевий", "фіалковий"];
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     /// <summary>Місця ботів у цій партії (порожньо — партія людська).</summary>
     int[] _bots = [];
     readonly TerritoryBot?[] _brain = new TerritoryBot?[TerritoryCore.MaxPlayers];
@@ -517,7 +517,7 @@ public sealed class Territory : Game
 
     /// <summary>Куди сядуть боти: перші вільні місця, якщо їх кликали й людина одна.</summary>
     int[] BotSeats() => _solo.Active(Ctx, TerritoryCore.MaxPlayers)
-        ? [.. Enumerable.Range(0, TerritoryCore.MaxPlayers).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+        ? [.. Enumerable.Range(0, TerritoryCore.MaxPlayers).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, TerritoryCore.MaxPlayers))] : [];
 
     /// <summary>Двоє ботів з однаковим ім'ям плутались би в рахунку — додаємо колір наділу.</summary>
     public override string? SeatBot(int seat) =>
@@ -659,6 +659,7 @@ public sealed class Territory : Game
             goal = _goal,
             botOffer = _solo.Offer(Ctx, TerritoryCore.MaxPlayers),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _solo.LevelKey,
             bot = Ctx.Round == _startedRound ? _bots.Where(s => !Ctx.Seated(s)).ToArray() : BotSeats(),
         };
@@ -725,7 +726,9 @@ public sealed class Territory : Game
         // Ніки чужі, відмінювати їх нема як, тому в Журнал іде табличка відсотків. Переможця називаємо
         // окремо кольором: різниця в одну клітинку — це 0,08 в. п., тож у табличці два однакові відсотки
         // читались би як нічия, якою вони не є.
-        if (_bots.Length > 0)
+        // Сам із ботами — вердикт без нагород. Боти доповнили стіл двох і більше людей — звичайний кінець нижче:
+        // бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (_bots.Length > 0 && SoloBot.Humans(Ctx, TerritoryCore.MaxPlayers) < 2)
         {
             // З ботами — без нагород: переміг бот — winners порожні й вердикт; людина — вердикт з рівнем.
             var people = winners.Where(Ctx.Seated).ToArray();

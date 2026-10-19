@@ -37,7 +37,7 @@ public abstract class GeeseBase : Game
 
     // ---------- стан ----------
 
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     private protected PartyMode? _party;
     public bool Party => _party is not null;
     public const int SoloBots = 2;
@@ -84,7 +84,7 @@ public abstract class GeeseBase : Game
     bool Active(int seat) => _plays[seat] && (Ctx.Seated(seat) || IsBot(seat));
 
     int[] BotSeats() => BotsAllowed && _party is null && _solo.Active(Ctx, Seats)
-        ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+        ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, Seats))] : [];
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
@@ -359,6 +359,7 @@ public abstract class GeeseBase : Game
             winners = _ph == PhDone ? _winners : null,
             botOffer = BotsAllowed && _party is null && (lobby || _ph == PhDone) && _solo.Offer(Ctx, Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _solo.LevelKey,
             party = _party is not null,
             daily = DailyView(),
@@ -452,7 +453,7 @@ public sealed class Geese : GeeseBase, IPartyMinigame
 {
     public override GameInfo Info { get; } = new(
         "geese", "Порахуй гусей", "«Порахуй гусей»", GameGroup.Party, 1, MaxSeats,
-        TickMs: TickStep, Start: StartMode.ByHost, Options: [LiveBots.LevelOption],
+        TickMs: TickStep, Start: StartMode.ByHost, Options: [LiveBots.LevelsOption],
         Hint: "Через двір біжить уся худоба Дядька Глека, а потім він питає: «Скільки курей?» Хто точніший і швидший — той і пастух. Можна й самому");
 
     static readonly int[] TableLevels = [0, 1, 2, 3, 4, 5, 6];

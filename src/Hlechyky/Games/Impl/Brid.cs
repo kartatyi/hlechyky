@@ -30,10 +30,10 @@ public sealed class Brid : Game, IPartyMinigame
 
     public override GameInfo Info { get; } = new(
         "brid", "Брід", "брід", GameGroup.Live, 1, Seats, TickMs: BridCore.TickMs,
-        Start: StartMode.ByHost, Options: [LiveBots.LevelOption],
+        Start: StartMode.ByHost, Options: [LiveBots.LevelsOption],
         Hint: "Перейди річку по каменях, що ховаються під водою: ступив не туди — шубовсть і назад на берег. Мокрі сліди сохнуть за 5 с — підглядай за сміливими.");
 
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     int[] _bots = [];
     readonly BridBot?[] _brain = new BridBot?[Seats];
     bool _botGame;
@@ -76,7 +76,7 @@ public sealed class Brid : Game, IPartyMinigame
     public override bool ActsInLobby => true;
     public override string? CanStart() => _solo.CanStart(Ctx, Seats);
 
-    int[] BotSeats() => _solo.Active(Ctx, Seats) ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+    int[] BotSeats() => _solo.Active(Ctx, Seats) ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, Seats))] : [];
 
     bool IsBot(int seat) => Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat);
 
@@ -272,7 +272,9 @@ public sealed class Brid : Game, IPartyMinigame
         _winners = winners;
         var scores = playing.Where(Ctx.Seated).ToDictionary(s => s, s => (long)c.Runners[s].Points);
         if (winners.Length == 1) Ctx.Say($"Брід за {Name(winners[0])}. Решту — сушити на тину.");
-        if (!_botGame)
+        // Сам із ботами — без серії й нагород, з вердиктом (нижче). Боти доповнили стіл двох і більше людей —
+        // звичайний кінець: бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (!_botGame || _startPlayers >= 2)
         {
             _series.Record(Ctx, winners);
             Ctx.Finish(winners, Journal(winners, playing), scores);
@@ -346,7 +348,7 @@ public sealed class Brid : Game, IPartyMinigame
         }
         _ph = PhOver;
         _winners = left;
-        if (!_botGame) _series.Record(Ctx, left);
+        if (!_botGame || _startPlayers >= 2) _series.Record(Ctx, left);
         Ctx.Finish(left, $"{Info.Title}: {nick} встав з-за столу, партію не дограли",
             left.ToDictionary(s => s, s => (long)c.Runners[s].Points));
     }
@@ -387,6 +389,7 @@ public sealed class Brid : Game, IPartyMinigame
             turn = (int?)null,
             botOffer = _solo.Offer(Ctx, Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _solo.LevelKey,
             bot = lobby ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
             frame = Shot(lobby),

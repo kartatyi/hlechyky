@@ -625,7 +625,7 @@ public sealed class CurveGame : Game, IPartyMinigame
             new GameOption("walls", "Стіни", [("0", "смертельні"), ("1", "🍩 нема — поле-тор")], "0"),
             new GameOption("bonus", "Бонуси", [("0", "без бонусів"), ("1", "⚡🐢🔄🧹🚪⬛ як в Achtung")], "0"),
             new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3 / 4×4")], "0"),
-            LiveBots.LevelOption,
+            LiveBots.LevelsOption,
         ],
         Hint: "Їдеш уперед і лишаєш слід. Повертати можна тільки плавно. Врізався — вибув. Останній живий бере очко. До восьми за столом. Самому — з 🤖 ботами");
 
@@ -637,7 +637,7 @@ public sealed class CurveGame : Game, IPartyMinigame
     public const int SoloBots = 3;
     /// <summary>Імена ботів — у чоловічому роді кольору місця: «🤖 бот зелений» (як «🤖 бот рудий» у Крижині).</summary>
     static readonly string[] BotColours = ["жовтий", "зелений", "глиняний", "білий", "синій", "рожевий", "фіалковий", "червоний"];
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     /// <summary>Місця ботів у цій партії (порожньо — партія людська).</summary>
     int[] _bots = [];
     readonly CurveBot?[] _brain = new CurveBot?[CurveCore.Seats];
@@ -709,10 +709,10 @@ public sealed class CurveGame : Game, IPartyMinigame
 
     public override string? CanStart() => _solo.CanStart(Ctx, CurveCore.Seats);
 
-    /// <summary>Куди сядуть боти: перші вільні місця, якщо їх кликали й людина одна.</summary>
+    /// <summary>Куди сядуть боти: перші вільні місця, скільки треба до повного «1 + SoloBots» (SoloBot.Count).</summary>
     int[] BotSeats() => _party is { } pm ? [.. pm.Bots.Where(s => s < CurveCore.Seats && !Ctx.Seated(s))]
         : _solo.Active(Ctx, CurveCore.Seats)
-        ? [.. Enumerable.Range(0, CurveCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+        ? [.. Enumerable.Range(0, CurveCore.Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, CurveCore.Seats))] : [];
 
     /// <summary>Троє ботів з однаковим ім'ям плутались би в рахунку — додаємо колір місця.</summary>
     public override string? SeatBot(int seat) =>
@@ -951,12 +951,14 @@ public sealed class CurveGame : Game, IPartyMinigame
     {
         _winners = best;
         _phase = "done";
-        if (_bots.Length == 0)
+        // Без ботів чи боти доповнили стіл двох і більше людей — звичайний кінець: переможець-бот іде у winners
+        // своїм місцем, люди тоді мають поразку (нагороди каркас рахує лише людям).
+        if (_bots.Length == 0 || SoloBot.Humans(Ctx, CurveCore.Seats) >= 2)
         {
             Ctx.Finish(best, $"{Info.Title}: {Table()}");
             return;
         }
-        // З ботами — без нагород: переміг бот — winners порожні й вердикт; людина — вердикт з рівнем.
+        // Сам із ботами — без нагород: переміг бот — winners порожні й вердикт; людина — вердикт з рівнем.
         var people = best.Where(Ctx.Seated).ToArray();
         var verdict = people.Length == 0 ? $"🤖 Кривулю взяв {Name(best[0])}"
             : best.Length == 1 ? $"🏆 {Ctx.NickOf(people[0])} — перемога над {LiveBots.Of(_solo.Level)}и ботами"
@@ -1002,7 +1004,7 @@ public sealed class CurveGame : Game, IPartyMinigame
         {
             // Стіл поменшав — ліміт партії теж: «до 10 × (гравців − 1)» рахується від тих, хто лишився.
             // У командах ліміт лишається: суперників менше, але й очок на раунд менше.
-            if (_teams is null) _target = PerRival * Math.Max(1, rest.Length - 1);
+            if (_teams is null) _target = PerRival * Math.Max(1, rest.Length + _bots.Length - 1);
             var best = Leaders();
             if (best.Length > 0 && _scores[best[0]] >= _target) EndGame(best);
             return;
@@ -1078,6 +1080,7 @@ public sealed class CurveGame : Game, IPartyMinigame
             ["kills"] = (int[])_kills.Clone(),
             ["botOffer"] = _solo.Offer(Ctx, CurveCore.Seats),
             ["botWanted"] = _solo.Wanted,
+            ["botFill"] = _solo.Fill,
             ["botLvl"] = _solo.LevelKey,
             ["bot"] = !_started ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
         };

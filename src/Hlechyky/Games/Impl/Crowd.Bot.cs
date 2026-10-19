@@ -28,7 +28,7 @@ public sealed partial class Crowd
         public int Hunt = -1, Delay, NextEval, Chase;
     }
 
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(BotCount);
     int[] _bots = [];
     Mind[] _minds = [];
     readonly CrowdEye _eye = new();
@@ -44,7 +44,7 @@ public sealed partial class Crowd
     public override string? SeatBot(int seat) =>
         _started && Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat) ? LiveBots.Name : null;
 
-    int[] BotSeats() => CrowdBots.FreeSeats(Ctx, Seats, BotCount);
+    int[] BotSeats() => CrowdBots.FreeSeats(Ctx, Seats, _solo.Count(Ctx, Seats));
 
     /// <summary>Поле виду <c>bot</c>: місця ботів у партії (і після неї), у лобі — куди сядуть, якщо кликали.</summary>
     int[]? BotView() =>

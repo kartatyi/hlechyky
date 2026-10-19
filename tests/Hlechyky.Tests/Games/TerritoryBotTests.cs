@@ -160,16 +160,25 @@ public class TerritoryBotTests(ITestOutputHelper log)
     }
 
     [Fact]
-    public void A_friend_sitting_down_sends_the_bots_away()
+    public void A_friend_sitting_down_leaves_one_bot_and_a_third_sends_them_away()
     {
         var h = new RoomHarness("territory");
         h.Join("Оля");
         h.Act(0, LiveBots.Toggle, new { on = true });
         h.Join("Петро");
         Assert.True(h.Start().Ok, h.Reply.Message);
-        Assert.Empty(G(h).Bots);
-        Assert.Null(G(h).SeatBot(2));
-        Assert.False(G(h).Core.Riders[2].On);
+        Assert.Equal([2], G(h).Bots);                 // боти доповнюють стіл до трьох: удвох — один
+        Assert.NotNull(G(h).SeatBot(2));
+        Assert.False(G(h).Core.Riders[3].On);
+
+        var full = new RoomHarness("territory");
+        full.Join("Оля");
+        full.Act(0, LiveBots.Toggle, new { on = true });
+        full.Join("Петро");
+        full.Join("Ігор");
+        Assert.True(full.Start().Ok, full.Reply.Message);
+        Assert.Empty(G(full).Bots);
+        Assert.Null(G(full).SeatBot(3));
     }
 
     [Fact]

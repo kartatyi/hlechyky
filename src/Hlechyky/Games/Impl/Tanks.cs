@@ -32,7 +32,7 @@ public sealed class Tanks : Game
             new GameOption("mode", "Грають", [("ffa", "кожен сам"), ("teams", "🏺 команди: бережи глек (2, 4, 6)"), ("waves", "🤖 разом проти хвиль (2–4)")], "ffa"),
             new GameOption("map", "Мапа", [("classic", "цегла й сталь"), ("wild", "🌳 з кущами й ❄ льодом")], "classic"),
             new GameOption("revenge", "Помста", [("0", "лише слава"), ("1", "😈 +1 фраг за помсту")], "0"),
-            LiveBots.LevelOption,
+            LiveBots.LevelsOption,
         ],
         Hint: "Танчики згори: їдеш, стріляєш, ламаєш цеглу. Хто перший набере фрагів — той і взяв. Тримай 💥 — стріляє сам. Є команди з глеком і кооп проти хвиль 🤖. Самому — з 🤖 ботами або проти хвиль");
 
@@ -45,7 +45,7 @@ public sealed class Tanks : Game
     /// рушає сама (гравець-бот лише забирав би її фраги).
     /// </summary>
     public const int SoloBots = 3;
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     readonly bool[] _isBot = new bool[TanksCore.Seats];
     TanksBot[] _brains = [];
     bool _botGame;
@@ -113,7 +113,7 @@ public sealed class Tanks : Game
     bool WavesMode => _mode == "waves";
 
     int[] BotSeats() => WavesMode || !_solo.Active(Ctx, TanksCore.Seats) ? []
-        : [.. Enumerable.Range(0, TanksCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)];
+        : [.. Enumerable.Range(0, TanksCore.Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, TanksCore.Seats))];
 
     public override bool ActsInLobby => true;
 
@@ -351,12 +351,14 @@ public sealed class Tanks : Game
             score = string.Join(" : ", winners.Concat(rest).Select(s => $"{Nick(s)} {Core.Tanks[s].Frags}"));
         }
         var log = winners.Length > 0 ? $"{Info.Title}: {score}" : $"{Info.Title}: {score} — нічия";
-        if (_botGame)
+        if (_botGame && SoloBot.Humans(Ctx, TanksCore.Seats) < 2)
         {
-            FinishSolo(winners, log, score);   // з ботами — без таблиці фрагів і без нагород
+            FinishSolo(winners, log, score);   // сам із ботами — без таблиці фрагів і без нагород
             return TickResult.Both;
         }
-        foreach (var s in Playing()) Ctx.Score(s, Core.Tanks[s].Frags);
+        // Боти доповнили стіл двох і більше людей — звичайний кінець (бот-переможець — у winners своїм місцем, люди
+        // тоді мають поразку), але таблиця фрагів — лише без ботів: фраги по ботах — не те саме.
+        if (!_botGame) foreach (var s in Playing()) Ctx.Score(s, Core.Tanks[s].Frags);
         Ctx.Finish(winners, log);
         return TickResult.Both;
     }
@@ -484,6 +486,7 @@ public sealed class Tanks : Game
         // «🤖 + бот»: кнопку малює core.js (у хвилях — ні: там рушають і самі); bot — місця ботів (у лобі — куди сядуть)
         v["botOffer"] = !WavesMode && _solo.Offer(Ctx, TanksCore.Seats);
         v["botWanted"] = _solo.Wanted;
+        v["botFill"] = _solo.Fill;
         v["botLvl"] = _solo.LevelKey;
         v["bot"] = _started ? Enumerable.Range(0, TanksCore.Seats).Where(s => _isBot[s]).ToArray() : BotSeats();
         return v;

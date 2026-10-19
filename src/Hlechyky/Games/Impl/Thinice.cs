@@ -46,10 +46,10 @@ public sealed class Thinice : Game, IPartyMinigame
 
     public override GameInfo Info { get; } = new(
         "thinice", "Тонкий лід", "тонкий лід", GameGroup.Live, 1, ThiniceCore.Seats, TickMs: ThiniceCore.TickMs,
-        Start: StartMode.ByHost, Options: [LiveBots.LevelOption],
+        Start: StartMode.ByHost, Options: [LiveBots.LevelsOption],
         Hint: "Ставок тріщить під ногами: ступив — за секунду дірка. Стояти не можна, штовхатись теж — відріж суперникам дорогу й лишись останнім на льоду. Самому — з 🤖 ботами");
 
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     int[] _bots = [];
     readonly ThiniceBot?[] _brain = new ThiniceBot?[ThiniceCore.Seats];
     bool _botGame;
@@ -101,7 +101,7 @@ public sealed class Thinice : Game, IPartyMinigame
     bool[] Seated() => [.. Enumerable.Range(0, ThiniceCore.Seats).Select(Ctx.Seated)];
 
     int[] BotSeats() => _solo.Active(Ctx, ThiniceCore.Seats)
-        ? [.. Enumerable.Range(0, ThiniceCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+        ? [.. Enumerable.Range(0, ThiniceCore.Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, ThiniceCore.Seats))] : [];
 
     bool[] WithBots(int[] bots)
     {
@@ -348,7 +348,9 @@ public sealed class Thinice : Game, IPartyMinigame
         var scores = playing.Where(Ctx.Seated).ToDictionary(s => s, s => (long)c.Bodies[s].Points);
         if (_winners.Length == 1 && _party is null && Ctx.Rng.Next(2) == 0)
             Ctx.Say($"{Name(_winners[0])} пройшов ставок, як по паркету. Решта — сушіть валянки.");
-        if (!_botGame)
+        // Сам із ботами — без серії й нагород, з вердиктом (нижче). Боти доповнили стіл двох і більше людей —
+        // звичайний кінець: бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (!_botGame || _startPlayers >= 2)
         {
             _series.Record(Ctx, _winners);
             Ctx.Finish(_winners, Journal(_winners, playing), scores);
@@ -412,7 +414,7 @@ public sealed class Thinice : Game, IPartyMinigame
         }
         _ph = PhOver;
         _winners = left;
-        if (!_botGame) _series.Record(Ctx, left);
+        if (!_botGame || _startPlayers >= 2) _series.Record(Ctx, left);
         Ctx.Finish(left, $"{Info.Title}: {nick} встав з-за столу, партію не дограли",
             left.ToDictionary(s => s, s => (long)c.Bodies[s].Points));
     }
@@ -475,6 +477,7 @@ public sealed class Thinice : Game, IPartyMinigame
             turn = (int?)null,
             botOffer = _party is null && _solo.Offer(Ctx, ThiniceCore.Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _party is { } pm ? LiveBots.Key(pm.Level) : _solo.LevelKey,
             bot = lobby ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
             frame = Shot(c, lobby),

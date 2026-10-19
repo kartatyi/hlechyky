@@ -73,15 +73,23 @@ public class TanksBotTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void A_friend_sends_the_bots_away()
+    public void A_friend_leaves_two_bots_and_a_full_four_sends_them_away()
     {
         var h = new RoomHarness("tanks");
         h.Join("Оля");
         Assert.True(h.Act(0, LiveBots.Toggle, new { on = true }).Ok);
         h.Join("Петро");
         Assert.True(h.Start().Ok, h.Reply.Message);
-        Assert.Null(h.Room.SafeSeatBot(2));
-        Assert.False(CoreOf(h).Tanks[2].Plays);
+        Assert.NotNull(h.Room.SafeSeatBot(2));        // до чотирьох: удвох — двоє ботів
+        Assert.NotNull(h.Room.SafeSeatBot(3));
+        Assert.True(CoreOf(h).Tanks[3].Plays);
+
+        var full = new RoomHarness("tanks");
+        full.Join("Оля");
+        Assert.True(full.Act(0, LiveBots.Toggle, new { on = true }).Ok);
+        foreach (var n in new[] { "Петро", "Ігор", "Ганна" }) full.Join(n);
+        Assert.True(full.Start().Ok, full.Reply.Message);
+        Assert.Null(full.Room.SafeSeatBot(3));
     }
 
     [Fact]
