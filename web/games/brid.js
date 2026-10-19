@@ -1014,7 +1014,10 @@
     if (!ctx.playing) {
       if (ctx.room && ctx.room.status === 'lobby') {
         const host = ctx.room.host && ctx.me && String(ctx.room.host).toLowerCase() === String(ctx.me.nick).toLowerCase();
-        if (v.botWanted) return '🤖 Боти вже на березі — тисни «Почати». Без нагород';
+        // Боти доповнюють стіл до botFill: сам — двоє ботів (без нагород), удвох — один, утрьох — уже повний.
+        const bots = (v.bot || []).length;
+        if (v.botWanted && bots && bots >= (v.botFill || 3) - 1) return '🤖 Боти вже на березі — тисни «Почати». Без нагород';
+        if (v.botWanted && bots) return '🤖 Боти доповнять стіл до ' + v.botFill + ' — тисни «Почати»';
         return host ? 'Тисни «Почати», коли всі сіли (1–8; самому — «🤖 + бот»)' : 'Брід на 1–8 гравців. Стартує господар';
       }
       return '';

@@ -2731,10 +2731,17 @@
       // Стіл, що стартує з руки господаря: коли людей уже досить, «Чекаємо, хто підсяде» вводило в оману —
       // господар сидів і чекав, хоча міг тиснути «Почати».
       // Сам за столом гри з ботом: без «🤖 + бот» партія не почнеться (LiveBots.AloneText) — кажемо це одразу.
+      const fill = botFill(rv);
       if (rv.view && rv.view.botOffer && takenSeats(r) === 1) {
         if (!sameNick(r.host, me.nick)) return 'Чекаємо, поки ' + (r.host || 'господар') + ' почне';
+        if (fill && rv.view.botWanted) return 'Боти сидять за столом — тисни «Почати». Без нагород';
         return rv.view.botWanted ? 'Бот сидить навпроти — тисни «Почати». Без нагород'
           : 'Сам за столом: поклич «🤖 + бот» або зачекай друга';
+      }
+      // Двоє-троє людей покликали ботів (LiveBots.cs, SoloBot.Count): боти сядуть на вільні місця до повного столу.
+      if (fill && rv.view.botWanted && takenSeats(r) >= 2 && takenSeats(r) < fill) {
+        return sameNick(r.host, me.nick) ? 'Боти доповнять стіл до ' + fill + ' — тисни «Почати»'
+          : 'Боти доповнять стіл до ' + fill + ' · чекаємо, поки ' + (r.host || 'господар') + ' почне';
       }
       if (hostStarts(r) && takenSeats(r) >= r.minPlayers) {
         return sameNick(r.host, me.nick) ? 'Можна рушати: тисни «Почати»'
@@ -2747,7 +2754,14 @@
     return rv.seat == null ? 'Дивишся збоку' : '';
   }
 
-  /// Кнопка «🤖 + бот»: господар, сидить, партія не йде, а гра пропонує бота (сам за столом чи бота вже кликали).
+  /// До скількох боти доповнюють стіл (botFill = 1 + Most з виду гри); 0 — гра з одним ботом («сам на сам»).
+  function botFill(rv) {
+    const n = rv.view && +rv.view.botFill;
+    return n > 2 ? n : 0;
+  }
+
+  /// Кнопка «🤖 + бот»: господар, сидить, партія не йде, а гра пропонує бота (сам за столом чи бота вже кликали;
+  /// у грі з botFill — і коли людей менше, ніж botFill).
   function botOffered(rv) {
     const r = rv.room, v = rv.view;
     return !!(v && v.botOffer) && rv.seat != null && r.status !== 'playing' && sameNick(r.host, me.nick);
@@ -2798,8 +2812,14 @@
     if (!solo && !(tour && tour.hold) && rv.seat != null && r.status !== 'playing' && sameNick(r.host, me.nick) && ((gameOf(r.game) || {}).options || []).length)
       out.push('<button class="ghost" data-set="1">⚙ Налаштування</button>');
     // «🤖 + бот» живих ігор (LiveBots.cs): господар сам за столом кличе суперника; гра каже botOffer у виді.
-    if (botOffered(rv))
-      out.push('<button class="ghost" data-bot="1">' + (rv.view.botWanted ? '🤖 Прогнати бота' : '🤖 + бот') + '</button>');
+    // Гра з кількома ботами (botFill): удвох-утрьох — «🤖 + боти до N», боти доповнюють стіл.
+    if (botOffered(rv)) {
+      const fill = botFill(rv);
+      // Сам за столом — «🤖 + бот», як і в LiveBots.AloneText.
+      const label = rv.view.botWanted ? (fill ? '🤖 Прогнати ботів' : '🤖 Прогнати бота')
+        : fill && takenSeats(r) >= 2 ? '🤖 + боти до ' + fill : '🤖 + бот';
+      out.push('<button class="ghost" data-bot="1">' + label + '</button>');
+    }
     // Гра може малювати «Встати» сама (mod.ownLeave(rv) → true; покер-кеш — із сумою й підтвердженням) — тоді каркасної нема.
     if (rv.seat != null) { if (!ownLeave(rv)) out.push('<button class="ghost" data-do="LeaveRoom">' + (solo ? 'Закрити' : 'Встати') + '</button>'); }
     // сісти нема куди (або сидиш за іншим столом) — хоч скажемо, чому кнопок нема
