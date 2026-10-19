@@ -452,11 +452,13 @@
   vol.addEventListener('wheel', paintVolIcon);
   paintVolIcon();
   let playState = 'idle'; // idle | connecting | live
+  /// Кнопка — лише значок (записка #56: «В ефірі · Вирубити» з'їдав назву треку в шапці); слова — у підказці.
   function setPlayUi() {
     const b = $('playBtn');
-    if (playState === 'idle') { b.className = 'primary'; b.textContent = '▶ Врубити'; b.title = 'Слухати ефір прямо тут'; }
-    else if (playState === 'connecting') { b.className = 'primary busy'; b.innerHTML = '<span class="spin"></span> Врубаю…'; }
-    else { b.className = 'live'; b.innerHTML = '<span class="dot"></span> В ефірі · Вирубити'; b.title = 'Вирубити звук'; }
+    const set = (cls, html, tip) => { b.className = cls; b.innerHTML = html; b.title = tip; b.setAttribute('aria-label', tip); };
+    if (playState === 'idle') set('primary', '▶', 'Врубити ефір — слухати прямо тут');
+    else if (playState === 'connecting') set('primary busy', '<span class="spin"></span>', 'Врубаю…');
+    else set('live', '<span class="dot"></span><span class="stop"></span>', 'В ефірі — вирубити звук');
   }
   // сервер записує, хто слухав кожен трек (вкладка «Рейтинг»); ETS2 і VLC він бачить лише числом у потоці
   let listening = false;
@@ -502,7 +504,7 @@
       if (playState === 'idle' || e.name === 'AbortError') return;   // вирубили або вже нова спроба
       if (e.name === 'NotAllowedError') {
         stopAudio();
-        toast(auto ? 'Сайт оновлено. Сам звук браузер не врубив — тисни «▶ Врубити»' : 'Халепа: браузер не дав звуку — ' + e.message, auto ? '' : 'err');
+        toast(auto ? 'Сайт оновлено. Сам звук браузер не врубив — тисни ▶ у плеєрі' : 'Халепа: браузер не дав звуку — ' + e.message, auto ? '' : 'err');
         return;
       }
       reconnectStream('error');
@@ -512,7 +514,7 @@
     if (playState === 'idle' || retryTimer) return;
     const now = Date.now();
     if (!failingSince) failingSince = now;
-    if (now - failingSince > GIVE_UP_MS) { stopAudio(); toast('Ефір мовчить уже 5 хвилин. Спробуй «▶ Врубити» трохи згодом', 'err'); return; }
+    if (now - failingSince > GIVE_UP_MS) { stopAudio(); toast('Ефір мовчить уже 5 хвилин. Спробуй ▶ трохи згодом', 'err'); return; }
     if (retryN === 0) toast(why === 'stall' ? 'Ефір замовк — підключаюсь знову…' : 'Потік обірвався — підключаюсь знову…');
     playState = 'connecting';
     setPlayUi();
@@ -529,7 +531,7 @@
       try { await audio.play(); }
       catch (e) {
         if (playState === 'idle' || e.name === 'AbortError') return;
-        if (e.name === 'NotAllowedError') { stopAudio(); toast('Браузер не дав звуку після обриву — тисни «▶ Врубити»', 'err'); return; }
+        if (e.name === 'NotAllowedError') { stopAudio(); toast('Браузер не дав звуку після обриву — тисни ▶ у плеєрі', 'err'); return; }
         reconnectStream('error');
       }
     }, HOLD_MS);

@@ -101,33 +101,11 @@ public sealed class FeedbackTests : IDisposable
     }
 
     [Fact]
-    public void Five_notes_an_hour_then_wait()
+    public void Notes_have_no_hourly_or_daily_limit()
     {
-        for (var i = 0; i < Feedback.PerHour; i++)
+        // Записка #51: ліміт 5 на годину обірвав думку посередині. Тепер пиши скільки треба.
+        for (var i = 0; i < 30; i++)
             Assert.True(_fb.Submit("Оля", "idea", "Думка номер " + i, null, null, null).Ok);
-        var sixth = _fb.Submit("Оля", "idea", "Ще одна думка", null, null, null);
-        Assert.False(sixth.Ok);
-        Assert.Contains("годину", sixth.Message);
-        Assert.True(_fb.Submit("Петро", "idea", "Моя думка", null, null, null).Ok);   // ліміт — на ніка, не на всіх
-
-        _clock.Advance(TimeSpan.FromMinutes(61));
-        Assert.True(_fb.Submit("Оля", "idea", "Ще одна думка", null, null, null).Ok);
-    }
-
-    [Fact]
-    public void Twenty_notes_a_day_then_tomorrow()
-    {
-        for (var i = 0; i < Feedback.PerDay; i++)
-        {
-            Assert.True(_fb.Submit("Оля", "idea", "Думка номер " + i, null, null, null).Ok);
-            if (i % Feedback.PerHour == Feedback.PerHour - 1) _clock.Advance(TimeSpan.FromMinutes(61));
-        }
-        var more = _fb.Submit("Оля", "idea", "Ще одна думка", null, null, null);
-        Assert.False(more.Ok);
-        Assert.Contains("сьогодні", more.Message);
-
-        _clock.Advance(TimeSpan.FromHours(24));
-        Assert.True(_fb.Submit("Оля", "idea", "Ще одна думка", null, null, null).Ok);
     }
 
     [Fact]

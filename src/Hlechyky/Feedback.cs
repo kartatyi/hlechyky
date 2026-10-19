@@ -142,14 +142,6 @@ public sealed class FeedbackStore
         return id;
     });
 
-    /// <summary>Скільки записок нік залишив, починаючи з <paramref name="since"/> — для обмеження частоти.</summary>
-    public int CountSince(string nick, DateTimeOffset since) => _db.With(c =>
-    {
-        using var cmd = Cmd(c, "SELECT COUNT(*) FROM feedback WHERE nick_key = $k AND created_at >= $since",
-            ("$k", Auth.NickKey(nick)), ("$since", Iso(since)));
-        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
-    });
-
     /// <summary>Та сама записка того самого ніка, залишена недавно (подвійний клік, «а чи дійшло?»).</summary>
     public bool Recent(string nick, string text, DateTimeOffset since) => _db.With(c =>
     {
@@ -453,9 +445,6 @@ public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? w
     public const int MaxText = 2000;
     /// <summary>Повідомлення в переписці: коротке «так» — теж відповідь, а на довге є записка.</summary>
     public const int MaxMsg = 1000;
-    /// <summary>Записок на годину й на добу з одного ніка: досить, щоб висловитись, і мало, щоб засипати розробника.</summary>
-    public const int PerHour = 5;
-    public const int PerDay = 20;
     /// <summary>Повідомлень у переписці на годину з одного ніка (розробника це не стосується): для розмови — досхочу.</summary>
     public const int MsgPerHour = 30;
     /// <summary>Той самий текст у ту саму записку частіше — подвійний Enter, а не друга думка.</summary>
@@ -484,9 +473,9 @@ public sealed class Feedback(FeedbackStore store, IClock clock, IFeedbackWire? w
         if (text.Length < MinText) return new(false, "Тяпни трохи більше — хоч кілька слів");
         if (text.Length > MaxText) return new(false, $"Задовго: до {MaxText} символів. Розбий на дві записки");
         var now = clock.UtcNow;
+        // Скільки записок на годину чи добу — не рахуємо (записка #51: ліміт 5 на годину обірвав думку посередині, а
+        // помилки під вікном не було видно). Лишається лише захист від подвійного кліку.
         if (store.Recent(nick, text, now.AddMinutes(-30))) return new(false, "Це вже тяпнуто — розробник побачить");
-        if (store.CountSince(nick, now.AddHours(-1)) >= PerHour) return new(false, "За годину досить записок — решту тяпнеш трохи згодом");
-        if (store.CountSince(nick, now.AddDays(-1)) >= PerDay) return new(false, "На сьогодні записок досить — завтра продовжимо");
         if (FilesProblem(nick, files) is { } bad) return new(false, bad);
         var d = diag is { Length: > 0 and <= MaxDiag } ? diag : null;
         var id = store.Add(nick, kind, text, Short(place, 200), Short(screen, 40), Short(ua, 300), now, d, files);

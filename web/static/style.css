@@ -161,9 +161,11 @@ header .who { display: flex; align-items: center; gap: 8px; flex: none; min-widt
 header .chat-toggle { position: relative; font-size: 1.05em; padding: 6px 9px; }
 body:not(.chat-collapsed) header .chat-toggle { background: var(--panel3); }
 header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
-#playBtn { min-width: 118px; justify-content: center; }
-#playBtn.live { background: var(--panel2); color: var(--text); border-color: var(--accent2); }
+/* Лише значок (записка #56): ▶ — врубити, у ефірі — блимаюча крапка й квадратик «стоп». Ширина та сама в усіх станах. */
+#playBtn { min-width: 44px; justify-content: center; }
+#playBtn.live { background: var(--panel2); color: var(--text); border-color: var(--accent2); gap: 5px; }
 #playBtn.live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.4s infinite; }
+#playBtn.live .stop { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
 @keyframes blink { 50% { opacity: .25; } }
 
 /* Шапка на середніх ширинах не має лізти у два рядки. Ховаємо по черзі: спершу повзунок гучності (за 🔊),
@@ -191,7 +193,6 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
 }
 @media (max-width: 1150px) {
   header { gap: 10px; }
-  #playBtn { min-width: 0; }
   header .mechip .nick { max-width: 90px; }
   /* На «Ефірі» тут стоять ще й підписи розділів: 🎧 з лічильником поступається їм місцем — хто слухає,
      видно в балачках (🎧 біля ніків). Інакше разом із чипом «ефір ↓» шапка наповзала сама на себе. */
@@ -825,7 +826,7 @@ body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
     position: fixed; left: 0; right: 0; bottom: var(--tabs-h); z-index: 6; height: var(--mini-h);
     gap: 8px; padding: 0 12px; background: #0b1712; border-top: 1px solid var(--line);
   }
-  header #playBtn { min-width: 0; padding: 7px 11px; }
+  header #playBtn { padding: 7px 11px; }
   /* Унизу лишаємо найпотрібніше: обкладинка, назва з виконавцем, ▶ і ⏭.
      Лайк і лічильник слухачів є на панелі «В ефірі», а тут вони з'їдали б назву. */
   header #listeners, .mini-acts [data-act="like"] { display: none; }
@@ -893,7 +894,9 @@ body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
 body.padel-open { overflow: hidden; }
 
 /* ---- toast / modal ---- */
-.toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 20; width: max-content; max-width: 92vw; }
+/* Тости — понад вікнами (.modal 30, вікна ігор до 60): помилка з вікна записки ховалась під його тінню (записка #51).
+   Нижче лише рамка Падельні (80) й лайтбокс — у них свої повідомлення. */
+.toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 65; width: max-content; max-width: 92vw; }
 /* На телефоні — над міні-плеєром і вкладками (після базового правила, інакше воно перебиває: тост накривав вкладки). */
 @media (max-width: 900px) { .toasts { bottom: calc(var(--tabs-h) + var(--mini-h) + 12px); } }
 .toast { background: #0b1712; border: 1px solid var(--line); color: var(--text); padding: 10px 14px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.5); animation: pop .15s ease-out; display: flex; gap: 8px; align-items: center; }
