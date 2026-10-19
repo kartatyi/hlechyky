@@ -4,11 +4,11 @@
 
   Вид (подія 'room', свій для кожного місця — гра Hidden; кадрів нема):
     { phase: 'lobby'|'write'|'vote'|'reveal'|'table'|'done', round, rounds, final, mode: 'duel'|'all',
-      endsAt, totalMs, waiting, voice, players: [{ seat, nick, score, ready, voted, left }], prompts: string[],
+      endsAt, totalMs, waiting, voice, players: [{ seat, nick, score, ready, voted, left, bot }], prompts: string[],
       me: null | { tasks: [{ i, prompt, text, done }], mine: number[], voter, picks: number[] },
       card: null | { i, of, prompt, answers: [{ text, stock, seat, votes, medals, jury, juryBy, points, rank, prize, laughs }],
                      votersCount, votedCount, voted, juryVotes, perVoter, ranked, sweep, jinx, shown },
-      say: null | { id, text, url, seconds }, table: null | { rows, best }, result: null | { winners, scores, best, early } }
+      say: null | { id, text, url, seconds }, table: null | { rows, best }, result: null | { winners, scores, best, early, glek, glekWon } }
   У дуелі до розкриття нема ні списку суддів, ні «хто проголосував» (це видало б двох авторів) — лише лічильники.
   Ходи: Input('draft', { i, text }) · Act('answer', { i, text }) · Act('edit', { i }) · Act('vote', { card, picks })
         · Act('laugh', { card, i }) — «😂» на розкритті.
@@ -120,8 +120,9 @@
         : voting && p.voted ? '✓'
         : '';
       const full = p.nick || '';
-      return '<span class="dt-pl' + (p.left ? ' left' : '') + (mark === '✓' ? ' ok' : '') + '" style="--c:' + col(p.seat) + '" title="'
-        + ctx.esc(full) + '"><i class="dt-dot"></i><b>' + (p.seat + 1) + '</b><span class="dt-nk">' + ctx.esc(short(disp(full), 12)) + '</span>'
+      // Дядько Глек за столом удвох — гравець як усі, але з позначкою: видно, що це не людина
+      return '<span class="dt-pl' + (p.left ? ' left' : '') + (p.bot ? ' bot' : '') + (mark === '✓' ? ' ok' : '') + '" style="--c:' + col(p.seat) + '" title="'
+        + ctx.esc(p.bot ? full + ' — сів третім, бо вас двоє' : full) + '"><i class="dt-dot"></i><b>' + (p.seat + 1) + '</b><span class="dt-nk">' + ctx.esc(short(disp(full), 12)) + '</span>'
         + '<em>' + num(p.score) + '</em>' + (mark ? '<u>' + mark + '</u>' : '') + '</span>';
     }).join('');
     if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
@@ -229,7 +230,7 @@
       + '<div class="dt-howrow"><b>🗳</b><span><i>Голосуй.</i> Відповіді виходять анонімно — обирай найдодепнішу чужу.</span></div>'
       + '<div class="dt-howrow"><b>🎭</b><span><i>Дивись, хто це написав.</i> ' + votes + '</span></div>'
       + '<div class="dt-howrow"><b>🎯</b><span><i>Теми:</i> ' + themesText(o) + '</span></div>'
-      + '<div class="dt-howsmall muted small">Троє й більше. ' + (o.voice === 'none' ? 'Цього разу Глек мовчить — усе текстом' : 'Дядько Глек зачитує все вголос')
+      + '<div class="dt-howsmall muted small">Від двох: удвох Дядько Глек сяде третім. ' + (o.voice === 'none' ? 'Цього разу Глек мовчить — усе текстом' : 'Дядько Глек зачитує все вголос')
       + '; глядачі голосують як публіка 👀 і сміються 😂</div>'
       + '<div class="dt-howtip small" hidden></div>'
       + (ctx.mine ? '<form class="dt-own"><input class="dt-ownin" type="text" maxlength="100" autocomplete="off" spellcheck="true"'
@@ -279,6 +280,7 @@
     let seated = 0;
     for (let i = 0; i < 8; i++) if (ctx.nickOf(i)) seated++;
     const rounds = (r.options && r.options.rounds) || 'full';
+    if (seated === 2) return '🏺 Удвох — Дядько Глек сяде третім: пише додепи й голосує нарівні з вами';
     return seated >= 6 && rounds === 'full'
       ? '⏱ На ' + seated + ' повна партія — хвилин 12–15. Швидше — стіл «1 раунд + Останній додеп».'
       : '';
@@ -913,14 +915,17 @@
       + ctx.esc(short(disp(p.nick), 12)) + ' <b>' + num(p.score) + '</b></span>').join('');
     // усі по нулях — п'єдестал із нулів смішить не так, як треба
     const scored = rows.some((p) => p.score > 0);
-    stage.innerHTML = (r.early ? '<div class="dt-early" data-pad-focus>🚪 Партію перервано: за столом лишилось менше трьох</div>' : '')
+    const glekWon = r.glekWon && !r.early
+      ? '<div class="dt-glekwon">🏺 Глек переміг' + ((r.winners || []).length
+        ? ', люди — ' + r.winners.map((x) => ctx.esc(short(nickOf(ctx, v, x), 14))).join(', ') + ' 👑' : '') + '</div>' : '';
+    stage.innerHTML = (r.early ? '<div class="dt-early" data-pad-focus>🚪 Партію перервано: за столом лишилось менше трьох</div>' : '') + glekWon
       + (scored ? '<div class="dt-podium big"' + (r.early ? '' : ' data-pad-focus') + '>' + podium + '</div>' + (rest ? '<div class="dt-rest">' + rest + '</div>' : '')
       : r.early ? '' : '<div class="dt-watch" data-pad-focus>Цього разу ніхто не набрав жодного очка 🤷</div>')
       + ((r.best || []).length ? '<div class="dt-besttitle">😂 Найдодепніше партії</div><div class="dt-bestlist">'
         + r.best.map((b, n) => bestHtml(ctx, v, b, '', n, st(root))).join('') + '</div>' : '')
       + (v.say && v.say.text ? '<div class="dt-say"><img src="/static/glek.svg" alt=""><span>' + ctx.esc(v.say.text) + '</span></div>' : '')
-      + '<div class="dt-again muted small">' + ((v.players || []).filter((p) => !p.left).length >= 3
-        ? 'Ще партію? Тисни «Ану ще раз» — завдання будуть нові' : 'На «Ану ще раз» треба щонайменше троє — клич друзів') + '</div>'
+      + '<div class="dt-again muted small">' + ((v.players || []).filter((p) => !p.left && !p.bot).length >= 2
+        ? 'Ще партію? Тисни «Ану ще раз» — завдання будуть нові' : 'На «Ану ще раз» треба щонайменше двоє — клич друзів') + '</div>'
       + '<div class="dt-doneal"><button type="button" class="ghost dt-albumbtn">📖 Альбом додепів</button></div>';
   }
 
@@ -1089,13 +1094,13 @@
     seatNames: (i) => String(i + 1),
     seatClass: ['dt0', 'dt1', 'dt2', 'dt3', 'dt4', 'dt5', 'dt6', 'dt7'],
     news: {
-      // Записка #25 (05.10): нова назва — щоб ті, хто вже грав, побачили «оновлено» і не шукали «Дотепи» в лобі.
-      v: '2026-10-05',
-      title: '«Дотепи» тепер «Додепи»',
+      // Пакет 2 (20.10): удвох гра тепер стартує — третім сідає Дядько Глек.
+      v: '2026-10-20',
+      title: 'Додепи удвох',
       items: [
-        '😂 Гра змінила назву: тепер це «Додепи», а найсмішніша відповідь — додеп',
-        '🏁 Фінал — «Останній додеп», у підсумку — «Додеп партії», у лобі — «📖 Альбом додепів»',
-        '📌 Усе, що ви вже закинули в альбом, і ачівки — на місці',
+        '🏺 Удвох теж можна: третім сідає Дядько Глек — пише додепи й голосує',
+        '⚔ Утрьох із Глеком — дуелі: кожне завдання пишуть двоє, голосує третій',
+        '👑 Глек може набрати найбільше, але перемога — найкращій людині',
       ],
     },
     pad: { hint: '{dpad} по додепах · {a} обрати', when: (ctx) => ctx.mine && ctx.playing },
@@ -1183,7 +1188,7 @@
       const v = ctx.view || {};
       // розійшлись посеред партії — це не «Нічия» (так каркас пише, коли переможців нема), а перервана партія
       if (v.phase === 'done' && v.result && v.result.early && !(v.result.winners || []).length) return 'Партію перервано — розійшлись';
-      if (!ctx.playing || lobbyOf(ctx, v)) return ctx.room && ctx.room.status === 'lobby' ? 'Господар тисне «Почати» — треба щонайменше троє' : '';
+      if (!ctx.playing || lobbyOf(ctx, v)) return ctx.room && ctx.room.status === 'lobby' ? 'Господар тисне «Почати» — треба щонайменше двоє (удвох Глек сяде третім)' : '';
       const me = v.me || {};
       switch (v.phase) {
         case 'write': {

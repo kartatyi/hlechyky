@@ -1258,7 +1258,7 @@
       if ((L.kind === 'wide' || L.kind === 'narrow') && L.others.length > 1) box.style.gridTemplateColumns = L.row3 ? 'repeat(3, auto)' : 'repeat(2, auto)';
     }
     if (L.mine && L.touch && L.kind === 'narrow') buildTouch(scene, st);
-    if (!L.seats.length && !st.sprint) scene.appendChild(lobbyHint());
+    if (!L.seats.length && !st.sprint) scene.appendChild(lobbyHint(st));
     const sum = document.createElement('div');
     sum.className = 'bricks-summary';
     sum.hidden = true;
@@ -1276,8 +1276,9 @@
     return L;
   }
 
-  /// Лобі: поки збираються, нагадати, як грати, — і що самому є спринт у Соло (стіл на одного каркас не почне).
-  function lobbyHint() {
+  /// Лобі: поки збираються, нагадати, як грати. Самому на столі bricks — «🤖 + боти» (кнопку малює core.js за
+  /// botOffer), спринт у Соло лишається згадкою; у рейтинговій дуелі ботів нема — там, як було, лише спринт.
+  function lobbyHint(st) {
     const d = document.createElement('div');
     d.className = 'bricks-lobby';
     const keys = padish() ? '✥ рух і м’яко · Ⓐ крутити · Ⓧ кинути · Ⓨ сховати · LB RB оберти'
@@ -1287,7 +1288,9 @@
       + '<li>🧱 ' + keys + '</li>'
       + '<li>💥 Закрив два ряди й більше — сусідові за стрілкою знизу лізе сміття, а свої ряди гасять те, що летить тобі</li>'
       + '<li>🏁 Хто завалився — вибув, останній бере раунд; сідайте вдвох-учотирьох</li></ul>'
-      + '<div class="bricks-lobby-solo">Сам? «Цеглини: 40 рядів» — у Соло, на секундомір</div>';
+      + '<div class="bricks-lobby-solo">' + (st.ctx.room.game === 'bricks'
+        ? 'Сам чи вдвох? Поклич «🤖 + боти» — сядуть до повного столу. А на секундомір — «Цеглини: 40 рядів» у Соло'
+        : 'Сам? «Цеглини: 40 рядів» — у Соло, на секундомір') + '</div>';
     return d;
   }
 
@@ -2477,6 +2480,8 @@
   function lobbyLine(ctx) {
     const r = ctx.room;
     if (!r || r.status !== 'lobby' || !ctx.mine) return '';
+    // «🤖 + боти» (стіл bricks): про ботів і «Почати» каже сам core.js — його рядок знає, хто кликав і до скількох
+    if (ctx.view && (ctx.view.botOffer || ctx.view.botWanted)) return '';
     const seated = (r.seats || []).filter((s) => s.nick).length;
     const host = String(r.host || '').toLowerCase() === String((ctx.me && ctx.me.nick) || '').toLowerCase();
     if (seated < (r.minPlayers || 2)) return host ? 'Чекаємо, хто підсяде: гукни когось за стіл 📣' : 'Чекаємо, хто підсяде';

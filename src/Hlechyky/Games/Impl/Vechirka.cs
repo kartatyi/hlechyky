@@ -10,7 +10,7 @@ namespace Hlechyky.Games.Impl;
 public sealed class Vechirka : Game
 {
     public static readonly GameOption LenOption = new("len", "Вечір",
-        [("30", "≈ 30 хв"), ("45", "≈ 45 хв"), ("60", "≈ 60 хв")], "45");
+        [("15", "≈ 15 хв"), ("30", "≈ 30 хв"), ("45", "≈ 45 хв"), ("60", "≈ 60 хв")], "30");
     public static readonly GameOption MinisOption = new("minis", "Міні-ігри",
         [("move", "🏃 рухливі"), ("brain", "🧠 кмітливі"), ("tap", "👆 на реакцію")], "move,brain,tap", Multi: true);
     public static readonly GameOption BotLevelOption = new("botlvl", "🤖 Боти",
@@ -90,7 +90,7 @@ public sealed class Vechirka : Game
         var o = Ctx.Options;
         var st = new VechirkaState
         {
-            Len = int.TryParse(o.GetValueOrDefault("len"), out var len) && len is 30 or 45 or 60 ? len : 45,
+            Len = VechirkaRules.Len(o.GetValueOrDefault("len")),
             Minis = [.. GameOption.Split(o.GetValueOrDefault("minis") ?? "move,brain,tap")],
             Level = (o.GetValueOrDefault("botlvl") ?? "normal") switch
             {
@@ -413,7 +413,7 @@ public sealed class Vechirka : Game
         {
             TrimBots();
             var n = Humans + _lobbyBots.Count;
-            var len = int.TryParse(Ctx.Options.GetValueOrDefault("len"), out var l) ? l : 45;
+            var len = VechirkaRules.Len(Ctx.Options.GetValueOrDefault("len"));
             return new
             {
                 phase = "lobby",

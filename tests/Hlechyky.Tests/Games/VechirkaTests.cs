@@ -32,6 +32,23 @@ public sealed class VechirkaTests
     }
 
     [Fact]
+    public void The_evening_is_thirty_minutes_by_default_and_fifteen_is_an_option()
+    {
+        // Пакет 2 (20.10): типово ≈ 30 хв (було 45), додано ≈ 15 хв.
+        var opt = RoomHarness.NewRegistry().Info("vechirka")!.Options!.Single(o => o.Key == "len");
+        Assert.Equal("30", opt.Default);
+        Assert.Equal(["15", "30", "45", "60"], opt.Values.Select(v => v.Value).ToArray());
+        var h = new RoomHarness("vechirka", new { voice = "none" }, 3);
+        h.Join("Оля");
+        h.Join("Петро");
+        Assert.Equal(30, h.View(0).GetProperty("lobby").GetProperty("len").GetInt32());
+        var fast = Table(2, 0, len: "15");
+        Assert.Equal(15, fast.View(0).GetProperty("lobby").GetProperty("len").GetInt32());
+        Assert.Equal(VechirkaRules.Rounds(15, 2), fast.View(0).GetProperty("lobby").GetProperty("rounds").GetInt32());
+        Assert.Equal(VechirkaRules.DefaultLen, VechirkaRules.Len("17"));
+    }
+
+    [Fact]
     public void Lobby_bots_are_called_by_the_host_and_counted_in_rounds()
     {
         var h = Table(2, 0);

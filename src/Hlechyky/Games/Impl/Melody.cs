@@ -75,6 +75,7 @@ public sealed class Melody : Game
             new GameOption("choices", "Підказка", [("0", "без варіантів"), ("1", "4 виконавці в останні 5 с")], "0"),
             new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "дві команди за силою (від 6)"), ("2", "дві команди як сіли (від 6)")], "0"),
             new GameOption("duel", "Останній трек", [("0", "для всіх"), ("1", "дуель двох лідерів")], "0"),
+            LiveBots.LevelsOption,
         ],
         Hint: "Звучить уривок пісні — з радіо або зі світової класики. Пиши виконавця й назву — хто перший, той бере більше");
 
@@ -170,6 +171,34 @@ public sealed class Melody : Game
     /// <summary>Хто взяв фінальний трек: -2 — ще не ясно, -1 — ніхто (нічия чи ніхто не вгадав).</summary>
     int _duelWinner = -2;
 
+    // ---------- 🤖 боти-вгадувачі (пакет 2) ----------
+    /// <summary>«🤖 + боти»: самотня людина — троє ботів, стіл доповнюється до чотирьох (LiveBots.cs).</summary>
+    public const int SoloBots = 3;
+    readonly SoloBot _solo = new(SoloBots);
+    /// <summary>Місця ботів цієї партії; <see cref="_isBot"/> — те саме прапорцями (тик без пошуку в масиві).</summary>
+    int[] _bots = [];
+    readonly bool[] _isBot = new bool[Seats];
+    bool _started;
+    /// <summary>Скільки людей сіло в партію: сам із ботами — без нагород.</summary>
+    int _humansAtStart;
+
+    /// <summary>
+    /// Імовірність, що бот знає пісню (виконавця й назву), за рівнем; ще <see cref="BotArtistOnly"/> — знає лише
+    /// виконавця. «З першої ноти» — помножено на <see cref="BotGrow"/>: з трьох секунд впізнати важче.
+    /// </summary>
+    public static readonly double[] BotKnows = [0.35, 0.55, 0.75];
+    public const double BotArtistOnly = 0.12, BotGrow = 0.7;
+    /// <summary>Коли бот пише відповідь (мс від початку треку): від і до — сильний швидший і частіше бере ⚡.</summary>
+    static readonly int[] BotFromMs = [6_000, 3_500, 1_500], BotToMs = [14_000, 10_000, 6_000];
+
+    /// <summary>План бота на трек: що й коли він напише, чи тицьне варіант, коли здасться (мс від початку треку; −1 — ні).</summary>
+    struct BotPlan
+    {
+        public int At, WrongAt, PickAt, SkipAt;
+        public bool Artist, Title;
+    }
+    readonly BotPlan[] _plan = new BotPlan[Seats];
+
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
         _source = Ctx.Services.GetService<IMelodySource>()
@@ -184,7 +213,26 @@ public sealed class Melody : Game
         _teamsOn = options.GetValueOrDefault("teams") is TeamSplit.ByStrength or TeamSplit.BySeat;
         _teamsBySeat = options.GetValueOrDefault("teams") == TeamSplit.BySeat;
         _duelOn = options.GetValueOrDefault("duel") == "1";
+        _solo.Configure(options);
     }
+
+    /// <summary>Куди сядуть боти: перші вільні місця, скільки треба до повного «1 + SoloBots» (SoloBot.Count).</summary>
+    int[] BotSeats() => !_solo.Active(Ctx, Seats) ? []
+        : [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, Seats))];
+
+    /// <summary>Троє однакових «🤖 бот» плутались би в рахунку — додаємо номер.</summary>
+    public override string? SeatBot(int seat)
+    {
+        if (seat is < 0 or >= Seats || Ctx.Seated(seat)) return null;
+        var i = Array.IndexOf(_started ? _bots : BotSeats(), seat);
+        return i < 0 ? null : $"{LiveBots.Name} {(i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+    }
+
+    /// <summary>Ім'я місця для текстів: нік людини, бот або номер.</summary>
+    string Who(int seat) => Ctx.NickOf(seat) ?? SeatBot(seat) ?? SeatName(seat);
+
+    /// <summary>«🤖 + боти» кличуть у лобі й між партіями — каркас тоді пропускає дію до гри.</summary>
+    public override bool ActsInLobby => true;
 
     /// <summary>Скільки звучить уривок: звичайно — як обрано, «з першої ноти» — найдовший із трьох.</summary>
     int ClipSec => _grow ? GrowSec[^1] : _clipSec;
@@ -223,6 +271,11 @@ public sealed class Melody : Game
         _duelRound = 0;
         _duelWinner = -2;
         _betsClosed = false;
+        _started = true;
+        _bots = BotSeats();
+        Array.Clear(_isBot);
+        foreach (var b in _bots) _isBot[b] = true;
+        _humansAtStart = SoloBot.Humans(Ctx, Seats);
         SetupTeams();
         var nicks = new List<string>();
         for (var s = 0; s < Seats; s++) if (Ctx.NickOf(s) is { } n) nicks.Add(n);
@@ -449,6 +502,7 @@ public sealed class Melody : Game
                 break;
             case Play:
                 PlayClock(now);
+                if (_bots.Length > 0) BotsStep(now);
                 // Раунд закінчується, коли кожен або вгадав усе, або готовий пропустити (а не всі вже вгадали — не чекати ж).
                 if (now >= _until || AllDone()) EndRound();
                 break;
@@ -492,14 +546,15 @@ public sealed class Melody : Game
 
     bool Duelist(int s) => s == _duelA || s == _duelB;
 
-    bool IsPresent(int s) => Ctx.Seated(s) && !_left.Contains(s);
+    /// <summary>Грає в цьому треку: людина, що не встала, або бот партії.</summary>
+    bool IsPresent(int s) => _isBot[s] && !Ctx.Seated(s) || Ctx.Seated(s) && !_left.Contains(s);
 
     IEnumerable<int> Present() => Enumerable.Range(0, Seats).Where(IsPresent);
 
-    // Тик — чотири рази на секунду на кожен стіл: без LINQ і нових колекцій.
+    // Тик — чотири рази на секунду на кожен стіл: без LINQ і нових колекцій. Боти без людей партію не тягнуть.
     bool AnyPresent()
     {
-        for (var s = 0; s < Seats; s++) if (IsPresent(s)) return true;
+        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s) && !_left.Contains(s)) return true;
         return false;
     }
 
@@ -537,7 +592,8 @@ public sealed class Melody : Game
         if (mine is { Blocked: true }) return true;
         var f = TeamOf(seat) is var t and >= 0 ? _teamFound[t] : mine;
         if (f is null || !f.Artist || !f.Title) return false;
-        return Current?.By is null || f.Who is not null;
+        // «Хто закинув?» — про людей за столом: бот замовника не називає, йому досить виконавця й назви
+        return Current?.By is null || f.Who is not null || _isBot[seat] && !Ctx.Seated(seat);
     }
 
     int TeamOf(int seat) => _teams ? _team[seat] : -1;
@@ -553,7 +609,7 @@ public sealed class Melody : Game
         Array.Clear(_teamScore);
         if (!_teamsOn) return;
         var seated = new List<int>();
-        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s)) seated.Add(s);
+        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s) || _isBot[s]) seated.Add(s);
         if (seated.Count < TeamsMin)
         {
             _note = $"Команд не буде: на дві команди треба хоч {TeamsMin} за столом — граємо кожен сам";
@@ -562,7 +618,7 @@ public sealed class Melody : Game
         _teams = true;
         if (!_teamsBySeat)
         {
-            var split = TeamSplit.ForSeats(Ctx, Info.Id, seated, _ => null, _split);
+            var split = TeamSplit.ForSeats(Ctx, Info.Id, seated, s => _isBot[s] && !Ctx.Seated(s) ? _solo.Level : null, _split);
             for (var i = 0; i < seated.Count; i++) _team[seated[i]] = split[i];
             Ctx.Log(TeamSplit.Note);
             return;
@@ -591,6 +647,91 @@ public sealed class Melody : Game
         _totalMs = ClipEndMs + ExtraMs;
         _until = Now.AddMilliseconds(_totalMs);
         _dirty = true;
+        BotsPlan();
+    }
+
+    // =========================================================================================
+    // Боти
+    // =========================================================================================
+
+    /// <summary>
+    /// План ботів на трек. Сервер знає відповідь, тож бот не «слухає», а кидає кубик за рівнем: знає пісню — пише
+    /// виконавця й назву одним рядком; знає лише виконавця — лише його; не знає — інколи пише чужу назву з цієї ж партії
+    /// (мимо, як людина), з варіантами — тицяє навмання, і зрештою «готовий пропустити». У дуелі не-дуелянт ставить на лідера.
+    /// </summary>
+    void BotsPlan()
+    {
+        if (_bots.Length == 0) return;
+        var lvl = LiveBots.Index(_solo.Level);
+        var p = BotKnows[lvl] * (_grow ? BotGrow : 1);
+        var stretch = _grow ? 1.6 : 1;
+        foreach (var s in _bots)
+        {
+            var at = (int)((BotFromMs[lvl] + Ctx.Rng.Next(BotToMs[lvl] - BotFromMs[lvl])) * stretch);
+            var r = Ctx.Rng.NextDouble();
+            var plan = new BotPlan { At = -1, WrongAt = -1, PickAt = -1, SkipAt = ClipEndMs + 1_000 + Ctx.Rng.Next(4_000) };
+            if (r < p) { plan.At = at; plan.Artist = plan.Title = true; }
+            else if (r < p + BotArtistOnly) { plan.At = at; plan.Artist = true; }
+            else
+            {
+                if (Ctx.Rng.Next(2) == 0) plan.WrongAt = at;
+                if (_choicesOn) plan.PickAt = ClipEndMs - ChoicesLeadMs + 1_000 + Ctx.Rng.Next(2_500);
+            }
+            // здається лише після своєї відповіді: інакше короткий уривок обривав би раунд, поки бот «друкує»
+            if (plan.At >= 0) plan.SkipAt = Math.Max(plan.SkipAt, plan.At + 1_000);
+            _plan[s] = plan;
+            if (DuelNow && !Duelist(s)) _bets[s] = _scores[_duelB] > _scores[_duelA] ? _duelB : _duelA;
+        }
+    }
+
+    /// <summary>Боти, чий час настав, пишуть (крізь ті самі правила, що й люди) або здаються.</summary>
+    void BotsStep(DateTimeOffset now)
+    {
+        var ms = (now - _roundStart).TotalMilliseconds;
+        foreach (var s in _bots)
+        {
+            if (Ctx.Seated(s)) continue;
+            ref var pl = ref _plan[s];
+            if (pl.At >= 0 && ms >= pl.At)
+            {
+                pl.At = -1;
+                var t = _ready[_round].Track;
+                BotTry(s, "guess", pl.Title ? $"{t.Artist} {t.Title}" : t.Artist, now);
+            }
+            if (pl.WrongAt >= 0 && ms >= pl.WrongAt)
+            {
+                pl.WrongAt = -1;
+                if (WrongTitle() is { } wrong) BotTry(s, "guess", wrong, now);
+            }
+            if (pl.PickAt >= 0 && _choicesOpen && ms >= pl.PickAt)
+            {
+                pl.PickAt = -1;
+                var choices = _ready[_round].Choices;
+                if (choices.Length > 1) BotTry(s, "pick", choices[Ctx.Rng.Next(choices.Length)], now);
+            }
+            if (pl.SkipAt >= 0 && ms >= pl.SkipAt)
+            {
+                pl.SkipAt = -1;
+                if (!Finished(s) && _skip.Add(s)) _dirty = true;
+            }
+        }
+    }
+
+    void BotTry(int seat, string action, string text, DateTimeOffset now)
+    {
+        if (_phase != Play || DuelNow && !Duelist(seat)) return;
+        if (!_found.TryGetValue(seat, out var mine)) _found[seat] = mine = new Found();
+        if (mine.Blocked || action == "pick" && (mine.Artist || TeamGot(seat, artist: true))) return;
+        Guess(seat, mine, action, text, now);
+    }
+
+    /// <summary>Правдоподібний промах: назва іншого треку цієї ж партії, що не влучає в поточний.</summary>
+    string? WrongTitle()
+    {
+        var right = MelodyAnswer.Titles(_ready[_round].Track);
+        var pool = _ready.Where(kv => kv.Key != _round).Select(kv => kv.Value.Track.Title)
+            .Where(t => t.Length > 0 && !MelodyAnswer.Hits(t, right)).ToList();
+        return pool.Count == 0 ? null : pool[Ctx.Rng.Next(pool.Count)];
     }
 
     void EndRound()
@@ -664,14 +805,31 @@ public sealed class Melody : Game
         if (_teams) { OverTeams(seats); return; }
         var best = seats.Length == 0 ? 0 : seats.Max(s => _scores[s]);
         int[] winners = best > 0 ? [.. seats.Where(s => _scores[s] == best)] : [];
-        foreach (var s in seats) Ctx.Score(s, _scores[s]);
+        var people = seats.Where(Ctx.Seated).ToArray();
+        // Сам із ботами — без нагород: ні очок у таблицю, ні перемоги (як у живих іграх з ботом).
+        var lone = _bots.Length > 0 && _humansAtStart <= 1;
+        if (!lone) foreach (var s in people) Ctx.Score(s, _scores[s]);
         // ніки — на момент фінішу: хто встане з-за столу вже після партії, лишиться в підсумку (інакше переможець зникав з таблиці)
         var nicks = new string?[Seats];
-        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s)) nicks[s] = Ctx.NickOf(s);
+        for (var s = 0; s < Seats; s++) nicks[s] = Ctx.Seated(s) ? Ctx.NickOf(s) : _isBot[s] ? SeatBot(s) : null;
         _result = new { winners, scores = (int[])_scores.Clone(), nicks };
-        var parts = seats.OrderByDescending(s => _scores[s]).Select(s => $"{Ctx.NickOf(s)} {_scores[s]}");
-        var tail = winners.Length == 0 ? "жодної пісні не впізнали" : "найкраще вухо в " + string.Join(" і ", winners.Select(s => NickCases.Genitive(Ctx.NickOf(s))));
-        Ctx.Finish(winners, $"{Info.Title}: {string.Join(", ", parts)} — {tail}", seats.ToDictionary(s => s, s => (long)_scores[s]));
+        var parts = seats.OrderByDescending(s => _scores[s]).Select(s => $"{Who(s)} {_scores[s]}");
+        var tail = winners.Length == 0 ? "жодної пісні не впізнали"
+            : "найкраще вухо в " + string.Join(" і ", winners.Select(s => Ctx.NickOf(s) is { } n ? NickCases.Genitive(n) : Who(s)));
+        var text = $"{Info.Title}: {string.Join(", ", parts)} — {tail}";
+        var scores = people.ToDictionary(s => s, s => (long)_scores[s]);
+        if (!lone)
+        {
+            Ctx.Finish(winners, text, scores);
+            return;
+        }
+        var mine = winners.Where(Ctx.Seated).ToArray();
+        var level = LiveBots.Of(_solo.Level);
+        var verdict = winners.Length == 0 ? "Жодної пісні не впізнали · без нагород"
+            : mine.Length == 0 ? $"🤖 Найкраще вухо — {Who(winners[0])} · без нагород"
+            : winners.Length == 1 ? $"🏆 {Ctx.NickOf(mine[0])} — перемога над {level}и ботами · без нагород"
+            : $"🤝 {Ctx.NickOf(mine[0])} нарівні з {level}и ботами · без нагород";
+        Ctx.Finish(mine, text, scores, verdict);
     }
 
     /// <summary>Кінець командної партії: перемагає команда з більшими очками — усі її гравці; порівну — нічия.</summary>
@@ -680,13 +838,14 @@ public sealed class Melody : Game
         var (a, b) = (_teamScore[0], _teamScore[1]);
         var win = a == b ? -1 : a > b ? 0 : 1;
         int[] winners = win < 0 ? [] : [.. seats.Where(s => _team[s] == win)];
-        foreach (var s in seats) Ctx.Score(s, _team[s] >= 0 ? _teamScore[_team[s]] : _scores[s]);
+        var people = seats.Where(Ctx.Seated).ToArray();
+        foreach (var s in people) Ctx.Score(s, _team[s] >= 0 ? _teamScore[_team[s]] : _scores[s]);
         var nicks = new string?[Seats];
-        for (var s = 0; s < Seats; s++) if (Ctx.Seated(s)) nicks[s] = Ctx.NickOf(s);
+        for (var s = 0; s < Seats; s++) nicks[s] = Ctx.Seated(s) ? Ctx.NickOf(s) : _isBot[s] ? SeatBot(s) : null;
         _result = new { winners, scores = (int[])_scores.Clone(), nicks, teams = (int[])_teamScore.Clone(), team = win };
-        var tail = win < 0 ? "нічия" : $"перемогли {TeamNames[win]}: " + string.Join(", ", winners.Select(s => Ctx.NickOf(s)));
+        var tail = win < 0 ? "нічия" : $"перемогли {TeamNames[win]}: " + string.Join(", ", winners.Select(Who));
         Ctx.Finish(winners, $"{Info.Title}: {TeamNames[0]} {a} : {b} {TeamNames[1]} — {tail}",
-            seats.ToDictionary(s => s, s => (long)(_team[s] >= 0 ? _teamScore[_team[s]] : _scores[s])));
+            people.ToDictionary(s => s, s => (long)(_team[s] >= 0 ? _teamScore[_team[s]] : _scores[s])));
     }
 
     public override void OnLeave(int seat)
@@ -702,6 +861,9 @@ public sealed class Melody : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return _started && _phase != Done ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, Seats);
+        if (!_started) return ActResult.Fail("Чекаємо на «Почати»");
         switch (action)
         {
             case "skip": return Skip(seat);
@@ -712,7 +874,7 @@ public sealed class Melody : Game
         if (_phase != Play) return ActResult.Fail(_phase == Done ? "Партію зіграно, тисни «Ану ще раз»" : "Зараз не вгадують");
         if (_left.Contains(seat)) return ActResult.Fail("Ти вже не за столом");
         if (DuelNow && !Duelist(seat))
-            return ActResult.Fail($"Фінальна дуель — вгадують лише {Ctx.NickOf(_duelA)} і {Ctx.NickOf(_duelB)}. Став, хто візьме!");
+            return ActResult.Fail($"Фінальна дуель — вгадують лише {Who(_duelA)} і {Who(_duelB)}. Став, хто візьме!");
 
         var now = Now;
         // ліміт — проти перебору здогадок; варіант і замовник — і так одна спроба на трек, їх не гальмуємо
@@ -742,7 +904,12 @@ public sealed class Melody : Game
             if (text.Length > MaxGuess) text = text[..MaxGuess];
         }
         _lastGuess[seat] = now;
+        return Guess(seat, mine, action, text, now);
+    }
 
+    /// <summary>Здогадка (рядок чи тицьнутий варіант) — спільна для людей і ботів: очки, бонуси, команди, дуель.</summary>
+    ActResult Guess(int seat, Found mine, string action, string text, DateTimeOffset now)
+    {
         if (mine.Artist && mine.Title) return ActResult.Fail("Усе вже вгадано 🎉");
         var track = _ready[_round].Track;
         var team = TeamOf(seat);
@@ -848,7 +1015,7 @@ public sealed class Melody : Game
         if (!Duelist(on)) return ActResult.Fail("Ставити можна лише на дуелянтів");
         _bets[seat] = on;
         _dirty = true;
-        return ActResult.Accept($"Ставку прийнято: {Ctx.NickOf(on)} візьме");
+        return ActResult.Accept($"Ставку прийнято: {Who(on)} візьме");
     }
 
     /// <summary>«Готовий пропустити» — перемикач: натиснув ще раз — передумав.</summary>
@@ -922,6 +1089,12 @@ public sealed class Melody : Game
             left = _left.Order().ToArray(),
             error = _error,
             result = _result,
+            // «🤖 + боти» (LiveBots.cs): кнопку малює core.js; bot — місця ботів (у лобі — куди сядуть)
+            botOffer = _solo.Offer(Ctx, Seats),
+            botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
+            botLvl = _solo.LevelKey,
+            bot = _started ? _bots.Where(x => !Ctx.Seated(x)).ToArray() : BotSeats(),
         };
     }
 }

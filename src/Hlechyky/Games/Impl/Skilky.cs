@@ -30,8 +30,15 @@ public class Skilky : Game, IPartyMinigame
     /// <summary>Режим вечірки (docs/games/specs/party-minigame.md): null — звичайна партія.</summary>
     private protected PartyMode? _party;
     public bool Party => _party is not null;
-    /// <summary>Вечірка: коли бот на цьому місці подасть число в поточному запитанні (null — уже подав чи не бот).</summary>
+    /// <summary>Коли бот на цьому місці подасть число (чи ставку) у поточному запитанні (null — уже подав чи не бот).</summary>
     readonly DateTimeOffset?[] _botAt = new DateTimeOffset?[MaxSeats];
+    /// <summary>«🤖 + боти» у звичайному лобі (пакет 2): самотня людина — троє ботів, стіл доповнюється до чотирьох.</summary>
+    public const int SoloBots = 3;
+    readonly SoloBot _solo = new(SoloBots);
+    /// <summary>Місця ботів цієї партії (звичайний стіл; у вечірці — <see cref="PartyMode.Bots"/>).</summary>
+    int[] _bots = [];
+    /// <summary>Чи вже була хоч одна партія: до неї боти — ті, що сядуть (<see cref="BotSeats"/>), далі — <see cref="_bots"/>.</summary>
+    bool _started;
 
     public string Howto => "Три запитання, на які ніхто не знає точної відповіді: пиши число — хто ближче, тому більше очок. "
         + "Цифри й Enter; на телефоні — поле й «Відповісти»";
@@ -117,6 +124,7 @@ public class Skilky : Game, IPartyMinigame
             new GameOption("topic", "Теми", SkilkyTopics.All, SkilkyTopics.Any, Multi: true),
             new GameOption("bets", "Ставлю на чуже", [("off", "ні"), ("on", "так: +2 за вгадане чуже число (від трьох)")], "off"),
             new GameOption("teams", "Команди", [("off", "кожен сам"), ("2", "2 команди"), ("3", "3 команди"), ("4", "4 команди")], "off"),
+            LiveBots.LevelsOption,
         ],
         Hint: "Питання, на яке ніхто не знає точної відповіді. Кожен пише число: що ближче — то більше очок і черепків. Можна й самому");
 
@@ -204,6 +212,7 @@ public class Skilky : Game, IPartyMinigame
         if (options.TryGetValue("topic", out var t)) _topics = SkilkyTopics.Parse(t);
         _bets = options.TryGetValue("bets", out var b) && b == "on";
         _teamsOpt = options.TryGetValue("teams", out var tm) && int.TryParse(tm, CultureInfo.InvariantCulture, out var k) && k is >= 2 and <= 4 ? k : 0;
+        _solo.Configure(options);
         _party = PartyMode.Read(options);
         if (_party is not null)
         {
@@ -218,9 +227,26 @@ public class Skilky : Game, IPartyMinigame
     /// <summary>Хто грає це місце: людина за столом або (у вечірці) бот на місці <c>bots</c>.</summary>
     bool In(int seat) => Ctx.Seated(seat) || IsBot(seat);
 
-    bool IsBot(int seat) => _party is { } pm && seat < Ctx.Players && pm.IsBot(seat) && !Ctx.Seated(seat);
+    bool IsBot(int seat) => seat is >= 0 and < MaxSeats && !Ctx.Seated(seat)
+        && (_party is { } pm ? seat < Ctx.Players && pm.IsBot(seat) : Array.IndexOf(_started ? _bots : BotSeats(), seat) >= 0);
 
-    public override string? SeatBot(int seat) => IsBot(seat) ? LiveBots.Name : null;
+    /// <summary>Боти звичайного столу — не у вечірці й не в соло-нащадку («Скільки? дня»).</summary>
+    bool BotsAllowed => _party is null && Info.MaxPlayers > 1;
+
+    /// <summary>Куди сядуть боти: перші вільні місця, скільки треба до повного «1 + SoloBots» (SoloBot.Count).</summary>
+    int[] BotSeats() => !BotsAllowed || !_solo.Active(Ctx, MaxSeats) ? []
+        : [.. Enumerable.Range(0, MaxSeats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, MaxSeats))];
+
+    LiveBots.Level BotLevel => _party?.Level ?? _solo.Level;
+
+    /// <summary>Троє однакових «🤖 бот» плутались би в таблиці — у звичайному столі додаємо номер.</summary>
+    public override string? SeatBot(int seat)
+    {
+        if (!IsBot(seat)) return null;
+        if (_party is not null) return LiveBots.Name;
+        var i = Array.IndexOf(_started ? _bots : BotSeats(), seat);
+        return $"{LiveBots.Name} {(i + 1).ToString(CultureInfo.InvariantCulture)}";
+    }
 
     string Who(int seat) => Ctx.NickOf(seat) ?? SeatBot(seat) ?? SeatName(seat);
 
@@ -246,6 +272,9 @@ public class Skilky : Game, IPartyMinigame
 
     public override void Start()
     {
+        _started = true;
+        _bots = BotSeats();
+        Array.Clear(_botAt);
         // Сервіси беремо тут, а не в конструкторі: гру створює реєстр без параметрів (INTEGRATION-NOTES §1).
         // Db може не бути взагалі (тести з порожнім провайдером) — тоді динамічні запитання просто не грають.
         var db = Ctx.Services.GetService<Db>();
@@ -277,18 +306,18 @@ public class Skilky : Game, IPartyMinigame
         Open(Ctx.Clock.UtcNow);
     }
 
-    /// <summary>Команди: сидячі по черзі в 1-шу, 2-гу… Менше людей, ніж команд, — команд стільки, скільки людей.</summary>
+    /// <summary>Команди: гравці (люди й боти) по черзі в 1-шу, 2-гу… Менше гравців, ніж команд, — команд стільки, скільки гравців.</summary>
     void SplitTeams()
     {
         Array.Fill(_teamOf, -1);
-        var seated = Enumerable.Range(0, MaxSeats).Where(Ctx.Seated).ToList();
+        var seated = Enumerable.Range(0, MaxSeats).Where(In).ToList();
         _teams = _teamsOpt == 0 ? 0 : Math.Min(_teamsOpt, seated.Count);
         if (_teams < 2) { _teams = 0; return; }
         for (var i = 0; i < seated.Count; i++) _teamOf[seated[i]] = i % _teams;
     }
 
-    /// <summary>Сидячі члени команди в порядку місць.</summary>
-    List<int> Members(int team) => [.. Enumerable.Range(0, MaxSeats).Where(s => _teamOf[s] == team && Ctx.Seated(s))];
+    /// <summary>Члени команди (люди й боти) в порядку місць.</summary>
+    List<int> Members(int team) => [.. Enumerable.Range(0, MaxSeats).Where(s => _teamOf[s] == team && In(s))];
 
     /// <summary>
     /// Різні запитання обраних тем на партію: спершу ті, яких ніхто за столом ще не бачив, далі — бачені
@@ -370,6 +399,9 @@ public class Skilky : Game, IPartyMinigame
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == LiveBots.Toggle)
+            return !BotsAllowed ? ActResult.Fail("Тут так не ходять")
+                : _started && _phase != PhaseDone ? ActResult.Fail("Партія вже йде") : _solo.Switch(Ctx, seat, payload, MaxSeats);
         if (action == "ours") return Ours(seat, payload);
         if (Ctx.Seated(seat) && _phase != PhaseDone && _asked.Count == 0) return ActResult.Fail("Чекаємо на «Почати»");
         if (action == "bet") return Bet(seat, payload);
@@ -485,7 +517,8 @@ public class Skilky : Game, IPartyMinigame
 
         // Усі, хто за столом, уже написали — чекати на таймер нема сенсу. Розкриємо наступним рухом циклу,
         // щоб усі переходи фаз лишались в одному місці.
-        if (_party is not null && _phase == PhaseAsk) BotsAnswer(now);
+        if (_phase == PhaseAsk) BotsAnswer(now);
+        if (_phase == PhaseBet) BotsBet(now);
         if (_phase == PhaseAsk && AllAnswered()) _endsAt = now;
         if (_phase == PhaseBet && AllBet()) _endsAt = now;
 
@@ -509,11 +542,11 @@ public class Skilky : Game, IPartyMinigame
                 // «Бачив» — з тієї секунди, коли запитання з'явилось на екрані. Ті, до яких недограна партія
                 // так і не дійшла, лишаються свіжими. Свої питання компанії пам'ятати нема чого.
                 if (Current is { Author: < 0 }) _seen!.Remember(Nicks(), _asked[_at].Q, now);
-                if (_party is not null) BotsPlan(now);
+                BotsPlan(now);
                 break;
             case PhaseAsk:
                 if (_teams > 0) SettleTeams();
-                if (BetsNow()) { _phase = PhaseBet; _endsAt = now.AddSeconds(BetSeconds); }
+                if (BetsNow()) { _phase = PhaseBet; _endsAt = now.AddSeconds(BetSeconds); BotsPlanBets(now); }
                 else Reveal(now);
                 break;
             case PhaseBet:
@@ -548,7 +581,7 @@ public class Skilky : Game, IPartyMinigame
         }
     }
 
-    /// <summary>Ставки — лише коли опція ввімкнена, людей від трьох і на столі хоч два числа.</summary>
+    /// <summary>Ставки — лише коли опція ввімкнена, гравців (боти теж) від трьох і на столі хоч два числа.</summary>
     bool BetsNow()
     {
         if (!_bets || _teams > 0) return false;
@@ -556,7 +589,7 @@ public class Skilky : Game, IPartyMinigame
         var numbers = 0;
         for (var s = 0; s < MaxSeats; s++)
         {
-            if (!Ctx.Seated(s)) continue;
+            if (!In(s)) continue;
             seated++;
             if (_answers[s] is not null) numbers++;
         }
@@ -568,7 +601,7 @@ public class Skilky : Game, IPartyMinigame
     {
         for (var s = 0; s < MaxSeats; s++)
         {
-            if (!Ctx.Seated(s) || _betOn[s] >= 0) continue;
+            if (!In(s) || _betOn[s] >= 0) continue;
             for (var o = 0; o < MaxSeats; o++) if (o != s && _answers[o] is not null) return false;
         }
         return true;
@@ -661,7 +694,7 @@ public class Skilky : Game, IPartyMinigame
         // «Ставлю на чуже»: вгадав одного з найближчих — +2.
         var bets = new List<(int Seat, int On, bool Ok)>();
         for (var s = 0; s < MaxSeats; s++)
-            if (Ctx.Seated(s) && _betOn[s] >= 0)
+            if (In(s) && _betOn[s] >= 0)
             {
                 var ok = best.Contains(_betOn[s]);
                 if (ok) _scores[s] += BetBonus;
@@ -761,7 +794,7 @@ public class Skilky : Game, IPartyMinigame
 
     void BotsPlan(DateTimeOffset now)
     {
-        var lvl = LiveBots.Index(_party!.Level);
+        var lvl = LiveBots.Index(BotLevel);
         for (var s = 0; s < MaxSeats; s++)
             _botAt[s] = IsBot(s) ? now.AddMilliseconds(1000 * BotFromS[lvl] + Ctx.Rng.Next(1000 * (BotToS[lvl] - BotFromS[lvl]))) : null;
     }
@@ -771,7 +804,7 @@ public class Skilky : Game, IPartyMinigame
     {
         if (Current is not { } q) return;
         var target = _asked[_at].A;
-        var lvl = LiveBots.Index(_party!.Level);
+        var lvl = LiveBots.Index(BotLevel);
         for (var s = 0; s < MaxSeats; s++)
         {
             if (_botAt[s] is not { } at || at > now) continue;
@@ -789,6 +822,46 @@ public class Skilky : Game, IPartyMinigame
             }
             _answers[s] = v;
             _answeredAt[s] = at;
+            _touched = true;
+            // Бот-капітан подає число команди; бот без капітанства — лише пропонує, як людина.
+            if (_teams > 0 && _teamOf[s] is var team and >= 0 && _captain[team] == s)
+            {
+                _teamFinal[team] = v;
+                _teamAt[team] = at;
+            }
+        }
+    }
+
+    /// <summary>«Ставлю на чуже»: боти ставлять за 2–6 с від початку ставок.</summary>
+    void BotsPlanBets(DateTimeOffset now)
+    {
+        for (var s = 0; s < MaxSeats; s++) _botAt[s] = IsBot(s) ? now.AddMilliseconds(2000 + Ctx.Rng.Next(4000)) : null;
+    }
+
+    /// <summary>
+    /// Бот ставить на чуже число, найближче до свого (власне число — його «відчуття»): що точніший бот, то частіше
+    /// влучає й ставкою. Свого числа нема — на випадкове чуже.
+    /// </summary>
+    void BotsBet(DateTimeOffset now)
+    {
+        var years = Current is { } q && IsYears(q);
+        for (var s = 0; s < MaxSeats; s++)
+        {
+            if (_botAt[s] is not { } at || at > now) continue;
+            _botAt[s] = null;
+            if (!IsBot(s) || _betOn[s] >= 0) continue;
+            int pick = -1, seen = 0;
+            var best = double.MaxValue;
+            for (var o = 0; o < MaxSeats; o++)
+            {
+                if (o == s || !In(o) || _answers[o] is not { } v) continue;
+                seen++;
+                if (_answers[s] is not { } mine) { if (Ctx.Rng.Next(seen) == 0) pick = o; continue; }
+                var d = years || mine <= 0 || v <= 0 ? Math.Abs(v - mine) : Math.Abs(Math.Log(v / mine));
+                if (d < best) { best = d; pick = o; }
+            }
+            if (pick < 0) continue;
+            _betOn[s] = pick;
             _touched = true;
         }
     }
@@ -828,14 +901,30 @@ public class Skilky : Game, IPartyMinigame
         if (_party is not null) { PartyDone(); return; }
         _phase = PhaseDone;
         var seats = Enumerable.Range(0, MaxSeats).Where(Ctx.Seated).ToList();
-        var best = seats.Count == 0 ? 0 : seats.Max(s => _scores[s]);
-        _winners = best > 0 ? [.. seats.Where(s => _scores[s] == best)] : [];
+        // Грали всі, хто за столом, і боти: переможець-бот іде у winners своїм місцем (люди тоді мають поразку).
+        var all = Enumerable.Range(0, MaxSeats).Where(In).ToList();
+        var best = all.Count == 0 ? 0 : all.Max(s => _scores[s]);
+        _winners = best > 0 ? [.. all.Where(s => _scores[s] == best)] : [];
         var scores = seats.ToDictionary(s => s, s => _scores[s]);
-        foreach (var s in seats)
-            if (Shards(_scores[s]) is > 0 and var shards)
-                // Номер партії в причині: «Ще раз» за тим самим столом — нова виплата, а не повтор старої.
-                Ctx.Award(s, shards, $"points:{Ctx.Round.ToString(CultureInfo.InvariantCulture)}");
-        Ctx.Finish(_winners, Summary(seats, best), scores);
+        // Сам із ботами — без нагород (як у живих іграх з ботом): очки ботам не віддаси, а з легкими ботами ставки й
+        // «найближчому» набивались би даром. Двоє людей і більше — звичайна партія, боти лише доповнюють стіл.
+        var lone = _bots.Length > 0 && seats.Count == 1;
+        if (!lone)
+        {
+            foreach (var s in seats)
+                if (Shards(_scores[s]) is > 0 and var shards)
+                    // Номер партії в причині: «Ще раз» за тим самим столом — нова виплата, а не повтор старої.
+                    Ctx.Award(s, shards, $"points:{Ctx.Round.ToString(CultureInfo.InvariantCulture)}");
+            Ctx.Finish(_winners, Summary(all, best), scores);
+            return;
+        }
+        var people = _winners.Where(Ctx.Seated).ToArray();
+        var level = LiveBots.Of(_solo.Level);
+        var verdict = best <= 0 ? "Ніхто нічого не вгадав · без нагород"
+            : people.Length == 0 ? $"🤖 Перемога: {Who(_winners[0])} · без нагород"
+            : _winners.Length == 1 ? $"🏆 {Ctx.NickOf(people[0])} — перемога над {level}и ботами · без нагород"
+            : $"🤝 {Ctx.NickOf(people[0])} нарівні з {level}и ботами · без нагород";
+        Ctx.Finish(people, Summary(all, best), scores, verdict);
     }
 
     /// <summary>Скільки черепків за стільки очок партії.</summary>
@@ -847,7 +936,7 @@ public class Skilky : Game, IPartyMinigame
         if (seats.Count == 0) return $"{Info.Title}: за столом уже ні душі";
         var line = string.Join(", ", seats
             .OrderByDescending(s => _scores[s]).ThenBy(s => s)
-            .Select(s => $"{Ctx.NickOf(s)} {_scores[s]}"));
+            .Select(s => $"{Who(s)} {_scores[s]}"));
         return best > 0 ? $"{Info.Title}: {line}" : $"{Info.Title}: {line} — ніхто нічого не вгадав";
     }
 
@@ -913,7 +1002,7 @@ public class Skilky : Game, IPartyMinigame
             // «Ставлю на чуже»: числа вже на столі, правди ще нема.
             bet = _phase != PhaseBet ? null : new
             {
-                values = Enumerable.Range(0, MaxSeats).Where(x => Ctx.Seated(x) && _answers[x] is not null)
+                values = Enumerable.Range(0, MaxSeats).Where(x => In(x) && _answers[x] is not null)
                     .OrderBy(x => _answers[x]).Select(x => new { seat = x, value = _answers[x]!.Value }).ToArray(),
                 on = me >= 0 && _betOn[me] >= 0 ? _betOn[me] : (int?)null,
             },
@@ -945,6 +1034,12 @@ public class Skilky : Game, IPartyMinigame
                 best = r.Best, value = r.Value, points = r.Points, by = r.By >= 0 ? r.By : (int?)null, photo = r.Photo,
             }).ToArray(),
             daily = DailyView(me),
+            // «🤖 + боти» (LiveBots.cs): кнопку малює core.js; bot — місця ботів (у лобі — куди сядуть)
+            botOffer = BotsAllowed && _solo.Offer(Ctx, MaxSeats),
+            botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
+            botLvl = _solo.LevelKey,
+            bot = !BotsAllowed ? [] : _started ? _bots.Where(x => !Ctx.Seated(x)).ToArray() : BotSeats(),
         };
     }
 

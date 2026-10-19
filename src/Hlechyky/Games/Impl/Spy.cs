@@ -91,8 +91,9 @@ public sealed class Spy : Game
     public const int GlekVoteMs = 3_000;
     /// <summary>Глек-селянин відповідає туманно (як шпигун) лише зрідка, інакше — правдивою підказкою за локацією.</summary>
     public const double GlekVagueShare = 0.3;
-    public const int DefaultMinutes = 6;
-    public const int DefaultRounds = 3;
+    /// <summary>Типово коротко (пакет 2, 20.10): 1 раунд × 4 хв, а далі — «▶ Ще раунд» господаря чи «Ще раз».</summary>
+    public const int DefaultMinutes = 4;
+    public const int DefaultRounds = 1;
     /// <summary>Значення опції «Раундів»: кожен за столом побуде шпигуном по разу.</summary>
     public const string EachRound = "each";
 
@@ -105,12 +106,12 @@ public sealed class Spy : Game
         Score: ScoreOrder.None,
         Options:
         [
-            new GameOption("time", "Раунд", [("4", "4 хвилини"), ("6", "6 хвилин"), ("8", "8 хвилин"), ("10", "10 хвилин")], "6"),
-            new GameOption("rounds", "Раундів", [("1", "Один"), ("3", "Три"), ("5", "П'ять"), (EachRound, "Кожен по разу")], "3"),
+            new GameOption("time", "Раунд", [("4", "4 хвилини"), ("6", "6 хвилин"), ("8", "8 хвилин"), ("10", "10 хвилин")], "4"),
+            new GameOption("rounds", "Раундів", [("1", "Один"), ("3", "Три"), ("5", "П'ять"), (EachRound, "Кожен по разу")], "1"),
             new GameOption("set", "Локації", SpyLocations.Sets, SpyLocations.AnySet, Multi: true),
             new GameOption("glek", "Удвох", [("on", "🤖 Глек сідає третім"), ("off", "Ні — чекаємо третього")], "on"),
         ],
-        Hint: "Усі знають, де вони, — крім шпигуна. Питайте одне одного — у балачці столу чи вголос: село шукає шпигуна, шпигун — локацію. Троє й більше, удвох — з Дядьком Глеком");
+        Hint: "Усі знають, де вони, — крім шпигуна. Питайте одне одного — у балачці столу чи вголос: село шукає шпигуна, шпигун — локацію. Троє й більше, удвох — з Дядьком Глеком. Коротко: 1 раунд, а на розкритті господар може дати «▶ Ще раунд»");
 
     /// <summary>
     /// Порядок колоди — за назвою, по-українськи. Під <c>InvariantGlobalization</c> культури може не бути —
@@ -824,6 +825,7 @@ public sealed class Spy : Game
             "blame" => Blame(seat, payload),
             "guess" => Guess(seat, payload),
             "ready" => Ready(seat),
+            "more" => More(seat),
             _ => ActResult.Fail("Тут так не ходять"),
         };
     }
@@ -914,6 +916,24 @@ public sealed class Spy : Game
             _ready[seat] = true;
             _dirty = true;
         }
+        return ActResult.Done;
+    }
+
+    /// <summary>Чи можна господарю дати «▶ Ще раунд»: розкриття останнього раунду партії.</summary>
+    bool CanMore(int seat) => _phase == SpyPhase.Reveal && _round >= _rounds && Ctx.HostSeat == seat;
+
+    /// <summary>
+    /// «▶ Ще раунд» (пакет 2): господар на розкритті останнього раунду додає ще один — той самий склад, нова локація,
+    /// рахунок партії накопичується. Без цього партія кінчається підсумком, а нова — звичайним «Ще раз» каркаса.
+    /// </summary>
+    ActResult More(int seat)
+    {
+        if (_phase != SpyPhase.Reveal || _round < _rounds) return ActResult.Fail("Ще раунд дають на розкритті останнього раунду");
+        if (Ctx.HostSeat != seat) return ActResult.Fail("Ще раунд дає господар столу");
+        _rounds++;
+        _rules = new SpyRulesView(_minutes, _rounds, _sets, DealMs, VoteMs, FinalMs, RevealMs, AskGraceMs, _each);
+        _dirty = true;
+        NewRound();
         return ActResult.Done;
     }
 
@@ -1102,6 +1122,7 @@ public sealed class Spy : Game
             deck = _deckView,
             me = me >= 0 ? new SpyMeView(me == _spy, me == _spy ? null : _loc?.Id, me == _spy ? null : _roles[me]) : null,
             reveal = _phase is SpyPhase.Reveal or SpyPhase.Done ? _reveal : null,
+            more = me >= 0 && CanMore(me),
             history = _history.ToArray(),
             result = _phase == SpyPhase.Done ? _result : null,
             // Лише після партії: тоді на звільнене місце вже може сісти новачок (players показує його), а хроніка й

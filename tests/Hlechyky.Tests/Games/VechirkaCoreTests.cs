@@ -124,6 +124,7 @@ public sealed class VechirkaCoreTests
     [Theory]
     [InlineData(30, 2, 13)] [InlineData(30, 8, 7)] [InlineData(45, 2, 19)] [InlineData(45, 5, 13)]
     [InlineData(45, 8, 10)] [InlineData(60, 2, 20)] [InlineData(60, 5, 18)] [InlineData(60, 8, 14)]
+    [InlineData(15, 2, 6)] [InlineData(15, 4, 5)] [InlineData(15, 6, 4)] [InlineData(15, 8, 4)]
     public void Rounds_follow_the_target_minutes(int min, int n, int rounds) =>
         Assert.Equal(rounds, VechirkaRules.Rounds(min, n));
 
@@ -162,6 +163,23 @@ public sealed class VechirkaCoreTests
         foreach (var ph in new[] { "intro", "order", "turn", "walk", "pick", "results", "late", "final" }) Assert.Contains(ph, phases);
         // ігровий час у межах R·N·30 + R·20 с
         Assert.True(t.Now - T0 < TimeSpan.FromSeconds(t.C.S.Rounds * n * 30 + t.C.S.Rounds * 20), $"{(t.Now - T0).TotalMinutes:0} хв");
+    }
+
+    [Theory]
+    [InlineData(2)] [InlineData(3)] [InlineData(4)] [InlineData(8)]
+    public void A_fifteen_minute_evening_has_at_least_four_rounds_a_final_and_fits_in_fifteen_minutes(int n)
+    {
+        // Пакет 2 (20.10): «≈ 15 хв» — щонайменше 4 кола з міні-іграми, пізні кола, фінал і підсумок.
+        var t = New(n, bots: true, len: 15);
+        Assert.InRange(t.C.S.Rounds, VechirkaRules.MinRounds, 6);
+        var phases = new HashSet<string>();
+        for (var k = 0; k < 400_000 && !t.C.S.Done; k++) { t.Run(100, 100); phases.Add(t.C.S.Phase); }
+        Assert.True(t.C.S.Done, $"застрягли у {t.C.S.Phase}, коло {t.C.S.Round}/{t.C.S.Rounds}");
+        Assert.Contains(t.C.Out, o => o.Kind == "finish");
+        Assert.True(t.Mg.Played.Count >= t.C.S.Rounds);
+        Assert.True(t.C.S.Late);
+        foreach (var ph in new[] { "turn", "pick", "results", "late", "final" }) Assert.Contains(ph, phases);
+        Assert.True(t.Now - T0 < TimeSpan.FromMinutes(15), $"{(t.Now - T0).TotalMinutes:0.0} хв");
     }
 
     [Fact]

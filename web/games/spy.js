@@ -298,6 +298,7 @@
       case 'blame': send(el, 'blame:' + seat, 'blame', { seat }); break;
       case 'vote': send(el, 'vote:' + b.dataset.yes, 'vote', { yes: b.dataset.yes === '1' }); break;
       case 'ready': send(el, 'ready', 'ready', {}); break;
+      case 'more': send(el, 'more', 'more', {}); break;
       case 'chat': openTable(); break;
       case 'tip': {
         let i = Math.floor(Math.random() * TIPS.length);
@@ -686,10 +687,13 @@
         if (!inGame) return { note: last ? 'Підсумок партії — щойно всі натиснуть «Готово».' : 'Наступний раунд — щойно всі натиснуть «Готово».' };
         const mine = (v.players || []).find((p) => p.seat === mySeat);
         const wait = present(v).filter((p) => !p.ready).length;
-        if (mine && mine.ready) return { say: '✔ Чекаємо решту: ' + wait };
+        // «▶ Ще раунд» — лише господарю на розкритті останнього раунду (v.more ставить сервер): той самий склад,
+        // нова локація, рахунок партії накопичується.
+        const more = v.more ? '<button type="button" class="spy-big" data-sp="more"' + busy('more') + '>▶ Ще раунд</button>' : '';
+        if (mine && mine.ready) return { say: '✔ Чекаємо решту: ' + wait, btns: more };
         return {
           btns: '<button type="button" class="primary spy-big" data-sp="ready" data-pad-first' + busy('ready') + '>'
-            + (last ? 'Готово — до підсумку' : 'Готово — наступний раунд') + '</button>',
+            + (last ? 'Готово — до підсумку' : 'Готово — наступний раунд') + '</button>' + more,
         };
       }
       case 'done': {
@@ -945,12 +949,12 @@
     // Нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame). Без цього поля плитка губилась серед
     // шести десятків ігор — за перший день на проді ні однієї партії.
     news: {
-      v: '2026-09-29',
-      title: 'Шпигун: тепер і вдвох',
+      v: '2026-10-20',
+      title: 'Шпигун: коротка партія',
       items: [
-        '🤖 Удвох за столом третім сідає Дядько Глек: у нього своя картка, він відповідає туманними підказками й питає вас',
-        '🕵️ Глек буває й шпигуном — ловіть його так само: підозра або фінальне голосування',
-        '💬 Утрьох і більше — усе як було: Глек лише веде стіл',
+        '⏱ Типово тепер один раунд на 4 хвилини — сіли, зіграли, розійшлись',
+        '▶ Захотілось ще — на розкритті господар тисне «Ще раунд»: той самий склад, нова локація, очки накопичуються',
+        '🤖 Удвох, як і раніше, третім сідає Дядько Глек',
       ],
     },
     // pad не оголошуємо: гра кнопкова, кільце фокуса шару пада ходить по кнопках саме (PROTOCOL §3), а на кожній
