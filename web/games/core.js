@@ -880,24 +880,27 @@
     return await call(again, id);
   }
 
+  /// Сидиш за іншим столом (other) — питаємо, чи встати; коли там іде партія, кажемо, чим це скінчиться.
+  /// okIdle/okPlaying — підпис кнопки згоди для столу, що чекає, і для столу з партією. true — згоден.
+  function askLeave(other, okIdle, okPlaying) {
+    const playing = other.status === 'playing';
+    const stake = playing && other.stake ? ', а ставка 🏺' + other.stake + ' лишиться суперникові' : '';
+    return ask({
+      title: 'Ти вже за столом',
+      html: '<b>' + iconOf(other.game) + esc(titleOf(other.game)) + '</b>'
+        + (playing
+          ? ' — там іде партія. Якщо встанеш зараз, вона зарахується як поразка' + stake + '.'
+          : ' — партія ще не почалась, встати можна без наслідків.'),
+      ok: playing ? okPlaying : okIdle,
+      cancel: 'Лишитись там',
+    });
+  }
+
   /// Сісти за стіл. Сидиш за іншим — раніше кнопки просто не було, і доводилось іти назад, вставати,
   /// вертатись і сідати знову. Тепер питаємо тут і встаємо самі. true — сіли.
   async function joinRoom(id, btn) {
     const other = seatedAt(id);
-    if (other) {
-      const playing = other.status === 'playing';
-      const stake = playing && other.stake ? ', а ставка 🏺' + other.stake + ' лишиться суперникові' : '';
-      const ok = await ask({
-        title: 'Ти вже за столом',
-        html: '<b>' + iconOf(other.game) + esc(titleOf(other.game)) + '</b>'
-          + (playing
-            ? ' — там іде партія. Якщо встанеш зараз, вона зарахується як поразка' + stake + '.'
-            : ' — партія ще не почалась, встати можна без наслідків.'),
-        ok: playing ? 'Все одно встати й сісти' : 'Встати і сісти сюди',
-        cancel: 'Лишитись там',
-      });
-      if (!ok) return false;
-    }
+    if (other && !(await askLeave(other, 'Встати і сісти сюди', 'Все одно встати й сісти'))) return false;
     // Кнопку крутимо лише навколо самих викликів: поки людина читає питання, «сідаю…» на ній недоречне.
     const sit = async () => {
       if (other && !(await call('LeaveRoom', other.id)).ok) return false;
@@ -1476,6 +1479,9 @@
       if (p && p.route && chromeFor === next.id) { p.route(next.sub); return; }
       chromeFor = null;
     }
+    // Вийшли з кімнати в лобі — «☀ Сьогодні» тягнемо свіже: щойно зіграна щоденна інакше до хвилини висіла б
+    // нерозгаданою (записка #52).
+    if (view.kind === 'room' && next.kind === 'lobby') dailyAt = 0;
     view = next;
     if (view.kind !== 'room') setFull(false);
     if (!same) chromeFor = null;          // повернулись у підрозділ — перечитуємо профіль/таблицю
@@ -2227,14 +2233,22 @@
       wrap.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b));
       paintVar();
     });
-    wrap.querySelector('[data-go]').onclick = (e) => busy(e.currentTarget, 'ставлю…', async () => {
-      const box = wrap.querySelector('.gvar');
-      const payload = optValues(box);
-      const st = box.querySelector('.gstake.on');
-      if (st) payload.stake = +st.dataset.stake;
-      const r = await openRoom('CreateRoom', g.id, payload);
-      if (r.ok) { close(); if (r.roomId) go('#games/room/' + encodeURIComponent(r.roomId)); }
-    });
+    wrap.querySelector('[data-go]').onclick = async (e) => {
+      const btn = e.currentTarget;
+      // Сидиш за іншим столом — сервер нового не дасть («Ти вже за столом»): питаємо, як у «Сісти», і встаємо самі
+      // (записка #59). Соло відкривається й так.
+      const other = g.maxPlayers > 1 ? seatedAt(null) : null;
+      if (other && !(await askLeave(other, 'Встати й поставити новий', 'Все одно встати й поставити'))) return;
+      busy(btn, 'ставлю…', async () => {
+        if (other && !(await call('LeaveRoom', other.id)).ok) return;
+        const box = wrap.querySelector('.gvar');
+        const payload = optValues(box);
+        const st = box.querySelector('.gstake.on');
+        if (st) payload.stake = +st.dataset.stake;
+        const r = await openRoom('CreateRoom', g.id, payload);
+        if (r.ok) { close(); if (r.roomId) go('#games/room/' + encodeURIComponent(r.roomId)); }
+      });
+    };
   }
 
   /// «⚙ Налаштування» поставленого столу (господар, між партіями): ті самі опції, що в попапі створення, з тим, що

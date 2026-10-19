@@ -2492,10 +2492,14 @@
     if (st && st.sprint) {
       const d = ctx.view && ctx.view.daily;
       if (d && d.solved) return 'Цеглини дня складено — нове зерно після півночі';
-      if (ph === 'ready') return (d ? 'Зерно дня однакове для всіх' + (d.attempts ? ' · спроба ' + (d.attempts + 1) : '') + ' — ' : '')
+      // Тренування з виду таке саме, як «Цеглини дня», — кажемо прямо, що в «☀ Сьогодні» воно не йде (записка #52:
+      // склала спринт і чекала галочки в щоденних).
+      if (ph === 'ready') return (d ? 'Зерно дня однакове для всіх' + (d.attempts ? ' · спроба ' + (d.attempts + 1) : '') + ' — '
+        : 'Тренування, у «☀ Сьогодні» не йде — ')
         + (padish() ? 'натисни Ⓐ — і поїхали' : coarse() ? 'торкнись стіни — і поїхали' : 'натисни будь-яку клавішу');
       if (ph === 'start') return 'Готуйсь…';
       if (ph === 'go' && st.net.loaded) return st.net.core.lines + '/' + SPRINT_LINES + ' · ' + clockText(st.net.core.tick, false);
+      if (ph === 'over' && !d) return 'Це було тренування — «Цеглини дня» чекають у ☀ Сьогодні';
       return '';
     }
     if (ph === 'pause') {
