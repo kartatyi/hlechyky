@@ -47,6 +47,8 @@ data/svoya/*
 !data/dotepy/
 # «Де це?»: банк місць, README і збірник мапи.
 !data/geo/
+# Банк «Мемології»: лише текст і посилання (картинки — у cache/memes, у гіт не йдуть).
+!data/memes/
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)
