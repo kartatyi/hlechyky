@@ -650,6 +650,30 @@ public class SvoyaTests
     }
 
     [Fact]
+    public void By_default_the_game_is_one_round_and_the_final_and_it_ends()
+    {
+        // Пакет 2 (20.10): типово коротко — без опції «Довжина» гра бере один раунд і фінал і доходить до кінця.
+        var opt = RoomHarness.NewRegistry().Info("svoya")!.Options!.Single(o => o.Key == "length");
+        Assert.Equal(Svoya.LengthOne, opt.Default);
+        Assert.Equal(Svoya.LengthOne, opt.Values[0].Value);
+        var packs = new FakeSvoyaPacks();
+        packs.Packs["b_three"] = (ThreeRounds(), "");
+        var h = Table(packs: packs, pack: "b_three");
+
+        Assert.Equal(Svoya.LengthOne, h.View(null).GetProperty("options").GetProperty("length").GetString());
+        Assert.Equal(2, h.View(null).GetProperty("rounds").GetInt32());
+        Until(h, Svoya.Board);
+        h.Act(Chooser(h), "pick", new { theme = 0, q = 0 });
+        Assert.True(h.Act(0, "buzz").Ok);
+        h.Act(0, "answer", new { text = "відповідь1" });
+        Until(h, "strike");                                  // одразу фінал
+        Assert.Equal(2, h.View(null).GetProperty("round").GetInt32());
+        Until(h, Svoya.Done, 20_000);                        // фінал добігає на таймерах і партія кінчається
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal([0], h.Room.Result!.Winners);
+    }
+
+    [Fact]
     public void Game_ends_after_the_last_round_with_the_best_score_winning()
     {
         var h = Table(pack: "b_nofinal");

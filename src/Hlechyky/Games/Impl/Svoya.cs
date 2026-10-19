@@ -73,6 +73,8 @@ public sealed partial class Svoya : Game
     public const string EarlyOn = "on", EarlyOff = "off", EarlyLock = "lock";
     /// <summary>Довжина партії: увесь пакет, два раунди й фінал, один раунд і фінал.</summary>
     public const string LengthFull = "full", LengthTwo = "two", LengthOne = "one";
+    /// <summary>Типова довжина — коротка (пакет 2): ~15 хв замість години «всього пакета».</summary>
+    public const string DefaultLength = LengthOne;
     public static readonly int[] AnswerChoices = [10, 15, 20];
     public static readonly int[] BuzzChoices = [5, 10, 15];
     /// <summary>
@@ -98,8 +100,9 @@ public sealed partial class Svoya : Game
             new GameOption("early", "Кнопка під час читання",
                 [(EarlyOn, "Можна одразу"), (EarlyOff, "Лише після читання"), (EarlyLock, $"Фальстарт: блок на {FalseStartMs / 1000} с")], EarlyOn),
             new GameOption("voice", "Голос ведучого", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
-            // Увесь пакет — це 75 запитань і година гри; на вечір «ще одну» друзям треба коротше.
-            new GameOption("length", "Довжина", [(LengthFull, "Увесь пакет"), (LengthTwo, "Два раунди й фінал"), (LengthOne, "Один раунд і фінал (~15 хв)")], LengthFull),
+            // Увесь пакет — це 75 запитань і година гри; на вечір «ще одну» друзям треба коротше. З пакета 2 (20.10)
+            // типово — один раунд і фінал: за місяць на «увесь пакет» сіли двічі.
+            new GameOption("length", "Довжина", [(LengthOne, "Один раунд і фінал (~15 хв)"), (LengthTwo, "Два раунди й фінал"), (LengthFull, "Увесь пакет (~година)")], DefaultLength),
             new GameOption("pace", "Темп", [(PaceNormal, "Звичайний"), (PaceBlitz, "⚡ Бліц: поле 4×4, кнопка 5 с, без голосу")], PaceNormal),
         ],
         Hint: "Поле тем і цін, хто перший натиснув — той відповідає. Пакет обирає господар; ведучий — автомат або ти сам");
@@ -114,7 +117,7 @@ public sealed partial class Svoya : Game
     int _answerSec = 15, _buzzSec = 10;
     string _early = EarlyOn;
     string _voiceName = "ostap";
-    string _length = LengthFull;
+    string _length = DefaultLength;
     bool _blitz;
     /// <summary>Живий ведучий попросив, щоб запитання читав голос (тумблер на пульті).</summary>
     bool _liveVoice;
@@ -239,7 +242,7 @@ public sealed partial class Svoya : Game
         if (int.TryParse(options.GetValueOrDefault("buzz"), out var b) && BuzzChoices.Contains(b)) _buzzSec = b;
         _early = options.GetValueOrDefault("early") is EarlyOff or EarlyLock ? options["early"] : EarlyOn;
         _voiceName = options.GetValueOrDefault("voice") is "polina" or "none" ? options["voice"] : "ostap";
-        _length = options.GetValueOrDefault("length") is LengthTwo or LengthOne ? options["length"] : LengthFull;
+        _length = options.GetValueOrDefault("length") is LengthFull or LengthTwo or LengthOne ? options["length"] : DefaultLength;
         _blitz = options.GetValueOrDefault("pace") == PaceBlitz;
         // господар поміняв довжину чи темп уже після вибору пакета — лобі одразу показує, що гратимемо
         if (_source is not null) _pack = Shape(_source);

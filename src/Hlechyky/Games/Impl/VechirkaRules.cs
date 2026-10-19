@@ -29,7 +29,13 @@ public static class VechirkaRules
     public const int StandMinDist = 8;
     public const int NoGames = 5;
     public const int Bonuses = 3;
-    public const int MinRounds = 6, MaxRounds = 20;
+    /// <summary>Пакет 2 (20.10): 4 кола (було 6) — щоб «≈ 15 хв» справді вкладались; 4 — це ще розгін, половина й «пізні кола».</summary>
+    public const int MinRounds = 4, MaxRounds = 20;
+    /// <summary>Довжини вечора в хвилинах (опція «Вечір») і типова — 30 (з пакета 2; було 45).</summary>
+    public static readonly int[] Lens = [15, 30, 45, 60];
+    public const int DefaultLen = 30;
+    /// <summary>Значення опції «Вечір» → хвилини; невідоме — типове.</summary>
+    public static int Len(string? option) => int.TryParse(option, out var m) && Lens.Contains(m) ? m : DefaultLen;
     public static readonly int[] Stakes = [0, 5, 10, 20];
 
     // ---------- таймери (мс, §1.1, §2.3, §15.3) ----------

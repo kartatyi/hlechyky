@@ -242,7 +242,7 @@ public sealed class SvoyaSweep3Tests
         Assert.Equal(4 * 4 + finals, pack.GetProperty("questions").GetInt32());
 
         // повна довжина — опис як і був, на весь мікс
-        var full = Table(new FakeSvoyaPacks(), SvoyaMix.Id, more: sc => sc.AddSingleton(new SvoyaBuiltin([a, b])), start: false);
+        var full = Table(new FakeSvoyaPacks(), SvoyaMix.Id, new { length = Svoya.LengthFull }, more: sc => sc.AddSingleton(new SvoyaBuiltin([a, b])), start: false);
         Assert.Contains($"Усі {15 + finals} тем", full.View(0).GetProperty("pack").GetProperty("description").GetString());
         Assert.Equal(75 + finals, full.View(0).GetProperty("pack").GetProperty("questions").GetInt32());
     }
