@@ -27,7 +27,18 @@ public sealed class Dotepy : Game
     // ---------------------------------------------------------------------------------------
 
     public const int TickMs = 250;
-    public const int MinSeats = 3, MaxSeats = 8;
+    /// <summary>Людей, щоб почати. Удвох третім сідає Дядько Глек (пакет 2, 20.10), тож за столом завжди щонайменше <see cref="MinTable"/>.</summary>
+    public const int MinSeats = 2, MaxSeats = 8;
+    /// <summary>Скільки гравців (з Глеком) треба, щоб було кому голосувати: менше — партія кінчається.</summary>
+    public const int MinTable = 3;
+    /// <summary>Ім'я Глека-гравця в таблиці, Журналі й підсумку. 🏺 — видно, що це не людина.</summary>
+    public const string GlekName = "🏺 Дядько Глек";
+    /// <summary>Як Глека звати вголос і у вердиктах (емодзі голосом не вимовиш).</summary>
+    public const string GlekSpoken = "Дядько Глек";
+    /// <summary>Глек «пише» кожен свій додеп у випадкову мить цього проміжку від початку написання — не миттєво.</summary>
+    public const int GlekWriteMinMs = 6_000, GlekWriteMaxMs = 25_000;
+    /// <summary>Глек «думає» над голосом стільки (випадково в проміжку) — щоб його голос не падав тієї ж миті.</summary>
+    public const int GlekVoteMinMs = 3_000, GlekVoteMaxMs = 8_000;
     /// <summary>Від скількох присутніх раунди 1–2 — дуелі.</summary>
     public const int DuelFrom = 5;
     /// <summary>Символів у додепі після чистки. Довше — не влізе на картку й у голос.</summary>
@@ -133,10 +144,16 @@ public sealed class Dotepy : Game
             new GameOption("voice", "Голос Глека", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
             new GameOption("themes", "Теми", [(ThemeAll, "Усі"), .. Themes.Select(t => (t.Key, t.Label))], ThemeAll, Multi: true),
         ],
-        Hint: "Дурне завдання — смішна відповідь. Пишете анонімно, голосуєте за чуже, Дядько Глек усе зачитує. Троє й більше");
+        Hint: "Дурне завдання — смішна відповідь. Пишете анонімно, голосуєте за чуже, Дядько Глек усе зачитує. Удвох Глек сідає третім");
 
     /// <summary>Місця — числами: їх до восьми, і «гравець восьмий» у чіп не влізе.</summary>
     public override string SeatName(int seat) => (seat + 1).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Місце Глека-гравця — шапка кімнати каже його ім'я замість «вільно».</summary>
+    public override string? SeatBot(int seat) => seat >= 0 && seat == _glek ? GlekName : null;
+
+    /// <summary>Місце Глека-гравця (перше вільне) або −1: людей троє й більше — Глек лише ведучий.</summary>
+    public int GlekSeat => _glek;
 
     // ---------------------------------------------------------------------------------------
     // стан
@@ -183,6 +200,8 @@ public sealed class Dotepy : Game
         public string Draft = "";
         public string Text = "";
         public bool Done;
+        /// <summary>Лише для Глека: коли він «допише» це завдання.</summary>
+        public DateTimeOffset Due;
     }
 
     /// <summary>Відповідь на голосуванні. Голоси, очки й ранг рахуються на розкритті.</summary>
@@ -257,6 +276,12 @@ public sealed class Dotepy : Game
     /// <summary>Пари дуелей, що вже були в цій партії (ключ <see cref="PairKey"/>): раунд 2 їх не повторює.</summary>
     readonly HashSet<int> _pairs = [];
     int _startedWith;
+    /// <summary>Місце Глека-гравця (удвох) або −1. Глек не людина: місце в каркасі вільне, ходить сам на тиках.</summary>
+    int _glek = -1;
+    /// <summary>Що Глек уже писав цієї партії — щоб не повторювався.</summary>
+    readonly HashSet<string> _glekSaid = new(StringComparer.Ordinal);
+    /// <summary>Коли Глек проголосує на поточній картці.</summary>
+    DateTimeOffset _glekVoteAt;
     /// <summary>Партія скінчилась раніше — гравці розійшлись (менше трьох).</summary>
     bool _early;
 
@@ -374,6 +399,17 @@ public sealed class Dotepy : Game
             _voter[s] = false;
             if (_inGame[s]) seated.Add(s);
         }
+        // Удвох голосувати нема кому — третім сідає Дядько Глек на перше вільне місце: пише додепи, голосує, має
+        // очки в таблиці. Утрьох і більше — Глек лише ведучий, як і був.
+        _glek = -1;
+        _glekSaid.Clear();
+        if (seated.Count == MinSeats)
+        {
+            for (var s = 0; s < MaxSeats && _glek < 0; s++) if (!_inGame[s]) _glek = s;
+            _inGame[_glek] = true;
+            _nicks[_glek] = GlekName;
+            seated.Add(_glek);
+        }
         _startedWith = seated.Count;
         for (var i = seated.Count - 1; i > 0; i--)
         {
@@ -389,6 +425,7 @@ public sealed class Dotepy : Game
         _ownBy.Clear();
         foreach (var s in seated)
         {
+            if (s == _glek) continue;
             var key = Auth.NickKey(_nicks[s]);
             if (!_own.TryGetValue(key, out var text)) continue;
             var id = "own:" + key;
@@ -434,6 +471,11 @@ public sealed class Dotepy : Game
             Prepare([DotepyLines.Intro(1, _roundsTotal == 1, Math.Min(RankCount, _startedWith - 1))], urgent: true);
             var lines = new List<string>(DotepyLines.Pure());
             foreach (var s in seated) lines.AddRange(DotepyLines.Named(Spoken(s)));
+            if (_glek >= 0)
+            {
+                lines.Add(DotepyLines.GlekWinAlone);
+                foreach (var s in seated) if (s != _glek) lines.Add(DotepyLines.GlekWin(Spoken(s)));
+            }
             Prepare(lines);
         }
         OpenRound(1, Now);
@@ -441,7 +483,7 @@ public sealed class Dotepy : Game
         _dirty = false;
     }
 
-    bool Present(int seat) => seat >= 0 && seat < MaxSeats && _inGame[seat] && !_left[seat] && Ctx.Seated(seat);
+    bool Present(int seat) => seat >= 0 && seat < MaxSeats && _inGame[seat] && !_left[seat] && (seat == _glek || Ctx.Seated(seat));
 
     int PresentCount()
     {
@@ -458,7 +500,9 @@ public sealed class Dotepy : Game
         var present = new List<int>(MaxSeats);
         foreach (var s in _order) if (Present(s)) present.Add(s);
         var n = present.Count;
-        _mode = !_final && n >= DuelFrom ? ModeDuel : ModeAll;
+        // Двоє людей і Глек — дуелі на трьох, як у класичному Quiplash: кожне завдання пишуть двоє, голосує третій
+        // (у раунді 2 пари ті самі — інших на трьох нема, — завдання нові).
+        _mode = !_final && (n >= DuelFrom || Present(_glek)) ? ModeDuel : ModeAll;
 
         var count = _final ? 1 : _mode == ModeDuel ? n : TasksPerRound;
         var prompts = PickPrompts(count, _final);
@@ -512,6 +556,14 @@ public sealed class Dotepy : Game
         _totalMs = _final ? FinalWriteMs(_writeMs) : _writeMs;
         _endsAt = now.AddMilliseconds(_totalMs);
         _writeFrom = now;
+        if (Present(_glek))
+        {
+            // Кожен свій додеп Глек «допише» у випадкову мить — і завжди до кінця часу (запас 2 с).
+            var hi = Math.Max(GlekWriteMinMs + 1, Math.Min(GlekWriteMaxMs, _totalMs - 2_000));
+            foreach (var card in _cards)
+                foreach (var e in card.Entries)
+                    if (e.Seat == _glek) e.Due = now.AddMilliseconds(Ctx.Rng.Next(GlekWriteMinMs, hi));
+        }
         _intro = DotepyLines.Intro(round, _final, Math.Min(RankCount, n - 1));
         SayNow(_intro);
         _dirty = true;
@@ -527,7 +579,8 @@ public sealed class Dotepy : Game
     {
         if (!p.Text.Contains(NickSlot, StringComparison.Ordinal) || present.Count == 0) return p;
         var pick = new List<int>(present.Count);
-        foreach (var s in present) if (s != a && s != b && !named.Contains(s)) pick.Add(s);
+        // Глек героєм — лише коли інакше нікого (дуель двох людей на трьох): «про нас» — насамперед про людей.
+        foreach (var s in present) if (s != a && s != b && s != _glek && !named.Contains(s)) pick.Add(s);
         if (pick.Count == 0) foreach (var s in present) if (s != a && s != b) pick.Add(s);
         if (pick.Count == 0) pick.AddRange(present);
         var hero = pick[Ctx.Rng.Next(pick.Count)];
@@ -668,6 +721,7 @@ public sealed class Dotepy : Game
         switch (_phase)
         {
             case PhaseWrite:
+                if (Present(_glek)) GlekWrite(now);
                 if (now >= _endsAt || AllWritten())
                 {
                     CloseWriting(now);
@@ -675,7 +729,8 @@ public sealed class Dotepy : Game
                 }
                 break;
             case PhaseVote:
-                if (_pending is null && (now >= _endsAt || now >= _speechEnd && AllVoted())) Reveal(now);
+                if (Present(_glek)) GlekVote(now);
+                if (_pending is null &&(now >= _endsAt || now >= _speechEnd && AllVoted())) Reveal(now);
                 break;
             case PhaseReveal:
                 if (_final) FinalStep(now);
@@ -720,6 +775,75 @@ public sealed class Dotepy : Game
     /// </summary>
     bool Complete(int seat) => _picks[seat] is { } p && (!_final || p.Length >= _perVoter);
 
+    // ---------- Дядько Глек за столом удвох ----------
+
+    /// <summary>
+    /// Глек «пише»: кожен свій додеп — у свою мить (<see cref="Entry.Due"/>). Люди вже все здали — дописує одразу,
+    /// але не раніше за <see cref="GlekWriteMinMs"/> від початку: миттєва відповідь видала б, що він не людина.
+    /// </summary>
+    void GlekWrite(DateTimeOffset now)
+    {
+        var humansDone = true;
+        foreach (var card in _cards)
+            foreach (var e in card.Entries)
+                if (e.Seat != _glek && !e.Done && Present(e.Seat)) humansDone = false;
+        var hurry = humansDone && now - _writeFrom >= TimeSpan.FromMilliseconds(GlekWriteMinMs);
+        foreach (var card in _cards)
+            foreach (var e in card.Entries)
+            {
+                if (e.Seat != _glek || e.Done || now < e.Due && !hurry) continue;
+                e.Text = e.Draft = GlekAnswer(card);
+                e.Done = true;
+                _dirty = true;
+                EarlyVoice(card);
+            }
+    }
+
+    /// <summary>
+    /// Додеп Глека — заготовка з <see cref="DotepyStock.Glek"/> (на будь-яке завдання), без повтору за партію і не така,
+    /// як уже здав суперник на цій картці. Жодної генерації: Глек чесно бреше з кишені.
+    /// </summary>
+    string GlekAnswer(Card card)
+    {
+        var taken = new List<string>(_glekSaid);
+        foreach (var e in card.Entries) if (e.Seat != _glek && e.Done) taken.Add(e.Text);
+        var text = DotepyStock.Pick(Ctx.Rng, taken, DotepyStock.Glek);
+        _glekSaid.Add(text);
+        return text;
+    }
+
+    /// <summary>
+    /// Глек голосує, коли «подумав» (<see cref="_glekVoteAt"/>): випадково серед чужих відповідей, справжні — раніше
+    /// за підставні (за «Мій кіт сів на клавіатуру» людина й сама не проголосує). У фіналі — повний бюлетень.
+    /// </summary>
+    void GlekVote(DateTimeOffset now)
+    {
+        if (!_voter[_glek] || _picks[_glek] is not null || now < _glekVoteAt || _at < 0 || _at >= _cards.Count) return;
+        var answers = _cards[_at].Answers;
+        var real = new List<int>(answers.Length);
+        var stock = new List<int>(answers.Length);
+        for (var i = 0; i < answers.Length; i++)
+            if (answers[i].Seat != _glek) (answers[i].Stock ? stock : real).Add(i);
+        Shuffle(real);
+        Shuffle(stock);
+        real.AddRange(stock);
+        if (real.Count == 0) return;
+        _picks[_glek] = [.. real.Take(_perVoter)];
+        _dirty = true;
+    }
+
+    void Shuffle(List<int> list)
+    {
+        for (var i = list.Count - 1; i > 0; i--)
+        {
+            var j = Ctx.Rng.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
+    }
+
+    /// <summary>Картка з Глеком-автором «Думки сходяться» не дає: його заготовка й людська відповідь — не телепатія.</summary>
+    bool JinxAllowed(Card card) => _mode == ModeDuel && !(_glek >= 0 && card.IsAuthor(_glek));
+
     /// <summary>
     /// Кінець написання: незданому — чернетка (якщо не порожня), інакше підставна; відповіді перетасовано;
     /// картки, де все підставне, пропускаються; усі читання карток — у чергу голосу, перша — найперша.
@@ -750,7 +874,7 @@ public sealed class Dotepy : Game
             }
             card.Answers = [.. card.Order.Select(k => byEntry[k])];
             card.Skipped = Array.TrueForAll(card.Answers, a => a.Stock);
-            card.Jinx = _mode == ModeDuel && card.Answers.Length == 2 && !card.Answers[0].Stock && !card.Answers[1].Stock
+            card.Jinx = JinxAllowed(card) && card.Answers.Length == 2 && !card.Answers[0].Stock && !card.Answers[1].Stock
                 && Same(card.Answers[0].Text, card.Answers[1].Text);
             card.Line = card.Jinx ? DotepyLines.Jinx(Heard(card.Prompt), card.Answers[0].Text)
                 : DotepyLines.Card(Heard(card.Prompt), [.. card.Answers.Select(a => a.Text)]);
@@ -785,6 +909,7 @@ public sealed class Dotepy : Game
         if (voters == 0)
             for (var s = 0; s < MaxSeats; s++) _voter[s] = Present(s);
         _perVoter = _final ? Math.Max(1, Math.Min(RankCount, card.Answers.Length - 1)) : 1;
+        if (Present(_glek) && _voter[_glek]) _glekVoteAt = now.AddMilliseconds(Ctx.Rng.Next(GlekVoteMinMs, GlekVoteMaxMs + 1));
         _phase = PhaseVote;
         card.Sweep = -1;
         _dirty = true;
@@ -887,7 +1012,7 @@ public sealed class Dotepy : Game
                 card.Sweep = i;
                 a.Points += SweepBonus(_round);
                 _sweeps++;
-                Ctx.Award(a.Seat, 0, "ach:dotepy-sweep");
+                if (a.Seat != _glek) Ctx.Award(a.Seat, 0, "ach:dotepy-sweep");
                 break;
             }
         }
@@ -1078,9 +1203,10 @@ public sealed class Dotepy : Game
     {
         var present = End();
         if (_startedWith >= DuelFrom) foreach (var w in _winners!) Ctx.Award(w, 0, "ach:dotepy-king");
-        SayNow(_winners!.Length == 1 ? DotepyLines.GameWin(Spoken(_winners[0]))
+        SayNow(GlekWon() ? (_winners!.Length == 1 ? DotepyLines.GlekWin(Spoken(_winners[0])) : DotepyLines.GlekWinAlone)
+            : _winners!.Length == 1 ? DotepyLines.GameWin(Spoken(_winners[0]))
             : _winners.Length > 1 ? DotepyLines.GameTie : DotepyLines.GameNone);
-        Ctx.Finish(_winners, Summary(present), present.ToDictionary(s => s, s => _score[s]));
+        Ctx.Finish(_winners, Summary(present), HumanScores(present));
     }
 
     /// <summary>
@@ -1096,12 +1222,26 @@ public sealed class Dotepy : Game
         _at = -1;
         var present = new List<int>();
         for (var s = 0; s < MaxSeats; s++) if (Present(s)) present.Add(s);
+        // Переможець для каркаса — найкраща людина: Глек очки має, але черепків, ачівок і таблиці «кращих» — ні.
         long best = 0;
-        foreach (var s in present) best = Math.Max(best, _score[s]);
-        _winners = best > 0 ? [.. present.Where(s => _score[s] == best)] : [];
-        foreach (var s in present) Ctx.Score(s, _score[s]);
+        foreach (var s in present) if (s != _glek) best = Math.Max(best, _score[s]);
+        _winners = best > 0 ? [.. present.Where(s => s != _glek && _score[s] == best)] : [];
+        foreach (var s in present) if (s != _glek) Ctx.Score(s, _score[s]);
         _dirty = true;
         return present;
+    }
+
+    /// <summary>Рахунки людей для каркаса (Глек — не людина, його місце в кімнаті вільне).</summary>
+    Dictionary<int, long> HumanScores(List<int> present) =>
+        present.Where(s => s != _glek).ToDictionary(s => s, s => _score[s]);
+
+    /// <summary>Глек набрав строго більше за кожну людину — «Глек переміг, люди — …».</summary>
+    bool GlekWon()
+    {
+        if (_glek < 0 || _score[_glek] <= 0) return false;
+        for (var s = 0; s < MaxSeats; s++)
+            if (s != _glek && _inGame[s] && !_left[s] && _score[s] >= _score[_glek]) return false;
+        return true;
     }
 
     /// <summary>
@@ -1114,7 +1254,9 @@ public sealed class Dotepy : Game
         var line = string.Join(", ", seats.OrderByDescending(s => _score[s]).ThenBy(s => s)
             .Select(s => $"{NickOf(s)} {_score[s].ToString(CultureInfo.InvariantCulture)}"));
         var tail = _sweeps > 0 ? $" — розгромів: {_sweeps}" : "";
-        if (_winners is { Length: 0 }) tail += " — нічия";
+        if (GlekWon())
+            tail += _winners is { Length: > 0 } w ? $" — Глек переміг, люди — {string.Join(", ", w.Select(NickOf))}" : " — Глек переміг";
+        else if (_winners is { Length: 0 }) tail += " — нічия";
         if (TopBests() is [var top, ..]) tail += $" · додеп партії: «{top.Text}» ({NickOf(top.Seat)})";
         return $"{Info.Title}: {line}{tail}";
     }
@@ -1125,7 +1267,7 @@ public sealed class Dotepy : Game
     /// Нік для голосу й вердикту: без приставки «гість » — «Розгром! Усі голоси — Оля!», а не «…— гість Оля!».
     /// У Журналі лишається повний нік: там важливо, хто саме.
     /// </summary>
-    string Spoken(int seat) => Spoken(NickOf(seat));
+    string Spoken(int seat) => seat >= 0 && seat == _glek ? GlekSpoken : Spoken(NickOf(seat));
 
     public static string Spoken(string nick) =>
         nick.StartsWith(Auth.GuestPrefix, StringComparison.OrdinalIgnoreCase) && nick.Length > Auth.GuestPrefix.Length
@@ -1140,7 +1282,7 @@ public sealed class Dotepy : Game
         if (_phase is PhaseDone or PhaseLobby || seat < 0 || seat >= MaxSeats) return;
         // Види після виходу каркас розсилає сам (Rooms.Vacate), тож _dirty тут не треба.
         _left[seat] = true;
-        if (PresentCount() >= MinSeats) return;
+        if (PresentCount() >= MinTable) return;
 
         // Рахунки тим, хто лишився, — у таблицю, як і в дограній партії. «Короля додепів» — ні: це за дограну партію,
         // а не за те, що решта розійшлась.
@@ -1151,7 +1293,7 @@ public sealed class Dotepy : Game
         Ctx.Finish(_winners, _winners.Length > 0
             ? $"{Info.Title}: гравці розійшлись — попереду {string.Join(", ", _winners.Select(NickOf))}"
             : $"{Info.Title}: гравці розійшлись, партію не дограли",
-            present.ToDictionary(s => s, s => _score[s]));
+            HumanScores(present));
     }
 
     // ---------------------------------------------------------------------------------------
@@ -1248,24 +1390,26 @@ public sealed class Dotepy : Game
         e.Draft = text;
         e.Done = true;
         _dirty = true;
-        // Усі автори цієї картки здали — читання вже відоме: хай Глек озвучує його, поки решта пише. Лише двічі за
-        // написання (перший раз терміново): «змінив — здав» по колу інакше закидав би спільну чергу edge-tts
-        // терміновими репліками, що назавжди лягають у кеш. Остаточне читання однаково піде на кінці написання.
-        var card = _cards[Int(payload, "i")!.Value];             // індекс уже перевірив Mine
-        if (VoiceOn && card.EarlyVoiced < EarlyVoicings && card.Entries.TrueForAll(x => x.Done))
-        {
-            var texts = card.Order.Select(k => card.Entries[k].Text).ToArray();
-            var line = _mode == ModeDuel && texts.Length == 2 && Same(texts[0], texts[1])
-                ? DotepyLines.Jinx(Heard(card.Prompt), texts[0])
-                : DotepyLines.Card(Heard(card.Prompt), texts);
-            if (line != card.EarlyLine)
-            {
-                Prepare([line], urgent: card.EarlyVoiced == 0);
-                card.EarlyVoiced++;
-                card.EarlyLine = line;
-            }
-        }
+        EarlyVoice(_cards[Int(payload, "i")!.Value]);             // індекс уже перевірив Mine
         return ActResult.Done;
+    }
+
+    /// <summary>
+    /// Усі автори картки здали — читання вже відоме: хай Глек озвучує його, поки решта пише. Лише двічі за
+    /// написання (перший раз терміново): «змінив — здав» по колу інакше закидав би спільну чергу edge-tts
+    /// терміновими репліками, що назавжди лягають у кеш. Остаточне читання однаково піде на кінці написання.
+    /// </summary>
+    void EarlyVoice(Card card)
+    {
+        if (!VoiceOn || card.EarlyVoiced >= EarlyVoicings || !card.Entries.TrueForAll(x => x.Done)) return;
+        var texts = card.Order.Select(k => card.Entries[k].Text).ToArray();
+        var line = JinxAllowed(card) && texts.Length == 2 && Same(texts[0], texts[1])
+            ? DotepyLines.Jinx(Heard(card.Prompt), texts[0])
+            : DotepyLines.Card(Heard(card.Prompt), texts);
+        if (line == card.EarlyLine) return;
+        Prepare([line], urgent: card.EarlyVoiced == 0);
+        card.EarlyVoiced++;
+        card.EarlyLine = line;
     }
 
     ActResult Edit(int seat, JsonElement payload)
@@ -1450,6 +1594,8 @@ public sealed class Dotepy : Game
                 // непроголосовані й були б рівно двоє авторів. Тож у дуелі до розкриття — лише лічильник на картці.
                 voted = (_phase == PhaseVote && _mode != ModeDuel || _phase == PhaseReveal) && Complete(s),
                 left = _left[s],
+                // Дядько Глек за столом удвох — не людина: клієнт малює позначку
+                bot = s == _glek,
             });
         }
         return [.. list];
@@ -1578,6 +1724,8 @@ public sealed class Dotepy : Game
         best = TopBests().Select(BestView).ToArray(),
         pinned = _pinned.Order().ToArray(),
         early = _early,
+        glek = _glek >= 0 ? _glek : (int?)null,
+        glekWon = GlekWon(),
     };
 
     /// <summary>
@@ -1589,7 +1737,7 @@ public sealed class Dotepy : Game
         if (_phase != PhaseDone || _winners is null) return (null, "В альбом закидають після партії");
         var key = Auth.NickKey(nick);
         var played = false;
-        for (var s = 0; s < MaxSeats && !played; s++) played = _inGame[s] && Auth.NickKey(_nicks[s]) == key;
+        for (var s = 0; s < MaxSeats && !played; s++) played = _inGame[s] && s != _glek && Auth.NickKey(_nicks[s]) == key;
         if (!played) return (null, "Закидають ті, хто грав");
         var top = TopBests();
         if (i < 0 || i >= top.Count) return (null, "Нема такого додепу");

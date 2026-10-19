@@ -111,7 +111,7 @@ public class DotepyTests
     {
         foreach (var s in Present(h))
         {
-            if (skip?.Contains(s) == true) continue;
+            if (skip?.Contains(s) == true || h.Room.Seats[s] is null) continue;      // Глек пише сам
             foreach (var t in V(h, s).GetProperty("me").GetProperty("tasks").EnumerateArray().ToList())
             {
                 if (t.GetProperty("done").GetBoolean()) continue;      // здане не перезаписуємо
@@ -293,7 +293,7 @@ public class DotepyTests
     }
 
     [Fact]
-    public void Catalog_lists_dotepy_as_party_byHost_hidden_3_to_8_with_css_and_three_options()
+    public void Catalog_lists_dotepy_as_party_byHost_hidden_2_to_8_with_css_and_three_options()
     {
         var game = Assert.Single(new Registry().Catalog, g => g.Id == "dotepy");
         Assert.Equal("Додепи", game.Title);
@@ -301,7 +301,7 @@ public class DotepyTests
         Assert.Equal("byHost", game.Start);
         Assert.True(game.Hidden);
         Assert.False(game.Private);
-        Assert.Equal(3, game.MinPlayers);
+        Assert.Equal(2, game.MinPlayers);           // удвох третім сідає Глек (пакет 2)
         Assert.Equal(8, game.MaxPlayers);
         Assert.Equal(Dotepy.TickMs, game.TickMs);
         Assert.True(game.HasCss);
@@ -313,12 +313,12 @@ public class DotepyTests
     }
 
     [Fact]
-    public void A_table_of_two_cannot_start()
+    public void A_table_of_one_cannot_start()
     {
-        var h = Table(2, start: false);
+        var h = Table(1, start: false);
         var r = h.Start();
         Assert.False(r.Ok);
-        Assert.StartsWith("Замало гравців, треба щонайменше 3", r.Message);
+        Assert.StartsWith("Замало гравців, треба щонайменше 2", r.Message);
         Assert.Equal(RoomStatus.Lobby, h.Room.Status);
         Assert.Equal("lobby", Phase(h));
     }
@@ -1381,7 +1381,7 @@ public class DotepyTests
         var top = new[] { "phase", "round", "rounds", "final", "mode", "endsAt", "totalMs", "waiting", "voice", "players", "prompts", "me", "card", "say", "table", "result", "own" };
         Assert.Equal(top, Keys(V(h, 2)));
         Assert.Equal(top, Keys(V(h)));
-        Assert.Equal(["seat", "nick", "score", "ready", "voted", "left"], Keys(V(h).GetProperty("players")[0]));
+        Assert.Equal(["seat", "nick", "score", "ready", "voted", "left", "bot"], Keys(V(h).GetProperty("players")[0]));
         Assert.Equal(["tasks", "mine", "voter", "picks"], Keys(V(h, 2).GetProperty("me")));
         Assert.Equal(["i", "prompt", "by", "text", "done"], Keys(V(h, 2).GetProperty("me").GetProperty("tasks")[0]));
         Assert.Equal(["id", "text", "url", "seconds"], Keys(V(h).GetProperty("say")));
@@ -1410,7 +1410,7 @@ public class DotepyTests
 
         PlayMatch(h);
         var result = V(h).GetProperty("result");
-        Assert.Equal(["winners", "scores", "best", "pinned", "early"], Keys(result));
+        Assert.Equal(["winners", "scores", "best", "pinned", "early", "glek", "glekWon"], Keys(result));
         Assert.False(result.GetProperty("early").GetBoolean());
         Assert.Equal(Dotepy.MaxSeats, result.GetProperty("scores").GetArrayLength());
         Assert.Equal(JsonValueKind.Null, V(h).GetProperty("card").ValueKind);
