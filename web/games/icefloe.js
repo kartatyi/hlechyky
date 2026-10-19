@@ -4,11 +4,12 @@
   Вид (раз на подію): { phase, round, need, roundsMax, wins[8], pushouts[8], ice: { r0, v[24], iv }, pond, shore,
     bank, bodyR, lastRound: { winner, by }, out, winner, winners, series, frame }.
   Кадр (25 Гц у грі): { t, ph, left, melt, iv, crack: [s, L] | null,
-    p: [8 × [x, y, vx, vy, face, fl, cd, ammo] | null], s: [[id, x, y, vx, vy]], k: [[x, y, kind]], ev: [[код, …]] }.
+    p: [8 × [x, y, vx, vy, face, fl, cd, ammo] | null], s: [[id, x, y, vx, vy, власник]], k: [[x, y, kind]], ev: [[код, …]] }.
     fl: 1 живий · 2 шипи · 4 глек · 8 удар ривка · 16 на березі · 32 тримає напрямок · 64 ще може колоти ·
-    128 ковзани · 256 кулак · 512 іній.
+    128 ковзани · 256 кулак · 512 іній · 1024 оглушило сніжкою чи завірюхою (тяги нема, ривок є).
     kind: 0 шипи · 1 глек · 2 сніжки · 3 завірюха · 4 ковзани · 5 іній · 6 кулак.
-  Ввід: Input('move', { a: −1..15 }) — сектор по 22.5° (0 праворуч, за годинниковою), Input('dash'), Input('throw').
+  Ввід: Input('move', { a: −1..15 }) — сектор по 22.5° (0 праворуч, за годинниковою), Input('dash'),
+    Input('throw', { a? }) і Input('chip', { a? }) — без a туди, куди дивишся, з a — у приціл (правий стік, мишка).
 
   Своє тіло не чекає сервера: між кадрами його веде та сама формула, що й сервер (glide — рівно IcefloeCore.Glide,
   тест Prediction_matches_the_browser_fixture + docs/games/dev/arena-predict.py), а кадр лише м'яко підправляє.
@@ -17,9 +18,14 @@
 (() => {
   // ---- фізика: ті самі числа й той самий порядок операцій, що в IcefloeCore/ArenaPhysics ----
   const H = 0.02, SUB_MS = 20, TICK_MS = 40;
-  const VMAX = 1100, MU = 2.0, SPIKE_MU = 6.0, SKATE_MU = 1.2, DASH = 520, FIST_DASH = 832, DASH_CD = 25;
+  const VMAX = 1100, MU = 2.0, SPIKE_MU = 6.0, SKATE_MU = 1.2, FROST_MU = 1.0, DASH = 520, FIST_DASH = 832, DASH_CD = 25, FIST_CD = 15;
   const THRUST = 1800, JUG_THRUST = 1600, FAST_THRUST = 2700, JUG_FAST_THRUST = 2400;   // IcefloeBody.Thrust — таблицею
-  const GUST_R = 450;                          // IcefloeCore.GustR — кого зачепила завірюха
+  const GUST_R = 550;                          // IcefloeCore.GustR — кого зачепила завірюха
+  const BALL_R = 18;                           // IcefloeCore.BallR — сніжку малюємо в масштабі, а не цяткою
+  const EFFECT_MS = 250 * TICK_MS, PICKUP_MS = 400 * TICK_MS;   // IcefloeCore.EffectTicks, PickupTtl
+  // Ефекти з таймером (для кільця довкола свого тіла й секунд у списку): біт у fl, kind підбирачки, колір, значок.
+  const FX_BIT = [2, 4, 128, 256], FX_KIND = [0, 1, 4, 6], FX_ICON = ['🥾', '🏺', '⛸', '💪'];
+  const FX_COLOR = ['#39424a', '#8a5a3b', '#3f8fc4', '#d8453a'];
   const CAP_TICKS = 1875, MELT_FROM = 1300;   // IcefloeCore.CapTicks, IcefloeCore.MeltFrom
   const C1 = 0.9238795325112867, S1 = 0.3826834323650898, D = 0.7071067811865476;
   const COS16 = [1, C1, D, S1, 0, -S1, -D, -C1, -1, -C1, -D, -S1, 0, S1, D, C1];
@@ -73,6 +79,10 @@
 
   /// Грають падом (Steam Deck чи джойстик) — підказки в статусі кнопками пада, а не клавіатурою.
   const padOn = () => !!(window.HPad && HPad.pads > 0);
+  /// Вібрація пада (pad.js шле її лише тим, хто грає падом, і лише у фокусі).
+  const buzz = (ms, strong, weak) => { if (window.HPad && HPad.rumble && padOn()) HPad.rumble(ms, strong, weak); };
+  /// Правий стік відпустили — приціл ще мить тримається: відпустив і тиснеш тригер — летить туди ж.
+  const AIM_HOLD_MS = 300;
   const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const scale = () => ((window.devicePixelRatio || 1) >= 2 ? 1 : 2);   // на DPR 1 малюємо вдвічі щільніше
   const clock = (ticks) => {
@@ -135,7 +145,11 @@
     splash() { this.beep(180, 350, 'sine', 0.05, 60); this.noise(260, 900, 0.03); },
     warn() { for (let i = 0; i < 3; i++) this.beep(90, 20, 'square', 0.03, 0, i * 0.09); },
     crack() { this.noise(200, 400, 0.05); },
-    ball() { this.noise(60, 2500, 0.03); },
+    /// Сніжка влучила: глухий «бах» — шум і низький удар, а не шурхіт, якого ніхто не чув.
+    splat() { this.noise(130, 1100, 0.05); this.beep(150, 140, 'sine', 0.045, 65); },
+    /// Влучив саме ти — дзенькіт.
+    score() { this.beep(988, 60, 'triangle', 0.03); this.beep(1480, 110, 'triangle', 0.028, 0, 0.06); },
+    toss() { this.noise(70, 3200, 0.018); },
     pick() { this.beep(880, 70, 'triangle', 0.035); this.beep(1320, 90, 'triangle', 0.03, 0, 0.07); },
     gust() { this.noise(420, 700, 0.045); this.beep(160, 380, 'sine', 0.03, 520); },
     frost() { [1568, 2093, 2637].forEach((f, i) => this.beep(f, 90, 'triangle', 0.022, 0, i * 0.05)); },
@@ -191,7 +205,10 @@
         rtt: 60, echo: null,
         // ввід
         sent: null, sentAt: 0, want: -1, stickA: null, mouseA: null, mouseDown: false, mouseX: 0, mouseY: 0, padA: null,
+        aimD: null, aimHeld: false, aimUp: 0,           // правий стік пада — приціл сніжки, градуси
         was: false,
+        // ефекти: коли почався кожен (місце × [шипи, глек, ковзани, кулак]), 0 — не діє; підбирачки — коли з'явились
+        fx: new Float64Array(32), pickSeen: new Map(), pickMark: 0,
         // соки
         parts: new Float32Array(PARTS * PF), partN: 0, pops: [], shake: 0, shakeAmp: 0, crackWas: null,
         hitFlash: new Float64Array(8), veins: null, drawMs: [], lastDraw: 0,
@@ -423,7 +440,7 @@
 
   // ---- частинки: пул без алокацій (x, y, vx, vy, life, max, kind, size) ----
   const PARTS = 240, PF = 8;
-  const K_SHARD = 0, K_DROP = 1, K_RING = 2, K_PUFF = 3;
+  const K_SHARD = 0, K_DROP = 1, K_RING = 2, K_PUFF = 3, K_SNOW = 4;
   function spawn(st, kind, x, y, vx, vy, life, size) {
     let i = st.partN;
     if (i >= PARTS) {
@@ -495,6 +512,15 @@
         g.strokeStyle = '#ffffff';
         g.lineWidth = 1.8;
         g.stroke();
+      } else if (kind === K_SNOW) {
+        // грудка снігу від сніжки: біла з темним обідком — на світлій кризі інакше не видно
+        g.fillStyle = '#ffffff';
+        g.strokeStyle = 'rgba(30, 80, 115, 0.5)';
+        g.lineWidth = 1;
+        g.beginPath();
+        g.arc(x, y, s, 0, Math.PI * 2);
+        g.fill();
+        g.stroke();
       } else {
         g.fillStyle = '#ffffff';
         g.beginPath();
@@ -564,7 +590,7 @@
     const ctx = st.ctx;
     return ctx && ctx.mine && ctx.seat != null ? ctx.seat : -1;
   }
-  function myMu(q) { return q && (q[5] & 2) ? SPIKE_MU : q && (q[5] & 128) ? SKATE_MU : MU; }
+  function myMu(q) { return q && (q[5] & 512) ? FROST_MU : q && (q[5] & 2) ? SPIKE_MU : q && (q[5] & 128) ? SKATE_MU : MU; }
   function myThrust(q) {
     const fast = q && (q[5] & 130), jug = q && (q[5] & 4);
     return fast ? (jug ? JUG_FAST_THRUST : FAST_THRUST) : (jug ? JUG_THRUST : THRUST);
@@ -574,16 +600,35 @@
   const myX = (st) => st.me.x + st.me.vx * st.meAcc / 1000 + st.meOffX;
   const myY = (st) => st.me.y + st.me.vy * st.meAcc / 1000 + st.meOffY;
 
-  /// Замерзлий (іній) не тягне: сервер веде його з наміром −1, і передбачення теж.
-  function myWant(st, q) { return q && (q[5] & 512) ? -1 : currentWant(st); }
+  /// Замерзлий (іній) чи оглушений сніжкою не тягне: сервер веде його з наміром −1, і передбачення теж.
+  function myWant(st, q) { return q && (q[5] & 1536) ? -1 : currentWant(st); }
   function myDash(q) { return q && (q[5] & 256) ? FIST_DASH : DASH; }
+  function myDashCd(q) { return q && (q[5] & 256) ? FIST_CD : DASH_CD; }
+
+  /// Скільки мс ще діє ефект i (0 шипи · 1 глек · 2 ковзани · 3 кулак) у місця s. Сервер таймерів не шле: беремо мить
+  /// підбирання з події, а якщо подія загубилась (злиті кадри, F5) — мить, коли прапорець уперше з'явився.
+  function fxLeft(st, s, i, now) {
+    const at = st.fx[s * 4 + i];
+    return at ? Math.max(0, EFFECT_MS - (now - at)) : 0;
+  }
+  function syncFx(st, f) {
+    if (!f.p || f.ph !== 1) return;
+    const now = performance.now();
+    for (let s = 0; s < 8; s++) {
+      const q = f.p[s];
+      for (let i = 0; i < 4; i++) {
+        const o = s * 4 + i;
+        if (q && (q[5] & 1) && (q[5] & FX_BIT[i])) { if (!st.fx[o]) st.fx[o] = now; } else st.fx[o] = 0;
+      }
+    }
+  }
 
   /// Новий кадр: де сервер бачить моє тіло в ту саму мить, що й моя модель, і м'яка поправка.
   function correct(st, f) {
     const s = mySeat(st);
     const q = s >= 0 && f.p ? f.p[s] : null;
     if (!q || !(q[5] & 1) || f.ph !== 1) { st.meOk = false; return; }
-    if (st.pendingDash && q[6] > 0 && q[6] >= DASH_CD - 3) st.pendingDash = 0;   // сервер уже ривкнув
+    if (st.pendingDash && q[6] > 0 && q[6] >= myDashCd(q) - 3) st.pendingDash = 0;   // сервер уже ривкнув
     const tg = { x: q[0], y: q[1], vx: q[2], vy: q[3] };
     const now = performance.now();
     if (st.pendingDash && now - st.pendingDash > 350) st.pendingDash = 0;
@@ -683,10 +728,31 @@
     st.ctx.input('move', { a });
     if (a >= 0 && !keep) st.echo = { a, at: now };
   }
-  function dash(st) {
+  /// Куди цілить правий стік пада — точний кут 0..359° (0 праворуч, за годинниковою) — або null: тоді сніжка летить
+  /// туди, куди дивишся. Кут, а не сектор: з берега до цілі метрів дев'ять, і сектор у 22,5° мазав на півтора метра.
+  function padAim(st) {
+    if (st.aimD == null) return null;
+    return st.aimHeld || performance.now() - st.aimUp < AIM_HOLD_MS ? st.aimD : null;
+  }
+  const degOf = (dx, dy) => (Math.round((Math.atan2(dy, dx) * 180) / Math.PI) + 360) % 360;
+  /// Куди полетить сніжка (радіани) — для пунктиру й стрілки: правий стік, у воді мишка, інакше сектор обличчя.
+  function aimAngle(st, face) {
+    const d = padAim(st) != null ? padAim(st) : st.mouseA != null && inWater(st) ? cursorAim(st) : null;
+    return d != null ? (d * Math.PI) / 180 : (face * Math.PI) / 8;
+  }
+  /// Приціл для сервера: { d } — точний кут, {} — куди дивишся.
+  const aimLoad = (d) => (d != null && d >= 0 ? { d } : {});
+
+  /// d — кут прицілу (мишка), інакше правий стік.
+  function dash(st, d) {
     if (!canSend(st)) return;
     // у воді «ривок» — 🔨 відкол криги (раз за раунд, п. 183), а коли вже колов — сніжка, як і було
-    if (inWater(st)) { st.ctx.input(canChip(st) ? 'chip' : 'throw'); return; }
+    if (inWater(st)) {
+      const chip = canChip(st);
+      st.ctx.input(chip ? 'chip' : 'throw', aimLoad(d != null ? d : padAim(st)));
+      if (!chip) Snd.toss();
+      return;
+    }
     st.ctx.input('dash');
     // ривок видно одразу: те саме, що зробить сервер (якщо перезарядка, на наш погляд, скінчилась)
     const s = mySeat(st), q = st.last && st.last.p && st.last.p[s];
@@ -700,9 +766,24 @@
       const s2 = st.me.vx * st.me.vx + st.me.vy * st.me.vy;
       if (s2 > VMAX * VMAX) { const c = VMAX / Math.sqrt(s2); st.me.vx *= c; st.me.vy *= c; }
       trail(st, st.me.x, st.me.y, face);
+      buzz(45, 0, 0.35);
     }
   }
-  function toss(st) { if (canSend(st)) st.ctx.input('throw'); }
+  /// Сніжка: d — кут прицілу (мишка), інакше правий стік, інакше куди дивишся.
+  function toss(st, d) {
+    if (!canSend(st)) return;
+    st.ctx.input('throw', aimLoad(d != null ? d : padAim(st)));
+    const s = mySeat(st), q = st.last && st.last.p && st.last.p[s];
+    if (q && q[7] > 0) Snd.toss();
+  }
+  /// Кут від свого тіла (чи точки на березі) до курсора — для сніжки й молотка мишкою.
+  function cursorAim(st) {
+    if (!st.cv) return null;
+    const w = toWorld(st, st.mouseX, st.mouseY), o = origin(st);
+    if (!w || !o) return null;
+    const dx = w[0] - o[0], dy = w[1] - o[1];
+    return dx * dx + dy * dy < 30 * 30 ? null : degOf(dx, dy);
+  }
 
   /// Точка на канвасі (CSS-пікселі) → світ, см (з урахуванням наїзду камери на центр ставка).
   function toWorld(st, clientX, clientY) {
@@ -731,18 +812,35 @@
     if (a !== st.mouseA) { st.mouseA = a; push(st); }
   }
 
-  /// Аналоговий стік пада: 16 секторів замість чотирьох синтезованих стрілок.
+  /// Аналоговий стік пада: 16 секторів замість чотирьох синтезованих стрілок. Правий стік — приціл сніжки (лише
+  /// стандартна розкладка: в інших осі 2–3 бувають тригерами, і «приціл» стояв би вічно).
   function readPad(st) {
-    if (!window.HPad || !(HPad.pads > 0) || !navigator.getGamepads) { st.padA = null; return; }
+    if (!window.HPad || !(HPad.pads > 0) || !navigator.getGamepads) { st.padA = null; st.aimD = null; st.aimHeld = false; return; }
     const list = HPad.list ? HPad.list() : (navigator.getGamepads() || []);   // без керма й лише у фокусі
     let gp = null;
     for (let i = 0; i < list.length; i++) if (list[i] && list[i].connected !== false) { gp = list[i]; break; }
-    if (!gp || !gp.axes || gp.axes.length < 2) { st.padA = null; return; }
+    if (!gp || !gp.axes || gp.axes.length < 2) { st.padA = null; st.aimD = null; st.aimHeld = false; return; }
     const x = gp.axes[0] || 0, y = gp.axes[1] || 0, m = Math.hypot(x, y);
     let a = st.padA;
     if (m >= 0.5) a = sectorOf(x, y);
     else if (m < 0.35) a = null;
     if (a !== st.padA) { st.padA = a; push(st); }
+    if (gp.mapping === 'standard' && gp.axes.length >= 4) {
+      const rx = gp.axes[2] || 0, ry = gp.axes[3] || 0, rm = Math.hypot(rx, ry);
+      if (rm >= 0.5) { st.aimD = degOf(rx, ry); st.aimHeld = true; }
+      else if (rm < 0.35 && st.aimHeld) { st.aimHeld = false; st.aimUp = performance.now(); }
+    }
+  }
+
+  /// Кнопки пада в партії (pad.js `on`): пальці лежать на тригерах — R1/R2 і Ⓐ ривок (у воді — 🔨 чи сніжка),
+  /// L1/L2, Ⓧ і Ⓑ — сніжка в приціл правого стіка. Без цього тригери посеред раунду перемикали вкладки сайту,
+  /// а Ⓑ виносила зі столу в лобі. Ⓨ (підказки), ☰ і ⧉ лишаються шару.
+  function padBtn(btn, ctx) {
+    const st = [...live].find((s) => s.ctx === ctx);
+    if (!st || !ctx.mine || !ctx.playing) return false;
+    if (btn === 'a' || btn === 'rt' || btn === 'rb') { dash(st); return true; }
+    if (btn === 'x' || btn === 'b' || btn === 'lt' || btn === 'lb') { toss(st); return true; }
+    return false;
   }
 
   // ---- соки з подій кадру ----
@@ -789,6 +887,7 @@
           st.hitFlash[e[1]] = st.hitFlash[e[2]] = now;
           if (e[1] === me || e[2] === me) {
             if (s >= 300) { st.shake = now; st.shakeAmp = Math.min(7, 3 + s / 250); st.shakeMs = 200; }
+            buzz(90 + Math.min(110, s / 8), Math.min(1, s / 900), 0.3);
           } else if (s >= 650 && !(now - st.shake < (st.shakeMs || 0))) { st.shake = now; st.shakeAmp = 2; st.shakeMs = 140; }
           break;
         }
@@ -800,7 +899,7 @@
           const who = nick(st, e[1]);
           const text = e[2] >= 0 ? '💨 ' + nick(st, e[2]) + ' → 🌊 ' + who : '🌊 ' + who;
           st.pops.push({ text, x, y: y - 10, at: now, color: st.pal ? st.pal.seats[e[2] >= 0 ? e[2] : e[1]] : '#fff' });
-          if (e[1] === me) { st.shake = now; st.shakeAmp = 5; st.shakeMs = 250; }
+          if (e[1] === me) { st.shake = now; st.shakeAmp = 5; st.shakeMs = 250; buzz(380, 1, 0.6); }
           break;
         }
         case 3: {           // ривок
@@ -813,7 +912,14 @@
         case 4: {           // підбирачка
           const q = f.p && f.p[e[1]];
           if (q) st.pops.push({ text: PICK_NAME[e[2]] || '', x: q[0] * sc, y: q[1] * sc - 26, at: now, color: st.pal ? st.pal.text : '#fff' });
-          if (e[1] === me) Snd.pick();
+          if (e[1] === me) { Snd.pick(); buzz(60, 0, 0.3); }
+          // таймер ефекту — з миті підбирання (повторне оновлює); шипи й ковзани одне одного знімають
+          const fi = FX_KIND.indexOf(e[2]);
+          if (fi >= 0 && e[1] >= 0 && e[1] < 8) {
+            st.fx[e[1] * 4 + fi] = now;
+            if (fi === 0) st.fx[e[1] * 4 + 2] = 0;
+            if (fi === 2) st.fx[e[1] * 4] = 0;
+          }
           if (!q || !f.p) break;
           const vs = (s) => {                         // кого зачепило: живі суперники (у командах — чужі)
             const tm = st.ctx && st.ctx.view && st.ctx.view.teams;
@@ -827,22 +933,36 @@
             Snd.gust();
             for (let s = 0; s < 8; s++) {
               const o = f.p[s];
-              if (vs(s) && Math.hypot(o[0] - q[0], o[1] - q[1]) <= GUST_R + 60) st.hitFlash[s] = now;
+              if (!vs(s) || Math.hypot(o[0] - q[0], o[1] - q[1]) > GUST_R + 60) continue;
+              st.hitFlash[s] = now;
+              if (s === me) { st.shake = now; st.shakeAmp = 5; st.shakeMs = 220; buzz(200, 0.7, 0.4); }
             }
           } else if (e[2] === 5) {   // іній: скалки на кожному суперникові
             for (let s = 0; s < 8; s++) {
               if (!vs(s)) continue;
-              burst(st, K_SHARD, f.p[s][0] * sc, f.p[s][1] * sc, 8, 90, 480, 3.4);
-              if (s === me) { st.shake = now; st.shakeAmp = 3; st.shakeMs = 160; }
+              burst(st, K_SHARD, f.p[s][0] * sc, f.p[s][1] * sc, 10, 110, 520, 3.6);
+              spawn(st, K_RING, f.p[s][0] * sc, f.p[s][1] * sc, 0, 0, 480, 9);
+              if (s === me) { st.shake = now; st.shakeAmp = 3; st.shakeMs = 160; buzz(160, 0.25, 0.8); }
             }
             Snd.frost();
           }
           break;
         }
-        case 5: {           // сніжка влучила
-          burst(st, K_PUFF, e[3] * sc, e[4] * sc, 8, 70, 350, 1.8);
-          Snd.ball();
+        case 5: {           // сніжка влучила: [5, кого, хто кинув, x, y] — сніжний «бах», кільце, грудки
+          const x = e[3] * sc, y = e[4] * sc;
+          burst(st, K_SNOW, x, y, 14, 220, 560, 3.8);
+          burst(st, K_PUFF, x, y, 10, 90, 500, 3.2);
+          spawn(st, K_RING, x, y, 0, 0, 440, 8);
+          Snd.splat();
           st.hitFlash[e[1]] = now;
+          if (e[1] === me) { st.shake = now; st.shakeAmp = 6; st.shakeMs = 240; buzz(220, 0.85, 0.5); }
+          if (e[2] === me && e[1] !== me) {
+            Snd.score();
+            buzz(70, 0.15, 0.45);
+            st.pops.push({ text: '🎯 влучив!', x, y: y - 30, at: now, color: st.pal ? st.pal.accent : '#fff' });
+          } else if (e[2] >= 0 && e[2] < 8) {
+            st.pops.push({ text: '❄ бац!', x, y: y - 30, at: now, color: st.pal ? st.pal.seats[e[2]] : '#fff' });
+          }
           break;
         }
         case 6: {           // відкол
@@ -996,15 +1116,31 @@
     g.globalAlpha = 1;
   }
 
+  /// Підбирачки: виростають із цятки, коли з'явились, «дихають», а останні 3 с із 16 блимають — зараз піде під воду.
+  /// Скільки лежить, сервер не каже — рахуємо від миті, коли плитку вперше видно (після F5 — від F5, і то не біда).
   function drawPickups(st, g, pal, f, sc, now) {
     if (!f.k || !f.k.length) return;
     const spr = pickSprites(st, pal);
-    const k = reduced() ? 1 : 1 + 0.06 * Math.sin(now / 143);
+    const calm = reduced();
+    const k = calm ? 1 : 1 + 0.06 * Math.sin(now / 143);
+    const mark = ++st.pickMark;
     for (const p of f.k) {
-      const img = spr[p[2]] || spr[0];
-      const s = 26 * k;
-      g.drawImage(img, p[0] * sc - s / 2, p[1] * sc - s / 2, s, s);
+      const key = p[2] * 1e8 + p[0] * 4096 + p[1];
+      let seen = st.pickSeen.get(key);
+      if (!seen) { seen = { at: now, mark }; st.pickSeen.set(key, seen); } else seen.mark = mark;
+      const age = now - seen.at, left = PICKUP_MS - age;
+      const grow = calm ? 1 : Math.min(1, age / 220);
+      const s = 32 * k * (0.35 + 0.65 * grow);
+      const x = p[0] * sc, y = p[1] * sc;
+      g.fillStyle = 'rgba(10, 30, 45, 0.28)';
+      g.beginPath();
+      g.ellipse(x + 2, y + s * 0.42, s * 0.42, s * 0.16, 0, 0, Math.PI * 2);
+      g.fill();
+      if (left < 3000 && !calm) g.globalAlpha = 0.35 + 0.65 * Math.abs(Math.cos(now / (left < 1200 ? 70 : 150)));
+      g.drawImage(spr[p[2]] || spr[0], x - s / 2, y - s / 2, s, s);
+      g.globalAlpha = 1;
     }
+    if (st.pickSeen.size > f.k.length + 6) for (const [key, v] of st.pickSeen) if (v.mark !== mark) st.pickSeen.delete(key);
   }
 
   /// Чия сніжка: кинута з берега — вилітає з точки падіння того, хто там стоїть. Власника в кадрі нема (зайві
@@ -1025,13 +1161,12 @@
     return o;
   }
 
+  /// Сніжка — у масштабі світу (BallR), з тінню, темним обідком (біла на світлій кризі зливалась) і хвостом із трьох
+  /// грудок кольору того, хто кинув. Раніше — біла цятка 3,5 px, яку на кризі ніхто не бачив.
   function drawBalls(st, g, pal, f, sc) {
     if (!f.s || !f.s.length) return;
     const a = st.blendA, t = st.blendT;
-    g.strokeStyle = 'rgba(255,255,255,0.45)';
-    g.fillStyle = '#ffffff';
-    g.lineWidth = 2.5;
-    g.lineCap = 'round';
+    const r = Math.max(5, BALL_R * sc * 1.45);
     for (const b of f.s) {
       let x = b[1], y = b[2];
       if (a && a.s) {
@@ -1039,23 +1174,74 @@
       }
       // сніжка з берега, коли камера наїхала: вилітає з фігурки біля краю кадру й за мить сходиться зі справжнім шляхом
       let ox = 0, oy = 0;
-      const o = ballOwner(st, f, b), q = o >= 0 && f.p[o];
+      const o = b.length > 5 ? b[5] : ballOwner(st, f, b), q = o >= 0 && o < 8 && f.p[o];
       if (q && (q[5] & 16) && (st.bankOff[2 * o] || st.bankOff[2 * o + 1])) {
         const span = Math.max(80, st.bank - st.ext);
         const k = Math.max(0, 1 - Math.hypot(x - q[0], y - q[1]) / span);
         ox = st.bankOff[2 * o] * k;
         oy = st.bankOff[2 * o + 1] * k;
       }
-      const sp = Math.hypot(b[3], b[4]) || 1;
+      const sp = Math.hypot(b[3], b[4]) || 1, ux = b[3] / sp, uy = b[4] / sp;
       const px = x * sc + ox, py = y * sc + oy;
+      // хвіст: три грудки позаду, що меншають і тануть
+      g.fillStyle = q ? pal.seats[o] : '#ffffff';
+      for (let k = 3; k >= 1; k--) {
+        g.globalAlpha = 0.55 - k * 0.13;
+        g.beginPath();
+        g.arc(px - ux * k * 30 * sc, py - uy * k * 30 * sc, r * (1 - k * 0.2), 0, Math.PI * 2);
+        g.fill();
+      }
+      g.globalAlpha = 1;
+      g.fillStyle = 'rgba(10, 30, 45, 0.35)';
       g.beginPath();
-      g.moveTo(px, py);
-      g.lineTo(px - (b[3] / sp) * 70 * sc, py - (b[4] / sp) * 70 * sc);
+      g.ellipse(px + 2, py + 4, r, r * 0.8, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#ffffff';
+      g.strokeStyle = 'rgba(30, 80, 115, 0.75)';
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(px, py, r, 0, Math.PI * 2);
+      g.fill();
       g.stroke();
+      g.fillStyle = 'rgba(120, 170, 200, 0.5)';
       g.beginPath();
-      g.arc(px, py, 3.5, 0, Math.PI * 2);
+      g.arc(px + r * 0.3, py + r * 0.3, r * 0.42, 0, Math.PI * 2);
       g.fill();
     }
+  }
+
+  /// Приціл сніжки зі свого тіла: пунктир у той бік, куди полетить (правий стік — туди, інакше — куди дивишся).
+  /// Лише коли є що кидати: без сніжок пунктир лише заважав би.
+  function drawAim(st, g, pal, x, y, ang, sc, now) {
+    const cx = x * sc, cy = y * sc, ux = Math.cos(ang), uy = Math.sin(ang);
+    const R = st.bodyR * sc;
+    const n = 7, step = 70 * sc;
+    const pulse = reduced() ? 0 : ((now / 400) % 1) * step;
+    g.fillStyle = pal.accent;
+    for (let i = 0; i < n; i++) {
+      const d = R + 14 * sc + i * step + pulse;
+      g.globalAlpha = Math.max(0, 0.85 - (i * 0.12) - (pulse / step) * 0.12);
+      g.beginPath();
+      g.arc(cx + ux * d, cy + uy * d, Math.max(2, 3.4 - i * 0.2), 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+
+  /// Сніжинка-зірочка (оглушило): шість променів, біла з темною обводкою.
+  function flake(g, x, y, r) {
+    g.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = i * Math.PI / 3, c = Math.cos(a) * r, s = Math.sin(a) * r;
+      g.moveTo(x - c, y - s);
+      g.lineTo(x + c, y + s);
+    }
+    g.strokeStyle = 'rgba(30, 80, 115, 0.7)';
+    g.lineWidth = 3;
+    g.stroke();
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 1.6;
+    g.stroke();
   }
 
   /// Колір темніший на k (0..1) — для шапки й обідка. Кешуємо: кольорів місць лише вісім.
@@ -1184,15 +1370,43 @@
         g.fill();
       }
     }
-    // іній: блакитна кірка поверх кожуха й шапки
+    // іній: кругляш у кубику льоду — видно здалеку, що він зараз лише ковзає
     if (fl & 512) {
-      g.fillStyle = 'rgba(190, 235, 255, 0.55)';
+      const s = R * 1.12;
+      g.save();
+      g.translate(cx, cy);
+      g.rotate(0.2);
+      g.fillStyle = 'rgba(190, 235, 255, 0.6)';
       g.strokeStyle = '#eaf8ff';
-      g.lineWidth = 2;
+      g.lineWidth = 2.2;
       g.beginPath();
-      g.arc(cx, cy, R * 1.04, 0, Math.PI * 2);
+      g.roundRect(-s, -s, 2 * s, 2 * s, R * 0.32);
       g.fill();
       g.stroke();
+      g.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      g.lineWidth = 1.6;
+      g.beginPath();
+      g.moveTo(-s * 0.55, -s * 0.72);
+      g.lineTo(s * 0.25, -s * 0.72);
+      g.moveTo(-s * 0.72, -s * 0.55);
+      g.lineTo(-s * 0.72, s * 0.05);
+      g.stroke();
+      g.restore();
+    }
+    // оглушило сніжкою чи завірюхою: грудка снігу на шапці й три сніжинки кружляють довкола голови
+    if (fl & 1024) {
+      g.fillStyle = '#ffffff';
+      g.strokeStyle = 'rgba(30, 80, 115, 0.5)';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.ellipse(hx - fx * hr * 0.15, hy - fy * hr * 0.15, hr * 0.8, hr * 0.62, 0, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      const t = reduced() ? 0 : now / 220;
+      for (let k = 0; k < 3; k++) {
+        const a = t + k * 2.0944;
+        flake(g, cx + Math.cos(a) * R * 0.95, cy - R * 0.55 + Math.sin(a) * R * 0.42, Math.max(3, R * 0.2));
+      }
     }
     // «удар» ривка — біле кільце (з кулаком — червоне); щойно зачепили — спалах
     const lit = Math.max(0, 1 - (now - st.hitFlash[seat]) / 200);
@@ -1213,6 +1427,26 @@
       g.arc(cx, cy, R + 6, 0, Math.PI * 2);
       g.stroke();
       g.setLineDash(NO_DASH);
+      // скільки ще діють мої шипи, глек, ковзани, кулак: дуга тане від повного кола до нуля
+      let ring = 0;
+      for (let i = 0; i < 4; i++) {
+        if (!(fl & FX_BIT[i])) continue;
+        const left = fxLeft(st, seat, i, now);
+        if (left <= 0) continue;
+        const rr = R + 11 + ring * 5, a0 = -Math.PI / 2, a1 = a0 + (Math.PI * 2 * left) / EFFECT_MS;
+        g.lineCap = 'round';
+        g.strokeStyle = 'rgba(8, 20, 28, 0.55)';
+        g.lineWidth = 5;
+        g.beginPath();
+        g.arc(cx, cy, rr, a0, a1);
+        g.stroke();
+        g.strokeStyle = FX_COLOR[i];
+        g.lineWidth = 3;
+        g.globalAlpha = left < 2000 && !reduced() ? 0.5 + 0.5 * Math.abs(Math.cos(now / 120)) : 1;
+        g.stroke();
+        g.globalAlpha = 1;
+        ring++;
+      }
     }
     // нік — окремим проходом після всіх тіл (там же й розводимо їх, щоб не злипались)
     st.lx[seat] = cx;
@@ -1237,7 +1471,7 @@
   }
 
   /// Вибулий на березі: маленька фігурка, над нею сніжки; мені — ще й стрілка прицілу.
-  function drawBank(st, g, pal, seat, q, sc, mine, aimFace) {
+  function drawBank(st, g, pal, seat, q, sc, mine, aim) {
     // Камера наїхала — берег за кадром: ставимо фігурку біля краю кадру на тому ж промені. Там уже вода,
     // тож вибулий бултихається в рятувальному колі (і справді ж «у воді»).
     const R = st.bodyR * sc * 0.6, color = pal.seats[seat];
@@ -1262,22 +1496,22 @@
       g.stroke();
       g.setLineDash(NO_DASH);
     }
-    if (mine && q[7] > 0 && aimFace >= 0) {
-      const a = aimFace;
+    if (mine && q[7] > 0 && aim != null) {
+      const ax = Math.cos(aim), ay = Math.sin(aim);
       g.strokeStyle = pal.accent;
       g.lineWidth = 2;
       g.setLineDash(DASH5);
       g.beginPath();
       g.moveTo(cx, cy);
-      g.lineTo(cx + COS16[a] * 70, cy + SIN16[a] * 70);
+      g.lineTo(cx + ax * 70, cy + ay * 70);
       g.stroke();
       g.setLineDash(NO_DASH);
       g.fillStyle = pal.accent;
       g.beginPath();
-      const tx = cx + COS16[a] * 78, ty = cy + SIN16[a] * 78;
+      const tx = cx + ax * 78, ty = cy + ay * 78;
       g.moveTo(tx, ty);
-      g.lineTo(tx - COS16[a] * 10 - SIN16[a] * 6, ty - SIN16[a] * 10 + COS16[a] * 6);
-      g.lineTo(tx - COS16[a] * 10 + SIN16[a] * 6, ty - SIN16[a] * 10 - COS16[a] * 6);
+      g.lineTo(tx - ax * 10 - ay * 6, ty - ay * 10 + ax * 6);
+      g.lineTo(tx - ax * 10 + ay * 6, ty - ay * 10 - ax * 6);
       g.closePath();
       g.fill();
     }
@@ -1511,7 +1745,9 @@
       // спершу берег (під усім), далі тіла; своє — останнім, щоб було зверху
       for (let i = 0; i < 8; i++) {
         const q = f.p[i];
-        if (q && !(q[5] & 1) && ph !== 4) drawBank(st, g, pal, i, q, sc, i === me, ph === 1 && i === me ? (st.want >= 0 ? st.want : q[4]) : -1);
+        if (q && !(q[5] & 1) && ph !== 4) {
+          drawBank(st, g, pal, i, q, sc, i === me, ph === 1 && i === me ? aimAngle(st, st.want >= 0 ? st.want : q[4]) : null);
+        }
       }
       for (let i = 0; i < 8; i++) {
         const q = f.p[i];
@@ -1532,6 +1768,7 @@
         }
         const face = st.want >= 0 && ph <= 1 ? st.want : q[4];
         const sp = st.meOk && ph === 1 ? Math.hypot(st.me.vx, st.me.vy) : Math.hypot(q[2], q[3]);
+        if (ph === 1 && q[7] > 0) drawAim(st, g, pal, x, y, aimAngle(st, face), sc, now);
         drawBody(st, g, pal, me, x, y, face, q[5], sc, now, true, ready, sp);
       }
       drawBalls(st, g, pal, f, sc);
@@ -1571,15 +1808,28 @@
 
   /// Відбиток того, що рядок над полем бере з кадру: фаза, секунда годинника, танення й стан кожного місця
   /// (на кризі, шипи, глек, сніжки). Число, а не рядок — HTML перебудовуємо, лише коли щось із цього змінилось.
-  function hudKey(f) {
+  function hudKey(f, st) {
     let k = (f.ph + 1) * 7 + (f.melt > 0 ? 3 : 0) + Math.floor(((f.left || 0) * TICK_MS) / 1000) * 64;
+    const now = performance.now();
     if (f.p) {
       for (let i = 0; i < 8; i++) {
         const q = f.p[i];
         k = (k * 31 + (q ? (q[5] & 919) * 8 + Math.min(7, q[7]) + 1 : 0)) % 1000000007;
+        // секунди ефектів — у списку вони тікають
+        if (q && (q[5] & 390)) for (let e = 0; e < 4; e++) k = (k * 7 + Math.ceil(fxLeft(st, i, e, now) / 1000)) % 1000000007;
       }
     }
     return k;
+  }
+  /// Значки ефектів місця з секундами: «⛸7 💪3».
+  function fxText(st, s, fl, now) {
+    let t = '';
+    for (let i = 0; i < 4; i++) {
+      if (!(fl & FX_BIT[i])) continue;
+      const sec = Math.ceil(fxLeft(st, s, i, now) / 1000);
+      t += FX_ICON[i] + (sec > 0 ? sec : '');
+    }
+    return t;
   }
 
   function hudEl(root, cls) {
@@ -1622,8 +1872,7 @@
       let stateTxt = '';
       if (q && plays && v.phase !== 'lobby' && v.phase !== 'over') {
         if (!(q[5] & 1)) stateTxt = '🌊' + (q[7] > 0 ? ' ❄' + q[7] : '');
-        else stateTxt = ((q[5] & 512) ? '🧊' : '') + ((q[5] & 2) ? '🥾' : '') + ((q[5] & 128) ? '⛸' : '') + ((q[5] & 4) ? '🏺' : '')
-          + ((q[5] & 256) ? '💪' : '') + (q[7] > 0 ? '❄' + q[7] : '');
+        else stateTxt = ((q[5] & 512) ? '🧊' : '') + fxText(st, s, q[5], performance.now()) + (q[7] > 0 ? '❄' + q[7] : '');
       }
       html += '<span class="ifchip if' + s + (q && !(q[5] & 1) && plays ? ' out' : '') + (s === ctx.seat ? ' me' : '') + '" title="' + ctx.esc(n) + '">'
         + '<i>' + (s + 1) + '</i>' + (v.teams && v.teams[s] != null ? (v.teams[s] === 0 ? '🔵' : '🔴') : '') + (tight && s !== ctx.seat ? '' : '<span class="ifnick">' + ctx.esc(n) + '</span>')
@@ -1778,11 +2027,11 @@
       if (!s || !s.ctx.mine || !s.ctx.playing) return;
       s.mouseX = e.clientX;
       s.mouseY = e.clientY;
-      if (e.button === 2) { e.preventDefault(); if (inWater(s)) { aimMouse(s); push(s, true); } dash(s); return; }
-      if (e.button === 1) { e.preventDefault(); toss(s); return; }
+      if (e.button === 2) { e.preventDefault(); if (inWater(s)) { aimMouse(s); push(s, true); dash(s, cursorAim(s)); } else dash(s); return; }
+      if (e.button === 1) { e.preventDefault(); toss(s, cursorAim(s)); return; }   // середня — сніжка туди, де курсор
       if (e.button !== 0) return;
       e.preventDefault();
-      if (inWater(s)) { aimMouse(s); push(s, true); toss(s); return; }   // з берега: клацнув — кинув туди
+      if (inWater(s)) { aimMouse(s); push(s, true); toss(s, cursorAim(s)); return; }   // з берега: клацнув — кинув туди
       s.mouseDown = true;
       try { el.setPointerCapture(e.pointerId); } catch { /* без capture */ }
       aimMouse(s);
@@ -1877,6 +2126,7 @@
   function overText(ctx) {
     const res = ctx.room && ctx.room.status === 'finished' && ctx.room.result;
     if (!res) return '';
+    if (res.verdict) return res.verdict;   // «🤖 Крижину взяв 🤖 бот рудий» — інакше перемога бота читалась як нічия
     const ws = res.winners || [];
     if (res.draw || !ws.length) return 'Партію зіграно — нічия';
     return 'Перемога: ' + ws.map((i) => nameAt(ctx, i) || ctx.seatName(i)).join(', ');
@@ -1909,16 +2159,18 @@
     const q = f.p && f.p[ctx.seat];
     if (q && !(q[5] & 1)) {
       if (q[5] & 64) {
-        return '🌊 Ти у воді — 🔨 раз за раунд відколи кригу: ' + (padOn() ? 'цілься стіком, Ⓐ' : HGames.ui.coarse() ? 'цілься стіком, 🔨' : 'права кнопка миші туди, де колоти (чи прицілься й пробіл)')
-          + (q[7] > 0 ? ' · сніжки: ' + (padOn() ? 'Ⓧ' : HGames.ui.coarse() ? '❄' : 'клік чи X') + ' (' + q[7] + ')' : '');
+        return '🌊 Ти у воді — 🔨 раз за раунд відколи кригу: ' + (padOn() ? 'цілься стіком, R2 чи Ⓐ' : HGames.ui.coarse() ? 'цілься стіком, 🔨' : 'права кнопка миші туди, де колоти (чи прицілься й пробіл)')
+          + (q[7] > 0 ? ' · сніжки: ' + (padOn() ? 'L2 чи Ⓧ' : HGames.ui.coarse() ? '❄' : 'клік чи X') + ' (' + q[7] + ')' : '');
       }
-      return q[7] > 0 ? '🌊 Ти у воді — ' + (padOn() ? 'стік цілить, Ⓐ кидає' : HGames.ui.coarse() ? 'стік цілить, ❄ кидає' : 'стрілки чи мишка цілять, пробіл кидає') + ' сніжку (лишилось ' + q[7] + ')'
+      return q[7] > 0 ? '🌊 Ти у воді — ' + (padOn() ? 'стік цілить, L2 чи Ⓐ кидає' : HGames.ui.coarse() ? 'стік цілить, ❄ кидає' : 'стрілки чи мишка цілять, пробіл кидає') + ' сніжку (лишилось ' + q[7] + ')'
         : '🌊 Ти у воді, сніжки скінчились — дивись, хто кого';
     }
-    if (q && (q[5] & 512)) return '🧊 Замерз! Ще мить — і знову ковзаєш';
-    const extra = q ? ((q[5] & 2) ? ' · 🥾 шипи' : '') + ((q[5] & 128) ? ' · ⛸ ковзани' : '') + ((q[5] & 4) ? ' · 🏺 глек' : '')
-      + ((q[5] & 256) ? ' · 💪 кулак' : '') : '';
-    const how = padOn() ? 'Стік — ковзати, Ⓐ ривок, Ⓧ сніжка'
+    if (q && (q[5] & 512)) return '🧊 Замерз! Ковзаєш крижинкою — ще мить';
+    if (q && (q[5] & 1024)) return '❄ Оглушило! Тяги нема — рятуйся ривком' + (padOn() ? ' (R2)' : HGames.ui.coarse() ? ' 💨' : ' (пробіл)');
+    const now = performance.now();
+    const extra = q ? [0, 1, 2, 3].filter((i) => q[5] & FX_BIT[i])
+      .map((i) => ' · ' + ['🥾 шипи', '🏺 глек', '⛸ ковзани', '💪 кулак'][i] + ' ' + Math.ceil(fxLeft(st || { fx: [] }, ctx.seat, i, now) / 1000) + ' с').join('') : '';
+    const how = padOn() ? 'Лівий стік — ковзати, правий — приціл · R2/Ⓐ ривок · L2/Ⓧ сніжка'
       : HGames.ui.coarse() ? 'Стік — ковзати, 💨 ривок, ❄ сніжка' : 'Стрілки/WASD — ковзати, пробіл — ривок, X — сніжка';
     const team = v.teams && v.teams[ctx.seat] != null ? ' · ти за ' + TEAM_NAMES[v.teams[ctx.seat]] : '';
     return how + ' · раунд ' + (v.round || 1) + ' · до ' + need + team + extra;
@@ -1930,18 +2182,18 @@
     icon: ICON,
     seatNames: ['синій', 'рудий', 'зелений', 'жовтий', 'бузковий', 'м’ятний', 'рожевий', 'сірий'],
     seatClass: ['if0', 'if1', 'if2', 'if3', 'if4', 'if5', 'if6', 'if7'],
-    pad: { dirs: true, a: 'Space', x: 'KeyX', hint: '{dpad} ковзати · {a} ривок · {x} сніжка' },
+    // Steam Deck: лівий стік ковзає, правий цілить сніжку, R2/R1/Ⓐ — ривок, L2/L1/Ⓧ/Ⓑ — сніжка (padBtn); правим
+    // стіком сторінку не гортаємо (rstick), Ⓑ посеред партії — сніжка, а не «геть зі столу» (exit: false).
+    pad: { dirs: true, rstick: true, exit: false, on: padBtn, hint: '{dpad} ковзати · {rstick} приціл · {rt}{a} ривок · {lt}{x} сніжка' },
     news: {
-      v: '2026-09-30',
-      title: 'Крижина: нові предмети, сніжки вдвічі й соло з ботами',
+      v: '2026-10-20',
+      title: 'Крижина: сніжки б\'ють відчутно, Steam Deck двома стіками, предмети сильніші',
       items: [
-        '❄ Сніжка б\'є вдвічі сильніше — дужче за ривок; з берега їх тепер чотири, а підбирачка дає одразу дві',
-        '🌬 Завірюха — підібрав, і всіх поруч відкидає від тебе хвилею · 🧊 Іній — суперники секунду без керування',
-        '⛸ Ковзани — розгін у півтора раза, але й несе далі · 💪 Кулак — ривок і удар ривка значно важчі',
-        '🎁 Предмети з\'являються частіше (раз на 4 с, до 3–4 на кризі) і діють 10 с; глек тепер тримає й сніжки, шипи — ще міцніше',
-        '🤖 Сам біля ставка? Тисни «🤖 + бот» — на кригу вийдуть двоє ботів, і штовхатимуть і тебе, й одне одного (без нагород)',
-        '❄ Боти бережуть край і заходять з боку центру; шубовснули — кидають сніжки й колють лід з берега',
-        '🎚 Опція «🤖 Бот»: легкий пре навпростець і сам буває у воді, сильний тримає інерцію й б’є на впередження',
+        '❄ Сніжку видно: більша, з тінню й хвостом кольору того, хто кинув; летить швидше (наздоганяє того, хто їде), штовхає сильніше й на мить оглушує — тягою не погасиш, рятує лише ривок. Глек і шипи стоять твердо',
+        '🎯 Влучив — чуєш «бах» і бачиш «влучив!»; влучили в тебе — трусить екран (і пад)',
+        '🎮 Steam Deck: лівий стік — ковзати, правий — приціл сніжки, R2 — ривок, L2 — сніжка; тригери й Ⓑ посеред раунду більше не викидають зі столу',
+        '🧊 Іній — 2 с і ковзаєш крижинкою · 🌬 Завірюха — ширша, сильніша й оглушує · 💪 Кулак — ривок частіше',
+        '⏱ Довкола себе видно, скільки ще діють шипи, глек, ковзани й кулак; у списку — секунди. Предмети більші й блимають, перш ніж піти під воду',
       ],
     },
 
@@ -2001,6 +2253,7 @@
       if (st.last && (f.t < st.last.t - 2 || f.iv !== st.last.iv)) st.interp.reset();
       if (!st.last || st.last.ph !== f.ph) st.phAt = performance.now();
       events(st, f);
+      syncFx(st, f);
       if (st.last && !(st.last.melt > 0) && f.melt > 0 && f.ph === 1 && st.cv && st.cv.el.offsetParent) {
         // крига почала танути — кажемо вголос банером угорі, а не лише мокрою смугою по краю
         st.meltAt = performance.now();
@@ -2014,7 +2267,7 @@
       st.interp.push(f);
       correct(st, f);
       // рядок над полем — лише коли в кадрі змінилось те, що він показує
-      const hk = hudKey(f);
+      const hk = hudKey(f, st);
       if (hk !== st.hudK) { st.hudK = hk; hud(root, st); }
       if (ctx.mine && HGames.ui.coarse()) controls(root, st);
       spin(root, st);

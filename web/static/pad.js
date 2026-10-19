@@ -236,7 +236,9 @@
       // Напрямок: хрестовина важить більше за стік, бо нею цілять точніше.
       direction(dirNow, now);
     }
-    scrollBy(rx, ry);
+    // Гра, що цілить правим стіком (`rstick`), — сторінку ним не гортаємо: інакше посеред партії ставок їхав угору.
+    const gr = mode() === 'game' ? claim() : null;
+    if (!(gr && gr.p.rstick)) scrollBy(rx, ry);
 
     if (on) { paintRing(); if (now - hintAt > 400) { hintAt = now; paintHints(); } }
     raf = requestAnimationFrame(poll);
@@ -867,6 +869,25 @@
     closeKbd();
   }
 
+  // ---------- вібрація ----------
+
+  /// Трус пада: удар, падіння, влучання. Chrome уміє `dual-rumble` (Xbox, DualSense, Дека через Steam Input),
+  /// Firefox — ні; тоді тихо нічого. Лише коли грають падом і вікно в фокусі: інакше пад зараз у чужій грі.
+  /// strong — великий (низький) мотор, weak — малий (дзижчання), обидва 0..1.
+  function rumble(ms, strong, weak) {
+    if (!on || !document.hasFocus()) return;
+    for (const p of gamepads()) {
+      const v = p.vibrationActuator;
+      if (!v || !v.playEffect) continue;
+      try {
+        const r = v.playEffect('dual-rumble', {
+          duration: Math.round(ms), strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak == null ? strong : weak),
+        });
+        if (r && r.catch) r.catch(() => {});
+      } catch { /* пад без мотора */ }
+    }
+  }
+
   // ---------- смужка підказок ----------
 
   const GLYPH = {
@@ -882,7 +903,8 @@
     // Модуль пише підказку словами й кнопками у фігурних дужках: '{dpad} рух · {a} бомба'.
     const g = claim();
     const own = g && g.p.hint ? g.p.hint.replace(/\{(\w+)\}/g, (all, k) => (GLYPH[k] ? glyph(k) : all)) : '';
-    if (m === 'game') return (own || glyph('dpad') + ' рух') + ' ' + glyph('b') + ' вийти ' + glyph('y') + ' підказки';
+    // `exit: false` — Ⓑ посеред партії гра забрала собі (Крижина: сніжка), тож «вийти» не обіцяємо
+    if (m === 'game') return (own || glyph('dpad') + ' рух') + ' ' + (g.p.exit === false ? '' : glyph('b') + ' вийти ') + glyph('y') + ' підказки';
     const room = document.querySelector('.grbox .gtable');
     if (room && vis(room)) {
       return (own || glyph('dpad') + ' вибір ' + glyph('a') + ' хід')
@@ -1003,5 +1025,6 @@
     help: openHelp,
     hints: paintHints,
     focus: setCur,
+    rumble,
   };
 })();

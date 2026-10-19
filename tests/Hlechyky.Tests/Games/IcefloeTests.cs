@@ -527,7 +527,7 @@ public class IcefloeTests(ITestOutputHelper output)
     }
 
     [Fact] // 22
-    public void Bank_throw_flies_straight_and_shoves_the_target_by_six_hundred()
+    public void Bank_throw_flies_straight_and_shoves_the_target_by_eight_hundred_fifty()
     {
         var c = Bare(2, radius: 1188);
         var thrower = c.Bodies[0];
@@ -549,11 +549,111 @@ public class IcefloeTests(ITestOutputHelper output)
             if (!hit) Assert.Equal(0, target.B.Vx);
         }
         Assert.True(hit);
-        Assert.Equal(600, IcefloeCore.BallPush);
+        Assert.Equal(850, IcefloeCore.BallPush);
         Assert.InRange(target.B.Vx, IcefloeCore.BallPush * 0.96 - 1e-6, IcefloeCore.BallPush);
         Assert.Equal(0, target.B.Vy, 9);
         Assert.Equal(0, target.LastBy);
+        Assert.Equal(IcefloeCore.DazeTicks, target.Dazed);
         Assert.DoesNotContain(c.Balls, x => x.On);
+    }
+
+    [Fact]
+    public void Snowball_dazes_so_thrust_cannot_cancel_it_but_a_dash_still_works()
+    {
+        // 20.10 «сніжки абсолютно не відчутні»: тягою назустріч гравець гасив поштовх за чверть секунди й зсувався
+        // на 0,7 м. Тепер 0,4 с тяга не діє — стоячого відносить на понад два метри, хоч як пручайся.
+        (double Pushed, IcefloeBody T) Hit(bool steady)
+        {
+            var c = Bare(2, radius: 1188);
+            var target = Put(c, 1, C, C);
+            if (steady) target.Spikes = 1000;
+            Put(c, 0, C - 500, C - 500);
+            c.Move(1, 8);                                   // пручається: тягне назустріч сніжці
+            c.Balls[0] = new IcefloeBall { On = true, Id = 1, Owner = 0, Ttl = 20, X = C - 100, Y = C, Vx = IcefloeCore.BallSpeed, Vy = 0 };
+            c.Step(true);
+            Assert.Contains(Events(c), e => e[0] == IcefloeCore.EvBall && e[1] == 1);
+            var far = 0.0;
+            for (var t = 0; t < 40; t++)
+            {
+                c.Step(true);
+                far = Math.Max(far, target.B.X - C);
+            }
+            return (far, target);
+        }
+
+        var (pushed, t) = Hit(false);
+        Assert.True(pushed > 200, $"віднесло лише на {pushed:F0} см");
+        Assert.Equal(0, t.Dazed);
+        Assert.True(t.B.Vx < 0, "оглушення минуло — тяга знову везе назад");
+
+        var (held, spiked) = Hit(true);                       // у шипах стоїш твердо: штовхає, але не оглушує
+        Assert.Equal(0, spiked.Dazed);
+        Assert.True(held < pushed / 2, $"у шипах {held:F0} проти {pushed:F0}");
+
+        // оглушений ривкнути може — ним і рятуються
+        var d = Bare(2, radius: 1188);
+        var b = Put(d, 1, C, C);
+        b.Dazed = IcefloeCore.DazeTicks;
+        b.Face = 8;
+        Assert.Null(d.Dash(1));
+        Assert.Equal(-IcefloeCore.DashImpulse, b.B.Vx, 9);
+        d.Move(1, 8);
+        var v = b.B.Vx;
+        d.Step(true);
+        Assert.True(b.B.Vx > v, "тяги нема — лише тертя гальмує");
+    }
+
+    [Fact]
+    public void Throw_and_chip_fly_where_the_right_stick_aims_without_turning_the_face()
+    {
+        var h = Table(2);
+        ToGo(h);
+        var c = Core(h);
+        var b = c.Bodies[0];
+        b.Ammo = 3;
+        b.Face = 0;
+        Assert.Equal("Такого напрямку нема", h.Act(0, "throw", new { a = 16 }).Message);
+        Assert.Equal("Такого напрямку нема", h.Act(0, "throw", new { a = -2 }).Message);
+        Assert.Equal("Такого напрямку нема", h.Act(0, "throw", "4").Message);
+        Assert.Equal("Такого напрямку нема", h.Act(0, "throw", new { d = 360 }).Message);
+        Assert.Equal("Такого напрямку нема", h.Act(0, "throw", new { d = 12.5 }).Message);
+        Assert.Equal(3, b.Ammo);
+        Assert.True(h.Act(0, "throw", new { a = 12 }).Ok);        // угору, хоч дивиться праворуч
+        var ball = c.Balls.Single(x => x.On);
+        Assert.Equal(0, ball.Vx, 6);
+        Assert.Equal(-IcefloeCore.BallSpeed, ball.Vy, 6);
+        Assert.Equal(b.B.X, ball.X, 6);
+        Assert.Equal(b.B.Y - IcefloeCore.BallMuzzle, ball.Y, 6);
+        Assert.Equal(0, b.Face);                                   // обличчя на місці — ривок туди, куди їде
+        Assert.Equal(2, b.Ammo);
+
+        // без прицілу ({} чи нічого) — туди, куди дивишся
+        var e = Bare(2, radius: 1188);
+        var w = Put(e, 0, C, C);
+        w.Ammo = 2;
+        w.Face = 4;
+        Assert.Null(e.Throw(0));
+        Assert.Equal(IcefloeCore.BallSpeed, e.Balls.Single(x => x.On).Vy, 6);
+
+        // точний кут у градусах (стік, мишка): 30° — між секторами, а не найближчий із них
+        Assert.Equal("Не так швидко", h.Act(0, "throw", new { d = 30 }).Message);   // кут прийнято, далі звичайні перевірки
+        w.ThrowCd = 0;
+        Assert.Null(e.Throw(0, deg: 30));
+        var exact = e.Balls.Where(x => x.On).MaxBy(x => x.Id);
+        Assert.Equal(IcefloeCore.BallSpeed * Math.Cos(Math.PI / 6), exact.Vx, 6);
+        Assert.Equal(IcefloeCore.BallSpeed * Math.Sin(Math.PI / 6), exact.Vy, 6);
+
+        // молоток із берега теж у приціл: дивиться вниз уздовж берега (мимо криги), а стік цілить на кригу
+        var k = Bare(2, radius: 800);
+        var o = k.Bodies[0];
+        o.Plays = true;
+        o.Alive = false;
+        o.BankAngle = Math.PI;
+        o.Face = 4;
+        Assert.Equal("Цілься в кригу — туди лід не дістати", k.Chip(0));
+        Assert.Null(k.Chip(0, 0));
+        Assert.Equal(IcefloeCore.ChipWarn, o.ChipIn);
+        Assert.Equal(4, o.Face);
     }
 
     [Fact]
@@ -879,6 +979,7 @@ public class IcefloeTests(ITestOutputHelper output)
         Assert.Equal(0, Speed(me), 9);
         Assert.Equal((0, 0), (near.LastBy, far.LastBy));
         Assert.Equal(-1, away.LastBy);
+        Assert.Equal((IcefloeCore.DazeTicks, IcefloeCore.DazeTicks, 0), (near.Dazed, far.Dazed, away.Dazed));   // відкинуло — і оглушило
 
         // з глеком тримаєшся, а свою команду завірюха не чіпає
         var t = Bare(4, radius: 1188);
@@ -894,6 +995,7 @@ public class IcefloeTests(ITestOutputHelper output)
         Assert.Equal(0, Speed(mate), 9);
         Assert.True(-foe.B.Vx > 400);
         Assert.InRange(heavy.B.Vy, -foe.B.Vx / IcefloeCore.JugMass - 5, -foe.B.Vx / IcefloeCore.JugMass + 5);
+        Assert.Equal(0, heavy.Dazed);                       // глек стоїть твердо
     }
 
     [Fact]
@@ -933,6 +1035,24 @@ public class IcefloeTests(ITestOutputHelper output)
         Assert.Equal(0, foe.Frozen);
         Assert.True(foe.B.Vx < -100, "розморозився — поїхав");
         Assert.Null(c.Dash(2));
+    }
+
+    [Fact]
+    public void Frozen_rival_slides_like_an_ice_cube_for_two_seconds()
+    {
+        Assert.Equal(50, IcefloeCore.FrostTicks);
+        Assert.Equal(IcefloeCore.FrostMu, new IcefloeBody { Frozen = 1, Spikes = 1 }.Mu);   // крижинка й у шипах
+        double Slide(bool frozen)
+        {
+            var c = Bare(1, radius: 1188);
+            var b = Put(c, 0, C - 600, C, vx: 600);
+            if (frozen) b.Frozen = IcefloeCore.FrostTicks;
+            for (var t = 0; t < 25; t++) c.Step(true);
+            return b.B.X - (C - 600);
+        }
+        var plain = Slide(false);
+        var ice = Slide(true);
+        Assert.True(ice > plain * 1.25, $"замерзлий проїхав {ice:F0} проти {plain:F0}");
     }
 
     [Fact]
@@ -985,6 +1105,7 @@ public class IcefloeTests(ITestOutputHelper output)
             a.Fist = fist ? 1000 : 0;
             Assert.Null(c.Dash(0));
             Assert.Equal(fist ? IcefloeCore.FistDash : IcefloeCore.DashImpulse, a.B.Vx, 9);
+            Assert.Equal(fist ? IcefloeCore.FistCd : IcefloeCore.DashCd, a.Cd);   // з кулаком ривок частіше
             c.Step(true);
             return b.B.Vx;
         }
@@ -997,7 +1118,7 @@ public class IcefloeTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Frame_flags_carry_skates_fist_and_frost()
+    public void Frame_flags_carry_skates_fist_frost_and_daze_and_balls_name_their_owner()
     {
         var h = Table(2);
         ToGo(h);
@@ -1005,11 +1126,18 @@ public class IcefloeTests(ITestOutputHelper output)
         c.Bodies[0].Skates = 50;
         c.Bodies[0].Fist = 50;
         c.Bodies[1].Frozen = 10;
-        var p = Frame(h).GetProperty("p");
+        c.Bodies[1].Dazed = 5;
+        c.Bodies[0].Ammo = 1;
+        Assert.Null(c.Throw(0));
+        var f = Frame(h);
+        var p = f.GetProperty("p");
         var f0 = p[0][5].GetInt32();
         var f1 = p[1][5].GetInt32();
-        Assert.Equal(128 | 256, f0 & (128 | 256 | 512));
-        Assert.Equal(512, f1 & (128 | 256 | 512));
+        Assert.Equal(128 | 256, f0 & (128 | 256 | 512 | 1024));
+        Assert.Equal(512 | 1024, f1 & (128 | 256 | 512 | 1024));
+        var ball = f.GetProperty("s")[0];
+        Assert.Equal(6, ball.GetArrayLength());
+        Assert.Equal(0, ball[5].GetInt32());                  // хто кинув — хвіст сніжки його кольору
     }
 
     // ---------- партія і кімната ----------
