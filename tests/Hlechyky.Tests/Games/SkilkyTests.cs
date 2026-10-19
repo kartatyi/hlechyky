@@ -1263,10 +1263,10 @@ public class SkilkyTests
         Assert.Equal(Skilky.MaxSeats, game.MaxPlayers);
         Assert.Equal("skilky", game.Module);
         Assert.True(game.HasCss);
-        Assert.Equal(["questions", "seconds", "topic", "bets", "teams"], game.Options.Select(o => o.Key));
+        Assert.Equal(["questions", "seconds", "topic", "bets", "teams", "botlvl"], game.Options.Select(o => o.Key));
         Assert.Equal("5", game.Options[0].Default);
         Assert.Equal(["3", "5", "7", "10", "15"], game.Options[0].Values.Select(v => v[0]));
-        Assert.Equal([false, false, true, false, false], game.Options.Select(o => o.Multi));   // теми — можна кілька
+        Assert.Equal([false, false, true, false, false, false], game.Options.Select(o => o.Multi));   // теми — можна кілька
         Assert.Equal("all", game.Options[2].Default);
     }
 
