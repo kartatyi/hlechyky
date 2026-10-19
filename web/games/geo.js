@@ -254,7 +254,8 @@
   }
   /// Нік місця. Хто встав (посеред партії чи вже після) — нік із виду: каркас його забуває, партія — ні.
   const nick = (ctx, i) => ctx.nickOf(i) || (V(ctx).nicks || [])[i] || '№' + ctx.seatName(i);
-  const canPin = (st, ctx) => ctx.mine && ctx.playing && phaseOf(ctx) === 'guess' && st.readyRound !== V(ctx).round && !authorOf(ctx);
+  /// Шпильку можна переставити й після «Готово», поки йде час: сервер тоді знімає ✓ (placePin — теж).
+  const canPin = (st, ctx) => ctx.mine && ctx.playing && phaseOf(ctx) === 'guess' && !authorOf(ctx);
 
   // ---------------------------------------------------------------------------------------------
   // перетворення: екран (CSS-пікселі канваса) ↔ мапа (одиниці сітки)
@@ -871,16 +872,22 @@
     const v = V(ctx);
     const p = { x: Math.round(clamp(mx, 0, W)), y: Math.round(clamp(my, 0, H)) };
     const was = st.pinRound === v.round ? st.pin : null;
+    const wasReady = st.readyRound === v.round;
     st.pin = p;
     st.pinRound = v.round;
+    if (wasReady) st.readyRound = -1;      // передумав після «Готово» — ✓ знято, «Готово» тиснути знову
     st.drop = performance.now();
     tone([220], 40, 0.08, true);
     kick(st);
     paintBar(st.root, ctx);
     paintChips(st.root, ctx);
     ctx.act('guess', { x: p.x, y: p.y }).then((r) => {
-      // сервер не прийняв (час вийшов, «Готово» з іншої вкладки) — повертаємо, як було
-      if (r && !r.ok && st.pin === p) { st.pin = was; kick(st); paintBar(st.root, st.ctx); paintChips(st.root, st.ctx); }
+      // сервер не прийняв (час вийшов) — повертаємо, як було
+      if (r && !r.ok && st.pin === p) {
+        st.pin = was;
+        if (wasReady) st.readyRound = v.round;
+        kick(st); paintBar(st.root, st.ctx); paintChips(st.root, st.ctx);
+      }
     }).catch(() => {});
   }
 
@@ -1056,7 +1063,7 @@
       const pinned = st.pin && st.pinRound === v.round;
       if (!ctx.mine) h = 'Гравці ставлять шпильки…';
       else if (authorOf(ctx)) h = '📸 Це твоє фото — дивись, як шукають інші. Тобі — половина їхнього середнього';
-      else if (st.readyRound === v.round) { label = 'Чекаємо решту…'; h = 'Шпилька зафіксована'; }
+      else if (st.readyRound === v.round) { label = 'Чекаємо решту…'; h = 'Передумав — ' + (coarse ? 'тапни' : 'клікни') + ' на мапі ще раз, поки йде час'; }
       else if (pinned) { label = 'Готово ✓'; dis = false; h = 'Шпилька зарахується й так; «Готово» — щоб не чекати' + (coarse ? '' : ' (Enter)'); }
       else { label = 'Постав шпильку'; h = coarse ? 'Тапни на мапі, де це знято · два пальці — масштаб' : 'Клікни на мапі, де це знято · колесо — масштаб · тягни мапу — рух'; }
       if (ctx.mine && v.area && st.readyRound !== v.round && !authorOf(ctx)) h = '💡 Це ' + v.area + ' — очки раунду ×0,6';
@@ -1267,7 +1274,8 @@
     // свій пін: вид — правда, але пін, поставлений після виду, лишаємо (сервер видів на шпильку не шле)
     if (phase === 'guess' && ctx.mine && v.my) {
       if (!st.pin || st.pinRound !== v.round) { st.pin = { x: v.my.x, y: v.my.y }; st.pinRound = v.round; st.drop = 0; }
-      if (v.my.ready) st.readyRound = v.round;
+      // ✓ — лише для тієї самої шпильки: старий вид («готово» до переставляння) не має вертати ✓ новій
+      if (v.my.ready && st.pin.x === v.my.x && st.pin.y === v.my.y) st.readyRound = v.round;
     }
     if (st.hints !== v.hints) { st.hints = v.hints; st.staticDirty = true; }
     // 💡 взяв підказку — мапа підлітає до області (раз на раунд)

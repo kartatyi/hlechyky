@@ -212,9 +212,34 @@ public class GeoTests
         Pin(h, 0, 1000, 1000);
         Assert.True(h.Act(0, "ready").Ok);
         Assert.Equal("Уже готово", h.Act(0, "ready").Message);
-        Assert.Equal("Ти вже натиснув «Готово»", Pin(h, 0, 1200, 1200).Message);
         Assert.True(h.View(0).GetProperty("my").GetProperty("ready").GetBoolean());
         Assert.Equal(1000, h.View(0).GetProperty("my").GetProperty("x").GetInt32());
+    }
+
+    [Fact]
+    public void Moving_the_pin_after_ready_drops_ready_while_others_still_think()
+    {
+        using var c = new GeoCache();
+        var h = Table(c, 2);
+        Until(h, "guess");
+        Pin(h, 0, 1000, 1000);
+        Assert.True(h.Act(0, "ready").Ok);
+        h.Tick(1);
+        Assert.Contains(0, h.View(null).GetProperty("ready").EnumerateArray().Select(e => e.GetInt32()));
+        Assert.True(Pin(h, 0, 1200, 1300).Ok);           // передумав — час ще є
+        var my = h.View(0).GetProperty("my");
+        Assert.Equal((1200, 1300, false), (my.GetProperty("x").GetInt32(), my.GetProperty("y").GetInt32(), my.GetProperty("ready").GetBoolean()));
+        Assert.DoesNotContain(0, h.View(null).GetProperty("ready").EnumerateArray().Select(e => e.GetInt32()));
+        Pin(h, 1, 2000, 1000);
+        h.Act(1, "ready");
+        h.Tick(1);
+        Assert.Equal("guess", Phase(h));                  // перший уже не готовий — чекаємо його або таймер
+        Assert.True(h.Act(0, "ready").Ok);
+        h.Tick(1);
+        Assert.Equal("reveal", Phase(h));
+        var row = h.View(null).GetProperty("reveal").GetProperty("rows").EnumerateArray().First(r => r.GetProperty("seat").GetInt32() == 0);
+        Assert.Equal(1200, row.GetProperty("x").GetInt32());
+        Assert.Equal("Зараз не вгадують", Pin(h, 0, 1500, 1500).Message);   // час вийшов — уже ніяк
     }
 
     [Fact]
