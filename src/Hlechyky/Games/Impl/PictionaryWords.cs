@@ -96,12 +96,28 @@ public sealed class PictionaryWords
     /// <paramref name="count"/> різних слів з обраних тем (null — з усіх), яких ще не було в цій партії.
     /// Свіжі скінчились — беремо з усіх, повтор кращий за порожній вибір.
     /// </summary>
-    public string[] Pick(Random rng, IReadOnlySet<string>? topics, IReadOnlySet<string> used, int count)
+    /// <param name="seen">
+    /// Пам'ять баченого між партіями (<see cref="GameSeen"/>, ключ — <see cref="Normalize"/>): спершу слова, які бачило
+    /// найменше людей за столом, при рівності — давніше бачені. Порожня чи null — вибір рівно як був.
+    /// </param>
+    public string[] Pick(Random rng, IReadOnlySet<string>? topics, IReadOnlySet<string> used, int count,
+        IReadOnlyDictionary<string, GameSeen.Seen>? seen = null)
     {
         var pool = _byTopic.Where(kv => topics is null || topics.Contains(kv.Key)).SelectMany(kv => kv.Value).ToList();
         if (pool.Count == 0) return [];
         var fresh = pool.Where(w => !used.Contains(Normalize(w))).ToList();
         if (fresh.Count >= count) pool = fresh;
+
+        if (seen is { Count: > 0 } && pool.Any(w => seen.ContainsKey(Normalize(w))))
+        {
+            // Повне тасування, далі стабільне «найменше бачили → давніше бачили».
+            for (var i = pool.Count - 1; i > 0; i--)
+            {
+                var j = rng.Next(i + 1);
+                (pool[i], pool[j]) = (pool[j], pool[i]);
+            }
+            return [.. GameSeen.Order(pool, Normalize, seen).Take(count)];
+        }
 
         var picked = new List<string>(count);
         // частковий Фішер-Єйтс: тільки стільки кроків, скільки слів треба
