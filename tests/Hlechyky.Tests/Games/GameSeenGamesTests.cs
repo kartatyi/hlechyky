@@ -132,4 +132,47 @@ public class GameSeenGamesTests
         var heard = new GameSeen(temp.Db).Peek("melody", [GameSeen.NickKey("Петро")]);
         Assert.Single(heard);   // трек першого раунду тепер «чули» всі за столом
     }
+
+    // ---------- Додепи ----------
+
+    static readonly DotepyPrompt[] Prompts =
+    [
+        .. Enumerable.Range(1, 40).Select(i => new DotepyPrompt($"n{i:000}", $"Звичайне завдання номер {i}", ["тест"], false)),
+        .. Enumerable.Range(1, 12).Select(i => new DotepyPrompt($"f{i:000}", $"Фінальне завдання номер {i}", ["тест"], true)),
+    ];
+
+    /// <summary>Стіл Додепів на чотирьох; повертає id завдань першого раунду (зі свіжого кільця процесу).</summary>
+    static string[] DotepyFirstRound(TempDb? temp)
+    {
+        var ring = new DotepySeen(Dotepy.SeenRing);
+        var h = new RoomHarness("dotepy", null, 7, Services(temp, s =>
+        {
+            s.AddSingleton(new DotepyPrompts(Prompts));
+            s.AddSingleton(ring);
+        }));
+        foreach (var n in Nicks) Assert.True(h.Join(n).Ok);
+        Assert.True(h.Start().Ok);
+        return [.. ring.Snapshot().Keys.Order(StringComparer.Ordinal)];
+    }
+
+    [Fact]
+    public void Dotepy_UnseenPromptsGoFirst_EvenAfterRestart()
+    {
+        using var temp = new TempDb();
+        // Кільце процесу свіже (наче після деплою), а база пам'ятає: Оля бачила n001…n035 — раунд бере з n036…n040.
+        new GameSeen(temp.Db).Seed("dotepy", [GameSeen.NickKey("Оля")], Prompts.Take(35).Select(p => p.Id), Yesterday);
+        var picked = DotepyFirstRound(temp);
+        Assert.NotEmpty(picked);
+        Assert.All(picked, id => Assert.Contains(id, Prompts.Skip(35).Take(5).Select(p => p.Id)));
+
+        var all = new GameSeen(temp.Db).Peek("dotepy", [GameSeen.NickKey("Петро")]);
+        Assert.Equal(picked, all.Keys.Order(StringComparer.Ordinal));   // показане бачили всі за столом
+    }
+
+    [Fact]
+    public void Dotepy_EmptyHistoryPicksAsBefore()
+    {
+        using var temp = new TempDb();
+        Assert.Equal(DotepyFirstRound(null), DotepyFirstRound(temp));
+    }
 }
