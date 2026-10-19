@@ -28,7 +28,7 @@ public sealed partial class Dance
         public int Hunt = -1, Delay, NextEval, Chase;
     }
 
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(BotCount);
     int[] _bots = [];
     Mind[] _minds = [];
     readonly CrowdEye _eye = new();
@@ -43,7 +43,7 @@ public sealed partial class Dance
     public override string? SeatBot(int seat) =>
         _started && Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat) ? LiveBots.Name : null;
 
-    int[] BotSeats() => CrowdBots.FreeSeats(Ctx, Seats, BotCount);
+    int[] BotSeats() => CrowdBots.FreeSeats(Ctx, Seats, _solo.Count(Ctx, Seats));
 
     int[]? BotView() =>
         _started && _bots.Length > 0 ? _bots

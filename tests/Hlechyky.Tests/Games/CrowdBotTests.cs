@@ -197,17 +197,26 @@ public class CrowdBotTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Friend_at_the_table_sends_the_bots_away()
+    public void Friend_at_the_table_leaves_one_bot_and_a_third_sends_them_away()
     {
         var h = new RoomHarness("crowd");
         h.Join("Оля");
         Assert.True(h.Act(0, "bot", new { on = true }).Ok);
         h.Join("Петро");
         Assert.True(h.Start().Ok, h.Reply.Message);
-        Assert.Empty(G(h).BotsForTests);
-        Assert.Null(h.Room.SafeSeatBot(2));
-        Assert.Equal(2 + Crowd.BotsFor(2), G(h).CoreForTests.N);
+        Assert.Equal([2], G(h).BotsForTests);          // боти доповнюють стіл до трьох: удвох — один
+        Assert.NotNull(h.Room.SafeSeatBot(2));
+        Assert.Equal(3 + Crowd.BotsFor(3), G(h).CoreForTests.N);
         Assert.False(h.Act(0, "bot", new { on = false }).Ok);           // посеред партії бота не женуть
+
+        var full = new RoomHarness("crowd");
+        full.Join("Оля");
+        Assert.True(full.Act(0, "bot", new { on = true }).Ok);
+        full.Join("Петро");
+        full.Join("Ігор");
+        Assert.True(full.Start().Ok, full.Reply.Message);
+        Assert.Empty(G(full).BotsForTests);
+        Assert.Null(full.Room.SafeSeatBot(3));
     }
 
     [Fact]

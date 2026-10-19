@@ -31,7 +31,7 @@ public sealed class Skyrta : Game, IPartyMinigame
 
     public override GameInfo Info { get; } = new(
         "skyrta", "Скирта", "скирту", GameGroup.Live, 1, Seats, TickMs: SkyrtaCore.TickMs,
-        Start: StartMode.ByHost, Options: [LiveBots.LevelOption],
+        Start: StartMode.ByHost, Options: [LiveBots.LevelsOption],
         Hint: "Тап — і сніп падає на скирту; що звисає — обріже. Рівно-рівнесенько — скирта ширшає, а тричі поспіль — вітер сусідові. Хто перший доклав 25 — той і господар. Самому — з 🤖 ботами");
 
     public string Howto => "Тапни, коли сніп над скиртою: що звисає — обріже, рівно — скирта ширшає. Вище всіх за 45 с (чи 15 снопів) — перший. "
@@ -40,7 +40,7 @@ public sealed class Skyrta : Game, IPartyMinigame
     public int PartyMin => 2;
     public int PartyMax => Seats;
 
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     PartyMode? _party;
     public bool Party => _party is not null;
     int[] _bots = [];
@@ -75,7 +75,7 @@ public sealed class Skyrta : Game, IPartyMinigame
 
     // ---------- місця, боти ----------
 
-    int[] BotSeats() => _solo.Active(Ctx, Seats) ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+    int[] BotSeats() => _solo.Active(Ctx, Seats) ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, Seats))] : [];
 
     bool IsBot(int seat) => Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat);
 
@@ -363,7 +363,9 @@ public sealed class Skyrta : Game, IPartyMinigame
         }
         var people = Playing().Where(Ctx.Seated).ToDictionary(s => s, s => (long)_st[s].H);
         if (winners.Length > 0) Ctx.Say(Pick(EndLines).Replace("{0}", Name(winners[0])));
-        if (!_botGame)
+        // Сам із ботами — без серії й нагород, з вердиктом (нижче). Боти доповнили стіл двох і більше людей —
+        // звичайний кінець: бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (!_botGame || _startPlayers >= 2)
         {
             _series.Record(Ctx, winners);
             Ctx.Finish(winners, Journal(winners), people);
@@ -470,6 +472,7 @@ public sealed class Skyrta : Game, IPartyMinigame
             turn = (int?)null,
             botOffer = _party is null && _solo.Offer(Ctx, Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _party?.Level is { } pl ? LiveBots.Key(pl) : _solo.LevelKey,
             bot = lobby ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
             frame = Shot(),

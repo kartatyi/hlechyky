@@ -96,7 +96,7 @@ public sealed partial class Freeze : Game, IPartyMinigame
             new GameOption("rounds", "Раундів", [("3", "3 раунди"), ("1", "1 раунд"), ("5", "5 раундів")], "3"),
             new GameOption("crowd", "Селян", [("auto", "Як на лузі"), ("small", "Жменька (14)"), ("big", "Ціле село (40)")], "auto"),
             new GameOption("mode", "Гра", [("solo", "Кожен за себе"), ("relay", "🏺 Естафета: дві команди")], "solo"),
-            LiveBots.LevelOption,
+            LiveBots.LevelsOption,
         ],
         Hint: "Баба Параска співає — іди до глека. Обернулась і крикнула «Замри!» — стій, як укопаний. Ти — один із юрми, і ніхто не знає, хто з селян живий. Самому — з 🤖 ботами");
 
@@ -146,6 +146,7 @@ public sealed partial class Freeze : Game, IPartyMinigame
         _solo.Configure(options);
         _party = PartyMode.Read(options);
         if (_party is not null) { _rounds = 1; _relay = false; _roundTicks = PartyRoundTicks; }
+        _solo.Most = _relay ? 1 : 2;   // естафета — команди один на один; кожен за себе — стіл до трьох
     }
 
     bool _relay;
@@ -625,12 +626,14 @@ public sealed partial class Freeze : Game, IPartyMinigame
         _dirty = true;
         var order = winners.Concat(active.Where(i => Array.IndexOf(winners, i) < 0).OrderByDescending(i => _s[i].Total));
         var line = string.Join(" : ", order.Select(i => $"{BotNick(i)} {_s[i].Total}"));
-        if (_bots.Length > 0)
+        // Сам із ботами — без очок у таблицю й нагород (вердикт). Боти доповнили стіл двох і більше людей — звичайний
+        // кінець, але без таблиці очок: бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (_bots.Length > 0 && SoloBot.Humans(Ctx, Seats) < 2)
         {
             FinishWithBots(winners, $"«{Info.Title}»: {line}", line);
             return;
         }
-        foreach (var i in active) Ctx.Score(i, _s[i].Total);
+        if (_bots.Length == 0) foreach (var i in active) Ctx.Score(i, _s[i].Total);
         Ctx.Finish(winners, winners.Length > 0 ? $"«{Info.Title}»: {line}" : $"«{Info.Title}»: {line} — нічия");
     }
 
@@ -649,12 +652,14 @@ public sealed partial class Freeze : Game, IPartyMinigame
         string Side(int t) => $"{TeamNames[t]} ({string.Join(", ", active.Where(i => _s[i].Team == t).Select(i => _s[i].Nick))})";
         var first = team < 0 ? 0 : team;
         var line = $"«{Info.Title}» естафета: {Side(first)} {_teamRounds[first]} : {_teamRounds[1 - first]} {Side(1 - first)}";
-        if (_bots.Length > 0)
+        // Сам із ботами — без очок у таблицю й нагород (вердикт). Боти доповнили стіл двох і більше людей — звичайний
+        // кінець, але без таблиці очок: бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (_bots.Length > 0 && SoloBot.Humans(Ctx, Seats) < 2)
         {
             FinishWithBots(winners, line, $"{Side(first)} {_teamRounds[first]} : {_teamRounds[1 - first]} {Side(1 - first)}");
             return;
         }
-        foreach (var i in active) Ctx.Score(i, _s[i].Total);
+        if (_bots.Length == 0) foreach (var i in active) Ctx.Score(i, _s[i].Total);
         Ctx.Finish(winners, team < 0 ? line + " — нічия" : line);
     }
 
@@ -690,7 +695,7 @@ public sealed partial class Freeze : Game, IPartyMinigame
         _left = 0;
         _endWhy = "left";
         _winners = [.. rest];
-        foreach (var i in rest) Ctx.Score(i, _s[i].Total);
+        if (_bots.Length == 0) foreach (var i in rest) Ctx.Score(i, _s[i].Total);   // з ботами — без таблиці очок
         Ctx.Finish([.. rest], teamGone && rest.Count > 1
             ? $"«{Info.Title}»: суперники розійшлись — перемога за {TeamNames[_s[rest[0]].Team]}"
             : rest.Count == 1
@@ -795,6 +800,7 @@ public sealed partial class Freeze : Game, IPartyMinigame
             turn = (int?)null,
             botOffer = _solo.Offer(Ctx, Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _solo.LevelKey,
             bot = BotView(),
         };

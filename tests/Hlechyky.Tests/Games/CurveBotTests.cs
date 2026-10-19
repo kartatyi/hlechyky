@@ -147,7 +147,7 @@ public class CurveBotTests(ITestOutputHelper log)
     }
 
     [Fact]
-    public void A_friend_sitting_down_sends_the_bots_away()
+    public void A_friend_sitting_down_leaves_two_bots_and_a_full_four_sends_them_away()
     {
         var h = new RoomHarness("curve");
         h.Join("Оля");
@@ -155,10 +155,18 @@ public class CurveBotTests(ITestOutputHelper log)
         h.Join("Петро");
         Assert.True(h.Start().Ok, h.Reply.Message);
         var g = G(h);
-        Assert.Empty(g.Bots);
-        Assert.Null(g.SeatBot(2));
-        Assert.False(g.Field.Heads[2].Present);
-        Assert.Equal(10, h.View(0).GetProperty("target").GetInt32());
+        Assert.Equal([2, 3], g.Bots);                 // до чотирьох: удвох — двоє ботів
+        Assert.NotNull(g.SeatBot(2));
+        Assert.False(g.Field.Heads[4].Present);
+        Assert.Equal(30, h.View(0).GetProperty("target").GetInt32());
+
+        var full = new RoomHarness("curve");
+        full.Join("Оля");
+        full.Act(0, LiveBots.Toggle, new { on = true });
+        foreach (var n in new[] { "Петро", "Ігор", "Ганна" }) full.Join(n);
+        Assert.True(full.Start().Ok, full.Reply.Message);
+        Assert.Empty(G(full).Bots);
+        Assert.Null(G(full).SeatBot(4));
     }
 
     [Fact]

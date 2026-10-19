@@ -409,15 +409,18 @@ public class SnakeBotTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Party_friend_sits_down_and_no_bots_come()
+    public void Party_friend_sits_down_and_one_bot_fills_the_table()
     {
         var h = Alone("snake-party");
         h.Act(0, LiveBots.Toggle, new { on = true });
         h.Join("Петро");
-        Assert.Equal(0, h.View(0).GetProperty("bot").GetArrayLength());
+        Assert.Equal(1, h.View(0).GetProperty("bot").GetArrayLength());   // до трьох: удвох — один бот
+        Assert.Equal(3, h.View(0).GetProperty("botFill").GetInt32());
+        h.Join("Ігор");
+        Assert.Equal(0, h.View(0).GetProperty("bot").GetArrayLength());   // утрьох — уже повний
         Assert.True(h.Start().Ok);
-        Assert.Equal(2, h.View(0).GetProperty("present").EnumerateArray().Count(e => e.GetBoolean()));
-        Assert.Null(h.Room.SafeSeatBot(2));
+        Assert.Equal(3, h.View(0).GetProperty("present").EnumerateArray().Count(e => e.GetBoolean()));
+        Assert.Null(h.Room.SafeSeatBot(3));
     }
 
     [Fact]

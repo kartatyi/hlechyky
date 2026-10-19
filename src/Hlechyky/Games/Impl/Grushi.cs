@@ -29,11 +29,11 @@ public sealed class Grushi : Game, IPartyMinigame
 
     public override GameInfo Info { get; } = new(
         "grushi", "Крадії груш", "крадіїв груш", GameGroup.Live, 1, Seats, TickMs: GrushiCore.TickMs,
-        Start: StartMode.ByHost, Options: [LenOption, LiveBots.LevelOption],
+        Start: StartMode.ByHost, Options: [LenOption, LiveBots.LevelsOption],
         Hint: "Збирай груші з-під дерев і носи в свою комору, а як на землі пусто — кради з чужих. Повна ноша — важка, "
             + "а штовхан висипає її на землю. Самому — з 🤖 ботами");
 
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     PartyMode? _party;
     GrushiCore? _core;
     int[] _bots = [];
@@ -77,7 +77,7 @@ public sealed class Grushi : Game, IPartyMinigame
     bool[] Seated() => [.. Enumerable.Range(0, Seats).Select(Ctx.Seated)];
 
     int[] BotSeats() => _solo.Active(Ctx, Seats)
-        ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+        ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, Seats))] : [];
 
     bool IsBot(int seat) => Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat);
 
@@ -239,9 +239,11 @@ public sealed class Grushi : Game, IPartyMinigame
         var best = playing.Length == 0 ? 0 : playing.Max(s => c.Bodies[s].Larder);
         _winners = best == 0 ? [] : [.. playing.Where(s => c.Bodies[s].Larder == best)];
         var scores = playing.Where(Ctx.Seated).ToDictionary(s => s, s => (long)c.Bodies[s].Larder);
-        if (!_botGame)
+        // Сам із ботами — без серії й нагород, з вердиктом (нижче). Боти доповнили стіл двох і більше людей —
+        // звичайний кінець: бот-переможець іде у winners своїм місцем, люди тоді мають поразку. Ачівки — лише без ботів.
+        if (!_botGame || _startPlayers >= 2)
         {
-            if (_startPlayers >= 2)
+            if (!_botGame && _startPlayers >= 2)
                 foreach (var s in playing)
                 {
                     var b = c.Bodies[s];
@@ -304,8 +306,9 @@ public sealed class Grushi : Game, IPartyMinigame
         }
         _ph = PhOver;
         var best = left.Length == 0 ? 0 : left.Max(s => c.Bodies[s].Larder);
-        _winners = _botGame || best == 0 ? [] : [.. left.Where(s => c.Bodies[s].Larder == best)];
-        if (!_botGame) _series.Record(Ctx, _winners);
+        var lone = _botGame && _startPlayers < 2;
+        _winners = lone || best == 0 ? [] : [.. left.Where(s => c.Bodies[s].Larder == best)];
+        if (!lone) _series.Record(Ctx, _winners);
         Ctx.Finish(_winners, $"{Info.Title}: {nick} встав з-за столу, партію не дограли",
             left.ToDictionary(s => s, s => (long)c.Bodies[s].Larder));
     }
@@ -365,6 +368,7 @@ public sealed class Grushi : Game, IPartyMinigame
             turn = (int?)null,
             botOffer = _solo.Offer(Ctx, Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _party is { } pm ? LiveBots.Key(pm.Level) : _solo.LevelKey,
             bot = lobby ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
             frame = Shot(c, lobby),

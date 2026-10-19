@@ -44,7 +44,7 @@ public sealed class Icefloe : Game, IPartyMinigame
 
     public override GameInfo Info { get; } = new(
         "icefloe", "Крижина", "крижину", GameGroup.Live, 1, IcefloeCore.Seats, TickMs: IcefloeCore.TickMs,
-        Start: StartMode.ByHost, Options: [WinsOption, TeamsOption, LiveBots.LevelOption],
+        Start: StartMode.ByHost, Options: [WinsOption, TeamsOption, LiveBots.LevelsOption],
         Hint: "Сумо на кризі: ковзай, штовхай, не шубовсни. Крижина тане й меншає, а хто випав — кидає сніжки з берега. Самому — з 🤖 ботами");
 
     /// <summary>
@@ -52,7 +52,7 @@ public sealed class Icefloe : Game, IPartyMinigame
     /// можна вичікувати, поки двоє зчепились, а хто шубовснув — кидає сніжки з берега, тож і вибулий бот грає далі.
     /// </summary>
     public const int SoloBots = 2;
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     /// <summary>Місця ботів у цій партії (порожньо — партія людська) і їхні «голови».</summary>
     int[] _bots = [];
     readonly IcefloeBot?[] _brain = new IcefloeBot?[IcefloeCore.Seats];
@@ -115,9 +115,9 @@ public sealed class Icefloe : Game, IPartyMinigame
 
     bool[] Seated() => [.. Enumerable.Range(0, IcefloeCore.Seats).Select(Ctx.Seated)];
 
-    /// <summary>Куди сядуть боти: перші вільні місця, якщо їх кликали й людина одна.</summary>
+    /// <summary>Куди сядуть боти: перші вільні місця, скільки треба до повного «1 + SoloBots» (SoloBot.Count).</summary>
     int[] BotSeats() => _solo.Active(Ctx, IcefloeCore.Seats)
-        ? [.. Enumerable.Range(0, IcefloeCore.Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+        ? [.. Enumerable.Range(0, IcefloeCore.Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, IcefloeCore.Seats))] : [];
 
     /// <summary>Хто на кризі: люди за столом плюс боти (у лобі — де сядуть).</summary>
     bool[] WithBots(int[] bots)
@@ -407,7 +407,7 @@ public sealed class Icefloe : Game, IPartyMinigame
         _ph = PhOver;
         _winners = winners;
         var playing = Playing();
-        if (_startPlayers >= 2)
+        if (!_botGame && _startPlayers >= 2)
         {
             foreach (var w in winners)
                 if (!c.Bodies[w].Wet) Ctx.Award(w, 0, "ach:icefloe-dry");
@@ -415,7 +415,10 @@ public sealed class Icefloe : Game, IPartyMinigame
                 if (c.Bodies[s].Pushouts >= 5) Ctx.Award(s, 0, "ach:icefloe-push5");
         }
         var scores = playing.Where(Ctx.Seated).ToDictionary(s => s, s => (long)c.Bodies[s].Pushouts);
-        if (!_botGame)
+        // Без ботів чи боти доповнили стіл двох і більше людей — звичайний кінець (бот-переможець — у winners своїм
+        // місцем, люди тоді мають поразку); серію рахує Series за ніками, боти в ній не пишуться.
+        // Нижче — сам із ботами.
+        if (!_botGame || _startPlayers >= 2)
         {
             _series.Record(Ctx, winners);
             Ctx.Finish(winners, Journal(winners, playing), scores);
@@ -558,6 +561,7 @@ public sealed class Icefloe : Game, IPartyMinigame
             turn = (int?)null,
             botOffer = _solo.Offer(Ctx, IcefloeCore.Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = _solo.LevelKey,
             bot = lobby ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
             frame = Shot(c, lobby),

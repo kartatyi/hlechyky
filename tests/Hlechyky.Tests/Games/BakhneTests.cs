@@ -524,14 +524,22 @@ public class BakhneTests
     }
 
     [Fact]
-    public void Friend_joining_turns_bot_off()
+    public void Friend_joining_leaves_one_bot_and_a_third_turns_them_off()
     {
         var h = Table(1);
         Assert.True(h.Act(0, LiveBots.Toggle, new { on = true }).Ok);
         h.Join("друг");
         Assert.True(h.Start().Ok, h.Reply.Message);
-        Assert.Empty(G(h).Bots);
-        Assert.False(G(h).BotGame);
+        Assert.Equal([2], G(h).Bots);
+        Assert.True(G(h).BotGame);
+
+        var full = Table(1);
+        Assert.True(full.Act(0, LiveBots.Toggle, new { on = true }).Ok);
+        full.Join("друг");
+        full.Join("сусід");
+        Assert.True(full.Start().Ok, full.Reply.Message);
+        Assert.Empty(G(full).Bots);
+        Assert.False(G(full).BotGame);
     }
 
     static double MeanScore(LiveBots.Level lvl)

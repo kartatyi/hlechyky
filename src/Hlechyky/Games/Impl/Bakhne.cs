@@ -47,7 +47,7 @@ public sealed class Bakhne : Game, IPartyMinigame
 
     public override GameInfo Info { get; } = new(
         "bakhne", "Куди бахне", "«Куди бахне»", GameGroup.Live, 1, Seats, TickMs: TickMs,
-        Start: StartMode.ByHost, Options: [LiveBots.LevelOption],
+        Start: StartMode.ByHost, Options: [LiveBots.LevelsOption],
         Hint: "Глек показує стрілки — запам'ятай і ступай у такт: бахне по всіх плитках, крім правильної. Два серця, виграє останній живий. Самому — з 🤖 ботами");
 
     public string Howto => "Запам'ятай стрілки Глека й на кожен такт ступи один крок; червона стрілка й «Глек напився» — навпаки. "
@@ -71,7 +71,7 @@ public sealed class Bakhne : Game, IPartyMinigame
     }
 
     readonly Yard[] _y = [.. Enumerable.Range(0, Seats).Select(_ => new Yard())];
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(SoloBots);
     PartyMode? _party;
     int[] _bots = [];
     bool _botGame, _started;
@@ -121,7 +121,7 @@ public sealed class Bakhne : Game, IPartyMinigame
     bool Lobby => !_started || (_ph == PhOver && Enumerable.Range(0, Seats)
         .Any(s => Ctx.Seated(s) && !_startNicks.Contains(Ctx.NickOf(s) ?? "", StringComparer.OrdinalIgnoreCase)));
 
-    int[] BotSeats() => _solo.Active(Ctx, Seats) ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(SoloBots)] : [];
+    int[] BotSeats() => _solo.Active(Ctx, Seats) ? [.. Enumerable.Range(0, Seats).Where(s => !Ctx.Seated(s)).Take(_solo.Count(Ctx, Seats))] : [];
 
     bool IsBot(int seat) => Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat);
 
@@ -497,7 +497,9 @@ public sealed class Bakhne : Game, IPartyMinigame
         if (people.Length > 0)
             Ctx.Say(people.Length == 1 ? $"{Ctx.NickOf(people[0])} пам'ятає кожну плитку — борщ твій 🍲"
                 : "Кілька голів пам'ятають — борщу на всіх вистачить 🍲");
-        if (!_botGame)
+        // Сам із ботами — без серії й нагород, з вердиктом (нижче). Боти доповнили стіл двох і більше людей —
+        // звичайний кінець: бот-переможець іде у winners своїм місцем, люди тоді мають поразку.
+        if (!_botGame || _startPlayers >= 2)
         {
             _series.Record(Ctx, winners);
             Ctx.Finish(winners, Journal(winners, playing), scores);
@@ -553,7 +555,7 @@ public sealed class Bakhne : Game, IPartyMinigame
         }
         _ph = PhOver;
         _winners = left;
-        if (!_botGame) _series.Record(Ctx, left);
+        if (!_botGame || _startPlayers >= 2) _series.Record(Ctx, left);
         Ctx.Finish(left, $"{Info.Title}: {nick} встав з-за столу, партію не дограли", left.ToDictionary(s => s, ScoreOf));
     }
 
@@ -636,6 +638,7 @@ public sealed class Bakhne : Game, IPartyMinigame
             turn = (int?)null,
             botOffer = _party is null && _solo.Offer(Ctx, Seats),
             botWanted = _solo.Wanted,
+            botFill = _solo.Fill,
             botLvl = LiveBots.Key(_party?.Level ?? _solo.Level),
             bot = lobby ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
             frame = Shot(lobby),

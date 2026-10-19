@@ -42,7 +42,7 @@ public sealed partial class Freeze
         public int Hunt = -1, Delay, NextEval, Chase, Baba = -1;
     }
 
-    readonly SoloBot _solo = new();
+    readonly SoloBot _solo = new(2);
     int[] _bots = [];
     Mind[] _minds = [];
     readonly CrowdEye _eye = new();
@@ -57,8 +57,11 @@ public sealed partial class Freeze
     public override string? SeatBot(int seat) =>
         _started && Array.IndexOf(_bots, seat) >= 0 && !Ctx.Seated(seat) ? LiveBots.Name : null;
 
-    /// <summary>Естафета — один бот (команди один на один), кожен за себе — двоє.</summary>
-    int[] BotSeats() => CrowdBots.FreeSeats(Ctx, Seats, _relay ? 1 : 2);
+    /// <summary>
+    /// Естафета — один бот (команди один на один, <c>Most = 1</c>, ставить Configure), кожен за себе — до трьох
+    /// за столом: сам — двоє ботів, удвох — один.
+    /// </summary>
+    int[] BotSeats() => CrowdBots.FreeSeats(Ctx, Seats, _solo.Count(Ctx, Seats));
 
     int[]? BotView() =>
         _started && _bots.Length > 0 ? _bots
