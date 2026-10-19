@@ -111,7 +111,7 @@ public class GridSweep3Tests
     [Fact]
     public void Pairs_count_the_partner_pieces_and_both_win()
     {
-        var h = new RoomHarness("c4x", new { teams = "1" });
+        var h = new RoomHarness("c4x", new { teams = "2" });
         foreach (var n in new[] { "Оля", "Петро", "Марко", "Ганна" }) h.Join(n);
         Assert.True(h.Start().Ok);
         Assert.True(h.View(0).GetProperty("pairs").GetBoolean());
@@ -128,10 +128,10 @@ public class GridSweep3Tests
     [Fact]
     public void Pairs_need_exactly_four()
     {
-        var h = new RoomHarness("c4x", new { teams = "1" });
+        var h = new RoomHarness("c4x", new { teams = "2" });
         foreach (var n in new[] { "Оля", "Петро", "Марко" }) h.Join(n);
         Assert.False(h.Start().Ok);
-        var b = new RoomHarness("c4x", new { teams = "1", bots = "1" });
+        var b = new RoomHarness("c4x", new { teams = "2", bots = "1" });
         foreach (var n in new[] { "Оля", "Петро", "Марко" }) b.Join(n);
         Assert.True(b.Start().Ok);
         Assert.True(b.View(0).GetProperty("pairs").GetBoolean());
@@ -140,7 +140,7 @@ public class GridSweep3Tests
     [Fact]
     public void Pair_survives_while_one_partner_stays()
     {
-        var h = new RoomHarness("c4x", new { teams = "1" });
+        var h = new RoomHarness("c4x", new { teams = "2" });
         foreach (var n in new[] { "Оля", "Петро", "Марко", "Ганна" }) h.Join(n);
         h.Start();
         Assert.True(h.Act(0, "resign").Ok);

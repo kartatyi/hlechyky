@@ -104,6 +104,32 @@ public class TeamSplitRoomTests
     }
 
     [Fact]
+    public void Four_in_a_row_pairs_by_strength_alternate_turns_and_win_together()
+    {
+        var h = Table("c4x", TeamSplit.ByStrength);
+        var v = h.View(0);
+        Assert.True(v.GetProperty("pairs").GetBoolean());
+        var mates = v.GetProperty("mates").EnumerateArray().Select(x => x.GetInt32()).ToArray();
+        // Оля (місце 0) сильна — напарник слабкий: Петро (1) чи Іван (3), а не Ганна (2), як «через одного»
+        Assert.True(mates[0] is 1 or 3, string.Join(",", mates));
+        Assert.Equal(0, mates[mates[0]]);
+        // черга чергує пари: після Олі ходить суперник, далі напарник, далі другий суперник
+        var foes = new[] { 1, 2, 3 }.Where(s => s != mates[0]).ToArray();
+        int[] order = [0, foes[0], mates[0], foes[1]];
+        Assert.Equal(0, h.View(0).GetProperty("turn").GetInt32());
+        // Оля й напарник кладуть у колонки 0,1 і 2,3, суперники — у 9 і 8: четвірка внизу з фішок пари
+        int[] cells = [0, 9, 2, 8, 1, 9, 3];
+        for (var k = 0; k < cells.Length; k++)
+        {
+            var seat = order[k % 4];
+            Assert.Equal(seat, h.View(0).GetProperty("turn").GetInt32());
+            Assert.True(h.Act(seat, "move", new { cell = cells[k] }).Ok, h.Reply.Message);
+        }
+        Assert.Equal(RoomStatus.Finished, h.Room.Status);
+        Assert.Equal(new[] { 0, mates[0] }.Order(), h.Finished.Single().Result.Winners.Order());
+    }
+
+    [Fact]
     public void Glekomet_as_seated_keeps_even_against_odd()
     {
         var h = Table("glekomet", "seats");
