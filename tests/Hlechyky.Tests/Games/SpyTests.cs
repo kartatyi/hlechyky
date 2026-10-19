@@ -22,7 +22,20 @@ public class SpyTests(ITestOutputHelper output)
     /// <summary>Справжній банк із репозиторію — той самий, що й у проді, але підкладений явно, як сервіс.</summary>
     static readonly Lazy<SpyLocations> Real = new(() => SpyLocations.Load(Paths.Resolve(SpyLocations.FileName)));
 
+    /// <summary>
+    /// Стіл для тестів — зі старими типовими (до пакета 2: 6 хв × 3 раунди), під які ці тести писались; що не задано
+    /// в <paramref name="options"/>, береться звідти. Нові типові (1 × 4 хв) перевіряє свій тест через <see cref="Fresh"/>.
+    /// </summary>
     static RoomHarness Table(int players = 4, int seed = 1, object? options = null, SpyLocations? bank = null)
+    {
+        var o = JsonSerializer.SerializeToNode(options ?? new { })!.AsObject();
+        o["time"] ??= "6";
+        o["rounds"] ??= "3";
+        return Fresh(players, seed, o.ToDictionary(kv => kv.Key, kv => kv.Value!.GetValue<string>()), bank);
+    }
+
+    /// <summary>Стіл з опціями як є — без старих типових.</summary>
+    static RoomHarness Fresh(int players = 4, int seed = 1, object? options = null, SpyLocations? bank = null)
     {
         var h = new RoomHarness("spy", options, seed, RoomHarness.WithService(bank ?? Real.Value));
         for (var i = 0; i < players; i++) Assert.True(h.Join(Crew[i]).Ok);
@@ -201,9 +214,9 @@ public class SpyTests(ITestOutputHelper output)
         Assert.Equal((250, StartMode.ByHost, true, false, false), (info.TickMs, info.Start, info.Hidden, info.Rated, info.Persistent));
         var options = info.Options!.ToDictionary(o => o.Key);
         Assert.Equal(["4", "6", "8", "10"], options["time"].Values.Select(v => v.Value).ToArray());
-        Assert.Equal("6", options["time"].Default);
+        Assert.Equal("4", options["time"].Default);       // пакет 2: коротко типово — 1 раунд × 4 хв
         Assert.Equal(["1", "3", "5", Spy.EachRound], options["rounds"].Values.Select(v => v.Value).ToArray());
-        Assert.Equal("3", options["rounds"].Default);
+        Assert.Equal("1", options["rounds"].Default);
         Assert.True(options["set"].Multi);
         Assert.Equal(["all", "ua", "classic"], options["set"].Values.Select(v => v.Value).ToArray());
         Assert.Equal("10", RoomHarness.NewRegistry().Create("spy")!.SeatName(9));
@@ -225,12 +238,12 @@ public class SpyTests(ITestOutputHelper output)
     [Fact]
     public void Unknown_option_values_fall_back_to_defaults()
     {
-        var h = Table(3, options: new { time = "7", rounds = "2", set = "mars" });
+        var h = Fresh(3, options: new { time = "7", rounds = "2", set = "mars" });
         var rules = h.View(null).GetProperty("rules");
-        Assert.Equal(6, rules.GetProperty("minutes").GetInt32());
-        Assert.Equal(3, rules.GetProperty("rounds").GetInt32());
+        Assert.Equal(Spy.DefaultMinutes, rules.GetProperty("minutes").GetInt32());
+        Assert.Equal(Spy.DefaultRounds, rules.GetProperty("rounds").GetInt32());
         Assert.Equal(["all"], rules.GetProperty("sets").EnumerateArray().Select(x => x.GetString()!).ToArray());
-        Assert.Equal(3, h.View(null).GetProperty("of").GetInt32());
+        Assert.Equal(Spy.DefaultRounds, h.View(null).GetProperty("of").GetInt32());
     }
 
     [Fact]
@@ -1091,6 +1104,50 @@ public class SpyTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Default_is_one_four_minute_round_and_the_host_can_add_one_more_on_the_reveal()
+    {
+        // Пакет 2: типово коротко. На розкритті останнього раунду господар дає «▶ Ще раунд» — той самий склад,
+        // нова локація, рахунок накопичується; без нього партія кінчається підсумком.
+        var h = Fresh(4);
+        var rules = h.View(null).GetProperty("rules");
+        Assert.Equal((4, 1), (rules.GetProperty("minutes").GetInt32(), rules.GetProperty("rounds").GetInt32()));
+        var host = h.Room.SeatOf(h.Room.Host)!.Value;
+        ToPlay(h);
+        Assert.Equal(240_000, LeftMs(h));
+        Assert.False(h.View(host).GetProperty("more").GetBoolean());       // посеред раунду — ні
+        Assert.False(h.Act(host, "more", new { }).Ok);
+        var spy = SpySeat(h);
+        var loc1 = Location(h);
+        Assert.True(h.Act(spy, "guess", new { loc = loc1 }).Ok);
+        Assert.Equal("reveal", Phase(h));
+        var gained = Score(h, spy);
+        Assert.True(gained > 0);
+
+        var guest = Seated(h).First(s => s != host);
+        Assert.True(h.View(host).GetProperty("more").GetBoolean());
+        Assert.False(h.View(guest).GetProperty("more").GetBoolean());
+        Assert.False(h.View(null).GetProperty("more").GetBoolean());
+        Assert.False(h.Act(guest, "more", new { }).Ok);                     // лише господар
+
+        Assert.True(h.Act(host, "more", new { }).Ok, h.Reply.Message);
+        h.Tick();
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.Empty(h.Finished);
+        Assert.Equal((2, 2), (h.View(null).GetProperty("round").GetInt32(), h.View(null).GetProperty("of").GetInt32()));
+        Assert.Equal(2, h.View(null).GetProperty("rules").GetProperty("rounds").GetInt32());
+        Assert.Equal(gained, Score(h, spy));                                // рахунок партії лишився
+        ToPlay(h);
+        Assert.NotEqual(loc1, Location(h));                                 // нова локація
+
+        Misguess(h);
+        AllReady(h);
+        Assert.Equal("done", Phase(h));
+        Assert.Equal(2, h.View(null).GetProperty("history").GetArrayLength());
+        var fin = h.Finished.Single();
+        Assert.True(fin.Result.Scores![spy] >= gained);
+    }
+
+    [Fact]
     public void Rematch_resets_scores_rounds_and_spy_counts_and_deals_a_fresh_deck()
     {
         var h = Table(4, options: new { rounds = "1" });
@@ -1413,7 +1470,7 @@ public class SpyTests(ITestOutputHelper output)
         ToPlay(h);
         var view = h.View(0);
         foreach (var name in new[] { "phase", "round", "of", "endsAt", "phaseMs", "phaseLeftMs", "clock", "rules", "players", "asker", "askedBy",
-                     "askGrace", "vote", "blame", "deck", "me", "reveal", "history", "result", "names" })
+                     "askGrace", "vote", "blame", "deck", "me", "reveal", "more", "history", "result", "names" })
             Assert.True(Views.Has(view, name), name);
         foreach (var name in new[] { "endsAt", "leftMs", "paused", "totalMs" }) Assert.True(Views.Has(view.GetProperty("clock"), name), name);
         foreach (var name in new[] { "minutes", "rounds", "sets", "dealMs", "voteMs", "finalMs", "revealMs", "askGraceMs", "each" })
