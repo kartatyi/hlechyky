@@ -51,7 +51,7 @@ public sealed class Bomber : Game, IPartyMinigame
             new GameOption("shrink", "Стискання", [("0", "ні"), ("1", "з 90-ї секунди стіни сходяться")], "0"),
             new GameOption("chaos", "Бонуси", [("0", "💣 🔥 👟"), ("1", "хаос: ще 🧤 копняк і 💀 прокляття")], "0"),
             new GameOption("ghosts", "Підірвані", [("0", "чекають раунду"), ("1", "👻 привидами з помстою")], "0"),
-            new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3")], "0"),
+            new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3 за силою"), ("2", "команди 2×2 / 3×3 як сіли")], "0"),
             new GameOption("ff", "Свої бомби", [("0", "своїх не ранять"), ("1", "дружній вогонь")], "0"),
             LiveBots.LevelsOption,
         ],
@@ -82,7 +82,9 @@ public sealed class Bomber : Game, IPartyMinigame
     // опції столу
     BomberMap _map = BomberMap.Classic;
     string _size = "15";
-    bool _shrink, _chaos, _ghosts, _teamsOn, _ff;
+    bool _shrink, _chaos, _ghosts, _teamsOn, _teamsBySeat, _ff;
+    /// <summary>Хто з ким грав минулої партії — «Ще раз» за силою ділить трохи по-новому (TeamSplit).</summary>
+    readonly TeamSplit.Memory _split = new();
 
     /// <summary>Команда кожного місця на цю партію; null — кожен сам.</summary>
     int[]? _teams;
@@ -172,7 +174,8 @@ public sealed class Bomber : Game, IPartyMinigame
         _shrink = options.GetValueOrDefault("shrink") == "1";
         _chaos = options.GetValueOrDefault("chaos") == "1";
         _ghosts = options.GetValueOrDefault("ghosts") == "1";
-        _teamsOn = options.GetValueOrDefault("teams") == "1";
+        _teamsOn = options.GetValueOrDefault("teams") is TeamSplit.ByStrength or TeamSplit.BySeat;
+        _teamsBySeat = options.GetValueOrDefault("teams") == TeamSplit.BySeat;
         _ff = options.GetValueOrDefault("ff") == "1";
         _solo.Configure(options);
         _party = PartyMode.Read(options);
@@ -221,8 +224,8 @@ public sealed class Bomber : Game, IPartyMinigame
     }
 
     /// <summary>
-    /// Команди — лише на парному столі від чотирьох: 2×2 або 3×3. Місця за столом по черзі: перше, третє,
-    /// п'яте — «Огірки» (верхній край поля), друге, четверте, шосте — «Помідори» (нижній).
+    /// Команди — лише на парному столі від чотирьох: 2×2 або 3×3, «Огірки» проти «Помідорів». «За силою» (типово для
+    /// командного столу) — рівні суми сил (TeamSplit), «як сіли» — по черзі: перше, третє, п'яте місце — «Огірки».
     /// </summary>
     void SetupTeams()
     {
@@ -236,7 +239,11 @@ public sealed class Bomber : Game, IPartyMinigame
             return;
         }
         _teams = [.. Enumerable.Repeat(-1, BomberCore.Seats)];
-        for (var i = 0; i < seated.Length; i++) _teams[seated[i]] = i % 2;
+        // «як сіли» — через одного за місцями; «за силою» — рівні суми сил, щоразу трохи по-новому (люди й боти)
+        var split = _teamsBySeat ? TeamSplit.Alternate(seated.Length)
+            : TeamSplit.ForSeats(Ctx, Info.Id, seated, s => _isBot[s] ? _party?.Level ?? _solo.Level : null, _split);
+        for (var i = 0; i < seated.Length; i++) _teams[seated[i]] = split[i];
+        if (!_teamsBySeat) Ctx.Log(TeamSplit.Note);
     }
 
     /// <summary>Хто цього раунду на полі. Місця, з яких устали, назад не повертаються.</summary>

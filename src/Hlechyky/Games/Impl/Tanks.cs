@@ -29,7 +29,7 @@ public sealed class Tanks : Game
         Options:
         [
             new GameOption("frags", "Грати до", [("auto", "За столом"), ("5", "5 фрагів"), ("10", "10 фрагів"), ("15", "15 фрагів")], "auto"),
-            new GameOption("mode", "Грають", [("ffa", "кожен сам"), ("teams", "🏺 команди: бережи глек (2, 4, 6)"), ("waves", "🤖 разом проти хвиль (2–4)")], "ffa"),
+            new GameOption("mode", "Грають", [("ffa", "кожен сам"), ("teams", "🏺 команди за силою: бережи глек (2, 4, 6)"), ("teams-seat", "🏺 команди як сіли: бережи глек (2, 4, 6)"), ("waves", "🤖 разом проти хвиль (2–4)")], "ffa"),
             new GameOption("map", "Мапа", [("classic", "цегла й сталь"), ("wild", "🌳 з кущами й ❄ льодом")], "classic"),
             new GameOption("revenge", "Помста", [("0", "лише слава"), ("1", "😈 +1 фраг за помсту")], "0"),
             LiveBots.LevelsOption,
@@ -60,6 +60,9 @@ public sealed class Tanks : Game
     bool _wild, _revengeFrag;
     /// <summary>Команда кожного місця, коли команди справді вийшли (парний стіл); null — кожен сам.</summary>
     int[]? _teams;
+    /// <summary>Команди «як сіли» (через одного), а не за силою; хто з ким грав минулої партії — для «Ще раз» (TeamSplit).</summary>
+    bool _teamsBySeat;
+    readonly TeamSplit.Memory _split = new();
     /// <summary>Кооп проти хвиль 🤖 цієї партії.</summary>
     bool _coop;
     /// <summary>Чому обраного режиму не вийшло — показуємо на столі.</summary>
@@ -137,7 +140,9 @@ public sealed class Tanks : Game
     {
         _frags = options.TryGetValue("frags", out var v) && int.TryParse(v, out var n) && n is 5 or 10 or 15 ? n : 0;
         _need = _frags > 0 ? _frags : FragsFor(2);
-        _mode = options.GetValueOrDefault("mode") is "teams" or "waves" ? options["mode"] : "ffa";
+        _mode = options.GetValueOrDefault("mode") is "teams" or "teams-seat" or "waves" ? options["mode"] : "ffa";
+        _teamsBySeat = _mode == "teams-seat";
+        if (_teamsBySeat) _mode = "teams";
         _wild = options.GetValueOrDefault("map") == "wild";
         _revengeFrag = options.GetValueOrDefault("revenge") == "1";
         _solo.Configure(options);
@@ -179,7 +184,11 @@ public sealed class Tanks : Game
             if (seated.Length is 2 or 4 or 6)
             {
                 _teams = [.. Enumerable.Repeat(-1, TanksCore.Seats)];
-                for (var i = 0; i < seated.Length; i++) _teams[seated[i]] = i % 2;
+                // «як сіли» — через одного за місцями; «за силою» — рівні суми сил, щоразу трохи по-новому (люди й боти)
+                var split = _teamsBySeat ? TeamSplit.Alternate(seated.Length)
+                    : TeamSplit.ForSeats(Ctx, Info.Id, seated, s => _isBot[s] ? _solo.Level : null, _split);
+                for (var i = 0; i < seated.Length; i++) _teams[seated[i]] = split[i];
+                if (!_teamsBySeat && seated.Length > 2) Ctx.Log(TeamSplit.Note);
             }
             else _note = "Команд не буде: треба двоє, четверо або шестеро — граємо кожен сам";
         }

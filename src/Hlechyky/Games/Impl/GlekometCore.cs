@@ -178,6 +178,9 @@ public sealed class GlekometCore
     public readonly int[] OutOrder = new int[Seats];
     public int OutCount;
 
+    /// <summary>Команда кожного місця (за замовчуванням через одного; гра ставить свою — TeamSplit).</summary>
+    public readonly int[] TeamOf = [.. Enumerable.Range(0, Seats).Select(s => s % 2)];
+
     public GlekometCore(Random rng)
     {
         _rng = rng;
@@ -359,7 +362,7 @@ public sealed class GlekometCore
         hut.Hp = 0;
         hut.Alive = false;
         hut.Plays = false;
-        hut.Team = seat % 2;
+        hut.Team = seat % 2;   // для вигляду; правила беруть TeamOf
         hut.Poison = 0;
         hut.PoisonBy = -1;
         hut.Fuel = 0;
@@ -585,7 +588,7 @@ public sealed class GlekometCore
     {
         for (var m = 0; m < Seats; m++)
         {
-            if ((MagMask & (1 << m)) == 0 || m == s.Owner || (Teams && s.Owner >= 0 && m % 2 == s.Owner % 2)) continue;
+            if ((MagMask & (1 << m)) == 0 || m == s.Owner || (Teams && s.Owner >= 0 && TeamOf[m] == TeamOf[s.Owner])) continue;
             double dx = MagX[m] - s.X, dy = MagY[m] + 12 - s.Y, d2 = dx * dx + dy * dy;
             if (d2 >= MagR * MagR || d2 < 1) continue;
             var d = Math.Sqrt(d2);

@@ -280,7 +280,7 @@ public class CurveSweep3Tests
     [Fact]
     public void Teams_split_the_table_by_seating_order_and_play_to_ten_per_rival()
     {
-        var h = Table(4, new { teams = "1" });
+        var h = Table(4, new { teams = "2" });
         Assert.Equal([0, 1, 0, 1, -1, -1, -1, -1], Game(h).Teams);
         var v = h.View(0);
         Assert.Equal(20, v.GetProperty("target").GetInt32());
@@ -290,7 +290,7 @@ public class CurveSweep3Tests
     [Fact]
     public void An_odd_table_plays_every_man_for_himself_and_says_why()
     {
-        var h = Table(3, new { teams = "1" });
+        var h = Table(3, new { teams = "2" });
         Assert.Null(Game(h).Teams);
         Assert.Contains("Команд не буде", h.View(0).GetProperty("note").GetString());
     }
@@ -298,7 +298,7 @@ public class CurveSweep3Tests
     [Fact]
     public void A_team_scores_for_fallen_rivals_and_the_round_ends_when_one_team_is_left()
     {
-        var h = Table(4, new { teams = "1" });
+        var h = Table(4, new { teams = "2" });
         h.Tick(CurveCore.ReadyTicks);
         var field = Game(h).Field;
         // з «Ящірок» (місця 1 і 3) вилітає одна — «Вужам» очко, раунд триває
@@ -329,7 +329,7 @@ public class CurveSweep3Tests
     [Fact]
     public void When_a_whole_team_leaves_the_other_team_wins()
     {
-        var h = Table(4, new { teams = "1" });
+        var h = Table(4, new { teams = "2" });
         h.Tick(CurveCore.ReadyTicks);
         h.Leave(Nicks[1]);
         Assert.Empty(h.Finished);

@@ -624,7 +624,7 @@ public sealed class CurveGame : Game, IPartyMinigame
         [
             new GameOption("walls", "Стіни", [("0", "смертельні"), ("1", "🍩 нема — поле-тор")], "0"),
             new GameOption("bonus", "Бонуси", [("0", "без бонусів"), ("1", "⚡🐢🔄🧹🚪⬛ як в Achtung")], "0"),
-            new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3 / 4×4")], "0"),
+            new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3 / 4×4 за силою"), ("2", "команди 2×2 / 3×3 / 4×4 як сіли")], "0"),
             LiveBots.LevelsOption,
         ],
         Hint: "Їдеш уперед і лишаєш слід. Повертати можна тільки плавно. Врізався — вибув. Останній живий бере очко. До восьми за столом. Самому — з 🤖 ботами");
@@ -663,7 +663,9 @@ public sealed class CurveGame : Game, IPartyMinigame
     int[]? _winners;
 
     // опції столу
-    bool _wrap, _bonus, _teamsOn;
+    bool _wrap, _bonus, _teamsOn, _teamsBySeat;
+    /// <summary>Хто з ким грав минулої партії — «Ще раз» за силою ділить трохи по-новому (TeamSplit).</summary>
+    readonly TeamSplit.Memory _split = new();
     /// <summary>Команда кожного місця на цю партію (0/1, -1 — не грає); null — кожен сам.</summary>
     int[]? _teams;
     readonly int[] _teamPts = new int[2];
@@ -697,7 +699,8 @@ public sealed class CurveGame : Game, IPartyMinigame
     {
         _wrap = options.GetValueOrDefault("walls") == "1";
         _bonus = options.GetValueOrDefault("bonus") == "1";
-        _teamsOn = options.GetValueOrDefault("teams") == "1";
+        _teamsOn = options.GetValueOrDefault("teams") is TeamSplit.ByStrength or TeamSplit.BySeat;
+        _teamsBySeat = options.GetValueOrDefault("teams") == TeamSplit.BySeat;
         _solo.Configure(options);
         _party = PartyMode.Read(options);
         // Вечірка: стіни, без бонусів, кожен сам — одна коротка сутичка.
@@ -762,20 +765,25 @@ public sealed class CurveGame : Game, IPartyMinigame
         _teams = null;
         _note = null;
         if (!_teamsOn) return;
-        if (_bots.Length > 0)
+        var seated = Enumerable.Range(0, CurveCore.Seats).Where(s => _seats[s]).ToArray();
+        if (_bots.Length > 0 && seated.Count(s => !_bots.Contains(s)) < 2)
         {
-            // Боти — кожен сам за себе: «людина з ботом проти двох ботів» була б не соло, а лотерея напарника.
+            // Людина сама з ботами — кожен сам за себе: «людина з ботом проти двох ботів» була б лотерея напарника.
+            // Двоє-троє людей, яким боти доповнили стіл (пакет 1), — команди як завжди, боти йдуть у поділ за рівнем.
             _note = "З ботами команд нема — кожен сам";
             return;
         }
-        var seated = Enumerable.Range(0, CurveCore.Seats).Where(s => _seats[s]).ToArray();
         if (seated.Length is not (4 or 6 or 8))
         {
             _note = "Команд не буде: треба четверо, шестеро чи восьмеро — граємо кожен сам";
             return;
         }
         _teams = [.. Enumerable.Repeat(-1, CurveCore.Seats)];
-        for (var i = 0; i < seated.Length; i++) _teams[seated[i]] = i % 2;
+        // «як сіли» — через одного за місцями; «за силою» — рівні суми сил, щоразу трохи по-новому (люди й боти)
+        var split = _teamsBySeat ? TeamSplit.Alternate(seated.Length)
+            : TeamSplit.ForSeats(Ctx, Info.Id, seated, s => _bots.Contains(s) ? _party?.Level ?? _solo.Level : null, _split);
+        for (var i = 0; i < seated.Length; i++) _teams[seated[i]] = split[i];
+        if (!_teamsBySeat) Ctx.Log(TeamSplit.Note);
     }
 
     void NewRound()

@@ -1102,7 +1102,7 @@ public partial class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
     [Fact]
     public void Teams_option_pairs_even_and_odd_seats_and_the_team_wins_together()
     {
-        var h = Table(4, options: new { teams = "teams" });
+        var h = Table(4, options: new { teams = "seats" });
         Assert.True(V(h).GetProperty("teams").GetBoolean());
         Assert.Equal([0, 1, 0, 1], V(h).GetProperty("huts").EnumerateArray().Take(4).Select(x => x.GetProperty("team").GetInt32()));
         Ready(h);
@@ -1122,7 +1122,7 @@ public partial class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
     [Fact]
     public void In_teams_hitting_an_ally_is_counted_as_own_damage()
     {
-        var h = Table(4, options: new { teams = "teams" });
+        var h = Table(4, options: new { teams = "seats" });
         Ready(h);
         Flatten(h, 100, (0, 150), (1, 950), (2, 600), (3, 380));
         HitHut(h, 0, 2);
@@ -1134,7 +1134,7 @@ public partial class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
     [Fact]
     public void Teams_option_falls_back_to_free_for_all_on_odd_tables()
     {
-        var h = Table(3, options: new { teams = "teams" });
+        var h = Table(3, options: new { teams = "seats" });
         Assert.False(V(h).GetProperty("teams").GetBoolean());
         Assert.Contains("Команди — лише парним складом: граємо кожен за себе", V(h).GetProperty("log").EnumerateArray().Select(e => e.GetString()));
         Assert.False(Game(h).Teams);

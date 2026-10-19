@@ -253,7 +253,7 @@ public class MelodyModesTests
     [Fact]
     public void Teams_score_each_find_once_and_the_better_team_wins()
     {
-        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "1" }, Six);
+        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "2" }, Six);
         Until(h, "play");
         var teams = h.View(0).GetProperty("teams");
         Assert.Equal([0, 1, 0, 1, 0, 1], teams.GetProperty("of").EnumerateArray().Take(6).Select(x => x.GetInt32()));
@@ -285,7 +285,7 @@ public class MelodyModesTests
     [Fact]
     public void Teams_need_six_players()
     {
-        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "1" }, "Оля", "Петро", "Ганна", "Іван");
+        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "2" }, "Оля", "Петро", "Ганна", "Іван");
         Until(h, "play");
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("teams").ValueKind);
         Assert.Contains("Команд не буде", h.View(0).GetProperty("note").GetString());
@@ -351,7 +351,7 @@ public class MelodyModesTests
         Assert.Contains(1, Done(h));
 
         // команди: команда 0 має все — «готово» всім її гравцям, хоч особисто вони нічого не вгадали
-        var t = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "1" }, Six);
+        var t = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "2" }, Six);
         Until(t, "play");
         Assert.True(Guess(t, 0, "Океан Ельзи Обійми").Ok);
         Assert.Equal([0, 2, 4], Done(t));
@@ -452,7 +452,7 @@ public class MelodyModesTests
     [Fact]
     public void Team_player_leaving_mid_track_does_not_hang_and_the_team_still_wins()
     {
-        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "1" }, Six);
+        var h = Table(new FakeMelodySource(Songs), new { rounds = "5", teams = "2" }, Six);
         Until(h, "play");
         h.Clock.AdvanceMs(Melody.SpeedMs);
         Assert.True(Guess(h, 0, "Океан Ельзи Обійми").Ok);

@@ -1580,7 +1580,7 @@ public class IcefloeTests(ITestOutputHelper output)
     [Fact]
     public void Teams_need_an_even_table_of_four_or_more()
     {
-        var h = new RoomHarness("icefloe", new { teams = "on" }, 1);
+        var h = new RoomHarness("icefloe", new { teams = "seat" }, 1);
         foreach (var nick in Nicks.Take(3)) h.Join(nick);
         Assert.False(h.Start().Ok);
         Assert.Equal(Icefloe.TeamsText, h.Reply.Message);
@@ -1593,7 +1593,7 @@ public class IcefloeTests(ITestOutputHelper output)
     [Fact]
     public void A_team_takes_the_round_even_with_its_own_on_the_bank_and_wins_the_party_together()
     {
-        var h = new RoomHarness("icefloe", new { teams = "on", wins = "1" }, 1);
+        var h = new RoomHarness("icefloe", new { teams = "seat", wins = "1" }, 1);
         foreach (var nick in Nicks.Take(4)) h.Join(nick);
         Assert.True(h.Start().Ok);
         ToGo(h);

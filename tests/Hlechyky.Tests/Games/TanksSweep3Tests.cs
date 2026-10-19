@@ -388,7 +388,7 @@ public class TanksSweep3Tests
     [Fact]
     public void Teams_of_four_split_left_and_right_with_a_jug_each()
     {
-        var h = Table(4, options: new { mode = "teams" });
+        var h = Table(4, options: new { mode = "teams-seat" });
         var v = h.View(null);
         var teams = v.GetProperty("teams").EnumerateArray().Select(e => e.GetInt32()).ToArray();
         Assert.Equal([0, 1, 0, 1, -1, -1], teams);
@@ -403,7 +403,7 @@ public class TanksSweep3Tests
     [Fact]
     public void Teammates_do_not_hurt_each_other()
     {
-        var h = Table(4, options: new { mode = "teams" });
+        var h = Table(4, options: new { mode = "teams-seat" });
         Ready(h);
         var core = Core(h);
         Lane(core, 3, 5, 8);
@@ -419,7 +419,7 @@ public class TanksSweep3Tests
     [Fact]
     public void Breaking_the_enemy_jug_wins_for_the_whole_team()
     {
-        var h = Table(4, options: new { mode = "teams" });
+        var h = Table(4, options: new { mode = "teams-seat" });
         Ready(h);
         var core = Core(h);
         var jug = core.BaseCell[1];
@@ -437,7 +437,7 @@ public class TanksSweep3Tests
     [Fact]
     public void A_shell_of_my_own_team_does_not_break_my_jug()
     {
-        var h = Table(2, options: new { mode = "teams" });
+        var h = Table(2, options: new { mode = "teams-seat" });
         Ready(h);
         var core = Core(h);
         var jug = core.BaseCell[0];
@@ -452,7 +452,7 @@ public class TanksSweep3Tests
     [Fact]
     public void Teams_need_an_even_table_otherwise_everyone_plays_alone()
     {
-        var h = Table(3, options: new { mode = "teams" });
+        var h = Table(3, options: new { mode = "teams-seat" });
         var v = h.View(null);
         Assert.False(v.TryGetProperty("teams", out _));
         Assert.Contains("Команд не буде", v.GetProperty("note").GetString());

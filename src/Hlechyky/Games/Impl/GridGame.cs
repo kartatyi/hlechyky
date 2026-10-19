@@ -68,7 +68,8 @@ public abstract class GridGame : Game
     {
         ClockSeconds = options.TryGetValue("clock", out var c) && c is "20" ? 20 : 0;
         BotsWanted = Info.Options?.Any(o => o.Key == "bots") == true ? BoardBots.Read(options, Seats - 1) : 0;
-        Teams = options.TryGetValue("teams", out var t) && t == "1" && Seats == 4;
+        Teams = options.TryGetValue("teams", out var t) && t is TeamSplit.ByStrength or TeamSplit.BySeat && Seats == 4;
+        _pairsBySeat = t == TeamSplit.BySeat;
     }
 
     public override void Start()
@@ -77,6 +78,7 @@ public abstract class GridGame : Game
         _in = [.. Enumerable.Range(0, Seats).Select(s => Ctx.Seated(s) || _bots[s] is not null)];
         // Пари — лише коли за столом рівно четверо; утрьох грають кожен сам за себе.
         _pairs = Teams && _in.All(x => x);
+        SetupPairs();
         Prepare(_in.Count(x => x));
         _cells = new string?[Rules.Cells];
         _order = Rules.Keep > 0 ? [] : null;
@@ -91,10 +93,33 @@ public abstract class GridGame : Game
         Arm();
     }
 
-    bool _pairs;
+    bool _pairs, _pairsBySeat;
+    /// <summary>Напарник кожного місця в парах (як сіли — через одного) і черга ходів: пари завжди чергуються.</summary>
+    int[] _mate = [2, 3, 0, 1], _queue = [0, 1, 2, 3];
+    /// <summary>Хто з ким грав минулої партії — «Ще раз» за силою ділить трохи по-новому (TeamSplit).</summary>
+    readonly TeamSplit.Memory _split = new();
 
-    /// <summary>Напарник у парах 2×2 (через одного), інакше — сам.</summary>
-    int Partner(int seat) => _pairs ? (seat + 2) % 4 : seat;
+    /// <summary>Напарник у парах 2×2, інакше — сам.</summary>
+    int Partner(int seat) => _pairs ? _mate[seat] : seat;
+
+    /// <summary>
+    /// Пари на партію: «як сіли» — через одного (0+2 проти 1+3); «за силою» — рівні суми сил (TeamSplit), а черга
+    /// перебудовується так, щоб ходи пар чергувались: починає місце 0, далі суперник, напарник, другий суперник.
+    /// </summary>
+    void SetupPairs()
+    {
+        _mate = [2, 3, 0, 1];
+        _queue = [0, 1, 2, 3];
+        if (!_pairs || _pairsBySeat) return;
+        var seats = new[] { 0, 1, 2, 3 };
+        var t = TeamSplit.ForSeats(Ctx, Info.Id, seats, s => IsBot(s) ? LiveBots.Level.Normal : null, _split);
+        var mate = seats.Single(s => s != 0 && t[s] == t[0]);
+        var foes = seats.Where(s => t[s] != t[0]).ToArray();
+        _queue = [0, foes[0], mate, foes[1]];
+        _mate = new int[4];
+        _mate[0] = mate; _mate[mate] = 0; _mate[foes[0]] = foes[1]; _mate[foes[1]] = foes[0];
+        Ctx.Log(TeamSplit.Note);
+    }
 
     bool IsBot(int seat) => seat >= 0 && seat < _bots.Length && _bots[seat] is not null;
     public override string? SeatBot(int seat) => IsBot(seat) ? _bots[seat] : null;
@@ -210,12 +235,13 @@ public abstract class GridGame : Game
     /// <summary>На двох — суперник; для рядка Журналу.</summary>
     static int Other(int seat) => seat == 0 ? 1 : 0;
 
-    /// <summary>Наступне місце в черзі, що ще грає.</summary>
+    /// <summary>Наступне місце в черзі, що ще грає (у парах — за чергою пар).</summary>
     int Next(int seat)
     {
+        var at = _pairs ? Array.IndexOf(_queue, seat) : seat;
         for (var i = 1; i <= Seats; i++)
         {
-            var s = (seat + i) % Seats;
+            var s = _pairs ? _queue[(at + i) % Seats] : (seat + i) % Seats;
             if (_in[s]) return s;
         }
         return seat;
@@ -254,13 +280,13 @@ public abstract class GridGame : Game
         _in[seat] = false;
         var left = Enumerable.Range(0, Seats).Where(s => _in[s]).ToArray();
         // У парах пара жива, поки за столом хоч один із двох.
-        var sides = _pairs ? left.Select(s => s % 2).Distinct().Count() : left.Length;
+        var sides = _pairs ? left.Select(s => Math.Min(s, _mate[s])).Distinct().Count() : left.Length;
         // Людей не лишилось — Глеки самі з собою не догравають.
         var people = left.Any(s => !IsBot(s));
         if (sides <= 1 || !people)
         {
             _winner = left.Length >= 1 && (sides == 1 || left.Length == 1) ? Mark(left[0]) : "draw";
-            var won = _winner == "draw" ? [] : _pairs ? new[] { left[0] % 2, left[0] % 2 + 2 } : left;
+            var won = _winner == "draw" ? [] : _pairs ? new[] { Math.Min(left[0], _mate[left[0]]), Math.Max(left[0], _mate[left[0]]) } : left;
             // На двох вихід пишемо так само, як каркас пише техпоразку в усіх іграх (Game.OnLeave).
             Finish(won, won.Length >= 1 && (Seats > 2 || why != Left)
                 ? $"{Info.Title}: {Nick(seat)} {why}, " + (_pairs
@@ -317,6 +343,8 @@ public abstract class GridGame : Game
         bots = _bots.Any(b => b is not null) ? (string?[])_bots.Clone() : null,
         botIn = _botAt is { } at ? Math.Max(0, (int)(at - Ctx.Clock.UtcNow).TotalMilliseconds) : (int?)null,
         pairs = _pairs,
+        // напарник кожного місця (за силою пари будь-які, не лише через одного)
+        mates = _pairs ? (int[])_mate.Clone() : null,
         series = _series.View(Ctx, Seats),
     };
     /// <summary>Зникаючий режим: гравець поставив зайву мітку — найстаріша його щезає з поля.</summary>
@@ -414,7 +442,7 @@ public sealed class ConnectFourParty : GridGame
         "c4x", "Чотири в ряд: компанія", "чотири в ряд на компанію", GameGroup.Board, 1, 4, Start: StartMode.ByHost,
         Options:
         [
-            new GameOption("teams", "Склад", [("0", "кожен сам за себе"), ("1", "👥 пари 2×2: через одного, четвірка з фішок напарника теж рахується")], "0"),
+            new GameOption("teams", "Склад", [("0", "кожен сам за себе"), ("1", "👥 пари 2×2 за силою, четвірка з фішок напарника теж рахується"), ("2", "👥 пари 2×2 як сіли (через одного)")], "0"),
             ConnectFour.Clock,
             BoardBots.Option(3),
         ],

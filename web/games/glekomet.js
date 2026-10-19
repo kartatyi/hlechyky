@@ -74,6 +74,12 @@
   // Стан картки
   // =============================================================================================
 
+  /// Команда хати: з виду (за силою — будь-як), а поки виду нема — через одного, як було.
+  function teamOf(st, i) {
+    const h = st.huts && st.huts[i];
+    return h && (h.team === 0 || h.team === 1) ? h.team : i % 2;
+  }
+
   function newHut(i) {
     return { seat: i, x: 0, y: 0, hp: 0, alive: false, plays: false, team: i % 2, poison: 0, fuel: 0, skips: 0, reason: '',
       dx: 0, dy: 0, anim: null, ruined: false };
@@ -692,7 +698,7 @@
       st.bestTurn = st.turnNo;
       const by = v.last.by;
       let dmg = 0;
-      for (const hit of v.last.hits || []) if (hit.kind === 'hit' && hit.seat !== by && !(st.teams && hit.seat % 2 === by % 2)) dmg += hit.dmg;
+      for (const hit of v.last.hits || []) if (hit.kind === 'hit' && hit.seat !== by && !(st.teams && teamOf(st, hit.seat) === teamOf(st, by))) dmg += hit.dmg;
       const tr = st.trails[by];
       if (dmg > 0 && (!st.best || dmg > st.best.dmg) && tr && tr.length >= 4) st.best = { seat: by, dmg, pts: tr.slice() };
     }
@@ -878,7 +884,7 @@
       // команда видна здалеку: прапор на димарі й смуга кольору команди під колесами (плюс колір ніка в табличці)
       g.strokeStyle = pal.ink; g.lineWidth = 1.2;
       g.beginPath(); g.moveTo(x + 8, Y - 36); g.lineTo(x + 8, Y - 53); g.stroke();
-      g.fillStyle = TEAM_FLAG[i % 2];
+      g.fillStyle = TEAM_FLAG[teamOf(st, i)];
       g.beginPath(); g.moveTo(x + 8, Y - 53); g.lineTo(x + 21, Y - 49); g.lineTo(x + 8, Y - 45); g.closePath(); g.fill();
       g.globalAlpha = 0.9;
       g.fillRect(x - 23, Y - 0.5, 46, 3.5);
@@ -958,7 +964,7 @@
     const ty = top - (hut.alive ? 5.5 * k : 0);
     const label = tagLabel(st, name);
     g.strokeText(label, lx, ty);
-    g.fillStyle = hut.alive ? (st.turn === i && st.phase !== 'over' ? pal.accent : st.teams ? TEAM_TEXT[i % 2] : pal.text) : pal.muted;
+    g.fillStyle = hut.alive ? (st.turn === i && st.phase !== 'over' ? pal.accent : st.teams ? TEAM_TEXT[teamOf(st, i)] : pal.text) : pal.muted;
     g.fillText(label, lx, ty);
     if (mine) {
       const ay = ty - 15 * k + (st.calm ? 0 : Math.sin(now / 260) * 1.5 * k);
@@ -2061,9 +2067,9 @@
       // На вузькому екрані ніки в чіпах сховані (їх і так показують пігулки місць над столом і таблички на полі),
       // лишається колір, ❤ і «ти» на своєму — інакше над полем було шість рядів про те саме.
       html += '<span class="gk-chip' + (alive ? '' : ' out') + (turn ? ' turn' : '') + (i === mine ? ' me' : '') + '" title="' + ctx.esc(nick) + ' · ' + ctx.esc(ctx.seatName(i)) + ' хата'
-        + (st.teams ? ' · команда ' + (i % 2 ? 'непарних' : 'парних') : '') + '">'
+        + (st.teams ? ' · команда ' + (teamOf(st, i) ? '🔵' : '🔴') : '') + '">'
         + '<i class="gk-dot" style="background:' + st.pal.seats[i] + '"></i>'
-        + (st.teams ? '<span>' + (i % 2 ? '🔵' : '🔴') + '</span>' : '')
+        + (st.teams ? '<span>' + (teamOf(st, i) ? '🔵' : '🔴') + '</span>' : '')
         + '<span class="gk-nick">' + ctx.esc(nick) + '</span>'
         + (i === mine ? '<span class="gk-you">ти</span>' : '')
         + (alive ? '<span class="gk-hp">❤' + hp + '</span>' : '<span>⛔</span>')
@@ -2183,18 +2189,20 @@
     if (!show) { E.sig.sum = ''; return; }
     const r = st.result;
     const rows = [];
-    // у командах — спершу парні 🔴, потім непарні 🔵, щоб було видно, хто з ким
+    // у командах — спершу 🔴, потім 🔵, щоб було видно, хто з ким
     let odd = false;
-    for (const i of st.teams ? [0, 2, 4, 1, 3, 5] : [0, 1, 2, 3, 4, 5]) {
+    const order = [0, 1, 2, 3, 4, 5];
+    if (st.teams) order.sort((a, b) => teamOf(st, a) - teamOf(st, b) || a - b);
+    for (const i of order) {
       const hut = st.huts[i];
       if (!hut.plays) continue;
       const s = st.stats[i] || {};
       const win = (r.winners || []).includes(i);
-      const split = st.teams && i % 2 === 1 && !odd;                  // риска між командами
+      const split = st.teams && teamOf(st, i) === 1 && !odd;          // риска між командами
       if (split) odd = true;
       const cls = (win ? 'win' : '') + (split ? ' gk-team2' : '');
       rows.push('<tr' + (cls ? ' class="' + cls.trim() + '"' : '') + '><td><i class="gk-dot" style="background:' + st.pal.seats[i] + '"></i>'
-        + (st.teams ? (i % 2 ? '🔵 ' : '🔴 ') : '')
+        + (st.teams ? (teamOf(st, i) ? '🔵 ' : '🔴 ') : '')
         + ctx.esc(nickOf(st, i)) + (win ? ' 🏆' : '') + (st.wins[i] ? ' <span class="gk-star">★' + st.wins[i] + '</span>' : '') + '</td>'
         + '<td>' + (s.dmg || 0) + '</td><td>' + (s.hits || 0) + '/' + (s.shots || 0) + '</td><td>' + (s.kills || 0) + '</td><td>' + (s.self || 0) + '</td></tr>');
     }

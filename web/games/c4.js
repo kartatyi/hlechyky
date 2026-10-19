@@ -205,9 +205,11 @@
     };
     let html = '';
     if (v.pairs && ctx.playing) {
-      // Пари через одного: жовті з рудими проти зелених з білими.
-      html = '<span class="c4pair">' + who(0) + '<i>+</i>' + who(2) + '</span><span class="c4vs">⚔</span>'
-        + '<span class="c4pair">' + who(1) + '<i>+</i>' + who(3) + '</span>';
+      // Пари: як сіли — через одного (жовті з рудими проти зелених з білими), за силою — будь-які (mates з сервера).
+      const m = Array.isArray(v.mates) && v.mates.length === 4 ? v.mates : [2, 3, 0, 1];
+      const a = m[0], b = [1, 2, 3].find(i => i !== a), c = m[b];
+      html = '<span class="c4pair">' + who(0) + '<i>+</i>' + who(a) + '</span><span class="c4vs">⚔</span>'
+        + '<span class="c4pair">' + who(b) + '<i>+</i>' + who(c) + '</span>';
     } else for (let i = 0; i < (ctx.room.maxPlayers || 4); i++) html += who(i);
     setHtml(el, html);
   }
@@ -272,7 +274,7 @@
         let people = 0;
         for (let i = 0; i < 4; i++) if (ctx.nickOf(i)) people++;
         const bots = +(opt.bots || 0);
-        if (opt.teams === '1' && people + bots < 4) return '👥 Пари 2×2 — чекаємо, поки сяде четверо (або відкрий стіл з 🤖 Глеком)';
+        if ((opt.teams === '1' || opt.teams === '2') && people + bots < 4) return '👥 Пари 2×2 — чекаємо, поки сяде четверо (або відкрий стіл з 🤖 Глеком)';
         return people + bots < 3 ? 'Чекаємо, хто підсяде: треба троє (або відкрий стіл з «🤖 Глек підсідає»)' : '';
       }
       if (!ctx.playing || v.turn == null) return '';
