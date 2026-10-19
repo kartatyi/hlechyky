@@ -379,7 +379,7 @@
     const list = (v.reveal && v.reveal.bets) || [];
     if (!list.length) return '';
     return '<div class="skbets small"><b>🎲 Ставки:</b> ' + list.map((b) => '<span class="' + (b.ok ? 'ok' : 'no') + '">'
-      + ctx.esc(ctx.nickOf(b.seat) || ctx.seatName(b.seat)) + ' → ' + ctx.esc(ctx.nickOf(b.on) || ctx.seatName(b.on))
+      + ctx.esc(nameAt(ctx, b.seat) || ctx.seatName(b.seat)) + ' → ' + ctx.esc(nameAt(ctx, b.on) || ctx.seatName(b.on))
       + (b.ok ? ' ✓ +2' : ' ✗') + '</span>').join(' ') + '</div>';
   }
 
@@ -394,7 +394,7 @@
         const own = x.seat === ctx.seat;
         const on = bet.on === x.seat;
         return '<button type="button" class="skbetb' + (on ? ' on' : '') + '" data-bet="' + x.seat + '"'
-          + (!can || own ? ' disabled' : '') + '><span>' + ctx.esc(ctx.nickOf(x.seat) || ctx.seatName(x.seat)) + (own ? ' (ти)' : '')
+          + (!can || own ? ' disabled' : '') + '><span>' + ctx.esc(nameAt(ctx, x.seat) || ctx.seatName(x.seat)) + (own ? ' (ти)' : '')
           + '</span><b>' + yearOr(unit, x.value) + '</b></button>';
       }).join('') + '</div>';
   }
@@ -407,11 +407,11 @@
     const cap = t.captain === ctx.seat;
     const unit = v.unit === 'рік';
     const head = '<div class="skteamh ' + TEAM_CLASS[t.t] + '"><b>' + ctx.esc(team.name || '') + '</b> · капітан: '
-      + ctx.esc(ctx.nickOf(t.captain) || '—') + (cap ? ' <i>(ти — подаєш число команди)</i>' : '') + '</div>';
+      + ctx.esc(nameAt(ctx, t.captain) || '—') + (cap ? ' <i>(ти — подаєш число команди)</i>' : '') + '</div>';
     const fin = t.final != null ? '<div class="skteamf">✅ Подано від команди: <b>' + yearOr(unit, t.final) + '</b></div>' : '';
     const rows = (t.drafts || []).map((d) => {
       const own = d.seat === ctx.seat;
-      return '<div class="skdraft"><span>' + ctx.esc(ctx.nickOf(d.seat) || '') + '</span><b>' + yearOr(unit, d.value) + '</b>'
+      return '<div class="skdraft"><span>' + ctx.esc(nameAt(ctx, d.seat) || '') + '</span><b>' + yearOr(unit, d.value) + '</b>'
         + '<span class="skvotes">' + (own ? '<i>👍 ' + d.up + ' · 👎 ' + d.down + '</i>'
           : '<button type="button" class="ghost' + (d.mine > 0 ? ' on' : '') + '" data-vote="' + d.seat + '" data-up="1">👍 ' + d.up + '</button>'
           + '<button type="button" class="ghost' + (d.mine < 0 ? ' on' : '') + '" data-vote="' + d.seat + '" data-up="0">👎 ' + d.down + '</button>')
@@ -425,7 +425,7 @@
   function teamsLine(ctx, v) {
     if (!v.teams) return '';
     return '<div class="skteams small">' + v.teams.map((t, i) => '<span class="' + TEAM_CLASS[i] + '"><b>' + ctx.esc(t.name) + '</b> '
-      + t.seats.map((s) => ctx.esc(ctx.nickOf(s) || '')).join(', ') + '</span>').join('') + '</div>';
+      + t.seats.map((s) => ctx.esc(nameAt(ctx, s) || '')).join(', ') + '</span>').join('') + '</div>';
   }
 
   /// «Питання про нас» (№44): форма в лобі й між партіями.
@@ -605,9 +605,10 @@
   const MOD = {
     id: 'skilky',
     news: {
-      v: '2026-09-29',
-      title: 'Скільки?: ставки, команди, питання про нас і фото',
+      v: '2026-10-20',
+      title: 'Скільки?: 🤖 боти за столом',
       items: [
+        '🤖 «+ боти» в лобі: сам чи удвох — боти доповнять стіл до чотирьох, пишуть числа, ставлять на чуже й грають у командах',
         '📷 Нова тема «Якого року?»: 140 фото подій, людей і дивовиж 1851–2022 — вгадай рік зйомки; тап по фото — на весь екран',
         '☀ «Скільки? дня»: п’ять питань, однакових для всіх, таблиця дня й рядок для Балачок',
         '🎲 «Ставлю на чуже» (опція): числа на столі без правди — вгадай, чиє найближче, +2',

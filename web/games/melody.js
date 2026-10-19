@@ -347,7 +347,7 @@
     const waiting = [];
     if (v.phase === 'play') {
       for (let i = 0; i < seatsOf(ctx); i++) {
-        if (!ctx.nickOf(i) || (v.left || []).indexOf(i) >= 0 || benchedAt(v, i)) continue;
+        if (!nickAt(ctx, v, i) || (v.left || []).indexOf(i) >= 0 || benchedAt(v, i)) continue;
         const f = (v.found || []).find((x) => x.seat === i);
         if (v.done ? isDone(i) : (f && f.artist && f.title)) continue;
         waiting.push(i);
@@ -357,7 +357,7 @@
     // ніків розтягувався на пів екрана телефона.
     const ready = !skip.length ? ''
       : skip.length > 3 ? '⏭ ' + skip.length + ' з ' + waiting.length + ' — за пропуск'
-        : '⏭ ' + skip.map((i) => ctx.esc(ctx.nickOf(i) || '')).join(', ') + ' — за пропуск';
+        : '⏭ ' + skip.map((i) => ctx.esc(nickAt(ctx, v, i))).join(', ') + ' — за пропуск';
     const html = v.phase !== 'play' ? ''
       : (can ? '<button type="button" class="' + (mineSkip ? 'primary' : 'ghost') + ' mgskipbtn">'
         + (mineSkip ? '⏭ Я за пропуск (' + skip.length + '/' + waiting.length + ')' : '⏭ Пропустити') + '</button>' : '')
@@ -379,11 +379,14 @@
     if (o.choices === '1') bits.push('🔘 В останні 5 с уривка — 4 виконавці на вибір (за них удвічі менше); не той — трек без тебе');
     if (o.duel === '1') bits.push('⚔️ Останній трек — дуель двох лідерів, решта вгадує, хто візьме (+50)');
     if (String(o.cat || '').split(',').indexOf('who') >= 0) bits.push('📻 «Хто закинув?» — ваші замовлення з радіо: після виконавця чи назви назви ще й хто закинув (+50)');
+    // 🤖 + боти (пакет 2): як грають — щоб «бот угадав за дві секунди» не здавалось підглядом
+    if (ctx.view && ctx.view.botWanted) bits.push('🤖 Боти вгадують за рівнем: легкий — рідко й повільно, сильний — часто й швидко'
+      + (String(o.cat || '').split(',').indexOf('who') >= 0 ? '; хто закинув — не називають' : '') + '. Сам із ботами — без нагород');
     return bits.length ? '<div class="mghints">' + bits.map((b) => '<div>' + ctx.esc(b) + '</div>').join('') + '</div>' : '';
   }
 
   const nickBtn = (ctx, i, cls, data, on) => '<button type="button" class="' + (on ? 'primary' : 'ghost') + ' ' + cls + '" data-v="' + data + '">'
-    + ctx.esc(ctx.nickOf(i) || '') + '</button>';
+    + ctx.esc((ctx.nameOf && ctx.nameOf(i)) || ctx.nickOf(i) || '') + '</button>';
 
   function extra(root, ctx, v) {
     const el = root.querySelector('.mgextra');
@@ -479,10 +482,10 @@
     }).join('') + '</div>';
   }
 
-  /// Нік місця; після партії — і тих, хто вже встав з-за столу: підсумок не має губити переможця.
+  /// Нік місця (чи 🤖 бот — ctx.nameOf); після партії — і тих, хто вже встав з-за столу: підсумок не має губити переможця.
   function nickAt(ctx, v, i) {
     const res = v.phase === 'done' && v.result;
-    return ctx.nickOf(i) || (res && res.nicks && res.nicks[i]) || '';
+    return ctx.nickOf(i) || (ctx.nameOf && ctx.nameOf(i)) || (res && res.nicks && res.nicks[i]) || '';
   }
 
   /// Шапка після партії: хто переміг і з чим, а не просто «Партію зіграно».
@@ -550,9 +553,10 @@
     id: 'melody',
     added: '2026-09-17',          // нова гра: «🆕» у лобі два тижні тим, хто ще не грав (core.js, isNewGame)
     news: {
-      v: '2026-09-29',
-      title: 'Вгадай мелодію: дуель, команди і «Хто закинув?»',
+      v: '2026-10-20',
+      title: 'Вгадай мелодію: 🤖 боти-вгадувачі',
       items: [
+        '🤖 «+ боти» в лобі: сам чи удвох — боти доповнять стіл до чотирьох; рівень — опцією (легкий, звичайний, сильний)',
         '⚡ Впізнав за перші 5 секунд — +20 очок; «з першої ноти»: уривок росте 3 → 6 → 10 с, хто раніше — той з бонусом',
         '📻 «Хто закинув?» — пісні, які ви самі ставили на радіо: впізнав пісню — назви ще й хто її закинув (+50)',
         '🔘 Варіанти: в останні 5 секунд уривка — чотири виконавці на вибір (для телефона й Деки), не той — трек без тебе',
