@@ -1026,6 +1026,60 @@ public class LiveAdsTests
     }
 
     [Fact]
+    public async Task Failed_render_makes_the_kitchen_rest_longer_each_time_up_to_the_ceiling()
+    {
+        using var r = new Rig();
+        r.O.RetryMaxMinutes = 2;
+        r.Online("владік");
+        Juicy(r, "владік");
+        r.Render.Fail = true;
+        async Task<int> TickAfter(double seconds)
+        {
+            r.Clock.Advance(seconds);
+            await r.Live.TickAsync(default);
+            return r.Render.Scripts.Count;
+        }
+
+        Assert.Equal(1, await TickAfter(0));                                  // не спеклось — відпочинок 1 хв
+        Assert.Equal(1, await TickAfter(20));                                 // кроки йдуть, а в edge-tts не стукають
+        Assert.Equal(1, await TickAfter(39));
+        Assert.Equal(2, await TickAfter(1));                                  // хвилина минула — ще спроба, далі 2 хв
+        Assert.Equal(2, await TickAfter(119));
+        Assert.Equal(3, await TickAfter(1));                                  // далі було б 4 хв, але стеля — 2
+        Assert.Equal(3, await TickAfter(119));
+        Assert.Equal(4, await TickAfter(1));
+    }
+
+    [Fact]
+    public async Task Order_does_not_wait_for_the_rest_and_a_success_resets_it()
+    {
+        using var r = new Rig();
+        r.Online("владік");
+        Juicy(r, "владік");
+        r.Account("Назар");
+        r.Eco.Economy.Grant("Назар", 1000, "award");
+        r.Render.Fail = true;
+        await r.Live.TickAsync(default);
+        Assert.Single(r.Render.Scripts);                                     // прожарка не спеклась — кухня відпочиває
+
+        r.Render.Fail = false;
+        var id = r.Live.Order("Назар", true, "владік", false).Id!.Value;
+        r.Clock.Advance(1);
+        await r.Live.TickAsync(default);
+        Assert.Equal("ready", r.Store.Get(id)!.Status);                      // замовлене пече й під час відпочинку
+        Assert.Contains(r.Store.WithStatus("ready"), x => x.Kind == "roast"); // вдале скинуло відпочинок — прожарка тут же
+
+        r.Render.Fail = true;
+        r.Clock.Advance(TimeSpan.FromMinutes(31));                           // прожарка наперед протухла
+        var before = r.Render.Scripts.Count;
+        await r.Live.TickAsync(default);
+        Assert.Equal(before + 1, r.Render.Scripts.Count);
+        r.Clock.Advance(60);
+        await r.Live.TickAsync(default);
+        Assert.Equal(before + 2, r.Render.Scripts.Count);                     // лік невдач почався наново: 1 хв, а не 2
+    }
+
+    [Fact]
     public async Task Old_files_are_cleaned_but_the_last_twenty_stay()
     {
         using var r = new Rig();
@@ -1075,6 +1129,46 @@ public class LiveAdsTests
         }
 
         public Task<double> DurationAsync(string path, CancellationToken ct) => Task.FromResult(2.0);
+    }
+
+    /// <summary>edge-tts, як 12–20.10: файл створює ще до рукостискання, а озвучує лише перші <paramref name="okLines"/> реплік.</summary>
+    sealed class DeadTts(int okLines) : ITtsEngine
+    {
+        public int Calls;
+        public Task<bool> SynthesizeAsync(string voice, string text, string rate, int pauseMs, string outPath, CancellationToken ct)
+        {
+            var ok = Calls++ < okLines;
+            File.WriteAllText(outPath, ok ? "mp3" : "");
+            return Task.FromResult(ok);
+        }
+
+        public Task<double> DurationAsync(string path, CancellationToken ct) => Task.FromResult(2.0);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task Failed_line_leaves_no_empty_part_behind(int okLines)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "hlechyky-parts-" + Guid.NewGuid().ToString("N")[..8]);
+        var beds = Path.Combine(dir, "beds");
+        Directory.CreateDirectory(beds);
+        try
+        {
+            // До ffmpeg справа не доходить — досить, що він і підкладка є на диску
+            File.WriteAllText(Path.Combine(dir, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"), "");
+            File.WriteAllText(Path.Combine(beds, "hold.mp3"), "");
+            var tts = new DeadTts(okLines);
+            var renderer = new FfmpegLiveRenderer(tts, new FixedOptions<LiveAdsOptions>(new LiveAdsOptions { BedsDir = beds }),
+                new FixedOptions<TtsOptions>(new TtsOptions()), new FixedOptions<YtDlpOptions>(new YtDlpOptions { FfmpegDir = dir, CacheDir = dir }),
+                NullLogger<FfmpegLiveRenderer>.Instance);
+            var script = new LiveScript("roast", "polka",
+                [new LiveLine(LiveLines.Polina, "Раз", "-4%"), new LiveLine(LiveLines.Glek, "Два", "-4%")], ["x"]);
+            Assert.Null(await renderer.RenderAsync(script, Path.Combine(dir, "voice-live-1.mp3"), default));
+            Assert.Equal(okLines + 1, tts.Calls);
+            Assert.Empty(Directory.GetFiles(Path.Combine(dir, "liveads", "parts")));   // ні вдалої, ні порожньої
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
     }
 
     [FfmpegFact]

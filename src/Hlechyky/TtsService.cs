@@ -54,7 +54,16 @@ public sealed class EdgeTtsEngine(IOptionsMonitor<TtsOptions> options, IOptionsM
     EdgeWorker? _worker;
     /// <summary>Коли живий процес не піднявся — не пробуємо знову до цього часу (а поки — окремі запуски).</summary>
     DateTimeOffset _workerRetry;
+    /// <summary>Скільки відмов <c>{"ok": false}</c> поспіль дав нинішній живий процес.</summary>
+    int _workerFails;
     bool _disposed;
+
+    /// <summary>
+    /// Стільки відмов поспіль — і живий процес прибирається, наступна репліка підніме свіжий python (~1,8 с). Одна
+    /// відмова — ще випадковість (мережа), а поспіль — схоже, що процес тримає в пам'яті зламаний edge_tts: 12–20.10
+    /// Microsoft давав 403 старому токену, і <c>pip install -U edge-tts</c> не діяв, поки процес жив.
+    /// </summary>
+    public const int RecycleAfterFails = 2;
 
     public async Task<bool> SynthesizeAsync(string voice, string text, string rate, int pauseMs, string outPath, CancellationToken ct)
     {
@@ -89,6 +98,7 @@ public sealed class EdgeTtsEngine(IOptionsMonitor<TtsOptions> options, IOptionsM
                 _worker = null;
                 if (DateTimeOffset.UtcNow < _workerRetry) return (null, "");
                 _worker = await EdgeWorker.StartAsync(python, Path.GetDirectoryName(outPath) ?? Paths.Root, log, ct);
+                _workerFails = 0;
                 if (_worker is null)
                 {
                     _workerRetry = DateTimeOffset.UtcNow + EdgeWorker.RetryAfter;
@@ -102,6 +112,13 @@ public sealed class EdgeTtsEngine(IOptionsMonitor<TtsOptions> options, IOptionsM
                 _worker.Dispose();
                 _worker = null;
                 return (false, "живий edge-tts не вклався в час");
+            }
+            if (reply.Value.Ok == true) _workerFails = 0;
+            else if (++_workerFails >= RecycleAfterFails)
+            {
+                log.LogInformation("edge-tts: живий процес не озвучив {Fails} рази поспіль — наступна репліка підніме новий", _workerFails);
+                _worker.Dispose();
+                _worker = null;
             }
             return reply.Value;
         }
