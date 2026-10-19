@@ -249,13 +249,28 @@ public sealed class Icefloe : Game, IPartyMinigame
                 return Core.Dash(seat) is { } no ? ActResult.Fail(no) : ActResult.Done;
             case "throw":
                 if (_ph != PhGo) return ActResult.Fail("Зачекай, зараз почнемо");
-                return Core.Throw(seat) is { } nope ? ActResult.Fail(nope) : ActResult.Done;
+                if (Aim(payload) is not { } ta) return ActResult.Fail("Такого напрямку нема");
+                return Core.Throw(seat, ta.A, ta.D) is { } nope ? ActResult.Fail(nope) : ActResult.Done;
             case "chip":
                 if (_ph != PhGo) return ActResult.Fail("Зачекай, зараз почнемо");
-                return Core.Chip(seat) is { } no2 ? ActResult.Fail(no2) : ActResult.Done;
+                if (Aim(payload) is not { } ca) return ActResult.Fail("Такого напрямку нема");
+                return Core.Chip(seat, ca.A, ca.D) is { } no2 ? ActResult.Fail(no2) : ActResult.Done;
             default:
                 return ActResult.Fail("Тут так не ходять");
         }
+    }
+
+    /// <summary>
+    /// Куди кинути сніжку чи колоти: без напрямку (<c>{}</c>, нічого) — куди дивишся; <c>{ d: 0..359 }</c> — точний кут
+    /// у градусах (правий стік пада, мишка); <c>{ a: 0..15 }</c> чи голе число — сектор. Інше — null, відмова.
+    /// </summary>
+    static (int A, int D)? Aim(JsonElement payload)
+    {
+        if (payload.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return (-1, -1);
+        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("d", out var d))
+            return d.ValueKind == JsonValueKind.Number && d.TryGetInt32(out var deg) && deg is >= 0 and < 360 ? (-1, deg) : null;
+        if (payload.ValueKind == JsonValueKind.Object && !payload.TryGetProperty("a", out _)) return (-1, -1);
+        return Sector(payload) is { } a && a is >= -1 and <= 15 ? (a, -1) : null;
     }
 
     /// <summary>Сектор приймаємо і як <c>{ a: 5 }</c>, і як голе <c>5</c> — лише ціле число.</summary>
@@ -585,7 +600,7 @@ public sealed class Icefloe : Game, IPartyMinigame
 
     /// <summary>
     /// Кадр — пласкі масиви цілих (spec §4.2): <c>p</c> за місцями [x, y, vx, vy, face, fl, cd, ammo] (null —
-    /// не грає), <c>s</c> сніжки [id, x, y, vx, vy], <c>k</c> підбирачки [x, y, kind], <c>ev</c> події тика.
+    /// не грає), <c>s</c> сніжки [id, x, y, vx, vy, власник], <c>k</c> підбирачки [x, y, kind], <c>ev</c> події тика.
     /// Масиви нові щоразу: кадр серіалізують уже поза замком кімнати.
     /// </summary>
     /// <summary>Тріщини від вибулих, що ось-ось відколються: [вершина, довжина, тиків лишилось]; null — нема.</summary>
@@ -608,7 +623,7 @@ public sealed class Icefloe : Game, IPartyMinigame
             var b = c.Bodies[i];
             if (!b.Plays) continue;
             var fl = (b.Alive ? 1 : 16) | (b.Spikes > 0 ? 2 : 0) | (b.Jug > 0 ? 4 : 0) | (b.Hit > 0 ? 8 : 0) | (b.Want >= 0 ? 32 : 0)
-                | (!b.Alive && !b.ChipUsed ? 64 : 0) | (b.Skates > 0 ? 128 : 0) | (b.Fist > 0 ? 256 : 0) | (b.Frozen > 0 ? 512 : 0);
+                | (!b.Alive && !b.ChipUsed ? 64 : 0) | (b.Skates > 0 ? 128 : 0) | (b.Fist > 0 ? 256 : 0) | (b.Frozen > 0 ? 512 : 0) | (b.Dazed > 0 ? 1024 : 0);
             p[i] = b.Alive
                 ? [(int)Math.Round(b.B.X), (int)Math.Round(b.B.Y), (int)Math.Round(b.B.Vx), (int)Math.Round(b.B.Vy), b.Face, fl, b.Cd, b.Ammo]
                 : [(int)Math.Round(b.B.X), (int)Math.Round(b.B.Y), 0, 0, b.Face, fl, b.ThrowCd, b.BankAmmo];
@@ -618,7 +633,7 @@ public sealed class Icefloe : Game, IPartyMinigame
         var s = new int[balls][];
         var n = 0;
         foreach (var ball in c.Balls)
-            if (ball.On) s[n++] = [ball.Id, (int)Math.Round(ball.X), (int)Math.Round(ball.Y), (int)Math.Round(ball.Vx), (int)Math.Round(ball.Vy)];
+            if (ball.On) s[n++] = [ball.Id, (int)Math.Round(ball.X), (int)Math.Round(ball.Y), (int)Math.Round(ball.Vx), (int)Math.Round(ball.Vy), ball.Owner];
         var picks = 0;
         foreach (var k in c.Pickups) if (k.On) picks++;
         var kk = new int[picks][];
