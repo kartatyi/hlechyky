@@ -41,6 +41,13 @@ body.pad-kbd .padhints { display: none; }      /* під клавіатурою 
 .pb-x { background: #6ea8e0; color: #0c1c2b; border-color: transparent; }
 .pb-y { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .pb-dpad, .pb-rstick { background: var(--panel2); font-size: 13px; }
+/* Ⓑ посеред живої партії виводить лише утриманням: поки тримають, кружечок заливається зліва направо
+   (тривалість — HOLD_EXIT у pad.js). */
+.pb-b.hold {
+  background: linear-gradient(var(--text), var(--text)) left / 0% 100% no-repeat, var(--danger);
+  animation: pbhold .6s linear forwards;
+}
+@keyframes pbhold { to { background-size: 100% 100%, auto; } }
 
 /* Поки кермуємо падом, прокрутка до елемента лишає місце під смужку. */
 body.pad-on { scroll-padding-bottom: 64px; }

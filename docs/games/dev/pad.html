@@ -65,6 +65,19 @@
   </section>
 
   <section class="panel">
+    <h2>Жива партія</h2>
+    <p class="muted small">Імітація HGames.active(): модуль із <code>pad</code>, партія йде. LB/RB/LT/RT і правий стік мають
+      мовчати, короткий Ⓑ — Esc із <code>hpadStay</code> (зі столу не виводить), Ⓑ на 0,6 с — справжній вихід.</p>
+    <div class="row">
+      <label><input type="radio" name="fg" value="" checked> немає</label>
+      <label><input type="radio" name="fg" value="dirs"> dirs + a (Бомбер без anyBtn)</label>
+      <label><input type="radio" name="fg" value="any"> anyBtn без dirs (дуель)</label>
+      <label><input type="radio" name="fg" value="rstick"> dirs + rstick (Крижина без on)</label>
+      <label><input type="checkbox" id="fgEsc"> гра їсть Esc (Реверсі зі «скасувати»)</label>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>Що сталось</h2>
     <div class="log" id="log"></div>
   </section>
@@ -104,6 +117,31 @@
   modal.querySelector('[data-ok]').onclick = () => { modal.hidden = true; say('вікно: гаразд'); };
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) { modal.hidden = true; say('вікно закрито Esc'); } });
   document.querySelectorAll('.grid4 button').forEach((b) => b.onclick = () => say('натиснуто: ' + b.textContent));
+
+  // Жива партія: pad.js питає HGames.active() — віддаємо модуль, який обрали вгорі.
+  const PADS = {
+    dirs: { dirs: true, a: 'Space', hint: '{dpad} бігати · {a} бомба' },
+    any: { a: 'Space', anyBtn: true, hint: '{a} стріляти (будь-яка кнопка)' },
+    rstick: { dirs: true, rstick: true, a: 'Space', hint: '{dpad} ковзати · {rstick} приціл' },
+  };
+  const fgCtx = { mine: true, playing: true };
+  window.HGames = {
+    active() {
+      const k = (document.querySelector('[name=fg]:checked') || {}).value;
+      return k ? { id: 'fake', mod: { pad: PADS[k] }, ctx: fgCtx } : null;
+    },
+  };
+  // Те, що в проді роблять гра (onKey) і каркас (core.js: Esc — геть зі столу, але не з hpadStay).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !HGames.active()) return;
+    if (document.getElementById('fgEsc').checked) { e.preventDefault(); say('гра з\'їла Esc' + (e.hpadStay ? ' (короткий Ⓑ)' : '')); return; }
+    if (e.defaultPrevented) return;
+    say(e.hpadStay ? 'короткий Ⓑ: Esc лише грі — лишаємось за столом' : 'Esc: ГЕТЬ ЗІ СТОЛУ');
+  });
+  for (const t of ['keydown', 'keyup']) {
+    document.addEventListener(t, (e) => { if (e.hpad && HGames.active() && e.key !== 'Escape') say(t + ' ' + e.code); });
+  }
+  addEventListener('scroll', () => { if (HGames.active()) say('сторінка гортається: ' + Math.round(scrollY)); });
 
   const cv = document.getElementById('cv'), cx = cv.getContext('2d');
   cx.strokeStyle = '#f4c542'; cx.lineWidth = 3; cx.lineCap = 'round';

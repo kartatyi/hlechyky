@@ -34,6 +34,7 @@
   const DEAD_ON = 0.55, DEAD_OFF = 0.35;     // гістерезис стіка: увійти важче, ніж вийти
   const REPEAT_FIRST = 380, REPEAT_NEXT = 120;
   const SCROLL_SPEED = 13;                   // пікселів за кадр на повністю відхиленому правому стіку
+  const HOLD_EXIT = 600;                     // скільки тримати Ⓑ, щоб вийти зі столу посеред живої партії
 
   const KEY_NAME = { Space: ' ', Enter: 'Enter', Escape: 'Escape', ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight' };
   const DIR_KEY = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
@@ -55,6 +56,7 @@
   let dirStale = false;            // напрямок тримали ще без фокуса вікна — не рахується, поки не відпустять
   let aKey = '';                   // клавіша гри, яку зараз тримає кнопка дії
   let aBtn = -1;                   // яка саме кнопка її тримає (з anyBtn це будь-яка з восьми)
+  let bHold = 0;                   // коли почали тримати Ⓑ, щоб вийти з живої партії; 0 — не тримають
   let pressed = null;              // елемент, на якому Ⓐ тримає pointerdown (коло Гончарного)
   let cur = null;                  // елемент під кільцем
   let curBox = null;               // де кільце було востаннє — щоб знайти заміну після перемальовки
@@ -112,10 +114,13 @@
     clientX: Math.round(r.left + r.width / 2), clientY: Math.round(r.top + r.height / 2),
   }, more || {});
 
-  function key(type, code, node) {
-    return fire(node || document, new KeyboardEvent(type, {
+  /// `stay` — Esc лише для самої гри (закрити фото, скасувати хід), а не «геть зі столу»: core.js його пропускає.
+  function key(type, code, node, stay) {
+    const ev = new KeyboardEvent(type, {
       key: KEY_NAME[code] || code, code, bubbles: true, cancelable: true, view: window,
-    }));
+    });
+    if (stay) ev.hpadStay = true;
+    return fire(node || document, ev);
   }
 
   // ---------- пад чи кермо ----------
@@ -185,6 +190,7 @@
     if (aKey) { key('keyup', aKey); aKey = ''; aBtn = -1; }
     if (pressed) { padUp(pressed); pressed = null; }
     navDir = '';
+    bHold = 0;
   }
 
   function poll() {
@@ -227,6 +233,8 @@
       if (down[i]) buttonDown(i, now); else buttonUp(i, now);
     }
     prev = down;
+    // Дотримали Ⓑ — тепер справжній Esc: згорнути «на весь екран» чи вийти зі столу.
+    if (bHold && now - bHold >= HOLD_EXIT) { bHold = 0; paintHints(); key('keydown', 'Escape', escTarget()); }
 
     if (cursor) {
       // У режимі курсора хрестовина — повільне підведення, стік — швидке.
@@ -236,9 +244,9 @@
       // Напрямок: хрестовина важить більше за стік, бо нею цілять точніше.
       direction(dirNow, now);
     }
-    // Гра, що цілить правим стіком (`rstick`), — сторінку ним не гортаємо: інакше посеред партії ставок їхав угору.
-    const gr = mode() === 'game' ? claim() : null;
-    if (!(gr && gr.p.rstick)) scrollBy(rx, ry);
+    // У живій партії правим стіком сторінку не гортаємо: або ним цілить сама гра (`rstick`, Крижина), або
+    // випадковий дотик посеред раунду везе поле гри з екрана.
+    if (mode() !== 'game') scrollBy(rx, ry);
 
     if (on) { paintRing(); if (now - hintAt > 400) { hintAt = now; paintHints(); } }
     raf = requestAnimationFrame(poll);
@@ -280,6 +288,13 @@
     if (cursor) return 'cursor';
     const g = claim();
     return g && g.p.dirs ? 'game' : 'nav';
+  }
+
+  /// Жива партія: гра забрала стік (`dirs`) чи всі кнопки під пальцем (`anyBtn` — дуель, Своя гра). Тут пальці
+  /// лежать на тригерах і мнуть кнопки, тож випадковий натиск не має ні гортати сайт, ні виносити зі столу.
+  function live() {
+    const g = claim();
+    return g && (g.p.dirs || g.p.anyBtn) ? g : null;
   }
 
   function setOn(v) {
@@ -325,6 +340,12 @@
         return;
       }
       if (i === X && g.p.x) { key('keydown', g.p.x); key('keyup', g.p.x); return; }
+      if (live()) {
+        // Бампери й тригери, яких гра не взяла, посеред партії мовчать: інакше випадковий натиск перегортав
+        // розділ сайту чи вкладку, і гра зникала з-під рук. Так само R3, коли правим стіком цілять.
+        if (i === LB || i === RB || i === LT || i === RT || (i === R3 && g.p.rstick)) return;
+        if (i === B) return holdB(now);
+      }
     }
     switch (i) {
       case A: return activate();
@@ -345,6 +366,7 @@
   function buttonUp(i) {
     // Клавішу гри відпускає та сама кнопка, що її натиснула: з `anyBtn` це не конче Ⓐ.
     if (aKey && i === aBtn) { key('keyup', aKey); aKey = ''; aBtn = -1; }
+    if (i === B && bHold) { bHold = 0; paintHints(); }       // відпустив раніше — лишаємось за столом
     if (i !== A) return;
     if (cursor) return cursorUp();
     if (pressed) { padUp(pressed); pressed = null; }
@@ -657,7 +679,20 @@
       if (x && vis(x)) { fire(x, new MouseEvent('click', mouseInit(x.getBoundingClientRect(), { buttons: 0 }))); return; }
     }
     // Esc уміють і каркас ігор (вийти зі столу, згорнути «на весь екран»), і самі ігри.
-    key('keydown', 'Escape', document.activeElement && document.activeElement !== document.body ? document.activeElement : document);
+    key('keydown', 'Escape', escTarget());
+  }
+
+  const escTarget = () => (document.activeElement && document.activeElement !== document.body ? document.activeElement : document);
+
+  /// Ⓑ посеред живої партії. Вікно поверх столу закриває одразу, як завжди. Інакше короткий натиск — Esc лише для
+  /// самої гри (Геовгадайко згортає фото, Реверсі скасовує хід), а геть зі столу — коли Ⓑ дотримали HOLD_EXIT
+  /// (див. poll). Гра Esc з'їла — тримати вже нема чого.
+  function holdB(now) {
+    if ([...document.querySelectorAll('.modal')].some(vis)) return back();
+    const ev = key('keydown', 'Escape', escTarget(), true);
+    if (ev.defaultPrevented) return;
+    bHold = now;
+    paintHints();
   }
 
   // ---------- розділи, вкладки, балачки ----------
@@ -903,12 +938,15 @@
     // Модуль пише підказку словами й кнопками у фігурних дужках: '{dpad} рух · {a} бомба'.
     const g = claim();
     const own = g && g.p.hint ? g.p.hint.replace(/\{(\w+)\}/g, (all, k) => (GLYPH[k] ? glyph(k) : all)) : '';
+    // Посеред живої партії зі столу виводить лише утримання Ⓑ: кружечок заповнюється, поки тримають (pad.css).
+    const bExit = '<i class="pb pb-b' + (bHold ? ' hold' : '') + '">' + GLYPH.b + '</i> тримай — ';
     // `exit: false` — Ⓑ посеред партії гра забрала собі (Крижина: сніжка), тож «вийти» не обіцяємо
-    if (m === 'game') return (own || glyph('dpad') + ' рух') + ' ' + (g.p.exit === false ? '' : glyph('b') + ' вийти ') + glyph('y') + ' підказки';
+    if (m === 'game') return (own || glyph('dpad') + ' рух') + ' ' + (g.p.exit === false ? '' : bExit + 'вийти ') + glyph('y') + ' підказки';
     const room = document.querySelector('.grbox .gtable');
-    if (room && vis(room)) {
+    const lv = live();
+    if (lv || (room && vis(room))) {
       return (own || glyph('dpad') + ' вибір ' + glyph('a') + ' хід')
-        + ' ' + glyph('b') + ' до лобі ' + glyph('start') + ' на весь екран ' + glyph('y') + ' підказки';
+        + ' ' + (lv ? bExit : glyph('b') + ' ') + 'до лобі ' + glyph('start') + ' на весь екран ' + glyph('y') + ' підказки';
     }
     return glyph('dpad') + ' вибір ' + glyph('a') + ' натиснути ' + glyph('b') + ' назад '
       + glyph('x') + ' балачки ' + glyph('lb') + glyph('rb') + ' розділ ' + glyph('y') + ' підказки';
@@ -940,15 +978,15 @@
     + '<table class="ph-map">'
     + row('dpad', 'Лівий стік або хрестовина', 'ходити по кнопках; у швидких іграх — рух')
     + row('a', 'A', 'натиснути те, що в рамці; у полі вводу — відкрити клавіатуру; у швидких іграх — дія (бомба, постріл, поворот)')
-    + row('b', 'B', 'назад: закрити вікно, вийти зі столу, згорнути «на весь екран»')
+    + row('b', 'B', 'назад: закрити вікно, вийти зі столу, згорнути «на весь екран»; посеред швидкої гри — тримати пів секунди, щоб випадковий натиск не виносив')
     + row('x', 'X', 'балачки')
     + row('y', 'Y', 'оця підказка')
-    + row('lb', 'LB / RB', 'розділ: Ефір · Бібліотека · Ігри')
-    + row('lt', 'LT / RT', 'вкладка всередині розділу (Бібліотека, фільтри ігор, Журнал)')
+    + row('lb', 'LB / RB', 'розділ: Ефір · Бібліотека · Ігри (посеред швидкої гри — лише те, що каже гра)')
+    + row('lt', 'LT / RT', 'вкладка всередині розділу (Бібліотека, фільтри ігор, Журнал); посеред швидкої гри — так само лише гра')
     + row('start', '☰ Start', 'за столом — «на весь екран», інакше — до Ігор')
     + row('select', '⧉ Select', 'сховати чи показати смужку підказок унизу')
     + row('r3', 'R3 (натиснути правий стік)', 'курсор: стік водить вказівник по екрану — ним малюють у Піктіонарі, розписують у горні й проходять полицю Ока майстра')
-    + row('rstick', 'Правий стік', 'гортати сторінку й балачки')
+    + row('rstick', 'Правий стік', 'гортати сторінку й балачки; у швидкій грі сторінка стоїть (у Крижині ним цілять)')
     + '</table>'
     + (deck() ? ''
       + '<h4>Щоб пад бачив сайт</h4>'

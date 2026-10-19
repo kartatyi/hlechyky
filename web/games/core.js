@@ -3083,9 +3083,10 @@
     if (handled) e.preventDefault();
   });
   // Esc — назад зі столу. Слухач другий, тож гра, яка Esc уже з'їла (скрабл, шашки),
-  // позначила подію preventDefault, і ми в неї не лізимо.
+  // позначила подію preventDefault, і ми в неї не лізимо. `hpadStay` — короткий Ⓑ пада посеред живої партії:
+  // він лише для гри, а зі столу виводить утримання Ⓑ (web/static/pad.js, holdB).
   document.addEventListener('keydown', (e) => {
-    if (!shown || e.defaultPrevented || e.key !== 'Escape' || (view.kind !== 'room' && view.kind !== 'panel')) return;
+    if (!shown || e.defaultPrevented || e.hpadStay || e.key !== 'Escape' || (view.kind !== 'room' && view.kind !== 'panel')) return;
     const t = e.target;
     if (t && ((t.matches && t.matches('input, textarea, select')) || t.isContentEditable)) return;
     if (document.querySelector('.modal:not([hidden])')) return;   // спершу попап, потім стіл
