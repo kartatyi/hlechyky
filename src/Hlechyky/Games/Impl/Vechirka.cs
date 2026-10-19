@@ -351,32 +351,45 @@ public sealed class Vechirka : Game
             present.Add(i);
         }
         // Переможці кімнати — найкращі з присутніх людей. Порожній winners каркас вважає нічиєю (напис «Нічия»
-        // і виплата за нічию), тож коли перше місце в бота, перемога все одно дістається найкращій людині,
-        // а хто справді голова вечірки — пишемо у вердикті (R2 M2).
+        // і виплата за нічию), тож коли перше місце в бота чи в людини, що пішла до фіналу, перемога дістається
+        // найкращій присутній людині, а хто справді голова вечірки — пишемо у вердикті й Журналі (R2 M2, пакет 1).
         var best = present.Count == 0 ? 0 : present.Min(c.PlaceOf);
         var winners = present.Where(i => c.PlaceOf(i) == best).Select(i => _seat[i]!.Value).ToArray();
         string? verdict = null;
         var tops = Enumerable.Range(0, c.N).Where(i => c.PlaceOf(i) == 1).ToList();
-        if (present.Count > 0 && tops.Any(i => c[i].Bot))
-            verdict = $"🏆 Голова вечірки — {string.Join(", ", tops.Select(i => c[i].Name))}"
-                + (tops.All(i => c[i].Bot) ? $" · з людей найкраще — {string.Join(", ", present.Where(i => c.PlaceOf(i) == best).Select(i => c[i].Name))}" : "");
+        if (present.Count > 0 && tops.Any(i => !present.Contains(i)))
+        {
+            var bestNames = string.Join(", ", present.Where(i => c.PlaceOf(i) == best).Select(i => c[i].Name));
+            verdict = $"🏆 Голова вечірки — {string.Join(", ", tops.Select(i => NameMark(c, i)))}"
+                + (tops.Any(present.Contains) ? ""
+                    : tops.Any(i => !c[i].Bot) ? $" · з тих, хто дограв, найкраще — {bestNames}"
+                    : $" · з людей найкраще — {bestNames}");
+        }
         var log = "🎉 Глечикова вечірка: " + string.Join(", ",
-            Enumerable.Range(0, c.N).OrderBy(c.PlaceOf).Select(i => $"{c[i].Name} — {c[i].Gleks} 🏺"));
+            Enumerable.Range(0, c.N).OrderBy(c.PlaceOf).Select(i => $"{NameMark(c, i)} — {c[i].Gleks} 🏺"));
         Ctx.Finish(winners, log, scores, verdict);
         Rewards(c);
     }
 
+    /// <summary>Людина, що пішла до фіналу (бот грав за неї), — з позначкою: її місце справжнє, але її вже нема.</summary>
+    string NameMark(VechirkaCore c, int i) => !c[i].Bot && !Present(i) ? $"{c[i].Name} (пішли до фіналу)" : c[i].Name;
+
+    bool Present(int i) => _seat[i] is { } s && Ctx.Seated(s);
+
     /// <summary>
-    /// Черепки за місце серед людей і ачівки (§10) — лише коли людей за столом ≥ 2. У причині — номер партії
-    /// кімнати: «Ще раз» за тим самим столом платить заново (ref нагороди містить причину).
+    /// Черепки за місце серед людей і ачівки (§10) — лише коли людей у вечірці ≥ 2. Місце рахуємо серед УСІХ людей
+    /// вечірки, і тих, хто пішов до фіналу (пакет 1): хто пішов — свого бонусу не бере (нагорода йде на крісло),
+    /// але й наступні не підсуваються — другий бере бонус другого. У причині — номер партії кімнати: «Ще раз»
+    /// за тим самим столом платить заново (ref нагороди містить причину).
     /// </summary>
     void Rewards(VechirkaCore c)
     {
-        var humans = Enumerable.Range(0, c.N).Where(i => !c[i].Bot && _seat[i] is { } s && Ctx.Seated(s)).ToList();
+        var humans = Enumerable.Range(0, c.N).Where(i => !c[i].Bot).ToList();
         if (humans.Count < 2) return;
         int[] bonus = humans.Count >= 3 ? [20, 10, 5] : [20];
         foreach (var i in humans)
         {
+            if (!Present(i)) continue;
             var seat = _seat[i]!.Value;
             var place = 1 + humans.Count(j => c.Rank(j) > c.Rank(i));
             if (place <= bonus.Length) Ctx.Award(seat, bonus[place - 1], $"vechirka:place:{Ctx.Round}");
