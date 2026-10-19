@@ -422,9 +422,11 @@ public sealed class GeoMatch
         if (_phase != PhaseGuess) return ActResult.Fail("Зараз не вгадують");
         if (_left[seat]) return ActResult.Fail("Ти вже встав з-за столу");
         if (_own[seat]) return ActResult.Fail(OwnPhoto);
-        if (_ready[seat]) return ActResult.Fail("Ти вже натиснув «Готово»");
         if (!ReadXY(payload, out var x, out var y)) return ActResult.Fail("Тут треба дві цілі координати");
         if (!GeoMap.Inside(x, y)) return ActResult.Fail("Шпилька поза мапою");
+        // Передумав після «Готово», поки решта ще думає: шпилька переїжджає, а ✓ знімається — «Готово» тиснути
+        // знову (або зарахується й так, коли вийде час). Усі готові — розкриття тиком, тож «поки є час» і є межею.
+        if (_ready[seat]) { _ready[seat] = false; _frameDirty = true; }
         var first = _pinX[seat] < 0;
         _pinX[seat] = x;
         _pinY[seat] = y;
