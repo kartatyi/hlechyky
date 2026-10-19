@@ -25,9 +25,14 @@ sealed class FakeMelodySource(IReadOnlyList<MelodyTrack> tracks, ISet<string>? b
         Task.FromResult<IReadOnlyList<MelodyRequested>>([.. Requested.Where(r => r.By.Any(b => nicks.Contains(b)))]);
     readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<MelodyTrack?>> _slow = new();
 
-    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct)
+    /// <summary>Що гра передала як «бачене сидячими» (пам'ять між партіями).</summary>
+    public IReadOnlyDictionary<string, GameSeen.Seen>? Seen;
+
+    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct,
+        IReadOnlyDictionary<string, GameSeen.Seen>? seen = null)
     {
         Categories = categories;
+        Seen = seen;
         return Task.FromResult<IReadOnlyList<MelodyTrack>>([.. tracks.Take(count)]);
     }
 

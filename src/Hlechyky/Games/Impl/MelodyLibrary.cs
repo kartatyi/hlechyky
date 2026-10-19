@@ -28,7 +28,12 @@ public interface IMelodySource
     /// порівну з кожної. Перший — обов'язково з файлом, решта можуть бути <see cref="MelodyTrack.Pending"/>.
     /// Порожньо — грати нема в що.
     /// </summary>
-    Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct);
+    /// <param name="seen">
+    /// Пам'ять баченого між партіями (<see cref="GameSeen"/>, ключ — <see cref="SongKey.Of"/>): у кожній категорії спершу
+    /// пісні, які чуло найменше людей за столом, при рівності — чуті давніше. Порожня чи null — вибір як був.
+    /// </param>
+    Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct,
+        IReadOnlyDictionary<string, GameSeen.Seen>? seen = null);
 
     /// <summary>
     /// Трек із файлом на диску: той самий, якщо файл є; для <see cref="MelodyTrack.Pending"/> — знайти й скачати.
@@ -111,12 +116,13 @@ public sealed class MelodyLibrary(
         return (rows, disliked);
     });
 
-    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct) => Task.Run(() =>
+    public Task<IReadOnlyList<MelodyTrack>> PickAsync(int count, IReadOnlyList<string> categories, Random rng, CancellationToken ct,
+        IReadOnlyDictionary<string, GameSeen.Seen>? seen = null) => Task.Run(() =>
     {
         if (db is null) return (IReadOnlyList<MelodyTrack>)[];
         var (rows, disliked) = Load();
         var cached = rows.Where(x => File.Exists(x.Track.FilePath)).ToList();
-        var pools = Pools(cached, disliked, categories, Classics, rng);
+        var pools = Pools(cached, disliked, categories, Classics, rng, seen);
         return WithReserve(Interleave(pools), count, rng);
     }, ct);
 
@@ -177,7 +183,8 @@ public sealed class MelodyLibrary(
     /// (<see cref="Favourite"/>). Добірка: пісня з кешу, якщо та сама вже є (під назвою з добірки — вона чистіша
     /// за ютубівську), інакше <see cref="MelodyTrack.Pending"/>; з 👎 — ні.
     /// </summary>
-    public static List<List<MelodyTrack>> Pools(List<Row> cached, ISet<string> disliked, IReadOnlyList<string> categories, MelodyClassics classics, Random rng)
+    public static List<List<MelodyTrack>> Pools(List<Row> cached, ISet<string> disliked, IReadOnlyList<string> categories, MelodyClassics classics, Random rng,
+        IReadOnlyDictionary<string, GameSeen.Seen>? seen = null)
     {
         HashSet<MelodyTrack>? ua = null;
         HashSet<MelodyTrack> Ua() => ua ??= MelodyLanguage.Default.Ukrainian(cached.Select(x => x.Track)).ToHashSet();
@@ -202,10 +209,15 @@ public sealed class MelodyLibrary(
                 }
             }
             Shuffle(pool, rng);
+            // Пам'ять баченого між партіями: нечуте сидячими — наперед (стабільно, тож решта лишається тасованою).
+            if (seen is { Count: > 0 }) pool = GameSeen.Order(pool, SeenKey, seen);
             if (pool.Count > 0) pools.Add(pool);
         }
         return pools;
     }
+
+    /// <summary>Ключ треку в пам'яті баченого (<see cref="GameSeen"/>): пісня, а не завантаження.</summary>
+    public static string SeenKey(MelodyTrack t) => SongKey.Of(t.Artist, t.Title);
 
     /// <summary>По одному з кожного списку по колу: щоб 10 раундів на дві категорії дали 5 + 5, а не 9 + 1.</summary>
     public static List<MelodyTrack> Interleave(List<List<MelodyTrack>> pools)

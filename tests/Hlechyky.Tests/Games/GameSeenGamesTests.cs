@@ -93,4 +93,43 @@ public class GameSeenGamesTests
         Assert.Equal(PictionaryOffer(Services(null, s => s.AddSingleton(Words()))).Choices,
             PictionaryOffer(Services(temp, s => s.AddSingleton(Words()))).Choices);
     }
+
+    // ---------- Вгадай мелодію ----------
+
+    static MelodyTrack Song(int i) => new($"t{i}", $"Пісня {i}", $"Гурт {i}", 200, null, "/dev/null");
+
+    [Fact]
+    public void Melody_UnheardSongsGoFirstInEachCategory()
+    {
+        // «Ті, що ми слухаємо»: 10 пісень різних гуртів, 7 з них Оля вже чула — партія на 3 бере саме нечуті.
+        var rows = Enumerable.Range(0, 10).Select(i => new MelodyLibrary.Row(Song(i), 5, "")).ToList();
+        var seen = Enumerable.Range(0, 7).ToDictionary(i => MelodyLibrary.SeenKey(Song(i)), _ => new GameSeen.Seen(1, Yesterday));
+        var pools = MelodyLibrary.Pools(rows, new HashSet<string>(), ["fav"], MelodyClassics.Empty, new Random(1), seen);
+        var picked = MelodyLibrary.Choose(MelodyLibrary.Interleave(pools), 3, new Random(1), shuffle: false);
+        Assert.Equal(new[] { "t7", "t8", "t9" }, picked.Select(t => t.Id).Order());
+
+        // Без історії — тасування рівно як було.
+        var none = MelodyLibrary.Pools(rows, new HashSet<string>(), ["fav"], MelodyClassics.Empty, new Random(1));
+        var empty = MelodyLibrary.Pools(rows, new HashSet<string>(), ["fav"], MelodyClassics.Empty, new Random(1), new Dictionary<string, GameSeen.Seen>());
+        Assert.Equal(none[0], empty[0]);
+    }
+
+    [Fact]
+    public void Melody_TablePassesWhatSeatedHeard_AndRemembersTheRoundTrack()
+    {
+        using var temp = new TempDb();
+        new GameSeen(temp.Db).Seed("melody", [GameSeen.NickKey("Оля")], [MelodyLibrary.SeenKey(Song(0))], Yesterday);
+        var source = new FakeMelodySource([.. Enumerable.Range(0, 6).Select(Song)]);
+        var h = new RoomHarness("melody", options: new { rounds = "3" }, seed: 3,
+            services: Services(temp, s => s.AddSingleton<IMelodySource>(source)));
+        foreach (var n in new[] { "Оля", "Петро" }) h.Join(n);
+        h.Start();
+        Assert.NotNull(source.Seen);
+        Assert.Equal(1, source.Seen![MelodyLibrary.SeenKey(Song(0))].By);
+
+        for (var i = 0; i < 400 && h.View(null).GetProperty("phase").GetString() != "play"; i++) { h.Tick(); Thread.Sleep(2); }
+        Assert.Equal("play", h.View(null).GetProperty("phase").GetString());
+        var heard = new GameSeen(temp.Db).Peek("melody", [GameSeen.NickKey("Петро")]);
+        Assert.Single(heard);   // трек першого раунду тепер «чули» всі за столом
+    }
 }

@@ -103,6 +103,11 @@ public sealed class Melody : Game
     }
 
     IMelodySource _source = null!;
+    /// <summary>Пам'ять баченого між партіями й столами (пакет 1): трек раунду чують усі, хто сидить.</summary>
+    GameSeen? _seenMemo;
+    const string SeenGame = "melody";
+    /// <summary>Знімок пам'яті на старті партії (під замком) — фон вибору треків бере його.</summary>
+    IReadOnlyDictionary<string, GameSeen.Seen> _seenNow = new Dictionary<string, GameSeen.Seen>();
     int _rounds = 10;
     int _clipSec = 15;
     /// <summary>Обрані категорії (<see cref="MelodyCategories"/>); порожньо не буває — «усе» розгортається в усі.</summary>
@@ -167,6 +172,8 @@ public sealed class Melody : Game
     {
         _source = Ctx.Services.GetService<IMelodySource>()
             ?? new MelodyLibrary(Ctx.Services.GetService<Db>(), Ctx.Services.GetService<IOptionsMonitor<YtDlpOptions>>());
+        // Пам'ять «вже було» фон читає з бази заздалегідь — щоб перше «Почати» вже її мало.
+        (_seenMemo ??= GameSeen.Of(Ctx.Services)).Prefetch(SeenGame);
         if (options.TryGetValue("rounds", out var r) && int.TryParse(r, out var rn) && RoundChoices.Contains(rn)) _rounds = rn;
         _categories = MelodyCategories.Parse(options.GetValueOrDefault("cat"), MelodyClassics.Default);
         if (options.TryGetValue("clip", out var c) && int.TryParse(c, out var cn) && ClipChoices.Contains(cn)) _clipSec = cn;
@@ -217,6 +224,8 @@ public sealed class Melody : Game
         var nicks = new List<string>();
         for (var s = 0; s < Seats; s++) if (Ctx.NickOf(s) is { } n) nicks.Add(n);
         _nicks = [.. nicks];
+        _seenMemo ??= GameSeen.Of(Ctx.Services);
+        _seenNow = _seenMemo.Peek(SeenGame, GameSeen.Table(Ctx, Seats));
         _by = null;
         _phase = Loading;
         _loadStarted = Now;
@@ -301,6 +310,7 @@ public sealed class Melody : Game
             {
                 var list = asked.ToList();
                 for (var i = list.Count - 1; i > 0; i--) { var j = rng.Next(i + 1); (list[i], list[j]) = (list[j], list[i]); }
+                list = GameSeen.Order(list, x => MelodyLibrary.SeenKey(x.Track), _seenNow);
                 _by = list.ToDictionary(x => x.Track.Id, x => x.By.ToArray(), StringComparer.Ordinal);
                 who = [.. list.Select(x => x.Track)];
             }
@@ -313,9 +323,9 @@ public sealed class Melody : Game
                 _note = why + " — граємо без неї";
             }
         }
-        if (who is null) return [.. await _source.PickAsync(need, others, rng, ct)];
+        if (who is null) return [.. await _source.PickAsync(need, others, rng, ct, _seenNow)];
         if (others.Count == 0) return who;
-        var rest = (await _source.PickAsync(need, others, rng, ct)).ToList();
+        var rest = (await _source.PickAsync(need, others, rng, ct, _seenNow)).ToList();
         var mine = new HashSet<string>(who.Select(t => SongKey.Of(t.Artist, t.Title)), StringComparer.Ordinal);
         rest.RemoveAll(t => mine.Contains(SongKey.Of(t.Artist, t.Title)));
         return Mix(who, rest, others.Count + 1);
@@ -554,6 +564,9 @@ public sealed class Melody : Game
     {
         _skip.Clear();
         _round++;
+        // Трек раунду зараз прозвучить усім, хто сидить, — у пам'ять баченого (база — фоном).
+        if (_ready.TryGetValue(_round, out var now))
+            (_seenMemo ??= GameSeen.Of(Ctx.Services)).Remember(SeenGame, GameSeen.Table(Ctx, Seats), [MelodyLibrary.SeenKey(now.Track)], Now);
         _found = [];
         _artistTaken = _titleTaken = false;
         _teamFound[0] = new Found();
