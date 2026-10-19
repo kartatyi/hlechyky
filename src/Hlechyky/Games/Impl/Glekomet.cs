@@ -35,7 +35,7 @@ public sealed class Glekomet : Game
         Start: StartMode.ByHost,
         Options:
         [
-            new GameOption("teams", "Склад", [("solo", "Кожен за себе"), ("teams", "Дві команди (парні проти непарних місць)")], "solo"),
+            new GameOption("teams", "Склад", [("solo", "Кожен за себе"), ("teams", "Дві команди за силою"), ("seats", "Дві команди як сіли (парні проти непарних місць)")], "solo"),
             new GameOption("turn", "Час на хід", [("20", "20 с"), ("30", "30 с"), ("45", "45 с")], "30"),
             new GameOption("water", "Вода", [("6", "Підступає з 6-го кола"), ("10", "З 10-го кола"), ("0", "Без води")], "6"),
             new GameOption("mode", "Хід", [("turns", "По черзі"), ("volley", "💥 Залп — усі цілять разом, летить разом")], "turns"),
@@ -65,7 +65,11 @@ public sealed class Glekomet : Game
     public GlekometBot Brain => _brain;
 
     // ---------- налаштування столу ----------
-    bool _teamsWanted;
+    bool _teamsWanted, _teamsBySeat;
+    /// <summary>Команда кожного місця на цю партію (за силою — TeamSplit; як сіли — парні 0, непарні 1).</summary>
+    readonly int[] _team = [.. Enumerable.Range(0, GlekometCore.Seats).Select(s => s % 2)];
+    /// <summary>Хто з ким грав минулої партії — «Ще раз» за силою ділить трохи по-новому.</summary>
+    readonly TeamSplit.Memory _split = new();
     int _turnSecs = 30;
     int _waterFrom = 6;
     bool _volley, _jokes;
@@ -166,7 +170,8 @@ public sealed class Glekomet : Game
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
-        _teamsWanted = options.TryGetValue("teams", out var t) && t == "teams";
+        _teamsWanted = options.TryGetValue("teams", out var t) && t is "teams" or "seats";
+        _teamsBySeat = t == "seats";
         _turnSecs = options.TryGetValue("turn", out var s) && int.TryParse(s, out var n) && n is 20 or 30 or 45 ? n : 30;
         _waterFrom = options.TryGetValue("water", out var w) && int.TryParse(w, out var m) && m is 0 or 6 or 10 ? m : 6;
         _volley = options.TryGetValue("mode", out var md) && md == "volley";
@@ -215,9 +220,19 @@ public sealed class Glekomet : Game
 
         _log.Clear();
         Note("Готуйсь");
-        // Команди — лише рівні: парних стільки ж, скільки непарних; інакше тихо граємо кожен за себе.
-        _teams = _teamsWanted && even == odd && even > 0;
+        // Команди — лише рівні: «як сіли» — парних стільки ж, скільки непарних; «за силою» — парний склад (люди й бот),
+        // поділ — рівні суми сил, щоразу трохи по-новому. Інакше тихо граємо кожен за себе.
+        _teams = _teamsWanted && (_teamsBySeat ? even == odd && even > 0 : (even + odd) is var all && all >= 2 && all % 2 == 0);
         if (_teamsWanted && !_teams) Note("Команди — лише парним складом: граємо кожен за себе");
+        for (var s = 0; s < Seats; s++) _team[s] = s % 2;
+        if (_teams && !_teamsBySeat)
+        {
+            var seated = Enumerable.Range(0, Seats).Where(s => plays[s]).ToArray();
+            var split = TeamSplit.ForSeats(Ctx, Info.Id, seated, s => s == _bot ? _solo.Level : null, _split);
+            for (var k = 0; k < seated.Length; k++) _team[seated[k]] = split[k];
+            if (seated.Length > 2) Ctx.Log(TeamSplit.Note);
+        }
+        Array.Copy(_team, _core.TeamOf, Seats);
 
         _core.Teams = _teams;
         _kinds = _jokes ? GlekometCore.AllKinds : GlekometCore.BaseKinds;
@@ -766,7 +781,7 @@ public sealed class Glekomet : Game
         return -1;
     }
 
-    bool Ally(int a, int b) => _teams && a != b && a % 2 == b % 2;
+    bool Ally(int a, int b) => _teams && a != b && _team[a] == _team[b];
 
     /// <summary>Час вийшов: хід пропущено, а третій пропуск поспіль — хата вибуває.</summary>
     void TimeOut()
@@ -998,13 +1013,13 @@ public sealed class Glekomet : Game
         if (_teams)
         {
             var mask = 0;
-            for (var s = 0; s < Seats; s++) if (core.Huts[s].Alive) mask |= 1 << (s % 2);
+            for (var s = 0; s < Seats; s++) if (core.Huts[s].Alive) mask |= 1 << _team[s];
             if (mask == 0) { Over([], "draw", $"{Info.Title}: усі хати в руїнах — нічия"); return true; }
             if (mask is 1 or 2)
             {
                 var team = mask == 1 ? 0 : 1;
                 var winners = new List<int>();
-                for (var s = 0; s < Seats; s++) if (s % 2 == team && core.Huts[s].Plays && Ctx.Seated(s)) winners.Add(s);
+                for (var s = 0; s < Seats; s++) if (_team[s] == team && core.Huts[s].Plays && Ctx.Seated(s)) winners.Add(s);
                 Win([.. winners], "team");
                 return true;
             }
@@ -1026,7 +1041,7 @@ public sealed class Glekomet : Game
         var core = _core!;
         int alive = 0, mask = 0;
         for (var s = 0; s < Seats; s++)
-            if (s != seat && core.Huts[s].Alive) { alive++; mask |= 1 << (s % 2); }
+            if (s != seat && core.Huts[s].Alive) { alive++; mask |= 1 << _team[s]; }
         return _teams ? mask != 3 : alive <= 1;
     }
 
@@ -1286,7 +1301,7 @@ public sealed class Glekomet : Game
                 y = h.Y,
                 hp = here ? (lobby ? 100 : h.Hp) : 0,
                 alive = here && (lobby || h.Alive),
-                team = s % 2,
+                team = lobby ? s % 2 : _team[s],
                 poison = lobby ? 0 : h.Poison,
                 fuel = here ? (lobby ? GlekometCore.FuelMax : h.Fuel) : 0,
                 skips = lobby ? 0 : _skips[s],
@@ -1324,7 +1339,8 @@ public sealed class Glekomet : Game
             hgt = GlekometCore.Hgt,
             step = GlekometCore.ColW,
             h = (int[])core.H.Clone(),
-            teams = lobby ? _teamsWanted : _teams,
+            // у лобі «за силою» команд ще нема — їх ділять на старті
+            teams = lobby ? _teamsWanted && _teamsBySeat : _teams,
             huts,
             inv,
             aim = aiming ? new[] { _aimA[_turn], _aimP[_turn], _aimW[_turn] } : null,

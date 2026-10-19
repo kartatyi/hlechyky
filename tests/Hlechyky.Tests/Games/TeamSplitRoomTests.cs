@@ -28,7 +28,8 @@ public class TeamSplitRoomTests
     static int[] Teams(RoomHarness h) => h.Room.Game switch
     {
         CurveGame c => c.Teams!,
-        _ => [.. h.View(null).GetProperty("teams").EnumerateArray().Select(x => x.GetInt32())],
+        Glekomet => [.. h.View(null).GetProperty("huts").EnumerateArray().Select(x => x.GetProperty("team").GetInt32())],
+        _ =>[.. h.View(null).GetProperty("teams").EnumerateArray().Select(x => x.GetInt32())],
     };
 
     /// <summary>Напарник Олі за ніком (місця на «Ще раз» зсуваються).</summary>
@@ -91,6 +92,22 @@ public class TeamSplitRoomTests
         }
         Assert.All(mates, m => Assert.True(m is "Петро" or "Іван", string.Join(",", mates)));
         for (var i = 1; i < mates.Count; i++) Assert.NotEqual(mates[i - 1], mates[i]);
+    }
+
+    [Fact]
+    public void Glekomet_by_strength_pairs_strong_with_weak_and_allies_follow_the_split()
+    {
+        var h = Table("glekomet", "teams");
+        Assert.True(h.View(null).GetProperty("teams").GetBoolean());
+        Assert.True(MateOfOlya(h) is "Петро" or "Іван");
+        Assert.Equal(Teams(h).Take(4).ToArray(), ((Glekomet)h.Room.Game).Core!.TeamOf.Take(4).ToArray());
+    }
+
+    [Fact]
+    public void Glekomet_as_seated_keeps_even_against_odd()
+    {
+        var h = Table("glekomet", "seats");
+        Assert.Equal([0, 1, 0, 1], Teams(h).Take(4));
     }
 
     [Theory]
