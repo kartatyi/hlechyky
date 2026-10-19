@@ -217,6 +217,9 @@ public static class DotepyLines
     public static string Sweep(string nick) => $"Розгром! Усі голоси — {nick}!";
     public static string FinalWin(string nick) => $"Останній додеп забирає {nick}!";
     public static string GameWin(string nick) => $"Перемагає {nick}!";
+    /// <summary>Удвох з Глеком (пакет 2): Глек набрав більше за обох людей.</summary>
+    public static string GlekWin(string nick) => $"Перемагаю я, Дядько Глек! А з людей найкраще — {nick}.";
+    public const string GlekWinAlone = "Перемагаю я, Дядько Глек! А люди — по нулях.";
 
     /// <summary>Вступ раунду: перший, другий чи фінал (на трьох у фіналі — два голоси, не три).</summary>
     public static string Intro(int round, bool final, int perVoter) =>

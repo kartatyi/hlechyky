@@ -195,18 +195,60 @@ public static class DotepyStock
         "Це секрет.",
     ];
 
+    /// <summary>
+    /// Заготовки Дядька Глека, коли він сідає третім удвох (пакет 2): безпечні й загальні — пасують майже до будь-якого
+    /// завдання («найгірше, що…», «назва для…», «що {нік} робить…»). На відміну від <see cref="Lines"/> це справжні
+    /// відповіді: голоси за них дають Глекові очки.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Glek =
+    [
+        "Борщ. Відповідь завжди борщ.",
+        "Те саме, що й минулого разу, тільки голосніше.",
+        "Спитати, де тут найближчий глечик.",
+        "Мамі не кажіть.",
+        "Ставлю на це всі свої черепки.",
+        "Бабусин секретний рецепт. З цибулею.",
+        "Сало в шоколаді.",
+        "Півень о четвертій ранку.",
+        "Я б розповів, але тут діти.",
+        "Кум. Завжди винен кум.",
+        "Переслати в сімейний чат і вимкнути телефон.",
+        "Корова на ім'я Мілана.",
+        "Дідова «Таврія» без гальм.",
+        "Випадково натиснути «відповісти всім».",
+        "Знову ремонт у сусідів. О сьомій ранку.",
+        "Повний мішок картоплі.",
+        "Голосове на сім хвилин.",
+        "Квиток в один бік до Жмеринки.",
+        "Банка огірків, що вибухнула в коморі.",
+        "Гусак, який усе бачив.",
+        "Так буває лише на Глечиках.",
+        "Жовта гумова качка.",
+        "Чекати маршрутку, якої не буде.",
+        "Холодець без желатину.",
+        "Піти по-англійськи, але з тортом.",
+        "Теща з ополоником.",
+        "Відповідь буде в наступному сезоні.",
+        "Чесне слово, це був кіт.",
+        "Глечик із дірочкою.",
+        "Засідання сільради о другій ночі.",
+    ];
+
     /// <summary>Випадкова підставна, якої ще нема на цій картці (якщо таких не лишилось — будь-яка).</summary>
-    public static string Pick(Random rng, ICollection<string> taken)
+    public static string Pick(Random rng, ICollection<string> taken) => Pick(rng, taken, Lines);
+
+    /// <summary>Випадковий рядок зі списку <paramref name="from"/>, якого нема в <paramref name="taken"/> (не лишилось — будь-який).</summary>
+    public static string Pick(Random rng, ICollection<string> taken, IReadOnlyList<string> from)
     {
         var free = 0;
-        foreach (var line in Lines) if (!taken.Contains(line)) free++;
-        if (free == 0) return Lines[rng.Next(Lines.Count)];
+        foreach (var line in from) if (!taken.Contains(line)) free++;
+        if (free == 0) return from[rng.Next(from.Count)];
         var n = rng.Next(free);
-        foreach (var line in Lines)
+        foreach (var line in from)
         {
             if (taken.Contains(line)) continue;
             if (n-- == 0) return line;
         }
-        return Lines[0];
+        return from[0];
     }
 }
