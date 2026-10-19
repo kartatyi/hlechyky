@@ -115,6 +115,14 @@ public sealed partial class ClickerGuildService
         _log = log;
     }
 
+    /// <summary>
+    /// Чи ключ ніка — людина з акаунтом, а не аі-агент чи гість (записка #53: «шо тут роблять жива проба і клод?»).
+    /// Таких у цех не пишемо й не показуємо. null — усі люди (тести без бази).
+    /// </summary>
+    public Func<string, bool>? IsPerson { get; init; }
+
+    bool Person(string key) => IsPerson is not { } p || p(key);
+
     // ---------- стан ----------
 
     sealed partial class State
@@ -639,7 +647,7 @@ public sealed partial class ClickerGuildService
     /// </summary>
     public void Hello(string nickKey, string nick, int rank, DateTimeOffset now, long? stamps = null)
     {
-        if (nickKey.Length == 0) return;
+        if (nickKey.Length == 0 || !Person(nickKey)) return;
         lock (_lock)
         {
             var s = S();
@@ -650,6 +658,23 @@ public sealed partial class ClickerGuildService
             if (s.Potters.Count > RosterMax)
                 foreach (var old in s.Potters.OrderBy(x => x.Value.Seen).Take(s.Potters.Count - RosterMax).Select(x => x.Key).ToList())
                     s.Potters.Remove(old);
+            Save();
+        }
+    }
+
+    /// <summary>
+    /// Аі-агенти й гості, що потрапили в цех до записки #53 (чи стали ботами відтоді), — геть зі списку, щоб не висіли
+    /// в «Помогти другові» й не роздували віз.
+    /// </summary>
+    void DropStrangers()
+    {
+        if (IsPerson is null) return;
+        lock (_lock)
+        {
+            var s = S();
+            var gone = s.Potters.Keys.Where(k => !Person(k)).ToList();
+            if (gone.Count == 0) return;
+            foreach (var k in gone) s.Potters.Remove(k);
             Save();
         }
     }
@@ -718,6 +743,7 @@ public sealed partial class ClickerGuildService
     {
         var now = _clock.UtcNow;
         var me = Key(meNick);
+        DropStrangers();
         EnsureTitleStats();
         // Картки друзів (12-те дошліфування): збереження тих, хто заходив за останні дні, — поза замком.
         var reads = new Dictionary<string, (string? Json, object? Toloka)>(StringComparer.Ordinal);
@@ -981,8 +1007,31 @@ public static class ClickerGuildSetup
             sp.GetRequiredService<IGameStore>(), sp.GetRequiredService<IClock>(), sp.GetService<ILogger<ClickerGuildService>>())
         {
             GuildWire = sp.GetService<IClickerGuildWire>(),
+            IsPerson = PeopleOf(sp.GetService<Db>()),
         });
         return services;
+    }
+
+    /// <summary>
+    /// Людина — акаунт і не бот (<see cref="Bots.Set"/>). Список перечитуємо раз на хвилину: акаунти й боти з'являються
+    /// рідко, а цех питає часто. База не відповіла й списку ще нема — вважаємо людиною: краще бот у цеху, ніж
+    /// вичищений цех.
+    /// </summary>
+    static Func<string, bool>? PeopleOf(Db? db)
+    {
+        if (db is null) return null;
+        Bots.Set? set = null;
+        long at = 0;
+        return key =>
+        {
+            var now = Environment.TickCount64;
+            if (set is null || now - at > 60_000)
+            {
+                try { set = Bots.Load(db); at = now; }
+                catch (Exception) { at = now; if (set is null) return true; }
+            }
+            return !set.Has(key);
+        };
     }
 
     public static WebApplication MapClickerGuild(this WebApplication app)

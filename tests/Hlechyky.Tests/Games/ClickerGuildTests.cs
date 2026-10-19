@@ -1176,6 +1176,26 @@ public class ClickerGuildTests
     // ---------- сервіс: збереження й замок ----------
 
     [Fact]
+    public void Bots_and_guests_stay_out_of_the_guild_and_old_ones_are_swept_away()
+    {
+        // Записка #53: «шо тут роблять жива проба і клод?» — у «Помогти другові» висіли аі-агенти й гості без акаунта.
+        var g = new Tsekh();
+        g.Svc.Hello("клод", "клод", 0, Thursday);
+        g.Svc.Hello("оля", "Оля", 1, Thursday);
+
+        var people = new ClickerGuildService(g.Store, g.Clock) { IsPerson = k => k != "клод" && k != "живапроба" };
+        people.Hello("живапроба", "живапроба", 0, Thursday);
+        people.Hello("петро", "Петро", 0, Thursday);
+        var nicks = Views.Json(people.Roster("оля")).GetProperty("potters").EnumerateArray()
+            .Select(p => p.GetProperty("nick").GetString()).ToList();
+        Assert.Equal(["Оля", "Петро"], nicks);
+
+        // Вичищене — і в базі: наступний запуск теж їх не бачить.
+        var again = new ClickerGuildService(g.Store, g.Clock);
+        Assert.Equal(2, Views.Json(again.Roster(null)).GetProperty("potters").GetArrayLength());
+    }
+
+    [Fact]
     public void The_service_state_lives_in_the_store_under_its_key()
     {
         var g = new Tsekh();
