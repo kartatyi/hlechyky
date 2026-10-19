@@ -186,7 +186,7 @@ public sealed class VechirkaState
     public int V { get; set; } = 1;
     public string Map { get; set; } = "selo";
     public int MapV { get; set; } = 1;
-    public int Len { get; set; } = 45;
+    public int Len { get; set; } = VechirkaRules.DefaultLen;
     public List<string> Minis { get; set; } = ["move", "brain", "tap"];
     public LiveBots.Level Level { get; set; } = LiveBots.Level.Normal;
     public ulong Rng { get; set; }
