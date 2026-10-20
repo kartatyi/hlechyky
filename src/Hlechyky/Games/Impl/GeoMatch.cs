@@ -158,6 +158,11 @@ public sealed class GeoMatch
     public string? Day { get; set; }
     /// <summary>«Де це? дня»: нагорода дня (раз на добу) — від стількох очок, щоб «тицьнув навмання» не платило.</summary>
     public const int DailyRewardFrom = 2500;
+    /// <summary>
+    /// «Де це? дня» (пакет 4): кінець дня пише сама гра — таблиця дня й «Щоденний глек» (<c>Ctx.Score(0, 0, 1)</c>,
+    /// бо каркас рахує «менше — краще»). Аргументи: місце й чи ставив шпильку хоч раз.
+    /// </summary>
+    public Action<int, bool>? DailyDone { get; set; }
 
     /// <summary>Квадратики раунду за відстанню: 🟩 ≤ 50 км, 🟨 ≤ 200, 🟧 ≤ 500, ⬛ далі чи без шпильки.</summary>
     public string Squares()
@@ -659,7 +664,9 @@ public sealed class GeoMatch
         var scores = seats.ToDictionary(s => s, s => _scores[s]);
         foreach (var s in seats)
         {
-            if (_pinnedEver[s]) _ctx.Score(s, _scores[s]);
+            // «Де це? дня»: очки в ключі daily: лягли б у щоденний глек як «спроби» — день пише сама гра (DailyDone)
+            if (_pinnedEver[s] && Day is null) _ctx.Score(s, _scores[s]);
+            if (Day is not null) DailyDone?.Invoke(s, _pinnedEver[s]);
             if (_scores[s] / PointsPerShard is > 0 and var shards)
                 // Номер партії в причині: «Ще раз» за тим самим столом — нова виплата, а не повтор старої.
                 _ctx.Award(s, (int)Math.Min(int.MaxValue, shards), $"{ShardReason}:{_ctx.Round.ToString(CultureInfo.InvariantCulture)}");
