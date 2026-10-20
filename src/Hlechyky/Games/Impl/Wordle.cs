@@ -43,6 +43,8 @@ public sealed class Wordle : Game, IDailyGame
     bool _reported;
     /// <summary>Рядок у спільний Журнал за цей день уже пішов — удруге не кричимо (див. <see cref="Close"/>).</summary>
     bool _announced;
+    /// <summary>Табло дня на картці (пакет 4): лише пам'ять сервісу, базу він дочитує фоном сам.</summary>
+    DailyCard? _card;
 
     public override GameInfo Info { get; } = new(
         "wordle", "Глек-слово", "Глек-слово", GameGroup.Solo, 1, 1,
@@ -51,6 +53,13 @@ public sealed class Wordle : Game, IDailyGame
 
     /// <summary>Ключ особистої кімнати: рівно та форма, з якої WP1 дістає гру й день (specs/daily.md).</summary>
     public override string SoloKey(string nickKey, IClock clock) => $"daily:{Info.Id}:{Days.Today(clock)}:{nickKey}";
+
+    /// <summary>Поза замком: табло дня хай дочитує базу фоном уже зараз, до першого виду.</summary>
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        _card = Ctx.Services.GetService<DailyCard>();
+        _card?.Warm(Info.Id);
+    }
 
     /// <summary>
     /// Кімната тут — це головоломка одного дня, і саме той день стоїть у її ключі. Тому день ставимо
@@ -96,6 +105,10 @@ public sealed class Wordle : Game, IDailyGame
         if (_guesses.Count >= MaxTries)
         {
             _failed = true;
+            // Невдалий день теж лишає слід (пакет 4): рядок solved = 0 у daily_results і «✗» на табло картки.
+            // Лише тут, у живій спробі: Load уже програного дня сюди не доходить, тож удруге не шлемо.
+            Ctx.DailyMiss(0, MaxTries);
+            if (Ctx.NickOf(0) is { } nick) _card?.NoteMiss(Info.Id, nick, MaxTries);
             Close();
             return ActResult.Done;
         }

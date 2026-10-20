@@ -289,3 +289,5 @@
   .wr:not(.spect) .wrptot { font-size: .72em; white-space: nowrap; }
   .wr:not(.spect) .wrmain { gap: 8px; }
 }
+.wdrow.miss span { color: var(--clay, #c0573e); }
+.wdrow.miss.now i { background: var(--clay, #c0573e); }

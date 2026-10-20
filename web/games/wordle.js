@@ -217,7 +217,7 @@
     if (!s || s.none) return '';
     const dist = (s.dist || []).slice(0, 6);
     while (dist.length < 6) dist.push(0);
-    let streak = s.streak | 0, best = s.best | 0, solved = s.solved | 0;
+    let streak = s.streak | 0, best = s.best | 0, solved = s.solved | 0, miss = s.miss | 0;
     const today = v.solved ? v.attempts : 0;
     if (today && !s.today) {
       dist[today - 1]++;
@@ -225,10 +225,15 @@
       streak++;
       best = Math.max(best, streak);
     }
-    if (!solved) return '';
-    const top = Math.max(1, ...dist);
-    const bars = dist.map((n, i) => '<div class="wdrow' + (today === i + 1 ? ' now' : '') + '"><span>' + (i + 1) + '</span>'
-      + '<i style="width:' + Math.max(8, Math.round(n / top * 100)) + '%">' + n + '</i></div>').join('');
+    // програний сьогоднішній день теж міг не встигнути в базу раніше за запит
+    const lostNow = !!(v.failed && !v.archive);
+    if (lostNow && !s.missToday) miss++;
+    if (!solved && !miss) return '';
+    const top = Math.max(1, miss, ...dist);
+    const bar = (label, n, now, cls) => '<div class="wdrow' + (now ? ' now' : '') + (cls ? ' ' + cls : '') + '"><span>' + label + '</span>'
+      + '<i style="width:' + Math.max(8, Math.round(n / top * 100)) + '%">' + n + '</i></div>';
+    const bars = dist.map((n, i) => bar(i + 1, n, today === i + 1)).join('')
+      + (miss ? bar('✗', miss, lostNow, 'miss') : '');
     return '<div class="wstats">'
       + '<div class="wstreak">Серія <b>🔥 ' + streak + '</b> · найдовша ' + best + ' · узято днів: ' + solved + '</div>'
       + '<div class="wdist" title="За скільки спроб узято слово дня">' + bars + '</div></div>';
