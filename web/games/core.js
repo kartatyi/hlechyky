@@ -2046,7 +2046,7 @@
     api('GET', '/api/games/mine').then((m) => {
       mine = { account: !!(m && m.account), favs: (m && m.favs) || [], recent: (m && m.recent) || [] };
       if (shown && view.kind === 'lobby') renderView();
-    }).catch(() => { mineAt = 0; });
+    }).catch(() => { /* мережа чи старий сервер без /api/games/mine — спробуємо за хвилину, а не на кожну перемальовку */ });
   }
   const favOn = (e) => !!(mine && e.kind !== 'link' && mine.favs.includes(e.key));
   async function toggleFav(key, btn) {
