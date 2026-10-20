@@ -26,6 +26,7 @@ public static class GeoSetup
         // «Де це? дня» в «Щоденному глеку»: таблиця дня за очками й очки в «☀ Сьогодні» (пакет 4)
         services.AddSingleton(sp => new GeoDailyBoard(sp.GetService<Db>(), sp.GetService<IClock>()));
         services.AddSingleton<IDailyPoints>(sp => sp.GetRequiredService<GeoDailyBoard>());
+        services.AddSingleton(sp => new GeoRounds(sp.GetService<Db>(), sp.GetService<IClock>()));   // історія раундів → «🎯 Моя слабка»
         services.AddSingleton(sp =>
         {
             var yt = sp.GetService<IOptionsMonitor<YtDlpOptions>>()?.CurrentValue;

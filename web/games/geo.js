@@ -1183,6 +1183,22 @@
       + '</ol></details>';
   }
 
+  /// Тренування (пакет 4): у партії з «🎯 Моя слабка» — з якої області; у підсумку — кнопка «5 фото звідти» або
+  /// чесне «ще мало даних» (скільки раундів і областей уже є).
+  function weakHtml(ctx, v, phase) {
+    const w = v.extra;
+    if (v.day || !w || !ctx.mine) return '';
+    const focus = w.focus ? '<div class="geoweak muted small">🎯 Тренуєш слабку: ' + ctx.esc(w.focus) + '</div>' : '';
+    if (phase !== 'done') return focus;
+    if (!w.weak) {
+      if (w.rounds == null) return '';
+      return '<div class="geoweak muted small">🎯 «Моя слабка область» — ще мало даних: ' + w.rounds + ' з ' + w.need + ' '
+        + plural(w.need, 'раунду', 'раундів', 'раундів') + ', областей ' + w.regions + ' з ' + w.needRegions + '</div>';
+    }
+    return '<div class="geoweak"><button type="button" class="ghost" data-geo-weak>🎯 Моя слабка: ' + ctx.esc(w.weak.region)
+      + ' (сер. ' + num(w.weak.km) + ' км) — 5 фото звідти</button><span class="geoweaknote muted small"></span></div>';
+  }
+
   /// «Ще раз» каркаса — під карткою, на 1280×800 нижче згину. П'єдестал має свою кнопку, що тисне ту саму.
   const againOf = (root) => (root.parentElement && root.parentElement.querySelector('.gbtns [data-do="Rematch"]')) || null;
 
@@ -1250,7 +1266,8 @@
       ? '<div class="geoshare"><span>' + ctx.esc(v.share) + '</span><button type="button" class="ghost" data-geo-copy>📋 Скопіювати</button></div>'
         + '<div class="muted small">Нові п’ять фото — після півночі</div>'
       : '';
-    const rh = phase === 'done' ? share + dayBoardHtml(ctx, v, phase) + recapHtml(ctx, v) : dayBoardHtml(ctx, v, phase);
+    const rh = (phase === 'done' ? share + dayBoardHtml(ctx, v, phase) + weakHtml(ctx, v, phase) + recapHtml(ctx, v)
+      : dayBoardHtml(ctx, v, phase) + weakHtml(ctx, v, phase));
     // порівнюємо з тим, що малювали, а не з innerHTML: інакше кожне оновлення згортало б розгорнуте людиною
     if (recap.dataset.sig !== rh) { recap.dataset.sig = rh; recap.innerHTML = rh; }
     const res = root.querySelector('.georesult');
@@ -1725,6 +1742,18 @@
         e.currentTarget.hidden = true;
         st.ctx.act('area').then((r) => { if (r && !r.ok && st.ctx) paintBar(root, st.ctx); }).catch(() => {});
       };
+      // «🎯 Моя слабка» (пакет 4): сервер запам'ятовує область на наступну партію, далі — той самий «Ще раз»
+      root.querySelector('.georecapbox').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-geo-weak]');
+        if (!b || !st.ctx) return;
+        b.disabled = true;
+        st.ctx.act('weak').then((r) => {
+          if (r && r.ok) { const a = againOf(root); if (a) a.click(); return; }
+          b.disabled = false;
+          const note = root.querySelector('.geoweaknote');
+          if (note) note.textContent = (r && r.message) || 'Не вийшло';
+        }).catch(() => { b.disabled = false; });
+      });
       root.querySelector('.georecapbox').addEventListener('click', (e) => {
         const b = e.target.closest('[data-geo-copy]');
         if (!b || !st.ctx) return;

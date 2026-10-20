@@ -10,10 +10,11 @@ namespace Hlechyky.Tests.Games;
 /// <summary>Пакет 4 «Щоденні» для «Де це?»: «Де це? дня» у «Щоденному глеку», таблиця дня, слабка область.</summary>
 public sealed class GeoP4Tests
 {
-    static IServiceProvider With(GeoCache c, GeoDailyBoard? board = null)
+    static IServiceProvider With(GeoCache c, GeoDailyBoard? board = null, GeoRounds? rounds = null)
     {
         var s = new ServiceCollection().AddSingleton(c.Photos);
         if (board is not null) s.AddSingleton(board);
+        if (rounds is not null) s.AddSingleton(rounds);
         return s.BuildServiceProvider();
     }
 
@@ -168,5 +169,92 @@ public sealed class GeoP4Tests
         Assert.Equal(2, rows[1].GetProperty("streak").GetInt32());
         Assert.Equal(2, after.GetProperty("place").GetInt32());
         Assert.Equal(2, after.GetProperty("streak").GetInt32());
+    }
+
+    // ---------------------------------------------------------------- 3: «🎯 Моя слабка»
+
+    static void Note(GeoRounds h, string region, params double[] kms)
+    {
+        foreach (var km in kms) h.Note("Оля", "x", region, km, 1000, "solo", DateTimeOffset.UnixEpoch);
+    }
+
+    [Fact]
+    public void Weak_region_is_the_worst_average_once_there_is_enough_data()
+    {
+        var h = new GeoRounds(null);
+        Assert.Null(h.Info("Оля").Weak);
+        Note(h, "Київ", 5, 15);
+        Note(h, "Львівська область", 100, 120, 110);
+        Note(h, "Сумська область", 300);                      // одна шпилька — випадковість, не «слабка»
+        Assert.Null(h.Info("Оля").Weak);                       // 6 раундів < 10
+        Assert.Equal(6, h.Info("оля").Rounds);
+        Assert.Equal(3, h.Info("оля").Regions);
+        Note(h, "Київ", 10, 10, 10, 10);
+        var w = h.Info("Оля").Weak!;
+        Assert.Equal("Львівська область", w.Region);
+        Assert.Equal(110, w.AvgKm, 3);
+        Assert.Equal(3, w.Rounds);
+        Note(h, "Сумська область", 400);
+        Assert.Equal("Сумська область", h.Info("Оля").Weak!.Region);
+    }
+
+    [Fact]
+    public void Weak_region_needs_three_regions()
+    {
+        var h = new GeoRounds(null);
+        Note(h, "Київ", 1, 2, 3, 4, 5, 6);
+        Note(h, "Львівська область", 100, 100, 100, 100);
+        Assert.Null(h.Info("Оля").Weak);
+        Assert.Equal(10, h.Info("Оля").Rounds);
+    }
+
+    static GeoPlace At(string id, string region, double lat, double lon) => GeoCache.Place(id, lat: lat, lon: lon) with { Region = region };
+
+    [Fact]
+    public void Every_pin_lands_in_the_history_and_weak_training_deals_from_that_region_then_neighbours()
+    {
+        var bank = GeoCache.BankOf(
+            At("w1", "Волинська область", 51.0, 25.0), At("w2", "Волинська область", 51.2, 25.3), At("w3", "Волинська область", 50.9, 25.6),
+            At("n1", "Рівненська область", 50.8, 26.2), At("n2", "Рівненська область", 51.0, 26.5),
+            At("f1", "Харківська область", 49.9, 36.2), At("f2", "Одеська область", 46.5, 30.7), At("f3", "Київ", 50.45, 30.5),
+            At("f4", "Сумська область", 50.9, 34.8), At("f5", "Полтавська область", 49.6, 34.5));
+        using var c = new GeoCache(bank);
+        var rounds = new GeoRounds(null);
+        var h = new RoomHarness("geo-solo", seed: 7, services: With(c, rounds: rounds));
+        Assert.True(h.Solo("Оля").Ok, h.Reply.Message);
+
+        // ще мало даних — чесна відмова, а не порожня партія
+        var view = h.View(0).GetProperty("extra");
+        Assert.Equal(JsonValueKind.Null, view.GetProperty("weak").ValueKind);
+        PlayDay(h, c, (r, t) => (t.X + 40 * r, t.Y));
+        Assert.Equal(5, rounds.Info("Оля").Rounds);             // кожна шпилька — у історію
+        Assert.False(h.Act(0, GeoSolo.Weak).Ok);
+
+        Note(rounds, "Волинська область", 400, 500);
+        Note(rounds, "Київ", 1, 1, 1);
+        var weak = rounds.Info("Оля").Weak!;
+        Assert.Equal("Волинська область", weak.Region);
+        Assert.Equal("Волинська область", h.View(0).GetProperty("extra").GetProperty("weak").GetProperty("region").GetString());
+
+        Assert.True(h.Act(0, GeoSolo.Weak).Ok);
+        Assert.True(h.Rematch().Ok, h.Reply.Message);
+        var ids = new List<string>();
+        for (var r = 0; r < 5; r++)
+        {
+            GeoTests.Until(h, GeoMatch.PhaseGuess);
+            ids.Add(GeoTests.Current(h, c).Id);
+            h.Act(0, "ready");
+            GeoTests.Until(h, GeoMatch.PhaseReveal);
+            h.Act(0, "next");
+            h.Tick(1);
+        }
+        // усі три волинські + два найближчі рівненські, жодного далекого
+        Assert.Equal(["n1", "n2", "w1", "w2", "w3"], ids.Order());
+        Assert.Equal("Волинська область", h.View(0).GetProperty("extra").GetProperty("focus").GetString());
+
+        // «Ще раз» після — знову з усієї України
+        GeoTests.Until(h, GeoMatch.PhaseDone);
+        Assert.True(h.Rematch().Ok, h.Reply.Message);
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("extra").GetProperty("focus").ValueKind);
     }
 }
