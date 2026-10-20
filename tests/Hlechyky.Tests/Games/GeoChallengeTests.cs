@@ -220,4 +220,15 @@ public sealed class GeoChallengeTests
             try { Directory.Delete(dir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
     }
+
+    [Fact]
+    public void Guest_sees_no_challenge_button_and_cannot_throw()
+    {
+        using var w = new World();
+        var a = w.Open("geo-solo", "гість Оля");
+        Play(a, w.Cache, 5, (r, t) => t);
+        Assert.Equal(GeoMatch.PhaseDone, GeoTests.Phase(a));
+        Assert.Equal(JsonValueKind.Null, Ch(a).ValueKind);
+        Assert.False(a.Act(0, GeoMatch.ChallengeAct).Ok);
+    }
 }

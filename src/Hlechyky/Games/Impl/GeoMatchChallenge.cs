@@ -34,8 +34,11 @@ public sealed partial class GeoMatch
     bool Challengeable => _rules.Solo && Day is null && Ending is null && Deal is null && _phase == PhaseDone
         && _rounds.Count > 0 && _recap.Count == _rounds.Count && _rounds.All(r => r.Mine is null);
 
+    /// <summary>Кнопка «Кинути виклик» — лише тим, хто назвався: гостеві однаково відмовимо, тож і не манимо.</summary>
     object? ChView(int me) =>
-        ChInfo is { } f ? f(me) : me == 0 && Challengeable ? new { can = _made is null, made = _made is not null } : null;
+        ChInfo is { } f ? f(me)
+        : me == 0 && Challengeable && _ctx.NickOf(0) is { } nick && !Auth.IsGuestNick(nick) ? new { can = _made is null, made = _made is not null }
+        : null;
 
     ActResult Challenge(int seat)
     {

@@ -1503,7 +1503,9 @@
       + (x.state === 'done' ? '<span class="small">Ти: <b>' + num(x.my) + '</b></span>'
         : '<button type="button" class="primary" data-ch-take="' + ctx.esc(x.id) + '">' + (x.state === 'open' ? 'Продовжити' : 'Зіграти') + '</button>')
       + '</li>').join('') + '</ul>'
-      : '<p class="muted small">Поки ніхто не кинув. Зіграй тренування — після партії буде кнопка «🤝 Кинути виклик».</p>';
+      : '<p class="muted small">Поки ніхто не кинув. ' + (/^гість( |$)/i.test((ctx.me && ctx.me.nick) || 'гість')
+        ? 'Кидати свої виклики можуть ті, хто назвався, — а грати чужі можна й гостем.</p>'
+        : 'Зіграй тренування — після партії буде кнопка «🤝 Кинути виклик».</p>');
     if (mine.length) {
       h += '<b class="geochsub">Твої виклики</b><ul class="geochlist">' + mine.map((x) => '<li><span>' + chDate(x.at) + ' · ' + num(x.total) + ' очок</span>'
         + '<span class="small">' + ((x.tries || []).length ? x.tries.map((t) => ctx.esc(t.nick) + ' ' + num(t.total)).join(', ')
