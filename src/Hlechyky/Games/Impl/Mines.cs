@@ -855,7 +855,7 @@ public sealed class MinesDaily : MinesDayGame, IDailyGame
     /// З якого дня поле дня — без вгадування (<see cref="MinesFields"/>). Старші дні — старим генератором: стан кімнати
     /// й привиди зберігають лише маску відкритого, а міни виводяться з дня, тож поле вже зіграного дня мінятись не сміє.
     /// </summary>
-    public const string NoGuessFrom = "2026-10-22";
+    public const string NoGuessFrom = "2026-10-21";
 
     /// <summary>Чи день грає полем без вгадування.</summary>
     public static bool NoGuess(string day) => string.CompareOrdinal(day, NoGuessFrom) >= 0;

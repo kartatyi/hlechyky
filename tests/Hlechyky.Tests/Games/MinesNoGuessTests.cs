@@ -80,7 +80,8 @@ public class MinesNoGuessTests(ITestOutputHelper output)
     [Fact]
     public void Days_before_the_switch_keep_the_old_field()
     {
-        foreach (var day in new[] { "2026-09-10", "2026-10-20", "2026-10-21" })
+        var eve = DateOnly.ParseExact(MinesDaily.NoGuessFrom, "yyyy-MM-dd").AddDays(-1).ToString("yyyy-MM-dd");
+        foreach (var day in new[] { "2026-09-10", "2026-10-20", eve })
         {
             Assert.False(MinesDaily.NoGuess(day));
             var old = new MinesBoard(16, 16, 40);
