@@ -35,6 +35,7 @@ public static class GamesSetup
         services.AddSingleton<TickHealth>();
         services.AddSingleton<GameAdded>();               // «🆕»: коли сервер уперше побачив гру
         services.AddSingleton<GameNews>();                 // «що нового»: яку версію оновлення гри нік уже бачив
+        services.AddSingleton<GameFavs>();                 // «⭐ Мої ігри» акаунта (і «🕘 Нещодавно» в тому ж GET)
         services.AddSingleton<Tournament>();
         services.AddHostedService(sp => sp.GetRequiredService<Tournament>());
         // Столи переживають перезапуск: знімок на диску, заморозка перед перезапуском, /api/internal/* для start.ps1 і deploy.ps1
@@ -87,6 +88,7 @@ public static class GamesSetup
             new Catalog([.. registry.Catalog.Select(g => rooms.Closed(g.Id) is null ? g : g with { Off = true })],
                 Rooms.Stakes, front.Games(), added.Map(registry.Catalog)));
         GameNews.Map(app);                                  // /api/games/news — «бачив що нового»
+        GameFavs.Map(app);                                  // /api/games/mine, /api/games/fav — «⭐ Мої», «🕘 Нещодавно»
         TablesKeeper.Map(app);                              // /api/internal/freeze, thaw, busy — лише з цієї машини з ключем
         TickHealth.Map(app);                                // /api/diag/jerk — метр «дьоргання» з браузера, /api/diag/tick — розробнику
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house

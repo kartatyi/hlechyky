@@ -47,6 +47,9 @@ public sealed record LedgerSum(string Reason, int Earned, int Spent);
 /// <summary>Гра за вікно: скільки різних столів дограли, скільки різних людей грало і коли востаннє.</summary>
 public sealed record PopularRow(string Game, int Rooms, int Players, DateTimeOffset Last);
 
+/// <summary>«🕘 Нещодавно»: гра й київський день, коли нік у неї востаннє грав.</summary>
+public sealed record RecentGame(string Game, string Day);
+
 /// <summary>
 /// Увесь SQL економіки в одному місці. Db тримає лише DDL і гачок <see cref="Db.With{T}"/>: так нові таблиці
 /// не тягнуть за собою десятки методів у спільний файл, який правлять усі.
@@ -534,6 +537,34 @@ public sealed class EconomyStore(Db db)
         var list = new List<string>();
         while (r.Read()) list.Add(r.GetString(0));
         return list;
+    });
+
+    /// <summary>
+    /// «🕘 Нещодавно» в лобі: ігри ніка від найсвіжішої. Свіжість — останній київський день, коли він дограв там партію
+    /// або просидів за столом хоч хвилину (лічильник часу: так видно й Гончарне коло, й недограні партії); у межах дня —
+    /// за часом останньої партії, далі за назвою.
+    /// </summary>
+    public List<RecentGame> RecentGames(string nickKey, int n) => db.With(c =>
+    {
+        var last = new Dictionary<string, (string Day, string? At)>();
+        using (var cmd = Cmd(c, "SELECT game, MAX(created_at) FROM game_results WHERE nick_key = $n GROUP BY game", ("$n", nickKey)))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read()) last[r.GetString(0)] = (Days.Of(Ts(r.GetString(1))), r.GetString(1));
+        // 'time:game:<гра>' — substr з 11-го символу дає саму гру.
+        using (var cmd = Cmd(c, """
+            SELECT substr(key, 11), MAX(day) FROM economy_counters
+            WHERE nick_key = $n AND key LIKE 'time:game:%' AND n >= 60 GROUP BY key
+            """, ("$n", nickKey)))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read())
+            {
+                var (game, day) = (r.GetString(0), r.GetString(1));
+                if (!last.TryGetValue(game, out var was) || string.CompareOrdinal(day, was.Day) > 0) last[game] = (day, null);
+            }
+        return last.OrderByDescending(x => x.Value.Day, StringComparer.Ordinal)
+            .ThenByDescending(x => x.Value.At ?? "", StringComparer.Ordinal)
+            .ThenBy(x => x.Key, StringComparer.Ordinal)
+            .Take(n).Select(x => new RecentGame(x.Key, x.Value.Day)).ToList();
     });
 
     /// <summary>
