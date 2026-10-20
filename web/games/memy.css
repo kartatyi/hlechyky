@@ -1,0 +1,203 @@
+/*
+  «Мемологія» (memy, memy-solo). Кольори — лише змінні сайту (--accent --ok --clay --muted --danger --bg2 --panel…);
+  відтінки — через color-mix від них. Класи з префіксом memy-, щоб не зачепити глобальні (.spin, .chip…).
+*/
+
+.memy {
+  container-type: inline-size;
+  width: 100%; max-width: 1040px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+/* шапка: номер мему · що вгадуємо · таймер */
+.memy-top { display: flex; align-items: center; gap: 10px; min-height: 46px; }
+.memy-round { flex: 1 1 0; min-width: 0; font-variant-numeric: tabular-nums; }
+.memy-mode {
+  flex: 0 1 auto; padding: 6px 14px; border-radius: 999px; font-weight: 800; font-size: 1.05em; white-space: nowrap;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
+}
+.memy-mode.memy-phrase { background: color-mix(in srgb, var(--clay) 22%, transparent); color: var(--text); }
+.memy-arc { flex: 1 1 0; display: flex; justify-content: flex-end; min-width: 46px; }
+.memy-arc.memy-rv .garc .fg { stroke: var(--ok); }
+.memy-notes { color: var(--muted); text-align: center; }
+
+/* дві колонки, коли картці є де розвернутись; на телефоні — одна під одною */
+.memy-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+@container (min-width: 760px) {
+  .memy-main { grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr); }
+  .memy-isdone .memy-main { grid-template-columns: minmax(0, 1fr); }
+}
+.memy-left { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.memy-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+/* Рамка зі сталою пропорцією: кадри проявлення (і різні меми) не смикають верстку. На високому екрані — не гігантська. */
+.memy-frame {
+  position: relative; width: 100%; max-width: calc(min(58vh, 560px) * 4 / 3); margin: 0 auto;
+  aspect-ratio: 4 / 3; border-radius: 14px; overflow: hidden;
+  background:
+    repeating-conic-gradient(color-mix(in srgb, var(--text) 4%, transparent) 0 25%, transparent 0 50%) 0 0 / 22px 22px,
+    var(--bg2);
+  box-shadow: 0 0 0 1px var(--line) inset, 0 8px 28px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.memy-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; -webkit-user-drag: none; }
+.memy-frame.memy-empty .memy-img { visibility: hidden; }
+.memy-frame.memy-pix .memy-img { image-rendering: pixelated; image-rendering: crisp-edges; }
+.memy-frame.memy-revealed { box-shadow: 0 0 0 2px var(--ok) inset, 0 8px 28px color-mix(in srgb, var(--bg) 70%, transparent); }
+.memy-frame.memy-revealed .memy-img { image-rendering: auto; }
+.memy-frame.memy-flash .memy-img { animation: memy-flash .7s ease-out; }
+@keyframes memy-flash {
+  0% { filter: brightness(1.8) saturate(.4); transform: scale(1.03); }
+  100% { filter: none; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .memy-frame.memy-flash .memy-img { animation: none; } }
+
+.memy-cover {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 16px; text-align: center; color: var(--muted);
+  background: color-mix(in srgb, var(--bg2) 55%, transparent);
+}
+.memy-frame.memy-empty .memy-cover { background: transparent; }
+/* лобі на телефоні: заглушка картинки низька, щоб правила й «Почати» господаря були на екрані */
+@container (max-width: 759px) {
+  .memy-inlobby .memy-frame { aspect-ratio: auto; height: 130px; }
+  .memy-inlobby .memy-qmark { font-size: 3em; }
+}
+.memy-qmark { font-size: 4.5em; font-weight: 900; line-height: 1; color: var(--accent); opacity: .85; }
+
+/* кадри проявлення: 🧩 +50 · 🧩 +25 · 👁 чітка, і скільки до наступного */
+.memy-steps { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; min-height: 28px; }
+.memy-dots { display: flex; gap: 4px; }
+.memy-dot {
+  padding: 3px 9px; border-radius: 999px; font-size: .8em; white-space: nowrap;
+  background: var(--panel2); color: var(--muted); opacity: .55;
+}
+.memy-dot.on { opacity: 1; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); font-weight: 700; }
+.memy-dot.past { opacity: .35; text-decoration: line-through; }
+.memy-next { min-width: 8.5em; font-variant-numeric: tabular-nums; }
+
+/* відповідь */
+.memy-ask { display: flex; flex-direction: column; gap: 9px; }
+.memy-me { font-weight: 600; min-height: 1.4em; }
+.memy-me.memy-big { font-size: 1.15em; padding: 8px 12px; border-radius: 10px; background: var(--bg2); }
+.memy-ok { color: var(--ok); }
+.memy-bad { color: var(--danger); }
+.memy-form { display: flex; gap: 6px; }
+.memy-form input { flex: 1; min-width: 0; font-size: 1.1em; padding: 12px 14px; }
+.memy-form button { min-width: 52px; justify-content: center; font-size: 1.1em; }
+.memy-input:disabled { opacity: .6; }
+.memy-input.memy-shake { animation: memy-shake .35s; border-color: var(--danger); }
+@keyframes memy-shake {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+.memy-hint { color: var(--muted); }
+/* Варіанти відкрились — вони головні (5–8 с на все): стають одразу під рядком стану, поле — під ними. */
+.memy-ask.memy-open .memy-hint { order: 1; }
+.memy-ask.memy-open .memy-choices { order: 2; }
+.memy-ask.memy-open .memy-form { order: 3; }
+.memy-ask.memy-open .memy-skipbox { order: 4; }
+.memy-ask.memy-open .memy-found { order: 5; }
+.memy-hint b { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+.memy-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; scroll-margin-bottom: 84px; }
+.memy-choices.memy-long { grid-template-columns: minmax(0, 1fr); }
+.memy-ch {
+  display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 8px 12px;
+  white-space: normal; text-align: left; line-height: 1.25; font-weight: 600; overflow-wrap: anywhere;
+  background: var(--panel2); border: 2px solid var(--line); border-radius: 12px;
+}
+.memy-ch span { flex: 1; min-width: 0; }
+.memy-ch kbd {
+  flex: none; display: inline-grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 6px;
+  font: inherit; font-size: .8em; font-weight: 800; background: var(--bg2); color: var(--muted);
+}
+.memy-ch:not(:disabled):hover { border-color: var(--accent2); }
+.memy-ch.memy-sel { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+.memy-ch.memy-sel kbd { background: var(--accent); color: var(--accent-ink); }
+.memy-ch.memy-mine { border-color: var(--accent2); }
+.memy-ch.memy-right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 18%, var(--panel2)); opacity: 1; }
+.memy-ch.memy-wrong { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 16%, var(--panel2)); opacity: 1; }
+
+.memy-skipbox { display: flex; justify-content: center; }
+.memy-skip { min-height: 42px; }
+.memy-found { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+
+/* розкриття: що за мем і звідки він */
+.memy-reveal { display: flex; flex-direction: column; gap: 10px; animation: memy-in .35s ease-out; }
+@keyframes memy-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .memy-reveal { animation: none; } }
+.memy-rvcard {
+  display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+}
+.memy-kicker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .8em; text-transform: uppercase; letter-spacing: .06em; }
+.memy-kicker .chip { text-transform: none; letter-spacing: 0; }
+.memy-name { font-family: var(--display); font-size: 1.5em; font-weight: 800; line-height: 1.15; color: var(--accent); overflow-wrap: anywhere; }
+.memy-phr { font-style: italic; color: var(--text); overflow-wrap: anywhere; }
+.memy-phr.memy-big { font-size: 1.2em; font-weight: 700; color: var(--accent); }
+.memy-about { margin: 2px 0 0; line-height: 1.45; color: var(--text); }
+.memy-links { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .88em; }
+.memy-links a { text-decoration: none; }
+.memy-links a:hover { text-decoration: underline; }
+
+.memy-answers { display: flex; flex-direction: column; gap: 3px; }
+.memy-arow { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 8px; background: var(--bg2); min-width: 0; }
+.memy-arow.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.memy-arow.hit { background: color-mix(in srgb, var(--ok) 14%, var(--bg2)); }
+.memy-arow.none { opacity: .7; }
+.memy-mark { width: 1.3em; text-align: center; flex: none; }
+.memy-arow.hit .memy-mark { color: var(--ok); }
+.memy-arow.miss .memy-mark { color: var(--danger); }
+.memy-anick { flex: 0 1 auto; max-width: 40%; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memy-how { flex: none; font-size: .9em; }
+.memy-atext { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memy-arow em { flex: none; font-style: normal; color: var(--ok); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* рахунок */
+.memy-scores { display: flex; flex-direction: column; gap: 3px; }
+.memy-sc { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--bg2); border-radius: 8px; }
+.memy-sc.me { box-shadow: 0 0 0 1px var(--accent2) inset; }
+.memy-sc.off { opacity: .45; }
+.memy-sc.win { background: color-mix(in srgb, var(--ok) 16%, var(--bg2)); }
+.memy-sn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memy-sf { flex: none; }
+.memy-sc em { font-style: normal; color: var(--ok); font-size: .85em; }
+.memy-sc b { min-width: 2.8em; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* кінець партії */
+.memy-done { display: flex; flex-direction: column; gap: 10px; }
+.memy-win { font-family: var(--display); font-size: 1.3em; font-weight: 800; color: var(--accent); text-align: center; }
+.memy-note { text-align: center; }
+.memy-solo { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; }
+.memy-bign { font-family: var(--display); font-size: 3em; font-weight: 900; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+.memy-rec { margin-top: 6px; color: var(--muted); }
+.memy-rec b { color: var(--text); }
+.memy-rec.memy-new { color: var(--ok); font-weight: 800; font-size: 1.1em; }
+.memy-subh { color: var(--muted); font-size: .85em; text-transform: uppercase; letter-spacing: .06em; }
+.memy-played { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.memy-pl { display: flex; gap: 10px; align-items: center; padding: 6px; border-radius: 10px; background: var(--bg2); min-width: 0; }
+.memy-thumb { flex: none; width: 72px; aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; background: var(--panel2); }
+.memy-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.memy-plt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.memy-plt b, .memy-plt i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memy-plt i { color: var(--muted); font-size: .85em; }
+.memy-plt small a { text-decoration: none; }
+
+/* лобі */
+.memy-lobby { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; background: var(--bg2); line-height: 1.4; }
+
+/* палець: кнопки вищі, поле ширше */
+@media (pointer: coarse) {
+  .memy-ch { min-height: 58px; }
+  .memy-skip { min-height: 46px; }
+  .memy-form button { min-width: 56px; min-height: 48px; }
+}
+@container (max-width: 420px) {
+  .memy-top { gap: 6px; }
+  .memy-mode { font-size: .95em; padding: 5px 10px; }
+  .memy-name { font-size: 1.3em; }
+  .memy-ch { padding: 8px 10px; gap: 8px; }
+}
