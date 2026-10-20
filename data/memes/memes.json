@@ -1,0 +1,4208 @@
+{
+ "version": 1,
+ "memes": [
+  {
+   "id": "u001",
+   "cat": "ua",
+   "name": "Пес Патрон",
+   "names": [
+    "Патрон",
+    "Patron the Dog",
+    "пес-сапер Патрон"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "пес",
+    "війна"
+   ],
+   "about": "Джек-рассел-тер'єр, пес-сапер і талісман ДСНС. Прославився 2022 року: шукав вибухівку, яку лишили російські війська, і Зеленський нагородив його орденом «За мужність».",
+   "image": {
+    "url": "https://upload.wikimedia.org/wikipedia/commons/5/53/Patron_with_Golden_Paw_award.jpg",
+    "page": "https://commons.wikimedia.org/wiki/File:Patron_with_Golden_Paw_award.jpg"
+   },
+   "crop": null,
+   "sources": [
+    "https://en.wikipedia.org/wiki/Patron_(dog)",
+    "https://uk.wikipedia.org/wiki/Патрон_(пес)"
+   ]
+  },
+  {
+   "id": "u006",
+   "cat": "ua",
+   "name": "Тракторні війська",
+   "names": [
+    "трактор тягне танк",
+    "трактор",
+    "Ukrainian Farmers vs. Russian Army",
+    "фермери крадуть танки"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "війна",
+    "техніка"
+   ],
+   "about": "Меми про українських фермерів, які тракторами відтягують покинуту російську техніку. Почалися з перших днів вторгнення 2022 року.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=BpO7cy0PovU",
+    "at": 3,
+    "page": "https://www.youtube.com/watch?v=BpO7cy0PovU"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/ukrainian-farmers-vs-russian-army",
+    "https://itc.ua/ua/statti/vsi-kultovi-memi-za-piv-roku-rosijsko-ukrayinskoyi-vijni-v-odnij-ilyustratsiyi/"
+   ]
+  },
+  {
+   "id": "u007",
+   "cat": "ua",
+   "name": "NAFO",
+   "names": [
+    "НАФО",
+    "North Atlantic Fella Organization",
+    "фела",
+    "fellas"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 2,
+   "tags": [
+    "пес",
+    "війна"
+   ],
+   "about": "Мережева спільнота, що тролить російську пропаганду абсурдом та іронією і збирає кошти для українських військових. Учасники звуть себе fellas і ставлять на аватари мультяшного шіба-іну.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/041/052/FWeKVN5WAAAfrEt.jpeg",
+    "page": "https://knowyourmeme.com/memes/nafo"
+   },
+   "crop": null,
+   "sources": [
+    "https://uk.wikipedia.org/wiki/NAFO",
+    "https://knowyourmeme.com/memes/nafo"
+   ]
+  },
+  {
+   "id": "u012",
+   "cat": "ua",
+   "name": "Бородянський півник",
+   "names": [
+    "півник",
+    "півник з бородянки",
+    "васильківський півник",
+    "шафка з бородянки"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "війна",
+    "новини"
+   ],
+   "about": "Керамічний півник васильківської майоліки на кухонній шафці, що вціліла на стіні зруйнованого будинку в Бородянці (фото 6 квітня 2022). Став символом стійкості.",
+   "image": {
+    "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/74/%D0%9F%D1%96%D0%B2%D0%BD%D0%B8%D0%BA_%D0%B2%D0%B0%D1%81%D0%B8%D0%BB%D1%8C%D0%BA%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D0%BE%D1%97_%D0%BC%D0%B0%D0%B9%D0%BE%D0%BB%D1%96%D0%BA%D0%B8.png/960px-%D0%9F%D1%96%D0%B2%D0%BD%D0%B8%D0%BA_%D0%B2%D0%B0%D1%81%D0%B8%D0%BB%D1%8C%D0%BA%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D0%BE%D1%97_%D0%BC%D0%B0%D0%B9%D0%BE%D0%BB%D1%96%D0%BA%D0%B8.png",
+    "page": "https://uk.wikipedia.org/wiki/%D0%9F%D1%96%D0%B2%D0%BD%D0%B8%D0%BA_%D0%B2%D0%B0%D1%81%D0%B8%D0%BB%D1%8C%D0%BA%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D0%BE%D1%97_%D0%BC%D0%B0%D0%B9%D0%BE%D0%BB%D1%96%D0%BA%D0%B8"
+   },
+   "crop": null,
+   "sources": [
+    "https://uk.wikipedia.org/wiki/Півник_васильківської_майоліки",
+    "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   ]
+  },
+  {
+   "id": "u021",
+   "cat": "ua",
+   "name": "Віталій Кім вітається",
+   "names": [
+    "кім",
+    "доброго вечора",
+    "добрий вечір, ми з україни",
+    "probass hardi"
+   ],
+   "phrase": "Доброго вечора, ми з України!",
+   "phrases": [
+    "добрий вечір, ми з України",
+    "доброго вечора ми з україни"
+   ],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "політика",
+    "війна"
+   ],
+   "about": "Фразу першим сказав Марко Галаневич із «ДахаБрахи»; трек PROBASS ∆ HARDI вийшов у жовтні 2021-го, а після вторгнення став вірусним. Голова Миколаївської ОВА Віталій Кім починав нею свої відеозвернення.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=b66swPVumO4",
+    "at": 6,
+    "page": "https://www.youtube.com/watch?v=b66swPVumO4"
+   },
+   "crop": [
+    0,
+    0.22,
+    1,
+    0.78
+   ],
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%94%D0%BE%D0%B1%D1%80%D0%BE%D0%B3%D0%BE_%D0%B2%D0%B5%D1%87%D0%BE%D1%80%D0%B0,_%D0%BC%D0%B8_%D0%B7_%D0%A3%D0%BA%D1%80%D0%B0%D1%97%D0%BD%D0%B8",
+    "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   ]
+  },
+  {
+   "id": "u022",
+   "cat": "ua",
+   "name": "Борис Джонсонюк",
+   "names": [
+    "джонсонюк",
+    "борис джонсон",
+    "борис чуприна",
+    "johnson"
+   ],
+   "phrase": "Добрий день, everybody",
+   "phrases": [
+    "добрий день еврібаді",
+    "добрий день, everybody!"
+   ],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "Британського прем'єра Бориса Джонсона, одного з перших лідерів, що приїхали до Києва 2022 року, українці прозвали Джонсонюком. Його «Добрий день, everybody» стало крилатим, а в Чернігові його «посвятили в козаки» як Бориса Чуприну.",
+   "image": {
+    "url": "https://imglife.pravda.com.ua/life/images/doc/7/7/22644/77062e0-suspilne-chernihiv-boris-johnson-cossak--3-.jpg",
+    "page": "https://life.pravda.com.ua/culture/2022/06/08/249016/"
+   },
+   "crop": null,
+   "sources": [
+    "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/",
+    "https://life.pravda.com.ua/culture/2022/06/08/249016/"
+   ]
+  },
+  {
+   "id": "u031",
+   "cat": "ua",
+   "name": "Чмоня",
+   "names": [
+    "чмоня",
+    "рязанцев"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 2,
+   "tags": [
+    "війна",
+    "люди"
+   ],
+   "about": "Березень 2022: полонений окупант із Горлівки в завеликій формі став героєм фотожаб і тіктоків — висміювання незграбного вигляду російських військових.",
+   "image": {
+    "url": "https://cdn4.suspilne.media/images/resize/1040x0.1/75dfb8e735b6b96b.jpg",
+    "page": "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   },
+   "crop": [
+    0,
+    0,
+    0.33,
+    1
+   ],
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%A7%D0%BC%D0%BE%D0%BD%D1%8F",
+    "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   ]
+  },
+  {
+   "id": "u032",
+   "cat": "ua",
+   "name": "Затримання Медведчука",
+   "names": [
+    "медведчук",
+    "медведчук у кайданках",
+    "медведчук у формі",
+    "кум путіна",
+    "арешт медведчука"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "політика",
+    "новини"
+   ],
+   "about": "У квітні 2022 року СБУ затримала проросійського політика Віктора Медведчука; його фото у формі ЗСУ та в кайданках миттю стало мемом.",
+   "image": {
+    "url": "https://cdn4.suspilne.media/images/resize/1040x0.1/f253585a35c4c6e4.jpg",
+    "page": "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   },
+   "crop": [
+    0,
+    0.08,
+    0.34,
+    0.47
+   ],
+   "sources": [
+    "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   ]
+  },
+  {
+   "id": "u040",
+   "cat": "ua",
+   "name": "Поворознюк до Зеленського",
+   "names": [
+    "поворознюк",
+    "вова їбаш",
+    "вова, єбаш їх",
+    "президент інгульця"
+   ],
+   "phrase": "Вова, їбаш їх",
+   "phrases": [
+    "вова єбаш їх",
+    "вова, їб*ш їх",
+    "вова їбаш їх бл*ть"
+   ],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "люди",
+    "війна"
+   ],
+   "about": "1 березня 2022 року аграрій і президент ФК «Інгулець» Олександр Поворознюк записав емоційне звернення до Зеленського. Відео розлетілося країною, з нього робили меми й музичні треки.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=QGUDxW9i1kg",
+    "at": 6,
+    "page": "https://www.youtube.com/watch?v=QGUDxW9i1kg"
+   },
+   "crop": null,
+   "sources": [
+    "https://www.unian.ua/society/avtor-mema-vova-yeb-sh-jih-bl-d-zirkoyu-sebe-ne-vidchuvayu-novini-ukrajini-11815938.html",
+    "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   ]
+  },
+  {
+   "id": "u048",
+   "cat": "ua",
+   "name": "Кислиця читає книжку в ООН",
+   "names": [
+    "кислиця",
+    "сергій кислиця",
+    "що не так з дипломатією",
+    "кислиця краш"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "Постпред України в ООН Сергій Кислиця під час виступу російського посла на засіданні Радбезу 29 березня 2022 року показово читав книжку «Що не так з дипломатією?». Українці назвали його крашем.",
+   "image": {
+    "url": "https://cdn4.suspilne.media/images/resize/1040x1.78/1c0f03bd0b375b9e.jpg",
+    "page": "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   },
+   "crop": [
+    0.22,
+    0,
+    0.56,
+    1
+   ],
+   "sources": [
+    "https://suspilne.media/culture/348110-dobrogo-vecora-everybody-cej-den-/"
+   ]
+  },
+  {
+   "id": "u208",
+   "cat": "ua",
+   "name": "Яйце в Януковича",
+   "names": [
+    "яєчний замах",
+    "яйце",
+    "янукович яйце",
+    "яйцевий теракт"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2004,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "новини"
+   ],
+   "about": "24 вересня 2004 року в Івано-Франківську в Януковича влучило яйце, і він картинно впав. «Яйцеву атаку» висміювали роками.",
+   "image": {
+    "url": "https://i.ytimg.com/vi/aFFy2phaI6I/hqdefault.jpg",
+    "page": "https://www.youtube.com/watch?v=aFFy2phaI6I"
+   },
+   "crop": [
+    0,
+    0.125,
+    1,
+    0.75
+   ],
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%AF%D0%BD%D1%83%D0%BA%D0%BE%D0%B2%D0%B8%D1%87_%D0%92%D1%96%D0%BA%D1%82%D0%BE%D1%80_%D0%A4%D0%B5%D0%B4%D0%BE%D1%80%D0%BE%D0%B2%D0%B8%D1%87"
+   ]
+  },
+  {
+   "id": "u212",
+   "cat": "ua",
+   "name": "Литвин під парасольками",
+   "names": [
+    "парасольки в раді",
+    "яйця в раді",
+    "литвин парасоля"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2010,
+   "difficulty": 3,
+   "tags": [
+    "політика",
+    "новини"
+   ],
+   "about": "Під час ратифікації Харківських угод у 2010 році в спікера Володимира Литвина полетіли яйця, і охорона прикривала його парасольками до кінця засідання. Тоді ж у залі пускали димові шашки.",
+   "image": {
+    "url": "https://i.ytimg.com/vi/Fk_SmJQ0__k/hqdefault.jpg",
+    "page": "https://www.youtube.com/watch?v=Fk_SmJQ0__k"
+   },
+   "crop": [
+    0,
+    0.125,
+    1,
+    0.75
+   ],
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%A5%D0%B0%D1%80%D0%BA%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D1%96_%D1%83%D0%B3%D0%BE%D0%B4%D0%B8"
+   ]
+  },
+  {
+   "id": "u214",
+   "cat": "ua",
+   "name": "Полтавський палій",
+   "names": [
+    "палій",
+    "мені нравиться як воно горить"
+   ],
+   "phrase": "Мені нравиться, як воно горить",
+   "phrases": [
+    "як воно горить",
+    "мені подобається як воно горить"
+   ],
+   "year": 2010,
+   "difficulty": 2,
+   "tags": [
+    "люди",
+    "новини"
+   ],
+   "about": "2010 року в Полтаві затримали чоловіка, що за ніч підпалив вісім вхідних дверей. На камеру він незворушно пояснив, що йому подобається, як воно горить. Після вторгнення 2022 року фраза знову стала популярною, наприклад коли підбили крейсер «Москва».",
+   "image": {
+    "url": "https://i.ytimg.com/vi/7Bo4CTIXx-A/hqdefault.jpg",
+    "page": "https://www.youtube.com/watch?v=7Bo4CTIXx-A"
+   },
+   "crop": [
+    0,
+    0.125,
+    1,
+    0.75
+   ],
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%9F%D0%BE%D0%BB%D1%82%D0%B0%D0%B2%D1%81%D1%8C%D0%BA%D0%B8%D0%B9_%D0%BF%D0%B0%D0%BB%D1%96%D0%B9"
+   ]
+  },
+  {
+   "id": "u220",
+   "cat": "ua",
+   "name": "Золотий батон Януковича",
+   "names": [
+    "золотий батон",
+    "батон",
+    "межигір'я"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2014,
+   "difficulty": 1,
+   "tags": [
+    "політика",
+    "новини",
+    "їжа"
+   ],
+   "about": "Коли в лютому 2014 року люди зайшли в покинуте Януковичем Межигір'я, серед знахідок був золотий батон у натуральну величину. Він став символом розкоші й корупції режиму.",
+   "image": {
+    "url": "https://i.ytimg.com/vi/OjwYmpIjDVI/maxresdefault.jpg",
+    "page": "https://www.youtube.com/watch?v=OjwYmpIjDVI"
+   },
+   "crop": [
+    0.08,
+    0.22,
+    0.32,
+    0.42
+   ],
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%9C%D0%B5%D0%B6%D0%B8%D0%B3%D1%96%D1%80%27%D1%8F_%28%D0%BC%D0%B0%D1%94%D1%82%D0%BE%D0%BA%29"
+   ]
+  },
+  {
+   "id": "u223",
+   "cat": "ua",
+   "name": "Ляшко з вилами",
+   "names": [
+    "вила",
+    "ляшко",
+    "на вила"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2014,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "Вила — символ Олега Ляшка й Радикальної партії: він колекціонує вила, які йому дарують. У 2013 році Ляшко навіть намагався пронести вила в літак, щоб «підняти повстання» в Донецьку.",
+   "image": {
+    "url": "https://i.ytimg.com/vi/ZO_q5yCqtjU/maxresdefault.jpg",
+    "page": "https://www.youtube.com/watch?v=ZO_q5yCqtjU"
+   },
+   "crop": null,
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%9B%D1%8F%D1%88%D0%BA%D0%BE_%D0%9E%D0%BB%D0%B5%D0%B3_%D0%92%D0%B0%D0%BB%D0%B5%D1%80%D1%96%D0%B9%D0%BE%D0%B2%D0%B8%D1%87"
+   ]
+  },
+  {
+   "id": "u224",
+   "cat": "ua",
+   "name": "Ленін — Дарт Вейдер в Одесі",
+   "names": [
+    "дарт вейдер",
+    "ленін вейдер",
+    "вейдер в одесі"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2015,
+   "difficulty": 2,
+   "tags": [
+    "кіно",
+    "новини"
+   ],
+   "about": "У 2015 році під час декомунізації художник Олександр Мілов перетворив одеський пам'ятник Леніну на Дарта Вейдера: пальто стало плащем, з'явився шолом. Голова Леніна лишилася під шоломом.",
+   "image": {
+    "url": "https://i.ytimg.com/vi/1QW-pXDJj6A/maxresdefault.jpg",
+    "page": "https://www.youtube.com/watch?v=1QW-pXDJj6A"
+   },
+   "crop": [
+    0.36,
+    0,
+    0.32,
+    1
+   ],
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%A1%D1%82%D0%B0%D1%82%D1%83%D1%8F_%D0%94%D0%B0%D1%80%D1%82%D0%B0_%D0%92%D0%B5%D0%B9%D0%B4%D0%B5%D1%80%D0%B0"
+   ]
+  },
+  {
+   "id": "u234",
+   "cat": "ua",
+   "name": "Кіт Степан",
+   "names": [
+    "степан",
+    "stepan the cat",
+    "кіт з келихом"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2020,
+   "difficulty": 1,
+   "tags": [
+    "кіт"
+   ],
+   "about": "Харківський кіт, з яким господиня Анна почала знімати відео на карантині 2020 року. Незворушний Степан зібрав понад півтора мільйона підписників, а в 2021 про нього написала Брітні Спірс.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/039/882/cover7.jpg",
+    "page": "https://knowyourmeme.com/memes/stepan-the-cat"
+   },
+   "crop": null,
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%A1%D1%82%D0%B5%D0%BF%D0%B0%D0%BD_%28%D0%BA%D1%96%D1%82%29"
+   ]
+  },
+  {
+   "id": "u501",
+   "cat": "ua",
+   "name": "Don't push the horses",
+   "names": [
+    "не жени коней",
+    "донт пуш зе хорсес",
+    "усик не жени коней",
+    "Усик"
+   ],
+   "phrase": "Don't push the horses",
+   "phrases": [
+    "не жени коней",
+    "не підганяй коней"
+   ],
+   "year": 2025,
+   "difficulty": 1,
+   "tags": [
+    "спорт",
+    "знаменитість"
+   ],
+   "about": "Олександр Усик на пресконференції перед боєм із Дюбуа (2025) дослівно переклав англійською «не жени коней» — «Don't push the horses». Фраза розлетілась мемами й піснями.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=uj3LyFxxS1E",
+    "at": 3,
+    "page": "https://www.youtube.com/watch?v=uj3LyFxxS1E"
+   },
+   "crop": [
+    0,
+    0,
+    0.5,
+    1
+   ],
+   "sources": [
+    "https://24tv.ua/trends24/naypopulyarnishi-memi-ukrayini-2025-smishna-pidbirka_n2977700/amp"
+   ]
+  },
+  {
+   "id": "u502",
+   "cat": "ua",
+   "name": "Зеленський: «Ми всі тут»",
+   "names": [
+    "ми всі тут",
+    "президент тут",
+    "ми тут",
+    "зеленський на банковій"
+   ],
+   "phrase": "Ми всі тут",
+   "phrases": [
+    "президент тут",
+    "ми тут"
+   ],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "політика",
+    "війна"
+   ],
+   "about": "Увечері 25 лютого 2022 року Зеленський записав на Банковій селфі-відео з командою: «Президент тут… Ми всі тут» — відповідь на чутки, що влада втекла з Києва.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=KeKT8k9fqv8",
+    "at": 14,
+    "page": "https://www.youtube.com/watch?v=KeKT8k9fqv8"
+   },
+   "crop": [
+    0,
+    0.05,
+    1,
+    0.66
+   ],
+   "sources": [
+    "https://www.youtube.com/watch?v=KeKT8k9fqv8"
+   ]
+  },
+  {
+   "id": "u503",
+   "cat": "ua",
+   "name": "Я у Польщі",
+   "names": [
+    "я в польщі",
+    "я в польші",
+    "польща",
+    "я у польші"
+   ],
+   "phrase": "Я у Польщі",
+   "phrases": [
+    "я в польщі"
+   ],
+   "year": 2025,
+   "difficulty": 1,
+   "tags": [
+    "люди"
+   ],
+   "about": "Хлопець із Буковини виклав у TikTok відео, де щасливо оголошує «Я в Польщі». Ролик зібрав понад 10 мільйонів переглядів і сотні переробок.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=DetW-0QnaPo",
+    "at": 4.5,
+    "page": "https://www.youtube.com/watch?v=DetW-0QnaPo"
+   },
+   "crop": [
+    0.335,
+    0.14,
+    0.33,
+    0.86
+   ],
+   "sources": [
+    "https://www.youtube.com/watch?v=DetW-0QnaPo",
+    "https://24tv.ua/trends24/naypopulyarnishi-memi-ukrayini-2025-smishna-pidbirka_n2977700/amp"
+   ]
+  },
+  {
+   "id": "u601",
+   "cat": "ua",
+   "name": "Я не з такої сім'ї",
+   "names": [
+    "Яна з Закарпаття",
+    "Я із багатої",
+    "не з такої сім'ї"
+   ],
+   "phrase": "Я не з такої сім'ї, як другі",
+   "phrases": [
+    "Я не з такої сім'ї, як другі. Я із багатої",
+    "Я із багатої",
+    "Я не з такої сім'ї"
+   ],
+   "year": 2016,
+   "difficulty": 2,
+   "tags": [
+    "люди",
+    "новини"
+   ],
+   "about": "Репортаж Hromadske.Львів 2016 року про 15-річну Яну з Закарпаття, яка просила гроші у Львові. На камеру дівчина гордо пояснила, що її сім'я не бідна, а багата: дві хати, корова, кінь і качки.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MjE1LCJwdXIiOiJibG9iX2lkIn19--ce8f4896959c0670f4bb8d68c22297dab4ae63a6/ne-z-takoi.jpg/",
+    "page": "https://404.com.ua/meme/ya-ne-z-takoyi-sim-yi/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/ya-ne-z-takoyi-sim-yi/"
+   ]
+  },
+  {
+   "id": "u602",
+   "cat": "ua",
+   "name": "Петро Щур",
+   "names": [
+    "Мамині світлиці",
+    "Мамина світлиця",
+    "Петро Щур — Мамині світлиці",
+    "Щур"
+   ],
+   "phrase": "Петро Щур зараз виконає пісню «Мамині світлиці»",
+   "phrases": [
+    "Мамині світлиці",
+    "Скільки себе пам'ятаю"
+   ],
+   "year": 2006,
+   "difficulty": 2,
+   "tags": [
+    "люди"
+   ],
+   "about": "Домашнє відео з Водохреща 2006 року: чоловік у хутряній шапці з села на Тернопільщині колядує, а тоді щиро й драматично співає «Мамину світлицю». Ролик став класикою українського інтернету й досі живе в ТікТоці.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjY5LCJwdXIiOiJibG9iX2lkIn19--66d11c5edbd8763468f998ce70f77ddf07365244/petro-shur.jpg/",
+    "page": "https://404.com.ua/meme/petro-shchur-mamini-svitlitsi/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/petro-shchur-mamini-svitlitsi/"
+   ]
+  },
+  {
+   "id": "u603",
+   "cat": "ua",
+   "name": "Куля в лоб",
+   "names": [
+    "Яценюк куля в лоб",
+    "куля в лоб Яценюка"
+   ],
+   "phrase": "Якщо куля в лоб, то куля в лоб",
+   "phrases": [
+    "куля в лоб"
+   ],
+   "year": 2014,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "новини"
+   ],
+   "about": "Слова Арсенія Яценюка зі сцени Євромайдану 22 січня 2014 року: якщо влада не відступить, опозиція піде вперед, «якщо куля в лоб, то куля в лоб». Пафосна обіцянка згодом стала іронічною приказкою.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzExLCJwdXIiOiJibG9iX2lkIn19--73a704e2bc505f82c2e1762ab5c872ee8bc117e0/kulia-v-lob.jpg/",
+    "page": "https://404.com.ua/meme/kulya-v-lob/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/kulya-v-lob/"
+   ]
+  },
+  {
+   "id": "u604",
+   "cat": "ua",
+   "name": "Пропало все",
+   "names": [
+    "Пропало всьо",
+    "Тимошенко і суфлер",
+    "Господи, допоможи"
+   ],
+   "phrase": "Пропало все",
+   "phrases": [
+    "Пропало всьо",
+    "Господи, допоможи"
+   ],
+   "year": 2009,
+   "difficulty": 2,
+   "tags": [
+    "політика"
+   ],
+   "about": "Червень 2009 року: Юлія Тимошенко перед телезверненням хреститься, каже «Господи, допоможи», бачить не той текст на суфлері й видихає «Пропало все». Відео стало жартом про будь-який провал.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjAsInB1ciI6ImJsb2JfaWQifX0=--12f9091c0d2319100b4f9bc06b7eaaf55646c4f1/dopomogi.jpg/",
+    "page": "https://404.com.ua/meme/propalo-vse/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/propalo-vse/"
+   ]
+  },
+  {
+   "id": "u605",
+   "cat": "ua",
+   "name": "Боже, яке кончене",
+   "names": [
+    "Яке кончене",
+    "бабуся у вікні"
+   ],
+   "phrase": "Боже, яке кончене",
+   "phrases": [
+    "Яке кончене"
+   ],
+   "year": 2020,
+   "difficulty": 2,
+   "tags": [
+    "люди"
+   ],
+   "about": "ТікТок-ролик 2020 року: бабуся тіктокерки @natidomini дивиться у вікно на хлопця, що танцює, і виносить вирок «Боже, яке кончене». Її інтонацію почали накладати на все, що викликає шок і осуд.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzQ1LCJwdXIiOiJibG9iX2lkIn19--60388041fbe0df0b59284e8e90c8bab532c8a9f1/yake-konchene.jpg/",
+    "page": "https://404.com.ua/meme/bozhe-yake-konchene/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/bozhe-yake-konchene/"
+   ]
+  },
+  {
+   "id": "u606",
+   "cat": "ua",
+   "name": "Янукович і вінок",
+   "names": [
+    "вінок упав на Януковича",
+    "Януковича накрив вінок",
+    "вінок Януковича"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2010,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "новини"
+   ],
+   "about": "17 травня 2010 року в київському Парку Слави під час візиту Медведєва порив вітру зірвав вінок, який щойно встановив Янукович, і кинув його просто на президента. Кадр став класикою політичних курйозів.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MTA3LCJwdXIiOiJibG9iX2lkIn19--2496b75099d3a9a6b84f70187dab828bb06a60b5/36caa9fd50.jpg",
+    "page": "https://404.com.ua/meme/yanukovich-i-vinok/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/yanukovich-i-vinok/"
+   ]
+  },
+  {
+   "id": "u607",
+   "cat": "ua",
+   "name": "Хочу шоколадку",
+   "names": [
+    "Ісаак Величко",
+    "хлопчик плаче через шоколадку",
+    "шоколадка"
+   ],
+   "phrase": "А я, може, теж хочу шоколадку",
+   "phrases": [
+    "Хочу шоколадку",
+    "Вона собі шоколадку купила"
+   ],
+   "year": 2015,
+   "difficulty": 2,
+   "tags": [
+    "дитина",
+    "люди"
+   ],
+   "about": "Реаліті «Кохана, ми вбиваємо дітей» на СТБ, 2015 рік: 9-річний Ісаак крізь сльози скаржиться, що мама купила шоколадку собі, а він теж хоче. Дитяча образа стала крилатою.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjksInB1ciI6ImJsb2JfaWQifX0=--4ee3e5feb71e20cbeeadbfea9090e10f568fc1bd/hochu-shokolad.jpg/",
+    "page": "https://404.com.ua/meme/khochu-shokoladku/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/khochu-shokoladku/"
+   ]
+  },
+  {
+   "id": "u608",
+   "cat": "ua",
+   "name": "Кому молитися",
+   "names": [
+    "Кополовець",
+    "Михайло Кополовець",
+    "перед каждою ігрою"
+   ],
+   "phrase": "Кому молитися",
+   "phrases": [
+    "В церкву ходимо перед каждою ігрою",
+    "Кому вже молитися"
+   ],
+   "year": 2012,
+   "difficulty": 3,
+   "tags": [
+    "спорт"
+   ],
+   "about": "Квітень 2012 року: «Карпати» вилетіли з Кубка України по пенальті, і півзахисник Михайло Кополовець у сердитому інтерв'ю бідкався, що команда ходить до церкви перед кожною грою, а вже незрозуміло, кому молитися.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjAzLCJwdXIiOiJibG9iX2lkIn19--40bc0f6c74d9bfab2eb98afc12add184f8010eae/pered-kazhdou-igrou.jpg/",
+    "page": "https://404.com.ua/meme/komu-molitisya/"
+   },
+   "crop": [
+    0,
+    0,
+    1,
+    0.76
+   ],
+   "sources": [
+    "https://404.com.ua/meme/komu-molitisya/"
+   ]
+  },
+  {
+   "id": "u609",
+   "cat": "ua",
+   "name": "Це мерзость",
+   "names": [
+    "Чоткий паца",
+    "Чоткий паца з Рівного",
+    "Іван Мартинов"
+   ],
+   "phrase": "Це мєрзость",
+   "phrases": [
+    "Це мерзость",
+    "Це реально мєрзость"
+   ],
+   "year": 2015,
+   "difficulty": 2,
+   "tags": [
+    "люди"
+   ],
+   "about": "Вуличне бліцопитування в Рівному 2015 року: хлопець у чорній шапці на питання про проїзд по 3 гривні й курс долара емоційно відповів «Це реально мєрзость». Його прозвали «Чоткий паца».",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MjA3LCJwdXIiOiJibG9iX2lkIn19--08f6d7b4c1be25a1de4ae03e8bbbc32f51d618f2/ce-merzost.jpg/",
+    "page": "https://404.com.ua/meme/tse-merzost/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/tse-merzost/"
+   ]
+  },
+  {
+   "id": "u610",
+   "cat": "ua",
+   "name": "Оці руки",
+   "names": [
+    "Ющенко руки",
+    "Оці руки нічого не крали",
+    "Ці руки нічого не крали"
+   ],
+   "phrase": "Оці руки нічого не крали",
+   "phrases": [
+    "Ці руки нічого не крали",
+    "Оці руки"
+   ],
+   "year": 2004,
+   "difficulty": 2,
+   "tags": [
+    "політика"
+   ],
+   "about": "Теледебати Ющенка з Януковичем 20 грудня 2004 року: Ющенко кілька разів повторив, що «оці руки нічого не крали». Відтоді фразою іронізують над запевненнями політиків у власній чесності.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzMxLCJwdXIiOiJibG9iX2lkIn19--0bf8ff2cb0923cbcb39e0ed3a6b0cad243051272/otsi-ruki.jpg/",
+    "page": "https://404.com.ua/meme/otsi-ruki/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/otsi-ruki/"
+   ]
+  },
+  {
+   "id": "u611",
+   "cat": "ua",
+   "name": "Сокіабле",
+   "names": [
+    "sociable",
+    "сокиабле",
+    "Хата на тата сокіабле"
+   ],
+   "phrase": "Сокіабле",
+   "phrases": [],
+   "year": 2015,
+   "difficulty": 2,
+   "tags": [
+    "дитина",
+    "люди"
+   ],
+   "about": "Реаліті «Хата на тата» на СТБ, вересень 2015 року: батько робить із сином Максимом англійську, і хлопчик читає слово sociable як «сокіабле». Неправильне читання стало народним словечком.",
+   "image": {
+    "url": "https://www.stb.ua/wp-content/uploads/sites/20/2017/12/04/Screenshot-6.png",
+    "page": "https://404.com.ua/meme/sokiable/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/sokiable/"
+   ]
+  },
+  {
+   "id": "u612",
+   "cat": "ua",
+   "name": "І потім помремо",
+   "names": [
+    "Адель з Трускавця",
+    "першокласниця з Трускавця",
+    "чіткий план"
+   ],
+   "phrase": "І потім помремо",
+   "phrases": [
+    "Потім інститут, робота і потім помремо"
+   ],
+   "year": 2020,
+   "difficulty": 2,
+   "tags": [
+    "дитина",
+    "новини"
+   ],
+   "about": "1 вересня 2020 року місцеве ТБ Трускавця спитало першокласницю Адель, навіщо їй школа. Вона з усмішкою розписала план: гратися, вчитися, інститут, робота — «і потім помремо».",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjQ3LCJwdXIiOiJibG9iX2lkIn19--ccf22da4fbc417d8aa88082a1576d4fc4279e5ea/2541120.jpg",
+    "page": "https://404.com.ua/meme/i-potim-pomremo/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/i-potim-pomremo/"
+   ]
+  },
+  {
+   "id": "u613",
+   "cat": "ua",
+   "name": "Ярік, бачок потік",
+   "names": [
+    "Ярік",
+    "бачок потік",
+    "Ярік, тікай"
+   ],
+   "phrase": "Ярік, бачок потік",
+   "phrases": [
+    "Ярік, тікай, бачок потік",
+    "Бачок потік"
+   ],
+   "year": 2015,
+   "difficulty": 1,
+   "tags": [
+    "люди",
+    "техніка"
+   ],
+   "about": "Аматорське відео 2015 року: Ярік веде старі «Жигулі», а Толік знімає. Машину заносить з дороги, і Толік кричить, що потік бензобак і треба тікати. У 2016-му ролик розлетівся мережею.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjU2LCJwdXIiOiJibG9iX2lkIn19--27bb5414427d90f3064137538cf39fbeb18cf52f/yarik-bachok.jpg/",
+    "page": "https://404.com.ua/meme/yarik-bachok-potik/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/yarik-bachok-potik/"
+   ]
+  },
+  {
+   "id": "u614",
+   "cat": "ua",
+   "name": "Саша, налий мені",
+   "names": [
+    "Янукович і горілка",
+    "Саша, ну шо ти",
+    "Янукович з ветеранами"
+   ],
+   "phrase": "Саша, налий мені",
+   "phrases": [
+    "Саша, ну шо ти? Налий, шоб мені соромно не було",
+    "Саша, ну що ти"
+   ],
+   "year": 2011,
+   "difficulty": 2,
+   "tags": [
+    "політика"
+   ],
+   "about": "Травень 2011 року: Янукович на зустрічі з ветеранами на Київщині піднімає тост, а коли помічник Саша наливає замало, просить налити так, «щоб соромно не було». Відео показав СТБ.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MTY5LCJwdXIiOiJibG9iX2lkIn19--f83c13819b238ae47416068de262a22964f1f9fc/sasha-nalyi-meni.jpg/",
+    "page": "https://404.com.ua/meme/yanukovich-sasha-naliy-meni/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/yanukovich-sasha-naliy-meni/"
+   ]
+  },
+  {
+   "id": "u615",
+   "cat": "ua",
+   "name": "Пам'ятник свині",
+   "names": [
+    "свиня в Полтаві",
+    "Одвічній годувальниці українського народу",
+    "пам'ятник свині в Полтаві"
+   ],
+   "phrase": "А це — пам'ятник свині",
+   "phrases": [
+    "А це пам'ятник свині"
+   ],
+   "year": 2019,
+   "difficulty": 2,
+   "tags": [
+    "тварини"
+   ],
+   "about": "Скульптура свині з двома пастушками в Полтавському аграрному університеті, відкрита 2003 року. Мемом стала 2019-го, коли «Телебачення Торонто» висміяло сюжет місцевого каналу з фразою «А це — пам'ятник свині».",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzI1LCJwdXIiOiJibG9iX2lkIn19--febb30cd8c14bfbd19f61eaf5f34a920f7b0721f/pamyatnik-svinni.jpg/",
+    "page": "https://404.com.ua/meme/pam-yatnik-svini/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/pam-yatnik-svini/"
+   ]
+  },
+  {
+   "id": "u616",
+   "cat": "ua",
+   "name": "Символ президентської влади",
+   "names": [
+    "Яценюк і морква",
+    "морква Яценюку",
+    "Дурнєв і морква"
+   ],
+   "phrase": "Символ президентської влади",
+   "phrases": [
+    "Візьміть моркву"
+   ],
+   "year": 2013,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "їжа"
+   ],
+   "about": "Березень 2013 року, Вінниця: провокатор Олексій Дурнєв вручив Арсенію Яценюку моркву «як символ президентської влади». Яценюк моркву взяв і грубо відповів, а ролик розійшовся YouTube.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzA4LCJwdXIiOiJibG9iX2lkIn19--582c4238848eba79c64dc218e544f8ace7ae80de/yatsenuk-morkovka.jpg/",
+    "page": "https://404.com.ua/meme/simvol-prezidentskoyi-vladi/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/simvol-prezidentskoyi-vladi/"
+   ]
+  },
+  {
+   "id": "u617",
+   "cat": "ua",
+   "name": "Потужно",
+   "names": [
+    "Зеленський потужно",
+    "Володимир Потужний",
+    "потужний"
+   ],
+   "phrase": "Потужно",
+   "phrases": [],
+   "year": 2023,
+   "difficulty": 1,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "Зеленський у зверненнях та інтерв'ю часто вживає слова «потужно» й «потужний». Із 2023 року нарізки з цим словом розійшлися ТікТоком і Telegram, і «потужно» стало іронічною реакцією на що завгодно.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MjgzLCJwdXIiOiJibG9iX2lkIn19--ca2cc0d80a029a6735e5b604587f184873f1b7c8/zela-potuzhno.jpg/",
+    "page": "https://404.com.ua/meme/potuzhno/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/potuzhno/"
+   ]
+  },
+  {
+   "id": "u618",
+   "cat": "ua",
+   "name": "Єслі б я не сохранився",
+   "names": [
+    "Коля Гузей",
+    "Микола Гузей",
+    "якби я не зберігся"
+   ],
+   "phrase": "А єслі б я не сохранився",
+   "phrases": [
+    "Єслі б я не сохранився",
+    "А якби я не зберігся"
+   ],
+   "year": 2015,
+   "difficulty": 2,
+   "tags": [
+    "люди",
+    "гра"
+   ],
+   "about": "Реаліті «Кохана, ми вбиваємо дітей» на СТБ, 2015 рік: підліток Коля Гузей, що сидів за комп'ютером до 12 годин на день, кричить на родину через вимкнений комп'ютер: «А єслі б я не сохранився?!»",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MTA0LCJwdXIiOiJibG9iX2lkIn19--7d766aa6f9a6d88fdfe0ee02ab9331c0ee0b4061/eslib-ne-sohranivsya.jpg/",
+    "page": "https://404.com.ua/meme/yakbi-ya-ne-zberigsya/"
+   },
+   "crop": [
+    0.3,
+    0,
+    0.7,
+    1
+   ],
+   "sources": [
+    "https://404.com.ua/meme/yakbi-ya-ne-zberigsya/"
+   ]
+  },
+  {
+   "id": "u701",
+   "cat": "ua",
+   "name": "Штани за 40 гривень",
+   "names": [
+    "за 40 гривень штани",
+    "штани за сорок гривень",
+    "штаны за 40 гривен",
+    "кохана ми вбиваємо дітей"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2013,
+   "difficulty": 2,
+   "tags": [
+    "люди",
+    "серіал"
+   ],
+   "about": "Сцена з реаліті-шоу СТБ «Кохана, ми вбиваємо дітей» (випуск про сім’ю Страшук, 2013): хлопець наливає олію у фритюрницю, вона ллється на штани — і лунає крик про штани за 40 гривень. Так кажуть про дешеву, але улюблену річ.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=zN2_mzuVJD0",
+    "at": 8,
+    "page": "https://www.youtube.com/watch?v=zN2_mzuVJD0"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/shtany-za-40-griven/"
+   ]
+  },
+  {
+   "id": "u702",
+   "cat": "ua",
+   "name": "Кришка над Капотнею",
+   "names": [
+    "капотня кришка",
+    "кришка НПЗ",
+    "кришечка",
+    "кришка резервуара",
+    "кришка над москвою"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2026,
+   "difficulty": 2,
+   "tags": [
+    "війна",
+    "новини"
+   ],
+   "about": "18 червня 2026 року під час удару дронів по Московському НПЗ у Капотні кругла кришка резервуара злетіла над вогнем і димом. Кадр став мемом: кришку малювали як НЛО, капелюх чи «космічну програму».",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzYyLCJwdXIiOiJibG9iX2lkIn19--27c02250f1e040dcd59be8c919cf8af56631d0fc/1.jpg",
+    "page": "https://404.com.ua/meme/kapotnya-krishka/"
+   },
+   "crop": [
+    0,
+    0,
+    0.62,
+    1
+   ],
+   "sources": [
+    "https://404.com.ua/meme/kapotnya-krishka/"
+   ]
+  },
+  {
+   "id": "u703",
+   "cat": "ua",
+   "name": "Щастя, здоровля",
+   "names": [
+    "щастя здоровля",
+    "щастяздоровля",
+    "брат Андрій",
+    "весільне привітання"
+   ],
+   "phrase": "Щастя, здоровля і довго років прожити",
+   "phrases": [
+    "щастя здоровля",
+    "щастя, здоров’я і довго років прожити"
+   ],
+   "year": 2000,
+   "difficulty": 2,
+   "tags": [
+    "люди"
+   ],
+   "about": "Одне з перших вірусних відео українського інтернету (2000-ні): брат Андрій записує молодятам гранично коротке весільне привітання. Фразу досі кидають як готове побажання на будь-яке свято.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6OTksInB1ciI6ImJsb2JfaWQifX0=--9bba61c1cdfb9f3c0115689560d74babaf80ff06/shastya-zdorovlya.jpg/",
+    "page": "https://404.com.ua/meme/shchastya-zdorovlya/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/shchastya-zdorovlya/"
+   ]
+  },
+  {
+   "id": "u704",
+   "cat": "ua",
+   "name": "Вийди отсюда, розбійник",
+   "names": [
+    "вийди розбійник",
+    "вийди звідси розбійник",
+    "розбійник",
+    "зеленський у борисполі"
+   ],
+   "phrase": "Вийди отсюда, розбійник",
+   "phrases": [
+    "вийди звідси, розбійник",
+    "вийди розбійник",
+    "выйди отсюда разбойник"
+   ],
+   "year": 2019,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "10 липня 2019 року в Борисполі Зеленський на нараді зачитав із телефона про судимість секретаря міськради Ярослава Годунка й вигнав його з зали суржиковою фразою. Кадр став реакцією на того, кого треба негайно вигнати.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzAxLCJwdXIiOiJibG9iX2lkIn19--351671f2b5d47da9e18f4115abd5f545fa7967e1/zela-rozbiynik.jpg/",
+    "page": "https://404.com.ua/meme/viydi-rozbiynik/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/viydi-rozbiynik/"
+   ]
+  },
+  {
+   "id": "u705",
+   "cat": "ua",
+   "name": "Приїду в Брусівку",
+   "names": [
+    "кабіну навалю",
+    "брусівка",
+    "отаку кабіну навалю",
+    "родина мауглі"
+   ],
+   "phrase": "Приїду в Брусівку, я тобі отаку кабіну навалю",
+   "phrases": [
+    "приїду в брусівку",
+    "кабіну навалю"
+   ],
+   "year": 2019,
+   "difficulty": 2,
+   "tags": [
+    "люди",
+    "серіал"
+   ],
+   "about": "Ток-шоу «Стосується кожного», випуск «Родина Мауглі» (30.08.2019): учасник у сварці погрожує «навалити кабіну». Фраза роками живе як звук у ТікТоці, а на Google Maps біля Брусівки з’являлися жартівливі мітки.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjAwLCJwdXIiOiJibG9iX2lkIn19--a2bf8fcf9df243e4dca575d9b533aa053ce517a4/brusivka-kabina.jpg/",
+    "page": "https://404.com.ua/meme/priyidu-v-brusivku/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/priyidu-v-brusivku/"
+   ]
+  },
+  {
+   "id": "u706",
+   "cat": "ua",
+   "name": "Пеньки в Межигір’ї",
+   "names": [
+    "пеньки януковича",
+    "янукович бігає по пеньках",
+    "пеньки",
+    "межигірські пеньки"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2011,
+   "difficulty": 2,
+   "tags": [
+    "політика"
+   ],
+   "about": "Влітку 2011 року Янукович показав журналістам Межигір’я й розповів, що щоранку бігає стежкою з пеньків десять разів угору й униз. Пеньки стали символом резиденції, а 2014-го відвідувачі стояли до них у черзі.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6Nzg5LCJwdXIiOiJibG9iX2lkIn19--86928e827f06e99911a8c9a8234412722c642131/viktorovich-penki.jpg/",
+    "page": "https://404.com.ua/meme/penki-v-mezhigir-yi/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/penki-v-mezhigir-yi/"
+   ]
+  },
+  {
+   "id": "u707",
+   "cat": "ua",
+   "name": "Це не твоя дитина?",
+   "names": [
+    "оце не твоя дитина",
+    "не твоя дитина",
+    "добрий день студія",
+    "стосується кожного"
+   ],
+   "phrase": "Добрий день, студія. А це не твоя дитина?",
+   "phrases": [
+    "оце не твоя дитина",
+    "це не твоя дитина"
+   ],
+   "year": 2022,
+   "difficulty": 3,
+   "tags": [
+    "люди",
+    "серіал"
+   ],
+   "about": "Фрагмент ток-шоу «Стосується кожного» на «Інтері». У січні 2022 року звук знову завірусився в ТікТоці — понад 4000 відео, де драматичне питання переносять на котів, студентів і побут.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTgzLCJwdXIiOiJibG9iX2lkIn19--1ba14688950d141ce605db1167429277210f27a5/ne-tvoya.jpg/",
+    "page": "https://404.com.ua/meme/tse-ne-tvoya-ditina/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/tse-ne-tvoya-ditina/"
+   ]
+  },
+  {
+   "id": "u708",
+   "cat": "ua",
+   "name": "Юля, Юля!",
+   "names": [
+    "яценюк юля",
+    "юля юля",
+    "яценюк дзвонить тимошенко",
+    "юля обіймаю"
+   ],
+   "phrase": "Юля! Юля! Моя дорога! Ми тебе чекаємо!",
+   "phrases": [
+    "юля, юля",
+    "юля, обіймаю тебе, чекаю тебе",
+    "юля їде на майдан"
+   ],
+   "year": 2014,
+   "difficulty": 3,
+   "tags": [
+    "політика"
+   ],
+   "about": "22 лютого 2014 року, коли Рада звільнила Тимошенко, Яценюк при журналістах радісно говорив із нею телефоном і повторював «Юля». Епізод став реакцією на раптовий, трохи показний захват.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzE4LCJwdXIiOiJibG9iX2lkIn19--805e6fe8e2f917ebff27a25ae3a18c0d680bc0c4/yulia.jpg/",
+    "page": "https://404.com.ua/meme/yulya-yulya/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/yulya-yulya/"
+   ]
+  },
+  {
+   "id": "u709",
+   "cat": "ua",
+   "name": "Який жах",
+   "names": [
+    "жах я ж кажу який жах",
+    "а шо не жах",
+    "стерненко червоненко",
+    "жах"
+   ],
+   "phrase": "Жах, я ж кажу, який жах",
+   "phrases": [
+    "який жах",
+    "а шо не жах"
+   ],
+   "year": 2017,
+   "difficulty": 3,
+   "tags": [
+    "політика",
+    "люди"
+   ],
+   "about": "Дебати Сергія Стерненка та Євгена Червоненка на одеській «Думській.TV» (грудень 2017): обмін «Який жах!» — «Жах, а шо не жах?». Фраза стала реакцією на погані новини, Стерненко сам часто вставляє її в ролики.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzMyLCJwdXIiOiJibG9iX2lkIn19--429fe3aa7b0065d8a9dcf9051f69f48ef445c33f/846fd5aa6a71e97727639594c471ff38.jpg",
+    "page": "https://404.com.ua/meme/yakiy-zhakh/"
+   },
+   "crop": [
+    0,
+    0.14,
+    1,
+    0.86
+   ],
+   "sources": [
+    "https://404.com.ua/meme/yakiy-zhakh/"
+   ]
+  },
+  {
+   "id": "u710",
+   "cat": "ua",
+   "name": "Янукович ламає ручку",
+   "names": [
+    "янукович ручка",
+    "янукович зламав ручку",
+    "ручка януковича",
+    "ростов ручка"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2014,
+   "difficulty": 2,
+   "tags": [
+    "політика"
+   ],
+   "about": "28 лютого 2014 року на пресконференції в Ростові-на-Дону Янукович, вибачаючись перед українцями, нервово крутив і намагався зламати ручку. Кадр розійшовся відео й гіфками як символ злості й нещирості.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=w1anCkzI06U",
+    "at": 13,
+    "page": "https://www.youtube.com/watch?v=w1anCkzI06U"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/yanukovich-ruchka/"
+   ]
+  },
+  {
+   "id": "u711",
+   "cat": "ua",
+   "name": "Кличко — сосиска",
+   "names": [
+    "сосиска",
+    "кличко на турніку",
+    "я не сосиска",
+    "кличко сосиска"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2015,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "спорт"
+   ],
+   "about": "Сюжет 5 каналу 13 жовтня 2015 року: Кличко на спортмайданчику невдало пробує вихід силою на турніку, а жінка поруч коментує «сосиска». Мер відповів, що його образили, і виконав підйом із переворотом.",
+   "image": {
+    "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzYyLCJwdXIiOiJibG9iX2lkIn19--dcde6a710f1db5bfbb263e248e0269e120753b2b/klichko-sosiska.jpg/",
+    "page": "https://404.com.ua/meme/sosiska/"
+   },
+   "crop": null,
+   "sources": [
+    "https://404.com.ua/meme/sosiska/"
+   ]
+  },
+  {
+   "id": "u801",
+   "cat": "ua",
+   "name": "Ляшко застряг у ліфті",
+   "names": [
+    "ляшко в ліфті",
+    "бранець ліфта",
+    "ми в ліфті застрягли"
+   ],
+   "phrase": "Це Ляшко, добрий день, ми в ліфті застрягли",
+   "phrases": [
+    "ми в ліфті застрягли",
+    "це ляшко добрий день"
+   ],
+   "year": 2016,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "Лютий 2016: Олег Ляшко з однопартійцями хвилин двадцять просидів у ліфті комітетів Верховної Ради й сам зняв, як дзвонить по допомогу. Сюжет ТСН розлетівся, а його дзвінок став фразою-мемом.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=EUAIulcmNYI",
+    "at": 36,
+    "page": "https://www.youtube.com/watch?v=EUAIulcmNYI"
+   },
+   "crop": [
+    0,
+    0.02,
+    1,
+    0.75
+   ],
+   "sources": [
+    "https://www.youtube.com/watch?v=EUAIulcmNYI",
+    "https://www.youtube.com/watch?v=mzOXNvPSUyY"
+   ]
+  },
+  {
+   "id": "u802",
+   "cat": "ua",
+   "name": "Нє, я ворожка",
+   "names": [
+    "ворожка",
+    "ви мольфарка",
+    "бабця-ворожка"
+   ],
+   "phrase": "Нє, я ворожка",
+   "phrases": [
+    "я ворожка",
+    "ви мольфарка? нє, я ворожка"
+   ],
+   "year": 2021,
+   "difficulty": 2,
+   "tags": [
+    "люди",
+    "новини"
+   ],
+   "about": "Уривок сюжету ТСН «Зазирнути в майбутнє»: журналістка питає закарпатську бабцю, чи вона мольфарка, а та поправляє — «Нє, я ворожка». Короткий шматок розійшовся як мем.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=6wBMYOnrGL0",
+    "at": 24.5,
+    "page": "https://www.youtube.com/watch?v=6wBMYOnrGL0"
+   },
+   "crop": [
+    0,
+    0.02,
+    1,
+    0.76
+   ],
+   "sources": [
+    "https://www.youtube.com/watch?v=6wBMYOnrGL0",
+    "https://www.youtube.com/watch?v=lKl8gR02-lE"
+   ]
+  },
+  {
+   "id": "u803",
+   "cat": "ua",
+   "name": "Кулеба з цигаркою",
+   "names": [
+    "кулеба курить",
+    "кулеба цигарка",
+    "міністр курить в ефірі"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2024,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "17 лютого 2024 року міністр закордонних справ Дмитро Кулеба закурив під час інтерв’ю для телемарафону, думаючи, що ефір уже скінчився. Пізніше сам назвав це відео найсмішнішим мемом про себе.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=8gC9r4V9E9Y",
+    "at": 22.5,
+    "page": "https://www.youtube.com/watch?v=8gC9r4V9E9Y"
+   },
+   "crop": [
+    0.5,
+    0.18,
+    0.45,
+    0.64
+   ],
+   "sources": [
+    "https://www.youtube.com/watch?v=8gC9r4V9E9Y",
+    "https://www.youtube.com/watch?v=sKac7FTEKbM"
+   ]
+  },
+  {
+   "id": "u804",
+   "cat": "ua",
+   "name": "МС Петя «Я живий»",
+   "names": [
+    "мс петя",
+    "я живий",
+    "мотиватор",
+    "петро моставчук",
+    "mc петя"
+   ],
+   "phrase": "Я живий, я сильний, я мотиватор",
+   "phrases": [
+    "я живий я сильний",
+    "я живий"
+   ],
+   "year": 2021,
+   "difficulty": 2,
+   "tags": [
+    "люди"
+   ],
+   "about": "Квітень 2021: Петро Моставчук, він же МС Петя, у ванній вигукує в сторіс «Я живий, я сильний!». Відео пішло в ремікси й треки, а сам Петя став героєм інтерв’ю.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=wqT4vAMM_IM",
+    "at": 24.5,
+    "page": "https://www.youtube.com/watch?v=wqT4vAMM_IM"
+   },
+   "crop": [
+    0,
+    0.08,
+    1,
+    0.44
+   ],
+   "sources": [
+    "https://www.youtube.com/watch?v=wqT4vAMM_IM",
+    "https://www.youtube.com/watch?v=7JiJyLifBoY",
+    "https://www.youtube.com/watch?v=RK00uDbGg3o"
+   ]
+  },
+  {
+   "id": "u805",
+   "cat": "ua",
+   "name": "Аваков кидає склянку в Саакашвілі",
+   "names": [
+    "склянка води",
+    "аваков і саакашвілі",
+    "склянка аваков"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2015,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "новини"
+   ],
+   "about": "14 грудня 2015 року на засіданні Нацради реформ міністр МВС Арсен Аваков жбурнув склянку води в Міхеїла Саакашвілі, який назвав його злодієм. Відео сутички виклав сам Аваков, і кидок склянкою пішов у меми.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=cglRydj3HoY",
+    "at": 158.3,
+    "page": "https://www.youtube.com/watch?v=cglRydj3HoY"
+   },
+   "crop": null,
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%90%D0%B2%D0%B0%D0%BA%D0%BE%D0%B2_%D0%90%D1%80%D1%81%D0%B5%D0%BD_%D0%91%D0%BE%D1%80%D0%B8%D1%81%D0%BE%D0%B2%D0%B8%D1%87",
+    "https://zaxid.net/memom_pomazano_n1377823",
+    "https://www.youtube.com/watch?v=cglRydj3HoY"
+   ]
+  },
+  {
+   "id": "u806",
+   "cat": "ua",
+   "name": "Скоро вже буде Паска",
+   "names": [
+    "хлопчик у полі",
+    "матвій брус",
+    "скоро буде пасха"
+   ],
+   "phrase": "Скоро вже буде Паска",
+   "phrases": [
+    "скоро буде паска",
+    "скоро вже буде пасха",
+    "скоро буде пасха"
+   ],
+   "year": 2023,
+   "difficulty": 2,
+   "tags": [
+    "дитина"
+   ],
+   "about": "Квітень 2023: малий тіктокер Матвій посеред городу серйозно повідомляє, що скоро вже буде Паска. ТСН зробила про нього сюжет, а Мюслі UA — ремікс.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=LjksMBsL5Zk",
+    "at": 3.0,
+    "page": "https://www.youtube.com/watch?v=LjksMBsL5Zk"
+   },
+   "crop": null,
+   "sources": [
+    "https://www.youtube.com/watch?v=fLGdvWLL1dU",
+    "https://www.youtube.com/watch?v=SS4dd0kGwm4"
+   ]
+  },
+  {
+   "id": "u807",
+   "cat": "ua",
+   "name": "Чайок начинає дєйствовать",
+   "names": [
+    "хата на тата чай",
+    "чай для схуднення",
+    "тато і чай"
+   ],
+   "phrase": "І тут я чувствую — чайок начинає дєйствовать",
+   "phrases": [
+    "чайок начинає дєйствовать",
+    "і тут я чувствую чаек",
+    "зашибісь і тут я чувствую чаек"
+   ],
+   "year": 2025,
+   "difficulty": 3,
+   "tags": [
+    "люди",
+    "серіал"
+   ],
+   "about": "Уривок із реаліті «Хата на тата»: тато розповідає на камеру, як випив чаю для схуднення, — і далі біг до вбиральні на подвір’ї. Його суржикова розповідь стала мемом.",
+   "image": {
+    "video": "https://www.youtube.com/watch?v=wctXD7hyLyw",
+    "at": 0.5,
+    "page": "https://www.youtube.com/watch?v=wctXD7hyLyw"
+   },
+   "crop": [
+    0.026,
+    0.215,
+    0.948,
+    0.63
+   ],
+   "sources": [
+    "https://www.youtube.com/watch?v=wctXD7hyLyw"
+   ]
+  },
+  {
+   "id": "u808",
+   "cat": "ua",
+   "name": "Святий Джавелін",
+   "names": [
+    "Saint Javelin",
+    "Свята Джавеліна",
+    "джавелін"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "війна",
+    "техніка"
+   ],
+   "about": "Образ Мадонни з протитанковим комплексом Javelin замість немовляти. Створив журналіст Крістіан Борис; наліпки й товари з ним зібрали понад мільйон доларів на допомогу Україні.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/039/704/Screenshot_2022-02-27_200019stjavelin.jpg",
+    "page": "https://knowyourmeme.com/memes/st-javelin-saint-javelin"
+   },
+   "crop": [
+    0.25,
+    0,
+    0.5,
+    1
+   ],
+   "sources": [
+    "https://uk.wikipedia.org/wiki/Saint_Javelin",
+    "https://knowyourmeme.com/memes/st-javelin-saint-javelin"
+   ]
+  },
+  {
+   "id": "u809",
+   "cat": "ua",
+   "name": "Танк-сарай",
+   "names": [
+    "цар-танк",
+    "танк-черепаха",
+    "черепаха"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2024,
+   "difficulty": 2,
+   "tags": [
+    "війна",
+    "техніка"
+   ],
+   "about": "Так прозвали російські танки з величезними саморобними надбудовами від FPV-дронів, що з'явилися навесні 2024 року.",
+   "image": {
+    "url": "https://upload.wikimedia.org/wikipedia/commons/7/7d/Ukrainian_soldiers_captured_Russian_%22turtle%22_tank.jpg",
+    "page": "https://commons.wikimedia.org/wiki/File:Ukrainian_soldiers_captured_Russian_%22turtle%22_tank.jpg"
+   },
+   "crop": null,
+   "sources": [
+    "https://uk.wikipedia.org/wiki/Танк-сарай"
+   ]
+  },
+  {
+   "id": "u810",
+   "cat": "ua",
+   "name": "Мангали на танках",
+   "names": [
+    "мангал",
+    "мангали",
+    "cope cages",
+    "клітки на танках"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 2,
+   "tags": [
+    "війна",
+    "техніка"
+   ],
+   "about": "З перших тижнів вторгнення 2022 року глузували з саморобних ґратчастих «кліток», які росіяни наварювали на танки Т-90 та іншу техніку для захисту згори.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/039/787/copecagesheader.jpg",
+    "page": "https://knowyourmeme.com/memes/cope-cages"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/cope-cages"
+   ]
+  },
+  {
+   "id": "u811",
+   "cat": "ua",
+   "name": "Широкий Зеленський",
+   "names": [
+    "wide zelenskyy",
+    "wide zelensky",
+    "широкий зеля"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 3,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "Відео й картинка, де Зеленського, що йде до камери, розтягнули по ширині, — відповідь на «широкого Путіна». Перше відео з'явилося 2020 року, а масово мем пішов після вторгнення, з 26 лютого 2022.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/039/733/wideheader.jpg",
+    "page": "https://knowyourmeme.com/memes/wide-zelenskyy"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/wide-zelenskyy"
+   ]
+  },
+  {
+   "id": "u812",
+   "cat": "ua",
+   "name": "Сварка в Овальному кабінеті",
+   "names": [
+    "овальний кабінет",
+    "трамп і зеленський",
+    "у вас немає карт",
+    "карти"
+   ],
+   "phrase": "You don't have the cards",
+   "phrases": [
+    "у вас немає карт",
+    "ти не маєш карт",
+    "you don't have the cards right now"
+   ],
+   "year": 2025,
+   "difficulty": 1,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "28 лютого 2025 року зустріч Зеленського з Трампом і Венсом в Овальному кабінеті наживо перейшла в сварку. Трамп сказав: «You don't have the cards right now», Зеленський відповів, що не грає в карти.",
+   "image": {
+    "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b1/President_Trump_and_Ukrainian_President_Zelenskyy_Clash_During_Meeting_in_Oval_Office%2C_Feb._28%2C_2025.jpg/960px-President_Trump_and_Ukrainian_President_Zelenskyy_Clash_During_Meeting_in_Oval_Office%2C_Feb._28%2C_2025.jpg",
+    "page": "https://commons.wikimedia.org/wiki/File:President_Trump_and_Ukrainian_President_Zelenskyy_Clash_During_Meeting_in_Oval_Office,_Feb._28,_2025.jpg"
+   },
+   "crop": null,
+   "sources": [
+    "https://en.wikipedia.org/wiki/2025_Trump%E2%80%93Zelenskyy_Oval_Office_meeting"
+   ]
+  },
+  {
+   "id": "u813",
+   "cat": "ua",
+   "name": "Бабця переписала хату на кота",
+   "names": [
+    "хату на кота",
+    "бабуся і кіт",
+    "внук голосував за регіони"
+   ],
+   "phrase": "Взнала, що внук голосував за «Регіони» — переписала хату на кота",
+   "phrases": [
+    "переписала хату на кота"
+   ],
+   "year": 2012,
+   "difficulty": 2,
+   "tags": [
+    "кіт",
+    "політика",
+    "реклама"
+   ],
+   "about": "Білборд перед виборами 2012 року в Дніпродзержинську: бабця дізналася, що онук голосує за Партію регіонів, і переписала хату на кота. Його автор — Максим Голосний; плакат породив сотні фотожаб.",
+   "image": {
+    "url": "https://commons.wikimedia.org/wiki/Special:FilePath/%D0%91%D0%B0%D0%B1%D1%83%D1%81%D1%8F_%D1%96_%D0%BA%D1%96%D1%82_%D0%9C%D0%B0%D0%BA%D1%81%D0%B8%D0%BC%D0%B0_%D0%93%D0%BE%D0%BB%D0%BE%D1%81%D0%BD%D0%BE%D0%B3%D0%BE.jpg",
+    "page": "https://commons.wikimedia.org/wiki/File:%D0%91%D0%B0%D0%B1%D1%83%D1%81%D1%8F_%D1%96_%D0%BA%D1%96%D1%82_%D0%9C%D0%B0%D0%BA%D1%81%D0%B8%D0%BC%D0%B0_%D0%93%D0%BE%D0%BB%D0%BE%D1%81%D0%BD%D0%BE%D0%B3%D0%BE.jpg"
+   },
+   "crop": [
+    0.3,
+    0.455,
+    0.45,
+    0.275
+   ],
+   "sources": [
+    "https://www.pravda.com.ua/articles/2018/08/23/7153335/",
+    "https://uk.wikipedia.org/wiki/%D0%93%D0%BE%D0%BB%D0%BE%D1%81%D0%BD%D0%B8%D0%B9_%D0%9C%D0%B0%D0%BA%D1%81%D0%B8%D0%BC_%D0%86%D0%B3%D0%BE%D1%80%D0%BE%D0%B2%D0%B8%D1%87"
+   ]
+  },
+  {
+   "id": "u814",
+   "cat": "ua",
+   "name": "Яценюк воював у Чечні",
+   "names": [
+    "яценюк у чечні",
+    "моджахед арсеній",
+    "бастрикін"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2015,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "новини"
+   ],
+   "about": "У вересні 2015 року голова Слідчого комітету РФ Бастрикін заявив, що Яценюк воював у Чечні. Соцмережі вибухнули фотожабами з «бойовиком» Яценюком.",
+   "image": {
+    "url": "https://img.tsn.ua/cached/827/tsn-29fc5e29fb78c95723c9978c03736a3d/thumbs/1200x630/20/39/0313a9570e92f4c620e97bc9eb593920.jpg",
+    "page": "https://tsn.ua/ru/tsikavinki/poyavilos-video-kak-yacenyuk-voeval-v-chechne-pervye-shutochnye-koubi-483507.html"
+   },
+   "crop": null,
+   "sources": [
+    "https://uk.wikipedia.org/wiki/%D0%AF%D1%86%D0%B5%D0%BD%D1%8E%D0%BA_%D0%90%D1%80%D1%81%D0%B5%D0%BD%D1%96%D0%B9_%D0%9F%D0%B5%D1%82%D1%80%D0%BE%D0%B2%D0%B8%D1%87",
+    "https://zaxid.net/memom_pomazano_n1377823"
+   ]
+  },
+  {
+   "id": "u815",
+   "cat": "ua",
+   "name": "Привид Києва",
+   "names": [
+    "Ghost of Kyiv",
+    "Ghost of Kiev",
+    "привид"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "війна",
+    "техніка"
+   ],
+   "about": "Легенда перших днів вторгнення про пілота МіГ-29, що нібито збив шість російських літаків над Києвом. Згодом Повітряні сили визнали історію міфом, але образ лишився символом спротиву.",
+   "image": {
+    "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0b/Ghost_of_Kyiv_Art.jpg/960px-Ghost_of_Kyiv_Art.jpg",
+    "page": "https://commons.wikimedia.org/wiki/File:Ghost_of_Kyiv_Art.jpg"
+   },
+   "crop": [
+    0,
+    0.25,
+    1,
+    0.75
+   ],
+   "sources": [
+    "https://en.wikipedia.org/wiki/Ghost_of_Kyiv",
+    "https://uk.wikipedia.org/wiki/Привид_Києва"
+   ]
+  },
+  {
+   "id": "u816",
+   "cat": "ua",
+   "name": "Херсонський кавун",
+   "names": [
+    "кавун",
+    "кавуновий флешмоб",
+    "база кавунів",
+    "Kherson watermelon"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "їжа",
+    "війна"
+   ],
+   "about": "Восени 2022 року, коли звільняли правобережжя Херсонщини, українці масово ставили кавуни на аватарки й логотипи. Кавун — символ області, де вирощують понад половину кавунів України.",
+   "image": {
+    "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/98/UA_128th_brigade_liberating_Kherson_region_01.jpg/960px-UA_128th_brigade_liberating_Kherson_region_01.jpg",
+    "page": "https://commons.wikimedia.org/wiki/File:UA_128th_brigade_liberating_Kherson_region_01.jpg"
+   },
+   "crop": null,
+   "sources": [
+    "https://uk.wikipedia.org/wiki/Кавуновий_флешмоб",
+    "https://en.wikipedia.org/wiki/Kherson_watermelon"
+   ]
+  },
+  {
+   "id": "w001",
+   "cat": "world",
+   "name": "Дрейк каже ні й так",
+   "names": [
+    "Drakeposting",
+    "Drake Hotline Bling",
+    "дрейк",
+    "дрейк ні так"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2015,
+   "difficulty": 1,
+   "tags": [
+    "знаменитість"
+   ],
+   "about": "Кадри з кліпу Дрейка «Hotline Bling» (2015): він кривиться й відвертається, а потім схвально показує пальцем. З кінця 2015 — формат «це ні, а оце так».",
+   "image": {
+    "url": "https://i.imgflip.com/30b1gx.jpg",
+    "page": "https://knowyourmeme.com/memes/drakeposting"
+   },
+   "crop": [
+    0,
+    0,
+    0.5,
+    1
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/drakeposting"
+   ]
+  },
+  {
+   "id": "w002",
+   "cat": "world",
+   "name": "Хлопець озирається на іншу",
+   "names": [
+    "Distracted Boyfriend",
+    "невірний хлопець",
+    "хлопець дивиться на іншу дівчину"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2017,
+   "difficulty": 1,
+   "tags": [
+    "люди",
+    "стокове фото"
+   ],
+   "about": "Стокове фото Антоніо Гільєма (2015): хлопець озирається на перехожу, а його дівчина обурена. У 2017 році його почали підписувати — про спокусу кинути одне заради іншого.",
+   "image": {
+    "url": "https://i.imgflip.com/1ur9b0.jpg",
+    "page": "https://knowyourmeme.com/memes/distracted-boyfriend"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/distracted-boyfriend"
+   ]
+  },
+  {
+   "id": "w003",
+   "cat": "world",
+   "name": "Жінка кричить на кота",
+   "names": [
+    "Woman Yelling at a Cat",
+    "кіт за столом",
+    "жінка і кіт"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2019,
+   "difficulty": 1,
+   "tags": [
+    "кіт",
+    "серіал"
+   ],
+   "about": "Склейка кадру з реаліті «Справжні домогосподині Беверлі-Гіллз» (2011), де жінка плаче й показує пальцем, і фото розгубленого білого кота за столом (2018). Мемом стала у 2019 році.",
+   "image": {
+    "url": "https://i.imgflip.com/345v97.jpg",
+    "page": "https://knowyourmeme.com/memes/woman-yelling-at-a-cat"
+   },
+   "crop": [
+    0,
+    0.23,
+    1,
+    0.77
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/woman-yelling-at-a-cat"
+   ]
+  },
+  {
+   "id": "w004",
+   "cat": "world",
+   "name": "Пес у палаючій кімнаті",
+   "names": [
+    "This Is Fine",
+    "все нормально",
+    "собака в огні"
+   ],
+   "phrase": "This is fine",
+   "phrases": [
+    "все нормально",
+    "все гаразд",
+    "це нормально"
+   ],
+   "year": 2013,
+   "difficulty": 1,
+   "tags": [
+    "пес",
+    "комікс"
+   ],
+   "about": "Панель із вебкоміксу K. C. Green «Gunshow» (січень 2013): пес спокійно п'є каву в кімнаті, що горить. Про вдавання, ніби все гаразд, коли довкола катастрофа.",
+   "image": {
+    "url": "https://i.imgflip.com/wxica.jpg",
+    "page": "https://knowyourmeme.com/memes/this-is-fine"
+   },
+   "crop": [
+    0,
+    0.34,
+    1,
+    0.66
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/this-is-fine"
+   ]
+  },
+  {
+   "id": "w005",
+   "cat": "world",
+   "name": "Губка Боб, що передражнює",
+   "names": [
+    "Mocking SpongeBob",
+    "Spongemock",
+    "губка боб курка"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2017,
+   "difficulty": 1,
+   "tags": [
+    "мульт"
+   ],
+   "about": "Кадр із серії «Губки Боба» 2012 року, де він поводиться як курка. З травня 2017 — передражнювання чужих слів, написаних уПеРеМіШкУ великими й малими літерами.",
+   "image": {
+    "url": "https://i.imgflip.com/1otk96.jpg",
+    "page": "https://knowyourmeme.com/memes/mocking-spongebob"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/mocking-spongebob"
+   ]
+  },
+  {
+   "id": "w006",
+   "cat": "world",
+   "name": "Здивований Пікачу",
+   "names": [
+    "Surprised Pikachu",
+    "шокований пікачу",
+    "пікачу"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2018,
+   "difficulty": 1,
+   "tags": [
+    "аніме"
+   ],
+   "about": "Кадр із першого сезону аніме «Покемон»: Пікачу з роззявленим ротом. З вересня 2018 — реакція на наслідки, які було легко передбачити.",
+   "image": {
+    "url": "https://i.imgflip.com/2kbn1e.jpg",
+    "page": "https://knowyourmeme.com/memes/surprised-pikachu"
+   },
+   "crop": [
+    0,
+    0.41,
+    1,
+    0.59
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/surprised-pikachu"
+   ]
+  },
+  {
+   "id": "w007",
+   "cat": "world",
+   "name": "Мозок, що світиться дедалі більше",
+   "names": [
+    "Expanding Brain",
+    "Galaxy Brain",
+    "мозок росте",
+    "розумний мозок"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2017,
+   "difficulty": 1,
+   "tags": [
+    "люди"
+   ],
+   "about": "Багатопанельний шаблон із 2017 року: щодалі «геніальніша» думка, то яскравіше світиться мозок. Здебільшого — іронія над дедалі абсурднішими ідеями.",
+   "image": {
+    "url": "https://i.imgflip.com/1jwhww.jpg",
+    "page": "https://knowyourmeme.com/memes/galaxy-brain"
+   },
+   "crop": [
+    0.5,
+    0,
+    0.5,
+    1
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/galaxy-brain"
+   ]
+  },
+  {
+   "id": "w008",
+   "cat": "world",
+   "name": "Дві кнопки",
+   "names": [
+    "Two Buttons",
+    "Daily Struggle",
+    "пітніє над двома кнопками"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2015,
+   "difficulty": 1,
+   "tags": [
+    "комікс"
+   ],
+   "about": "Комікс аніматора Джейка Кларка (2014): чоловік витирає піт, бо не може вибрати між двома кнопками. Популярним став у лютому 2015 на Imgur і Reddit.",
+   "image": {
+    "url": "https://i.imgflip.com/1g8my4.jpg",
+    "page": "https://knowyourmeme.com/memes/daily-struggle"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/daily-struggle"
+   ]
+  },
+  {
+   "id": "w009",
+   "cat": "world",
+   "name": "План Грю",
+   "names": [
+    "Gru's Plan",
+    "грю презентація",
+    "план грю"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2018,
+   "difficulty": 1,
+   "tags": [
+    "мульт"
+   ],
+   "about": "Сцена з мультфільму «Нікчемний я» (2010), де Грю показує план на дошці. Чотирипанельний мем з 2018 року: на третьому кроці план іде шкереберть, і Грю це помічає.",
+   "image": {
+    "url": "https://i.imgflip.com/26jxvz.jpg",
+    "page": "https://knowyourmeme.com/memes/grus-plan"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/grus-plan"
+   ]
+  },
+  {
+   "id": "w010",
+   "cat": "world",
+   "name": "Переконай мене",
+   "names": [
+    "Change My Mind",
+    "Steven Crowder",
+    "чувак за столиком з табличкою"
+   ],
+   "phrase": "Change my mind",
+   "phrases": [
+    "переконай мене",
+    "переконайте мене",
+    "доведи, що я неправий"
+   ],
+   "year": 2018,
+   "difficulty": 2,
+   "tags": [
+    "знаменитість"
+   ],
+   "about": "Фото ведучого Стівена Краудера (лютий 2018) за столиком у кампусі з табличкою «… Change my mind». Табличку одразу почали переписувати на будь-яку тезу.",
+   "image": {
+    "url": "https://i.imgflip.com/24y43o.jpg",
+    "page": "https://knowyourmeme.com/memes/steven-crowders-change-my-mind-campus-sign"
+   },
+   "crop": [
+    0,
+    0,
+    1,
+    0.84
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/steven-crowders-change-my-mind-campus-sign"
+   ]
+  },
+  {
+   "id": "w011",
+   "cat": "world",
+   "name": "Астронавт з пістолетом за спиною",
+   "names": [
+    "Always Has Been",
+    "Wait, It's All Ohio",
+    "два астронавти",
+    "it's all ohio"
+   ],
+   "phrase": "Always has been",
+   "phrases": [
+    "завжди був",
+    "завжди так було",
+    "wait, it's all ohio?"
+   ],
+   "year": 2019,
+   "difficulty": 2,
+   "tags": [
+    "комікс"
+   ],
+   "about": "Шаблон із двома астронавтами: один бачить, що Земля — це «щось», і питає «Wait, it's all…?», а другий цілиться в нього й відповідає «Always has been». Поширився з 2019 року.",
+   "image": {
+    "url": "https://i.imgflip.com/46e43q.png",
+    "page": "https://knowyourmeme.com/memes/wait-its-all-ohio-always-has-been"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/wait-its-all-ohio-always-has-been"
+   ]
+  },
+  {
+   "id": "w012",
+   "cat": "world",
+   "name": "Stonks",
+   "names": [
+    "Стонкс",
+    "Meme Man",
+    "мем мен біржа"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2017,
+   "difficulty": 1,
+   "tags": [
+    "люди"
+   ],
+   "about": "Сюрреалістичний персонаж Meme Man на тлі біржових графіків з навмисно перекрученим «stocks» (червень 2017). Про сумнівні фінансові рішення.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/029/959/Screen_Shot_2019-06-05_at_1.26.32_PM.jpg",
+    "page": "https://knowyourmeme.com/memes/stonks"
+   },
+   "crop": [
+    0,
+    0,
+    1,
+    0.68
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/stonks"
+   ]
+  },
+  {
+   "id": "w013",
+   "cat": "world",
+   "name": "Doge",
+   "names": [
+    "Доге",
+    "собака шиба-іну",
+    "Кабосу",
+    "шиба"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2013,
+   "difficulty": 1,
+   "tags": [
+    "пес"
+   ],
+   "about": "Шиба-іну Кабосу, яку японська вихователька дитсадка сфотографувала у 2010 році: пес косо дивиться в камеру. У 2013 вибухнув мем з ламаними підписами «such… very… wow», а в грудні 2013 з'явилась криптовалюта Dogecoin.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/013/564/doge.jpg",
+    "page": "https://knowyourmeme.com/memes/doge"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/doge"
+   ]
+  },
+  {
+   "id": "w014",
+   "cat": "world",
+   "name": "Накачаний пес і кволий Чимс",
+   "names": [
+    "Swole Doge vs. Cheems",
+    "Buff Doge vs. Cheems",
+    "качок доге і чимс",
+    "чимс"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2020,
+   "difficulty": 1,
+   "tags": [
+    "пес"
+   ],
+   "about": "Формат 2020 року: накачаний шиба-іну — «як було колись», кволий Чимс — «як тепер». Порівнюють, наприклад, предків і сучасників.",
+   "image": {
+    "url": "https://i.imgflip.com/43a45p.png",
+    "page": "https://knowyourmeme.com/memes/swole-doge-vs-cheems"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/swole-doge-vs-cheems"
+   ]
+  },
+  {
+   "id": "w015",
+   "cat": "world",
+   "name": "Берні знову просить",
+   "names": [
+    "I Am Once Again Asking",
+    "Bernie Sanders",
+    "берні сандерс просить"
+   ],
+   "phrase": "I am once again asking for your financial support",
+   "phrases": [
+    "я знову прошу вашої фінансової підтримки",
+    "i am once again asking"
+   ],
+   "year": 2020,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "Кадр із відео американського політика Берні Сандерса (грудень 2019) зі збором коштів на кампанію. З січня 2020 його фразу переробляють на будь-яке прохання.",
+   "image": {
+    "url": "https://i.imgflip.com/3oevdk.jpg",
+    "page": "https://knowyourmeme.com/memes/i-am-once-again-asking-for-your-financial-support"
+   },
+   "crop": [
+    0,
+    0.11,
+    1,
+    0.67
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/i-am-once-again-asking-for-your-financial-support"
+   ]
+  },
+  {
+   "id": "w016",
+   "cat": "world",
+   "name": "Берні в рукавицях на стільці",
+   "names": [
+    "Bernie Sanders Mittens",
+    "Bernie in mittens",
+    "берні на інавгурації"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2021,
+   "difficulty": 2,
+   "tags": [
+    "політика",
+    "знаменитість"
+   ],
+   "about": "Фото Берні Сандерса на інавгурації Джо Байдена в січні 2021: у пуховику й в'язаних рукавицях на стільці. Того ж дня його почали вставляти будь-куди.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/036/345/EsMANJkW4AYbmvv.jpeg",
+    "page": "https://knowyourmeme.com/memes/bernie-sanders-wearing-mittens-sitting-in-a-chair"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/bernie-sanders-wearing-mittens-sitting-in-a-chair"
+   ]
+  },
+  {
+   "id": "w017",
+   "cat": "world",
+   "name": "Кермит і злий Кермит у каптурі",
+   "names": [
+    "Evil Kermit",
+    "Me to me",
+    "кермит у капюшоні",
+    "темний кермит"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2016,
+   "difficulty": 2,
+   "tags": [
+    "кіно"
+   ],
+   "about": "Кадр із фільму «Маппети 2» (2014): Кермит стоїть перед двійником у чорному каптурі. З листопада 2016 — внутрішній голос, що підбиває на погане.",
+   "image": {
+    "url": "https://i.imgflip.com/1e7ql7.jpg",
+    "page": "https://knowyourmeme.com/memes/evil-kermit"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/evil-kermit"
+   ]
+  },
+  {
+   "id": "w018",
+   "cat": "world",
+   "name": "Кермит п'є чай",
+   "names": [
+    "But That's None of My Business",
+    "кермит з чаєм",
+    "жаба п'є чай"
+   ],
+   "phrase": "But that's none of my business",
+   "phrases": [
+    "але це не моя справа",
+    "не моє діло"
+   ],
+   "year": 2014,
+   "difficulty": 2,
+   "tags": [
+    "мульт"
+   ],
+   "about": "Кермит, що попиває чай: з червня 2014 року в Instagram спершу пишуть шпильку на чиюсь адресу, а наприкінці — «але це не моя справа».",
+   "image": {
+    "url": "https://i.imgflip.com/9sw43.jpg",
+    "page": "https://knowyourmeme.com/memes/but-thats-none-of-my-business"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/but-thats-none-of-my-business"
+   ]
+  },
+  {
+   "id": "w019",
+   "cat": "world",
+   "name": "Пем з «Офісу»: це та сама картинка",
+   "names": [
+    "They're The Same Picture",
+    "Corporate needs you to find the differences",
+    "пем з офісу"
+   ],
+   "phrase": "They're the same picture",
+   "phrases": [
+    "це одна й та сама картинка",
+    "це та сама картинка",
+    "corporate needs you to find the differences"
+   ],
+   "year": 2018,
+   "difficulty": 2,
+   "tags": [
+    "серіал"
+   ],
+   "about": "Сцена з серіалу «Офіс» (2011): Пем просить знайти різницю між двома фото й каже, що це одна картинка. Як шаблон — з 2018 року.",
+   "image": {
+    "url": "https://i.imgflip.com/2za3u1.jpg",
+    "page": "https://knowyourmeme.com/memes/theyre-the-same-picture"
+   },
+   "crop": [
+    0,
+    0.52,
+    1,
+    0.31
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/theyre-the-same-picture"
+   ]
+  },
+  {
+   "id": "w020",
+   "cat": "world",
+   "name": "Ми не однакові (Гас Фрінг)",
+   "names": [
+    "We Are Not the Same",
+    "Gus Fring",
+    "гас фрінг",
+    "ми не однакові"
+   ],
+   "phrase": "We are not the same",
+   "phrases": [
+    "ми не однакові",
+    "ми різні"
+   ],
+   "year": 2021,
+   "difficulty": 2,
+   "tags": [
+    "серіал"
+   ],
+   "about": "Фраза з пихатих твітів 2019 року «ти робиш так, а я — отак. Ми не однакові». У 2021 її знову підхопили з фото актора Джанкарло Еспозіто (Гас Фрінг).",
+   "image": {
+    "url": "https://i.imgflip.com/5o32tt.png",
+    "page": "https://knowyourmeme.com/memes/we-are-not-the-same"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/we-are-not-the-same"
+   ]
+  },
+  {
+   "id": "w021",
+   "cat": "world",
+   "name": "Віллем Дефо: я й сам трохи науковець",
+   "names": [
+    "I'm Something of a Scientist Myself",
+    "Willem Dafoe",
+    "норман озборн"
+   ],
+   "phrase": "You know, I'm something of a scientist myself",
+   "phrases": [
+    "я й сам трохи науковець",
+    "i'm something of a scientist myself",
+    "я теж трохи вчений"
+   ],
+   "year": 2016,
+   "difficulty": 2,
+   "tags": [
+    "кіно"
+   ],
+   "about": "Репліка Нормана Озборна (Віллем Дефо) з фільму «Людина-павук» (2002). Мемом стала з 2016 року — коли хтось хизується «знаннями».",
+   "image": {
+    "url": "https://i.imgflip.com/27qxmb.jpg",
+    "page": "https://knowyourmeme.com/memes/im-something-of-a-scientist-myself"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/im-something-of-a-scientist-myself"
+   ]
+  },
+  {
+   "id": "w022",
+   "cat": "world",
+   "name": "Сі-Джей: ну от, знову",
+   "names": [
+    "Ah Shit, Here We Go Again",
+    "CJ",
+    "GTA San Andreas",
+    "сіджей"
+   ],
+   "phrase": "Ah shit, here we go again",
+   "phrases": [
+    "ну от, знову почалося",
+    "here we go again"
+   ],
+   "year": 2019,
+   "difficulty": 1,
+   "tags": [
+    "гра"
+   ],
+   "about": "Перша сцена гри GTA: San Andreas (2004): Сі-Джей повертається додому й бурчить, що все знову. З квітня 2019 — про ситуації, що повторюються.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/029/223/Here_We_Go_Again_Meme_censored_banner.jpg",
+    "page": "https://knowyourmeme.com/memes/ah-shit-here-we-go-again"
+   },
+   "crop": [
+    0,
+    0,
+    1,
+    0.8
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/ah-shit-here-we-go-again"
+   ]
+  },
+  {
+   "id": "w023",
+   "cat": "world",
+   "name": "Натисни F на похороні",
+   "names": [
+    "Press F to Pay Respects",
+    "Press F",
+    "натисни f",
+    "F"
+   ],
+   "phrase": "Press F to pay respects",
+   "phrases": [
+    "натисни f, щоб віддати шану",
+    "press f",
+    "f"
+   ],
+   "year": 2014,
+   "difficulty": 1,
+   "tags": [
+    "гра"
+   ],
+   "about": "Підказка з гри Call of Duty: Advanced Warfare (листопад 2014): на похороні товариша треба натиснути F, щоб віддати шану. Тепер «F» у чаті — співчуття.",
+   "image": {
+    "url": "https://i.kym-cdn.com/photos/images/original/001/488/684/184.jpg",
+    "page": "https://knowyourmeme.com/memes/press-f-to-pay-respects"
+   },
+   "crop": [
+    0.12,
+    0.1,
+    0.88,
+    0.565
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/press-f-to-pay-respects"
+   ]
+  },
+  {
+   "id": "w024",
+   "cat": "world",
+   "name": "Пропозиція обміну",
+   "names": [
+    "Trade Offer",
+    "trade offer guy",
+    "я отримую ти отримуєш"
+   ],
+   "phrase": "Trade offer",
+   "phrases": [
+    "пропозиція обміну",
+    "i receive, you receive",
+    "я отримую, ти отримуєш"
+   ],
+   "year": 2021,
+   "difficulty": 2,
+   "tags": [
+    "люди"
+   ],
+   "about": "Тренд TikTok 2021 року під джингл драфту НБА: людина пропонує обмін «я отримую… ти отримуєш…».",
+   "image": {
+    "url": "https://i.imgflip.com/54hjww.jpg",
+    "page": "https://knowyourmeme.com/memes/trade-offer"
+   },
+   "crop": [
+    0,
+    0.23,
+    1,
+    0.77
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/trade-offer"
+   ]
+  },
+  {
+   "id": "w025",
+   "cat": "world",
+   "name": "Скорсезе з піднятими руками",
+   "names": [
+    "Absolute Cinema",
+    "Martin Scorsese",
+    "скорсезе",
+    "це кіно"
+   ],
+   "phrase": "Absolute Cinema",
+   "phrases": [
+    "абсолютне кіно",
+    "оце кіно",
+    "кіно"
+   ],
+   "year": 2023,
+   "difficulty": 2,
+   "tags": [
+    "знаменитість",
+    "кіно"
+   ],
+   "about": "Чорно-біле фото режисера Мартіна Скорсезе з піднятими руками з інтерв'ю The New York Times (2020). З 2023 — реакція на щось справді вражаюче.",
+   "image": {
+    "url": "https://i.imgflip.com/8d317n.png",
+    "page": "https://knowyourmeme.com/memes/absolute-cinema"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/absolute-cinema"
+   ]
+  },
+  {
+   "id": "w026",
+   "cat": "world",
+   "name": "Танос: ідеально збалансовано",
+   "names": [
+    "Perfectly Balanced",
+    "Thanos",
+    "танос"
+   ],
+   "phrase": "Perfectly balanced, as all things should be",
+   "phrases": [
+    "ідеально збалансовано, як і все має бути",
+    "perfectly balanced",
+    "ідеальний баланс"
+   ],
+   "year": 2018,
+   "difficulty": 2,
+   "tags": [
+    "кіно"
+   ],
+   "about": "Слова Таноса з фільму «Месники: Війна нескінченності» (2018) про ідеальний баланс; стали мемом серед фанатів.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/027/257/perfectly-balanced-as-all-things-should-be.jpg",
+    "page": "https://knowyourmeme.com/memes/perfectly-balanced"
+   },
+   "crop": [
+    0,
+    0.2,
+    1,
+    0.58
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/perfectly-balanced"
+   ]
+  },
+  {
+   "id": "w027",
+   "cat": "world",
+   "name": "Кіану Рівз: ти неймовірний",
+   "names": [
+    "You're Breathtaking",
+    "Keanu Reeves",
+    "кіану",
+    "кіану рівз"
+   ],
+   "phrase": "You're breathtaking",
+   "phrases": [
+    "ти неймовірний",
+    "ви всі неймовірні",
+    "you're all breathtaking"
+   ],
+   "year": 2019,
+   "difficulty": 2,
+   "tags": [
+    "знаменитість",
+    "гра"
+   ],
+   "about": "Кіану Рівз презентував Cyberpunk 2077 на E3 у червні 2019; глядач гукнув йому «You're breathtaking», а він відповів, що неймовірні всі.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/030/029/cover2.jpg",
+    "page": "https://knowyourmeme.com/memes/youre-breathtaking"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/youre-breathtaking"
+   ]
+  },
+  {
+   "id": "w028",
+   "cat": "world",
+   "name": "Енакін і Падме на пікніку",
+   "names": [
+    "For the Better, Right?",
+    "Anakin Padme 4 Panel",
+    "падме",
+    "енакін і падме"
+   ],
+   "phrase": "For the better, right?",
+   "phrases": [
+    "на краще, так?",
+    "це ж на краще, правда?"
+   ],
+   "year": 2021,
+   "difficulty": 2,
+   "tags": [
+    "кіно"
+   ],
+   "about": "Сцена з «Зоряних війн: Атака клонів»: Енакін каже щось, Падме з усмішкою перепитує «на краще, так?», а він мовчить. Підписи вигадані; формат розлетівся у 2021.",
+   "image": {
+    "url": "https://i.imgflip.com/5c7lwq.png",
+    "page": "https://knowyourmeme.com/memes/for-the-better-right"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/for-the-better-right"
+   ]
+  },
+  {
+   "id": "w029",
+   "cat": "world",
+   "name": "Gangnam Style",
+   "names": [
+    "Ґанґнам стайл",
+    "Гангнам стайл",
+    "PSY",
+    "псай"
+   ],
+   "phrase": "Oppa Gangnam Style",
+   "phrases": [
+    "оппа гангнам стайл",
+    "гангнам стайл"
+   ],
+   "year": 2012,
+   "difficulty": 1,
+   "tags": [
+    "знаменитість"
+   ],
+   "about": "Пісня південнокорейського співака PSY, випущена в липні 2012: кліп став вірусним на YouTube по всьому світу.",
+   "image": {
+    "url": "https://i.imgflip.com/5b8f.jpg",
+    "page": "https://imgflip.com/memetemplate/Psy-Horse-Dance"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/gangnam-style"
+   ]
+  },
+  {
+   "id": "w030",
+   "cat": "world",
+   "name": "Губка Боб встає з крісла",
+   "names": [
+    "Ight Imma Head Out",
+    "губка боб іде",
+    "ну я пішов"
+   ],
+   "phrase": "Ight imma head out",
+   "phrases": [
+    "ну, я пішов",
+    "я пішов",
+    "ладно, я пішов"
+   ],
+   "year": 2019,
+   "difficulty": 2,
+   "tags": [
+    "мульт"
+   ],
+   "about": "Кадр із серії «Губки Боба» 2001 року: насправді він сідає в крісло, але всі бачать, що встає. З липня 2019 — реакція «ну, я пішов», коли розмова стає незручною.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/030/967/spongebob.jpg",
+    "page": "https://knowyourmeme.com/memes/ight-imma-head-out"
+   },
+   "crop": [
+    0,
+    0,
+    1,
+    0.86
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/ight-imma-head-out"
+   ]
+  },
+  {
+   "id": "w031",
+   "cat": "world",
+   "name": "Емоційна шкода (Стівен Хі)",
+   "names": [
+    "Emotional Damage",
+    "Steven He",
+    "стівен хі",
+    "стівен хі кидає капець",
+    "емоційна шкода"
+   ],
+   "phrase": "Emotional damage!",
+   "phrases": [
+    "емоційна шкода",
+    "emotional damage"
+   ],
+   "year": 2021,
+   "difficulty": 2,
+   "tags": [
+    "люди"
+   ],
+   "about": "Скетч ютубера Стівена Хі (вересень 2021) про гру на складності «азієць»: він жбурляє взуття й кричить «Emotional damage!». З кінця 2021 кліп ставлять у TikTok після чиєїсь поразки.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/039/342/edcover.jpg",
+    "page": "https://knowyourmeme.com/memes/emotional-damage"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/emotional-damage"
+   ]
+  },
+  {
+   "id": "w032",
+   "cat": "world",
+   "name": "Танець із труною",
+   "names": [
+    "Coffin Dance",
+    "Dancing Pallbearers",
+    "танцюючі носії труни",
+    "ганські носії"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2020,
+   "difficulty": 1,
+   "tags": [
+    "люди"
+   ],
+   "about": "Ганські носії труни, що танцюють на похороні. Навесні 2020 на TikTok відео стало кінцівкою для невдалих трюків — мовляв, «кінець».",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/033/381/dancing_coffin.jpg",
+    "page": "https://knowyourmeme.com/memes/dancing-pallbearers"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/dancing-pallbearers"
+   ]
+  },
+  {
+   "id": "w033",
+   "cat": "world",
+   "name": "Сердитий кіт",
+   "names": [
+    "Grumpy Cat",
+    "Tardar Sauce",
+    "незадоволений кіт"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2012,
+   "difficulty": 1,
+   "tags": [
+    "кіт"
+   ],
+   "about": "Кішка Тардар Сос із вічно незадоволеною мордочкою; її фото виклали на Reddit у вересні 2012, і вона одразу стала зіркою інтернету.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/011/365/GRUMPYCAT.jpg",
+    "page": "https://knowyourmeme.com/memes/grumpy-cat"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/grumpy-cat"
+   ]
+  },
+  {
+   "id": "w034",
+   "cat": "world",
+   "name": "Турецький кухар солить м'ясо",
+   "names": [
+    "Salt Bae",
+    "Нусрет",
+    "солт бей",
+    "кухар солить"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2017,
+   "difficulty": 1,
+   "tags": [
+    "знаменитість",
+    "їжа"
+   ],
+   "about": "Турецький шеф Нусрет Гьокче в січні 2017 виклав відео, де ріже стейк і граційно сипле сіль з ліктя. Відео миттєво розлетілося.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/021/971/Salt-Bae-001.jpg",
+    "page": "https://knowyourmeme.com/memes/salt-bae"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/salt-bae"
+   ]
+  },
+  {
+   "id": "w035",
+   "cat": "world",
+   "name": "Кіт, що кивав у такт",
+   "names": [
+    "Vibing Cat",
+    "Cat Vibing",
+    "кіт киває",
+    "кіт під Ievan Polkka"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2020,
+   "difficulty": 1,
+   "tags": [
+    "кіт"
+   ],
+   "about": "У жовтні 2020 кота, що кивав у такт, вмонтували поруч із вуличним музикантом, який грає Ievan Polkka на бубні. Відео стало реакцією й форматом із підписами.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/035/736/Screenshot_19.jpg",
+    "page": "https://knowyourmeme.com/memes/cat-vibing-to-street-musicians-ievan-polkka"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/cat-vibing-to-street-musicians-ievan-polkka"
+   ]
+  },
+  {
+   "id": "w036",
+   "cat": "world",
+   "name": "Кіт, що роззявляє рота",
+   "names": [
+    "Pop Cat",
+    "Oatmeal",
+    "поп кет"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2020,
+   "difficulty": 2,
+   "tags": [
+    "кіт"
+   ],
+   "about": "Кіт Оутміл: звичайне фото й фото з круглим роззявленим ротом, які в жовтні 2020 склеїли у відео з «чпок»-звуком.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/035/692/cover1.jpg",
+    "page": "https://knowyourmeme.com/memes/pop-cat"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/pop-cat"
+   ]
+  },
+  {
+   "id": "w037",
+   "cat": "world",
+   "name": "Амогус",
+   "names": [
+    "Amogus",
+    "Among Us",
+    "амонг ас",
+    "сус",
+    "sus"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2021,
+   "difficulty": 1,
+   "tags": [
+    "гра"
+   ],
+   "about": "Перекручена назва гри Among Us і спрощений малюнок її космонавта-«члена екіпажу». З січня 2021 — іронічний мем разом зі словом «sus».",
+   "image": {
+    "url": "https://i.kym-cdn.com/photos/images/original/002/018/144/1f8.png",
+    "page": "https://knowyourmeme.com/memes/amogus"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/amogus"
+   ]
+  },
+  {
+   "id": "w038",
+   "cat": "world",
+   "name": "Малюк Йода",
+   "names": [
+    "Baby Yoda",
+    "Grogu",
+    "Грогу",
+    "бейбі йода"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2019,
+   "difficulty": 1,
+   "tags": [
+    "серіал"
+   ],
+   "about": "Персонаж серіалу «Мандалорець» (листопад 2019), схожий на маленького Йоду. Одразу став улюбленцем інтернету.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/031/827/bright.jpg",
+    "page": "https://knowyourmeme.com/memes/baby-yoda-grogu"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/baby-yoda-grogu"
+   ]
+  },
+  {
+   "id": "w039",
+   "cat": "world",
+   "name": "Просто чіловий хлопець",
+   "names": [
+    "Chill Guy",
+    "Just a Chill Guy",
+    "My New Character",
+    "чілл гай"
+   ],
+   "phrase": "I'm just a chill guy",
+   "phrases": [
+    "просто чіловий хлопець",
+    "chill guy",
+    "чіл гай"
+   ],
+   "year": 2024,
+   "difficulty": 2,
+   "tags": [
+    "комікс"
+   ],
+   "about": "Малюнок пса в светрі й джинсах художника Філліпа Бенкса (жовтень 2023) з підписом про «персонажа, якому все байдуже». У 2024 розлетівся в TikTok як «I'm just a chill guy».",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/051/201/chill-guy.jpg",
+    "page": "https://knowyourmeme.com/memes/just-a-chill-guy-my-new-character"
+   },
+   "crop": [
+    0,
+    0,
+    0.42,
+    1
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/just-a-chill-guy-my-new-character"
+   ]
+  },
+  {
+   "id": "w040",
+   "cat": "world",
+   "name": "Ляпас Вілла Сміта",
+   "names": [
+    "Will Smith Slap",
+    "Will Smith Slapping Chris Rock",
+    "вілл сміт б'є",
+    "оскар ляпас"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2022,
+   "difficulty": 1,
+   "tags": [
+    "знаменитість",
+    "новини"
+   ],
+   "about": "На церемонії «Оскар» у березні 2022 Вілл Сміт вийшов на сцену й дав ляпаса Крісу Року за жарт про дружину. Момент одразу став мемом.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/039/973/9.JPG",
+    "page": "https://knowyourmeme.com/memes/will-smith-slapping-chris-rock"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/will-smith-slapping-chris-rock"
+   ]
+  },
+  {
+   "id": "w041",
+   "cat": "world",
+   "name": "Сумний Пабло Ескобар чекає",
+   "names": [
+    "Pablo Escobar Waiting",
+    "Sad Pablo Escobar",
+    "ескобар чекає",
+    "нарко"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2016,
+   "difficulty": 2,
+   "tags": [
+    "серіал"
+   ],
+   "about": "Три кадри з серіалу Netflix «Нарко» (2-й сезон, 2016): Пабло Ескобар самотньо чекає в полі, за столом і в порожньому басейні. Шаблон з жовтня 2016.",
+   "image": {
+    "url": "https://i.imgflip.com/1c1uej.jpg",
+    "page": "https://knowyourmeme.com/memes/pablo-escobar-waiting"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/pablo-escobar-waiting"
+   ]
+  },
+  {
+   "id": "w042",
+   "cat": "world",
+   "name": "Мавпа-лялька відводить погляд",
+   "names": [
+    "Awkward Look Monkey Puppet",
+    "Monkey Puppet",
+    "мавпа ніяково дивиться"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2016,
+   "difficulty": 2,
+   "tags": [
+    "тварини",
+    "серіал"
+   ],
+   "about": "Лялька-мавпа з японського дитячого шоу, що йшло з 1959 до 1988 року, ніяково косить очима вбік. Як мем — з травня 2016.",
+   "image": {
+    "url": "https://i.imgflip.com/2gnnjh.jpg",
+    "page": "https://knowyourmeme.com/memes/awkward-look-monkey-puppet"
+   },
+   "crop": [
+    0,
+    0.36,
+    1,
+    0.64
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/awkward-look-monkey-puppet"
+   ]
+  },
+  {
+   "id": "w043",
+   "cat": "world",
+   "name": "Ді Капріо регоче з келихом",
+   "names": [
+    "Leonardo DiCaprio Laughing",
+    "Laughing Leo",
+    "лео сміється",
+    "джанго"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2017,
+   "difficulty": 2,
+   "tags": [
+    "кіно"
+   ],
+   "about": "Кадр із фільму «Джанго звільнений» (2012): персонаж Ді Капріо Келвін Кенді заходиться сміхом. Як реакція — з листопада 2017.",
+   "image": {
+    "url": "https://i.imgflip.com/4acd7j.png",
+    "page": "https://knowyourmeme.com/memes/leonardo-dicaprio-laughing"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/leonardo-dicaprio-laughing"
+   ]
+  },
+  {
+   "id": "w044",
+   "cat": "world",
+   "name": "Бегемотиха Му Денг",
+   "names": [
+    "Moo Deng",
+    "Му Денг",
+    "бегемотик",
+    "карликовий бегемот"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2024,
+   "difficulty": 2,
+   "tags": [
+    "тварини"
+   ],
+   "about": "Карликова бегемотиха, що народилась у липні 2024 в зоопарку Кхао Кхеов у Таїланді. Її норовливі фото й відео облетіли весь інтернет.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/051/257/cover2.jpg",
+    "page": "https://knowyourmeme.com/memes/moo-deng-the-baby-hippo"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/moo-deng-the-baby-hippo"
+   ]
+  },
+  {
+   "id": "o001",
+   "cat": "old",
+   "name": "Trollface",
+   "names": [
+    "пика тролля",
+    "тролфейс",
+    "троль",
+    "троллфейс",
+    "troll face",
+    "морда тролля"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2008,
+   "difficulty": 1,
+   "tags": [
+    "комікс"
+   ],
+   "about": "Намалював у Paint 18-річний Карлос Рамірес і 19 вересня 2008 виклав на DeviantArt як частину коміксу про тролінг; з 4chan пика розлетілася по Reddit і стала обличчям інтернет-троля.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/091/TrollFace.jpg",
+    "page": "https://knowyourmeme.com/memes/trollface"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/trollface",
+    "https://en.wikipedia.org/wiki/Trollface"
+   ]
+  },
+  {
+   "id": "o002",
+   "cat": "old",
+   "name": "Rickroll",
+   "names": [
+    "рікрол",
+    "рікролл",
+    "рік естлі",
+    "rick astley",
+    "rickrolling",
+    "рікролінг"
+   ],
+   "phrase": "Never gonna give you up",
+   "phrases": [
+    "never gonna give you up never gonna let you down",
+    "ніколи тебе не покину"
+   ],
+   "year": 2007,
+   "difficulty": 1,
+   "tags": [
+    "знаменитість"
+   ],
+   "about": "Пранк із 4chan: посилання ніби на щось важливе, а відкривається кліп Ріка Естлі «Never Gonna Give You Up» (1987). Масово пішов з травня 2007.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/007/bd6.jpg",
+    "page": "https://knowyourmeme.com/memes/rickroll"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/rickroll"
+   ]
+  },
+  {
+   "id": "o003",
+   "cat": "old",
+   "name": "Самотній назавжди",
+   "names": [
+    "forever alone",
+    "форевер елоун",
+    "вічно самотній",
+    "назавжди самотній"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2010,
+   "difficulty": 1,
+   "tags": [
+    "комікс"
+   ],
+   "about": "Персонаж rage-коміксів, що плаче від самотності й розчарування життям; перший комікс з'явився на FunnyJunk у травні 2010.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/003/619/ForeverAlone.jpg",
+    "page": "https://knowyourmeme.com/memes/forever-alone"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/forever-alone"
+   ]
+  },
+  {
+   "id": "o004",
+   "cat": "old",
+   "name": "Обурений «Чому ти не…»",
+   "names": [
+    "y u no",
+    "y u no guy",
+    "why you no",
+    "чому ти не",
+    "ю ноу"
+   ],
+   "phrase": "Y U NO",
+   "phrases": [
+    "why you no",
+    "чому ти не"
+   ],
+   "year": 2010,
+   "difficulty": 2,
+   "tags": [
+    "комікс"
+   ],
+   "about": "Обличчя, ймовірно, обведене з манґи «Gantz»; у 2010 році на Tumblr і Meme Generator пішли картинки за формулою «X, Y U NO …?» — обурене «чому ти не…?» ламаною англійською.",
+   "image": {
+    "url": "https://i.imgflip.com/1bh3.jpg",
+    "page": "https://imgflip.com/memetemplate/Y-U-No"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/y-u-no-guy"
+   ]
+  },
+  {
+   "id": "o005",
+   "cat": "old",
+   "name": "Обличчя «Мені подобається»",
+   "names": [
+    "me gusta",
+    "ме густа",
+    "me gusta face",
+    "мі густа"
+   ],
+   "phrase": "Me gusta",
+   "phrases": [
+    "мені подобається",
+    "ме густа"
+   ],
+   "year": 2010,
+   "difficulty": 2,
+   "tags": [
+    "комікс"
+   ],
+   "about": "Rage-обличчя, яке ілюстраторка Мей Освальд виклала на 4chan і Reddit 18 березня 2010. Іспанське «me gusta» — «мені подобається»: дивне задоволення від незручної ситуації.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/002/252/NoMeGusta.jpg",
+    "page": "https://knowyourmeme.com/memes/me-gusta"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/me-gusta"
+   ]
+  },
+  {
+   "id": "o006",
+   "cat": "old",
+   "name": "Nyan Cat",
+   "names": [
+    "нян кет",
+    "нян кіт",
+    "нян",
+    "pop tart cat",
+    "кіт-печиво з веселкою",
+    "кіт з веселкою"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2011,
+   "difficulty": 1,
+   "tags": [
+    "кіт",
+    "мульт"
+   ],
+   "about": "8-бітний кіт із тілом-печивом Pop-Tart летить космосом; Кріс Торрес виклав анімацію 2 квітня 2011, а за кілька днів на YouTube її поклали на японську пісеньку «Nyanyanya» — і понеслось.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/005/608/nyan-cat-01-625x450.jpg",
+    "page": "https://knowyourmeme.com/memes/nyan-cat"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/nyan-cat"
+   ]
+  },
+  {
+   "id": "o007",
+   "cat": "old",
+   "name": "Кіт за синтезатором",
+   "names": [
+    "keyboard cat",
+    "кіт-клавішник",
+    "кіт на клавішах",
+    "кіт грає на синтезаторі",
+    "fatso"
+   ],
+   "phrase": "Play him off, Keyboard Cat",
+   "phrases": [
+    "play him off",
+    "проводь його, коте"
+   ],
+   "year": 2009,
+   "difficulty": 2,
+   "tags": [
+    "кіт"
+   ],
+   "about": "У 1984 році Чарлі Шмідт водив лапами свого кота Фатсо по клавішах; у лютому 2009 відео домонтували в кінець ролика з невдахою — «Play him off, Keyboard Cat», і кіт став «проводжати» всі фейли.",
+   "image": {
+    "url": "https://i.ytimg.com/vi/J---aiyznGQ/hqdefault.jpg",
+    "page": "https://www.youtube.com/watch?v=J---aiyznGQ"
+   },
+   "crop": [
+    0,
+    0.05,
+    1,
+    0.9
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/keyboard-cat"
+   ]
+  },
+  {
+   "id": "o008",
+   "cat": "old",
+   "name": "Малий із кулачком",
+   "names": [
+    "success kid",
+    "успішний малюк",
+    "i hate sandcastles",
+    "малий на пляжі",
+    "малюк з піском у кулаці"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2008,
+   "difficulty": 1,
+   "tags": [
+    "дитина"
+   ],
+   "about": "11-місячного Семмі на пляжі сфотографувала його мама Лейні Ґрайнер у 2007; з 2008 фото гуляло MySpace, а з 2011 стало макросом про ситуацію, що вийшла краще, ніж чекав.",
+   "image": {
+    "url": "https://i.imgflip.com/1bhk.jpg",
+    "page": "https://imgflip.com/memetemplate/Success-Kid"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/success-kid-i-hate-sandcastles"
+   ]
+  },
+  {
+   "id": "o009",
+   "cat": "old",
+   "name": "Боромир: «Не можна просто так…»",
+   "names": [
+    "one does not simply",
+    "one does not simply walk into mordor",
+    "боромир",
+    "не можна просто так",
+    "мордор"
+   ],
+   "phrase": "One does not simply walk into Mordor",
+   "phrases": [
+    "не можна просто так узяти й увійти в мордор",
+    "не можна просто так",
+    "one does not simply",
+    "не можна просто так взяти і"
+   ],
+   "year": 2004,
+   "difficulty": 1,
+   "tags": [
+    "кіно"
+   ],
+   "about": "Репліка Боромира з фільму «Володар перснів: Хранителі Персня» (2001) про похід у Мордор; з 2004 року фразу перекроюють у «Не можна просто так узяти й X».",
+   "image": {
+    "url": "https://i.imgflip.com/1bij.jpg",
+    "page": "https://imgflip.com/memetemplate/One-Does-Not-Simply"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/one-does-not-simply-walk-into-mordor"
+   ]
+  },
+  {
+   "id": "o010",
+   "cat": "old",
+   "name": "Малий кусає брата за палець",
+   "names": [
+    "charlie bit my finger",
+    "charlie bit me",
+    "чарлі вкусив",
+    "чарлі вкусив мене за палець"
+   ],
+   "phrase": "Charlie bit me!",
+   "phrases": [
+    "charlie bit my finger",
+    "чарлі мене вкусив",
+    "чарлі вкусив мене"
+   ],
+   "year": 2007,
+   "difficulty": 2,
+   "tags": [
+    "дитина"
+   ],
+   "about": "Домашнє відео британської родини, викладене на YouTube у травні 2007: річний Чарлі кусає за палець трирічного брата Гаррі, а той жаліється «Charlie bit me!».",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/131/tdy_or_charlie_150501.today-inline-vid-featured-desktop.jpg",
+    "page": "https://knowyourmeme.com/memes/charlie-bit-my-finger"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/charlie-bit-my-finger"
+   ]
+  },
+  {
+   "id": "o011",
+   "cat": "old",
+   "name": "Плаче, щоб не чіпали Брітні",
+   "names": [
+    "leave britney alone",
+    "chris crocker",
+    "кріс крокер",
+    "залиште брітні"
+   ],
+   "phrase": "Leave Britney alone!",
+   "phrases": [
+    "залиште брітні в спокої",
+    "дайте брітні спокій",
+    "відчепіться від брітні"
+   ],
+   "year": 2007,
+   "difficulty": 3,
+   "tags": [
+    "люди"
+   ],
+   "about": "Вересень 2007: Кріс Крокер (нині Кара Каннінгем) у сльозах благає дати спокій Брітні Спірс після її розкритикованого виступу на MTV; 2 млн переглядів за першу добу.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/016/brittnee.jpg",
+    "page": "https://knowyourmeme.com/memes/leave-britney-alone"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/leave-britney-alone"
+   ]
+  },
+  {
+   "id": "o012",
+   "cat": "old",
+   "name": "Факти про Чака Норріса",
+   "names": [
+    "chuck norris facts",
+    "чак норріс",
+    "чак норрис",
+    "факти про чака"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2005,
+   "difficulty": 1,
+   "tags": [
+    "знаменитість",
+    "кіно"
+   ],
+   "about": "Жартівливі «факти» про всемогутнього актора Чака Норріса пішли з форуму Something Awful у 2005 і облетіли світ; коли Норріс помер у березні 2026, жарти повернулися як пам'ять.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/244/nope.jpg",
+    "page": "https://knowyourmeme.com/memes/chuck-norris-facts"
+   },
+   "crop": [
+    0,
+    0.36,
+    1,
+    0.64
+   ],
+   "sources": [
+    "https://knowyourmeme.com/memes/chuck-norris-facts"
+   ]
+  },
+  {
+   "id": "o013",
+   "cat": "old",
+   "name": "Нума-нума: танець перед вебкамерою",
+   "names": [
+    "numa numa",
+    "numa numa dance",
+    "гері бролсма",
+    "dragostea din tei",
+    "драгостя дін тей",
+    "нума нума"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2004,
+   "difficulty": 2,
+   "tags": [
+    "люди"
+   ],
+   "about": "Американець Гері Бролсма зняв на вебкамеру, як він підспівує й танцює під молдовську пісню «Dragostea din tei» гурту O-Zone; у грудні 2004 відео вийшло на Newgrounds і зібрало мільйони переглядів.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/070/Picture_61.png",
+    "page": "https://knowyourmeme.com/memes/numa-numa"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/numa-numa"
+   ]
+  },
+  {
+   "id": "o014",
+   "cat": "old",
+   "name": "Драматичний бурундук",
+   "names": [
+    "dramatic chipmunk",
+    "dramatic look",
+    "драматичний ховрах",
+    "драматична лучна собачка",
+    "драматичний погляд"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2007,
+   "difficulty": 2,
+   "tags": [
+    "тварини"
+   ],
+   "about": "Лучна собачка з японського телешоу різко обертається до камери під драматичну музику; кліп «Dramatic Look» виклали на YouTube у червні 2007, до 2011 — понад 30 млн переглядів.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/019/dramatic-chipmunk.gif",
+    "page": "https://knowyourmeme.com/memes/dramatic-chipmunk"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/dramatic-chipmunk"
+   ]
+  },
+  {
+   "id": "o015",
+   "cat": "old",
+   "name": "Подвійна веселка",
+   "names": [
+    "double rainbow",
+    "подвійна веселка",
+    "yosemite bear",
+    "ведмідь з йосеміті"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2010,
+   "difficulty": 3,
+   "tags": [
+    "люди"
+   ],
+   "about": "Пол «Ведмідь» Васкес зняв біля Йосеміті подвійну веселку й захоплено ридав за кадром; ролик 2010 року розкрутив Джиммі Кіммел, і він зібрав понад 50 млн переглядів.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/003/128/rainbow.jpg",
+    "page": "https://knowyourmeme.com/memes/double-rainbow"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/double-rainbow",
+    "https://en.wikipedia.org/wiki/Double_Rainbow_(viral_video)"
+   ]
+  },
+  {
+   "id": "o016",
+   "cat": "old",
+   "name": "Капітан Пікар закриває обличчя",
+   "names": [
+    "facepalm",
+    "фейспалм",
+    "picard facepalm",
+    "пікар",
+    "рука-лице",
+    "рукалице"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2007,
+   "difficulty": 1,
+   "tags": [
+    "серіал"
+   ],
+   "about": "Кадр із «Зоряного шляху: Наступне покоління» (1990), де капітан Пікар закриває обличчя долонею; як «facepalm» його вперше виклали на YouTube у травні 2007. Реакція на чужу дурість.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/554/picard-facepalm.jpg",
+    "page": "https://knowyourmeme.com/memes/facepalm"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/facepalm"
+   ]
+  },
+  {
+   "id": "o017",
+   "cat": "old",
+   "name": "Сумний Кіану",
+   "names": [
+    "sad keanu",
+    "кіану на лавці",
+    "сумний кіану рівз",
+    "кіану з сендвічем"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2010,
+   "difficulty": 2,
+   "tags": [
+    "знаменитість"
+   ],
+   "about": "Папараці в травні 2010 зняли Кіану Рівза, що сумно їсть сендвіч сам на лавці в парку; фото стало фотошоп-мемом на 4chan і Reddit.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/002/862/SadKeanu.jpg",
+    "page": "https://knowyourmeme.com/memes/sad-keanu"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/sad-keanu"
+   ]
+  },
+  {
+   "id": "o018",
+   "cat": "old",
+   "name": "Фрай махає грошима",
+   "names": [
+    "shut up and take my money",
+    "фрай з грошима",
+    "бери мої гроші",
+    "футурама гроші"
+   ],
+   "phrase": "Shut up and take my money!",
+   "phrases": [
+    "замовкни й бери мої гроші",
+    "заткнись і бери мої гроші",
+    "бери мої гроші",
+    "take my money"
+   ],
+   "year": 2010,
+   "difficulty": 1,
+   "tags": [
+    "мульт"
+   ],
+   "about": "Фрай із «Футурами» (серія 1 липня 2010) перебиває продавця пародійного айфона криком «Shut up and take my money!»; так кажуть, коли щось хочеш купити негайно.",
+   "image": {
+    "url": "https://i.imgflip.com/3si4.jpg",
+    "page": "https://imgflip.com/memetemplate/Shut-Up-And-Take-My-Money-Fry"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/shut-up-and-take-my-money"
+   ]
+  },
+  {
+   "id": "o019",
+   "cat": "old",
+   "name": "Фрай примружився",
+   "names": [
+    "futurama fry",
+    "not sure if",
+    "фрай підозрює",
+    "примружений фрай",
+    "фрай"
+   ],
+   "phrase": "Not sure if…",
+   "phrases": [
+    "not sure if trolling or just stupid",
+    "не певен, чи",
+    "не зрозумів, чи"
+   ],
+   "year": 2011,
+   "difficulty": 1,
+   "tags": [
+    "мульт"
+   ],
+   "about": "Кадр, де Фрай із «Футурами» підозріло мружиться; у 2011 став шаблоном «Not sure if X… or Y» — «не певен, чи це тролінг, чи просто дурість».",
+   "image": {
+    "url": "https://i.imgflip.com/1bgw.jpg",
+    "page": "https://imgflip.com/memetemplate/Futurama-Fry"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/futurama-fry-not-sure-if"
+   ]
+  },
+  {
+   "id": "o020",
+   "cat": "old",
+   "name": "Веджета і сила бійця",
+   "names": [
+    "over 9000",
+    "its over 9000",
+    "понад 9000",
+    "більше 9000",
+    "вегета",
+    "веджета"
+   ],
+   "phrase": "It's over 9000!",
+   "phrases": [
+    "понад дев'ять тисяч",
+    "понад 9000",
+    "більше 9000",
+    "over 9000"
+   ],
+   "year": 2006,
+   "difficulty": 2,
+   "tags": [
+    "аніме"
+   ],
+   "about": "Криво перекладена репліка Веджети з англійського дубляжу «Dragon Ball Z» (1997) про силу Ґоку; з 2006 «понад 9000» — інтернет-позначка для «дуже багато».",
+   "image": {
+    "url": "https://i.imgflip.com/vx58.jpg",
+    "page": "https://imgflip.com/meme/1489292/Vegeta-over-9000"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/its-over-9000"
+   ]
+  },
+  {
+   "id": "o021",
+   "cat": "old",
+   "name": "Цар Леонід кричить на посланця",
+   "names": [
+    "this is sparta",
+    "це спарта",
+    "300 спартанців",
+    "леонід",
+    "спарта"
+   ],
+   "phrase": "This is Sparta!",
+   "phrases": [
+    "це спарта",
+    "це спарта!"
+   ],
+   "year": 2006,
+   "difficulty": 1,
+   "tags": [
+    "кіно"
+   ],
+   "about": "Сцена з фільму «300 спартанців» (2006): цар Леонід відмовляється від миру з персами, кричить «This is Sparta!» і штурхає посланця в колодязь.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/026/Gerard-Butler-This-Is-Sparta.jpg",
+    "page": "https://knowyourmeme.com/memes/this-is-sparta"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/this-is-sparta"
+   ]
+  },
+  {
+   "id": "o022",
+   "cat": "old",
+   "name": "Саксофоніст з Євробачення",
+   "names": [
+    "epic sax guy",
+    "саксофоніст",
+    "sax guy",
+    "saxroll",
+    "sunstroke project",
+    "епічний саксофоніст"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2010,
+   "difficulty": 2,
+   "tags": [
+    "знаменитість"
+   ],
+   "about": "Саксофоніст молдовського гурту SunStroke Project так завзято відіграв соло на Євробаченні-2010, що кліп став вірусним, а «саксрол» — пранком на кшталт рікролу.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/002/892/saxguy.jpg",
+    "page": "https://knowyourmeme.com/memes/epic-sax-guy"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/epic-sax-guy"
+   ]
+  },
+  {
+   "id": "o023",
+   "cat": "old",
+   "name": "Лірой Дженкінс біжить у бій",
+   "names": [
+    "leeroy jenkins",
+    "лірой",
+    "лірой дженкінс",
+    "leeeeroy"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2005,
+   "difficulty": 3,
+   "tags": [
+    "гра"
+   ],
+   "about": "Відео з World of Warcraft (травень 2005): поки гільдія розписує план, гравець Лірой з криком свого імені влітає в бій і губить усю групу.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/000/191/leeroy-jenkins.jpg",
+    "page": "https://knowyourmeme.com/memes/leeroy-jenkins"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/leeroy-jenkins"
+   ]
+  },
+  {
+   "id": "o024",
+   "cat": "old",
+   "name": "Самовдоволений зі схрещеними руками",
+   "names": [
+    "challenge accepted",
+    "виклик прийнято",
+    "челендж ексептед"
+   ],
+   "phrase": "Challenge accepted",
+   "phrases": [
+    "виклик прийнято"
+   ],
+   "year": 2010,
+   "difficulty": 2,
+   "tags": [
+    "комікс"
+   ],
+   "about": "Фраза Барні Стінсона з «Як я зустрів вашу маму»; з 2010 — rage-персонаж зі схрещеними руками й самовдоволеною пикою, що береться за складну справу.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/004/457/challenge.jpg",
+    "page": "https://knowyourmeme.com/memes/challenge-accepted"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/challenge-accepted"
+   ]
+  },
+  {
+   "id": "o025",
+   "cat": "old",
+   "name": "Яо Мін регоче",
+   "names": [
+    "yao ming face",
+    "bitch please",
+    "яо мін",
+    "яо мін мем"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2010,
+   "difficulty": 2,
+   "tags": [
+    "комікс",
+    "спорт"
+   ],
+   "about": "Контурний малюнок баскетболіста Яо Міна з пресконференції 2009 року; з 2010 — rage-обличчя для зневажливого «ой, та годі» у відповідь на чужу думку.",
+   "image": {
+    "url": "https://i.kym-cdn.com/entries/icons/original/000/005/180/YaoMingMeme.jpg",
+    "page": "https://knowyourmeme.com/memes/yao-ming-face-bitch-please"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/yao-ming-face-bitch-please"
+   ]
+  },
+  {
+   "id": "o026",
+   "cat": "old",
+   "name": "Гарольд, що приховує біль",
+   "names": [
+    "Hide the Pain Harold",
+    "Harold",
+    "Maurice",
+    "гарольд",
+    "дід, що приховує біль",
+    "андраш арато"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2011,
+   "difficulty": 1,
+   "tags": [
+    "люди",
+    "стокове фото"
+   ],
+   "about": "Стокові фото літнього угорця Андраша Арато, чия усмішка ніби приховує біль. Уперше на них звернули увагу на форумі Facepunch у вересні 2011; так показують, що «все добре», коли насправді ні.",
+   "image": {
+    "url": "https://i.imgflip.com/gk5el.jpg",
+    "page": "https://knowyourmeme.com/memes/hide-the-pain-harold"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/hide-the-pain-harold"
+   ]
+  },
+  {
+   "id": "o027",
+   "cat": "old",
+   "name": "Аніме-хлопець показує на метелика",
+   "names": [
+    "Is This a Pigeon?",
+    "is this a pigeon",
+    "це голуб",
+    "метелик і голуб",
+    "голуб і метелик"
+   ],
+   "phrase": "Is this a pigeon?",
+   "phrases": [
+    "це голуб?",
+    "це що, голуб?",
+    "це голуб"
+   ],
+   "year": 2011,
+   "difficulty": 2,
+   "tags": [
+    "аніме"
+   ],
+   "about": "Кадр з японського аніме «Fighbird» (1991): андроїд Ютаро плутає метелика з голубом. На Tumblr кадр із субтитром виклали в грудні 2011; ним показують, що хтось геть не розуміє, що бачить.",
+   "image": {
+    "url": "https://i.imgflip.com/1o00in.jpg",
+    "page": "https://knowyourmeme.com/memes/is-this-a-pigeon"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/is-this-a-pigeon"
+   ]
+  },
+  {
+   "id": "o028",
+   "cat": "old",
+   "name": "Двоє Людей-павуків тицяють одне на одного",
+   "names": [
+    "Spider-Man Pointing at Spider-Man",
+    "Spiderman Pointing",
+    "два спайдермени",
+    "людина-павук показує на людину-павука",
+    "спайдермен показує на спайдермена"
+   ],
+   "phrase": null,
+   "phrases": [],
+   "year": 2011,
+   "difficulty": 1,
+   "tags": [
+    "мульт"
+   ],
+   "about": "Кадр із мультсеріалу «Людина-павук» 1967 року: лиходій перевдягся в героя, і двоє Людей-павуків тицяють одне на одного. Перший макрос — лютий 2011; так жартують про зустріч двох дуже схожих людей.",
+   "image": {
+    "url": "https://i.imgflip.com/1tkjq9.jpg",
+    "page": "https://knowyourmeme.com/memes/spider-man-pointing-at-spider-man"
+   },
+   "crop": null,
+   "sources": [
+    "https://knowyourmeme.com/memes/spider-man-pointing-at-spider-man"
+   ]
+  }
+ ]
+}

@@ -108,6 +108,20 @@ public sealed class YtDlpService(IOptionsMonitor<YtDlpOptions> options, Db db, I
         return new TrackInfo(id, title, artist, dur, Str(n["thumbnail"]), Str(n["webpage_url"]) ?? url, Str(n["album"]));
     }
 
+    /// <summary>
+    /// Пряма адреса потоку відео для ffmpeg (<c>yt-dlp -g</c>, перший рядок) — кадри «Мемології». Без винятків на
+    /// відмовах YouTube: null і коротка причина (як у <see cref="FetchInfoAsync"/>; 18+ — з поясненням про куки).
+    /// <c>Raw</c> — увесь stderr: хто кличе, сам вирішує, чи відмова безнадійна. Не вклався в 60 с — <see cref="TimeoutException"/>.
+    /// </summary>
+    public async Task<(string? Url, string Error, string Raw)> StreamUrlAsync(string url, string format, CancellationToken ct)
+    {
+        var args = BaseArgs();
+        args.AddRange(["-g", "-f", format, url]);
+        var (code, o, e) = await RunWithCookieFallbackAsync(args, TimeSpan.FromSeconds(60), ct);
+        var first = o.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        return code == 0 && first is not null && first.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? (first, "", "") : (null, Short(e), e);
+    }
+
     /// <summary>Скачали новий файл у кеш — TrackCache перевіряє ліміт.</summary>
     public event Action? Downloaded;
 

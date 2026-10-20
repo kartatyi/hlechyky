@@ -124,10 +124,10 @@
     party: [
       { id: 'draw', title: 'Слова й малюнки', icon: '✏', ids: ['pictionary', 'telephone', 'hangman', 'wordle-race', 'pozyvni', 'dotepy'] },
       { id: 'bluff', title: 'Блеф і вечірка', icon: '🕵', ids: ['mafia', 'spy', 'bluff', 'dice', 'vechirka'] },
-      { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'geese'] },
+      { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'memy', 'geese'] },
     ],
     solo: [
-      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'bricks-sprint', 'typerace-solo', 'geo-solo'] },
+      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
       // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
       { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'kakhli-daily', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
         'tyr-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },

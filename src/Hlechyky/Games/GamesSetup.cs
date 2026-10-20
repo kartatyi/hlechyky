@@ -56,6 +56,7 @@ public static class GamesSetup
         Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
         Impl.DotepySetup.AddDotepy(services);               // «Додепи»: голос Глека, голос публіки
         Impl.GeoSetup.AddGeo(services);   // «Де це?»: фото з Вікісховища в cache/geo
+        Impl.MemySetup.AddMemy(services);                   // «Мемологія»: банк мемів, картинки й кадри проявлення в cache/memes
         Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
         Impl.SkilkySetup.AddSkilky(services);   // «Скільки?»: фото «Якого року?» в cache/skilky, таблиця дня
         services.AddSingleton<IDailyPoints>(sp => sp.GetRequiredService<Impl.SkilkyDailyBoard>());   // очки дня в «☀ Сьогодні»
@@ -101,6 +102,7 @@ public static class GamesSetup
         Impl.VohnykSetup.MapVohnyk(app);                   // /api/games/vohnyk/best — таблиця рівня
         Impl.DotepySetup.MapDotepy(app);                    // /api/games/dotepy/jury — голос публіки «Додепів»
         Impl.GeoSetup.MapGeo(app);   // /api/games/geo/<токен>.jpg
+        Impl.MemySetup.MapMemy(app);                        // /api/games/memy/<токен>.jpg — кадри «Мемології»
         Impl.SkilkySetup.MapSkilky(app);   // /api/games/skilky/photo/<токен>.jpg
         Impl.PictionarySetup.MapPictionary(app);            // /api/games/pictionary/… — альбом, 📌, реакції глядачів, пари
         Impl.WordleSetup.MapWordle(app);                    // /api/games/wordle/stats — серія й розподіл спроб
