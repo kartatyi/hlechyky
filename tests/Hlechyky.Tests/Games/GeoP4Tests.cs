@@ -142,4 +142,31 @@ public sealed class GeoP4Tests
         Assert.Equal(0, b.Streak("Оля", "2026-10-22"));
         Assert.Equal(0, b.Streak("Хтось", "2026-10-20"));
     }
+
+    [Fact]
+    public void Day_view_shows_who_played_before_and_the_board_with_streak_after()
+    {
+        using var c = new GeoCache();
+        var board = new GeoDailyBoard(null);
+        var h = new RoomHarness("geo-daily", null, 1, With(c, board));
+        var day = Days.Today(h.Clock);
+        var yesterday = DateOnly.ParseExact(day, "yyyy-MM-dd").AddDays(-1).ToString("yyyy-MM-dd");
+        board.Record(day, "Петро", 24_000, "🟩🟩🟩🟩🟩", h.Clock.UtcNow);
+        board.Record(yesterday, "Оля", 5000, "🟩", h.Clock.UtcNow);
+        h.Solo("Оля");
+
+        var before = h.View(0).GetProperty("extra");
+        Assert.Equal(["Петро"], before.GetProperty("played").EnumerateArray().Select(e => e.GetString()));
+        Assert.False(before.TryGetProperty("board", out _));      // жодних очок до своєї спроби
+
+        PlayDay(h, c, (r, t) => (t.X + 30 * r, t.Y));
+        var after = h.View(0).GetProperty("extra");
+        var rows = after.GetProperty("board").EnumerateArray().ToList();
+        Assert.Equal(["Петро", "Оля"], rows.Select(r => r.GetProperty("nick").GetString()));
+        Assert.True(rows[1].GetProperty("me").GetBoolean());
+        Assert.Equal(5, rows[1].GetProperty("marks").GetString()!.EnumerateRunes().Count());
+        Assert.Equal(2, rows[1].GetProperty("streak").GetInt32());
+        Assert.Equal(2, after.GetProperty("place").GetInt32());
+        Assert.Equal(2, after.GetProperty("streak").GetInt32());
+    }
 }

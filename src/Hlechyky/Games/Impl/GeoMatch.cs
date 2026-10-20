@@ -163,6 +163,8 @@ public sealed class GeoMatch
     /// бо каркас рахує «менше — краще»). Аргументи: місце й чи ставив шпильку хоч раз.
     /// </summary>
     public Action<int, bool>? DailyDone { get; set; }
+    /// <summary>Своє поле режиму у виді (<c>extra</c>): лише пам'ять, без бази — вид будується під замком.</summary>
+    public Func<int?, object?>? Extra { get; set; }
 
     /// <summary>Квадратики раунду за відстанню: 🟩 ≤ 50 км, 🟨 ≤ 200, 🟧 ≤ 500, ⬛ далі чи без шпильки.</summary>
     public string Squares()
@@ -761,6 +763,8 @@ public sealed class GeoMatch
             // 📸 фото друга: чиє (видно з «Готуйсь») і які місця за столом — його автор (не вгадує); інакше null
             by = _phase is PhaseBetween or PhaseGuess or PhaseReveal && round?.Mine is { } bm ? new { nick = bm.Nick, seats = Seats(_own) } : null,
             share = Day is not null && _phase == PhaseDone ? Share() : null,
+            // своє режиму (пакет 4): таблиця «Де це? дня», «🎯 Моя слабка» тренування — з пам'яті сервісів
+            extra = Extra?.Invoke(seat),
             // Фото — лише токен. У підсумку партії (done) лишається останнє: розкриття вже публічне.
             photo = _phase == PhaseLobby ? null : round?.Url,
             pinned = guess ? Pinned() : [],

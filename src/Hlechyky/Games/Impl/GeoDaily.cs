@@ -43,6 +43,7 @@ public sealed class GeoDaily : Game, IDailyGame
         _m = new GeoMatch(Ctx, GeoRules.Training, Ctx.Services.GetService<GeoPhotos>(), 1, Info.Title, Ctx.Services.GetService<GeoSeen>())
         {
             DailyDone = Report,
+            Extra = DayView,
         };
         _board = Ctx.Services.GetService<GeoDailyBoard>();
     }
@@ -79,6 +80,43 @@ public sealed class GeoDaily : Game, IDailyGame
         _board?.Record(_day, nick, (int)Math.Min(int.MaxValue, _m.Total(seat)), _m.Squares(), Ctx.Clock.UtcNow);
         // Спроба в щоденному каркасі одна; очки там не лягають (він рахує «менше — краще»), тож час — 0.
         Ctx.Score(seat, 0, 1);
+    }
+
+    /// <summary>Скільки рядків таблиці дня показувати в грі.</summary>
+    public const int BoardRows = 10;
+
+    /// <summary>
+    /// Таблиця дня у виді (<c>extra</c>). До кінця своїх п'яти фото — лише хто вже грав сьогодні, без очок і смужок
+    /// (інакше це підказка «хтось набрав 24 000 — фото легкі»). Після — місце, нік, очки, 🟩🟨⬛ і серія 🔥.
+    /// </summary>
+    object? DayView(int? seat)
+    {
+        if (_day.Length == 0) return null;
+        var top = _board?.Top(_day) ?? [];
+        var nick = Ctx.NickOf(0) ?? "";
+        var me = GeoDailyBoard.NickKey(nick);
+        if (_m.Phase != GeoMatch.PhaseDone)
+            return new
+            {
+                no = Days.Number(_day),
+                played = top.Where(r => GeoDailyBoard.NickKey(r.Nick) != me).Select(r => r.Nick).ToArray(),
+            };
+        var place = top.ToList().FindIndex(r => GeoDailyBoard.NickKey(r.Nick) == me);
+        return new
+        {
+            no = Days.Number(_day),
+            board = top.Take(BoardRows).Select(r => new
+            {
+                nick = r.Nick,
+                points = r.Points,
+                marks = r.Marks,
+                streak = _board!.Streak(r.Nick, _day),
+                me = GeoDailyBoard.NickKey(r.Nick) == me,
+            }).ToArray(),
+            place = place < 0 ? (int?)null : place + 1,
+            players = top.Count,
+            streak = _board?.Streak(nick, _day) ?? 0,
+        };
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload) => _m.Act(seat, action, payload);
