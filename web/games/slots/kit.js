@@ -1119,19 +1119,41 @@
     });
     ctx.listen(root, 'pointerdown', () => { if (gh.dataset.mood === 'doze' || gh.dataset.mood === 'yawn') idleArm(); });
 
+    // ----- автогра (пакет 5 «Азарт чесно»): 10/25/50/100 без ∞, стоп на мінусі й на бонусі; вибір стопів пам'ятаємо -----
+    const AUTO_N = [10, 25, 50, 100], AUTO_LOSS = [10, 25, 50], AUTO_KEY = 'slots.auto';
+    ctx.autoLoss = 25; ctx.autoNet = 0; ctx.autoCap = 0;
+    try {
+      const pr = JSON.parse(localStorage.getItem(AUTO_KEY) || 'null');
+      if (pr && typeof pr.bonus === 'boolean') ctx.autoStopBonus = pr.bonus;
+      if (pr && AUTO_LOSS.includes(pr.loss)) ctx.autoLoss = pr.loss;
+    } catch (e) { /* приватне вікно чи зіпсований запис — типові */ }
+    function saveAuto() { try { localStorage.setItem(AUTO_KEY, JSON.stringify({ bonus: !!ctx.autoStopBonus, loss: ctx.autoLoss })); } catch (e) { /* приватне вікно */ } }
     function openAutoMenu() {
       closeMenus();
       const wrap = hud.querySelector('.sk-autowrap');
       const m = div('sk-menu',
         '<div class="sk-menu-t">автогра</div><div class="sk-menu-n">'
-        + [10, 25, 50, 100, Infinity].map((n) => '<button data-n="' + n + '">' + (n === Infinity ? '∞' : n) + '</button>').join('')
+        + AUTO_N.map((n) => '<button data-n="' + n + '">' + n + '</button>').join('')
+        + '</div><div class="sk-menu-t sk-menu-t2">стоп на мінусі <small class="sk-loss-v"></small></div><div class="sk-menu-loss">'
+        + AUTO_LOSS.map((n) => '<button data-loss="' + n + '">' + n + '×</button>').join('')
         + '</div><label class="sk-chk"><input type="checkbox"' + (ctx.autoStopBonus ? ' checked' : '') + '> стоп на бонусі</label>');
       wrap.appendChild(m);
-      m.querySelectorAll('button').forEach((b) => b.addEventListener('click', (e) => {
-        e.stopPropagation(); ctx.auto = Number(b.dataset.n); ctx.autoStopBonus = m.querySelector('input').checked; m.remove(); updateHud(); if (!ctx.busy) doSpin();
+      const showLoss = () => {
+        m.querySelectorAll('[data-loss]').forEach((b) => b.classList.toggle('on', Number(b.dataset.loss) === ctx.autoLoss));
+        m.querySelector('.sk-loss-v').textContent = '= ' + fmt(ctx.autoLoss * ctx.bet) + ' 🏺';
+      };
+      showLoss();
+      m.querySelectorAll('[data-loss]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); ctx.autoLoss = Number(b.dataset.loss); saveAuto(); showLoss(); }));
+      m.querySelector('input').addEventListener('change', (e) => { ctx.autoStopBonus = e.target.checked; saveAuto(); });
+      m.querySelectorAll('[data-n]').forEach((b) => b.addEventListener('click', (e) => {
+        e.stopPropagation(); ctx.autoStopBonus = m.querySelector('input').checked; saveAuto();
+        ctx.auto = Number(b.dataset.n); ctx.autoNet = 0; ctx.autoCap = ctx.autoLoss * ctx.bet;
+        m.remove(); updateHud(); if (!ctx.busy) doSpin();
       }));
       m.addEventListener('click', (e) => e.stopPropagation());
     }
+    /** Автогра від старту в мінусі на стоп-суму (поставлено більше, ніж повернуто)? */
+    function autoLossHit() { return ctx.autoCap > 0 && -ctx.autoNet >= ctx.autoCap; }
     function closeMenus() { root.querySelectorAll('.sk-menu').forEach((m) => m.remove()); }
     // клік деінде закриває меню; слухач один на автомат — раніше кожне відкриття вішало ще один, і з другого разу
     // той самий клік по «авто» відкривав меню й тут-таки його закривав (записка #44)
@@ -1162,7 +1184,7 @@
     }
 
     // ----- тікер «Скарбничка Глека» -----
-    ticker.innerHTML = '<span class="sk-jp"><i>🏺</i> скарбничка Глека <b class="sk-jp-v"></b><small class="sk-jp-must"></small></span><span class="sk-feed"><span class="sk-feed-t"></span></span>';
+    ticker.innerHTML = '<span class="sk-jp"><i>🏺</i> <span class="sk-jp-l">скарбничка Глека</span> <b class="sk-jp-v"></b><small class="sk-jp-must"></small></span><button class="sk-saldo" hidden></button><span class="sk-feed"><span class="sk-feed-t"></span></span>';
     let feedI = SK.rnd.int(SK.feed.length), jpShown = null;
     const jpEl = ticker.querySelector('.sk-jp-v'), mustEl = ticker.querySelector('.sk-jp-must');
     // Живу суму (SK.live) показуємо, що м'яко доростає до свіжої: раз на секунду чверть різниці
@@ -1172,9 +1194,42 @@
       const t = L.jackpot;
       jpShown = jpShown == null || t < jpShown ? t : Math.min(t, jpShown + Math.max(1, Math.ceil((t - jpShown) / 4)));
       jpEl.textContent = fmt(jpShown);
-      const m = L.mustHit > 0 ? 'впаде до ' + fmt(L.mustHit) : '';
+      const m = jpNote(L);
       if (mustEl.textContent !== m) mustEl.textContent = m;
+      renderSaldo();
     };
+    // «впаде до 25 000 · Глек докидає 1 000 щодня» (телефон — коротше)
+    function jpNote(L) {
+      const port = ctx.orient === 'port', parts = [];
+      if (L.mustHit > 0) parts.push((port ? 'до ' : 'впаде до ') + fmt(L.mustHit));
+      if (L.daily > 0) parts.push(port ? 'Глек +' + fmt(L.daily) + ' щодня' : 'Глек докидає ' + fmt(L.daily) + ' щодня');
+      return parts.join(' · ');
+    }
+    // ----- чесне сальдо (пакет 5): поставив / повернув у всіх автоматах — сьогодні чи весь час, дотиком -----
+    const SALDO_KEY = 'slots.saldo', saldoEl = ticker.querySelector('.sk-saldo');
+    let saldoAll = false, saldoKey = '';
+    try { saldoAll = localStorage.getItem(SALDO_KEY) === 'all'; } catch (e) { /* приватне вікно */ }
+    function renderSaldo() {
+      if (ctx.busy) return;   // поки барабани крутяться, не підглядаємо в результат
+      const S = SK.live && SK.live.saldo, p = S && (saldoAll ? S.all : S.day);
+      if (!p) { if (!saldoEl.hidden) { saldoEl.hidden = true; saldoKey = ''; } return; }
+      const key = [saldoAll, ctx.orient, p.bet, p.win].join('|');
+      if (key === saldoKey) return;
+      saldoKey = key;
+      const net = (p.win || 0) - (p.bet || 0), head = saldoAll ? 'весь час' : 'сьогодні';
+      const netT = (net > 0 ? '+' : net < 0 ? '−' : '') + fmt(Math.abs(net));
+      const netH = '<b class="' + (net > 0 ? 'up' : net < 0 ? 'down' : '') + '">' + netT + '</b>';
+      const full = 'поставив ' + fmt(p.bet) + ' · повернув ' + fmt(p.win) + ' · ';
+      saldoEl.innerHTML = ctx.orient === 'port' ? '<i>' + head + '</i> ' + netH : '<i>' + head + ':</i> ' + full + netH;
+      saldoEl.title = 'Автомати разом, ' + head + ': ' + full + netT + ' 🏺. Торкнись — ' + (saldoAll ? 'сьогодні' : 'весь час');
+      saldoEl.hidden = false;
+    }
+    ctx.listen(saldoEl, 'click', (e) => {
+      e.stopPropagation(); saldoAll = !saldoAll; ctx.sound('click');
+      try { localStorage.setItem(SALDO_KEY, saldoAll ? 'all' : 'day'); } catch (er) { /* приватне вікно */ }
+      renderSaldo();
+    });
+    ctx.on('spinEnd', () => renderSaldo());
     const feedNow = () => (SK.live ? SK.live.lines || [] : SK.feed);
     const tickFeed = () => {
       const t = ticker.querySelector('.sk-feed-t'), list = feedNow();
@@ -1265,6 +1320,7 @@
       }
       ctx.busy = true; ctx.meter = 0; setMeter(0); ctx.lastWins = null; ctx.say('');
       if (ctx.balance >= ctx.bet) ctx.addBalance(-ctx.bet);
+      if (ctx.auto) ctx.autoNet -= ctx.bet;   // пакет 5: рахунок «стопу на мінусі» від старту автогри
       updateHud();
       ctx.emit('spinStart');
       let script;
@@ -1286,7 +1342,9 @@
         // бонус: script.bonus, крок bonusIn або свої кроки з machine.bonusSteps (напр. ['holdIn'])
         const bsteps = ['bonusIn'].concat(machine.bonusSteps || []);
         const hadBonus = script && (script.bonus || script.hold || (script.steps && script.steps.some((s) => bsteps.includes(s.t))));
+        ctx.autoNet += script ? (script.win || 0) + (script.jackpot || 0) : 0;
         if (hadBonus && ctx.autoStopBonus) ctx.auto = 0;
+        else if (autoLossHit()) { ctx.auto = 0; ctx.say('Авто стоп: мінус ' + fmt(-ctx.autoNet) + ' 🏺', 4000); }
         else if (ctx.balance < ctx.bet) ctx.auto = 0;
         else { if (ctx.auto !== Infinity) ctx.auto--; if (ctx.auto) ctx.timeout(() => { if (ctx.auto && !ctx.busy) doSpin(); }, ctx.turbo ? 200 : 550); }
         updateHud();

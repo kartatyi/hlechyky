@@ -2011,11 +2011,16 @@
       + '<span class="gaz-x">' + (x.jackpot ? '🏺' : '×' + (Math.round(x.mult * 10) / 10).toLocaleString('uk-UA', { maximumFractionDigits: 1 })) + '</span>'
       + '<span class="gaz-sum">' + azFmt(x.jackpot || x.win) + ' 🏺</span></li>').join('') + '</ol>';
   }
+  // «впаде до 25 000 · Глек докидає 1 000 щодня» (пакет 5; поля нема — частини нема)
+  function azMust(f) {
+    if (!f) return '';
+    return [f.mustHit > 0 ? 'впаде до ' + azFmt(f.mustHit) : '', f.daily > 0 ? 'Глек докидає ' + azFmt(f.daily) + ' щодня' : ''].filter(Boolean).join(' · ');
+  }
   function azartHeadHtml() {
     if (me.slots === false) return '';
     return '<div class="gaz-head"><div class="gaz-jp"><span class="gaz-jp-l">🏺 Скарбничка Глека</span>'
       + '<b class="gaz-jp-v">' + (azShown != null ? azFmt(azShown) : '…') + '</b>'
-      + '<small class="gaz-must">' + (azFeed && azFeed.mustHit > 0 ? 'впаде до ' + azFmt(azFeed.mustHit) : '') + '</small>'
+      + '<small class="gaz-must">' + azMust(azFeed) + '</small>'
       + '<span class="muted small">з кожної ставки — дещиця сюди; будь-який оберт може її розбити</span></div>'
       + '<div class="gaz-wins"><h6>🔥 Заноси тижня</h6><div class="gaz-wl">' + azWinsHtml() + '</div></div></div>';
   }
@@ -2028,7 +2033,7 @@
       if (azShown == null || f.jackpot < azShown) azShown = f.jackpot;
       const el = root && root.querySelector('.gaz-head');
       if (!el) return;
-      el.querySelector('.gaz-must').textContent = f.mustHit > 0 ? 'впаде до ' + azFmt(f.mustHit) : '';
+      el.querySelector('.gaz-must').textContent = azMust(f);
       if (fresh) el.querySelector('.gaz-wl').innerHTML = azWinsHtml();
     } catch (e) { /* мережа — наступного разу */ }
   }
