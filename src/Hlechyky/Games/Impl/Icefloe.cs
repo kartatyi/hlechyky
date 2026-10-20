@@ -47,7 +47,7 @@ public sealed class Icefloe : Game, IPartyMinigame
 
     public override GameInfo Info { get; } = new(
         "icefloe", "Крижина", "крижину", GameGroup.Live, 1, IcefloeCore.Seats, TickMs: IcefloeCore.TickMs,
-        Start: StartMode.ByHost, Options: [WinsOption, TeamsOption, LiveBots.LevelsOption],
+        Start: StartMode.ByHost, Options: [WinsOption, TeamsOption, LiveBots.LevelsOption, Handicap.Option],
         Hint: "Сумо на кризі: ковзай, штовхай, не шубовсни. Крижина тане й меншає, а хто випав — кидає сніжки з берега. Самому — з 🤖 ботами");
 
     /// <summary>
@@ -225,7 +225,11 @@ public sealed class Icefloe : Game, IPartyMinigame
         _left = ready;
         _roundWinner = -1;
         _roundTeam = -1;
+        _fora.Clear();
     }
+
+    /// <summary>«⚖ Фора» цього раунду: [місце, kind] — для рядка «🎁 Фора: …» на відліку.</summary>
+    readonly List<int[]> _fora = [];
 
     // ---------- ввід ----------
 
@@ -401,9 +405,43 @@ public sealed class Icefloe : Game, IPartyMinigame
             var best = playing.Length == 0 ? 0 : playing.Max(s => c.Bodies[s].Wins);
             return Over(best == 0 ? [] : [.. playing.Where(s => c.Bodies[s].Wins == best)]);
         }
+        var losers = RoundLosers();
         _round++;
         BeginRound(ReadyNext);
+        GiveFora(losers);
         return TickResult.Both;
+    }
+
+    /// <summary>Що дає «⚖ Фора»: лише те, що тримається (шипи, глек, дві сніжки, ковзани, кулак), без завірюхи й інею.</summary>
+    static readonly int[] ForaKinds =
+        [IcefloeCore.KindSpikes, IcefloeCore.KindJug, IcefloeCore.KindBall, IcefloeCore.KindSkates, IcefloeCore.KindFist];
+
+    /// <summary>
+    /// Кого минулий раунд скривдив: кожен сам — хто шубовснув першим; команди — уся команда, що програла (нічия — нікого).
+    /// Лише люди: боти фори не мають. «Без фори» чи стіл на ставку — нікого.
+    /// </summary>
+    int[] RoundLosers()
+    {
+        if (_party is not null || !Handicap.On(Ctx.Options)) return [];
+        var c = Core;
+        IEnumerable<int> who;
+        if (_teamsOpt) who = _roundTeam < 0 ? [] : Playing().Where(s => c.Bodies[s].Team != _roundTeam);
+        else who = c.ByList.Select(x => x.Fell).Where(s => s != _roundWinner && c.Bodies[s].Plays).Take(1);
+        return [.. who.Where(s => Ctx.Seated(s) && !IsBot(s))];
+    }
+
+    /// <summary>
+    /// «⚖ Фора» (пакет 3, 20.10) — наздоганяння всередині партії: переможений минулого раунду стартує наступний із
+    /// випадковим предметом (через Ctx.Rng). Значок предмета видно на гравцеві з відліку, ефект тане від «Го».
+    /// </summary>
+    void GiveFora(int[] losers)
+    {
+        foreach (var s in losers)
+        {
+            var kind = ForaKinds[Ctx.Rng.Next(ForaKinds.Length)];
+            Core.Apply(s, kind);
+            _fora.Add([s, kind]);
+        }
     }
 
     /// <summary>Хто ще грає партію: сидить за столом або бот цієї партії.</summary>
@@ -569,6 +607,7 @@ public sealed class Icefloe : Game, IPartyMinigame
             teams = TeamsOf(c, lobby),
             teamsBy = _teamsOpt ? _teamsBySeat ? "seat" : "power" : null,
             roundTeam = lobby ? -1 : _roundTeam,
+            fora = lobby || _fora.Count == 0 ? null : _fora.Select(x => (int[])x.Clone()).ToArray(),
             wins,
             pushouts,
             ice = new { r0 = c.R0, v, iv = c.Iv },

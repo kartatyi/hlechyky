@@ -43,6 +43,7 @@ public sealed class Glekomet : Game
             new GameOption("map", "Погода й мапа", [("plain", "☀ Звичайне село"), ("winter", "❄ Зима — хати ковзають"), ("night", "🌙 Ніч — видно лише вогні"),
                 ("fair", "🎪 Ярмарок зі ставком"), ("mix", "🎲 Щоразу інша")], "plain"),
             LiveBots.LevelOption,
+            Handicap.Option,
         ],
         Hint: "Артилерія хатами: цілься, дай сили, зваж на вітер — і глек полетить у сусідську хату. Земля рветься, вода підступає. Самому — з 🤖 ботом");
 
@@ -198,6 +199,23 @@ public sealed class Glekomet : Game
     // Старт
     // =============================================================================================
 
+    /// <summary>
+    /// «⚖ Фора» (пакет 3, 20.10) за силою з історії: у владіка 0 перемог з 8. HP хати = 100 × множник місця
+    /// (<see cref="Handicap.ForSeats"/>: слабшим більше, сильнішим менше, межі — там), у командах — кожному свій.
+    /// Бот фори не має; «без фори», ставка чи людей менше двох — у всіх 100.
+    /// </summary>
+    void Fora(bool[] plays)
+    {
+        var humans = Enumerable.Range(0, Seats).Where(s => plays[s] && s != _bot && Ctx.Seated(s)).ToArray();
+        var factors = Handicap.ForSeats(Ctx, Info.Id, humans, Info.Rated);
+        foreach (var (s, f) in factors)
+        {
+            var hut = _core!.Huts[s];
+            hut.Hp = hut.MaxHp = Math.Max(1, (int)Math.Round(100 * f, MidpointRounding.AwayFromZero));
+        }
+        if (Handicap.Note(Ctx, factors) is { } note) Ctx.Log(note);
+    }
+
     public override void Start()
     {
         _core ??= new GlekometCore(Ctx.Rng);
@@ -252,6 +270,7 @@ public sealed class Glekomet : Game
             _skips[s] = 0;
             _stats[s].Clear();
         }
+        Fora(plays);
         _started = true;
         _phase = PhaseStart;
         _left = StartTicks;
@@ -1096,7 +1115,7 @@ public sealed class Glekomet : Game
         // переможець хоч раз стрельнув
         if (!_botGame && reason is "last" or "team" && Fought(winners))
             foreach (var s in winners)
-                if (core.Huts[s].Alive && core.Huts[s].Hp == 100 && _stats[s].Shots > 0) Ctx.Award(s, 0, "ach:glekomet-clean");
+                if (core.Huts[s].Alive && core.Huts[s].Hp == core.Huts[s].MaxHp && _stats[s].Shots > 0) Ctx.Award(s, 0, "ach:glekomet-clean");
         var scores = new Dictionary<int, long>();
         for (var s = 0; s < Seats; s++)
             if (core.Huts[s].Plays && Ctx.Seated(s)) scores[s] = _stats[s].Dmg;
@@ -1300,6 +1319,7 @@ public sealed class Glekomet : Game
                 x = h.X,
                 y = h.Y,
                 hp = here ? (lobby ? 100 : h.Hp) : 0,
+                maxHp = here && !lobby ? h.MaxHp : 100,   // «⚖ Фора»: повне HP хати (смужка — від нього)
                 alive = here && (lobby || h.Alive),
                 team = lobby ? s % 2 : _team[s],
                 poison = lobby ? 0 : h.Poison,
