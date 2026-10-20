@@ -7,11 +7,21 @@ namespace Hlechyky.Games.Impl;
 /// <summary>
 /// Один мем банку «Мемології» (specs/memy.md §4 — контракт): що показати, що зараховувати й що розповісти на розкритті.
 /// </summary>
-/// <param name="Crop">null або [x, y, w, h] — частки 0–1 від ширини й висоти оригіналу.</param>
+/// <param name="ImageUrl">Пряма адреса картинки; порожня, коли мем — кадр із відео (<paramref name="Video"/>).</param>
+/// <param name="Crop">null або [x, y, w, h] — частки 0–1 від ширини й висоти оригіналу (для відео — кадру).</param>
+/// <param name="Video">Відео YouTube у канонічному вигляді <c>https://www.youtube.com/watch?v=&lt;id&gt;</c>, з якого береться кадр, або null.</param>
+/// <param name="At">Секунда кадру у відео (≥ 0, дробова); без відео — 0.</param>
 public sealed record MemyMeme(
     string Id, string Cat, string Name, string[] Names, string? Phrase, string[] Phrases, int Year, int Difficulty,
-    string[] Tags, string About, string ImageUrl, string ImagePage, double[]? Crop, string[] Sources)
+    string[] Tags, string About, string ImageUrl, string ImagePage, double[]? Crop, string[] Sources,
+    string? Video = null, double At = 0)
 {
+    /// <summary>Картинка мему — кадр із відео (<see cref="Video"/> на секунді <see cref="At"/>), а не файл за адресою.</summary>
+    public bool IsVideo => Video is not null;
+
+    /// <summary>Звідки картинка — для адмінки й логів: адреса або відео з міткою часу.</summary>
+    public string Source => Video is null ? ImageUrl : $"{Video}&t={At.ToString("0.##", CultureInfo.InvariantCulture)}s";
+
     /// <summary>Чи годиться мем для режиму «Підпис»: канонічна фраза є (і її нема на картинці).</summary>
     public bool HasPhrase => Phrase is not null;
 
@@ -59,6 +69,8 @@ public sealed partial class MemyBank
 {
     public const string FileName = "data/memes/memes.json";
     public const int NameMin = 2, NameMax = 60, AboutMax = 300, PhraseMax = 160, TagsMax = 3;
+    /// <summary>Стеля <c>image.at</c>: десять годин — далі це вже точно помилка в банку, а не мем.</summary>
+    public const double AtMax = 36000;
 
     public static readonly MemyBank Empty = new([], []);
 
@@ -170,7 +182,21 @@ public sealed partial class MemyBank
         if (!e.TryGetProperty("image", out var img) || img.ValueKind != JsonValueKind.Object) { why = "нема image"; return null; }
         var url = Str(img, "url");
         var page = Str(img, "page");
-        if (!Https(url)) { why = "image.url — не https-адреса"; return null; }
+        var hasVideo = img.TryGetProperty("video", out var vid) && vid.ValueKind != JsonValueKind.Null;
+        string? video = null;
+        double at = 0;
+        if (hasVideo)
+        {
+            // кадр із відео: замість url — video + at (§4)
+            if (url.Length > 0) { why = "image — або url, або video + at, не все разом"; return null; }
+            video = vid.ValueKind == JsonValueKind.String ? YouTube((vid.GetString() ?? "").Trim()) : null;
+            if (video is null) { why = "image.video — не https://www.youtube.com/watch?v=<id>"; return null; }
+            if (!img.TryGetProperty("at", out var a) || a.ValueKind != JsonValueKind.Number || !a.TryGetDouble(out at)
+                || !double.IsFinite(at) || at is < 0 or > AtMax)
+            { why = "image.at — не секунда (число ≥ 0)"; return null; }
+        }
+        else if (img.TryGetProperty("at", out _)) { why = "image.at без image.video"; return null; }
+        else if (!Https(url)) { why = "image.url — не https-адреса"; return null; }
         if (!Https(page)) { why = "image.page — не https-адреса"; return null; }
 
         double[]? crop = null;
@@ -183,7 +209,24 @@ public sealed partial class MemyBank
         if (!Strings(e, "sources", out var sources) || sources.Length == 0) { why = "нема sources"; return null; }
         if (sources.FirstOrDefault(s => !Https(s)) is { } bad) { why = $"джерело не https: {bad}"; return null; }
 
-        return new MemyMeme(id, cat, name, names, phrase, phrases, year, d, tags, about, url, page, crop, sources);
+        return new MemyMeme(id, cat, name, names, phrase, phrases, year, d, tags, about, url, page, crop, sources, video, at);
+    }
+
+    [GeneratedRegex(@"^[A-Za-z0-9_-]{11}$")]
+    private static partial Regex YouTubeId();
+
+    /// <summary>
+    /// Посилання на відео YouTube → канонічне <c>https://www.youtube.com/watch?v=&lt;id&gt;</c> (без списків, міток часу
+    /// й решти хвоста: ключ кешу від нього не стрибає). Не YouTube чи без id — null.
+    /// </summary>
+    public static string? YouTube(string url)
+    {
+        if (!Https(url) || !Uri.TryCreate(url, UriKind.Absolute, out var u)) return null;
+        var host = u.Host.ToLowerInvariant();
+        if (host is not ("www.youtube.com" or "youtube.com" or "m.youtube.com") || u.AbsolutePath != "/watch") return null;
+        var id = u.Query.TrimStart('?').Split('&').Select(p => p.Split('=', 2))
+            .FirstOrDefault(p => p.Length == 2 && p[0] == "v")?[1] ?? "";
+        return YouTubeId().IsMatch(id) ? "https://www.youtube.com/watch?v=" + id : null;
     }
 
     /// <summary>[x, y, w, h]: частки 0–1, ширина й висота більші за нуль, і рамка не вилазить за картинку.</summary>

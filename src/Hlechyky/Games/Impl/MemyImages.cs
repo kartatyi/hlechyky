@@ -12,7 +12,9 @@ namespace Hlechyky.Games.Impl;
 /// <para>
 /// Кожен мем качається раз і перетворюється на три JPEG без метаданих: два кадри проявлення з великих пікселів
 /// (<see cref="PixelSides"/>) і чіткий (довша сторона ≤ <see cref="MaxSide"/>, з застосованим <c>crop</c>; у gif —
-/// перший кадр). Ім'я в кеші — SHA-256 адреси й рамки (<see cref="KeyFor"/>) плюс номер кадру: ні назви, ні id.
+/// перший кадр). Мем із відео (<c>image.video</c> + <c>image.at</c>) спершу дає сирий кадр через <see cref="IMemyFrames"/>
+/// (yt-dlp + ffmpeg), далі — той самий конвеєр. Ім'я в кеші — SHA-256 адреси (чи відео й секунди) і рамки
+/// (<see cref="KeyFor"/>) плюс номер кадру: ні назви, ні id.
 /// Клієнт бачить лише <c>/api/games/memy/&lt;24 hex&gt;.jpg</c> — випадковий токен, свій на кожен кадр.
 /// </para>
 /// <para>
@@ -45,12 +47,25 @@ public sealed class MemyImages : BackgroundService
     static readonly TimeSpan Every = TimeSpan.FromMinutes(30);
     static readonly TimeSpan FirstDelay = TimeSpan.FromSeconds(4);
     static readonly TimeSpan FfmpegTimeout = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// «Забагато запитів» (429; 503 з Retry-After) — не невдача мему: чекаємо, скільки сервер просить (або з наростанням
+    /// від <see cref="BusyFirst"/>), і пробуємо той самий мем до <see cref="BusyTries"/> разів. Не дочекались — мем
+    /// лишається на наступний прохід, спроби не згорають.
+    /// </summary>
+    public const int BusyTries = 4;
+    public static readonly TimeSpan BusyFirst = TimeSpan.FromSeconds(5);
+    /// <summary>Довше за це посеред проходу не чекаємо: хост пропускається до наступного проходу.</summary>
+    public static readonly TimeSpan BusyMax = TimeSpan.FromMinutes(2);
 
     readonly IClock _clock;
     readonly ILogger? _log;
     readonly HttpClient? _http;
     readonly TimeSpan _pause;
     readonly bool _online;
+    readonly IMemyFrames? _frames;
+    readonly Func<TimeSpan, CancellationToken, Task> _sleep;
+    /// <summary>Хост → до коли не смикати (429) і скільки разів поспіль він так відповів.</summary>
+    readonly ConcurrentDictionary<string, (DateTimeOffset Until, int Streak)> _busy = new(StringComparer.OrdinalIgnoreCase);
     readonly SemaphoreSlim _poke = new(0, 1);
     readonly ConcurrentDictionary<string, (string Path, DateTimeOffset Expires)> _tokens = new(StringComparer.Ordinal);
     readonly ConcurrentDictionary<string, int> _fails = new(StringComparer.Ordinal);
@@ -64,9 +79,14 @@ public sealed class MemyImages : BackgroundService
     volatile HashSet<string> _ready = new(StringComparer.Ordinal);
     bool _warnedNoFfmpeg;
 
+    /// <param name="frames">Кадри з відео; null — меми з <c>image.video</c> не готуються (у <see cref="Failed"/> — чому).</param>
+    /// <param name="sleep">Пауза (429, між мемами); тести підставляють свою, що лише крутить годинник.</param>
     public MemyImages(MemyBank bank, string dir, IClock clock, string? ffmpeg, ILogger? log = null,
-        HttpMessageHandler? handler = null, TimeSpan? pause = null, bool online = true)
+        HttpMessageHandler? handler = null, TimeSpan? pause = null, bool online = true, IMemyFrames? frames = null,
+        Func<TimeSpan, CancellationToken, Task>? sleep = null)
     {
+        _frames = frames;
+        _sleep = sleep ?? Task.Delay;
         Bank = bank;
         Dir = dir;
         Ffmpeg = ffmpeg;
@@ -96,13 +116,14 @@ public sealed class MemyImages : BackgroundService
     public string? Ffmpeg { get; }
 
     /// <summary>
-    /// Ключ мему в кеші: хеш адреси й рамки (змінили <c>crop</c> — картинка переробиться) і нічого більше. З адреси
-    /// його не вгадати, бо клієнт адреси не бачить; з токена — тим паче.
+    /// Ключ мему в кеші: хеш адреси (для відео — посилання й секунди) і рамки (змінили <c>crop</c> чи <c>at</c> —
+    /// картинка переробиться) і нічого більше. З адреси його не вгадати, бо клієнт адреси не бачить; з токена — тим паче.
     /// </summary>
     public static string KeyFor(MemyMeme m)
     {
         var crop = m.Crop is null ? "" : string.Join(",", m.Crop.Select(x => x.ToString("R", CultureInfo.InvariantCulture)));
-        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(m.ImageUrl + "|" + crop)))[..32];
+        var what = m.Video is null ? m.ImageUrl : $"video:{m.Video}@{m.At.ToString("R", CultureInfo.InvariantCulture)}";
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(what + "|" + crop)))[..32];
     }
 
     public static string FileNameFor(MemyMeme m, int frame) => $"{KeyFor(m)}-{frame.ToString(CultureInfo.InvariantCulture)}.jpg";
@@ -225,7 +246,7 @@ public sealed class MemyImages : BackgroundService
             ct.ThrowIfCancellationRequested();
             tried.Add(m.Id);
             if (await FetchAsync(m, ct)) got++;
-            if (_pause > TimeSpan.Zero) await Task.Delay(_pause, ct);
+            if (_pause > TimeSpan.Zero) await _sleep(_pause, ct);
         }
         return got;
     }
@@ -239,7 +260,11 @@ public sealed class MemyImages : BackgroundService
         return null;
     }
 
-    /// <summary>Скачати й нормалізувати один мем. Безнадійне (не картинка, завелике, ffmpeg не розкодував) засинає одразу, мережеве — після трьох спроб.</summary>
+    /// <summary>
+    /// Скачати (чи взяти кадр із відео) й нормалізувати один мем. Безнадійне (не картинка, завелике, ffmpeg не
+    /// розкодував, відео видалене чи 18+) засинає одразу, мережеве — після трьох спроб; 429 спроб не їсть
+    /// (<see cref="BusyTries"/>).
+    /// </summary>
     public async Task<bool> FetchAsync(MemyMeme m, CancellationToken ct)
     {
         if (_http is null || Ffmpeg is null) return false;
@@ -247,7 +272,25 @@ public sealed class MemyImages : BackgroundService
         var raw = Path.Combine(Dir, KeyFor(m) + "." + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(4)) + ".src.tmp");
         try
         {
-            var (ok, final, why) = await Download(m.ImageUrl, raw, ct);
+            bool ok, final;
+            string why;
+            if (m.IsVideo)
+            {
+                if (_frames is null) (ok, final, why) = (false, true, "кадри з відео вимкнені (нема yt-dlp)");
+                else (ok, final, why) = await _frames.GrabAsync(m.Video!, m.At, raw, ct);
+            }
+            else
+            {
+                var got = await DownloadPolitely(m, raw, ct);
+                if (got.Later)
+                {
+                    // сервер просить почекати: не невдача — мем лишається на наступний прохід
+                    _log?.LogInformation("Мемологія: {Id} ({Name}) — {Why}", m.Id, m.Name, got.Why);
+                    _failed[m.Id] = got.Why;
+                    return false;
+                }
+                (ok, final, why) = (got.Ok, got.Final, got.Why);
+            }
             if (ok) (ok, why) = await NormalizeAsync(Ffmpeg, raw, m, Dir, _log, ct);
             if (ok)
             {
@@ -269,18 +312,60 @@ public sealed class MemyImages : BackgroundService
         }
     }
 
-    /// <summary>(вдалось, безнадійно, чому ні). Пише сирий файл у <paramref name="to"/>.</summary>
-    async Task<(bool Ok, bool Final, string Why)> Download(string url, string to, CancellationToken ct)
+    /// <summary>
+    /// <see cref="Download"/> з повагою до «забагато запитів»: хост, що відповів 429, не смикаємо, поки не мине його
+    /// пауза (Retry-After або 5 → 10 → 20 с… до <see cref="BusyMax"/>), і той самий мем пробуємо ще — до
+    /// <see cref="BusyTries"/> разів. <c>Later</c> — не дочекались: без лічби невдач, до наступного проходу.
+    /// </summary>
+    async Task<(bool Ok, bool Final, bool Later, string Why)> DownloadPolitely(MemyMeme m, string to, CancellationToken ct)
+    {
+        var host = Uri.TryCreate(m.ImageUrl, UriKind.Absolute, out var u) ? u.Host : "";
+        for (var attempt = 1; ; attempt++)
+        {
+            if (_busy.TryGetValue(host, out var b) && b.Until > _clock.UtcNow)
+            {
+                var wait = b.Until - _clock.UtcNow;
+                if (wait > BusyMax)
+                    return (false, false, true, $"{host} просить почекати ще {(int)Math.Ceiling(wait.TotalMinutes)} хв — спробуємо наступним проходом");
+                await _sleep(wait, ct);
+            }
+            var (ok, final, why, retryAfter) = await Download(m.ImageUrl, to, ct);
+            if (retryAfter is not { } asked)
+            {
+                if (ok) _busy.TryRemove(host, out _);
+                return (ok, final, false, why);
+            }
+            var streak = (_busy.TryGetValue(host, out var was) ? was.Streak : 0) + 1;
+            var pause = asked > TimeSpan.Zero ? asked : Backoff(streak);
+            _busy[host] = (_clock.UtcNow + pause, streak);
+            _log?.LogInformation("Мемологія: {Host} — {Why}, пауза {Pause} с", host, why, (int)pause.TotalSeconds);
+            if (attempt >= BusyTries)
+                return (false, false, true, $"{why} ({host} просить почекати) — спробуємо наступним проходом");
+        }
+    }
+
+    /// <summary>Пауза після N-го «забагато запитів» поспіль, коли сервер не сказав скільки: 5, 10, 20, 40… с, не більше <see cref="BusyMax"/>.</summary>
+    public static TimeSpan Backoff(int streak) =>
+        TimeSpan.FromTicks(Math.Min(BusyMax.Ticks, BusyFirst.Ticks << Math.Clamp(streak - 1, 0, 16)));
+
+    /// <summary>
+    /// (вдалось, безнадійно, чому ні, «почекай»: не null — 429 чи 503 з Retry-After; нуль — сервер не сказав скільки).
+    /// Пише сирий файл у <paramref name="to"/>.
+    /// </summary>
+    async Task<(bool Ok, bool Final, string Why, TimeSpan? RetryAfter)> Download(string url, string to, CancellationToken ct)
     {
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             using var resp = await _http!.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (resp.StatusCode != HttpStatusCode.OK) return (false, resp.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone, $"відповідь {(int)resp.StatusCode}");
+            var asked = RetryAfter(resp, _clock.UtcNow);
+            if (resp.StatusCode == HttpStatusCode.TooManyRequests || (resp.StatusCode == HttpStatusCode.ServiceUnavailable && asked is not null))
+                return (false, false, $"відповідь {(int)resp.StatusCode}", asked ?? TimeSpan.Zero);
+            if (resp.StatusCode != HttpStatusCode.OK) return (false, resp.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone, $"відповідь {(int)resp.StatusCode}", null);
             var type = resp.Content.Headers.ContentType?.MediaType ?? "";
             if (!type.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && type != "application/octet-stream" && type.Length > 0)
-                return (false, true, $"не картинка ({type})");
-            if (resp.Content.Headers.ContentLength > MaxBytes) return (false, true, "завелике");
+                return (false, true, $"не картинка ({type})", null);
+            if (resp.Content.Headers.ContentLength > MaxBytes) return (false, true, "завелике", null);
             await using var stream = await resp.Content.ReadAsStreamAsync(ct);
             await using (var file = File.Create(to))
             {
@@ -290,15 +375,24 @@ public sealed class MemyImages : BackgroundService
                 while ((n = await stream.ReadAsync(buf, ct)) > 0)
                 {
                     total += n;
-                    if (total > MaxBytes) return (false, true, $"завелике (понад {MaxBytes / (1024 * 1024)} МБ)");
+                    if (total > MaxBytes) return (false, true, $"завелике (понад {MaxBytes / (1024 * 1024)} МБ)", null);
                     await file.WriteAsync(buf.AsMemory(0, n), ct);
                 }
-                if (total == 0) return (false, false, "порожня відповідь");
+                if (total == 0) return (false, false, "порожня відповідь", null);
             }
-            return (true, false, "");
+            return (true, false, "", null);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { return (false, false, ex.Message); }
+        catch (Exception ex) { return (false, false, ex.Message, null); }
+    }
+
+    /// <summary>Скільки просить почекати Retry-After (секунди чи дата); нема заголовка — null.</summary>
+    static TimeSpan? RetryAfter(HttpResponseMessage resp, DateTimeOffset now)
+    {
+        if (resp.Headers.RetryAfter is not { } ra) return null;
+        if (ra.Delta is { } d) return d < TimeSpan.Zero ? TimeSpan.Zero : d;
+        if (ra.Date is { } at) return at > now ? at - now : TimeSpan.Zero;
+        return null;
     }
 
     /// <summary>

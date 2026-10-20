@@ -949,7 +949,7 @@ public class MemyTests
 
     // ---------------------------------------------------------------- справжній ffmpeg
 
-    static string? Ffmpeg()
+    internal static string? Ffmpeg()
     {
         foreach (var p in new[] { Paths.Resolve("tools/yt-dlp/ffmpeg.exe"), "D:/or-dev/tools/yt-dlp/ffmpeg.exe" })
             if (File.Exists(p)) return p;
@@ -957,7 +957,7 @@ public class MemyTests
     }
 
     /// <summary>Згенерувати картинку ffmpeg-ом (testsrc): локально, без мережі.</summary>
-    static byte[] Generate(string ff, string dir, string name, string lavfi)
+    internal static byte[] Generate(string ff, string dir, string name, string lavfi)
     {
         var path = Path.Combine(dir, name);
         var psi = new ProcessStartInfo(ff) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
@@ -974,7 +974,7 @@ public class MemyTests
     }
 
     /// <summary>Ширина й висота JPEG із сегмента SOFn.</summary>
-    static (int W, int H) Size(byte[] jpg)
+    internal static (int W, int H) Size(byte[] jpg)
     {
         var i = 2;
         while (i + 9 < jpg.Length && jpg[i] == 0xFF)

@@ -14,9 +14,12 @@ public static class MemySetup
         {
             var yt = sp.GetService<IOptionsMonitor<YtDlpOptions>>()?.CurrentValue;
             var log = sp.GetService<ILogger<MemyImages>>();
+            var ffmpeg = yt is null ? null : Tool(yt, "ffmpeg");
+            // кадри з відео — через той самий yt-dlp, що й у Мелодії (YtDlp:BinaryPath, куки для 18+)
+            var frames = ffmpeg is not null && sp.GetService<YtDlpService>() is { } ytdlp ? new MemyVideoFrames(ytdlp, ffmpeg, log) : null;
             return new MemyImages(MemyBank.Load(Paths.Resolve(MemyBank.FileName), log),
                 Path.Combine(Paths.Resolve(yt?.CacheDir ?? "cache"), "memes"), sp.GetService<IClock>() ?? new SystemClock(),
-                yt is null ? null : Tool(yt, "ffmpeg"), log);
+                ffmpeg, log, frames: frames);
         });
         services.AddHostedService(sp => sp.GetRequiredService<MemyImages>());
         return services;
@@ -42,9 +45,11 @@ public static class MemySetup
         {
             memes = images.Bank.Memes.Count,
             ready = images.ReadyCount,
+            video = images.Bank.Memes.Count(m => m.IsVideo),
             rejected = images.Bank.Problems,
+            // url — адреса картинки чи «відео&t=Ns»; asleep — до рестарту не пробуватиметься, false — ще спробує (мережа, 429)
             failed = images.Failed.OrderBy(kv => kv.Key, StringComparer.Ordinal)
-                .Select(kv => new { id = kv.Key, name = images.Bank.Find(kv.Key)?.Name, url = images.Bank.Find(kv.Key)?.ImageUrl, why = kv.Value }),
+                .Select(kv => new { id = kv.Key, name = images.Bank.Find(kv.Key)?.Name, url = images.Bank.Find(kv.Key)?.Source, why = kv.Value, asleep = images.Gone(kv.Key) }),
         });
     }
 
