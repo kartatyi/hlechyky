@@ -1,0 +1,262 @@
+/*
+  Кахлі (три в ряд): поле 8×8 з розписних кахлів. Кахля — два шари: зовнішній .kh-t їздить по полю (transform з
+  --x/--y у частках клітинки), внутрішній .kh-i лусає, народжується, хитається. Анімації — лише transform і opacity
+  (урок кола на телефоні: без :has, без вічних анімацій на десятках елементів; вічно світяться лише жаринки).
+  Кольори — змінними; свої — на :root з фолбеком, як велить core.css.
+*/
+:root {
+  --kh-c0: #c8402f;   /* червона — мак */
+  --kh-c1: #2f6fb5;   /* синя — хвиля */
+  --kh-c2: #e2aa2b;   /* жовта — сонце */
+  --kh-c3: #3f9150;   /* зелена — листок */
+  --kh-c4: #eadfc6;   /* біла — зірка */
+  --kh-c5: #7d52ab;   /* фіалкова — виноград */
+  --kh-ink: #3a2414;
+  --kh-clay1: #c08550;
+  --kh-clay2: #8a5430;
+  --kh-rope: #d9b77a;
+}
+
+.kh { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+
+/* ---- рядок над полем ---- */
+.kh-bar {
+  display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums; color: var(--muted);
+}
+.kh-bar b { color: var(--text); }
+.kh-big { font-size: 1.3em; font-weight: 800; color: var(--text); }
+.kh-score { color: var(--accent); min-width: 4ch; text-align: center; }
+.kh-clock { display: inline-flex; align-items: center; gap: 6px; }
+.kh-clock.hot b { color: var(--danger); }
+.kh-tbar { display: inline-block; width: 70px; height: 6px; border-radius: 3px; background: var(--bg2); overflow: hidden; }
+.kh-tbar > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.kh-clock.hot .kh-tbar > i { background: var(--danger); }
+.kh-snd { padding: 2px 8px; min-height: 0; }
+
+/* ---- цілі рівня ---- */
+.kh-goals { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.kh-g {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px;
+  background: var(--bg2); font-variant-numeric: tabular-nums; font-size: .92em;
+}
+.kh-g.ok { color: var(--ok); }
+.kh-g.kh-st { font-size: .8em; }
+.kh-mini { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; }
+.kh-mini svg { width: 78%; height: 78%; }
+.kh-tip { text-align: center; max-width: 460px; }
+
+/* ---- поле ---- */
+.kh-stage { position: relative; width: min(100%, 460px); }
+.kh-board {
+  --w: 8; --h: 8;
+  position: relative; width: 100%; aspect-ratio: var(--w) / var(--h);
+  background: var(--bg2); border-radius: 12px; overflow: hidden;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  cursor: pointer;
+}
+.kh-cells {
+  position: absolute; inset: 0; display: grid;
+  grid-template-columns: repeat(var(--w), 1fr); grid-template-rows: repeat(var(--h), 1fr);
+}
+.kh-c { margin: 1px; border-radius: 7px; background: var(--panel2); }
+.kh-c.hole { background: transparent; }
+/* сира глина під кахлею: світла — шар, темна з тріщинками — два. Клітинка з глиною заливається впритул (без проміжку),
+   тож довкола кахлі видно широку глиняну рамку */
+.kh-c.l1, .kh-c.l2 { margin: 0; border-radius: 4px; }
+.kh-c.l1 { background: var(--kh-clay1); box-shadow: inset 0 0 0 1px rgba(255, 230, 190, .35); }
+.kh-c.l2 {
+  background:
+    linear-gradient(35deg, transparent 46%, rgba(0, 0, 0, .35) 47% 50%, transparent 51%),
+    linear-gradient(-55deg, transparent 58%, rgba(0, 0, 0, .3) 59% 61%, transparent 62%),
+    var(--kh-clay2);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .3);
+}
+.kh-c.crack { animation: kh-crack .3s ease-out; }
+
+.kh-tiles, .kh-fx { position: absolute; inset: 0; pointer-events: none; }
+.kh-t {
+  position: absolute; left: 0; top: 0;
+  width: calc(100% / var(--w)); height: calc(100% / var(--h));
+  transform: translate(calc(var(--x) * 100%), calc(var(--y) * 100%));
+  transition-property: transform; transition-duration: 0ms;
+  transition-timing-function: cubic-bezier(.5, .05, .85, .55);   /* падіння: розганяється, як справжнє */
+}
+.kh-i {
+  position: absolute; inset: 8%; border-radius: 24%;
+  display: grid; place-items: center;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .28), inset 0 2px 0 rgba(255, 255, 255, .28), 0 1px 2px rgba(0, 0, 0, .35);
+  transition: transform .17s ease-out, opacity .17s ease-out;
+}
+.kh-i svg { width: 66%; height: 66%; position: relative; z-index: 1; }
+
+/* поливи: радіальний відблиск, знак — світлішим тоном тієї ж барви */
+.kh-t.c0 .kh-i, .kh-mini.c0 { background: radial-gradient(circle at 34% 28%, #e66b55, var(--kh-c0) 70%); color: #fde2d4; }
+.kh-t.c1 .kh-i, .kh-mini.c1 { background: radial-gradient(circle at 34% 28%, #5a92d1, var(--kh-c1) 70%); color: #dceafb; }
+.kh-t.c2 .kh-i, .kh-mini.c2 { background: radial-gradient(circle at 34% 28%, #f3c95c, var(--kh-c2) 70%); color: #6b4308; }
+.kh-t.c3 .kh-i, .kh-mini.c3 { background: radial-gradient(circle at 34% 28%, #63b170, var(--kh-c3) 70%); color: #e0f4dc; }
+.kh-t.c4 .kh-i, .kh-mini.c4 { background: radial-gradient(circle at 34% 28%, #fffaf0, var(--kh-c4) 70%); color: #8b4a24; }
+.kh-t.c5 .kh-i, .kh-mini.c5 { background: radial-gradient(circle at 34% 28%, #a27bcb, var(--kh-c5) 70%); color: #efe2fb; }
+/* чарівний глек — веселковий полив, сам глек темний */
+.kh-t.cg .kh-i {
+  background: conic-gradient(from 20deg, #e66b55, #f3c95c, #63b170, #5a92d1, #a27bcb, #e66b55);
+  color: var(--kh-ink);
+}
+
+/* рушник: вишита смуга вздовж рядка (k1) чи стовпчика (k2) */
+.kh-t.k1 .kh-i::after, .kh-t.k2 .kh-i::after {
+  content: ''; position: absolute; border-radius: 2px; opacity: .95; z-index: 2;
+  background: repeating-linear-gradient(90deg, #b3261e 0 3px, #fff3dc 3px 6px, #1e1a14 6px 7px, #fff3dc 7px 10px);
+}
+.kh-t.k1 .kh-i::after { left: 4%; right: 4%; top: 40%; height: 20%; }
+.kh-t.k2 .kh-i::after {
+  top: 4%; bottom: 4%; left: 40%; width: 20%;
+  background: repeating-linear-gradient(0deg, #b3261e 0 3px, #fff3dc 3px 6px, #1e1a14 6px 7px, #fff3dc 7px 10px);
+}
+/* жаринка: жар довкола — світиться лише прозорістю (дешево) */
+.kh-t.k3 .kh-i::before {
+  content: ''; position: absolute; inset: -4px; border-radius: 30%;
+  box-shadow: 0 0 0 2px #ffb347, 0 0 14px 4px rgba(255, 135, 35, .85);
+  animation: kh-ember 1.1s ease-in-out infinite alternate;
+}
+/* мотузка: перехрест шпагату поверх кахлі */
+.kh-t.rp::after {
+  content: ''; position: absolute; inset: 3%; z-index: 3; border-radius: 20%;
+  background:
+    linear-gradient(45deg, transparent 46%, var(--kh-rope) 46% 50%, #a8834a 50% 54%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, var(--kh-rope) 46% 50%, #a8834a 50% 54%, transparent 54%);
+  box-shadow: inset 0 0 0 2px var(--kh-rope);
+}
+
+.kh-t.sel { z-index: 4; }
+.kh-t.sel .kh-i { transform: scale(1.08); box-shadow: 0 0 0 3px var(--accent), 0 4px 10px rgba(0, 0, 0, .45); }
+.kh-t.hint .kh-i { animation: kh-hint 1.1s ease-in-out infinite; }
+.kh-t.gone .kh-i { transform: scale(.1) rotate(25deg); opacity: 0; }
+.kh-i.born { animation: kh-born .28s ease-out; }
+.kh-i.turn { animation: kh-turn .3s ease-out; }
+.kh-i.land { animation: kh-land .16s ease-out; }
+.kh-i.nope { animation: kh-nope .28s ease-in-out; }
+
+.kh-cur {
+  position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none;
+  width: calc(100% / var(--w)); height: calc(100% / var(--h));
+  transform: translate(calc(var(--x) * 100%), calc(var(--y) * 100%));
+  box-shadow: inset 0 0 0 3px var(--accent); border-radius: 10px;
+}
+
+/* ---- спалахи ---- */
+.kh-fx-row, .kh-fx-col, .kh-fx-blast, .kh-fx-glek, .kh-fx-pop { position: absolute; pointer-events: none; z-index: 6; }
+.kh-fx-row {
+  left: 0; right: 0; top: calc(var(--y) * 100% / var(--h)); height: calc(100% / var(--h));
+  background: linear-gradient(90deg, transparent, rgba(255, 241, 205, .95) 20% 80%, transparent);
+  animation: kh-beam-x .34s ease-out forwards;
+}
+.kh-fx-col {
+  top: 0; bottom: 0; left: calc(var(--x) * 100% / var(--w)); width: calc(100% / var(--w));
+  background: linear-gradient(180deg, transparent, rgba(255, 241, 205, .95) 20% 80%, transparent);
+  animation: kh-beam-y .34s ease-out forwards;
+}
+.kh-fx-blast {
+  --r: 1;
+  width: calc((2 * var(--r) + 1) * 100% / var(--w)); height: calc((2 * var(--r) + 1) * 100% / var(--h));
+  left: calc((var(--x) - var(--r)) * 100% / var(--w)); top: calc((var(--y) - var(--r)) * 100% / var(--h));
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 236, 170, .95), rgba(255, 140, 40, .55) 55%, transparent 70%);
+  animation: kh-blast .4s ease-out forwards;
+}
+.kh-fx-glek {
+  width: calc(500% / var(--w)); height: calc(500% / var(--h));
+  left: calc((var(--x) - 2) * 100% / var(--w)); top: calc((var(--y) - 2) * 100% / var(--h));
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 240, 190, .9) 0 8deg, transparent 8deg 22deg);
+  -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%); mask: radial-gradient(circle, #000 30%, transparent 70%);
+  animation: kh-rays .55s ease-out forwards;
+}
+.kh-fx-pop {
+  left: calc((var(--x) + .5) * 100% / var(--w)); top: calc((var(--y) + .5) * 100% / var(--h));
+  font-weight: 800; font-size: .95em; color: #fff; white-space: nowrap;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0, 0, 0, .6);
+  animation: kh-pop .75s ease-out forwards;
+}
+.kh-fx-pop.big { font-size: 1.25em; color: var(--accent); }
+
+.kh-cap {
+  position: absolute; left: 50%; top: 40%; z-index: 8; pointer-events: none; white-space: nowrap;
+  font-size: 1.7em; font-weight: 900; color: var(--accent);
+  text-shadow: 0 2px 0 #5a3a10, 0 0 14px rgba(0, 0, 0, .65);
+  animation: kh-cap 1.05s ease-out forwards;
+}
+
+/* ---- накладка: готовий / відлік / підсумок ---- */
+.kh-over {
+  position: absolute; inset: 0; z-index: 9; border-radius: 12px; padding: 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center;
+  background: rgba(15, 31, 24, .86);
+}
+.kh-over[hidden] { display: none; }
+.kh-over.soft { background: rgba(15, 31, 24, .45); }
+.kh-over p { margin: 0; color: var(--muted); }
+.kh-count { font-size: 4.5em; font-weight: 900; color: var(--accent); text-shadow: 0 3px 0 #5a3a10; }
+.kh-final { font-size: 2.4em; font-weight: 900; color: var(--accent); font-variant-numeric: tabular-nums; }
+.kh-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.kh-board.kh-empty { background: var(--bg2) repeating-linear-gradient(45deg, transparent 0 18px, rgba(255, 255, 255, .02) 18px 36px); }
+
+.kh-stars { letter-spacing: 1px; }
+.kh-stars i { font-style: normal; color: var(--line); }
+.kh-stars i.on { color: var(--accent); }
+.kh-over .kh-stars { font-size: 2em; }
+
+/* ---- мапа шляху ---- */
+.kh-side { width: min(100%, 460px); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.kh-side[hidden] { display: none; }
+.kh-map { width: 100%; }
+.kh-kiln h4 { margin: 8px 0 6px; font-size: .95em; color: var(--clay); }
+.kh-levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.kh-lv {
+  display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; min-width: 0;
+  border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+}
+.kh-lv b { font-size: 1.15em; }
+.kh-lv i { font-style: normal; font-size: .7em; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kh-lv .kh-stars { font-size: .8em; }
+.kh-lv.done { border-color: var(--accent2); }
+.kh-lv:disabled { opacity: .45; }
+
+/* ---- таблиця дня ---- */
+.kh-table { width: 100%; display: flex; flex-direction: column; gap: 2px; }
+.kh-row {
+  display: grid; grid-template-columns: 2.2em 1fr auto auto; gap: 8px; align-items: center;
+  padding: 3px 8px; border-radius: 8px; background: var(--bg2); font-variant-numeric: tabular-nums;
+}
+.kh-row.me { box-shadow: inset 0 0 0 1px var(--accent); }
+.kh-row .kh-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kh-row .kh-marks { font-size: .78em; color: var(--muted); white-space: nowrap; }
+
+/* ---- ключові кадри ---- */
+@keyframes kh-ember { from { opacity: .45; } to { opacity: 1; } }
+@keyframes kh-hint { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg) scale(1.05); } 75% { transform: rotate(9deg) scale(1.05); } }
+@keyframes kh-born { from { transform: scale(.2); opacity: .2; } 70% { transform: scale(1.15); opacity: 1; } to { transform: scale(1); } }
+@keyframes kh-turn { 50% { transform: scale(1.18); } }
+@keyframes kh-land { 50% { transform: scaleY(.88) scaleX(1.06) translateY(4%); } }
+@keyframes kh-nope { 20% { transform: translateX(-8%); } 50% { transform: translateX(8%); } 80% { transform: translateX(-4%); } }
+@keyframes kh-crack { 50% { opacity: .55; } }
+@keyframes kh-beam-x { from { opacity: 1; transform: scaleY(.3); } 40% { transform: scaleY(1.1); } to { opacity: 0; transform: scaleY(.8); } }
+@keyframes kh-beam-y { from { opacity: 1; transform: scaleX(.3); } 40% { transform: scaleX(1.1); } to { opacity: 0; transform: scaleX(.8); } }
+@keyframes kh-blast { from { opacity: 1; transform: scale(.25); } to { opacity: 0; transform: scale(1.15); } }
+@keyframes kh-rays { from { opacity: 1; transform: scale(.4) rotate(0); } to { opacity: 0; transform: scale(1.2) rotate(40deg); } }
+@keyframes kh-pop { from { opacity: 0; transform: translate(-50%, -30%) scale(.7); } 20% { opacity: 1; transform: translate(-50%, -60%) scale(1.05); } to { opacity: 0; transform: translate(-50%, -160%); } }
+@keyframes kh-cap { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); } 70% { opacity: 1; transform: translate(-50%, -50%) scale(1); } to { opacity: 0; transform: translate(-50%, -70%) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .kh-t.k3 .kh-i::before, .kh-t.hint .kh-i { animation: none; }
+  .kh-cap, .kh-fx-pop { animation-duration: .5s; }
+}
+
+/* телефон: дрібніший рядок, мапа щільніша */
+@media (max-width: 420px) {
+  .kh-bar { gap: 10px; }
+  .kh-big { font-size: 1.15em; }
+  .kh-levels { gap: 4px; }
+  .kh-lv { padding: 5px 1px; }
+  .kh-cap { font-size: 1.35em; }
+}
