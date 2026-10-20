@@ -35,6 +35,11 @@ public static class EconomySetup
         services.AddHostedService(sp => sp.GetRequiredService<EconomyTicker>());
         services.AddSingleton<PlayClock>();
         services.AddHostedService(sp => sp.GetRequiredService<PlayClock>());
+        // сальдо азарту (пакет 5): поставив / повернув у слотах і Лелеці — сьогодні й за весь час, з пам'яті
+        services.AddSingleton(sp => new AzartSaldo(sp.GetService<Db>(), sp.GetRequiredService<Economy>(),
+            sp.GetRequiredService<IClock>(), sp.GetService<ILogger<AzartSaldo>>()));
+        services.AddSingleton<IAzartSaldo>(sp => sp.GetRequiredService<AzartSaldo>());
+        services.AddHostedService(sp => sp.GetRequiredService<AzartSaldo>());
 
         // Каркас реєструє заглушки через TryAdd і робить це раніше — тому саме Replace, а не TryAdd.
         services.Replace(ServiceDescriptor.Singleton<IStakes>(sp => sp.GetRequiredService<Economy>()));
