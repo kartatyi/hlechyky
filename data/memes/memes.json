@@ -1538,7 +1538,12 @@
     "at": 36,
     "page": "https://www.youtube.com/watch?v=EUAIulcmNYI"
    },
-   "crop": null,
+   "crop": [
+    0,
+    0.02,
+    1,
+    0.75
+   ],
    "sources": [
     "https://www.youtube.com/watch?v=EUAIulcmNYI",
     "https://www.youtube.com/watch?v=mzOXNvPSUyY"
@@ -1570,7 +1575,12 @@
     "at": 24.5,
     "page": "https://www.youtube.com/watch?v=6wBMYOnrGL0"
    },
-   "crop": null,
+   "crop": [
+    0,
+    0.02,
+    1,
+    0.76
+   ],
    "sources": [
     "https://www.youtube.com/watch?v=6wBMYOnrGL0",
     "https://www.youtube.com/watch?v=lKl8gR02-lE"
@@ -1739,10 +1749,10 @@
     "page": "https://www.youtube.com/watch?v=wctXD7hyLyw"
    },
    "crop": [
-    0,
-    0.21,
-    1,
-    0.72
+    0.026,
+    0.215,
+    0.948,
+    0.63
    ],
    "sources": [
     "https://www.youtube.com/watch?v=wctXD7hyLyw"
