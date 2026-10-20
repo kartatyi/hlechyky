@@ -104,6 +104,7 @@ public sealed partial class Svoya : Game
             // типово — один раунд і фінал: за місяць на «увесь пакет» сіли двічі.
             new GameOption("length", "Довжина", [(LengthOne, "Один раунд і фінал (~15 хв)"), (LengthTwo, "Два раунди й фінал"), (LengthFull, "Увесь пакет (~година)")], DefaultLength),
             new GameOption("pace", "Темп", [(PaceNormal, "Звичайний"), (PaceBlitz, "⚡ Бліц: поле 4×4, кнопка 5 с, без голосу")], PaceNormal),
+            Handicap.Option,
         ],
         Hint: "Поле тем і цін, хто перший натиснув — той відповідає. Пакет обирає господар; ведучий — автомат або ти сам");
 
@@ -161,6 +162,9 @@ public sealed partial class Svoya : Game
     int _readMs;
     readonly List<Appeal> _appeals = [];
     readonly int[] _scores = new int[Seats];
+    /// <summary>«⚖ Фора» (пакет 3): множник гравців на партію і дробовий залишок кожного; з живим ведучим — без фори.</summary>
+    Dictionary<int, double> _hc = [];
+    readonly double[] _hcCarry = new double[Seats];
     readonly HashSet<int> _left = [];
     DateTimeOffset? _until;
     int _totalMs;
@@ -212,7 +216,8 @@ public sealed partial class Svoya : Game
     readonly int[] _rights = new int[Seats];
 
     sealed record Try(int Seat, string? Text, bool Ok);
-    sealed record Verdict(int Seat, bool Ok, int Streak);
+    /// <summary>Вирок відповіді; <paramref name="Got"/> — скільки зараховано (плюс — з «⚖ Форою», мінус — ціна), щоб апеляція відкотила рівно це.</summary>
+    sealed record Verdict(int Seat, bool Ok, int Streak, int Got);
     sealed record Press(int Seat, int Ms);
     sealed record Appeal(int Seat, string Text);
     sealed record Say(int Id, string Text, string? Url);
@@ -399,6 +404,10 @@ public sealed partial class Svoya : Game
         RefreshMix(force: _phase == Done);
         _host = _mode == Live ? Ctx.HostSeat ?? 0 : -1;
         Array.Clear(_scores);
+        // Живий ведучий судить сам і може правити рахунок руками — там фори нема: хай вирішує людина.
+        _hc = _mode == Live ? [] : Handicap.ForSeats(Ctx, Info.Id, [.. Enumerable.Range(0, Seats).Where(Ctx.Seated)], Info.Rated);
+        Array.Clear(_hcCarry);
+        if (Handicap.Note(Ctx, _hc) is { } hcNote) Ctx.Log(hcNote);
         _left.Clear();
         _result = null;
         _error = null;
@@ -481,16 +490,17 @@ public sealed partial class Svoya : Game
     {
         var nick = Ctx.NickOf(seat) ?? "";
         var sum = NumberWords.Say(_price);
+        var gain = Peek(seat, _price);   // плюс — із форою: голос каже рівно те, що додасться
         var others = Players().Where(s => s != seat).ToList();
         var top = others.Count > 0 ? others.Max(s => _scores[s]) : 0;
         var big = _price >= RoundPrices().Max;
         var rightKey = !_anyRight ? "rightFirst"
             : _streak[seat] >= 2 ? "rightStreak"
-            : others.Count > 0 && _scores[seat] <= top && _scores[seat] + _price > top ? "rightLead"
-            : _scores[seat] < 0 && _scores[seat] + _price >= 0 ? "rightBack"
+            : others.Count > 0 && _scores[seat] <= top && _scores[seat] + gain > top ? "rightLead"
+            : _scores[seat] < 0 && _scores[seat] + gain >= 0 ? "rightBack"
             : big ? "rightBig" : "right";
         var wrongKey = _scores[seat] >= 0 && _scores[seat] - _price < 0 ? "wrongMinus" : big ? "wrongBig" : "wrong";
-        _rightLine = Line(rightKey, ("nick", nick), ("sum", sum)) + Tail(_q);
+        _rightLine = Line(rightKey, ("nick", nick), ("sum", NumberWords.Say(gain))) + Tail(_q);
         _wrongLine = Line(wrongKey, ("nick", nick), ("sum", sum));
         _timeoutLine = Line("timeout", ("nick", nick), ("sum", sum));
         _missLine = Line("wrongLast", ("nick", nick), ("sum", sum), ("answer", _q!.Answer)) + Tail(_q);
@@ -608,6 +618,16 @@ public sealed partial class Svoya : Game
     }
 
     /// <summary>Гравці: сидять, не пішли, і не живий ведучий.</summary>
+    /// <summary>Плюс за правильну відповідь × «⚖ Фора» (мінус і ставку — ні). Дробовий залишок — на гравця за партію.</summary>
+    int Earn(int seat, int amount) => Handicap.Scale(amount, Handicap.Of(_hc, seat), ref _hcCarry[seat]);
+
+    /// <summary>Скільки дасть <see cref="Earn"/>, не чіпаючи залишку — для реплік ведучого, підготовлених наперед.</summary>
+    int Peek(int seat, int amount)
+    {
+        var carry = _hcCarry[seat];
+        return Handicap.Scale(amount, Handicap.Of(_hc, seat), ref carry);
+    }
+
     IEnumerable<int> Players() => Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) && !_left.Contains(s) && s != _host);
 
     bool IsPlayer(int seat) => Ctx.Seated(seat) && !_left.Contains(seat) && seat != _host;
@@ -743,8 +763,9 @@ public sealed partial class Svoya : Game
 
     void Right(int seat)
     {
-        _verdicts.Add(new Verdict(seat, true, _streak[seat]));
-        _scores[seat] += _price;
+        var got = Earn(seat, _price);
+        _verdicts.Add(new Verdict(seat, true, _streak[seat], got));
+        _scores[seat] += got;
         _streak[seat]++;
         _rights[seat]++;
         NoteStreak(seat);
@@ -757,7 +778,7 @@ public sealed partial class Svoya : Game
 
     void Wrong(int seat, string? text)
     {
-        _verdicts.Add(new Verdict(seat, false, _streak[seat]));
+        _verdicts.Add(new Verdict(seat, false, _streak[seat], _price));
         _scores[seat] -= _price;
         _streak[seat] = 0;
         NoteCost(seat, _price);
@@ -1036,7 +1057,12 @@ public sealed partial class Svoya : Game
         if (text.Length > MaxAnswer) text = text[..MaxAnswer];
         var ok = SvoyaAnswer.Hits(text, _q!.Answers);
         _tries.Add(new Try(seat, text, ok));
-        if (ok) { Right(seat); return ActResult.Accept($"✅ +{_price}"); }
+        if (ok)
+        {
+            var before = _scores[seat];
+            Right(seat);
+            return ActResult.Accept($"✅ +{_scores[seat] - before}");   // плюс — уже з «⚖ Форою»
+        }
         Wrong(seat, text);
         return ActResult.Accept($"❌ −{_price}");
     }
@@ -1083,7 +1109,7 @@ public sealed partial class Svoya : Game
         for (var k = later.Count - 1; k >= 0; k--)
         {
             var v = later[k];
-            _scores[v.Seat] += v.Ok ? -_price : _price;
+            _scores[v.Seat] += v.Ok ? -v.Got : v.Got;
             _streak[v.Seat] = v.Streak;
             if (v.Ok) _rights[v.Seat]--; else UnnoteCost(v.Seat, _price);
             _wrong.Remove(v.Seat);
@@ -1092,8 +1118,10 @@ public sealed partial class Svoya : Game
             if (t >= 0) _tries.RemoveAt(t);
         }
         var prev = at >= 0 ? _verdicts[at].Streak : _streak[who];   // серія, яку його «промах» був обірвав
-        if (at >= 0) { _verdicts.RemoveRange(at, _verdicts.Count - at); _verdicts.Add(new Verdict(who, true, prev)); }
-        _scores[who] += 2 * _price;          // мінус скасовано, плюс нараховано
+        var minus = at >= 0 ? _verdicts[at].Got : _price;
+        var got = Earn(who, _price);
+        if (at >= 0) { _verdicts.RemoveRange(at, _verdicts.Count - at); _verdicts.Add(new Verdict(who, true, prev, got)); }
+        _scores[who] += minus + got;          // мінус скасовано, плюс (із форою) нараховано
         _streak[who] = prev + 1;
         _rights[who]++;
         if (at >= 0) UnnoteCost(who, _price);
@@ -1235,6 +1263,8 @@ public sealed partial class Svoya : Game
             leftMs = _paused ? (int)_pauseLeft.TotalMilliseconds : (int?)null,
             waiting = _pending is not null,
             scores = (int[])_scores.Clone(),
+            // «⚖ Фора»: множник кожного місця на партію (null — фори нема); клієнт показує лише помітні
+            handicap = _hc.Count == 0 ? null : Enumerable.Range(0, Seats).Select(s => Math.Round(Handicap.Of(_hc, s), 2)).ToArray(),
             wrong = _wrong.Order().ToArray(),
             tries = _tries.Select(t => new { seat = t.Seat, text = t.Text, ok = t.Ok }).ToArray(),
             presses = _presses.Select(p => new { seat = p.Seat, ms = p.Ms }).ToArray(),

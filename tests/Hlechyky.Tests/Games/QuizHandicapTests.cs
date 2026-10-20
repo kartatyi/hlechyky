@@ -277,4 +277,91 @@ public class QuizHandicapTests
             Assert.All(seats, s => Assert.Equal(want, sc[s]));
         }
     }
+
+    // ---------------------------------------------------------------- Своя гра
+
+    static RoomHarness SvoyaTable(object options, params string[] nicks) => SvoyaTable(options, new FakeSvoyaPacks(), "b_mini", nicks);
+
+    static RoomHarness SvoyaTable(object options, FakeSvoyaPacks packs, string pack, params string[] nicks)
+    {
+        var h = new RoomHarness("svoya", options, 5, Services(sc => sc.AddSingleton<ISvoyaPackSource>(packs)));
+        foreach (var n in nicks) Assert.True(h.Join(n).Ok);
+        Assert.True(h.Act(0, "pack", new { id = pack }).Ok);
+        Assert.True(h.Start().Ok, h.Reply.Message);
+        return h;
+    }
+
+    static int SvoyaScore(RoomHarness h, int seat) => h.View(null).GetProperty("scores")[seat].GetInt32();
+
+    [Fact]
+    public void Svoya_multiplies_only_the_plus_for_a_right_answer()
+    {
+        var h = SvoyaTable(new { handicap = Handicap.Auto }, "Оля", "Петро");
+        NoteSaysBoth(h);
+        var f = Factors(h);
+        var c = SvoyaTests.Open(h, theme: 1, q: 1);                    // Дніпро, 200
+        var o = SvoyaTests.Other(h, c);
+        h.Act(c, "buzz");
+        h.Act(c, "answer", new { text = "ріка Дніпр" });               // мимо — мінус без фори
+        Assert.Equal(-200, SvoyaScore(h, c));
+        SvoyaTests.Until(h, Svoya.Buzz);
+        Assert.True(h.Act(o, "buzz").Ok);
+        var r = h.Act(o, "answer", new { text = "Дніпро" });
+        var plus = (int)Math.Floor(200 * f[o] + 1e-9);
+        Assert.Equal($"✅ +{plus}", r.Message);
+        Assert.Equal(plus, SvoyaScore(h, o));
+        Assert.NotEqual(200, plus);
+    }
+
+    [Fact]
+    public void Svoya_cat_in_the_bag_multiplies_the_win_not_the_price()
+    {
+        var packs = new FakeSvoyaPacks();
+        var id = packs.Add("b_cat", ("normal", 100), ("cat", 200));
+        packs.Packs[id].Pack.Rounds[0].Themes[0].Questions[1].CatPrice = 500;
+        var h = SvoyaTable(new { handicap = Handicap.Auto }, packs, id, "Оля", "Петро", "Іра");   // ×0,6 · ×1,4 · ×1
+        SvoyaTests.Until(h, Svoya.Board);
+        Assert.True(h.Act(SvoyaTests.Chooser(h), "pick", new { theme = 0, q = 0 }).Ok);
+        Assert.True(h.Act(2, "buzz").Ok);
+        Assert.Equal("✅ +100", h.Act(2, "answer", new { text = "відповідь1" }).Message);   // Іра — ×1
+        SvoyaTests.Until(h, Svoya.Board);
+        Assert.True(h.Act(2, "pick", new { theme = 0, q = 1 }).Ok);
+        Assert.Equal(Svoya.Cat, SvoyaTests.Phase(h));
+        Assert.True(h.Act(2, "give", new { seat = 1 }).Ok);
+        Assert.Equal(500, h.View(null).GetProperty("question").GetProperty("price").GetInt32());   // ціна кота — як є
+        SvoyaTests.Until(h, Svoya.Answering);
+        Assert.Equal("✅ +700", h.Act(1, "answer", new { text = "відповідь2" }).Message);
+        Assert.Equal(700, SvoyaScore(h, 1));
+    }
+
+    [Fact]
+    public void Svoya_accepted_appeal_returns_the_minus_and_adds_the_handicapped_plus()
+    {
+        var h = SvoyaTable(new { handicap = Handicap.Auto }, "Оля", "Петро");
+        var f = Factors(h);
+        var c = SvoyaTests.Open(h, theme: 1, q: 1);
+        h.Act(c, "buzz");
+        h.Act(c, "answer", new { text = "ріка Дніпр" });
+        SvoyaTests.Until(h, Svoya.Buzz);
+        h.Clock.AdvanceMs(10_000);
+        h.Tick();
+        Assert.Equal(Svoya.Reveal, SvoyaTests.Phase(h));
+        Assert.True(h.Act(c, "appeal").Ok);
+        Assert.True(h.Act(0, "judge", new { accept = true }).Ok);
+        Assert.Equal((int)Math.Floor(200 * f[c] + 1e-9), SvoyaScore(h, c));
+    }
+
+    [Fact]
+    public void Svoya_without_handicap_or_with_a_live_host_counts_as_before()
+    {
+        var off = SvoyaTable(new { handicap = Handicap.Off }, "Оля", "Петро");
+        Assert.Null(Note(off));
+        var c = SvoyaTests.Open(off, theme: 1, q: 1);
+        off.Act(c, "buzz");
+        Assert.Equal("✅ +200", off.Act(c, "answer", new { text = "Дніпро" }).Message);
+
+        var live = SvoyaTable(new { host = Svoya.Live }, "Ганна", "Оля", "Петро");
+        Assert.Null(Note(live));
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, live.View(null).GetProperty("handicap").ValueKind);
+    }
 }
