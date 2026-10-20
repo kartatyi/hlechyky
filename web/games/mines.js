@@ -170,6 +170,10 @@
           + (mine >= 5 ? ' · <span class="mn-dr me">ти — ' + (mine + 1) + '-й</span>' : '')
           + (rows.length > 5 && mine < 5 ? ' <small>і ще ' + (rows.length - 5) + '</small>' : '')
         : '<span class="mn-dl">Сьогодні ще ніхто не розмінував — будь першим</span>';
+      // невдалий день: «✗ Оля (2)» — підірвався чи здався й так і не розв'язав
+      const miss = b.miss || [];
+      if (miss.length) html += ' · ' + miss.map((m) => '<span class="mn-dr mn-miss' + ((m.n || '').trim().toLowerCase() === me ? ' me' : '')
+        + '" title="Сьогодні не вийшло">✗ <i>' + escHtml(m.n) + '</i> (' + m.a + ')</span>').join(' · ');
       const wait = (b.wait || []).filter((w) => (w.n || '').trim().toLowerCase() !== me);
       if (wait.length) html += '<br><span class="mn-dl">Ще не проходили:</span> '
         + wait.map((w) => '<i>' + escHtml(w.n) + '</i>' + (w.st >= 2 ? ' <span class="mn-fire dim" title="Вогник згасне опівночі">🔥' + w.st + '</span>' : '')).join(', ');
@@ -276,7 +280,10 @@
     const out = [];
     if (ctx.mine && ctx.playing && !dead)
       out.push('<button type="button" class="ghost mn-flag' + (st.flagMode ? ' on' : '') + '" data-m="flag">🚩 Прапорець</button>');
-    if (daily && ctx.mine && dead) out.push('<button type="button" class="primary" data-m="restart">Ану ще раз</button>');
+    if (daily && ctx.mine && dead && !v.resigned) out.push('<button type="button" class="primary" data-m="restart">Ану ще раз</button>');
+    // здатись: день закінчено, поле розкрите. Двома дотиками — щоб не натиснути випадково посеред поля.
+    if (daily && ctx.mine && ctx.playing && !v.solved && !v.resigned)
+      out.push('<button type="button" class="ghost" data-m="resign">' + (st.resignArm > Date.now() ? '🏳 Точно? Ще раз' : '🏳 Здаюсь') + '</button>');
     if (!daily && ctx.mine && ctx.playing && !dead) out.push('<button type="button" class="ghost" data-m="resign">Здаюсь</button>');
     // Велике поле на телефоні вписане в ширину (клітинка ~23 px); кому дрібно — крупніше з прокруткою вбік.
     if ((v.w || (daily ? 16 : 9)) > 12 && window.matchMedia('(max-width: 480px)').matches)
@@ -293,6 +300,12 @@
     setHtml(el, html);
     el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
       if (b.dataset.m === 'flag') { st.flagMode = !st.flagMode; buttons(root, ctx, daily); return; }
+      if (daily && b.dataset.m === 'resign' && !(st.resignArm > Date.now())) {
+        st.resignArm = Date.now() + 3000;
+        buttons(root, ctx, daily);
+        setTimeout(() => { if (root._mines === st) buttons(root, st.ctx || ctx, daily); }, 3100);
+        return;
+      }
       if (b.dataset.m === 'zoom') { st.zoom = !st.zoom; paint(root, ctx, daily); return; }
       if (b.dataset.m === 'ghost') { ghostStart(root, ctx); buttons(root, ctx, daily); return; }
       if (b.dataset.m === 'gstop') { ghostStop(root); paint(root, ctx, daily); return; }
@@ -435,7 +448,8 @@
       if (v.solved && g) return '👻 Привид: ' + g.nick + ' розміновує за ' + timeText(g.ms) + (g.speed > 1 ? ' · ×4' : '');
       if (v.solved) return 'Є! Поле чисте за ' + timeText(v.ms || 0) + (v.attempts > 1 ? ' · спроба ' + v.attempts : '')
         + (v.streak >= 2 ? ' · 🔥 ' + v.streak + ' дн. поспіль' : '');
-      if (v.result && v.result.reason === 'boom') return 'Бабах! Це була міна — тисни «Ану ще раз»';
+      if (v.resigned) return '🏳 Поле дня розкрито — ось де були міни. Завтра нове';
+      if (v.result && v.result.reason === 'boom') return 'Бабах! Це була міна — тисни «Ану ще раз» або «Здаюсь»';
       if (!ctx.playing) return '';
       return 'Лишилось клітинок: ' + (v.left == null ? '?' : v.left);
     },

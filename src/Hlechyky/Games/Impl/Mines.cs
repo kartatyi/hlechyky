@@ -570,6 +570,8 @@ public sealed class MinesDaily : Game, IDailyGame
     int _attempts = 1;
     bool _solved;
     bool _dead;
+    /// <summary>«🏳 Здаюсь»: день закінчено без розв'язку — поле розкрите, спроб більше нема.</summary>
+    bool _resigned;
     long _ms;
     int? _last;
     /// <summary>Ходи цієї спроби для привида: «сотні секунди від старту, o/f/c, клітинка» через пробіл.</summary>
@@ -610,6 +612,7 @@ public sealed class MinesDaily : Game, IDailyGame
         _day = Days.Today(Ctx.Clock);
         _attempts = 1;
         _solved = false;
+        _resigned = false;
         _ms = 0;
         Deal();
     }
@@ -651,6 +654,8 @@ public sealed class MinesDaily : Game, IDailyGame
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_solved) return ActResult.Fail("Поле дня вже розміноване, приходь завтра");
+        if (_resigned) return ActResult.Fail("На сьогодні все — завтра нове поле");
+        if (action == "resign") return Resign();
         if (action == "restart")
         {
             _attempts++;
@@ -677,7 +682,7 @@ public sealed class MinesDaily : Game, IDailyGame
         if (_board.IsMine(cell))
         {
             // Кімнату не закриваємо: спроба провалилась, а день — ні, і «Спробувати ще» має працювати.
-            _dead = true;
+            Boom();
             return ActResult.Accept("Бабах. Спроба не вийшла");
         }
         return _board.Left == 0 ? Solved() : ActResult.Done;
@@ -700,13 +705,37 @@ public sealed class MinesDaily : Game, IDailyGame
         {
             _last = mine;
             _board.Open(mine);
-            _dead = true;
+            Boom();
             return ActResult.Accept("Бабах. Один прапорець стояв не там");
         }
         foreach (var c in closed) _board.Open(c);
         _last = cell;
         Move('c', cell);
         return _board.Left == 0 ? Solved() : ActResult.Done;
+    }
+
+    /// <summary>
+    /// Вибух: спроба пропала, і це видно — промах дня йде в daily_results (<c>solved = 0</c>) і на табло «✗ Оля (2)».
+    /// Спробувати ще можна, як і раніше: пізніший розв'язок того самого дня перекриває промах.
+    /// </summary>
+    void Boom()
+    {
+        _dead = true;
+        Ctx.DailyMiss(0, _attempts);
+        _card?.NoteMiss(Info.Id, Ctx.NickOf(0) ?? "", _attempts);
+    }
+
+    /// <summary>
+    /// «🏳 Здаюсь»: день закінчено — поле розкривається, промах записано, кімната закривається. У Журнал нічого:
+    /// здатись — не подія для всього сайту.
+    /// </summary>
+    ActResult Resign()
+    {
+        _resigned = true;
+        Ctx.DailyMiss(0, _attempts);
+        _card?.NoteMiss(Info.Id, Ctx.NickOf(0) ?? "", _attempts);
+        Ctx.Finish([], "");
+        return ActResult.Accept("Поле розкрито — ось де були міни. Завтра нове");
     }
 
     ActResult Solved()
@@ -728,7 +757,7 @@ public sealed class MinesDaily : Game, IDailyGame
 
     public override object View(int? seat)
     {
-        var over = _solved || _dead;
+        var over = _solved || _dead || _resigned;
         var elapsed = _solved ? _ms : Math.Max(0, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds);
         // Вибух поле НЕ розкриває: спроба провалилась, а головоломка дня — ні. Показали б усі сорок мін —
         // і «Спробувати ще» на тому самому полі перетворилося б на «розмінуй за десять секунд».
@@ -739,17 +768,19 @@ public sealed class MinesDaily : Game, IDailyGame
             h = _board.H,
             mines = _board.Mines,
             turn = over ? (int?)null : 0,
-            cells = _board.Text(_solved),
+            cells = _board.Text(_solved || _resigned),
             scores = new[] { _board.Opened },
             left = _board.Left,
             lastOpen = _last,
             result = _solved ? new { winner = (int?)0, reason = "cleared" }
+                : _resigned ? new { winner = (int?)null, reason = "resign" }
                 : _dead ? new { winner = (int?)null, reason = "boom" }
                 : null,
             day = _day,
             attempts = _attempts,
             startedAt = _startedAt,
             solved = _solved,
+            resigned = _resigned,
             ms = _ms,
             elapsedMs = elapsed,
             // табло дня й серія 🔥 — з пам'яті сервісу; привид — лише після власного розв'язку (інакше це підказка, де міни)
@@ -761,10 +792,10 @@ public sealed class MinesDaily : Game, IDailyGame
 
     /// <summary>Що лягає в game_state. Мін тут нема — вони однозначно виводяться з дня.</summary>
     sealed record State(string Day, string Mask, DateTimeOffset StartedAt, int Attempts, bool Solved, bool Dead, long Ms, int? Last,
-        string? Moves = null);
+        string? Moves = null, bool Resigned = false);
 
     public override string? Save() =>
-        JsonSerializer.Serialize(new State(_day, _board.Mask(), _startedAt, _attempts, _solved, _dead, _ms, _last, _movesOk ? _moves.ToString() : null));
+        JsonSerializer.Serialize(new State(_day, _board.Mask(), _startedAt, _attempts, _solved, _dead, _ms, _last, _movesOk ? _moves.ToString() : null, _resigned));
 
     public override void Load(string json)
     {
@@ -778,6 +809,7 @@ public sealed class MinesDaily : Game, IDailyGame
         _attempts = Math.Max(1, s.Attempts);
         _solved = s.Solved;
         _dead = s.Dead;
+        _resigned = s.Resigned;
         _ms = s.Ms;
         _last = s.Last is { } last && _board.Valid(last) ? last : null;
         // запис ходів дочитуємо, якщо він є; старий стан без нього — спроба в привиди вже не годиться

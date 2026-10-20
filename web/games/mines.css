@@ -102,3 +102,4 @@
 .mn-day .mn-dl { color: var(--muted); }
 .mn-day .mn-fire { font-size: .9em; }
 .mn-day .mn-fire.dim { opacity: .6; }
+.mn-day .mn-miss { opacity: .75; }   /* «✗ Оля (2)» — сьогодні не вийшло (пакет 4) */
