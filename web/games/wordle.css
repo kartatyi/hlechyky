@@ -291,3 +291,13 @@
 }
 .wdrow.miss span { color: var(--clay, #c0573e); }
 .wdrow.miss.now i { background: var(--clay, #c0573e); }
+/* пакет 4: табло дня над дошкою (як .mn-day у Сапера дня) */
+.wday { text-align: center; font-size: .85em; line-height: 1.5; color: var(--muted); margin: 2px 8px 6px; font-variant-numeric: tabular-nums; }
+.wday[hidden] { display: none; }
+.wday i { font-style: normal; color: var(--text); }
+.wday .wdr { white-space: nowrap; }
+.wday .wdr.me i { color: var(--accent); font-weight: 600; }
+.wday .wdr.miss { opacity: .75; }
+.wday .wfire { font-size: .9em; }
+.wday .wfire.dim { opacity: .6; }
+.whard { color: var(--accent); margin-left: 2px; }

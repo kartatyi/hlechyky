@@ -99,6 +99,8 @@ public sealed class Wordle : Game, IDailyGame
         if (word == _answer)
         {
             _solved = true;
+            // табло дня на картках сусідів — одразу, не чекаючи бази (час Глек-слову не потрібен: ms = 0)
+            if (Ctx.NickOf(0) is { } who) _card?.Note(Info.Id, who, _guesses.Count, 0);
             Close();
             return ActResult.Accept("Оце так!");
         }
@@ -134,6 +136,10 @@ public sealed class Wordle : Game, IDailyGame
             // поза spec, але без цього гравець дивиться на порожню дошку й не розуміє, чому нічого не
             // приймається: словників у цій збірці може просто не бути (INTEGRATION-NOTES §4)
             noWords = _answer.Length != Len,
+            // пакет 4: табло дня («Оля 3/6 🔥4 · ✗ Петро · ще не грали») — з пам'яті DailyCard, як у Сапера дня;
+            // null — день ще дочитується, клієнт попросить вид ще раз
+            board = DailyCard.Wire(_card?.Get(Info.Id)),
+            streak = _card is null || Ctx.NickOf(0) is not { } me ? 0 : _card.StreakOf(Info.Id, me),
         };
     }
 

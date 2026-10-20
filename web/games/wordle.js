@@ -159,10 +159,60 @@
     // злітав би з першої ж наступної набраної літери й обривав переворот на середині.
     if (st.flipFrom === null) st.flipFrom = rows.length;
 
+    dayLine(root, ctx, v);
     drawBoard(root, ctx, st, rows, max, !over(v) && ctx.mine);
     // день дограно — друкувати нікуди, а клавіатура штовхала серію й «Скопіювати» за нижній край телефона
     HGames.ui.keyboardUa(root, (k) => press(root, k), v.keys || {}).hidden = over(v);
     foot(root, ctx, v);
+  }
+
+  const lowNick = (s) => String(s || '').trim().toLowerCase();
+  const myNick = (ctx) => lowNick(ctx.nickOf && ctx.seat != null ? ctx.nickOf(ctx.seat) : '');
+
+  /// Табло дня над дошкою (пакет 4, як у Сапера дня): «Сьогодні: Оля 3/6 🔥4 · ✗ Петро», нижче — хто ще не грав.
+  /// Видно і до, і після своєї гри: спроби й вогники нічого не підказують. ✦ — складний режим (з сіток друзів).
+  function dayLine(root, ctx, v) {
+    let el = root.querySelector(':scope > .wday');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wday';
+      root.insertBefore(el, root.firstChild);
+    }
+    const b = v.board;
+    const me = myNick(ctx);
+    const hard = {};
+    (v.friends || []).forEach((f) => { if (f.hard) hard[lowNick(f.n)] = 1; });
+    if (v.hard) hard[me] = 1;
+    let html = '';
+    if (b) {
+      const fire = (n) => (n >= 2 ? ' <span class="wfire" title="Днів поспіль">🔥' + n + '</span>' : '');
+      const star = (n) => (hard[lowNick(n)] ? '<span class="whard" title="Складний режим">✦</span>' : '');
+      const rows = (b.rows || []).map((r) => '<span class="wdr' + (lowNick(r.n) === me ? ' me' : '') + '"><i>'
+        + ctx.esc(r.n) + '</i> ' + r.a + '/6' + star(r.n) + fire(r.st) + '</span>');
+      const miss = (b.miss || []).map((r) => '<span class="wdr miss' + (lowNick(r.n) === me ? ' me' : '') + '">✗ <i>'
+        + ctx.esc(r.n) + '</i>' + star(r.n) + '</span>');
+      const all = rows.concat(miss);
+      html = all.length
+        ? '<span class="wdl">Сьогодні:</span> ' + all.join(' · ')
+        : '<span class="wdl">Сьогодні ще ніхто не вгадав — будь першим</span>';
+      const wait = (b.wait || []).filter((w) => lowNick(w.n) !== me);
+      if (wait.length) html += '<br><span class="wdl">Ще не грали:</span> ' + wait.map((w) => '<i>' + ctx.esc(w.n) + '</i>'
+        + (w.st >= 2 ? ' <span class="wfire dim" title="Вогник згасне опівночі">🔥' + w.st + '</span>' : '')).join(', ');
+    }
+    el.hidden = !html;
+    setHtml(el, html);
+  }
+
+  /// Табло й чужі сітки міняються без мене — вид приходить лише на мої дії, тож час від часу просимо його ще раз.
+  /// Табло ще не дочитане (board: null) — просимо скоро, далі — раз на 45 с, коли вкладку видно.
+  function freshen(root, ctx) {
+    const st = state(root);
+    if (!ctx || !ctx.resync || !ctx.view) return;
+    const now = Date.now();
+    const wait = ctx.view.board ? 45000 : 2000;
+    if (now - (st.freshAt || 0) < wait || document.hidden) return;
+    st.freshAt = now;
+    ctx.resync();
   }
 
   /// Підвал картки: коли день дограно — «Скопіювати результат» і скільки чекати нового слова.
@@ -329,11 +379,14 @@
       const st = state(root);
       st.flipFrom = null;   // те, що вже стоїть на дошці, після F5 сальто не робить
       paint(root, ctx);
-      // відлік до нового слова тікає сам; хвилини вистачає — година й хвилини й так змінюються повільно
+      st.freshAt = Date.now();
+      // відлік до нового слова тікає сам (година й хвилини змінюються повільно), а табло дня й сітки друзів
+      // перепитуємо самі: freshen сам стежить, щоб не частіше ніж треба
       st.timer = setInterval(() => {
         const el = root.querySelector(':scope > .wfoot .wnext');
         if (el) el.textContent = nextWordIn();
-      }, 30000);
+        if (st.ctx) freshen(root, st.ctx);
+      }, 3000);
     },
 
     update(root, ctx) { paint(root, ctx); },

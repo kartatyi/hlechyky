@@ -91,6 +91,27 @@ public class WordleP4Tests(WordleWords fx) : IClassFixture<WordleWords>
         Assert.Equal(0, WordleStats.Of(solved, "2026-09-10").Miss);
     }
 
+    // ------------------------------------------------------------------------------ 2. табло дня
+
+    [Fact]
+    public void Day_board_shows_solves_and_misses_before_and_after_my_own_game()
+    {
+        var card = new DailyCard(null, new FakeClock());
+        var petro = Solo("Петро", card);
+        foreach (var w in Wrong(6)) Guess(petro.H, w);
+        var olia = Solo("Оля", card);
+        Guess(olia.H, Wrong(1)[0]);
+        Assert.True(Guess(olia.H, Answer).Ok);
+
+        // я ще не грав — табло вже є
+        var me = Solo("Іван", card);
+        var b = me.H.View(0).GetProperty("board");
+        var row = Assert.Single(b.GetProperty("rows").EnumerateArray());
+        Assert.Equal(("Оля", 2), (row.GetProperty("n").GetString(), row.GetProperty("a").GetInt32()));
+        Assert.Equal("Петро", Assert.Single(b.GetProperty("miss").EnumerateArray()).GetProperty("n").GetString());
+        Assert.Equal(1, olia.H.View(0).GetProperty("streak").GetInt32());
+    }
+
     [Fact]
     public void Old_lost_days_from_game_state_are_backfilled_once()
     {
