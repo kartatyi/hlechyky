@@ -629,7 +629,7 @@ public class MinesTests
         Assert.Equal(RoomStatus.Playing, h.Room.Status);   // кімнату не закриваємо
         Assert.Equal("boom", h.View(0).GetProperty("result").GetProperty("reason").GetString());
         Assert.Equal("Бабах уже був — тисни «Спробувати ще»", h.Act(0, "open", new { cell = 0 }).Message);
-        Assert.Empty(h.Scores);
+        Assert.True(Assert.Single(h.Scores).Missed);   // пакет 4: вибух — промах дня (solved = 0), а не результат
     }
 
     [Fact]
@@ -687,7 +687,7 @@ public class MinesTests
         h.Clock.Advance(TimeSpan.FromSeconds(42));
         SolveDaily(h, DailyMirror());
 
-        var score = Assert.Single(h.Scores);
+        var score = Assert.Single(h.Scores, e => !e.Missed);
         Assert.Equal(3, score.Attempts);
         Assert.Equal(42_000, score.Score);   // час — лише вдалої спроби
     }

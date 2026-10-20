@@ -102,3 +102,9 @@
 .mn-day .mn-dl { color: var(--muted); }
 .mn-day .mn-fire { font-size: .9em; }
 .mn-day .mn-fire.dim { opacity: .6; }
+.mn-day .mn-miss { opacity: .75; }   /* «✗ Оля (2)» — сьогодні не вийшло (пакет 4) */
+/* пакет 4: перемикач полів дня (16×16 / 9×9) і підсвічене своє поле в табло */
+.mn-size { display: flex; justify-content: center; gap: 6px; margin: 0 8px 4px; flex-wrap: wrap; }
+.mn-size button { font-size: .85em; padding: 3px 12px; min-height: 0; }
+.mn-day .mn-dl.own { color: var(--text); font-weight: 600; }
+.mn-day .mn-week { display: inline-block; margin-top: 2px; }

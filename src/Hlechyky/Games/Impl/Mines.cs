@@ -91,7 +91,32 @@ public sealed class MinesBoard
             (free[i], free[j]) = (free[j], free[i]);
             _mine[free[i]] = true;
         }
+        Count();
+    }
 
+    /// <summary>
+    /// Розставити міни рівно на ці клітинки (готове поле з <see cref="MinesFields"/> — без вгадування). Поле має бути
+    /// свіже: ні відкритого, ні мін. Чужі номери клітинок мовчки пропускаємо.
+    /// </summary>
+    public void Place(IEnumerable<int> mines)
+    {
+        Array.Clear(_mine);
+        foreach (var c in mines)
+            if (Valid(c)) _mine[c] = true;
+        Count();
+    }
+
+    /// <summary>Де стоять міни — номери клітинок за зростанням (для кешу готових полів).</summary>
+    public int[] MineCells()
+    {
+        var list = new List<int>(Mines);
+        for (var c = 0; c < Cells; c++)
+            if (_mine[c]) list.Add(c);
+        return [.. list];
+    }
+
+    void Count()
+    {
         for (var c = 0; c < Cells; c++)
         {
             byte k = 0;
@@ -519,32 +544,40 @@ public sealed class Mines : Game
 }
 
 /// <summary>
-/// Сапер дня: одне поле 16×16 на всіх, сорок мін, сід від дня. Центр відкритий одразу — так «перший клік
-/// безпечний» лишається правдою, а поле в усіх справді однакове, з тієї самої точки. Рахунок — час у
-/// мілісекундах, менше краще; підірвався — спроба провалена, можна почати заново на тому самому полі.
+/// Сапер дня — спільне двох полів дня: велике 16×16 (<see cref="MinesDaily"/>, щоденна гра з плиткою в «☀ Сьогодні») і
+/// легке 9×9 (<see cref="MinesDailyEasy"/>, прихована, лише перемикачем із картки). Одне поле на всіх, сід від дня, центр
+/// відкритий одразу — так «перший клік безпечний» лишається правдою, а поле в усіх справді однакове, з тієї самої точки.
+/// Рахунок — час у мілісекундах, менше краще; підірвався — спроба провалена (промах дня), можна почати заново на тому
+/// самому полі; «🏳 Здаюсь» закриває день. Щоденна нагорода — одна на обидва поля (реф <c>daily:mines-daily:день:нік</c>).
 /// </summary>
-public sealed class MinesDaily : Game, IDailyGame
+public abstract class MinesDayGame : Game
 {
-    public const int W = 16, H = 16, MineCount = 40;
+    /// <summary>Id обох полів: табло на картці показує обидва рядки, а нагорода дня — одна, під <see cref="BigId"/>.</summary>
+    public const string BigId = "mines-daily", EasyId = "mines-daily-easy";
+
+    /// <summary>Поле дня з розставленими мінами (те саме для всіх і для кожної спроби).</summary>
+    protected abstract MinesBoard NewField(string day);
 
     /// <summary>Звідки починають усі: центр поля. Ця клітинка та її околиця мін не мають ніколи.</summary>
-    public const int Center = 7 * W + 7;
+    protected abstract int Origin { get; }
 
-    /// <summary>Ключ головоломки для сіду дня. Свідомо «mines», а не Id: поле дня одне на всю родину саперів.</summary>
-    const string Puzzle = "mines";
+    /// <summary>Порахувати поле дня в кеш — з Configure, поза замком кімнати.</summary>
+    protected abstract void WarmField(string day);
 
-    public override GameInfo Info { get; } = new(
-        "mines-daily", "Сапер дня", "сапера дня", GameGroup.Solo, 1, 1,
-        Start: StartMode.Immediate, Private: true, Persistent: true, Score: ScoreOrder.LowerIsBetter,
-        Hint: "Одне поле 16×16 на всіх, сорок мін. Центр уже відкрито, час пішов — хто швидше?",
-        Client: "mines");   // малює той самий web/games/mines.js, що й дуель
+    /// <summary>«big» чи «easy» — для перемикача полів на картці.</summary>
+    protected abstract string Size { get; }
+
+    /// <summary>Привид найшвидшого: лише на великому полі (<see cref="MinesGhosts"/> тримає одного на день).</summary>
+    protected virtual bool Ghosts => false;
 
     string _day = "";
-    MinesBoard _board = new(W, H, MineCount);
+    protected MinesBoard _board = new(1, 1, 0);
     DateTimeOffset _startedAt;
     int _attempts = 1;
     bool _solved;
     bool _dead;
+    /// <summary>«🏳 Здаюсь»: день закінчено без розв'язку — поле розкрите, спроб більше нема.</summary>
+    bool _resigned;
     long _ms;
     int? _last;
     /// <summary>Ходи цієї спроби для привида: «сотні секунди від старту, o/f/c, клітинка» через пробіл.</summary>
@@ -555,14 +588,21 @@ public sealed class MinesDaily : Game, IDailyGame
     public const int MaxMovesChars = 6000;
     DailyCard? _card;
     MinesGhosts? _ghosts;
+    MinesWeek? _week;
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
         // Табло дня й привид живуть у пам'яті сервісів; тут, поза замком, лише кажемо їм дочитати день фоном.
         _card = Ctx.Services.GetService<DailyCard>();
-        _ghosts = Ctx.Services.GetService<MinesGhosts>();
-        _card?.Warm(Info.Id);
-        _ghosts?.Warm(Days.Today(Ctx.Clock));
+        _ghosts = Ghosts ? Ctx.Services.GetService<MinesGhosts>() : null;
+        _card?.Warm(BigId);
+        _card?.Warm(EasyId);
+        _week = Ctx.Services.GetService<MinesWeek>();
+        _week?.Get();
+        var day = Days.Today(Ctx.Clock);
+        _ghosts?.Warm(day);
+        // поле без вгадування рахується тут, поза замком кімнати; Start/«Ану ще раз» візьмуть готове з кешу
+        WarmField(day);
     }
 
     void Move(char kind, int cell)
@@ -582,6 +622,7 @@ public sealed class MinesDaily : Game, IDailyGame
         _day = Days.Today(Ctx.Clock);
         _attempts = 1;
         _solved = false;
+        _resigned = false;
         _ms = 0;
         Deal();
     }
@@ -589,21 +630,21 @@ public sealed class MinesDaily : Game, IDailyGame
     /// <summary>Нова спроба: поле те саме (сід від дня), відлік — від зараз.</summary>
     void Deal()
     {
-        _board = new MinesBoard(W, H, MineCount);
-        // Сід від дня, а не від кімнати: інакше в кожного було б своє поле, і порівнювати час не було б сенсу.
-        _board.Generate(new Random(Days.Seed(Puzzle, _day)), Center);
-        _board.Open(Center);
+        _board = NewField(_day);
+        _board.Open(Origin);
         _dead = false;
-        _last = Center;
+        _last = Origin;
         _startedAt = Ctx.Clock.UtcNow;
         _moves.Clear();
         _movesOk = true;
-        Move('o', Center);
+        Move('o', Origin);
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (_solved) return ActResult.Fail("Поле дня вже розміноване, приходь завтра");
+        if (_resigned) return ActResult.Fail("На сьогодні все — завтра нове поле");
+        if (action == "resign") return Resign();
         if (action == "restart")
         {
             _attempts++;
@@ -630,7 +671,7 @@ public sealed class MinesDaily : Game, IDailyGame
         if (_board.IsMine(cell))
         {
             // Кімнату не закриваємо: спроба провалилась, а день — ні, і «Спробувати ще» має працювати.
-            _dead = true;
+            Boom();
             return ActResult.Accept("Бабах. Спроба не вийшла");
         }
         return _board.Left == 0 ? Solved() : ActResult.Done;
@@ -653,13 +694,46 @@ public sealed class MinesDaily : Game, IDailyGame
         {
             _last = mine;
             _board.Open(mine);
-            _dead = true;
+            Boom();
             return ActResult.Accept("Бабах. Один прапорець стояв не там");
         }
         foreach (var c in closed) _board.Open(c);
         _last = cell;
         Move('c', cell);
         return _board.Left == 0 ? Solved() : ActResult.Done;
+    }
+
+    /// <summary>
+    /// Вибух: спроба пропала, і це видно — промах дня йде в daily_results (<c>solved = 0</c>) і на табло «✗ Оля (2)».
+    /// Спробувати ще можна, як і раніше: пізніший розв'язок того самого дня перекриває промах.
+    /// </summary>
+    void Boom()
+    {
+        _dead = true;
+        Ctx.DailyMiss(0, _attempts);
+        _card?.NoteMiss(Info.Id, Ctx.NickOf(0) ?? "", _attempts);
+        NoteWeek(false);
+    }
+
+    /// <summary>Залік тижня — лише за велике поле.</summary>
+    void NoteWeek(bool solved)
+    {
+        if (Info.Id == BigId && Ctx.NickOf(0) is { } nick)
+            _week?.Note(nick, solved, _attempts, (int)Math.Min(int.MaxValue, _ms));
+    }
+
+    /// <summary>
+    /// «🏳 Здаюсь»: день закінчено — поле розкривається, промах записано, кімната закривається. У Журнал нічого:
+    /// здатись — не подія для всього сайту.
+    /// </summary>
+    ActResult Resign()
+    {
+        _resigned = true;
+        Ctx.DailyMiss(0, _attempts);
+        _card?.NoteMiss(Info.Id, Ctx.NickOf(0) ?? "", _attempts);
+        NoteWeek(false);
+        Ctx.Finish([], "");
+        return ActResult.Accept("Поле розкрито — ось де були міни. Завтра нове");
     }
 
     ActResult Solved()
@@ -670,9 +744,11 @@ public sealed class MinesDaily : Game, IDailyGame
         // не опускаємо — це страховка для таблиць, що вгадують «спроби чи мілісекунди» з величини числа.
         _ms = Math.Max(1000, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds);
         Ctx.Score(0, _ms, _attempts);
-        Ctx.Award(0, 0, $"daily:{Info.Id}");
+        // нагорода дня одна на обидва поля: реф daily:mines-daily:<день>:<нік> однаковий, хоч яке поле розв'язане
+        Ctx.Award(0, 0, $"daily:{BigId}");
         var nick = Ctx.NickOf(0) ?? "";
         _card?.Note(Info.Id, nick, _attempts, (int)Math.Min(int.MaxValue, _ms));
+        NoteWeek(true);
         if (_movesOk && _moves.Length > 0) _ghosts?.Offer(_day, new MinesGhost(nick, _attempts, (int)Math.Min(int.MaxValue, _ms), _moves.ToString()));
         Ctx.Finish([0], $"{Info.Title}: {Ctx.NickOf(0)} — поле дня чисте за {MinesWire.Seconds(_ms)}"
             + (_attempts > 1 ? $" (спроба {_attempts})" : ""));
@@ -681,7 +757,7 @@ public sealed class MinesDaily : Game, IDailyGame
 
     public override object View(int? seat)
     {
-        var over = _solved || _dead;
+        var over = _solved || _dead || _resigned;
         var elapsed = _solved ? _ms : Math.Max(0, (long)(Ctx.Clock.UtcNow - _startedAt).TotalMilliseconds);
         // Вибух поле НЕ розкриває: спроба провалилась, а головоломка дня — ні. Показали б усі сорок мін —
         // і «Спробувати ще» на тому самому полі перетворилося б на «розмінуй за десять секунд».
@@ -692,21 +768,28 @@ public sealed class MinesDaily : Game, IDailyGame
             h = _board.H,
             mines = _board.Mines,
             turn = over ? (int?)null : 0,
-            cells = _board.Text(_solved),
+            cells = _board.Text(_solved || _resigned),
             scores = new[] { _board.Opened },
             left = _board.Left,
             lastOpen = _last,
             result = _solved ? new { winner = (int?)0, reason = "cleared" }
+                : _resigned ? new { winner = (int?)null, reason = "resign" }
                 : _dead ? new { winner = (int?)null, reason = "boom" }
                 : null,
             day = _day,
             attempts = _attempts,
             startedAt = _startedAt,
             solved = _solved,
+            resigned = _resigned,
             ms = _ms,
             elapsedMs = elapsed,
             // табло дня й серія 🔥 — з пам'яті сервісу; привид — лише після власного розв'язку (інакше це підказка, де міни)
             board = DailyCard.Wire(_card?.Get(Info.Id)),
+            // пакет 4: перемикач полів і обидва рядки табло на картці («16×16: …», «9×9: …»)
+            size = Size,
+            boards = new { big = DailyCard.Wire(_card?.Get(BigId)), easy = DailyCard.Wire(_card?.Get(EasyId)) },
+            // залік тижня (велике поле): сума місць за 7 днів, до 6 рядків
+            week = MinesWeek.Wire(_week?.Get()),
             streak = _card is null || Ctx.NickOf(0) is not { } me ? 0 : _card.StreakOf(Info.Id, me),
             ghost = _solved && _ghosts?.Best(_day) is { } g ? new { n = g.Nick, a = g.Attempts, ms = g.Ms, mv = g.Moves } : null,
         };
@@ -714,10 +797,10 @@ public sealed class MinesDaily : Game, IDailyGame
 
     /// <summary>Що лягає в game_state. Мін тут нема — вони однозначно виводяться з дня.</summary>
     sealed record State(string Day, string Mask, DateTimeOffset StartedAt, int Attempts, bool Solved, bool Dead, long Ms, int? Last,
-        string? Moves = null);
+        string? Moves = null, bool Resigned = false);
 
     public override string? Save() =>
-        JsonSerializer.Serialize(new State(_day, _board.Mask(), _startedAt, _attempts, _solved, _dead, _ms, _last, _movesOk ? _moves.ToString() : null));
+        JsonSerializer.Serialize(new State(_day, _board.Mask(), _startedAt, _attempts, _solved, _dead, _ms, _last, _movesOk ? _moves.ToString() : null, _resigned));
 
     public override void Load(string json)
     {
@@ -731,11 +814,92 @@ public sealed class MinesDaily : Game, IDailyGame
         _attempts = Math.Max(1, s.Attempts);
         _solved = s.Solved;
         _dead = s.Dead;
+        _resigned = s.Resigned;
         _ms = s.Ms;
         _last = s.Last is { } last && _board.Valid(last) ? last : null;
         // запис ходів дочитуємо, якщо він є; старий стан без нього — спроба в привиди вже не годиться
         _moves.Clear();
         _movesOk = s.Moves is { Length: > 0 and <= MaxMovesChars };
         if (_movesOk) _moves.Append(s.Moves);
+    }
+}
+
+/// <summary>Сапер дня, велике поле: 16×16, сорок мін. Щоденна гра — плитка в «☀ Сьогодні», серія, привид найшвидшого.</summary>
+public sealed class MinesDaily : MinesDayGame, IDailyGame
+{
+    public const int W = 16, H = 16, MineCount = 40;
+
+    /// <summary>Звідки починають усі: центр поля. Ця клітинка та її околиця мін не мають ніколи.</summary>
+    public const int Center = 7 * W + 7;
+
+    /// <summary>Ключ головоломки для сіду дня. Свідомо «mines», а не Id: поле дня одне на всю родину саперів.</summary>
+    const string Puzzle = "mines";
+
+    public override GameInfo Info { get; } = new(
+        BigId, "Сапер дня", "сапера дня", GameGroup.Solo, 1, 1,
+        Start: StartMode.Immediate, Private: true, Persistent: true, Score: ScoreOrder.LowerIsBetter,
+        Hint: "Одне поле 16×16 на всіх, сорок мін. Центр уже відкрито, час пішов — хто швидше?",
+        Client: "mines");   // малює той самий web/games/mines.js, що й дуель
+
+    protected override int Origin => Center;
+    protected override string Size => "big";
+    protected override bool Ghosts => true;
+    protected override MinesBoard NewField(string day) => Field(day);
+
+    protected override void WarmField(string day)
+    {
+        if (NoGuess(day)) MinesFields.Get(Puzzle, day, W, H, MineCount, Center);
+    }
+
+    /// <summary>
+    /// З якого дня поле дня — без вгадування (<see cref="MinesFields"/>). Старші дні — старим генератором: стан кімнати
+    /// й привиди зберігають лише маску відкритого, а міни виводяться з дня, тож поле вже зіграного дня мінятись не сміє.
+    /// </summary>
+    public const string NoGuessFrom = "2026-10-22";
+
+    /// <summary>Чи день грає полем без вгадування.</summary>
+    public static bool NoGuess(string day) => string.CompareOrdinal(day, NoGuessFrom) >= 0;
+
+    /// <summary>
+    /// Поле дня з розставленими мінами. Сід від дня, а не від кімнати: інакше в кожного було б своє поле, і порівнювати
+    /// час не було б сенсу. Нове поле береться з кешу <see cref="MinesFields"/> (прогрів — з Configure, поза замком).
+    /// </summary>
+    public static MinesBoard Field(string day)
+    {
+        var board = new MinesBoard(W, H, MineCount);
+        if (NoGuess(day)) board.Place(MinesFields.Get(Puzzle, day, W, H, MineCount, Center).Mines);
+        else board.Generate(new Random(Days.Seed(Puzzle, day)), Center);
+        return board;
+    }
+}
+
+/// <summary>
+/// Сапер дня, легке поле: 9×9, десять мін, завжди без вгадування. Прихована гра (без своєї плитки в «☀ Сьогодні») —
+/// відкривається перемикачем із картки Сапера дня; результат лягає в daily_results під своїм id і свій рядок табло,
+/// а щоденна нагорода — та сама, що й за велике поле (одна на день).
+/// </summary>
+public sealed class MinesDailyEasy : MinesDayGame
+{
+    public const int W = 9, H = 9, MineCount = 10;
+    public const int Center = 4 * W + 4;
+    const string Puzzle = "mines-easy";
+
+    public override GameInfo Info { get; } = new(
+        EasyId, "Сапер дня 9×9", "легкого сапера дня", GameGroup.Solo, 1, 1,
+        Start: StartMode.Immediate, Hidden: true, Private: true, Persistent: true, Score: ScoreOrder.LowerIsBetter,
+        Hint: "Легке поле дня 9×9, десять мін, без вгадування. Центр уже відкрито — хто швидше?",
+        Client: "mines");
+
+    protected override int Origin => Center;
+    protected override string Size => "easy";
+    protected override MinesBoard NewField(string day) => Field(day);
+    protected override void WarmField(string day) => MinesFields.Get(Puzzle, day, W, H, MineCount, Center);
+
+    /// <summary>Легке поле дня — з кешу <see cref="MinesFields"/>, без вгадування з першого ж дня.</summary>
+    public static MinesBoard Field(string day)
+    {
+        var board = new MinesBoard(W, H, MineCount);
+        board.Place(MinesFields.Get(Puzzle, day, W, H, MineCount, Center).Mines);
+        return board;
     }
 }
