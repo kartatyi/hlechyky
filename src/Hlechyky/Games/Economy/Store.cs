@@ -626,7 +626,11 @@ public sealed class EconomyStore(Db db)
 
     // ---------- щоденне ----------
 
-    /// <summary>Upsert результату дня: краще (менше спроб, потім менший час) перекриває гірше, гірше — ні.</summary>
+    /// <summary>
+    /// Upsert результату дня: краще (менше спроб, потім менший час) перекриває гірше, гірше — ні. Невдалий день
+    /// (<c>solved = 0</c>) розв'язаного не псує; новий промах того самого дня лише піднімає число спроб, а розв'язок
+    /// перекриває промах цілком (і час рядка стає часом розв'язку).
+    /// </summary>
     public void SaveDaily(DailyRow row, DateTimeOffset now) => db.With(c => Write<object?>(c, () =>
     {
         Exec(c, """
@@ -636,9 +640,11 @@ public sealed class EconomyStore(Db db)
                 nick = $nk,
                 solved = MAX(solved, $s),
                 attempts = CASE WHEN solved = 0 AND $s = 1 THEN $a
+                                WHEN solved = 0 AND $s = 0 THEN MAX(attempts, $a)
                                 WHEN $s = 1 AND $a < attempts THEN $a ELSE attempts END,
                 ms = CASE WHEN solved = 0 AND $s = 1 THEN $m
-                          WHEN $s = 1 AND ($a < attempts OR ($a = attempts AND $m < ms)) THEN $m ELSE ms END
+                          WHEN $s = 1 AND ($a < attempts OR ($a = attempts AND $m < ms)) THEN $m ELSE ms END,
+                created_at = CASE WHEN solved = 0 AND $s = 1 THEN $t ELSE created_at END
             """, ("$d", row.Day), ("$g", row.Game), ("$n", row.NickKey), ("$nk", row.Nick),
             ("$s", row.Solved ? 1 : 0), ("$a", row.Attempts), ("$m", row.Ms), ("$t", Iso(now)));
         return null;

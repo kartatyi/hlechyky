@@ -137,6 +137,7 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
 
     void Solo(SoloScoreEvent e)
     {
+        if (e.Missed) { Missed(e); return; }
         var order = e.Order != ScoreOrder.None ? e.Order : names.Get(e.GameId)?.Score ?? ScoreOrder.HigherIsBetter;
         var key = e.Key ?? $"solo:{e.GameId}:{Economy.Key(e.Nick)}";
         // день у ключі рядка — щоб «найкращий результат за період» був справді за період: без нього
@@ -166,6 +167,17 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             else log.LogWarning("ключ щоденної кімнати {Key} не має вигляду daily:<гра>:<рррр-мм-дд>:<нік> — записав як звичайний соло-результат", e.Key);
         }
         achievements.OnSolo(e);
+    }
+
+    /// <summary>
+    /// Невдалий день щоденної головоломки: лише рядок <c>solved = 0</c> у <c>daily_results</c> (кращий результат того
+    /// самого дня він не зіпсує — див. <see cref="EconomyStore.SaveDaily"/>). Соло-таблиці й ачівкам тут робити нічого.
+    /// </summary>
+    void Missed(SoloScoreEvent e)
+    {
+        var parts = e.Key?.Split(':') ?? [];
+        if (parts.Length < 4 || parts[0] != "daily" || !DateOnly.TryParseExact(parts[2], "yyyy-MM-dd", out _)) return;
+        daily.Record(parts[1], e.Nick, solved: false, Math.Max(1, e.Attempts ?? 1), 0, parts[2]);
     }
 
     // ---------- позастандартна нагорода ----------
