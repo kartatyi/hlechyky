@@ -76,7 +76,7 @@
       const r = await fetch('/api/slots/feed', { cache: 'no-store' });
       if (!r.ok) return;
       const f = await r.json();
-      SlotKit.setLive({ jackpot: f.jackpot, mustHit: f.mustHit || 0, lines: feedLines(f), on: f.on !== false });
+      SlotKit.setLive({ jackpot: f.jackpot, mustHit: f.mustHit || 0, daily: f.daily || 0, lines: feedLines(f), on: f.on !== false });
     } catch (e) { /* мережа — наступного разу */ }
   }
   function feedOn() { if (!feedT) { feedT = setInterval(pollFeed, FEED_MS); pollFeed(); } }
@@ -149,6 +149,7 @@
   function check(st) {
     const v = st.ctx.view || {};
     if (v.jackpot != null && window.SlotKit && SlotKit.setLive) SlotKit.setLive({ jackpot: v.jackpot });
+    if (window.SlotKit && SlotKit.setLive) SlotKit.setLive({ saldo: v.saldo || null, daily: v.daily || 0 });   // пакет 5: сальдо й «Глек докидає щодня»
     if (st.machine) st.machine.buy = v.buy || null;   // «Купити бонус» вмикають наживо (Slots:BuyBonus)
     const L = v.last;
     if (st.waitSpin && L && L.seq > st.waitSpin.seq) { st.seenSeq = L.seq; st.waitSpin.done(L.script); }
