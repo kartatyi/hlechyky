@@ -612,6 +612,7 @@ public sealed partial class GeoMatch
             c = a.At.CompareTo(b.At);
             return c != 0 ? c : a.Seat.CompareTo(b.Seat);
         });
+        Thank(round, rows);   // 📷 Глек дякує автору фото друга (пакет 4)
         foreach (var r in rows)
         {
             _scores[r.Seat] += r.Points;

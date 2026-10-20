@@ -1653,6 +1653,18 @@
     mineList(m);
   }
 
+  /// Порожні «Мої фото» (пакет 4): як виглядає картка фото — знімок, шпилька, назва, коротка історія — і заклик.
+  function mineSample(d) {
+    const th = d.thanks || { of: 3, shards: 5, km: 50 };
+    return '<p class="small"><b>Як це виглядає в грі:</b></p>'
+      + '<div class="geo-mine-sample" aria-label="Приклад картки фото"><i class="geo-mine-sph"></i><div>'
+      + '<b>Мамина хата в Обухові</b><span class="muted small">📍 Київська область · шпилька там, де знято</span>'
+      + '<span class="small geo-mine-story">Тут я щоліта збирав вишні й ганяв на ровері до ставка.</span>'
+      + '<span class="muted small">Друзі бачать лише фото; назва й історія — після розкриття.</span></div></div>'
+      + (d.can ? '<p class="small">Закинь перше — хату, вулицю, краєвид із поїздки. Хтось із друзів уперше вгадає (ближче '
+        + th.km + ' км) — Глек дякує <b>+' + th.shards + ' 🏺</b> (за перші ' + th.of + ' фото).</p>' : '');
+  }
+
   function mineList(m) {
     const ctx = m.st.ctx;
     mineStopPick(m);
@@ -1669,7 +1681,9 @@
       else {
         h += '<p class="small">Сфоткав щось в Україні? Закинь — і друзі шукатимуть це місце за столом з опцією <b>«Фото друзів»</b>. '
           + 'Фото йде в гру <b>одразу</b>; дані з камери (де, коли, чим знято) стираються. Ти свого фото не вгадуєш, '
-          + 'а за влучання друзів тобі половина їхнього середнього.</p>'
+          + 'а за влучання друзів тобі половина їхнього середнього.'
+          + (d.thanks ? ' 📷 Друг уперше вгадав твоє фото (ближче ' + d.thanks.km + ' км) — Глек дякує +' + d.thanks.shards + ' 🏺, за перші ' + d.thanks.of + ' фото'
+            + (d.thanks.got ? ' (уже ' + d.thanks.got + ' з ' + d.thanks.of + ')' : '') + '.' : '') + '</p>'
           + '<div class="geo-mine-row"><button type="button" class="primary geo-mine-add"' + (d.have >= d.max || d.full ? ' disabled' : '') + '>＋ Додати фото</button>'
           + '<span class="muted small">' + (d.can ? d.have + ' з ' + d.max : '') + (d.full ? ' · полиця повна' : '') + (d.admin ? ' · 🛡 адмін: видно всі' : '') + '</span>'
           + '<input type="file" accept="image/jpeg,image/png,image/webp,image/*" hidden></div>';
@@ -1679,7 +1693,7 @@
         + '<div><b>' + ctx.esc(p.title) + '</b><span class="muted small">' + ctx.esc(p.region) + (d.admin && !p.own ? ' · від ' + ctx.esc(p.nick) : '') + '</span>'
         + (p.story ? '<span class="small geo-mine-story">' + ctx.esc(p.story) + '</span>' : '') + '</div>'
         + '<button type="button" class="ghost geo-mine-del" data-id="' + ctx.esc(p.id) + '" aria-label="Прибрати фото" title="Прибрати">✕</button></li>').join('') + '</ul>'
-        : (d.can ? '<p class="muted small">Поки порожньо.</p>' : '');
+        : mineSample(d);
       body.innerHTML = h;
       const add = body.querySelector('.geo-mine-add'), inp = body.querySelector('input[type=file]');
       if (add) add.onclick = () => inp.click();
