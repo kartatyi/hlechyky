@@ -317,7 +317,7 @@
     <h3>⌨ Клавіші</h3>
     <div class="keylist">
       <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd><span>Ефір · Бібліотека · Ігри · Хто скільки</span></div>
-      <div><kbd>/</kbd> або <kbd>.</kbd><span>курсор у пошук пісні</span></div>
+      <div><kbd>/</kbd> або <kbd>.</kbd><span>курсор у пошук пісні, а в лобі ігор — у пошук гри</span></div>
       <div><kbd>]</kbd><span>показати чи сховати балачки</span></div>
       <div><kbd>Esc</kbd><span>зі столу назад у лобі, закрити віконце</span></div>
       <div><kbd>?</kbd><span>ця шпаргалка</span></div>
@@ -346,7 +346,8 @@
 <script src="/static/signalr.min.js"></script>
 <!-- джойстик: сам по собі, до всіх — щоб кільце фокуса було вже на першому натиску -->
 <script src="/static/pad.js"></script>
-<!-- каркас ігор — до app.js: той кличе HGames.init() на старті -->
+<!-- каркас ігор — до app.js: той кличе HGames.init() на старті; теги й пошук каталогу — до нього -->
+<script src="/games/tags.js"></script>
 <script src="/games/core.js"></script>
 <script src="/games/tournament.js"></script>
 <script src="/games/bets-table.js"></script>

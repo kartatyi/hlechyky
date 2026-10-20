@@ -148,12 +148,91 @@
   .gthemegrid .gtblock { --cols: 1; }
 }
 
-/* ---- «⭐ Часто граємо»: швидкий запуск того, у що компанія грає найбільше ---- */
+/* ---- швидкий запуск нагорі каталогу: «⭐ Мої», «🕘 Нещодавно», «📈 Часто граємо» ---- */
 .gfavs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.gq-l { min-width: 7.6em; white-space: nowrap; }
 .gfav { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
 .gfav:hover { border-color: var(--accent2); background: var(--panel3); }
 .gfav .gico { width: 15px; height: 15px; }
 .gfav .muted { font-weight: 400; }
+
+/* ---- пошук і фільтри каталогу (20.10): липкий ряд, «👥 Скільки нас», теги, «🎲 Глек радить», «☰ список» ---- */
+.gfindbar { display: flex; flex-direction: column; gap: 8px; }
+/* Розділи й пошук під рукою, хоч би як далеко загортав: на широкому ряд прилипає під шапку сайту. На телефоні — ні:
+   там він на три рядки й з'їв би пів екрана. */
+@media (min-width: 901px) and (min-height: 600px) {
+  .gfindbar {
+    position: sticky; top: var(--ghdr, 57px); z-index: 3; margin: -6px -16px 0; padding: 8px 16px;
+    background: var(--panel); box-shadow: 0 8px 10px -10px rgba(0, 0, 0, .5);
+  }
+}
+.gchip .gtc-n, .gfacet .gtc-n, .gtag .gtc-n { margin-left: 5px; opacity: .6; font-variant-numeric: tabular-nums; font-size: .92em; }
+.gfacets { display: flex; gap: 4px 5px; flex-wrap: wrap; align-items: center; }
+.gf-l { margin-right: 2px; white-space: nowrap; }
+.gpl, .gfacet { cursor: pointer; border: 1px solid transparent; padding: 3px 10px; font-size: .82em; }
+.gpl { min-width: 2.4em; justify-content: center; }
+@media (hover: hover) { .gpl:hover, .gfacet:hover { background: var(--panel3); color: var(--text); } }
+.gpl.on, .gfacet.on { background: var(--panel3); color: var(--text); border-color: var(--accent2); }
+.gf-sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; flex: none; }
+.gf-end { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+.gsort { font: inherit; font-size: .82em; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 9px; padding: 3px 6px; }
+.gviewsw { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; flex: none; }
+.gviewsw button { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 3px 9px; font-size: .92em; line-height: 1.2; }
+.gviewsw button.on { background: var(--panel3); color: var(--text); }
+
+/* Теги: на плитці — тихі капсули (автоматичні 🤖 🏆 ☀ — лише значком), у ряду «🏷 Теги» — більші, з числом ігор. */
+.gt-tags, .glr-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.gtag {
+  display: inline-flex; align-items: center; gap: 3px; cursor: pointer; font: inherit; font-size: .74em; line-height: 1.3;
+  padding: 1px 7px; border-radius: 999px; color: var(--muted); background: var(--bg2); border: 1px solid transparent; white-space: nowrap;
+}
+.gtag.ico { padding: 1px 5px; }
+@media (hover: hover) { .gtag:hover { color: var(--text); border-color: var(--line); background: var(--bg2); } }
+.gtag.on { color: var(--text); border-color: var(--accent2); background: var(--panel3); }
+.gtagrow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.gtagrow .gtag { font-size: .82em; padding: 3px 9px; }
+.gactive { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.gact { cursor: pointer; border: 1px solid var(--line); font-size: .8em; padding: 2px 9px; color: var(--text); }
+.gact-all { font-size: .8em; padding: 2px 8px; }
+
+/* ☆ / ★ «⭐ Мої» — праворуч у шапці плитки (після «🆕» — одразу за ним). */
+.gstar { margin-left: auto; flex: none; border: 0; background: transparent; color: var(--muted); font-size: 1.15em; line-height: 1; padding: 1px 3px; cursor: pointer; }
+.gt-head .gnew ~ .gstar, .gt-head .gupd ~ .gstar { margin-left: 0; }
+.gstar.on { color: var(--accent); }
+@media (hover: hover) { .gstar:hover { color: var(--accent); background: transparent; } }
+
+/* 🎲 Дядько Глек радить */
+.gadvice {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: var(--panel2); border: 1px dashed var(--accent2); animation: fadein .2s ease-out;
+}
+.gadvice > .gemo { font-size: 1.6em; }
+.gadvice > .gico { width: 26px; height: 26px; }
+.ga-t { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 1px; }
+.ga-b { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ga-b button { padding: 5px 11px; font-size: .9em; }
+
+/* ☰ Список: гра — рядок; теми — колонками (CSS columns: різні за висотою теми лягають щільно, як газета). */
+.growlist { display: flex; flex-direction: column; gap: 3px; }
+.growlist.gcols { display: block; columns: 330px; column-gap: 14px; }
+.growlist.gcols .glrow { break-inside: avoid; margin-bottom: 3px; }
+.gthemerows { columns: 330px; column-gap: 14px; }
+.gthemerows .gtblock { break-inside: avoid; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.glrow {
+  display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 3px 5px 3px 9px;
+  border-radius: 9px; background: var(--panel2); border: 1px solid transparent; container-type: inline-size;
+}
+@media (hover: hover) { .glrow:hover { border-color: var(--panel3); } }
+.glrow.fresh { border-color: var(--accent2); }
+.glrow .gico { width: 16px; height: 16px; }
+/* Назва — головна: теги беруть лише залишок і ховаються цілими чипами (зайві переносяться в невидимий другий рядок). */
+.glrow .glr-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.glrow .gnew, .glrow .gupd { margin-left: 0; }
+.glrow .glr-tags { flex: 1 1 0; min-width: 0; height: 20px; overflow: hidden; justify-content: flex-end; }
+@container (max-width: 440px) { .glr-tags .gtag:not(.ico) { display: none; } }
+.glrow .glr-pl { flex: none; font-size: .78em; }
+.glrow .gstar { margin-left: 0; }
+.glrow > button:last-child { flex: none; padding: 3px 10px; font-size: .84em; }
 
 /* ---- «☀ Сьогодні»: щоденні головоломки й турнір ---- */
 .gtoday-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
@@ -503,6 +582,16 @@
   .gsums { grid-template-columns: 1fr; }
   .gbar { gap: 6px; }
   .gfilters .gfind { margin-left: 0; width: 100%; }
+  /* Чипи «👥», швидкий запуск — один рядок із прокруткою вбік, як теми; плитка-рядок без тегів (шукаються й так). */
+  .gfacets, .gfavs, .gtagrow { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin-right: -4px; padding-right: 4px; }
+  .gfacets::-webkit-scrollbar, .gfavs::-webkit-scrollbar, .gtagrow::-webkit-scrollbar { display: none; }
+  .gfacets > *, .gfavs > *, .gtagrow > * { flex: none; }
+  .gf-end { margin-left: 0; }
+  .gq-l { min-width: 0; }
+  .gfavs.empty { display: none; }   /* «⭐ Мої: постав ☆…» — на телефоні рядок дорожчий за підказку */
+  .gviewsw { display: none; }
+  .gtile .gt-tags, .glrow .glr-tags { display: none; }
+  .gadvice { flex-wrap: wrap; }
   .gtoday-row { grid-template-columns: 1fr; }
   .grcall { padding: 5px 9px; }
   /* Каталог на телефоні — компактний список, а не стіна плиток. */

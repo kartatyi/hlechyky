@@ -666,7 +666,7 @@
   let shardSort = ls('shardsSort', '');
   let boardToken = 0;
   const asList = (r) => (Array.isArray(r) ? r : (r && (r.rows || r.top || r.items || r.list)) || []);
-  const GROUP_TITLES = { board: '♟ Настільні', live: '⚡ Швидкі', party: '🎉 Компанія', solo: '🏺 Соло' };
+  const GROUP_TITLES = { board: '♟ Настільні', live: '⚡ Жваві', party: '🎉 Компанія', solo: '🏺 Соло' };
 
   /// Час у мілісекундах: «9,5 с» до хвилини, далі «1:19,8».
   function msText(ms) {

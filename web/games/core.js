@@ -58,7 +58,7 @@
   const GROUPS = [
     { id: 'all', title: 'Усі', icon: '' },
     { id: 'board', title: 'Настільні', icon: '♟' },
-    { id: 'live', title: 'Швидкі', icon: '⚡' },
+    { id: 'live', title: 'Жваві', icon: '⚡' },
     { id: 'party', title: 'Компанія', icon: '🎉' },
     { id: 'solo', title: 'Соло', icon: '🏺' },
     { id: 'azart', title: 'Азарт', icon: '🎰' },   // лише на клієнті: розділ гри дає THEMES, серверна group не міняється
@@ -104,40 +104,36 @@
   // group: так рулетка з покером переїхали в «🎰 Азарт», а сервер про це не знає. Ігор, яких ще нема (слоти, лелька),
   // тут не боїмося — порожня тема просто не показується. Гра, якої в THEMES нема (нова), не зникає: стає в «✨ Інше»
   // в кінці свого серверного розділу, а в консоль летить нагадування розробнику — впиши її в тему.
+  // Тем з однієї плитки нема (20.10): заголовок над одною грою лише подовжував каталог — такі злито з сусідніми.
   const THEMES = {
     board: [
       { id: 'chess', title: 'Шахи й шашки', icon: '♟', ids: ['chess', 'checkers', 'reversi'] },
       { id: 'cards', title: 'Карти й доміно', icon: '🃏', ids: ['durak', 'domino'] },
-      { id: 'field', title: 'На полі', icon: '⭕', ids: ['ttt', 'c4', 'battleship', 'mines'] },
-      { id: 'words', title: 'Слова', icon: '🔤', ids: ['scrabble'] },
+      { id: 'field', title: 'На полі', icon: '⭕', ids: ['ttt', 'c4', 'battleship', 'mines', 'scrabble'] },
     ],
     live: [
       { id: 'shoot', title: 'Стрілялки', icon: '🎯', ids: ['duel', 'tyr', 'tanks', 'bomber', 'glekomet'] },
       { id: 'race', title: 'Перегони й м’яч', icon: '🏎', ids: ['rally', 'hockey', 'pong', 'typerace'] },
-      { id: 'arcade', title: 'Аркадна класика', icon: '🕹', ids: ['snake', 'tron', 'bricks', 'dino', 'curve', 'territory'] },
-      { id: 'stand', title: 'Хто вистоїть', icon: '🧊', ids: ['icefloe', 'thinice', 'brid', 'bakhne'] },
+      { id: 'arcade', title: 'Аркада', icon: '🕹', ids: ['snake', 'tron', 'bricks', 'dino', 'curve', 'territory', 'vohnyk'] },
+      { id: 'stand', title: 'Хто вистоїть', icon: '🧊', ids: ['icefloe', 'thinice', 'brid', 'bakhne', 'crowd'] },
       { id: 'grab', title: 'Хапай і збирай', icon: '🧺', ids: ['grushi', 'hostyntsi', 'skyrta', 'sklei'] },
-      { id: 'crowd', title: 'Юрма', icon: '🎭', ids: ['crowd'] },
-      { id: 'coop', title: 'Разом', icon: '🤝', ids: ['vohnyk'] },
     ],
     party: [
       { id: 'draw', title: 'Слова й малюнки', icon: '✏', ids: ['pictionary', 'telephone', 'hangman', 'wordle-race', 'pozyvni', 'dotepy'] },
-      { id: 'bluff', title: 'Хитрість і блеф', icon: '🕵', ids: ['mafia', 'spy', 'bluff', 'dice'] },
+      { id: 'bluff', title: 'Блеф і вечірка', icon: '🕵', ids: ['mafia', 'spy', 'bluff', 'dice', 'vechirka'] },
       { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'geese'] },
-      { id: 'party', title: 'Вечірка', icon: '🎲', ids: ['vechirka'] },
     ],
     solo: [
-      { id: 'clicker', title: 'Гончарне коло', icon: '🏺', ids: ['clicker'] },
-      { id: 'train', title: 'Тренування', icon: '🏃', ids: ['bricks-sprint', 'typerace-solo', 'geo-solo'] },
+      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'bricks-sprint', 'typerace-solo', 'geo-solo'] },
       // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
       { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
         'tyr-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
       { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'] },
-      { id: 'roulette', title: 'Рулетка', icon: '🎡', ids: ['roulette', 'roulette-solo', 'kolo'] },
-      { id: 'bets', title: 'Ставки', icon: '🎲', ids: [] },   // не гра: плитку «Ставки на події» ставить панель web/bets.js (tile)
-      { id: 'quick', title: 'Швидкі', icon: '📈', ids: ['lelka', 'kavuny'] },
+      // + плитка «Ставки на події» — не гра: її ставить панель web/bets.js (tile.theme: 'roulette')
+      { id: 'roulette', title: 'Рулетка й ставки', icon: '🎡', ids: ['roulette', 'roulette-solo', 'kolo'] },
+      { id: 'quick', title: 'Миттєві', icon: '📈', ids: ['lelka', 'kavuny'] },
       { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker', 'blackjack', 'blackjack-solo'] },
     ],
   };
@@ -194,6 +190,16 @@
   try { theme = localStorage.getItem('gamesTheme') || ''; } catch { /* приватне вікно */ }
   let find = '';
   try { ['gamesPanel', 'gamesTimePeriod', 'gamesLbPeriod'].forEach((k) => localStorage.removeItem(k)); } catch { /* переїхало в «Хто скільки» */ }
+  // Пошук і фільтри каталогу (20.10). Скільки нас, тег і «🆕» — на цей захід, не пам'ятаємо: «нас п'ятеро» — сьогодні.
+  // Сортування й вигляд (плитки / список) — смак людини, лежать у localStorage.
+  let players = '';                                               // '' | id з PLAYERS | 'n:5' (на сайті п'ятеро / «на 5» у пошуку)
+  let tag = '';                                                   // ключ тегу з tags.js (жанровий чи автоматичний) або ''
+  let onlyNew = false;                                            // лише «🆕 нова гра» й «оновлено»
+  let tagsOpen = false;                                           // ряд «🏷 Теги» розгорнуто
+  let advice = null;                                              // «🎲 Глек радить»: { key, say }
+  let sort = 'pop', listView = false;
+  try { sort = localStorage.getItem('gamesSort') || 'pop'; listView = localStorage.getItem('gamesView') === 'list'; } catch { /* приватне вікно */ }
+  let mine = null;                                                // /api/games/mine: { account, favs: [id], recent: [{ game, day }] }
 
   const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
   /// Колір ніка — той самий, що в балачках (web/people.js вантажиться після нас, але малюємо ми вже після всіх).
@@ -1771,10 +1777,14 @@
       // губити ні фокус, ні курсор.
       const fi = v.querySelector('.gfind');
       const keep = fi && document.activeElement === fi ? fi.selectionStart : null;
+      // Ряди, що на телефоні гортаються вбік (чипи «👥», теми, швидкий запуск), — теж: не стрибати на початок.
+      const xs = {};
+      v.querySelectorAll('[data-keepx]').forEach((el) => { if (el.scrollLeft) xs[el.dataset.keepx] = el.scrollLeft; });
       v.innerHTML = '';
       if (view.kind === 'panel') renderExtra(v, view.id.slice(2));
       else renderLobby(v);
       if (keep != null) { const n = v.querySelector('.gfind'); if (n) { n.focus(); n.setSelectionRange(keep, keep); } }
+      v.querySelectorAll('[data-keepx]').forEach((el) => { if (xs[el.dataset.keepx]) el.scrollLeft = xs[el.dataset.keepx]; });
     }
   }
   let chromeFor = null;
@@ -1949,10 +1959,130 @@
     // поруч з іграми, шукається за назвою, але не гра — ні «часто граємо» (ids порожні), ні «N ігор», ні «+ Стіл».
     for (const p of extraPanels) {
       if (!p.tile || (p.visible && !p.visible())) continue;
-      out.push({ kind: 'link', p, ids: [], group: p.tile.group, theme: p.tile.theme, title: p.tile.title || p.title, hint: p.tile.hint || '', min: 0, max: 0, solo: false });
+      // Тему, якої вже нема (злили з сусідньою), не губимо разом із плиткою — у «✨ Інше».
+      const th = (THEMES[p.tile.group] || []).some((t) => t.id === p.tile.theme) ? p.tile.theme : OTHER_THEME.id;
+      out.push({ kind: 'link', p, ids: [], group: p.tile.group, theme: th, title: p.tile.title || p.title, hint: p.tile.hint || '', min: 0, max: 0, solo: false });
+    }
+    for (const e of out) {
+      e.key = e.kind === 'family' ? e.f.id : e.kind === 'game' ? e.g.id : 'x:' + e.p.id;
+      e.tags = tagsOfEntry(e);
     }
     return out;
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // Теги й пошук (web/games/tags.js — HGameFind; без нього каталог шукає по-старому, за назвою й підказкою)
+  // ---------------------------------------------------------------------------------------------
+
+  const FIND = () => window.HGameFind || null;
+  /// Гра вміє ботів: опція «боти» / «рівень ботів» на столі або окремий режим «з Глеком».
+  const botty = (g) => !!g && ((g.options || []).some((o) => o.key === 'bots' || o.key === 'botlvl') || /-glek$/.test(g.id));
+  /// Теги плитки: жанрові з tags.js (родини й кожного режиму), далі автоматичні з каталогу — 🤖, 🏆, ☀.
+  function tagsOfEntry(e) {
+    const F = FIND();
+    if (!F) return [];
+    const keys = [e.key].concat(e.ids, e.ids.map((id) => familyOf[id] && familyOf[id].id).filter(Boolean));
+    const out = [];
+    for (const k of keys) for (const t of F.tagsOf(k)) if (!out.includes(t)) out.push(t);
+    if (!out.length && e.kind !== 'link' && !themeWarned.has('tags:' + e.key)) {
+      themeWarned.add('tags:' + e.key);
+      console.warn('[ігри] «' + e.key + '» нема в web/games/tags.js — без тегів і синонімів. Впиши її туди.');
+    }
+    const gs = e.ids.map((id) => byId[id]).filter(Boolean);
+    if (gs.some(botty)) out.push('з_ботом');
+    if (gs.some((g) => g.rated)) out.push('рейтинг');
+    if (e.theme === 'daily' || gs.some((g) => g.daily)) out.push('щоденна');
+    return out;
+  }
+  const tagTitle = (k) => { const F = FIND(); return F ? F.label(k) : k; };
+  const tagIcon = (k) => { const F = FIND(); return F ? F.iconOf(k) : '#'; };
+  const isAutoTag = (k) => { const F = FIND(); return !!(F && F.AUTO[k]); };
+  /// Документ для пошуку: назва, режими, теги, синоніми, розділ і тема, підказка.
+  function docOf(e) {
+    const F = FIND();
+    const g = GROUPS.find((x) => x.id === e.group);
+    const t = (THEMES[e.group] || []).find((x) => x.id === e.theme);
+    const syn = [e.key].concat(e.ids).map((k) => F.synOf(k)).join(' ') + (SLOT_INFO[e.ids[0]] ? ' слот слоти автомат' : '');
+    return F.index({
+      title: e.title, hint: e.hint, syn, tags: e.tags,
+      names: (e.list || []).map((x) => x.g.title + ' ' + x.label),
+      other: [g ? g.title : '', t ? t.title : '', e.solo ? 'соло' : ''].concat(e.tags.includes('з_ботом') ? ['бот', 'боти', 'глек'] : []),
+    });
+  }
+
+  // «👥 Скільки нас»: гра підходить, коли її стіл бере стільки людей (з ботами — й одного).
+  const PLAYERS = [
+    { id: '1', title: '1', lo: 1, hi: 1, hint: 'Можна самому — соло або з ботами' },
+    { id: '2', title: '2', lo: 2, hi: 2, hint: 'Удвох' },
+    { id: '3-4', title: '3–4', lo: 3, hi: 4, hint: 'Утрьох чи вчотирьох' },
+    { id: '5-8', title: '5–8', lo: 5, hi: 8, hint: 'Компанією від п’яти до восьми' },
+    { id: '9+', title: '9+', lo: 9, hi: 99, hint: 'Великою компанією — від дев’яти' },
+  ];
+  function fitsPlayers(e, p) {
+    if (!p) return true;
+    if (e.kind === 'link') return false;
+    if (p.startsWith('n:')) { const n = +p.slice(2); return e.min <= n && n <= e.max; }
+    const b = PLAYERS.find((x) => x.id === p);
+    return !b || (e.min <= b.hi && e.max >= b.lo);
+  }
+  const playersTitle = (p) => (p.startsWith('n:') ? p.slice(2) : (PLAYERS.find((x) => x.id === p) || { title: p }).title);
+  const isFresh = (e) => (e.kind === 'link' ? !!e.p.tile.added && daysSince(e.p.tile.added) <= NEW_DAYS
+    : isNewGame(e.ids[0]) || e.ids.some((id) => hasNews(id)));
+  /// Порядок плиток: у що грають (за замовчуванням), новіші, за абеткою.
+  function sorter() {
+    if (sort === 'abc') return (a, b) => a.title.localeCompare(b.title, 'uk');
+    if (sort === 'new') {
+      const at = (e) => (e.kind === 'link' ? e.p.tile.added : e.ids.map(addedOf).filter(Boolean).sort().pop()) || '';
+      return (a, b) => (at(b) > at(a) ? 1 : at(b) < at(a) ? -1 : byPlays(a, b));
+    }
+    return byPlays;
+  }
+
+  // «⭐ Мої» й «🕘 Нещодавно» — з сервера раз на хвилину (і одразу після зірочки).
+  let mineAt = 0;
+  function loadMine(force) {
+    if (!me.nick || (!force && Date.now() - mineAt < 60000)) return;
+    mineAt = Date.now();
+    api('GET', '/api/games/mine').then((m) => {
+      mine = { account: !!(m && m.account), favs: (m && m.favs) || [], recent: (m && m.recent) || [] };
+      if (shown && view.kind === 'lobby') renderView();
+    }).catch(() => { mineAt = 0; });
+  }
+  const favOn = (e) => !!(mine && e.kind !== 'link' && mine.favs.includes(e.key));
+  async function toggleFav(key, btn) {
+    if (!me.account && !(mine && mine.account)) { toast('Зірочки — для акаунтів: зареєструй нік у профілі, і «⭐ Мої» будуть з тобою на будь-якому пристрої'); return; }
+    const on = !(mine && mine.favs.includes(key));
+    busy(btn, on ? '★' : '☆', async () => {
+      const r = await api('POST', '/api/games/fav', { game: key, on });
+      if (r && r.favs) mine = Object.assign(mine || { account: true, recent: [] }, { favs: r.favs });
+      if (r && !r.ok && r.error) toast(r.error, 'err');
+      else if (r && r.ok) toast(on ? '⭐ У «Моїх» — тепер вона нагорі каталогу' : 'Прибрано з «⭐ Мої»');
+      renderView();
+    });
+  }
+  /// Плитки «🕘 Нещодавно»: ігри з сервера, режими однієї родини — однією плиткою.
+  function recentEntries(all, n) {
+    const out = [];
+    for (const r of (mine && mine.recent) || []) {
+      const e = all.find((x) => x.ids.includes(r.game));
+      if (e && !out.includes(e)) out.push(e);
+      if (out.length >= n) break;
+    }
+    return out;
+  }
+  const favEntries = (all) => ((mine && mine.favs) || []).map((k) => all.find((x) => x.key === k)).filter(Boolean);
+
+  // «🎲 Глек радить» — що сказати до випадкової гри. «{t}» — назва.
+  const ADVICE = [
+    '«{t}». Сам би зіграв, та руки в глині.',
+    'Кажу тобі як глек глекові: «{t}».',
+    'Не думай довго — «{t}». Я вже й лавку нагрів.',
+    'Мій черепок підказує: «{t}». А черепок не бреше.',
+    'Зіграй у «{t}» — програєш, то скажеш, що Глек наврочив.',
+    'Баба Параска казала: хто грає в «{t}», той увечері не нудьгує.',
+    '«{t}»! Давненько за тим столом не гриміло.',
+    'Сьогодні в мене на полиці «{t}». Бери, поки тепле.',
+  ];
   /// Скільки столів у цю гру (разом з усіма режимами) дограли за 30 днів — нею сортуємо й збираємо «часто граємо».
   const playsOf = (e) => e.ids.reduce((s, id) => s + ((popular && popular[id]) || 0), 0);
   const byPlays = (a, b) => playsOf(b) - playsOf(a) || a.title.localeCompare(b.title, 'uk');
@@ -2048,31 +2178,64 @@
     }, 1000);
   }
 
+  /// Чипи тегів плитки: перші n жанрових словами (решта — у «🏷 Теги» і пошуку), автоматичні (🤖 🏆 ☀) — лише значком. Натиск — фільтр по всьому каталогу.
+  function tagsHtml(e, n) {
+    const F = FIND();
+    if (!F || !e.tags.length) return '';
+    const genre = e.tags.filter((k) => !isAutoTag(k)).slice(0, n);
+    const auto = e.tags.filter(isAutoTag);
+    const chip = (k, word) => '<button type="button" class="gtag' + (tag === k ? ' on' : '') + (word ? '' : ' ico') + '" data-tag="' + esc(k) + '" data-tagall'
+      + ' title="' + esc((F.AUTO[k] ? F.AUTO[k].hint : 'Усі ігри з тегом «' + tagTitle(k) + '»')) + '">' + tagIcon(k) + (word ? ' ' + esc(tagTitle(k)) : '') + '</button>';
+    return genre.map((k) => chip(k, true)).join('') + auto.map((k) => chip(k, false)).join('');
+  }
+  /// ☆ / ★ — «⭐ Мої». Видно всім: гостеві натиск каже, що зірочки — для акаунтів.
+  function starHtml(e) {
+    if (e.kind === 'link' || !me.nick) return '';
+    const on = favOn(e);
+    return '<button type="button" class="gstar' + (on ? ' on' : '') + '" data-star="' + esc(e.key) + '" aria-pressed="' + on + '"'
+      + ' title="' + (on ? 'Прибрати з «⭐ Мої»' : 'У «⭐ Мої» — буде нагорі каталогу') + '">' + (on ? '★' : '☆') + '</button>';
+  }
+  /// Головна кнопка плитки чи рядка (у панелі-посилання — «Відкрити»).
+  const actHtml = (e) => (e.kind === 'link' ? '<button class="primary" data-go="' + esc('#games/x:' + e.p.id) + '">Відкрити</button>' : tileBtn(e));
+  const emoOf = (e) => (e.kind === 'link' ? '<span class="gemo">' + (e.p.tile.icon || e.p.icon || '📋') + '</span>' : iconOf(e.ids[0]));
   function tileHtml(e) {
     if (e.kind === 'link') {
       let live = '';
       try { live = e.p.tile.live ? e.p.tile.live() || '' : ''; } catch (err) { console.warn('[games] плитка ' + e.p.id, err); }
-      const href = '#games/x:' + e.p.id;
       // Панель — не гра, «грав» про неї не знаємо: «🆕» усім два тижні від tile.added.
-      const fresh = !!e.p.tile.added && daysSince(e.p.tile.added) <= NEW_DAYS;
+      const fresh = isFresh(e);
       return '<div class="gtile gt-link' + (fresh ? ' fresh' : '') + '">'
-        + '<div class="gt-head"><span class="gemo">' + (e.p.tile.icon || e.p.icon || '📋') + '</span><b>' + esc(e.title) + '</b>'
+        + '<div class="gt-head">' + emoOf(e) + '<b>' + esc(e.title) + '</b>'
         + (fresh ? '<span class="gnew" title="Нове на сайті — глянь">🆕 нове</span>' : '') + '</div>'
         + '<div class="gt-hint muted small"><span>' + esc(e.hint) + '</span></div>'
-        + '<div class="gt-btns"><span class="gt-pl muted small">' + live + '</span>'
-        + '<button class="primary" data-go="' + esc(href) + '">Відкрити</button></div></div>';
+        + (e.tags.length ? '<div class="gt-tags">' + tagsHtml(e, 2) + '</div>' : '')
+        + '<div class="gt-btns"><span class="gt-pl muted small">' + live + '</span>' + actHtml(e) + '</div></div>';
     }
     const now = e.solo ? playingIn(e.g.id) : [];
     const fresh = isNewGame(e.ids[0]);
     const extra = e.ids.includes('svoya') && extraPanels.some((p) => p.id === 'svoya')
       ? '<button class="ghost gt-extra" data-go="#games/x:svoya" title="Пакети запитань: грати свої, збирати нові">📦 Пакети</button>' : '';
     return '<div class="gtile' + (fresh ? ' fresh' : '') + (now.length ? ' live' : '') + '" data-pre="' + esc(e.ids.join(' ')) + '">'
-      + '<div class="gt-head">' + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b>' + badgeOf(e) + '</div>'
+      + '<div class="gt-head">' + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b>' + badgeOf(e) + starHtml(e) + '</div>'
       + (now.length ? '<div class="gt-now" title="' + esc(whoTitle(now)) + '"><i class="gdot"></i><span>' + esc(whoShort(now, 3))
         + ' <span class="muted">' + (now.length > 1 ? 'грають' : 'грає') + '</span></span></div>' : '')
       + '<div class="gt-hint muted small"><span>' + esc(e.hint) + '</span></div>'
       + (e.kind === 'family' ? '<div class="gt-modes muted small">' + e.list.map((x) => esc(x.label)).join(' · ') + '</div>' : '')
+      + (e.tags.length ? '<div class="gt-tags">' + tagsHtml(e, 2) + '</div>' : '')
       + '<div class="gt-btns"><span class="gt-pl muted small">' + playersOf(e) + '</span>' + extra + tileBtn(e) + '</div></div>';
+  }
+  /// Вигляд «☰ список»: гра — один рядок (значок, назва, теги, скільки людей, зірочка, кнопка); підказка — у title.
+  function rowHtml(e) {
+    const now = e.solo ? playingIn(e.g.id) : [];
+    const modes = e.kind === 'family' ? '\nРежими: ' + e.list.map((x) => x.label).join(' · ') : '';
+    return '<div class="glrow' + (isFresh(e) ? ' fresh' : '') + (now.length ? ' live' : '') + '"' + (e.ids.length ? ' data-pre="' + esc(e.ids.join(' ')) + '"' : '')
+      + ' title="' + esc(e.hint + modes) + '">'
+      + emoOf(e) + '<b class="glr-t">' + esc(e.title) + '</b>'
+      + (isFresh(e) ? (e.kind !== 'link' && !isNewGame(e.ids[0]) ? '<span class="gupd" title="Оновлено"></span>' : '<span class="gnew" title="Нове">🆕</span>') : '')
+      + (now.length ? '<i class="gdot" title="' + esc(whoTitle(now)) + '"></i>' : '')
+      + '<span class="glr-tags">' + tagsHtml(e, 2) + '</span>'
+      + '<span class="glr-pl muted small">' + (e.kind === 'link' ? '' : playersOf(e)) + '</span>'
+      + starHtml(e) + actHtml(e) + '</div>';
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -2164,19 +2327,53 @@
       + '<div class="gtoday-row">' + cards + tour + '</div></section>';
   }
 
+  /// Кнопка швидкого запуску (ряди «⭐ Мої», «🕘 Нещодавно», «📈 Часто граємо»): та сама дія, що й на плитці.
+  function quickChip(e) {
+    const act = e.kind === 'link' ? 'data-go="' + esc('#games/x:' + e.p.id) + '"' : e.solo ? 'data-solo="' + esc(e.g.id) + '"'
+      : e.g && e.g.shared ? 'data-shared="' + esc(e.g.id) + '"' : 'data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '"';
+    const n = playsOf(e), t = n % 100, o = n % 10;
+    const word = t > 10 && t < 20 ? 'партій' : o === 1 ? 'партія' : o >= 2 && o <= 4 ? 'партії' : 'партій';
+    return '<button class="gfav"' + (e.ids.length ? ' data-pre="' + esc(e.ids.join(' ')) + '"' : '') + ' ' + act
+      + (n ? ' title="' + n + ' ' + word + ' за місяць"' : '') + '>'
+      + emoOf(e) + '<b>' + esc(e.title) + '</b><span class="muted small">'
+      + (e.kind === 'link' ? 'відкрити' : e.solo ? 'грати' : e.g && e.g.shared ? 'сісти' : '+ стіл') + '</span></button>';
+  }
+
   function renderLobby(box) {
     loadDaily(false);
     loadPopular();
     loadPadel();
+    loadMine(false);
+    const F = FIND();
+    const hdr = document.querySelector('header');
+    if (root && hdr) root.style.setProperty('--ghdr', hdr.offsetHeight + 'px');   // липкий ряд пошуку стає під шапку сайту
     const mineFirst = rooms.slice().sort((a, b) => (seatOfMe(b) != null ? 1 : 0) - (seatOfMe(a) != null ? 1 : 0));
-    const want = find.trim().toLowerCase();
+    const want = find.trim();
     const all = entries();
     // Розділ, якого вже нема (усі його ігри вимкнено), — назад на «Усі»; тема, якої в розділі нема, — на «Усе в розділі».
-    if (filter !== 'all' && !all.some((e) => e.group === filter)) filter = 'all';
-    const match = (e) => (filter === 'all' || e.group === filter)
-      && (!want || (e.title + ' ' + e.hint + ' ' + (e.list || []).map((x) => x.g.title + ' ' + x.label).join(' ')
-        + (SLOT_INFO[e.ids[0]] ? ' слот слоти автомат автомати 🍒' : '')).toLowerCase().includes(want));   // назви автоматів без «слот»
-    const list = all.filter(match).sort(byPlays);
+    // «⭐ Мої» — поки сервер не сказав, що це гість: до /api/me вкладка ще не знає, акаунт вона чи ні.
+    const account = !!(me.account || (mine && mine.account));
+    if (filter === 'mine' ? !!mine && !mine.account : filter !== 'all' && !all.some((e) => e.group === filter)) filter = 'all';
+    if (tag && !all.some((e) => e.tags.includes(tag))) tag = '';
+
+    // Пошук — по всьому каталогу, без розділу й теми (рішення 20.10): знайдене — за вагою, рівні — за обраним порядком.
+    // Число чи «удвох» у запиті важить більше за чип «👥». Без tags.js — як колись: підрядок назви й підказки.
+    let found = null;
+    if (want) {
+      found = F ? F.search(all.map((e) => ({ e, d: docOf(e) })), want)
+        : { hits: all.filter((e) => (e.title + ' ' + e.hint).toLowerCase().includes(want.toLowerCase())).map((e) => ({ doc: { e }, score: 1 })), how: 'exact', players: null, fixed: '' };
+    }
+    const pl = found && found.players != null ? 'n:' + found.players : players;
+    const pass = (e) => fitsPlayers(e, pl) && (!tag || e.tags.includes(tag)) && (!onlyNew || isFresh(e));
+    const cmp = sorter();
+    const pool = (found ? found.hits.map((h) => h.doc.e) : all).filter(pass);   // усе, що проходить пошук і фільтри
+    const inSection = (e, gid) => gid === 'all' || (gid === 'mine' ? favOn(e) : e.group === gid);
+    let list;
+    if (found) {
+      const score = new Map(found.hits.map((h) => [h.doc.e, h.score]));
+      list = pool.slice().sort((a, b) => score.get(b) - score.get(a) || cmp(a, b));
+    } else list = pool.filter((e) => inSection(e, filter)).sort(cmp);
+    const narrowed = !!(want || pl || tag || onlyNew);
 
     // Соло-ігри в каталозі стоять останніми, тож хто в них зараз, видно й тут, нагорі.
     // Натиск відкриває свою таку саму: побачив, що Оля крутить коло, — сів і собі.
@@ -2196,45 +2393,126 @@
         ? '<div class="gsums">' + mineFirst.map(roomSummaryHtml).join('') + '</div>'
         : '<div class="gempty glek">Столів нема. Гайда, постав перший із каталогу нижче — друзям прилетить заклик.</div>';
 
-    // «Часто граємо» — швидкий запуск того, у що компанія грає найбільше, без гортання каталогу.
-    const favs = popular ? all.filter((e) => playsOf(e) >= 2).sort(byPlays).slice(0, 6) : [];
-    const favRow = favs.length && filter === 'all' && !want
-      ? '<div class="gfavs"><span class="muted small">⭐ Часто граємо:</span>' + favs.map((e) => {
-        const act = e.solo ? 'data-solo="' + esc(e.g.id) + '"' : e.g && e.g.shared ? 'data-shared="' + esc(e.g.id) + '"' : 'data-new="' + esc(e.kind === 'family' ? 'f:' + e.f.id : e.g.id) + '"';
-        return '<button class="gfav" data-pre="' + esc(e.ids.join(' ')) + '" ' + act + ' title="' + esc(playsOf(e) + ' ' + (playsOf(e) % 10 >= 2 && playsOf(e) % 10 <= 4 && (playsOf(e) % 100 < 12 || playsOf(e) % 100 > 14) ? 'партії' : 'партій') + ' за місяць') + '">'
-          + iconOf(e.ids[0]) + '<b>' + esc(e.title) + '</b><span class="muted small">' + (e.solo ? 'грати' : e.g && e.g.shared ? 'сісти' : '+ стіл') + '</span></button>';
-      }).join('') + '</div>'
-      : '';
+    // Швидкий запуск нагорі каталогу: свої зірочки, де грав нещодавно, у що грає компанія. Лише на «Усі» без фільтрів.
+    const quick = (k, label, items, empty) => '<div class="gfavs gq-' + k + (items.length ? '' : ' empty') + '" data-keepx="q-' + k + '">'
+      + '<span class="gq-l muted small">' + label + '</span>'
+      + (items.length ? items.map(quickChip).join('') : '<span class="muted small">' + empty + '</span>') + '</div>';
+    const popularRow = popular ? all.filter((e) => playsOf(e) >= 2).sort(byPlays).slice(0, 6) : [];
+    const recent = recentEntries(all, 6);
+    const quickRows = filter !== 'all' || narrowed ? ''
+      : (account && mine ? quick('mine', '⭐ Мої:', favEntries(all), 'постав ☆ на плитці — і гра буде тут, нагорі') : '')
+        + (recent.length ? quick('recent', '🕘 Нещодавно:', recent, '') : '')
+        + (popularRow.length ? quick('pop', '📈 Часто граємо:', popularRow, '') : '');
+
+    // Розділи з числом того, що в них проходить пошук і фільтри.
+    const sections = [{ id: 'all', title: 'Усі', icon: '' }].concat(account || filter === 'mine' ? [{ id: 'mine', title: 'Мої', icon: '⭐' }] : [],
+      GROUPS.filter((g) => g.id !== 'all' && all.some((x) => x.group === g.id)));
+    const chips = sections.map((g) => '<button class="chip gchip' + (filter === g.id && !want ? ' on' : '') + '" data-filter="' + g.id + '">'
+      + (g.icon ? g.icon + ' ' : '') + esc(g.title) + '<span class="gtc-n">' + pool.filter((e) => e.kind !== 'link' && inSection(e, g.id)).length + '</span></button>').join('');
+
+    // «👥 Скільки нас», «🆕», «🏷 Теги», «🎲 Глек радить», порядок і вигляд.
+    const onSite = online().length;
+    const freshN = all.filter(isFresh).length;
+    const facets = '<div class="gfacets" data-keepx="facets">'
+      + '<span class="gf-l muted small" title="Скільки вас — лишу ігри, де стіл бере стільки людей">👥 Скільки нас:</span>'
+      + PLAYERS.map((b) => '<button class="chip gpl' + (pl === b.id ? ' on' : '') + '" data-players="' + b.id + '" title="' + esc(b.hint) + '">' + b.title + '</button>').join('')
+      + (onSite >= 2 && onSite <= 12 ? '<button class="chip gpl' + (pl === 'n:' + onSite ? ' on' : '') + '" data-players="n:' + onSite
+        + '" title="Стільки зараз на сайті — що підходить на ' + onSite + '">🟢 на сайті ' + onSite + '</button>' : '')
+      + (pl.startsWith('n:') && pl !== 'n:' + onSite ? '<button class="chip gpl on" data-players="' + pl + '">' + playersTitle(pl) + '</button>' : '')
+      + '<i class="gf-sep"></i>'
+      + (freshN || onlyNew ? '<button class="chip gfacet' + (onlyNew ? ' on' : '') + '" data-onlynew title="Нові ігри й оновлення, яких ти ще не бачив">🆕 Нове<span class="gtc-n">' + freshN + '</span></button>' : '')
+      + (F ? '<button class="chip gfacet' + (tagsOpen ? ' on' : '') + '" data-tagsopen aria-expanded="' + tagsOpen + '" title="Усі теги: карти, слова, реакція…">🏷 Теги</button>' : '')
+      + '<button class="chip gfacet" data-advice title="Не знаєш, у що грати? Глек вибере з того, що зараз видно">🎲 Глек радить</button>'
+      + '<span class="gf-end"><select class="gsort" aria-label="Порядок ігор" title="Порядок ігор">'
+      + [['pop', 'у що грають'], ['new', 'спершу нові'], ['abc', 'за абеткою']].map(([v, l]) => '<option value="' + v + '"' + (sort === v ? ' selected' : '') + '>' + l + '</option>').join('')
+      + '</select><span class="gviewsw" role="group" aria-label="Вигляд каталогу">'
+      + '<button type="button" class="' + (listView ? '' : 'on') + '" data-view="tiles" title="Плитками" aria-pressed="' + !listView + '">▦</button>'
+      + '<button type="button" class="' + (listView ? 'on' : '') + '" data-view="list" title="Списком — увесь каталог на кількох екранах" aria-pressed="' + listView + '">☰</button>'
+      + '</span></span></div>';
 
     // Каталог: на «Усі» без пошуку — розділами з заголовками, а в розділі — темами з підзаголовками (у темі спершу те,
-    // у що грають). Обраний розділ — другий ряд чипів тем: «Усе в розділі» — так само темами, обрана тема — лише її плитки.
-    // Пошук — просто знайдене, без тем.
-    // Тема «🍒 Слоти» — афіші автоматів, а не звичайні плитки
-    const tilesOf = (items, tid) => tid === 'slots'
-      ? '<div class="gposters">' + items.map(posterHtml).join('') + '</div>'
-      : '<div class="gtiles">' + items.map(tileHtml).join('') + '</div>';
+    // у що грають). Обраний розділ — ряд чипів тем: «Усе в розділі» — так само темами, обрана тема — лише її плитки.
+    // Пошук — просто знайдене, без тем. «☰ Список» — те саме рядками, теми стають у колонки.
+    // Тема «🍒 Слоти» плитками — афіші автоматів, а не звичайні плитки
+    const tilesOf = (items, tid) => listView ? '<div class="growlist">' + items.map(rowHtml).join('') + '</div>'
+      : tid === 'slots' ? '<div class="gposters">' + items.map(posterHtml).join('') + '</div>'
+        : '<div class="gtiles">' + items.map(tileHtml).join('') + '</div>';
+    const flat = (items) => (listView ? '<div class="growlist gcols">' + items.map(rowHtml).join('') + '</div>' : tilesOf(items));
     // Теми розділу — блоки в одній сітці з колонками плитки: дрібні стають поруч, якщо влазять (--n — скільки плиток).
-    const byThemes = (ths) => '<div class="gthemegrid">' + ths.map(({ t, items }) => '<div class="gtblock' + (t.id === 'slots' ? ' gt-slots' : '') + '" style="--n:' + items.length + '">'
+    const byThemes = (ths) => '<div class="' + (listView ? 'gthemerows' : 'gthemegrid') + '">' + ths.map(({ t, items }) => '<div class="gtblock'
+      + (t.id === 'slots' && !listView ? ' gt-slots' : '') + '" style="--n:' + items.length + '">'
       + '<h5 class="gtheme">' + t.icon + ' ' + esc(t.title) + ' <span class="gtheme-n">· ' + items.length + '</span></h5>'
       + tilesOf(items, t.id) + '</div>').join('') + '</div>';
-    const ths = filter !== 'all' && !want ? themesIn(filter, list) : [];
+    const ths = filter !== 'all' && filter !== 'mine' && !want ? themesIn(filter, list) : [];
     if (theme && !want && (ths.length < 2 || !ths.some((x) => x.t.id === theme))) theme = '';   // на пошуку тему не губимо
     const themeRow = ths.length > 1
-      ? '<div class="gthemes" role="group" aria-label="Теми розділу">'
+      ? '<div class="gthemes" role="group" aria-label="Теми розділу" data-keepx="themes">'
         + [{ t: { id: '', icon: '', title: 'Усе в розділі' }, items: list }].concat(ths)
           .map(({ t, items }) => '<button class="chip gtchip' + (theme === t.id ? ' on' : '') + '" data-theme="' + t.id + '">'
             + (t.icon ? t.icon + ' ' : '') + esc(t.title) + '<span class="gtc-n">' + items.length + '</span></button>').join('')
         + '</div>'
       : '';
-    const tiles = !list.length ? ''
-      : want ? tilesOf(list)
-        : filter === 'all'
-          ? GROUPS.filter((g) => g.id !== 'all').map((g) => {
-            const part = list.filter((e) => e.group === g.id);
-            return part.length ? '<h4 class="ggroup">' + g.icon + ' ' + esc(g.title) + ' <span class="muted small">· ' + part.length + '</span></h4>'
-              + (g.id === 'azart' ? azartHeadHtml() : '') + byThemes(themesIn(g.id, part)) : '';
-          }).join('')
-          : (filter === 'azart' ? azartHeadHtml() : '') + (theme ? tilesOf(ths.find((x) => x.t.id === theme).items, theme) : byThemes(ths));
+
+    // 🏷 Теги: розгорнуто — усі з числом ігор; під час набору — підказки тегів, що починаються з останнього слова.
+    let tagRow = '';
+    if (F) {
+      const scope = all.filter((e) => fitsPlayers(e, pl) && (!onlyNew || isFresh(e)) && (want || inSection(e, filter)));
+      const cnt = (k) => scope.filter((e) => e.tags.includes(k)).length;
+      const keys = Object.keys(F.TAGS).concat(Object.keys(F.AUTO));
+      const chip = (k, attr) => '<button type="button" class="gtag' + (tag === k ? ' on' : '') + '" ' + attr + '="' + esc(k) + '">'
+        + tagIcon(k) + ' ' + esc(tagTitle(k)) + '<span class="gtc-n">' + cnt(k) + '</span></button>';
+      if (tagsOpen) {
+        const vis = keys.filter((k) => cnt(k) > 0 || tag === k)
+          .sort((a, b) => isAutoTag(a) - isAutoTag(b) || cnt(b) - cnt(a) || tagTitle(a).localeCompare(tagTitle(b), 'uk'));
+        tagRow = '<div class="gtagrow">' + vis.map((k) => chip(k, 'data-tag')).join('') + '</div>';
+      } else if (want) {
+        const last = F.norm(want).split(' ').pop() || '';
+        const sug = last.length < 2 ? [] : keys.filter((k) => k !== tag && cnt(k) > 0 && F.norm(tagTitle(k)).split(' ').some((w) => w.startsWith(last))).slice(0, 6);
+        if (sug.length) tagRow = '<div class="gtagrow gtag-sug"><span class="muted small">🏷 Тег:</span>' + sug.map((k) => chip(k, 'data-tagsug')).join('') + '</div>';
+      }
+    }
+
+    // Що зараз звужує каталог — кожне знімається ✕; і що знайшлось.
+    const bits = [];
+    if (want) bits.push(['find', '🔎 «' + want + '»']);
+    if (pl) bits.push(['players', '👥 ' + playersTitle(pl) + (found && found.players != null ? ' — з пошуку' : '')]);
+    if (tag) bits.push(['tag', tagIcon(tag) + ' ' + tagTitle(tag)]);
+    if (onlyNew) bits.push(['new', '🆕 нове']);
+    const note = found && found.how === 'layout' ? 'Схоже, не та розкладка — шукаю «' + found.fixed + '». '
+      : found && found.how === 'fuzzy' && list.length ? 'Точного збігу нема — ось схоже. ' : '';
+    const activeLine = bits.length
+      ? '<div class="gactive"><span class="muted small">' + esc(note) + (want ? 'Шукаю в усіх розділах · ' : '') + 'знайдено ' + list.length + ':</span>'
+        + bits.map(([k, l]) => '<button type="button" class="chip gact" data-unset="' + k + '" title="Прибрати">' + esc(l) + ' ✕</button>').join('')
+        + (bits.length > 1 ? '<button type="button" class="ghost gact-all" data-unset="all">скинути все</button>' : '') + '</div>'
+      : '';
+
+    // 🎲 Глек радить — картка над плитками з дією й «ще».
+    const adv = advice && all.find((e) => e.key === advice.key);
+    const adviceCard = adv
+      ? '<div class="gadvice">' + emoOf(adv) + '<div class="ga-t"><span class="muted small">🎲 Дядько Глек радить</span><b>' + esc(advice.say.replace('{t}', adv.title)) + '</b></div>'
+        + '<span class="ga-b">' + actHtml(adv) + '<button type="button" class="ghost" data-advice title="Нехай вибере іншу">🎲 Ще</button>'
+        + '<button type="button" class="ghost" data-advice-off title="Сховати">✕</button></span></div>'
+      : '';
+
+    // ⭐ Мої: зірочки, а під ними — де грав нещодавно.
+    const mineView = () => {
+      if (!mine) return '<div class="gempty">Зараз гляну, що ти позначав…</div>';
+      const rec = recentEntries(all, 8).filter(pass);
+      return '<h4 class="ggroup">⭐ Мої <span class="muted small">· ' + list.length + '</span></h4>'
+        + (list.length ? flat(list) : '<div class="gempty glek">Ще нічого. Постав ☆ на плитці гри — і вона буде тут і нагорі каталогу.</div>')
+        + (rec.length ? '<h4 class="ggroup">🕘 Нещодавно <span class="muted small">· ' + rec.length + '</span></h4>' + flat(rec) : '');
+    };
+    const tiles = filter === 'mine' && !want ? mineView()
+      : !list.length ? ''
+        : want ? flat(list)
+          : filter === 'all'
+            ? GROUPS.filter((g) => g.id !== 'all').map((g) => {
+              const part = list.filter((e) => e.group === g.id);
+              return part.length ? '<h4 class="ggroup">' + g.icon + ' ' + esc(g.title) + ' <span class="muted small">· ' + part.length + '</span></h4>'
+                + (g.id === 'azart' && !narrowed ? azartHeadHtml() : '') + byThemes(themesIn(g.id, part)) : '';
+            }).join('')
+            : (filter === 'azart' && !narrowed ? azartHeadHtml() : '')
+              + (theme ? (listView ? flat(ths.find((x) => x.t.id === theme).items) : tilesOf(ths.find((x) => x.t.id === theme).items, theme)) : byThemes(ths));
 
     const links = [['#stats/games', '🏆 Таблиці ігор'], ['#stats/time', '⏱ Хто скільки грав'], ['#lavka', '🛍 Лавка Дядька Глека']]
       .concat(extraPanels.filter((p) => p.id !== 'svoya' && (!p.visible || p.visible())).map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
@@ -2244,31 +2522,100 @@
       + '<section class="gpanel"><h3>🔥 Живі столи'
       + (rooms.length ? ' <span class="muted small">· ' + rooms.length + '</span>' : '') + '</h3>'
       + live + soloLine + '</section>'
-      + '<section class="gpanel"><h3>Каталог <span class="muted small">· ' + all.filter((e) => e.kind !== 'link').length + ' ігор</span></h3>'
-      + favRow
-      + '<div class="gfilters">'
-      + GROUPS.filter((g) => g.id === 'all' || all.some((x) => x.group === g.id))
-        .map((g) => '<button class="chip gchip' + (filter === g.id ? ' on' : '') + '" data-filter="' + g.id + '">'
-          + (g.icon ? g.icon + ' ' : '') + esc(g.title) + '</button>').join('')
-      + '<input class="gfind" type="search" placeholder="знайти гру" value="' + esc(find) + '" autocomplete="off">'
-      + '</div>'
-      + themeRow
-      + (tiles || '<div class="gempty">Овва, нічого схожого не знайшлось. Спробуй інакше або зніми фільтр.</div>')
+      + '<section class="gpanel gcat"><h3>Каталог <span class="muted small">· ' + all.filter((e) => e.kind !== 'link').length + ' ігор</span></h3>'
+      + quickRows
+      + '<div class="gfindbar"><div class="gfilters' + (want ? ' searching' : '') + '">' + chips
+      + '<input class="gfind" type="search" placeholder="знайти гру: назва, тег, «на 5»…" value="' + esc(find) + '" autocomplete="off" enterkeyhint="go"'
+      + ' title="Клавіша / — сюди; Enter — грати першу знайдену; Esc — очистити">'
+      + '</div>' + facets + '</div>'
+      + themeRow + tagRow + activeLine + adviceCard
+      + (tiles || '<div class="gempty">Овва, нічого схожого не знайшлось. Спробуй інакше'
+        + (narrowed ? ' або <button type="button" class="ghost" data-unset="all">скинь фільтри</button>' : '') + '.</div>')
       + '<div class="glinks">' + links.map(([h, l]) => '<a href="' + h + '">' + esc(l) + '</a>').join('<span>·</span>') + '</div>'
       + '</section>';
 
+    const save = () => {
+      try { localStorage.setItem('gamesFilter', filter); localStorage.setItem('gamesTheme', theme); localStorage.setItem('gamesSort', sort); localStorage.setItem('gamesView', listView ? 'list' : 'tiles'); } catch { /* приватне вікно */ }
+    };
+    // Число чи «удвох» у запиті — прибрати з поля, коли людина знімає «👥» чи обирає інше.
+    const dropCount = () => {
+      if (!F) return;
+      find = find.split(/\s+/).filter((w) => { const p = F.parse(w); return !(p.players != null && !p.words.length); }).join(' ');
+    };
+    const toCatalog = () => {
+      const c = root && root.querySelector('.gcat');
+      if (c && c.getBoundingClientRect().top < 0) c.scrollIntoView({ block: 'start' });
+    };
     box.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => {
       if (filter !== b.dataset.filter) theme = '';   // інший розділ — з «Усе в розділі»
       filter = b.dataset.filter;
-      try { localStorage.setItem('gamesFilter', filter); localStorage.setItem('gamesTheme', theme); } catch { /* приватне вікно */ }
+      find = '';   // розділ під час пошуку — це вже гортання, а не пошук
+      save();
       renderView();
     });
     box.querySelectorAll('[data-theme]').forEach((b) => b.onclick = () => {
       theme = b.dataset.theme;
-      try { localStorage.setItem('gamesTheme', theme); } catch { /* приватне вікно */ }
+      save();
       renderView();
     });
-    box.querySelector('.gfind').oninput = (e) => { find = e.target.value; renderView(); };
+    box.querySelectorAll('[data-players]').forEach((b) => b.onclick = () => {
+      const was = pl;
+      if (found && found.players != null) dropCount();
+      players = was === b.dataset.players ? '' : b.dataset.players;
+      renderView();
+    });
+    box.querySelectorAll('[data-tag]').forEach((b) => b.onclick = () => {
+      tag = tag === b.dataset.tag ? '' : b.dataset.tag;
+      // З плитки — «покажи всі такі»: по всьому каталогу, а не лише в розділі, де плитку побачив.
+      if (b.hasAttribute('data-tagall') && tag) { filter = 'all'; theme = ''; save(); }
+      renderView();
+      if (b.hasAttribute('data-tagall')) toCatalog();
+    });
+    box.querySelectorAll('[data-tagsug]').forEach((b) => b.onclick = () => {
+      tag = b.dataset.tagsug;
+      find = find.replace(/\S*\s*$/, '').trim();   // дописане слово і є цей тег
+      renderView();
+    });
+    box.querySelectorAll('[data-tagsopen]').forEach((b) => b.onclick = () => { tagsOpen = !tagsOpen; renderView(); });
+    box.querySelectorAll('[data-onlynew]').forEach((b) => b.onclick = () => { onlyNew = !onlyNew; renderView(); });
+    box.querySelectorAll('[data-advice]').forEach((b) => b.onclick = () => {
+      const games = (xs) => xs.filter((e) => e.kind !== 'link');
+      const from = games(list).length ? games(list) : games(all);
+      const pick = from.length > 1 && advice ? from.filter((e) => e.key !== advice.key) : from;
+      const e = pick[Math.floor(Math.random() * pick.length)];
+      const say = ADVICE.filter((s) => !advice || s !== advice.say);
+      advice = e ? { key: e.key, say: say[Math.floor(Math.random() * say.length)] } : null;
+      renderView();
+    });
+    box.querySelectorAll('[data-advice-off]').forEach((b) => b.onclick = () => { advice = null; renderView(); });
+    box.querySelectorAll('[data-unset]').forEach((b) => b.onclick = () => {
+      const k = b.dataset.unset;
+      if (k === 'find' || k === 'all') find = '';
+      if (k === 'players') { if (found && found.players != null) dropCount(); players = ''; }
+      if (k === 'all') players = '';
+      if (k === 'tag' || k === 'all') tag = '';
+      if (k === 'new' || k === 'all') onlyNew = false;
+      renderView();
+    });
+    box.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => { listView = b.dataset.view === 'list'; save(); renderView(); });
+    box.querySelectorAll('[data-star]').forEach((b) => b.onclick = () => toggleFav(b.dataset.star, b));
+    const so = box.querySelector('.gsort');
+    if (so) so.onchange = () => { sort = so.value; save(); renderView(); };
+    const fi = box.querySelector('.gfind');
+    fi.oninput = (e) => { find = e.target.value; renderView(); };
+    fi.onkeydown = (ev) => {
+      if (ev.key === 'Escape') {
+        if (!find) { fi.blur(); return; }
+        ev.preventDefault();
+        find = '';
+        renderView();
+      } else if (ev.key === 'Enter' && want) {
+        // Enter — те саме, що головна кнопка першої знайденої плитки: «Грати», «+ Стіл», «Відкрити».
+        const first = box.querySelector('.gtile, .gposter, .glrow');
+        const btn = first && first.querySelector('[data-solo], [data-shared], [data-new], [data-go]');
+        if (btn) { ev.preventDefault(); fi.blur(); btn.click(); }
+      }
+    };
     box.querySelectorAll('[data-new]').forEach((b) => b.onclick = () => {
       if (!me.nick) { askNick(); return; }
       const k = b.dataset.new;
@@ -2298,6 +2645,18 @@
     box.querySelectorAll('[data-nick]').forEach((b) => b.onclick = () => askNick());
     azartWatch();
   }
+  // «/» у лобі — одразу в пошук гри (як на GitHub чи YouTube), якщо людина не пише щось деінде. Деінде на сайті ця клавіша
+  // веде в пошук пісні (app.js) — у лобі ми встигаємо першими й кажемо preventDefault. «.» — та сама клавіша в українській розкладці.
+  document.addEventListener('keydown', (ev) => {
+    if ((ev.key !== '/' && ev.key !== '.') || ev.ctrlKey || ev.metaKey || ev.altKey || !shown || view.kind !== 'lobby' || !root) return;
+    const t = ev.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    const fi = root.querySelector('.gfind');
+    if (!fi) return;
+    ev.preventDefault();
+    fi.focus();
+    fi.select();
+  });
 
   function renderExtra(box, id) {
     const p = extraPanels.find((x) => x.id === id);
@@ -3483,6 +3842,7 @@
       if (!GROUPS.some((g) => g.id === id)) return;
       filter = id;
       theme = '';
+      find = ''; tag = ''; players = ''; onlyNew = false;   // розділ — увесь, без хвостів попереднього пошуку
       try { localStorage.setItem('gamesFilter', filter); localStorage.setItem('gamesTheme', theme); } catch { /* приватне вікно */ }
       if (shown && view.kind === 'lobby' && root) renderView();
       go('#games');
