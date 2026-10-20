@@ -67,7 +67,7 @@ public sealed class SlotState
 /// самими ключами. Повтор будь-якого кроку нічого не подвоїть: ключі ідемпотентні, а епоха в ключі (<see cref="SlotState.Epoch"/>)
 /// не дасть відкоченому стану повторити старий ключ. Програшний оберт журналу не пише: там лише списання, губити нічого.
 /// </summary>
-public abstract class SlotGame : Game
+public abstract partial class SlotGame : Game
 {
     public const string ActSpin = "spin", ActGamble = "gamble", ActCollect = "collect", ActBuy = "buy";
     public const int GambleMax = 5;
@@ -95,6 +95,7 @@ public abstract class SlotGame : Game
     {
         try { _bank = Ctx?.Services?.GetService<SlotsBank>(); }
         catch { _bank = null; }
+        ConfigureTourney();   // турнір тижня (SlotTourneyGame.cs)
     }
 
     /// <summary>Відкриття автомата (і «Ще раз»): статистика й останній сценарій лишаються, епоха — нова.</summary>
@@ -173,6 +174,7 @@ public abstract class SlotGame : Game
             spins = State.Spins,
             table = SlotMath.Table(),
             buy = BuyPrice(o) is { } price ? new { price } : null,   // «Купити бонус»: ціна в ставках (null — не продається)
+            tourney = TourneyView(seat),   // турнір тижня (SlotTourneyGame.cs); null — вимкнено
         };
     }
 
@@ -180,6 +182,7 @@ public abstract class SlotGame : Game
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == ActTourney) return TourneySpin(seat, payload);   // турнір тижня на фішках (SlotTourneyGame.cs)
         if (action is not (ActSpin or ActGamble or ActCollect or ActBuy)) return ActResult.Fail("Тут так не ходять");
         if (_bank is null) return ActResult.Fail(ClosedText);
         if (Ctx.NickOf(seat) is not { } nick) return ActResult.Fail("Тут так не ходять");
