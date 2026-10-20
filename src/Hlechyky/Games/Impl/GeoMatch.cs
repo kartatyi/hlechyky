@@ -158,6 +158,13 @@ public sealed class GeoMatch
     public string? Day { get; set; }
     /// <summary>«Де це? дня»: нагорода дня (раз на добу) — від стількох очок, щоб «тицьнув навмання» не платило.</summary>
     public const int DailyRewardFrom = 2500;
+    /// <summary>
+    /// «Де це? дня» (пакет 4): кінець дня пише сама гра — таблиця дня й «Щоденний глек» (<c>Ctx.Score(0, 0, 1)</c>,
+    /// бо каркас рахує «менше — краще»). Аргументи: місце й чи ставив шпильку хоч раз.
+    /// </summary>
+    public Action<int, bool>? DailyDone { get; set; }
+    /// <summary>Своє поле режиму у виді (<c>extra</c>): лише пам'ять, без бази — вид будується під замком.</summary>
+    public Func<int?, object?>? Extra { get; set; }
 
     /// <summary>Квадратики раунду за відстанню: 🟩 ≤ 50 км, 🟨 ≤ 200, 🟧 ≤ 500, ⬛ далі чи без шпильки.</summary>
     public string Squares()
@@ -231,6 +238,7 @@ public sealed class GeoMatch
 
         var rng = _ctx.Rng;
         if (Day is not null) { DealDaily(); return; }
+        if (Region is not null && DealRegion(rng)) return;
         var pool = Pool(fresh: true);
         Shuffle(pool, rng);
         // Пам'ять ніків (п. 51): серед свіжих за цим столом спершу ті, яких не бачив ніхто з гравців, далі —
@@ -347,6 +355,53 @@ public sealed class GeoMatch
             return;
         }
         Open(_recap.Count + 1, now);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // пакет 4: історія раундів і «🎯 Моя слабка»
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>«🎯 Моя слабка» тренування: область, звідки брати фото партії. null — як завжди.</summary>
+    public string? Region { get; set; }
+
+    /// <summary>
+    /// П'ять фото з області <see cref="Region"/>: спершу не бачені гравцем (далі — бачені найдавніше); забракло —
+    /// найближчі до області місця з інших (за відстанню від її середини). Готових у ній нема — false, звичайний підбір.
+    /// </summary>
+    bool DealRegion(Random rng)
+    {
+        var pool = Pool(fresh: false);
+        var inside = pool.Where(p => p.Region == Region).ToList();
+        if (inside.Count == 0) return false;
+        Shuffle(inside, rng);
+        var last = _memory?.LastSeen(NickKeys());
+        if (last is { Count: > 0 }) inside = [.. inside.OrderBy(p => last.TryGetValue(p.Id, out var at) ? at : DateTimeOffset.MinValue)];
+        var picks = inside.Take(_rules.Rounds).ToList();
+        if (picks.Count < _rules.Rounds)
+        {
+            double lat = inside.Average(p => p.Lat), lon = inside.Average(p => p.Lon);
+            picks.AddRange(pool.Where(p => p.Region != Region).OrderBy(p => GeoScore.Km(lat, lon, p.Lat, p.Lon))
+                .ThenBy(p => p.Id, StringComparer.Ordinal).Take(_rules.Rounds - picks.Count));
+        }
+        foreach (var p in picks)
+        {
+            var ready = _photos!.ReadyPhotos(p.Id);
+            var idx = ready[ready.Count == 1 ? 0 : rng.Next(ready.Count)];
+            _rounds.Add(new Round(p, idx, _photos.PathFor(p.Photos[idx])));
+        }
+        Begin();
+        return true;
+    }
+
+    /// <summary>Шпильки раунду — в історію (<see cref="GeoRounds"/>, пам'ять + база фоном). Фото друзів — ні.</summary>
+    void NoteRounds(Round round, List<Row> rows)
+    {
+        if (round.Mine is not null || _ctx.Services.GetService(typeof(GeoRounds)) is not GeoRounds hist) return;
+        var mode = Day is not null ? "daily" : _rules.Solo ? "solo" : "table";
+        var now = _ctx.Clock.UtcNow;
+        foreach (var r in rows)
+            if (r.Km is { } km && !r.Own && _ctx.NickOf(r.Seat) is { } nick)
+                hist.Note(nick, round.Place.Id, round.Place.Region, km, r.Points, mode, now);
     }
 
     void Begin()
@@ -626,6 +681,7 @@ public sealed class GeoMatch
         // підсумок і самому, і вдвох-після-того-як-хтось-устав казав, чия це відстань.
         var best = rows.Where(r => r.Best).Select(r => r.Seat).ToArray();
         _recap.Add(new Recap(place.Name, place.Region, round.Url, best, top?.Seat, top?.Km, top?.Points ?? 0));
+        NoteRounds(round, rows);
         _reveal = new RevealData(tx, ty, place, place.Photos[round.Photo], say, rows, round.Mine);
         _phase = PhaseReveal;
         _phaseMs = RevealMs;
@@ -659,7 +715,9 @@ public sealed class GeoMatch
         var scores = seats.ToDictionary(s => s, s => _scores[s]);
         foreach (var s in seats)
         {
-            if (_pinnedEver[s]) _ctx.Score(s, _scores[s]);
+            // «Де це? дня»: очки в ключі daily: лягли б у щоденний глек як «спроби» — день пише сама гра (DailyDone)
+            if (_pinnedEver[s] && Day is null) _ctx.Score(s, _scores[s]);
+            if (Day is not null) DailyDone?.Invoke(s, _pinnedEver[s]);
             if (_scores[s] / PointsPerShard is > 0 and var shards)
                 // Номер партії в причині: «Ще раз» за тим самим столом — нова виплата, а не повтор старої.
                 _ctx.Award(s, (int)Math.Min(int.MaxValue, shards), $"{ShardReason}:{_ctx.Round.ToString(CultureInfo.InvariantCulture)}");
@@ -754,6 +812,8 @@ public sealed class GeoMatch
             // 📸 фото друга: чиє (видно з «Готуйсь») і які місця за столом — його автор (не вгадує); інакше null
             by = _phase is PhaseBetween or PhaseGuess or PhaseReveal && round?.Mine is { } bm ? new { nick = bm.Nick, seats = Seats(_own) } : null,
             share = Day is not null && _phase == PhaseDone ? Share() : null,
+            // своє режиму (пакет 4): таблиця «Де це? дня», «🎯 Моя слабка» тренування — з пам'яті сервісів
+            extra = Extra?.Invoke(seat),
             // Фото — лише токен. У підсумку партії (done) лишається останнє: розкриття вже публічне.
             photo = _phase == PhaseLobby ? null : round?.Url,
             pinned = guess ? Pinned() : [],

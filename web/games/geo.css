@@ -219,6 +219,17 @@
 .geoshare { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 6px; font-size: 1.1em; }
 .geoshare > span { font-weight: 600; letter-spacing: .02em; }
 .geoshare button { min-height: 44px; }
+/* пакет 4: таблиця «Де це? дня» і «🎯 Моя слабка» тренування */
+.geoday { margin: 4px 0 8px; }
+.geoday > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.geoday ol { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; max-width: 560px; }
+.geoday li { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 8px; background: var(--bg2); min-width: 0; }
+.geoday li.me { outline: 2px solid var(--accent); }
+.geodayn { flex: none; width: 1.6em; text-align: right; opacity: .7; }
+.geodaynick { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.geodaymarks { flex: none; letter-spacing: .05em; }
+.geoweak { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 4px 0 8px; }
+.geoweak button { min-height: 44px; }
 @media (max-width: 520px) {
   .geoarea { order: 2; min-height: 50px; min-width: 50px; padding: 0 10px; }
   .geoarea span { display: none; }
