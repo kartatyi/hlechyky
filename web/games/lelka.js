@@ -540,9 +540,14 @@
       + '<div class="lk-row"><span class="lk-x">×</span><input class="lk-ax" inputmode="decimal" autocomplete="off" aria-label="Автозабір на множнику"></div>'
       + '<div class="lk-q">' + AUTOQ.map((q) => '<button type="button" data-x="' + q + '">×' + String(q).replace('.', ',') + '</button>').join('') + '</div></div>'
       + '<button type="button" class="lk-go"><span class="lk-gt"></span><small class="lk-gs"></small></button>'
-      + '<div class="lk-foot"><span class="lk-wal"></span><button type="button" class="lk-hash" title="Перевірка чесності"></button></div>'
+      + '<div class="lk-gx" hidden><span class="lk-gq">Долетить до ×2?</span>'
+      + '<button type="button" class="lk-gy" data-g="1" aria-pressed="false">так</button><button type="button" class="lk-gy" data-g="0" aria-pressed="false">ні</button>'
+      + '<span class="lk-gr"></span></div>'
+      + '<div class="lk-foot"><span class="lk-wal"></span><button type="button" class="lk-sal" hidden title="Сьогодні / весь час"></button>'
+      + '<button type="button" class="lk-hash" title="Перевірка чесності"></button></div>'
       + '</div>'
-      + '<div class="lk-bets"><div class="lk-bh"><b>Ставки столу</b><span class="lk-bn"></span></div><div class="lk-bl"></div></div>'
+      + '<div class="lk-bets"><div class="lk-bh"><b>Ставки столу</b><span class="lk-bn"></span></div><div class="lk-bl"></div>'
+      + '<div class="lk-gb" hidden><div class="lk-bh"><b>Прогноз дня</b><span>серія «до ×2» · без черепків</span></div><div class="lk-gbl"></div></div></div>'
       + '<div class="lk-info" hidden></div>'
       + '</div>';
     const q = (s) => root.querySelector(s);
@@ -551,7 +556,10 @@
       m: q('.lk-m'), sub: q('.lk-sub'), bar: q('.lk-bar i'), mile: q('.lk-mile'), fx: q('.lk-fx'),
       amt: q('.lk-in'), aon: q('.lk-aon'), ax: q('.lk-ax'), go: q('.lk-go'), gt: q('.lk-gt'), gs: q('.lk-gs'),
       wal: q('.lk-wal'), hash: q('.lk-hash'), bn: q('.lk-bn'), bl: q('.lk-bl'), info: q('.lk-info'), snd: q('.lk-snd'),
+      gx: q('.lk-gx'), gy: q('.lk-gy[data-g="1"]'), gn: q('.lk-gy[data-g="0"]'), gr: q('.lk-gr'), sal: q('.lk-sal'),
+      gb: q('.lk-gb'), gbl: q('.lk-gbl'),
     };
+    st.salAll = store.get('salAll', false);
     st.el.amt.value = amt; st.el.ax.value = fmtM(ax); st.el.aon.checked = aon;
     wire(root, st);
   }
@@ -585,6 +593,11 @@
       el.snd.textContent = st.sound ? '🔊' : '🔈';
       if (st.sound) { audio(st); if (st.live) toneStart(st); } else toneStop(st);
     });
+    on(el.gx, 'click', (e) => {
+      const b = e.target.closest('button[data-g]'); if (!b || b.disabled) return;
+      guess(st, b.dataset.g === '1');
+    });
+    on(el.sal, 'click', () => { st.salAll = !st.salAll; store.set('salAll', st.salAll); paintSaldo(st); });
     on(root.querySelector('.lk-ib'), 'click', () => info(root, st, true));
     on(el.hash, 'click', () => info(root, st, true));
     on(el.info, 'click', (e) => {
@@ -650,6 +663,19 @@
     const done = () => { st.busy = false; paintPanel(st, cur(st), true); };
     Promise.resolve(p).then((r) => { if (r && r.ok === false) st.cashing = null; done(); }, () => { st.cashing = null; done(); });
     return true;
+  }
+
+  // Прогноз «долетить до ×2?» — без черепків; той самий вибір ще раз — передумав прогнозувати.
+  function guess(st, yes) {
+    const c = st.ctx, s = cur(st);
+    if (!c || !c.mine || !s || s.phase !== 'bets' || st.gbusy) return;
+    const g = (c.view && c.view.guess) || {};
+    const pick = g.pick === yes ? null : yes;
+    st.gbusy = true;
+    st.gpick = { round: s.round, v: pick };
+    paintGuess(st, s);
+    const done = () => { st.gbusy = false; paintGuess(st, cur(st)); };
+    Promise.resolve(c.act('guess', { yes: pick })).then((r) => { if (r && r.ok === false) st.gpick = null; done(); }, () => { st.gpick = null; done(); });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -963,6 +989,56 @@
     if (el.hash.textContent !== h) el.hash.textContent = h;
   }
 
+  function paintGuess(st, s) {
+    const c = st.ctx, el = st.el, g = (c.view && c.view.guess) || null;
+    const show = !!(c.mine && g && !st.dead);
+    if (el.gx.hidden === show) el.gx.hidden = !show;
+    if (show) {
+      let pick = g.pick;
+      if (st.gpick && st.gpick.round === s.round && s.phase === 'bets') pick = st.gpick.v;
+      const open = s.phase === 'bets' && !st.gbusy;
+      [[el.gy, true], [el.gn, false]].forEach(([b, v]) => {
+        const on = pick === v;
+        if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+        if (b.disabled === open) b.disabled = !open;
+      });
+      const n = g.streak || 0;
+      let t, cls = '';
+      if ((s.phase === 'crash' || s.phase === 'pause') && g.last) {
+        t = g.last.ok ? '✓ вгадав, серія ' + n : '✗ серія скинута';
+        cls = g.last.ok ? 'ok' : 'bad';
+      } else if (pick != null) t = (s.phase === 'bets' ? 'обрано' : 'чекаємо') + (n ? ' · серія ' + n : '');
+      else t = s.phase === 'bets' ? (n ? 'серія ' + n + ' — не рветься, якщо пропустиш' : 'вгадай — без черепків') : (n ? 'серія ' + n : 'прогноз — поки на землі');
+      if (g.best) t += ' · рекорд дня ' + g.best;
+      if (el.gr.textContent !== t) el.gr.textContent = t;
+      if (el.gr.dataset.c !== cls) el.gr.dataset.c = cls;
+    }
+    const board = s.guessBoard || [];
+    const sig = board.map((r) => r.nick + ':' + r.best + ':' + r.now).join(',');
+    if (sig !== st.gbSig) {
+      st.gbSig = sig;
+      el.gb.hidden = !board.length;
+      const me = c.me && c.me.nick;
+      el.gbl.innerHTML = board.map((r, i) => '<div class="lk-gbr' + (r.nick === me ? ' me' : '') + '"><span class="pl">' + (i + 1) + '</span><span class="nk">' + c.esc(r.nick)
+        + '</span><span class="bs" title="рекорд дня">' + r.best + '</span><span class="nw" title="серія зараз">' + (r.now ? 'зараз ' + r.now : '—') + '</span></div>').join('');
+    }
+  }
+
+  // Сальдо Лелеки: «Сьогодні: поставив 2 000 · повернув 1 700 · −300»; дотик — «Весь час».
+  function paintSaldo(st) {
+    const v = (st.ctx && st.ctx.view) || {}, sd = v.saldo, el = st.el;
+    const show = !!(sd && sd.day && sd.all && st.ctx.mine && !st.dead);
+    if (el.sal.hidden === show) el.sal.hidden = !show;
+    if (!show) return;
+    const p = st.salAll ? sd.all : sd.day, net = (p.win || 0) - (p.bet || 0);
+    const head = st.salAll ? 'Весь час' : 'Сьогодні';
+    const h = !p.bet && !p.win
+      ? head + ': ще без ставок'
+      : head + ': поставив ' + fmtN(p.bet || 0) + ' · повернув ' + fmtN(p.win || 0) + ' · <b class="' + (net > 0 ? 'up' : net < 0 ? 'dn' : '') + '">'
+        + (net > 0 ? '+' : net < 0 ? '−' : '') + fmtN(Math.abs(net)) + '</b>';
+    if (el.sal._h !== h) { el.sal.innerHTML = h; el.sal._h = h; }
+  }
+
   function paintBets(st, s) {
     const c = st.ctx, me = c.me && c.me.nick;
     const bets = (s.bets || []).slice().sort((a, b) => (b.nick === me) - (a.nick === me) || (b.amount - a.amount));
@@ -1168,6 +1244,8 @@
     paintHist(st, s);
     paintBets(st, s);
     paintPanel(st, s);
+    paintGuess(st, s);
+    paintSaldo(st);
     const live = s.phase === 'flight' && st.shown !== false;
     if (!live) { big(st, s, localM(st, s)); if (s.phase !== 'flight') stopLoop(st); }
     else startLoop(st);
