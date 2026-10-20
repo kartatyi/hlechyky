@@ -588,6 +588,7 @@ public abstract class MinesDayGame : Game
     public const int MaxMovesChars = 6000;
     DailyCard? _card;
     MinesGhosts? _ghosts;
+    MinesWeek? _week;
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
@@ -596,6 +597,8 @@ public abstract class MinesDayGame : Game
         _ghosts = Ghosts ? Ctx.Services.GetService<MinesGhosts>() : null;
         _card?.Warm(BigId);
         _card?.Warm(EasyId);
+        _week = Ctx.Services.GetService<MinesWeek>();
+        _week?.Get();
         var day = Days.Today(Ctx.Clock);
         _ghosts?.Warm(day);
         // поле без вгадування рахується тут, поза замком кімнати; Start/«Ану ще раз» візьмуть готове з кешу
@@ -709,6 +712,14 @@ public abstract class MinesDayGame : Game
         _dead = true;
         Ctx.DailyMiss(0, _attempts);
         _card?.NoteMiss(Info.Id, Ctx.NickOf(0) ?? "", _attempts);
+        NoteWeek(false);
+    }
+
+    /// <summary>Залік тижня — лише за велике поле.</summary>
+    void NoteWeek(bool solved)
+    {
+        if (Info.Id == BigId && Ctx.NickOf(0) is { } nick)
+            _week?.Note(nick, solved, _attempts, (int)Math.Min(int.MaxValue, _ms));
     }
 
     /// <summary>
@@ -720,6 +731,7 @@ public abstract class MinesDayGame : Game
         _resigned = true;
         Ctx.DailyMiss(0, _attempts);
         _card?.NoteMiss(Info.Id, Ctx.NickOf(0) ?? "", _attempts);
+        NoteWeek(false);
         Ctx.Finish([], "");
         return ActResult.Accept("Поле розкрито — ось де були міни. Завтра нове");
     }
@@ -736,6 +748,7 @@ public abstract class MinesDayGame : Game
         Ctx.Award(0, 0, $"daily:{BigId}");
         var nick = Ctx.NickOf(0) ?? "";
         _card?.Note(Info.Id, nick, _attempts, (int)Math.Min(int.MaxValue, _ms));
+        NoteWeek(true);
         if (_movesOk && _moves.Length > 0) _ghosts?.Offer(_day, new MinesGhost(nick, _attempts, (int)Math.Min(int.MaxValue, _ms), _moves.ToString()));
         Ctx.Finish([0], $"{Info.Title}: {Ctx.NickOf(0)} — поле дня чисте за {MinesWire.Seconds(_ms)}"
             + (_attempts > 1 ? $" (спроба {_attempts})" : ""));
@@ -775,6 +788,8 @@ public abstract class MinesDayGame : Game
             // пакет 4: перемикач полів і обидва рядки табло на картці («16×16: …», «9×9: …»)
             size = Size,
             boards = new { big = DailyCard.Wire(_card?.Get(BigId)), easy = DailyCard.Wire(_card?.Get(EasyId)) },
+            // залік тижня (велике поле): сума місць за 7 днів, до 6 рядків
+            week = MinesWeek.Wire(_week?.Get()),
             streak = _card is null || Ctx.NickOf(0) is not { } me ? 0 : _card.StreakOf(Info.Id, me),
             ghost = _solved && _ghosts?.Best(_day) is { } g ? new { n = g.Nick, a = g.Attempts, ms = g.Ms, mv = g.Moves } : null,
         };

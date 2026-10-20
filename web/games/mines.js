@@ -165,6 +165,10 @@
       if (v.size === 'easy') lines.reverse();
       html = lines.map(([k, label]) => boardLine(v.boards[k], me, label, k === v.size)).join('<br>');
     } else if (b) html = boardLine(b, me, '', true);
+    // залік тижня (велике поле): сума місць за 7 днів, менше — краще
+    const week = v.week || [];
+    if (week.length) html += '<br><span class="mn-dl mn-week" title="Сума місць за 7 днів, менше — краще. Не розв’язав — місце після останнього">Тиждень:</span> '
+      + week.map((r) => '<span class="mn-dr' + ((r.n || '').trim().toLowerCase() === me ? ' me' : '') + '"><i>' + escHtml(r.n) + '</i> ' + r.s + '</span>').join(' · ');
     if (b) {
       const wait = (b.wait || []).filter((w) => (w.n || '').trim().toLowerCase() !== me);
       if (wait.length) html += '<br><span class="mn-dl">Ще не проходили:</span> '

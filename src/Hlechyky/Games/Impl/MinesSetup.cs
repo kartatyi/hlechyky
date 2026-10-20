@@ -1,10 +1,11 @@
 namespace Hlechyky.Games.Impl;
 
-/// <summary>Сапер дня, пакет 4: фоновий прогрів полів без вгадування (і завтрашнього — перед північчю).</summary>
+/// <summary>Сапер дня, пакет 4: залік тижня і фоновий прогрів полів без вгадування (і завтрашнього — перед північчю).</summary>
 public static class MinesSetup
 {
     public static IServiceCollection AddMines(this IServiceCollection services)
     {
+        services.AddSingleton(sp => new MinesWeek(sp.GetService<Db>(), sp.GetRequiredService<IClock>()));
         services.AddHostedService(sp => new MinesFieldsWarmUp(sp.GetRequiredService<IClock>(), sp.GetService<ILogger<MinesFieldsWarmUp>>()));
         return services;
     }
