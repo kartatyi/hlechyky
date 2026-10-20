@@ -1032,7 +1032,7 @@ public class GeoTests
         }
     }
 
-    static readonly string[] ViewKeys = ["phase", "round", "rounds", "endsAt", "phaseMs", "seconds", "hints", "mode", "areaOn", "area", "pre", "seal", "day", "by", "share", "photo",
+    static readonly string[] ViewKeys = ["phase", "round", "rounds", "endsAt", "phaseMs", "seconds", "hints", "mode", "areaOn", "area", "pre", "seal", "day", "by", "share", "extra", "photo",
         "pinned", "ready", "next", "my", "reveal", "scores", "left", "nicks", "result", "recap", "turn"];
 
     [Fact]
@@ -1325,7 +1325,7 @@ public class GeoPerfTests(ITestOutputHelper output)
         // сторінок Вікісховища з кириличними назвами ще й у %-кодуванні. Тому розкриття ~2,8 КБ, підсумок на
         // 10 раундів ~5,8 КБ — але це лише 3 види на раунд, а типовий тик — нуль байтів.
         Assert.InRange(maxGuess, 1, 700);
-        Assert.InRange(maxReveal, 1, 3500);
+        Assert.InRange(maxReveal, 1, 3550);   // +"extra":null (пакет 4)
         Assert.InRange(done, 1, 7000);
         Assert.InRange(maxFrame, 1, 150);
     }
