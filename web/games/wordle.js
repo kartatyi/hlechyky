@@ -163,6 +163,7 @@
     drawBoard(root, ctx, st, rows, max, !over(v) && ctx.mine);
     // день дограно — друкувати нікуди, а клавіатура штовхала серію й «Скопіювати» за нижній край телефона
     HGames.ui.keyboardUa(root, (k) => press(root, k), v.keys || {}).hidden = over(v);
+    friends(root, ctx, v);
     foot(root, ctx, v);
   }
 
@@ -199,6 +200,31 @@
       if (wait.length) html += '<br><span class="wdl">Ще не грали:</span> ' + wait.map((w) => '<i>' + ctx.esc(w.n) + '</i>'
         + (w.st >= 2 ? ' <span class="wfire dim" title="Вогник згасне опівночі">🔥' + w.st + '</span>' : '')).join(', ');
     }
+    el.hidden = !html;
+    setHtml(el, html);
+  }
+
+  /// Сітки друзів за сьогодні (пакет 4): поки я не дограв — лише кольори, після — і слова (words від сервера).
+  function friends(root, ctx, v) {
+    let el = root.querySelector(':scope > .wfriends');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wfriends';
+      const ft = root.querySelector(':scope > .wfoot');
+      root.insertBefore(el, ft || null);
+    }
+    const list = v.friends || [];
+    const max = v.max || 6;
+    const html = !list.length ? '' : '<div class="wfhead muted small">' + (over(v)
+      ? 'Як сьогодні йшли друзі'
+      : 'Друзі сьогодні — лише кольори; слова побачиш, коли дограєш') + '</div><div class="wflist">'
+      + list.map((f) => '<div class="wrp' + (f.solved ? ' solved' : '') + (f.failed ? ' failed' : '') + '">'
+        + mini(ctx, f, max, LEN)
+        + '<div class="wrpname"><b title="' + ctx.esc(f.n || '') + '">' + ctx.esc(f.n || '—') + '</b>'
+        + (f.hard ? '<span class="whard" title="Складний режим">✦</span>' : '') + '</div>'
+        + '<div class="wrptot">' + (f.solved ? '<span class="wrst ok">✓ ' + f.a + '/' + max + '</span>'
+          : f.failed ? '<span class="wrst bad">✗</span>' : '<span class="wrst">' + f.a + '/' + max + '</span>') + '</div></div>').join('')
+      + '</div>';
     el.hidden = !html;
     setHtml(el, html);
   }

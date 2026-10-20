@@ -15,6 +15,8 @@ public static class WordleSetup
     public static IServiceCollection AddWordle(this IServiceCollection services)
     {
         services.AddSingleton(sp => new WordleLists(Paths.Resolve("data/words"), sp.GetService<ILogger<WordleLists>>()));
+        // пакет 4: сітки друзів за сьогодні — пам'ять, яку кімнати докладають самі, а базу дочитує фон
+        services.AddSingleton(sp => new WordleFriends(sp.GetService<Db>(), sp.GetRequiredService<IClock>()));
         return services;
     }
 

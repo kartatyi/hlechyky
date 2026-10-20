@@ -25,10 +25,11 @@ public class WordleP4Tests(WordleWords fx) : IClassFixture<WordleWords>
         public required DailyCard Card;
     }
 
-    Rig Solo(string nick = "Оля", DailyCard? card = null)
+    Rig Solo(string nick = "Оля", DailyCard? card = null, WordleFriends? friends = null)
     {
         card ??= new DailyCard(null, new FakeClock());
-        var sp = new ServiceCollection().AddSingleton(fx.Words).AddSingleton(card).BuildServiceProvider();
+        friends ??= new WordleFriends(null, new FakeClock());
+        var sp = new ServiceCollection().AddSingleton(fx.Words).AddSingleton(card).AddSingleton(friends).BuildServiceProvider();
         var h = new RoomHarness("wordle", services: sp);
         h.Solo(nick);
         return new Rig { H = h, Card = card };
@@ -110,6 +111,58 @@ public class WordleP4Tests(WordleWords fx) : IClassFixture<WordleWords>
         Assert.Equal(("Оля", 2), (row.GetProperty("n").GetString(), row.GetProperty("a").GetInt32()));
         Assert.Equal("Петро", Assert.Single(b.GetProperty("miss").EnumerateArray()).GetProperty("n").GetString());
         Assert.Equal(1, olia.H.View(0).GetProperty("streak").GetInt32());
+    }
+
+    // ---------------------------------------------------------------------------- 3. сітки друзів
+
+    [Fact]
+    public void Friends_grids_are_colours_only_until_my_day_is_over_then_words()
+    {
+        var friends = new WordleFriends(null, new FakeClock());
+        var olia = Solo("Оля", friends: friends);
+        var oliaWord = Wrong(1)[0];
+        Guess(olia.H, oliaWord);
+        Guess(olia.H, Answer);
+
+        var me = Solo("Іван", friends: friends);
+        var mine = Wrong(7)[1..];
+        Guess(me.H, mine[0]);
+        var v = me.H.View(0);
+        var f = Assert.Single(v.GetProperty("friends").EnumerateArray());
+        Assert.Equal("Оля", f.GetProperty("n").GetString());
+        Assert.True(f.GetProperty("solved").GetBoolean());
+        Assert.Equal(["" + Wordle.Marks(Answer, oliaWord), "GGGGG"], f.GetProperty("marks").EnumerateArray().Select(x => x.GetString()!));
+        Assert.Equal(JsonValueKind.Null, f.GetProperty("words").ValueKind);
+        // ні слова друга, ні відповіді дня у виді нема — ні мені, ні глядачеві
+        foreach (var seat in new int?[] { 0, null })
+        {
+            var text = Views.Text(me.H.Room.Game.View(seat));
+            Assert.DoesNotContain(Answer, text, StringComparison.Ordinal);
+            Assert.DoesNotContain(oliaWord, text, StringComparison.Ordinal);
+        }
+        // сам себе я в друзях не бачу
+        Assert.DoesNotContain(olia.H.View(0).GetProperty("friends").EnumerateArray(), x => x.GetProperty("n").GetString() == "Оля");
+
+        foreach (var w in mine[1..]) Guess(me.H, w);
+        f = Assert.Single(me.H.View(0).GetProperty("friends").EnumerateArray());
+        Assert.Equal([oliaWord, Answer], f.GetProperty("words").EnumerateArray().Select(x => x.GetString()!));
+    }
+
+    [Fact]
+    public void Friends_grids_are_read_from_todays_saved_states()
+    {
+        using var rig = new EconomyRig();
+        var store = new SqliteGameStore(rig.Db, rig.Clock);
+        var today = rig.Daily.Today();
+        var w = fx.Five.Where(x => x != fx.Words.Daily5ForDay(today)).Take(2).ToArray();
+        // старий формат стану — без поля hard
+        store.SaveState($"daily:wordle:{today}:петро", JsonSerializer.Serialize(new { day = today, guesses = w, solved = false, failed = false }));
+        store.SaveState("daily:wordle:2026-01-01:петро", JsonSerializer.Serialize(new { day = "2026-01-01", guesses = w, solved = false, failed = false }));
+        rig.Daily.Record("wordle", "Петро", solved: true, attempts: 3, ms: 0);
+        var friends = new WordleFriends(rig.Db, rig.Clock);
+        friends.LoadNow();
+        var g = Assert.Single(friends.Today());
+        Assert.Equal(("Петро", 2, false), (g.Nick, g.Guesses.Count, g.Hard));
     }
 
     [Fact]

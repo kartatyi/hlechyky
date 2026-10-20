@@ -45,6 +45,10 @@ public sealed class Wordle : Game, IDailyGame
     bool _announced;
     /// <summary>Табло дня на картці (пакет 4): лише пам'ять сервісу, базу він дочитує фоном сам.</summary>
     DailyCard? _card;
+    /// <summary>Сітки друзів за сьогодні (пакет 4) — теж лише пам'ять сервісу.</summary>
+    WordleFriends? _friends;
+    /// <summary>Скільки чужих сіток віддаємо у вид — більше на картці не влізе.</summary>
+    public const int MaxFriends = 8;
 
     public override GameInfo Info { get; } = new(
         "wordle", "Глек-слово", "Глек-слово", GameGroup.Solo, 1, 1,
@@ -59,6 +63,8 @@ public sealed class Wordle : Game, IDailyGame
     {
         _card = Ctx.Services.GetService<DailyCard>();
         _card?.Warm(Info.Id);
+        _friends = Ctx.Services.GetService<WordleFriends>();
+        _friends?.Warm();
     }
 
     /// <summary>
@@ -96,6 +102,7 @@ public sealed class Wordle : Game, IDailyGame
         if (_words?.IsValid5(word) != true) return ActResult.Fail("Такого слова не знаю");
 
         _guesses.Add(word);
+        NoteFriends();
         if (word == _answer)
         {
             _solved = true;
@@ -140,7 +147,49 @@ public sealed class Wordle : Game, IDailyGame
             // null — день ще дочитується, клієнт попросить вид ще раз
             board = DailyCard.Wire(_card?.Get(Info.Id)),
             streak = _card is null || Ctx.NickOf(0) is not { } me ? 0 : _card.StreakOf(Info.Id, me),
+            friends = Friends(over),
         };
+    }
+
+    /// <summary>Моя сітка — у спільну пам'ять друзів (лише сьогоднішній день, чужий сервіс відкине сам).</summary>
+    void NoteFriends()
+    {
+        if (_friends is not null && _day.Length > 0 && Ctx.NickOf(0) is { } nick) _friends.Note(_day, nick, _guesses, false);
+    }
+
+    /// <summary>
+    /// Сітки друзів за сьогодні (пакет 4). Поки мій день не скінчився — лише кольори (G/Y/B), без жодної літери:
+    /// слова друзів і є підказка. Після мого кінця (вгадав чи програв) — і їхні слова. Відповідь окремо не йде ніколи;
+    /// кольори рахуються тут, бо сервіс відповіді не знає. Вчорашня кімната (не сьогодні) друзів не показує.
+    /// </summary>
+    object[] Friends(bool over)
+    {
+        if (_friends is null || _answer.Length != Len || _day != Days.Today(Ctx.Clock)) return [];
+        var me = EconomyStore.Key(Ctx.NickOf(0));
+        return [.. _friends.Today()
+            .Where(g => EconomyStore.Key(g.Nick) != me)
+            .Select(g =>
+            {
+                // за відповіддю спроб не буває: хвіст зіпсованого стану відрізаємо, як і в Load
+                var cut = g.Guesses.Take(MaxTries).ToList();
+                var at = cut.IndexOf(_answer);
+                if (at >= 0) cut = cut[..(at + 1)];
+                var solved = at >= 0;
+                return (g, cut, solved, failed: !solved && cut.Count >= MaxTries);
+            })
+            .Where(x => x.cut.Count > 0)
+            .OrderBy(x => x.solved ? 0 : x.failed ? 2 : 1).ThenBy(x => x.cut.Count).ThenBy(x => x.g.Nick, StringComparer.Ordinal)
+            .Take(MaxFriends)
+            .Select(x => (object)new
+            {
+                n = x.g.Nick,
+                a = x.cut.Count,
+                solved = x.solved,
+                failed = x.failed,
+                hard = x.g.Hard,
+                marks = x.cut.Select(w => Marks(_answer, w)).ToArray(),
+                words = over ? x.cut.ToArray() : null,
+            })];
     }
 
     public override string? Save() =>
@@ -172,6 +221,7 @@ public sealed class Wordle : Game, IDailyGame
         _failed = !_solved && _guesses.Count >= MaxTries;
         // результат за цей день уже пішов у сервіси тоді, коли слово справді вгадали
         _reported = _solved;
+        NoteFriends();
         if (_solved || _failed) Close();
     }
 

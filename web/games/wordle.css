@@ -301,3 +301,8 @@
 .wday .wfire { font-size: .9em; }
 .wday .wfire.dim { opacity: .6; }
 .whard { color: var(--accent); margin-left: 2px; }
+/* пакет 4: сітки друзів під дошкою щоденного */
+.wfriends { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 8px 0 4px; width: 100%; }
+.wfriends[hidden] { display: none; }
+.wflist { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; width: min(560px, 100%); }
+.wfhead { text-align: center; }
