@@ -95,6 +95,9 @@
     // Бігуни: той самий забіг «хто останній на ногах» — по кризі від лавини або в небі лелекою. Забіг дня — окремо, у «Сьогодні».
     { id: 'dino', title: 'Стрибозаври', games: [['dino', '🧊 Крига'], ['storks', '🪽 Небо (лелеки)']],
       hint: 'Одна траса для всіх: динозавром по кризі від лавини або лелекою над селом. Хто останній на ногах чи в небі — бере раунд.' },
+    // Кахлі (три в ряд): шлях рівнів і дві хвилини на час. Кахлі дня — окремо, у «Щоденних» і «Сьогодні».
+    { id: 'kakhli', title: 'Кахлі', games: [['kakhli', '🏺 Шлях кахляра'], ['kakhli-blitz', '⏱ На час']],
+      hint: 'Три в ряд на розписних кахлях: міняй сусідні, складай рядки, рушники, жаринки й чарівні глеки. Тридцять рівнів із глиною й мотузками — або дві хвилини, поки піч гаряча.' },
   ];
   const familyOf = {};
   for (const f of FAMILIES) for (const [id] of f.games) familyOf[id] = f;
@@ -124,9 +127,9 @@
       { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'geese'] },
     ],
     solo: [
-      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'bricks-sprint', 'typerace-solo', 'geo-solo'] },
+      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'bricks-sprint', 'typerace-solo', 'geo-solo'] },
       // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
-      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
+      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'kakhli-daily', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
         'tyr-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
