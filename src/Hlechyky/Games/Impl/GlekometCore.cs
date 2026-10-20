@@ -37,6 +37,8 @@ public sealed class GlekometHut
 {
     public int X, Y;
     public int Hp;
+    /// <summary>Повне HP хати: 100, з «⚖ Форою» — 100 × множник місця (слабшим більше).</summary>
+    public int MaxHp = 100;
     public bool Alive;
     /// <summary>Хата брала участь у партії (за місцем хтось сидів на старті).</summary>
     public bool Plays;
@@ -312,7 +314,7 @@ public sealed class GlekometCore
             if (!plays[s]) continue;
             hut.Plays = true;
             hut.Alive = true;
-            hut.Hp = 100;
+            hut.Hp = hut.MaxHp = 100;
             hut.Fuel = FuelMax;
             hut.X = slots[next++];
             Level(hut.X, pad);
@@ -389,7 +391,7 @@ public sealed class GlekometCore
         var hut = Huts[seat];
         hut.Plays = true;
         hut.Alive = true;
-        hut.Hp = 100;
+        hut.Hp = hut.MaxHp = 100;
         hut.Fuel = FuelMax;
         hut.Reason = "";
         hut.Poison = 0;

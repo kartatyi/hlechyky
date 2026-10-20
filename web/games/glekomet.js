@@ -59,6 +59,8 @@
   const CAM_MAX_W = 700, CAM_Z = 2, CAM_BOOM_MS = 1100;
 
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  /// «⚖ Фора» (пакет 3): повне HP хати помітно не 100 — слабшому більше, сильнішому менше.
+  const foraOn = (hut) => Math.abs((hut.maxHp || 100) - 100) >= 5;
   const lerp = (a, b, t) => a + (b - a) * t;
   const col = (x) => clamp(Math.floor(x / STEP), 0, COLS - 1);
   const sy = (y) => HGT - y;
@@ -673,7 +675,7 @@
       hut.plays = src.alive || !!src.reason;
       if (hut.alive && !src.alive && hut.plays && st.phase !== 'lobby' && !newGame) ruin(st, i, src.reason);
       if (!src.alive && src.reason && newGame) hut.ruined = true;
-      hut.hp = src.hp; hut.alive = src.alive; hut.team = src.team; hut.poison = src.poison;
+      hut.hp = src.hp; hut.maxHp = src.maxHp || 100; hut.alive = src.alive; hut.team = src.team; hut.poison = src.poison;
       hut.fuel = src.fuel; hut.skips = src.skips; hut.reason = src.reason;
       hut.honey = src.honey || 0; hut.stuck = !!src.stuck;
       if (!hut.alive && hut.plays && src.hp === 0) hut.ruined = true;
@@ -951,8 +953,17 @@
       const bw = 30, bh = Math.max(3.5, 3 * k);
       g.fillStyle = 'rgba(0, 0, 0, .55)';
       g.fillRect(x - bw / 2 - 0.8, top - bh - 0.8, bw + 1.6, bh + 1.6);
-      g.fillStyle = hut.hp > 60 ? pal.ok : hut.hp > 30 ? pal.accent : pal.danger;
-      g.fillRect(x - bw / 2, top - bh, (bw * clamp(hut.hp, 0, 100)) / 100, bh);
+      const max = hut.maxHp || 100, pct = (100 * hut.hp) / max;
+      g.fillStyle = pct > 60 ? pal.ok : pct > 30 ? pal.accent : pal.danger;
+      g.fillRect(x - bw / 2, top - bh, (bw * clamp(hut.hp, 0, max)) / max, bh);
+      // «⚖ Фора»: повне HP хати не 100 — значок праворуч від смужки
+      if (foraOn(hut)) {
+        g.font = F.nick;
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillStyle = pal.text;
+        g.fillText('⚖', x + bw / 2 + 3 * k, top - bh / 2);
+      }
     }
     const name = nickOf(st, i);
     g.font = F.nick;
@@ -2062,7 +2073,8 @@
       if (!nick) continue;
       const alive = st.phase === 'lobby' || hut.alive;
       const hp = st.phase === 'lobby' ? 100 : hut.hp;
-      const bar = hp > 60 ? '' : hp > 30 ? ' mid' : ' low';
+      const max = st.phase === 'lobby' ? 100 : hut.maxHp || 100, pct = (100 * hp) / max;
+      const bar = pct > 60 ? '' : pct > 30 ? ' mid' : ' low';
       const turn = st.volley ? st.phase === 'aim' && hut.alive && !st.ready[i] : st.turn === i && (st.phase === 'aim' || st.phase === 'fly' || st.phase === 'settle');
       // На вузькому екрані ніки в чіпах сховані (їх і так показують пігулки місць над столом і таблички на полі),
       // лишається колір, ❤ і «ти» на своєму — інакше над полем було шість рядів про те саме.
@@ -2073,11 +2085,12 @@
         + '<span class="gk-nick">' + ctx.esc(nick) + '</span>'
         + (i === mine ? '<span class="gk-you">ти</span>' : '')
         + (alive ? '<span class="gk-hp">❤' + hp + '</span>' : '<span>⛔</span>')
+        + (alive && st.phase !== 'lobby' && foraOn(hut) ? '<span title="⚖ Фора: повне HP хати ' + max + '">⚖</span>' : '')
         + (alive && hut.poison > 0 ? '<span title="отруєна хроном">🌿</span>' : '')
         + (alive && (hut.honey > 0 || hut.stuck) ? '<span title="у меду — не рушить">🍯</span>' : '')
         + (alive && st.volley && st.phase === 'aim' && st.ready[i] ? '<span class="gk-rd" title="постріл заряджено">✓</span>' : '')
         + (st.wins[i] ? '<span class="gk-star">★' + st.wins[i] + '</span>' : '')
-        + (alive ? '<i class="gk-bar' + bar + '" style="width:' + clamp(hp, 0, 100) + '%"></i>' : '')
+        + (alive ? '<i class="gk-bar' + bar + '" style="width:' + clamp(pct, 0, 100) + '%"></i>' : '')
         + '</span>';
     }
     if (E.sig.chips !== html) { E.sig.chips = html; E.chips.innerHTML = html; }
