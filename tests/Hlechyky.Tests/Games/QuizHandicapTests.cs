@@ -205,4 +205,76 @@ public class QuizHandicapTests
         Assert.Equal((long)(Bluff.TruthPts * Strong), truth[0].GetInt64());
         Assert.Equal(Strong, Factors(h)[0]);
     }
+
+    // ---------------------------------------------------------------- Скільки?
+
+    static RoomHarness SkilkyTable(object options, params string[] nicks)
+    {
+        var h = new RoomHarness("skilky", options: options, seed: 42, services: Services());
+        foreach (var n in nicks) Assert.True(h.Join(n).Ok);
+        h.Start();
+        SkilkyUntil(h, Skilky.PhaseAsk);
+        return h;
+    }
+
+    static string SkilkyPhase(RoomHarness h) => h.View(null).GetProperty("phase").GetString()!;
+
+    static void SkilkyUntil(RoomHarness h, string phase)
+    {
+        for (var i = 0; i < 2000 && h.Room.Status == RoomStatus.Playing && SkilkyPhase(h) != phase; i++) h.Tick(1);
+        Assert.Equal(phase, SkilkyPhase(h));
+    }
+
+    static double SkilkyTruth(RoomHarness h)
+    {
+        var text = h.View(null).GetProperty("question").GetString();
+        return SkilkyBank.All.First(q => q.Q == text).A!.Value;
+    }
+
+    static long[] SkilkyScores(RoomHarness h, int n) =>
+        [.. h.View(null).GetProperty("scores").EnumerateArray().Take(n).Select(x => x.GetInt64())];
+
+    /// <summary>Обидва називають точне число в ту саму мить: кожному «в яблучко» + найближчому = 6 очок до фори.</summary>
+    static RoomHarness SkilkyBothExact(string handicap)
+    {
+        var h = SkilkyTable(new { handicap }, "Оля", "Петро");
+        var t = SkilkyTruth(h);
+        Assert.True(h.Act(0, "answer", new { value = t }).Ok);
+        Assert.True(h.Act(1, "answer", new { value = t }).Ok);
+        SkilkyUntil(h, Skilky.PhaseReveal);
+        return h;
+    }
+
+    [Fact]
+    public void Skilky_multiplies_the_round_points()
+    {
+        const int perfect = Skilky.Bullseye + Skilky.BestBonus;
+        Assert.Equal([perfect, perfect], SkilkyScores(SkilkyBothExact(Handicap.Off), 2));
+        var h = SkilkyBothExact(Handicap.Auto);
+        NoteSaysBoth(h);
+        Assert.Equal([3L, 8L], SkilkyScores(h, 2));                          // 6 × 0,6 = 3,6 → 3; 6 × 1,4 = 8,4 → 8
+        var rows = h.View(null).GetProperty("reveal").GetProperty("rows").EnumerateArray()
+            .ToDictionary(r => r.GetProperty("seat").GetInt32(), r => r.GetProperty("points").GetInt32());
+        Assert.Equal(3, rows[0]);                                            // у таблиці розкриття — зараховане
+        Assert.Equal(8, rows[1]);
+        Assert.Equal(Strong, Factors(h)[0]);
+    }
+
+    [Fact]
+    public void Skilky_teams_get_the_mean_factor_of_their_players_and_stay_equal()
+    {
+        var h = SkilkyTable(new { teams = "2" }, "Оля", "Петро", "Ганна", "Іван");
+        var t = SkilkyTruth(h);
+        var teams = h.View(null).GetProperty("teams").EnumerateArray().ToArray();
+        foreach (var team in teams) Assert.True(h.Act(team.GetProperty("captain").GetInt32(), "answer", new { value = t }).Ok);
+        SkilkyUntil(h, Skilky.PhaseReveal);
+        var f = Factors(h);
+        var sc = SkilkyScores(h, 4);
+        foreach (var team in teams)
+        {
+            var seats = team.GetProperty("seats").EnumerateArray().Select(x => x.GetInt32()).ToArray();
+            var want = (long)Math.Floor((Skilky.Bullseye + Skilky.BestBonus) * seats.Average(s => f[s]) + 1e-9);
+            Assert.All(seats, s => Assert.Equal(want, sc[s]));
+        }
+    }
 }
