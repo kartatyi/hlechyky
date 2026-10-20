@@ -8,7 +8,8 @@
     { w, h, mines, turn, cells, scores, left, lastOpen, result }
     + для дуелі на 2–4: { mode: 'boom'|'hunt', players, out: [null|'boom'|'resign'|'left'] × 4, lastBy,
       unclaimed, owners: рядок '0'..'3'/'.' (чия міна, лише в мисливців), result.winners, result.places }
-    + для дня: { day, attempts, startedAt, solved, ms, elapsedMs }
+    + для дня: { day, attempts, startedAt, solved, resigned, ms, elapsedMs, board, streak, ghost,
+      size: 'big'|'easy', boards: { big, easy } (табло обох полів), week: [{ n, s }] (залік тижня) }
   cells — рядок на w*h символів: '#' закрито, 'F' прапорець, '0'..'8' відкрито, '*' міна (після кінця).
   Дії: act('open', { cell }), act('flag', { cell }), act('resign'), act('restart').
 
@@ -167,7 +168,7 @@
     } else if (b) html = boardLine(b, me, '', true);
     // залік тижня (велике поле): сума місць за 7 днів, менше — краще
     const week = v.week || [];
-    if (week.length) html += '<br><span class="mn-dl mn-week" title="Сума місць за 7 днів, менше — краще. Не розв’язав — місце після останнього">Тиждень:</span> '
+    if (week.length) html += '<br><span class="mn-dl mn-week" title="Сума місць за 7 днів, менше — краще. Нерозв’язаний день — місце після останнього">Тиждень:</span> '
       + week.map((r) => '<span class="mn-dr' + ((r.n || '').trim().toLowerCase() === me ? ' me' : '') + '"><i>' + escHtml(r.n) + '</i> ' + r.s + '</span>').join(' · ');
     if (b) {
       const wait = (b.wait || []).filter((w) => (w.n || '').trim().toLowerCase() !== me);
@@ -519,7 +520,7 @@
         '🧠 Поле дня тепер розв’язне чистою логікою від центру — жодних 50/50 навмання',
         '🌱 Легке поле 9×9 на 10 мін — перемикач над полем; табло в нього своє, а черепки дня ті самі (раз на день)',
         '🏳 «Здаюсь» — закрити день і подивитись, де були міни; невдалий день видно на табло: ✗ і скільки спроб',
-        '📅 Залік тижня: сума місць за 7 днів, хто не розв’язав — місце після останнього',
+        '📅 Залік тижня: сума місць за 7 днів, нерозв’язаний день — місце після останнього',
       ],
     },
   }));
