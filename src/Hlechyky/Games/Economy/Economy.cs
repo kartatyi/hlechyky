@@ -254,6 +254,9 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "kavuny-bet" => "Кавуни — ставка",
             "kavuny-win" => "Кавуни — забрав",
             "kavuny-back" => "Кавуни — ставку повернуто",
+            // Горохова дошка (docs/games/specs/plinko.md §4): гроші через касу слотів, причини свої
+            "plinko-bet" => "Горохова дошка — кидок",
+            "plinko-win" => "Горохова дошка — виграш",
             // Двадцять одно (docs/games/specs/blackjack.md §3.2): хвіст — blackjack чи blackjack-solo, підпис однаковий
             "blackjack-bet" => "Двадцять одно — ставка",
             "blackjack-double" => "Двадцять одно — подвоєння",

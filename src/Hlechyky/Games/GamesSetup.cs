@@ -69,6 +69,7 @@ public static class GamesSetup
         Impl.LelkaSetup.AddLelka(services);         // Лелека: налаштування Lelka:* і каса
         Impl.KoloSetup.AddKolo(services);           // Гончарне колесо: налаштування Kolo:* і каса (specs/kolo.md)
         Impl.KavunySetup.AddKavuny(services);       // Кавуни на ярмарку: налаштування Kavuny:* і каса
+        Impl.PlinkoSetup.AddPlinko(services);       // Горохова дошка: налаштування Plinko:*, гроші — каса слотів (specs/plinko.md)
         Impl.BlackjackSetup.AddBlackjack(services); // Двадцять одно: налаштування Blackjack:* і каса (specs/blackjack.md)
         Impl.DailyCard.Add(services);   // табло дня на картках щоденних, привид Сапера, тексти з Балачок для Клавоперегонів
         Impl.MinesSetup.AddMines(services);                 // Сапер дня: поля без вгадування фоном, залік тижня
