@@ -159,27 +159,67 @@
     const b = v.board;
     const me = String((ctx.nickOf && ctx.seat != null && ctx.nickOf(ctx.seat)) || '').trim().toLowerCase();
     let html = '';
+    if (v.boards) {
+      // пакет 4: два поля — два рядки табло, своє поле першим і підсвічене
+      const lines = [['big', '16×16'], ['easy', '9×9']];
+      if (v.size === 'easy') lines.reverse();
+      html = lines.map(([k, label]) => boardLine(v.boards[k], me, label, k === v.size)).join('<br>');
+    } else if (b) html = boardLine(b, me, '', true);
     if (b) {
-      const rows = b.rows || [];
-      const mine = rows.findIndex((r) => (r.n || '').trim().toLowerCase() === me);
-      const fire = (n) => (n >= 2 ? ' <span class="mn-fire" title="Днів поспіль">🔥' + n + '</span>' : '');
-      const cell = (r, i) => '<span class="mn-dr' + (i === mine ? ' me' : '') + '">' + (i === 0 ? '🥇 ' : '')
-        + '<i>' + escHtml(r.n) + '</i> ' + timeText(r.ms) + (r.a > 1 ? '<small> ×' + r.a + '</small>' : '') + fire(r.st) + '</span>';
-      html = rows.length
-        ? '<span class="mn-dl">Сьогодні:</span> ' + rows.slice(0, 5).map(cell).join(' · ')
-          + (mine >= 5 ? ' · <span class="mn-dr me">ти — ' + (mine + 1) + '-й</span>' : '')
-          + (rows.length > 5 && mine < 5 ? ' <small>і ще ' + (rows.length - 5) + '</small>' : '')
-        : '<span class="mn-dl">Сьогодні ще ніхто не розмінував — будь першим</span>';
-      // невдалий день: «✗ Оля (2)» — підірвався чи здався й так і не розв'язав
-      const miss = b.miss || [];
-      if (miss.length) html += ' · ' + miss.map((m) => '<span class="mn-dr mn-miss' + ((m.n || '').trim().toLowerCase() === me ? ' me' : '')
-        + '" title="Сьогодні не вийшло">✗ <i>' + escHtml(m.n) + '</i> (' + m.a + ')</span>').join(' · ');
       const wait = (b.wait || []).filter((w) => (w.n || '').trim().toLowerCase() !== me);
       if (wait.length) html += '<br><span class="mn-dl">Ще не проходили:</span> '
         + wait.map((w) => '<i>' + escHtml(w.n) + '</i>' + (w.st >= 2 ? ' <span class="mn-fire dim" title="Вогник згасне опівночі">🔥' + w.st + '</span>' : '')).join(', ');
     }
     el.hidden = !html;
     setHtml(el, html);
+  }
+
+  /// Рядок табло одного поля: «16×16: 🥇 Оля 1:23 🔥4 · Петро 2:10 ×2 · ✗ Іван (2)».
+  function boardLine(b, me, label, own) {
+    const head = '<span class="mn-dl' + (own ? ' own' : '') + '">' + (label ? label + ':' : 'Сьогодні:') + '</span> ';
+    if (!b) return head + '<span class="mn-dl">…</span>';
+    const rows = b.rows || [];
+    const mine = rows.findIndex((r) => (r.n || '').trim().toLowerCase() === me);
+    const fire = (n) => (n >= 2 ? ' <span class="mn-fire" title="Днів поспіль">🔥' + n + '</span>' : '');
+    const cell = (r, i) => '<span class="mn-dr' + (i === mine ? ' me' : '') + '">' + (i === 0 ? '🥇 ' : '')
+      + '<i>' + escHtml(r.n) + '</i> ' + timeText(r.ms) + (r.a > 1 ? '<small> ×' + r.a + '</small>' : '') + fire(r.st) + '</span>';
+    let html = rows.length
+      ? head + rows.slice(0, 5).map(cell).join(' · ')
+        + (mine >= 5 ? ' · <span class="mn-dr me">ти — ' + (mine + 1) + '-й</span>' : '')
+        + (rows.length > 5 && mine < 5 ? ' <small>і ще ' + (rows.length - 5) + '</small>' : '')
+      : head + '<span class="mn-dl">' + (label ? 'ще ніхто не розмінував' : 'ще ніхто не розмінував — будь першим') + '</span>';
+    // невдалий день: «✗ Оля (2)» — вибух чи «Здаюсь», і так і не розв'язано
+    const miss = b.miss || [];
+    if (miss.length) html += ' · ' + miss.map((m) => '<span class="mn-dr mn-miss' + ((m.n || '').trim().toLowerCase() === me ? ' me' : '')
+      + '" title="Сьогодні не вийшло">✗ <i>' + escHtml(m.n) + '</i> (' + m.a + ')</span>').join(' · ');
+    return html;
+  }
+
+  /// Перемикач полів дня: «Велике 16×16 / Легке 9×9» — інше поле живе в іншій соло-кімнаті, її й відкриваємо.
+  function sizeSwitch(root, ctx) {
+    const v = ctx.view || {};
+    let el = root.querySelector(':scope > .mn-size');
+    if (!v.size) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'mn-size';
+      el.setAttribute('role', 'group');
+      el.setAttribute('aria-label', 'Поле дня');
+      root.insertBefore(el, root.firstChild);
+    }
+    const opt = (k, text) => '<button type="button" class="' + (v.size === k ? 'primary' : 'ghost') + '" data-size="' + k + '"'
+      + (v.size === k ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' + text + '</button>';
+    setHtml(el, opt('big', 'Велике 16×16') + opt('easy', 'Легке 9×9'));
+    el.querySelectorAll('[data-size]').forEach((btn) => btn.onclick = () => {
+      if (btn.dataset.size === v.size || btn.disabled) return;
+      btn.disabled = true;
+      const game = btn.dataset.size === 'easy' ? 'mines-daily-easy' : 'mines-daily';
+      HGames.call('OpenSolo', game, null).then((r) => {
+        btn.disabled = false;
+        if (r && r.ok && r.roomId) location.hash = '#games/room/' + encodeURIComponent(r.roomId);
+        else if (r && r.message && ctx.toast) ctx.toast(r.message);
+      }, () => { btn.disabled = false; });
+    });
   }
 
   /// «👻 Привид найшвидшого»: розібрати запис ходів («сотні секунди, o/f/c, клітинка») у список кроків.
@@ -403,7 +443,7 @@
     if (!live) st.flagMode = false;      // не твій хід — режим прапорця нема сенсу тримати
 
     bar(root, g ? Object.assign({}, ctx, { view: v }) : ctx, daily);
-    if (daily) dayBoard(root, ctx);
+    if (daily) { dayBoard(root, ctx); sizeSwitch(root, ctx); }
     if (daily && !g) clock(root, ctx);
     else if (!daily) rule(root, ctx, v);
     const owners = v.owners || '';
@@ -469,13 +509,15 @@
   }));
   HGames.register(Object.assign(mod('mines-daily', true), {
     news: {
-      v: '2026-09-29',
-      title: 'Сапер дня: табло, вогник і привид',
+      v: '2026-10-22',
+      title: 'Сапер дня: без вгадування, легке поле й залік тижня',
       items: [
-        '🏆 Над полем — табло дня: хто сьогодні вже розмінував і за скільки, а хто цього тижня грав, та сьогодні ще ні',
-        '🔥 Вогник біля ніка — скільки днів поспіль людина розміновує поле дня',
-        '👻 Розмінував — тисни «Привид» і дивись, як найшвидший сьогодні пройшов те саме поле, хід за ходом (можна ×4)',
+        '🧠 Поле дня тепер розв’язне чистою логікою від центру — жодних 50/50 навмання',
+        '🌱 Легке поле 9×9 на 10 мін — перемикач над полем; табло в нього своє, а черепки дня ті самі (раз на день)',
+        '🏳 «Здаюсь» — закрити день і подивитись, де були міни; невдалий день видно на табло: ✗ і скільки спроб',
+        '📅 Залік тижня: сума місць за 7 днів, хто не розв’язав — місце після останнього',
       ],
     },
   }));
+  HGames.register(mod('mines-daily-easy', true));
 })();

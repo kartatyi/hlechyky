@@ -27,6 +27,7 @@ public sealed class MinesFieldsWarmUp(IClock clock, ILogger<MinesFieldsWarmUp>? 
                 foreach (var day in new[] { today, Days.Of(clock.UtcNow.AddMinutes(15)) }.Distinct())
                 {
                     if (MinesDaily.NoGuess(day)) MinesDaily.Field(day);
+                    MinesDailyEasy.Field(day);
                 }
             }
             catch (Exception ex) { log?.LogWarning(ex, "сапер дня: не прогрів поле"); }

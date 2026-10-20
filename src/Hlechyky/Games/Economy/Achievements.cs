@@ -378,7 +378,8 @@ public sealed class Achievements
         }
         if (row.Game == "tyr-daily" && streak >= 5) Unlock(nick, "tyr-daily5");
         if (row.Game == "geese-daily" && streak >= 5) Unlock(nick, "geese-days5");
-        if (row.Game.StartsWith("mines", StringComparison.Ordinal) && row.Ms is > 0 and < 60_000)
+        // лише велике поле: легке 9×9 (mines-daily-easy, пакет 4) проходиться за хвилину й так
+        if (row.Game == "mines-daily" && row.Ms is > 0 and < 60_000)
             Unlock(nick, "mines-fast");
     }
 

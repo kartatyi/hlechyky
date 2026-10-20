@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Hlechyky.Games;
+using Hlechyky.Games.Economy;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,7 +9,7 @@ using Xunit;
 
 namespace Hlechyky.Tests.Games;
 
-/// <summary>Пакет 4 (20.10): вибух пише промах дня, «🏳 Здаюсь» закриває день.</summary>
+/// <summary>Пакет 4 (20.10): вибух пише промах дня, «🏳 Здаюсь» закриває день, легке поле 9×9 зі своїм табло.</summary>
 public class MinesDailyP4Tests
 {
     static (RoomHarness H, DailyCard Card) Open(string game = "mines-daily", string nick = "Оля", DailyCard? card = null, FakeClock? clock = null)
@@ -100,5 +101,50 @@ public class MinesDailyP4Tests
         var (h, _) = Open();
         Solve(h);
         Assert.False(h.Act(0, "resign").Ok);
+    }
+
+    [Fact]
+    public void Easy_field_is_nine_by_nine_with_ten_mines_and_no_guessing()
+    {
+        var (h, _) = Open("mines-daily-easy");
+        var v = h.View(0);
+        Assert.Equal(9, v.GetProperty("w").GetInt32());
+        Assert.Equal(10, v.GetProperty("mines").GetInt32());
+        Assert.Equal("easy", v.GetProperty("size").GetString());
+        Assert.NotEqual('#', v.GetProperty("cells").GetString()![MinesDailyEasy.Center]);
+        Assert.True(MinesSolver.Solvable(MinesDailyEasy.Field("2026-09-10"), MinesDailyEasy.Center));
+        Assert.True(h.Registry.Info("mines-daily-easy")!.Hidden);
+        Assert.IsNotAssignableFrom<IDailyGame>(h.Room.Game);   // без своєї плитки в «☀ Сьогодні»
+        Assert.Equal(MinesDailyEasy.Field("2026-09-10").MineCells(), BoardOf(h).MineCells());
+    }
+
+    [Fact]
+    public void Easy_field_has_its_own_board_row_and_the_same_daily_reward()
+    {
+        var card = new DailyCard(null, new FakeClock());
+        var (easy, _) = Open("mines-daily-easy", "Оля", card);
+        Solve(easy);
+        var score = Assert.Single(easy.Scores);
+        Assert.StartsWith("daily:mines-daily-easy:2026-09-10:", score.Key);
+        Assert.Equal("daily:mines-daily", Assert.Single(easy.Awards).Reason);
+        Assert.Single(card.Get("mines-daily-easy")!.Rows);
+        Assert.Empty(card.Get("mines-daily")!.Rows);
+
+        var (big, _) = Open("mines-daily", "Петро", card);
+        var boards = big.View(0).GetProperty("boards");
+        Assert.Equal("big", big.View(0).GetProperty("size").GetString());
+        Assert.Equal("Оля", boards.GetProperty("easy").GetProperty("rows")[0].GetProperty("n").GetString());
+        Assert.Equal(0, boards.GetProperty("big").GetProperty("rows").GetArrayLength());
+    }
+
+    [Fact]
+    public void Daily_reward_is_paid_once_for_both_fields()
+    {
+        using var rig = new EconomyRig();
+        rig.Events.Raise(new AwardEvent("mines-daily-easy", "r1", "Оля", 0, "daily:mines-daily"));
+        var once = rig.Economy.Balance("Оля");
+        Assert.True(once > 0);
+        rig.Events.Raise(new AwardEvent("mines-daily", "r2", "Оля", 0, "daily:mines-daily"));
+        Assert.Equal(once, rig.Economy.Balance("Оля"));
     }
 }
