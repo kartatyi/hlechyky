@@ -702,6 +702,40 @@ public class KakhliTests(ITestOutputHelper output)
             output.WriteLine($"{i + 1,2} {l.Name,-18} win {wins * 100 / runs,3}%  p25 {P(.25),6} p50 {P(.5),6} p75 {P(.75),6} p90 {P(.9),6}   now ★ {l.Target} ★★ {l.Two} ★★★ {l.Three}"
                 + $"   SUGGEST {i + 1} {(l.ScoreOnly ? R(P(.25) * 0.6) : 0)} {R(P(.25))} {R(P(.75))}");
         }
+        // новачок: будь-який хід навмання — під нього цілі рівнів на очки (★ має бути майже завжди)
+        foreach (var (l, i) in KakhliLevels.All.Select((l, i) => (l, i)))
+        {
+            var scores = new List<long>();
+            var wins = 0;
+            for (var run = 0; run < runs; run++)
+            {
+                var b = new KakhliBoard(8, 8, l.Colors, (ulong)(run * 7000 + i + 3), l.Map);
+                b.Fill();
+                var rng = new Random(run * 31 + i);
+                var left = l.Moves;
+                bool Met() => l.Goals.All(g => g.Kind switch
+                {
+                    's' => b.Score >= g.Count,
+                    'c' => b.Collected[g.Color] >= g.Count,
+                    'l' => b.ClayLeft == 0,
+                    'r' => b.RopesLeft == 0,
+                    _ => true,
+                });
+                while (left > 0)
+                {
+                    var ms = b.Moves();
+                    var m = ms[rng.Next(ms.Count)];
+                    b.Swap(m.A, m.B);
+                    left--;
+                    if (!l.ScoreOnly && Met()) break;
+                }
+                b.Finale(l.ScoreOnly ? 0 : left);
+                if (Met()) wins++;
+                scores.Add(b.Score);
+            }
+            scores.Sort();
+            output.WriteLine($"RANDOM {i + 1,2} {l.Name,-18} win {wins * 100 / runs,3}%  p10 {scores[runs / 10],6} p25 {scores[runs / 4],6} p50 {scores[runs / 2],6}   ★ {l.Target}");
+        }
         foreach (var (name, moves) in new[] { ("день 30", 30), ("на час ~60", 60), ("на час ~80", 80) })
         {
             var scores = new List<long>();

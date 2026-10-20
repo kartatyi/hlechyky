@@ -85,9 +85,19 @@ public abstract class KakhliGame : Game
         return b;
     }
 
-    /// <summary>Смужка для «поділитись»: скільки глеків, жаринок і рушників та найдовший каскад — без самого поля.</summary>
-    public static string Marks(KakhliBoard b) =>
-        string.Create(CultureInfo.InvariantCulture, $"🏺×{b.Gleks} 🔥×{b.Embers} 🧣×{b.Stripes} · каскад ×{b.MaxChain}");
+    /// <summary>
+    /// Смужка для «поділитись»: скільки глеків, жаринок і рушників (лише тих, що були) та найдовший каскад — без
+    /// самого поля, тож ділитись не шкода.
+    /// </summary>
+    public static string Marks(KakhliBoard b)
+    {
+        var parts = new List<string>();
+        if (b.Gleks > 0) parts.Add($"🏺×{b.Gleks}");
+        if (b.Embers > 0) parts.Add($"🔥×{b.Embers}");
+        if (b.Stripes > 0) parts.Add($"🧣×{b.Stripes}");
+        if (b.MaxChain > 1) parts.Add($"каскад ×{b.MaxChain}");
+        return string.Join(" ", parts);
+    }
 
     /// <summary>12345 → «12 345».</summary>
     public static string Num(long n) => n.ToString("#,0", CultureInfo.InvariantCulture).Replace(',', ' ');

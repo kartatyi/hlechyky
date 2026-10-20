@@ -52,13 +52,13 @@ public static class KakhliLevels
     public static readonly IReadOnlyList<KakhliLevel> All =
     [
         // ---------- Перша піч: очки й барви ----------
-        new("Перша кахля", 5, 20, 5100, 9300, Plain, G(KakhliGoal.Score(3200)),
+        new("Перша кахля", 5, 20, 5100, 9300, Plain, G(KakhliGoal.Score(2000)),
             "Поміняй дві сусідні кахлі, щоб три однакові стали в ряд"),
         new("Червоні маки", 5, 20, 2700, 4100, Plain, G(KakhliGoal.Collect(Red, 20)),
             "Збирай червоні — кожна знята йде в ціль"),
-        new("Рушник на стіл", 5, 22, 5700, 9900, Plain, G(KakhliGoal.Score(3600)),
+        new("Рушник на стіл", 5, 22, 5700, 9900, Plain, G(KakhliGoal.Score(2000)),
             "Чотири в ряд — рушник: знімає весь рядок чи стовпчик"),
-        new("Сині хвилі", 6, 22, 2500, 3900, Plain, G(KakhliGoal.Collect(Blue, 22), KakhliGoal.Collect(Yellow, 22))),
+        new("Сині хвилі", 6, 22, 2100, 3200, Plain, G(KakhliGoal.Collect(Blue, 16), KakhliGoal.Collect(Yellow, 16))),
         new("Хрестик", 6, 22, 2000, 3500, """
             ##....##
             ##....##
@@ -69,7 +69,7 @@ public static class KakhliLevels
             ##....##
             ##....##
             """, G(KakhliGoal.Score(1200)), "Поле буває й не квадратне — кахлі падають повз дірки"),
-        new("Жаринка", 6, 24, 2500, 3800, Plain, G(KakhliGoal.Collect(Green, 24), KakhliGoal.Collect(Red, 24)),
+        new("Жаринка", 6, 24, 2200, 3500, Plain, G(KakhliGoal.Collect(Green, 18), KakhliGoal.Collect(Red, 18)),
             "Склади кутом чи літерою Т — вийде жаринка, вибух 3×3"),
         new("Миска", 6, 22, 1900, 3500, """
             ........
@@ -80,11 +80,11 @@ public static class KakhliLevels
             #......#
             ##....##
             ###..###
-            """, G(KakhliGoal.Score(1200))),
-        new("Чарівний глек", 6, 25, 2800, 4600, Plain, G(KakhliGoal.Score(1700)),
+            """, G(KakhliGoal.Score(1100))),
+        new("Чарівний глек", 6, 25, 2800, 4600, Plain, G(KakhliGoal.Score(1600)),
             "П'ять у ряд — чарівний глек: поміняй його з будь-якою кахлею, і вся та барва зникне"),
-        new("Ярмарок", 6, 25, 2200, 3700, Plain, G(KakhliGoal.Collect(Red, 18), KakhliGoal.Collect(Blue, 18), KakhliGoal.Collect(White, 18))),
-        new("Піч розгорілась", 6, 25, 2700, 4600, Plain, G(KakhliGoal.Score(1700)),
+        new("Ярмарок", 6, 25, 2000, 2900, Plain, G(KakhliGoal.Collect(Red, 14), KakhliGoal.Collect(Blue, 14), KakhliGoal.Collect(White, 14))),
+        new("Піч розгорілась", 6, 25, 2700, 4600, Plain, G(KakhliGoal.Score(1600)),
             "Дві спецкахлі поруч — поміняй їх між собою, буде сильніше"),
 
         // ---------- Сира глина ----------
@@ -108,7 +108,7 @@ public static class KakhliLevels
             11111111
             ........
             """, G(KakhliGoal.Clay)),
-        new("Кути печі", 5, 30, 5800, 10700, """
+        new("Кути печі", 5, 30, 6900, 12400, """
             11....11
             1......1
             ........
@@ -118,7 +118,7 @@ public static class KakhliLevels
             1......1
             11....11
             """, G(KakhliGoal.Clay), "У кути добре б'ють рушники"),
-        new("Подвійна глина", 6, 25, 3000, 4600, """
+        new("Подвійна глина", 6, 28, 3000, 4800, """
             ........
             ........
             ..2222..
@@ -148,7 +148,7 @@ public static class KakhliLevels
             ........
             ........
             """, G(KakhliGoal.Clay, KakhliGoal.Collect(Red, 20))),
-        new("Шахівниця", 5, 28, 6900, 10700, """
+        new("Шахівниця", 5, 30, 7600, 11400, """
             1.1.1.1.
             .1.1.1.1
             1.1.1.1.
@@ -158,17 +158,17 @@ public static class KakhliLevels
             1.1.1.1.
             .1.1.1.1
             """, G(KakhliGoal.Clay)),
-        new("Глибока глина", 5, 30, 7600, 11700, """
+        new("Глибока глина", 5, 30, 6700, 11300, """
             ........
             ........
             ........
             ........
             ........
             ........
-            22222222
+            11111111
             22222222
             """, G(KakhliGoal.Clay), "Низ поля — глибоко: туди найкраще б'ють стовпчикові рушники"),
-        new("Колодязь", 6, 25, 1700, 2800, """
+        new("Колодязь", 6, 27, 1900, 3200, """
             ........
             ........
             ..1111..
@@ -178,7 +178,7 @@ public static class KakhliLevels
             ........
             ........
             """, G(KakhliGoal.Clay)),
-        new("Уся в глині", 5, 32, 8400, 13200, """
+        new("Уся в глині", 5, 34, 8000, 12600, """
             11111111
             11111111
             11111111
@@ -190,7 +190,7 @@ public static class KakhliLevels
             """, G(KakhliGoal.Clay)),
 
         // ---------- Мотузки й усе разом ----------
-        new("Перша мотузка", 5, 24, 4000, 6500, """
+        new("Перша мотузка", 5, 26, 3600, 7500, """
             ........
             ........
             ........
@@ -210,7 +210,7 @@ public static class KakhliLevels
             .r....r.
             ........
             """, G(KakhliGoal.Ropes, KakhliGoal.Collect(Red, 20))),
-        new("Сплетені кути", 5, 27, 6000, 9700, """
+        new("Сплетені кути", 5, 29, 6400, 10400, """
             rr....rr
             r1....1r
             ........
@@ -240,7 +240,7 @@ public static class KakhliLevels
             ........
             ........
             """, G(KakhliGoal.Ropes, KakhliGoal.Clay), "Мотузка на глині: спершу розв'яжи, потім розбий"),
-        new("Віконце", 6, 26, 800, 1400, """
+        new("Віконце", 6, 28, 800, 1500, """
             ........
             .######.
             .#....#.
@@ -260,7 +260,7 @@ public static class KakhliLevels
             ........
             ........
             """, G(KakhliGoal.Ropes, KakhliGoal.Collect(Blue, 16), KakhliGoal.Collect(Green, 16), KakhliGoal.Collect(Yellow, 16))),
-        new("Зав'язана піч", 5, 30, 7200, 10700, """
+        new("Зав'язана піч", 5, 32, 7500, 12900, """
             rrrrrrrr
             r......r
             r.1111.r
@@ -270,7 +270,7 @@ public static class KakhliLevels
             r......r
             rrrrrrrr
             """, G(KakhliGoal.Ropes, KakhliGoal.Clay)),
-        new("Хрест-навхрест", 5, 30, 6200, 10800, """
+        new("Хрест-навхрест", 5, 32, 6300, 10400, """
             ...xx...
             ...xx...
             ...xx...
