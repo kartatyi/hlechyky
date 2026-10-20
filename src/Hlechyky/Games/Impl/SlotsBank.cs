@@ -570,6 +570,7 @@ public static class SlotsSetup
                 sp.GetService<IClock>(), sp.GetService<ISlotsWire>(), sp.GetService<ILogger<SlotsBank>>());
         });
         services.AddHostedService(sp => sp.GetRequiredService<SlotsBank>());
+        SlotTourneySetup.Add(services);   // турнір тижня на фішках (SlotTourney.cs)
         return services;
     }
 
@@ -580,6 +581,9 @@ public static class SlotsSetup
     /// <summary>Як сайт (camelCase), але без null-полів: <c>mustHit</c> нема, коли межу вимкнено.</summary>
     public static readonly JsonSerializerOptions FeedJson = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
-    public static void MapSlots(WebApplication app) =>
+    public static void MapSlots(WebApplication app)
+    {
         app.MapGet("/api/slots/feed", (SlotsBank bank) => Results.Json(bank.FeedView(), FeedJson));
+        SlotTourneySetup.Map(app);   // /api/slots/tourney — турнір тижня для лобі
+    }
 }

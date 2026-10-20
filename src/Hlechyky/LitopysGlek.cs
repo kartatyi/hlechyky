@@ -211,7 +211,7 @@ public sealed partial class Litopys
         Put(new("give", "daily", "📅", "за щоденки"), "daily");
         Put(new("give", "clicker", "🏺", "обмін глеків із Гончарного кола"), "clicker");
         Put(new("give", "ads", "📣", "конкурс реклами"), "ad");
-        Put(new("give", "award", "🎖", "нагороди за гру"), "award");
+        Put(new("give", "award", "🎖", "нагороди за гру"), "award", "slot-prize");
         Put(new("give", "notes", "💡", "за записки розробнику"), Feedback.GiftReason);
         return m;
     }

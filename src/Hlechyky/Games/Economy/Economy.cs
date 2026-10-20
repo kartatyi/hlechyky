@@ -247,6 +247,7 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "slot-win" => $"{names.Title(tail)} — виграш",
             "slot-buy" => $"{names.Title(tail)} — купив бонус",
             "slot-jackpot" => "Скарбничка Глека!",
+            "slot-prize" => "Турнір тижня в слотах — приз від Дядька Глека",
             // Лелека (docs/games/specs/lelka.md §4)
             "lelka-bet" => "Лелека — ставка",
             "lelka-win" => "Лелека — забрав",

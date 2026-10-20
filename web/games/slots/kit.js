@@ -942,6 +942,7 @@
       spinBtn.classList.toggle('poor', !ctx.busy && ctx.balance < ctx.bet);
       hud.querySelector('.sk-spin-t').textContent = ctx.busy ? (ctx.auto ? 'стоп' : 'швидше') : 'крутити';
       root.classList.toggle('sk-busy', ctx.busy);
+      tourneyHud();
     }
     const setBet = (d) => { if (ctx.busy) return; const i = clamp(bets.indexOf(ctx.bet) + d, 0, bets.length - 1); ctx.bet = bets[i]; ctx.sound('click'); updateHud(); ctx.emit('bet', ctx.bet); };
     ctx.listen(hud.querySelector('.sk-bm'), 'click', () => setBet(-1));
@@ -951,6 +952,27 @@
     ctx.listen(hud.querySelector('.sk-info'), 'click', () => openPaytable());
     ctx.listen(hud.querySelector('.sk-auto'), 'click', () => { if (ctx.auto) { ctx.auto = 0; updateHud(); } else openAutoMenu(); });
     ctx.listen(spinBtn, 'click', () => act());
+
+    // ----- турнір тижня (пакет 5, slots/tourney.js): фішки замість черепків, ставка зафіксована, «оберт 12 / 50» -----
+    // ctx.setTourney({chips, spin, of, bet}) — увійти/оновити, null — вийти (ставка повертається та, що була)
+    ctx.tourney = null;
+    ctx.setTourney = function (t) {
+      if (t && !ctx.tourney) ctx.tourneyBet0 = ctx.bet;
+      if (!t && ctx.tourney && ctx.tourneyBet0) ctx.bet = ctx.tourneyBet0;
+      ctx.tourney = t || null;
+      if (t) { ctx.bet = t.bet; ctx.balance = t.chips; }
+      root.classList.toggle('sk-tourney', !!t);
+      updateHud();
+    };
+    function tourneyHud() {
+      const t = ctx.tourney, bal = hud.querySelector('.sk-bal');
+      bal.querySelector('small').textContent = t ? 'фішки' : 'баланс';
+      bal.querySelector('b i').textContent = t ? '🎟' : '🏺';
+      if (!t) return;
+      hud.querySelector('.sk-bm').disabled = true;
+      hud.querySelector('.sk-bp').disabled = true;
+      if (!ctx.fs) hud.querySelector('.sk-win-l').textContent = 'оберт ' + Math.min(t.of, t.spin + (ctx.busy ? 1 : 0)) + ' / ' + t.of;
+    }
 
     // ----- сік: трусіння, спалах, монети, баланс, приземлення -----
     const winbox = hud.querySelector('.sk-winbox'), balEl = hud.querySelector('.sk-bal-v');
