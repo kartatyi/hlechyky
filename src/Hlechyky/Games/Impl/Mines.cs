@@ -91,7 +91,32 @@ public sealed class MinesBoard
             (free[i], free[j]) = (free[j], free[i]);
             _mine[free[i]] = true;
         }
+        Count();
+    }
 
+    /// <summary>
+    /// Розставити міни рівно на ці клітинки (готове поле з <see cref="MinesFields"/> — без вгадування). Поле має бути
+    /// свіже: ні відкритого, ні мін. Чужі номери клітинок мовчки пропускаємо.
+    /// </summary>
+    public void Place(IEnumerable<int> mines)
+    {
+        Array.Clear(_mine);
+        foreach (var c in mines)
+            if (Valid(c)) _mine[c] = true;
+        Count();
+    }
+
+    /// <summary>Де стоять міни — номери клітинок за зростанням (для кешу готових полів).</summary>
+    public int[] MineCells()
+    {
+        var list = new List<int>(Mines);
+        for (var c = 0; c < Cells; c++)
+            if (_mine[c]) list.Add(c);
+        return [.. list];
+    }
+
+    void Count()
+    {
         for (var c = 0; c < Cells; c++)
         {
             byte k = 0;
@@ -562,7 +587,10 @@ public sealed class MinesDaily : Game, IDailyGame
         _card = Ctx.Services.GetService<DailyCard>();
         _ghosts = Ctx.Services.GetService<MinesGhosts>();
         _card?.Warm(Info.Id);
-        _ghosts?.Warm(Days.Today(Ctx.Clock));
+        var day = Days.Today(Ctx.Clock);
+        _ghosts?.Warm(day);
+        // поле без вгадування рахується тут, поза замком кімнати; Start/«Ану ще раз» візьмуть готове з кешу
+        if (NoGuess(day)) MinesFields.Get(Puzzle, day, W, H, MineCount, Center);
     }
 
     void Move(char kind, int cell)
@@ -586,12 +614,31 @@ public sealed class MinesDaily : Game, IDailyGame
         Deal();
     }
 
+    /// <summary>
+    /// З якого дня поле дня — без вгадування (<see cref="MinesFields"/>). Старші дні — старим генератором: стан кімнати
+    /// й привиди зберігають лише маску відкритого, а міни виводяться з дня, тож поле вже зіграного дня мінятись не сміє.
+    /// </summary>
+    public const string NoGuessFrom = "2026-10-22";
+
+    /// <summary>Чи день грає полем без вгадування.</summary>
+    public static bool NoGuess(string day) => string.CompareOrdinal(day, NoGuessFrom) >= 0;
+
+    /// <summary>
+    /// Поле дня з розставленими мінами. Сід від дня, а не від кімнати: інакше в кожного було б своє поле, і порівнювати
+    /// час не було б сенсу. Нове поле береться з кешу <see cref="MinesFields"/> (прогрів — з Configure, поза замком).
+    /// </summary>
+    public static MinesBoard Field(string day)
+    {
+        var board = new MinesBoard(W, H, MineCount);
+        if (NoGuess(day)) board.Place(MinesFields.Get(Puzzle, day, W, H, MineCount, Center).Mines);
+        else board.Generate(new Random(Days.Seed(Puzzle, day)), Center);
+        return board;
+    }
+
     /// <summary>Нова спроба: поле те саме (сід від дня), відлік — від зараз.</summary>
     void Deal()
     {
-        _board = new MinesBoard(W, H, MineCount);
-        // Сід від дня, а не від кімнати: інакше в кожного було б своє поле, і порівнювати час не було б сенсу.
-        _board.Generate(new Random(Days.Seed(Puzzle, _day)), Center);
+        _board = Field(_day);
         _board.Open(Center);
         _dead = false;
         _last = Center;
