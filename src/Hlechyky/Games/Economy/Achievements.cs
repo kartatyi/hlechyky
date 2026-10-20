@@ -241,6 +241,11 @@ public static class AchievementCatalog
         new("blackjack-five",    "21 з п'яти карт",        "Двадцять одно: рука з п'яти карт і більше — рівно 21", "💯", 25),
         new("blackjack-streak5", "Ведеться!",              "Двадцять одно: п'ять роздач поспіль у плюсі (нічия серії не рве)", "🔥", 20),
         new("blackjack-split3",  "Три руки — три виграші", "Двадцять одно: розбив пару на три руки — і всі три виграли", "🖐", 25),
+        // Кахлі — гра просить сама (specs/kakhli.md §6)
+        new("kakhli-glek",       "Чарівний глек",     "Кахлі: склав п'ять у ряд — вийшов чарівний глек", "🏺", 25),
+        new("kakhli-chain",      "Каскад",            "Кахлі: шість каскадів одним ходом", "🌊", 25),
+        new("kakhli-hot",        "Гаряча піч",        "Кахлі на час: 9 000 очок за дві хвилини", "🔥", 25),
+        new("kakhli-master",     "Майстер-кахляр",    "Кахлі: усі 90 зірок «Шляху кахляра»", "👑", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
