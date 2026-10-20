@@ -711,6 +711,7 @@
       case 1: return '😵 ' + who(ctx, b) + ' сам себе';
       case 2: return '🤦 ' + who(ctx, a) + ' → свого ' + who(ctx, b);
       case 3: return '👻 помста ' + who(ctx, a) + ' → ' + who(ctx, b);
+      case 5: return (a ? '💣 Фора: +1 бомба · ' : '🔥 Фора: +1 вогню · ') + who(ctx, b);
       default: return '🧱 ' + who(ctx, b) + ' притисло стіною';
     }
   }

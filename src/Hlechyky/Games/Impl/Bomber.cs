@@ -54,6 +54,7 @@ public sealed class Bomber : Game, IPartyMinigame
             new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3 за силою"), ("2", "команди 2×2 / 3×3 як сіли")], "0"),
             new GameOption("ff", "Свої бомби", [("0", "своїх не ранять"), ("1", "дружній вогонь")], "0"),
             LiveBots.LevelsOption,
+            Handicap.Option,
         ],
         Hint: "Ставиш бомби, ламаєш ящики, підриваєш суперників. Останній живий бере раунд. Самому — з трьома 🤖 ботами");
 
@@ -313,6 +314,7 @@ public sealed class Bomber : Game, IPartyMinigame
                 if (--_startIn > 0) return TickResult.FrameOnly;
                 _round++;
                 Core.Reset(Plays());
+                CatchUp();
                 _phase = PhaseStart;
                 _startIn = StartTicks;
                 return TickResult.Both;   // рахунок раундів змінився ще раніше, але вид з ним їде саме тут
@@ -381,6 +383,28 @@ public sealed class Bomber : Game, IPartyMinigame
         _phase = PhasePause;
         _startIn = PauseTicks;
         return TickResult.Both;
+    }
+
+    /// <summary>
+    /// «⚖ Фора» (пакет 3, 20.10) — наздоганяння всередині партії: людина без жодного виграного раунду, коли хтось уже
+    /// має раунд, стартує з +1 до вогню 🔥 або +1 бомбою 💣 (навпіл через Ctx.Rng). Лише +1 і лише на цей раунд —
+    /// Reset щоразу повертає старт, межі предметів ті самі. Боти фори не мають; «без фори» чи стіл на ставку — нічого.
+    /// </summary>
+    void CatchUp()
+    {
+        if (_party is not null || !Handicap.On(Ctx.Options) || _wins.Max() < 1) return;
+        for (var s = 0; s < BomberCore.Seats; s++)
+        {
+            var p = Core.Players[s];
+            if (_isBot[s] || !Ctx.Seated(s) || !p.Alive || _wins[s] > 0) continue;
+            var fire = Ctx.Rng.Next(2) == 0;
+            if (fire && p.Range >= BomberCore.MaxRange) fire = false;
+            if (!fire && p.Bombs >= BomberCore.MaxBombs) fire = true;
+            if (fire) p.Range = Math.Min(BomberCore.MaxRange, p.Range + 1);
+            else p.Bombs = Math.Min(BomberCore.MaxBombs, p.Bombs + 1);
+            _feed.Add((++_evId, _clock, new BomberEvent(BomberHow.Handicap, fire ? 0 : 1, s)));
+        }
+        if (_feed.Count > 8) _feed.RemoveRange(0, _feed.Count - 8);
     }
 
     /// <summary>Події тика — у стрічку й у підсумок партії.</summary>
