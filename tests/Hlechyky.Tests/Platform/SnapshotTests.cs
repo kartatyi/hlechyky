@@ -59,6 +59,41 @@ public class SnapshotTests
     }
 
     [Fact]
+    public void A_view_planned_before_a_second_tab_subscribed_is_older_than_that_tabs_snapshot()
+    {
+        // Петро відкрив той самий стіл у другій вкладці, поки летіла пачка, складена ще без неї: SignalR-група вже з нею,
+        // а знімок пачки — ні, тож звідти їй іде вид глядача («на мить побачив розклад, а тоді ніби дивлюсь збоку»).
+        // Номер розкладки каже браузеру, що той вид старший за її власний знімок.
+        var conns = new Dictionary<string, string> { ["c-петро"] = "Петро" };
+        var h = Table(conns);
+        var stale = h.Rooms.ViewsFor(h.RoomId)!;
+        h.Rooms.Watch(h.RoomId, "c-петро-2", "Петро");
+        conns["c-петро-2"] = "Петро";
+        var snap = h.Rooms.SnapshotFor(h.RoomId, "c-петро-2", "Петро")!;
+        Assert.Equal(1, snap.Seat);
+        Assert.True(snap.Seq > stale.Seq);
+
+        var sends = Broadcaster.Plan([new RoomViews(h.RoomId)], h.Rooms.Snapshot, h.Rooms.SoloNow, _ => stale,
+            id => conns.TryGetValue(id, out var nick) ? nick : null, _ => [], (text, roomId) => new { text, roomId });
+        var group = Assert.Single(sends, s => s.Target is ToGroupExcept);
+        Assert.DoesNotContain("c-петро-2", ((ToGroupExcept)group.Target).Except);
+        Assert.Equal(JsonValueKind.Null, Views.Json(group.Payload).GetProperty("seat").ValueKind);
+        Assert.All(sends.Where(s => s.Event == "room"), s => Assert.Equal(stale.Seq, Views.Json(s.Payload).GetProperty("seq").GetInt64()));
+    }
+
+    [Fact]
+    public void View_numbers_grow_and_start_from_the_clock_so_a_restart_does_not_go_back()
+    {
+        var conns = new Dictionary<string, string> { ["c-оля"] = "Оля" };
+        var h = Table(conns);
+        var a = h.Rooms.ViewsFor(h.RoomId)!.Seq;
+        var b = h.Rooms.SnapshotFor(h.RoomId, "c-оля", "Оля")!.Seq;
+        var c = h.Rooms.ViewsFor(h.RoomId)!.Seq;
+        Assert.True(a < b && b < c);
+        Assert.True(a > DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds() * 1000);
+    }
+
+    [Fact]
     public void Only_a_connection_that_watches_the_table_can_ask_for_a_snapshot()
     {
         var conns = new Dictionary<string, string> { ["c-оля"] = "Оля" };

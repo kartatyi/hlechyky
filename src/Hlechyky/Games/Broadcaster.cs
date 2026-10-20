@@ -335,6 +335,11 @@ public sealed class Broadcaster(
     /// Хто сидить — отримує свій вид на своє місце персонально (у Hidden-іграх він в інших і не такий);
     /// решта групи бачить вид глядача одним повідомленням. Гравець, який зараз не дивиться на кімнату,
     /// не отримує нічого — він на іншій вкладці, і це правильно.
+    /// <para>
+    /// Група — жива, а <see cref="RoomBroadcast.Watchers"/> — знімок: вкладка, що підписалась між ними (друга вкладка
+    /// того ж гравця, F5), отримає звідси вид глядача, хоч і сидить. Тому кожен вид несе <see cref="RoomBroadcast.Seq"/>:
+    /// її власний знімок (RoomSnapshot) складено пізніше, і браузер старший вид відкине, хоч би той і долетів останнім.
+    /// </para>
     /// </summary>
     static IEnumerable<Send> ViewSends(RoomBroadcast b, Func<string, string?> nickOf, HashSet<string>? skip = null)
     {
@@ -348,10 +353,10 @@ public sealed class Broadcaster(
         }
         foreach (var (seat, conns) in seated)
             yield return new Send(new ToConnections(conns), "room",
-                new RoomView(b.Summary, seat, b.SeatViews.TryGetValue(seat, out var v) ? v : b.WatcherView));
+                new RoomView(b.Summary, seat, b.SeatViews.TryGetValue(seat, out var v) ? v : b.WatcherView, b.Seq));
 
         var mine = seated.Values.SelectMany(x => x).ToList();
         if (skip is not null) mine.AddRange(skip);
-        yield return new Send(new ToGroupExcept(RoomGroup(b.RoomId), mine), "room", new RoomView(b.Summary, null, b.WatcherView));
+        yield return new Send(new ToGroupExcept(RoomGroup(b.RoomId), mine), "room", new RoomView(b.Summary, null, b.WatcherView, b.Seq));
     }
 }
