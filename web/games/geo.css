@@ -289,3 +289,4 @@
 .geo-mine-sample .geo-mine-sph { position: relative; width: 96px; height: 72px; border-radius: 8px; background: linear-gradient(160deg, var(--geo-sky, #8fb7e0) 0 45%, var(--geo-field, #6f9a55) 45% 100%); }
 .geo-mine-sample .geo-mine-sph::after { content: "🏡"; position: absolute; left: 34px; top: 22px; font-size: 26px; }
 .geo-mine-sample > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.geowrap.geopick .geomain, .geowrap.geopick .geobar, .geowrap.geopick .geoscore { display: none; }

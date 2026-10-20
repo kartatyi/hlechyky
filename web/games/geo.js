@@ -1522,6 +1522,9 @@
     const html = chHtml(ctx);
     if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
     box.hidden = !html;
+    // список викликів — замість порожніх фото й мапи, а не під ними
+    const c = V(ctx).ch;
+    root.querySelector('.geowrap').classList.toggle('geopick', !!(c && c.pick));
     const cb = root.querySelector('.geo-chbtn'), phase = phaseOf(ctx);
     if (cb) cb.hidden = !(phase === 'lobby' || phase === 'done') || (ctx.room && ctx.room.game) === CH_GAME;
   }
