@@ -83,3 +83,5 @@ body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > .cpad >
 body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > .cpad > button[data-d="-1"] { grid-column: 1; grid-row: 1 / span 12; }
 body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > .cpad > button[data-d="1"] { grid-column: 3; order: 9; }
 body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > :not(.gbody), body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > :not(canvas):not(.cpad) { grid-column: 3; max-width: 24vw; }
+/* ⚖ фора (пакет 3): множник очок біля імені в рахунку */
+.curve-hc { opacity: .7; font-size: .8em; white-space: nowrap; }
