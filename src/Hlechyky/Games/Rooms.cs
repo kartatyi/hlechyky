@@ -83,7 +83,7 @@ public sealed record RoomOutcome(Outbox Out, RoomReply Reply)
 
 /// <summary>
 /// Готова розкладка однієї кімнати для розсилки: шапка, вид кожного зайнятого місця, вид глядача і список
-/// з'єднань, що дивляться. Будується під замком кімнати, летить уже поза ним.
+/// з'єднань, що дивляться. Будується під замком кімнати, летить уже поза ним. <c>Seq</c> — її номер (<see cref="RoomView.Seq"/>).
 /// </summary>
 public sealed record RoomBroadcast(
     string RoomId,
@@ -92,7 +92,8 @@ public sealed record RoomBroadcast(
     IReadOnlyList<string?> Seats,
     IReadOnlyDictionary<int, object?> SeatViews,
     object? WatcherView,
-    IReadOnlyList<string> Watchers)
+    IReadOnlyList<string> Watchers,
+    long Seq = 0)
 {
     /// <summary>Яке місце тримає цей нік у цій кімнаті; null — глядач.</summary>
     public int? SeatOf(string? nick)
@@ -1197,6 +1198,13 @@ public sealed partial class Rooms
         lock (room.Sync) return room.Has(nick) ? room.Info.Id : null;
     }
 
+    /// <summary>
+    /// Номер розкладки (<see cref="RoomView.Seq"/>). Береться під замком кімнати, тож у межах столу росте разом зі станом.
+    /// Починається з теперішнього часу (×1000), а не з нуля: після перезапуску вкладки живуть далі з номерами старого
+    /// процесу, і свіжі види не мають здатись їм застарілими.
+    /// </summary>
+    long _viewSeq = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
+
     /// <summary>Готова розкладка кімнати для Broadcaster: види по місцях, вид глядача, список з'єднань.</summary>
     public RoomBroadcast? ViewsFor(string roomId)
     {
@@ -1213,7 +1221,7 @@ public sealed partial class Rooms
                 }
                 return new RoomBroadcast(
                     room.Id, room.Summary(), room.Info.Hidden, (string?[])room.Seats.Clone(),
-                    seatViews, SafeView(room, null), [.. room.Watchers.Keys]);
+                    seatViews, SafeView(room, null), [.. room.Watchers.Keys], Interlocked.Increment(ref _viewSeq));
             }
         }
         catch (Exception ex)
@@ -1237,7 +1245,8 @@ public sealed partial class Rooms
             if (!string.IsNullOrEmpty(nick))
                 for (var i = 0; i < room.Seats.Length; i++)
                     if (string.Equals(room.Seats[i], nick, StringComparison.OrdinalIgnoreCase)) { seat = i; break; }
-            if (room.Restored is { } restored) return new RoomView(room.Summary(), seat, restored.View(seat));
+            var seq = Interlocked.Increment(ref _viewSeq);
+            if (room.Restored is { } restored) return new RoomView(room.Summary(), seat, restored.View(seat), seq);
             object? view;
             try { view = room.Game.Snapshot(seat); }
             catch (Exception ex)
@@ -1245,7 +1254,7 @@ public sealed partial class Rooms
                 _log.LogWarning(ex, "Snapshot({Seat}) впав у кімнаті {Room}", seat, room.Id);
                 view = SafeView(room, seat);
             }
-            return new RoomView(room.Summary(), seat, view);
+            return new RoomView(room.Summary(), seat, view, seq);
         }
     }
 

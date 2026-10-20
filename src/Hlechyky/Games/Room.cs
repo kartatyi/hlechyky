@@ -74,8 +74,12 @@ public sealed class RestoredViews(IReadOnlyDictionary<int, System.Text.Json.Json
 /// <summary>Хід-налаштування в лобі: з якого місця, що й з чим (payload — сирий JSON або null).</summary>
 public sealed record LobbyAct(int Seat, string Action, string? Payload);
 
-/// <summary>Те, що летить подією <c>room</c>: шапка кімнати, моє місце (null — глядач) і вид цього місця.</summary>
-public sealed record RoomView(RoomSummary Room, int? Seat, object? View);
+/// <summary>
+/// Те, що летить подією <c>room</c>: шапка кімнати, моє місце (null — глядач) і вид цього місця. <c>Seq</c> — номер
+/// розкладки (<see cref="Rooms.ViewsFor"/>, <see cref="Rooms.SnapshotFor"/>): пачки з різних потоків доходять не по черзі,
+/// і браузер відкидає вид, старший за вже показаний. 0 — номера нема, брати як є.
+/// </summary>
+public sealed record RoomView(RoomSummary Room, int? Seat, object? View, long Seq = 0);
 
 /// <summary>
 /// Рядок події <c>solo</c>: хто зараз у своїй соло-грі. Приватні кімнати в лобі не потрапляють, тож без цього

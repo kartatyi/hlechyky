@@ -795,6 +795,8 @@
   /// Виклик хаба, що повертає RoomReply: помилку показуємо тостом, успіх — лише якщо є що сказати.
   async function call(method, ...args) {
     if (!(await connected(6000))) { toast('Халепа: зв\'язку з сервером нема', 'err'); return { ok: false, message: '' }; }
+    // Новий стіл звідусіль (попап, Лелека, пакет Своєї гри, виклик у Клавоперегонах…): сидиш за іншим — спершу «встати?».
+    if (method === 'CreateRoom' && !(await leaveForNew(args[0]))) return { ok: false, message: '' };
     try {
       let r = await conn.invoke(method, ...args);
       if (r && !r.ok && String(r.message || '').startsWith(RESTARTING) && (await afterRestart())) r = await conn.invoke(method, ...args);
@@ -880,27 +882,45 @@
     return await call(again, id);
   }
 
-  /// Сидиш за іншим столом (other) — питаємо, чи встати; коли там іде партія, кажемо, чим це скінчиться.
-  /// okIdle/okPlaying — підпис кнопки згоди для столу, що чекає, і для столу з партією. true — згоден.
-  function askLeave(other, okIdle, okPlaying) {
+  /// «Ти вже за столом <other>» — встати звідти? Сервер тримає нас щонайбільше за одним столом, тож і сісти за інший,
+  /// і поставити новий можна, лише вставши з цього. `labels` — напис дії: [спокійно, посеред партії]. true — встаємо.
+  function askLeave(other, labels) {
     const playing = other.status === 'playing';
     const stake = playing && other.stake ? ', а ставка 🏺' + other.stake + ' лишиться суперникові' : '';
     return ask({
       title: 'Ти вже за столом',
       html: '<b>' + iconOf(other.game) + esc(titleOf(other.game)) + '</b>'
-        + (playing
-          ? ' — там іде партія. Якщо встанеш зараз, вона зарахується як поразка' + stake + '.'
+        + (playing ? ' — там іде партія. Якщо встанеш зараз, вона зарахується як поразка' + stake + '.'
+          : other.status === 'finished' ? ' — партію там дограно, встати можна без наслідків.'
           : ' — партія ще не почалась, встати можна без наслідків.'),
-      ok: playing ? okPlaying : okIdle,
+      ok: playing ? labels[1] : labels[0],
       cancel: 'Лишитись там',
     });
+  }
+
+  /// Стіл, з якого щойно встали заради нового: лобі про це може дізнатись трохи пізніше за відповідь на LeaveRoom,
+  /// і без цього CreateRoom спитав би «встати?» вдруге. Наступна подія 'rooms' його забуває.
+  let leftForNew = null;
+
+  /// Новий стіл гри `gameId`, а сидиш за іншим: раніше сервер відмовляв «Встань, якщо хочеш новий», і треба було йти
+  /// туди, вставати й вертатись. Тепер питаємо тут і встаємо самі. true — можна ставити (або й не заважало нічого).
+  async function leaveForNew(gameId) {
+    const g = gameOf(gameId);
+    if (g && (g.maxPlayers <= 1 || g.private)) return true;   // соло — своя кімната, місце за столом їй не заважає
+    const other = seatedAt(null);
+    if (!other || other.id === leftForNew) return true;
+    if (g && g.shared && other.game === gameId) return true;   // спільний стіл тієї ж гри: сервер просто скаже «ти тут»
+    if (!(await askLeave(other, ['Встати й поставити', 'Все одно встати']))) return false;
+    if (!(await call('LeaveRoom', other.id)).ok) return false;
+    leftForNew = other.id;
+    return true;
   }
 
   /// Сісти за стіл. Сидиш за іншим — раніше кнопки просто не було, і доводилось іти назад, вставати,
   /// вертатись і сідати знову. Тепер питаємо тут і встаємо самі. true — сіли.
   async function joinRoom(id, btn) {
     const other = seatedAt(id);
-    if (other && !(await askLeave(other, 'Встати і сісти сюди', 'Все одно встати й сісти'))) return false;
+    if (other && !(await askLeave(other, ['Встати і сісти сюди', 'Все одно встати й сісти']))) return false;
     // Кнопку крутимо лише навколо самих викликів: поки людина читає питання, «сідаю…» на ній недоречне.
     const sit = async () => {
       if (other && !(await call('LeaveRoom', other.id)).ok) return false;
@@ -2105,9 +2125,11 @@
         if (e) openCreate(gameOf(defaultMode(e)), e);
       } else openCreate(gameOf(k), null);
     });
-    box.querySelectorAll('[data-shared]').forEach((b) => b.onclick = (e) => {
+    box.querySelectorAll('[data-shared]').forEach((b) => b.onclick = async (e) => {
       if (!me.nick) { askNick(); return; }
-      busy(e.currentTarget, 'мить…', async () => {
+      const btn = e.currentTarget;
+      if (!(await leaveForNew(b.dataset.shared))) return;
+      busy(btn, 'мить…', async () => {
         const r = await openRoom('CreateRoom', b.dataset.shared, {});
         if (r.ok && r.roomId) go('#games/room/' + encodeURIComponent(r.roomId));
       });
@@ -2233,21 +2255,18 @@
       wrap.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b));
       paintVar();
     });
+    // «Встати з попереднього столу?» (записка #59) — до того, як кнопка закрутиться: поки людина читає питання, «ставлю…» недоречне.
     wrap.querySelector('[data-go]').onclick = async (e) => {
-      const btn = e.currentTarget;
-      // Сидиш за іншим столом — сервер нового не дасть («Ти вже за столом»): питаємо, як у «Сісти», і встаємо самі
-      // (записка #59). Соло відкривається й так.
-      const other = g.maxPlayers > 1 ? seatedAt(null) : null;
-      if (other && !(await askLeave(other, 'Встати й поставити новий', 'Все одно встати й поставити'))) return;
-      busy(btn, 'ставлю…', async () => {
-        if (other && !(await call('LeaveRoom', other.id)).ok) return;
-        const box = wrap.querySelector('.gvar');
-        const payload = optValues(box);
-        const st = box.querySelector('.gstake.on');
-        if (st) payload.stake = +st.dataset.stake;
-        const r = await openRoom('CreateRoom', g.id, payload);
-        if (r.ok) { close(); if (r.roomId) go('#games/room/' + encodeURIComponent(r.roomId)); }
-      });
+      const btn = e.currentTarget;   // після await його вже нема: currentTarget живе лише поки триває подія
+      if (await leaveForNew(g.id)) busy(btn, 'ставлю…', put);
+    };
+    const put = async () => {
+      const box = wrap.querySelector('.gvar');
+      const payload = optValues(box);
+      const st = box.querySelector('.gstake.on');
+      if (st) payload.stake = +st.dataset.stake;
+      const r = await openRoom('CreateRoom', g.id, payload);
+      if (r.ok) { close(); if (r.roomId) go('#games/room/' + encodeURIComponent(r.roomId)); }
     };
   }
 
@@ -3364,6 +3383,7 @@
       });
       c.on('rooms', (list) => {
         rooms = list || [];
+        leftForNew = null;
         // Щойно столи взагалі є — беремо назви ігор: без них балачки писали б «mafia» замість «Мафія».
         // Модулі при цьому не тягнемо: слухачеві, який у «Ігри» не заходить, вони ні до чого.
         if (rooms.length) ensureNames().catch(() => { /* напишемо id, це не привід шуміти */ });
@@ -3396,10 +3416,14 @@
         if (!rv || !rv.room) return;
         const id = rv.room.id;
         const old = views[id];
+        // Вид, складений раніше за вже показаний (RoomView.Seq): пачки з різних потоків сервера доходять не по черзі. Друга
+        // вкладка гравця бачила свій вид, а за мить її накривав вид глядача з пачки, складеної ще до її підписки.
+        if (old && old.seq && rv.seq && rv.seq < old.seq) return;
         views[id] = {
           room: rv.room,
           seat: rv.seat != null ? rv.seat : seatOfMe(rv.room),
           view: rv.view,
+          seq: rv.seq || 0,
           // приватна соло-кімната в 'rooms' не приходить — тягнемо її за собою по панелях
           loose: old ? old.loose : !rooms.some((r) => r.id === id),
         };
