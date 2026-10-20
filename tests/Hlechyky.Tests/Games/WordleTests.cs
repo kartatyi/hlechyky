@@ -303,7 +303,8 @@ public class WordleTests(WordleWords fx) : IClassFixture<WordleWords>
         Assert.False(v.GetProperty("solved").GetBoolean());
         Assert.Equal(Answer, v.GetProperty("answer").GetString());
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
-        Assert.Empty(h.Scores);
+        // пакет 4: невдалий день лишає слід (DailyMiss), але без соло-результату й нагороди
+        Assert.True(Assert.Single(h.Scores).Missed);
         Assert.Empty(h.Awards);
     }
 

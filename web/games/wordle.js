@@ -159,10 +159,115 @@
     // злітав би з першої ж наступної набраної літери й обривав переворот на середині.
     if (st.flipFrom === null) st.flipFrom = rows.length;
 
+    dayLine(root, ctx, v);
     drawBoard(root, ctx, st, rows, max, !over(v) && ctx.mine);
     // день дограно — друкувати нікуди, а клавіатура штовхала серію й «Скопіювати» за нижній край телефона
     HGames.ui.keyboardUa(root, (k) => press(root, k), v.keys || {}).hidden = over(v);
+    modeLine(root, ctx, v, !v.noWords && !over(v));
+    friends(root, ctx, v);
     foot(root, ctx, v);
+  }
+
+  const lowNick = (s) => String(s || '').trim().toLowerCase();
+  const myNick = (ctx) => lowNick(ctx.nickOf && ctx.seat != null ? ctx.nickOf(ctx.seat) : '');
+
+  /// Табло дня над дошкою (пакет 4, як у Сапера дня): «Сьогодні: Оля 3/6 🔥4 · ✗ Петро», нижче — хто ще не грав.
+  /// Видно і до, і після своєї гри: спроби й вогники нічого не підказують. ✦ — складний режим (з сіток друзів).
+  function dayLine(root, ctx, v) {
+    let el = root.querySelector(':scope > .wday');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wday';
+      root.insertBefore(el, root.firstChild);
+    }
+    const b = v.board;
+    const me = myNick(ctx);
+    const hard = {};
+    (v.friends || []).forEach((f) => { if (f.hard) hard[lowNick(f.n)] = 1; });
+    if (v.hard) hard[me] = 1;
+    let html = '';
+    if (b) {
+      const fire = (n) => (n >= 2 ? ' <span class="wfire" title="Днів поспіль">🔥' + n + '</span>' : '');
+      const star = (n) => (hard[lowNick(n)] ? '<span class="whard" title="Складний режим">✦</span>' : '');
+      const rows = (b.rows || []).map((r) => '<span class="wdr' + (lowNick(r.n) === me ? ' me' : '') + '"><i>'
+        + ctx.esc(r.n) + '</i> ' + r.a + '/6' + star(r.n) + fire(r.st) + '</span>');
+      const miss = (b.miss || []).map((r) => '<span class="wdr miss' + (lowNick(r.n) === me ? ' me' : '') + '">✗ <i>'
+        + ctx.esc(r.n) + '</i>' + star(r.n) + '</span>');
+      const all = rows.concat(miss);
+      html = all.length
+        ? '<span class="wdl">Сьогодні:</span> ' + all.join(' · ')
+        : '<span class="wdl">Сьогодні ще ніхто не вгадав — будь першим</span>';
+      const wait = (b.wait || []).filter((w) => lowNick(w.n) !== me);
+      if (wait.length) html += '<br><span class="wdl">Ще не грали:</span> ' + wait.map((w) => '<i>' + ctx.esc(w.n) + '</i>'
+        + (w.st >= 2 ? ' <span class="wfire dim" title="Вогник згасне опівночі">🔥' + w.st + '</span>' : '')).join(', ');
+    }
+    el.hidden = !html;
+    setHtml(el, html);
+  }
+
+  /// Складний режим ✦ (пакет 4): до першої спроби — перемикач, потім — лише позначка. d — вид дня ({ hard, attempts }).
+  function modeLine(host, ctx, d, open) {
+    let el = host.querySelector(':scope > .wmode');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wmode';
+      const after = host.querySelector(':scope > .wfriends') || host.querySelector(':scope > .wfoot');
+      host.insertBefore(el, after || null);
+    }
+    let html = '';
+    if (open && ctx.mine && !(d.attempts > 0)) {
+      html = '<button class="ghost wmodego' + (d.hard ? ' on' : '') + '" data-hard title="Кожна наступна спроба мусить тримати '
+        + 'зелені на місцях і всі відкриті жовті">✦ Складний режим: ' + (d.hard ? 'увімкнено' : 'вимкнено') + '</button>';
+    } else if (d.hard) {
+      html = '<span class="whard">✦</span> <span class="muted small">складний режим</span>';
+    }
+    el.hidden = !html;
+    if (el.dataset.sig !== html) {
+      el.dataset.sig = html;
+      el.innerHTML = html;
+      const b = el.querySelector('[data-hard]');
+      if (b) b.onclick = () => {
+        b.disabled = true;
+        ctx.act('hard', { on: !d.hard }).then(() => { b.disabled = false; }, () => { b.disabled = false; });
+      };
+    }
+  }
+
+  /// Сітки друзів за сьогодні (пакет 4): поки я не дограв — лише кольори, після — і слова (words від сервера).
+  function friends(root, ctx, v) {
+    let el = root.querySelector(':scope > .wfriends');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wfriends';
+      const ft = root.querySelector(':scope > .wfoot');
+      root.insertBefore(el, ft || null);
+    }
+    const list = v.friends || [];
+    const max = v.max || 6;
+    const html = !list.length ? '' : '<div class="wfhead muted small">' + (over(v)
+      ? 'Як сьогодні йшли друзі'
+      : 'Друзі сьогодні — лише кольори; слова побачиш, коли дограєш') + '</div><div class="wflist">'
+      + list.map((f) => '<div class="wrp' + (f.solved ? ' solved' : '') + (f.failed ? ' failed' : '') + '">'
+        + mini(ctx, f, max, LEN)
+        + '<div class="wrpname"><b title="' + ctx.esc(f.n || '') + '">' + ctx.esc(f.n || '—') + '</b>'
+        + (f.hard ? '<span class="whard" title="Складний режим">✦</span>' : '') + '</div>'
+        + '<div class="wrptot">' + (f.solved ? '<span class="wrst ok">✓ ' + f.a + '/' + max + '</span>'
+          : f.failed ? '<span class="wrst bad">✗</span>' : '<span class="wrst">' + f.a + '/' + max + '</span>') + '</div></div>').join('')
+      + '</div>';
+    el.hidden = !html;
+    setHtml(el, html);
+  }
+
+  /// Табло й чужі сітки міняються без мене — вид приходить лише на мої дії, тож час від часу просимо його ще раз.
+  /// Табло ще не дочитане (board: null) — просимо скоро, далі — раз на 45 с, коли вкладку видно.
+  function freshen(root, ctx) {
+    const st = state(root);
+    if (!ctx || !ctx.resync || !ctx.view) return;
+    const now = Date.now();
+    const wait = ctx.view.board ? 45000 : 2000;
+    if (now - (st.freshAt || 0) < wait || document.hidden) return;
+    st.freshAt = now;
+    ctx.resync();
   }
 
   /// Підвал картки: коли день дограно — «Скопіювати результат» і скільки чекати нового слова.
@@ -177,16 +282,19 @@
       setHtml(el, '<div class="muted small">Словника на цьому сервері нема — сьогодні без слова.</div>');
       return;
     }
-    if (!over(v)) {
-      setHtml(el, '');
-      return;
+    // 📚 Архів — завжди: учорашнє слово можна дограти й до сьогоднішнього
+    const arch = inCatalog('wordle-archive') && ctx.mine
+      ? '<button class="ghost warchgo" data-arch title="Слова минулих днів: дограти пропущені, без серії й черепків">📚 Архів</button>' : '';
+    let html = arch;
+    if (over(v)) {
+      const race = inCatalog('wordle-race');
+      wantStats(root, ctx);
+      html = statsHtml(state(root).stats, v)
+        + (v.share ? '<button class="ghost" data-copy>Скопіювати результат</button>' : '')
+        + '<div class="muted small wnext">' + ctx.esc(nextWordIn()) + '</div>'
+        + (race ? '<button class="ghost wracego" data-race title="Інші слова, не слово дня">🏁 Ану ще слово — наввипередки з друзями</button>' : '')
+        + arch;
     }
-    const race = raceInCatalog();
-    wantStats(root, ctx);
-    const html = statsHtml(state(root).stats, v)
-      + (v.share ? '<button class="ghost" data-copy>Скопіювати результат</button>' : '')
-      + '<div class="muted small wnext">' + ctx.esc(nextWordIn()) + '</div>'
-      + (race ? '<button class="ghost wracego" data-race title="Інші слова, не слово дня">🏁 Ану ще слово — наввипередки з друзями</button>' : '');
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
       el.innerHTML = html;
@@ -194,7 +302,18 @@
       if (b) b.onclick = () => copy(v.share || '', ctx);
       const g = el.querySelector('[data-race]');
       if (g) g.onclick = () => openRace(ctx, g);
+      const a = el.querySelector('[data-arch]');
+      if (a) a.onclick = () => openArchive(a);
     }
+  }
+
+  /// Архів — своя особиста кімната (wordle-archive): відкрити її й перейти туди.
+  function openArchive(btn) {
+    btn.disabled = true;
+    HGames.call('OpenSolo', 'wordle-archive', null).then((r) => {
+      btn.disabled = false;
+      if (r && r.ok && r.roomId) location.hash = '#games/room/' + encodeURIComponent(r.roomId);
+    }, () => { btn.disabled = false; });
   }
 
   /// Серія й розподіл спроб — раз на картку, коли день дограно. Не прийшло — підвал просто без них.
@@ -217,7 +336,7 @@
     if (!s || s.none) return '';
     const dist = (s.dist || []).slice(0, 6);
     while (dist.length < 6) dist.push(0);
-    let streak = s.streak | 0, best = s.best | 0, solved = s.solved | 0;
+    let streak = s.streak | 0, best = s.best | 0, solved = s.solved | 0, miss = s.miss | 0;
     const today = v.solved ? v.attempts : 0;
     if (today && !s.today) {
       dist[today - 1]++;
@@ -225,16 +344,21 @@
       streak++;
       best = Math.max(best, streak);
     }
-    if (!solved) return '';
-    const top = Math.max(1, ...dist);
-    const bars = dist.map((n, i) => '<div class="wdrow' + (today === i + 1 ? ' now' : '') + '"><span>' + (i + 1) + '</span>'
-      + '<i style="width:' + Math.max(8, Math.round(n / top * 100)) + '%">' + n + '</i></div>').join('');
+    // програний сьогоднішній день теж міг не встигнути в базу раніше за запит
+    const lostNow = !!(v.failed && !v.archive);
+    if (lostNow && !s.missToday) miss++;
+    if (!solved && !miss) return '';
+    const top = Math.max(1, miss, ...dist);
+    const bar = (label, n, now, cls) => '<div class="wdrow' + (now ? ' now' : '') + (cls ? ' ' + cls : '') + '"><span>' + label + '</span>'
+      + '<i style="width:' + Math.max(8, Math.round(n / top * 100)) + '%">' + n + '</i></div>';
+    const bars = dist.map((n, i) => bar(i + 1, n, today === i + 1)).join('')
+      + (miss ? bar('✗', miss, lostNow, 'miss') : '');
     return '<div class="wstats">'
       + '<div class="wstreak">Серія <b>🔥 ' + streak + '</b> · найдовша ' + best + ' · узято днів: ' + solved + '</div>'
       + '<div class="wdist" title="За скільки спроб узято слово дня">' + bars + '</div></div>';
   }
 
-  const raceInCatalog = () => ((HGames.catalog && HGames.catalog.games) || []).some((g) => g.id === 'wordle-race');
+  const inCatalog = (id) => ((HGames.catalog && HGames.catalog.games) || []).some((g) => g.id === id);
 
   /// Дограв слово дня — одразу стіл наввипередки: хочеться ще, а щоденне дає одне слово на добу.
   function openRace(ctx, btn) {
@@ -324,11 +448,14 @@
       const st = state(root);
       st.flipFrom = null;   // те, що вже стоїть на дошці, після F5 сальто не робить
       paint(root, ctx);
-      // відлік до нового слова тікає сам; хвилини вистачає — година й хвилини й так змінюються повільно
+      st.freshAt = Date.now();
+      // відлік до нового слова тікає сам (година й хвилини змінюються повільно), а табло дня й сітки друзів
+      // перепитуємо самі: freshen сам стежить, щоб не частіше ніж треба
       st.timer = setInterval(() => {
         const el = root.querySelector(':scope > .wfoot .wnext');
         if (el) el.textContent = nextWordIn();
-      }, 30000);
+        if (st.ctx) freshen(root, st.ctx);
+      }, 3000);
     },
 
     update(root, ctx) { paint(root, ctx); },
@@ -346,11 +473,14 @@
     },
 
     news: {
-      v: '2026-09-29',
-      title: 'Глек-слово: серія на картці',
+      v: '2026-10-20',
+      title: 'Глек-слово: друзі, архів і складний режим',
       items: [
-        '🔥 Дограв день — на картці серія, найдовша серія і стовпчики «за скільки спроб», як у класиці',
-        '🏁 Наввипередки з друзями: хто вгадав — бачить чужі дошки з літерами, а ще спринт «кожен своє слово» і слова на 4 чи 6 літер',
+        '🏆 Над дошкою — хто сьогодні вже вгадав і за скільки спроб, 🔥 серії, ✗ і хто ще не грав',
+        '👥 Сітки друзів за сьогодні: поки сам не дограв — лише кольори, після — і їхні слова',
+        '📚 Архів: пропущені дні за останній місяць можна дограти (без серії й черепків)',
+        '✦ Складний режим: кожна спроба мусить тримати відкриті літери. Обирають до першої спроби',
+        '✗ Програний день тепер видно — і в розподілі спроб, і на табло',
       ],
     },
 
@@ -361,6 +491,136 @@
       root._wordle = null;
     },
   });
+
+  // =================================================================================================
+  // Архів Глек-слова (Impl/WordleArchive.cs, пакет 4): слова минулих днів. Вид:
+  //   { archive: true, loading, max, days: [{ day, no, mine: 's'|'x'|'', a, arch: 's'|'x'|'p'|'', aa }],
+  //     cur: null | { day, no, view, rows, attempts, solved, failed, hard, answer, keys, share, noWords } }
+  // mine — як день пройшов у щоденному (✓ a/6, ✗); arch — моя архівна партія. view — день зіграно ще тоді: лише подивитись.
+  // =================================================================================================
+
+  const ARCH_ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
+    + '<rect x="2" y="2" width="12" height="3.4" rx="1" fill="var(--accent)"/>'
+    + '<rect x="2" y="6.3" width="12" height="3.4" rx="1" fill="none" stroke="var(--muted)" stroke-width="1.1"/>'
+    + '<rect x="2" y="10.6" width="12" height="3.4" rx="1" fill="var(--ok)"/></svg>';
+
+  const archLocked = (v) => { const c = v && v.cur; return !c || c.view || c.noWords || over(c); };
+
+  /// «19.10» з «2026-10-19».
+  const shortDay = (d) => { const p = String(d || '').split('-'); return p.length === 3 ? p[2] + '.' + p[1] : d; };
+
+  function archMark(d, max) {
+    if (d.mine === 's') return '<span class="wrst ok" title="Узято ще того дня">✓ ' + d.a + '/' + max + '</span>';
+    if (d.mine === 'x') return '<span class="wrst bad" title="Того дня не вийшло">✗</span>';
+    if (d.arch === 's') return '<span class="wrst ok" title="Дограно в архіві">📚 ✓ ' + d.aa + '/' + max + '</span>';
+    if (d.arch === 'x') return '<span class="wrst bad" title="Дограно в архіві">📚 ✗</span>';
+    if (d.arch === 'p') return '<span class="wrst" title="Почато в архіві">📚 ' + d.aa + '/' + max + '…</span>';
+    return '<span class="wrst">не грав</span>';
+  }
+
+  function paintArchive(root, ctx) {
+    const st = state(root);
+    st.ctx = ctx;
+    st.locked = archLocked;
+    st.repaint = paintArchive;
+    if (ctx.room) roots[ctx.room.id] = root;
+    const v = ctx.view || {};
+    const c = v.cur;
+    const max = v.max || 6;
+    // інший день — чиста чернетка, а вже відкрите на дошці сальто не робить
+    const key = c ? c.day : '';
+    if (st.archDay !== key) {
+      st.archDay = key;
+      st.draft = '';
+      st.flipFrom = c ? (c.rows || []).length : null;
+    }
+    const head = part(root, 'wahead');
+    const list = part(root, 'walist');
+    const body = part(root, 'wabody');
+    const foot = part(root, 'wafoot');
+
+    if (!c) {
+      setHtml(head, '<b>📚 Архів Глек-слова</b><div class="muted small">Пропущені дні можна дограти — без серії й черепків. '
+        + 'Зіграні ще тоді — лише подивитись.</div>');
+      const days = v.days || [];
+      setHtml(list, (v.loading ? '<div class="muted small">Гортаю архів…</div>' : '')
+        + (days.length ? days.map((d) => '<button class="ghost waday' + (d.mine ? ' done' : '') + '" data-day="' + ctx.esc(d.day) + '">'
+          + '<b>#' + d.no + '</b> <span class="muted">' + ctx.esc(shortDay(d.day)) + '</span> ' + archMark(d, max) + '</button>').join('')
+          : '<div class="muted">Минулих днів ще нема — архів почнеться завтра</div>'));
+      list.querySelectorAll('[data-day]').forEach((b) => {
+        b.onclick = () => ctx.mine && ctx.act('open', { day: b.dataset.day });
+      });
+      list.hidden = false;
+      body.hidden = true;
+      setHtml(foot, '');
+      return;
+    }
+
+    setHtml(head, '<button class="ghost" data-back>← Архів</button> <b>Глек-слово #' + c.no + '</b> <span class="muted">'
+      + ctx.esc(shortDay(c.day)) + '</span>'
+      + (c.view ? '<div class="muted small">Цей день зіграно ще тоді — лише подивитись</div>' : ''));
+    const back = head.querySelector('[data-back]');
+    if (back) back.onclick = () => ctx.act('back');
+    list.hidden = true;
+    body.hidden = false;
+    drawBoard(body, ctx, st, c.rows || [], max, !archLocked(v) && ctx.mine);
+    HGames.ui.keyboardUa(body, (k) => press(root, k), c.keys || {}).hidden = archLocked(v);
+    modeLine(body, ctx, c, !archLocked(v));
+    let html = '';
+    if (c.view && !(c.rows || []).length) html += '<div class="muted small">Сітка того дня не збереглась'
+      + (c.solved ? ' — узято за ' + tries(c.attempts) : '') + '</div>';
+    if (over(c) && c.answer) html += '<div class="wrword"><span>Слово було:</span> '
+      + String(c.answer).split('').map((ch) => '<i>' + ctx.esc(ch) + '</i>').join('') + '</div>';
+    if (c.share) html += '<button class="ghost" data-copy>Скопіювати результат</button>';
+    if (foot.dataset.sig !== html) {
+      foot.dataset.sig = html;
+      foot.innerHTML = html;
+      const b = foot.querySelector('[data-copy]');
+      if (b) b.onclick = () => copy(c.share || '', ctx);
+    }
+  }
+
+  HGames.register({
+    id: 'wordle-archive',
+    icon: ARCH_ICON,
+    seatClass: ['x'],
+
+    mount(root, ctx) {
+      const st = state(root);
+      st.flipFrom = null;
+      st.archDay = undefined;
+      paintArchive(root, ctx);
+      // поки сервіс дочитує мої минулі дні (loading) — перепитуємо вид
+      st.timer = setInterval(() => {
+        const c = st.ctx;
+        if (c && c.view && c.view.loading && c.resync && !document.hidden) c.resync();
+      }, 2000);
+    },
+
+    update(root, ctx) { paintArchive(root, ctx); },
+
+    onKey,
+
+    status(ctx) {
+      const v = ctx.view;
+      if (!v) return '';
+      const c = v.cur;
+      if (!c) return v.loading ? 'Гортаю архів…' : 'Архів: обери день';
+      if (c.noWords) return 'Словника нема — архів без слів';
+      if (c.view) return c.solved ? 'Того дня узято за ' + tries(c.attempts) : 'Того дня не вийшло';
+      if (c.solved) return 'Є! Узято з архіву за ' + tries(c.attempts);
+      if (c.failed) return 'Слово було: ' + String(c.answer || '').toUpperCase();
+      return 'Архів #' + c.no + ' · спроба ' + Math.min(c.attempts + 1, v.max || 6) + ' з ' + (v.max || 6);
+    },
+
+    unmount(root, ctx) {
+      const st = root._wordle;
+      if (st && st.timer) clearInterval(st.timer);
+      if (ctx && ctx.room) delete roots[ctx.room.id];
+      root._wordle = null;
+    },
+  });
+
   // =================================================================================================
   // Глек-слово наввипередки (Impl/WordleRace.cs). Те саме слово для всіх за столом, чужі спроби —
   // самими кольорами (хто вже вгадав чи відмучився — з літерами). Вид: { phase: 'play'|'reveal'|'done',
