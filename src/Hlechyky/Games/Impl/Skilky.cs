@@ -101,9 +101,11 @@ public class Skilky : Game, IPartyMinigame
     static readonly (double Off, int Points)[] YearTiers = [(0, Bullseye), (2, 4), (5, 3), (15, 2), (50, 1)];
 
     /// <summary>Рядок таблиці розкриття: чиє число, наскільки повз і скільки за що дали.</summary>
-    private protected sealed record Row(int Seat, double Value, double Diff, int Accuracy, int Bonus = 0, int Fast = 0, int Team = -1)
+    private protected sealed record Row(int Seat, double Value, double Diff, int Accuracy, int Bonus = 0, int Fast = 0, int Team = -1, int Got = -1)
     {
         public int Points => Accuracy + Bonus + Fast;
+        /// <summary>Зараховано з «⚖ Форою» (<see cref="Got"/>; не рахували — як <see cref="Points"/>).</summary>
+        public int Earned => Got < 0 ? Points : Got;
     }
 
     /// <summary>
@@ -124,6 +126,7 @@ public class Skilky : Game, IPartyMinigame
             new GameOption("topic", "Теми", SkilkyTopics.All, SkilkyTopics.Any, Multi: true),
             new GameOption("bets", "Ставлю на чуже", [("off", "ні"), ("on", "так: +2 за вгадане чуже число (від трьох)")], "off"),
             new GameOption("teams", "Команди", [("off", "кожен сам"), ("2", "2 команди"), ("3", "3 команди"), ("4", "4 команди")], "off"),
+            Handicap.Option,
             LiveBots.LevelsOption,
         ],
         Hint: "Питання, на яке ніхто не знає точної відповіді. Кожен пише число: що ближче — то більше очок і черепків. Можна й самому");
@@ -147,6 +150,10 @@ public class Skilky : Game, IPartyMinigame
     /// <summary>Коли прийшло останнє число місця: за однакової відстані швидший бере <see cref="SpeedBonus"/>.</summary>
     readonly DateTimeOffset[] _answeredAt = new DateTimeOffset[MaxSeats];
     private protected readonly long[] _scores = new long[MaxSeats];
+    /// <summary>«⚖ Фора» (пакет 3): множник людей на партію і дробові залишки (гравця й команди); боти й вечірка — ×1.</summary>
+    Dictionary<int, double> _hc = [];
+    readonly double[] _hcCarry = new double[MaxSeats];
+    readonly double[] _hcTeamCarry = new double[MaxSeats];
     /// <summary>Уже розкриті запитання цієї партії — для підсумку в кінці.</summary>
     private protected readonly List<Recap> _recap = [];
 
@@ -288,6 +295,10 @@ public class Skilky : Game, IPartyMinigame
         _asked.Clear();
         _recap.Clear();
         SplitTeams();
+        _hc = _party is not null ? [] : Handicap.ForSeats(Ctx, Info.Id, [.. Enumerable.Range(0, MaxSeats).Where(Ctx.Seated)], Info.Rated);
+        Array.Clear(_hcCarry);
+        Array.Clear(_hcTeamCarry);
+        if (Handicap.Note(Ctx, _hc) is { } hcNote) Ctx.Log(hcNote);
         _asked.AddRange(Pick());
         _at = 0;
         _reveal = null;
@@ -317,6 +328,19 @@ public class Skilky : Game, IPartyMinigame
     }
 
     /// <summary>Члени команди (люди й боти) в порядку місць.</summary>
+    /// <summary>
+    /// Очки рядка розкриття × «⚖ Фора». Команда відповідає одним числом, тож її множник — середній множник гравців
+    /// команди (кожен вносить свою частку), і всім членам іде однаково — команда лишається командою.
+    /// </summary>
+    int Earn(Row r)
+    {
+        if (_hc.Count == 0) return r.Points;
+        if (r.Team < 0) return Handicap.Scale(r.Points, Handicap.Of(_hc, r.Seat), ref _hcCarry[r.Seat]);
+        var m = Members(r.Team);
+        var f = m.Count == 0 ? 1 : m.Average(s => Handicap.Of(_hc, s));
+        return Handicap.Scale(r.Points, f, ref _hcTeamCarry[r.Team]);
+    }
+
     List<int> Members(int team) => [.. Enumerable.Range(0, MaxSeats).Where(s => _teamOf[s] == team && In(s))];
 
     /// <summary>
@@ -683,10 +707,11 @@ public class Skilky : Game, IPartyMinigame
                 rows.Add(group[k] with { Bonus = i == 0 && company ? BestBonus : 0, Fast = faster && k == 0 ? SpeedBonus : 0 });
             i = j;
         }
+        for (var i = 0; i < rows.Count; i++) rows[i] = rows[i] with { Got = Earn(rows[i]) };
         foreach (var r in rows)
         {
-            if (r.Team < 0) _scores[r.Seat] += r.Points;
-            else foreach (var s in Members(r.Team)) _scores[s] += r.Points;
+            if (r.Team < 0) _scores[r.Seat] += r.Earned;
+            else foreach (var s in Members(r.Team)) _scores[s] += r.Earned;
         }
         // Найближчі (однаково близьких може бути кілька) — у підсумок партії.
         var best = rows.Count == 0 ? [] : rows.Where(r => SameDiff(r.Diff, rows[0].Diff)).Select(r => r.Seat).ToArray();
@@ -697,13 +722,13 @@ public class Skilky : Game, IPartyMinigame
             if (In(s) && _betOn[s] >= 0)
             {
                 var ok = best.Contains(_betOn[s]);
-                if (ok) _scores[s] += BetBonus;
+                if (ok) _scores[s] += Handicap.Scale(BetBonus, Handicap.Of(_hc, s), ref _hcCarry[s]);
                 bets.Add((s, _betOn[s], ok));
             }
         _betRows = [.. bets];
 
         _recap.Add(new Recap(question.Q, question.Unit, target, years, best,
-            rows.Count == 0 ? null : rows[0].Value, rows.Count == 0 ? 0 : rows[0].Points, question.Author, question.Photo is not null));
+            rows.Count == 0 ? null : rows[0].Value, rows.Count == 0 ? 0 : rows[0].Earned, question.Author, question.Photo is not null));
 
         _answer = target;
         _years = years;
@@ -1020,12 +1045,14 @@ public class Skilky : Game, IPartyMinigame
                 say = _say,
                 rows = _reveal.Select(r => new
                 {
-                    seat = r.Seat, value = r.Value, diff = r.Diff, points = r.Points,
+                    seat = r.Seat, value = r.Value, diff = r.Diff, points = r.Earned,
                     accuracy = r.Accuracy, bonus = r.Bonus, fast = r.Fast, team = r.Team,
                 }).ToArray(),
                 bets = _betRows.Select(b => new { seat = b.Seat, on = b.On, ok = b.Ok }).ToArray(),
             },
             scores = (long[])_scores.Clone(),
+            // «⚖ Фора»: множник кожного місця на партію (null — фори нема); клієнт показує лише помітні
+            handicap = _hc.Count == 0 ? null : Enumerable.Range(0, MaxSeats).Select(s => Math.Round(Handicap.Of(_hc, s), 2)).ToArray(),
             result = _winners is null ? null : new { winners = (int[])_winners.Clone(), scores = (long[])_scores.Clone() },
             // Підсумок усіх запитань — лише коли партію зіграно: посеред гри він лише відволікав би.
             recap = _phase != PhaseDone ? null : _recap.Select(r => new

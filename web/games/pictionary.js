@@ -6,6 +6,7 @@
     { phase: 'pick'|'draw'|'reveal'|'done', turn, drawer, turnNo, turns, round, rounds,
       choices: string[]|null (лише художникові, поки обирає), word: string|null (художнику, тим, хто вгадав,
       і всім після ходу), mask: 'к_т', until, totalMs, scores[], gained[], guessed[], left[],
+      handicap: null | number[] — «⚖ Фора» (пакет 3): множник очок кожного місця,
       drawing: { ver, n, z }, feed: [{ id, seat, kind: 'guess'|'ok'|'word'|'skip'|'pass'|'left', text }], result,
       // прохід №3 (29.09):
       mode: 'party'|'duo', reroll, choicesHome: bool[]|null, homeBy, home: { n, mine[] }, reacts: [😂, 🔥, 🤯],
@@ -659,6 +660,15 @@
     if (num.textContent !== t) num.textContent = t;
   }
 
+  /// «⚖ ×0,7» біля імені — лише помітна фора (|f − 1| ≥ 0,05); очки цього місця множаться на f.
+  function hcBadge(v, i) {
+    const f = v.handicap && v.handicap[i];
+    if (!f || Math.abs(f - 1) < 0.05) return '';
+    const t = String(Math.round(f * 100) / 100).replace('.', ',');
+    return ' <i class="pchc" title="⚖ Фора: очки ×' + t + (f < 1 ? ' — сильнішим трохи важче' : ' — слабшим трохи легше')
+      + '" style="font-style:normal;font-size:.8em;color:var(--muted)">⚖ ×' + t + '</i>';
+  }
+
   function scores(root, ctx, v) {
     const f = fresh(ctx, v);
     const guessed = (f && f.guessed) || v.guessed || [];
@@ -677,7 +687,7 @@
       const plus = v.phase === 'reveal' && r.gained ? '<em>+' + r.gained + '</em>' : '';
       return '<div class="pcsc' + (ok ? ' ok' : '') + (drawing ? ' drw' : '') + (r.i === ctx.seat ? ' me' : '')
         + (left.indexOf(r.i) >= 0 ? ' off' : '') + '">'
-        + '<span class="pcn">' + ctx.esc(r.nick) + '</span><span class="pcm">' + mark + '</span>' + plus
+        + '<span class="pcn">' + ctx.esc(r.nick) + hcBadge(v, r.i) + '</span><span class="pcm">' + mark + '</span>' + plus
         + '<b>' + r.score + '</b></div>';
     }).join('');
     const el = root.querySelector('.pcscores');

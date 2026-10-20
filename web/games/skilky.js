@@ -6,8 +6,9 @@
     { round, of, phase: 'between'|'ask'|'reveal'|'done', question, unit, endsAt,
       answered: bool[], my: number|null,
       reveal: null | { answer, years, say, rows: [{ seat, value, diff, points, accuracy, bonus, fast }] },
-      scores: number[], result: null | { winners, scores } }
-  points = accuracy (за точність) + bonus (найближчому) + fast (швидшому за однакової відстані).
+      scores: number[], result: null | { winners, scores },
+      handicap: null | number[] }   // «⚖ Фора» (пакет 3): множник очок кожного місця
+  points = accuracy (за точність) + bonus (найближчому) + fast (швидшому за однакової відстані), × фора, якщо є.
   Кадр (подія 'frame', лише разом із новиною — чиєсь число чи зміна фази; летить усій кімнаті, прихованого нема):
     { round, of, phase, endsAt, answered, scores }
   Хід: Act('answer', { value }) — число або рядок («10 000», «2,54» сервер розбере сам).
@@ -170,6 +171,20 @@
   /// Ім'я місця: нік або (у вечірці) «🤖 бот» — ctx.nameOf знає й ботів; без нього — як було, лише нік.
   function nameAt(ctx, i) { return (ctx.nameOf && ctx.nameOf(i)) || ctx.nickOf(i); }
 
+  /// Множник «⚖ Фори» місця текстом («0,6») — лише помітний (|f − 1| ≥ 0,05), інакше ''.
+  function hcText(v, i) {
+    const f = i >= 0 && v.handicap && v.handicap[i];
+    if (!f || Math.abs(f - 1) < 0.05) return '';
+    return String(Math.round(f * 100) / 100).replace('.', ',');
+  }
+
+  /// «⚖ ×0,7» біля імені в рахунку: очки цього місця множаться на f.
+  function hcBadge(v, i) {
+    const t = hcText(v, i);
+    return t ? ' <i class="skhc" title="⚖ Фора: очки ×' + t + (Number(t.replace(',', '.')) < 1 ? ' — сильнішим трохи важче' : ' — слабшим трохи легше')
+      + '" style="font-style:normal;font-size:.8em;color:var(--muted)">⚖ ×' + t + '</i>' : '';
+  }
+
   /// Місця, на яких хтось сидить. Порожні (стіл на дванадцятьох, грає четверо) не малюємо взагалі.
   function seats(ctx) {
     const room = ctx.room || {};
@@ -208,7 +223,7 @@
         // Після кінця партії поруч із рахунком — скільки черепків він приніс (сервер платить так само).
         const shards = v.result ? Math.floor((sc[i] || 0) / POINTS_PER_SHARD) : 0;
         return '<div class="sksrow' + (win.includes(i) ? ' win' : '') + '">'
-          + '<span>' + ctx.esc(nameAt(ctx, i)) + '</span>'
+          + '<span>' + ctx.esc(nameAt(ctx, i)) + hcBadge(v, i) + '</span>'
           + (shards > 0 ? '<i class="skshard" title="черепки за очки">🏺+' + shards + '</i>' : '')
           + '<b>' + (sc[i] || 0) + '</b></div>';
       }).join('');
@@ -251,8 +266,12 @@
       const fast = x.fast || 0;
       const acc = x.accuracy != null ? x.accuracy : x.points - bonus - fast;
       // Розклад суми показуємо лише тоді, коли є бонуси: «+5» без «5» під ним, але «+6» із «5+1».
+      // «⚖ Фора» змінила суму — розклад теж показуємо, із множником: «5+1 ⚖×0,6».
+      const hcd = acc + bonus + fast !== x.points;
       const parts = [acc].concat(bonus ? [bonus] : [], fast ? [fast] : []);
-      const why = [acc ? acc + ' за точність' : '', bonus ? bonus + ' найближчому' : '', fast ? fast + ' за швидкість' : '']
+      const hf = hcd ? hcText(v, x.team >= 0 ? -1 : x.seat) : '';
+      const why = [acc ? acc + ' за точність' : '', bonus ? bonus + ' найближчому' : '', fast ? fast + ' за швидкість' : '',
+        hcd ? '⚖ фора' + (hf ? ' ×' + hf : '') : '']
         .filter(Boolean).join(', ');
       // --n — порядковий номер рядка: рядки випливають по черзі, від найближчого (skilky.css).
       return '<div class="skrow' + (x.points ? ' on' : '') + (bonus ? ' best' : '') + '" style="--n:' + n + '">'
@@ -262,7 +281,7 @@
         + '<span class="skd muted small">' + missText(r, x) + '</span>'
         + '<span class="skp"' + (why ? ' title="' + why + '"' : '') + '>'
         + (x.points ? '+' + x.points : '0')
-        + (parts.length > 1 ? '<small>' + parts.join('+') + '</small>' : '')
+        + (parts.length > 1 || hcd ? '<small>' + parts.join('+') + (hcd ? ' ⚖' + (hf ? '×' + hf : '') : '') + '</small>' : '')
         + '</span></div>';
     }).join('') + '</div>' + say;
   }

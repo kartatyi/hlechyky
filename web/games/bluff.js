@@ -12,6 +12,7 @@
       my: null | { lie, auto, pick, likes: number[] },
       options: null | [{ i, text, mine, by: number[]|null, picks: number[]|null, truth: bool|null, decoy: bool|null, likes }],
       revealed: number[], note, quip, scores[8], delta[8], truthDelta[8], likeDelta[8], victims[8],
+      handicap: null | number[8] — «⚖ Фора» (пакет 3): множник очок за правду й обдурених кожного місця,
       result: null | { winners, left, scores, best: null | { q, text, by, victims, likes, hlek },
                        titles: [{ key, icon, label, seats, n, text }],
                        recap: [{ q, text, answer, note, best: null | { text, by, victims, hlek } }] },
@@ -601,6 +602,15 @@
 
   const tall = () => (window.innerHeight || 0) >= 900;
 
+  /// «⚖ ×0,7» біля імені — лише помітна фора (|f − 1| ≥ 0,05); очки за правду й обдурених множаться на f.
+  function hcBadge(v, i) {
+    const f = v.handicap && v.handicap[i];
+    if (!f || Math.abs(f - 1) < 0.05) return '';
+    const t = String(Math.round(f * 100) / 100).replace('.', ',');
+    return ' <i class="bluff-hc" title="⚖ Фора: очки ×' + t + (f < 1 ? ' — сильнішим трохи важче' : ' — слабшим трохи легше')
+      + '" style="font-style:normal;font-size:.8em;color:var(--muted)">⚖ ×' + t + '</i>';
+  }
+
   function paintScore(root, ctx, v, phase, lobby, done) {
     const box = root.querySelector('.bluff-score');
     let html = '';
@@ -625,7 +635,7 @@
         }
         return '<div class="bluff-srow' + (win.includes(i) ? ' win' : '') + (gone ? ' gone' : '') + '">'
           + '<span class="bluff-dot bluff-c' + i + '"></span>'
-          + '<span class="bluff-sn" title="' + ctx.esc(nick(ctx, v, i)) + '">' + (win.includes(i) ? '🏆 ' : '') + ctx.esc(nick(ctx, v, i)) + (gone ? ' <small>🚪</small>' : '') + '</span>'
+          + '<span class="bluff-sn" title="' + ctx.esc(nick(ctx, v, i)) + '">' + (win.includes(i) ? '🏆 ' : '') + ctx.esc(nick(ctx, v, i)) + hcBadge(v, i) + (gone ? ' <small>🚪</small>' : '') + '</span>'
           + '<b class="bluff-sv">' + num(sc[i]) + '</b>'
           + (chips ? '<span class="bluff-sd">' + chips + '</span>' : '')
           + '</div>';
