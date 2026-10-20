@@ -25,6 +25,8 @@ public sealed class GeoSolo : Game
 
     /// <summary>«Ще раз» без готових фото — чесна відмова тостом, а не порожня партія.</summary>
     public override string? CanStart() => _m.CanStart();
+    /// <summary>🤝 «Кинути виклик» — уже після партії, до «Ще раз».</summary>
+    public override bool ActsBetween(string action) => action == GeoMatch.ChallengeAct;
     public override void Start() => _m.Start();
     public override ActResult Act(int seat, string action, JsonElement payload) => _m.Act(seat, action, payload);
     public override TickResult Tick() => _m.Tick();

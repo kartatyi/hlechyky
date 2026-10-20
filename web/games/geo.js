@@ -1193,7 +1193,7 @@
     }
     // «Де це? дня» — одна спроба на добу: замість «Ще раз» — чесне «нові фото після півночі»
     const again = v.day ? '<span class="muted small">Нові фото — після півночі</span>'
-      : againOf(root) ? '<button type="button" class="primary geoagain" data-pad-first>Ще раз</button>' : '';
+      : againOf(root) ? '<button type="button" class="primary geoagain" data-pad-first>' + (v.ch && v.ch.id ? '🤝 До викликів' : 'Ще раз') + '</button>' : '';
     return '<div class="geopodl">' + head + (sub ? '<span class="geopods muted">' + sub + '</span>' : '') + '</div>' + again;
   }
 
@@ -1302,6 +1302,7 @@
     paintPhoto(root, ctx);
     paintBar(root, ctx);
     paintResult(root, ctx);
+    paintCh(root, ctx);
     roundInView(st, ctx);
     const mapEl = root.querySelector('.geomap');
     mapEl.classList.toggle('can', canPin(st, ctx));
@@ -1440,6 +1441,109 @@
   // ---------------------------------------------------------------------------------------------
   // модуль
   // ---------------------------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------------------------
+  // «🤝 Виклик» (пакет 4): кинути свої п'ять фото друзям після тренування; список викликів і порівняння —
+  // у прихованій соло-грі geo-challenge (вид ch). Ті самі фото, одна спроба, автор — лише по розкритих раундах.
+  // ---------------------------------------------------------------------------------------------
+
+  const CH_GAME = 'geo-challenge';
+  const chDate = (iso) => { try { return new Date(iso).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' }); } catch { return ''; } };
+
+  function openChallenges(btn) {
+    if (btn) btn.disabled = true;
+    HGames.call('OpenSolo', CH_GAME, null).then((r) => {
+      if (btn) btn.disabled = false;
+      if (r && r.ok && r.roomId) location.hash = '#games/room/' + encodeURIComponent(r.roomId);
+    }, () => { if (btn) btn.disabled = false; });
+  }
+
+  function chPickHtml(ctx, c) {
+    const list = c.list || [], mine = c.mine || [];
+    let h = '<div class="geochbox"><b>🤝 Виклики друзів</b>'
+      + '<span class="muted small">Ті самі п’ять фото, що грав друг, по хвилині. Спроба одна — закрив посеред, продовжиш з того ж фото.</span>';
+    h += list.length ? '<ul class="geochlist">' + list.map((x) => '<li><span><b>' + ctx.esc(x.by) + '</b> · ' + num(x.total) + ' очок'
+      + '<span class="muted small"> · ' + chDate(x.at) + (x.played ? ' · зіграли: ' + x.played : '') + '</span></span>'
+      + (x.state === 'done' ? '<span class="small">Ти: <b>' + num(x.my) + '</b></span>'
+        : '<button type="button" class="primary" data-ch-take="' + ctx.esc(x.id) + '">' + (x.state === 'open' ? 'Продовжити' : 'Зіграти') + '</button>')
+      + '</li>').join('') + '</ul>'
+      : '<p class="muted small">Поки ніхто не кинув. Зіграй тренування — після партії буде кнопка «🤝 Кинути виклик».</p>';
+    if (mine.length) {
+      h += '<b class="geochsub">Твої виклики</b><ul class="geochlist">' + mine.map((x) => '<li><span>' + chDate(x.at) + ' · ' + num(x.total) + ' очок</span>'
+        + '<span class="small">' + ((x.tries || []).length ? x.tries.map((t) => ctx.esc(t.nick) + ' ' + num(t.total)).join(', ')
+          : '<span class="muted">ще ніхто не зіграв</span>') + '</span></li>').join('') + '</ul>';
+    }
+    return h + '</div>';
+  }
+
+  /// Порівняння по раундах: я (з recap) / автор / решта, хто дограв. Найкраще в рядку — виділено.
+  function chCmpHtml(ctx, v, c) {
+    const recap = v.recap || [], cmp = c.cmp || {}, others = cmp.rows || [];
+    const cols = [{ nick: 'Ти', km: recap.map((r) => r.km), points: recap.map((r) => r.points), total: (v.scores || [])[0] || 0 },
+      { nick: c.by, km: (c.author || []).map((r) => r.km), points: (c.author || []).map((r) => r.points), total: c.total || 0 }]
+      .concat(others.map((o) => ({ nick: o.nick, km: o.km || [], points: o.points || [], total: o.total })));
+    const cell = (col, i, best) => {
+      const p = col.points[i];
+      if (p == null) return '<td class="muted">—</td>';
+      return '<td' + (p === best && p > 0 ? ' class="geochwin"' : '') + '><b>' + num(p) + '</b><span class="muted small">'
+        + (col.km[i] == null ? 'без шпильки' : km(col.km[i])) + '</span></td>';
+    };
+    const names = cmp.names || recap.map((r) => r.name);
+    let h = '<div class="geochbox"><b>🤝 Виклик · ' + ctx.esc(c.by) + '</b><div class="geochscroll"><table class="geochcmp"><thead><tr><th></th>'
+      + cols.map((col) => '<th>' + ctx.esc(col.nick) + '</th>').join('') + '</tr></thead><tbody>';
+    names.forEach((n, i) => {
+      const best = Math.max(...cols.map((col) => col.points[i] || 0));
+      h += '<tr><th>' + (i + 1) + '. ' + ctx.esc(n) + '</th>' + cols.map((col) => cell(col, i, best)).join('') + '</tr>';
+    });
+    const top = Math.max(...cols.map((col) => col.total || 0));
+    h += '<tr class="geochsum"><th>Разом</th>' + cols.map((col) => '<td' + (col.total === top && top > 0 ? ' class="geochwin"' : '') + '><b>'
+      + num(col.total) + '</b></td>').join('') + '</tr>';
+    return h + '</tbody></table></div></div>';
+  }
+
+  function chHtml(ctx) {
+    const v = V(ctx), c = v.ch, phase = phaseOf(ctx);
+    if (!c || !ctx.mine) return '';
+    if ('can' in c) {
+      return c.made ? '<div class="geochbox"><b>🤝 Виклик кинуто</b><span class="muted small">Друзі побачать його в «🤝 Виклики» й у Журналі; хто зіграв — видно там само.</span></div>'
+        : '<div class="geochbox geochrow"><button type="button" class="primary" data-ch-throw>🤝 Кинути виклик</button>'
+          + '<span class="muted small">Друзі зіграють ці самі п’ять фото — і порівняєтесь по раундах.</span></div>';
+    }
+    if (c.pick) return chPickHtml(ctx, c);
+    if (phase === 'done' && c.cmp) return chCmpHtml(ctx, v, c);
+    const a = phase === 'reveal' ? (c.author || [])[v.round - 1] : null;
+    return '<div class="geochbox geochrow"><span>🤝 Виклик · <b>' + ctx.esc(c.by) + '</b></span>'
+      + (a ? '<span>' + ctx.esc(c.by) + ' тут: ' + (a.km == null ? 'без шпильки' : km(a.km)) + ' · <b>+' + num(a.points) + '</b></span>'
+        : '<span class="muted small">Результат друга — після кожного розкриття</span>') + '</div>';
+  }
+
+  function paintCh(root, ctx) {
+    const box = root.querySelector('.geoch');
+    const html = chHtml(ctx);
+    if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
+    box.hidden = !html;
+    const cb = root.querySelector('.geo-chbtn'), phase = phaseOf(ctx);
+    if (cb) cb.hidden = !(phase === 'lobby' || phase === 'done') || (ctx.room && ctx.room.game) === CH_GAME;
+  }
+
+  function bindCh(root, st) {
+    root.querySelector('.geo-chbtn').onclick = (e) => openChallenges(e.currentTarget);
+    root.querySelector('.geoch').addEventListener('click', (e) => {
+      const ctx = st.ctx;
+      if (!ctx) return;
+      const take = e.target.closest('[data-ch-take]');
+      if (take) {
+        take.disabled = true;
+        ctx.act('take', { id: take.dataset.chTake }).catch(() => {}).then(() => { take.disabled = false; });
+        return;
+      }
+      const thr = e.target.closest('[data-ch-throw]');
+      if (thr) {
+        thr.disabled = true;
+        ctx.act('challenge').catch(() => {}).then(() => { thr.disabled = false; });
+      }
+    });
+  }
 
   // ---------------------------------------------------------------------------------------------
   // «📸 Мої фото» (п. 52): свої фото в гру — перелік, «＋ Додати» (стиск у браузері, шпилька, назва, історія), ✕
@@ -1672,6 +1776,7 @@
       root.innerHTML = '<div class="geowrap">'
         + '<div class="geotop"><span class="georound"></span><div class="geochips"></div>'
         + '<button type="button" class="ghost geo-minebtn" hidden title="Свої фото в гру">📸<span> Мої фото</span></button>'
+        + '<button type="button" class="ghost geo-chbtn" hidden title="Виклики друзів: зіграй їхні п’ять фото">🤝<span> Виклики</span></button>'
         + '<button type="button" class="geosnd" data-pad-skip title="Звук">🔈</button></div>'
         + '<div class="geopod" hidden></div>'
         + '<div class="geomain">'
@@ -1691,6 +1796,7 @@
         + '<span class="geohint muted small"></span>'
         + '<button type="button" class="primary geogo" data-pad-first hidden></button></div>'
         + '<div class="georesult" hidden><div class="georev"></div><div class="geoscore"></div></div>'
+        + '<div class="geoch" hidden></div>'
         + '<div class="georecapbox"></div>'
         + '</div>';
       st.cv = root.querySelector('.geocanvas');
@@ -1716,6 +1822,7 @@
       });
       root.querySelector('.geofullbtn').onclick = () => openFull(st);
       root.querySelector('.geo-minebtn').onclick = () => mineOpen(st);
+      bindCh(root, st);
       // Фото раунду — найважливіше на сторінці: хай браузер тягне його поперед решти й розпаковує не в головному потоці.
       img.fetchPriority = 'high';
       img.decoding = 'async';
@@ -1905,4 +2012,5 @@
 
   HGames.register(Object.assign({ id: 'geo-solo', added: '2026-09-27' }, common));
   HGames.register(Object.assign({ id: 'geo-daily', added: '2026-09-29' }, common));
+  HGames.register(Object.assign({ id: 'geo-challenge' }, common));
 })();

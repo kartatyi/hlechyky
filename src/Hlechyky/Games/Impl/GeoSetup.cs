@@ -30,6 +30,7 @@ public static class GeoSetup
                 yt is null ? null : Path.Combine(Paths.Resolve(yt.FfmpegDir), OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"),
                 sp.GetService<ILogger<GeoMine>>());
         });
+        services.AddSingleton(sp => new GeoChallenges(sp.GetService<Db>()));
         services.AddHostedService(sp => sp.GetRequiredService<GeoPhotos>());
         return services;
     }

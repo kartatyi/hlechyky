@@ -45,7 +45,7 @@ public sealed record GeoRules(int Rounds, int Seconds, IReadOnlySet<string> Cats
 /// готовий». Фото — непрозорий токен <see cref="GeoPhotos"/>.
 /// </para>
 /// </summary>
-public sealed class GeoMatch
+public sealed partial class GeoMatch
 {
     public const int BetweenMs = 2000;
     public const int RevealMs = 10_000;
@@ -230,6 +230,8 @@ public sealed class GeoMatch
         for (var s = 0; s < _max; s++) _nicks[s] = _ctx.NickOf(s);
 
         var rng = _ctx.Rng;
+        _made = null;
+        if (Deal is not null) { DealFixed(); return; }
         if (Day is not null) { DealDaily(); return; }
         var pool = Pool(fresh: true);
         Shuffle(pool, rng);
@@ -412,6 +414,7 @@ public sealed class GeoMatch
             "ready" => Ready(seat),
             "next" => Next(seat),
             "area" => Area(seat),
+            ChallengeAct => Challenge(seat),
             _ => ActResult.Fail("Тут так не ходять"),
         };
     }
@@ -659,14 +662,14 @@ public sealed class GeoMatch
         var scores = seats.ToDictionary(s => s, s => _scores[s]);
         foreach (var s in seats)
         {
-            if (_pinnedEver[s]) _ctx.Score(s, _scores[s]);
+            if (_pinnedEver[s] && Ending is null) _ctx.Score(s, _scores[s]);
             if (_scores[s] / PointsPerShard is > 0 and var shards)
                 // Номер партії в причині: «Ще раз» за тим самим столом — нова виплата, а не повтор старої.
                 _ctx.Award(s, (int)Math.Min(int.MaxValue, shards), $"{ShardReason}:{_ctx.Round.ToString(CultureInfo.InvariantCulture)}");
             if (_scores[s] >= Expert && _rounds.Count >= ExpertRounds) _ctx.Award(s, 0, "ach:geo-20k");
             if (Day is not null && _scores[s] >= DailyRewardFrom) _ctx.Award(s, 0, "daily:" + DailyPuzzle);
         }
-        _ctx.Finish(_winners, Journal(seats, best), scores);
+        _ctx.Finish(_winners, Ending is { } end ? end(_scores[seats[0]]) : Journal(seats, best), scores);
     }
 
     string Journal(List<int> seats, long best)
@@ -804,6 +807,8 @@ public sealed class GeoMatch
                 km = r.Km is { } k ? Math.Round(k, 1, MidpointRounding.AwayFromZero) : (double?)null,
                 points = r.Points,
             }).ToArray(),
+            // 🤝 виклик (пакет 4): «кинути» після тренування чи стан виклику, який граєш
+            ch = ChView(me),
             turn = (int?)null,
         };
     }
