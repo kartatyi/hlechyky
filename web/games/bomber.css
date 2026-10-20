@@ -48,6 +48,10 @@
 }
 .bchip.me { box-shadow: 0 0 0 1px currentColor inset; }
 .bchip.bmclock { color: var(--muted); font-variant-numeric: tabular-nums; }
+/* «⚡ наперед / 🎯 чесно» — як свій бомбер малюється (bomber.js honestSaved) */
+.bchip.bmode { border: 0; font: inherit; color: var(--muted); cursor: pointer; }
+.bchip.bmode:hover { color: var(--text); }
+.bchip.bmode.on { color: var(--ok); box-shadow: 0 0 0 1px currentColor inset; }
 .bchip.bmclock.hot { color: var(--danger); animation: bpulse 1s ease-in-out infinite; }
 @keyframes bpulse { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .bchip.bmclock.hot { animation: none; } }
