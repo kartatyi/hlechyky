@@ -636,20 +636,30 @@ public sealed class IcefloeCore(Random rng)
                 var dx = b.B.X - p.X;
                 var dy = b.B.Y - p.Y;
                 if (dx * dx + dy * dy >= PickupReach * PickupReach) continue;
-                switch (p.Kind)
-                {
-                    case KindSpikes: b.Spikes = EffectTicks; b.Skates = 0; break;
-                    case KindJug: b.Jug = EffectTicks; break;
-                    case KindSkates: b.Skates = EffectTicks; b.Spikes = 0; break;
-                    case KindFist: b.Fist = EffectTicks; break;
-                    case KindGust: Gust(s); break;
-                    case KindFrost: Frost(s); break;
-                    default: b.Ammo = Math.Min(IceAmmoMax, b.Ammo + BallPickup); break;
-                }
+                Apply(s, p.Kind);
                 p.On = false;
                 Event(EvPickup, s, p.Kind);
                 break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Дія підбирачки <paramref name="kind"/> на місце <paramref name="s"/> — і з криги, і «⚖ Фора» на старті раунду
+    /// (там лише ті, що тримаються: шипи, глек, сніжки, ковзани, кулак; ефект тане лише в грі, тож 10 с — від «Го»).
+    /// </summary>
+    public void Apply(int s, int kind)
+    {
+        var b = Bodies[s];
+        switch (kind)
+        {
+            case KindSpikes: b.Spikes = EffectTicks; b.Skates = 0; break;
+            case KindJug: b.Jug = EffectTicks; break;
+            case KindSkates: b.Skates = EffectTicks; b.Spikes = 0; break;
+            case KindFist: b.Fist = EffectTicks; break;
+            case KindGust: Gust(s); break;
+            case KindFrost: Frost(s); break;
+            default: b.Ammo = Math.Min(IceAmmoMax, b.Ammo + BallPickup); break;
         }
     }
 

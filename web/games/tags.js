@@ -90,6 +90,7 @@
     // 🏺 Соло
     clicker: 'клікер | clicker cookie clicker idle ідлер клікер гончар глина глеки ферма',
     'bricks-sprint': 'аркада класика | tetris тетріс 40 lines sprint спринт',
+    kakhli: 'логіка аркада класика | три в ряд 3 в ряд match3 match-3 candy crush кенді bejeweled кахлі плитки рівні на час',
     'typerace-solo': 'друк | typing typeracer клавоперегони тренування',
     'geo-solo': 'географія вікторина | geoguessr геогесер мапа тренування',
     'memy-solo': 'вікторина сміх | memes meme мем меми мемологія вгадай мем картинки тренування',
@@ -97,6 +98,7 @@
     'mines-daily': 'логіка класика | minesweeper сапер міни',
     'chess-daily': 'стратегія логіка | chess puzzle шахи задача мат',
     'bricks-daily': 'аркада класика | tetris тетріс 40 lines',
+    'kakhli-daily': 'логіка аркада | три в ряд 3 в ряд match3 candy crush кахлі дня',
     'dino-daily': 'реакція аркада | chrome dino динозавр раннер забіг',
     'tyr-daily': 'стрілялка реакція | shooting тир мішені',
     'geese-daily': 'уважність числа | гуси рахувати',
@@ -110,6 +112,7 @@
     kolo: 'казино удача | wheel of fortune колесо фортуни колесо',
     lelka: 'казино удача реакція | crash aviator авіатор краш множник лелека',
     kavuny: 'казино удача реакція | fruit ninja кавуни гарбузи серп crash множник',
+    plinko: 'казино удача | plinko плінко пачинко pachinko горох горохова горошина кулька кульки дошка кілочки галтон galton',
     'slot-glek': SLOT, 'slot-cascade': SLOT, 'slot-hold': SLOT, 'slot-cluster': SLOT, 'slot-slidy': SLOT,
     // Плитка-панель «Ставки на події» (bets.js): ключ — 'x:' + id панелі
     'x:bets': 'удача | bets ставки прогнози події букмекер polymarket',

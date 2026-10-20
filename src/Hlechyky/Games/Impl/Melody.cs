@@ -75,6 +75,7 @@ public sealed class Melody : Game
             new GameOption("choices", "Підказка", [("0", "без варіантів"), ("1", "4 виконавці в останні 5 с")], "0"),
             new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "дві команди за силою (від 6)"), ("2", "дві команди як сіли (від 6)")], "0"),
             new GameOption("duel", "Останній трек", [("0", "для всіх"), ("1", "дуель двох лідерів")], "0"),
+            Handicap.Option,
             LiveBots.LevelsOption,
         ],
         Hint: "Звучить уривок пісні — з радіо або зі світової класики. Пиши виконавця й назву — хто перший, той бере більше");
@@ -137,6 +138,9 @@ public sealed class Melody : Game
     DateTimeOffset _loadStarted;
     int _totalMs;
     readonly int[] _scores = new int[Seats];
+    /// <summary>«⚖ Фора» (пакет 3): множник людей на партію і дробовий залишок кожного; боти й дуель — ×1.</summary>
+    Dictionary<int, double> _hc = [];
+    readonly double[] _hcCarry = new double[Seats];
     Dictionary<int, Found> _found = [];
     /// <summary>Хто в цьому раунді готовий пропустити трек.</summary>
     readonly HashSet<int> _skip = [];
@@ -276,6 +280,9 @@ public sealed class Melody : Game
         Array.Clear(_isBot);
         foreach (var b in _bots) _isBot[b] = true;
         _humansAtStart = SoloBot.Humans(Ctx, Seats);
+        _hc = Handicap.ForSeats(Ctx, Info.Id, [.. Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) && !_isBot[s])], Info.Rated);
+        Array.Clear(_hcCarry);
+        if (Handicap.Note(Ctx, _hc) is { } hcNote) Ctx.Log(hcNote);
         SetupTeams();
         var nicks = new List<string>();
         for (var s = 0; s < Seats; s++) if (Ctx.NickOf(s) is { } n) nicks.Add(n);
@@ -959,11 +966,19 @@ public sealed class Melody : Game
             said.Add($"⚡ з {Seconds(sec)} +{bonus}");
         }
         if (points > 0 && DuelNow && !_betsClosed) _betsClosed = true;   // перше влучання в дуелі — ставки зачинено
-        mine.Points += points;
-        Gain(seat, points);
+        var got = Earn(seat, points);
+        if (got != points) said.Add($"⚖ фора: +{got}");
+        mine.Points += got;
+        Gain(seat, got);
         _dirty = true;
         return ActResult.Accept("Є! " + string.Join(", ", said));
     }
+
+    /// <summary>
+    /// Заробіток гравця за трек × «⚖ Фора». Дуель — без фори: там двоє лідерів міряються саме треком і на них ставлять.
+    /// </summary>
+    int Earn(int seat, int points) =>
+        DuelNow ? points : Handicap.Scale(points, Handicap.Of(_hc, seat), ref _hcCarry[seat]);
 
     bool TeamGot(int seat, bool artist) => TeamOf(seat) is var t and >= 0 && (artist ? _teamFound[t].Artist : _teamFound[t].Title);
 
@@ -999,9 +1014,10 @@ public sealed class Melody : Game
         if (team >= 0) f.Who = hit;
         _dirty = true;
         if (!hit) return ActResult.Accept($"Ні, не {nick} 🙈");
-        mine.Points += WhoPoints;
-        Gain(seat, WhoPoints);
-        return ActResult.Accept($"Є! 📻 закинув {nick} +{WhoPoints}");
+        var got = Earn(seat, WhoPoints);
+        mine.Points += got;
+        Gain(seat, got);
+        return ActResult.Accept($"Є! 📻 закинув {nick} +{got}");
     }
 
     /// <summary>Ставка у фінальній дуелі: хто з двох лідерів візьме фінальний трек. Лише не дуелянтам і лише до першого влучання.</summary>
@@ -1057,6 +1073,8 @@ public sealed class Melody : Game
                     ? (object)new { seat = kv.Key, artist = kv.Value.Artist, title = kv.Value.Title, points = kv.Value.Points, fast = kv.Value.Fast }
                     : new { seat = kv.Key, artist = kv.Value.Artist, title = kv.Value.Title, points = kv.Value.Points, fast = kv.Value.Fast,
                         who = kv.Value.Who, blocked = kv.Value.Blocked }).ToArray(),
+            // «⚖ Фора»: множник кожного місця на партію (null — фори нема); клієнт показує лише помітні
+            handicap = _hc.Count == 0 ? null : Enumerable.Range(0, Seats).Select(s => Math.Round(Handicap.Of(_hc, s), 2)).ToArray(),
             grow = _grow ? new { stage = _stage, sec = GrowSec, bonus = GrowBonus } : null,
             // варіанти — лише коли вже відкрились (раніше їх нема й у виді: не підгледиш)
             choices = _phase == Play && _choicesOpen && prepared is not null ? prepared.Choices : null,

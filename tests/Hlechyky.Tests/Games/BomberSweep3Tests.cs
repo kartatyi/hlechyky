@@ -419,7 +419,7 @@ public class BomberSweep3Tests
     [Fact]
     public void Feed_carries_a_fresh_event_for_a_couple_of_seconds_and_summary_names_the_self_bomber()
     {
-        var h = Table(2);
+        var h = Table(2, new { handicap = "0" });   // без «⚖ Фори»: її рядок теж їде стрічкою
         Ready(h);
         h.Input(0, "bomb");
         h.Tick(BomberCore.FuseTicks);

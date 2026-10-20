@@ -146,8 +146,8 @@ public partial class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.Equal("byHost", g.Start);
         Assert.Equal((1, 6, 40), (g.MinPlayers, g.MaxPlayers, g.TickMs));   // сам — лише з 🤖 ботом
         Assert.False(g.Hidden);
-        Assert.Equal(["teams", "turn", "water", "mode", "arms", "map", "botlvl"], g.Options.Select(o => o.Key));
-        Assert.Equal(["solo", "30", "6", "turns", "plain", "plain", "normal"], g.Options.Select(o => o.Default));
+        Assert.Equal(["teams", "turn", "water", "mode", "arms", "map", "botlvl", "handicap"], g.Options.Select(o => o.Key));
+        Assert.Equal(["solo", "30", "6", "turns", "plain", "plain", "normal", "auto"], g.Options.Select(o => o.Default));
         Assert.Equal(["20", "30", "45"], g.Options[1].Values.Select(v => v[0]));
         Assert.Equal(["6", "10", "0"], g.Options[2].Values.Select(v => v[0]));
         Assert.Equal("glekomet", g.Module);

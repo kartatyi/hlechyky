@@ -637,10 +637,17 @@
     const s = (f && (f.s || f.scores)) || [];
     const heads = (f && f.heads) || [];
     const teams = teamsOf(ctx);
+    // ⚖ фора (пакет 3): помітний множник очок (≥ 0,05 від 1) — маленьким «⚖ ×0,7» після імені
+    const hc = (ctx.view || {}).handicap;
+    const hcTag = (i) => {
+      const k = hc ? hc[i] : 1;
+      if (typeof k !== 'number' || Math.abs(k - 1) < 0.05) return '';
+      return ' <small class="curve-hc" title="Фора: очки множаться на це число">⚖ ×' + k.toFixed(2).replace(/0$/, '').replace('.', ',') + '</small>';
+    };
     const chip = (i, withScore) => {
       const out = f && f.phase === 'play' && heads[i] && !heads[i].alive;
       return '<span class="cchip c' + i + (i === ctx.seat ? ' me' : '') + (out ? ' out' : '') + '"><i></i>'
-        + ctx.esc(ctx.nameOf(i)) + (withScore ? ' <b>' + (s[i] || 0) + '</b>' : '') + '</span>';
+        + ctx.esc(ctx.nameOf(i)) + hcTag(i) + (withScore ? ' <b>' + (s[i] || 0) + '</b>' : '') + '</span>';
     };
     const parts = [];
     if (teams) {

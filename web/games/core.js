@@ -95,6 +95,9 @@
     // Бігуни: той самий забіг «хто останній на ногах» — по кризі від лавини або в небі лелекою. Забіг дня — окремо, у «Сьогодні».
     { id: 'dino', title: 'Стрибозаври', games: [['dino', '🧊 Крига'], ['storks', '🪽 Небо (лелеки)']],
       hint: 'Одна траса для всіх: динозавром по кризі від лавини або лелекою над селом. Хто останній на ногах чи в небі — бере раунд.' },
+    // Кахлі (три в ряд): шлях рівнів і дві хвилини на час. Кахлі дня — окремо, у «Щоденних» і «Сьогодні».
+    { id: 'kakhli', title: 'Кахлі', games: [['kakhli', '🏺 Шлях кахляра'], ['kakhli-blitz', '⏱ На час']],
+      hint: 'Три в ряд на розписних кахлях: міняй сусідні, складай рядки, рушники, жаринки й чарівні глеки. Тридцять рівнів із глиною й мотузками — або дві хвилини, поки піч гаряча.' },
   ];
   const familyOf = {};
   for (const f of FAMILIES) for (const [id] of f.games) familyOf[id] = f;
@@ -124,16 +127,16 @@
       { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'memy', 'geese'] },
     ],
     solo: [
-      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
+      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
       // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
-      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
+      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'kakhli-daily', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
         'tyr-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
       { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'] },
       // + плитка «Ставки на події» — не гра: її ставить панель web/bets.js (tile.theme: 'roulette')
       { id: 'roulette', title: 'Рулетка й ставки', icon: '🎡', ids: ['roulette', 'roulette-solo', 'kolo'] },
-      { id: 'quick', title: 'Миттєві', icon: '📈', ids: ['lelka', 'kavuny'] },
+      { id: 'quick', title: 'Миттєві', icon: '📈', ids: ['lelka', 'kavuny', 'plinko'] },
       { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker', 'blackjack', 'blackjack-solo'] },
     ],
   };
@@ -1938,6 +1941,7 @@
       if (me.lelka === false && g.id === 'lelka') continue;  // Лелека відпочиває (Lelka:Enabled) — плитки нема
       if (me.kolo === false && g.id === 'kolo') continue;    // Гончарне колесо відпочиває (Kolo:Enabled) — плитки нема
       if (me.kavuny === false && g.id === 'kavuny') continue;  // ярмарок зачинено (Kavuny:Enabled) — плитки нема
+      if (me.plinko === false && g.id === 'plinko') continue;  // Горохова дошка на перерві (Plinko:Enabled) — плитки нема
       const f = familyOf[g.id];
       if (f) {
         if (seen.has(f.id)) continue;

@@ -68,6 +68,7 @@ public class Bricks : Game
             new GameOption("garbage", "Сміття", [("normal", "Звичайне"), ("hard", "Люте"), ("none", "Без сміття — хто довше")], "normal"),
             GroundOption(GroundLong),
             LiveBots.LevelsOption,
+            Handicap.Option,
         ],
         Hint: "Падають цеглинки з чотирьох квадратиків. Закрив два ряди й більше — суперникові знизу лізе сміття. Хто завалився — вибув, останній бере раунд. Самому — з 🤖 ботами");
 
@@ -126,7 +127,18 @@ public class Bricks : Game
     /// <summary>Скільки людей сіло на старті партії: одна з ботами — партія без нагород, з вердиктом.</summary>
     int _humans;
 
+    /// <summary>
+    /// «⚖ Фора» (пакет 3): множник місця на сміття, яке воно ВІДПРАВЛЯЄ (рахується на старті партії; боти й рейтингова дуель — 1).
+    /// Гасіння власного сміття в рушії не чіпаємо — детермінізм стін той самий; міняється лише посилка жертві, а її шле сервер.
+    /// </summary>
+    Dictionary<int, double> _hc = [];
+    /// <summary>Дробовий залишок <see cref="Handicap.Scale"/> на місце; обнуляється щораунду.</summary>
+    readonly double[] _carry = new double[Seats];
+    /// <summary>Скільки рядів місце справді вислало за раунд (з форою) — у таблицю паузи замість рушійного <c>sn</c>.</summary>
+    readonly int[] _roundSent = new int[Seats];
+
     public IReadOnlyList<int> Bots => _bots;
+    public IReadOnlyDictionary<int, double> HandicapFactors => _hc;
     public LiveBots.Level BotLevel => _solo.Level;
     bool IsBot(int seat) => _brain[seat] is not null;
 
@@ -172,6 +184,8 @@ public class Bricks : Game
         _humans = SoloBot.Humans(Ctx, Seats);
         Array.Clear(_brain);
         foreach (var s in _bots) _brain[s] = new BricksBotDriver(_solo.Level, Ctx.Rng.Next());
+        _hc = Handicap.ForSeats(Ctx, Info.Id, Enumerable.Range(0, Seats).Where(s => Ctx.Seated(s) && !IsBot(s)).ToArray(), Info.Rated);
+        if (Handicap.Note(Ctx, _hc) is { } note) Ctx.Log(note);
         foreach (var st in _seats)
         {
             st.Wins = st.MatchLines = st.MatchSent = st.MatchRecv = 0;
@@ -188,6 +202,8 @@ public class Bricks : Game
     {
         _round++;
         _seed = (uint)Ctx.Rng.Next(1, int.MaxValue);
+        Array.Clear(_carry);
+        Array.Clear(_roundSent);
         for (var s = 0; s < Seats; s++)
         {
             var st = _seats[s];
@@ -296,14 +312,17 @@ public class Bricks : Game
         {
             var c = b.Clears[i];
             var target = Target(seat);
-            _ev.Add(new object[] { "c", seat, c.Lines, c.Kind, c.Combo, c.B2b, c.Sent, target });
+            // ⚖ фора: жертві летить множене (з дробовим залишком), рушій рахує своє c.Sent як завжди
+            var sent = target >= 0 ? Handicap.Scale(c.Sent, Handicap.Of(_hc, seat), ref _carry[seat]) : c.Sent;
+            _ev.Add(new object[] { "c", seat, c.Lines, c.Kind, c.Combo, c.B2b, sent, target });
             st.MatchLines += c.Lines;
-            st.MatchSent += c.Sent;
+            st.MatchSent += sent;
+            _roundSent[seat] += sent;
             if (c.Combo > st.BestCombo) st.BestCombo = c.Combo;
-            if (c.Sent > 0 && target >= 0)
+            if (sent > 0 && target >= 0)
             {
-                if (c.Sent > st.BestShot) { st.BestShot = c.Sent; st.BestShotTo = target; }
-                Credit(target, c.Sent, seat, ripeNow: false);
+                if (sent > st.BestShot) { st.BestShot = sent; st.BestShotTo = target; }
+                Credit(target, sent, seat, ripeNow: false);
             }
             if (c.Lines == 4 && !st.FourAsked && !IsBot(seat))
             {
@@ -780,6 +799,9 @@ public class Bricks : Game
             botFill = Info.Rated ? 0 : _solo.Fill,
             botLvl = _solo.LevelKey,
             bot = _phase == PhaseLobby ? BotSeats() : (int[])_bots.Clone(),
+            // ⚖ фора: множник на місця (нема — 1) або null, коли фори в партії нема; rsent — вислане за раунд з форою
+            handicap = _hc.Count == 0 ? null : Enumerable.Range(0, Seats).Select(s => Math.Round(Handicap.Of(_hc, s), 2)).ToArray(),
+            rsent = (int[])_roundSent.Clone(),
         };
     }
 

@@ -626,6 +626,7 @@ public sealed class CurveGame : Game, IPartyMinigame
             new GameOption("bonus", "Бонуси", [("0", "без бонусів"), ("1", "⚡🐢🔄🧹🚪⬛ як в Achtung")], "0"),
             new GameOption("teams", "Грають", [("0", "кожен сам"), ("1", "команди 2×2 / 3×3 / 4×4 за силою"), ("2", "команди 2×2 / 3×3 / 4×4 як сіли")], "0"),
             LiveBots.LevelsOption,
+            Handicap.Option,
         ],
         Hint: "Їдеш уперед і лишаєш слід. Повертати можна тільки плавно. Врізався — вибув. Останній живий бере очко. До восьми за столом. Самому — з 🤖 ботами");
 
@@ -669,6 +670,16 @@ public sealed class CurveGame : Game, IPartyMinigame
     /// <summary>Команда кожного місця на цю партію (0/1, -1 — не грає); null — кожен сам.</summary>
     int[]? _teams;
     readonly int[] _teamPts = new int[2];
+    /// <summary>
+    /// «⚖ Фора» (пакет 3): множник місця на очки, які воно заробляє (рахується на старті партії; боти й вечірка — 1).
+    /// Ціль партії та сама: сильнішому до неї довше, слабшому — коротше.
+    /// </summary>
+    Dictionary<int, double> _hc = [];
+    /// <summary>Дробовий залишок <see cref="Handicap.Scale"/> на місце за партію.</summary>
+    readonly double[] _carry = new double[CurveCore.Seats];
+    /// <summary>Те саме для команд: команда заробляє очко, поки в ній хтось їде, — множник середній по тих, хто їде.</summary>
+    readonly double[] _teamCarry = new double[2];
+    public IReadOnlyDictionary<int, double> HandicapFactors => _hc;
     /// <summary>Чому команд не вийшло — рядок для статусу.</summary>
     string? _note;
     /// <summary>🕸 Скільки разів у слід цього місця врізались суперники за партію.</summary>
@@ -752,6 +763,11 @@ public sealed class CurveGame : Game, IPartyMinigame
         _scores = new int[CurveCore.Seats];
         Array.Clear(_teamPts);
         Array.Clear(_kills);
+        Array.Clear(_carry);
+        Array.Clear(_teamCarry);
+        _hc = _party is not null ? []
+            : Handicap.ForSeats(Ctx, Info.Id, Enumerable.Range(0, CurveCore.Seats).Where(s => Ctx.Seated(s) && !_bots.Contains(s)).ToArray());
+        if (Handicap.Note(Ctx, _hc) is { } note) Ctx.Log(note);
         SetupTeams();
         _target = _teams is not null ? PerRival * (n / 2) : PerRival * Math.Max(1, n - 1);
         _round = 0;
@@ -843,7 +859,8 @@ public sealed class CurveGame : Game, IPartyMinigame
                     if (_teams is not null) TeamScore(dead);
                     else
                         for (var s = 0; s < CurveCore.Seats; s++)
-                            if (_seats[s] && Core.Heads[s].Alive) _scores[s] += dead.Count;
+                            if (_seats[s] && Core.Heads[s].Alive)
+                                _scores[s] += Handicap.Scale(dead.Count, Handicap.Of(_hc, s), ref _carry[s]);
                 }
                 if (!RoundOver()) return dead.Count > 0 || _pk.Count > 0 ? TickResult.Both : TickResult.FrameOnly;
                 EndRound();
@@ -922,9 +939,17 @@ public sealed class CurveGame : Game, IPartyMinigame
     {
         foreach (var d in dead)
             for (var t = 0; t < 2; t++)
-                if (t != _teams![d] && TeamAlive(t)) _teamPts[t]++;
+                if (t != _teams![d] && TeamAlive(t)) _teamPts[t] += Handicap.Scale(1, TeamFactor(t), ref _teamCarry[t]);
         for (var s = 0; s < CurveCore.Seats; s++)
             if (_teams![s] >= 0) _scores[s] = _teamPts[_teams[s]];
+    }
+
+    /// <summary>⚖ Множник команди на очко — середній по тих, хто з неї ще їде (заробили очко саме вони); боти — 1.</summary>
+    double TeamFactor(int t)
+    {
+        if (_hc.Count == 0) return 1;
+        var alive = Enumerable.Range(0, CurveCore.Seats).Where(s => _seats[s] && _teams![s] == t && Core.Heads[s].Alive).ToArray();
+        return alive.Length == 0 ? 1 : alive.Average(s => Handicap.Of(_hc, s));
     }
 
     bool TeamAlive(int t)
@@ -1091,6 +1116,9 @@ public sealed class CurveGame : Game, IPartyMinigame
             ["botFill"] = _solo.Fill,
             ["botLvl"] = _solo.LevelKey,
             ["bot"] = !_started ? BotSeats() : _bots.Where(s => !Ctx.Seated(s)).ToArray(),
+            // ⚖ фора: множник на місця (нема — 1) або null, коли фори в партії нема
+            ["handicap"] = _hc.Count == 0 ? null
+                : Enumerable.Range(0, CurveCore.Seats).Select(s => Math.Round(Handicap.Of(_hc, s), 2)).ToArray(),
         };
         if (_wrap) v["wrap"] = true;
         if (_bonus)
