@@ -36,7 +36,7 @@ public static class Endpoints
             IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel, IOptionsMonitor<Bets.BetsOptions> bets,
             IOptionsMonitor<Games.Impl.SlotsOptions> slots,
             IOptionsMonitor<Games.Impl.LelkaOptions> lelka, IOptionsMonitor<Games.Impl.KoloOptions> kolo,
-            IOptionsMonitor<Games.Impl.KavunyOptions> kavuny) => new
+            IOptionsMonitor<Games.Impl.KavunyOptions> kavuny, IOptionsMonitor<Games.Impl.PlinkoOptions> plinko) => new
         {
             nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice,
             // вимкнене в конфігу — кнопок і вкладок нема: черепки за гривні (ShardShop:Buy / Sell, web/buy.js),
@@ -48,6 +48,7 @@ public static class Endpoints
             lelka = lelka.CurrentValue.Enabled,   // Лелека (Lelka:Enabled): false — тайла нема, ставок не приймає
             kolo = kolo.CurrentValue.Enabled,     // Гончарне колесо (Kolo:Enabled): false — тайла нема, ставок не приймає
             kavuny = kavuny.CurrentValue.Enabled, // Кавуни на ярмарку (Kavuny:Enabled): false — тайла нема, раунду не почати
+            plinko = plinko.CurrentValue.Enabled, // Горохова дошка (Plinko:Enabled): false — тайла нема, кидок відмовляє
             // «🎲 Ставки»: сторінка з подіями й панель ставок на столах (Bets:Enabled + Bets:Events / Bets:Tables)
             bets = new { events = bets.CurrentValue.EventsOn, tables = bets.CurrentValue.TablesOn },
             night = curfew.ForMe(c),   // нічний відбій — лише тим, кого стосується; решті null
