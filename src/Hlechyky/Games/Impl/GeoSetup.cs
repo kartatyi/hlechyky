@@ -34,6 +34,13 @@ public static class GeoSetup
                 yt is null ? null : Path.Combine(Paths.Resolve(yt.FfmpegDir), OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"),
                 sp.GetService<ILogger<GeoMine>>());
         });
+        services.AddSingleton(sp => new GeoChallenges(sp.GetService<Db>()));
+        services.AddSingleton(sp => new GeoThanks(sp.GetService<Db>(), sp.GetService<IClock>())
+        {
+            Pay = (nick, amount, reason, refKey, text) =>
+                sp.GetService<Economy.Economy>()?.Grant(nick, amount, reason, refKey, text) == Economy.GrantResult.Applied,
+            Journal = text => sp.GetService<IOutbox>()?.Post(new Journal(text)),
+        });
         services.AddHostedService(sp => sp.GetRequiredService<GeoPhotos>());
         return services;
     }
@@ -42,7 +49,7 @@ public static class GeoSetup
     {
         app.MapGet("/api/games/geo/{file}", (string file, GeoPhotos photos, HttpContext c) => Serve(file, photos, c));
         // «📷 Мої фото» (п. 52)
-        app.MapGet("/api/games/geo/mine", (HttpContext c, GeoMine mine) => MineList(c, mine));
+        app.MapGet("/api/games/geo/mine", (HttpContext c, GeoMine mine, GeoThanks thanks) => MineList(c, mine, thanks));
         app.MapGet("/api/games/geo/mine/{file}", (string file, HttpContext c, GeoMine mine) => MineFile(file, c, mine));
         app.MapPost("/api/games/geo/mine", (HttpContext c, GeoMine mine, IClock clock) => MineAdd(c, mine, clock));
         app.MapPost("/api/games/geo/mine/delete", (HttpContext c, GeoMine mine, string? id) =>
@@ -60,7 +67,7 @@ public static class GeoSetup
     /// GET /api/games/geo/mine — свої фото (адміну — усі) з лічильниками лімітів. Жодних чужих координат і назв
     /// нікому, крім адміна: це відповіді до гри.
     /// </summary>
-    public static IResult MineList(HttpContext c, GeoMine mine)
+    public static IResult MineList(HttpContext c, GeoMine mine, GeoThanks? thanks = null)
     {
         var admin = Auth.IsAdmin(c);
         var nick = Auth.Nick(c);
@@ -74,6 +81,8 @@ public static class GeoSetup
             max = GeoMine.MaxPerNick,
             have = CanUpload(c) ? mine.Of(nick).Count : 0,
             full = mine.TotalBytes + GeoMine.MaxFile > mine.TotalCap,
+            // 📷 Глек дякує: за скільки своїх фото вже заплачено (з трьох) і скільки
+            thanks = new { got = CanUpload(c) && thanks is not null ? thanks.Count(Auth.NickKey(nick)) : 0, of = GeoThanks.Photos, shards = GeoThanks.Shards, km = (int)GeoThanks.Km },
             items = list.Select(p => new
             {
                 id = p.Id,

@@ -37,6 +37,7 @@ public sealed class GeoSolo : Game
         _m.Start();
     }
 
+    /// <summary>«🎯 Моя слабка» — тут; 🤝 «Кинути виклик» та решта — у ядро.</summary>
     public override ActResult Act(int seat, string action, JsonElement payload) =>
         action == Weak ? PickWeak(seat) : _m.Act(seat, action, payload);
 
@@ -48,7 +49,8 @@ public sealed class GeoSolo : Game
 
     string? _weakNext;
 
-    public override bool ActsBetween(string action) => action == Weak;
+    /// <summary>«🎯 Моя слабка» і 🤝 «Кинути виклик» — уже після партії, до «Ще раз».</summary>
+    public override bool ActsBetween(string action) => action is Weak or GeoMatch.ChallengeAct;
 
     GeoWeakInfo? InfoOf(int seat) =>
         Ctx.NickOf(seat) is { } nick ? Ctx.Services.GetService<GeoRounds>()?.Info(nick) : null;

@@ -279,3 +279,25 @@
 @media (orientation: landscape) and (max-height: 500px) {
   :root { --geo-room: max(180px, calc(100dvh - 180px)); }
 }
+
+/* 🤝 Виклик (пакет 4): кинути, список, порівняння по раундах */
+.geoch { margin: 8px 0; }
+.geochbox { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.geochrow { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.geochrow button { min-height: 44px; }
+.geochsub { margin-top: 6px; }
+.geochlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.geochlist li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; }
+.geochlist button { min-height: 40px; }
+.geochscroll { overflow-x: auto; max-width: 100%; }
+.geochcmp { border-collapse: collapse; width: 100%; font-size: .92em; }
+.geochcmp th, .geochcmp td { padding: 4px 8px; text-align: right; vertical-align: top; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.geochcmp tbody th { text-align: left; font-weight: 500; white-space: normal; min-width: 8em; }
+.geochcmp td span { display: block; }
+.geochcmp .geochwin { color: var(--ok, var(--accent)); }
+.geochsum th, .geochsum td { border-bottom: 0; }
+.geo-mine-sample { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: start; padding: 8px; border: 1px dashed var(--line); border-radius: 12px; opacity: .92; }
+.geo-mine-sample .geo-mine-sph { position: relative; width: 96px; height: 72px; border-radius: 8px; background: linear-gradient(160deg, var(--geo-sky, #8fb7e0) 0 45%, var(--geo-field, #6f9a55) 45% 100%); }
+.geo-mine-sample .geo-mine-sph::after { content: "🏡"; position: absolute; left: 34px; top: 22px; font-size: 26px; }
+.geo-mine-sample > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.geowrap.geopick .geomain, .geowrap.geopick .geobar, .geowrap.geopick .geoscore { display: none; }
