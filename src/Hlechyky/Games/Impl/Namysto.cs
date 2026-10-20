@@ -207,8 +207,8 @@ public class Namysto : Game
                 _viewDirty = true;
                 return ActResult.Done;
             case "next":
-                // за дограним столом: на яку трасу стати після «Ще раз»
-                if (_daily || !TryInt(payload, "n", out var nx) || nx < 1 || nx > NamystoTracks.Count) return ActResult.Fail(Bad);
+                // за дограним столом: на яку трасу стати після «Ще раз» (0 — до списку трас)
+                if (_daily || !TryInt(payload, "n", out var nx) || nx < 0 || nx > NamystoTracks.Count) return ActResult.Fail(Bad);
                 if (nx > OpenFor()) return ActResult.Fail("Цю трасу ще не відкрито — пройди попередню");
                 _next = nx;
                 return ActResult.Done;

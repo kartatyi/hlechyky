@@ -277,6 +277,16 @@ public class NamystoCoreTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Jug_drops_colours_the_string_no_longer_has_even_after_it_ran_empty_and_refilled()
+    {
+        var sim = Bare([1, 2], 2000 * Px);
+        (sim.Cur, sim.Next) = (0, 5);
+        sim.Step();
+        Assert.Contains(sim.Cur, new[] { 1, 2 });
+        Assert.Contains(sim.Next, new[] { 1, 2 });
+    }
+
+    [Fact]
     public void Clearing_the_string_wins_with_clear_and_time_bonus()
     {
         var sim = Bare([2, 2], 2000 * Px);

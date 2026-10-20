@@ -130,7 +130,7 @@
     const t = this.Track;
     const dx = tx * Px - t.Sx, dy = ty * Px - t.Sy;
     const len = isqrt(dx * dx + dy * dy);
-    if (len < MinAim) return false;
+    if (!(len >= MinAim)) return false;   // те саме, що C# len < MinAim, але й NaN сюди не пролізе
     const subs = this.EyeLeft > 0 ? SubsEye : SubsNormal;
     this.Shots.push({
       X: t.Sx + trunc(dx * Mouth / len),
@@ -176,6 +176,8 @@
     this.moveChain();
     this.spawn();
     this.moveShots();
+    // разок міг спорожніти й наповнитись новими кольорами — Глек тримає лише ті, що є в разку
+    this.fixShooter();
     const B = this.Beads;
     if (B.length > 0 && B[0].D > this.MaxHead) this.MaxHead = B[0].D;
     if (B.length > 0 && B[0].D >= this.End) this.State = Lost;

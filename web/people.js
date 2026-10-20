@@ -682,6 +682,7 @@
     'dino-daily': (n) => num(n) + ' м',
     'geo-solo': (n) => cnt(n, 'очко', 'очки', 'очок'),
     'geo-daily': (n) => cnt(n, 'очко', 'очки', 'очок'),
+    namysto: (n) => cnt(n, 'очко', 'очки', 'очок'),
     roulette: (n) => '+' + shards(Math.round(n)),
     'roulette-solo': (n) => '+' + shards(Math.round(n)),
     'snake-coop': (n) => 'довжина ' + num(n),
@@ -689,7 +690,7 @@
     wordle: (n) => 'за ' + tries(Math.round(n)),
   };
   /// Щоденні ігри, що пишуть у загальну таблицю нуль-заглушку: їхні очки живуть у власній денній таблиці.
-  const NO_SCORE = new Set(['geese-daily', 'tyr-daily', 'skilky-daily']);
+  const NO_SCORE = new Set(['geese-daily', 'tyr-daily', 'skilky-daily', 'namysto-daily']);
   const scoreText = (game, v) => (v == null ? '—' : SCORE_FMT[game] ? SCORE_FMT[game](v) : String(lbNum(v)));
   /// «спроб» у щоденних — це дні (одна спроба на день); у Колі — збереження, яких ніхто не рахує.
   const triesLabel = (game) => (game === 'clicker' ? null : /-daily$/.test(game) || game === 'wordle' ? 'днів' : 'спроб');

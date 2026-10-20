@@ -142,6 +142,8 @@ public sealed class NamystoSim
         MoveChain();
         Spawn();
         MoveShots();
+        // разок міг спорожніти й наповнитись новими кольорами — Глек тримає лише ті, що є в разку
+        FixShooter();
         if (Beads.Count > 0 && Beads[0].D > MaxHead) MaxHead = Beads[0].D;
         if (Beads.Count > 0 && Beads[0].D >= End) State = Lost;
         else if (ToSpawn == 0 && Beads.Count == 0)
