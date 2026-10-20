@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Hlechyky.Games;
@@ -7,7 +8,8 @@ namespace Hlechyky.Games;
 /// час, раз на секунду прибирає засиджені кімнати й тих, хто не повернувся після grace, і зливає все
 /// зібране через Broadcaster — уже поза замками кімнат.
 /// </summary>
-public sealed class TickEngine(Rooms rooms, Broadcaster broadcaster, IClock clock, ILogger<TickEngine> log) : BackgroundService
+public sealed class TickEngine(Rooms rooms, Broadcaster broadcaster, IClock clock, ILogger<TickEngine> log, TickHealth? health = null)
+    : BackgroundService
 {
     /// <summary>
     /// Крок циклу. Ділить кожен TickMs ігор (40, 50, 60, 100, 120, 200, 250 …), тож тик прокидається точно у свій час.
@@ -29,20 +31,38 @@ public sealed class TickEngine(Rooms rooms, Broadcaster broadcaster, IClock cloc
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(StepMs));
         var nextChores = clock.UtcNow;
+        var woke = Stopwatch.GetTimestamp();
         while (await timer.WaitForNextTickAsync(ct))
         {
+            // Замір рівності (TickHealth): коли прокинулись, скільки тривали тики, прибирання й розсилка.
+            var start = Stopwatch.GetTimestamp();
+            var gap = Stopwatch.GetElapsedTime(woke, start).TotalMilliseconds;
+            woke = start;
+            double ticksMs = 0, choresMs = 0;
             try
             {
                 var now = clock.UtcNow;
                 var outbox = new Outbox();
-                foreach (var room in rooms.TickDue(now)) outbox.Adopt(rooms.Tick(room));
+                foreach (var room in rooms.TickDue(now))
+                {
+                    var late = (clock.UtcNow - room.NextTickAt).TotalMilliseconds;
+                    var t0 = Stopwatch.GetTimestamp();
+                    outbox.Adopt(rooms.Tick(room));
+                    var work = Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+                    ticksMs += work;
+                    health?.RoomTick(room, late, work);
+                }
                 if (now >= nextChores)
                 {
+                    var t0 = Stopwatch.GetTimestamp();
                     nextChores = now.AddSeconds(1);
                     outbox.Adopt(rooms.DropIfGone(now));
                     outbox.Adopt(rooms.Housekeeping(now));
+                    choresMs = Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
                 }
+                var f0 = Stopwatch.GetTimestamp();
                 await broadcaster.FlushAsync(outbox, ct);
+                health?.Loop(gap, ticksMs, choresMs, Stopwatch.GetElapsedTime(f0).TotalMilliseconds, now);
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex) { log.LogWarning(ex, "коло тика впало"); }

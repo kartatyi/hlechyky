@@ -506,8 +506,12 @@
   /// замовчуванням); t кадру — номер тика (без t рахуємо кадри підряд).
   function Interp(tickMs) {
     const clk = Clock(tickMs), fr = [], T = tickMs || 40;
+    let over = 0;
     return {
       clock: clk,
+      /// На скільки тиків мить малювання на останньому at() випередила найсвіжіший кадр: > 0 — кадр ще не прийшов, і
+      /// рух стоїть на останньому (для метра «дьоргання», jerkMeter).
+      get over() { return over; },
       push(f) {
         const last = fr[fr.length - 1], now = performance.now();
         const k = f && Number.isFinite(f.t) ? f.t : (last ? last.k + 1 : 0);
@@ -527,10 +531,11 @@
       /// { a: старіший кадр, b: новіший, t: 0..1 } на мить now (без неї — мить кадру, див. frameTime).
       at(now) {
         const n = fr.length;
+        over = 0;
         if (!n) return null;
         if (n === 1) return { a: fr[0].f, b: fr[0].f, t: 1 };
         const rt = clk.at(Number.isFinite(now) ? now : frameTime());
-        if (rt >= fr[n - 1].k) return { a: fr[n - 2].f, b: fr[n - 1].f, t: 1 };
+        if (rt >= fr[n - 1].k) { over = rt - fr[n - 1].k; return { a: fr[n - 2].f, b: fr[n - 1].f, t: 1 }; }
         if (rt <= fr[0].k) return { a: fr[0].f, b: fr[1].f, t: 0 };
         let j = n - 2;
         while (j > 0 && fr[j].k > rt) j--;
@@ -538,6 +543,153 @@
         return { a: a.f, b: b.f, t: (rt - a.k) / (b.k - a.k) };
       },
     };
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Метр «дьоргання» (замір 20.10; серверна половина — TickHealth.cs)
+  // ---------------------------------------------------------------------------------------------
+
+  /// Довгі задачі головного потоку (Chrome, Edge; Safari їх не віддає) — одні на всі метри.
+  const LONGS = [];
+  let longObs = null;
+  function watchLongs() {
+    if (longObs !== null) return;
+    longObs = false;
+    try {
+      longObs = new PerformanceObserver((l) => {
+        for (const e of l.getEntries()) { LONGS.push([e.startTime, e.duration]); if (LONGS.length > 200) LONGS.shift(); }
+      });
+      longObs.observe({ type: 'longtask', buffered: false });
+    } catch (e) { longObs = false; }
+  }
+
+  const r1 = (x) => Math.round(x * 10) / 10;
+  function pct(xs) {
+    if (!xs.length) return null;
+    const s = xs.slice().sort((a, b) => a - b), at = (q) => s[Math.min(s.length - 1, Math.floor(s.length * q))];
+    return { n: s.length, p50: r1(at(0.5)), p95: r1(at(0.95)), max: r1(s[s.length - 1]) };
+  }
+
+  let jerkOff = false;
+  /// Метр «дьоргання» реалтайм-гри. Гра кличе frame(t, now, live) на кожен кадр сервера (live — фаза, де все рухається),
+  /// draw(now, over) на кожне малювання (over — Interp.over), pos(i, x, y, now, mine) — де намалювала кожного (в одиницях
+  /// гри), fix(v) — на скільки поправила своє передбачення новим кадром, lat(ms) — відлуння свого вводу. Раз на ~5 с,
+  /// поки йдуть кадри, підсумок летить на /api/diag/jerk (сервер кладе в data/diag/jerk-<дата>.jsonl), востаннє — на
+  /// end(). Сервер відповів off (Diag:Jerk) — мовчимо до F5. Лише рахує: на рух і картинку не впливає.
+  /// o: { minV — від якої швидкості (одиниць/мс) бомбер «рухається», fixBig — яка поправка вже подія, room(), info() }.
+  function jerkMeter(game, tickMs, o) {
+    o = o || {};
+    const T = tickMs || 40, WIN = 5000, minV = o.minV || 0.01, fixBig = o.fixBig || 3;
+    watchLongs();
+    const seats = {};
+    let w = null, seg = null, lastT = null, lastAt = 0, lastDraw = 0, inOver = false, epMax = 0, sent = -1e9, rtt = null;
+    function fresh(now) {
+      w = { at: now, frames: 0, dup: 0, gaps: [], segs: [], raf: [], overN: 0, overEp: 0, overMax: 0, fixes: [], lats: [],
+        mv: { me: [0, 0, 0, 0], they: [0, 0, 0, 0] }, ev: [] };
+      seg = null;
+    }
+    function ev(now, k, v) { if (w.ev.length < 40) w.ev.push([Math.round(now - w.at), k, r1(v)]); }
+    function frame(t, now, live) {
+      if (jerkOff) return;
+      if (!w) fresh(now);
+      // відлік, пауза між раундами: сервер стоїть, кадри повторюють той самий тик — це не спізнення
+      if (!live || !Number.isFinite(t)) { seg = null; lastAt = 0; lastT = null; roll(now); return; }
+      if (lastT != null && t === lastT) { w.dup++; return; }
+      if (lastT != null && (t < lastT || t > lastT + 5)) { seg = null; lastAt = 0; }   // новий раунд чи провал
+      lastT = t;
+      w.frames++;
+      if (lastAt) { const g = now - lastAt; w.gaps.push(g); if (g > 2 * T) ev(now, 'gap', g); }
+      lastAt = now;
+      // спізнення — від найранішого (прихід − t·тик) у цій лінійці: так само рахує й годинник (Clock)
+      const off = now - t * T;
+      if (!seg) { seg = { min: off, xs: [] }; w.segs.push(seg); }
+      if (off < seg.min) seg.min = off;
+      seg.xs.push(off);
+      if (off - seg.min > 2 * T) ev(now, 'late', off - seg.min);
+      roll(now);
+    }
+    function draw(now, over) {
+      if (jerkOff) return;
+      if (!w) fresh(now);
+      const dt = lastDraw ? now - lastDraw : 0;
+      lastDraw = now;
+      if (dt > 0 && dt < 250) { w.raf.push(dt); if (dt > 50) ev(now, 'raf', dt); }
+      if (over > 0.02) {
+        if (!inOver) { inOver = true; w.overEp++; epMax = 0; }
+        w.overN++;
+        epMax = Math.max(epMax, over * T);
+        w.overMax = Math.max(w.overMax, over * T);
+      } else if (inOver) {
+        inOver = false;
+        if (epMax > 30) ev(now, 'over', epMax);
+      }
+      roll(now);
+    }
+    /// Швидкість кожного кадру проти сусідніх: обидва сусіди рухаються, а цей — на чверть інакше (ривок), майже стоїть
+    /// (зупинка) чи майже вдвічі швидший (стрибок). Так само міряв analyze.py 05.10.
+    function pos(i, x, y, now, mine) {
+      if (jerkOff || !w) return;
+      const s = seats[i] || (seats[i] = { x, y, at: now, v: [] });
+      const dt = now - s.at;
+      if (dt <= 0) return;
+      const v = (Math.abs(x - s.x) + Math.abs(y - s.y)) / dt;
+      s.x = x; s.y = y; s.at = now;
+      if (dt > 120) { s.v.length = 0; return; }   // довго не малювали — це вже не сусідні кадри
+      const q = s.v;
+      q.push(v);
+      if (q.length > 3) q.shift();
+      if (q.length < 3 || q[0] <= minV || q[2] <= minV) return;
+      const ref = (q[0] + q[2]) / 2, c = mine ? w.mv.me : w.mv.they;
+      c[0]++;
+      if (Math.abs(q[1] - ref) / ref > 0.25) c[1]++;
+      if (q[1] < 0.2 * ref) { c[2]++; ev(now, mine ? 'stall-me' : 'stall', i); }
+      else if (q[1] > 1.8 * ref) { c[3]++; ev(now, mine ? 'jump-me' : 'jump', i); }
+    }
+    function fix(v) {
+      if (jerkOff || !w) return;
+      w.fixes.push(v);
+      if (v > fixBig) ev(performance.now(), 'fix', v);
+    }
+    function lat(ms) { if (!jerkOff && w) w.lats.push(ms); }
+    function roll(now) { if (now - w.at >= WIN) send(now, false); }
+    function report(now) {
+      const late = [];
+      for (const s of w.segs) for (const x of s.xs) late.push(x - s.min);
+      const raf = pct(w.raf), vsync = raf ? raf.p50 : 16.7;
+      const longs = LONGS.filter((l) => l[0] >= w.at && l[0] < now);
+      const c = navigator.connection;
+      return {
+        v: 1, game, room: o.room ? o.room() : null, nick: me.nick || null, sec: r1((now - w.at) / 1000), tickMs: T,
+        frames: w.frames, dup: w.dup, gap: pct(w.gaps), late: pct(late),
+        late30: late.filter((x) => x > 30).length, late60: late.filter((x) => x > 60).length,
+        raf, missed: w.raf.filter((d) => d > vsync * 1.6).length,
+        over: { n: w.overN, ep: w.overEp, max: Math.round(w.overMax) },
+        mv: w.mv, fix: pct(w.fixes), fixBig: w.fixes.filter((x) => x > fixBig).length, lat: pct(w.lats),
+        long: { n: longs.length, ms: Math.round(longs.reduce((a, l) => a + l[1], 0)), max: Math.round(longs.reduce((a, l) => Math.max(a, l[1]), 0)) },
+        ev: w.ev, rtt,
+        info: o.info ? o.info() : null,
+        env: {
+          ua: navigator.userAgent.slice(0, 180), dpr: window.devicePixelRatio || 1, scr: screen.width + 'x' + screen.height,
+          vw: innerWidth + 'x' + innerHeight, vis: document.visibilityState, hw: navigator.hardwareConcurrency || null,
+          coarse: coarse(), net: c ? { type: c.effectiveType, rtt: c.rtt, down: c.downlink } : null,
+        },
+      };
+    }
+    function send(now, final) {
+      const body = w && w.frames >= (final ? 5 : 10) && now - sent >= 1600 ? JSON.stringify(report(now)) : null;
+      fresh(now);
+      if (!body || jerkOff) return;
+      sent = now;
+      const t0 = performance.now();
+      try {
+        // rtt — скільки йшов цей запит туди й назад; летить у наступному підсумку
+        fetch('/api/diag/jerk', { method: 'POST', body, headers: { 'Content-Type': 'application/json' }, keepalive: true, credentials: 'same-origin' })
+          .then((r) => { rtt = Math.round(performance.now() - t0); return r.ok ? r.json() : null; })
+          .then((j) => { if (j && j.off) jerkOff = true; })
+          .catch(() => {});
+      } catch (e) { /* старий браузер без fetch — без заміру */ }
+    }
+    return { frame, draw, pos, fix, lat, end() { if (w) send(performance.now(), true); w = null; } };
   }
 
   /// Дуга-таймер фази: сама крутиться на rAF і сама вмирає, коли картку прибрали.
@@ -755,7 +907,7 @@
     });
   }
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, frameTime, Clock, Interp, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, frameTime, Clock, Interp, jerkMeter, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
 
   // =============================================================================================
   // Хаб

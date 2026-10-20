@@ -499,6 +499,12 @@
       drawFlame(st, pal, g, f.f, now);
       drawShade(st, pal, g, area, f, waiting);
       drawBooms(pal, g, st.booms, now);   // поверх тіні: останній вибух раунду теж має бути видно
+      if (st.meter) {
+        // метр «дьоргання» (core.js jerkMeter): що саме намальовано цього кадру; запас годинника — лише у фазі гри
+        st.meter.draw(now, f.phase === 'go' ? st.interp.over : 0);
+        const mine = mySeat(st);
+        shot.men.forEach((m, i) => { if (m && (m.alive || m.g)) st.meter.pos(i, m.x, m.y, now, i === mine); });
+      }
     }
     g.restore();
   }
@@ -635,9 +641,12 @@
     if (st.echo && m && m.mv === st.echo.d) {
       const sample = Math.min(300, Math.max(0, at - st.echo.at));
       st.lat = st.lat * 0.7 + sample * 0.3;
+      if (st.meter) st.meter.lat(sample);
       st.echo = null;
     } else if (st.echo && now - st.echo.at > 1000) st.echo = null;
-    absorb(st, old, project(st, f, at, now), now);
+    const neu = project(st, f, at, now);
+    if (st.meter && old && neu) st.meter.fix(Math.abs(old.x - neu.x) + Math.abs(old.y - neu.y));
+    absorb(st, old, neu, now);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -989,6 +998,17 @@
     mount(root, ctx) {
       const st = state(root, ctx);
       st.interp = HGames.ui.Interp(TICK_MS);
+      // Замір «дьоргання» 20.10: раз на ~5 с гри підсумок кадрів і малювання летить на сервер (TickHealth.cs).
+      // Бомбер іде 2…4 дванадцятих клітинки за тик, тож «рухається» — від 0,01 на мс; поправка в чверть клітинки — подія.
+      st.meter = HGames.ui.jerkMeter ? HGames.ui.jerkMeter('bomber', TICK_MS, {
+        minV: 0.01, fixBig: SUB / 4,
+        room: () => (st.ctx && st.ctx.room ? st.ctx.room.id : null),
+        info: () => ({
+          seat: mySeat(st), phase: st.last ? st.last.phase : null, round: st.round, lat: Math.round(st.lat),
+          delay: Math.round(st.interp.clock.delay * 100) / 100,
+          alive: st.last && st.last.p ? st.last.p.filter((m) => m && m.alive).length : null,
+        }),
+      }) : null;
       board(root, st);
       // Каркас віддає модулю лише keydown, а напрямок тут тримають — відпускання ловимо самі.
       st.keyup = (e) => {
@@ -1077,6 +1097,7 @@
       st.ctx = ctx;
       if (!st.cv || !f) return;
       const now = performance.now();
+      if (st.meter) st.meter.frame(f.t, now, f.phase === 'go');
       noteBooms(st, f);
       const old = projectLast(st, now);
       st.interp.push(f);
@@ -1144,6 +1165,7 @@
       if (st.blur) window.removeEventListener('blur', st.blur);
       if (st.io) st.io.disconnect();
       if (st.fitHook && !HGames.ui.onFit) window.removeEventListener('resize', st.fitHook);
+      if (st.meter) st.meter.end();
       st.cv = null;
       root._bomber = null;
     },
