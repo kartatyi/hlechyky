@@ -434,7 +434,8 @@
         : Object.assign({}, m, { x: lerp(was.x, m.x, k), y: lerp(was.y, m.y, k) });
     });
     const me = mySeat(st);
-    if (me >= 0) {
+    // «чесний режим»: свій — з кадрів сервера, як і решта (див. honestSaved)
+    if (me >= 0 && !st.honest) {
       const pos = predicted(st, now);
       if (pos && list[me]) list[me] = Object.assign({}, list[me], pos);
     }
@@ -512,6 +513,21 @@
   // ---------------------------------------------------------------------------------------------
   // Передбачення свого бомбера (п. 40)
   // ---------------------------------------------------------------------------------------------
+
+  /// «Чесний режим» (порівняння 20.10): свого бомбера видно з кадрів сервера, як і решту, без передбачення — на
+  /// натиск відгукується пізніше (зв'язок + тик + запас годинника), зате свій хід, вогонь і бомби в одній миті.
+  /// «Наперед» (типово) — передбачення нижче. Вибір пам'ятає браузер.
+  const HONEST_KEY = 'bomber.honest';
+  function honestSaved() {
+    try { return localStorage.getItem(HONEST_KEY) === '1'; } catch (e) { return false; }
+  }
+  function setHonest(root, st, on) {
+    st.honest = on;
+    st.corr = null;
+    try { localStorage.setItem(HONEST_KEY, on ? '1' : '0'); } catch (e) { /* приватне вікно — до F5 */ }
+    if (st.ctx) hud(root, st.ctx, st.last, st);
+    spin(st);
+  }
 
   function mySeat(st) {
     const ctx = st.ctx;
@@ -644,6 +660,7 @@
       if (st.meter) st.meter.lat(sample);
       st.echo = null;
     } else if (st.echo && now - st.echo.at > 1000) st.echo = null;
+    if (st.honest) return;   // передбачення нема — і поправляти нічого
     const neu = project(st, f, at, now);
     if (st.meter && old && neu) st.meter.fix(Math.abs(old.x - neu.x) + Math.abs(old.y - neu.y));
     absorb(st, old, neu, now);
@@ -698,6 +715,13 @@
         const left = Math.max(0, limit - (f.t || 0));
         html += '<span class="bchip bmclock' + (left * TICK_MS <= 15000 ? ' hot' : '') + '">⏱ ' + clock(left) + '</span>';
       }
+    }
+    if (ctx.mine) {
+      html += '<button type="button" tabindex="-1" class="bchip bmode' + (st.honest ? ' on' : '') + '" data-bm-mode title="'
+        + (st.honest
+          ? 'Чесний режим: свого бомбера видно так само, як його бачить сервер, — відгукується трохи пізніше, зате хід, вогонь і бомби збігаються. Тисни, щоб повернути «наперед»'
+          : 'Наперед: свій бомбер рушає одразу, але може розходитись із сервером (вогонь зачепив — а живий). Тисни, щоб спробувати чесний режим')
+        + '">' + (st.honest ? '🎯 чесно' : '⚡ наперед') + '</button>';
     }
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
@@ -914,7 +938,7 @@
         cv: null, walls: [], last: null, held: -1, pid: null, bombDown: false, booms: [],
         keys: [], touch: -1, seenAt: 0, W: 15, H: 13, teams: null,
         feed: [], evSeen: 0, lat: 90, echo: null, corr: null, corrAt: 0,
-        raf: 0, keyup: null, blur: null, phase: '', round: 0, css: ctx.css, K: scale(),
+        raf: 0, keyup: null, blur: null, phase: '', round: 0, css: ctx.css, K: scale(), honest: honestSaved(),
       };
     }
     root._bomber.ctx = ctx;
@@ -942,7 +966,7 @@
     if (st.held === d) return;
     // Передбачення з новим напрямком одразу стоїть на кілька кроків попереду (затримка зв'язку) — без поправки
     // бомбер на старті чи повороті телепортувався б на третину клітинки. Різниця тане, як і від кадру.
-    const now = performance.now(), was = projectLast(st, now);
+    const now = performance.now(), was = st.honest ? null : projectLast(st, now);
     st.held = d;
     if (was) absorb(st, was, projectLast(st, now), now);
     if (ctx && ctx.mine && ctx.playing) {
@@ -1004,7 +1028,7 @@
         minV: 0.01, fixBig: SUB / 4,
         room: () => (st.ctx && st.ctx.room ? st.ctx.room.id : null),
         info: () => ({
-          seat: mySeat(st), phase: st.last ? st.last.phase : null, round: st.round, lat: Math.round(st.lat),
+          seat: mySeat(st), mode: st.honest ? 'honest' : 'ahead', phase: st.last ? st.last.phase : null, round: st.round, lat: Math.round(st.lat),
           delay: Math.round(st.interp.clock.delay * 100) / 100,
           alive: st.last && st.last.p ? st.last.p.filter((m) => m && m.alive).length : null,
         }),
@@ -1028,6 +1052,15 @@
       };
       document.addEventListener('keyup', st.keyup);
       window.addEventListener('blur', st.blur);
+      // Перемикач «⚡ наперед / 🎯 чесно» в рядку над полем. Фокус кнопці не лишаємо: інакше пробіл (бомба) тиснув би її.
+      st.modeClick = (e) => {
+        const b = e.target.closest && e.target.closest('[data-bm-mode]');
+        if (!b) return;
+        e.preventDefault();
+        b.blur();
+        setHonest(root, st, !st.honest);
+      };
+      root.addEventListener('click', st.modeClick);
       // Картку сховали (лобі, інша вкладка сайту) й показали знову: rAF поки спав, а подія 'room' могла
       // прийти, поки її не було видно. Щойно канвас знову на екрані — малюємо свіже.
       if (window.IntersectionObserver) {
@@ -1163,6 +1196,7 @@
       st.raf = 0;
       if (st.keyup) document.removeEventListener('keyup', st.keyup);
       if (st.blur) window.removeEventListener('blur', st.blur);
+      if (st.modeClick) root.removeEventListener('click', st.modeClick);
       if (st.io) st.io.disconnect();
       if (st.fitHook && !HGames.ui.onFit) window.removeEventListener('resize', st.fitHook);
       if (st.meter) st.meter.end();
