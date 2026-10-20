@@ -165,6 +165,108 @@ public class WordleP4Tests(WordleWords fx) : IClassFixture<WordleWords>
         Assert.Equal(("Петро", 2, false), (g.Nick, g.Guesses.Count, g.Hard));
     }
 
+    // ---------------------------------------------------------------------------------- 4. архів
+
+    static readonly DateTimeOffset Later = new(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);   // день №11
+
+    (RoomHarness H, WordleHistory History) Archive(string nick = "Оля")
+    {
+        var history = new WordleHistory(null, new FakeClock { UtcNow = Later });
+        var sp = new ServiceCollection().AddSingleton(fx.Words).AddSingleton(history).BuildServiceProvider();
+        var h = new RoomHarness("wordle-archive", services: sp);
+        h.Clock.UtcNow = Later;
+        h.Solo(nick);
+        return (h, history);
+    }
+
+    [Fact]
+    public void Archive_lists_only_past_days_and_refuses_today_and_the_future()
+    {
+        var (h, _) = Archive();
+        Assert.Equal("wordle-archive:оля", h.Room.Key);
+        var days = h.View(0).GetProperty("days").EnumerateArray().Select(d => d.GetProperty("day").GetString()).ToArray();
+        Assert.Equal(10, days.Length);                  // дні №1…№10, сьогоднішнього (№11) нема
+        Assert.Equal("2026-09-19", days[0]);
+        Assert.Equal("2026-09-10", days[^1]);
+        Assert.False(h.Act(0, "open", new { day = "2026-09-20" }).Ok);
+        Assert.False(h.Act(0, "open", new { day = "2026-09-21" }).Ok);
+        Assert.False(h.Act(0, "open", new { day = "2026-09-09" }).Ok);
+        Assert.False(h.Act(0, "guess", new { word = Answer }).Ok);   // день не обрано
+    }
+
+    [Fact]
+    public void Archive_play_writes_nothing_pays_nothing_and_hides_the_answer_until_the_end()
+    {
+        var (h, _) = Archive();
+        const string day = "2026-09-15";
+        var answer = fx.Words.Daily5ForDay(day);
+        Assert.True(h.Act(0, "open", new { day }).Ok);
+        var wrong = fx.Five.First(w => w != answer);
+        Assert.True(h.Act(0, "guess", new { word = wrong }).Ok);
+        var cur = h.View(0).GetProperty("cur");
+        Assert.Equal(JsonValueKind.Null, cur.GetProperty("answer").ValueKind);
+        Assert.DoesNotContain(answer, Views.Text(h.Room.Game.View(0)), StringComparison.Ordinal);
+
+        Assert.True(h.Act(0, "guess", new { word = answer }).Ok);
+        cur = h.View(0).GetProperty("cur");
+        Assert.True(cur.GetProperty("solved").GetBoolean());
+        Assert.Equal(answer, cur.GetProperty("answer").GetString());
+        Assert.Contains("(архів) 2/6", cur.GetProperty("share").GetString());
+        Assert.False(h.Act(0, "guess", new { word = wrong }).Ok);   // дограно
+
+        Assert.Empty(h.Scores);
+        Assert.Empty(h.Awards);
+        Assert.Empty(h.Finished);
+        Assert.Empty(h.Outbox.OfType<Journal>());
+        var d = h.View(0).GetProperty("days").EnumerateArray().First(x => x.GetProperty("day").GetString() == day);
+        Assert.Equal(("s", 2), (d.GetProperty("arch").GetString(), d.GetProperty("aa").GetInt32()));
+
+        // збереження переживає перезапуск
+        var saved = h.Room.Game.Save()!;
+        var (again, _) = Archive();
+        again.Room.Game.Load(saved);
+        Assert.True(again.View(0).GetProperty("cur").GetProperty("solved").GetBoolean());
+    }
+
+    [Fact]
+    public void A_day_played_on_its_own_day_is_view_only_with_my_old_grid()
+    {
+        var (h, history) = Archive();
+        const string day = "2026-09-12";
+        var answer = fx.Words.Daily5ForDay(day);
+        var wrong = fx.Five.First(w => w != answer);
+        history.Put("Оля", new Dictionary<string, WordleDayResult> { [day] = new(true, 2, [wrong, answer]) });
+
+        Assert.True(h.Act(0, "open", new { day }).Ok);
+        Assert.False(h.Act(0, "guess", new { word = answer }).Ok);
+        var cur = h.View(0).GetProperty("cur");
+        Assert.True(cur.GetProperty("view").GetBoolean());
+        Assert.Equal(2, cur.GetProperty("rows").GetArrayLength());
+        Assert.Equal(answer, cur.GetProperty("answer").GetString());
+        var d = h.View(0).GetProperty("days").EnumerateArray().First(x => x.GetProperty("day").GetString() == day);
+        Assert.Equal(("s", 2), (d.GetProperty("mine").GetString(), d.GetProperty("a").GetInt32()));
+    }
+
+    [Fact]
+    public void History_reads_my_past_results_and_grids_from_the_base()
+    {
+        using var rig = new EconomyRig();
+        rig.Clock.UtcNow = Later;
+        var day = "2026-09-12";
+        var answer = fx.Words.Daily5ForDay(day);
+        var store = new SqliteGameStore(rig.Db, rig.Clock);
+        store.SaveState($"daily:wordle:{day}:оля", JsonSerializer.Serialize(new { day, guesses = new[] { answer }, solved = true, failed = false }));
+        store.SaveState("daily:wordle:2026-09-20:оля", JsonSerializer.Serialize(new { day = "2026-09-20", guesses = new[] { answer }, solved = false, failed = false }));
+        rig.Daily.Record("wordle", "Оля", solved: true, attempts: 1, ms: 0);   // сьогодні — не архів
+        rig.Db.Exec("INSERT INTO daily_results(day, game, nick_key, nick, solved, attempts, ms, created_at) VALUES($d, 'wordle', 'оля', 'Оля', 1, 1, 0, 'x')", ("$d", day));
+        var history = new WordleHistory(rig.Db, rig.Clock);
+        history.LoadNow("Оля");
+        var mine = history.Get("Оля")!;
+        var r = Assert.Single(mine);
+        Assert.Equal(day, r.Key);
+        Assert.Equal([answer], r.Value.Guesses);
+    }
+
     [Fact]
     public void Old_lost_days_from_game_state_are_backfilled_once()
     {

@@ -306,3 +306,14 @@
 .wfriends[hidden] { display: none; }
 .wflist { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; width: min(560px, 100%); }
 .wfhead { text-align: center; }
+/* пакет 4: архів Глек-слова */
+.wahead { text-align: center; margin: 2px 8px 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; justify-content: center; }
+.wahead > div { flex-basis: 100%; }
+.walist { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; width: min(640px, 100%); margin: 0 auto; }
+.walist[hidden], .wabody[hidden] { display: none; }
+.walist > div { grid-column: 1 / -1; text-align: center; }
+.waday { display: flex; gap: 6px; align-items: baseline; justify-content: space-between; text-align: left; }
+.waday.done { opacity: .8; }
+.wabody { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.wafoot { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 8px; }
+.wafoot:empty { display: none; }

@@ -253,16 +253,19 @@
       setHtml(el, '<div class="muted small">Словника на цьому сервері нема — сьогодні без слова.</div>');
       return;
     }
-    if (!over(v)) {
-      setHtml(el, '');
-      return;
+    // 📚 Архів — завжди: учорашнє слово можна дограти й до сьогоднішнього
+    const arch = inCatalog('wordle-archive') && ctx.mine
+      ? '<button class="ghost warchgo" data-arch title="Слова минулих днів: дограти пропущені, без серії й черепків">📚 Архів</button>' : '';
+    let html = arch;
+    if (over(v)) {
+      const race = inCatalog('wordle-race');
+      wantStats(root, ctx);
+      html = statsHtml(state(root).stats, v)
+        + (v.share ? '<button class="ghost" data-copy>Скопіювати результат</button>' : '')
+        + '<div class="muted small wnext">' + ctx.esc(nextWordIn()) + '</div>'
+        + (race ? '<button class="ghost wracego" data-race title="Інші слова, не слово дня">🏁 Ану ще слово — наввипередки з друзями</button>' : '')
+        + arch;
     }
-    const race = raceInCatalog();
-    wantStats(root, ctx);
-    const html = statsHtml(state(root).stats, v)
-      + (v.share ? '<button class="ghost" data-copy>Скопіювати результат</button>' : '')
-      + '<div class="muted small wnext">' + ctx.esc(nextWordIn()) + '</div>'
-      + (race ? '<button class="ghost wracego" data-race title="Інші слова, не слово дня">🏁 Ану ще слово — наввипередки з друзями</button>' : '');
     if (el.dataset.sig !== html) {
       el.dataset.sig = html;
       el.innerHTML = html;
@@ -270,7 +273,18 @@
       if (b) b.onclick = () => copy(v.share || '', ctx);
       const g = el.querySelector('[data-race]');
       if (g) g.onclick = () => openRace(ctx, g);
+      const a = el.querySelector('[data-arch]');
+      if (a) a.onclick = () => openArchive(a);
     }
+  }
+
+  /// Архів — своя особиста кімната (wordle-archive): відкрити її й перейти туди.
+  function openArchive(btn) {
+    btn.disabled = true;
+    HGames.call('OpenSolo', 'wordle-archive', null).then((r) => {
+      btn.disabled = false;
+      if (r && r.ok && r.roomId) location.hash = '#games/room/' + encodeURIComponent(r.roomId);
+    }, () => { btn.disabled = false; });
   }
 
   /// Серія й розподіл спроб — раз на картку, коли день дограно. Не прийшло — підвал просто без них.
@@ -315,7 +329,7 @@
       + '<div class="wdist" title="За скільки спроб узято слово дня">' + bars + '</div></div>';
   }
 
-  const raceInCatalog = () => ((HGames.catalog && HGames.catalog.games) || []).some((g) => g.id === 'wordle-race');
+  const inCatalog = (id) => ((HGames.catalog && HGames.catalog.games) || []).some((g) => g.id === id);
 
   /// Дограв слово дня — одразу стіл наввипередки: хочеться ще, а щоденне дає одне слово на добу.
   function openRace(ctx, btn) {
@@ -445,6 +459,135 @@
       root._wordle = null;
     },
   });
+
+  // =================================================================================================
+  // Архів Глек-слова (Impl/WordleArchive.cs, пакет 4): слова минулих днів. Вид:
+  //   { archive: true, loading, max, days: [{ day, no, mine: 's'|'x'|'', a, arch: 's'|'x'|'p'|'', aa }],
+  //     cur: null | { day, no, view, rows, attempts, solved, failed, hard, answer, keys, share, noWords } }
+  // mine — як день пройшов у щоденному (✓ a/6, ✗); arch — моя архівна партія. view — день зіграно ще тоді: лише подивитись.
+  // =================================================================================================
+
+  const ARCH_ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
+    + '<rect x="2" y="2" width="12" height="3.4" rx="1" fill="var(--accent)"/>'
+    + '<rect x="2" y="6.3" width="12" height="3.4" rx="1" fill="none" stroke="var(--muted)" stroke-width="1.1"/>'
+    + '<rect x="2" y="10.6" width="12" height="3.4" rx="1" fill="var(--ok)"/></svg>';
+
+  const archLocked = (v) => { const c = v && v.cur; return !c || c.view || c.noWords || over(c); };
+
+  /// «19.10» з «2026-10-19».
+  const shortDay = (d) => { const p = String(d || '').split('-'); return p.length === 3 ? p[2] + '.' + p[1] : d; };
+
+  function archMark(d, max) {
+    if (d.mine === 's') return '<span class="wrst ok" title="Узято ще того дня">✓ ' + d.a + '/' + max + '</span>';
+    if (d.mine === 'x') return '<span class="wrst bad" title="Того дня не вийшло">✗</span>';
+    if (d.arch === 's') return '<span class="wrst ok" title="Дограно в архіві">📚 ✓ ' + d.aa + '/' + max + '</span>';
+    if (d.arch === 'x') return '<span class="wrst bad" title="Дограно в архіві">📚 ✗</span>';
+    if (d.arch === 'p') return '<span class="wrst" title="Почато в архіві">📚 ' + d.aa + '/' + max + '…</span>';
+    return '<span class="wrst">не грав</span>';
+  }
+
+  function paintArchive(root, ctx) {
+    const st = state(root);
+    st.ctx = ctx;
+    st.locked = archLocked;
+    st.repaint = paintArchive;
+    if (ctx.room) roots[ctx.room.id] = root;
+    const v = ctx.view || {};
+    const c = v.cur;
+    const max = v.max || 6;
+    // інший день — чиста чернетка, а вже відкрите на дошці сальто не робить
+    const key = c ? c.day : '';
+    if (st.archDay !== key) {
+      st.archDay = key;
+      st.draft = '';
+      st.flipFrom = c ? (c.rows || []).length : null;
+    }
+    const head = part(root, 'wahead');
+    const list = part(root, 'walist');
+    const body = part(root, 'wabody');
+    const foot = part(root, 'wafoot');
+
+    if (!c) {
+      setHtml(head, '<b>📚 Архів Глек-слова</b><div class="muted small">Пропущені дні можна дограти — без серії й черепків. '
+        + 'Зіграні ще тоді — лише подивитись.</div>');
+      const days = v.days || [];
+      setHtml(list, (v.loading ? '<div class="muted small">Гортаю архів…</div>' : '')
+        + (days.length ? days.map((d) => '<button class="ghost waday' + (d.mine ? ' done' : '') + '" data-day="' + ctx.esc(d.day) + '">'
+          + '<b>#' + d.no + '</b> <span class="muted">' + ctx.esc(shortDay(d.day)) + '</span> ' + archMark(d, max) + '</button>').join('')
+          : '<div class="muted">Минулих днів ще нема — архів почнеться завтра</div>'));
+      list.querySelectorAll('[data-day]').forEach((b) => {
+        b.onclick = () => ctx.mine && ctx.act('open', { day: b.dataset.day });
+      });
+      list.hidden = false;
+      body.hidden = true;
+      setHtml(foot, '');
+      return;
+    }
+
+    setHtml(head, '<button class="ghost" data-back>← Архів</button> <b>Глек-слово #' + c.no + '</b> <span class="muted">'
+      + ctx.esc(shortDay(c.day)) + '</span>' + (c.hard ? ' <span class="whard" title="Складний режим">✦</span>' : '')
+      + (c.view ? '<div class="muted small">Цей день зіграно ще тоді — лише подивитись</div>' : ''));
+    const back = head.querySelector('[data-back]');
+    if (back) back.onclick = () => ctx.act('back');
+    list.hidden = true;
+    body.hidden = false;
+    drawBoard(body, ctx, st, c.rows || [], max, !archLocked(v) && ctx.mine);
+    HGames.ui.keyboardUa(body, (k) => press(root, k), c.keys || {}).hidden = archLocked(v);
+    let html = '';
+    if (c.view && !(c.rows || []).length) html += '<div class="muted small">Сітка того дня не збереглась'
+      + (c.solved ? ' — узято за ' + tries(c.attempts) : '') + '</div>';
+    if (over(c) && c.answer) html += '<div class="wrword"><span>Слово було:</span> '
+      + String(c.answer).split('').map((ch) => '<i>' + ctx.esc(ch) + '</i>').join('') + '</div>';
+    if (c.share) html += '<button class="ghost" data-copy>Скопіювати результат</button>';
+    if (foot.dataset.sig !== html) {
+      foot.dataset.sig = html;
+      foot.innerHTML = html;
+      const b = foot.querySelector('[data-copy]');
+      if (b) b.onclick = () => copy(c.share || '', ctx);
+    }
+  }
+
+  HGames.register({
+    id: 'wordle-archive',
+    icon: ARCH_ICON,
+    seatClass: ['x'],
+
+    mount(root, ctx) {
+      const st = state(root);
+      st.flipFrom = null;
+      st.archDay = undefined;
+      paintArchive(root, ctx);
+      // поки сервіс дочитує мої минулі дні (loading) — перепитуємо вид
+      st.timer = setInterval(() => {
+        const c = st.ctx;
+        if (c && c.view && c.view.loading && c.resync && !document.hidden) c.resync();
+      }, 2000);
+    },
+
+    update(root, ctx) { paintArchive(root, ctx); },
+
+    onKey,
+
+    status(ctx) {
+      const v = ctx.view;
+      if (!v) return '';
+      const c = v.cur;
+      if (!c) return v.loading ? 'Гортаю архів…' : 'Архів: обери день';
+      if (c.noWords) return 'Словника нема — архів без слів';
+      if (c.view) return c.solved ? 'Того дня узято за ' + tries(c.attempts) : 'Того дня не вийшло';
+      if (c.solved) return 'Є! Узято з архіву за ' + tries(c.attempts);
+      if (c.failed) return 'Слово було: ' + String(c.answer || '').toUpperCase();
+      return 'Архів #' + c.no + ' · спроба ' + Math.min(c.attempts + 1, v.max || 6) + ' з ' + (v.max || 6);
+    },
+
+    unmount(root, ctx) {
+      const st = root._wordle;
+      if (st && st.timer) clearInterval(st.timer);
+      if (ctx && ctx.room) delete roots[ctx.room.id];
+      root._wordle = null;
+    },
+  });
+
   // =================================================================================================
   // Глек-слово наввипередки (Impl/WordleRace.cs). Те саме слово для всіх за столом, чужі спроби —
   // самими кольорами (хто вже вгадав чи відмучився — з літерами). Вид: { phase: 'play'|'reveal'|'done',

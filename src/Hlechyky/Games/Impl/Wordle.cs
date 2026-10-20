@@ -334,7 +334,7 @@ public sealed class Wordle : Game, IDailyGame
     };
 
     /// <summary>Спробу приймаємо і як <c>{word:"глечик"}</c>, і як голий рядок — клієнтам так простіше.</summary>
-    static string? Word(JsonElement payload) => payload.ValueKind switch
+    internal static string? Word(JsonElement payload) => payload.ValueKind switch
     {
         JsonValueKind.String => payload.GetString(),
         JsonValueKind.Object when payload.TryGetProperty("word", out var w) && w.ValueKind == JsonValueKind.String => w.GetString(),
