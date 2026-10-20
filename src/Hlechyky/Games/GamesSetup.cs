@@ -30,7 +30,10 @@ public static class GamesSetup
         services.TryAddSingleton<IStakes, NoStakes>();
         services.TryAddSingleton<IGameStore, MemoryGameStore>();
         services.AddHostedService<TickEngine>();
-        services.AddSingleton<GameAdded>();                // «🆕»: коли сервер уперше побачив гру
+        // Замір «дьоргання»: рівність тика й метр браузера → data/diag/*.jsonl (TickHealth.cs, вимикачі Diag:Tick, Diag:Jerk)
+        services.AddSingleton(sp => new DiagLog(Paths.Resolve("data/diag"), sp.GetService<ILogger<DiagLog>>()));
+        services.AddSingleton<TickHealth>();
+        services.AddSingleton<GameAdded>();               // «🆕»: коли сервер уперше побачив гру
         services.AddSingleton<GameNews>();                 // «що нового»: яку версію оновлення гри нік уже бачив
         services.AddSingleton<Tournament>();
         services.AddHostedService(sp => sp.GetRequiredService<Tournament>());
@@ -85,6 +88,7 @@ public static class GamesSetup
                 Rooms.Stakes, front.Games(), added.Map(registry.Catalog)));
         GameNews.Map(app);                                  // /api/games/news — «бачив що нового»
         TablesKeeper.Map(app);                              // /api/internal/freeze, thaw, busy — лише з цієї машини з ключем
+        TickHealth.Map(app);                                // /api/diag/jerk — метр «дьоргання» з браузера, /api/diag/tick — розробнику
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
