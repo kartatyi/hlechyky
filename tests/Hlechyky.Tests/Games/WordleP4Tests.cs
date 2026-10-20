@@ -267,6 +267,68 @@ public class WordleP4Tests(WordleWords fx) : IClassFixture<WordleWords>
         Assert.Equal([answer], r.Value.Guesses);
     }
 
+    // -------------------------------------------------------------------------- 5. складний режим ✦
+
+    [Fact]
+    public void Hard_rule_keeps_greens_in_place_and_yellows_with_their_count()
+    {
+        Assert.Equal("✦ 1-ша літера має бути «к»", Wordle.HardMiss("казка", ["кашка"], "лампа"));
+        Assert.Equal("YYBBG", Wordle.Marks("казка", "акула"));
+        Assert.Null(Wordle.HardMiss("казка", ["акула"], "клата"));
+        Assert.Equal("✦ має бути літера «к»", Wordle.HardMiss("казка", ["акула"], "лампа"));
+        Assert.Equal("✦ літера «а» має бути 2 рази", Wordle.HardMiss("казка", ["акула"], "кубра"));
+        Assert.Null(Wordle.HardMiss("казка", [], "лампа"));
+    }
+
+    [Fact]
+    public void Hard_mode_is_chosen_before_the_first_guess_and_then_enforced()
+    {
+        var r = Solo();
+        var first = fx.Five.First(w => w != Answer && Wordle.Marks(Answer, w).Any(m => m != 'B'));
+        var bad = fx.Five.First(w => w != Answer && Wordle.HardMiss(Answer, [first], w) is not null);
+        Assert.True(r.H.Act(0, "hard", new { on = true }).Ok);
+        Assert.True(r.H.View(0).GetProperty("hard").GetBoolean());
+        Assert.True(Guess(r.H, first).Ok);
+        Assert.False(r.H.Act(0, "hard", new { on = false }).Ok);   // після першої спроби не міняється
+
+        var refused = Guess(r.H, bad);
+        Assert.False(refused.Ok);
+        Assert.StartsWith("✦", refused.Message);
+        Assert.Equal(1, r.H.View(0).GetProperty("attempts").GetInt32());
+        Assert.True(Guess(r.H, Answer).Ok);   // відповідь тримає все відкрите завжди
+        Assert.Contains("2/6 ✦", r.H.View(0).GetProperty("share").GetString());
+        Assert.Contains("\"hard\":true", r.H.Room.Game.Save());
+        Assert.True(r.Card.Get("wordle") is not null);
+    }
+
+    [Fact]
+    public void A_saved_day_in_the_old_format_still_opens_in_normal_mode()
+    {
+        var w = Wrong(2);
+        var r = Solo();
+        r.H.Room.Game.Load(JsonSerializer.Serialize(new { day = Day, guesses = w, solved = false, failed = false }));
+        var v = r.H.View(0);
+        Assert.Equal(2, v.GetProperty("attempts").GetInt32());
+        Assert.False(v.GetProperty("hard").GetBoolean());
+        Assert.True(Guess(r.H, Answer).Ok);
+    }
+
+    [Fact]
+    public void Hard_mode_works_in_the_archive_too()
+    {
+        var (h, _) = Archive();
+        const string day = "2026-09-15";
+        var answer = fx.Words.Daily5ForDay(day);
+        var first = fx.Five.First(w => w != answer && Wordle.Marks(answer, w).Any(m => m != 'B'));
+        var bad = fx.Five.First(w => w != answer && Wordle.HardMiss(answer, [first], w) is not null);
+        h.Act(0, "open", new { day });
+        Assert.True(h.Act(0, "hard", new { on = true }).Ok);
+        Assert.True(h.Act(0, "guess", new { word = first }).Ok);
+        Assert.False(h.Act(0, "guess", new { word = bad }).Ok);
+        Assert.True(h.Act(0, "guess", new { word = answer }).Ok);
+        Assert.Contains("✦", h.View(0).GetProperty("cur").GetProperty("share").GetString());
+    }
+
     [Fact]
     public void Old_lost_days_from_game_state_are_backfilled_once()
     {

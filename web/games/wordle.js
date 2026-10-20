@@ -163,6 +163,7 @@
     drawBoard(root, ctx, st, rows, max, !over(v) && ctx.mine);
     // день дограно — друкувати нікуди, а клавіатура штовхала серію й «Скопіювати» за нижній край телефона
     HGames.ui.keyboardUa(root, (k) => press(root, k), v.keys || {}).hidden = over(v);
+    modeLine(root, ctx, v, !v.noWords && !over(v));
     friends(root, ctx, v);
     foot(root, ctx, v);
   }
@@ -202,6 +203,34 @@
     }
     el.hidden = !html;
     setHtml(el, html);
+  }
+
+  /// Складний режим ✦ (пакет 4): до першої спроби — перемикач, потім — лише позначка. d — вид дня ({ hard, attempts }).
+  function modeLine(host, ctx, d, open) {
+    let el = host.querySelector(':scope > .wmode');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wmode';
+      const after = host.querySelector(':scope > .wfriends') || host.querySelector(':scope > .wfoot');
+      host.insertBefore(el, after || null);
+    }
+    let html = '';
+    if (open && ctx.mine && !(d.attempts > 0)) {
+      html = '<button class="ghost wmodego' + (d.hard ? ' on' : '') + '" data-hard title="Кожна наступна спроба мусить тримати '
+        + 'зелені на місцях і всі відкриті жовті">✦ Складний режим: ' + (d.hard ? 'увімкнено' : 'вимкнено') + '</button>';
+    } else if (d.hard) {
+      html = '<span class="whard">✦</span> <span class="muted small">складний режим</span>';
+    }
+    el.hidden = !html;
+    if (el.dataset.sig !== html) {
+      el.dataset.sig = html;
+      el.innerHTML = html;
+      const b = el.querySelector('[data-hard]');
+      if (b) b.onclick = () => {
+        b.disabled = true;
+        ctx.act('hard', { on: !d.hard }).then(() => { b.disabled = false; }, () => { b.disabled = false; });
+      };
+    }
   }
 
   /// Сітки друзів за сьогодні (пакет 4): поки я не дограв — лише кольори, після — і слова (words від сервера).
@@ -444,11 +473,14 @@
     },
 
     news: {
-      v: '2026-09-29',
-      title: 'Глек-слово: серія на картці',
+      v: '2026-10-20',
+      title: 'Глек-слово: друзі, архів і складний режим',
       items: [
-        '🔥 Дограв день — на картці серія, найдовша серія і стовпчики «за скільки спроб», як у класиці',
-        '🏁 Наввипередки з друзями: хто вгадав — бачить чужі дошки з літерами, а ще спринт «кожен своє слово» і слова на 4 чи 6 літер',
+        '🏆 Над дошкою — хто сьогодні вже вгадав і за скільки спроб, 🔥 серії, ✗ і хто ще не грав',
+        '👥 Сітки друзів за сьогодні: поки сам не дограв — лише кольори, після — і їхні слова',
+        '📚 Архів: пропущені дні за останній місяць можна дограти (без серії й черепків)',
+        '✦ Складний режим: кожна спроба мусить тримати відкриті літери. Обирають до першої спроби',
+        '✗ Програний день тепер видно — і в розподілі спроб, і на табло',
       ],
     },
 
@@ -525,7 +557,7 @@
     }
 
     setHtml(head, '<button class="ghost" data-back>← Архів</button> <b>Глек-слово #' + c.no + '</b> <span class="muted">'
-      + ctx.esc(shortDay(c.day)) + '</span>' + (c.hard ? ' <span class="whard" title="Складний режим">✦</span>' : '')
+      + ctx.esc(shortDay(c.day)) + '</span>'
       + (c.view ? '<div class="muted small">Цей день зіграно ще тоді — лише подивитись</div>' : ''));
     const back = head.querySelector('[data-back]');
     if (back) back.onclick = () => ctx.act('back');
@@ -533,6 +565,7 @@
     body.hidden = false;
     drawBoard(body, ctx, st, c.rows || [], max, !archLocked(v) && ctx.mine);
     HGames.ui.keyboardUa(body, (k) => press(root, k), c.keys || {}).hidden = archLocked(v);
+    modeLine(body, ctx, c, !archLocked(v));
     let html = '';
     if (c.view && !(c.rows || []).length) html += '<div class="muted small">Сітка того дня не збереглась'
       + (c.solved ? ' — узято за ' + tries(c.attempts) : '') + '</div>';

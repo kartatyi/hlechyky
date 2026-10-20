@@ -317,3 +317,6 @@
 .wabody { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .wafoot { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 8px; }
 .wafoot:empty { display: none; }
+.wmode { display: flex; justify-content: center; align-items: baseline; gap: 4px; margin: 4px 0; }
+.wmode[hidden] { display: none; }
+.wmodego.on { border-color: var(--accent); color: var(--accent); }

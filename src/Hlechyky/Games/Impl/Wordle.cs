@@ -28,7 +28,8 @@ public sealed class Wordle : Game, IDailyGame
     static readonly JsonSerializerOptions Wire = new(JsonSerializerDefaults.Web);
 
     /// <summary>Збережений стан дня (specs/wordle.md). Прапорці тут для очей — при завантаженні їх перераховуємо.</summary>
-    sealed record Saved(string? Day, string[]? Guesses, bool Solved, bool Failed);
+    /// <summary><c>Hard</c> — складний режим ✦ (пакет 4); старі стани без цього поля відкриваються звичайним режимом.</summary>
+    sealed record Saved(string? Day, string[]? Guesses, bool Solved, bool Failed, bool Hard = false);
 
     readonly List<string> _guesses = [];
 
@@ -39,6 +40,8 @@ public sealed class Wordle : Game, IDailyGame
     string _answer = "";
     bool _solved;
     bool _failed;
+    /// <summary>Складний режим ✦: вмикають до першої спроби, далі кожна спроба мусить тримати все відкрите.</summary>
+    bool _hard;
     /// <summary>Соло-результат і щоденну нагороду за цей день уже відправлено — двічі не платимо.</summary>
     bool _reported;
     /// <summary>Рядок у спільний Журнал за цей день уже пішов — удруге не кричимо (див. <see cref="Close"/>).</summary>
@@ -91,6 +94,14 @@ public sealed class Wordle : Game, IDailyGame
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == "hard")
+        {
+            if (_solved || _failed) return ActResult.Fail("Сьогоднішнє слово вже позаду");
+            if (_guesses.Count > 0) return ActResult.Fail("✦ Складний режим обирають до першої спроби");
+            _hard = HardOn(payload);
+            NoteFriends();
+            return ActResult.Done;
+        }
         if (action != "guess") return ActResult.Fail("Тут так не ходять");
         if (_answer.Length != Len) return ActResult.Fail("Словника нема — сьогодні без слова");
         if (_solved || _failed) return ActResult.Fail("Сьогоднішнє слово вже позаду. Приходь завтра");
@@ -100,6 +111,7 @@ public sealed class Wordle : Game, IDailyGame
         var word = Words.Normalize(raw);
         if (word is null || word.Length != Len) return ActResult.Fail("Треба рівно п'ять українських літер");
         if (_words?.IsValid5(word) != true) return ActResult.Fail("Такого слова не знаю");
+        if (_hard && HardMiss(_answer, _guesses, word) is { } miss) return ActResult.Fail(miss);
 
         _guesses.Add(word);
         NoteFriends();
@@ -136,6 +148,7 @@ public sealed class Wordle : Game, IDailyGame
             max = MaxTries,
             solved = _solved,
             failed = _failed,
+            hard = _hard,
             // до кінця дня відповіді у виді нема взагалі — інакше її видно в консолі браузера
             answer = over ? _answer : null,
             keys = Keys(),
@@ -154,7 +167,7 @@ public sealed class Wordle : Game, IDailyGame
     /// <summary>Моя сітка — у спільну пам'ять друзів (лише сьогоднішній день, чужий сервіс відкине сам).</summary>
     void NoteFriends()
     {
-        if (_friends is not null && _day.Length > 0 && Ctx.NickOf(0) is { } nick) _friends.Note(_day, nick, _guesses, false);
+        if (_friends is not null && _day.Length > 0 && Ctx.NickOf(0) is { } nick) _friends.Note(_day, nick, _guesses, _hard);
     }
 
     /// <summary>
@@ -193,7 +206,7 @@ public sealed class Wordle : Game, IDailyGame
     }
 
     public override string? Save() =>
-        _day.Length == 0 ? null : JsonSerializer.Serialize(new Saved(_day, [.. _guesses], _solved, _failed), Wire);
+        _day.Length == 0 ? null : JsonSerializer.Serialize(new Saved(_day, [.. _guesses], _solved, _failed, _hard), Wire);
 
     /// <summary>
     /// Відновлення дня. Чужий день — не наша справа: лишаємо чисту дошку (слово вже інше). Прапорці зі
@@ -207,6 +220,7 @@ public sealed class Wordle : Game, IDailyGame
         if (saved is null || saved.Day != _day || _answer.Length != Len) return;
 
         _guesses.Clear();
+        _hard = saved.Hard;
         foreach (var raw in saved.Guesses ?? [])
         {
             if (_guesses.Count >= MaxTries) break;
@@ -260,6 +274,43 @@ public sealed class Wordle : Game, IDailyGame
         return new string(marks);
     }
 
+    /// <summary>Перемикач складного режиму: <c>{on:true}</c> або голе <c>true</c>.</summary>
+    internal static bool HardOn(JsonElement payload) => payload.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.Object when payload.TryGetProperty("on", out var on) => on.ValueKind == JsonValueKind.True,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Складний режим ✦: чи тримає спроба все, що відкрили попередні. Зелені — на своїх місцях; жовті (і зелені) —
+    /// у слові, з урахуванням кількості: якщо в одній спробі «к» відкрилась двічі, двох «к» і треба. null — усе гаразд,
+    /// інакше — текст відмови для тосту.
+    /// </summary>
+    public static string? HardMiss(string answer, IReadOnlyList<string> previous, string word)
+    {
+        var need = new Dictionary<char, int>();
+        foreach (var prev in previous)
+        {
+            var marks = Marks(answer, prev);
+            for (var i = 0; i < marks.Length && i < prev.Length && i < word.Length; i++)
+                if (marks[i] == 'G' && word[i] != prev[i]) return $"✦ {Place(i + 1)} літера має бути «{prev[i]}»";
+            var here = new Dictionary<char, int>();
+            for (var i = 0; i < marks.Length && i < prev.Length; i++)
+                if (marks[i] != 'B') here[prev[i]] = here.GetValueOrDefault(prev[i]) + 1;
+            foreach (var (ch, n) in here) if (n > need.GetValueOrDefault(ch)) need[ch] = n;
+        }
+        foreach (var (ch, n) in need)
+        {
+            var have = word.Count(c => c == ch);
+            if (have >= n) continue;
+            return n > 1 ? $"✦ літера «{ch}» має бути {n} рази" : $"✦ має бути літера «{ch}»";
+        }
+        return null;
+    }
+
+    static string Place(int n) => n switch { 1 => "1-ша", 2 => "2-га", 3 => "3-тя", _ => $"{n}-та" };
+
     /// <summary>Зведений стан літер для екранної клавіатури: зелена перекриває жовту, жовта — чорну.</summary>
     Dictionary<string, string> Keys() => KeysOf(_answer, _guesses);
 
@@ -289,6 +340,7 @@ public sealed class Wordle : Game, IDailyGame
         var sb = new StringBuilder();
         sb.Append("Глек-слово #").Append(_day.Length == 0 ? 0 : Days.Number(_day)).Append(' ')
           .Append(_solved ? _guesses.Count.ToString() : "X").Append('/').Append(MaxTries);
+        if (_hard) sb.Append(" ✦");
         foreach (var w in _guesses)
         {
             sb.Append('\n');

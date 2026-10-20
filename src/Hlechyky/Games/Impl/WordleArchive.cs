@@ -180,6 +180,16 @@ public sealed class WordleArchive : Game
                 return ActResult.Done;
             case "guess":
                 return Guess(payload);
+            case "hard":
+            {
+                if (_cur.Length == 0) return ActResult.Fail("Спершу обери день");
+                if (Mine() is not { } mine || mine.ContainsKey(_cur)) return ActResult.Fail("Цей день зіграно ще тоді — лише подивитись");
+                var p = _plays.GetValueOrDefault(_cur) ?? new Play();
+                if (p.Guesses.Count > 0) return ActResult.Fail("✦ Складний режим обирають до першої спроби");
+                p.Hard = Wordle.HardOn(payload);
+                _plays[_cur] = p;
+                return ActResult.Done;
+            }
             default:
                 return ActResult.Fail("Тут так не ходять");
         }
@@ -199,6 +209,7 @@ public sealed class WordleArchive : Game
         var word = Words.Normalize(raw);
         if (word is null || word.Length != Wordle.Len) return ActResult.Fail("Треба рівно п'ять українських літер");
         if (_words?.IsValid5(word) != true) return ActResult.Fail("Такого слова не знаю");
+        if (play.Hard && Wordle.HardMiss(answer, play.Guesses, word) is { } miss) return ActResult.Fail(miss);
 
         play.Guesses.Add(word);
         _plays[_cur] = play;
@@ -295,7 +306,7 @@ public sealed class WordleArchive : Game
 
     public override string? Save()
     {
-        var days = _plays.Where(kv => kv.Value.Guesses.Count > 0)
+        var days = _plays.Where(kv => kv.Value.Guesses.Count > 0 || kv.Value.Hard)
             .ToDictionary(kv => kv.Key, kv => new SavedDay([.. kv.Value.Guesses], kv.Value.Hard), StringComparer.Ordinal);
         return JsonSerializer.Serialize(new Saved(days, _cur.Length == 0 ? null : _cur), Wire);
     }
@@ -320,7 +331,7 @@ public sealed class WordleArchive : Game
                 p.Guesses.Add(w);
                 if (w == answer) break;
             }
-            if (p.Guesses.Count > 0) _plays[day] = p;
+            if (p.Guesses.Count > 0 || p.Hard) _plays[day] = p;
         }
         _cur = saved.Cur is { } c && InWindow(c) ? c : "";
     }
