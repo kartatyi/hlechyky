@@ -1993,7 +1993,8 @@
     const now = playingIn(id);
     return '<div class="gposter' + (isNewGame(id) ? ' fresh' : '') + '" data-pre="' + esc(id) + '">'
       + '<img class="gp-img" src="/games/slots/posters/' + esc(id) + '.svg" alt="" loading="lazy" decoding="async">'
-      + '<div class="gp-txt"><div class="gp-t"><b>' + esc(e.title) + '</b>' + badgeOf(e) + '</div>'
+      + '<div class="gp-txt"><div class="gp-t"><b>' + esc(e.title) + '</b>' + badgeOf(e)
+      + (azTour && azTour.open && azTour.game === id ? '<span class="gp-tour" title="Турнір тижня — тут">🏆</span>' : '') + '</div>'
       + '<div class="gp-m">' + esc(inf.mech) + '</div>'
       + (now.length ? '<div class="gp-now" title="' + esc(whoTitle(now)) + '"><i class="gdot"></i>' + esc(whoShort(now, 2)) + ' <span class="muted">крутить</span></div>' : '')
       + '<div class="gp-f"><span class="gp-v" title="волатильність: ' + VOL[inf.vol] + '">' + '<i>⚡</i>'.repeat(inf.vol)
@@ -2001,6 +2002,34 @@
       + '<button class="primary gp-play" data-solo="' + esc(id) + '">Грати</button></div></div></div>';
   }
   let azFeed = null, azAt = 0, azShown = null, azT = 0, azN = 0;
+  // Турнір тижня в слотах (пакет 5, /api/slots/tourney): рядок у шапці Азарту й 🏆 на афіші автомата тижня
+  let azTour = null, azTourAt = 0;
+  function azTourHtml() {
+    const t = azTour;
+    if (!t || t.off) return '';
+    const lead = t.board && t.board[0];
+    return '<span>🏆 <b>Турнір тижня:</b> «' + esc(t.title) + '»' + (lead ? ', лідер — ' + esc(lead.nick) + ' (' + azFmt(lead.best) + ')' : ', табло ще порожнє')
+      + (t.open ? ', до неділі 21:00' : ' — підбито, новий з понеділка') + '</span>'
+      + '<span class="muted small">щодня спроба на ' + azFmt(t.chips) + ' фішок, черепки не беруться; призи ' + (t.prizes || []).map(azFmt).join(' / ') + ' 🏺</span>'
+      + (t.open ? '<button class="ghost gaz-tour-go" data-game="' + esc(t.game) + '">Грати</button>' : '');
+  }
+  async function azTourFetch() {
+    if (Date.now() - azTourAt < 60000) return;
+    azTourAt = Date.now();
+    try {
+      const t = await api('GET', '/api/slots/tourney');
+      if (!t) return;
+      const was = azTour && azTour.game;
+      azTour = t.off ? null : t;
+      const el = root && root.querySelector('.gaz-tour');
+      if (el) { el.innerHTML = azTourHtml(); el.hidden = !azTour; }
+      if (azTour && was !== azTour.game && root && root.querySelector('.gposter')) renderView();
+    } catch (e) { /* мережа — наступного разу */ }
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('.gaz-tour-go');
+    if (b && b.dataset.game) openRoom('OpenSolo', b.dataset.game, null);
+  });
   const azFmt = (n) => Math.round(n || 0).toLocaleString('uk-UA').replace(/,/g, ' ');
   const AZ_TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті', 'slot-slidy': 'Сліди на полиці' };
   function azWinsHtml() {
@@ -2017,7 +2046,8 @@
       + '<b class="gaz-jp-v">' + (azShown != null ? azFmt(azShown) : '…') + '</b>'
       + '<small class="gaz-must">' + (azFeed && azFeed.mustHit > 0 ? 'впаде до ' + azFmt(azFeed.mustHit) : '') + '</small>'
       + '<span class="muted small">з кожної ставки — дещиця сюди; будь-який оберт може її розбити</span></div>'
-      + '<div class="gaz-wins"><h6>🔥 Заноси тижня</h6><div class="gaz-wl">' + azWinsHtml() + '</div></div></div>';
+      + '<div class="gaz-wins"><h6>🔥 Заноси тижня</h6><div class="gaz-wl">' + azWinsHtml() + '</div></div>'
+      + '<div class="gaz-tour"' + (azTour ? '' : ' hidden') + '>' + azTourHtml() + '</div></div>';
   }
   async function azFetch() {
     try {
@@ -2030,6 +2060,7 @@
       if (!el) return;
       el.querySelector('.gaz-must').textContent = f.mustHit > 0 ? 'впаде до ' + azFmt(f.mustHit) : '';
       if (fresh) el.querySelector('.gaz-wl').innerHTML = azWinsHtml();
+      azTourFetch();
     } catch (e) { /* мережа — наступного разу */ }
   }
   /// Опитування лише поки шапку Азарту видно (лобі, вкладка): раз на 7 с запит, раз на секунду сума м'яко доростає.
@@ -3709,6 +3740,8 @@
 
     /// Для модулів, панелей і людей (web/people.js кличе InviteTo), яким треба смикнути хаб самим.
     call,
+    /// Відкрити соло-гру за id (турнір тижня в слотах веде з одного автомата в інший).
+    openSolo: (id) => openRoom('OpenSolo', id, null),
     send,
     get catalog() { return catalog; },
   };

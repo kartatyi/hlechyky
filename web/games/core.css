@@ -650,6 +650,11 @@ body.g-imm:not(.g-land) .gbody > canvas.gcanvas { max-width: min(100%, calc((var
 .gaz-list li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gaz-x { font-weight: 800; color: var(--clay, #c5763a); }
 .gaz-sum { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.gaz-tour { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; border-radius: 14px; padding: 8px 14px; min-width: 0;
+  background: linear-gradient(160deg, rgba(244, 197, 66, .12), rgba(197, 118, 58, .06)); border: 1px solid rgba(244, 197, 66, .3); overflow-wrap: anywhere; }
+.gaz-tour[hidden] { display: none; }
+.gaz-tour .gaz-tour-go { margin-left: auto; padding: 3px 12px; }
+.gp-tour { margin-left: 4px; }
 .gtblock.gt-slots { grid-column: 1 / -1; }
 /* афіші — на всю ширину блоку «Слоти» (блок — subgrid лобі, без 1 / -1 вони сідали в одну колонку стовпчиком) */
 .gposters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
