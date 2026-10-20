@@ -151,6 +151,13 @@ public interface IRoomContext
     /// і час, і спроби: тоді value — мілісекунди, а спроби йдуть окремо, а не вгадуються з величини числа.
     /// </summary>
     void Score(int seat, double value, int? attempts = null);
+    /// <summary>
+    /// Щоденна головоломка сьогодні не вдалась (Глек-слово без шести спроб, Сапер дня — вибух чи «здався»): рядок
+    /// <c>solved = 0</c> у <c>daily_results</c> з кількістю спроб — невдалий день видно в розподілі й табло. Ні соло-
+    /// таблиці, ні ачівок, ні черепків; серію рве так само, як і раніше. Пізніший розв'язок того самого дня (у сапері
+    /// можна спробувати ще) перекриває промах. Лише для кімнат із ключем <c>daily:&lt;гра&gt;:&lt;день&gt;:&lt;нік&gt;</c>.
+    /// </summary>
+    void DailyMiss(int seat, int attempts) { }
     /// <summary>Черепки поза стандартною виплатою за партію (переможець «Скільки?», конкурс). Проходить через стелі економіки.</summary>
     void Award(int seat, int shards, string reason);
 
@@ -415,8 +422,9 @@ public sealed record RoomFinishedEvent(
     int Moves,                          // скільки Act прийнято за партію (0 для реалтайму)
     bool TableMoney = false);           // за столом ходили черепки (банк столу): звичайних нагород за партію не дають
 
+/// <summary><paramref name="Missed"/> — щоденна головоломка не вдалась (<see cref="IGameContext.DailyMiss"/>): Score тоді 0.</summary>
 public sealed record SoloScoreEvent(string GameId, string Nick, double Score, ScoreOrder Order, string? Key, DateTimeOffset At,
-    int? Attempts = null);
+    int? Attempts = null, bool Missed = false);
 
 public sealed record AwardEvent(string GameId, string RoomId, string Nick, int Shards, string Reason);
 

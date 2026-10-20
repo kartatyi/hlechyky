@@ -676,7 +676,7 @@
   }
   /// Що значить «рекорд» у кожній соло-грі (сервер пише голе число): мілісекунди, секунди, метри, очки, спроби…
   const SCORE_FMT = {
-    'mines-daily': msText, 'chess-daily': msText, 'bricks-daily': msText,
+    'mines-daily': msText, 'mines-daily-easy': msText, 'chess-daily': msText, 'bricks-daily': msText,
     'bricks-sprint': (s) => msText(s * 1000),
     clicker: (n) => (n < 1e15 ? lbNum(n) + ' ' + plural(Math.trunc(n), 'глек', 'глеки', 'глеків') : lbNum(n)),
     'dino-daily': (n) => num(n) + ' м',

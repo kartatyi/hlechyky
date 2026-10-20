@@ -1685,6 +1685,13 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         _out?.After(() => rooms.Events.Raise(e));
     }
 
+    public void DailyMiss(int seat, int attempts)
+    {
+        if (NickOf(seat) is not { } nick || room.Key is not { } key || !key.StartsWith("daily:", StringComparison.Ordinal)) return;
+        var e = new SoloScoreEvent(room.Info.Id, nick, 0, room.Info.Score, key, rooms.Clock.UtcNow, Math.Max(1, attempts), Missed: true);
+        _out?.After(() => rooms.Events.Raise(e));
+    }
+
     /// <summary>
     /// Нуль черепків — не «нічого не сталось», а домовлений сигнал: <c>Award(seat, 0, "ach:&lt;key&gt;")</c> —
     /// це прохання видати ачівку, якої платформа сама не побачить (ARCHITECTURE §4.3, §8), а

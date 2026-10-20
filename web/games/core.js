@@ -2319,6 +2319,9 @@
         ? '✓ зіграно · ' + points(p.me.points)
         : solved
         ? '✓ розгадано ' + (p.me.attempts ? 'за ' + tries(p.me.attempts) : '') + (p.me.ms ? ' · ' + secs(p.me.ms) : '')
+        // невдалий день теж пишеться (solved = false): у сапері ще можна спробувати, у слові — завтра
+        : p.me
+        ? '✗ не вийшло' + (p.me.attempts ? ' · ' + tries(p.me.attempts) : '') + (p.solvedCount ? ' · ' + p.solvedCount + ' розгадали' : '')
         : 'ще не розгадано' + (p.solvedCount ? ' · ' + p.solvedCount + ' вже розгадали' : '');
       return '<div class="gdc' + (solved ? ' done' : '') + '">' + iconOf(p.game) + '<div><b>' + esc(p.title || titleOf(p.game)) + '</b>'
         + '<span class="muted small">' + esc(what) + (p.streak ? ' · 🔥 ' + p.streak : '') + '</span></div>'

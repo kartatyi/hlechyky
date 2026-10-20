@@ -10,9 +10,11 @@ public sealed record DayCardRow(string Nick, int Attempts, int Ms, int Streak);
 
 /// <summary>
 /// Табло дня на самій картці щоденної гри (Сапер дня, Цеглини дня): «Сьогодні: Оля 1:23 🔥4 · Петро 2:10» і хто з
-/// тих, що грали цього тижня, сьогодні ще не проходив (їхній вогник от-от згасне).
+/// тих, що грали цього тижня, сьогодні ще не проходив (їхній вогник от-от згасне). <paramref name="Missed"/> — у кого
+/// сьогодні не вийшло (✗ і скільки спроб; <see cref="IGameContext.DailyMiss"/>): невдалий день теж видно.
 /// </summary>
-public sealed record DayCard(string Day, IReadOnlyList<DayCardRow> Rows, IReadOnlyList<DayCardRow> Waiting, int Ver);
+public sealed record DayCard(string Day, IReadOnlyList<DayCardRow> Rows, IReadOnlyList<DayCardRow> Waiting, int Ver,
+    IReadOnlyList<DayCardRow>? Missed = null);
 
 /// <summary>
 /// Табло дня й серії 🔥 для карток щоденних ігор. Гра звертається лише до пам'яті (під замком кімнати — жодного
@@ -36,6 +38,8 @@ public sealed class DailyCard(Db? db, IClock clock)
         public string Day = "";
         /// <summary>Нік-ключ → найкращий результат сьогодні.</summary>
         public readonly Dictionary<string, (string Nick, int A, int Ms)> Today = new(StringComparer.Ordinal);
+        /// <summary>Нік-ключ → невдалий день сьогодні (і ще не розв'язаний): нік і скільки спроб.</summary>
+        public readonly Dictionary<string, (string Nick, int A)> Missed = new(StringComparer.Ordinal);
         /// <summary>Нік-ключ → (нік, серія до вчора включно, останній день до сьогодні).</summary>
         public readonly Dictionary<string, (string Nick, int Streak, string Last)> Past = new(StringComparer.Ordinal);
         public DateTimeOffset LoadedAt;
@@ -78,6 +82,7 @@ public sealed class DailyCard(Db? db, IClock clock)
                 // новий день: учорашнє «сьогодні» стало минулим — перечитуємо все фоном
                 snap.Day = day;
                 snap.Today.Clear();
+                snap.Missed.Clear();
                 snap.Past.Clear();
                 snap.Loaded = false;
                 snap.Card = null;
@@ -101,6 +106,27 @@ public sealed class DailyCard(Db? db, IClock clock)
             var k = Key(nick);
             if (snap.Today.TryGetValue(k, out var was) && (was.A < attempts || (was.A == attempts && was.Ms <= ms))) return;
             snap.Today[k] = (nick, attempts, ms);
+            snap.Missed.Remove(k);
+            snap.Card = null;
+            snap.Ver++;
+        }
+    }
+
+    /// <summary>
+    /// Кімната щойно записала невдалий день (<see cref="IGameContext.DailyMiss"/>): «✗ Оля (6)» на табло. Хто сьогодні
+    /// вже розв'язав, того промах не чіпає; повторний промах лише піднімає число спроб.
+    /// </summary>
+    public void NoteMiss(string game, string nick, int attempts)
+    {
+        var day = Days.Today(clock);
+        var snap = _snaps.GetOrAdd(game, _ => new Snap { Day = day });
+        lock (snap)
+        {
+            if (snap.Day != day) return;
+            var k = Key(nick);
+            if (snap.Today.ContainsKey(k)) return;
+            if (snap.Missed.TryGetValue(k, out var was) && was.A >= attempts) return;
+            snap.Missed[k] = (nick, Math.Max(1, attempts));
             snap.Card = null;
             snap.Ver++;
         }
@@ -125,10 +151,14 @@ public sealed class DailyCard(Db? db, IClock clock)
             .OrderBy(r => r.Attempts).ThenBy(r => r.Ms).ThenBy(r => r.Nick, StringComparer.Ordinal)
             .Take(MaxRows).ToList();
         var since = Shift(s.Day, -WaitDays);
-        var waiting = s.Past.Where(kv => !s.Today.ContainsKey(kv.Key) && string.CompareOrdinal(kv.Value.Last, since) >= 0)
+        var waiting = s.Past.Where(kv => !s.Today.ContainsKey(kv.Key) && !s.Missed.ContainsKey(kv.Key)
+                && string.CompareOrdinal(kv.Value.Last, since) >= 0)
             .OrderByDescending(kv => kv.Value.Streak).ThenByDescending(kv => kv.Value.Last, StringComparer.Ordinal)
             .Take(MaxWaiting).Select(kv => new DayCardRow(kv.Value.Nick, 0, 0, kv.Value.Streak)).ToList();
-        return new DayCard(s.Day, rows, waiting, s.Ver);
+        var missed = s.Missed.Where(kv => !s.Today.ContainsKey(kv.Key))
+            .OrderBy(kv => kv.Value.Nick, StringComparer.Ordinal)
+            .Take(MaxWaiting).Select(kv => new DayCardRow(kv.Value.Nick, kv.Value.A, 0, 0)).ToList();
+        return new DayCard(s.Day, rows, waiting, s.Ver, missed);
     }
 
     /// <summary>Лише для тестів: дочитати день із бази зараз.</summary>
@@ -140,15 +170,19 @@ public sealed class DailyCard(Db? db, IClock clock)
         {
             var since = Shift(day, -StreakWindow);
             var rows = new List<(string Key, string Nick, string Day, int A, int Ms)>();
+            var misses = new List<(string Key, string Nick, int A)>();
             db!.With(c =>
             {
                 using var cmd = c.CreateCommand();
-                cmd.CommandText = "SELECT nick_key, nick, day, attempts, ms FROM daily_results WHERE game = $g AND solved = 1 AND day >= $s AND day <= $d";
+                // розв'язане — за весь проміжок (серії), невдале — лише сьогоднішнє (табло)
+                cmd.CommandText = "SELECT nick_key, nick, day, attempts, ms, solved FROM daily_results WHERE game = $g AND day >= $s AND day <= $d AND (solved = 1 OR day = $d)";
                 cmd.Parameters.AddWithValue("$g", game);
                 cmd.Parameters.AddWithValue("$s", since);
                 cmd.Parameters.AddWithValue("$d", day);
                 using var r = cmd.ExecuteReader();
-                while (r.Read()) rows.Add((r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3), r.GetInt32(4)));
+                while (r.Read())
+                    if (r.GetInt32(5) == 1) rows.Add((r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3), r.GetInt32(4)));
+                    else misses.Add((r.GetString(0), r.GetString(1), r.GetInt32(3)));
             });
             var byNick = rows.GroupBy(r => r.Key, StringComparer.Ordinal);
             var snap = _snaps.GetOrAdd(game, _ => new Snap { Day = day });
@@ -169,6 +203,9 @@ public sealed class DailyCard(Db? db, IClock clock)
                         if (!snap.Today.TryGetValue(g.Key, out var was) || t.A < was.A || (t.A == was.A && t.Ms < was.Ms))
                             snap.Today[g.Key] = (t.Nick, t.A, t.Ms);
                 }
+                foreach (var m in misses)
+                    if (!snap.Today.ContainsKey(m.Key) && (!snap.Missed.TryGetValue(m.Key, out var was) || was.A < m.A))
+                        snap.Missed[m.Key] = (m.Nick, m.A);
                 snap.Loaded = true;
                 snap.LoadedAt = clock.UtcNow;
                 snap.Card = null;
@@ -185,5 +222,6 @@ public sealed class DailyCard(Db? db, IClock clock)
         day = card.Day,
         rows = card.Rows.Select(r => new { n = r.Nick, a = r.Attempts, ms = r.Ms, st = r.Streak }).ToArray(),
         wait = card.Waiting.Select(r => new { n = r.Nick, st = r.Streak }).ToArray(),
+        miss = (card.Missed ?? []).Select(r => new { n = r.Nick, a = r.Attempts }).ToArray(),
     };
 }
