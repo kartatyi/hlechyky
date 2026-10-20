@@ -291,7 +291,9 @@ public class SlotsSimTests(ITestOutputHelper output)
     [Fact]
     public void Must_hit_share_follows_the_formula()
     {
-        Assert.Equal(1 / (1 + Math.Log(10)), new SlotsOptions().SeedShare, 12);           // 10 000 → 100 000: 30,28 %
+        Assert.Equal(1 / (1 + Math.Log(2.5)), new SlotsOptions().SeedShare, 12);          // пакет 5: 10 000 → 25 000: f ≈ 0,522
+        Assert.InRange(new SlotsOptions().SeedShare, 0.521, 0.523);
+        Assert.Equal(1 / (1 + Math.Log(10)), new SlotsOptions { JackpotMustHit = 100_000 }.SeedShare, 12);   // було: 30,28 %
         Assert.Equal(0, new SlotsOptions { JackpotMustHit = 0 }.SeedShare);
         Assert.False(new SlotsOptions { JackpotMustHit = 5000 }.MustHitOn);                // межа нижче старту — вимкнено
     }
@@ -346,10 +348,13 @@ public class SlotsSimTests(ITestOutputHelper output)
         var opts = new SlotsOptions();
         var bank = new SlotsBank(new FakeStakes(), new FakeStore(), () => opts, new FakeClock());
         var on = System.Text.Json.JsonSerializer.Serialize(bank.FeedView(), SlotsSetup.FeedJson);
-        Assert.Contains("\"mustHit\":100000", on);
+        Assert.Contains("\"mustHit\":25000", on);
+        Assert.Contains("\"daily\":1000", on);
         opts.JackpotMustHit = 0;
         var off = System.Text.Json.JsonSerializer.Serialize(bank.FeedView(), SlotsSetup.FeedJson);
         Assert.DoesNotContain("mustHit", off);
         Assert.Contains("\"jackpot\":10000", off);
+        opts.JackpotDaily = 0;
+        Assert.DoesNotContain("daily", System.Text.Json.JsonSerializer.Serialize(bank.FeedView(), SlotsSetup.FeedJson));
     }
 }

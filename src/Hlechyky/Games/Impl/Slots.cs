@@ -163,6 +163,7 @@ public abstract class SlotGame : Game
             balance = seat is null ? 0 : State.Wallet,
             jackpot = _bank?.Pot ?? 0,
             mustHit = o.MustHitOn ? o.JackpotMustHit : (int?)null,   // «має впасти до» (null — межі нема)
+            daily = o.JackpotDaily > 0 ? o.JackpotDaily : (int?)null,   // пакет 5: «Глек докидає N щодня» (null — не докидає)
             last = State.Last is null ? null : new { seq = State.Seq, script = State.Last.DeepClone() },
             gamble = g is null ? null : new
             {
@@ -173,7 +174,16 @@ public abstract class SlotGame : Game
             spins = State.Spins,
             table = SlotMath.Table(),
             buy = BuyPrice(o) is { } price ? new { price } : null,   // «Купити бонус»: ціна в ставках (null — не продається)
+            saldo = SaldoWire(seat),   // пакет 5: чесне сальдо всіх автоматів (null — сервісу нема)
         };
+    }
+
+    /// <summary>Пакет 5 «Азарт чесно»: поставив / повернув у всіх автоматах — сьогодні й за весь час (з пам'яті сервісу).</summary>
+    object? SaldoWire(int? seat)
+    {
+        if (seat is null || Ctx?.NickOf(0) is not { } nick) return null;
+        try { return (Ctx.Services?.GetService(typeof(Hlechyky.Games.Economy.IAzartSaldo)) as Hlechyky.Games.Economy.IAzartSaldo)?.Get("slot", nick).Wire(); }
+        catch { return null; }
     }
 
     // ---------- дії ----------

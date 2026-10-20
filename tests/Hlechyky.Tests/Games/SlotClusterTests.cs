@@ -501,7 +501,7 @@ public class SlotClusterTests(ITestOutputHelper output)
         Assert.Equal(JsonValueKind.Null, k.View.GetProperty("gamble").ValueKind);   // Ворожки тут нема
         Assert.False(k.H.Act(0, "gamble", new { pick = "r" }).Ok);
         Assert.Equal(5000, k.View.GetProperty("table").GetProperty("cap").GetInt32());
-        Assert.Equal(100_000, k.View.GetProperty("mustHit").GetInt32());
+        Assert.Equal(25_000, k.View.GetProperty("mustHit").GetInt32());   // пакет 5: межа 25 000
     }
 
     // ---------- математика ----------
