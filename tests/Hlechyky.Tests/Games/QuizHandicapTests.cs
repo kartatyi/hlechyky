@@ -94,4 +94,50 @@ public class QuizHandicapTests
         Assert.True(h.Act(0, "guess", new { text = "Океан Ельзи" }).Ok);
         Assert.Equal(Melody.ArtistPoints + Melody.ArtistFirst + Melody.SpeedBonus, MelodyScore(h, 0));
     }
+
+    // ---------------------------------------------------------------- Піктіонарі
+
+    /// <summary>Оля (×0,6) малює, Петро (×1,4) і Ганна (×1) вгадують те саме слово в ті самі миті.</summary>
+    static RoomHarness PictionaryTurn(string handicap)
+    {
+        var h = new RoomHarness("pictionary", options: new { handicap }, seed: 7,
+            services: Services(sc => sc.AddSingleton(new PictionaryWords([("animals", "кіт")]))));
+        foreach (var n in new[] { "Оля", "Петро", "Ганна" }) Assert.True(h.Join(n).Ok);
+        h.Start();
+        Assert.Equal(0, h.View(null).GetProperty("drawer").GetInt32());
+        Assert.True(h.Act(0, "pick", new { i = 0 }).Ok);
+        h.Clock.AdvanceMs(Pictionary.GuessEveryMs);
+        Assert.True(h.Act(1, "guess", new { text = "кіт" }).Ok);
+        h.Clock.AdvanceMs(10_000);
+        Assert.True(h.Act(2, "guess", new { text = "кіт" }).Ok);   // усі вгадали — хід скінчився, художник бере частку
+        return h;
+    }
+
+    static int[] PictionaryScores(RoomHarness h) =>
+        [.. h.View(null).GetProperty("scores").EnumerateArray().Take(3).Select(x => x.GetInt32())];
+
+    [Fact]
+    public void Pictionary_multiplies_the_guesser_and_the_drawer_share()
+    {
+        var off = PictionaryScores(PictionaryTurn(Handicap.Off));
+        var h = PictionaryTurn(Handicap.Auto);
+        var on = PictionaryScores(h);
+        NoteSaysBoth(h);
+        Assert.Equal((int)Math.Floor(off[1] * Weak + 1e-9), on[1]);      // слабкий вгадувач — більше
+        Assert.Equal(off[2], on[2]);                                     // середній — як було
+        Assert.Equal((int)Math.Floor(off[0] * Strong + 1e-9), on[0]);    // сильний художник — менша частка, від чесних очок
+        Assert.True(on[0] > 0 && on[0] < off[0]);
+        Assert.Equal(Strong, Factors(h)[0]);
+    }
+
+    [Fact]
+    public void Pictionary_duo_has_no_handicap()
+    {
+        var h = new RoomHarness("pictionary", options: new { mode = "duo" }, seed: 7,
+            services: Services(sc => sc.AddSingleton(new PictionaryWords([("animals", "кіт"), ("animals", "пес")]))));
+        foreach (var n in new[] { "Оля", "Петро" }) Assert.True(h.Join(n).Ok);
+        h.Start();
+        Assert.Null(Note(h));
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, h.View(null).GetProperty("handicap").ValueKind);
+    }
 }
