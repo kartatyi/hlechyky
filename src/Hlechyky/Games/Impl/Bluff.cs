@@ -111,6 +111,7 @@ public sealed class Bluff : Game
             new GameOption("cat", "Теми", BluffCats.All, BluffCats.Any, Multi: true),
             new GameOption("topic", "Тему обирає", [(TopicHlek, "Глек"), (TopicTurn, "Гравці по черзі")], TopicHlek),
             new GameOption("voice", "Голос Глека", [("ostap", "Остап"), ("polina", "Поліна"), ("none", "Без голосу")], "ostap"),
+            Handicap.Option,
         ],
         Hint: "Питання з пропуском і дивна правда. Кожен вписує свою брехню, потім усі шукають правду серед брехень. Надурив друга — очки тобі");
 
@@ -149,6 +150,9 @@ public sealed class Bluff : Game
     readonly string?[] _nicks = new string?[Seats];
     readonly bool[] _present = new bool[Seats];
     readonly long[] _scores = new long[Seats];
+    /// <summary>«⚖ Фора» (пакет 3): множник людей на партію і дробовий залишок кожного; ❤ від столу — без фори.</summary>
+    Dictionary<int, double> _hc = [];
+    readonly double[] _hcCarry = new double[Seats];
     /// <summary>Скільки разів місце вгадало правду за партію (ачівка «Нюх на правду»).</summary>
     readonly int[] _hits = new int[Seats];
     /// <summary>«Хитрого лиса» вже попросили цій партії.</summary>
@@ -258,6 +262,9 @@ public sealed class Bluff : Game
             _nicks[s] = _present[s] ? Ctx.NickOf(s) : null;
         }
         Array.Clear(_scores);
+        Array.Clear(_hcCarry);
+        _hc = Handicap.ForSeats(Ctx, Info.Id, [.. Enumerable.Range(0, Seats).Where(s => _present[s])], Info.Rated);
+        if (Handicap.Note(Ctx, _hc) is { } hcNote) Ctx.Log(hcNote);
         Array.Clear(_hits);
         Array.Clear(_fox);
         _played.Clear();
@@ -556,8 +563,8 @@ public sealed class Bluff : Game
             var found = 0;
             foreach (var p in card.Picks)
             {
-                if (!Credit(p, TruthPts * mult)) continue;
-                _truthDelta[p] += TruthPts * mult;
+                if (Credit(p, TruthPts * mult) is not { } got) continue;
+                _truthDelta[p] += got;
                 _hits[p]++;
                 found++;
             }
@@ -592,13 +599,17 @@ public sealed class Bluff : Game
         SetTimer(now, ScoreMs);
     }
 
-    /// <summary>Очки за питання — лише тим, хто досі за столом (той, хто пішов, не виграє й не набирає).</summary>
-    bool Credit(int seat, long points)
+    /// <summary>
+    /// Очки за питання — лише тим, хто досі за столом (той, хто пішов, не виграє й не набирає); × «⚖ Фора» з дробовим
+    /// залишком. Повертає зараховане (null — гравця вже нема).
+    /// </summary>
+    long? Credit(int seat, long points)
     {
-        if (!_present[seat]) return false;
+        if (!_present[seat]) return null;
+        points = Handicap.Scale((int)Math.Min(points, int.MaxValue), Handicap.Of(_hc, seat), ref _hcCarry[seat]);
         _scores[seat] += points;
         _delta[seat] += points;
-        return true;
+        return points;
     }
 
     public override TickResult Tick()
@@ -1201,6 +1212,8 @@ public sealed class Bluff : Game
             quip = _truthOpen ? _quip : null,
             scores = (long[])_scores.Clone(),
             delta = (long[])_delta.Clone(),
+            // «⚖ Фора»: множник кожного місця на партію (null — фори нема); клієнт показує лише помітні
+            handicap = _hc.Count == 0 ? null : Enumerable.Range(0, Seats).Select(s => Math.Round(Handicap.Of(_hc, s), 2)).ToArray(),
             truthDelta = (long[])_truthDelta.Clone(),
             likeDelta = (long[])_likeDelta.Clone(),
             victims = (int[])_victims.Clone(),

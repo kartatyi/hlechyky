@@ -140,4 +140,69 @@ public class QuizHandicapTests
         Assert.Null(Note(h));
         Assert.Equal(System.Text.Json.JsonValueKind.Null, h.View(null).GetProperty("handicap").ValueKind);
     }
+
+    // ---------------------------------------------------------------- Байкарі
+
+    static readonly IReadOnlyList<BluffQuestion> BluffQs = BluffBank.Parse("""
+        { "version": 1, "questions": [
+          { "id": "h1", "cat": "nature", "q": "Кров восьминога ___ кольору", "answer": "синього", "accept": ["синя"], "decoys": ["зеленого", "жовтого", "прозорого"] },
+          { "id": "h2", "cat": "science", "q": "Найпоширеніший хімічний елемент у Всесвіті — ___", "answer": "водень", "accept": [], "decoys": ["залізо", "кисень", "кремній"] },
+          { "id": "h3", "cat": "food", "q": "До XVII століття морква була переважно ___ кольору", "answer": "фіолетового", "accept": [], "decoys": ["білого", "чорного", "синього"] },
+          { "id": "h4", "cat": "sport", "q": "Перший чемпіонат світу з футболу 1930 року відбувся в ___", "answer": "Уругваї", "accept": [], "decoys": ["Бразилії", "Італії", "Аргентині"] },
+          { "id": "h5", "cat": "history", "q": "Анна, донька Ярослава Мудрого, стала королевою ___", "answer": "Франції", "accept": [], "decoys": ["Норвегії", "Угорщини", "Швеції"] }
+        ] }
+        """);
+
+    static readonly string[] BluffLies = ["Бамбарбія", "кергуду", "тиндирики"];
+
+    static string BluffPhase(RoomHarness h) => h.View(null).GetProperty("phase").GetString()!;
+
+    static void BluffUntil(RoomHarness h, string phase)
+    {
+        for (var i = 0; i < 4000 && h.Room.Status == RoomStatus.Playing && BluffPhase(h) != phase; i++) h.Tick();
+        Assert.Equal(phase, BluffPhase(h));
+    }
+
+    static int BluffCard(RoomHarness h, string text)
+    {
+        var cards = h.View(null).GetProperty("options");
+        for (var i = 0; i < cards.GetArrayLength(); i++)
+            if (BluffText.Norm(cards[i].GetProperty("text").GetString()) == BluffText.Norm(text)) return i;
+        throw new InvalidOperationException("нема картки " + text);
+    }
+
+    /// <summary>Оля (×0,6) і Петро (×1,4) знаходять правду; Ганна (×1) вибирає Петрову брехню.</summary>
+    static RoomHarness BluffQuestion1(string handicap)
+    {
+        var h = new RoomHarness("bluff", options: new { handicap, questions = "5", voice = "none" }, seed: 42,
+            services: Services(sc => sc.AddSingleton(new BluffBankSource(BluffQs))));
+        foreach (var n in new[] { "Оля", "Петро", "Ганна" }) Assert.True(h.Join(n).Ok);
+        Assert.True(h.Start().Ok);
+        BluffUntil(h, Bluff.PhaseWrite);
+        var text = h.View(null).GetProperty("text").GetString();
+        var answer = BluffQs.First(q => q.Q == text).Answer;
+        for (var s = 0; s < 3; s++) Assert.True(h.Act(s, "lie", new { text = BluffLies[s] }).Ok);
+        BluffUntil(h, Bluff.PhasePick);
+        Assert.True(h.Act(0, "pick", new { i = BluffCard(h, answer) }).Ok);
+        Assert.True(h.Act(1, "pick", new { i = BluffCard(h, answer) }).Ok);
+        Assert.True(h.Act(2, "pick", new { i = BluffCard(h, BluffLies[1]) }).Ok);
+        BluffUntil(h, Bluff.PhaseScore);
+        return h;
+    }
+
+    static long[] BluffScores(RoomHarness h) =>
+        [.. h.View(null).GetProperty("scores").EnumerateArray().Take(3).Select(x => x.GetInt64())];
+
+    [Fact]
+    public void Bluff_multiplies_found_truth_and_fooled_players()
+    {
+        var off = BluffScores(BluffQuestion1(Handicap.Off));
+        Assert.Equal([Bluff.TruthPts, Bluff.TruthPts + Bluff.FooledPts, 0L], off);
+        var h = BluffQuestion1(Handicap.Auto);
+        NoteSaysBoth(h);
+        Assert.Equal([(long)(Bluff.TruthPts * Strong), (long)((Bluff.TruthPts + Bluff.FooledPts) * Weak), 0L], BluffScores(h));
+        var truth = h.View(null).GetProperty("truthDelta");
+        Assert.Equal((long)(Bluff.TruthPts * Strong), truth[0].GetInt64());
+        Assert.Equal(Strong, Factors(h)[0]);
+    }
 }
