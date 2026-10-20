@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Hlechyky.Games.Economy;
 
 namespace Hlechyky.Games.Impl;
 
@@ -38,6 +39,58 @@ public sealed class LelkaState
     public Dictionary<string, string> Notes { get; set; } = [];
     public LelkaRound? Pending { get; set; }
     public DateTimeOffset? JournalAt { get; set; }
+    /// <summary>Прогноз «долетить до ×2?» цього прийому: ключ ніка → так/ні (пакет 5).</summary>
+    public Dictionary<string, LelkaPick> Picks { get; set; } = [];
+    /// <summary>Серії прогнозу: ключ ніка → серія, рекорд дня, останній розрахований прогноз.</summary>
+    public Dictionary<string, LelkaGuess> Guesses { get; set; } = [];
+    /// <summary>Київська доба табла прогнозу й найдовша серія людей за неї (для рядка в Журнал).</summary>
+    public string GuessDay { get; set; } = "";
+    public int GuessTop { get; set; }
+    /// <summary>Рядок «рекорд дня» чекає своєї черги в Журнал (не частіше <see cref="Lelka.JournalGap"/>).</summary>
+    public string? GuessLine { get; set; }
+    public DateTimeOffset? GuessJournalAt { get; set; }
+    /// <summary>Вечір столу — для підсумку в Журнал, коли стіл затихне.</summary>
+    public LelkaEvening Evening { get; set; } = new();
+}
+
+public sealed class LelkaPick
+{
+    public string Nick { get; set; } = "";
+    public bool Yes { get; set; }
+}
+
+public sealed class LelkaGuess
+{
+    public string Nick { get; set; } = "";
+    /// <summary>Вгадано поспіль. Пропущений раунд серію не рве, помилка — з нуля.</summary>
+    public int Streak { get; set; }
+    /// <summary>Рекорд серії за київську добу <see cref="Day"/>.</summary>
+    public int Best { get; set; }
+    public string Day { get; set; } = "";
+    /// <summary>Останній розрахований прогноз: раунд, що казав, чи вгадав.</summary>
+    public int Round { get; set; }
+    public bool Yes { get; set; }
+    public bool Ok { get; set; }
+}
+
+public sealed class LelkaNet
+{
+    public string Nick { get; set; } = "";
+    public long Net { get; set; }
+}
+
+public sealed class LelkaEvening
+{
+    /// <summary>Польоти зі ставками (списаними).</summary>
+    public int Rounds { get; set; }
+    /// <summary>Найвища точка падіння серед них, соті.</summary>
+    public int Top { get; set; }
+    /// <summary>Сальдо людей за вечір — із розрахунків столу (виграш − ставка), не з бази.</summary>
+    public Dictionary<string, LelkaNet> Net { get; set; } = [];
+    public int Streak { get; set; }
+    public string StreakNick { get; set; } = "";
+    /// <summary>Остання мить, коли злітали ставки.</summary>
+    public DateTimeOffset? LastBetAt { get; set; }
 }
 
 /// <summary>
@@ -55,9 +108,14 @@ public sealed class Lelka : Game, ISharedTable
     /// <summary>«Великий виграш» — від ×10; «велика ставка» для «пролетів» — від 300; політ у Балачки сайту — від ×50.</summary>
     public const int BigCents = 1_000, BigLoss = 300, SiteCents = 5_000, BraveCents = 10;
     public static readonly TimeSpan JournalGap = TimeSpan.FromMinutes(5);
+    /// <summary>Прогноз «до ×2»: «так» вгадано, коли точка падіння ≥ ×2,00. Рекорд дня від 5 — у Журнал; табло — топ-5.</summary>
+    public const int GuessCents = 200, GuessJournalMin = 5, GuessBoardLen = 5;
+    /// <summary>Підсумок вечора: 20 хв без ставок після ≥ 10 польотів зі ставками; порожній стіл — раніше, поки його не прибрали.</summary>
+    public static readonly TimeSpan EveningQuiet = TimeSpan.FromMinutes(20), EveningEmpty = TimeSpan.FromSeconds(90);
+    public const int EveningRounds = 10, EveningStreakMin = 2;
 
     public const string Bets = "bets", Flight = "flight", Crashed = "crash", Pause = "pause";
-    public const string ActBet = "bet", ActCancel = "cancel", ActCash = "cash", ActAuto = "auto";
+    public const string ActBet = "bet", ActCancel = "cancel", ActCash = "cash", ActAuto = "auto", ActGuess = "guess";
 
     public const string ClosedText = "Каса зачинена — спробуй трохи згодом";
     public const string OffText = "Лелека відпочиває — ставок зараз не приймаю";
@@ -71,7 +129,10 @@ public sealed class Lelka : Game, ISharedTable
 
     LelkaState S = new();
     LelkaBook? _book;
+    IAzartSaldo? _saldo;
+    Db? _db;
     bool _dirty, _settledOnLoad;
+    DateTimeOffset? _emptySince;
     /// <summary>Відповіді черги каси (списання, гаманці) — стан столу міняємо лише під замком кімнати, на тіку чи дії.</summary>
     readonly ConcurrentQueue<Action> _inbox = new();
     DateTimeOffset _framedAt;
@@ -90,6 +151,12 @@ public sealed class Lelka : Game, ISharedTable
     {
         try { _book = Ctx?.Services?.GetService<LelkaBook>(); }
         catch { _book = null; }
+        try
+        {
+            _saldo = Ctx?.Services?.GetService(typeof(IAzartSaldo)) as IAzartSaldo;
+            _db = Ctx?.Services?.GetService(typeof(Db)) as Db;
+        }
+        catch { _saldo = null; _db = null; }
         if (_book is { Options.Enabled: false }) throw new GameError(OffText);
     }
 
@@ -97,7 +164,12 @@ public sealed class Lelka : Game, ISharedTable
     public override void Start()
     {
         var keep = S;
-        S = new LelkaState { Round = keep.Round, History = keep.History, JournalAt = keep.JournalAt, Epoch = NewEpoch() };
+        S = new LelkaState
+        {
+            Round = keep.Round, History = keep.History, JournalAt = keep.JournalAt, Epoch = NewEpoch(),
+            Guesses = keep.Guesses, GuessDay = keep.GuessDay, GuessTop = keep.GuessTop, GuessLine = keep.GuessLine,
+            GuessJournalAt = keep.GuessJournalAt, Evening = keep.Evening,
+        };
         OpenBets(Now);
     }
 
@@ -114,6 +186,14 @@ public sealed class Lelka : Game, ISharedTable
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        // Прогноз — без черепків: і для порожнього гаманця, і без каси.
+        if (action == ActGuess)
+        {
+            if (Ctx.NickOf(seat) is not { } who) return ActResult.Fail("Тут так не ходять");
+            var g = Guess(who, payload, Now);
+            if (g.Ok) _dirty = true;
+            return g;
+        }
         if (_book is null) return ActResult.Fail(ClosedText);
         Inbox();
         if (action is not (ActBet or ActCancel or ActCash or ActAuto)) return ActResult.Fail("Тут так не ходять");
@@ -203,6 +283,19 @@ public sealed class Lelka : Game, ISharedTable
         return ActResult.Done;
     }
 
+    /// <summary>«Долетить до ×2?»: <c>{ yes: true | false | null }</c> (null — передумав прогнозувати). Лише поки приймають ставки.</summary>
+    ActResult Guess(string nick, JsonElement payload, DateTimeOffset now)
+    {
+        if (!Open(now)) return ActResult.Fail("Прогноз — поки лелека на землі");
+        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("yes", out var y)
+            || y.ValueKind is not (JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null))
+            return ActResult.Fail("Прогноз — «так» чи «ні»");
+        var key = Rooms.NickKey(nick);
+        if (y.ValueKind == JsonValueKind.Null) S.Picks.Remove(key);
+        else S.Picks[key] = new LelkaPick { Nick = nick, Yes = y.ValueKind == JsonValueKind.True };
+        return ActResult.Done;
+    }
+
     static string? ReadAuto(JsonElement e, out int? cents)
     {
         cents = null;
@@ -246,6 +339,8 @@ public sealed class Lelka : Game, ISharedTable
                 OpenBets(now);
                 break;
         }
+        GuessJournal(now);
+        EveningCheck(now);
         if (_dirty)
         {
             _dirty = false;
@@ -269,6 +364,7 @@ public sealed class Lelka : Game, ISharedTable
         S.Crash = Rig?.Invoke() ?? LelkaCore.CrashCents(S.Seed);
         S.Bets.Clear();
         S.Notes.Clear();
+        S.Picks.Clear();
         S.Pending = null;
         S.Phase = Bets;
         S.Until = now.AddMilliseconds(BetMs);
@@ -315,6 +411,7 @@ public sealed class Lelka : Game, ISharedTable
         _dirty = true;
         if (S.Bets.Count > 0)
         {
+            S.Evening.LastBetAt = now;
             if (_book is null)
             {
                 foreach (var b in S.Bets) S.Notes[Rooms.NickKey(b.Nick)] = "Каса заїла — ставку не взято, черепки цілі";
@@ -402,7 +499,159 @@ public sealed class Lelka : Game, ISharedTable
         S.History.Insert(0, new LelkaHist { Round = S.Round, Crash = LelkaCore.X(S.Crash) });
         if (S.History.Count > HistoryLen) S.History.RemoveRange(HistoryLen, S.History.Count - HistoryLen);
         _dirty = true;
-        if (!quiet) Announce(now);
+        Settle(now);
+        if (!quiet)
+        {
+            Tally();
+            Announce(now);
+        }
+    }
+
+    // ---------- прогноз «до ×2» ----------
+
+    /// <summary>Розрахунок прогнозів на падінні: ≥ ×2,00 — правильне «так», інакше «ні». Без черепків — лише серії.</summary>
+    void Settle(DateTimeOffset now)
+    {
+        var today = Days.Of(now);
+        NewDay(today);
+        var yes = S.Crash >= GuessCents;
+        foreach (var (key, pick) in S.Picks)
+        {
+            if (!S.Guesses.TryGetValue(key, out var g)) S.Guesses[key] = g = new LelkaGuess();
+            g.Nick = pick.Nick;
+            g.Round = S.Round;
+            g.Yes = pick.Yes;
+            g.Ok = pick.Yes == yes;
+            if (!g.Ok)
+            {
+                g.Streak = 0;
+                continue;
+            }
+            g.Streak++;
+            if (g.Day != today)
+            {
+                g.Day = today;
+                g.Best = 0;
+            }
+            g.Best = Math.Max(g.Best, g.Streak);
+            if (!Person(g.Nick)) continue;
+            if (g.Streak > S.Evening.Streak)
+            {
+                S.Evening.Streak = g.Streak;
+                S.Evening.StreakNick = g.Nick;
+            }
+            if (g.Streak > S.GuessTop)
+            {
+                S.GuessTop = g.Streak;
+                if (g.Streak >= GuessJournalMin)
+                    S.GuessLine = $"🪶 Лелека, прогноз «долетить до ×2»: {g.Nick} — {g.Streak} поспіль, рекорд дня";
+            }
+        }
+        S.Picks.Clear();
+    }
+
+    /// <summary>Нова київська доба: табло з нуля; хто без серії й без сьогоднішнього рекорду — геть зі стану.</summary>
+    void NewDay(string today)
+    {
+        if (S.GuessDay == today) return;
+        S.GuessDay = today;
+        S.GuessTop = 0;
+        foreach (var key in S.Guesses.Where(kv => kv.Value.Streak == 0 && kv.Value.Day != today).Select(kv => kv.Key).ToList())
+            S.Guesses.Remove(key);
+    }
+
+    void GuessJournal(DateTimeOffset now)
+    {
+        if (S.GuessLine is not { } line || (S.GuessJournalAt is { } at && now - at < JournalGap)) return;
+        S.GuessLine = null;
+        S.GuessJournalAt = now;
+        Ctx.Log(line);
+    }
+
+    /// <summary>Табло прогнозу дня: лише люди (акаунт, не гість і не бот), топ-5 за рекордом дня.</summary>
+    List<object> Board(DateTimeOffset now)
+    {
+        var today = Days.Of(now);
+        return [.. S.Guesses.Values
+            .Where(g => g.Day == today && g.Best > 0 && Person(g.Nick))
+            .OrderByDescending(g => g.Best).ThenByDescending(g => g.Streak).ThenBy(g => g.Nick, StringComparer.Ordinal)
+            .Take(GuessBoardLen)
+            .Select(g => (object)new { nick = g.Nick, best = g.Best, now = g.Streak })];
+    }
+
+    object GuessView(string key, DateTimeOffset now)
+    {
+        var g = S.Guesses.GetValueOrDefault(key);
+        var today = Days.Of(now);
+        bool? pick = S.Picks.TryGetValue(key, out var p) ? p.Yes : null;
+        var last = g is not null && g.Round == S.Round && Revealed ? new { yes = g.Yes, ok = g.Ok } : null;
+        return new { pick, streak = g?.Streak ?? 0, best = g is not null && g.Day == today ? g.Best : 0, last };
+    }
+
+    bool Person(string nick) => LelkaPeople.Is(_db, nick);
+
+    // ---------- підсумок вечора ----------
+
+    /// <summary>Вечір: польоти зі ставками, найвища точка, сальдо людей — із самого розрахунку раунду.</summary>
+    void Tally()
+    {
+        var taken = S.Bets.Where(b => b.Taken).ToList();
+        if (taken.Count == 0) return;
+        var e = S.Evening;
+        e.Rounds++;
+        e.Top = Math.Max(e.Top, S.Crash);
+        foreach (var b in taken)
+        {
+            if (!Person(b.Nick)) continue;
+            var key = Rooms.NickKey(b.Nick);
+            if (!e.Net.TryGetValue(key, out var n)) e.Net[key] = n = new LelkaNet();
+            n.Nick = b.Nick;
+            n.Net += (long)b.Win - b.Amount;
+        }
+    }
+
+    /// <summary>
+    /// Стіл затих: 20 хв без ставок — підсумок (якщо польотів зі ставками було ≥ 10) і вечір з нуля. Порожній стіл
+    /// каркас прибирає за 2 хв (<see cref="HoldEmpty"/>) — тоді підсумок раніше, щоб вечір не пропав разом зі столом.
+    /// </summary>
+    void EveningCheck(DateTimeOffset now)
+    {
+        var empty = true;
+        for (var seat = 0; seat < Info.MaxPlayers && empty; seat++)
+            if (Ctx.NickOf(seat) is not null) empty = false;
+        if (!empty) _emptySince = null;
+        else _emptySince ??= now;
+        var e = S.Evening;
+        if (e.LastBetAt is not { } last) return;
+        var quiet = now - last >= EveningQuiet;
+        var gone = _emptySince is { } since && now - since >= EveningEmpty && e.Rounds >= EveningRounds;
+        if (!quiet && !gone) return;
+        if (e.Rounds >= EveningRounds) Ctx.Log(EveningLine(e));
+        S.Evening = new LelkaEvening();
+        _dirty = true;
+    }
+
+    public static string EveningLine(LelkaEvening e)
+    {
+        var parts = new List<string> { $"{e.Rounds} {Plural(e.Rounds, "політ", "польоти", "польотів")}, найвище ×{Short(e.Top)}" };
+        if (e.Net.Values.Where(n => n.Net > 0).OrderByDescending(n => n.Net).FirstOrDefault() is { } plus)
+            parts.Add($"у плюсі: {plus.Nick} +{Num(plus.Net)}");
+        if (e.Net.Values.Where(n => n.Net < 0).OrderBy(n => n.Net).FirstOrDefault() is { } minus)
+            parts.Add($"у мінусі: {minus.Nick} −{Num(-minus.Net)}");
+        if (e.Streak >= EveningStreakMin) parts.Add($"прогноз: серія {e.Streak} — {e.StreakNick}");
+        return "🪶 Вечір Лелеки: " + string.Join(" · ", parts);
+    }
+
+    static string Num(long n) => n.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture).Replace(',', ' ');
+
+    /// <summary>Соті → «57,3» / «2» / «1,05» (без зайвих нулів у кінці).</summary>
+    public static string Short(int cents) => cents % 100 == 0 ? $"{cents / 100}" : cents % 10 == 0 ? $"{cents / 100},{cents % 100 / 10}" : Fmt(cents);
+
+    static string Plural(int n, string one, string few, string many)
+    {
+        var d = n % 10;
+        var h = n % 100;
+        return d == 1 && h != 11 ? one : d is >= 2 and <= 4 && h is < 12 or > 14 ? few : many;
     }
 
     void Announce(DateTimeOffset now)
@@ -463,6 +712,7 @@ public sealed class Lelka : Game, ISharedTable
         ["seed"] = Revealed ? S.Seed : null,
         ["bets"] = S.Bets.OrderByDescending(b => b.Amount).ThenBy(b => b.Nick, StringComparer.Ordinal).Select(BetDto).ToList(),
         ["history"] = S.History.Select(h => new { round = h.Round, crash = h.Crash }).ToList(),
+        ["guessBoard"] = Board(now),
     };
 
     static object BetDto(LelkaBet b) => new
@@ -489,6 +739,9 @@ public sealed class Lelka : Game, ISharedTable
         view["limits"] = new { min = o.MinBet, max = o.MaxBet };
         view["on"] = o.Enabled && _book is not null;
         view["note"] = key is not null && S.Notes.TryGetValue(key, out var note) ? note : null;
+        view["guess"] = key is null ? null : GuessView(key, Now);
+        // Сальдо Лелеки «сьогодні / весь час» — лише тому, хто сидить; нема сервісу — нема й рядка.
+        view["saldo"] = nick is not null && _saldo is not null ? _saldo.Get("lelka", nick).Wire() : null;
         return view;
     }
 
@@ -603,4 +856,42 @@ public static class LelkaLines
         "🦢 Лелека з Глеком долетіла аж до ×{0} — у космос! Хто встиг забрати, той і пан",
         "🦢 ×{0}! Лелека несла Глека повз зорі. За столом Лелеки сьогодні жарко",
     ];
+}
+
+/// <summary>
+/// Хто йде в табло прогнозу й підсумок вечора: людина — акаунт, не гість і не бот (<see cref="Bots.Set"/>). Список з бази
+/// перечитуємо фоном раз на хвилину (під замком кімнати SQLite не чіпаємо); поки його нема — відсіюємо лише гостей,
+/// «🤖» і відомих аі-агентів.
+/// </summary>
+public static class LelkaPeople
+{
+    sealed record Cache(Db Db, Bots.Set Set, long At);
+
+    static readonly HashSet<string> Agents = [.. Bots.Agents.Concat(Bots.Claudes).Select(Auth.NickKey)];
+    static Cache? _cache;
+    static int _busy;
+
+    public static bool Is(Db? db, string? nick)
+    {
+        if (string.IsNullOrWhiteSpace(nick) || Auth.IsGuestNick(nick) || Bots.Looks(nick) || Agents.Contains(Auth.NickKey(nick))) return false;
+        if (db is null) return true;
+        var c = Volatile.Read(ref _cache);
+        var fresh = c is not null && ReferenceEquals(c.Db, db);
+        if (!fresh || Environment.TickCount64 - c!.At > 60_000) Refresh(db);
+        return !fresh || !c!.Set.Has(nick);
+    }
+
+    static void Refresh(Db db)
+    {
+        if (Interlocked.Exchange(ref _busy, 1) == 1) return;
+        _ = Task.Run(() =>
+        {
+            try { Volatile.Write(ref _cache, new Cache(db, Bots.Load(db), Environment.TickCount64)); }
+            catch (Exception) { /* база не відповіла — спробуємо наступного разу */ }
+            finally { Volatile.Write(ref _busy, 0); }
+        });
+    }
+
+    /// <summary>Для тестів: прочитати список одразу (не чекати фонового).</summary>
+    public static void Load(Db db) => Volatile.Write(ref _cache, new Cache(db, Bots.Load(db), Environment.TickCount64));
 }
