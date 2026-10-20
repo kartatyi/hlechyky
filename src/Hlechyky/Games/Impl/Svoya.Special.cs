@@ -401,7 +401,9 @@ public sealed partial class Svoya
         var ok = _finalOk.GetValueOrDefault(seat);
         var said = _finalAnswers.GetValueOrDefault(seat);
         var nick = Ctx.NickOf(seat) ?? "";
-        var sum = NumberWords.Say(_bets.GetValueOrDefault(seat, 1));
+        var bet = _bets.GetValueOrDefault(seat, 1);
+        // вгадав — виграш із «⚖ Форою» (ставка, яку можна програти, — як є)
+        var sum = NumberWords.Say(ok ? Peek(seat, bet) : bet);
         if (string.IsNullOrEmpty(said) && !ok) return Line("finalNone", ("nick", nick), ("sum", sum));
         return Line(ok ? "finalRight" : "finalWrong", ("nick", nick), ("said", string.IsNullOrEmpty(said) ? "без відповіді" : said), ("sum", sum));
     }
@@ -411,7 +413,7 @@ public sealed partial class Svoya
         if (_revealed >= _revealOrder.Count) { Over(null); return; }
         var s = _revealOrder[_revealed++];
         var bet = _bets.GetValueOrDefault(s, 1);
-        _scores[s] += _finalOk.GetValueOrDefault(s) ? bet : -bet;
+        _scores[s] += _finalOk.GetValueOrDefault(s) ? Earn(s, bet) : -bet;
         if (!_finalOk.GetValueOrDefault(s)) NoteCost(s, bet);
         if (Machine) Speak(_finalLines.TryGetValue(s, out var line) ? line : FinalLine(s)); else Silence();
         Arm();

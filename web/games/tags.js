@@ -108,6 +108,7 @@
     kolo: 'казино удача | wheel of fortune колесо фортуни колесо',
     lelka: 'казино удача реакція | crash aviator авіатор краш множник лелека',
     kavuny: 'казино удача реакція | fruit ninja кавуни гарбузи серп crash множник',
+    plinko: 'казино удача | plinko плінко пачинко pachinko горох горохова горошина кулька кульки дошка кілочки галтон galton',
     'slot-glek': SLOT, 'slot-cascade': SLOT, 'slot-hold': SLOT, 'slot-cluster': SLOT, 'slot-slidy': SLOT,
     // Плитка-панель «Ставки на події» (bets.js): ключ — 'x:' + id панелі
     'x:bets': 'удача | bets ставки прогнози події букмекер polymarket',

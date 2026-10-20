@@ -133,7 +133,7 @@
       { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'] },
       // + плитка «Ставки на події» — не гра: її ставить панель web/bets.js (tile.theme: 'roulette')
       { id: 'roulette', title: 'Рулетка й ставки', icon: '🎡', ids: ['roulette', 'roulette-solo', 'kolo'] },
-      { id: 'quick', title: 'Миттєві', icon: '📈', ids: ['lelka', 'kavuny'] },
+      { id: 'quick', title: 'Миттєві', icon: '📈', ids: ['lelka', 'kavuny', 'plinko'] },
       { id: 'cards', title: 'Карти', icon: '🃏', ids: ['poker', 'blackjack', 'blackjack-solo'] },
     ],
   };
@@ -1938,6 +1938,7 @@
       if (me.lelka === false && g.id === 'lelka') continue;  // Лелека відпочиває (Lelka:Enabled) — плитки нема
       if (me.kolo === false && g.id === 'kolo') continue;    // Гончарне колесо відпочиває (Kolo:Enabled) — плитки нема
       if (me.kavuny === false && g.id === 'kavuny') continue;  // ярмарок зачинено (Kavuny:Enabled) — плитки нема
+      if (me.plinko === false && g.id === 'plinko') continue;  // Горохова дошка на перерві (Plinko:Enabled) — плитки нема
       const f = familyOf[g.id];
       if (f) {
         if (seen.has(f.id)) continue;

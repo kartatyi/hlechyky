@@ -17,6 +17,7 @@
       who: null | { by: null | string[] }                        // пісня з «Хто закинув?»; by — після раунду
       teams: null | { of: seat→0/1, scores: [a,b], names, found: [{artist,title}] | null }
       duel: null | { a, b, round, closed, winner, bets: [na, nb], mine, all }
+      handicap: null | number[]                                  // «⚖ Фора» (пакет 3): множник очок кожного місця
       note: null | string }
   Хід: Act('guess', { text }) — відповідь приходить тостом («🎤 виконавець +70» або «Мимо»);
        Act('pick', { i }) — варіант виконавця; Act('who', { nick }) — хто закинув; Act('bet', { seat }) — ставка в дуелі;
@@ -488,6 +489,15 @@
     return ctx.nickOf(i) || (ctx.nameOf && ctx.nameOf(i)) || (res && res.nicks && res.nicks[i]) || '';
   }
 
+  /// «⚖ ×0,7» біля імені — лише помітна фора (|f − 1| ≥ 0,05); очки цього місця множаться на f.
+  function hcBadge(v, i) {
+    const f = v.handicap && v.handicap[i];
+    if (!f || Math.abs(f - 1) < 0.05) return '';
+    const t = String(Math.round(f * 100) / 100).replace('.', ',');
+    return ' <i class="mghc" title="⚖ Фора: очки ×' + t + (f < 1 ? ' — сильнішим трохи важче' : ' — слабшим трохи легше')
+      + '" style="font-style:normal;font-size:.8em;color:var(--muted)">⚖ ×' + t + '</i>';
+  }
+
   /// Шапка після партії: хто переміг і з чим, а не просто «Партію зіграно».
   function doneHead(ctx, v) {
     const res = v.result || {};
@@ -516,7 +526,7 @@
     const tm = v.teams && v.teams.of;
     const html = rows.map((r) => '<div class="mgsc' + (r.i === ctx.seat ? ' me' : '') + (tm && tm[r.i] >= 0 ? ' mgt' + tm[r.i] : '') + (left.indexOf(r.i) >= 0 ? ' off' : '')
       + (win.indexOf(r.i) >= 0 ? ' win' : '') + '">'
-      + '<span class="mgn">' + (win.indexOf(r.i) >= 0 ? '🏆 ' : '') + ctx.esc(r.nick) + '</span>'
+      + '<span class="mgn">' + (win.indexOf(r.i) >= 0 ? '🏆 ' : '') + ctx.esc(r.nick) + hcBadge(v, r.i) + '</span>'
       + '<span class="mgf">' + (r.f && r.f.artist ? '🎤' : '') + (r.f && r.f.title ? '🎵' : '')
       + (r.f && r.f.fast ? '⚡' : '') + (r.f && r.f.who === true ? '📻' : '') + (r.f && r.f.blocked ? '🙈' : '')
       + (v.phase === 'play' && (v.skip || []).indexOf(r.i) >= 0 ? '⏭' : '') + '</span>'

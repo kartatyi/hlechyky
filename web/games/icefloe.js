@@ -2133,6 +2133,15 @@
   }
 
   /// Рядок статусу під грою (і в правому стовпчику на широкому екрані, де рядок картки сховано).
+  /// «⚖ Фора» (пакет 3): переможений минулого раунду стартує з предметом — v.fora [[місце, kind]], рядок на відліку.
+  function foraText(ctx, v) {
+    if (!v.fora || !v.fora.length) return '';
+    const name = (k) => (PICK_NAME[k] || '').replace('❄ дві сніжки', '❄ сніжки');
+    const mine = v.fora.find((x) => ctx.mine && x[0] === ctx.seat);
+    if (mine && v.fora.length === 1) return ' · 🎁 Фора: ' + name(mine[1]);
+    return ' · 🎁 Фора: ' + v.fora.map((x) => (nameAt(ctx, x[0]) || ctx.seatName(x[0])) + ' — ' + name(x[1])).join(', ');
+  }
+
   function statusText(ctx) {
     const st = [...live].find((s) => s.ctx === ctx);
     const v = ctx.view || {};
@@ -2149,7 +2158,7 @@
     }
     if (st && performance.now() - st.lastFrameAt > 1000 && st.lastFrameAt && f && f.ph === 1) return '⏳ зв\'язок…';
     if (!f) return '';
-    if (f.ph === 0) return 'Готуйсь… раунд ' + (v.round || 1);
+    if (f.ph === 0) return 'Готуйсь… раунд ' + (v.round || 1) + foraText(ctx, v);
     if (f.ph === 2) {
       const w = v.lastRound ? v.lastRound.winner : -1;
       if (v.roundTeam >= 0) return 'Раунд — ' + TEAM_NAMES[v.roundTeam] + '!';

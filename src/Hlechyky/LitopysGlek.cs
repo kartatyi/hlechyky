@@ -200,6 +200,7 @@ public sealed partial class Litopys
         Put(new("casino", "roulette", "🎡", "Рулетка"), "roulette-bet", "roulette-win", "roulette-back");
         Put(new("casino", "slots", "🎰", "слоти"), "slot-bet", "slot-win", "slot-jackpot");
         Put(new("casino", "lelka", "🕊", "Лелека"), "lelka-bet", "lelka-win", "lelka-back");
+        Put(new("casino", "plinko", "🟢", "Горохова дошка"), "plinko-bet", "plinko-win");
         Put(new("casino", "bets", "🎲", "ставки на події й столи"), "bet", "bet-win", "bet-back");
         Put(new("tables", "tables", "🃏", "банк столів на черепки"),
             "stake", "stake-win", "stake-refund", "table-buyin", "table-fee", "table-cashout", "table-prize", "table-refund");

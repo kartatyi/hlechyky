@@ -70,6 +70,7 @@ public sealed class Pictionary : Game
             new GameOption("rounds", "Кола", [.. RoundChoices.Select(n => (n.ToString(), n == 1 ? "1 коло" : $"{n} кола"))], DefaultRounds.ToString()),
             new GameOption("seconds", "Час на малюнок", [.. SecondChoices.Select(n => (n.ToString(), $"{n} с"))], DefaultSeconds.ToString()),
             new GameOption("topic", "Теми", PictionaryWords.Topics, PictionaryWords.AnyTopic, Multi: true),
+            Handicap.Option,
         ],
         Hint: "Один малює слово, решта вгадує. Хто вгадав швидше — більше очок. Малюють по черзі");
 
@@ -102,6 +103,11 @@ public sealed class Pictionary : Game
     DateTimeOffset _until;
     readonly int[] _scores = new int[Seats];
     readonly int[] _gained = new int[Seats];
+    /// <summary>Скільки вгадувач набрав за хід ДО фори: частка художника — від чесних очок, а не від чужих множників.</summary>
+    readonly int[] _rawGained = new int[Seats];
+    /// <summary>«⚖ Фора» (пакет 3): множник людей на партію і дробовий залишок кожного; удвох — без фори (рахунок спільний).</summary>
+    Dictionary<int, double> _hc = [];
+    readonly double[] _hcCarry = new double[Seats];
     readonly List<int> _guessed = [];
     readonly HashSet<string> _used = new(StringComparer.Ordinal);
     /// <summary>
@@ -194,6 +200,8 @@ public sealed class Pictionary : Game
     {
         Array.Clear(_scores);
         Array.Clear(_gained);
+        Array.Clear(_rawGained);
+        Array.Clear(_hcCarry);
         _used.Clear();
         _left.Clear();
         _lastGuess.Clear();
@@ -214,6 +222,8 @@ public sealed class Pictionary : Game
         _roster.Clear();
         foreach (var s in _order) _roster.Add(Auth.NickKey(Ctx.NickOf(s)));
         _turns = _duo ? int.MaxValue : _order.Length * _rounds;
+        _hc = _duo ? [] : Handicap.ForSeats(Ctx, Info.Id, _order, Info.Rated);
+        if (Handicap.Note(Ctx, _hc) is { } hcNote) Ctx.Log(hcNote);
         _duoCount = 0;
         _pairRecord = false;
         _pairBest = _duo && _store is not null ? _store.Pair(PictionaryStore.PairKey(_order.Select(NickOrEmpty)))?.Best ?? 0 : 0;
@@ -223,6 +233,9 @@ public sealed class Pictionary : Game
     }
 
     string NickOrEmpty(int seat) => Ctx.NickOf(seat) ?? "";
+
+    /// <summary>Заробіток місця × «⚖ Фора» з дробовим залишком (вгадувачу — за слово, художнику — частка за вгаданих).</summary>
+    int Earn(int seat, int points) => Handicap.Scale(points, Handicap.Of(_hc, seat), ref _hcCarry[seat]);
 
     public override bool ActsInLobby => true;
 
@@ -514,6 +527,8 @@ public sealed class Pictionary : Game
                 var left = Math.Max(0, (_until - now).TotalMilliseconds);
                 points = MinGuessPoints + (int)Math.Round((MaxGuessPoints - MinGuessPoints) * left / _drawMs);
                 if (_guessed.Count == 0) points += FirstBonus;
+                _rawGained[seat] += points;
+                points = Earn(seat, points);
                 _scores[seat] += points;
                 _gained[seat] += points;
             }
@@ -743,7 +758,7 @@ public sealed class Pictionary : Game
         if (!_duo && _guessed.Count > 0 && Ctx.Seated(_drawer) && !_left.Contains(_drawer))
         {
             // половина середнього: хороший малюнок вигідний, але вгадувати все одно вигідніше
-            var share = _guessed.Sum(s => _gained[s]) / (2 * possible);
+            var share = Earn(_drawer, _guessed.Sum(s => _rawGained[s]) / (2 * possible));
             _scores[_drawer] += share;
             _gained[_drawer] += share;
         }
@@ -778,6 +793,7 @@ public sealed class Pictionary : Game
         _nextHint = DateTimeOffset.MaxValue;
         _guessed.Clear();
         Array.Clear(_gained);
+        Array.Clear(_rawGained);
         Array.Clear(_turnReacts);
         WipeCanvas();
         if (_duo)
@@ -904,6 +920,8 @@ public sealed class Pictionary : Game
         totalMs = _phase switch { Pick => PickMs, Draw => _duo ? DuoMs : _drawMs, Reveal => _duo ? DuoRevealMs : RevealMs, Vote => VoteMs, _ => 0 },
         scores = (int[])_scores.Clone(),
         gained = (int[])_gained.Clone(),
+        // «⚖ Фора»: множник кожного місця на партію (null — фори нема); клієнт показує лише помітні
+        handicap = _hc.Count == 0 ? null : Enumerable.Range(0, Seats).Select(s => Math.Round(Handicap.Of(_hc, s), 2)).ToArray(),
         guessed = _guessed.ToArray(),
         left = _left.Order().ToArray(),
         drawing = new { ver = _ver, n = _sketch.Count, z = PackedAll() },

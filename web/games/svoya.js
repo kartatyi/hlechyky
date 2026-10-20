@@ -10,7 +10,7 @@
       chooser, cell: { theme, q } | null, question: { theme, price, text, media } | null,
       answer: { text, accept[], comment, media } | null,   // усім — після розкриття; живому ведучому — одразу
       answering, correct, until, totalMs, paused, leftMs, waiting,
-      scores[], wrong[], tries: [{ seat, text, ok }], presses: [{ seat, ms }], falseStart: [seat], appeals: [{ seat, text }],
+      scores[], handicap: null | number[] («⚖ Фора», пакет 3: множник плюсу кожного місця), wrong[], tries: [{ seat, text, ok }], presses: [{ seat, ms }], falseStart: [seat], appeals: [{ seat, text }],
       say: { id, text, url } | null, voice: { on, available },
       me: { isHost, canPick, canBuzz, lockMs, canAnswer, canAppeal, canJudge, canChoosePack } | null,
       left[], error, result }
@@ -267,6 +267,15 @@
 
   // ---------- рахунок ----------
 
+  /// «⚖ ×0,7» біля імені — лише помітна фора (|f − 1| ≥ 0,05); плюс за правильну відповідь множиться на f.
+  function hcBadge(v, i) {
+    const f = v.handicap && v.handicap[i];
+    if (!f || Math.abs(f - 1) < 0.05) return '';
+    const t = String(Math.round(f * 100) / 100).replace('.', ',');
+    return ' <i class="svhc" title="⚖ Фора: плюс за правильну ×' + t + ' (мінус — як є)'
+      + '" style="font-style:normal;font-size:.8em;color:var(--muted)">⚖ ×' + t + '</i>';
+  }
+
   function scoresHtml(ctx, v) {
     const me = v.me || {};
     const rows = [];
@@ -291,7 +300,7 @@
         ? '<span class="svadj"><button type="button" class="ghost small" data-do="adjust" data-seat="' + r.i + '" data-d="' + (-step) + '">−' + step + '</button>'
           + '<button type="button" class="ghost small" data-do="adjust" data-seat="' + r.i + '" data-d="' + step + '">+' + step + '</button></span>'
         : '';
-      return '<div class="' + cls.join(' ') + '"><span class="svn">' + esc(r.n) + '</span>' + tags + adj
+      return '<div class="' + cls.join(' ') + '"><span class="svn">' + esc(r.n) + hcBadge(v, r.i) + '</span>' + tags + adj
         + '<b class="' + (r.score < 0 ? 'neg' : '') + '">' + r.score + '</b></div>';
     }).join('');
   }

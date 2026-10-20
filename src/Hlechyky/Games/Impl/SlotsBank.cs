@@ -70,8 +70,17 @@ public sealed class SlotsOptions
     }
 }
 
-/// <summary>Незакритий оберт (чи хід Ворожки): ставку от-от спишуть, виграш от-от нарахують. Ключі леджера — <c>{Ref}:bet|win|jp</c>.</summary>
-public sealed record SlotPending(string Ref, string Nick, string GameId, int Bet, int Win, int Jackpot, DateTimeOffset At);
+/// <summary>
+/// Незакритий оберт (чи хід Ворожки): ставку от-от спишуть, виграш от-от нарахують. Ключі леджера — <c>{Ref}:bet|win|jp</c>.
+/// <c>Kind</c> — голова причини виграшу (<c>{Kind}-win:{GameId}</c>): автомати — <c>slot</c>, Горохова дошка — <c>plinko</c>
+/// (вона ходить через ту саму касу, але в гаманці й «Літописі» — окремим рядком). Старі записи без поля — <c>slot</c>.
+/// </summary>
+public sealed record SlotPending(string Ref, string Nick, string GameId, int Bet, int Win, int Jackpot, DateTimeOffset At,
+    string Kind = SlotPending.Slot)
+{
+    public const string Slot = "slot";
+    public string WinReason => $"{(string.IsNullOrEmpty(Kind) ? Slot : Kind)}-win:{GameId}";
+}
 
 /// <summary>Рядок «Заносів тижня»: нік, автомат, множник, сума (і Скарбничка, якщо була), коли.</summary>
 public sealed record SlotBigWin(string Nick, string Game, double Mult, int Win, int Jackpot, DateTimeOffset At);
@@ -293,7 +302,7 @@ public sealed class SlotsBank : BackgroundService
     {
         try
         {
-            if (p.Win > 0) _stakes.Grant(p.Nick, p.Win, $"slot-win:{p.GameId}", p.Ref + ":win");
+            if (p.Win > 0) _stakes.Grant(p.Nick, p.Win, p.WinReason, p.Ref + ":win");
             if (p.Jackpot > 0) _stakes.Grant(p.Nick, p.Jackpot, $"slot-jackpot:{p.GameId}", p.Ref + ":jp");
             return true;
         }
@@ -351,8 +360,9 @@ public sealed class SlotsBank : BackgroundService
     /// <summary>
     /// Після оберту: заноси ≥ 20× — у журнал тижня, ≥ 100× і Скарбничка — рядок у Балачки (і Скарбничка — в ефір).
     /// Кличеться з гри під замком кімнати: сховище — лише на рідкісні заноси, Балачки — відкладено.
+    /// <paramref name="big"/> — свій рядок Глека на ≥ 100× (Горохова дошка жартує не про ручку автомата); null — слотовий.
     /// </summary>
-    public void Brag(string nick, string gameId, string title, int bet, int win, int jackpot)
+    public void Brag(string nick, string gameId, string title, int bet, int win, int jackpot, Func<double, string>? big = null)
     {
         var mult = bet > 0 ? (double)win / bet : 0;
         if (mult >= FeedMinMult || jackpot > 0)
@@ -371,7 +381,7 @@ public sealed class SlotsBank : BackgroundService
         if (_wire is null) return;
         string? text = null;
         if (jackpot > 0) text = SlotLines.Jackpot(nick, title, jackpot);
-        else if (mult >= ChatMinMult) text = SlotLines.Big(nick, title, mult, win);
+        else if (mult >= ChatMinMult) text = big?.Invoke(mult) ?? SlotLines.Big(nick, title, mult, win);
         if (text is null) return;
         var onAir = jackpot > 0 && O.OnAir;
         _defer(() =>
@@ -473,7 +483,7 @@ public static class SlotLines
     public static string Big(string nick, string title, double mult, int win) =>
         $"🎰 {nick} — ×{Math.Floor(mult)} у «{title}»: +{win} {Shards(win)}. Глек перевіряє, чи ручка не відкручена";
 
-    static string Shards(int n)
+    public static string Shards(int n)
     {
         var d = n % 100;
         if (d is >= 11 and <= 14) return "черепків";

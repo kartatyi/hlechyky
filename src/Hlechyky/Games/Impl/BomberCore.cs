@@ -28,6 +28,8 @@ public enum BomberHow
     Revenge,
     /// <summary>Привалило стіною стискання.</summary>
     Wall,
+    /// <summary>«⚖ Фора» на старті раунду (лише стрічка): Killer — що дали (0 вогонь, 1 бомба), Victim — кому.</summary>
+    Handicap,
 }
 
 /// <summary>Подія тика: хто кого (Killer = -1 — стіна).</summary>

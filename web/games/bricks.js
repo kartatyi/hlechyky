@@ -924,6 +924,16 @@
     const t = n % 100, o = n % 10;
     return n + ' ' + (t > 10 && t < 20 ? 'рядів' : o === 1 ? 'ряд' : o >= 2 && o <= 4 ? 'ряди' : 'рядів');
   };
+  /// «⚖ Фора» (пакет 3): множник на сміття, яке місце шле; помітний (≥ 0,05 від 1) — «⚖ ×0,74», інакше ''.
+  const hcText = (v, s) => {
+    const f = v && v.handicap ? v.handicap[s] : 1;
+    if (typeof f !== 'number' || Math.abs(f - 1) < 0.05) return '';
+    return '⚖ ×' + f.toFixed(2).replace(/0$/, '').replace('.', ',');
+  };
+  const hcTag = (v, s) => {
+    const t = hcText(v, s);
+    return t ? '<span class="bricks-hc" title="Фора: сміття, яке шле ця стіна, множиться на це число">' + t + '</span>' : '';
+  };
 
   // ---------- кольори й спрайти цеглинок ----------
 
@@ -1990,6 +2000,7 @@
     else bits.push('темп ' + ((net.loaded ? core.stage : st.lvl) + 1));
     bits.push(rowsWord(net.loaded ? core.lines : 0));
     if ((v.need || 1) > 1) bits.push('★ ' + ((v.wins || [])[st.ctx.seat] || 0) + '/' + v.need);
+    if (hcText(v, st.ctx.seat)) bits.push(hcTag(v, st.ctx.seat));
     // ціль — останньою: довге ім'я обріжеться трьома крапками, а рядок і стіна під ним не зсунуться
     const t = v.target ? v.target[st.ctx.seat] : -1;
     if (t >= 0 && v.garbage !== 'none') bits.push('<span class="bricks-to bk' + t + '">→ ' + st.ctx.esc(nickOf(st, t)) + '</span>');
@@ -2009,7 +2020,7 @@
       let nick = o.nick || nickOf(st, i);
       if (st.L && st.L.kind === 'narrow') nick = nick.replace(/^гість\s+/i, '') || nick;
       const html = '<span class="bricks-l1"><span class="bricks-dot"></span><b>' + st.ctx.esc(nick) + '</b>'
-        + ((v.need || 1) > 1 ? '<span class="bricks-w">★' + wins + '</span>' : '') + '</span>'
+        + ((v.need || 1) > 1 ? '<span class="bricks-w">★' + wins + '</span>' : '') + hcTag(v, i) + '</span>'
         + '<span class="bricks-l2"><span class="bricks-n">' + rowsWord(o.l) + '</span>'
         + (t >= 0 && o.a && v.garbage !== 'none' && st.phase === 'go' ? '<span class="bricks-to bk' + t + '">→ ' + st.ctx.esc(nickOf(st, t)) + '</span>' : '')
         + '</span>';
@@ -2041,7 +2052,8 @@
         });
       }
     } else {
-      rows = (v.boards || []).map((b) => ({ s: b.s, nick: b.nk || SEATS[b.s], rk: b.rk || 99, lines: b.l, sn: b.sn, rc: b.rc, wins: wins[b.s] || 0 }));
+      // sn — фактично вислане за раунд (з ⚖ форою) від сервера; рушійне b.sn — лише для старого сервера
+      rows = (v.boards || []).map((b) => ({ s: b.s, nick: b.nk || SEATS[b.s], rk: b.rk || 99, lines: b.l, sn: v.rsent ? v.rsent[b.s] : b.sn, rc: b.rc, wins: wins[b.s] || 0 }));
     }
     rows.sort((a, b) => (a.rk || 99) - (b.rk || 99) || a.s - b.s);
     const win = rows.filter((r) => r.rk === 1);
@@ -2068,7 +2080,7 @@
     const html = '<div class="bricks-sumbox"><div class="bricks-sumhead">' + head + '</div>' + score
       + '<table><tr><th></th><th></th>' + (star ? '<th>раундів</th>' : '') + '<th>рядів</th><th class="bricks-sr">вислав</th><th class="bricks-sr">отримав</th></tr>'
       + rows.map((r) => '<tr class="bk' + r.s + '"><td>' + (r.rk === 1 ? '🏆' : r.rk > 1 && r.rk < 99 ? r.rk + '-й' : '') + '</td><td><span class="bricks-dot"></span>'
-        + esc(r.nick) + '</td>' + (star ? '<td class="bricks-w">★' + r.wins + '</td>' : '') + '<td>' + r.lines + '</td><td class="bricks-sr">' + r.sn + '</td><td class="bricks-sr">' + r.rc + '</td></tr>').join('')
+        + esc(r.nick) + (hcText(v, r.s) ? ' ' + hcTag(v, r.s) : '') + '</td>' + (star ? '<td class="bricks-w">★' + r.wins + '</td>' : '') + '<td>' + r.lines + '</td><td class="bricks-sr">' + r.sn + '</td><td class="bricks-sr">' + r.rc + '</td></tr>').join('')
       + '</table>' + medals(st, res, rows) + gone + (over ? '' : '<div class="bricks-next">новий раунд за кілька секунд…</div>') + '</div>';
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
     el.hidden = false;
@@ -2127,7 +2139,7 @@
       const pct = dead ? 0 : Math.min(100, top * 5);
       const nick = (o.nick || nickOf(st, +s)).replace(/^гість\s+/i, '') || o.nick;
       const val = (dead ? (o.rk > 1 ? '✗ ' + o.rk + '-й' : '✗') : top + '/20' + (o.pd ? ' · +' + o.pd : ''))
-        + (multi ? ' ★' + ((v.wins || [])[+s] || 0) : '');
+        + (multi ? ' ★' + ((v.wins || [])[+s] || 0) : '') + (hcText(v, +s) ? ' ' + hcText(v, +s) : '');
       const target = +s === myT && st.phase === 'go';
       const sig = [nick, pct, val, dead, target, o.rp > 0].join('|');
       if (sig === e.sig) continue;
