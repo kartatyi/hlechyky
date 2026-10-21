@@ -1035,6 +1035,7 @@ public sealed partial class Clicker : Game
         _soldShards = 0;
         _lastSync = Ctx.Clock.UtcNow;
         _seenAt = _lastSync;
+        _handsAt = _lastSync;
         _tokens = MaxClicksPerSecond;
         _tokensAt = _lastSync;
         _fairUntil = default;
@@ -1102,6 +1103,8 @@ public sealed partial class Clicker : Game
         finally { _quietSync = false; }
         // Справжня дія — гончар знову біля кола (ClickerLate.cs). Після Sync: глек, що пролетів без нього, уже вирішено.
         if (!quiet) _backSpared = Back(Ctx.Clock.UtcNow);
+        // Руки гончаря — лише те, що він зробив сам; таймер клієнта, що питає свіжий вид, серію за нього не стереже.
+        if (!quiet && !Poll(action, payload)) _handsAt = Ctx.Clock.UtcNow;
         // Звання дня рахуються київськими днями: учорашнє — цехові, сьогоднішнє — з нуля (ClickerTitles.cs).
         TitlesDayRoll(Ctx.Clock.UtcNow);
         // Ачівки, що назбирались у видах (офлайн-прогрес рахується вже на відкритті), — тепер, коли каркас їх прийме.
@@ -1256,8 +1259,9 @@ public sealed partial class Clicker : Game
             if (asked) _fallSlept = true;
             // Гончаря не було: затих ще до того, як глек злетів, і мовчав довше за EventGap, або пішов від кола раніше,
             // ніж глек злетів (ClickerLate.cs: інший розділ, схована вкладка, обрив). Глек летів без нього — це не
-            // промах, а порожня хата: серію не рвемо й фартуха не чіпаємо (як кіт і зірка, §A.6).
-            else if ((!watching && _fall.At > seen) || Unwitnessed(_fall)) { if (_fallStreak > 0) _spared++; }
+            // промах, а порожня хата: серію не рвемо й фартуха не чіпаємо (як кіт і зірка, §A.6). «Затих» міряємо від
+            // його власних рук (_handsAt): look, що їх шлють таймери відкритої картки, — не гончар (ClickerLate.cs).
+            else if (Idle(_fall, now) || Unwitnessed(_fall)) { if (_fallStreak > 0) _spared++; }
             else
             {
                 // Натиск, що застряг у дорозі, ще може цей глек залатати — пам'ятаємо, що було до (ClickerLate.cs).
@@ -2446,7 +2450,7 @@ public sealed partial class Clicker : Game
             // Наступний глек з полиці і скільки він дасть, якщо спіймати просто зараз.
             // miss — що станеться, якщо він розіб'ється на очах: клієнт малює чесне «трісь» (записка №29).
             // gone — сервер вважає, що гончар пішов від кола (ClickerLate.cs): клієнт, що коло бачить, скаже «я тут» знову.
-            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss, seen = _seenAt, gone = _goneAt != default },
+            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss, seen = _handsAt, gone = _goneAt != default },
             grabbed = _grabbed,
             // Дев'яте оновлення: щасливі кліки за весь час (клієнт малює «✨ ×50» за приростом) і бажання на зірку.
             lucky = _lucky,
@@ -2614,6 +2618,7 @@ public sealed partial class Clicker : Game
         _carry = double.IsFinite(s.Carry) ? Math.Clamp(s.Carry, 0, 1) : 0;
         _lastSync = s.LastSync == default ? Ctx.Clock.UtcNow : s.LastSync;
         _seenAt = _lastSync;
+        _handsAt = _lastSync;
         _scored = -1;
         _scoredAt = default;
 

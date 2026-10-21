@@ -2281,6 +2281,8 @@
     // Кліки, що ще в пачці, — першими: прийшовши після «пішов», вони посадили б гончаря назад до кола.
     if (!on) flush(st, true);
     st.sightBusy = true;
+    // Повернулись до картки, а на ній досі вікно: тримати глеки знову, не чекаючи підтвердження (його схована вкладка не слала).
+    if (on && holdOpen(st)) holdSay(st, true);
     st.ctx.tell('sight', { on }).then((r) => {
       st.sightBusy = false;
       if (!r) return;
@@ -3378,10 +3380,19 @@
       + 'Гаманець той самий — просто намисто важчає.' },
   ];
 
-  /// Вікна, під якими сервер тримає глеки (hold): «Що нового» / «з чого почати» / монета / листи (clk-newsbox) і «Поки
-  /// тебе не було» (clks-awayov, жива хата). Підсумки горна й розпису — окремо, kiln {op:"seen"} (D1).
-  const HOLD_CLS = /(^|\s)(clk-newsbox|clks-awayov)(\s|$)/;
+  /// Вікна кола, під якими сервер тримає глеки (hold), — усі: вікно стоїть поверх сцени, і глек, що злетів би під ним,
+  /// летів би в смугу справа, на широкому екрані — далеко за краєм картки (21.10, серія владіка 1 861: «Що нового» v12
+  /// читали довше за пів хвилини, а решта вікон — хата друга, віз, знахідка, підсумок підмайстра — глеків не тримала
+  /// зовсім). Відкрите вікно підтверджуємо раз на HOLD_RENEW_MS: стеля на сервері — 30 с від останнього hold, тож
+  /// закрита чи схована вкладка однаково відпустить глеки. Підсумки ручного горна й розпису ще й kiln {op:"seen"} (D1).
+  const HOLD_RENEW_MS = 10 * 1000;
   function holdJugs(st, on) {
+    clearInterval(st.holdT);
+    st.holdT = on ? setInterval(() => { if (holdOpen(st) && visible(st)) holdSay(st, true); }, HOLD_RENEW_MS) : 0;
+    holdSay(st, on);
+  }
+  const holdOpen = (st) => !!(st.ov && st.ov.hold && !st.ov.el.hidden);
+  function holdSay(st, on) {
     if (st.ctx && st.mine && st.ctx.tell) st.ctx.tell('hold', { on });
   }
 
@@ -3410,6 +3421,8 @@
     st.ov.keep = (qd.opts && qd.opts.keep) || null;
     st.ovDownBack = true;
     st.ov.el.hidden = false;
+    st.ov.hold = true;
+    holdJugs(st, true);
     H.api.placeOverlay(st);
   }
 
@@ -3713,10 +3726,10 @@
       st.ov.onClose = (opts && opts.onClose) || null;
       st.ov.keep = (opts && opts.keep) || null;
       st.ov.el.hidden = false;
-      // Вікна входу («Що нового», «з чого почати», монета, листи, «Поки тебе не було») закривають сцену — поки вони
-      // відкриті, сервер тримає глеки (hold, стеля 30 с): QA-4 — глек бився під «Що нового», серія 1 430 рвалась під «Дукачем».
-      st.ov.hold = HOLD_CLS.test((opts && opts.cls) || '');
-      if (st.ov.hold) holdJugs(st, true);
+      // Вікно закриває сцену — поки воно відкрите, сервер тримає глеки (hold, підтвердження щодесять секунд): QA-4 — глек
+      // бився під «Що нового», серія 1 430 рвалась під «Дукачем»; 21.10 — 1 861 під вікнами, що глеків не тримали.
+      st.ov.hold = true;
+      holdJugs(st, true);
       H.api.placeOverlay(st);
       return st.ov.body;
     },
