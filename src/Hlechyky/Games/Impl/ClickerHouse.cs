@@ -4,10 +4,15 @@ namespace Hlechyky.Games.Impl;
 
 /// <summary>
 /// Сорт глини на колі — це стратегія: червона для того, хто клацає, біла для того, хто чекає, чорна для
-/// ловця глеків. <paramref name="Events"/> множить проміжки між розписними й падаючими глеками (менше — частіше),
-/// <paramref name="Loot"/> — глек з полиці й щедрого купця. <paramref name="Body"/> — колір простого глека на колі.
+/// ловця глеків, голуба для того, хто ліпить, каолін — для того, хто чекає розкішних. <paramref name="Desc"/> — для
+/// кого вона (числа перед ним складає <c>Clicker.ClayText</c>), <paramref name="Events"/> множить проміжки між
+/// розписними й падаючими глеками (менше — частіше), <paramref name="Loot"/> — глек з полиці й щедрого купця.
+/// <paramref name="Body"/> — колір простого глека на колі. <paramref name="Work"/> — скільки роботи просить виріб,
+/// <paramref name="Shine"/> — скільки блиску додає в горні виробам із неї, <paramref name="Thin"/> — яка частка
+/// виліпленого підмайстрами виходить тонким сирцем (з горна — розкішний, якщо не трісне).
 /// </summary>
-public sealed record ClickerClay(string Key, string Name, string Desc, double Price, double Click, double Passive, double Events, double Loot, string Body);
+public sealed record ClickerClay(string Key, string Name, string Desc, double Price, double Click, double Passive, double Events, double Loot, string Body,
+    double Work = 1, double Shine = 0, double Thin = 0);
 
 /// <summary>Знаряддя гончаря: одноразова покупка зі своїм ефектом, видима на стіні майстерні, обпал не спалює.</summary>
 public sealed record ClickerTool(string Key, string Name, string Desc, double Price);
@@ -65,19 +70,141 @@ public sealed partial class Clicker
     /// <summary>Скільки відлежується глина саме в цій хаті.</summary>
     TimeSpan ClayRestNow => Tool("clock") ? ClayRestQuick : ClayRest;
 
+    /// <summary>
+    /// Глини на колі. Голуба й каолін (21.10) — про ремесло: голуба ліпиться швидше (поверх підлоги майстерності —
+    /// інакше ветеранові вона не дала б нічого), каолін ліпиться довше, зате в горні блищить, а підмайстри часом
+    /// виліплюють з нього тонкий сирець — єдиний спосіб дістати розкішний виріб без розпису.
+    /// </summary>
     public static readonly ClickerClay[] Clays =
     [
         new("", "Звичайна глина", "Як є: без сильних і слабких сторін", 0, 1, 1, 1, 1, ""),
-        new("red", "Червона глина", "Клік ×2, пасив ×0,7 — для того, хто клацає", 3_000, 2, 0.7, 1, 1, "#a8402c"),
-        new("white", "Біла глина", "Пасив ×1,5, клік ×0,5 — для того, хто чекає", 30_000, 0.5, 1.5, 1, 1, "#e6ddcb"),
-        new("black", "Чорна глина", "Розписні й падаючі глеки на 40 % частіші, глек з полиці й купець ×1,5 — для ловця", 300_000, 1, 1, 0.6, 1.5, "#2f2b2e"),
+        new("red", "Червона глина", "для того, хто клацає", 3_000, 2, 0.7, 1, 1, "#a8402c"),
+        new("white", "Біла глина", "для того, хто чекає", 30_000, 0.5, 1.5, 1, 1, "#e6ddcb"),
+        new("black", "Чорна глина", "для ловця", 300_000, 1, 1, 0.6, 1.5, "#2f2b2e"),
+        new("blue", "Голуба глина", "ліпиться, як масло: для того, хто ліпить", 3_000_000, 1, 0.85, 1, 1, "#7d98ab", Work: 0.65),
+        new("kaolin", "Каолін", "глухівська біла: для того, хто чекає розкішних", 30_000_000, 1, 1, 1, 1, "#f4f2ec",
+            Work: 1.25, Shine: 0.2, Thin: 0.03),
     ];
+
+    // ---------- рівні глини: «знаю свою глину» ----------
+
+    /// <summary>
+    /// Скільки виробів з глини (своїми руками й підмайстрами) треба для рівнів 1…5. Заміри 21.10 на проді: за 12 днів
+    /// назар ліпив ≈2 000 виробів на добу, владік ≈1 400, smaug ≈550 — тож п'ятий рівень однієї глини це від тижня
+    /// до трьох, а не вечір.
+    /// </summary>
+    public static readonly long[] ClayLevelAt = [150, 600, 1_800, 4_500, 10_000];
+    /// <summary>Назви рівнів: нульовий — щойно куплена.</summary>
+    public static readonly string[] ClayLevelNames = ["свіжа", "вимішана", "вилежана", "відмулена", "шовкова", "бабусина"];
+    /// <summary>
+    /// Кожен рівень: плюс глини сильніший на 10 % від свого відхилення, мінус — слабший на 10 %. Частоту подій чорної
+    /// глини підсилюємо лише на 5 % за рівень (рішення 21.10): +50 % давали б глеки в 2,5 раза частіше за звичайну.
+    /// </summary>
+    public const double ClayLevelStep = 0.1, ClayEventsStep = 0.05;
+
+    public static int ClayLevel(long formed)
+    {
+        var level = 0;
+        while (level < ClayLevelAt.Length && formed >= ClayLevelAt[level]) level++;
+        return level;
+    }
+
+    /// <summary>Глина на рівні <paramref name="level"/>: ті самі множники, але плюс сильніший, а мінус слабший.</summary>
+    public static ClickerClay ClayLevelled(ClickerClay c, int level)
+    {
+        var l = Math.Clamp(level, 0, ClayLevelAt.Length);
+        if (l == 0 || c.Key.Length == 0) return c;
+        var plus = 1 + ClayLevelStep * l;
+        var minus = 1 - ClayLevelStep * l;
+        // «Більше — краще» (клік, пасив, здобич) і «менше — краще» (проміжки подій, робота).
+        double Up(double m) => m >= 1 ? 1 + (m - 1) * plus : 1 - (1 - m) * minus;
+        double Down(double m, double step) => m <= 1 ? 1 - (1 - m) * (1 + step * l) : 1 + (m - 1) * minus;
+        return c with
+        {
+            Click = Up(c.Click), Passive = Up(c.Passive), Loot = Up(c.Loot),
+            Events = Down(c.Events, ClayEventsStep), Work = Down(c.Work, ClayLevelStep),
+            Shine = c.Shine * plus, Thin = c.Thin * plus,
+        };
+    }
+
+    /// <summary>
+    /// «Клік ×2, пасив ×0,7 — для того, хто клацає»: числа глини (уже з рівнем) і для кого вона. Спершу плюси, потім
+    /// мінуси — так, як їх і писали руками до рівнів.
+    /// </summary>
+    public static string ClayText(ClickerClay c)
+    {
+        if (c.Key.Length == 0) return c.Desc;
+        static string X(double m) => "×" + m.ToString("0.##", Uk);
+        static string P(double x) => (x * 100).ToString("0.#", Uk) + " %";
+        var plus = new List<string>();
+        var minus = new List<string>();
+        void Put(bool good, string text) => (good ? plus : minus).Add(text);
+        if (Math.Abs(c.Click - 1) > 1e-9) Put(c.Click > 1, $"клік {X(c.Click)}");
+        if (Math.Abs(c.Passive - 1) > 1e-9) Put(c.Passive > 1, $"пасив {X(c.Passive)}");
+        if (Math.Abs(c.Events - 1) > 1e-9)
+            Put(c.Events < 1, c.Events < 1 ? $"розписні й падаючі глеки на {P(1 - c.Events)} частіші" : $"розписні й падаючі глеки на {P(c.Events - 1)} рідші");
+        if (Math.Abs(c.Loot - 1) > 1e-9) Put(c.Loot > 1, $"глек з полиці й купець {X(c.Loot)}");
+        if (Math.Abs(c.Work - 1) > 1e-9) Put(c.Work < 1, $"робота на виріб {(c.Work < 1 ? "−" : "+")}{P(Math.Abs(1 - c.Work))}");
+        if (c.Shine > 0) Put(true, $"у горні блиск +{P(c.Shine)}");
+        if (c.Thin > 0) Put(true, $"{P(c.Thin)} виробів підмайстра — тонкі, з горна розкішні");
+        var all = string.Join(", ", plus.Concat(minus));
+        return all.Length == 0 ? c.Desc : char.ToUpperInvariant(all[0]) + all[1..] + " — " + c.Desc;
+    }
 
     readonly HashSet<string> _clays = new(StringComparer.Ordinal);
     string _clay = "";
     DateTimeOffset _clayRestUntil;
+    /// <summary>Скільки виробів виліплено з кожної купленої глини — з цього її рівень. Обпал не чіпає.</summary>
+    readonly Dictionary<string, long> _clayFormed = new(StringComparer.Ordinal);
 
-    ClickerClay ClayNow => Clays.FirstOrDefault(c => c.Key == _clay) ?? Clays[0];
+    internal long ClayFormedOf(string key) => _clayFormed.TryGetValue(key, out var n) ? n : 0;
+    internal int ClayLevelOf(string key) => key.Length == 0 ? 0 : ClayLevel(ClayFormedOf(key));
+
+    /// <summary>Глина за ключем на своєму рівні; невідома — звичайна.</summary>
+    internal ClickerClay ClayOf(string key) =>
+        Clays.FirstOrDefault(c => c.Key == key) is { } c ? ClayLevelled(c, ClayLevelOf(key)) : Clays[0];
+
+    // Глину на колі питають на кожен клік і в кожному пасиві — тож рівневу копію тримаємо, доки не зміниться глина чи рівень.
+    ClickerClay? _clayNowMemo;
+    string _clayNowKey = "";
+    int _clayNowLevel = -1;
+
+    ClickerClay ClayNow
+    {
+        get
+        {
+            var level = ClayLevelOf(_clay);
+            if (_clayNowMemo is null || _clayNowKey != _clay || _clayNowLevel != level)
+            {
+                _clayNowMemo = ClayOf(_clay);
+                _clayNowKey = _clay;
+                _clayNowLevel = level;
+            }
+            return _clayNowMemo;
+        }
+    }
+
+    /// <summary>
+    /// Виліплено виріб з глини на колі: лічильник її рівня. Новий рівень — запис і свіжий каталог (у ньому описи з
+    /// числами). Повертає, чи вийшов тонкий сирець: лише в підмайстра й лише з глини, що таке вміє (каолін).
+    /// </summary>
+    bool ClayOnFormed(bool byApprentice)
+    {
+        if (_clay.Length == 0) return false;
+        var clay = ClayNow;
+        var thin = byApprentice && clay.Thin > 0 && Ctx.Rng.NextDouble() < clay.Thin;
+        var before = ClayLevel(ClayFormedOf(_clay));
+        var n = ClayFormedOf(_clay) + 1;
+        _clayFormed[_clay] = n;
+        var after = ClayLevel(n);
+        if (after > before)
+        {
+            _catalogWanted = true;
+            var now = ClayOf(_clay);
+            AwayNote($"🪣 {now.Name} тепер {ClayLevelNames[after]}: {char.ToLowerInvariant(ClayText(now)[0])}{ClayText(now)[1..]}");
+        }
+        return thin;
+    }
 
     /// <summary>Купити глину (одноразово) або замісити вже куплену на коло. Звичайна — завжди своя.</summary>
     ActResult Knead(JsonElement payload)
@@ -606,6 +733,7 @@ public sealed partial class Clicker
         _orderId = 0;
         _clay = "";
         _clayRestUntil = default;
+        _clayFormed.Clear();
         FireHouse(now);
     }
 
@@ -636,6 +764,9 @@ public sealed partial class Clicker
         clay = _clay,
         clayBody = ClayNow.Body,
         clayRestUntil = _clayRestUntil,
+        // Скільки виліплено з кожної купленої глини (рівні — 21.10): клієнт малює смужку до наступного рівня. Окремо від
+        // own: число росте щовиробу, а панель хати перебудовується лише тоді, коли змінилось куплене.
+        clayN = Clays.Where(c => c.Key.Length > 0 && _clays.Contains(c.Key)).ToDictionary(c => c.Key, c => ClayFormedOf(c.Key), StringComparer.Ordinal),
         // Куплене — ключами в порядку каталогу. Звичайна глина й безплатні варіанти оздоби — у всіх, їх тут нема.
         own = new
         {
@@ -678,7 +809,7 @@ public sealed partial class Clicker
         nameMax = HouseNameMax,
         clays = Clays.Select(c => new
         {
-            key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body,
+            key = c.Key, name = c.Name, desc = ClayText(ClayOf(c.Key)), price = c.Price, body = c.Body,
             owned = c.Key.Length == 0 || _clays.Contains(c.Key), on = _clay == c.Key,
         }),
         clay = _clay,
@@ -731,8 +862,14 @@ public sealed partial class Clicker
     /// </summary>
     object CatalogHouse() => new
     {
-        // Множники глини (v12, пакет D2) — для прогнозу «з цією глиною: клік X, пасив Y» перед замісом.
-        clays = Clays.Select(c => new { key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body, click = c.Click, passive = c.Passive }),
+        // Множники глини (v12, пакет D2) — для прогнозу «з цією глиною: клік X, пасив Y» перед замісом. З 21.10 — уже з
+        // рівнем глини (новий рівень просить свіжий каталог), а lv — сам рівень.
+        clays = Clays.Select(c => ClayOf(c.Key)).Select(c => new
+        {
+            key = c.Key, name = c.Name, desc = ClayText(c), price = c.Price, body = c.Body, click = c.Click, passive = c.Passive,
+            lv = ClayLevelOf(c.Key),
+        }),
+        clayLevels = ClayLevelAt.Select((at, i) => new { at, name = ClayLevelNames[i + 1] }),
         tools = Tools.Select(t => new { key = t.Key, name = t.Name, desc = t.Desc, price = t.Price }),
         decor = Decor.Select(d => new { key = d.Key, name = d.Name, desc = d.Desc, price = d.Price, bonus = d.Bonus }),
         looks = Looks.Select(l => new
@@ -765,7 +902,9 @@ public sealed partial class Clicker
         List<string>? Looks = null, Dictionary<string, string>? Look = null, string? Name = null,
         Dictionary<string, DateTimeOffset>? Wonders = null,
         // 28.09: скільки зірок спіймано (Скалка з неба). Старе збереження — нуль: хто ловив до того, невідомо.
-        int Stars = 0);
+        int Stars = 0,
+        // 21.10: скільки виліплено з кожної глини (її рівень). Старе збереження — усі свіжі.
+        Dictionary<string, long>? ClayFormed = null);
 
     HouseRow SaveHouse() => new(
         _clays.Order(StringComparer.Ordinal).ToList(), _clay, _clayRestUntil,
@@ -775,7 +914,8 @@ public sealed partial class Clicker
         _look.Count > 0 ? new Dictionary<string, string>(_look, StringComparer.Ordinal) : null,
         _houseName.Length > 0 ? _houseName : null,
         _wonders.Count > 0 ? new Dictionary<string, DateTimeOffset>(_wonders, StringComparer.Ordinal) : null,
-        _starsCaught);
+        _starsCaught,
+        _clayFormed.Count > 0 ? new Dictionary<string, long>(_clayFormed, StringComparer.Ordinal) : null);
 
     /// <summary>Старе збереження без хати — чиста хата зі свіжою дошкою.</summary>
     void LoadHouse(HouseRow? row)
@@ -784,6 +924,9 @@ public sealed partial class Clicker
         Fill(_clays, row?.Clays, k => Clays.Any(c => c.Key == k && k.Length > 0));
         _clay = row?.Clay is { } c && (c.Length == 0 || _clays.Contains(c)) ? c : "";
         _clayRestUntil = row?.ClayRestUntil ?? default;
+        _clayFormed.Clear();
+        foreach (var (key, n) in row?.ClayFormed ?? [])
+            if (n > 0 && key.Length > 0 && Clays.Any(c => c.Key == key)) _clayFormed[key] = n;
         Fill(_tools, row?.Tools, k => Tools.Any(t => t.Key == k));
         _apronUsed = row?.ApronUsed ?? false;
         Fill(_decor, row?.Decor, k => Decor.Any(d => d.Key == k));

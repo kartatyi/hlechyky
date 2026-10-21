@@ -907,10 +907,52 @@ public sealed partial class Clicker
         DateTimeOffset LitAt = default, bool Helper = false, bool Straw = false, int FireSeed = 0,
         DateTimeOffset CoolUntil = default, int StrawStock = 0, KilnLastRow? Last = null, int Batches = 0,
         // v9 — нові поля необов'язкові: старе збереження читається як «цього ще не було».
-        DateTimeOffset Touch = default, int Auto = 0, bool TechAll = false);
+        DateTimeOffset Touch = default, int Auto = 0, bool TechAll = false,
+        // 21.10: глина кожного сирця (паралельно до Batch). Старе збереження — усі зі звичайної.
+        List<string>? Clays = null);
 
     /// <summary>Сирці в горні (ключі виробів).</summary>
     readonly List<string> _kiln = [];
+    /// <summary>
+    /// Глина кожного сирця в горні (21.10), рядок у рядок із <see cref="_kiln"/>: ключ глини, а «*» у кінці — тонкий
+    /// сирець з каоліну. Окремим списком, а не записами: <c>batch</c> у виді й у збереженні лишається списком ключів,
+    /// його читає й цех (ClickerGuildService).
+    /// </summary>
+    readonly List<string> _kilnClay = [];
+
+    void KilnPut(List<RackRow> dry)
+    {
+        foreach (var r in dry)
+        {
+            _kiln.Add(r.Ware);
+            _kilnClay.Add(r.Thin ? r.Clay + "*" : r.Clay);
+        }
+    }
+
+    void KilnEmpty()
+    {
+        _kiln.Clear();
+        _kilnClay.Clear();
+    }
+
+    /// <summary>Глина й тонкість сирця в горні за його місцем.</summary>
+    (ClickerClay Clay, bool Thin) KilnClayAt(int i)
+    {
+        var mark = i < _kilnClay.Count ? _kilnClay[i] : "";
+        var thin = mark.EndsWith('*');
+        var clay = ClayOf(thin ? mark[..^1] : mark);
+        return (clay, thin && clay.Thin > 0);
+    }
+
+    /// <summary>Мітка глини зі збереження: невідома глина — звичайна, «тонкий» — лише з глини, що таке вміє.</summary>
+    static string KilnClaySane(string? mark)
+    {
+        if (string.IsNullOrEmpty(mark)) return "";
+        var thin = mark.EndsWith('*');
+        var key = thin ? mark[..^1] : mark;
+        if (Clays.FirstOrDefault(c => c.Key == key) is not { } c) return "";
+        return thin && c.Thin > 0 ? key + "*" : key;
+    }
     string _kilnStyle = "";
     string _kilnTech = "";
     int _kilnBeauty;
@@ -993,7 +1035,7 @@ public sealed partial class Clicker
         var dry = TakeDry(now, want);
         if (dry.Count == 0)
             return ActResult.Fail(_rack.Count > 0 ? "Сирці ще мокрі — зачекай, поки висохнуть" : "Сушарня порожня — спершу виліпи щось на колі");
-        _kiln.AddRange(dry.Select(r => r.Ware));
+        KilnPut(dry);
         return ActResult.Accept($"🧱 У горно: {dry.Count} {WaresWord(dry.Count)} · {_kiln.Count} з {KilnSlots}");
     }
 
@@ -1013,7 +1055,7 @@ public sealed partial class Clicker
             var dry = TakeDry(now, KilnSlots);
             if (dry.Count == 0)
                 return ActResult.Fail(_rack.Count > 0 ? "Горно порожнє, а сирці ще мокрі — зачекай" : "Горно порожнє — спершу виліпи й висуши щось");
-            _kiln.AddRange(dry.Select(r => r.Ware));
+            KilnPut(dry);
         }
         if (straw) _straw--;
         _litAt = now;
@@ -1168,11 +1210,14 @@ public sealed partial class Clicker
         var shine = (manual ? KilnHeat.Shine(heat, beauty) : AutoShine) * (1 + TolokaShineBonus + Relic("ember3"));
         var paint = manual ? Math.Clamp(beauty, 0, 100) / 100.0 : 0;
         var outs = new List<KilnOutRow>(_kiln.Count);
-        foreach (var ware in _kiln)
+        for (var i = 0; i < _kiln.Count; i++)
         {
+            var ware = _kiln[i];
             if (WareOf(ware) is null) continue;
             if (crack > 0 && Ctx.Rng.NextDouble() < crack) { outs.Add(new KilnOutRow(ware, 0)); continue; }
-            outs.Add(new KilnOutRow(ware, KilnHeat.QualityOf(shine, paint, Ctx.Rng.NextDouble())));
+            // Глина сирця (21.10): тонкий з каоліну виходить розкішним, а каолін ще й додає блиску.
+            var (clay, thin) = KilnClayAt(i);
+            outs.Add(new KilnOutRow(ware, thin ? QualityMax : KilnHeat.QualityOf(shine * (1 + clay.Shine), paint, Ctx.Rng.NextDouble())));
         }
         double sold = 0, shards = 0;
         LadNowClear();
@@ -1209,7 +1254,7 @@ public sealed partial class Clicker
         if (manual && outs.Sum(o => o.Q >= 4 ? DayPointsQ4 : o.Q == 3 ? DayPointsQ3 : 0) is var day and > 0)
             DaySvc()?.Add(Ctx.NickOf(0), day, at);
 
-        _kiln.Clear();
+        KilnEmpty();
         _litAt = default;
         _litHelper = false;
         _litStraw = false;
@@ -1314,7 +1359,7 @@ public sealed partial class Clicker
         if (ready < Math.Min(KilnSlots, AutoDryEnough) && !(ready >= 1 && now - _kilnTouch >= KilnIdle)) return;
         var dry = TakeDry(now, KilnSlots);
         if (dry.Count == 0) return;
-        _kiln.AddRange(dry.Select(r => r.Ware));
+        KilnPut(dry);
         _litAt = now;
         _litHelper = true;
         _litStraw = false;
@@ -1325,7 +1370,7 @@ public sealed partial class Clicker
 
     void ResetKiln(DateTimeOffset now)
     {
-        _kiln.Clear();
+        KilnEmpty();
         _kilnStyle = "";
         _kilnTech = "";
         _kilnBeauty = 0;
@@ -1348,7 +1393,7 @@ public sealed partial class Clicker
     /// <summary>Обпал-престиж: партія в горні (і та, що палає) згорає разом із соломою й недомальованим розписом.</summary>
     void FireKiln(DateTimeOffset now)
     {
-        _kiln.Clear();
+        KilnEmpty();
         _kilnTech = "";
         _kilnBeauty = 0;
         _paintSeed = 0;
@@ -1362,7 +1407,8 @@ public sealed partial class Clicker
     }
 
     KilnRow? SaveKiln() => new([.. _kiln], _kilnStyle, _kilnTech, _kilnBeauty, _paintSeed, _paintAt, _litAt, _litHelper, _litStraw,
-        _fireSeed, _coolUntil, _straw, _kilnLast, _kilnBatches, _kilnTouch, _kilnAuto, _kilnTechAll);
+        _fireSeed, _coolUntil, _straw, _kilnLast, _kilnBatches, _kilnTouch, _kilnAuto, _kilnTechAll,
+        _kilnClay.Any(c => c.Length > 0) ? [.. _kilnClay] : null);
 
     void LoadKiln(KilnRow? row)
     {
@@ -1371,8 +1417,14 @@ public sealed partial class Clicker
         // Ріжемо по теперішній місткості, а не по базовій стелі: з прокачкою горна (v9) і рангами цеху місць
         // буває більше за KilnSlotsMax, і складена партія не мусить зникати після F5.
         var room = Math.Max(KilnSlotsMax, KilnSlots) + 8;
-        foreach (var w in row.Batch ?? [])
-            if (w is not null && WareOf(w) is not null && _kiln.Count < room) _kiln.Add(w);
+        var batch = row.Batch ?? [];
+        var clays = row.Clays ?? [];
+        for (var i = 0; i < batch.Count; i++)
+            if (batch[i] is { } w && WareOf(w) is not null && _kiln.Count < room)
+            {
+                _kiln.Add(w);
+                _kilnClay.Add(KilnClaySane(i < clays.Count ? clays[i] : null));
+            }
         _kilnStyle = row.Style is { } s && _styles.Contains(s) ? s : "";
         _kilnTech = row.Tech is { } t && Techniques.Any(x => x.Key == t) ? t : "";
         _kilnBeauty = Math.Clamp(row.Beauty, 0, 100);
@@ -1408,6 +1460,8 @@ public sealed partial class Clicker
             state = KilnState(now),
             slots = KilnSlots,
             batch = _kiln,
+            // Скільки в партії тонких сирців з каоліну (21.10) — вийдуть розкішними, якщо не тріснуть.
+            thin = _kilnClay.Count(c => c.EndsWith('*')),
             dry = _rack.Count(r => r.DryAt <= now),
             straw = _straw,
             strawMax = StrawMaxNow,

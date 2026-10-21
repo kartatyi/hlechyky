@@ -630,6 +630,12 @@
 .clk-clay .clk-mini { width: 34px; height: 40px; }
 .clk-clay .clk-price { right: 0; left: 0; text-align: center; }
 .clk-clay.owned .clk-price::before { content: none; }
+/* Рівень глини (21.10): підпис зі смужкою знизу, --p — частка до наступного рівня. */
+.clk-clay .clk-clvl {
+  display: block; width: 100%; padding: 1px 4px 4px; border-radius: 5px; color: var(--muted); font-size: .78em; line-height: 1.25;
+  background: linear-gradient(var(--accent), var(--accent)) left bottom / var(--p, 0%) 3px no-repeat, var(--panel2);
+}
+.clk-clay .clk-clvl:empty { display: none; }
 .clk-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; width: 100%; }
 .clk-tool {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; white-space: normal;

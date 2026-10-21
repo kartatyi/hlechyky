@@ -1234,7 +1234,60 @@
       if (b._price.textContent !== label) b._price.textContent = label;
       const fore = on ? '' : clayFore(st, b.dataset.clay);
       if (b._fore && b._fore.textContent !== fore) b._fore.textContent = fore;
+      if (b._lvl) clayLevelTick(st, b, owned);
     }
+  }
+
+  // ---------- рівні глини (21.10): «знаю свою глину» ----------
+
+  /// Рівень глини з кількості виліпленого: пороги й назви — з каталогу хати (clayLevels).
+  function clayLevelOf(st, n) {
+    const at = st.clayLevelAt || [];
+    let lv = 0;
+    while (lv < at.length && n >= at[lv].at) lv++;
+    return lv;
+  }
+
+  /// Новий лічильник з виду: якщо котрась глина щойно піднялась на рівень — сповіщення (сервер пише запис лише тому,
+  /// кого не було; хто за колом, бачить ось це).
+  function clayLevelsFrom(st, clayN, cat) {
+    if (cat && cat.clayLevels) st.clayLevelAt = cat.clayLevels;
+    const next = clayN || {};
+    const was = st.clayN;
+    st.clayN = next;
+    if (!was || !st.clayLevelAt) return;
+    for (const key of Object.keys(next)) {
+      if (!(key in was)) continue;
+      const a = clayLevelOf(st, was[key] || 0), b = clayLevelOf(st, next[key] || 0);
+      if (b <= a) continue;
+      const c = (st.clays || []).find((x) => x.key === key);
+      const name = st.clayLevelAt[b - 1].name;
+      if (st.ctx && st.ctx.toast) st.ctx.toast('🪣 ' + (c ? c.name : 'Глина') + ' тепер ' + name + ': плюс сильніший, мінус слабший', 'ok');
+    }
+  }
+
+  /// Підпис рівня під карткою глини: куплена — «вилежана · 640 / 1 800 → відмулена» і смужка; ні — порожньо.
+  function clayLevelTick(st, b, owned) {
+    const levels = st.clayLevelAt || [];
+    let text = '';
+    let pct = 0;
+    if (owned && levels.length) {
+      const n = (st.clayN || {})[b.dataset.clay] || 0;
+      const lv = clayLevelOf(st, n);
+      const name = lv ? levels[lv - 1].name : 'свіжа';
+      if (lv >= levels.length) { text = '🪣 ' + name + ' — найвища'; pct = 100; }
+      else {
+        const from = lv ? levels[lv - 1].at : 0;
+        pct = Math.max(0, Math.min(100, (n - from) / (levels[lv].at - from) * 100));
+        text = name + ' · ' + short(n) + ' / ' + short(levels[lv].at) + ' → ' + levels[lv].name;
+      }
+    }
+    if (b._lvl.textContent !== text) {
+      b._lvl.textContent = text;
+      b._lvl.title = text ? 'Рівень глини росте від виробів, виліплених з неї (і тобою, і підмайстрами). Кожен рівень: плюс глини +10 %, мінус −10 %. Обпал рівнів не чіпає.' : '';
+    }
+    const p = pct.toFixed(1) + '%';
+    if (b._lvl.style.getPropertyValue('--p') !== p) b._lvl.style.setProperty('--p', p);
   }
 
   /// «З цією глиною: клік X, пасив Y/с» (v12 §2.2). Клік — ручна частина (множиться на «клік» глини) плюс відсоток
@@ -2891,7 +2944,10 @@
   /// кліків, а хата міняється раз на хвилини. Старий сервер (хвилина деплою) шле повні рядки прямо у виді — беремо як є.
   function houseFrom(st, hs) {
     const cat = (st.catalog && st.catalog.house) || null;
-    const sig = JSON.stringify(hs);
+    // Лічильник рівнів глини (21.10) росте з кожним виробом — його не пускаємо в підпис хати, інакше панель
+    // перебудовувалась би щовиробу; смужку рівня оновлює годинник хати (clayLevelTick).
+    clayLevelsFrom(st, hs.clayN, cat);
+    const sig = JSON.stringify(Object.assign({}, hs, { clayN: null }));
     if (sig === st.houseSig && cat === st.houseCat) return;
     st.houseSig = sig;
     st.houseCat = cat;
@@ -2947,6 +3003,8 @@
         + '" data-clay="' + esc(c.key) + '" data-price="' + c.price + '" data-owned="' + (c.owned ? 1 : 0) + '" data-on="' + (c.on ? 1 : 0) + '" disabled>'
         + jugSvg('', 'clk-mini', 'clay-' + (c.key || 'plain'), c.body || '')
         + '<b>' + esc(c.name) + '</b><span class="muted small">' + esc(c.desc) + '</span>'
+        // Рівень глини (21.10): «вилежана · 640 / 1 800 → відмулена» зі смужкою; текст ставить clayLevelTick.
+        + (c.price > 0 ? '<span class="clk-clvl small"></span>' : '')
         // Прогноз (v12 §2.2): «червона: клік ×2» у пізній грі клік зменшує — клік там здебільшого відсоток пасиву.
         + '<span class="clk-cfore small"></span>'
         + '<span class="clk-price' + (c.owned ? ' done' : '') + '"></span></button>').join('') + '</div>');
@@ -2982,6 +3040,7 @@
       for (const b of st.clayBtns) {
         b._price = b.querySelector('.clk-price');
         b._fore = b.querySelector('.clk-cfore');
+        b._lvl = b.querySelector('.clk-clvl');
         // Інша глина міняє клік і пасив і ще відлежується — тож друге натискання (QA-3).
         b.onclick = () => {
           if (!(b._arm > Date.now())) { b._arm = Date.now() + ASK_MS; H.api.sfx('tap'); st.slowAt = 0; return; }

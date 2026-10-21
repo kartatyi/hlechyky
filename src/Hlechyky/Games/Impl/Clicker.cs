@@ -373,7 +373,7 @@ public sealed partial class Clicker : Game
             M(150, "Артільна пісня", MarkEffect.Hand), M(200, "Гуртом легше", MarkEffect.Passive), M(250, "Опішнянський ритм", MarkEffect.Buff), M(300, "Артіль на все Полтавське", MarkEffect.Passive)),
         Tier("chumaks", "Чумацький обоз", 1_000_000_000, 5_000, "Сіль у дорогу", "Круторогі воли", "Чумацький Шлях",
             M(150, "Нічний перехід", MarkEffect.Night), M(200, "Сіль — то гроші", MarkEffect.Merchant), M(250, "Воли не спиняються", MarkEffect.Buff), M(300, "До самого моря", MarkEffect.Night)),
-        Tier("pit", "Глинище", 25_000_000_000, 32_000, "Голуба глина", "Кінний підйомник", "Глибокий пласт",
+        Tier("pit", "Глинище", 25_000_000_000, 32_000, "Сизий пласт", "Кінний підйомник", "Глибокий пласт",
             M(150, "Жила без дна", MarkEffect.Passive), M(200, "М'яка глина під полицею", MarkEffect.Fall), M(250, "Щасливий пласт", MarkEffect.Lucky), M(300, "Глинище на всю долину", MarkEffect.Passive)),
         Tier("school", "Школа гончарів", 500_000_000_000, 200_000, "Підручник гончаря", "Майстер-клас", "Випускний у глині",
             M(150, "Урок розгону", MarkEffect.Momentum), M(200, "Іспит на руки", MarkEffect.Hand), M(250, "Кафедра гончарства", MarkEffect.Passive), M(300, "Гончарна академія", MarkEffect.Hand)),

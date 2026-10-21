@@ -648,7 +648,9 @@
     // Головна кнопка: сама складає сухі й розпалює. Стоїть поруч із горном (.clkk-fire), а не під ним.
     const can = mine && !cooling && load > 0;
     const mySelf = selfFire(api);
-    const batchText = k.batch.length ? 'у горні ' + k.batch.length + ' з ' + k.slots + ': ' + inKiln : 'сухих на сушарні ' + k.dry;
+    const batchText = (k.batch.length ? 'у горні ' + k.batch.length + ' з ' + k.slots + ': ' + inKiln : 'сухих на сушарні ' + k.dry)
+      // Тонкі сирці з каоліну (21.10) виходять розкішними, хоч би хто й як палив, — аби не тріснули.
+      + (k.thin > 0 ? ' · ✨ тонких ' + k.thin + ' — вийдуть розкішними' : '');
     // «Палю сам», а партія не розписана (v12, плейтест §2.3): розпис — у потоці, «без розпису» — лише явним вибором.
     const bare = can && mySelf && !(k.beauty > 0) && canPaint(st);
     const go = bare
