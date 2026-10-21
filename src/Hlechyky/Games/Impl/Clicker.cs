@@ -296,7 +296,7 @@ public sealed partial class Clicker : Game
     public const int FallFloor = 20;
     /// <summary>Кожен рівень «Кошика» — плюс п'ята частина до глека з полиці.</summary>
     public const double BasketBonus = 0.2;
-    /// <summary>Серія спійманих поспіль: +10 % за кожен, не більше десяти. Розбився — серія обірвалась.</summary>
+    /// <summary>Серія спійманих поспіль: +10 % за кожен, не більше десяти. Розбився — тріщина в серії (ClickerCatNap.cs).</summary>
     public const double StreakBonus = 0.1;
     public const int StreakMax = 10;
     public const int GrabsForAchievement = 100, StreakForAchievement = 10;
@@ -1052,6 +1052,7 @@ public sealed partial class Clicker : Game
         _heat = 0;
         _heatAt = _lastSync;
         _fallStreak = 0;
+        _cracks = 0;
         _grabbed = 0;
         ScheduleFall(_lastSync);
         _lucky = 0;
@@ -1119,6 +1120,8 @@ public sealed partial class Clicker : Game
             "sell" => Sell(payload),
             "catch" => Catch(payload),
             "grab" => Grab(payload),
+            // «🥛 Молока котові»: кіт спить — глеки з полиці не падають, серія чекає (ClickerCatNap.cs).
+            "nap" => Nap(payload),
             // Коло зникло з очей чи знову видно (ClickerLate.cs): глек, що злетів без гончаря, серії не рве.
             "sight" => Sight(payload),
             // Випадковості на сцені (v9): погладити кота, загадати бажання на зірку, «бачив, що нового».
@@ -1247,7 +1250,7 @@ public sealed partial class Clicker : Game
             }
             ScheduleGolden(now);
         }
-        // Глек з полиці, якого ніхто не спіймав, — розбитий: серія обірвалась. Спійманий сюди не доходить —
+        // Глек з полиці, якого ніхто не спіймав, — розбитий: тріщина в серії. Спійманий сюди не доходить —
         // Grab одразу ставить на полицю наступний.
         if (now > _fall.Until + CatchGrace)
         {
@@ -1265,10 +1268,11 @@ public sealed partial class Clicker : Game
             else
             {
                 // Натиск, що застряг у дорозі, ще може цей глек залатати — пам'ятаємо, що було до (ClickerLate.cs).
-                _broken = new BrokenFall(_fall, _fallStreak, _apronUsed, busy);
-                // Шкіряний фартух вибачає один розбитий у серії; другий поспіль — серія таки обірвалась.
+                _broken = new BrokenFall(_fall, _fallStreak, _apronUsed, busy, _cracks);
+                // Шкіряний фартух вибачає один розбитий у серії; далі кожен поспіль відколює від неї дедалі більше
+                // (21.10: раніше другий поспіль обнуляв серію цілком, ClickerCatNap.cs).
                 if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
-                else _fallStreak = 0;
+                else Crack();
             }
             ScheduleFall(now);
         }
@@ -1379,6 +1383,8 @@ public sealed partial class Clicker : Game
     /// <summary>Коли й де впаде наступний глек з полиці: за хвилину-дві (з котом — частіше), x — у відсотках сцени.</summary>
     void ScheduleFall(DateTimeOffset from)
     {
+        // Кіт спить — наступного глека нема, доки не прокинеться (ClickerCatNap.cs).
+        if (Napping) { ParkFall(); return; }
         var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
         _fallPlanned = default;
         var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * RelicWaitMult("cat3")
@@ -1955,7 +1961,7 @@ public sealed partial class Clicker : Game
         // Натиск із миттю (ClickerLate.cs): спізнився — може залатати розбитий; давніший за цей глек — повтор, не цей.
         var pressed = PressedAt(payload, now);
         if (now < _fall.At - EarlyGrace || now > _fall.Until + CatchGrace || Stale(pressed, _fall.At))
-            return GrabLate(pressed, now) ?? ActResult.Fail("Глек уже розбився");
+            return GrabLate(pressed, now) ?? ActResult.Fail(FallParked ? "😴 Кіт спить — глеки з полиці не падають" : "Глек уже розбився");
         if (_guard.Locked(now) || _guard.Pending)
             return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
         _broken = null;
@@ -1974,6 +1980,7 @@ public sealed partial class Clicker : Game
         _starWish = false;                 // бажання тримається, доки глек не спіймано, і згоряє на ньому
         StreakUp();
         _apronUsed = false;
+        _cracks = 0;
         _grabbed++;
         TitlesGrab(now);
         _guard.Spend(ClickerGuard.CatchWeight);
@@ -2068,6 +2075,7 @@ public sealed partial class Clicker : Game
     ActResult Pet()
     {
         var now = Ctx.Clock.UtcNow;
+        if (Napping) return ActResult.Fail("😴 Кіт спить — хай поспить");
         if (now < _cat.At - EarlyGrace || now > _cat.Until + CatchGrace) return ActResult.Fail("Кіт уже побіг своєю дорогою");
         if (_guard.Locked(now) || _guard.Pending)
             return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
@@ -2450,7 +2458,9 @@ public sealed partial class Clicker : Game
             // Наступний глек з полиці і скільки він дасть, якщо спіймати просто зараз.
             // miss — що станеться, якщо він розіб'ється на очах: клієнт малює чесне «трісь» (записка №29).
             // gone — сервер вважає, що гончар пішов від кола (ClickerLate.cs): клієнт, що коло бачить, скаже «я тут» знову.
-            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss, seen = _handsAt, gone = _goneAt != default },
+            // lose — скільки серії відколе розбитий на очах; nap — кіт спить ("on") чи засне після цього глека ("soon").
+            fall = new { at = _fall.At, until = _fall.Until, x = _fall.X, streak = _fallStreak, gain = FallGain(), bonus = StreakMult, miss = FallMiss,
+                lose = NextCrackLoss, seen = _handsAt, gone = _goneAt != default, nap = NapView },
             grabbed = _grabbed,
             // Дев'яте оновлення: щасливі кліки за весь час (клієнт малює «✨ ×50» за приростом) і бажання на зірку.
             lucky = _lucky,
@@ -2458,7 +2468,8 @@ public sealed partial class Clicker : Game
             // Три випадковості на сцені: кіт, зірка й вітер із поля (§A.6). A/B — гостинець і напрямок, місце в небі.
             events = new
             {
-                cat = new { at = _cat.At, until = _cat.Until, dir = _cat.B },
+                // Кіт спить (ClickerCatNap.cs) — у гості не ходить.
+                cat = Napping ? new { at = default(DateTimeOffset), until = default(DateTimeOffset), dir = _cat.B } : new { at = _cat.At, until = _cat.Until, dir = _cat.B },
                 star = new { at = _star.At, until = _star.Until, x = _star.A, y = _star.B },
                 wind = new { at = _wind.At, until = _wind.Until, mult = WindMult },
                 petted = _petted,
@@ -2586,7 +2597,9 @@ public sealed partial class Clicker : Game
         // Id подарунків майстерні, що вже видані, і тих, чий лист ще не закрито (ClickerGifts.cs). Старе — жодного.
         List<string>? Gifts = null, List<string>? Letters = null,
         // v12: заморська торгівля — Слава й кораблі (ClickerTrade.cs). Старе збереження — «кораблів ще не було».
-        TradeRow? Trade = null);
+        TradeRow? Trade = null,
+        // Тріщини серії поспіль і коли кіт заснув (ClickerCatNap.cs, 21.10). Старе збереження — тріщин нема, кіт не спить.
+        int Cracks = 0, DateTimeOffset NapAt = default);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2602,7 +2615,7 @@ public sealed partial class Clicker : Game
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
             _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt,
             _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList(),
-            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade()),
+            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt),
         Wire);
 
     public override void Load(string json)
@@ -2677,6 +2690,8 @@ public sealed partial class Clicker : Game
         _heat = double.IsFinite(s.Heat) ? Math.Clamp(s.Heat, 0, 10 * HeatFull) : 0;
         _heatAt = s.HeatAt;
         _fallStreak = Math.Max(0, s.FallStreak);
+        _cracks = Math.Clamp(s.Cracks, 0, 100);
+        _napAt = s.NapAt;
         _grabbed = Math.Max(0, s.Grabbed);
         if (s.Fall is { } f && f.Until > f.At)
             _fall = f with { X = Math.Clamp(f.X, 0, 90) };

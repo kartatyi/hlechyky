@@ -58,7 +58,7 @@ public sealed partial class Clicker
     int _backSpared;
 
     /// <summary>Розбитий глек, який ще може залатати пізній натиск, і що було із серією до нього.</summary>
-    sealed record BrokenFall(FallRow Fall, int Streak, bool Apron, bool Busy);
+    sealed record BrokenFall(FallRow Fall, int Streak, bool Apron, bool Busy, int Cracks);
     BrokenFall? _broken;
     /// <summary>Розписний, що втік неспійманим, — так само.</summary>
     GoldenRow? _fled;
@@ -160,6 +160,7 @@ public sealed partial class Clicker
         _caughtFall = b.Fall;
         _fallStreak = b.Streak;
         _apronUsed = b.Apron;
+        _cracks = b.Cracks;
         if (b.Busy && _brokenBusy > 0) _brokenBusy--;
         return Grabbed(now, "📡 Спіймав — зв'язок наздогнав!");
     }

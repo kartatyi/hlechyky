@@ -26,6 +26,7 @@ public class ClickerFallHoldTests
     static DateTimeOffset GoldenAt(RoomHarness h) => View(h).GetProperty("golden").GetProperty("at").GetDateTimeOffset();
     static int Streak(RoomHarness h) => Fall(h).GetProperty("streak").GetInt32();
     static string Miss(RoomHarness h) => Fall(h).GetProperty("miss").GetString()!;
+    static int Lose(RoomHarness h) => Fall(h).GetProperty("lose").GetInt32();
     static ActResult Act(RoomHarness h, string action, object? payload = null) => h.Act(0, action, payload);
     static ActResult K(RoomHarness h, object payload) => Act(h, "kiln", payload);
 
@@ -194,13 +195,13 @@ public class ClickerFallHoldTests
         h.Clock.Advance(Clicker.FallShown + Clicker.CatchGrace + TimeSpan.FromSeconds(1));
         Assert.False(Act(h, "grab").Ok);
         Assert.Equal(7, Streak(h));
-        // Без горна той самий глек обірвав би серію.
+        // Без горна той самий глек відколов би від серії.
         var h2 = Wheel();
         Patch(h2, s => s["fallStreak"] = 7);
         FallIn(h2, 0.5);
         h2.Clock.Advance(Clicker.FallShown + Clicker.CatchGrace + TimeSpan.FromSeconds(1));
         Assert.False(Act(h2, "grab").Ok);
-        Assert.Equal(0, Streak(h2));
+        Assert.Equal(6, Streak(h2));
     }
 
     [Fact]
@@ -241,8 +242,22 @@ public class ClickerFallHoldTests
         var h = Wheel();
         Assert.Equal("none", Miss(h));
 
-        // Серія без фартуха — обірветься.
-        Patch(h, s => s["fallStreak"] = 4);
+        // Серія без фартуха — тріщина, і вид наперед каже, скільки відколе: −10 %, другий поспіль — −20 %.
+        Patch(h, s => s["fallStreak"] = 40);
+        Assert.Equal("crack", Miss(h));
+        Assert.Equal(4, Lose(h));
+        FallIn(h, 0);
+        h.Clock.Advance(past);
+        Assert.False(Act(h, "grab").Ok);
+        Assert.Equal(36, Streak(h));
+        Assert.Equal(7, Lose(h));
+        FallIn(h, 0);
+        h.Clock.Advance(past);
+        Assert.False(Act(h, "grab").Ok);
+        Assert.Equal(29, Streak(h));
+
+        // Серія з одного глека — тріщина забере все: це «streak».
+        Patch(h, s => { s["fallStreak"] = 1; s["cracks"] = 0; });
         Assert.Equal("streak", Miss(h));
         FallIn(h, 0);
         h.Clock.Advance(past);
@@ -250,20 +265,22 @@ public class ClickerFallHoldTests
         Assert.Equal(0, Streak(h));
         Assert.Equal("none", Miss(h));
 
-        // Фартух: перший раз уберігає, другий поспіль — уже ні, і вид це каже заздалегідь.
+        // Фартух: перший раз уберігає, другий поспіль — уже тріщина, і вид це каже заздалегідь.
         Patch(h, s => { s["pots"] = 1e7; s["total"] = 1e7; });
         Assert.True(Act(h, "tool", new { key = "apron" }).Ok);
-        Patch(h, s => s["fallStreak"] = 4);
+        Patch(h, s => { s["fallStreak"] = 40; s["cracks"] = 0; });
         Assert.Equal("apron", Miss(h));
+        Assert.Equal(0, Lose(h));
         FallIn(h, 0);
         h.Clock.Advance(past);
         Assert.False(Act(h, "grab").Ok);
-        Assert.Equal(4, Streak(h));
-        Assert.Equal("streak", Miss(h));
+        Assert.Equal(40, Streak(h));
+        Assert.Equal("crack", Miss(h));
+        Assert.Equal(4, Lose(h));
         FallIn(h, 0);
         h.Clock.Advance(past);
         Assert.False(Act(h, "grab").Ok);
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(36, Streak(h));
     }
 
     [Fact]

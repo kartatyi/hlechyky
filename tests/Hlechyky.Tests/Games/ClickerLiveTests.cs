@@ -241,7 +241,7 @@ public class ClickerLiveTests
     }
 
     [Fact]
-    public void Too_late_and_the_jug_is_shards_and_the_streak_is_gone()
+    public void Too_late_and_the_jug_is_shards_and_the_streak_cracks()
     {
         var h = Wheel();
         Patch(h, s => s["fallStreak"] = 4);
@@ -251,7 +251,7 @@ public class ClickerLiveTests
         var r = Act(h, "grab");
         Assert.False(r.Ok);
         Assert.Contains("розбився", r.Message);
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(3, Streak(h));                      // тріщина: −10 %, щонайменше один
         // Розбитий уже переставлено: наступний — від «зараз», а не від кінця старого.
         Assert.InRange((FallAt(h) - h.Clock.UtcNow).TotalSeconds, Clicker.FallMinSeconds, Clicker.FallMaxSeconds);
     }
@@ -281,7 +281,7 @@ public class ClickerLiveTests
         Assert.True(Spin(h, 5).Ok);                      // клацав коло, поки глек летів, — бачив його
         h.Clock.AdvanceMs(3 * 60 * 1000);                // і пішов, не спіймавши
 
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(3, Streak(h));                      // тріщина: −10 %, щонайменше один
     }
 
     /// <summary>Глек злетить за <paramref name="inSeconds"/> секунд.</summary>
@@ -364,7 +364,7 @@ public class ClickerLiveTests
         h.Clock.AdvanceMs(60 * 1000);
         Assert.True(Spin(h, 5).Ok);
 
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(3, Streak(h));                      // тріщина: −10 %, щонайменше один
     }
 
     [Fact]

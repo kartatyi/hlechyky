@@ -523,6 +523,20 @@
     return s;
   }
 
+  /// Кіт спить (ClickerCatNap.cs): клубочком на правому краї полиці (трохи лівіше за кота, що сидить, — правіше стоїть
+  /// миска молока, clk-napbtn), хвіст обгорнув лапи, над ним — «z z».
+  /// Видно всім, хто приспав кота, — і з секретом «Кіт на полиці», і без: так гравець бачить, що глеки не впадуть.
+  function sleepCat(fur) {
+    return '<g transform="translate(302 176)" class="clks-cat nap">'
+      + '<ellipse cx="1" cy="-6" rx="12.5" ry="6.6" fill="' + fur + '"/>'
+      + '<circle cx="-8.5" cy="-7.5" r="5.6" fill="' + fur + '"/><path d="M-13.2 -11l.3-5.2 3.8 3.1zM-7.6 -12.6l2.4-4.4 1.4 4.7z" fill="' + fur + '"/>'
+      + (fur === PET_FUR.patched ? '<path d="M2 -11q5-2 8 2-4 3-8-2z" fill="#3a3330"/>' : '')
+      + '<path d="M-11.6 -7.6q1 .9 2 0M-8.2 -7.6q1 .9 2 0" stroke="#2a2018" stroke-width=".8" fill="none" stroke-linecap="round"/>'
+      + '<path d="M12.5 -4c3 4.5-3 6.6-15 4.6" stroke="' + fur + '" stroke-width="3.2" fill="none" stroke-linecap="round"/>'
+      + '<g class="clks-zzz" fill="#f4efe3"><text x="-6" y="-16" font-size="6">z</text><text x="-1" y="-22" font-size="8">z</text>'
+      + '<text x="5" y="-29" font-size="10">z</text></g></g>';
+  }
+
   function cat(night, fur) {
     // Сидить на правому краї полиці (верх полиці — y 176), хвіст звисає й гойдається.
     return '<g transform="translate(318 176)" class="clks-cat">'
@@ -969,7 +983,8 @@
         + '<path d="M27 16h6v5h-6z" fill="#e2c26a"/><path d="M0 40h60" stroke="#4a1e10" stroke-width="2"/></g>';
     }
     s += decor2Svg(e) + wonderShelf(e) + showShelf(e) + worldShelf(e);
-    if (e.cat) s += cat(e.night, PET_FUR[e.look.pet] || PET_FUR.grey);
+    if (e.nap) s += sleepCat(PET_FUR[e.look.pet] || PET_FUR.grey);
+    else if (e.cat) s += cat(e.night, PET_FUR[e.look.pet] || PET_FUR.grey);
     s += apprentices(e.apprentice, e.night);
     return s;
   }
@@ -2570,6 +2585,7 @@
       apprentice: a >= 50 ? 50 : a >= 25 ? 25 : a >= 10 ? 10 : a >= 1 ? 1 : 0,
       kiln: lvl('kiln') >= 1 ? 1 : 0, kilnLvl: Math.min(60, Math.floor(lvl('kiln') / 5) * 5), workshop: step(lvl('workshop')),
       cat: (v.secrets || []).some((s) => s.key === 'cat' && s.owned),
+      nap: !!(v.fall && v.fall.nap === 'on'),   // кіт спить — глеки з полиці не падають (ClickerCatNap.cs)
       toloka: tolokaEnv(st, v),           // v11: майдан Толоки (null — ще нема)
       trade: tradeEnv(st, v),             // v12: кораблі біля Пристані (null — торгівлі ще нема)
     };
