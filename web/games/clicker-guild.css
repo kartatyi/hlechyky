@@ -283,8 +283,6 @@
 @media (pointer: coarse) { .clkg-nav button { min-height: 40px; } }
 .clk-pane > .clkg-intro { order: -1; flex: none; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .clkg-intro p { margin: 0; flex: 1 1 240px; line-height: 1.4; }
-/* Місця для «Кораблів» і «Майстра дня»: порожні — не займають і проміжку. */
-.clkg-slot:empty { display: none; }
 
 /* ---- v12: віз — недобрана підціль світиться, «Усе на віз» перепитує ---- */
 .clkg-sub.lack { box-shadow: inset 0 0 0 1px var(--accent2); background: rgba(244, 197, 66, .12); }

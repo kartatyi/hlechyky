@@ -375,6 +375,7 @@
       k.el = document.createElement('section');
       k.el.className = 'clkg-card clkd';
       k.el.dataset.fold = 'g.dvir';
+      k.el.dataset.sec = 'guests';           // якір рядка переходів «Села» (clicker-guild.js)
       k.el.hidden = true;
       k.el.addEventListener('click', (e) => onClick(st, api, e));
     }

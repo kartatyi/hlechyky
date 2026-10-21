@@ -239,6 +239,7 @@
     if (st.titlesEl || !st.guildPane || !st.guildBody) return;
     st.titlesEl = document.createElement('div');
     st.titlesEl.className = 'clkt-box';
+    st.titlesEl.dataset.sec = 'titles';      // якір рядка переходів «Села» (clicker-guild.js)
     st.guildBody.insertAdjacentElement('afterend', st.titlesEl);
     st.titlesEl.addEventListener('click', (e) => onClick(st, HClicker.api, e));
     // toggle не спливає — ловимо на спуску, щоб пам'ятати, які групи гравець тримає розгорнутими.

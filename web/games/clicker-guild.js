@@ -13,7 +13,8 @@
      з альбомом, виставкою, станом горна, дивовижами й кнопками допомоги;
   6) «Похвалитись» виробом у Журнал;
   7) v12: липкий рядок переходів угорі «Села» (Гості · Толока · Кораблі · Майстер дня · Віз · Друзі · Звання ·
-     Замовлення сіл ↗) і порожні місця data-slot="ships" / "day" — їх наповнять частини кораблів і Майстра дня.
+     Замовлення сіл ↗). Розділи шукає за [data-sec] (домовленість v12: trade і day — частини кораблів і Майстра дня,
+     guests, toloka, wagon, friends, titles — «Село»).
   Правила рахує сервер (Clicker.ActGuild / ClickerGuildService); тут — лише малюнок і дії guild { op, … }.
   Звуки: api.sfx('wagon' | 'gift' | 'rank-up' | 'brag').
 */
@@ -313,7 +314,7 @@
     const prev = v.prev
       ? '<div class="muted small">Учора: ' + (v.prev.tier ? TIER_ICON[v.prev.tier] + ' ' + TIER[v.prev.tier] : 'до бронзи не дотягли — не біда') + ', разом ' + v.prev.total + '</div>'
       : '';
-    return '<section class="clkg-card clkg-day"' + api.fold('g.wagon') + '>'
+    return '<section class="clkg-card clkg-day" data-sec="wagon"' + api.fold('g.wagon') + '>'
       + '<div class="clk-sub clk-fh" tabindex="0">🐴 Віз цеху на ярмарок · <span class="muted small">від\'їде за <span class="clkg-cd" data-at="' + Date.parse(w.endsAt) + '"></span></span>'
       + info('Село — це всі гончарі сайту разом: один віз на день, дарунки одне одному, хати в гості. Бронза — ціль і всі '
         + 'підцілі; срібло — півтори цілі; золото — дві. Ціль росте з кількістю вчорашніх гончарів (' + w.potters + '). '
@@ -380,7 +381,7 @@
     return rows.length ? '<div class="clkg-buffs">' + rows.join('') + '</div>' : '';
   }
 
-  function helpHtml(st, api, v) {
+  function helpHtml(st, api, v, sec) {
     const c = cat(st);
     const cap = (c && c.treatCap) || 120;
     const h = v.help;
@@ -395,7 +396,7 @@
       friends = '<div class="clkg-flist">' + list.slice(0, FRIENDS_INLINE).map((x) => friendBtn(st, api, x)).join('') + '</div>'
         + (list.length > FRIENDS_INLINE ? '<button type="button" class="ghost small clkg-choose">🔎 Усі друзі · ' + list.length + '</button>' : '');
     }
-    return '<section class="clkg-card clkg-help"' + api.fold('g.help') + '>'
+    return '<section class="clkg-card clkg-help"' + (sec ? ' data-sec="friends"' : '') + api.fold('g.help') + '>'
       + '<div class="clk-sub clk-fh" tabindex="0">🤝 Помогти другові'
       + info('Село тримається на тому, що сильніший підставляє плече. Гостинець: платиш своїми хвилинами пасиву, '
         + 'а друг дістає вдвічі більше хвилин СВОГО — тож твоя гора його гру не зламає, але день-два росту дасть '
@@ -486,12 +487,12 @@
   function waitHtml(st, api) {
     if (isGuest(st)) return '';
     const r = st.guildRoster;
-    if (!r) return '<section class="clkg-card clkg-wait"' + api.fold('g.wait') + '>' + api.foldHead('🙋 Хто чекає допомоги') + '<div class="muted small">Завантажую…</div></section>';
+    if (!r) return '<section class="clkg-card clkg-wait" data-sec="friends"' + api.fold('g.wait') + '>' + api.foldHead('🙋 Хто чекає допомоги') + '<div class="muted small">Завантажую…</div></section>';
     const list = sortedFriends(st, api).filter((x) => x.why.length).slice(0, 6);
     const feed = feedHtml(st, api, r.feed || []);
     if (!list.length && !feed) return '';
     // Згортка — лише з заголовком: сама стрічка цеху й так згортається своїм ▾.
-    return '<section class="clkg-card clkg-wait"' + (list.length ? api.fold('g.wait') : '') + '>'
+    return '<section class="clkg-card clkg-wait" data-sec="friends"' + (list.length ? api.fold('g.wait') : '') + '>'
       + (list.length ? api.foldHead('🙋 Хто чекає допомоги <span class="muted small">· ' + list.length + '</span>') + '<div class="clkg-wlist">' + list.map((x) => friendBtn(st, api, x, true)).join('') + '</div>' : '')
       + feed + '</section>';
   }
@@ -1146,7 +1147,8 @@
       api.swap(st.guildBody, '<div class="clk-teaser muted">🔒 Цех зараз зачинений. Твій ранг — ' + api.esc(st, rankName(st, v.rank || 0)) + '.</div>');
       return;
     }
-    const html = buffsHtml(st, api, v) + gotHtml(st, api, v) + waitHtml(st, api) + wagonHtml(st, api, v) + helpHtml(st, api, v)
+    const wait = waitHtml(st, api);
+    const html = buffsHtml(st, api, v) + gotHtml(st, api, v) + wait + wagonHtml(st, api, v) + helpHtml(st, api, v, !wait)
       + giftsHtml(st, api, v) + rankHtml(st, api, v) + rosterHtml(st, api);
     if (!api.swap(st.guildBody, html)) return;
     const q = (sel) => st.guildBody.querySelector(sel);
@@ -1295,21 +1297,29 @@
   // ---------- рядок переходів «Села» (v12 §7 п. 8) ----------
 
   /// «Село» довге (на 1366×768 — 2 400 px у вікні на 311), а розділи малюють різні частини: гості, Толока, кораблі,
-  /// Майстер дня, цех, звання. Липкий рядок угорі веде до кожного одним дотиком. Ціль шукаємо щоразу (частини
-  /// монтуються в різному порядку); нема розділу — нема й кнопки. «Кораблі» й «Майстер дня» — поки порожні місця
-  /// (data-slot), кнопка з'явиться, щойно їхня частина щось туди покладе. Замовлення сіл живуть у «Ремеслі» — тож ↗.
-  const slotOf = (st, name) => (st.guildPane ? st.guildPane.querySelector(':scope > [data-slot="' + name + '"]') : null);
-  const filled = (el) => !!el && [...el.children].some((x) => !x.hidden);
+  /// Майстер дня, цех, звання. Липкий рядок угорі веде до кожного одним дотиком. Корінь кожного розділу — з data-sec
+  /// (домовленість v12), ціль шукаємо щоразу: частини монтуються в різному порядку. Нема розділу (у гравця без
+  /// Пристані — кораблів) чи він схований — нема й кнопки. Замовлення сіл живуть у «Ремеслі» — тож ↗.
+  /// Розділ видно, коли ні він, ні жоден його предок у вкладці не схований і в ньому щось є.
+  function shownIn(el, pane) {
+    if (!el || !el.isConnected || !el.firstElementChild) return false;
+    for (let x = el; x && x !== pane; x = x.parentElement) if (x.hidden) return false;
+    return true;
+  }
+  const secOf = (st, key) => {
+    const e = st.guildPane ? st.guildPane.querySelector('[data-sec="' + key + '"]') : null;
+    return shownIn(e, st.guildPane) ? e : null;
+  };
   const NAV = [
-    { k: 'guests', t: '🏛 Гості', el: (st) => { const e = st.guests && st.guests.el; return e && !e.hidden ? e : null; } },
-    { k: 'toloka', t: '🏗 Толока', el: (st) => { const e = st.toloka && st.toloka.el; return e && !e.hidden && e.isConnected ? e : null; } },
-    { k: 'ships', t: '⛵ Кораблі', el: (st) => { const e = slotOf(st, 'ships'); return filled(e) ? e : null; } },
-    { k: 'day', t: '🏆 Майстер дня', el: (st) => { const e = slotOf(st, 'day'); return filled(e) ? e : null; } },
-    { k: 'wagon', t: '🐴 Віз', el: (st) => st.guildBody && st.guildBody.querySelector('.clkg-day') },
-    { k: 'friends', t: '🤝 Друзі', el: (st) => st.guildBody && (st.guildBody.querySelector('.clkg-wait') || st.guildBody.querySelector('.clkg-help')) },
-    { k: 'titles', t: '🎖 Звання', el: (st) => (st.titlesEl && st.titlesEl.isConnected && st.titlesEl.firstElementChild ? st.titlesEl : null) },
+    { k: 'guests', t: '🏛 Гості' },
+    { k: 'toloka', t: '🏗 Толока' },
+    { k: 'trade', t: '⛵ Кораблі' },
+    { k: 'day', t: '🏆 Майстер дня' },
+    { k: 'wagon', t: '🐴 Віз' },
+    { k: 'friends', t: '🤝 Друзі' },
+    { k: 'titles', t: '🎖 Звання' },
     { k: 'orders', t: '📜 Замовлення сіл ↗', tab: 'craft', el: (st) => { const e = st.fair && st.fair.ordersEl; return e && e.isConnected && e.firstElementChild ? e : null; } },
-  ];
+  ].map((n) => (n.el ? n : Object.assign(n, { el: (st) => secOf(st, n.k) })));
 
   function paintNav(st, api) {
     const nav = st.guildNav;
@@ -1411,13 +1421,6 @@
       st.guildIntro.className = 'clkg-card clkg-intro';
       st.guildIntro.hidden = true;
       st.guildPane.appendChild(st.guildIntro);
-      // Місця для «Кораблів» і «Майстра дня» (пакети A і C v12): між Толокою й возом. Порожні — не видно (:empty).
-      for (const name of ['ships', 'day']) {
-        const s = document.createElement('div');
-        s.className = 'clkg-slot';
-        s.dataset.slot = name;
-        st.guildPane.appendChild(s);
-      }
       st.guildBody = document.createElement('div');
       st.guildBody.className = 'clkg';
       st.guildPane.appendChild(st.guildBody);
