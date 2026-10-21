@@ -122,20 +122,25 @@ public sealed partial class Clicker
         it => (s.Ware.Length == 0 || it.Ware == s.Ware) && it.Quality >= (lux ? 4 : s.Quality)
               && (s.Style.Length == 0 || it.Style == s.Style);
 
-    /// <summary>План вантажу корабля — <see cref="SparePlan"/> без винятків: корабель поступається всім.</summary>
-    List<(ItemInfo Item, int N)> ShipPlan(Func<ItemInfo, bool> match, int n) => SparePlan(match, n);
+    /// <summary>
+    /// План вантажу корабля — <see cref="SparePlan"/> без винятків: корабель поступається всім. У межах однієї якості —
+    /// спершу розпис світу чи заморський: за нього корабель платить ×1,5 і дає +1 Славу (QA-3: «Завантажити все» брало
+    /// бубнівські, а делфтські лишало).
+    /// </summary>
+    List<(ItemInfo Item, int N)> ShipPlan(Func<ItemInfo, bool> match, int n) => SparePlan(match, n, worldFirst: true);
 
     /// <summary>
     /// План забору лише з того, чого ніхто не чекає (<see cref="LadKept"/> — замовлення сіл і гостей, майстерштук,
     /// Толока; <paramref name="who"/> — чиїх вимог не рахувати). Корабель і склад толоки (v12) — необов'язкові покупці:
     /// чужого відкладеного не беруть ніколи, а не «коли іншого нема». Найгірша придатна якість — першою.
     /// </summary>
-    internal List<(ItemInfo Item, int N)> SparePlan(Func<ItemInfo, bool> match, int n, TakeFor? who = null)
+    internal List<(ItemInfo Item, int N)> SparePlan(Func<ItemInfo, bool> match, int n, TakeFor? who = null, bool worldFirst = false)
     {
         var plan = new List<(ItemInfo, int)>();
         if (n <= 0) return plan;
         var kept = LadKept(Ctx.Clock.UtcNow, who);
-        foreach (var (item, count) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList())
+        foreach (var (item, count) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality)
+                     .ThenBy(x => worldFirst && WorldStyle(x.Item.Style) ? 0 : 1).ToList())
         {
             var free = count - kept.GetValueOrDefault(ItemKey(item.Ware, item.Style, item.Quality));
             var take = Math.Min(free, n);
@@ -260,8 +265,24 @@ public sealed partial class Clicker
         {
             "load" => ShipLoad(i, (int)Math.Clamp(Num(payload, "n") ?? 1, 1, TradeMax), now),
             "loadAll" => ShipLoad(i, TradeMax, now),
+            "release" => ShipRelease(i, now),
             _ => ActResult.Fail("Біля Пристані так не торгують"),
         };
+    }
+
+    /// <summary>
+    /// «Відпустити корабель» (QA-3): корабель, якого нема чим завантажити (миски в розписі, якого нема; розкішні, яких
+    /// не палиш), 8 год займав місце біля Пристані, і новий не приходив. Вантаж, що вже на борту, оплачено при вантаженні.
+    /// Перший корабель не відпускається — він відчиняє першу майстерню.
+    /// </summary>
+    ActResult ShipRelease(int index, DateTimeOffset now)
+    {
+        var s = _ships[index];
+        if (s.First) return ActResult.Fail("Перший корабель чекає свого вантажу — він відчинить першу майстерню");
+        _ships.RemoveAt(index);
+        // Біля повної Пристані розклад стояв; тепер місце є — наступний за звичайним розкладом, але не раніше ніж за інтервал.
+        if (_shipNext <= now) _shipNext = now + TradeGap;
+        return ActResult.Accept($"⚓ Корабель з {PortOf(s.Port).From} відплив без повного вантажу — наступний прийде за {Wait(_shipNext - now)}");
     }
 
     /// <summary>

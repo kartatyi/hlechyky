@@ -245,6 +245,31 @@ public sealed partial class Clicker
     /// <summary>Шана за замовлення: 4 + 2 за кожен виріб + 2 за кожен ступінь якості понад добрий + 3 за розпис.</summary>
     static int GuestRepFor(GuestOrderRow o) => Math.Max(1, 4 + 2 * o.Count + 2 * (o.Quality - 2) + (o.Style.Length > 0 ? 3 : 0));
 
+    /// <summary>
+    /// Що каже гість, забираючи <paramref name="ware"/>: репліка, що не згадує жодного з його виробів, або саме цей
+    /// (QA-3: замовив тикву, а дякує «Кухоль під чай…»). Виріб у репліці впізнаємо за словом, що починається як його назва
+    /// (не всередині слова: «Ейфелева» — не лев).
+    /// </summary>
+    string GuestLine(ClickerGuest g, string ware)
+    {
+        static string[] Forms(string w)
+        {
+            var n = WareOf(w)?.Name.ToLowerInvariant() ?? w;
+            if (n.IndexOf('-') is var cut and > 0) n = n[..cut];
+            var stem = n.Length > 4 ? n[..4] : n;
+            return w == "bowl" ? [stem, "мисок"] : [stem];
+        }
+        static bool Mentions(string line, string w)
+        {
+            var forms = Forms(w);
+            return System.Text.RegularExpressions.Regex.Split(line.ToLowerInvariant(), @"[^\p{L}-]+")
+                .Any(word => forms.Any(f => word.StartsWith(f, StringComparison.Ordinal)));
+        }
+        var fit = g.Lines.Where(l => Mentions(l, ware) || !g.Likes.Any(w => Mentions(l, w))).ToArray();
+        var pool = fit.Length > 0 ? fit : g.Lines;
+        return pool[Ctx.Rng.Next(pool.Length)];
+    }
+
     /// <summary>У скільки разів гість платить понад ціну виробу: ×8 (гончарі світу — ×12) і +10 % за рівень його шани.</summary>
     double GuestPayMult(GuestOrderRow o) => GuestOf(o.Guest).PayMult * (1 + GuestPayPerLevel * GuestLevel(o.Guest)) * (1 + Relic("seal2"));
 
@@ -404,7 +429,7 @@ public sealed partial class Clicker
         var rep = GuestRepFor(o);
         var up = GuestRepAdd(g.Key, rep);
         // Плейтест 21.10 (B10): тост казав «шана +8», а додавалось +14 — множники Зали й печатки до тексту не доходили.
-        var text = $"{g.Emoji} {GuestWho(o)}: «{g.Lines[Ctx.Rng.Next(g.Lines.Length)]}» +{PotsShort(pay)} · шана +{GuestRepReal(rep)}";
+        var text = $"{g.Emoji} {GuestWho(o)}: «{GuestLine(g, o.Ware)}» +{PotsShort(pay)} · шана +{GuestRepReal(rep)}";
         if (up > 0) text += $" · ⭐ {g.Name}: шана {GuestLevel(g.Key)}";
         return ActResult.Accept(text);
     }

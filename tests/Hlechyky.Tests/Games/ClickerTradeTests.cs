@@ -264,6 +264,39 @@ public class ClickerTradeTests
     }
 
     [Fact]
+    public void Loading_takes_a_world_painting_first_within_the_same_quality()
+    {
+        var h = Wheel();
+        Pier(h, pots: 0);
+        TradeRow(h, 0, Ship(h, 1, "jug", 2, 10));
+        Items(h, ("jug||2", 3), ("jug|jingdezhen|2", 3));
+        Assert.True(Load(h, 1, "load", 3).Ok);
+        // Ті самі добрі, але за розпис світу корабель платить ×1,5 і +1 Славу — вони й ідуть першими (QA-3).
+        Assert.Equal(3, Item(h, "jug||2"));
+        Assert.Equal(0, Item(h, "jug|jingdezhen|2"));
+        Assert.Equal(3 * (Clicker.SlavaQ2 + Clicker.SlavaStyle), Slava(h));
+    }
+
+    [Fact]
+    public void A_ship_that_cannot_be_loaded_can_be_let_go_but_not_the_first()
+    {
+        var h = Wheel();
+        Pier(h, pots: 0);
+        var first = Ship(h, 1, "jug", 2, 20);
+        first["first"] = true;
+        TradeRow(h, 0, first, Ship(h, 2, "bowl", 2, 45, style: "mezhyhirya"), Ship(h, 3, "jug", 2, 30));
+        Assert.Equal(3, Ships(h).Count);
+        Assert.StartsWith("Перший корабель чекає", Load(h, 1, "release").Message);
+        var r = Load(h, 2, "release");
+        Assert.True(r.Ok, r.Message);
+        Assert.StartsWith("⚓ Корабель з", r.Message);
+        Assert.Equal([1, 3], Ships(h).Select(x => x.GetProperty("id").GetInt32()).Order().ToArray());
+        // Місце звільнилось — за інтервал прийде новий.
+        h.Clock.Advance(Clicker.TradeGap + TimeSpan.FromSeconds(1));
+        Assert.Equal(3, Ships(h).Count);
+    }
+
+    [Fact]
     public void Each_load_pays_at_once_and_a_full_ship_adds_a_bonus()
     {
         var h = Wheel();
