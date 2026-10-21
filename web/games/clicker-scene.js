@@ -2893,6 +2893,8 @@
     if (api.storeGet('clk.awayAt', '') === String(a.at)) return true;
     if (api.overlayOpen(st)) return false;          // інша панель (мінігра) — покажемо, щойно закриють
     api.storeSet('clk.awayAt', String(a.at));
+    // v12 (B6): побачене пам'ятає й сервер — на другому пристрої чи після іншого ніка картка вдруге не вискочить.
+    api.order(st, 'away', { at: a.at });
     const esc = (x) => api.esc(st, x);
     const offline = st.offlineMs / 1000;
     const capped = a.seconds > offline + 60;

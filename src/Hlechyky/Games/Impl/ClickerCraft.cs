@@ -668,9 +668,24 @@ public sealed partial class Clicker
         };
     }
 
-    object? AwayView() => _away is { } a
+    /// <summary>«Поки тебе не було»: запис, поки гончар його не побачив (v12, B6 плейтесту: сервер слав останній запис
+    /// завжди, а побачене клієнт пам'ятав лише в localStorage одного браузера — на другому пристрої чи після іншого ніка
+    /// вранішній «+48 557 золотих» вискакував знову, уже після обпалу).</summary>
+    object? AwayView() => _away is { Seen: false } a
         ? new { at = a.At, seconds = a.Seconds, pots = a.Pots, formed = a.Formed, notes = a.Notes }
         : null;
+
+    /// <summary>Дія <c>away { at }</c>: картку цього запису показано — більше не шлемо (на жодному пристрої).</summary>
+    ActResult SeenAway(JsonElement payload)
+    {
+        if (_away is not { } a || a.Seen) return ActResult.Done;
+        // Новіший запис (простій, що дописався, поки картка висіла) — не той, що бачили: лишаємо.
+        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("at", out var at) && at.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(at.GetString(), out var seen) && Math.Abs((seen - a.At).TotalSeconds) > 1)
+            return ActResult.Done;
+        _away = a with { Seen = true };
+        return ActResult.Done;
+    }
 
     /// <summary>Каталоги для клієнта: у видах від Start/Load до першої дії і після look { catalog: true } до наступної.</summary>
     object? CatalogView()
@@ -698,7 +713,7 @@ public sealed partial class Clicker
 
     // ---------- збереження ----------
 
-    sealed record AwayRow(DateTimeOffset At, long Seconds, double Pots, int Formed, List<string> Notes);
+    sealed record AwayRow(DateTimeOffset At, long Seconds, double Pots, int Formed, List<string> Notes, bool Seen = false);
 
     sealed record CraftRow(
         string? Ware, double Work, List<RackRow>? Rack, Dictionary<string, int>? Items,
