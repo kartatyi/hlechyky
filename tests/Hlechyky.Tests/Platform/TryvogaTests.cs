@@ -30,7 +30,7 @@ public sealed class TryvogaTests : IDisposable
           {"id":"trk_1","type":"uav","title":"БпЛА","region":"Чернігівська область","district":"","locality":"Гончарівське",
            "lat":51.749083905808526,"lon":31.665341285318966,"heading":223.271,"confidenceLevel":"medium","sourceCount":5,
            "updatedAt":"2026-10-21T00:36:15Z","explanationShort":"БпЛА курсом на Гончарівське. Підтверджень: 5.","status":"active",
-           "uncertaintyKm":6,"positionQuality":"approx","lifecycle":"uncertain",
+           "uncertaintyKm":6,"positionQuality":"approx","lifecycle":"uncertain","presumptiveCourse":true,
            "trail":[{"lat":51.50999582930899,"lon":31.305653308814737,"t":"2026-10-21T00:14:22Z"},
                     {"lat":51.5132666708445,"lon":31.310187884579875,"t":"2026-10-21T00:14:35Z"},
                     {"lat":51.51075322170994,"lon":31.30670333009787,"t":"2026-10-21T00:14:35Z"}]},
@@ -194,6 +194,13 @@ public sealed class TryvogaTests : IDisposable
         Assert.Equal(51.7491, d.GetProperty("lat").GetDouble());
         Assert.Equal(3, d.GetProperty("trail").GetArrayLength());
         Assert.Equal(51.51, d.GetProperty("trail")[0][0].GetDouble());     // слід — від найстарішої точки
+        // курс «курсом на …» — орієнтовний; виміряний рух — підтверджений, і без heading курс береться з нього
+        Assert.True(d.GetProperty("presumptive").GetBoolean());
+        Assert.False(d.GetProperty("measured").GetBoolean());
+        var kab = v.GetProperty("threats")[2];
+        Assert.True(kab.GetProperty("measured").GetBoolean());
+        Assert.False(kab.GetProperty("presumptive").GetBoolean());
+        Assert.Equal(250, kab.GetProperty("heading").GetDouble());
     }
 
     [Fact]

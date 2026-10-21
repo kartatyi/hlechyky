@@ -142,7 +142,7 @@ body.tv-full-open { overflow: hidden; }
 .tv-lg { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .tv-lg span { display: inline-flex; align-items: center; gap: 6px; }
 .tv-ic { width: 22px; height: 22px; flex: none; vertical-align: middle; }
-.tv-ic.course { width: 27px; }
+.tv-ic.course, .tv-ic.sure { width: 39px; }
 .tv-ic.bunch { width: 29px; }
 .tv-pop .tv-ic, .tv-chip .tv-ic, .tv-row .tv-ic, .pv-row .tv-ic { width: 20px; height: 20px; }
 .sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; flex: none; }

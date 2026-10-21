@@ -27,7 +27,7 @@
   const SPEED = { uav: 170, fpv: 80, missile: 750, ballistic: 2500, kab: 400, mig31k: 900, recon: 150, unknown: 170 };
   const SIDES = ['північ', 'пн-схід', 'схід', 'пд-схід', 'південь', 'пд-захід', 'захід', 'пн-захід'];
 
-  // господар — tryvoga.js: { esc, map, threats, region, alarm, oblastName, types, mark, course, trail, blob,
+  // господар — tryvoga.js: { esc, map, threats, region, alarm, oblastName, types, mark, course, courseOf, trail, blob,
   //   iconImg, kick, focus, near, narrow, tab }
   let h = null;
   let root = null;
@@ -569,7 +569,7 @@
     for (const km of rs) text(g, km + ' км', cx, cy + km * kmPx - 9, c.text, '11px system-ui, sans-serif');
 
     if (!grey) {
-      // Ті самі значки, що на мапі (tryvoga.js): силует типу носом за курсом і куточок попереду (як у NEPTUN), слід
+      // Ті самі значки, що на мапі (tryvoga.js): силует типу носом за курсом, промінь (і клин, коли курс певний), слід
       // блідне до хвоста, місце приблизне — пляма. Усе лише всередині циферблата.
       const P = 10;
       const col = (t) => (h.types[t.type] || h.types.unknown).color;
@@ -608,16 +608,17 @@
       }
       g.globalAlpha = 1;
 
-      // курс — куточок попереду носа; небезпечна — червоним
+      // курс — як на мапі: промінь (орієнтовний) і клин (підтверджений); небезпечна — червоним
       g.save();
       g.beginPath();
       g.arc(cx, cy, R, 0, Math.PI * 2);
       g.clip();
       for (const x of pv.list) {
-        if (x.zone > 2 || x.t.heading == null) continue;
+        const k = x.zone > 2 ? null : h.courseOf(x.t);
+        if (!k) continue;
         const [px, py] = at(x.d * kmPx, x.b);
         g.globalAlpha = x.live ? 1 : 0.45;
-        h.course(g, px, py, x.t.heading * RAD - turnRad, P, x.danger ? c.danger : null);
+        h.course(g, px, py, k.deg * RAD - turnRad, P, x.danger ? c.danger : col(x.t), k.sure);
       }
       g.restore();
       g.globalAlpha = 1;
@@ -643,7 +644,8 @@
         } else {
           const [px, py] = at(x.d * kmPx, x.b);
           // небезпечна — з червоним гало замість темного (без кружків)
-          h.mark(g, px, py, x.t.type, P, x.t.heading == null ? 0 : x.t.heading * RAD - turnRad, x.danger ? { halo: c.danger } : null);
+          const k = h.courseOf(x.t);
+          h.mark(g, px, py, x.t.type, P, k ? k.deg * RAD - turnRad : 0, x.danger ? { halo: c.danger } : null);
           if (x.t.count > 1) { g.textAlign = 'left'; text(g, '×' + x.t.count, px + P + 3, py - P, c.text, 'bold 12px system-ui, sans-serif'); g.textAlign = 'center'; }
         }
         g.globalAlpha = 1;

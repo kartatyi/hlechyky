@@ -791,25 +791,70 @@
     g.restore();
   }
 
-  /// Курс — як у NEPTUN (22.10, користувач показав їхній значок): жодної лінії, лише відкритий куточок «^» трохи
-  /// попереду носа, білий із темним обідком. angle — від півночі екрана за годинниковою, радіани; R — піврозміру
-  /// силуету; color — колір куточка (білий; небезпечна на циферблаті — червоний).
-  function course(g, x, y, angle, R, color) {
-    const d = R + 6;
+  /// Курс (22.10, вибір користувача з шести варіантів): орієнтовний — «промінь», прозорий клин кольору цілі від носа
+  /// вперед, що згасає; підтверджений — промінь і поверх нього «клин», суцільний трикутник кольору цілі з білим краєм
+  /// попереду носа. Малюється до силуету (промінь починається під ним). angle — від півночі екрана за годинниковою,
+  /// радіани; R — піврозміру силуету; sure — курс підтверджений (courseOf).
+  function course(g, x, y, angle, R, color, sure) {
+    const L = R * 3.4;
     g.save();
-    g.translate(x + Math.sin(angle) * d, y - Math.cos(angle) * d);
+    g.translate(x + Math.sin(angle) * (R - 2), y - Math.cos(angle) * (R - 2));
+    g.rotate(angle);
+    // згасає в той самий колір, а не в чорне — інакше промінь каламутний
+    const gr = g.createLinearGradient(0, 0, 0, -L);
+    gr.addColorStop(0, rgba(color, 0.9));
+    gr.addColorStop(0.5, rgba(color, 0.45));
+    gr.addColorStop(1, rgba(color, 0));
+    g.beginPath();
+    g.moveTo(-R * 0.36, 0); g.lineTo(-R * 0.95, -L); g.lineTo(R * 0.95, -L); g.lineTo(R * 0.36, 0);
+    g.closePath();
+    g.fillStyle = gr;
+    g.fill();
+    g.restore();
+    if (!sure) return;
+    g.save();
+    g.translate(x + Math.sin(angle) * (R + 8), y - Math.cos(angle) * (R + 8));
     g.rotate(angle);
     g.beginPath();
-    g.moveTo(-4, 2.6); g.lineTo(0, -1.6); g.lineTo(4, 2.6);
-    g.lineCap = 'round';
+    g.moveTo(0, -6); g.lineTo(5.5, 4); g.lineTo(-5.5, 4);
+    g.closePath();
     g.lineJoin = 'round';
     g.strokeStyle = 'rgba(0,0,0,.75)';
-    g.lineWidth = 5;
+    g.lineWidth = 4;
     g.stroke();
-    g.strokeStyle = color || '#fff';
-    g.lineWidth = 2.4;
+    g.fillStyle = color;
+    g.fill();
+    g.strokeStyle = '#fff';
+    g.lineWidth = 1.3;
     g.stroke();
     g.restore();
+  }
+
+  /// '#ff8f1f' → 'rgba(255,143,31,a)'; не hex — як є.
+  function rgba(c, a) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(c).trim());
+    return m ? `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})` : c;
+  }
+
+  /// Куди летить і чи певно: { deg, sure } або null. Підтверджений — NEPTUN виміряв рух (measured), курс не з
+  /// повідомлення (!presumptive) чи слід за останні точки іде туди ж (±35°, зсув ≥ 3 км). Курсу нема, а слід
+  /// показує рух ≥ 3 км — це й курс, підтверджений.
+  function courseOf(t) {
+    let moved = null;
+    const tr = t.trail;
+    if (tr && tr.length) {
+      const [la, lo] = tr[tr.length - 1];
+      const km = Math.hypot((t.lat - la) * 111.2, (t.lon - lo) * 111.2 * Math.cos(t.lat * Math.PI / 180));
+      if (km >= 3) {
+        const y = Math.sin((t.lon - lo) * Math.PI / 180) * Math.cos(t.lat * Math.PI / 180);
+        const x = Math.cos(la * Math.PI / 180) * Math.sin(t.lat * Math.PI / 180)
+          - Math.sin(la * Math.PI / 180) * Math.cos(t.lat * Math.PI / 180) * Math.cos((t.lon - lo) * Math.PI / 180);
+        moved = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+      }
+    }
+    if (t.heading == null) return moved == null ? null : { deg: moved, sure: true };
+    const agrees = moved != null && Math.abs(((t.heading - moved + 540) % 360) - 180) <= 35;
+    return { deg: t.heading, sure: !!t.measured || !t.presumptive || agrees };
   }
 
   /// Слід: суцільний, з темним обідком, блідне до хвоста. pts — від хвоста до цілі, у пікселях.
@@ -870,7 +915,7 @@
   function icon(type, what) {
     const key = (what || 'mark') + ':' + typeKey(type);
     if (iconCache[key]) return iconCache[key];
-    const w = what === 'course' ? 32 : what === 'bunch' ? 34 : 26, h = 26, d = 2;
+    const w = what === 'course' || what === 'sure' ? 46 : what === 'bunch' ? 34 : 26, h = 26, d = 2;
     const c = document.createElement('canvas');
     c.width = w * d;
     c.height = h * d;
@@ -879,7 +924,7 @@
     const color = typeOf(type).color;
     if (what === 'bunch') bunchIcon(g, type);
     else if (what === 'blob') { blob(g, 13, 13, 12, color, 1); g.globalAlpha = 1; mark(g, 13, 13, type, 8, 0); }
-    else if (what === 'course') { mark(g, 12, 15, type, 8, Math.PI / 4); course(g, 12, 15, Math.PI / 4, 8); }
+    else if (what === 'course' || what === 'sure') { course(g, 9, 13, Math.PI / 2, 8, color, what === 'sure'); mark(g, 9, 13, type, 8, Math.PI / 2); }
     else mark(g, 13, 13, type, 10, 0);
     iconCache[key] = c.toDataURL();
     return iconCache[key];
@@ -906,7 +951,8 @@
     const types = ['uav', 'fpv', 'missile', 'ballistic', 'kab', 'mig31k', 'recon', 'unknown'];
     return '<div class="tv-lg">' + types.map((k) => `<span>${iconImg(k)}${esc(TYPES[k].long)}</span>`).join('') + '</div>'
       + '<div class="tv-lg">'
-      + `<span>${iconImg('uav', 'course')}ніс і куточок попереду — куди летить</span>`
+      + `<span>${iconImg('uav', 'course')}промінь — куди летить, орієнтовно (з повідомлень)</span>`
+      + `<span>${iconImg('uav', 'sure')}промінь і клин — курс підтверджений (видно рух)</span>`
       + `<span>${iconImg('uav', 'blob')}пляма — місце приблизне</span>`
       + `<span>${iconImg('uav', 'bunch')}кілька цілей поруч (тицни)</span>`
       + '<span><i class="sw red"></i>ракетна загроза</span><span><i class="sw yellow"></i>загроза дронів</span>'
@@ -925,7 +971,7 @@
       const x = X * s + st.ox, y = Y * s + st.oy;
       if (x < -80 || y < -80 || x > st.cw + 80 || y > st.ch + 80) continue;
       const old = now - (Date.parse(t.updated) || now) > 15 * 60000;
-      pts.push({ t, x, y, tilt, color: typeOf(t.type).color, alpha: t.advisory || old ? 0.5 : t.lifecycle === 'uncertain' ? 0.8 : 1 });
+      pts.push({ t, x, y, tilt, c: courseOf(t), color: typeOf(t.type).color, alpha: t.advisory || old ? 0.5 : t.lifecycle === 'uncertain' ? 0.8 : 1 });
     }
     // спершу плями похибки й сліди — під усіма значками, і в гурті теж: видно, звідки кожна летить
     for (const { t, x, y, color, alpha } of pts) {
@@ -947,13 +993,13 @@
       const gr = groups.find((q) => Math.hypot(q.x - p.x, q.y - p.y) < CLUSTER_PX);
       if (gr) gr.m.push(p); else groups.push({ x: p.x, y: p.y, m: [p] });
     }
-    // курс — куточок попереду носа (під силуетами, над слідами)
+    // курс — промінь (і клин, коли підтверджений) попереду носа: під силуетами, над слідами
     for (const gr of groups) {
       if (gr.m.length > 1) continue;
-      const { t, x, y, tilt, color, alpha } = gr.m[0];
-      if (t.heading == null) continue;
+      const { x, y, tilt, c, color, alpha } = gr.m[0];
+      if (!c) continue;
       g.globalAlpha = alpha;
-      course(g, x, y, (t.heading * Math.PI) / 180 - tilt, MARK_R);
+      course(g, x, y, (c.deg * Math.PI) / 180 - tilt, MARK_R, color, c.sure);
     }
     g.globalAlpha = 1;
     for (const gr of groups) {
@@ -963,9 +1009,9 @@
         st.hits.push({ x: gr.x, y: gr.y, ts: gr.m.map((p) => p.t) });
         continue;
       }
-      const { t, x, y, tilt, alpha } = gr.m[0];
+      const { t, x, y, tilt, c, alpha } = gr.m[0];
       g.globalAlpha = alpha;
-      mark(g, x, y, t.type, MARK_R, t.heading == null ? 0 : (t.heading * Math.PI) / 180 - tilt);
+      mark(g, x, y, t.type, MARK_R, c ? (c.deg * Math.PI) / 180 - tilt : 0);
       if (t.count > 1) halo(g, '×' + t.count, x + MARK_R + 2, y - MARK_R, st.css.text, 'bold 12px system-ui, sans-serif');
       g.globalAlpha = 1;
       st.hits.push({ x, y, t });
@@ -1119,7 +1165,8 @@
     const m = typeOf(t.type);
     const bits = [];
     if (t.count > 1) bits.push('група ×' + t.count);
-    bits.push(t.heading != null ? 'курс на ' + side(t.heading) : 'курс невідомий');
+    const c = courseOf(t);
+    bits.push(!c ? 'курс невідомий' : (c.sure ? 'курс на ' : 'орієнтовно на ') + side(c.deg));
     if (t.speed) bits.push(Math.round(t.speed) + ' км/год');
     if (t.sources) bits.push(plural(t.sources, 'підтвердження', 'підтвердження', 'підтверджень'));
     if (t.quality && t.quality !== 'confirmed') bits.push('місце приблизне' + (t.unc ? ', ±' + Math.round(t.unc) + ' км' : ''));
@@ -1275,7 +1322,7 @@
     st.ro.observe(box);
     if (window.HDovkola) {
       HDovkola.mount($('tvDovkola'), {
-        esc, types: TYPES, mark, course, trail, blob, iconImg, kick, focus: focusTarget,
+        esc, types: TYPES, mark, course, courseOf, trail, blob, iconImg, kick, focus: focusTarget,
         map: () => map, threats: () => threats, region: cur,
         alarm: () => ({ off: !data || !!data.off, stale: !!(data && data.stale), on: status().on, level: status().level }),
         oblastName: () => oblastName(cur().oblast),

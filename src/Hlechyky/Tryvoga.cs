@@ -41,7 +41,15 @@ public sealed record Threat(
     string Id, string Type, string? Title, double Lat, double Lon, double? Heading, double? SpeedKmh,
     string? Region, string? District, string? Locality, string? Confidence, int? Sources, int? Count,
     string? Quality, double? UncertaintyKm, string? Lifecycle, DateTimeOffset? UpdatedAt, string? Text,
-    bool AreaOnly, bool Advisory, IReadOnlyList<ThreatPoint> Trail, string Raw);
+    bool AreaOnly, bool Advisory, IReadOnlyList<ThreatPoint> Trail, string Raw)
+{
+    /// <summary>Курс — припущення з повідомлення («курсом на …», <c>presumptiveCourse</c>), а не з руху. Так у
+    /// більшості цілей (22.10: 226 з 252 з курсом); на мапі такий курс — лише «промінь».</summary>
+    public bool Presumptive { get; init; }
+
+    /// <summary>NEPTUN виміряв рух (<c>velocity.bearingDeg</c>, ~1 % цілей) — курс підтверджений.</summary>
+    public bool Measured { get; init; }
+}
 
 public sealed record ThreatSet(string Epoch, DateTimeOffset? ServerTime, IReadOnlyList<Threat> Items);
 
@@ -158,13 +166,20 @@ public sealed partial class Tryvoga(
                     foreach (var p in tr.EnumerateArray())
                         if (Num(p, "lat") is { } pl && Num(p, "lon") is { } po && Time(Str(p, "t")) is { } pt)
                             trail.Add(new ThreatPoint(pl, po, pt));
-                double? speed = t.TryGetProperty("velocity", out var vel) && vel.ValueKind == JsonValueKind.Object ? Num(vel, "speedKmh") : null;
+                var hasVel = t.TryGetProperty("velocity", out var vel) && vel.ValueKind == JsonValueKind.Object;
+                double? speed = hasVel ? Num(vel, "speedKmh") : null;
+                double? bearing = hasVel ? Num(vel, "bearingDeg") : null;
+                // курсу нема, а рух виміряно — курс і є напрям руху
                 items.Add(new Threat(
-                    id, type, Str(t, "title"), lat, lon, Num(t, "heading"), speed,
+                    id, type, Str(t, "title"), lat, lon, Num(t, "heading") ?? bearing, speed,
                     Str(t, "region"), Str(t, "district"), Str(t, "locality"), Str(t, "confidenceLevel"),
                     (int?)Num(t, "sourceCount"), (int?)Num(t, "count"), Str(t, "positionQuality"), Num(t, "uncertaintyKm"),
                     Str(t, "lifecycle"), Time(Str(t, "updatedAt")), Str(t, "explanationShort"),
-                    Flag(t, "areaOnly"), Flag(t, "advisory"), trail, WithoutTrail(t)));
+                    Flag(t, "areaOnly"), Flag(t, "advisory"), trail, WithoutTrail(t))
+                {
+                    Presumptive = Flag(t, "presumptiveCourse") && bearing is null,
+                    Measured = bearing is not null,
+                });
             }
             return new ThreatSet(Str(root, "epoch") ?? "", Time(Str(root, "serverTime")), items);
         }
@@ -273,7 +288,7 @@ public sealed partial class Tryvoga(
                 id = t.Id, type = t.Type, title = t.Title, lat = R(t.Lat), lon = R(t.Lon), heading = t.Heading, speed = t.SpeedKmh,
                 region = t.Region, locality = t.Locality, confidence = t.Confidence, sources = t.Sources, count = t.Count,
                 quality = t.Quality, unc = t.UncertaintyKm, lifecycle = t.Lifecycle, updated = Iso(t.UpdatedAt), text = t.Text,
-                areaOnly = t.AreaOnly, advisory = t.Advisory,
+                areaOnly = t.AreaOnly, advisory = t.Advisory, presumptive = t.Presumptive, measured = t.Measured,
                 trail = t.Trail.OrderBy(p => p.T).TakeLast(40).Select(p => new[] { R(p.Lat), R(p.Lon) }),
             }),
         };
