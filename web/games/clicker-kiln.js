@@ -440,7 +440,8 @@
       // Той самий гравець відкритий ще деінде (телефон і ноутбук): вікно без жодної дії й не те, де натиснули «Обпалити»,
       // не відкриває одразу — інакше його порожній запис дає «у смузі 0 %» і палить красу розпису (хотфікс B1). Чекаємо,
       // поки своє пришле вікно, де палили; не пришле (закрили) — відкриваємо з тим, що є, щоб горно не стояло.
-      if (!kb.own && !acts.length && elapsed < m.steps * m.stepMs + OPEN_AFTER_MS + otherWait(st)) return;
+      // Поки чекаємо — заглядаємо в localStorage раз на пів секунди, а не щокадру.
+      if (!kb.own && !acts.length && elapsed < m.steps * m.stepMs + OPEN_AFTER_MS + otherWait(st)) { kb.sentAt = Date.now() - 2000; return; }
       kb.sentAt = Date.now();
       kb.done = true;
       api.act(st, 'kiln', { op: 'open', t: acts, own: kb.own }).then((r) => {
