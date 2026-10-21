@@ -502,12 +502,18 @@ public sealed partial class Clicker
     /// <summary>Множник нагороди воза за ранг: цехмістрові ×1,5, старійшині ×2.</summary>
     double WagonRank => _guildRank >= GuildElder ? ElderWagon : _guildRank >= GuildMasterOfGuild ? GuildmasterWagon : 1;
 
-    /// <summary>Скільки глеків дасть нагорода воза за рівні від <paramref name="was"/> до <paramref name="tier"/>.</summary>
-    double WagonReward(int tier, int was, int mine, out double minutes)
+    /// <summary>
+    /// Скільки глеків дасть нагорода воза: рівні від <paramref name="was"/> до <paramref name="tier"/> — з усім паєм,
+    /// а вже забрані (до <paramref name="was"/>) — різниця паю, якщо він виріс після забирання (v12, B7):
+    /// <paramref name="wasMine"/> — скільки було покладено на ту мить.
+    /// </summary>
+    double WagonReward(int tier, int was, int mine, out double minutes, int wasMine = -1)
     {
         var last = ClickerGuildService.TierMinutes.Length - 1;
-        minutes = (ClickerGuildService.TierMinutes[Math.Clamp(tier, 0, last)] - ClickerGuildService.TierMinutes[Math.Clamp(was, 0, last)])
-            * WagonRank * WagonShare(mine);
+        var before = ClickerGuildService.TierMinutes[Math.Clamp(was, 0, last)];
+        var grown = wasMine < 0 || was <= 0 ? 0 : Math.Max(0, WagonShare(mine) - WagonShare(wasMine));
+        minutes = ((ClickerGuildService.TierMinutes[Math.Clamp(tier, 0, last)] - before) * WagonShare(mine) + before * grown)
+            * WagonRank;
         if (minutes <= 0) return 0;
         var byPassive = PassiveBase * minutes * 60;
         var floor = ClickBase * minutes * WagonClicksPerMinute;
@@ -520,12 +526,14 @@ public sealed partial class Clicker
         var day = Str(payload, "day");
         var r = svc.Claim(GuildKey, day.Length > 0 ? day : null, now);
         if (r.Error is { } why) return ActResult.Fail(why);
-        var gain = WagonReward(r.Tier, r.Was, r.Mine, out var minutes);
+        var gain = WagonReward(r.Tier, r.Was, r.Mine, out var minutes, r.WasMine);
         Add(gain);
         _guildClaims++;
         if (_guildClaims == 1) Achieve("potter-wagon");
         var pay = WagonShare(r.Mine);
-        return ActResult.Accept($"🛒 Віз повернувся з ярмарку ({ClickerGuildService.TierNames[r.Tier]}): +{PotsShort(gain)} — "
+        // Плейтест 21.10 (B12): «Віз повернувся з ярмарку» писалося й до від'їзду; доплата за пай (v12, B7) — своїми словами.
+        var head = r.Tier == r.Was ? $"🛒 Пай воза виріс ({ClickerGuildService.TierNames[r.Tier]})" : $"🛒 Нагорода воза ({ClickerGuildService.TierNames[r.Tier]})";
+        return ActResult.Accept($"{head}: +{PotsShort(gain)} — "
             + $"{minutes.ToString("0", Uk)} хв твого пасиву за {pay.ToString("0.##", Uk)} {ShareWord(pay)}");
     }
 
@@ -721,11 +729,13 @@ public sealed partial class Clicker
             // Учорашній віз — лише коли там є що забрати чи на що глянути.
             prev = s.Prev.Total > 0 ? ClickerGuildService.WagonView(s.Prev) : null,
             claims = new[] { s.Prev, s.Today }
-                .Where(w => w.Mine >= ClickerGuildService.MinGive && w.Tier > w.Claimed)
+                .Where(w => w.CanClaim)
                 .Select(w => new
                 {
                     day = w.Day, tier = w.Tier, was = w.Claimed, mine = w.Mine, share = WagonShare(w.Mine),
-                    pots = WagonReward(w.Tier, w.Claimed, w.Mine, out var m), minutes = m,
+                    // v12: пай, що виріс після забирання, — доплата (wasMine — скільки було покладено тоді).
+                    wasMine = w.ClaimedMine, topUp = w.Tier == w.Claimed,
+                    pots = WagonReward(w.Tier, w.Claimed, w.Mine, out var m, w.ClaimedMine), minutes = m,
                 }),
             gifts = new { left = s.GiftsLeft, sent = _giftsSent, got = _giftsGot },
             // Що ще можна зробити для друзів сьогодні — і скільки гостинців прийняв сам (§E.2).

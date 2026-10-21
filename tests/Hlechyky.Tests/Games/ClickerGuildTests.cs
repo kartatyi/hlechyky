@@ -230,14 +230,45 @@ public class ClickerGuildTests
         Assert.Equal("Нагороду за бронзу ти вже забрав", Guild(h, new { op = "claim" }).Message);
         Assert.Equal(0, G(h).GetProperty("claims").GetArrayLength());
 
-        // Віз доріс до золота — добираємо різницю, ачівка вдруге не приходить.
+        // Віз доріс до золота — добираємо різницю, ачівка вдруге не приходить. v12 (B7): Оля й сама доклала — тож за
+        // уже забрану бронзу ще й доплата паю, що виріс.
+        var atBronze = claim.GetProperty("mine").GetInt32();
         Fill(h, g, "Оля", 3);
         before = Pots(h);
         var gold = G(h).GetProperty("claims")[0];
-        var add = Wagon(h, (35 - 10) * Clicker.WagonShare(gold.GetProperty("mine").GetInt32()));
+        var mineNow = gold.GetProperty("mine").GetInt32();
+        var add = Wagon(h, (35 - 10) * Clicker.WagonShare(mineNow) + 10 * (Clicker.WagonShare(mineNow) - Clicker.WagonShare(atBronze)));
         Assert.True(Guild(h, new { op = "claim", day = D10 }).Ok);
         Assert.Equal(before + add, Pots(h));
         Assert.Single(h.Awards, a => a.Reason == "ach:potter-wagon");
+    }
+
+    [Fact]
+    public void Wares_laid_after_the_claim_top_up_the_share_without_a_new_tier()
+    {
+        // v12, плейтест B7: забрав бронзу з ×0,5 паю, доклав ще — картка обіцяла більший пай, а доплати не було.
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        Fill(h, g, "Оля", 1);
+        var first = G(h).GetProperty("claims")[0];
+        var was = first.GetProperty("mine").GetInt32();
+        Assert.True(Guild(h, new { op = "claim" }).Ok);
+        Assert.Equal(0, G(h).GetProperty("claims").GetArrayLength());
+        GiveN(h, "pot", 24);
+        var top = G(h).GetProperty("claims")[0];
+        var mine = top.GetProperty("mine").GetInt32();
+        var tier = top.GetProperty("tier").GetInt32();
+        Assert.Equal(was, top.GetProperty("wasMine").GetInt32());
+        Assert.True(Clicker.WagonShare(mine) > Clicker.WagonShare(was));
+        // Нові рівні (якщо віз доріс) — з усім паєм, бронза — доплатою різниці паю.
+        var tm = ClickerGuildService.TierMinutes;
+        var minutes = (tm[tier] - tm[1]) * Clicker.WagonShare(mine) + tm[1] * (Clicker.WagonShare(mine) - Clicker.WagonShare(was));
+        var before = Pots(h);
+        var r = Guild(h, new { op = "claim" });
+        Assert.True(r.Ok, r.Message);
+        if (tier == 1) Assert.Contains("Пай воза виріс", r.Message);
+        Assert.Equal(before + Wagon(h, minutes), Pots(h));
+        Assert.Equal(0, G(h).GetProperty("claims").GetArrayLength());
     }
 
     [Fact]
