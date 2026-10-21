@@ -119,6 +119,9 @@
   min-width: 0; white-space: normal;
 }
 .clkw-card > * { max-width: 100%; overflow-wrap: break-word; }
+/* «ліпити» / «на колі» — у потоці картки: загальне .clk-price стоїть absolute і в картці без position збиралось у кутку
+   вікна (усі п'ятнадцять — в одному місці). */
+.clkw-card .clk-price { position: static; margin-top: 2px; }
 /* Скільки цього виробу ще просить Толока (v12). */
 .clkw-tol { padding: 1px 7px; border-radius: 9px; background: rgba(244, 197, 66, .14); color: var(--accent2); font-weight: 600; }
 .clkw-card.on { border-color: var(--accent2); }

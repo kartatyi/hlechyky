@@ -1288,16 +1288,18 @@
       const paint = wrap.parentElement;
       // Прямокутники — у видимих пікселях, а ширина полотна — у пікселях картки: під масштабом 2K/4K ділимо на z.
       const z = (api.zoom && api.zoom(st)) || 1;
+      // Низький екран лежачи (clicker-kiln.css, v12): полотно ліворуч, підказка й кнопки праворуч — висоту їсть лише вікно.
+      const beside = getComputedStyle(paint).display === 'grid';
       let used = 0;
-      for (const el of paint.children) if (el !== wrap) used += el.getBoundingClientRect().height / z + 6;
+      if (!beside) for (const el of paint.children) if (el !== wrap) used += el.getBoundingClientRect().height / z + 6;
       // Вікно обмежене і карткою, і видимою смугою екрана — між шапкою сайту й нижньою панеллю телефона (на 390×664
       // «Готово» ховалось під панеллю). 28 — відступи самого вікна.
       const band = viewBand(st, false);
       const card = (st.ov && st.ov.el && st.ov.el.clientHeight) || window.innerHeight / z;
       const room = Math.min((band.bottom - band.top - 8) / z, card - 24) - 28 - used;
       // Ширина головна, але вікно мусить уміститись разом із кнопками: на низькому екрані полотно меншає, до 220.
-      const wide = Math.min(460, Math.floor(wrap.clientWidth || 460));
-      const side = Math.max(220, Math.min(wide, Math.floor(room)));
+      const wide = beside ? 460 : Math.min(460, Math.floor(wrap.clientWidth || 460));
+      const side = Math.max(beside ? 180 : 220, Math.min(wide, Math.floor(room)));
       svg.style.width = side + 'px';
     } catch { /* не зміряли — лишаємо те, що дав CSS */ }
   }

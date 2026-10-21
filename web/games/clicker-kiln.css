@@ -241,6 +241,18 @@
 /* align-items: flex-start — обов'язково: під розтягуванням (stretch) полотно з aspect-ratio ставало 420×300,
    мінігра втрачала третину поля, а візерунок літербоксився всередині. Тепер воно справді квадратне. */
 .clkk-cwrap { display: flex; justify-content: center; align-items: flex-start; }
+/* Телефон лежачи (844×390, v12): полотно під підказкою не влазило — вікно гортається посеред мінігри, а перша позначка
+   штампика ховалась під нижнім меню. На низькому широкому екрані полотно ліворуч, усе інше — праворуч. */
+@media (max-height: 520px) and (min-width: 600px) {
+  .clkk-ov:has(.clkk-paint) .clk-ov-box { max-width: 780px; }
+  .clkk-paint { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 6px; align-content: start;
+    grid-template-areas: 'cv sub' 'cv how' 'cv bar' 'cv row' 'cv .'; grid-template-rows: auto auto auto auto 1fr; }
+  .clkk-paint > .clk-sub { grid-area: sub; padding-right: 30px; }
+  .clkk-paint > .clkk-howto { grid-area: how; }
+  .clkk-paint > .clkk-cwrap { grid-area: cv; }
+  .clkk-paint > .clkk-pbar { grid-area: bar; align-self: center; }
+  .clkk-paint > .clkk-prow { grid-area: row; flex-wrap: wrap; }
+}
 .clkk-canvas {
   width: min(100%, 460px, 62vh); aspect-ratio: 1; max-width: 100%; height: auto; touch-action: none; user-select: none; -webkit-user-select: none;
   border-radius: 16px; background: radial-gradient(circle at 50% 40%, #3a2a22, #1b1310); cursor: crosshair;
