@@ -17,13 +17,23 @@ public sealed partial class Clicker
     public const int TradeShipsMax = 3;
     /// <summary>Новий корабель — раз на стільки (офлайн теж, до <see cref="TradeShipsMax"/>), стоїть стільки.</summary>
     public static readonly TimeSpan TradeGap = TimeSpan.FromMinutes(40), TradeStay = TimeSpan.FromHours(8);
+    /// <summary>
+    /// «Перший корабель» чекає тиждень, а не вісім годин (калібрування 21.10, §17): він приходить на першій синхронізації
+    /// після виходу v12 — і в того, чия вкладка відкрита цілодобово (Владік), за ніч відплив би, не побачений; а без нього
+    /// перша майстерня чекала б звичайного корабля з потрібним виробом (у симуляції smaug — 13 год замість хвилин).
+    /// </summary>
+    public static readonly TimeSpan TradeFirstStay = TimeSpan.FromDays(7);
     /// <summary>Скільки виробів просить корабель; перший — <see cref="TradeFirstCount"/> (але не більше, ніж є, і не менше п'яти).</summary>
     public const int TradeMin = 30, TradeMax = 60, TradeFirstCount = 20, TradeFirstMin = 5;
     /// <summary>
     /// «Хвилини гри» (<see cref="PlayMinute"/>) за завантажений виріб: добрий, дзвінкий, розкішний; у розписі світу чи
-    /// заморському — ×1,5; повний корабель — ще +10 %. Для порівняння: село ≈ 1,2 за виріб, гість ≈ 2 — корабель найвигідніший.
+    /// заморському — ×1,5; повний корабель — ще +10 %. Калібрування 21.10 (§17), заміряно на збереженнях лідерів: село
+    /// платить 1,8–3,1 хвилини за виріб (шана й майдан), гість — 7–13, але гостей кілька на день. Корабель — найбільший і
+    /// найвигідніший збут: добрий тут — як у селі (2, було 1 — дешевше за село), дзвінкий — дорожче, розкішний у розписі
+    /// світу — як у гостя. Економіку це не ламає: лідер заробляє 13–21 хвилину гри за хвилину гри (pace.jsonl), кораблі
+    /// в симуляції додають 6–10 — плюс 20–40 % до доби разом з офлайном.
     /// </summary>
-    public const double TradePlayQ2 = 1, TradePlayQ3 = 3, TradePlayQ4 = 8, TradeStylePay = 1.5, TradeFullPay = 0.10;
+    public const double TradePlayQ2 = 2, TradePlayQ3 = 3, TradePlayQ4 = 8, TradeStylePay = 1.5, TradeFullPay = 0.10;
     /// <summary>Слава за виріб: добрий, дзвінкий, розкішний; розпис світу чи заморський — ще +1; повний корабель — ще
     /// <see cref="SlavaFullPct"/> % (цілими: 10 × 0,1 у double — це 1,0000000000000009, і стеля давала б 2).</summary>
     public const int SlavaQ2 = 1, SlavaQ3 = 2, SlavaQ4 = 5, SlavaStyle = 1, SlavaFullPct = 10;
@@ -171,7 +181,7 @@ public sealed partial class Clicker
         var free = ShipFree(it => it.Quality >= 2);
         var count = Math.Clamp(free, TradeFirstMin, TradeFirstCount);
         var port = Ports.First(p => p.Key == "athens");
-        _ships.Insert(0, new ShipRow(++_shipId, port.Key, "", "", 2, count, 0, now, now + TradeStay, First: true));
+        _ships.Insert(0, new ShipRow(++_shipId, port.Key, "", "", 2, count, 0, now, now + TradeFirstStay, First: true));
         if (_shipNext == default) _shipNext = now + TradeGap;
     }
 

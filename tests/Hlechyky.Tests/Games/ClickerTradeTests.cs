@@ -127,6 +127,31 @@ public class ClickerTradeTests
     }
 
     [Fact]
+    public void The_first_ship_waits_through_the_night_and_leaves_only_after_a_week()
+    {
+        // Калібрування 21.10 (§17): перший корабель приходить на першій синхронізації після виходу v12 — у вкладці, відкритій
+        // цілодобово, це може бути глупа ніч. Звичайний відплив би за вісім годин, а перший чекає гончаря.
+        var h = Wheel();
+        Pier(h);
+        Items(h, ("jug||2", 30));
+        Assert.True(Ships(h).Single().GetProperty("first").GetBoolean());
+        h.Clock.Advance(Clicker.TradeStay + TimeSpan.FromHours(4));
+        var first = Ships(h).Single(s => s.GetProperty("first").GetBoolean());
+        var r = Load(h, first.GetProperty("id").GetInt32());
+        Assert.True(r.Ok, r.Message);
+        Assert.True(Slava(h) >= Clicker.SlavaGate["athens"]);
+
+        var k = Wheel("Іра");
+        Pier(k);
+        Items(k, ("jug||2", 30));
+        Assert.True(Ships(k).Single().GetProperty("first").GetBoolean());
+        k.Clock.Advance(Clicker.TradeFirstStay);
+        Assert.DoesNotContain(Ships(k), s => s.GetProperty("first").GetBoolean());
+        k.Clock.Advance(TimeSpan.FromDays(1));
+        Assert.DoesNotContain(Ships(k), s => s.GetProperty("first").GetBoolean());
+    }
+
+    [Fact]
     public void The_first_ship_asks_only_what_there_is_but_never_fewer_than_five()
     {
         var h = Wheel();
