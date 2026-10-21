@@ -138,4 +138,13 @@ public class ClickerV12CraftViewTests
         Assert.Equal(0, last.GetProperty("lux").GetDouble());
         Assert.Equal(80, last.GetProperty("heat").GetInt32());
     }
+
+    [Fact]
+    public void The_store_view_tells_the_cart_bazaar_multiplier()
+    {
+        var h = Wheel();
+        Assert.Equal(1, h.View(0).GetProperty("craft").GetProperty("bazaarMult").GetDouble());
+        Patch(h, s => (s["house"] ??= new JsonObject())["tools"] = new JsonArray("cart"));
+        Assert.Equal(1 + Clicker.CartBazaar, h.View(0).GetProperty("craft").GetProperty("bazaarMult").GetDouble(), 6);
+    }
 }

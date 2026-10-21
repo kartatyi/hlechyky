@@ -681,6 +681,8 @@ public sealed partial class Clicker
                 kept = why.GetValueOrDefault(ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality)),
             }),
             storeCap = StoreCapNow,
+            // Візок хати (+10 %): базар платить value × це — комора показує справжню плату (v12 QA-3, D1).
+            bazaarMult = HouseBazaarMult,
             // Прокачка ремесла: рівень зі стелею, ціна наступного й «зараз: …» (воно від стану майстерні). Назва й опис —
             // новому клієнтові в каталозі (catalog.craftUps), старій вкладці — тут же, як до v10.
             ups = CraftUps.Select(u => _slim
