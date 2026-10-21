@@ -2280,7 +2280,16 @@
       .concat(extraPanels.filter((p) => p.id !== 'svoya' && (!p.visible || p.visible())).map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
       .concat(extraPanels.some((p) => p.id === 'svoya') ? [['#games/x:svoya', '🎯 Пакети Своєї гри']] : []);
 
-    box.innerHTML = todayHtml()
+    // «Продовжити: Гончарне коло» (v12 §2.6): на телефоні коло стояло на ~900 px нижче, а фільтр «Соло» кидав сторінку
+    // вгору. Хто вже грав — бачить його першим рядком «Ігор», і до кола один дотик.
+    const potters = playingIn('clicker').filter((n) => n !== me.nick);
+    const cont = played && played.has('clicker') && byId.clicker && !byId.clicker.off && !want
+      ? '<button type="button" class="gpanel gcont" data-solo="clicker">' + iconOf('clicker')
+        + '<span class="gcont-t"><b>Продовжити: ' + esc(titleOf('clicker')) + '</b>'
+        + '<span class="muted small">' + (potters.length ? esc(whoShort(potters, 2)) + ' теж біля кола' : 'твоя гончарня чекає') + '</span></span>'
+        + '<span class="gcont-go">Грати</span></button>'
+      : '';
+    box.innerHTML = cont + todayHtml()
       + '<section class="gpanel"><h3>🔥 Живі столи'
       + (rooms.length ? ' <span class="muted small">· ' + rooms.length + '</span>' : '') + '</h3>'
       + live + soloLine + '</section>'

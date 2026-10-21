@@ -1339,6 +1339,8 @@
   border-color: rgba(217, 169, 47, .45);
 }
 .clk .clk-shardgo[hidden] { display: none; }
+/* Шапка вужча за стовпчик і стоїть посередині — значок праворуч від неї. Лежачи шапці й так тісно, а «Клейма» поруч. */
+.clk.land .clk-shardgo { display: none; }
 
 /* ---- ПК: вікно вкладки (v12 §7 п. 7, готово — ≥ 460 px на 1366×768) ----
    Обмін черепків пішов у «Клейма», стрічка подій і рядок статусу — в один підвал, бафи — шаром на низ сцени
@@ -1385,3 +1387,25 @@ body.clk-toasts .toast.gbig { max-width: 100%; }
 @media (max-width: 900px) {
   body.g-room:has(.gtable:not([hidden]) .clk) .toasts { top: auto; bottom: calc(var(--tabs-h, 56px) + var(--mini-h, 0px) + 12px); }
 }
+
+/* Новачок (v12 §2.6): мета гри одним реченням — помітніше за перелік кроків. */
+.clk-start .clk-goal { font-size: 1.04em; line-height: 1.4; margin: 4px 0 8px; }
+
+/* Лежачи (v12 §2.6): шапка й меню сайту з'їдали 114 з 390 px. Поки на екрані коло лежачи, обидва тонші: шапка без
+   зайвих відступів, у меню значок і слово — в один рядок. Нижнє меню міряє landFit, тож сцена бере звільнене саме. */
+@media (pointer: coarse) and (max-height: 500px) {
+  body:has(.gtable:not([hidden]) .clk.land) { --tabs-h: calc(44px + var(--sab, 0px)); }
+  body:has(.gtable:not([hidden]) .clk.land) header { min-height: 46px; padding-top: max(3px, env(safe-area-inset-top)); padding-bottom: 3px; }
+  body:has(.gtable:not([hidden]) .clk.land) .mtabs button { flex-direction: row; gap: 6px; padding: 2px 4px; }
+}
+
+/* Телефон (v12 §7 п. 13): «Далі» й плашки кроків — без «…»: текст переноситься в другий рядок, а рядок «Далі» росте
+   (раніше «Свищик-пі…», «700 · ~58 88…», а «Далі» з двома кнопками різало пораду до трьох слів). */
+@media (max-width: 560px) {
+  .clk .clk-sttxt b, .clk .clk-stsub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .clk .clkc-next { height: auto; min-height: calc(2.15em + 16px); }
+  .clk .clk-nxtext, .clk .clk-nxsub { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+.clk.land .clk-sttxt b, .clk.land .clk-stsub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.clk.land .clkc-next { height: auto; min-height: calc(2.15em + 16px); }
+.clk.land .clk-nxtext, .clk.land .clk-nxsub { white-space: normal; overflow: visible; text-overflow: clip; }

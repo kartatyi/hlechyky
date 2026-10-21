@@ -2544,7 +2544,7 @@
     };
     const worldOwned = world.filter((s) => s.owned).length;
     const html = '<div class="clk-sub">Розписи · ' + (owned - worldOwned) + ' з ' + home.length
-      + '<span class="muted small"> · кожен +5 % до всього, лишаються й після обпалу</span></div>'
+      + '<span class="muted small"> · кожен +5 % до всього й відкриває 🖌 розпис партії в горні; лишаються й після обпалу</span></div>'
       + '<div class="clk-styles">' + home.map(card).join('') + '</div>'
       // Розписи світу — згортка (13.10): поки жодного нема й жодного ще не купиш, це п'ять сірих «привезуть із …» —
       // згорнуті, поки гравець сам не розгорне.
@@ -3300,6 +3300,42 @@
     return true;
   }
 
+  /// Новачок (ще жодного обпалу): замість «Що нового» на 500 слів про Толоку й клейма — «з чого почати» (v12 §2.6).
+  const newbie = (st) => !(st.stamps > 0) && !((st.lastView && st.lastView.firings) > 0);
+  /// Зовсім новий гончар — ще нічого не купив і майже нічого не наліпив: йому при першому відкритті мета гри одним
+  /// реченням і п'ять кроків. Раз на пристрій (clk.hello): сервер новачкові «що нового» не шле зовсім.
+  const freshPotter = (st) => newbie(st) && (st.total || 0) < 5000 && !Object.values(st.ups || {}).some((u) => u.level > 0);
+  const START = {
+    title: '🏺 Гончарне коло',
+    goal: 'Мета гри — виростити гончарню від одного кола до гончарної столиці світу: ліпи глеки й вкладай їх у майстерню, '
+      + 'щоб вона ліпила й без тебе.',
+    lead: 'З чого почати:',
+    lines: [
+      ['👆', 'Клацай коло (чи тисни пробіл) — кожен оберт ліпить глеки, а розкручене коло ліпить більше.'],
+      ['🔨', '«Майстерня»: купи Підмайстра — він ліпить, поки тебе нема. ★ показує найвигіднішу покупку.'],
+      ['✨', 'Лови розписний глек і глеки, що падають з полиці, — у них найбільші бонуси.'],
+      ['➡️', 'Не знаєш, що далі, — глянь у рядок «Далі» під колом: він веде крок за кроком.'],
+      ['🔥', 'Згодом відкриєш ремесло з горном і розписами, а в «Клеймах» — почати наново за бонус до всього назавжди.'],
+    ],
+    ok: 'До кола!',
+  };
+  function startHtml() {
+    return '<div class="clk-news clk-start"><h3>' + START.title + '</h3><p class="clk-goal">' + START.goal + '</p>'
+      + '<p class="muted small">' + START.lead + '</p><ul>'
+      + START.lines.map((l) => '<li><span class="clk-news-ico">' + l[0] + '</span><span>' + l[1] + '</span></li>').join('') + '</ul>'
+      + '<button type="button" class="primary clk-news-ok">' + START.ok + '</button></div>';
+  }
+  function helloLater(st) {
+    clearTimeout(st.helloT);
+    st.helloT = setTimeout(() => {
+      if (!st.el || storeGet('clk.hello', '') || !freshPotter(st)) return;
+      if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st) || awayWaiting(st)) { helloLater(st); return; }
+      const body = H.api.overlay(st, startHtml(), { cls: 'clk-newsbox', onClose: () => storeSet('clk.hello', '1') });
+      const ok = body.querySelector('.clk-news-ok');
+      if (ok) ok.onclick = () => H.api.closeOverlay(st);
+    }, 900);
+  }
+
   /// Вікно чекає своєї черги: «поки тебе не було», мінігра чи Око майстра важливіші за новини. Пробуємо, доки
   /// не покажемо (чи доки сервер не скаже, що гончар уже бачив), — інакше той, хто хвилину читав «поки тебе не
   /// було», новин так і не побачив би до першого кліка.
@@ -3329,7 +3365,7 @@
       + (miss10 ? block(NEWS_10) : '')
       + (miss10 && seen !== 'v9.2' ? block(NEWS_92) : '')
       + (seen && miss10 && seen !== 'v9.2' && seen !== 'v9.1' ? block(NEWS_OLD) : ''));
-    const html = '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
+    const html = newbie(st) ? startHtml() : '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
       + NEWS.lines.map(li).join('') + '</ul>' + old
       + '<button type="button" class="primary clk-news-ok">' + (miss11 ? NEWS.okGift : NEWS.ok) + '</button></div>';
     // Закрили кнопкою, хрестиком чи затемненням — байдуже: сервер однаково запише «бачив», і вдруге не покаже.
@@ -4522,6 +4558,10 @@
         if (st.news === NEWS_VERSION && !st.newsAsked && ctx.mine) {
           st.newsAsked = true;
           newsLater(st);
+        }
+        if (ctx.mine && !st.helloAsked && st.news !== NEWS_VERSION && freshPotter(st) && !storeGet('clk.hello', '')) {
+          st.helloAsked = true;
+          helloLater(st);
         }
       }
       const one = 'Обміняти ' + num(st.rateOf) + ' → 🏺1';
