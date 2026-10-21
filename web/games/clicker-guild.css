@@ -132,6 +132,28 @@
 .clkg-perks { display: flex; flex-direction: column; gap: 3px; }
 .clkg-auto { display: flex; gap: 6px; align-items: flex-start; font-size: .85em; cursor: pointer; }
 .clkg-top { padding: 6px; border-radius: 10px; background: rgba(244, 197, 66, .08); }
+/* ---- шана старійшини (ClickerShana.cs) ----
+   П'ять гілок одна під одною: рядок «значок назва щабель · смужка · лічильник», під «▾» — п'ять перків, набрані з ✓. */
+.clkg-shana { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.clkg-sh > summary {
+  display: grid; grid-template-columns: minmax(0, 1fr) 90px 88px; align-items: center; gap: 6px; font-size: .85em;
+  cursor: pointer; list-style: none;
+}
+.clkg-sh > summary::-webkit-details-marker { display: none; }
+.clkg-shn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clkg-shn b { color: var(--accent); }
+.clkg-shc { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.clkg-sh.full .clkg-rbar i { background: var(--ok); }
+.clkg-sh.full .clkg-shc { color: var(--ok); }
+.clkg-shp { margin: 4px 0 6px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: .82em; }
+.clkg-shp li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 6px; opacity: .55; }
+.clkg-shp li.on { opacity: 1; }
+.clkg-shp li b { color: var(--accent); }
+.clkg-shp li i { font-style: normal; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.clkg-shp li.on i { color: var(--ok); }
+@media (max-width: 420px) {
+  .clkg-sh > summary { grid-template-columns: minmax(0, 1fr) 48px 80px; }
+}
 
 /* ---- гончарі ---- */
 .clkg-potter { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }

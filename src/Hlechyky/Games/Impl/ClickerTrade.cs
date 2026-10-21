@@ -292,26 +292,37 @@ public sealed partial class Clicker
     /// Завантажити до <paramref name="want"/> виробів: спершу розкішні, яких ще бракує в рядку «з них K розкішних», далі —
     /// решта, найгірша придатна якість першою. Платимо й даємо Славу одразу за кожен виріб; повний — бонус і відплив.
     /// </summary>
+    /// <remarks>
+    /// Шана «Розкіш» II: розкішний виріб займає на кораблі два місця (і в рядку «з них K розкішних» — теж за два), а
+    /// платять і дають Славу за нього, як за один. <paramref name="want"/> — скільки виробів узяти з комори.
+    /// </remarks>
     ActResult ShipLoad(int index, int want, DateTimeOffset now)
     {
         var s = _ships[index];
+        var w = ShanaShipLuxWeight;
         var luxLeft = Math.Max(0, s.Lux - s.LoadedLux);
         var left = s.Count - s.Loaded;
-        var plan = ShipPlan(ShipMatch(s, lux: true), Math.Min(want, luxLeft));
+        var plan = ShipPlan(ShipMatch(s, lux: true), Math.Min(want, (luxLeft + w - 1) / w));
         var luxTaken = plan.Sum(x => x.N);
+        var luxCredit = Math.Min(luxLeft, luxTaken * w);
         // Звичайні місця: скільки лишилось, мінус ті, що чекають розкішних (їх звичайним не займеш).
-        var normal = Math.Min(want - luxTaken, left - luxLeft);
-        if (normal > 0)
+        var normal = left - luxLeft;
+        var items = want - luxTaken;
+        var credit = luxCredit;
+        if (normal > 0 && items > 0)
         {
             var taken = plan.ToDictionary(x => x.Item, x => x.N);
-            foreach (var (item, n) in ShipPlan(ShipMatch(s, lux: false), normal + luxTaken))
+            foreach (var (item, n) in ShipPlan(ShipMatch(s, lux: false), int.MaxValue / 2))
             {
-                var already = taken.GetValueOrDefault(item);
-                var take = Math.Min(n - already, normal);
+                var weight = item.Quality >= 4 ? w : 1;
+                var take = Math.Min(Math.Min(n - taken.GetValueOrDefault(item), items), (normal + weight - 1) / weight);
                 if (take <= 0) continue;
                 plan.Add((item, take));
-                normal -= take;
-                if (normal <= 0) break;
+                var c = Math.Min(normal, take * weight);
+                normal -= c;
+                credit += c;
+                items -= take;
+                if (normal <= 0 || items <= 0) break;
             }
         }
         var got = plan.Sum(x => x.N);
@@ -324,13 +335,13 @@ public sealed partial class Clicker
             var key = ItemKey(item.Ware, item.Style, item.Quality);
             if (_items[key] == n) _items.Remove(key);
             else _items[key] -= n;
-            minutes += TradeMinutesFor(item.Quality, item.Style) * n;
+            minutes += TradeMinutesFor(item.Quality, item.Style) * ShanaLuxPayFor(item.Quality) * n;
             slava += (long)SlavaFor(item.Quality, item.Style) * n;
         }
         var pay = PlayPay(minutes);
         Add(pay);
         _slava += slava;
-        s = s with { Loaded = s.Loaded + got, LoadedLux = s.LoadedLux + luxTaken, Paid = s.Paid + pay, SlavaGot = s.SlavaGot + slava };
+        s = s with { Loaded = s.Loaded + credit, LoadedLux = s.LoadedLux + luxCredit, Paid = s.Paid + pay, SlavaGot = s.SlavaGot + slava };
         if (s.Loaded < s.Count)
         {
             _ships[index] = s;

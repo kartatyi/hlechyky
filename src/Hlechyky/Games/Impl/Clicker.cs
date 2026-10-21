@@ -1157,8 +1157,12 @@ public sealed partial class Clicker : Game
         };
         // Дія могла почати чи скінчити мінігру — глеки відкладаються під неї або вертаються до свого часу.
         HoldForMinigame(Ctx.Clock.UtcNow);
+        // Шана старійшини (ClickerShana.cs): нові щаблі — у Журнал і тост, звання за V — перед званнями, щоб ті їх оголосили.
+        ShanaAfterAct();
         // Звання: лічильники → звання, нові — у Журнал, звіт цехові (раз на хвилину або одразу, коли щось сталось).
         TitlesAfterAct(Ctx.Clock.UtcNow);
+        if (!quiet && result.Ok && TakeShanaToast() is { Length: > 0 } shana)
+            result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + shana : shana);
         // Подарунок майстерні (ClickerGifts.cs) — після вдалої справжньої дії: гончар тут і побачить тост.
         if (!quiet && result.Ok && TakeGifts() is { Length: > 0 } gift)
             result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + gift : gift);

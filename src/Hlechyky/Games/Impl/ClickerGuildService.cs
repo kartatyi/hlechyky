@@ -57,7 +57,16 @@ public sealed record WagonGive(WagonInfo Wagon, int Reached);
 /// Нагорода воза: за який день, який рівень, на який уже платили раніше і скільки виробів поклав сам гончар
 /// (з цього рахується його пай, §E.1). <c>Error</c> — відмова.
 /// </summary>
-public sealed record WagonClaim(string? Error, string Day, int Tier, int Was, int Mine = 0, int WasMine = 0);
+public sealed record WagonClaim(string? Error, string Day, int Tier, int Was, int Mine = 0, int WasMine = 0, bool Oboz = false);
+
+/// <summary>
+/// Що з «Сусідства» шани старійшини (Clicker.ShanaGuildPerks) діє на допомогу друзям: скільки підмайстрів на день,
+/// гостинець із дарунком, удвічі щедріший гостинець і похвала на дві години.
+/// </summary>
+public sealed record GuildPerks(int LendPerDay = 1, bool GiftTreat = false, bool TreatX2 = false, bool CheerLong = false)
+{
+    public static readonly GuildPerks None = new();
+}
 
 /// <summary>
 /// Цех гончарів — спільне для всіх кімнат Гончарного кола: денний віз, скринька дарунків і список гончарів. Один
@@ -168,12 +177,18 @@ public sealed partial class ClickerGuildService
         public Dictionary<string, int> ClaimedMine { get; set; } = new(StringComparer.Ordinal);
         /// <summary>Найвищий рівень, про який уже сказали в Журнал: двічі одне й те саме не кажемо.</summary>
         public int Logged { get; set; }
+        /// <summary>Обозні дня (шана «Вози» IV, ключі ніків): хто з них віз — тому дню кожен забирає ще 10 хв гри.</summary>
+        public List<string> Oboz { get; set; } = [];
+        /// <summary>Хто вже забрав ці 10 хв обозного за цей день (ключі ніків) — раз на день.</summary>
+        public List<string> ObozPaid { get; set; } = [];
     }
 
     sealed class GiverRow
     {
         public string Nick { get; set; } = "";
         public int N { get; set; }
+        /// <summary>Скільки покладено з вагою ×1,5 (шана «Вози» III): кожні два — ще один у <see cref="N"/> і в загальне.</summary>
+        public int Half { get; set; }
     }
 
     sealed class PotterRow
@@ -197,8 +212,10 @@ public sealed partial class ClickerGuildService
     sealed class HelpRow
     {
         public string Day { get; set; } = "";
-        /// <summary>Підмайстер уже пішов у гості: він один, тож на день — одна позичка.</summary>
+        /// <summary>Підмайстер уже пішов у гості: він один, тож на день — одна позичка (старий стан; тепер — <see cref="LendN"/>).</summary>
         public bool Lend { get; set; }
+        /// <summary>Скільки підмайстрів пішло в гості сьогодні: старійшина з «Сусідством» I шле двох.</summary>
+        public int LendN { get; set; }
         /// <summary>Кого вже хвалив сьогодні (ключі ніків): кожному другові — раз на день.</summary>
         public List<string> Cheer { get; set; } = [];
         /// <summary>Кому вже подякував сьогодні (ключі ніків) — «Подякувати» раз на друга (ClickerGuildHelp.cs).</summary>
@@ -277,6 +294,9 @@ public sealed partial class ClickerGuildService
             w.Givers = Clean(w.Givers);
             w.Claimed = Clean(w.Claimed);
             w.ClaimedMine = Clean(w.ClaimedMine);
+            // Обозних до шани старійшини не було.
+            w.Oboz = w.Oboz?.Where(x => x is { Length: > 0 }).ToList() ?? [];
+            w.ObozPaid = w.ObozPaid?.Where(x => x is { Length: > 0 }).ToList() ?? [];
         }
         // Звань у старому стані не було — порожні списки (ClickerGuildTitles.cs).
         NormalizeTitles(s);
@@ -397,13 +417,25 @@ public sealed partial class ClickerGuildService
     }
 
     /// <summary>Сьогоднішній віз, учорашній, скільки дарунків ще можна сьогодні й допомога дня — для виду кімнати.</summary>
-    public GuildSummary Summary(string nickKey, DateTimeOffset now)
+    public GuildSummary Summary(string nickKey, DateTimeOffset now, GuildPerks? perks = null)
     {
         lock (_lock)
         {
             var s = S();
             return new GuildSummary(Current(s, now, nickKey), Previous(s, now, nickKey),
-                GiftsLeftLocked(s, nickKey, now), HelpLocked(s, nickKey, now));
+                GiftsLeftLocked(s, nickKey, now), HelpLocked(s, nickKey, now, perks ?? GuildPerks.None));
+        }
+    }
+
+    /// <summary>Чи віз того дня обозний (шана «Вози» IV) — і чи цей гончар уже забрав свої 10 хв за той день.</summary>
+    public (bool Today, bool Paid) Oboz(string nickKey, string day)
+    {
+        lock (_lock)
+        {
+            var s = S();
+            return s.Days.TryGetValue(day, out var row)
+                ? (row.Oboz.Count > 0, row.ObozPaid.Contains(nickKey, StringComparer.Ordinal))
+                : (false, false);
         }
     }
 
@@ -415,7 +447,12 @@ public sealed partial class ClickerGuildService
     /// Покласти на віз одним махом кілька різних виробів («🛒 Усе на віз»): один запис у базу, один рядок у Журнал
     /// про рівень. <c>Item</c> — розпис і якість (null — відомий лише вид).
     /// </summary>
-    public WagonGive Give(string nickKey, string nick, IReadOnlyList<(string Ware, ItemInfo? Item, int N)> list, DateTimeOffset now)
+    /// <remarks>
+    /// Шана старійшини: <paramref name="half"/> — вироби важать ×1,5 («Вози» III; кожні два — ще один у пай і в загальне
+    /// число, підцілі видів — як є), <paramref name="oboz"/> — віз обозний («Вози» IV).
+    /// </remarks>
+    public WagonGive Give(string nickKey, string nick, IReadOnlyList<(string Ware, ItemInfo? Item, int N)> list, DateTimeOffset now,
+        bool half = false, bool oboz = false)
     {
         lock (_lock)
         {
@@ -424,7 +461,16 @@ public sealed partial class ClickerGuildService
             var n = list.Sum(x => Math.Max(0, x.N));
             if (n <= 0) return new WagonGive(Current(s, now, nickKey), 0);
             if (!s.Days.TryGetValue(day, out var row)) s.Days[day] = row = new DayRow();
-            row.Total += n;
+            if (!row.Givers.TryGetValue(nickKey, out var giver)) row.Givers[nickKey] = giver = new GiverRow();
+            var extra = 0;
+            if (half)
+            {
+                var before = giver.Half / 2;
+                giver.Half += n;
+                extra = giver.Half / 2 - before;
+            }
+            if (oboz && !row.Oboz.Contains(nickKey, StringComparer.Ordinal)) row.Oboz.Add(nickKey);
+            row.Total += n + extra;
             foreach (var (ware, item, k) in list)
             {
                 if (k <= 0) continue;
@@ -435,9 +481,8 @@ public sealed partial class ClickerGuildService
                     row.Items[key] = row.Items.GetValueOrDefault(key) + k;
                 }
             }
-            if (!row.Givers.TryGetValue(nickKey, out var giver)) row.Givers[nickKey] = giver = new GiverRow();
             giver.Nick = nick;
-            giver.N += n;
+            giver.N += n + extra;
             var info = Current(s, now, nickKey);
             var reached = info.Tier > row.Logged ? info.Tier : 0;
             row.Logged = Math.Max(row.Logged, info.Tier);
@@ -473,8 +518,11 @@ public sealed partial class ClickerGuildService
             if (!s.Days.TryGetValue(w.Day, out var row)) return new WagonClaim("Такого воза нема", w.Day, 0, 0);
             row.Claimed[nickKey] = w.Tier;
             row.ClaimedMine[nickKey] = w.Mine;
+            // Обозний віз того дня (шана «Вози» IV): кожному, хто віз, — ще 10 хв гри, раз на день.
+            var oboz = row.Oboz.Count > 0 && !row.ObozPaid.Contains(nickKey, StringComparer.Ordinal);
+            if (oboz) row.ObozPaid.Add(nickKey);
             Save();
-            return new WagonClaim(null, w.Day, w.Tier, w.Claimed, w.Mine, w.ClaimedMine);
+            return new WagonClaim(null, w.Day, w.Tier, w.Claimed, w.Mine, w.ClaimedMine, oboz);
         }
     }
 
@@ -505,7 +553,9 @@ public sealed partial class ClickerGuildService
     /// Відправити дарунок у скриньку друга. null — відправлено; інакше — чому ні. Виріб з комори забирає кімната
     /// лише після «так». Отримувач мусить мати збереження кола — дарувати в нікуди не даємо.
     /// </summary>
-    public string? Gift(string fromKey, string fromNick, string toNick, ItemInfo item, DateTimeOffset now)
+    /// <remarks>Шана «Сусідство» II (<paramref name="perks"/>): з дарунком їде ще й гостинець на 10 хв — дарувальникові безплатно
+    /// й поза денною стелею гостинців отримувача (дарунків на день однаково лише три).</remarks>
+    public string? Gift(string fromKey, string fromNick, string toNick, ItemInfo item, DateTimeOffset now, GuildPerks? perks = null)
     {
         var toKey = Key(toNick);
         if (toKey.Length == 0) return "Кому дарувати? Обери гончаря";
@@ -521,6 +571,12 @@ public sealed partial class ClickerGuildService
             box.Add(new GuildGift(fromNick.Trim(), item.Ware, item.Style, item.Quality, now));
             if (box.Count > MailMax) box.RemoveRange(0, box.Count - MailMax);
             sent.N++;
+            if (perks?.GiftTreat == true)
+            {
+                if (!s.Boosts.TryGetValue(toKey, out var boosts)) s.Boosts[toKey] = boosts = [];
+                boosts.Add(new GuildBoost(fromNick.Trim(), "treat", Clicker.ShanaGiftTreatMinutes * TreatBack, now));
+                if (boosts.Count > MailMax) boosts.RemoveRange(0, boosts.Count - MailMax);
+            }
             Deed(s, fromNick, toNick, "gift", now);
             Save();
         }
@@ -565,19 +621,22 @@ public sealed partial class ClickerGuildService
         return row;
     }
 
-    GuildHelp HelpLocked(State s, string nickKey, DateTimeOffset now)
+    GuildHelp HelpLocked(State s, string nickKey, DateTimeOffset now, GuildPerks perks)
     {
         var day = Days.Of(now);
         var mine = s.Helps.TryGetValue(nickKey, out var h) && h.Day == day ? h : null;
         var got = s.Treats.TryGetValue(nickKey, out var t) && t.Day == day ? t.Minutes : 0;
-        return new GuildHelp(Math.Max(0, TreatCapMinutes - got), mine is null || !mine.Lend, mine?.Cheer.ToList() ?? [],
-            mine?.Thanked.ToList() ?? []);
+        return new GuildHelp(Math.Max(0, TreatCapMinutes - got), mine is null || LendsUsed(mine) < perks.LendPerDay,
+            mine?.Cheer.ToList() ?? [], mine?.Thanked.ToList() ?? []);
     }
 
+    /// <summary>Скільки підмайстрів уже в гостях сьогодні: старий стан знав лише «так / ні».</summary>
+    static int LendsUsed(HelpRow h) => Math.Max(h.LendN, h.Lend ? 1 : 0);
+
     /// <summary>Що гончар ще може зробити для друзів сьогодні (і скільки гостинців прийняв сам).</summary>
-    public GuildHelp Help(string nickKey, DateTimeOffset now)
+    public GuildHelp Help(string nickKey, DateTimeOffset now, GuildPerks? perks = null)
     {
-        lock (_lock) return HelpLocked(S(), nickKey, now);
+        lock (_lock) return HelpLocked(S(), nickKey, now, perks ?? GuildPerks.None);
     }
 
     /// <summary>
@@ -586,8 +645,13 @@ public sealed partial class ClickerGuildService
     /// лише після «так». Межі дня рахуються тут: гостинцю — стеля на ОТРИМУВАЧА, підмайстрові й похвалі —
     /// на дарувальника.
     /// </summary>
-    public string? Boost(string fromKey, string fromNick, string toNick, string kind, int minutes, DateTimeOffset now)
+    /// <remarks>
+    /// Шана «Сусідство» (<paramref name="perks"/>): двоє підмайстрів на день, гостинець удвічі щедріший (друг дістає
+    /// вчетверо більше хвилин, а в його денну стелю йде звичайне подвоєння) і похвала на дві години.
+    /// </remarks>
+    public string? Boost(string fromKey, string fromNick, string toNick, string kind, int minutes, DateTimeOffset now, GuildPerks? perks = null)
     {
+        perks ??= GuildPerks.None;
         var toKey = Key(toNick);
         var who = toNick.Trim();
         if (toKey.Length == 0) return "Кому помагати? Обери гончаря";
@@ -613,12 +677,17 @@ public sealed partial class ClickerGuildService
                     if (left <= 0) return $"{who} сьогодні вже наївся гостинців — завтра зголодніє знову";
                     if (carry > left) return $"{who} сьогодні прийме ще {left} хв гостинців — пришли менший";
                     treat.Minutes += carry;
+                    if (perks.TreatX2) carry *= 2;
                     break;
                 case "lend":
-                    if (help.Lend) return "Підмайстер у цеху один, і сьогодні він уже пішов у гості";
+                    if (LendsUsed(help) >= perks.LendPerDay)
+                        return perks.LendPerDay > 1
+                            ? $"Сьогодні вже {perks.LendPerDay} підмайстри пішли в гості — завтра підуть знову"
+                            : "Підмайстер у цеху один, і сьогодні він уже пішов у гості";
                     // Другий підмайстер продовжує першого (ClickerGuild.TakeBoosts) — але наперед не більше трьох діб.
                     if (lendAhead >= now.AddHours(LendCapHours))
                         return $"У {who} підмайстри вже розписані на {LendCapHours} год наперед — пришли пізніше";
+                    help.LendN = LendsUsed(help) + 1;
                     help.Lend = true;
                     carry = LendHours * 60;
                     break;
@@ -628,7 +697,7 @@ public sealed partial class ClickerGuildService
                     if (cheerAhead >= now.AddMinutes(CheerCapMinutes))
                         return $"{who} уже нахвалили на {CheerCapMinutes / 60} год наперед — скажеш добре слово пізніше";
                     help.Cheer.Add(toKey);
-                    carry = CheerMinutes;
+                    carry = perks.CheerLong ? 2 * CheerMinutes : CheerMinutes;
                     break;
                 default:
                     return "Такої допомоги в цеху не знають";
@@ -960,6 +1029,9 @@ public sealed partial class ClickerGuildService
             built = root["toloka"] is JsonObject t && t["built"] is JsonArray ba
                 ? ba.Select(Str).Where(k => Clicker.Buildings.Any(b => b.Key == k)).Distinct(StringComparer.Ordinal).ToList()
                 : [],
+            // Шана старійшини, «Розкіш» V (ClickerShana.cs): скринька розкоші в хаті.
+            luxBox = Int(guild?["rank"]) >= Clicker.GuildElder
+                && Long(guild?["luxFired"]) >= Clicker.ShanaTracks.First(x => x.Key == Clicker.ShanaLux).Need[^1],
         };
     }
 
