@@ -27,7 +27,8 @@
   const SPEED = { uav: 170, fpv: 80, missile: 750, ballistic: 2500, kab: 400, mig31k: 900, recon: 150, unknown: 170 };
   const SIDES = ['північ', 'пн-схід', 'схід', 'пд-схід', 'південь', 'пд-захід', 'захід', 'пн-захід'];
 
-  // господар — tryvoga.js: { esc, map, threats, region, alarm, oblastName, types, glyph, kick, focus, near, narrow, tab }
+  // господар — tryvoga.js: { esc, map, threats, region, alarm, oblastName, types, mark, course, trail, blob, courseLen,
+  //   iconImg, kick, focus, near, narrow, tab }
   let h = null;
   let root = null;
   let opt = load();
@@ -358,7 +359,7 @@
       if (t.advisory) bits.push('спостереження');
       if (x.old) bits.push('давно не оновлювалась');
       return `<li><button type="button" class="pv-row${x.danger ? ' danger' : ''}${x.live ? '' : ' dim'}" data-id="${esc(t.id)}">`
-        + `<span class="pv-ico" aria-hidden="true">${m.ico}</span><span class="pv-t"><b>${Math.round(x.d)} км</b> · ${side(x.b)}, ${Math.round(x.b) % 360}° · ${esc(label(t))}`
+        + `<span class="pv-ico" aria-hidden="true">${h.iconImg(t.type)}</span><span class="pv-t"><b>${Math.round(x.d)} км</b> · ${side(x.b)}, ${Math.round(x.b) % 360}° · ${esc(label(t))}`
         + `${t.locality ? ' · ' + esc(t.locality) : ''}`
         + `${bits.length ? ' <span class="tv-muted">' + esc(bits.join(' · ')) + '</span>' : ''}<br>${passText(x)}</span></button></li>`;
     });
@@ -503,7 +504,6 @@
       ring: c('--pv-ring', 'rgba(10,20,15,.55)'), text: c('--text', '#ecf1ea'), muted: c('--muted', '#9db3a5'),
       halo: c('--bg', '#0f1f18'), north: c('--pv-north', '#ff6b5e'), danger: c('--pv-danger', '#ff4d61'),
     };
-    for (const t of Object.keys(h.types)) pv.css['t-' + t] = c('--tv-' + t, '#f0820e');
   }
 
   function text(g, s, x, y, color, font) {
@@ -569,70 +569,69 @@
     for (const km of rs) text(g, km + ' км', cx, cy + km * kmPx - 9, c.text, '11px system-ui, sans-serif');
 
     if (!grey) {
-      // сліди, кола похибки, курс до найближчої точки — лише всередині циферблата
+      // Ті самі значки, що на мапі (tryvoga.js): силует типу, повернутий за курсом, лінія зі стрілкою вперед, слід
+      // блідне до хвоста, місце приблизне — пляма. Усе лише всередині циферблата.
+      const P = 10;
+      const col = (t) => (h.types[t.type] || h.types.unknown).color;
       g.save();
       g.beginPath();
       g.arc(cx, cy, R, 0, Math.PI * 2);
       g.clip();
       for (const x of pv.list) {
         if (x.d > rs[2] * 1.5) continue;
-        const color = c['t-' + (h.types[x.t.type] ? x.t.type : 'unknown')];
         const [px, py] = at(x.d * kmPx, x.b);
-        g.globalAlpha = x.live ? 1 : 0.45;
+        const al = x.live ? 1 : 0.45;
+        if (x.t.quality !== 'confirmed' && x.t.unc > 0 && x.t.unc * kmPx > P + 3) h.blob(g, px, py, x.t.unc * kmPx, col(x.t), al);
         if (x.trail.length) {
-          g.strokeStyle = color;
-          g.lineWidth = 2.2;
-          g.globalAlpha *= 0.85;
-          g.beginPath();
-          x.trail.forEach(([d, b], i) => { const [tx, ty] = at(d * kmPx, b); if (i) g.lineTo(tx, ty); else g.moveTo(tx, ty); });
-          g.lineTo(px, py);
-          g.stroke();
-          g.globalAlpha /= 0.85;
-        }
-        if (x.t.quality !== 'confirmed' && x.t.unc > 0) {
-          g.setLineDash([3, 3]);
-          g.strokeStyle = color;
-          g.lineWidth = 1;
-          g.beginPath();
-          g.arc(px, py, x.t.unc * kmPx, 0, Math.PI * 2);
-          g.stroke();
-          g.setLineDash([]);
-        }
-        if (x.pass && !x.pass.away && x.live && x.pass.km <= rs[2]) {
-          // куди долетить за курсом: пунктир до найближчої до мене точки
-          const a = x.t.heading * RAD - turnRad, L = x.pass.along * kmPx;
-          g.setLineDash([5, 4]);
-          g.strokeStyle = x.danger ? c.danger : color;
-          g.lineWidth = x.danger ? 2 : 1.2;
-          g.beginPath();
-          g.moveTo(px, py);
-          g.lineTo(px + L * Math.sin(a), py - L * Math.cos(a));
-          g.stroke();
-          g.setLineDash([]);
+          const tp = x.trail.map(([d, b]) => at(d * kmPx, b));
+          tp.push([px, py]);
+          h.trail(g, tp, col(x.t), al);
         }
         g.globalAlpha = 1;
       }
       g.restore();
 
-      // азимут: стрілка від мене на кожну живу ціль у колі; небезпечна — червона й товща
+      // азимут від мене — тонка лінія без вістря (щоб не плутати з курсом цілі); небезпечна — червона
+      g.lineCap = 'round';
       for (const x of pv.list) {
         if (!x.live || x.zone > 2) continue;
-        const r = Math.max(0, x.d * kmPx - 12);
-        if (r < 14) continue;
+        const r = x.d * kmPx - P - 3;
+        if (r < 10) continue;
         const [ex, ey] = at(r, x.b);
-        arrow(g, cx, cy, ex, ey, x.danger ? c.danger : c.text, x.danger ? 3 : 1.8);
+        g.globalAlpha = x.danger ? 0.85 : 0.3;
+        g.strokeStyle = x.danger ? c.danger : c.text;
+        g.lineWidth = x.danger ? 1.8 : 1;
+        g.beginPath();
+        g.moveTo(cx, cy);
+        g.lineTo(ex, ey);
+        g.stroke();
       }
+      g.globalAlpha = 1;
 
-      // самі цілі; далекі — рискою на краю
+      // курси: небезпечна — до найближчої до мене точки й червоним, решта — на 10 хв уперед кольором типу
+      g.save();
+      g.beginPath();
+      g.arc(cx, cy, R, 0, Math.PI * 2);
+      g.clip();
       for (const x of pv.list) {
-        const color = c['t-' + (h.types[x.t.type] ? x.t.type : 'unknown')];
+        if (x.zone > 2 || x.t.heading == null) continue;
+        const [px, py] = at(x.d * kmPx, x.b);
+        const L = x.danger && x.pass && !x.pass.away ? Math.min(x.pass.along * kmPx, 2 * R) : h.courseLen(x.t, kmPx);
+        g.globalAlpha = x.live ? 1 : 0.45;
+        h.course(g, px, py, x.t.heading * RAD - turnRad, L, x.danger ? c.danger : col(x.t), P);
+      }
+      g.restore();
+      g.globalAlpha = 1;
+
+      // самі цілі; далекі — трикутником на краю кольором типу
+      for (const x of pv.list) {
         g.globalAlpha = x.live ? 1 : 0.45;
         if (x.zone > 2) {
           const [ex, ey] = at(R - 3, x.b);
           g.save();
           g.translate(ex, ey);
           g.rotate(x.b * RAD - turnRad);
-          g.fillStyle = x.danger ? c.danger : color;
+          g.fillStyle = x.danger ? c.danger : col(x.t);
           g.strokeStyle = 'rgba(0,0,0,.6)';
           g.lineWidth = 1;
           g.beginPath();
@@ -644,21 +643,9 @@
           g.restore();
         } else {
           const [px, py] = at(x.d * kmPx, x.b);
-          g.save();
-          g.translate(px, py);
-          if (x.danger) {
-            g.strokeStyle = c.danger;
-            g.lineWidth = 2.2;
-            g.beginPath();
-            g.arc(0, 0, 16, 0, Math.PI * 2);
-            g.stroke();
-          }
-          g.scale(1.5, 1.5);            // як на мапі: значок із білою обвідкою й темним гало (glyph у tryvoga.js)
-          const meta = h.types[x.t.type] || h.types.unknown;
-          const rot = x.t.heading == null ? 0 : x.t.heading * RAD - turnRad;
-          h.glyph(g, x.t.heading == null && meta.shape !== 'ring' ? 'dot' : meta.shape, color, rot);
-          g.restore();
-          if (x.t.count > 1) { g.textAlign = 'left'; text(g, '×' + x.t.count, px + 12, py - 11, c.text, 'bold 12px system-ui, sans-serif'); g.textAlign = 'center'; }
+          // небезпечна — з червоним гало замість темного (без кружків)
+          h.mark(g, px, py, x.t.type, P, x.t.heading == null ? 0 : x.t.heading * RAD - turnRad, x.danger ? { halo: c.danger } : null);
+          if (x.t.count > 1) { g.textAlign = 'left'; text(g, '×' + x.t.count, px + P + 3, py - P, c.text, 'bold 12px system-ui, sans-serif'); g.textAlign = 'center'; }
         }
         g.globalAlpha = 1;
       }
@@ -674,24 +661,6 @@
     g.stroke();
     if (m && m.src !== 'raion') { g.fillStyle = c.text; g.fill(); }
     else { g.strokeStyle = c.text; g.lineWidth = 1.6; g.stroke(); }
-  }
-
-  function arrow(g, x1, y1, x2, y2, color, w) {
-    const a = Math.atan2(y2 - y1, x2 - x1), hl = 6 + w * 2;
-    g.strokeStyle = color;
-    g.fillStyle = color;
-    g.lineWidth = w;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(x1, y1);
-    g.lineTo(x2 - Math.cos(a) * hl * 0.6, y2 - Math.sin(a) * hl * 0.6);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(x2, y2);
-    g.lineTo(x2 - hl * Math.cos(a - 0.4), y2 - hl * Math.sin(a - 0.4));
-    g.lineTo(x2 - hl * Math.cos(a + 0.4), y2 - hl * Math.sin(a + 0.4));
-    g.closePath();
-    g.fill();
   }
 
   // ---------------------------------------------------------------------------------------------

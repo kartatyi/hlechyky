@@ -23,25 +23,30 @@
   const THREATS_MS = 10000;
   const KMAX = 14;
   const EARTH_KM = 6371;
-  const CLUSTER_PX = 20;             // значки ближче за стільки пікселів злипаються в гурт із числом
-  const GLYPH_K = 1.5;               // значки цілей на мапі — у півтора раза більші за «рідний» розмір glyph()
-  const DETAIL_URL = '/static/tryvoga-detail.json';   // детальний шар (OSM): міста, вода, траси — довантажується
-  const ROAD_S = 0.18;               // траси М — з цього масштабу (на всю Україну на ПК ≈ 0,15 — ще без них)
+  const CLUSTER_PX = 22;             // значки ближче за стільки пікселів злипаються в гурт із числом
+  const MARK_R = 11;                // піврозміру силуету цілі на мапі, px
+  const COURSE_MIN = 10;             // вектор курсу — на стільки хвилин уперед…
+  const COURSE_MAX_PX = 70;          // …але не довший за стільки пікселів (балістика за 10 хв — пів країни)
+  const DETAIL_URL = '/static/tryvoga-detail.json';   // детальний шар: міста, вода, річки — довантажується
+  const MINOR_S = 0.3;               // дрібні річки — з цього масштабу (на всю Україну на ПК ≈ 0,15)
   const PERM_MS = 2 * 86400000;      // тривога довша за дві доби — окуповане: у переліку останньою й блідою
   const ALERTS_FOLD = 8;             // «Тривоги зараз»: стільки областей видно одразу, решта — «Усі області»
 
-  // Типи цілей NEPTUN: як підписати й яким значком малювати. Кольори — у tryvoga.css (--tv-<тип>).
+  // Типи цілей NEPTUN: підпис, повна назва для легенди й колір силуету (mark нижче — той самий на мапі, на
+  // циферблаті, в легенді й у переліках; без рожевого — «не пасує»). speed — км/год, коли
+  // NEPTUN швидкості не дав (лише для довжини вектора курсу).
   const TYPES = {
-    uav: { label: 'БпЛА', ico: '🛩', shape: 'delta' },
-    fpv: { label: 'FPV', ico: '🛩', shape: 'delta' },
-    missile: { label: 'Ракети', ico: '🚀', shape: 'dart' },
-    ballistic: { label: 'Балістика', ico: '🚀', shape: 'diamond' },
-    kab: { label: 'КАБ', ico: '💣', shape: 'dot' },
-    mig31k: { label: 'Авіація', ico: '✈', shape: 'plane' },
-    recon: { label: 'Розвідка', ico: '🛰', shape: 'ring' },
-    unknown: { label: 'Невідомі', ico: '❔', shape: 'ring' },
+    uav: { label: 'БпЛА', long: 'БпЛА («шахед»)', color: '#ff8f1f', speed: 170 },
+    fpv: { label: 'FPV', long: 'FPV-дрон', color: '#ffb84d', speed: 80 },
+    missile: { label: 'Ракети', long: 'крилата ракета', color: '#ff4d61', speed: 750 },
+    ballistic: { label: 'Балістика', long: 'балістична ракета', color: '#f4f4f4', speed: 2500 },
+    kab: { label: 'КАБ', long: 'КАБ (авіабомба)', color: '#ffd84a', speed: 400 },
+    mig31k: { label: 'Авіація', long: 'літак', color: '#8fbaff', speed: 900 },
+    recon: { label: 'Розвідка', long: 'розвідка', color: '#3fd6c4', speed: 150 },
+    unknown: { label: 'Невідомі', long: 'невідома ціль', color: '#c8d1dc', speed: 170 },
   };
   const typeOf = (t) => TYPES[t] || TYPES.unknown;
+  const typeKey = (t) => (TYPES[t] ? t : 'unknown');
   // у гурті головний — найнебезпечніший: його колір і значок
   const PRIO = { ballistic: 7, missile: 6, mig31k: 5, kab: 4, uav: 3, fpv: 2, recon: 1, unknown: 0 };
   const SIDES = ['північ', 'пн-схід', 'схід', 'пд-схід', 'південь', 'пд-захід', 'захід', 'пн-захід'];
@@ -251,8 +256,9 @@
     return mapPromise;
   }
 
-  /// Детальний шар (data/geo/build-tryvoga-detail.py, © OpenStreetMap contributors) — окремим файлом після основної
-  /// мапи: вона з'являється одразу, а міста, вода й траси догружаються. Лінії — дельтами, як дуги основної мапи.
+  /// Детальний шар (data/geo/build-tryvoga-detail.py: міста — Вікідані, вода й річки — Natural Earth) — окремим
+  /// файлом після основної мапи: вона з'являється одразу, а міста й вода догружаються. Лінії — дельтами, як дуги
+  /// основної мапи. Річки класами: 0 — Дніпро й Дунай, 1 — головні, 2 — дрібні (лише з наближенням).
   let detailP = null;
   function loadDetail() {
     if (detailP || !map) return detailP;
@@ -265,11 +271,10 @@
           for (let i = 2; i < a.length; i += 2) { x += a[i]; y += a[i + 1]; p.lineTo(x, y); }
           if (closed) p.closePath();
         };
-        const water = new Path2D(), rivers = new Path2D(), big = new Path2D(), roads = new Path2D();
-        for (const w of raw.water || []) for (const r of w.rings) line(r, water, true);
-        for (const rv of raw.rivers || []) for (const l of rv.lines) line(l, rv.big ? big : rivers, false);
-        for (const rd of raw.roads || []) for (const l of rd.lines) line(l, roads, false);
-        map.detail = { water, rivers, big, roads, places: raw.places || [], labels: raw.labels || [] };
+        const water = new Path2D(), cls = [new Path2D(), new Path2D(), new Path2D()];
+        for (const r of raw.water || []) line(r, water, true);
+        for (const rv of raw.rivers || []) for (const l of rv.lines) line(l, cls[rv.c] || cls[2], false);
+        map.detail = { water, big: cls[0], rivers: cls[1], minor: cls[2], places: raw.places || [], labels: raw.labels || [] };
         kick();
       })
       .catch(() => { detailP = null; });   // без деталей мапа однаково робоча
@@ -323,11 +328,14 @@
       }
       return false;
     });
-    // дуга одного району — контур країни; двох з різних областей — межа області; з однієї — межа району
-    const outline = new Path2D(), oblast = new Path2D(), raion = new Path2D();
+    // Дуга одного району — контур країни (після вирівнювання топології в build-tryvoga.py це саме межа об'єднання
+    // всіх одиниць); двох з різних областей — межа області; з однієї — межа району. Щілина, якщо лишилась, —
+    // тонкою районною лінією, а не яскравим кордоном посеред країни.
+    const outline = new Path2D(), oblast = new Path2D(), raion = new Path2D(), land = new Path2D();
+    for (const u of units) land.addPath(u.p);
     arcs.forEach((a, i) => {
       const us = users[i];
-      const p = us.length < 2 ? outline : units[us[0]].o !== units[us[1]].o ? oblast : raion;
+      const p = us.length < 2 ? (sliver[i] ? raion : outline) : units[us[0]].o !== units[us[1]].o ? oblast : raion;
       p.moveTo(a[0], a[1]);
       for (let k = 2; k < a.length; k += 2) p.lineTo(a[k], a[k + 1]);
     });
@@ -357,7 +365,7 @@
     for (const u of units) { byKey[u.k] = u; count[u.o] = (count[u.o] || 0) + 1; }
     const oblasts = Object.create(null);
     for (const ob of raw.oblasts) oblasts[ob.k] = ob;
-    map = { W: raw.w, H: raw.h, units, byKey, count, oblasts, arcs, arcUsers: users, sliver, oblastList: raw.oblasts, outline, oblast, raion, river,
+    map = { W: raw.w, H: raw.h, units, byKey, count, oblasts, arcs, arcUsers: users, sliver, land, oblastList: raw.oblasts, outline, oblast, raion, river,
       cities: raw.cities || [], towns: raw.towns || [], project, unproject, kmUnits: P.k / EARTH_KM };
     return map;
   }
@@ -444,10 +452,9 @@
       river: c('--tv-river', 'rgba(74,143,179,.45)'), mine: c('--text', '#ecf1ea'), text: c('--text', '#ecf1ea'),
       muted: c('--muted', '#9db3a5'), halo: c('--bg', '#0f1f18'),
       redLine: c('--tv-red-line', '#ff6b62'), yellowLine: c('--tv-yellow-line', '#f2c744'),
-      water: c('--tv-water', 'rgba(64,128,165,.42)'), road: c('--tv-road', 'rgba(233,214,160,.2)'),
+      water: c('--tv-water', 'rgba(52,116,156,.88)'),
       label: c('--tv-label', 'rgba(236,241,234,.42)'),
     };
-    for (const t of Object.keys(TYPES)) st.css['t-' + t] = c('--tv-' + t, '#f0820e');
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -499,34 +506,38 @@
     g.setTransform(d * s, 0, 0, d * s, d * st.ox, d * st.oy);
     const lv = levels();
     const stale = data && data.stale;
-    for (const u of map.units) {
-      g.fillStyle = c.land;
-      g.fill(u.p, 'evenodd');
-      const l = lv[u.k];
-      if (l && !stale) {
+    // суходіл одним шматом і з обвідкою його ж кольору: крізь мікрощілини між районами не просвічує «море»
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    g.fillStyle = c.land;
+    g.fill(map.land);
+    g.strokeStyle = c.land;
+    g.lineWidth = 1.2 / s;
+    g.stroke(map.land);
+    if (!stale) {
+      for (const u of map.units) {
+        const l = lv[u.k];
+        if (!l) continue;
         g.fillStyle = l === 'yellow' ? c.yellow : c.red;
         g.fill(u.p, 'evenodd');
       }
     }
-    g.lineJoin = 'round';
-    g.lineCap = 'round';
     const dt = map.detail;
     // з наближенням лінії трохи товщають — щоб річка на 8× не була волосиною
     const zw = Math.min(2, 1 + (st.k - 1) * 0.12);
     if (dt) {
-      // детальний шар (OSM): водосховища й озера плямами, річки, траси М — тонко, лише коли вже не вся країна
+      // детальний шар: водосховища й озера плямами, річки — дрібні лише з наближенням
       g.fillStyle = c.water;
       g.fill(dt.water, 'evenodd');
       g.strokeStyle = c.river;
-      g.lineWidth = 0.9 * zw / s;
-      g.stroke(dt.rivers);
-      g.lineWidth = 1.6 * zw / s;
-      g.stroke(dt.big);
-      if (s >= ROAD_S) {
-        g.strokeStyle = c.road;
-        g.lineWidth = 0.9 * zw / s;
-        g.stroke(dt.roads);
+      if (s >= MINOR_S) {
+        g.lineWidth = 0.7 * zw / s;
+        g.stroke(dt.minor);
       }
+      g.lineWidth = 1 * zw / s;
+      g.stroke(dt.rivers);
+      g.lineWidth = 1.7 * zw / s;
+      g.stroke(dt.big);
     } else {
       g.strokeStyle = c.river;
       g.lineWidth = 1.1 / s;
@@ -630,7 +641,7 @@
 
   /// Міста й підписи областей без накладань: жадібно, від важливішого; не влізло праворуч — пробуємо ліворуч.
   function paintPlaces(g, s, dt) {
-    const boxes = [[st.cw - 104, st.ch - 17, st.cw, st.ch]];    // куток «© OpenStreetMap» — підписи туди не лізуть
+    const boxes = [[st.cw - 92, st.ch - 17, st.cw, st.ch]];     // куток «Дані: NEPTUN» — підписи туди не лізуть
     const free = (b) => {
       if (b[2] < 0 || b[3] < 0 || b[0] > st.cw || b[1] > st.ch) return false;
       for (const o of boxes) if (b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]) return false;
@@ -702,134 +713,279 @@
     g.restore();
   }
 
-  /// Значок цілі: носом за курсом (поправка на те, що північ на конічній мапі трохи повернута).
-  /// Темне гало під значком, заливка кольором типу і біла обвідка — щоб ціль читалась і на червоній, і на жовтій
-  /// заливці. Розмір задає той, хто кличе (g.scale): на мапі 1,5×, на циферблаті «Довкола мене» — так само.
-  function glyph(g, shape, color, rot) {
+  // ---------------------------------------------------------------------------------------------
+  // значки цілей — силует типу без жодних кружечків (22.10: «мені не подобається що все в кружочках»): «шахед»,
+  // ракета, бомба, літак… з темним обідком і тонкою світлою обвідкою, щоб читались і на червоній, і на жовтій
+  // заливці. Що має ніс — повернуте за курсом; попереду — лінія з вістрям на ~10 хв. Нема курсу — силует стоїть
+  // носом угору й без лінії. Той самий код малює мапу, циферблат «Довкола мене», легенду й значки в переліках.
+  // ---------------------------------------------------------------------------------------------
+
+  // Шматки силуету в квадраті ±7,5 (центр 0,0), носом угору: кожен — свій замкнений контур (так гало й обвідка
+  // не залежать від напрямку обходу). color — свій колір шматка (полум'я балістики), rule — правило заливки.
+  const rect = (g, x1, y1, x2, y2, w) => {       // смуга завтовшки w від (x1,y1) до (x2,y2)
+    const l = Math.hypot(x2 - x1, y2 - y1) || 1, nx = (-(y2 - y1) / l) * w / 2, ny = ((x2 - x1) / l) * w / 2;
+    g.moveTo(x1 + nx, y1 + ny); g.lineTo(x2 + nx, y2 + ny); g.lineTo(x2 - nx, y2 - ny); g.lineTo(x1 - nx, y1 - ny); g.closePath();
+  };
+  const disc = (g, x, y, r) => { g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2); };
+  const SHAPES = {
+    uav: [(g) => {      // «шахед»: дельта-крило з виступом носа й вирізом ззаду
+      g.moveTo(0, -7.2); g.lineTo(1.4, -3.4); g.lineTo(7.2, 3.6); g.lineTo(7.2, 5.3); g.lineTo(1.5, 3.7);
+      g.lineTo(0, 5.8); g.lineTo(-1.5, 3.7); g.lineTo(-7.2, 5.3); g.lineTo(-7.2, 3.6); g.lineTo(-1.4, -3.4); g.closePath();
+    }],
+    fpv: [(g) => rect(g, -4.8, -4.8, 4.8, 4.8, 1.8), (g) => rect(g, 4.8, -4.8, -4.8, 4.8, 1.8),
+      (g) => disc(g, -5, -5, 2.4), (g) => disc(g, 5, -5, 2.4), (g) => disc(g, -5, 5, 2.4), (g) => disc(g, 5, 5, 2.4)],
+    missile: [(g) => {  // крилата ракета: тонкий корпус, гострий ніс, крильця посередині, стабілізатори ззаду
+      g.moveTo(0, -7.6); g.lineTo(1.3, -5); g.lineTo(1.3, -0.9); g.lineTo(5, 1.6); g.lineTo(5, 2.7); g.lineTo(1.3, 1.7);
+      g.lineTo(1.3, 4.6); g.lineTo(3.6, 7); g.lineTo(-3.6, 7); g.lineTo(-1.3, 4.6); g.lineTo(-1.3, 1.7); g.lineTo(-5, 2.7);
+      g.lineTo(-5, 1.6); g.lineTo(-1.3, -0.9); g.lineTo(-1.3, -5); g.closePath();
+    }],
+    ballistic: [(g) => {   // балістика: товстий корпус із тупою головною частиною, без крил…
+      g.moveTo(0, -7.6); g.quadraticCurveTo(2.9, -5.8, 2.9, -2.8); g.lineTo(2.9, 2.9); g.lineTo(4.2, 5.2); g.lineTo(-4.2, 5.2);
+      g.lineTo(-2.9, 2.9); g.lineTo(-2.9, -2.8); g.quadraticCurveTo(-2.9, -5.8, 0, -7.6); g.closePath();
+    }, Object.assign((g) => { g.moveTo(-1.8, 5.6); g.lineTo(0, 8.6); g.lineTo(1.8, 5.6); g.closePath(); }, { color: '#ff5a2e' })],  // …і полум'я
+    kab: [(g) => g.ellipse(0, 1.6, 3.5, 5.2, 0, 0, Math.PI * 2),   // авіабомба: крапля й оперення
+      (g) => { g.moveTo(-3.6, -7); g.lineTo(3.6, -7); g.lineTo(1.5, -2.8); g.lineTo(-1.5, -2.8); g.closePath(); }],
+    mig31k: [(g) => {   // літак
+      g.moveTo(0, -7.4); g.lineTo(1.1, -4.4); g.lineTo(1.1, -1.2); g.lineTo(7.2, 2.2); g.lineTo(7.2, 3.6); g.lineTo(1.1, 2);
+      g.lineTo(1, 4.8); g.lineTo(3.2, 6.4); g.lineTo(3.2, 7.2); g.lineTo(0, 6.3); g.lineTo(-3.2, 7.2); g.lineTo(-3.2, 6.4);
+      g.lineTo(-1, 4.8); g.lineTo(-1.1, 2); g.lineTo(-7.2, 3.6); g.lineTo(-7.2, 2.2); g.lineTo(-1.1, -1.2); g.lineTo(-1.1, -4.4);
+      g.closePath();
+    }],
+    recon: [Object.assign((g) => {   // розвідка — око: повіки, райдужка-кільце, зіниця
+      g.moveTo(-7.4, 0); g.quadraticCurveTo(0, -7, 7.4, 0); g.quadraticCurveTo(0, 7, -7.4, 0); g.closePath();
+      disc(g, 0, 0, 3); disc(g, 0, 0, 1.6);
+    }, { rule: 'evenodd' })],
+  };
+  const TURNS = { uav: true, missile: true, ballistic: true, kab: true, mig31k: true };   // мають ніс — крутимо за курсом
+
+  /// Силует цілі розміром ~2R px. rot — курс на екрані (радіани від півночі за годинниковою), лише для тих, що з
+  /// носом. o.halo — колір гало замість темного (небезпечна на циферблаті — червоне).
+  function mark(g, x, y, type, R, rot, o) {
+    const key = typeKey(type), color = typeOf(type).color, halo = (o && o.halo) || 'rgba(0,0,0,.72)';
     g.save();
-    g.rotate(rot);
+    g.translate(x, y);
     g.lineJoin = 'round';
-    g.beginPath();
-    if (shape === 'delta') { g.moveTo(0, -8); g.lineTo(6, 6); g.lineTo(0, 3); g.lineTo(-6, 6); }
-    else if (shape === 'dart') { g.moveTo(0, -10); g.lineTo(3.5, 6); g.lineTo(0, 4); g.lineTo(-3.5, 6); }
-    else if (shape === 'diamond') { g.moveTo(0, -9); g.lineTo(5, 0); g.lineTo(0, 9); g.lineTo(-5, 0); }
-    else if (shape === 'plane') { g.moveTo(0, -9); g.lineTo(2, -2); g.lineTo(8, 2); g.lineTo(2, 2); g.lineTo(1.5, 7); g.lineTo(-1.5, 7); g.lineTo(-2, 2); g.lineTo(-8, 2); g.lineTo(-2, -2); }
-    else if (shape === 'ring') g.arc(0, 0, 5, 0, Math.PI * 2);
-    else g.arc(0, 0, 4.5, 0, Math.PI * 2);
-    g.closePath();
-    g.strokeStyle = 'rgba(0,0,0,.55)';
-    if (shape === 'ring') {
-      g.lineWidth = 4.6;
-      g.stroke();
-      g.strokeStyle = color;
-      g.lineWidth = 2.2;
-      g.stroke();
+    g.lineCap = 'round';
+    if (key === 'unknown') {
+      g.font = `bold ${Math.round(R * 2)}px system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.lineWidth = o && o.halo ? 5 : 4;
+      g.strokeStyle = halo;
+      g.strokeText('?', 0, 1);
+      g.fillStyle = color;
+      g.fillText('?', 0, 1);
       g.restore();
       return;
     }
-    g.lineWidth = 3.6;
+    if (rot && TURNS[key]) g.rotate(rot);
+    const k = R / 7.5;
+    g.scale(k, k);
+    const ps = SHAPES[key];
+    g.strokeStyle = halo;
+    g.lineWidth = (o && o.halo ? 5.5 : 4) / k;
+    for (const p of ps) { g.beginPath(); p(g); g.stroke(); }
+    for (const p of ps) { g.beginPath(); p(g); g.fillStyle = p.color || color; g.fill(p.rule || 'nonzero'); }
+    g.strokeStyle = 'rgba(255,255,255,.85)';
+    g.lineWidth = 0.9 / k;
+    for (const p of ps) if (!p.color) { g.beginPath(); p(g); g.stroke(); }
+    g.restore();
+  }
+
+  /// Курс: суцільна лінія з вістрям на len px уперед від краю силуету (з темним обідком). angle — від півночі
+  /// екрана за годинниковою, радіани.
+  function course(g, x, y, angle, len, color, R) {
+    const sx = Math.sin(angle), sy = -Math.cos(angle);
+    const L = Math.max(len, 10), tipX = x + sx * (R + L), tipY = y + sy * (R + L);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(x + sx * (R + 1), y + sy * (R + 1));
+    g.lineTo(tipX - sx * 5, tipY - sy * 5);
+    g.strokeStyle = 'rgba(0,0,0,.6)';
+    g.lineWidth = 4.6;
+    g.stroke();
+    g.strokeStyle = color;
+    g.lineWidth = 2.2;
+    g.stroke();
+    g.save();
+    g.translate(tipX, tipY);
+    g.rotate(angle);
+    g.beginPath();
+    g.moveTo(0, 0); g.lineTo(4.4, 7); g.lineTo(-4.4, 7);
+    g.closePath();
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(0,0,0,.65)';
     g.stroke();
     g.fillStyle = color;
     g.fill();
-    g.strokeStyle = '#fff';
-    g.lineWidth = 1.1;
-    g.stroke();
     g.restore();
+  }
+
+  /// Слід: суцільний, з темним обідком, блідне до хвоста. pts — від хвоста до цілі, у пікселях.
+  function trail(g, pts, color, alpha) {
+    if (pts.length < 2) return;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.globalAlpha = alpha * 0.5;
+    g.strokeStyle = 'rgba(0,0,0,.7)';
+    g.lineWidth = 4.4;
+    g.beginPath();
+    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.stroke();
+    g.strokeStyle = color;
+    g.lineWidth = 2.2;
+    for (let i = 1; i < pts.length; i++) {
+      g.globalAlpha = alpha * (0.18 + 0.72 * (i / (pts.length - 1)));
+      g.beginPath();
+      g.moveTo(pts[i - 1][0], pts[i - 1][1]);
+      g.lineTo(pts[i][0], pts[i][1]);
+      g.stroke();
+    }
+    g.globalAlpha = alpha;
+  }
+
+  /// Місце приблизне — ледь помітна пляма кольору типу під силуетом.
+  function blob(g, x, y, r, color, alpha) {
+    g.globalAlpha = alpha * 0.16;
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = alpha;
+  }
+
+  /// Скільки пікселів пролетить за COURSE_MIN хвилин (швидкість NEPTUN, а нема — типова для типу).
+  function courseLen(t, pxPerKm) {
+    const v = t.speed > 0 ? t.speed : typeOf(t.type).speed;
+    return Math.min(COURSE_MAX_PX, (v * COURSE_MIN / 60) * pxPerKm);
+  }
+
+  /// Гурт: силует найнебезпечнішої й табличка з числом (скільки разом, з групами NEPTUN) — не кружок.
+  function bunch(g, x, y, type, n) {
+    mark(g, x, y, type, MARK_R, 0);
+    const txt = String(n);
+    g.font = 'bold 11px system-ui, sans-serif';
+    const w = Math.max(15, g.measureText(txt).width + 8), h = 15, bx = x + MARK_R * 0.35, by = y - MARK_R - 7;
+    g.beginPath();
+    if (g.roundRect) g.roundRect(bx, by, w, h, 4); else g.rect(bx, by, w, h);
+    g.fillStyle = '#0d1712';
+    g.fill();
+    g.lineWidth = 1.2;
+    g.strokeStyle = '#fff';
+    g.stroke();
+    g.fillStyle = '#fff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(txt, bx + w / 2, by + h / 2 + 0.5);
+    g.textAlign = 'left';
+  }
+
+  /// Значок для HTML (легенда, переліки, підказки): той самий mark(), намальований у картинку й закешований.
+  const iconCache = Object.create(null);
+  function icon(type, what) {
+    const key = (what || 'mark') + ':' + typeKey(type);
+    if (iconCache[key]) return iconCache[key];
+    const w = what === 'course' ? 46 : what === 'bunch' ? 34 : 26, h = 26, d = 2;
+    const c = document.createElement('canvas');
+    c.width = w * d;
+    c.height = h * d;
+    const g = c.getContext('2d');
+    g.scale(d, d);
+    const color = typeOf(type).color;
+    if (what === 'bunch') bunchIcon(g, type);
+    else if (what === 'blob') { blob(g, 13, 13, 12, color, 1); g.globalAlpha = 1; mark(g, 13, 13, type, 8, 0); }
+    else if (what === 'course') { course(g, 11, 13, Math.PI / 2, 22, color, 8.5); mark(g, 11, 13, type, 8.5, Math.PI / 2); }
+    else mark(g, 13, 13, type, 10, 0);
+    iconCache[key] = c.toDataURL();
+    return iconCache[key];
+  }
+  function bunchIcon(g, type) {
+    mark(g, 11, 14.5, type, 8, 0);
+    g.font = 'bold 10px system-ui, sans-serif';
+    g.beginPath();
+    if (g.roundRect) g.roundRect(16, 2, 15, 13, 4); else g.rect(16, 2, 15, 13);
+    g.fillStyle = '#0d1712';
+    g.fill();
+    g.lineWidth = 1.1;
+    g.strokeStyle = '#fff';
+    g.stroke();
+    g.fillStyle = '#fff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('3', 23.5, 9);
+  }
+  const iconImg = (type, what, alt) => `<img class="tv-ic${what ? ' ' + what : ''}" src="${icon(type, what)}" alt="${esc(alt || '')}">`;
+
+  /// Легенда — тими самими силуетами, що й на мапі.
+  function legendHtml() {
+    const types = ['uav', 'fpv', 'missile', 'ballistic', 'kab', 'mig31k', 'recon', 'unknown'];
+    return '<div class="tv-lg">' + types.map((k) => `<span>${iconImg(k)}${esc(TYPES[k].long)}</span>`).join('') + '</div>'
+      + '<div class="tv-lg">'
+      + `<span>${iconImg('uav', 'course')}лінія зі стрілкою — куди летить (≈ ${COURSE_MIN} хв)</span>`
+      + `<span>${iconImg('uav', 'blob')}пляма — місце приблизне</span>`
+      + `<span>${iconImg('uav', 'bunch')}кілька цілей поруч (тицни)</span>`
+      + '<span><i class="sw red"></i>ракетна загроза</span><span><i class="sw yellow"></i>загроза дронів</span>'
+      + '</div>';
   }
 
   function paintTargets(g, s) {
     st.hits = [];
     const list = (threats && threats.threats) || [];
     const now = Date.now();
+    const pxPerKm = map.kmUnits * s;
     const pts = [];
     for (const t of list) {
       if (t.areaOnly) continue;            // «десь в області» — центр області, а не місце: лише в переліку
       const [X, Y, tilt] = map.project(t.lat, t.lon);
       const x = X * s + st.ox, y = Y * s + st.oy;
-      if (x < -60 || y < -60 || x > st.cw + 60 || y > st.ch + 60) continue;
+      if (x < -80 || y < -80 || x > st.cw + 80 || y > st.ch + 80) continue;
       const old = now - (Date.parse(t.updated) || now) > 15 * 60000;
-      pts.push({ t, x, y, tilt, color: st.css['t-' + (TYPES[t.type] ? t.type : 'unknown')],
-        alpha: t.advisory || old ? 0.5 : t.lifecycle === 'uncertain' ? 0.8 : 1 });
+      pts.push({ t, x, y, tilt, color: typeOf(t.type).color, alpha: t.advisory || old ? 0.5 : t.lifecycle === 'uncertain' ? 0.8 : 1 });
     }
-    // спершу сліди й кола похибки — під усіма значками, і в гурті теж: видно, звідки кожна летить
+    // спершу плями похибки й сліди — під усіма значками, і в гурті теж: видно, звідки кожна летить
     for (const { t, x, y, color, alpha } of pts) {
-      if (t.trail && t.trail.length) {
-        g.strokeStyle = color;
-        g.lineWidth = 2.2;
-        g.setLineDash([]);
-        g.globalAlpha = alpha * 0.85;
-        g.beginPath();
-        t.trail.forEach(([la, lo], i) => {
-          const [tx, ty] = map.project(la, lo);
-          if (i === 0) g.moveTo(tx * s + st.ox, ty * s + st.oy); else g.lineTo(tx * s + st.ox, ty * s + st.oy);
-        });
-        g.lineTo(x, y);
-        g.stroke();
-      }
       if (t.quality !== 'confirmed' && t.unc > 0) {
-        const r = t.unc * map.kmUnits * s;
-        if (r > 6) {
-          g.setLineDash([3, 3]);
-          g.strokeStyle = color;
-          g.lineWidth = 1;
-          g.globalAlpha = alpha * 0.6;
-          g.beginPath();
-          g.arc(x, y, r, 0, Math.PI * 2);
-          g.stroke();
-          g.setLineDash([]);
-        }
+        const r = t.unc * pxPerKm;
+        if (r > MARK_R + 3) blob(g, x, y, r, color, alpha);
+      }
+      if (t.trail && t.trail.length) {
+        const tp = t.trail.map(([la, lo]) => { const [tx, ty] = map.project(la, lo); return [tx * s + st.ox, ty * s + st.oy]; });
+        tp.push([x, y]);
+        trail(g, tp, color, alpha);
       }
     }
     g.globalAlpha = 1;
-    // Значки, що злиплися б, — гуртом із числом. Жадібно від найнебезпечнішої: вона центр гурту і дає колір.
+    // Значки, що злиплися б, — гуртом із числом. Жадібно від найнебезпечнішої: вона центр гурту і дає силует.
     pts.sort((a, b) => (PRIO[b.t.type] || 0) - (PRIO[a.t.type] || 0));
     const groups = [];
     for (const p of pts) {
       const gr = groups.find((q) => Math.hypot(q.x - p.x, q.y - p.y) < CLUSTER_PX);
       if (gr) gr.m.push(p); else groups.push({ x: p.x, y: p.y, m: [p] });
     }
+    // курси — під силуетами, але над слідами
+    for (const gr of groups) {
+      if (gr.m.length > 1) continue;
+      const { t, x, y, tilt, color, alpha } = gr.m[0];
+      if (t.heading == null) continue;
+      g.globalAlpha = alpha;
+      course(g, x, y, (t.heading * Math.PI) / 180 - tilt, courseLen(t, pxPerKm), color, MARK_R);
+    }
+    g.globalAlpha = 1;
     for (const gr of groups) {
       if (gr.m.length > 1) {
         const n = gr.m.reduce((a, p) => a + (p.t.count > 1 ? p.t.count : 1), 0);
-        bunch(g, gr.x, gr.y, gr.m[0].color, n);
+        bunch(g, gr.x, gr.y, gr.m[0].t.type, n);
         st.hits.push({ x: gr.x, y: gr.y, ts: gr.m.map((p) => p.t) });
         continue;
       }
-      const { t, x, y, tilt, color, alpha } = gr.m[0];
-      const meta = typeOf(t.type);
+      const { t, x, y, tilt, alpha } = gr.m[0];
       g.globalAlpha = alpha;
-      g.save();
-      g.translate(x, y);
-      g.scale(GLYPH_K, GLYPH_K);
-      const rot = t.heading == null ? 0 : (t.heading * Math.PI) / 180 - tilt;
-      glyph(g, t.heading == null && meta.shape !== 'ring' ? 'dot' : meta.shape, color, rot);
-      g.restore();
-      if (t.count > 1) halo(g, '×' + t.count, x + 12, y - 11, st.css.text, 'bold 12px system-ui, sans-serif');
+      mark(g, x, y, t.type, MARK_R, t.heading == null ? 0 : (t.heading * Math.PI) / 180 - tilt);
+      if (t.count > 1) halo(g, '×' + t.count, x + MARK_R + 2, y - MARK_R, st.css.text, 'bold 12px system-ui, sans-serif');
       g.globalAlpha = 1;
       st.hits.push({ x, y, t });
     }
-  }
-
-  /// Гурт: темний кружок із білим числом (скільки разом, з групами NEPTUN) і обідком кольору головної цілі —
-  /// не кольором тривоги, тож не губиться на червоній чи жовтій заливці.
-  function bunch(g, x, y, color, n) {
-    const r = n > 9 ? 13.5 : 12;
-    g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
-    g.lineWidth = 6;
-    g.strokeStyle = 'rgba(0,0,0,.45)';
-    g.stroke();
-    g.fillStyle = 'rgba(12,22,17,.94)';
-    g.fill();
-    g.lineWidth = 2.6;
-    g.strokeStyle = color;
-    g.stroke();
-    g.font = 'bold 12px system-ui, sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillStyle = '#fff';
-    g.fillText(String(n), x, y + 0.5);
-    g.textAlign = 'left';
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -969,7 +1125,7 @@
     const n = ts.reduce((a, t) => a + (t.count > 1 ? t.count : 1), 0);
     const rows = ts.slice(0, 8).map((t) => {
       const m = typeOf(t.type);
-      return `${m.ico} ${esc(t.title || m.label)}${t.count > 1 ? ' ×' + t.count : ''}${t.locality ? ' · ' + esc(t.locality) : ''}`;
+      return `${iconImg(t.type)} ${esc(t.title || m.label)}${t.count > 1 ? ' ×' + t.count : ''}${t.locality ? ' · ' + esc(t.locality) : ''}`;
     });
     if (ts.length > 8) rows.push(`<span class="tv-muted">і ще ${ts.length - 8}</span>`);
     return `<b>${plural(n, 'ціль', 'цілі', 'цілей')} поруч</b><br>${rows.join('<br>')}`;
@@ -979,12 +1135,12 @@
     const m = typeOf(t.type);
     const bits = [];
     if (t.count > 1) bits.push('група ×' + t.count);
-    if (t.heading != null) bits.push('курс на ' + side(t.heading));
+    bits.push(t.heading != null ? 'курс на ' + side(t.heading) : 'курс невідомий');
     if (t.speed) bits.push(Math.round(t.speed) + ' км/год');
     if (t.sources) bits.push(plural(t.sources, 'підтвердження', 'підтвердження', 'підтверджень'));
     if (t.quality && t.quality !== 'confirmed') bits.push('місце приблизне' + (t.unc ? ', ±' + Math.round(t.unc) + ' км' : ''));
     if (t.advisory) bits.push('спостереження, не тривога');
-    return `<b>${m.ico} ${esc(t.title || m.label)}</b>${t.region ? ' · ' + esc(t.region.replace(' область', ' обл.')) : ''}<br>`
+    return `<b>${iconImg(t.type)} ${esc(t.title || m.label)}</b>${t.region ? ' · ' + esc(t.region.replace(' область', ' обл.')) : ''}<br>`
       + (t.text ? esc(t.text) + '<br>' : '')
       + `<span class="tv-muted">${esc(bits.join(' · '))}${bits.length ? ' · ' : ''}${esc(ago(t.updated))}</span>`;
   }
@@ -1054,7 +1210,7 @@
                 <div class="tv-pop" role="dialog" hidden></div>
                 <div class="tv-hint" hidden></div>
                 <div class="tv-fullstate" hidden></div>
-                <div class="tv-osm">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
+                <div class="tv-src">Дані: <a href="https://neptun.in.ua/" target="_blank" rel="noopener">NEPTUN</a></div>
                 <div class="tv-load">Мапа вантажиться…</div>
               </div>
               <div class="tv-ctl">
@@ -1065,12 +1221,7 @@
                 <button type="button" class="icon tv-fullbtn" title="На весь екран" aria-label="На весь екран">⤢</button>
               </div>
             </div>
-            <div class="tv-legend">
-              <span><i class="sw red"></i>ракетна загроза</span><span><i class="sw yellow"></i>загроза дронів</span>
-              <span><i class="gl uav"></i>БпЛА</span><span><i class="gl missile"></i>ракети</span><span><i class="gl kab"></i>КАБ</span>
-              <span><i class="gl ring"></i>розвідка й інше</span><span><i class="cl">3</i>кілька цілей поруч</span>
-              <span><i class="ci"></i>місце приблизне</span>
-            </div>
+            <div class="tv-legend"></div>
           </section>
           <section class="panel tv-alerts">
             <h2>Тривоги зараз <span class="count" id="tvAlertsN"></span></h2>
@@ -1085,9 +1236,8 @@
           <section class="panel tv-dovkola" id="tvDovkola"></section>
         </div>
       </div>
-      <p class="tv-note">⚠ Це не офіційне оповіщення: дані можуть запізнюватись чи бути неточними. Орієнтуйся на сирену
-        й застосунок «Повітряна тривога». Дані: <a href="https://neptun.in.ua/" target="_blank" rel="noopener">Карта повітряних тривог — NEPTUN</a>.
-        Мапа: межі районів — NEPTUN, міста, вода й траси — © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>.</p>`;
+      <p class="tv-note">⚠ Це не офіційне оповіщення — орієнтуйся на сирену й застосунок «Повітряна тривога».</p>`;
+    root.querySelector('.tv-legend').innerHTML = legendHtml();
     const box = root.querySelector('.tv-box');
     st.box = box;
     st.cv = root.querySelector('.tv-cv');
@@ -1141,7 +1291,7 @@
     st.ro.observe(box);
     if (window.HDovkola) {
       HDovkola.mount($('tvDovkola'), {
-        esc, types: TYPES, glyph, kick, focus: focusTarget,
+        esc, types: TYPES, mark, course, trail, blob, courseLen, iconImg, kick, focus: focusTarget,
         map: () => map, threats: () => threats, region: cur,
         alarm: () => ({ off: !data || !!data.off, stale: !!(data && data.stale), on: status().on, level: status().level }),
         oblastName: () => oblastName(cur().oblast),
@@ -1304,9 +1454,7 @@
     const sel = $('tvRegion');
     if (sel && map && sel.value !== r.key) sel.value = r.key;
     const at = data && Date.parse(data.at || '');
-    $('tvFresh').innerHTML = (at ? `Оновлено о ${esc(kyiv(new Date(at)))} · ` : '')
-      + 'дані <a href="https://neptun.in.ua/" target="_blank" rel="noopener">NEPTUN</a>, мапа © '
-      + '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · це не офіційне оповіщення';
+    $('tvFresh').textContent = at ? 'Оновлено о ' + kyiv(new Date(at)) : '';
     // на весь екран картки не видно — стан коротко в куті мапи
     const fs = st.box && st.box.querySelector('.tv-fullstate');
     if (fs) { fs.textContent = chip; fs.className = 'tv-fullstate ' + cls; fs.hidden = !chip; }
@@ -1376,7 +1524,7 @@
     const byType = {};
     for (const t of list) { const k = TYPES[t.type] ? t.type : 'unknown'; byType[k] = (byType[k] || 0) + n(t); }
     const chips = Object.keys(TYPES).filter((k) => byType[k])
-      .map((k) => `<span class="tv-chip"><i class="gl ${TYPES[k].shape === 'ring' ? 'ring' : k}"></i>${TYPES[k].label} <b>${byType[k]}</b></span>`).join('');
+      .map((k) => `<span class="tv-chip">${iconImg(k)}${TYPES[k].label} <b>${byType[k]}</b></span>`).join('');
     const myOb = oblastName(cur().oblast);
     const obKey = (name) => (map ? (map.oblastList.find((x) => x.n === name) || {}).k : '') || '';
     const mine = list.filter((t) => t.region && t.region === myOb)
@@ -1387,7 +1535,7 @@
       const where = t.areaOnly ? '<span class="tv-muted">десь в області</span>' : t.locality ? esc(t.locality) : '';
       const dir = t.heading != null && !t.areaOnly ? ` <span class="tv-muted">→ ${side(t.heading)}</span>` : '';
       const key = t.areaOnly ? `data-ob="${esc(obKey(t.region))}"` : `data-id="${esc(t.id)}"`;
-      return `<li><button type="button" class="tv-row" ${key}><span class="tv-ico" aria-hidden="true">${m.ico}</span>`
+      return `<li><button type="button" class="tv-row" ${key}><span class="tv-ico" aria-hidden="true">${iconImg(t.type)}</span>`
         + `<span class="tv-t">${esc(t.title || m.label)}${t.count > 1 ? ' <b>×' + t.count + '</b>' : ''}${where ? ' · ' + where : ''}${dir}</span>`
         + `<span class="tv-ago">${esc(ago(t.updated))}</span></button></li>`;
     };

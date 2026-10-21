@@ -1,23 +1,28 @@
 """
-Детальний шар мапи «🚨 Тривога» — web/static/tryvoga-detail.json (docs/tryvoga.md, «Мапа районів»), 21.10.2026.
+Детальний шар мапи «🚨 Тривога» — web/static/tryvoga-detail.json (docs/tryvoga.md, «Мапа районів»), 22.10.2026.
 
     python data/geo/build-tryvoga-detail.py      # з кореня репозиторію, повним шляхом до python.exe
 
 Лягає поверх web/static/tryvoga-map.json (та сама проєкція й сітка 4000×2730, що в «Де це?» і build-tryvoga.py), але
-окремим файлом: основна мапа з'являється одразу, а деталі клієнт довантажує. Мапа лишається своєю — браузер нічого
-не тягне назовні, усе зібрано тут.
+окремим файлом: основна мапа з'являється одразу, а деталі клієнт довантажує. Мапа своя — браузер нічого не тягне
+назовні, усе зібрано тут.
+
+Джерела — без умов про посилання (користувач: «забагато посилань»):
+  • Natural Earth 10m, суспільне надбання — річки (основний набір і європейський додатковий) й водойми (озера,
+    водосховища, лимани). Каховського водосховища нема з 06.06.2023 — його викидаємо, хоч у NE воно ще є;
+  • Вікідані, CC0 — міста, смт і селища України з населенням і координатами (SPARQL нижче), райцентри — столиці
+    (P36) чинних районів (Q1267632 без дати скасування); назви — українські звідти ж.
+Трас нема свідомо: лінії доріг сперечалися зі слідами й курсами цілей.
 
 Що в шарі:
-  • міста й смт від ~10 тис. людей і всі райцентри — рівнями: 1 — обласні центри, 2 — від 100 тис., 3 — від 30 тис.
-    і райцентри, 4 — решта (клієнт показує їх з наближенням і без накладань підписів);
-  • водосховища, великі озера й лимани — полігонами (від WATER_MIN_KM2);
-  • головні річки (RIVERS) — лініями, Дніпро товще;
-  • траси М — з web/games/geo-detail.json (теж OSM, збирав build-detail.py); підписи областей — звідти ж.
+  • міста рівнями: 1 — обласні центри, 2 — від 100 тис., 3 — від 30 тис. і райцентри, 4 — від 10 тис. (і міста без
+    даних про населення); клієнт показує їх з наближенням і без накладань підписів;
+  • водойми від WATER_MIN_KM2 — полігонами;
+  • річки трьома класами: 0 — Дніпро й Дунай, 1 — головні (MAIN), 2 — решта (клієнт малює з наближенням);
+  • підписи областей — з web/games/geo-detail.json (центри областей «Де це?», Natural Earth).
 
-Джерело — OpenStreetMap (© OpenStreetMap contributors, ODbL; атрибуція — у кутку мапи й під нею). Три запити
-Overpass (нижче) качаються в %TEMP%/tryvoga-osm/ (у гіт не йдуть); є файл — не качаємо вдруге, свіже — стерти теку.
-Межа України для обрізання — райони NEPTUN з tryvoga-map.json. Лінії — дельтами (перша точка абсолютна, далі
-різниці), як дуги основної мапи; спрощення — Дуглас — Пекер.
+Файли NE качає build-map.py у %TEMP% (у гіт не йдуть), відповідь Вікіданих — у %TEMP%/tryvoga-src/. Межа України для
+обрізання — райони NEPTUN з tryvoga-map.json. Лінії — дельтами, спрощення — Дуглас — Пекер.
 """
 import importlib.util
 import json
@@ -26,7 +31,6 @@ import os
 import re
 import sys
 import tempfile
-import time
 import urllib.parse
 import urllib.request
 
@@ -35,79 +39,54 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 BASE = os.path.join(ROOT, "web", "static", "tryvoga-map.json")
 GEO_DETAIL = os.path.join(ROOT, "web", "games", "geo-detail.json")
 OUT = os.path.join(ROOT, "web", "static", "tryvoga-detail.json")
-CACHE = os.path.join(tempfile.gettempdir(), "tryvoga-osm")
+CACHE = os.path.join(tempfile.gettempdir(), "tryvoga-src")
 UA = "Hlechyky/1.0 (https://hlechyky.pp.ua)"
-ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"]
-BBOX = "44.0,21.9,52.5,40.4"
+WDQS = "https://query.wikidata.org/sparql"
 
 TOL_WATER = 1.6        # одиниць сітки (~0,5 км)
 TOL_RIVER = 2.0
-WATER_MIN_KM2 = 18     # Світязь (~27 км²) ще є, ставки — ні
+WATER_MIN_KM2 = 8
 RIVER_MIN_LEN = 12     # коротші уривки (~4 км) — геть
 RIVER_NEAR = 12        # прикордонна річка може відійти за контур на стільки одиниць (~4 км)
 POP_MIN = 10_000
-KM_PER_UNIT = None     # з proj основної мапи
 
 _spec = importlib.util.spec_from_file_location("buildmap", os.path.join(HERE, "build-map.py"))
 bm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bm)
 project = bm.project
 
-RIVERS = ["Дніпро", "Дністер", "Південний Буг", "Десна", "Сіверський Донець", "Прип'ять", "Тетерів", "Рось",
-          "Інгулець", "Сула", "Псел", "Ворскла", "Горинь", "Случ", "Інгул", "Західний Буг", "Прут", "Дунай", "Тиса"]
-BIG = {"Дніпро", "Дунай"}
+# Назви NE (англійські) → клас річки. Безіменні з європейського набору — клас 2.
+BIG = {"Dnipro", "Danube", "Bratul Chillia"}
+MAIN = {"Dniester", "Prut", "Donets", "Seversky Donets", "Desna", "Southern Bug", "Bug", "Zakhidnyy Buh", "Pripyat",
+        "Prypyat", "Haryn", "Styr", "Ros", "Sluch", "Oskol", "Teteriv", "Synyukha", "Seym", "Uzh", "Latorytsya", "Ubort",
+        "Snov"}
+SKIP_WATER = ("Kakhovka",)
 
-Q_PLACES = f"""[out:json][timeout:300];
-node["place"~"^(city|town)$"]({BBOX});
-out body qt;
-rel["boundary"="administrative"]["admin_level"="6"]({BBOX});
-node(r:"admin_centre");
-out ids qt;"""
-
-# Лише названі водосховища, озера й лимани (без «,i» і без ставків: важкий запит Overpass віддає 502).
-_WATER_RE = "[Вв]одосховище|[Оо]зеро|[Лл]иман|Світязь|Ялпуг|Кугурлуй|Кагул|Сасик|Сиваш"
-Q_WATER = f"""[out:json][timeout:300];
-(
-  way["natural"="water"]["water"~"^(reservoir|lake|lagoon)$"]["name"~"{_WATER_RE}"]({BBOX});
-  rel["natural"="water"]["water"~"^(reservoir|lake|lagoon)$"]["name"~"{_WATER_RE}"]({BBOX});
-  rel["natural"="water"][!"water"]["name"~"{_WATER_RE}"]({BBOX});
-);
-out geom qt;"""
-
-_RIV_RE = "^(" + "|".join(n.replace("'", ".") for n in RIVERS) + ")$"
-Q_RIVERS = f"""[out:json][timeout:300];
-(
-  rel["waterway"="river"]["name"~"{_RIV_RE}"]({BBOX});
-  rel["waterway"="river"]["name:uk"~"{_RIV_RE}"]({BBOX});
-);
-out geom qt;"""
+# Вікідані: місто України, місто обласного значення, смт України, селище України (з 2024).
+Q_PLACES = """SELECT ?i (SAMPLE(?nm) AS ?name) (MAX(?p) AS ?pop) (SAMPLE(?xy) AS ?coord) (MAX(?city) AS ?isCity) (MAX(?cap) AS ?centre) WHERE {
+  VALUES (?cls ?c) { (wd:Q12131624 1) (wd:Q5123999 1) (wd:Q4100864 0) (wd:Q121366249 0) }
+  ?i wdt:P31 ?cls; wdt:P17 wd:Q212; wdt:P625 ?xy; rdfs:label ?nm .
+  FILTER(LANG(?nm) = "uk")
+  BIND(?c AS ?city)
+  OPTIONAL { ?i wdt:P1082 ?p }
+  OPTIONAL { ?r wdt:P36 ?i; wdt:P31 wd:Q1267632 . FILTER NOT EXISTS { ?r wdt:P576 [] } BIND(1 AS ?cap) }
+} GROUP BY ?i"""
 
 
-def overpass(name, query):
+def wikidata(name, query):
     os.makedirs(CACHE, exist_ok=True)
     path = os.path.join(CACHE, name + ".json")
     if os.path.exists(path) and os.path.getsize(path) > 1000:
         return json.load(open(path, encoding="utf-8"))
-    body = urllib.parse.urlencode({"data": query}).encode()
-    last = None
-    for url in ENDPOINTS:
-        for attempt in range(2):
-            try:
-                print("Overpass:", name, url)
-                req = urllib.request.Request(url, data=body, headers={"User-Agent": UA})
-                with urllib.request.urlopen(req, timeout=400) as r:
-                    raw = r.read()
-                doc = json.loads(raw.decode("utf-8"))
-                if "elements" not in doc:
-                    raise RuntimeError("без elements: " + str(doc.get("remark", ""))[:200])
-                open(path + ".tmp", "wb").write(raw)
-                os.replace(path + ".tmp", path)
-                return doc
-            except Exception as e:      # noqa: BLE001 — пробуємо інший сервер
-                last = e
-                print("  не вийшло:", e)
-                time.sleep(5)
-    raise RuntimeError(f"Overpass {name}: {last}")
+    print("Вікідані:", name)
+    url = WDQS + "?" + urllib.parse.urlencode({"query": query, "format": "json"})
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/sparql-results+json"})
+    with urllib.request.urlopen(req, timeout=300) as r:
+        raw = r.read()
+    doc = json.loads(raw.decode("utf-8"))
+    open(path + ".tmp", "wb").write(raw)
+    os.replace(path + ".tmp", path)
+    return doc
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -174,46 +153,6 @@ def make_inside(units):
 # геометрія
 # ---------------------------------------------------------------------------------------------------------------
 
-def merge(lines):
-    """Склеїти шматки кінець-у-кінець (OSM ріже річку й берег на сотні way)."""
-    lines = [l[:] for l in lines if len(l) >= 2]
-    changed = True
-    while changed:
-        changed = False
-        ends = {}
-        for i, l in enumerate(lines):
-            ends.setdefault(l[0], []).append((i, 0))
-            ends.setdefault(l[-1], []).append((i, 1))
-        used = set()
-        out = []
-        for i, l in enumerate(lines):
-            if i in used:
-                continue
-            used.add(i)
-            cur = l
-            grown = True
-            while grown and cur[0] != cur[-1]:
-                grown = False
-                for side in (1, 0):
-                    key = cur[-1] if side else cur[0]
-                    for j, e in ends.get(key, []):
-                        if j in used:
-                            continue
-                        o = lines[j]
-                        if side:
-                            cur = cur + (o[1:] if e == 0 else o[::-1][1:])
-                        else:
-                            cur = (o[:-1] if e == 1 else o[::-1][:-1]) + cur
-                        used.add(j)
-                        grown = changed = True
-                        break
-                    if grown:
-                        break
-            out.append(cur)
-        lines = out
-    return lines
-
-
 def area(ring):
     s = 0.0
     for i in range(len(ring)):
@@ -234,26 +173,24 @@ def delta(pts):
     return out
 
 
-def geom_pts(geometry):
-    return [project(g["lat"], g["lon"]) for g in geometry if g]
+def lines_of(geom):
+    if not geom:
+        return []
+    if geom["type"] == "LineString":
+        return [geom["coordinates"]]
+    if geom["type"] == "MultiLineString":
+        return geom["coordinates"]
+    return []
 
 
-def norm(s):
-    """Апостроф один на всю мапу: в OSM трапляються ’ і ʼ, у нас скрізь '."""
-    return s.replace("’", "'").replace("ʼ", "'").strip()
-
-
-def uk_name(tags):
-    return norm(tags.get("name:uk") or tags.get("name") or "")
-
-
-def river_name(tags):
-    """Міжнародні річки в OSM звуться «Dnieper», «Bug / Західний Буг / Заходні Буг» — шукаємо свою назву серед частин."""
-    for n in [tags.get("name:uk", "")] + tags.get("name", "").split(" / "):
-        n = norm(n)
-        if n in RIVERS:
-            return n
-    return None
+def polys_of(geom):
+    if not geom:
+        return []
+    if geom["type"] == "Polygon":
+        return [geom["coordinates"]]
+    if geom["type"] == "MultiPolygon":
+        return geom["coordinates"]
+    return []
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -261,23 +198,22 @@ def river_name(tags):
 # ---------------------------------------------------------------------------------------------------------------
 
 def build_places(inside, base):
-    doc = overpass("places", Q_PLACES)
-    centres = {e["id"] for e in doc["elements"] if e["type"] == "node" and not e.get("tags")}
-    # обласний центр — за назвою І місцем: Миколаїв на Львівщині чи Чернівці на Вінниччині — не вони
+    doc = wikidata("places", Q_PLACES)
     capital_at = {t["name"]: (t["x"], t["y"]) for t in base.get("towns", [])}
-    capitals = set(capital_at)
     found = []
-    for e in doc["elements"]:
-        tags = e.get("tags")
-        if e["type"] != "node" or not tags or "lat" not in e:
+    for b in doc["results"]["bindings"]:
+        name = b.get("name", {}).get("value", "").replace("’", "'").replace("ʼ", "'").strip()
+        m = re.match(r"Point\(([-\d.]+) ([-\d.]+)\)", b.get("coord", {}).get("value", ""))
+        if not name or not m:
             continue
-        name = uk_name(tags)
-        if not name:
-            continue
-        m = re.match(r"\d+", re.sub(r"[\s ,.]", "", tags.get("population", "")))
-        pop = int(m.group(0)) if m else 0
-        centre = e["id"] in centres
-        x, y = project(e["lat"], e["lon"])
+        lon, lat = float(m.group(1)), float(m.group(2))
+        try:
+            pop = int(float(b.get("pop", {}).get("value", "0")))
+        except ValueError:
+            pop = 0
+        city = b.get("isCity", {}).get("value") == "1"
+        centre = b.get("centre", {}).get("value") == "1"
+        x, y = project(lat, lon)
         cap = capital_at.get(name)
         if cap and abs(cap[0] - x) + abs(cap[1] - y) < 60:
             lvl = 1
@@ -285,7 +221,7 @@ def build_places(inside, base):
             lvl = 2
         elif pop >= 30_000 or centre:
             lvl = 3
-        elif pop >= POP_MIN or (tags.get("place") == "city" and not pop):
+        elif pop >= POP_MIN or (city and not pop):
             lvl = 4
         else:
             continue
@@ -294,201 +230,87 @@ def build_places(inside, base):
         found.append((lvl, -pop, name, x, y))
     found.sort()
     out = []
-    for lvl, npop, name, x, y in found:
-        # той самий населений пункт двічі (вузол міста й вузол смт поруч) — лишаємо важливіший
+    for lvl, _, name, x, y in found:
         if any(p["n"] == name and abs(p["x"] - x) + abs(p["y"] - y) < 30 for p in out):
-            continue
+            continue            # той самий пункт двічі (місто й громада з тією ж назвою поруч)
         out.append({"n": name, "x": x, "y": y, "l": lvl})
     have = {p["n"] for p in out if p["l"] == 1}
-    missing = sorted(capitals - have)
-    if missing:
-        print("  обласних центрів нема в OSM-вибірці, беру з основної мапи:", ", ".join(missing))
-        for t in base.get("towns", []):
-            if t["name"] in missing:
-                out.insert(0, {"n": t["name"], "x": t["x"], "y": t["y"], "l": 1})
+    for t in base.get("towns", []):
+        if t["name"] not in have:
+            print("  обласного центру нема у Вікіданих-вибірці, беру з основної мапи:", t["name"])
+            out.insert(0, {"n": t["name"], "x": t["x"], "y": t["y"], "l": 1})
     return out
 
 
-def build_water(inside):
-    doc = overpass("water", Q_WATER)
-    km2 = KM_PER_UNIT ** 2
-    seen = set()
+def build_water(near):
+    km2 = (6371 / bm.K) ** 2
     out = []
-    for e in doc["elements"]:
-        tags = e.get("tags", {})
-        name = uk_name(tags)
-        if e["type"] == "way":
-            rings = [geom_pts(e.get("geometry", []))]
-        elif e["type"] == "relation":
-            outer = [geom_pts(m.get("geometry", [])) for m in e.get("members", [])
-                     if m.get("type") == "way" and m.get("role", "outer") in ("outer", "") and m.get("geometry")]
-            rings = merge(outer)
-        else:
-            continue
-        good = []
-        for r in rings:
-            r = bm.dedupe(r)
-            if len(r) < 4 or area(r) * km2 < WATER_MIN_KM2:
+    for src in ("ne_10m_lakes.geojson", "ne_10m_lakes_europe.geojson"):
+        for f in bm.fetch(src)["features"]:
+            name = f["properties"].get("name") or ""
+            if any(s in name for s in SKIP_WATER):
                 continue
-            ins = sum(1 for p in r[:: max(1, len(r) // 40)] if inside(*p))
-            if ins * 2 < len(r[:: max(1, len(r) // 40)]):
-                continue                       # здебільшого за кордоном
-            s = bm.dp_closed(r + [r[0]], TOL_WATER)
-            s = bm.dedupe(s)
-            if len(s) >= 4:
-                good.append(s)
-        if not good:
-            continue
-        key = (name, round(good[0][0][0] / 20), round(good[0][0][1] / 20))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"n": name, "km2": round(sum(area(r) for r in good) * km2), "rings": good})
-    out.sort(key=lambda w: -w["km2"])
+            for poly in polys_of(f["geometry"]):
+                r = bm.dedupe([project(lat, lon) for lon, lat, *_ in poly[0]])
+                if len(r) < 4 or area(r) * km2 < WATER_MIN_KM2:
+                    continue
+                probe = r[:: max(1, len(r) // 40)]
+                if sum(1 for p in probe if near(*p, d=6)) * 2 < len(probe):
+                    continue                        # здебільшого за кордоном
+                s = bm.dedupe(bm.dp_closed(r + [r[0]], TOL_WATER))
+                if len(s) >= 4:
+                    out.append(s)
     return out
 
 
 def build_rivers(near):
-    by = {}
-
-    def take(doc):
-        for e in doc["elements"]:
-            name = river_name(e.get("tags", {}))
-            if not name:
-                continue
-            if e["type"] == "relation":
-                by.setdefault(name, []).extend(
-                    geom_pts(m["geometry"]) for m in e.get("members", [])
-                    if m.get("type") == "way" and m.get("role", "") in ("", "main_stream") and m.get("geometry"))
-            elif e["type"] == "way" and e.get("geometry"):
-                by.setdefault(name, []).append(geom_pts(e["geometry"]))
-
-    take(overpass("rivers", Q_RIVERS))
-    # Котрих нема відношенням (чи назва вигляду «Прыпяць / Прип'ять») — шукаємо ще раз ширше, лініями теж.
-    missing = [n for n in RIVERS if n not in by]
-    if missing:
-        rx = "|".join(n.replace("'", ".") for n in missing)
-        take(overpass("rivers-more-" + str(len(missing)), f"""[out:json][timeout:300];
-(
-  rel["waterway"="river"]["name"~"{rx}"]({BBOX});
-  rel["waterway"="river"]["name:uk"~"{rx}"]({BBOX});
-  way["waterway"="river"]["name"~"{rx}"]({BBOX});
-  way["waterway"="river"]["name:uk"~"{rx}"]({BBOX});
-);
-out geom qt;"""))
-    out = []
-    for name in RIVERS:
-        if name not in by:
-            print("  річки нема в OSM-вибірці:", name)
-            continue
-        lines = []
-        for l in merge(by[name]):
-            s = bm.dp(bm.dedupe(l) or l, TOL_RIVER)
-            run = []
-            for p in s:
-                if near(*p):
-                    run.append(p)
-                else:
-                    if len(run) >= 2 and length(run) >= RIVER_MIN_LEN:
-                        lines.append(run)
-                    run = []
-            if len(run) >= 2 and length(run) >= RIVER_MIN_LEN:
-                lines.append(run)
-        if lines:
-            out.append({"n": name, "big": name in BIG, "lines": lines})
-    return out
-
-
-Q_ROADS = f"""[out:json][timeout:300];
-way["highway"~"^(motorway|trunk|primary|motorway_link|trunk_link)$"]["ref"~"М"]({BBOX});
-out geom qt;"""
-
-
-def build_roads(inside):
-    """Траси М-01…М-30. Шар «Де це?» порваний на уривки, тож збираємо тут: склеїти шматки за номером, спростити,
-    а другу смугу дороги (дві паралельні лінії за 20 м — на нашій сітці одна) викинути сіткою зайнятих клітинок."""
-    doc = overpass("roads", Q_ROADS)
-    by = {}
-    for e in doc["elements"]:
-        if e["type"] != "way" or not e.get("geometry"):
-            continue
-        refs = [m.group(1) for m in (re.match(r"^М[- ]?(\d{2})\b", s.strip()) for s in e.get("tags", {}).get("ref", "").split(";")) if m]
-        if refs:
-            by.setdefault(refs[0], []).append(bm.dedupe(geom_pts(e["geometry"])) or geom_pts(e["geometry"]))
-    CELL = 3
-    taken = set()
-
-    def cells(line, step=1.5):
-        out = []
-        for i in range(1, len(line)):
-            (x1, y1), (x2, y2) = line[i - 1], line[i]
-            n = max(1, int(math.hypot(x2 - x1, y2 - y1) / step))
-            for k in range(n + 1):
-                out.append((int((x1 + (x2 - x1) * k / n) // CELL), int((y1 + (y2 - y1) * k / n) // CELL)))
-        return out
-
-    def covered(c):
-        return any((c[0] + dx, c[1] + dy) in taken for dx in (-1, 0, 1) for dy in (-1, 0, 1))
-
-    out = []
-    for ref in sorted(by, key=int):
-        lines = []
-        for l in sorted(merge(by[ref]), key=lambda l: -length(l)):
-            s = bm.dp(l, 2)
-            # лише в Україні
-            run, parts = [], []
-            for p in s:
-                if inside(*p):
-                    run.append(p)
-                else:
-                    if len(run) >= 2:
-                        parts.append(run)
-                    run = []
-            if len(run) >= 2:
-                parts.append(run)
-            for part in parts:
-                cs = cells(part)
-                if not cs or length(part) < 3:
+    out = {0: [], 1: [], 2: []}
+    for src in ("ne_10m_rivers_lake_centerlines.geojson", "ne_10m_rivers_europe.geojson"):
+        for f in bm.fetch(src)["features"]:
+            name = f["properties"].get("name") or ""
+            cls = 0 if name in BIG else 1 if name in MAIN else 2
+            for line in lines_of(f["geometry"]):
+                pts = bm.dedupe([project(lat, lon) for lon, lat, *_ in line])
+                if len(pts) < 2:
                     continue
-                if sum(1 for c in cs if covered(c)) >= 0.8 * len(cs):
-                    continue                      # друга смуга чи з'їзд уздовж уже взятої лінії
-                taken.update(cs)
-                lines.append(part)
-        if lines:
-            out.append({"ref": "М-" + ref, "lines": lines})
+                s = bm.dp(pts, TOL_RIVER)
+                run = []
+                for p in s:
+                    if near(*p):
+                        run.append(p)
+                    else:
+                        if len(run) >= 2 and length(run) >= RIVER_MIN_LEN:
+                            out[cls].append(run)
+                        run = []
+                if len(run) >= 2 and length(run) >= RIVER_MIN_LEN:
+                    out[cls].append(run)
     return out
 
 
 def main():
-    global KM_PER_UNIT
-    sys.stdout.reconfigure(encoding="utf-8")     # консоль Windows — cp1252, а з -I PYTHONIOENCODING не діє
+    sys.stdout.reconfigure(encoding="utf-8")     # консоль Windows — cp1252
     base, units = load_units()
-    KM_PER_UNIT = 6371 / base["proj"]["k"]
     inside, near = make_inside(units)
     geo = json.load(open(GEO_DETAIL, encoding="utf-8"))
 
     places = build_places(inside, base)
-    water = build_water(inside)
+    water = build_water(near)
     rivers = build_rivers(near)
-    roads = [{"ref": r["ref"], "lines": [delta(l) for l in r["lines"]]} for r in build_roads(inside)]
 
     doc = {
-        "v": 1,
-        "attr": "© OpenStreetMap contributors",
+        "v": 2,
+        "src": "Міста: Вікідані (CC0). Річки й водойми: Natural Earth (суспільне надбання).",
         "labels": geo.get("labels", []),
         "places": places,
-        "water": [{"n": w["n"], "rings": [delta(r) for r in w["rings"]]} for w in water],
-        "rivers": [{"n": r["n"], "big": r["big"], "lines": [delta(l) for l in r["lines"]]} for r in rivers],
-        "roads": roads,
+        "water": [delta(r) for r in water],
+        "rivers": [{"c": c, "lines": [delta(l) for l in lines]} for c, lines in sorted(rivers.items()) if lines],
     }
     text = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
     open(OUT, "w", encoding="utf-8", newline="\n").write(text)
     lv = [sum(1 for p in places if p["l"] == i) for i in range(1, 5)]
     print(f"{OUT}: {len(text.encode('utf-8'))} байт")
-    print(f"  міст {len(places)} (рівні 1–4: {lv}), водойм {len(water)}: "
-          + ", ".join(f"{w['n']} {w['km2']}" for w in water[:14]))
-    print(f"  річок {len(rivers)}: " + ", ".join(f"{r['n']} ({sum(len(l) for l in r['lines'])})" for r in rivers))
-    print(f"  трас {len(roads)}, підписів областей {len(doc['labels'])}")
+    print(f"  міст {len(places)} (рівні 1–4: {lv}), водойм {len(water)}, річок (ліній за класами 0/1/2): "
+          + "/".join(str(len(rivers[c])) for c in (0, 1, 2)) + f", підписів областей {len(doc['labels'])}")
 
 
 if __name__ == "__main__":

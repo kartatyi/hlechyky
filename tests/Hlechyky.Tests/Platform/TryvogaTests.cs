@@ -234,12 +234,12 @@ public sealed class TryvogaTests : IDisposable
         Assert.True(GeoScore.Km(clat, clon, zlat, zlon) > 8);
     }
 
-    // ---------- детальний шар мапи (OSM) ----------
+    // ---------- детальний шар мапи (Вікідані + Natural Earth) ----------
 
     /// <summary>
     /// web/static/tryvoga-detail.json (data/geo/build-tryvoga-detail.py): усі обласні центри рівнем 1 і там, де вони є
-    /// (тезка-смт — Миколаїв на Львівщині — рівнем 1 не стає), міста лягають у сітку тієї ж проєкції, є вода, річки й
-    /// траси, атрибуція OSM, і файл легкий — його довантажують на телефоні.
+    /// (тезка-селище рівнем 1 не стає), міста лягають у сітку тієї ж проєкції, є вода й річки (Дніпро — класом 0),
+    /// трас і OpenStreetMap нема (22.10: «не хочу OSM», траси сперечалися з курсами цілей), і файл легкий.
     /// </summary>
     [Fact]
     public void Detail_layer_has_every_oblast_centre_once_in_its_place_and_stays_light()
@@ -248,7 +248,8 @@ public sealed class TryvogaTests : IDisposable
         Assert.True(new FileInfo(path).Length < 400_000, $"{new FileInfo(path).Length} байт");
         using var doc = JsonDocument.Parse(File.ReadAllText(path));
         var root = doc.RootElement;
-        Assert.Contains("OpenStreetMap", root.GetProperty("attr").GetString());
+        Assert.DoesNotContain("OpenStreetMap", File.ReadAllText(path));
+        Assert.False(root.TryGetProperty("roads", out _));
         var places = root.GetProperty("places").EnumerateArray().ToList();
         var capitals = places.Where(p => p.GetProperty("l").GetInt32() == 1).Select(p => p.GetProperty("n").GetString()).ToList();
         Assert.Equal(capitals.Count, capitals.Distinct().Count());
@@ -262,9 +263,29 @@ public sealed class TryvogaTests : IDisposable
         var zh = places.Single(p => p.GetProperty("n").GetString() == "Житомир");
         var (la, lo) = GeoMap.Unproject(zh.GetProperty("x").GetDouble(), zh.GetProperty("y").GetDouble());
         Assert.True(GeoScore.Km(la, lo, 50.2547, 28.6587) < 3, $"Житомир: {la:0.000}, {lo:0.000}");
-        Assert.Contains(root.GetProperty("rivers").EnumerateArray(), r => r.GetProperty("n").GetString() == "Дніпро");
+        Assert.Contains(root.GetProperty("rivers").EnumerateArray(), r => r.GetProperty("c").GetInt32() == 0);
         Assert.True(root.GetProperty("water").GetArrayLength() >= 5);
-        Assert.True(root.GetProperty("roads").GetArrayLength() >= 20);
+    }
+
+    /// <summary>
+    /// «Київ якийсь рваний» (22.10): у NEPTUN межа міста не збігалася з сусідніми районами — кожна сторона мала свою дугу,
+    /// клієнт малював їх яскравим кордоном, а між ними просвічувало «море». Після вирівнювання топології
+    /// (build-tryvoga.py, shapely) кожна дуга межі міста — спільна з сусіднім районом (Київ ніде не виходить на кордон).
+    /// </summary>
+    [Fact]
+    public void Kyiv_shares_every_border_arc_with_a_neighbouring_raion()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(Paths.Resolve("web/static/tryvoga-map.json")));
+        var units = doc.RootElement.GetProperty("units").EnumerateArray().ToList();
+        var uses = new Dictionary<int, int>();
+        foreach (var u in units)
+            foreach (var ring in u.GetProperty("rings").EnumerateArray())
+                foreach (var id in ring.EnumerateArray())
+                    uses[Math.Abs(id.GetInt32())] = uses.GetValueOrDefault(Math.Abs(id.GetInt32())) + 1;
+        var kyiv = units.Single(u => u.GetProperty("k").GetString() == "м. київ");
+        var arcs = kyiv.GetProperty("rings").EnumerateArray().SelectMany(r => r.EnumerateArray()).Select(a => Math.Abs(a.GetInt32())).ToList();
+        Assert.NotEmpty(arcs);
+        Assert.All(arcs, a => Assert.Equal(2, uses[a]));
     }
 
     // ---------- архів ----------

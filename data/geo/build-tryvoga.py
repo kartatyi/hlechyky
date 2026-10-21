@@ -16,6 +16,13 @@
   4. Дуги в стилі TopoJSON: спільна межа двох районів — одна дуга, тож після спрощення Дугласом — Пекером між
      районами не лишається щілин. Межу області клієнт бачить сам: дуга між районами різних областей.
   5. Дуги — дельтами (перша точка абсолютна, далі різниці): файл удвічі менший.
+  6. Топологія (22.10.2026, «Київ якийсь рваний»): у NEPTUN межа м. Києва (і Севастополя) не збігається з сусідніми
+     районами, а подекуди між районами щілини чи накладки. Тоді спільна межа — це дві різні дуги по одній одиниці:
+     клієнт малював їх яскравим контуром країни, а крізь щілини просвічувало «море». Тут (shapely): накладки
+     віддаємо місту, далі — тому, хто раніше; щілини всередині країни — сусідові з найдовшою спільною межею; потім
+     усі межі вузлуємо й збираємо грані заново — у сусідів спільні вершини, і дуга одна на двох.
+
+Потрібен shapely (pip install --user shapely); запуск без -I, бо той вимикає користувацькі пакети.
 """
 import importlib.util
 import json
@@ -120,6 +127,66 @@ def deepest(rings):
     return int(round(best[1][0])), int(round(best[1][1]))
 
 
+def clean_topology(units):
+    """Пункт 6 угорі: без накладок і щілин, зі спільними вершинами. Міняє u[3] (кільця) на місці."""
+    from shapely.geometry import MultiPolygon, Polygon
+    from shapely.ops import polygonize, unary_union
+    from shapely.validation import make_valid
+
+    def geom(rings):
+        g = None
+        for r in rings:                    # кільця одиниці — парний-непарний (дірки теж кільця)
+            p = make_valid(Polygon(r)) if len(r) >= 3 else None
+            if p is None or p.is_empty:
+                continue
+            g = p if g is None else g.symmetric_difference(p)
+        return make_valid(g)
+
+    def polys(g):
+        if g is None or g.is_empty:
+            return []
+        if g.geom_type == "Polygon":
+            return [g]
+        return [p for p in getattr(g, "geoms", []) for p in polys(p)]
+
+    geoms = [geom(u[3]) for u in units]
+    # накладки: місто (Київ, Севастополь) бере своє першим, далі — за порядком
+    order = sorted(range(len(units)), key=lambda i: (units[i][0] not in ("м. київ", "севастополь"), i))
+    taken = None
+    for i in order:
+        g = geoms[i] if taken is None else make_valid(geoms[i].difference(taken))
+        geoms[i] = MultiPolygon(polys(g)) if polys(g) else g
+        taken = geoms[i] if taken is None else unary_union([taken, geoms[i]])
+    # щілини: дірки в об'єднанні, менші за справжню (в Україні анклавів нема), — сусідові з найдовшою межею
+    country = unary_union(geoms)
+    filled = unary_union([Polygon(p.exterior) for p in polys(country)])
+    gaps = polys(make_valid(filled.difference(country)))
+    for gap in gaps:
+        near = [(gap.boundary.intersection(geoms[i].buffer(0.01)).length, i) for i in range(len(geoms))
+                if geoms[i].distance(gap) < 0.01]
+        if near:
+            i = max(near)[1]
+            geoms[i] = make_valid(unary_union([geoms[i], gap]))
+    print(f"топологія: щілин закрито {len(gaps)} ({sum(g.area for g in gaps):.0f} од.²)")
+    # вузлування: усі межі разом → грані → кожна грань тому, в кому її внутрішня точка
+    faces = list(polygonize(unary_union([g.boundary for g in geoms])))
+    own = [[] for _ in geoms]
+    for f in faces:
+        pt = f.representative_point()
+        hit = [i for i, g in enumerate(geoms) if g.contains(pt)]
+        if hit:
+            own[hit[0]].append(f)
+    for i, u in enumerate(units):
+        g = unary_union(own[i]) if own[i] else geoms[i]
+        rings = []
+        for p in polys(g):
+            for r in [p.exterior] + list(p.interiors):
+                pts = bm.dedupe([(int(round(x)), int(round(y))) for x, y in r.coords])
+                if len(pts) >= 3:
+                    rings.append(pts)
+        u[3] = rings
+
+
 def main():
     if len(sys.argv) == 3:
         raions_path, oblasts_path = sys.argv[1], sys.argv[2]
@@ -141,6 +208,7 @@ def main():
     assert len(units) == 136, f"районів {len(units)}, а має бути 136"
     for k in ("м. київ", "севастополь"):
         units.append([k, by_key[k][0], k, by_key[k][1]])
+    clean_topology(units)
 
     centers = {}
     plain = [(k, r) for k, _, r in obl if k not in ("м. київ", "севастополь")]
