@@ -769,6 +769,15 @@
     setTimeout(() => show(true), 700);
   }
 
+  /// Напис кнопки «Далі»: значок окремо від слів («🚢» + « Корабель з Афін») — на телефоні друга кнопка лишає лише
+  /// значок (css .clk-nxl), щоб порада й обидві кнопки стали в один рядок. textContent однаковий в обох видах.
+  function nxLabel(b, label, esc) {
+    if (b.textContent === label) return;
+    const m = /^(\S+)\s+(.+)$/.exec(label);
+    b.innerHTML = m && !/[0-9A-Za-zА-ЯҐЄІЇа-яґєії]/.test(m[1])
+      ? '<span class="clk-nxe">' + esc(m[1]) + '</span><span class="clk-nxl"> ' + esc(m[2]) + '</span>' : esc(label);
+  }
+
   function paintNext(st, api) {
     const ui = st.craftUi;
     const n = nextStep(st, api);
@@ -792,7 +801,7 @@
     const label = n.btn || '';
     // Кнопку під пальцем не перемальовуємо, поки її «звели» другим натиском.
     if (ui.armed && Date.now() > ui.armed) ui.armed = 0;
-    if (!ui.armed && ui.nxBtn.textContent !== label) ui.nxBtn.textContent = label;
+    if (!ui.armed) nxLabel(ui.nxBtn, label, esc);
     if (ui.nxBtn.hidden !== !label) ui.nxBtn.hidden = !label;
     const off = !label || !st.mine || !n.run;
     if (ui.nxBtn.disabled !== off) ui.nxBtn.disabled = off;
@@ -803,7 +812,7 @@
     const b2 = ui.nxBtn2;
     if (ui.armed2 && Date.now() > ui.armed2) ui.armed2 = 0;
     const label2 = m ? m.btn : '';
-    if (!ui.armed2 && b2.textContent !== label2) b2.textContent = label2;
+    if (!ui.armed2) nxLabel(b2, label2, esc);
     if (b2.hidden !== !m) b2.hidden = !m;
     const title2 = m ? m.title : '';
     if (b2.title !== title2) b2.title = title2;

@@ -1147,6 +1147,8 @@
           b.secs = secs;
           b.sec.textContent = x.long ? longLeft(secs) : String(secs);
           b.sec.classList.toggle('w3', x.long || secs >= 100);
+          // Довгі бафи друзів рахують хвилинами й годинами («44 хв») — суфікс «с» їм не належить.
+          b.sec.classList.toggle('long', !!x.long);
           if (stepped) buffBar(b, left, x.span);
         }
         // Новий баф чи той самий, але подовжений (ще один розписний глек) — смужка стартує наново від свого залишку.
@@ -2449,7 +2451,7 @@
       // «Миргородська школа ×2» під назвою тієї самої школи — зайве: лишаємо «×2 цьому щаблю».
       const what = nm ? (nm.effect === 'double' ? '×2 цьому щаблю' : String(nm.desc || '')) : '';
       const next = nm && nm.level > u.level
-        ? '<span class="clk-unext">🏁 віха на ' + nm.level + ' — ще ' + (nm.level - u.level) + ': ' + esc(what) + '</span>' : '';
+        ? '<span class="clk-unext" title="' + esc(what) + '">🏁 віха на ' + nm.level + ' — ще ' + (nm.level - u.level) + ': ' + esc(what) + '</span>' : '';
       const mine = (marksOf[k] || []).sort((a, b) => a.level - b.level);
       // Компактний рядок: значок · назва з рівнем і описом · ціна; смужка знизу — скільки ціни вже назбирано.
       const icon = H.api.upIcon ? H.api.upIcon(k) : '';
@@ -2504,8 +2506,9 @@
         + done.join('') + '</div></details>'
       : '';
     let fresh2 = false;
-    // У сітці на два стовпці непарний останній рядок лишав порожню клітинку поруч (QA-4) — він на всю ширину.
-    const list = shown % 2 ? rows.replace(/<div class="clk-urow"(?![\s\S]*<div class="clk-urow")/, '<div class="clk-urow wide"') : rows;
+    // Непарний останній рядок — звичайною клітинкою (UI-прохід 21.10): на всю ширину (QA-4) він розтягувався через увесь
+    // екран — ціна далеко від назви, і рядок виглядав як заголовок, а не верстат. Порожня клітинка поруч чесніша.
+    const list = rows;
     if (swap(st.shop, list + more + far + oldFold + fold)) {
       fresh2 = true;
       st.buys = [...st.shop.querySelectorAll('[data-buy]')];
@@ -3779,7 +3782,7 @@
   /// з'їдала б ~100 px висоти, а сцена 4:5 за кожен піксель висоти віддає 0,8 px ширини: на 768 px заввишки коло
   /// лишилось би 113 px, а так — 150 px.
   const SIDE_PATH_H = 800;
-  const PHONE_NEXT_H = 6 + 50 + 6 + 4;   // телефон: зазор, рядок «Далі» (50 px), зазор сцени й запас над меню
+  const PHONE_NEXT_H = 6 + 52 + 6 + 4;   // телефон: зазор, рядок «Далі» (52 px), зазор сцени й запас над меню
   /// Телефон лежачи (844×390, 932×430): вікно нижче FIT_H, тож стіл ішов однією прокруткою, і коло (104 px) з'являлось
   /// лише після прокрутки, а «Далі» лежало під нижнім меню. Тут свій режим .land: сцена ліворуч липне між шапкою й
   /// меню на всю їхню відстань, права колонка гортається сторінкою (див. .clk.land у clicker.css).
@@ -4014,8 +4017,9 @@
     const box = st.el.querySelector('.clk-stagebox');
     if (!box || !box.getClientRects().length) return;
     const top = Math.round(box.getBoundingClientRect().top + window.scrollY);
-    const steps = st.el.querySelector('.clk-path .clk-steps');
-    const path = steps && steps.getClientRects().length ? Math.ceil(steps.getBoundingClientRect().height) + PHONE_NEXT_H : 0;
+    // UI-прохід 21.10: в один екран — сцена й рядок «Далі» під нею (кнопка біля пальця), а плитки кроків — уже під
+    // прокруткою. Зі смугою разом сцена впиралась у нижню межу (250 px на 412×780 — «село стало маленьким»).
+    const path = st.el.querySelector('.clk-path .clkc-next') ? PHONE_NEXT_H : 0;
     if (st.phTop !== top) { st.phTop = top; st.el.style.setProperty('--clk-ph-top', top + 'px'); }
     if (st.phPath !== path) { st.phPath = path; st.el.style.setProperty('--clk-ph-path', path + 'px'); }
   }

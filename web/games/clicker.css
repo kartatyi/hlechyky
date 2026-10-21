@@ -390,6 +390,9 @@
 .clk-wind i:nth-child(9) { top: 18%; animation-delay: 1.4s; animation-duration: 3.5s; }
 .clk-buff.wind { background: #1f4238; color: #a8e6cd; }
 .clk-buff.wish { background: #33305c; color: #ded6ff; }
+/* Бафи від друзів (цех): похвала — тепла рожева, підмайстер — бірюзова; без фону плашка губилась між сусідніми. */
+.clk-buff.fcheer { background: #5a2a3e; color: #ffc6dc; }
+.clk-buff.flend { background: #1e3f4a; color: #a6e3f0; }
 .clk-pop.lucky { color: #ffe9a3; text-shadow: 0 0 16px var(--accent), 0 1px 3px rgba(0, 0, 0, .6); }
 
 /* Золотий дощ, коли майстер кивнув і заплатив (v9 §A.1). */
@@ -1031,6 +1034,7 @@
 .clk .clk-bsec.w3 { min-width: calc(3ch + 6px); }
 .clk .clk-bsec:empty { display: none; }
 .clk .clk-bsec::after { content: '\00a0с'; font-size: .62em; font-weight: 600; opacity: .8; }
+.clk .clk-bsec.long::after { content: none; }
 /* Назва — слово (ріжеться «…») і хвіст (число серії, «⏸»), що не ріжеться ніколи. */
 .clk .clk-bname {
   flex: 1 1 0; min-width: 0; display: flex; justify-content: flex-end; align-items: baseline; gap: .3em;
@@ -1115,20 +1119,38 @@
    на 360×740 під ним була вся смуга. Тепер сцена не вища, ніж лишає вікно: 100svh мінус те, що над сценою
    (--clk-ph-top, міряє phoneFit у clicker.js), смуга з рядком «Далі» (--clk-ph-path) і нижнє меню (--gdock-h від
    каркаса, поки його нема — 64 px). Нижче ~250 px сцена не стискається: коло лишається великою ціллю.
-   Табличку «Хата гончаря» кладемо на небо сцени (як на ПК, .clk.fit) і ховаємо рядок місць — ще 50 px сцені. */
+   Табличку «Хата гончаря» кладемо на небо сцени (як на ПК, .clk.fit) і ховаємо рядок місць — ще 50 px сцені.
+   UI-прохід 21.10: в один екран — лише сцена й рядок «Далі» (одним рядком, 52 px), плитки кроків — під прокруткою; і
+   сцена не вужча за 300 px (≈ три чверті телефона). Було: v12 зробила «Далі» вдвічі вищим, і сцена на 412×780 впиралась
+   у 250 px — «село стало маленьким». Табличка — від краю самої сцени, а не картки (вузька сцена лишала її збоку). */
 @media (max-width: 560px) {
   .gtable.clk-wide > .gseats { display: none; }
+  .clk {
+    --clk-ph-sw: min(var(--clk-stage-w, 620px), max(min(300px, 100%),
+      calc((100svh - var(--clk-ph-top, 240px) - var(--clk-ph-path, 68px) - var(--gdock-h, 64px) - 6px) * .8)));
+  }
   .clk .clk-scene > * { order: 2; }
   .clk .clk-head, .clk .clk-rate, .clk .clk-rival { order: 0; }
   .clk .clk-sign {
     order: 1; position: relative; top: 6px; z-index: 2; margin-bottom: calc(-1.75em - 6px);
-    align-self: flex-start; margin-left: 8px; max-width: calc(100% - 104px);
+    align-self: flex-start; margin-left: max(8px, calc((100% - var(--clk-ph-sw)) / 2 + 8px));
+    max-width: calc(min(100%, var(--clk-ph-sw)) - 104px);
   }
   .clk .clk-scene.nostage .clk-sign { order: 0; top: 0; margin: 0; align-self: center; max-width: 100%; }
-  .clk .clk-stage {
-    max-width: min(var(--clk-stage-w, 620px), max(250px,
-      calc((100svh - var(--clk-ph-top, 240px) - var(--clk-ph-path, 124px) - var(--gdock-h, 64px) - 6px) * .8)));
+  .clk .clk-stage { max-width: var(--clk-ph-sw); }
+  /* «Далі» одним рядком: значок · порада у два рядки · кнопки праворуч. Друга кнопка — лише значком (повна назва — у
+     підказці): «🔥 Обпалити» + «🚢» влазять поруч із порадою в 360 px. Висота стала — 52 px, як міряє phoneFit. */
+  .clk:not(.fit):not(.land) .clkc-next, .clk:not(.fit):not(.land) .clkc-next.two {
+    --nx-btn: 40px;
+    grid-template-columns: 22px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content);
+    grid-template-rows: var(--nx-btn); height: calc(var(--nx-btn) + 12px); padding: 6px 8px; column-gap: 6px; row-gap: 0;
   }
+  .clk:not(.fit):not(.land) .clk-nxico { grid-row: 1; }
+  .clk:not(.fit):not(.land) .clk-nxtxt { grid-column: 2; font-size: .84em; line-height: 1.2; }
+  .clk:not(.fit):not(.land) .clk-nxbtn { grid-row: 1; grid-column: 3; padding: 0 12px; }
+  .clk:not(.fit):not(.land) .clk-nxbtn2 { grid-column: 4; padding: 0 10px; }
+  .clk:not(.fit):not(.land) .clk-nxbtn[hidden] + .clk-nxbtn2 { grid-column: 3 / -1; }
+  .clk:not(.fit):not(.land) .clk-nxbtn:not([hidden]) + .clk-nxbtn2 .clk-nxl { display: none; }
 }
 /* ---- телефон лежачи (.clk.land, ставить fitTable: дотик, висота ≤ 500, картка від 640) ----
    Було на 844×390: сцена 211×264 і коло 104 px нижче рядка статистики, «Далі» під нижнім меню, вкладки 31 px.
@@ -1504,8 +1526,13 @@ body.clk-toasts .toast.gbig { max-width: 100%; }
   .clk .clk-shop, .clk .clk-donebody { display: flex; flex-direction: column; }
 }
 
-/* QA-4: непарний останній рядок у сітці на два стовпці — на всю ширину, без порожньої клітинки поруч. */
-.clk .clk-shop > .clk-urow.wide { grid-column: 1 / -1; }
+/* Сітка верстатів (UI-прохід 21.10): клітинки одного рядка — однакової висоти (верстат з віхою у два рядки поруч
+   із коротким сусідом лишав того «недорослим», і рядки сітки розлазились), а віха — не більше двох рядків (повністю —
+   у підказці). Віхи під верстатом (рядки .clk-rowmark) не тягнуться — тягнеться сам верстат. */
+.clk .clk-urow > .clk-up { flex: 1 0 auto; }
+.clk .clk-unext {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
 /* Телефон: глек, що летить поверх вікна кола (картка друга, «Що нового»), напівпрозорий — текст під ним видно, а
    спіймати його так само можна (QA-4). */
 @media (max-width: 560px) {
