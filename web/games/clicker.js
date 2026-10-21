@@ -4499,6 +4499,14 @@
       st.fallEl.addEventListener('pointerdown', (e) => grabFall(st, e));
       st.fallEl.addEventListener('contextmenu', (e) => e.preventDefault());
       st.eye.go.addEventListener('click', (e) => openShelf(st, e));
+      // Хто клацає без упину, влучав у кнопку, щойно та озброювалась (QA-3): кожне торкання завіси, поки кнопка ще
+      // не готова, відкладає її ще на EYE_ARM_MS — озброїться лише після секунди тиші.
+      st.eye.veil.addEventListener('pointerdown', () => {
+        if (!st.eye.go.disabled) return;
+        st.eyeAt = Date.now();
+        clearTimeout(st.eyeArm);
+        st.eyeArm = setTimeout(() => paintEye(st), EYE_ARM_MS + 30);
+      }, true);
       st.eye.img.addEventListener('pointerdown', (e) => tapShelf(st, e));
       st.eye.img.addEventListener('contextmenu', (e) => e.preventDefault());
       st.eye.reset.onclick = () => { st.taps = []; paintEye(st); };

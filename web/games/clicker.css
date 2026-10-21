@@ -449,9 +449,10 @@
 .clk-eye-pic.busy img { opacity: .6; cursor: progress; }
 /* Завіса: доки не натиснуто «Показати полицю», картинка розмита й торкань не приймає. */
 .clk-eye-pic.veiled img { filter: blur(7px) brightness(.7); cursor: default; pointer-events: none; }
+/* Кнопка — унизу завіси, а не посередині: там, де щойно було коло, і куди ще летять кліки (QA-3). */
 .clk-eye-veil {
-  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;
-  gap: 10px; padding: 12px; text-align: center; color: #fff; background: rgba(0, 0, 0, .35);
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  gap: 10px; padding: 12px 12px 14px; text-align: center; color: #fff; background: rgba(0, 0, 0, .35);
 }
 .clk-eye-veil span { text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
 .clk-eye-go { min-width: 60%; }
