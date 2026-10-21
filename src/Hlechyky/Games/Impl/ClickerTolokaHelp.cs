@@ -340,8 +340,18 @@ public sealed partial class ClickerGuildService
             {
                 var left = TolokaLeft(peek, pending);
                 var room = st.Needs.Select((x, i) => Clicker.TolokaFitsNeed(x, item) ? left[i] : 0).Sum();
-                if (room <= 0) return new($"На {where} цього вже досить — {who} вже має все, що просили");
-                take = Math.Min(n, room);
+                if (room > 0) take = Math.Min(n, room);
+                else
+                {
+                    // B8 (v12 §2): вимогу вже закрили виробами, а помічників ще менше трьох — прийти на толоку все одно
+                    // поміч: друг рахується помічником (−15 %, TolokaReceive), вироби ляжуть у його комору. Раз на етап.
+                    var came = peek.Helpers.Concat(pending.Select(p => p.From)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+                    if (peek.Helpers.Contains(fromNick.Trim(), StringComparer.OrdinalIgnoreCase) || pending.Any(p => p.FromKey == fromKey))
+                        return new($"На {where} цього вже досить, а ти на цьому етапі вже був(ла) — неси на наступний");
+                    if (came >= Clicker.TolokaHelpersMax)
+                        return new($"На {where} цього вже досить — {who} вже має все, що просили, і {Clicker.TolokaHelpersMax} помічників");
+                    take = n;
+                }
             }
             if (!s.Toloka.TryGetValue(toKey, out var box)) s.Toloka[toKey] = box = [];
             if (box.Count >= TolokaMailMax) return new($"{who}: скринька толоки повна — хай спершу зайде й прийме вироби");

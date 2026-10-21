@@ -464,6 +464,8 @@ public sealed partial class Clicker
             }),
             next = _gNext,
             slots = GuestSlots,
+            // Хвилина гри в глеках (v12, пакет D3): клієнт пише «≈8,6 млрд · 14 хв гри, росте із серією».
+            playMinute = PlayMinute,
             allMult = GuestsAllMult,
             delivered = _gDelivered,
             // «Заморська карта» (секрет третього кола): клієнт так і пише, звідки четверте місце.

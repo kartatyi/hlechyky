@@ -73,15 +73,43 @@
 
   // ---------- малюнок ----------
 
+  /// ⓘ двору — правдиві числа (v12-ux §2.4): усі множники плати й усі п'ять місць, а не «не більше трьох».
   function infoText(st) {
     const c = cat(st);
     const tiers = c ? c.list.map((g) => '«' + g.tierName + '»').join(', ') : '';
     const k = st.guests;
+    const v = k && k.v;
+    const pct = (x, d) => Math.round((x != null ? x : d) * 100);
+    const max = (c && c.slotsMax) || 3;
+    const gap = (c && c.gap) || [20, 40];
+    const life = (c && c.life) || [3, 6];
     return 'Гості приїжджають разом зі щаблями драбини (' + tiers + ') і лишаються назавжди — обпал їх не проганяє. '
-      + 'Кожен рівень шани будь-якого гостя — +3 % до всього, а ще своя пільга. Замовлення платять ×8 від ціни виробу '
-      + '(гончарі з усього світу — ×12) і ще +10 % за кожен рівень шани самого гостя. На дворі стільки місць, скільки '
-      + 'гостей, але не більше трьох' + (k && k.v && k.v.map ? ' (із «Заморською картою» — ще одне)' : '')
-      + '; новий гість приходить кожні 20–40 хв і чекає 3–6 годин.';
+      + 'Кожен рівень шани будь-якого гостя — +' + pct(c && c.repAll, 0.03) + ' % до всього, а ще своя пільга. '
+      + 'Плата — більша з двох: ціна виробу ×8 (гончарі з усього світу — ×12) або по ' + api0.dec(GUEST_PLAY) + ' хв гри за виріб '
+      + 'на кожну одиницю цього множника. Друга росте разом із хвилиною гри (а та — із серією глеків з полиці), тож ціна '
+      + 'може змінитись, поки гість чекає. Множник росте на ' + pct(c && c.payPerLevel, 0.1) + ' % за кожен рівень шани '
+      + 'самого гостя і ще на 10 % за рівень реліквії «Прадідова печатка». Місця на дворі: по одному на гостя, але не більше '
+      + max + '; «Заморська карта» — ще одне, «Пристань на Ворсклі» з Толоки — ще одне, разом до ' + (max + 2)
+      + (v && v.slots ? ' (у тебе зараз ' + v.slots + ')' : '') + '. Новий гість приходить кожні ' + gap[0] + '–' + gap[1]
+      + ' хв і чекає ' + life[0] + '–' + life[1] + ' годин.';
+  }
+
+  /// Скільки хвилин гри за виріб на одиницю множника гостя — те саме, що ClickerGuests.GuestPlayPerWare.
+  const GUEST_PLAY = 0.2;
+  const api0 = { dec: (x) => String(x).replace('.', ',') };
+
+  /// «≈8,6 млрд · 14 хв гри, росте із серією»: плата гостя в глеках — з хвилини гри, що міняється із серією глеків
+  /// (плейтест 21.10: «≈71,8 млрд» обернулось на 8,62 млрд, бо серія урвалась). playMinute — у виді гостей.
+  function payText(st, api, o) {
+    const k = st.guests;
+    const pm = (k && k.v && k.v.playMinute) || 0;
+    let t = '≈' + api.potsShort(o.pay);
+    if (!(pm > 0)) return t;
+    const min = o.pay / pm;
+    if (min >= 1) t += ' · ' + (min >= 90 ? api.dec(min / 60) + ' год гри' : Math.round(min) + ' хв гри');
+    // Росте лише та плата, що йде від хвилин гри (більша з двох); зафіксовану сервером (o.fixed) — не лякаємо.
+    if (!o.fixed && GUEST_PLAY * o.n * o.mult * pm >= o.pay * 0.98) t += ', росте із серією';
+    return t;
   }
 
   function orderCard(st, api, o) {
@@ -103,7 +131,7 @@
     // а не «хоче миска ×2»: назва виробу стоїть у називному, і з двокрапкою це не різатиме око на мисках і макітрах.
     const line = '<b>' + esc(who) + '</b> просить: <b>' + esc(wareName(st, o.ware).toLowerCase()) + ' ×' + o.n + '</b>'
       + (req.length ? ' <span class="clkd-oreq">(' + req.join(' · ') + ')</span>' : '')
-      + ' · ≈' + api.potsShort(o.pay) + ' · шана +' + o.rep
+      + ' · ' + payText(st, api, o) + ' · шана +' + o.rep
       + ' <span class="clkd-omult" title="Стільки гість платить понад ціну виробу: ×8 (гончарі з усього світу — ×12)'
       + ' і +10 % за кожен рівень його шани.">×' + api.dec(o.mult) + '</span>';
     return '<div class="clkd-order' + (ready ? ' ready' : '') + (fresh ? ' fresh' : '') + '" data-order="' + o.id + '">'
@@ -350,7 +378,10 @@
       k.el.hidden = true;
       k.el.addEventListener('click', (e) => onClick(st, api, e));
     }
-    if (k.el.parentElement !== st.guildPane || st.guildPane.firstChild !== k.el) st.guildPane.insertBefore(k.el, st.guildPane.firstChild);
+    const pane = st.guildPane;
+    const after = st.guildIntro && st.guildIntro.parentElement === pane ? st.guildIntro : null;
+    const placed = k.el.parentElement === pane && (after ? k.el.previousElementSibling === after : pane.firstChild === k.el);
+    if (!placed) pane.insertBefore(k.el, after ? after.nextSibling : pane.firstChild);
   }
 
   /// «Село» відкривається, коли з ним є про що говорити (гейт цеху). Гості — теж привід: хто дійшов до порту, той побачить
