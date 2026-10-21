@@ -622,6 +622,9 @@
 
   function goToGoal(st, api, g) {
     if (g.tab && st.panes[g.tab]) api.showTab(st, g.tab);
+    // Ціль просить режим покупки (перший рівень заморської майстерні — ×1, як ★): той самий перемикач, що в рядку режимів.
+    const mb = g.mode && st.modes && st.modes.querySelector('[data-mode="' + g.mode + '"]');
+    if (mb && !mb.classList.contains('active')) mb.click();
     if (!g.row) return;
     // Рядок цілі частина домальовує, щойно її вкладка на очах (кораблі, Толока в «Селі»), — шукаємо ще кілька кадрів,
     // а не здаємось одразу (QA-2: «Глянути» на кораблі перемикало вкладку, а до корабля не вело).
