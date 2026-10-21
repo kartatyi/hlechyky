@@ -280,7 +280,14 @@
 .clk:not(.fit) .clk-pane > .clkg-nav { top: var(--clkg-nav-top, calc(var(--clk-pin-top, 56px) + 98px)); }
 .clk-pane > .clkg-nav[hidden], .clkg-intro[hidden] { display: none; }
 .clkg-nav button { flex: none; white-space: nowrap; min-height: 36px; padding: 4px 10px; }
+/* ПК (QA-2: вісім кнопок — 783 px у 538): переносяться в два рядки, нічого не ховається за краєм. */
+@media (min-width: 561px) {
+  .clk-pane > .clkg-nav { flex-wrap: wrap; overflow-x: visible; }
+  .clkg-nav button { min-height: 32px; padding: 3px 8px; font-size: .85em; }
+}
 @media (pointer: coarse) { .clkg-nav button { min-height: 40px; } }
+/* Телефон: рядок гортається вбік — правий край тьмяніє, поки праворуч ще є кнопки (клас more ставить clicker-guild.js). */
+.clkg-nav.more { -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent); mask-image: linear-gradient(90deg, #000 82%, transparent); }
 .clk-pane > .clkg-intro { order: -1; flex: none; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .clkg-intro p { margin: 0; flex: 1 1 240px; line-height: 1.4; }
 
@@ -292,9 +299,10 @@
 .clkg-bragging .clkg-bragcd:empty { display: none; }
 .clkg-login { padding: 6px 8px; border-radius: 10px; background: var(--panel2); }
 
-/* Вибір «що покласти» (v12-ux §2.5): смуга воза нагорі вікна, рядок виробу — в один рядок, кнопки з рамкою. */
-.clkg-ov .clk-ov-box { overflow: visible; }
-.clkg-pbar { position: sticky; top: -12px; z-index: 2; margin: 0 -14px; padding: 6px 14px 0; background: var(--bg2); }
+/* Вибір «що покласти» (v12-ux §2.5): смуга воза нагорі вікна, рядок виробу — в один рядок, кнопки з рамкою.
+   Вікно гортається саме (висоту йому ставить placeOverlay у clicker.js) — тож липне до його верху, а не до сторінки. */
+.clkg-pbar { position: sticky; top: -14px; z-index: 2; margin: 0 -14px; padding: 6px 14px 0; background: var(--bg2); }
+.clkg-kept { font-size: .8em; color: var(--accent2); white-space: nowrap; }
 .clkg-pbar .clkg-bar { margin-bottom: 14px; }
 .clkg-pick .clkg-irow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; }
 .clkg-irow .clkw-itxt { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -307,7 +315,7 @@
 }
 
 /* Картка друга: ✕ липне, поки гортаєш довгу Толоку (плейтест 21.10 — шукали ✕ угорі). */
-.clkg-cardov .clk-ov-x { position: sticky; top: -6px; float: right; z-index: 3; margin: -8px -8px 0 6px; background: var(--bg2); }
+.clkg-cardov .clk-ov-x { position: sticky; top: -8px; float: right; z-index: 3; margin: -8px -8px 0 6px; background: var(--bg2); }
 .clkg-ctol:empty { display: none; }
 .clkg-ctol { margin: 8px 0; }
 /* Телефон лежачи (844×390): шапка сайту й плашка кола вже з'їдають ~150 px із 390 — ще 50 px липкого рядка лишили б

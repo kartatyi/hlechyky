@@ -706,14 +706,14 @@
           ? 'золоті руки: −' + (lvl + 1) * workStep + ' % роботи, +' + (lvl + 1) * valStep + ' % ціни та ще ×' + topTxt + ' зверху'
           : '−' + (lvl + 1) * workStep + ' % роботи і +' + (lvl + 1) * valStep + ' % ціни цього виробу')
       : '🖐 Золоті руки: −' + lvl * workStep + ' % роботи, +' + lvl * valStep + ' % ціни та ще ×' + topTxt + ' зверху. Вище нема.';
-    // «Ліпити» просто з картки (v12-ux §2.6): побачив тінь — одразу став цей виріб на коло. Розпис обирають у горні.
+    // «Ліпити» просто з картки (v12-ux §2.6): побачив тінь — одразу став цей виріб на коло. Розпис клітинки йде разом
+    // (form { ware, style }): сервер нагадає, з яким розписом обпалити для альбому, — навіть коли виріб уже на колі.
     const cw = st.craft && st.craft.wares.find((x) => x.key === w.key);
     const lock = shutStyle(st, k);
     const formBtn = !cw ? '' : cw.open
-      ? '<button type="button" class="' + (open ? 'ghost' : 'primary') + ' small clka-form"' + (st.mine && st.craft.ware !== w.key ? '' : ' disabled') + '>'
-        + (st.craft.ware === w.key ? '🏺 Уже на колі' : '🏺 Ліпити ' + esc(w.name.toLowerCase())) + '</button>'
-        + (k && !open ? '<span class="muted small">' + (lock ? '🔒 розпис «' + esc(styleName(st, k)) + '» ще не відкрито (щабель «' + esc(lock) + '»)'
-          : 'розпис «' + esc(styleName(st, k)) + '» — обереш перед обпалом') + '</span>' : '')
+      ? '<button type="button" class="' + (open ? 'ghost' : 'primary') + ' small clka-form"' + (st.mine ? '' : ' disabled') + '>'
+        + (st.craft.ware === w.key ? '🏺 Уже на колі — як обпалити' : '🏺 Ліпити ' + esc(w.name.toLowerCase())) + '</button>'
+        + (k && !open && lock ? '<span class="muted small">🔒 розпис «' + esc(styleName(st, k)) + '» ще не відкрито (щабель «' + esc(lock) + '»)</span>' : '')
       : '<span class="muted small">' + esc(w.name) + ' відкриється на ' + esc(api.potsShort(cw.unlock || 0)) + ' за весь час</span>';
     api.overlay(st, '<div class="clka-card' + (open ? ' open' : '') + '">'
       + '<div class="clka-cardpic">' + api.wareSvg(w.key, { style: open ? k : '', quality: star ? 3 : 1, cls: 'clka-big' + (open ? '' : ' shadow'), slot: 'alb-card' }) + '</div>'
@@ -736,7 +736,7 @@
         + '<span class="muted small">на видноті ' + a.show.length + ' з ' + max + '</span>' : '') + '</div>'
       + '</div></div>', { cls: 'clka-ov' });
     const f = document.querySelector('.clka-form');
-    if (f) f.onclick = () => { api.order(st, 'form', { ware: w.key }); api.closeOverlay(st); };
+    if (f) f.onclick = () => { api.order(st, 'form', { ware: w.key, style: k || '' }); api.closeOverlay(st); };
     const b = document.querySelector('.clka-toshow');
     if (!b) return;
     b.onclick = () => {
