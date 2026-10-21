@@ -31,6 +31,7 @@ builder.Services.Configure<DjBotOptions>(cfg.GetSection("DjBot"));
 builder.Services.Configure<DeployOptions>(cfg.GetSection("Deploy"));
 builder.Services.Configure<MelodyOptions>(cfg.GetSection("Melody"));
 builder.Services.Configure<CurfewOptions>(cfg.GetSection("Curfew"));
+builder.Services.Configure<TryvogaOptions>(cfg.GetSection("Tryvoga"));   // 🚨 Тривога: NEPTUN, архів цілей (Tryvoga.cs)
 builder.Services.Configure<VoiceChatOptions>(cfg.GetSection("VoiceChat"));   // Посиденьки: голос (VoiceChat.cs)
 builder.Services.Configure<Hlechyky.Turn.TurnOptions>(cfg.GetSection("Turn"));   // вбудований ретранслятор голосу (Turn/TurnServer.cs)
 
@@ -54,6 +55,10 @@ builder.Services.AddSingleton<ArtistQuality>();
 builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();
 builder.Services.AddSingleton<Curfew>();      // нічний відбій для окремих гравців (Curfew.cs)
+// 🚨 Тривога: тривоги й цілі з NEPTUN одним опитуванням на всіх, архів «хто куди летів» — data/tryvoga.db (docs/tryvoga.md)
+builder.Services.AddSingleton<TryvogaArchive>();
+builder.Services.AddSingleton<Tryvoga>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Tryvoga>());
 builder.Services.AddSingleton<Litopys>();     // «✨ Огляд», «Усі ігри», виконавці, слухачі й цікавинки людини (Litopys.cs)
 builder.Services.AddSingleton<ChatFlood>();   // один лічильник флуду на Балачки, столи й агентів
 // файли в Балачках: data/chatfiles, не більше ChatFiles:MaxGb разом (ChatFiles.cs)
@@ -123,6 +128,7 @@ app.UseStaticFiles(new StaticFileOptions
 app.MapHlechyky();
 app.MapPeople();   // люди й статистика: картка людини, «Хто скільки», історія, свій гаманець, «Часто граємо»
 Litopys.Map(app);   // /api/stats/overview|games|music|person — «Літопис» для «Хто скільки» й профілю
+Tryvoga.Map(app);   // /api/tryvoga, /api/tryvoga/threats, POST /api/tryvoga/region — 🚨 Тривога
 app.MapHlechykyGames();
 app.MapHlechykyEconomy();
 app.MapHlechykyMcp();
