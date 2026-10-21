@@ -420,10 +420,12 @@
 .clkk-askbtns { display: flex; flex-wrap: wrap; gap: 8px; }
 .clkk-askbtns button { flex: 1 1 12em; min-height: 44px; white-space: normal; }
 
-/* Поки відкрите вікно результату горна, тости на телефоні — внизу, а не поверх його верху й ✕ (плейтест §2.3: три тости
-   накрили все). Внизу вікно зазвичай уже скінчилось, а тости дотиків не ловлять. */
+/* Тости біля горна (v12, QA-2). Загальне місце тостів ставить стіл (clicker.css, toastSpot): ПК — над сценою, телефон —
+   над нижнім меню. Але поки відкрите вікно результату горна, на ПК тост ачівки лягав на перший виріб — тоді вниз екрана;
+   а під час ручного обпалу на телефоні внизу «Поліно» й «Заслінка» — тоді вгору, під шапку. */
+body.clk-toasts:has(.clkk-revov:not([hidden])) .toasts { top: auto; bottom: 18px; }
 @media (max-width: 900px) {
-  body.g-room:has(.clkk-revov:not([hidden])) .toasts { top: auto; bottom: calc(var(--tabs-h, 0px) + var(--mini-h, 0px) + 12px); }
+  body.g-room:has(.gtable:not([hidden]) .clk .clkk.burn) .toasts { top: calc(var(--gtop-h, 56px) + 8px); bottom: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
