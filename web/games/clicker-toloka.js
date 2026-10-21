@@ -44,6 +44,10 @@
   const ERR_MS = 5000;
   const ARM_MS = 3000;                    // «Віднести все» — друге натискання протягом цього часу (як «Продати все»)
   const STEP = 5;                         // «📦 +5» у рядку плану
+  // «Далі»: нестача Толоки — стан довгий (розкішних бракує днями), тож поступається одноразовим діям з тим самим
+  // пріоритетом 1 (гість чекає — eta 0, корабель — −0,5, «уже можна купити» — 0) і стає наступною, щойно їх нема.
+  // Коли горно працює саме, «Далі» (clicker-craft.js, goalStep) показує саме цілі частин — там вона й живе (QA-2 21.10).
+  const LACK_ETA = 0.1;
   const Q_PL = [['', ''], ['звичайного', 'звичайних'], ['доброго', 'добрих'], ['дзвінкого', 'дзвінких'], ['розкішного', 'розкішних']];
 
   // ---------- дрібниці ----------
@@ -69,6 +73,14 @@
     const hh = Math.floor(m / 60);
     const mm = m % 60;
     return hh > 0 ? hh + ' год' + (mm ? ' ' + mm + ' хв' : '') : mm + ' хв';
+  }
+
+  /// Зекономлений годинник: «40 с», «19 хв», «1 год 57 хв».
+  function dur(msx) {
+    const sec = Math.max(0, Math.round(msx / 1000));
+    if (sec < 60) return sec + ' с';
+    const m = Math.round(sec / 60);
+    return m < 60 ? m + ' хв' : Math.floor(m / 60) + ' год' + (m % 60 ? ' ' + (m % 60) + ' хв' : '');
   }
 
   /// Відлік: «2 дн 4 год», «5 год 12 хв», «12:04».
@@ -372,7 +384,15 @@
       + 'етапу бере спершу зі складу, потім з комори. «Усе, що підходить» несе спершу в найсуворіші рядки (розкішні з '
       + 'розписом, розкішні, з розписом, решта), у кожен — найгіршу придатну якість; відкладеного під замовлення не бере. '
       + '«↩ забрати» повертає рядок у комору, якщо там є місце.';
-    return '<div class="clkl-depot"><div class="small clkl-dline">📦 Склад толоки · ' + (t.depot ? 'на складі <b>' + api.count(t.depot) + '</b>' : 'порожній')
+    // QA 21.10: «на складі 59» читалось як «59 на цей етап», а 44 з них лежали на наступних будовах — кажемо, скільки
+    // на найближчий етап (той, що закладатимеш наступним), а скільки далі.
+    const s = t.stage;
+    const nearP = s && !s.endsAt ? s : t.plan[0];
+    const near = nearP ? nearP.needs.reduce((a, x) => a + (x.depot || 0), 0) : 0;
+    const word = s && !s.endsAt ? 'на цей етап' : 'на наступний етап';
+    const split = !t.depot ? '' : near === t.depot ? ' <span class="muted">(усе — ' + word + ')</span>'
+      : ' <span class="muted">(' + (near ? api.count(near) + ' — ' + word + ', ' : '') + api.count(t.depot - near) + ' — далі)</span>';
+    return '<div class="clkl-depot"><div class="small clkl-dline">📦 Склад толоки · ' + (t.depot ? 'на складі <b>' + api.count(t.depot) + '</b>' + split : 'порожній')
       + api.info(api.esc(st, info)) + '</div>'
       + '<div class="clkl-btns">' + btn + '<span class="muted small clkl-miss">' + note + '</span></div></div>';
   }
@@ -383,6 +403,7 @@
     const max = Math.round(((c && c.workCut) || 0.15) * 100);
     return '<div class="clkl-work"><div class="clkl-wline">🧱 Своя праця · <b class="clkl-wn"></b> з ' + api.count(s.work.of)
       + ' · <b class="clkl-wcut"></b></div><div class="clkl-wbar"><i></i></div>'
+      + '<div class="clkl-wsave">⏱ <span class="clkl-wsv"></span></div>'
       + '<div class="muted small">кожен клік біля кола — цеглина, повна смуга −' + max + ' % етапу</div></div>';
   }
 
@@ -404,8 +425,10 @@
     const frac = Math.min(1, n / Math.max(1, w.of));
     // Відлік будови — з тим самим доростом: endsAt з виду вже має w.n, додаємо лише різницю.
     const was = Math.min(1, w.n / Math.max(1, w.of));
-    const ends = s.endsAt - s.hours * 3600000 * (1 - (s.cut || 0)) * max * (frac - was);
-    return { n, of: w.of, frac, cut: max * frac, ends };
+    const all = s.hours * 3600000 * (1 - (s.cut || 0)) * max;
+    const ends = s.endsAt - all * (frac - was);
+    // saved — скільки годинника своя праця вже зрізала (після друзів і реліквії, як і на сервері); all — повна смуга.
+    return { n, of: w.of, frac, cut: max * frac, ends, saved: all * frac, all };
   }
 
   function work(st, api) {
@@ -419,8 +442,12 @@
     const pct = w.cut * 100;
     const tp = (pct >= 10 || pct === 0 ? String(Math.round(pct)) : pct >= 0.1 ? String(Math.round(pct * 10) / 10) : String(Math.max(0.01, Math.round(pct * 100) / 100))).replace('.', ',');
     const tc = w.frac >= 1 ? '−' + tp + ' % — смуга повна' : (pct > 0 ? '−' : '') + tp + ' %';
+    // QA 21.10: «4 581 клік — і що?» Відсоток не відчувається, хвилини — так: скільки годинника вже зрізано й скільки дасть смуга.
+    const ts = w.frac >= 1 ? 'зекономлено ' + dur(w.saved) + ' — смуга повна'
+      : w.n > 0 ? 'зекономлено ' + dur(w.saved) + ' з ' + dur(w.all) : 'повна смуга зріже ' + dur(w.all) + ' будови';
     if (k.wn && k.wn.textContent !== tn) k.wn.textContent = tn;
     if (k.wc && k.wc.textContent !== tc) k.wc.textContent = tc;
+    if (k.ws && k.ws.textContent !== ts) k.ws.textContent = ts;
     if (k.wb) {
       const tr = 'scaleX(' + w.frac.toFixed(4) + ')';
       if (k.wb.style.transform !== tr) k.wb.style.transform = tr;
@@ -564,6 +591,7 @@
       k.wn = k.workEl && k.workEl.querySelector('.clkl-wn');
       k.wc = k.workEl && k.workEl.querySelector('.clkl-wcut');
       k.wb = k.workEl && k.workEl.querySelector('.clkl-wbar i');
+      k.ws = k.workEl && k.workEl.querySelector('.clkl-wsv');
       // Нова розмітка — смуга стає на своє місце одразу, без наїзду з нуля (плавно вона лише доростає).
       if (k.wb) { k.wb.style.transition = 'none'; work(st, api); void k.wb.offsetWidth; k.wb.style.transition = ''; }
     }
@@ -830,10 +858,13 @@
     if (!open) {
       // Кнопка жива, лише коли в моїй коморі є хоч щось, що цей етап іще приймає.
       const mine0 = itemsOf(st);
-      const any = t.needs.some((n) => (laid || extra || n.left > 0) && mine0.some((it) => fits(n, it)));
+      // QA 21.10: етап будується, а я на ньому вже був(ла) — сервер відмовить (раз на етап), тож і кнопка не кличе.
+      const again = laid && been;
+      const any = !again && t.needs.some((n) => (laid || extra || n.left > 0) && mine0.some((it) => fits(n, it)));
       const asks = t.needs.filter((n) => laid || extra || n.left > 0).map((n) => needText(st, api, n).replace(/<[^>]+>/g, '')).join('; ');
       return html + '<div class="clkg-btns"><button type="button" class="primary clkl-fgo"' + (can && any ? '' : ' disabled') + '>🤝 Піднести на толоку</button>'
-        + '<span class="muted small">' + (any ? treat : !(laid || extra || still.length) ? ''
+        + '<span class="muted small">' + (again ? 'ти на цьому етапі вже був(ла) — неси на наступний, щойно друг почне його збирати'
+          : any ? treat : !(laid || extra || still.length) ? ''
           : 'у твоїй коморі нема того, що просить цей етап: ' + esc(asks)) + '</span></div>'
         + (err ? '<div class="small clkl-err">' + esc(err) + '</div>' : '');
     }
@@ -939,7 +970,8 @@
   function lackGoal(st, api) {
     const k = st.toloka;
     const s = k.v.stage;
-    if (!s || !s.endsAt || !k.v.totals.length) return null;
+    if (s && !s.endsAt) return stageGoal(st, api, s);
+    if (!s || !k.v.totals.length) return null;
     const sim = simulate(st);
     const cls = [
       { q: 4, icon: '🎨', head: 'Розписна партія', sub: 'лише з розписної партії вручну' },
@@ -962,14 +994,34 @@
       text: g.head + ': на Толоку бракує ' + api.count(g.n) + ' ' + word,
       sub: (g.sub ? g.sub + ' · ' : '') + 'найбільше бракує: ' + most,
       pct: g.of > 0 ? ((g.of - g.n) / g.of) * 100 : 0,
-      // eta −1 — над «уже можна купити» (теж пріоритет 1): поки будова стоїть, клік на Толоку важить більше за верстат,
-      // що окупиться за хвилину, а «Далі» до верстатів однаково дійде, щойно нестачі не стане.
-      eta: -1, tab: 'guild', row: '[data-sec="toloka"] .clkl-sumh', prio: 1,
+      eta: LACK_ETA, tab: 'guild', row: '[data-sec="toloka"] .clkl-sumh', prio: 1,
+    };
+  }
+
+  /// Етап ще не закладений, і бракує виробів (не грошей — ті прийдуть самі): годинник будови стоїть, доки не донесеш.
+  function stageGoal(st, api, s) {
+    const b = bdef(st, s.building);
+    if (!b) return null;
+    const rows = s.needs.map((n) => Object.assign({}, n, { lack: Math.max(0, n.n - n.got - (n.depot || 0) - n.have) }))
+      .filter((n) => n.lack > 0).sort((a, x) => x.q - a.q || x.lack - a.lack);
+    if (!rows.length) return null;
+    const n = rows.reduce((a, x) => a + x.lack, 0);
+    const of = s.needs.reduce((a, x) => a + x.n, 0);
+    const top = rows[0];
+    const sd = b.stages[s.index] || { name: '' };
+    const hint = qHint(api, top.q);
+    return {
+      icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + b.icon + '</text>',
+      text: 'Толока: на «' + sd.name + '» бракує ' + api.count(n) + ' ' + api.plural(n, 'виробу', 'виробів', 'виробів'),
+      sub: wareName(st, top.ware).toLowerCase() + (top.style ? ' «' + styleName(st, top.style) + '»' : '') + ' ×' + api.count(top.lack)
+        + (hint ? ' · ' + hint : '') + ' · годинник стоїть, доки не закладеш',
+      pct: of > 0 ? ((of - n) / of) * 100 : 0,
+      eta: LACK_ETA, tab: 'guild', row: '[data-sec="toloka"] .clkl-needs', prio: 1,
     };
   }
 
   /// Смуга «Далі»: усе для етапу є — підказати закласти (пріоритет 1: годинник будови не цокає, доки не заклав);
-  /// етап будується — найбільша нестача на наступні.
+  /// етап будується — найбільша нестача на наступні; не закладений і бракує виробів — нестача цього етапу.
   (window.HClicker.goals = window.HClicker.goals || []).push((st, v, api) => {
     const k = st.toloka;
     if (!k || !k.v || !st.mine) return null;
@@ -994,7 +1046,7 @@
       st.toloka = {
         v: null, el: null, cds: [], dirty: false, done: null, unseen: false, noteText: null, busy: false, looked: 0,
         err: null, helpSig: '', helpers: null, rich: null, fest: null,
-        armAt: 0, workEl: null, wn: null, wc: null, wb: null, wKey: '', wShown: 0,
+        armAt: 0, workEl: null, wn: null, wc: null, wb: null, ws: null, wKey: '', wShown: 0,
       };
       // Хата друга кличе це з clicker-guild.js (кнопка «🤝 Піднести на толоку»).
       api.tolokaHouse = (st2, body, d) => {
