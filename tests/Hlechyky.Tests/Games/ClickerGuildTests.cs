@@ -1035,7 +1035,7 @@ public class ClickerGuildTests
         Assert.Equal("lion", next.GetProperty("piece").GetProperty("ware").GetString());
         Assert.Equal(4, next.GetProperty("piece").GetProperty("q").GetInt32());
         Assert.True(next.GetProperty("ready").GetBoolean());
-        Assert.Contains("розкішний лев", Guild(h, new { op = "masterpiece" }).Message);
+        Assert.Contains("розкішна лев-посудина", Guild(h, new { op = "masterpiece" }).Message);
 
         // Дзвінкий лев не годиться — потрібен розкішний (Q4). Сам Q4 приносить пакет «Горно»: у цій гілці
         // ParseItem вище за трійку не пускає, тож здати майстерштук тут іще нема чим — перевіряємо відмову

@@ -563,7 +563,8 @@
     const head = String(g.text || '').split(/[:·—]/)[0].trim();
     return { key: 'goal', icon: g.icon, svg: true, text: g.text, sub: g.sub || '', pct: g.pct,
       eta: g.eta > 0 && Number.isFinite(g.eta) ? '≈ ' + api.span(g.eta) : g.eta === 0 ? 'готово' : '',
-      btn: g.tab || g.row ? 'Глянути' : '', run: () => goToGoal(st, api, g),
+      // Ціль може мати свою дію (B, QA-3: «🎨 Ліпити глечик → розпис»), інакше — «Глянути».
+      btn: g.btn || (g.tab || g.row ? 'Глянути' : ''), run: g.run || (() => goToGoal(st, api, g)),
       short: (emoji ? emoji + ' ' : '') + (head.length <= 18 ? head : 'Глянути') };
   }
 

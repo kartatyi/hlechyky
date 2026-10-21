@@ -197,3 +197,11 @@
 @media (prefers-reduced-motion: reduce) {
   .clkl-wbar i { transition: none; }
 }
+
+/* QA-3: «Віднесли: 44 — «Глек на майдані», …» під кнопкою складу; у картці друга — що приймають зараз і наступний
+   етап згорткою. */
+.clkl-went { color: var(--ok); line-height: 1.3; }
+.clkl-fcur { display: flex; flex-direction: column; gap: 2px; padding: 5px 8px; border-radius: 10px; background: rgba(0, 0, 0, .18); }
+.clkl-fnext > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; color: var(--muted); }
+.clkl-fnext[open] > summary { color: var(--text); }
+@media (pointer: coarse) { .clkl-fnext > summary { min-height: 40px; } }

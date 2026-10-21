@@ -447,7 +447,7 @@ public sealed partial class Clicker
     /// <summary>Рід виробу для «добрий чи кращий» / «добра чи краща» / «добре чи краще».</summary>
     static readonly Dictionary<string, char> GuestWareGender = new(StringComparer.Ordinal)
     {
-        ["bowl"] = 'f', ["makitra"] = 'f', ["tile"] = 'f', ["tykva"] = 'f', ["barrel"] = 'n',
+        ["bowl"] = 'f', ["makitra"] = 'f', ["tile"] = 'f', ["tykva"] = 'f', ["lion"] = 'f', ["barrel"] = 'n',
     };
 
     /// <summary>«дзвінкий чи кращий», «лише розкішна» — якість, якої просять, узгоджена з родом виробу.</summary>
