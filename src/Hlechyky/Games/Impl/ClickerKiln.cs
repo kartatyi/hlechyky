@@ -889,8 +889,9 @@ public sealed partial class Clicker
 
     sealed record KilnOutRow(string Ware, int Q);
 
+    /// <summary>Lux (v12, D1) — шанс розкішного на виріб у цій партії: результат горна пише «шанс розкішних ~14 %».</summary>
     sealed record KilnLastRow(DateTimeOffset At, bool Helper, int Heat, int Over, int Beauty, string? Style, bool Straw,
-        List<KilnOutRow>? Items, double Shards, double Sold, string? Freed = null);
+        List<KilnOutRow>? Items, double Shards, double Sold, string? Freed = null, double Lux = 0);
 
     sealed record KilnRow(
         List<string>? Batch = null, string? Style = null, string? Tech = null, int Beauty = 0,
@@ -1167,7 +1168,11 @@ public sealed partial class Clicker
         Add(shards);
         var freed = LadTakeNow();
 
-        _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold, freed);
+        // Те саме p4, що й у KilnHeat.QualityOf (блиск там обрізано до 1).
+        var s1 = Math.Clamp(shine, 0, 1);
+        var lux = Math.Min(0.3 * s1 * s1, KilnHeat.LuxShare * s1 * s1 * paint * paint);
+        _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold, freed,
+            Math.Round(Math.Clamp(lux, 0, 1), 3));
         _kilnBatches++;
         var whole = outs.Count(o => o.Q > 0);
         var perfect = manual && IsPerfectBatch(outs.Select(o => o.Q).ToList());
@@ -1406,6 +1411,7 @@ public sealed partial class Clicker
                 {
                     at = l.At, helper = l.Helper, heat = l.Heat, over = l.Over, beauty = l.Beauty, style = l.Style ?? "", straw = l.Straw,
                     items = (l.Items ?? []).Select(o => new object[] { o.Ware, o.Q }), shards = l.Shards, sold = l.Sold, freed = l.Freed,
+                    lux = l.Lux,
                 }
                 : null,
         };

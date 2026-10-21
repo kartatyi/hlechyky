@@ -610,6 +610,9 @@ public sealed partial class Clicker
     object CraftView(DateTimeOffset now)
     {
         var w = WareOf(_formWare) ?? Wares[0];
+        // Відкладене (v12, D1): скільки штук ключа чекають толока, замовлення й майстерштук — комора ставить 🔒.
+        var why = new Dictionary<string, int[]>(StringComparer.Ordinal);
+        if (_items.Count > 0) LadKept(now, why: why);
         return new
         {
             ware = w.Key,
@@ -635,6 +638,7 @@ public sealed partial class Clicker
             {
                 key = ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality), ware = x.Item.Ware, style = x.Item.Style, q = x.Item.Quality,
                 n = x.Count, value = ItemValue(x.Item.Ware, x.Item.Style, x.Item.Quality),
+                kept = why.GetValueOrDefault(ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality)),
             }),
             storeCap = StoreCapNow,
             // Прокачка ремесла: рівень зі стелею, ціна наступного й «зараз: …» (воно від стану майстерні). Назва й опис —

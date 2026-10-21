@@ -455,7 +455,7 @@ public sealed partial class Clicker
         var left = AllItems().ToDictionary(x => x.Item, x => x.Count);
         var kept = 0;
         if (keep)
-            foreach (var (match, need) in WagonHolds(now))
+            foreach (var (_, match, need) in WagonHolds(now))
             {
                 var want = need;
                 foreach (var it in left.Keys.Where(match).OrderBy(x => x.Quality).ThenBy(x => x.Ware, StringComparer.Ordinal)
@@ -474,16 +474,17 @@ public sealed partial class Clicker
         return (give, kept);
     }
 
-    /// <summary>Чого чекають: відкриті замовлення гостей і сіл (виріб, розпис, якість — як при здачі) і майстерштук.</summary>
-    IEnumerable<(Func<ItemInfo, bool> Match, int Need)> WagonHolds(DateTimeOffset now, TakeFor? who = null)
+    /// <summary>Чого чекають: відкриті замовлення гостей і сіл (виріб, розпис, якість — як при здачі) і майстерштук.
+    /// Why — чия вимога (<see cref="HoldOrder"/>, <see cref="HoldPiece"/>): комора підписує відкладене 🔒 (v12, D1).</summary>
+    IEnumerable<(int Why, Func<ItemInfo, bool> Match, int Need)> WagonHolds(DateTimeOffset now, TakeFor? who = null)
     {
         // who — хто бере з комори просто зараз (TakePlan): своя ж вимога під нього не тримає.
-        foreach (var o in _gOrders) if (o.Until > now && who != new TakeFor("guest", o.Id)) yield return (GuestMatch(o), o.Count);
-        foreach (var o in _mktOrders) if (o.Until > now && who != new TakeFor("mkt", o.Id)) yield return (MktMatch(o), o.Count);
+        foreach (var o in _gOrders) if (o.Until > now && who != new TakeFor("guest", o.Id)) yield return (HoldOrder, GuestMatch(o), o.Count);
+        foreach (var o in _mktOrders) if (o.Until > now && who != new TakeFor("mkt", o.Id)) yield return (HoldOrder, MktMatch(o), o.Count);
         if (_guildRank < GuildRanks.Length - 1 && who?.Kind != "piece")
         {
             var piece = PieceFor(_guildRank + 1);
-            yield return (x => PieceMatch(x, piece), 1);
+            yield return (HoldPiece, x => PieceMatch(x, piece), 1);
         }
     }
 

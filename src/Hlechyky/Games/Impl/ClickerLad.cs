@@ -64,8 +64,11 @@ public sealed partial class Clicker
     /// придатної якості — так само, як «Усе на віз» (<see cref="WagonPick"/>). <paramref name="who"/> — хто бере просто
     /// зараз (<see cref="TakePlan"/>): його власної вимоги не рахуємо, інакше замовлення не віддало б собі ж відкладене.
     /// <paramref name="without"/> — рахувати так, ніби цього в коморі вже нема (TakePlan порівнює два плани).
+    /// <paramref name="why"/> — якщо дали, сюди ж розкладаємо відкладене за тим, хто чекає: ключ → [толока, замовлення,
+    /// майстерштук] (<see cref="HoldToloka"/>…). Комора малює з цього 🔒 «Толока 3 · замовлення 2» (v12, D1).
     /// </summary>
-    internal Dictionary<string, int> LadKept(DateTimeOffset now, TakeFor? who = null, IEnumerable<(ItemInfo Item, int N)>? without = null)
+    internal Dictionary<string, int> LadKept(DateTimeOffset now, TakeFor? who = null, IEnumerable<(ItemInfo Item, int N)>? without = null,
+        Dictionary<string, int[]>? why = null)
     {
         var left = new Dictionary<ItemInfo, int>();
         foreach (var (key, count) in _items)
@@ -74,7 +77,7 @@ public sealed partial class Clicker
             foreach (var (it, n) in without)
                 if (left.TryGetValue(it, out var c)) left[it] = c - n;
         var kept = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var (match, need) in LadHolds(now, who))
+        foreach (var (hold, match, need) in LadHolds(now, who))
         {
             var want = need;
             foreach (var it in left.Keys.Where(match).OrderBy(x => x.Quality).ThenBy(x => x.Ware, StringComparer.Ordinal)
@@ -87,13 +90,19 @@ public sealed partial class Clicker
                 want -= take;
                 var key = ItemKey(it.Ware, it.Style, it.Quality);
                 kept[key] = kept.GetValueOrDefault(key) + take;
+                if (why is null) continue;
+                if (!why.TryGetValue(key, out var w)) why[key] = w = new int[3];
+                w[hold] += take;
             }
         }
         return kept;
     }
 
+    /// <summary>Чия вимога тримає відкладене: індекс у <see cref="LadKept"/>(why) і в полі kept комори.</summary>
+    internal const int HoldToloka = 0, HoldOrder = 1, HoldPiece = 2;
+
     /// <summary>Чого чекають: замовлення й майстерштук (як для воза) і толока — поточний етап (чого бракує) і наступний.</summary>
-    IEnumerable<(Func<ItemInfo, bool> Match, int Need)> LadHolds(DateTimeOffset now, TakeFor? who = null)
+    IEnumerable<(int Why, Func<ItemInfo, bool> Match, int Need)> LadHolds(DateTimeOffset now, TakeFor? who = null)
     {
         foreach (var h in WagonHolds(now, who)) yield return h;
         if (TolokaCurrent() is not { } b) yield break;
@@ -102,10 +111,10 @@ public sealed partial class Clicker
         // Закладений етап свої вироби вже забрав — тримати нічого. Закладає саме толока — свого етапу теж не тримаємо.
         if (_tLaidAt == default && who?.Kind != "toloka")
             for (var i = 0; i < st.Needs.Length; i++)
-                if (TolokaLeft(st, i) is var left and > 0) yield return (TolokaMatch(st.Needs[i]), left);
+                if (TolokaLeft(st, i) is var left and > 0) yield return (HoldToloka, TolokaMatch(st.Needs[i]), left);
         if (TolokaAfter(b, s, _tBuilt, _total) is { } nx)
             foreach (var n in nx.Building.Stages[nx.Stage].Needs)
-                yield return (TolokaMatch(n), n.N);
+                yield return (HoldToloka, TolokaMatch(n), n.N);
     }
 
     // ---------- підсумок одним рядком ----------
