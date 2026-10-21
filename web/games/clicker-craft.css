@@ -19,7 +19,11 @@
 
 /* ---- смуга «Шлях виробу» під сценою ---- */
 .clk-path { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
-.clk-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.clk-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; container: clksteps / inline-size; }
+/* Плитки вужчі за ~150 px (ПК 1366 з балачками — 142): підпис у два рядки замість «стоїть: сушарн…», «46/46 · сухих …». */
+@container clksteps (min-width: 461px) and (max-width: 640px) {
+  .clk .clk-stsub { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+}
 /* Обгортка чипа: у ній сам чип (кнопка) і поруч ⓘ (теж кнопка) — кнопка в кнопці недійсна (рецензія v9). */
 .clk-stepw { position: relative; min-width: 0; display: flex; }
 .clk-step {
@@ -128,6 +132,8 @@
   .clk-steps { gap: 3px; }
   .clk-step { flex-direction: column; align-items: center; gap: 1px; padding: 3px 2px 6px; text-align: center; }
   .clk-step + .clk-step::before { left: -5px; top: 14px; transform: none; }
+  /* Стрілка між плитками в 3 px проміжку налазила на текст («›можна палити»): чотири плитки в ряд і так читаються шляхом. */
+  .clk-stepw + .clk-stepw > .clk-step::before { content: none; }
   .clk-sttxt { align-items: center; max-width: 100%; }
   .clk-sttxt b { font-size: .7em; }
   .clk-stsub { font-size: max(12px, .64em); }
@@ -160,6 +166,10 @@
 /* Продаж гуртом: «Продати все» головною, вужчі — тихими кнопками під нею. */
 .clkw-sells { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .clkw-sellall.ghost { border-color: var(--line); }
+/* Вузька колонка: вужчі продажі — стовпчиком однакової ширини, а не «хто скільки займе» з висячим «золотих». */
+@container clkside (max-width: 480px) {
+  .clkw-sells .clkw-sellall { flex: 1 1 100%; }
+}
 .clkw-groups { display: flex; flex-direction: column; gap: 4px; }
 .clkw-group { border-radius: 10px; background: var(--panel); border: 1px solid var(--line); }
 .clkw-group.star { border-color: rgba(244, 197, 66, .55); }
