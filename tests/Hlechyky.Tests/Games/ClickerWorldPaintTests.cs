@@ -14,6 +14,8 @@ namespace Hlechyky.Tests.Games;
 public class ClickerWorldPaintTests
 {
     static readonly string[] WorldStyles = ["jingdezhen", "iznik", "delft", "meissen", "sevres", "raku"];
+    /// <summary>Стовпчики світу в альбомі: шість v11 і шість заморських v12 (з 21.10 — і вони в сітці).</summary>
+    static readonly string[] AlbumWorld = [.. WorldStyles, .. Clicker.OverseasTiers];
     static readonly string[] HomeStyleKeys = ["gavarets", "vasylkiv", "bubnivka", "kosiv", "opishnia", "mezhyhirya", "petrykivka", "trypillia"];
 
     static RoomHarness Wheel(int seed = 1)
@@ -103,8 +105,8 @@ public class ClickerWorldPaintTests
         {
             var key = s.GetProperty("key").GetString()!;
             Assert.Equal(WorldStyles.Contains(key) || Clicker.OverseasTiers.Contains(key) ? key : "", s.GetProperty("tier").GetString());
-            // v12: заморські розписи — поза сіткою альбому.
-            Assert.Equal(!Clicker.OverseasTiers.Contains(key), s.GetProperty("album").GetBoolean());
+            // v12: заморські — теж стовпчики альбому (з 21.10).
+            Assert.True(s.GetProperty("album").GetBoolean());
         }
     }
 
@@ -150,7 +152,7 @@ public class ClickerWorldPaintTests
         Assert.Contains(h.Awards, a => a.Reason == "ach:potter-museum");
     }
 
-    // ---------- альбом на 15 стовпчиків ----------
+    // ---------- альбом на 21 стовпчик (дім, світ v11, заморські v12) ----------
 
     [Fact]
     public void An_old_full_album_stays_full_and_the_world_starts_empty()
@@ -164,7 +166,7 @@ public class ClickerWorldPaintTests
         Assert.Equal(Clicker.AlbumHomeColumns, a.GetProperty("cols").GetInt32());
         Assert.Equal(Clicker.AlbumHomeColumns, a.GetProperty("homeColumns").GetInt32());
         Assert.Equal(0, a.GetProperty("worldOpen").GetInt32());
-        Assert.Equal(Clicker.Wares.Length * WorldStyles.Length, a.GetProperty("worldSize").GetInt32());
+        Assert.Equal(Clicker.Wares.Length * AlbumWorld.Length, a.GetProperty("worldSize").GetInt32());
         Assert.False(a.GetProperty("worldFull").GetBoolean());
         // Бонус — рівно такий, як до одинадцятого оновлення: клітинки, повні рядки й повні стовпчики.
         var old = Clicker.AlbumCellBonus * Clicker.AlbumSize + Clicker.AlbumRowBonus * Clicker.Wares.Length
@@ -184,9 +186,12 @@ public class ClickerWorldPaintTests
         // Повний стовпчик світу не дає +6 %: лише клітинки (стовпчики — частина «альбому світу»).
         Assert.Equal(home + Clicker.AlbumCellBonus * Clicker.Wares.Length, one.GetProperty("bonus").GetDouble(), 1e-12);
         Assert.Equal(Clicker.AlbumHomeColumns, one.GetProperty("cols").GetInt32());
+        // Шість стовпчиків v11 — ще не «весь світ»: з 21.10 у нього входять і заморські.
         Patch(h, s => AlbumNode(s)["cells"] = Cells([.. HomeColumns, .. WorldStyles]));
+        Assert.False(Album(h).GetProperty("worldFull").GetBoolean());
+        Patch(h, s => AlbumNode(s)["cells"] = Cells([.. HomeColumns, .. AlbumWorld]));
         var all = Album(h);
-        var world = Clicker.Wares.Length * WorldStyles.Length;
+        var world = Clicker.Wares.Length * AlbumWorld.Length;
         Assert.True(all.GetProperty("worldFull").GetBoolean());
         Assert.Equal(world, all.GetProperty("worldOpen").GetInt32());
         Assert.Equal(home + Clicker.AlbumCellBonus * world + Clicker.AlbumWorldAllBonus, all.GetProperty("bonus").GetDouble(), 1e-12);
@@ -219,8 +224,8 @@ public class ClickerWorldPaintTests
         var h = Wheel();
         Patch(h, s =>
         {
-            AlbumNode(s)["cells"] = Cells([.. HomeColumns, .. WorldStyles], key => key == "pot|raku");
-            s["styles"] = new JsonArray([.. HomeStyleKeys.Concat(WorldStyles).Select(x => (JsonNode)x!)]);
+            AlbumNode(s)["cells"] = Cells([.. HomeColumns, .. AlbumWorld], key => key == "pot|raku");
+            s["styles"] = new JsonArray([.. HomeStyleKeys.Concat(AlbumWorld).Select(x => (JsonNode)x!)]);
         });
         Assert.False(Album(h).GetProperty("worldFull").GetBoolean());
         Assert.True(K(h, new { op = "paint", style = "raku" }).Ok);

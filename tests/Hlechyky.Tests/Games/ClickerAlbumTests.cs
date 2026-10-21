@@ -159,10 +159,11 @@ public class ClickerAlbumTests
     {
         // Ні 12, ні 9 ніде не зашито: додасться виріб чи розпис — сітка сама стане більшою. З одинадцятого оновлення
         // сітка — це «домашні» 9 стовпчиків (старі бонуси й ачівки) і стовпчики світу поруч.
-        // v12: заморські розписи — поза сіткою; у ній домашні й світу (15 стовпчиків разом із простим).
-        Assert.Equal(Clicker.HomeStyles + Clicker.MasterTiers.Length, Clicker.AlbumStyles);
+        // v12: заморські розписи — теж стовпчиками світу, одразу за шістьма v11 (21 стовпчик разом із простим).
+        Assert.Equal(Clicker.HomeStyles + Clicker.MasterTiers.Length + Clicker.OverseasTiers.Length, Clicker.AlbumStyles);
+        Assert.Equal(Clicker.Styles.Length, Clicker.AlbumStyles);
         Assert.Equal(Clicker.AlbumStyles + 1, Clicker.AlbumColumns);
-        Assert.Equal(-1, Clicker.AlbumStyleIndex(Clicker.OverseasTiers[0]));
+        Assert.Equal(Clicker.HomeStyles + Clicker.MasterTiers.Length + 1, Clicker.AlbumStyleIndex(Clicker.OverseasTiers[0]));
         Assert.Equal(Clicker.HomeStyles + 1, Clicker.AlbumHomeColumns);
         Assert.Equal(Clicker.Wares.Length * Clicker.AlbumHomeColumns, Clicker.AlbumSize);
         Assert.Equal(Clicker.Wares.Length * Clicker.AlbumColumns, Clicker.AlbumWorldSize);
@@ -941,6 +942,46 @@ public class ClickerAlbumTests
         Assert.Equal(1, Album(h).GetProperty("stove").GetArrayLength());
         Assert.Equal("house", Album(h).GetProperty("find").GetProperty("key").GetString());
         Assert.Equal("dish|petrykivka", Album(h).GetProperty("show")[0].GetProperty("key").GetString());
+    }
+
+    [Fact]
+    public void Overseas_wares_in_the_store_open_their_cells_that_v12_never_wrote()
+    {
+        // 21.10, владік: чорнофігурні глечики й баранці лежать у коморі, а в альбомі їх нема — сервер v12 заморських не
+        // писав, а клієнт малював стовпчик. Після оновлення комора відкриває клітинки сама, дзвінке — ще й із зіркою.
+        var h = Wheel();
+        Items(h, ("jug|athens|2", 1), ("ram|athens|1", 1), ("pot|faenza|3", 1), ("bowl|gavarets|3", 1));
+        var al = Album(h);
+        var athens = 1 << Clicker.AlbumStyleIndex("athens");
+        var faenza = 1 << Clicker.AlbumStyleIndex("faenza");
+        Assert.Equal(athens, al.GetProperty("cells")[Clicker.AlbumWareIndex("jug")].GetInt32());
+        Assert.Equal(athens, al.GetProperty("cells")[Clicker.AlbumWareIndex("ram")].GetInt32());
+        Assert.Equal(faenza, al.GetProperty("cells")[Clicker.AlbumWareIndex("pot")].GetInt32());
+        Assert.Equal(faenza, al.GetProperty("stars")[Clicker.AlbumWareIndex("pot")].GetInt32());
+        Assert.Equal(0, al.GetProperty("stars")[Clicker.AlbumWareIndex("jug")].GetInt32());
+        // Домашні розписи й так писались з горна — комора їх не чіпає.
+        Assert.Equal(0, al.GetProperty("cells")[Clicker.AlbumWareIndex("bowl")].GetInt32());
+        Assert.Equal(3, al.GetProperty("worldOpen").GetInt32());
+        Assert.Equal(3 * Clicker.AlbumCellBonus + Clicker.AlbumStarBonus, al.GetProperty("bonus").GetDouble(), 9);
+        // Збереження пише ключі, і другий Load нічого не додає.
+        var before = Views.Text(Album(h));
+        Patch(h, _ => { });
+        Assert.Equal(before, Views.Text(Album(h)));
+        // Стовпчики клієнт бере з каталогу виду — позначка album там та сама, що в shopCatalog.
+        var styles = View(Wheel()).GetProperty("catalog").GetProperty("styles").EnumerateArray().ToList();
+        Assert.Equal(Clicker.Styles.Length, styles.Count);
+        Assert.All(styles, s => Assert.True(s.GetProperty("album").GetBoolean()));
+    }
+
+    [Fact]
+    public void An_overseas_tile_stays_in_the_stove_after_a_reload()
+    {
+        // До 21.10 Load відкидав кахлю з розписом поза альбомом — чорнофігурна кахля зникала з печі після перезапуску.
+        var h = Wheel();
+        Items(h, ("tile|athens|2", 1));
+        Assert.True(AlbumAct(h, new { op = "tile" }).Ok);
+        Patch(h, _ => { });
+        Assert.Equal("athens", Album(h).GetProperty("stove")[0].GetProperty("style").GetString());
     }
 
     [Fact]

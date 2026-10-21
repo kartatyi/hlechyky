@@ -73,8 +73,8 @@ public sealed partial class Clicker
         new("whorl", "Пряслице"),
     ];
 
-    /// <summary>Стовпчиків у сітці: простий + розписи альбому (з одинадцятого оновлення — і шість розписів світу; заморські
-    /// розписи v12 — поза сіткою, <see cref="AlbumStyles"/>).</summary>
+    /// <summary>Стовпчиків у сітці: простий + розписи альбому (з одинадцятого оновлення — і шість розписів світу, з
+    /// дванадцятого — і шість заморських, <see cref="AlbumStyles"/>).</summary>
     public static int AlbumColumns => AlbumStyles + 1;
     /// <summary>
     /// «Домашній» альбом — простий і вісім розписів, як до одинадцятого оновлення. Усі старі бонуси, ачівки й звання
@@ -88,7 +88,7 @@ public sealed partial class Clicker
     static int FullRowMask => (1 << AlbumColumns) - 1;
     static int HomeRowMask => (1 << AlbumHomeColumns) - 1;
     static int WorldRowMask => FullRowMask & ~HomeRowMask;
-    /// <summary>Уся сітка світу (15 стовпчиків на всіх виробах) — ще стільки до всього.</summary>
+    /// <summary>Уся сітка світу (усі стовпчики світу й заморські на всіх виробах) — ще стільки до всього.</summary>
     public const double AlbumWorldAllBonus = 0.25;
     static int FullMuseumMask => (1 << Finds.Length) - 1;
     /// <summary>Найвища якість, яку знає гра: і ціна виробу, і бонус кахлі мусять її знати.</summary>
@@ -637,6 +637,24 @@ public sealed partial class Clicker
         foreach (var key in row.Show ?? [])
             if (key is not null && _albumShow.Count < ShowMax && AlbumCellOpen(key) && !_albumShow.Contains(key, StringComparer.Ordinal))
                 _albumShow.Add(key);
+    }
+
+    /// <summary>
+    /// Заморські розписи до 21.10 в альбом не писались (сервер їх відкидав, а клієнт малював порожній стовпчик) — тож те
+    /// заморське, що лежить у коморі, відкриває свою клітинку, а дзвінке — ще й зірку. Повторно нічого не міняє: новий
+    /// обпал і так відкриває клітинку. Проданого чи відпливлого вже не повернеш — сліду не лишилось.
+    /// </summary>
+    void AlbumFromStock()
+    {
+        foreach (var (key, n) in _items)
+        {
+            if (n <= 0 || ParseItem(key) is not { } it || !OverseasTiers.Contains(it.Style)) continue;
+            var row = AlbumWareIndex(it.Ware);
+            var col = AlbumStyleIndex(it.Style);
+            if (row < 0 || col < 0) continue;
+            _albumCells[row] |= 1 << col;
+            if (it.Quality >= StarQuality) _albumStars[row] |= 1 << col;
+        }
     }
 
     static Dictionary<string, List<string>> MasksToKeys(int[] masks)
