@@ -446,6 +446,18 @@ public class ClickerFeedbackUiTests
     }
 
     [Fact]
+    public void The_wagon_toast_tells_the_own_share_and_the_next_step()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        NoOrders(h);
+        Items(h, ("pot||1", 20));
+        Assert.EndsWith("ще 2 — і нагорода твоя", Guild(h, new { op = "give", key = "pot||1", n = 3, keep = false }).Message);
+        // QA-4: тост воза каже про пай, як і картка: «пай ×0,5 · ще 6 — і ×1».
+        Assert.Contains("пай ×0,5 · ще 6 — і ×1", Guild(h, new { op = "give", key = "pot||1", n = 3, keep = false }).Message);
+    }
+
+    [Fact]
     public void Give_all_says_why_when_there_is_nothing_to_give()
     {
         var g = new Tsekh();

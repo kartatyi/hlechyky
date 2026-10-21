@@ -419,7 +419,7 @@ public sealed partial class Clicker
         WagonReached(r);
         var text = $"🐴 {n} × {WareOf(it.Ware)!.Name.ToLowerInvariant()} на віз — {WagonGap(r.Wagon)}";
         if (n < want) text += $" · {Count(want - n)} лишив під замовлення й Толоку";
-        if (r.Wagon.Mine < ClickerGuildService.MinGive) text += $" · ще {ClickerGuildService.MinGive - r.Wagon.Mine} — і нагорода твоя";
+        text += WagonShareText(r.Wagon);
         return ActResult.Accept(text);
     }
 
@@ -462,7 +462,7 @@ public sealed partial class Clicker
         WagonReached(r);
         var text = $"🛒 На віз — {Count(n)} {WaresWord(n)} · {WagonGap(r.Wagon)}";
         if (kept > 0) text += $" · {Count(kept)} {WaresWord(kept)} лишив під замовлення й Толоку";
-        if (r.Wagon.Mine < ClickerGuildService.MinGive) text += $" · ще {ClickerGuildService.MinGive - r.Wagon.Mine} — і нагорода твоя";
+        text += WagonShareText(r.Wagon);
         return ActResult.Accept(text);
     }
 
@@ -510,6 +510,25 @@ public sealed partial class Clicker
             var piece = PieceFor(_guildRank + 1);
             yield return (HoldPiece, x => PieceMatch(x, piece), 1);
         }
+    }
+
+    /// <summary>
+    /// Хвіст тосту воза — про власний пай (QA-4): до порогу — «ще N — і нагорода твоя»; далі — «пай ×0,5 · ще 6 — і ×1»,
+    /// а коли рівень є й нагорода чи доплата паю чекає — «забери», як і картка воза.
+    /// </summary>
+    static string WagonShareText(WagonInfo w)
+    {
+        if (w.Mine < ClickerGuildService.MinGive) return $" · ще {ClickerGuildService.MinGive - w.Mine} — і нагорода твоя";
+        var share = WagonShare(w.Mine);
+        var text = $" · пай ×{share.ToString("0.##", Uk)}";
+        if (share < ShareMax)
+        {
+            var next = Math.Floor(share) + 1;
+            var more = (int)Math.Ceiling(next * ClickerGuildService.PerPotter) - w.Mine;
+            if (more > 0) text += $" · ще {more} — і ×{next.ToString("0", Uk)}";
+        }
+        if (w.CanClaim) text += w.Claimed > 0 ? " · доплата паю чекає — забери" : " · нагорода чекає — забери";
+        return text;
     }
 
     static readonly string[] TierIcon = ["", "🥉", "🥈", "🥇"], TierGen = ["", "бронзи", "срібла", "золота"];
