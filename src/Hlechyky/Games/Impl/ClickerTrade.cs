@@ -279,10 +279,13 @@ public sealed partial class Clicker
     {
         var s = _ships[index];
         if (s.First) return ActResult.Fail("Перший корабель чекає свого вантажу — він відчинить першу майстерню");
+        var wasFull = _ships.Count >= TradeShipsMax;
         _ships.RemoveAt(index);
         // Біля повної Пристані розклад стояв; тепер місце є — наступний за звичайним розкладом, але не раніше ніж за інтервал.
         if (_shipNext <= now) _shipNext = now + TradeGap;
-        return ActResult.Accept($"⚓ Корабель з {PortOf(s.Port).From} відплив без повного вантажу — наступний прийде за {Wait(_shipNext - now)}");
+        // Лише повній Пристані відпуск щось дає — тоді й кажемо, коли новий (QA-4: при 1 з 3 тост ніби обіцяв прискорення).
+        return ActResult.Accept($"⚓ Корабель з {PortOf(s.Port).From} відплив без повного вантажу"
+            + (wasFull ? $" — місце біля Пристані вільне, новий прийде за {Wait(_shipNext - now)}" : ""));
     }
 
     /// <summary>
