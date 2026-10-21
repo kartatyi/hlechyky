@@ -50,7 +50,6 @@
   const LACK_ETA = 0.1;
   // Звичайний темп ручних кліків, кліків за хвилину: «30 000 кліків ≈ 1,5–2 год гри» (v12 §2) — для «≈ N гри до повної».
   const PACE = 300;
-  const Q_PL = [['', ''], ['звичайного', 'звичайних'], ['доброго', 'добрих'], ['дзвінкого', 'дзвінких'], ['розкішного', 'розкішних']];
 
   // ---------- дрібниці ----------
 
@@ -888,7 +887,8 @@
     const can = st.mine && st.guild && st.guild.enabled;
     let html = '<div class="clk-sub">🏗 Толока: ' + b.icon + ' ' + esc(b.name)
       + ' <span class="muted small">· етап ' + (t.stage + 1) + ' з ' + b.stages.length + ' — «' + esc(sd.name) + '»</span></div>';
-    if (laid) html += '<div class="small">🔨 Будується · ще ' + esc(left(api, ends - sn)) + '</div>';
+    // Відлік цокає щосекунди (tolokaHouse), як у своїй Толоці: застиглий «ще 42:10» за хвилину-дві розходився з господарем (QA-4).
+    if (laid) html += '<div class="small">🔨 Будується · ще <i class="clkl-fcd" data-at="' + ends + '">' + esc(left(api, ends - sn)) + '</i></div>';
     if (t.helpers.length) html += '<div class="small">🤝 На толоці ' + (laid ? 'були' : 'вже були') + ': <b>' + esc(t.helpers.join(', ')) + '</b></div>';
     const still = t.needs.filter((n) => n.left > 0);
     const hmax = (cat(st) && cat(st).helpersMax) || 3;
@@ -975,6 +975,17 @@
     // Згортка наступного етапу переживає перемальовування після посилки.
     if (!box._tog) { box._tog = true; box.addEventListener('toggle', (e) => { if (e.target.classList && e.target.classList.contains('clkl-fnext')) box._next = e.target.open; }, true); }
     draw();
+    if (!box._tick) {
+      box._tick = setInterval(() => {
+        if (!box.isConnected) { clearInterval(box._tick); box._tick = 0; return; }
+        const sn = api.serverNow(st);
+        for (const el of box.querySelectorAll('.clkl-fcd')) {
+          const at = +el.dataset.at;
+          const tx = at > sn ? left(api, at - sn) : 'ось-ось';
+          if (el.textContent !== tx) el.textContent = tx;
+        }
+      }, 1000);
+    }
     box.onclick = (e) => {
       if (e.target.closest('.clkl-fgo')) {
         if (!human(e)) return;
@@ -1031,77 +1042,77 @@
     api.showWhen(st, 'guild', fn);
   }
 
-  /// «Далі» в простої (v12 §2): етап будується, а на наступні бракує — найбільша нестача. Розкішні — першими: їх дає
-  /// лише розписна партія вручну, найповільніше в грі; далі — дзвінкі (лише коли палиш сам), далі — решта.
+  /// «Далі» в простої (v12 §2): етап будується — нестача найближчого етапу, що ще чогось просить. QA-4: не найбільша на
+  /// всю Толоку (глечик ×99 для далекого «Глеку на майдані», коли «Вернісаж» просить плесканець і полумисок; у Миколи —
+  /// барило на всю Толоку, коли наступний етап просить глечик і макітру): ліпити треба те, що закладатимеш наступним.
   function lackGoal(st, api) {
     const k = st.toloka;
     const s = k.v.stage;
     if (s && !s.endsAt) return stageGoal(st, api, s);
-    if (!s || !k.v.totals.length) return null;
-    const sim = simulate(st);
-    const cls = [
-      { q: 4, icon: '🎨', head: 'Розписна партія', sub: 'лише з розписної партії вручну' },
-      { q: 3, icon: '🔥', head: 'Пали сам', sub: 'дзвінкі — лише якщо палиш сам' },
-      { q: 1, icon: '🏺', head: 'Ліпи', sub: '' },
-    ].map((x) => {
-      const list = sim.groups.filter((g) => (x.q === 1 ? g.q < 3 : g.q === x.q) && g.lack > 0).sort((a, b) => b.lack - a.lack);
-      const n = list.reduce((a, g) => a + g.lack, 0);
-      const of = sim.groups.filter((g) => (x.q === 1 ? g.q < 3 : g.q === x.q)).reduce((a, g) => a + g.n, 0);
-      return Object.assign(x, { list, n, of });
-    }).filter((x) => x.n > 0);
-    if (!cls.length) return null;
-    // Розкішних бракує — це й є головне; інакше — більша з двох нестач.
-    const g = cls[0].q === 4 ? cls[0] : cls.slice().sort((a, b) => b.n - a.n)[0];
-    const top = g.list[0];
-    const word = g.q === 1 ? api.plural(g.n, 'виробу', 'виробів', 'виробів') : api.plural(g.n, Q_PL[g.q][0], Q_PL[g.q][1], Q_PL[g.q][1]);
-    const most = wareName(st, top.ware).toLowerCase() + (top.style ? ' «' + styleName(st, top.style) + '»' : '') + ' ×' + api.count(top.lack);
-    return Object.assign({
-      icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + g.icon + '</text>',
-      text: g.head + ': на Толоку бракує ' + api.count(g.n) + ' ' + word,
-      sub: (g.sub ? g.sub + ' · ' : '') + 'найбільше бракує: ' + most,
-      pct: g.of > 0 ? ((g.of - g.n) / g.of) * 100 : 0,
-      eta: LACK_ETA, tab: 'guild', row: '[data-sec="toloka"] .clkl-sumh', prio: 1,
-    }, goalAct(st, api, g.list));
+    if (!s) return null;
+    const near = nearKeys(k.v);
+    for (const p of k.v.plan) {
+      if (!near.has(p.building)) break;       // далі за двома будовами — лише етапи зі складом, не черга
+      const b = bdef(st, p.building);
+      if (!b) continue;
+      const rows = p.needs.map((n) => Object.assign({}, n, { lack: Math.max(0, n.n - (n.depot || 0) - haveOf(st, n)) }));
+      const g = needGoal(st, api, b, p.index, rows, false);
+      if (g) return Object.assign(g, { row: '[data-sec="toloka"] .clkl-plan[data-fold="g.tp.' + (p.building === s.building ? 'cur' : 'next') + '"] > .clk-fh' });
+    }
+    return null;
   }
 
   /// Дія цілі «Далі» (QA-3): не «Глянути», а одразу «🎨 Ліпити плесканець → розпис» — виріб на коло й розпис у тост
   /// (form { ware, style }). Перший рядок за нестачею, який уже можна ліпити (виріб відкритий, розпис куплений); він
-  /// уже на колі чи такого нема — лишається «Глянути».
+  /// уже на колі чи такого нема — лишається «Глянути». need — рядок, про який кнопка (для підпису цілі).
   function goalAct(st, api, list) {
     const c = st.craft;
     if (!c || !c.wares) return {};
     const owned = (key) => !key || (st.styleList || []).some((x) => x.key === key && x.owned);
     const n = list.find((x) => (c.wares.find((w) => w.key === x.ware) || {}).open && owned(x.style));
     // Найбільша нестача вже на колі — гончар робить саме те, що треба: не перемикати, лише «Глянути».
-    if (!n || c.ware === n.ware) return {};
+    if (!n) return {};
+    if (c.ware === n.ware) return { need: n };
     const btn = n.q >= 4 ? formLabel(st, n).replace('🏺', '🎨') + (n.style ? '' : ' → розпис') : formLabel(st, n);
-    return { btn, run: () => formIt(st, api, n.ware, n.style || '') };
+    return { need: n, btn, run: () => formIt(st, api, n.ware, n.style || '') };
   }
 
   /// Етап ще не закладений, і бракує виробів (не грошей — ті прийдуть самі): годинник будови стоїть, доки не донесеш.
   function stageGoal(st, api, s) {
     const b = bdef(st, s.building);
     if (!b) return null;
-    const rows = s.needs.map((n) => Object.assign({}, n, { lack: Math.max(0, n.n - n.got - (n.depot || 0) - n.have) }))
-      .filter((n) => n.lack > 0).sort((a, x) => x.q - a.q || x.lack - a.lack);
+    const rows = s.needs.map((n) => Object.assign({}, n, { lack: Math.max(0, n.n - n.got - (n.depot || 0) - n.have) }));
+    const g = needGoal(st, api, b, s.index, rows, true);
+    return g && Object.assign(g, { row: '[data-sec="toloka"] .clkl-needs' });
+  }
+
+  /// Ціль «Далі» з рядків одного етапу: «Толока: на «Вернісаж» бракує 100 виробів», найбільша нестача (розкішні,
+  /// потім дзвінкі — першими: їх найдовше робити) і кнопка, що ліпитиме саме її («🎨 Ліпити плесканець → розпис»).
+  function needGoal(st, api, b, index, all, cur) {
+    // Розкішні й дзвінкі — першими (їх дає лише ручне горно), звичайні й добрі — за нестачею: вони однаково йдуть з горна.
+    const cls = (q) => (q >= 4 ? 2 : q === 3 ? 1 : 0);
+    const rows = all.filter((n) => n.lack > 0).sort((a, x) => cls(x.q) - cls(a.q) || x.lack - a.lack);
     if (!rows.length) return null;
     const n = rows.reduce((a, x) => a + x.lack, 0);
-    const of = s.needs.reduce((a, x) => a + x.n, 0);
-    const top = rows[0];
-    const sd = b.stages[s.index] || { name: '' };
+    const of = all.reduce((a, x) => a + x.n, 0);
+    const act = goalAct(st, api, rows);
+    // Підпис — про той рядок, який ліпитиме кнопка (перший, що вже можна ліпити), інакше — про найбільший.
+    const top = act.need || rows[0];
+    const sd = b.stages[index] || { name: '' };
     const hint = qHint(api, top.q);
+    const icon = top.q >= 4 ? '🎨' : top.q === 3 ? '🔥' : b.icon;
     return Object.assign({
-      icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + b.icon + '</text>',
+      icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + icon + '</text>',
       text: 'Толока: на «' + sd.name + '» бракує ' + api.count(n) + ' ' + api.plural(n, 'виробу', 'виробів', 'виробів'),
       sub: wareName(st, top.ware).toLowerCase() + (top.style ? ' «' + styleName(st, top.style) + '»' : '') + ' ×' + api.count(top.lack)
-        + (hint ? ' · ' + hint : '') + ' · годинник стоїть, доки не закладеш',
+        + (hint ? ' · ' + hint : '') + (cur ? ' · годинник стоїть, доки не закладеш' : ' · наступний етап, поки цей будується'),
       pct: of > 0 ? ((of - n) / of) * 100 : 0,
-      eta: LACK_ETA, tab: 'guild', row: '[data-sec="toloka"] .clkl-needs', prio: 1,
-    }, goalAct(st, api, rows));
+      eta: LACK_ETA, tab: 'guild', prio: 1,
+    }, { btn: act.btn, run: act.run });
   }
 
   /// Смуга «Далі»: усе для етапу є — підказати закласти (пріоритет 1: годинник будови не цокає, доки не заклав);
-  /// етап будується — найбільша нестача на наступні; не закладений і бракує виробів — нестача цього етапу.
+  /// етап будується — нестача найближчого етапу; не закладений і бракує виробів — нестача цього етапу.
   (window.HClicker.goals = window.HClicker.goals || []).push((st, v, api) => {
     const k = st.toloka;
     if (!k || !k.v || !st.mine) return null;
@@ -1114,7 +1125,8 @@
       icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + b.icon + '</text>',
       text: 'Толока: можна закласти «' + sd.name + '»',
       sub: b.name + ' · будується ' + hrs(s.hours * (1 - (s.cut || 0))),
-      pct: 100, eta: 0, tab: 'guild', prio: 1,
+      // QA-4: на телефоні кнопка «Закласти» — на ~850 px нижче; «Глянути» веде просто до неї.
+      pct: 100, eta: 0, tab: 'guild', row: '[data-sec="toloka"] .clkl-lay', prio: 1,
     };
   });
 
