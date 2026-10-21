@@ -746,4 +746,29 @@ public class ClickerTolokaTests
         var p = Assert.Single(box!);
         Assert.Equal(("Микола", "well", 0, "bowl", 6), (p.From, p.Building, p.Stage, p.Ware, p.N));
     }
+
+    [Fact]
+    public void A_friend_sees_the_owners_depot_and_own_work_just_like_the_owner()
+    {
+        var g = new Tsekh();
+        var owner = g.Potter("Оля");
+        Give(owner, 2e15);
+        // Склад: 5 горщиків уже лежать під перший рядок «Копаємо яму» — друг бачить на 5 менше (QA-3).
+        var b = Stage(owner).GetProperty("building").GetString()!;
+        Patch(owner, s => (s["toloka"] as JsonObject ?? (JsonObject)(s["toloka"] = new JsonObject()))["depot"] =
+            new JsonObject { [$"{b}|0|0"] = new JsonObject { ["pot||1"] = 5 } });
+        Assert.Equal(5, T(owner).GetProperty("depot").GetInt32());
+        g.Publish(owner, "Оля");
+        var need = Views.Json(g.Svc.House("Оля")).GetProperty("toloka").GetProperty("needs")[0];
+        Assert.Equal(need.GetProperty("n").GetInt32() - 5, need.GetProperty("left").GetInt32());
+
+        // Закладено, і господар наклацав повну смугу своєї праці: годинник у друга — той самий.
+        Items(owner, ("pot||1", 10), ("pot||2", 10), ("bowl||3", 10), ("bowl||1", 5), ("bowl|kosiv|1", 5));
+        Assert.True(Toloka(owner, "lay").Ok);
+        Patch(owner, s => s["toloka"]!["work"] = 1_000_000);
+        var ends = Stage(owner).GetProperty("endsAt").GetDateTimeOffset();
+        g.Publish(owner, "Оля");
+        var seen = Views.Json(g.Svc.House("Оля")).GetProperty("toloka").GetProperty("endsAt").GetDateTimeOffset();
+        Assert.Equal(ends, seen);
+    }
 }

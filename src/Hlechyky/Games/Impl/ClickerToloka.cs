@@ -532,7 +532,9 @@ public sealed partial class Clicker
         // наступна будова (вид топ-гончаря мусить влазити в 25 КБ, а 43 етапи поетапно — ще ~1,5 КБ щопачки).
         var ahead = TolokaAhead().ToList();
         var near = ahead.Select(x => x.B.Key).Distinct().Take(2).ToHashSet(StringComparer.Ordinal);
-        var plan = ahead.Where(x => near.Contains(x.B.Key)).Select(x => new
+        // Далі за двома будовами — лише етапи, де вже щось лежить на складі: «Віднести все» носить і туди, і забрати
+        // назад («↩») мусить бути звідки (QA-3: 43 глечики на «Глеку на майдані» без вороття).
+        var plan = ahead.Where(x => near.Contains(x.B.Key) || x.B.Stages[x.S].Needs.Where((_, i) => DepotCount(DepotKey(x.B.Key, x.S, i)) > 0).Any()).Select(x => new
         {
             building = x.B.Key, index = x.S,
             needs = x.B.Stages[x.S].Needs.Select((n, i) => new { ware = n.Ware, n = n.N, q = n.Q, style = n.Style, depot = DepotCount(DepotKey(x.B.Key, x.S, i)) }).ToList(),
