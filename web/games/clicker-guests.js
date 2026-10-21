@@ -148,7 +148,7 @@
       + '<div class="clkd-obtns">'
       + '<button type="button" class="primary small clkd-give" data-give="' + o.id + '"' + (st.mine && ready ? '' : ' disabled') + '>🤝 Віддати</button>'
       // Бракує — «Ліпити» тут же, з розписом замовлення (form { ware, style }), як у Толоці.
-      + (ready || !st.mine ? '' : '<button type="button" class="ghost small clkd-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
+      + (ready || !st.mine ? '' : st.craft && st.craft.ware === o.ware ? '<span class="small clkl-onwheel">🏺 ' + esc(wareName(st, o.ware)) + ' уже на колі</span>' : '<button type="button" class="ghost small clkd-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
         + esc(acc(wareName(st, o.ware))) + '</button>')
       + '<button type="button" class="ghost small clkd-skip' + (armed ? ' armed' : '') + '" data-skip="' + o.id + '"' + (st.mine ? '' : ' disabled')
       // «Точно?» — не довше за «Відпустити»: інакше кнопка переносилась у новий рядок і тікала з-під пальця на другому натиску.
