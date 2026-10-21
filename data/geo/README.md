@@ -21,5 +21,9 @@
   ```
 
   Вихідні файли NE (~48 МБ) скрипт качає в `%TEMP%` і в гіт не кладе.
+- `build-tryvoga.py` — мапа районів «🚨 Тривоги» (`web/static/tryvoga-map.json`) з geojson NEPTUN, та сама сітка.
+- `build-tryvoga-detail.py` — її детальний шар (`web/static/tryvoga-detail.json`): міста й смт, райцентри, водосховища
+  й озера, головні річки з OpenStreetMap (Overpass, кеш у `%TEMP%/tryvoga-osm/`), траси М і підписи областей — з
+  `geo-detail.json`. Подробиці — `docs/tryvoga.md`, «Мапа районів». © OpenStreetMap contributors (ODbL).
 
 Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com (суспільне надбання).

@@ -23,7 +23,10 @@
   const THREATS_MS = 10000;
   const KMAX = 14;
   const EARTH_KM = 6371;
-  const CLUSTER_PX = 15;             // значки ближче за стільки пікселів злипаються в гурт із числом
+  const CLUSTER_PX = 20;             // значки ближче за стільки пікселів злипаються в гурт із числом
+  const GLYPH_K = 1.5;               // значки цілей на мапі — у півтора раза більші за «рідний» розмір glyph()
+  const DETAIL_URL = '/static/tryvoga-detail.json';   // детальний шар (OSM): міста, вода, траси — довантажується
+  const ROAD_S = 0.18;               // траси М — з цього масштабу (на всю Україну на ПК ≈ 0,15 — ще без них)
   const PERM_MS = 2 * 86400000;      // тривога довша за дві доби — окуповане: у переліку останньою й блідою
   const ALERTS_FOLD = 8;             // «Тривоги зараз»: стільки областей видно одразу, решта — «Усі області»
 
@@ -248,6 +251,31 @@
     return mapPromise;
   }
 
+  /// Детальний шар (data/geo/build-tryvoga-detail.py, © OpenStreetMap contributors) — окремим файлом після основної
+  /// мапи: вона з'являється одразу, а міста, вода й траси догружаються. Лінії — дельтами, як дуги основної мапи.
+  let detailP = null;
+  function loadDetail() {
+    if (detailP || !map) return detailP;
+    detailP = fetch(DETAIL_URL)
+      .then((r) => { if (!r.ok) throw new Error('деталі ' + r.status); return r.json(); })
+      .then((raw) => {
+        const line = (a, p, closed) => {
+          let x = a[0], y = a[1];
+          p.moveTo(x, y);
+          for (let i = 2; i < a.length; i += 2) { x += a[i]; y += a[i + 1]; p.lineTo(x, y); }
+          if (closed) p.closePath();
+        };
+        const water = new Path2D(), rivers = new Path2D(), big = new Path2D(), roads = new Path2D();
+        for (const w of raw.water || []) for (const r of w.rings) line(r, water, true);
+        for (const rv of raw.rivers || []) for (const l of rv.lines) line(l, rv.big ? big : rivers, false);
+        for (const rd of raw.roads || []) for (const l of rd.lines) line(l, roads, false);
+        map.detail = { water, rivers, big, roads, places: raw.places || [], labels: raw.labels || [] };
+        kick();
+      })
+      .catch(() => { detailP = null; });   // без деталей мапа однаково робоча
+    return detailP;
+  }
+
   function buildMap(raw) {
     // дуги — дельтами: перша точка абсолютна, далі різниці (build-tryvoga.py)
     const arcs = raw.arcs.map((d) => {
@@ -276,6 +304,24 @@
         p.closePath();
       }
       return { k: u.k, n: u.n, o: u.o, c: u.c, p, bb };
+    });
+    // Дуга одного району всередині країни — щілина між полігонами NEPTUN, а не кордон: по той бік (за кілька
+    // одиниць) уже інший район. Контур тривоги по ній не малюємо (інакше червоні уривки посеред червоного).
+    const probe = document.createElement('canvas').getContext('2d');
+    const sliver = arcs.map((a, i) => {
+      if (users[i].length !== 1 || a.length < 4) return false;
+      const j = Math.max(2, Math.floor(a.length / 4) * 2);
+      const dx = a[j] - a[j - 2], dy = a[j + 1] - a[j - 1], l = Math.hypot(dx, dy) || 1;
+      const mx = (a[j] + a[j - 2]) / 2, my = (a[j + 1] + a[j - 1]) / 2;
+      for (const d of [2, 6, 12]) for (const sg of [1, -1]) {
+        const px = mx - (dy / l) * d * sg, py = my + (dx / l) * d * sg;
+        for (let ui = 0; ui < units.length; ui++) {
+          const u = units[ui], b = u.bb;
+          if (ui === users[i][0] || px < b[0] || px > b[2] || py < b[1] || py > b[3]) continue;
+          if (probe.isPointInPath(u.p, px, py, 'evenodd')) return true;
+        }
+      }
+      return false;
     });
     // дуга одного району — контур країни; двох з різних областей — межа області; з однієї — межа району
     const outline = new Path2D(), oblast = new Path2D(), raion = new Path2D();
@@ -311,7 +357,7 @@
     for (const u of units) { byKey[u.k] = u; count[u.o] = (count[u.o] || 0) + 1; }
     const oblasts = Object.create(null);
     for (const ob of raw.oblasts) oblasts[ob.k] = ob;
-    map = { W: raw.w, H: raw.h, units, byKey, count, oblasts, oblastList: raw.oblasts, outline, oblast, raion, river,
+    map = { W: raw.w, H: raw.h, units, byKey, count, oblasts, arcs, arcUsers: users, sliver, oblastList: raw.oblasts, outline, oblast, raion, river,
       cities: raw.cities || [], towns: raw.towns || [], project, unproject, kmUnits: P.k / EARTH_KM };
     return map;
   }
@@ -397,6 +443,9 @@
       oblast: c('--tv-oblast', 'rgba(236,241,234,.34)'), outline: c('--tv-outline', 'rgba(236,241,234,.55)'),
       river: c('--tv-river', 'rgba(74,143,179,.45)'), mine: c('--text', '#ecf1ea'), text: c('--text', '#ecf1ea'),
       muted: c('--muted', '#9db3a5'), halo: c('--bg', '#0f1f18'),
+      redLine: c('--tv-red-line', '#ff6b62'), yellowLine: c('--tv-yellow-line', '#f2c744'),
+      water: c('--tv-water', 'rgba(64,128,165,.42)'), road: c('--tv-road', 'rgba(233,214,160,.2)'),
+      label: c('--tv-label', 'rgba(236,241,234,.42)'),
     };
     for (const t of Object.keys(TYPES)) st.css['t-' + t] = c('--tv-' + t, '#f0820e');
   }
@@ -422,6 +471,25 @@
     return lv;
   }
 
+  /// Контури зон тривоги: дуга, по різні боки якої різні рівні (чи з одного боку кордон), — кольором вищого рівня.
+  /// Рівні міняються лише з новими даними, тож шлях кешуємо на об'єкт data.
+  let ctCache = { data: undefined, red: null, yellow: null };
+  function contours(lv) {
+    if (ctCache.data === data && ctCache.red) return ctCache;
+    const red = new Path2D(), yellow = new Path2D();
+    map.arcs.forEach((a, i) => {
+      const us = map.arcUsers[i];
+      if (map.sliver[i]) return;
+      const l1 = lv[map.units[us[0]].k] || '', l2 = us.length > 1 ? lv[map.units[us[1]].k] || '' : '';
+      if (l1 === l2) return;
+      const p = l1 === 'red' || l2 === 'red' ? red : yellow;
+      p.moveTo(a[0], a[1]);
+      for (let k = 2; k < a.length; k += 2) p.lineTo(a[k], a[k + 1]);
+    });
+    ctCache = { data, red, yellow };
+    return ctCache;
+  }
+
   function draw() {
     if (!st.cv || !map || !st.cw) return;
     const g = st.g, c = st.css, s = sc(), d = st.dpr;
@@ -442,9 +510,28 @@
     }
     g.lineJoin = 'round';
     g.lineCap = 'round';
-    g.strokeStyle = c.river;
-    g.lineWidth = 1.1 / s;
-    g.stroke(map.river);
+    const dt = map.detail;
+    // з наближенням лінії трохи товщають — щоб річка на 8× не була волосиною
+    const zw = Math.min(2, 1 + (st.k - 1) * 0.12);
+    if (dt) {
+      // детальний шар (OSM): водосховища й озера плямами, річки, траси М — тонко, лише коли вже не вся країна
+      g.fillStyle = c.water;
+      g.fill(dt.water, 'evenodd');
+      g.strokeStyle = c.river;
+      g.lineWidth = 0.9 * zw / s;
+      g.stroke(dt.rivers);
+      g.lineWidth = 1.6 * zw / s;
+      g.stroke(dt.big);
+      if (s >= ROAD_S) {
+        g.strokeStyle = c.road;
+        g.lineWidth = 0.9 * zw / s;
+        g.stroke(dt.roads);
+      }
+    } else {
+      g.strokeStyle = c.river;
+      g.lineWidth = 1.1 / s;
+      g.stroke(map.river);
+    }
     g.strokeStyle = c.raion;
     g.lineWidth = 0.8 / s;
     g.stroke(map.raion);
@@ -454,15 +541,25 @@
     g.strokeStyle = c.outline;
     g.lineWidth = 1.5 / s;
     g.stroke(map.outline);
+    // Заливка тривоги прозора (щоб значки на ній не зливались) — рівень видно по контуру: чітка лінія там, де
+    // тривога кінчається чи міняє рівень. Між двома червоними районами — звичайна тонка межа, а не червона сітка.
+    if (!stale) {
+      const ct = contours(lv);
+      g.lineWidth = 1.8 / s;
+      g.strokeStyle = c.yellowLine;
+      g.stroke(ct.yellow);
+      g.strokeStyle = c.redLine;
+      g.stroke(ct.red);
+    }
     const mine = map.byKey[cur().key];
     if (mine) {
       g.strokeStyle = c.mine;
       g.lineWidth = 2.2 / s;
       g.stroke(mine.p);
     }
-    // далі — у пікселях екрана: значки однакового розміру за будь-якого наближення
+    // далі — у пікселях екрана: значки однакового розміру за будь-якого наближення; цілі — поверх підписів
     g.setTransform(d, 0, 0, d, 0, 0);
-    paintCities(g, s);
+    if (dt) paintPlaces(g, s, dt); else paintCities(g, s);
     paintTargets(g, s);
     if (mine) pin(g, mine.c[0] * s + st.ox, mine.c[1] * s + st.oy);
     paintMe(g, s);
@@ -521,6 +618,70 @@
     }
   }
 
+  // Міста детального шару за рівнями: 1 — обласні центри (завжди), 2 — від 100 тис., 3 — від 30 тис. і райцентри,
+  // 4 — від 10 тис. min — з якого масштабу (пікселів на одиницю сітки; ПК на всю Україну ≈ 0,15, телефон ≈ 0,085).
+  const PL = [null,
+    { min: 0, dot: 3, font: '600 12px system-ui, sans-serif', col: 'text' },
+    { min: 0.2, dot: 2.6, font: '600 11px system-ui, sans-serif', col: 'text' },
+    { min: 0.42, dot: 2.2, font: '11px system-ui, sans-serif', col: 'muted' },
+    { min: 0.85, dot: 1.8, font: '10.5px system-ui, sans-serif', col: 'muted' },
+  ];
+  const LABEL_S = [0.11, 0.6];       // підписи областей — лише на загальному виді (і не на дрібному телефонному)
+
+  /// Міста й підписи областей без накладань: жадібно, від важливішого; не влізло праворуч — пробуємо ліворуч.
+  function paintPlaces(g, s, dt) {
+    const boxes = [[st.cw - 104, st.ch - 17, st.cw, st.ch]];    // куток «© OpenStreetMap» — підписи туди не лізуть
+    const free = (b) => {
+      if (b[2] < 0 || b[3] < 0 || b[0] > st.cw || b[1] > st.ch) return false;
+      for (const o of boxes) if (b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]) return false;
+      return true;
+    };
+    g.textBaseline = 'middle';
+    g.textAlign = 'left';
+    const place = (p) => {
+      const L = PL[p.l] || PL[4];
+      if (s < L.min) return;
+      const x = p.x * s + st.ox, y = p.y * s + st.oy;
+      if (x < -60 || y < -20 || x > st.cw + 60 || y > st.ch + 20) return;
+      g.font = L.font;
+      const w = p.w || (p.w = g.measureText(p.n).width);
+      const r = L.dot, h = 14;
+      const dot = [x - r - 1, y - r - 1, x + r + 1, y + r + 1];
+      if (p.l > 1 && !free(dot)) return;
+      let b = [x + r + 2, y - h / 2, x + r + 5 + w, y + h / 2], tx = x + r + 4;
+      if (!free(b)) { b = [x - r - 5 - w, y - h / 2, x - r - 2, y + h / 2]; tx = x - r - 4 - w; }
+      const fits = free(b);
+      if (!fits && p.l > 1) return;     // обласний центр лишається хоч крапкою
+      boxes.push(dot);
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fillStyle = st.css[L.col];
+      g.lineWidth = 2;
+      g.strokeStyle = st.css.halo;
+      g.stroke();
+      g.fill();
+      if (!fits) return;
+      boxes.push(b);
+      halo(g, p.n, tx, y, st.css[L.col], L.font);
+    };
+    for (const p of dt.places) if (p.l === 1) place(p);
+    if (s >= LABEL_S[0] && s < LABEL_S[1]) {
+      g.textAlign = 'center';
+      const font = '600 10.5px system-ui, sans-serif';
+      g.font = font;
+      for (const lb of dt.labels) {
+        const x = lb.x * s + st.ox, y = lb.y * s + st.oy;
+        const w = lb.w || (lb.w = g.measureText(lb.n).width);
+        const b = [x - w / 2 - 2, y - 7, x + w / 2 + 2, y + 7];
+        if (!free(b)) continue;
+        boxes.push(b);
+        halo(g, lb.n, x, y, st.css.label, font);
+      }
+      g.textAlign = 'left';
+    }
+    for (const p of dt.places) if (p.l > 1) place(p);
+  }
+
   function pin(g, x, y) {
     g.save();
     g.translate(x, y);
@@ -542,21 +703,36 @@
   }
 
   /// Значок цілі: носом за курсом (поправка на те, що північ на конічній мапі трохи повернута).
+  /// Темне гало під значком, заливка кольором типу і біла обвідка — щоб ціль читалась і на червоній, і на жовтій
+  /// заливці. Розмір задає той, хто кличе (g.scale): на мапі 1,5×, на циферблаті «Довкола мене» — так само.
   function glyph(g, shape, color, rot) {
     g.save();
     g.rotate(rot);
-    g.fillStyle = color;
-    g.strokeStyle = 'rgba(0,0,0,.65)';
-    g.lineWidth = 1.2;
+    g.lineJoin = 'round';
     g.beginPath();
     if (shape === 'delta') { g.moveTo(0, -8); g.lineTo(6, 6); g.lineTo(0, 3); g.lineTo(-6, 6); }
     else if (shape === 'dart') { g.moveTo(0, -10); g.lineTo(3.5, 6); g.lineTo(0, 4); g.lineTo(-3.5, 6); }
     else if (shape === 'diamond') { g.moveTo(0, -9); g.lineTo(5, 0); g.lineTo(0, 9); g.lineTo(-5, 0); }
     else if (shape === 'plane') { g.moveTo(0, -9); g.lineTo(2, -2); g.lineTo(8, 2); g.lineTo(2, 2); g.lineTo(1.5, 7); g.lineTo(-1.5, 7); g.lineTo(-2, 2); g.lineTo(-8, 2); g.lineTo(-2, -2); }
-    else if (shape === 'ring') { g.arc(0, 0, 5, 0, Math.PI * 2); g.closePath(); g.stroke(); g.restore(); return; }
+    else if (shape === 'ring') g.arc(0, 0, 5, 0, Math.PI * 2);
     else g.arc(0, 0, 4.5, 0, Math.PI * 2);
     g.closePath();
+    g.strokeStyle = 'rgba(0,0,0,.55)';
+    if (shape === 'ring') {
+      g.lineWidth = 4.6;
+      g.stroke();
+      g.strokeStyle = color;
+      g.lineWidth = 2.2;
+      g.stroke();
+      g.restore();
+      return;
+    }
+    g.lineWidth = 3.6;
+    g.stroke();
+    g.fillStyle = color;
     g.fill();
+    g.strokeStyle = '#fff';
+    g.lineWidth = 1.1;
     g.stroke();
     g.restore();
   }
@@ -579,9 +755,9 @@
     for (const { t, x, y, color, alpha } of pts) {
       if (t.trail && t.trail.length) {
         g.strokeStyle = color;
-        g.lineWidth = 1.5;
+        g.lineWidth = 2.2;
         g.setLineDash([]);
-        g.globalAlpha = alpha * 0.55;
+        g.globalAlpha = alpha * 0.85;
         g.beginPath();
         t.trail.forEach(([la, lo], i) => {
           const [tx, ty] = map.project(la, lo);
@@ -624,28 +800,34 @@
       g.globalAlpha = alpha;
       g.save();
       g.translate(x, y);
+      g.scale(GLYPH_K, GLYPH_K);
       const rot = t.heading == null ? 0 : (t.heading * Math.PI) / 180 - tilt;
       glyph(g, t.heading == null && meta.shape !== 'ring' ? 'dot' : meta.shape, color, rot);
       g.restore();
-      if (t.count > 1) halo(g, '×' + t.count, x + 8, y - 8, st.css.text, 'bold 11px system-ui, sans-serif');
+      if (t.count > 1) halo(g, '×' + t.count, x + 12, y - 11, st.css.text, 'bold 12px system-ui, sans-serif');
       g.globalAlpha = 1;
       st.hits.push({ x, y, t });
     }
   }
 
-  /// Гурт: кружок кольору головної цілі й скільки їх разом (з групами NEPTUN).
+  /// Гурт: темний кружок із білим числом (скільки разом, з групами NEPTUN) і обідком кольору головної цілі —
+  /// не кольором тривоги, тож не губиться на червоній чи жовтій заливці.
   function bunch(g, x, y, color, n) {
+    const r = n > 9 ? 13.5 : 12;
     g.beginPath();
-    g.arc(x, y, n > 9 ? 11.5 : 10, 0, Math.PI * 2);
-    g.fillStyle = color;
-    g.fill();
-    g.lineWidth = 2;
-    g.strokeStyle = st.css.halo;
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.lineWidth = 6;
+    g.strokeStyle = 'rgba(0,0,0,.45)';
     g.stroke();
-    g.font = 'bold 11px system-ui, sans-serif';
+    g.fillStyle = 'rgba(12,22,17,.94)';
+    g.fill();
+    g.lineWidth = 2.6;
+    g.strokeStyle = color;
+    g.stroke();
+    g.font = 'bold 12px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillStyle = '#10180f';
+    g.fillStyle = '#fff';
     g.fillText(String(n), x, y + 0.5);
     g.textAlign = 'left';
   }
@@ -735,10 +917,10 @@
     const now = Date.now(), lt = st.lastTap;
     st.lastTap = { x, y, t: now };
     if (lt && now - lt.t < 330 && Math.hypot(lt.x - x, lt.y - y) < 30) { st.lastTap = null; hidePop(); zoomAt(x, y, 2); return; }
-    let best = null, bd = 20;              // гурт ловимо до 20 px, одиночну ціль — до 18
+    let best = null, bd = 24;              // гурт ловимо до 24 px, одиночну ціль — до 22
     for (const h of st.hits) {
       const dd = Math.hypot(h.x - x, h.y - y);
-      if (dd < bd && (h.ts || dd < 18)) { bd = dd; best = h; }
+      if (dd < bd && (h.ts || dd < 22)) { bd = dd; best = h; }
     }
     if (best && best.ts) {
       // гурт: наближаємо, поки є куди; далі — перелік
@@ -872,6 +1054,7 @@
                 <div class="tv-pop" role="dialog" hidden></div>
                 <div class="tv-hint" hidden></div>
                 <div class="tv-fullstate" hidden></div>
+                <div class="tv-osm">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
                 <div class="tv-load">Мапа вантажиться…</div>
               </div>
               <div class="tv-ctl">
@@ -903,7 +1086,8 @@
         </div>
       </div>
       <p class="tv-note">⚠ Це не офіційне оповіщення: дані можуть запізнюватись чи бути неточними. Орієнтуйся на сирену
-        й застосунок «Повітряна тривога». Дані: <a href="https://neptun.in.ua/" target="_blank" rel="noopener">Карта повітряних тривог — NEPTUN</a>.</p>`;
+        й застосунок «Повітряна тривога». Дані: <a href="https://neptun.in.ua/" target="_blank" rel="noopener">Карта повітряних тривог — NEPTUN</a>.
+        Мапа: межі районів — NEPTUN, міста, вода й траси — © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>.</p>`;
     const box = root.querySelector('.tv-box');
     st.box = box;
     st.cv = root.querySelector('.tv-cv');
@@ -977,6 +1161,7 @@
       if (status().on) focusMine();
       paintPage();
       if (window.HDovkola) HDovkola.update();
+      loadDetail();
     }).catch(() => { box.querySelector('.tv-load').textContent = 'Мапа не завантажилась — онови сторінку.'; });
   }
 
@@ -1120,7 +1305,8 @@
     if (sel && map && sel.value !== r.key) sel.value = r.key;
     const at = data && Date.parse(data.at || '');
     $('tvFresh').innerHTML = (at ? `Оновлено о ${esc(kyiv(new Date(at)))} · ` : '')
-      + 'дані <a href="https://neptun.in.ua/" target="_blank" rel="noopener">NEPTUN</a> · це не офіційне оповіщення';
+      + 'дані <a href="https://neptun.in.ua/" target="_blank" rel="noopener">NEPTUN</a>, мапа © '
+      + '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · це не офіційне оповіщення';
     // на весь екран картки не видно — стан коротко в куті мапи
     const fs = st.box && st.box.querySelector('.tv-fullstate');
     if (fs) { fs.textContent = chip; fs.className = 'tv-fullstate ' + cls; fs.hidden = !chip; }

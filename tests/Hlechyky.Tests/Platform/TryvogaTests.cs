@@ -234,6 +234,39 @@ public sealed class TryvogaTests : IDisposable
         Assert.True(GeoScore.Km(clat, clon, zlat, zlon) > 8);
     }
 
+    // ---------- детальний шар мапи (OSM) ----------
+
+    /// <summary>
+    /// web/static/tryvoga-detail.json (data/geo/build-tryvoga-detail.py): усі обласні центри рівнем 1 і там, де вони є
+    /// (тезка-смт — Миколаїв на Львівщині — рівнем 1 не стає), міста лягають у сітку тієї ж проєкції, є вода, річки й
+    /// траси, атрибуція OSM, і файл легкий — його довантажують на телефоні.
+    /// </summary>
+    [Fact]
+    public void Detail_layer_has_every_oblast_centre_once_in_its_place_and_stays_light()
+    {
+        var path = Paths.Resolve("web/static/tryvoga-detail.json");
+        Assert.True(new FileInfo(path).Length < 400_000, $"{new FileInfo(path).Length} байт");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var root = doc.RootElement;
+        Assert.Contains("OpenStreetMap", root.GetProperty("attr").GetString());
+        var places = root.GetProperty("places").EnumerateArray().ToList();
+        var capitals = places.Where(p => p.GetProperty("l").GetInt32() == 1).Select(p => p.GetProperty("n").GetString()).ToList();
+        Assert.Equal(capitals.Count, capitals.Distinct().Count());
+        Assert.True(capitals.Count >= 25, $"обласних центрів {capitals.Count}");
+        Assert.True(places.Count > 200, $"міст {places.Count}");
+        foreach (var p in places)
+        {
+            int x = p.GetProperty("x").GetInt32(), y = p.GetProperty("y").GetInt32();
+            Assert.True(x is > 0 and < 4000 && y is > 0 and < 2730, $"{p.GetProperty("n").GetString()}: {x}, {y}");
+        }
+        var zh = places.Single(p => p.GetProperty("n").GetString() == "Житомир");
+        var (la, lo) = GeoMap.Unproject(zh.GetProperty("x").GetDouble(), zh.GetProperty("y").GetDouble());
+        Assert.True(GeoScore.Km(la, lo, 50.2547, 28.6587) < 3, $"Житомир: {la:0.000}, {lo:0.000}");
+        Assert.Contains(root.GetProperty("rivers").EnumerateArray(), r => r.GetProperty("n").GetString() == "Дніпро");
+        Assert.True(root.GetProperty("water").GetArrayLength() >= 5);
+        Assert.True(root.GetProperty("roads").GetArrayLength() >= 20);
+    }
+
     // ---------- архів ----------
 
     SqliteConnection Db()

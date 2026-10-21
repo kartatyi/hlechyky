@@ -581,13 +581,13 @@
         g.globalAlpha = x.live ? 1 : 0.45;
         if (x.trail.length) {
           g.strokeStyle = color;
-          g.lineWidth = 1.5;
-          g.globalAlpha *= 0.55;
+          g.lineWidth = 2.2;
+          g.globalAlpha *= 0.85;
           g.beginPath();
           x.trail.forEach(([d, b], i) => { const [tx, ty] = at(d * kmPx, b); if (i) g.lineTo(tx, ty); else g.moveTo(tx, ty); });
           g.lineTo(px, py);
           g.stroke();
-          g.globalAlpha /= 0.55;
+          g.globalAlpha /= 0.85;
         }
         if (x.t.quality !== 'confirmed' && x.t.unc > 0) {
           g.setLineDash([3, 3]);
@@ -648,17 +648,17 @@
           g.translate(px, py);
           if (x.danger) {
             g.strokeStyle = c.danger;
-            g.lineWidth = 2;
+            g.lineWidth = 2.2;
             g.beginPath();
-            g.arc(0, 0, 13, 0, Math.PI * 2);
+            g.arc(0, 0, 16, 0, Math.PI * 2);
             g.stroke();
           }
-          g.scale(1.25, 1.25);
+          g.scale(1.5, 1.5);            // як на мапі: значок із білою обвідкою й темним гало (glyph у tryvoga.js)
           const meta = h.types[x.t.type] || h.types.unknown;
           const rot = x.t.heading == null ? 0 : x.t.heading * RAD - turnRad;
           h.glyph(g, x.t.heading == null && meta.shape !== 'ring' ? 'dot' : meta.shape, color, rot);
           g.restore();
-          if (x.t.count > 1) { g.textAlign = 'left'; text(g, '×' + x.t.count, px + 10, py - 10, c.text, 'bold 11px system-ui, sans-serif'); g.textAlign = 'center'; }
+          if (x.t.count > 1) { g.textAlign = 'left'; text(g, '×' + x.t.count, px + 12, py - 11, c.text, 'bold 12px system-ui, sans-serif'); g.textAlign = 'center'; }
         }
         g.globalAlpha = 1;
       }
