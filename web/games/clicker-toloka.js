@@ -239,7 +239,8 @@
     if (!k.v) {
       // До гривні — лише рядок-обіцянка (і лише там, де «Село» вже відкрите: розділ живе в його панелі).
       const from = (c && c.smallFrom) || 1e15;
-      api.swap(k.el, '<div class="clk-teaser muted small clkl-soon">🏗 Толока відкриється на ' + esc(api.potsShort(from)) + ' за весь час</div>');
+      api.swap(k.el, '<div class="clk-teaser muted small clkl-soon">🏗 Толока відкриється на ' + esc(api.potsShort(from)) + ' за весь час'
+        + (/₴/.test(api.potsShort(from)) ? ' <span class="clkl-hrn">(₴ — гривня: тисяча трильйонів глеків)</span>' : '') + '</div>');
       k.el.classList.add('closed');
       delete k.el.dataset.fold;                // обіцянка без заголовка — згортати нема чого (і нема за що взятись)
       k.cds = [];
@@ -410,7 +411,7 @@
       const ok = have >= n.n;
       return '<div class="clkl-need' + (ok ? ' ok' : '') + '">'
         + '<span class="clkl-nart">' + api.wareSvg(n.ware, { style: n.style, quality: Math.max(1, n.q), cls: 'clkl-ware', slot: 'tx-' + (own ? 'o' : 'f') + i }) + '</span>'
-        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">у тебе є ' + api.count(have)
+        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">' + (own ? 'у тебе є ' : 'у твоїй коморі ') + api.count(have)
         + (ok ? '' : ' · <b class="clkl-lack">бракує ' + api.count(n.n - have) + '</b>') + '</span>'
         + (own && !ok ? formBtn(st, api, n.ware) : '') + '</div>'
         + '<span class="clkl-mark">' + (ok ? '✓' : 'ще ' + (n.n - have)) + '</span></div>';
@@ -422,7 +423,9 @@
     rows.push('<div class="clkl-need hours"><span class="clkl-nart clkl-emo">⏳</span>'
       + '<div class="clkl-ntxt"><b>' + hrs(nx.hours) + '</b><span class="muted small">будується (друзі й рід скоротять)</span></div><span class="clkl-mark"></span></div>');
     const head = (b.key !== (cur && cur.key) ? b.icon + ' ' + esc(b.name) + ' — ' : '') + 'етап ' + (nx.index + 1) + ' з ' + b.stages.length + ' «' + esc(nx.name) + '»';
+    // У друга (B8): це лише показ — зараз етап приймає вимоги поточного, а не ці.
     return '<div class="clkl-next"><div class="clk-sub small">⏭ Наступний етап: ' + head + '</div>'
+      + (own ? '' : '<div class="muted small">лише глянути: ці вироби приймуть, коли друг почне збирати цей етап</div>')
       + '<div class="clkl-needs">' + rows.join('') + '</div></div>';
   }
 
@@ -453,7 +456,15 @@
     // Поки етап будується — що другові треба на наступний і скільки такого є в мене (лише показати).
     if (laid && t.next) html += nextHtml(st, api, t.next, b, false);
     const still = t.needs.filter((n) => n.left > 0);
-    if (!laid && !still.length) html += '<div class="muted small">Усе, що просили, вже є — другові лишилось закласти етап.</div>';
+    const hmax = (cat(st) && cat(st).helpersMax) || 3;
+    const been = t.helpers.some((h) => h.toLowerCase() === myNick(st).toLowerCase());
+    // B8: вимоги закриті, а помічників менше трьох — прийти все одно поміч (−15 %), вироби ляжуть у комору друга.
+    const extra = !laid && !still.length && !been && t.helpers.length < hmax;
+    if (!laid && !still.length) {
+      html += '<div class="muted small">' + (extra
+        ? 'Усе, що просили, вже є — але прийти на толоку ще можна: ти скоротиш будову на 15 % (помічників ' + t.helpers.length + ' з ' + hmax + '), вироби ляжуть у комору друга.'
+        : 'Усе, що просили, вже є' + (been ? ', і ти на цьому етапі вже був(ла)' : ', і помічників уже ' + hmax) + ' — другові лишилось закласти етап.') + '</div>';
+    }
     // Гостинець толоки: хвилини гри за виріб, лише за перші treatCap виробів на етап друга (13.10).
     const cap = t.treatCap || 20;
     const treat = t.treatLeft == null ? 'за кожен виріб — гостинець толоки'
@@ -462,22 +473,24 @@
     if (!open) {
       // Кнопка жива, лише коли в моїй коморі є хоч щось, що цей етап іще приймає.
       const mine0 = itemsOf(st);
-      const any = t.needs.some((n) => (laid || n.left > 0) && mine0.some((it) => fits(n, it)));
+      const any = t.needs.some((n) => (laid || extra || n.left > 0) && mine0.some((it) => fits(n, it)));
+      const asks = t.needs.filter((n) => laid || extra || n.left > 0).map((n) => needText(st, api, n).replace(/<[^>]+>/g, '')).join('; ');
       return html + '<div class="clkg-btns"><button type="button" class="primary clkl-fgo"' + (can && any ? '' : ' disabled') + '>🤝 Піднести на толоку</button>'
-        + '<span class="muted small">' + (any || !(laid || still.length) ? treat
-          : 'у твоїй коморі нема того, що просить цей етап') + '</span></div>'
+        + '<span class="muted small">' + (any ? treat : !(laid || extra || still.length) ? ''
+          : 'у твоїй коморі нема того, що просить цей етап: ' + esc(asks)) + '</span></div>'
         + (err ? '<div class="small clkl-err">' + esc(err) + '</div>' : '');
     }
-    html += laid
-      ? '<p class="muted small clk-note">Етап уже будується: вироби ляжуть у комору друга на наступні етапи, а твоя поміч скоротить будову. Раз на етап.</p>'
+    html += laid || extra
+      ? '<p class="muted small clk-note">' + (laid ? 'Етап уже будується: приймають лише те, що просив цей етап (не наступний),' : 'Вимоги вже закриті:')
+        + ' вироби ляжуть у комору друга, а твоя поміч скоротить будову на 15 %. Раз на етап.</p>'
       : '<p class="muted small clk-note">Вироби йдуть у вимоги етапу; беремо не більше, ніж ще бракує. До ' + (t.max || 10) + ' за раз.</p>';
     html += '<p class="muted small clk-note">🎁 ' + treat.charAt(0).toUpperCase() + treat.slice(1) + '.</p>';
     const mine = itemsOf(st);
     html += '<div class="clkl-fneeds">' + t.needs.map((n, i) => {
-      const room = laid ? (t.max || 10) : n.left;
+      const room = laid || extra ? (t.max || 10) : n.left;
       const mineFit = mine.filter((it) => fits(n, it));
       const head = '<div class="clkl-fhead">' + needText(st, api, n)
-        + '<span class="muted small">' + (laid ? '' : n.left > 0 ? ' · бракує ' + n.left : ' · досить') + '</span></div>';
+        + '<span class="muted small">' + (laid || extra ? '' : n.left > 0 ? ' · бракує ' + n.left : ' · досить') + '</span></div>';
       if (room <= 0) return '<div class="clkl-fneed done">' + head + '</div>';
       const rows = mineFit.length
         ? mineFit.map((it, j) => {
@@ -546,6 +559,7 @@
     if (!k.el) {
       k.el = document.createElement('section');
       k.el.className = 'clkg-card clkl';
+      k.el.dataset.sec = 'toloka';           // якір рядка переходів «Села» (clicker-guild.js)
       k.el.addEventListener('click', (e) => onClick(st, api, e));
     }
     const pane = st.guildPane;

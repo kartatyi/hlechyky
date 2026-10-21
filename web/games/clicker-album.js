@@ -124,6 +124,19 @@
     return (c && c.topQuality) || 3;
   };
 
+  /// Перший вхід в Альбом — одне речення «що це й навіщо» (плейтест новачка 21.10). «Зрозуміло» ховає назавжди.
+  function paintIntro(st, api) {
+    const el = st.albumUi.intro;
+    if (!el) return;
+    const show = api.storeGet('clka.intro', '') !== '1';
+    el.hidden = !show;
+    if (!show || el.firstChild) return;
+    el.innerHTML = '<p class="small">📒 <b>Альбом</b> — твоя колекція: кожна пара «виріб × розпис», яку ти хоч раз обпалив, — '
+      + 'клітинка, і кожна клітинка, зірка й кахля в печі додає до всього доходу. Клейма альбом не спалюють — він росте назавжди.</p>'
+      + '<button type="button" class="ghost small clka-introok">Зрозуміло</button>';
+    el.querySelector('.clka-introok').onclick = () => { api.storeSet('clka.intro', '1'); el.hidden = true; api.sfx('tap'); };
+  }
+
   /// Частка до наступного рівня майстерності: від попереднього порога до наступного.
   function masteryProgress(st, key, level) {
     const at = (cat(st) && cat(st).masteryAt) || MASTERY_AT;
@@ -281,19 +294,23 @@
     const near = worldNear(st);
     const sig = a.cells.join(',') + '|' + a.stars.join(',') + '|' + a.mastery.join(',') + '|'
       + wares.map((w, i) => Math.floor(masteryProgress(st, w.key, a.mastery[i] || 0) * 20)).join(',') + '|' + keys.length
-      + '|' + [...st.albumFlash].join(',') + '|' + a.show.map((s) => s.key).join(',') + '|' + near;
+      + '|' + [...st.albumFlash].join(',') + '|' + a.show.map((s) => s.key).join(',') + '|' + near
+      + '|' + keys.map((k) => (shutStyle(st, k) ? 1 : 0)).join('');
     if (st.albumUi.grid._sig === sig) return;
     st.albumUi.grid._sig = sig;
     const shown = new Set(a.show.map((s) => s.key));
+    const shut = keys.map((k) => shutStyle(st, k));
     const starPct = pct(api, bonusOf(st, 'star', 0.01));
     const rowPct = pct(api, bonusOf(st, 'starRow', 0.05));
     const colh = (k, c) => {
       const full = a.cells.every((m) => (m >> c) & 1);
       const stars = a.stars.length && a.stars.every((m) => (m >> c) & 1);
       // Повний стовпчик дає +6 % лише в «домашньому» альбомі; у світі він — частина «альбому світу».
-      return '<div class="clka-colh' + (full ? ' full' : '') + (stars ? ' stars' : '') + '" title="' + esc(styleName(st, k))
-        + (full ? (c < HC ? ' — стовпчик зібрано, +' + pct(api, bonusOf(st, 'column', 0.06)) : ' — стовпчик зібрано') : '') + '">'
-        + api.jugSvg(k, 'clka-colj', 'alb-h-' + (k || 'plain'), '') + '</div>';
+      const lock = shut[c];
+      return '<div class="clka-colh' + (full ? ' full' : '') + (stars ? ' stars' : '') + (lock ? ' shut' : '') + '" title="' + esc(styleName(st, k)
+        + (lock ? ' — щабель «' + lock + '» ще не відкрито: розпис привезуть, коли купиш цей щабель у Майстерні' : '')
+        + (full ? (c < HC ? ' — стовпчик зібрано, +' + pct(api, bonusOf(st, 'column', 0.06)) : ' — стовпчик зібрано') : '')) + '">'
+        + api.jugSvg(k, 'clka-colj', 'alb-h-' + (k || 'plain'), '') + (lock ? '<i class="clka-lock" aria-label="щабель закрито">🔒</i>' : '') + '</div>';
     };
     const cell = (w, r, c) => {
       const k = keys[c];
@@ -301,7 +318,7 @@
       const star = (a.stars[r] >> c) & 1;
       const flash = st.albumFlash.has(r * C + c);
       const onShow = shown.has(cellKey(st, r, c));
-      return '<button type="button" class="clka-cell' + (open ? ' open' : '') + (star ? ' star' : '') + (flash ? ' new' : '')
+      return '<button type="button" class="clka-cell' + (open ? ' open' : '') + (star ? ' star' : '') + (flash ? ' new' : '') + (shut[c] && !open ? ' shut' : '')
         + (onShow ? ' shown' : '') + '" data-r="' + r + '" data-c="' + c
         + '" title="' + esc(w.name + ' · ' + styleName(st, k) + (open ? (star ? ' — ★ зірка: вийшов дзвінким чи розкішним, +' + starPct : ' — є; зірка — за дзвінкий') : ' — ще не обпалено')) + '"'
         + ' aria-label="' + esc(w.name + ', ' + styleName(st, k) + (open ? (star ? ' — із зіркою' : '') : ' — ще не обпалено')) + '">'
@@ -359,6 +376,15 @@
     for (const b of st.albumUi.grid.querySelectorAll('.clka-rowh')) b.onclick = () => openRow(st, api, +b.dataset.row);
   }
 
+  /// Розпис світу, чий щабель (гончарі світу в Майстерні) ще не відкрито: назва щабля, інакше ''. Такий стовпчик
+  /// поки не зібрати — позначаємо 🔒, щоб тіні не виглядали «просто ще не обпалив».
+  function shutStyle(st, key) {
+    const s = key && (st.styleList || []).find((x) => x.key === key);
+    if (!s || !s.tier || s.owned) return '';
+    const u = st.ups && st.ups[s.tier];
+    return u && u.level > 0 ? '' : (u && u.name) || s.tier;
+  }
+
   /// Смужка над сіткою: «🌍 Світ: N з M» і кнопка показати чи згорнути стовпчики світу. Згортання — лише клас на
   /// коробці сітки (CSS ховає групу світу), тож сітку не перемальовуємо. Поки до світу далеко — смужки нема.
   function paintWorldToggle(st, api) {
@@ -394,7 +420,7 @@
     // Легенда — своя згортка, згорнута з початку (13.10): позначки вчать раз, а місце (~110 px на телефоні) вони займали
     // щоразу. Заголовок перелічує самі позначки — видно, що тут пояснення саме їх.
     return '<section class="clka-legsec"' + api.fold('a.legend', true) + '>'
-      + api.foldHead('★ ⭐ м4 🖐★ <span class="muted">— що означають позначки</span>', 'small')
+      + api.foldHead('★ ⭐ м4 🖐★ 📌 <span class="muted">— що означають позначки</span>', 'small')
       + '<div class="clka-legend">'
       + '<span class="clka-lg">клітинка +' + pct(api, bonusOf(st, 'cell', 0.005)) + ', повний рядок +' + pct(api, bonusOf(st, 'row', 0.05))
       + ', повний стовпчик +' + pct(api, bonusOf(st, 'column', 0.06)) + ' · тап — картка</span>'
@@ -403,6 +429,8 @@
       + '<span class="clka-lg"><b>⭐</b> — зірки в усіх розписах · ще +' + rowPct + '</span>'
       + '<span class="clka-lg"><b class="clka-lv">м4</b> — майстерність (до 10), росте від обпалених</span>'
       + '<span class="clka-lg"><b class="clka-lv max">🖐★</b> — золоті руки (' + api.num(at[at.length - 1]) + ' обпалених) · ціна ще ×' + top + '</span>'
+      + '<span class="clka-lg"><b>📌</b> — на виставці: стоїть на полиці в хаті, друзі бачать (до ' + ((cat(st) && cat(st).showMax) || 3) + ')</span>'
+      + '<span class="clka-lg"><b>🔒</b> — розпис світу, чий щабель ще не відкрито в Майстерні</span>'
       + HClicker.api.info('Як дістати зірку: обпали цей виріб у цьому розписі так, щоб він вийшов дзвінким (★★★) або розкішним (👑). '
         + 'Що рівніше тримаєш жар у зеленій смузі горна й що гарніший розпис партії, то частіше виходять дзвінкі; розкішні бувають '
         + 'лише з розписаної партії. Підмайстер-палій теж інколи дає дзвінкі. Клітинка без зірки — просто обпали такий самий виріб '
@@ -678,6 +706,15 @@
           ? 'золоті руки: −' + (lvl + 1) * workStep + ' % роботи, +' + (lvl + 1) * valStep + ' % ціни та ще ×' + topTxt + ' зверху'
           : '−' + (lvl + 1) * workStep + ' % роботи і +' + (lvl + 1) * valStep + ' % ціни цього виробу')
       : '🖐 Золоті руки: −' + lvl * workStep + ' % роботи, +' + lvl * valStep + ' % ціни та ще ×' + topTxt + ' зверху. Вище нема.';
+    // «Ліпити» просто з картки (v12-ux §2.6): побачив тінь — одразу став цей виріб на коло. Розпис обирають у горні.
+    const cw = st.craft && st.craft.wares.find((x) => x.key === w.key);
+    const lock = shutStyle(st, k);
+    const formBtn = !cw ? '' : cw.open
+      ? '<button type="button" class="' + (open ? 'ghost' : 'primary') + ' small clka-form"' + (st.mine && st.craft.ware !== w.key ? '' : ' disabled') + '>'
+        + (st.craft.ware === w.key ? '🏺 Уже на колі' : '🏺 Ліпити ' + esc(w.name.toLowerCase())) + '</button>'
+        + (k && !open ? '<span class="muted small">' + (lock ? '🔒 розпис «' + esc(styleName(st, k)) + '» ще не відкрито (щабель «' + esc(lock) + '»)'
+          : 'розпис «' + esc(styleName(st, k)) + '» — обереш перед обпалом') + '</span>' : '')
+      : '<span class="muted small">' + esc(w.name) + ' відкриється на ' + esc(api.potsShort(cw.unlock || 0)) + ' за весь час</span>';
     api.overlay(st, '<div class="clka-card' + (open ? ' open' : '') + '">'
       + '<div class="clka-cardpic">' + api.wareSvg(w.key, { style: open ? k : '', quality: star ? 3 : 1, cls: 'clka-big' + (open ? '' : ' shadow'), slot: 'alb-card' }) + '</div>'
       + '<div class="clka-cardtxt"><div class="clk-sub">' + esc(w.name) + ' · ' + esc(styleName(st, k)) + (star ? ' <span class="clkw-q">★ зірка</span>' : '') + '</div>'
@@ -693,10 +730,13 @@
       + '<span class="' + (lvl >= at.length ? 'clka-ok' : 'muted') + '">' + next + '</span>'
       + '<span class="muted">Зараз: −' + lvl * workStep + ' % роботи · +' + Math.round((masteryValueMult(lvl, valStep, top, at.length) - 1) * 100)
       + ' % ціни цього виробу</span></div>'
-      + (open ? '<div class="clka-cardact"><button type="button" class="' + (onShow ? 'ghost' : 'primary') + ' small clka-toshow"'
+      + '<div class="clka-cardact">' + formBtn
+      + (open ? '<button type="button" class="' + (onShow ? 'ghost' : 'primary') + ' small clka-toshow"'
         + (st.mine ? '' : ' disabled') + '>' + (onShow ? '📌 Прибрати з виставки' : '📌 На виставку') + '</button>'
-        + '<span class="muted small">на видноті ' + a.show.length + ' з ' + max + '</span></div>' : '')
+        + '<span class="muted small">на видноті ' + a.show.length + ' з ' + max + '</span>' : '') + '</div>'
       + '</div></div>', { cls: 'clka-ov' });
+    const f = document.querySelector('.clka-form');
+    if (f) f.onclick = () => { api.order(st, 'form', { ware: w.key }); api.closeOverlay(st); };
     const b = document.querySelector('.clka-toshow');
     if (!b) return;
     b.onclick = () => {
@@ -830,6 +870,7 @@
       api.showWhen(st, 'album', (st2) => !!st2.craft && st2.craft.fired > 0);
       pane.classList.add('clka-pane');
       pane.innerHTML = '<div class="clka">'
+        + '<div class="clka-intro" hidden></div>'
         + '<div class="clka-head"></div>'
         // Кожен розділ — згортка (13.10): заголовок лишається, решта ховається за тапом по ньому (api.fold).
         + '<section class="clka-sec"' + api.fold('a.grid') + '>' + api.foldHead('Альбом виробів<span class="muted small clka-gridhint"></span>')
@@ -840,6 +881,7 @@
         + '</div>';
       st.albumUi = {
         pane,
+        intro: pane.querySelector('.clka-intro'),
         head: pane.querySelector('.clka-head'),
         hint: pane.querySelector('.clka-gridhint'),
         legend: pane.querySelector('.clka-legendbox'),
@@ -879,6 +921,7 @@
       const hint = ' · ' + a.open + ' з ' + n + ' · ★ ' + a.starOpen + (a.worldSize > 0 && worldNear(st) ? ' · 🌍 ' + a.worldOpen + ' з ' + a.worldSize : '');
       if (st.albumUi.hint.textContent !== hint) st.albumUi.hint.textContent = hint;
       api.swap(st.albumUi.legend, legendHtml(st, api));
+      paintIntro(st, api);
       paintHead(st, api);
       paintGrid(st, api);
       paintShow(st, api);

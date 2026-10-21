@@ -417,7 +417,7 @@ public sealed partial class Clicker
         if (r.Reached <= 0) return;
         var who = string.Join(", ", r.Wagon.Givers.Select(g => g.Nick));
         Ctx.Log($"🐴 Віз цеху гончарів — {ClickerGuildService.TierNames[r.Reached]}! Разом клали: {who}. Хто поклав хоч "
-            + $"{ClickerGuildService.MinGive}, забирайте нагороду у вкладці «Цех»");
+            + $"{ClickerGuildService.MinGive}, забирайте нагороду у вкладці «Село»");
         if (r.Reached >= ClickerGuildService.TierShare.Length - 1) Wonder("wagon-gold");
     }
 

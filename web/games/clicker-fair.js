@@ -475,6 +475,17 @@
     const share = Math.min(100, Math.round((Math.min(o.have, o.n) / o.n) * 100));
     const chance = Math.round(o.chance * 100);
     const off = !st.mine || !ready;
+    // Торг словами й числами: скільки плати, скільки шани і що буде, якщо не вийде. Ставки — з каталогу (сервер).
+    const bids = (cat(st) && cat(st).bids) || { down: 0.85, up: 1.3 };
+    const r = (k0) => Math.round(Math.abs(k0 - 1) * 100);
+    const rep = o.rep || 0;
+    const levels = (cat(st) && cat(st).levels) || [];
+    const vrep = ((st.fair && st.fair.m && st.fair.m.rep) || []).find((x) => x.key === o.village);
+    const repTop = !!vrep && levels.length > 1 && vrep.level >= levels.length - 1;
+    const down = '🙇 Поступитись −' + r(bids.down) + ' % · ' + (repTop ? 'шана вже найвища' : 'шана ×2' + (rep ? ' (+' + rep * 2 + ')' : ''));
+    // Після невдалого «накинути» (B12) кнопка сіра — і каже чому, а не «вийде в 90 %».
+    const up = o.sour ? '😤 Накинути вже не вийде — замовник ображений'
+      : '💰 Накинути +' + r(bids.up) + ' % · вдасться в ' + chance + ' % · невдача: шана −1';
     // Одне речення замість чотирьох полів: хто, звідки, що хоче і скільки за це дасть.
     const line = '<b>' + (o.lord ? '🎩 ' : '') + esc(who) + '</b>' + (v ? ' ' + esc(v.from) : '')
       + ' хоче <b>' + esc(wareName(st, o.ware).toLowerCase()) + ' ×' + o.n + '</b>'
@@ -496,8 +507,8 @@
       + '<button type="button" class="primary small" data-bid="as" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🤝 Здати</button>'
       + '<span class="clkf-otime small muted">⏳ <i class="clkf-cd" data-at="' + o.until + '" data-done="поїхав"></i></span>'
       + '<details class="clkf-bid" data-key="' + o.id + '"><summary>торг</summary>'
-      + '<button type="button" class="ghost small" data-bid="down" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🙇 Поступитись · менше плати, вдвічі більше шани</button>'
-      + '<button type="button" class="ghost small" data-bid="up" data-id="' + o.id + '"' + (off || o.sour ? ' disabled' : '') + '>💰 Накинути · вийде в ' + chance + ' % випадків</button>'
+      + '<button type="button" class="ghost small" data-bid="down" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>' + down + '</button>'
+      + '<button type="button" class="ghost small" data-bid="up" data-id="' + o.id + '"' + (off || o.sour ? ' disabled' : '') + '>' + up + '</button>'
       + '</details>'
       + '</div>'
       + '</div></div>';
@@ -602,7 +613,8 @@
       const line = (text.match(/«([^»]+)»/) || [])[1] || '';
       const refused = text.startsWith('😤');
       const emoji = refused ? '😤' : text.startsWith('🥰') ? '🥰' : text.startsWith('💰') ? '😏' : '🤝';
-      k.react = { at: Date.now(), emoji, text: line, cls: refused ? 'no' : 'yes' };
+      // Тост сервера мовчить про шану — у реакції над замовленнями кажемо (B12).
+      k.react = { at: Date.now(), emoji, text: refused ? line + ' — торг не вдався, шана −1' : line, cls: refused ? 'no' : 'yes' };
       if (refused) {
         api.sfx('refuse');
       } else {
