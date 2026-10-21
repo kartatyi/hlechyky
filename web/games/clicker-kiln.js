@@ -38,7 +38,9 @@
   const NEW_TECHS = ['brush', 'stamp', 'glaze'];
   /// Хто палить: підмайстер (типово, без мінігри) чи сам гончар. Пам'ятаємо між заходами.
   const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
-  const STARS = ['💥', '', '★', '★★★', '👑'];
+  /// Одна шкала зірок на все коло (v12): ★ звичайний, ★★ добрий, ★★★ дзвінкий, 👑 розкішний — як у коморі й альбомі.
+  /// Було: у горні ★ — добрий, а в коморі ★ — звичайний (плейтест 21.10).
+  const STARS = ['💥', '★', '★★', '★★★', '👑'];
   const QNAME = ['тріснув', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
   /// Полотно мінігор: клітинка лощіння й поливи, силует посудини.
   const CELL = 40, GRID = 25, DRIP = 2;
@@ -245,7 +247,7 @@
       + '<div class="clkk-last"></div>'
       + '<details class="clkk-help small"><summary>Як це працює</summary>'
       + '<p>Виліплений виріб сохне на сушарні; сухий — у горно. «Обпалити» саме складає сухі й розпалює. Палить '
-      + 'підмайстер — тоді всі звичайні, зате без тріщин; «Палю сам» — мінігра на пів хвилини: чим довше жар у зеленій '
+      + 'підмайстер — без мінігри й тріщин, зате й без краси розпису: здебільшого звичайні; «Палю сам» — мінігра на пів хвилини: чим довше жар у зеленій '
       + 'смузі, тим більше добрих і дзвінких. Перегрів тріскає глину, солома ділить цей ризик на чотири. Після '
       + 'відкриття горно холоне хвилину.</p>'
       + '<p>Розпис лягає на всю партію. Техніка-мінігра дає «красу» 0–100: вона підвищує шанс доброї й дзвінкої якості '
@@ -264,6 +266,13 @@
       play: q('.clkk-play'), score: q('.clkk-score'), risk: q('.clkk-risk'), next: q('.clkk-next'),
       stoke: q('.clkk-stoke'), damp: q('.clkk-damp'), prep: q('.clkk-prep'), fire: q('.clkk-fire'), last: q('.clkk-last'), top: q('.clkk-top'),
     };
+    // Чи горно справді на екрані, а не лише вкладка «Ремесло»: підмайстрове відкриття, поки гравець гортає замовлення
+    // й комору, — тостом, а не вікном із завісою (плейтест §2.4). IntersectionObserver — без замірів щокадру.
+    st.kOnScreen = true;
+    if (typeof IntersectionObserver === 'function') {
+      st.kIo = new IntersectionObserver((es) => { for (const e of es) st.kOnScreen = e.isIntersecting; });
+      st.kIo.observe(st.kUi.top);
+    }
     st.kUi.stoke.addEventListener('pointerdown', (e) => { if (human(e) && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, STOKE); } });
     st.kUi.damp.addEventListener('pointerdown', (e) => { if (human(e) && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, st.kb && st.kb.sim.open ? CLOSE : OPEN); } });
     for (const b of [st.kUi.stoke, st.kUi.damp]) b.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -444,7 +453,11 @@
       if (!kb.own && !acts.length && elapsed < m.steps * m.stepMs + OPEN_AFTER_MS + otherWait(st)) { kb.sentAt = Date.now() - 2000; return; }
       kb.sentAt = Date.now();
       kb.done = true;
-      api.act(st, 'kiln', { op: 'open', t: acts, own: kb.own }).then((r) => {
+      // Тихо (ctx.tell): що вийшло, покаже вікно відкриття, а тост із тим самим текстом лягав поверх нього й ✕ (плейтест
+      // §2.3, на телефоні — разом із ще двома). Відмову кажемо самі, як сказав би act; null — зв'язку нема, повторимо.
+      const payload = { op: 'open', t: acts, own: kb.own };
+      (st.ctx && st.ctx.tell ? st.ctx.tell('kiln', payload) : api.act(st, 'kiln', payload)).then((r) => {
+        if (r && !r.ok && r.message && st.ctx && st.ctx.tell) api.toast(st, r.message, 'err');
         if (st.kb === kb && (!r || !r.ok)) kb.done = false;
         if (st.kb === kb && r && r.ok) kb.done = false;          // «майстер хоче глянути»: вид покаже, чи горно ще палає
       });
@@ -471,6 +484,36 @@
   /// Від якої краси в партії вже трапляються розкішні вироби (сервер шле це в каталозі).
   const luxFrom = (st) => (cat(st) && cat(st).paintLux) || 50;
 
+  /// Чи можна розписати партію: є куплений розпис (без нього секції розпису нема) і відкрита техніка.
+  const canPaint = (st) => !!st.kView && (st.kView.techs || []).length > 0 && (st.styleList || []).some((x) => x.owned);
+
+  /// Питання перед тим, що зітре зароблене чи пропустить розпис (v12, плейтест §2.3): кожна кнопка — явна дія, перша —
+  /// головна; «✕» — нічого не робити. Вікно спільне з рештою кола.
+  function ask(st, api, o) {
+    const esc = (x) => api.esc(st, x);
+    const body = api.overlay(st, '<div class="clkk-ask"><div class="clk-sub">' + esc(o.title) + '</div>'
+      + '<p class="small">' + esc(o.text) + '</p><div class="clkk-askbtns">'
+      + o.btns.map((b, i) => '<button type="button" class="' + (i ? 'ghost' : 'primary') + '" data-ask="' + i + '">' + esc(b.label) + '</button>').join('')
+      + '</div></div>', { cls: 'clkk-ov clkk-askov' });
+    api.placeOverlay(st);
+    for (const el of body.querySelectorAll('[data-ask]')) {
+      el.onclick = () => { api.closeOverlay(st); api.sfx('tap'); o.btns[+el.dataset.ask].run(); };
+    }
+  }
+
+  /// Нова спроба розпису чи інший розпис скидає красу партії на сервері: було 98 → 0 мовчки. Тепер — спершу питаємо,
+  /// і головна кнопка — лишити зароблене.
+  function keepBeauty(st, api, what, go) {
+    const b = (st.kView && st.kView.beauty) || 0;
+    if (b <= 0) { go(); return; }
+    ask(st, api, {
+      title: '🎨 Партія вже розписана',
+      text: 'Краса ' + b + (b >= luxFrom(st) ? ' — у такій партії вже трапляються розкішні' : '') + '. ' + what
+        + ' зітре її: рахуватиметься лише те, що вийде наново.',
+      btns: [{ label: 'Лишити красу ' + b, run: () => {} }, { label: '↺ Розписати наново', run: go }],
+    });
+  }
+
   /// Техніки, яких гравець ще не бачив відкритими. Першого разу мовчки запам'ятовуємо все старе:
   /// «нове» має світитись на дев'ятому оновленні, а не на всьому підряд у новачка.
   function newTechs(st, api) {
@@ -487,11 +530,13 @@
   const markTechsSeen = (st, api) => api.storeSet('clk.techseen', ((st.kView && st.kView.techs) || []).join(','));
 
   /// Вибір техніки: картки з малюнком і словом про те, як грається. «Навмання» — для тих, кому все одно.
-  function pickTech(st, api) {
+  /// sure — про стерту красу вже спитали (keepBeauty).
+  function pickTech(st, api, sure) {
     const k = st && st.kView;
     // Кличе й смуга «Далі» (clicker-craft.js), коли панель горна ще навіть не на очах, — вікно однаково відкриється.
     if (!k || !st.mine) return;
     if (k.state === 'burning') { api.toast(st, 'Розписують до обпалу — горно вже палає', 'err'); return; }
+    if (k.beauty > 0 && !sure) { keepBeauty(st, api, 'Новий розпис', () => pickTech(st, api, true)); return; }
     // Розписують те, що піде в горно наступним: партію в ньому або сухі з сушарні — їх складе «Обпалити».
     const load = api.kilnLoad ? api.kilnLoad() : k.batch.length + (k.dry || 0);
     if (!load) { api.toast(st, 'Розписують перед обпалом — спершу виліпи й висуши щось', 'err'); return; }
@@ -505,7 +550,8 @@
     const card = (t) => '<button type="button" class="clkk-card' + (t.key === last ? ' on' : '')
       + (t.home && t.home === k.style ? ' home' : '') + '" data-pick="' + esc(t.key) + '" title="' + esc(HOWTO[t.key] || t.desc) + '">'
       + '<span class="clkk-ctop"><span class="clkk-cicon">' + (TECH_ICON[t.key] || '🎨') + (fresh.includes(t.key) ? '<i class="clkk-new">нове</i>' : '') + '</span>'
-      + '<b>' + esc(t.name) + '</b></span><span class="muted small clkk-cdesc">' + esc(HOWTO[t.key] || t.desc) + '</span>'
+      + '<b>' + esc(t.name) + '</b></span><span class="muted small clkk-cdesc">' + esc(SHORT[t.key] || HOWTO[t.key] || t.desc) + '</span>'
+      + '<span class="muted small clkk-cfull">' + esc(HOWTO[t.key] || t.desc) + '</span>'
       + (t.home && t.home === k.style ? '<span class="clkk-home small">рідна техніка: +10 краси</span>' : '') + '</button>';
     const locked = all.filter((t) => !k.techs.includes(t.key));
     // Компактні плитки (F5/F6): значок, назва й два рядки опису; повний опис — за ⓘ у шапці вікна, «Навмання» — теж
@@ -595,12 +641,20 @@
     const can = mine && !cooling && load > 0;
     const mySelf = selfFire(api);
     const batchText = k.batch.length ? 'у горні ' + k.batch.length + ' з ' + k.slots + ': ' + inKiln : 'сухих на сушарні ' + k.dry;
-    const fire = '<button type="button" class="primary clkk-go"' + (can ? '' : ' disabled') + '>🔥 Обпалити' + (load ? ' ' + load : '') + '</button>'
+    // «Палю сам», а партія не розписана (v12, плейтест §2.3): розпис — у потоці, «без розпису» — лише явним вибором.
+    const bare = can && mySelf && !(k.beauty > 0) && canPaint(st);
+    const go = bare
+      ? '<div class="clkk-gorow"><button type="button" class="primary clkk-go clkk-paintgo">🎨 Розписати й обпалити ' + load + '</button>'
+        + '<button type="button" class="ghost clkk-bare">🔥 Без розпису</button></div>'
+      : '<button type="button" class="primary clkk-go"' + (can ? '' : ' disabled') + '>🔥 Обпалити' + (load ? ' ' + load : '') + '</button>';
+    const fire = go
       + '<div class="clkk-who"><button type="button" class="clkk-wbtn' + (mySelf ? '' : ' on') + '" data-self="0">👷 Палить підмайстер</button>'
       + '<button type="button" class="clkk-wbtn' + (mySelf ? ' on' : '') + '" data-self="1">🔥 Палю сам</button></div>'
       + '<div class="muted small clkk-whohint">' + (mySelf
         ? 'мінігра на пів хвилини: тримай жар у смузі — буде більше добрих і дзвінких, але й тріщини можливі'
-        : 'без мінігри, усі звичайні й без тріщин; дзвінкий виріб вартий ×2,6 — їх дає лише уважний палій') + '</div>'
+        : k.beauty > 0
+          ? '⚠ партія розписана (краса ' + k.beauty + '), а підмайстер палить без краси — вона згорить'
+          : 'без мінігри й без тріщин, але здебільшого звичайні: дзвінкі (×2,6) дає уважний палій') + '</div>'
       + '<div class="muted small clkk-batch">' + batchText + (cooling ? ' · горно ще гаряче — зачекай, поки вихолоне' : '') + '</div>';
 
     // Солома — дрібниця для тих, хто палить сам: ховаємо за ▾, щоб не займала екран.
@@ -631,12 +685,24 @@
       for (const el of ui.fire.querySelectorAll('[data-self]')) {
         el.onclick = () => { api.storeSet('clk.kiln.self', el.dataset.self); api.sfx('tap'); paintPrep(st, api); };
       }
-      f('.clkk-go').onclick = () => (api.fireKiln ? api.fireKiln() : api.order(st, 'kiln', { op: 'light', helper: true }));
+      if (f('.clkk-paintgo')) {
+        f('.clkk-paintgo').onclick = () => pickTech(st, api);
+        f('.clkk-bare').onclick = () => (api.fireKiln ? api.fireKiln({ bare: true }) : api.order(st, 'kiln', { op: 'light', helper: true }));
+      } else f('.clkk-go').onclick = () => (api.fireKiln ? api.fireKiln() : api.order(st, 'kiln', { op: 'light', helper: true }));
     }
     if (api.swap(ui.prep, paint)) {
       const b = (sel) => ui.prep.querySelector(sel);
-      for (const el of ui.prep.querySelectorAll('[data-style]')) el.onclick = () => api.order(st, 'kiln', { op: 'paint', style: el.dataset.style });
-      for (const el of ui.prep.querySelectorAll('[data-tech]')) el.onclick = () => { rememberTech(api, el.dataset.tech); startPaint(st, api, el.dataset.tech); };
+      // Інший розпис і нова спроба скидають красу на сервері — тож спершу питаємо; той самий розпис ще раз — нічого не робить
+      // (раніше й він мовчки скидав красу).
+      for (const el of ui.prep.querySelectorAll('[data-style]')) {
+        el.onclick = () => {
+          if (el.dataset.style === (st.kView.style || '')) return;
+          keepBeauty(st, api, 'Інший розпис', () => api.order(st, 'kiln', { op: 'paint', style: el.dataset.style }));
+        };
+      }
+      for (const el of ui.prep.querySelectorAll('[data-tech]')) {
+        el.onclick = () => keepBeauty(st, api, 'Нова спроба', () => { rememberTech(api, el.dataset.tech); startPaint(st, api, el.dataset.tech); });
+      }
       if (b('.clkk-decor')) b('.clkk-decor').onclick = () => pickTech(st, api);
     }
   }
@@ -656,8 +722,9 @@
         + (g.q === 0 ? shardSvg() : api.wareSvg(g.ware, { style: l.style, quality: g.q, slot: 'kl-' + i, cls: 'clkk-lisvg' }))
         + (g.n > 1 ? '<b class="clkk-li-n">×' + g.n + '</b>' : '') + '</span>').join('')
       + '</div>'
-      + '<div class="muted small">' + (l.helper ? 'палив підмайстер' : 'жар у смузі ' + l.heat + ' %' + (l.beauty ? ' · краса ' + l.beauty : '') + (l.straw ? ' · солома' : ''))
+      + '<div class="muted small">' + api.esc(st, fireFacts(l))
       + (l.shards ? ' · черепки +' + api.potsShort(l.shards) : '') + (l.sold ? ' · базар +' + api.potsShort(l.sold) : '') + '</div>'
+      + fireNotes(st, api, l)
       + '<button type="button" class="ghost small clkk-replay">Показати відкриття</button></div>';
     if (api.swap(ui.last, html)) ui.last.querySelector('.clkk-replay').onclick = () => reveal(st, api, l, true);
   }
@@ -678,11 +745,43 @@
   function summary(cnt) {
     const parts = [];
     if (cnt[4]) parts.push('👑 ' + cnt[4] + ' ' + HClicker.api.plural(cnt[4], 'розкішний', 'розкішні', 'розкішних'));
-    if (cnt[3]) parts.push('★ ' + cnt[3] + ' ' + HClicker.api.plural(cnt[3], 'дзвінкий', 'дзвінкі', 'дзвінких'));
-    if (cnt[2]) parts.push(cnt[2] + ' ' + HClicker.api.plural(cnt[2], 'добрий', 'добрі', 'добрих'));
-    if (cnt[1]) parts.push(cnt[1] + ' ' + HClicker.api.plural(cnt[1], 'звичайний', 'звичайні', 'звичайних'));
+    if (cnt[3]) parts.push('★★★ ' + cnt[3] + ' ' + HClicker.api.plural(cnt[3], 'дзвінкий', 'дзвінкі', 'дзвінких'));
+    if (cnt[2]) parts.push('★★ ' + cnt[2] + ' ' + HClicker.api.plural(cnt[2], 'добрий', 'добрі', 'добрих'));
+    if (cnt[1]) parts.push('★ ' + cnt[1] + ' ' + HClicker.api.plural(cnt[1], 'звичайний', 'звичайні', 'звичайних'));
     if (cnt[0]) parts.push('💥 ' + cnt[0] + ' ' + HClicker.api.plural(cnt[0], 'тріснув', 'тріснули', 'тріснуло'));
     return parts.join(' · ');
+  }
+
+  /// Обпал словами (v12, плейтест §2.3): «жар у смузі 0 %» сам не каже, холодно було чи перегрів. Те саме — в «Останньому
+  /// горні» й у вікні відкриття. Підмайстер пече без мінігри: «усі звичайні» було неправдою — прокачаний палій дає й добрі.
+  function fireFacts(l) {
+    if (l.helper) return 'палив підмайстер: без тріщин і без краси розпису';
+    return 'жар у смузі ' + l.heat + ' %' + (l.beauty ? ' · краса ' + l.beauty : ' · без розпису') + (l.straw ? ' · солома' : '');
+  }
+
+  /// Чому жар такий — одне речення, що змінити. Перегрів рахує сервер (over — градуси понад стелю смуги за обпал).
+  function fireWhy(st, api, l) {
+    if (l.helper) return '';
+    if (l.over > model(st).crackFree) return '🔥 перегрів ' + api.num(l.over) + '° — прикривай заслінку й не кидай поліна підряд';
+    if (l.heat >= 85) return '🟩 жар рівний — так і тримай';
+    return (l.heat >= 50 ? '🌡 трохи холодно' : '❄ було холодно') + ' — кидай поліна раніше, поки ртуть не впала під смугу';
+  }
+
+  /// Шанс розкішних у цій партії (сервер: last.lux) — щоб «жодного 👑» читалось як невдача кидка, а не як поломка.
+  function luxLine(l) {
+    if (l.helper) return '';
+    if (!l.beauty) return '👑 розкішні бувають лише в розписаній партії';
+    // Старий запис горна (до v12) поля не має — сервер шле 0; справжній нуль буває лише без жару.
+    if (l.lux == null || (!l.lux && l.heat > 0)) return '';
+    const pct = l.lux * 100;
+    return '👑 шанс розкішних був ~' + (pct > 0 && pct < 1 ? '<1' : Math.round(pct)) + ' % на виріб';
+  }
+
+  function fireNotes(st, api, l) {
+    const why = fireWhy(st, api, l);
+    const lux = luxLine(l);
+    return (why ? '<div class="small clkk-why">' + api.esc(st, why) + '</div>' : '')
+      + (lux ? '<div class="muted small">' + api.esc(st, lux) + '</div>' : '');
   }
 
   const shardSvg = () => '<svg viewBox="0 0 40 40" class="clkk-shard" aria-hidden="true"><path d="M6 30l8-12 5 6 6-10 9 16z" fill="#9c5634" stroke="rgba(0,0,0,.4)"/>'
@@ -875,7 +974,8 @@
       }
       case 'stamp': {
         const marks = s.marks.map((m, i) => '<g class="clkk-mk" data-mark="' + i + '" transform="translate(' + m[0] + ' ' + m[1] + ')">'
-          + '<circle class="clkk-mkdot" r="26"/><circle class="clkk-mkring" r="90" fill="none" opacity="0"/></g>').join('');
+          + '<circle class="clkk-mkdot" r="26"/><circle class="clkk-mkring" r="90" fill="none" opacity="0"/>'
+          + (i === 0 ? '<text class="clkk-mk1" text-anchor="middle" y="12">1</text>' : '') + '</g>').join('');
         return PLATE(body, '#4a2615')
           + '<path d="M462 300h76l-8 52c72 26 112 78 112 138 0 82-68 130-142 130s-142-48-142-130c0-60 40-112 112-138z" '
           + 'fill="rgba(0,0,0,.22)" stroke="rgba(0,0,0,.3)" stroke-width="6"/>'
@@ -1148,10 +1248,25 @@
     marble: 'Торкнись кожної позначки (крапля), а тоді різко крутни пальцем коло навколо центру.',
     losk: 'Натирай пунктирні смуги — водь пальцем туди-сюди, поки не заблищать. Поза смугами не три.',
     brush: 'Проведи мазок по кожній примарній пелюстці — від серединки до кінчика. Зафарбована пелюстка світлішає; усі — і квітка готова.',
-    stamp: 'Торкнись першої позначки — і далі вони спалахуватимуть по черзі. Тисни, коли кільце стисне позначку.',
+    stamp: 'Торкнись першої позначки (вона блимає, «1») — і далі вони спалахуватимуть по черзі. Тисни, коли кільце стисне позначку.',
     glaze: 'Води ополоником по черепку — полива стікає ще на два рядки вниз. Укрий усе й не лий повз.',
     kobalt: 'Торкнись біля пензлика й тримай: коло крутиться повільно. Веди тонку лінію точно по синьому пунктиру — один оберт.',
     raku: 'Торкнись печі — кришка злетить. Коли виріб засвітиться (повзунок у жовтому), хапай його в жерлі й неси в тирсу. Три вироби.',
+  };
+
+  /// Опис техніки в плитці вибору — цілком, без «…» (v12, плейтест §2.3: «Фляндруванн|я», обрізані описи): одне коротке
+  /// речення в два рядки; як саме грається — HOWTO за ⓘ.
+  const SHORT = {
+    rizh: 'Коло крутиться — веди ріжок по пунктиру',
+    flyand: 'Штрих через смуги на кожній позначці',
+    marble: 'Краплі в позначки, тоді різко крутни',
+    ryt: 'Обведи контур, не відриваючи руки',
+    losk: 'Натирай пунктирні смуги до блиску',
+    brush: 'Мазок по кожній пелюстці квітки',
+    stamp: 'Тисни, коли кільце стисне позначку',
+    glaze: 'Укрий черепок поливою, не лий повз',
+    kobalt: 'Повільне коло — тонко по пунктиру',
+    raku: 'Хапай виріб, коли світиться, — у тирсу',
   };
 
   /// Скільки часу мінігра дає на роботу. Ріжкування — один оберт кола, штампик — поки не згаснуть усі позначки.
@@ -1229,7 +1344,7 @@
     g.done.onclick = () => submitPaint(st, api, true);
     // Підсумок на місці полотна: будь-який дотик у вікні відсуває його зачинення — зайвий натиск не пролетить на
     // кнопки горна під вікном (там «Розписати» й техніки: нова спроба скинула б щойно зароблену красу).
-    body.addEventListener('pointerdown', () => { if (g.over) closeLater(st, api, g); }, true);
+    body.addEventListener('pointerdown', () => { if (g.over && !g.stay) closeLater(st, api, g); }, true);
     // Полотно 1000×1000 у боксі будь-якої форми: коли вікно нижче за ширину, preserveAspectRatio літербоксить
     // картинку, і ділення на getBoundingClientRect клало штрих не під курсор. Матриця екрана знає правду завжди.
     const pos = (e) => {
@@ -1651,6 +1766,8 @@
       const deg = g.t0 ? (g.p.shape.dir * 360 * t) / g.p.shape.period : 0;
       g.disc.setAttribute('transform', 'rotate(' + (deg % 360).toFixed(2) + ' 500 500)');
     }
+    // Штампик (v12): поки не торкнулись — блимає перша позначка: почати з «будь-якої такої самої» коштувало −20 краси.
+    if (g.p.tech === 'stamp' && g.marks.length) setClass(g.marks[0], 'first', !g.t0);
     // Штампик: кільце стискається до позначки й гасне — влучати треба саме в цю мить.
     if (g.p.tech === 'stamp' && g.marks.length) {
       const step = g.p.shape.step;
@@ -1701,11 +1818,25 @@
     g.sent = true;
     g.done.disabled = true;
     if (g.finishT) { clearTimeout(g.finishT); g.finishT = 0; }
-    api.act(st, 'kiln', { op: 'decor', path: encode(g.pts) }).then((r) => {
+    // Тихо (ctx.tell): краса й причина — у підсумку на місці кнопок, а тост із тим самим текстом лягав поверх нього (v12).
+    const payload = { op: 'decor', path: encode(g.pts) };
+    const quiet = !!(st.ctx && st.ctx.tell);
+    (quiet ? st.ctx.tell('kiln', payload) : api.act(st, 'kiln', payload)).then((r) => {
       if (st.kPaint !== g) return;
-      // Сервер не зарахував (надто рівна рука, розпис затягнувся) — причину він уже сказав тостом, а вікно
-      // лишаємо: візерунок живе п'ять хвилин, тож розпис можна перемалювати тут-таки.
-      if (r && r.ok === false) { g.sent = false; restartPaint(st, api, g, 'Не зарахувалось — полотно чисте, спробуй ще раз.'); return; }
+      if (!r && quiet) {
+        api.toast(st, 'Зв’язку нема — розпис не дійшов, тисни «Готово» ще раз', 'err');
+        g.sent = false;
+        g.done.disabled = false;
+        return;
+      }
+      // Сервер не зарахував (надто рівна рука, розпис затягнувся) — кажемо причину тостом, а вікно лишаємо:
+      // візерунок живе п'ять хвилин, тож розпис можна перемалювати тут-таки.
+      if (r && r.ok === false) {
+        if (quiet && r.message) api.toast(st, r.message, 'err');
+        g.sent = false;
+        restartPaint(st, api, g, 'Не зарахувалось — полотно чисте, спробуй ще раз.');
+        return;
+      }
       showDone(st, api, g, r);
     });
   }
@@ -1722,18 +1853,65 @@
       : p.tech === 'stamp' ? 'відбитків ' + g.hitMarks.size + ' з ' + p.shape.marks.length
         : p.tech === 'flyand' ? 'позначок ' + g.pulled.size + ' з ' + p.shape.marks.length
           : p.tech === 'glaze' && g.bodyCells ? 'укрито ' + Math.round((g.covered / g.bodyCells) * 100) + ' %' : '';
-    const lux = beauty >= luxFrom(st);
+    // Надбавки, що їх сервер дописує в дужках («рідний осередок +10», «дяк із книгою +5»), — теж у підсумок.
+    const bonus = [...((r && r.message) || '').matchAll(/\(([^)]+)\)/g)].map((x) => x[1]).join(' · ');
+    // ✅ — лише від порогу розкішних (було: ✅ «Добре» на красі 48, а розкішні — від 50); нижче — скільки бракує й чому.
+    const from = luxFrom(st);
+    const lux = beauty >= from;
+    const why = beauty >= 85 ? '' : paintWhy(g, beauty);
     g.svg.classList.add('over');
     note(g, lux ? 'Розпис ліг на партію — у ній трапляться й розкішні вироби.' : 'Розпис ліг на всю партію в горні.');
     g.howto.classList.remove('clkk-warn');
+    // «Палю сам» і є що палити — обпал одразу звідси («Розписати й обпалити»), тоді вікно не зачиняється саме.
+    const k = st.kView;
+    const load = api.kilnLoad ? api.kilnLoad() : 0;
+    const fire = !!api.fireKiln && selfFire(api) && !!k && k.state !== 'cooling' && k.state !== 'burning' && load > 0;
+    g.stay = fire;
     const row = g.done.parentElement;
     row.classList.add('clkk-result');
-    row.innerHTML = '<span class="clkk-rtext">✅ Краса <b class="' + (lux ? 'lux' : '') + '">' + beauty + '</b>'
-      + (what ? ' <span class="muted small">· ' + what + '</span>' : '') + '</span>'
-      + '<button type="button" class="primary clkk-ok">Добре</button>';
+    row.innerHTML = '<span class="clkk-rtext">' + (lux ? '✅' : '🟡') + ' Краса <b class="' + (lux ? 'lux' : '') + '">' + beauty + '</b>'
+      + (what ? ' <span class="muted small">· ' + what + '</span>' : '')
+      + (bonus ? ' <span class="muted small">· ' + api.esc(st, bonus) + '</span>' : '')
+      + '<span class="small clkk-rlux">' + (lux ? '👑 у партії трапляться розкішні' : '👑 до розкішних бракує ' + (from - beauty)) + '</span>'
+      + (why ? '<span class="small clkk-rwhy">' + api.esc(st, why) + '</span>' : '') + '</span>'
+      + '<span class="clkk-rbtns">' + (fire ? '<button type="button" class="primary clkk-rfire">🔥 Обпалити ' + load + '</button>' : '')
+      + '<button type="button" class="' + (fire ? 'ghost' : 'primary') + ' clkk-ok">Добре</button></span>';
     row.querySelector('.clkk-ok').onclick = () => api.closeOverlay(st);
+    if (fire) row.querySelector('.clkk-rfire').onclick = () => { api.closeOverlay(st); api.fireKiln({ bare: true }); };
     g.bar.style.width = '100%';
-    closeLater(st, api, g);
+    // Підсумок вищий за рядок кнопок — полотно трохи меншає, щоб причина й кнопки не сховались під край вікна.
+    fitCanvas(st, api, g.svg);
+    api.placeOverlay(st);
+    if (!fire) closeLater(st, api, g);
+  }
+
+  /// Чому краса така (v12, плейтест §2.3: «Краса 0 · відбитків 6 з 11» нічого не пояснювало). Мінігра бачить, що зроблено,
+  /// краса з сервера — як; звідси одне речення, що змінити.
+  function paintWhy(g, beauty) {
+    const s = g.p.shape;
+    switch (g.p.tech) {
+      case 'stamp': {
+        const n = s.marks.length;
+        if (g.hitMarks.size < n) return 'відбито ' + g.hitMarks.size + ' з ' + n + ' — тисни кожну позначку, коли кільце стисне її';
+        if (g.taps > g.hitMarks.size && beauty < 70) return 'зайві тики забирають по 8 — тисни лише ту, що спалахує';
+        return 'не в такт — тисни, коли кільце стисне позначку, а не раніше чи пізніше';
+      }
+      case 'brush':
+        if (g.doneN < s.petals.length) return 'зафарбовано ' + g.doneN + ' з ' + s.petals.length + ' пелюсток — веди мазок по кожній';
+        return 'мазок — уздовж пелюстки від серединки до кінчика; мазки повз квітку забирають по 8';
+      case 'flyand':
+        if (g.pulled.size < s.marks.length) return 'протягнуто ' + g.pulled.size + ' з ' + s.marks.length + ' — штрих на кожній позначці';
+        return 'штрих — рівно через усі смуги й у бік стрілки';
+      case 'glaze': {
+        const pct = g.bodyCells ? Math.round((g.covered / g.bodyCells) * 100) : 0;
+        return pct < 90 ? 'укрито ' + pct + ' % — води ополоником по всьому черепку' : 'полива повз черепок забирає вдвічі — тримай ополоник на виробі';
+      }
+      case 'marble': return 'спершу по краплі в кожну позначку, а тоді одна різка закрутка — повний оберт';
+      case 'losk': return 'три саме пунктирні смуги до блиску — поза ними лишається пляма';
+      case 'raku': return 'хапай виріб, коли повзунок у жовтому, і неси в тирсу без зупинки';
+      case 'ryt': return 'веди точно по пунктиру й обведи все коло, не відриваючи руки';
+      default: return 'веди точно по пунктиру цілий оберт, без клякс поза ним';
+    }
   }
 
   /// Зачинити підсумок, коли до вікна RESULT_MS ніхто не торкався. Кожен дотик (зайвий натиск) — відлік наново.
@@ -1773,10 +1951,12 @@
     if (api.serverNow(st) - at > 10 * 60 * 1000) { seen(); return; }
     // Підмайстер чи автогорно відкрили, поки гравець клацає коло: велике вікно посеред клацання з'їло б кліки. Тост —
     // і все; подія — лише для власного обпалу або коли гравець сам дивиться на горно.
-    if (l.helper && !kilnVisible(st)) {
+    // v12: і тоді, коли вкладка «Ремесло» відкрита, але гравець гортає замовлення й комору (горна на екрані нема).
+    if (l.helper && !(kilnVisible(st) && st.kOnScreen)) {
       seen();
-      const whole = l.items.filter((it) => it[1] > 0).length;
-      api.toast(st, '🔥 Підмайстри відкрили горно: ' + whole + ' ' + api.plural(whole, 'виріб', 'вироби', 'виробів') + ' у коморі', 'ok');
+      const cnt = [0, 0, 0, 0, 0];
+      for (const it of l.items) cnt[it[1]]++;
+      api.toast(st, '🔥 Підмайстер відкрив горно: ' + summary(cnt) + ' — у коморі', 'ok');
       api.sparks(st, st.fx, 8, true, 88, 70);
       return;
     }
@@ -1794,11 +1974,11 @@
     const step = quick ? 0 : Math.max(120, Math.min(320, 3200 / Math.max(1, groups.length)));
     const body = api.overlay(st, '<div class="clkk-reveal' + (quick ? ' quick' : '') + '">'
       + '<div class="clk-sub">' + (l.helper ? '🧑‍🏭 Підмайстер відкрив горно' : '🔥 Горно відкрите') + '</div>'
-      + '<div class="muted small">' + (l.helper ? 'усі звичайні, без тріщин' : 'жар у смузі ' + l.heat + ' %' + (l.beauty ? ' · краса ' + l.beauty : '') + (l.straw ? ' · солома' : ''))
-      + ' · ' + api.esc(st, styleName(st, l.style)) + '</div>'
+      + '<div class="muted small">' + api.esc(st, fireFacts(l) + ' · ' + styleName(st, l.style)) + '</div>'
       // Підсумок — одразу вгорі (записка #57): унизу він з'являвся лише після всіх виробів, і у великому горні до нього
       // ще треба було гортати.
       + '<div class="clkk-rv-tally">' + summary(cnt) + '</div>'
+      + fireNotes(st, api, l)
       + '<div class="clkk-rv-door"><div class="clkk-rv-grid">'
       + groups.map((g, i) => '<div class="clkk-rv q' + g.q + '" style="animation-delay:' + (i * step) + 'ms">'
         + (g.q === 0 ? shardSvg() : api.wareSvg(g.ware, { style: l.style, quality: g.q, slot: 'rv-' + i, cls: 'clkk-rvsvg' }))
@@ -1810,7 +1990,7 @@
       + (l.sold ? '<div class="small muted">комора повна — ' + (l.freed ? api.esc(st, l.freed) + '; ' : '') + 'на базар: +' + api.potsShort(l.sold) + '</div>' : '')
       + (!l.helper && l.items.length >= 4 && cnt[3] + cnt[4] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
       + '<button type="button" class="primary clkk-tostore">🧺 В комору</button></div>'
-      + '</div>', { cls: 'clkk-ov' });
+      + '</div>', { cls: 'clkk-ov clkk-revov' });
     // Вікно — за спільним правилом кола: вміст уже домальовано, тож перемірюємо.
     api.placeOverlay(st);
     body.querySelector('.clkk-tostore').onclick = () => {
@@ -1849,6 +2029,9 @@
       st.kSeen = null;
       // Смуга «Шлях виробу» (clicker-craft.js) кличе це на кроці «Розписати».
       api.startPaint = (s) => pickTech(s || st, api);
+      // Ремесло (fireKiln) питає ними перед обпалом: «партія не розписана», «підмайстер зітре красу».
+      api.kilnAsk = (o) => ask(st, api, o);
+      api.kilnCanPaint = () => canPaint(st);
       mountTab(st, api);
     },
 
@@ -1902,6 +2085,8 @@
 
     unmount(st) {
       if (st.kKey) document.removeEventListener('keydown', st.kKey);
+      if (st.kIo) st.kIo.disconnect();
+      st.kIo = null;
       st.kUi = null;
       st.kb = null;
       st.kPaint = null;

@@ -491,7 +491,9 @@
       + '<div class="clkf-oline">' + line + (o.sour ? ' <span class="clkf-sour" title="Образився на «накинути»">😤</span>' : '') + '</div>'
       // «Бракує N» — у самій смужці, а «торг» — у рядку кнопок (13.10): картка нижча на два рядки, а на телефоні їх шість.
       + '<div class="clkf-obar"><i style="width:' + share + '%"></i><span>є ' + Math.min(o.have, 999) + ' з ' + o.n
-      + (ready ? '' : ' · бракує ' + (o.n - o.have) + ' — виліпи й обпали') + '</span></div>'
+      // «бракує 2 добрих» — якої якості бракує, без «— виліпи й обпали»: рядок обрізало «…» (v12, D1).
+      + (ready ? '' : ' · бракує ' + (o.n - o.have) + (o.q >= 2 ? ' ' + ['добр', 'дзвінк', 'розкішн'][o.q - 2]
+        + ((o.n - o.have) % 10 === 1 && (o.n - o.have) % 100 !== 11 ? 'ого' : 'их') : '')) + '</span></div>'
       + '<div class="clkf-obtns">'
       + '<button type="button" class="primary small" data-bid="as" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🤝 Здати</button>'
       + '<span class="clkf-otime small muted">⏳ <i class="clkf-cd" data-at="' + o.until + '" data-done="поїхав"></i></span>'
