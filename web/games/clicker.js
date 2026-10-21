@@ -2194,13 +2194,15 @@
       if (pay < bestPay) { bestPay = pay; best = k; }
     }
     let teaser = '';
+    // v12: заморські майстерні відмикає Слава (clicker-trade.js), а не драбина — їм свій рядок нижче, не «⚓».
+    const slavaGates = (st.shopCat && st.shopCat.slavaGates) || [];
     // Докачане до межі («досить») не купиш — у пізній грі шість таких рядків (~330 px на телефоні) стояли між тим, що
     // купується щохвилини. Їх — в одну згортку в кінці списку; відкрита чи ні — пам'ятає swap() за data-key.
     const done = [];
     const cards = keys.filter((k) => {
       // !== false, а не просто open: старий сервер (хвилина деплою) цього поля не шле — показуємо все.
       if (ups[k].open !== false) return true;
-      if (!teaser && ups[k].kind === 'idle') teaser = k;
+      if (!teaser && ups[k].kind === 'idle' && !slavaGates.some((g) => g.key === k)) teaser = k;
       return false;
     }).map((k) => {
       const u = ups[k];
@@ -2236,11 +2238,17 @@
           : 'Далі на драбині ще є верстати: наступний відкриється після першого рівня «' + esc(ups[prevIdle(ups, teaser)].name) + '»')
         + '</div>'
       : '';
+    const trade = st.lastView && st.lastView.trade;
+    const sg = trade && slavaGates.find((g) => ups[g.key] && ups[g.key].open === false);
+    const far = sg
+      ? '<div class="clk-teaser muted small">' + (H.api.upIcon ? '<span class="clk-uico locked">' + H.api.upIcon(sg.key) + '</span>' : '')
+        + '🌍 Наступна заморська майстерня — ' + esc(sg.name) + ', на Славі ' + count(sg.need) + ' (у тебе ' + count(trade.slava || 0) + ')</div>'
+      : '';
     const fold = done.length
       ? '<details class="clk-done" data-key="done"><summary>Докачано · ' + done.length + '</summary><div class="clk-donebody">'
         + done.join('') + '</div></details>'
       : '';
-    if (swap(st.shop, cards + more + fold)) {
+    if (swap(st.shop, cards + more + far + fold)) {
       st.buys = [...st.shop.querySelectorAll('[data-buy]')];
       for (const b of st.buys) {
         b._price = b.querySelector('.clk-price');
