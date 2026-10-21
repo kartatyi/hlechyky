@@ -31,17 +31,16 @@
   const ALERTS_FOLD = 8;             // «Тривоги зараз»: стільки областей видно одразу, решта — «Усі області»
 
   // Типи цілей NEPTUN: підпис, повна назва для легенди й колір силуету (mark нижче — той самий на мапі, на
-  // циферблаті, в легенді й у переліках; без рожевого — «не пасує»). speed — км/год, коли
-  // NEPTUN швидкості не дав (лише для довжини вектора курсу).
+  // циферблаті, в легенді й у переліках; без рожевого — «не пасує»).
   const TYPES = {
-    uav: { label: 'БпЛА', long: 'БпЛА («шахед»)', color: '#ff8f1f', speed: 170 },
-    fpv: { label: 'FPV', long: 'FPV-дрон', color: '#ffb84d', speed: 80 },
-    missile: { label: 'Ракети', long: 'крилата ракета', color: '#ff4d61', speed: 750 },
-    ballistic: { label: 'Балістика', long: 'балістична ракета', color: '#f4f4f4', speed: 2500 },
-    kab: { label: 'КАБ', long: 'КАБ (авіабомба)', color: '#ffd84a', speed: 400 },
-    mig31k: { label: 'Авіація', long: 'літак', color: '#8fbaff', speed: 900 },
-    recon: { label: 'Розвідка', long: 'розвідка', color: '#3fd6c4', speed: 150 },
-    unknown: { label: 'Невідомі', long: 'невідома ціль', color: '#c8d1dc', speed: 170 },
+    uav: { label: 'БпЛА', long: 'БпЛА («шахед»)', color: '#ff8f1f' },
+    fpv: { label: 'FPV', long: 'FPV-дрон', color: '#ffb84d' },
+    missile: { label: 'Ракети', long: 'крилата ракета', color: '#ff4d61' },
+    ballistic: { label: 'Балістика', long: 'балістична ракета', color: '#d7263d' },
+    kab: { label: 'КАБ', long: 'КАБ (авіабомба)', color: '#ffd84a' },
+    mig31k: { label: 'Авіація', long: 'літак', color: '#8fbaff' },
+    recon: { label: 'Розвідка', long: 'розвідка', color: '#3fd6c4' },
+    unknown: { label: 'Невідомі', long: 'невідома ціль', color: '#c8d1dc' },
   };
   const typeOf = (t) => TYPES[t] || TYPES.unknown;
   const typeKey = (t) => (TYPES[t] ? t : 'unknown');
@@ -738,10 +737,16 @@
       g.lineTo(1.3, 4.6); g.lineTo(3.6, 7); g.lineTo(-3.6, 7); g.lineTo(-1.3, 4.6); g.lineTo(-1.3, 1.7); g.lineTo(-5, 2.7);
       g.lineTo(-5, 1.6); g.lineTo(-1.3, -0.9); g.lineTo(-1.3, -5); g.closePath();
     }],
-    ballistic: [(g) => {   // балістика: товстий корпус із тупою головною частиною, без крил…
-      g.moveTo(0, -7.6); g.quadraticCurveTo(2.9, -5.8, 2.9, -2.8); g.lineTo(2.9, 2.9); g.lineTo(4.2, 5.2); g.lineTo(-4.2, 5.2);
-      g.lineTo(-2.9, 2.9); g.lineTo(-2.9, -2.8); g.quadraticCurveTo(-2.9, -5.8, 0, -7.6); g.closePath();
-    }, Object.assign((g) => { g.moveTo(-1.8, 5.6); g.lineTo(0, 8.6); g.lineTo(1.8, 5.6); g.closePath(); }, { color: '#ff5a2e' })],  // …і полум'я
+    // балістика (22.10, «Багряна» з чотирьох варіантів): довгий корпус кольору типу з хрестовими стабілізаторами,
+    // білий гострий ніс і помаранчеве полум'я — з крилатою (тонка, з крильцями посередині) не сплутати
+    ballistic: [(g) => {
+      g.moveTo(-1.9, -3.5); g.lineTo(1.9, -3.5); g.lineTo(1.9, 3.4); g.lineTo(4.4, 6.2); g.lineTo(4.4, 7);
+      g.lineTo(-4.4, 7); g.lineTo(-4.4, 6.2); g.lineTo(-1.9, 3.4); g.closePath();
+    }, Object.assign((g) => {
+      g.moveTo(0, -8.2); g.quadraticCurveTo(1.9, -6, 1.9, -3.5); g.lineTo(-1.9, -3.5); g.quadraticCurveTo(-1.9, -6, 0, -8.2); g.closePath();
+    }, { color: '#f4f4f4' }), Object.assign((g) => {
+      g.moveTo(-1.8, 7.2); g.quadraticCurveTo(-0.54, 8.7, 0, 10.2); g.quadraticCurveTo(0.54, 8.7, 1.8, 7.2); g.closePath();
+    }, { color: '#ff7a1a' })],
     kab: [(g) => g.ellipse(0, 1.6, 3.5, 5.2, 0, 0, Math.PI * 2),   // авіабомба: крапля й оперення
       (g) => { g.moveTo(-3.6, -7); g.lineTo(3.6, -7); g.lineTo(1.5, -2.8); g.lineTo(-1.5, -2.8); g.closePath(); }],
     mig31k: [(g) => {   // літак
@@ -925,7 +930,7 @@
     if (what === 'bunch') bunchIcon(g, type);
     else if (what === 'blob') { blob(g, 13, 13, 12, color, 1); g.globalAlpha = 1; mark(g, 13, 13, type, 8, 0); }
     else if (what === 'course' || what === 'sure') { course(g, 9, 13, Math.PI / 2, 8, color, what === 'sure'); mark(g, 9, 13, type, 8, Math.PI / 2); }
-    else mark(g, 13, 13, type, 10, 0);
+    else mark(g, 13, 12.5, type, 9.5, 0);      // трохи вгору: полум'я балістики довше за інші силуети
     iconCache[key] = c.toDataURL();
     return iconCache[key];
   }
