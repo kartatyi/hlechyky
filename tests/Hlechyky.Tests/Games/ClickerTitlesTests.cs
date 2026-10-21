@@ -146,6 +146,8 @@ public class ClickerTitlesTests
     {
         var h = Wheel();
         Patch(h, s => { s.Remove("titles"); s["news"] = "v9.1"; s["total"] = 1000; s["upgrades"]!["apprentice"] = 10; });
+        // Подарунок v12 (хвилини гри) — свій тест; тут лише подарунок округи.
+        Patch(h, s => s["titles"] = new JsonObject { ["gifts"] = new JsonArray(Clicker.GiftV12Key) });
         var v = View(h);
         Assert.Equal(Clicker.NewsVersion, v.GetProperty("news").GetString());
         Assert.Equal("v9.1", v.GetProperty("newsSeen").GetString());

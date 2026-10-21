@@ -186,6 +186,7 @@ public sealed partial class Clicker
         _gifts.Add(GiftKey);
         _gifts.Add(GiftV10Key);
         _gifts.Add(GiftV11Key);
+        _gifts.Add(GiftV12Key);
     }
 
     /// <summary>Вибив звання назавжди: запам'ятати й після дії сказати в Журнал і цехові.</summary>

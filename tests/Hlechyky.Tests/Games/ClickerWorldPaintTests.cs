@@ -76,15 +76,20 @@ public class ClickerWorldPaintTests
     public void World_styles_cost_a_hundred_first_levels_of_their_tier_and_come_after_the_home_ones()
     {
         Assert.Equal(HomeStyleKeys, Clicker.Styles.Take(Clicker.HomeStyles).Select(s => s.Key));
-        Assert.Equal(WorldStyles, Clicker.Styles.Skip(Clicker.HomeStyles).Select(s => s.Key));
+        Assert.Equal(WorldStyles, Clicker.Styles.Skip(Clicker.HomeStyles).Take(WorldStyles.Length).Select(s => s.Key));
+        // v12: за розписами світу — заморські, по одному на майстерню, у тому ж порядку.
+        Assert.Equal(Clicker.OverseasTiers, Clicker.Styles.Skip(Clicker.HomeStyles + WorldStyles.Length).Select(s => s.Key));
         foreach (var s in Clicker.Styles.Skip(Clicker.HomeStyles))
         {
             var tier = Clicker.Shop.Single(u => u.Key == s.Tier);
             Assert.Equal(100 * tier.Base, s.Price, 1e-9 * s.Price);
         }
-        // Кожен наступний розпис світу вдесятеро дорожчий — як і щаблі.
-        var prices = Clicker.Styles.Skip(Clicker.HomeStyles).Select(s => s.Price).ToList();
-        for (var i = 1; i < prices.Count; i++) Assert.Equal(prices[i - 1] * 10, prices[i], 1e-9 * prices[i]);
+        // Кожен наступний розпис світу (і заморський) вдесятеро дорожчий — як і щаблі.
+        foreach (var group in new[] { Clicker.Styles.Skip(Clicker.HomeStyles).Take(WorldStyles.Length), Clicker.Styles.Skip(Clicker.HomeStyles + WorldStyles.Length) })
+        {
+            var prices = group.Select(s => s.Price).ToList();
+            for (var i = 1; i < prices.Count; i++) Assert.Equal(prices[i - 1] * 10, prices[i], 1e-9 * prices[i]);
+        }
         Assert.All(Clicker.Styles.Take(Clicker.HomeStyles), s => Assert.Equal("", s.Tier));
     }
 
@@ -97,7 +102,9 @@ public class ClickerWorldPaintTests
         foreach (var s in styles)
         {
             var key = s.GetProperty("key").GetString()!;
-            Assert.Equal(WorldStyles.Contains(key) ? key : "", s.GetProperty("tier").GetString());
+            Assert.Equal(WorldStyles.Contains(key) || Clicker.OverseasTiers.Contains(key) ? key : "", s.GetProperty("tier").GetString());
+            // v12: заморські розписи — поза сіткою альбому.
+            Assert.Equal(!Clicker.OverseasTiers.Contains(key), s.GetProperty("album").GetBoolean());
         }
     }
 

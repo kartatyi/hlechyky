@@ -1180,6 +1180,9 @@ public sealed partial class Clicker
         TitlesOnKiln(manual, perfect, outs.Any(o => o.Q == 0));
         if (outs.Any(o => o.Q == 4)) Achieve("potter-q4");
         if (!manual && ++_kilnAuto == AutoBatchesAch) Achieve("potter-stoker");
+        // v12: Майстер дня — лише ручне горно: дзвінкий 1, розкішний 3 (ClickerDay.cs).
+        if (manual && outs.Sum(o => o.Q >= 4 ? DayPointsQ4 : o.Q == 3 ? DayPointsQ3 : 0) is var day and > 0)
+            DaySvc()?.Add(Ctx.NickOf(0), day, at);
 
         _kiln.Clear();
         _litAt = default;
