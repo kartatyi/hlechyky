@@ -108,7 +108,7 @@ public class ClickerV12CraftViewTests
     static double Lux(RoomHarness h, int beauty, double heat, bool manual)
     {
         Patch(h, s => s["kiln"] = new JsonObject { ["batch"] = new JsonArray("pot", "pot", "pot"), ["beauty"] = beauty });
-        lock (h.Room.Sync) Finish.Invoke(h.Room.Game, [h.Clock.UtcNow, heat, 0.0, manual]);
+        lock (h.Room.Sync) Finish.Invoke(h.Room.Game, [h.Clock.UtcNow, heat, 0.0, manual, 0.0]);
         h.Clock.Advance(0.1);
         return h.View(0).GetProperty("kiln").GetProperty("last").GetProperty("lux").GetDouble();
     }
