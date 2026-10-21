@@ -494,6 +494,8 @@
     if (!g.row) return;
     const row = st.el.querySelector(g.row);
     if (!row) return;
+    // v12 §2.6: посередині видимого, над нижнім меню, і з підсвіткою (clicker.js, lookAt).
+    if (api.lookAt) { api.lookAt(st, row); return; }
     row.scrollIntoView({ block: 'nearest', behavior: smoothOk() ? 'smooth' : 'auto' });
     row.classList.remove('flash');
     void row.offsetWidth;

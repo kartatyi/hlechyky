@@ -731,7 +731,8 @@ public sealed partial class Clicker
     /// </summary>
     object CatalogHouse() => new
     {
-        clays = Clays.Select(c => new { key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body }),
+        // Множники глини (v12, пакет D2) — для прогнозу «з цією глиною: клік X, пасив Y» перед замісом.
+        clays = Clays.Select(c => new { key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body, click = c.Click, passive = c.Passive }),
         tools = Tools.Select(t => new { key = t.Key, name = t.Name, desc = t.Desc, price = t.Price }),
         decor = Decor.Select(d => new { key = d.Key, name = d.Name, desc = d.Desc, price = d.Price, bonus = d.Bonus }),
         looks = Looks.Select(l => new

@@ -2280,7 +2280,16 @@
       .concat(extraPanels.filter((p) => p.id !== 'svoya' && (!p.visible || p.visible())).map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
       .concat(extraPanels.some((p) => p.id === 'svoya') ? [['#games/x:svoya', '🎯 Пакети Своєї гри']] : []);
 
-    box.innerHTML = todayHtml()
+    // «Продовжити: Гончарне коло» (v12 §2.6): на телефоні коло стояло на ~900 px нижче, а фільтр «Соло» кидав сторінку
+    // вгору. Хто вже грав — бачить його першим рядком «Ігор», і до кола один дотик.
+    const potters = playingIn('clicker').filter((n) => n !== me.nick);
+    const cont = played && played.has('clicker') && byId.clicker && !byId.clicker.off && !want
+      ? '<button type="button" class="gpanel gcont" data-solo="clicker">' + iconOf('clicker')
+        + '<span class="gcont-t"><b>Продовжити: ' + esc(titleOf('clicker')) + '</b>'
+        + '<span class="muted small">' + (potters.length ? esc(whoShort(potters, 2)) + ' теж біля кола' : 'твоя гончарня чекає') + '</span></span>'
+        + '<span class="gcont-go">Грати</span></button>'
+      : '';
+    box.innerHTML = cont + todayHtml()
       + '<section class="gpanel"><h3>🔥 Живі столи'
       + (rooms.length ? ' <span class="muted small">· ' + rooms.length + '</span>' : '') + '</h3>'
       + live + soloLine + '</section>'
@@ -3453,12 +3462,45 @@
   /// Ачівка заслуговує довшого тоста, ніж «трек закинуто»: 6 секунд, щоб устигли прочитати.
   function longToast(html, ms) {
     const box = document.getElementById('toasts');
-    if (!box) { toast(String(html).replace(/<[^>]*>/g, ''), 'ok'); return; }
+    if (!box) { toast(String(html).replace(/<[^>]*>/g, ''), 'ok'); return null; }
     const el = document.createElement('div');
     el.className = 'toast ok gbig';
     el.innerHTML = html;
     box.appendChild(el);
-    setTimeout(() => el.remove(), ms || 6000);
+    el._timer = setTimeout(() => el.remove(), ms || 6000);
+    return el;
+  }
+
+  const achQ = [];
+  let achT = 0;
+  function achFlush() {
+    const list = achQ.splice(0);
+    if (!list.length) return;
+    const line = (a) => {
+      const title = String(a.title || a.key || '');
+      return '<span class="gemo">' + esc(a.icon || '🏅') + '</span> ' + (/^овва/i.test(title) ? '' : 'Овва! ') + '<b>' + esc(title) + '</b>'
+        + (a.reward ? ' — лови +' + a.reward + ' 🏺' : '');
+    };
+    if (list.length === 1) {
+      const a = list[0];
+      longToast(line(a) + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
+      return;
+    }
+    const n = list.length;
+    const sum = list.reduce((s, a) => s + (a.reward || 0), 0);
+    const word = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'ачівки' : 'ачівок';
+    const el = longToast('<span class="gemo">🏅</span> Овва! <b>+' + n + ' ' + word + '</b>' + (sum ? ' — лови +' + sum + ' 🏺' : '')
+      + ' <button type="button" class="ghost small gach-more">які ▾</button><div class="gach-list" hidden>'
+      + list.map((a) => '<div>' + line(a) + '</div>').join('') + '</div>', 8000);
+    const more = el && el.querySelector('.gach-more');
+    if (more) more.onclick = () => {
+      const box = el.querySelector('.gach-list');
+      box.hidden = !box.hidden;
+      more.textContent = box.hidden ? 'які ▾' : 'сховати ▴';
+      // Розгорнутий перелік читають — тост живе, поки його не згорнуть, і ще 6 секунд.
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => el.remove(), box.hidden ? 6000 : 30000);
+    };
   }
 
   // =============================================================================================
@@ -3664,13 +3706,16 @@
         const line = w.text || (w.delta > 0 ? '+' : '') + w.delta;
         document.dispatchEvent(new CustomEvent('hgames:wallet', { detail: w }));   // слоти тримають свій баланс за ним
         const hush = [...quietW.keys()].some((p) => String(w.reason || '').startsWith(p));   // автомат сам показує ставку й виграш
-        if (w.delta && !hush) toast('🏺 ' + (w.delta > 0 && !/^лови/i.test(line) ? 'Лови ' + line : line), w.delta > 0 ? 'ok' : '');
+        // Нагорода за ачівку — уже в тості самої ачівки («— лови +30 🏺»): другий тост на ту саму подію не потрібен.
+        if (w.delta && !hush && !String(w.reason || '').startsWith('ach:')) toast('🏺 ' + (w.delta > 0 && !/^лови/i.test(line) ? 'Лови ' + line : line), w.delta > 0 ? 'ok' : '');
       });
+      // Ачівки, що прийшли разом (вхід у Гончарне коло видає їх пачкою), — одним тостом «+6 ачівок» із переліком під
+      // кнопкою: шість тостів стосом закривали пів екрана (v12 §7 п. 14).
       c.on('achievement', (a) => {
         if (!a) return;
-        const title = String(a.title || a.key || '');
-        longToast('<span class="gemo">' + esc(a.icon || '🏅') + '</span> ' + (/^овва/i.test(title) ? '' : 'Овва! ') + '<b>' + esc(title) + '</b>'
-          + (a.reward ? ' — лови +' + a.reward + ' 🏺' : '') + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
+        achQ.push(a);
+        clearTimeout(achT);
+        achT = setTimeout(achFlush, 600);
       });
       c.on('toast', (t) => { if (t && t.text) toast(t.text, t.kind || ''); });
       // Дзвоник цеху Гончарного кола: другові щось надіслали — відкрите коло саме спитає пошту (clicker-guild.js).
