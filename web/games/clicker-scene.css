@@ -366,3 +366,22 @@
   .clks-tfxg { opacity: .45; }
   .clks-tconf { opacity: 0; }
 }
+
+/* v12 «Заморська торгівля» (clicker-v12.md §8). Новий корабель припливає з-за обрію, повний чи той, чий строк вийшов, —
+   відпливає вітрилом за обрій: раз, лише transform/opacity. Початок координат групи — ватерлінія корабля. Без руху
+   (reduced motion) загальне правило вище гасить анімації: новий просто стоїть, а відплилого сцена не малює. */
+.clks-shipin { animation: clks-shipin 7s cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes clks-shipin {
+  0% { opacity: 0; transform: translate(64px, -5px) scale(.34); }
+  30% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+.clks-shipgo { animation: clks-shipgo 10s cubic-bezier(.45, 0, .8, .7) both; }
+@keyframes clks-shipgo {
+  0% { transform: none; }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(96px, -7px) scale(.26); }
+}
+/* Риштування підросло зі своєю працею: виростає з попередньої висоти (--g0 — її частка). */
+.clks-tgrow { transform-box: fill-box; transform-origin: 50% 100%; animation: clks-tgrow 1.4s cubic-bezier(.2, .8, .3, 1.1) both; }
+@keyframes clks-tgrow { from { transform: scaleY(var(--g0, .85)); } to { transform: none; } }
