@@ -289,6 +289,11 @@
 @media (min-width: 561px) {
   .clkg-nav button { min-height: 32px; padding: 3px 8px; font-size: .85em; }
 }
+/* Число гостей / кораблів на кнопці переходу — бейджем, як на ярликах вкладок. */
+.clkg-nav .clkg-nc {
+  display: inline-block; min-width: 1.4em; margin-left: 4px; padding: 0 4px; border-radius: 999px; box-sizing: border-box;
+  background: var(--accent2); color: var(--bg); font-size: .78em; font-weight: 700; line-height: 1.45; text-align: center;
+}
 @container clkgnav (max-width: 799.98px) {
   .clkg-nav button { flex: 1 1 0; min-width: 0; padding: 3px 2px; justify-content: center; font-size: 1.05em; }
   .clkg-nav .clkg-nw { display: none; }

@@ -322,9 +322,12 @@
   function note(st, api) {
     const k = st.trade;
     const sn = api.serverNow(st);
-    const ships = k.v && st.mine ? k.v.ships.filter((s) => s.until > sn && s.can > 0) : [];
-    const text = ships.length ? '🚢' + ships.length : '';
-    const prio = ships.some((s) => s.first) ? 1 : 3;
+    // «🚢2» — скільки кораблів біля Пристані взагалі (UI-прохід 21.10: кораблі без вантажу на ярлику не рахувались, і
+    // гравець їх не бачив); гучніше — коли є що вантажити.
+    const here = k.v && st.mine ? k.v.ships.filter((s) => s.until > sn) : [];
+    const ships = here.filter((s) => s.can > 0);
+    const text = here.length ? '🚢' + here.length : '';
+    const prio = ships.some((s) => s.first) ? 1 : ships.length ? 3 : 4;
     if (k.noteText !== text + prio) { k.noteText = text + prio; api.tabNote(st, 'guild', 'trade', text, prio); }
     const shop = k.opened && !k.opened.seen ? '🌍' : '';
     if (k.shopNote !== shop) { k.shopNote = shop; api.tabNote(st, 'shop', 'trade', shop, 0); }

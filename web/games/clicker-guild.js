@@ -1404,23 +1404,34 @@
     { k: 'titles', t: '🎖 Звання' },
     { k: 'orders', t: '📜 Замовлення ↗', tab: 'craft', el: (st) => { const e = st.fair && st.fair.ordersEl; return e && e.isConnected && e.firstElementChild ? e : null; } },
   ].map((n) => (n.el ? n : Object.assign(n, { el: (st) => secOf(st, n.k) })));
+  /// Скільки гостей і кораблів зараз біля двору й Пристані — числом на кнопці переходу (UI-прохід 21.10: «у мене 2
+  /// кораблі, а в розділі цього не видно» — ярлик вкладки рахує лише ті, які є чим вантажити).
+  const navCount = (st, key) => {
+    const sn = st.lastView && HClicker.api.serverNow ? HClicker.api.serverNow(st) : Date.now();
+    const list = key === 'trade' ? st.trade && st.trade.v && st.trade.v.ships
+      : key === 'guests' ? st.guests && st.guests.v && st.guests.v.orders : null;
+    return list ? list.filter((x) => !x.until || x.until > sn).length : 0;
+  };
 
   function paintNav(st, api) {
     const nav = st.guildNav;
     if (!nav) return;
     const keys = NAV.filter((n) => n.el(st)).map((n) => n.k);
-    const sig = keys.join(',');
+    const counts = keys.map((k) => navCount(st, k));
+    const sig = keys.join(',') + '|' + counts.join(',');
     if (nav._sig === sig) return;
     nav._sig = sig;
     // Одна-дві кнопки — не рядок переходів, а шум: новачкові з одним возом він ні до чого.
     nav.hidden = keys.length < 3;
     // Значок і слово — окремо: вузький рядок (телефон, ПК з балачками) лишає самі значки, і всі вісім стають в один
     // рядок (UI-прохід 21.10: на ПК переносились у два, на телефоні ховались за краєм). Назва — у підказці.
-    nav.innerHTML = keys.map((k) => {
+    nav.innerHTML = keys.map((k, i) => {
       const n = NAV.find((x) => x.k === k);
       const sp = n.t.indexOf(' ');
-      return '<button type="button" class="ghost small" data-nav="' + k + '" title="' + n.t.slice(sp + 1) + '"><span class="clkg-ni">'
-        + n.t.slice(0, sp) + '</span><span class="clkg-nw"> ' + n.t.slice(sp + 1) + '</span></button>';
+      const c = counts[i];
+      return '<button type="button" class="ghost small" data-nav="' + k + '" title="' + n.t.slice(sp + 1) + (c ? ': ' + c : '') + '"><span class="clkg-ni">'
+        + n.t.slice(0, sp) + '</span><span class="clkg-nw"> ' + n.t.slice(sp + 1) + '</span>'
+        + (c ? '<span class="clkg-nc">' + c + '</span>' : '') + '</button>';
     }).join('');
     navMore(st);
   }

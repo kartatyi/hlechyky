@@ -846,7 +846,10 @@
   --clk-h: calc((100vh - var(--clk-above, 140px) - var(--clk-below, 82px)) / var(--clk-z, 1));
   --clk-rows: 262px;
   height: var(--clk-h);
-  grid-template-columns: clamp(300px, calc((var(--clk-h) - var(--clk-rows)) * .8), 58%) minmax(0, 1fr);
+  /* Стеля сцени — не 58 % картки, а стільки, щоб праворуч лишалось від 600 px (UI-прохід 21.10): на високому й
+     неширокому вікні (1280×1300) сцена брала 720 px, а полиця — 500, і там вмикалась уся «вузька» розкладка: ярлики
+     значком над словом, дрібні шрифти, переходи Села в два рядки. «Щось занадто мале, а щось занадто велике». */
+  grid-template-columns: clamp(300px, calc((var(--clk-h) - var(--clk-rows)) * .8), min(58%, calc(100% - 600px))) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
 }
