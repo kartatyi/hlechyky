@@ -71,7 +71,7 @@ public class ClickerV11Tests
     public void Six_masters_follow_opishnia_ten_times_dearer_and_five_and_a_half_times_richer()
     {
         var idle = Clicker.Shop.Where(u => u.Kind == ClickerKind.Idle).Select(u => u.Key).ToList();
-        Assert.Equal(Clicker.MasterTiers, idle.Skip(idle.IndexOf("opishnia") + 1).ToArray());
+        Assert.Equal(Clicker.MasterTiers, idle.Skip(idle.IndexOf("opishnia") + 1).Take(Clicker.MasterTiers.Length).ToArray());
         var prev = Clicker.Shop.Single(u => u.Key == "opishnia");
         foreach (var key in Clicker.MasterTiers)
         {

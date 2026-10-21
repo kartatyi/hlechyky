@@ -63,7 +63,8 @@
 
   const cat = (st) => (st.catalog && st.catalog.album) || null;
   const wareList = (st) => (st.catalog && st.catalog.wares) || (st.craft && st.craft.wares) || [];
-  const styleKeys = (st) => [''].concat(((st.catalog && st.catalog.styles) || st.styleList || []).map((s) => s.key));
+  // v12: заморські розписи в альбом не йдуть (album: false у каталозі) — сітка лишається на 15 стовпчиків.
+  const styleKeys = (st) => [''].concat(((st.catalog && st.catalog.styles) || st.styleList || []).filter((s) => s.album !== false).map((s) => s.key));
   /// «Домашніх» стовпчиків — скільки їх на сервері (homeColumns, або size / рядки), інакше — розписи каталога. Саме по
   /// них рахуються повні рядки, стовпчики й «усе в зірках» (v11: стовпчики світу — окремий бонус). Ніде не зашито дев'ять.
   const cols = (st) => {
