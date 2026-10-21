@@ -438,7 +438,8 @@
     const left = Math.max(0, m.steps * m.stepMs - elapsed);
     // Не своє горно (розпалили з іншого вікна, тут — жодної дії): відкривати його мусить те вікно — кажемо, чого чекаємо.
     const other = !kb.own && !kb.acts.length && elapsed >= m.steps * m.stepMs;
-    const clock = other ? '⏳ відкриє вікно, де палили' : '⏳ ' + api.mmss(left);
+    const waitText = kb.wait && Date.now() - kb.wait.at < 4000 ? kb.wait.text : '';
+    const clock = waitText || (other ? '⏳ відкриє вікно, де палили' : '⏳ ' + api.mmss(left));
     if (ui.clock.textContent !== clock) ui.clock.textContent = clock;
     setStyle(ui.barFill, 'transform', 'scaleX(' + Math.max(0, Math.min(1, elapsed / (m.steps * m.stepMs))).toFixed(3) + ')');
     setClass(ui.bar, 'hot', hot);
@@ -457,7 +458,11 @@
       // §2.3, на телефоні — разом із ще двома). Відмову кажемо самі, як сказав би act; null — зв'язку нема, повторимо.
       const payload = { op: 'open', t: acts, own: kb.own };
       (st.ctx && st.ctx.tell ? st.ctx.tell('kiln', payload) : api.act(st, 'kiln', payload)).then((r) => {
-        if (r && !r.ok && r.message && st.ctx && st.ctx.tell) api.toast(st, r.message, 'err');
+        // «⏳ …» — сервер просить почекати на запис з іншого вікна чи пристрою (хотфікс B1, KilnOwnWait). Це не помилка, а
+        // повтор раз на 2,5 с сипав би тостами — тож один тихий рядок у годиннику горна.
+        const wait = !!r && !r.ok && /^⏳/.test(r.message || '');
+        if (st.kb === kb) kb.wait = wait ? { text: r.message, at: Date.now() } : null;
+        if (r && !r.ok && r.message && !wait && st.ctx && st.ctx.tell) api.toast(st, r.message, 'err');
         if (st.kb === kb && (!r || !r.ok)) kb.done = false;
         if (st.kb === kb && r && r.ok) kb.done = false;          // «майстер хоче глянути»: вид покаже, чи горно ще палає
       });
