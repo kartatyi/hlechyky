@@ -203,17 +203,28 @@ public sealed partial class Clicker
     {
         SyncDay();
         if (!TradeOpen) return;
-        foreach (var s in _ships.Where(s => s.Until <= now).ToList())
+        // «Поки тебе не було» — один рядок на прибулі й один на ті, що відпливли (калібрування §17: неповних ~7 на добу,
+        // і поштучні рядки витісняли купців, дарунки й Толоку з восьми нотаток).
+        var gone = _ships.Where(s => s.Until <= now).ToList();
+        foreach (var s in gone)
         {
             _ships.Remove(s);
             if (s.First) _firstShipDone = true;
-            AwayNote(s.Loaded > 0
-                ? $"🚢 Корабель з {PortOf(s.Port).From} відплив неповним: завантажили {s.Loaded} з {s.Count}"
-                : $"🚢 Корабель з {PortOf(s.Port).From} не дочекався вантажу — відплив");
+        }
+        if (gone.Count == 1)
+            AwayNote(gone[0].Loaded > 0
+                ? $"🚢 Корабель з {PortOf(gone[0].Port).From} відплив неповним: завантажили {gone[0].Loaded} з {gone[0].Count}"
+                : $"🚢 Корабель з {PortOf(gone[0].Port).From} не дочекався вантажу — відплив");
+        else if (gone.Count > 1)
+        {
+            var part = gone.Count(s => s.Loaded > 0);
+            AwayNote($"🚢 Відпливли {gone.Count} {Plural(gone.Count, "корабель", "кораблі", "кораблів")}, не дочекавшись повного вантажу"
+                + (part > 0 ? $": {part} — частково завантажені" : ""));
         }
         ShipFirst(now);
         if (_shipNext == default) _shipNext = now + TradeGap;
         var guard = 0;
+        var came = new List<ShipRow>();
         while (_shipNext <= now && guard++ < 64)
         {
             if (_ships.Count < TradeShipsMax)
@@ -223,11 +234,16 @@ public sealed partial class Clicker
                 if (s.Until > now)
                 {
                     _ships.Add(s);
-                    AwayNote($"🚢 До Пристані прийшов корабель з {PortOf(s.Port).From}: {WareOf(s.Ware)!.Name.ToLowerInvariant()} ×{s.Count}");
+                    came.Add(s);
                 }
             }
             _shipNext += TradeGap;
         }
+        if (came.Count == 1)
+            AwayNote($"🚢 До Пристані прийшов корабель з {PortOf(came[0].Port).From}: {WareOf(came[0].Ware)!.Name.ToLowerInvariant()} ×{came[0].Count}");
+        else if (came.Count > 1)
+            AwayNote($"🚢 До Пристані прийшли {came.Count} {Plural(came.Count, "корабель", "кораблі", "кораблів")} — "
+                + string.Join(", ", came.Select(s => "з " + PortOf(s.Port).From)));
         // Біля Пристані повно — наступний з'явиться за інтервал після того, як звільниться місце.
         if (_shipNext <= now) _shipNext = now + TradeGap;
     }

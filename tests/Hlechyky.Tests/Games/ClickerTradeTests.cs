@@ -202,6 +202,27 @@ public class ClickerTradeTests
         Assert.All(Ships(h), s => Assert.True(s.GetProperty("until").GetDateTimeOffset() > now));
     }
 
+    [Fact]
+    public void Away_notes_tell_the_ships_in_one_line_each_way()
+    {
+        var h = Wheel();
+        Pier(h);
+        TradeRow(h);
+        Assert.True(h.Act(0, "spin", PotterHands.Human(1)).Ok);
+        static List<string> Ship(RoomHarness h) => View(h).GetProperty("away").GetProperty("notes").EnumerateArray()
+            .Select(x => x.GetString()!).Where(x => x.StartsWith("🚢")).ToList();
+        // Дві години без гончаря — три кораблі: один рядок, а не три (калібрування §17).
+        h.Clock.Advance(TimeSpan.FromHours(2));
+        Assert.True(h.Act(0, "spin", PotterHands.Human(1)).Ok);
+        Assert.StartsWith("🚢 До Пристані прийшли 3 кораблі — з ", Assert.Single(Ship(h)));
+        // Ще дев'ять — ті три відпливли без вантажу, прийшли нові: по рядку на кожен бік.
+        h.Clock.Advance(TimeSpan.FromHours(9));
+        Assert.True(h.Act(0, "spin", PotterHands.Human(1)).Ok);
+        var notes = Ship(h);
+        Assert.Equal(2, notes.Count);
+        Assert.Contains(notes, n => n.StartsWith("🚢 Відпливли 3 кораблі"));
+    }
+
     // ---------- вантаж ----------
 
     [Fact]
