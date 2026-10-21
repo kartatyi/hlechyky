@@ -21,6 +21,11 @@ public sealed class LiquidsoapGuard(LiquidsoapClient liq, IOptionsMonitor<Liquid
     static readonly TimeSpan Every = TimeSpan.FromSeconds(5);
     /// <summary>Не частіше: свіжий liquidsoap мусить устигнути піднятись, а коли він замерзає знову й знову — далі веде наглядач.</summary>
     static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(2);
+    /// <summary>
+    /// Пауза перед другим показанням: 21.10.2026 23:38 годинник простояв 19,56 с і рушив сам (liquidsoap доганяв
+    /// 11 с ефіру за секунду), а сторож перезапустив його за мить після того на старому показанні.
+    /// </summary>
+    static readonly TimeSpan Recheck = TimeSpan.FromSeconds(2);
 
     static string StartScript => Path.Combine(Paths.Root, "start.ps1");
     static string LiqExe => Path.Combine(Paths.Root, "tools", "liquidsoap", "liquidsoap.exe");
@@ -36,21 +41,42 @@ public sealed class LiquidsoapGuard(LiquidsoapClient liq, IOptionsMonitor<Liquid
             var limit = options.CurrentValue.FreezeRestartSeconds;
             if (limit <= 0 || !File.Exists(LiqExe) || !File.Exists(StartScript)) continue;
 
-            string? dump = null;
-            try { dump = await liq.CommandAsync("clock.dump", ct); }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-            catch { /* liquidsoap лежить чи перезапускається — це справа наглядача */ }
+            var dump = await DumpAsync(ct);
+            if (ct.IsCancellationRequested) break;
 
             var now = DateTime.UtcNow;
             var stuck = clock.Observe(AirClock.Parse(dump), now);
             if (stuck < limit || now - restartedAt < Cooldown) continue;
 
+            // ще одне показання перед перезапуском: годинник міг рушити сам саме зараз
+            try { await Task.Delay(Recheck, ct); }
+            catch (OperationCanceledException) { break; }
+            var again = await DumpAsync(ct);
+            if (ct.IsCancellationRequested) break;
+            var then = DateTime.UtcNow;
+            var (before, after) = (AirClock.Parse(dump), AirClock.Parse(again));
+            if (AirClock.Thawed(before, after, (then - now).TotalSeconds))
+            {
+                clock.Reset();
+                clock.Observe(after, then);
+                if (after < before) log.LogWarning("годинник ефіру стояв {Seconds:0} с, а тепер почав з нуля — liquidsoap уже перезапустили, не чіпаю", stuck);
+                else log.LogWarning("годинник ефіру відмерз сам через {Seconds:0} с — не перезапускаю liquidsoap\n{Dump}", stuck, again);
+                continue;
+            }
+
             restartedAt = now;
             clock.Reset();
-            log.LogWarning("годинник ефіру стоїть {Seconds:0} с — перезапускаю liquidsoap (start.ps1 radio)\n{Dump}", stuck, dump);
+            log.LogWarning("годинник ефіру стоїть {Seconds:0} с — перезапускаю liquidsoap (start.ps1 radio)\n{Dump}", stuck, again ?? dump);
             try { Restart($"годинник ефіру стоїть {stuck:0} с (помітив сервер)"); }
             catch (Exception ex) { log.LogWarning(ex, "start.ps1 radio не запустився"); }
         }
+    }
+
+    /// <summary>«clock.dump»; null — не відповів (liquidsoap лежить чи перезапускається — це справа наглядача) або сервер зупиняють.</summary>
+    async Task<string?> DumpAsync(CancellationToken ct)
+    {
+        try { return await liq.CommandAsync("clock.dump", ct); }
+        catch { return null; }
     }
 
     /// <summary>UseShellExecute — як у <see cref="Deploy"/>: powershell не успадковує хендлів сервера й живе сам по собі.</summary>
@@ -98,6 +124,14 @@ public sealed class AirClock
     }
 
     public void Reset() => _clock = null;
+
+    /// <summary>
+    /// Друге показання перед перезапуском, через <paramref name="wall"/> с після першого: годинник рушив (те саме «пів того
+    /// часу, що минув») — відмерз сам; почав з нуля — liquidsoap уже перезапустили. І так, і так перезапуск не потрібен.
+    /// Не відповів — не знаємо, що ожив, тож перезапускаємо.
+    /// </summary>
+    public static bool Thawed(double? before, double? after, double wall) =>
+        before is { } b && after is { } a && (a < b || a > b && a - b >= wall / 2);
 
     /// <summary>«· radio (ticks: 3982739, time: 79654.78s, self_sync: false)» → 79654.78.</summary>
     public static double? Parse(string? dump)
