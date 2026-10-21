@@ -48,6 +48,8 @@
   // пріоритетом 1 (гість чекає — eta 0, корабель — −0,5, «уже можна купити» — 0) і стає наступною, щойно їх нема.
   // Коли горно працює саме, «Далі» (clicker-craft.js, goalStep) показує саме цілі частин — там вона й живе (QA-2 21.10).
   const LACK_ETA = 0.1;
+  // Звичайний темп ручних кліків, кліків за хвилину: «30 000 кліків ≈ 1,5–2 год гри» (v12 §2) — для «≈ N гри до повної».
+  const PACE = 300;
   const Q_PL = [['', ''], ['звичайного', 'звичайних'], ['доброго', 'добрих'], ['дзвінкого', 'дзвінких'], ['розкішного', 'розкішних']];
 
   // ---------- дрібниці ----------
@@ -75,11 +77,11 @@
     return hh > 0 ? hh + ' год' + (mm ? ' ' + mm + ' хв' : '') : mm + ' хв';
   }
 
-  /// Зекономлений годинник: «40 с», «19 хв», «1 год 57 хв».
+  /// Зекономлений годинник: «40 с», «19 хв», «1 год 57 хв». Униз (QA-3: «3 хв» при 2,5 хв — обіцянка, якої нема).
   function dur(msx) {
-    const sec = Math.max(0, Math.round(msx / 1000));
+    const sec = Math.max(0, Math.floor(msx / 1000));
     if (sec < 60) return sec + ' с';
-    const m = Math.round(sec / 60);
+    const m = Math.floor(sec / 60);
     return m < 60 ? m + ' хв' : Math.floor(m / 60) + ' год' + (m % 60 ? ' ' + (m % 60) + ' хв' : '');
   }
 
@@ -156,9 +158,10 @@
     return '';
   }
 
-  /// «🏺 Ліпити макітру «Косівська»» під вимогою, якої бракує: ставить виріб на коло (дія form) і розпис рядка (дія
-  /// wear), коли рядок його просить. Виріб ще не відкритий — кнопки нема; розпису ще нема — так і кажемо (без нього
-  /// рядок не прийме); уже на колі з потрібним розписом — лише позначка. need — рядок вимоги або ключ виробу.
+  /// «🏺 Ліпити макітру → «Косівська»» під вимогою, якої бракує: ставить виріб на коло й називає розпис рядка —
+  /// form { ware, style } (QA-3). Розпис кладуть на партію перед обпалом, а не на коло, тож тост сервера скаже, з
+  /// яким палити. Виріб ще не відкритий — кнопки нема; розпису ще нема — так і кажемо (без нього рядок не прийме);
+  /// виріб уже на колі — лише позначка з розписом. need — рядок вимоги або ключ виробу.
   function formBtn(st, api, need) {
     const n = typeof need === 'string' ? { ware: need, q: 1, style: '' } : need;
     const c = st.craft;
@@ -167,8 +170,6 @@
     if (!w || !w.open) return '';
     const esc = (x) => api.esc(st, x);
     const name = wareName(st, n.ware).toLowerCase();
-    // «Ліпити макітру», «Ліпити кахлю»: знахідний відмінок жіночого роду (решта виробів його не міняє).
-    const acc = name.split('-').map((p) => p.replace(/а$/, 'у').replace(/я$/, 'ю')).join('-');
     const sname = n.style ? '«' + styleName(st, n.style) + '»' : '';
     const sty = n.style ? (st.styleList || []).find((x) => x.key === n.style) : null;
     if (n.style && !(sty && sty.owned)) {
@@ -177,26 +178,23 @@
     // Звідки якість — кажемо, щойно виріб став на коло (а не під кожним із двадцяти рядків плану): саме тоді гончар
     // і йде палити.
     const hint = qHint(api, n.q);
-    if (c.ware === n.ware && (!n.style || st.wear === n.style)) {
-      return '<span class="small clkl-onwheel">🏺 ' + esc(name + (sname ? ' ' + sname : '')) + ' уже на колі'
+    if (c.ware === n.ware) {
+      return '<span class="small clkl-onwheel">🏺 ' + esc(name) + ' уже на колі' + (sname ? ' · розпис ' + esc(sname) : '')
         + (hint ? '<span class="clkl-qhint"> · ' + esc(hint) + '</span>' : '') + '</span>';
     }
-    const label = c.ware === n.ware ? '🎨 Поставити розпис ' + sname : '🏺 Ліпити ' + acc + (sname ? ' ' + sname : '');
     return '<button type="button" class="ghost small clkl-form" data-lform="' + esc(n.ware) + '" data-lstyle="' + esc(n.style || '') + '"'
-      + (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(label) + '</button>';
+      + (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(formLabel(st, n)) + '</button>';
   }
 
-  /// «Ліпити X» з рядка: виріб на коло й розпис, якщо рядок його просить (без розпису рядок такого не прийме).
+  /// «🏺 Ліпити макітру → «Косівська»»: знахідний відмінок жіночого роду (решта виробів його не міняє).
+  function formLabel(st, n) {
+    const acc = wareName(st, n.ware).toLowerCase().split('-').map((p) => p.replace(/а$/, 'у').replace(/я$/, 'ю')).join('-');
+    return '🏺 Ліпити ' + acc + (n.style ? ' → «' + styleName(st, n.style) + '»' : '');
+  }
+
+  /// «Ліпити X» з рядка: виріб на коло, а розпис — підказкою в тості сервера (form { ware, style }).
   function formIt(st, api, ware, style) {
-    const was = !!st.craft && st.craft.ware === ware;
-    const go = was ? Promise.resolve({ ok: true }) : api.act(st, 'form', { ware });
-    go.then((r) => {
-      if (!r || !r.ok || !style || st.wear === style) return;
-      api.act(st, 'wear', { key: style }).then((w) => {
-        // wear мовчить (вид сам покаже розпис на колі), а виріб уже був на колі — без тосту зміни б і не помітили.
-        if (w && w.ok && was) api.toast(st, '🎨 На колі тепер розпис «' + styleName(st, style) + '»', 'ok');
-      });
-    });
+    api.act(st, 'form', style ? { ware, style } : { ware });
   }
 
   // ---------- склад і план (v12) ----------
@@ -279,12 +277,16 @@
       + '<span class="clkl-mark">' + (ok ? '✓' : 'ще ' + api.count(lack)) + '</span></div>';
   }
 
+  /// Дві найближчі будови плану (сервер шле їх поетапно повністю; далі — лише етапи зі складом).
+  const nearKeys = (t) => new Set([...new Set(t.plan.map((p) => p.building))].slice(0, 2));
+
   /// План: решта етапів поточної будови й уся наступна — по будові на згортку. Довге згорнуте одразу (на телефоні це
   /// сотні пікселів), а в заголовку — головне: скільки етапів і скільки ще бракує.
   function planHtml(st, api) {
     const t = st.toloka.v;
     const s = t.stage;
     const esc = (x) => api.esc(st, x);
+    const near = nearKeys(t);
     const byB = [];
     for (const p of t.plan) {
       // Поточний незакладений етап уже намальований угорі — з піднесеним друзями й кнопкою «Закласти».
@@ -311,12 +313,19 @@
           + '<div class="clkl-needs">' + html + '</div></div>';
       }).join('');
       const same = s && g.key === s.building;
-      const head = (same ? '⏭ «' + esc(b.name) + '»: ще ' : b.icon + ' Потім «' + esc(b.name) + '»: ')
-        + g.list.length + ' ' + api.plural(g.list.length, 'етап', 'етапи', 'етапів') + '<span class="muted small">'
-        + (lack ? ' · <b class="clkl-lack">бракує ' + api.count(lack) + '</b>' : ' · усе є') + '</span>';
-      // Перша будова плану — розгорнута, поки коротка; наступна й довгі — згорнуті (вибір гравця пам'ятається).
+      // Далі за двома будовами сервер шле лише етапи, де вже щось лежить на складі (QA-3), — щоб «↩ забрати» було звідки.
+      const far = !near.has(g.key);
+      const stored = far ? g.list.reduce((a, p) => a + p.needs.reduce((x, n) => x + (n.depot || 0), 0), 0) : 0;
+      const head = far
+        ? '📦 «' + esc(b.name) + '»<span class="muted small"> · на складі ' + api.count(stored) + ' — ' + g.list.length + ' '
+          + api.plural(g.list.length, 'етап', 'етапи', 'етапів') + ' наперед</span>'
+        : (same ? '⏭ «' + esc(b.name) + '»: ще ' : b.icon + ' Потім «' + esc(b.name) + '»: ')
+          + g.list.length + ' ' + api.plural(g.list.length, 'етап', 'етапи', 'етапів') + '<span class="muted small">'
+          + (lack ? ' · <b class="clkl-lack">бракує ' + api.count(lack) + '</b>' : ' · усе є') + '</span>';
+      // Перша будова плану — розгорнута, поки коротка; наступна, далекі й довгі — згорнуті (вибір гравця пам'ятається).
       const shut = gi > 0 || rows > 6;
-      return '<section class="clkl-plan"' + api.fold('g.tp.' + (same ? 'cur' : 'next'), shut) + '>' + api.foldHead(head, 'clkl-ph') + body + '</section>';
+      const key = far ? 'far.' + g.key : same ? 'cur' : 'next';
+      return '<section class="clkl-plan"' + api.fold('g.tp.' + key, shut) + '>' + api.foldHead(head, 'clkl-ph') + body + '</section>';
     }).join('');
   }
 
@@ -328,11 +337,12 @@
     const esc = (x) => api.esc(st, x);
     if (!sim.groups.length) return '';
     const built = new Set(t.built);
-    const inPlan = new Set(t.plan.map((p) => p.building));
+    const inPlan = nearKeys(t);
     const rest = c.buildings.filter((b) => !built.has(b.key) && !inPlan.has(b.key));
     const far = rest.filter((b) => reachable(st, b));
     const shut = rest.length > far.length;
-    const order = (a, b) => b.q - a.q || a.ware.localeCompare(b.ware);
+    // У межах якості — за нестачею: першим те, чого бракує найбільше (QA-3), далі — уже закрите.
+    const order = (a, b) => b.q - a.q || b.lack - a.lack || a.ware.localeCompare(b.ware);
     const list = sim.groups.slice().sort(order);
     const lux = list.filter((g) => g.q >= 4);
     const luxN = lux.reduce((a, g) => a + g.n, 0);
@@ -394,7 +404,8 @@
       : ' <span class="muted">(' + (near ? api.count(near) + ' — ' + word + ', ' : '') + api.count(t.depot - near) + ' — далі)</span>';
     return '<div class="clkl-depot"><div class="small clkl-dline">📦 Склад толоки · ' + (t.depot ? 'на складі <b>' + api.count(t.depot) + '</b>' + split : 'порожній')
       + api.info(api.esc(st, info)) + '</div>'
-      + '<div class="clkl-btns">' + btn + '<span class="muted small clkl-miss">' + note + '</span></div></div>';
+      + '<div class="clkl-btns">' + btn + '<span class="muted small clkl-miss">' + note + '</span></div>'
+      + (k.went ? '<div class="small clkl-went">' + api.esc(st, k.went) + '</div>' : '') + '</div>';
   }
 
   /// Своя праця на закладеному етапі: числа й смугу ставить work() — щопачки, без перемальовування розділу.
@@ -439,12 +450,16 @@
     if (!w) return;
     const tn = api.count(Math.floor(w.n));
     // Перші сотні кліків — частки відсотка («−0,4 %», «−0,03 %»): «−0 %» після хвилини праці виглядало б, наче вона не йде.
-    const pct = w.cut * 100;
-    const tp = (pct >= 10 || pct === 0 ? String(Math.round(pct)) : pct >= 0.1 ? String(Math.round(pct * 10) / 10) : String(Math.max(0.01, Math.round(pct * 100) / 100))).replace('.', ',');
-    const tc = w.frac >= 1 ? '−' + tp + ' % — смуга повна' : (pct > 0 ? '−' : '') + tp + ' %';
-    // QA 21.10: «4 581 клік — і що?» Відсоток не відчувається, хвилини — так: скільки годинника вже зрізано й скільки дасть смуга.
+    // Униз, як і хвилини: «−15 %» лише на повній смузі, а не вже на 35 634 з 36 000 (QA-3).
+    const pct = w.cut * 100 + 1e-9;
+    const tp = (pct >= 10 || w.n === 0 ? String(Math.floor(pct)) : pct >= 0.1 ? String(Math.floor(pct * 10) / 10)
+      : String(Math.max(0.01, Math.floor(pct * 100) / 100))).replace('.', ',');
+    const tc = (w.n > 0 ? '−' : '') + tp + ' %';
+    // QA 21.10: «4 581 клік — і що?» Відсоток не відчувається, хвилини — так: скільки годинника вже зрізано й скільки дасть смуга;
+    // QA-3 — і скільки ще клікати до повної.
+    const play = '≈ ' + dur(((w.of - w.n) / PACE) * 60000) + ' гри до повної';
     const ts = w.frac >= 1 ? 'зекономлено ' + dur(w.saved) + ' — смуга повна'
-      : w.n > 0 ? 'зекономлено ' + dur(w.saved) + ' з ' + dur(w.all) : 'повна смуга зріже ' + dur(w.all) + ' будови';
+      : (w.n > 0 ? 'зекономлено ' + dur(w.saved) + ' з ' + dur(w.all) : 'повна смуга зріже ' + dur(w.all) + ' будови') + ' · ' + play;
     if (k.wn && k.wn.textContent !== tn) k.wn.textContent = tn;
     if (k.wc && k.wc.textContent !== tc) k.wc.textContent = tc;
     if (k.ws && k.ws.textContent !== ts) k.ws.textContent = ts;
@@ -694,7 +709,9 @@
     const list = s ? s.helpers : [];
     if (k.helpSig === sig && k.helpers && st.mine) {
       const fresh = list.filter((x) => !k.helpers.includes(x));
-      if (fresh.length) {
+      // Цех (clicker-guild.js) уже каже «🤝 X підніс(ла) на твою толоку…» тостом, стрічкою й дзвіночком — тоді тут
+      // мовчимо (QA-3: на одну поміч — два тости). Самі — лише коли вид цеху ще не знає, хто що приніс.
+      if (fresh.length && !(st.guild && st.guild.gotKnown)) {
         const c = cat(st);
         const per = Math.round(((c && c.helperCut) || 0.15) * 100);
         const text = '🤝 ' + fresh.join(', ') + ' ' + (fresh.length > 1 ? 'прийшли' : 'прийшов(ла)') + ' на толоку — будова на ' + per * fresh.length + ' % коротша';
@@ -754,13 +771,17 @@
     const mine = itemsOf(st);
     const rows = (nx.needs || []).map((n, i) => {
       const have = own && n.have != null ? n.have : mine.filter((it) => fits(n, it)).reduce((a, it) => a + it.n, 0);
-      const ok = have >= n.n;
+      // QA-3: у друга дещо вже лежить на складі під цей рядок (next.needs[].depot) — «бракує» без нього брехало.
+      const depot = n.depot || 0;
+      const lack = Math.max(0, n.n - depot - have);
+      const ok = lack === 0;
       return '<div class="clkl-need' + (ok ? ' ok' : '') + '">'
         + '<span class="clkl-nart">' + api.wareSvg(n.ware, { style: n.style, quality: Math.max(1, n.q), cls: 'clkl-ware', slot: 'tx-' + (own ? 'o' : 'f') + i }) + '</span>'
-        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">' + (own ? 'у тебе є ' : 'у твоїй коморі ') + api.count(have)
-        + (ok ? '' : ' · <b class="clkl-lack">бракує ' + api.count(n.n - have) + '</b>') + '</span>'
-        + (own && !ok ? formBtn(st, api, n.ware) : '') + '</div>'
-        + '<span class="clkl-mark">' + (ok ? '✓' : 'ще ' + (n.n - have)) + '</span></div>';
+        + '<div class="clkl-ntxt">' + needText(st, api, n) + '<span class="muted small">'
+        + (depot ? (own ? 'на складі ' : 'у друга на складі ') + api.count(depot) + ' · ' : '') + (own ? 'у тебе є ' : 'у твоїй коморі ') + api.count(have)
+        + (ok ? '' : ' · <b class="clkl-lack">бракує ' + api.count(lack) + '</b>') + '</span>'
+        + (own && !ok ? formBtn(st, api, n) : '') + '</div>'
+        + '<span class="clkl-mark">' + (ok ? '✓' : 'ще ' + api.count(lack)) + '</span></div>';
     });
     const rich = own && (st.shown || 0) >= nx.pay;
     rows.push('<div class="clkl-need' + (rich ? ' ok' : '') + '"><span class="clkl-nart clkl-emo">💰</span>'
@@ -769,10 +790,37 @@
     rows.push('<div class="clkl-need hours"><span class="clkl-nart clkl-emo">⏳</span>'
       + '<div class="clkl-ntxt"><b>' + hrs(nx.hours) + '</b><span class="muted small">будується (друзі й рід скоротять)</span></div><span class="clkl-mark"></span></div>');
     const head = (b.key !== (cur && cur.key) ? b.icon + ' ' + esc(b.name) + ' — ' : '') + 'етап ' + (nx.index + 1) + ' з ' + b.stages.length + ' «' + esc(nx.name) + '»';
-    // У друга (B8): це лише показ — зараз етап приймає вимоги поточного, а не ці.
-    return '<div class="clkl-next"><div class="clk-sub small">⏭ Наступний етап: ' + head + '</div>'
-      + (own ? '' : '<div class="muted small">лише глянути: ці вироби приймуть, коли друг почне збирати цей етап</div>')
+    // У друга (B8): це лише показ — зараз етап приймає вимоги поточного, а не ці. Назва — у згортці над цим.
+    return '<div class="clkl-next">' + (own ? '<div class="clk-sub small">⏭ Наступний етап: ' + head + '</div>'
+      : '<div class="muted small">' + (b.key !== (cur && cur.key) ? b.icon + ' ' + esc(b.name) + ' · ' : '')
+        + 'ці вироби приймуть, коли друг почне збирати цей етап</div>')
       + '<div class="clkl-needs">' + rows.join('') + '</div></div>';
+  }
+
+  /// Скільки лежить на складі під кожну будову: план містить усі етапи, де щось лежить (ближні — повністю).
+  function depotBy(t) {
+    const out = new Map();
+    for (const p of t.plan) {
+      const n = p.needs.reduce((a, x) => a + (x.depot || 0), 0);
+      if (n) out.set(p.building, (out.get(p.building) || 0) + n);
+    }
+    return out;
+  }
+
+  /// «Віднести все» поїхало — кажемо, куди (QA-3: «287 на склад» — а де вони?): «44 — «Глек на майдані», …».
+  function wentWhere(st, api) {
+    const k = st.toloka;
+    const was = k.wentFrom;
+    if (!was || k.v.depot === was.total) return;
+    k.wentFrom = null;
+    const now = depotBy(k.v);
+    const parts = [];
+    for (const [key, n] of now) {
+      const d = n - (was.by.get(key) || 0);
+      const b = bdef(st, key);
+      if (d > 0 && b) parts.push({ d, text: api.count(d) + ' — «' + b.name + '»' });
+    }
+    k.went = parts.length ? '📦 Віднесли: ' + parts.sort((a, b) => b.d - a.d).map((x) => x.text).join(', ') : '';
   }
 
   /// Склад толоки: віднести / забрати / усе, що підходить. Тост дає сервер (core.js показує message відповіді) —
@@ -781,6 +829,9 @@
     const k = st.toloka;
     if (!human(e) || !st.mine || !k || k.busy) return;
     k.busy = true;
+    k.went = '';
+    // Склад до «Віднести все» — щоб, коли прийде новий вид, сказати, куди що пішло (вид і відповідь — різними кадрами).
+    k.wentFrom = payload.do === 'stockAll' ? { total: k.v.depot, by: depotBy(k.v) } : null;
     for (const b of k.el.querySelectorAll('.clkl-stock, .clkl-unstock, .clkl-stockall')) b.disabled = true;
     api.act(st, 'toloka', payload).then((r) => {
       const kk = st.toloka;
@@ -788,6 +839,7 @@
       kk.busy = false;
       kk.armAt = 0;
       if (r && r.ok) api.sfx(payload.do === 'unstock' ? 'tap' : 'buy');
+      else kk.wentFrom = null;
       kk.dirty = true;
       paint(st, api);
     });
@@ -824,7 +876,7 @@
   // ---------- друзі на толоці: хата друга ----------
 
   /// Хата друга (clicker-guild.js): його толока й «🤝 Піднести на толоку». d — знімок хати з полем toloka.
-  function friendHtml(st, api, d, open, err) {
+  function friendHtml(st, api, d, open, err, nextOpen) {
     const t = d.toloka;
     const esc = (x) => api.esc(st, x);
     const b = bdef(st, t.building);
@@ -838,11 +890,22 @@
       + ' <span class="muted small">· етап ' + (t.stage + 1) + ' з ' + b.stages.length + ' — «' + esc(sd.name) + '»</span></div>';
     if (laid) html += '<div class="small">🔨 Будується · ще ' + esc(left(api, ends - sn)) + '</div>';
     if (t.helpers.length) html += '<div class="small">🤝 На толоці ' + (laid ? 'були' : 'вже були') + ': <b>' + esc(t.helpers.join(', ')) + '</b></div>';
-    // Поки етап будується — що другові треба на наступний і скільки такого є в мене (лише показати).
-    if (laid && t.next) html += nextHtml(st, api, t.next, b, false);
     const still = t.needs.filter((n) => n.left > 0);
     const hmax = (cat(st) && cat(st).helpersMax) || 3;
     const been = t.helpers.some((h) => h.toLowerCase() === myNick(st).toLowerCase());
+    // QA-3: поки етап будується, «Піднести» приймає вимоги цього етапу, а не наступного — тож угорі вони, з «у тебе N»,
+    // а наступний — згорнутим «лише глянути».
+    if (laid && !been) {
+      const mineL = itemsOf(st);
+      html += '<div class="clkl-fcur small"><div class="muted">Зараз приймають (етап «' + esc(sd.name) + '»):</div>' + t.needs.map((n) => {
+        const have = mineL.filter((it) => fits(n, it)).reduce((a, it) => a + it.n, 0);
+        return '<div>' + needText(st, api, n) + ' <span class="' + (have ? 'clkl-cut' : 'muted') + '">· у тебе ' + api.count(have) + '</span></div>';
+      }).join('') + '</div>';
+    }
+    if (laid && t.next) {
+      html += '<details class="clkl-fnext"' + (nextOpen ? ' open' : '') + '><summary class="small">⏭ Наступний етап «' + esc(t.next.name) + '» — лише глянути</summary>'
+        + nextHtml(st, api, t.next, b, false) + '</details>';
+    }
     // B8: вимоги закриті, а помічників менше трьох — прийти все одно поміч (−15 %), вироби ляжуть у комору друга.
     const extra = !laid && !still.length && !been && t.helpers.length < hmax;
     if (!laid && !still.length) {
@@ -855,11 +918,12 @@
     const treat = t.treatLeft == null ? 'за кожен виріб — гостинець толоки'
       : t.treatLeft > 0 ? 'гостинець толоки — ' + api.count(t.treat || 2) + ' хв гри за виріб, ще за ' + t.treatLeft + ' із ' + cap + ' на цей етап'
         : 'гостинець за цей етап уже взято (' + cap + ' виробів) — далі поміч без гостинця';
-    if (!open) {
+    // QA 21.10: етап будується, а я на ньому вже був(ла) — сервер відмовить (раз на етап), тож і кнопка не кличе, і
+    // відкритий вибір виробів (з «гостинець — ще за 15 із 20», QA-3) після посилки згортається назад.
+    const again = laid && been;
+    if (!open || again) {
       // Кнопка жива, лише коли в моїй коморі є хоч щось, що цей етап іще приймає.
       const mine0 = itemsOf(st);
-      // QA 21.10: етап будується, а я на ньому вже був(ла) — сервер відмовить (раз на етап), тож і кнопка не кличе.
-      const again = laid && been;
       const any = !again && t.needs.some((n) => (laid || extra || n.left > 0) && mine0.some((it) => fits(n, it)));
       const asks = t.needs.filter((n) => laid || extra || n.left > 0).map((n) => needText(st, api, n).replace(/<[^>]+>/g, '')).join('; ');
       return html + '<div class="clkg-btns"><button type="button" class="primary clkl-fgo"' + (can && any ? '' : ' disabled') + '>🤝 Піднести на толоку</button>'
@@ -907,7 +971,9 @@
       const anchor = body.querySelector('.clkg-hhelp');
       if (anchor) anchor.before(box); else body.appendChild(box);
     }
-    const draw = () => { if (box.isConnected) box.innerHTML = friendHtml(st, api, d, box._open, box._err); };
+    const draw = () => { if (box.isConnected) box.innerHTML = friendHtml(st, api, d, box._open, box._err, box._next); };
+    // Згортка наступного етапу переживає перемальовування після посилки.
+    if (!box._tog) { box._tog = true; box.addEventListener('toggle', (e) => { if (e.target.classList && e.target.classList.contains('clkl-fnext')) box._next = e.target.open; }, true); }
     draw();
     box.onclick = (e) => {
       if (e.target.closest('.clkl-fgo')) {
@@ -989,13 +1055,27 @@
     const top = g.list[0];
     const word = g.q === 1 ? api.plural(g.n, 'виробу', 'виробів', 'виробів') : api.plural(g.n, Q_PL[g.q][0], Q_PL[g.q][1], Q_PL[g.q][1]);
     const most = wareName(st, top.ware).toLowerCase() + (top.style ? ' «' + styleName(st, top.style) + '»' : '') + ' ×' + api.count(top.lack);
-    return {
+    return Object.assign({
       icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + g.icon + '</text>',
       text: g.head + ': на Толоку бракує ' + api.count(g.n) + ' ' + word,
       sub: (g.sub ? g.sub + ' · ' : '') + 'найбільше бракує: ' + most,
       pct: g.of > 0 ? ((g.of - g.n) / g.of) * 100 : 0,
       eta: LACK_ETA, tab: 'guild', row: '[data-sec="toloka"] .clkl-sumh', prio: 1,
-    };
+    }, goalAct(st, api, g.list));
+  }
+
+  /// Дія цілі «Далі» (QA-3): не «Глянути», а одразу «🎨 Ліпити плесканець → розпис» — виріб на коло й розпис у тост
+  /// (form { ware, style }). Перший рядок за нестачею, який уже можна ліпити (виріб відкритий, розпис куплений); він
+  /// уже на колі чи такого нема — лишається «Глянути».
+  function goalAct(st, api, list) {
+    const c = st.craft;
+    if (!c || !c.wares) return {};
+    const owned = (key) => !key || (st.styleList || []).some((x) => x.key === key && x.owned);
+    const n = list.find((x) => (c.wares.find((w) => w.key === x.ware) || {}).open && owned(x.style));
+    // Найбільша нестача вже на колі — гончар робить саме те, що треба: не перемикати, лише «Глянути».
+    if (!n || c.ware === n.ware) return {};
+    const btn = n.q >= 4 ? formLabel(st, n).replace('🏺', '🎨') + (n.style ? '' : ' → розпис') : formLabel(st, n);
+    return { btn, run: () => formIt(st, api, n.ware, n.style || '') };
   }
 
   /// Етап ще не закладений, і бракує виробів (не грошей — ті прийдуть самі): годинник будови стоїть, доки не донесеш.
@@ -1010,14 +1090,14 @@
     const top = rows[0];
     const sd = b.stages[s.index] || { name: '' };
     const hint = qHint(api, top.q);
-    return {
+    return Object.assign({
       icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + b.icon + '</text>',
       text: 'Толока: на «' + sd.name + '» бракує ' + api.count(n) + ' ' + api.plural(n, 'виробу', 'виробів', 'виробів'),
       sub: wareName(st, top.ware).toLowerCase() + (top.style ? ' «' + styleName(st, top.style) + '»' : '') + ' ×' + api.count(top.lack)
         + (hint ? ' · ' + hint : '') + ' · годинник стоїть, доки не закладеш',
       pct: of > 0 ? ((of - n) / of) * 100 : 0,
       eta: LACK_ETA, tab: 'guild', row: '[data-sec="toloka"] .clkl-needs', prio: 1,
-    };
+    }, goalAct(st, api, rows));
   }
 
   /// Смуга «Далі»: усе для етапу є — підказати закласти (пріоритет 1: годинник будови не цокає, доки не заклав);
@@ -1046,7 +1126,7 @@
       st.toloka = {
         v: null, el: null, cds: [], dirty: false, done: null, unseen: false, noteText: null, busy: false, looked: 0,
         err: null, helpSig: '', helpers: null, rich: null, fest: null,
-        armAt: 0, workEl: null, wn: null, wc: null, wb: null, ws: null, wKey: '', wShown: 0,
+        armAt: 0, workEl: null, wn: null, wc: null, wb: null, ws: null, wKey: '', wShown: 0, went: '', wentFrom: null,
       };
       // Хата друга кличе це з clicker-guild.js (кнопка «🤝 Піднести на толоку»).
       api.tolokaHouse = (st2, body, d) => {
@@ -1091,6 +1171,7 @@
         totals: (t.totals || []).map((g) => ({ ware: g.ware, q: g.q || 1, style: g.style || '', n: g.n || 0, depot: g.depot || 0, have: g.have || 0 })),
         depot: t.depot || 0,
       };
+      wentWhere(st, api);
       stageDone(st, api, prev);
       helpersCame(st, api);
       k.rich = canLay(st, api);

@@ -534,7 +534,7 @@
     if (g) {
       return { icon: g.icon, svg: true, text: g.text, sub: g.sub || '', pct: g.pct,
         eta: g.eta > 0 && Number.isFinite(g.eta) ? '≈ ' + api.span(g.eta) : g.eta === 0 ? 'готово' : '',
-        btn: g.tab || g.row ? 'Глянути' : '', run: () => goToGoal(st, api, g) };
+        btn: g.btn || (g.tab || g.row ? 'Глянути' : ''), run: g.run || (() => goToGoal(st, api, g)) };
     }
     // 9. Нічого термінового — просто ліпи.
     return { icon: '🏺', text: 'Крути коло — ліпиться ' + wareName(st, c.ware).toLowerCase(), sub: 'кожен клік — одна робота' };
@@ -556,7 +556,7 @@
     }
     if (!best) return null;
     return { key: 'goal', icon: best.icon, svg: true, text: best.text, sub: best.sub || '', pct: best.pct,
-      btn: best.tab || best.row ? 'Глянути' : '', run: () => goToGoal(st, api, best) };
+      btn: best.btn || (best.tab || best.row ? 'Глянути' : ''), run: best.run || (() => goToGoal(st, api, best)) };
   }
 
   /// Друга кнопка рядка «Далі» — лише на два щохвилинні випадки, до яких на телефоні від кола 900+ px прокрутки:

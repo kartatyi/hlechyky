@@ -398,7 +398,10 @@ public sealed partial class Clicker
         foreach (var (ik, c) in bag)
             if (ParseItem(ik) is { } it) PutItems(it.Ware, it.Style, it.Quality, c);
         _tDepot.Remove(key);
-        return ActResult.Accept($"📦 Зі складу толоки назад у комору: {n} {WaresWord(n)}");
+        // Що саме повернулось — назвою рядка, а не «27 виробів» (QA-3).
+        var what = BuildingOf(building) is { } b && s >= 0 && s < b.Stages.Length && i >= 0 && i < b.Stages[s].Needs.Length
+            ? $"{NeedWord(b.Stages[s].Needs[i])} ×{n}" : $"{n} {WaresWord(n)}";
+        return ActResult.Accept($"📦 Зі складу толоки назад у комору: {what}");
     }
 
     /// <summary>Своя праця: ручні кліки, поки етап будується (лише поточний закладений; смуга — до повної).</summary>
