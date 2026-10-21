@@ -8,6 +8,10 @@
 
   Дані — NEPTUN через наш сервер. Його умова й наша чесність: посилання на NEPTUN і «це не офіційне оповіщення»
   завжди поруч із мапою, а коли дані застаріли — кажемо «не знаю», а не «тихо».
+
+  Сторінка (21.10, переробка): згори картка статусу — мій район, «Довкола мене» одним рядком, коли оновлено; далі мапа
+  й «🧭 Довкола мене» (web/dovkola.js) поруч, під мапою — «Тривоги зараз» по областях і «У небі зараз». У вузькій
+  колонці (телефон, поруч із Балачками) мапа й «Довкола мене» — вкладками, щоб кожне було на весь екран.
 */
 (() => {
   'use strict';
@@ -15,9 +19,13 @@
   const MAP_URL = '/static/tryvoga-map.json';
   const REGION_KEY = 'tryvogaRegion';
   const HIDE_KEY = 'tryvogaHidden';
+  const TAB_KEY = 'tryvogaTab';      // вкладка у вузькій колонці: map | near
   const THREATS_MS = 10000;
   const KMAX = 14;
   const EARTH_KM = 6371;
+  const CLUSTER_PX = 15;             // значки ближче за стільки пікселів злипаються в гурт із числом
+  const PERM_MS = 2 * 86400000;      // тривога довша за дві доби — окуповане: у переліку останньою й блідою
+  const ALERTS_FOLD = 8;             // «Тривоги зараз»: стільки областей видно одразу, решта — «Усі області»
 
   // Типи цілей NEPTUN: як підписати й яким значком малювати. Кольори — у tryvoga.css (--tv-<тип>).
   const TYPES = {
@@ -31,6 +39,10 @@
     unknown: { label: 'Невідомі', ico: '❔', shape: 'ring' },
   };
   const typeOf = (t) => TYPES[t] || TYPES.unknown;
+  // у гурті головний — найнебезпечніший: його колір і значок
+  const PRIO = { ballistic: 7, missile: 6, mig31k: 5, kab: 4, uav: 3, fpv: 2, recon: 1, unknown: 0 };
+  const SIDES = ['північ', 'пн-схід', 'схід', 'пд-схід', 'південь', 'пд-захід', 'захід', 'пн-захід'];
+  const side = (deg) => SIDES[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 
   let o = null;              // { esc, go, api, me } з app.js
   let data = null;           // /api/tryvoga
@@ -42,6 +54,9 @@
   let pingTimer = 0;
   let built = false;
   let pending = false;       // район щойно змінили, а сервер про нього ще не відповів — старого статусу не показуємо
+  let alertsAll = false;     // «Тривоги зараз» розгорнуто
+  let tab = 'map';           // вкладка у вузькій колонці
+  try { tab = localStorage.getItem(TAB_KEY) === 'near' ? 'near' : 'map'; } catch { /* приватне вікно */ }
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => (o ? o.esc(s) : String(s));
@@ -157,7 +172,7 @@
     if (!document.hidden) {
       try {
         const t = await o.api('GET', '/api/tryvoga/threats');
-        if (t && !t.off) { threats = t; paintThreats(); kick(); if (window.HPivnyk) HPivnyk.update(); }
+        if (t && !t.off) { threats = t; paintThreats(); kick(); if (window.HDovkola) HDovkola.update(); }
       } catch { /* наступного разу */ }
     }
     if (shown) threatTimer = setTimeout(loadThreats, THREATS_MS);
@@ -174,7 +189,7 @@
   function paint() {
     paintBar();
     paintBtn();
-    if (shown) { paintPage(); paintThreats(); if (window.HPivnyk) HPivnyk.update(); }
+    if (shown) { paintPage(); paintThreats(); if (window.HDovkola) HDovkola.update(); }
   }
 
   function paintBar() {
@@ -184,7 +199,8 @@
     const s = status();
     const stale = !off && data.stale;
     // Дані застаріли, а востаннє була тривога — кажемо «не знаю», а не мовчки ховаємо плашку.
-    const show = !off && s.on && !hidden(s);
+    // На самій сторінці мапи плашка не потрібна: те саме каже картка статусу згори, а «Мапа» вела б сюди ж.
+    const show = !off && s.on && !hidden(s) && !shown;
     bar.hidden = !show;
     if (!show) return;
     bar.classList.toggle('lvl-red', !stale && s.level === 'red');
@@ -285,17 +301,17 @@
       const th = N * (lon - P.lam0) * r;
       return [(rho * Math.sin(th) - P.x0) * P.k, (P.y0 - (rho0 - rho * Math.cos(th))) * P.k, th];
     };
-    // і назад: точка сітки → [lat, lon] («📌 Я тут» для Півника, місто району)
+    // і назад: точка сітки → [lat, lon] («📌 Я тут» для «Довкола мене», місто району)
     const unproject = (X, Y) => {
       const a = X / P.k + P.x0, b = rho0 - (P.y0 - Y / P.k);
       const rho = Math.hypot(a, b), th = Math.atan2(a, b);
       return [Math.asin(clamp((C - (rho * N) ** 2) / (2 * N), -1, 1)) / r, P.lam0 + th / (N * r)];
     };
-    const byKey = Object.create(null);
-    for (const u of units) byKey[u.k] = u;
+    const byKey = Object.create(null), count = Object.create(null);   // count — районів в області («3 з 7»)
+    for (const u of units) { byKey[u.k] = u; count[u.o] = (count[u.o] || 0) + 1; }
     const oblasts = Object.create(null);
     for (const ob of raw.oblasts) oblasts[ob.k] = ob;
-    map = { W: raw.w, H: raw.h, units, byKey, oblasts, oblastList: raw.oblasts, outline, oblast, raion, river,
+    map = { W: raw.w, H: raw.h, units, byKey, count, oblasts, oblastList: raw.oblasts, outline, oblast, raion, river,
       cities: raw.cities || [], towns: raw.towns || [], project, unproject, kmUnits: P.k / EARTH_KM };
     return map;
   }
@@ -305,7 +321,7 @@
   // ---------------------------------------------------------------------------------------------
 
   const st = { cv: null, g: null, box: null, cw: 0, ch: 0, dpr: 1, s0: 1, k: 1, ox: 0, oy: 0, raf: 0,
-    ptrs: new Map(), down: null, pinch: null, full: false, hits: [], css: {}, ro: null, hintT: 0 };
+    ptrs: new Map(), down: null, pinch: null, full: false, hits: [], css: {}, ro: null, hintT: 0, lastTap: null };
   const sc = () => st.s0 * st.k;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -452,9 +468,9 @@
     paintMe(g, s);
   }
 
-  /// 🐓 Півник: від якої точки він рахує — крапкою, і його зовнішнє кільце пунктиром.
+  /// «Довкола мене»: від якої точки рахує — крапкою, і його зовнішнє кільце пунктиром.
   function paintMe(g, s) {
-    const me = window.HPivnyk && HPivnyk.me();
+    const me = window.HDovkola && HDovkola.me();
     if (!me) return;
     const [X, Y] = map.project(me.lat, me.lon);
     const x = X * s + st.ox, y = Y * s + st.oy;
@@ -549,20 +565,23 @@
     st.hits = [];
     const list = (threats && threats.threats) || [];
     const now = Date.now();
+    const pts = [];
     for (const t of list) {
       if (t.areaOnly) continue;            // «десь в області» — центр області, а не місце: лише в переліку
       const [X, Y, tilt] = map.project(t.lat, t.lon);
       const x = X * s + st.ox, y = Y * s + st.oy;
       if (x < -60 || y < -60 || x > st.cw + 60 || y > st.ch + 60) continue;
-      const meta = typeOf(t.type);
-      const color = st.css['t-' + (TYPES[t.type] ? t.type : 'unknown')];
       const old = now - (Date.parse(t.updated) || now) > 15 * 60000;
-      g.globalAlpha = t.advisory || old ? 0.5 : t.lifecycle === 'uncertain' ? 0.8 : 1;
+      pts.push({ t, x, y, tilt, color: st.css['t-' + (TYPES[t.type] ? t.type : 'unknown')],
+        alpha: t.advisory || old ? 0.5 : t.lifecycle === 'uncertain' ? 0.8 : 1 });
+    }
+    // спершу сліди й кола похибки — під усіма значками, і в гурті теж: видно, звідки кожна летить
+    for (const { t, x, y, color, alpha } of pts) {
       if (t.trail && t.trail.length) {
         g.strokeStyle = color;
         g.lineWidth = 1.5;
         g.setLineDash([]);
-        g.globalAlpha *= 0.55;
+        g.globalAlpha = alpha * 0.55;
         g.beginPath();
         t.trail.forEach(([la, lo], i) => {
           const [tx, ty] = map.project(la, lo);
@@ -570,7 +589,6 @@
         });
         g.lineTo(x, y);
         g.stroke();
-        g.globalAlpha /= 0.55;
       }
       if (t.quality !== 'confirmed' && t.unc > 0) {
         const r = t.unc * map.kmUnits * s;
@@ -578,14 +596,32 @@
           g.setLineDash([3, 3]);
           g.strokeStyle = color;
           g.lineWidth = 1;
-          g.globalAlpha *= 0.6;
+          g.globalAlpha = alpha * 0.6;
           g.beginPath();
           g.arc(x, y, r, 0, Math.PI * 2);
           g.stroke();
           g.setLineDash([]);
-          g.globalAlpha /= 0.6;
         }
       }
+    }
+    g.globalAlpha = 1;
+    // Значки, що злиплися б, — гуртом із числом. Жадібно від найнебезпечнішої: вона центр гурту і дає колір.
+    pts.sort((a, b) => (PRIO[b.t.type] || 0) - (PRIO[a.t.type] || 0));
+    const groups = [];
+    for (const p of pts) {
+      const gr = groups.find((q) => Math.hypot(q.x - p.x, q.y - p.y) < CLUSTER_PX);
+      if (gr) gr.m.push(p); else groups.push({ x: p.x, y: p.y, m: [p] });
+    }
+    for (const gr of groups) {
+      if (gr.m.length > 1) {
+        const n = gr.m.reduce((a, p) => a + (p.t.count > 1 ? p.t.count : 1), 0);
+        bunch(g, gr.x, gr.y, gr.m[0].color, n);
+        st.hits.push({ x: gr.x, y: gr.y, ts: gr.m.map((p) => p.t) });
+        continue;
+      }
+      const { t, x, y, tilt, color, alpha } = gr.m[0];
+      const meta = typeOf(t.type);
+      g.globalAlpha = alpha;
       g.save();
       g.translate(x, y);
       const rot = t.heading == null ? 0 : (t.heading * Math.PI) / 180 - tilt;
@@ -595,6 +631,23 @@
       g.globalAlpha = 1;
       st.hits.push({ x, y, t });
     }
+  }
+
+  /// Гурт: кружок кольору головної цілі й скільки їх разом (з групами NEPTUN).
+  function bunch(g, x, y, color, n) {
+    g.beginPath();
+    g.arc(x, y, n > 9 ? 11.5 : 10, 0, Math.PI * 2);
+    g.fillStyle = color;
+    g.fill();
+    g.lineWidth = 2;
+    g.strokeStyle = st.css.halo;
+    g.stroke();
+    g.font = 'bold 11px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = '#10180f';
+    g.fillText(String(n), x, y + 0.5);
+    g.textAlign = 'left';
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -607,13 +660,16 @@
   }
 
   function onDown(e) {
-    st.cv.setPointerCapture(e.pointerId);
+    try { st.cv.setPointerCapture(e.pointerId); } catch { /* вказівник уже відпущено */ }
     const [x, y] = local(e);
     st.ptrs.set(e.pointerId, { x, y });
-    if (st.ptrs.size === 1) st.down = { x, y, ox: st.ox, oy: st.oy, moved: false };
+    // coop: палець на сторінці (не на весь екран) — один гортає сторінку, мапу рухають двома, як у вбудованих мапах
+    if (st.ptrs.size === 1) st.down = { x, y, ox: st.ox, oy: st.oy, moved: false, coop: e.pointerType === 'touch' && !st.full };
     else if (st.ptrs.size === 2) {
       const [a, b] = [...st.ptrs.values()];
-      st.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: st.k, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+      const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+      // точка мапи під серединою щипка — щоб вона й далі лишалась між пальцями (щипок і зсув разом)
+      st.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: st.k, wx: (cx - st.ox) / sc(), wy: (cy - st.oy) / sc() };
       if (st.down) st.down.moved = true;
     }
   }
@@ -623,13 +679,22 @@
     st.ptrs.set(e.pointerId, { x, y });
     if (st.pinch && st.ptrs.size >= 2) {
       const [a, b] = [...st.ptrs.values()];
-      const f = (st.pinch.k * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, st.pinch.d)) / st.k;
-      zoomAt(st.pinch.cx, st.pinch.cy, f);
+      st.k = clamp(st.pinch.k * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, st.pinch.d), 1, KMAX);
+      st.ox = (a.x + b.x) / 2 - st.pinch.wx * sc();
+      st.oy = (a.y + b.y) / 2 - st.pinch.wy * sc();
+      clampView();
+      hidePop();
+      kick();
       return;
     }
     const dn = st.down;
     if (!dn) return;
     if (!dn.moved && Math.hypot(x - dn.x, y - dn.y) < 5) return;
+    if (dn.coop) {
+      if (!dn.moved) hint('Двома пальцями — рухати й наближати, або ⤢ на весь екран');
+      dn.moved = true;
+      return;
+    }
     dn.moved = true;
     st.ox = dn.ox + (x - dn.x);
     st.oy = dn.oy + (y - dn.y);
@@ -641,29 +706,45 @@
     const dn = st.down;
     st.ptrs.delete(e.pointerId);
     if (st.ptrs.size < 2) st.pinch = null;
-    if (st.ptrs.size) return;
+    if (st.ptrs.size) {
+      // щипок скінчився, а один палець лишився — далі рухаємо від того, де мапа зараз, без стрибка
+      const [p] = [...st.ptrs.values()];
+      st.down = { x: p.x, y: p.y, ox: st.ox, oy: st.oy, moved: true, coop: !!(dn && dn.coop) };
+      return;
+    }
     st.down = null;
     if (dn && !dn.moved && e.type === 'pointerup') tap(dn.x, dn.y);
   }
   function onWheel(e) {
     // На сторінці колесо гортає сторінку; наближає — на весь екран або з Ctrl (як у вбудованих мапах).
-    if (!st.full && !e.ctrlKey) {
-      const h = st.box.querySelector('.tv-hint');
-      h.hidden = false;
-      clearTimeout(st.hintT);
-      st.hintT = setTimeout(() => { h.hidden = true; }, 1300);
-      return;
-    }
+    if (!st.full && !e.ctrlKey) { hint('Наблизити — Ctrl + колесо, подвійний клік або ⤢'); return; }
     e.preventDefault();
     const [x, y] = local(e);
     zoomAt(x, y, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0018)));
   }
+  function hint(text) {
+    const h = st.box.querySelector('.tv-hint');
+    h.textContent = text;
+    h.hidden = false;
+    clearTimeout(st.hintT);
+    st.hintT = setTimeout(() => { h.hidden = true; }, 1600);
+  }
 
   function tap(x, y) {
-    let best = null, bd = 18;
+    // подвійний тап чи клік — наближення вдвічі (свого подвійного зуму браузер тут не робить: touch-action)
+    const now = Date.now(), lt = st.lastTap;
+    st.lastTap = { x, y, t: now };
+    if (lt && now - lt.t < 330 && Math.hypot(lt.x - x, lt.y - y) < 30) { st.lastTap = null; hidePop(); zoomAt(x, y, 2); return; }
+    let best = null, bd = 20;              // гурт ловимо до 20 px, одиночну ціль — до 18
     for (const h of st.hits) {
       const dd = Math.hypot(h.x - x, h.y - y);
-      if (dd < bd) { bd = dd; best = h; }
+      if (dd < bd && (h.ts || dd < 18)) { bd = dd; best = h; }
+    }
+    if (best && best.ts) {
+      // гурт: наближаємо, поки є куди; далі — перелік
+      if (st.k < KMAX) { hidePop(); zoomAt(best.x, best.y, 2.5); return; }
+      showPop(x, y, bunchHtml(best.ts));
+      return;
     }
     if (best) { showPop(x, y, targetHtml(best.t)); return; }
     const s = sc(), d = st.dpr, g = st.g;
@@ -698,13 +779,25 @@
     const where = u.k === u.o ? '' : ' · ' + esc(oblastShort(u.o)) + (u.o === 'м. київ' || u.o === 'севастополь' ? '' : ' обл.');
     return `<b>${esc(u.n)}</b>${where}<br>${st8}`
       + (isMine ? '<div class="tv-muted tv-small">📍 це твій район</div>' : '<button type="button" class="tv-mine">📍 Мій район</button>')
-      + (window.HPivnyk ? ' <button type="button" class="tv-here" title="Півник рахуватиме від цієї точки (лише в цьому браузері)">📌 Я тут</button>' : '');
+      + (window.HDovkola ? ' <button type="button" class="tv-here" title="«Довкола мене» рахуватиме від цієї точки (лише в цьому браузері)">📌 Я тут</button>' : '');
+  }
+
+  /// Гурт на найбільшому наближенні: хто в ньому.
+  function bunchHtml(ts) {
+    const n = ts.reduce((a, t) => a + (t.count > 1 ? t.count : 1), 0);
+    const rows = ts.slice(0, 8).map((t) => {
+      const m = typeOf(t.type);
+      return `${m.ico} ${esc(t.title || m.label)}${t.count > 1 ? ' ×' + t.count : ''}${t.locality ? ' · ' + esc(t.locality) : ''}`;
+    });
+    if (ts.length > 8) rows.push(`<span class="tv-muted">і ще ${ts.length - 8}</span>`);
+    return `<b>${plural(n, 'ціль', 'цілі', 'цілей')} поруч</b><br>${rows.join('<br>')}`;
   }
 
   function targetHtml(t) {
     const m = typeOf(t.type);
     const bits = [];
     if (t.count > 1) bits.push('група ×' + t.count);
+    if (t.heading != null) bits.push('курс на ' + side(t.heading));
     if (t.speed) bits.push(Math.round(t.speed) + ' км/год');
     if (t.sources) bits.push(plural(t.sources, 'підтвердження', 'підтвердження', 'підтверджень'));
     if (t.quality && t.quality !== 'confirmed') bits.push('місце приблизне' + (t.unc ? ', ±' + Math.round(t.unc) + ' км' : ''));
@@ -751,42 +844,66 @@
     if (!root || built) return;
     built = true;
     root.innerHTML = `
-      <section class="panel tv-me">
-        <div class="tv-state" id="tvState"></div>
-        <label class="tv-pick"><span>📍 Мій район</span><select id="tvRegion" aria-label="Мій район"><option>…</option></select></label>
-      </section>
-      <div class="tv-duo">
-      <section class="panel tv-mappanel">
-        <div class="tv-mapwrap">
-          <div class="tv-box">
-            <canvas class="tv-cv" aria-label="Мапа тривог по районах і цілей у небі"></canvas>
-            <div class="tv-pop" role="dialog" hidden></div>
-            <div class="tv-hint" hidden>Наблизити — Ctrl + колесо або ⤢</div>
-            <div class="tv-load">Мапа вантажиться…</div>
-          </div>
-          <div class="tv-ctl">
-            <button type="button" class="icon tv-zin" title="Наблизити" aria-label="Наблизити">＋</button>
-            <button type="button" class="icon tv-zout" title="Віддалити" aria-label="Віддалити">－</button>
-            <button type="button" class="icon tv-home" title="Уся Україна" aria-label="Уся Україна">⌂</button>
-            <button type="button" class="icon tv-me-btn" title="Мій район і область" aria-label="Мій район і область">📍</button>
-            <button type="button" class="icon tv-fullbtn" title="На весь екран" aria-label="На весь екран">⤢</button>
+      <section class="panel tv-hero" id="tvHero">
+        <div class="tv-hero-top">
+          <div class="tv-state" id="tvState"></div>
+          <div class="tv-pick">
+            <label for="tvRegion">Мій район</label>
+            <div class="tv-pickrow">
+              <select id="tvRegion"><option>…</option></select>
+              <button type="button" class="tv-locate" title="Знайти мій район за місцем (координати нікуди не йдуть)">📡 За місцем</button>
+            </div>
+            <p class="tv-pickmsg" role="status" hidden></p>
           </div>
         </div>
-        <div class="tv-legend">
-          <span><i class="sw red"></i>ракетна загроза</span><span><i class="sw yellow"></i>загроза дронів</span>
-          <span><i class="gl uav"></i>БпЛА</span><span><i class="gl missile"></i>ракети</span><span><i class="gl kab"></i>КАБ</span>
-          <span><i class="gl ring"></i>розвідка й інше</span><span><i class="ci"></i>місце приблизне</span>
-        </div>
+        <button type="button" class="tv-near" id="tvNear" hidden></button>
+        <div class="tv-fresh" id="tvFresh"></div>
       </section>
-      <section class="panel tv-pivnyk" id="tvPivnyk"></section>
+      <div class="tv-tabs" role="tablist" aria-label="Мапа чи довкола мене">
+        <button type="button" role="tab" data-tab="map" aria-controls="tvMapPanel">🗺 Мапа</button>
+        <button type="button" role="tab" data-tab="near" aria-controls="tvDovkola">🧭 Довкола мене</button>
       </div>
-      <section class="panel tv-sky">
-        <h2>У небі зараз <span class="count" id="tvSkyAt"></span></h2>
-        <div id="tvSky" class="tv-skybody"><p class="tv-muted">Вантажу…</p></div>
-      </section>
+      <div class="tv-grid" data-tab="map">
+        <div class="tv-col tv-col-a">
+          <section class="panel tv-mappanel" id="tvMapPanel">
+            <div class="tv-mapwrap">
+              <div class="tv-box">
+                <canvas class="tv-cv" aria-label="Мапа тривог по районах і цілей у небі"></canvas>
+                <div class="tv-pop" role="dialog" hidden></div>
+                <div class="tv-hint" hidden></div>
+                <div class="tv-fullstate" hidden></div>
+                <div class="tv-load">Мапа вантажиться…</div>
+              </div>
+              <div class="tv-ctl">
+                <button type="button" class="icon tv-zin" title="Наблизити" aria-label="Наблизити">＋</button>
+                <button type="button" class="icon tv-zout" title="Віддалити" aria-label="Віддалити">－</button>
+                <button type="button" class="icon tv-home" title="Уся Україна" aria-label="Уся Україна">⌂</button>
+                <button type="button" class="icon tv-me-btn" title="Мій район і область" aria-label="Мій район і область">📍</button>
+                <button type="button" class="icon tv-fullbtn" title="На весь екран" aria-label="На весь екран">⤢</button>
+              </div>
+            </div>
+            <div class="tv-legend">
+              <span><i class="sw red"></i>ракетна загроза</span><span><i class="sw yellow"></i>загроза дронів</span>
+              <span><i class="gl uav"></i>БпЛА</span><span><i class="gl missile"></i>ракети</span><span><i class="gl kab"></i>КАБ</span>
+              <span><i class="gl ring"></i>розвідка й інше</span><span><i class="cl">3</i>кілька цілей поруч</span>
+              <span><i class="ci"></i>місце приблизне</span>
+            </div>
+          </section>
+          <section class="panel tv-alerts">
+            <h2>Тривоги зараз <span class="count" id="tvAlertsN"></span></h2>
+            <div id="tvAlerts"><p class="tv-muted">Вантажу…</p></div>
+          </section>
+          <section class="panel tv-sky">
+            <h2>У небі зараз <span class="count" id="tvSkyAt"></span></h2>
+            <div id="tvSky" class="tv-skybody"><p class="tv-muted">Вантажу…</p></div>
+          </section>
+        </div>
+        <div class="tv-col tv-col-b">
+          <section class="panel tv-dovkola" id="tvDovkola"></section>
+        </div>
+      </div>
       <p class="tv-note">⚠ Це не офіційне оповіщення: дані можуть запізнюватись чи бути неточними. Орієнтуйся на сирену
-        й застосунок «Повітряна тривога». Дані: <a href="https://neptun.in.ua/" target="_blank" rel="noopener">Карта повітряних тривог — NEPTUN</a>.
-        <span id="tvAt"></span></p>`;
+        й застосунок «Повітряна тривога». Дані: <a href="https://neptun.in.ua/" target="_blank" rel="noopener">Карта повітряних тривог — NEPTUN</a>.</p>`;
     const box = root.querySelector('.tv-box');
     st.box = box;
     st.cv = root.querySelector('.tv-cv');
@@ -796,6 +913,8 @@
     st.cv.addEventListener('pointerup', onUp);
     st.cv.addEventListener('pointercancel', onUp);
     st.cv.addEventListener('wheel', onWheel, { passive: false });
+    // двома пальцями — наша мапа, а не прокрутка сторінки (одним гортається, touch-action: pan-y)
+    st.cv.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
     const zc = (f) => zoomAt(st.cw / 2, st.ch / 2, f);
     root.querySelector('.tv-zin').onclick = () => zc(1.6);
     root.querySelector('.tv-zout').onclick = () => zc(1 / 1.6);
@@ -803,7 +922,7 @@
     root.querySelector('.tv-me-btn').onclick = focusMine;
     root.querySelector('.tv-fullbtn').onclick = () => setFull(!st.full);
     box.querySelector('.tv-pop').addEventListener('click', (e) => {
-      if (e.target.closest('.tv-here') && popAt && window.HPivnyk) { HPivnyk.setHere(popAt[0], popAt[1]); hidePop(); return; }
+      if (e.target.closest('.tv-here') && popAt && window.HDovkola) { hidePop(); HDovkola.setHere(popAt[0], popAt[1]); return; }
       if (!e.target.closest('.tv-mine') || !popUnit) return;
       const u = popUnit;
       hidePop();
@@ -811,25 +930,44 @@
     });
     $('tvRegion').addEventListener('change', (e) => {
       const u = map && map.byKey[e.target.value];
-      if (u) { choose(u); focusMine(); }
+      if (u) { pickMsg(''); choose(u); focusMine(); }
+    });
+    root.querySelector('.tv-locate').onclick = locate;
+    root.querySelector('.tv-tabs').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-tab]');
+      if (b) setTab(b.dataset.tab);
+    });
+    $('tvNear').addEventListener('click', () => {
+      if (narrow()) { setTab('near'); root.querySelector('.tv-tabs').scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+      else $('tvDovkola').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+    $('tvAlerts').addEventListener('click', (e) => {
+      if (e.target.closest('.tv-more')) { alertsAll = !alertsAll; paintAlerts(); return; }
+      const b = e.target.closest('[data-ob]');
+      if (b) focusOblast(b.dataset.ob);
     });
     $('tvSky').addEventListener('click', (e) => {
       const ob = e.target.closest('[data-ob]');
-      if (ob && map) { const bb = oblastBox(ob.dataset.ob); if (bb) fit(bb, 6); st.box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
+      if (ob) { focusOblast(ob.dataset.ob); return; }
       const id = e.target.closest('[data-id]');
       if (id && map) focusTarget(id.dataset.id);
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && st.full) setFull(false); });
     st.ro = new ResizeObserver(() => resize());
     st.ro.observe(box);
-    if (window.HPivnyk) {
-      HPivnyk.mount($('tvPivnyk'), {
+    if (window.HDovkola) {
+      HDovkola.mount($('tvDovkola'), {
         esc, types: TYPES, glyph, kick, focus: focusTarget,
         map: () => map, threats: () => threats, region: cur,
         alarm: () => ({ off: !data || !!data.off, stale: !!(data && data.stale), on: status().on, level: status().level }),
         oblastName: () => oblastName(cur().oblast),
+        near: $('tvNear'), narrow, tab: setTab,
       });
-    } else $('tvPivnyk').remove();
+    } else {
+      $('tvDovkola').remove();
+      root.querySelector('.tv-tabs').remove();
+    }
+    setTab(tab);
     loadMap().then(() => {
       box.querySelector('.tv-load').remove();
       cssColors();
@@ -838,8 +976,27 @@
       paintThreats();
       if (status().on) focusMine();
       paintPage();
-      if (window.HPivnyk) HPivnyk.update();
+      if (window.HDovkola) HDovkola.update();
     }).catch(() => { box.querySelector('.tv-load').textContent = 'Мапа не завантажилась — онови сторінку.'; });
+  }
+
+  /// Вузька колонка (телефон чи поруч із Балачками): мапа й «Довкола мене» — вкладками. Вирішує CSS (@container).
+  function narrow() {
+    const tb = $('tryvoga') && $('tryvoga').querySelector('.tv-tabs');
+    return !!tb && getComputedStyle(tb).display !== 'none';
+  }
+  function setTab(t) {
+    tab = t === 'near' && window.HDovkola ? 'near' : 'map';
+    try { localStorage.setItem(TAB_KEY, tab); } catch { /* приватне вікно */ }
+    const root = $('tryvoga');
+    const grid = root && root.querySelector('.tv-grid');
+    if (!grid) return;
+    grid.dataset.tab = tab;
+    for (const b of root.querySelectorAll('.tv-tabs [data-tab]')) b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false');
+    hidePop();
+    // мапа щойно з'явилась — розмір беремо зараз, а не з наступного кадру: одразу за цим може йти fit()
+    if (tab === 'map') resize();
+    else if (window.HDovkola) HDovkola.update();
   }
 
   /// Типовий район зветься так, як його назвав сервер («Житомир»), а не «Житомирський район».
@@ -850,7 +1007,8 @@
   }
 
   function focusTarget(id) {
-    const h = st.hits.find((x) => x.t.id === id);
+    if (narrow()) setTab('map');
+    const h = st.hits.find((x) => x.t && x.t.id === id);
     const t = h ? h.t : ((threats && threats.threats) || []).find((x) => x.id === id);
     if (!t) return;
     const [X, Y] = map.project(t.lat, t.lon);
@@ -858,9 +1016,60 @@
     fit([X - r, Y - r, X + r, Y + r], 5);
     st.box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     requestAnimationFrame(() => {
-      const hh = st.hits.find((x) => x.t.id === id);
-      if (hh) showPop(hh.x, hh.y, targetHtml(hh.t));
+      // і на 5× дві цілі в одному селі можуть лишитись гуртом — тоді підказка над гуртом
+      const hh = st.hits.find((x) => (x.t ? x.t.id === id : x.ts.some((y) => y.id === id)));
+      if (hh) showPop(hh.x, hh.y, targetHtml(t));
     });
+  }
+
+  function focusOblast(ok) {
+    if (!map) return;
+    if (narrow()) setTab('map');
+    const bb = oblastBox(ok);
+    if (bb) fit(bb, 6);
+    st.box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  /// «📡 За місцем»: GPS один раз → район, у який лягає точка. Координати лишаються тут, на сервер іде лише район.
+  function locate() {
+    const btn = $('tryvoga').querySelector('.tv-locate');
+    if (!navigator.geolocation) { pickMsg('Цей браузер не дає місце — обери район у списку.'); return; }
+    btn.disabled = true;
+    pickMsg('Шукаю, де ти…');
+    navigator.geolocation.getCurrentPosition((p) => {
+      loadMap().then(() => {
+        btn.disabled = false;
+        const u = unitAt(p.coords.latitude, p.coords.longitude);
+        if (!u) { pickMsg('За цим місцем району в Україні не знайшов — обери в списку.'); return; }
+        choose(u);
+        focusMine();
+        pickMsg('Твій район: ' + u.n + '.', 5000);
+      }).catch(() => { btn.disabled = false; pickMsg('Мапа не завантажилась — онови сторінку.'); });
+    }, (e) => {
+      btn.disabled = false;
+      pickMsg(e.code === 1 ? 'Браузер не дав місце — дозволь «Місцезнаходження» або обери район у списку.'
+        : 'Не вдалося визначити місце — обери район у списку.');
+    }, { enableHighAccuracy: false, maximumAge: 600000, timeout: 20000 });
+  }
+  let pickT = 0;
+  function pickMsg(text, ms) {
+    const p = $('tryvoga') && $('tryvoga').querySelector('.tv-pickmsg');
+    if (!p) return;
+    clearTimeout(pickT);
+    p.textContent = text || '';
+    p.hidden = !text;
+    if (text && ms) pickT = setTimeout(() => { p.hidden = true; }, ms);
+  }
+  let probe = null;
+  function unitAt(lat, lon) {
+    const [X, Y] = map.project(lat, lon);
+    probe = probe || document.createElement('canvas').getContext('2d');
+    for (const u of map.units) {
+      const b = u.bb;
+      if (X < b[0] || X > b[2] || Y < b[1] || Y > b[3]) continue;
+      if (probe.isPointInPath(u.p, X, Y, 'evenodd')) return u;
+    }
+    return null;
   }
 
   function fillSelect() {
@@ -876,57 +1085,128 @@
     sel.value = cur().key;
   }
 
+  /// Картка згори: тривога в моєму районі — головне, і вся картка кольором рівня.
   function paintPage() {
     const box = $('tvState');
     if (!box) return;
     const s = status();
     const r = cur();
     const off = !data || data.off;
-    let html;
-    if (off) html = '<span class="tv-big">🛡</span><div><b>Тривоги зараз не показуємо</b><div class="tv-muted">Сервер їх не опитує.</div></div>';
+    let html, cls = '', chip = '';
+    if (off) html = '<span class="tv-big">🛡</span><div><b>Тривоги зараз не показуємо</b><div class="tv-sub">Сервер їх не опитує.</div></div>';
     else if (pending) html = `<span class="tv-big">⏳</span><div><b>Перевіряю</b> — ${esc(r.name)}</div>`;
     else if (data.stale) {
       const since = Date.parse(data.at || '');
-      html = `<span class="tv-big">❔</span><div><b>Не знаю, чи є тривога</b> — ${esc(r.name)}<div class="tv-muted">`
+      cls = 'stale';
+      chip = `❔ ${r.name}: дані застаріли`;
+      html = `<span class="tv-big">❔</span><div><b>Не знаю, чи є тривога</b> — ${esc(r.name)}<div class="tv-sub">`
         + (since ? `Дані не оновлюються з ${esc(kyiv(new Date(since)))}.` : 'Дані про тривоги ще не надійшли.')
         + ' Дивись застосунок «Повітряна тривога».</div></div>';
-    }
-    else if (s.on) {
+    } else if (s.on) {
       const w = what(s.level, s.reasons);
-      html = `<span class="tv-big">🚨</span><div><b>Повітряна тривога</b>${w ? ' · ' + esc(w) : ''}<div class="tv-muted">${esc(r.name)} · ${esc(sinceText(s.since))} · ${esc(lasts(Date.now() - Date.parse(s.since)))}</div></div>`;
-    } else html = `<span class="tv-big">🟢</span><div><b>Тихо</b> — ${esc(r.name)}<div class="tv-muted">Тривоги в районі зараз нема.</div></div>`;
-    box.className = 'tv-state' + (off || pending ? '' : data.stale ? ' stale' : s.on ? ' on ' + s.level : ' calm');
+      const long = lasts(Date.now() - Date.parse(s.since));
+      cls = 'on ' + (s.level === 'yellow' ? 'yellow' : 'red');
+      chip = `🚨 ${r.name}: тривога · ${long}`;
+      html = `<span class="tv-big">🚨</span><div><b>Повітряна тривога</b>${w ? ' · ' + esc(w) : ''}`
+        + `<div class="tv-sub">${esc(r.name)} · ${esc(sinceText(s.since))} · ${esc(long)}</div></div>`;
+    } else {
+      cls = 'calm';
+      chip = `🟢 ${r.name}: тихо`;
+      html = `<span class="tv-big">🟢</span><div><b>Тихо</b> — ${esc(r.name)}<div class="tv-sub">Тривоги в районі зараз нема.</div></div>`;
+    }
+    $('tvHero').className = 'panel tv-hero' + (cls ? ' ' + cls : '');
     box.innerHTML = html;
     const sel = $('tvRegion');
     if (sel && map && sel.value !== r.key) sel.value = r.key;
-    const at = $('tvAt');
-    if (at && data && data.at) at.textContent = 'Оновлено о ' + kyiv(new Date(Date.parse(data.at)));
+    const at = data && Date.parse(data.at || '');
+    $('tvFresh').innerHTML = (at ? `Оновлено о ${esc(kyiv(new Date(at)))} · ` : '')
+      + 'дані <a href="https://neptun.in.ua/" target="_blank" rel="noopener">NEPTUN</a> · це не офіційне оповіщення';
+    // на весь екран картки не видно — стан коротко в куті мапи
+    const fs = st.box && st.box.querySelector('.tv-fullstate');
+    if (fs) { fs.textContent = chip; fs.className = 'tv-fullstate ' + cls; fs.hidden = !chip; }
+    paintAlerts();
     kick();
+  }
+
+  /// «Тривоги зараз»: по областях — рівень, скільки районів, відколи. Моя область перша, окуповані — в кінці.
+  function paintAlerts() {
+    const box = $('tvAlerts');
+    if (!box) return;
+    const n = $('tvAlertsN');
+    n.textContent = '';
+    if (!data || data.off) { box.innerHTML = '<p class="tv-muted">Тривоги зараз не показуємо.</p>'; return; }
+    if (data.stale) { box.innerHTML = '<p class="tv-muted">Дані про тривоги застаріли — не знаю, де тривога зараз.</p>'; return; }
+    if (!map) { box.innerHTML = '<p class="tv-muted">Вантажу…</p>'; return; }
+    const per = new Map();
+    for (const a of data.alerts || []) {
+      const u = a.whole ? null : map.byKey[a.key];
+      const ok = a.whole ? a.key : u && u.o;
+      if (!ok || !map.oblasts[ok]) continue;
+      let ob = per.get(ok);
+      if (!ob) per.set(ok, ob = { ok, lvl: null, raions: new Set(), whole: false, since: '', reasons: [] });
+      if ((RANK[a.level] || 2) > (RANK[ob.lvl] || 0)) ob.lvl = a.level === 'yellow' ? 'yellow' : 'red';
+      if (a.whole) ob.whole = true; else ob.raions.add(a.key);
+      if (a.since && (!ob.since || Date.parse(a.since) < Date.parse(ob.since))) ob.since = a.since;
+      for (const x of a.reasons || []) ob.reasons.push(x);
+    }
+    const now = Date.now();
+    const myOb = cur().oblast;
+    const rows = [...per.values()].map((ob) => {
+      const total = map.count[ob.ok] || 0;
+      const t = Date.parse(ob.since) || now;
+      return { ...ob, total, all: ob.whole || (total > 0 && ob.raions.size >= total), t, perm: now - t > PERM_MS, mine: ob.ok === myOb };
+    }).sort((a, b) => (b.mine - a.mine) || (a.perm - b.perm) || ((RANK[b.lvl] || 0) - (RANK[a.lvl] || 0))
+      || (b.all - a.all) || (b.raions.size - a.raions.size) || (a.t - b.t));
+    const live = rows.filter((r) => !r.perm).length;
+    n.textContent = live ? plural(live, 'область', 'області', 'областей') : '';
+    const li = rows.map((r) => {
+      const extent = r.total <= 1 ? '' : r.all ? 'уся область' : `${r.raions.size} з ${r.total} районів`;
+      const lvl = what(r.lvl, r.reasons) || (r.lvl === 'yellow' ? 'загроза дронів' : 'тривога');
+      const when = r.perm ? sinceText(r.since) : `${sinceText(r.since)} · ${lasts(now - r.t)}`;
+      return `<li><button type="button" class="tv-al${r.perm ? ' perm' : ''}${r.mine ? ' mine' : ''}" data-ob="${esc(r.ok)}">`
+        + `<i class="sw ${r.lvl}"></i><span class="tv-al-n">${esc(oblastShort(r.ok) || oblastName(r.ok))}`
+        + `${r.mine ? ' <span class="tv-al-me">📍 твоя</span>' : ''}</span><span class="tv-al-t">${esc(when)}</span>`
+        + `<span class="tv-al-d">${esc([extent, lvl].filter(Boolean).join(' · '))}</span></button></li>`;
+    });
+    // моя область без тривоги — теж рядком: видно, що її не пропустили
+    if (myOb && !per.has(myOb) && map.oblasts[myOb]) {
+      li.unshift(`<li class="tv-al-calm"><span class="tv-ok">●</span> ${esc(oblastShort(myOb) || oblastName(myOb))} <span class="tv-al-me">📍 твоя</span> — тривоги нема</li>`);
+    }
+    if (!li.length) { box.innerHTML = '<p class="tv-ok">Тривог зараз нема.</p>'; return; }
+    // на телефоні 15–20 областей — кілька екранів; решта — за кнопкою
+    const fold = li.length > ALERTS_FOLD + 1;
+    box.innerHTML = `<ul class="tv-als">${(fold && !alertsAll ? li.slice(0, ALERTS_FOLD) : li).join('')}</ul>`
+      + (fold ? `<button type="button" class="ghost tv-more">${alertsAll ? 'Згорнути' : 'Усі області · ще ' + (li.length - ALERTS_FOLD)}</button>` : '');
   }
 
   function paintThreats() {
     const body = $('tvSky');
     if (!body) return;
     const list = (threats && threats.threats) || [];
-    $('tvSkyAt').textContent = threats && threats.at ? kyiv(new Date(Date.parse(threats.at))) : '';
+    $('tvSkyAt').textContent = threats && threats.at ? 'оновлено ' + kyiv(new Date(Date.parse(threats.at))) : '';
     if (threats && threats.stale) { body.innerHTML = '<p class="tv-muted">Дані про цілі застаріли — NEPTUN зараз не відповідає.</p>'; return; }
-    if (!list.length) { body.innerHTML = '<p class="tv-muted">Нічого не видно. Добре.</p>'; return; }
+    if (!list.length) { body.innerHTML = '<p class="tv-muted">Нічого не видно.</p>'; return; }
     const n = (t) => (t.count > 1 ? t.count : 1);
     const byType = {};
     for (const t of list) { const k = TYPES[t.type] ? t.type : 'unknown'; byType[k] = (byType[k] || 0) + n(t); }
     const chips = Object.keys(TYPES).filter((k) => byType[k])
       .map((k) => `<span class="tv-chip"><i class="gl ${TYPES[k].shape === 'ring' ? 'ring' : k}"></i>${TYPES[k].label} <b>${byType[k]}</b></span>`).join('');
     const myOb = oblastName(cur().oblast);
+    const obKey = (name) => (map ? (map.oblastList.find((x) => x.n === name) || {}).k : '') || '';
     const mine = list.filter((t) => t.region && t.region === myOb)
       .sort((a, b) => (Date.parse(b.updated) || 0) - (Date.parse(a.updated) || 0));
+    // рядок: що, де (місто без повтору області — вона в заголовку), куди летить, коли бачили
     const row = (t) => {
       const m = typeOf(t.type);
-      const where = t.areaOnly ? 'десь в області' : '';
-      return `<li data-id="${esc(t.id)}"><span class="tv-ico">${m.ico}</span><span class="tv-t">${esc(t.text || t.title || m.label)}${t.count > 1 ? ' <b>×' + t.count + '</b>' : ''}${where ? ' <span class="tv-muted">' + where + '</span>' : ''}</span><span class="tv-ago">${esc(ago(t.updated))}</span></li>`;
+      const where = t.areaOnly ? '<span class="tv-muted">десь в області</span>' : t.locality ? esc(t.locality) : '';
+      const dir = t.heading != null && !t.areaOnly ? ` <span class="tv-muted">→ ${side(t.heading)}</span>` : '';
+      const key = t.areaOnly ? `data-ob="${esc(obKey(t.region))}"` : `data-id="${esc(t.id)}"`;
+      return `<li><button type="button" class="tv-row" ${key}><span class="tv-ico" aria-hidden="true">${m.ico}</span>`
+        + `<span class="tv-t">${esc(t.title || m.label)}${t.count > 1 ? ' <b>×' + t.count + '</b>' : ''}${where ? ' · ' + where : ''}${dir}</span>`
+        + `<span class="tv-ago">${esc(ago(t.updated))}</span></button></li>`;
     };
     const perOb = {};
     for (const t of list) if (t.region) perOb[t.region] = (perOb[t.region] || 0) + n(t);
-    const obKey = (name) => (map ? (map.oblastList.find((x) => x.n === name) || {}).k : '') || '';
     const obs = Object.entries(perOb).sort((a, b) => b[1] - a[1])
       .map(([name, c]) => `<button type="button" class="tv-ob" data-ob="${esc(obKey(name))}">${esc(name.replace(' область', ''))} <b>${c}</b></button>`).join('');
     body.innerHTML = `<div class="tv-chips">${chips}</div>`
@@ -941,10 +1221,11 @@
   function show() {
     shown = true;
     buildPage();
+    paintBar();
     paintPage();
     paintThreats();
     if (map) requestAnimationFrame(resize);
-    if (window.HPivnyk) HPivnyk.show();
+    if (window.HDovkola) HDovkola.show();
     loadThreats();
     if (Date.now() - lastRefresh > 20000) refresh();
   }
@@ -952,9 +1233,10 @@
     if (!shown) return;
     shown = false;
     clearTimeout(threatTimer);
-    if (window.HPivnyk) HPivnyk.hide();
+    if (window.HDovkola) HDovkola.hide();
     if (st.full) setFull(false);
     hidePop();
+    paintBar();
   }
 
   function init(opts) {
