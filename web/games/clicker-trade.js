@@ -23,7 +23,11 @@
   /// Якість, якої просять, — у множині: «(дзвінкі й кращі · «Делфт»)», як у гостей і Толоки.
   const Q_REQ = ['', '', 'добрі й кращі', 'дзвінкі й кращі', 'лише розкішні'];
   const LOOK_GRACE_MS = 1500;             // прийшов час корабля — стільки чекаємо, перш ніж спитати свіжий вид
-  const FAIL_MS = 8000;                   // відмова сервера під карткою — стільки, далі знову наша підказка
+  const ARM_MS = 4500;                    // «Точно?» на «Відпустити корабель» чекає другого натиску стільки
+  const GAP_MIN = 40;                     // новий корабель — раз на стільки хвилин (Clicker.TradeGap)
+  /// Плата корабля за виріб (індекс — якість) — сервер шле її у виді (trade.pay, Clicker.TradePlayQ*, SlavaQ*); це — лише
+  /// на випадок старого сервера. Потрібна тільки для підсумку перед «Завантажити все»: платить сервер.
+  const PAY = { minutes: [0, 0, 2, 3, 8], slava: [0, 0, 1, 2, 5], style: 1.5, styleSlava: 1, full: 0.1, fullSlava: 10 };
   const OPEN_MS = 10 * 60 * 1000;         // «→ у Майстерню» в розділі — до натиску, але не довше
   const SAID_MS = 4000;                   // сервер уже сказав «відкрито …» у тості вантажу — свого тосту не дублюємо
   const PLUS = 5;
@@ -59,16 +63,71 @@
   /// Підходить до замовлення — те саме правило, що Clicker.ShipMatch на сервері (без «відкладеного»: його знає лише сервер).
   const fits = (s, it, lux) => (!s.ware || it.ware === s.ware) && it.q >= (lux ? 4 : s.q) && (!s.style || it.style === s.style);
 
-  /// Чому вантажити нічого — до першого натиску кажемо самі, після — дослівно серверне слово (k.fail).
+  /// Чому вантажити нічого — тим самим правилом, що Clicker.ShipLack на сервері. Натиск на порожнє більше не питає
+  /// сервер: його відмова приходила тостом і ще раз червоним рядком під карткою (QA-3) — тепер картка каже одне й дає дію.
   function lack(st, api, s) {
     const luxLeft = Math.max(0, s.lux - s.loadedLux);
     const rest = s.n - s.loaded;
-    if (luxLeft > 0 && luxLeft === rest) return 'Лишились місця для розкішних (' + luxLeft + ') — їх дає лише розписна партія, яку палиш сам';
+    if (luxLeft > 0 && luxLeft === rest) return 'Лишились місця для розкішних (' + luxLeft + ')';
     const what = s.ware ? wareName(st, s.ware).toLowerCase() : 'добрих і кращих виробів';
     const items = (st.craft && st.craft.items) || [];
     if (items.some((it) => it.n > 0 && fits(s, it, false))) return 'Вільних нема: ' + what + ' в коморі відкладено під Толоку чи замовлення — корабель їх не бере';
     return 'У коморі нема: ' + what + (s.style ? ' «' + styleName(st, s.style) + '»' : '') + ', ' + (s.q >= 3 ? 'дзвінкі й кращі' : 'добрі й кращі');
   }
+
+  const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
+
+  /// Звідки якість, якої просить корабель: ліпленням її не обереш — вона від горна (як підказка «Ліпити» в Толоці).
+  function qHint(api, q) {
+    if (q >= 4) return selfFire(api) ? 'розкішні — лише з розписаної партії' : 'розкішні — лише якщо палиш сам';
+    if (q === 3 && !selfFire(api)) return 'дзвінкі — лише якщо палиш сам';
+    return '';
+  }
+
+  /// Скільки з цієї штуки в коморі вільне (вид комори v12: kept = [толока, замовлення, майстерштук]) — корабель бере лише його.
+  const freeOf = (it) => Math.max(0, it.n - (it.kept ? (it.kept[0] || 0) + (it.kept[1] || 0) + (it.kept[2] || 0) : 0));
+
+  /// Що візьме «Завантажити все» (want штук) — тим самим порядком, що ShipLoad на сервері: спершу розкішні в рядок
+  /// «з них K», далі решта, найгірша придатна якість першою, а в межах якості — розпис світу першим.
+  function loadSum(st, s, want) {
+    const items = ((st.craft && st.craft.items) || []).filter((it) => it.n > 0);
+    const free = new Map(items.map((it) => [it, freeOf(it)]));
+    const later = (it) => (worldStyle(st, it.style) ? 0 : 1);
+    const pick = (lux, n) => {
+      const out = [];
+      for (const it of items.filter((x) => fits(s, x, lux)).sort((a, b) => a.q - b.q || later(a) - later(b))) {
+        if (n <= 0) break;
+        const take = Math.min(free.get(it), n);
+        if (take <= 0) continue;
+        free.set(it, free.get(it) - take);
+        out.push([it, take]);
+        n -= take;
+      }
+      return out;
+    };
+    const luxLeft = Math.max(0, s.lux - s.loadedLux);
+    const plan = pick(true, Math.min(want, luxLeft));
+    const luxN = plan.reduce((a, x) => a + x[1], 0);
+    plan.push(...pick(false, Math.min(want - luxN, s.n - s.loaded - luxLeft)));
+    const pay = (st.trade.v && st.trade.v.pay) || PAY;
+    const sum = { n: 0, minutes: 0, slava: 0, q4: 0 };
+    for (const [it, c] of plan) {
+      const q = Math.min(4, it.q);
+      const wd = worldStyle(st, it.style);
+      sum.n += c;
+      sum.minutes += (pay.minutes[q] || 0) * (wd ? pay.style : 1) * c;
+      sum.slava += ((pay.slava[q] || 0) + (wd ? pay.styleSlava : 0)) * c;
+      if (q >= 4) sum.q4 += c;
+    }
+    // Сервер знає більше (інше вікно щойно щось узяло) — решту рахуємо за ціною замовлення.
+    if (sum.n < want) { sum.minutes += (want - sum.n) * s.minutes; sum.slava += (want - sum.n) * s.slavaPer; sum.n = want; }
+    if (s.loaded + sum.n >= s.n) { sum.minutes *= 1 + pay.full; sum.slava += Math.ceil((sum.slava * pay.fullSlava) / 100); }
+    return sum;
+  }
+
+  /// «+49 · ≈216 хв гри · Слава +136 · з них 4 розкішні» — що дасть «Завантажити все».
+  const sumText = (api, x) => '+' + x.n + ' · ≈' + api.num(Math.round(x.minutes)) + ' хв гри · Слава +' + api.count(x.slava)
+    + (x.q4 ? ' · з них ' + x.q4 + ' ' + api.plural(x.q4, 'розкішний', 'розкішні', 'розкішних') : '');
 
   function infoText() {
     return 'Кораблі приходять до Пристані на Ворсклі раз на 40 хвилин (і без тебе), біля неї чекає до трьох, кожен стоїть 8 годин. '
@@ -101,8 +160,6 @@
     const can = st.mine ? s.can : 0;
     const all = Math.min(can, rest);
     const plus = Math.min(PLUS, all);
-    const fail = k.fail[s.id] && Date.now() - k.fail[s.id].at < FAIL_MS ? k.fail[s.id].text : '';
-    const why = fail || (st.mine && !all ? lack(st, api, s) : '');
     const off = (n) => (n > 0 && !k.busy ? '' : ' off" aria-disabled="true');
     const art = s.ware || ((wareList(st)[0] || {}).key) || 'jug';
     if (!(s.id in k.seen)) k.seen[s.id] = Date.now();
@@ -117,19 +174,69 @@
       + '<div class="clkt-pay small">за виріб: <b>' + api.dec(s.minutes) + ' хв гри</b> · <b>🌍 +' + s.slavaPer + '</b> Слави' + worldPay(st, api, s) + '</div>'
       + '<div class="clkt-bar"><i style="width:' + share + '%"></i><span>завантажено ' + s.loaded + ' з ' + s.n
       + (s.lux > 0 ? ' · розкішних ' + s.loadedLux + ' з ' + s.lux : '') + '</span></div>'
-      + '<div class="clkt-btns">'
-      + '<button type="button" class="primary small clkt-load' + off(all) + '" data-load="' + s.id + '" data-all="1"' + (st.mine ? '' : ' disabled') + '>🚢 Завантажити все (' + all + ')</button>'
-      + '<button type="button" class="ghost small clkt-plus' + off(plus) + '" data-load="' + s.id + '" data-n="' + PLUS + '"' + (st.mine ? '' : ' disabled') + '>+' + PLUS + '</button>'
-      + '</div>'
-      + (why ? '<div class="clkt-why small' + (fail ? ' err' : '') + '">' + esc(why) + '</div>' : '')
+      + (!st.mine ? '' : all > 0
+        ? '<div class="clkt-sum small">' + esc(sumText(api, loadSum(st, s, all))) + '</div><div class="clkt-btns">'
+          + '<button type="button" class="primary small clkt-load' + off(all) + '" data-load="' + s.id + '" data-all="1">🚢 Завантажити все (' + all + ')</button>'
+          + '<button type="button" class="ghost small clkt-plus' + off(plus) + '" data-load="' + s.id + '" data-n="' + PLUS + '">+' + PLUS + '</button></div>'
+        : stuckHtml(st, api, s))
       + '</div></div>';
+  }
+
+  /// Корабель, якого нема чим завантажити, стояв 8 год і тримав Пристань повною (QA-3). Картка каже чому й дає дію:
+  /// «🏺 Ліпити …» — виріб (і розпис) на коло, звідки якість — підказкою, і «⚓ Відпустити корабель» (крім першого:
+  /// сервер його не відпускає — він відчиняє першу майстерню).
+  function stuckHtml(st, api, s) {
+    const k = st.trade;
+    const esc = (x) => api.esc(st, x);
+    const luxLeft = Math.max(0, s.lux - s.loadedLux);
+    const hint = qHint(api, luxLeft > 0 && luxLeft === s.n - s.loaded ? 4 : s.q);
+    const armed = k.arm && k.arm.id === s.id && Date.now() - k.arm.at < ARM_MS;
+    const rel = s.first ? ''
+      : '<button type="button" class="ghost small clkt-rel' + (armed ? ' armed' : '') + (k.busy ? ' off" aria-disabled="true' : '') + '" data-rel="' + s.id + '"'
+        + ' title="Корабель відпливе з тим, що вже на борту (за нього заплачено), а новий прийде за ' + GAP_MIN + ' хв">'
+        + (armed ? '⚓ Точно відпустити?' : '⚓ Відпустити корабель') + '</button>';
+    const btns = (s.ware ? formBtn(st, api, s) : '') + rel;
+    return '<div class="clkt-why small">' + esc(lack(st, api, s)) + (hint ? ' · ' + esc(hint) : '') + '</div>'
+      + (btns ? '<div class="clkt-btns">' + btns + '</div>' : '');
+  }
+
+  /// «🏺 Ліпити миску (Межигірський фаянс)»: виріб на коло (дія form) і розпис замовлення (дія wear). Уже на колі — позначка.
+  function formBtn(st, api, s) {
+    const c = st.craft;
+    const w = c && c.wares && c.wares.find((x) => x.key === s.ware);
+    if (!w || !w.open) return '';
+    const esc = (x) => api.esc(st, x);
+    const name = wareName(st, s.ware).toLowerCase();
+    // Знахідний відмінок жіночого роду: «миску», «макітру», «кахлю» (решта виробів його не міняє).
+    const acc = name.split('-').map((p) => p.replace(/а$/, 'у').replace(/я$/, 'ю')).join('-');
+    const sty = s.style ? (st.styleList || []).find((x) => x.key === s.style && x.owned) : null;
+    const sname = sty ? styleName(st, s.style) : '';
+    if (c.ware === s.ware && (!sty || st.wear === s.style)) {
+      return '<span class="small clkt-onwheel">🏺 ' + esc(name + (sname ? ' «' + sname + '»' : '')) + ' уже на колі</span>';
+    }
+    const label = c.ware === s.ware ? '🎨 Поставити розпис «' + sname + '»' : '🏺 Ліпити ' + acc + (sname ? ' (' + sname + ')' : '');
+    return '<button type="button" class="ghost small clkt-form" data-form="' + esc(s.ware) + '" data-fstyle="' + esc(sty ? s.style : '') + '">' + esc(label) + '</button>';
+  }
+
+  /// Виріб на коло, а коли замовлення просить розпис — і розпис (без нього корабель такого не прийме).
+  function formIt(st, api, ware, style) {
+    const was = !!st.craft && st.craft.ware === ware;
+    api.sfx('tap');
+    (was ? Promise.resolve({ ok: true }) : api.act(st, 'form', { ware })).then((r) => {
+      if (!r || !r.ok || !style || st.wear === style) return;
+      api.act(st, 'wear', { key: style }).then((x) => {
+        // wear мовчить (вид сам покаже розпис на колі), а виріб уже був на колі — без тосту зміни б і не помітили.
+        if (x && x.ok && was) api.toast(st, '🎨 На колі тепер розпис «' + styleName(st, style) + '»', 'ok');
+      });
+    });
   }
 
   /// Корабель без розпису бере будь-який, а виріб у розписі світу платить більше (Clicker.TradeMinutesFor / SlavaFor) —
   /// кажемо це, лише коли такий розпис у гравця є (QA-2: «+1 Слави», а прийшло +2).
   function worldPay(st, api, s) {
     if (s.style || !(st.styleList || []).some((x) => x.owned && worldStyle(st, x.key))) return '';
-    return ' <span class="clkt-world">(розпис світу: ' + api.dec(s.minutes * 1.5) + ' хв · +' + (s.slavaPer + 1) + ')</span>';
+    const pay = (st.trade.v && st.trade.v.pay) || PAY;
+    return ' <span class="clkt-world">(розпис світу: ' + api.dec(s.minutes * pay.style) + ' хв · +' + (s.slavaPer + pay.styleSlava) + ')</span>';
   }
 
   function slavaHtml(st, api) {
@@ -180,7 +287,7 @@
       html += '<div class="muted small clkt-next' + (live.length ? '' : ' empty') + '">' + (live.length ? '' : 'Біля Пристані порожньо · ')
         + 'наступний корабель — за <i class="clkt-cd" data-at="' + t.next + '" data-done="ось-ось"></i></div>';
     } else if (live.length) {
-      html += '<div class="muted small clkt-next">Пристань повна — новий корабель прийде, щойно котрийсь відпливе</div>';
+      html += '<div class="muted small clkt-next">Пристань повна — новий прийде за ~' + GAP_MIN + ' хв після того, як котрийсь відпливе чи відпустиш</div>';
     }
     if (api.swap(k.el, html)) k.cds = [...k.el.querySelectorAll('.clkt-cd')];
     countdowns(st, api);
@@ -236,6 +343,41 @@
     api.popAt(st, '🌍 ' + prev.name, 'big', 50, 28);
   }
 
+  /// Новий корабель біля Пристані — тихий тост (без звуку): нотатку «🚢» на ярлику «Села» часто перекриває нотатка гостей.
+  /// Перший вид лише запам'ятовує, що вже стоїть (що прийшло без тебе, каже «Поки тебе не було»).
+  function arrivals(st, api) {
+    const k = st.trade;
+    const ids = new Set(k.v.ships.map((s) => s.id));
+    if (k.known && st.mine) {
+      for (const s of k.v.ships) {
+        if (k.known.has(s.id) || s.first) continue;
+        const all = Math.min(s.can, s.n - s.loaded);
+        const what = (s.ware ? wareName(st, s.ware).toLowerCase() : 'вироби') + (s.style ? ' «' + styleName(st, s.style) + '»' : '');
+        api.toast(st, '🚢 До Пристані прийшов корабель з ' + s.from + ': ' + what + ' ×' + s.n
+          + (all > 0 ? ' — можна завантажити ' + all : ' — поки нема чим завантажити'), 'ok');
+      }
+    }
+    k.known = ids;
+  }
+
+  /// Розпис заморської майстерні привозять з її першим рівнем — тихо з'являвся в «Розписах світу» (QA-3). Тост — у мить
+  /// першого рівня; ціль «Далі» — поки розпис не куплено й на нього є гроші (styleGoal).
+  function styleCame(st, api) {
+    const k = st.trade;
+    const ups = st.ups || {};
+    if (!gates(st).length) return;
+    const levels = {};
+    for (const g of gates(st)) levels[g.key] = (ups[g.key] && ups[g.key].level) || 0;
+    if (k.levels && st.mine) {
+      for (const key of Object.keys(levels)) {
+        if (!(levels[key] > 0) || k.levels[key] > 0) continue;
+        const sty = (st.styleList || []).find((x) => x.tier === key && !x.owned);
+        if (sty) api.toast(st, '🎨 Привезли розпис «' + sty.name + '» — +5 % до всього («Майстерня» → «Розписи світу»)', 'ok');
+      }
+    }
+    k.levels = levels;
+  }
+
   function goShop(st, api, key) {
     const k = st.trade;
     if (k && k.opened) { k.opened.at = 0; k.opened.seen = true; }
@@ -259,7 +401,7 @@
     if (!s) return;
     const rest = s.n - s.loaded;
     const want = btn.dataset.all ? rest : Math.min(PLUS, rest);
-    // Сіра кнопка теж питає сервер: він знає, що саме відкладене, і скаже це дослівно (під карткою).
+    if (!s.can) return;                    // сіра лише поки летить попередній вантаж
     const full = s.can >= rest && want >= rest;
     k.busy = true;
     paint(st, api);
@@ -271,10 +413,32 @@
       if (said) kk.saidAt = Date.now();
       if (kk.openToast) { if (!said) api.toast(st, kk.openToast, 'ok'); kk.openToast = null; }
       if (r && r.ok) {
-        delete kk.fail[id];
         api.sfx(full ? 'rare' : 'paid');
         api.sparks(st, null, full ? 22 : 10, true, 50, 44);
-      } else if (r && r.message) kk.fail[id] = { at: Date.now(), text: r.message };
+      }
+      kk.dirty = true;
+      paint(st, api);
+    });
+  }
+
+  /// «⚓ Відпустити корабель»: перший натиск — «Точно?», другий за ARM_MS — trade { do: 'release' }.
+  function release(st, api, btn, e) {
+    const k = st.trade;
+    if (!human(e) || !st.mine || !k || k.busy) return;
+    const id = +btn.dataset.rel;
+    if (!(k.arm && k.arm.id === id && Date.now() - k.arm.at < ARM_MS)) {
+      k.arm = { id, at: Date.now() };
+      api.sfx('tap');
+      paint(st, api);
+      return;
+    }
+    k.arm = null;
+    k.busy = true;
+    paint(st, api);
+    api.act(st, 'trade', { do: 'release', id }).then(() => {
+      const kk = st.trade;
+      if (!kk) return;
+      kk.busy = false;
       kk.dirty = true;
       paint(st, api);
     });
@@ -283,6 +447,10 @@
   function onClick(st, api, e) {
     const go = e.target.closest('[data-goshop]');
     if (go) { if (human(e)) goShop(st, api, go.dataset.goshop); return; }
+    const f = e.target.closest('[data-form]');
+    if (f) { if (human(e) && st.mine) formIt(st, api, f.dataset.form, f.dataset.fstyle || ''); return; }
+    const rel = e.target.closest('[data-rel]');
+    if (rel) { release(st, api, rel, e); return; }
     const b = e.target.closest('[data-load]');
     if (b) load(st, api, b, e);
   }
@@ -331,17 +499,34 @@
     }
     const sn = api.serverNow(st);
     const ships = k.v.ships.filter((s) => s.until > sn && s.can > 0);
-    if (!ships.length) return null;
-    const s = ships.find((x) => x.first) || ships.slice().sort((a, b) => a.until - b.until)[0];
-    const n = Math.min(s.can, s.n - s.loaded);
+    if (!ships.length) return styleGoal(st, api, ups);
+    // Перший — найперше; далі той, що відпливає протягом години; інакше — куди влізе найбільше (не «завантаж 2» поруч із 40).
+    const fit = (x) => Math.min(x.can, x.n - x.loaded);
+    const soon = (x) => (x.until - sn < 3600e3 ? 0 : 1);
+    const s = ships.find((x) => x.first) || ships.slice().sort((a, b) => soon(a) - soon(b) || fit(b) - fit(a))[0];
+    const n = fit(s);
     return {
       icon: '<text x="16" y="23" font-size="19" text-anchor="middle">🚢</text>',
       text: 'Корабель з ' + s.from + ': завантаж ' + n,
       sub: s.first ? 'перший корабель — відчинить першу майстерню'
-        : 'за виріб ' + api.dec(s.minutes) + ' хв гри й Слава +' + s.slavaPer + ' · відпливе за ' + left(api, s.until - sn),
+        : sumText(api, loadSum(st, s, n)) + ' · відпливе за ' + left(api, s.until - sn),
       pct: (s.loaded / Math.max(1, s.n)) * 100, eta: -0.5, tab: 'guild', row: '[data-ship="' + s.id + '"]', prio: s.first ? 0.5 : 1,
     };
   });
+
+  /// Розпис заморської майстерні, який уже привезли (є перший рівень), а гроші на нього є: +5 % до всього за один натиск.
+  function styleGoal(st, api, ups) {
+    const pots = Math.max(0, st.shown || 0);
+    const sty = (st.styleList || []).find((x) => x.tier && !x.owned && gates(st).some((g) => g.key === x.tier)
+      && ups[x.tier] && ups[x.tier].level > 0 && x.price <= pots);
+    if (!sty) return null;
+    return {
+      icon: '<text x="16" y="23" font-size="19" text-anchor="middle">🎨</text>',
+      text: 'Розпис «' + sty.name + '» — +5 % до всього',
+      sub: 'привезли з «' + ((ups[sty.tier] && ups[sty.tier].name) || sty.tier) + '» · ' + api.potsShort(sty.price),
+      pct: 100, eta: -0.4, tab: 'shop', row: '[data-style="' + sty.key + '"]', prio: 1,
+    };
+  }
 
   window.HClicker.part({
     id: 'trade',
@@ -349,7 +534,8 @@
 
     mount(st, api) {
       st.trade = {
-        v: null, el: null, cds: [], dirty: false, busy: false, fail: {}, seen: {}, opened: null, saidAt: 0, openToast: null, gate: null,
+        v: null, el: null, cds: [], dirty: false, busy: false, arm: null, seen: {}, opened: null, saidAt: 0, openToast: null, gate: null,
+        known: null, levels: null,
         toloka: false, noteText: null, shopNote: null, looked: 0,
       };
       mountBlock(st, api);
@@ -365,7 +551,7 @@
         k.v = null;
       } else {
         k.v = {
-          slava: t.slava || 0, next: t.next ? ms(t.next) : 0, full: t.full || 0, gate: t.gate || null,
+          slava: t.slava || 0, next: t.next ? ms(t.next) : 0, full: t.full || 0, gate: t.gate || null, pay: t.pay || null,
           ships: (t.ships || []).map((s) => ({
             id: s.id, port: s.port, from: s.from || s.port, ware: s.ware || '', style: s.style || '', q: s.q || 2, n: s.n || 0,
             lux: s.lux || 0, loaded: s.loaded || 0, loadedLux: s.loadedLux || 0, until: ms(s.until), first: !!s.first,
@@ -374,7 +560,9 @@
         };
         gateMoved(st, api, k.gate);
         k.gate = k.v.gate;
+        arrivals(st, api);
       }
+      styleCame(st, api);
       note(st, api);
       k.dirty = true;
       if (st.tab === 'guild') paint(st, api);
@@ -385,8 +573,9 @@
       if (!k) return;
       if (k.opened && !k.opened.seen && st.tab === 'shop') { k.opened.seen = true; note(st, api); }
       if (st.tab === 'guild') {
-        const failOld = Object.values(k.fail).some((f) => Date.now() - f.at > FAIL_MS && Date.now() - f.at < FAIL_MS + 400);
-        if (k.dirty || failOld) paint(st, api);
+        const armOld = k.arm && Date.now() - k.arm.at > ARM_MS;
+        if (armOld) k.arm = null;
+        if (k.dirty || armOld) paint(st, api);
         else countdowns(st, api);
       }
       if (!k.v) return;

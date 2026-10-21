@@ -375,6 +375,12 @@ public sealed partial class Clicker
             slava = _slava,
             next = _ships.Count < TradeShipsMax ? _shipNext : (DateTimeOffset?)null,
             full = _shipsFull,
+            // Таблиця плати за виріб (індекс — якість) — клієнт рахує підсумок «Завантажити все», не тримаючи своїх чисел.
+            pay = new
+            {
+                minutes = new[] { 0, 0, TradePlayQ2, TradePlayQ3, TradePlayQ4 }, slava = new[] { 0, 0, SlavaQ2, SlavaQ3, SlavaQ4 },
+                style = TradeStylePay, styleSlava = SlavaStyle, full = TradeFullPay, fullSlava = SlavaFullPct,
+            },
             gate = next is null ? null : new { key = next, name = Shop.First(u => u.Key == next).Name, need = SlavaGate[next] },
             ships = _ships.Select(s =>
             {
