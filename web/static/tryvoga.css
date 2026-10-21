@@ -41,7 +41,8 @@ header .trybtn.stale .try-dot { display: block; background: var(--muted); }
   /* кольори типів цілей — у TYPES (web/tryvoga.js): ними ж малюються силуети на мапі, циферблаті й у легенді */
   --pv-calm: rgba(98, 170, 82, .42); --pv-alarm: rgba(232, 178, 52, .42); --pv-hot: rgba(229, 83, 77, .55);
   --pv-grey: rgba(157, 179, 165, .16); --pv-ring: rgba(10, 20, 15, .55); --pv-north: #ff6b5e; --pv-danger: #ff4d61;
-  display: flex; flex-direction: column; gap: 16px; max-width: 1180px;
+  /* без власної стелі ширини — як решта розділів: згорнули Балачки, і сторінка займає всю колонку */
+  display: flex; flex-direction: column; gap: 16px;
 }
 .tryv .panel { margin: 0; }
 .tryv h2 { margin: 0 0 10px; }
@@ -98,7 +99,7 @@ header .trybtn.stale .try-dot { display: block; background: var(--muted); }
 .tv-tabs button { flex: 1 1 0; min-width: 0; justify-content: center; border: 0; background: transparent; color: var(--muted); padding: 10px 8px; font-weight: 600; }
 .tv-tabs button:hover { background: var(--panel2); }
 .tv-tabs button[aria-selected="true"] { background: var(--panel2); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
-.tv-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); gap: 16px; align-items: start; }
+.tv-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 16px; align-items: start; }
 .tv-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
 /* ---- мапа ---- */
