@@ -2287,6 +2287,10 @@ public sealed partial class Clicker : Game
             perSecond = PerSecond,
             // Без ярмарку: клієнт доліковує сам і сам вимикає ярмарок, коли той скінчиться.
             baseSecond = passive,
+            // v12 §7 п. 2 (пакет D2): окупність Майстерні — у часі гри, а прогноз глини — «клік X, пасив Y». Клієнт сам
+            // не знає ні хвилини гри, ні того, яка частина кліка — відсоток пасиву (вона росте разом із пасивом).
+            playMinute = PlayMinute,
+            clickPassive = (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1) * passive * ClickShare,
             // Лише те, що міняється: назви, описи, вид верстата, ріст ціни й віхи — у shopCatalog (десяте оновлення §10:
             // вид летить щопачки кліків, а незмінні тексти двадцяти семи верстатів важили кілобайти щоразу).
             upgrades = Shop.Select((u, index) => (u, index)).ToDictionary(x => x.u.Key, x => UpgradeView(x.u, x.index, passive), StringComparer.Ordinal),

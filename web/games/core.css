@@ -467,6 +467,10 @@
 /* ---- довгий тост (ачівка) ---- */
 .toast.gbig { max-width: 340px; display: block; line-height: 1.4; }
 .toast.gbig .gemo { font-size: 1.3em; margin-right: 4px; }
+/* Кілька ачівок разом — один тост «+6 ачівок», перелік під кнопкою (achFlush у core.js). */
+.toast .gach-list { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; font-size: .92em; }
+.toast .gach-list[hidden] { display: none; }
+.toast .gach-more { margin-left: 4px; padding: 0 8px; }
 
 /* ---- заклик до столу ---- */
 /* «Влад кличе в Мафію» з кнопкою «Сісти»: одна смуга, рамка кольором столу, хрестик праворуч. */
