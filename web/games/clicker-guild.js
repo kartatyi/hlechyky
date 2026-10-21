@@ -75,6 +75,8 @@
   const itemsOf = (st) => (st.craft && st.craft.items) || [];
   /// Гість без акаунта: цех знає лише акаунти (сервер не пускає гостей у список), тож і помагати йому нікому. Себе
   /// в списку цеху гість не знайде ніколи — а якщо знайшов (QA-шим плейтесту), то цех його знає.
+  /// Нік після прийменника: «від / для / до гостя Оля», а не «від гість Оля» (те саме правило, що на сервері v12).
+  const ofNick = (nick) => String(nick || '').replace(/^гість /i, 'гостя ');
   const isGuest = (st) => /^гість /i.test(myNick(st))
     && !(st.guildRoster && (st.guildRoster.potters || []).some((p) => p.me));
   const narrow = () => !!(window.matchMedia && window.matchMedia('(max-width: 480px)').matches);
@@ -358,12 +360,12 @@
       ? '<div class="clkg-shelf">' + v.shelf.map((g, i) => '<span class="clkg-gift q' + g.q + '" title="' + esc(QUALITY[g.q] + ' ' + wareName(st, g.ware).toLowerCase()
         + ' · ' + styleName(st, g.style) + ' · від ' + g.from) + '">'
         + api.wareSvg(g.ware, { style: g.style, quality: g.q, cls: 'clkg-mid', slot: 'gsh-' + i })
-        + '<i>від ' + esc(g.from) + '</i></span>').join('') + '</div>'
+        + '<i>від ' + esc(ofNick(g.from)) + '</i></span>').join('') + '</div>'
       : '<div class="muted small">Полиця дарунків порожня.</div>';
     const size = (c && c.shelfSize) || 12;
     const old = v.shelf.length >= size ? v.shelf[v.shelf.length - 1] : null;
     const full = old ? '<div class="small clkg-shelffull">Полиця повна (' + size + '): новий дарунок витіснить найстаріший — '
-      + esc(QUALITY[old.q] + ' ' + wareName(st, old.ware).toLowerCase()) + ' від ' + esc(old.from) + '</div>' : '';
+      + esc(QUALITY[old.q] + ' ' + wareName(st, old.ware).toLowerCase()) + ' від ' + esc(ofNick(old.from)) + '</div>' : '';
     // «Похвалитись» раз на 15 хв: поки чекає — сіра, з відліком просто на кнопці (countdowns її й оживить).
     const bragAt = Date.parse(v.bragAt) || 0;
     const bragWait = bragAt > api.serverNow(st);
@@ -386,7 +388,7 @@
     const esc = (x) => api.esc(st, x);
     const rows = [];
     const row = (kind, b, text) => '<span class="clkg-buff ' + kind + '"><b>' + HELP[kind].icon + '</b>'
-      + '<i>' + text + ' <span class="muted">від ' + esc(b.from || 'друга') + '</span></i>'
+      + '<i>' + text + ' <span class="muted">від ' + esc(b.from ? ofNick(b.from) : 'друга') + '</span></i>'
       + '<u class="clkg-bufcd" data-at="' + (Date.parse(b.until) || 0) + '"></u></span>';
     if (v.buffs.lend) rows.push(row('lend', v.buffs.lend, 'підмайстер у гостях — ліплення ×2'));
     if (v.buffs.cheer) rows.push(row('cheer', v.buffs.cheer, 'похвала — +10 % до всього'));
@@ -742,7 +744,7 @@
     else {
       payload = { op: id, to: c.nick };
       const b2 = L[id];
-      if (b2 && b2.after) ok = '✓ ' + (id === 'lend' ? 'Підмайстер пішов у гості' : 'Похвала гріє') + ' до ' + at(ms(b2.after), api.serverNow(st)) + ' · для: ' + c.nick;
+      if (b2 && b2.after) ok = '✓ ' + (id === 'lend' ? 'Підмайстер пішов у гості' : 'Похвала гріє') + ' до ' + at(ms(b2.after), api.serverNow(st)) + ' · для ' + ofNick(c.nick);
     }
     act(st, api, payload, id === 'lend' ? 'wagon' : id === 'cheer' ? 'brag' : 'gift').then((r) => cardDone(st, api, c, r, ok));
   }
@@ -1105,7 +1107,9 @@
           return;
         }
         st.guildArm = null;
-        act(st, api, { op: 'give', key: b.dataset.give, n: +b.dataset.n }, 'wagon').then((r) => { if (r && r.ok) st.guildRoll = Date.now(); });
+        const payload = { op: 'give', key: b.dataset.give, n: +b.dataset.n };
+        if (b.dataset.risk) payload.keep = false;
+        act(st, api, payload, 'wagon').then((r) => { if (r && r.ok) st.guildRoll = Date.now(); });
       };
     }
     for (const b of body.querySelectorAll('.clkg-giveall')) b.onclick = (e) => giveAll(st, api, e, b);
