@@ -561,9 +561,14 @@ public sealed partial class Clicker
         LadAwayClear();
         _awayPotsFrom = _pots;
         _shelfAway = 0;
+        _merchAway = 0;
+        _merchAwayN = 0;
     }
 
     double _awayPotsFrom;
+    /// <summary>Скільки привезли купці хати за простій і скільки їх було (v12, B11).</summary>
+    double _merchAway;
+    int _merchAwayN;
 
     void AwayEnd(DateTimeOffset now, TimeSpan gap)
     {
@@ -582,8 +587,17 @@ public sealed partial class Clicker
             if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
         }
         _shelfAway = 0;
+        // Купці — теж першим рядком і не в «коло крутилось»: плейтест 21.10 — з 10,9 млрд простою 8,7 привіз купець.
+        if (_merchAway >= 1)
+        {
+            _awayNotes.Insert(0, $"🐴 {(_merchAwayN == 1 ? "Купець привіз" : $"Купці ({_merchAwayN}) привезли")}: +{PotsShort(_merchAway)}");
+            if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
+        }
+        var merch = _merchAway;
+        _merchAway = 0;
+        _merchAwayN = 0;
         LadAwayFlush(_awayNotes);
-        _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom), _awayFormed, [.. _awayNotes]);
+        _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom - merch), _awayFormed, [.. _awayNotes]);
     }
 
     // ---------- синхронізація й вид ----------

@@ -29,6 +29,23 @@ public class ClickerV12UxTests
     }
 
     [Fact]
+    public void What_the_merchant_brought_while_away_is_its_own_line_not_the_wheel()
+    {
+        var h = Wheel();
+        Patch(h, s => { s["pots"] = 1_000_000; s["total"] = 1_000_000; });
+        var order = View(h).GetProperty("house").GetProperty("orders").GetProperty("board").EnumerateArray().First();
+        var pay = order.GetProperty("pay").GetDouble();
+        Assert.True(h.Act(0, "take", new { id = order.GetProperty("id").GetInt32() }).Ok);
+        // Гончар пішов на довше, ніж їде купець, і довше за поріг простою.
+        h.Clock.Advance(TimeSpan.FromMinutes(order.GetProperty("minutes").GetInt32() + 10));
+        var away = View(h).GetProperty("away");
+        Assert.Equal(JsonValueKind.Object, away.ValueKind);
+        Assert.Contains(away.GetProperty("notes").EnumerateArray(), n => n.GetString()!.StartsWith("🐴 Купець привіз", StringComparison.Ordinal));
+        // «Коло крутилось без тебе» — без купцевого: голе коло без пасиву, тож там нуль, а не плата купця.
+        Assert.True(away.GetProperty("pots").GetDouble() < pay);
+    }
+
+    [Fact]
     public void The_away_card_once_seen_is_not_sent_again_on_any_device()
     {
         var h = Wheel();
