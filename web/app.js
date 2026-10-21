@@ -1893,7 +1893,9 @@
     if (live && !isLog) typingGone('chat', m.nick);
     if (!isLog && scroll && !mine && !chatVisible()) {
       // Непрочитане — це люди. Глек бейджа не смикає: інакше той не сходив би з екрана й нічого б не означав.
-      if (m.kind !== 'dj') setUnread(unread + 1);
+      // Загальний заклик «кличе в доміно» — теж ні: щойно сісти нікуди (соло з ботами), рядок ховається сам,
+      // і бейдж кликав у порожні Балачки. Особистий заклик («кличе тебе») лічимо.
+      if (m.kind !== 'dj' && (m.kind !== 'invite' || m.personal)) setUnread(unread + 1);
       if (repliedMe) toast(`↩ ${m.nick} відповідає тобі: ${m.text}`.slice(0, 140));
       else if (tagged) toast(`@ ${m.nick} гукає тебе: ${m.text}`.slice(0, 140));
       else if (mentionsMe(m.text)) toast(`${m.nick}: ${m.text}`.slice(0, 140));
