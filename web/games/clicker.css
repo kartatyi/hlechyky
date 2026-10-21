@@ -1151,6 +1151,8 @@
   .clk:not(.fit):not(.land) .clk-nxbtn2 { grid-column: 4; padding: 0 10px; }
   .clk:not(.fit):not(.land) .clk-nxbtn[hidden] + .clk-nxbtn2 { grid-column: 3 / -1; }
   .clk:not(.fit):not(.land) .clk-nxbtn:not([hidden]) + .clk-nxbtn2 .clk-nxl { display: none; }
+  /* Кнопка-значок без рамки читалась як прикраса, а не кнопка. */
+  .clk:not(.fit):not(.land) .clk-nxbtn2 { border: 1px solid var(--line); background: var(--panel2); }
 }
 /* ---- телефон лежачи (.clk.land, ставить fitTable: дотик, висота ≤ 500, картка від 640) ----
    Було на 844×390: сцена 211×264 і коло 104 px нижче рядка статистики, «Далі» під нижнім меню, вкладки 31 px.
@@ -1296,6 +1298,9 @@
 @media (max-width: 560px) {
   /* Рядок «усього наліплено … · з полиці …» над числом — один рядок із «…» (було два, ~40 px над колом). */
   .gtable.clk-wide > .gstatus { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .82em; min-height: 0; }
+  /* UI-прохід 21.10: підсумки за все життя — під картку, а не над колом: ці ~27 px ідуть сцені (на 360×740 з ними
+     рядок «Далі» лягав під нижнє меню). */
+  .gtable.clk-wide > .gstatus { order: 1; }
 }
 /* Альбом під пальцем: дев'ять стовпців розписів на 356 px ширше за 38 px не стануть (тоді — прокрутка вбік), тож
    ціль більшає у висоту — 44 px, а назва ряду — від 40 px. */
