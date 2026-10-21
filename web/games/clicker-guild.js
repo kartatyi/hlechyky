@@ -311,8 +311,14 @@
     const toNext = w.mine < per * shareMax ? per - (w.mine % per) : 0;
     // Нагороду вже забрали (B7): докладене після «Забрати» ядро v12 доплачує (claims[].topUp) — так і кажемо.
     const took = w.claimed > 0 && w.claimed >= w.tier ? w.claimed : 0;
-    const more = toNext ? ' <span class="muted small">· ще ' + toNext + ' ' + api.plural(toNext, 'виріб', 'вироби', 'виробів') + ' — і пай більший'
-      + (took ? ', різницю доплатять' : '') + '</span>' : ' <span class="muted small">· більше вже не буває</span>';
+    // Доплату ядро дає лише за забране вже у v12 (тоді записано, скільки було покладено), тож «доплатять» обіцяємо лише
+    // за нагороду, яку забрали тут після оновлення (clk.guild.claimed — день воза).
+    const topUp = (v.claims || []).some((cl) => cl.topUp && cl.day === w.id);
+    const v12claim = took && api.storeGet('clk.guild.claimed', '') === w.id;
+    const nextPai = Math.min(shareMax, Math.floor(w.mine / per) + 1);
+    const more = topUp ? ' <span class="muted small">· доплата паю чекає — забери</span>'
+      : toNext ? ' <span class="muted small">· ще ' + toNext + ' — і пай ×' + pai(nextPai) + (v12claim ? ', різницю доплатять' : '') + '</span>'
+        : ' <span class="muted small">· більше вже не буває</span>';
     const paiNote = '<div class="clkg-pai-box">' + (took
       ? '✓ нагороду за ' + TIER_ICON[took] + ' ' + TIER_ACC[took] + ' забрано · <b>×' + pai(share) + '</b> паю' + more
         + (took < 3 ? ' <span class="muted small">· наступна — на ' + TIER_LOC[took + 1] + '</span>' : '')
@@ -682,9 +688,15 @@
     html += '<div class="clkg-crow"><button type="button" class="ghost clkg-cbtn clkg-cgift"' + (st.mine && left > 0 && items.length ? '' : ' disabled') + '>🎁 Подарувати виріб</button>'
       + '<span class="muted small">' + (left > 0 ? 'ще ' + left + ' сьогодні' : 'сьогодні вже всі три') + (items.length ? '' : ' · комора порожня') + '</span></div>';
     if (c.gift && left > 0 && items.length) {
-      html += '<div class="clkw-items clkg-pick">' + items.map((it, i) => itemRow(st, api, it, i,
-        '<button type="button" class="ghost small' + (arm('gift:' + it.key) ? ' arm' : '') + '" data-csend="gift:' + esc(it.key) + '"' + (c.busy ? ' disabled' : '') + '>'
-        + (arm('gift:' + it.key) ? 'Так, подарувати' : 'Подарувати') + '</button>')).join('') + '</div>';
+      html += '<div class="clkw-items clkg-pick">' + items.map((it, i) => {
+        // Вільних такого нема — подарунок зачепить відкладене (Толока, замовлення, майстерштук): тоді й підтвердження інше.
+        const risky = keptOf(it) >= it.n;
+        return itemRow(st, api, it, i,
+          '<button type="button" class="ghost small' + (arm('gift:' + it.key) ? ' arm' : '') + '" data-csend="gift:' + esc(it.key) + '"'
+          + (risky ? ' data-risk="1" title="' + esc('Зачепить 🔒 ' + keptWhy(st, api, [it])) + '"' : '') + (c.busy ? ' disabled' : '') + '>'
+          + (arm('gift:' + it.key) ? (risky ? 'Точно? 🔒 подарувати' : 'Так, подарувати') : 'Подарувати') + '</button>',
+          keptOf(it) ? '<span class="clkg-kept" title="' + esc(keptWhy(st, api, [it])) + '">🔒 ' + keptOf(it) + '</span>' : '');
+      }).join('') + '</div>';
     }
     if (L.thank) {
       html += '<div class="clkg-crow"><button type="button" class="ghost clkg-cbtn" data-thank="' + name + '"' + (c.busy ? ' disabled' : '') + '>'
@@ -735,12 +747,16 @@
     }
     c.arm = '';
     c.busy = true;
+    c.msg = '';
     renderCard(st, api);
     const L = c.look || {};
     let payload;
     let ok;
     if (id.startsWith('treat:')) payload = { op: 'treat', to: c.nick, minutes: +id.slice(6) };
-    else if (id.startsWith('gift:')) payload = { op: 'gift', nick: c.nick, key: id.slice(5) };
+    else if (id.startsWith('gift:')) {
+      payload = { op: 'gift', nick: c.nick, key: id.slice(5) };
+      if (b.dataset.risk) payload.keep = false;
+    }
     else {
       payload = { op: id, to: c.nick };
       const b2 = L[id];
@@ -754,6 +770,8 @@
     if (st.guildCard !== c) return;
     c.ok = !!(r && r.ok);
     c.msg = c.ok ? ok || '✓ ' + String((r && r.message) || 'Готово').replace(/^\S+\s/, '') : (r && r.message) || 'Не вийшло — спробуй ще';
+    const said = c.msg;
+    setTimeout(() => { if (st.guildCard === c && c.msg === said) { c.msg = ''; renderCard(st, api); } }, 8000);
     renderCard(st, api);
     if (c.ok) { loadRoster(st, api, true); refreshCard(st, api, c); }
   }
@@ -915,7 +933,7 @@
       s += '<text x="' + (244 + (i % 5) * 22) + '" y="' + (100 + Math.floor(i / 5) * 24) + '" font-size="15"><title>' + esc(l.name + ' · ' + l.level) + '</title>' + TIER_EMBLEM[l.key] + '</text>';
     });
     // Табличка з рангом.
-    const title = (h.rank >= 3 ? 'Цехмістр ' : '') + h.nick;
+    const title = (h.rank >= 3 ? rankName(st, h.rank) + ' ' : '') + h.nick;
     s += '<rect x="96" y="276" width="168" height="20" rx="4" fill="#6b4423"/><text x="180" y="290" font-size="11" fill="#f4efe3" text-anchor="middle">'
       + RANK_ICON[h.rank] + ' ' + esc(title) + '</text>';
     return '<svg class="clkg-house" viewBox="0 0 360 300" role="img" aria-label="Хата гончаря ' + esc(h.nick) + '">' + s + '</svg>';
@@ -933,7 +951,7 @@
     s += '<path d="M190 70h156" stroke="#6b4423" stroke-width="5"/>';
     (h.gifts || []).slice(0, 6).forEach((g, i) => { s += ware(g.ware, g.style, g.q, 192 + i * 26, 70 - 86 * 0.3, 0.3, 'fsg-' + i); });
     s += '<text x="268" y="86" font-size="9" fill="#b8a38a" text-anchor="middle">полиця дарунків' + ((h.gifts || []).length ? ' · ' + h.gifts.length : '') + '</text>';
-    const title = (h.rank >= 3 ? 'Цехмістр ' : '') + h.nick;
+    const title = (h.rank >= 3 ? rankName(st, h.rank) + ' ' : '') + h.nick;
     s += '<rect x="96" y="92" width="168" height="18" rx="4" fill="#6b4423"/><text x="180" y="105" font-size="11" fill="#f4efe3" text-anchor="middle">'
       + RANK_ICON[h.rank] + ' ' + esc(title) + '</text>';
     return '<svg class="clkg-house clkg-shelves" viewBox="0 0 360 112" role="img" aria-label="Полиці гончаря ' + esc(h.nick) + '">' + s + '</svg>';
@@ -1044,6 +1062,9 @@
       + '<div class="clkw-btns">' + buttons + '</div></div>';
   }
 
+  /// Скільки рядків вибору воза показуємо рівним списком; більше — групами за виробом.
+  const PICK_FLAT = 12;
+
   function openPicker(st, api, mode) {
     st.guildOv = mode;
     renderPicker(st, api);
@@ -1073,9 +1094,23 @@
               + ' лишаться: ' + esc(keptWhy(st, api)) + '</span>' : '')
             + '</div>'
           : '');
-      rows = items.map((it, i) => itemRow(st, api, it, i,
+      const row = (it, i) => itemRow(st, api, it, i,
         giveBtn(st, api, it, 1, '+1') + (it.n >= 5 ? giveBtn(st, api, it, 5, '+5') : '') + (it.n > 1 ? giveBtn(st, api, it, it.n, 'усі ' + it.n) : ''),
-        keptOf(it) ? '<span class="clkg-kept" title="' + esc(keptWhy(st, api, [it])) + '">🔒 ' + keptOf(it) + '</span>' : '')).join('');
+        keptOf(it) ? '<span class="clkg-kept" title="' + esc(keptWhy(st, api, [it])) + '">🔒 ' + keptOf(it) + '</span>' : '');
+      if (items.length <= PICK_FLAT) rows = items.map(row).join('');
+      else {
+        const groups = new Map();
+        items.forEach((it, i) => { if (!groups.has(it.ware)) groups.set(it.ware, []); groups.get(it.ware).push([it, i]); });
+        const open = st.guildPickOpen || (st.guildPickOpen = new Set());
+        rows = [...groups].map(([ware, list]) => {
+          const n = list.reduce((s, [it]) => s + it.n, 0);
+          const kept = list.reduce((s, [it]) => s + keptOf(it), 0);
+          return '<details class="clkg-wgrp" data-ware="' + esc(ware) + '"' + (open.has(ware) ? ' open' : '') + '><summary>'
+            + api.wareSvg(ware, { quality: 1, cls: 'clkg-ico', slot: 'gw-' + ware }) + '<b>' + esc(wareName(st, ware)) + '</b> · ' + api.count(n)
+            + (kept ? ' <span class="clkg-kept">🔒 ' + api.count(kept) + '</span>' : '') + '</summary>'
+            + list.map(([it, i]) => row(it, i)).join('') + '</details>';
+        }).join('');
+      }
     } else if (mode === 'brag') {
       const wait = (Date.parse(v.bragAt) || 0) - api.serverNow(st);
       head = '<div class="clk-sub">🏺 Похвалитись у Журнал</div><p class="muted small clk-note">Усе село прочитає, чим ти пишаєшся. '
@@ -1094,6 +1129,12 @@
       body = api.overlay(st, html, { cls: 'clkg-ov', onClose: () => { st.guildOv = null; st.guildOvBody = null; } });
       body._sig = html;
       st.guildOvBody = body;
+      body.addEventListener('toggle', (e) => {
+        const d = e.target;
+        if (!d || !d.classList || !d.classList.contains('clkg-wgrp')) return;
+        const open = st.guildPickOpen || (st.guildPickOpen = new Set());
+        if (d.open) open.add(d.dataset.ware); else open.delete(d.dataset.ware);
+      }, true);
     }
     for (const b of body.querySelectorAll('[data-give]')) {
       b.onclick = (e) => {
@@ -1194,7 +1235,7 @@
         if (!human(e)) return;
         b.disabled = true;
         act(st, api, { op: 'claim', day: b.dataset.claim }, 'wagon').then((r) => {
-          if (r && r.ok) api.sparks(st, null, 16, true, 50, 40);
+          if (r && r.ok) { api.sparks(st, null, 16, true, 50, 40); api.storeSet('clk.guild.claimed', b.dataset.claim); }
           else b.disabled = false;
         });
       };

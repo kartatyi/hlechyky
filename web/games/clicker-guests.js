@@ -31,6 +31,8 @@
 
   // ---------- дрібниці ----------
 
+  /// Знахідний відмінок назви виробу: «ліпити миску», «хоче лев-посудину / тикву»; чоловічий і середній — без змін.
+  const acc = (name) => String(name || '').toLowerCase().replace(/а$/, 'у').replace(/я$/, 'ю');
   const cat = (st) => (st.catalog && st.catalog.guests) || null;
   const def = (st, key) => { const c = cat(st); return (c && c.list.find((g) => g.key === key)) || null; };
   const wareName = (st, key) => {
@@ -145,6 +147,9 @@
       + '<b class="clkd-bt"> · ⏳ <em class="clkd-cd" data-at="' + o.until + '" data-done="відплив"></em></b></span></div>'
       + '<div class="clkd-obtns">'
       + '<button type="button" class="primary small clkd-give" data-give="' + o.id + '"' + (st.mine && ready ? '' : ' disabled') + '>🤝 Віддати</button>'
+      // Бракує — «Ліпити» тут же, з розписом замовлення (form { ware, style }), як у Толоці.
+      + (ready || !st.mine ? '' : '<button type="button" class="ghost small clkd-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
+        + esc(acc(wareName(st, o.ware))) + '</button>')
       + '<button type="button" class="ghost small clkd-skip' + (armed ? ' armed' : '') + '" data-skip="' + o.id + '"' + (st.mine ? '' : ' disabled')
       // «Точно?» — не довше за «Відпустити»: інакше кнопка переносилась у новий рядок і тікала з-під пальця на другому натиску.
       + ' title="' + (armed ? 'Натисни ще раз — гість поїде' : 'Гість поїде без образи — місце на дворі звільниться') + '">'
@@ -362,7 +367,9 @@
     const give = e.target.closest('[data-give]');
     if (give) { giveOrder(st, api, e, +give.dataset.give); return; }
     const skip = e.target.closest('[data-skip]');
-    if (skip) skipOrder(st, api, e, +skip.dataset.skip);
+    if (skip) { skipOrder(st, api, e, +skip.dataset.skip); return; }
+    const f = e.target.closest('[data-form]');
+    if (f && human(e)) api.order(st, 'form', { ware: f.dataset.form, style: f.dataset.style });
   }
 
   // ---------- місце у «Селі» ----------
@@ -410,7 +417,7 @@
       icon: '<text x="16" y="23" font-size="19" text-anchor="middle">' + emoji + '</text>',
       text: who + ' чекає: ' + wareName(st, o.ware).toLowerCase() + ' ×' + o.n,
       sub: 'усе є в коморі — віддай за ≈' + api.potsShort(o.pay) + ' і шану +' + o.rep,
-      pct: 100, eta: 0, tab: 'guild', prio: 1,
+      pct: 100, eta: 0, tab: 'guild', row: '[data-sec="guests"] .clkd-order[data-order="' + o.id + '"]', prio: 1,
     };
   });
 

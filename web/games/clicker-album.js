@@ -712,7 +712,7 @@
     const lock = shutStyle(st, k);
     const formBtn = !cw ? '' : cw.open
       ? '<button type="button" class="' + (open ? 'ghost' : 'primary') + ' small clka-form"' + (st.mine ? '' : ' disabled') + '>'
-        + (st.craft.ware === w.key ? '🏺 Уже на колі — як обпалити' : '🏺 Ліпити ' + esc(w.name.toLowerCase())) + '</button>'
+        + (st.craft.ware === w.key ? '🏺 Уже на колі — як обпалити' : '🏺 Ліпити ' + esc(String(w.name).toLowerCase().replace(/а$/, 'у').replace(/я$/, 'ю'))) + '</button>'
         + (k && !open && lock ? '<span class="muted small">🔒 розпис «' + esc(styleName(st, k)) + '» ще не відкрито (щабель «' + esc(lock) + '»)</span>' : '')
       : '<span class="muted small">' + esc(w.name) + ' відкриється на ' + esc(api.potsShort(cw.unlock || 0)) + ' за весь час</span>';
     api.overlay(st, '<div class="clka-card' + (open ? ' open' : '') + '">'
