@@ -70,7 +70,10 @@
 /* Сіра, але жива: натиск питає сервер, і він каже дослівно, чому не бере. */
 .clkt-btns > button.off { opacity: .5; filter: grayscale(.8); }
 .clkt-why { color: var(--muted); font-size: .78em; line-height: 1.3; }
-.clkt-why.err { color: var(--danger); }
+/* Що дасть «Завантажити все» — над кнопками, дрібно. */
+.clkt-sum { color: var(--muted); font-size: .78em; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.clkt-onwheel { color: var(--muted); }
+.clkt-rel.armed { color: #ffb27a; border-color: #8a4a2a; }
 .clkt-next { text-align: right; }
 .clkt-next.empty { text-align: center; padding: 4px 8px; border: 1px dashed var(--line); border-radius: 10px; }
 
@@ -90,6 +93,14 @@
 @media (pointer: coarse) {
   .clkt-btns > button, .clkt-open > button { min-height: 40px; }
   .clkt-btns > .clkt-plus { min-width: 48px; }
+  /* ⓘ розділу — сама ціль 40×40 (QA-3: 16×16), а кружечок той самий: його малює тло, від'ємні поля не зсувають заголовок. */
+  .clkt-title .clk-info > summary {
+    width: 40px; height: 40px; margin: -12px -12px -12px -8px; border-color: transparent;
+    background: radial-gradient(circle, transparent 7px, var(--line) 7.5px, var(--line) 8.5px, transparent 9px);
+  }
+  .clkt-title .clk-info[open] > summary {
+    border-color: transparent; background: radial-gradient(circle, transparent 7px, var(--accent2) 7.5px, var(--accent2) 8.5px, transparent 9px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
