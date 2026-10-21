@@ -177,26 +177,23 @@
   /// золотих (1 золотий = 10¹² ₴). Це лише показ — гаманець один. Ті самі пороги й слова, що Clicker.Short на сервері.
   const HRYVNIA = 1e15;
   const GOLD = 1e27;
+  /// v12 §6: дукач — трильйон червоних золотих, 10³⁹ глеків (Clicker.Dukach).
+  const DUKACH = 1e39;
   /// Назви великих чисел — ті самі, що на сервері (Impl/Clicker.cs, BigNames): лише знайомі слова. Далі за трильйоном
-  /// гривні й золоті, а за трильйонами одиниці — «1,2e15».
+  /// гривні, золоті й дукачі, а за трильйонами одиниці — трильйони з розрядами («1 200 трлн»), не степінь.
   const BIG = ['млн', 'млрд', 'трлн'];
-  /// «1,2e36»: степінь із українською комою, як у сервера («0.#e0»).
-  function expo(n) {
-    let e = Math.floor(Math.log10(Math.abs(n)));
-    let m = Math.round((n / Math.pow(10, e)) * 10) / 10;
-    if (Math.abs(m) >= 10) { m /= 10; e += 1; }            // 9,99e36 — це 1e37, а не «10e36»
-    return nf(1).format(m) + 'e' + e;
-  }
+  /// За трильйонами — «1 200 трлн», як Clicker.Count: степеня («1,2e15») гравець не бачить ніде (v12 §6).
+  const trillions = (n) => num(cut(n / 1e12, 0)) + ' ' + BIG[BIG.length - 1];
   /// Відтинаємо, а не округлюємо (як сервер): «999,999 трлн» не стає «1000 трлн». Запас у трильйонну частку —
   /// від похибки double (999·10²⁴ / 10¹⁵ = 998,99999…).
   const cut = (v, digits) => Math.trunc(v * Math.pow(10, digits) * (1 + 1e-12)) / Math.pow(10, digits);
-  /// Число без одиниці: до мільйона — повне, далі «1,09 млн» … «999 трлн», а за трильйонами — «1,2e15».
+  /// Число без одиниці: до мільйона — повне, далі «1,09 млн» … «999 трлн», а за трильйонами — «1 200 трлн».
   function count(n) {
     if (!Number.isFinite(n)) return '∞';
     // Від тисячі дробова частина — шум («14 091,8 ₴»): лише цілі, відтяті.
     if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? dec(n) : num(cut(n, 0));
     const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
-    if (i >= BIG.length) return expo(n);
+    if (i >= BIG.length) return trillions(n);
     const v = n / Math.pow(1000, i + 2);
     const digits = Math.abs(v) < 10 ? 2 : Math.abs(v) < 100 ? 1 : 0;
     return nf(digits).format(cut(v, digits)) + ' ' + BIG[i];
@@ -205,7 +202,7 @@
   function few(n) {
     if (!Number.isFinite(n) || Math.abs(n) < 1e6) return count(n);
     const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
-    if (i >= BIG.length) return expo(n);
+    if (i >= BIG.length) return trillions(n);
     const v = n / Math.pow(1000, i + 2);
     const digits = Math.abs(v) < 10 ? 1 : 0;
     return nf(digits).format(cut(v, digits)) + ' ' + BIG[i];
@@ -217,22 +214,34 @@
     const shown = Math.abs(g) >= 1000 ? cut(g, 0) : Math.round(g * 10) / 10;
     return shown % 1 ? 'золотого' : plural(shown, 'золотий', 'золоті', 'золотих');
   };
-  /// Сума глеків коротко: до квадрильйона — число («5,5 трлн»), далі «5,93 млн ₴», від 10²⁷ — «60 000 золотих».
-  /// Одиниця — частина тексту, тож «ціна: short(x)» читається правильно без слова поруч.
+  /// Дукач / дукачі / дукачів; дробове — «дукача»; після «млн» — «дукачів» (Clicker.DukachWord).
+  const dukachWord = (d) => {
+    if (!Number.isFinite(d) || Math.abs(d) >= 1e6) return 'дукачів';
+    const shown = Math.abs(d) >= 1000 ? cut(d, 0) : Math.round(d * 10) / 10;
+    return shown % 1 ? 'дукача' : plural(shown, 'дукач', 'дукачі', 'дукачів');
+  };
+  /// Сума глеків коротко: до квадрильйона — число («5,5 трлн»), далі «5,93 млн ₴», від 10²⁷ — «60 000 золотих»,
+  /// від 10³⁹ — «2,8 дукача». Одиниця — частина тексту, тож «ціна: short(x)» читається правильно без слова поруч.
   function short(n) {
     if (!Number.isFinite(n)) return '∞';
     const a = Math.abs(n);
     if (a < HRYVNIA) return count(n);
     if (a < GOLD) return count(n / HRYVNIA) + ' ₴';
-    const g = n / GOLD;
-    return count(g) + ' ' + goldWord(g);
+    if (a < DUKACH) {
+      const g = n / GOLD;
+      return count(g) + ' ' + goldWord(g);
+    }
+    const d = n / DUKACH;
+    return count(d) + ' ' + dukachWord(d);
   }
   /// «1,47 млн глеків», а не «1,47 млн глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
   /// У гривнях і золотих слово вже є.
   const potsShort = (n) => (Math.abs(n) >= HRYVNIA ? short(n)
     : short(n) + ' ' + (Math.abs(n) >= 1e6 ? 'глеків' : potsWord(n)));
   /// Одиниця для великого лічильника: у чому зараз рахуємо і на що ділити.
-  const unit = (n) => (n >= GOLD ? { div: GOLD, word: 'золотих', key: 'gold' }
+  /// Слово дукачів — за видимим числом (big показує «5,84», «1 234», «1,234 млрд»), бо «5,84 дукачів» ріже око.
+  const unit = (n) => (n >= DUKACH ? { div: DUKACH, word: n / DUKACH < 1000 ? 'дукача' : dukachWord(n / DUKACH), key: 'dukach' }
+    : n >= GOLD ? { div: GOLD, word: 'золотих', key: 'gold' }
     : n >= HRYVNIA ? { div: HRYVNIA, word: '₴', key: 'hryvnia' } : { div: 1, word: 'глеків', key: 'pots' });
   /// Великий лічильник (без одиниці — її пише мітка поруч, unit()): до трильйона глеків кожна цифра (видно, як коло
   /// крутиться; «3 млрд» стояло б годинами), до квадрильйона — коротко з трьома знаками. У гривнях і золотих: до тисячі —
@@ -245,7 +254,7 @@
     if (u.div > 1 && v < 1000) return nf(2).format(cut(v, 2));
     if (u.div > 1 && v < 1e9) return num(cut(v, 0));
     const i = Math.floor(Math.log10(v) / 3) - 2;
-    if (i >= BIG.length) return expo(v);
+    if (i >= BIG.length) return trillions(v);
     return nf(3).format(cut(v / Math.pow(1000, i + 2), 3)) + ' ' + BIG[i];
   }
 
@@ -646,7 +655,7 @@
       countText(st, text);
       // Одиниця поруч із числом: глеки, гривні чи золоті (десяте оновлення). Міняється рідко — лише на порогах.
       const u = unit(n);
-      if (u.key !== st.unitKey) { st.unitKey = u.key; st.unit.textContent = u.word; }
+      if (u.key !== st.unitKey || u.word !== st.unitWord) { st.unitKey = u.key; st.unitWord = u.word; st.unit.textContent = u.word; }
       // «999 999 999 999» на телефоні не влазить у звичний кегль — зменшуємо, а не переносимо.
       // Висоту шапки .long більше не міняє (див. .clk-head у clicker.css: вона стала від --clk-num),
       // а на картці від 900 px css узагалі лишає кегль незмінним — сцена під числом не ворухнеться.
@@ -2933,6 +2942,9 @@
       + 'Гаманець той самий, просто без зайвих нулів.' },
     { kind: 'gold', title: '💰 Червоні золоті', text: 'Гривень стало як піску над Дніпром. Великі статки рахують <b>червоними золотими</b>: '
       + '1 золотий = 1 трильйон гривень. Хто б міг подумати, що все почалося з одного глечика.' },
+    { kind: 'dukach', title: '📿 Дукач на шию', text: 'Червоних золотих уже стільки, що їх носять на шиї. Великі статки тепер рахують '
+      + '<b>дукачами</b> — як ті монети, що висять на намисті з коралів: 1 дукач = 1 трильйон червоних золотих. '
+      + 'Гаманець той самий — просто намисто важчає.' },
   ];
 
   function coinLater(st) {
@@ -2945,7 +2957,7 @@
 
   function showCoin(st) {
     if (!st.el || !st.ctx || !st.mine || !visible(st) || guardOn(st) || H.api.overlayOpen(st)) return false;
-    const c = COINS[Math.min(2, st.coin)];
+    const c = COINS[Math.min(COINS.length - 1, st.coin)];
     if (!c) return true;
     const svg = H.api.coinSvg ? H.api.coinSvg(c.kind) : '';
     const html = '<div class="clk-news clk-coin">' + (svg ? '<div class="clk-coin-pic">' + svg + '</div>' : '')

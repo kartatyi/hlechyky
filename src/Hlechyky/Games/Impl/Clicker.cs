@@ -678,7 +678,7 @@ public sealed partial class Clicker : Game
     int _coinSeen;
 
     /// <summary>До якої одиниці гончар доріс глеками за весь час: 0 — глеки, 1 — гривні, 2 — червоні золоті.</summary>
-    int CoinLevel => _total >= Gold ? 2 : _total >= Hryvnia ? 1 : 0;
+    int CoinLevel => _total >= Dukach ? 3 : _total >= Gold ? 2 : _total >= Hryvnia ? 1 : 0;
 
     /// <summary>
     /// Як часто число з таблиці оновлюється під час клацання. Кожна пачка кліків — це запис у ту саму
@@ -689,7 +689,7 @@ public sealed partial class Clicker : Game
 
     /// <summary>Пороги ачівок: платформа бачить їх саме з таблиці, тож ці числа мусять летіти негайно,
     /// а не чекати своєї півхвилини.</summary>
-    static readonly double[] Milestones = [1_000, 100_000, 1_000_000, 1_000_000_000, 1_000_000_000_000, Hryvnia, Gold];
+    static readonly double[] Milestones = [1_000, 100_000, 1_000_000, 1_000_000_000, 1_000_000_000_000, Hryvnia, Gold, Dukach];
 
     // ---------- те, з чого складається дохід ----------
 
@@ -2073,7 +2073,8 @@ public sealed partial class Clicker : Game
         // Гривню пояснює лише блок v10 у вікні новин, а його бачить той, хто v10 (чи v10.1) ще не бачив. Хто вже бачив —
         // тому новини v11 гривню не пояснюють, і його церемонія (скажімо, «Червоні золоті»), якщо ще чекає, лишається.
         // Хто бачив v11, той блок v10 або вже бачив, або прочитав у вікні v11 — v11.1 його не показує.
-        if (_news is not ("v10" or "v10.1" or "v11" or "v11.1")) _coinSeen = Math.Max(_coinSeen, CoinLevel);
+        // v12: блок v10 пояснює лише гривню й золоті — дукача він не знає, тож його церемонія лишається за будь-яких новин.
+        if (_news is not ("v10" or "v10.1" or "v11" or "v11.1" or "v11.2")) _coinSeen = Math.Max(_coinSeen, Math.Min(2, CoinLevel));
         _news = NewsVersion;
         // Подарунки: округи (v9.2), десятого й одинадцятого оновлень — кожен раз на гончаря; хто пропустив старі,
         // забирає їх разом із новим.
@@ -2111,7 +2112,7 @@ public sealed partial class Clicker : Game
     /// <summary>Вікно-церемонію гривні чи золотих побачено. Вище, ніж доріс, записати не можна.</summary>
     ActResult SeenCoin(JsonElement payload)
     {
-        var v = (int)Math.Clamp(Num(payload, "v") ?? 0, 0, 2);
+        var v = (int)Math.Clamp(Num(payload, "v") ?? 0, 0, 3);
         if (v > CoinLevel) return ActResult.Fail("До цього ще треба дорости");
         _coinSeen = Math.Max(_coinSeen, v);
         return ActResult.Done;
@@ -2184,9 +2185,13 @@ public sealed partial class Clicker : Game
     public const double Hryvnia = 1e15;
     /// <summary>Червоний золотий — тисяча мільярдів гривень, 10²⁷ глеків.</summary>
     public const double Gold = 1e27;
+    /// <summary>Дукач (v12, docs/games/specs/clicker-v12.md §6) — монета з намиста, трильйон червоних золотих, 10³⁹ глеків:
+    /// лідери дійшли до «41 трлн золотих», а за трильйонами число ставало степенем («1,2e15 золотих»).</summary>
+    public const double Dukach = 1e39;
 
     /// <summary>
-    /// Число без одиниці: до мільйона — повне, далі «1,09 млн», «2,5 млрд», «999 трлн», а за трильйонами — «1,2e15».
+    /// Число без одиниці: до мільйона — повне, далі «1,09 млн», «2,5 млрд», «999 трлн», а за трильйонами — трильйони
+    /// з розрядами («1 200 трлн»): степеня («1,2e15») гравець в інтерфейсі кола не бачить ніде (v12 §6).
     /// Дробова частина відтинається, а не округлюється (як у клієнті): «999,999 трлн» не стає «1000 трлн».
     /// </summary>
     public static string Count(double n)
@@ -2197,7 +2202,7 @@ public sealed partial class Clicker : Game
         if (Math.Abs(n) < 1_000_000)
             return n % 1 == 0 || Math.Abs(n) >= 1000 ? Math.Truncate(n * (1 + 1e-12)).ToString("#,0", Uk) : n.ToString("#,0.#", Uk);
         var i = (int)Math.Floor(Math.Log10(Math.Abs(n)) / 3) - 2;
-        if (i >= BigNames.Length) return n.ToString("0.#e0", Uk);
+        if (i >= BigNames.Length) return $"{Math.Truncate(n / 1e12 * (1 + 1e-12)).ToString("#,0", Uk)} {BigNames[^1]}";
         var v = Shown(n / Math.Pow(1000, i + 2));
         return $"{v.ToString("0.##", Uk)} {BigNames[i]}";
     }
@@ -2222,8 +2227,21 @@ public sealed partial class Clicker : Game
         var a = Math.Abs(n);
         if (a < Hryvnia) return Count(n);
         if (a < Gold) return $"{Count(n / Hryvnia)} ₴";
-        var g = n / Gold;
-        return $"{Count(g)} {GoldWord(g)}";
+        if (a < Dukach)
+        {
+            var g = n / Gold;
+            return $"{Count(g)} {GoldWord(g)}";
+        }
+        var d = n / Dukach;
+        return $"{Count(d)} {DukachWord(d)}";
+    }
+
+    /// <summary>Дукач / дукачі / дукачів; дробове — «дукача» («2,8 дукача»); після «млн» — «дукачів». Як <see cref="GoldWord"/>.</summary>
+    static string DukachWord(double d)
+    {
+        if (!double.IsFinite(d) || Math.Abs(d) >= 1_000_000) return "дукачів";
+        var shown = Math.Abs(d) >= 1000 ? Math.Truncate(d * (1 + 1e-12)) : Math.Round(d, 1, MidpointRounding.AwayFromZero);
+        return shown % 1 != 0 ? "дукача" : Plural(shown, "дукач", "дукачі", "дукачів");
     }
 
     /// <summary>Золотий / золоті / золотих; дробове — «золотого» («1,5 золотого»). Після скорочення («1,2 млн») —
@@ -2590,7 +2608,7 @@ public sealed partial class Clicker : Game
         _goldenSlept = s.GoldenSlept;
         _fallSlept = s.FallSlept;
         _news = s.News is { Length: <= 16 } news ? news : "";
-        _coinSeen = Math.Clamp(s.CoinSeen, 0, 2);
+        _coinSeen = Math.Clamp(s.CoinSeen, 0, 3);
         if (Sane(s.Cat) is { } cat) _cat = cat; else ScheduleCat(Ctx.Clock.UtcNow);
         if (Sane(s.Star) is { } star) _star = star; else ScheduleStar(Ctx.Clock.UtcNow);
         if (Sane(s.Wind) is { } wind) _wind = wind; else ScheduleWind(Ctx.Clock.UtcNow);
