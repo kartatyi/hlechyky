@@ -2459,6 +2459,7 @@ public sealed partial class Clicker : Game
             // Одинадцяте оновлення: Толока (ClickerToloka.cs; null — ще нема гривні за весь час) і скарбниця роду.
             toloka = ViewToloka(Ctx.Clock.UtcNow),
             trade = ViewTrade(Ctx.Clock.UtcNow),
+            day = ViewDay(Ctx.Clock.UtcNow),
             relics = RelicsView(),
             away = AwayView(),
             catalog = CatalogView(),

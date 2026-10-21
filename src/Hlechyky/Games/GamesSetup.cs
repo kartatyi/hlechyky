@@ -41,6 +41,7 @@ public static class GamesSetup
         services.AddSingleton<TablesKeeper>();
         services.AddHostedService(sp => sp.GetRequiredService<TablesKeeper>());
         Impl.ClickerGuildSetup.AddClickerGuild(services);   // цех Гончарного кола: віз, дарунки, хата друга
+        Impl.ClickerDaySetup.Add(services);                 // «Майстер дня» Гончарного кола: табло й призи о 23:30 (v12)
         // «Вгадай мелодію»: один на всі столи — щоб пісню з добірки не качали двічі два столи водночас
         services.AddSingleton(sp => new Impl.MelodyLibrary(
             sp.GetService<Db>(), sp.GetService<Microsoft.Extensions.Options.IOptionsMonitor<YtDlpOptions>>(),

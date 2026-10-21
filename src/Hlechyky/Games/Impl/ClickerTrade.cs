@@ -29,6 +29,30 @@ public sealed partial class Clicker
     public const int SlavaQ2 = 1, SlavaQ3 = 2, SlavaQ4 = 5, SlavaStyle = 1, SlavaFullPct = 10;
     /// <summary>Скільки повних кораблів — на ачівку «Морський торговець».</summary>
     public const int ShipsForAchievement = 100;
+    /// <summary>Очки «Майстра дня» (ClickerDay.cs) за виріб з ручного горна: дзвінкий і розкішний.</summary>
+    public const int DayPointsQ3 = 1, DayPointsQ4 = 3;
+
+    /// <summary>Сервіс «Майстра дня» — один на сайт (null у тестах без нього).</summary>
+    ClickerDayService? _daySvc;
+    bool _dayLooked;
+
+    ClickerDayService? DaySvc()
+    {
+        if (!_dayLooked) { _daySvc = Ctx.Services.GetService<ClickerDayService>(); _dayLooked = true; }
+        return _daySvc;
+    }
+
+    /// <summary>Вид «day»: табло дня й моє місце.</summary>
+    object? ViewDay(DateTimeOffset now) => DaySvc()?.Wire(Ctx.NickOf(0), now);
+
+    /// <summary>Переможець дня, що зайшов уже після підбиття (сервіс видає ачівки сам, але база могла бути недоступна).</summary>
+    void SyncDay()
+    {
+        if (DaySvc() is not { } svc) return;
+        var wins = svc.WinsOf(Ctx.NickOf(0));
+        if (wins >= 1) Achieve("potter-day-win");
+        if (wins >= 7) Achieve("potter-day-7");
+    }
 
     /// <summary>Звідки корабель: родовий відмінок для «Корабель з …» і розпис тих країв (порожній — свого нема).</summary>
     public sealed record ClickerPort(string Key, string From, string Style);
@@ -167,6 +191,7 @@ public sealed partial class Clicker
     /// </summary>
     void SyncTrade(DateTimeOffset now)
     {
+        SyncDay();
         if (!TradeOpen) return;
         foreach (var s in _ships.Where(s => s.Until <= now).ToList())
         {
