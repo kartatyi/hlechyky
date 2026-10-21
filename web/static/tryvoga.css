@@ -1,0 +1,132 @@
+/* «🚨 Тривога» (web/tryvoga.js, docs/tryvoga.md): плашка, кнопка в шапці, сторінка #tryvoga з мапою */
+
+/* ---- плашка під шапкою: як «нічний відбій», але кольором рівня ---- */
+.trybar > div { padding: 10px 10px 10px 16px; }
+.trybar .nb-text { flex: 1; min-width: 0; }
+.trybar .nb-moon { font-size: 1.6em; }
+.trybar a.primary { flex: none; text-decoration: none; padding: 7px 14px; border-radius: 10px; font-weight: 600; background: var(--accent); color: var(--accent-ink); }
+.trybar .tryx { flex: none; }
+.trybar.lvl-red > div { background: linear-gradient(100deg, #4a1414, #6b1d1a); border-color: #a3392f; color: #ffe9e6; }
+.trybar.lvl-yellow > div { background: linear-gradient(100deg, #3d300a, #5a4510); border-color: #a07a1c; color: #fff4d6; }
+.trybar.lvl-stale > div { background: var(--panel2); border-color: var(--line); color: var(--text); }
+.trybar.lvl-red a.primary { background: #e5534d; color: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .trybar.lvl-red .nb-moon, .trybar.lvl-yellow .nb-moon { animation: tv-blink 1.6s ease-in-out infinite; }
+}
+@keyframes tv-blink { 50% { opacity: .35; } }
+
+/* ---- кнопка 🚨 у шапці: тихо — приглушена, тривога — крапка кольором рівня ---- */
+header .trybtn { position: relative; padding: 6px 9px; font-size: 1.05em; }
+header .trybtn .try-ico { filter: grayscale(1); opacity: .6; transition: opacity .2s; }
+header .trybtn:hover .try-ico { opacity: .9; }
+header .trybtn.on .try-ico { filter: none; opacity: 1; }
+header .trybtn .try-dot { position: absolute; top: 3px; right: 3px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--bg); display: none; }
+header .trybtn.on .try-dot { display: block; background: #e5534d; }
+header .trybtn.yellow .try-dot { background: var(--accent); }
+header .trybtn.stale .try-dot { display: block; background: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  header .trybtn.on .try-dot { animation: tv-pulse 1.8s ease-out infinite; }
+}
+@keyframes tv-pulse { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+
+/* ---- сторінка ---- */
+.tryv {
+  --tv-sea: #10241b; --tv-land: #213b2f;
+  --tv-red: rgba(229, 83, 77, .62); --tv-yellow: rgba(244, 197, 66, .48);
+  --tv-raion: rgba(236, 241, 234, .09); --tv-oblast: rgba(236, 241, 234, .32); --tv-outline: rgba(236, 241, 234, .55);
+  --tv-river: rgba(74, 143, 179, .5);
+  --tv-uav: #ff8f1f; --tv-fpv: #ff8f1f; --tv-missile: #ff4d61; --tv-ballistic: #e0479a; --tv-kab: #ff6a33;
+  --tv-mig31k: #a58bff; --tv-recon: #3fb3ec; --tv-unknown: #98a3b8;
+  display: flex; flex-direction: column; gap: 16px; max-width: 1100px;
+}
+.tryv .panel { margin: 0; }
+.tv-muted { color: var(--muted); }
+.tv-small { font-size: .88em; margin-top: 4px; }
+.tv-ok { color: var(--ok); font-weight: 600; }
+.tv-lvl { font-weight: 600; }
+.tv-lvl.red { color: #ff8a80; }
+.tv-lvl.yellow { color: var(--accent); }
+
+.tv-me { display: flex; align-items: center; gap: 14px 22px; flex-wrap: wrap; }
+.tv-state { display: flex; align-items: center; gap: 12px; flex: 1 1 320px; min-width: 0; line-height: 1.4; }
+.tv-state .tv-big { font-size: 2.1em; line-height: 1; flex: none; }
+.tv-state b { font-size: 1.12em; }
+.tv-state.on { border-left: 4px solid #e5534d; padding-left: 12px; }
+.tv-state.on.yellow { border-left-color: var(--accent); }
+.tv-state.stale { border-left: 4px solid var(--muted); padding-left: 12px; }
+.tv-pick { display: flex; flex-direction: column; gap: 4px; flex: 0 1 300px; min-width: 0; font-size: .9em; color: var(--muted); }
+.tv-pick select {
+  font: inherit; font-size: 1.05em; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px; outline: none; width: 100%; max-width: 100%; min-width: 0;
+}
+.tv-pick select:focus { border-color: var(--accent2); }
+
+.tv-mapwrap { position: relative; }
+.tv-box { position: relative; width: 100%; aspect-ratio: 4000 / 2730; max-height: 72vh; border-radius: 12px; overflow: hidden; background: var(--tv-sea); }
+.tv-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: pan-y; }
+.tv-cv:active { cursor: grabbing; }
+.tv-load { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
+.tv-hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(10, 20, 15, .82); color: var(--text); padding: 8px 14px; border-radius: 10px; pointer-events: none; font-size: .92em; white-space: nowrap; }
+.tv-ctl { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.tv-ctl button { width: 36px; height: 36px; padding: 0; justify-content: center; background: rgba(15, 31, 24, .82); border: 1px solid var(--line); font-size: 1.05em; }
+.tv-pop {
+  position: absolute; z-index: 3; max-width: min(300px, calc(100% - 12px)); padding: 9px 12px; border-radius: 10px;
+  background: rgba(16, 30, 23, .97); border: 1px solid var(--line); box-shadow: 0 6px 22px rgba(0, 0, 0, .45); line-height: 1.4; font-size: .92em;
+}
+.tv-pop button.tv-mine { margin-top: 8px; padding: 5px 10px; font-size: .95em; }
+
+/* на весь екран: усі жести наші (щипок, протяг), колесо наближає без Ctrl */
+.tv-mapwrap.tv-full { position: fixed; inset: 0; z-index: 900; background: var(--tv-sea); padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.tv-full .tv-box { height: 100%; max-height: none; aspect-ratio: auto; border-radius: 0; }
+.tv-full .tv-cv { touch-action: none; }
+.tv-full .tv-ctl { top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); }
+body.tv-full-open { overflow: hidden; }
+
+.tv-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: .85em; color: var(--muted); }
+.tv-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; }
+.sw.red { background: var(--tv-red); }
+.sw.yellow { background: var(--tv-yellow); }
+.gl { display: inline-block; width: 10px; height: 10px; background: var(--tv-uav); clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%); }
+.gl.missile, .gl.ballistic { background: var(--tv-missile); clip-path: polygon(50% 0, 80% 100%, 50% 85%, 20% 100%); }
+.gl.kab { background: var(--tv-kab); clip-path: none; border-radius: 50%; }
+.gl.mig31k { background: var(--tv-mig31k); }
+.gl.ring { background: none; clip-path: none; border: 2px solid var(--tv-recon); border-radius: 50%; width: 9px; height: 9px; }
+.ci { display: inline-block; width: 12px; height: 12px; border: 1px dashed var(--muted); border-radius: 50%; }
+
+.tv-sky h3 { margin: 14px 0 6px; font-size: .95em; color: var(--muted); font-weight: 600; }
+.tv-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tv-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); font-size: .92em; }
+.tv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tv-list li { display: flex; align-items: baseline; gap: 8px; padding: 7px 4px; border-top: 1px solid var(--line); cursor: pointer; border-radius: 6px; }
+.tv-list li:first-child { border-top: 0; }
+.tv-list li:hover { background: var(--panel2); }
+.tv-list .tv-ico { flex: none; }
+.tv-list .tv-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tv-list .tv-ago { flex: none; color: var(--muted); font-size: .85em; white-space: nowrap; }
+.tv-obs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tv-ob { padding: 4px 10px; font-size: .9em; }
+.tv-note { margin: 0; font-size: .85em; color: var(--muted); line-height: 1.5; }
+.tv-note a { color: var(--accent); }
+
+@media (max-width: 600px) {
+  .tryv { gap: 12px; }
+  .tv-state .tv-big { font-size: 1.8em; }
+  .tv-pick { flex-basis: 100%; }
+  /* мапа на телефоні низька — кнопки під нею рядком, а не стовпчиком поверх (на весь екран — знову поверх) */
+  .tv-mapwrap:not(.tv-full) .tv-ctl { position: static; flex-direction: row; justify-content: flex-end; margin-top: 8px; }
+  .tv-ctl button { width: 40px; height: 36px; }
+  .trybar > div { gap: 10px; padding: 8px 8px 8px 12px; }
+  .trybar a.primary { padding: 6px 10px; }
+}
+/* Кнопка 🚨 — ще одна в шапці телефона: на 360 px довга назва розділу («Бібліотека») виштовхувала 💡 за край.
+   Назва тепер стискається з трьома крапками — розділ однаково видно на вкладці внизу. */
+@media (max-width: 900px) {
+  header .hdrtitle { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (max-width: 380px) {
+  header .trybtn { padding: 6px 7px; }
+}
+
+/* розділ — як решта видів: перемикає клас маршруту на body (style.css, «.view») */
+body.route-tryvoga #viewTryvoga { display: flex; animation: fadein .15s ease-out; }
