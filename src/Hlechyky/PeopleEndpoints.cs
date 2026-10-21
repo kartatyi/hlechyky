@@ -184,6 +184,7 @@ public static class PeopleEndpoints
         "buy-gift" => "куплено в подарунок",
         "sell" => "продано за гривні",
         "sell-back" => "повернуто з продажу",
+        "admin" => "від адміна",
         "bet" => "ставки в Глека",
         _ => cat,
     };

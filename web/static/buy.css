@@ -90,6 +90,12 @@
 .wc-trade button { flex: 1 1 150px; justify-content: center; min-height: 46px; padding: 10px 14px; font-size: 1.02em; font-weight: 600; }
 .wc-trade .chip.badge { font-size: .8em; min-width: 20px; }
 
+/* адмін: нарахувати / списати черепки в чужому профілі (people.js, wireAdjust) */
+.wc-adj { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.wc-adj input[name="amount"] { flex: 0 1 110px; min-width: 90px; }
+.wc-adj input[name="note"] { flex: 1 1 160px; min-width: 0; }
+.wc-adj button { flex: 0 0 auto; min-width: 46px; }
+
 /* вкладки: купити / продати / заявки */
 .by-tabs { display: flex; gap: 6px; }
 .by-tabs button { flex: 1 1 0; min-width: 0; padding: 7px 6px; font-size: 14px; white-space: nowrap; }

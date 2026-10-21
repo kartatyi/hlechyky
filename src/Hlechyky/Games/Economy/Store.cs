@@ -61,11 +61,12 @@ public sealed class EconomyStore(Db db)
     /// <summary>Ключ гаманця: нік у нижньому регістрі (InvariantCulture), обрізаний. «Оля» і «оля» — один нік.</summary>
     public static string Key(string? nick) => (nick ?? "").Trim().ToLowerInvariant();
 
-    static readonly string[] ExchangeReasons = ["buy:", "buy-gift:", "sell:", "sell-back:"];
+    static readonly string[] ExchangeReasons = ["buy:", "buy-gift:", "sell:", "sell-back:", "admin:"];
 
     /// <summary>
-    /// Обмін на гривні (ShardShop.cs): куплене (собі чи в подарунок), продане й повернуте з продажу, що не відбувся. У балансі
-    /// воно є, але ні в «зароблено», ні у «витрачено» — таблиці й ачівки рахують лише те, що набуто й витрачено в грі.
+    /// Обмін на гривні (ShardShop.cs): куплене (собі чи в подарунок), продане й повернуте з продажу, що не відбувся, — і
+    /// черепки, які адмін нарахував чи списав руками (admin:). У балансі воно є, але ні в «зароблено», ні у «витрачено» —
+    /// таблиці й ачівки рахують лише те, що набуто й витрачено в грі.
     /// </summary>
     public static bool Exchange(string reason) => ExchangeReasons.Any(p => reason.StartsWith(p, StringComparison.Ordinal));
 

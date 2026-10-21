@@ -541,4 +541,44 @@ public sealed class ShardShopTests : IDisposable
         (status, _) = Radio.Reply(ShardShopSetup.ConfirmSale(999, As("гість Адмін", account: false, admin: true), _shop));
         Assert.Equal(404, status);
     }
+
+    // =============================================================================================
+    // Адмін нараховує й списує руками — і тоді, коли купівля й продаж вимкнені
+    // =============================================================================================
+
+    [Fact]
+    public void Admin_adjusts_shards_even_with_buy_and_sell_off_and_it_stays_out_of_earned()
+    {
+        _opts.Buy = false;
+        _opts.Sell = false;
+        var admin = As("гість Адмін", account: false, admin: true);
+        var lg = NullLogger<ShardShop>.Instance;
+
+        var (status, body) = Radio.Reply(ShardShopSetup.Adjust(admin, new("оля", 500, "  за  турнір ", "op1"), _eco.Economy, _eco.Db, lg));
+        Assert.Equal(200, status);
+        Assert.Equal(500, body.GetProperty("balance").GetInt32());
+        // той самий op — подвійне натискання — вдруге не нараховує
+        Radio.Reply(ShardShopSetup.Adjust(admin, new("Оля", 500, "за турнір", "op1"), _eco.Economy, _eco.Db, lg));
+        Assert.Equal(500, _eco.Economy.Balance("Оля"));
+        var w = _eco.Economy.Wallet("Оля");
+        Assert.Equal(0, w.Earned);   // поза «зароблено», як і обмін
+        Assert.Equal("від адміна — за турнір", _eco.Economy.Reason("admin:за турнір"));
+
+        (status, _) = Radio.Reply(ShardShopSetup.Adjust(admin, new("Оля", -200, null, "op2"), _eco.Economy, _eco.Db, lg));
+        Assert.Equal(200, status);
+        Assert.Equal(300, _eco.Economy.Balance("Оля"));
+        Assert.Equal(0, _eco.Economy.Wallet("Оля").Spent);
+
+        // у мінус не йде
+        (status, body) = Radio.Reply(ShardShopSetup.Adjust(admin, new("Оля", -301, null, "op3"), _eco.Economy, _eco.Db, lg));
+        Assert.Equal(400, status);
+        Assert.Contains("лише 300", body.GetProperty("message").GetString());
+        Assert.Equal(300, _eco.Economy.Balance("Оля"));
+
+        // не адмін, гість без акаунта, нуль — відмова
+        Assert.Equal(403, Radio.Reply(ShardShopSetup.Adjust(As("Петро"), new("Оля", 10, null, null), _eco.Economy, _eco.Db, lg)).Item1);
+        Assert.Equal(404, Radio.Reply(ShardShopSetup.Adjust(admin, new("гість Вася", 10, null, null), _eco.Economy, _eco.Db, lg)).Item1);
+        Assert.Equal(400, Radio.Reply(ShardShopSetup.Adjust(admin, new("Оля", 0, null, null), _eco.Economy, _eco.Db, lg)).Item1);
+        Assert.Equal(400, Radio.Reply(ShardShopSetup.Adjust(admin, new("Оля", ShardShopSetup.AdjustMax + 1, null, null), _eco.Economy, _eco.Db, lg)).Item1);
+    }
 }

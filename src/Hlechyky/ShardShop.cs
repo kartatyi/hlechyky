@@ -661,6 +661,12 @@ public static class ShardShopSetup
     public sealed record PaidRequest(int? Uah, string? For);
     public sealed record SellRequest(int? Uah);
     public sealed record BanksRequest(PadelMoney.BankRequest[]? Banks);
+    public sealed record AdjustRequest(string? Nick, int? Amount, string? Note, string? Op);
+
+    /// <summary>Найбільше, що адмін нарахує чи спише за раз, — від хибного нуля в кінці.</summary>
+    public const int AdjustMax = 1_000_000;
+    /// <summary>Примітка до нарахування — її видно в гаманці людини («від адміна — …»).</summary>
+    public const int AdjustNoteMax = 80;
 
     public static IServiceCollection AddHlechykyShardShop(this IServiceCollection services)
     {
@@ -684,8 +690,41 @@ public static class ShardShopSetup
         api.MapPost("/sale/{id:long}/cancel", CancelSale);
         api.MapPost("/sale/{id:long}/ok", ConfirmSale);
         api.MapPut("/banks", SetBanks);
+        api.MapPost("/adjust", Adjust);
         return app;
     }
+
+    /// <summary>
+    /// Адмін нараховує (+) чи списує (−) черепки акаунту руками — поза вимикачами ShardShop:Buy / Sell, бо це не обмін на
+    /// гривні. Причина <c>admin:&lt;примітка&gt;</c> — поза «зароблено/витрачено» (EconomyStore.Exchange). <c>Op</c> — ключ
+    /// повтору з вікна: подвійне натискання не нарахує двічі. Списати більше, ніж є, не вийде — у мінус гаманець не йде.
+    /// </summary>
+    public static IResult Adjust(HttpContext c, AdjustRequest b, Economy economy, Db db, ILogger<ShardShop> log)
+    {
+        if (!Auth.IsAdmin(c)) return Reply(new(false, "Лише для адміна", 403));
+        var acc = string.IsNullOrWhiteSpace(b.Nick) ? null : db.FindAccount(b.Nick.Trim());
+        if (acc is null) return Reply(new(false, "Такого акаунта нема — черепки лише акаунтам", 404));
+        var amount = b.Amount ?? 0;
+        if (amount == 0 || Math.Abs(amount) > AdjustMax) return Reply(new(false, $"Сума — ціле число від 1 до {Num(AdjustMax)}, зі знаком «−», щоб списати"));
+        var note = string.Join(' ', (b.Note ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (note.Length > AdjustNoteMax) note = note[..AdjustNoteMax];
+        var op = (b.Op ?? "").Trim();
+        if (op.Length is 0 or > 64) op = Guid.NewGuid().ToString("N");
+        var reason = "admin:" + note;
+        var refKey = "admin:" + op;
+        if (amount > 0)
+        {
+            var r = economy.Grant(acc.Nick, amount, reason, refKey);
+            if (r is not (GrantResult.Applied or GrantResult.Duplicate)) return Reply(new(false, "Черепки не нарахувались — спробуй ще раз"));
+        }
+        else if (!economy.TrySpend(acc.Nick, -amount, reason, refKey))
+            return Reply(new(false, $"У {acc.Nick} лише {Num(economy.Balance(acc.Nick))} 🏺 — стільки не списати"));
+        log.LogInformation("адмін {Admin}: {Amount:+#;−#} 🏺 → {Nick} ({Note})", Auth.Nick(c), amount, acc.Nick, note);
+        var balance = economy.Balance(acc.Nick);
+        return Results.Ok(new { ok = true, message = $"{(amount > 0 ? "Нараховано" : "Списано")} {Num(Math.Abs(amount))} 🏺 · у {acc.Nick} тепер {Num(balance)} 🏺", nick = acc.Nick, balance });
+    }
+
+    static string Num(int n) => ShardShop.Num(n);
 
     public static object View(HttpContext c, ShardShop shop) => shop.View(ShardActor.Of(c));
 

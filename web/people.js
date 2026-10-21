@@ -929,12 +929,14 @@
     if (stale(t) || whoNick !== nick) return;
     if (p) cache.set(nick.toLowerCase(), { at: Date.now(), data: p });
     const week = wk && (wk.people || []).find((x) => same(x.nick, nick));
+    // адмінові картка чужого акаунта потрібна й порожньою — щоб нарахувати перші черепки
+    const adm = !mine && o.me.role === 'admin' && !!(ppl && ppl.account);
     const known = !!(p && ((p.wallet && (p.wallet.earned || p.wallet.balance)) || (p.achievements || []).length || p.time || (p.recent || []).length))
-      || !!(ppl && ppl.music && (ppl.music.requests.all || ppl.music.likes.count)) || !!fun;
+      || !!(ppl && ppl.music && (ppl.music.requests.all || ppl.music.likes.count)) || !!fun || adm;
     root.innerHTML = headHtml(nick, mine, ppl, anth)
       + (known || mine ? '<div class="who-grid">'
         + funCard(fun, mine)
-        + walletCard(p, led, mine)
+        + walletCard(p, led, mine, adm)
         + timeCard(p, week)
         + musicCard(ppl, nick, mine)
         + gamesCard(p, mine)
@@ -948,6 +950,7 @@
     o.wireRows(root);
     root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
     if (window.HBuy) HBuy.wireTrade(root);
+    if (adm) wireAdjust(root, nick);
     if (mine && window.HTrucker) HTrucker.wire(root);
   }
 
@@ -994,7 +997,7 @@
     root.querySelectorAll('.who-head [data-go]').forEach((b) => b.onclick = () => o.go(b.dataset.go));
   }
 
-  function walletCard(p, led, mine) {
+  function walletCard(p, led, mine, adm) {
     const w = (p && p.wallet) || {};
     let body = '<div class="wc-big">🏺 ' + (w.balance != null ? lbNum(w.balance) : '—') + '</div>'
       + '<div class="muted small">зароблено ' + (w.earned != null ? lbNum(w.earned) : '—') + ' · витрачено ' + (w.spent != null ? lbNum(w.spent) : '—') + '</div>';
@@ -1019,9 +1022,40 @@
     const trade = buyOn && sellOn ? ' Можна купити й продати за гривні.' : buyOn ? ' Можна докупити за гривні.' : sellOn ? ' Можна продати за гривні.' : '';
     if (mine) body += '<div class="muted small wc-how">Черепки капають за радіо (увімкнений плеєр), партії, щоденний глек і ачівки. '
       + 'Витрачаються в Лавці Дядька Глека (усе там — назавжди), на бан треку й викуп із бану.' + trade + '</div>';
+    // адмін — нарахувати (+) чи списати (−) руками; не залежить від ShardShop:Buy / Sell (POST /api/shards/adjust)
+    if (adm) body += '<form class="wc-adj"><input type="number" name="amount" step="1" placeholder="± скільки" required'
+      + ' title="Додатне — нарахувати, з «−» — списати" aria-label="Скільки черепків, з «−» — списати">'
+      + '<input type="text" name="note" maxlength="80" placeholder="за що (видно людині)" aria-label="Примітка">'
+      + '<button type="submit" title="Нарахувати чи списати черепки">✓</button></form>';
     return '<section class="panel wcard"><h3>🏺 Черепки' + (mine && o.me.account
       ? ' <button type="button" class="ghost wc-more" data-go="#lavka">🛍 Лавка →</button>'
       : '') + '</h3>' + body + '</section>';
+  }
+
+  /// Адмінська форма в картці «🏺 Черепки» чужого акаунта: одна операція — один ключ op, подвійне натискання не нарахує двічі.
+  function wireAdjust(root, nick) {
+    const f = root.querySelector('.wc-adj');
+    if (!f) return;
+    let op = null;
+    f.oninput = () => { op = null; };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const amount = Math.trunc(Number(f.amount.value));
+      if (!amount) { o.toast('Сума — ціле число, з «−» — списати', 'err'); return; }
+      const what = (amount > 0 ? 'Нарахувати ' : 'Списати ') + lbNum(Math.abs(amount)) + ' 🏺 ' + (amount > 0 ? 'для ' : 'у ') + nick + '?';
+      if (!confirm(what)) return;
+      op = op || (Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+      const btn = f.querySelector('button');
+      btn.disabled = true;
+      try {
+        const r = await o.api('POST', '/api/shards/adjust', { nick, amount, note: f.note.value, op });
+        o.toast(r.message || 'Готово', 'ok');
+        cache.delete(nick.toLowerCase());
+        if (whoNick === nick) renderWho(encodeURIComponent(nick));
+      } catch (err) {
+        o.toast((err && err.message) || 'Не вийшло', 'err');
+      } finally { btn.disabled = false; }
+    };
   }
 
   function timeCard(p, week) {
