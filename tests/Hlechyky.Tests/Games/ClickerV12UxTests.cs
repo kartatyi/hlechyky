@@ -67,4 +67,30 @@ public class ClickerV12UxTests
         Patch(h, _ => { });
         Assert.Equal(JsonValueKind.Null, View(h).GetProperty("away").ValueKind);
     }
+
+    [Fact]
+    public void A_guests_nick_after_a_preposition_declines_the_word_guest_only()
+    {
+        Assert.Equal("гостя тест-микола", Clicker.NickGen("гість тест-микола"));
+        Assert.Equal("Оля", Clicker.NickGen("Оля"));
+        Assert.Equal("гостинна", Clicker.NickGen("гостинна"));
+    }
+
+    [Fact]
+    public void Forming_from_an_album_cell_reminds_which_painting_it_is_for()
+    {
+        var h = Wheel();
+        Patch(h, s => s["styles"] = new JsonArray("kosiv"));
+        var r = h.Act(0, "form", new { ware = "pot", style = "kosiv" });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("з розписом «", r.Message);
+        Assert.DoesNotContain("ще треба відкрити", r.Message);
+        // Уже на колі — однаково нагадуємо; розпис, якого нема, — так і кажемо.
+        r = h.Act(0, "form", new { ware = "pot", style = "opishnia" });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("уже на колі", r.Message);
+        Assert.Contains("ще треба відкрити", r.Message);
+        // Без розпису — як і було: на те саме мовчки.
+        Assert.Equal(ActResult.Done, h.Act(0, "form", new { ware = "pot" }));
+    }
 }

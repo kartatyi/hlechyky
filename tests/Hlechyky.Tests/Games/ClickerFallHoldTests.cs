@@ -81,11 +81,12 @@ public class ClickerFallHoldTests
         Near(t0 + Clicker.MinigameCap + Clicker.MinigameAfter, GoldenAt(h));
 
         // Розпис скінчився (обрали розпис без техніки): обидва вертаються — глек за півтори секунди, бо його час минув,
-        // а розписний — до свого часу, що ще не настав.
+        // а розписний — до свого часу, що ще не настав, але не ближче за HeldStagger до глека з полиці (v12, QA-2).
         h.Clock.Advance(15);
         Assert.True(K(h, new { op = "paint", style = "" }).Ok);
         Near(h.Clock.UtcNow + Clicker.MinigameAfter, FallAt(h));
-        Near(t0.AddSeconds(20), GoldenAt(h));
+        Near(FallAt(h) + Clicker.HeldStagger, GoldenAt(h));
+        Assert.True(GoldenAt(h) >= t0.AddSeconds(20));
     }
 
     [Fact]
@@ -140,9 +141,13 @@ public class ClickerFallHoldTests
         FallIn(h, 5);
         var lit = h.Clock.UtcNow;
         Assert.True(K(h, new { op = "light" }).Ok);
-        Near(lit + Clicker.KilnBurn + Clicker.MinigameAfter, FallAt(h));
-        // Обпал скінчився сам (горно ще не відкрили) — глек летить рівно тоді, як обіцяв.
-        h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(1.6));
+        // Глек чекає, доки горно відкриють (не довше, ніж горно чекає запис з іншого вікна), — v12, QA-2.
+        Near(lit + Clicker.KilnBurn + Clicker.KilnOtherWait + Clicker.MinigameAfter, FallAt(h));
+        h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.3));
+        Assert.True(K(h, new { op = "open", t = new[] { new[] { 0, 0 } }, own = true }).Ok);
+        // Відкрили — спершу час прочитати підсумок, тоді глек.
+        Near(h.Clock.UtcNow + Clicker.KilnResultAfter, FallAt(h));
+        h.Clock.Advance(Clicker.KilnResultAfter + TimeSpan.FromSeconds(0.1));
         Assert.True(Act(h, "grab").Ok);
 
         var h2 = Wheel();
@@ -162,11 +167,11 @@ public class ClickerFallHoldTests
         var lit = h.Clock.UtcNow;
         Assert.True(K(h, new { op = "light" }).Ok);
         h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.2));
-        var r = K(h, new { op = "open", t = Array.Empty<int[]>(), own = true });
+        var r = K(h, new { op = "open", t = new[] { new[] { 0, 0 } }, own = true });
         Assert.True(r.Ok, r.Message);
-        // Відкладений глек не стрибає ні раніше за «зараз + 1,5 с», ні назад до свого старого часу.
+        // Відкладений глек не стрибає назад до свого старого часу й дає прочитати підсумок горна (v12, QA-2).
         Assert.True(FallAt(h) >= lit + Clicker.KilnBurn + Clicker.MinigameAfter - TimeSpan.FromMilliseconds(1));
-        Assert.True(FallAt(h) >= h.Clock.UtcNow + TimeSpan.FromSeconds(1));
+        Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.KilnResultAfter - TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]

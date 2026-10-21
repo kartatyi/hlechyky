@@ -68,7 +68,7 @@ public class ClickerGuildTests
         {
             var k = Math.Min(n, Clicker.StoreCap);
             Items(h, ($"{ware}||1", k));
-            var r = Guild(h, new { op = "give", key = $"{ware}||1", n = k });
+            var r = Guild(h, new { op = "give", key = $"{ware}||1", n = k, keep = false });
             Assert.True(r.Ok, r.Message);
             n -= k;
         }
@@ -158,7 +158,7 @@ public class ClickerGuildTests
         var g = new Tsekh();
         var h = g.Potter("Оля");
         Items(h, ("pot||1", 3), ("jug|kosiv|3", 2));
-        var r = Guild(h, new { op = "give", key = "pot||1", n = 10 });
+        var r = Guild(h, new { op = "give", key = "pot||1", n = 10, keep = false });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("на віз", r.Message);
 
