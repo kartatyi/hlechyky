@@ -25,8 +25,6 @@
   const EARTH_KM = 6371;
   const CLUSTER_PX = 22;             // значки ближче за стільки пікселів злипаються в гурт із числом
   const MARK_R = 11;                // піврозміру силуету цілі на мапі, px
-  const COURSE_MIN = 10;             // вектор курсу — на стільки хвилин уперед…
-  const COURSE_MAX_PX = 70;          // …але не довший за стільки пікселів (балістика за 10 хв — пів країни)
   const DETAIL_URL = '/static/tryvoga-detail.json';   // детальний шар: міста, вода, річки — довантажується
   const MINOR_S = 0.3;               // дрібні річки — з цього масштабу (на всю Україну на ПК ≈ 0,15)
   const PERM_MS = 2 * 86400000;      // тривога довша за дві доби — окуповане: у переліку останньою й блідою
@@ -716,8 +714,9 @@
   // ---------------------------------------------------------------------------------------------
   // значки цілей — силует типу без жодних кружечків (22.10: «мені не подобається що все в кружочках»): «шахед»,
   // ракета, бомба, літак… з темним обідком і тонкою світлою обвідкою, щоб читались і на червоній, і на жовтій
-  // заливці. Що має ніс — повернуте за курсом; попереду — лінія з вістрям на ~10 хв. Нема курсу — силует стоїть
-  // носом угору й без лінії. Той самий код малює мапу, циферблат «Довкола мене», легенду й значки в переліках.
+  // заливці. Що має ніс — повернуте за курсом, і трохи попереду носа — білий куточок «^», як у NEPTUN (ліній-векторів
+  // нема). Нема курсу — силует носом угору й без куточка. Той самий код малює мапу, циферблат «Довкола мене»,
+  // легенду й значки в переліках.
   // ---------------------------------------------------------------------------------------------
 
   // Шматки силуету в квадраті ±7,5 (центр 0,0), носом угору: кожен — свій замкнений контур (так гало й обвідка
@@ -792,33 +791,24 @@
     g.restore();
   }
 
-  /// Курс: суцільна лінія з вістрям на len px уперед від краю силуету (з темним обідком). angle — від півночі
-  /// екрана за годинниковою, радіани.
-  function course(g, x, y, angle, len, color, R) {
-    const sx = Math.sin(angle), sy = -Math.cos(angle);
-    const L = Math.max(len, 10), tipX = x + sx * (R + L), tipY = y + sy * (R + L);
-    g.lineCap = 'round';
-    g.lineJoin = 'round';
-    g.beginPath();
-    g.moveTo(x + sx * (R + 1), y + sy * (R + 1));
-    g.lineTo(tipX - sx * 5, tipY - sy * 5);
-    g.strokeStyle = 'rgba(0,0,0,.6)';
-    g.lineWidth = 4.6;
-    g.stroke();
-    g.strokeStyle = color;
-    g.lineWidth = 2.2;
-    g.stroke();
+  /// Курс — як у NEPTUN (22.10, користувач показав їхній значок): жодної лінії, лише відкритий куточок «^» трохи
+  /// попереду носа, білий із темним обідком. angle — від півночі екрана за годинниковою, радіани; R — піврозміру
+  /// силуету; color — колір куточка (білий; небезпечна на циферблаті — червоний).
+  function course(g, x, y, angle, R, color) {
+    const d = R + 6;
     g.save();
-    g.translate(tipX, tipY);
+    g.translate(x + Math.sin(angle) * d, y - Math.cos(angle) * d);
     g.rotate(angle);
     g.beginPath();
-    g.moveTo(0, 0); g.lineTo(4.4, 7); g.lineTo(-4.4, 7);
-    g.closePath();
-    g.lineWidth = 3;
-    g.strokeStyle = 'rgba(0,0,0,.65)';
+    g.moveTo(-4, 2.6); g.lineTo(0, -1.6); g.lineTo(4, 2.6);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(0,0,0,.75)';
+    g.lineWidth = 5;
     g.stroke();
-    g.fillStyle = color;
-    g.fill();
+    g.strokeStyle = color || '#fff';
+    g.lineWidth = 2.4;
+    g.stroke();
     g.restore();
   }
 
@@ -855,12 +845,6 @@
     g.globalAlpha = alpha;
   }
 
-  /// Скільки пікселів пролетить за COURSE_MIN хвилин (швидкість NEPTUN, а нема — типова для типу).
-  function courseLen(t, pxPerKm) {
-    const v = t.speed > 0 ? t.speed : typeOf(t.type).speed;
-    return Math.min(COURSE_MAX_PX, (v * COURSE_MIN / 60) * pxPerKm);
-  }
-
   /// Гурт: силует найнебезпечнішої й табличка з числом (скільки разом, з групами NEPTUN) — не кружок.
   function bunch(g, x, y, type, n) {
     mark(g, x, y, type, MARK_R, 0);
@@ -886,7 +870,7 @@
   function icon(type, what) {
     const key = (what || 'mark') + ':' + typeKey(type);
     if (iconCache[key]) return iconCache[key];
-    const w = what === 'course' ? 46 : what === 'bunch' ? 34 : 26, h = 26, d = 2;
+    const w = what === 'course' ? 32 : what === 'bunch' ? 34 : 26, h = 26, d = 2;
     const c = document.createElement('canvas');
     c.width = w * d;
     c.height = h * d;
@@ -895,7 +879,7 @@
     const color = typeOf(type).color;
     if (what === 'bunch') bunchIcon(g, type);
     else if (what === 'blob') { blob(g, 13, 13, 12, color, 1); g.globalAlpha = 1; mark(g, 13, 13, type, 8, 0); }
-    else if (what === 'course') { course(g, 11, 13, Math.PI / 2, 22, color, 8.5); mark(g, 11, 13, type, 8.5, Math.PI / 2); }
+    else if (what === 'course') { mark(g, 12, 15, type, 8, Math.PI / 4); course(g, 12, 15, Math.PI / 4, 8); }
     else mark(g, 13, 13, type, 10, 0);
     iconCache[key] = c.toDataURL();
     return iconCache[key];
@@ -922,7 +906,7 @@
     const types = ['uav', 'fpv', 'missile', 'ballistic', 'kab', 'mig31k', 'recon', 'unknown'];
     return '<div class="tv-lg">' + types.map((k) => `<span>${iconImg(k)}${esc(TYPES[k].long)}</span>`).join('') + '</div>'
       + '<div class="tv-lg">'
-      + `<span>${iconImg('uav', 'course')}лінія зі стрілкою — куди летить (≈ ${COURSE_MIN} хв)</span>`
+      + `<span>${iconImg('uav', 'course')}ніс і куточок попереду — куди летить</span>`
       + `<span>${iconImg('uav', 'blob')}пляма — місце приблизне</span>`
       + `<span>${iconImg('uav', 'bunch')}кілька цілей поруч (тицни)</span>`
       + '<span><i class="sw red"></i>ракетна загроза</span><span><i class="sw yellow"></i>загроза дронів</span>'
@@ -963,13 +947,13 @@
       const gr = groups.find((q) => Math.hypot(q.x - p.x, q.y - p.y) < CLUSTER_PX);
       if (gr) gr.m.push(p); else groups.push({ x: p.x, y: p.y, m: [p] });
     }
-    // курси — під силуетами, але над слідами
+    // курс — куточок попереду носа (під силуетами, над слідами)
     for (const gr of groups) {
       if (gr.m.length > 1) continue;
       const { t, x, y, tilt, color, alpha } = gr.m[0];
       if (t.heading == null) continue;
       g.globalAlpha = alpha;
-      course(g, x, y, (t.heading * Math.PI) / 180 - tilt, courseLen(t, pxPerKm), color, MARK_R);
+      course(g, x, y, (t.heading * Math.PI) / 180 - tilt, MARK_R);
     }
     g.globalAlpha = 1;
     for (const gr of groups) {
@@ -1291,7 +1275,7 @@
     st.ro.observe(box);
     if (window.HDovkola) {
       HDovkola.mount($('tvDovkola'), {
-        esc, types: TYPES, mark, course, trail, blob, courseLen, iconImg, kick, focus: focusTarget,
+        esc, types: TYPES, mark, course, trail, blob, iconImg, kick, focus: focusTarget,
         map: () => map, threats: () => threats, region: cur,
         alarm: () => ({ off: !data || !!data.off, stale: !!(data && data.stale), on: status().on, level: status().level }),
         oblastName: () => oblastName(cur().oblast),

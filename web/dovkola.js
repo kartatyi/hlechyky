@@ -27,7 +27,7 @@
   const SPEED = { uav: 170, fpv: 80, missile: 750, ballistic: 2500, kab: 400, mig31k: 900, recon: 150, unknown: 170 };
   const SIDES = ['північ', 'пн-схід', 'схід', 'пд-схід', 'південь', 'пд-захід', 'захід', 'пн-захід'];
 
-  // господар — tryvoga.js: { esc, map, threats, region, alarm, oblastName, types, mark, course, trail, blob, courseLen,
+  // господар — tryvoga.js: { esc, map, threats, region, alarm, oblastName, types, mark, course, trail, blob,
   //   iconImg, kick, focus, near, narrow, tab }
   let h = null;
   let root = null;
@@ -569,7 +569,7 @@
     for (const km of rs) text(g, km + ' км', cx, cy + km * kmPx - 9, c.text, '11px system-ui, sans-serif');
 
     if (!grey) {
-      // Ті самі значки, що на мапі (tryvoga.js): силует типу, повернутий за курсом, лінія зі стрілкою вперед, слід
+      // Ті самі значки, що на мапі (tryvoga.js): силует типу носом за курсом і куточок попереду (як у NEPTUN), слід
       // блідне до хвоста, місце приблизне — пляма. Усе лише всередині циферблата.
       const P = 10;
       const col = (t) => (h.types[t.type] || h.types.unknown).color;
@@ -608,7 +608,7 @@
       }
       g.globalAlpha = 1;
 
-      // курси: небезпечна — до найближчої до мене точки й червоним, решта — на 10 хв уперед кольором типу
+      // курс — куточок попереду носа; небезпечна — червоним
       g.save();
       g.beginPath();
       g.arc(cx, cy, R, 0, Math.PI * 2);
@@ -616,9 +616,8 @@
       for (const x of pv.list) {
         if (x.zone > 2 || x.t.heading == null) continue;
         const [px, py] = at(x.d * kmPx, x.b);
-        const L = x.danger && x.pass && !x.pass.away ? Math.min(x.pass.along * kmPx, 2 * R) : h.courseLen(x.t, kmPx);
         g.globalAlpha = x.live ? 1 : 0.45;
-        h.course(g, px, py, x.t.heading * RAD - turnRad, L, x.danger ? c.danger : col(x.t), P);
+        h.course(g, px, py, x.t.heading * RAD - turnRad, P, x.danger ? c.danger : null);
       }
       g.restore();
       g.globalAlpha = 1;
