@@ -144,6 +144,13 @@
 /* «Поки тебе не було» (F18, 08.10): на телефоні список гортається, а «До кола!» лишається внизу вікна, не на дні
    прокрутки; на широкій картці вікно ширше (було 380 px посеред 1152), а нотатки — у два стовпці. */
 .clks-away-go { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 -10px 16px var(--bg2); }
+/* QA-3: липка була сама кнопка — обабіч неї просвічували останні рядки. Тепер липне підвал на всю ширину вікна, із
+   тлом вікна, а кнопка стоїть у ньому. */
+.clks-away-foot {
+  position: sticky; bottom: -14px; z-index: 1; align-self: stretch; display: flex; justify-content: center;
+  margin: 0 -14px -14px; padding: 6px 14px 14px; background: var(--bg2); box-shadow: 0 -10px 14px var(--bg2);
+}
+.clks-away-foot .clks-away-go { position: static; box-shadow: none; margin-top: 0; }
 @container clk (min-width: 900px) {
   .clks-awayov .clk-ov-box { max-width: 560px; }
   .clks-away-notes { columns: 2; column-gap: 28px; }
@@ -385,3 +392,12 @@
   70% { opacity: 1; }
   100% { opacity: 0; transform: translate(96px, -7px) scale(.26); }
 }
+
+/* ---- v12 (QA-3): коло не стрибає через висоту «Далі» ----
+   На низькому ПК (.pathside) рядок «Далі» стоїть під сценою, а обгортка сцени (flex: 1 1 0) брала решту висоти
+   стовпчика: довша порада стискала й зсувала коло просто під пальцем (1366×768: радіус 54/73/84, центр y 436/509/547,
+   ~50 % швидких кліків — повз). Тепер обгортка сталої висоти — тієї самої, з якої clicker.css рахує ширину стовпчика
+   (--clk-h − --clk-rows), а сталі рядки тримають місце під найвищу «Далі» (D1: не вища за 90 px): число 41, швидкість
+   і суперник 44, «Далі» 90 і проміжки. Нижча порада лишає місце внизу стовпчика, а не віддає його сцені. */
+.clk.fit.pathside .clk-lay { --clk-rows: 193px; }
+.clk.fit.pathside .clk-stagebox { flex: none; height: calc(var(--clk-h) - var(--clk-rows)); }
