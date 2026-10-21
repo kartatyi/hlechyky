@@ -108,13 +108,19 @@ public class ClickerHotfixP0Tests
     }
 
     [Fact]
-    public void B1_the_window_that_lit_the_kiln_opens_at_once_even_without_a_single_act()
+    public void B1_the_window_that_lit_the_kiln_waits_a_few_seconds_with_an_empty_record()
     {
         var h = Wheel();
         Rack(h, 6);
         Assert.True(K(h, new { op = "light" }).Ok);
         h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.4));
+        // v12, QA-2: жар могли тримати на іншому пристрої — його запис приходить на якісь 190 мс пізніше.
         var r = K(h, Open([], own: true));
+        Assert.False(r.Ok);
+        Assert.StartsWith("⏳ Чекаю, чи не тримав ти жар на іншому пристрої", r.Message);
+        Assert.Equal("burning", State(h));
+        h.Clock.Advance(Clicker.KilnOwnWait);
+        r = K(h, Open([], own: true));
         Assert.True(r.Ok, r.Message);
         Assert.Equal("cooling", State(h));
     }

@@ -13,6 +13,15 @@ public sealed partial class Clicker
 {
     /// <summary>Скільки глек ще чекає після кінця мінігри: гончар устигає підняти очі на сцену.</summary>
     public static readonly TimeSpan MinigameAfter = TimeSpan.FromSeconds(1.5);
+    /// <summary>
+    /// Після ручного обпалу — вікно «Горно відкрите» з підсумком (v12, QA-2): глеки, що чекали, вилітали через 1,5 с прямо
+    /// в нього, разом, і глек з полиці розбивався, поки гончар читав, що вийшло. Тепер — стільки на прочитання, а розписний —
+    /// ще на <see cref="HeldStagger"/> пізніше за глек з полиці.
+    /// </summary>
+    public static readonly TimeSpan KilnResultAfter = TimeSpan.FromSeconds(8), HeldStagger = TimeSpan.FromSeconds(4);
+
+    /// <summary>Коли востаннє відкрили горно після ручного обпалу (лише в пам'яті): від цього рахуємо час на прочитання.</summary>
+    DateTimeOffset _kilnOpenedAt;
     /// <summary>Найдовше, скільки одна мінігра тримає глеки, — від її початку.</summary>
     public static readonly TimeSpan MinigameCap = TimeSpan.FromSeconds(90);
 
@@ -24,8 +33,10 @@ public sealed partial class Clicker
     DateTimeOffset MinigameUntil(DateTimeOffset now)
     {
         var until = default(DateTimeOffset);
-        // Ручний обпал: пів хвилини тримати жар. Підмайстер палить без мінігри.
-        if (_litAt != default && !_litHelper && now < _litAt + KilnBurn) until = _litAt + KilnBurn;
+        // Ручний обпал: пів хвилини тримати жар. Підмайстер палить без мінігри. Після жару — доки горно не відкрили
+        // (v12, QA-2: відпускали ще до запиту «open», і стеля на прочитання підсумку не діяла), але не довше, ніж чекає
+        // запис палія з іншого вікна.
+        if (_litAt != default && !_litHelper && now < _litAt + KilnBurn + KilnOtherWait) until = _litAt + KilnBurn + KilnOtherWait;
         // Розпис технікою: візерунок видано, траєкторію ще не прислано.
         if (_paintSeed != 0 && _litAt == default)
         {
@@ -58,16 +69,25 @@ public sealed partial class Clicker
             }
             return;
         }
+        // Щойно відкрили горно — спершу час прочитати підсумок, а не 1,5 с.
+        var floor = now + MinigameAfter;
+        if (_kilnOpenedAt != default && _kilnOpenedAt + KilnResultAfter > floor) floor = _kilnOpenedAt + KilnResultAfter;
+        // Відкладений глек іде на свій час, але не раніше за floor; != — бо після горна floor може бути й пізніше,
+        // ніж кінець мінігри, до якого його відклали.
+        var fallAt = default(DateTimeOffset);
         if (_fallPlanned != default)
         {
-            var t = _fallPlanned > now + MinigameAfter ? _fallPlanned : now + MinigameAfter;
-            if (now < _fall.At - EarlyGrace && _fall.At > t) _fall = _fall with { At = t, Until = t + (_fall.Until - _fall.At) };
+            var t = _fallPlanned > floor ? _fallPlanned : floor;
+            if (now < _fall.At - EarlyGrace && _fall.At != t) _fall = _fall with { At = t, Until = t + (_fall.Until - _fall.At) };
+            fallAt = _fall.At;
             _fallPlanned = default;
         }
         if (_goldenPlanned != default)
         {
-            var t = _goldenPlanned > now + MinigameAfter ? _goldenPlanned : now + MinigameAfter;
-            if (now < _golden.At - EarlyGrace && _golden.At > t) _golden = _golden with { At = t, Until = t + (_golden.Until - _golden.At) };
+            var t = _goldenPlanned > floor ? _goldenPlanned : floor;
+            // Обидва чекали — розписний не разом із глеком з полиці: дві цілі за раз — одна з них розбита.
+            if (fallAt != default && t < fallAt + HeldStagger && t > fallAt - HeldStagger) t = fallAt + HeldStagger;
+            if (now < _golden.At - EarlyGrace && _golden.At != t) _golden = _golden with { At = t, Until = t + (_golden.Until - _golden.At) };
             _goldenPlanned = default;
         }
     }

@@ -99,8 +99,10 @@ public class ClickerKilnTests
         var lit = K(h, new { op = "light", straw });
         Assert.True(lit.Ok, lit.Message);
         var seed = Kiln(h).GetProperty("seed").GetInt32();
-        h.Clock.Advance(KilnHeat.Steps / 10.0 + 0.2);
-        return K(h, Timeline((how ?? Stoker)(seed)));
+        var acts = (how ?? Stoker)(seed);
+        // Порожній запис і вікно, що розпалило, чекає KilnOwnWait (v12, QA-2).
+        h.Clock.Advance(KilnHeat.Steps / 10.0 + 0.2 + (acts.Count == 0 ? Clicker.KilnOwnWait.TotalSeconds : 0));
+        return K(h, Timeline(acts));
     }
 
     static void Cool(RoomHarness h) => h.Clock.Advance(Clicker.KilnCool + TimeSpan.FromSeconds(1));
@@ -431,9 +433,9 @@ public class ClickerKilnTests
         Rack(h, dry: 6);
         Assert.True(K(h, new { op = "light" }).Ok);
         h.Clock.AdvanceMs(29_400);
-        Assert.StartsWith("Ще палає", K(h, Timeline([])).Message);
+        Assert.StartsWith("Ще палає", K(h, Timeline([(0, 0)])).Message);
         h.Clock.AdvanceMs(200);
-        Assert.True(K(h, Timeline([])).Ok);
+        Assert.True(K(h, Timeline([(0, 0)])).Ok);
     }
 
     [Fact]
