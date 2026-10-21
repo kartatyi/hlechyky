@@ -234,6 +234,8 @@
   // ---------- дрібниці ----------
 
   const cat = (st) => (st.catalog && st.catalog.fair) || null;
+  /// Знахідний відмінок назви виробу: «ліпити миску», «хоче лев-посудину / тикву»; чоловічий і середній — без змін.
+  const acc = (name) => String(name || '').toLowerCase().replace(/а$/, 'у').replace(/я$/, 'ю');
   const villageOf = (st, key) => { const c = cat(st); return (c && c.villages.find((v) => v.key === key)) || null; };
   const wareName = (st, key) => {
     const list = (st.craft && st.craft.wares) || (st.catalog && st.catalog.wares) || [];
@@ -488,7 +490,7 @@
       : '💰 Накинути +' + r(bids.up) + ' % · вдасться в ' + chance + ' % · невдача: шана −1';
     // Одне речення замість чотирьох полів: хто, звідки, що хоче і скільки за це дасть.
     const line = '<b>' + (o.lord ? '🎩 ' : '') + esc(who) + '</b>' + (v ? ' ' + esc(v.from) : '')
-      + ' хоче <b>' + esc(wareName(st, o.ware).toLowerCase()) + ' ×' + o.n + '</b>'
+      + ' хоче <b>' + esc(acc(wareName(st, o.ware))) + ' ×' + o.n + '</b>'
       + (req.length ? ' <span class="clkf-oreq2">(' + req.join(' · ') + ')</span>' : '')
       // ×N — множник плати, тож стоїть біля ціни; шана — своїм числом (QA-2: «і шана ×5,3» читалось як множник шани).
       + ' · ≈' + api.potsShort(o.pay)
@@ -508,6 +510,9 @@
         + ((o.n - o.have) % 10 === 1 && (o.n - o.have) % 100 !== 11 ? 'ого' : 'их') : '')) + '</span></div>'
       + '<div class="clkf-obtns">'
       + '<button type="button" class="primary small" data-bid="as" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🤝 Здати</button>'
+      // Бракує — «Ліпити» одразу тут (як у Толоці), з розписом замовлення: сервер поставить виріб на коло й нагадає розпис.
+      + (ready || !st.mine ? '' : '<button type="button" class="ghost small clkf-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
+        + esc(acc(wareName(st, o.ware))) + '</button>')
       + '<span class="clkf-otime small muted">⏳ <i class="clkf-cd" data-at="' + o.until + '" data-done="поїхав"></i></span>'
       + '<details class="clkf-bid" data-key="' + o.id + '"><summary>торг</summary>'
       + '<button type="button" class="ghost small" data-bid="down" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>' + down + '</button>'
@@ -550,6 +555,7 @@
     if (api.swap(k.ordersEl, head + react + cards + more)) {
       countdowns(st, api, k.ordersEl);
       for (const b of k.ordersEl.querySelectorAll('[data-bid]')) b.onclick = (ev) => deliver(st, api, ev, +b.dataset.id, b.dataset.bid);
+      for (const b of k.ordersEl.querySelectorAll('[data-form]')) b.onclick = (ev) => { if (human(ev)) api.order(st, 'form', { ware: b.dataset.form, style: b.dataset.style }); };
     }
     paintRep(st, api);
   }

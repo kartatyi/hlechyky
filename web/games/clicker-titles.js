@@ -220,8 +220,10 @@
   function celebrate(st, api) {
     const v = st.titles;
     let seen = null;
-    try { seen = JSON.parse(api.storeGet(SEEN_KEY, 'null')); } catch (e) { seen = null; }
-    api.storeSet(SEEN_KEY, JSON.stringify(v.mine));
+    // Побачене — свого ніка (QA-3): два гончарі в одному браузері не мусять щовходу вітати одне одного з чужими званнями.
+    const key = SEEN_KEY + ':' + ((st.ctx && st.ctx.me && st.ctx.me.nick) || '').trim().toLowerCase();
+    try { seen = JSON.parse(api.storeGet(key, 'null')); } catch (e) { seen = null; }
+    api.storeSet(key, JSON.stringify(v.mine));
     if (!Array.isArray(seen)) return;
     const fresh = v.mine.filter((k) => !seen.includes(k));
     if (!fresh.length) return;
