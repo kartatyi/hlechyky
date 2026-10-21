@@ -903,8 +903,7 @@
     if (!k.el) {
       k.el = document.createElement('section');
       k.el.className = 'clkg-card clkl';
-      // Якір «Села» (v12): рядок переходів шукає розділи за [data-sec].
-      k.el.dataset.sec = 'toloka';
+      k.el.dataset.sec = 'toloka';           // якір рядка переходів «Села» (clicker-guild.js)
       k.el.addEventListener('click', (e) => onClick(st, api, e));
     }
     const pane = st.guildPane;
