@@ -1015,7 +1015,7 @@
     return '<div class="clkw-item clkg-irow q' + it.q + '">'
       + api.wareSvg(it.ware, { style: it.style, quality: it.q, cls: 'clkw-mid', slot: 'gp-' + i })
       + '<div class="clkw-itxt"><b>' + esc(wareName(st, it.ware)) + ' <span class="clkw-n">×' + it.n + '</span></b> '
-      + '<span class="muted small">· ' + esc(styleName(st, it.style)) + ' · <span class="clkw-q">' + STARS[it.q] + ' ' + QUALITY[it.q] + '</span></span></div>'
+      + '<span class="muted small">· <span class="clkw-q">' + STARS[it.q] + ' ' + QUALITY[it.q] + '</span> · ' + esc(styleName(st, it.style)) + '</span></div>'
       + '<div class="clkw-btns">' + buttons + '</div></div>';
   }
 
@@ -1172,7 +1172,12 @@
     if (choose) choose.onclick = () => openChooser(st, api, '');
     for (const b of st.guildBody.querySelectorAll('[data-thank]')) b.onclick = (e) => { if (human(e)) thank(st, api, b.dataset.thank, b); };
     const feed = q('.clkg-feed');
-    if (feed) feed.ontoggle = () => api.storeSet('clk.guild.feedOpen', feed.open ? '1' : '0');
+    // Пам'ятаємо лише дотик гравця: toggle летить і тоді, коли стрічку щойно намалювали розгорнутою (ПК), — і тоді
+    // телефон того ж браузера успадкував би «розгорнуто» замість своєї типової згортки.
+    if (feed) {
+      feed.querySelector('summary').onclick = () => { feed._user = true; };
+      feed.ontoggle = () => { if (feed._user) api.storeSet('clk.guild.feedOpen', feed.open ? '1' : '0'); };
+    }
     // Кнопка майстерштука тепер буває і в рядку рангу, і всередині «що потрібно» — вішаємо на обидві.
     for (const master of st.guildBody.querySelectorAll('.clkg-master')) {
       master.onclick = (e) => { if (human(e)) act(st, api, { op: 'masterpiece' }, null); };

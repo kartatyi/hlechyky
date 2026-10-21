@@ -442,6 +442,7 @@
         list: (g.list || []).map((x) => ({ key: x.key, level: x.level || 0, pts: x.pts || 0, need: x.need || 0, at: ms(x.at) })),
         orders: (g.orders || []).map((o) => Object.assign({}, o, { until: ms(o.until) })),
         next: ms(g.next), slots: g.slots || 0, allMult: g.allMult || 1, delivered: g.delivered || 0, map: !!g.map,
+        playMinute: g.playMinute || 0,
       };
       const arrived = arrivals(st, api);
       newOrders(st, api, arrived);

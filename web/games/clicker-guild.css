@@ -312,3 +312,6 @@
 .clkg-cardov .clk-ov-x { position: sticky; top: -6px; float: right; z-index: 3; margin: -8px -8px 0 6px; background: var(--bg2); }
 .clkg-ctol:empty { display: none; }
 .clkg-ctol { margin: 8px 0; }
+/* Телефон лежачи (844×390): шапка сайту й плашка кола вже з'їдають ~150 px із 390 — ще 50 px липкого рядка лишили б
+   півекрана. Тут рядок стоїть на початку вкладки, а туди веде значок «Села» в ряду під плашкою. */
+@media (max-height: 500px) { .clk:not(.fit) .clk-pane > .clkg-nav { position: static; } }
