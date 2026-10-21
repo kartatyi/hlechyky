@@ -570,9 +570,12 @@ public sealed partial class Clicker
         _shelfAway = 0;
         _merchAway = 0;
         _merchAwayN = 0;
+        _awayNoted = 0;
     }
 
     double _awayPotsFrom;
+    /// <summary>Глеки простою, що вже мають свій рядок (гостинець друга), — не в «коло крутилось» (QA-3, як B11).</summary>
+    double _awayNoted;
     /// <summary>Скільки привезли купці хати за простій і скільки їх було (v12, B11).</summary>
     double _merchAway;
     int _merchAwayN;
@@ -604,7 +607,8 @@ public sealed partial class Clicker
         _merchAway = 0;
         _merchAwayN = 0;
         LadAwayFlush(_awayNotes);
-        _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom - merch), _awayFormed, [.. _awayNotes]);
+        _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom - merch - _awayNoted), _awayFormed, [.. _awayNotes]);
+        _awayNoted = 0;
     }
 
     // ---------- синхронізація й вид ----------

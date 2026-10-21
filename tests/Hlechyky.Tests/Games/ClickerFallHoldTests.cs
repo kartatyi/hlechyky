@@ -145,9 +145,12 @@ public class ClickerFallHoldTests
         Near(lit + Clicker.KilnBurn + Clicker.KilnOtherWait + Clicker.MinigameAfter, FallAt(h));
         h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.3));
         Assert.True(K(h, new { op = "open", t = new[] { new[] { 0, 0 } }, own = true }).Ok);
-        // Відкрили — спершу час прочитати підсумок, тоді глек.
-        Near(h.Clock.UtcNow + Clicker.KilnResultAfter, FallAt(h));
-        h.Clock.Advance(Clicker.KilnResultAfter + TimeSpan.FromSeconds(0.1));
+        // Відкрили — вікно підсумку тримає глек, доки його не закрили (QA-3), але не довше стелі.
+        Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.ResultCap);
+        h.Clock.Advance(5);
+        Assert.True(K(h, new { op = "seen" }).Ok);
+        Near(h.Clock.UtcNow + Clicker.MinigameAfter, FallAt(h));
+        h.Clock.Advance(Clicker.MinigameAfter + TimeSpan.FromSeconds(0.1));
         Assert.True(Act(h, "grab").Ok);
 
         var h2 = Wheel();
@@ -169,9 +172,32 @@ public class ClickerFallHoldTests
         h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.2));
         var r = K(h, new { op = "open", t = new[] { new[] { 0, 0 } }, own = true });
         Assert.True(r.Ok, r.Message);
-        // Відкладений глек не стрибає назад до свого старого часу й дає прочитати підсумок горна (v12, QA-2).
+        // Відкладений глек не стрибає назад до свого старого часу й дає прочитати підсумок горна (v12, QA-2/QA-3).
         Assert.True(FallAt(h) >= lit + Clicker.KilnBurn + Clicker.MinigameAfter - TimeSpan.FromMilliseconds(1));
-        Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.KilnResultAfter - TimeSpan.FromMilliseconds(1));
+        Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.ResultCap);
+        // Вікно ніхто не закрив (старий клієнт, закрита вкладка) — стеля відпускає його сама.
+        h.Clock.Advance(Clicker.ResultCap + TimeSpan.FromSeconds(0.5));
+        Assert.True(FallAt(h) <= h.Clock.UtcNow + Clicker.MinigameAfter + TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public void A_jug_already_in_the_air_when_the_kiln_is_lit_does_not_break_the_streak()
+    {
+        var h = Wheel();
+        DryRack(h, 3);
+        Patch(h, s => s["fallStreak"] = 7);
+        FallIn(h, 0.5);                                         // от-от на сцені — руки вже в мінігрі горна
+        Assert.True(K(h, new { op = "light" }).Ok);
+        h.Clock.Advance(Clicker.FallShown + Clicker.CatchGrace + TimeSpan.FromSeconds(1));
+        Assert.False(Act(h, "grab").Ok);
+        Assert.Equal(7, Streak(h));
+        // Без горна той самий глек обірвав би серію.
+        var h2 = Wheel();
+        Patch(h2, s => s["fallStreak"] = 7);
+        FallIn(h2, 0.5);
+        h2.Clock.Advance(Clicker.FallShown + Clicker.CatchGrace + TimeSpan.FromSeconds(1));
+        Assert.False(Act(h2, "grab").Ok);
+        Assert.Equal(0, Streak(h2));
     }
 
     [Fact]

@@ -454,7 +454,7 @@ public class ClickerGuildTests
         for (var day = 0; day < 5; day++)
         {
             for (var i = 0; i < 3; i++)
-                Assert.True(Guild(ola, new { op = "gift", nick = "Петро", key = day == 4 && i == 2 ? "bowl||2" : "pot||1" }).Ok);
+                Assert.True(Guild(ola, new { op = "gift", nick = "Петро", key = day == 4 && i == 2 ? "bowl||2" : "pot||1", keep = false }).Ok);
             ola.Clock.Advance(TimeSpan.FromDays(1));
         }
         Assert.Single(ola.Awards, a => a.Reason == "ach:potter-gift");
@@ -649,9 +649,14 @@ public class ClickerGuildTests
         Assert.True(Guild(ola, new { op = "lend", to = "Петро" }).Ok);
         Assert.True(Guild(ola, new { op = "cheer", to = "Петро" }).Ok);
 
+        var before = petro.View(0).GetProperty("pots").GetDouble();
         petro.Clock.Advance(TimeSpan.FromHours(3));
         Assert.True(petro.Act(0, "look").Ok);
         var notes = petro.View(0).GetProperty("away").GetProperty("notes").EnumerateArray().Select(x => x.GetString()!).ToList();
+        // Гостинець має свій рядок — у «коло крутилось без тебе» його не додаємо вдруге (QA-3, як купці в B11).
+        var gained = petro.View(0).GetProperty("pots").GetDouble() - before;
+        var treatPots = G(petro).GetProperty("buffs").GetProperty("treat").GetProperty("pots").GetDouble();
+        Assert.Equal(gained - treatPots, petro.View(0).GetProperty("away").GetProperty("pots").GetDouble(), gained * 1e-9);
         Assert.Contains(notes, t => t.StartsWith("🎁 Гостинець від Оля"));
         Assert.Contains(notes, t => t.StartsWith("🧑‍🎓 Підмайстер від Оля"));
         Assert.Contains(notes, t => t.StartsWith("👏 Оля хвалить"));

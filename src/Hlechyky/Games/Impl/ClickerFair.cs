@@ -1014,7 +1014,9 @@ public sealed partial class Clicker
     void SyncFair(DateTimeOffset now, TimeSpan paid)
     {
         var expired = _mktOrders.RemoveAll(o => o.Until <= now);
-        if (expired > 0) AwayNote($"📜 {expired} {Plural(expired, "замовлення", "замовлення", "замовлень")} не дочекалось — замовники поїхали");
+        // «1 замовлення не дочекалось», але «2 / 5 замовлень не дочекались» (QA-3).
+        if (expired > 0) AwayNote($"📜 {expired} {Plural(expired, "замовлення", "замовлення", "замовлень")} "
+            + (expired % 10 == 1 && expired % 100 != 11 ? "не дочекалось" : "не дочекались") + " — замовники поїхали");
         _mktBuffs.RemoveAll(b => b.Until <= now);
         // Повернувся після простою — на дошці вже хтось чекає; здане під час гри нове не з'являється миттєво.
         if (paid >= AwayFrom)

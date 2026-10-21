@@ -576,7 +576,7 @@ public class ClickerTitlesTests
         foreach (var from in new[] { b, c })
         {
             Items(from, ("pot||1", 1));
-            Assert.True(from.Act(0, "guild", new { op = "gift", key = "pot||1", nick = "Оля" }).Ok);
+            Assert.True(from.Act(0, "guild", new { op = "gift", key = "pot||1", nick = "Оля", keep = false }).Ok);
         }
         Assert.True(Look(a).Ok);
         Assert.Contains("x8", Earned(a));
@@ -591,9 +591,9 @@ public class ClickerTitlesTests
         foreach (var nick in new[] { "Антон", "Марта", "Назар" }) g.Potter(nick);
         Items(a, ("pot||1", 3));
         foreach (var nick in new[] { "Антон", "Марта" })
-            Assert.True(a.Act(0, "guild", new { op = "gift", key = "pot||1", nick }).Ok);
+            Assert.True(a.Act(0, "guild", new { op = "gift", key = "pot||1", nick, keep = false }).Ok);
         Assert.DoesNotContain("x9", Earned(a));
-        Assert.True(a.Act(0, "guild", new { op = "gift", key = "pot||1", nick = "Назар" }).Ok);
+        Assert.True(a.Act(0, "guild", new { op = "gift", key = "pot||1", nick = "Назар", keep = false }).Ok);
         Assert.Contains("x9", Earned(a));
     }
 

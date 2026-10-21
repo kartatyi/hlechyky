@@ -978,6 +978,7 @@ public sealed partial class Clicker
             "paint" => KilnPaintStart(payload, now),
             "decor" => KilnDecor(payload, now),
             "straw" => KilnStraw(payload),
+            "seen" => ResultSeen(),
             _ => ActResult.Fail("Біля горна так не роблять"),
         };
     }
@@ -1020,6 +1021,9 @@ public sealed partial class Clicker
         _litStraw = straw;
         _fireSeed = Ctx.Rng.Next(1, int.MaxValue);
         _paintSeed = 0;                                   // недомальований розпис лягає як є
+        // Вікно підсумку розпису закрилось натиском «Обпалити»; глек, що вже в повітрі, — не промах (руки в мінігрі).
+        _resultUntil = default;
+        if (!helper) SpareAirborne(now);
         return ActResult.Accept(helper
             ? $"🔥 Підмайстер розпалив горно: {_kiln.Count} {WaresWord(_kiln.Count)} — відкриє сам за {KilnBurn.TotalSeconds:0} с"
             : "🔥 Горно розпалено — тримай жар у зеленій смузі!");
@@ -1057,8 +1061,8 @@ public sealed partial class Clicker
 
         var res = KilnHeat.Run(_fireSeed, acts);
         GuardSpend(KilnGuardWeight);
-        // Глеки, що чекали мінігру, дадуть прочитати підсумок (ClickerFallHold.cs, KilnResultAfter).
-        _kilnOpenedAt = now;
+        // Глеки, що чекали мінігру, дадуть прочитати підсумок — до «seen» (ClickerFallHold.cs).
+        ResultShown(now);
         return ActResult.Accept(KilnFinish(now, res.Heat, res.Over, manual: true, res.Peak));
     }
 
@@ -1089,6 +1093,7 @@ public sealed partial class Clicker
         _kilnBeauty = 0;
         _paintSeed = Ctx.Rng.Next(1, int.MaxValue);
         _paintAt = now;
+        SpareAirborne(now);
         return ActResult.Done;
     }
 
@@ -1116,6 +1121,8 @@ public sealed partial class Clicker
         if (dyak > 0) beauty = Math.Min(100, beauty + dyak);
         _kilnBeauty = beauty;
         _paintSeed = 0;
+        // Вікно «Розпис ліг…» — глеки чекають його закриття (QA-3: глек летів саме тоді, як тиснеш «Обпалити»).
+        ResultShown(now);
         if (beauty >= PaintWonder) Wonder("paint-90");
         return ActResult.Accept($"🎨 {tech.Name}: краса {beauty}" + (home ? " (рідний осередок +10)" : "")
             + (dyak > 0 ? $" (дяк із книгою +{dyak})" : "")

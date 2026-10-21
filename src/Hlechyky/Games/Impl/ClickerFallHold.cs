@@ -14,14 +14,36 @@ public sealed partial class Clicker
     /// <summary>Скільки глек ще чекає після кінця мінігри: гончар устигає підняти очі на сцену.</summary>
     public static readonly TimeSpan MinigameAfter = TimeSpan.FromSeconds(1.5);
     /// <summary>
-    /// Після ручного обпалу — вікно «Горно відкрите» з підсумком (v12, QA-2): глеки, що чекали, вилітали через 1,5 с прямо
-    /// в нього, разом, і глек з полиці розбивався, поки гончар читав, що вийшло. Тепер — стільки на прочитання, а розписний —
-    /// ще на <see cref="HeldStagger"/> пізніше за глек з полиці.
+    /// Вікно підсумку — «Горно відкрите» після ручного обпалу чи «Розпис ліг» (v12, QA-2/QA-3): глеки вилітали прямо в
+    /// нього, і глек з полиці розбивався, поки гончар читав, що вийшло. Тепер глеки чекають, доки клієнт скаже, що вікно
+    /// закрили (<c>kiln {op:"seen"}</c>), але не довше за цю стелю — старий клієнт чи закрита вкладка не тримають їх вічно.
     /// </summary>
-    public static readonly TimeSpan KilnResultAfter = TimeSpan.FromSeconds(8), HeldStagger = TimeSpan.FromSeconds(4);
+    public static readonly TimeSpan ResultCap = TimeSpan.FromSeconds(30);
+    /// <summary>Обидва глеки чекали — розписний вилітає щонайменше на стільки пізніше за глек з полиці: дві цілі за раз — одна розбита.</summary>
+    public static readonly TimeSpan HeldStagger = TimeSpan.FromSeconds(4);
 
-    /// <summary>Коли востаннє відкрили горно після ручного обпалу (лише в пам'яті): від цього рахуємо час на прочитання.</summary>
-    DateTimeOffset _kilnOpenedAt;
+    /// <summary>До коли висить вікно підсумку (лише в пам'яті); <c>default</c> — не висить.</summary>
+    DateTimeOffset _resultUntil;
+
+    /// <summary>Показали вікно підсумку (горно відкрили вручну, розпис ліг): глеки чекають його закриття.</summary>
+    void ResultShown(DateTimeOffset now) => _resultUntil = now + ResultCap;
+
+    /// <summary><c>kiln {op:"seen"}</c>: вікно підсумку закрили — глеки йдуть (HoldForMinigame після дії).</summary>
+    ActResult ResultSeen()
+    {
+        _resultUntil = default;
+        return ActResult.Done;
+    }
+
+    /// <summary>
+    /// Починається мінігра на час (ручне горно, розпис технікою), а глек з полиці вже в повітрі чи ось-ось: руки в мінігрі,
+    /// і промах — не промах (QA-3: глек, відпущений після розпису, бився на старті горна). Серія ціла, як і в того, хто
+    /// пішов від кола (<see cref="Unwitnessed"/>).
+    /// </summary>
+    void SpareAirborne(DateTimeOffset now)
+    {
+        if (_fall.At != default && now >= _fall.At - EarlyGrace && now < _fall.Until) _sparedAt = _fall.At;
+    }
     /// <summary>Найдовше, скільки одна мінігра тримає глеки, — від її початку.</summary>
     public static readonly TimeSpan MinigameCap = TimeSpan.FromSeconds(90);
 
@@ -43,6 +65,8 @@ public sealed partial class Clicker
             var end = _paintAt + (PatternLife < MinigameCap ? PatternLife : MinigameCap);
             if (now < end && end > until) until = end;
         }
+        // Вікно підсумку: гончар читає, що вийшло, а не дивиться на сцену.
+        if (_resultUntil != default && now < _resultUntil && _resultUntil > until) until = _resultUntil;
         return until;
     }
 
@@ -69,11 +93,9 @@ public sealed partial class Clicker
             }
             return;
         }
-        // Щойно відкрили горно — спершу час прочитати підсумок, а не 1,5 с.
         var floor = now + MinigameAfter;
-        if (_kilnOpenedAt != default && _kilnOpenedAt + KilnResultAfter > floor) floor = _kilnOpenedAt + KilnResultAfter;
-        // Відкладений глек іде на свій час, але не раніше за floor; != — бо після горна floor може бути й пізніше,
-        // ніж кінець мінігри, до якого його відклали.
+        // Відкладений глек іде на свій час, але не раніше за floor; != — бо мінігра чи вікно підсумку могли скінчитись
+        // раніше за стелю, до якої його відклали: тоді він вертається ближче.
         var fallAt = default(DateTimeOffset);
         if (_fallPlanned != default)
         {

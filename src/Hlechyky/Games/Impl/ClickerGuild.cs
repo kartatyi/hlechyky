@@ -323,6 +323,7 @@ public sealed partial class Clicker
                     _treatFrom = from;
                     _treatPots = gain;
                     AwayNote($"🎁 Гостинець від {NickGen(from)}: +{PotsShort(gain)} — {minutes} хв твого пасиву");
+                    if (_awayOpen) _awayNoted += gain;
                     HelpGot("treat", from, now, "+" + PotsShort(gain));
                     break;
                 case "lend":
@@ -587,6 +588,10 @@ public sealed partial class Clicker
     {
         if (ParseItem(Str(payload, "key")) is not { } it || ItemCount(x => x == it) <= 0)
             return ActResult.Fail("Такого виробу в коморі нема");
+        // Відкладене під замовлення й Толоку — лише з підтвердженням (keep:false), як віз (QA-3: дарунок брав мовчки).
+        var have = ItemCount(x => x == it);
+        if (KeepFlag(payload) && have - Math.Min(have, LadKept(now).GetValueOrDefault(ItemKey(it.Ware, it.Style, it.Quality))) <= 0)
+            return ActResult.Fail($"🔒 {(have == 1 ? "Цей виріб" : $"Усі {Count(have)}")} відкладено під замовлення й Толоку — подарувати однаково?");
         var to = Str(payload, "nick").Trim();
         if (svc.Gift(GuildKey, GuildNick, to, it, now) is { } why) return ActResult.Fail(why);
         TakeItems(x => x == it, 1);

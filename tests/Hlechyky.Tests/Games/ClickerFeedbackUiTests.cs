@@ -426,6 +426,26 @@ public class ClickerFeedbackUiTests
     }
 
     [Fact]
+    public void A_gift_to_a_friend_asks_before_taking_what_is_reserved()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        var petro = g.Potter("Петро");
+        // Петро вже сідав за коло — дарунку є куди стати.
+        lock (petro.Room.Sync) g.Store.SaveState("clicker:" + ClickerGuildService.Key("Петро"), petro.Room.Game.Save()!);
+        NoOrders(h);
+        Items(h, ("pot||1", 2));
+        VillageOrder(h, "pot", 1, 2);                              // обидва горщики чекає село
+        var held = Guild(h, new { op = "gift", nick = "Петро", key = "pot||1" });
+        Assert.False(held.Ok);
+        Assert.StartsWith("🔒 Усі 2 відкладено", held.Message);
+        Assert.Equal(2, Store(h)["pot||1"]);
+        var r = Guild(h, new { op = "gift", nick = "Петро", key = "pot||1", keep = false });
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(1, Store(h)["pot||1"]);
+    }
+
+    [Fact]
     public void Give_all_says_why_when_there_is_nothing_to_give()
     {
         var g = new Tsekh();
