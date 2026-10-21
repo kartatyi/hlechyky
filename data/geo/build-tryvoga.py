@@ -251,6 +251,9 @@ def main():
         "oblasts": oblast_list,
         "rivers": [r for r in geo.get("rivers", []) if r.get("big") or r["name"] in ("Десна", "Сіверський Донець", "Південний Буг", "Дністер")],
         "cities": [c for c in geo.get("cities", []) if c.get("lvl", 9) <= 1],
+        # усі обласні центри — лише щоб знайти «місто району» (🐓 Півник без GPS стоїть у місті, а не в центрі
+        # району: центр Житомирського — за 14 км від Житомира); на мапі не малюються
+        "towns": [{"name": c["name"], "x": c["x"], "y": c["y"]} for c in geo.get("cities", []) if c.get("lvl", 9) <= 2],
     }
     with open(OUT, "w", encoding="utf-8", newline="\n") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))

@@ -108,6 +108,53 @@ body.tv-full-open { overflow: hidden; }
 .tv-ob { padding: 4px 10px; font-size: .9em; }
 .tv-note { margin: 0; font-size: .85em; color: var(--muted); line-height: 1.5; }
 .tv-note a { color: var(--accent); }
+.tv-pop button.tv-here { margin-top: 8px; padding: 5px 10px; font-size: .95em; }
+
+/* ---- 🐓 Півник (web/pivnyk.js): флюгер поруч із мапою; на телефоні — над нею ---- */
+.tv-duo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(290px, 360px); gap: 16px; align-items: start; }
+.tryv {
+  --pv-calm: rgba(98, 170, 82, .42); --pv-alarm: rgba(232, 178, 52, .42); --pv-hot: rgba(229, 83, 77, .55);
+  --pv-grey: rgba(157, 179, 165, .16); --pv-ring: rgba(10, 20, 15, .55); --pv-north: #ff6b5e; --pv-danger: #ff4d61;
+}
+.tv-pivnyk { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pv-h { margin: 0; font-size: 1.1em; }
+.pv-h .tv-muted { font-weight: 400; font-size: .82em; }
+.pv-state { display: flex; align-items: center; gap: 10px; line-height: 1.35; min-height: 2.4em; }
+.pv-state .pv-big { font-size: 1.5em; line-height: 1; flex: none; }
+.pv-tg { display: flex; flex-wrap: wrap; gap: 6px; }
+.pv-tg button { padding: 5px 10px; font-size: .9em; border-radius: 999px; }
+.pv-tg button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pv-dial { width: 100%; max-width: 420px; aspect-ratio: 1; margin: 0 auto; }
+.pv-cv { width: 100%; height: 100%; display: block; }
+.pv-where { font-size: .9em; line-height: 1.5; overflow-wrap: anywhere; }
+.pv-where .pv-coord { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.pv-where .pv-eye { padding: 0 4px; font-size: 1em; vertical-align: baseline; }
+.pv-where .pv-unhere { padding: 2px 8px; font-size: .9em; margin-left: 4px; }
+.pv-msg { margin: 0; font-size: .88em; color: var(--accent); }
+.pv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pv-list li { display: flex; align-items: baseline; gap: 8px; padding: 6px 4px 6px 8px; border-top: 1px solid var(--line); border-left: 3px solid transparent; font-size: .92em; line-height: 1.4; }
+.pv-list li:first-child { border-top: 0; }
+.pv-list li[data-id] { cursor: pointer; border-radius: 6px; }
+.pv-list li[data-id]:hover { background: var(--panel2); }
+.pv-list li.danger { border-left-color: var(--pv-danger); }
+.pv-list li.dim { opacity: .55; }
+.pv-list .pv-ico { flex: none; }
+.pv-list .pv-t { flex: 1; min-width: 0; }
+.pv-pass { color: var(--muted); font-size: .92em; }
+.pv-pass.on { color: #ff8a80; font-weight: 600; }
+.pv-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .82em; color: var(--muted); }
+.pv-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.pz { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+.pz.calm { background: var(--pv-calm); }
+.pz.alarm { background: var(--pv-alarm); }
+.pz.hot { background: var(--pv-hot); }
+.pz.arr { width: 14px; height: 3px; border-radius: 2px; background: var(--pv-danger); }
+/* від ширини колонки (#colMain — контейнер), а не екрана: поруч із Балачками колонка вузька й на ПК */
+@container (max-width: 759px) {
+  .tv-duo { grid-template-columns: minmax(0, 1fr); }
+  .tv-duo .tv-pivnyk { order: -1; }
+  .pv-dial { max-width: 380px; }
+}
 
 @media (max-width: 600px) {
   .tryv { gap: 12px; }

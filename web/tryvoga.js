@@ -157,7 +157,7 @@
     if (!document.hidden) {
       try {
         const t = await o.api('GET', '/api/tryvoga/threats');
-        if (t && !t.off) { threats = t; paintThreats(); kick(); }
+        if (t && !t.off) { threats = t; paintThreats(); kick(); if (window.HPivnyk) HPivnyk.update(); }
       } catch { /* наступного разу */ }
     }
     if (shown) threatTimer = setTimeout(loadThreats, THREATS_MS);
@@ -174,7 +174,7 @@
   function paint() {
     paintBar();
     paintBtn();
-    if (shown) { paintPage(); paintThreats(); }
+    if (shown) { paintPage(); paintThreats(); if (window.HPivnyk) HPivnyk.update(); }
   }
 
   function paintBar() {
@@ -285,12 +285,18 @@
       const th = N * (lon - P.lam0) * r;
       return [(rho * Math.sin(th) - P.x0) * P.k, (P.y0 - (rho0 - rho * Math.cos(th))) * P.k, th];
     };
+    // і назад: точка сітки → [lat, lon] («📌 Я тут» для Півника, місто району)
+    const unproject = (X, Y) => {
+      const a = X / P.k + P.x0, b = rho0 - (P.y0 - Y / P.k);
+      const rho = Math.hypot(a, b), th = Math.atan2(a, b);
+      return [Math.asin(clamp((C - (rho * N) ** 2) / (2 * N), -1, 1)) / r, P.lam0 + th / (N * r)];
+    };
     const byKey = Object.create(null);
     for (const u of units) byKey[u.k] = u;
     const oblasts = Object.create(null);
     for (const ob of raw.oblasts) oblasts[ob.k] = ob;
     map = { W: raw.w, H: raw.h, units, byKey, oblasts, oblastList: raw.oblasts, outline, oblast, raion, river,
-      cities: raw.cities || [], project, kmUnits: P.k / EARTH_KM };
+      cities: raw.cities || [], towns: raw.towns || [], project, unproject, kmUnits: P.k / EARTH_KM };
     return map;
   }
 
@@ -443,6 +449,35 @@
     paintCities(g, s);
     paintTargets(g, s);
     if (mine) pin(g, mine.c[0] * s + st.ox, mine.c[1] * s + st.oy);
+    paintMe(g, s);
+  }
+
+  /// 🐓 Півник: від якої точки він рахує — крапкою, і його зовнішнє кільце пунктиром.
+  function paintMe(g, s) {
+    const me = window.HPivnyk && HPivnyk.me();
+    if (!me) return;
+    const [X, Y] = map.project(me.lat, me.lon);
+    const x = X * s + st.ox, y = Y * s + st.oy;
+    const r = me.km * map.kmUnits * s;
+    if (r > 8) {
+      g.setLineDash([6, 5]);
+      g.strokeStyle = st.css.text;
+      g.globalAlpha = 0.7;
+      g.lineWidth = 1.4;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.stroke();
+      g.setLineDash([]);
+      g.globalAlpha = 1;
+    }
+    if (me.src === 'raion') return;      // місто району — не точно я, досить кільця
+    g.beginPath();
+    g.arc(x, y, 5, 0, Math.PI * 2);
+    g.fillStyle = st.css.text;
+    g.strokeStyle = st.css.halo;
+    g.lineWidth = 2.5;
+    g.stroke();
+    g.fill();
   }
 
   function halo(g, text, x, y, color, font) {
@@ -637,6 +672,7 @@
     for (let i = map.units.length - 1; i >= 0; i--) if (g.isPointInPath(map.units[i].p, x * d, y * d, 'evenodd')) { hit = map.units[i]; break; }
     g.setTransform(1, 0, 0, 1, 0, 0);
     if (!hit) { hidePop(); return; }
+    popAt = map.unproject((x - st.ox) / s, (y - st.oy) / s);
     showPop(x, y, unitHtml(hit), hit);
   }
 
@@ -661,7 +697,8 @@
     }
     const where = u.k === u.o ? '' : ' · ' + esc(oblastShort(u.o)) + (u.o === 'м. київ' || u.o === 'севастополь' ? '' : ' обл.');
     return `<b>${esc(u.n)}</b>${where}<br>${st8}`
-      + (isMine ? '<div class="tv-muted tv-small">📍 це твій район</div>' : '<button type="button" class="tv-mine">📍 Мій район</button>');
+      + (isMine ? '<div class="tv-muted tv-small">📍 це твій район</div>' : '<button type="button" class="tv-mine">📍 Мій район</button>')
+      + (window.HPivnyk ? ' <button type="button" class="tv-here" title="Півник рахуватиме від цієї точки (лише в цьому браузері)">📌 Я тут</button>' : '');
   }
 
   function targetHtml(t) {
@@ -677,7 +714,7 @@
       + `<span class="tv-muted">${esc(bits.join(' · '))}${bits.length ? ' · ' : ''}${esc(ago(t.updated))}</span>`;
   }
 
-  let popUnit = null;
+  let popUnit = null, popAt = null;
   function showPop(x, y, html, unit) {
     const p = st.box.querySelector('.tv-pop');
     p.innerHTML = html;
@@ -718,6 +755,7 @@
         <div class="tv-state" id="tvState"></div>
         <label class="tv-pick"><span>📍 Мій район</span><select id="tvRegion" aria-label="Мій район"><option>…</option></select></label>
       </section>
+      <div class="tv-duo">
       <section class="panel tv-mappanel">
         <div class="tv-mapwrap">
           <div class="tv-box">
@@ -740,6 +778,8 @@
           <span><i class="gl ring"></i>розвідка й інше</span><span><i class="ci"></i>місце приблизне</span>
         </div>
       </section>
+      <section class="panel tv-pivnyk" id="tvPivnyk"></section>
+      </div>
       <section class="panel tv-sky">
         <h2>У небі зараз <span class="count" id="tvSkyAt"></span></h2>
         <div id="tvSky" class="tv-skybody"><p class="tv-muted">Вантажу…</p></div>
@@ -763,6 +803,7 @@
     root.querySelector('.tv-me-btn').onclick = focusMine;
     root.querySelector('.tv-fullbtn').onclick = () => setFull(!st.full);
     box.querySelector('.tv-pop').addEventListener('click', (e) => {
+      if (e.target.closest('.tv-here') && popAt && window.HPivnyk) { HPivnyk.setHere(popAt[0], popAt[1]); hidePop(); return; }
       if (!e.target.closest('.tv-mine') || !popUnit) return;
       const u = popUnit;
       hidePop();
@@ -781,6 +822,14 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && st.full) setFull(false); });
     st.ro = new ResizeObserver(() => resize());
     st.ro.observe(box);
+    if (window.HPivnyk) {
+      HPivnyk.mount($('tvPivnyk'), {
+        esc, types: TYPES, glyph, kick, focus: focusTarget,
+        map: () => map, threats: () => threats, region: cur,
+        alarm: () => ({ off: !data || !!data.off, stale: !!(data && data.stale), on: status().on, level: status().level }),
+        oblastName: () => oblastName(cur().oblast),
+      });
+    } else $('tvPivnyk').remove();
     loadMap().then(() => {
       box.querySelector('.tv-load').remove();
       cssColors();
@@ -789,6 +838,7 @@
       paintThreats();
       if (status().on) focusMine();
       paintPage();
+      if (window.HPivnyk) HPivnyk.update();
     }).catch(() => { box.querySelector('.tv-load').textContent = 'Мапа не завантажилась — онови сторінку.'; });
   }
 
@@ -894,6 +944,7 @@
     paintPage();
     paintThreats();
     if (map) requestAnimationFrame(resize);
+    if (window.HPivnyk) HPivnyk.show();
     loadThreats();
     if (Date.now() - lastRefresh > 20000) refresh();
   }
@@ -901,6 +952,7 @@
     if (!shown) return;
     shown = false;
     clearTimeout(threatTimer);
+    if (window.HPivnyk) HPivnyk.hide();
     if (st.full) setFull(false);
     hidePop();
   }

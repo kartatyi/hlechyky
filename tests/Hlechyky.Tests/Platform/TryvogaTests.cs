@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Hlechyky.Games;
+using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
@@ -202,6 +203,35 @@ public sealed class TryvogaTests : IDisposable
         var t = Service();
         Assert.True(JsonSerializer.SerializeToElement(t.View("владік", null, null)).GetProperty("off").GetBoolean());
         Assert.True(JsonSerializer.SerializeToElement(t.ThreatsView()).GetProperty("off").GetBoolean());
+    }
+
+    // ---------- 🐓 Півник: без GPS стоїть у місті району ----------
+
+    /// <summary>
+    /// Півник (web/pivnyk.js) без GPS рахує від обласного центру всередині мого району — «towns» у мапі. Міста мають
+    /// лягати туди, де вони є насправді (та сама проєкція, що й «Де це?»), а середина Житомирського району — за
+    /// ~14 км від Житомира: тому й беремо місто, а не середину.
+    /// </summary>
+    [Fact]
+    public void Map_towns_land_on_real_cities_and_zhytomyr_is_far_from_its_raion_middle()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(Paths.Resolve("web/static/tryvoga-map.json")));
+        var towns = doc.RootElement.GetProperty("towns").EnumerateArray().ToList();
+        Assert.True(towns.Count >= 24, $"міст {towns.Count}");
+        (double, double) At(string name)
+        {
+            var t = towns.Single(x => x.GetProperty("name").GetString() == name);
+            return GeoMap.Unproject(t.GetProperty("x").GetDouble(), t.GetProperty("y").GetDouble());
+        }
+        foreach (var (name, lat, lon) in new[] { ("Житомир", 50.2547, 28.6587), ("Київ", 50.4501, 30.5234), ("Вінниця", 49.2331, 28.4682), ("Рівне", 50.6199, 26.2516) })
+        {
+            var (la, lo) = At(name);
+            Assert.True(GeoScore.Km(la, lo, lat, lon) < 3, $"{name}: {la:0.000}, {lo:0.000}");
+        }
+        var c = doc.RootElement.GetProperty("units").EnumerateArray().Single(u => u.GetProperty("k").GetString() == "житомирський").GetProperty("c");
+        var (clat, clon) = GeoMap.Unproject(c[0].GetDouble(), c[1].GetDouble());
+        var (zlat, zlon) = At("Житомир");
+        Assert.True(GeoScore.Km(clat, clon, zlat, zlon) > 8);
     }
 
     // ---------- архів ----------
