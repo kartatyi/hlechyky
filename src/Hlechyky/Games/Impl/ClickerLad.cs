@@ -61,15 +61,20 @@ public sealed partial class Clicker
 
     /// <summary>
     /// Скільки штук кожного ключа комори захищено: кожна вимога тримає стільки, скільки просить, з найгіршої
-    /// придатної якості — так само, як «Усе на віз» (<see cref="WagonPick"/>).
+    /// придатної якості — так само, як «Усе на віз» (<see cref="WagonPick"/>). <paramref name="who"/> — хто бере просто
+    /// зараз (<see cref="TakePlan"/>): його власної вимоги не рахуємо, інакше замовлення не віддало б собі ж відкладене.
+    /// <paramref name="without"/> — рахувати так, ніби цього в коморі вже нема (TakePlan порівнює два плани).
     /// </summary>
-    internal Dictionary<string, int> LadKept(DateTimeOffset now)
+    internal Dictionary<string, int> LadKept(DateTimeOffset now, TakeFor? who = null, IEnumerable<(ItemInfo Item, int N)>? without = null)
     {
         var left = new Dictionary<ItemInfo, int>();
         foreach (var (key, count) in _items)
             if (count > 0 && ParseItem(key) is { } it) left[it] = count;
+        if (without is not null)
+            foreach (var (it, n) in without)
+                if (left.TryGetValue(it, out var c)) left[it] = c - n;
         var kept = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var (match, need) in LadHolds(now))
+        foreach (var (match, need) in LadHolds(now, who))
         {
             var want = need;
             foreach (var it in left.Keys.Where(match).OrderBy(x => x.Quality).ThenBy(x => x.Ware, StringComparer.Ordinal)
@@ -88,14 +93,14 @@ public sealed partial class Clicker
     }
 
     /// <summary>Чого чекають: замовлення й майстерштук (як для воза) і толока — поточний етап (чого бракує) і наступний.</summary>
-    IEnumerable<(Func<ItemInfo, bool> Match, int Need)> LadHolds(DateTimeOffset now)
+    IEnumerable<(Func<ItemInfo, bool> Match, int Need)> LadHolds(DateTimeOffset now, TakeFor? who = null)
     {
-        foreach (var h in WagonHolds(now)) yield return h;
+        foreach (var h in WagonHolds(now, who)) yield return h;
         if (TolokaCurrent() is not { } b) yield break;
         var s = Math.Clamp(_tStage, 0, b.Stages.Length - 1);
         var st = b.Stages[s];
-        // Закладений етап свої вироби вже забрав — тримати нічого.
-        if (_tLaidAt == default)
+        // Закладений етап свої вироби вже забрав — тримати нічого. Закладає саме толока — свого етапу теж не тримаємо.
+        if (_tLaidAt == default && who?.Kind != "toloka")
             for (var i = 0; i < st.Needs.Length; i++)
                 if (TolokaLeft(st, i) is var left and > 0) yield return (TolokaMatch(st.Needs[i]), left);
         if (TolokaAfter(b, s, _tBuilt, _total) is { } nx)

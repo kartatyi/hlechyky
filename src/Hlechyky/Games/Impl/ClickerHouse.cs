@@ -602,14 +602,19 @@ public sealed partial class Clicker
         _taken.Clear();
         _paid.Clear();
         _orderId = 0;
+        _clay = "";
+        _clayRestUntil = default;
         FireHouse(now);
     }
 
-    /// <summary>Що з хати згорає при обпалі: глина на колі, дошка, купці в дорозі. Речі й куплені глини лишаються.</summary>
+    /// <summary>
+    /// Що з хати згорає при обпалі: дошка й купці в дорозі. Речі, куплені глини й та, що на колі, лишаються: глина —
+    /// куплена річ хати, а скидання на звичайну мовчки забирало третину доходу після кожного обпалу (хотфікс B4,
+    /// 21.10.2026; так радить і v12 §2.2). Купців у дорозі обпал і далі спалює, але друге підтвердження каже, скільки
+    /// вони везуть (рішення користувача 21.10).
+    /// </summary>
     void FireHouse(DateTimeOffset now)
     {
-        _clay = "";
-        _clayRestUntil = default;
         _apronUsed = false;
         _taken.Clear();
         RefreshBoard(now);

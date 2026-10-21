@@ -1614,6 +1614,40 @@
     const sci = gain < 1 ? 0 : scienceNow(st, all, st.stampsExtra + iron);
     const after = gain < 1 ? '' : afterFire(st, gain + iron + sci, sci);
     if (f._after.textContent !== after) f._after.textContent = after;
+    if (f._loss) swap(f._loss, armed ? fireLoss(st) : '');
+  }
+
+  /// Друге підтвердження обпалу: що саме згорить і що лишиться (хотфікс B4, 21.10.2026). Раніше кнопка казала лише
+  /// «глеки й верстати», а мовчки згорали купці в дорозі (у плейтесті — увосьмеро більше, ніж лишилось після обпалу),
+  /// сирці на сушарні, партія в горні й замовлення сіл. Числа — з тих самих видів, що малюють Майстерню й Ремесло.
+  function fireLoss(st) {
+    const now = serverNow(st);
+    const burn = [];
+    if (st.taken && st.taken.length) {
+      const pay = st.taken.reduce((s, t) => s + (t.pay || 0), 0);
+      const last = Math.max(...st.taken.map((t) => t.payAt || 0));
+      burn.push('🐴 купці в дорозі: ' + st.taken.length + ' — не привезуть ' + potsShort(pay)
+        + (last > now ? ' (останній повернеться за ' + mmss(last - now) + ')' : ''));
+    }
+    const c = st.craft;
+    if (c && c.rack.length) burn.push('🧱 на сушарні: ' + count(c.rack.length) + ' ' + plural(c.rack.length, 'сирець', 'сирці', 'сирців'));
+    const k = st.kView;
+    if (k && k.batch && k.batch.length) {
+      burn.push('🔥 у горні: ' + count(k.batch.length) + ' ' + plural(k.batch.length, 'виріб', 'вироби', 'виробів')
+        + (k.state === 'burning' ? ' — партія палає' : ''));
+    }
+    if (k && k.straw > 0) burn.push('🌾 солома: ' + count(k.straw) + ' ' + plural(k.straw, 'в\'язка', 'в\'язки', 'в\'язок'));
+    const orders = st.fair && st.fair.orders ? st.fair.orders.length : 0;
+    if (orders) burn.push('📜 замовлення сіл у роботі: ' + orders + ' (прийдуть нові)');
+    const items = c ? c.items.reduce((s, x) => s + (x.n || 0), 0) : 0;
+    if (items) burn.push('🏺 комора: ' + count(items) + ' ' + plural(items, 'виріб', 'вироби', 'виробів'));
+    const keep = Math.round((st.fireKeep || 0) * 100);
+    burn.push('глеки' + (keep > 0 ? ' (лишиться ' + keep + ' %)' : '') + ', верстати' + (st.fireMarks === false ? '' : ' і віхи'));
+    const stay = 'клейма, секрети й реліквії, хата з глинами (обрана лишиться на колі), прокачка ремесла, розписи, альбом, '
+      + 'толока, гості й шана сіл' + (st.fireMarks === false ? ', віхи (Пам\'ять рук)' : '');
+    const wait = st.taken && st.taken.length ? '<div class="clk-loss-tip">Порада: спершу дочекайся купців і купи віхи — тоді нічого не згорить даремно.</div>' : '';
+    return '<div class="clk-loss-h">Згорить:</div><ul>' + burn.map((x) => '<li>' + x + '</li>').join('') + '</ul>'
+      + '<div class="clk-loss-h">Лишиться:</div><div>' + stay + '.</div>' + wait;
   }
 
   /// Що обпал зробить із бонусом: «після обпалу: +174 % → +245 % до всього (дохід +40 %)» — щоб видно було, чи
@@ -2022,8 +2056,9 @@
   function fire(st) {
     if (!st.mine) return;
     if (!st.fireArmed || Date.now() > st.fireArmed) {
-      // Обпал не відкотиш — тож перший натиск лише питає.
-      st.fireArmed = Date.now() + 4000;
+      // Обпал не відкотиш — тож перший натиск лише питає. Десять секунд, а не чотири: під кнопкою тепер перелік того,
+      // що згорить (fireLoss), і його треба встигнути прочитати.
+      st.fireArmed = Date.now() + 10000;
       paintFire(st, st.total + (st.shown - st.base));
       return;
     }
@@ -3741,7 +3776,8 @@
         + '<div class="clk-pane" data-pane="styles" hidden></div>'
         + '<div class="clk-pane" data-pane="fire" hidden>'
         + '<div class="clk-firebox"><div class="clk-bar"><i></i></div><div class="clk-nextstamp muted small"></div>'
-        + '<button type="button" class="primary clk-fire" disabled></button><div class="clk-after small"></div></div>'
+        + '<button type="button" class="primary clk-fire" disabled></button><div class="clk-after small"></div>'
+        + '<div class="clk-loss small" role="status"></div></div>'
         + '<div class="clk-firestatic"></div></div>'
         // Підвал правої колонки: на ПК, коли стіл стоїть в один екран, сюди переходить прилавок черепків (fitTable).
         + '<div class="clk-shards"></div>'
@@ -3817,6 +3853,7 @@
       st.fire._next = q('.clk-nextstamp');
       st.fire._btn = q('.clk-fire');
       st.fire._after = q('.clk-after');
+      st.fire._loss = q('.clk-loss');
       st.fire._static = q('.clk-firestatic');
       st.eye = { el: q('.clk-eye'), text: q('.clk-eye-text'), tries: q('.clk-eye-tries'), pic: q('.clk-eye-pic'),
         img: q('.clk-eye-pic img'), marks: q('.clk-eye-marks'), veil: q('.clk-eye-veil'), go: q('.clk-eye-go'), reset: q('.clk-eye-reset') };
@@ -3970,6 +4007,8 @@
         st.stampSoft = v.stampSoft || 1000;
         st.stampKnee = v.stampKnee || 0;
         st.stampIron = v.stampIron || 0;
+        st.fireKeep = v.fireKeep || 0;
+        st.fireMarks = v.fireMarks;
         st.science = v.science || null;
         // Розгін — серверний, плюс наші кліки, що ще не полетіли (сервер про них не знає).
         st.heatFull = v.heatFull || 18;

@@ -381,18 +381,12 @@ public sealed partial class Clicker
         var have = ItemCount(match);
         if (have < o.Count) return ActResult.Fail(GuestsLack(o, have));
 
-        // Ціна — від того, що справді піде: TakeItems бере спершу найгіршу придатну якість, тож рахуємо в тому самому
-        // порядку. Хто віддав дзвінкий замість доброго, отримує й за дзвінкий.
+        // Ціна — від того, що справді піде: той самий план, за яким TakeItems бере (найгірша придатна якість і спершу
+        // невідкладене). Хто віддав дзвінкий замість доброго, отримує й за дзвінкий.
+        var who = new TakeFor("guest", o.Id);
         double sum = 0;
-        var left = o.Count;
-        foreach (var (item, n) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList())
-        {
-            var take = Math.Min(n, left);
-            sum += ItemValue(item.Ware, item.Style, item.Quality) * take;
-            left -= take;
-            if (left <= 0) break;
-        }
-        TakeItems(match, o.Count);
+        foreach (var (item, n) in TakePlan(match, o.Count, who)) sum += ItemValue(item.Ware, item.Style, item.Quality) * n;
+        TakeItems(match, o.Count, who);
         var pay = Math.Max(1, Math.Max(ToPots(sum * GuestPayMult(o)), GuestPlayPay(o)));
         Add(pay);
         _gOrders.RemoveAt(i);

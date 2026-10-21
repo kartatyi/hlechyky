@@ -2336,6 +2336,9 @@ public sealed partial class Clicker : Game
             science = ScienceView(Ctx.Clock.UtcNow),
             stampCap = StampCap,
             firings = _firings,
+            // Друге підтвердження обпалу перелічує, що згорить (хотфікс B4): яка частка глеків переживе і чи згорять віхи.
+            fireKeep = Math.Clamp(KeepShare, 0, 0.5),
+            fireMarks = !Has("memory"),
             // Секрети й розписи — лише «чи є»; тексти й ціни — у shopCatalog.
             secrets = Secrets.Select(s => _slim
                 ? (object)new { key = s.Key, owned = _secrets.Contains(s.Key) }

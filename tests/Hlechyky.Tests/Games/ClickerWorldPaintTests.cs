@@ -585,7 +585,7 @@ public class ClickerWorldPaintTests
         // Руками, без жодної дії біля заслінки: недогріте, зате без тріщин — і з красою розпису.
         Assert.True(K(h, new { op = "light" }).Ok);
         h.Clock.Advance(KilnHeat.Steps / 10.0 + 0.2);
-        Assert.True(K(h, new { op = "open", t = Array.Empty<int[]>() }).Ok);
+        Assert.True(K(h, new { op = "open", t = Array.Empty<int[]>(), own = true }).Ok);
         var last = Kiln(h).GetProperty("last");
         Assert.Equal("raku", last.GetProperty("style").GetString());
         Assert.Equal(100, last.GetProperty("beauty").GetInt32());

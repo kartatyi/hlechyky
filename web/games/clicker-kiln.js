@@ -140,16 +140,27 @@
     return s ? s.name : key;
   }
 
+  /// Записані дії цього обпалу й чи розпалювали його звідси (own) — переживають F5 і видні іншим вкладкам цього пристрою.
   function loadTimeline(st, litAt) {
     try {
       const raw = JSON.parse(localStorage.getItem('clk.kiln.t') || 'null');
-      if (raw && raw.at === litAt && Array.isArray(raw.t)) return raw.t.filter((a) => Array.isArray(a) && a.length === 2);
+      if (raw && raw.at === litAt && Array.isArray(raw.t)) return { t: raw.t.filter((a) => Array.isArray(a) && a.length === 2), own: raw.own === true };
     } catch { /* зіпсований запис — починаємо з чистого */ }
-    return [];
+    return { t: [], own: false };
   }
   function saveTimeline(st) {
-    try { localStorage.setItem('clk.kiln.t', JSON.stringify({ at: st.kb.litAt, seed: st.kb.seed, t: st.kb.acts })); } catch { /* приватне вікно */ }
+    try { localStorage.setItem('clk.kiln.t', JSON.stringify({ at: st.kb.litAt, seed: st.kb.seed, t: st.kb.acts, own: st.kb.own })); } catch { /* приватне вікно */ }
   }
+
+  /// Дії, з якими відкривати: свої — або довший запис іншої вкладки цього ж пристрою (вона пише його в localStorage на
+  /// кожну дію). Палили в одній вкладці, а друга встигла першою — і вона тепер віддасть справжній запис, а не порожній.
+  function bestActs(st, kb) {
+    const saved = loadTimeline(st, kb.litAt).t;
+    return saved.length > kb.acts.length ? saved : kb.acts;
+  }
+
+  /// Скільки вікно, де не палили, чекає після кінця обпалу на запис того, де палили (сервер: KilnOtherWait).
+  const otherWait = (st) => (cat(st) && cat(st).otherWaitMs) || 30000;
 
   // ---------- горно (SVG) ----------
 
@@ -276,8 +287,11 @@
     const litAt = Date.parse(k.litAt);
     if (st.kb && st.kb.litAt === litAt) return;
     const m = model(st);
-    const acts = loadTimeline(st, litAt);
-    st.kb = { litAt, seed: k.seed, acts, sim: simNew(k.seed, m), sentAt: 0, roarAt: 0, prevT: m.amb, done: false };
+    const saved = loadTimeline(st, litAt);
+    // «Обпалити» натиснули саме тут (fireKiln у clicker-craft.js) — це вікно й відкриє горно, хай навіть без жодної дії.
+    const own = saved.own || (st.kLitPress > 0 && Date.now() - st.kLitPress < 20000);
+    st.kb = { litAt, seed: k.seed, acts: saved.t, own, sim: simNew(k.seed, m), sentAt: 0, roarAt: 0, prevT: m.amb, done: false };
+    if (own && !saved.own) saveTimeline(st);
     api.sfx('kiln-light');
   }
 
@@ -413,17 +427,23 @@
     const nextText = s.F >= m.fuelMax - 0.05 ? 'топка повна' : size == null ? '' : 'наступне поліно: ' + (size >= 115 ? 'товсте' : size <= 85 ? 'тонке' : 'середнє');
     if (ui.next.textContent !== nextText) ui.next.textContent = nextText;
     const left = Math.max(0, m.steps * m.stepMs - elapsed);
-    const clock = '⏳ ' + api.mmss(left);
+    // Не своє горно (розпалили з іншого вікна, тут — жодної дії): відкривати його мусить те вікно — кажемо, чого чекаємо.
+    const other = !kb.own && !kb.acts.length && elapsed >= m.steps * m.stepMs;
+    const clock = other ? '⏳ відкриє вікно, де палили' : '⏳ ' + api.mmss(left);
     if (ui.clock.textContent !== clock) ui.clock.textContent = clock;
     setStyle(ui.barFill, 'transform', 'scaleX(' + Math.max(0, Math.min(1, elapsed / (m.steps * m.stepMs))).toFixed(3) + ')');
     setClass(ui.bar, 'hot', hot);
     if (Date.now() - kb.roarAt > 3000 && elapsed < m.steps * m.stepMs) { kb.roarAt = Date.now(); api.sfx('kiln-roar'); }
     // Кінець обпалу: відкриваємо самі. Відмову «ще палає» (пінг) повторюємо; майстер хоче глянути — чекаємо, поки пропустить.
     if (elapsed >= m.steps * m.stepMs + OPEN_AFTER_MS && !api.guardOn(st) && Date.now() - kb.sentAt > 2500) {
+      const acts = bestActs(st, kb).slice(0, m.maxActs);
+      // Той самий гравець відкритий ще деінде (телефон і ноутбук): вікно без жодної дії й не те, де натиснули «Обпалити»,
+      // не відкриває одразу — інакше його порожній запис дає «у смузі 0 %» і палить красу розпису (хотфікс B1). Чекаємо,
+      // поки своє пришле вікно, де палили; не пришле (закрили) — відкриваємо з тим, що є, щоб горно не стояло.
+      if (!kb.own && !acts.length && elapsed < m.steps * m.stepMs + OPEN_AFTER_MS + otherWait(st)) return;
       kb.sentAt = Date.now();
       kb.done = true;
-      const acts = kb.acts.slice(0, m.maxActs);
-      api.act(st, 'kiln', { op: 'open', t: acts }).then((r) => {
+      api.act(st, 'kiln', { op: 'open', t: acts, own: kb.own }).then((r) => {
         if (st.kb === kb && (!r || !r.ok)) kb.done = false;
         if (st.kb === kb && r && r.ok) kb.done = false;          // «майстер хоче глянути»: вид покаже, чи горно ще палає
       });

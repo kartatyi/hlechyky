@@ -809,6 +809,14 @@ public sealed partial class Clicker
     public static readonly TimeSpan KilnGrace = TimeSpan.FromMilliseconds(500);
     /// <summary>Хто розпалив і пішов: за стільки після кінця горно відкриває підмайстер (якість 1, без тріщин).</summary>
     public static readonly TimeSpan KilnAbandon = TimeSpan.FromMinutes(15);
+    /// <summary>
+    /// Скільки після кінця обпалу порожній запис дій з «чужого» вікна не відкриває горно (хотфікс B1, 21.10.2026). Той
+    /// самий гравець відкритий двічі (телефон і ноутбук): модель жару веде кожне вікно, а запис дій — лише те, де палили.
+    /// Хто перший прислав open, той і рахувався, тож вікно, де не грали, віддавало порожній запис — «у смузі 0 %», і
+    /// краса розпису згоряла. Тепер воно чекає: за ці секунди своє пришле вікно, де палили; не пришле (закрили) — тоді вже
+    /// відкриваємо з тим, що є.
+    /// </summary>
+    public static readonly TimeSpan KilnOtherWait = TimeSpan.FromSeconds(30);
     /// <summary>Скільки живе виданий візерунок розпису.</summary>
     public static readonly TimeSpan PatternLife = TimeSpan.FromMinutes(5);
     /// <summary>Вага відкритого вручну горна для Ока майстра (спійманий глек — 150): мінігра — пів хвилини живої роботи.</summary>
@@ -1009,7 +1017,7 @@ public sealed partial class Clicker
     }
 
     /// <summary>
-    /// Відкрити горно після ручного обпалу: <c>{ t: [[мс, дія], …] }</c> — мітки від розпалу, строго зростають, у межах
+    /// Відкрити горно після ручного обпалу: <c>{ t: [[мс, дія], …], own }</c> — мітки від розпалу, строго зростають, у межах
     /// 30 с, не більше 80; дія 0 — поліно, 1 — відкрити заслінку, 2 — прикрити. Сервер проганяє модель сам. Око майстра:
     /// якщо хоче глянути — горно лишається палати (нічого не губиться), таймлайн клієнт пришле ще раз.
     /// </summary>
@@ -1027,6 +1035,12 @@ public sealed partial class Clicker
         }
         var left = _litAt + KilnBurn - KilnGrace - now;
         if (left > TimeSpan.Zero) return ActResult.Fail($"Ще палає: {Math.Ceiling(left.TotalSeconds):0} с");
+        // own — вікно, де натиснули «Обпалити»: йому порожній запис дозволений одразу (розпалив і не торкався — його право).
+        // Без own порожній запис — майже напевно друге вікно, яке не бачило дій; вкладки до хотфіксу own не шлють
+        // і теж почекають (їхні повтори раз на 2,5 с самі дотягнуть до кінця вікна).
+        var wait = _litAt + KilnBurn + KilnOtherWait - now;
+        if (acts.Count == 0 && !Flag(payload, "own") && wait > TimeSpan.Zero)
+            return ActResult.Fail($"⏳ Горно відкриє вікно, де ти палив — чекаю його запису ще {Math.Ceiling(wait.TotalSeconds):0} с");
         if (GuardGate(now) is { } gate) return gate;
 
         var res = KilnHeat.Run(_fireSeed, acts);
@@ -1426,6 +1440,7 @@ public sealed partial class Clicker
         burnMs = KilnBurn.TotalMilliseconds,
         coolMs = KilnCool.TotalMilliseconds,
         graceMs = KilnGrace.TotalMilliseconds,
+        otherWaitMs = KilnOtherWait.TotalMilliseconds,
         patternMs = PatternLife.TotalMilliseconds,
         slotsBase = KilnSlotsBase, slotsMax = KilnSlotsMax, perLevel = KilnPerLevel,
         strawMax = StrawMax, strawCrack = StrawCrack, shardShare = ShardShare, homeBonus = HomeBonus, perfectMin = PerfectMin,

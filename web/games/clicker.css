@@ -679,6 +679,12 @@
 .clk .clk-fire.armed { background: var(--danger); color: #2a0707; animation: clkglow .5s ease-in-out infinite alternate; }
 .clk-after { color: var(--accent); text-align: center; }
 .clk-after:empty { display: none; }
+/* Перелік «що згорить» під кнопкою, поки вона питає «Точно?» (хотфікс B4). */
+.clk-loss { width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--danger); background: var(--bg2); line-height: 1.35; }
+.clk-loss:empty { display: none; }
+.clk-loss ul { margin: 2px 0 6px; padding-left: 18px; }
+.clk-loss-h { font-weight: 700; }
+.clk-loss-tip { margin-top: 6px; color: var(--accent); }
 .clk-stamps { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: center; text-align: center; }
 .clk-stamps b { color: var(--clk-fire); font-size: 1.15em; }
 /* Вільні клейма (записка #28): плашкою, щоб не губились поруч із великим числом за весь час. */

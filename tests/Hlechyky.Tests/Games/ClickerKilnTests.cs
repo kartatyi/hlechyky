@@ -54,13 +54,14 @@ public class ClickerKilnTests
         s["craft"]!["rack"] = rack;
     });
 
-    static object Timeline(IEnumerable<(int Ms, int Act)> acts) => new { op = "open", t = acts.Select(a => new[] { a.Ms, a.Act }).ToArray() };
+    /// <summary>Open від вікна, де розпалили (own): порожній запис воно шле одразу, інші вікна чекають (хотфікс B1).</summary>
+    static object Timeline(IEnumerable<(int Ms, int Act)> acts) => new { op = "open", t = acts.Select(a => new[] { a.Ms, a.Act }).ToArray(), own = true };
 
     /// <summary>
     /// Умілий палій: кожні 300 мс дивиться, яким буде жар за 2 с без нових дій (тією самою моделлю), і
     /// прикриває заслінку перед перегрівом, відкриває її при недогріві й підкидає, коли жар осідає.
     /// </summary>
-    static List<(int Ms, int Act)> Stoker(int seed)
+    internal static List<(int Ms, int Act)> Stoker(int seed)
     {
         var acts = new List<(int Ms, int Act)>();
         var open = true;

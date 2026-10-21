@@ -276,7 +276,7 @@ public sealed partial class Clicker
             if (have < left) lack.Add($"{NeedWord(st.Needs[i])} — ще {left - have}");
         }
         if (lack.Count > 0) return ActResult.Fail("Бракує виробів: " + string.Join("; ", lack));
-        for (var i = 0; i < st.Needs.Length; i++) TakeItems(TolokaMatch(st.Needs[i]), TolokaLeft(st, i));
+        for (var i = 0; i < st.Needs.Length; i++) TakeItems(TolokaMatch(st.Needs[i]), TolokaLeft(st, i), new TakeFor("toloka"));
         _pots -= st.Pay;
         _tLaidAt = now;
         var ends = TolokaEndsAt(st);

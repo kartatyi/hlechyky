@@ -185,19 +185,61 @@ public sealed partial class Clicker
 
     internal int ItemCount(Func<ItemInfo, bool> match) => AllItems().Where(x => match(x.Item)).Sum(x => x.Count);
 
-    /// <summary>Забрати до n виробів, що підходять, — спершу найгіршої якості: купцеві «якість ≥ добра» не віддаємо дзвінких, поки є добрі.</summary>
-    internal int TakeItems(Func<ItemInfo, bool> match, int n)
+    /// <summary>Хто бере з комори: замовлення села (<c>mkt</c>) чи гостя (<c>guest</c>) за Id, толока, майстерштук.</summary>
+    internal readonly record struct TakeFor(string Kind, int Id = 0);
+
+    /// <summary>
+    /// Що саме піде, коли забрати до n виробів, що підходять. Як і раніше — спершу найгіршої якості (купцеві «якість ≥
+    /// добра» не віддаємо дзвінких, поки є добрі), але не ціною чужого відкладеного. Хотфікс B3 (21.10.2026): здача брала
+    /// лише за якістю й забирала бубнівські, відкладені під інше замовлення, хоч простих вистачало, — і те замовлення
+    /// лишалось «є 0 з 5». Тепер, якщо після «найгірших» інші вимоги (<see cref="LadKept"/>: замовлення сіл і гостей,
+    /// майстерштук, толока) зібрали б менше, ніж після «спершу невідкладене», — беремо невідкладене; відкладене йде лише
+    /// тоді, коли іншого нема. Обділення нема — лишаємо найгірших: коли однаково все піде, дорожчі хай платить замовник.
+    /// Те, що відкладене під самого <paramref name="who"/>, — не чуже.
+    /// </summary>
+    internal List<(ItemInfo Item, int N)> TakePlan(Func<ItemInfo, bool> match, int n, TakeFor? who = null)
     {
-        if (n <= 0) return 0;
+        if (n <= 0) return [];
+        var fit = AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList();
+        var worst = PlanTake(fit, n, null);
+        // Один ключ — штуки однакові, вибирати нема з чого; так і віз, що кладе десятки ключів поштучно, не рахує LadKept щоразу.
+        if (fit.Count <= 1) return worst;
+        var now = Ctx.Clock.UtcNow;
+        var spare = PlanTake(fit, n, LadKept(now, who));
+        static int Sum(Dictionary<string, int> kept) => kept.Values.Sum();
+        return Sum(LadKept(now, who, spare)) > Sum(LadKept(now, who, worst)) ? spare : worst;
+    }
+
+    /// <summary>План забору з <paramref name="fit"/> (уже за якістю): з <paramref name="kept"/> — спершу те, що поза ним.</summary>
+    static List<(ItemInfo Item, int N)> PlanTake(List<(ItemInfo Item, int Count)> fit, int n, Dictionary<string, int>? kept)
+    {
+        var plan = new List<(ItemInfo, int)>();
+        var left = fit.ToDictionary(x => x.Item, x => x.Count);
+        var want = n;
+        for (var pass = kept is null ? 1 : 0; pass < 2 && want > 0; pass++)
+            foreach (var (item, _) in fit)
+            {
+                var hold = pass == 0 ? kept!.GetValueOrDefault(ItemKey(item.Ware, item.Style, item.Quality)) : 0;
+                var take = Math.Min(left[item] - hold, want);
+                if (take <= 0) continue;
+                left[item] -= take;
+                want -= take;
+                plan.Add((item, take));
+                if (want <= 0) break;
+            }
+        return plan;
+    }
+
+    /// <summary>Забрати до n виробів, що підходять, у порядку <see cref="TakePlan"/>. Повертає, скільки забрано.</summary>
+    internal int TakeItems(Func<ItemInfo, bool> match, int n, TakeFor? who = null)
+    {
         var taken = 0;
-        foreach (var (item, count) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList())
+        foreach (var (item, take) in TakePlan(match, n, who))
         {
-            var take = Math.Min(count, n - taken);
             var key = ItemKey(item.Ware, item.Style, item.Quality);
             if (_items[key] == take) _items.Remove(key);
             else _items[key] -= take;
             taken += take;
-            if (taken >= n) break;
         }
         return taken;
     }

@@ -475,11 +475,12 @@ public sealed partial class Clicker
     }
 
     /// <summary>Чого чекають: відкриті замовлення гостей і сіл (виріб, розпис, якість — як при здачі) і майстерштук.</summary>
-    IEnumerable<(Func<ItemInfo, bool> Match, int Need)> WagonHolds(DateTimeOffset now)
+    IEnumerable<(Func<ItemInfo, bool> Match, int Need)> WagonHolds(DateTimeOffset now, TakeFor? who = null)
     {
-        foreach (var o in _gOrders) if (o.Until > now) yield return (GuestMatch(o), o.Count);
-        foreach (var o in _mktOrders) if (o.Until > now) yield return (MktMatch(o), o.Count);
-        if (_guildRank < GuildRanks.Length - 1)
+        // who — хто бере з комори просто зараз (TakePlan): своя ж вимога під нього не тримає.
+        foreach (var o in _gOrders) if (o.Until > now && who != new TakeFor("guest", o.Id)) yield return (GuestMatch(o), o.Count);
+        foreach (var o in _mktOrders) if (o.Until > now && who != new TakeFor("mkt", o.Id)) yield return (MktMatch(o), o.Count);
+        if (_guildRank < GuildRanks.Length - 1 && who?.Kind != "piece")
         {
             var piece = PieceFor(_guildRank + 1);
             yield return (x => PieceMatch(x, piece), 1);
@@ -672,7 +673,7 @@ public sealed partial class Clicker
         var piece = PieceFor(_guildRank + 1);
         if (ItemCount(x => PieceMatch(x, piece)) <= 0)
             return ActResult.Fail($"Цех чекає майстерштук: {PieceWords(piece)}");
-        TakeItems(x => PieceMatch(x, piece), 1);
+        TakeItems(x => PieceMatch(x, piece), 1, new TakeFor("piece"));
         _guildRank++;
         svc.Hello(GuildKey, GuildNick, _guildRank, now);
         Ctx.Log($"🎓 {GuildNick} склав(ла) майстерштук — тепер {next.Name.ToLowerInvariant()} цеху гончарів");

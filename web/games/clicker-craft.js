@@ -380,7 +380,12 @@
     const light = () => {
       if (selfFire(api)) {
         const useStraw = k.straw > 0 && api.storeGet('clk.kiln.straw', '1') === '1';
-        api.act(st, 'kiln', { op: 'light', straw: useStraw }).then(() => api.showTab(st, CRAFT_TAB));
+        // Мітка «розпалили звідси»: це вікно відкриє горно навіть без жодної дії, інші — почекають на нього (хотфікс B1).
+        st.kLitPress = Date.now();
+        api.act(st, 'kiln', { op: 'light', straw: useStraw }).then((r) => {
+          if (!r || !r.ok) st.kLitPress = 0;
+          api.showTab(st, CRAFT_TAB);
+        });
       } else {
         api.order(st, 'kiln', { op: 'light', helper: true });
       }
@@ -940,7 +945,14 @@
       api.slot(st, 'store').appendChild(st.upsBody);
       st.storeCds = [];
       // Ремесла ще нема, поки нема чого ремеслити: новачок бачить лише Майстерню, а смуга веде його сама.
-      api.showWhen(st, CRAFT_TAB, (st2) => !!st2.craft && (st2.craft.rack.length > 0 || st2.craft.fired > 0 || st2.craft.items.length > 0));
+      // Партія в горні — теж ремесло: перший обпал забирає з сушарні все, а обпаленого й комори ще нема, і без цього
+      // вкладка ховалась посеред першого горна — гравця перекидало в Майстерню, і горно догоряло з 0 % (хотфікс B2).
+      api.showWhen(st, CRAFT_TAB, (st2, v2) => {
+        const c2 = st2.craft;
+        const k = (v2 && v2.kiln) || st2.kView;
+        return !!c2 && (c2.rack.length > 0 || c2.fired > 0 || c2.items.length > 0
+          || (!!k && ((k.batch && k.batch.length > 0) || k.state === 'burning' || k.state === 'cooling')));
+      });
     },
 
     update(st, v, api) {

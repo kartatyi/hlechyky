@@ -162,7 +162,7 @@ public class ClickerFallHoldTests
         var lit = h.Clock.UtcNow;
         Assert.True(K(h, new { op = "light" }).Ok);
         h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.2));
-        var r = K(h, new { op = "open", t = Array.Empty<int[]>() });
+        var r = K(h, new { op = "open", t = Array.Empty<int[]>(), own = true });
         Assert.True(r.Ok, r.Message);
         // Відкладений глек не стрибає ні раніше за «зараз + 1,5 с», ні назад до свого старого часу.
         Assert.True(FallAt(h) >= lit + Clicker.KilnBurn + Clicker.MinigameAfter - TimeSpan.FromMilliseconds(1));
