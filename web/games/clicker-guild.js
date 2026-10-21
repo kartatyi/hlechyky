@@ -285,6 +285,9 @@
     return parts.length ? 'відкладено для ' + parts.join(', ') : 'відкладено під замовлення й Толоку';
   }
 
+  /// День воза, нагороду якого забрали в цьому браузері після v12, — свій у кожного ніка.
+  const claimKey = (st) => 'clk.guild.claimed:' + myNick(st).trim().toLowerCase();
+
   const armedFor = (st, id) => !!(st.guildArm && st.guildArm.id === id && Date.now() - st.guildArm.at < CONFIRM_MS);
 
   function wagonHtml(st, api, v) {
@@ -312,9 +315,9 @@
     // Нагороду вже забрали (B7): докладене після «Забрати» ядро v12 доплачує (claims[].topUp) — так і кажемо.
     const took = w.claimed > 0 && w.claimed >= w.tier ? w.claimed : 0;
     // Доплату ядро дає лише за забране вже у v12 (тоді записано, скільки було покладено), тож «доплатять» обіцяємо лише
-    // за нагороду, яку забрали тут після оновлення (clk.guild.claimed — день воза).
+    // за нагороду, яку забрали тут після оновлення (clk.guild.claimed:<нік> — день воза).
     const topUp = (v.claims || []).some((cl) => cl.topUp && cl.day === w.id);
-    const v12claim = took && api.storeGet('clk.guild.claimed', '') === w.id;
+    const v12claim = took && api.storeGet(claimKey(st), '') === w.id;
     const nextPai = Math.min(shareMax, Math.floor(w.mine / per) + 1);
     const more = topUp ? ' <span class="muted small">· доплата паю чекає — забери</span>'
       : toNext ? ' <span class="muted small">· ще ' + toNext + ' — і пай ×' + pai(nextPai) + (v12claim ? ', різницю доплатять' : '') + '</span>'
@@ -1234,9 +1237,15 @@
       b.onclick = (e) => {
         if (!human(e)) return;
         b.disabled = true;
+        // Записуємо до відповіді: свіжий вид (уже із забраним) приходить раніше за неї, і плашка паю мусить одразу
+        // знати, що забрали тут (QA-4: «доплатять» з'являлось лише після перемикання вкладки). Не вийшло — назад.
+        const key = claimKey(st);
+        const was = api.storeGet(key, '');
+        api.storeSet(key, b.dataset.claim);
         act(st, api, { op: 'claim', day: b.dataset.claim }, 'wagon').then((r) => {
-          if (r && r.ok) { api.sparks(st, null, 16, true, 50, 40); api.storeSet('clk.guild.claimed', b.dataset.claim); }
-          else b.disabled = false;
+          if (r && r.ok) api.sparks(st, null, 16, true, 50, 40);
+          else { api.storeSet(key, was); b.disabled = false; }
+          paint(st, api);
         });
       };
     }

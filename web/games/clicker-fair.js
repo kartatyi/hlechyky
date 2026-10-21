@@ -511,7 +511,7 @@
       + '<div class="clkf-obtns">'
       + '<button type="button" class="primary small" data-bid="as" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🤝 Здати</button>'
       // Бракує — «Ліпити» одразу тут (як у Толоці), з розписом замовлення: сервер поставить виріб на коло й нагадає розпис.
-      + (ready || !st.mine ? '' : '<button type="button" class="ghost small clkf-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
+      + (ready || !st.mine ? '' : st.craft && st.craft.ware === o.ware ? '<span class="small clkl-onwheel">🏺 ' + esc(wareName(st, o.ware)) + ' уже на колі</span>' : '<button type="button" class="ghost small clkf-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
         + esc(acc(wareName(st, o.ware))) + '</button>')
       + '<span class="clkf-otime small muted">⏳ <i class="clkf-cd" data-at="' + o.until + '" data-done="поїхав"></i></span>'
       + '<details class="clkf-bid" data-key="' + o.id + '"><summary>торг</summary>'
