@@ -618,6 +618,7 @@
       + '<path class="clks-ripple" d="M30 92h14M120 93h10M200 91h16M290 92h12" stroke="#cfe6f6" stroke-width=".8" opacity=".5"/>';
     // Далеке вітрило (порт) — за Пристанню й кораблями біля неї: воно ходить якраз уздовж того берега.
     if (lv(e, 'port')) s += '<g transform="translate(84 88.2)"><g class="clks-farsail">' + farSail() + '</g></g>';
+    if (e.trade) s += riverLanes(e, true); // v12: шлюп і пароплав — дальшою смугою, за Пристанню й кораблями
     s += tolokaRiver(e, e.fresh);         // v11: пристань Толоки на тому березі
     s += tradeRiver(e);                   // v12: причал і кораблі біля Пристані
     if (t.chaika >= 1) {
@@ -1205,15 +1206,28 @@
   }
 
   /// Річка: причал із глеками й своя шхуна (порт 25/50; далеке вітрило — у worldSvg), а шлюп «Нева» й пароплав по черзі
-  /// перетинають річку назустріч чайці. Після чайки й перед ближнім берегом.
+  /// перетинають річку назустріч чайці (riverLanes; коли є причал торгівлі — дальшою смугою, у worldSvg). Після чайки
+  /// й перед ближнім берегом.
   function worldRiver(e) {
     let s = '';
-    const port = lv(e, 'port'), voyage = lv(e, 'voyage'), ocean = lv(e, 'ocean');
+    const port = lv(e, 'port');
     if (port >= 50) s += schoonerSvg();
     if (port >= 25) s += pierSvg();
-    if (voyage) s += '<g transform="translate(0 94)"><g class="clks-lane s1">' + sloopSvg(voyage) + '</g></g>';
-    if (ocean) s += '<g transform="translate(0 94.4)"><g class="clks-lane s2">' + steamerSvg(ocean, '#b3342a') + '</g></g>';
+    if (!e.trade) s += riverLanes(e, false);
     return s + '<g class="clks-gslot" data-lane="river"></g>';
+  }
+
+  /// Шлюп «Нева» й пароплав. far — є причал заморської торгівлі (v12, QA-4): тоді вони йдуть дальшою смугою, менші, і
+  /// малюються раніше за Пристань, причал і кораблі біля нього — пропливають позаду, а не накривають корабель на 6 с.
+  /// Масштаб — усередині рухомої групи: translateX смуги лишається в одиницях сцени й веде їх через усю річку.
+  function riverLanes(e, far) {
+    const voyage = lv(e, 'voyage'), ocean = lv(e, 'ocean');
+    const at = (y, cls, art) => '<g transform="translate(0 ' + y + ')"><g class="clks-lane ' + cls + '">'
+      + (far ? '<g transform="scale(.58)">' + art + '</g>' : art) + '</g></g>';
+    let s = '';
+    if (voyage) s += at(far ? 88.4 : 94, 's1', sloopSvg(voyage));
+    if (ocean) s += at(far ? 88.6 : 94.4, 's2', steamerSvg(ocean, '#b3342a'));
+    return s;
   }
 
   /// Вітрило на обрії — маленьке, далеке, повільно ходить туди-сюди.
