@@ -205,3 +205,4 @@
 .clkl-fnext > summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; color: var(--muted); }
 .clkl-fnext[open] > summary { color: var(--text); }
 @media (pointer: coarse) { .clkl-fnext > summary { min-height: 40px; } }
+.clkl-fcd { font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
