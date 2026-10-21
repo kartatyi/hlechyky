@@ -1664,13 +1664,33 @@
     + '<path d="M-7-1.8H7M-7 1.8H7" stroke-linecap="round"/>';
 
   /// Монета для вікна-церемонії (контракт §6): 'hryvnia' — срібна гривня (княжий злиток-шестигранник позаду
-  /// й монета зі знаком ₴), 'gold' — червоний золотий із глечиком. SVG-рядок 64×64 зі своїми id градієнтів.
+  /// й монета зі знаком ₴), 'gold' — червоний золотий із глечиком, 'dukach' (v12 §6) — дукач на намисті: коралі,
+  /// бант-вушко й золота монета з квіткою. SVG-рядок 64×64 зі своїми id градієнтів.
   function coinSvg(kind) {
     const beads = (cx, cy, r, n, rr, fill) => {
       let s = '<g fill="' + fill + '">';
       for (let i = 0; i < n; i++) { const a = (i * 2 * Math.PI) / n; s += '<circle cx="' + f1(cx + Math.cos(a) * r) + '" cy="' + f1(cy + Math.sin(a) * r) + '" r="' + rr + '"/>'; }
       return s + '</g>';
     };
+    if (kind === 'dukach') {
+      let coral = '<g fill="#c0392b" stroke="#7a1d14" stroke-width=".5">';
+      for (let i = 0; i <= 12; i++) { const t = i / 12; coral += '<circle cx="' + f1(5 + 54 * t) + '" cy="' + f1(6 + 12 * Math.sin(Math.PI * t)) + '" r="2.3"/>'; }
+      coral += '</g>';
+      let petals = '<g fill="#b3261e">';
+      for (let i = 0; i < 6; i++) petals += '<ellipse cx="32" cy="38.2" rx="1.7" ry="3.6" transform="rotate(' + i * 60 + ' 32 42)"/>';
+      petals += '</g>';
+      return '<svg class="clks-coin dukach" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><defs>'
+        + '<radialGradient id="clks-coin-du" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#fff2b8"/><stop offset=".45" stop-color="#f2c14e"/><stop offset="1" stop-color="#c46a26"/></radialGradient></defs>'
+        + coral
+        // Бант-вушко, на якому дукач висить на намисті.
+        + '<path d="M32 22.6c-2.6-4.6-8.8-5.2-8.6-1.6.2 3 5.6 3.2 8.6 1.6zM32 22.6c2.6-4.6 8.8-5.2 8.6-1.6-.2 3-5.6 3.2-8.6 1.6z" fill="url(#clks-coin-du)" stroke="#8a4a14" stroke-width=".8"/>'
+        + '<circle cx="32" cy="24.6" r="2.2" fill="none" stroke="#8a4a14" stroke-width="1.2"/>'
+        + '<circle cx="32" cy="42" r="17" fill="url(#clks-coin-du)" stroke="#8a4a14" stroke-width="1.5"/>'
+        + beads(32, 42, 14.8, 28, 0.85, '#a8621e')
+        + '<circle cx="32" cy="42" r="12.6" fill="none" stroke="#a8621e" stroke-width=".9"/>'
+        + petals + '<circle cx="32" cy="42" r="2" fill="#fff3c4" stroke="#a8621e" stroke-width=".6"/>'
+        + '<path d="M19.6 36.2a13 13 0 0 1 7.6-6.8" stroke="#fffbe6" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".75"/></svg>';
+    }
     if (kind === 'gold') {
       return '<svg class="clks-coin gold" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><defs>'
         + '<radialGradient id="clks-coin-au" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#fff2b8"/><stop offset=".45" stop-color="#f2c14e"/><stop offset="1" stop-color="#c46a26"/></radialGradient></defs>'
@@ -2873,6 +2893,8 @@
     if (api.storeGet('clk.awayAt', '') === String(a.at)) return true;
     if (api.overlayOpen(st)) return false;          // інша панель (мінігра) — покажемо, щойно закриють
     api.storeSet('clk.awayAt', String(a.at));
+    // v12 (B6): побачене пам'ятає й сервер — на другому пристрої чи після іншого ніка картка вдруге не вискочить.
+    api.order(st, 'away', { at: a.at });
     const esc = (x) => api.esc(st, x);
     const offline = st.offlineMs / 1000;
     const capped = a.seconds > offline + 60;

@@ -1209,8 +1209,8 @@ public class ClickerKilnTests
         Assert.Equal("jug|kosiv|4", it.GetProperty("key").GetString());
         Assert.Equal(4, it.GetProperty("q").GetInt32());
         // Базар «крім дзвінких» розкішних не бере, а «все» — забирає.
-        Assert.Equal("У коморі самі дзвінкі — їх базар не бере", Act(h, "bazaar", new { all = true, q = 2 }).Message);
-        var sold = Act(h, "bazaar", new { all = true });
+        Assert.Equal("У коморі самі дзвінкі — їх базар не бере", Act(h, "bazaar", new { all = true, q = 2, keep = false }).Message);
+        var sold = Act(h, "bazaar", new { all = true, keep = false });
         Assert.True(sold.Ok, sold.Message);
         Assert.Equal(0, StoreCount(h));
     }

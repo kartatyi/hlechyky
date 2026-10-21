@@ -96,16 +96,21 @@ public sealed partial class Clicker
     IEnumerable<(Func<ItemInfo, bool> Match, int Need)> LadHolds(DateTimeOffset now, TakeFor? who = null)
     {
         foreach (var h in WagonHolds(now, who)) yield return h;
-        if (TolokaCurrent() is not { } b) yield break;
+        // Склад толоки (v12) сам і є толока: її вимоги для нього не чужі.
+        if (who?.Kind == "depot" || TolokaCurrent() is not { } b) yield break;
         var s = Math.Clamp(_tStage, 0, b.Stages.Length - 1);
         var st = b.Stages[s];
         // Закладений етап свої вироби вже забрав — тримати нічого. Закладає саме толока — свого етапу теж не тримаємо.
         if (_tLaidAt == default && who?.Kind != "toloka")
             for (var i = 0; i < st.Needs.Length; i++)
                 if (TolokaLeft(st, i) is var left and > 0) yield return (TolokaMatch(st.Needs[i]), left);
+        // Наступний етап — мінус те, що вже на складі (v12).
         if (TolokaAfter(b, s, _tBuilt, _total) is { } nx)
-            foreach (var n in nx.Building.Stages[nx.Stage].Needs)
-                yield return (TolokaMatch(n), n.N);
+            for (var i = 0; i < nx.Building.Stages[nx.Stage].Needs.Length; i++)
+            {
+                var n = nx.Building.Stages[nx.Stage].Needs[i];
+                if (n.N - DepotCount(DepotKey(nx.Building.Key, nx.Stage, i)) is var left and > 0) yield return (TolokaMatch(n), left);
+            }
     }
 
     // ---------- підсумок одним рядком ----------

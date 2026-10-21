@@ -139,8 +139,10 @@ public sealed partial class Clicker
     // ---------- стан ----------
 
     /// <summary>Замовлення гостя: хто (номер у <see cref="ClickerGuest.People"/>), що, якої якості й до коли чекає.</summary>
+    /// <param name="Fixed">Ціна, обіцяна, коли гість прийшов (v12): плата не падає нижче неї, хоч би що сталось із серією.
+    /// Старе збереження — 0 (тоді як було).</param>
     sealed record GuestOrderRow(int Id, string Guest, int Who, string Ware, string Style, int Quality, int Count,
-        DateTimeOffset At, DateTimeOffset Until);
+        DateTimeOffset At, DateTimeOffset Until, double Fixed = 0);
 
     /// <summary>Стан пакета в збереженні. Усе необов'язкове: старе збереження — «гостей ще не було».</summary>
     /// <param name="Met">Хто прибув і коли (обпал цього не чіпає).</param>
@@ -206,13 +208,15 @@ public sealed partial class Clicker
         }
     }
 
+    /// <summary>Скільки шани справді додасть замовлення: Виставкова зала Толоки й «Прадідова печатка» (v11) множать її.</summary>
+    int GuestRepReal(int delta) => delta <= 0 ? 0 : (int)Math.Ceiling(delta * TolokaGuestRepMult * (1 + Relic("seal2") / 2));
+
     /// <summary>Додати шану гостеві. Повертає, на скільки рівнів вона виросла; ачівки — на переході через поріг.</summary>
     int GuestRepAdd(string key, int delta)
     {
         if (GuestIndex(key) < 0 || delta <= 0) return 0;
         var before = GuestLevel(key);
-        // Виставкова зала Толоки й «Прадідова печатка» (v11) множать шану.
-        delta = (int)Math.Ceiling(delta * TolokaGuestRepMult * (1 + Relic("seal2") / 2));
+        delta = GuestRepReal(delta);
         _gRep[key] = (int)Math.Min(1_000_000L, (long)GuestPoints(key) + delta);
         GuestsRecount();
         var after = GuestLevel(key);
@@ -245,7 +249,8 @@ public sealed partial class Clicker
     double GuestPayMult(GuestOrderRow o) => GuestOf(o.Guest).PayMult * (1 + GuestPayPerLevel * GuestLevel(o.Guest)) * (1 + Relic("seal2"));
 
     /// <summary>Скільки замовлення заплатить, якщо віддати рівно те, що просять (у виді — як обіцянка).</summary>
-    double GuestPay(GuestOrderRow o) => Math.Max(1, Math.Max(ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * GuestPayMult(o)), GuestPlayPay(o)));
+    double GuestPay(GuestOrderRow o) =>
+        Math.Max(o.Fixed, Math.Max(1, Math.Max(ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * GuestPayMult(o)), GuestPlayPay(o))));
 
     /// <summary>
     /// Скільки хвилин гри (<see cref="PlayMinute"/>) за виріб на кожну одиницю множника гостя (10.10): ×8–×12 ціни виробу —
@@ -294,6 +299,9 @@ public sealed partial class Clicker
         var person = Ctx.Rng.Next(g.People.Length);
         var life = TimeSpan.FromMinutes(GuestLifeMinMinutes + Ctx.Rng.Next(GuestLifeMaxMinutes - GuestLifeMinMinutes + 1));
         var order = new GuestOrderRow(++_gOrderId, g.Key, person, ware.Key, style, g.Quality, count, now, now + life);
+        // Плейтест 21.10: плата в хвилинах гри залежить від серії глеків з полиці — серія рвалась, і «≈71,8 млрд» на картці
+        // ставало 8,6 млрд при здачі. Що пообіцяли, коли гість прийшов, — те й нижня межа плати (v12).
+        order = order with { Fixed = GuestPay(order) };
         _gOrders.Add(order);
         return order;
     }
@@ -387,7 +395,7 @@ public sealed partial class Clicker
         double sum = 0;
         foreach (var (item, n) in TakePlan(match, o.Count, who)) sum += ItemValue(item.Ware, item.Style, item.Quality) * n;
         TakeItems(match, o.Count, who);
-        var pay = Math.Max(1, Math.Max(ToPots(sum * GuestPayMult(o)), GuestPlayPay(o)));
+        var pay = Math.Max(o.Fixed, Math.Max(1, Math.Max(ToPots(sum * GuestPayMult(o)), GuestPlayPay(o))));
         Add(pay);
         _gOrders.RemoveAt(i);
         _gDelivered++;
@@ -395,7 +403,8 @@ public sealed partial class Clicker
         var g = GuestOf(o.Guest);
         var rep = GuestRepFor(o);
         var up = GuestRepAdd(g.Key, rep);
-        var text = $"{g.Emoji} {GuestWho(o)}: «{g.Lines[Ctx.Rng.Next(g.Lines.Length)]}» +{PotsShort(pay)} · шана +{rep}";
+        // Плейтест 21.10 (B10): тост казав «шана +8», а додавалось +14 — множники Зали й печатки до тексту не доходили.
+        var text = $"{g.Emoji} {GuestWho(o)}: «{g.Lines[Ctx.Rng.Next(g.Lines.Length)]}» +{PotsShort(pay)} · шана +{GuestRepReal(rep)}";
         if (up > 0) text += $" · ⭐ {g.Name}: шана {GuestLevel(g.Key)}";
         return ActResult.Accept(text);
     }
@@ -460,7 +469,7 @@ public sealed partial class Clicker
             orders = _gOrders.Select(o => new
             {
                 id = o.Id, guest = o.Guest, who = o.Who, ware = o.Ware, style = o.Style, q = o.Quality, n = o.Count,
-                have = ItemCount(GuestMatch(o)), pay = GuestPay(o), mult = GuestPayMult(o), rep = GuestRepFor(o), until = o.Until,
+                have = ItemCount(GuestMatch(o)), pay = GuestPay(o), mult = GuestPayMult(o), rep = GuestRepReal(GuestRepFor(o)), until = o.Until,
             }),
             next = _gNext,
             slots = GuestSlots,
@@ -518,7 +527,7 @@ public sealed partial class Clicker
                 || o.Quality is < 1 or > QualityMax || o.Count is < 1 or > 10 || o.Until <= o.At
                 || _gOrders.Count >= GuestSlotsMax + GuestSeamapSlots + TolokaGuestSlotsMax + 2)
                 continue;
-            _gOrders.Add(o with { Who = Math.Clamp(o.Who, 0, GuestOf(o.Guest).People.Length - 1) });
+            _gOrders.Add(o with { Who = Math.Clamp(o.Who, 0, GuestOf(o.Guest).People.Length - 1), Fixed = double.IsFinite(o.Fixed) ? Math.Max(0, o.Fixed) : 0 });
         }
         _gOrderId = Math.Max(Math.Max(0, row.OrderId), _gOrders.Count == 0 ? 0 : _gOrders.Max(o => o.Id));
         _gDelivered = Math.Max(0, row.Delivered);

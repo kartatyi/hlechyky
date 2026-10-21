@@ -188,10 +188,10 @@ public class ClickerCraftTests
     public void Selling_everything_asks_for_something_to_sell()
     {
         var h = Wheel();
-        Assert.Equal("У коморі порожньо — нічого везти на базар", Act(h, "bazaar", new { all = true }).Message);
+        Assert.Equal("У коморі порожньо — нічого везти на базар", Act(h, "bazaar", new { all = true, keep = false }).Message);
         Items(h, ("pot||1", 2), ("bowl||2", 1));
         var before = Pots(h);
-        Assert.True(Act(h, "bazaar", new { all = true }).Ok);
+        Assert.True(Act(h, "bazaar", new { all = true, keep = false }).Ok);
         Assert.Equal(before + 2 * 20 + (long)(50 * 0.5 * 1.6), Pots(h));
         Assert.Equal(0, Craft(h).GetProperty("items").GetArrayLength());
         Assert.Equal("Такого виробу в коморі нема", Act(h, "bazaar", new { key = "pot||1" }).Message);
@@ -204,19 +204,19 @@ public class ClickerCraftTests
         Items(h, ("pot||1", 2), ("pot||2", 1), ("pot||3", 1));
         var before = Pots(h);
         // «Лише звичайні» бере два горщики по 20 (дно кліків: 40 × 0,5) — добрий і дзвінкий лишаються.
-        var r = Act(h, "bazaar", new { all = true, q = 1 });
+        var r = Act(h, "bazaar", new { all = true, q = 1, keep = false });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("(лише звичайні)", r.Message);
         Assert.Equal(before + 2 * 20, Pots(h));
         // Звичайних більше нема — кнопка про це й каже, а не про порожню комору.
-        Assert.Equal("Звичайних у коморі нема", Act(h, "bazaar", new { all = true, q = 1 }).Message);
+        Assert.Equal("Звичайних у коморі нема", Act(h, "bazaar", new { all = true, q = 1, keep = false }).Message);
         // «Усе, крім дзвінких» забирає доброго (20 × 1,6) і лишає дзвінкого.
-        var two = Act(h, "bazaar", new { all = true, q = 2 });
+        var two = Act(h, "bazaar", new { all = true, q = 2, keep = false });
         Assert.True(two.Ok, two.Message);
         Assert.Contains("(крім дзвінких)", two.Message);
         Assert.Equal(before + 2 * 20 + 32, Pots(h));
         Assert.Equal("pot||3", Craft(h).GetProperty("items").EnumerateArray().Single().GetProperty("key").GetString());
-        Assert.Equal("У коморі самі дзвінкі — їх базар не бере", Act(h, "bazaar", new { all = true, q = 2 }).Message);
+        Assert.Equal("У коморі самі дзвінкі — їх базар не бере", Act(h, "bazaar", new { all = true, q = 2, keep = false }).Message);
     }
 
     [Fact]

@@ -557,6 +557,8 @@ public sealed partial class Clicker
             var t = _taken[i];
             if (t.PayAt > now) continue;
             Add(t.Pay);
+            // v12 (плейтест B11): привезене за простій — окремим рядком «поки тебе не було», а не «коло крутилось».
+            if (_awayOpen) { _merchAway += t.Pay; _merchAwayN++; }
             _taken.RemoveAt(i);
             _paid.Add(new(t.Id, t.Merchant, t.Pay, t.PayAt));
         }

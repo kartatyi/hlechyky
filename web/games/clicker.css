@@ -1410,3 +1410,7 @@ body.clk-toasts .toast.gbig { max-width: 100%; }
 .clk.land .clk-sttxt b, .clk.land .clk-stsub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .clk.land .clkc-next { height: auto; min-height: calc(2.15em + 16px); }
 .clk.land .clk-nxtext, .clk.land .clk-nxsub { white-space: normal; overflow: visible; text-overflow: clip; }
+
+/* v12: старі рядки «Що нового» — згорткою (clicker.js, showNews). */
+.clk-news-old > summary { cursor: pointer; margin: .6em 0 .2em; color: var(--muted); font-size: .92em; }
+.clk-news-old[open] > summary { margin-bottom: .4em; }

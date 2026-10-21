@@ -396,26 +396,39 @@ public sealed partial class Clicker
 
     /// <summary>
     /// Продати гуртом: <c>q</c> — найвища якість, яку забирає базар (1 — лише звичайні, 2 — усе, крім дзвінких,
-    /// 3 чи без нього — усе). Дорожчі лишаються в коморі на замовлення, дарунки й альбом.
+    /// 3 чи без нього — усе). Дорожчі лишаються в коморі на замовлення, дарунки й альбом. v12 (плейтест 21.10): і те,
+    /// чого чекають замовлення сіл і гостей, майстерштук і Толока (<see cref="LadKept"/>), лишається — «Продати все»
+    /// мовчки з'їдало вироби на етап. <c>keep: false</c> — продати й відкладене (гравець сказав це явно).
     /// </summary>
     ActResult BazaarAll(JsonElement payload)
     {
         var q = (int)Math.Clamp(Num(payload, "q") ?? QualityMax, 1, QualityMax);
+        var keep = !(payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("keep", out var k) && k.ValueKind == JsonValueKind.False);
+        var kept = keep ? LadKept(Ctx.Clock.UtcNow) : new Dictionary<string, int>(StringComparer.Ordinal);
         var sold = 0;
+        var held = 0;
         double sum = 0;
         foreach (var (item, count) in AllItems().Where(x => x.Item.Quality <= q).ToList())
         {
-            sum += ItemValue(item.Ware, item.Style, item.Quality) * count;
-            sold += count;
-            _items.Remove(ItemKey(item.Ware, item.Style, item.Quality));
+            var key = ItemKey(item.Ware, item.Style, item.Quality);
+            var hold = Math.Min(count, kept.GetValueOrDefault(key));
+            var n = count - hold;
+            held += hold;
+            if (n <= 0) continue;
+            sum += ItemValue(item.Ware, item.Style, item.Quality) * n;
+            sold += n;
+            if (hold == 0) _items.Remove(key);
+            else _items[key] = hold;
         }
         if (sold == 0)
-            return ActResult.Fail(ItemTotal > 0
+            return ActResult.Fail(held > 0 ? $"Усе, що підходить ({held}), відкладене під замовлення й Толоку — базар його не бере"
+                : ItemTotal > 0
                 ? q == 1 ? "Звичайних у коморі нема" : q == 3 ? "У коморі самі розкішні — базар до них не дотягнеться" : "У коморі самі дзвінкі — їх базар не бере"
                 : "У коморі порожньо — нічого везти на базар");
         Add(sum = ToPots(sum * HouseBazaarMult));
         var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : q == 3 ? " (крім розкішних)" : "";
-        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{PotsShort(sum)}");
+        var tail = held > 0 ? $" · {held} {WaresWord(held)} лишив під замовлення й Толоку" : "";
+        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{PotsShort(sum)}{tail}");
     }
 
     static string WaresWord(double n) => Plural(n, "виріб", "вироби", "виробів");
@@ -548,9 +561,14 @@ public sealed partial class Clicker
         LadAwayClear();
         _awayPotsFrom = _pots;
         _shelfAway = 0;
+        _merchAway = 0;
+        _merchAwayN = 0;
     }
 
     double _awayPotsFrom;
+    /// <summary>Скільки привезли купці хати за простій і скільки їх було (v12, B11).</summary>
+    double _merchAway;
+    int _merchAwayN;
 
     void AwayEnd(DateTimeOffset now, TimeSpan gap)
     {
@@ -569,8 +587,17 @@ public sealed partial class Clicker
             if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
         }
         _shelfAway = 0;
+        // Купці — теж першим рядком і не в «коло крутилось»: плейтест 21.10 — з 10,9 млрд простою 8,7 привіз купець.
+        if (_merchAway >= 1)
+        {
+            _awayNotes.Insert(0, $"🐴 {(_merchAwayN == 1 ? "Купець привіз" : $"Купці ({_merchAwayN}) привезли")}: +{PotsShort(_merchAway)}");
+            if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
+        }
+        var merch = _merchAway;
+        _merchAway = 0;
+        _merchAwayN = 0;
         LadAwayFlush(_awayNotes);
-        _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom), _awayFormed, [.. _awayNotes]);
+        _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom - merch), _awayFormed, [.. _awayNotes]);
     }
 
     // ---------- синхронізація й вид ----------
@@ -655,9 +682,24 @@ public sealed partial class Clicker
         };
     }
 
-    object? AwayView() => _away is { } a
+    /// <summary>«Поки тебе не було»: запис, поки гончар його не побачив (v12, B6 плейтесту: сервер слав останній запис
+    /// завжди, а побачене клієнт пам'ятав лише в localStorage одного браузера — на другому пристрої чи після іншого ніка
+    /// вранішній «+48 557 золотих» вискакував знову, уже після обпалу).</summary>
+    object? AwayView() => _away is { Seen: false } a
         ? new { at = a.At, seconds = a.Seconds, pots = a.Pots, formed = a.Formed, notes = a.Notes }
         : null;
+
+    /// <summary>Дія <c>away { at }</c>: картку цього запису показано — більше не шлемо (на жодному пристрої).</summary>
+    ActResult SeenAway(JsonElement payload)
+    {
+        if (_away is not { } a || a.Seen) return ActResult.Done;
+        // Новіший запис (простій, що дописався, поки картка висіла) — не той, що бачили: лишаємо.
+        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("at", out var at) && at.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(at.GetString(), out var seen) && Math.Abs((seen - a.At).TotalSeconds) > 1)
+            return ActResult.Done;
+        _away = a with { Seen = true };
+        return ActResult.Done;
+    }
 
     /// <summary>Каталоги для клієнта: у видах від Start/Load до першої дії і після look { catalog: true } до наступної.</summary>
     object? CatalogView()
@@ -685,7 +727,7 @@ public sealed partial class Clicker
 
     // ---------- збереження ----------
 
-    sealed record AwayRow(DateTimeOffset At, long Seconds, double Pots, int Formed, List<string> Notes);
+    sealed record AwayRow(DateTimeOffset At, long Seconds, double Pots, int Formed, List<string> Notes, bool Seen = false);
 
     sealed record CraftRow(
         string? Ware, double Work, List<RackRow>? Rack, Dictionary<string, int>? Items,

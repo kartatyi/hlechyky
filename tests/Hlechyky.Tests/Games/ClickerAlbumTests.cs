@@ -159,7 +159,10 @@ public class ClickerAlbumTests
     {
         // Ні 12, ні 9 ніде не зашито: додасться виріб чи розпис — сітка сама стане більшою. З одинадцятого оновлення
         // сітка — це «домашні» 9 стовпчиків (старі бонуси й ачівки) і стовпчики світу поруч.
-        Assert.Equal(Clicker.Styles.Length + 1, Clicker.AlbumColumns);
+        // v12: заморські розписи — поза сіткою; у ній домашні й світу (15 стовпчиків разом із простим).
+        Assert.Equal(Clicker.HomeStyles + Clicker.MasterTiers.Length, Clicker.AlbumStyles);
+        Assert.Equal(Clicker.AlbumStyles + 1, Clicker.AlbumColumns);
+        Assert.Equal(-1, Clicker.AlbumStyleIndex(Clicker.OverseasTiers[0]));
         Assert.Equal(Clicker.HomeStyles + 1, Clicker.AlbumHomeColumns);
         Assert.Equal(Clicker.Wares.Length * Clicker.AlbumHomeColumns, Clicker.AlbumSize);
         Assert.Equal(Clicker.Wares.Length * Clicker.AlbumColumns, Clicker.AlbumWorldSize);

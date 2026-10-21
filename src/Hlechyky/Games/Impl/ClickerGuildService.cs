@@ -37,7 +37,15 @@ public sealed record WagonItem(string Ware, string Style, int Quality, int N);
 /// </summary>
 public sealed record WagonInfo(
     string Day, DateTimeOffset EndsAt, int Potters, int Goal, int Total, IReadOnlyList<WagonSub> Subs,
-    IReadOnlyList<WagonGiver> Givers, int Tier, int Mine, int Claimed, IReadOnlyList<WagonItem>? Items = null);
+    IReadOnlyList<WagonGiver> Givers, int Tier, int Mine, int Claimed, IReadOnlyList<WagonItem>? Items = null, int ClaimedMine = 0)
+{
+    /// <summary>
+    /// Чи є що забрати: новий рівень або (v12, плейтест B7) пай, що виріс після забирання — доклав після «Забрати», і
+    /// картка обіцяла «×2 твого паю», а доплати не було.
+    /// </summary>
+    public bool CanClaim => Mine >= ClickerGuildService.MinGive && Tier > 0
+        && (Tier > Claimed || (Claimed > 0 && Clicker.WagonShare(Mine) > Clicker.WagonShare(ClaimedMine)));
+}
 
 /// <summary>Усе, що кімнаті треба від цеху для виду: сьогоднішній віз, вчорашній, скільки дарунків лишилось і допомога дня.</summary>
 public sealed record GuildSummary(WagonInfo Today, WagonInfo Prev, int GiftsLeft, GuildHelp Help);
@@ -49,7 +57,7 @@ public sealed record WagonGive(WagonInfo Wagon, int Reached);
 /// Нагорода воза: за який день, який рівень, на який уже платили раніше і скільки виробів поклав сам гончар
 /// (з цього рахується його пай, §E.1). <c>Error</c> — відмова.
 /// </summary>
-public sealed record WagonClaim(string? Error, string Day, int Tier, int Was, int Mine = 0);
+public sealed record WagonClaim(string? Error, string Day, int Tier, int Was, int Mine = 0, int WasMine = 0);
 
 /// <summary>
 /// Цех гончарів — спільне для всіх кімнат Гончарного кола: денний віз, скринька дарунків і список гончарів. Один
@@ -156,6 +164,8 @@ public sealed partial class ClickerGuildService
         public Dictionary<string, GiverRow> Givers { get; set; } = new(StringComparer.Ordinal);
         /// <summary>На який рівень кожен уже забрав нагороду.</summary>
         public Dictionary<string, int> Claimed { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>Скільки виробів кожен поклав на мить забирання (v12): пай, що виріс потім, доплачується.</summary>
+        public Dictionary<string, int> ClaimedMine { get; set; } = new(StringComparer.Ordinal);
         /// <summary>Найвищий рівень, про який уже сказали в Журнал: двічі одне й те саме не кажемо.</summary>
         public int Logged { get; set; }
     }
@@ -266,6 +276,7 @@ public sealed partial class ClickerGuildService
             w.Items = Clean(w.Items);
             w.Givers = Clean(w.Givers);
             w.Claimed = Clean(w.Claimed);
+            w.ClaimedMine = Clean(w.ClaimedMine);
         }
         // Звань у старому стані не було — порожні списки (ClickerGuildTitles.cs).
         NormalizeTitles(s);
@@ -348,8 +359,12 @@ public sealed partial class ClickerGuildService
             .OrderBy(g => g.Nick, StringComparer.Create(CultureInfo.GetCultureInfo("uk-UA"), true))
             .Select(g => new WagonGiver(g.Nick, g.N))
             .ToList();
+        var mine = row?.Givers.GetValueOrDefault(nickKey)?.N ?? 0;
+        var claimed = row?.Claimed.GetValueOrDefault(nickKey) ?? 0;
+        // Забране до v12 не знає, скільки тоді було покладено: вважаємо, що стільки ж, скільки зараз, — доплати нема.
+        var claimedMine = row is not null && row.ClaimedMine.TryGetValue(nickKey, out var cm) ? cm : claimed > 0 ? mine : 0;
         return new WagonInfo(day, endsAt, potters, goal, total, subRows, givers, TierOf(goal, total, subRows),
-            row?.Givers.GetValueOrDefault(nickKey)?.N ?? 0, row?.Claimed.GetValueOrDefault(nickKey) ?? 0, ItemsOf(row));
+            mine, claimed, ItemsOf(row), claimedMine);
     }
 
     /// <summary>
@@ -453,16 +468,17 @@ public sealed partial class ClickerGuildService
             if (w.Mine < MinGive)
                 return new WagonClaim($"Нагорода — тим, хто поклав на віз хоч {MinGive} виробів (у тебе {w.Mine})", w.Day, 0, 0);
             if (w.Tier == 0) return new WagonClaim("Віз ще не наповнився навіть до бронзи — докладаймо разом", w.Day, 0, 0);
-            if (w.Claimed >= w.Tier) return new WagonClaim($"Нагороду за {TierNamesAcc[w.Tier]} ти вже забрав", w.Day, 0, 0);
+            if (!w.CanClaim) return new WagonClaim($"Нагороду за {TierNamesAcc[w.Tier]} ти вже забрав", w.Day, 0, 0);
 
             if (!s.Days.TryGetValue(w.Day, out var row)) return new WagonClaim("Такого воза нема", w.Day, 0, 0);
             row.Claimed[nickKey] = w.Tier;
+            row.ClaimedMine[nickKey] = w.Mine;
             Save();
-            return new WagonClaim(null, w.Day, w.Tier, w.Claimed, w.Mine);
+            return new WagonClaim(null, w.Day, w.Tier, w.Claimed, w.Mine, w.ClaimedMine);
         }
     }
 
-    static bool Claimable(WagonInfo w) => w.Mine >= MinGive && w.Tier > w.Claimed;
+    static bool Claimable(WagonInfo w) => w.CanClaim;
 
     /// <summary>Старі дні — геть: нагорода за них однаково вже не забирається.</summary>
     static void Prune(State s, DateTimeOffset now)

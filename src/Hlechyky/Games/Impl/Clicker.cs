@@ -269,8 +269,9 @@ public sealed partial class Clicker : Game
     /// хто пропустив v11, тому клієнт допише рядки «Толоки», а подарунок v11 дасть TakeGiftV11.
     /// «v11.2» (10.10) — «хвилина гри», комора під полицею, перероблені віхи й ачівки за тиждень: без подарунка; хто
     /// пропустив v11.1, тому клієнт допише й ті рядки.
+    /// «v12» — «Заморська торгівля» (docs/games/specs/clicker-v12.md §9) і подарунок (TakeGiftV12); старі рядки — згорткою.
     /// </summary>
-    public const string NewsVersion = "v11.2";
+    public const string NewsVersion = "v12";
 
     // ---------- розгін кола ----------
 
@@ -423,10 +424,22 @@ public sealed partial class Clicker : Game
         Tier("meissen", "Майсенська порцеляна", 6e35, 9.2e21, "Секрет алхіміка", "Схрещені мечі", "Порцеляновий сад"),
         Tier("sevres", "Севрська мануфактура", 6e36, 5e22, "Королівська блакить", "Бісквіт", "Сервіз для імператриці"),
         Tier("raku", "Японська раку", 6e37, 2.8e23, "Чашка для чаю", "Вогонь і тирса", "Краса неідеального"),
+        // v12 «Заморська торгівля» (docs/games/specs/clicker-v12.md §4): заморські майстерні. Відмикає Слава з кораблів
+        // (SlavaGate), а не будова й не рівень попереднього щабля: хто відстав на годинник Толоки, доганяє виробами з рук.
+        // Перші дві за доходом — як Делфт і Майсен, останні дві — новий верх.
+        Tier("athens", "Афінський Керамік", 6e34, 1.7e21, "Чорний лак", "Амфора для олії", "Звідси й слово «кераміка»"),
+        Tier("faenza", "Фаєнцька майоліка", 6e35, 9.2e21, "Біла полива", "Майоліка на столі", "Звідси й «фаянс»"),
+        Tier("azulejo", "Лісабонські азулежу", 6e36, 5e22, "Синя кахля", "Стіна-картина", "Вулиця в кахлях"),
+        Tier("wedgwood", "Англійський Веджвуд", 6e37, 2.8e23, "Яшмова маса", "Білий рельєф на блакиті", "Королівський сервіз"),
+        Tier("celadon", "Корейський селадон", 6e38, 1.5e24, "Як нефрит", "Журавлі на вазі", "Інкрустація"),
+        Tier("talavera", "Талавера", 6e39, 8.5e24, "Синє на білому", "Жовта полива", "Майстерня на площі"),
     ];
 
     /// <summary>Шість щаблів одинадцятого оновлення — гончарі світу (ачівки, сцена, «що нового»).</summary>
     public static readonly string[] MasterTiers = ["jingdezhen", "iznik", "delft", "meissen", "sevres", "raku"];
+
+    /// <summary>Шість заморських майстерень v12 — у порядку відкриття (ачівки, сцена, кораблі).</summary>
+    public static readonly string[] OverseasTiers = ["athens", "faenza", "azulejo", "wedgwood", "celadon", "talavera"];
 
     /// <summary>Яка будова Толоки відмикає щабель гончарів світу (ClickerToloka.cs).</summary>
     public static readonly Dictionary<string, string> WorldGate = new(StringComparer.Ordinal)
@@ -435,8 +448,18 @@ public sealed partial class Clicker : Game
         ["sevres"] = "hall", ["raku"] = "festival",
     };
 
-    /// <summary>Чи відімкнула Толока щабель (для решти верстатів — завжди так).</summary>
-    bool GateOpen(string key) => !WorldGate.TryGetValue(key, out var b) || TolokaHas(b);
+    /// <summary>
+    /// Скільки Слави у світі (ClickerTrade.cs) відмикає заморську майстерню (v12 §4). Перша — з першим кораблем: гравець
+    /// мусить одразу побачити, навіщо кораблі (слово користувача 21.10). Решта — орієнтир; числа ставить симулятор.
+    /// </summary>
+    public static readonly Dictionary<string, long> SlavaGate = new(StringComparer.Ordinal)
+    {
+        ["athens"] = 20, ["faenza"] = 800, ["azulejo"] = 2_000, ["wedgwood"] = 4_000, ["celadon"] = 6_500, ["talavera"] = 9_500,
+    };
+
+    /// <summary>Чи відімкнула Толока (гончарі світу) чи Слава (заморські майстерні) щабель; для решти верстатів — завжди так.</summary>
+    bool GateOpen(string key) =>
+        (!WorldGate.TryGetValue(key, out var b) || TolokaHas(b)) && (!SlavaGate.TryGetValue(key, out var need) || _slava >= need);
 
     /// <summary>Дванадцять щаблів десятого оновлення — від Батурина до Опішні (ачівки, сцена, «що нового»).</summary>
     public static readonly string[] WorldTiers =
@@ -531,7 +554,19 @@ public sealed partial class Clicker : Game
         new("meissen", "Майсенські мечі", 6e37, "meissen"),
         new("sevres", "Севрська блакить", 6e38, "sevres"),
         new("raku", "Раку", 6e39, "raku"),
+        // v12: розписи заморських майстерень — так само по одному, ціна — сто перших рівнів майстерні. В альбом не йдуть
+        // (альбом лишається на 15 стовпчиків, AlbumStyles), +5 % до всього — як усі.
+        new("athens", "Чорнофігурний", 6e36, "athens"),
+        new("faenza", "Фаєнца", 6e37, "faenza"),
+        new("azulejo", "Азулежу", 6e38, "azulejo"),
+        new("wedgwood", "Веджвудська блакить", 6e39, "wedgwood"),
+        new("celadon", "Селадон", 6e40, "celadon"),
+        new("talavera", "Талавера", 6e41, "talavera"),
     ];
+
+    /// <summary>Скільки розписів у сітці альбому (домашні й світу, v11): заморські v12 у неї не йдуть — повний альбом
+    /// світу, зібраний до v12, не перестає бути повним.</summary>
+    public const int AlbumStyles = 14;
 
     /// <summary>Скільки «домашніх» розписів (до одинадцятого оновлення): ачівка «Музей», стара сітка альбому.</summary>
     public const int HomeStyles = 8;
@@ -678,7 +713,7 @@ public sealed partial class Clicker : Game
     int _coinSeen;
 
     /// <summary>До якої одиниці гончар доріс глеками за весь час: 0 — глеки, 1 — гривні, 2 — червоні золоті.</summary>
-    int CoinLevel => _total >= Gold ? 2 : _total >= Hryvnia ? 1 : 0;
+    int CoinLevel => _total >= Dukach ? 3 : _total >= Gold ? 2 : _total >= Hryvnia ? 1 : 0;
 
     /// <summary>
     /// Як часто число з таблиці оновлюється під час клацання. Кожна пачка кліків — це запис у ту саму
@@ -689,7 +724,7 @@ public sealed partial class Clicker : Game
 
     /// <summary>Пороги ачівок: платформа бачить їх саме з таблиці, тож ці числа мусять летіти негайно,
     /// а не чекати своєї півхвилини.</summary>
-    static readonly double[] Milestones = [1_000, 100_000, 1_000_000, 1_000_000_000, 1_000_000_000_000, Hryvnia, Gold];
+    static readonly double[] Milestones = [1_000, 100_000, 1_000_000, 1_000_000_000, 1_000_000_000_000, Hryvnia, Gold, Dukach];
 
     // ---------- те, з чого складається дохід ----------
 
@@ -1040,6 +1075,7 @@ public sealed partial class Clicker : Game
         ResetGuests(_lastSync);
         _relics.Clear();
         ResetToloka(_lastSync);
+        ResetTrade(_lastSync);
         _achQueue.Clear();
         _viewVersion++;
     }
@@ -1084,6 +1120,8 @@ public sealed partial class Clicker : Game
             "news" => SeenNews(payload),
             // «Бачив» вікно-церемонію гривні чи червоних золотих (v10 §6).
             "coin" => SeenCoin(payload),
+            // v12: побачив картку «Поки тебе не було» — сервер більше не шле її на жоден пристрій.
+            "away" => SeenAway(payload),
             // Закрив лист від Дядька Глека, що прийшов із подарунком майстерні (ClickerGifts.cs).
             "letter" => SeenLetter(payload),
             // Клієнт питає свіжий вид, коли розписний глек утік чи глек з полиці розбився: наступний розклад знає лише сервер.
@@ -1106,7 +1144,8 @@ public sealed partial class Clicker : Game
             "craft" => ActCraft(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
             _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
-                ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActResult.Fail("Тут так не ходять"),
+                ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActTrade(action, payload)
+                ?? ActResult.Fail("Тут так не ходять"),
         };
         // Дія могла почати чи скінчити мінігру — глеки відкладаються під неї або вертаються до свого часу.
         HoldForMinigame(Ctx.Clock.UtcNow);
@@ -1242,6 +1281,8 @@ public sealed partial class Clicker : Game
         SyncGuild(now, paid);
         SyncGuests(now, paid);
         SyncToloka(now);
+        // Після Толоки: щойно збудована Пристань того ж проміжку вже приймає кораблі.
+        SyncTrade(now);
         AwayEnd(now, absent);
     }
 
@@ -1497,6 +1538,8 @@ public sealed partial class Clicker : Game
         TitlesClicks(taken, now);
         // Кліки ще й ліплять виріб на колі (глеків це не додає — лише роботу, див. ClickerCraft.cs).
         if (taken > 0) FormBy(taken, now);
+        // v12: ручні кліки під час будови — своя праця на риштуванні (ClickerToloka.cs, до −15 % етапу).
+        if (taken > 0) TolokaWork(taken, now);
         _guard.SpendClicks(taken);
         // Поки на сцені хоч щось діється, не перебиваємо: бонус тікає секундами, а перевірка почекає (§A.2).
         if (_guard.Due && !BonusOn(now)) EyeCheck(now);
@@ -1605,7 +1648,9 @@ public sealed partial class Clicker : Game
         var level = Level(up.Key);
         if (CappedNow(up, level)) return ActResult.Fail($"{up.Name}: кращої вже не буває");
         if (level == 0 && !GateOpen(up.Key))
-            return ActResult.Fail($"{up.Name}: спершу збудуй на Толоці «{TolokaName(WorldGate[up.Key])}»");
+            return ActResult.Fail(SlavaGate.TryGetValue(up.Key, out var slava)
+                ? $"{up.Name}: відкриє Слава {Count(slava)} (у тебе {Count(_slava)}) — вантаж кораблі біля Пристані"
+                : $"{up.Name}: спершу збудуй на Толоці «{TolokaName(WorldGate[up.Key])}»");
 
         var bought = 0;
         var last = 0.0;
@@ -1631,6 +1676,8 @@ public sealed partial class Clicker : Game
             else if (up.Key == "opishnia") Achieve("potter-opishnia");
             else if (up.Key == "jingdezhen") Achieve("potter-world-first");
             if (MasterTiers.Contains(up.Key) && MasterTiers.All(k => Level(k) > 0)) Achieve("potter-world-all");
+            if (up.Key == OverseasTiers[0]) Achieve("potter-overseas-first");
+            if (OverseasTiers.Contains(up.Key) && OverseasTiers.All(k => Level(k) > 0)) Achieve("potter-overseas-all");
         }
         _levels[up.Key] = level;
         TitlesOnBuy(last, second);
@@ -1756,9 +1803,12 @@ public sealed partial class Clicker : Game
                 }),
             }, StringComparer.Ordinal),
             secrets = Secrets.Select(s => new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring }),
-            styles = Styles.Select(s => new { key = s.Key, name = s.Name, price = s.Price, tier = s.Tier }),
+            // album — чи є в розпису стовпчик альбому (заморські v12 — ні).
+            styles = Styles.Select((s, i) => new { key = s.Key, name = s.Name, price = s.Price, tier = s.Tier, album = i < AlbumStyles }),
             // Одинадцяте оновлення: яка будова відмикає щабель і що дають реліквії.
             gates = WorldGate.ToDictionary(x => x.Key, x => (object)new { building = x.Value, name = TolokaName(x.Value) }, StringComparer.Ordinal),
+            // v12: скільки Слави відмикає кожну заморську майстерню (порядок — OverseasTiers).
+            slavaGates = OverseasTiers.Select(k => new { key = k, name = Shop.First(u => u.Key == k).Name, need = SlavaGate[k] }),
             relics = Relics.Select(r => new { key = r.Key, name = r.Name, desc = r.Desc, step = r.Step, cap = r.Cap }),
         };
     }
@@ -2073,17 +2123,31 @@ public sealed partial class Clicker : Game
         // Гривню пояснює лише блок v10 у вікні новин, а його бачить той, хто v10 (чи v10.1) ще не бачив. Хто вже бачив —
         // тому новини v11 гривню не пояснюють, і його церемонія (скажімо, «Червоні золоті»), якщо ще чекає, лишається.
         // Хто бачив v11, той блок v10 або вже бачив, або прочитав у вікні v11 — v11.1 його не показує.
-        if (_news is not ("v10" or "v10.1" or "v11" or "v11.1")) _coinSeen = Math.Max(_coinSeen, CoinLevel);
+        // v12: блок v10 пояснює лише гривню й золоті — дукача він не знає, тож його церемонія лишається за будь-яких новин.
+        if (_news is not ("v10" or "v10.1" or "v11" or "v11.1" or "v11.2")) _coinSeen = Math.Max(_coinSeen, Math.Min(2, CoinLevel));
         _news = NewsVersion;
         // Подарунки: округи (v9.2), десятого й одинадцятого оновлень — кожен раз на гончаря; хто пропустив старі,
         // забирає їх разом із новим.
-        var got = new[] { TakeGift(), TakeGiftV10(), TakeGiftV11() }.Where(x => x is not null).Select(x => x!.Message).ToList();
+        var got = new[] { TakeGift(), TakeGiftV10(), TakeGiftV11(), TakeGiftV12() }.Where(x => x is not null).Select(x => x!.Message).ToList();
         return got.Count == 0 ? ActResult.Done : ActResult.Accept(string.Join(" · ", got));
     }
 
     /// <summary>Подарунок одинадцятого оновлення «Толока»: три години «без тебе» й двадцять в'язок соломи.</summary>
     public const string GiftV11Key = "v11";
     public const int GiftV11Minutes = 180, GiftV11Straw = 20;
+
+    /// <summary>Подарунок дванадцятого оновлення: пів години власної гри глеками одразу (перший корабель — і так біля Пристані).</summary>
+    public const string GiftV12Key = "v12";
+    public const double GiftV12Minutes = 30;
+
+    ActResult? TakeGiftV12()
+    {
+        if (_gifts.Contains(GiftV12Key)) return null;
+        _gifts.Add(GiftV12Key);
+        var gain = PlayPay(GiftV12Minutes);
+        Add(gain);
+        return ActResult.Accept($"🎁 Подарунок «Заморська торгівля»: +{PotsShort(gain)} — пів години твоєї гри");
+    }
 
     ActResult? TakeGiftV11()
     {
@@ -2111,7 +2175,7 @@ public sealed partial class Clicker : Game
     /// <summary>Вікно-церемонію гривні чи золотих побачено. Вище, ніж доріс, записати не можна.</summary>
     ActResult SeenCoin(JsonElement payload)
     {
-        var v = (int)Math.Clamp(Num(payload, "v") ?? 0, 0, 2);
+        var v = (int)Math.Clamp(Num(payload, "v") ?? 0, 0, 3);
         if (v > CoinLevel) return ActResult.Fail("До цього ще треба дорости");
         _coinSeen = Math.Max(_coinSeen, v);
         return ActResult.Done;
@@ -2184,9 +2248,13 @@ public sealed partial class Clicker : Game
     public const double Hryvnia = 1e15;
     /// <summary>Червоний золотий — тисяча мільярдів гривень, 10²⁷ глеків.</summary>
     public const double Gold = 1e27;
+    /// <summary>Дукач (v12, docs/games/specs/clicker-v12.md §6) — монета з намиста, трильйон червоних золотих, 10³⁹ глеків:
+    /// лідери дійшли до «41 трлн золотих», а за трильйонами число ставало степенем («1,2e15 золотих»).</summary>
+    public const double Dukach = 1e39;
 
     /// <summary>
-    /// Число без одиниці: до мільйона — повне, далі «1,09 млн», «2,5 млрд», «999 трлн», а за трильйонами — «1,2e15».
+    /// Число без одиниці: до мільйона — повне, далі «1,09 млн», «2,5 млрд», «999 трлн», а за трильйонами — трильйони
+    /// з розрядами («1 200 трлн»): степеня («1,2e15») гравець в інтерфейсі кола не бачить ніде (v12 §6).
     /// Дробова частина відтинається, а не округлюється (як у клієнті): «999,999 трлн» не стає «1000 трлн».
     /// </summary>
     public static string Count(double n)
@@ -2197,7 +2265,7 @@ public sealed partial class Clicker : Game
         if (Math.Abs(n) < 1_000_000)
             return n % 1 == 0 || Math.Abs(n) >= 1000 ? Math.Truncate(n * (1 + 1e-12)).ToString("#,0", Uk) : n.ToString("#,0.#", Uk);
         var i = (int)Math.Floor(Math.Log10(Math.Abs(n)) / 3) - 2;
-        if (i >= BigNames.Length) return n.ToString("0.#e0", Uk);
+        if (i >= BigNames.Length) return $"{Math.Truncate(n / 1e12 * (1 + 1e-12)).ToString("#,0", Uk)} {BigNames[^1]}";
         var v = Shown(n / Math.Pow(1000, i + 2));
         return $"{v.ToString("0.##", Uk)} {BigNames[i]}";
     }
@@ -2222,8 +2290,21 @@ public sealed partial class Clicker : Game
         var a = Math.Abs(n);
         if (a < Hryvnia) return Count(n);
         if (a < Gold) return $"{Count(n / Hryvnia)} ₴";
-        var g = n / Gold;
-        return $"{Count(g)} {GoldWord(g)}";
+        if (a < Dukach)
+        {
+            var g = n / Gold;
+            return $"{Count(g)} {GoldWord(g)}";
+        }
+        var d = n / Dukach;
+        return $"{Count(d)} {DukachWord(d)}";
+    }
+
+    /// <summary>Дукач / дукачі / дукачів; дробове — «дукача» («2,8 дукача»); після «млн» — «дукачів». Як <see cref="GoldWord"/>.</summary>
+    static string DukachWord(double d)
+    {
+        if (!double.IsFinite(d) || Math.Abs(d) >= 1_000_000) return "дукачів";
+        var shown = Math.Abs(d) >= 1000 ? Math.Truncate(d * (1 + 1e-12)) : Math.Round(d, 1, MidpointRounding.AwayFromZero);
+        return shown % 1 != 0 ? "дукача" : Plural(shown, "дукач", "дукачі", "дукачів");
     }
 
     /// <summary>Золотий / золоті / золотих; дробове — «золотого» («1,5 золотого»). Після скорочення («1,2 млн») —
@@ -2347,9 +2428,9 @@ public sealed partial class Clicker : Game
             secrets = Secrets.Select(s => _slim
                 ? (object)new { key = s.Key, owned = _secrets.Contains(s.Key) }
                 : new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
-            styles = Styles.Select(s => _slim
+            styles = Styles.Select((s, i) => _slim
                 ? (object)new { key = s.Key, owned = _styles.Contains(s.Key) }
-                : new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key) }),
+                : new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key), album = i < AlbumStyles }),
             wear = _wear,
             // Розгін: скільки гарячих кліків зараз і що з них виходить. Клієнт веде той самий рахунок між видами.
             heat,
@@ -2397,6 +2478,8 @@ public sealed partial class Clicker : Game
             guests = ViewGuests(Ctx.Clock.UtcNow),
             // Одинадцяте оновлення: Толока (ClickerToloka.cs; null — ще нема гривні за весь час) і скарбниця роду.
             toloka = ViewToloka(Ctx.Clock.UtcNow),
+            trade = ViewTrade(Ctx.Clock.UtcNow),
+            day = ViewDay(Ctx.Clock.UtcNow),
             relics = RelicsView(),
             away = AwayView(),
             catalog = CatalogView(),
@@ -2439,6 +2522,8 @@ public sealed partial class Clicker : Game
         if (up.Kind != ClickerKind.Idle || Level(up.Key) > 0) return true;
         // Гончарі світу (v11): без своєї будови Толоки щабель не відкривається, хоч би скільки було глеків.
         if (!GateOpen(up.Key)) return false;
+        // Заморські майстерні (v12): досить Слави — попередній щабель (раку за Фестивалем) їх не тримає.
+        if (SlavaGate.ContainsKey(up.Key)) return true;
         for (var i = index - 1; i >= 0; i--)
             if (Shop[i].Kind == ClickerKind.Idle) return Level(Shop[i].Key) > 0;
         return true;                                           // перший пасивний верстат видно завжди
@@ -2490,7 +2575,9 @@ public sealed partial class Clicker : Game
         // Коли гончар пішов від кола (ClickerLate.cs, 13.10). Старе збереження — він тут.
         DateTimeOffset GoneAt = default,
         // Id подарунків майстерні, що вже видані, і тих, чий лист ще не закрито (ClickerGifts.cs). Старе — жодного.
-        List<string>? Gifts = null, List<string>? Letters = null);
+        List<string>? Gifts = null, List<string>? Letters = null,
+        // v12: заморська торгівля — Слава й кораблі (ClickerTrade.cs). Старе збереження — «кораблів ще не було».
+        TradeRow? Trade = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2506,7 +2593,7 @@ public sealed partial class Clicker : Game
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
             _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt,
             _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList(),
-            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList()),
+            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade()),
         Wire);
 
     public override void Load(string json)
@@ -2594,7 +2681,7 @@ public sealed partial class Clicker : Game
         _goldenSlept = s.GoldenSlept;
         _fallSlept = s.FallSlept;
         _news = s.News is { Length: <= 16 } news ? news : "";
-        _coinSeen = Math.Clamp(s.CoinSeen, 0, 2);
+        _coinSeen = Math.Clamp(s.CoinSeen, 0, 3);
         if (Sane(s.Cat) is { } cat) _cat = cat; else ScheduleCat(Ctx.Clock.UtcNow);
         if (Sane(s.Star) is { } star) _star = star; else ScheduleStar(Ctx.Clock.UtcNow);
         if (Sane(s.Wind) is { } wind) _wind = wind; else ScheduleWind(Ctx.Clock.UtcNow);
@@ -2615,6 +2702,8 @@ public sealed partial class Clicker : Game
         // Звання — останніми: пам'ятним потрібні глеки й клейма.
         LoadTitles(s.Titles);
         LoadGuests(s.Guests);
+        // Торгівля — після Толоки (Пристань) і комори (перший корабель рахує вільні вироби — у Sync, не тут).
+        LoadTrade(s.Trade);
         _achQueue.Clear();
         foreach (var key in s.Achievements ?? []) if (key is { Length: > 0 and < 64 } && !_achQueue.Contains(key)) _achQueue.Add(key);
         // Що належить напевно, але в хаті не лежить (зірку спіймано, а Скалки нема) — після черги ачівок, щоб її не стерло.
