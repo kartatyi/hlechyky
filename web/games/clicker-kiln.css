@@ -447,4 +447,6 @@ body.clk-toasts:has(.clkk-revov:not([hidden])) .toasts { top: auto; bottom: 18px
   .clkk-strawlbl { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
   .clkk-strawon { width: 22px; height: 22px; }
   .clkk-help > summary { min-height: 40px; display: flex; align-items: center; }
+  .clkk-auto { min-height: 40px; }
+  .clkk-autobox { width: 22px; height: 22px; }
 }
