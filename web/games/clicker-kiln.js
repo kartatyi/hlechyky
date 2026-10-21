@@ -438,7 +438,8 @@
     const left = Math.max(0, m.steps * m.stepMs - elapsed);
     // Не своє горно (розпалили з іншого вікна, тут — жодної дії): відкривати його мусить те вікно — кажемо, чого чекаємо.
     const other = !kb.own && !kb.acts.length && elapsed >= m.steps * m.stepMs;
-    const clock = other ? '⏳ відкриє вікно, де палили' : '⏳ ' + api.mmss(left);
+    const waitText = kb.wait && Date.now() - kb.wait.at < 4000 ? kb.wait.text : '';
+    const clock = waitText || (other ? '⏳ відкриє вікно, де палили' : '⏳ ' + api.mmss(left));
     if (ui.clock.textContent !== clock) ui.clock.textContent = clock;
     setStyle(ui.barFill, 'transform', 'scaleX(' + Math.max(0, Math.min(1, elapsed / (m.steps * m.stepMs))).toFixed(3) + ')');
     setClass(ui.bar, 'hot', hot);
@@ -457,7 +458,11 @@
       // §2.3, на телефоні — разом із ще двома). Відмову кажемо самі, як сказав би act; null — зв'язку нема, повторимо.
       const payload = { op: 'open', t: acts, own: kb.own };
       (st.ctx && st.ctx.tell ? st.ctx.tell('kiln', payload) : api.act(st, 'kiln', payload)).then((r) => {
-        if (r && !r.ok && r.message && st.ctx && st.ctx.tell) api.toast(st, r.message, 'err');
+        // «⏳ …» — сервер просить почекати на запис з іншого вікна чи пристрою (хотфікс B1, KilnOwnWait). Це не помилка, а
+        // повтор раз на 2,5 с сипав би тостами — тож один тихий рядок у годиннику горна.
+        const wait = !!r && !r.ok && /^⏳/.test(r.message || '');
+        if (st.kb === kb) kb.wait = wait ? { text: r.message, at: Date.now() } : null;
+        if (r && !r.ok && r.message && !wait && st.ctx && st.ctx.tell) api.toast(st, r.message, 'err');
         if (st.kb === kb && (!r || !r.ok)) kb.done = false;
         if (st.kb === kb && r && r.ok) kb.done = false;          // «майстер хоче глянути»: вид покаже, чи горно ще палає
       });
@@ -503,14 +508,14 @@
 
   /// Нова спроба розпису чи інший розпис скидає красу партії на сервері: було 98 → 0 мовчки. Тепер — спершу питаємо,
   /// і головна кнопка — лишити зароблене.
-  function keepBeauty(st, api, what, go) {
+  function keepBeauty(st, api, what, go, label) {
     const b = (st.kView && st.kView.beauty) || 0;
     if (b <= 0) { go(); return; }
     ask(st, api, {
       title: '🎨 Партія вже розписана',
       text: 'Краса ' + b + (b >= luxFrom(st) ? ' — у такій партії вже трапляються розкішні' : '') + '. ' + what
-        + ' зітре її: рахуватиметься лише те, що вийде наново.',
-      btns: [{ label: 'Лишити красу ' + b, run: () => {} }, { label: '↺ Розписати наново', run: go }],
+        + ' зітре її: ' + (label ? 'партію доведеться розписати наново.' : 'рахуватиметься лише те, що вийде наново.'),
+      btns: [{ label: 'Лишити красу ' + b, run: () => {} }, { label: label || '↺ Розписати наново', run: go }],
     });
   }
 
@@ -697,7 +702,7 @@
       for (const el of ui.prep.querySelectorAll('[data-style]')) {
         el.onclick = () => {
           if (el.dataset.style === (st.kView.style || '')) return;
-          keepBeauty(st, api, 'Інший розпис', () => api.order(st, 'kiln', { op: 'paint', style: el.dataset.style }));
+          keepBeauty(st, api, 'Інший розпис', () => api.order(st, 'kiln', { op: 'paint', style: el.dataset.style }), 'Змінити розпис (краса 0)');
         };
       }
       for (const el of ui.prep.querySelectorAll('[data-tech]')) {
@@ -756,13 +761,15 @@
   /// горні» й у вікні відкриття. Підмайстер пече без мінігри: «усі звичайні» було неправдою — прокачаний палій дає й добрі.
   function fireFacts(l) {
     if (l.helper) return 'палив підмайстер: без тріщин і без краси розпису';
-    return 'жар у смузі ' + l.heat + ' %' + (l.beauty ? ' · краса ' + l.beauty : ' · без розпису') + (l.straw ? ' · солома' : '');
+    return 'жар у смузі ' + l.heat + ' %' + (l.beauty ? ' · краса ' + l.beauty : ' · без краси розпису') + (l.straw ? ' · солома' : '');
   }
 
   /// Чому жар такий — одне речення, що змінити. Перегрів рахує сервер (over — градуси понад стелю смуги за обпал).
   function fireWhy(st, api, l) {
     if (l.helper) return '';
-    if (l.over > model(st).crackFree) return '🔥 перегрів ' + api.num(l.over) + '° — прикривай заслінку й не кидай поліна підряд';
+    // over — сума градусів понад стелю за всі кроки («перегрів 26 804°» вводило в оману), тож число — лише найвища
+    // температура партії (peak, коли ядро його шле).
+    if (l.over > model(st).crackFree) return '🔥 перегрів' + (l.peak ? ' до ' + api.num(l.peak) + '°' : '') + ' — прикривай заслінку й не кидай поліна підряд';
     if (l.heat >= 85) return '🟩 жар рівний — так і тримай';
     return (l.heat >= 50 ? '🌡 трохи холодно' : '❄ було холодно') + ' — кидай поліна раніше, поки ртуть не впала під смугу';
   }
@@ -1853,7 +1860,7 @@
     const m = /краса (\d+)/.exec((r && r.message) || '');
     const beauty = m ? +m[1] : (st.kView && st.kView.beauty) || 0;
     const p = g.p;
-    const what = p.tech === 'brush' ? 'пелюсток ' + Math.min(g.doneN, p.shape.petals.length) + ' з ' + p.shape.petals.length
+    const what = p.tech === 'brush' ? 'повних пелюсток ' + Math.min(g.doneN, p.shape.petals.length) + ' з ' + p.shape.petals.length
       : p.tech === 'stamp' ? 'відбитків ' + g.hitMarks.size + ' з ' + p.shape.marks.length
         : p.tech === 'flyand' ? 'позначок ' + g.pulled.size + ' з ' + p.shape.marks.length
           : p.tech === 'glaze' && g.bodyCells ? 'укрито ' + Math.round((g.covered / g.bodyCells) * 100) + ' %' : '';
@@ -1900,9 +1907,15 @@
         if (g.taps > g.hitMarks.size && beauty < 70) return 'зайві тики забирають по 8 — тисни лише ту, що спалахує';
         return 'не в такт — тисни, коли кільце стисне позначку, а не раніше чи пізніше';
       }
-      case 'brush':
-        if (g.doneN < s.petals.length) return 'зафарбовано ' + g.doneN + ' з ' + s.petals.length + ' пелюсток — веди мазок по кожній';
-        return 'мазок — уздовж пелюстки від серединки до кінчика; мазки повз квітку забирають по 8';
+      case 'brush': {
+        // Торкнутись пелюстки — ще не зафарбувати: повна — коли мазок дійшов до кінчика (QA-2: «пелюсток 0 з 5» при
+        // мазках по всіх). Тож кажемо, чого саме бракує.
+        const n = s.petals.length;
+        const touched = g.hits ? g.hits.filter((h) => h.some(Boolean)).length : 0;
+        if (touched < n) return 'зачеплено ' + touched + ' з ' + n + ' пелюсток — веди мазок по кожній';
+        if (g.doneN < n) return 'доводь мазок від серединки до самого кінчика пелюстки';
+        return 'мазок — уздовж пелюстки; мазки повз квітку забирають по 8';
+      }
       case 'flyand':
         if (g.pulled.size < s.marks.length) return 'протягнуто ' + g.pulled.size + ' з ' + s.marks.length + ' — штрих на кожній позначці';
         return 'штрих — рівно через усі смуги й у бік стрілки';
