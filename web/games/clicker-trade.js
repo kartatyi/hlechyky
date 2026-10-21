@@ -44,6 +44,8 @@
     return s ? s.name : key;
   };
   const gates = (st) => (st.shopCat && st.shopCat.slavaGates) || [];
+  /// Розпис світу — гончарів світу (shopCat.gates) чи заморський (slavaGates): за нього корабель платить ×1,5 і Слави +1.
+  const worldStyle = (st, key) => !!key && ((st.shopCat && st.shopCat.gates && key in st.shopCat.gates) || gates(st).some((g) => g.key === key));
   const hueOf = (port) => (port in HUE ? HUE[port] : [...String(port)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7));
 
   /// «7 год 12 хв», «12 хв», «0:40» — скільки ще стоїть корабель і коли прийде наступний.
@@ -112,7 +114,7 @@
       + '<div class="clkt-head"><b>Корабель з ' + esc(s.from) + '</b>'
       + '<span class="clkt-time small muted" title="Скільки ще корабель стоятиме біля Пристані">⏳ <i class="clkt-cd" data-at="' + s.until + '" data-done="відпливає"></i></span></div>'
       + '<div class="clkt-line">просить: <b>' + what + ' ×' + s.n + '</b> <span class="clkt-req">(' + req.filter(Boolean).join(' · ') + ')</span></div>'
-      + '<div class="clkt-pay small">за виріб: <b>' + api.dec(s.minutes) + ' хв гри</b> · <b>🌍 +' + s.slavaPer + '</b> Слави</div>'
+      + '<div class="clkt-pay small">за виріб: <b>' + api.dec(s.minutes) + ' хв гри</b> · <b>🌍 +' + s.slavaPer + '</b> Слави' + worldPay(st, api, s) + '</div>'
       + '<div class="clkt-bar"><i style="width:' + share + '%"></i><span>завантажено ' + s.loaded + ' з ' + s.n
       + (s.lux > 0 ? ' · розкішних ' + s.loadedLux + ' з ' + s.lux : '') + '</span></div>'
       + '<div class="clkt-btns">'
@@ -121,6 +123,13 @@
       + '</div>'
       + (why ? '<div class="clkt-why small' + (fail ? ' err' : '') + '">' + esc(why) + '</div>' : '')
       + '</div></div>';
+  }
+
+  /// Корабель без розпису бере будь-який, а виріб у розписі світу платить більше (Clicker.TradeMinutesFor / SlavaFor) —
+  /// кажемо це, лише коли такий розпис у гравця є (QA-2: «+1 Слави», а прийшло +2).
+  function worldPay(st, api, s) {
+    if (s.style || !(st.styleList || []).some((x) => x.owned && worldStyle(st, x.key))) return '';
+    return ' <span class="clkt-world">(розпис світу: ' + api.dec(s.minutes * 1.5) + ' хв · +' + (s.slavaPer + 1) + ')</span>';
   }
 
   function slavaHtml(st, api) {
@@ -216,7 +225,11 @@
     const now = k.v.gate ? k.v.gate.key : '';
     if (!prev || prev.key === now) return;
     k.opened = { key: prev.key, name: prev.name, at: Date.now(), seen: st.tab === 'shop' };
-    if (Date.now() - k.saidAt > SAID_MS) api.toast(st, '🌍 Відчинено «' + prev.name + '» — заморська майстерня в «Майстерні»', 'ok');
+    const text = '🌍 Відчинено «' + prev.name + '» — заморська майстерня в «Майстерні»';
+    // Вид з новим гейтом приходить раніше за відповідь на вантаж, а чи сказав сервер «відкрито» сам (лише в тості повного
+    // корабля), видно тільки з неї — тож поки вантаж летить, тост відкладаємо до відповіді (QA-2: був дубль).
+    if (k.busy) k.openToast = text;
+    else if (Date.now() - k.saidAt > SAID_MS) api.toast(st, text, 'ok');
     api.feed(st, 'відчинено заморську майстерню «' + prev.name + '»');
     api.sfx('unlock');
     api.sparks(st, null, 26, true, 50, 40);
@@ -254,9 +267,11 @@
       const kk = st.trade;
       if (!kk) return;
       kk.busy = false;
+      const said = !!(r && r.ok && /відкрито/.test(r.message || ''));
+      if (said) kk.saidAt = Date.now();
+      if (kk.openToast) { if (!said) api.toast(st, kk.openToast, 'ok'); kk.openToast = null; }
       if (r && r.ok) {
         delete kk.fail[id];
-        if (/відкрито/.test(r.message || '')) kk.saidAt = Date.now();
         api.sfx(full ? 'rare' : 'paid');
         api.sparks(st, null, full ? 22 : 10, true, 50, 44);
       } else if (r && r.message) kk.fail[id] = { at: Date.now(), text: r.message };
@@ -334,7 +349,7 @@
 
     mount(st, api) {
       st.trade = {
-        v: null, el: null, cds: [], dirty: false, busy: false, fail: {}, seen: {}, opened: null, saidAt: 0, gate: null,
+        v: null, el: null, cds: [], dirty: false, busy: false, fail: {}, seen: {}, opened: null, saidAt: 0, openToast: null, gate: null,
         toloka: false, noteText: null, shopNote: null, looked: 0,
       };
       mountBlock(st, api);
