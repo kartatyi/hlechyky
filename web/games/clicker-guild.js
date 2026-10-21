@@ -72,8 +72,10 @@
   const myNick = (st) => (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
   const headers = (st) => ({ 'X-Nick': encodeURIComponent(myNick(st)) });
   const itemsOf = (st) => (st.craft && st.craft.items) || [];
-  /// Гість без акаунта: цех знає лише акаунти (сервер не пускає гостей у список), тож і помагати йому нікому.
-  const isGuest = (st) => /^гість /i.test(myNick(st));
+  /// Гість без акаунта: цех знає лише акаунти (сервер не пускає гостей у список), тож і помагати йому нікому. Себе
+  /// в списку цеху гість не знайде ніколи — а якщо знайшов (QA-шим плейтесту), то цех його знає.
+  const isGuest = (st) => /^гість /i.test(myNick(st))
+    && !(st.guildRoster && (st.guildRoster.potters || []).some((p) => p.me));
   const narrow = () => !!(window.matchMedia && window.matchMedia('(max-width: 480px)').matches);
 
   /// «3 дн 4 год», «5 год 12 хв», «12:04».
@@ -1316,6 +1318,22 @@
     nav.innerHTML = keys.map((k) => { const n = NAV.find((x) => x.k === k); return '<button type="button" class="ghost small" data-nav="' + k + '">' + n.t + '</button>'; }).join('');
   }
 
+  /// На телефоні сторінку гортає сайт, і вгорі вже липнуть шапка сайту й плашка кола з рядом вкладок — рядок «Села»
+  /// стає під ними. Міряємо раз на slow (не щокадру) і лише коли плашку видно; на ПК вікно вкладки гортається саме — 0.
+  function navStick(st) {
+    const nav = st.guildNav;
+    if (!nav || !st.el || nav.hidden) return;
+    let top = 0;
+    if (!st.el.classList.contains('fit')) {
+      const pin = st.el.querySelector('.clk-pin');
+      const kids = pin ? [...pin.children].filter((x) => x.getClientRects().length && x.offsetHeight > 0) : [];
+      if (!kids.length) return;               // плашку зараз не видно — лишаємо попередню мірку (чи типову з CSS)
+      const p0 = pin.getBoundingClientRect().top;
+      top = Math.round((parseFloat(getComputedStyle(pin).top) || 0) + Math.max(...kids.map((x) => x.getBoundingClientRect().bottom)) - p0) + 4;
+    }
+    if (st.guildNavTop !== top) { st.guildNavTop = top; nav.style.setProperty('--clkg-nav-top', top + 'px'); }
+  }
+
   function navGo(st, api, key) {
     const n = NAV.find((x) => x.k === key);
     const el = n && n.el(st);
@@ -1325,19 +1343,24 @@
     // Згорнутий розділ — розгортаємо: перейти до самого заголовка — це лише півдії.
     const card = el.matches('[data-fold]') ? el : el.querySelector('[data-fold]');
     if (card) api.unfold(st, card);
-    const smooth = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    requestAnimationFrame(() => {
-      // Вікно вкладки на ПК — свій скрол (.clk.fit .clk-pane), на телефоні гортається сторінка. scrollIntoView
-      // крутнув би обидва, тож рахуємо самі й лишаємо місце під липким рядком.
+    // Вікно вкладки на ПК — свій скрол (.clk.fit .clk-pane), на телефоні гортається сторінка. scrollIntoView крутнув
+    // би обидва, тож рахуємо самі й лишаємо місце під липким рядком. Стрибком, а не плавно, і ще раз за мить: розділи
+    // з content-visibility (комора, альбом) міняють висоту, щойно їх уперше показали, і перша мірка бреше.
+    const place = () => {
+      if (!el.isConnected) return;
       const pane = el.closest('.clk-pane');
       const top = el.getBoundingClientRect().top;
-      const off = (n.tab ? 0 : (st.guildNav && st.guildNav.offsetHeight) || 0) + 8;
+      const nav = st.guildNav;
       if (pane && pane.scrollHeight > pane.clientHeight + 1 && getComputedStyle(pane).overflowY !== 'visible') {
-        pane.scrollTo({ top: pane.scrollTop + top - pane.getBoundingClientRect().top - off, behavior: smooth ? 'smooth' : 'auto' });
+        pane.scrollTop += top - pane.getBoundingClientRect().top - (n.tab ? 0 : nav.offsetHeight) - 8;
       } else {
-        window.scrollTo({ top: window.scrollY + top - off, behavior: smooth ? 'smooth' : 'auto' });
+        // Сторінка: під шапкою сайту, плашкою кола й самим рядком (його липка висота — у --clkg-nav-top).
+        navStick(st);
+        const stuck = (parseFloat(getComputedStyle(nav).top) || 0) + (n.tab ? 0 : nav.offsetHeight);
+        window.scrollTo(0, window.scrollY + top - stuck - 8);
       }
-    });
+    };
+    requestAnimationFrame(() => { place(); setTimeout(place, 150); });
   }
 
   /// Перший вхід у «Село» — одне речення «що це й навіщо» (плейтест новачка 21.10: вкладка відкрилась, а що з нею
@@ -1453,6 +1476,7 @@
     slow(st, api) {
       if (st.tab !== 'guild') return;
       paintNav(st, api);
+      navStick(st);
       if (!st.guild || !st.guild.enabled) return;
       gotNote(st, api);
       loadRoster(st, api, false);

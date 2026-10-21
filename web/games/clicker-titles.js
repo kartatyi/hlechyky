@@ -71,7 +71,8 @@
     const chips = v.mine.map((k) => {
       const t = def(st, k);
       if (!t) return '';
-      return '<button type="button" class="clkt-chip k-' + t.kind + (v.show.includes(k) ? ' on' : '') + '" data-tshow="' + esc(k) + '" title="'
+      // Поки трійку добирає сервер сам — світяться ті, що стоять біля ніка, а не жодне.
+      return '<button type="button" class="clkt-chip k-' + t.kind + ((v.show.length ? v.show : v.badges).includes(k) ? ' on' : '') + '" data-tshow="' + esc(k) + '" title="'
         + esc(t.desc || '') + '">' + t.icon + ' ' + esc(t.name) + '</button>';
     }).join('');
     return '<div class="clkt-mine">'
@@ -177,10 +178,11 @@
     if (!st.titlesEl || !st.titles) return;
     const c = cat(st);
     if (!c) {
-      api.swap(st.titlesEl, '<section class="clkg-card clkt"' + api.fold('g.titles') + '>' + api.foldHead('🎖 Звання округи') + '<div class="muted small">Кличемо звання…</div></section>');
+      api.swap(st.titlesEl, '<section class="clkg-card clkt"' + api.fold('g.titles', true) + '>' + api.foldHead('🎖 Звання округи') + '<div class="muted small">Кличемо звання…</div></section>');
       return;
     }
-    const html = '<section class="clkg-card clkt"' + api.fold('g.titles') + '>' + api.foldHead('🎖 Звання округи <span class="muted small">· у тебе '
+    // Згорнуто з початку (v12 §7 п. 8): 33 значки — кілька екранів, а «Село» й без них довге.
+    const html = '<section class="clkg-card clkt"' + api.fold('g.titles', true) + '>' + api.foldHead('🎖 Звання округи <span class="muted small">· у тебе '
       + st.titles.mine.length + '</span>') + mineHtml(st, api)
       + KINDS.map((k) => kindHtml(st, api, k)).join('') + '</section>';
     api.swap(st.titlesEl, html);
@@ -199,7 +201,9 @@
       const key = chip.dataset.tshow;
       const max = (cat(st) && cat(st).badgesMax) || 3;
       // Лише те, що ще є: перехоплене «перше в окрузі» не видно, і місця серед трьох воно не займає (записка #54).
-      let show = st.titles.show.filter((k) => st.titles.mine.includes(k));
+      // Перший тап, поки трійку добирає сервер, — від неї ж, а не з нуля (v12-ux §2.5): інакше один тап лишав біля
+      // ніка одне звання замість трьох.
+      let show = (st.titles.show.length ? st.titles.show : st.titles.badges || []).filter((k) => st.titles.mine.includes(k));
       if (show.includes(key)) show = show.filter((k) => k !== key);
       else if (show.length >= max) { api.toast(st, 'Біля ніка — до ' + max + ' значків: спершу зніми якийсь', 'warn'); return; }
       else show.push(key);
