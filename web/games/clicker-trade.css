@@ -58,6 +58,7 @@
 .clkt-req { color: var(--accent2); }
 .clkt-pay { color: var(--muted); }
 .clkt-pay b { color: var(--text); font-weight: 600; white-space: nowrap; }
+.clkt-world { white-space: nowrap; }
 .clkt-bar { position: relative; height: 14px; border-radius: 7px; background: rgba(0, 0, 0, .25); overflow: hidden; }
 .clkt-bar i { display: block; height: 100%; background: linear-gradient(90deg, #2f7f86, #57c0c4); border-radius: 7px; transition: width .4s; }
 .clkt-bar span {
