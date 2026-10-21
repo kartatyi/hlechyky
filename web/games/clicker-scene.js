@@ -1742,8 +1742,9 @@
 
   /// Де стоїть будова: x, основа y, масштаб (задній ряд — .8: далі й менше). Пристань — на річці.
   const TSLOT = {
-    hall: { x: 11, y: 45.5, s: 0.8 }, mill: { x: 34, y: 43.8, s: 0.8 }, school: { x: 58, y: 42.6, s: 0.8 },
-    well: { x: 82, y: 42.4, s: 0.8 }, square: { x: 106, y: 42.8, s: 0.8 }, forge: { x: 130, y: 43.6, s: 0.8 },
+    // v12 (QA): зала стояла на x 11 — ліва половина за краєм сцени; ряд ліворуч трохи стиснуто, щоб вона вмістилась.
+    hall: { x: 17, y: 45.4, s: 0.8 }, mill: { x: 39, y: 43.8, s: 0.8 }, school: { x: 61.5, y: 42.6, s: 0.8 },
+    well: { x: 84, y: 42.4, s: 0.8 }, square: { x: 107, y: 42.8, s: 0.8 }, forge: { x: 130, y: 43.6, s: 0.8 },
     museum: { x: 154, y: 45, s: 0.8 }, bigkiln: { x: 178, y: 48.6, s: 0.8 },
     institute: { x: 70, y: 71, s: 0.85 }, festival: { x: 141, y: 71, s: 0.85 }, bigjug: { x: 226, y: 70, s: 1 },
     pier: { x: 18, y: 89.4, s: 1 },
@@ -1925,9 +1926,11 @@
     const laid = !!(cur && sg.laidAt);
     // Друзі підносять вироби ще до закладин (сервер зараховує їх лише незакладеному етапу) — вимпел ставимо одразу.
     const help = cur && Array.isArray(sg.helpers) ? sg.helpers.slice(0, 4).map(pennantOf) : [];
-    // v12: своя праця — смуга ручних кліків на закладеному етапі; риштування росте з нею восьмими частками, щоб хата не
-    // перемальовувалась щокліку. −1 — смуги нема (етап не закладено чи старий сервер): риштування повне, як було.
-    const wk = laid && sg.work && sg.work.of > 0 ? clamp(Math.floor((8 * (+sg.work.n || 0)) / sg.work.of), 0, 8) : -1;
+    // v12: своя праця — смуга ручних кліків на закладеному етапі. У підпис хати — лише «смуга є» (1) і «повна» (2,
+    // деревце на риштуванні): саму частку workFill() кладе просто в clip-path шару, що будується, — без перемальовування
+    // хати, тож будова росте з кожною пачкою кліків, а не сходинками. 0 — смуги нема (не закладено чи старий сервер).
+    const wf = laid && sg.work && sg.work.of > 0 ? (+sg.work.n || 0) / sg.work.of : -1;
+    const wk = wf < 0 ? 0 : wf >= 1 ? 2 : 1;
     let fest = false;
     if (built.includes('festival') && t.festival && t.festival.until) {
       const until = Date.parse(t.festival.until);
@@ -1941,28 +1944,26 @@
   /// будова — її останній. Перший малюнок нічого не «вирощує».
   function tolokaFresh(scn, t) {
     const prev = scn.tolPrev;
-    scn.tolPrev = t ? { cur: t.cur, k: t.k, wk: t.wk, built: t.built.slice() } : null;
+    scn.tolPrev = t ? { cur: t.cur, k: t.k, built: t.built.slice() } : null;
     if (!t || !prev) return null;
-    // v12: риштування того самого етапу підросло зі своєю працею — з якої сходинки воно виростає (раз, CSS).
-    if (t.cur && t.cur === prev.cur && t.k === prev.k && prev.wk >= 0 && t.wk > prev.wk) t.grow = prev.wk;
     if (t.cur && t.cur === prev.cur && t.k > prev.k) return { key: t.cur, layer: t.k - 1 };
     const nb = t.built.find((b) => !prev.built.includes(b));
     return nb ? { key: nb, layer: TB[nb].layers.length - 1 } : null;
   }
 
   /// Риштування навколо рамки w×h (основа в (0,0)): стояки, дошки, розкоси; зверху — по вимпелу за кожного друга.
-  /// v12: wk (0…8) — своя праця: риштування росте від двох п'ятих висоти до повної, на повній смузі нагорі — деревце
-  /// з нашою стрічкою, як ставлять, коли звели верх; grow — з якої сходинки воно щойно виросло. wk −1 — повне, як у v11.
-  const scafTop = (h, wk) => -h * (wk >= 0 ? 0.4 + (0.6 * wk) / 8 : 1) - 2;
-  function scaffold(w, h, flags, wk, grow) {
-    const x0 = -w / 2 - 1.6, x1 = w / 2 + 1.6, top = scafTop(h, wk);
+  /// v12: work — на нижній дошці стрічка своєї праці (жовте наливається зліва, workFill); topped — праця на повну:
+  /// нагорі деревце зі стрічками, як ставлять, коли звели верх. Стрічка внизу — її не ховає плашка над сценою.
+  function scaffold(w, h, flags, work, topped) {
+    const x0 = -w / 2 - 1.6, x1 = w / 2 + 1.6, top = -h - 2;
     let d = 'M' + f1(x0) + ' 0V' + f1(top) + 'M' + f1(x1) + ' 0V' + f1(top);
     for (let y = -6; y > top; y -= 7) d += 'M' + f1(x0 - 1) + ' ' + y + 'H' + f1(x1 + 1);
     let br = '';
     for (let y = 0; y - 7 > top; y -= 14) br += 'M' + f1(x0) + ' ' + y + 'L' + f1(x0 + 5) + ' ' + (y - 7) + 'M' + f1(x1) + ' ' + y + 'L' + f1(x1 - 5) + ' ' + (y - 7);
-    const g0 = grow >= 0 && wk >= 0 ? ' clks-tgrow" style="--g0:' + (scafTop(h, grow) / top).toFixed(2) : '';
-    let s = '<g class="clks-tscaf' + g0 + '"><path d="' + d + '" stroke="#c9a06a" stroke-width=".9" fill="none"/><path d="' + br + '" stroke="#a8844a" stroke-width=".5" fill="none"/>';
-    if (wk >= 8) s += '<path d="M0 ' + f1(top) + 'v-4.6" stroke="#6b4423" stroke-width=".6"/><path d="M0 ' + f1(top - 9) + 'l-2.4 4.6h4.8zM0 ' + f1(top - 7) + 'l-2 3.4h4z" fill="#3f7d3a"/>'
+    let s = '<g class="clks-tscaf"><path d="' + d + '" stroke="#c9a06a" stroke-width=".9" fill="none"/><path d="' + br + '" stroke="#a8844a" stroke-width=".5" fill="none"/>';
+    if (work) s += '<rect x="' + f1(x0 + 0.6) + '" y="-9.8" width="' + f1(x1 - x0 - 1.2) + '" height="3.8" rx="1" fill="#4a3424"/>'
+      + '<rect class="clks-twork" x="' + f1(x0 + 0.6) + '" y="-9.8" width="0" height="3.8" rx="1" fill="#f2c230" data-w="' + f1(x1 - x0 - 1.2) + '"/>';
+    if (topped) s += '<path d="M0 ' + f1(top) + 'v-4.6" stroke="#6b4423" stroke-width=".6"/><path d="M0 ' + f1(top - 9) + 'l-2.4 4.6h4.8zM0 ' + f1(top - 7) + 'l-2 3.4h4z" fill="#3f7d3a"/>'
       + '<path d="M.3 ' + f1(top - 4.6) + 'l1.4 3" stroke="#d7372b" stroke-width=".6"/><path d="M-.3 ' + f1(top - 4.6) + 'l-1.2 3.2" stroke="#f2c230" stroke-width=".6"/>';
     return s + pennants([x0, x1, x0 + (x1 - x0) / 3, x0 + (2 * (x1 - x0)) / 3], top, flags) + '</g>';
   }
@@ -2023,7 +2024,11 @@
         inner += isNew ? '<g class="clks-tnew">' + b.layers[i] + '</g>' : b.layers[i];
       }
       if (isCur && t.laid) {
-        inner += '<g class="clks-tghost">' + b.layers[t.k] + '</g>' + scaffold(b.w, b.h, t.help, t.wk, t.grow == null ? -1 : t.grow)
+        // v12: поверх блідого контуру — той самий шар, відрізаний знизу вгору на частку своєї праці (workFill):
+        // будова під риштуванням наливається, поки гончар крутить коло.
+        inner += '<g class="clks-tghost">' + b.layers[t.k] + '</g>'
+          + (t.wk ? '<g class="clks-tfill" style="clip-path:inset(100% 0 0 0)">' + b.layers[t.k] + '</g>' : '')
+          + scaffold(b.w, b.h, t.help, t.wk > 0, t.wk === 2)
           + tolochany(b.w, 2 + Math.min(2, t.help.length));
       } else if (isCur) {
         if (t.k === 0) inner += stakes(b.w * 0.7, true);
@@ -2242,10 +2247,10 @@
 
   for (const k of OVERSEAS) EMBLEM[k] = '<g transform="translate(16 29.4) scale(1.3)">' + OVER_ART[k](1) + '</g>';
 
-  /// Найдальший берег — за обрієм гончарів світу, блідіший за нього; заморські майстерні стоять на ньому між їхніми
-  /// верхівками (x — проміжки між гончарями світу, y — по гребеню).
+  /// Найдальший берег — за обрієм гончарів світу, блідіший за нього; заморські майстерні стоять на ньому над їхніми
+  /// верхівками (y — по гребеню; перша — не впритул до Цар-глека, остання — не за краєм сцени).
   const OV_RIDGE = 'M268 62Q292 48 318 50.6T366 47.4V66H268z';
-  const OV_AT = [[288, 53.6], [301.4, 51.1], [314.8, 50.7], [328.2, 51.7], [341.6, 51.6], [354.4, 50.4]];
+  const OV_AT = [[291.4, 52.9], [303.9, 50.8], [316.5, 50.8], [329, 51.7], [341.7, 51.6], [354.4, 50.4]];
 
   /// Заморський берег і майстерні на ньому (перед обрієм гончарів світу, тож ті стоять ближче).
   function overseasFar(e) {
@@ -2259,7 +2264,8 @@
   }
 
   /// Місця біля причалу: x і ватерлінія. Перше — найближче до Пристані (там стає «Перший корабель»).
-  const SHIP_AT = [[70, 92.2], [91, 92.6], [112, 92.2], [50, 92.6]];
+  /// Півень на тину (прикраса) стоїть до x ≈ 62 — перше місце правіше за нього.
+  const SHIP_AT = [[76, 92.2], [96, 92.6], [116, 92.2], [56, 92.6]];
   const SHIP_K = 0.72;
   const SHIP_GO_MS = 10000;                 // відплив за обрій (CSS), потім вузол прибираємо
 
@@ -2335,8 +2341,8 @@
   function tradeRiver(e) {
     const tr = e.trade;
     if (!tr) return '';
-    let s = '<path d="M28 87.6h94v1.6H28z" fill="#8a6a44"/><path d="M28 87.6h94" stroke="#b08a5a" stroke-width=".5"/>'
-      + '<path d="M34 89.2v3M52 89.2v3M70 89.2v3M88 89.2v3M106 89.2v3M120 89.2v3" stroke="#5a4028" stroke-width="1.1"/>';
+    let s = '<path d="M28 87.6h98v1.6H28z" fill="#8a6a44"/><path d="M28 87.6h98" stroke="#b08a5a" stroke-width=".5"/>'
+      + '<path d="M34 89.2v3M52 89.2v3M70 89.2v3M88 89.2v3M106 89.2v3M124 89.2v3" stroke="#5a4028" stroke-width="1.1"/>';
     for (const o of tr) s += shipAt(o, o.fresh ? 'clks-shipin' : '');
     return s + '<g class="clks-shipfx"></g>';
   }
@@ -2376,6 +2382,25 @@
       if (g && age > 50) g.style.animationDelay = -Math.round(age) + 'ms';
       slot.appendChild(f.node);
     }
+  }
+
+  /// Своя праця на будові: шар, що будується, відкритий знизу на частку смуги (пів відсотка — крок), і жовта стрічка
+  /// на риштуванні тієї ж довжини. Нова частка блимає (раз, opacity) — видно, що кліки будують. Лише два записи
+  /// в два вузли, коли частка змінилась.
+  function workFill(st) {
+    const scn = st.scn;
+    const el = scn && scn.fillEl;
+    if (!el) return;
+    const sg = st.lastView && st.lastView.toloka && st.lastView.toloka.stage;
+    const w = sg && sg.work;
+    const pct = w && w.of > 0 ? Math.round(clamp((+w.n || 0) / w.of, 0, 1) * 200) / 2 : 0;
+    if (el._pct === pct) return;
+    const grew = el._pct != null && pct > el._pct;
+    el._pct = pct;
+    el.style.clipPath = 'inset(' + (100 - pct) + '% 0 0 0)';
+    const rb = scn.ribbonEl;
+    if (rb) rb.setAttribute('width', f1((+rb.dataset.w || 0) * pct / 100));
+    if (grew && !REDUCED() && el.animate) el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 900, easing: 'ease-out' });
   }
 
   // ---------- шість заморських розписів (v12 §4) ----------
@@ -2567,6 +2592,9 @@
     guestPlace(st);                       // гість посеред візиту переїжджає в новий малюнок
     tfxPlace(st);                         // v11: святковий ефект етапу теж
     shipGoPlace(st);                      // v12: і корабель, що відпливає
+    scn.fillEl = st.house.querySelector('.clks-tfill');
+    scn.ribbonEl = st.house.querySelector('.clks-twork');
+    workFill(st);                         // v12: своя праця — одразу на свою висоту, без спалаху
     st.house.dataset.weather = e.weather || 'none';
     st.house.dataset.season = e.season;
   }
@@ -3456,6 +3484,7 @@
         }
       }
       paintHouse(st);
+      workFill(st);                       // v12: будова наливається своєю працею між перемальовуваннями хати
       // Бризки й грудка — кольору глини на колі.
       const clay = st.clayBody || '';
       if (st.scn.clay !== clay) {

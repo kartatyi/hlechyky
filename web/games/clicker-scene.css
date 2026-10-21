@@ -132,6 +132,9 @@
 .clks-away { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 .clks-away-art { width: 100%; }
 .clks-away-art svg { width: 100%; height: auto; display: block; border-radius: 10px; }
+/* v12 (QA): на невисокому екрані (1366×768) картинка забирала 213 px, і вікно з шістьма нотатками вже гортається —
+   липка «До кола!» лягала на останній рядок. Картинка не вища за п'яту частину екрана, по центру. */
+.clks-away-art svg { max-height: 21vh; width: auto; max-width: 100%; margin: 0 auto; }
 .clks-away-head { font-weight: 700; font-size: 1.05em; }
 .clks-away-pots { font-size: 1.9em; font-weight: 800; color: var(--accent); line-height: 1.1; text-shadow: 0 0 18px rgba(244, 197, 66, .35); font-variant-numeric: tabular-nums; }
 .clks-away-row { display: flex; align-items: center; gap: 8px; text-align: left; font-size: .9em; background: var(--panel); padding: 6px 10px; border-radius: 10px; width: 100%; }
@@ -382,6 +385,3 @@
   70% { opacity: 1; }
   100% { opacity: 0; transform: translate(96px, -7px) scale(.26); }
 }
-/* Риштування підросло зі своєю працею: виростає з попередньої висоти (--g0 — її частка). */
-.clks-tgrow { transform-box: fill-box; transform-origin: 50% 100%; animation: clks-tgrow 1.4s cubic-bezier(.2, .8, .3, 1.1) both; }
-@keyframes clks-tgrow { from { transform: scaleY(var(--g0, .85)); } to { transform: none; } }
