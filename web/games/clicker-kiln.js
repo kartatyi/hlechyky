@@ -2085,7 +2085,8 @@
       if (!st.kView) return;
       paintState(st, api, now);
       // Підмайстер відкриває горно в Sync на сервері, а сервер сам виду не шле: попросити свіжий, коли час вийшов.
-      if (st.kView.state === 'burning' && st.kView.helper && st.mine && now >= Date.parse(st.kView.litAt) + burnMs(st) + 300
+      // Лише коли коло видно: схована вкладка цього виду не покаже, а кожен look — запис у базу.
+      if (st.kView.state === 'burning' && st.kView.helper && st.mine && api.visible(st) && now >= Date.parse(st.kView.litAt) + burnMs(st) + 300
         && Date.now() - (st.kLookAt || 0) > 3000) {
         st.kLookAt = Date.now();
         api.order(st, 'look');

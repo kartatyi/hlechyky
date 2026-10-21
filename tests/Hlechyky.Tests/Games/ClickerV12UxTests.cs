@@ -93,4 +93,19 @@ public class ClickerV12UxTests
         // Без розпису — як і було: на те саме мовчки.
         Assert.Equal(ActResult.Done, h.Act(0, "form", new { ware = "pot" }));
     }
+
+    [Fact]
+    public void A_look_from_a_hidden_tab_does_not_cut_the_time_away()
+    {
+        var h = Wheel();
+        Assert.True(h.Act(0, "spin", PotterHands.Human(1)).Ok);
+        Assert.True(h.Act(0, "sight", new { on = false }).Ok);
+        // Схована вкладка сама питає свіжий вид (горно підмайстра, корабель…) — гончаря від цього не прибуває.
+        h.Clock.Advance(TimeSpan.FromMinutes(5));
+        h.Act(0, "look");
+        h.Clock.Advance(TimeSpan.FromMinutes(8));
+        Assert.True(h.Act(0, "sight", new { on = true }).Ok);
+        var away = View(h).GetProperty("away");
+        Assert.InRange(away.GetProperty("seconds").GetInt64(), 13 * 60 - 2, 13 * 60 + 2);
+    }
 }

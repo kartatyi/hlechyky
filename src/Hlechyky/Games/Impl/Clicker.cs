@@ -1091,7 +1091,9 @@ public sealed partial class Clicker : Game
 
     ActResult ActInner(int seat, string action, JsonElement payload)
     {
-        var quiet = QuietAct(action, payload);
+        // look, поки коло з очей зникло (sight off), — це таймер клієнта у схованій вкладці, а не гончар: «поки тебе не
+        // було» рахувало 8 хв при 13 хв простою (v12, QA-2). Повернення каже sight on — воно й садить біля кола.
+        var quiet = QuietAct(action, payload) || (action == "look" && _goneAt != default);
         _quietSync = quiet;
         _quietVersion = _quietSync ? _viewVersion : -1;
         try { Sync(); }
