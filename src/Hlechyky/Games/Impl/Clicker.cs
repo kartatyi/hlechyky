@@ -1535,6 +1535,8 @@ public sealed partial class Clicker : Game
         TitlesClicks(taken, now);
         // Кліки ще й ліплять виріб на колі (глеків це не додає — лише роботу, див. ClickerCraft.cs).
         if (taken > 0) FormBy(taken, now);
+        // v12: ручні кліки під час будови — своя праця на риштуванні (ClickerToloka.cs, до −15 % етапу).
+        if (taken > 0) TolokaWork(taken, now);
         _guard.SpendClicks(taken);
         // Поки на сцені хоч щось діється, не перебиваємо: бонус тікає секундами, а перевірка почекає (§A.2).
         if (_guard.Due && !BonusOn(now)) EyeCheck(now);

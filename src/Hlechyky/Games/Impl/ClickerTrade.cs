@@ -88,16 +88,19 @@ public sealed partial class Clicker
         it => (s.Ware.Length == 0 || it.Ware == s.Ware) && it.Quality >= (lux ? 4 : s.Quality)
               && (s.Style.Length == 0 || it.Style == s.Style);
 
+    /// <summary>План вантажу корабля — <see cref="SparePlan"/> без винятків: корабель поступається всім.</summary>
+    List<(ItemInfo Item, int N)> ShipPlan(Func<ItemInfo, bool> match, int n) => SparePlan(match, n);
+
     /// <summary>
-    /// План вантажу: лише те, чого ніхто не чекає (<see cref="LadKept"/> — замовлення сіл і гостей, майстерштук, Толока).
-    /// Корабель — найбільший і найнеобов'язковіший покупець: він не забирає чужого відкладеного ніколи, а не «коли іншого нема».
-    /// Найгірша придатна якість — першою (дзвінкий не піде туди, де вистачить доброго).
+    /// План забору лише з того, чого ніхто не чекає (<see cref="LadKept"/> — замовлення сіл і гостей, майстерштук,
+    /// Толока; <paramref name="who"/> — чиїх вимог не рахувати). Корабель і склад толоки (v12) — необов'язкові покупці:
+    /// чужого відкладеного не беруть ніколи, а не «коли іншого нема». Найгірша придатна якість — першою.
     /// </summary>
-    List<(ItemInfo Item, int N)> ShipPlan(Func<ItemInfo, bool> match, int n)
+    internal List<(ItemInfo Item, int N)> SparePlan(Func<ItemInfo, bool> match, int n, TakeFor? who = null)
     {
         var plan = new List<(ItemInfo, int)>();
         if (n <= 0) return plan;
-        var kept = LadKept(Ctx.Clock.UtcNow);
+        var kept = LadKept(Ctx.Clock.UtcNow, who);
         foreach (var (item, count) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList())
         {
             var free = count - kept.GetValueOrDefault(ItemKey(item.Ware, item.Style, item.Quality));
