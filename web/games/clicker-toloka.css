@@ -148,6 +148,8 @@
 }
 .clkl-work.full .clkl-wbar i { background: repeating-linear-gradient(90deg, var(--ok) 0 9px, #4c9a3f 9px 11px); }
 .clkl-work .small { font-size: .74em; }
+/* «Зекономлено 19 хв з 1 год 57 хв» — головне, що дає своя праця: хвилини відчуваються, відсоток — ні (QA 21.10). */
+.clkl-wsave { font-size: .86em; font-weight: 700; color: var(--ok); font-variant-numeric: tabular-nums; }
 
 /* Склад толоки — рядок з кнопкою «Віднести все»; друге натискання — червоне, як «Продати все». */
 .clkl-depot { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 10px; border: 1px solid rgba(201, 146, 78, .35); background: rgba(0, 0, 0, .14); }
