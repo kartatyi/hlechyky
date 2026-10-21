@@ -1280,3 +1280,7 @@
   .clk .clka-cell { height: 44px; }
   .clk .clka-rowh { min-height: 40px; }
 }
+
+/* v12: старі рядки «Що нового» — згорткою (clicker.js, showNews). */
+.clk-news-old > summary { cursor: pointer; margin: .6em 0 .2em; color: var(--muted); font-size: .92em; }
+.clk-news-old[open] > summary { margin-bottom: .4em; }

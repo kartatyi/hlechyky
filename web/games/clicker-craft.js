@@ -748,14 +748,14 @@
 
   // ---------- вибір виробу ----------
 
-  /// Скільки ще виробів кожного виду просить Толока: поточний етап (що не піднесли друзі й чого нема в коморі), а коли
+  /// Скільки ще виробів кожного виду просить Толока: поточний етап (що не піднесли друзі, нема на складі й у коморі), а коли
   /// він уже будується — наступний. Бейдж «🧱 Толока: ще 58» у виборі виробу (v12, плейтест §2.3).
   function tolokaWant(st) {
     const t = st.lastView && st.lastView.toloka;
     const out = {};
     if (!t) return out;
     const s = t.stage;
-    const list = s && !s.laidAt ? s.needs.map((n) => ({ ware: n.ware, left: n.n - (n.got || 0) - (n.have || 0) }))
+    const list = s && !s.laidAt ? s.needs.map((n) => ({ ware: n.ware, left: n.n - (n.got || 0) - (n.depot || 0) - (n.have || 0) }))
       : t.next && t.next.needs ? t.next.needs.map((n) => ({ ware: n.ware, left: n.n - (n.have || 0) })) : [];
     for (const x of list) if (x.left > 0) out[x.ware] = (out[x.ware] || 0) + x.left;
     return out;
