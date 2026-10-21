@@ -427,7 +427,10 @@
     const damp = s.open ? 'Заслінка: відкрита ↓' : 'Заслінка: прикрита ↑';
     if (ui.damp.textContent !== damp) ui.damp.textContent = damp;
     const inBand = s.i > m.warm ? Math.round((s.score / (s.i - m.warm + 1)) * 100) : null;
-    const score = inBand == null ? '🔥 розігрів: не перегрій' : '🟩 у смузі ' + inBand + ' %';
+    // Не своє горно й жодної дії тут (той самий гравець палить на іншому пристрої, хотфікс B1): «у смузі 0 %» лякало —
+    // кажемо, що жар тримають деінде (QA-3). Натисне «Поліно» тут — і рахунок піде звичайний.
+    const score = !kb.own && !kb.acts.length && inBand != null ? '🖐 жар тримають на іншому пристрої'
+      : inBand == null ? '🔥 розігрів: не перегрій' : '🟩 у смузі ' + inBand + ' %';
     if (ui.score.textContent !== score) ui.score.textContent = score;
     const risk = crackOf(s.over, m) * ((st.kView && st.kView.strawOn) ? (cat(st) ? cat(st).strawCrack : 0.25) : 1);
     const riskText = risk > 0 ? '💥 тріщини ' + Math.round(risk * 100) + ' %' : '';
@@ -667,10 +670,14 @@
     const straw = mySelf
       ? '<details class="clkk-strawsec"><summary>🌾 Солома: ' + k.straw + ' з ' + loft + '</summary>'
         + '<div class="clkk-row"><div class="muted small">в\'язка в горні — тріщин учетверо менше</div>'
-        + '<div class="clkk-strawbtns"><label class="small"><input type="checkbox" class="clkk-strawon"'
-        + (api.storeGet('clk.kiln.straw', '1') === '1' ? ' checked' : '') + (k.straw > 0 ? '' : ' disabled') + '> класти</label>'
-        + '<button type="button" class="ghost small clkk-buystraw"' + (mine && k.straw < loft ? '' : ' disabled') + '>+1 · '
-        + esc(api.potsShort(k.strawPrice)) + '</button></div></div></details>'
+        // Без соломи «класти» не стоїть позначеним (QA-3: ☑ при 0); «доверху» — один натиск і один тост замість десятка.
+        + '<div class="clkk-strawbtns"><label class="small clkk-strawlbl"><input type="checkbox" class="clkk-strawon"'
+        + (k.straw > 0 && api.storeGet('clk.kiln.straw', '1') === '1' ? ' checked' : '') + (k.straw > 0 ? '' : ' disabled') + '> класти</label>'
+        + '<button type="button" class="ghost small clkk-buystraw" data-n="1"' + (mine && k.straw < loft ? '' : ' disabled') + '>+1 · '
+        + esc(api.potsShort(k.strawPrice)) + '</button>'
+        + (loft - k.straw > 1 ? '<button type="button" class="ghost small clkk-buystraw" data-n="' + (loft - k.straw) + '"' + (mine ? '' : ' disabled')
+          + '>доверху +' + (loft - k.straw) + ' · ' + esc(api.potsShort(k.strawPrice * (loft - k.straw))) + '</button>' : '')
+        + '</div></div></details>'
       : '';
 
     // Палій: коли він доступний, гончар мусить бачити, що горно може палати й без нього — і вміти це спинити.
@@ -685,7 +692,7 @@
     if (api.swap(ui.fire, fire + straw + auto)) {
       const f = (sel) => ui.fire.querySelector(sel);
       if (f('.clkk-autobox')) f('.clkk-autobox').onchange = (e) => api.order(st, 'guild', { op: 'auto', on: e.target.checked });
-      if (f('.clkk-buystraw')) f('.clkk-buystraw').onclick = () => api.order(st, 'kiln', { op: 'straw', n: 1 });
+      for (const b of ui.fire.querySelectorAll('.clkk-buystraw')) b.onclick = () => api.order(st, 'kiln', { op: 'straw', n: +b.dataset.n });
       if (f('.clkk-strawon')) f('.clkk-strawon').onchange = (e) => api.storeSet('clk.kiln.straw', e.target.checked ? '1' : '0');
       for (const el of ui.fire.querySelectorAll('[data-self]')) {
         el.onclick = () => { api.storeSet('clk.kiln.self', el.dataset.self); api.sfx('tap'); paintPrep(st, api); };
@@ -784,11 +791,41 @@
     return '👑 шанс розкішних був ~' + (pct > 0 && pct < 1 ? '<1' : Math.round(pct)) + ' % на виріб';
   }
 
+  /// Скільки добрих і кращих дає такий жар (QA-3: новачок не знає шансів горна). Та сама формула, що KilnHeat.QualityOf
+  /// (добрий 0,4·S, дзвінкий 0,3·S²); надбавки Толоки й реліквій тут не враховано — тому «≈».
+  function goodLine(l) {
+    if (l.helper) return '';
+    const s = Math.max(0, Math.min(1, (l.heat / 100) * (0.6 + 0.4 * Math.min(100, l.beauty || 0) / 100)));
+    const pct = Math.round(Math.min(1, 0.4 * s + 0.3 * s * s) * 100);
+    return '★★ при такому жарі ≈ ' + pct + ' % добрих і кращих' + (l.beauty ? '' : ' — розпис підніме');
+  }
+
+  /// Гість (без входу) палить сам — у Майстра дня очки йдуть лише тим, хто увійшов: кажемо, скільки б їх було.
+  /// Дзвінкий 1, розкішний 3 — як DayPointsQ3/Q4 на сервері (ClickerTrade.cs).
+  function dayLine(st, l) {
+    const d = st.lastView && st.lastView.day;
+    if (l.helper || !d || d.person) return '';
+    const pts = l.items.reduce((s, it) => s + (it[1] >= 4 ? 3 : it[1] === 3 ? 1 : 0), 0);
+    return pts > 0 ? '🏆 Майстер дня: було б +' + pts + ' ' + HClicker.api.plural(pts, 'очко', 'очки', 'очок') + ' — увійди, щоб змагатись' : '';
+  }
+
   function fireNotes(st, api, l) {
     const why = fireWhy(st, api, l);
     const lux = luxLine(l);
+    const good = goodLine(l);
+    const day = dayLine(st, l);
     return (why ? '<div class="small clkk-why">' + api.esc(st, why) + '</div>' : '')
-      + (lux ? '<div class="muted small">' + api.esc(st, lux) + '</div>' : '');
+      + (good ? '<div class="muted small">' + api.esc(st, good) + '</div>' : '')
+      + (lux ? '<div class="muted small">' + api.esc(st, lux) + '</div>' : '')
+      + (day ? '<div class="small clkk-why">' + api.esc(st, day) + '</div>' : '');
+  }
+
+  /// Підсумок прочитали (вікно горна чи розпису зачинили): поки він на очах, сервер тримає глеки з полиці (до стелі 30 с,
+  /// Clicker.ResultCap) — кажемо, що вже можна. Тихо; зв'язку нема — стеля однаково відпустить.
+  function sendSeen(st, api) {
+    if (!st.mine || !st.ctx) return;
+    if (st.ctx.tell) st.ctx.tell('kiln', { op: 'seen' });
+    else api.order(st, 'kiln', { op: 'seen' });
   }
 
   const shardSvg = () => '<svg viewBox="0 0 40 40" class="clkk-shard" aria-hidden="true"><path d="M6 30l8-12 5 6 6-10 9 16z" fill="#9c5634" stroke="rgba(0,0,0,.4)"/>'
@@ -1324,7 +1361,12 @@
       + '<button type="button" class="ghost clkk-again">Спочатку</button><button type="button" class="primary clkk-done" disabled>Готово</button></div>'
       + '</div>', {
       cls: 'clkk-ov',
-      onClose: () => { st.kPaint = null; },
+      onClose: () => {
+        const g0 = st.kPaint;
+        st.kPaint = null;
+        // «Обпалити» з підсумку seen не потребує: горно й так розпалюється, а глеки тримає вже воно.
+        if (g0 && g0.over && !g0.fired) sendSeen(st, api);
+      },
       // Поки палець уже водить по полотну, вікно не чіпаємо: Око майстра зачекає ті кілька секунд.
       keep: () => { const g = st.kPaint; return !!(g && g.t0 && !g.sent); },
     });
@@ -1888,7 +1930,7 @@
       + '<span class="clkk-rbtns">' + (fire ? '<button type="button" class="primary clkk-rfire">🔥 Обпалити ' + load + '</button>' : '')
       + '<button type="button" class="' + (fire ? 'ghost' : 'primary') + ' clkk-ok">Добре</button></span>';
     row.querySelector('.clkk-ok').onclick = () => api.closeOverlay(st);
-    if (fire) row.querySelector('.clkk-rfire').onclick = () => { api.closeOverlay(st); api.fireKiln({ bare: true }); };
+    if (fire) row.querySelector('.clkk-rfire').onclick = () => { g.fired = true; api.closeOverlay(st); api.fireKiln({ bare: true }); };
     g.bar.style.width = '100%';
     // Підсумок вищий за рядок кнопок — полотно трохи меншає, щоб причина й кнопки не сховались під край вікна.
     fitCanvas(st, api, g.svg);
@@ -1966,6 +2008,8 @@
     const seen = () => { st.kSeen = at; api.storeSet('clk.kiln.seen', String(at)); };
     // Давнє відкриття (підмайстер без нас годину тому) — лише в «Останньому горні», без події.
     if (api.serverNow(st) - at > 10 * 60 * 1000) { seen(); return; }
+    // Підсумок уже прочитали на іншому пристрої (last.seen, QA-3) — удруге вікна не відкриваємо: він є в «Останньому горні».
+    if (l.seen) { seen(); return; }
     // Підмайстер чи автогорно відкрили, поки гравець клацає коло: велике вікно посеред клацання з'їло б кліки. Тост —
     // і все; подія — лише для власного обпалу або коли гравець сам дивиться на горно.
     // v12: і тоді, коли вкладка «Ремесло» відкрита, але гравець гортає замовлення й комору (горна на екрані нема).
@@ -1974,6 +2018,7 @@
       const cnt = [0, 0, 0, 0, 0];
       for (const it of l.items) cnt[it[1]]++;
       api.toast(st, '🔥 Підмайстер відкрив горно: ' + summary(cnt) + ' — у коморі', 'ok');
+      sendSeen(st, api);
       api.sparks(st, st.fx, 8, true, 88, 70);
       return;
     }
@@ -2007,7 +2052,16 @@
       + (l.sold ? '<div class="small muted">комора повна — ' + (l.freed ? api.esc(st, l.freed) + '; ' : '') + 'на базар: +' + api.potsShort(l.sold) + '</div>' : '')
       + (!l.helper && l.items.length >= 4 && cnt[3] + cnt[4] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
       + '<button type="button" class="primary clkk-tostore">🧺 В комору</button></div>'
-      + '</div>', { cls: 'clkk-ov clkk-revov' });
+      + '</div>', { cls: 'clkk-ov clkk-revov', onClose: replay ? null : () => sendSeen(st, api) });
+    // Палець, що ще тиснув «Поліно», у першу мить після появи вікна лягав на тло — і вікно зачинялось непрочитаним
+    // (QA-3). Пів секунди тапи по тлу не зачиняють вікна.
+    const shade = st.ov && st.ov.el;
+    if (shade && !replay) {
+      const until = performance.now() + 500;
+      const hold = (e) => { if (e.target === shade && performance.now() < until) e.stopImmediatePropagation(); };
+      shade.addEventListener('click', hold, true);
+      setTimeout(() => shade.removeEventListener('click', hold, true), 650);
+    }
     // Вікно — за спільним правилом кола: вміст уже домальовано, тож перемірюємо.
     api.placeOverlay(st);
     body.querySelector('.clkk-tostore').onclick = () => {

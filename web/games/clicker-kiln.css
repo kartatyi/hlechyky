@@ -436,3 +436,15 @@ body.clk-toasts:has(.clkk-revov:not([hidden])) .toasts { top: auto; bottom: 18px
   .clkk-swirl.spun, .clkk-swirl.spun-back { animation: none; filter: blur(2px); }
   .clkk-mercury, .clkk-mark, .clkk-band, .clkk-petal { transition: none; }
 }
+
+/* Цілі дотику ≥ 40 px у Ремеслі (QA-3): «і» 16×16, галочка соломи 13×13, «Як це працює» 18 px. Видимий розмір той
+   самий — більшає лише влучна площа (::after довкола «і»). */
+@media (pointer: coarse) {
+  .clkk .clk-info > summary, .clkw-store .clk-info > summary, .clkw-upsec .clk-info > summary { position: relative; }
+  .clkk .clk-info > summary::after, .clkw-store .clk-info > summary::after, .clkw-upsec .clk-info > summary::after {
+    content: ''; position: absolute; inset: -12px;
+  }
+  .clkk-strawlbl { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
+  .clkk-strawon { width: 22px; height: 22px; }
+  .clkk-help > summary { min-height: 40px; display: flex; align-items: center; }
+}
