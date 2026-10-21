@@ -32,6 +32,8 @@ public sealed partial class Clicker
     ActResult ResultSeen()
     {
         _resultUntil = default;
+        // Другий пристрій не показує вдруге підсумок, який уже прочитали деінде (QA-3).
+        if (_kilnLast is { Seen: false } l) _kilnLast = l with { Seen = true };
         return ActResult.Done;
     }
 

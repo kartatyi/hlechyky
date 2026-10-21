@@ -148,8 +148,11 @@ public class ClickerFallHoldTests
         // Відкрили — вікно підсумку тримає глек, доки його не закрили (QA-3), але не довше стелі.
         Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.ResultCap);
         h.Clock.Advance(5);
+        Assert.False(View(h).GetProperty("kiln").GetProperty("last").GetProperty("seen").GetBoolean());
         Assert.True(K(h, new { op = "seen" }).Ok);
         Near(h.Clock.UtcNow + Clicker.MinigameAfter, FallAt(h));
+        // Прочитали — другий пристрій вікна підсумку вдруге не відкриває.
+        Assert.True(View(h).GetProperty("kiln").GetProperty("last").GetProperty("seen").GetBoolean());
         h.Clock.Advance(Clicker.MinigameAfter + TimeSpan.FromSeconds(0.1));
         Assert.True(Act(h, "grab").Ok);
 

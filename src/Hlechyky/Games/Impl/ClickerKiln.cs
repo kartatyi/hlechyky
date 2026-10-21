@@ -899,7 +899,7 @@ public sealed partial class Clicker
 
     /// <summary>Lux (v12, D1) — шанс розкішного на виріб у цій партії: результат горна пише «шанс розкішних ~14 %».</summary>
     sealed record KilnLastRow(DateTimeOffset At, bool Helper, int Heat, int Over, int Beauty, string? Style, bool Straw,
-        List<KilnOutRow>? Items, double Shards, double Sold, string? Freed = null, double Lux = 0, int Peak = 0);
+        List<KilnOutRow>? Items, double Shards, double Sold, string? Freed = null, double Lux = 0, int Peak = 0, bool Seen = false);
 
     sealed record KilnRow(
         List<string>? Batch = null, string? Style = null, string? Tech = null, int Beauty = 0,
@@ -1437,6 +1437,8 @@ public sealed partial class Clicker
                     lux = l.Lux,
                     // v12: найвищий жар партії (0 — підмайстер чи старий запис) — для «перегрів до 2 431°».
                     peak = l.Peak,
+                    // Вікно підсумку вже закрили (на будь-якому пристрої, kiln {op:"seen"}) — вдруге не відкривати (QA-3).
+                    seen = l.Seen,
                 }
                 : null,
         };

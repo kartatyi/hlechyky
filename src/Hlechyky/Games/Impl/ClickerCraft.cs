@@ -378,8 +378,10 @@ public sealed partial class Clicker
         if (WareOf(key) is not { } w) return ActResult.Fail("Такого виробу гончарі не ліплять");
         if (!WareOpen(key)) return ActResult.Fail($"{w.Name} відкриється на {PotsShort(w.Unlock)} за весь час");
         var style = Str(payload, "style");
+        // Клітинка вже в альбомі — просто назвати розпис, без «для альбому» (QA-3).
         var note = style.Length > 0 && Styles.FirstOrDefault(x => x.Key == style) is { } sd
-            ? $" — для альбому обпали з розписом «{sd.Name}»" + (_styles.Contains(style) ? "" : " (його ще треба відкрити)")
+            ? (AlbumCellOpen(AlbumCellKey(key, style)) ? $" — з розписом «{sd.Name}»" : $" — для альбому обпали з розписом «{sd.Name}»")
+                + (_styles.Contains(style) ? "" : " (його ще треба відкрити)")
             : "";
         if (_formWare == key) return note.Length > 0 ? ActResult.Accept($"🏺 {w.Name} уже на колі{note}") : ActResult.Done;
         _formWare = key;
