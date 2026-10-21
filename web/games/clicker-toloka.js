@@ -176,13 +176,13 @@
 
   /// «Ліпити X» з рядка: виріб на коло й розпис, якщо рядок його просить (без розпису рядок такого не прийме).
   function formIt(st, api, ware, style) {
-    const c = st.craft;
-    const go = c && c.ware !== ware ? api.act(st, 'form', { ware }) : Promise.resolve({ ok: true });
+    const was = !!st.craft && st.craft.ware === ware;
+    const go = was ? Promise.resolve({ ok: true }) : api.act(st, 'form', { ware });
     go.then((r) => {
       if (!r || !r.ok || !style || st.wear === style) return;
       api.act(st, 'wear', { key: style }).then((w) => {
         // wear мовчить (вид сам покаже розпис на колі), а виріб уже був на колі — без тосту зміни б і не помітили.
-        if (w && w.ok && c && c.ware === ware) api.toast(st, '🎨 На колі тепер розпис «' + styleName(st, style) + '»', 'ok');
+        if (w && w.ok && was) api.toast(st, '🎨 На колі тепер розпис «' + styleName(st, style) + '»', 'ok');
       });
     });
   }
