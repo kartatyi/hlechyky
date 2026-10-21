@@ -903,8 +903,12 @@
         st.bestMark = mark;
         if (mark) mark.classList.add('best');
       }
-      const go = best ? '★ ' + bestName + (bestMode ? ' · ×1' : '') + ' · ' + payText(st, bestPay) : '';
-      if (st.bestGo && st.bestGo.textContent !== go) { st.bestGo.textContent = go; st.bestGo.hidden = !go; }
+      // «★ Найвигідніше:» — без слова гравці не знали, що це за смуга і що буде від натиску (UI-прохід 21.10).
+      const go = best ? '★ Найвигідніше: ' + bestName + (bestMode ? ' · ×1' : '') + ' · ' + payText(st, bestPay) : '';
+      if (st.bestGo && st.bestGo.textContent !== go) {
+        st.bestGo.textContent = go; st.bestGo.hidden = !go;
+        st.bestGo.title = go ? 'Найшвидше окупиться «' + bestName + '» — тисни, щоб перейти до цього рядка' : '';
+      }
       if (secOpen(st, 'styles')) {
         for (const b of st.styleBtns) {
           const off = !st.mine || (b.dataset.owned !== '1' && n < +b.dataset.price);
@@ -1177,8 +1181,9 @@
     const bare = (n) => { const u = unit(n); return Number.isFinite(n) && u.key === st.unitKey ? count(n / u.div) : short(n); };
     const rate = 'за клік +' + bare(clickNow(st))
       + (st.momentumMax > 1 ? ' · розгін до ×' + dec(st.momentumMax) : '')
-      + (sec > 0 ? ' · без тебе +' + bare(sec) + ' за секунду' : ' · підмайстрів ще нема');
-    if (st.rate.textContent !== rate) st.rate.textContent = rate;
+      + (sec > 0 ? ' · без тебе +' + bare(sec) + '/с' : ' · підмайстрів ще нема');
+    // «/с» замість «за секунду» (UI-прохід 21.10): на ПК 1366 хвіст різався «…» саме на числі пасиву; повністю — в підказці.
+    if (st.rate.textContent !== rate) { st.rate.textContent = rate; st.rate.title = rate.replace(/\/с$/, ' за секунду'); }
 
     paintBuffs(st, sn, mom);
     const fair = sn < st.fairUntil, inspire = sn < st.inspireUntil;
@@ -1800,6 +1805,11 @@
       st.rival.textContent = text;
       if (st.rival.hidden !== !text) st.rival.hidden = !text;
     }
+    // Таблицю вже стягнули, а суперників нема (гість, перший гравець) — рядок не тримає порожнього місця над сценою.
+    const none = !text && Array.isArray(rows);
+    if (st.rival.classList.contains('none') !== none) {
+      st.rival.classList.toggle('none', none);
+    }
   }
 
   function paintFire(st, liveTotal) {
@@ -2358,7 +2368,14 @@
     }
     b._parts[0].textContent = ico;
     b._parts[1].textContent = word;
-    b._parts[2].textContent = note;
+    // Кожна нотатка — своїм шматком: у вузькому бейджі (телефон) лишається лише перша, а не «🔥46 📦5…» з обрізаним
+    // числом (UI-прохід 21.10); обидві — у підказці й на широкій полиці.
+    b._parts[2].replaceChildren(...top.map((n, i) => {
+      const e = document.createElement('span');
+      e.className = 'clk-tn';
+      e.textContent = (i ? ' ' : '') + colorEmoji(n.text);
+      return e;
+    }));
     b.title = note ? word + ' · ' + note : word;
   }
 
@@ -2467,7 +2484,9 @@
           ? 'клік тепер — частка пасиву; рівні ведуть лише до віхи' : esc(u.desc)) + '</span>' + next + '</span>'
         // Праворуч ціна пачки, під нею дрібно — за скільки вона окупиться (★ — найвигідніше зараз; малює paintShop).
         + '<span class="clk-uright"><span class="clk-price"></span><span class="clk-pay"></span></span>'
-        + '<i class="clk-ubar"><i></i></i></button>' + mine.map(markRow).join('') + '</div>';
+        // Віхи-покупки під верстатом — окремим блоком: у сітці він стає другим під-рядком (subgrid у css), і сусід
+        // верстата з віхою не тягнеться на їхню висоту.
+        + '<i class="clk-ubar"><i></i></i></button>' + (mine.length ? '<div class="clk-urmarks">' + mine.map(markRow).join('') + '</div>' : '') + '</div>';
       if (maxed && !mine.length) { done.push(html); return ''; }
       const share = u.kind === 'idle' && st.baseSecond > 0 ? (u.level * u.gain * hm) / st.baseSecond : 1;
       shown++;
@@ -2671,7 +2690,7 @@
         + foldHead('🌍 Розписи світу · ' + worldOwned + ' з ' + world.length
         + '<span class="muted small"> · теж +5 % до всього; кожен привозять, коли маєш перший рівень його щабля</span>', 'clk-worldsub')
         + '<div class="clk-styles clk-styles-world">' + world.map(card).join('') + '</div></section>' : '')
-      + (owned ? '<button type="button" class="ghost small clk-plain"' + (st.wear ? '' : ' disabled') + '>Простий глиняний на колі</button>' : '');
+      + (owned ? '<button type="button" class="ghost small clk-plain"' + (st.wear ? '' : ' disabled') + ' title="Зняти розпис: на колі ліпиться простий глиняний виріб (розписи лишаються твоїми)">🏺 Без розпису — простий глиняний</button>' : '');
     if (swap(st.styles, html)) {
       st.styleBtns = [...st.styles.querySelectorAll('[data-style]')];
       for (const b of st.styleBtns) {
@@ -2696,13 +2715,14 @@
       + '<span>за весь час · ' + bonus + ' до всього</span>'
       + '<span class="clk-free" title="Скільки ще можна витратити на секрети, реліквії й оздобу хати">вільних <b class="clk-freen">'
       + '</b></span>'
-      + (v.firings ? '<span class="muted small">починав наново: ' + v.firings + '</span>' : '') + '</div>'
+      + (v.firings ? '<span class="muted small">починав наново: ' + v.firings + '</span>' : '')
+      // ⓘ — у рядку «вільних … · починав наново», а не самотнім рядком під ним (UI-прохід 21.10).
       + info('Почати наново — це спалити глеки, верстати й віхи, а натомість узяти клейма майстра за все, що наліпив '
         + 'за весь час. Перша тисяча клейм дає по +' + dec(st.stampBonus * 100) + ' % до всього назавжди, далі кожне нове '
         + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть, а після 4 млн бонус росте зовсім '
         + 'повільно — удесятеро більше клейм додають ту саму частку. Розписи, секрети, альбом і таблиця '
         + 'лишаються. Кожні ' + STAMPS_PER_CAP + ' клейм — ще один черепок до денної стелі обміну'
-        + (cap ? ' (зараз +' + cap + ')' : '') + '.')
+        + (cap ? ' (зараз +' + cap + ')' : '') + '.') + '</div>'
       + scienceLine(st, esc);
     // Два кола секретів (v9 §A.5): родинні — з першого дня, дідівські — на сотні клейм.
     // Записка #28: вільні клейма й «бракує N 🔖» малює stampButtons() поверх готової розмітки — витрата чи нове клеймо
@@ -4327,6 +4347,8 @@
       // Картка — на всю ширину сітки столів (див. .clk-wide у css): інакше сцена й полиці лягали б одним стовпчиком.
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.add('clk-wide');
+      // Сповіщення сайту на телефоні — згори, поки відкрите коло (css): знизу вони лягали на рядок «Далі» й кнопку кроку.
+      document.body.classList.add('clk-on');
       root.innerHTML = '<div class="clk">'
         // Мініплашка (v10 §9): коло прокрутили з екрана — згори липне «🏺 число · ⤒ до кола». Сама нуль заввишки,
         // тож поява плашки нічого під нею не зсуває. Число вона не рахує, а бере з лічильника (pinView).
@@ -4902,6 +4924,7 @@
       if (st.ov) H.api.closeOverlay(st);
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.remove('clk-wide', 'clk-fit', 'clk-big');
+      if (H.mounted.size === 0) document.body.classList.remove('clk-on');
       const room = card && card.closest('.groom');
       if (room) room.classList.remove('clk-fitroom');
       st.raf = 0;

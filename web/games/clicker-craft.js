@@ -666,8 +666,10 @@
       // ⓘ на трьох чипах веде до секції «🔧 Прокачати»: місткість — не магія, її видно й видно, звідки вона.
       { key: 'rack', ico: '🧺', name: 'Сушарня', sub: c.rack.length + '/' + c.rackSize + (dry ? ' · сухих ' + dry : ''),
         pct: (c.rack.length / Math.max(1, c.rackSize)) * 100, on: c.rack.length > 0, hot: dry > 0, ups: true },
-      { key: 'kiln', ico: '🔥', name: 'Горно', sub: kilnText, on: !!k && (k.batch.length > 0 || k.state !== 'cold'),
-        hot: !!k && k.state === 'burning', ups: true },
+      // Сухі є, а горно холодне — це і є наступний крок (UI-прохід 21.10: плитка була блідою, як «ще не дійшли», хоч
+      // «Далі» кликало обпалити й підпис казав «можна палити»).
+      { key: 'kiln', ico: '🔥', name: 'Горно', sub: kilnText, on: !!k && (k.batch.length > 0 || k.state !== 'cold' || dry > 0),
+        hot: !!k && (k.state === 'burning' || (k.state === 'cold' && dry > 0)), ups: true },
       { key: 'store', ico: '📦', name: 'Комора', sub: items ? items + ' · ~' + api.short(sum) : 'порожня',
         pct: (items / Math.max(1, c.storeCap)) * 100, on: items > 0, ups: true },
     ];
@@ -814,7 +816,8 @@
     const label2 = m ? m.btn : '';
     if (!ui.armed2) nxLabel(b2, label2, esc);
     if (b2.hidden !== !m) b2.hidden = !m;
-    const title2 = m ? m.title : '';
+    // На телефоні друга кнопка — лише значок: без підказки її не прочитати (і читачам екрана теж).
+    const title2 = m ? m.title || m.btn : '';
     if (b2.title !== title2) b2.title = title2;
     if (b2.classList.contains('armed') !== !!ui.armed2) b2.classList.toggle('armed', !!ui.armed2);
     if (ui.nx.classList.contains('two') !== !!m) ui.nx.classList.toggle('two', !!m);
