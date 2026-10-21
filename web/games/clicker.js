@@ -851,8 +851,7 @@
         const star = upGain(st, u, k, hm, hand);
         if (star > 0) consider(b, cost / star, u.name, !off && !soft && !needAsk(st, u, a, n, hm));
         // Пізня гра: клік — це відсоток пасиву, і «+1 глек за клік» нічого не дає — кажемо, чому окупності нема.
-        const pt = pay ? 'окуп. ' + payText(st, pay)
-          : u.kind === 'click' && !maxed && handsOf(st) < st.clickBase * 0.01 ? 'клік — частка пасиву' : '';
+        const pt = pay ? 'окуп. ' + payText(st, pay) : '';
         if (b._pay && b._pay.textContent !== pt) b._pay.textContent = pt;
         // Смужка «скільки ціни вже є» — кроком у 2 %, щоб не писати стиль на кожну дрібницю. Масштаб, а не ширина:
         // transform не чіпає розкладки (clicker.css, блок «швидкість»).
@@ -1814,8 +1813,8 @@
     if (f._bar.style.transform !== bar) f._bar.style.transform = bar;
     // Скільки ще, а не «на 19,6 млн (зараз 19,6 млн)»: на великих числах ціль і «зараз» друкувались однаково (QA-2).
     // У пізній грі число міняється щосекунди (12 різних за 3 с, QA-3) — рядок раз на хвилину, смужка живе й так.
-    if (f._nextAll !== all || Date.now() - (f._nextAt || 0) > 60 * 1000) {
-      f._nextAll = all;
+    // QA-4: клейм за весь час у пізній грі більшає щосекунди — тож лише раз на хвилину (і щойно рядок порожній).
+    if (!f._next.textContent || Date.now() - (f._nextAt || 0) > 60 * 1000) {
       f._nextAt = Date.now();
       const next = 'до наступного клейма — ще ~' + potsShort(Math.max(1, to - liveTotal)) + ' наліпленого';
       if (f._next.textContent !== next) f._next.textContent = next;
@@ -2434,7 +2433,7 @@
     // Старі щаблі (v12 §7 п. 1): пасивний верстат, що дає менше відсотка пасиву, — одним рядком у кінці. Два найновіші
     // відкриті щаблі — ніколи: вони щойно почали рости.
     const old = [];
-    let oldShare = 0, oldMarks = 0;
+    let oldShare = 0, oldMarks = 0, shown = 0;
     const fresh = new Set(keys.filter((k) => ups[k].kind === 'idle' && ups[k].open !== false).slice(-2));
     const rows = keys.filter((k) => {
       // !== false, а не просто open: старий сервер (хвилина деплою) цього поля не шле — показуємо все.
@@ -2461,13 +2460,17 @@
         // 🏁N — коротка віха для тісного рядка (лежачи), де повний рядок віхи не влазить.
         + '<span class="clk-umain"><span class="clk-uname"><b>' + esc(u.name) + '</b>'
         + (nm && nm.level > u.level ? '<span class="clk-umark">🏁' + nm.level + '</span>' : '') + '</span>'
-        + '<span class="clk-udesc">' + x2 + esc(u.desc) + '</span>' + next + '</span>'
+        // Пізня гра: клік — це відсоток пасиву, і «+1 глек за клік» поруч із кліком у сотні мільярдів — неправда (QA-4).
+        + '<span class="clk-udesc">' + x2 + (u.kind === 'click' && handsOf(st) < st.clickBase * 0.01
+          ? 'клік тепер — частка пасиву; рівні ведуть лише до віхи' : esc(u.desc)) + '</span>' + next + '</span>'
         // Праворуч ціна пачки, під нею дрібно — за скільки вона окупиться (★ — найвигідніше зараз; малює paintShop).
         + '<span class="clk-uright"><span class="clk-price"></span><span class="clk-pay"></span></span>'
         + '<i class="clk-ubar"><i></i></i></button>' + mine.map(markRow).join('') + '</div>';
       if (maxed && !mine.length) { done.push(html); return ''; }
       const share = u.kind === 'idle' && st.baseSecond > 0 ? (u.level * u.gain * hm) / st.baseSecond : 1;
+      shown++;
       if (u.kind === 'idle' && u.level > 0 && share < OLD_SHARE && !fresh.has(k)) {
+        shown--;
         old.push(html);
         oldShare += share;
         oldMarks += mine.length;
@@ -2501,7 +2504,9 @@
         + done.join('') + '</div></details>'
       : '';
     let fresh2 = false;
-    if (swap(st.shop, rows + more + far + oldFold + fold)) {
+    // У сітці на два стовпці непарний останній рядок лишав порожню клітинку поруч (QA-4) — він на всю ширину.
+    const list = shown % 2 ? rows.replace(/<div class="clk-urow"(?![\s\S]*<div class="clk-urow")/, '<div class="clk-urow wide"') : rows;
+    if (swap(st.shop, list + more + far + oldFold + fold)) {
       fresh2 = true;
       st.buys = [...st.shop.querySelectorAll('[data-buy]')];
       for (const b of st.buys) {
@@ -3260,7 +3265,7 @@
     title: '✨ Що нового в Гончарному колі',
     lead: 'Заморська торгівля: кораблі біля Пристані, Слава у світі й шість заморських майстерень — а Толоку тепер можна готувати наперед і підганяти власними руками.',
     lines: [
-      ['🚢', '<b>Кораблі біля Пристані.</b> Раз на 40 хвилин до Пристані на Ворсклі приходить корабель і просить партію виробів. Вантаж частинами — платять хвилинами гри, щедріше за села й гостей. Перший корабель уже чекає.'],
+      ['🚢', '<b>Кораблі біля Пристані.</b> Раз на 40 хвилин до Пристані на Ворсклі приходить корабель і просить партію виробів. Вантаж частинами — платять хвилинами гри, щедріше за села й гостей. Хто вже має Пристань — перший корабель там уже чекає.'],
       ['🌍', '<b>Слава у світі.</b> Кожен завантажений виріб — Слава: добрий 1, дзвінкий 2, розкішний 5. Вона відчиняє шість заморських майстерень — від Афінського Кераміку до Талавери — без жодної будови: хто відстав на Толоці, доганяє руками.'],
       ['📦', '<b>Склад толоки.</b> Видно всю Толоку до кінця — що треба й скільки розкішних. Вироби можна нести наперед на будь-який етап: вони лежать на складі, а не в коморі.'],
       ['🧱', '<b>Своя праця.</b> Поки етап будується, кожен твій клік біля кола — цеглина: повна смуга скорочує етап на 15 %.'],
@@ -3372,6 +3377,13 @@
       + '<b>дукачами</b> — як ті монети, що висять на намисті з коралів: 1 дукач = 1 трильйон червоних золотих. '
       + 'Гаманець той самий — просто намисто важчає.' },
   ];
+
+  /// Вікна, під якими сервер тримає глеки (hold): «Що нового» / «з чого почати» / монета / листи (clk-newsbox) і «Поки
+  /// тебе не було» (clks-awayov, жива хата). Підсумки горна й розпису — окремо, kiln {op:"seen"} (D1).
+  const HOLD_CLS = /(^|\s)(clk-newsbox|clks-awayov)(\s|$)/;
+  function holdJugs(st, on) {
+    if (st.ctx && st.mine && st.ctx.tell) st.ctx.tell('hold', { on });
+  }
 
   /// Вікна на вході — по черзі (v12 §2.7): «Поки тебе не було» (його малює жива хата) → «Що нового» → листи →
   /// результат горна. Ключ «показане» той самий, що пише сцена. Через ENTRY_MS після входу черга вже не тримає:
@@ -3701,6 +3713,10 @@
       st.ov.onClose = (opts && opts.onClose) || null;
       st.ov.keep = (opts && opts.keep) || null;
       st.ov.el.hidden = false;
+      // Вікна входу («Що нового», «з чого почати», монета, листи, «Поки тебе не було») закривають сцену — поки вони
+      // відкриті, сервер тримає глеки (hold, стеля 30 с): QA-4 — глек бився під «Що нового», серія 1 430 рвалась під «Дукачем».
+      st.ov.hold = HOLD_CLS.test((opts && opts.cls) || '');
+      if (st.ov.hold) holdJugs(st, true);
       H.api.placeOverlay(st);
       return st.ov.body;
     },
@@ -3739,6 +3755,7 @@
       const f = st.ov.onClose;
       st.ov.onClose = null;
       st.ov.keep = null;
+      if (st.ov.hold) { st.ov.hold = false; holdJugs(st, false); }
       freshBody(st);
       if (f) try { f(); } catch (e) { console.error(e); }
       if (st.ovQueue) setTimeout(() => nextQueued(st), 1500);
@@ -3881,6 +3898,10 @@
     const top = Math.round(band.top), bot = Math.round(window.innerHeight - band.bottom);
     if (st.landTop !== top) { st.landTop = top; st.el.style.setProperty('--clk-land-top', top + 'px'); }
     if (st.landBot !== bot) { st.landBot = bot; st.el.style.setProperty('--clk-land-bot', bot + 'px'); }
+    // Висота вікна — виміряна (innerHeight), а не 100svh: з панеллю адреси svh буває більшим за видиме, і коло з правою
+    // колонкою лягали під меню (QA-4 на 844×390: видно 2 рядки Майстерні).
+    const vh = Math.round(window.innerHeight);
+    if (st.landVh !== vh) { st.landVh = vh; st.el.style.setProperty('--clk-land-vh', vh + 'px'); }
     if (!was) {
       requestAnimationFrame(() => {
         if (!st.el || !st.el.classList.contains('land')) return;
