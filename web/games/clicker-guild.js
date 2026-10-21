@@ -266,11 +266,21 @@
   function giveAllRisk(st, api, id) {
     const v = st.guild;
     const a = (v && v.all) || { n: 0, keep: 0 };
-    if (id === 'all0' && a.keep > 0) return 'підуть і ' + api.count(a.keep) + ' відкладених під замовлення й Толоку';
+    if (id === 'all0' && a.keep > 0) return 'підуть і ' + api.count(a.keep) + ' ' + api.plural(a.keep, 'відкладений', 'відкладені', 'відкладених') + ' — ' + keptWhy(st, api);
     const w = v && v.day;
     const n = id === 'all0' ? a.n + a.keep : a.n;
     if (w && w.goal > 0 && n > w.goal * 2) return api.count(n) + ' — це більше, ніж дві цілі воза (' + api.count(w.goal * 2) + ')';
     return '';
+  }
+
+  /// Відкладене в коморі (вид craft.items[].kept = [Толока, замовлення, майстерштук]): «відкладено для Толоки 2, замовлень 1».
+  const KEPT_FOR = ['Толоки', 'замовлень', 'майстерштука'];
+  const keptOf = (it) => (it.kept ? Math.min(it.n, (it.kept[0] || 0) + (it.kept[1] || 0) + (it.kept[2] || 0)) : 0);
+  function keptWhy(st, api, list) {
+    const sum = [0, 0, 0];
+    for (const it of list || itemsOf(st)) if (it.kept) for (let i = 0; i < 3; i++) sum[i] += it.kept[i] || 0;
+    const parts = sum.map((n, i) => (n > 0 ? KEPT_FOR[i] + ' ' + api.count(n) : '')).filter(Boolean);
+    return parts.length ? 'відкладено для ' + parts.join(', ') : 'відкладено під замовлення й Толоку';
   }
 
   const armedFor = (st, id) => !!(st.guildArm && st.guildArm.id === id && Date.now() - st.guildArm.at < CONFIRM_MS);
@@ -291,20 +301,22 @@
     const per = (c && c.perPotter) || 12;
     const shareMax = (c && c.shareMax) || 3;
     const claims = (v.claims || []).map((cl) => '<button type="button" class="primary clkg-claim" data-claim="' + esc(cl.day) + '">'
-      + '🛒 Забрати: ' + TIER_ICON[cl.tier] + ' ' + TIER[cl.tier] + (cl.day !== w.id ? ' (вчорашній віз)' : '')
+      + (cl.topUp ? '🛒 Забрати доплату паю' : '🛒 Забрати: ' + TIER_ICON[cl.tier] + ' ' + TIER[cl.tier]) + (cl.day !== w.id ? ' (вчорашній віз)' : '')
       + ' · +' + api.potsShort(cl.pots) + ' <i class="clkg-pai">×' + pai(cl.share) + ' паю</i></button>').join('');
     // Пай (§E.1): що більше поклав — то більша нагорода. Показуємо і скільки маєш зараз, і скільки до наступного паю.
     // Поки не поклав і п'яти — нагороди не буде взагалі, тож і «×0,5 паю» обіцяти нема чого.
     const share = w.mine >= minGive ? Math.min(shareMax, Math.max(0.5, w.mine / per)) : 0;
     const toNext = w.mine < per * shareMax ? per - (w.mine % per) : 0;
-    // Нагороду вже забрали (B7): пай для неї порахований на мить «Забрати», і докладене її не збільшить — тож нічого й
-    // не обіцяємо, лише кажемо, яка нагорода наступна.
+    // Нагороду вже забрали (B7): докладене після «Забрати» ядро v12 доплачує (claims[].topUp) — так і кажемо.
     const took = w.claimed > 0 && w.claimed >= w.tier ? w.claimed : 0;
+    const more = toNext ? ' <span class="muted small">· ще ' + toNext + ' ' + api.plural(toNext, 'виріб', 'вироби', 'виробів') + ' — і пай більший'
+      + (took ? ', різницю доплатять' : '') + '</span>' : ' <span class="muted small">· більше вже не буває</span>';
     const paiNote = '<div class="clkg-pai-box">' + (took
-      ? '✓ нагороду за ' + TIER_ICON[took] + ' ' + TIER_ACC[took] + ' забрано' + (took < 3 ? ' <span class="muted small">· наступна — на ' + TIER_LOC[took + 1] + '</span>' : '')
-      : (share > 0 ? '<b>×' + pai(share) + '</b> твого паю' : '<b>пай</b> почнеться з ' + minGive + ' виробів')
-        + (w.claimed > 0 ? '' : toNext ? ' <span class="muted small">· ще ' + toNext + ' ' + api.plural(toNext, 'виріб', 'вироби', 'виробів') + ' — і пай більший</span>'
-          : ' <span class="muted small">· більше вже не буває</span>'))
+      ? '✓ нагороду за ' + TIER_ICON[took] + ' ' + TIER_ACC[took] + ' забрано · <b>×' + pai(share) + '</b> паю' + more
+        + (took < 3 ? ' <span class="muted small">· наступна — на ' + TIER_LOC[took + 1] + '</span>' : '')
+      // Поки не поклав і п'яти — одне число: скільки до першого паю (а не «з 5» і «ще 9» поруч).
+      : share > 0 ? '<b>×' + pai(share) + '</b> твого паю' + more
+        : '<b>пай</b> почнеться з ' + minGive + ' виробів <span class="muted small">· ще ' + (minGive - w.mine) + '</span>')
       + info('Нагорода воза множиться на твій пай: кожні ' + per + ' виробів — ще один пай, до ' + shareMax
         + '. Поклав ' + per + ' — повний пай, ' + (per * shareMax) + ' — три, п\'ять — половина. Рівень воза (бронза/срібло/золото) '
         + 'цех бере разом, а платня — за внесок.') + '</div>';
@@ -329,8 +341,8 @@
       + '<div class="clkg-btns">' + giveAllBtn(st, api, v, 'ghost')
       + '<button type="button" class="ghost clkg-give"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🧺 Вибрати, що покласти</button>'
       + claims + '</div>'
-      + (v.all && v.all.keep > 0 && v.all.n > 0 ? '<div class="muted small">' + api.count(v.all.keep) + ' ' + api.plural(v.all.keep, 'виріб', 'вироби', 'виробів')
-        + ' лишиться: відкладено під замовлення гостей і сіл та майстерштук</div>' : '')
+      + (v.all && v.all.keep > 0 && v.all.n > 0 ? '<div class="muted small">🔒 ' + api.count(v.all.keep) + ' ' + api.plural(v.all.keep, 'виріб', 'вироби', 'виробів')
+        + ' лишиться: ' + esc(keptWhy(st, api)) + '</div>' : '')
       + '<div class="muted small">' + mineNote + '</div>'
       + prev
       + '</section>';
@@ -1010,13 +1022,23 @@
 
   // ---------- вибір виробу (віз, дарунок, похвала) ----------
 
-  function itemRow(st, api, it, i, buttons) {
+  /// «+1 / +5 / усі N» у виборі воза: що зачепить відкладене (Толока, замовлення, майстерштук) — лише з другого натиску.
+  function giveBtn(st, api, it, n, label) {
+    const id = 'give:' + it.key + ':' + n;
+    const risky = n > it.n - keptOf(it);
+    const armed = risky && armedFor(st, id);
+    return '<button type="button" class="ghost small' + (armed ? ' arm' : '') + '" data-give="' + api.esc(st, it.key) + '" data-n="' + n + '"'
+      + (risky ? ' data-risk="1" title="' + api.esc(st, 'Зачепить 🔒 ' + keptWhy(st, api, [it])) + '"' : '') + '>'
+      + (armed ? 'Точно? 🔒' : label) + '</button>';
+  }
+
+  function itemRow(st, api, it, i, buttons, tag) {
     const esc = (x) => api.esc(st, x);
     // Рядок — в один рядок і з пробілами між частинами: «Глечик ×21 · Трипільська · ★★★ дзвінкий», а не «×21Трипільська».
     return '<div class="clkw-item clkg-irow q' + it.q + '">'
       + api.wareSvg(it.ware, { style: it.style, quality: it.q, cls: 'clkw-mid', slot: 'gp-' + i })
       + '<div class="clkw-itxt"><b>' + esc(wareName(st, it.ware)) + ' <span class="clkw-n">×' + it.n + '</span></b> '
-      + '<span class="muted small">· <span class="clkw-q">' + STARS[it.q] + ' ' + QUALITY[it.q] + '</span> · ' + esc(styleName(st, it.style)) + '</span></div>'
+      + (tag ? ' ' + tag : '') + ' <span class="muted small">· <span class="clkw-q">' + STARS[it.q] + ' ' + QUALITY[it.q] + '</span> · ' + esc(styleName(st, it.style)) + '</span></div>'
       + '<div class="clkw-btns">' + buttons + '</div></div>';
   }
 
@@ -1045,14 +1067,13 @@
         + (st.mine && (a.n > 0 || a.keep > 0)
           ? '<div class="clkg-btns clkg-allrow">' + giveAllBtn(st, api, v, 'primary')
             + (a.keep > 0 ? giveAllBtn(st, api, v, 'ghost', false)
-              + '<span class="muted small">' + api.count(a.keep) + ' ' + api.plural(a.keep, 'виріб', 'вироби', 'виробів')
-              + ' відкладено під замовлення гостей і сіл та майстерштук</span>' : '')
+              + '<span class="muted small">🔒 ' + api.count(a.keep) + ' ' + api.plural(a.keep, 'виріб', 'вироби', 'виробів')
+              + ' лишаться: ' + esc(keptWhy(st, api)) + '</span>' : '')
             + '</div>'
           : '');
       rows = items.map((it, i) => itemRow(st, api, it, i,
-        '<button type="button" class="ghost small" data-give="' + esc(it.key) + '" data-n="1">+1</button>'
-        + (it.n >= 5 ? '<button type="button" class="ghost small" data-give="' + esc(it.key) + '" data-n="5">+5</button>' : '')
-        + (it.n > 1 ? '<button type="button" class="ghost small" data-give="' + esc(it.key) + '" data-n="' + it.n + '">усі ' + it.n + '</button>' : ''))).join('');
+        giveBtn(st, api, it, 1, '+1') + (it.n >= 5 ? giveBtn(st, api, it, 5, '+5') : '') + (it.n > 1 ? giveBtn(st, api, it, it.n, 'усі ' + it.n) : ''),
+        keptOf(it) ? '<span class="clkg-kept" title="' + esc(keptWhy(st, api, [it])) + '">🔒 ' + keptOf(it) + '</span>' : '')).join('');
     } else if (mode === 'brag') {
       const wait = (Date.parse(v.bragAt) || 0) - api.serverNow(st);
       head = '<div class="clk-sub">🏺 Похвалитись у Журнал</div><p class="muted small clk-note">Усе село прочитає, чим ти пишаєшся. '
@@ -1075,6 +1096,15 @@
     for (const b of body.querySelectorAll('[data-give]')) {
       b.onclick = (e) => {
         if (!human(e)) return;
+        const id = 'give:' + b.dataset.give + ':' + b.dataset.n;
+        if (b.dataset.risk && !armedFor(st, id)) {
+          st.guildArm = { id, at: Date.now() };
+          api.sfx('tap');
+          renderPicker(st, api);
+          setTimeout(() => { if (st.guildArm && st.guildArm.id === id) { st.guildArm = null; renderPicker(st, api); } }, CONFIRM_MS + 50);
+          return;
+        }
+        st.guildArm = null;
         act(st, api, { op: 'give', key: b.dataset.give, n: +b.dataset.n }, 'wagon').then((r) => { if (r && r.ok) st.guildRoll = Date.now(); });
       };
     }
@@ -1331,6 +1361,13 @@
     // Одна-дві кнопки — не рядок переходів, а шум: новачкові з одним возом він ні до чого.
     nav.hidden = keys.length < 3;
     nav.innerHTML = keys.map((k) => { const n = NAV.find((x) => x.k === k); return '<button type="button" class="ghost small" data-nav="' + k + '">' + n.t + '</button>'; }).join('');
+    navMore(st);
+  }
+
+  /// Праворуч за краєм ще є кнопки — край тьмяніє (телефон: рядок гортається вбік). На ПК рядок переноситься.
+  function navMore(st) {
+    const nav = st.guildNav;
+    if (nav) nav.classList.toggle('more', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4);
   }
 
   /// На телефоні сторінку гортає сайт, і вгорі вже липнуть шапка сайту й плашка кола з рядом вкладок — рядок «Села»
@@ -1416,6 +1453,7 @@
       st.guildNav.hidden = true;
       st.guildNav.setAttribute('aria-label', 'Розділи «Села»');
       st.guildNav.addEventListener('click', (e) => { const b = e.target.closest('[data-nav]'); if (b) navGo(st, api, b.dataset.nav); });
+      st.guildNav.addEventListener('scroll', () => navMore(st), { passive: true });
       st.guildPane.appendChild(st.guildNav);
       st.guildIntro = document.createElement('div');
       st.guildIntro.className = 'clkg-card clkg-intro';
@@ -1485,6 +1523,7 @@
       if (st.tab !== 'guild') return;
       paintNav(st, api);
       navStick(st);
+      navMore(st);
       if (!st.guild || !st.guild.enabled) return;
       gotNote(st, api);
       loadRoster(st, api, false);

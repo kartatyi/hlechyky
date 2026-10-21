@@ -490,11 +490,12 @@
     const line = '<b>' + (o.lord ? '🎩 ' : '') + esc(who) + '</b>' + (v ? ' ' + esc(v.from) : '')
       + ' хоче <b>' + esc(wareName(st, o.ware).toLowerCase()) + ' ×' + o.n + '</b>'
       + (req.length ? ' <span class="clkf-oreq2">(' + req.join(' · ') + ')</span>' : '')
-      + ' · ≈' + api.potsShort(o.pay) + ' і шана'
+      // ×N — множник плати, тож стоїть біля ціни; шана — своїм числом (QA-2: «і шана ×5,3» читалось як множник шани).
+      + ' · ≈' + api.potsShort(o.pay)
       // Множник — головна відповідь на «а що мені з тієї шани»: у ньому вже і зірки села, і базарний день.
       + ' <span class="clkf-omult" title="Стільки замовник платить понад базарну ціну: базові ×2…×4, плюс 0,1 за'
       + ' кожну зірку шани села (панові — 0,2), Косів доплачує за розпис, базарний день — ще ×1,5.">×'
-      + api.dec(o.mult) + '</span>';
+      + api.dec(o.mult) + '</span>' + (o.rep ? ' · шана +' + o.rep : ' · і шана');
     return '<div class="clkf-order' + (o.lord ? ' lord' : '') + (ready ? ' ready' : '') + (o.sour ? ' sour' : '') + '" data-order="' + o.id + '">'
       + '<div class="clkf-oart">' + api.wareSvg(o.ware, { style: o.style, quality: o.q, cls: 'clkf-oware', slot: 'ord-' + o.id })
       + '<span class="clkf-on">×' + o.n + '</span></div>'
