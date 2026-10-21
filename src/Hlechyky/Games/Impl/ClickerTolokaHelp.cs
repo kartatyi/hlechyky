@@ -190,7 +190,7 @@ public sealed partial class Clicker
         // Хвилина гостинця — чверть хвилини гри (TreatGain), тож хвилини гри множимо на FairPlayQuarter.
         var gain = r.Treat > 0 ? TreatGain(TolokaTreatPlay * FairPlayQuarter * r.Treat) : 0;
         Add(gain);
-        var head = $"🤝 {r.N} × {WareOf(it.Ware)!.Name.ToLowerInvariant()} — на толоку до {to} («{r.Stage}»). ";
+        var head = $"🤝 {r.N} × {WareOf(it.Ware)!.Name.ToLowerInvariant()} — на толоку до {NickGen(to)} («{r.Stage}»). ";
         return ActResult.Accept(head + (r.Treat >= r.N ? $"Гостинець толоки: +{PotsShort(gain)}"
             : r.Treat > 0 ? $"Гостинець толоки за {r.Treat}: +{PotsShort(gain)} — на цей етап більше без гостинця"
             : $"Гостинець за цей етап уже взято ({TolokaTreatCap} виробів) — далі поміч без гостинця"));

@@ -368,15 +368,23 @@ public sealed partial class Clicker
         }
     }
 
+    /// <summary>
+    /// Що ліпити: <c>{ ware, style }</c>. <c>style</c> — з картки альбому (v12, QA-2): «Ліпити» з порожньої клітинки
+    /// «полумисок · Косів» казало лише «На колі тепер полумисок», і розпис, заради якого натиснули, губився.
+    /// </summary>
     ActResult Form(JsonElement payload)
     {
         var key = Str(payload, "ware");
         if (WareOf(key) is not { } w) return ActResult.Fail("Такого виробу гончарі не ліплять");
         if (!WareOpen(key)) return ActResult.Fail($"{w.Name} відкриється на {PotsShort(w.Unlock)} за весь час");
-        if (_formWare == key) return ActResult.Done;
+        var style = Str(payload, "style");
+        var note = style.Length > 0 && Styles.FirstOrDefault(x => x.Key == style) is { } sd
+            ? $" — для альбому обпали з розписом «{sd.Name}»" + (_styles.Contains(style) ? "" : " (його ще треба відкрити)")
+            : "";
+        if (_formWare == key) return note.Length > 0 ? ActResult.Accept($"🏺 {w.Name} уже на колі{note}") : ActResult.Done;
         _formWare = key;
         _formWork = Math.Min(_formWork, WorkOf(w));
-        return ActResult.Accept($"🏺 На колі тепер {w.Name.ToLowerInvariant()}");
+        return ActResult.Accept($"🏺 На колі тепер {w.Name.ToLowerInvariant()}{note}");
     }
 
     /// <summary>Базар: продати вироби з комори за глеки. <c>{ key, n }</c> або <c>{ all: true, q? }</c>.</summary>
@@ -403,8 +411,7 @@ public sealed partial class Clicker
     ActResult BazaarAll(JsonElement payload)
     {
         var q = (int)Math.Clamp(Num(payload, "q") ?? QualityMax, 1, QualityMax);
-        var keep = !(payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("keep", out var k) && k.ValueKind == JsonValueKind.False);
-        var kept = keep ? LadKept(Ctx.Clock.UtcNow) : new Dictionary<string, int>(StringComparer.Ordinal);
+        var kept = KeepFlag(payload) ? LadKept(Ctx.Clock.UtcNow) : new Dictionary<string, int>(StringComparer.Ordinal);
         var sold = 0;
         var held = 0;
         double sum = 0;
