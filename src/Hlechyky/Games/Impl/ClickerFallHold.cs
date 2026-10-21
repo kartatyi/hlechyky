@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
@@ -24,6 +26,19 @@ public sealed partial class Clicker
 
     /// <summary>До коли висить вікно підсумку (лише в пам'яті); <c>default</c> — не висить.</summary>
     DateTimeOffset _resultUntil;
+    /// <summary>До коли висить інше вікно, що закриває сцену (новини, церемонія монети, «Поки тебе не було»).</summary>
+    DateTimeOffset _modalUntil;
+
+    /// <summary>
+    /// <c>hold { on }</c> (QA-4): клієнт відкрив (<c>on: true</c>) чи закрив вікно, що закриває сцену, — «Що нового»,
+    /// церемонію монети, «Поки тебе не було». Глеки під ним розбивались (фартух, серія 1 430). Поки висить — глеки
+    /// чекають, як під вікном підсумку, з тією самою стелею <see cref="ResultCap"/>; підсумку горна це не чіпає.
+    /// </summary>
+    ActResult HoldAct(JsonElement payload, DateTimeOffset now)
+    {
+        _modalUntil = Flag(payload, "on") ? now + ResultCap : default;
+        return ActResult.Done;
+    }
 
     /// <summary>Показали вікно підсумку (горно відкрили вручну, розпис ліг): глеки чекають його закриття.</summary>
     void ResultShown(DateTimeOffset now) => _resultUntil = now + ResultCap;
@@ -67,8 +82,9 @@ public sealed partial class Clicker
             var end = _paintAt + (PatternLife < MinigameCap ? PatternLife : MinigameCap);
             if (now < end && end > until) until = end;
         }
-        // Вікно підсумку: гончар читає, що вийшло, а не дивиться на сцену.
+        // Вікно підсумку чи інше вікно поверх сцени: гончар читає, а не дивиться на сцену.
         if (_resultUntil != default && now < _resultUntil && _resultUntil > until) until = _resultUntil;
+        if (_modalUntil != default && now < _modalUntil && _modalUntil > until) until = _modalUntil;
         return until;
     }
 
@@ -88,10 +104,12 @@ public sealed partial class Clicker
                 if (_fallPlanned == default) _fallPlanned = _fall.At;
                 _fall = _fall with { At = t, Until = t + (_fall.Until - _fall.At) };
             }
-            if (now < _golden.At - EarlyGrace && _golden.At < t)
+            // Обидва чекають — розписний і на стелі не разом із глеком з полиці (QA-4: після 30 с вікна летіли в одну мить).
+            var tg = _fallPlanned != default ? t + HeldStagger : t;
+            if (now < _golden.At - EarlyGrace && _golden.At < tg)
             {
                 if (_goldenPlanned == default) _goldenPlanned = _golden.At;
-                _golden = _golden with { At = t, Until = t + (_golden.Until - _golden.At) };
+                _golden = _golden with { At = tg, Until = tg + (_golden.Until - _golden.At) };
             }
             return;
         }

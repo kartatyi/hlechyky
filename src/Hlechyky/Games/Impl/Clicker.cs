@@ -1144,6 +1144,7 @@ public sealed partial class Clicker : Game
             "take" => Take(payload),
             // Ремесло: що ліпити на колі й продаж виробів на базарі (ClickerCraft.cs).
             "form" => Form(payload),
+            "hold" => HoldAct(payload, Ctx.Clock.UtcNow),
             "bazaar" => Bazaar(payload),
             "craft" => ActCraft(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.

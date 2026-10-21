@@ -78,7 +78,7 @@ public class ClickerFallHoldTests
         // Розпис іще не здано — глеки чекають до стелі мінігри й ще півтори секунди.
         Near(t0 + Clicker.MinigameCap + Clicker.MinigameAfter, FallAt(h));
         Assert.Equal(shown, FallUntil(h) - FallAt(h));          // летить стільки ж, скільки й мав
-        Near(t0 + Clicker.MinigameCap + Clicker.MinigameAfter, GoldenAt(h));
+        Near(t0 + Clicker.MinigameCap + Clicker.MinigameAfter + Clicker.HeldStagger, GoldenAt(h));   // і не разом (QA-4)
 
         // Розпис скінчився (обрали розпис без техніки): обидва вертаються — глек за півтори секунди, бо його час минув,
         // а розписний — до свого часу, що ще не настав, але не ближче за HeldStagger до глека з полиці (v12, QA-2).
@@ -264,5 +264,32 @@ public class ClickerFallHoldTests
         h.Clock.Advance(past);
         Assert.False(Act(h, "grab").Ok);
         Assert.Equal(0, Streak(h));
+    }
+
+    [Fact]
+    public void Held_jugs_stay_apart_even_when_the_window_cap_releases_them()
+    {
+        var h = Wheel();
+        DryRack(h, 3);
+        FallIn(h, 5);
+        GoldenIn(h, 6);
+        Assert.True(K(h, new { op = "light" }).Ok);
+        h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.3));
+        Assert.True(K(h, new { op = "open", t = new[] { new[] { 0, 0 } }, own = true }).Ok);
+        // Вікно ніхто не закриє — стеля відпустить обох без жодної дії, тож рознести їх треба ще під час утримання (QA-4).
+        Assert.True(GoldenAt(h) >= FallAt(h) + Clicker.HeldStagger - TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public void A_window_over_the_scene_holds_the_jugs_until_it_closes()
+    {
+        var h = Wheel();
+        FallIn(h, 3);
+        // «Що нового», церемонія монети, «Поки тебе не було» — сцену закрито: глек чекає (QA-4).
+        Assert.True(Act(h, "hold", new { on = true }).Ok);
+        Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.ResultCap);
+        h.Clock.Advance(4);
+        Assert.True(Act(h, "hold", new { on = false }).Ok);
+        Near(h.Clock.UtcNow + Clicker.MinigameAfter, FallAt(h));
     }
 }
