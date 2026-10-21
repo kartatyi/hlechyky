@@ -114,6 +114,7 @@ public class ClickerTradeTests
         var r = Load(h, first.GetProperty("id").GetInt32());
         Assert.True(r.Ok, r.Message);
         Assert.Contains("відкрито", r.Message);
+        Assert.EndsWith("перший рівень уже по кишені", r.Message);
         Assert.DoesNotContain(Ships(h), s => s.GetProperty("first").GetBoolean());
         Assert.True(Slava(h) >= Clicker.SlavaGate["athens"]);
         Assert.Equal(10, Item(h, "jug||2"));          // звичайні (Q1) кораблеві не годяться
@@ -124,6 +125,20 @@ public class ClickerTradeTests
         Assert.True(h.Act(0, "look").Ok);
         Assert.Contains(h.Awards, a => a.Reason == "ach:potter-ship-first");
         Assert.Contains(h.Awards, a => a.Reason == "ach:potter-overseas-first");
+    }
+
+    [Fact]
+    public void Who_opens_a_workshop_far_from_its_price_is_told_so_honestly()
+    {
+        var h = Wheel();
+        Pier(h, pots: 1e28);
+        Patch(h, s => s["total"] = 1e40);                 // Пристань збудована, а на руках — далеко до 6e34
+        Items(h, ("jug||2", 30));
+        var r = Load(h, Assert.Single(Ships(h)).GetProperty("id").GetInt32());
+        Assert.True(r.Ok, r.Message);
+        // Слово користувача 21.10: не обнадіювати даремно — ціна й «грошима ще доганяти», без вигаданого строку.
+        Assert.Contains("відкрито «", r.Message);
+        Assert.Contains("Слава вже відчинила, а грошима ще доганяти", r.Message);
     }
 
     [Fact]

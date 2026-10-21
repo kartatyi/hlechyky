@@ -351,8 +351,26 @@ public sealed partial class Clicker
         _viewVersion++;
         var opened = OverseasTiers.FirstOrDefault(k => _slava >= SlavaGate[k] && _slava - slava - Math.Max(0, bonusSlava) < SlavaGate[k]);
         var text = $"⛵ Корабель з {PortOf(s.Port).From} повний і відплив: +{PotsShort(pay + bonusPay)} · Слава +{Count(slava + Math.Max(0, bonusSlava))}";
-        if (opened is not null) text += $" · 🌍 відкрито «{Shop.First(u => u.Key == opened).Name}» у Майстерні";
+        if (opened is not null) text += $" · 🌍 відкрито «{Shop.First(u => u.Key == opened).Name}» у Майстерні" + OpenedPrice(opened);
         return ActResult.Accept(text);
+    }
+
+    /// <summary>
+    /// Чесно про ціну щойно відчиненої майстерні (слово користувача 21.10): хто збудував Пристань пізно (~1e28 на руках),
+    /// відчиняє Афіни Славою з першим кораблем, а перший рівень — 6e34. Близько (до 10 год гри за нинішньою хвилиною
+    /// гри) — скільки чекати; далеко — без вигаданого строку: дохід росте разом із Майстернею, і лінійна оцінка
+    /// показала б роки там, де насправді місяці.
+    /// </summary>
+    string OpenedPrice(string key)
+    {
+        var price = Shop.First(u => u.Key == key).Price(Level(key));
+        var need = price - _pots;
+        if (need <= 0) return " — перший рівень уже по кишені";
+        var perMinute = PlayPay(1);
+        var minutes = perMinute > 0 ? need / perMinute : double.PositiveInfinity;
+        return minutes <= 600
+            ? $" — перший рівень за {PotsShort(price)} (≈ {Hours(TimeSpan.FromMinutes(Math.Ceiling(minutes)))} гри)"
+            : $" — перший рівень за {PotsShort(price)}: Слава вже відчинила, а грошима ще доганяти (у тебе {PotsShort(_pots)})";
     }
 
     /// <summary>«Треба розкішних — їх дає лише розписна партія» / «Нема вільних …: усе, що є, відкладене під …».</summary>
