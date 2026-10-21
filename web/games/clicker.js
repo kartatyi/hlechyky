@@ -1746,13 +1746,13 @@
     const off = !st.mine || gain < 1 || tiny;
     if (f._btn.disabled !== off) f._btn.disabled = off;
     f._btn.classList.toggle('armed', !!armed);
-    swap(f._after, gain < 1 ? '' : afterFire(st, add, sci));
     // Купці в дорозі згорять — порада видна й до першого натиску, а не лише в переліку «Точно?» (v12 §2.2).
     const wait = !armed && gain >= 1 && !tiny && st.taken && st.taken.length
       ? '<div class="clk-loss-tip">🐴 У дорозі ' + st.taken.length + ' ' + plural(st.taken.length, 'купець', 'купці', 'купців')
         + ' — обпал їх спалить. Порада: спершу дочекайся купців' + (st.fireMarks === false ? ' і докупи віхи (вони лишаться)' : '') + '.</div>'
       : '';
-    if (f._loss) swap(f._loss, armed ? fireLoss(st) : wait);
+    swap(f._after, gain < 1 ? '' : afterFire(st, add, sci) + wait);
+    if (f._loss) swap(f._loss, armed ? fireLoss(st) : '');
   }
 
   /// Друге підтвердження обпалу: що саме згорить і що лишиться (хотфікс B4, 21.10.2026). Раніше кнопка казала лише
@@ -2407,7 +2407,8 @@
         b.onclick = () => buyClick(st, b);
       }
       const of = st.shop.querySelector('.clk-old');
-      if (of) of.addEventListener('toggle', () => { storeSet('clk.old', of.open ? '1' : ''); st.slowAt = 0; });
+      // Пам'ятаємо лише вибір гравця: згортку, яку розгорнув перехід до ★ (goBest), наступного разу не розгортаємо.
+      if (of) of.addEventListener('toggle', () => { if (st.oldAuto) st.oldAuto = false; else storeSet('clk.old', of.open ? '1' : ''); st.slowAt = 0; });
     }
 
     // Віхи верстатів, яких у списку нема (щабель ще не відкрито у виді), — як і раніше, окремо згори. Буває рідко.
@@ -2505,7 +2506,7 @@
     if (!el || !el.isConnected) return;
     H.api.sfx('tap');
     for (let d = el.parentElement; d && d !== st.el; d = d.parentElement) {
-      if (d.tagName === 'DETAILS' && !d.open) d.open = true;
+      if (d.tagName === 'DETAILS' && !d.open) { if (d.classList.contains('clk-old')) st.oldAuto = true; d.open = true; }
       if (d.dataset && d.dataset.fold && isFolded(d)) toggleFold(st, d);
     }
     lookAt(st, el);
@@ -3643,7 +3644,7 @@
   /// Вузьке (< 900) чи низьке (< 700) вікно — стіл як був: одна прокрутка сторінки.
   function fitTable(st) {
     const card = cardOf(st);
-    if (!st.el || !card || card.hidden || !card.isConnected) { setZoom(st, 1); return; }
+    if (!st.el || !card || card.hidden || !card.isConnected) { setZoom(st, 1); toastSpot(st, false); return; }
     // Спершу дешеві перевірки (без перерахунку розкладки): телефон сюди потрапляє на кожну зміну висоти сторінки.
     let fit = window.innerWidth >= FIT_W && window.innerHeight >= FIT_H;
     if (fit) {
@@ -4330,8 +4331,10 @@
         spin(st, down, e.timeStamp - down, -1, -1, SRC.key);
       };
       document.addEventListener('keyup', st.onKeyUp);
-      st.one.onclick = () => order(st, 'sell', { pots: st.rateOf });
-      st.all.onclick = () => order(st, 'sell', { pots: +st.all.dataset.pots });
+      // Обмін — тихим викликом (v12 §2.7): черепки й так приходять тостом гаманця «Лови +40 черепків», а тост відповіді
+      // казав те саме вдруге.
+      st.one.onclick = () => buyOrder(st, 'sell', { pots: st.rateOf }, () => {});
+      st.all.onclick = () => buyOrder(st, 'sell', { pots: +st.all.dataset.pots }, () => {});
       st.fire._btn.onclick = () => fire(st);
       for (const b of st.tabs.querySelectorAll('[data-tab]')) b.onclick = () => { H.api.sfx('tap'); setTab(st, b.dataset.tab); };
       for (const b of st.modes.querySelectorAll('[data-mode]')) b.onclick = () => setMode(st, b.dataset.mode);
