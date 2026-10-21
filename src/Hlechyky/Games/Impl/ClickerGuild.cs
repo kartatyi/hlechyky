@@ -457,7 +457,7 @@ public sealed partial class Clicker
         // v12 (плейтест 21.10): і Толока — поточний і наступний етап, як і лад; раніше «Усе на віз» мовчки забирало
         // 80 / 80 / 60 етапу, на який усе вже було зібрано.
         if (keep)
-            foreach (var (match, need) in LadHolds(now))
+            foreach (var (_, match, need) in LadHolds(now))
             {
                 var want = need;
                 foreach (var it in left.Keys.Where(match).OrderBy(x => x.Quality).ThenBy(x => x.Ware, StringComparer.Ordinal)
@@ -476,16 +476,17 @@ public sealed partial class Clicker
         return (give, kept);
     }
 
-    /// <summary>Чого чекають: відкриті замовлення гостей і сіл (виріб, розпис, якість — як при здачі) і майстерштук.</summary>
-    IEnumerable<(Func<ItemInfo, bool> Match, int Need)> WagonHolds(DateTimeOffset now, TakeFor? who = null)
+    /// <summary>Чого чекають: відкриті замовлення гостей і сіл (виріб, розпис, якість — як при здачі) і майстерштук.
+    /// Why — чия вимога (<see cref="HoldOrder"/>, <see cref="HoldPiece"/>): комора підписує відкладене 🔒 (v12, D1).</summary>
+    IEnumerable<(int Why, Func<ItemInfo, bool> Match, int Need)> WagonHolds(DateTimeOffset now, TakeFor? who = null)
     {
         // who — хто бере з комори просто зараз (TakePlan): своя ж вимога під нього не тримає.
-        foreach (var o in _gOrders) if (o.Until > now && who != new TakeFor("guest", o.Id)) yield return (GuestMatch(o), o.Count);
-        foreach (var o in _mktOrders) if (o.Until > now && who != new TakeFor("mkt", o.Id)) yield return (MktMatch(o), o.Count);
+        foreach (var o in _gOrders) if (o.Until > now && who != new TakeFor("guest", o.Id)) yield return (HoldOrder, GuestMatch(o), o.Count);
+        foreach (var o in _mktOrders) if (o.Until > now && who != new TakeFor("mkt", o.Id)) yield return (HoldOrder, MktMatch(o), o.Count);
         if (_guildRank < GuildRanks.Length - 1 && who?.Kind != "piece")
         {
             var piece = PieceFor(_guildRank + 1);
-            yield return (x => PieceMatch(x, piece), 1);
+            yield return (HoldPiece, x => PieceMatch(x, piece), 1);
         }
     }
 

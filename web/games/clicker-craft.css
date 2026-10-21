@@ -115,7 +115,15 @@
 .clkw-card {
   display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; text-align: center;
   border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
+  /* Кнопка не переносить текст сама — і «робота 16 · ~140 987 золотих» вилазило за картку (B13, 1366 і 390). */
+  min-width: 0; white-space: normal;
 }
+.clkw-card > * { max-width: 100%; overflow-wrap: break-word; }
+/* «ліпити» / «на колі» — у потоці картки: загальне .clk-price стоїть absolute і в картці без position збиралось у кутку
+   вікна (усі п'ятнадцять — в одному місці). */
+.clkw-card .clk-price { position: static; margin-top: 2px; }
+/* Скільки цього виробу ще просить Толока (v12). */
+.clkw-tol { padding: 1px 7px; border-radius: 9px; background: rgba(244, 197, 66, .14); color: var(--accent2); font-weight: 600; }
 .clkw-card.on { border-color: var(--accent2); }
 .clkw-card.locked { opacity: .55; }
 .clkw-card.locked svg { filter: grayscale(1) brightness(.5); }
@@ -146,6 +154,12 @@
 .clkw-mini { width: 30px; height: 32px; }
 .clkw-n { color: var(--muted); font-weight: 500; }
 .clkw-q { color: var(--accent2); }
+/* Відкладене (v12): що чекають Толока, замовлення й майстерштук. */
+.clkw-kept { color: var(--accent2); white-space: nowrap; }
+.clkw-keptline { color: var(--muted); line-height: 1.3; }
+.clkw-keptline.armed { color: var(--accent2); font-weight: 600; }
+/* Сушарня — окремим місцем над замовленнями; порожня — без зайвого проміжку. */
+.clkc-slot:has(> .clkw-rackbox:empty) { display: none; }
 .clkw-btns { display: flex; gap: 4px; flex: none; }
 .clkw-btns button { padding: 2px 8px; }
 /* ---- прокачка ремесла: сушарня, горно, комора, вітряна сушарня, палій ---- */
