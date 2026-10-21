@@ -2017,8 +2017,8 @@
       seen();
       const cnt = [0, 0, 0, 0, 0];
       for (const it of l.items) cnt[it[1]]++;
+      // seen тут не шлемо: тост — не вікно, а на іншому пристрої цей самий підсумок, може, саме читають (QA-4).
       api.toast(st, '🔥 Підмайстер відкрив горно: ' + summary(cnt) + ' — у коморі', 'ok');
-      sendSeen(st, api);
       api.sparks(st, st.fx, 8, true, 88, 70);
       return;
     }
@@ -2052,7 +2052,12 @@
       + (l.sold ? '<div class="small muted">комора повна — ' + (l.freed ? api.esc(st, l.freed) + '; ' : '') + 'на базар: +' + api.potsShort(l.sold) + '</div>' : '')
       + (!l.helper && l.items.length >= 4 && cnt[3] + cnt[4] === l.items.length ? '<div class="clkk-perfect">🔔 Усе горно дзвінке!</div>' : '')
       + '<button type="button" class="primary clkk-tostore">🧺 В комору</button></div>'
-      + '</div>', { cls: 'clkk-ov clkk-revov', onClose: replay ? null : () => sendSeen(st, api) });
+      + '</div>', {
+      cls: 'clkk-ov clkk-revov',
+      onClose: replay ? null : () => { const was = st.kRevealAt; st.kRevealAt = 0; if (was) sendSeen(st, api); },
+    });
+    // Який підсумок на очах: закриють його на іншому пристрої (last.seen) — тут вікно зачиниться саме (update).
+    if (!replay) st.kRevealAt = Date.parse(l.at);
     // Палець, що ще тиснув «Поліно», у першу мить після появи вікна лягав на тло — і вікно зачинялось непрочитаним
     // (QA-3). Пів секунди тапи по тлу не зачиняють вікна.
     const shade = st.ov && st.ov.el;
@@ -2110,6 +2115,11 @@
       const k = v.kiln;
       if (!k || !st.kUi) return;
       st.kView = k;
+      // Той самий підсумок горна закрили на іншому пристрої (last.seen, QA-4) — тут вікно зачиняється саме, без seen.
+      if (st.kRevealAt && k.last && k.last.seen && Date.parse(k.last.at) === st.kRevealAt) {
+        st.kRevealAt = 0;
+        if (api.overlayOpen(st) && st.ov.el.classList.contains('clkk-revov')) api.closeOverlay(st);
+      }
       if (k.state === 'burning' && !k.helper && k.seed) burnBegin(st, api, k);
       else if (st.kb) burnEnd(st);
       if (st.kb) st.kb.done = false;

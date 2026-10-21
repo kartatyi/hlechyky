@@ -60,7 +60,11 @@
    Порожній рядок (поки Око майстра питає) місце теж тримає; !important — бо style.css ховає [hidden] з !important. */
 .clkc-next {
   --nx-btn: 30px;
-  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; grid-template-rows: minmax(0, 1fr) var(--nx-btn);
+  /* Кнопки — minmax(0, max-content): дві довгі («🔥 Обпалити» + «🚢 Корабель з Афін») не розпирають плашку ширше за
+     стовпчик (QA-4: 372 px у 322 на 1366, на телефоні картка ширшала на 10 px і коло «дихало» 168↔174), а стискаються
+     з «…» — повна назва в підказці. */
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content);
+  grid-template-rows: minmax(0, 1fr) var(--nx-btn); width: 100%; min-width: 0;
   column-gap: 8px; row-gap: 4px; align-items: center; position: relative;
   padding: 6px 10px 8px; border-radius: 12px; overflow: hidden;
   background: linear-gradient(100deg, rgba(217, 169, 47, .16), var(--panel) 60%); border: 1px solid rgba(217, 169, 47, .35);
@@ -78,12 +82,26 @@
 .clk-nxsub::before { content: ' · '; }
 .clk-nxsub[hidden] { display: none; }
 .clkc-next.tip .clk-nxtext { color: var(--accent2); font-weight: 600; cursor: pointer; }
-.clk-nxbtn { grid-row: 2; grid-column: 3; height: var(--nx-btn); min-height: 0; white-space: nowrap; padding: 0 12px; }
+.clk-nxbtn {
+  grid-row: 2; grid-column: 3; height: var(--nx-btn); min-height: 0; min-width: 0; max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px;
+}
 .clk-nxbtn2 { grid-column: 4; }
+/* Дві кнопки — вужчі відступи: «🔥 Обпалити» поруч із «🚢 Корабель з Афін» влазять у 322 px без «…». */
+.clkc-next.two { column-gap: 6px; }
+.clkc-next.two .clk-nxbtn { padding: 0 8px; }
 .clk-nxbtn[hidden] { display: none; }
 .clk-nxbtn.armed { background: var(--bad, #b5453a); color: #fff; }
-/* Дотиковий екран: кнопки ≥ 40 px (той самий ряд, лише вищий). */
-@media (pointer: coarse) { .clkc-next { --nx-btn: 40px; } }
+/* Дотиковий екран: кнопки ≥ 40 px (той самий ряд, лише вищий); ⓘ на плитках кроків — теж 40×40, а не 26. */
+@media (pointer: coarse) {
+  .clkc-next { --nx-btn: 40px; }
+  .clk .clk-sti { min-width: 40px; min-height: 40px; top: -6px; right: -6px; }
+}
+/* Телефон (QA-4): з верху сторінки кнопки «Далі» (y 771–812) лягали під нижнє меню сайту (з 786) — тап відкривав
+   «Хто скільки». Тож «Далі» — одразу під сценою, біля пальця, а плитки кроків — під ним. */
+@media (max-width: 560px) {
+  .clk:not(.fit):not(.land) .clk-path > .clkc-next { order: -1; }
+}
 .clk-nxbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .06); }
 .clk-nxbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .6s ease-out; }
 .clk-path.full .clkc-next { border-color: var(--accent); }

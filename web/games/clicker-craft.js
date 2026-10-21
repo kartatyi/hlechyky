@@ -746,16 +746,24 @@
     if (!el) return;
     api.showTab(st, CRAFT_TAB);
     if (api.unfold) api.unfold(st, el);
-    // Рядок шукаємо вже після розгортання (згортка перемальовує секцію) — інакше докручували до старого вузла.
-    requestAnimationFrame(() => {
+    // Рядок шукаємо вже після розгортання: згортка перемальовує секцію, і вона ще росте, поки рядки оживають (QA-4:
+    // зі згорнутої секції «Горно» лишалось під краєм, y 762 при видимих 701). Тож дивимось двічі — одразу й коли
+    // розкладка вляглась, і вдруге гортаємо, лише якщо рядок і досі не на екрані.
+    const show = (again) => {
       if (!st.upsBody) return;
       const row = (UP_OF[step] && st.upsBody.querySelector('[data-upkey="' + UP_OF[step] + '"]')) || st.upsBody;
+      if (again) {
+        const r = row.getBoundingClientRect();
+        if (r.top >= 60 && r.bottom <= window.innerHeight - 70) return;
+      }
       if (api.lookAt) { api.lookAt(st, row); return; }
-      row.scrollIntoView({ block: 'nearest', behavior: smoothOk() ? 'smooth' : 'auto' });
+      row.scrollIntoView({ block: 'center', behavior: smoothOk() ? 'smooth' : 'auto' });
       row.classList.remove('flash');
       void row.offsetWidth;
       row.classList.add('flash');
-    });
+    };
+    requestAnimationFrame(() => show(false));
+    setTimeout(() => show(true), 700);
   }
 
   function paintNext(st, api) {
