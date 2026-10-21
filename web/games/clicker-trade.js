@@ -52,9 +52,10 @@
   const worldStyle = (st, key) => !!key && ((st.shopCat && st.shopCat.gates && key in st.shopCat.gates) || gates(st).some((g) => g.key === key));
   const hueOf = (port) => (port in HUE ? HUE[port] : [...String(port)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7));
 
-  /// «7 год 12 хв», «12 хв», «0:40» — скільки ще стоїть корабель і коли прийде наступний.
+  /// «~7 днів», «7 год 12 хв», «12 хв», «0:40» — скільки ще стоїть корабель і коли прийде наступний (перший стоїть тиждень).
   function left(api, msLeft) {
     if (msLeft <= 0) return '0:00';
+    if (msLeft > 48 * 3600e3) { const d = Math.round(msLeft / 86400e3); return '~' + d + ' ' + api.plural(d, 'день', 'дні', 'днів'); }
     const m = Math.ceil(msLeft / 60000);
     if (m > 60) { const h = Math.floor(m / 60); return h + ' год' + (m % 60 ? ' ' + (m % 60) + ' хв' : ''); }
     return msLeft >= 60000 ? m + ' хв' : api.mmss(msLeft);
@@ -75,14 +76,9 @@
     return 'У коморі нема: ' + what + (s.style ? ' «' + styleName(st, s.style) + '»' : '') + ', ' + (s.q >= 3 ? 'дзвінкі й кращі' : 'добрі й кращі');
   }
 
-  const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
-
-  /// Звідки якість, якої просить корабель: ліпленням її не обереш — вона від горна (як підказка «Ліпити» в Толоці).
-  function qHint(api, q) {
-    if (q >= 4) return selfFire(api) ? 'розкішні — лише з розписаної партії' : 'розкішні — лише якщо палиш сам';
-    if (q === 3 && !selfFire(api)) return 'дзвінкі — лише якщо палиш сам';
-    return '';
-  }
+  /// Звідки якість, якої просить корабель: ліпленням її не обереш — вона від горна. Дзвінкі дає й підмайстер (QA-4),
+  /// а розкішні — лише розписана партія з рук.
+  const qHint = (api, q) => (q >= 4 ? 'розкішні — лише з розписаної партії, яку палиш сам' : '');
 
   /// Скільки з цієї штуки в коморі вільне (вид комори v12: kept = [толока, замовлення, майстерштук]) — корабель бере лише його.
   const freeOf = (it) => Math.max(0, it.n - (it.kept ? (it.kept[0] || 0) + (it.kept[1] || 0) + (it.kept[2] || 0) : 0));
@@ -218,16 +214,12 @@
     return '<button type="button" class="ghost small clkt-form" data-form="' + esc(s.ware) + '" data-fstyle="' + esc(sty ? s.style : '') + '">' + esc(label) + '</button>';
   }
 
-  /// Виріб на коло, а коли замовлення просить розпис — і розпис (без нього корабель такого не прийме).
+  /// Виріб на коло, а коли замовлення просить розпис — і розпис (без нього корабель такого не прийме). Розпис іде й у
+  /// form: тоді тост сервера каже «— з розписом «…»» (QA-4), а wear лише мовчки ставить його на коло.
   function formIt(st, api, ware, style) {
-    const was = !!st.craft && st.craft.ware === ware;
     api.sfx('tap');
-    (was ? Promise.resolve({ ok: true }) : api.act(st, 'form', { ware })).then((r) => {
-      if (!r || !r.ok || !style || st.wear === style) return;
-      api.act(st, 'wear', { key: style }).then((x) => {
-        // wear мовчить (вид сам покаже розпис на колі), а виріб уже був на колі — без тосту зміни б і не помітили.
-        if (x && x.ok && was) api.toast(st, '🎨 На колі тепер розпис «' + styleName(st, style) + '»', 'ok');
-      });
+    api.act(st, 'form', style ? { ware, style } : { ware }).then((r) => {
+      if (r && r.ok && style && st.wear !== style) api.act(st, 'wear', { key: style });
     });
   }
 
@@ -296,8 +288,21 @@
     const o = k.opened;
     if (o && !o.shown && st.tab === 'guild') {
       o.shown = true;
-      requestAnimationFrame(() => { const b = k.el && k.el.querySelector('.clkt-open'); if (b) b.scrollIntoView({ block: 'nearest' }); });
+      requestAnimationFrame(() => { const b = k.el && k.el.querySelector('.clkt-open'); if (b) clearNav(st, b); });
     }
+  }
+
+  /// Показати елемент у «Селі» одразу під липким рядком переходів (D3, .clkg-nav): scrollIntoView ставить його впритул
+  /// до верху, а рядок там і висить (QA-4). Досуваємо на висоту рядка — гортається панель (стіл в один екран) чи сторінка.
+  function clearNav(st, el) {
+    el.scrollIntoView({ block: 'start' });
+    const nav = st.guildNav;
+    if (!nav || nav.hidden) return;
+    const d = nav.getBoundingClientRect().bottom + 6 - el.getBoundingClientRect().top;
+    if (d <= 0) return;
+    const pane = el.closest('.clk-pane');
+    if (pane && pane.scrollHeight > pane.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(pane).overflowY)) pane.scrollTop -= d;
+    else window.scrollBy(0, -d);
   }
 
   function countdowns(st, api) {
@@ -378,13 +383,21 @@
     k.levels = levels;
   }
 
+  /// Перший рівень щойно відчиненої майстерні — режимом ×1, як ★ (у «макс» перший натиск питав «Точно? −89 %»).
+  function buyOne(st) {
+    const b = st.modes && st.modes.querySelector('[data-mode="1"]');
+    if (b && !b.classList.contains('active')) b.click();
+  }
+
   function goShop(st, api, key) {
     const k = st.trade;
     if (k && k.opened) { k.opened.at = 0; k.opened.seen = true; }
     api.sfx('tap');
     api.showTab(st, 'shop');
+    buyOne(st);
     const row = st.el && st.el.querySelector('[data-buy="' + key + '"]');
-    if (row) {
+    if (row && api.lookAt) api.lookAt(st, row);
+    else if (row) {
       row.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
       row.classList.remove('clkt-flash');
       void row.offsetWidth;
@@ -494,7 +507,7 @@
         icon: '<text x="16" y="23" font-size="19" text-anchor="middle">🌍</text>',
         text: 'Відчинено «' + ups[fresh].name + '» — купи перший рівень',
         sub: 'заморська майстерня · ' + (ups[fresh].desc || ''),
-        pct: 100, eta: -0.5, tab: 'shop', row: '[data-buy="' + fresh + '"]', prio: 0.5,
+        pct: 100, eta: -0.5, tab: 'shop', row: '[data-buy="' + fresh + '"]', prio: 0.5, mode: '1',
       };
     }
     const sn = api.serverNow(st);

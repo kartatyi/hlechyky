@@ -67,6 +67,8 @@
 }
 .clkt-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; }
 .clkt-btns > button { padding: 3px 10px; white-space: nowrap; max-width: 100%; }
+/* «🏺 Ліпити лев-посудину (Ізнікський тюльпан)» довша за картку на 1366 (QA-4) — переноситься, а не вилазить. */
+.clkt-btns > .clkt-form { white-space: normal; text-align: left; }
 /* Сіра, але жива: натиск питає сервер, і він каже дослівно, чому не бере. */
 .clkt-btns > button.off { opacity: .5; filter: grayscale(.8); }
 .clkt-why { color: var(--muted); font-size: .78em; line-height: 1.3; }
