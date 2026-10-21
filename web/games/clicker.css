@@ -1303,6 +1303,11 @@
 .clk-urow > .clk-up { width: 100%; }
 .clk .clk-rowmark { margin-left: 22px; width: calc(100% - 22px); }
 .clk .clk-rowmark .clk-uico { font-size: 16px; }
+.clk .clk-rowmark .clk-udesc { white-space: normal; overflow: visible; text-overflow: clip; }
+/* «Що нового» вище за вікно (1366×768): кнопка «Забрати подарунок» липне до низу вікна, а не ховається під краєм. */
+.clk-newsbox .clk-news-ok {
+  position: sticky; bottom: -14px; z-index: 1; box-shadow: 0 -10px 14px var(--bg2), 0 6px 0 var(--bg2);
+}
 /* Назви — повністю (без «Порцеля…»), віхи — у два рядки. */
 .clk .clk-uname b { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.2; }
 .clk .clk-mark b {
@@ -1369,21 +1374,30 @@
   background: var(--panel2); border-bottom: 1px solid var(--line); box-shadow: 0 6px 14px rgba(0, 0, 0, .45);
 }
 .clk .clk-pin > * { position: relative; }
-.clk.pinned .clk-tabs { visibility: hidden; }
+/* Справжній ряд вкладок ще видно під плашкою — її ряд значків не потрібен (pinView), і тло нижче на нього. */
+.clk .clk-pin.notabs .clk-pintabs { display: none; }
+.clk .clk-pin.notabs::before { height: 52px; }
 
 @media (max-width: 480px), (pointer: coarse) {
   .clk .clk-bestgo, .clk .clk-takeall, .clk .clk-sell2 button { min-height: 40px; }
   .clk .clk-shardgo { min-height: 40px; min-width: 40px; }
   .clk .clk-more > summary, .clk .clk-old > summary { min-height: 40px; display: flex; align-items: center; }
 }
-/* Низький ПК: рядок «Далі» під сценою (placeRows) — і сталі рядки лівого стовпчика вищі рівно на нього (50 + 6 px). */
-.clk.fit.pathside .clk-scene > .clkc-next { order: 2; flex: none; }
+/* Низький ПК: рядок «Далі» під сценою (placeRows) — і сталі рядки лівого стовпчика вищі рівно на нього (50 + 6 px).
+   Стовпчик вузький (~345 px на 1366×768): порада переноситься, а не ріже «окупитьс…» (QA-2). */
+.clk.fit.pathside .clk-scene > .clkc-next { order: 2; flex: none; height: auto; min-height: calc(2.15em + 16px); }
+.clk.fit.pathside .clk-scene > .clkc-next .clk-nxtext, .clk.fit.pathside .clk-scene > .clkc-next .clk-nxsub {
+  white-space: normal; overflow: visible; text-overflow: clip;
+}
 .clk.fit.pathside .clk-lay { --clk-rows: 163px; }
 
 /* ---- тости (v12 §2.7): не на вкладках, ✕ і результатах ----
    ПК: над сценою під лічильником (toastSpot у clicker.js ставить body.clk-toasts і координати сцени). Телефон: над
    нижнім меню, а не під шапкою — там липка плашка з вкладками і ✕ вікна кола. Дотики тости й так пропускають. */
-body.clk-toasts .toasts { left: var(--clk-toast-x); top: var(--clk-toast-y); bottom: auto; max-width: var(--clk-toast-w); }
+body.clk-toasts .toasts {
+  left: auto; right: var(--clk-toast-r); top: auto; bottom: var(--clk-toast-b); transform: none;
+  max-width: var(--clk-toast-w); align-items: flex-end;
+}
 body.clk-toasts .toast.gbig { max-width: 100%; }
 @media (max-width: 900px) {
   body.g-room:has(.gtable:not([hidden]) .clk) .toasts { top: auto; bottom: calc(var(--tabs-h, 56px) + var(--mini-h, 0px) + 12px); }
@@ -1403,6 +1417,7 @@ body.clk-toasts .toast.gbig { max-width: 100%; }
 /* Телефон (v12 §7 п. 13): «Далі» й плашки кроків — без «…»: текст переноситься в другий рядок, а рядок «Далі» росте
    (раніше «Свищик-пі…», «700 · ~58 88…», а «Далі» з двома кнопками різало пораду до трьох слів). */
 @media (max-width: 560px) {
+  .clk .clk-udesc { white-space: normal; overflow: visible; text-overflow: clip; }
   .clk .clk-sttxt b, .clk .clk-stsub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
   .clk .clkc-next { height: auto; min-height: calc(2.15em + 16px); }
   .clk .clk-nxtext, .clk .clk-nxsub { white-space: normal; overflow: visible; text-overflow: clip; }
