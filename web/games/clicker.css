@@ -1067,7 +1067,24 @@
   position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: currentColor; opacity: .75;
   transform: scaleX(0); transform-origin: 0 50%; pointer-events: none;
 }
-.clk .clk-buff.heat .clk-bbar { transition: transform .2s linear; }
+/* Розгін (UI-прохід 21.10): жар — заливкою всієї плашки, як термометр, а не 3-px смужкою, що на малому жару ставала
+   крапкою в кутку; порожнеча між «×8» і назвою тепер і є шкала. */
+.clk .clk-buff.heat .clk-bbar {
+  top: 0; height: auto; opacity: .5; transition: transform .2s linear;
+  background: linear-gradient(90deg, rgba(255, 140, 60, .15), rgba(255, 140, 60, .9));
+}
+.clk .clk-buff.heat > :not(.clk-bbar) { position: relative; z-index: 1; }
+/* Числа — насиченим кольором плашки, назви — блідішим (UI-прохід 21.10, користувач: «раніше текст був не просто білим»):
+   пастельні #cfe0ff і майже білий текст серії на сцені читались білими. */
+.clk .clk-buff .clk-bnum { text-shadow: 0 1px 2px rgba(0, 0, 0, .45); }
+.clk .clk-buff.inspire .clk-bnum { color: #9dbcff; }
+.clk .clk-buff.heat .clk-bnum { color: #ffa45e; }
+.clk .clk-buff.streak .clk-bnum { color: var(--accent); }
+.clk .clk-buff.streak .clk-bsec { border-left-color: rgba(244, 197, 66, .35); }
+.clk .clk-buff.wind .clk-bnum { color: #7fe3bb; }
+.clk .clk-buff.wish .clk-bnum { color: #c3b4ff; }
+.clk .clk-buff.fcheer .clk-bnum { color: #ff9cc4; }
+.clk .clk-buff.flend .clk-bnum { color: #7fd8ee; }
 /* Останні п'ять секунд: плашка червоніє й пульсує (пульс — лише прозорістю, без руху). */
 .clk .clk-buff.end { box-shadow: inset 0 0 0 1.5px #ff7b5c; }
 .clk .clk-buff.end .clk-bsec { color: #ffb4a0; }

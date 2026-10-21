@@ -1033,7 +1033,9 @@
     { key: 'inspire', icon: '✨', name: () => 'Натхнення', what: (st) => 'Натхнення: клік ×' + st.inspireMult },
     { key: 'wind', icon: '🌬', name: () => 'Вітер із поля', what: (st) => 'Вітер із поля: без тебе все ×' + dec(st.windMult) },
     { key: 'heat', icon: '🌀', name: () => 'Розгін', what: () => 'Розгін кола: що частіше клацаєш, то більший клік; смужка — наскільки коло гаряче' },
-    { key: 'streak', icon: '🤲', name: () => 'Серія', tail: (st) => count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
+    // Число серії — другим числом поруч із бонусом («+2185 % │ 2 005», як «×25 │ 49 с» у натхнення), а не дрібним хвостом
+    // за назвою (UI-прохід 21.10): серію бережуть саме за це число.
+    { key: 'streak', icon: '🤲', name: () => 'Серія', num: (st) => count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
       + Math.round(st.streakBonus * 100) + ' % більше' },
     { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
     // Бафи від друзів (цех, clicker-guild.js): з відліком і від кого — отримувач бачить їх просто під колом.
@@ -1160,7 +1162,12 @@
         const end = left <= BUFF_END_MS;
         if (b.el.classList.contains('end') !== end) b.el.classList.toggle('end', end);
       } else {
-        if (b.secs !== -1) { b.secs = -1; b.sec.textContent = ''; b.el.classList.remove('end'); }
+        const num = k.num ? k.num(st) : '';
+        if (b.secs !== -1 || b.sec.textContent !== num) {
+          b.secs = -1; b.sec.textContent = num; b.el.classList.remove('end');
+          b.sec.classList.toggle('long', !!num);
+          b.sec.classList.toggle('w3', num.length > 2);
+        }
         // Розгін — смужка показує, наскільки коло гаряче (спадає сама, щойно перестаєш клацати); серія й бажання — без смужки.
         const level = x.level != null ? Math.round(Math.max(0, Math.min(1, x.level)) * 100) / 100 : -1;
         if (b.level !== level) { b.level = level; b.bar.style.transform = 'scaleX(' + Math.max(0, level) + ')'; }
