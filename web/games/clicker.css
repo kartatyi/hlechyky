@@ -1296,7 +1296,13 @@
   order: -1; margin-right: auto; min-width: 0; max-width: 100%; padding: 3px 10px; font-size: .82em; white-space: normal;
   text-align: left; line-height: 1.2; color: var(--accent2); border-color: rgba(217, 169, 47, .45);
 }
-.clk .clk-bestgo[hidden] { display: none; }
+/* Рядок режимів сталої висоти (QA-3: від довгої назви ★ він ріс з 34 до 64 px, і список під пальцем зсувався): ★ — в
+   один рядок із «…», а поки ★ нема, місце під неї однаково тримаємо. */
+.clk .clk-pane > .clk-modes { flex-wrap: nowrap; }
+.clk .clk-bestgo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; flex: 1 1 auto; min-width: 0; }
+/* Вузька колонка: ★ — завжди окремим рядком над кнопками режимів (і коли її нема — місце тримаємо). */
+@container clkside (max-width: 520px) { .clk .clk-pane > .clk-modes { flex-wrap: wrap; } }
+.clk .clk-bestgo[hidden] { display: block !important; visibility: hidden; }
 @container clkside (max-width: 520px) { .clk .clk-bestgo { flex: 1 1 100%; } }
 /* Рядок верстата з віхою під ним: верстат і віха — одна клітинка сітки полиці. */
 .clk-urow { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -1319,6 +1325,11 @@
 /* «Точно?» — друге натискання купує (buyClick). */
 .clk .clk-up.ask { box-shadow: inset 0 0 0 2px var(--clk-fire); }
 .clk .clk-up.ask .clk-price { color: var(--clk-fire); }
+/* «До віхи», а цей рядок зараз не купиш: виглядає вимкненим, але на дотик каже чому (buyClick). */
+.clk .clk-up.soft { border-color: var(--line); }
+.clk .clk-up.soft .clk-umain, .clk .clk-up.soft .clk-uico, .clk .clk-up.soft .clk-price { opacity: .62; }
+/* Описи верстатів — повністю (QA-3: «розкручують к…», «з полиц…» на 1920 і 844×390). */
+.clk .clk-udesc { white-space: normal; overflow: visible; text-overflow: clip; }
 .clk-old > summary { color: var(--muted); }
 /* «Глянути» / ★: ціль коротко світиться (lookAt). */
 .clk .clk-look { animation: clkrowflash 1.6s ease-out; }
@@ -1382,6 +1393,12 @@
   .clk .clk-bestgo, .clk .clk-takeall, .clk .clk-sell2 button { min-height: 40px; }
   .clk .clk-shardgo { min-height: 40px; min-width: 40px; }
   .clk .clk-more > summary, .clk .clk-old > summary { min-height: 40px; display: flex; align-items: center; }
+  /* «і» — сама ціль 40×40 (QA-3 міряв саму кнопку, а не невидиму рамку); кружечок малює ::before, тож на вигляд — як і
+     був, а від'ємні поля не дають рядку вирости. */
+  .clk .clk-info > summary { position: relative; width: 40px; height: 40px; margin: -12px; border: 0; }
+  .clk .clk-info > summary::before {
+    content: ''; position: absolute; inset: 12px; border: 1px solid var(--line); border-radius: 999px; pointer-events: none;
+  }
 }
 /* Низький ПК: рядок «Далі» під сценою (placeRows) — і сталі рядки лівого стовпчика вищі рівно на нього (50 + 6 px).
    Стовпчик вузький (~345 px на 1366×768): порада переноситься, а не ріже «окупитьс…» (QA-2). */
@@ -1429,3 +1446,55 @@ body.clk-toasts .toast.gbig { max-width: 100%; }
 /* v12: старі рядки «Що нового» — згорткою (clicker.js, showNews). */
 .clk-news-old > summary { cursor: pointer; margin: .6em 0 .2em; color: var(--muted); font-size: .92em; }
 .clk-news-old[open] > summary { margin-bottom: .4em; }
+
+/* ---- телефон лежачи (QA-3): права колонка — вікно, що гортається саме, як на ПК ----
+   Було: колонка йшла сторінкою, і над Майстернею стояли плашки бафів, вкладки (57 px), стрічка й рядок режимів у два
+   ряди — на 844×390 видно ~1 рядок. Тепер колонка липне поруч зі сценою на ту саму висоту (--clk-land-h): угорі вкладки
+   значками (слово — у підказці), рядок режимів в один ряд, унизу стрічка подій; бафи — шаром на сцені (placeRows).
+   Готово: ≥ 3 рядки Майстерні без прокрутки сторінки. */
+.clk.land .clk-side {
+  position: sticky; top: calc(var(--clk-land-top, 56px) + 4px); height: calc(100svh - var(--clk-land-top, 56px) - var(--clk-land-bot, 58px) - 8px);
+  min-height: 0; gap: 6px;
+}
+.clk.land .clk-side > .clk-pane { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.clk.land .clk-side > .clk-shards { order: 99; flex: none; flex-wrap: nowrap; justify-content: flex-start; overflow: hidden; }
+.clk.land .clk-side > .clk-shards > .clkf-feed { max-width: none; height: 1.9em; font-size: .78em; }
+.clk.land .clk-side > .clk-shards > .clkf-feed[hidden] { display: none !important; }
+.clk.land .clk-side > .clk-shards:empty { display: none; }
+.clk.land .clk-tabs { flex: none; }
+.clk.land .clk-tabs button { min-height: 40px; flex-direction: row; padding: 4px 2px; }
+.clk.land .clk-tword { display: none; }
+.clk.land .clk-tico { font-size: 1.25em; }
+.clk.land .clk-pane > .clk-modes { flex-wrap: nowrap; top: 0; }
+.clk.land .clk-pane > .clk-modes > .muted { display: none; }
+.clk.land .clk-pane > .clk-modes button { min-width: 40px; padding: 3px 6px; }
+.clk.land .clk-stage > .clk-buffs {
+  position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 4; pointer-events: none; height: auto; min-height: 0; width: auto;
+}
+.clk.land .clk-stage > .clk-buffs[hidden] { display: none !important; }
+/* Рядок верстата лежачи — компактний: ціна з окупністю під назвою, опис в один рядок (повністю — у підказці), віха —
+   значком «🏁200» біля назви; ★ лишається на рядку, а посилання на неї в рядку режимів тут не вміщається. */
+.clk-umark { display: none; color: var(--accent2); font-size: .72em; white-space: nowrap; }
+.clk.land .clk-umark { display: inline; }
+.clk.land .clk-unext { display: none; }
+.clk.land .clk-up { grid-template-columns: 28px minmax(0, 1fr); gap: 0 6px; padding: 4px 8px 6px 5px; min-height: 0; }
+.clk.land .clk-up > .clk-uico { grid-row: 1 / 3; width: 28px; height: 28px; }
+.clk.land .clk-up > .clk-uright { grid-column: 2; flex-direction: row; justify-content: space-between; align-items: baseline; gap: 8px; }
+.clk.land .clk-uname b { font-size: .86em; }
+.clk.land .clk-udesc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk.land .clk-tabs { padding-top: 0; }
+.clk.land .clk-bestgo { display: none !important; }
+.clk.land .clk-pane > .clk-modes { padding: 0; justify-content: flex-end; }
+.clk.land .clk-stage > .clkf-feed {
+  position: absolute; left: 6px; right: 6px; bottom: 6px; width: auto; max-width: none; z-index: 5; pointer-events: none;
+  height: 1.9em; font-size: .74em; box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+}
+.clk.land .clk-stage > .clkf-feed button { pointer-events: auto; }
+.clk.land .clk-stage > .clkf-feed[hidden] { display: none !important; }
+.clk.land .clk-stage > .clkf-feed:not([hidden]) ~ .clk-buffs, .clk.land .clk-stage > .clk-buffs:has(~ .clkf-feed:not([hidden])) { bottom: calc(1.9em + 12px); }
+
+/* QA-3: у колонці 560–760 px (Full HD із балачками — 647) два стовпці верстатів по ~320 px — рядки з віхою й окупністю
+   в три-чотири рядки тексту й порожня клітинка поруч із рядком, у якого є віха. Два стовпці — лише від 760 px. */
+@container clkside (min-width: 560px) and (max-width: 759.98px) {
+  .clk .clk-shop, .clk .clk-donebody { display: flex; flex-direction: column; }
+}
