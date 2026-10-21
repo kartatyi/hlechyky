@@ -265,6 +265,27 @@ public class ClickerTradeTests
         Assert.Equal(3, s.GetProperty("loaded").GetInt32());
     }
 
+    // ---------- «Що нового» v12 ----------
+
+    [Fact]
+    public void The_v12_news_gives_half_an_hour_of_play_once_and_a_newcomer_has_it_taken()
+    {
+        var h = Wheel();
+        Pier(h, pots: 0);
+        Patch(h, s => { s["news"] = "v11.2"; s["titles"] = new JsonObject { ["gifts"] = new JsonArray("v9.2", Clicker.GiftV10Key, Clicker.GiftV11Key) }; });
+        Assert.Equal("v12", View(h).GetProperty("news").GetString());
+        var before = Pots(h);
+        var r = h.Act(0, "news", new { v = Clicker.NewsVersion });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("Заморська торгівля", r.Message);
+        Assert.True(Pots(h) > before);
+        Assert.Equal(JsonValueKind.Null, View(h).GetProperty("news").ValueKind);
+
+        // Новачкові подарунок v12 «уже забраний» — він грає вже з кораблями.
+        var k = Wheel("Новачок");
+        Assert.Contains(Clicker.GiftV12Key, JsonNode.Parse(k.Room.Game.Save()!)!["titles"]!["gifts"]!.AsArray().Select(x => x!.GetValue<string>()));
+    }
+
     // ---------- розписи ----------
 
     [Fact]

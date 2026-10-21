@@ -269,8 +269,9 @@ public sealed partial class Clicker : Game
     /// хто пропустив v11, тому клієнт допише рядки «Толоки», а подарунок v11 дасть TakeGiftV11.
     /// «v11.2» (10.10) — «хвилина гри», комора під полицею, перероблені віхи й ачівки за тиждень: без подарунка; хто
     /// пропустив v11.1, тому клієнт допише й ті рядки.
+    /// «v12» — «Заморська торгівля» (docs/games/specs/clicker-v12.md §9) і подарунок (TakeGiftV12); старі рядки — згорткою.
     /// </summary>
-    public const string NewsVersion = "v11.2";
+    public const string NewsVersion = "v12";
 
     // ---------- розгін кола ----------
 
@@ -2125,13 +2126,26 @@ public sealed partial class Clicker : Game
         _news = NewsVersion;
         // Подарунки: округи (v9.2), десятого й одинадцятого оновлень — кожен раз на гончаря; хто пропустив старі,
         // забирає їх разом із новим.
-        var got = new[] { TakeGift(), TakeGiftV10(), TakeGiftV11() }.Where(x => x is not null).Select(x => x!.Message).ToList();
+        var got = new[] { TakeGift(), TakeGiftV10(), TakeGiftV11(), TakeGiftV12() }.Where(x => x is not null).Select(x => x!.Message).ToList();
         return got.Count == 0 ? ActResult.Done : ActResult.Accept(string.Join(" · ", got));
     }
 
     /// <summary>Подарунок одинадцятого оновлення «Толока»: три години «без тебе» й двадцять в'язок соломи.</summary>
     public const string GiftV11Key = "v11";
     public const int GiftV11Minutes = 180, GiftV11Straw = 20;
+
+    /// <summary>Подарунок дванадцятого оновлення: пів години власної гри глеками одразу (перший корабель — і так біля Пристані).</summary>
+    public const string GiftV12Key = "v12";
+    public const double GiftV12Minutes = 30;
+
+    ActResult? TakeGiftV12()
+    {
+        if (_gifts.Contains(GiftV12Key)) return null;
+        _gifts.Add(GiftV12Key);
+        var gain = PlayPay(GiftV12Minutes);
+        Add(gain);
+        return ActResult.Accept($"🎁 Подарунок «Заморська торгівля»: +{PotsShort(gain)} — пів години твоєї гри");
+    }
 
     ActResult? TakeGiftV11()
     {
