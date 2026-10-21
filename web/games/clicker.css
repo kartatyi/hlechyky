@@ -1458,7 +1458,8 @@ body.clk-toasts .toasts {
 }
 body.clk-toasts .toast.gbig { max-width: 100%; }
 @media (max-width: 900px) {
-  body.g-room:has(.gtable:not([hidden]) .clk) .toasts { top: auto; bottom: calc(var(--tabs-h, 56px) + var(--mini-h, 0px) + 12px); }
+  /* +64 px — над рядком «Далі», що на телефоні стоїть просто над меню (UI-прохід 21.10: тост накривав його кнопку). */
+  body.g-room:has(.gtable:not([hidden]) .clk) .toasts { top: auto; bottom: calc(var(--tabs-h, 56px) + var(--mini-h, 0px) + 12px + 64px); }
 }
 
 /* Новачок (v12 §2.6): мета гри одним реченням — помітніше за перелік кроків. */
@@ -1562,6 +1563,4 @@ body.clk-toasts .toast.gbig { max-width: 100%; }
    спіймати його так само можна (QA-4). */
 @media (max-width: 560px) {
   body:has(.gtable:not([hidden]) .clk-overlay:not([hidden])) .clk-fly { opacity: .55; }
-  /* Сповіщення під час кола — під шапкою сайту, а не над нижнім меню, де вони накривали «Далі» (UI-прохід 21.10). */
-  body.clk-on .toasts { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px) + 8px); }
 }

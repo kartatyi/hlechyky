@@ -651,26 +651,29 @@
     const items = c.items.reduce((s, it) => s + it.n, 0);
     const sum = c.items.reduce((s, it) => s + it.price * it.n, 0);
     const work = Math.floor(workNow(st) % Math.max(1, c.need));
-    const kilnText = !k ? '—'
-      : k.state === 'burning' ? '🔥 ' + api.mmss(Date.parse(k.litAt) + burnMs(st) - sn)
-      : k.state === 'cooling' ? '♨ холоне'
-      : k.batch.length ? 'складено ' + k.batch.length
+    // Плитка — значення (v) і дрібний хвіст під ним (x), без назви (UI-прохід 21.10, друга хвиля): що це за крок, каже
+    // значок, а назва — у підказці. Назви з'їдали півплитки й різали головне — «46/46 · сухих …», «592 · ~2,19 м…».
+    const kiln = !k ? { v: '—', x: '' }
+      : k.state === 'burning' ? { v: api.mmss(Date.parse(k.litAt) + burnMs(st) - sn), x: 'палає' }
+      : k.state === 'cooling' ? { v: '♨ холоне', x: '' }
+      : k.batch.length ? { v: 'складено ' + k.batch.length, x: '' }
       // Сухі є — горно не «чекає сухих» (QA-3: так писало при «сухих 6»), а чекає, щоб його розпалили.
-      : dry ? 'можна палити' : 'холодне';
+      : dry ? { v: 'палити!', x: 'сухих ' + dry } : { v: 'холодне', x: '' };
     // Сушарня повна — коло стоїть (підмайстрам нікуди класти), і гра мусить це сказати.
     const stuck = c.rack.length >= c.rackSize;
     return [
       { key: 'wheel', ico: api.wareSvg(c.ware, { cls: 'clkw-sico', slot: 'step-ware', clay: st.clayBody }),
-        name: wareName(st, c.ware), sub: stuck ? 'стоїть: сушарня повна' : work + '/' + c.need + ' ▾', pct: (work / Math.max(1, c.need)) * 100,
+        name: wareName(st, c.ware), v: stuck ? 'стоїть' : work + '/' + c.need + ' ▾', x: stuck ? 'сушарня повна' : wareName(st, c.ware),
+        pct: (work / Math.max(1, c.need)) * 100,
         on: true, hot: stuck },
       // ⓘ на трьох чипах веде до секції «🔧 Прокачати»: місткість — не магія, її видно й видно, звідки вона.
-      { key: 'rack', ico: '🧺', name: 'Сушарня', sub: c.rack.length + '/' + c.rackSize + (dry ? ' · сухих ' + dry : ''),
+      { key: 'rack', ico: '🧺', name: 'Сушарня', v: c.rack.length + '/' + c.rackSize, x: dry ? 'сухих ' + dry : c.rack.length ? 'сохне' : 'порожня',
         pct: (c.rack.length / Math.max(1, c.rackSize)) * 100, on: c.rack.length > 0, hot: dry > 0, ups: true },
       // Сухі є, а горно холодне — це і є наступний крок (UI-прохід 21.10: плитка була блідою, як «ще не дійшли», хоч
       // «Далі» кликало обпалити й підпис казав «можна палити»).
-      { key: 'kiln', ico: '🔥', name: 'Горно', sub: kilnText, on: !!k && (k.batch.length > 0 || k.state !== 'cold' || dry > 0),
+      { key: 'kiln', ico: '🔥', name: 'Горно', v: kiln.v, x: kiln.x, on: !!k && (k.batch.length > 0 || k.state !== 'cold' || dry > 0),
         hot: !!k && (k.state === 'burning' || (k.state === 'cold' && dry > 0)), ups: true },
-      { key: 'store', ico: '📦', name: 'Комора', sub: items ? items + ' · ~' + api.short(sum) : 'порожня',
+      { key: 'store', ico: '📦', name: 'Комора', v: items ? api.count(items) : 'порожня', x: items ? '≈ ' + api.short(sum) : '',
         pct: (items / Math.max(1, c.storeCap)) * 100, on: items > 0, ups: true },
     ];
   }
@@ -689,7 +692,7 @@
     const html = steps.map((s) => '<span class="clk-stepw' + (s.ups ? ' hasi' : '') + '"><button type="button" class="clk-step' + (s.on ? ' on' : '') + (s.hot ? ' hot' : '')
       + (s.ups ? ' hasi' : '') + '" data-step="' + s.key + '">'
       + '<span class="clk-stico">' + (s.ico.charAt(0) === '<' ? s.ico : esc(s.ico)) + '</span>'
-      + '<span class="clk-sttxt"><b>' + esc(s.name) + '</b><span class="clk-stsub"></span></span>'
+      + '<span class="clk-sttxt"><span class="clk-stv"></span><span class="clk-stx"></span></span>'
       + (s.pct != null ? '<i class="clk-stbar"><i></i></i>' : '')
       + '</button>'
       + (s.ups ? '<button type="button" class="clk-sti" data-ups="1" aria-label="Звідки ця місткість і як її збільшити" title="Звідки ця місткість і як її збільшити">ⓘ</button>' : '')
@@ -701,14 +704,17 @@
       }
       ui.stepEls = {};
       for (const b of ui.steps.querySelectorAll('[data-step]')) {
-        ui.stepEls[b.dataset.step] = { sub: b.querySelector('.clk-stsub'), bar: b.querySelector('.clk-stbar i') };
+        ui.stepEls[b.dataset.step] = { v: b.querySelector('.clk-stv'), x: b.querySelector('.clk-stx'), btn: b, bar: b.querySelector('.clk-stbar i') };
       }
       ui.wheelBar = ui.stepEls.wheel ? ui.stepEls.wheel.bar : null;
     }
     for (const s of steps) {
       const el = ui.stepEls && ui.stepEls[s.key];
       if (!el) continue;
-      if (el.sub && el.sub.textContent !== s.sub) el.sub.textContent = s.sub;
+      if (el.v.textContent !== s.v) el.v.textContent = s.v;
+      if (el.x.textContent !== s.x) el.x.textContent = s.x;
+      const title = s.name + ': ' + s.v + (s.x ? ' · ' + s.x : '');
+      if (el.btn.title !== title) el.btn.title = title;
       if (s.pct != null) setBar(el.bar, s.pct / 100);
     }
     paintNext(st, api);

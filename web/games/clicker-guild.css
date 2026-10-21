@@ -280,10 +280,15 @@
 .clk:not(.fit) .clk-pane > .clkg-nav { top: var(--clkg-nav-top, calc(var(--clk-pin-top, 56px) + 98px)); }
 .clk-pane > .clkg-nav[hidden], .clkg-intro[hidden] { display: none; }
 .clkg-nav button { flex: none; white-space: nowrap; min-height: 36px; padding: 4px 10px; }
-/* ПК (QA-2: вісім кнопок — 783 px у 538): переносяться в два рядки, нічого не ховається за краєм. */
+/* Один рядок завжди (UI-прохід 21.10): широкий — значок і слово, вужчий за 800 px — самі значки нарівно (назва в
+   підказці). Було: на ПК переносились у два рядки (QA-2), на телефоні частина ховалась за краєм. */
+.clk-pane > .clkg-nav { container: clkgnav / inline-size; }
 @media (min-width: 561px) {
-  .clk-pane > .clkg-nav { flex-wrap: wrap; overflow-x: visible; }
   .clkg-nav button { min-height: 32px; padding: 3px 8px; font-size: .85em; }
+}
+@container clkgnav (max-width: 799.98px) {
+  .clkg-nav button { flex: 1 1 0; min-width: 0; padding: 3px 2px; justify-content: center; font-size: 1.05em; }
+  .clkg-nav .clkg-nw { display: none; }
 }
 @media (pointer: coarse) { .clkg-nav button { min-height: 40px; } }
 /* Телефон: рядок гортається вбік — правий край тьмяніє, поки праворуч ще є кнопки (клас more ставить clicker-guild.js). */

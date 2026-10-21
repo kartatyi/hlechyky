@@ -173,7 +173,8 @@
       + (!st.mine ? '' : all > 0
         ? '<div class="clkt-sum small">' + esc(sumText(api, loadSum(st, s, all))) + '</div><div class="clkt-btns">'
           + '<button type="button" class="primary small clkt-load' + off(all) + '" data-load="' + s.id + '" data-all="1">🚢 Завантажити все (' + all + ')</button>'
-          + '<button type="button" class="ghost small clkt-plus' + off(plus) + '" data-load="' + s.id + '" data-n="' + PLUS + '">+' + PLUS + '</button></div>'
+          // «+5» — лише коли вантажити є більше за п'ять: при «Завантажити все (3)» він світився й обіцяв те, чого нема.
+          + (all > PLUS ? '<button type="button" class="ghost small clkt-plus' + off(plus) + '" data-load="' + s.id + '" data-n="' + PLUS + '">+' + PLUS + '</button>' : '') + '</div>'
         : stuckHtml(st, api, s))
       + '</div></div>';
   }

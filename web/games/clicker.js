@@ -4347,8 +4347,6 @@
       // Картка — на всю ширину сітки столів (див. .clk-wide у css): інакше сцена й полиці лягали б одним стовпчиком.
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.add('clk-wide');
-      // Сповіщення сайту на телефоні — згори, поки відкрите коло (css): знизу вони лягали на рядок «Далі» й кнопку кроку.
-      document.body.classList.add('clk-on');
       root.innerHTML = '<div class="clk">'
         // Мініплашка (v10 §9): коло прокрутили з екрана — згори липне «🏺 число · ⤒ до кола». Сама нуль заввишки,
         // тож поява плашки нічого під нею не зсуває. Число вона не рахує, а бере з лічильника (pinView).
@@ -4924,7 +4922,6 @@
       if (st.ov) H.api.closeOverlay(st);
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.remove('clk-wide', 'clk-fit', 'clk-big');
-      if (H.mounted.size === 0) document.body.classList.remove('clk-on');
       const room = card && card.closest('.groom');
       if (room) room.classList.remove('clk-fitroom');
       st.raf = 0;

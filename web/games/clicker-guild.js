@@ -1402,7 +1402,7 @@
     { k: 'wagon', t: '🐴 Віз' },
     { k: 'friends', t: '🤝 Друзі' },
     { k: 'titles', t: '🎖 Звання' },
-    { k: 'orders', t: '📜 Замовлення сіл ↗', tab: 'craft', el: (st) => { const e = st.fair && st.fair.ordersEl; return e && e.isConnected && e.firstElementChild ? e : null; } },
+    { k: 'orders', t: '📜 Замовлення ↗', tab: 'craft', el: (st) => { const e = st.fair && st.fair.ordersEl; return e && e.isConnected && e.firstElementChild ? e : null; } },
   ].map((n) => (n.el ? n : Object.assign(n, { el: (st) => secOf(st, n.k) })));
 
   function paintNav(st, api) {
@@ -1414,7 +1414,14 @@
     nav._sig = sig;
     // Одна-дві кнопки — не рядок переходів, а шум: новачкові з одним возом він ні до чого.
     nav.hidden = keys.length < 3;
-    nav.innerHTML = keys.map((k) => { const n = NAV.find((x) => x.k === k); return '<button type="button" class="ghost small" data-nav="' + k + '">' + n.t + '</button>'; }).join('');
+    // Значок і слово — окремо: вузький рядок (телефон, ПК з балачками) лишає самі значки, і всі вісім стають в один
+    // рядок (UI-прохід 21.10: на ПК переносились у два, на телефоні ховались за краєм). Назва — у підказці.
+    nav.innerHTML = keys.map((k) => {
+      const n = NAV.find((x) => x.k === k);
+      const sp = n.t.indexOf(' ');
+      return '<button type="button" class="ghost small" data-nav="' + k + '" title="' + n.t.slice(sp + 1) + '"><span class="clkg-ni">'
+        + n.t.slice(0, sp) + '</span><span class="clkg-nw"> ' + n.t.slice(sp + 1) + '</span></button>';
+    }).join('');
     navMore(st);
   }
 
