@@ -396,26 +396,39 @@ public sealed partial class Clicker
 
     /// <summary>
     /// Продати гуртом: <c>q</c> — найвища якість, яку забирає базар (1 — лише звичайні, 2 — усе, крім дзвінких,
-    /// 3 чи без нього — усе). Дорожчі лишаються в коморі на замовлення, дарунки й альбом.
+    /// 3 чи без нього — усе). Дорожчі лишаються в коморі на замовлення, дарунки й альбом. v12 (плейтест 21.10): і те,
+    /// чого чекають замовлення сіл і гостей, майстерштук і Толока (<see cref="LadKept"/>), лишається — «Продати все»
+    /// мовчки з'їдало вироби на етап. <c>keep: false</c> — продати й відкладене (гравець сказав це явно).
     /// </summary>
     ActResult BazaarAll(JsonElement payload)
     {
         var q = (int)Math.Clamp(Num(payload, "q") ?? QualityMax, 1, QualityMax);
+        var keep = !(payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("keep", out var k) && k.ValueKind == JsonValueKind.False);
+        var kept = keep ? LadKept(Ctx.Clock.UtcNow) : new Dictionary<string, int>(StringComparer.Ordinal);
         var sold = 0;
+        var held = 0;
         double sum = 0;
         foreach (var (item, count) in AllItems().Where(x => x.Item.Quality <= q).ToList())
         {
-            sum += ItemValue(item.Ware, item.Style, item.Quality) * count;
-            sold += count;
-            _items.Remove(ItemKey(item.Ware, item.Style, item.Quality));
+            var key = ItemKey(item.Ware, item.Style, item.Quality);
+            var hold = Math.Min(count, kept.GetValueOrDefault(key));
+            var n = count - hold;
+            held += hold;
+            if (n <= 0) continue;
+            sum += ItemValue(item.Ware, item.Style, item.Quality) * n;
+            sold += n;
+            if (hold == 0) _items.Remove(key);
+            else _items[key] = hold;
         }
         if (sold == 0)
-            return ActResult.Fail(ItemTotal > 0
+            return ActResult.Fail(held > 0 ? $"Усе, що підходить ({held}), відкладене під замовлення й Толоку — базар його не бере"
+                : ItemTotal > 0
                 ? q == 1 ? "Звичайних у коморі нема" : q == 3 ? "У коморі самі розкішні — базар до них не дотягнеться" : "У коморі самі дзвінкі — їх базар не бере"
                 : "У коморі порожньо — нічого везти на базар");
         Add(sum = ToPots(sum * HouseBazaarMult));
         var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : q == 3 ? " (крім розкішних)" : "";
-        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{PotsShort(sum)}");
+        var tail = held > 0 ? $" · {held} {WaresWord(held)} лишив під замовлення й Толоку" : "";
+        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{PotsShort(sum)}{tail}");
     }
 
     static string WaresWord(double n) => Plural(n, "виріб", "вироби", "виробів");

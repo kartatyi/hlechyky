@@ -159,6 +159,24 @@ public class ClickerTolokaV12Tests
         Assert.Equal(700, T(h).GetProperty("stage").GetProperty("work").GetProperty("n").GetInt64());
     }
 
+    [Fact]
+    public void Selling_everything_keeps_what_the_toloka_waits_for_unless_told_otherwise()
+    {
+        var h = Wheel();
+        Give(h, 1e17);
+        // Криниця, «Копаємо яму»: горщик ×15 і миска ×15 — етап ще не закладено, тож комора їх тримає.
+        // Горщиків із запасом: свіжа дошка сіл теж може чекати кількох.
+        Items(h, ("pot||1", 200), ("bowl||1", 15));
+        var r = h.Act(0, "bazaar", new { all = true });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("лишив під замовлення й Толоку", r.Message);
+        Assert.InRange(Item(h, "pot||1"), 15, 199);
+        Assert.Equal(15, Item(h, "bowl||1"));
+        Assert.False(h.Act(0, "bazaar", new { all = true }).Ok);
+        Assert.True(h.Act(0, "bazaar", new { all = true, keep = false }).Ok);
+        Assert.Equal(0, Item(h, "pot||1"));
+    }
+
     // ---------- своя праця ----------
 
     [Fact]

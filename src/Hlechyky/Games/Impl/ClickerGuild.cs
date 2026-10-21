@@ -432,14 +432,14 @@ public sealed partial class Clicker
         var n = give.Sum(x => x.N);
         if (n <= 0)
             return ActResult.Fail(kept > 0
-                ? $"Усе, що є в коморі ({Count(kept)}), відкладено під замовлення — класти на віз нічого"
+                ? $"Усе, що є в коморі ({Count(kept)}), відкладено під замовлення й Толоку — класти на віз нічого"
                 : "Комора порожня — класти на віз нічого");
         foreach (var (it, c) in give) TakeItems(x => x == it, c);
         var r = svc.Give(GuildKey, GuildNick, give.Select(x => (x.Item.Ware, (ItemInfo?)x.Item, x.N)).ToList(), now);
         _guildGiven += n;
         WagonReached(r);
         var text = $"🛒 На віз — {Count(n)} {WaresWord(n)}, він повний на {Pct(r.Wagon)} %";
-        if (kept > 0) text += $" · {Count(kept)} {WaresWord(kept)} лишив під замовлення";
+        if (kept > 0) text += $" · {Count(kept)} {WaresWord(kept)} лишив під замовлення й Толоку";
         if (r.Wagon.Mine < ClickerGuildService.MinGive) text += $" · ще {ClickerGuildService.MinGive - r.Wagon.Mine} — і нагорода твоя";
         return ActResult.Accept(text);
     }
@@ -454,8 +454,10 @@ public sealed partial class Clicker
     {
         var left = AllItems().ToDictionary(x => x.Item, x => x.Count);
         var kept = 0;
+        // v12 (плейтест 21.10): і Толока — поточний і наступний етап, як і лад; раніше «Усе на віз» мовчки забирало
+        // 80 / 80 / 60 етапу, на який усе вже було зібрано.
         if (keep)
-            foreach (var (match, need) in WagonHolds(now))
+            foreach (var (match, need) in LadHolds(now))
             {
                 var want = need;
                 foreach (var it in left.Keys.Where(match).OrderBy(x => x.Quality).ThenBy(x => x.Ware, StringComparer.Ordinal)
