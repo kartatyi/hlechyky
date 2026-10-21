@@ -2327,7 +2327,8 @@
     for (const m of st.markList) { (marksOf[m.on] || (marksOf[m.on] = [])).push(m); st.markByKey[m.key] = m; }
     const markRow = (m) => '<button type="button" class="clk-mark clk-rowmark" data-mark="' + esc(m.key) + '" data-price="' + m.price
       + '" title="' + esc(m.name + ' — ' + m.desc) + '" disabled><span class="clk-uico">🏁</span>'
-      + '<span class="clk-umain"><b>' + esc(m.name) + '</b><span class="clk-udesc">віха на ' + m.level + ' · ' + esc(m.desc) + '</span></span>'
+      + '<span class="clk-umain"><b>' + esc(m.name) + '</b><span class="clk-udesc">віха на ' + m.level + ' · '
+      + (m.effect === 'double' && ups[m.on] ? '×2 цьому щаблю' : esc(m.desc)) + '</span></span>'
       + '<span class="clk-uright"><span class="clk-price">' + short(m.price) + '</span><span class="clk-pay"></span></span></button>';
     let teaser = '';
     // Докачане до межі («досить») не купиш — у пізній грі шість таких рядків (~330 px на телефоні) стояли між тим, що
@@ -3686,6 +3687,7 @@
     landFit(st, card, !fit && !!LAND_MQ && LAND_MQ.matches && st.el.clientWidth >= LAND_W);
     if (!fit) phoneFit(st);
     placeRows(st);
+    placeSell(st);
     toastSpot(st, fit);
   }
 
@@ -3881,6 +3883,16 @@
       if (side && pc) { if (nx.previousElementSibling !== st.stageBox) st.stageBox.after(nx); }
       else if (nx.parentElement !== path) { const steps = path.querySelector('.clk-steps'); if (steps) steps.after(nx); else path.appendChild(nx); }
     }
+  }
+
+  /// Обмін глеків на черепки — у «Клеймах» (v12 §7 п. 7). Поки «Клейм» ще нема (новачок, до 100 млн за весь час), —
+  /// у кінці Майстерні: над вкладками й під сценою йому, що буває раз на день, не місце.
+  function placeSell(st) {
+    if (!st.shardBox || !st.fire) return;
+    const fire = !isGated(st, 'fire');
+    const pane = fire ? st.panes.fire : st.panes.shop;
+    if (st.shardBox.parentElement === pane) return;
+    if (fire) st.fire.after(st.shardBox); else pane.appendChild(st.shardBox);
   }
 
   /// Погляд стоїть на місці, коли вище щось виросло чи зникло. Chrome і Firefox тримають його самі (scroll anchoring),
@@ -4244,7 +4256,7 @@
       st.shardBox = q('.clk-shardbox');
       q('.clk-sell2').append(st.one, st.all, st.left);
       st.shardGo = q('.clk-shardgo');
-      st.shardGo.onclick = () => { H.api.sfx('tap'); setTab(st, 'fire'); lookAt(st, st.shardBox); };
+      st.shardGo.onclick = () => { H.api.sfx('tap'); setTab(st, isGated(st, 'fire') ? 'shop' : 'fire'); lookAt(st, st.shardBox); };
       st.tabs = q('.clk-tabs');
       st.modes = q('.clk-modes');
       st.bestGo = q('.clk-bestgo');
@@ -4596,6 +4608,7 @@
       if (ready && v && v.pots != null) for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'update', st, v, H.api);
       if (st.ovQueue) nextQueued(st);
       gateTabs(st, v);
+      placeSell(st);
       // Новий вид — і кнопки, і повільні рядки одразу: полиці могли щойно перемалюватись із вимкненими кнопками.
       st.slowAt = 0;
       paint(st);

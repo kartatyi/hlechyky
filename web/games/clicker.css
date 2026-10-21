@@ -1374,6 +1374,7 @@
 @media (max-width: 480px), (pointer: coarse) {
   .clk .clk-bestgo, .clk .clk-takeall, .clk .clk-sell2 button { min-height: 40px; }
   .clk .clk-shardgo { min-height: 40px; min-width: 40px; }
+  .clk .clk-more > summary, .clk .clk-old > summary { min-height: 40px; display: flex; align-items: center; }
 }
 /* Низький ПК: рядок «Далі» під сценою (placeRows) — і сталі рядки лівого стовпчика вищі рівно на нього (50 + 6 px). */
 .clk.fit.pathside .clk-scene > .clkc-next { order: 2; flex: none; }
