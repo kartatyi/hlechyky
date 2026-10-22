@@ -1,0 +1,80 @@
+/* «Намисто» (namysto, namysto-daily). Полотно — сцена зі своїми кольорами місця (Хата, Левада, Ярмарок, Купальська ніч);
+   навколо — змінні сайту. Префікс nm- (pk- зайнятий Покером і падом, gor- — Гороховою дошкою). */
+
+.namysto { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+.nm-hud {
+  display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; justify-content: space-between;
+  width: 100%; max-width: min(720px, 100%); font-size: .95em;
+}
+.nm-hud > span { min-height: 1.4em; white-space: nowrap; }
+.nm-where { color: var(--muted); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nm-score { font-family: var(--display); font-weight: 800; font-size: 1.35em; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+.nm-left, .nm-bon { font-variant-numeric: tabular-nums; }
+.nm-bon { color: var(--accent); font-weight: 700; }
+.nm-hud button { padding: 3px 9px; min-width: 2.4em; }
+
+/* Сцена: квадрат під висоту екрана, щоб поле влазило без прокрутки (шапка й рядок столу — ~190 px). */
+.nm-stage {
+  position: relative; width: 100%;
+  max-width: min(720px, 100%, max(300px, calc(var(--gfit-h, 100dvh) - 190px)));
+  aspect-ratio: 1 / 1;
+}
+.nm-stage[hidden] { display: none; }
+.namysto .nm-field {
+  width: 100%; height: 100%; max-width: none; display: block; border-radius: 14px;
+  background: #d8b484; box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; cursor: crosshair;
+}
+.namysto .nm-field.play { touch-action: none; }
+
+.nm-ov {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 14px;
+  background: rgba(10, 8, 6, .38); border-radius: 14px; backdrop-filter: blur(2px);
+}
+.nm-ov[hidden] { display: none; }
+.nm-card-ov {
+  background: var(--panel, #2b2118); color: var(--text); border-radius: 14px; padding: 16px 20px;
+  max-width: 340px; width: 100%; text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+  max-height: 100%; overflow-y: auto;
+}
+.nm-card-ov.wide { max-width: 380px; }
+.nm-card-ov.soft { background: rgba(43, 33, 24, .82); }
+.nm-card-ov h3 { margin: 4px 0 6px; font-family: var(--display); }
+.nm-card-ov p { margin: 4px 0; }
+.nm-kicker { color: var(--muted); font-size: .85em; }
+.nm-big { font-family: var(--display); font-weight: 800; font-size: 1.6em; color: var(--accent); }
+.nm-gift { color: var(--ok, #7bd389); font-weight: 700; }
+.nm-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+.nm-day { margin-top: 8px; text-align: left; }
+.nm-day ol { margin: 6px 0; padding-left: 1.6em; }
+.nm-day li { display: flex; justify-content: space-between; gap: 8px; }
+.nm-day li.me { color: var(--accent); font-weight: 700; }
+
+.nm-help { max-width: min(720px, 100%); text-align: center; min-height: 1.2em; }
+
+/* Список трас: чотири місця по три траси. */
+.nm-pick { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 10px; }
+.nm-pick[hidden] { display: none; }
+.nm-place h4 { margin: 4px 0 6px; }
+.nm-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.nm-tcard {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 6px; border-radius: 12px;
+  background: var(--bg2); border: 1px solid transparent; color: var(--text); text-align: center; min-width: 0;
+}
+.nm-tcard canvas { width: 96px; height: 96px; border-radius: 10px; }
+.nm-tcard b { font-size: .92em; }
+.nm-tcard span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm-tcard:not(:disabled):hover { border-color: var(--accent); }
+.nm-tcard.done { border-color: rgba(123, 211, 137, .45); }
+.nm-tcard.locked { opacity: .5; }
+.nm-tcard.locked canvas { filter: grayscale(1); }
+@media (max-width: 420px) {
+  .nm-tcard canvas { width: 76px; height: 76px; }
+}
+
+/* Телефон лежачи: поле ліворуч за висотою, решта — колонкою праворуч. */
+body.g-land .namysto { flex-direction: row; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
+body.g-land .nm-stage { max-width: calc(var(--gland-h, 330px) - 16px); order: 0; }
+body.g-land .nm-hud { order: 1; flex-direction: column; align-items: flex-start; width: auto; max-width: 30vw; }
+body.g-land .nm-help { display: none; }

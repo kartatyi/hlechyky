@@ -67,6 +67,7 @@ public static class GamesSetup
         Impl.WordleSetup.AddWordle(services);               // Глек-слово: слова на 4 і 6 літер для гри наввипередки
         Impl.DinoDailySetup.AddDinoDaily(services);          // Забіг дня: привиди друзів і кубок тижня
         Impl.TyrSetup.AddTyr(services);   // «Тир дня»: таблиця дня за очками й очки в «☀ Сьогодні»
+        Impl.NamystoSetup.AddNamysto(services);   // «Намисто»: траси кампанії й рекорди, таблиця «Намиста дня» і її очки в «☀ Сьогодні»
         Impl.SkleiSetup.AddSklei(services);                 // «Склей глек»: свої картинки за черепки, малюнки й фото в колоді
         Impl.RouletteSetup.AddRoulette(services);   // Рулетка: каса (виплати, відновлення)
         Impl.SlotsSetup.AddSlots(services);         // Слоти: каса-Скарбничка, заноси, Slots:* (specs/slots.md)
@@ -109,6 +110,7 @@ public static class GamesSetup
         Impl.PictionarySetup.MapPictionary(app);            // /api/games/pictionary/… — альбом, 📌, реакції глядачів, пари
         Impl.WordleSetup.MapWordle(app);                    // /api/games/wordle/stats — серія й розподіл спроб
         Impl.DinoDailySetup.MapDinoDaily(app);              // /api/games/dino-daily/cup — кубок тижня
+        Impl.NamystoSetup.MapNamysto(app);                  // /api/games/namysto/tracks — жолоби всіх трас
         Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
         Impl.SlotsSetup.MapSlots(app);                      // /api/slots/feed — Скарбничка й заноси тижня
         return app;

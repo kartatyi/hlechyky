@@ -127,10 +127,10 @@
       { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'memy', 'geese'] },
     ],
     solo: [
-      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
+      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'namysto', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
       // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
       { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'kakhli-daily', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
-        'tyr-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
+        'tyr-daily', 'namysto-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
       { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'] },
