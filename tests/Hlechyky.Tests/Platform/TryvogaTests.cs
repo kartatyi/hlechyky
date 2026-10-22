@@ -30,7 +30,7 @@ public sealed class TryvogaTests : IDisposable
           {"id":"trk_1","type":"uav","title":"БпЛА","region":"Чернігівська область","district":"","locality":"Гончарівське",
            "lat":51.749083905808526,"lon":31.665341285318966,"heading":223.271,"confidenceLevel":"medium","sourceCount":5,
            "updatedAt":"2026-10-21T00:36:15Z","explanationShort":"БпЛА курсом на Гончарівське. Підтверджень: 5.","status":"active",
-           "uncertaintyKm":6,"positionQuality":"approx","lifecycle":"uncertain",
+           "uncertaintyKm":6,"positionQuality":"approx","lifecycle":"uncertain","presumptiveCourse":true,
            "trail":[{"lat":51.50999582930899,"lon":31.305653308814737,"t":"2026-10-21T00:14:22Z"},
                     {"lat":51.5132666708445,"lon":31.310187884579875,"t":"2026-10-21T00:14:35Z"},
                     {"lat":51.51075322170994,"lon":31.30670333009787,"t":"2026-10-21T00:14:35Z"}]},
@@ -194,6 +194,13 @@ public sealed class TryvogaTests : IDisposable
         Assert.Equal(51.7491, d.GetProperty("lat").GetDouble());
         Assert.Equal(3, d.GetProperty("trail").GetArrayLength());
         Assert.Equal(51.51, d.GetProperty("trail")[0][0].GetDouble());     // слід — від найстарішої точки
+        // курс «курсом на …» — орієнтовний; виміряний рух — підтверджений, і без heading курс береться з нього
+        Assert.True(d.GetProperty("presumptive").GetBoolean());
+        Assert.False(d.GetProperty("measured").GetBoolean());
+        var kab = v.GetProperty("threats")[2];
+        Assert.True(kab.GetProperty("measured").GetBoolean());
+        Assert.False(kab.GetProperty("presumptive").GetBoolean());
+        Assert.Equal(250, kab.GetProperty("heading").GetDouble());
     }
 
     [Fact]
@@ -205,10 +212,10 @@ public sealed class TryvogaTests : IDisposable
         Assert.True(JsonSerializer.SerializeToElement(t.ThreatsView()).GetProperty("off").GetBoolean());
     }
 
-    // ---------- 🐓 Півник: без GPS стоїть у місті району ----------
+    // ---------- 🧭 Довкола мене: без GPS стоїть у місті району ----------
 
     /// <summary>
-    /// Півник (web/pivnyk.js) без GPS рахує від обласного центру всередині мого району — «towns» у мапі. Міста мають
+    /// «Довкола мене» (web/dovkola.js) без GPS рахує від обласного центру всередині мого району — «towns» у мапі. Міста мають
     /// лягати туди, де вони є насправді (та сама проєкція, що й «Де це?»), а середина Житомирського району — за
     /// ~14 км від Житомира: тому й беремо місто, а не середину.
     /// </summary>
@@ -232,6 +239,60 @@ public sealed class TryvogaTests : IDisposable
         var (clat, clon) = GeoMap.Unproject(c[0].GetDouble(), c[1].GetDouble());
         var (zlat, zlon) = At("Житомир");
         Assert.True(GeoScore.Km(clat, clon, zlat, zlon) > 8);
+    }
+
+    // ---------- детальний шар мапи (Вікідані + Natural Earth) ----------
+
+    /// <summary>
+    /// web/static/tryvoga-detail.json (data/geo/build-tryvoga-detail.py): усі обласні центри рівнем 1 і там, де вони є
+    /// (тезка-селище рівнем 1 не стає), міста лягають у сітку тієї ж проєкції, є вода й річки (Дніпро — класом 0),
+    /// трас і OpenStreetMap нема (22.10: «не хочу OSM», траси сперечалися з курсами цілей), і файл легкий.
+    /// </summary>
+    [Fact]
+    public void Detail_layer_has_every_oblast_centre_once_in_its_place_and_stays_light()
+    {
+        var path = Paths.Resolve("web/static/tryvoga-detail.json");
+        Assert.True(new FileInfo(path).Length < 400_000, $"{new FileInfo(path).Length} байт");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var root = doc.RootElement;
+        Assert.DoesNotContain("OpenStreetMap", File.ReadAllText(path));
+        Assert.False(root.TryGetProperty("roads", out _));
+        var places = root.GetProperty("places").EnumerateArray().ToList();
+        var capitals = places.Where(p => p.GetProperty("l").GetInt32() == 1).Select(p => p.GetProperty("n").GetString()).ToList();
+        Assert.Equal(capitals.Count, capitals.Distinct().Count());
+        Assert.True(capitals.Count >= 25, $"обласних центрів {capitals.Count}");
+        Assert.True(places.Count > 200, $"міст {places.Count}");
+        foreach (var p in places)
+        {
+            int x = p.GetProperty("x").GetInt32(), y = p.GetProperty("y").GetInt32();
+            Assert.True(x is > 0 and < 4000 && y is > 0 and < 2730, $"{p.GetProperty("n").GetString()}: {x}, {y}");
+        }
+        var zh = places.Single(p => p.GetProperty("n").GetString() == "Житомир");
+        var (la, lo) = GeoMap.Unproject(zh.GetProperty("x").GetDouble(), zh.GetProperty("y").GetDouble());
+        Assert.True(GeoScore.Km(la, lo, 50.2547, 28.6587) < 3, $"Житомир: {la:0.000}, {lo:0.000}");
+        Assert.Contains(root.GetProperty("rivers").EnumerateArray(), r => r.GetProperty("c").GetInt32() == 0);
+        Assert.True(root.GetProperty("water").GetArrayLength() >= 5);
+    }
+
+    /// <summary>
+    /// «Київ якийсь рваний» (22.10): у NEPTUN межа міста не збігалася з сусідніми районами — кожна сторона мала свою дугу,
+    /// клієнт малював їх яскравим кордоном, а між ними просвічувало «море». Після вирівнювання топології
+    /// (build-tryvoga.py, shapely) кожна дуга межі міста — спільна з сусіднім районом (Київ ніде не виходить на кордон).
+    /// </summary>
+    [Fact]
+    public void Kyiv_shares_every_border_arc_with_a_neighbouring_raion()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(Paths.Resolve("web/static/tryvoga-map.json")));
+        var units = doc.RootElement.GetProperty("units").EnumerateArray().ToList();
+        var uses = new Dictionary<int, int>();
+        foreach (var u in units)
+            foreach (var ring in u.GetProperty("rings").EnumerateArray())
+                foreach (var id in ring.EnumerateArray())
+                    uses[Math.Abs(id.GetInt32())] = uses.GetValueOrDefault(Math.Abs(id.GetInt32())) + 1;
+        var kyiv = units.Single(u => u.GetProperty("k").GetString() == "м. київ");
+        var arcs = kyiv.GetProperty("rings").EnumerateArray().SelectMany(r => r.EnumerateArray()).Select(a => Math.Abs(a.GetInt32())).ToList();
+        Assert.NotEmpty(arcs);
+        Assert.All(arcs, a => Assert.Equal(2, uses[a]));
     }
 
     // ---------- архів ----------

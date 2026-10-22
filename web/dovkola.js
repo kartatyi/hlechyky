@@ -1,20 +1,21 @@
 /*
-  «🐓 Півник» — window.HPivnyk (21.10.2026, docs/tryvoga.md): флюгер поруч із мапою Тривоги. Циферблат довкола мене:
-  кільця 15/30/45 км (або 50/100/150), що летить, звідки, куди — і чи на мене.
+  «🧭 Довкола мене» — window.HDovkola (21.10.2026, docs/tryvoga.md): циферблат поруч із мапою Тривоги. Кільця
+  15/30/45 км (або 50/100/150) довкола мене: що летить, звідки, куди — і чи на мене. До 21.10 звалось «Півник».
 
   Де я: GPS браузера (рахується лише тут — на сервер не йде й ніде не зберігається), точка «📌 Я тут» з мапи
   (localStorage цього браузера) або місто мого району. Цілі — той самий знімок NEPTUN, що й на мапі (tryvoga.js
   тягне /api/tryvoga/threats раз на 10 с, поки сторінку видно). З курсу й швидкості цілі — найближче проходження:
   «летить на тебе» чи «пройде за N км» і за скільки хвилин.
 
-  Кольори зон — як у застосунку «Флюгер»: зелена — тихо, жовта — тривога в районі, червона — ціль у цьому колі.
-  Компас телефону крутить циферблат; звук — тумблером, лише поки сторінка відкрита (системних сповіщень нема:
-  рішення Тривоги — «лише плашка»).
+  Зони кольором: зелена — тихо, жовта — тривога в районі, червона — ціль у цьому колі. Стан одним рядком іде в картку
+  статусу згори сторінки (host.near), тут — циферблат, звідки рахуємо й перелік. Компас телефону крутить циферблат;
+  звук — тумблером, лише поки сторінка відкрита (системних сповіщень нема: рішення Тривоги — «лише плашка»).
 */
 (() => {
   'use strict';
 
-  const KEY = 'pivnyk';                 // localStorage: { gps, sound, compass, big, here: { lat, lon } }
+  const KEY = 'dovkola';                // localStorage: { src, sound, compass, big, here: { lat, lon } }
+  const OLD_KEY = 'pivnyk';             // до 21.10: { gps, sound, compass, big, here } — переносимо раз
   const SCALES = { small: [15, 30, 45], big: [50, 100, 150] };
   const FAR = 3;                        // далі за зовнішнє кільце, але ближче за FAR × його — рискою на краю
   const ON_ME_KM = 10;                  // пройде ближче — «летить на тебе» (похибка місця в NEPTUN 8–13 км)
@@ -26,9 +27,13 @@
   const SPEED = { uav: 170, fpv: 80, missile: 750, ballistic: 2500, kab: 400, mig31k: 900, recon: 150, unknown: 170 };
   const SIDES = ['північ', 'пн-схід', 'схід', 'пд-схід', 'південь', 'пд-захід', 'захід', 'пн-захід'];
 
-  let h = null;          // господар — tryvoga.js: { esc, map, threats, region, alarm, oblastName, types, glyph, kick, focus }
+  // господар — tryvoga.js: { esc, map, threats, region, alarm, oblastName, types, mark, course, courseOf, trail, blob,
+  //   iconImg, kick, focus, near, narrow, tab }
+  let h = null;
   let root = null;
   let opt = load();
+  // компас є лише в телефона й планшета: на ПК кнопка тільки заважала б
+  const touch = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
   const pv = {
     cv: null, g: null, wrap: null, size: 0, dpr: 1, raf: 0, ro: null, css: {},
     shown: false, watch: null, fix: null, reveal: false, msg: '',
@@ -44,13 +49,18 @@
   // ---------------------------------------------------------------------------------------------
 
   function load() {
-    let o = {};
-    try { o = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { o = {}; }
+    const read = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
+    const o = read(KEY) || read(OLD_KEY) || {};
     const here = o.here && Number.isFinite(o.here.lat) && Number.isFinite(o.here.lon)
       && Math.abs(o.here.lat) <= 90 && Math.abs(o.here.lon) <= 180 ? { lat: o.here.lat, lon: o.here.lon } : null;
-    return { gps: !!o.gps, sound: !!o.sound, compass: !!o.compass, big: !!o.big, here };
+    // звідки рахуємо: старе { gps: true } — це GPS, а точка з мапи без GPS — точка
+    let src = o.src === 'gps' || o.src === 'here' || o.src === 'raion' ? o.src : o.gps ? 'gps' : here ? 'here' : 'raion';
+    if (src === 'here' && !here) src = 'raion';
+    return { src, sound: !!o.sound, compass: !!o.compass, big: !!o.big, here };
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(opt)); } catch { /* приватне вікно */ } }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(opt)); localStorage.removeItem(OLD_KEY); } catch { /* приватне вікно */ }
+  }
 
   const rings = () => (opt.big ? SCALES.big : SCALES.small);
 
@@ -78,24 +88,24 @@
     return v;
   }
 
-  /// Від якої точки рахуємо: GPS → «📌 Я тут» → місто району. null — мапа ще не завантажилась, а GPS нема.
+  /// Від якої точки рахуємо: обране джерело, а поки GPS мовчить — місто району. null — мапа ще не завантажилась.
   function me() {
-    if (opt.gps && pv.fix) return { lat: pv.fix.lat, lon: pv.fix.lon, src: 'gps', acc: pv.fix.acc, at: pv.fix.at };
-    if (opt.here) return { lat: opt.here.lat, lon: opt.here.lon, src: 'here' };
+    if (opt.src === 'gps' && pv.fix) return { lat: pv.fix.lat, lon: pv.fix.lon, src: 'gps', acc: pv.fix.acc, at: pv.fix.at };
+    if (opt.src === 'here' && opt.here) return { lat: opt.here.lat, lon: opt.here.lon, src: 'here' };
     const t = town();
     return t ? { lat: t.lat, lon: t.lon, src: 'raion', name: t.name, city: t.city } : null;
   }
 
   function gpsStart() {
-    if (pv.watch != null || !opt.gps) return;
-    if (!navigator.geolocation) { gpsFail('Цей браузер не дає місце — тицни на мапі «📌 Я тут».'); return; }
+    if (pv.watch != null || opt.src !== 'gps') return;
+    if (!navigator.geolocation) { gpsFail('Цей браузер не дає місце — обери «📌 Точка» і торкнись мапи.'); return; }
     pv.watch = navigator.geolocation.watchPosition((p) => {
       pv.fix = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, at: p.timestamp || Date.now() };
       say('');
       moved();
     }, (e) => {
-      if (e.code === 1) gpsFail('Браузер не дав місце. Дозволь сайту «Місцезнаходження» або тицни на мапі «📌 Я тут».');
-      else if (!pv.fix) say('GPS поки мовчить — рахую від ' + fallbackName() + '.');
+      if (e.code === 1) gpsFail('Браузер не дав місце. Дозволь сайту «Місцезнаходження» або обери «📌 Точка».');
+      else if (!pv.fix) say('GPS поки мовчить — рахую від ' + townName() + '.');
     }, { enableHighAccuracy: false, maximumAge: 60000, timeout: 30000 });
   }
   function gpsStop() {
@@ -104,28 +114,43 @@
   }
   function gpsFail(text) {
     gpsStop();
-    opt.gps = false;
+    opt.src = 'raion';
     pv.fix = null;
     save();
     say(text);
     moved();
   }
-  function fallbackName() {
-    if (opt.here) return 'точки на мапі';
+  function townName() {
     const t = town();
     return t ? t.name : 'твого району';
   }
 
-  /// «📌 Я тут» з мапи: точка важливіша за GPS, тож GPS вимикаємо — щоб було видно, від чого рахуємо.
+  /// «Рахую від»: місто району, GPS чи точка з мапи. Точки ще нема — підказуємо, як її поставити.
+  function setSrc(s) {
+    say('');
+    if (s === 'here' && (!opt.here || opt.src === 'here')) {
+      say(opt.here ? 'Інша точка: торкнись мапи там, де ти, і натисни «📌 Я тут».' : 'Торкнись мапи там, де ти, і натисни «📌 Я тут».');
+      if (h.narrow()) h.tab('map');
+      if (!opt.here) return;
+    }
+    if (opt.src === s) return;
+    opt.src = s;
+    if (s === 'gps') gpsStart(); else { gpsStop(); pv.fix = null; }
+    save();
+    moved();
+  }
+
+  /// «📌 Я тут» з мапи: тепер рахуємо від цієї точки (GPS вимикаємо — щоб було видно, від чого рахуємо).
   function setHere(lat, lon) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
     opt.here = { lat: +lat.toFixed(5), lon: +lon.toFixed(5) };
-    opt.gps = false;
+    opt.src = 'here';
     gpsStop();
     pv.fix = null;
     save();
     say('');
     moved();
+    if (h && h.narrow()) h.tab('near');
   }
 
   /// Точка чи масштаб змінились — перемалювати й циферблат, і кільце на мапі.
@@ -210,17 +235,19 @@
     anchor(m);
     pv.list = look(m);
     listen();
-    paintTop(m);
+    paintState(m);
+    paintControls();
     paintWhere(m);
     paintList();
     kick();
   }
 
+  /// Одним рядком — для картки статусу згори: найгірше, що зараз довкола мене.
   function stateOf() {
     const al = h.alarm();
     const th = h.threats();
-    if (al.off) return { cls: 'off', text: 'Тривоги зараз не показуємо — сервер їх не опитує.' };
-    if (al.stale || (th && th.stale)) return { cls: 'stale', ico: '❔', text: '<b>Не знаю, що в небі</b> — дані застаріли. Дивись застосунок «Повітряна тривога».' };
+    if (al.off) return null;
+    if (al.stale || (th && th.stale)) return { cls: 'stale', ico: '❔', text: '<b>Не знаю, що в небі</b> — дані застаріли' };
     const rs = rings();
     const inside = pv.list.filter((x) => x.live && x.zone < 3);
     const more = inside.length > 1 ? ` · у колі ${rs[2]} км їх ${inside.length}` : '';
@@ -229,31 +256,42 @@
     if (coming) {
       const what = coming.pass.km <= ON_ME_KM ? 'Летить на тебе' : 'Летить у твій бік';
       const by = coming.pass.km <= ON_ME_KM ? '' : `, пройде за ${Math.round(coming.pass.km)} км`;
-      return { cls: coming.zone < 3 ? 'hot' : 'coming', ico: coming.zone < 3 ? '🟥' : '🟧',
+      // колір — за найгіршим: хай найшвидша ще далеко, а в колі вже хтось є — червоний
+      const hot = coming.zone < 3 || inside.length > 0;
+      return { cls: hot ? 'hot' : 'coming', ico: hot ? '🟥' : '🟧',
         text: `<b>${what}</b> — ${esc(label(coming.t))} за ${Math.round(coming.d)} км, ${side(coming.b)}${by}, ${eta(coming.pass)}${more}` };
     }
     const near = inside[0];
-    if (near) return { cls: 'hot', ico: '🟥', text: `<b>Ціль за ${Math.round(near.d)} км</b> — ${side(near.b)}${more}` };
-    if (al.on) return { cls: 'alarm', ico: '🟨', text: `<b>Тривога в районі</b>, а в колі ${rs[2]} км нічого не видно` };
+    if (near) return { cls: 'hot', ico: '🟥', text: `<b>Ціль за ${Math.round(near.d)} км</b> — ${side(near.b)}, ${esc(label(near.t))}${more}` };
     if (!th) return { cls: 'wait', ico: '⏳', text: 'Дивлюсь, що в небі…' };
-    return { cls: 'calm', ico: '🟩', text: `<b>Тихо</b> — у колі ${rs[2]} км нічого` };
+    return { cls: al.on ? 'alarm' : 'calm', ico: al.on ? '🟨' : '🟩', text: `<b>У колі ${rs[2]} км нічого не видно</b>` };
   }
 
-  function paintTop(m) {
-    const box = $('.pv-state');
+  function paintState(m) {
+    const box = h && h.near;
     if (!box) return;
     const s = m ? stateOf() : { cls: 'wait', ico: '⏳', text: 'Мапа вантажиться…' };
-    box.className = 'pv-state ' + s.cls;
-    box.innerHTML = (s.ico ? `<span class="pv-big">${s.ico}</span>` : '') + `<span>${s.text}</span>`;
-    if (pv.cv) pv.cv.setAttribute('aria-label', 'Півник: ' + box.textContent);
+    box.hidden = !s;
+    if (!s) return;
+    box.className = 'tv-near ' + s.cls;
+    box.innerHTML = `<span class="pv-big" aria-hidden="true">${s.ico}</span>`
+      + `<span class="tv-near-t"><span class="tv-near-k">Довкола мене</span> ${s.text}</span>`;
+    if (pv.cv) pv.cv.setAttribute('aria-label', box.textContent);
+  }
+
+  /// Перемикачі: радіус, звідки рахуємо, звук і компас.
+  function paintControls() {
+    const pick = (sel, on) => { for (const b of root.querySelectorAll(sel)) { const v = on(b); b.classList.toggle('on', v); b.setAttribute('aria-checked', v ? 'true' : 'false'); } };
+    pick('.pv-scl button', (b) => (b.dataset.big === '1') === opt.big);
+    // поки GPS не відповів, показуємо його обраним — рахуємо ж тимчасово від міста (про це рядок нижче)
+    pick('.pv-src button', (b) => b.dataset.src === opt.src);
+    const tw = $('.pv-town');
+    if (tw) tw.textContent = townName() === 'твого району' ? 'Район' : townName();
     const t = (sel, on) => { const b = $(sel); if (b) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); } };
-    t('.pv-gps', opt.gps);
     t('.pv-snd', opt.sound);
     t('.pv-cmp', opt.compass);
-    const sc = $('.pv-scl');
-    if (sc) sc.innerHTML = `◎ ${rings()[2]} км`;
     const sn = $('.pv-snd');
-    if (sn) sn.innerHTML = (opt.sound ? '🔊' : '🔈') + ' звук';
+    if (sn) sn.textContent = (opt.sound ? '🔊' : '🔈') + ' Звук';
   }
 
   function mask(v) { return pv.reveal ? v.toFixed(4) : v.toFixed(4).replace(/\d/g, '*'); }
@@ -267,16 +305,17 @@
     if (!box) return;
     let html;
     const eye = `<button type="button" class="icon ghost pv-eye" title="${pv.reveal ? 'Сховати координати' : 'Показати координати'}" aria-label="${pv.reveal ? 'Сховати координати' : 'Показати координати'}">${pv.reveal ? '🙈' : '👁'}</button>`;
-    if (!m) html = opt.gps ? '📡 Шукаю тебе…' : '';
+    if (!m) html = opt.src === 'gps' ? 'Шукаю тебе…' : '';
     else if (m.src === 'gps') {
       const acc = m.acc > 0 ? ' · ±' + (m.acc < 1000 ? Math.round(m.acc) + ' м' : (m.acc / 1000).toFixed(1) + ' км') : '';
-      html = `📡 <span class="pv-coord">${mask(m.lat)}, ${mask(m.lon)}</span>${acc} · ${esc(clock(m.at))} ${eye}`;
+      html = `<span class="pv-coord">${mask(m.lat)}, ${mask(m.lon)}</span>${acc} · ${esc(clock(m.at))} ${eye}`
+        + '<span class="tv-muted"> — лише в цьому браузері</span>';
     } else if (m.src === 'here') {
-      html = `📌 Точка з мапи <span class="pv-coord">${mask(m.lat)}, ${mask(m.lon)}</span> ${eye}`
-        + '<button type="button" class="ghost pv-unhere" title="Рахувати від міста району">✕ прибрати</button>';
+      html = `Точка з мапи <span class="pv-coord">${mask(m.lat)}, ${mask(m.lon)}</span> ${eye}`;
+    } else if (opt.src === 'gps') {
+      html = `<span class="tv-muted">Шукаю GPS… поки рахую від ${esc(m.name)}</span>`;
     } else {
-      html = `🏘 ${esc(m.name)}${m.city ? '' : ' (середина району)'}`
-        + `<span class="tv-muted"> — ${opt.gps ? 'шукаю GPS…' : 'точніше: 📡 GPS або тицни на мапі «📌 Я тут»'}</span>`;
+      html = `${esc(m.name)}<span class="tv-muted"> — ${m.city ? 'місто твого району' : 'середина району'}</span>`;
     }
     box.innerHTML = html;
     const msg = $('.pv-msg');
@@ -319,9 +358,10 @@
       if (t.quality && t.quality !== 'confirmed' && t.unc) bits.push('±' + Math.round(t.unc) + ' км');
       if (t.advisory) bits.push('спостереження');
       if (x.old) bits.push('давно не оновлювалась');
-      return `<li data-id="${esc(t.id)}" class="${x.danger ? 'danger' : ''}${x.live ? '' : ' dim'}">`
-        + `<span class="pv-ico">${m.ico}</span><span class="pv-t"><b>${Math.round(x.d)} км</b> · ${side(x.b)} ${Math.round(x.b) % 360}° · ${esc(label(t))}`
-        + `${bits.length ? ' <span class="tv-muted">' + esc(bits.join(' · ')) + '</span>' : ''}<br>${passText(x)}</span></li>`;
+      return `<li><button type="button" class="pv-row${x.danger ? ' danger' : ''}${x.live ? '' : ' dim'}" data-id="${esc(t.id)}">`
+        + `<span class="pv-ico" aria-hidden="true">${h.iconImg(t.type)}</span><span class="pv-t"><b>${Math.round(x.d)} км</b> · ${side(x.b)}, ${Math.round(x.b) % 360}° · ${esc(label(t))}`
+        + `${t.locality ? ' · ' + esc(t.locality) : ''}`
+        + `${bits.length ? ' <span class="tv-muted">' + esc(bits.join(' · ')) + '</span>' : ''}<br>${passText(x)}</span></button></li>`;
     });
     // «десь в області» без точки: на циферблат не лягає, але знати варто
     const ob = h.oblastName();
@@ -464,7 +504,6 @@
       ring: c('--pv-ring', 'rgba(10,20,15,.55)'), text: c('--text', '#ecf1ea'), muted: c('--muted', '#9db3a5'),
       halo: c('--bg', '#0f1f18'), north: c('--pv-north', '#ff6b5e'), danger: c('--pv-danger', '#ff4d61'),
     };
-    for (const t of Object.keys(h.types)) pv.css['t-' + t] = c('--tv-' + t, '#f0820e');
   }
 
   function text(g, s, x, y, color, font) {
@@ -530,70 +569,69 @@
     for (const km of rs) text(g, km + ' км', cx, cy + km * kmPx - 9, c.text, '11px system-ui, sans-serif');
 
     if (!grey) {
-      // сліди, кола похибки, курс до найближчої точки — лише всередині циферблата
+      // Ті самі значки, що на мапі (tryvoga.js): силует типу носом за курсом, промінь (і клин, коли курс певний), слід
+      // блідне до хвоста, місце приблизне — пляма. Усе лише всередині циферблата.
+      const P = 10;
+      const col = (t) => (h.types[t.type] || h.types.unknown).color;
       g.save();
       g.beginPath();
       g.arc(cx, cy, R, 0, Math.PI * 2);
       g.clip();
       for (const x of pv.list) {
         if (x.d > rs[2] * 1.5) continue;
-        const color = c['t-' + (h.types[x.t.type] ? x.t.type : 'unknown')];
         const [px, py] = at(x.d * kmPx, x.b);
-        g.globalAlpha = x.live ? 1 : 0.45;
+        const al = x.live ? 1 : 0.45;
+        if (x.t.quality !== 'confirmed' && x.t.unc > 0 && x.t.unc * kmPx > P + 3) h.blob(g, px, py, x.t.unc * kmPx, col(x.t), al);
         if (x.trail.length) {
-          g.strokeStyle = color;
-          g.lineWidth = 1.5;
-          g.globalAlpha *= 0.55;
-          g.beginPath();
-          x.trail.forEach(([d, b], i) => { const [tx, ty] = at(d * kmPx, b); if (i) g.lineTo(tx, ty); else g.moveTo(tx, ty); });
-          g.lineTo(px, py);
-          g.stroke();
-          g.globalAlpha /= 0.55;
-        }
-        if (x.t.quality !== 'confirmed' && x.t.unc > 0) {
-          g.setLineDash([3, 3]);
-          g.strokeStyle = color;
-          g.lineWidth = 1;
-          g.beginPath();
-          g.arc(px, py, x.t.unc * kmPx, 0, Math.PI * 2);
-          g.stroke();
-          g.setLineDash([]);
-        }
-        if (x.pass && !x.pass.away && x.live && x.pass.km <= rs[2]) {
-          // куди долетить за курсом: пунктир до найближчої до мене точки
-          const a = x.t.heading * RAD - turnRad, L = x.pass.along * kmPx;
-          g.setLineDash([5, 4]);
-          g.strokeStyle = x.danger ? c.danger : color;
-          g.lineWidth = x.danger ? 2 : 1.2;
-          g.beginPath();
-          g.moveTo(px, py);
-          g.lineTo(px + L * Math.sin(a), py - L * Math.cos(a));
-          g.stroke();
-          g.setLineDash([]);
+          const tp = x.trail.map(([d, b]) => at(d * kmPx, b));
+          tp.push([px, py]);
+          h.trail(g, tp, col(x.t), al);
         }
         g.globalAlpha = 1;
       }
       g.restore();
 
-      // азимут: стрілка від мене на кожну живу ціль у колі; небезпечна — червона й товща
+      // азимут від мене — тонка лінія без вістря (щоб не плутати з курсом цілі); небезпечна — червона
+      g.lineCap = 'round';
       for (const x of pv.list) {
         if (!x.live || x.zone > 2) continue;
-        const r = Math.max(0, x.d * kmPx - 12);
-        if (r < 14) continue;
+        const r = x.d * kmPx - P - 3;
+        if (r < 10) continue;
         const [ex, ey] = at(r, x.b);
-        arrow(g, cx, cy, ex, ey, x.danger ? c.danger : c.text, x.danger ? 3 : 1.8);
+        g.globalAlpha = x.danger ? 0.85 : 0.3;
+        g.strokeStyle = x.danger ? c.danger : c.text;
+        g.lineWidth = x.danger ? 1.8 : 1;
+        g.beginPath();
+        g.moveTo(cx, cy);
+        g.lineTo(ex, ey);
+        g.stroke();
       }
+      g.globalAlpha = 1;
 
-      // самі цілі; далекі — рискою на краю
+      // курс — як на мапі: промінь (орієнтовний) і клин (підтверджений); небезпечна — червоним
+      g.save();
+      g.beginPath();
+      g.arc(cx, cy, R, 0, Math.PI * 2);
+      g.clip();
       for (const x of pv.list) {
-        const color = c['t-' + (h.types[x.t.type] ? x.t.type : 'unknown')];
+        const k = x.zone > 2 ? null : h.courseOf(x.t);
+        if (!k) continue;
+        const [px, py] = at(x.d * kmPx, x.b);
+        g.globalAlpha = x.live ? 1 : 0.45;
+        h.course(g, px, py, k.deg * RAD - turnRad, P, x.danger ? c.danger : col(x.t), k.sure);
+      }
+      g.restore();
+      g.globalAlpha = 1;
+
+      // самі цілі; далекі — трикутником на краю кольором типу
+      for (const x of pv.list) {
         g.globalAlpha = x.live ? 1 : 0.45;
         if (x.zone > 2) {
           const [ex, ey] = at(R - 3, x.b);
           g.save();
           g.translate(ex, ey);
           g.rotate(x.b * RAD - turnRad);
-          g.fillStyle = x.danger ? c.danger : color;
+          g.fillStyle = x.danger ? c.danger : col(x.t);
           g.strokeStyle = 'rgba(0,0,0,.6)';
           g.lineWidth = 1;
           g.beginPath();
@@ -605,21 +643,10 @@
           g.restore();
         } else {
           const [px, py] = at(x.d * kmPx, x.b);
-          g.save();
-          g.translate(px, py);
-          if (x.danger) {
-            g.strokeStyle = c.danger;
-            g.lineWidth = 2;
-            g.beginPath();
-            g.arc(0, 0, 13, 0, Math.PI * 2);
-            g.stroke();
-          }
-          g.scale(1.25, 1.25);
-          const meta = h.types[x.t.type] || h.types.unknown;
-          const rot = x.t.heading == null ? 0 : x.t.heading * RAD - turnRad;
-          h.glyph(g, x.t.heading == null && meta.shape !== 'ring' ? 'dot' : meta.shape, color, rot);
-          g.restore();
-          if (x.t.count > 1) { g.textAlign = 'left'; text(g, '×' + x.t.count, px + 10, py - 10, c.text, 'bold 11px system-ui, sans-serif'); g.textAlign = 'center'; }
+          // небезпечна — з червоним гало замість темного (без кружків)
+          const k = h.courseOf(x.t);
+          h.mark(g, px, py, x.t.type, P, k ? k.deg * RAD - turnRad : 0, x.danger ? { halo: c.danger } : null);
+          if (x.t.count > 1) { g.textAlign = 'left'; text(g, '×' + x.t.count, px + P + 3, py - P, c.text, 'bold 12px system-ui, sans-serif'); g.textAlign = 'center'; }
         }
         g.globalAlpha = 1;
       }
@@ -637,44 +664,37 @@
     else { g.strokeStyle = c.text; g.lineWidth = 1.6; g.stroke(); }
   }
 
-  function arrow(g, x1, y1, x2, y2, color, w) {
-    const a = Math.atan2(y2 - y1, x2 - x1), hl = 6 + w * 2;
-    g.strokeStyle = color;
-    g.fillStyle = color;
-    g.lineWidth = w;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(x1, y1);
-    g.lineTo(x2 - Math.cos(a) * hl * 0.6, y2 - Math.sin(a) * hl * 0.6);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(x2, y2);
-    g.lineTo(x2 - hl * Math.cos(a - 0.4), y2 - hl * Math.sin(a - 0.4));
-    g.lineTo(x2 - hl * Math.cos(a + 0.4), y2 - hl * Math.sin(a + 0.4));
-    g.closePath();
-    g.fill();
-  }
-
   // ---------------------------------------------------------------------------------------------
   // назовні
   // ---------------------------------------------------------------------------------------------
 
-  /// el — порожня секція поруч із мапою; host — tryvoga.js.
+  /// el — порожня секція поруч із мапою; host — tryvoga.js (host.near — рядок стану в картці згори).
   function mount(el, host) {
     h = host;
     root = el;
     root.innerHTML = `
-      <h2 class="pv-h">🐓 Півник <span class="tv-muted">що летить довкола мене</span></h2>
-      <div class="pv-state"></div>
-      <div class="pv-tg" role="group" aria-label="Півник: налаштування">
-        <button type="button" class="pv-gps" aria-pressed="false" title="Де я — за GPS телефону (лише в цьому браузері)">📡 GPS</button>
-        <button type="button" class="pv-cmp" aria-pressed="false" title="Крутити циферблат за компасом телефону">🧭 компас</button>
-        <button type="button" class="pv-snd" aria-pressed="false" title="Пискнути, коли ціль заходить у коло чи повертає на мене (лише поки сторінка відкрита)">🔈 звук</button>
-        <button type="button" class="pv-scl" title="Кільця 15/30/45 км чи 50/100/150 км">◎ 45 км</button>
+      <div class="pv-head">
+        <h2 class="pv-h">🧭 Довкола мене</h2>
+        <div class="pv-seg pv-scl" role="radiogroup" aria-label="Радіус кілець">
+          <button type="button" role="radio" data-big="0" title="Кільця 15, 30 і 45 км">45 км</button>
+          <button type="button" role="radio" data-big="1" title="Кільця 50, 100 і 150 км">150 км</button>
+        </div>
       </div>
-      <div class="pv-dial"><canvas class="pv-cv" role="img" aria-label="Півник"></canvas></div>
+      <div class="pv-dial"><canvas class="pv-cv" role="img" aria-label="Довкола мене"></canvas></div>
+      <div class="pv-from">
+        <span class="pv-lbl">Рахую від</span>
+        <div class="pv-seg pv-src" role="radiogroup" aria-label="Від якої точки рахувати">
+          <button type="button" role="radio" data-src="raion" title="Від міста твого району (обирається згори)">🏘 <span class="pv-town">Район</span></button>
+          <button type="button" role="radio" data-src="gps" title="Де я — за GPS (координати лишаються в цьому браузері)">📡 GPS</button>
+          <button type="button" role="radio" data-src="here" title="Від точки, яку позначиш на мапі">📌 Точка</button>
+        </div>
+      </div>
       <div class="pv-where"></div>
-      <p class="pv-msg" hidden></p>
+      <p class="pv-msg" role="status" hidden></p>
+      <div class="pv-tg" role="group" aria-label="Звук і компас">
+        <button type="button" class="pv-snd" aria-pressed="false" title="Пискнути, коли ціль заходить у коло чи повертає на мене (лише поки сторінка відкрита)">🔈 Звук</button>
+        <button type="button" class="pv-cmp" aria-pressed="false" title="Крутити циферблат за компасом телефону">🧭 Компас</button>
+      </div>
       <ul class="pv-list" aria-label="Що летить довкола"></ul>
       <div class="pv-legend">
         <span><i class="pz calm"></i>тихо</span><span><i class="pz alarm"></i>тривога в районі</span>
@@ -684,14 +704,19 @@
     pv.cv = $('.pv-cv');
     pv.g = pv.cv.getContext('2d');
     cssColors();
-    $('.pv-gps').onclick = () => {
-      opt.gps = !opt.gps;
-      say('');
-      if (opt.gps) gpsStart(); else { gpsStop(); pv.fix = null; }
+    if (!touch) $('.pv-cmp').remove();
+    $('.pv-scl').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-big]');
+      if (!b || (b.dataset.big === '1') === opt.big) return;
+      opt.big = b.dataset.big === '1';
       save();
       moved();
-    };
-    $('.pv-cmp').onclick = () => {
+    });
+    $('.pv-src').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-src]');
+      if (b) setSrc(b.dataset.src);
+    });
+    if (touch) $('.pv-cmp').onclick = () => {
       opt.compass = !opt.compass;
       say('');
       if (opt.compass) compassStart(true); else compassStop();
@@ -704,16 +729,10 @@
       if (opt.sound) { audio(); pv.beepAt = 0; beep(1, false); }
       update();
     };
-    $('.pv-scl').onclick = () => {
-      opt.big = !opt.big;
-      save();
-      moved();
-    };
     root.addEventListener('click', (e) => {
       if (e.target.closest('.pv-eye')) { pv.reveal = !pv.reveal; paintWhere(me()); return; }
-      if (e.target.closest('.pv-unhere')) { opt.here = null; save(); moved(); return; }
-      const li = e.target.closest('.pv-list li[data-id]');
-      if (li) h.focus(li.dataset.id);
+      const row = e.target.closest('.pv-list [data-id]');
+      if (row) h.focus(row.dataset.id);
     });
     // звук після перезавантаження: браузер дасть його лише після першого дотику до сторінки
     document.addEventListener('pointerdown', () => { if (opt.sound && pv.ac && pv.ac.state === 'suspended') pv.ac.resume().catch(() => {}); }, { passive: true });
@@ -726,8 +745,8 @@
     pv.shown = true;
     pv.baseline = false;
     if (!root) return;
-    if (opt.gps) gpsStart();
-    if (opt.compass) compassStart(false);
+    if (opt.src === 'gps') gpsStart();
+    if (opt.compass && touch) compassStart(false);
     if (opt.sound) audio();
     resize();
     update();
@@ -745,5 +764,5 @@
     return m ? { lat: m.lat, lon: m.lon, src: m.src, km: rings()[2] } : null;
   }
 
-  window.HPivnyk = { mount, update, show, hide, setHere, me: where };
+  window.HDovkola = { mount, update, show, hide, setHere, me: where };
 })();

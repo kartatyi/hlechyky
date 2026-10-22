@@ -8,6 +8,10 @@
 
   Дані — NEPTUN через наш сервер. Його умова й наша чесність: посилання на NEPTUN і «це не офіційне оповіщення»
   завжди поруч із мапою, а коли дані застаріли — кажемо «не знаю», а не «тихо».
+
+  Сторінка (21.10, переробка): згори картка статусу — мій район, «Довкола мене» одним рядком, коли оновлено; далі мапа
+  й «🧭 Довкола мене» (web/dovkola.js) поруч, під мапою — «Тривоги зараз» по областях і «У небі зараз». У вузькій
+  колонці (телефон, поруч із Балачками) мапа й «Довкола мене» — вкладками, щоб кожне було на весь екран.
 */
 (() => {
   'use strict';
@@ -15,22 +19,35 @@
   const MAP_URL = '/static/tryvoga-map.json';
   const REGION_KEY = 'tryvogaRegion';
   const HIDE_KEY = 'tryvogaHidden';
+  const TAB_KEY = 'tryvogaTab';      // вкладка у вузькій колонці: map | near
   const THREATS_MS = 10000;
   const KMAX = 14;
   const EARTH_KM = 6371;
+  const CLUSTER_PX = 22;             // значки ближче за стільки пікселів злипаються в гурт із числом
+  const MARK_R = 11;                // піврозміру силуету цілі на мапі, px
+  const DETAIL_URL = '/static/tryvoga-detail.json';   // детальний шар: міста, вода, річки — довантажується
+  const MINOR_S = 0.3;               // дрібні річки — з цього масштабу (на всю Україну на ПК ≈ 0,15)
+  const PERM_MS = 2 * 86400000;      // тривога довша за дві доби — окуповане: у переліку останньою й блідою
+  const ALERTS_FOLD = 8;             // «Тривоги зараз»: стільки областей видно одразу, решта — «Усі області»
 
-  // Типи цілей NEPTUN: як підписати й яким значком малювати. Кольори — у tryvoga.css (--tv-<тип>).
+  // Типи цілей NEPTUN: підпис, повна назва для легенди й колір силуету (mark нижче — той самий на мапі, на
+  // циферблаті, в легенді й у переліках; без рожевого — «не пасує»).
   const TYPES = {
-    uav: { label: 'БпЛА', ico: '🛩', shape: 'delta' },
-    fpv: { label: 'FPV', ico: '🛩', shape: 'delta' },
-    missile: { label: 'Ракети', ico: '🚀', shape: 'dart' },
-    ballistic: { label: 'Балістика', ico: '🚀', shape: 'diamond' },
-    kab: { label: 'КАБ', ico: '💣', shape: 'dot' },
-    mig31k: { label: 'Авіація', ico: '✈', shape: 'plane' },
-    recon: { label: 'Розвідка', ico: '🛰', shape: 'ring' },
-    unknown: { label: 'Невідомі', ico: '❔', shape: 'ring' },
+    uav: { label: 'БпЛА', long: 'БпЛА («шахед»)', color: '#ff8f1f' },
+    fpv: { label: 'FPV', long: 'FPV-дрон', color: '#ffb84d' },
+    missile: { label: 'Ракети', long: 'крилата ракета', color: '#ff4d61' },
+    ballistic: { label: 'Балістика', long: 'балістична ракета', color: '#d7263d' },
+    kab: { label: 'КАБ', long: 'КАБ (авіабомба)', color: '#ffd84a' },
+    mig31k: { label: 'Авіація', long: 'літак', color: '#8fbaff' },
+    recon: { label: 'Розвідка', long: 'розвідка', color: '#3fd6c4' },
+    unknown: { label: 'Невідомі', long: 'невідома ціль', color: '#c8d1dc' },
   };
   const typeOf = (t) => TYPES[t] || TYPES.unknown;
+  const typeKey = (t) => (TYPES[t] ? t : 'unknown');
+  // у гурті головний — найнебезпечніший: його колір і значок
+  const PRIO = { ballistic: 7, missile: 6, mig31k: 5, kab: 4, uav: 3, fpv: 2, recon: 1, unknown: 0 };
+  const SIDES = ['північ', 'пн-схід', 'схід', 'пд-схід', 'південь', 'пд-захід', 'захід', 'пн-захід'];
+  const side = (deg) => SIDES[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 
   let o = null;              // { esc, go, api, me } з app.js
   let data = null;           // /api/tryvoga
@@ -42,6 +59,9 @@
   let pingTimer = 0;
   let built = false;
   let pending = false;       // район щойно змінили, а сервер про нього ще не відповів — старого статусу не показуємо
+  let alertsAll = false;     // «Тривоги зараз» розгорнуто
+  let tab = 'map';           // вкладка у вузькій колонці
+  try { tab = localStorage.getItem(TAB_KEY) === 'near' ? 'near' : 'map'; } catch { /* приватне вікно */ }
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => (o ? o.esc(s) : String(s));
@@ -157,7 +177,7 @@
     if (!document.hidden) {
       try {
         const t = await o.api('GET', '/api/tryvoga/threats');
-        if (t && !t.off) { threats = t; paintThreats(); kick(); if (window.HPivnyk) HPivnyk.update(); }
+        if (t && !t.off) { threats = t; paintThreats(); kick(); if (window.HDovkola) HDovkola.update(); }
       } catch { /* наступного разу */ }
     }
     if (shown) threatTimer = setTimeout(loadThreats, THREATS_MS);
@@ -174,7 +194,7 @@
   function paint() {
     paintBar();
     paintBtn();
-    if (shown) { paintPage(); paintThreats(); if (window.HPivnyk) HPivnyk.update(); }
+    if (shown) { paintPage(); paintThreats(); if (window.HDovkola) HDovkola.update(); }
   }
 
   function paintBar() {
@@ -184,7 +204,8 @@
     const s = status();
     const stale = !off && data.stale;
     // Дані застаріли, а востаннє була тривога — кажемо «не знаю», а не мовчки ховаємо плашку.
-    const show = !off && s.on && !hidden(s);
+    // На самій сторінці мапи плашка не потрібна: те саме каже картка статусу згори, а «Мапа» вела б сюди ж.
+    const show = !off && s.on && !hidden(s) && !shown;
     bar.hidden = !show;
     if (!show) return;
     bar.classList.toggle('lvl-red', !stale && s.level === 'red');
@@ -232,6 +253,31 @@
     return mapPromise;
   }
 
+  /// Детальний шар (data/geo/build-tryvoga-detail.py: міста — Вікідані, вода й річки — Natural Earth) — окремим
+  /// файлом після основної мапи: вона з'являється одразу, а міста й вода догружаються. Лінії — дельтами, як дуги
+  /// основної мапи. Річки класами: 0 — Дніпро й Дунай, 1 — головні, 2 — дрібні (лише з наближенням).
+  let detailP = null;
+  function loadDetail() {
+    if (detailP || !map) return detailP;
+    detailP = fetch(DETAIL_URL)
+      .then((r) => { if (!r.ok) throw new Error('деталі ' + r.status); return r.json(); })
+      .then((raw) => {
+        const line = (a, p, closed) => {
+          let x = a[0], y = a[1];
+          p.moveTo(x, y);
+          for (let i = 2; i < a.length; i += 2) { x += a[i]; y += a[i + 1]; p.lineTo(x, y); }
+          if (closed) p.closePath();
+        };
+        const water = new Path2D(), cls = [new Path2D(), new Path2D(), new Path2D()];
+        for (const r of raw.water || []) line(r, water, true);
+        for (const rv of raw.rivers || []) for (const l of rv.lines) line(l, cls[rv.c] || cls[2], false);
+        map.detail = { water, big: cls[0], rivers: cls[1], minor: cls[2], places: raw.places || [], labels: raw.labels || [] };
+        kick();
+      })
+      .catch(() => { detailP = null; });   // без деталей мапа однаково робоча
+    return detailP;
+  }
+
   function buildMap(raw) {
     // дуги — дельтами: перша точка абсолютна, далі різниці (build-tryvoga.py)
     const arcs = raw.arcs.map((d) => {
@@ -261,11 +307,32 @@
       }
       return { k: u.k, n: u.n, o: u.o, c: u.c, p, bb };
     });
-    // дуга одного району — контур країни; двох з різних областей — межа області; з однієї — межа району
-    const outline = new Path2D(), oblast = new Path2D(), raion = new Path2D();
+    // Дуга одного району всередині країни — щілина між полігонами NEPTUN, а не кордон: по той бік (за кілька
+    // одиниць) уже інший район. Контур тривоги по ній не малюємо (інакше червоні уривки посеред червоного).
+    const probe = document.createElement('canvas').getContext('2d');
+    const sliver = arcs.map((a, i) => {
+      if (users[i].length !== 1 || a.length < 4) return false;
+      const j = Math.max(2, Math.floor(a.length / 4) * 2);
+      const dx = a[j] - a[j - 2], dy = a[j + 1] - a[j - 1], l = Math.hypot(dx, dy) || 1;
+      const mx = (a[j] + a[j - 2]) / 2, my = (a[j + 1] + a[j - 1]) / 2;
+      for (const d of [2, 6, 12]) for (const sg of [1, -1]) {
+        const px = mx - (dy / l) * d * sg, py = my + (dx / l) * d * sg;
+        for (let ui = 0; ui < units.length; ui++) {
+          const u = units[ui], b = u.bb;
+          if (ui === users[i][0] || px < b[0] || px > b[2] || py < b[1] || py > b[3]) continue;
+          if (probe.isPointInPath(u.p, px, py, 'evenodd')) return true;
+        }
+      }
+      return false;
+    });
+    // Дуга одного району — контур країни (після вирівнювання топології в build-tryvoga.py це саме межа об'єднання
+    // всіх одиниць); двох з різних областей — межа області; з однієї — межа району. Щілина, якщо лишилась, —
+    // тонкою районною лінією, а не яскравим кордоном посеред країни.
+    const outline = new Path2D(), oblast = new Path2D(), raion = new Path2D(), land = new Path2D();
+    for (const u of units) land.addPath(u.p);
     arcs.forEach((a, i) => {
       const us = users[i];
-      const p = us.length < 2 ? outline : units[us[0]].o !== units[us[1]].o ? oblast : raion;
+      const p = us.length < 2 ? (sliver[i] ? raion : outline) : units[us[0]].o !== units[us[1]].o ? oblast : raion;
       p.moveTo(a[0], a[1]);
       for (let k = 2; k < a.length; k += 2) p.lineTo(a[k], a[k + 1]);
     });
@@ -285,17 +352,17 @@
       const th = N * (lon - P.lam0) * r;
       return [(rho * Math.sin(th) - P.x0) * P.k, (P.y0 - (rho0 - rho * Math.cos(th))) * P.k, th];
     };
-    // і назад: точка сітки → [lat, lon] («📌 Я тут» для Півника, місто району)
+    // і назад: точка сітки → [lat, lon] («📌 Я тут» для «Довкола мене», місто району)
     const unproject = (X, Y) => {
       const a = X / P.k + P.x0, b = rho0 - (P.y0 - Y / P.k);
       const rho = Math.hypot(a, b), th = Math.atan2(a, b);
       return [Math.asin(clamp((C - (rho * N) ** 2) / (2 * N), -1, 1)) / r, P.lam0 + th / (N * r)];
     };
-    const byKey = Object.create(null);
-    for (const u of units) byKey[u.k] = u;
+    const byKey = Object.create(null), count = Object.create(null);   // count — районів в області («3 з 7»)
+    for (const u of units) { byKey[u.k] = u; count[u.o] = (count[u.o] || 0) + 1; }
     const oblasts = Object.create(null);
     for (const ob of raw.oblasts) oblasts[ob.k] = ob;
-    map = { W: raw.w, H: raw.h, units, byKey, oblasts, oblastList: raw.oblasts, outline, oblast, raion, river,
+    map = { W: raw.w, H: raw.h, units, byKey, count, oblasts, arcs, arcUsers: users, sliver, land, oblastList: raw.oblasts, outline, oblast, raion, river,
       cities: raw.cities || [], towns: raw.towns || [], project, unproject, kmUnits: P.k / EARTH_KM };
     return map;
   }
@@ -305,7 +372,7 @@
   // ---------------------------------------------------------------------------------------------
 
   const st = { cv: null, g: null, box: null, cw: 0, ch: 0, dpr: 1, s0: 1, k: 1, ox: 0, oy: 0, raf: 0,
-    ptrs: new Map(), down: null, pinch: null, full: false, hits: [], css: {}, ro: null, hintT: 0 };
+    ptrs: new Map(), down: null, pinch: null, full: false, hits: [], css: {}, ro: null, hintT: 0, lastTap: null };
   const sc = () => st.s0 * st.k;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -381,8 +448,10 @@
       oblast: c('--tv-oblast', 'rgba(236,241,234,.34)'), outline: c('--tv-outline', 'rgba(236,241,234,.55)'),
       river: c('--tv-river', 'rgba(74,143,179,.45)'), mine: c('--text', '#ecf1ea'), text: c('--text', '#ecf1ea'),
       muted: c('--muted', '#9db3a5'), halo: c('--bg', '#0f1f18'),
+      redLine: c('--tv-red-line', '#ff6b62'), yellowLine: c('--tv-yellow-line', '#f2c744'),
+      water: c('--tv-water', 'rgba(52,116,156,.88)'),
+      label: c('--tv-label', 'rgba(236,241,234,.42)'),
     };
-    for (const t of Object.keys(TYPES)) st.css['t-' + t] = c('--tv-' + t, '#f0820e');
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -406,6 +475,25 @@
     return lv;
   }
 
+  /// Контури зон тривоги: дуга, по різні боки якої різні рівні (чи з одного боку кордон), — кольором вищого рівня.
+  /// Рівні міняються лише з новими даними, тож шлях кешуємо на об'єкт data.
+  let ctCache = { data: undefined, red: null, yellow: null };
+  function contours(lv) {
+    if (ctCache.data === data && ctCache.red) return ctCache;
+    const red = new Path2D(), yellow = new Path2D();
+    map.arcs.forEach((a, i) => {
+      const us = map.arcUsers[i];
+      if (map.sliver[i]) return;
+      const l1 = lv[map.units[us[0]].k] || '', l2 = us.length > 1 ? lv[map.units[us[1]].k] || '' : '';
+      if (l1 === l2) return;
+      const p = l1 === 'red' || l2 === 'red' ? red : yellow;
+      p.moveTo(a[0], a[1]);
+      for (let k = 2; k < a.length; k += 2) p.lineTo(a[k], a[k + 1]);
+    });
+    ctCache = { data, red, yellow };
+    return ctCache;
+  }
+
   function draw() {
     if (!st.cv || !map || !st.cw) return;
     const g = st.g, c = st.css, s = sc(), d = st.dpr;
@@ -415,20 +503,43 @@
     g.setTransform(d * s, 0, 0, d * s, d * st.ox, d * st.oy);
     const lv = levels();
     const stale = data && data.stale;
-    for (const u of map.units) {
-      g.fillStyle = c.land;
-      g.fill(u.p, 'evenodd');
-      const l = lv[u.k];
-      if (l && !stale) {
+    // суходіл одним шматом і з обвідкою його ж кольору: крізь мікрощілини між районами не просвічує «море»
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    g.fillStyle = c.land;
+    g.fill(map.land);
+    g.strokeStyle = c.land;
+    g.lineWidth = 1.2 / s;
+    g.stroke(map.land);
+    if (!stale) {
+      for (const u of map.units) {
+        const l = lv[u.k];
+        if (!l) continue;
         g.fillStyle = l === 'yellow' ? c.yellow : c.red;
         g.fill(u.p, 'evenodd');
       }
     }
-    g.lineJoin = 'round';
-    g.lineCap = 'round';
-    g.strokeStyle = c.river;
-    g.lineWidth = 1.1 / s;
-    g.stroke(map.river);
+    const dt = map.detail;
+    // з наближенням лінії трохи товщають — щоб річка на 8× не була волосиною
+    const zw = Math.min(2, 1 + (st.k - 1) * 0.12);
+    if (dt) {
+      // детальний шар: водосховища й озера плямами, річки — дрібні лише з наближенням
+      g.fillStyle = c.water;
+      g.fill(dt.water, 'evenodd');
+      g.strokeStyle = c.river;
+      if (s >= MINOR_S) {
+        g.lineWidth = 0.7 * zw / s;
+        g.stroke(dt.minor);
+      }
+      g.lineWidth = 1 * zw / s;
+      g.stroke(dt.rivers);
+      g.lineWidth = 1.7 * zw / s;
+      g.stroke(dt.big);
+    } else {
+      g.strokeStyle = c.river;
+      g.lineWidth = 1.1 / s;
+      g.stroke(map.river);
+    }
     g.strokeStyle = c.raion;
     g.lineWidth = 0.8 / s;
     g.stroke(map.raion);
@@ -438,23 +549,33 @@
     g.strokeStyle = c.outline;
     g.lineWidth = 1.5 / s;
     g.stroke(map.outline);
+    // Заливка тривоги прозора (щоб значки на ній не зливались) — рівень видно по контуру: чітка лінія там, де
+    // тривога кінчається чи міняє рівень. Між двома червоними районами — звичайна тонка межа, а не червона сітка.
+    if (!stale) {
+      const ct = contours(lv);
+      g.lineWidth = 1.8 / s;
+      g.strokeStyle = c.yellowLine;
+      g.stroke(ct.yellow);
+      g.strokeStyle = c.redLine;
+      g.stroke(ct.red);
+    }
     const mine = map.byKey[cur().key];
     if (mine) {
       g.strokeStyle = c.mine;
       g.lineWidth = 2.2 / s;
       g.stroke(mine.p);
     }
-    // далі — у пікселях екрана: значки однакового розміру за будь-якого наближення
+    // далі — у пікселях екрана: значки однакового розміру за будь-якого наближення; цілі — поверх підписів
     g.setTransform(d, 0, 0, d, 0, 0);
-    paintCities(g, s);
+    if (dt) paintPlaces(g, s, dt); else paintCities(g, s);
     paintTargets(g, s);
     if (mine) pin(g, mine.c[0] * s + st.ox, mine.c[1] * s + st.oy);
     paintMe(g, s);
   }
 
-  /// 🐓 Півник: від якої точки він рахує — крапкою, і його зовнішнє кільце пунктиром.
+  /// «Довкола мене»: від якої точки рахує — крапкою, і його зовнішнє кільце пунктиром.
   function paintMe(g, s) {
-    const me = window.HPivnyk && HPivnyk.me();
+    const me = window.HDovkola && HDovkola.me();
     if (!me) return;
     const [X, Y] = map.project(me.lat, me.lon);
     const x = X * s + st.ox, y = Y * s + st.oy;
@@ -505,6 +626,70 @@
     }
   }
 
+  // Міста детального шару за рівнями: 1 — обласні центри (завжди), 2 — від 100 тис., 3 — від 30 тис. і райцентри,
+  // 4 — від 10 тис. min — з якого масштабу (пікселів на одиницю сітки; ПК на всю Україну ≈ 0,15, телефон ≈ 0,085).
+  const PL = [null,
+    { min: 0, dot: 3, font: '600 12px system-ui, sans-serif', col: 'text' },
+    { min: 0.2, dot: 2.6, font: '600 11px system-ui, sans-serif', col: 'text' },
+    { min: 0.42, dot: 2.2, font: '11px system-ui, sans-serif', col: 'muted' },
+    { min: 0.85, dot: 1.8, font: '10.5px system-ui, sans-serif', col: 'muted' },
+  ];
+  const LABEL_S = [0.11, 0.6];       // підписи областей — лише на загальному виді (і не на дрібному телефонному)
+
+  /// Міста й підписи областей без накладань: жадібно, від важливішого; не влізло праворуч — пробуємо ліворуч.
+  function paintPlaces(g, s, dt) {
+    const boxes = [[st.cw - 92, st.ch - 17, st.cw, st.ch]];     // куток «Дані: NEPTUN» — підписи туди не лізуть
+    const free = (b) => {
+      if (b[2] < 0 || b[3] < 0 || b[0] > st.cw || b[1] > st.ch) return false;
+      for (const o of boxes) if (b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]) return false;
+      return true;
+    };
+    g.textBaseline = 'middle';
+    g.textAlign = 'left';
+    const place = (p) => {
+      const L = PL[p.l] || PL[4];
+      if (s < L.min) return;
+      const x = p.x * s + st.ox, y = p.y * s + st.oy;
+      if (x < -60 || y < -20 || x > st.cw + 60 || y > st.ch + 20) return;
+      g.font = L.font;
+      const w = p.w || (p.w = g.measureText(p.n).width);
+      const r = L.dot, h = 14;
+      const dot = [x - r - 1, y - r - 1, x + r + 1, y + r + 1];
+      if (p.l > 1 && !free(dot)) return;
+      let b = [x + r + 2, y - h / 2, x + r + 5 + w, y + h / 2], tx = x + r + 4;
+      if (!free(b)) { b = [x - r - 5 - w, y - h / 2, x - r - 2, y + h / 2]; tx = x - r - 4 - w; }
+      const fits = free(b);
+      if (!fits && p.l > 1) return;     // обласний центр лишається хоч крапкою
+      boxes.push(dot);
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fillStyle = st.css[L.col];
+      g.lineWidth = 2;
+      g.strokeStyle = st.css.halo;
+      g.stroke();
+      g.fill();
+      if (!fits) return;
+      boxes.push(b);
+      halo(g, p.n, tx, y, st.css[L.col], L.font);
+    };
+    for (const p of dt.places) if (p.l === 1) place(p);
+    if (s >= LABEL_S[0] && s < LABEL_S[1]) {
+      g.textAlign = 'center';
+      const font = '600 10.5px system-ui, sans-serif';
+      g.font = font;
+      for (const lb of dt.labels) {
+        const x = lb.x * s + st.ox, y = lb.y * s + st.oy;
+        const w = lb.w || (lb.w = g.measureText(lb.n).width);
+        const b = [x - w / 2 - 2, y - 7, x + w / 2 + 2, y + 7];
+        if (!free(b)) continue;
+        boxes.push(b);
+        halo(g, lb.n, x, y, st.css.label, font);
+      }
+      g.textAlign = 'left';
+    }
+    for (const p of dt.places) if (p.l > 1) place(p);
+  }
+
   function pin(g, x, y) {
     g.save();
     g.translate(x, y);
@@ -525,73 +710,314 @@
     g.restore();
   }
 
-  /// Значок цілі: носом за курсом (поправка на те, що північ на конічній мапі трохи повернута).
-  function glyph(g, shape, color, rot) {
+  // ---------------------------------------------------------------------------------------------
+  // значки цілей — силует типу без жодних кружечків (22.10: «мені не подобається що все в кружочках»): «шахед»,
+  // ракета, бомба, літак… з темним обідком і тонкою світлою обвідкою, щоб читались і на червоній, і на жовтій
+  // заливці. Що має ніс — повернуте за курсом, і трохи попереду носа — білий куточок «^», як у NEPTUN (ліній-векторів
+  // нема). Нема курсу — силует носом угору й без куточка. Той самий код малює мапу, циферблат «Довкола мене»,
+  // легенду й значки в переліках.
+  // ---------------------------------------------------------------------------------------------
+
+  // Шматки силуету в квадраті ±7,5 (центр 0,0), носом угору: кожен — свій замкнений контур (так гало й обвідка
+  // не залежать від напрямку обходу). color — свій колір шматка (полум'я балістики), rule — правило заливки.
+  const rect = (g, x1, y1, x2, y2, w) => {       // смуга завтовшки w від (x1,y1) до (x2,y2)
+    const l = Math.hypot(x2 - x1, y2 - y1) || 1, nx = (-(y2 - y1) / l) * w / 2, ny = ((x2 - x1) / l) * w / 2;
+    g.moveTo(x1 + nx, y1 + ny); g.lineTo(x2 + nx, y2 + ny); g.lineTo(x2 - nx, y2 - ny); g.lineTo(x1 - nx, y1 - ny); g.closePath();
+  };
+  const disc = (g, x, y, r) => { g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2); };
+  const SHAPES = {
+    uav: [(g) => {      // «шахед»: дельта-крило з виступом носа й вирізом ззаду
+      g.moveTo(0, -7.2); g.lineTo(1.4, -3.4); g.lineTo(7.2, 3.6); g.lineTo(7.2, 5.3); g.lineTo(1.5, 3.7);
+      g.lineTo(0, 5.8); g.lineTo(-1.5, 3.7); g.lineTo(-7.2, 5.3); g.lineTo(-7.2, 3.6); g.lineTo(-1.4, -3.4); g.closePath();
+    }],
+    fpv: [(g) => rect(g, -4.8, -4.8, 4.8, 4.8, 1.8), (g) => rect(g, 4.8, -4.8, -4.8, 4.8, 1.8),
+      (g) => disc(g, -5, -5, 2.4), (g) => disc(g, 5, -5, 2.4), (g) => disc(g, -5, 5, 2.4), (g) => disc(g, 5, 5, 2.4)],
+    missile: [(g) => {  // крилата ракета: тонкий корпус, гострий ніс, крильця посередині, стабілізатори ззаду
+      g.moveTo(0, -7.6); g.lineTo(1.3, -5); g.lineTo(1.3, -0.9); g.lineTo(5, 1.6); g.lineTo(5, 2.7); g.lineTo(1.3, 1.7);
+      g.lineTo(1.3, 4.6); g.lineTo(3.6, 7); g.lineTo(-3.6, 7); g.lineTo(-1.3, 4.6); g.lineTo(-1.3, 1.7); g.lineTo(-5, 2.7);
+      g.lineTo(-5, 1.6); g.lineTo(-1.3, -0.9); g.lineTo(-1.3, -5); g.closePath();
+    }],
+    // балістика (22.10, «Багряна» з чотирьох варіантів): довгий корпус кольору типу з хрестовими стабілізаторами,
+    // білий гострий ніс і помаранчеве полум'я — з крилатою (тонка, з крильцями посередині) не сплутати
+    ballistic: [(g) => {
+      g.moveTo(-1.9, -3.5); g.lineTo(1.9, -3.5); g.lineTo(1.9, 3.4); g.lineTo(4.4, 6.2); g.lineTo(4.4, 7);
+      g.lineTo(-4.4, 7); g.lineTo(-4.4, 6.2); g.lineTo(-1.9, 3.4); g.closePath();
+    }, Object.assign((g) => {
+      g.moveTo(0, -8.2); g.quadraticCurveTo(1.9, -6, 1.9, -3.5); g.lineTo(-1.9, -3.5); g.quadraticCurveTo(-1.9, -6, 0, -8.2); g.closePath();
+    }, { color: '#f4f4f4' }), Object.assign((g) => {
+      g.moveTo(-1.8, 7.2); g.quadraticCurveTo(-0.54, 8.7, 0, 10.2); g.quadraticCurveTo(0.54, 8.7, 1.8, 7.2); g.closePath();
+    }, { color: '#ff7a1a' })],
+    kab: [(g) => g.ellipse(0, 1.6, 3.5, 5.2, 0, 0, Math.PI * 2),   // авіабомба: крапля й оперення
+      (g) => { g.moveTo(-3.6, -7); g.lineTo(3.6, -7); g.lineTo(1.5, -2.8); g.lineTo(-1.5, -2.8); g.closePath(); }],
+    mig31k: [(g) => {   // літак
+      g.moveTo(0, -7.4); g.lineTo(1.1, -4.4); g.lineTo(1.1, -1.2); g.lineTo(7.2, 2.2); g.lineTo(7.2, 3.6); g.lineTo(1.1, 2);
+      g.lineTo(1, 4.8); g.lineTo(3.2, 6.4); g.lineTo(3.2, 7.2); g.lineTo(0, 6.3); g.lineTo(-3.2, 7.2); g.lineTo(-3.2, 6.4);
+      g.lineTo(-1, 4.8); g.lineTo(-1.1, 2); g.lineTo(-7.2, 3.6); g.lineTo(-7.2, 2.2); g.lineTo(-1.1, -1.2); g.lineTo(-1.1, -4.4);
+      g.closePath();
+    }],
+    recon: [Object.assign((g) => {   // розвідка — око: повіки, райдужка-кільце, зіниця
+      g.moveTo(-7.4, 0); g.quadraticCurveTo(0, -7, 7.4, 0); g.quadraticCurveTo(0, 7, -7.4, 0); g.closePath();
+      disc(g, 0, 0, 3); disc(g, 0, 0, 1.6);
+    }, { rule: 'evenodd' })],
+  };
+  const TURNS = { uav: true, missile: true, ballistic: true, kab: true, mig31k: true };   // мають ніс — крутимо за курсом
+
+  /// Силует цілі розміром ~2R px. rot — курс на екрані (радіани від півночі за годинниковою), лише для тих, що з
+  /// носом. o.halo — колір гало замість темного (небезпечна на циферблаті — червоне).
+  function mark(g, x, y, type, R, rot, o) {
+    const key = typeKey(type), color = typeOf(type).color, halo = (o && o.halo) || 'rgba(0,0,0,.72)';
     g.save();
-    g.rotate(rot);
-    g.fillStyle = color;
-    g.strokeStyle = 'rgba(0,0,0,.65)';
-    g.lineWidth = 1.2;
+    g.translate(x, y);
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    if (key === 'unknown') {
+      g.font = `bold ${Math.round(R * 2)}px system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.lineWidth = o && o.halo ? 5 : 4;
+      g.strokeStyle = halo;
+      g.strokeText('?', 0, 1);
+      g.fillStyle = color;
+      g.fillText('?', 0, 1);
+      g.restore();
+      return;
+    }
+    if (rot && TURNS[key]) g.rotate(rot);
+    const k = R / 7.5;
+    g.scale(k, k);
+    const ps = SHAPES[key];
+    g.strokeStyle = halo;
+    g.lineWidth = (o && o.halo ? 5.5 : 4) / k;
+    for (const p of ps) { g.beginPath(); p(g); g.stroke(); }
+    for (const p of ps) { g.beginPath(); p(g); g.fillStyle = p.color || color; g.fill(p.rule || 'nonzero'); }
+    g.strokeStyle = 'rgba(255,255,255,.85)';
+    g.lineWidth = 0.9 / k;
+    for (const p of ps) if (!p.color) { g.beginPath(); p(g); g.stroke(); }
+    g.restore();
+  }
+
+  /// Курс (22.10, вибір користувача з шести варіантів): орієнтовний — «промінь», прозорий клин кольору цілі від носа
+  /// вперед, що згасає; підтверджений — промінь і поверх нього «клин», суцільний трикутник кольору цілі з білим краєм
+  /// попереду носа. Малюється до силуету (промінь починається під ним). angle — від півночі екрана за годинниковою,
+  /// радіани; R — піврозміру силуету; sure — курс підтверджений (courseOf).
+  function course(g, x, y, angle, R, color, sure) {
+    const L = R * 3.4;
+    g.save();
+    g.translate(x + Math.sin(angle) * (R - 2), y - Math.cos(angle) * (R - 2));
+    g.rotate(angle);
+    // згасає в той самий колір, а не в чорне — інакше промінь каламутний
+    const gr = g.createLinearGradient(0, 0, 0, -L);
+    gr.addColorStop(0, rgba(color, 0.9));
+    gr.addColorStop(0.5, rgba(color, 0.45));
+    gr.addColorStop(1, rgba(color, 0));
     g.beginPath();
-    if (shape === 'delta') { g.moveTo(0, -8); g.lineTo(6, 6); g.lineTo(0, 3); g.lineTo(-6, 6); }
-    else if (shape === 'dart') { g.moveTo(0, -10); g.lineTo(3.5, 6); g.lineTo(0, 4); g.lineTo(-3.5, 6); }
-    else if (shape === 'diamond') { g.moveTo(0, -9); g.lineTo(5, 0); g.lineTo(0, 9); g.lineTo(-5, 0); }
-    else if (shape === 'plane') { g.moveTo(0, -9); g.lineTo(2, -2); g.lineTo(8, 2); g.lineTo(2, 2); g.lineTo(1.5, 7); g.lineTo(-1.5, 7); g.lineTo(-2, 2); g.lineTo(-8, 2); g.lineTo(-2, -2); }
-    else if (shape === 'ring') { g.arc(0, 0, 5, 0, Math.PI * 2); g.closePath(); g.stroke(); g.restore(); return; }
-    else g.arc(0, 0, 4.5, 0, Math.PI * 2);
+    g.moveTo(-R * 0.36, 0); g.lineTo(-R * 0.95, -L); g.lineTo(R * 0.95, -L); g.lineTo(R * 0.36, 0);
     g.closePath();
+    g.fillStyle = gr;
     g.fill();
+    g.restore();
+    if (!sure) return;
+    g.save();
+    g.translate(x + Math.sin(angle) * (R + 8), y - Math.cos(angle) * (R + 8));
+    g.rotate(angle);
+    g.beginPath();
+    g.moveTo(0, -6); g.lineTo(5.5, 4); g.lineTo(-5.5, 4);
+    g.closePath();
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(0,0,0,.75)';
+    g.lineWidth = 4;
+    g.stroke();
+    g.fillStyle = color;
+    g.fill();
+    g.strokeStyle = '#fff';
+    g.lineWidth = 1.3;
     g.stroke();
     g.restore();
+  }
+
+  /// '#ff8f1f' → 'rgba(255,143,31,a)'; не hex — як є.
+  function rgba(c, a) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(c).trim());
+    return m ? `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})` : c;
+  }
+
+  /// Куди летить і чи певно: { deg, sure } або null. Підтверджений — NEPTUN виміряв рух (measured), курс не з
+  /// повідомлення (!presumptive) чи слід за останні точки іде туди ж (±35°, зсув ≥ 3 км). Курсу нема, а слід
+  /// показує рух ≥ 3 км — це й курс, підтверджений.
+  function courseOf(t) {
+    let moved = null;
+    const tr = t.trail;
+    if (tr && tr.length) {
+      const [la, lo] = tr[tr.length - 1];
+      const km = Math.hypot((t.lat - la) * 111.2, (t.lon - lo) * 111.2 * Math.cos(t.lat * Math.PI / 180));
+      if (km >= 3) {
+        const y = Math.sin((t.lon - lo) * Math.PI / 180) * Math.cos(t.lat * Math.PI / 180);
+        const x = Math.cos(la * Math.PI / 180) * Math.sin(t.lat * Math.PI / 180)
+          - Math.sin(la * Math.PI / 180) * Math.cos(t.lat * Math.PI / 180) * Math.cos((t.lon - lo) * Math.PI / 180);
+        moved = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+      }
+    }
+    if (t.heading == null) return moved == null ? null : { deg: moved, sure: true };
+    const agrees = moved != null && Math.abs(((t.heading - moved + 540) % 360) - 180) <= 35;
+    return { deg: t.heading, sure: !!t.measured || !t.presumptive || agrees };
+  }
+
+  /// Слід: суцільний, з темним обідком, блідне до хвоста. pts — від хвоста до цілі, у пікселях.
+  function trail(g, pts, color, alpha) {
+    if (pts.length < 2) return;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.globalAlpha = alpha * 0.5;
+    g.strokeStyle = 'rgba(0,0,0,.7)';
+    g.lineWidth = 4.4;
+    g.beginPath();
+    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.stroke();
+    g.strokeStyle = color;
+    g.lineWidth = 2.2;
+    for (let i = 1; i < pts.length; i++) {
+      g.globalAlpha = alpha * (0.18 + 0.72 * (i / (pts.length - 1)));
+      g.beginPath();
+      g.moveTo(pts[i - 1][0], pts[i - 1][1]);
+      g.lineTo(pts[i][0], pts[i][1]);
+      g.stroke();
+    }
+    g.globalAlpha = alpha;
+  }
+
+  /// Місце приблизне — ледь помітна пляма кольору типу під силуетом.
+  function blob(g, x, y, r, color, alpha) {
+    g.globalAlpha = alpha * 0.16;
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = alpha;
+  }
+
+  /// Гурт: силует найнебезпечнішої й табличка з числом (скільки разом, з групами NEPTUN) — не кружок.
+  function bunch(g, x, y, type, n) {
+    mark(g, x, y, type, MARK_R, 0);
+    const txt = String(n);
+    g.font = 'bold 11px system-ui, sans-serif';
+    const w = Math.max(15, g.measureText(txt).width + 8), h = 15, bx = x + MARK_R * 0.35, by = y - MARK_R - 7;
+    g.beginPath();
+    if (g.roundRect) g.roundRect(bx, by, w, h, 4); else g.rect(bx, by, w, h);
+    g.fillStyle = '#0d1712';
+    g.fill();
+    g.lineWidth = 1.2;
+    g.strokeStyle = '#fff';
+    g.stroke();
+    g.fillStyle = '#fff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(txt, bx + w / 2, by + h / 2 + 0.5);
+    g.textAlign = 'left';
+  }
+
+  /// Значок для HTML (легенда, переліки, підказки): той самий mark(), намальований у картинку й закешований.
+  const iconCache = Object.create(null);
+  function icon(type, what) {
+    const key = (what || 'mark') + ':' + typeKey(type);
+    if (iconCache[key]) return iconCache[key];
+    const w = what === 'course' || what === 'sure' ? 46 : what === 'bunch' ? 34 : 26, h = 26, d = 2;
+    const c = document.createElement('canvas');
+    c.width = w * d;
+    c.height = h * d;
+    const g = c.getContext('2d');
+    g.scale(d, d);
+    const color = typeOf(type).color;
+    if (what === 'bunch') bunchIcon(g, type);
+    else if (what === 'blob') { blob(g, 13, 13, 12, color, 1); g.globalAlpha = 1; mark(g, 13, 13, type, 8, 0); }
+    else if (what === 'course' || what === 'sure') { course(g, 9, 13, Math.PI / 2, 8, color, what === 'sure'); mark(g, 9, 13, type, 8, Math.PI / 2); }
+    else mark(g, 13, 12.5, type, 9.5, 0);      // трохи вгору: полум'я балістики довше за інші силуети
+    iconCache[key] = c.toDataURL();
+    return iconCache[key];
+  }
+  function bunchIcon(g, type) {
+    mark(g, 11, 14.5, type, 8, 0);
+    g.font = 'bold 10px system-ui, sans-serif';
+    g.beginPath();
+    if (g.roundRect) g.roundRect(16, 2, 15, 13, 4); else g.rect(16, 2, 15, 13);
+    g.fillStyle = '#0d1712';
+    g.fill();
+    g.lineWidth = 1.1;
+    g.strokeStyle = '#fff';
+    g.stroke();
+    g.fillStyle = '#fff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('3', 23.5, 9);
+  }
+  const iconImg = (type, what, alt) => `<img class="tv-ic${what ? ' ' + what : ''}" src="${icon(type, what)}" alt="${esc(alt || '')}">`;
+
+  /// Легенда — тими самими силуетами, що й на мапі.
+  function legendHtml() {
+    const types = ['uav', 'fpv', 'missile', 'ballistic', 'kab', 'mig31k', 'recon', 'unknown'];
+    return '<div class="tv-lg">' + types.map((k) => `<span>${iconImg(k)}${esc(TYPES[k].long)}</span>`).join('') + '</div>'
+      + '<div class="tv-lg">'
+      + `<span>${iconImg('uav', 'course')}промінь — куди летить, орієнтовно (з повідомлень)</span>`
+      + `<span>${iconImg('uav', 'sure')}промінь і клин — курс підтверджений (видно рух)</span>`
+      + `<span>${iconImg('uav', 'blob')}пляма — місце приблизне</span>`
+      + `<span>${iconImg('uav', 'bunch')}кілька цілей поруч (тицни)</span>`
+      + '<span><i class="sw red"></i>ракетна загроза</span><span><i class="sw yellow"></i>загроза дронів</span>'
+      + '</div>';
   }
 
   function paintTargets(g, s) {
     st.hits = [];
     const list = (threats && threats.threats) || [];
     const now = Date.now();
+    const pxPerKm = map.kmUnits * s;
+    const pts = [];
     for (const t of list) {
       if (t.areaOnly) continue;            // «десь в області» — центр області, а не місце: лише в переліку
       const [X, Y, tilt] = map.project(t.lat, t.lon);
       const x = X * s + st.ox, y = Y * s + st.oy;
-      if (x < -60 || y < -60 || x > st.cw + 60 || y > st.ch + 60) continue;
-      const meta = typeOf(t.type);
-      const color = st.css['t-' + (TYPES[t.type] ? t.type : 'unknown')];
+      if (x < -80 || y < -80 || x > st.cw + 80 || y > st.ch + 80) continue;
       const old = now - (Date.parse(t.updated) || now) > 15 * 60000;
-      g.globalAlpha = t.advisory || old ? 0.5 : t.lifecycle === 'uncertain' ? 0.8 : 1;
-      if (t.trail && t.trail.length) {
-        g.strokeStyle = color;
-        g.lineWidth = 1.5;
-        g.setLineDash([]);
-        g.globalAlpha *= 0.55;
-        g.beginPath();
-        t.trail.forEach(([la, lo], i) => {
-          const [tx, ty] = map.project(la, lo);
-          if (i === 0) g.moveTo(tx * s + st.ox, ty * s + st.oy); else g.lineTo(tx * s + st.ox, ty * s + st.oy);
-        });
-        g.lineTo(x, y);
-        g.stroke();
-        g.globalAlpha /= 0.55;
-      }
+      pts.push({ t, x, y, tilt, c: courseOf(t), color: typeOf(t.type).color, alpha: t.advisory || old ? 0.5 : t.lifecycle === 'uncertain' ? 0.8 : 1 });
+    }
+    // спершу плями похибки й сліди — під усіма значками, і в гурті теж: видно, звідки кожна летить
+    for (const { t, x, y, color, alpha } of pts) {
       if (t.quality !== 'confirmed' && t.unc > 0) {
-        const r = t.unc * map.kmUnits * s;
-        if (r > 6) {
-          g.setLineDash([3, 3]);
-          g.strokeStyle = color;
-          g.lineWidth = 1;
-          g.globalAlpha *= 0.6;
-          g.beginPath();
-          g.arc(x, y, r, 0, Math.PI * 2);
-          g.stroke();
-          g.setLineDash([]);
-          g.globalAlpha /= 0.6;
-        }
+        const r = t.unc * pxPerKm;
+        if (r > MARK_R + 3) blob(g, x, y, r, color, alpha);
       }
-      g.save();
-      g.translate(x, y);
-      const rot = t.heading == null ? 0 : (t.heading * Math.PI) / 180 - tilt;
-      glyph(g, t.heading == null && meta.shape !== 'ring' ? 'dot' : meta.shape, color, rot);
-      g.restore();
-      if (t.count > 1) halo(g, '×' + t.count, x + 8, y - 8, st.css.text, 'bold 11px system-ui, sans-serif');
+      if (t.trail && t.trail.length) {
+        const tp = t.trail.map(([la, lo]) => { const [tx, ty] = map.project(la, lo); return [tx * s + st.ox, ty * s + st.oy]; });
+        tp.push([x, y]);
+        trail(g, tp, color, alpha);
+      }
+    }
+    g.globalAlpha = 1;
+    // Значки, що злиплися б, — гуртом із числом. Жадібно від найнебезпечнішої: вона центр гурту і дає силует.
+    pts.sort((a, b) => (PRIO[b.t.type] || 0) - (PRIO[a.t.type] || 0));
+    const groups = [];
+    for (const p of pts) {
+      const gr = groups.find((q) => Math.hypot(q.x - p.x, q.y - p.y) < CLUSTER_PX);
+      if (gr) gr.m.push(p); else groups.push({ x: p.x, y: p.y, m: [p] });
+    }
+    // курс — промінь (і клин, коли підтверджений) попереду носа: під силуетами, над слідами
+    for (const gr of groups) {
+      if (gr.m.length > 1) continue;
+      const { x, y, tilt, c, color, alpha } = gr.m[0];
+      if (!c) continue;
+      g.globalAlpha = alpha;
+      course(g, x, y, (c.deg * Math.PI) / 180 - tilt, MARK_R, color, c.sure);
+    }
+    g.globalAlpha = 1;
+    for (const gr of groups) {
+      if (gr.m.length > 1) {
+        const n = gr.m.reduce((a, p) => a + (p.t.count > 1 ? p.t.count : 1), 0);
+        bunch(g, gr.x, gr.y, gr.m[0].t.type, n);
+        st.hits.push({ x: gr.x, y: gr.y, ts: gr.m.map((p) => p.t) });
+        continue;
+      }
+      const { t, x, y, tilt, c, alpha } = gr.m[0];
+      g.globalAlpha = alpha;
+      mark(g, x, y, t.type, MARK_R, c ? (c.deg * Math.PI) / 180 - tilt : 0);
+      if (t.count > 1) halo(g, '×' + t.count, x + MARK_R + 2, y - MARK_R, st.css.text, 'bold 12px system-ui, sans-serif');
       g.globalAlpha = 1;
       st.hits.push({ x, y, t });
     }
@@ -607,13 +1033,16 @@
   }
 
   function onDown(e) {
-    st.cv.setPointerCapture(e.pointerId);
+    try { st.cv.setPointerCapture(e.pointerId); } catch { /* вказівник уже відпущено */ }
     const [x, y] = local(e);
     st.ptrs.set(e.pointerId, { x, y });
-    if (st.ptrs.size === 1) st.down = { x, y, ox: st.ox, oy: st.oy, moved: false };
+    // coop: палець на сторінці (не на весь екран) — один гортає сторінку, мапу рухають двома, як у вбудованих мапах
+    if (st.ptrs.size === 1) st.down = { x, y, ox: st.ox, oy: st.oy, moved: false, coop: e.pointerType === 'touch' && !st.full };
     else if (st.ptrs.size === 2) {
       const [a, b] = [...st.ptrs.values()];
-      st.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: st.k, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+      const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+      // точка мапи під серединою щипка — щоб вона й далі лишалась між пальцями (щипок і зсув разом)
+      st.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: st.k, wx: (cx - st.ox) / sc(), wy: (cy - st.oy) / sc() };
       if (st.down) st.down.moved = true;
     }
   }
@@ -623,13 +1052,22 @@
     st.ptrs.set(e.pointerId, { x, y });
     if (st.pinch && st.ptrs.size >= 2) {
       const [a, b] = [...st.ptrs.values()];
-      const f = (st.pinch.k * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, st.pinch.d)) / st.k;
-      zoomAt(st.pinch.cx, st.pinch.cy, f);
+      st.k = clamp(st.pinch.k * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, st.pinch.d), 1, KMAX);
+      st.ox = (a.x + b.x) / 2 - st.pinch.wx * sc();
+      st.oy = (a.y + b.y) / 2 - st.pinch.wy * sc();
+      clampView();
+      hidePop();
+      kick();
       return;
     }
     const dn = st.down;
     if (!dn) return;
     if (!dn.moved && Math.hypot(x - dn.x, y - dn.y) < 5) return;
+    if (dn.coop) {
+      if (!dn.moved) hint('Двома пальцями — рухати й наближати, або ⤢ на весь екран');
+      dn.moved = true;
+      return;
+    }
     dn.moved = true;
     st.ox = dn.ox + (x - dn.x);
     st.oy = dn.oy + (y - dn.y);
@@ -641,29 +1079,45 @@
     const dn = st.down;
     st.ptrs.delete(e.pointerId);
     if (st.ptrs.size < 2) st.pinch = null;
-    if (st.ptrs.size) return;
+    if (st.ptrs.size) {
+      // щипок скінчився, а один палець лишився — далі рухаємо від того, де мапа зараз, без стрибка
+      const [p] = [...st.ptrs.values()];
+      st.down = { x: p.x, y: p.y, ox: st.ox, oy: st.oy, moved: true, coop: !!(dn && dn.coop) };
+      return;
+    }
     st.down = null;
     if (dn && !dn.moved && e.type === 'pointerup') tap(dn.x, dn.y);
   }
   function onWheel(e) {
     // На сторінці колесо гортає сторінку; наближає — на весь екран або з Ctrl (як у вбудованих мапах).
-    if (!st.full && !e.ctrlKey) {
-      const h = st.box.querySelector('.tv-hint');
-      h.hidden = false;
-      clearTimeout(st.hintT);
-      st.hintT = setTimeout(() => { h.hidden = true; }, 1300);
-      return;
-    }
+    if (!st.full && !e.ctrlKey) { hint('Наблизити — Ctrl + колесо, подвійний клік або ⤢'); return; }
     e.preventDefault();
     const [x, y] = local(e);
     zoomAt(x, y, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0018)));
   }
+  function hint(text) {
+    const h = st.box.querySelector('.tv-hint');
+    h.textContent = text;
+    h.hidden = false;
+    clearTimeout(st.hintT);
+    st.hintT = setTimeout(() => { h.hidden = true; }, 1600);
+  }
 
   function tap(x, y) {
-    let best = null, bd = 18;
+    // подвійний тап чи клік — наближення вдвічі (свого подвійного зуму браузер тут не робить: touch-action)
+    const now = Date.now(), lt = st.lastTap;
+    st.lastTap = { x, y, t: now };
+    if (lt && now - lt.t < 330 && Math.hypot(lt.x - x, lt.y - y) < 30) { st.lastTap = null; hidePop(); zoomAt(x, y, 2); return; }
+    let best = null, bd = 24;              // гурт ловимо до 24 px, одиночну ціль — до 22
     for (const h of st.hits) {
       const dd = Math.hypot(h.x - x, h.y - y);
-      if (dd < bd) { bd = dd; best = h; }
+      if (dd < bd && (h.ts || dd < 22)) { bd = dd; best = h; }
+    }
+    if (best && best.ts) {
+      // гурт: наближаємо, поки є куди; далі — перелік
+      if (st.k < KMAX) { hidePop(); zoomAt(best.x, best.y, 2.5); return; }
+      showPop(x, y, bunchHtml(best.ts));
+      return;
     }
     if (best) { showPop(x, y, targetHtml(best.t)); return; }
     const s = sc(), d = st.dpr, g = st.g;
@@ -698,18 +1152,31 @@
     const where = u.k === u.o ? '' : ' · ' + esc(oblastShort(u.o)) + (u.o === 'м. київ' || u.o === 'севастополь' ? '' : ' обл.');
     return `<b>${esc(u.n)}</b>${where}<br>${st8}`
       + (isMine ? '<div class="tv-muted tv-small">📍 це твій район</div>' : '<button type="button" class="tv-mine">📍 Мій район</button>')
-      + (window.HPivnyk ? ' <button type="button" class="tv-here" title="Півник рахуватиме від цієї точки (лише в цьому браузері)">📌 Я тут</button>' : '');
+      + (window.HDovkola ? ' <button type="button" class="tv-here" title="«Довкола мене» рахуватиме від цієї точки (лише в цьому браузері)">📌 Я тут</button>' : '');
+  }
+
+  /// Гурт на найбільшому наближенні: хто в ньому.
+  function bunchHtml(ts) {
+    const n = ts.reduce((a, t) => a + (t.count > 1 ? t.count : 1), 0);
+    const rows = ts.slice(0, 8).map((t) => {
+      const m = typeOf(t.type);
+      return `${iconImg(t.type)} ${esc(t.title || m.label)}${t.count > 1 ? ' ×' + t.count : ''}${t.locality ? ' · ' + esc(t.locality) : ''}`;
+    });
+    if (ts.length > 8) rows.push(`<span class="tv-muted">і ще ${ts.length - 8}</span>`);
+    return `<b>${plural(n, 'ціль', 'цілі', 'цілей')} поруч</b><br>${rows.join('<br>')}`;
   }
 
   function targetHtml(t) {
     const m = typeOf(t.type);
     const bits = [];
     if (t.count > 1) bits.push('група ×' + t.count);
+    const c = courseOf(t);
+    bits.push(!c ? 'курс невідомий' : (c.sure ? 'курс на ' : 'орієнтовно на ') + side(c.deg));
     if (t.speed) bits.push(Math.round(t.speed) + ' км/год');
     if (t.sources) bits.push(plural(t.sources, 'підтвердження', 'підтвердження', 'підтверджень'));
     if (t.quality && t.quality !== 'confirmed') bits.push('місце приблизне' + (t.unc ? ', ±' + Math.round(t.unc) + ' км' : ''));
     if (t.advisory) bits.push('спостереження, не тривога');
-    return `<b>${m.ico} ${esc(t.title || m.label)}</b>${t.region ? ' · ' + esc(t.region.replace(' область', ' обл.')) : ''}<br>`
+    return `<b>${iconImg(t.type)} ${esc(t.title || m.label)}</b>${t.region ? ' · ' + esc(t.region.replace(' область', ' обл.')) : ''}<br>`
       + (t.text ? esc(t.text) + '<br>' : '')
       + `<span class="tv-muted">${esc(bits.join(' · '))}${bits.length ? ' · ' : ''}${esc(ago(t.updated))}</span>`;
   }
@@ -751,42 +1218,62 @@
     if (!root || built) return;
     built = true;
     root.innerHTML = `
-      <section class="panel tv-me">
-        <div class="tv-state" id="tvState"></div>
-        <label class="tv-pick"><span>📍 Мій район</span><select id="tvRegion" aria-label="Мій район"><option>…</option></select></label>
-      </section>
-      <div class="tv-duo">
-      <section class="panel tv-mappanel">
-        <div class="tv-mapwrap">
-          <div class="tv-box">
-            <canvas class="tv-cv" aria-label="Мапа тривог по районах і цілей у небі"></canvas>
-            <div class="tv-pop" role="dialog" hidden></div>
-            <div class="tv-hint" hidden>Наблизити — Ctrl + колесо або ⤢</div>
-            <div class="tv-load">Мапа вантажиться…</div>
-          </div>
-          <div class="tv-ctl">
-            <button type="button" class="icon tv-zin" title="Наблизити" aria-label="Наблизити">＋</button>
-            <button type="button" class="icon tv-zout" title="Віддалити" aria-label="Віддалити">－</button>
-            <button type="button" class="icon tv-home" title="Уся Україна" aria-label="Уся Україна">⌂</button>
-            <button type="button" class="icon tv-me-btn" title="Мій район і область" aria-label="Мій район і область">📍</button>
-            <button type="button" class="icon tv-fullbtn" title="На весь екран" aria-label="На весь екран">⤢</button>
+      <section class="panel tv-hero" id="tvHero">
+        <div class="tv-hero-top">
+          <div class="tv-state" id="tvState"></div>
+          <div class="tv-pick">
+            <label for="tvRegion">Мій район</label>
+            <div class="tv-pickrow">
+              <select id="tvRegion"><option>…</option></select>
+              <button type="button" class="tv-locate" title="Знайти мій район за місцем (координати нікуди не йдуть)">📡 За місцем</button>
+            </div>
+            <p class="tv-pickmsg" role="status" hidden></p>
           </div>
         </div>
-        <div class="tv-legend">
-          <span><i class="sw red"></i>ракетна загроза</span><span><i class="sw yellow"></i>загроза дронів</span>
-          <span><i class="gl uav"></i>БпЛА</span><span><i class="gl missile"></i>ракети</span><span><i class="gl kab"></i>КАБ</span>
-          <span><i class="gl ring"></i>розвідка й інше</span><span><i class="ci"></i>місце приблизне</span>
-        </div>
+        <button type="button" class="tv-near" id="tvNear" hidden></button>
+        <div class="tv-fresh" id="tvFresh"></div>
       </section>
-      <section class="panel tv-pivnyk" id="tvPivnyk"></section>
+      <div class="tv-tabs" role="tablist" aria-label="Мапа чи довкола мене">
+        <button type="button" role="tab" data-tab="map" aria-controls="tvMapPanel">🗺 Мапа</button>
+        <button type="button" role="tab" data-tab="near" aria-controls="tvDovkola">🧭 Довкола мене</button>
       </div>
-      <section class="panel tv-sky">
-        <h2>У небі зараз <span class="count" id="tvSkyAt"></span></h2>
-        <div id="tvSky" class="tv-skybody"><p class="tv-muted">Вантажу…</p></div>
-      </section>
-      <p class="tv-note">⚠ Це не офіційне оповіщення: дані можуть запізнюватись чи бути неточними. Орієнтуйся на сирену
-        й застосунок «Повітряна тривога». Дані: <a href="https://neptun.in.ua/" target="_blank" rel="noopener">Карта повітряних тривог — NEPTUN</a>.
-        <span id="tvAt"></span></p>`;
+      <div class="tv-grid" data-tab="map">
+        <div class="tv-col tv-col-a">
+          <section class="panel tv-mappanel" id="tvMapPanel">
+            <div class="tv-mapwrap">
+              <div class="tv-box">
+                <canvas class="tv-cv" aria-label="Мапа тривог по районах і цілей у небі"></canvas>
+                <div class="tv-pop" role="dialog" hidden></div>
+                <div class="tv-hint" hidden></div>
+                <div class="tv-fullstate" hidden></div>
+                <div class="tv-src">Дані: <a href="https://neptun.in.ua/" target="_blank" rel="noopener">NEPTUN</a></div>
+                <div class="tv-load">Мапа вантажиться…</div>
+              </div>
+              <div class="tv-ctl">
+                <button type="button" class="icon tv-zin" title="Наблизити" aria-label="Наблизити">＋</button>
+                <button type="button" class="icon tv-zout" title="Віддалити" aria-label="Віддалити">－</button>
+                <button type="button" class="icon tv-home" title="Уся Україна" aria-label="Уся Україна">⌂</button>
+                <button type="button" class="icon tv-me-btn" title="Мій район і область" aria-label="Мій район і область">📍</button>
+                <button type="button" class="icon tv-fullbtn" title="На весь екран" aria-label="На весь екран">⤢</button>
+              </div>
+            </div>
+            <div class="tv-legend"></div>
+          </section>
+          <section class="panel tv-alerts">
+            <h2>Тривоги зараз <span class="count" id="tvAlertsN"></span></h2>
+            <div id="tvAlerts"><p class="tv-muted">Вантажу…</p></div>
+          </section>
+          <section class="panel tv-sky">
+            <h2>У небі зараз <span class="count" id="tvSkyAt"></span></h2>
+            <div id="tvSky" class="tv-skybody"><p class="tv-muted">Вантажу…</p></div>
+          </section>
+        </div>
+        <div class="tv-col tv-col-b">
+          <section class="panel tv-dovkola" id="tvDovkola"></section>
+        </div>
+      </div>
+      <p class="tv-note">⚠ Це не офіційне оповіщення — орієнтуйся на сирену й застосунок «Повітряна тривога».</p>`;
+    root.querySelector('.tv-legend').innerHTML = legendHtml();
     const box = root.querySelector('.tv-box');
     st.box = box;
     st.cv = root.querySelector('.tv-cv');
@@ -796,6 +1283,8 @@
     st.cv.addEventListener('pointerup', onUp);
     st.cv.addEventListener('pointercancel', onUp);
     st.cv.addEventListener('wheel', onWheel, { passive: false });
+    // двома пальцями — наша мапа, а не прокрутка сторінки (одним гортається, touch-action: pan-y)
+    st.cv.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
     const zc = (f) => zoomAt(st.cw / 2, st.ch / 2, f);
     root.querySelector('.tv-zin').onclick = () => zc(1.6);
     root.querySelector('.tv-zout').onclick = () => zc(1 / 1.6);
@@ -803,7 +1292,7 @@
     root.querySelector('.tv-me-btn').onclick = focusMine;
     root.querySelector('.tv-fullbtn').onclick = () => setFull(!st.full);
     box.querySelector('.tv-pop').addEventListener('click', (e) => {
-      if (e.target.closest('.tv-here') && popAt && window.HPivnyk) { HPivnyk.setHere(popAt[0], popAt[1]); hidePop(); return; }
+      if (e.target.closest('.tv-here') && popAt && window.HDovkola) { hidePop(); HDovkola.setHere(popAt[0], popAt[1]); return; }
       if (!e.target.closest('.tv-mine') || !popUnit) return;
       const u = popUnit;
       hidePop();
@@ -811,25 +1300,44 @@
     });
     $('tvRegion').addEventListener('change', (e) => {
       const u = map && map.byKey[e.target.value];
-      if (u) { choose(u); focusMine(); }
+      if (u) { pickMsg(''); choose(u); focusMine(); }
+    });
+    root.querySelector('.tv-locate').onclick = locate;
+    root.querySelector('.tv-tabs').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-tab]');
+      if (b) setTab(b.dataset.tab);
+    });
+    $('tvNear').addEventListener('click', () => {
+      if (narrow()) { setTab('near'); root.querySelector('.tv-tabs').scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+      else $('tvDovkola').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+    $('tvAlerts').addEventListener('click', (e) => {
+      if (e.target.closest('.tv-more')) { alertsAll = !alertsAll; paintAlerts(); return; }
+      const b = e.target.closest('[data-ob]');
+      if (b) focusOblast(b.dataset.ob);
     });
     $('tvSky').addEventListener('click', (e) => {
       const ob = e.target.closest('[data-ob]');
-      if (ob && map) { const bb = oblastBox(ob.dataset.ob); if (bb) fit(bb, 6); st.box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
+      if (ob) { focusOblast(ob.dataset.ob); return; }
       const id = e.target.closest('[data-id]');
       if (id && map) focusTarget(id.dataset.id);
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && st.full) setFull(false); });
     st.ro = new ResizeObserver(() => resize());
     st.ro.observe(box);
-    if (window.HPivnyk) {
-      HPivnyk.mount($('tvPivnyk'), {
-        esc, types: TYPES, glyph, kick, focus: focusTarget,
+    if (window.HDovkola) {
+      HDovkola.mount($('tvDovkola'), {
+        esc, types: TYPES, mark, course, courseOf, trail, blob, iconImg, kick, focus: focusTarget,
         map: () => map, threats: () => threats, region: cur,
         alarm: () => ({ off: !data || !!data.off, stale: !!(data && data.stale), on: status().on, level: status().level }),
         oblastName: () => oblastName(cur().oblast),
+        near: $('tvNear'), narrow, tab: setTab,
       });
-    } else $('tvPivnyk').remove();
+    } else {
+      $('tvDovkola').remove();
+      root.querySelector('.tv-tabs').remove();
+    }
+    setTab(tab);
     loadMap().then(() => {
       box.querySelector('.tv-load').remove();
       cssColors();
@@ -838,8 +1346,28 @@
       paintThreats();
       if (status().on) focusMine();
       paintPage();
-      if (window.HPivnyk) HPivnyk.update();
+      if (window.HDovkola) HDovkola.update();
+      loadDetail();
     }).catch(() => { box.querySelector('.tv-load').textContent = 'Мапа не завантажилась — онови сторінку.'; });
+  }
+
+  /// Вузька колонка (телефон чи поруч із Балачками): мапа й «Довкола мене» — вкладками. Вирішує CSS (@container).
+  function narrow() {
+    const tb = $('tryvoga') && $('tryvoga').querySelector('.tv-tabs');
+    return !!tb && getComputedStyle(tb).display !== 'none';
+  }
+  function setTab(t) {
+    tab = t === 'near' && window.HDovkola ? 'near' : 'map';
+    try { localStorage.setItem(TAB_KEY, tab); } catch { /* приватне вікно */ }
+    const root = $('tryvoga');
+    const grid = root && root.querySelector('.tv-grid');
+    if (!grid) return;
+    grid.dataset.tab = tab;
+    for (const b of root.querySelectorAll('.tv-tabs [data-tab]')) b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false');
+    hidePop();
+    // мапа щойно з'явилась — розмір беремо зараз, а не з наступного кадру: одразу за цим може йти fit()
+    if (tab === 'map') resize();
+    else if (window.HDovkola) HDovkola.update();
   }
 
   /// Типовий район зветься так, як його назвав сервер («Житомир»), а не «Житомирський район».
@@ -850,7 +1378,8 @@
   }
 
   function focusTarget(id) {
-    const h = st.hits.find((x) => x.t.id === id);
+    if (narrow()) setTab('map');
+    const h = st.hits.find((x) => x.t && x.t.id === id);
     const t = h ? h.t : ((threats && threats.threats) || []).find((x) => x.id === id);
     if (!t) return;
     const [X, Y] = map.project(t.lat, t.lon);
@@ -858,9 +1387,60 @@
     fit([X - r, Y - r, X + r, Y + r], 5);
     st.box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     requestAnimationFrame(() => {
-      const hh = st.hits.find((x) => x.t.id === id);
-      if (hh) showPop(hh.x, hh.y, targetHtml(hh.t));
+      // і на 5× дві цілі в одному селі можуть лишитись гуртом — тоді підказка над гуртом
+      const hh = st.hits.find((x) => (x.t ? x.t.id === id : x.ts.some((y) => y.id === id)));
+      if (hh) showPop(hh.x, hh.y, targetHtml(t));
     });
+  }
+
+  function focusOblast(ok) {
+    if (!map) return;
+    if (narrow()) setTab('map');
+    const bb = oblastBox(ok);
+    if (bb) fit(bb, 6);
+    st.box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  /// «📡 За місцем»: GPS один раз → район, у який лягає точка. Координати лишаються тут, на сервер іде лише район.
+  function locate() {
+    const btn = $('tryvoga').querySelector('.tv-locate');
+    if (!navigator.geolocation) { pickMsg('Цей браузер не дає місце — обери район у списку.'); return; }
+    btn.disabled = true;
+    pickMsg('Шукаю, де ти…');
+    navigator.geolocation.getCurrentPosition((p) => {
+      loadMap().then(() => {
+        btn.disabled = false;
+        const u = unitAt(p.coords.latitude, p.coords.longitude);
+        if (!u) { pickMsg('За цим місцем району в Україні не знайшов — обери в списку.'); return; }
+        choose(u);
+        focusMine();
+        pickMsg('Твій район: ' + u.n + '.', 5000);
+      }).catch(() => { btn.disabled = false; pickMsg('Мапа не завантажилась — онови сторінку.'); });
+    }, (e) => {
+      btn.disabled = false;
+      pickMsg(e.code === 1 ? 'Браузер не дав місце — дозволь «Місцезнаходження» або обери район у списку.'
+        : 'Не вдалося визначити місце — обери район у списку.');
+    }, { enableHighAccuracy: false, maximumAge: 600000, timeout: 20000 });
+  }
+  let pickT = 0;
+  function pickMsg(text, ms) {
+    const p = $('tryvoga') && $('tryvoga').querySelector('.tv-pickmsg');
+    if (!p) return;
+    clearTimeout(pickT);
+    p.textContent = text || '';
+    p.hidden = !text;
+    if (text && ms) pickT = setTimeout(() => { p.hidden = true; }, ms);
+  }
+  let probe = null;
+  function unitAt(lat, lon) {
+    const [X, Y] = map.project(lat, lon);
+    probe = probe || document.createElement('canvas').getContext('2d');
+    for (const u of map.units) {
+      const b = u.bb;
+      if (X < b[0] || X > b[2] || Y < b[1] || Y > b[3]) continue;
+      if (probe.isPointInPath(u.p, X, Y, 'evenodd')) return u;
+    }
+    return null;
   }
 
   function fillSelect() {
@@ -876,57 +1456,127 @@
     sel.value = cur().key;
   }
 
+  /// Картка згори: тривога в моєму районі — головне, і вся картка кольором рівня.
   function paintPage() {
     const box = $('tvState');
     if (!box) return;
     const s = status();
     const r = cur();
     const off = !data || data.off;
-    let html;
-    if (off) html = '<span class="tv-big">🛡</span><div><b>Тривоги зараз не показуємо</b><div class="tv-muted">Сервер їх не опитує.</div></div>';
+    let html, cls = '', chip = '';
+    if (off) html = '<span class="tv-big">🛡</span><div><b>Тривоги зараз не показуємо</b><div class="tv-sub">Сервер їх не опитує.</div></div>';
     else if (pending) html = `<span class="tv-big">⏳</span><div><b>Перевіряю</b> — ${esc(r.name)}</div>`;
     else if (data.stale) {
       const since = Date.parse(data.at || '');
-      html = `<span class="tv-big">❔</span><div><b>Не знаю, чи є тривога</b> — ${esc(r.name)}<div class="tv-muted">`
+      cls = 'stale';
+      chip = `❔ ${r.name}: дані застаріли`;
+      html = `<span class="tv-big">❔</span><div><b>Не знаю, чи є тривога</b> — ${esc(r.name)}<div class="tv-sub">`
         + (since ? `Дані не оновлюються з ${esc(kyiv(new Date(since)))}.` : 'Дані про тривоги ще не надійшли.')
         + ' Дивись застосунок «Повітряна тривога».</div></div>';
-    }
-    else if (s.on) {
+    } else if (s.on) {
       const w = what(s.level, s.reasons);
-      html = `<span class="tv-big">🚨</span><div><b>Повітряна тривога</b>${w ? ' · ' + esc(w) : ''}<div class="tv-muted">${esc(r.name)} · ${esc(sinceText(s.since))} · ${esc(lasts(Date.now() - Date.parse(s.since)))}</div></div>`;
-    } else html = `<span class="tv-big">🟢</span><div><b>Тихо</b> — ${esc(r.name)}<div class="tv-muted">Тривоги в районі зараз нема.</div></div>`;
-    box.className = 'tv-state' + (off || pending ? '' : data.stale ? ' stale' : s.on ? ' on ' + s.level : ' calm');
+      const long = lasts(Date.now() - Date.parse(s.since));
+      cls = 'on ' + (s.level === 'yellow' ? 'yellow' : 'red');
+      chip = `🚨 ${r.name}: тривога · ${long}`;
+      html = `<span class="tv-big">🚨</span><div><b>Повітряна тривога</b>${w ? ' · ' + esc(w) : ''}`
+        + `<div class="tv-sub">${esc(r.name)} · ${esc(sinceText(s.since))} · ${esc(long)}</div></div>`;
+    } else {
+      cls = 'calm';
+      chip = `🟢 ${r.name}: тихо`;
+      html = `<span class="tv-big">🟢</span><div><b>Тихо</b> — ${esc(r.name)}<div class="tv-sub">Тривоги в районі зараз нема.</div></div>`;
+    }
+    $('tvHero').className = 'panel tv-hero' + (cls ? ' ' + cls : '');
     box.innerHTML = html;
     const sel = $('tvRegion');
     if (sel && map && sel.value !== r.key) sel.value = r.key;
-    const at = $('tvAt');
-    if (at && data && data.at) at.textContent = 'Оновлено о ' + kyiv(new Date(Date.parse(data.at)));
+    const at = data && Date.parse(data.at || '');
+    $('tvFresh').textContent = at ? 'Оновлено о ' + kyiv(new Date(at)) : '';
+    // на весь екран картки не видно — стан коротко в куті мапи
+    const fs = st.box && st.box.querySelector('.tv-fullstate');
+    if (fs) { fs.textContent = chip; fs.className = 'tv-fullstate ' + cls; fs.hidden = !chip; }
+    paintAlerts();
     kick();
+  }
+
+  /// «Тривоги зараз»: по областях — рівень, скільки районів, відколи. Моя область перша, окуповані — в кінці.
+  function paintAlerts() {
+    const box = $('tvAlerts');
+    if (!box) return;
+    const n = $('tvAlertsN');
+    n.textContent = '';
+    if (!data || data.off) { box.innerHTML = '<p class="tv-muted">Тривоги зараз не показуємо.</p>'; return; }
+    if (data.stale) { box.innerHTML = '<p class="tv-muted">Дані про тривоги застаріли — не знаю, де тривога зараз.</p>'; return; }
+    if (!map) { box.innerHTML = '<p class="tv-muted">Вантажу…</p>'; return; }
+    const per = new Map();
+    for (const a of data.alerts || []) {
+      const u = a.whole ? null : map.byKey[a.key];
+      const ok = a.whole ? a.key : u && u.o;
+      if (!ok || !map.oblasts[ok]) continue;
+      let ob = per.get(ok);
+      if (!ob) per.set(ok, ob = { ok, lvl: null, raions: new Set(), whole: false, since: '', reasons: [] });
+      if ((RANK[a.level] || 2) > (RANK[ob.lvl] || 0)) ob.lvl = a.level === 'yellow' ? 'yellow' : 'red';
+      if (a.whole) ob.whole = true; else ob.raions.add(a.key);
+      if (a.since && (!ob.since || Date.parse(a.since) < Date.parse(ob.since))) ob.since = a.since;
+      for (const x of a.reasons || []) ob.reasons.push(x);
+    }
+    const now = Date.now();
+    const myOb = cur().oblast;
+    const rows = [...per.values()].map((ob) => {
+      const total = map.count[ob.ok] || 0;
+      const t = Date.parse(ob.since) || now;
+      return { ...ob, total, all: ob.whole || (total > 0 && ob.raions.size >= total), t, perm: now - t > PERM_MS, mine: ob.ok === myOb };
+    }).sort((a, b) => (b.mine - a.mine) || (a.perm - b.perm) || ((RANK[b.lvl] || 0) - (RANK[a.lvl] || 0))
+      || (b.all - a.all) || (b.raions.size - a.raions.size) || (a.t - b.t));
+    const live = rows.filter((r) => !r.perm).length;
+    n.textContent = live ? plural(live, 'область', 'області', 'областей') : '';
+    const li = rows.map((r) => {
+      const extent = r.total <= 1 ? '' : r.all ? 'уся область' : `${r.raions.size} з ${r.total} районів`;
+      const lvl = what(r.lvl, r.reasons) || (r.lvl === 'yellow' ? 'загроза дронів' : 'тривога');
+      const when = r.perm ? sinceText(r.since) : `${sinceText(r.since)} · ${lasts(now - r.t)}`;
+      return `<li><button type="button" class="tv-al${r.perm ? ' perm' : ''}${r.mine ? ' mine' : ''}" data-ob="${esc(r.ok)}">`
+        + `<i class="sw ${r.lvl}"></i><span class="tv-al-n">${esc(oblastShort(r.ok) || oblastName(r.ok))}`
+        + `${r.mine ? ' <span class="tv-al-me">📍 твоя</span>' : ''}</span><span class="tv-al-t">${esc(when)}</span>`
+        + `<span class="tv-al-d">${esc([extent, lvl].filter(Boolean).join(' · '))}</span></button></li>`;
+    });
+    // моя область без тривоги — теж рядком: видно, що її не пропустили
+    if (myOb && !per.has(myOb) && map.oblasts[myOb]) {
+      li.unshift(`<li class="tv-al-calm"><span class="tv-ok">●</span> ${esc(oblastShort(myOb) || oblastName(myOb))} <span class="tv-al-me">📍 твоя</span> — тривоги нема</li>`);
+    }
+    if (!li.length) { box.innerHTML = '<p class="tv-ok">Тривог зараз нема.</p>'; return; }
+    // на телефоні 15–20 областей — кілька екранів; решта — за кнопкою
+    const fold = li.length > ALERTS_FOLD + 1;
+    box.innerHTML = `<ul class="tv-als">${(fold && !alertsAll ? li.slice(0, ALERTS_FOLD) : li).join('')}</ul>`
+      + (fold ? `<button type="button" class="ghost tv-more">${alertsAll ? 'Згорнути' : 'Усі області · ще ' + (li.length - ALERTS_FOLD)}</button>` : '');
   }
 
   function paintThreats() {
     const body = $('tvSky');
     if (!body) return;
     const list = (threats && threats.threats) || [];
-    $('tvSkyAt').textContent = threats && threats.at ? kyiv(new Date(Date.parse(threats.at))) : '';
+    $('tvSkyAt').textContent = threats && threats.at ? 'оновлено ' + kyiv(new Date(Date.parse(threats.at))) : '';
     if (threats && threats.stale) { body.innerHTML = '<p class="tv-muted">Дані про цілі застаріли — NEPTUN зараз не відповідає.</p>'; return; }
-    if (!list.length) { body.innerHTML = '<p class="tv-muted">Нічого не видно. Добре.</p>'; return; }
+    if (!list.length) { body.innerHTML = '<p class="tv-muted">Нічого не видно.</p>'; return; }
     const n = (t) => (t.count > 1 ? t.count : 1);
     const byType = {};
     for (const t of list) { const k = TYPES[t.type] ? t.type : 'unknown'; byType[k] = (byType[k] || 0) + n(t); }
     const chips = Object.keys(TYPES).filter((k) => byType[k])
-      .map((k) => `<span class="tv-chip"><i class="gl ${TYPES[k].shape === 'ring' ? 'ring' : k}"></i>${TYPES[k].label} <b>${byType[k]}</b></span>`).join('');
+      .map((k) => `<span class="tv-chip">${iconImg(k)}${TYPES[k].label} <b>${byType[k]}</b></span>`).join('');
     const myOb = oblastName(cur().oblast);
+    const obKey = (name) => (map ? (map.oblastList.find((x) => x.n === name) || {}).k : '') || '';
     const mine = list.filter((t) => t.region && t.region === myOb)
       .sort((a, b) => (Date.parse(b.updated) || 0) - (Date.parse(a.updated) || 0));
+    // рядок: що, де (місто без повтору області — вона в заголовку), куди летить, коли бачили
     const row = (t) => {
       const m = typeOf(t.type);
-      const where = t.areaOnly ? 'десь в області' : '';
-      return `<li data-id="${esc(t.id)}"><span class="tv-ico">${m.ico}</span><span class="tv-t">${esc(t.text || t.title || m.label)}${t.count > 1 ? ' <b>×' + t.count + '</b>' : ''}${where ? ' <span class="tv-muted">' + where + '</span>' : ''}</span><span class="tv-ago">${esc(ago(t.updated))}</span></li>`;
+      const where = t.areaOnly ? '<span class="tv-muted">десь в області</span>' : t.locality ? esc(t.locality) : '';
+      const dir = t.heading != null && !t.areaOnly ? ` <span class="tv-muted">→ ${side(t.heading)}</span>` : '';
+      const key = t.areaOnly ? `data-ob="${esc(obKey(t.region))}"` : `data-id="${esc(t.id)}"`;
+      return `<li><button type="button" class="tv-row" ${key}><span class="tv-ico" aria-hidden="true">${iconImg(t.type)}</span>`
+        + `<span class="tv-t">${esc(t.title || m.label)}${t.count > 1 ? ' <b>×' + t.count + '</b>' : ''}${where ? ' · ' + where : ''}${dir}</span>`
+        + `<span class="tv-ago">${esc(ago(t.updated))}</span></button></li>`;
     };
     const perOb = {};
     for (const t of list) if (t.region) perOb[t.region] = (perOb[t.region] || 0) + n(t);
-    const obKey = (name) => (map ? (map.oblastList.find((x) => x.n === name) || {}).k : '') || '';
     const obs = Object.entries(perOb).sort((a, b) => b[1] - a[1])
       .map(([name, c]) => `<button type="button" class="tv-ob" data-ob="${esc(obKey(name))}">${esc(name.replace(' область', ''))} <b>${c}</b></button>`).join('');
     body.innerHTML = `<div class="tv-chips">${chips}</div>`
@@ -941,10 +1591,11 @@
   function show() {
     shown = true;
     buildPage();
+    paintBar();
     paintPage();
     paintThreats();
     if (map) requestAnimationFrame(resize);
-    if (window.HPivnyk) HPivnyk.show();
+    if (window.HDovkola) HDovkola.show();
     loadThreats();
     if (Date.now() - lastRefresh > 20000) refresh();
   }
@@ -952,9 +1603,10 @@
     if (!shown) return;
     shown = false;
     clearTimeout(threatTimer);
-    if (window.HPivnyk) HPivnyk.hide();
+    if (window.HDovkola) HDovkola.hide();
     if (st.full) setFull(false);
     hidePop();
+    paintBar();
   }
 
   function init(opts) {
