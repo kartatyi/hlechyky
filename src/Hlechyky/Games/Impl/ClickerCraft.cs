@@ -732,7 +732,8 @@ public sealed partial class Clicker
             // Прокачка ремесла й хата (десяте оновлення): незмінні тексти й ціни, які раніше їхали щопачки кліків.
             craftUps = CraftUps.Select(u => new { key = u.Key, name = u.Name, desc = u.Desc }),
             house = CatalogHouse(),
-            styles = Styles.Select((s, i) => new { key = s.Key, name = s.Name, value = StyleValue(s.Key) }),
+            // album — як у shopCatalog: альбом бере стовпчики саме звідси, тож без позначки намалював би й те, чого сервер не пише.
+            styles = Styles.Select((s, i) => new { key = s.Key, name = s.Name, value = StyleValue(s.Key), album = i < AlbumStyles }),
             quality = new[] { "", "звичайний", "добрий", "дзвінкий", "розкішний" },
             kiln = CatalogKiln(),
             album = CatalogAlbum(),

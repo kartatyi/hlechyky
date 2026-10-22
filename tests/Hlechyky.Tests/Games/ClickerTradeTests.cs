@@ -383,10 +383,12 @@ public class ClickerTradeTests
     // ---------- розписи ----------
 
     [Fact]
-    public void Overseas_styles_stay_out_of_the_album_and_need_their_workshop()
+    public void Overseas_styles_go_into_the_album_after_raku_and_need_their_workshop()
     {
-        foreach (var k in Clicker.OverseasTiers) Assert.Equal(-1, Clicker.AlbumStyleIndex(k));
-        Assert.Equal(Clicker.AlbumStyles, Clicker.AlbumStyleIndex("raku"));
+        // 21.10: заморські — стовпчиками світу одразу за Раку (до того сервер їх у альбом не писав, а клієнт малював).
+        var raku = Clicker.AlbumStyleIndex("raku");
+        for (var i = 0; i < Clicker.OverseasTiers.Length; i++) Assert.Equal(raku + 1 + i, Clicker.AlbumStyleIndex(Clicker.OverseasTiers[i]));
+        Assert.Equal(Clicker.AlbumStyles, Clicker.AlbumStyleIndex(Clicker.OverseasTiers[^1]));
         Assert.All(Clicker.OverseasTiers, k => Assert.Equal(k, Clicker.Styles.Single(s => s.Key == k).Tier));
     }
 }
