@@ -152,14 +152,25 @@ public static class KilnHeat
     /// дзвінких, тож нерозписана партія лишається рівно такою, якою була до дев'ятого оновлення. При ідеальному
     /// жарі й красі 100 — 25 % розкішних, 5 % дзвінких, 40 % добрих.
     /// </summary>
-    public static int QualityOf(double s, double paint, double u)
+    /// <remarks>
+    /// Шана «Розкіш» (<paramref name="luxMult"/>): розкішних у стільки разів більше, а дзвінких — стільки ж, скільки й
+    /// було: межа дзвінкого зсувається разом із розкішним, тож прибавка береться з добрих і звичайних.
+    /// </remarks>
+    public static int QualityOf(double s, double paint, double u, double luxMult = 1)
+    {
+        s = Math.Clamp(s, 0, 1);
+        var p4 = LuxChance(s, paint, luxMult);
+        var p3 = 0.3 * s * s + (p4 - LuxChance(s, paint, 1));
+        var p2 = 0.4 * s;
+        return u < p4 ? 4 : u < p3 ? 3 : u < p3 + p2 ? 2 : 1;
+    }
+
+    /// <summary>Імовірність розкішного: <c>min(0,3·S², LuxShare·S²·розпис²)</c>, з шаною «Розкіш» — ще × <paramref name="luxMult"/>.</summary>
+    public static double LuxChance(double s, double paint, double luxMult = 1)
     {
         s = Math.Clamp(s, 0, 1);
         paint = Math.Clamp(paint, 0, 1);
-        var p3 = 0.3 * s * s;
-        var p2 = 0.4 * s;
-        var p4 = Math.Min(p3, LuxShare * s * s * paint * paint);
-        return u < p4 ? 4 : u < p3 ? 3 : u < p3 + p2 ? 2 : 1;
+        return Math.Min(0.3 * s * s, LuxShare * s * s * paint * paint) * Math.Max(1, luxMult);
     }
 }
 
@@ -976,7 +987,7 @@ public sealed partial class Clicker
 
     /// <summary>Місця горна: піч дає до стелі, ранг майстра цеху — ще два понад неї (ClickerGuild.cs).</summary>
     internal int KilnSlots => Math.Min(KilnSlotsMax + TolokaKilnMaxExtra, KilnSlotsBase + Level("kiln") / KilnPerLevel + TolokaKilnExtra)
-        + Math.Max(0, GuildKilnSlots) + Math.Max(0, CraftKilnBonus);
+        + Math.Max(0, GuildKilnSlots) + Math.Max(0, CraftKilnBonus) + ShanaKilnSlots;
 
     bool TechOpen(ClickerTechnique t) => t.Fired <= 0 || FiredTotal >= t.Fired || (t.Home.Length > 0 && _styles.Contains(t.Home));
 
@@ -1205,10 +1216,12 @@ public sealed partial class Clicker
         var style = _kilnStyle.Length > 0 && _styles.Contains(_kilnStyle) ? _kilnStyle : "";
         var beauty = manual ? _kilnBeauty : 0;
         var crack = manual ? KilnHeat.CrackChance(over) * (_litStraw ? StrawCrack : 1) : 0;
+        // Шана «Горно» I/IV: підмайстер розписує партію в обраному розписі (краса 15, далі 30) — бувають і розкішні.
         // Палій пече без розпису й без тріщин, зате з власним невеликим «блиском» від прокачки (v9).
         // Одинадцяте оновлення: Інститут керамології й «Родовий жар» додають до блиску (стеля — та сама одиниця в QualityOf).
         var shine = (manual ? KilnHeat.Shine(heat, beauty) : AutoShine) * (1 + TolokaShineBonus + Relic("ember3"));
-        var paint = manual ? Math.Clamp(beauty, 0, 100) / 100.0 : 0;
+        var paint = manual ? Math.Clamp(beauty, 0, 100) / 100.0 : style.Length > 0 ? ShanaAutoPaint : 0;
+        var luxMult = ShanaLuxMult;
         var outs = new List<KilnOutRow>(_kiln.Count);
         for (var i = 0; i < _kiln.Count; i++)
         {
@@ -1217,7 +1230,7 @@ public sealed partial class Clicker
             if (crack > 0 && Ctx.Rng.NextDouble() < crack) { outs.Add(new KilnOutRow(ware, 0)); continue; }
             // Глина сирця (21.10): тонкий з каоліну виходить розкішним, а каолін ще й додає блиску.
             var (clay, thin) = KilnClayAt(i);
-            outs.Add(new KilnOutRow(ware, thin ? QualityMax : KilnHeat.QualityOf(shine * (1 + clay.Shine), paint, Ctx.Rng.NextDouble())));
+            outs.Add(new KilnOutRow(ware, thin ? QualityMax : KilnHeat.QualityOf(shine * (1 + clay.Shine), paint, Ctx.Rng.NextDouble(), luxMult)));
         }
         double sold = 0, shards = 0;
         LadNowClear();
@@ -1234,11 +1247,11 @@ public sealed partial class Clicker
         var freed = LadTakeNow();
 
         // Те саме p4, що й у KilnHeat.QualityOf (блиск там обрізано до 1).
-        var s1 = Math.Clamp(shine, 0, 1);
-        var lux = Math.Min(0.3 * s1 * s1, KilnHeat.LuxShare * s1 * s1 * paint * paint);
+        var lux = KilnHeat.LuxChance(shine, paint, luxMult);
         _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold, freed,
             Math.Round(Math.Clamp(lux, 0, 1), 3), manual ? (int)Math.Round(peak) : 0);
         _kilnBatches++;
+        ShanaOnKiln(outs.Count(o => o.Q == 4));
         var whole = outs.Count(o => o.Q > 0);
         var perfect = manual && IsPerfectBatch(outs.Select(o => o.Q).ToList());
         if (perfect)
@@ -1262,7 +1275,7 @@ public sealed partial class Clicker
         _kilnTech = "";
         _kilnBeauty = 0;
         _paintSeed = 0;
-        _coolUntil = at + KilnCool;
+        _coolUntil = at + KilnCoolNow;
 
         var parts = new List<string>();
         void Part(int q, string one, string few, string many)
@@ -1283,11 +1296,12 @@ public sealed partial class Clicker
             _awayFired += whole;
             _awayGood += outs.Count(o => o.Q == 2);
             _awayRing += outs.Count(o => o.Q == 3);
+            _awayLux += outs.Count(o => o.Q == 4);
         }
         return text;
     }
 
-    int _awayBatches, _awayFired, _awayGood, _awayRing;
+    int _awayBatches, _awayFired, _awayGood, _awayRing, _awayLux;
 
     /// <summary>Підсумок роботи палія в «поки тебе не було» — одним рядком, скільки б партій він не обпалив.</summary>
     void AwayKilnNote()
@@ -1298,8 +1312,9 @@ public sealed partial class Clicker
             : $"🔥 Палій обпалив {_awayBatches} {Plural(_awayBatches, "партію", "партії", "партій")}: "
                 + $"{_awayFired} {WaresWord(_awayFired)}"
                 + (_awayGood > 0 ? $", {_awayGood} {Plural(_awayGood, "добрий", "добрі", "добрих")}" : "")
-                + (_awayRing > 0 ? $", {_awayRing} {Plural(_awayRing, "дзвінкий", "дзвінкі", "дзвінких")}" : "");
-        _awayBatches = _awayFired = _awayGood = _awayRing = 0;
+                + (_awayRing > 0 ? $", {_awayRing} {Plural(_awayRing, "дзвінкий", "дзвінкі", "дзвінких")}" : "")
+                + (_awayLux > 0 ? $", {_awayLux} {Plural(_awayLux, "розкішний", "розкішні", "розкішних")}" : "");
+        _awayBatches = _awayFired = _awayGood = _awayRing = _awayLux = 0;
         AwayNoteFirst(text);
     }
 
@@ -1387,7 +1402,7 @@ public sealed partial class Clicker
         _kilnTouch = default;
         _kilnAuto = 0;
         _kilnTechAll = false;
-        _awayBatches = _awayFired = _awayGood = _awayRing = 0;
+        _awayBatches = _awayFired = _awayGood = _awayRing = _awayLux = 0;
     }
 
     /// <summary>Обпал-престиж: партія в горні (і та, що палає) згорає разом із соломою й недомальованим розписом.</summary>
@@ -1482,6 +1497,8 @@ public sealed partial class Clicker
             // Зерно поривів і полін — клієнтові, щоб його модель жару збігалась із серверною крок у крок.
             seed = burning && !_litHelper ? _fireSeed : 0,
             coolUntil = _coolUntil > now ? _coolUntil : (DateTimeOffset?)null,
+            // Шана «Горно» II: остигає 45 с — клієнтові для смужки холонення.
+            coolMs = KilnCoolNow.TotalMilliseconds,
             batches = _kilnBatches,
             last = _kilnLast is { } l
                 ? new

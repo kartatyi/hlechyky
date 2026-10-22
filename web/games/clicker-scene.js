@@ -968,6 +968,16 @@
         + '<circle cx="30" cy="27" r="5" fill="#f2c230"/><circle cx="30" cy="27" r="2.2" fill="#d7372b"/><circle cx="14" cy="24" r="2.6" fill="#d7372b"/><circle cx="46" cy="24" r="2.6" fill="#d7372b"/>'
         + '<path d="M27 16h6v5h-6z" fill="#e2c26a"/><path d="M0 40h60" stroke="#4a1e10" stroke-width="2"/></g>';
     }
+    // Шана старійшини, «Розкіш» V: синя скринька розкоші з золотом — на віку скрині, а без скрині — на долівці.
+    if (e.luxBox) {
+      const c = SCENE.chest;
+      s += '<g class="clks-luxbox" transform="translate(' + (c.x + 16) + ' ' + (e.decor.chest ? c.y - 14 : c.y + 18) + ')">'
+        + '<ellipse cx="14" cy="18" rx="15" ry="2" fill="rgba(0,0,0,.25)"/>'
+        + '<rect y="5" width="28" height="13" rx="2" fill="#2f4f8f" stroke="#f4c542" stroke-width="1"/>'
+        + '<path d="M0 7a14 5 0 0 1 28 0v2H0z" fill="#3d63b0" stroke="#f4c542" stroke-width=".8"/>'
+        + '<circle cx="14" cy="12" r="2.4" fill="#f4c542"/><path d="M4 12h4M20 12h4" stroke="#f4c542" stroke-width=".8"/>'
+        + '<path class="clks-flick" d="M25 -2l1 3 3 1-3 1-1 3-1-3-3-1 3-1z" fill="#fff6c8"/></g>';
+    }
     s += decor2Svg(e) + wonderShelf(e) + showShelf(e) + worldShelf(e);
     if (e.cat) s += cat(e.night, PET_FUR[e.look.pet] || PET_FUR.grey);
     s += apprentices(e.apprentice, e.night);
@@ -2572,7 +2582,17 @@
       cat: (v.secrets || []).some((s) => s.key === 'cat' && s.owned),
       toloka: tolokaEnv(st, v),           // v11: майдан Толоки (null — ще нема)
       trade: tradeEnv(st, v),             // v12: кораблі біля Пристані (null — торгівлі ще нема)
+      luxBox: luxBoxOf(v),                // шана старійшини, «Розкіш» V: скринька розкоші
     };
+  }
+
+  /// Скринька розкоші (ClickerShana.cs): старійшина з «Розкішшю» на п'ятому щаблі. Хата друга шле те саме полем luxBox.
+  function luxBoxOf(v) {
+    if (v && v.luxBox) return true;
+    const sh = v && v.guild && v.guild.shana;
+    if (!sh || !sh.on) return false;
+    const t = (sh.tracks || []).find((x) => x.key === 'lux');
+    return !!(t && t.level >= 5);
   }
 
   /// Знайдені дивовижі з виду: [{ key, at }]. Десяте оновлення шле їх мапою «ключ → коли» (house.wonders) у порядку
@@ -3430,6 +3450,8 @@
           secrets: [],
           // Толока друга (v11): знімок цеху шле готові будови — майдан за його хатою такий, як у нього.
           toloka: h && Array.isArray(h.built) && h.built.length ? { built: h.built } : null,
+          // Шана старійшини: скринька розкоші друга.
+          luxBox: !!(h && h.luxBox),
         };
         const sky = (st2 && st2.scn && st2.scn.sky) || st.scn.sky;
         // Свої id (градієнти хати друга не мусять зникати, коли головну сцену сховало Око майстра) і ті самі змінні неба.

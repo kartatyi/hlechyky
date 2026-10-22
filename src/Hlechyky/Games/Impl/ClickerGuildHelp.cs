@@ -225,7 +225,7 @@ public sealed partial class ClickerGuildService
     /// (справжній +10 % на годину); інакше — безплатне «дякую»: лише тост і рядок у стрічці, без впливу на економіку.
     /// Кожному — раз на день, усього <see cref="ThanksPerDay"/>. Вертає (відмова, чи це була похвала).
     /// </summary>
-    public (string? Error, bool Cheer) Thank(string fromKey, string fromNick, string toNick, DateTimeOffset now)
+    public (string? Error, bool Cheer) Thank(string fromKey, string fromNick, string toNick, DateTimeOffset now, GuildPerks? perks = null)
     {
         var toKey = Key(toNick);
         var who = toNick.Trim();
@@ -263,7 +263,7 @@ public sealed partial class ClickerGuildService
             return (null, false);
         }
         // Похвала-подяка: звичайна похвала з усіма її межами (стеля наперед, раз на друга), і позначка «подякував».
-        if (Boost(fromKey, fromNick, toNick, "cheer", 0, now) is { } why) return (why, true);
+        if (Boost(fromKey, fromNick, toNick, "cheer", 0, now, perks) is { } why) return (why, true);
         lock (_lock)
         {
             HelpRowFor(S(), fromKey, Days.Of(now)).Thanked.Add(toKey);

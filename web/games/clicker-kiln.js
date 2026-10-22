@@ -869,7 +869,8 @@
       const left = Date.parse(k.coolUntil) - now;
       label = '♨ Горно холоне';
       clock = api.mmss(left);
-      const c = Math.max(0, Math.min(1, left / ((cat(st) && cat(st).coolMs) || 60000)));
+      // Шана «Горно» II: горно остигає 45 с — вид каже, скільки саме.
+      const c = Math.max(0, Math.min(1, left / (k.coolMs || (cat(st) && cat(st).coolMs) || 60000)));
       setVar(ui.svg, '--clkk-heat', (c * 0.45).toFixed(3));
       setAttr(ui.glow, 'opacity', (c * 0.5).toFixed(2));
     } else {

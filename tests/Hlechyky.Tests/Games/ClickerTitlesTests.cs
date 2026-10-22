@@ -98,7 +98,8 @@ public class ClickerTitlesTests
         var kinds = Clicker.Titles.GroupBy(t => t.Kind).ToDictionary(g => g.Key, g => g.Count());
         Assert.Equal(13, kinds[Clicker.TitleTop]);
         Assert.Equal(5, kinds[Clicker.TitleDay]);
-        Assert.Equal(9, kinds[Clicker.TitleRare]);
+        // 9 + три шани старійшини (Обозний, Добра душа, Легенда Опішні).
+        Assert.Equal(12, kinds[Clicker.TitleRare]);
         Assert.Equal(10, kinds[Clicker.TitleSecret]);
         Assert.Equal(2, kinds[Clicker.TitleMemory]);
         Assert.Equal(Clicker.Titles.Length, Clicker.Titles.Select(t => t.Key).Distinct().Count());

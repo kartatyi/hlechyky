@@ -462,7 +462,7 @@ public sealed partial class Clicker
 
     // ---------- гачки основи ----------
 
-    double FairAllMult => 1 + FairRepAll * _mktRepLevels;
+    double FairAllMult => 1 + RepAllNow * _mktRepLevels;
 
     /// <summary>Чи триває якийсь баф ярмарку (сіль, пісня, наслідок пригоди): Око майстра під ним не перебиває (v9).</summary>
     internal bool FairBuffOn(DateTimeOffset now) => _mktBuffs.Any(b => b.Until > now);
@@ -525,8 +525,10 @@ public sealed partial class Clicker
     bool MktBazaarOn(DateTimeOffset now) => now < _mktBazaarUntil;
 
     /// <summary>Повний множник замовлення: базовий плюс шана села, ×Косів за розпис, ×базарний день.</summary>
+    /// <remarks>Шана старійшини: «Ярмарок» IV — ×1,25 усім замовленням, «Розкіш» III — ×1,5 замовленню на розкішне.</remarks>
     double MktMult(FairOrderRow o) =>
-        (o.Mult + MktRepPay(o)) * MktStylePerk(o) * (MktBazaarOn(Ctx.Clock.UtcNow) ? FairBazaarMult : 1) * (1 + GuestsPayBonus) * TolokaMktPay;
+        (o.Mult + MktRepPay(o)) * MktStylePerk(o) * (MktBazaarOn(Ctx.Clock.UtcNow) ? FairBazaarMult : 1) * (1 + GuestsPayBonus) * TolokaMktPay
+        * ShanaFairPayNow * ShanaLuxPayFor(o.Quality);
 
     double MktChance(FairOrderRow o) =>
         Math.Min(FairUpMax, FairUpChance + FairUpPerLevel * MktLevel(o.Village) + FairPerkHaggle * MktLevel("sorochyntsi"));
@@ -561,7 +563,9 @@ public sealed partial class Clicker
         if (village.Style.Length > 0 && _styles.Contains(village.Style) && roll < 40) style = village.Style;
         else if (styles.Count > 0 && roll >= (lord ? 50 : 80)) style = styles[Ctx.Rng.Next(styles.Count)];
         var q = Ctx.Rng.Next(100);
-        int quality = lord
+        // Шана «Розкіш» IV: пани замовляють і розкішне — менше штук, зате ×5.
+        var luxLord = lord && ShanaLuxLord && Ctx.Rng.Next(100) < ShanaLuxLordPct;
+        int quality = luxLord ? 4 : lord
             ? (q < 30 ? 3 : 2)
             : d switch
             {
@@ -571,17 +575,19 @@ public sealed partial class Clicker
                 _ => q < 20 ? 3 : q < 70 ? 2 : 1,
             };
         var count = lord ? 3 + Ctx.Rng.Next(3) : 2 + Ctx.Rng.Next(2 + d);
-        if (quality == 3) count = Math.Max(lord ? 2 : 1, (count + 1) / 2);
-        var mult = lord ? FairLordMult : FairOrderMult + FairOrderStep * ((quality >= 2 ? 1 : 0) + (quality == 3 ? 1 : 0) + (style.Length > 0 ? 1 : 0));
-        var life = lord
+        if (quality >= 3) count = Math.Max(lord ? 2 : 1, (count + 1) / 2);
+        var mult = luxLord ? ShanaLuxLordMult : lord ? FairLordMult
+            : FairOrderMult + FairOrderStep * ((quality >= 2 ? 1 : 0) + (quality == 3 ? 1 : 0) + (style.Length > 0 ? 1 : 0));
+        var life = (lord
             ? TimeSpan.FromMinutes(FairLordLifeMinutes)
-            : TimeSpan.FromMinutes(FairOrderLifeMinMinutes + Ctx.Rng.Next(FairOrderLifeMaxMinutes - FairOrderLifeMinMinutes + 1));
+            : TimeSpan.FromMinutes(FairOrderLifeMinMinutes + Ctx.Rng.Next(FairOrderLifeMaxMinutes - FairOrderLifeMinMinutes + 1)))
+            + ShanaOrderLife;
         var who = lord ? -1 : Ctx.Rng.Next(village.People.Length);
         _mktOrders.Add(new(++_mktOrderId, village.Key, who, ware.Key, style, quality, count, mult, now, now + life, lord));
     }
 
     /// <summary>Скільки замовлень уміщає дошка: з ярмарковим дзвоном — п'ять замість чотирьох.</summary>
-    int MktBoardMax => (Has("bell") ? FairBellBoardMax : FairBoardMax) + TolokaMktSlots;
+    int MktBoardMax => (Has("bell") ? FairBellBoardMax : FairBoardMax) + TolokaMktSlots + ShanaBoard;
 
     TimeSpan MktOrderGap()
     {
@@ -935,8 +941,8 @@ public sealed partial class Clicker
         _mktOrders.Clear();
         foreach (var o in row.Orders ?? [])
             if (o is not null && o.Style is not null && WareOf(o.Ware) is not null && FairVillages.Any(v => v.Key == o.Village) && o.Count is > 0 and <= 20
-                && o.Quality is >= 1 and <= 3 && (o.Style.Length == 0 || Styles.Any(s => s.Key == o.Style))
-                && double.IsFinite(o.Mult) && o.Mult is > 0 and <= FairLordMult && _mktOrders.Count < FairBellBoardMax + TolokaMktSlotsMax + 2)
+                && o.Quality is >= 1 and <= 4 && (o.Style.Length == 0 || Styles.Any(s => s.Key == o.Style))
+                && double.IsFinite(o.Mult) && o.Mult is > 0 and <= ShanaLuxLordMult && _mktOrders.Count < FairBellBoardMax + TolokaMktSlotsMax + 3)
                 _mktOrders.Add(o);
         _mktOrderId = Math.Max(row.OrderId, _mktOrders.Count == 0 ? 0 : _mktOrders.Max(o => o.Id));
         _mktOrderNext = row.OrderNext;
@@ -989,6 +995,7 @@ public sealed partial class Clicker
         _mktForesight = false;
         _mktBuffs.Clear();
         _mktDelivered = 0;
+        _mktClerk = null;
         _mktDay = null;
         _mktGiftDay = "";
         _mktGifts.Clear();
@@ -1011,8 +1018,47 @@ public sealed partial class Clicker
         _mktOrderNext = now + MktOrderGap();
     }
 
+    /// <summary>
+    /// Шана «Ярмарок» III — прикажчик: звичайне замовлення села, на яке в коморі є вільний товар (не відкладений під інші
+    /// замовлення, майстерштук і Толоку), здає сам — «як є», без торгу й без ведмедя. Кличеться раніше, ніж прострочені
+    /// знімаються з дошки: замовлення, що висіло, поки тебе не було, прикажчик теж устиг здати. Панські — тобі.
+    /// </summary>
+    void MktClerk(DateTimeOffset now)
+    {
+        if (!ShanaClerk) return;
+        var n = 0;
+        double sum = 0;
+        foreach (var o in _mktOrders.Where(o => !o.Lord).ToList())
+        {
+            var taker = new TakeFor("mkt", o.Id);
+            var plan = SparePlan(MktMatch(o), o.Count, new TakeFor("clerk"));
+            if (plan.Sum(x => x.N) < o.Count) continue;
+            double value = 0;
+            foreach (var (item, k) in plan)
+            {
+                value += ItemValue(item.Ware, item.Style, item.Quality) * k;
+                TakeItems(x => x == item, k, taker);
+            }
+            var pay = Math.Max(1, ToPots(Math.Max(value * MktMult(o), MktPlayPay(o))));
+            Add(pay);
+            sum += pay;
+            _mktOrders.Remove(o);
+            _mktDelivered++;
+            MktRepAdd(o.Village, MktRepFor(o));
+            n++;
+        }
+        if (n == 0) return;
+        _mktClerk = new FairClerkRow(now, n, sum);
+        AwayNote($"🧑‍💼 Прикажчик здав {n} {Plural(n, "замовлення", "замовлення", "замовлень")} сіл: +{PotsShort(sum)}");
+    }
+
+    /// <summary>Останнє, що здав прикажчик: клієнт скаже про це тостом, коли побачить нову мить.</summary>
+    sealed record FairClerkRow(DateTimeOffset At, int N, double Pots);
+    FairClerkRow? _mktClerk;
+
     void SyncFair(DateTimeOffset now, TimeSpan paid)
     {
+        MktClerk(now);
         var expired = _mktOrders.RemoveAll(o => o.Until <= now);
         // «1 замовлення не дочекалось», але «2 / 5 замовлень не дочекались» (QA-3).
         if (expired > 0) AwayNote($"📜 {expired} {Plural(expired, "замовлення", "замовлення", "замовлень")} "
@@ -1090,6 +1136,9 @@ public sealed partial class Clicker
             }),
             nextOrderAt = _mktOrderNext,
             boardMax = MktBoardMax,
+            // Шана «Ярмарок» III: що здав прикажчик востаннє (тост) і скільки до всього дає рівень шани сіл.
+            clerk = _mktClerk is { } ck ? new { at = ck.At, n = ck.N, pots = ck.Pots } : null,
+            repAll = RepAllNow,
             bell = Has("bell"),
             rep = FairVillages.Select(v => new
             {

@@ -47,7 +47,7 @@
     chumak: '🧂 Сіль чумака', kobzar: '🎶 Пісня кобзаря', event: '✨ Пригода',
   };
   const KIND = { work: 'ліплення', dry: 'сушіння', value: 'ціни' };
-  const Q_REQ = ['', '', 'добрі й дзвінкі', 'лише дзвінкі'];
+  const Q_REQ = ['', '', 'добрі й дзвінкі', 'лише дзвінкі', 'лише розкішні'];
   const GUEST_NAME = {
     chumak: 'Чумак!', magpie: 'Сорока!', lord: 'Пан!', kobzar: 'Кобзар!', fortune: 'Ворожка!',
     dyak: 'Дяк!', wander: 'Гончар!', bear: 'Ведмідь!',
@@ -788,6 +788,13 @@
         }
       }
       k.levels = levels;
+      // Прикажчик (шана старійшини, «Ярмарок» III) здав замовлення сам — кажемо, щоб дошка не мінялась мовчки
+      // (перший вид лише запам'ятовує: про здане без тебе вже сказав запис «поки тебе не було»).
+      const clerkAt = m.clerk ? ms(m.clerk.at) : 0;
+      if (clerkAt && k.clerkSeen != null && clerkAt > k.clerkSeen) {
+        api.popAt(st, '🧑‍💼 Прикажчик здав ' + m.clerk.n + ' · +' + api.potsShort(m.clerk.pots), 'big', 50, 22);
+      }
+      k.clerkSeen = clerkAt;
       const ready = k.orders.filter((o) => o.have >= o.n).length;
       api.tabNote(st, 'craft', 'orders', ready ? '📜' + ready : '', 1);
       noticeEvent(st, api);

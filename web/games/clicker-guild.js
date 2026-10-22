@@ -348,6 +348,8 @@
       + barHtml(w)
       + '<div class="clkg-subs">' + subs + '</div>'
       + givers
+      // Шана «Вози» IV: хтось із тих, хто віз сьогодні, — обозний.
+      + (v.oboz ? '<div class="muted small">🐴 Сьогодні віз веде обозний — хто віз, забере з нагородою ще 10 хв гри</div>' : '')
       + paiNote
       + '<div class="clkg-btns">' + giveAllBtn(st, api, v, 'ghost')
       + '<button type="button" class="ghost clkg-give"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🧺 Вибрати, що покласти</button>'
@@ -779,6 +781,41 @@
     if (c.ok) { loadRoster(st, api, true); refreshCard(st, api, c); }
   }
 
+  // ---------- шана старійшини ----------
+
+  const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+
+  /// П'ять гілок шани (ClickerShana.cs): у кожної — щабель, смужка до наступного порогу й перки під «▾» (набрані — ✓).
+  /// Лічильники й пороги — з виду, назви й перки — з каталогу (catalog.guild.shana).
+  function shanaHtml(st, api, v) {
+    const esc = (x) => api.esc(st, x);
+    const c = cat(st);
+    const sc = c && c.shana;
+    const sv = v.shana;
+    if (!sc || !sv || !sv.on) return '';
+    const max = sc.max || 5;
+    const rows = (sv.tracks || []).map((t) => {
+      const d = (sc.tracks || []).find((x) => x.key === t.key);
+      if (!d) return '';
+      const lvl = t.level || 0;
+      const full = lvl >= max;
+      const from = lvl > 0 ? d.need[lvl - 1] : 0;
+      const share = full ? 1 : Math.max(0, Math.min(1, (t.have - from) / Math.max(1, t.next - from)));
+      const perks = d.perks.map((p, i) => '<li class="' + (i < lvl ? 'on' : '') + '"><b>' + ROMAN[i + 1] + '</b>'
+        + '<span>' + esc(p) + '</span><i>' + (i < lvl ? '✓' : api.count(d.need[i])) + '</i></li>').join('');
+      return '<details class="clkg-sh' + (full ? ' full' : '') + '"><summary>'
+        + '<span class="clkg-shn">' + d.icon + ' ' + esc(d.name) + ' <b>' + (lvl ? ROMAN[lvl] : '—') + '</b></span>'
+        + '<div class="clkg-rbar"><i style="width:' + (share * 100).toFixed(1) + '%"></i></div>'
+        + '<span class="clkg-shc">' + (full ? '✓ усе' : api.count(t.have) + '/' + api.count(t.next)) + '</span></summary>'
+        + '<div class="muted small">' + esc(d.what) + ': ' + api.count(t.have) + '</div>'
+        + '<ol class="clkg-shp">' + perks + '</ol></details>';
+    }).join('');
+    return '<div class="clkg-shana"><div class="small"><b>🎖 Шана старійшини</b>'
+      + info('Вище за старійшину рангу нема — зате кожна гілка росте від своєї роботи за весь час: обпалене, покладене '
+        + 'на вози, розкішні вироби, допомога друзям і замовлення сіл. Кожен щабель — перк назавжди. Усі п\'ять на V — '
+        + 'звання «Легенда Опішні».') + '</div>' + rows + '</div>';
+  }
+
   // ---------- ранг ----------
 
   function rankHtml(st, api, v) {
@@ -788,8 +825,12 @@
       + '<b>' + RANK_ICON[r] + '</b><i>' + esc(rankName(st, r)) + '</i></span>').join('<span class="clkg-dash"></span>');
     const perks = [];
     if (v.rank >= 1) {
+      // Шана «Горно» I/IV: підмайстер ще й розписує — так і кажемо, замість «якість звичайна».
+      const kiln = v.shana && v.shana.on ? (v.shana.tracks || []).find((t) => t.key === 'kiln') : null;
+      const paint = kiln && kiln.level >= 4 ? 30 : kiln && kiln.level >= 1 ? 15 : 0;
       perks.push('<label class="clkg-auto"><input type="checkbox" class="clkg-autobox"' + (v.autoOff ? '' : ' checked') + (st.mine ? '' : ' disabled') + '> '
-        + '🔥 Автогорно: підмайстри самі палять повну сушарню (якість звичайна)</label>');
+        + '🔥 Автогорно: підмайстри самі палять повну сушарню'
+        + (paint ? ' і розписують її (краса ' + paint + ')' : ' (якість звичайна)') + '</label>');
     }
     if (v.rank >= 2) perks.push('<div class="small">🏺 +' + v.kilnSlots + ' ' + api.plural(v.kilnSlots, 'місце', 'місця', 'місць')
       + ' у горні · вироби відкриваються на ' + (v.rank - 1) + ' ' + api.plural(v.rank - 1, 'щабель', 'щаблі', 'щаблів') + ' раніше</div>');
@@ -797,11 +838,14 @@
       + ' · титул «' + esc(rankName(st, v.rank)) + '» у похвалах і в хаті</div>');
     const perkBox = perks.length ? '<div class="clkg-perks">' + perks.join('') + '</div>' : '';
 
-    // Цехмістр: вище нема куди — самий рядок і перки.
+    // Старійшина: вище рангу нема — перки рангу й шана старійшини (п'ять гілок).
     if (!v.next) {
-      return '<section class="clkg-card"' + api.fold('g.rank', true) + '>'
+      const shana = shanaHtml(st, api, v);
+      // Без шани картці нема чого казати — згорнута; з шаною — розгорнута, і під своїм ключем: стара позначка «згорнуто»
+      // в ключі g.rank її не ховає.
+      return '<section class="clkg-card"' + (shana ? api.fold('g.shana') : api.fold('g.rank', true)) + '>'
         + api.foldHead(RANK_ICON[v.rank] + ' Ранг: ' + esc(rankName(st, v.rank)))
-        + '<div class="muted small">🎖️ Вище в селі лише небо.</div>' + perkBox + '</section>';
+        + (shana ? '' : '<div class="muted small">🎖️ Вище в селі лише небо.</div>') + perkBox + shana + '</section>';
     }
 
     const n = v.next;
@@ -840,6 +884,8 @@
       + '<div><b>Майстерштук</b><span class="small">' + esc(pieceText) + '</span>'
       + '<span class="muted small">' + (p.have ? '✓ лежить у коморі' : 'виліпи, обпали ' + ((p.q || 3) >= 4 ? 'розкішним' : 'дзвінким') + ' — і принеси селу') + '</span></div></div>'
       + (perk ? '<div class="muted small">Перк: ' + esc(perk) + '</div>' : '')
+      + (n.rank === RANKS.length - 1 ? '<div class="muted small">🎖 А далі — шана старійшини: п\'ять гілок перків за обпалене, '
+        + 'вози, розкішні, допомогу друзям і замовлення сіл (рахується вже зараз).</div>' : '')
       + (ready ? '' : '<button type="button" class="ghost clkg-master" disabled>🎓 Здати майстерштук</button>')
       + '</details>'
       + perkBox
@@ -1574,6 +1620,7 @@
         gifts: g.gifts || { left: 0, sent: 0, got: 0 }, shelf: g.shelf || [], given: g.given || 0, next: g.next || null,
         autoKiln: !!g.autoKiln, autoOff: !!g.autoOff, kilnSlots: g.kilnSlots || 0, bragAt: g.bragAt || null,
         wagonMult: g.wagonMult || 1,
+        shana: g.shana || null, oboz: !!g.oboz,
         all: g.all || { n: 0, keep: 0 },
         help: g.help || { treatLeft: 0, lendLeft: false, cheered: [], sizes: [], treats: 0 },
         buffs: g.buffs || { lend: null, cheer: null, treat: null },

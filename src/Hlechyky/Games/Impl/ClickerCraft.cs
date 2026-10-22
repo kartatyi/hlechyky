@@ -304,7 +304,8 @@ public sealed partial class Clicker
     internal double ItemValue(string ware, string style, int quality)
     {
         if (WareOf(ware) is not { } w) return 0;
-        var q = QualityMult[Math.Clamp(quality, 1, QualityMax)];
+        // Шана «Розкіш» III: розкішне — ×1,5.
+        var q = QualityMult[Math.Clamp(quality, 1, QualityMax)] * ShanaLuxPayFor(quality);
         var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware)
             * (1 + GuestsValueBonus) * TolokaValueMult;
         var floor = (_memoOn ? _memoClick : ClickBase) * WorkPlain(w) * ValueFloorClicks * q;
