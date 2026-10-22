@@ -9,6 +9,9 @@
 /* ---- полиця над колом: сирці ---- */
 .clk-shelf-jugs { gap: 1px; justify-content: center; }
 .clkw-rack { display: inline-flex; }
+/* Тонкий сирець з каоліну (21.10): іскра в куті — з горна вийде розкішним. */
+.clkw-rack.thin, .clkw-rackitem.thin { position: relative; }
+.clkw-rack.thin::after, .clkw-rackitem.thin::after { content: '✨'; position: absolute; top: -2px; right: -2px; font-size: .7em; pointer-events: none; }
 /* Розмір — у частках ширини сцени (сцена — контейнер): десять сирців влазять і на телефоні, і на ПК. */
 .clkw-rack svg { width: 6.4cqw; height: 6.9cqw; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); }
 .clkw-rack:not(.dry) svg { opacity: .88; }

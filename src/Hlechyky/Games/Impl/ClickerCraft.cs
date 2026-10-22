@@ -12,8 +12,11 @@ public sealed record ClickerWare(string Key, string Name, int Work, double Secon
 /// <summary>Виріб у коморі: вид, розпис (порожній — простий) і якість (1 звичайний, 2 добрий, 3 дзвінкий, 4 розкішний).</summary>
 public sealed record ItemInfo(string Ware, string Style, int Quality);
 
-/// <summary>Сирець на сушарні: що це, з якої глини і коли висохне.</summary>
-public sealed record RackRow(string Ware, string Clay, DateTimeOffset DryAt);
+/// <summary>
+/// Сирець на сушарні: що це, з якої глини і коли висохне. <paramref name="Thin"/> — тонкий сирець з каоліну (21.10):
+/// у горні він стає розкішним, якщо не трісне.
+/// </summary>
+public sealed record RackRow(string Ware, string Clay, DateTimeOffset DryAt, bool Thin = false);
 
 /// <summary>
 /// Ремесло — основа сьомого оновлення (docs/games/specs/clicker-v7.md): глеки перестають бути лише числом. Кліки
@@ -122,13 +125,20 @@ public sealed partial class Clicker
 
     internal bool WareOpen(string key) => WareOf(key) is { } w && (_total >= w.Unlock || GuildWareOpen(key));
 
-    /// <summary>Скільки роботи просить виріб зараз: майстерність і бонуси пришвидшують, але не нижче 40 %.</summary>
-    internal int WorkOf(ClickerWare w)
-    {
-        // Підмайстер друга (GuildWorkMult) іде поверх підлоги: інакше ветеранові з майстерністю 10 він не давав би нічого.
-        var mult = Math.Max(MinWorkShare, AlbumWorkMult(w.Key) * FairWorkMult(w.Key)) * GuildWorkMult;
-        return Math.Max(1, (int)Math.Ceiling(w.Work * mult));
-    }
+    /// <summary>
+    /// Скільки роботи просить виріб зараз: майстерність і бонуси пришвидшують, але не нижче 40 %; глина на колі (21.10)
+    /// множить уже після підлоги — голуба пришвидшує й ветерана, каолін сповільнює.
+    /// </summary>
+    internal int WorkOf(ClickerWare w) => Math.Max(1, (int)Math.Ceiling(w.Work * WorkMultPlain(w) * ClayNow.Work));
+
+    /// <summary>
+    /// Те саме без глини — для дна ціни виробу (<see cref="ItemValue"/>): ціна виробу в коморі не має стрибати від
+    /// того, яка глина зараз на колі.
+    /// </summary>
+    int WorkPlain(ClickerWare w) => Math.Max(1, (int)Math.Ceiling(w.Work * WorkMultPlain(w)));
+
+    // Підмайстер друга (GuildWorkMult) іде поверх підлоги: інакше ветеранові з майстерністю 10 він не давав би нічого.
+    double WorkMultPlain(ClickerWare w) => Math.Max(MinWorkShare, AlbumWorkMult(w.Key) * FairWorkMult(w.Key)) * GuildWorkMult;
 
     internal int RackSize => Math.Min(RackMax, RackBase + Level("workshop") / RackPerWorkshop) + KilnRackBonus() + Math.Max(0, CraftRackBonus);
 
@@ -297,7 +307,7 @@ public sealed partial class Clicker
         var q = QualityMult[Math.Clamp(quality, 1, QualityMax)];
         var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware)
             * (1 + GuestsValueBonus) * TolokaValueMult;
-        var floor = (_memoOn ? _memoClick : ClickBase) * WorkOf(w) * ValueFloorClicks * q;
+        var floor = (_memoOn ? _memoClick : ClickBase) * WorkPlain(w) * ValueFloorClicks * q;
         return Math.Max(1, ToPots(Math.Max(byPassive, floor)));
     }
 
@@ -330,8 +340,10 @@ public sealed partial class Clicker
         {
             if (_rack.Count >= RackSize) { _formWork = need; break; }
             _formWork -= need;
-            // Виліплене підмайстрами за довгий простій уже встигло висохнути.
-            _rack.Add(new RackRow(w.Key, _clay, dried ? now : now + TimeSpan.FromSeconds(DrySeconds)));
+            // Виліплене підмайстрами за довгий простій уже встигло висохнути. Глина на колі рахує свій рівень і
+            // в підмайстра часом дає тонкий сирець (каолін).
+            var thin = ClayOnFormed(byApprentice);
+            _rack.Add(new RackRow(w.Key, _clay, dried ? now : now + TimeSpan.FromSeconds(DrySeconds), thin));
             _formed++;
             made++;
             if (_formed == 1) Achieve("potter-ware-1");
@@ -660,7 +672,10 @@ public sealed partial class Clicker
             need = WorkOf(w),
             perClick = 1.0,
             apprentice = ApprenticeRate,
-            rack = _rack.Select(r => new { ware = r.Ware, clay = r.Clay, dryAt = r.DryAt }),
+            // Тонкий сирець (каолін) — з позначкою, решта без неї: вид топ-гончаря тримаємо в 25 КБ.
+            rack = _rack.Select(r => r.Thin
+                ? (object)new { ware = r.Ware, clay = r.Clay, dryAt = r.DryAt, thin = true }
+                : new { ware = r.Ware, clay = r.Clay, dryAt = r.DryAt }),
             rackSize = RackSize,
             rackFull = _rack.Count >= RackSize,
             dryMs = DrySeconds * 1000,
@@ -771,7 +786,12 @@ public sealed partial class Clicker
         _formWork = double.IsFinite(row.Work) ? Math.Max(0, row.Work) : 0;
         foreach (var r in row.Rack ?? [])
             if (r is not null && WareOf(r.Ware) is not null && _rack.Count < Math.Max(RackMax, RackSize) + 8)
-                _rack.Add(r with { Clay = Clays.Any(c => c.Key == r.Clay) ? r.Clay : "" });
+                _rack.Add(r with
+                {
+                    Clay = Clays.Any(c => c.Key == r.Clay) ? r.Clay : "",
+                    // Тонким буває лише сирець із глини, що таке вміє: вигаданого з бази не віримо.
+                    Thin = r.Thin && Clays.Any(c => c.Key == r.Clay && c.Thin > 0),
+                });
         foreach (var (key, n) in row.Items ?? [])
             if (n > 0 && ParseItem(key) is not null && ItemTotal + n <= StoreCapNow * 2) _items[key] = n;
         foreach (var (key, n) in row.FiredBy ?? [])

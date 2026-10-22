@@ -350,11 +350,11 @@
     if (!c || !st.shelfJugs) return;
     const now = api.serverNow(st);
     const shown = c.rack.slice(0, 10);
-    const sig = shown.map((r) => r.ware + (r.clay || '') + (r.dryAt <= now ? 'd' : 'w')).join(',') + '|' + c.rack.length;
+    const sig = shown.map((r) => r.ware + (r.clay || '') + (r.thin ? '*' : '') + (r.dryAt <= now ? 'd' : 'w')).join(',') + '|' + c.rack.length;
     if (st.shelfJugs._craft === sig) return;
     st.shelfJugs._craft = sig;
-    let s = shown.map((r, i) => '<span class="clkw-rack' + (r.dryAt <= now ? ' dry' : '') + '" title="' + wareName(st, r.ware)
-      + (r.dryAt <= now ? ' — сухий, чекає горна' : ' — сохне') + '">'
+    let s = shown.map((r, i) => '<span class="clkw-rack' + (r.dryAt <= now ? ' dry' : '') + (r.thin ? ' thin' : '') + '" title="' + wareName(st, r.ware)
+      + (r.thin ? ' — тонкий з каоліну, з горна вийде розкішним' : '') + (r.dryAt <= now ? ' — сухий, чекає горна' : ' — сохне') + '">'
       + wareSvg(api, r.ware, { raw: true, dry: r.dryAt <= now, clay: clayBody(st, r.clay), slot: 'rack-' + i }) + '</span>').join('');
     if (c.rack.length > shown.length) s += '<span class="clkw-more">+' + (c.rack.length - shown.length) + '</span>';
     if (!c.rack.length) s = '<span class="clkw-empty">сушарня порожня</span>';
@@ -996,7 +996,7 @@
         + '<div class="clkw-rackrow">'
         + c.rack.map((r, i2) => {
           const dry = r.dryAt <= now;
-          return '<span class="clkw-rackitem' + (dry ? ' dry' : '') + '">'
+          return '<span class="clkw-rackitem' + (dry ? ' dry' : '') + (r.thin ? ' thin" title="тонкий з каоліну — з горна вийде розкішним' : '') + '">'
             + wareSvg(api, r.ware, { raw: true, dry, clay: clayBody(st, r.clay), slot: 'strack-' + i2, cls: 'clkw-mini' })
             + '<span class="small">' + (dry ? 'сухий' : '<span class="clk-cd" data-at="' + r.dryAt + '" data-done="сухий"></span>') + '</span></span>';
         }).join('') + '</div></details>'
