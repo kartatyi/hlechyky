@@ -431,10 +431,12 @@
 
 /* Тости біля горна (v12, QA-2). Загальне місце тостів ставить стіл (clicker.css, toastSpot): ПК — над сценою, телефон —
    над нижнім меню. Але поки відкрите вікно результату горна, на ПК тост ачівки лягав на перший виріб — тоді вниз екрана;
-   а під час ручного обпалу на телефоні внизу «Поліно» й «Заслінка» — тоді вгору, під шапку. */
-body.clk-toasts:has(.clkk-revov:not([hidden])) .toasts { top: auto; bottom: 18px; }
+   а під час ручного обпалу на телефоні внизу «Поліно» й «Заслінка» — тоді вгору, під шапку. Позначки на body ставить
+   JS (вікно — clicker.js ovMark, обпал — paintState тут), а не body:has(…): той перевіряв увесь документ на кожну зміну
+   DOM кола (22.10, лаг на телефоні). */
+body.clk-toasts.clkk-revopen .toasts { top: auto; bottom: 18px; }
 @media (max-width: 900px) {
-  body.g-room:has(.gtable:not([hidden]) .clk .clkk.burn) .toasts { top: calc(var(--gtop-h, 56px) + 8px); bottom: auto; }
+  body.g-room[data-ggame="clicker"].clkk-burn .toasts { top: calc(var(--gtop-h, 56px) + 8px); bottom: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

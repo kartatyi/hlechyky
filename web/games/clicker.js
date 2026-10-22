@@ -3527,6 +3527,17 @@
     holdSay(st, on);
   }
   const holdOpen = (st) => !!(st.ov && st.ov.hold && !st.ov.el.hidden);
+
+  /// Вікно кола відкрите — позначки на body для css: .clk-ovopen (глек поверх напівпрозорий, clicker.css) і
+  /// .clkk-revopen (результат горна — тости вниз, clicker-kiln.css). Раніше body:has(.clk-overlay:not([hidden])) —
+  /// Chrome перевіряв його на кожну зміну DOM кола, на телефоні це десятки мілісекунд на дотик (22.10).
+  function ovMark(st) {
+    const open = !!(st.ov && !st.ov.el.hidden);
+    const rev = open && st.ov.el.classList.contains('clkk-revov');
+    const b = document.body.classList;
+    if (b.contains('clk-ovopen') !== open) b.toggle('clk-ovopen', open);
+    if (b.contains('clkk-revopen') !== rev) b.toggle('clkk-revopen', rev);
+  }
   function holdSay(st, on) {
     if (st.ctx && st.mine && st.ctx.tell) st.ctx.tell('hold', { on });
   }
@@ -3556,6 +3567,7 @@
     st.ov.keep = (qd.opts && qd.opts.keep) || null;
     st.ovDownBack = true;
     st.ov.el.hidden = false;
+    ovMark(st);
     st.ov.hold = true;
     holdJugs(st, true);
     H.api.placeOverlay(st);
@@ -3861,6 +3873,7 @@
       st.ov.onClose = (opts && opts.onClose) || null;
       st.ov.keep = (opts && opts.keep) || null;
       st.ov.el.hidden = false;
+      ovMark(st);
       // Вікно закриває сцену — поки воно відкрите, сервер тримає глеки (hold, підтвердження щодесять секунд): QA-4 — глек
       // бився під «Що нового», серія 1 430 рвалась під «Дукачем»; 21.10 — 1 861 під вікнами, що глеків не тримали.
       st.ov.hold = true;
@@ -3900,6 +3913,7 @@
     closeOverlay(st) {
       if (!st.ov || st.ov.el.hidden) return;
       st.ov.el.hidden = true;
+      ovMark(st);
       const f = st.ov.onClose;
       st.ov.onClose = null;
       st.ov.keep = null;
@@ -4040,7 +4054,11 @@
   /// лише рядок «← Лобі», і без цього коло з «Далі» лягали б під меню. Далі прокрутку веде гравець.
   function landFit(st, card, land) {
     const was = st.el.classList.contains('land');
-    if (was !== land) { st.el.classList.toggle('land', land); card.classList.toggle('clk-land', land); }
+    if (was !== land) {
+      st.el.classList.toggle('land', land);
+      card.classList.toggle('clk-land', land);
+      document.body.classList.toggle('clk-land', land);   // clicker.css: тонші шапка й меню (замість body:has(… .clk.land))
+    }
     if (!land) return;
     const band = viewBand();
     const top = Math.round(band.top), bot = Math.round(window.innerHeight - band.bottom);
@@ -5059,6 +5077,7 @@
       for (const p of H.parts) if (st.parts && st.parts.has(p.id)) callPart(p, 'unmount', st, H.api);
       H.mounted.delete(st);
       if (st.ov) H.api.closeOverlay(st);
+      document.body.classList.remove('clk-land', 'clk-ovopen', 'clkk-revopen', 'clkk-burn');
       const card = root.closest && root.closest('.gtable');
       if (card) card.classList.remove('clk-wide', 'clk-fit', 'clk-big');
       const room = card && card.closest('.groom');

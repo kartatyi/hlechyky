@@ -665,9 +665,11 @@
 @media (prefers-reduced-motion: reduce) { .grx-fly { animation-duration: 1.4s; } }
 
 /* Телефон: згорнута шторка «💬 Стіл» (style.css, fixed праворуч унизу) лягала на праву частину поля відповіді
-   («Скільки?», слова). Поки пишеш у полі гри — шторки не видно; відпустив поле — вона знову на місці. */
+   («Скільки?», слова). Поки пишеш у полі гри — шторки не видно; відпустив поле — вона знову на місці.
+   body.g-typing ставить core.js (focusin/focusout): body:has(…) тут перевіряв увесь документ на кожну зміну DOM, і
+   Гончарне коло платило за це десятками мілісекунд перерахунку стилів на кожен дотик (22.10, лаг на телефоні). */
 @media (max-width: 900px) {
-  body:has(.gbody input:focus, .gbody textarea:focus) .tchat.drawer:not(.open) { display: none; }
+  body.g-typing .tchat.drawer:not(.open) { display: none; }
 }
 
 /* ---- телефон: прохід 30.09 (каркас столу) ---- */
@@ -710,14 +712,15 @@ body.g-imm .grbox > .gtable { padding: 6px 8px 8px; }
 body.g-imm .grbox .gseats .gtitle, body.g-imm .grbox .gseats .gwatchers { display: none; }   /* назва — лише в .grhead */
 
 /* ---- лежачи (body.g-land = g-imm + телефон лежить): поле ліворуч за висотою, решта — колонкою праворуч ----
-   Лише коли полотно — пряма дитина .gbody (ui.canvas(root, …)). .gbody тоді display: contents — його діти
+   Лише коли полотно — пряма дитина .gbody (ui.canvas(root, …); клас .g-canvas на картці ставить core.js — :has тут коштував
+   перерахунку стилів кожній важкій грі, 22.10). .gbody тоді display: contents — його діти
    (полотно, хрестовина, рахунок) стають у сітку картки поруч із місцями, статусом і кнопками. Гра зі своєю
    розкладкою робить її під body.g-land сама (специфічніше за ці правила). */
-body.g-land .gtable:has(> .gbody > canvas.gcanvas) {
+body.g-land .gtable.g-canvas {
   display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 12px; row-gap: 0;
   align-items: center; align-content: center; align-content: safe center; justify-items: center;   /* safe: вища за картку колонка не вилазить угору, куди не догорнути */
 }
-body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gbody { display: contents; }
+body.g-land .gtable.g-canvas > .gbody { display: contents; }
 /* Стіл лежачи — рівно на видимий екран: --gland-h = висота картки (екран мінус рядок столу 31 + проміжок 6 і
    відступи main). Вищою картка не буває: якщо права колонка довша, вона гортається всередині картки, а полотно
    (sticky) лишається на місці — сторінка під пальцем не їде. Ігри зі своєю розкладкою рахують від --gland-h. */
@@ -733,9 +736,9 @@ body.g-land .gtable > .gbody > canvas.gcanvas {
      (мінус її відступи 6 + 8 і рамку) */
   width: 100%; max-width: calc((var(--gland-h, 330px) - 16px) * var(--gar)); height: auto; justify-self: center;
 }
-body.g-land .gtable:has(> .gbody > canvas.gcanvas) > :not(.gbody),
-body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gbody > :not(canvas.gcanvas) { grid-column: 2; max-width: 38vw; margin: 2px 0; }
-body.g-land .gtable:has(> .gbody > canvas.gcanvas) > .gseats { font-size: .82em; }
+body.g-land .gtable.g-canvas > :not(.gbody),
+body.g-land .gtable.g-canvas > .gbody > :not(canvas.gcanvas) { grid-column: 2; max-width: 38vw; margin: 2px 0; }
+body.g-land .gtable.g-canvas > .gseats { font-size: .82em; }
 body.g-land .gtable > .grx { display: none; }
 /* ⛶ стоячи (телефон): полотно — за висотою, якщо воно вище за видиме місце. */
 body.g-imm:not(.g-land) .gbody > canvas.gcanvas { max-width: min(100%, calc((var(--gfit-h, 100dvh) - 150px) * var(--gar))); }

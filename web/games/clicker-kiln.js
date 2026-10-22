@@ -885,6 +885,8 @@
     setHidden(ui.play, !manual || !st.mine);
     // Ручний обпал — стислий вид: горно менше, під ним лише мінігра (clicker-kiln.css, .clkk.burn).
     setClass(ui.root, 'burn', manual && st.mine);
+    // Тости вгору під шапку на телефоні (clicker-kiln.css) — позначка на body, не body:has(… .clkk.burn) (22.10).
+    setClass(document.body, 'clkk-burn', manual && st.mine);
     setClass(ui.top, 'playing', manual);
     setClass(ui.svg, 'burning', burning);
     setClass(ui.svg, 'cooling', k.state === 'cooling');

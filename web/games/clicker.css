@@ -1518,7 +1518,9 @@ body.clk-toasts .toasts {
 body.clk-toasts .toast.gbig { max-width: 100%; }
 @media (max-width: 900px) {
   /* +64 px — над рядком «Далі», що на телефоні стоїть просто над меню (UI-прохід 21.10: тост накривав його кнопку). */
-  body.g-room:has(.gtable:not([hidden]) .clk) .toasts { top: auto; bottom: calc(var(--tabs-h, 56px) + var(--mini-h, 0px) + 12px + 64px); }
+  /* body[data-ggame] ставить core.js (гра столу перед очима): body:has(.gtable … .clk) перевіряв увесь документ на
+     кожну зміну DOM кола — найдорожчий селектор сторінки, ~3 мс на перевірку (22.10, лаг на телефоні). */
+  body.g-room[data-ggame="clicker"] .toasts { top: auto; bottom: calc(var(--tabs-h, 56px) + var(--mini-h, 0px) + 12px + 64px); }
 }
 
 /* Новачок (v12 §2.6): мета гри одним реченням — помітніше за перелік кроків. */
@@ -1527,9 +1529,10 @@ body.clk-toasts .toast.gbig { max-width: 100%; }
 /* Лежачи (v12 §2.6): шапка й меню сайту з'їдали 114 з 390 px. Поки на екрані коло лежачи, обидва тонші: шапка без
    зайвих відступів, у меню значок і слово — в один рядок. Нижнє меню міряє landFit, тож сцена бере звільнене саме. */
 @media (pointer: coarse) and (max-height: 500px) {
-  body:has(.gtable:not([hidden]) .clk.land) { --tabs-h: calc(44px + var(--sab, 0px)); }
-  body:has(.gtable:not([hidden]) .clk.land) header { min-height: 46px; padding-top: max(3px, env(safe-area-inset-top)); padding-bottom: 3px; }
-  body:has(.gtable:not([hidden]) .clk.land) .mtabs button { flex-direction: row; gap: 6px; padding: 2px 4px; }
+  /* body.clk-land ставить clicker.js разом із .clk.land (без :has — 22.10). */
+  body[data-ggame="clicker"].clk-land { --tabs-h: calc(44px + var(--sab, 0px)); }
+  body[data-ggame="clicker"].clk-land header { min-height: 46px; padding-top: max(3px, env(safe-area-inset-top)); padding-bottom: 3px; }
+  body[data-ggame="clicker"].clk-land .mtabs button { flex-direction: row; gap: 6px; padding: 2px 4px; }
 }
 
 /* Телефон (v12 §7 п. 13): «Далі» й плашки кроків — без «…»: текст переноситься в другий рядок, а рядок «Далі» росте
@@ -1621,5 +1624,5 @@ body.clk-toasts .toast.gbig { max-width: 100%; }
 /* Телефон: глек, що летить поверх вікна кола (картка друга, «Що нового»), напівпрозорий — текст під ним видно, а
    спіймати його так само можна (QA-4). */
 @media (max-width: 560px) {
-  body:has(.gtable:not([hidden]) .clk-overlay:not([hidden])) .clk-fly { opacity: .55; }
+  body[data-ggame="clicker"].clk-ovopen .clk-fly { opacity: .55; }   /* .clk-ovopen — clicker.js, ovMark */
 }

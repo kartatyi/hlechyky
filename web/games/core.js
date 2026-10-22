@@ -327,6 +327,7 @@
       host.appendChild(el);
     }
     if (el.className !== cls) el.className = cls;
+    markCanvas(host.closest && host.closest('.gtable'));
     el.style.aspectRatio = w + ' / ' + h;
     el.style.setProperty('--gar', String(w / h));   // core.css стелить полотно за висотою (g-land, ⛶)
     const c = { el, ctx: el.getContext('2d'), w, h, resize };
@@ -338,6 +339,16 @@
     }
     resize();
     return c;
+  }
+
+  /// Картка, у якої полотно — пряма дитина .gbody, — .g-canvas (лежачи core.css стелить її сіткою: полотно ліворуч,
+  /// решта праворуч). Раніше це був .gtable:has(> .gbody > canvas.gcanvas), а :has на картці Chrome перевіряв на кожну
+  /// зміну DOM у ній — Гончарне коло з ~12 тис. вузлів платило перерахунком стилів на кожен дотик (22.10).
+  function markCanvas(table) {
+    if (!table) return;
+    const body = table.querySelector(':scope > .gbody');
+    const on = !!(body && body.querySelector(':scope > canvas.gcanvas'));
+    if (table.classList.contains('g-canvas') !== on) table.classList.toggle('g-canvas', on);
   }
 
   /// Хрестовина під палець. На миші її нема взагалі — там стрілки зручніші.
@@ -1234,12 +1245,29 @@
     return loadedFiles.get(f);
   };
 
+  /// Поки перед очима стіл важкої гри (HEAVY — Гончарне коло, ~12 тис. вузлів), css інших ігор вимкнено. Їх
+  /// довантажує тиша (модулі з «що нового»), і понад сотня їхніх правил з :has() (body.g-land .gtable:has(…) тощо)
+  /// Chrome перевіряв на кожну зміну DOM кола: на телефоні — до половини часу кадру й дотик за пів секунди (22.10,
+  /// лаг у Назара). Їхніх столів однаково не видно; пішов від столу — увімкнули назад.
+  let cssOff = false;
+  const otherCss = (l) => {
+    let p = '';
+    try { p = new URL(l.href, location.href).pathname; } catch { return false; }
+    return p.startsWith('/games/') && !/^\/games\/(core|clicker)/.test(p);
+  };
+  function heavyCss(off) {
+    if (off === cssOff) return;
+    cssOff = off;
+    for (const l of document.querySelectorAll('link[rel="stylesheet"]')) if (otherCss(l) && l.disabled !== off) l.disabled = off;
+  }
+
   function addCss(g, f) {
     if (!g.hasCss || document.querySelector('link[data-game="' + f + '"]')) return;
     const l = document.createElement('link');
     l.rel = 'stylesheet';
     l.href = '/games/' + f + '.css' + verQ('games/' + f + '.css');
     l.dataset.game = f;
+    if (cssOff && otherCss(l)) l.disabled = true;   // приїхав у тиші, поки грає важкий стіл
     l.onload = () => cssCache.clear();   // змінні гри з'явились лише тепер — забуваємо порожні відповіді до неї
     document.head.appendChild(l);
   }
@@ -1864,6 +1892,17 @@
   document.addEventListener('click', (e) => { if (callEl && !e.target.closest('.gcall, .grcall')) closeCall(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && callEl) { closeCall(); e.stopPropagation(); } }, true);
   window.addEventListener('hashchange', closeCall);
+
+  /// Пишеш у полі гри — body.g-typing (core.css ховає на телефоні згорнуту шторку «💬 Стіл»). Раніше
+  /// body:has(.gbody input:focus, …) — його Chrome перевіряв на кожну зміну DOM усього документа (22.10).
+  function syncTyping() {
+    const a = document.activeElement;
+    const on = !!(a && a.matches && a.matches('.gbody input, .gbody textarea'));
+    if (document.body.classList.contains('g-typing') !== on) document.body.classList.toggle('g-typing', on);
+  }
+  document.addEventListener('focusin', syncTyping);
+  // Поки йде focusout, фокус ще не перейшов — дивимось уже після.
+  document.addEventListener('focusout', () => setTimeout(syncTyping, 0));
 
   // ---------------------------------------------------------------------------------------------
   // Лобі: смужка «Сьогодні», живі столи, «часто граємо» й каталог родинами
@@ -3428,6 +3467,13 @@
   /// згорнуту шторку за body.g-arcade). Після партії й у лобі столу вона знову на місці.
   function syncArcade() {
     const rv = shown && view.kind === 'room' ? views[view.id] : null;
+    // Гра столу, що перед очима: css пише body[data-ggame="…"] замість body:has(.gtable:not([hidden]) …) (22.10).
+    const game = (rv && rv.room.game) || '';
+    if ((document.body.dataset.ggame || '') !== game) {
+      if (game) document.body.dataset.ggame = game; else delete document.body.dataset.ggame;
+    }
+    heavyCss(HEAVY.has(game));
+    syncTyping();   // поле з фокусом могли прибрати разом із тілом картки — focusout тоді не приходить
     const g = rv && gameOf(rv.room.game);
     // Аркада — жива гра (group live) або соло-реалтайм, що сказав про себе `arcade: true` у register (забіг, цеглини).
     const mod = rv && modules[rv.room.game];
@@ -3507,6 +3553,7 @@
         card.lastView = rv.view;
         try { if (card.mod.update) card.mod.update(card.body, ctx); }
         catch (e) { console.warn('[games] update ' + rv.room.game, e); }
+        markCanvas(card.el);   // полотно могло й зникнути (кінець партії)
       }
       maybeNews(rv);
     }
