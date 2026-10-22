@@ -649,6 +649,15 @@ public sealed partial class Rooms
                 }
             }
         }
+        // «Закрити» соло прибирає кімнату одразу (Sweep), і картка вже нічого їй не скаже: її «пішов» (sight off у колі)
+        // прийде в порожнечу. Тож гра чує «ніхто не дивиться» тут і це зберігається — нова кімната вантажить стан звідси
+        // (бібочка, 22.10: закрив коло, зайшов за хвилину — глек, що впав без нього, бив серію).
+        if (room.Status == RoomStatus.Playing && room.Info.Solo)
+        {
+            try { room.Game.Unwatched(); }
+            catch (Exception ex) { _log.LogWarning(ex, "гра {Room} не прийняла «ніхто не дивиться»", room.Id); }
+            Persist(room, outbox);
+        }
         room.Seats[seat] = null;
         CrewChanged(room, outbox);
         if (string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase))

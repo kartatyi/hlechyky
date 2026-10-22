@@ -132,6 +132,27 @@ public class ClickerLateTests
     }
 
     [Fact]
+    public void Closing_the_wheel_counts_as_leaving_even_back_within_a_minute()
+    {
+        // бібочка, 22.10: «Закрити» прибирає соло-кімнату одразу, і sight off з картки вже нікуди не доходить. Нова
+        // кімната вантажила стан без «пішов», а за хвилину «затих на дві» ще не настало — глек без нього бив серію.
+        var h = AtTheWheel(2200, jugIn: 20);
+        for (var i = 0; i < 3; i++)
+        {
+            h.Clock.AdvanceMs(1000);
+            Assert.True(h.Leave(Nick).Ok);
+            h.Clock.AdvanceMs(40 * 1000);                      // глек злетів і впав без нього
+            Assert.True(h.Solo(Nick).Ok);
+            var back = Sight(h, true);
+            Assert.True(back.Ok);
+            Assert.Contains("серія 2200 ціла", back.Message);
+            Assert.Equal(2200, Streak(h));
+            FallIn(h, 20);
+            Assert.True(Spin(h, 5).Ok);
+        }
+    }
+
+    [Fact]
     public void Another_tab_still_watching_is_not_leaving()
     {
         var h = AtTheWheel(40, jugIn: 20);
