@@ -1035,8 +1035,9 @@
     { key: 'heat', icon: '🌀', name: () => 'Розгін', what: () => 'Розгін кола: що частіше клацаєш, то більший клік; смужка — наскільки коло гаряче' },
     // Число серії — другим числом поруч із бонусом («+2185 % │ 2 005», як «×25 │ 49 с» у натхнення), а не дрібним хвостом
     // за назвою (UI-прохід 21.10): серію бережуть саме за це число.
-    { key: 'streak', icon: '🤲', name: () => 'Серія', num: (st) => count(st.fallStreak), what: (st) => 'Серія спійманих глеків з полиці: наступний дасть на '
-      + Math.round(st.streakBonus * 100) + ' % більше' },
+    { key: 'streak', icon: '🤲', name: () => 'Серія', num: (st) => count(st.fallStreak), what: (st) => st.fallNap === 'on'
+      ? 'Серія чекає: кіт спить, глеки з полиці не падають — серія не росте й не тріскає'
+      : 'Серія спійманих глеків з полиці: наступний дасть на ' + Math.round(st.streakBonus * 100) + ' % більше' },
     { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
     // Бафи від друзів (цех, clicker-guild.js): з відліком і від кого — отримувач бачить їх просто під колом.
     { key: 'flend', icon: '🧑‍🎓', name: (st) => 'від ' + friendBuffFrom(st, 'lend'), what: (st) => 'Підмайстер від ' + friendBuffFrom(st, 'lend') + ' у гостях: ліплення вдвічі швидше' },
@@ -1062,7 +1063,8 @@
     if (windOn(st, sn)) out.push({ key: 'wind', mult: '×' + dec(st.windMult), until: st.windUntil, span: Math.max(1000, st.windUntil - st.windAt) });
     if (st.momentumMax > 1 && mom > 1.05) out.push({ key: 'heat', mult: '×' + dec(mom), level: (mom - 1) / (st.momentumMax - 1) });
     // Серія без стелі (v9 §A.3): +10 % за кожен до десятого, до сотні +2 %, далі +1 % — відсоток рахує сервер (fall.bonus).
-    if (st.fallStreak > 1) out.push({ key: 'streak', mult: '+' + Math.round(st.streakBonus * 100) + ' %' });
+    // Кіт спить (ClickerCatNap.cs) — серія чекає: 💤 замість відсотка, якого зараз однаково ніхто не отримає.
+    if (st.fallStreak > 1) out.push({ key: 'streak', mult: st.fallNap === 'on' ? '💤' : '+' + Math.round(st.streakBonus * 100) + ' %' });
     if (st.starWish) out.push({ key: 'wish', mult: '×3' });
     const gb = st.guild && st.guild.enabled && st.guild.buffs;
     if (gb) {
@@ -1213,6 +1215,7 @@
     }
     paintEye(st);
     paintEvents(st, sn);
+    paintNap(st);
     for (const p of H.parts) if (st.parts.has(p.id)) callPart(p, 'slow', st, H.api, sn);
   }
 
@@ -1517,6 +1520,48 @@
       st.fallLooked = f.until;
       st.ctx.act('look');
     }
+  }
+
+  // ---------- кіт спить (ClickerCatNap.cs, 21.10) ----------
+  //
+  // Глеки з полиці скидає кіт. «🥛 Молока котові» — кіт засинає, і глеки не падають зовсім: серія чекає (не росте й не
+  // тріскає), доки його не розбудять. Глек, що вже летить, кіт доскидає (nap "soon"): його ще треба спіймати, плашки
+  // тоді нема — вона не закриває глек. Дохід без гончаря кіт не чіпає: пасив і комора рахуються за часом.
+
+  /// Приспати (on) чи розбудити кота. Одразу малюємо, що вибрали; сервер підтвердить видом.
+  function napCat(st, ev, on) {
+    if (!human(ev) || !st.mine || guardOn(st)) return;
+    H.api.sfx('tap');
+    if (on) {
+      const f = st.fall;
+      const sn = serverNow(st);
+      st.fallNap = f && sn >= f.at - 1000 && sn <= f.until + CATCH_GRACE_MS ? 'soon' : 'on';
+      if (st.fallNap === 'on') st.fall = null;
+    } else st.fallNap = null;
+    paintNap(st);
+    order(st, 'nap', { on: !!on });
+  }
+
+  /// Миска на правому краї полиці й плашка під полицею: гравець мусить чітко бачити, що глеки з полиці не летять.
+  function paintNap(st) {
+    if (!st.napBtn) return;
+    const nap = st.mine ? st.fallNap : null;
+    const key = (st.mine ? 'm' : '-') + (nap || '') + '|' + (st.fallStreak || 0);
+    if (st.napKey === key) return;
+    st.napKey = key;
+    st.napBtn.hidden = !st.mine;
+    st.napBtn.classList.toggle('on', nap === 'on');
+    st.napBtn.classList.toggle('soon', nap === 'soon');
+    st.napBtn.textContent = nap ? '🔔' : '🥛';
+    const what = nap === 'soon' ? 'Кіт доскидає цей глек і засне — клацни, щоб не засинав'
+      : nap ? 'Розбудити кота — глеки з полиці знову падатимуть'
+      : 'Молока котові: кіт засне, і глеки з полиці не падатимуть — серія чекатиме';
+    st.napBtn.title = what;
+    st.napBtn.setAttribute('aria-label', what);
+    st.napNote.hidden = nap !== 'on';
+    st.stage.classList.toggle('napping', nap === 'on');
+    if (nap === 'on') st.napText.textContent = '😴 Кіт спить — глеки з полиці не падають'
+      + (st.fallStreak > 0 ? ' · серія ' + count(st.fallStreak) + ' чекає' : '');
   }
 
   // ---------- глек поверх усього (записка Smaug №29) ----------
@@ -2109,8 +2154,8 @@
   }
 
   /// Глек долетів до долівки: черепки навсібіч і тихе «трісь».
-  /// Що сталось із серією, каже сервер наперед (fall.miss, ті самі гілки, що в Sync): обірвалась, фартух уберіг
-  /// чи серії й не було (записка №29). fly — глек летів у шарі поверх: напис там, де його й бачили.
+  /// Що сталось із серією, каже сервер наперед (fall.miss, ті самі гілки, що в Sync): тріснула (на скільки — fall.lose),
+  /// обірвалась, фартух уберіг чи серії й не було (записка №29). fly — глек летів у шарі поверх: напис там, де його й бачили.
   /// Гончаря не було (глек злетів після його останньої справжньої дії, а від неї вже минуло понад EVENT_GAP_MS) —
   /// сервер серію не рве й фартуха не чіпає (Sync, гілка «порожня хата»): тоді просто «трісь».
   function shatter(st, x, fly) {
@@ -2120,6 +2165,7 @@
       || (st.fallSeen > 0 && f && f.at > st.fallSeen && serverNow(st) - st.fallSeen > EVENT_GAP_MS);
     const text = empty ? 'трісь'
       : st.fallMiss === 'apron' ? 'трісь — фартух уберіг серію'
+      : st.fallMiss === 'crack' && n > 0 && st.fallLose > 0 ? 'трісь… серія ' + count(n) + ' → ' + count(Math.max(0, n - st.fallLose))
       : st.fallMiss === 'streak' && n > 0 ? 'трісь… серія ' + n + ' обірвалась' : 'трісь';
     if (fly) {
       H.api.sfx('break', { x });
@@ -4470,6 +4516,10 @@
         + '<svg class="clk-gold-ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18"/></svg>'
         + jugSvg('golden', 'clk-gold-jug', 'gold') + '</button>'
         + '<button type="button" class="clk-fall" hidden aria-label="Глек падає з полиці — лови!" title="Лови!"><span class="clk-fall-box"></span></button>'
+        // «🥛 Молока котові» (ClickerCatNap.cs): кіт спить — глеки з полиці не падають, серія чекає. Плашка — під полицею.
+        + '<button type="button" class="clk-napbtn" hidden></button>'
+        + '<div class="clk-nap" hidden role="status"><span class="clk-nap-t"></span>'
+        + '<button type="button" class="ghost small clk-nap-wake">🔔 Розбудити</button></div>'
         + '<div class="clk-fx"></div>'
         + '<div class="clk-layer-front"></div>'
         + '</div>'
@@ -4554,6 +4604,10 @@
       st.buffs = q('.clk-buffs');
       st.gold = q('.clk-gold');
       st.fallEl = q('.clk-fall');
+      st.napBtn = q('.clk-napbtn');
+      st.napNote = q('.clk-nap');
+      st.napText = q('.clk-nap-t');
+      st.napKey = '';
       st.fallJug = q('.clk-fall-box');
       st.shelfJugs = q('.clk-shelf-jugs');
       st.one = q('.clk-one');
@@ -4621,6 +4675,8 @@
       // Глек, що падає, ловимо на pointerdown: за час між натиском і відпусканням він устигає посунутись, і click
       // на рухомій кнопці міг би не спрацювати.
       st.fallEl.addEventListener('pointerdown', (e) => grabFall(st, e));
+      st.napBtn.addEventListener('click', (e) => napCat(st, e, !st.fallNap));
+      q('.clk-nap-wake').addEventListener('click', (e) => napCat(st, e, false));
       st.fallEl.addEventListener('contextmenu', (e) => e.preventDefault());
       st.eye.go.addEventListener('click', (e) => openShelf(st, e));
       // Хто клацає без упину, влучав у кнопку, щойно та озброювалась (QA-3): кожне торкання завіси, поки кнопка ще
@@ -4786,7 +4842,11 @@
         if (v.fall) {
           const at = Date.parse(v.fall.at);
           const until = Date.parse(v.fall.until);
-          if (Number.isFinite(at) && Number.isFinite(until)) st.fall = { at, until, x: v.fall.x || 40 };
+          // Кіт спить (nap "on") — глека нема: сервер відклав його в далеке майбутнє, малювати й ловити нічого.
+          st.fallNap = v.fall.nap === 'on' || v.fall.nap === 'soon' ? v.fall.nap : null;
+          if (st.fallNap === 'on') st.fall = null;
+          else if (Number.isFinite(at) && Number.isFinite(until)) st.fall = { at, until, x: v.fall.x || 40 };
+          st.fallLose = v.fall.lose || 0;
           st.fallGain = v.fall.gain || 0;
           st.fallStreak = v.fall.streak || 0;
           st.fallMiss = v.fall.miss || 'streak';

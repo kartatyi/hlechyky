@@ -208,32 +208,32 @@ public class ClickerHouseTests
     }
 
     [Fact]
-    public void The_apron_forgives_one_broken_jug_but_not_two_in_a_row()
+    public void The_apron_forgives_one_broken_jug_and_the_next_one_cracks_the_streak()
     {
         var h = Wheel();
         Give(h, 1_000_000);
         Assert.True(Act(h, "tool", new { key = "apron" }).Ok);
-        Patch(h, s => s["fallStreak"] = 5);
+        Patch(h, s => s["fallStreak"] = 50);
         var past = (int)(Clicker.FallShown + Clicker.CatchGrace).TotalMilliseconds + 500;
 
         FallNow(h);
         h.Clock.AdvanceMs(past);
         Assert.False(Act(h, "grab").Ok);
-        Assert.Equal(5, Streak(h));                             // фартух вибачив
+        Assert.Equal(50, Streak(h));                            // фартух вибачив
 
         FallNow(h);
         h.Clock.AdvanceMs(past);
         Assert.False(Act(h, "grab").Ok);
-        Assert.Equal(0, Streak(h));                             // другий поспіль — ні
+        Assert.Equal(45, Streak(h));                            // другий поспіль — тріщина, −10 %
 
-        // Спійманий глек повертає фартухові силу.
+        // Спійманий глек повертає фартухові силу (і лік тріщин — з нуля).
         FallNow(h);
         Assert.True(Act(h, "grab").Ok);
-        Assert.Equal(1, Streak(h));
+        Assert.Equal(46, Streak(h));
         FallNow(h);
         h.Clock.AdvanceMs(past);
         Assert.False(Act(h, "grab").Ok);
-        Assert.Equal(1, Streak(h));
+        Assert.Equal(46, Streak(h));
     }
 
     [Fact]

@@ -86,7 +86,7 @@ public class ClickerLateTests
         Assert.True(back.Ok);
         Assert.Contains("серія 1120 ціла", back.Message);
         Assert.Equal(1120, Streak(h));
-        Assert.Equal("streak", Miss(h));                       // фартуха нема й не було — нічого не витрачено
+        Assert.Equal("crack", Miss(h));                        // фартуха нема й не було — нічого не витрачено
         Assert.True(FallAt(h) > h.Clock.UtcNow);               // новий — від повернення
     }
 
@@ -142,7 +142,7 @@ public class ClickerLateTests
         h.Clock.AdvanceMs(60 * 1000);
         Assert.True(Spin(h, 5).Ok);
 
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(36, Streak(h));                           // тріщина: −10 %
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class ClickerLateTests
         h.Clock.AdvanceMs(60 * 1000);
         Assert.True(Sight(h, true).Ok);
 
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(36, Streak(h));                           // тріщина: −10 %
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public class ClickerLateTests
         h.Clock.AdvanceMs(20 * 1000);
         Assert.True(Spin(h, 5).Ok);
 
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(36, Streak(h));                           // тріщина: −10 %
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class ClickerLateTests
         Assert.True(Spin(h, 5).Ok);
 
         Assert.Equal(40, Streak(h));
-        Assert.Equal("streak", Miss(h));                       // а наступний — знову на її очах
+        Assert.Equal("crack", Miss(h));                        // а наступний — знову на її очах
     }
 
     [Fact]
@@ -227,7 +227,7 @@ public class ClickerLateTests
         var pressed = Now(h);
         h.Clock.AdvanceMs(10 * 1000);
         Assert.True(Spin(h, 5).Ok);
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(4, Streak(h));                            // тріщина: −10 %, щонайменше один
         var next = FallAt(h);
         var before = Pots(h);
 
@@ -248,7 +248,7 @@ public class ClickerLateTests
         var pressed = Now(h);
         h.Clock.AdvanceMs(60 * 1000);
         h.View(0);                                             // вид після реконекту записав глек розбитим
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(4, Streak(h));                            // тріщина: −10 %, щонайменше один
 
         Assert.True(Grab(h, pressed).Ok);
         Assert.Equal(6, Streak(h));
@@ -266,7 +266,7 @@ public class ClickerLateTests
         var pressed = Now(h);
         h.Clock.AdvanceMs(10 * 1000);
         Assert.True(Spin(h, 5).Ok);
-        Assert.Equal("streak", Miss(h));                       // фартух уберіг і розрядився
+        Assert.Equal("crack", Miss(h));                        // фартух уберіг і розрядився
 
         Assert.True(Grab(h, pressed).Ok);
         Assert.Equal(6, Streak(h));
@@ -282,7 +282,7 @@ public class ClickerLateTests
         h.Clock.Advance(Clicker.LateGrab + TimeSpan.FromSeconds(1));
 
         Assert.False(Grab(h, pressed).Ok);
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(4, Streak(h));                            // тріщина: −10 %, щонайменше один
     }
 
     [Fact]
@@ -294,7 +294,7 @@ public class ClickerLateTests
         Assert.True(Spin(h, 5).Ok);
 
         Assert.False(Grab(h, tooLate).Ok);
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(4, Streak(h));                            // тріщина: −10 %, щонайменше один
     }
 
     [Fact]
@@ -308,7 +308,7 @@ public class ClickerLateTests
 
         // Натиск «через п'ять секунд» — такого сервер ще не бачив, і серії він не латає.
         Assert.False(Grab(h, Now(h) + 5000).Ok);
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(4, Streak(h));                            // тріщина: −10 %, щонайменше один
         Assert.True(Grab(h, pressed).Ok);
     }
 
@@ -355,7 +355,7 @@ public class ClickerLateTests
         Assert.True(Spin(h, 5).Ok);
 
         Assert.False(Act(h, "grab").Ok);
-        Assert.Equal(0, Streak(h));
+        Assert.Equal(4, Streak(h));                            // тріщина: −10 %, щонайменше один
     }
 
     [Fact]
