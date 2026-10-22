@@ -143,13 +143,14 @@ public class ClickerHouseTests
     }
 
     [Fact]
-    public void The_kiln_puts_plain_clay_back_but_keeps_the_bought_ones()
+    public void The_kiln_keeps_the_clay_on_the_wheel_and_the_bought_ones()
     {
         var h = Wheel();
         Give(h, 10_000, Clicker.TotalFor(1));
         Assert.True(Act(h, "knead", new { kind = "red" }).Ok);
         Assert.True(Act(h, "fire").Ok);
-        Assert.Equal("", House(h).GetProperty("clay").GetString());
+        // Хотфікс B4 (21.10.2026): обрана глина переживає обпал — раніше скидалась на звичайну й мовчки забирала дохід.
+        Assert.Equal("red", House(h).GetProperty("clay").GetString());
         Assert.True(Owned(House(h).GetProperty("clays"), "red").GetProperty("owned").GetBoolean());
     }
 

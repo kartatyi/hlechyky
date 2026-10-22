@@ -68,6 +68,9 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
     /// <summary>Баланс змінився: нік і новий баланс. Слухають ачівки («Сотня»).</summary>
     public event Action<string, int>? Changed;
 
+    /// <summary>Рух черепків закомічено: нік, зміна (від'ємна — списано) і причина. Слухає сальдо азарту (<see cref="AzartSaldo"/>).</summary>
+    public event Action<string, int, string>? Moved;
+
     EconomyOptions O => opts.CurrentValue;
     string Today => Days.Today(clock);
 
@@ -152,6 +155,8 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
         catch (Exception ex) { log.LogWarning(ex, "не розіслав зміну гаманця {Nick} ({Reason})", nick, reason); }
         try { Changed?.Invoke(nick, balance); }
         catch (Exception ex) { log.LogWarning(ex, "підписник на зміну балансу {Nick} спіткнувся", nick); }
+        try { Moved?.Invoke(nick, delta, reason); }
+        catch (Exception ex) { log.LogWarning(ex, "підписник на рух черепків {Nick} ({Reason}) спіткнувся", nick, reason); }
     }
 
     // ---------- IStakes (те, що просить каркас кімнат) ----------
@@ -242,6 +247,7 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "slot-win" => $"{names.Title(tail)} — виграш",
             "slot-buy" => $"{names.Title(tail)} — купив бонус",
             "slot-jackpot" => "Скарбничка Глека!",
+            "slot-prize" => "Турнір тижня в слотах — приз від Дядька Глека",
             // Лелека (docs/games/specs/lelka.md §4)
             "lelka-bet" => "Лелека — ставка",
             "lelka-win" => "Лелека — забрав",

@@ -78,14 +78,15 @@ public class ClickerFallHoldTests
         // Розпис іще не здано — глеки чекають до стелі мінігри й ще півтори секунди.
         Near(t0 + Clicker.MinigameCap + Clicker.MinigameAfter, FallAt(h));
         Assert.Equal(shown, FallUntil(h) - FallAt(h));          // летить стільки ж, скільки й мав
-        Near(t0 + Clicker.MinigameCap + Clicker.MinigameAfter, GoldenAt(h));
+        Near(t0 + Clicker.MinigameCap + Clicker.MinigameAfter + Clicker.HeldStagger, GoldenAt(h));   // і не разом (QA-4)
 
         // Розпис скінчився (обрали розпис без техніки): обидва вертаються — глек за півтори секунди, бо його час минув,
-        // а розписний — до свого часу, що ще не настав.
+        // а розписний — до свого часу, що ще не настав, але не ближче за HeldStagger до глека з полиці (v12, QA-2).
         h.Clock.Advance(15);
         Assert.True(K(h, new { op = "paint", style = "" }).Ok);
         Near(h.Clock.UtcNow + Clicker.MinigameAfter, FallAt(h));
-        Near(t0.AddSeconds(20), GoldenAt(h));
+        Near(FallAt(h) + Clicker.HeldStagger, GoldenAt(h));
+        Assert.True(GoldenAt(h) >= t0.AddSeconds(20));
     }
 
     [Fact]
@@ -140,9 +141,19 @@ public class ClickerFallHoldTests
         FallIn(h, 5);
         var lit = h.Clock.UtcNow;
         Assert.True(K(h, new { op = "light" }).Ok);
-        Near(lit + Clicker.KilnBurn + Clicker.MinigameAfter, FallAt(h));
-        // Обпал скінчився сам (горно ще не відкрили) — глек летить рівно тоді, як обіцяв.
-        h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(1.6));
+        // Глек чекає, доки горно відкриють (не довше, ніж горно чекає запис з іншого вікна), — v12, QA-2.
+        Near(lit + Clicker.KilnBurn + Clicker.KilnOtherWait + Clicker.MinigameAfter, FallAt(h));
+        h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.3));
+        Assert.True(K(h, new { op = "open", t = new[] { new[] { 0, 0 } }, own = true }).Ok);
+        // Відкрили — вікно підсумку тримає глек, доки його не закрили (QA-3), але не довше стелі.
+        Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.ResultCap);
+        h.Clock.Advance(5);
+        Assert.False(View(h).GetProperty("kiln").GetProperty("last").GetProperty("seen").GetBoolean());
+        Assert.True(K(h, new { op = "seen" }).Ok);
+        Near(h.Clock.UtcNow + Clicker.MinigameAfter, FallAt(h));
+        // Прочитали — другий пристрій вікна підсумку вдруге не відкриває.
+        Assert.True(View(h).GetProperty("kiln").GetProperty("last").GetProperty("seen").GetBoolean());
+        h.Clock.Advance(Clicker.MinigameAfter + TimeSpan.FromSeconds(0.1));
         Assert.True(Act(h, "grab").Ok);
 
         var h2 = Wheel();
@@ -162,11 +173,34 @@ public class ClickerFallHoldTests
         var lit = h.Clock.UtcNow;
         Assert.True(K(h, new { op = "light" }).Ok);
         h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.2));
-        var r = K(h, new { op = "open", t = Array.Empty<int[]>() });
+        var r = K(h, new { op = "open", t = new[] { new[] { 0, 0 } }, own = true });
         Assert.True(r.Ok, r.Message);
-        // Відкладений глек не стрибає ні раніше за «зараз + 1,5 с», ні назад до свого старого часу.
+        // Відкладений глек не стрибає назад до свого старого часу й дає прочитати підсумок горна (v12, QA-2/QA-3).
         Assert.True(FallAt(h) >= lit + Clicker.KilnBurn + Clicker.MinigameAfter - TimeSpan.FromMilliseconds(1));
-        Assert.True(FallAt(h) >= h.Clock.UtcNow + TimeSpan.FromSeconds(1));
+        Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.ResultCap);
+        // Вікно ніхто не закрив (старий клієнт, закрита вкладка) — стеля відпускає його сама.
+        h.Clock.Advance(Clicker.ResultCap + TimeSpan.FromSeconds(0.5));
+        Assert.True(FallAt(h) <= h.Clock.UtcNow + Clicker.MinigameAfter + TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public void A_jug_already_in_the_air_when_the_kiln_is_lit_does_not_break_the_streak()
+    {
+        var h = Wheel();
+        DryRack(h, 3);
+        Patch(h, s => s["fallStreak"] = 7);
+        FallIn(h, 0.5);                                         // от-от на сцені — руки вже в мінігрі горна
+        Assert.True(K(h, new { op = "light" }).Ok);
+        h.Clock.Advance(Clicker.FallShown + Clicker.CatchGrace + TimeSpan.FromSeconds(1));
+        Assert.False(Act(h, "grab").Ok);
+        Assert.Equal(7, Streak(h));
+        // Без горна той самий глек обірвав би серію.
+        var h2 = Wheel();
+        Patch(h2, s => s["fallStreak"] = 7);
+        FallIn(h2, 0.5);
+        h2.Clock.Advance(Clicker.FallShown + Clicker.CatchGrace + TimeSpan.FromSeconds(1));
+        Assert.False(Act(h2, "grab").Ok);
+        Assert.Equal(0, Streak(h2));
     }
 
     [Fact]
@@ -230,5 +264,32 @@ public class ClickerFallHoldTests
         h.Clock.Advance(past);
         Assert.False(Act(h, "grab").Ok);
         Assert.Equal(0, Streak(h));
+    }
+
+    [Fact]
+    public void Held_jugs_stay_apart_even_when_the_window_cap_releases_them()
+    {
+        var h = Wheel();
+        DryRack(h, 3);
+        FallIn(h, 5);
+        GoldenIn(h, 6);
+        Assert.True(K(h, new { op = "light" }).Ok);
+        h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromSeconds(0.3));
+        Assert.True(K(h, new { op = "open", t = new[] { new[] { 0, 0 } }, own = true }).Ok);
+        // Вікно ніхто не закриє — стеля відпустить обох без жодної дії, тож рознести їх треба ще під час утримання (QA-4).
+        Assert.True(GoldenAt(h) >= FallAt(h) + Clicker.HeldStagger - TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public void A_window_over_the_scene_holds_the_jugs_until_it_closes()
+    {
+        var h = Wheel();
+        FallIn(h, 3);
+        // «Що нового», церемонія монети, «Поки тебе не було» — сцену закрито: глек чекає (QA-4).
+        Assert.True(Act(h, "hold", new { on = true }).Ok);
+        Assert.True(FallAt(h) >= h.Clock.UtcNow + Clicker.ResultCap);
+        h.Clock.Advance(4);
+        Assert.True(Act(h, "hold", new { on = false }).Ok);
+        Near(h.Clock.UtcNow + Clicker.MinigameAfter, FallAt(h));
     }
 }

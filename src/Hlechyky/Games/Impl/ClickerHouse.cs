@@ -557,6 +557,8 @@ public sealed partial class Clicker
             var t = _taken[i];
             if (t.PayAt > now) continue;
             Add(t.Pay);
+            // v12 (плейтест B11): привезене за простій — окремим рядком «поки тебе не було», а не «коло крутилось».
+            if (_awayOpen) { _merchAway += t.Pay; _merchAwayN++; }
             _taken.RemoveAt(i);
             _paid.Add(new(t.Id, t.Merchant, t.Pay, t.PayAt));
         }
@@ -602,14 +604,19 @@ public sealed partial class Clicker
         _taken.Clear();
         _paid.Clear();
         _orderId = 0;
+        _clay = "";
+        _clayRestUntil = default;
         FireHouse(now);
     }
 
-    /// <summary>Що з хати згорає при обпалі: глина на колі, дошка, купці в дорозі. Речі й куплені глини лишаються.</summary>
+    /// <summary>
+    /// Що з хати згорає при обпалі: дошка й купці в дорозі. Речі, куплені глини й та, що на колі, лишаються: глина —
+    /// куплена річ хати, а скидання на звичайну мовчки забирало третину доходу після кожного обпалу (хотфікс B4,
+    /// 21.10.2026; так радить і v12 §2.2). Купців у дорозі обпал і далі спалює, але друге підтвердження каже, скільки
+    /// вони везуть (рішення користувача 21.10).
+    /// </summary>
     void FireHouse(DateTimeOffset now)
     {
-        _clay = "";
-        _clayRestUntil = default;
         _apronUsed = false;
         _taken.Clear();
         RefreshBoard(now);
@@ -724,7 +731,8 @@ public sealed partial class Clicker
     /// </summary>
     object CatalogHouse() => new
     {
-        clays = Clays.Select(c => new { key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body }),
+        // Множники глини (v12, пакет D2) — для прогнозу «з цією глиною: клік X, пасив Y» перед замісом.
+        clays = Clays.Select(c => new { key = c.Key, name = c.Name, desc = c.Desc, price = c.Price, body = c.Body, click = c.Click, passive = c.Passive }),
         tools = Tools.Select(t => new { key = t.Key, name = t.Name, desc = t.Desc, price = t.Price }),
         decor = Decor.Select(d => new { key = d.Key, name = d.Name, desc = d.Desc, price = d.Price, bonus = d.Bonus }),
         looks = Looks.Select(l => new

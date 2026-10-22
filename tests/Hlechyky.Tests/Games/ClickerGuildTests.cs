@@ -68,7 +68,7 @@ public class ClickerGuildTests
         {
             var k = Math.Min(n, Clicker.StoreCap);
             Items(h, ($"{ware}||1", k));
-            var r = Guild(h, new { op = "give", key = $"{ware}||1", n = k });
+            var r = Guild(h, new { op = "give", key = $"{ware}||1", n = k, keep = false });
             Assert.True(r.Ok, r.Message);
             n -= k;
         }
@@ -158,7 +158,7 @@ public class ClickerGuildTests
         var g = new Tsekh();
         var h = g.Potter("Оля");
         Items(h, ("pot||1", 3), ("jug|kosiv|3", 2));
-        var r = Guild(h, new { op = "give", key = "pot||1", n = 10 });
+        var r = Guild(h, new { op = "give", key = "pot||1", n = 10, keep = false });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("на віз", r.Message);
 
@@ -230,14 +230,45 @@ public class ClickerGuildTests
         Assert.Equal("Нагороду за бронзу ти вже забрав", Guild(h, new { op = "claim" }).Message);
         Assert.Equal(0, G(h).GetProperty("claims").GetArrayLength());
 
-        // Віз доріс до золота — добираємо різницю, ачівка вдруге не приходить.
+        // Віз доріс до золота — добираємо різницю, ачівка вдруге не приходить. v12 (B7): Оля й сама доклала — тож за
+        // уже забрану бронзу ще й доплата паю, що виріс.
+        var atBronze = claim.GetProperty("mine").GetInt32();
         Fill(h, g, "Оля", 3);
         before = Pots(h);
         var gold = G(h).GetProperty("claims")[0];
-        var add = Wagon(h, (35 - 10) * Clicker.WagonShare(gold.GetProperty("mine").GetInt32()));
+        var mineNow = gold.GetProperty("mine").GetInt32();
+        var add = Wagon(h, (35 - 10) * Clicker.WagonShare(mineNow) + 10 * (Clicker.WagonShare(mineNow) - Clicker.WagonShare(atBronze)));
         Assert.True(Guild(h, new { op = "claim", day = D10 }).Ok);
         Assert.Equal(before + add, Pots(h));
         Assert.Single(h.Awards, a => a.Reason == "ach:potter-wagon");
+    }
+
+    [Fact]
+    public void Wares_laid_after_the_claim_top_up_the_share_without_a_new_tier()
+    {
+        // v12, плейтест B7: забрав бронзу з ×0,5 паю, доклав ще — картка обіцяла більший пай, а доплати не було.
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        Fill(h, g, "Оля", 1);
+        var first = G(h).GetProperty("claims")[0];
+        var was = first.GetProperty("mine").GetInt32();
+        Assert.True(Guild(h, new { op = "claim" }).Ok);
+        Assert.Equal(0, G(h).GetProperty("claims").GetArrayLength());
+        GiveN(h, "pot", 24);
+        var top = G(h).GetProperty("claims")[0];
+        var mine = top.GetProperty("mine").GetInt32();
+        var tier = top.GetProperty("tier").GetInt32();
+        Assert.Equal(was, top.GetProperty("wasMine").GetInt32());
+        Assert.True(Clicker.WagonShare(mine) > Clicker.WagonShare(was));
+        // Нові рівні (якщо віз доріс) — з усім паєм, бронза — доплатою різниці паю.
+        var tm = ClickerGuildService.TierMinutes;
+        var minutes = (tm[tier] - tm[1]) * Clicker.WagonShare(mine) + tm[1] * (Clicker.WagonShare(mine) - Clicker.WagonShare(was));
+        var before = Pots(h);
+        var r = Guild(h, new { op = "claim" });
+        Assert.True(r.Ok, r.Message);
+        if (tier == 1) Assert.Contains("Пай воза виріс", r.Message);
+        Assert.Equal(before + Wagon(h, minutes), Pots(h));
+        Assert.Equal(0, G(h).GetProperty("claims").GetArrayLength());
     }
 
     [Fact]
@@ -423,7 +454,7 @@ public class ClickerGuildTests
         for (var day = 0; day < 5; day++)
         {
             for (var i = 0; i < 3; i++)
-                Assert.True(Guild(ola, new { op = "gift", nick = "Петро", key = day == 4 && i == 2 ? "bowl||2" : "pot||1" }).Ok);
+                Assert.True(Guild(ola, new { op = "gift", nick = "Петро", key = day == 4 && i == 2 ? "bowl||2" : "pot||1", keep = false }).Ok);
             ola.Clock.Advance(TimeSpan.FromDays(1));
         }
         Assert.Single(ola.Awards, a => a.Reason == "ach:potter-gift");
@@ -618,9 +649,14 @@ public class ClickerGuildTests
         Assert.True(Guild(ola, new { op = "lend", to = "Петро" }).Ok);
         Assert.True(Guild(ola, new { op = "cheer", to = "Петро" }).Ok);
 
+        var before = petro.View(0).GetProperty("pots").GetDouble();
         petro.Clock.Advance(TimeSpan.FromHours(3));
         Assert.True(petro.Act(0, "look").Ok);
         var notes = petro.View(0).GetProperty("away").GetProperty("notes").EnumerateArray().Select(x => x.GetString()!).ToList();
+        // Гостинець має свій рядок — у «коло крутилось без тебе» його не додаємо вдруге (QA-3, як купці в B11).
+        var gained = petro.View(0).GetProperty("pots").GetDouble() - before;
+        var treatPots = G(petro).GetProperty("buffs").GetProperty("treat").GetProperty("pots").GetDouble();
+        Assert.Equal(gained - treatPots, petro.View(0).GetProperty("away").GetProperty("pots").GetDouble(), gained * 1e-9);
         Assert.Contains(notes, t => t.StartsWith("🎁 Гостинець від Оля"));
         Assert.Contains(notes, t => t.StartsWith("🧑‍🎓 Підмайстер від Оля"));
         Assert.Contains(notes, t => t.StartsWith("👏 Оля хвалить"));
@@ -999,7 +1035,7 @@ public class ClickerGuildTests
         Assert.Equal("lion", next.GetProperty("piece").GetProperty("ware").GetString());
         Assert.Equal(4, next.GetProperty("piece").GetProperty("q").GetInt32());
         Assert.True(next.GetProperty("ready").GetBoolean());
-        Assert.Contains("розкішний лев", Guild(h, new { op = "masterpiece" }).Message);
+        Assert.Contains("розкішна лев-посудина", Guild(h, new { op = "masterpiece" }).Message);
 
         // Дзвінкий лев не годиться — потрібен розкішний (Q4). Сам Q4 приносить пакет «Горно»: у цій гілці
         // ParseItem вище за трійку не пускає, тож здати майстерштук тут іще нема чим — перевіряємо відмову

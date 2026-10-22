@@ -2126,7 +2126,8 @@
     const now = playingIn(id);
     return '<div class="gposter' + (isNewGame(id) ? ' fresh' : '') + '" data-pre="' + esc(id) + '">'
       + '<img class="gp-img" src="/games/slots/posters/' + esc(id) + '.svg" alt="" loading="lazy" decoding="async">'
-      + '<div class="gp-txt"><div class="gp-t"><b>' + esc(e.title) + '</b>' + badgeOf(e) + '</div>'
+      + '<div class="gp-txt"><div class="gp-t"><b>' + esc(e.title) + '</b>' + badgeOf(e)
+      + (azTour && azTour.open && azTour.game === id ? '<span class="gp-tour" title="Турнір тижня — тут">🏆</span>' : '') + '</div>'
       + '<div class="gp-m">' + esc(inf.mech) + '</div>'
       + (now.length ? '<div class="gp-now" title="' + esc(whoTitle(now)) + '"><i class="gdot"></i>' + esc(whoShort(now, 2)) + ' <span class="muted">крутить</span></div>' : '')
       + '<div class="gp-f"><span class="gp-v" title="волатильність: ' + VOL[inf.vol] + '">' + '<i>⚡</i>'.repeat(inf.vol)
@@ -2134,6 +2135,34 @@
       + '<button class="primary gp-play" data-solo="' + esc(id) + '">Грати</button></div></div></div>';
   }
   let azFeed = null, azAt = 0, azShown = null, azT = 0, azN = 0;
+  // Турнір тижня в слотах (пакет 5, /api/slots/tourney): рядок у шапці Азарту й 🏆 на афіші автомата тижня
+  let azTour = null, azTourAt = 0;
+  function azTourHtml() {
+    const t = azTour;
+    if (!t || t.off) return '';
+    const lead = t.board && t.board[0];
+    return '<span>🏆 <b>Турнір тижня:</b> «' + esc(t.title) + '»' + (lead ? ', лідер — ' + esc(lead.nick) + ' (' + azFmt(lead.best) + ')' : ', табло ще порожнє')
+      + (t.open ? ', до неділі 21:00' : ' — підбито, новий з понеділка') + '</span>'
+      + '<span class="muted small">щодня спроба на ' + azFmt(t.chips) + ' фішок, черепки не беруться; призи ' + (t.prizes || []).map(azFmt).join(' / ') + ' 🏺</span>'
+      + (t.open ? '<button class="ghost gaz-tour-go" data-game="' + esc(t.game) + '">Грати</button>' : '');
+  }
+  async function azTourFetch() {
+    if (Date.now() - azTourAt < 60000) return;
+    azTourAt = Date.now();
+    try {
+      const t = await api('GET', '/api/slots/tourney');
+      if (!t) return;
+      const was = azTour && azTour.game;
+      azTour = t.off ? null : t;
+      const el = root && root.querySelector('.gaz-tour');
+      if (el) { el.innerHTML = azTourHtml(); el.hidden = !azTour; }
+      if (azTour && was !== azTour.game && root && root.querySelector('.gposter')) renderView();
+    } catch (e) { /* мережа — наступного разу */ }
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('.gaz-tour-go');
+    if (b && b.dataset.game) openRoom('OpenSolo', b.dataset.game, null);
+  });
   const azFmt = (n) => Math.round(n || 0).toLocaleString('uk-UA').replace(/,/g, ' ');
   const AZ_TITLES = { 'slot-glek': 'Однорукий Глек', 'slot-cascade': 'Розбиті глеки', 'slot-hold': 'Козацький скарб', 'slot-cluster': 'Цвіт папороті', 'slot-slidy': 'Сліди на полиці' };
   function azWinsHtml() {
@@ -2144,13 +2173,19 @@
       + '<span class="gaz-x">' + (x.jackpot ? '🏺' : '×' + (Math.round(x.mult * 10) / 10).toLocaleString('uk-UA', { maximumFractionDigits: 1 })) + '</span>'
       + '<span class="gaz-sum">' + azFmt(x.jackpot || x.win) + ' 🏺</span></li>').join('') + '</ol>';
   }
+  // «впаде до 25 000 · Глек докидає 1 000 щодня» (пакет 5; поля нема — частини нема)
+  function azMust(f) {
+    if (!f) return '';
+    return [f.mustHit > 0 ? 'впаде до ' + azFmt(f.mustHit) : '', f.daily > 0 ? 'Глек докидає ' + azFmt(f.daily) + ' щодня' : ''].filter(Boolean).join(' · ');
+  }
   function azartHeadHtml() {
     if (me.slots === false) return '';
     return '<div class="gaz-head"><div class="gaz-jp"><span class="gaz-jp-l">🏺 Скарбничка Глека</span>'
       + '<b class="gaz-jp-v">' + (azShown != null ? azFmt(azShown) : '…') + '</b>'
-      + '<small class="gaz-must">' + (azFeed && azFeed.mustHit > 0 ? 'впаде до ' + azFmt(azFeed.mustHit) : '') + '</small>'
+      + '<small class="gaz-must">' + azMust(azFeed) + '</small>'
       + '<span class="muted small">з кожної ставки — дещиця сюди; будь-який оберт може її розбити</span></div>'
-      + '<div class="gaz-wins"><h6>🔥 Заноси тижня</h6><div class="gaz-wl">' + azWinsHtml() + '</div></div></div>';
+      + '<div class="gaz-wins"><h6>🔥 Заноси тижня</h6><div class="gaz-wl">' + azWinsHtml() + '</div></div>'
+      + '<div class="gaz-tour"' + (azTour ? '' : ' hidden') + '>' + azTourHtml() + '</div></div>';
   }
   async function azFetch() {
     try {
@@ -2161,8 +2196,9 @@
       if (azShown == null || f.jackpot < azShown) azShown = f.jackpot;
       const el = root && root.querySelector('.gaz-head');
       if (!el) return;
-      el.querySelector('.gaz-must').textContent = f.mustHit > 0 ? 'впаде до ' + azFmt(f.mustHit) : '';
+      el.querySelector('.gaz-must').textContent = azMust(f);
       if (fresh) el.querySelector('.gaz-wl').innerHTML = azWinsHtml();
+      azTourFetch();
     } catch (e) { /* мережа — наступного разу */ }
   }
   /// Опитування лише поки шапку Азарту видно (лобі, вкладка): раз на 7 с запит, раз на секунду сума м'яко доростає.
@@ -2525,7 +2561,16 @@
       .concat(extraPanels.filter((p) => p.id !== 'svoya' && (!p.visible || p.visible())).map((p) => ['#games/x:' + p.id, (p.icon || '📋') + ' ' + p.title]))
       .concat(extraPanels.some((p) => p.id === 'svoya') ? [['#games/x:svoya', '🎯 Пакети Своєї гри']] : []);
 
-    box.innerHTML = todayHtml()
+    // «Продовжити: Гончарне коло» (v12 §2.6): на телефоні коло стояло на ~900 px нижче, а фільтр «Соло» кидав сторінку
+    // вгору. Хто вже грав — бачить його першим рядком «Ігор», і до кола один дотик.
+    const potters = playingIn('clicker').filter((n) => n !== me.nick);
+    const cont = played && played.has('clicker') && byId.clicker && !byId.clicker.off && !want
+      ? '<button type="button" class="gpanel gcont" data-solo="clicker">' + iconOf('clicker')
+        + '<span class="gcont-t"><b>Продовжити: ' + esc(titleOf('clicker')) + '</b>'
+        + '<span class="muted small">' + (potters.length ? esc(whoShort(potters, 2)) + ' теж біля кола' : 'твоя гончарня чекає') + '</span></span>'
+        + '<span class="gcont-go">Грати</span></button>'
+      : '';
+    box.innerHTML = cont + todayHtml()
       + '<section class="gpanel"><h3>🔥 Живі столи'
       + (rooms.length ? ' <span class="muted small">· ' + rooms.length + '</span>' : '') + '</h3>'
       + live + soloLine + '</section>'
@@ -3779,12 +3824,45 @@
   /// Ачівка заслуговує довшого тоста, ніж «трек закинуто»: 6 секунд, щоб устигли прочитати.
   function longToast(html, ms) {
     const box = document.getElementById('toasts');
-    if (!box) { toast(String(html).replace(/<[^>]*>/g, ''), 'ok'); return; }
+    if (!box) { toast(String(html).replace(/<[^>]*>/g, ''), 'ok'); return null; }
     const el = document.createElement('div');
     el.className = 'toast ok gbig';
     el.innerHTML = html;
     box.appendChild(el);
-    setTimeout(() => el.remove(), ms || 6000);
+    el._timer = setTimeout(() => el.remove(), ms || 6000);
+    return el;
+  }
+
+  const achQ = [];
+  let achT = 0;
+  function achFlush() {
+    const list = achQ.splice(0);
+    if (!list.length) return;
+    const line = (a) => {
+      const title = String(a.title || a.key || '');
+      return '<span class="gemo">' + esc(a.icon || '🏅') + '</span> ' + (/^овва/i.test(title) ? '' : 'Овва! ') + '<b>' + esc(title) + '</b>'
+        + (a.reward ? ' — лови +' + a.reward + ' 🏺' : '');
+    };
+    if (list.length === 1) {
+      const a = list[0];
+      longToast(line(a) + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
+      return;
+    }
+    const n = list.length;
+    const sum = list.reduce((s, a) => s + (a.reward || 0), 0);
+    const word = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'ачівки' : 'ачівок';
+    const el = longToast('<span class="gemo">🏅</span> Овва! <b>+' + n + ' ' + word + '</b>' + (sum ? ' — лови +' + sum + ' 🏺' : '')
+      + ' <button type="button" class="ghost small gach-more">які ▾</button><div class="gach-list" hidden>'
+      + list.map((a) => '<div>' + line(a) + '</div>').join('') + '</div>', 8000);
+    const more = el && el.querySelector('.gach-more');
+    if (more) more.onclick = () => {
+      const box = el.querySelector('.gach-list');
+      box.hidden = !box.hidden;
+      more.textContent = box.hidden ? 'які ▾' : 'сховати ▴';
+      // Розгорнутий перелік читають — тост живе, поки його не згорнуть, і ще 6 секунд.
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => el.remove(), box.hidden ? 6000 : 30000);
+    };
   }
 
   // =============================================================================================
@@ -3991,13 +4069,16 @@
         const line = w.text || (w.delta > 0 ? '+' : '') + w.delta;
         document.dispatchEvent(new CustomEvent('hgames:wallet', { detail: w }));   // слоти тримають свій баланс за ним
         const hush = [...quietW.keys()].some((p) => String(w.reason || '').startsWith(p));   // автомат сам показує ставку й виграш
-        if (w.delta && !hush) toast('🏺 ' + (w.delta > 0 && !/^лови/i.test(line) ? 'Лови ' + line : line), w.delta > 0 ? 'ok' : '');
+        // Нагорода за ачівку — уже в тості самої ачівки («— лови +30 🏺»): другий тост на ту саму подію не потрібен.
+        if (w.delta && !hush && !String(w.reason || '').startsWith('ach:')) toast('🏺 ' + (w.delta > 0 && !/^лови/i.test(line) ? 'Лови ' + line : line), w.delta > 0 ? 'ok' : '');
       });
+      // Ачівки, що прийшли разом (вхід у Гончарне коло видає їх пачкою), — одним тостом «+6 ачівок» із переліком під
+      // кнопкою: шість тостів стосом закривали пів екрана (v12 §7 п. 14).
       c.on('achievement', (a) => {
         if (!a) return;
-        const title = String(a.title || a.key || '');
-        longToast('<span class="gemo">' + esc(a.icon || '🏅') + '</span> ' + (/^овва/i.test(title) ? '' : 'Овва! ') + '<b>' + esc(title) + '</b>'
-          + (a.reward ? ' — лови +' + a.reward + ' 🏺' : '') + (a.text ? '<br><span class="muted small">' + esc(a.text) + '</span>' : ''), 6000);
+        achQ.push(a);
+        clearTimeout(achT);
+        achT = setTimeout(achFlush, 600);
       });
       c.on('toast', (t) => { if (t && t.text) toast(t.text, t.kind || ''); });
       // Дзвоник цеху Гончарного кола: другові щось надіслали — відкрите коло саме спитає пошту (clicker-guild.js).
@@ -4072,6 +4153,8 @@
 
     /// Для модулів, панелей і людей (web/people.js кличе InviteTo), яким треба смикнути хаб самим.
     call,
+    /// Відкрити соло-гру за id (турнір тижня в слотах веде з одного автомата в інший).
+    openSolo: (id) => openRoom('OpenSolo', id, null),
     send,
     get catalog() { return catalog; },
   };

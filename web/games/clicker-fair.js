@@ -234,6 +234,8 @@
   // ---------- дрібниці ----------
 
   const cat = (st) => (st.catalog && st.catalog.fair) || null;
+  /// Знахідний відмінок назви виробу: «ліпити миску», «хоче лев-посудину / тикву»; чоловічий і середній — без змін.
+  const acc = (name) => String(name || '').toLowerCase().replace(/а$/, 'у').replace(/я$/, 'ю');
   const villageOf = (st, key) => { const c = cat(st); return (c && c.villages.find((v) => v.key === key)) || null; };
   const wareName = (st, key) => {
     const list = (st.craft && st.craft.wares) || (st.catalog && st.catalog.wares) || [];
@@ -475,15 +477,27 @@
     const share = Math.min(100, Math.round((Math.min(o.have, o.n) / o.n) * 100));
     const chance = Math.round(o.chance * 100);
     const off = !st.mine || !ready;
+    // Торг словами й числами: скільки плати, скільки шани і що буде, якщо не вийде. Ставки — з каталогу (сервер).
+    const bids = (cat(st) && cat(st).bids) || { down: 0.85, up: 1.3 };
+    const r = (k0) => Math.round(Math.abs(k0 - 1) * 100);
+    const rep = o.rep || 0;
+    const levels = (cat(st) && cat(st).levels) || [];
+    const vrep = ((st.fair && st.fair.m && st.fair.m.rep) || []).find((x) => x.key === o.village);
+    const repTop = !!vrep && levels.length > 1 && vrep.level >= levels.length - 1;
+    const down = '🙇 Поступитись −' + r(bids.down) + ' % · ' + (repTop ? 'шана вже найвища' : 'шана ×2' + (rep ? ' (+' + rep * 2 + ')' : ''));
+    // Після невдалого «накинути» (B12) кнопка сіра — і каже чому, а не «вийде в 90 %».
+    const up = o.sour ? '😤 Накинути вже не вийде — замовник ображений'
+      : '💰 Накинути +' + r(bids.up) + ' % · вдасться в ' + chance + ' % · невдача: шана −1';
     // Одне речення замість чотирьох полів: хто, звідки, що хоче і скільки за це дасть.
     const line = '<b>' + (o.lord ? '🎩 ' : '') + esc(who) + '</b>' + (v ? ' ' + esc(v.from) : '')
-      + ' хоче <b>' + esc(wareName(st, o.ware).toLowerCase()) + ' ×' + o.n + '</b>'
+      + ' хоче <b>' + esc(acc(wareName(st, o.ware))) + ' ×' + o.n + '</b>'
       + (req.length ? ' <span class="clkf-oreq2">(' + req.join(' · ') + ')</span>' : '')
-      + ' · ≈' + api.potsShort(o.pay) + ' і шана'
+      // ×N — множник плати, тож стоїть біля ціни; шана — своїм числом (QA-2: «і шана ×5,3» читалось як множник шани).
+      + ' · ≈' + api.potsShort(o.pay)
       // Множник — головна відповідь на «а що мені з тієї шани»: у ньому вже і зірки села, і базарний день.
       + ' <span class="clkf-omult" title="Стільки замовник платить понад базарну ціну: базові ×2…×4, плюс 0,1 за'
       + ' кожну зірку шани села (панові — 0,2), Косів доплачує за розпис, базарний день — ще ×1,5.">×'
-      + api.dec(o.mult) + '</span>';
+      + api.dec(o.mult) + '</span>' + (o.rep ? ' · шана +' + o.rep : ' · і шана');
     return '<div class="clkf-order' + (o.lord ? ' lord' : '') + (ready ? ' ready' : '') + (o.sour ? ' sour' : '') + '" data-order="' + o.id + '">'
       + '<div class="clkf-oart">' + api.wareSvg(o.ware, { style: o.style, quality: o.q, cls: 'clkf-oware', slot: 'ord-' + o.id })
       + '<span class="clkf-on">×' + o.n + '</span></div>'
@@ -491,13 +505,18 @@
       + '<div class="clkf-oline">' + line + (o.sour ? ' <span class="clkf-sour" title="Образився на «накинути»">😤</span>' : '') + '</div>'
       // «Бракує N» — у самій смужці, а «торг» — у рядку кнопок (13.10): картка нижча на два рядки, а на телефоні їх шість.
       + '<div class="clkf-obar"><i style="width:' + share + '%"></i><span>є ' + Math.min(o.have, 999) + ' з ' + o.n
-      + (ready ? '' : ' · бракує ' + (o.n - o.have) + ' — виліпи й обпали') + '</span></div>'
+      // «бракує 2 добрих» — якої якості бракує, без «— виліпи й обпали»: рядок обрізало «…» (v12, D1).
+      + (ready ? '' : ' · бракує ' + (o.n - o.have) + (o.q >= 2 ? ' ' + ['добр', 'дзвінк', 'розкішн'][o.q - 2]
+        + ((o.n - o.have) % 10 === 1 && (o.n - o.have) % 100 !== 11 ? 'ого' : 'их') : '')) + '</span></div>'
       + '<div class="clkf-obtns">'
       + '<button type="button" class="primary small" data-bid="as" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🤝 Здати</button>'
+      // Бракує — «Ліпити» одразу тут (як у Толоці), з розписом замовлення: сервер поставить виріб на коло й нагадає розпис.
+      + (ready || !st.mine ? '' : st.craft && st.craft.ware === o.ware ? '<span class="small clkl-onwheel">🏺 ' + esc(wareName(st, o.ware)) + ' уже на колі</span>' : '<button type="button" class="ghost small clkf-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
+        + esc(acc(wareName(st, o.ware))) + '</button>')
       + '<span class="clkf-otime small muted">⏳ <i class="clkf-cd" data-at="' + o.until + '" data-done="поїхав"></i></span>'
       + '<details class="clkf-bid" data-key="' + o.id + '"><summary>торг</summary>'
-      + '<button type="button" class="ghost small" data-bid="down" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🙇 Поступитись · менше плати, вдвічі більше шани</button>'
-      + '<button type="button" class="ghost small" data-bid="up" data-id="' + o.id + '"' + (off || o.sour ? ' disabled' : '') + '>💰 Накинути · вийде в ' + chance + ' % випадків</button>'
+      + '<button type="button" class="ghost small" data-bid="down" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>' + down + '</button>'
+      + '<button type="button" class="ghost small" data-bid="up" data-id="' + o.id + '"' + (off || o.sour ? ' disabled' : '') + '>' + up + '</button>'
       + '</details>'
       + '</div>'
       + '</div></div>';
@@ -536,6 +555,7 @@
     if (api.swap(k.ordersEl, head + react + cards + more)) {
       countdowns(st, api, k.ordersEl);
       for (const b of k.ordersEl.querySelectorAll('[data-bid]')) b.onclick = (ev) => deliver(st, api, ev, +b.dataset.id, b.dataset.bid);
+      for (const b of k.ordersEl.querySelectorAll('[data-form]')) b.onclick = (ev) => { if (human(ev)) api.order(st, 'form', { ware: b.dataset.form, style: b.dataset.style }); };
     }
     paintRep(st, api);
   }
@@ -602,7 +622,8 @@
       const line = (text.match(/«([^»]+)»/) || [])[1] || '';
       const refused = text.startsWith('😤');
       const emoji = refused ? '😤' : text.startsWith('🥰') ? '🥰' : text.startsWith('💰') ? '😏' : '🤝';
-      k.react = { at: Date.now(), emoji, text: line, cls: refused ? 'no' : 'yes' };
+      // Тост сервера мовчить про шану — у реакції над замовленнями кажемо (B12).
+      k.react = { at: Date.now(), emoji, text: refused ? line + ' — торг не вдався, шана −1' : line, cls: refused ? 'no' : 'yes' };
       if (refused) {
         api.sfx('refuse');
       } else {

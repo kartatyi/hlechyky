@@ -185,19 +185,61 @@ public sealed partial class Clicker
 
     internal int ItemCount(Func<ItemInfo, bool> match) => AllItems().Where(x => match(x.Item)).Sum(x => x.Count);
 
-    /// <summary>Забрати до n виробів, що підходять, — спершу найгіршої якості: купцеві «якість ≥ добра» не віддаємо дзвінких, поки є добрі.</summary>
-    internal int TakeItems(Func<ItemInfo, bool> match, int n)
+    /// <summary>Хто бере з комори: замовлення села (<c>mkt</c>) чи гостя (<c>guest</c>) за Id, толока, майстерштук.</summary>
+    internal readonly record struct TakeFor(string Kind, int Id = 0);
+
+    /// <summary>
+    /// Що саме піде, коли забрати до n виробів, що підходять. Як і раніше — спершу найгіршої якості (купцеві «якість ≥
+    /// добра» не віддаємо дзвінких, поки є добрі), але не ціною чужого відкладеного. Хотфікс B3 (21.10.2026): здача брала
+    /// лише за якістю й забирала бубнівські, відкладені під інше замовлення, хоч простих вистачало, — і те замовлення
+    /// лишалось «є 0 з 5». Тепер, якщо після «найгірших» інші вимоги (<see cref="LadKept"/>: замовлення сіл і гостей,
+    /// майстерштук, толока) зібрали б менше, ніж після «спершу невідкладене», — беремо невідкладене; відкладене йде лише
+    /// тоді, коли іншого нема. Обділення нема — лишаємо найгірших: коли однаково все піде, дорожчі хай платить замовник.
+    /// Те, що відкладене під самого <paramref name="who"/>, — не чуже.
+    /// </summary>
+    internal List<(ItemInfo Item, int N)> TakePlan(Func<ItemInfo, bool> match, int n, TakeFor? who = null)
     {
-        if (n <= 0) return 0;
+        if (n <= 0) return [];
+        var fit = AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList();
+        var worst = PlanTake(fit, n, null);
+        // Один ключ — штуки однакові, вибирати нема з чого; так і віз, що кладе десятки ключів поштучно, не рахує LadKept щоразу.
+        if (fit.Count <= 1) return worst;
+        var now = Ctx.Clock.UtcNow;
+        var spare = PlanTake(fit, n, LadKept(now, who));
+        static int Sum(Dictionary<string, int> kept) => kept.Values.Sum();
+        return Sum(LadKept(now, who, spare)) > Sum(LadKept(now, who, worst)) ? spare : worst;
+    }
+
+    /// <summary>План забору з <paramref name="fit"/> (уже за якістю): з <paramref name="kept"/> — спершу те, що поза ним.</summary>
+    static List<(ItemInfo Item, int N)> PlanTake(List<(ItemInfo Item, int Count)> fit, int n, Dictionary<string, int>? kept)
+    {
+        var plan = new List<(ItemInfo, int)>();
+        var left = fit.ToDictionary(x => x.Item, x => x.Count);
+        var want = n;
+        for (var pass = kept is null ? 1 : 0; pass < 2 && want > 0; pass++)
+            foreach (var (item, _) in fit)
+            {
+                var hold = pass == 0 ? kept!.GetValueOrDefault(ItemKey(item.Ware, item.Style, item.Quality)) : 0;
+                var take = Math.Min(left[item] - hold, want);
+                if (take <= 0) continue;
+                left[item] -= take;
+                want -= take;
+                plan.Add((item, take));
+                if (want <= 0) break;
+            }
+        return plan;
+    }
+
+    /// <summary>Забрати до n виробів, що підходять, у порядку <see cref="TakePlan"/>. Повертає, скільки забрано.</summary>
+    internal int TakeItems(Func<ItemInfo, bool> match, int n, TakeFor? who = null)
+    {
         var taken = 0;
-        foreach (var (item, count) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList())
+        foreach (var (item, take) in TakePlan(match, n, who))
         {
-            var take = Math.Min(count, n - taken);
             var key = ItemKey(item.Ware, item.Style, item.Quality);
             if (_items[key] == take) _items.Remove(key);
             else _items[key] -= take;
             taken += take;
-            if (taken >= n) break;
         }
         return taken;
     }
@@ -326,15 +368,25 @@ public sealed partial class Clicker
         }
     }
 
+    /// <summary>
+    /// Що ліпити: <c>{ ware, style }</c>. <c>style</c> — з картки альбому (v12, QA-2): «Ліпити» з порожньої клітинки
+    /// «полумисок · Косів» казало лише «На колі тепер полумисок», і розпис, заради якого натиснули, губився.
+    /// </summary>
     ActResult Form(JsonElement payload)
     {
         var key = Str(payload, "ware");
         if (WareOf(key) is not { } w) return ActResult.Fail("Такого виробу гончарі не ліплять");
         if (!WareOpen(key)) return ActResult.Fail($"{w.Name} відкриється на {PotsShort(w.Unlock)} за весь час");
-        if (_formWare == key) return ActResult.Done;
+        var style = Str(payload, "style");
+        // Клітинка вже в альбомі — просто назвати розпис, без «для альбому» (QA-3).
+        var note = style.Length > 0 && Styles.FirstOrDefault(x => x.Key == style) is { } sd
+            ? (AlbumCellOpen(AlbumCellKey(key, style)) ? $" — з розписом «{sd.Name}»" : $" — для альбому обпали з розписом «{sd.Name}»")
+                + (_styles.Contains(style) ? "" : " (його ще треба відкрити)")
+            : "";
+        if (_formWare == key) return note.Length > 0 ? ActResult.Accept($"🏺 {w.Name} уже на колі{note}") : ActResult.Done;
         _formWare = key;
         _formWork = Math.Min(_formWork, WorkOf(w));
-        return ActResult.Accept($"🏺 На колі тепер {w.Name.ToLowerInvariant()}");
+        return ActResult.Accept($"🏺 На колі тепер {w.Name.ToLowerInvariant()}{note}");
     }
 
     /// <summary>Базар: продати вироби з комори за глеки. <c>{ key, n }</c> або <c>{ all: true, q? }</c>.</summary>
@@ -354,26 +406,38 @@ public sealed partial class Clicker
 
     /// <summary>
     /// Продати гуртом: <c>q</c> — найвища якість, яку забирає базар (1 — лише звичайні, 2 — усе, крім дзвінких,
-    /// 3 чи без нього — усе). Дорожчі лишаються в коморі на замовлення, дарунки й альбом.
+    /// 3 чи без нього — усе). Дорожчі лишаються в коморі на замовлення, дарунки й альбом. v12 (плейтест 21.10): і те,
+    /// чого чекають замовлення сіл і гостей, майстерштук і Толока (<see cref="LadKept"/>), лишається — «Продати все»
+    /// мовчки з'їдало вироби на етап. <c>keep: false</c> — продати й відкладене (гравець сказав це явно).
     /// </summary>
     ActResult BazaarAll(JsonElement payload)
     {
         var q = (int)Math.Clamp(Num(payload, "q") ?? QualityMax, 1, QualityMax);
+        var kept = KeepFlag(payload) ? LadKept(Ctx.Clock.UtcNow) : new Dictionary<string, int>(StringComparer.Ordinal);
         var sold = 0;
+        var held = 0;
         double sum = 0;
         foreach (var (item, count) in AllItems().Where(x => x.Item.Quality <= q).ToList())
         {
-            sum += ItemValue(item.Ware, item.Style, item.Quality) * count;
-            sold += count;
-            _items.Remove(ItemKey(item.Ware, item.Style, item.Quality));
+            var key = ItemKey(item.Ware, item.Style, item.Quality);
+            var hold = Math.Min(count, kept.GetValueOrDefault(key));
+            var n = count - hold;
+            held += hold;
+            if (n <= 0) continue;
+            sum += ItemValue(item.Ware, item.Style, item.Quality) * n;
+            sold += n;
+            if (hold == 0) _items.Remove(key);
+            else _items[key] = hold;
         }
         if (sold == 0)
-            return ActResult.Fail(ItemTotal > 0
+            return ActResult.Fail(held > 0 ? $"Усе, що підходить ({held}), відкладене під замовлення й Толоку — базар його не бере"
+                : ItemTotal > 0
                 ? q == 1 ? "Звичайних у коморі нема" : q == 3 ? "У коморі самі розкішні — базар до них не дотягнеться" : "У коморі самі дзвінкі — їх базар не бере"
                 : "У коморі порожньо — нічого везти на базар");
         Add(sum = ToPots(sum * HouseBazaarMult));
         var what = q == 1 ? " (лише звичайні)" : q == 2 ? " (крім дзвінких)" : q == 3 ? " (крім розкішних)" : "";
-        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{PotsShort(sum)}");
+        var tail = held > 0 ? $" · {held} {WaresWord(held)} лишив під замовлення й Толоку" : "";
+        return ActResult.Accept($"🧺 Базар забрав {sold} {WaresWord(sold)}{what}: +{PotsShort(sum)}{tail}");
     }
 
     static string WaresWord(double n) => Plural(n, "виріб", "вироби", "виробів");
@@ -506,9 +570,17 @@ public sealed partial class Clicker
         LadAwayClear();
         _awayPotsFrom = _pots;
         _shelfAway = 0;
+        _merchAway = 0;
+        _merchAwayN = 0;
+        _awayNoted = 0;
     }
 
     double _awayPotsFrom;
+    /// <summary>Глеки простою, що вже мають свій рядок (гостинець друга), — не в «коло крутилось» (QA-3, як B11).</summary>
+    double _awayNoted;
+    /// <summary>Скільки привезли купці хати за простій і скільки їх було (v12, B11).</summary>
+    double _merchAway;
+    int _merchAwayN;
 
     void AwayEnd(DateTimeOffset now, TimeSpan gap)
     {
@@ -527,8 +599,18 @@ public sealed partial class Clicker
             if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
         }
         _shelfAway = 0;
+        // Купці — теж першим рядком і не в «коло крутилось»: плейтест 21.10 — з 10,9 млрд простою 8,7 привіз купець.
+        if (_merchAway >= 1)
+        {
+            _awayNotes.Insert(0, $"🐴 {(_merchAwayN == 1 ? "Купець привіз" : $"Купці ({_merchAwayN}) привезли")}: +{PotsShort(_merchAway)}");
+            if (_awayNotes.Count > AwayNotesMax) _awayNotes.RemoveRange(AwayNotesMax, _awayNotes.Count - AwayNotesMax);
+        }
+        var merch = _merchAway;
+        _merchAway = 0;
+        _merchAwayN = 0;
         LadAwayFlush(_awayNotes);
-        _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom), _awayFormed, [.. _awayNotes]);
+        _away = new AwayRow(now, (long)gap.TotalSeconds, Math.Max(0, _pots - _awayPotsFrom - merch - _awayNoted), _awayFormed, [.. _awayNotes]);
+        _awayNoted = 0;
     }
 
     // ---------- синхронізація й вид ----------
@@ -568,6 +650,9 @@ public sealed partial class Clicker
     object CraftView(DateTimeOffset now)
     {
         var w = WareOf(_formWare) ?? Wares[0];
+        // Відкладене (v12, D1): скільки штук ключа чекають толока, замовлення й майстерштук — комора ставить 🔒.
+        var why = new Dictionary<string, int[]>(StringComparer.Ordinal);
+        if (_items.Count > 0) LadKept(now, why: why);
         return new
         {
             ware = w.Key,
@@ -593,8 +678,11 @@ public sealed partial class Clicker
             {
                 key = ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality), ware = x.Item.Ware, style = x.Item.Style, q = x.Item.Quality,
                 n = x.Count, value = ItemValue(x.Item.Ware, x.Item.Style, x.Item.Quality),
+                kept = why.GetValueOrDefault(ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality)),
             }),
             storeCap = StoreCapNow,
+            // Візок хати (+10 %): базар платить value × це — комора показує справжню плату (v12 QA-3, D1).
+            bazaarMult = HouseBazaarMult,
             // Прокачка ремесла: рівень зі стелею, ціна наступного й «зараз: …» (воно від стану майстерні). Назва й опис —
             // новому клієнтові в каталозі (catalog.craftUps), старій вкладці — тут же, як до v10.
             ups = CraftUps.Select(u => _slim
@@ -613,9 +701,24 @@ public sealed partial class Clicker
         };
     }
 
-    object? AwayView() => _away is { } a
+    /// <summary>«Поки тебе не було»: запис, поки гончар його не побачив (v12, B6 плейтесту: сервер слав останній запис
+    /// завжди, а побачене клієнт пам'ятав лише в localStorage одного браузера — на другому пристрої чи після іншого ніка
+    /// вранішній «+48 557 золотих» вискакував знову, уже після обпалу).</summary>
+    object? AwayView() => _away is { Seen: false } a
         ? new { at = a.At, seconds = a.Seconds, pots = a.Pots, formed = a.Formed, notes = a.Notes }
         : null;
+
+    /// <summary>Дія <c>away { at }</c>: картку цього запису показано — більше не шлемо (на жодному пристрої).</summary>
+    ActResult SeenAway(JsonElement payload)
+    {
+        if (_away is not { } a || a.Seen) return ActResult.Done;
+        // Новіший запис (простій, що дописався, поки картка висіла) — не той, що бачили: лишаємо.
+        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("at", out var at) && at.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(at.GetString(), out var seen) && Math.Abs((seen - a.At).TotalSeconds) > 1)
+            return ActResult.Done;
+        _away = a with { Seen = true };
+        return ActResult.Done;
+    }
 
     /// <summary>Каталоги для клієнта: у видах від Start/Load до першої дії і після look { catalog: true } до наступної.</summary>
     object? CatalogView()
@@ -643,7 +746,7 @@ public sealed partial class Clicker
 
     // ---------- збереження ----------
 
-    sealed record AwayRow(DateTimeOffset At, long Seconds, double Pots, int Formed, List<string> Notes);
+    sealed record AwayRow(DateTimeOffset At, long Seconds, double Pots, int Formed, List<string> Notes, bool Seen = false);
 
     sealed record CraftRow(
         string? Ware, double Work, List<RackRow>? Rack, Dictionary<string, int>? Items,

@@ -123,6 +123,7 @@
 }
 /* !important — бо style.css ховає будь-який [hidden] так само з !important; тут приховане лише не видно, а місце є. */
 .clk-rival[hidden] { display: block !important; visibility: hidden; }
+.clk-rival.none[hidden] { display: none !important; }
 
 /* ---- сцена 4:5: світ за хатою вгорі, під стріхою — полиця, коло внизу, між ними падає глек ---- */
 /* container-type: розміри речей на сцені (сирці на полиці) — у cqw, щоб на телефоні й на ПК сцена була та сама. */
@@ -390,6 +391,9 @@
 .clk-wind i:nth-child(9) { top: 18%; animation-delay: 1.4s; animation-duration: 3.5s; }
 .clk-buff.wind { background: #1f4238; color: #a8e6cd; }
 .clk-buff.wish { background: #33305c; color: #ded6ff; }
+/* Бафи від друзів (цех): похвала — тепла рожева, підмайстер — бірюзова; без фону плашка губилась між сусідніми. */
+.clk-buff.fcheer { background: #5a2a3e; color: #ffc6dc; }
+.clk-buff.flend { background: #1e3f4a; color: #a6e3f0; }
 .clk-pop.lucky { color: #ffe9a3; text-shadow: 0 0 16px var(--accent), 0 1px 3px rgba(0, 0, 0, .6); }
 
 /* Золотий дощ, коли майстер кивнув і заплатив (v9 §A.1). */
@@ -449,9 +453,10 @@
 .clk-eye-pic.busy img { opacity: .6; cursor: progress; }
 /* Завіса: доки не натиснуто «Показати полицю», картинка розмита й торкань не приймає. */
 .clk-eye-pic.veiled img { filter: blur(7px) brightness(.7); cursor: default; pointer-events: none; }
+/* Кнопка — унизу завіси, а не посередині: там, де щойно було коло, і куди ще летять кліки (QA-3). */
 .clk-eye-veil {
-  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;
-  gap: 10px; padding: 12px; text-align: center; color: #fff; background: rgba(0, 0, 0, .35);
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  gap: 10px; padding: 12px 12px 14px; text-align: center; color: #fff; background: rgba(0, 0, 0, .35);
 }
 .clk-eye-veil span { text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
 .clk-eye-go { min-width: 60%; }
@@ -610,6 +615,8 @@
 .clk-mini { width: 46px; height: 54px; }
 .clk-mini.locked { opacity: .7; filter: grayscale(.4); }
 .clk-plain { align-self: center; }
+/* Кнопка, а не підпис (UI-прохід 21.10): «ghost» без рамки читався як текст. */
+.clk .clk-plain { border-color: var(--line); }
 
 /* ---- хата: глина, знаряддя, прикраси ---- */
 .clk-clays { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; width: 100%; }
@@ -679,8 +686,16 @@
 .clk .clk-fire.armed { background: var(--danger); color: #2a0707; animation: clkglow .5s ease-in-out infinite alternate; }
 .clk-after { color: var(--accent); text-align: center; }
 .clk-after:empty { display: none; }
+/* Перелік «що згорить» під кнопкою, поки вона питає «Точно?» (хотфікс B4). */
+.clk-loss { width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--danger); background: var(--bg2); line-height: 1.35; }
+.clk-loss:empty { display: none; }
+.clk-loss ul { margin: 2px 0 6px; padding-left: 18px; }
+.clk-loss-h { font-weight: 700; }
+.clk-loss-tip { margin-top: 6px; color: var(--accent); }
 .clk-stamps { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: center; text-align: center; }
 .clk-stamps b { color: var(--clk-fire); font-size: 1.15em; }
+.clk-stamps > .clk-info { align-self: center; }
+.clk-stamps > .clk-info[open] { flex: 1 1 100%; text-align: left; }
 /* Вільні клейма (записка #28): плашкою, щоб не губились поруч із великим числом за весь час. */
 .clk-stamps .clk-free { padding: 1px 10px; border-radius: 999px; background: var(--panel2); white-space: nowrap; }
 .clk-lookfree { font-size: .92em; font-weight: 400; white-space: nowrap; }
@@ -1024,10 +1039,11 @@
 .clk .clk-bsec.w3 { min-width: calc(3ch + 6px); }
 .clk .clk-bsec:empty { display: none; }
 .clk .clk-bsec::after { content: '\00a0с'; font-size: .62em; font-weight: 600; opacity: .8; }
+.clk .clk-bsec.long::after { content: none; }
 /* Назва — слово (ріжеться «…») і хвіст (число серії, «⏸»), що не ріжеться ніколи. */
 .clk .clk-bname {
   flex: 1 1 0; min-width: 0; display: flex; justify-content: flex-end; align-items: baseline; gap: .3em;
-  font-size: .8em; font-weight: 600; opacity: .85;
+  font-size: max(11px, .8em); font-weight: 600; opacity: .85;
 }
 .clk .clk-bw { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .clk .clk-bt { flex: none; font-variant-numeric: tabular-nums; }
@@ -1108,20 +1124,40 @@
    на 360×740 під ним була вся смуга. Тепер сцена не вища, ніж лишає вікно: 100svh мінус те, що над сценою
    (--clk-ph-top, міряє phoneFit у clicker.js), смуга з рядком «Далі» (--clk-ph-path) і нижнє меню (--gdock-h від
    каркаса, поки його нема — 64 px). Нижче ~250 px сцена не стискається: коло лишається великою ціллю.
-   Табличку «Хата гончаря» кладемо на небо сцени (як на ПК, .clk.fit) і ховаємо рядок місць — ще 50 px сцені. */
+   Табличку «Хата гончаря» кладемо на небо сцени (як на ПК, .clk.fit) і ховаємо рядок місць — ще 50 px сцені.
+   UI-прохід 21.10: в один екран — лише сцена й рядок «Далі» (одним рядком, 52 px), плитки кроків — під прокруткою; і
+   сцена не вужча за 300 px (≈ три чверті телефона). Було: v12 зробила «Далі» вдвічі вищим, і сцена на 412×780 впиралась
+   у 250 px — «село стало маленьким». Табличка — від краю самої сцени, а не картки (вузька сцена лишала її збоку). */
 @media (max-width: 560px) {
   .gtable.clk-wide > .gseats { display: none; }
+  .clk {
+    --clk-ph-sw: min(var(--clk-stage-w, 620px), max(min(300px, 100%),
+      calc((100svh - var(--clk-ph-top, 240px) - var(--clk-ph-path, 68px) - var(--gdock-h, 64px) - 6px) * .8)));
+  }
   .clk .clk-scene > * { order: 2; }
   .clk .clk-head, .clk .clk-rate, .clk .clk-rival { order: 0; }
   .clk .clk-sign {
     order: 1; position: relative; top: 6px; z-index: 2; margin-bottom: calc(-1.75em - 6px);
-    align-self: flex-start; margin-left: 8px; max-width: calc(100% - 104px);
+    align-self: flex-start; margin-left: max(8px, calc((100% - var(--clk-ph-sw)) / 2 + 8px));
+    max-width: calc(min(100%, var(--clk-ph-sw)) - 104px);
   }
   .clk .clk-scene.nostage .clk-sign { order: 0; top: 0; margin: 0; align-self: center; max-width: 100%; }
-  .clk .clk-stage {
-    max-width: min(var(--clk-stage-w, 620px), max(250px,
-      calc((100svh - var(--clk-ph-top, 240px) - var(--clk-ph-path, 124px) - var(--gdock-h, 64px) - 6px) * .8)));
+  .clk .clk-stage { max-width: var(--clk-ph-sw); }
+  /* «Далі» одним рядком: значок · порада у два рядки · кнопки праворуч. Друга кнопка — лише значком (повна назва — у
+     підказці): «🔥 Обпалити» + «🚢» влазять поруч із порадою в 360 px. Висота стала — 52 px, як міряє phoneFit. */
+  .clk:not(.fit):not(.land) .clkc-next, .clk:not(.fit):not(.land) .clkc-next.two {
+    --nx-btn: 40px;
+    grid-template-columns: 22px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content);
+    grid-template-rows: var(--nx-btn); height: calc(var(--nx-btn) + 12px); padding: 6px 8px; column-gap: 6px; row-gap: 0;
   }
+  .clk:not(.fit):not(.land) .clk-nxico { grid-row: 1; }
+  .clk:not(.fit):not(.land) .clk-nxtxt { grid-column: 2; font-size: .84em; line-height: 1.2; }
+  .clk:not(.fit):not(.land) .clk-nxbtn { grid-row: 1; grid-column: 3; padding: 0 12px; }
+  .clk:not(.fit):not(.land) .clk-nxbtn2 { grid-column: 4; padding: 0 10px; }
+  .clk:not(.fit):not(.land) .clk-nxbtn[hidden] + .clk-nxbtn2 { grid-column: 3 / -1; }
+  .clk:not(.fit):not(.land) .clk-nxbtn:not([hidden]) + .clk-nxbtn2 .clk-nxl { display: none; }
+  /* Кнопка-значок без рамки читалась як прикраса, а не кнопка. */
+  .clk:not(.fit):not(.land) .clk-nxbtn2 { border: 1px solid var(--line); background: var(--panel2); }
 }
 /* ---- телефон лежачи (.clk.land, ставить fitTable: дотик, висота ≤ 500, картка від 640) ----
    Було на 844×390: сцена 211×264 і коло 104 px нижче рядка статистики, «Далі» під нижнім меню, вкладки 31 px.
@@ -1131,7 +1167,7 @@
    стрічку — нагору правої колонки (placeRows). */
 .gtable.clk-land > .gseats, .gtable.clk-land > .gstatus { display: none; }
 .clk.land .clk-scene {
-  --clk-land-h: calc(100svh - var(--clk-land-top, 56px) - var(--clk-land-bot, 58px) - 8px);
+  --clk-land-h: calc(var(--clk-land-vh, 100svh) - var(--clk-land-top, 56px) - var(--clk-land-bot, 58px) - 8px);
   height: var(--clk-land-h); box-sizing: border-box;
   display: grid; grid-template-columns: calc(var(--clk-land-h) * .8) minmax(0, 1fr);
   grid-template-rows: auto auto auto minmax(0, 1fr) auto; column-gap: 10px; row-gap: 4px; align-items: start;
@@ -1162,7 +1198,7 @@
 .clk.land .clk-sttxt b { display: none; }
 /* «Далі»: порада рядком, кнопки — другим рядком на всю ширину (дві — порівну). */
 .clk.land .clkc-next, .clk.land .clkc-next.two {
-  grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr); grid-auto-flow: row; height: auto; padding: 5px 8px 8px; gap: 4px 6px;
+  grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr); grid-auto-flow: row; padding: 5px 8px 8px; gap: 4px 6px;
 }
 .clk.land .clk-nxtxt { grid-column: 2 / -1; }
 .clk.land .clk-nxbtn { grid-row: 2; grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; }
@@ -1243,6 +1279,7 @@
     line-height: 15px; white-space: nowrap; pointer-events: none; box-shadow: 0 0 0 2px var(--panel);
   }
   .clk .clk-tnote:not(:empty)::before { content: none; }
+  .clk .clk-tnote .clk-tn + .clk-tn { display: none; }
 }
 @container clkside (max-width: 480px) {
   /* Нарівно, але не вужче за слово (min-width: auto): на андроїді 360 «Майстерня» різалась до «Майстер…», а
@@ -1250,6 +1287,12 @@
   .clk .clk-tabs button { flex: 1 1 0; min-width: auto; flex-direction: column; gap: 1px; min-height: 46px; padding: 5px 2px 3px; }
   .clk .clk-tico { font-size: 1.3em; line-height: 1.1; }
   .clk .clk-tword { margin-left: 0; max-width: 100%; font-size: 12px; line-height: 1.2; }
+  /* Верстат на телефоні (UI-прохід 21.10): ціна з окупністю — другим рядком під назвою, а не стовпцем праворуч. Стовпець
+     ~180 px («8,1 млрд золотих») стискав середину: назви в два рядки, віха — у три. */
+  .clk .clk-up { grid-template-columns: 34px minmax(0, 1fr); row-gap: 1px; }
+  .clk .clk-up > .clk-uico { grid-row: 1 / span 2; align-self: start; margin-top: 2px; }
+  .clk .clk-up > .clk-uright { grid-column: 2; flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; column-gap: 10px; }
+  .clk .clk-up .clk-price { justify-self: start; }
 }
 
 /* Ряд значків вкладок під мініплашкою (F7, pinTabs у clicker.js): окремим рядком під усім, що в плашці. */
@@ -1267,10 +1310,258 @@
 @media (max-width: 560px) {
   /* Рядок «усього наліплено … · з полиці …» над числом — один рядок із «…» (було два, ~40 px над колом). */
   .gtable.clk-wide > .gstatus { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .82em; min-height: 0; }
+  /* UI-прохід 21.10: підсумки за все життя — під картку, а не над колом: ці ~27 px ідуть сцені (на 360×740 з ними
+     рядок «Далі» лягав під нижнє меню). */
+  .gtable.clk-wide > .gstatus { order: 1; }
 }
 /* Альбом під пальцем: дев'ять стовпців розписів на 356 px ширше за 38 px не стануть (тоді — прокрутка вбік), тож
    ціль більшає у висоту — 44 px, а назва ряду — від 40 px. */
 @media (pointer: coarse) {
   .clk .clka-cell { height: 44px; }
   .clk .clka-rowh { min-height: 40px; }
+}
+
+/* ==== v12 «Заморська торгівля», пакет D2 «Стіл» (docs/games/specs/clicker-v12.md §7, clicker-v12-ux.md §2) ==== */
+
+/* ---- Майстерня: липкий рядок режимів, віхи в рядку, ★ для пачки ----
+   Рядок «×1 / ×10 / макс / до віхи» їхав зі списком (~1 200 px від ★) — тепер липне згори вікна вкладки (на ПК
+   вікно гортається саме) чи під плашкою кола (телефон: --clk-pin-top ставить pinView). Тло суцільне: рядки під ним
+   не просвічують. Ліворуч — ★ найвигіднішого, дотик веде до нього (goBest). */
+.clk .clk-pane > .clk-modes {
+  position: sticky; top: 0; z-index: 3; flex-wrap: wrap; row-gap: 4px; margin: -2px 0 0; padding: 4px 0;
+  background: var(--panel2); box-shadow: 0 6px 8px -6px rgba(0, 0, 0, .45);
+}
+.clk:not(.fit) .clk-pane > .clk-modes { top: calc(var(--clk-pin-top, 56px) + var(--clk-pin-h, 0px)); }
+.clk .clk-bestgo {
+  order: -1; margin-right: auto; min-width: 0; max-width: 100%; padding: 3px 10px; font-size: .82em; white-space: normal;
+  text-align: left; line-height: 1.2; color: var(--accent2); border-color: rgba(217, 169, 47, .45);
+}
+/* Рядок режимів сталої висоти (QA-3: від довгої назви ★ він ріс з 34 до 64 px, і список під пальцем зсувався): ★ — в
+   один рядок із «…», а поки ★ нема, місце під неї однаково тримаємо. */
+.clk .clk-pane > .clk-modes { flex-wrap: nowrap; }
+.clk .clk-bestgo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; flex: 1 1 auto; min-width: 0; }
+/* Вузька колонка: ★ — завжди окремим рядком над кнопками режимів (і коли її нема — місце тримаємо). */
+@container clkside (max-width: 520px) { .clk .clk-pane > .clk-modes { flex-wrap: wrap; } }
+.clk .clk-bestgo[hidden] { display: block !important; visibility: hidden; }
+@container clkside (max-width: 520px) { .clk .clk-bestgo { flex: 1 1 100%; } }
+/* Рядок верстата з віхою під ним: верстат і віха — одна клітинка сітки полиці. */
+.clk-urow { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.clk-urow > .clk-up { width: 100%; }
+.clk-urmarks { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.clk .clk-rowmark { margin-left: 22px; width: calc(100% - 22px); }
+.clk .clk-rowmark .clk-uico { font-size: 16px; }
+.clk .clk-rowmark .clk-udesc { white-space: normal; overflow: visible; text-overflow: clip; }
+/* «Що нового» вище за вікно (1366×768): кнопка «Забрати подарунок» липне до низу вікна, а не ховається під краєм. */
+.clk-newsbox .clk-news-ok {
+  position: sticky; bottom: -14px; z-index: 1; box-shadow: 0 -10px 14px var(--bg2), 0 6px 0 var(--bg2);
+}
+/* Назви — повністю (без «Порцеля…»), віхи — у два рядки. */
+.clk .clk-uname b { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.2; }
+.clk .clk-mark b {
+  white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.2;
+}
+.clk-unext { color: var(--accent2); font-size: max(12px, .72em); line-height: 1.25; overflow-wrap: anywhere; }
+.clk .clk-up.best .clk-pay::before, .clk .clk-mark.best .clk-pay::before { content: '★ '; }
+.clk .clk-mark.best, .clk .clk-clay.best { border-color: var(--accent2); border-style: solid; box-shadow: 0 0 0 1px var(--accent2); }
+/* «Точно?» — друге натискання купує (buyClick). */
+.clk .clk-up.ask { box-shadow: inset 0 0 0 2px var(--clk-fire); }
+.clk .clk-up.ask .clk-price { color: var(--clk-fire); }
+/* «До віхи», а цей рядок зараз не купиш: виглядає вимкненим, але на дотик каже чому (buyClick). */
+.clk .clk-up.soft { border-color: var(--line); }
+.clk .clk-up.soft .clk-umain, .clk .clk-up.soft .clk-uico, .clk .clk-up.soft .clk-price { opacity: .62; }
+/* Описи верстатів — повністю (QA-3: «розкручують к…», «з полиц…» на 1920 і 844×390). */
+.clk .clk-udesc { white-space: normal; overflow: visible; text-overflow: clip; }
+.clk-old > summary { color: var(--muted); }
+/* «Глянути» / ★: ціль коротко світиться (lookAt). */
+.clk .clk-look { animation: clkrowflash 1.6s ease-out; }
+@media (prefers-reduced-motion: reduce) { .clk .clk-look { animation: none; outline: 2px solid var(--accent); } }
+
+/* ---- хата й клейма ---- */
+.clk-cfore { color: var(--accent2); line-height: 1.25; }
+.clk-cfore:empty { display: none; }
+.clk .clk-after { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.clk .clk-aftergain { font-size: 1.45em; color: var(--accent); line-height: 1.15; }
+.clk .clk-takeall { align-self: flex-start; }
+/* Обмін глеків на черепки — у «Клеймах» (v12 §7 п. 7), а в шапці кола — лише значок. */
+.clk-shardbox {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px;
+}
+.clk-sell2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.clk-sell2 .clk-left { flex: 1 1 100%; }
+.clk-sell:empty { display: none; }
+.clk-head { position: relative; }
+.clk .clk-shardgo {
+  position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 8px; padding: 2px 9px;
+  font-size: max(12px, .38em); line-height: 1.2; min-height: 26px; white-space: nowrap; color: var(--accent);
+  border-color: rgba(217, 169, 47, .45);
+}
+.clk .clk-shardgo[hidden] { display: none; }
+/* Шапка вужча за стовпчик і стоїть посередині — значок праворуч від неї. Лежачи шапці й так тісно, а «Клейма» поруч. */
+.clk.land .clk-shardgo { display: none; }
+
+/* ---- ПК: вікно вкладки (v12 §7 п. 7, готово — ≥ 460 px на 1366×768) ----
+   Обмін черепків пішов у «Клейма», стрічка подій і рядок статусу — в один підвал, бафи — шаром на низ сцени
+   (placeRows): у правій колонці лишились смуга «Шлях виробу», вкладки, вікно й підвал. */
+.clk.fit .clk-shards {
+  flex-wrap: nowrap; justify-content: flex-start; gap: 8px; min-height: 22px; overflow: hidden;
+}
+.clk.fit .clk-shards:empty { display: none; }
+.clk.fit .clk-shards > .clkf-feed { flex: 0 1 auto; width: auto; max-width: 60%; height: 1.9em; font-size: .78em; }
+.clk.fit .clk-shards > .clkf-feed[hidden] { display: none !important; }
+.clk.fit .clk-shards > .gstatus {
+  flex: 1 1 0; min-width: 0; font-size: .78em; color: var(--muted); text-align: right;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Бафи — шаром на низ сцени: місця в колонках не беруть, тож їхня поява нічого не зсуває (B14). Дотики — крізь них. */
+.clk.fit .clk-stage > .clk-buffs {
+  position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 4; pointer-events: none;
+  height: auto; min-height: 0; width: auto;
+}
+.clk.fit .clk-stage > .clk-buffs[hidden] { display: none !important; }
+.clk.fit .clk-stage > .clk-buffs .clk-buff { box-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
+
+/* ---- телефон: липка плашка суцільна, і поки вона видна, справжній ряд вкладок прихований (v12 §2.6) ---- */
+.clk .clk-pin::before {
+  content: ''; position: absolute; left: -12px; right: -12px; top: -6px; height: 100px; pointer-events: auto;
+  background: var(--panel2); border-bottom: 1px solid var(--line); box-shadow: 0 6px 14px rgba(0, 0, 0, .45);
+}
+.clk .clk-pin > * { position: relative; }
+/* Справжній ряд вкладок ще видно під плашкою — її ряд значків не потрібен (pinView), і тло нижче на нього. */
+.clk .clk-pin.notabs .clk-pintabs { display: none; }
+.clk .clk-pin.notabs::before { height: 52px; }
+
+@media (max-width: 480px), (pointer: coarse) {
+  .clk .clk-bestgo, .clk .clk-takeall, .clk .clk-sell2 button { min-height: 40px; }
+  .clk .clk-shardgo { min-height: 40px; min-width: 40px; }
+  .clk .clk-more > summary, .clk .clk-old > summary { min-height: 40px; display: flex; align-items: center; }
+  /* «і» — сама ціль 40×40 (QA-3 міряв саму кнопку, а не невидиму рамку); кружечок малює ::before, тож на вигляд — як і
+     був, а від'ємні поля не дають рядку вирости. */
+  .clk .clk-info > summary { position: relative; width: 40px; height: 40px; margin: -12px; border: 0; }
+  .clk .clk-info > summary::before {
+    content: ''; position: absolute; inset: 12px; border: 1px solid var(--line); border-radius: 999px; pointer-events: none;
+  }
+}
+/* Низький ПК: рядок «Далі» під сценою (placeRows) — і сталі рядки лівого стовпчика вищі рівно на нього (50 + 6 px).
+   Стовпчик вузький (~345 px на 1366×768): порада переноситься, а не ріже «окупитьс…» (QA-2). */
+.clk.fit.pathside .clk-scene > .clkc-next { order: 2; flex: none; }
+.clk.fit.pathside .clk-scene > .clkc-next .clk-nxtext, .clk.fit.pathside .clk-scene > .clkc-next .clk-nxsub {
+  white-space: normal; overflow: visible; text-overflow: clip;
+}
+.clk.fit.pathside .clk-lay { --clk-rows: 163px; }
+
+/* ---- тости (v12 §2.7): не на вкладках, ✕ і результатах ----
+   ПК: над сценою під лічильником (toastSpot у clicker.js ставить body.clk-toasts і координати сцени). Телефон: над
+   нижнім меню, а не під шапкою — там липка плашка з вкладками і ✕ вікна кола. Дотики тости й так пропускають. */
+body.clk-toasts .toasts {
+  left: auto; right: var(--clk-toast-r); top: auto; bottom: var(--clk-toast-b); transform: none;
+  max-width: var(--clk-toast-w); align-items: flex-end;
+}
+body.clk-toasts .toast.gbig { max-width: 100%; }
+@media (max-width: 900px) {
+  body.g-room:has(.gtable:not([hidden]) .clk) .toasts { top: auto; bottom: calc(var(--tabs-h, 56px) + var(--mini-h, 0px) + 12px); }
+}
+
+/* Новачок (v12 §2.6): мета гри одним реченням — помітніше за перелік кроків. */
+.clk-start .clk-goal { font-size: 1.04em; line-height: 1.4; margin: 4px 0 8px; }
+
+/* Лежачи (v12 §2.6): шапка й меню сайту з'їдали 114 з 390 px. Поки на екрані коло лежачи, обидва тонші: шапка без
+   зайвих відступів, у меню значок і слово — в один рядок. Нижнє меню міряє landFit, тож сцена бере звільнене саме. */
+@media (pointer: coarse) and (max-height: 500px) {
+  body:has(.gtable:not([hidden]) .clk.land) { --tabs-h: calc(44px + var(--sab, 0px)); }
+  body:has(.gtable:not([hidden]) .clk.land) header { min-height: 46px; padding-top: max(3px, env(safe-area-inset-top)); padding-bottom: 3px; }
+  body:has(.gtable:not([hidden]) .clk.land) .mtabs button { flex-direction: row; gap: 6px; padding: 2px 4px; }
+}
+
+/* Телефон (v12 §7 п. 13): «Далі» й плашки кроків — без «…»: текст переноситься в другий рядок, а рядок «Далі» росте
+   (раніше «Свищик-пі…», «700 · ~58 88…», а «Далі» з двома кнопками різало пораду до трьох слів). */
+@media (max-width: 560px) {
+  .clk .clk-udesc { white-space: normal; overflow: visible; text-overflow: clip; }
+  .clk .clk-sttxt b, .clk .clk-stsub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
+  .clk .clk-nxtext, .clk .clk-nxsub { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+.clk.land .clk-sttxt b, .clk.land .clk-stsub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
+.clk.land .clk-nxtext, .clk.land .clk-nxsub { white-space: normal; overflow: visible; text-overflow: clip; }
+
+/* v12: старі рядки «Що нового» — згорткою (clicker.js, showNews). */
+.clk-news-old > summary { cursor: pointer; margin: .6em 0 .2em; color: var(--muted); font-size: .92em; }
+.clk-news-old[open] > summary { margin-bottom: .4em; }
+
+/* ---- телефон лежачи (QA-3): права колонка — вікно, що гортається саме, як на ПК ----
+   Було: колонка йшла сторінкою, і над Майстернею стояли плашки бафів, вкладки (57 px), стрічка й рядок режимів у два
+   ряди — на 844×390 видно ~1 рядок. Тепер колонка липне поруч зі сценою на ту саму висоту (--clk-land-h): угорі вкладки
+   значками (слово — у підказці), рядок режимів в один ряд, унизу стрічка подій; бафи — шаром на сцені (placeRows).
+   Готово: ≥ 3 рядки Майстерні без прокрутки сторінки. */
+.clk.land .clk-side {
+  position: sticky; top: calc(var(--clk-land-top, 56px) + 4px);
+  height: calc(var(--clk-land-vh, 100svh) - var(--clk-land-top, 56px) - var(--clk-land-bot, 58px) - 8px);
+  min-height: 0; gap: 6px;
+}
+.clk.land .clk-side > .clk-pane { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.clk.land .clk-side > .clk-shards { order: 99; flex: none; flex-wrap: nowrap; justify-content: flex-start; overflow: hidden; }
+.clk.land .clk-side > .clk-shards > .clkf-feed { max-width: none; height: 1.9em; font-size: .78em; }
+.clk.land .clk-side > .clk-shards > .clkf-feed[hidden] { display: none !important; }
+.clk.land .clk-side > .clk-shards:empty { display: none; }
+.clk.land .clk-tabs { flex: none; }
+.clk.land .clk-tabs button { min-height: 40px; flex-direction: row; padding: 4px 2px; }
+.clk.land .clk-tword { display: none; }
+.clk.land .clk-tico { font-size: 1.25em; }
+.clk.land .clk-pane > .clk-modes { flex-wrap: nowrap; top: 0; }
+.clk.land .clk-pane > .clk-modes > .muted { display: none; }
+.clk.land .clk-pane > .clk-modes button { min-width: 40px; padding: 3px 6px; }
+.clk.land .clk-stage > .clk-buffs {
+  position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 4; pointer-events: none; height: auto; min-height: 0; width: auto;
+}
+.clk.land .clk-stage > .clk-buffs[hidden] { display: none !important; }
+/* Рядок верстата лежачи — компактний: ціна з окупністю під назвою, опис в один рядок (повністю — у підказці), віха —
+   значком «🏁200» біля назви; ★ лишається на рядку, а посилання на неї в рядку режимів тут не вміщається. */
+.clk-umark { display: none; color: var(--accent2); font-size: .72em; white-space: nowrap; }
+.clk.land .clk-umark { display: inline; }
+.clk.land .clk-unext { display: none; }
+/* QA-4: опис — до двох рядків (а не «+0,…»), ціна — праворуч у рядку назви, окупність — лише в ★ рядка режимів. */
+.clk.land .clk-up { grid-template-columns: 28px minmax(0, 1fr); gap: 0 6px; padding: 4px 8px 6px 5px; min-height: 0; }
+.clk.land .clk-up > .clk-uico { width: 28px; height: 28px; align-self: start; }
+.clk.land .clk-up > .clk-uright { position: absolute; top: 4px; right: 8px; }
+.clk.land .clk-up .clk-pay { display: none; }
+.clk.land .clk-uname { padding-right: 104px; }
+.clk.land .clk-uname b { font-size: .86em; }
+.clk.land .clk-udesc {
+  white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.clk.land .clk-tabs { padding-top: 0; }
+.clk.land .clk-bestgo { flex: 1 1 auto; min-width: 0; padding: 3px 6px; }
+.clk.land .clk-pane > .clk-modes { padding: 0; justify-content: flex-end; }
+.clk.land .clk-stage > .clkf-feed {
+  position: absolute; left: 6px; right: 6px; bottom: 6px; width: auto; max-width: none; z-index: 5; pointer-events: none;
+  height: 1.9em; font-size: .74em; box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+}
+.clk.land .clk-stage > .clkf-feed button { pointer-events: auto; }
+.clk.land .clk-stage > .clkf-feed[hidden] { display: none !important; }
+.clk.land .clk-stage > .clkf-feed:not([hidden]) ~ .clk-buffs, .clk.land .clk-stage > .clk-buffs:has(~ .clkf-feed:not([hidden])) { bottom: calc(1.9em + 12px); }
+
+/* QA-3: у колонці 560–760 px (Full HD із балачками — 647) два стовпці верстатів по ~320 px — рядки з віхою й окупністю
+   в три-чотири рядки тексту й порожня клітинка поруч із рядком, у якого є віха. Два стовпці — лише від 760 px. */
+@container clkside (min-width: 560px) and (max-width: 759.98px) {
+  .clk .clk-shop, .clk .clk-donebody { display: flex; flex-direction: column; }
+}
+
+/* Сітка верстатів (UI-прохід 21.10): клітинки одного рядка — однакової висоти (верстат з віхою у два рядки поруч
+   із коротким сусідом лишав того «недорослим», і рядки сітки розлазились), а віха — не більше двох рядків (повністю —
+   у підказці). Сітка (від 760 px полиці) — subgrid на два під-рядки: верстати в одному (рівні), віхи-покупки під ними
+   в другому — сусід верстата з віхою не тягнеться на її висоту. Порожній під-рядок не дає зайвого проміжку: між
+   рядками сітки проміжок дає сама клітинка (margin-bottom), а не row-gap полиці. */
+@container clkside (min-width: 760px) {
+  .clk .clk-shop, .clk .clk-donebody { row-gap: 0; }
+  .clk .clk-shop > *, .clk .clk-donebody > * { margin-bottom: 4px; }
+  .clk .clk-shop > .clk-urow, .clk .clk-donebody > .clk-urow { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0; }
+  .clk .clk-urow > .clk-urmarks { grid-row: 2; padding-top: 3px; }
+}
+.clk .clk-unext {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+/* Телефон: глек, що летить поверх вікна кола (картка друга, «Що нового»), напівпрозорий — текст під ним видно, а
+   спіймати його так само можна (QA-4). */
+@media (max-width: 560px) {
+  body:has(.gtable:not([hidden]) .clk-overlay:not([hidden])) .clk-fly { opacity: .55; }
+  /* Сповіщення під час кола — під шапкою сайту, а не над нижнім меню, де вони накривали «Далі» (UI-прохід 21.10). */
+  body.clk-on .toasts { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px) + 8px); }
 }

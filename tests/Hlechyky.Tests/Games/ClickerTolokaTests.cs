@@ -516,6 +516,52 @@ public class ClickerTolokaTests
         Assert.Equal(owner.Clock.UtcNow.AddHours(0.85), Stage(owner).GetProperty("endsAt").GetDateTimeOffset());
     }
 
+    /// <summary>
+    /// B8 (плейтест 21.10): етап уже закрили виробами, а помічників менше трьох — новий друг усе одно може прийти на
+    /// толоку (−15 %), вироби лягають у комору господаря. Раз на етап від кожного, і не більше трьох помічників.
+    /// </summary>
+    [Fact]
+    public void A_closed_stage_still_takes_new_helpers_until_three()
+    {
+        var g = new Tsekh();
+        var owner = g.Potter("Оля");
+        var friends = new[] { "Микола", "Назар", "Петро", "Іван" }.Select(g.Potter).ToArray();
+        Give(owner, 2e15);
+        g.Publish(owner, "Оля");
+        foreach (var f in friends) Items(f, ("pot||1", 20), ("bowl||1", 20));
+
+        // Микола закриває етап: 15 горщиків і 15 мисок.
+        Assert.True(Bring(friends[0], "Оля", "pot||1", 10).Ok);
+        Assert.True(Bring(friends[0], "Оля", "pot||1", 5).Ok);
+        Assert.True(Bring(friends[0], "Оля", "bowl||1", 10).Ok);
+        Assert.True(Bring(friends[0], "Оля", "bowl||1", 5).Ok);
+        var house = Views.Json(g.Svc.House("Оля")).GetProperty("toloka");
+        Assert.All(house.GetProperty("needs").EnumerateArray(), n => Assert.Equal(0, n.GetProperty("left").GetInt32()));
+
+        // Сам Микола вдруге не прийде, а Назар і Петро — так: вимоги закриті, але помічників ще менше трьох.
+        var r = Bring(friends[0], "Оля", "pot||1", 1);
+        Assert.False(r.Ok);
+        Assert.Contains("вже був", r.Message);
+        r = Bring(friends[1], "Оля", "pot||1", 2);
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(18, Item(friends[1], "pot||1"));
+        Assert.False(Bring(friends[1], "Оля", "bowl||1", 1).Ok);
+        Assert.True(Bring(friends[2], "Оля", "bowl||1", 3).Ok);
+        r = Bring(friends[3], "Оля", "pot||1", 1);
+        Assert.False(r.Ok);
+        Assert.Contains("3 помічників", r.Message);
+        Assert.Equal(20, Item(friends[3], "pot||1"));
+
+        // Господар приймає пошту: троє на толоці, зайве — у коморі; закладка скорочена на 45 %.
+        Assert.True(owner.Act(0, "look").Ok);
+        var st = Stage(owner);
+        Assert.Equal(["Микола", "Назар", "Петро"], st.GetProperty("helpers").EnumerateArray().Select(x => x.GetString()).ToArray());
+        Assert.Equal(2, Item(owner, "pot||1"));
+        Assert.Equal(3, Item(owner, "bowl||1"));
+        Assert.True(Toloka(owner, "lay").Ok);
+        Assert.Equal(owner.Clock.UtcNow.AddHours(0.55), Stage(owner).GetProperty("endsAt").GetDateTimeOffset());
+    }
+
     [Fact]
     public void Wrong_wares_self_and_no_building_are_refused_before_sending()
     {
@@ -699,5 +745,30 @@ public class ClickerTolokaTests
         Assert.NotNull(box);
         var p = Assert.Single(box!);
         Assert.Equal(("Микола", "well", 0, "bowl", 6), (p.From, p.Building, p.Stage, p.Ware, p.N));
+    }
+
+    [Fact]
+    public void A_friend_sees_the_owners_depot_and_own_work_just_like_the_owner()
+    {
+        var g = new Tsekh();
+        var owner = g.Potter("Оля");
+        Give(owner, 2e15);
+        // Склад: 5 горщиків уже лежать під перший рядок «Копаємо яму» — друг бачить на 5 менше (QA-3).
+        var b = Stage(owner).GetProperty("building").GetString()!;
+        Patch(owner, s => (s["toloka"] as JsonObject ?? (JsonObject)(s["toloka"] = new JsonObject()))["depot"] =
+            new JsonObject { [$"{b}|0|0"] = new JsonObject { ["pot||1"] = 5 } });
+        Assert.Equal(5, T(owner).GetProperty("depot").GetInt32());
+        g.Publish(owner, "Оля");
+        var need = Views.Json(g.Svc.House("Оля")).GetProperty("toloka").GetProperty("needs")[0];
+        Assert.Equal(need.GetProperty("n").GetInt32() - 5, need.GetProperty("left").GetInt32());
+
+        // Закладено, і господар наклацав повну смугу своєї праці: годинник у друга — той самий.
+        Items(owner, ("pot||1", 10), ("pot||2", 10), ("bowl||3", 10), ("bowl||1", 5), ("bowl|kosiv|1", 5));
+        Assert.True(Toloka(owner, "lay").Ok);
+        Patch(owner, s => s["toloka"]!["work"] = 1_000_000);
+        var ends = Stage(owner).GetProperty("endsAt").GetDateTimeOffset();
+        g.Publish(owner, "Оля");
+        var seen = Views.Json(g.Svc.House("Оля")).GetProperty("toloka").GetProperty("endsAt").GetDateTimeOffset();
+        Assert.Equal(ends, seen);
     }
 }

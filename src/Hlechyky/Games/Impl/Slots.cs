@@ -67,7 +67,7 @@ public sealed class SlotState
 /// самими ключами. Повтор будь-якого кроку нічого не подвоїть: ключі ідемпотентні, а епоха в ключі (<see cref="SlotState.Epoch"/>)
 /// не дасть відкоченому стану повторити старий ключ. Програшний оберт журналу не пише: там лише списання, губити нічого.
 /// </summary>
-public abstract class SlotGame : Game
+public abstract partial class SlotGame : Game
 {
     public const string ActSpin = "spin", ActGamble = "gamble", ActCollect = "collect", ActBuy = "buy";
     public const int GambleMax = 5;
@@ -95,6 +95,7 @@ public abstract class SlotGame : Game
     {
         try { _bank = Ctx?.Services?.GetService<SlotsBank>(); }
         catch { _bank = null; }
+        ConfigureTourney();   // турнір тижня (SlotTourneyGame.cs)
     }
 
     /// <summary>Відкриття автомата (і «Ще раз»): статистика й останній сценарій лишаються, епоха — нова.</summary>
@@ -163,6 +164,7 @@ public abstract class SlotGame : Game
             balance = seat is null ? 0 : State.Wallet,
             jackpot = _bank?.Pot ?? 0,
             mustHit = o.MustHitOn ? o.JackpotMustHit : (int?)null,   // «має впасти до» (null — межі нема)
+            daily = o.JackpotDaily > 0 ? o.JackpotDaily : (int?)null,   // пакет 5: «Глек докидає N щодня» (null — не докидає)
             last = State.Last is null ? null : new { seq = State.Seq, script = State.Last.DeepClone() },
             gamble = g is null ? null : new
             {
@@ -173,13 +175,24 @@ public abstract class SlotGame : Game
             spins = State.Spins,
             table = SlotMath.Table(),
             buy = BuyPrice(o) is { } price ? new { price } : null,   // «Купити бонус»: ціна в ставках (null — не продається)
+            saldo = SaldoWire(seat),   // пакет 5: чесне сальдо всіх автоматів (null — сервісу нема)
+            tourney = TourneyView(seat),   // турнір тижня (SlotTourneyGame.cs); null — вимкнено
         };
+    }
+
+    /// <summary>Пакет 5 «Азарт чесно»: поставив / повернув у всіх автоматах — сьогодні й за весь час (з пам'яті сервісу).</summary>
+    object? SaldoWire(int? seat)
+    {
+        if (seat is null || Ctx?.NickOf(0) is not { } nick) return null;
+        try { return (Ctx.Services?.GetService(typeof(Hlechyky.Games.Economy.IAzartSaldo)) as Hlechyky.Games.Economy.IAzartSaldo)?.Get("slot", nick).Wire(); }
+        catch { return null; }
     }
 
     // ---------- дії ----------
 
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
+        if (action == ActTourney) return TourneySpin(seat, payload);   // турнір тижня на фішках (SlotTourneyGame.cs)
         if (action is not (ActSpin or ActGamble or ActCollect or ActBuy)) return ActResult.Fail("Тут так не ходять");
         if (_bank is null) return ActResult.Fail(ClosedText);
         if (Ctx.NickOf(seat) is not { } nick) return ActResult.Fail("Тут так не ходять");

@@ -186,6 +186,7 @@ public sealed partial class Clicker
         _gifts.Add(GiftKey);
         _gifts.Add(GiftV10Key);
         _gifts.Add(GiftV11Key);
+        _gifts.Add(GiftV12Key);
     }
 
     /// <summary>Вибив звання назавжди: запам'ятати й після дії сказати в Журнал і цехові.</summary>
@@ -370,7 +371,7 @@ public sealed partial class Clicker
         var report = new TitleReport(TopValues(), _titleShow.ToList(), HasNow(), _tDay,
             _tDay.Length > 0 ? new TitleDayReport(_tClicks, _tNight, _tCatch, _tRooster == default ? null : _tRooster, TitleGrowth()) : null);
         foreach (var (title, from) in svc.TitlesReport(GuildKey, GuildNick, now, report))
-            if (TitleDef(title) is { } t && from.Length > 0) Ctx.Log($"{t.Icon} {GuildNick} забирає в {from} звання «{t.Name}»");
+            if (TitleDef(title) is { } t && from.Length > 0) Ctx.Log($"{t.Icon} {GuildNick} забирає в {NickGen(from)} звання «{t.Name}»");
     }
 
     // ---------- дії ----------

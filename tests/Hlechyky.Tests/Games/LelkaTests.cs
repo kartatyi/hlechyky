@@ -24,13 +24,19 @@ public sealed class LelkaKit
     /// <param name="stakes">Що дати касі замість <see cref="Stakes"/> (обгортка-лічильник, справжня економіка).</param>
     /// <param name="defer">Черга каси; типово — одразу.</param>
     public LelkaKit(Func<FakeStakes, IStakes>? stakes, Func<FakeStore, IGameStore>? store, Action<Action>? defer,
-        params (string Nick, int Wallet)[] people)
+        params (string Nick, int Wallet)[] people) : this(stakes, store, defer, null, people) { }
+
+    /// <param name="saldo">Сальдо азарту для виду (пакет 5); null — сервісу нема.</param>
+    public LelkaKit(Func<FakeStakes, IStakes>? stakes, Func<FakeStore, IGameStore>? store, Action<Action>? defer,
+        Hlechyky.Games.Economy.IAzartSaldo? saldo, params (string Nick, int Wallet)[] people)
     {
         foreach (var (nick, wallet) in people) Stakes.Set(nick, wallet);
         H = null!;
         Book = new LelkaBook(stakes?.Invoke(Stakes) ?? Stakes, store?.Invoke(Store) ?? Store, defer: defer ?? (a => a()), options: new FixedOptions<LelkaOptions>(Options), outbox: Site,
             held: (table, round) => LelkaBook.HeldBy(H.Rooms, table, round));
-        H = new RoomHarness("lelka", services: RoomHarness.WithService(Book), seed: 11);
+        var services = new ServiceCollection().AddSingleton(Book);
+        if (saldo is not null) services.AddSingleton(saldo);
+        H = new RoomHarness("lelka", services: services.BuildServiceProvider(), seed: 11);
         foreach (var (nick, _) in people)
         {
             var reply = H.Join(nick);

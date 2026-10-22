@@ -1,0 +1,64 @@
+/* Майстер дня (v12, пакет C): розділ «🏆 Майстер дня» у «Селі», чип у рядку статусу кола, відгук у вікні горна. */
+
+/* ---- розділ у «Селі» ---- */
+.clkmd-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.clkmd-me { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; }
+.clkmd-me b { color: var(--accent); }
+.clkmd-me.guest { color: var(--muted); }
+/* Табло: місце · нік · очки. Нік ріжемо «…», а не рядок — на 390 px без горизонтального скролу. */
+.clkmd-board { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.clkmd-row {
+  display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto auto; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: 8px; min-width: 0;
+}
+.clkmd-row:nth-child(odd) { background: rgba(255, 255, 255, .03); }
+.clkmd-row.me { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--accent2); }
+.clkmd-pl { text-align: center; }
+.clkmd-nick { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clkmd-you { font-size: .75em; padding: 0 6px; border-radius: 999px; background: var(--accent2); color: var(--panel); font-weight: 600; }
+.clkmd-pts { grid-column: 4; font-variant-numeric: tabular-nums; color: var(--text); }
+.clkmd-row.me .clkmd-pts { color: var(--accent); }
+.clkmd-gap { text-align: center; color: var(--muted); line-height: 1; }
+.clkmd-prize, .clkmd-last { overflow-wrap: anywhere; }
+
+/* ---- чип у рядку статусу кола (.clk-rr: швидкість · суперник) ----
+   Той самий рядок, що й суперник: та сама висота, тож коло під ним не рухається. Ціль для пальця — 40 px за рахунок
+   невидимого поля довкола (::after), а не висоти самого рядка. */
+.clk-rr > .clkmd-chip {
+  position: relative; flex: none; display: inline-block; max-width: 100%; box-sizing: border-box;
+  height: calc(1.35em + 4px); line-height: 1.35; padding: 2px 10px; border-radius: 10px; white-space: nowrap;
+  background: var(--panel); border: 0; box-shadow: inset 0 0 0 1px var(--accent2); color: var(--text); cursor: pointer;
+}
+.clk-rr > .clkmd-chip[hidden] { display: none; }
+.clk-rr > .clkmd-chip::after { content: ''; position: absolute; inset: -9px -4px; }
+.clk-rr > .clkmd-chip:hover { background: var(--panel2); }
+.clk-rr > .clkmd-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.clkmd-chip .clkmd-ch { color: var(--accent); font-weight: 600; }
+.clkmd-chip .clkmd-ct, .clkmd-chip .clkmd-cs { color: var(--muted); }
+.clkmd-chip .clkmd-cs, .clkmd-chip.short .clkmd-ct { display: none; }
+.clkmd-chip.short .clkmd-cs { display: inline; }
+/* Суперник бере, що лишив чип (--clkmd-w міряє clicker-day.js), — і далі «…», як і був. Порожній суперник місця не
+   тримає: висоту рядка тримає сам чип. */
+.clk:not(.land) .clk-rr.clkmd-on > .clk-rival { max-width: calc(100% - var(--clkmd-w, 0px) - 10px); }
+.clk:not(.land) .clk-rr.clkmd-on > .clk-rival[hidden] { display: none !important; }
+/* Телефон стоячи: рядок швидкості й суперника — display: contents (кожен — рядок сцени). Поки є чип, обгортка стає
+   рядком-гнучкою коробкою, щоб чип і суперник ділили один рядок і коло не з'їхало вниз. order 0 — як у швидкості й
+   суперника в мобільному css (інші діти сцени там мають order 2). */
+.clk:not(.fit):not(.land) .clk-rr.clkmd-on {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; row-gap: inherit; column-gap: 8px;
+  width: 100%; min-width: 0; order: 0;
+}
+.clk:not(.fit):not(.land) .clk-rr.clkmd-on > .clk-rate { flex: 0 0 100%; min-width: 0; }
+.clk:not(.fit):not(.land) .clk-rr.clkmd-on > .clk-rival { flex: 0 1 auto; min-width: 0; }
+/* Телефон лежачи (844×390): права половина вже переповнена — рядок 1fr між суперником і смугою «Шлях виробу» 0 px,
+   швидкість і суперник і так налазять одне на одне. Чип там ліг би на смугу, тож лежачи його нема: табло — у «Селі». */
+.clk.land .clk-rr > .clkmd-chip { display: none; }
+
+/* ---- відгук у вікні відкриття горна (clicker-kiln.js) ---- */
+.clkmd-plus {
+  align-self: center; margin: 2px auto 0; padding: 2px 10px; border-radius: 999px; width: fit-content; max-width: 100%;
+  background: var(--panel2); color: var(--accent); font-weight: 600; text-align: center;
+  animation: clkmdplus .45s ease-out both;
+}
+@keyframes clkmdplus { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .clkmd-plus { animation: none; } }

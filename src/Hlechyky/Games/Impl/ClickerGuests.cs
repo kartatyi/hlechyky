@@ -139,8 +139,10 @@ public sealed partial class Clicker
     // ---------- стан ----------
 
     /// <summary>Замовлення гостя: хто (номер у <see cref="ClickerGuest.People"/>), що, якої якості й до коли чекає.</summary>
+    /// <param name="Fixed">Ціна, обіцяна, коли гість прийшов (v12): плата не падає нижче неї, хоч би що сталось із серією.
+    /// Старе збереження — 0 (тоді як було).</param>
     sealed record GuestOrderRow(int Id, string Guest, int Who, string Ware, string Style, int Quality, int Count,
-        DateTimeOffset At, DateTimeOffset Until);
+        DateTimeOffset At, DateTimeOffset Until, double Fixed = 0);
 
     /// <summary>Стан пакета в збереженні. Усе необов'язкове: старе збереження — «гостей ще не було».</summary>
     /// <param name="Met">Хто прибув і коли (обпал цього не чіпає).</param>
@@ -206,13 +208,15 @@ public sealed partial class Clicker
         }
     }
 
+    /// <summary>Скільки шани справді додасть замовлення: Виставкова зала Толоки й «Прадідова печатка» (v11) множать її.</summary>
+    int GuestRepReal(int delta) => delta <= 0 ? 0 : (int)Math.Ceiling(delta * TolokaGuestRepMult * (1 + Relic("seal2") / 2));
+
     /// <summary>Додати шану гостеві. Повертає, на скільки рівнів вона виросла; ачівки — на переході через поріг.</summary>
     int GuestRepAdd(string key, int delta)
     {
         if (GuestIndex(key) < 0 || delta <= 0) return 0;
         var before = GuestLevel(key);
-        // Виставкова зала Толоки й «Прадідова печатка» (v11) множать шану.
-        delta = (int)Math.Ceiling(delta * TolokaGuestRepMult * (1 + Relic("seal2") / 2));
+        delta = GuestRepReal(delta);
         _gRep[key] = (int)Math.Min(1_000_000L, (long)GuestPoints(key) + delta);
         GuestsRecount();
         var after = GuestLevel(key);
@@ -241,11 +245,37 @@ public sealed partial class Clicker
     /// <summary>Шана за замовлення: 4 + 2 за кожен виріб + 2 за кожен ступінь якості понад добрий + 3 за розпис.</summary>
     static int GuestRepFor(GuestOrderRow o) => Math.Max(1, 4 + 2 * o.Count + 2 * (o.Quality - 2) + (o.Style.Length > 0 ? 3 : 0));
 
+    /// <summary>
+    /// Що каже гість, забираючи <paramref name="ware"/>: репліка, що не згадує жодного з його виробів, або саме цей
+    /// (QA-3: замовив тикву, а дякує «Кухоль під чай…»). Виріб у репліці впізнаємо за словом, що починається як його назва
+    /// (не всередині слова: «Ейфелева» — не лев).
+    /// </summary>
+    string GuestLine(ClickerGuest g, string ware)
+    {
+        static string[] Forms(string w)
+        {
+            var n = WareOf(w)?.Name.ToLowerInvariant() ?? w;
+            if (n.IndexOf('-') is var cut and > 0) n = n[..cut];
+            var stem = n.Length > 4 ? n[..4] : n;
+            return w == "bowl" ? [stem, "мисок"] : [stem];
+        }
+        static bool Mentions(string line, string w)
+        {
+            var forms = Forms(w);
+            return System.Text.RegularExpressions.Regex.Split(line.ToLowerInvariant(), @"[^\p{L}-]+")
+                .Any(word => forms.Any(f => word.StartsWith(f, StringComparison.Ordinal)));
+        }
+        var fit = g.Lines.Where(l => Mentions(l, ware) || !g.Likes.Any(w => Mentions(l, w))).ToArray();
+        var pool = fit.Length > 0 ? fit : g.Lines;
+        return pool[Ctx.Rng.Next(pool.Length)];
+    }
+
     /// <summary>У скільки разів гість платить понад ціну виробу: ×8 (гончарі світу — ×12) і +10 % за рівень його шани.</summary>
     double GuestPayMult(GuestOrderRow o) => GuestOf(o.Guest).PayMult * (1 + GuestPayPerLevel * GuestLevel(o.Guest)) * (1 + Relic("seal2"));
 
     /// <summary>Скільки замовлення заплатить, якщо віддати рівно те, що просять (у виді — як обіцянка).</summary>
-    double GuestPay(GuestOrderRow o) => Math.Max(1, Math.Max(ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * GuestPayMult(o)), GuestPlayPay(o)));
+    double GuestPay(GuestOrderRow o) =>
+        Math.Max(o.Fixed, Math.Max(1, Math.Max(ToPots(ItemValue(o.Ware, o.Style, o.Quality) * o.Count * GuestPayMult(o)), GuestPlayPay(o))));
 
     /// <summary>
     /// Скільки хвилин гри (<see cref="PlayMinute"/>) за виріб на кожну одиницю множника гостя (10.10): ×8–×12 ціни виробу —
@@ -294,6 +324,9 @@ public sealed partial class Clicker
         var person = Ctx.Rng.Next(g.People.Length);
         var life = TimeSpan.FromMinutes(GuestLifeMinMinutes + Ctx.Rng.Next(GuestLifeMaxMinutes - GuestLifeMinMinutes + 1));
         var order = new GuestOrderRow(++_gOrderId, g.Key, person, ware.Key, style, g.Quality, count, now, now + life);
+        // Плейтест 21.10: плата в хвилинах гри залежить від серії глеків з полиці — серія рвалась, і «≈71,8 млрд» на картці
+        // ставало 8,6 млрд при здачі. Що пообіцяли, коли гість прийшов, — те й нижня межа плати (v12).
+        order = order with { Fixed = GuestPay(order) };
         _gOrders.Add(order);
         return order;
     }
@@ -381,19 +414,13 @@ public sealed partial class Clicker
         var have = ItemCount(match);
         if (have < o.Count) return ActResult.Fail(GuestsLack(o, have));
 
-        // Ціна — від того, що справді піде: TakeItems бере спершу найгіршу придатну якість, тож рахуємо в тому самому
-        // порядку. Хто віддав дзвінкий замість доброго, отримує й за дзвінкий.
+        // Ціна — від того, що справді піде: той самий план, за яким TakeItems бере (найгірша придатна якість і спершу
+        // невідкладене). Хто віддав дзвінкий замість доброго, отримує й за дзвінкий.
+        var who = new TakeFor("guest", o.Id);
         double sum = 0;
-        var left = o.Count;
-        foreach (var (item, n) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList())
-        {
-            var take = Math.Min(n, left);
-            sum += ItemValue(item.Ware, item.Style, item.Quality) * take;
-            left -= take;
-            if (left <= 0) break;
-        }
-        TakeItems(match, o.Count);
-        var pay = Math.Max(1, Math.Max(ToPots(sum * GuestPayMult(o)), GuestPlayPay(o)));
+        foreach (var (item, n) in TakePlan(match, o.Count, who)) sum += ItemValue(item.Ware, item.Style, item.Quality) * n;
+        TakeItems(match, o.Count, who);
+        var pay = Math.Max(o.Fixed, Math.Max(1, Math.Max(ToPots(sum * GuestPayMult(o)), GuestPlayPay(o))));
         Add(pay);
         _gOrders.RemoveAt(i);
         _gDelivered++;
@@ -401,7 +428,8 @@ public sealed partial class Clicker
         var g = GuestOf(o.Guest);
         var rep = GuestRepFor(o);
         var up = GuestRepAdd(g.Key, rep);
-        var text = $"{g.Emoji} {GuestWho(o)}: «{g.Lines[Ctx.Rng.Next(g.Lines.Length)]}» +{PotsShort(pay)} · шана +{rep}";
+        // Плейтест 21.10 (B10): тост казав «шана +8», а додавалось +14 — множники Зали й печатки до тексту не доходили.
+        var text = $"{g.Emoji} {GuestWho(o)}: «{GuestLine(g, o.Ware)}» +{PotsShort(pay)} · шана +{GuestRepReal(rep)}";
         if (up > 0) text += $" · ⭐ {g.Name}: шана {GuestLevel(g.Key)}";
         return ActResult.Accept(text);
     }
@@ -419,7 +447,7 @@ public sealed partial class Clicker
     /// <summary>Рід виробу для «добрий чи кращий» / «добра чи краща» / «добре чи краще».</summary>
     static readonly Dictionary<string, char> GuestWareGender = new(StringComparer.Ordinal)
     {
-        ["bowl"] = 'f', ["makitra"] = 'f', ["tile"] = 'f', ["tykva"] = 'f', ["barrel"] = 'n',
+        ["bowl"] = 'f', ["makitra"] = 'f', ["tile"] = 'f', ["tykva"] = 'f', ["lion"] = 'f', ["barrel"] = 'n',
     };
 
     /// <summary>«дзвінкий чи кращий», «лише розкішна» — якість, якої просять, узгоджена з родом виробу.</summary>
@@ -466,10 +494,12 @@ public sealed partial class Clicker
             orders = _gOrders.Select(o => new
             {
                 id = o.Id, guest = o.Guest, who = o.Who, ware = o.Ware, style = o.Style, q = o.Quality, n = o.Count,
-                have = ItemCount(GuestMatch(o)), pay = GuestPay(o), mult = GuestPayMult(o), rep = GuestRepFor(o), until = o.Until,
+                have = ItemCount(GuestMatch(o)), pay = GuestPay(o), mult = GuestPayMult(o), rep = GuestRepReal(GuestRepFor(o)), until = o.Until,
             }),
             next = _gNext,
             slots = GuestSlots,
+            // Хвилина гри в глеках (v12, пакет D3): клієнт пише «≈8,6 млрд · 14 хв гри, росте із серією».
+            playMinute = PlayMinute,
             allMult = GuestsAllMult,
             delivered = _gDelivered,
             // «Заморська карта» (секрет третього кола): клієнт так і пише, звідки четверте місце.
@@ -524,7 +554,7 @@ public sealed partial class Clicker
                 || o.Quality is < 1 or > QualityMax || o.Count is < 1 or > 10 || o.Until <= o.At
                 || _gOrders.Count >= GuestSlotsMax + GuestSeamapSlots + TolokaGuestSlotsMax + 2)
                 continue;
-            _gOrders.Add(o with { Who = Math.Clamp(o.Who, 0, GuestOf(o.Guest).People.Length - 1) });
+            _gOrders.Add(o with { Who = Math.Clamp(o.Who, 0, GuestOf(o.Guest).People.Length - 1), Fixed = double.IsFinite(o.Fixed) ? Math.Max(0, o.Fixed) : 0 });
         }
         _gOrderId = Math.Max(Math.Max(0, row.OrderId), _gOrders.Count == 0 ? 0 : _gOrders.Max(o => o.Id));
         _gDelivered = Math.Max(0, row.Delivered);

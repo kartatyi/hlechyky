@@ -236,6 +236,27 @@
   const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
   const STARS = ['', '★', '★★', '★★★', '👑'];
 
+  /// Відкладене (v12, вид craft.items[].kept = [толока, замовлення, майстерштук] або null): скільки з цих штук чекають
+  /// Толока, замовлення сіл і гостей та майстерштук — так само, як їх тримає лад і віз (сервер, LadKept).
+  const keptOf = (it) => (it.kept ? Math.min(it.n, (it.kept[0] || 0) + (it.kept[1] || 0) + (it.kept[2] || 0)) : 0);
+  function keptSum(items, q) {
+    const sum = [0, 0, 0];
+    for (const it of items) if (it.q <= q && it.kept) for (let i = 0; i < 3; i++) sum[i] += it.kept[i] || 0;
+    return sum;
+  }
+  function keptText(k) {
+    const parts = [];
+    if (k[0]) parts.push('Толока ' + k[0]);
+    if (k[1]) parts.push('замовлення ' + k[1]);
+    if (k[2]) parts.push('майстерштук ' + k[2]);
+    return parts.join(' · ');
+  }
+  /// Друге «Точно?» в продажу гуртом: якщо підуть і відкладені — так і кажемо (сервер поки продає їх разом з усім).
+  // Сервер (v12) за замовчуванням лишає відкладене під Толоку й замовлення: «Продати все» з «Далі» так і каже.
+  const sellArm = (kept) => (kept > 0 ? 'Точно? 🔒 ' + kept + ' відкладених лишаться' : 'Точно все? Ще раз');
+  /// Скільки тримається друге «Точно?» (QA-2: за 3 с не встигали).
+  const ARM_MS = 4500;
+
   function wareName(st, key) {
     const c = st.craft;
     const w = c && c.wares.find((x) => x.key === key);
@@ -351,6 +372,8 @@
   /// завантажитись — тоді кроки 3–4 просто бліді, а «Далі» веде по колу й сушарні.
   const kilnOf = (st) => st.kView || null;
   const burnMs = (st) => (st.catalog && st.catalog.kiln && st.catalog.kiln.burnMs) || 30000;
+  /// Від якої краси розпису в партії трапляються розкішні (сервер: PaintLux у каталозі горна).
+  const luxFrom = (st) => (st.catalog && st.catalog.kiln && st.catalog.kiln.paintLux) || 50;
 
   /// Скільки сухих сирців на сушарні просто зараз (горно рахує те саме, але може відставати на пів секунди).
   const dryNow = (st, api) => (st.craft ? st.craft.rack.filter((r) => r.dryAt <= api.serverNow(st)).length : 0);
@@ -374,20 +397,60 @@
 
   /// Розпалити горно одним дотиком: спершу скласти сухі (якщо є куди), потім запалити. Палить підмайстер, поки
   /// гравець сам не обрав «Палю сам» — тоді ведемо його до горна, де вже мінігра.
-  function fireKiln(st, api) {
+  /// o.bare — уже вирішено явно (кнопка «Без розпису», «Обпалити» з підсумку розпису): не питати.
+  function fireKiln(st, api, o) {
     const k = kilnOf(st);
     if (!k) return;
+    const ask = !(o && o.bare) && api.kilnAsk;
+    // v12, плейтест §2.3: «Палю сам» без розпису мовчки пропускав розпис, а підмайстер мовчки палив зароблену красу
+    // (98 → 0). Тепер обидва випадки — питання; «Далі» йде сюди ж.
+    if (ask && selfFire(api) && !(k.beauty > 0) && api.kilnCanPaint && api.kilnCanPaint()) {
+      ask({
+        title: '🎨 Партія не розписана',
+        text: 'Палиш сам — розписані вироби дзвінкіші, а з красою від ' + luxFrom(st) + ' бувають і розкішні (×4,5). Розписати перед обпалом?',
+        btns: [{ label: '🎨 Розписати', run: () => api.startPaint(st) }, { label: '🔥 Обпалити без розпису', run: () => fireKiln(st, api, { bare: true }) }],
+      });
+      return;
+    }
+    if (ask && !selfFire(api) && k.beauty > 0) {
+      ask({
+        title: '👷 Підмайстер зітре красу',
+        text: 'Партія розписана (краса ' + k.beauty + '), а підмайстер палить без краси розпису — вона згорить. Палити самому?',
+        btns: [
+          { label: '🔥 Палю сам', run: () => { api.storeSet('clk.kiln.self', '1'); fireKiln(st, api, { bare: true }); } },
+          { label: '👷 Хай палить — без краси', run: () => fireKiln(st, api, { bare: true }) },
+        ],
+      });
+      return;
+    }
     const light = () => {
       if (selfFire(api)) {
         const useStraw = k.straw > 0 && api.storeGet('clk.kiln.straw', '1') === '1';
-        api.act(st, 'kiln', { op: 'light', straw: useStraw }).then(() => api.showTab(st, CRAFT_TAB));
+        // Мітка «розпалили звідси»: це вікно відкриє горно навіть без жодної дії, інші — почекають на нього (хотфікс B1).
+        st.kLitPress = Date.now();
+        quietAct(st, api, 'kiln', { op: 'light', straw: useStraw }).then((r) => {
+          if (!r || !r.ok) st.kLitPress = 0;
+          api.showTab(st, CRAFT_TAB);
+        });
       } else {
         api.order(st, 'kiln', { op: 'light', helper: true });
       }
     };
+    // Старт горна — без тостів «🧱 У горно…» і «🔥 Горно розпалено…» (QA-2: на телефоні два тости лягали на «Поліно» й
+    // «Заслінку»): ручний обпал видно й так, а підмайстер скаже одним тостом про розпал.
     const free = Math.max(0, k.slots - k.batch.length);
-    if (free > 0 && dryNow(st, api) > 0) api.act(st, 'kiln', { op: 'load' }).then(light);
+    if (free > 0 && dryNow(st, api) > 0) quietAct(st, api, 'kiln', { op: 'load' }).then(light);
     else light();
+  }
+
+  /// Тиха дія (ctx.tell): без тосту про успіх, а відмову однаково кажемо тостом. Горну кліки, що ще не полетіли, не
+  /// заважають — їх доносить наступна пачка.
+  function quietAct(st, api, action, payload) {
+    if (!st.ctx || !st.ctx.tell) return api.act(st, action, payload);
+    return st.ctx.tell(action, payload).then((r) => {
+      if (r && !r.ok && r.message) api.toast(st, r.message, 'err');
+      return r || { ok: false, message: '' };
+    });
   }
 
   /// Один наступний крок — те єдине, що гравцеві варто зробити зараз. Перше правило, яке підходить, і виграє;
@@ -400,12 +463,26 @@
     const dry = dryNow(st, api);
     const load = loadNow(st, api);
     const word = (n) => api.plural(n, 'виріб', 'вироби', 'виробів');
+    const rackFull = c.rack.length >= c.rackSize;
+
+    // Готове замовлення села — завжди та сама порада, хоч би що робило горно. QA-3: «Далі» скакало між «Здати» й кораблем
+    // чи Толокою 150 разів за хвилину, бо горно мінялось між «палає», «холоне» й «обпалити» — а з ним і порядок.
+    const ready = ((st.fair && st.fair.orders) || []).filter((o) => o.until > sn && o.have >= o.n)[0];
+    const deliver = ready && st.fairDeliver
+      ? { key: 'deliver', icon: '📜', text: 'Здати замовлення · +' + api.short(ready.pay), sub: ready.whoText || '', btn: '🤝 Здати',
+        run: (ev) => st.fairDeliver(ready.id, ev) }
+      : null;
+    // QA-2 v12: лідерові «нема сенсу клікати» — бо «Далі» вічно стояло на рутині горна з підмайстром і ніколи не
+    // показувало ні корабля, ні відчиненої майстерні, ні Толоки. Стани горна, де від гравця нічого не треба (палить чи
+    // відкриє підмайстер, горно холоне, «Обпалити» дві-три штуки чи те, що палій однаково візьме сам), поступаються
+    // спершу готовому замовленню, тоді цілям частин (HClicker.goals: кораблі, майстерні, Толока, гості) — goalStep.
+    const quiet = (s) => deliver || goalStep(st, api, 1) || s;
 
     // 1. Горно палає — чекаємо (або йдемо доглядати, якщо палимо самі).
     if (k && k.state === 'burning') {
       const left = Date.parse(k.litAt) + burnMs(st) - sn;
       return k.helper
-        ? { icon: '🔥', text: 'Горно палає · ' + api.mmss(left), sub: 'підмайстер відкриє сам' }
+        ? quiet({ icon: '🔥', text: 'Горно палає · ' + api.mmss(left), sub: 'підмайстер відкриє сам' })
         : { icon: '🔥', text: 'Горно палає — тримай жар', btn: 'До горна', run: () => api.showTab(st, CRAFT_TAB) };
     }
     // 2. Партія складена, а рука до неї ще не торкалась: спершу розпис (v9) — розписана партія дає дзвінкіші
@@ -416,55 +493,107 @@
         sub: 'розписані вироби дзвінкіші й дорожчі', btn: '🎨 Розписати',
         run: () => { api.showTab(st, CRAFT_TAB); api.startPaint && api.startPaint(st); } };
     }
-    // 3. Є що обпалити — одна кнопка робить усе: складає сухі й розпалює.
+    // 3. Є що обпалити — одна кнопка робить усе: складає сухі й розпалює. «Палю сам» без розпису (v12, плейтест §2.3:
+    // «Далі» жодного разу не пропонував розписати) — fireKiln спершу спитає «розписати?», а «без розпису» — лише явно.
+    let later = null;
     if (k && load > 0 && k.state !== 'cooling') {
-      return { icon: '🔥', text: 'Обпалити ' + load + ' ' + word(load),
-        sub: selfFire(api) ? 'палиш сам — буде мінігра' : 'палить підмайстер',
+      const unpainted = selfFire(api) && !(k.beauty > 0) && api.kilnCanPaint && api.kilnCanPaint();
+      const fire = { icon: '🔥', text: 'Обпалити ' + load + ' ' + word(load),
+        sub: rackFull ? 'сушарня повна — коло стоїть' : unpainted ? 'партія не розписана — спершу розпис?'
+          : selfFire(api) ? 'палиш сам — буде мінігра' : 'палить підмайстер',
         btn: '🔥 Обпалити', run: () => fireKiln(st, api) };
+      if (selfFire(api)) {
+        // «Палю сам» (QA-3: у новачка «Обпалити 1…6» стояло 25+ хв і затуляло все): готове замовлення й віха, яку вже
+        // можна купити, — вище; ручний обпал — від трьох виробів (чи коли сушарня повна), а менше — коли більше нічого.
+        const up = deliver || markStep(st, api);
+        if (up) return up;
+        if (load >= 3 || rackFull) return fire;
+        later = fire;
+      } else {
+        // Палить підмайстер, а сухих дві-три або палій однаково візьме сам — це рутина, не справа гравця.
+        return load <= 2 || k.auto ? quiet(fire) : fire;
+      }
     }
     // 4. Горно холоне — сухим доведеться зачекати.
     if (k && k.state === 'cooling' && dry > 0) {
-      return { icon: '♨', text: 'Горно холоне · ' + api.mmss(Date.parse(k.coolUntil) - sn), sub: 'сухі чекають на нього' };
+      return quiet({ icon: '♨', text: 'Горно холоне · ' + api.mmss(Date.parse(k.coolUntil) - sn), sub: 'сухі чекають на нього' });
     }
     // 5. Замовлення вже можна здати.
-    const ready = ((st.fair && st.fair.orders) || []).filter((o) => o.until > sn && o.have >= o.n)[0];
-    if (ready && st.fairDeliver) {
-      return { key: 'deliver', icon: '📜', text: 'Здати замовлення · +' + api.short(ready.pay), sub: ready.whoText || '', btn: '🤝 Здати',
-        run: (ev) => st.fairDeliver(ready.id, ev) };
-    }
+    if (deliver) return deliver;
+    // 5.5. Корабель, відчинена майстерня, Толока, гість — раніше за «Продати все»: корабель платить за ті самі вироби більше.
+    const goal = goalStep(st, api, 1);
+    if (goal) return goal;
     // 6. Сушарня повна, а сохне ще довго — підмайстри стоять, і це затор.
-    if (c.rack.length >= c.rackSize) {
+    if (rackFull) {
       const soon = c.rack.map((r) => r.dryAt).sort((a, b) => a - b)[0] || 0;
       return { icon: '🧺', text: 'Сушарня повна · ' + api.mmss(soon - sn), sub: 'поки не звільниться — коло стоїть' };
     }
-    // 7. Комора набралась — час продати.
+    // 7. Комора набралась — час продати. Базар відкладеного (🔒 Толока, замовлення) не бере — тож і кнопка «Продати
+    // вільне», а не «Продати все», як однойменна в коморі, що після «Точно?» продає й відкладене (QA-3).
     const items = c.items.reduce((s2, it) => s2 + it.n, 0);
     if (items > 0 && items >= c.storeCap / 2) {
-      const sum = c.items.reduce((s2, it) => s2 + it.value * it.n, 0);
-      return { key: 'sell', icon: '📦', text: 'Продати ' + items + ' ' + word(items) + ' · +' + api.short(sum), sub: 'комора майже повна',
-        btn: 'Продати все', arm: 'Точно все? Ще раз', run: () => api.order(st, 'bazaar', { all: true }) };
+      const kept = c.items.reduce((s2, it) => s2 + keptOf(it), 0);
+      const free = items - kept;
+      const sum = c.items.reduce((s2, it) => s2 + it.price * (it.n - keptOf(it)), 0);
+      if (free > 0) {
+        return { key: 'sell', icon: '📦', text: 'Продати ' + free + ' ' + word(free) + ' · +' + api.short(sum),
+          sub: kept ? 'комора майже повна · 🔒 ' + kept + ' відкладених лишаться' : 'комора майже повна',
+          btn: kept ? 'Продати вільне' : 'Продати все', arm: sellArm(kept), run: () => api.order(st, 'bazaar', { all: true }) };
+      }
     }
     // 7.5. Перше коло гравець мусить пройти цілим: поки він не обпалив жодного виробу, сушарня важливіша
     // за будь-яку покупку — інакше він не побачить, звідки в коморі беруться вироби.
-    if (c.fired === 0 && c.rack.length > 0) {
+    if (c.fired === 0 && c.rack.length > 0 && !later) {
       const soon = c.rack.map((r) => r.dryAt).sort((a2, b2) => a2 - b2)[0] || 0;
       return { icon: '🧺', text: 'Сохне · ' + api.mmss(soon - sn), sub: 'висохне — і в горно' };
     }
     // 8. Найближча покупка — те, що раніше показував банер «Наступна ціль». Але поки гравець не виліпив
     // жодного виробу, порада «купи верстат» лише збиває: перше, що він мусить зробити, — крутнути коло.
     const g = c.formed > 0 || c.rack.length ? (api.goalOf ? api.goalOf(st) : null) : null;
-    if (g) {
-      return { icon: g.icon, svg: true, text: g.text, sub: g.sub || '', pct: g.pct,
-        eta: g.eta > 0 && Number.isFinite(g.eta) ? '≈ ' + api.span(g.eta) : g.eta === 0 ? 'готово' : '',
-        btn: g.tab || g.row ? 'Глянути' : '', run: () => goToGoal(st, api, g) };
-    }
+    if (g) return goalToStep(st, api, g);
+    // 8.5. «Палю сам» і одна-дві штуки — коли більше нічого робити.
+    if (later) return later;
     // 9. Нічого термінового — просто ліпи.
     return { icon: '🏺', text: 'Крути коло — ліпиться ' + wareName(st, c.ware).toLowerCase(), sub: 'кожен клік — одна робота' };
   }
 
-  /// Друга кнопка рядка «Далі» — лише на два щохвилинні випадки, до яких на телефоні від кола 900+ px прокрутки:
-  /// готове замовлення й повна комора. Решта порад лишається одна — смуга не має перетворитись на другу панель.
-  /// Дії ті самі, що й кнопки на ярмарку й у коморі (і «Продати все» так само питає двічі).
+  /// Ціль (goalOf сцени чи HClicker.goals) — кроком «Далі»; short — підпис для другої кнопки («🚢 Корабель з Афін»).
+  function goalToStep(st, api, g) {
+    const emoji = (/>([^<]+)<\/text>/.exec(g.icon || '') || [])[1];
+    const head = String(g.text || '').split(/[:·—]/)[0].trim();
+    return { key: 'goal', icon: g.icon, svg: true, text: g.text, sub: g.sub || '', pct: g.pct,
+      eta: g.eta > 0 && Number.isFinite(g.eta) ? '≈ ' + api.span(g.eta) : g.eta === 0 ? 'готово' : '',
+      // Ціль може мати свою дію (B, QA-3: «🎨 Ліпити глечик → розпис»), інакше — «Глянути».
+      btn: g.btn || (g.tab || g.row ? 'Глянути' : ''), run: g.run || (() => goToGoal(st, api, g)),
+      short: (emoji ? emoji + ' ' : '') + (head.length <= 18 ? head : 'Глянути') };
+  }
+
+  /// Віха, яку вже можна купити (goalOf сцени: рядок віхи й повна смужка): у «Палю сам» вона вища за «Обпалити».
+  function markStep(st, api) {
+    const g = api.goalOf ? api.goalOf(st) : null;
+    return g && /^\[data-mark=/.test(g.row || '') && g.pct >= 100 ? goalToStep(st, api, g) : null;
+  }
+
+  /// Найважливіша ціль частин (HClicker.goals: кораблі й майстерні — clicker-trade.js, Толока, гості) з пріоритетом не
+  /// нижче maxPrio — у вигляді кроку «Далі». Цілі Майстерні (верстати, віхи) сюди не йдуть: вони — у goalOf, крок 8.
+  function goalStep(st, api, maxPrio) {
+    const v = st.lastView;
+    if (!v || !st.mine) return null;
+    let best = null;
+    for (const fn of window.HClicker.goals || []) {
+      let g = null;
+      try { g = fn(st, v, api); } catch (e) { console.error('[clicker:craft] ціль', e); }
+      const pa = g ? g.prio ?? 5 : Infinity;
+      if (pa > maxPrio) continue;
+      const pb = best ? best.prio ?? 5 : Infinity;
+      if (pa < pb || (pa === pb && (g.eta ?? Infinity) < (best.eta ?? Infinity))) best = g;
+    }
+    return best ? goalToStep(st, api, best) : null;
+  }
+
+  /// Друга кнопка рядка «Далі» — на щохвилинні випадки, до яких на телефоні від кола 900+ px прокрутки: готове
+  /// замовлення, ціль частин (корабель, Толока — коли перша кнопка «Здати», QA-3) і повна комора. Решта порад лишається
+  /// одна — смуга не має перетворитись на другу панель. Дії ті самі, що й кнопки на ярмарку й у коморі.
   function secondStep(st, api, n) {
     const c = st.craft;
     if (!c || !n || !st.mine) return null;
@@ -474,21 +603,39 @@
       return { key: 'deliver', btn: '🤝 Здати', title: 'Здати замовлення · +' + api.short(ready.pay),
         run: (ev) => st.fairDeliver(ready.id, ev) };
     }
+    if (n.key !== 'goal') {
+      const g = goalStep(st, api, 1);
+      if (g) return { key: 'goal', btn: g.short, title: g.text, run: g.run };
+    }
     const items = c.items.reduce((s2, it) => s2 + it.n, 0);
     if (items > 0 && items >= c.storeCap && n.key !== 'sell') {
-      const sum = c.items.reduce((s2, it) => s2 + it.value * it.n, 0);
-      return { key: 'sell', btn: '📦 Продати все', arm: 'Точно все? Ще раз',
-        title: 'Комора повна: продати ' + items + ' ' + api.plural(items, 'виріб', 'вироби', 'виробів') + ' · +' + api.short(sum),
-        run: () => api.order(st, 'bazaar', { all: true }) };
+      const kept = c.items.reduce((s2, it) => s2 + keptOf(it), 0);
+      const sum = c.items.reduce((s2, it) => s2 + it.price * (it.n - keptOf(it)), 0);
+      if (items - kept > 0) {
+        return { key: 'sell', btn: kept ? '📦 Продати вільне' : '📦 Продати все', arm: sellArm(kept),
+          title: 'Комора повна: продати ' + (items - kept) + ' ' + api.plural(items - kept, 'виріб', 'вироби', 'виробів') + ' · +' + api.short(sum),
+          run: () => api.order(st, 'bazaar', { all: true }) };
+      }
     }
     return null;
   }
 
   function goToGoal(st, api, g) {
     if (g.tab && st.panes[g.tab]) api.showTab(st, g.tab);
+    // Ціль просить режим покупки (перший рівень заморської майстерні — ×1, як ★): той самий перемикач, що в рядку режимів.
+    const mb = g.mode && st.modes && st.modes.querySelector('[data-mode="' + g.mode + '"]');
+    if (mb && !mb.classList.contains('active')) mb.click();
     if (!g.row) return;
+    // Рядок цілі частина домальовує, щойно її вкладка на очах (кораблі, Толока в «Селі»), — шукаємо ще кілька кадрів,
+    // а не здаємось одразу (QA-2: «Глянути» на кораблі перемикало вкладку, а до корабля не вело).
     const row = st.el.querySelector(g.row);
-    if (!row) return;
+    if (!row) {
+      const tries = (g.tries || 0) + 1;
+      if (tries < 12) setTimeout(() => { if (st.el) goToGoal(st, api, Object.assign({}, g, { tab: null, tries })); }, 100);
+      return;
+    }
+    // v12 §2.6: посередині видимого, над нижнім меню, і з підсвіткою (clicker.js, lookAt).
+    if (api.lookAt) { api.lookAt(st, row); return; }
     row.scrollIntoView({ block: 'nearest', behavior: smoothOk() ? 'smooth' : 'auto' });
     row.classList.remove('flash');
     void row.offsetWidth;
@@ -502,21 +649,27 @@
     const sn = api.serverNow(st);
     const dry = dryNow(st, api);
     const items = c.items.reduce((s, it) => s + it.n, 0);
-    const sum = c.items.reduce((s, it) => s + it.value * it.n, 0);
+    const sum = c.items.reduce((s, it) => s + it.price * it.n, 0);
     const work = Math.floor(workNow(st) % Math.max(1, c.need));
     const kilnText = !k ? '—'
       : k.state === 'burning' ? '🔥 ' + api.mmss(Date.parse(k.litAt) + burnMs(st) - sn)
       : k.state === 'cooling' ? '♨ холоне'
       : k.batch.length ? 'складено ' + k.batch.length
-      : dry ? 'чекає сухих' : 'холодне';
+      // Сухі є — горно не «чекає сухих» (QA-3: так писало при «сухих 6»), а чекає, щоб його розпалили.
+      : dry ? 'можна палити' : 'холодне';
+    // Сушарня повна — коло стоїть (підмайстрам нікуди класти), і гра мусить це сказати.
+    const stuck = c.rack.length >= c.rackSize;
     return [
       { key: 'wheel', ico: api.wareSvg(c.ware, { cls: 'clkw-sico', slot: 'step-ware', clay: st.clayBody }),
-        name: wareName(st, c.ware), sub: work + '/' + c.need + ' ▾', pct: (work / Math.max(1, c.need)) * 100, on: true },
+        name: wareName(st, c.ware), sub: stuck ? 'стоїть: сушарня повна' : work + '/' + c.need + ' ▾', pct: (work / Math.max(1, c.need)) * 100,
+        on: true, hot: stuck },
       // ⓘ на трьох чипах веде до секції «🔧 Прокачати»: місткість — не магія, її видно й видно, звідки вона.
       { key: 'rack', ico: '🧺', name: 'Сушарня', sub: c.rack.length + '/' + c.rackSize + (dry ? ' · сухих ' + dry : ''),
         pct: (c.rack.length / Math.max(1, c.rackSize)) * 100, on: c.rack.length > 0, hot: dry > 0, ups: true },
-      { key: 'kiln', ico: '🔥', name: 'Горно', sub: kilnText, on: !!k && (k.batch.length > 0 || k.state !== 'cold'),
-        hot: !!k && k.state === 'burning', ups: true },
+      // Сухі є, а горно холодне — це і є наступний крок (UI-прохід 21.10: плитка була блідою, як «ще не дійшли», хоч
+      // «Далі» кликало обпалити й підпис казав «можна палити»).
+      { key: 'kiln', ico: '🔥', name: 'Горно', sub: kilnText, on: !!k && (k.batch.length > 0 || k.state !== 'cold' || dry > 0),
+        hot: !!k && (k.state === 'burning' || (k.state === 'cold' && dry > 0)), ups: true },
       { key: 'store', ico: '📦', name: 'Комора', sub: items ? items + ' · ~' + api.short(sum) : 'порожня',
         pct: (items / Math.max(1, c.storeCap)) * 100, on: items > 0, ups: true },
     ];
@@ -543,7 +696,9 @@
       + '</span>').join('');
     if (api.swap(ui.steps, html)) {
       for (const b of ui.steps.querySelectorAll('[data-step]')) b.onclick = (ev) => stepClick(st, api, b.dataset.step, ev);
-      for (const i of ui.steps.querySelectorAll('.clk-sti')) i.onclick = () => { api.sfx('tap'); showUps(st, api); };
+      for (const i of ui.steps.querySelectorAll('.clk-sti')) {
+        i.onclick = () => { api.sfx('tap'); showUps(st, api, i.previousElementSibling && i.previousElementSibling.dataset.step); };
+      }
       ui.stepEls = {};
       for (const b of ui.steps.querySelectorAll('[data-step]')) {
         ui.stepEls[b.dataset.step] = { sub: b.querySelector('.clk-stsub'), bar: b.querySelector('.clk-stbar i') };
@@ -562,7 +717,7 @@
   function stepClick(st, api, step, ev) {
     api.sfx('tap');
     // ⓘ на чипі — не «піди до сушарні», а «звідки ця місткість»: веде до секції прокачки.
-    if (ev && ev.target && ev.target.closest && ev.target.closest('[data-ups]')) { showUps(st, api); return; }
+    if (ev && ev.target && ev.target.closest && ev.target.closest('[data-ups]')) { showUps(st, api, step); return; }
     if (step === 'wheel') { openPicker(st, api); return; }
     api.showTab(st, CRAFT_TAB);
     const sel = { rack: '.clkw-rack-sec, .clkk', kiln: '.clkk', store: '.clkw-items, .clkw-store' }[step];
@@ -572,19 +727,57 @@
 
   /// Показати секцію «🔧 Прокачати» й підсвітити її: саме туди ведуть ⓘ зі смуги. Новачкові вкладки «Ремесло»
   /// ще нема — тоді ⓘ просто розказує те саме словами, а не кидає його казна-куди.
-  function showUps(st, api) {
+  /// QA-2: ⓘ обіцяє пояснення, а мовчки перекидало в «Прокачати». Тепер — спливайка про саме цю місткість і кнопка
+  /// «До прокачки» (якщо вкладка «Ремесло» вже є).
+  function showUps(st, api, step) {
     const tab = st.tabs && st.tabs.querySelector('[data-tab="' + CRAFT_TAB + '"]');
     const el = st.upsBody;
-    if (!el || !tab || tab.hidden) {
-      api.overlay(st, '<div class="clk-sub">🔧 Звідки береться місткість</div><p class="small">'
-        + api.esc(st, UPS_INFO) + '</p>');
-      return;
-    }
+    const can = !!el && !!tab && !tab.hidden;
+    const one = UPS_STEP[step];
+    const body = api.overlay(st, '<div class="clk-sub">🔧 ' + (one ? api.esc(st, one[0]) : 'Звідки береться місткість') + '</div>'
+      + '<p class="small">' + api.esc(st, one ? one[1] + ' ' + UPS_TAIL : UPS_INFO) + '</p>'
+      + (can ? '<button type="button" class="primary clkw-toups">🔧 До прокачки</button>' : ''));
+    const go = body.querySelector('.clkw-toups');
+    if (go) go.onclick = () => { api.closeOverlay(st); toUps(st, api, step); };
+  }
+
+  /// Ключ рядка прокачки для кроку смуги (ClickerCraft.CraftUps).
+  const UP_OF = { rack: 'rack', kiln: 'kilnroom', store: 'store' };
+
+  /// До «🔧 Прокачати»: розгорнути згортку й підсвітити рядок саме цієї місткості (QA-3: лише докручувало до
+  /// згорнутої секції).
+  function toUps(st, api, step) {
+    const el = st.upsBody;
+    if (!el) return;
     api.showTab(st, CRAFT_TAB);
-    el.scrollIntoView({ block: 'nearest', behavior: smoothOk() ? 'smooth' : 'auto' });
-    el.classList.remove('flash');
-    void el.offsetWidth;
-    el.classList.add('flash');
+    if (api.unfold) api.unfold(st, el);
+    // Рядок шукаємо вже після розгортання: згортка перемальовує секцію, і вона ще росте, поки рядки оживають (QA-4:
+    // зі згорнутої секції «Горно» лишалось під краєм, y 762 при видимих 701). Тож дивимось двічі — одразу й коли
+    // розкладка вляглась, і вдруге гортаємо, лише якщо рядок і досі не на екрані.
+    const show = (again) => {
+      if (!st.upsBody) return;
+      const row = (UP_OF[step] && st.upsBody.querySelector('[data-upkey="' + UP_OF[step] + '"]')) || st.upsBody;
+      if (again) {
+        const r = row.getBoundingClientRect();
+        if (r.top >= 60 && r.bottom <= window.innerHeight - 70) return;
+      }
+      if (api.lookAt) { api.lookAt(st, row); return; }
+      row.scrollIntoView({ block: 'center', behavior: smoothOk() ? 'smooth' : 'auto' });
+      row.classList.remove('flash');
+      void row.offsetWidth;
+      row.classList.add('flash');
+    };
+    requestAnimationFrame(() => show(false));
+    setTimeout(() => show(true), 700);
+  }
+
+  /// Напис кнопки «Далі»: значок окремо від слів («🚢» + « Корабель з Афін») — на телефоні друга кнопка лишає лише
+  /// значок (css .clk-nxl), щоб порада й обидві кнопки стали в один рядок. textContent однаковий в обох видах.
+  function nxLabel(b, label, esc) {
+    if (b.textContent === label) return;
+    const m = /^(\S+)\s+(.+)$/.exec(label);
+    b.innerHTML = m && !/[0-9A-Za-zА-ЯҐЄІЇа-яґєії]/.test(m[1])
+      ? '<span class="clk-nxe">' + esc(m[1]) + '</span><span class="clk-nxl"> ' + esc(m[2]) + '</span>' : esc(label);
   }
 
   function paintNext(st, api) {
@@ -597,15 +790,20 @@
     const esc = (x) => api.esc(st, x);
     const ico = n.svg ? '<svg class="clk-nxsvg" viewBox="0 0 32 32" aria-hidden="true">' + n.icon + '</svg>' : esc(n.icon);
     api.swap(ui.nxIco, ico);
-    const text = 'Далі: ' + n.text;
+    const tip = ui.tip && Date.now() < ui.tip.until ? ui.tip.text : '';
+    const text = tip ? '💡 ' + tip : 'Далі: ' + n.text;
     if (ui.nxText.textContent !== text) ui.nxText.textContent = text;
-    const sub = n.sub || n.eta || '';
+    const sub = tip ? '' : n.sub || n.eta || '';
+    // На екрані порада й підрядок — разом не більше двох рядків (QA-3), повністю — у підказці.
+    const full = sub ? text + ' · ' + sub : text;
+    if (ui.nxTxt.title !== full) ui.nxTxt.title = full;
+    if (ui.nx.classList.contains('tip') !== !!tip) ui.nx.classList.toggle('tip', !!tip);
     if (ui.nxSub.textContent !== sub) ui.nxSub.textContent = sub;
     if (ui.nxSub.hidden !== !sub) ui.nxSub.hidden = !sub;
     const label = n.btn || '';
     // Кнопку під пальцем не перемальовуємо, поки її «звели» другим натиском.
     if (ui.armed && Date.now() > ui.armed) ui.armed = 0;
-    if (!ui.armed && ui.nxBtn.textContent !== label) ui.nxBtn.textContent = label;
+    if (!ui.armed) nxLabel(ui.nxBtn, label, esc);
     if (ui.nxBtn.hidden !== !label) ui.nxBtn.hidden = !label;
     const off = !label || !st.mine || !n.run;
     if (ui.nxBtn.disabled !== off) ui.nxBtn.disabled = off;
@@ -616,9 +814,10 @@
     const b2 = ui.nxBtn2;
     if (ui.armed2 && Date.now() > ui.armed2) ui.armed2 = 0;
     const label2 = m ? m.btn : '';
-    if (!ui.armed2 && b2.textContent !== label2) b2.textContent = label2;
+    if (!ui.armed2) nxLabel(b2, label2, esc);
     if (b2.hidden !== !m) b2.hidden = !m;
-    const title2 = m ? m.title : '';
+    // На телефоні друга кнопка — лише значок: без підказки її не прочитати (і читачам екрана теж).
+    const title2 = m ? m.title || m.btn : '';
     if (b2.title !== title2) b2.title = title2;
     if (b2.classList.contains('armed') !== !!ui.armed2) b2.classList.toggle('armed', !!ui.armed2);
     if (ui.nx.classList.contains('two') !== !!m) ui.nx.classList.toggle('two', !!m);
@@ -647,7 +846,7 @@
   function maybeTip(st, api) {
     const c = st.craft;
     const ui = st.craftUi;
-    if (!c || !ui || !st.mine || c.fired >= TIP_OLD || ui.tip) return;
+    if (!c || !ui || !st.mine || c.fired >= TIP_OLD || (ui.tip && Date.now() < ui.tip.until)) return;
     for (const t of TIPS) {
       if (api.storeGet('clk.tip.' + t.key, '') === '1') continue;
       let on = false;
@@ -659,19 +858,15 @@
     }
   }
 
+  /// Підказка — у самому рядку «Далі» замість поради на TIP_MS (QA-3): окремою плашкою вона лягала на ряд вкладок
+  /// (на 1366 — y 182–213 поверх 186–238), а з reduced-motion висіла, доки не тапнеш, і наступні чекали на неї по 25 хв.
+  /// Тут — ні накладань, ні стрибків висоти; кнопки «Далі» лишаються живі, тап по тексту — прибрати.
   function showTip(st, api, text) {
     const ui = st.craftUi;
-    const el = document.createElement('button');
-    el.type = 'button';
-    el.className = 'clk-tip';
-    el.innerHTML = '<span>💡 ' + api.esc(st, text) + '</span><i>✕</i>';
-    const close = () => { clearTimeout(ui.tipT); ui.tip = null; el.remove(); };
-    el.onclick = close;
-    ui.tip = el;
-    ui.el.appendChild(el);
-    // Кому анімації заважають, тому й підказка, що зникає сама, заважає: така лишається до дотику.
-    if (!smoothOk()) return;
-    ui.tipT = setTimeout(() => { el.classList.add('out'); setTimeout(close, 400); }, TIP_MS);
+    ui.tip = { text, until: Date.now() + TIP_MS };
+    clearTimeout(ui.tipT);
+    ui.tipT = setTimeout(() => { if (st.craftUi === ui) { ui.tip = null; paintNext(st, api); } }, TIP_MS + 50);
+    paintNext(st, api);
   }
 
   function runNext(st, api, ev, two) {
@@ -681,14 +876,22 @@
     const armKey = two ? 'armed2' : 'armed';
     if (!n || !n.run || !st.mine) return;
     // Незворотне (продати все) питаємо двічі — як і кнопка в коморі.
+    // QA-2: 3 с замало, щоб прочитати й натиснути вдруге, — 4,5 с; і кнопка не звужується під коротший текст.
     if (n.arm && (!ui[armKey] || Date.now() > ui[armKey])) {
-      ui[armKey] = Date.now() + 3000;
+      ui[armKey] = Date.now() + ARM_MS;
+      btn.style.minWidth = btn.offsetWidth + 'px';
       btn.textContent = n.arm;
       btn.classList.add('armed');
-      setTimeout(() => { if (st.craftUi === ui && Date.now() >= ui[armKey]) { ui[armKey] = 0; paintNext(st, api); } }, 3050);
+      setTimeout(() => {
+        if (st.craftUi !== ui || Date.now() < ui[armKey]) return;
+        ui[armKey] = 0;
+        btn.style.minWidth = '';
+        paintNext(st, api);
+      }, ARM_MS + 50);
       return;
     }
     ui[armKey] = 0;
+    btn.style.minWidth = '';
     btn.classList.remove('armed');
     api.sfx('tap');
     n.run(ev);
@@ -696,9 +899,23 @@
 
   // ---------- вибір виробу ----------
 
+  /// Скільки ще виробів кожного виду просить Толока: поточний етап (що не піднесли друзі, нема на складі й у коморі), а коли
+  /// він уже будується — наступний. Бейдж «🧱 Толока: ще 58» у виборі виробу (v12, плейтест §2.3).
+  function tolokaWant(st) {
+    const t = st.lastView && st.lastView.toloka;
+    const out = {};
+    if (!t) return out;
+    const s = t.stage;
+    const list = s && !s.laidAt ? s.needs.map((n) => ({ ware: n.ware, left: n.n - (n.got || 0) - (n.depot || 0) - (n.have || 0) }))
+      : t.next && t.next.needs ? t.next.needs.map((n) => ({ ware: n.ware, left: n.n - (n.have || 0) })) : [];
+    for (const x of list) if (x.left > 0) out[x.ware] = (out[x.ware] || 0) + x.left;
+    return out;
+  }
+
   function openPicker(st, api) {
     const c = st.craft;
     if (!c || !st.mine) return;
+    const want = tolokaWant(st);
     const cards = c.wares.map((w) => {
       const on = w.key === c.ware;
       const cat = st.catalog && st.catalog.wares && st.catalog.wares.find((x) => x.key === w.key);
@@ -707,8 +924,10 @@
         + (w.open && !on ? '' : ' disabled') + '>'
         + api.wareSvg(w.key, { cls: 'clkw-big', slot: 'pick-' + w.key, clay: st.clayBody, quality: 1 })
         + '<b>' + api.esc(st, w.name) + '</b>'
+        // Робота й ціна — окремими рядками: «робота 16 · ~140 987 золотих» одним рядком вилазило за картку (B13).
+        + (w.open && want[w.key] ? '<span class="clkw-tol small">🧱 Толока: ще ' + api.count(want[w.key]) + '</span>' : '')
         + (w.open
-          ? '<span class="muted small">робота ' + w.need + (sec ? ' · ~' + api.potsShort(w.value) : '') + '</span>'
+          ? '<span class="muted small">робота ' + w.need + '</span>' + (sec ? '<span class="muted small">~' + api.potsShort(w.value * (c.bazaar || 1)) + '</span>' : '')
             + '<span class="muted small">обпалено ' + api.num(w.fired) + '</span>'
             + (on ? '<span class="clk-price done">на колі</span>' : '<span class="clk-price">ліпити</span>')
           : '<span class="muted small">відкриється на ' + api.potsShort(w.unlock) + ' за весь час</span>')
@@ -728,9 +947,9 @@
 
   /// Скільки виробів і глеків забере базар, якщо брати якість до q включно (1 — звичайні, 2 — і добрі, 3 — усе).
   function sellUpTo(items, q) {
-    let n = 0, sum = 0;
-    for (const it of items) if (it.q <= q) { n += it.n; sum += it.value * it.n; }
-    return { q, n, sum };
+    let n = 0, sum = 0, kept = 0;
+    for (const it of items) if (it.q <= q) { n += it.n; sum += it.price * it.n; kept += keptOf(it); }
+    return { q, n, sum, kept, why: keptSum(items, q) };
   }
 
   /// Кнопки продажу: «все» завжди, а вужчі — лише коли вони справді щось лишають у коморі. Ніяких перемикачів і
@@ -738,13 +957,13 @@
   function sellButtons(items) {
     const all = sellUpTo(items, 4);
     if (!all.n) return [];
-    const out = [{ q: 4, n: all.n, sum: all.sum, label: 'Продати все' }];
+    const out = [Object.assign(all, { label: 'Продати все' })];
     const one = sellUpTo(items, 1);
     const two = sellUpTo(items, 2);
     const three = sellUpTo(items, 3);
-    if (one.n > 0 && one.n < all.n) out.push({ q: 1, n: one.n, sum: one.sum, label: 'Лише ★ звичайні' });
-    if (two.n > one.n && two.n < all.n) out.push({ q: 2, n: two.n, sum: two.sum, label: 'Усе, крім ★★★ дзвінких' });
-    if (three.n > two.n && three.n < all.n) out.push({ q: 3, n: three.n, sum: three.sum, label: 'Усе, крім 👑 розкішних' });
+    if (one.n > 0 && one.n < all.n) out.push(Object.assign(one, { label: 'Лише ★ звичайні' }));
+    if (two.n > one.n && two.n < all.n) out.push(Object.assign(two, { label: 'Усе, крім ★★★ дзвінких' }));
+    if (three.n > two.n && three.n < all.n) out.push(Object.assign(three, { label: 'Усе, крім 👑 розкішних' }));
     return out;
   }
 
@@ -752,10 +971,10 @@
 
   function paintStore(st, api) {
     const c = st.craft;
-    if (!c || !st.storeBody) return;
+    if (!c || !st.storeBody || !st.rackBody) return;
     const esc = (x) => api.esc(st, x);
     const total = c.items.reduce((s, it) => s + it.n, 0);
-    const sum = c.items.reduce((s, it) => s + it.value * it.n, 0);
+    const sum = c.items.reduce((s, it) => s + it.price * it.n, 0);
     const now = api.serverNow(st);
 
     // Сушарня — між горном і коморою: видно, що вже сохне й скільки лишилось. На телефоні сорок шість однакових
@@ -765,7 +984,7 @@
     const peek = c.rack.slice(0, 6).map((r, i2) => wareSvg(api, r.ware, { raw: true, dry: r.dryAt <= now, clay: clayBody(st, r.clay),
       slot: 'speek-' + i2, cls: 'clkw-mini' })).join('');
     const rack = c.rack.length
-      ? '<details class="clkw-rack-sec clk-fkeep" data-key="rack"><summary><b>🧺 Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</b>'
+      ? '<details class="clkw-rack-sec" data-key="rack"><summary><b>🧺 Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</b>'
         + (dryN ? '<span class="clkw-rackdry small">сухих ' + dryN + '</span>' : '')
         + '<span class="clkw-peek" aria-hidden="true">' + peek + (c.rack.length > 6 ? '<i>…</i>' : '') + '</span></summary>'
         + '<div class="clkw-rackrow">'
@@ -780,9 +999,10 @@
     // Комора: рядок на виріб, а розписи й якості — за ▾. Так чотирнадцять глеків читаються одним поглядом.
     const byWare = new Map();
     for (const it of c.items) {
-      const g = byWare.get(it.ware) || { ware: it.ware, n: 0, sum: 0, best: 0, rows: [] };
+      const g = byWare.get(it.ware) || { ware: it.ware, n: 0, sum: 0, best: 0, kept: 0, rows: [] };
       g.n += it.n;
-      g.sum += it.value * it.n;
+      g.kept += keptOf(it);
+      g.sum += it.price * it.n;
       g.best = Math.max(g.best, it.q);
       g.rows.push(it);
       byWare.set(it.ware, g);
@@ -791,7 +1011,9 @@
     // Продаж гуртом: «Продати все» і, коли є що лишити, — вужчі кнопки. Кожна написана тими самими словами, що й
     // рядки комори («★ звичайний», «★★★ дзвінкий»), і одразу каже, скільки виробів забере й за скільки.
     const sells = sellButtons(c.items);
-    // Комора — згортка (13.10); сушарня над нею (clk-fkeep) лишається видною й тоді, коли комору згорнули.
+    const keptAll = keptSum(c.items, 4);
+    const keptN = c.items.reduce((s, it) => s + keptOf(it), 0);
+    // Комора — згортка (13.10); сушарня тепер окремо над замовленнями (v12), тож видна й тоді, коли комору згорнули.
     const head = api.foldHead('📦 Комора · ' + total + ' ' + api.plural(total, 'виріб', 'вироби', 'виробів')
       + (total ? ' · разом ~' + api.short(sum) : ''))
       + (total
@@ -799,47 +1021,86 @@
           + ' class="' + (i ? 'ghost small' : 'primary') + ' clkw-sellall"' + (st.mine ? '' : ' disabled') + '>'
           + esc(b.label) + ' · ' + b.n + ' ' + api.plural(b.n, 'виріб', 'вироби', 'виробів') + ' · +' + api.short(b.sum)
           + '</button>').join('') + '</div>'
+          // Відкладене (v12, плейтест §2.4): видно, скільки чекають Толока й замовлення, і що продаж гуртом забере й їх.
+          + (keptN ? '<div class="small clkw-keptline">🔒 Відкладено ' + keptN + ': ' + esc(keptText(keptAll))
+            + ' — продаж гуртом забере й їх</div>' : '')
           + '<div class="muted small">Що не влізе в ' + c.storeCap + ' — продається саме.</div>'
         : '');
     const items = total
       ? '<div class="clkw-groups">' + groups.map((g) => {
         const rows = g.rows.slice().sort((a, b) => b.q - a.q || b.value - a.value).map((it) => '<div class="clkw-chiprow q' + it.q + '">'
           + '<span class="clkw-ctxt">' + esc(styleName(st, it.style)) + ' · <span class="clkw-q">' + STARS[it.q] + ' ' + QUALITY[it.q] + '</span>'
-          + ' <span class="clkw-n">×' + it.n + '</span> <span class="muted">по ' + api.potsShort(it.value) + '</span></span>'
+          + ' <span class="clkw-n">×' + it.n + '</span> <span class="muted">по ' + api.potsShort(it.price) + '</span>'
+          + (keptOf(it) ? ' <span class="clkw-kept" title="Відкладено: цього чекають Толока, замовлення чи майстерштук">🔒 '
+            + esc(keptText(it.kept)) + '</span>' : '') + '</span>'
           + '<span class="clkw-btns"><button type="button" class="ghost small" data-sell="' + esc(it.key) + '" data-n="1"' + (st.mine ? '' : ' disabled') + '>Продати</button>'
           + (it.n > 1 ? '<button type="button" class="ghost small" data-sell="' + esc(it.key) + '" data-n="' + it.n + '"' + (st.mine ? '' : ' disabled') + '>Усі ' + it.n + '</button>' : '')
           + '</span></div>').join('');
         return '<details class="clkw-group' + (g.best >= 3 ? ' star' : '') + '" data-key="' + esc(g.ware) + '"><summary>'
           + api.wareSvg(g.ware, { style: g.rows[0].style, quality: g.best, cls: 'clkw-mid', slot: 'st-' + g.ware })
-          + '<span class="clkw-gtxt"><b>' + esc(wareName(st, g.ware)) + (g.best >= 3 ? ' <span class="clkw-q">★</span>' : '') + '</b>'
-          + '<span class="muted small">×' + g.n + ' · ~' + api.short(g.sum) + '</span></span></summary>' + rows + '</details>';
+          + '<span class="clkw-gtxt"><b>' + esc(wareName(st, g.ware)) + (g.best >= 3 ? ' <span class="clkw-q">' + STARS[g.best] + '</span>' : '') + '</b>'
+          + '<span class="muted small">×' + g.n + ' · ~' + api.short(g.sum) + (g.kept ? ' · 🔒 ' + g.kept : '') + '</span></span></summary>' + rows + '</details>';
       }).join('') + '</div>'
       : '<div class="clk-teaser muted small">Комора порожня — сюди лягають вироби з горна.</div>';
 
-    if (api.swap(st.storeBody, rack + head + items)) {
-      const fold = st.storeBody.querySelector('.clkw-rack-sec');
+    if (api.swap(st.rackBody, rack)) {
+      const fold = st.rackBody.querySelector('.clkw-rack-sec');
       if (fold) {
         const narrow = window.matchMedia && window.matchMedia('(max-width: 480px), (pointer: coarse)').matches;
         fold.open = st.rackOpen != null ? st.rackOpen : !narrow;
         fold.ontoggle = () => { st.rackOpen = fold.open; };
       }
+      st.storeCds = [...st.rackBody.querySelectorAll('.clk-cd')];
+    }
+    if (api.swap(st.storeBody, head + items)) {
+      const line = st.storeBody.querySelector('.clkw-keptline');
       for (const b of st.storeBody.querySelectorAll('[data-sq]')) {
         const q = +b.dataset.sq;
+        const sb = sells.find((x) => x.q === q) || { kept: 0, why: [0, 0, 0] };
         let armed = 0;
         b.onclick = () => {
-          // «Продати все» питаємо двічі: дзвінкі й розписні теж поїдуть. Вужчі кнопки дороге лишають — там натиск один.
-          if (q === 4 && (!armed || Date.now() > armed)) {
-            armed = Date.now() + 3000;
+          // «Продати все» питаємо двічі: дзвінкі й розписні теж поїдуть. Вужчі кнопки дороге лишають — там натиск один,
+          // якщо не зачіпають відкладеного (v12): тоді перед продажем кажемо, що підуть і вироби для Толоки й замовлень.
+          if ((q === 4 || sb.kept > 0) && (!armed || Date.now() > armed)) {
+            armed = Date.now() + ARM_MS;
             const was = b.textContent;
-            b.textContent = 'Точно все? Ще раз';
-            setTimeout(() => { if (Date.now() >= armed && b.isConnected) b.textContent = was; }, 3050);
+            // Кнопка не звужується під коротший текст (QA-2: 369 → 234 px).
+            b.style.minWidth = b.offsetWidth + 'px';
+            b.textContent = sb.kept > 0 ? 'Точно? І 🔒 ' + sb.kept + ' відкладених' : sellArm(0);
+            const lineWas = line ? line.textContent : '';
+            if (line && sb.kept) { line.textContent = '🔒 Підуть і відкладені ' + sb.kept + ': ' + keptText(sb.why) + ' — їх доведеться ліпити знову'; line.classList.add('armed'); }
+            setTimeout(() => {
+              if (Date.now() < armed || !b.isConnected) return;
+              b.textContent = was;
+              b.style.minWidth = '';
+              if (line) { line.textContent = lineWas; line.classList.remove('armed'); }
+            }, ARM_MS + 50);
             return;
           }
-          api.order(st, 'bazaar', { all: true, q });
+          // Тут гравець бачив «Підуть і відкладені» й натиснув удруге — продаємо й їх (сервер без keep: false лишив би).
+          api.order(st, 'bazaar', sb.kept > 0 ? { all: true, q, keep: false } : { all: true, q });
         };
       }
-      for (const b of st.storeBody.querySelectorAll('[data-sell]')) b.onclick = () => api.order(st, 'bazaar', { key: b.dataset.sell, n: +b.dataset.n });
-      st.storeCds = [...st.storeBody.querySelectorAll('.clk-cd')];
+      for (const b of st.storeBody.querySelectorAll('[data-sell]')) {
+        const it = c.items.find((x) => x.key === b.dataset.sell);
+        let armed = 0;
+        b.onclick = () => {
+          const n = +b.dataset.n;
+          const held = it ? keptOf(it) : 0;
+          // Продаж рядка бере й відкладене (🔒 Толока, замовлення) — тоді питаємо вдруге, як віз (QA-3: «Продати» й «Усі N»
+          // мовчки продавали вироби для Толоки).
+          if (held > 0 && n > it.n - held && (!armed || Date.now() > armed)) {
+            armed = Date.now() + ARM_MS;
+            const was = b.textContent;
+            b.style.minWidth = b.offsetWidth + 'px';
+            b.textContent = 'Точно? 🔒';
+            b.title = 'Підуть і відкладені: ' + keptText(it.kept);
+            setTimeout(() => { if (Date.now() >= armed && b.isConnected) { b.textContent = was; b.style.minWidth = ''; b.title = ''; } }, ARM_MS + 50);
+            return;
+          }
+          api.order(st, 'bazaar', { key: b.dataset.sell, n });
+        };
+      }
     }
   }
 
@@ -847,9 +1108,13 @@
 
   /// Звідки береться кожне число місткості. Це та сама відповідь, що й на ⓘ чипів смуги: гравець мусить бачити,
   /// що сушарня, горно й комора ростуть, і чим саме.
-  const UPS_INFO = 'Сушарня: 8 місць + Гончарня за кожні 5 рівнів (разом до 20) + прокачка + «Друга сушарня». '
-    + 'Горно: 6 місць + Піч за кожні 10 рівнів (до 24) + майстер цеху + прокачка. Комора: 200 виробів + прокачка. '
-    + 'Прокачка — це стіни майстерні, а не верстати: обпал її не палить.';
+  const UPS_STEP = {
+    rack: ['Місткість сушарні', 'Сушарня: 8 місць + Гончарня за кожні 5 рівнів (разом до 20) + прокачка + «Друга сушарня».'],
+    kiln: ['Місткість горна', 'Горно: 6 місць + Піч за кожні 10 рівнів (до 24) + майстер цеху + прокачка.'],
+    store: ['Місткість комори', 'Комора: 200 виробів + прокачка.'],
+  };
+  const UPS_TAIL = 'Прокачка — це стіни майстерні, а не верстати: обпал її не палить.';
+  const UPS_INFO = UPS_STEP.rack[1] + ' ' + UPS_STEP.kiln[1] + ' ' + UPS_STEP.store[1] + ' ' + UPS_TAIL;
 
   function paintUps(st, api) {
     const c = st.craft;
@@ -863,7 +1128,7 @@
     const rows = (c.ups || []).map((u) => {
       const full = u.level >= u.max;
       const can = !full && st.shown >= u.price;
-      return '<div class="clkw-up' + (full ? ' done' : '') + '">'
+      return '<div class="clkw-up' + (full ? ' done' : '') + '" data-upkey="' + esc(u.key) + '">'
         + '<span class="clkw-uptxt"><span class="clkw-uphead"><b>' + esc(u.name) + '</b>'
         + '<span class="clkw-uplv">' + u.level + '/' + u.max + '</span></span>'
         + '<span class="muted small">' + esc(u.desc) + '</span>'
@@ -895,7 +1160,7 @@
     mount(st, api) {
       api.wareSvg = (ware, o) => wareSvg(api, ware, o);
       // Головна кнопка горна й кнопка «Далі» роблять одне й те саме — тож і код один.
-      api.fireKiln = () => fireKiln(st, api);
+      api.fireKiln = (o) => fireKiln(st, api, o);
       api.kilnLoad = () => loadNow(st, api);
       st.craftWheel = true;
       st.craftShelf = true;
@@ -919,16 +1184,22 @@
       st.craftUi = { el: bar, steps: bar.querySelector('.clk-steps'), nx: bar.querySelector('.clkc-next'),
         nxIco: bar.querySelector('.clk-nxico'), nxText: bar.querySelector('.clk-nxtext'), nxSub: bar.querySelector('.clk-nxsub'),
         nxBtn: bar.querySelector('.clk-nxbtn'), nxBar: bar.querySelector('.clk-nxbar i'), next: null, armed: 0,
-        nxBtn2: bar.querySelector('.clk-nxbtn2'), next2: null, armed2: 0 };
+        nxBtn2: bar.querySelector('.clk-nxbtn2'), next2: null, armed2: 0, nxTxt: bar.querySelector('.clk-nxtxt') };
+      // Тап по тексту «Далі» прибирає підказку 💡 (вона живе на місці поради).
+      st.craftUi.nxTxt.onclick = () => { const u = st.craftUi; if (u && u.tip) { u.tip = null; paintNext(st, api); } };
       st.craftUi.nxBtn.onclick = (ev) => runNext(st, api, ev);
       st.craftUi.nxBtn2.onclick = (ev) => runNext(st, api, ev, true);
       st.craftUi.tip = null;
       st.craftUi.tipT = 0;
-      // «Ремесло» — одна вкладка на все ремесло: горно зверху, далі сушарня з коморою, знизу замовлення.
-      // Місця (data-slot) наповнюють горно (clicker-kiln.js) і ярмарок (clicker-fair.js), кожен своїм.
+      // «Ремесло» — одна вкладка на все ремесло: горно зверху, сушарня, замовлення сіл, комора з прокачкою. Замовлення —
+      // над «Продати все» й «Прокачати» (v12, плейтест §2.4: були в самому низу), і на телефоні «Продати все» вже не стоїть
+      // одразу під кнопками горна. Місця (data-slot) наповнюють горно (clicker-kiln.js) і ярмарок (clicker-fair.js).
       st.craftPane = api.tab(st, CRAFT_TAB, '🏺 Ремесло', 10);
-      st.craftPane.innerHTML = '<div class="clkc-slot" data-slot="kiln"></div>'
-        + '<div class="clkc-slot" data-slot="store"></div><div class="clkc-slot" data-slot="fair"></div>';
+      st.craftPane.innerHTML = '<div class="clkc-slot" data-slot="kiln"></div><div class="clkc-slot" data-slot="rack"></div>'
+        + '<div class="clkc-slot" data-slot="fair"></div><div class="clkc-slot" data-slot="store"></div>';
+      st.rackBody = document.createElement('div');
+      st.rackBody.className = 'clkw-rackbox';
+      api.slot(st, 'rack').appendChild(st.rackBody);
       st.storeBody = document.createElement('div');
       st.storeBody.className = 'clkw-store';
       st.storeBody.dataset.fold = 'c.store';
@@ -940,7 +1211,14 @@
       api.slot(st, 'store').appendChild(st.upsBody);
       st.storeCds = [];
       // Ремесла ще нема, поки нема чого ремеслити: новачок бачить лише Майстерню, а смуга веде його сама.
-      api.showWhen(st, CRAFT_TAB, (st2) => !!st2.craft && (st2.craft.rack.length > 0 || st2.craft.fired > 0 || st2.craft.items.length > 0));
+      // Партія в горні — теж ремесло: перший обпал забирає з сушарні все, а обпаленого й комори ще нема, і без цього
+      // вкладка ховалась посеред першого горна — гравця перекидало в Майстерню, і горно догоряло з 0 % (хотфікс B2).
+      api.showWhen(st, CRAFT_TAB, (st2, v2) => {
+        const c2 = st2.craft;
+        const k = (v2 && v2.kiln) || st2.kView;
+        return !!c2 && (c2.rack.length > 0 || c2.fired > 0 || c2.items.length > 0
+          || (!!k && ((k.batch && k.batch.length > 0) || k.state === 'burning' || k.state === 'cooling')));
+      });
     },
 
     update(st, v, api) {
@@ -949,7 +1227,11 @@
       st.craft = {
         ware: c.ware, work: c.work || 0, need: c.need || 1, apprentice: c.apprentice || 0, rackFull: !!c.rackFull,
         rack: (c.rack || []).map((r) => ({ ware: r.ware, clay: r.clay || '', dryAt: Date.parse(r.dryAt) || 0 })),
-        rackSize: c.rackSize || 8, wares: waresOf(st, c.wares || []), items: c.items || [], storeCap: c.storeCap || 200,
+        // price — що справді дасть базар: Візок хати (+10 %) множить плату (QA-3: ціни в коморі були на ~10 % нижчі).
+        // value лишається ціною виробу — нею рахують дарунки, віз і замовлення інших частин.
+        rackSize: c.rackSize || 8, wares: waresOf(st, c.wares || []), bazaar: c.bazaarMult > 0 ? c.bazaarMult : 1,
+        items: (c.items || []).map((it) => Object.assign({}, it, { price: it.value * (c.bazaarMult > 0 ? c.bazaarMult : 1) })),
+        storeCap: c.storeCap || 200,
         ups: upsOf(st, c.ups || []), formed: c.formed || 0, fired: c.fired || 0,
       };
       st.craftAt = Date.now();
@@ -998,6 +1280,7 @@
       st.craftUi = null;
       st.craftPane = null;
       st.upsBody = null;
+      st.rackBody = null;
     },
   });
 })();

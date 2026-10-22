@@ -39,7 +39,8 @@ public static class KilnHeat
     public const double AutoBase = 0.05, AutoPerLevel = 0.05, AutoLevelMax = 0.45, AutoEmber = 1.5, AutoMax = 0.6;
 
     /// <summary>Підсумок партії: рахунок жару 0…1, перегрів у градусо-секундах, жар наприкінці, скільки полін згоріло.</summary>
-    public readonly record struct Result(double Heat, double Over, double Temp, int Logs);
+    /// <param name="Peak">Найвища температура партії (v12, QA-2: «перегрів 26 804°» — сума градусів понад стелю, а не жар).</param>
+    public readonly record struct Result(double Heat, double Over, double Temp, int Logs, double Peak = 0);
 
     static uint Start(uint seed) => seed == 0 ? 0x9E3779B9 : seed;
 
@@ -80,7 +81,7 @@ public static class KilnHeat
     {
         var gusts = Gusts(seed);
         var logs = Logs(seed);
-        double T = Amb, F = Fuel0, over = 0, score = 0;
+        double T = Amb, F = Fuel0, over = 0, score = 0, peak = Amb;
         var open = true;
         int j = 0, k = 0, g = 0;
         for (var i = 0; i < Steps; i++)
@@ -110,6 +111,7 @@ public static class KilnHeat
             var n = i + 1;
             var hi = n < WarmSteps ? Hi0 + (Hi - Hi0) * n / WarmSteps : Hi;
             if (T > hi) over += (T - hi) * 0.1;
+            if (T > peak) peak = T;
             if (n >= WarmSteps)
             {
                 if (T > Hi + SoftOver) { }
@@ -119,7 +121,7 @@ public static class KilnHeat
             }
             trace?.Invoke(i, T, F, open);
         }
-        return new Result(score / (Steps - WarmSteps + 1), over, T, k);
+        return new Result(score / (Steps - WarmSteps + 1), over, T, k, peak);
     }
 
     public static double CrackChance(double over) => Math.Clamp((over - CrackFree) / CrackScale, 0, CrackMax);
@@ -809,6 +811,20 @@ public sealed partial class Clicker
     public static readonly TimeSpan KilnGrace = TimeSpan.FromMilliseconds(500);
     /// <summary>Хто розпалив і пішов: за стільки після кінця горно відкриває підмайстер (якість 1, без тріщин).</summary>
     public static readonly TimeSpan KilnAbandon = TimeSpan.FromMinutes(15);
+    /// <summary>
+    /// Скільки після кінця обпалу порожній запис дій з «чужого» вікна не відкриває горно (хотфікс B1, 21.10.2026). Той
+    /// самий гравець відкритий двічі (телефон і ноутбук): модель жару веде кожне вікно, а запис дій — лише те, де палили.
+    /// Хто перший прислав open, той і рахувався, тож вікно, де не грали, віддавало порожній запис — «у смузі 0 %», і
+    /// краса розпису згоряла. Тепер воно чекає: за ці секунди своє пришле вікно, де палили; не пришле (закрили) — тоді вже
+    /// відкриваємо з тим, що є.
+    /// </summary>
+    public static readonly TimeSpan KilnOtherWait = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// Скільки й вікно, де натиснули «Обпалити», чекає з порожнім записом (v12, QA-2): «розпалив на ноутбуці, жар тримав
+    /// на телефоні» — порожній запис ноутбука випереджав запис гри з телефона на якихось 190 мс, і тоді «0 %», краса
+    /// згоряла. Запис із діями приймаємо одразу; порожній — після цих секунд.
+    /// </summary>
+    public static readonly TimeSpan KilnOwnWait = TimeSpan.FromSeconds(6);
     /// <summary>Скільки живе виданий візерунок розпису.</summary>
     public static readonly TimeSpan PatternLife = TimeSpan.FromMinutes(5);
     /// <summary>Вага відкритого вручну горна для Ока майстра (спійманий глек — 150): мінігра — пів хвилини живої роботи.</summary>
@@ -881,8 +897,9 @@ public sealed partial class Clicker
 
     sealed record KilnOutRow(string Ware, int Q);
 
+    /// <summary>Lux (v12, D1) — шанс розкішного на виріб у цій партії: результат горна пише «шанс розкішних ~14 %».</summary>
     sealed record KilnLastRow(DateTimeOffset At, bool Helper, int Heat, int Over, int Beauty, string? Style, bool Straw,
-        List<KilnOutRow>? Items, double Shards, double Sold, string? Freed = null);
+        List<KilnOutRow>? Items, double Shards, double Sold, string? Freed = null, double Lux = 0, int Peak = 0, bool Seen = false);
 
     sealed record KilnRow(
         List<string>? Batch = null, string? Style = null, string? Tech = null, int Beauty = 0,
@@ -961,6 +978,7 @@ public sealed partial class Clicker
             "paint" => KilnPaintStart(payload, now),
             "decor" => KilnDecor(payload, now),
             "straw" => KilnStraw(payload),
+            "seen" => ResultSeen(),
             _ => ActResult.Fail("Біля горна так не роблять"),
         };
     }
@@ -1003,13 +1021,16 @@ public sealed partial class Clicker
         _litStraw = straw;
         _fireSeed = Ctx.Rng.Next(1, int.MaxValue);
         _paintSeed = 0;                                   // недомальований розпис лягає як є
+        // Вікно підсумку розпису закрилось натиском «Обпалити»; глек, що вже в повітрі, — не промах (руки в мінігрі).
+        _resultUntil = default;
+        if (!helper) SpareAirborne(now);
         return ActResult.Accept(helper
             ? $"🔥 Підмайстер розпалив горно: {_kiln.Count} {WaresWord(_kiln.Count)} — відкриє сам за {KilnBurn.TotalSeconds:0} с"
             : "🔥 Горно розпалено — тримай жар у зеленій смузі!");
     }
 
     /// <summary>
-    /// Відкрити горно після ручного обпалу: <c>{ t: [[мс, дія], …] }</c> — мітки від розпалу, строго зростають, у межах
+    /// Відкрити горно після ручного обпалу: <c>{ t: [[мс, дія], …], own }</c> — мітки від розпалу, строго зростають, у межах
     /// 30 с, не більше 80; дія 0 — поліно, 1 — відкрити заслінку, 2 — прикрити. Сервер проганяє модель сам. Око майстра:
     /// якщо хоче глянути — горно лишається палати (нічого не губиться), таймлайн клієнт пришле ще раз.
     /// </summary>
@@ -1027,11 +1048,22 @@ public sealed partial class Clicker
         }
         var left = _litAt + KilnBurn - KilnGrace - now;
         if (left > TimeSpan.Zero) return ActResult.Fail($"Ще палає: {Math.Ceiling(left.TotalSeconds):0} с");
+        // Без own порожній запис — майже напевно друге вікно, яке не бачило дій; вкладки до хотфіксу own не шлють
+        // і теж почекають (їхні повтори раз на 2,5 с самі дотягнуть до кінця вікна). own — вікно, де натиснули «Обпалити»:
+        // і воно з порожнім записом чекає KilnOwnWait — жар могли тримати на іншому пристрої (v12, QA-2).
+        var wait = _litAt + KilnBurn + KilnOtherWait - now;
+        if (acts.Count == 0 && !Flag(payload, "own") && wait > TimeSpan.Zero)
+            return ActResult.Fail($"⏳ Горно відкриє вікно, де ти палив — чекаю його запису ще {Math.Ceiling(wait.TotalSeconds):0} с");
+        var waitOwn = _litAt + KilnBurn + KilnOwnWait - now;
+        if (acts.Count == 0 && waitOwn > TimeSpan.Zero)
+            return ActResult.Fail($"⏳ Чекаю, чи не тримав ти жар на іншому пристрої — ще {Math.Ceiling(waitOwn.TotalSeconds):0} с");
         if (GuardGate(now) is { } gate) return gate;
 
         var res = KilnHeat.Run(_fireSeed, acts);
         GuardSpend(KilnGuardWeight);
-        return ActResult.Accept(KilnFinish(now, res.Heat, res.Over, manual: true));
+        // Глеки, що чекали мінігру, дадуть прочитати підсумок — до «seen» (ClickerFallHold.cs).
+        ResultShown(now);
+        return ActResult.Accept(KilnFinish(now, res.Heat, res.Over, manual: true, res.Peak));
     }
 
     /// <summary>
@@ -1061,6 +1093,7 @@ public sealed partial class Clicker
         _kilnBeauty = 0;
         _paintSeed = Ctx.Rng.Next(1, int.MaxValue);
         _paintAt = now;
+        SpareAirborne(now);
         return ActResult.Done;
     }
 
@@ -1088,6 +1121,8 @@ public sealed partial class Clicker
         if (dyak > 0) beauty = Math.Min(100, beauty + dyak);
         _kilnBeauty = beauty;
         _paintSeed = 0;
+        // Вікно «Розпис ліг…» — глеки чекають його закриття (QA-3: глек летів саме тоді, як тиснеш «Обпалити»).
+        ResultShown(now);
         if (beauty >= PaintWonder) Wonder("paint-90");
         return ActResult.Accept($"🎨 {tech.Name}: краса {beauty}" + (home ? " (рідний осередок +10)" : "")
             + (dyak > 0 ? $" (дяк із книгою +{dyak})" : "")
@@ -1123,7 +1158,7 @@ public sealed partial class Clicker
     /// (<see cref="KilnHeat.Quality"/>). Цілі — у комору (<see cref="PutItems"/>) і в лічильник (<see cref="AddFired"/>);
     /// тріснуті — черепками на засипку. Горно холоне <see cref="KilnCool"/> від <paramref name="at"/>.
     /// </summary>
-    string KilnFinish(DateTimeOffset at, double heat, double over, bool manual)
+    string KilnFinish(DateTimeOffset at, double heat, double over, bool manual, double peak = 0)
     {
         var style = _kilnStyle.Length > 0 && _styles.Contains(_kilnStyle) ? _kilnStyle : "";
         var beauty = manual ? _kilnBeauty : 0;
@@ -1153,7 +1188,11 @@ public sealed partial class Clicker
         Add(shards);
         var freed = LadTakeNow();
 
-        _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold, freed);
+        // Те саме p4, що й у KilnHeat.QualityOf (блиск там обрізано до 1).
+        var s1 = Math.Clamp(shine, 0, 1);
+        var lux = Math.Min(0.3 * s1 * s1, KilnHeat.LuxShare * s1 * s1 * paint * paint);
+        _kilnLast = new KilnLastRow(at, !manual, (int)Math.Round(heat * 100), (int)Math.Round(over), beauty, style, _litStraw, outs, shards, sold, freed,
+            Math.Round(Math.Clamp(lux, 0, 1), 3), manual ? (int)Math.Round(peak) : 0);
         _kilnBatches++;
         var whole = outs.Count(o => o.Q > 0);
         var perfect = manual && IsPerfectBatch(outs.Select(o => o.Q).ToList());
@@ -1166,6 +1205,9 @@ public sealed partial class Clicker
         TitlesOnKiln(manual, perfect, outs.Any(o => o.Q == 0));
         if (outs.Any(o => o.Q == 4)) Achieve("potter-q4");
         if (!manual && ++_kilnAuto == AutoBatchesAch) Achieve("potter-stoker");
+        // v12: Майстер дня — лише ручне горно: дзвінкий 1, розкішний 3 (ClickerDay.cs).
+        if (manual && outs.Sum(o => o.Q >= 4 ? DayPointsQ4 : o.Q == 3 ? DayPointsQ3 : 0) is var day and > 0)
+            DaySvc()?.Add(Ctx.NickOf(0), day, at);
 
         _kiln.Clear();
         _litAt = default;
@@ -1392,6 +1434,11 @@ public sealed partial class Clicker
                 {
                     at = l.At, helper = l.Helper, heat = l.Heat, over = l.Over, beauty = l.Beauty, style = l.Style ?? "", straw = l.Straw,
                     items = (l.Items ?? []).Select(o => new object[] { o.Ware, o.Q }), shards = l.Shards, sold = l.Sold, freed = l.Freed,
+                    lux = l.Lux,
+                    // v12: найвищий жар партії (0 — підмайстер чи старий запис) — для «перегрів до 2 431°».
+                    peak = l.Peak,
+                    // Вікно підсумку вже закрили (на будь-якому пристрої, kiln {op:"seen"}) — вдруге не відкривати (QA-3).
+                    seen = l.Seen,
                 }
                 : null,
         };
@@ -1426,6 +1473,7 @@ public sealed partial class Clicker
         burnMs = KilnBurn.TotalMilliseconds,
         coolMs = KilnCool.TotalMilliseconds,
         graceMs = KilnGrace.TotalMilliseconds,
+        otherWaitMs = KilnOtherWait.TotalMilliseconds,
         patternMs = PatternLife.TotalMilliseconds,
         slotsBase = KilnSlotsBase, slotsMax = KilnSlotsMax, perLevel = KilnPerLevel,
         strawMax = StrawMax, strawCrack = StrawCrack, shardShare = ShardShare, homeBonus = HomeBonus, perfectMin = PerfectMin,

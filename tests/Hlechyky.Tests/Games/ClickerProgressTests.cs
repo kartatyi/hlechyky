@@ -123,14 +123,19 @@ public class ClickerProgressTests
     [Fact]
     public void Every_idle_workbench_up_the_ladder_costs_more_and_earns_more()
     {
+        // v12: заморські майстерні — окрема драбина (їх відмикає Слава, а не попередній щабель), тож перевіряємо обидві
+        // окремо: кожна — дорожча й дохідніша за попередню у своїй драбині.
         var idle = Clicker.Shop.Where(u => u.Kind == ClickerKind.Idle).ToList();
-        for (var i = 1; i < idle.Count; i++)
-        {
-            Assert.True(idle[i].Base > idle[i - 1].Base, idle[i].Key);
-            Assert.True(idle[i].Rate > idle[i - 1].Rate, idle[i].Key);
-            // Три віхи ×2 у кожного (25/50/100); модифікатори після сотні ×2 не дають (v10).
-            Assert.Equal(3, idle[i].Steps.Count(s => s.Effect == MarkEffect.Double));
-        }
+        foreach (var ladder in new[] { idle.Where(u => !Clicker.OverseasTiers.Contains(u.Key)).ToList(),
+                     idle.Where(u => Clicker.OverseasTiers.Contains(u.Key)).ToList() })
+            for (var i = 1; i < ladder.Count; i++)
+            {
+                Assert.True(ladder[i].Base > ladder[i - 1].Base, ladder[i].Key);
+                Assert.True(ladder[i].Rate > ladder[i - 1].Rate, ladder[i].Key);
+                // Три віхи ×2 у кожного (25/50/100); модифікатори після сотні ×2 не дають (v10).
+                Assert.Equal(3, ladder[i].Steps.Count(s => s.Effect == MarkEffect.Double));
+            }
+        Assert.Equal(Clicker.OverseasTiers, idle.Where(u => Clicker.OverseasTiers.Contains(u.Key)).Select(u => u.Key));
     }
 
     [Fact]

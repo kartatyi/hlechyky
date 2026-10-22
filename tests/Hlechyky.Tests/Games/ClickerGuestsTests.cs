@@ -464,7 +464,7 @@ public class ClickerGuestsTests
         Assert.False(r.Ok);
         Assert.Equal("Треба ще 2 × куманець (дзвінкий чи кращий, «Косівська») — є 1 з 3", r.Message);
         Assert.Equal("Треба ще 2 × тиква (добра чи краща) — є 0 з 2", Give(h, 8).Message);
-        Assert.Equal("Треба ще 1 × лев-посудина (лише розкішний) — є 0 з 1", Give(h, 9).Message);
+        Assert.Equal("Треба ще 1 × лев-посудина (лише розкішна) — є 0 з 1", Give(h, 9).Message);
 
         Assert.Equal(before, Pots(h));
         Assert.Equal(1, ItemN(h, "kumanets|kosiv|3"));

@@ -36,6 +36,17 @@ public sealed partial class Clicker
     public const double FestivalMult = 2;
     /// <summary>Скільки виробів друзям — на ачівку «Прийшов на толоку».</summary>
     public const int TolokaHelpForAchievement = 100;
+    /// <summary>
+    /// Своя праця (v12 §2): поки етап будується, ручні кліки по колу наповнюють смугу; повна смуга — етап коротший на
+    /// стільки, поверх друзів і реліквії. Слабко навмисно (слово користувача 21.10: «пришвидшувати, але дуууже слабко»).
+    /// </summary>
+    public const double TolokaWorkCut = 0.15;
+    /// <summary>
+    /// Скільки ручних кліків на годину етапу (без скорочень) — повна смуга. Калібрування 21.10 (§17): етап на 20 год —
+    /// 19 000 кліків, тобто повний ігровий день лідера (dayClicks 20.10: Smaug 19 151 за 1,5 год у колі, Назар 18 572 за 2 год)
+    /// — 1,5–2 год гри. Було 1 500: 30 000 кліків — 2,3–3,3 год, і за реальних 1,2–1,9 год гри на добу смуга не наповнювалась.
+    /// </summary>
+    public const int TolokaWorkPerHour = 950;
 
     // Нагороди будов — числа тут, а де вони діють — у своїх пакетах (гачки нижче).
     public const double WellDryMult = 0.8, MillWindWait = 0.5, SquareMktPay = 1.25, SchoolApprentice = 0.3,
@@ -156,10 +167,18 @@ public sealed partial class Clicker
     DateTimeOffset _festUntil, _festNext;
     /// <summary>Скільки етапів уже готово за весь час — клієнт помічає новий за приростом (стрічка, сцена).</summary>
     int _tDone;
+    /// <summary>
+    /// Склад толоки (v12 §2): вироби, віднесені наперед на будь-який незакладений етап. Ключ — «будова|етап|рядок»,
+    /// значення — які саме вироби (ключ комори → скільки): «забрати назад» вертає те саме, що віднесли.
+    /// </summary>
+    readonly Dictionary<string, Dictionary<string, int>> _tDepot = new(StringComparer.Ordinal);
+    /// <summary>Ручні кліки на поточному закладеному етапі (своя праця).</summary>
+    long _tWork;
 
     public sealed record TolokaRow(List<string>? Built = null, int Stage = 0, DateTimeOffset LaidAt = default,
         List<string>? Helpers = null, Dictionary<int, int>? Got = null, int Helped = 0,
-        DateTimeOffset FestivalUntil = default, DateTimeOffset FestivalNext = default, int Done = 0);
+        DateTimeOffset FestivalUntil = default, DateTimeOffset FestivalNext = default, int Done = 0,
+        Dictionary<string, Dictionary<string, int>>? Depot = null, long Work = 0);
 
     // ---------- гачки для решти гри ----------
 
@@ -200,14 +219,29 @@ public sealed partial class Clicker
     /// <summary>Наскільки коротша будова зараз: друзі й реліквія, не більше <see cref="TolokaCutMax"/>.</summary>
     double TolokaCut => Math.Min(TolokaCutMax, TolokaHelperCut * Math.Min(TolokaHelpersMax, _tHelpers.Count) + Relic("toloka"));
 
-    /// <summary>Коли закладений етап буде готовий (друзі, що підійшли вже під час будови, теж скорочують).</summary>
-    DateTimeOffset TolokaEndsAt(TolokaStage st) => _tLaidAt + TimeSpan.FromHours(st.Hours * (1 - TolokaCut));
+    /// <summary>Скільки ручних кліків — повна смуга своєї праці на етапі.</summary>
+    static long TolokaWorkNeed(TolokaStage st) => (long)Math.Ceiling(TolokaWorkPerHour * st.Hours);
+
+    /// <summary>Скільки скорочує своя праця просто зараз (0 … <see cref="TolokaWorkCut"/>).</summary>
+    double TolokaWorkCutNow(TolokaStage st) => TolokaWorkCut * Math.Min(1, (double)_tWork / Math.Max(1, TolokaWorkNeed(st)));
+
+    /// <summary>Коли закладений етап буде готовий: друзі й реліквія (до −60 %), а поверх — своя праця (до −15 %).</summary>
+    DateTimeOffset TolokaEndsAt(TolokaStage st) =>
+        _tLaidAt + TimeSpan.FromHours(st.Hours * (1 - TolokaCut) * (1 - TolokaWorkCutNow(st)));
 
     static Func<ItemInfo, bool> TolokaMatch(TolokaNeed n) =>
         it => it.Ware == n.Ware && it.Quality >= n.Q && (n.Style.Length == 0 || it.Style == n.Style);
 
-    /// <summary>Скільки ще бракує за вимогою <paramref name="i"/> після того, що піднесли друзі.</summary>
-    int TolokaLeft(TolokaStage st, int i) => Math.Max(0, st.Needs[i].N - (_tGot.TryGetValue(i, out var g) ? g : 0));
+    static string DepotKey(string building, int stage, int need) => $"{building}|{stage}|{need}";
+
+    int DepotCount(string key) => _tDepot.TryGetValue(key, out var bag) ? bag.Values.Sum() : 0;
+
+    /// <summary>Скільки ще бракує за вимогою <paramref name="i"/> поточного етапу після того, що піднесли друзі й що на складі.</summary>
+    int TolokaLeft(TolokaStage st, int i)
+    {
+        var depot = TolokaCurrent() is { } b ? DepotCount(DepotKey(b.Key, Math.Clamp(_tStage, 0, b.Stages.Length - 1), i)) : 0;
+        return Math.Max(0, st.Needs[i].N - (_tGot.TryGetValue(i, out var g) ? g : 0) - depot);
+    }
 
     void ResetToloka(DateTimeOffset now)
     {
@@ -220,6 +254,8 @@ public sealed partial class Clicker
         _festUntil = default;
         _festNext = default;
         _tDone = 0;
+        _tDepot.Clear();
+        _tWork = 0;
     }
 
     /// <summary>Годинник будови: етап готовий, коли минув його час (і офлайн теж).</summary>
@@ -231,6 +267,7 @@ public sealed partial class Clicker
         _tLaidAt = default;
         _tHelpers.Clear();
         _tGot.Clear();
+        _tWork = 0;
         _tDone++;
         _tStage++;
         Wonder("toloka");
@@ -256,8 +293,126 @@ public sealed partial class Clicker
         {
             "lay" => TolokaLay(now),
             "festival" => TolokaFestival(now),
+            "stock" => TolokaStock(Str(payload, "b"), (int)(Num(payload, "s") ?? -1), (int)(Num(payload, "i") ?? -1),
+                (int)Math.Clamp(Num(payload, "n") ?? 1, 1, 10_000), now),
+            "stockAll" => TolokaStockAll(now),
+            "unstock" => TolokaUnstock(Str(payload, "b"), (int)(Num(payload, "s") ?? -1), (int)(Num(payload, "i") ?? -1)),
             _ => ActResult.Fail("Такого на толоці не роблять"),
         };
+    }
+
+    // ---------- склад толоки (v12 §2) ----------
+
+    /// <summary>Чи можна вже носити на будову: мала — з відкриття Толоки, велика — з червоного золотого (чи вже почата).</summary>
+    bool TolokaReachable(ClickerBuilding b) =>
+        TolokaOpen && (!b.Big || _total >= TolokaBigFrom || _tBuilt.Any(k => BuildingOf(k)?.Big == true));
+
+    /// <summary>
+    /// Етапи, на які ще можна носити: поточна будова від поточного етапу (закладений — уже без нього) і всі наступні
+    /// незбудовані, до яких гончар доріс. Порядок — порядок будов і етапів.
+    /// </summary>
+    IEnumerable<(ClickerBuilding B, int S)> TolokaAhead()
+    {
+        var cur = TolokaCurrent();
+        foreach (var b in Buildings)
+        {
+            if (_tBuilt.Contains(b.Key) || !TolokaReachable(b)) continue;
+            var from = 0;
+            if (cur is not null && b.Key == cur.Key) from = Math.Clamp(_tStage, 0, b.Stages.Length - 1) + (_tLaidAt != default ? 1 : 0);
+            for (var s = from; s < b.Stages.Length; s++) yield return (b, s);
+        }
+    }
+
+    /// <summary>Скільки ще можна віднести в рядок: просить мінус піднесене друзями (лише поточний етап) мінус уже на складі.</summary>
+    int DepotRoom(ClickerBuilding b, int s, int i)
+    {
+        var got = TolokaCurrent() is { } cur && cur.Key == b.Key && s == Math.Clamp(_tStage, 0, b.Stages.Length - 1)
+            ? _tGot.GetValueOrDefault(i) : 0;
+        return Math.Max(0, b.Stages[s].Needs[i].N - got - DepotCount(DepotKey(b.Key, s, i)));
+    }
+
+    /// <summary>Віднести з комори в рядок складу; повертає, скільки віднесли (лише вільне — те, чого не чекають замовлення).</summary>
+    int DepotPut(ClickerBuilding b, int s, int i, int want)
+    {
+        var take = Math.Min(want, DepotRoom(b, s, i));
+        if (take <= 0) return 0;
+        var plan = SparePlan(TolokaMatch(b.Stages[s].Needs[i]), take, new TakeFor("depot"));
+        var key = DepotKey(b.Key, s, i);
+        var moved = 0;
+        foreach (var (item, n) in plan)
+        {
+            var ik = ItemKey(item.Ware, item.Style, item.Quality);
+            if (_items[ik] == n) _items.Remove(ik);
+            else _items[ik] -= n;
+            if (!_tDepot.TryGetValue(key, out var bag)) _tDepot[key] = bag = new(StringComparer.Ordinal);
+            bag[ik] = bag.GetValueOrDefault(ik) + n;
+            moved += n;
+        }
+        return moved;
+    }
+
+    ActResult TolokaStock(string building, int s, int i, int n, DateTimeOffset now)
+    {
+        if (BuildingOf(building) is not { } b || s < 0 || s >= b.Stages.Length || i < 0 || i >= b.Stages[s].Needs.Length)
+            return ActResult.Fail("Такого рядка на толоці нема");
+        if (!TolokaAhead().Any(x => x.B.Key == b.Key && x.S == s))
+            return ActResult.Fail("На цей етап уже не носять");
+        if (DepotRoom(b, s, i) <= 0) return ActResult.Fail("Цей рядок уже повний");
+        var moved = DepotPut(b, s, i, n);
+        if (moved == 0)
+            return ActResult.Fail(ItemCount(TolokaMatch(b.Stages[s].Needs[i])) > 0
+                ? "Вільних нема: усе, що підходить, відкладене під замовлення"
+                : $"У коморі нема: {NeedWord(b.Stages[s].Needs[i])}");
+        return ActResult.Accept($"📦 На склад толоки — «{b.Stages[s].Name}»: {NeedWord(b.Stages[s].Needs[i])} ×{moved}");
+    }
+
+    /// <summary>
+    /// «Віднести все, що підходить»: спершу найсуворіші рядки (розкішні з розписом, розкішні, з розписом, решта) — тоді
+    /// розкішний не піде туди, де вистачить дзвінкого; у межах суворості — за порядком етапів.
+    /// </summary>
+    ActResult TolokaStockAll(DateTimeOffset now)
+    {
+        var rows = TolokaAhead()
+            .SelectMany((x, order) => x.B.Stages[x.S].Needs.Select((need, i) => (x.B, x.S, I: i, Need: need, Order: order)))
+            .OrderByDescending(r => r.Need.Q).ThenByDescending(r => r.Need.Style.Length > 0).ThenBy(r => r.Order)
+            .ToList();
+        var moved = 0;
+        var lux = 0;
+        foreach (var r in rows)
+        {
+            var m = DepotPut(r.B, r.S, r.I, int.MaxValue);
+            moved += m;
+            if (r.Need.Q >= QualityMax) lux += m;
+        }
+        if (moved == 0) return ActResult.Fail("Нічого вільного в коморі не підходить толоці");
+        return ActResult.Accept($"📦 На склад толоки: {moved} {WaresWord(moved)}" + (lux > 0 ? $" (з них розкішних {lux})" : ""));
+    }
+
+    /// <summary>Забрати рядок складу назад у комору — лише якщо там є місце (помилку можна виправити, а не продати).</summary>
+    ActResult TolokaUnstock(string building, int s, int i)
+    {
+        var key = DepotKey(building, s, i);
+        if (!_tDepot.TryGetValue(key, out var bag) || bag.Count == 0) return ActResult.Fail("На складі в цьому рядку нічого нема");
+        var n = bag.Values.Sum();
+        if (StoreCapNow - ItemTotal < n) return ActResult.Fail($"У коморі мало місця: треба {n}, вільно {Math.Max(0, StoreCapNow - ItemTotal)}");
+        foreach (var (ik, c) in bag)
+            if (ParseItem(ik) is { } it) PutItems(it.Ware, it.Style, it.Quality, c);
+        _tDepot.Remove(key);
+        // Що саме повернулось — назвою рядка, а не «27 виробів» (QA-3).
+        var what = BuildingOf(building) is { } b && s >= 0 && s < b.Stages.Length && i >= 0 && i < b.Stages[s].Needs.Length
+            ? $"{NeedWord(b.Stages[s].Needs[i])} ×{n}" : $"{n} {WaresWord(n)}";
+        return ActResult.Accept($"📦 Зі складу толоки назад у комору: {what}");
+    }
+
+    /// <summary>Своя праця: ручні кліки, поки етап будується (лише поточний закладений; смуга — до повної).</summary>
+    void TolokaWork(int clicks, DateTimeOffset now)
+    {
+        if (_tLaidAt == default || clicks <= 0 || TolokaCurrent() is not { } b) return;
+        var st = b.Stages[Math.Clamp(_tStage, 0, b.Stages.Length - 1)];
+        var need = TolokaWorkNeed(st);
+        if (_tWork >= need) return;
+        _tWork = Math.Min(need, _tWork + clicks);
+        if (_tWork >= need) Achieve("potter-toloka-work");
     }
 
     /// <summary>Закласти етап: забрати глеки й вироби з комори — і пішов годинник.</summary>
@@ -276,9 +431,12 @@ public sealed partial class Clicker
             if (have < left) lack.Add($"{NeedWord(st.Needs[i])} — ще {left - have}");
         }
         if (lack.Count > 0) return ActResult.Fail("Бракує виробів: " + string.Join("; ", lack));
-        for (var i = 0; i < st.Needs.Length; i++) TakeItems(TolokaMatch(st.Needs[i]), TolokaLeft(st, i));
+        for (var i = 0; i < st.Needs.Length; i++) TakeItems(TolokaMatch(st.Needs[i]), TolokaLeft(st, i), new TakeFor("toloka"));
+        // Склад цього етапу пішов на будову разом із коморою.
+        for (var i = 0; i < st.Needs.Length; i++) _tDepot.Remove(DepotKey(b.Key, Math.Clamp(_tStage, 0, b.Stages.Length - 1), i));
         _pots -= st.Pay;
         _tLaidAt = now;
+        _tWork = 0;
         var ends = TolokaEndsAt(st);
         return ActResult.Accept($"{b.Icon} Заклали «{st.Name}»: будується {Hours(ends - now)}");
     }
@@ -364,11 +522,34 @@ public sealed partial class Clicker
                 {
                     ware = n.Ware, n = n.N, q = n.Q, style = n.Style,
                     got = _tGot.TryGetValue(i, out var g) ? g : 0,
+                    // v12: скільки вже на складі толоки (рахується як піднесене).
+                    depot = DepotCount(DepotKey(b.Key, Math.Clamp(_tStage, 0, b.Stages.Length - 1), i)),
                     have = ItemCount(TolokaMatch(n)),
                 }).ToList(),
                 helpers = _tHelpers.ToList(),
+                // v12: своя праця на закладеному етапі — ручні кліки, з них смуга і скорочення поверх друзів і реліквії.
+                work = _tLaidAt == default ? null : new { n = _tWork, of = TolokaWorkNeed(st), cut = TolokaWorkCutNow(st) },
             };
         }
+        // v12 §2: план до кінця — підсумок за рядками по всіх етапах, на які ще можна носити, а поетапно — лише поточна й
+        // наступна будова (вид топ-гончаря мусить влазити в 25 КБ, а 43 етапи поетапно — ще ~1,5 КБ щопачки).
+        var ahead = TolokaAhead().ToList();
+        var near = ahead.Select(x => x.B.Key).Distinct().Take(2).ToHashSet(StringComparer.Ordinal);
+        // Далі за двома будовами — лише етапи, де вже щось лежить на складі: «Віднести все» носить і туди, і забрати
+        // назад («↩») мусить бути звідки (QA-3: 43 глечики на «Глеку на майдані» без вороття).
+        var plan = ahead.Where(x => near.Contains(x.B.Key) || x.B.Stages[x.S].Needs.Where((_, i) => DepotCount(DepotKey(x.B.Key, x.S, i)) > 0).Any()).Select(x => new
+        {
+            building = x.B.Key, index = x.S,
+            needs = x.B.Stages[x.S].Needs.Select((n, i) => new { ware = n.Ware, n = n.N, q = n.Q, style = n.Style, depot = DepotCount(DepotKey(x.B.Key, x.S, i)) }).ToList(),
+        }).ToList();
+        var totals = ahead.SelectMany(x => x.B.Stages[x.S].Needs.Select((n, i) => (n, depot: DepotCount(DepotKey(x.B.Key, x.S, i)))))
+            .GroupBy(x => (x.n.Ware, x.n.Q, x.n.Style))
+            .Select(g => new
+            {
+                ware = g.Key.Ware, q = g.Key.Q, style = g.Key.Style, n = g.Sum(x => x.n.N), depot = g.Sum(x => x.depot),
+                have = ItemCount(TolokaMatch(new TolokaNeed(g.Key.Ware, 0, g.Key.Q, g.Key.Style))),
+            })
+            .OrderByDescending(x => x.q).ThenBy(x => x.ware, StringComparer.Ordinal).ToList();
         return new
         {
             built = Buildings.Where(x => _tBuilt.Contains(x.Key)).Select(x => x.Key).ToList(),
@@ -383,6 +564,9 @@ public sealed partial class Clicker
             helped = _tHelped,
             festival = TolokaHas("festival") ? new { until = _festUntil, next = _festNext, mult = FestivalMult } : null,
             allMult = 1 + TolokaAllBonus * _tBuilt.Count,
+            plan,
+            totals,
+            depot = _tDepot.Values.Sum(bag => bag.Values.Sum()),
         };
     }
 
@@ -395,6 +579,8 @@ public sealed partial class Clicker
         helpersMax = TolokaHelpersMax,
         cutMax = TolokaCutMax,
         allBonus = TolokaAllBonus,
+        workCut = TolokaWorkCut,
+        workPerHour = TolokaWorkPerHour,
         buildings = Buildings.Select(b => new
         {
             key = b.Key, name = b.Name, icon = b.Icon, big = b.Big, reward = b.Reward,
@@ -403,10 +589,12 @@ public sealed partial class Clicker
     };
 
     TolokaRow? SaveToloka() => _tBuilt.Count == 0 && _tStage == 0 && _tLaidAt == default && _tGot.Count == 0 && _tHelped == 0
-                                && _tHelpers.Count == 0 && _tDone == 0
+                                && _tHelpers.Count == 0 && _tDone == 0 && _tDepot.Count == 0
         ? null
         : new TolokaRow(_tBuilt.Order(StringComparer.Ordinal).ToList(), _tStage, _tLaidAt, _tHelpers.ToList(),
-            _tGot.Count == 0 ? null : new Dictionary<int, int>(_tGot), _tHelped, _festUntil, _festNext, _tDone);
+            _tGot.Count == 0 ? null : new Dictionary<int, int>(_tGot), _tHelped, _festUntil, _festNext, _tDone,
+            _tDepot.Count == 0 ? null : _tDepot.ToDictionary(x => x.Key, x => new Dictionary<string, int>(x.Value, StringComparer.Ordinal), StringComparer.Ordinal),
+            _tWork);
 
     void LoadToloka(TolokaRow? row)
     {
@@ -426,5 +614,20 @@ public sealed partial class Clicker
         _tDone = Math.Max(0, row.Done);
         // Етап за межами будови (каталог змінився) — з початку цієї будови, без годинника.
         if (TolokaCurrent() is { } b && _tStage >= b.Stages.Length) { _tStage = 0; _tLaidAt = default; _tGot.Clear(); }
+        _tWork = _tLaidAt == default ? 0 : Math.Max(0, row.Work);
+        // Склад: лише рядки, що існують у каталозі, і вироби, які гра розуміє; збудоване — геть (вироби вже не вернеш
+        // у переповнену комору, а будова однаково стоїть).
+        foreach (var (key, bag) in row.Depot ?? [])
+        {
+            var parts = key?.Split('|');
+            if (parts is not { Length: 3 } || BuildingOf(parts[0]) is not { } db || _tBuilt.Contains(db.Key)
+                || !int.TryParse(parts[1], out var s) || s < 0 || s >= db.Stages.Length
+                || !int.TryParse(parts[2], out var i) || i < 0 || i >= db.Stages[s].Needs.Length || bag is null)
+                continue;
+            var clean = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (ik, n) in bag)
+                if (n > 0 && ParseItem(ik) is not null) clean[ik] = Math.Min(n, 10_000);
+            if (clean.Count > 0) _tDepot[key!] = clean;
+        }
     }
 }

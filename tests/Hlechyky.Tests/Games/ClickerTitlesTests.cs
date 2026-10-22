@@ -146,6 +146,8 @@ public class ClickerTitlesTests
     {
         var h = Wheel();
         Patch(h, s => { s.Remove("titles"); s["news"] = "v9.1"; s["total"] = 1000; s["upgrades"]!["apprentice"] = 10; });
+        // Подарунок v12 (хвилини гри) — свій тест; тут лише подарунок округи.
+        Patch(h, s => s["titles"] = new JsonObject { ["gifts"] = new JsonArray(Clicker.GiftV12Key) });
         var v = View(h);
         Assert.Equal(Clicker.NewsVersion, v.GetProperty("news").GetString());
         Assert.Equal("v9.1", v.GetProperty("newsSeen").GetString());
@@ -574,7 +576,7 @@ public class ClickerTitlesTests
         foreach (var from in new[] { b, c })
         {
             Items(from, ("pot||1", 1));
-            Assert.True(from.Act(0, "guild", new { op = "gift", key = "pot||1", nick = "Оля" }).Ok);
+            Assert.True(from.Act(0, "guild", new { op = "gift", key = "pot||1", nick = "Оля", keep = false }).Ok);
         }
         Assert.True(Look(a).Ok);
         Assert.Contains("x8", Earned(a));
@@ -589,9 +591,9 @@ public class ClickerTitlesTests
         foreach (var nick in new[] { "Антон", "Марта", "Назар" }) g.Potter(nick);
         Items(a, ("pot||1", 3));
         foreach (var nick in new[] { "Антон", "Марта" })
-            Assert.True(a.Act(0, "guild", new { op = "gift", key = "pot||1", nick }).Ok);
+            Assert.True(a.Act(0, "guild", new { op = "gift", key = "pot||1", nick, keep = false }).Ok);
         Assert.DoesNotContain("x9", Earned(a));
-        Assert.True(a.Act(0, "guild", new { op = "gift", key = "pot||1", nick = "Назар" }).Ok);
+        Assert.True(a.Act(0, "guild", new { op = "gift", key = "pot||1", nick = "Назар", keep = false }).Ok);
         Assert.Contains("x9", Earned(a));
     }
 

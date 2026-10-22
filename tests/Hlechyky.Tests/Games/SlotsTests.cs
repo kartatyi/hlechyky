@@ -551,16 +551,16 @@ public class SlotsTests
     {
         var k = new SlotsKit(wallet: 10_000, opts: o => o.JackpotMustHit = 0);
         for (var i = 0; i < 10; i++) k.Spin(100);
-        Assert.Equal(10_000 + 10, k.Bank.Pot);   // по 1 % з десяти ставок по 100 (без межі — увесь внесок у суму)
+        Assert.Equal(10_000 + 30, k.Bank.Pot);   // по 3 % з десяти ставок по 100 (без межі — увесь внесок у суму)
         var rng = k.Rig();
         rng.Stops(SlotsKit.StopsWhere((_, u) => u == 0)).Jackpot();
         var before = k.Stakes.Balance("Оля");
         Assert.True(k.Spin(100).Ok);
         var s = k.View.GetProperty("last").GetProperty("script");
-        Assert.Equal(10_011, s.GetProperty("jackpot").GetInt32());
+        Assert.Equal(10_033, s.GetProperty("jackpot").GetInt32());
         var last = s.GetProperty("steps").EnumerateArray().Last();
         Assert.Equal("jackpot", last.GetProperty("t").GetString());
-        Assert.Equal(before - 100 + 10_011, k.Stakes.Balance("Оля"));
+        Assert.Equal(before - 100 + 10_033, k.Stakes.Balance("Оля"));
         Assert.Equal("slot-jackpot:slot-glek", k.Stakes.Reasons.Single(x => x.Key.EndsWith(":jp")).Value);
         Assert.Equal(10_000, k.Bank.Pot);
         Assert.Contains(k.H.Awards, a => a.Reason == "ach:slot-jackpot");
@@ -613,7 +613,7 @@ public class SlotsTests
         bank.Brag("Дрібно", "slot-glek", "Однорукий Глек", 10, 150, 0);   // 15× — не занос
         var view = JsonSerializer.SerializeToElement(bank.FeedView(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.True(view.GetProperty("on").GetBoolean());
-        Assert.Equal(10_000, view.GetProperty("jackpot").GetInt32());
+        Assert.Equal(10_000 + 7 * 1000, view.GetProperty("jackpot").GetInt32());   // 8 діб без обертів — Глек доклав за 7 (стеля)
         var wins = view.GetProperty("wins").EnumerateArray().Select(w => w.GetProperty("nick").GetString()).ToList();
         Assert.Equal(["Петро", "Оля"], wins);
     }

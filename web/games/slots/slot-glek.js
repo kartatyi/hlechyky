@@ -471,9 +471,11 @@
       st.querySelector('.gl-win').style.borderRadius = (W.r || 10) + 'px';
       ctx.makeReels(st.querySelector('.gl-reelhost'), { cols: 3, rows: 3, height: W.h, cellW: (W.w - 8) / 3, gap: 4, style: 'cylinder', curve: 50, strips: REELS });
       ctx.gl.digits = Array.from(st.querySelectorAll('.gl-dw'));
-      setDigits(ctx, ctx.meter || 0);
+      setDigits(ctx, ctx.glGamble ? ctx.glGamble.amount : ctx.meter || 0);
       wireHandle(ctx, st.querySelector('.gl-handle'));
       updBoard(ctx);
+      // перебудова (поворот, перше вписування вже після _resumeGamble) чистить hudExtra — кнопка Ворожки знову, поки виграш не розіграно
+      if (ctx.lastWin && !ctx.busy) gambleButton(ctx);
       if (!ctx.gl.greeted) { ctx.gl.greeted = true; ctx.timeout(() => ctx.say(SK.rnd.pick(SAY.idle), 4000), 600); }
     },
     onBet(ctx) { updBoard(ctx); },

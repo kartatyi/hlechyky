@@ -85,15 +85,25 @@ public class ClickerNumbersTests
     [InlineData(242_733.4e27, "242 733 золоті")]
     [InlineData(1_001.7e27, "1 001 золотий")]
     [InlineData(1.2e33, "1,2 млн золотих")]
-    public void Short_speaks_pots_then_hryvnias_then_gold(double n, string text) =>
+    [InlineData(999e36, "999 млрд золотих")]
+    // v12 §6: від 10³⁹ — дукачі (трильйон червоних золотих), слово за видимим числом.
+    [InlineData(1e39, "1 дукач")]
+    [InlineData(2e39, "2 дукачі")]
+    [InlineData(5e39, "5 дукачів")]
+    [InlineData(2.8e39, "2,8 дукача")]
+    [InlineData(41.39e39, "41,4 дукача")]
+    [InlineData(1_001.7e39, "1 001 дукач")]
+    [InlineData(1.2e45, "1,2 млн дукачів")]
+    public void Short_speaks_pots_then_hryvnias_then_gold_then_dukach(double n, string text) =>
         Assert.Equal(text, Plain(Clicker.Short(n)));
 
     [Fact]
-    public void Past_a_thousand_billion_gold_short_switches_to_a_power_of_ten()
+    public void Past_a_trillion_dukach_short_counts_trillions_not_a_power_of_ten()
     {
-        // Модель до таких сум не доходить, але й вигадувати слова не варто: «1e15 золотих» читається однаково всюди.
-        Assert.Equal("1e15 золотих", Clicker.Short(1e42));
-        Assert.Equal("1,2e15 золотих", Clicker.Short(1.2e42));
+        // v12 §6: степеня («1,2e15») в інтерфейсі кола нема ніде — за трильйонами трильйони з розрядами.
+        Assert.Equal("1 трлн дукачів", Plain(Clicker.Short(1e51)));
+        Assert.Equal("1 200 трлн дукачів", Plain(Clicker.Short(1.2e54)));
+        Assert.DoesNotContain("e", Clicker.Short(1e60).Replace("дукачів", "").Replace("трлн", ""));
         Assert.Equal("∞", Clicker.Short(double.PositiveInfinity));
         Assert.Equal("∞", Clicker.Short(double.NaN));
     }
@@ -105,6 +115,7 @@ public class ClickerNumbersTests
     [InlineData(5e14, "500 трлн глеків")]
     [InlineData(7e15, "7 ₴")]
     [InlineData(3e27, "3 золоті")]
+    [InlineData(3e39, "3 дукачі")]
     public void Pots_short_adds_the_word_only_where_there_is_no_unit(double n, string text) =>
         Assert.Equal(text, Plain(Clicker.PotsShort(n)));
 
@@ -112,7 +123,8 @@ public class ClickerNumbersTests
     public void Count_never_turns_into_money()
     {
         Assert.Equal("5 трлн", Clicker.Count(5e12));
-        Assert.Equal("1,2e15", Clicker.Count(1.2e15));
+        // Клейма й інше без одиниці за трильйонами — трильйони з розрядами, не «1,2e15» (v12 §6).
+        Assert.Equal("1 200 трлн", Plain(Clicker.Count(1.2e15)));
         Assert.Equal("64,5 млрд", Clicker.Count(64_579_065_538));
     }
 

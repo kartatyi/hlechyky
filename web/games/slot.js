@@ -41,10 +41,11 @@
   }
   const DEPS = { 'slot-slidy': ['slot-cascade-art'] };
   async function load(id) {
-    css('kit.css');
+    css('kit.css'); css('tourney.css');
     (DEPS[id] || []).forEach((d) => css(d + '.css'));
     css(id + '-art.css'); const c = css(id + '.css');
     await js('kit.js');
+    await js('tourney.js');   // турнір тижня (пакет 5): смуга над автоматом і режим фішок
     for (const d of DEPS[id] || []) await js(d + '.js');
     await Promise.all([js(id + '-art.js'), js(id + '.js'), c]);
     if (!window.SlotKit || !SlotKit.machines || !SlotKit.machines[id]) throw new Error('нема автомата ' + id);
@@ -76,7 +77,7 @@
       const r = await fetch('/api/slots/feed', { cache: 'no-store' });
       if (!r.ok) return;
       const f = await r.json();
-      SlotKit.setLive({ jackpot: f.jackpot, mustHit: f.mustHit || 0, lines: feedLines(f), on: f.on !== false });
+      SlotKit.setLive({ jackpot: f.jackpot, mustHit: f.mustHit || 0, daily: f.daily || 0, lines: feedLines(f), on: f.on !== false });
     } catch (e) { /* мережа — наступного разу */ }
   }
   function feedOn() { if (!feedT) { feedT = setInterval(pollFeed, FEED_MS); pollFeed(); } }
@@ -95,7 +96,7 @@
     const b = e.detail && e.detail.balance;
     if (b == null) return;
     walletBal = b;
-    roots.forEach((st) => { if (st.inst && !st.inst.busy && !st.waitSpin && !st.hold) st.inst.ctx.setBalance(b); });
+    roots.forEach((st) => { if (st.inst && !st.inst.busy && !st.waitSpin && !st.hold && !st.tmode) st.inst.ctx.setBalance(b); });
   });
 
   // ---------- сервер замість моку ----------
@@ -113,7 +114,7 @@
           };
           t = setTimeout(() => done(null), 12000);
           st.waitSpin = { seq, done };
-          st.ctx.act('spin', { bet, seq }).then((r) => { if (!r || r.ok === false) done(null); else check(st); });
+          st.ctx.act(st.tmode ? 'tspin' : 'spin', { bet, seq }).then((r) => { if (!r || r.ok === false) done(null); else check(st); });
         });
       },
       gamble(pick) {
@@ -149,13 +150,15 @@
   function check(st) {
     const v = st.ctx.view || {};
     if (v.jackpot != null && window.SlotKit && SlotKit.setLive) SlotKit.setLive({ jackpot: v.jackpot });
-    if (st.machine) st.machine.buy = v.buy || null;   // «Купити бонус» вмикають наживо (Slots:BuyBonus)
+    if (window.SlotKit && SlotKit.setLive) SlotKit.setLive({ saldo: v.saldo || null, daily: v.daily || 0 });   // пакет 5: сальдо й «Глек докидає щодня»
+    if (st.machine) st.machine.buy = (!st.tmode && v.buy) || null;   // «Купити бонус» вмикають наживо (Slots:BuyBonus)
     const L = v.last;
     if (st.waitSpin && L && L.seq > st.waitSpin.seq) { st.seenSeq = L.seq; st.waitSpin.done(L.script); }
     else if (L && L.seq > st.seenSeq) st.seenSeq = L.seq;   // оберт з іншої вкладки — не програємо
     const g = v.gamble;
     if (st.waitG && g && (g.n || 0) > st.waitG.n) st.waitG.done(Object.assign({}, g, { balance: v.balance }));
-    if (st.inst && !st.inst.busy && !st.waitSpin && !st.hold) { const b = liveBal() != null ? liveBal() : v.balance; if (b != null) st.inst.ctx.setBalance(b); }
+    if (window.SlotTour) SlotTour.update(st);
+    if (st.inst && !st.inst.busy && !st.waitSpin && !st.hold && !st.tmode) { const b = liveBal() != null ? liveBal() : v.balance; if (b != null) st.inst.ctx.setBalance(b); }
   }
 
   // ---------- висота: автомат на всю ігрову зону ----------
@@ -191,6 +194,7 @@
     st.wrap.innerHTML = '';
     if (v.jackpot != null) SlotKit.setLive({ jackpot: v.jackpot });
     if (!SlotKit.live.lines) SlotKit.setLive({ lines: [] });
+    SlotKit.setLive({ saldo: v.saldo || null, daily: v.daily || 0 });   // пакет 5: сальдо одразу, а не з першим обертом
     st.inst = SlotKit.mount(st.wrap, id, { balance: liveBal() != null ? liveBal() : v.balance != null ? v.balance : 0, bet: v.bet, bets: v.bets, api: makeApi(st) });
     // поле останнього оберту — без програвання
     const sp = v.last && v.last.script && (v.last.script.steps || []).find((s) => s.t === 'spin' || s.t === 'set');
@@ -205,7 +209,8 @@
     st.inst.ctx.on('resize', place);
     // Ворожка лишилась відкритою (перезавантаження посеред неї) — кнопка знову з тією сумою
     if (v.gamble && v.gamble.open && machine._resumeGamble) machine._resumeGamble(st.inst.ctx, v.gamble);
-    st.inst.ctx.on('spinEnd', () => { st.hold = false; release(); const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
+    if (window.SlotTour) SlotTour.mount(st);
+    st.inst.ctx.on('spinEnd', () => { st.hold = false; release(); if (st.tmode) return; const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
     fitH(st);
     feedOn();
   }
@@ -223,6 +228,7 @@
     st.dead = true;
     if (st.waitSpin) st.waitSpin.done(null);
     if (st.waitG) st.waitG.done({ open: false });
+    if (window.SlotTour) SlotTour.unmount(st);
     window.removeEventListener('resize', st.onResize);
     try { if (st.inst) st.inst.destroy(); } catch (e) { console.warn('[slot] destroy', e); }
     roots.delete(root);

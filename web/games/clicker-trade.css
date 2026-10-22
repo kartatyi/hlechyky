@@ -1,0 +1,111 @@
+/* Заморська торгівля — розділ «🚢 Заморська торгівля» у вкладці «Село», під Толокою (clicker-trade.js,
+   docs/games/specs/clicker-v12.md §3–4). Барви — море й мідь корабельних снастей: синьо-зелена вода, щоб розділ не
+   злився ні з синім двором гостей, ні з деревом Толоки. */
+
+/* flex: none — панель «Села» на ПК гортається всередині себе: без цього розділ стискався б до заголовка. */
+.clkt {
+  gap: 7px; position: relative; flex: none;
+  border-color: rgba(64, 160, 168, .45);
+  background: linear-gradient(135deg, rgba(28, 92, 104, .36) 0%, var(--panel) 58%);
+}
+.clkt[hidden] { display: none; }
+.clkt.closed { background: var(--panel); border-color: var(--line); padding-top: 6px; padding-bottom: 6px; }
+.clkt-title { align-self: stretch; }
+
+/* ---- Слава у світі ---- */
+.clkt-slava { display: flex; flex-direction: column; gap: 3px; }
+.clkt-sline { font-size: .9em; line-height: 1.3; }
+.clkt-sline b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.clkt-sbar { height: 8px; border-radius: 4px; background: rgba(0, 0, 0, .28); overflow: hidden; }
+.clkt-sbar i {
+  display: block; height: 100%; border-radius: 4px; transition: width .4s;
+  background: linear-gradient(90deg, var(--accent2), var(--accent));
+}
+
+/* ---- відчинилась майстерня ---- */
+.clkt-open {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 10px; border-radius: 10px;
+  background: rgba(244, 197, 66, .12); border: 1px solid var(--accent2); font-size: .9em;
+}
+.clkt-open.fresh { animation: clktrise .5s ease-out both; }
+.clkt-open > span { flex: 1 1 200px; min-width: 0; }
+.clkt-open > button { white-space: nowrap; }
+
+/* ---- кораблі ---- */
+.clkt-ships { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 7px; }
+.clkt-ship {
+  display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; padding: 8px; border-radius: 12px; position: relative;
+  background: linear-gradient(160deg, rgba(28, 92, 104, .42) 0%, var(--panel2) 100%); border: 1px solid rgba(64, 160, 168, .4);
+}
+.clkt-ship.fresh { animation: clktsail .6s cubic-bezier(.2, 1.3, .4, 1) both; }
+.clkt-ship.ready { border-color: rgba(123, 211, 137, .6); }
+.clkt-ship.first { border-color: var(--accent2); box-shadow: inset 0 0 18px rgba(244, 197, 66, .12); }
+.clkt-art { position: relative; display: flex; align-items: center; justify-content: center; align-self: start; height: 64px; margin-top: 4px; }
+.clkt-ware { width: 54px; height: 56px; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .4)); }
+/* Вимпел порту — одна барва (--h), без державних знаків. */
+.clkt-flag { position: absolute; left: -4px; top: -6px; width: 18px; height: 22px; color: var(--muted); }
+.clkt-flagc { fill: hsl(var(--h, 200) 62% 52%); }
+.clkt-n {
+  position: absolute; right: -2px; bottom: 0; font-size: .8em; font-weight: 700; color: var(--accent-ink); background: var(--accent2);
+  border-radius: 999px; padding: 0 5px; font-variant-numeric: tabular-nums;
+}
+.clkt-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.clkt-firstb { font-size: .8em; font-weight: 700; color: var(--accent); }
+.clkt-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 8px; font-size: .9em; }
+.clkt-time { white-space: nowrap; }
+.clkt-time i, .clkt-next i { font-style: normal; font-variant-numeric: tabular-nums; }
+.clkt-line { font-size: .86em; line-height: 1.3; overflow-wrap: anywhere; }
+.clkt-req { color: var(--accent2); }
+.clkt-pay { color: var(--muted); }
+.clkt-pay b { color: var(--text); font-weight: 600; white-space: nowrap; }
+.clkt-world { white-space: nowrap; }
+.clkt-bar { position: relative; height: 14px; border-radius: 7px; background: rgba(0, 0, 0, .25); overflow: hidden; }
+.clkt-bar i { display: block; height: 100%; background: linear-gradient(90deg, #2f7f86, #57c0c4); border-radius: 7px; transition: width .4s; }
+.clkt-bar span {
+  position: absolute; inset: 0 4px; text-align: center; font-size: 10.5px; line-height: 14px; font-weight: 600; color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.clkt-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; }
+.clkt-btns > button { padding: 3px 10px; white-space: nowrap; max-width: 100%; }
+/* «🏺 Ліпити лев-посудину (Ізнікський тюльпан)» довша за картку на 1366 (QA-4) — переноситься, а не вилазить. */
+.clkt-btns > .clkt-form { white-space: normal; text-align: left; }
+/* Сіра, але жива: натиск питає сервер, і він каже дослівно, чому не бере. */
+.clkt-btns > button.off { opacity: .5; filter: grayscale(.8); }
+.clkt-why { color: var(--muted); font-size: .78em; line-height: 1.3; }
+/* Що дасть «Завантажити все» — над кнопками, дрібно. */
+.clkt-sum { color: var(--muted); font-size: .78em; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.clkt-onwheel { color: var(--muted); }
+.clkt-rel.armed { color: #ffb27a; border-color: #8a4a2a; }
+.clkt-next { text-align: right; }
+.clkt-next.empty { text-align: center; padding: 4px 8px; border: 1px dashed var(--line); border-radius: 10px; }
+
+/* «→ у Майстерню» підсвічує щойно відчинену майстерню. */
+.clk-up.clkt-flash { animation: clktflash 1.4s ease-out 2; }
+
+@keyframes clktsail { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes clktrise { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes clktflash { 0%, 100% { opacity: 1; } 40% { opacity: .45; } }
+
+/* Телефон: картки в один стовпчик, кнопки — під палець. */
+@container clk (max-width: 420px) {
+  .clkt-ships { grid-template-columns: minmax(0, 1fr); }
+  .clkt-btns > button, .clkt-open > button { min-height: 40px; padding: 6px 12px; }
+  .clkt-btns > .clkt-plus { min-width: 48px; }
+}
+@media (pointer: coarse) {
+  .clkt-btns > button, .clkt-open > button { min-height: 40px; }
+  .clkt-btns > .clkt-plus { min-width: 48px; }
+  /* ⓘ розділу — сама ціль 40×40 (QA-3: 16×16), а кружечок той самий: його малює тло, від'ємні поля не зсувають заголовок. */
+  .clkt-title .clk-info > summary {
+    width: 40px; height: 40px; margin: -12px -12px -12px -8px; border-color: transparent;
+    background: radial-gradient(circle, transparent 7px, var(--line) 7.5px, var(--line) 8.5px, transparent 9px);
+  }
+  .clkt-title .clk-info[open] > summary {
+    border-color: transparent; background: radial-gradient(circle, transparent 7px, var(--accent2) 7.5px, var(--accent2) 8.5px, transparent 9px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clkt-ship.fresh, .clkt-open.fresh, .clk-up.clkt-flash { animation: none; }
+  .clkt-bar i, .clkt-sbar i { transition: none; }
+}

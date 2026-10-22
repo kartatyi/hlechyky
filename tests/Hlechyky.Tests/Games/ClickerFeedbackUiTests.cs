@@ -401,6 +401,63 @@ public class ClickerFeedbackUiTests
     }
 
     [Fact]
+    public void Giving_one_kind_keeps_the_reserved_unless_the_potter_says_so()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        NoOrders(h);
+        Items(h, ("pot||1", 5));
+        VillageOrder(h, "pot", 1, 2);                              // 2 горщики чекає село
+        // v12, QA-2: «усі 5» кладе лише вільні 3.
+        var r = Guild(h, new { op = "give", key = "pot||1", n = 5 });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("2 лишив під замовлення й Толоку", r.Message);
+        Assert.Contains("до бронзи", r.Message);                    // не «повний на 3060 %»
+        Assert.Equal(2, Store(h)["pot||1"]);
+        // Лишились самі відкладені — питаємо, а не беремо мовчки.
+        var held = Guild(h, new { op = "give", key = "pot||1", n = 1 });
+        Assert.False(held.Ok);
+        Assert.StartsWith("🔒 Усі 2 відкладено", held.Message);
+        Assert.Equal(2, Store(h)["pot||1"]);
+        // Гравець підтвердив.
+        Assert.True(Guild(h, new { op = "give", key = "pot||1", n = 2, keep = false }).Ok);
+        Assert.False(Store(h).ContainsKey("pot||1"));
+        Assert.Equal(5, G(h).GetProperty("day").GetProperty("mine").GetInt32());
+    }
+
+    [Fact]
+    public void A_gift_to_a_friend_asks_before_taking_what_is_reserved()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        var petro = g.Potter("Петро");
+        // Петро вже сідав за коло — дарунку є куди стати.
+        lock (petro.Room.Sync) g.Store.SaveState("clicker:" + ClickerGuildService.Key("Петро"), petro.Room.Game.Save()!);
+        NoOrders(h);
+        Items(h, ("pot||1", 2));
+        VillageOrder(h, "pot", 1, 2);                              // обидва горщики чекає село
+        var held = Guild(h, new { op = "gift", nick = "Петро", key = "pot||1" });
+        Assert.False(held.Ok);
+        Assert.StartsWith("🔒 Усі 2 відкладено", held.Message);
+        Assert.Equal(2, Store(h)["pot||1"]);
+        var r = Guild(h, new { op = "gift", nick = "Петро", key = "pot||1", keep = false });
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(1, Store(h)["pot||1"]);
+    }
+
+    [Fact]
+    public void The_wagon_toast_tells_the_own_share_and_the_next_step()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        NoOrders(h);
+        Items(h, ("pot||1", 20));
+        Assert.EndsWith("ще 2 — і нагорода твоя", Guild(h, new { op = "give", key = "pot||1", n = 3, keep = false }).Message);
+        // QA-4: тост воза каже про пай, як і картка: «пай ×0,5 · ще 6 — і ×1».
+        Assert.Contains("пай ×0,5 · ще 6 — і ×1", Guild(h, new { op = "give", key = "pot||1", n = 3, keep = false }).Message);
+    }
+
+    [Fact]
     public void Give_all_says_why_when_there_is_nothing_to_give()
     {
         var g = new Tsekh();

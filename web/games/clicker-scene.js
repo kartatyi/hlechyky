@@ -611,11 +611,16 @@
         + '<path d="M-12.6 -21h25.2" stroke="#c62f25" stroke-width="2"/><path d="M-11.5 -12h23" stroke="#2f7d3a" stroke-width="1.4"/>'
         + '<path class="clks-glint" d="M-8 -26c-2 4-2 10 0 14" stroke="#fff6cf" stroke-width="2" fill="none" stroke-linecap="round"/></g>';
     }
+    s += overseasFar(e);                  // v12: заморські майстерні — на гребені далеких пагорбів посередині
     s += worldFar(e);                     // v10: вежа, вокзал, маяк, потяг за річкою
     // Річка з чайкою.
     s += '<path d="M0 88C80 83 160 92 240 87S330 85 360 88V96C300 94 220 99 140 95S40 97 0 98z" style="fill:var(--clks-river)"/>'
       + '<path class="clks-ripple" d="M30 92h14M120 93h10M200 91h16M290 92h12" stroke="#cfe6f6" stroke-width=".8" opacity=".5"/>';
+    // Далеке вітрило (порт) — за Пристанню й кораблями біля неї: воно ходить якраз уздовж того берега.
+    if (lv(e, 'port')) s += '<g transform="translate(84 88.2)"><g class="clks-farsail">' + farSail() + '</g></g>';
+    if (e.trade) s += riverLanes(e, true); // v12: шлюп і пароплав — дальшою смугою, за Пристанню й кораблями
     s += tolokaRiver(e, e.fresh);         // v11: пристань Толоки на тому березі
+    s += tradeRiver(e);                   // v12: причал і кораблі біля Пристані
     if (t.chaika >= 1) {
       const boat = (cls, k) => '<g class="clks-boat ' + cls + '"><g transform="scale(' + k + ')"><path d="M-14 -2h28l-5 5h-18z" fill="#6b4423"/><path d="M0 -2v-17" stroke="#3a2a1a" stroke-width="1"/>'
         + '<path d="M1 -18c7 3 9 8 8 14H1z" fill="#f4efe3"/>' + (t.chaika >= 25 ? '<path d="M3 -14l3 3M6 -14l-3 3" stroke="#d7372b" stroke-width=".8"/>' : '') + '</g></g>';
@@ -1200,17 +1205,29 @@
     return s;
   }
 
-  /// Річка: далеке вітрило (порт), причал із глеками й своя шхуна (порт 25/50), а шлюп «Нева» й пароплав по черзі
-  /// перетинають річку назустріч чайці. Після чайки й перед ближнім берегом.
+  /// Річка: причал із глеками й своя шхуна (порт 25/50; далеке вітрило — у worldSvg), а шлюп «Нева» й пароплав по черзі
+  /// перетинають річку назустріч чайці (riverLanes; коли є причал торгівлі — дальшою смугою, у worldSvg). Після чайки
+  /// й перед ближнім берегом.
   function worldRiver(e) {
     let s = '';
-    const port = lv(e, 'port'), voyage = lv(e, 'voyage'), ocean = lv(e, 'ocean');
-    if (port) s += '<g transform="translate(84 88.2)"><g class="clks-farsail">' + farSail() + '</g></g>';
+    const port = lv(e, 'port');
     if (port >= 50) s += schoonerSvg();
     if (port >= 25) s += pierSvg();
-    if (voyage) s += '<g transform="translate(0 94)"><g class="clks-lane s1">' + sloopSvg(voyage) + '</g></g>';
-    if (ocean) s += '<g transform="translate(0 94.4)"><g class="clks-lane s2">' + steamerSvg(ocean, '#b3342a') + '</g></g>';
+    if (!e.trade) s += riverLanes(e, false);
     return s + '<g class="clks-gslot" data-lane="river"></g>';
+  }
+
+  /// Шлюп «Нева» й пароплав. far — є причал заморської торгівлі (v12, QA-4): тоді вони йдуть дальшою смугою, менші, і
+  /// малюються раніше за Пристань, причал і кораблі біля нього — пропливають позаду, а не накривають корабель на 6 с.
+  /// Масштаб — усередині рухомої групи: translateX смуги лишається в одиницях сцени й веде їх через усю річку.
+  function riverLanes(e, far) {
+    const voyage = lv(e, 'voyage'), ocean = lv(e, 'ocean');
+    const at = (y, cls, art) => '<g transform="translate(0 ' + y + ')"><g class="clks-lane ' + cls + '">'
+      + (far ? '<g transform="scale(.58)">' + art + '</g>' : art) + '</g></g>';
+    let s = '';
+    if (voyage) s += at(far ? 88.4 : 94, 's1', sloopSvg(voyage));
+    if (ocean) s += at(far ? 88.6 : 94.4, 's2', steamerSvg(ocean, '#b3342a'));
+    return s;
   }
 
   /// Вітрило на обрії — маленьке, далеке, повільно ходить туди-сюди.
@@ -1664,13 +1681,33 @@
     + '<path d="M-7-1.8H7M-7 1.8H7" stroke-linecap="round"/>';
 
   /// Монета для вікна-церемонії (контракт §6): 'hryvnia' — срібна гривня (княжий злиток-шестигранник позаду
-  /// й монета зі знаком ₴), 'gold' — червоний золотий із глечиком. SVG-рядок 64×64 зі своїми id градієнтів.
+  /// й монета зі знаком ₴), 'gold' — червоний золотий із глечиком, 'dukach' (v12 §6) — дукач на намисті: коралі,
+  /// бант-вушко й золота монета з квіткою. SVG-рядок 64×64 зі своїми id градієнтів.
   function coinSvg(kind) {
     const beads = (cx, cy, r, n, rr, fill) => {
       let s = '<g fill="' + fill + '">';
       for (let i = 0; i < n; i++) { const a = (i * 2 * Math.PI) / n; s += '<circle cx="' + f1(cx + Math.cos(a) * r) + '" cy="' + f1(cy + Math.sin(a) * r) + '" r="' + rr + '"/>'; }
       return s + '</g>';
     };
+    if (kind === 'dukach') {
+      let coral = '<g fill="#c0392b" stroke="#7a1d14" stroke-width=".5">';
+      for (let i = 0; i <= 12; i++) { const t = i / 12; coral += '<circle cx="' + f1(5 + 54 * t) + '" cy="' + f1(6 + 12 * Math.sin(Math.PI * t)) + '" r="2.3"/>'; }
+      coral += '</g>';
+      let petals = '<g fill="#b3261e">';
+      for (let i = 0; i < 6; i++) petals += '<ellipse cx="32" cy="38.2" rx="1.7" ry="3.6" transform="rotate(' + i * 60 + ' 32 42)"/>';
+      petals += '</g>';
+      return '<svg class="clks-coin dukach" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><defs>'
+        + '<radialGradient id="clks-coin-du" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#fff2b8"/><stop offset=".45" stop-color="#f2c14e"/><stop offset="1" stop-color="#c46a26"/></radialGradient></defs>'
+        + coral
+        // Бант-вушко, на якому дукач висить на намисті.
+        + '<path d="M32 22.6c-2.6-4.6-8.8-5.2-8.6-1.6.2 3 5.6 3.2 8.6 1.6zM32 22.6c2.6-4.6 8.8-5.2 8.6-1.6-.2 3-5.6 3.2-8.6 1.6z" fill="url(#clks-coin-du)" stroke="#8a4a14" stroke-width=".8"/>'
+        + '<circle cx="32" cy="24.6" r="2.2" fill="none" stroke="#8a4a14" stroke-width="1.2"/>'
+        + '<circle cx="32" cy="42" r="17" fill="url(#clks-coin-du)" stroke="#8a4a14" stroke-width="1.5"/>'
+        + beads(32, 42, 14.8, 28, 0.85, '#a8621e')
+        + '<circle cx="32" cy="42" r="12.6" fill="none" stroke="#a8621e" stroke-width=".9"/>'
+        + petals + '<circle cx="32" cy="42" r="2" fill="#fff3c4" stroke="#a8621e" stroke-width=".6"/>'
+        + '<path d="M19.6 36.2a13 13 0 0 1 7.6-6.8" stroke="#fffbe6" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".75"/></svg>';
+    }
     if (kind === 'gold') {
       return '<svg class="clks-coin gold" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><defs>'
         + '<radialGradient id="clks-coin-au" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#fff2b8"/><stop offset=".45" stop-color="#f2c14e"/><stop offset="1" stop-color="#c46a26"/></radialGradient></defs>'
@@ -1720,8 +1757,10 @@
 
   /// Де стоїть будова: x, основа y, масштаб (задній ряд — .8: далі й менше). Пристань — на річці.
   const TSLOT = {
-    hall: { x: 11, y: 45.5, s: 0.8 }, mill: { x: 34, y: 43.8, s: 0.8 }, school: { x: 58, y: 42.6, s: 0.8 },
-    well: { x: 82, y: 42.4, s: 0.8 }, square: { x: 106, y: 42.8, s: 0.8 }, forge: { x: 130, y: 43.6, s: 0.8 },
+    // v12 (QA): зала стояла на x 11 — ліва половина за краєм сцени; ряд ліворуч трохи стиснуто, щоб вона вмістилась.
+    // QA-3: і нижче, на схилі під гребенем, — верх сцени ліворуч накриває вивіска щабля (до y ≈ 33 на телефоні).
+    hall: { x: 18, y: 51.6, s: 0.8 }, mill: { x: 39, y: 43.8, s: 0.8 }, school: { x: 61.5, y: 42.6, s: 0.8 },
+    well: { x: 84, y: 42.4, s: 0.8 }, square: { x: 107, y: 42.8, s: 0.8 }, forge: { x: 130, y: 43.6, s: 0.8 },
     museum: { x: 154, y: 45, s: 0.8 }, bigkiln: { x: 178, y: 48.6, s: 0.8 },
     institute: { x: 70, y: 71, s: 0.85 }, festival: { x: 141, y: 71, s: 0.85 }, bigjug: { x: 226, y: 70, s: 1 },
     pier: { x: 18, y: 89.4, s: 1 },
@@ -1903,13 +1942,18 @@
     const laid = !!(cur && sg.laidAt);
     // Друзі підносять вироби ще до закладин (сервер зараховує їх лише незакладеному етапу) — вимпел ставимо одразу.
     const help = cur && Array.isArray(sg.helpers) ? sg.helpers.slice(0, 4).map(pennantOf) : [];
+    // v12: своя праця — смуга ручних кліків на закладеному етапі. У підпис хати — лише «смуга є» (1) і «повна» (2,
+    // деревце на риштуванні): саму частку workFill() кладе просто в clip-path шару, що будується, — без перемальовування
+    // хати, тож будова росте з кожною пачкою кліків, а не сходинками. 0 — смуги нема (не закладено чи старий сервер).
+    const wf = laid && sg.work && sg.work.of > 0 ? (+sg.work.n || 0) / sg.work.of : -1;
+    const wk = wf < 0 ? 0 : wf >= 1 ? 2 : 1;
     let fest = false;
     if (built.includes('festival') && t.festival && t.festival.until) {
       const until = Date.parse(t.festival.until);
       const now = st && st.api && st.viewNow ? st.api.serverNow(st) : Date.now();
       fest = Number.isFinite(until) && now < until;
     }
-    return { built, cur, k, laid, help, fest };
+    return { built, cur, k, laid, help, wk, fest };
   }
 
   /// Який шар щойно став готовим (порівняно з минулим малюнком цієї картки): той самий етап +1 — його шар, нова
@@ -1924,13 +1968,19 @@
   }
 
   /// Риштування навколо рамки w×h (основа в (0,0)): стояки, дошки, розкоси; зверху — по вимпелу за кожного друга.
-  function scaffold(w, h, flags) {
+  /// v12: work — на нижній дошці стрічка своєї праці (жовте наливається зліва, workFill); topped — праця на повну:
+  /// нагорі деревце зі стрічками, як ставлять, коли звели верх. Стрічка внизу — її не ховає плашка над сценою.
+  function scaffold(w, h, flags, work, topped) {
     const x0 = -w / 2 - 1.6, x1 = w / 2 + 1.6, top = -h - 2;
     let d = 'M' + f1(x0) + ' 0V' + f1(top) + 'M' + f1(x1) + ' 0V' + f1(top);
     for (let y = -6; y > top; y -= 7) d += 'M' + f1(x0 - 1) + ' ' + y + 'H' + f1(x1 + 1);
     let br = '';
     for (let y = 0; y - 7 > top; y -= 14) br += 'M' + f1(x0) + ' ' + y + 'L' + f1(x0 + 5) + ' ' + (y - 7) + 'M' + f1(x1) + ' ' + y + 'L' + f1(x1 - 5) + ' ' + (y - 7);
     let s = '<g class="clks-tscaf"><path d="' + d + '" stroke="#c9a06a" stroke-width=".9" fill="none"/><path d="' + br + '" stroke="#a8844a" stroke-width=".5" fill="none"/>';
+    if (work) s += '<rect x="' + f1(x0 + 0.6) + '" y="-9.8" width="' + f1(x1 - x0 - 1.2) + '" height="3.8" rx="1" fill="#4a3424"/>'
+      + '<rect class="clks-twork" x="' + f1(x0 + 0.6) + '" y="-9.8" width="0" height="3.8" rx="1" fill="#f2c230" data-w="' + f1(x1 - x0 - 1.2) + '"/>';
+    if (topped) s += '<path d="M0 ' + f1(top) + 'v-4.6" stroke="#6b4423" stroke-width=".6"/><path d="M0 ' + f1(top - 9) + 'l-2.4 4.6h4.8zM0 ' + f1(top - 7) + 'l-2 3.4h4z" fill="#3f7d3a"/>'
+      + '<path d="M.3 ' + f1(top - 4.6) + 'l1.4 3" stroke="#d7372b" stroke-width=".6"/><path d="M-.3 ' + f1(top - 4.6) + 'l-1.2 3.2" stroke="#f2c230" stroke-width=".6"/>';
     return s + pennants([x0, x1, x0 + (x1 - x0) / 3, x0 + (2 * (x1 - x0)) / 3], top, flags) + '</g>';
   }
 
@@ -1990,7 +2040,11 @@
         inner += isNew ? '<g class="clks-tnew">' + b.layers[i] + '</g>' : b.layers[i];
       }
       if (isCur && t.laid) {
-        inner += '<g class="clks-tghost">' + b.layers[t.k] + '</g>' + scaffold(b.w, b.h, t.help)
+        // v12: поверх блідого контуру — той самий шар, відрізаний знизу вгору на частку своєї праці (workFill):
+        // будова під риштуванням наливається, поки гончар крутить коло.
+        inner += '<g class="clks-tghost">' + b.layers[t.k] + '</g>'
+          + (t.wk ? '<g class="clks-tfill" style="clip-path:inset(100% 0 0 0)">' + b.layers[t.k] + '</g>' : '')
+          + scaffold(b.w, b.h, t.help, t.wk > 0, t.wk === 2)
           + tolochany(b.w, 2 + Math.min(2, t.help.length));
       } else if (isCur) {
         if (t.k === 0) inner += stakes(b.w * 0.7, true);
@@ -2086,6 +2140,378 @@
     return true;
   }
 
+  // ---------- дванадцяте оновлення «Заморська торгівля»: кораблі біля Пристані й заморські майстерні (clicker-v12.md §8) ----------
+  //
+  // Кораблі стоять біля причалу на тому березі Ворскли, праворуч від Пристані Толоки: скільки чекає, стільки й видно.
+  // Причал — разом із торгівлею. Корабель, що відплив (повний чи за строком), іде вітрилом за обрій — раз, CSS; новий
+  // так само припливає. Заморські майстерні — на найдальшому, найблідішому березі над обрієм гончарів світу, з віхами
+  // 25/50/100, як щаблі v10. Усе — частина рядка хати: перемальовується лише тоді, коли змінився підпис (корабель
+  // прийшов чи пішов, вантаж переступив чверть, майстерня — віху), жодної роботи щокадру.
+
+  /// Шість заморських майстерень — той самий порядок, що Clicker.OverseasTiers на сервері.
+  const OVERSEAS = ['athens', 'faenza', 'azulejo', 'wedgwood', 'celadon', 'talavera'];
+
+  /// Заморські майстерні на обрії (основа в (0,0), ~16×20 на першому рівні): кожна — своя впізнавана річ; віхи
+  /// 25/50/100 додають по деталі. n — сходинка рівня (1, 25, 50, 100).
+  const OVER_ART = {
+    // Афінський Керамік — амфора: руда глина, чорний лак на шийці й низу, чорна фігура воїна зі щитом на пузі.
+    // 25 — менша амфора поруч, 50 — оливкова гілка (амфора для олії), 100 — золотий вінок над шийкою.
+    athens: (n) => {
+      let s = '';
+      if (n >= 50) s += '<path d="M-6.6 0q-.6-4.6 1.6-8.6" stroke="#5a6b3a" stroke-width=".6" fill="none"/>'
+        + '<g fill="#7d9a4a"><ellipse cx="-7.2" cy="-3.4" rx=".6" ry="1.5" transform="rotate(-30 -7.2 -3.4)"/><ellipse cx="-5.6" cy="-5.6" rx=".6" ry="1.5" transform="rotate(35 -5.6 -5.6)"/><ellipse cx="-6.4" cy="-7.8" rx=".6" ry="1.5" transform="rotate(-25 -6.4 -7.8)"/></g>'
+        + '<g fill="#3a3a2a"><circle cx="-7.8" cy="-5.8" r=".55"/><circle cx="-4.8" cy="-3.2" r=".55"/></g>';
+      if (n >= 25) s += '<g transform="translate(8 0) scale(.56)">' + AMPHORA + '</g>';
+      s += AMPHORA;
+      if (n >= 100) s += '<path d="M-3.4-18.6q3.4-3.4 6.8 0" stroke="#d9b24a" stroke-width=".7" fill="none"/>'
+        + '<g fill="#d9b24a"><ellipse cx="-2.6" cy="-19.8" rx=".5" ry="1"/><ellipse cx="0" cy="-21.2" rx="1" ry=".5"/><ellipse cx="2.6" cy="-19.8" rx=".5" ry="1"/></g>';
+      return s;
+    },
+    // Фаєнца — майоліковий глек: біла олов'яна полива, синій і жовтий пояси, медальйон.
+    // 25 — тарілка за ним, 50 — синій аптечний глечик-альбарело, 100 — золотий полиск поливи.
+    faenza: (n) => {
+      let s = '';
+      if (n >= 25) s += '<circle cx="7.4" cy="-7.4" r="4.6" fill="#f7f2e6" stroke="#2a56a8" stroke-width=".8"/><circle cx="7.4" cy="-7.4" r="2.8" fill="none" stroke="#e0a12a" stroke-width=".8"/><circle cx="7.4" cy="-7.4" r="1.1" fill="#2a56a8"/>';
+      if (n >= 50) s += '<path d="M-11.4-8.6h4.6v.8q-.6 3.4 0 7V0h-4.6v-.8q.6-3.6 0-7z" fill="#2a56a8"/><path d="M-11.4-4.8h4.6" stroke="#e0a12a" stroke-width=".9"/><path d="M-11.6-9.2h5" stroke="#1d3f80" stroke-width=".7"/>';
+      s += '<path d="M-2.6-16q-4.6-.4-4.4 4.6" stroke="#ddd3bd" stroke-width="1.1" fill="none"/>'
+        + '<path d="M-2.6-17.4h4.4l1.8-1.2-.4 2.2q3.4 1.6 3.6 6.4.2 4.6-3.2 7.4l.4 2.6h-7.2l.4-2.6q-3.4-2.8-3.2-7.4.2-4.8 3.6-6.4z" fill="#f7f2e6" stroke="#cfc4ae" stroke-width=".3"/>'
+        + '<path d="M-2.2-15.6h4.6" stroke="#2a56a8" stroke-width=".8"/><path d="M-5.2-12.6h11" stroke="#e0a12a" stroke-width="1"/><path d="M-3.4-1.6h7.6" stroke="#2a56a8" stroke-width=".8"/>'
+        + '<circle cx=".4" cy="-8.2" r="2.5" fill="#e0a12a" stroke="#2a56a8" stroke-width=".7"/><circle cx=".4" cy="-8.2" r=".8" fill="#4f8a3a"/>';
+      if (n >= 100) s += '<path d="M-4.4-12c-1 2.6-1 6 .2 8.2" stroke="#fff6cf" stroke-width="1" fill="none" stroke-linecap="round" opacity=".7"/><path d="M-5.8-5.8h12.2" stroke="#d4a02a" stroke-width=".6"/>';
+      return s;
+    },
+    // Лісабон — стіна з мальованих кахлів синім по білому, під черепичним карнизом, з дверима.
+    // 25 — стіна-картина (велика синя кахляна картина), 50 — вікно, що світить уночі, 100 — сусідній дім у кахлях.
+    azulejo: (n) => {
+      let s = '';
+      if (n >= 100) s += '<path d="M6.4 0v-8.6h6.4V0z" fill="#f6efd8"/><path d="M6.4-2.9h6.4M6.4-5.8h6.4M9.6 0v-8.6" stroke="#d9a92f" stroke-width=".35"/>'
+        + '<path d="M5.8-8.6h7.6l-.8-1.4h-6z" fill="#b4573a"/><rect x="8.4" y="-6.8" width="2.4" height="2.6" fill="#5b7fa8"/><rect x="8.4" y="-6.8" width="2.4" height="2.6" fill="#ffd27a" class="clks-lit"/>';
+      s += '<path d="M-7 0v-12h14V0z" fill="#f3f5fa"/><path d="' + AZ_GRID + '" stroke="#1f4fa0" stroke-width=".35" fill="none"/><path d="' + AZ_DOTS + '" fill="#1f4fa0"/>'
+        + '<path d="M-8-12h16l-1-1.6h-14z" fill="#b4573a"/><path d="M-1.3 0v-3.8a1.3 1.3 0 0 1 2.6 0V0z" fill="#6b4423"/>';
+      if (n >= 25) s += '<rect x="-6" y="-11" width="5.6" height="5.2" fill="#1f4fa0"/><rect x="-5.4" y="-10.4" width="4.4" height="4" fill="none" stroke="#f3f5fa" stroke-width=".35"/>'
+        + '<path d="M-5.2-7.2q1.1-1 2.2 0t2 0" stroke="#f3f5fa" stroke-width=".4" fill="none"/><circle cx="-2.4" cy="-9.2" r=".8" fill="#f3f5fa"/>';
+      if (n >= 50) s += '<rect x="1.8" y="-10.6" width="3.6" height="4" fill="#5b7fa8"/><rect x="1.8" y="-10.6" width="3.6" height="4" fill="#ffd27a" class="clks-lit"/>'
+        + '<path d="M3.6-10.6v4M1.8-8.6h3.6" stroke="#f3f5fa" stroke-width=".35"/><path d="M1.2-6.4h4.8" stroke="#6b4423" stroke-width=".6"/>';
+      return s;
+    },
+    // Веджвуд — ваза з блакитної яшмової маси з білим рельєфом, як камея.
+    // 25 — блакитний медальйон із білим профілем, 50 — менша ваза кольору шавлії, 100 — кремовий чайник «королівського» сервізу.
+    wedgwood: (n) => {
+      let s = '';
+      if (n >= 50) s += '<g transform="translate(-8.4 0) scale(.62)">' + jasperVase('#9cb59a') + '</g>';
+      if (n >= 25) s += '<ellipse cx="7.8" cy="-6.4" rx="2.8" ry="3.4" fill="#7fa3cf" stroke="#fbfaf5" stroke-width=".6"/>'
+        + '<path d="M7.2-8.4a1.3 1.3 0 1 1 1.4 1.6l.6 1.6-.8.4.2 1.6h-2.4q0-1.6.8-2.4-.6-.8.2-2.8z" fill="#fbfaf5"/>';
+      s += jasperVase('#7fa3cf');
+      if (n >= 100) s += '<g transform="translate(9.6 0)"><path d="M-2.6 0q-.8-3.6 2.6-3.6t2.6 3.6z" fill="#efe4c4" stroke="#c9b88e" stroke-width=".3"/>'
+        + '<path d="M2.4-2l1.8-1.4M-2.4-2.4q-1.6-.2-1.2 1.6" stroke="#efe4c4" stroke-width=".6" fill="none"/><circle cy="-4" r=".5" fill="#efe4c4"/></g>';
+      return s;
+    },
+    // Корея — селадонова ваза-меб'йон під сіро-зеленою поливою, у медальйоні інкрустований білим і чорним журавель.
+    // 25 — хмарки довкола медальйона, 50 — другий журавель, 100 — селадонова чаша на підставці.
+    celadon: (n) => {
+      let s = '<path d="M-1.4-18.4h2.8v1.2q5.2 1 5.4 5.8.2 4.4-2.6 8.4L3.4 0h-6.8l-.8-3q-2.8-4-2.6-8.4.2-4.8 5.4-5.8z" fill="#9dbea0"/>'
+        + '<path d="M-1.8-19.2h3.6v.9h-3.6z" fill="#7fa384"/><path d="M3.4-15.4q2.6 1.6 2.4 5.6" stroke="#c4dcc4" stroke-width=".7" fill="none" opacity=".7"/>'
+        + '<circle cy="-10.6" r="3.8" fill="none" stroke="#f4f1e8" stroke-width=".45"/><circle cy="-10.6" r="3.2" fill="none" stroke="#2c2a26" stroke-width=".3"/>'
+        + crane(0, -10.6, 1);
+      if (n >= 25) s += '<path d="M-5.6-15.2q.6-.9 1.2 0t1.2 0M3-15.8q.6-.9 1.2 0t1.2 0M-5.8-5.4q.6-.9 1.2 0t1.2 0M3.2-5.6q.6-.9 1.2 0t1.2 0" stroke="#f4f1e8" stroke-width=".4" fill="none"/>';
+      if (n >= 50) s += crane(-.6, -4.6, .62);
+      if (n >= 100) s += '<path d="M6 0h5.6l-.6-1h-4.4z" fill="#5a3a22"/><path d="M5.6-1q.2-2.8 3.2-2.8t3.2 2.8z" fill="#9dbea0" stroke="#7fa384" stroke-width=".3"/>';
+      return s;
+    },
+    // Талавера — синьо-біла тарілка з жовтим на підставці.
+    // 25 — глечик у синьому й жовтому, 50 — друга, жовта тарілка, 100 — кахляна арка майстерні на площі.
+    talavera: (n) => {
+      let s = '';
+      if (n >= 100) s += '<path d="M-9.4 0v-12a9.4 9.4 0 0 1 18.8 0V0" stroke="#1f3f9a" stroke-width="1.4" fill="none"/><path d="M-9.4 0v-12a9.4 9.4 0 0 1 18.8 0V0" stroke="#f0b428" stroke-width=".5" stroke-dasharray="1 1.2" fill="none"/>';
+      if (n >= 50) s += '<circle cx="7.2" cy="-5" r="3.2" fill="#f0b428" stroke="#1f3f9a" stroke-width=".7"/><circle cx="7.2" cy="-5" r="1" fill="#1f3f9a"/>';
+      s += '<path d="M-3-3.4L-4.6 0M3-3.4L4.6 0" stroke="#6b4423" stroke-width=".9"/>'
+        + '<circle cy="-9.4" r="6.6" fill="#f8f4ea" stroke="#1f3f9a" stroke-width="1"/><circle cy="-9.4" r="4.4" fill="none" stroke="#f0b428" stroke-width=".9"/>'
+        + '<g fill="#1f3f9a"><circle cy="-9.4" r="1.6"/><circle cy="-13" r=".55"/><circle cy="-5.8" r=".55"/><circle cx="-3.6" cy="-9.4" r=".55"/><circle cx="3.6" cy="-9.4" r=".55"/></g>';
+      if (n >= 25) s += '<g transform="translate(-7.8 0)"><path d="M-1.4-8.4h2.8v.9q2.6 1.2 2.6 4.2 0 2-1.4 3.3H-2q-1.4-1.3-1.4-3.3 0-3 2.6-4.2z" fill="#f8f4ea" stroke="#cfc4ae" stroke-width=".25"/>'
+        + '<path d="M-3.2-4.6h6.4" stroke="#1f3f9a" stroke-width=".9"/><path d="M-3-3h6" stroke="#f0b428" stroke-width=".7"/></g>';
+      return s;
+    },
+  };
+
+  /// Амфора (основа в (0,0), ~12×19): руда глина, чорний лак — шийка, вінця, ручки, пояс і низ, чорна фігура на пузі.
+  const AMPHORA = '<path d="M-1.5-18.2h3v2q3.6 1.2 4.4 5.8.6 4.8-3.2 7.8l.6 1.4h-6.6l.6-1.4q-3.8-3-3.2-7.8.8-4.6 4.4-5.8z" fill="#c8733a"/>'
+    + '<path d="M-1.5-18.2h3v2h-3zM-2.3-19h4.6v1h-4.6zM-3-1.2h6l.6 1.2h-7.2z" fill="#1e1a17"/>'
+    + '<path d="M-1.5-17.2q-3.6-.2-3.8 3.4M1.5-17.2q3.6-.2 3.8 3.4" stroke="#1e1a17" stroke-width=".8" fill="none"/>'
+    + '<path d="M-4.8-13.2h9.6M-4.6-4.4h9.2" stroke="#1e1a17" stroke-width="1.1"/>'
+    + '<circle cx="-1.6" cy="-9.4" r="1" fill="#1e1a17"/><path d="M-2.4-8.4h1.6l.8 3.4h-3.2z" fill="#1e1a17"/><circle cx="1" cy="-8.2" r="1.7" fill="#1e1a17"/>'
+    + '<path d="M-3.6-5.6l5.2-6" stroke="#1e1a17" stroke-width=".4"/>';
+
+  /// Кахляна стіна азулежу (−7…7 × −12…0): сітка кахлів і синій ромбик у кожній.
+  const AZ_GRID = 'M-3.5 0v-12M0 0v-12M3.5 0v-12M-7-3h14M-7-6h14M-7-9h14';
+  const AZ_DOTS = (() => {
+    let d = '';
+    for (const x of [-5.25, -1.75, 1.75, 5.25]) for (const y of [-1.5, -4.5, -7.5, -10.5]) d += 'M' + x + ' ' + (y - 1) + 'l1 1-1 1-1-1z';
+    return d;
+  })();
+
+  /// Ваза з яшмової маси (основа в (0,0), ~13×19): кришка з білою ручкою, білі намистинки, гірлянда й фігура рельєфом.
+  const jasperVase = (body) => '<path d="M-2.2-16.6h4.4v1.4q4 1.4 4.4 5.6.2 3.8-3.6 6.6h-6q-3.8-2.8-3.6-6.6.4-4.2 4.4-5.6z" fill="' + body + '"/>'
+    + '<path d="M-1.4-3h2.8l.6 1.6h1.8V0h-7.6v-1.6h1.8z" fill="' + body + '"/><path d="M-2.8-16.6h5.6l-.8-1.4h-4z" fill="' + body + '"/><circle cy="-18.8" r=".9" fill="#fbfaf5"/>'
+    + '<path d="M-5.6-12.4h11.2" stroke="#fbfaf5" stroke-width=".7" stroke-dasharray=".6 .8"/>'
+    + '<path d="M-6.2-10.6q1.5 1.6 3.1 0t3.1 0 3.1 0 3.1 0" stroke="#fbfaf5" stroke-width=".55" fill="none"/>'
+    + '<circle cy="-8" r=".7" fill="#fbfaf5"/><path d="M-.9-7.2h1.8l.8 3.4h-3.4z" fill="#fbfaf5"/><path d="M-4.4-3.6h8.8" stroke="#fbfaf5" stroke-width=".5"/>';
+
+  /// Журавель, інкрустований у селадон (центр тулуба в (x, y), k — розмір): білі крила й тулуб, чорні голова й ноги.
+  const crane = (x, y, k) => '<g transform="translate(' + x + ' ' + y + ') scale(' + k + ')">'
+    + '<path d="M-1.4-.4l-1.8-3.2 2.8 2.4zM.6-.6l1.2-3.6.8 3.2z" fill="#f4f1e8"/><ellipse rx="1.9" ry=".65" transform="rotate(-12)" fill="#f4f1e8"/>'
+    + '<path d="M1.6-.4l1.8-1" stroke="#f4f1e8" stroke-width=".45"/><circle cx="3.5" cy="-1.5" r=".35" fill="#2c2a26"/><path d="M-1.6.3l-1.6.7" stroke="#2c2a26" stroke-width=".3"/></g>';
+
+  for (const k of OVERSEAS) EMBLEM[k] = '<g transform="translate(16 29.4) scale(1.3)">' + OVER_ART[k](1) + '</g>';
+
+  /// Де стоять заморські майстерні: на гребені далеких пагорбів посередині, між школою й Ейфелевою вежею (y — по
+  /// гребеню). QA-3: над обрієм гончарів світу праворуч вони лягали під кнопки ♪ і 🔇 (на телефоні ті сягають y ≈ 58),
+  /// амфора — на дах пагоди, а нижче там їх затуляли вітрила шхуни порту й маяк. Тут їх не накриває ні вивіска щабля
+  /// ліворуч угорі, ні кнопки звуку; попереду хіба потяг, коли проїжджає.
+  const OV_AT = [[126, 77], [137, 77.1], [148, 76.5], [159, 75.2], [170, 73.7], [181, 71.9]];
+  const OV_K = 0.58;
+
+  /// Заморські майстерні на гребені далеких пагорбів (після них, тож гребінь їх не ріже; перед потягом і річкою).
+  function overseasFar(e) {
+    let s = '';
+    OVERSEAS.forEach((k, i) => {
+      const n = lv(e, k);
+      if (n) s += '<g transform="translate(' + OV_AT[i][0] + ' ' + OV_AT[i][1] + ') scale(' + OV_K + ')">' + OVER_ART[k](n) + '</g>';
+    });
+    return s;
+  }
+
+  /// Місця біля причалу: x і ватерлінія. Перше — найближче до Пристані (там стає «Перший корабель»).
+  /// Півень на тину (прикраса) сягає дзьобом x ≈ 63 — перше місце (з кормою) правіше за нього. Кораблі стоять при
+  /// самому причалі, глибше за смугу, якою ходять шлюп, пароплав і чайка (y 94): ті пропливають попереду, а не крізь.
+  const SHIP_AT = [[84, 90], [102, 90.3], [120, 90], [66, 90.3]];
+  const SHIP_K = 0.66;
+  const SHIP_GO_MS = 10000;                 // відплив за обрій (CSS), потім вузол прибираємо
+
+  /// Кораблі біля Пристані — для підпису хати: id, місце, колір вимпела, чи перший, вантаж сходинками (0–3 глеки на
+  /// палубі — чверті замовлення). Місце закріплене за кораблем, поки він стоїть: відплив одного не пересуває інших.
+  /// null — торгівлі ще нема (хата як була).
+  function tradeEnv(st, v) {
+    const tr = v && v.trade;
+    if (!tr || typeof tr !== 'object') return null;
+    const scn = st && st.scn;
+    const ships = (Array.isArray(tr.ships) ? tr.ships : []).filter((x) => x && x.id != null);
+    const slots = new Map();
+    const old = (scn && scn.shipSlots) || new Map();
+    for (const x of ships) if (old.has(x.id)) slots.set(x.id, old.get(x.id));
+    // Нові — на найближче вільне місце; «Перший корабель» — першим, щоб стояв біля самої Пристані.
+    const fresh = ships.filter((x) => !slots.has(x.id)).sort((a, b) => (b.first ? 1 : 0) - (a.first ? 1 : 0) || a.id - b.id);
+    for (const x of fresh) {
+      const used = new Set(slots.values());
+      let i = 0;
+      while (used.has(i)) i++;
+      slots.set(x.id, i);
+    }
+    if (scn) scn.shipSlots = slots;
+    return ships.map((x) => {
+      const n = +x.n || 0;
+      return { id: x.id, slot: slots.get(x.id), c: pennantOf(x.port || ''), first: !!x.first, load: n > 0 ? clamp(Math.floor((4 * (+x.loaded || 0)) / n), 0, 3) : 0 };
+    }).filter((x) => x.slot < SHIP_AT.length).sort((a, b) => SHIP_AT[a.slot][0] - SHIP_AT[b.slot][0]);
+  }
+
+  /// Торговий корабель (ватерлінія в (0,0), ніс праворуч, ~30×24): корпус із кормовою надбудовою, три щогли, прямі
+  /// вітрила й одноколірний вимпел; глеки на палубі — скільки завантажено. «Перший корабель» святковіший: розцвічений
+  /// одноколірними прапорцями від бушприта до корми, золота смуга й довший вимпел.
+  function shipSvg(o) {
+    const sail = (x, y, w, h) => '<path d="M' + f1(x - w) + ' ' + f1(y) + 'h' + f1(2 * w) + 'q-.6 ' + f1(h / 2) + ' 0 ' + f1(h) + 'h' + f1(-2 * w) + 'q.6 ' + f1(-h / 2) + ' 0 ' + f1(-h) + 'z" fill="#f4efe3" stroke="#cfc4ae" stroke-width=".3"/>';
+    let s = '<path d="M12.4-6l4.8-2.8" stroke="#3a2a1a" stroke-width=".6"/>'
+      + '<path d="M0-4.4V-23M6.6-4.4V-18M-9.6-7.6V-16.4" stroke="#3a2a1a" stroke-width=".8"/>'
+      + sail(0, -21.6, 4, 5.4) + sail(0, -15, 5.2, 7.2) + sail(6.6, -17, 3.4, 4.6) + sail(6.6, -11.4, 4.2, 5.6)
+      + '<path d="M-9.4-15.8L-4.8-9.6h-4.6z" fill="#efe6d2" stroke="#cfc4ae" stroke-width=".3"/>'
+      + '<path d="M0-23.2l' + (o.first ? '10 1.5-10 1.5' : '7.4 1.3-7.4 1.3') + 'z" fill="' + o.c + '"/>'
+      + '<path d="M-12.4-7.6H-7v3.2h16.4l3.2-1.8-3.4 7.6H-9.8z" fill="#5a3a22"/>'
+      + '<path d="M-11.6-2.4h20.8" stroke="' + (o.first ? '#f2c230' : '#c9a06a') + '" stroke-width=".8"/>'
+      + '<path d="M-12.4-7.6v-1.6" stroke="#3a2a1a" stroke-width=".5"/><circle cx="-12.4" cy="-9.8" r=".8" fill="#ffd27a"/>'
+      + '<circle cx="-12.4" cy="-9.8" r="2.6" fill="#ffd27a" fill-opacity=".4" class="clks-lit"/>';
+    for (let i = 0; i < o.load; i++) s += jugAt([-4.2, 3.2, 9][i], -4.4, 0.17, GLAZES[i]);
+    if (o.first) s += dressLine([[17.2, -8.8], [0, -23], [-9.6, -16.4], [-12.4, -9.4]], [5, 2, 1]);
+    return s;
+  }
+
+  /// Розцвічування прапорцями: мотузка через точки pts, на кожному відрізку — стільки трикутних одноколірних прапорців.
+  function dressLine(pts, per) {
+    let d = 'M' + pts[0][0] + ' ' + pts[0][1];
+    let flags = '';
+    let c = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+      d += 'L' + bx + ' ' + by;
+      for (let j = 1; j <= per[i - 1]; j++) {
+        const t = j / (per[i - 1] + 1);
+        const x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+        flags += '<path d="M' + f1(x - 0.9) + ' ' + f1(y) + 'h1.8l-.9 2.2z" fill="' + PENNANT[c++ % PENNANT.length] + '"/>';
+      }
+    }
+    return '<path d="' + d + '" stroke="#6b4a2a" stroke-width=".3" fill="none"/>' + flags;
+  }
+
+  /// Корабель на своєму місці; cls — клас внутрішньої групи (припливає, відпливає).
+  function shipAt(o, cls) {
+    const [x, y] = SHIP_AT[o.slot];
+    return '<g transform="translate(' + x + ' ' + y + ') scale(' + (o.first ? SHIP_K * 1.08 : SHIP_K) + ')"><g' + (cls ? ' class="' + cls + '"' : '') + '>' + shipSvg(o) + '</g></g>';
+  }
+
+  /// Причал уздовж того берега від Пристані й кораблі біля нього; гніздо — для тих, що саме відпливають.
+  function tradeRiver(e) {
+    const tr = e.trade;
+    if (!tr) return '';
+    let s = '<path d="M28 87.4h104v1.5H28z" fill="#8a6a44"/><path d="M28 87.4h104" stroke="#b08a5a" stroke-width=".5"/>'
+      + '<path d="M34 88.9v2.6M52 88.9v2.6M70 88.9v2.6M88 88.9v2.6M106 88.9v2.6M124 88.9v2.6" stroke="#5a4028" stroke-width="1.1"/>';
+    for (const o of tr) s += shipAt(o, o.fresh ? 'clks-shipin' : '');
+    return s + '<g class="clks-shipfx"></g>';
+  }
+
+  /// Хто з кораблів щойно прийшов (той малюнок, де його ще не було, — припливає) і хто відплив (вітрилом за обрій).
+  /// Перший малюнок картки нічого не рухає; без руху (reduced motion) відплилий просто зникає.
+  function shipsFresh(st, tr) {
+    const scn = st.scn;
+    const prev = scn.shipPrev;
+    scn.shipPrev = tr ? new Map(tr.map((o) => [o.id, o])) : null;
+    if (!prev || !tr) return;
+    for (const o of tr) if (!prev.has(o.id)) o.fresh = true;
+    if (REDUCED()) return;
+    for (const [id, o] of prev) {
+      if (scn.shipPrev.has(id)) continue;
+      const f = { o, at: performance.now(), node: null, timer: 0 };
+      scn.shipGo.push(f);
+      f.timer = setTimeout(() => {
+        if (f.node) f.node.remove();
+        if (st.scn) st.scn.shipGo = st.scn.shipGo.filter((x) => x !== f);
+      }, SHIP_GO_MS);
+    }
+  }
+
+  /// Поставити кораблі, що відпливають, у гніздо хати. Хату перемалювали посеред відпливу — ставимо в новий малюнок
+  /// з від'ємною затримкою, щоб корабель не вертався до причалу.
+  function shipGoPlace(st) {
+    const scn = st.scn;
+    if (!scn || !scn.shipGo.length || !st.house) return;
+    const slot = st.house.querySelector('.clks-shipfx');
+    if (!slot) return;
+    for (const f of scn.shipGo) {
+      if (f.node && f.node.parentNode === slot) continue;
+      const age = performance.now() - f.at;
+      f.node = svgNode(shipAt(f.o, 'clks-shipgo'));
+      const g = f.node.querySelector('.clks-shipgo');
+      if (g && age > 50) g.style.animationDelay = -Math.round(age) + 'ms';
+      slot.appendChild(f.node);
+    }
+  }
+
+  /// Своя праця на будові: шар, що будується, відкритий знизу на частку смуги (пів відсотка — крок), і жовта стрічка
+  /// на риштуванні тієї ж довжини. Нова частка блимає (раз, opacity) — видно, що кліки будують. Лише два записи
+  /// в два вузли, коли частка змінилась.
+  function workFill(st) {
+    const scn = st.scn;
+    const el = scn && scn.fillEl;
+    if (!el) return;
+    const sg = st.lastView && st.lastView.toloka && st.lastView.toloka.stage;
+    const w = sg && sg.work;
+    const pct = w && w.of > 0 ? Math.round(clamp((+w.n || 0) / w.of, 0, 1) * 200) / 2 : 0;
+    if (el._pct === pct) return;
+    const grew = el._pct != null && pct > el._pct;
+    el._pct = pct;
+    el.style.clipPath = 'inset(' + (100 - pct) + '% 0 0 0)';
+    const rb = scn.ribbonEl;
+    if (rb) rb.setAttribute('width', f1((+rb.dataset.w || 0) * pct / 100));
+    if (grew && !REDUCED() && el.animate) el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 900, easing: 'ease-out' });
+  }
+
+  // ---------- шість заморських розписів (v12 §4) ----------
+  //
+  // Каталог розписів — у ядрі (STYLE у clicker.js, api.STYLE): ним малюють коло, полицю, комору, горно й кахлі. Заморські
+  // кладемо туди звідси, тією самою сіткою (пояси 36…62, середина — x 50). Хто шукає розпис, бере STYLE[style] ||
+  // STYLE[''], тож без цієї частини чи для розпису, якого клієнт ще не знає, виріб просто простий — нічого не ламається.
+  // Лише загальновідоме: чорнофігурні амфори, біла олов'яна полива Фаєнци, синьо-білі кахлі, блакитна яшмова маса з
+  // білим рельєфом, сіро-зелений селадон з інкрустацією, синій, жовтий і білий Талавери.
+
+  const OVER_STYLE = {
+    /// Афіни: чорним лаком по рудій глині — чорні пояси з меандром, воїн зі щитом і кінь; деталі видряпано (руде по чорному).
+    athens: {
+      body: '#c8733a',
+      decor: '<path d="M35 35.8h30v4.4H35zM35 58.8h30V66H35z" fill="#1e1a17"/>'
+        + '<path d="M36 38.8h2v-1.6h2v1.6h2v-1.6h2v1.6h2v-1.6h2v1.6h2v-1.6h2v1.6h2v-1.6h2v1.6h2v-1.6h2v1.6h2v-1.6h2v1.6h2" stroke="#c8733a" stroke-width=".5" fill="none"/>'
+        + '<path d="M35 41.8h30M35 57h30" stroke="#1e1a17" stroke-width=".7"/>'
+        + '<circle cx="43.4" cy="44.6" r="1.3" fill="#1e1a17"/><path d="M42.4 43.4q1-2.4 2.6-1.4" stroke="#1e1a17" stroke-width=".7" fill="none"/>'
+        + '<path d="M42.4 46h2.2l.8 5.4 1.2 3.8h-1.2l-1.2-3.4-1 3.4h-1.2l.8-3.8z" fill="#1e1a17"/>'
+        + '<circle cx="45.6" cy="48.4" r="2.6" fill="#1e1a17"/><circle cx="45.6" cy="48.4" r="1.8" fill="none" stroke="#c8733a" stroke-width=".3"/>'
+        + '<path d="M40.4 54.6l7.6-11.4" stroke="#1e1a17" stroke-width=".5"/>'
+        + '<ellipse cx="56.2" cy="49" rx="3.8" ry="1.7" fill="#1e1a17"/><path d="M58.8 48.4l1.6-3.6 1.8.4-1.2 3.6z" fill="#1e1a17"/><path d="M60.6 44.8l2.2.6-.4 1-1.8-.2z" fill="#1e1a17"/>'
+        + '<path d="M53.4 50l-.6 4.4M54.8 50.4l.2 4M57.6 50.4l.4 4M59 50l.8 4.2M52.6 48.4q-1.6.6-1.8 3.4" stroke="#1e1a17" stroke-width=".7" fill="none"/>'
+        + '<path d="M54 48.6h4.4M59.6 46.4l1.2-1" stroke="#c8733a" stroke-width=".25"/>'
+        + '<path d="M44 29.5h12" stroke="#1e1a17" stroke-width="1.6"/>',
+    },
+    /// Фаєнца: біла олов'яна полива, сині й жовті пояси, медальйон із жовтою квіткою в зеленому листі, сині завитки.
+    faenza: {
+      body: '#f7f2e6',
+      decor: '<path d="M35 37.6h30M35 61.6h30" stroke="#2a56a8" stroke-width="1.6"/><path d="M35 40.2h30M35 59h30" stroke="#e0a12a" stroke-width="1.2"/>'
+        + '<circle cx="50" cy="49.6" r="6.2" fill="#fbf6e8" stroke="#2a56a8" stroke-width="1.1"/>'
+        + '<g fill="#4f8a3a"><ellipse cx="50" cy="45.6" rx="1" ry="1.8"/><ellipse cx="50" cy="53.6" rx="1" ry="1.8"/><ellipse cx="46" cy="49.6" rx="1.8" ry="1"/><ellipse cx="54" cy="49.6" rx="1.8" ry="1"/></g>'
+        + '<circle cx="50" cy="49.6" r="2.5" fill="#e0a12a"/><circle cx="50" cy="49.6" r="1" fill="#c0501f"/>'
+        + '<path d="M37.4 49.6c1.8-3.4 4.4-3.6 5.2-1-.4 1.6-2.2 1.6-2.4.4M62.6 49.6c-1.8-3.4-4.4-3.6-5.2-1 .4 1.6 2.2 1.6 2.4.4" stroke="#2a56a8" stroke-width=".9" fill="none"/>'
+        + '<path d="M44 29.5h12" stroke="#2a56a8" stroke-width="1"/>',
+    },
+    /// Азулежу: синьо-білі кахлі — сітка, ромб і крапка в кожній, круглі «квітки» на стиках.
+    azulejo: {
+      body: '#f3f6fb',
+      decor: (() => {
+        let grid = '', dia = '', knots = '';
+        for (const x of [42.5, 50, 57.5]) grid += 'M' + x + ' 36.5V66';
+        for (const y of [44, 51.5, 59]) grid += 'M35 ' + y + 'h30';
+        for (const x of [38.75, 46.25, 53.75, 61.25]) for (const y of [40.25, 47.75, 55.25, 62.75]) dia += 'M' + x + ' ' + (y - 2.6) + 'l2.6 2.6-2.6 2.6-2.6-2.6z';
+        for (const x of [42.5, 50, 57.5]) for (const y of [44, 51.5, 59]) knots += '<circle cx="' + x + '" cy="' + y + '" r="1.3"/>';
+        return '<path d="' + grid + '" stroke="#1f4fa0" stroke-width=".5" fill="none"/><path d="' + dia + '" stroke="#1f4fa0" stroke-width=".7" fill="none"/>'
+          + '<g fill="#1f4fa0">' + knots + '</g><path d="M35 36.5h30" stroke="#1f4fa0" stroke-width="1.4"/><path d="M44 29.5h12" stroke="#1f4fa0" stroke-width="1"/>';
+      })(),
+    },
+    /// Веджвуд: блакитна яшмова маса, білий рельєф — намистинки, гірлянди й постать, наче камея.
+    wedgwood: {
+      body: '#7fa3cf',
+      decor: (() => {
+        let beads = '';
+        for (let x = 36.2; x < 64.5; x += 2.4) beads += '<circle cx="' + f1(x) + '" cy="37.8" r=".75"/><circle cx="' + f1(x) + '" cy="61.6" r=".6"/>';
+        return '<g fill="#fbfaf5">' + beads + '</g>'
+          + '<path d="M35 40.6q3.75 3.6 7.5 0t7.5 0 7.5 0 7.5 0" stroke="#fbfaf5" stroke-width=".9" fill="none"/>'
+          + '<g fill="#fbfaf5"><circle cx="42.5" cy="40.6" r=".9"/><circle cx="50" cy="40.6" r=".9"/><circle cx="57.5" cy="40.6" r=".9"/></g>'
+          + '<circle cx="50" cy="46" r="1.5" fill="#fbfaf5"/><path d="M48.5 47.8h3l1.6 9.2h-6.2z" fill="#fbfaf5"/><path d="M51.4 49l2.8 2.2M48.6 49l-2.4 2.6" stroke="#fbfaf5" stroke-width=".7"/>'
+          + '<path d="M40 56c0-3 1.6-5.4 3.4-6.4M60 56c0-3-1.6-5.4-3.4-6.4" stroke="#fbfaf5" stroke-width=".6" fill="none"/>'
+          + '<path d="M35 59.4h30" stroke="#fbfaf5" stroke-width=".9"/><path d="M44 29.5h12" stroke="#fbfaf5" stroke-width="1"/>';
+      })(),
+    },
+    /// Селадон: сіро-зелена полива, інкрустація білою й чорною глиною — подвійні пояси, медальйон із журавлем, хмарки.
+    celadon: {
+      body: '#9dbea0',
+      decor: '<path d="M35 37.8h30M35 61.4h30" stroke="#f4f1e8" stroke-width=".8"/><path d="M35 39.4h30M35 59.8h30" stroke="#2c2a26" stroke-width=".45"/>'
+        + '<circle cx="50" cy="49.6" r="6.6" fill="none" stroke="#f4f1e8" stroke-width=".7"/><circle cx="50" cy="49.6" r="5.8" fill="none" stroke="#2c2a26" stroke-width=".35"/>'
+        + crane(49.6, 50.4, 1.5)
+        + '<path d="M37.4 45q1-1.4 2 0t2 0M37.4 55q1-1.4 2 0t2 0M58.6 45q1-1.4 2 0t2 0M58.6 55q1-1.4 2 0t2 0" stroke="#f4f1e8" stroke-width=".6" fill="none"/>'
+        + '<path d="M44 29.5h12" stroke="#f4f1e8" stroke-width=".9"/>',
+    },
+    /// Талавера: синій, жовтий і білий — пояси, жовта квітка в синьому обведенні, сині листки й крапки.
+    talavera: {
+      body: '#f8f4ea',
+      decor: '<path d="M35 37.4h30M35 61.8h30" stroke="#1f3f9a" stroke-width="1.8"/><path d="M35 39.9h30M35 59.3h30" stroke="#f0b428" stroke-width="1"/>'
+        + '<path d="M42.6 52c-1.4-3.2-.2-5.6 2-6.4.4 2.6-.4 5-2 6.4zM57.4 52c1.4-3.2.2-5.6-2-6.4-.4 2.6.4 5 2 6.4z" fill="#1f3f9a"/>'
+        + '<g fill="#f0b428" stroke="#1f3f9a" stroke-width=".5">' + [0, 60, 120, 180, 240, 300].map((a) => '<ellipse cx="50" cy="46.4" rx="1.5" ry="2.4" transform="rotate(' + a + ' 50 49.6)"/>').join('') + '</g>'
+        + '<circle cx="50" cy="49.6" r="1.8" fill="#1f3f9a"/>'
+        + '<g fill="#1f3f9a"><circle cx="38.6" cy="44" r="1.1"/><circle cx="61.4" cy="44" r="1.1"/><circle cx="38.6" cy="55.4" r="1.1"/><circle cx="61.4" cy="55.4" r="1.1"/></g>'
+        + '<path d="M44 29.5h12" stroke="#1f3f9a" stroke-width="1"/>',
+    },
+  };
+
+  /// Покласти заморські розписи в каталог ядра; наявного не переписуємо (ядро чи інша частина могли дати свій малюнок).
+  function addStyles(api) {
+    const S = api && api.STYLE;
+    if (!S) return;
+    for (const k of Object.keys(OVER_STYLE)) if (!S[k]) S[k] = OVER_STYLE[k];
+  }
+  // Одразу, ще до першої картки: ремесло й горно малюють вироби своїм api, а хата монтується після них.
+  addStyles(window.HClicker && HClicker.api);
+
   const DEFS = '<defs>'
     + '<linearGradient id="clks-skyg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--clks-sky1)"/><stop offset="1" style="stop-color:var(--clks-sky2)"/></linearGradient>'
     + '<linearGradient id="clks-wallg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--clks-wall2)"/><stop offset=".35" style="stop-color:var(--clks-wall)"/><stop offset="1" style="stop-color:var(--clks-wall2)"/></linearGradient>'
@@ -2105,6 +2531,7 @@
     for (const k of TIERS) tiers[k] = step(lvl(k));
     for (const k of WORLD) tiers[k] = step(lvl(k));
     for (const k of MASTERS) tiers[k] = lvl(k) >= 1 ? 1 : 0;   // v11: гончарі світу — лише «є чи нема»
+    for (const k of OVERSEAS) tiers[k] = step(lvl(k));          // v12: заморські майстерні — з віхами, як щаблі v10
     const hs = v.house || {};
     const tools = {};
     const decor = {};
@@ -2144,6 +2571,7 @@
       kiln: lvl('kiln') >= 1 ? 1 : 0, kilnLvl: Math.min(60, Math.floor(lvl('kiln') / 5) * 5), workshop: step(lvl('workshop')),
       cat: (v.secrets || []).some((s) => s.key === 'cat' && s.owned),
       toloka: tolokaEnv(st, v),           // v11: майдан Толоки (null — ще нема)
+      trade: tradeEnv(st, v),             // v12: кораблі біля Пристані (null — торгівлі ще нема)
     };
   }
 
@@ -2177,9 +2605,14 @@
     if (scn.houseSig === sig) return;
     scn.houseSig = sig;
     e.fresh = tolokaFresh(scn, e.toloka); // v11: шар будови, що щойно став готовим, — виростає
+    shipsFresh(st, e.trade);              // v12: новий корабель припливає, відплилий — за обрій
     st.house.innerHTML = houseSvg(e);
     guestPlace(st);                       // гість посеред візиту переїжджає в новий малюнок
     tfxPlace(st);                         // v11: святковий ефект етапу теж
+    shipGoPlace(st);                      // v12: і корабель, що відпливає
+    scn.fillEl = st.house.querySelector('.clks-tfill');
+    scn.ribbonEl = st.house.querySelector('.clks-twork');
+    workFill(st);                         // v12: своя праця — одразу на свою висоту, без спалаху
     st.house.dataset.weather = e.weather || 'none';
     st.house.dataset.season = e.season;
   }
@@ -2873,6 +3306,8 @@
     if (api.storeGet('clk.awayAt', '') === String(a.at)) return true;
     if (api.overlayOpen(st)) return false;          // інша панель (мінігра) — покажемо, щойно закриють
     api.storeSet('clk.awayAt', String(a.at));
+    // v12 (B6): побачене пам'ятає й сервер — на другому пристрої чи після іншого ніка картка вдруге не вискочить.
+    api.order(st, 'away', { at: a.at });
     const esc = (x) => api.esc(st, x);
     const offline = st.offlineMs / 1000;
     const capped = a.seconds > offline + 60;
@@ -2888,7 +3323,7 @@
       + '<div class="clks-away-pots">+' + esc(api.potsShort(a.pots)) + '</div>'
       + '<div class="muted small">' + (a.pots > 0 ? 'коло крутилось без тебе' + (capped ? ' (перші ' + Math.round(offline / 3600) + ' год — далі й підмайстри сплять)' : '') : 'підмайстрів ще нема — коло стояло') + '</div>'
       + formed + (notes ? '<ul class="clks-away-notes">' + notes + '</ul>' : '')
-      + '<button type="button" class="primary clks-away-go">До кола!</button></div>', { cls: 'clks-awayov' });
+      + '<div class="clks-away-foot"><button type="button" class="primary clks-away-go">До кола!</button></div></div>', { cls: 'clks-awayov' });
     const go = body.querySelector('.clks-away-go');
     if (go) go.onclick = () => api.closeOverlay(st);
     api.sfx('away');
@@ -2958,7 +3393,9 @@
         lookSig: '', wonderSeen: null, wonderNew: null,
         guest: null, guestQueue: [], guestNext: 0,
         tolPrev: null, tfx: null,
+        shipSlots: new Map(), shipPrev: null, shipGo: [],
       };
+      addStyles(api);
       Snd.load(api);
       Mus.load(api);
       api.sfx = (name, o) => {
@@ -3065,6 +3502,7 @@
         }
       }
       paintHouse(st);
+      workFill(st);                       // v12: будова наливається своєю працею між перемальовуваннями хати
       // Бризки й грудка — кольору глини на колі.
       const clay = st.clayBody || '';
       if (st.scn.clay !== clay) {
@@ -3109,6 +3547,7 @@
       clearTimeout(st.scn.guestNext);
       if (st.scn.guest) clearTimeout(st.scn.guest.timer);
       if (st.scn.tfx) clearTimeout(st.scn.tfx.timer);
+      for (const f of st.scn.shipGo) clearTimeout(f.timer);
       st.scn = null;
     },
   });

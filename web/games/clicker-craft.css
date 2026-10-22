@@ -19,7 +19,11 @@
 
 /* ---- смуга «Шлях виробу» під сценою ---- */
 .clk-path { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
-.clk-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.clk-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; container: clksteps / inline-size; }
+/* Плитки вужчі за ~150 px (ПК 1366 з балачками — 142): підпис у два рядки замість «стоїть: сушарн…», «46/46 · сухих …». */
+@container clksteps (min-width: 461px) and (max-width: 640px) {
+  .clk .clk-stsub { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+}
 /* Обгортка чипа: у ній сам чип (кнопка) і поруч ⓘ (теж кнопка) — кнопка в кнопці недійсна (рецензія v9). */
 .clk-stepw { position: relative; min-width: 0; display: flex; }
 .clk-step {
@@ -53,28 +57,55 @@
 .clk-stbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--clay), #d99a5b); transition: width .12s linear; }
 .clk-step.hot .clk-stbar i { background: var(--accent2); }
 
-/* Рядок «Далі» — єдина порада й єдина кнопка. Висота стала (v10 §9): з підрядком чи кнопкою він мав 50 px, без них —
-   34, і все під ним (а на ПК — і сцена над ним) стрибало на 16 px щоразу, як порада мінялась. Порожній рядок (поки
-   Око майстра питає) місце теж тримає; !important — бо style.css ховає [hidden] так само з !important. */
+/* Рядок «Далі» — одна порада й одна-дві кнопки, завжди два ряди сталої висоти (QA-3, v12): порада з підрядком — разом
+   не більше двох рядків (повністю — у підказці, title), під нею кнопки праворуч. Було: з двома кнопками порада
+   стискалась у стовпчик 57–107 px на 8–11 рядків, плашка росла до 286 px, а коло на 1366 стрибало (радіус 54 / 73 / 84)
+   і ловило лише половину швидких кліків. Тепер висота та сама в усіх станах, і кнопка щоразу на тому самому місці.
+   Порожній рядок (поки Око майстра питає) місце теж тримає; !important — бо style.css ховає [hidden] з !important. */
 .clkc-next {
-  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; position: relative;
+  --nx-btn: 30px;
+  /* Кнопки — minmax(0, max-content): дві довгі («🔥 Обпалити» + «🚢 Корабель з Афін») не розпирають плашку ширше за
+     стовпчик (QA-4: 372 px у 322 на 1366, на телефоні картка ширшала на 10 px і коло «дихало» 168↔174), а стискаються
+     з «…» — повна назва в підказці. */
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content);
+  grid-template-rows: minmax(0, 1fr) var(--nx-btn); width: 100%; min-width: 0;
+  column-gap: 8px; row-gap: 4px; align-items: center; position: relative;
   padding: 6px 10px 8px; border-radius: 12px; overflow: hidden;
   background: linear-gradient(100deg, rgba(217, 169, 47, .16), var(--panel) 60%); border: 1px solid rgba(217, 169, 47, .35);
-  box-sizing: border-box; height: calc(2.15em + 16px);
+  box-sizing: border-box; height: calc(2.3em + var(--nx-btn) + 18px);
 }
 .clkc-next[hidden] { display: grid !important; visibility: hidden; }
-.clk-nxico { font-size: 17px; line-height: 1; text-align: center; }
+.clk-nxico { grid-column: 1; grid-row: 1; font-size: 17px; line-height: 1; text-align: center; }
 .clk-nxsvg { width: 26px; height: 26px; display: block; }
-.clk-nxtxt { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
-.clk-nxtext { font-size: .92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clk-nxsub { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk-nxtxt {
+  grid-column: 2 / -1; grid-row: 1; min-width: 0; line-height: 1.15; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.clk-nxtext { font-size: .92em; }
+.clk-nxsub { color: var(--muted); }
+.clk-nxsub::before { content: ' · '; }
 .clk-nxsub[hidden] { display: none; }
-.clk-nxbtn { white-space: nowrap; padding: 5px 12px; }
+.clkc-next.tip .clk-nxtext { color: var(--accent2); font-weight: 600; cursor: pointer; }
+.clk-nxbtn {
+  grid-row: 2; grid-column: 3; height: var(--nx-btn); min-height: 0; min-width: 0; max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px;
+}
+.clk-nxbtn2 { grid-column: 4; }
+/* Дві кнопки — вужчі відступи: «🔥 Обпалити» поруч із «🚢 Корабель з Афін» влазять у 322 px без «…». */
+.clkc-next.two { column-gap: 6px; }
+.clkc-next.two .clk-nxbtn { padding: 0 8px; }
 .clk-nxbtn[hidden] { display: none; }
 .clk-nxbtn.armed { background: var(--bad, #b5453a); color: #fff; }
-/* Друга кнопка (готове замовлення, повна комора): стовпці додаються потоком, бо перша буває схована. */
-.clkc-next.two { grid-template-columns: 26px minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: auto; }
-.clkc-next.two .clk-nxbtn { padding: 5px 9px; }
+/* Дотиковий екран: кнопки ≥ 40 px (той самий ряд, лише вищий); ⓘ на плитках кроків — теж 40×40, а не 26. */
+@media (pointer: coarse) {
+  .clkc-next { --nx-btn: 40px; }
+  .clk .clk-sti { min-width: 40px; min-height: 40px; top: -6px; right: -6px; }
+}
+/* Телефон (QA-4): з верху сторінки кнопки «Далі» (y 771–812) лягали під нижнє меню сайту (з 786) — тап відкривав
+   «Хто скільки». Тож «Далі» — одразу під сценою, біля пальця, а плитки кроків — під ним. */
+@media (max-width: 560px) {
+  .clk:not(.fit):not(.land) .clk-path > .clkc-next { order: -1; }
+}
 .clk-nxbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .06); }
 .clk-nxbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .6s ease-out; }
 .clk-path.full .clkc-next { border-color: var(--accent); }
@@ -101,12 +132,13 @@
   .clk-steps { gap: 3px; }
   .clk-step { flex-direction: column; align-items: center; gap: 1px; padding: 3px 2px 6px; text-align: center; }
   .clk-step + .clk-step::before { left: -5px; top: 14px; transform: none; }
+  /* Стрілка між плитками в 3 px проміжку налазила на текст («›можна палити»): чотири плитки в ряд і так читаються шляхом. */
+  .clk-stepw + .clk-stepw > .clk-step::before { content: none; }
   .clk-sttxt { align-items: center; max-width: 100%; }
   .clk-sttxt b { font-size: .7em; }
   .clk-stsub { font-size: max(12px, .64em); }
-  .clkc-next { grid-template-columns: 22px minmax(0, 1fr) auto; padding: 5px 8px 8px; gap: 6px; }
-  .clkc-next.two { grid-template-columns: 22px minmax(0, 1fr); gap: 5px; }
-  .clkc-next.two .clk-nxbtn { padding: 5px 7px; }
+  .clkc-next { grid-template-columns: 22px minmax(0, 1fr) auto auto; padding: 5px 8px 8px; column-gap: 6px; }
+  .clk-nxbtn { padding: 0 9px; }
   .clk-nxtext { font-size: .86em; }
 }
 
@@ -115,7 +147,15 @@
 .clkw-card {
   display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; text-align: center;
   border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
+  /* Кнопка не переносить текст сама — і «робота 16 · ~140 987 золотих» вилазило за картку (B13, 1366 і 390). */
+  min-width: 0; white-space: normal;
 }
+.clkw-card > * { max-width: 100%; overflow-wrap: break-word; }
+/* «ліпити» / «на колі» — у потоці картки: загальне .clk-price стоїть absolute і в картці без position збиралось у кутку
+   вікна (усі п'ятнадцять — в одному місці). */
+.clkw-card .clk-price { position: static; margin-top: 2px; }
+/* Скільки цього виробу ще просить Толока (v12). */
+.clkw-tol { padding: 1px 7px; border-radius: 9px; background: rgba(244, 197, 66, .14); color: var(--accent2); font-weight: 600; }
 .clkw-card.on { border-color: var(--accent2); }
 .clkw-card.locked { opacity: .55; }
 .clkw-card.locked svg { filter: grayscale(1) brightness(.5); }
@@ -126,6 +166,10 @@
 /* Продаж гуртом: «Продати все» головною, вужчі — тихими кнопками під нею. */
 .clkw-sells { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .clkw-sellall.ghost { border-color: var(--line); }
+/* Вузька колонка: вужчі продажі — стовпчиком однакової ширини, а не «хто скільки займе» з висячим «золотих». */
+@container clkside (max-width: 480px) {
+  .clkw-sells .clkw-sellall { flex: 1 1 100%; }
+}
 .clkw-groups { display: flex; flex-direction: column; gap: 4px; }
 .clkw-group { border-radius: 10px; background: var(--panel); border: 1px solid var(--line); }
 .clkw-group.star { border-color: rgba(244, 197, 66, .55); }
@@ -146,6 +190,12 @@
 .clkw-mini { width: 30px; height: 32px; }
 .clkw-n { color: var(--muted); font-weight: 500; }
 .clkw-q { color: var(--accent2); }
+/* Відкладене (v12): що чекають Толока, замовлення й майстерштук. */
+.clkw-kept { color: var(--accent2); white-space: nowrap; }
+.clkw-keptline { color: var(--muted); line-height: 1.3; }
+.clkw-keptline.armed { color: var(--accent2); font-weight: 600; }
+/* Сушарня — окремим місцем над замовленнями; порожня — без зайвого проміжку. */
+.clkc-slot:has(> .clkw-rackbox:empty) { display: none; }
 .clkw-btns { display: flex; gap: 4px; flex: none; }
 .clkw-btns button { padding: 2px 8px; }
 /* ---- прокачка ремесла: сушарня, горно, комора, вітряна сушарня, палій ---- */
@@ -196,3 +246,7 @@
   .clkw-rack.dry svg, .clkw-flame, .clk-step.flash, .clk-tip, .clkw-upsec.flash { animation: none; }
   .clk-step, .clkc-next, .clk-stbar i, .clk-nxbar i { transition: none; }
 }
+
+/* «🔧 До прокачки» з ⓘ кроку смуги підсвічує саме той рядок (QA-3). */
+.clkw-up.flash { animation: clkrowflash 1.4s ease-out; }
+@media (prefers-reduced-motion: reduce) { .clkw-up.flash { animation: none; box-shadow: inset 0 0 0 2px var(--accent); } }

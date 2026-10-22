@@ -616,17 +616,12 @@ public sealed partial class Clicker
             return ActResult.Accept($"😤 {who} {village.From}: «{FairNoLines[Ctx.Rng.Next(FairNoLines.Length)]}» — торг не вдався, але замовлення ще чекає");
         }
 
-        // Ціна — від того, що справді піде: TakeItems бере спершу найгіршу придатну якість, тож рахуємо в тому самому порядку.
+        // Ціна — від того, що справді піде: той самий план, за яким TakeItems бере (найгірша придатна якість і спершу
+        // невідкладене — чуже замовлення чи толока свого не втрачають).
+        var taker = new TakeFor("mkt", o.Id);
         double sum = 0;
-        var left = o.Count;
-        foreach (var (item, n) in AllItems().Where(x => match(x.Item)).OrderBy(x => x.Item.Quality).ToList())
-        {
-            var take = Math.Min(n, left);
-            sum += ItemValue(item.Ware, item.Style, item.Quality) * take;
-            left -= take;
-            if (left <= 0) break;
-        }
-        TakeItems(match, o.Count);
+        foreach (var (item, n) in TakePlan(match, o.Count, taker)) sum += ItemValue(item.Ware, item.Style, item.Quality) * n;
+        TakeItems(match, o.Count, taker);
         var haggle = bid switch { "down" => FairDownPay, "up" => FairUpPay, _ => 1 };
         // Ведмідь витанцював удачу — і згорає на першому ж замовленні, скільки б його не берегли.
         var bear = _mktBear;
@@ -1019,7 +1014,9 @@ public sealed partial class Clicker
     void SyncFair(DateTimeOffset now, TimeSpan paid)
     {
         var expired = _mktOrders.RemoveAll(o => o.Until <= now);
-        if (expired > 0) AwayNote($"📜 {expired} {Plural(expired, "замовлення", "замовлення", "замовлень")} не дочекалось — замовники поїхали");
+        // «1 замовлення не дочекалось», але «2 / 5 замовлень не дочекались» (QA-3).
+        if (expired > 0) AwayNote($"📜 {expired} {Plural(expired, "замовлення", "замовлення", "замовлень")} "
+            + (expired % 10 == 1 && expired % 100 != 11 ? "не дочекалось" : "не дочекались") + " — замовники поїхали");
         _mktBuffs.RemoveAll(b => b.Until <= now);
         // Повернувся після простою — на дошці вже хтось чекає; здане під час гри нове не з'являється миттєво.
         if (paid >= AwayFrom)

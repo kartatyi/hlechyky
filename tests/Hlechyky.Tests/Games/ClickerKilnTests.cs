@@ -54,13 +54,14 @@ public class ClickerKilnTests
         s["craft"]!["rack"] = rack;
     });
 
-    static object Timeline(IEnumerable<(int Ms, int Act)> acts) => new { op = "open", t = acts.Select(a => new[] { a.Ms, a.Act }).ToArray() };
+    /// <summary>Open від вікна, де розпалили (own): порожній запис воно шле одразу, інші вікна чекають (хотфікс B1).</summary>
+    static object Timeline(IEnumerable<(int Ms, int Act)> acts) => new { op = "open", t = acts.Select(a => new[] { a.Ms, a.Act }).ToArray(), own = true };
 
     /// <summary>
     /// Умілий палій: кожні 300 мс дивиться, яким буде жар за 2 с без нових дій (тією самою моделлю), і
     /// прикриває заслінку перед перегрівом, відкриває її при недогріві й підкидає, коли жар осідає.
     /// </summary>
-    static List<(int Ms, int Act)> Stoker(int seed)
+    internal static List<(int Ms, int Act)> Stoker(int seed)
     {
         var acts = new List<(int Ms, int Act)>();
         var open = true;
@@ -98,8 +99,10 @@ public class ClickerKilnTests
         var lit = K(h, new { op = "light", straw });
         Assert.True(lit.Ok, lit.Message);
         var seed = Kiln(h).GetProperty("seed").GetInt32();
-        h.Clock.Advance(KilnHeat.Steps / 10.0 + 0.2);
-        return K(h, Timeline((how ?? Stoker)(seed)));
+        var acts = (how ?? Stoker)(seed);
+        // Порожній запис і вікно, що розпалило, чекає KilnOwnWait (v12, QA-2).
+        h.Clock.Advance(KilnHeat.Steps / 10.0 + 0.2 + (acts.Count == 0 ? Clicker.KilnOwnWait.TotalSeconds : 0));
+        return K(h, Timeline(acts));
     }
 
     static void Cool(RoomHarness h) => h.Clock.Advance(Clicker.KilnCool + TimeSpan.FromSeconds(1));
@@ -430,9 +433,9 @@ public class ClickerKilnTests
         Rack(h, dry: 6);
         Assert.True(K(h, new { op = "light" }).Ok);
         h.Clock.AdvanceMs(29_400);
-        Assert.StartsWith("Ще палає", K(h, Timeline([])).Message);
+        Assert.StartsWith("Ще палає", K(h, Timeline([(0, 0)])).Message);
         h.Clock.AdvanceMs(200);
-        Assert.True(K(h, Timeline([])).Ok);
+        Assert.True(K(h, Timeline([(0, 0)])).Ok);
     }
 
     [Fact]
@@ -1208,8 +1211,8 @@ public class ClickerKilnTests
         Assert.Equal("jug|kosiv|4", it.GetProperty("key").GetString());
         Assert.Equal(4, it.GetProperty("q").GetInt32());
         // Базар «крім дзвінких» розкішних не бере, а «все» — забирає.
-        Assert.Equal("У коморі самі дзвінкі — їх базар не бере", Act(h, "bazaar", new { all = true, q = 2 }).Message);
-        var sold = Act(h, "bazaar", new { all = true });
+        Assert.Equal("У коморі самі дзвінкі — їх базар не бере", Act(h, "bazaar", new { all = true, q = 2, keep = false }).Message);
+        var sold = Act(h, "bazaar", new { all = true, keep = false });
         Assert.True(sold.Ok, sold.Message);
         Assert.Equal(0, StoreCount(h));
     }

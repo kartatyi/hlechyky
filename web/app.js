@@ -2622,10 +2622,11 @@
 
   // ---------- маршрути ----------
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
-  // балачок на телефоні), #history (📜 історія сайту, web/history.js). Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
-  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history'];
+  // балачок на телефоні), #history (📜 історія сайту, web/history.js), #tryvoga (🚨 мапа тривог, web/tryvoga.js).
+  // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
+  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history', 'tryvoga'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod'];
-  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія' };
+  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія', tryvoga: 'Тривога' };
   const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото й тла людей', mod: 'Модерація Балачок' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
@@ -2725,6 +2726,7 @@
     if (r === 'stats' || r === 'who') HPeople.show(r, tail); else HPeople.hide();
     if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
     if (window.HHistory) { if (r === 'history') HHistory.show(); else HHistory.hide(); }
+    if (window.HTryvoga) { if (r === 'tryvoga') HTryvoga.show(); else HTryvoga.hide(); }
     if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
     if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
@@ -4485,6 +4487,7 @@
       .withAutomaticReconnect({ nextRetryDelayInMilliseconds: retryIn })
       .build();
     conn.on('state', (s) => { state = s; render(); });
+    conn.on('tryvoga', () => { if (window.HTryvoga) HTryvoga.ping(); });   // тривоги змінились — перепитуємо свій район
     conn.on('chat', (m) => {
       addMessage(m, true, true);
       // Мені щось подарували — оновити шафу: раптом це вміння (🎆 чи 💌), і кнопка має з'явитись одразу.
@@ -4768,6 +4771,8 @@
   if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
   // 📜 Історія Глечиків (web/history.js): сторінка #history і версія сайту в «Я»
   if (window.HHistory) HHistory.init({ esc, go });
+  // 🚨 Тривога (web/tryvoga.js): плашка під шапкою, кнопка 🚨 і сторінка #tryvoga з мапою
+  if (window.HTryvoga) HTryvoga.init({ esc, go, api, me });
   // 🚚 Для далекобійників (web/trucker.js): картка в профілі — бат радіо для ETS2/ATS і скіп кнопкою керма (те саме, що ⏭)
   if (window.HTrucker) HTrucker.init({ esc, toast, skip: () => skipNow() });
   // 🔥 Жива реклама: картка прожарки в Лавці й блок у вкладці «📣 Реклама» (web/liveads.js)
@@ -4819,6 +4824,7 @@
     paintNight();
     ukaz();
     if (window.HSiteNews) HSiteNews.ready();
+    if (window.HTryvoga) HTryvoga.ready();   // уже знаємо, чи це акаунт: його район головніший за браузерний
     loadGoogle(m.googleClientId);
     $('adsTab').hidden = me.role !== 'admin';
     $('fbTab').hidden = me.role !== 'admin';

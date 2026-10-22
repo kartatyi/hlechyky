@@ -15,7 +15,7 @@ public sealed class SlotsOptions
     /// <summary>Стеля ставки (0 — без стелі).</summary>
     public int MaxBet { get; set; }
     /// <summary>Скільки відсотків кожної ставки йде в Скарбничку.</summary>
-    public double JackpotPct { get; set; } = 1;
+    public double JackpotPct { get; set; } = 3;
     /// <summary>З чого Скарбничка починає (і після виграшу).</summary>
     public int JackpotSeed { get; set; } = 10000;
     /// <summary>
@@ -23,7 +23,16 @@ public sealed class SlotsOptions
     /// Частина кожного внеску тоді відкладається на наступний старт (<see cref="SeedShare"/>), щоб у середньому
     /// виплачувалось рівно внесене (specs/slots.md §4).
     /// </summary>
-    public int JackpotMustHit { get; set; } = 100_000;
+    public int JackpotMustHit { get; set; } = 25_000;
+
+    /// <summary>
+    /// Пакет 5: «Глек докидає щодня» — раз на київську добу дім кладе стільки просто в суму Скарбнички (не в запас),
+    /// навіть якщо ніхто не крутить. Пропущені дні докладаються, але не більше ніж за <see cref="DailyMaxDays"/>. 0 — вимкнено.
+    /// </summary>
+    public int JackpotDaily { get; set; } = 1000;
+
+    /// <summary>Скільки пропущених діб щонайбільше докладає <see cref="JackpotDaily"/> за раз.</summary>
+    public const int DailyMaxDays = 7;
 
     /// <summary>Межа діє: задана й більша за початкову суму.</summary>
     public bool MustHitOn => JackpotMustHit > 0 && JackpotMustHit > JackpotSeed && JackpotSeed > 0;
@@ -31,7 +40,7 @@ public sealed class SlotsOptions
     /// <summary>
     /// Яка частка внеску йде не в суму, а в запас на наступний старт: f = 1 / (1 + ln(межа ÷ старт)). Чому так: при шансі
     /// p = внесок ÷ сума сума на мить падіння розподілена як P(не впала до x) = старт ÷ x, тож у середньому Скарбничка
-    /// падає на старт × (1 + ln(межа ÷ старт)) (з межею — 33 026 при 10 000 / 100 000); запас за цикл (f × усі внески)
+    /// падає на старт × (1 + ln(межа ÷ старт)) (з межею — 33 026 при 10 000 / 100 000, 19 163 при 10 000 / 25 000 — f ≈ 0,522); запас за цикл (f × усі внески)
     /// мусить покрити старт: f × E[виплата] = старт. Без межі — 0 (старт дає дім, як і було).
     /// </summary>
     public double SeedShare => MustHitOn ? 1 / (1 + Math.Log((double)JackpotMustHit / JackpotSeed)) : 0;
@@ -126,6 +135,8 @@ public sealed class SlotsBank : BackgroundService
         /// <summary>Відкладене з внесків на наступні старти мінус уже взяте на них (може бути й від'ємним — тоді доклав дім).</summary>
         public double Reserve { get; set; }
         public Dictionary<string, SlotPending> Pending { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>Київська доба (yyyy-MM-dd), за яку вже доклали <see cref="SlotsOptions.JackpotDaily"/>; null — ще жодного разу.</summary>
+        public string? DailyDay { get; set; }
     }
 
     readonly IStakes _stakes;
@@ -153,7 +164,9 @@ public sealed class SlotsBank : BackgroundService
         _log = log;
         _defer = defer ?? (a => ThreadPool.QueueUserWorkItem(_ => a()));
         _startedAt = _clock.UtcNow;
-        _s = Load<Saved>(StoreKey) ?? new Saved();
+        // Нова каса (нема запису) щоденне докладання починає з завтра: сьогодні вона й так стартує з початкової суми.
+        // Старий запис без доби (перший запуск пакета 5) — докладе за сьогодні при першому зверненні.
+        _s = Load<Saved>(StoreKey) ?? new Saved { DailyDay = Days.Of(_clock.UtcNow) };
         if (_s.Pot <= 0 || double.IsNaN(_s.Pot)) _s.Pot = Math.Max(0, O.JackpotSeed);
         _feed = Load<List<SlotBigWin>>(FeedKey) ?? [];
     }
@@ -161,7 +174,7 @@ public sealed class SlotsBank : BackgroundService
     public SlotsOptions O => _opts();
 
     /// <summary>Сума Скарбнички зараз (ціла — те, що виплатиться).</summary>
-    public int Pot { get { lock (_gate) return (int)Math.Floor(_s.Pot); } }
+    public int Pot { get { lock (_gate) { Daily(); return (int)Math.Floor(_s.Pot); } } }
 
     /// <summary>Скільки в гаманці. Економіка впала — 0 (тоді ставка просто не пройде).</summary>
     public int Balance(string nick)
@@ -190,6 +203,7 @@ public sealed class SlotsBank : BackgroundService
     {
         lock (_gate)
         {
+            Daily();
             var o = O;
             var put = bet * Math.Max(0, o.JackpotPct) / 100.0;
             if (put <= 0) return 0;
@@ -207,6 +221,38 @@ public sealed class SlotsBank : BackgroundService
             _s.Reserve -= seed;
             return won;
         }
+    }
+
+    /// <summary>
+    /// Пакет 5: щоденне докладання дому (<see cref="SlotsOptions.JackpotDaily"/>) — ліниво, при першому зверненні до каси
+    /// в нову київську добу (оберт, вид, <c>/api/slots/feed</c>). Доба — у стані каси (<see cref="StoreKey"/>), тож
+    /// перезапуск не докладе вдруге: незаписане докладання губиться разом зі своєю добою й просто повториться.
+    /// Пропущені доби — за кожну, але не більше <see cref="SlotsOptions.DailyMaxDays"/>. Під <see cref="_gate"/>, без сховища
+    /// (кличеться й під замком кімнати) — запише найближчий <see cref="Flush"/>. Сума ≥ межі — зриває наступний оберт.
+    /// </summary>
+    void Daily()
+    {
+        var today = Days.Of(_clock.UtcNow);
+        if (_s.DailyDay == today) return;
+        var amount = O.JackpotDaily;
+        if (amount <= 0)
+        {
+            // Вимкнено — доба все одно йде, щоб увімкнення не докинуло «пропущене» за час вимкнення.
+            _s.DailyDay = today;
+            _dirty = true;
+            return;
+        }
+        var days = 1;
+        if (_s.DailyDay is { } last)
+        {
+            if (!DateOnly.TryParseExact(last, "yyyy-MM-dd", out var from) || !DateOnly.TryParseExact(today, "yyyy-MM-dd", out var to))
+                days = 1;
+            else if (to.DayNumber <= from.DayNumber) return;   // годинник назад — нічого, чекаємо на справді нову добу
+            else days = Math.Min(to.DayNumber - from.DayNumber, SlotsOptions.DailyMaxDays);
+        }
+        _s.Pot += (double)amount * days;
+        _s.DailyDay = today;
+        _dirty = true;
     }
 
     /// <summary>Ставку не списано — внесок назад, а виграну Скарбничку повертаємо в суму (дім своє не губить).</summary>
@@ -412,6 +458,7 @@ public sealed class SlotsBank : BackgroundService
             on = o.Enabled,
             jackpot = Pot,
             mustHit = o.MustHitOn ? o.JackpotMustHit : (int?)null,   // null — поля нема (JsonIgnore у SlotsSetup)
+            daily = o.JackpotDaily > 0 ? o.JackpotDaily : (int?)null,   // пакет 5: «Глек докидає N щодня»
             bets = o.AllowedBets(),
             wins = Week().Select(w => new { nick = w.Nick, game = w.Game, mult = w.Mult, win = w.Win, jackpot = w.Jackpot, at = w.At.UtcDateTime }),
         };
@@ -523,6 +570,7 @@ public static class SlotsSetup
                 sp.GetService<IClock>(), sp.GetService<ISlotsWire>(), sp.GetService<ILogger<SlotsBank>>());
         });
         services.AddHostedService(sp => sp.GetRequiredService<SlotsBank>());
+        SlotTourneySetup.Add(services);   // турнір тижня на фішках (SlotTourney.cs)
         return services;
     }
 
@@ -533,6 +581,9 @@ public static class SlotsSetup
     /// <summary>Як сайт (camelCase), але без null-полів: <c>mustHit</c> нема, коли межу вимкнено.</summary>
     public static readonly JsonSerializerOptions FeedJson = new(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
-    public static void MapSlots(WebApplication app) =>
+    public static void MapSlots(WebApplication app)
+    {
         app.MapGet("/api/slots/feed", (SlotsBank bank) => Results.Json(bank.FeedView(), FeedJson));
+        SlotTourneySetup.Map(app);   // /api/slots/tourney — турнір тижня для лобі
+    }
 }
