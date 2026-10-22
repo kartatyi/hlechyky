@@ -823,11 +823,20 @@
 
   // ---------- піч у хаті ----------
 
+  const HOUSE_STOVE = false;              // малювати піч на сцені (вимкнено 21.10 — див. paintHouseStove)
+
   /// Піч малюється на шарі під колом, куди дотик не доходить, — тож поверх неї прозора кнопка на шарі над сценою (як
   /// кіт): підказка й тап «в Альбом, до печі». Без неї піч стояла німа: «нащо ця пічка?» (записка #45).
   function paintHouseStove(st, api) {
     const g = st.albumHouse;
     if (!g) return;
+    // UI-прохід 21.10 (користувач): піч у хаті прибрано — на сцені вона ні до чого, а прозора кнопка над нею ловила
+    // випадкові кліки поруч із колом. Піч і її бонус живуть у вкладці «Альбом».
+    if (!HOUSE_STOVE) {
+      if (st.albumStoveBtn && !st.albumStoveBtn.hidden) st.albumStoveBtn.hidden = true;
+      if (g.firstChild) g.innerHTML = '';
+      return;
+    }
     const a = st.album;
     const btn = st.albumStoveBtn;
     const sig = JSON.stringify(a.stove) + '|' + a.stoveBonus;

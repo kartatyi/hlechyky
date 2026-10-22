@@ -74,7 +74,8 @@
 /* ---- будується ---- */
 .clkl-build {
   display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 10px;
-  background: repeating-linear-gradient(135deg, rgba(168, 116, 47, .16) 0 10px, rgba(0, 0, 0, .12) 10px 20px);
+  /* Смуги будови — ледь помітні (UI-прохід 21.10): яскраві .16/.12 рябіли під текстом, і його важко було прочитати. */
+  background: repeating-linear-gradient(135deg, rgba(168, 116, 47, .07) 0 10px, transparent 10px 20px), rgba(0, 0, 0, .16);
   border: 1px solid rgba(201, 146, 78, .45);
 }
 .clkl-bline { font-size: .9em; }
@@ -147,7 +148,7 @@
   background: repeating-linear-gradient(90deg, var(--clay) 0 9px, #a85a2a 9px 11px);
 }
 .clkl-work.full .clkl-wbar i { background: repeating-linear-gradient(90deg, var(--ok) 0 9px, #4c9a3f 9px 11px); }
-.clkl-work .small { font-size: .74em; }
+.clkl-work .small { font-size: max(12px, .78em); }
 /* «Зекономлено 19 хв з 1 год 57 хв» — головне, що дає своя праця: хвилини відчуваються, відсоток — ні (QA 21.10). */
 .clkl-wsave { font-size: .86em; font-weight: 700; color: var(--ok); font-variant-numeric: tabular-nums; }
 

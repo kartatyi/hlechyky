@@ -18,12 +18,8 @@
 @keyframes clkwdry { from { transform: scale(1.15); } to { transform: scale(1); } }
 
 /* ---- смуга «Шлях виробу» під сценою ---- */
-.clk-path { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
-.clk-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; container: clksteps / inline-size; }
-/* Плитки вужчі за ~150 px (ПК 1366 з балачками — 142): підпис у два рядки замість «стоїть: сушарн…», «46/46 · сухих …». */
-@container clksteps (min-width: 461px) and (max-width: 640px) {
-  .clk .clk-stsub { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
-}
+.clk-path { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; container: clkpath / inline-size; }
+.clk-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
 /* Обгортка чипа: у ній сам чип (кнопка) і поруч ⓘ (теж кнопка) — кнопка в кнопці недійсна (рецензія v9). */
 .clk-stepw { position: relative; min-width: 0; display: flex; }
 .clk-step {
@@ -56,6 +52,48 @@
 .clk-stbar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255, 255, 255, .06); }
 .clk-stbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--clay), #d99a5b); transition: width .12s linear; }
 .clk-step.hot .clk-stbar i { background: var(--accent2); }
+/* Плитка без назви (UI-прохід 21.10, друга хвиля): значення — головне й жирне, під ним дрібний хвіст («сухих 8», ≈ сума,
+   назва виробу на колі). Назва кроку — у підказці (title), що це за крок, каже значок. */
+.clk .clk-sttxt { justify-content: center; }
+.clk .clk-stv, .clk .clk-stx { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk .clk-stv { font-size: .86em; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
+.clk .clk-stx { font-size: max(11px, .7em); color: var(--muted); }
+.clk .clk-stx:empty { display: none; }
+.clk .clk-step:not(.on) .clk-stv { color: var(--muted); font-weight: 600; }
+.clk .clk-step.hot .clk-stv { color: var(--accent); }
+
+/* «Далі» одним рядком і на ПК, коли смуга від 420 px: значок · порада у два рядки · кнопки праворуч (було два ряди —
+   порада, а під нею кнопка, ~85 px). Вужча смуга (ПК 1366 з колом на пів картки) — як було, двома рядами; телефон —
+   свій однорядковий вигляд у clicker.css. Друга кнопка до 620 px — лише значком, назва в підказці. */
+@container clkpath (min-width: 420px) {
+  .clk:not(.land) .clkc-next, .clk:not(.land) .clkc-next.two {
+    grid-template-columns: 26px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content);
+    grid-template-rows: var(--nx-btn); height: calc(var(--nx-btn) + 14px); padding: 7px 10px; row-gap: 0;
+  }
+  .clk:not(.land) .clk-nxtxt { grid-column: 2; grid-row: 1; }
+  .clk:not(.land) .clk-nxbtn { grid-row: 1; grid-column: 3; }
+  .clk:not(.land) .clk-nxbtn2 { grid-column: 4; }
+  .clk:not(.land) .clk-nxbtn[hidden] + .clk-nxbtn2 { grid-column: 3 / -1; }
+}
+@container clkpath (min-width: 420px) and (max-width: 619.98px) {
+  .clk:not(.land) .clk-nxbtn:not([hidden]) + .clk-nxbtn2 .clk-nxl { display: none; }
+  .clk:not(.land) .clk-nxbtn2 { border: 1px solid var(--line); }
+}
+/* ПК в один екран, смуга праворуч (.pathside): «Далі» живе просто під сценою, у її стовпчику (clkscene) — те саме. */
+@container clkscene (min-width: 420px) {
+  .clk.fit .clk-scene > .clkc-next, .clk.fit .clk-scene > .clkc-next.two {
+    grid-template-columns: 26px minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content);
+    grid-template-rows: var(--nx-btn); height: calc(var(--nx-btn) + 14px); padding: 7px 10px; row-gap: 0;
+  }
+  .clk.fit .clk-scene > .clkc-next .clk-nxtxt { grid-column: 2; grid-row: 1; }
+  .clk.fit .clk-scene > .clkc-next .clk-nxbtn { grid-row: 1; grid-column: 3; }
+  .clk.fit .clk-scene > .clkc-next .clk-nxbtn2 { grid-column: 4; }
+  .clk.fit .clk-scene > .clkc-next .clk-nxbtn[hidden] + .clk-nxbtn2 { grid-column: 3 / -1; }
+}
+@container clkscene (min-width: 420px) and (max-width: 619.98px) {
+  .clk.fit .clk-scene > .clkc-next .clk-nxbtn:not([hidden]) + .clk-nxbtn2 .clk-nxl { display: none; }
+  .clk.fit .clk-scene > .clkc-next .clk-nxbtn2 { border: 1px solid var(--line); }
+}
 
 /* Рядок «Далі» — одна порада й одна-дві кнопки, завжди два ряди сталої висоти (QA-3, v12): порада з підрядком — разом
    не більше двох рядків (повністю — у підказці, title), під нею кнопки праворуч. Було: з двома кнопками порада

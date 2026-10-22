@@ -273,21 +273,34 @@
 .clk-pane > .clkg-nav {
   order: -2; position: sticky; top: var(--clkg-nav-top, 0px); z-index: 4; display: flex; flex: none; gap: 4px; padding: 4px;
   overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
-  border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 12px -8px rgba(0, 0, 0, .6);
+  border-radius: 12px; background: var(--panel); border: 1px solid var(--line);
+  /* Кільце кольору картки довкола й над плашкою: те, що гортається під нею, не визирає з-за заокруглених кутів і
+     згори (UI-прохід 21.10), а знизу — м'яка тінь. */
+  box-shadow: 0 0 0 6px var(--panel), 0 -12px 0 6px var(--panel), 0 10px 12px -8px rgba(0, 0, 0, .6);
 }
 .clkg-nav::-webkit-scrollbar { display: none; }
 /* Телефон, поки плашку кола ще не міряли (navStick): шапка сайту 56 px + плашка з рядом вкладок. */
 .clk:not(.fit) .clk-pane > .clkg-nav { top: var(--clkg-nav-top, calc(var(--clk-pin-top, 56px) + 98px)); }
 .clk-pane > .clkg-nav[hidden], .clkg-intro[hidden] { display: none; }
 .clkg-nav button { flex: none; white-space: nowrap; min-height: 36px; padding: 4px 10px; }
-/* ПК (QA-2: вісім кнопок — 783 px у 538): переносяться в два рядки, нічого не ховається за краєм. */
+/* Один рядок завжди (UI-прохід 21.10): широкий — значок і слово, вужчий за 800 px — самі значки нарівно (назва в
+   підказці). Було: на ПК переносились у два рядки (QA-2), на телефоні частина ховалась за краєм. */
+.clk-pane > .clkg-nav { container: clkgnav / inline-size; }
 @media (min-width: 561px) {
-  .clk-pane > .clkg-nav { flex-wrap: wrap; overflow-x: visible; }
   .clkg-nav button { min-height: 32px; padding: 3px 8px; font-size: .85em; }
 }
+/* Число гостей / кораблів на кнопці переходу — бейджем, як на ярликах вкладок. */
+.clkg-nav .clkg-nc {
+  display: inline-block; min-width: 1.4em; margin-left: 4px; padding: 0 4px; border-radius: 999px; box-sizing: border-box;
+  background: var(--accent2); color: var(--bg); font-size: .78em; font-weight: 700; line-height: 1.45; text-align: center;
+}
+@container clkgnav (max-width: 799.98px) {
+  .clkg-nav button { flex: 1 1 0; min-width: 0; padding: 3px 2px; justify-content: center; font-size: 1.05em; }
+  .clkg-nav .clkg-nw { display: none; }
+}
 @media (pointer: coarse) { .clkg-nav button { min-height: 40px; } }
-/* Телефон: рядок гортається вбік — правий край тьмяніє, поки праворуч ще є кнопки (клас more ставить clicker-guild.js). */
-.clkg-nav.more { -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent); mask-image: linear-gradient(90deg, #000 82%, transparent); }
+/* Маски «праворуч ще є» більше нема (UI-прохід 21.10): рядок завжди в один рядок без прокрутки, а маска робила
+   прозорою саму плашку — правий край з рамкою «обрізався», і крізь нього просвічував контент під нею. */
 .clk-pane > .clkg-intro { order: -1; flex: none; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .clkg-intro p { margin: 0; flex: 1 1 240px; line-height: 1.4; }
 
