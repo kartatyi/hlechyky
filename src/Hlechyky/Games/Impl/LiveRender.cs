@@ -52,9 +52,11 @@ public sealed class FfmpegLiveRenderer(ITtsEngine tts, IOptionsMonitor<LiveAdsOp
             var i = 0;
             foreach (var line in script.Lines)
             {
-                var path = await Speak(line, Path.Combine(dir, $"{tag}-{i++:00}.mp3"), ct);
-                if (path is null) return null;
-                mine.Add(path);
+                // У «свої» — ще до озвучки: edge-tts створює файл раніше за рукостискання, і невдала репліка лишала
+                // порожній mp3 (12–20.10, коли Microsoft давав 403, їх набралось 22 тисячі)
+                var part = Path.Combine(dir, $"{tag}-{i++:00}.mp3");
+                mine.Add(part);
+                if (await Speak(line, part, ct) is not { } path) return null;
                 var sec = await tts.DurationAsync(path, ct);
                 parts.Add((path, sec, line.Rim && hasRim ? RimGap : Gap));
                 if (line.Rim && hasRim) parts.Add((rim, 1.2, Gap));

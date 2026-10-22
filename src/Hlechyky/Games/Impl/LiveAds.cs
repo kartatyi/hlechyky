@@ -48,6 +48,12 @@ public sealed class LiveAdsOptions
     public int MaxChars { get; set; } = 320;
 
     public int TickSeconds { get; set; } = 20;
+    /// <summary>
+    /// Ролик не спікся (edge-tts чи ffmpeg лежить) — фонова кухня відпочиває: 1 хв, далі щоразу вдвічі довше, але не
+    /// більше стількох хвилин; перший спечений ролик скидає. Без цього 12–20.10 (403 від Microsoft) жива реклама стукала
+    /// в edge-tts щокроку, ~4000 разів на добу. Замовлення й кнопки господаря пробують і під час відпочинку.
+    /// </summary>
+    public int RetryMaxMinutes { get; set; } = 10;
     public int RenderTimeoutSeconds { get; set; } = 120;
     /// <summary>Скільки останніх файлів лишати для адміна і скільки хвилин тримати відіграні.</summary>
     public int KeepFiles { get; set; } = 20;
@@ -95,6 +101,9 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
     string? _curfewDay;
     LiveLines? _lines;
     DateTime _linesAt;
+    /// <summary>Скільки рендерів поспіль не вийшло і до коли фонова кухня не пече (<see cref="LiveAdsOptions.RetryMaxMinutes"/>).</summary>
+    int _renderFails;
+    DateTimeOffset _restUntil;
 
     LiveAdsOptions O => options.CurrentValue;
 
@@ -314,11 +323,12 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
             var now = clock.UtcNow;
             Expire(now);
             if (!Enabled) return;
+            // Замовлене пече й під час відпочинку: за нього заплатили, таких мало, а не вийде — черепки повернуться
             foreach (var r in store.WithStatus("queued").Where(r => r.Kind == "order"))
                 await BakeOrder(r, ct);
             await Events(now, ct);
-            await News(now, ct);
-            await Prepare(ct);
+            if (!Resting(now)) await News(now, ct);
+            if (!Resting(now)) await Prepare(ct);
             Clean(now);
         }
         finally { _tick.Release(); }
@@ -370,13 +380,33 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
         if (sec is not { } s || s <= 0)
         {
             store.Move(id, from, "failed", clock.UtcNow);
+            Rendered(false);
             return false;
         }
         lock (_lock)
         {
             store.Ready(id, script.Text, string.Join(',', script.Facts), file, (int)Math.Ceiling(s), clock.UtcNow);
         }
+        Rendered(true);
         return true;
+    }
+
+    /// <summary>Фонова кухня (прожарка наперед, новини, реакції) відпочиває після невдалого рендеру.</summary>
+    bool Resting(DateTimeOffset now) { lock (_lock) return now < _restUntil; }
+
+    /// <summary>Рендер вийшов — відпочинок скинуто; ні — 1, 2, 4… хвилин до <see cref="LiveAdsOptions.RetryMaxMinutes"/>.</summary>
+    void Rendered(bool ok)
+    {
+        int fails;
+        double minutes;
+        lock (_lock)
+        {
+            if (ok) { _renderFails = 0; _restUntil = default; return; }
+            fails = ++_renderFails;
+            minutes = Math.Min(Math.Max(1, O.RetryMaxMinutes), Math.Pow(2, Math.Min(fails - 1, 16)));
+            _restUntil = clock.UtcNow.AddMinutes(minutes);
+        }
+        log.LogInformation("жива реклама не спеклась ({Fails} раз поспіль) — наступна спроба через {Minutes} хв", fails, minutes);
     }
 
     // ---------- прожарка присутніх ----------
@@ -622,6 +652,8 @@ public sealed class LiveAds(LiveAdsStore store, LiveFacts facts, ILiveRenderer r
 
         foreach (var (kind, nick, fact) in found)
         {
+            // Водяні знаки вже зсунуто: під час відпочинку подія просто минає — через пів години вона й так була б несвіжа
+            if (Resting(now)) break;
             if (store.OptedOut(nick)) continue;
             var recent = store.Since(now.AddHours(-1)).Where(r => r.Kind == "event").ToList();
             if (recent.Count >= O.EventsPerHour) break;
