@@ -384,6 +384,8 @@ public sealed partial class Clicker
     /// <summary>
     /// Що ліпити: <c>{ ware, style }</c>. <c>style</c> — з картки альбому (v12, QA-2): «Ліпити» з порожньої клітинки
     /// «полумисок · Косів» казало лише «На колі тепер полумисок», і розпис, заради якого натиснули, губився.
+    /// 23.10: розпис не лише називається, а й стає на партію в горні (<see cref="KilnStyleFor"/>) — так само з замовлень,
+    /// Толоки, кораблів і гостей.
     /// </summary>
     ActResult Form(JsonElement payload)
     {
@@ -391,11 +393,9 @@ public sealed partial class Clicker
         if (WareOf(key) is not { } w) return ActResult.Fail("Такого виробу гончарі не ліплять");
         if (!WareOpen(key)) return ActResult.Fail($"{w.Name} відкриється на {PotsShort(w.Unlock)} за весь час");
         var style = Str(payload, "style");
-        // Клітинка вже в альбомі — просто назвати розпис, без «для альбому» (QA-3).
-        var note = style.Length > 0 && Styles.FirstOrDefault(x => x.Key == style) is { } sd
-            ? (AlbumCellOpen(AlbumCellKey(key, style)) ? $" — з розписом «{sd.Name}»" : $" — для альбому обпали з розписом «{sd.Name}»")
-                + (_styles.Contains(style) ? "" : " (його ще треба відкрити)")
-            : "";
+        var note = style.Length > 0 ? KilnStyleFor(style, Ctx.Clock.UtcNow) : "";
+        // Нова клітинка альбому — скажемо й це (клітинка вже є — просто розпис, QA-3).
+        if (note.Length > 0 && _styles.Contains(style) && !AlbumCellOpen(AlbumCellKey(key, style))) note += " · нова клітинка альбому";
         if (_formWare == key) return note.Length > 0 ? ActResult.Accept($"🏺 {w.Name} уже на колі{note}") : ActResult.Done;
         _formWare = key;
         _formWork = Math.Min(_formWork, WorkOf(w));

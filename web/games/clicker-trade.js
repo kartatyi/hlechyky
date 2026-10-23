@@ -197,7 +197,8 @@
       + (btns ? '<div class="clkt-btns">' + btns + '</div>' : '');
   }
 
-  /// «🏺 Ліпити миску (Межигірський фаянс)»: виріб на коло (дія form) і розпис замовлення (дія wear). Уже на колі — позначка.
+  /// «🏺 Ліпити миску (Межигірський фаянс)»: виріб на коло й розпис замовлення на партію в горні — одна дія form (23.10).
+  /// Уже на колі й розпис той самий — позначка.
   function formBtn(st, api, s) {
     const c = st.craft;
     const w = c && c.wares && c.wares.find((x) => x.key === s.ware);
@@ -208,20 +209,18 @@
     const acc = name.split('-').map((p) => p.replace(/а$/, 'у').replace(/я$/, 'ю')).join('-');
     const sty = s.style ? (st.styleList || []).find((x) => x.key === s.style && x.owned) : null;
     const sname = sty ? styleName(st, s.style) : '';
-    if (c.ware === s.ware && (!sty || st.wear === s.style)) {
+    if (api.onWheel(st, s.ware, sty ? s.style : '')) {
       return '<span class="small clkt-onwheel">🏺 ' + esc(name + (sname ? ' «' + sname + '»' : '')) + ' уже на колі</span>';
     }
-    const label = c.ware === s.ware ? '🎨 Поставити розпис «' + sname + '»' : '🏺 Ліпити ' + acc + (sname ? ' (' + sname + ')' : '');
+    const label = c.ware === s.ware ? '🎨 Розпис «' + sname + '» на партію' : '🏺 Ліпити ' + acc + (sname ? ' (' + sname + ')' : '');
     return '<button type="button" class="ghost small clkt-form" data-form="' + esc(s.ware) + '" data-fstyle="' + esc(sty ? s.style : '') + '">' + esc(label) + '</button>';
   }
 
-  /// Виріб на коло, а коли замовлення просить розпис — і розпис (без нього корабель такого не прийме). Розпис іде й у
-  /// form: тоді тост сервера каже «— з розписом «…»» (QA-4), а wear лише мовчки ставить його на коло.
+  /// Виріб на коло, а коли замовлення просить розпис — і розпис на партію (без нього корабель такого не прийме): усе
+  /// робить form на сервері (23.10), тост каже, на яку партію став розпис.
   function formIt(st, api, ware, style) {
     api.sfx('tap');
-    api.act(st, 'form', style ? { ware, style } : { ware }).then((r) => {
-      if (r && r.ok && style && st.wear !== style) api.act(st, 'wear', { key: style });
-    });
+    api.act(st, 'form', style ? { ware, style } : { ware });
   }
 
   /// Корабель без розпису бере будь-який, а виріб у розписі світу платить більше (Clicker.TradeMinutesFor / SlavaFor) —

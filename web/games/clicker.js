@@ -3789,6 +3789,10 @@
     sfx: () => {},
     /// Силует виробу: малює ремесло (clicker-craft.js); доти — глечик.
     wareSvg: (ware, o) => jugSvg((o && o.style) || '', (o && o.cls) || '', (o && o.slot) || 'w-' + ware, o && o.clay),
+    /// «Уже на колі» (23.10): «Ліпити X → розпис» ставить і виріб на коло, і розпис на партію в горні (чи на наступну —
+    /// kiln.next), тож готово лише тоді, коли збігаються обидва. Без розпису — досить виробу.
+    onWheel: (st, ware, style) => !!(st.craft && st.craft.ware === ware
+      && (!style || (st.kView && (st.kView.style === style || st.kView.next === style)))),
     /// Вкладка частини: кнопка стає за порядком order серед наявних, панель — у праву колонку. Повертає панель.
     tab(st, key, label, order) {
       if (st.panes[key]) return st.panes[key];
@@ -4183,7 +4187,11 @@
     const top = Math.round(box.getBoundingClientRect().top + window.scrollY);
     // UI-прохід 21.10: в один екран — сцена й рядок «Далі» під нею (кнопка біля пальця), а плитки кроків — уже під
     // прокруткою. Зі смугою разом сцена впиралась у нижню межу (250 px на 412×780 — «село стало маленьким»).
-    const path = st.el.querySelector('.clk-path .clkc-next') ? PHONE_NEXT_H : 0;
+    // 23.10: «Далі» — лише новачкові; решті під сценою в тому ж екрані — перший рядок плашок бафів.
+    const next = st.el.querySelector('.clk-path .clkc-next:not(.off)');
+    // Рядок плашок — min-height їхнього блока (місце на рядок він тримає й порожнім), тож сцена не стрибає з бафами.
+    const bh = !next && st.buffsEl ? parseFloat(getComputedStyle(st.buffsEl).minHeight) || 0 : 0;
+    const path = next ? PHONE_NEXT_H : bh ? Math.ceil(bh) + 10 : 0;
     if (st.phTop !== top) { st.phTop = top; st.el.style.setProperty('--clk-ph-top', top + 'px'); }
     if (st.phPath !== path) { st.phPath = path; st.el.style.setProperty('--clk-ph-path', path + 'px'); }
   }
@@ -4209,36 +4217,36 @@
     const fit = st.el.classList.contains('fit') || st.el.classList.contains('land');
     // Сам .clk-sell лишається під сценою: перед ним ставить себе стрічка подій (clicker-fair.js). Ходять лише кнопки
     // й рядок «сьогодні ще …» — ті самі елементи, тож обробники й st.one / st.all не міняються.
-    // Стіл в один екран: плашки бафів і стрічка подій ідуть у праву колонку (F3) — плашки нагору (під смугу «Шлях
-    // виробу», коли вона там), стрічка в підвал над прилавком. Під сценою вони з'їдали ~100 px висоти, а сцена за
+    // Стіл в один екран: стрічка подій іде в підвал правої колонки над прилавком, плашки бафів — див. нижче. Сцена за
     // кожен піксель висоти віддає 0,8 px ширини. Плашки переходять цілим контейнером: що в них — не чіпаємо.
     const side = fit && st.el.classList.contains('pathside');
     const buffs = st.buffsEl || (st.buffsEl = st.el.querySelector('.clk-buffs'));
     const feed = st.el.querySelector('.clkf-feed');
-    // v12 §7 п. 7: на ПК стрічка подій — у рядок статусу (підвал), а бафи — шаром на низ сцени: у правій колонці вони
-    // з'їдали ~70 px вікна вкладки, а їхня поява й зникнення смикали список Майстерні на 37 px (B14).
+    // v12 §7 п. 7: на ПК стрічка подій — у рядок статусу (підвал): у правій колонці вона з'їдала вікно вкладки.
     const pc = st.el.classList.contains('fit');
     if (fit) {
       // Лежачи стрічка подій — шаром на сцену, під бафи: у правій колонці кожні 30 px — це пів рядка Майстерні (QA-3).
       const feedHome = st.el.classList.contains('land') ? st.stage : st.shards;
       if (feed && feed.parentElement !== feedHome) { if (feedHome === st.stage) st.stage.appendChild(feed); else st.shards.prepend(feed); }
-      // Лежачи — так само: права колонка там вікно, що гортається само (QA-3: на 844×390 видно було ~1 рядок Майстерні).
-      if (fit) { if (buffs && buffs.parentElement !== st.stage) st.stage.appendChild(buffs); }
-      else if (buffs && !side && buffs.parentElement !== st.sideEl) st.sideEl.prepend(buffs);
+      // Бафи на ПК (23.10, Smaug, записка #64) — блоком одразу під сценою: шаром на її низу (v12, B14) вони закривали коло
+      // й руки гончаря. Лежачи — як і було, шаром на низ сцени: права колонка там вікно, що гортається само (QA-3).
+      if (pc) { if (buffs && buffs.previousElementSibling !== st.stageBox) st.stageBox.after(buffs); }
+      else if (buffs && buffs.parentElement !== st.stage) st.stage.appendChild(buffs);
     } else {
-      if (buffs && buffs.parentElement !== st.sceneEl) st.sellRow.before(buffs);
+      // Телефон: бафи теж одразу під сценою (23.10), а не під кроками смуги.
+      if (buffs && buffs.previousElementSibling !== st.stageBox) st.stageBox.after(buffs);
       if (feed && feed.parentElement !== st.sceneEl) st.sellRow.before(feed);
     }
+    // Що стоїть під сценою першим: бафи (крім «лежачи»), смуга й «Далі» — уже під ними.
+    const under = (pc || !fit) && buffs ? buffs : st.stageBox;
     const path = st.sceneEl.querySelector(':scope > .clk-path') || st.sideEl.querySelector(':scope > .clk-path');
-    if (side) {
-      if (path && path.parentElement !== st.sideEl) st.sideEl.prepend(path);
-      if (!pc && buffs && buffs.previousElementSibling !== path) { if (path) path.after(buffs); else if (buffs.parentElement !== st.sideEl) st.sideEl.prepend(buffs); }
-    } else if (path && path.previousElementSibling !== st.stageBox) st.stageBox.after(path);
-    // Низький ПК (.pathside): рядок «Далі» — під сценою, біля кола (як на телефоні), а кроки смуги — над вкладками.
+    if (side) { if (path && path.parentElement !== st.sideEl) st.sideEl.prepend(path); }
+    else if (path && path.previousElementSibling !== under) under.after(path);
+    // Низький ПК (.pathside): рядок «Далі» (лише новачкові, 23.10) — під сценою, біля кола, а кроки смуги — над вкладками.
     // Разом вони з'їдали ~100 px вікна вкладки, а на 1366×768 воно було 311 px (v12 §7 п. 7, готово — ≥ 460 px).
     const nx = st.craftUi && st.craftUi.nx;
     if (nx && path) {
-      if (side && pc) { if (nx.previousElementSibling !== st.stageBox) st.stageBox.after(nx); }
+      if (side && pc) { if (nx.previousElementSibling !== under) under.after(nx); }
       else if (nx.parentElement !== path) { const steps = path.querySelector('.clk-steps'); if (steps) steps.after(nx); else path.appendChild(nx); }
     }
   }

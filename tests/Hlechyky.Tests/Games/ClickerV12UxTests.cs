@@ -83,15 +83,50 @@ public class ClickerV12UxTests
         Patch(h, s => s["styles"] = new JsonArray("kosiv"));
         var r = h.Act(0, "form", new { ware = "pot", style = "kosiv" });
         Assert.True(r.Ok, r.Message);
-        Assert.Contains("з розписом «", r.Message);
-        Assert.DoesNotContain("ще треба відкрити", r.Message);
-        // Уже на колі — однаково нагадуємо; розпис, якого нема, — так і кажемо.
+        Assert.Contains("розпис партії «", r.Message);
+        Assert.DoesNotContain("ще нема", r.Message);
+        // 23.10: розпис не лише в тості — він стає на партію в горні й на коло.
+        Assert.Equal("kosiv", View(h).GetProperty("kiln").GetProperty("style").GetString());
+        Assert.Equal("kosiv", View(h).GetProperty("wear").GetString());
+        // Уже на колі — однаково нагадуємо; розпис, якого нема, — так і кажемо, і горна не чіпаємо.
         r = h.Act(0, "form", new { ware = "pot", style = "opishnia" });
         Assert.True(r.Ok, r.Message);
         Assert.Contains("уже на колі", r.Message);
-        Assert.Contains("ще треба відкрити", r.Message);
+        Assert.Contains("ще нема", r.Message);
+        Assert.Equal("kosiv", View(h).GetProperty("kiln").GetProperty("style").GetString());
         // Без розпису — як і було: на те саме мовчки.
         Assert.Equal(ActResult.Done, h.Act(0, "form", new { ware = "pot" }));
+    }
+
+    [Fact]
+    public void A_painting_chosen_while_the_kiln_burns_waits_for_the_next_batch()
+    {
+        var h = Wheel();
+        Patch(h, s =>
+        {
+            s["styles"] = new JsonArray("kosiv", "opishnia");
+            var rack = new JsonArray();
+            for (var i = 0; i < 6; i++) rack.Add(new JsonObject { ["ware"] = "pot", ["clay"] = "", ["dryAt"] = h.Clock.UtcNow.AddMinutes(-1).ToString("O") });
+            s["craft"]!["rack"] = rack;
+        });
+        Assert.True(h.Act(0, "kiln", new { op = "paint", style = "kosiv" }).Ok);
+        Assert.True(h.Act(0, "kiln", new { op = "light", helper = true }).Ok);
+        var r = h.Act(0, "form", new { ware = "bowl", style = "opishnia" });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("наступну партію", r.Message);
+        var k = View(h).GetProperty("kiln");
+        Assert.Equal("kosiv", k.GetProperty("style").GetString());      // та, що палає, лишається косівською
+        Assert.Equal("opishnia", k.GetProperty("next").GetString());
+        // Переживає збереження, а щойно партія вийде — розпис стає сам.
+        Patch(h, _ => { });
+        h.Clock.Advance(Clicker.KilnBurn + TimeSpan.FromMinutes(1));
+        k = View(h).GetProperty("kiln");
+        Assert.NotEqual("burning", k.GetProperty("state").GetString());
+        Assert.Equal("opishnia", k.GetProperty("style").GetString());
+        Assert.Equal("", k.GetProperty("next").GetString());
+        // Горно охололо й не розписане — розпис стає одразу.
+        Assert.True(h.Act(0, "form", new { ware = "pot", style = "kosiv" }).Ok);
+        Assert.Equal("kosiv", View(h).GetProperty("kiln").GetProperty("style").GetString());
     }
 
     [Fact]

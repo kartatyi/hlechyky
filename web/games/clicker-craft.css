@@ -116,6 +116,8 @@
   box-sizing: border-box; height: calc(2.3em + var(--nx-btn) + 18px);
 }
 .clkc-next[hidden] { display: grid !important; visibility: hidden; }
+/* «Далі» лише новачкові (23.10, paintNext): решті — ні рядка, ні місця під нього; там уже плашки бафів. */
+.clkc-next.off { display: none !important; }
 .clk-nxico { grid-column: 1; grid-row: 1; font-size: 17px; line-height: 1; text-align: center; }
 .clk-nxsvg { width: 26px; height: 26px; display: block; }
 .clk-nxtxt {

@@ -629,7 +629,10 @@
         : '';
       // Розгорнутий вибір розпису swap тримає розгорнутим і після перемальовування (details за класом).
       paint = '<div class="clkk-decorsec"><details class="clkk-styles"><summary>🎨 Розпис: <b>'
-        + esc(styleName(st, k.style)) + '</b>' + beauty + '</summary>' + styles + '</details>'
+        + esc(styleName(st, k.style)) + '</b>' + beauty
+        // Розпис з кнопки «Ліпити», що чекає, поки ця (вже розписана) партія вийде з горна (23.10).
+        + (k.next && k.next !== k.style ? ' <span class="muted small">· далі «' + esc(styleName(st, k.next)) + '»</span>' : '')
+        + '</summary>' + styles + '</details>'
         + '<div class="clkk-techline">' + row
         + (tech
           ? '<button type="button" class="primary clkk-decor"' + (mine && load > 0 ? '' : ' disabled') + '>🖌 Розписати'

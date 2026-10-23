@@ -147,9 +147,10 @@
       + '<b class="clkd-bt"> · ⏳ <em class="clkd-cd" data-at="' + o.until + '" data-done="відплив"></em></b></span></div>'
       + '<div class="clkd-obtns">'
       + '<button type="button" class="primary small clkd-give" data-give="' + o.id + '"' + (st.mine && ready ? '' : ' disabled') + '>🤝 Віддати</button>'
-      // Бракує — «Ліпити» тут же, з розписом замовлення (form { ware, style }), як у Толоці.
-      + (ready || !st.mine ? '' : st.craft && st.craft.ware === o.ware ? '<span class="small clkl-onwheel">🏺 ' + esc(wareName(st, o.ware)) + ' уже на колі</span>' : '<button type="button" class="ghost small clkd-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
-        + esc(acc(wareName(st, o.ware))) + '</button>')
+      // Бракує — «Ліпити» тут же (form { ware, style }, як у Толоці): виріб на коло, розпис замовлення — на партію в горні
+      // (23.10). Виріб уже на колі, а розпис інший — кнопка лише розпису.
+      + (ready || !st.mine ? '' : api.onWheel(st, o.ware, o.style) ? '<span class="small clkl-onwheel">🏺 ' + esc(wareName(st, o.ware)) + ' уже на колі</span>' : '<button type="button" class="ghost small clkd-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">'
+        + (st.craft && st.craft.ware === o.ware ? '🎨 Розпис «' + esc(styleName(st, o.style)) + '» на партію' : '🏺 Ліпити ' + esc(acc(wareName(st, o.ware)))) + '</button>')
       + '<button type="button" class="ghost small clkd-skip' + (armed ? ' armed' : '') + '" data-skip="' + o.id + '"' + (st.mine ? '' : ' disabled')
       // «Точно?» — не довше за «Відпустити»: інакше кнопка переносилась у новий рядок і тікала з-під пальця на другому натиску.
       + ' title="' + (armed ? 'Натисни ще раз — гість поїде' : 'Гість поїде без образи — місце на дворі звільниться') + '">'

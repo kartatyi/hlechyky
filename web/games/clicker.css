@@ -1147,6 +1147,9 @@
    +25 px — другий рядок над сценою (суперник під швидкістю, див. .clk-rr нижче). */
 .clk.fit .clk-lay { --clk-rows: 207px; }
 .clk.fit.pathside .clk-lay { --clk-rows: 107px; }
+/* 23.10: під сценою — плашки бафів (63) і кроки смуги (41), «Далі» лише новачкові (.rookie, ще ~63). */
+.clk.fit:not(.pathside) .clk-lay { --clk-rows: 213px; }
+.clk.fit.rookie:not(.pathside) .clk-lay { --clk-rows: 276px; }
 
 /* ---- ПК: сцені вся висота стовпчика (F3/F4, 08.10) ----
    Було: над сценою число, швидкість і суперник (~100 px), під нею два рядки плашок бафів і стрічка подій (~100 px),
@@ -1471,13 +1474,10 @@
   flex: 1 1 0; min-width: 0; font-size: .78em; color: var(--muted); text-align: right;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Бафи — шаром на низ сцени: місця в колонках не беруть, тож їхня поява нічого не зсуває (B14). Дотики — крізь них. */
-.clk.fit .clk-stage > .clk-buffs {
-  position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 4; pointer-events: none;
-  height: auto; min-height: 0; width: auto;
-}
-.clk.fit .clk-stage > .clk-buffs[hidden] { display: none !important; }
-.clk.fit .clk-stage > .clk-buffs .clk-buff { box-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
+/* Бафи на ПК (23.10, Smaug, записка #64) — блоком одразу під сценою (placeRows), а не шаром на її низу (B14): плашки
+   лягали на коло й руки гончаря. Два рядки місця — завжди, і порожні (.clk-buffs[hidden] лишає місце): сцена не
+   смикається, коли плашка з'являється чи зникає. Місце під них — у --clk-rows нижче (замість рядка «Далі»). */
+.clk.fit .clk-scene > .clk-buffs { flex: none; }
 
 /* ---- телефон: липка плашка суцільна, і поки вона видна, справжній ряд вкладок прихований (v12 §2.6) ---- */
 .clk .clk-pin::before {

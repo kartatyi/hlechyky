@@ -708,12 +708,13 @@
           : '−' + (lvl + 1) * workStep + ' % роботи і +' + (lvl + 1) * valStep + ' % ціни цього виробу')
       : '🖐 Золоті руки: −' + lvl * workStep + ' % роботи, +' + lvl * valStep + ' % ціни та ще ×' + topTxt + ' зверху. Вище нема.';
     // «Ліпити» просто з картки (v12-ux §2.6): побачив тінь — одразу став цей виріб на коло. Розпис клітинки йде разом
-    // (form { ware, style }): сервер нагадає, з яким розписом обпалити для альбому, — навіть коли виріб уже на колі.
+    // (form { ware, style }) і з 23.10 стає на партію в горні — навіть коли виріб уже на колі.
     const cw = st.craft && st.craft.wares.find((x) => x.key === w.key);
     const lock = shutStyle(st, k);
     const formBtn = !cw ? '' : cw.open
       ? '<button type="button" class="' + (open ? 'ghost' : 'primary') + ' small clka-form"' + (st.mine ? '' : ' disabled') + '>'
-        + (st.craft.ware === w.key ? '🏺 Уже на колі — як обпалити' : '🏺 Ліпити ' + esc(String(w.name).toLowerCase().replace(/а$/, 'у').replace(/я$/, 'ю'))) + '</button>'
+        + (api.onWheel(st, w.key, k) ? '🏺 Уже на колі — як обпалити' : st.craft.ware === w.key && k ? '🎨 Розпис «' + esc(styleName(st, k)) + '» на партію'
+          : '🏺 Ліпити ' + esc(String(w.name).toLowerCase().replace(/а$/, 'у').replace(/я$/, 'ю'))) + '</button>'
         + (k && !open && lock ? '<span class="muted small">🔒 розпис «' + esc(styleName(st, k)) + '» ще не відкрито (щабель «' + esc(lock) + '»)</span>' : '')
       : '<span class="muted small">' + esc(w.name) + ' відкриється на ' + esc(api.potsShort(cw.unlock || 0)) + ' за весь час</span>';
     api.overlay(st, '<div class="clka-card' + (open ? ' open' : '') + '">'

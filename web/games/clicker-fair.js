@@ -510,9 +510,10 @@
         + ((o.n - o.have) % 10 === 1 && (o.n - o.have) % 100 !== 11 ? 'ого' : 'их') : '')) + '</span></div>'
       + '<div class="clkf-obtns">'
       + '<button type="button" class="primary small" data-bid="as" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>🤝 Здати</button>'
-      // Бракує — «Ліпити» одразу тут (як у Толоці), з розписом замовлення: сервер поставить виріб на коло й нагадає розпис.
-      + (ready || !st.mine ? '' : st.craft && st.craft.ware === o.ware ? '<span class="small clkl-onwheel">🏺 ' + esc(wareName(st, o.ware)) + ' уже на колі</span>' : '<button type="button" class="ghost small clkf-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">🏺 Ліпити '
-        + esc(acc(wareName(st, o.ware))) + '</button>')
+      // Бракує — «Ліпити» одразу тут (як у Толоці): сервер ставить виріб на коло, а розпис замовлення — на партію в горні
+      // (23.10). Виріб уже на колі, а розпис інший — кнопка лише розпису.
+      + (ready || !st.mine ? '' : api.onWheel(st, o.ware, o.style) ? '<span class="small clkl-onwheel">🏺 ' + esc(wareName(st, o.ware)) + ' уже на колі</span>' : '<button type="button" class="ghost small clkf-form" data-form="' + esc(o.ware) + '" data-style="' + esc(o.style || '') + '">'
+        + (st.craft && st.craft.ware === o.ware ? '🎨 Розпис «' + esc(styleName(st, o.style)) + '» на партію' : '🏺 Ліпити ' + esc(acc(wareName(st, o.ware)))) + '</button>')
       + '<span class="clkf-otime small muted">⏳ <i class="clkf-cd" data-at="' + o.until + '" data-done="поїхав"></i></span>'
       + '<details class="clkf-bid" data-key="' + o.id + '"><summary>торг</summary>'
       + '<button type="button" class="ghost small" data-bid="down" data-id="' + o.id + '"' + (off ? ' disabled' : '') + '>' + down + '</button>'

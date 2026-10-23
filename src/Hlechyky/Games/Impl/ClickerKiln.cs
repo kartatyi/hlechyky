@@ -922,7 +922,9 @@ public sealed partial class Clicker
         // v9 — нові поля необов'язкові: старе збереження читається як «цього ще не було».
         DateTimeOffset Touch = default, int Auto = 0, bool TechAll = false,
         // 21.10: глина кожного сирця (паралельно до Batch). Старе збереження — усі зі звичайної.
-        List<string>? Clays = null);
+        List<string>? Clays = null,
+        // 23.10: розпис, обраний кнопкою «Ліпити» під час обпалу чи над розписаною партією, — стане на наступну.
+        string? Next = null);
 
     /// <summary>Сирці в горні (ключі виробів).</summary>
     readonly List<string> _kiln = [];
@@ -967,6 +969,11 @@ public sealed partial class Clicker
         return thin && c.Thin > 0 ? key + "*" : key;
     }
     string _kilnStyle = "";
+    /// <summary>
+    /// Розпис наступної партії (23.10): «Ліпити X → розпис», коли горно палає чи партію вже розписано, — цю не чіпаємо,
+    /// а щойно вона вийде з горна, розпис стане сам (<see cref="KilnStyleFor"/>). Порожній — нічого не чекає.
+    /// </summary>
+    string _kilnNext = "";
     string _kilnTech = "";
     int _kilnBeauty;
     /// <summary>Зерно виданого візерунка; 0 — розпис не почато або вже здано.</summary>
@@ -1146,6 +1153,8 @@ public sealed partial class Clicker
         var style = Str(payload, "style");
         if (style.Length > 0 && !_styles.Contains(style))
             return ActResult.Fail(Styles.Any(s => s.Key == style) ? "Цього розпису ще нема в колекції" : "Такого розпису нема");
+        // Гравець обрав розпис сам — відкладений кнопкою «Ліпити» вже не потрібен.
+        _kilnNext = "";
         var key = Str(payload, "tech");
         if (key.Length == 0)
         {
@@ -1165,6 +1174,33 @@ public sealed partial class Clicker
         _paintAt = now;
         SpareAirborne(now);
         return ActResult.Done;
+    }
+
+    /// <summary>
+    /// Розпис партії з кнопки «Ліпити X → розпис» (23.10, слово гравця: «окрім виробу хай обирається й розпис»):
+    /// раніше розпис лише називався в тості, а партія палилась у тому, що стояло. Холодне горно без почато розпису —
+    /// розпис стає одразу; палає чи партію вже розписано — чекає наступної (<see cref="_kilnNext"/>), бо ця вже не
+    /// його. Повертає хвіст тосту: «— розпис партії «Косів»», «— «Косів» стане на наступну партію».
+    /// </summary>
+    string KilnStyleFor(string style, DateTimeOffset now)
+    {
+        if (Styles.FirstOrDefault(x => x.Key == style) is not { } sd) return "";
+        if (!_styles.Contains(style)) return $" — розпису «{sd.Name}» ще нема, купи в «Розписах»";
+        _wear = style;
+        var painted = _kilnBeauty > 0 || (_paintSeed != 0 && now - _paintAt <= PatternLife);
+        if (_litAt != default || (painted && _kilnStyle != style))
+        {
+            if (_kilnStyle == style) { _kilnNext = ""; return $" — розпис «{sd.Name}» уже в горні"; }
+            _kilnNext = style;
+            return $" — розпис «{sd.Name}» стане на наступну партію ({(_litAt != default ? "ця вже палає" : "цю вже розписано")})";
+        }
+        _kilnNext = "";
+        if (_kilnStyle == style) return $" — розпис партії «{sd.Name}»";
+        _kilnStyle = style;
+        _kilnTech = "";
+        _kilnBeauty = 0;
+        _paintSeed = 0;
+        return $" — розпис партії «{sd.Name}»";
     }
 
     /// <summary>Траєкторія розпису: <c>{ path: [[мс, x, y, 1?], …] }</c>. Сервер перевіряє руку й рахує красу сам.</summary>
@@ -1292,6 +1328,9 @@ public sealed partial class Clicker
         _kilnTech = "";
         _kilnBeauty = 0;
         _paintSeed = 0;
+        // Розпис, що чекав цієї партії (KilnStyleFor), — тепер на горно.
+        if (_kilnNext.Length > 0 && _styles.Contains(_kilnNext)) _kilnStyle = _kilnNext;
+        _kilnNext = "";
         _coolUntil = at + KilnCoolNow;
 
         var parts = new List<string>();
@@ -1410,6 +1449,7 @@ public sealed partial class Clicker
     {
         KilnEmpty();
         _kilnStyle = "";
+        _kilnNext = "";
         _kilnTech = "";
         _kilnBeauty = 0;
         _paintSeed = 0;
@@ -1432,6 +1472,9 @@ public sealed partial class Clicker
     void FireKiln(DateTimeOffset now)
     {
         KilnEmpty();
+        // Партія, якої чекав відкладений розпис, згоріла — він стає одразу.
+        if (_kilnNext.Length > 0 && _styles.Contains(_kilnNext)) _kilnStyle = _kilnNext;
+        _kilnNext = "";
         _kilnTech = "";
         _kilnBeauty = 0;
         _paintSeed = 0;
@@ -1446,7 +1489,7 @@ public sealed partial class Clicker
 
     KilnRow? SaveKiln() => new([.. _kiln], _kilnStyle, _kilnTech, _kilnBeauty, _paintSeed, _paintAt, _litAt, _litHelper, _litStraw,
         _fireSeed, _coolUntil, _straw, _kilnLast, _kilnBatches, _kilnTouch, _kilnAuto, _kilnTechAll,
-        _kilnClay.Any(c => c.Length > 0) ? [.. _kilnClay] : null);
+        _kilnClay.Any(c => c.Length > 0) ? [.. _kilnClay] : null, _kilnNext.Length > 0 ? _kilnNext : null);
 
     void LoadKiln(KilnRow? row)
     {
@@ -1464,6 +1507,7 @@ public sealed partial class Clicker
                 _kilnClay.Add(KilnClaySane(i < clays.Count ? clays[i] : null));
             }
         _kilnStyle = row.Style is { } s && _styles.Contains(s) ? s : "";
+        _kilnNext = row.Next is { } nx && _styles.Contains(nx) ? nx : "";
         _kilnTech = row.Tech is { } t && Techniques.Any(x => x.Key == t) ? t : "";
         _kilnBeauty = Math.Clamp(row.Beauty, 0, 100);
         _paintSeed = _kilnTech.Length > 0 ? Math.Max(0, row.PaintSeed) : 0;
@@ -1510,6 +1554,7 @@ public sealed partial class Clicker
             autoShine = AutoShine,
             autoBatches = _kilnAuto,
             style = _kilnStyle,
+            next = _kilnNext,
             tech = _kilnTech,
             beauty = _kilnBeauty,
             techs = Techniques.Where(TechOpen).Select(t => t.Key),

@@ -786,9 +786,15 @@
       ? '<span class="clk-nxe">' + esc(m[1]) + '</span><span class="clk-nxl"> ' + esc(m[2]) + '</span>' : esc(label);
   }
 
+  /// Рядок «Далі» — лише новачкові (23.10: «блок «Далі» можна взагалі прибрати»): поки обпалив менше TIP_OLD, він єдиний
+  /// путівник і місце для підказок; далі гравець і сам знає дорогу, а під сценою стоять плашки бафів.
   function paintNext(st, api) {
     const ui = st.craftUi;
-    const n = nextStep(st, api);
+    const rookie = !!(st.craft && st.craft.fired < TIP_OLD);
+    // Не новачкові — без рядка й без місця під нього (.off); новачкові порожній рядок місце тримає, щоб сцена не стрибала.
+    if (ui.nx.classList.contains('off') === rookie) ui.nx.classList.toggle('off', !rookie);
+    if (st.el && st.el.classList.contains('rookie') !== rookie) st.el.classList.toggle('rookie', rookie);
+    const n = rookie ? nextStep(st, api) : null;
     ui.next = n;
     const show = !!n;
     if (ui.nx.hidden === show) ui.nx.hidden = !show;
