@@ -247,12 +247,6 @@ public class ClickerShanaTests
         Assert.True(Guild(a, new { op = "give", key = "pot||1", n = 30, keep = false }).Ok);
         Assert.True(View(b).GetProperty("guild").GetProperty("oboz").GetBoolean());
         // Петро докладає до бронзи й забирає — з обозною доплатою; удруге того дня її нема.
-        var w = g.Svc.Summary("петро", b.Clock.UtcNow).Today;
-        foreach (var sub in w.Subs.Where(x => x.Need > x.Have))
-        {
-            Items(b, ($"{sub.Ware}||1", sub.Need - sub.Have));
-            Assert.True(Guild(b, new { op = "give", key = $"{sub.Ware}||1", n = sub.Need - sub.Have, keep = false }).Ok);
-        }
         Items(b, ("pot||1", 40));
         Assert.True(Guild(b, new { op = "give", key = "pot||1", n = 40, keep = false }).Ok);
         var r = Guild(b, new { op = "claim" });

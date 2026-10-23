@@ -62,26 +62,27 @@ public class ClickerGuildTests
 
     static JsonObject GuildRow(JsonObject s) => (s["guild"] as JsonObject) ?? (JsonObject)(s["guild"] = new JsonObject());
 
-    static void GiveN(RoomHarness h, string ware, int n)
+    static void GiveN(RoomHarness h, string ware, int n, int q = 1)
     {
         while (n > 0)
         {
             var k = Math.Min(n, Clicker.StoreCap);
-            Items(h, ($"{ware}||1", k));
-            var r = Guild(h, new { op = "give", key = $"{ware}||1", n = k, keep = false });
+            Items(h, ($"{ware}||{q}", k));
+            var r = Guild(h, new { op = "give", key = $"{ware}||{q}", n = k, keep = false });
             Assert.True(r.Ok, r.Message);
             n -= k;
         }
     }
 
-    /// <summary>Докласти на сьогоднішній віз рівно стільки, щоб він дійшов до рівня tier.</summary>
+    /// <summary>Докласти на сьогоднішній віз рівно стільки, щоб він дійшов до рівня tier: скрині згори вниз — дзвінкий
+    /// лягає й у нижчі.</summary>
     static void Fill(RoomHarness h, Tsekh g, string nick, int tier)
     {
-        var w = g.Svc.Summary(ClickerGuildService.Key(nick), h.Clock.UtcNow).Today;
-        foreach (var sub in w.Subs) if (sub.Need > sub.Have) GiveN(h, sub.Ware, sub.Need - sub.Have);
-        w = g.Svc.Summary(ClickerGuildService.Key(nick), h.Clock.UtcNow).Today;
-        var target = (int)Math.Ceiling(w.Goal * ClickerGuildService.TierShare[tier]);
-        if (target > w.Total) GiveN(h, "pot", target - w.Total);
+        for (var k = tier; k >= 1; k--)
+        {
+            var c = g.Svc.Summary(ClickerGuildService.Key(nick), h.Clock.UtcNow).Today.Chests[k - 1];
+            if (c.Need > c.Have) GiveN(h, "pot", c.Need - c.Have, k);
+        }
     }
 
     static IEnumerable<string> Journal(RoomHarness h) => h.Outbox.OfType<Journal>().Select(j => j.Text);
@@ -102,25 +103,48 @@ public class ClickerGuildTests
         Assert.Equal("2026-12-14", ClickerGuildService.DayOf(new DateTimeOffset(2026, 12, 13, 22, 0, 0, TimeSpan.Zero)));
     }
 
-    [Fact]
-    public void The_goal_comes_from_the_day_seed_and_the_number_of_potters()
-    {
-        var (a, subsA) = ClickerGuildService.GoalFor(D10, 2);
-        var (b, subsB) = ClickerGuildService.GoalFor(D10, 2);
-        Assert.Equal(a, b);
-        Assert.Equal(subsA, subsB);
-        Assert.InRange(a, 20, 30);
-        Assert.Equal(0, a % 5);
-        Assert.InRange(subsA.Count, 2, 3);
-        Assert.Equal(subsA.Count, subsA.Select(s => s.Ware).Distinct().Count());
-        Assert.All(subsA, s => Assert.Contains(s.Ware, new[] { "pot", "bowl", "jug", "makitra", "dish" }));
-        Assert.All(subsA, s => Assert.InRange(s.Need, 5, a));
+    static IReadOnlyList<int> Needs(WagonInfo w) => w.Chests.Select(c => c.Need).ToList();
 
-        // Один гончар — однаково як двоє; четверо — удвічі більше.
-        Assert.Equal(a, ClickerGuildService.GoalFor(D10, 1).Goal);
-        Assert.InRange(ClickerGuildService.GoalFor(D10, 4).Goal, 40, 55);
-        // Різні дні — різні вози (хоч котрийсь із кількох).
-        Assert.True(Enumerable.Range(10, 8).Select(i => ClickerGuildService.GoalFor($"2026-09-{i}", 2)).Distinct().Count() > 1);
+    [Fact]
+    public void A_quiet_village_gets_the_floor_chests_per_potter()
+    {
+        var g = new Tsekh();
+        var w = g.Svc.Summary("а", Thursday).Today;
+        // Двоє за замовчуванням: 12 будь-яких, 6 добрих, 2 дзвінкі на гончаря (а дзвінких — хоч п'ять).
+        Assert.Equal([24, 12, 5], Needs(w));
+        Assert.Equal(24, w.Goal);
+        Assert.Equal(12, w.Per);
+        Assert.Equal([1, 2, 3], w.Chests.Select(c => c.Q));
+    }
+
+    [Fact]
+    public void Chests_grow_from_half_of_what_the_village_brought_in_three_days()
+    {
+        var g = new Tsekh();
+        // Два дні тому — 300 звичайних, 120 добрих і 60 дзвінких; учора — нічого (день тане й сам).
+        g.Svc.Give("а", "а", [("pot", new ItemInfo("pot", "", 1), 300), ("pot", new ItemInfo("pot", "", 2), 120),
+            ("pot", new ItemInfo("pot", "", 3), 60)], Thursday);
+        var w = g.Svc.Summary("а", Thursday.AddDays(2)).Today;
+        // (480 / 3) / 2 = 80; (180 / 3) / 2 = 30; (60 / 3) / 2 = 10.
+        Assert.Equal([80, 30, 10], Needs(w));
+        Assert.Equal(40, w.Per);          // учора ніхто не клав — двоє гончарів
+        // Через чотири дні історія вже за межею трьох днів — знову поріг.
+        Assert.Equal([24, 12, 5], Needs(g.Svc.Summary("а", Thursday.AddDays(4)).Today));
+    }
+
+    [Fact]
+    public void A_days_chests_are_written_once_and_outlive_the_history()
+    {
+        var g = new Tsekh();
+        g.Svc.Give("а", "а", [("pot", new ItemInfo("pot", "", 1), 600)], Thursday);
+        var day = Thursday.AddDays(1);
+        g.Svc.Give("а", "а", [("pot", new ItemInfo("pot", "", 1), 10)], day);
+        Assert.Equal(100, g.Svc.Summary("а", day).Today.Goal);
+        // Через три дні той день — «учора» для нікого, але цілі в ньому записані: історії, з якої їх рахували, уже нема.
+        Assert.Equal(100, g.Svc.Summary("а", day.AddDays(1)).Prev.Goal);
+        g.Svc.Give("б", "б", [("pot", new ItemInfo("pot", "", 1), 1)], day.AddDays(3));   // Prune
+        var json = g.Store.LoadState(ClickerGuildService.StoreKey)!;
+        Assert.Contains("\"needs\":[100,", json);
     }
 
     [Fact]
@@ -132,22 +156,59 @@ public class ClickerGuildTests
         var w = g.Svc.Summary("а", next).Today;
         Assert.Equal(D11, w.Day);
         Assert.Equal(3, w.Potters);
-        Assert.Equal(ClickerGuildService.GoalFor(D11, 3).Goal, w.Goal);
+        Assert.Equal(36, w.Goal);          // 12 на кожного з трьох
+        Assert.Equal(12, w.Per);
         // А сьогодні вчорашнього нема — двоє за замовчуванням.
         Assert.Equal(2, g.Svc.Summary("а", Thursday).Today.Potters);
     }
 
     [Fact]
-    public void Tiers_need_every_sub_goal_and_then_100_150_200_percent()
+    public void Tiers_are_the_full_chests_in_a_row()
     {
-        var subs = new[] { new WagonSub("pot", 20, 20), new WagonSub("jug", 10, 10) };
-        Assert.Equal(0, ClickerGuildService.TierOf(100, 99, subs));
-        Assert.Equal(1, ClickerGuildService.TierOf(100, 100, subs));
-        Assert.Equal(1, ClickerGuildService.TierOf(100, 149, subs));
-        Assert.Equal(2, ClickerGuildService.TierOf(100, 150, subs));
-        Assert.Equal(3, ClickerGuildService.TierOf(100, 200, subs));
-        Assert.Equal(3, ClickerGuildService.TierOf(100, 900, subs));
-        Assert.Equal(0, ClickerGuildService.TierOf(100, 900, [new WagonSub("pot", 20, 20), new WagonSub("jug", 10, 9)]));
+        static WagonChest[] C(int a, int b, int c) => [new(1, 100, a), new(2, 40, b), new(3, 10, c)];
+        Assert.Equal(0, ClickerGuildService.TierOf(C(99, 40, 10)));     // повні вищі без першої — нічого
+        Assert.Equal(1, ClickerGuildService.TierOf(C(100, 39, 10)));
+        Assert.Equal(2, ClickerGuildService.TierOf(C(900, 40, 9)));
+        Assert.Equal(3, ClickerGuildService.TierOf(C(100, 40, 10)));
+    }
+
+    [Fact]
+    public void A_ringing_ware_lands_in_every_chest_and_quality_counts_per_chest()
+    {
+        var g = new Tsekh();
+        g.Svc.Give("а", "а", [("pot", new ItemInfo("pot", "", 3), 5), ("pot", new ItemInfo("pot", "", 2), 7)], Thursday);
+        g.Svc.Give("а", "а", "bowl", 4, Thursday);          // старий шлях без якості — лише в першу
+        var w = g.Svc.Summary("а", Thursday).Today;
+        Assert.Equal([16, 12, 5], w.Chests.Select(c => c.Have));
+        Assert.Equal(0, w.Tier);                                // 16 з 24 — бронзи ще нема
+    }
+
+    [Fact]
+    public void Fill_puts_exactly_what_a_chest_lacks_from_the_cheapest_fitting_quality()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        Items(h, ("pot||1", 10), ("pot||2", 30), ("pot||3", 20), ("pot||4", 3));
+        // «Добрі й кращі»: 12 — спершу добрі, дзвінких не чіпає.
+        var r = Guild(h, new { op = "fill", chest = 2 });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("до бронзи ще 12", r.Message);
+        var w = g.Svc.Summary(ClickerGuildService.Key("Оля"), h.Clock.UtcNow).Today;
+        Assert.Equal([12, 12, 0], w.Chests.Select(c => c.Have));
+        // «Будь-які»: решта 12 — звичайні 10, далі 2 добрі.
+        Assert.True(Guild(h, new { op = "fill", chest = 1 }).Ok);
+        // «Дзвінкі й розкішні»: 5 дзвінких, розкішні лишаються.
+        Assert.True(Guild(h, new { op = "fill", chest = 3 }).Ok);
+        w = g.Svc.Summary(ClickerGuildService.Key("Оля"), h.Clock.UtcNow).Today;
+        Assert.Equal(3, w.Tier);
+        Assert.Equal(29, w.Chests[0].Have);
+        Assert.Equal(5, w.Chests[2].Have);
+        var left = h.View(0).GetProperty("craft").GetProperty("items").EnumerateArray()
+            .ToDictionary(x => x.GetProperty("q").GetInt32(), x => x.GetProperty("n").GetInt32());
+        Assert.Equal(15, left[3]);
+        Assert.Equal(3, left[4]);
+        Assert.Contains("уже повна", Guild(h, new { op = "fill", chest = 3 }).Message);
+        Assert.Equal("Такої скрині на возі нема", Guild(h, new { op = "fill", chest = 4 }).Message);
     }
 
     // ---------- віз у кімнаті ----------
@@ -193,14 +254,23 @@ public class ClickerGuildTests
     }
 
     [Fact]
-    public void Only_pots_do_not_fill_the_sub_goals()
+    public void Common_wares_fill_only_the_bronze_chest()
     {
         var g = new Tsekh();
         var h = g.Potter("Оля");
         var goal = g.Svc.Summary("оля", h.Clock.UtcNow).Today.Goal;
-        GiveN(h, "pot", goal * 2);
-        Assert.Equal(0, G(h).GetProperty("day").GetProperty("tier").GetInt32());
-        Assert.Equal(200.0, G(h).GetProperty("day").GetProperty("pct").GetDouble());
+        GiveN(h, "pot", goal * 5);
+        var day = G(h).GetProperty("day");
+        Assert.Equal(1, day.GetProperty("tier").GetInt32());
+        Assert.Equal([goal * 5, 0, 0], day.GetProperty("chests").EnumerateArray().Select(c => c.GetProperty("have").GetInt32()));
+        Assert.Contains("🥉 бронза · до срібла ще 12 добрих", WagonText(h));
+    }
+
+    /// <summary>Хвіст тосту воза після ще одного покладеного горщика: «… · до срібла ще 12 добрих».</summary>
+    static string WagonText(RoomHarness h)
+    {
+        Items(h, ("jug||1", 1));
+        return Guild(h, new { op = "give", key = "jug||1", n = 1 }).Message;
     }
 
     /// <summary>Скільки віз платить за стільки хвилин на голому колі: 20 кліків на хвилину або (10.10) чверть хвилини гри.</summary>
@@ -214,7 +284,7 @@ public class ClickerGuildTests
         var h = g.Potter("Оля");
         Assert.StartsWith("Нагорода — тим, хто поклав", Guild(h, new { op = "claim" }).Message);
         GiveN(h, "pot", 5);
-        Assert.Equal("Віз ще не наповнився навіть до бронзи — докладаймо разом", Guild(h, new { op = "claim" }).Message);
+        Assert.Equal("Перша скриня воза ще не повна — до бронзи докладаймо разом", Guild(h, new { op = "claim" }).Message);
 
         Fill(h, g, "Оля", 1);
         var claim = G(h).GetProperty("claims")[0];
@@ -286,6 +356,7 @@ public class ClickerGuildTests
         var big = g.Potter("Оля");
         var small = g.Potter("Петро");
         Fill(big, g, "Оля", 3);                                     // Оля наповнила віз до золота сама
+        GiveN(big, "pot", 20);                                      // і доклала понад — до трьох паїв
         GiveN(small, "pot", ClickerGuildService.MinGive);            // Петро заскочив на п'ятірку
         var mineBig = G(big).GetProperty("claims")[0].GetProperty("mine").GetInt32();
         Assert.True(mineBig >= 36, $"Оля поклала {mineBig}");
@@ -1279,7 +1350,7 @@ public class ClickerGuildTests
         Assert.Equal(299, w.Total);
         Assert.Equal(200, w.Mine);
         Assert.Equal(["Оля", "Петро"], w.Givers.Select(x => x.Nick).ToArray());
-        Assert.Equal(3, w.Tier);                                           // 299 виробів на денну ціль — золото
+        Assert.Equal(1, w.Tier);                                           // якість невідома — лише перша скриня: бронза
         Assert.Equal(1, Views.Json(g.Svc.Roster("оля")).GetProperty("potters")[0].GetProperty("rank").GetInt32());
 
         // Переносимо раз: наступний запис уже без «weeks», а сьогоднішній віз лишається на місці.

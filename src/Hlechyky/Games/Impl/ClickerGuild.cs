@@ -49,8 +49,9 @@ public sealed partial class Clicker
     public const double WagonClicksPerMinute = 20;
     public const int GiftsForAchievement = 10, TreatsForAchievement = 10;
     /// <summary>
-    /// Пай воза (§E.1): нагорода множиться на «мої вироби / <see cref="ClickerGuildService.PerPotter"/>», але не
-    /// менше за пів паю і не більше за три. Хто возив сам-один — дістає втричі, хто заскочив на п'ятірку — половину.
+    /// Пай воза (§E.1): нагорода множиться на «мої вироби / повний пай» (з 24.10 — бронза, поділена на гончарів дня,
+    /// <see cref="WagonInfo.Per"/>), але не менше за пів паю і не більше за три. Хто возив сам-один — дістає втричі,
+    /// хто заскочив на п'ятірку — половину.
     /// </summary>
     public const double ShareMin = 0.5, ShareMax = 3;
 
@@ -393,6 +394,8 @@ public sealed partial class Clicker
             "give" => GuildGive(svc, payload, now),
             // «🛒 Усе на віз» (записка Smaug 27.09: «зручно перед клеймом»): уся комора однією дією.
             "giveAll" => GuildGiveAll(svc, payload, now),
+            // «Три скрині» (24.10): докласти в скриню рівно скільки бракує, з найдешевшої придатної якості.
+            "fill" => GuildFill(svc, payload, now),
             "claim" => GuildClaim(svc, payload, now),
             "gift" => GuildGiftTo(svc, payload, now),
             "treat" => GuildTreat(svc, payload, now),
@@ -458,7 +461,7 @@ public sealed partial class Clicker
         var who = string.Join(", ", r.Wagon.Givers.Select(g => g.Nick));
         Ctx.Log($"🐴 Віз цеху гончарів — {ClickerGuildService.TierNames[r.Reached]}! Разом клали: {who}. Хто поклав хоч "
             + $"{ClickerGuildService.MinGive}, забирайте нагороду у вкладці «Село»");
-        if (r.Reached >= ClickerGuildService.TierShare.Length - 1) Wonder("wagon-gold");
+        if (r.Reached >= ClickerGuildService.TierNames.Length - 1) Wonder("wagon-gold");
     }
 
     /// <summary>
@@ -583,12 +586,12 @@ public sealed partial class Clicker
     static string WagonShareText(WagonInfo w)
     {
         if (w.Mine < ClickerGuildService.MinGive) return $" · ще {ClickerGuildService.MinGive - w.Mine} — і нагорода твоя";
-        var share = WagonShare(w.Mine);
+        var share = WagonShare(w.Mine, w.Per);
         var text = $" · пай ×{share.ToString("0.##", Uk)}";
         if (share < ShareMax)
         {
             var next = Math.Floor(share) + 1;
-            var more = (int)Math.Ceiling(next * ClickerGuildService.PerPotter) - w.Mine;
+            var more = (int)Math.Ceiling(next * w.Per) - w.Mine;
             if (more > 0) text += $" · ще {more} — і ×{next.ToString("0", Uk)}";
         }
         if (w.CanClaim) text += w.Claimed > 0 ? " · доплата паю чекає — забери" : " · нагорода чекає — забери";
@@ -598,24 +601,58 @@ public sealed partial class Clicker
     static readonly string[] TierIcon = ["", "🥉", "🥈", "🥇"], TierGen = ["", "бронзи", "срібла", "золота"];
 
     /// <summary>
-    /// Що тримає наступний рівень воза — словами, як і картка воза (<c>tierGap</c> у clicker-guild.js): «до бронзи
-    /// бракує: макітра 5», «🥈 срібло · до золота ще 10». v12, QA-2: тост казав «він повний на 3060 %» — частку
-    /// загальної цілі без підцілей, хоч рівня й не було.
+    /// Що тримає наступний рівень воза — словами, як і картка воза (<c>tierGap</c> у clicker-guild.js): «до бронзи ще 120»,
+    /// «🥈 срібло · до золота ще 12 дзвінких». Три скрині (24.10): рівень — скільки скринь повні поспіль, тож бракує
+    /// завжди однієї — наступної.
     /// </summary>
     static string WagonGap(WagonInfo w)
     {
         if (w.Tier >= 3) return $"{TierIcon[3]} {ClickerGuildService.TierNames[3]} — вище нема";
         var next = w.Tier + 1;
-        var more = Math.Max(0, (int)Math.Ceiling(w.Goal * ClickerGuildService.TierShare[next]) - w.Total);
-        var lack = w.Tier > 0 ? [] : w.Subs.Where(x => x.Have < x.Need).ToList();
-        if (lack.Count > 0)
+        var c = w.Chests[next - 1];
+        var lack = ClickerGuildService.ChestLack[next];
+        return (w.Tier > 0 ? $"{TierIcon[w.Tier]} {ClickerGuildService.TierNames[w.Tier]} · " : "")
+            + $"до {TierGen[next]} ще {Count(Math.Max(0, c.Need - c.Have))}{(lack.Length > 0 ? " " + lack : "")}";
+    }
+
+    /// <summary>
+    /// «Покласти в скриню» (24.10): <c>{ chest: 1–3 }</c> — рівно скільки їй бракує, з найдешевшої якості, що туди лягає:
+    /// у «будь-які» — звичайні, далі добрі; у «добрі й кращі» — добрі, далі дзвінкі; у «дзвінкі й розкішні» — дзвінкі, далі
+    /// розкішні. Відкладене під замовлення, Толоку й майстерштук лишається (<see cref="WagonPick"/>), як і в «Усе на віз».
+    /// </summary>
+    ActResult GuildFill(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)
+    {
+        var k = (int)(Num(payload, "chest") ?? 0);
+        if (k is < 1 or > 3) return ActResult.Fail("Такої скрині на возі нема");
+        var chest = svc.Summary(GuildKey, now).Today.Chests[k - 1];
+        if (chest.Full) return ActResult.Fail($"Скриня «{ClickerGuildService.ChestNames[k]}» уже повна");
+        var (pick, kept) = WagonPick(true, now);
+        var left = chest.Need - chest.Have;
+        var give = new List<(ItemInfo Item, int N)>();
+        foreach (var (it, c) in pick.Where(x => x.Item.Quality >= k && x.Item.Quality <= k + 1)
+                     .OrderBy(x => x.Item.Quality).ThenByDescending(x => x.N)
+                     .ThenBy(x => x.Item.Ware, StringComparer.Ordinal).ThenBy(x => x.Item.Style, StringComparer.Ordinal))
         {
-            // Підцілі теж ідуть у загальне число, тож «ще N» — лише понад них.
-            var extra = Math.Max(0, more - lack.Sum(x => x.Need - x.Have));
-            return "до бронзи бракує: " + (extra > 0 ? $"ще {Count(extra)}, " : "")
-                + string.Join(", ", lack.Select(x => $"{WareOf(x.Ware)?.Name.ToLowerInvariant() ?? x.Ware} {x.Need - x.Have}"));
+            if (left <= 0) break;
+            var take = Math.Min(left, c);
+            give.Add((it, take));
+            left -= take;
         }
-        return (w.Tier > 0 ? $"{TierIcon[w.Tier]} {ClickerGuildService.TierNames[w.Tier]} · " : "") + $"до {TierGen[next]} ще {Count(more)}";
+        var n = give.Sum(x => x.N);
+        if (n <= 0)
+            return ActResult.Fail($"У коморі нема вільних {new[] { "", "звичайних чи добрих", "добрих чи дзвінких", "дзвінких чи розкішних" }[k]}"
+                + (kept > 0 ? " — решта відкладена під замовлення й Толоку" : ""));
+        var paidAll = WagonItemsPay(give);
+        foreach (var (it, c) in give) TakeItems(x => x == it, c);
+        var r = svc.Give(GuildKey, GuildNick, give.Select(x => (x.Item.Ware, (ItemInfo?)x.Item, x.N)).ToList(), now,
+            ShanaWagonWeightNow > 1, ShanaOboz);
+        _guildGiven += n;
+        WagonReached(r);
+        var text = $"🐴 У скриню «{ClickerGuildService.ChestNames[k]}» — {Count(n)} {WaresWord(n)} · {WagonGap(r.Wagon)}";
+        if (paidAll > 0) text += $" · +{PotsShort(paidAll)} за вироби";
+        if (left > 0) text += " · більше підхожих у коморі нема";
+        text += WagonShareText(r.Wagon);
+        return ActResult.Accept(text);
     }
 
     /// <summary>
@@ -623,8 +660,8 @@ public sealed partial class Clicker
     /// повний пай, тридцять шість — три (більше не буває), п'ять — половина. Так «що 15, що 100 — однаково»
     /// більше не працює, але й той, хто ледве встиг, не лишається ні з чим.
     /// </summary>
-    public static double WagonShare(int mine) =>
-        Math.Clamp(mine / (double)ClickerGuildService.PerPotter, ShareMin, ShareMax);
+    public static double WagonShare(int mine, double per = ClickerGuildService.PerPotter) =>
+        Math.Clamp(mine / Math.Max(1, per), ShareMin, ShareMax);
 
     /// <summary>Множник нагороди воза за ранг: цехмістрові ×1,5, старійшині ×2 (а з шаною «Вози» V — ще ×1,5).</summary>
     double WagonRank => (_guildRank >= GuildElder ? ElderWagon : _guildRank >= GuildMasterOfGuild ? GuildmasterWagon : 1) * ShanaWagonMultNow;
@@ -634,12 +671,12 @@ public sealed partial class Clicker
     /// а вже забрані (до <paramref name="was"/>) — різниця паю, якщо він виріс після забирання (v12, B7):
     /// <paramref name="wasMine"/> — скільки було покладено на ту мить.
     /// </summary>
-    double WagonReward(int tier, int was, int mine, out double minutes, int wasMine = -1)
+    double WagonReward(int tier, int was, int mine, out double minutes, int wasMine = -1, double per = ClickerGuildService.PerPotter)
     {
         var last = ClickerGuildService.TierMinutes.Length - 1;
         var before = ClickerGuildService.TierMinutes[Math.Clamp(was, 0, last)];
-        var grown = wasMine < 0 || was <= 0 ? 0 : Math.Max(0, WagonShare(mine) - WagonShare(wasMine));
-        minutes = ((ClickerGuildService.TierMinutes[Math.Clamp(tier, 0, last)] - before) * WagonShare(mine) + before * grown)
+        var grown = wasMine < 0 || was <= 0 ? 0 : Math.Max(0, WagonShare(mine, per) - WagonShare(wasMine, per));
+        minutes = ((ClickerGuildService.TierMinutes[Math.Clamp(tier, 0, last)] - before) * WagonShare(mine, per) + before * grown)
             * WagonRank;
         if (minutes <= 0) return 0;
         var byPassive = PassiveBase * minutes * 60;
@@ -654,14 +691,14 @@ public sealed partial class Clicker
         var day = Str(payload, "day");
         var r = svc.Claim(GuildKey, day.Length > 0 ? day : null, now);
         if (r.Error is { } why) return ActResult.Fail(why);
-        var gain = WagonReward(r.Tier, r.Was, r.Mine, out var minutes, r.WasMine);
+        var gain = WagonReward(r.Tier, r.Was, r.Mine, out var minutes, r.WasMine, r.Per);
         Add(gain);
         // Обозний віз (шана «Вози» IV в когось із тих, хто віз того дня): ще 10 хв гри — раз на день.
         var oboz = r.Oboz ? PlayPay(ShanaObozMinutes) : 0;
         if (oboz > 0) Add(oboz);
         _guildClaims++;
         if (_guildClaims == 1) Achieve("potter-wagon");
-        var pay = WagonShare(r.Mine);
+        var pay = WagonShare(r.Mine, r.Per);
         // Плейтест 21.10 (B12): «Віз повернувся з ярмарку» писалося й до від'їзду; доплата за пай (v12, B7) — своїми словами.
         var head = r.Tier == r.Was ? $"🛒 Пай воза виріс ({ClickerGuildService.TierNames[r.Tier]})" : $"🛒 Нагорода воза ({ClickerGuildService.TierNames[r.Tier]})";
         return ActResult.Accept($"{head}: +{PotsShort(gain)} — "
@@ -876,10 +913,10 @@ public sealed partial class Clicker
                 .Where(w => w.CanClaim)
                 .Select(w => new
                 {
-                    day = w.Day, tier = w.Tier, was = w.Claimed, mine = w.Mine, share = WagonShare(w.Mine),
+                    day = w.Day, tier = w.Tier, was = w.Claimed, mine = w.Mine, share = WagonShare(w.Mine, w.Per),
                     // v12: пай, що виріс після забирання, — доплата (wasMine — скільки було покладено тоді).
                     wasMine = w.ClaimedMine, topUp = w.Tier == w.Claimed,
-                    pots = WagonReward(w.Tier, w.Claimed, w.Mine, out var m, w.ClaimedMine), minutes = m,
+                    pots = WagonReward(w.Tier, w.Claimed, w.Mine, out var m, w.ClaimedMine, w.Per), minutes = m,
                 }),
             gifts = new { left = s.GiftsLeft, sent = _giftsSent, got = _giftsGot },
             // Що ще можна зробити для друзів сьогодні — і скільки гостинців прийняв сам (§E.2).
@@ -950,7 +987,7 @@ public sealed partial class Clicker
         }),
         tiers = ClickerGuildService.TierNames.Select((name, i) => new
         {
-            name, share = ClickerGuildService.TierShare[i], minutes = ClickerGuildService.TierMinutes[i],
+            name, chest = i > 0 ? ClickerGuildService.ChestNames[i] : "", minutes = ClickerGuildService.TierMinutes[i],
         }),
         minGive = ClickerGuildService.MinGive,
         perPotter = ClickerGuildService.PerPotter,

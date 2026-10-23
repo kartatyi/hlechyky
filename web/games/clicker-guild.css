@@ -20,6 +20,25 @@
 
 .clkg-line { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .clkg-line b { font-size: 1.3em; color: var(--accent); }
+/* Три скрині воза (24.10): рядком по три (на вузькому — стовпчиком), наступна світиться, повна — зелена галочка. */
+.clkg-chests { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.clkg-chest {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 6px 8px; border-radius: 10px;
+  background: var(--panel2); border: 1px solid transparent;
+}
+.clkg-chest.next { border-color: var(--accent2); background: rgba(244, 197, 66, .08); }
+.clkg-chh { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 5px; min-width: 0; font-size: .86em; }
+.clkg-chh b { flex: 1 1 auto; min-width: 0; line-height: 1.15; font-weight: 600; }
+.clkg-chn { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.clkg-chest.done .clkg-chn { color: var(--ok); }
+.clkg-chbar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.clkg-chbar > i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #8a5a2b, var(--clay), var(--accent2)); transition: width .5s; }
+.clkg-chest.t2 .clkg-chbar > i { background: linear-gradient(90deg, #7d8592, #c9ced6); }
+.clkg-chest.t3 .clkg-chbar > i { background: linear-gradient(90deg, #b8860b, #f4c542); }
+.clkg-chest.done .clkg-chbar > i { background: var(--ok); }
+.clkg-chfill { align-self: flex-start; }
+.clkg-chests.sm .clkg-chest { padding: 4px 6px; }
+@media (prefers-reduced-motion: reduce) { .clkg-chbar > i { transition: none; } }
 .clkg-bar { position: relative; height: 12px; margin: 4px 10px 18px 2px; border-radius: 6px; background: rgba(255, 255, 255, .08); }
 /* Смужка рангу — без порогів, тож і місця під ними не треба. */
 .clkg-bar.sm { height: 8px; margin: 2px 0 4px; }

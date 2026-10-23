@@ -33,8 +33,6 @@
   const TIER_GEN = ['', 'бронзи', 'срібла', 'золота'];
   const TIER_ACC = ['', 'бронзу', 'срібло', 'золото'];
   const TIER_LOC = ['', 'бронзі', 'сріблі', 'золоті'];
-  /// Пороги рівнів у цілях воза — ті самі, що ClickerGuildService.TierShare (бронза — ціль, срібло — півтори, золото — дві).
-  const TIER_SHARE = [0, 1, 1.5, 2];
   const QUALITY = ['', 'звичайний', 'добрий', 'дзвінкий', 'розкішний'];
   /// Скільки видів виробів показує рядок «на возі» (решта — «+N»).
   const WAGON_KINDS = 6;
@@ -108,7 +106,7 @@
     const items = (w.items || []).filter((x) => x.n > 0);
     if (!items.length) {
       const kinds = [];
-      for (const s of w.subs) for (let i = 0; i < Math.min(s.have, s.need); i++) kinds.push({ ware: s.ware, style: '', q: 1 });
+      for (const s of w.subs || []) for (let i = 0; i < Math.min(s.have, s.need); i++) kinds.push({ ware: s.ware, style: '', q: 1 });
       const rest = Math.max(0, w.total - kinds.length);
       for (let i = 0; i < rest; i++) kinds.splice(Math.floor((i * (kinds.length + 1)) / (rest + 1)) + i % 2, 0, { ware: 'pot', style: '', q: 1 });
       while (kinds.length < Math.max(count, 1)) kinds.push({ ware: 'pot', style: '', q: 1 });
@@ -132,8 +130,8 @@
 
   /// Віз: віл у ярмі, дерев'яна платформа з бортами, два колеса, купа виробів (до 28), прапорець рівня. viewBox 360×200.
   function wagonSvg(st, api, w) {
-    const goal = Math.max(1, w.goal);
-    const fill = Math.min(1, w.total / (goal * 2));
+    // Купа росте зі скринями (24.10): пройдені рівні й частка наступної скрині, а не «загальне число / дві цілі».
+    const fill = wagonFill(w);
     // Хоч щось на возі — хоч один виріб у купі: інакше перші покладені «зникали» до 1/56 цілі.
     const count = w.total > 0 ? Math.max(1, Math.min(w.total, Math.round(fill * 28))) : 0;
     const kinds = pileKinds(w, count);
@@ -172,7 +170,7 @@
       : '';
     // Поки виробів на два ряди — небо над возом обрізаємо, щоб порожній віз не був високою порожньою картинкою.
     const top = count > 14 ? 0 : 44;
-    return '<svg class="clkg-wagon" viewBox="0 ' + top + ' 360 ' + (200 - top) + '" role="img" aria-label="Віз цеху, повний на ' + Math.floor(w.pct) + ' %">'
+    return '<svg class="clkg-wagon" viewBox="0 ' + top + ' 360 ' + (200 - top) + '" role="img" aria-label="Віз цеху: ' + (w.tier ? TIER[w.tier] : 'ще без рівня') + '">'
       + '<path d="M0 182h360" stroke="rgba(255,255,255,.12)" stroke-width="2"/>'
       + ox + flag
       + '<path d="M104 118L40 114" stroke="#6b4423" stroke-width="5" stroke-linecap="round"/>'
@@ -184,39 +182,62 @@
       + '</svg>';
   }
 
-  /// Смуга до 200 %: пороги бронзи, срібла й золота, власний внесок — окремим відтінком.
-  /// Скільки виробів воза «важать» для смуги: поки підціль не добрана, бронзи нема, хоч би скільки лежало (записка #61:
-  /// «128 з 25 · ще до бронзи», «повний на 140 %»), — тож смуга спиняється перед бронзою рівно на нестачі підцілей.
-  function wagonDone(w) {
-    if (w.tier > 0) return w.total;
-    const lack = w.subs.reduce((a, s) => a + Math.max(0, s.need - s.have), 0);
-    return Math.max(0, Math.min(w.total, w.goal - lack));
+  /// Три скрині воза (24.10, записка Smaug #61 «128 з 25, а пише, що до бронзи не вистачає»): 🥉 будь-які, 🥈 добрі й
+  /// кращі, 🥇 дзвінкі й розкішні. Рівень — скільки скринь повні поспіль; дзвінкий лягає в усі три. Ціль кожної сервер
+  /// рахує від того, скільки село клало за три дні (ClickerGuildService.NeedsFor).
+  const CHEST = ['', 'Будь-які', 'Добрі й кращі', 'Дзвінкі й розкішні'];
+  const CHEST_LACK = ['', '', 'добрих', 'дзвінких'];
+  const chestsOf = (w) => w.chests || [];
+
+  /// Наскільки віз повний — для купи на малюнку: пройдені скрині й частка наступної, 0…1.
+  function wagonFill(w) {
+    const c = chestsOf(w)[w.tier];
+    return Math.min(1, (w.tier + (c ? Math.min(1, c.have / Math.max(1, c.need)) : 0)) / 3);
   }
 
-  /// Що тримає наступний рівень — словами: «до бронзи бракує: макітра 5», «🥈 срібло · до золота ще 10».
+  /// Що тримає наступний рівень — словами: «до бронзи ще 120», «🥈 срібло · до золота ще 12 дзвінких».
   function tierGap(st, api, w) {
     if (w.tier >= 3) return TIER_ICON[3] + ' ' + TIER[3] + ' — вище нема';
     const next = w.tier + 1;
-    const more = Math.max(0, Math.ceil(w.goal * TIER_SHARE[next]) - w.total);
-    const lack = w.tier ? [] : w.subs.filter((s) => s.have < s.need);
-    if (lack.length) {
-      // Підцілі теж ідуть у загальне число, тож «ще N» — лише понад них.
-      const extra = Math.max(0, more - lack.reduce((a, s) => a + s.need - s.have, 0));
-      return 'до бронзи бракує: ' + (extra ? 'ще ' + extra + ', ' : '')
-        + lack.map((s) => api.esc(st, wareName(st, s.ware).toLowerCase()) + ' ' + (s.need - s.have)).join(', ');
-    }
-    return (w.tier ? TIER_ICON[w.tier] + ' ' + TIER[w.tier] + ' · ' : '') + 'до ' + TIER_GEN[next] + ' ще ' + more;
+    const c = chestsOf(w)[next - 1];
+    const more = c ? Math.max(0, c.need - c.have) : 0;
+    return (w.tier ? TIER_ICON[w.tier] + ' ' + TIER[w.tier] + ' · ' : '') + 'до ' + TIER_GEN[next] + ' ще ' + api.count(more)
+      + (CHEST_LACK[next] ? ' ' + CHEST_LACK[next] : '');
   }
 
-  function barHtml(w) {
-    const goal = Math.max(1, w.goal);
-    const pct = Math.min(100, (wagonDone(w) / (goal * 2)) * 100);
-    const mine = Math.min(pct, (w.mine / (goal * 2)) * 100);
-    // Відсотки під порогами прибрано: гравцеві досить бачити, де бронза, срібло й золото.
-    const marks = [1, 2, 3].map((t) => '<span class="clkg-mark t' + t + (w.tier >= t ? ' on' : '') + '" style="left:' + ([0, 50, 75, 100][t]) + '%">'
-      + '<b>' + TIER_ICON[t] + '</b></span>').join('');
-    return '<div class="clkg-bar"><div class="clkg-fill" style="width:' + pct.toFixed(1) + '%"></div>'
-      + '<div class="clkg-mine" style="width:' + mine.toFixed(1) + '%"></div>' + marks + '</div>';
+  /// Скільки вільних (не відкладених) виробів у коморі ляже в скриню k: її якість і на ступінь вища (так кладе сервер).
+  function chestFree(v, k) {
+    const by = (v.all && v.all.byQ) || [];
+    return (by[k - 1] || 0) + (by[k] || 0);
+  }
+
+  /// Три скрині рядком: значок рівня, назва, «74 / 395», смужка й «🧺 +N» — докласти рівно скільки бракує (guild fill).
+  /// Наступна скриня світиться; повна — ✓. small — без кнопок (шапка вікна вибору).
+  function chestsHtml(st, api, v, w, small) {
+    const esc = (x) => api.esc(st, x);
+    return '<div class="clkg-chests' + (small ? ' sm' : '') + '">' + chestsOf(w).map((c, i) => {
+      const k = i + 1;
+      const full = c.have >= c.need;
+      const lack = Math.max(0, c.need - c.have);
+      const pct = Math.min(100, (c.have / Math.max(1, c.need)) * 100);
+      const free = Math.min(lack, chestFree(v, k));
+      const btn = small || full || !st.mine ? ''
+        : '<button type="button" class="ghost small clkg-chfill" data-fill="' + k + '"' + (free > 0 ? '' : ' disabled')
+          + ' title="' + esc(free > 0 ? 'Покласти з комори ' + free + ' — спершу найпростіші, що сюди лягають; відкладене лишається'
+            : 'Вільних ' + (k === 1 ? 'звичайних чи добрих' : k === 2 ? 'добрих чи дзвінких' : 'дзвінких чи розкішних') + ' у коморі нема') + '">'
+          + (free > 0 ? '🧺 +' + api.count(free) : 'нема підхожих') + '</button>';
+      return '<div class="clkg-chest t' + k + (full ? ' done' : k === w.tier + 1 ? ' next' : '') + '">'
+        + '<div class="clkg-chh"><span class="clkg-chi">' + TIER_ICON[k] + '</span><b>' + esc(CHEST[k]) + '</b>'
+        + '<span class="clkg-chn">' + (full ? '✓ ' : '') + api.count(Math.min(c.have, 99999)) + ' / ' + api.count(c.need) + '</span></div>'
+        + '<div class="clkg-chbar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' + btn + '</div>';
+    }).join('') + '</div>';
+  }
+
+  /// «🧺 +N» у скрині: сервер кладе рівно скільки бракує, з найдешевшої придатної якості.
+  function fillChest(st, api, e, b) {
+    if (!human(e) || b.disabled) return;
+    b.disabled = true;
+    act(st, api, { op: 'fill', chest: +b.dataset.fill }, 'wagon').then((r) => { if (r && r.ok) st.guildRoll = Date.now(); else b.disabled = false; });
   }
 
   /// Рядок «на возі»: до шести найчисленніших виробів мініатюрами з кількістю, решта — «+N». Той самий виріб у тому
@@ -317,7 +338,7 @@
     if (id === 'all0' && a.keep > 0) return 'підуть і ' + api.count(a.keep) + ' ' + api.plural(a.keep, 'відкладений', 'відкладені', 'відкладених') + ' — ' + keptWhy(st, api);
     const w = v && v.day;
     const n = id === 'all0' ? a.n + a.keep : a.n;
-    if (w && w.goal > 0 && n > w.goal * 2) return api.count(n) + ' — це більше, ніж дві цілі воза (' + api.count(w.goal * 2) + ')';
+    if (w && w.goal > 0 && n > w.goal * 2) return api.count(n) + ' — це вдвічі більше за першу скриню воза (' + api.count(w.goal) + ')';
     return '';
   }
 
@@ -341,15 +362,12 @@
     const w = v.day;
     const c = cat(st);
     const minGive = (c && c.minGive) || 5;
-    // Недобрана підціль світиться, поки саме вона тримає бронзу.
-    const subs = w.subs.map((s) => '<div class="clkg-sub' + (s.have >= s.need ? ' done' : !w.tier ? ' lack' : '') + '">'
-      + api.wareSvg(s.ware, { quality: 1, cls: 'clkg-ico', slot: 'wsub-' + s.ware })
-      + '<span>' + esc(wareName(st, s.ware)) + '</span><b>' + Math.min(s.have, s.need) + '/' + s.need + '</b></div>').join('');
     const givers = w.givers.length
       ? '<div class="clkg-givers">' + w.givers.map((g) => '<span class="clkg-chip' + (g.nick === myNick(st) ? ' me' : '') + '">'
         + esc(g.nick) + ' · ' + g.n + '</span>').join('') + '</div>'
       : '<div class="muted small">Віз ще порожній — хтось має покласти перший горщик.</div>';
-    const per = (c && c.perPotter) || 12;
+    // Повний пай (24.10) — бронза, поділена на гончарів дня (w.per із сервера); старий сервер — 12.
+    const per = w.per || (c && c.perPotter) || 12;
     const shareMax = (c && c.shareMax) || 3;
     const claims = (v.claims || []).map((cl) => '<button type="button" class="primary clkg-claim" data-claim="' + esc(cl.day) + '">'
       + (cl.topUp ? '🛒 Забрати доплату паю' : '🛒 Забрати: ' + TIER_ICON[cl.tier] + ' ' + TIER[cl.tier]) + (cl.day !== w.id ? ' (вчорашній віз)' : '')
@@ -357,14 +375,14 @@
     // Пай (§E.1): що більше поклав — то більша нагорода. Показуємо і скільки маєш зараз, і скільки до наступного паю.
     // Поки не поклав і п'яти — нагороди не буде взагалі, тож і «×0,5 паю» обіцяти нема чого.
     const share = w.mine >= minGive ? Math.min(shareMax, Math.max(0.5, w.mine / per)) : 0;
-    const toNext = w.mine < per * shareMax ? per - (w.mine % per) : 0;
+    const nextPai = Math.min(shareMax, Math.floor(w.mine / per) + 1);
+    const toNext = w.mine < per * shareMax ? Math.max(1, Math.ceil(nextPai * per) - w.mine) : 0;
     // Нагороду вже забрали (B7): докладене після «Забрати» ядро v12 доплачує (claims[].topUp) — так і кажемо.
     const took = w.claimed > 0 && w.claimed >= w.tier ? w.claimed : 0;
     // Доплату ядро дає лише за забране вже у v12 (тоді записано, скільки було покладено), тож «доплатять» обіцяємо лише
     // за нагороду, яку забрали тут після оновлення (clk.guild.claimed:<нік> — день воза).
     const topUp = (v.claims || []).some((cl) => cl.topUp && cl.day === w.id);
     const v12claim = took && api.storeGet(claimKey(st), '') === w.id;
-    const nextPai = Math.min(shareMax, Math.floor(w.mine / per) + 1);
     const more = topUp ? ' <span class="muted small">· доплата паю чекає — забери</span>'
       : toNext ? ' <span class="muted small">· ще ' + toNext + ' — і пай ×' + pai(nextPai) + (v12claim ? ', різницю доплатять' : '') + '</span>'
         : ' <span class="muted small">· більше вже не буває</span>';
@@ -374,9 +392,9 @@
       // Поки не поклав і п'яти — одне число: скільки до першого паю (а не «з 5» і «ще 9» поруч).
       : share > 0 ? '<b>×' + pai(share) + '</b> твого паю' + more
         : '<b>пай</b> почнеться з ' + minGive + ' виробів <span class="muted small">· ще ' + (minGive - w.mine) + '</span>')
-      + info('Нагорода воза множиться на твій пай: кожні ' + per + ' виробів — ще один пай, до ' + shareMax
-        + '. Поклав ' + per + ' — повний пай, ' + (per * shareMax) + ' — три, п\'ять — половина. Рівень воза (бронза/срібло/золото) '
-        + 'цех бере разом, а платня — за внесок.') + '</div>';
+      + info('Нагорода воза множиться на твій пай. Повний пай — це бронза, поділена на гончарів дня: сьогодні '
+        + api.count(Math.ceil(per)) + ' виробів. Поклав стільки — ×1, удвічі — ×2, до ×' + shareMax + '; п\'ять — половина. '
+        + 'Рівень воза (бронза/срібло/золото) цех бере разом, а платня — за внесок.') + '</div>';
     const mineNote = took || w.claimed > 0 ? 'ти поклав(ла) ' + w.mine
       : w.mine >= minGive ? 'ти поклав(ла) ' + w.mine + (w.tier ? '' : ' — нагорода твоя, щойно віз дійде до бронзи')
         : 'поклади хоч ' + minGive + ' (' + w.mine + ' є) — і нагорода віза буде й твоя';
@@ -385,14 +403,15 @@
       : '';
     return '<section class="clkg-card clkg-day" data-sec="wagon"' + api.fold('g.wagon') + '>'
       + '<div class="clk-sub clk-fh" tabindex="0">🐴 Віз цеху на ярмарок · <span class="muted small">від\'їде за <span class="clkg-cd" data-at="' + Date.parse(w.endsAt) + '"></span></span>'
-      + info('Село — це всі гончарі сайту разом: один віз на день, дарунки одне одному, хати в гості. Бронза — ціль і всі '
-        + 'підцілі; срібло — півтори цілі; золото — дві. Ціль росте з кількістю вчорашніх гончарів (' + w.potters + '). '
-        + 'Пропущений день нічого не забирає.') + '</div>'
+      + info('Село — це всі гончарі сайту разом: один віз на день, дарунки одне одному, хати в гості. На возі три скрині: '
+        + '🥉 будь-які вироби, 🥈 добрі й кращі, 🥇 дзвінкі й розкішні; дзвінкий лягає в усі три. Повна перша — бронза, '
+        + 'перша й друга — срібло, усі три — золото. Скільки треба в кожну — половина того, що село в середньому клало за '
+        + 'три попередні дні (а тихого дня — хоч по 12, 6 і 2 на гончаря). Пропущений день нічого не забирає.') + '</div>'
       + wagonSvg(st, api, w)
       + loadHtml(st, api, w)
-      + '<div class="clkg-line"><b>' + w.total + '</b> з ' + w.goal + ' <span class="muted small clkg-gap">· ' + tierGap(st, api, w) + '</span></div>'
-      + barHtml(w)
-      + '<div class="clkg-subs">' + subs + '</div>'
+      // Скільки всього лежить, каже рядок «на возі:» з мініатюрами — тут лише що далі.
+      + '<div class="clkg-line"><span class="clkg-gap">' + tierGap(st, api, w) + '</span></div>'
+      + chestsHtml(st, api, v, w)
       + givers
       // Шана «Вози» IV: хтось із тих, хто віз сьогодні, — обозний.
       + (v.oboz ? '<div class="muted small">🐴 Сьогодні віз веде обозний — хто віз, забере з нагородою ще 10 хв гри</div>' : '')
@@ -1189,11 +1208,10 @@
       const w = v.day;
       const a = v.all || { n: 0, keep: 0 };
       head = '<div class="clk-sub">🧺 Покласти на віз</div>'
-        + '<div class="clkg-pbar"><div class="clkg-line"><b>' + w.total + '</b> з ' + w.goal + ' <span class="muted small">· ' + tierGap(st, api, w) + '</span></div>'
-        + barHtml(w) + '</div>'
-        + '<p class="muted small clk-note">Потрібні: '
-        + w.subs.map((s) => esc(wareName(st, s.ware)) + ' ' + Math.min(s.have, s.need) + '/' + s.need).join(' · ')
-        + '. Будь-який розпис і якість рахуються; на воза краще класти простіші — дзвінкі згодяться для майстерштука.</p>'
+        + '<div class="clkg-pbar"><div class="clkg-line">на возі <b>' + api.count(w.total) + '</b> <span class="muted small">· ' + tierGap(st, api, w) + '</span></div>'
+        + chestsHtml(st, api, v, w, true) + '</div>'
+        + '<p class="muted small clk-note">Розпис не важить — лише якість: добрий лягає в першу й другу скриню, дзвінкий — у всі три. '
+        + 'Розкішні краще лишити на майстерштук і замовлення.</p>'
         + (st.mine && (a.n > 0 || a.keep > 0)
           ? '<div class="clkg-btns clkg-allrow">' + giveAllBtn(st, api, v, 'primary')
             + (a.keep > 0 ? giveAllBtn(st, api, v, 'ghost', false)
@@ -1340,6 +1358,7 @@
     if (give) give.onclick = () => openPicker(st, api, 'give');
     for (const b of st.guildBody.querySelectorAll('.clkg-giveall')) b.onclick = (e) => giveAll(st, api, e, b);
     for (const b of st.guildBody.querySelectorAll('.clkg-qgive')) b.onclick = (e) => giveQuality(st, api, e, b);
+    for (const b of st.guildBody.querySelectorAll('.clkg-chfill')) b.onclick = (e) => fillChest(st, api, e, b);
     for (const b of st.guildBody.querySelectorAll('[data-claim]')) {
       b.onclick = (e) => {
         if (!human(e)) return;

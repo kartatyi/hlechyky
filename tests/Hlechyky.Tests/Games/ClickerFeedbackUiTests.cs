@@ -534,9 +534,9 @@ public class ClickerFeedbackUiTests
         var h = g.Potter("Оля");
         NoOrders(h);
         var goal = g.Svc.Summary("оля", Thursday).Today;
-        var items = goal.Subs.Select(s => ($"{s.Ware}||1", s.Need)).ToList();
-        items.Add(("tile||1", goal.Goal * 2));
-        Items(h, [.. items]);
+        // Три скрині: дзвінкі закривають усі три, добрі — срібло, звичайні — решту бронзи.
+        var c = goal.Chests;
+        Items(h, ("pot||3", c[2].Need), ("bowl||2", c[1].Need), ("tile||1", goal.Goal));
         var r = Guild(h, new { op = "giveAll" });
         Assert.True(r.Ok, r.Message);
         Assert.Equal(3, G(h).GetProperty("day").GetProperty("tier").GetInt32());

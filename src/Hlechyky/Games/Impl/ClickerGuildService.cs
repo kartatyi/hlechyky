@@ -19,8 +19,14 @@ public sealed record GuildBoost(string From, string Kind, int Minutes, DateTimeO
 /// <summary>Що гончар може зробити для друзів сьогодні й скільки гостинців він сам уже прийняв (§E.2).</summary>
 public sealed record GuildHelp(int TreatLeft, bool LendLeft, IReadOnlyList<string> Cheered, IReadOnlyList<string>? Thanked = null);
 
-/// <summary>Підціль воза: стільки виробів цього виду (будь-який розпис і якість).</summary>
-public sealed record WagonSub(string Ware, int Need, int Have);
+/// <summary>
+/// Скриня воза (24.10, «Три скрині»): стільки виробів якості від <paramref name="Q"/> і вище — 1 «будь-які» (бронза),
+/// 2 «добрі й кращі» (срібло), 3 «дзвінкі й розкішні» (золото). Дзвінкий лягає в усі три одразу.
+/// </summary>
+public sealed record WagonChest(int Q, int Need, int Have)
+{
+    public bool Full => Have >= Need;
+}
 
 /// <summary>Хто скільки поклав на віз (без місць і «ти останній» — лише внесок).</summary>
 public sealed record WagonGiver(string Nick, int N);
@@ -32,19 +38,22 @@ public sealed record WagonGiver(string Nick, int N);
 public sealed record WagonItem(string Ware, string Style, int Quality, int N);
 
 /// <summary>
-/// Віз одного дня очима одного гончаря: ціль, що вже лежить, рівень (0 — ще ні, 1 бронза, 2 срібло, 3 золото),
-/// скільки дав він сам і на який рівень уже забрав нагороду.
+/// Віз одного дня очима одного гончаря: три скрині (<see cref="Chests"/>; <see cref="Goal"/> — перша, «будь-які»),
+/// що вже лежить, рівень (0 — ще ні, 1 бронза, 2 срібло, 3 золото), скільки дав він сам і на який рівень уже забрав.
 /// </summary>
 public sealed record WagonInfo(
-    string Day, DateTimeOffset EndsAt, int Potters, int Goal, int Total, IReadOnlyList<WagonSub> Subs,
+    string Day, DateTimeOffset EndsAt, int Potters, int Goal, int Total, IReadOnlyList<WagonChest> Chests,
     IReadOnlyList<WagonGiver> Givers, int Tier, int Mine, int Claimed, IReadOnlyList<WagonItem>? Items = null, int ClaimedMine = 0)
 {
+    /// <summary>Скільки виробів — один повний пай: бронза, поділена на гончарів дня.</summary>
+    public double Per => Math.Max(1, Goal / (double)Math.Max(1, Potters));
+
     /// <summary>
     /// Чи є що забрати: новий рівень або (v12, плейтест B7) пай, що виріс після забирання — доклав після «Забрати», і
     /// картка обіцяла «×2 твого паю», а доплати не було.
     /// </summary>
     public bool CanClaim => Mine >= ClickerGuildService.MinGive && Tier > 0
-        && (Tier > Claimed || (Claimed > 0 && Clicker.WagonShare(Mine) > Clicker.WagonShare(ClaimedMine)));
+        && (Tier > Claimed || (Claimed > 0 && Clicker.WagonShare(Mine, Per) > Clicker.WagonShare(ClaimedMine, Per)));
 }
 
 /// <summary>Усе, що кімнаті треба від цеху для виду: сьогоднішній віз, вчорашній, скільки дарунків лишилось і допомога дня.</summary>
@@ -57,7 +66,8 @@ public sealed record WagonGive(WagonInfo Wagon, int Reached);
 /// Нагорода воза: за який день, який рівень, на який уже платили раніше і скільки виробів поклав сам гончар
 /// (з цього рахується його пай, §E.1). <c>Error</c> — відмова.
 /// </summary>
-public sealed record WagonClaim(string? Error, string Day, int Tier, int Was, int Mine = 0, int WasMine = 0, bool Oboz = false);
+public sealed record WagonClaim(string? Error, string Day, int Tier, int Was, int Mine = 0, int WasMine = 0, bool Oboz = false,
+    double Per = ClickerGuildService.PerPotter);
 
 /// <summary>
 /// Що з «Сусідства» шани старійшини (Clicker.ShanaGuildPerks) діє на допомогу друзям: скільки підмайстрів на день,
@@ -105,17 +115,24 @@ public sealed partial class ClickerGuildService
     /// <summary>Скільки днів тримати в стані: сьогоднішній, вчорашній (його нагорода ще забирається) і ще два про запас.</summary>
     public const int DaysKept = 4;
     public const int RosterMax = 100;
-    /// <summary>Пороги рівнів у частках цілі: бронза 100 %, срібло 150 %, золото 200 %.</summary>
-    public static readonly double[] TierShare = [0, 1, 1.5, 2];
     /// <summary>Хвилини власного пасиву за рівень.</summary>
     public static readonly int[] TierMinutes = [0, 10, 20, 35];
     public static readonly string[] TierNames = ["", "бронза", "срібло", "золото"];
     /// <summary>«Нагороду за бронзу» — знахідний відмінок.</summary>
     static readonly string[] TierNamesAcc = ["", "бронзу", "срібло", "золото"];
 
-    /// <summary>З яких виробів складаються підцілі: найпоширеніші, відкриті майже в кожного, і їхні частки від цілі.</summary>
-    static readonly (string Ware, double Share)[] SubPool =
-        [("pot", 0.25), ("bowl", 0.2), ("jug", 0.15), ("makitra", 0.12), ("dish", 0.1)];
+    // ---------- три скрині (24.10) ----------
+    // Було: ціль — 12 виробів на гончаря (25–35 на день), а клали 250–1470; бронзу тримали підцілі зі старих виробів
+    // («128 з 25, а до бронзи бракує: макітра 5», записка Smaug #61). Стало: три скрині за якістю, і ціль кожної — від
+    // того, скільки село справді клало.
+    /// <summary>Ціль скрині — така частка того, що село в середньому клало за <see cref="GoalDays"/> попередні дні.</summary>
+    public const double GoalShare = 0.5;
+    public const int GoalDays = 3;
+    /// <summary>Поріг цілі на гончаря, за скринями: 12 будь-яких, 6 добрих, 2 дзвінкі (новий цех, тихі дні).</summary>
+    public static readonly int[] ChestFloor = [0, PerPotter, 6, 2];
+    public static readonly string[] ChestNames = ["", "будь-які", "добрі й кращі", "дзвінкі й розкішні"];
+    /// <summary>«До срібла ще 40 добрих»: скільки бракує — родовий відмінок множини.</summary>
+    public static readonly string[] ChestLack = ["", "", "добрих", "дзвінких"];
 
     static readonly JsonSerializerOptions Wire = new(JsonSerializerDefaults.Web);
 
@@ -177,6 +194,13 @@ public sealed partial class ClickerGuildService
         public Dictionary<string, int> ClaimedMine { get; set; } = new(StringComparer.Ordinal);
         /// <summary>Найвищий рівень, про який уже сказали в Журнал: двічі одне й те саме не кажемо.</summary>
         public int Logged { get; set; }
+        /// <summary>
+        /// Цілі трьох скринь цього дня (24.10) і скільки гончарів він «важив» — записуються, щойно день з'явився, і далі не
+        /// міняються: історія, з якої їх рахували, за кілька днів іде геть (<see cref="Prune"/>). Старий день — null.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<int>? Needs { get; set; }
+        public int Potters { get; set; }
         /// <summary>Обозні дня (шана «Вози» IV, ключі ніків): хто з них віз — тому дню кожен забирає ще 10 хв гри.</summary>
         public List<string> Oboz { get; set; } = [];
         /// <summary>Хто вже забрав ці 10 хв обозного за цей день (ключі ніків) — раз на день.</summary>
@@ -331,35 +355,58 @@ public sealed partial class ClickerGuildService
     /// <summary>Київська північ — коли сьогоднішній віз від'їжджає.</summary>
     public static DateTimeOffset DayEnds(DateTimeOffset now) => Days.NextMidnight(now);
 
-    // ---------- ціль воза ----------
+    // ---------- ціль воза: три скрині (24.10) ----------
 
     /// <summary>
-    /// Ціль воза: <see cref="PerPotter"/> виробів на гончаря ×0,85–1,15 (зерно дня), до п'ятірок; і дві-три підцілі
-    /// з найпоширеніших виробів — кожна своя частка цілі ×0,8–1,2. Та сама пара (день, гончарі) — та сама ціль.
+    /// Цілі трьох скринь дня <paramref name="day"/>: <see cref="GoalShare"/> того, що село в середньому клало за
+    /// <see cref="GoalDays"/> попередні дні (пропущений день — нуль: ціль тане сама), до п'ятірок, але не менше за
+    /// <see cref="ChestFloor"/> на гончаря. Вища скриня не більша за нижчу: дзвінкий лягає в усі три.
     /// </summary>
-    public static (int Goal, IReadOnlyList<(string Ware, int Need)> Subs) GoalFor(string day, int potters)
+    static int[] NeedsFor(State s, string day, int potters)
     {
-        potters = Math.Max(MinPotters, potters);
-        var rng = new Random(Days.Seed("clicker-wagon", day));
-        var goal = Fives(PerPotter * potters * (0.85 + 0.3 * rng.NextDouble()));
-        var pool = SubPool.OrderBy(_ => rng.Next()).ToList();
-        var count = 2 + rng.Next(2);
-        var subs = pool.Take(count)
-            .OrderBy(x => Array.FindIndex(SubPool, p => p.Ware == x.Ware))
-            .Select(x => (x.Ware, Math.Max(5, Fives(goal * x.Share * (0.8 + 0.4 * rng.NextDouble())))))
-            .ToList();
-        return (goal, subs);
+        var sum = new double[4];
+        var d = DateOnly.ParseExact(day, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        for (var i = 1; i <= GoalDays; i++)
+        {
+            if (!s.Days.TryGetValue(d.AddDays(-i).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), out var row)) continue;
+            var have = HaveOf(row);
+            for (var q = 1; q <= 3; q++) sum[q] += have[q];
+        }
+        var needs = new int[3];
+        for (var q = 1; q <= 3; q++)
+        {
+            // Поріг — рівно на гончаря, без п'ятірок: тихого дня повний пай важить, як і раніше, 12 виробів.
+            var need = Math.Max(ChestFloor[q] * potters, Fives(sum[q] / GoalDays * GoalShare));
+            needs[q - 1] = q > 1 ? Math.Min(need, needs[q - 2]) : need;
+        }
+        return needs;
     }
 
     static int Fives(double v) => Math.Max(5, (int)Math.Round(v / 5, MidpointRounding.AwayFromZero) * 5);
 
-    /// <summary>Рівень воза: доки хоч одна підціль не закрита — нуль; далі за часткою цілі.</summary>
-    public static int TierOf(int goal, int total, IEnumerable<WagonSub> subs)
+    /// <summary>
+    /// Що лежить у скринях: [_, усе, добрі й кращі, дзвінкі й розкішні]. Невідомої якості (покладене до 28.09) і надбавка
+    /// шани «Вози» III (half) — лише в першій: якості в них нема.
+    /// </summary>
+    static int[] HaveOf(DayRow row)
     {
-        if (goal <= 0 || subs.Any(s => s.Have < s.Need)) return 0;
-        for (var t = TierShare.Length - 1; t >= 1; t--)
-            if (total >= (int)Math.Ceiling(goal * TierShare[t])) return t;
-        return 0;
+        var have = new int[4];
+        have[1] = row.Total;
+        foreach (var (key, n) in row.Items)
+            if (n > 0 && Clicker.ParseItem(key) is { } it)
+            {
+                if (it.Quality >= 2) have[2] += n;
+                if (it.Quality >= 3) have[3] += n;
+            }
+        return have;
+    }
+
+    /// <summary>Рівень воза: скільки скринь повні поспіль — бронза, срібло, золото. Повна вища без нижчої рівня не дає.</summary>
+    public static int TierOf(IReadOnlyList<WagonChest> chests)
+    {
+        var t = 0;
+        while (t < chests.Count && chests[t].Full) t++;
+        return t;
     }
 
     /// <summary>Скільки гончарів «важить» день: ті, хто давав хоч щось учора (не менше двох).</summary>
@@ -368,10 +415,20 @@ public sealed partial class ClickerGuildService
 
     WagonInfo Info(State s, string day, string before, DateTimeOffset endsAt, string nickKey)
     {
-        var potters = PottersFor(s, before);
-        var (goal, subs) = GoalFor(day, potters);
         s.Days.TryGetValue(day, out var row);
-        var subRows = subs.Select(x => new WagonSub(x.Ware, x.Need, row?.Wares.GetValueOrDefault(x.Ware) ?? 0)).ToList();
+        // Цілі дня записуються в нього раз (і в старий день — з першим поглядом після оновлення): за кілька днів історії,
+        // з якої їх рахували, уже не буде. Порожній день без рядка — рахуємо щоразу, він однаково нічого не платить.
+        int[] needs;
+        int potters;
+        if (row?.Needs is { Count: 3 } kept) { needs = [.. kept]; potters = Math.Max(MinPotters, row.Potters); }
+        else
+        {
+            potters = PottersFor(s, before);
+            needs = NeedsFor(s, day, potters);
+            if (row is not null) { row.Needs = [.. needs]; row.Potters = potters; }
+        }
+        var have = row is null ? new int[4] : HaveOf(row);
+        var chests = Enumerable.Range(1, 3).Select(q => new WagonChest(q, needs[q - 1], have[q])).ToList();
         var total = row?.Total ?? 0;
         var givers = (row?.Givers.Values ?? Enumerable.Empty<GiverRow>())
             .Where(g => g.N > 0)
@@ -383,7 +440,7 @@ public sealed partial class ClickerGuildService
         var claimed = row?.Claimed.GetValueOrDefault(nickKey) ?? 0;
         // Забране до v12 не знає, скільки тоді було покладено: вважаємо, що стільки ж, скільки зараз, — доплати нема.
         var claimedMine = row is not null && row.ClaimedMine.TryGetValue(nickKey, out var cm) ? cm : claimed > 0 ? mine : 0;
-        return new WagonInfo(day, endsAt, potters, goal, total, subRows, givers, TierOf(goal, total, subRows),
+        return new WagonInfo(day, endsAt, potters, needs[0], total, chests, givers, TierOf(chests),
             mine, claimed, ItemsOf(row), claimedMine);
     }
 
@@ -512,7 +569,7 @@ public sealed partial class ClickerGuildService
 
             if (w.Mine < MinGive)
                 return new WagonClaim($"Нагорода — тим, хто поклав на віз хоч {MinGive} виробів (у тебе {w.Mine})", w.Day, 0, 0);
-            if (w.Tier == 0) return new WagonClaim("Віз ще не наповнився навіть до бронзи — докладаймо разом", w.Day, 0, 0);
+            if (w.Tier == 0) return new WagonClaim("Перша скриня воза ще не повна — до бронзи докладаймо разом", w.Day, 0, 0);
             if (!w.CanClaim) return new WagonClaim($"Нагороду за {TierNamesAcc[w.Tier]} ти вже забрав", w.Day, 0, 0);
 
             if (!s.Days.TryGetValue(w.Day, out var row)) return new WagonClaim("Такого воза нема", w.Day, 0, 0);
@@ -522,7 +579,7 @@ public sealed partial class ClickerGuildService
             var oboz = row.Oboz.Count > 0 && !row.ObozPaid.Contains(nickKey, StringComparer.Ordinal);
             if (oboz) row.ObozPaid.Add(nickKey);
             Save();
-            return new WagonClaim(null, w.Day, w.Tier, w.Claimed, w.Mine, w.ClaimedMine, oboz);
+            return new WagonClaim(null, w.Day, w.Tier, w.Claimed, w.Mine, w.ClaimedMine, oboz, w.Per);
         }
     }
 
@@ -876,7 +933,9 @@ public sealed partial class ClickerGuildService
     public static object WagonView(WagonInfo w) => new
     {
         id = w.Day, endsAt = w.EndsAt, potters = w.Potters, goal = w.Goal, total = w.Total,
-        subs = w.Subs.Select(x => new { ware = x.Ware, need = x.Need, have = x.Have }),
+        // Три скрині (24.10): q — найнижча якість, що в неї лягає; per — скільки виробів важить повний пай.
+        chests = w.Chests.Select(x => new { q = x.Q, need = x.Need, have = x.Have }),
+        per = Math.Round(w.Per, 2),
         givers = w.Givers.Select(g => new { nick = g.Nick, n = g.N }),
         tier = w.Tier, mine = w.Mine, claimed = w.Claimed,
         pct = w.Goal > 0 ? Math.Round(100.0 * w.Total / w.Goal, 1) : 0,
