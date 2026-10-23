@@ -1314,6 +1314,64 @@ public class ClickerKilnTests
     }
 
     [Fact]
+    public void Reading_the_last_batch_does_not_hold_the_stoker_back()
+    {
+        // 23.10: клієнт шле «seen» після кожної партії — і це рахувалось дотиком: з обраним розписом палій стояв три хвилини.
+        var h = Stokery(0);
+        Patch(h, s => { s["styles"] = new JsonArray("kosiv"); s["kiln"]!["style"] = "kosiv"; });
+        Assert.True(K(h, new { op = "seen" }).Ok);
+        Assert.False(K(h, new { op = "light", helper = true }).Ok);            // невдалий натиск — теж не дотик
+        Rack(h, dry: 6);
+        Assert.Equal("burning", State(h));
+    }
+
+    [Fact]
+    public void A_full_rack_makes_the_stoker_fire_even_right_after_a_touch()
+    {
+        var h = Stokery(0);
+        Patch(h, s => { s["styles"] = new JsonArray("kosiv"); s["kiln"]!["style"] = "kosiv"; });
+        Patch(h, s => s["kiln"]!["touch"] = h.Clock.UtcNow.ToString("O"));
+        Rack(h, dry: 4);
+        Assert.Equal("cold", State(h));                                       // гончар щойно був біля горна — чекає
+        var size = Craft(h).GetProperty("rackSize").GetInt32();
+        Rack(h, dry: 4, wet: size - 4);
+        Assert.Equal("cold", State(h));                                       // півхвилини — гончареві натиснути «Розписати»
+        h.Clock.Advance(Clicker.KilnFullGrace + TimeSpan.FromSeconds(1));
+        Assert.Equal("burning", State(h));                                    // сушарня повна — кліки не мають іти впусту
+        Assert.True(Clicker.KilnFullGrace < Clicker.KilnIdle);
+    }
+
+    [Fact]
+    public void Pressing_fire_when_the_stoker_just_lit_is_news_not_an_error()
+    {
+        var h = Stokery(6);
+        Assert.Equal("burning", State(h));
+        var load = K(h, new { op = "load" });
+        Assert.True(load.Ok, load.Message);
+        Assert.StartsWith("🔥 Палій уже розпалив", load.Message);
+        var light = K(h, new { op = "light", helper = true });
+        Assert.True(light.Ok, light.Message);
+        Assert.Contains("відкриє сам", light.Message);
+    }
+
+    [Fact]
+    public void An_abandoned_pattern_does_not_stop_the_stoker_forever()
+    {
+        var h = Stokery(0);
+        Patch(h, s =>
+        {
+            s["kiln"]!["tech"] = "rizh";
+            s["kiln"]!["paintSeed"] = 12345;
+            s["kiln"]!["paintAt"] = h.Clock.UtcNow.ToString("O");
+        });
+        Rack(h, dry: 6);
+        Assert.Equal("cold", State(h));                                       // малює просто зараз — партія гончарева
+        h.Clock.Advance(Clicker.PatternLife + TimeSpan.FromSeconds(5));
+        // Палій узявся одразу після PatternLife; за ці секунди партія ще палає.
+        Assert.Equal("burning", State(h));
+    }
+
+    [Fact]
     public void The_switch_stops_the_stoker_and_without_a_perk_there_is_no_switch()
     {
         var j = Wheel();

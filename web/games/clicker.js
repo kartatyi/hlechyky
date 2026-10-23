@@ -878,8 +878,10 @@
         const c = st.clays.find((x) => x.key === b.dataset.clay);
         if (!c || !(c.click > 0)) continue;
         // Глина, що зменшує пасив (Червона), у ★ не йде ніколи: пасив — те, що працює, поки тебе нема.
+        // Клік глина множить увесь, а частка пасиву в ньому від глини не залежить (23.10) — тож пасив тут без «ліфту».
         const dP = st.baseSecond * (c.passive / cur.passive - 1);
-        const add = dP >= 0 ? playGain(st, dP, hand ? handsOf(st) * (c.click / cur.click - 1) : 0) : 0;
+        const dH = hand ? st.clickBase * (c.click / cur.click - 1) : 0;
+        const add = dP >= 0 ? (playLift(st) ? dP + dH * PLAY_CPS * Math.max(1, st.momentumMax || 1) : dP) : 0;
         if (add > 0) consider(b, c.price / add, c.name, st.mine && n >= c.price);
       }
       // У «макс» (×10, «до віхи») усе, що купується, веде в «Точно?» — ★ з ×1: дотик до неї перемкне на ×1 (goBest).
@@ -1300,15 +1302,14 @@
     if (b._lvl.style.getPropertyValue('--p') !== p) b._lvl.style.setProperty('--p', p);
   }
 
-  /// «З цією глиною: клік X, пасив Y/с» (v12 §2.2). Клік — ручна частина (множиться на «клік» глини) плюс відсоток
-  /// пасиву (clickPassive, множиться на «пасив» глини): саме тому червона в пізній грі клік зменшує, а біла — піднімає.
+  /// «З цією глиною: клік X, пасив Y/с» (v12 §2.2). «Клік» глини множить увесь клік — і руки, і відсоток пасиву в
+  /// ньому (з 23.10; доти частка пасиву несла «пасив» глини, і червона в пізній грі клік зменшувала).
   function clayFore(st, key) {
     const cur = st.clays.find((c) => c.on);
     const c = st.clays.find((x) => x.key === key);
     if (!c || !cur || !(cur.click > 0) || !(cur.passive > 0) || !(c.click > 0)) return '';
     const p = c.passive / cur.passive;
-    const fromPassive = Math.min(st.clickBase, st.clickPassive || 0);
-    const click = Math.max(1, (st.clickBase - fromPassive) * (c.click / cur.click) + fromPassive * p);
+    const click = Math.max(1, st.clickBase * (c.click / cur.click));
     const diff = (x) => (Math.abs(x - 1) < 0.005 ? '' : ' (' + (x > 1 ? '+' : '−') + pctText(Math.abs(x - 1) * 100) + ' %)');
     // До мільйона — з одним знаком після коми: «6 глеків», «22,3 глека», а не «6 глека» від 6,0000001.
     const round = (x) => (x < 1e6 ? Math.round(x * 10) / 10 : Math.round(x));

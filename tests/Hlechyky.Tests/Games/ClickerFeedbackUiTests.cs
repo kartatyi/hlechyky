@@ -401,6 +401,49 @@ public class ClickerFeedbackUiTests
     }
 
     [Fact]
+    public void Give_all_of_one_quality_leaves_the_ringing_and_the_luxury()
+    {
+        // 23.10: «скласти всі звичайні й частину добрих, а дзвінкі й розкішні лишити» — без перебору виробу за виробом.
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        NoOrders(h);
+        Items(h, ("pot||1", 10), ("bowl|kosiv|1", 4), ("tile||2", 8), ("jug||2", 3), ("pot||3", 2), ("bowl||4", 1));
+        var byQ = G(h).GetProperty("all").GetProperty("byQ").EnumerateArray().Select(x => x.GetInt32()).ToArray();
+        Assert.Equal(new[] { 14, 11, 2, 1 }, byQ);
+
+        var r = Guild(h, new { op = "giveAll", q = 1 });
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("14 виробів", r.Message);
+        var left = Store(h);
+        Assert.False(left.ContainsKey("pot||1"));
+        Assert.False(left.ContainsKey("bowl|kosiv|1"));
+
+        // Частина добрих — спершу з найбільшої купки.
+        Assert.True(Guild(h, new { op = "giveAll", q = 2, n = 5 }).Ok);
+        left = Store(h);
+        Assert.Equal(3, left["tile||2"]);
+        Assert.Equal(3, left["jug||2"]);
+        Assert.Equal(2, left["pot||3"]);
+        Assert.Equal(1, left["bowl||4"]);
+        Assert.Equal(19, G(h).GetProperty("day").GetProperty("mine").GetInt32());
+
+        Assert.False(Guild(h, new { op = "giveAll", q = 1 }).Ok);           // звичайних уже нема
+        Assert.False(Guild(h, new { op = "giveAll", q = 7 }).Ok);
+    }
+
+    [Fact]
+    public void Give_all_of_one_quality_still_keeps_the_reserved()
+    {
+        var g = new Tsekh();
+        var h = g.Potter("Оля");
+        NoOrders(h);
+        Items(h, ("pot||1", 6));
+        VillageOrder(h, "pot", 1, 2);
+        Assert.True(Guild(h, new { op = "giveAll", q = 1 }).Ok);
+        Assert.Equal(2, Store(h)["pot||1"]);
+    }
+
+    [Fact]
     public void Giving_one_kind_keeps_the_reserved_unless_the_potter_says_so()
     {
         var g = new Tsekh();

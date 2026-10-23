@@ -122,6 +122,18 @@ public class ClickerPacksTests
     }
 
     [Fact]
+    public void A_full_rack_the_potter_left_alone_is_fired_even_with_a_chosen_style()
+    {
+        // 23.10: обраний розпис і повна сушарня — півхвилини чекаємо «Розписати», далі кліки не йдуть упусту.
+        var h = Wheel();
+        Patch(h, s => s["styles"] = new JsonArray("gavarets"));
+        Assert.True(h.Act(0, "kiln", new { op = "paint", style = "gavarets" }).Ok);
+        FullDryRack(h, rank: 1);
+        h.Clock.Advance(Clicker.KilnFullGrace + TimeSpan.FromSeconds(1));
+        Assert.Equal("burning", View(h).GetProperty("kiln").GetProperty("state").GetString());
+    }
+
+    [Fact]
     public void A_view_is_a_snapshot_that_later_actions_do_not_change()
     {
         var h = Wheel();

@@ -119,6 +119,28 @@ public class ClickerHouseTests
     }
 
     [Fact]
+    public void Red_clay_doubles_the_whole_click_even_when_it_is_mostly_passive()
+    {
+        // 23.10: у пізній грі клік майже весь із частки пасиву, а глина множила лише руки — і червона (пасив ×0,7) давала
+        // клік менший, ніж біла (пасив ×1,5). Тепер «клік» глини множить увесь клік, а частка пасиву — без глини.
+        long Click(string clay)
+        {
+            var h = Wheel();
+            Levels(h, ("kiln", 100_000), ("swing", 10));
+            Give(h, 1e9);
+            if (clay.Length > 0) Assert.True(Act(h, "knead", new { kind = clay }).Ok);
+            return ClickBase(h);
+        }
+        var plain = Click("");
+        var red = Click("red");
+        var white = Click("white");
+        Assert.True(plain > 100, $"клік {plain} — мало пасиву, тест нічого не перевіряє");
+        Assert.InRange(red, 2 * plain - 1, 2 * plain + 1);
+        Assert.InRange(white, plain / 2 - 1, plain / 2 + 1);
+        Assert.True(red > white);
+    }
+
+    [Fact]
     public void Black_clay_makes_jugs_fall_sooner_and_pay_more()
     {
         var h = Wheel();

@@ -804,9 +804,12 @@ public sealed partial class Clicker : Game
     {
         get
         {
-            var hands = (1 + Level("wheel")) * (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * AllMult
-                * ClayNow.Click * (Tool("ribs") ? RibsClick : 1);
-            var click = Math.Max(1, ToPots(Math.Round(hands + PassiveBase * ClickShare, MidpointRounding.AwayFromZero)));
+            // Глина множить увесь клік — і руки, і частку пасиву в ньому, а пасив для цієї частки береться без глини (23.10).
+            // Було: глина множила лише руки, а частка пасиву несла її пасивний множник — у пізній грі, де клік майже весь із
+            // пасиву, червона (клік ×2, пасив ×0,7) давала клік менший, ніж біла (клік ×0,5, пасив ×1,5).
+            var clay = ClayNow;
+            var hands = (1 + Level("wheel")) * (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * AllMult * (Tool("ribs") ? RibsClick : 1);
+            var click = Math.Max(1, ToPots(Math.Round((hands + PassiveBase / clay.Passive * ClickShare) * clay.Click, MidpointRounding.AwayFromZero)));
             // «Обома руками» (коло 200): увесь клік ×2, разом із пасивом у ньому.
             return Perk(MarkEffect.ClickDouble) > 0 ? click * 2 : click;
         }
@@ -818,7 +821,7 @@ public sealed partial class Clicker : Game
     /// інакше на квадрильйонах «Натхнення!» було б порожнім словом у того, хто ще не взяв «Руки майстра».
     /// </summary>
     public double PerClick =>
-        ToPots((ClickBase + (InspireOn ? PassiveBase * InspireShare : 0)) * (InspireOn ? InspireMult : 1) * (FairOn ? FairMultNow : 1));
+        ToPots((ClickBase + (InspireOn ? PassiveBase / ClayNow.Passive * ClayNow.Click * InspireShare : 0)) * (InspireOn ? InspireMult : 1) * (FairOn ? FairMultNow : 1));
 
     /// <summary>Глеків за секунду без тебе просто зараз — з ярмарком і вітром із поля, якщо вони тривають.</summary>
     public double PerSecond => PassiveBase * (FairOn ? FairMultNow : 1) * (WindOn ? WindMult : 1);
@@ -2392,7 +2395,7 @@ public sealed partial class Clicker : Game
             // v12 §7 п. 2 (пакет D2): окупність Майстерні — у часі гри, а прогноз глини — «клік X, пасив Y». Клієнт сам
             // не знає ні хвилини гри, ні того, яка частина кліка — відсоток пасиву (вона росте разом із пасивом).
             playMinute = PlayMinute,
-            clickPassive = (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1) * passive * ClickShare,
+            clickPassive = (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1) * passive / ClayNow.Passive * ClayNow.Click * ClickShare,
             // Лише те, що міняється: назви, описи, вид верстата, ріст ціни й віхи — у shopCatalog (десяте оновлення §10:
             // вид летить щопачки кліків, а незмінні тексти двадцяти семи верстатів важили кілобайти щоразу).
             upgrades = Shop.Select((u, index) => (u, index)).ToDictionary(x => x.u.Key, x => UpgradeView(x.u, x.index, passive), StringComparer.Ordinal),

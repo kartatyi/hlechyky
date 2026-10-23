@@ -263,6 +263,52 @@
         : all ? 'і відкладені теж · ' + api.count(n) : '🛒 Усе на віз · ' + api.count(n)) + '</button>';
   }
 
+  /// «На віз за якістю» (23.10, слово гравця: «не хочу класти дзвінкі й розкішні — хочу скласти всі звичайні й частину
+  /// добрих, а не клацати по кожному виробу»): рядок на якість — «+10», «½», «усі N». Відкладене не йде (як «Усе на віз»).
+  /// upTo — до якої якості показувати (на картці воза — звичайні й добрі; у вікні вибору — усі). Дзвінкі й розкішні
+  /// перепитують: їх краще лишити на майстерштук і замовлення.
+  const Q_PL = ['', 'звичайні', 'добрі', 'дзвінкі', 'розкішні'];
+  function giveQualityHtml(st, api, v, upTo) {
+    const by = (v.all && v.all.byQ) || [];
+    if (!st.mine || !by.some((n) => n > 0)) return '';
+    const rows = [];
+    for (let q = 1; q <= upTo; q++) {
+      const n = by[q - 1] || 0;
+      if (!(n > 0)) continue;
+      const btn = (k, label) => {
+        const id = 'q:' + q + ':' + k;
+        const armed = q >= 3 && armedFor(st, id);
+        return '<button type="button" class="ghost small clkg-qgive' + (armed ? ' arm' : '') + '" data-q="' + q + '"'
+          + (k < n ? ' data-n="' + k + '"' : '') + '>' + (armed ? 'Точно? ' + STARS[q] : label) + '</button>';
+      };
+      const half = Math.floor(n / 2);
+      rows.push('<div class="clkg-qline q' + q + '"><span class="clkg-qname">' + STARS[q] + ' ' + Q_PL[q] + ' <b>' + api.count(n) + '</b></span>'
+        + '<span class="clkg-qbtns">' + (n > 10 ? btn(10, '+10') : '') + (half >= 2 && half !== 10 ? btn(half, '½ · ' + api.count(half)) : '')
+        + btn(n, n > 1 ? 'усі ' + api.count(n) : '+1') + '</span></div>');
+    }
+    return rows.length ? '<div class="clkg-qgrid"><div class="muted small">🧺 На віз за якістю <span class="muted">(відкладене лишається)</span></div>'
+      + rows.join('') + '</div>' : '';
+  }
+
+  /// Дотик «за якістю»: дзвінкі й розкішні — лише з другого натиску; гаразд — віз крутне колесами, вікно лишається.
+  function giveQuality(st, api, e, b) {
+    if (!human(e) || b.disabled) return;
+    const q = +b.dataset.q;
+    const n = b.dataset.n ? +b.dataset.n : 0;
+    const id = 'q:' + q + ':' + (n || (((st.guild && st.guild.all && st.guild.all.byQ) || [])[q - 1] || 0));
+    if (q >= 3 && !armedFor(st, id)) {
+      st.guildArm = { id, at: Date.now() };
+      api.sfx('tap');
+      repaintWagon(st, api);
+      setTimeout(() => { if (st.guildArm && st.guildArm.id === id) { st.guildArm = null; repaintWagon(st, api); } }, CONFIRM_MS + 50);
+      return;
+    }
+    st.guildArm = null;
+    b.disabled = true;
+    const payload = n ? { op: 'giveAll', q, n } : { op: 'giveAll', q };
+    act(st, api, payload, 'wagon').then((r) => { if (r && r.ok) st.guildRoll = Date.now(); else b.disabled = false; });
+  }
+
   /// Чому «Усе на віз» варто перепитати: піде відкладене (Толока, замовлення, майстерштук) або виробів понад дві цілі
   /// воза — понад золото й повний пай вони вже нічого не додадуть, а в коморі ще згодились би. '' — питати нема чого.
   function giveAllRisk(st, api, id) {
@@ -354,6 +400,7 @@
       + '<div class="clkg-btns">' + giveAllBtn(st, api, v, 'ghost')
       + '<button type="button" class="ghost clkg-give"' + (st.mine && itemsOf(st).length ? '' : ' disabled') + '>🧺 Вибрати, що покласти</button>'
       + claims + '</div>'
+      + giveQualityHtml(st, api, v, 2)
       + (v.all && v.all.keep > 0 && v.all.n > 0 ? '<div class="muted small">🔒 ' + api.count(v.all.keep) + ' ' + api.plural(v.all.keep, 'виріб', 'вироби', 'виробів')
         + ' лишиться: ' + esc(keptWhy(st, api)) + '</div>' : '')
       + '<div class="muted small">' + mineNote + '</div>'
@@ -794,6 +841,7 @@
     const sv = v.shana;
     if (!sc || !sv || !sv.on) return '';
     const max = sc.max || 5;
+    const open = shanaOpen(st);
     const rows = (sv.tracks || []).map((t) => {
       const d = (sc.tracks || []).find((x) => x.key === t.key);
       if (!d) return '';
@@ -803,18 +851,28 @@
       const share = full ? 1 : Math.max(0, Math.min(1, (t.have - from) / Math.max(1, t.next - from)));
       const perks = d.perks.map((p, i) => '<li class="' + (i < lvl ? 'on' : '') + '"><b>' + ROMAN[i + 1] + '</b>'
         + '<span>' + esc(p) + '</span><i>' + (i < lvl ? '✓' : api.count(d.need[i])) + '</i></li>').join('');
-      return '<details class="clkg-sh' + (full ? ' full' : '') + '"><summary>'
+      // 23.10: згорнута гілка теж каже, що дасть наступний щабель — і що під нею є ще (▸ і плитка-кнопка в css).
+      const nextLine = full ? '✓ усі п\'ять перків твої' : 'далі ' + ROMAN[lvl + 1] + ': ' + d.perks[lvl];
+      return '<details class="clkg-sh' + (full ? ' full' : '') + '" data-sh="' + esc(t.key) + '"' + (open.has(t.key) ? ' open' : '') + '>'
+        + '<summary title="Натисни — усі перки гілки">'
         + '<span class="clkg-shn">' + d.icon + ' ' + esc(d.name) + ' <b>' + (lvl ? ROMAN[lvl] : '—') + '</b></span>'
         + '<div class="clkg-rbar"><i style="width:' + (share * 100).toFixed(1) + '%"></i></div>'
-        + '<span class="clkg-shc">' + (full ? '✓ усе' : api.count(t.have) + '/' + api.count(t.next)) + '</span></summary>'
+        + '<span class="clkg-shc">' + (full ? '✓ усе' : api.count(t.have) + '/' + api.count(t.next)) + '</span>'
+        + '<span class="clkg-shx muted">' + esc(nextLine) + '</span></summary>'
         + '<div class="muted small">' + esc(d.what) + ': ' + api.count(t.have) + '</div>'
         + '<ol class="clkg-shp">' + perks + '</ol></details>';
     }).join('');
     return '<div class="clkg-shana"><div class="small"><b>🎖 Шана старійшини</b>'
+      + ' <span class="muted clkg-shhint">· натисни гілку — побачиш усі її перки</span>'
       + info('Вище за старійшину рангу нема — зате кожна гілка росте від своєї роботи за весь час: обпалене, покладене '
-        + 'на вози, розкішні вироби, допомога друзям і замовлення сіл. Кожен щабель — перк назавжди. Усі п\'ять на V — '
+        + 'на вози, розкішні вироби, допомога друзям і замовлення сіл. Кожен щабель — перк назавжди: смужка показує, '
+        + 'скільки до наступного, а натиск на гілку розгортає всі п\'ять перків із порогами. Усі п\'ять на V — '
         + 'звання «Легенда Опішні».') + '</div>' + rows + '</div>';
   }
+
+  /// Розгорнуті гілки шани — у пам'яті вкладки: вкладка «Село» перемальовується з кожним видом, і без цього
+  /// щойно розгорнута гілка згорталась сама.
+  const shanaOpen = (st) => st.shanaOpen || (st.shanaOpen = new Set());
 
   // ---------- ранг ----------
 
@@ -1142,7 +1200,8 @@
               + '<span class="muted small">🔒 ' + api.count(a.keep) + ' ' + api.plural(a.keep, 'виріб', 'вироби', 'виробів')
               + ' лишаться: ' + esc(keptWhy(st, api)) + '</span>' : '')
             + '</div>'
-          : '');
+          : '')
+        + giveQualityHtml(st, api, v, 4);
       const row = (it, i) => itemRow(st, api, it, i,
         giveBtn(st, api, it, 1, '+1') + (it.n >= 5 ? giveBtn(st, api, it, 5, '+5') : '') + (it.n > 1 ? giveBtn(st, api, it, it.n, 'усі ' + it.n) : ''),
         keptOf(it) ? '<span class="clkg-kept" title="' + esc(keptWhy(st, api, [it])) + '">🔒 ' + keptOf(it) + '</span>' : '');
@@ -1203,6 +1262,7 @@
       };
     }
     for (const b of body.querySelectorAll('.clkg-giveall')) b.onclick = (e) => giveAll(st, api, e, b);
+    for (const b of body.querySelectorAll('.clkg-qgive')) b.onclick = (e) => giveQuality(st, api, e, b);
     for (const b of body.querySelectorAll('[data-brag]')) {
       b.onclick = (e) => { if (human(e)) act(st, api, { op: 'brag', key: b.dataset.brag }, 'brag').then((r) => { if (r && r.ok) api.closeOverlay(st); }); };
     }
@@ -1279,6 +1339,7 @@
     const give = q('.clkg-give');
     if (give) give.onclick = () => openPicker(st, api, 'give');
     for (const b of st.guildBody.querySelectorAll('.clkg-giveall')) b.onclick = (e) => giveAll(st, api, e, b);
+    for (const b of st.guildBody.querySelectorAll('.clkg-qgive')) b.onclick = (e) => giveQuality(st, api, e, b);
     for (const b of st.guildBody.querySelectorAll('[data-claim]')) {
       b.onclick = (e) => {
         if (!human(e)) return;
@@ -1313,6 +1374,9 @@
     // Кнопка майстерштука тепер буває і в рядку рангу, і всередині «що потрібно» — вішаємо на обидві.
     for (const master of st.guildBody.querySelectorAll('.clkg-master')) {
       master.onclick = (e) => { if (human(e)) act(st, api, { op: 'masterpiece' }, null); };
+    }
+    for (const d of st.guildBody.querySelectorAll('.clkg-sh')) {
+      d.ontoggle = () => { if (d.open) shanaOpen(st).add(d.dataset.sh); else shanaOpen(st).delete(d.dataset.sh); };
     }
     const auto = q('.clkg-autobox');
     if (auto) auto.onchange = () => act(st, api, { op: 'auto', on: auto.checked }, null);

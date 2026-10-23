@@ -33,7 +33,7 @@
     (st.hands, st.inflight), тож живе з кожною пачкою, а не стрибає раз на вид. Відлік будови — той самий рахунок.
   - «Ліпити X» ставить і розпис рядка (дія wear); «Далі» в простої — найбільша нестача на наступні етапи.
   Дані v12: stage.needs[].depot, stage.work, plan [{ building, index, needs [{ ware, n, q, style, depot }] }],
-    totals [{ ware, q, style, n, depot, have }], depot; каталог — workCut, workPerHour.
+    totals [{ ware, q, style, n, depot, have }], depot; каталог — workCut, workKeep, workBars, workPerHour.
 */
 (() => {
   const human = HGames.ui.human;
@@ -120,8 +120,20 @@
       + ' % до всього й вічна нагорода; обпал будов не чіпає. Мала толока відкривається з гривні, велика — з червоного золотого. '
       + 'Вироби на будь-який етап наперед можна віднести на склад толоки — він поза коморою: місце в коморі звільняється, '
       + 'лад і обпал склад не чіпають, а закладка бере спершу зі складу. Поки етап будується, кожен твій клік біля кола — '
-      + 'цеглина в смугу своєї праці: повна смуга скорочує етап ще на ' + Math.round(((c && c.workCut) || 0.15) * 100) + ' %.';
+      + 'цеглина в смугу своєї праці: перша повна смуга скорочує етап ще на ' + pctT(workCutOf(c, 1) * 100)
+      + ' %, а далі йдуть наступні — кожна дає менше (дві — −' + pctT(workCutOf(c, 2) * 100) + ' %, '
+      + workW(c).bars + ' — −' + pctT(workCutOf(c, workW(c).bars) * 100) + ' %): до −' + Math.round(workW(c).max * 100)
+      + ' % лише наблизитись.';
   }
+
+  /// Своя праця — спадні смуги (сервер Clicker.TolokaWorkCutOf, 23.10): max × (1 − keep^смуг), не більше bars смуг.
+  const workW = (c) => ({ max: (c && c.workCut) || 0.5, keep: (c && c.workKeep) || 0.7, bars: (c && c.workBars) || 10 });
+  function workCutOf(c, bars) {
+    const w = workW(c);
+    return w.max * (1 - Math.pow(w.keep, Math.max(0, Math.min(w.bars, bars))));
+  }
+  /// Відсоток для тексту: «15», «25,5», «48,6».
+  const pctT = (p) => String(Math.round(p * 10) / 10).replace('.', ',');
 
   // ---------- малюнок ----------
 
@@ -410,11 +422,11 @@
   /// Своя праця на закладеному етапі: числа й смугу ставить work() — щопачки, без перемальовування розділу.
   function workHtml(st, api, s) {
     const c = cat(st);
-    const max = Math.round(((c && c.workCut) || 0.15) * 100);
-    return '<div class="clkl-work"><div class="clkl-wline">🧱 Своя праця · <b class="clkl-wn"></b> з ' + api.count(s.work.of)
-      + ' · <b class="clkl-wcut"></b></div><div class="clkl-wbar"><i></i></div>'
+    return '<div class="clkl-work"><div class="clkl-wline">🧱 Своя праця · смуга <b class="clkl-wbn"></b> з ' + workW(c).bars
+      + ' · <b class="clkl-wn"></b> з ' + api.count(s.work.of) + ' · <b class="clkl-wcut"></b></div><div class="clkl-wbar"><i></i></div>'
       + '<div class="clkl-wsave">⏱ <span class="clkl-wsv"></span></div>'
-      + '<div class="muted small">кожен клік біля кола — цеглина, повна смуга −' + max + ' % етапу</div></div>';
+      + '<div class="muted small">кожен клік біля кола — цеглина; кожна наступна смуга скорочує менше — до −'
+      + Math.round(workW(c).max * 100) + ' % лише наблизитись · <span class="clkl-wnext"></span></div></div>';
   }
 
   /// Своя праця зараз: з виду плюс кліки, що вже полетіли чи ще чекають пачки (сервер їх зарахує тим самим spin).
@@ -426,19 +438,28 @@
     if (!w) return null;
     const pend = ((st.hands && st.hands.length) || 0) + (st.inflight || 0);
     const key = s.building + ':' + s.index;
-    let n = Math.min(w.of, w.n + pend);
+    const c = cat(st);
+    const W = workW(c);
+    const top = w.of * W.bars;
+    let n = Math.min(top, w.n + pend);
     if (k.wKey === key && pend > 0 && n < k.wShown) n = k.wShown;
     k.wKey = key;
     k.wShown = n;
-    const c = cat(st);
-    const max = (c && c.workCut) || 0.15;
-    const frac = Math.min(1, n / Math.max(1, w.of));
+    // Смуга, що зараз наповнюється (1…bars), і скільки в ній; остання повна — так і лишається повною.
+    const done = n >= top;
+    const bar = done ? W.bars : Math.floor(n / w.of) + 1;
+    const inBar = done ? w.of : n - (bar - 1) * w.of;
+    const frac = Math.min(1, inBar / w.of);
+    const cut = workCutOf(c, n / w.of);
     // Відлік будови — з тим самим доростом: endsAt з виду вже має w.n, додаємо лише різницю.
-    const was = Math.min(1, w.n / Math.max(1, w.of));
-    const all = s.hours * 3600000 * (1 - (s.cut || 0)) * max;
-    const ends = s.endsAt - all * (frac - was);
-    // saved — скільки годинника своя праця вже зрізала (після друзів і реліквії, як і на сервері); all — повна смуга.
-    return { n, of: w.of, frac, cut: max * frac, ends, saved: all * frac, all };
+    const hours = s.hours * 3600000 * (1 - (s.cut || 0));
+    const ends = s.endsAt - hours * (cut - workCutOf(c, w.n / w.of));
+    // saved — скільки годинника своя праця вже зрізала (після друзів і реліквії, як і на сервері); barEnd — скільки буде
+    // зрізано, коли наповниться ця смуга; next — що додасть ця смуга понад попередні.
+    const barEnd = hours * workCutOf(c, bar);
+    const next = hours * (workCutOf(c, bar) - workCutOf(c, bar - 1));
+    return { n: inBar, of: w.of, bar, bars: W.bars, done, frac, cut, ends, saved: hours * cut, barEnd, next,
+      nextPct: (workCutOf(c, bar) - workCutOf(c, bar - 1)) * 100 };
   }
 
   function work(st, api) {
@@ -451,22 +472,27 @@
     // Перші сотні кліків — частки відсотка («−0,4 %», «−0,03 %»): «−0 %» після хвилини праці виглядало б, наче вона не йде.
     // Униз, як і хвилини: «−15 %» лише на повній смузі, а не вже на 35 634 з 36 000 (QA-3).
     const pct = w.cut * 100 + 1e-9;
-    const tp = (pct >= 10 || w.n === 0 ? String(Math.floor(pct)) : pct >= 0.1 ? String(Math.floor(pct * 10) / 10)
+    const any = w.bar > 1 || w.n > 0;
+    const tp = (pct >= 10 || !any ? String(Math.floor(pct)) : pct >= 0.1 ? String(Math.floor(pct * 10) / 10)
       : String(Math.max(0.01, Math.floor(pct * 100) / 100))).replace('.', ',');
-    const tc = (w.n > 0 ? '−' : '') + tp + ' %';
+    const tc = (any ? '−' : '') + tp + ' %';
     // QA 21.10: «4 581 клік — і що?» Відсоток не відчувається, хвилини — так: скільки годинника вже зрізано й скільки дасть смуга;
     // QA-3 — і скільки ще клікати до повної.
-    const play = '≈ ' + dur(((w.of - w.n) / PACE) * 60000) + ' гри до повної';
-    const ts = w.frac >= 1 ? 'зекономлено ' + dur(w.saved) + ' — смуга повна'
-      : (w.n > 0 ? 'зекономлено ' + dur(w.saved) + ' з ' + dur(w.all) : 'повна смуга зріже ' + dur(w.all) + ' будови') + ' · ' + play;
+    const play = '≈ ' + dur(((w.of - w.n) / PACE) * 60000) + ' гри до кінця смуги';
+    const ts = w.done ? 'зекономлено ' + dur(w.saved) + ' — усі смуги повні'
+      : (any ? 'зекономлено ' + dur(w.saved) + ', з цією смугою — ' + dur(w.barEnd) : 'перша смуга зріже ' + dur(w.barEnd) + ' будови') + ' · ' + play;
+    const tx = w.done ? 'більше праця не скоротить' : 'ця смуга: ще −' + pctT(w.nextPct) + ' % (' + dur(w.next) + ')';
+    const tb = String(w.bar);
     if (k.wn && k.wn.textContent !== tn) k.wn.textContent = tn;
     if (k.wc && k.wc.textContent !== tc) k.wc.textContent = tc;
     if (k.ws && k.ws.textContent !== ts) k.ws.textContent = ts;
+    if (k.wx && k.wx.textContent !== tx) k.wx.textContent = tx;
+    if (k.wbn && k.wbn.textContent !== tb) k.wbn.textContent = tb;
     if (k.wb) {
       const tr = 'scaleX(' + w.frac.toFixed(4) + ')';
       if (k.wb.style.transform !== tr) k.wb.style.transform = tr;
     }
-    el.classList.toggle('full', w.frac >= 1);
+    el.classList.toggle('full', w.done);
   }
 
   function needsHtml(st, api, s) {
@@ -481,7 +507,7 @@
     rows.push('<div class="clkl-need hours"><span class="clkl-nart clkl-emo">⏳</span>'
       + '<div class="clkl-ntxt"><b>' + hrs(s.hours * (1 - (s.cut || 0))) + '</b><span class="muted small">'
       + (cut > 0 ? 'будується замість ' + hrs(s.hours) + ' — друзі й рід скоротили на ' + cut + ' %' : 'будується годинником — глеками не пришвидшити')
-      + ' · своїми кліками під час будови — ще до −' + Math.round(((cat(st) && cat(st).workCut) || 0.15) * 100) + ' %'
+      + ' · смугами своїх кліків під час будови — ще до −' + Math.round(workW(cat(st)).max * 100) + ' %'
       + '</span></div><span class="clkl-mark"></span></div>');
     return '<div class="clkl-needs">' + rows.join('') + '</div>';
   }
@@ -606,6 +632,8 @@
       k.wc = k.workEl && k.workEl.querySelector('.clkl-wcut');
       k.wb = k.workEl && k.workEl.querySelector('.clkl-wbar i');
       k.ws = k.workEl && k.workEl.querySelector('.clkl-wsv');
+      k.wx = k.workEl && k.workEl.querySelector('.clkl-wnext');
+      k.wbn = k.workEl && k.workEl.querySelector('.clkl-wbn');
       // Нова розмітка — смуга стає на своє місце одразу, без наїзду з нуля (плавно вона лише доростає).
       if (k.wb) { k.wb.style.transition = 'none'; work(st, api); void k.wb.offsetWidth; k.wb.style.transition = ''; }
     }

@@ -464,10 +464,34 @@ public sealed partial class Clicker
     /// <summary>
     /// «🛒 Усе на віз»: уся комора однією дією, крім відкладеного (<see cref="WagonPick"/>). <c>keep: false</c> — і
     /// відкладене теж: перед обпалом комора однаково згорить, а на возі вироби ще щось дадуть.
+    /// <c>q</c> — лише цієї якості (23.10: «скласти всі звичайні й частину добрих, а дзвінкі й розкішні лишити» — без
+    /// перебору виробу за виробом), <c>n</c> — не більше стількох (спершу з найбільших купок).
     /// </summary>
     ActResult GuildGiveAll(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)
     {
         var (give, kept) = WagonPick(KeepFlag(payload), now);
+        var q = (int)(Num(payload, "q") ?? 0);
+        if (q is < 0 or > 4) return ActResult.Fail("Такої якості не буває");
+        if (q > 0)
+        {
+            give = [.. give.Where(x => x.Item.Quality == q)];
+            if (give.Count == 0)
+                return ActResult.Fail($"{new[] { "", "Звичайних", "Добрих", "Дзвінких", "Розкішних" }[q]} вільних у коморі нема — класти на віз нічого");
+            if (Num(payload, "n") is { } lim)
+            {
+                if (lim < 1) return ActResult.Fail("Скільки покласти — хоч один");
+                var left = (int)Math.Min(lim, StoreCapNow);
+                var some = new List<(ItemInfo Item, int N)>();
+                foreach (var (it, c) in give.OrderByDescending(x => x.N).ThenBy(x => x.Item.Ware, StringComparer.Ordinal).ThenBy(x => x.Item.Style, StringComparer.Ordinal))
+                {
+                    if (left <= 0) break;
+                    var take = Math.Min(left, c);
+                    some.Add((it, take));
+                    left -= take;
+                }
+                give = some;
+            }
+        }
         var n = give.Sum(x => x.N);
         if (n <= 0)
             return ActResult.Fail(kept > 0
@@ -898,7 +922,8 @@ public sealed partial class Clicker
     object WagonAllView(DateTimeOffset now)
     {
         var (give, kept) = WagonPick(true, now);
-        return new { n = give.Sum(x => x.N), keep = kept };
+        // byQ — скільки вільного кожної якості (1 звичайні … 4 розкішні): «🧺 Звичайні · усі» й «Добрі +10» (23.10).
+        return new { n = give.Sum(x => x.N), keep = kept, byQ = Enumerable.Range(1, 4).Select(q => give.Where(x => x.Item.Quality == q).Sum(x => x.N)) };
     }
 
     object? NextRankView()

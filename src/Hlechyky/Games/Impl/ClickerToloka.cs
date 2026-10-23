@@ -37,10 +37,13 @@ public sealed partial class Clicker
     /// <summary>Скільки виробів друзям — на ачівку «Прийшов на толоку».</summary>
     public const int TolokaHelpForAchievement = 100;
     /// <summary>
-    /// Своя праця (v12 §2): поки етап будується, ручні кліки по колу наповнюють смугу; повна смуга — етап коротший на
-    /// стільки, поверх друзів і реліквії. Слабко навмисно (слово користувача 21.10: «пришвидшувати, але дуууже слабко»).
+    /// Своя праця (v12 §2): поки етап будується, ручні кліки по колу наповнюють смуги; праця скорочує етап поверх друзів і
+    /// реліквії. 23.10 (слово користувача: «більший вплив, аж до 50 %, але чим ближче — тим важче»): смуга не одна, а до
+    /// <see cref="TolokaWorkBars"/>, і кожна наступна дає менше — скорочення <c>50 % × (1 − 0,7^смуг)</c>: перша −15 %
+    /// (як було), дві −25,5 %, три −33 %, п'ять −42 %, десять −48,6 %. До 50 % — лише наблизитись.
     /// </summary>
-    public const double TolokaWorkCut = 0.15;
+    public const double TolokaWorkCut = 0.50, TolokaWorkKeep = 0.7;
+    public const int TolokaWorkBars = 10;
     /// <summary>
     /// Скільки ручних кліків на годину етапу (без скорочень) — повна смуга. Калібрування 21.10 (§17): етап на 20 год —
     /// 19 000 кліків, тобто повний ігровий день лідера (dayClicks 20.10: Smaug 19 151 за 1,5 год у колі, Назар 18 572 за 2 год)
@@ -219,13 +222,20 @@ public sealed partial class Clicker
     /// <summary>Наскільки коротша будова зараз: друзі й реліквія, не більше <see cref="TolokaCutMax"/>.</summary>
     double TolokaCut => Math.Min(TolokaCutMax, TolokaHelperCut * Math.Min(TolokaHelpersMax, _tHelpers.Count) + Relic("toloka"));
 
-    /// <summary>Скільки ручних кліків — повна смуга своєї праці на етапі.</summary>
+    /// <summary>Скільки ручних кліків — одна смуга своєї праці на етапі (усіх смуг — <see cref="TolokaWorkBars"/>).</summary>
     static long TolokaWorkNeed(TolokaStage st) => (long)Math.Ceiling(TolokaWorkPerHour * st.Hours);
 
-    /// <summary>Скільки скорочує своя праця просто зараз (0 … <see cref="TolokaWorkCut"/>).</summary>
-    double TolokaWorkCutNow(TolokaStage st) => TolokaWorkCut * Math.Min(1, (double)_tWork / Math.Max(1, TolokaWorkNeed(st)));
+    /// <summary>Скільки скорочує праця <paramref name="work"/> кліків при смузі в <paramref name="bar"/>: спадні смуги до −50 %.</summary>
+    public static double TolokaWorkCutOf(long work, long bar)
+    {
+        var bars = Math.Clamp((double)work / Math.Max(1, bar), 0, TolokaWorkBars);
+        return TolokaWorkCut * (1 - Math.Pow(TolokaWorkKeep, bars));
+    }
 
-    /// <summary>Коли закладений етап буде готовий: друзі й реліквія (до −60 %), а поверх — своя праця (до −15 %).</summary>
+    /// <summary>Скільки скорочує своя праця просто зараз (0 … майже <see cref="TolokaWorkCut"/>).</summary>
+    double TolokaWorkCutNow(TolokaStage st) => TolokaWorkCutOf(_tWork, TolokaWorkNeed(st));
+
+    /// <summary>Коли закладений етап буде готовий: друзі й реліквія (до −60 %), а поверх — своя праця (до −50 %).</summary>
     DateTimeOffset TolokaEndsAt(TolokaStage st) =>
         _tLaidAt + TimeSpan.FromHours(st.Hours * (1 - TolokaCut) * (1 - TolokaWorkCutNow(st)));
 
@@ -404,14 +414,15 @@ public sealed partial class Clicker
         return ActResult.Accept($"📦 Зі складу толоки назад у комору: {what}");
     }
 
-    /// <summary>Своя праця: ручні кліки, поки етап будується (лише поточний закладений; смуга — до повної).</summary>
+    /// <summary>Своя праця: ручні кліки, поки етап будується (лише поточний закладений; до останньої смуги).</summary>
     void TolokaWork(int clicks, DateTimeOffset now)
     {
         if (_tLaidAt == default || clicks <= 0 || TolokaCurrent() is not { } b) return;
         var st = b.Stages[Math.Clamp(_tStage, 0, b.Stages.Length - 1)];
         var need = TolokaWorkNeed(st);
-        if (_tWork >= need) return;
-        _tWork = Math.Min(need, _tWork + clicks);
+        var max = need * TolokaWorkBars;
+        if (_tWork >= max) return;
+        _tWork = Math.Min(max, _tWork + clicks);
         if (_tWork >= need) Achieve("potter-toloka-work");
     }
 
@@ -580,6 +591,8 @@ public sealed partial class Clicker
         cutMax = TolokaCutMax,
         allBonus = TolokaAllBonus,
         workCut = TolokaWorkCut,
+        workKeep = TolokaWorkKeep,
+        workBars = TolokaWorkBars,
         workPerHour = TolokaWorkPerHour,
         buildings = Buildings.Select(b => new
         {

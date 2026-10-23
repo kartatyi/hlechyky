@@ -180,7 +180,7 @@ public class ClickerTolokaV12Tests
     // ---------- своя праця ----------
 
     [Fact]
-    public void Hand_clicks_during_the_build_shorten_the_stage_by_at_most_fifteen_percent()
+    public void Hand_clicks_during_the_build_shorten_the_stage_fifteen_percent_per_first_bar()
     {
         var h = Wheel();
         Give(h, 1e17);
@@ -195,10 +195,11 @@ public class ClickerTolokaV12Tests
         Assert.True(h.Act(0, "spin", PotterHands.Human(5)).Ok);
         Assert.InRange(T(h).GetProperty("stage").GetProperty("work").GetProperty("n").GetInt64(), 1, 5);
 
-        // Смуга добивається ручним кліком — і ачівка; повна смуга — рівно −15 %: година стає 51 хвилиною.
+        // Смуга добивається ручним кліком — і ачівка; перша повна смуга — рівно −15 %: година стає 51 хвилиною.
         Patch(h, s => s["toloka"]!["work"] = Clicker.TolokaWorkPerHour - 1);
         Assert.True(h.Act(0, "spin", PotterHands.Human(2)).Ok);
-        Assert.Equal((long)Clicker.TolokaWorkPerHour, T(h).GetProperty("stage").GetProperty("work").GetProperty("n").GetInt64());
+        Assert.True(T(h).GetProperty("stage").GetProperty("work").GetProperty("n").GetInt64() >= Clicker.TolokaWorkPerHour);
+        Patch(h, s => s["toloka"]!["work"] = Clicker.TolokaWorkPerHour);
         var laid = T(h).GetProperty("stage").GetProperty("laidAt").GetDateTimeOffset();
         var ends = T(h).GetProperty("stage").GetProperty("endsAt").GetDateTimeOffset();
         Assert.Equal(TimeSpan.FromMinutes(51), ends - laid);
@@ -206,5 +207,48 @@ public class ClickerTolokaV12Tests
         Assert.Equal(1, T(h).GetProperty("stage").GetProperty("index").GetInt32());
         Assert.True(h.Act(0, "look").Ok);
         Assert.Contains(h.Awards, a => a.Reason == "ach:potter-toloka-work");
+    }
+
+    [Fact]
+    public void Each_next_work_bar_cuts_less_and_ten_bars_stay_under_half()
+    {
+        // 23.10: 50 % × (1 − 0,7^смуг) — перша −15 %, дві −25,5 %, десять −48,6 %, далі праця не росте.
+        const long bar = 1000;
+        Assert.Equal(0, Clicker.TolokaWorkCutOf(0, bar), 9);
+        Assert.Equal(0.15, Clicker.TolokaWorkCutOf(bar, bar), 9);
+        Assert.Equal(0.255, Clicker.TolokaWorkCutOf(2 * bar, bar), 9);
+        Assert.Equal(0.5 * (1 - Math.Pow(0.7, 10)), Clicker.TolokaWorkCutOf(10 * bar, bar), 9);
+        Assert.Equal(Clicker.TolokaWorkCutOf(10 * bar, bar), Clicker.TolokaWorkCutOf(50 * bar, bar), 9);
+        Assert.True(Clicker.TolokaWorkCutOf(10 * bar, bar) < 0.5);
+        double prev = 0, step = 1;
+        for (var b = 1; b <= Clicker.TolokaWorkBars; b++)
+        {
+            var cut = Clicker.TolokaWorkCutOf(b * bar, bar);
+            Assert.True(cut - prev < step);                                   // кожна наступна смуга дає менше
+            step = cut - prev;
+            prev = cut;
+        }
+    }
+
+    [Fact]
+    public void Work_keeps_counting_past_the_first_bar_up_to_the_last_one()
+    {
+        var h = Wheel();
+        Give(h, 1e17);
+        Items(h, ("pot||1", 15), ("bowl||1", 15));
+        Assert.True(Toloka(h, new { @do = "lay" }).Ok);
+        // Друга смуга повна: година етапу — 60 × (1 − 0,255) = 44,7 хв.
+        Patch(h, s => s["toloka"]!["work"] = 2 * Clicker.TolokaWorkPerHour);
+        var st = T(h).GetProperty("stage");
+        Assert.Equal(0.255, st.GetProperty("work").GetProperty("cut").GetDouble(), 6);
+        Assert.Equal(TimeSpan.FromMinutes(60 * 0.745).TotalSeconds,
+            (st.GetProperty("endsAt").GetDateTimeOffset() - st.GetProperty("laidAt").GetDateTimeOffset()).TotalSeconds, 0);
+        // Кліки після першої смуги вже не відкидаються.
+        Assert.True(h.Act(0, "spin", PotterHands.Human(5)).Ok);
+        Assert.True(T(h).GetProperty("stage").GetProperty("work").GetProperty("n").GetInt64() > 2 * Clicker.TolokaWorkPerHour);
+        // Остання смуга — стеля.
+        Patch(h, s => s["toloka"]!["work"] = Clicker.TolokaWorkBars * Clicker.TolokaWorkPerHour);
+        Assert.True(h.Act(0, "spin", PotterHands.Human(5)).Ok);
+        Assert.Equal(Clicker.TolokaWorkBars * Clicker.TolokaWorkPerHour, T(h).GetProperty("stage").GetProperty("work").GetProperty("n").GetInt64());
     }
 }

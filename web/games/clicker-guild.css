@@ -135,11 +135,21 @@
 /* ---- шана старійшини (ClickerShana.cs) ----
    П'ять гілок одна під одною: рядок «значок назва щабель · смужка · лічильник», під «▾» — п'ять перків, набрані з ✓. */
 .clkg-shana { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+/* 23.10: «не зрозуміло, що на гілку можна натиснути» — рядок тепер плитка-кнопка зі стрілкою ▸/▾ і з наступним перком під
+   смужкою, тож і згорнута гілка каже, що дасть далі. */
+.clkg-sh { border-radius: 8px; background: rgba(255, 255, 255, .03); border: 1px solid transparent; }
+.clkg-sh:hover, .clkg-sh[open] { border-color: var(--line); background: rgba(255, 255, 255, .05); }
 .clkg-sh > summary {
-  display: grid; grid-template-columns: minmax(0, 1fr) 90px 88px; align-items: center; gap: 6px; font-size: .85em;
-  cursor: pointer; list-style: none;
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) 90px 88px; align-items: center; gap: 2px 6px; font-size: .85em;
+  cursor: pointer; list-style: none; padding: 4px 6px;
 }
 .clkg-sh > summary::-webkit-details-marker { display: none; }
+.clkg-sh > summary::before { content: '▸'; color: var(--accent); transition: transform .15s; }
+.clkg-sh[open] > summary::before { transform: rotate(90deg); }
+.clkg-sh > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 8px; }
+.clkg-shx { grid-column: 2 / -1; font-size: .92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clkg-sh > :not(summary) { margin-left: 26px; margin-right: 6px; }
+.clkg-shhint { font-weight: normal; }
 .clkg-shn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clkg-shn b { color: var(--accent); }
 .clkg-shc { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -152,7 +162,8 @@
 .clkg-shp li i { font-style: normal; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .clkg-shp li.on i { color: var(--ok); }
 @media (max-width: 420px) {
-  .clkg-sh > summary { grid-template-columns: minmax(0, 1fr) 48px 80px; }
+  .clkg-sh > summary { grid-template-columns: 14px minmax(0, 1fr) 48px 80px; }
+  .clkg-sh > :not(summary) { margin-left: 8px; }
 }
 
 /* ---- гончарі ---- */
@@ -243,6 +254,13 @@
 .clkg-lcell.q3 .clkg-lico, .clkg-lcell.q4 .clkg-lico { filter: drop-shadow(0 0 4px rgba(244, 197, 66, .6)); }
 .clkg-lmore { padding: 1px 8px; border-radius: 999px; background: rgba(255, 255, 255, .06); color: var(--muted); font-size: .85em; font-weight: 700; }
 .clkg-allrow { margin: 4px 0 2px; }
+/* «На віз за якістю» (23.10): рядок на якість — назва й лічильник ліворуч, «+10 · ½ · усі» праворуч. */
+.clkg-qgrid { display: flex; flex-direction: column; gap: 3px; margin: 6px 0 2px; }
+.clkg-qline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; font-size: .88em; }
+.clkg-qname b { font-variant-numeric: tabular-nums; }
+.clkg-qline.q3 .clkg-qname, .clkg-qline.q4 .clkg-qname { color: var(--accent); }
+.clkg-qbtns { display: flex; flex-wrap: wrap; gap: 4px; }
+.clkg-qbtns button.arm { border-color: var(--accent2, #e0a040); }
 .clkg-firewagon {
   display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 12px;
   background: var(--panel); border: 1px dashed var(--accent2);

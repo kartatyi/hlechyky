@@ -114,7 +114,7 @@ public sealed partial class Clicker
             var relic = RelicSumOf("toloka", root["relics"] is JsonObject r && r["toloka"] is JsonValue lv && lv.TryGetValue<int>(out var lvl) ? lvl : 0);
             var cut = Math.Min(TolokaCutMax, TolokaHelperCut * Math.Min(TolokaHelpersMax, helpers.Count) + relic);
             // Своя праця господаря теж зрізає годинник — друг мусить бачити той самий час (QA-3: «2 год 56 хв» проти «2 год 10 хв»).
-            var work = TolokaWorkCut * Math.Min(1, (double)Math.Max(0, row?.Work ?? 0) / Math.Max(1, TolokaWorkNeed(b.Stages[stage])));
+            var work = TolokaWorkCutOf(Math.Max(0, row?.Work ?? 0), TolokaWorkNeed(b.Stages[stage]));
             var at = (laidAt > now ? now : laidAt) + TimeSpan.FromHours(b.Stages[stage].Hours * (1 - cut) * (1 - work));
             if (at > now) ends = at;
             else

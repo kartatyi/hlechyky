@@ -850,6 +850,8 @@ public sealed partial class Clicker
     public const int AutoDryEnough = 6;
     /// <summary>Скільки горно мусить стояти незайманим, щоб палій узявся й за один сухий сирець.</summary>
     public static readonly TimeSpan KilnIdle = TimeSpan.FromMinutes(3);
+    /// <summary>Повна сушарня: палій бере партію, якщо гончар не чіпав горна хоч стільки (23.10).</summary>
+    public static readonly TimeSpan KilnFullGrace = TimeSpan.FromSeconds(30);
     /// <summary>Скільки партій палія — ачівка «Палій не спить».</summary>
     public const int AutoBatchesAch = 100;
     /// <summary>Офлайн-прогін майстерні (v9): крок не довший за це і не більше <see cref="WorkStepsMax"/> кроків.</summary>
@@ -1021,9 +1023,9 @@ public sealed partial class Clicker
     {
         if (action != "kiln") return null;
         var now = Ctx.Clock.UtcNow;
-        // Гончар сам узявся за горно — палій відступає: наступні три хвилини він не забирає сирців з-під рук.
-        _kilnTouch = now;
-        return Str(payload, "op") switch
+        var op = Str(payload, "op");
+        var helperBurning = _litAt != default && _litHelper;
+        var r = op switch
         {
             "load" => KilnLoad(payload, now),
             "light" => KilnLight(payload, now),
@@ -1034,12 +1036,17 @@ public sealed partial class Clicker
             "seen" => ResultSeen(),
             _ => ActResult.Fail("Біля горна так не роблять"),
         };
+        // Гончар сам узявся за горно — палій відступає: наступні три хвилини він не забирає сирців з-під рук. Лише справжня
+        // робота: «seen» шле сам клієнт після кожної партії, а невдалий натиск горна не чіпав — інакше палій після кожного
+        // обпалу стояв три хвилини, і сушарня в того, хто просто клацає, доходила до стелі (23.10).
+        if (r.Ok && !helperBurning && op is "load" or "light" or "open" or "paint" or "decor") _kilnTouch = now;
+        return r;
     }
 
     /// <summary>Скласти сухі сирці в горно: <c>{ n }</c> — скільки (типово — скільки влізе). Гаряче горно теж можна завантажувати.</summary>
     ActResult KilnLoad(JsonElement payload, DateTimeOffset now)
     {
-        if (_litAt != default) return ActResult.Fail("Горно палає — спершу відкрий його");
+        if (_litAt != default) return _litHelper ? HelperLit(now) : ActResult.Fail("Горно палає — спершу відкрий його");
         var free = KilnSlots - _kiln.Count;
         if (free <= 0) return ActResult.Fail($"Горно повне: {_kiln.Count} з {KilnSlots}");
         var want = (int)Math.Clamp(Num(payload, "n") ?? free, 1, free);
@@ -1056,7 +1063,7 @@ public sealed partial class Clicker
     /// </summary>
     ActResult KilnLight(JsonElement payload, DateTimeOffset now)
     {
-        if (_litAt != default) return ActResult.Fail("Горно вже палає");
+        if (_litAt != default) return _litHelper ? HelperLit(now) : ActResult.Fail("Горно вже палає");
         if (now < _coolUntil) return ActResult.Fail($"Горно ще гаряче — холоне {Wait(_coolUntil - now)}");
         var helper = Flag(payload, "helper");
         var straw = !helper && Flag(payload, "straw");
@@ -1080,6 +1087,16 @@ public sealed partial class Clicker
         return ActResult.Accept(helper
             ? $"🔥 Підмайстер розпалив горно: {_kiln.Count} {WaresWord(_kiln.Count)} — відкриє сам за {KilnBurn.TotalSeconds:0} с"
             : "🔥 Горно розпалено — тримай жар у зеленій смузі!");
+    }
+
+    /// <summary>
+    /// «Обпалити», а палій щойно розпалив сам (синхронізація перед дією): гончар хотів того самого — це не помилка, а
+    /// новина. Без цього натиск давав два червоні тости «горно вже палає» під досі холодним горном на екрані (23.10).
+    /// </summary>
+    ActResult HelperLit(DateTimeOffset now)
+    {
+        var left = _litAt + KilnBurn - now;
+        return ActResult.Accept($"🔥 Палій уже розпалив: {_kiln.Count} {WaresWord(_kiln.Count)} — відкриє сам за {Math.Max(1, Math.Ceiling(left.TotalSeconds)):0} с");
     }
 
     /// <summary>
@@ -1369,9 +1386,15 @@ public sealed partial class Clicker
         // Гравець уже взявся за партію (обрав розпис, малює чи намалював) — підмайстри не забирають її з-під рук.
         // Обраний розпис сам по собі партією не є: після KilnFinish він лишається як побажання «пали в косівському»,
         // і без цієї поправки палій офлайн не вмикався б ніколи в того, хто хоч раз розписав партію (рецензія v9).
-        if (_paintSeed != 0 || _kilnBeauty > 0 || (_kilnStyle.Length > 0 && _kilnTouch != default && now - _kilnTouch < KilnIdle)) return;
+        // Покинутий візерунок (понад PatternLife) партією теж не є: палій стояв би, доки гончар не згадає про розпис (23.10).
+        if ((_paintSeed != 0 && now - _paintAt <= PatternLife) || _kilnBeauty > 0) return;
         var ready = _rack.Count(r => r.DryAt <= now);
-        if (ready < Math.Min(KilnSlots, AutoDryEnough) && !(ready >= 1 && now - _kilnTouch >= KilnIdle)) return;
+        // Сушарня повна — нові сирці нікуди класти, тож палій бере партію, хоч би хто чіпав горно (23.10: у того, хто просто
+        // клацає, сушарня стояла 46/46, і кліки йшли впусту). Дотиком «seen» і невдалі натиски більше не є (ActKiln).
+        // Лише не просто зараз: хто щойно обрав розпис, за півхвилини натисне «Розписати» — партія його.
+        var full = _rack.Count >= RackSize && now - _kilnTouch >= KilnFullGrace;
+        if (!full && _kilnStyle.Length > 0 && _kilnTouch != default && now - _kilnTouch < KilnIdle) return;
+        if (!full && ready < Math.Min(KilnSlots, AutoDryEnough) && !(ready >= 1 && now - _kilnTouch >= KilnIdle)) return;
         var dry = TakeDry(now, KilnSlots);
         if (dry.Count == 0) return;
         KilnPut(dry);
