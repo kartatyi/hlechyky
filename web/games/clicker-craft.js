@@ -992,20 +992,31 @@
     // Сушарня — між горном і коморою: видно, що вже сохне й скільки лишилось. На телефоні сорок шість однакових
     // значків «сухий» займали ~260 px між горном і коморою, тож це згортка: смуга «34 з 46» і кілька значків, а сітка —
     // за ▸. На ПК згортка відкрита, поки гравець сам її не закриє (st.rackOpen, до кінця монтування).
+    // Сухі в сітці — одна плитка «×N» на виріб (і глину, і тонкий), далі мокрі з відліком (записка #66: дев'ятнадцять
+    // однакових «сухий» на два рядки ховали ті чотири, що ще сохнуть).
     const dryN = c.rack.filter((r) => r.dryAt <= now).length;
+    const dryGroups = [];
+    for (const r of c.rack) {
+      if (r.dryAt > now) continue;
+      const g = dryGroups.find((x) => x.ware === r.ware && x.clay === r.clay && x.thin === !!r.thin);
+      if (g) g.n++;
+      else dryGroups.push({ ware: r.ware, clay: r.clay, thin: !!r.thin, n: 1 });
+    }
     const peek = c.rack.slice(0, 6).map((r, i2) => wareSvg(api, r.ware, { raw: true, dry: r.dryAt <= now, clay: clayBody(st, r.clay),
       slot: 'speek-' + i2, cls: 'clkw-mini' })).join('');
     const rack = c.rack.length
       ? '<details class="clkw-rack-sec" data-key="rack"><summary><b>🧺 Сушарня · ' + c.rack.length + ' з ' + c.rackSize + '</b>'
         + (dryN ? '<span class="clkw-rackdry small">сухих ' + dryN + '</span>' : '')
         + '<span class="clkw-peek" aria-hidden="true">' + peek + (c.rack.length > 6 ? '<i>…</i>' : '') + '</span></summary>'
-        + '<div class="clkw-rackrow">'
-        + c.rack.map((r, i2) => {
-          const dry = r.dryAt <= now;
-          return '<span class="clkw-rackitem' + (dry ? ' dry' : '') + (r.thin ? ' thin" title="тонкий з каоліну — з горна вийде розкішним' : '') + '">'
-            + wareSvg(api, r.ware, { raw: true, dry, clay: clayBody(st, r.clay), slot: 'strack-' + i2, cls: 'clkw-mini' })
-            + '<span class="small">' + (dry ? 'сухий' : '<span class="clk-cd" data-at="' + r.dryAt + '" data-done="сухий"></span>') + '</span></span>';
-        }).join('') + '</div></details>'
+        + '<div class="clkw-rackrow">' + dryGroups.map((g, i2) => '<span class="clkw-rackitem dry' + (g.thin ? ' thin' : '') + '" title="'
+            + esc(g.n + ' ' + api.plural(g.n, 'сухий', 'сухих', 'сухих') + ': ' + wareName(st, g.ware)
+              + (g.thin ? ' — тонкі з каоліну, з горна вийдуть розкішними' : '') + ' — чекають горна') + '">'
+            + wareSvg(api, g.ware, { raw: true, dry: true, clay: clayBody(st, g.clay), slot: 'strack-d' + i2, cls: 'clkw-mini' })
+            + '<span class="small">×' + g.n + '</span></span>').join('')
+        + c.rack.filter((r) => r.dryAt > now).map((r, i2) => '<span class="clkw-rackitem' + (r.thin ? ' thin" title="тонкий з каоліну — з горна вийде розкішним' : '') + '">'
+            + wareSvg(api, r.ware, { raw: true, dry: false, clay: clayBody(st, r.clay), slot: 'strack-' + i2, cls: 'clkw-mini' })
+            + '<span class="small"><span class="clk-cd" data-at="' + r.dryAt + '" data-done="сухий"></span></span></span>').join('')
+        + '</div></details>'
       : '';
 
     // Комора: рядок на виріб, а розписи й якості — за ▾. Так чотирнадцять глеків читаються одним поглядом.
