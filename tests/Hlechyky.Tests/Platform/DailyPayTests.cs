@@ -20,7 +20,7 @@ public class DailyPayTests
         public Rewards Rewards { get; }
         public DailyPrizes Prizes { get; }
 
-        public Rig()
+        public Rig(IDailyPoints? points = null)
         {
             var o = E.Options;
             o.Boost = 10;
@@ -34,7 +34,7 @@ public class DailyPayTests
             o.DailyTopMinSolvers = 3;
             var names = new GameNames([], Games);
             var opts = new FixedOptions<EconomyOptions>(o);
-            Daily = new Daily(E.Store, names, E.Clock);
+            Daily = new Daily(E.Store, names, E.Clock, points is null ? null : [points]);
             E.Rewards.Detach();
             Rewards = new Rewards(E.Events, E.Economy, E.Store, E.Ratings, E.Achievements, Daily, names, E.Clock, opts,
                 NullLogger<Rewards>.Instance);
@@ -149,6 +149,32 @@ public class DailyPayTests
         Assert.Equal(100, rig.E.Paid("Оля", "daily-best:"));
         Assert.Equal(100, rig.E.Paid("Петро", "daily-best:"));
         Assert.Equal(0, rig.E.Paid("Оля", "daily-top:"));
+    }
+
+    sealed class Board(string game) : IDailyPoints
+    {
+        public Dictionary<string, long> Map { get; } = [];
+        public string Game => game;
+        public long? Points(string day, string nick) => Map.TryGetValue(nick, out var p) ? p : null;
+    }
+
+    [Fact]
+    public void Points_games_rank_by_points_and_wait_until_the_board_is_read()
+    {
+        var pts = new Board("g3");
+        using var rig = new Rig(pts);
+        var y = rig.Day(-1);
+        rig.Solve("g3", "Оля", attempts: 1, day: y);
+        rig.Solve("g3", "Петро", attempts: 1, day: y);
+        pts.Map["Петро"] = 4700;   // Олі на дошці ще нема — дошка дочитує базу
+
+        Assert.Equal(-1, rig.Prizes.Settle(y, final: false));
+        Assert.Equal(0, rig.E.Paid("Петро", "daily-best:"));
+
+        pts.Map["Оля"] = 4350;
+        Assert.True(rig.Prizes.Settle(y, final: false) > 0);
+        Assert.Equal(100, rig.E.Paid("Петро", "daily-best:"));
+        Assert.Equal(0, rig.E.Paid("Оля", "daily-best:"));
     }
 
     [Fact]
