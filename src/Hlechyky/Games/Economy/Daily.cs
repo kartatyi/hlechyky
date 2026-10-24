@@ -13,7 +13,21 @@ public sealed record DailyPuzzle(string Game, string Title, DailyMe? Me, int Str
     IReadOnlyList<DailyTopRow> Top);
 
 /// <summary>Те, що віддає GET /api/games/daily.</summary>
-public sealed record DailyStatus(string Day, int No, DateTimeOffset NextMidnight, IReadOnlyList<DailyPuzzle> Puzzles);
+public sealed record DailyStatus(string Day, int No, DateTimeOffset NextMidnight, IReadOnlyList<DailyPuzzle> Puzzles,
+    DailyPay? Pay = null);
+
+/// <summary>
+/// Скільки платить «Щоденний глек» (уже × Boost) — для смужки «Сьогодні»: база, серія, «повний глек» (скільки треба й
+/// скільки вже), нічні «за місце» й призи топу.
+/// </summary>
+public sealed record DailyPay(int Reward, int StreakPct, int StreakMaxPct, int FullNeed, int FullBonus, int Solved,
+    int BestMax, IReadOnlyList<int> Top, int TopMin)
+{
+    public static DailyPay Of(EconomyOptions o, int puzzles, int solved) => new(
+        o.Earn(o.DailyReward), Math.Max(0, o.DailyStreakPct), Math.Max(0, o.DailyStreakMaxPct),
+        o.DailyFullBonus > 0 ? Math.Min(Math.Max(0, o.DailyFullNeed), puzzles) : 0, o.Earn(Math.Max(0, o.DailyFullBonus)), solved,
+        o.Earn(Math.Max(0, o.DailyBestMax)), [.. (o.DailyTopPrizes ?? []).Select(p => o.Earn(Math.Max(0, p)))], o.DailyTopMinSolvers);
+}
 
 /// <summary>
 /// «Щоденний глек»: тонкий сервіс над <see cref="Days"/> з контракту. День, номер дня і сід — там;
@@ -23,7 +37,10 @@ public sealed class Daily(EconomyStore store, GameNames names, IClock clock, IEn
 {
     readonly IDailyPoints[] _points = points?.ToArray() ?? [];
 
-    long? PointsOf(string game, string day, string nick)
+    /// <summary>Чи міряється головоломка очками (більше — краще), а не спробами й часом.</summary>
+    public bool HasPoints(string game) => _points.Any(p => p.Game == game);
+
+    public long? PointsOf(string game, string day, string nick)
     {
         foreach (var p in _points)
             if (p.Game == game)

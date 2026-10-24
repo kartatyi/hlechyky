@@ -2406,7 +2406,30 @@
     const tour = tourCard() + padelCard();
     if (!cards && !tour) return '';
     return '<section class="gpanel gtoday"><h3>☀ Сьогодні' + (daily && daily.no ? ' <span class="muted small">· щоденний глек №' + daily.no + '</span>' : '') + '</h3>'
+      + (cards ? todayPay() : '')
       + '<div class="gtoday-row">' + cards + tour + '</div></section>';
+  }
+  /// Що платить щоденний глек (view: /api/games/daily → pay; старий сервер не шле — рядка нема): база, серія,
+  /// «повний глек» з поступом і нічні «за місце» й топ.
+  function todayPay() {
+    const p = daily && daily.pay;
+    if (!p || !p.reward) return '';
+    const bits = ['🏺 ' + p.reward + ' за кожну'];
+    if (p.streakPct > 0 && p.streakMaxPct > 0) bits.push('🔥 серія +' + p.streakPct + ' % за день, до +' + p.streakMaxPct + ' %');
+    if (p.fullNeed > 0 && p.fullBonus > 0) {
+      bits.push(p.solved >= p.fullNeed ? '✓ повний глек +' + p.fullBonus
+        : 'повний глек ' + Math.min(p.solved, p.fullNeed) + '/' + p.fullNeed + ' → +' + p.fullBonus);
+    }
+    const top = (p.top || []).filter((x) => x > 0);
+    const night = [];
+    if (p.bestMax > 0) night.push('за місце до +' + p.bestMax);
+    if (top.length) night.push('топ ' + top.map((x, i) => (['🥇', '🥈', '🥉'][i] || (i + 1) + '.') + x).join(' '));
+    if (night.length) bits.push('уночі: ' + night.join(', '));
+    const tip = 'Черепки за щоденні: ' + p.reward + ' за розв\'язок; серія додає +' + p.streakPct + ' % за кожен день поспіль (до +' + p.streakMaxPct + ' %)'
+      + (p.fullNeed ? '; ' + p.fullNeed + ' різних за день — ще +' + p.fullBonus : '')
+      + (p.bestMax ? '; опівночі — до +' + p.bestMax + ' за місце серед тих, хто розв\'язав (перший — усе, останній — нуль)' : '')
+      + (top.length ? '; першим місцям кожної — ' + top.join(' / ') + ', коли розв\'язало щонайменше ' + (p.topMin || 1) : '') + '.';
+    return '<p class="muted small gtoday-pay" title="' + esc(tip) + '">' + esc(bits.join(' · ')) + '</p>';
   }
 
   /// Кнопка швидкого запуску (ряди «⭐ Мої», «🕘 Нещодавно», «📈 Часто граємо»): та сама дія, що й на плитці.

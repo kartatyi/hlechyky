@@ -199,7 +199,8 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             // головоломка може не називати суму — тоді платимо типову з налаштувань;
             // раз на день на головоломку — це вже забезпечує сам ref. Сума гри — теж база: × Boost.
             var shards = o.Earn(e.Shards > 0 ? e.Shards : o.DailyReward);
-            economy.Grant(e.Nick, shards, e.Reason, $"{e.Reason}:{day}:{nickKey}");
+            var paid = economy.Grant(e.Nick, shards, e.Reason, $"{e.Reason}:{day}:{nickKey}");
+            if (paid == GrantResult.Applied) DailyExtras(e.Nick, nickKey, e.Reason["daily:".Length..], day, shards, o);
         }
         else if (e.Shards > 0)
         {
@@ -220,6 +221,39 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             }
         }
         achievements.OnAward(e);
+    }
+
+    /// <summary>
+    /// Надбавки «Щоденного глека» в мить розв'язку (лише людям): серія — відсоток від нагороди дня за кожен день серії
+    /// цієї головоломки (сьогоднішній — теж), і «повний глек» — раз на день, коли розв'язано
+    /// <see cref="EconomyOptions.DailyFullNeed"/> різних головоломок. Подія нагороди може прийти раніше за запис
+    /// результату, тож сьогоднішню головоломку рахуємо розв'язаною й без рядка. Нічні «за місце» й топ — <see cref="DailyPrizes"/>.
+    /// </summary>
+    void DailyExtras(string nick, string nickKey, string game, string day, int reward, EconomyOptions o)
+    {
+        var streakOn = o.DailyStreakPct > 0 && o.DailyStreakMaxPct > 0;
+        var fullOn = o.DailyFullNeed > 0 && o.DailyFullBonus > 0;
+        if ((!streakOn && !fullOn) || !store.IsPerson(nickKey)) return;
+        var solved = store.DailySolvedGames(day, nickKey);
+        if (streakOn)
+        {
+            var streak = daily.Streak(nick, game) + (solved.Contains(game) ? 0 : 1);
+            var bonus = o.DailyStreakBonus(reward, streak);
+            if (bonus > 0)
+                economy.Grant(nick, bonus, $"daily-streak:{game}", $"daily-streak:{game}:{day}:{nickKey}",
+                    $"+{bonus} {Economy.Shards(bonus)}: серія {streak} — {names.Title(game)}");
+        }
+        if (fullOn)
+        {
+            var puzzles = daily.Puzzles;
+            solved.Add(game);
+            var need = Math.Min(o.DailyFullNeed, puzzles.Count);
+            var have = puzzles.Count(solved.Contains);
+            var full = o.Earn(o.DailyFullBonus);
+            if (need > 0 && have >= need)
+                economy.Grant(nick, full, "daily-full", $"daily-full:{day}:{nickKey}",
+                    $"+{full} {Economy.Shards(full)}: повний щоденний глек — {have} з {puzzles.Count}");
+        }
     }
 
     /// <summary>

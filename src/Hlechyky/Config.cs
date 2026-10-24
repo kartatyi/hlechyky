@@ -192,6 +192,34 @@ public sealed class EconomyOptions
 
     /// <summary>Типова нагорода за розв'язану головоломку дня.</summary>
     public int DailyReward { get; set; } = 5;
+
+    // ---- надбавки «Щоденного глека» (25.10.2026). Лише людям: акаунт і не бот. Суми — база, × Boost; відсотки — як є.
+    // Типово в коді все вимкнено (тести й чужі гілки рахують старе), у appsettings.json — увімкнено.
+
+    /// <summary>Серія: +стільки відсотків до нагороди дня за кожен день серії цієї головоломки.</summary>
+    public int DailyStreakPct { get; set; }
+    /// <summary>Стеля надбавки за серію, у відсотках.</summary>
+    public int DailyStreakMaxPct { get; set; }
+    /// <summary>Скільки різних головоломок за день треба розв'язати на бонус «повний глек». 0 — бонусу нема.</summary>
+    public int DailyFullNeed { get; set; }
+    /// <summary>Бонус «повний глек» — раз на день.</summary>
+    public int DailyFullBonus { get; set; }
+    /// <summary>
+    /// «За кращий результат»: уночі за кожну головоломку вчорашнього дня — до стількох черепків за місцем серед людей,
+    /// що її розв'язали (перший — усе, останній — нуль, сам-один — половина). 0 — нема.
+    /// </summary>
+    public int DailyBestMax { get; set; }
+    /// <summary>Призи першим місцям кожної головоломки дня (уночі). Порожньо — нема.</summary>
+    public int[]? DailyTopPrizes { get; set; }
+    /// <summary>Призи топу платимо, лише коли головоломку розв'язало стільки людей.</summary>
+    public int DailyTopMinSolvers { get; set; } = 3;
+
+    /// <summary>Надбавка за серію в <paramref name="streak"/> днів (з сьогоднішнім) до нагороди <paramref name="reward"/>.</summary>
+    public int DailyStreakBonus(int reward, int streak)
+    {
+        var pct = Math.Clamp((long)Math.Max(0, DailyStreakPct) * Math.Max(0, streak), 0, Math.Max(0, DailyStreakMaxPct));
+        return reward <= 0 || pct <= 0 ? 0 : (int)Math.Round(reward * pct / 100.0, MidpointRounding.AwayFromZero);
+    }
     /// <summary>Скільки черепків на день можна виміняти в гончарному колі.</summary>
     public int ClickerDailyCap { get; set; } = 20;
     /// <summary>Вище цього клейма майстра стелю обміну не піднімуть, хоч скільки їх набери.</summary>
