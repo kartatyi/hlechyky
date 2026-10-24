@@ -497,7 +497,7 @@
   function mineOf(st, s) {
     const c = st.ctx, v = c.view || {}, nick = c.me && c.me.nick;
     const row = nick && s && (s.bets || []).find((b) => b.nick === nick);
-    if (row) return { amount: row.amount, auto: row.auto, out: row.out, win: row.win };
+    if (row) return { amount: row.amount, auto: row.auto, out: row.out, win: row.win, glek: row.glek };
     if (v.mine && v.round === s.round && v.mine.amount) return v.mine;
     return null;
   }
@@ -953,7 +953,7 @@
       if (mine && mine.amount) return { mode: 'cancel', t: 'Скасувати ставку', s: fmtN(mine.amount) + ' 🏺' + (mine.auto ? ' · авто ×' + fmtM(mine.auto) : '') + ' · чекаємо зльоту' };
       return { mode: 'bet', t: 'Поставити ' + fmtN(st.amount) + ' 🏺', s: st.autoOn ? 'автозабір на ×' + fmtM(st.autoX) : 'пробіл — теж «Поставити»' };
     }
-    if (mine && mine.out) return { mode: 'won', t: 'Забрано на ×' + fmtM(mine.out), s: '+' + fmtN(mine.win != null ? mine.win : mine.amount * mine.out) + ' 🏺' };
+    if (mine && mine.out) return { mode: 'won', t: 'Забрано на ×' + fmtM(mine.out), s: '+' + fmtN(mine.win != null ? mine.win : mine.amount * mine.out) + ' 🏺' + (mine.glek ? ' · +' + fmtN(mine.glek) + ' від Глека' : '') };
     if (s.phase === 'flight' && mine && mine.amount) {
       if (st.cashing === s.round) return { mode: 'cash busy', t: 'Забираю…', s: '×' + fmtM(m) };
       return { mode: 'cash', t: 'Забрати ×' + fmtM(m), s: '= ' + fmtN(Math.floor(mine.amount * m)) + ' 🏺' };
@@ -1050,7 +1050,7 @@
     const done = s.phase === 'crash' || s.phase === 'pause';
     st.el.bl.innerHTML = bets.length ? bets.map((b) => {
       let cls = 's-fly', txt;
-      if (b.out) { cls = 's-out'; txt = '×' + fmtM(b.out) + ' <b>+' + fmtN(b.win != null ? b.win : b.amount * b.out) + '</b>'; }
+      if (b.out) { cls = 's-out'; txt = '×' + fmtM(b.out) + ' <b>+' + fmtN(b.win != null ? b.win : b.amount * b.out) + '</b>' + (b.glek ? ' <i>+' + fmtN(b.glek) + ' від Глека</i>' : ''); }
       else if (done) { cls = 's-lost'; txt = 'шубовсть'; }
       else if (s.phase === 'bets') { cls = 's-wait'; txt = b.auto ? 'авто ×' + fmtM(b.auto) : 'чекає зльоту'; }
       else txt = 'летить…' + (b.auto ? ' <i>авто ×' + fmtM(b.auto) + '</i>' : '');
@@ -1124,7 +1124,7 @@
       if (b.nick === me) {
         st.cashing = null;
         const win = b.win != null ? b.win : Math.floor(b.amount * b.out);
-        pop(st, '+' + fmtN(win) + ' 🏺', 'win', 0.5, 0.6);
+        pop(st, '+' + fmtN(win) + ' 🏺' + (b.glek ? ' (+' + fmtN(b.glek) + ' від Глека)' : ''), 'win', 0.5, 0.6);
         coins(st);
         ping(st, [1320, 1760, 2093], 0.7, 0.16);
       } else ping(st, [1568], 0.35, 0.06);

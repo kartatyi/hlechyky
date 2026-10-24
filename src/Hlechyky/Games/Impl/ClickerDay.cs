@@ -88,6 +88,12 @@ public sealed class ClickerDayService : BackgroundService
 
     public ClickerDayOptions O => _opts();
 
+    /// <summary>Призи, які справді платимо: база з <see cref="ClickerDayOptions.PrizeList"/> × Economy:Boost.</summary>
+    public int[] Prizes => [.. O.PrizeList.Select(Earn)];
+
+    /// <summary>Множник заробітку (Economy:Boost): призи — заробіток грою, тож × Boost. Типово — як є (тести).</summary>
+    public Func<int, int> Earn { get; init; } = n => n;
+
     // ---------- доба ----------
 
     /// <summary>День, що закінчується найближчої 23:30 за Києвом: після 23:30 — уже завтрашній.</summary>
@@ -168,7 +174,7 @@ public sealed class ClickerDayService : BackgroundService
             {
                 day,
                 ends = Ends(day),
-                prizes = o.PrizeList,
+                prizes = Prizes,
                 minPoints = o.MinPoints,
                 minPlayers = o.MinPlayers,
                 person = IsPerson(nick),
@@ -198,7 +204,7 @@ public sealed class ClickerDayService : BackgroundService
             List<ClickerDayRow> board;
             lock (_gate) board = BoardLocked(day);
             var eligible = board.Where(r => r.Points >= o.MinPoints).ToList();
-            var prizes = o.PrizeList;
+            var prizes = Prizes;
             var winners = eligible.Count >= Math.Max(1, o.MinPlayers) ? eligible.Take(prizes.Length).ToList() : [];
             try
             {
@@ -373,7 +379,10 @@ public static class ClickerDaySetup
         {
             var opts = sp.GetRequiredService<IOptionsMonitor<ClickerDayOptions>>();
             return new ClickerDayService(sp.GetService<Db>(), sp.GetService<IStakes>(), () => opts.CurrentValue, sp.GetService<IClock>(),
-                sp.GetService<ISlotsWire>(), sp.GetService<Achievements>(), sp.GetService<ILogger<ClickerDayService>>());
+                sp.GetService<ISlotsWire>(), sp.GetService<Achievements>(), sp.GetService<ILogger<ClickerDayService>>())
+            {
+                Earn = n => sp.GetService<IOptionsMonitor<EconomyOptions>>()?.CurrentValue.Earn(n) ?? n,
+            };
         });
         services.AddHostedService(sp => sp.GetRequiredService<ClickerDayService>());
         return services;

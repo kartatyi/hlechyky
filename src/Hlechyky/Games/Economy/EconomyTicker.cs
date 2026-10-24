@@ -43,7 +43,8 @@ public sealed class EconomyTicker(Presence presence, Economy economy, EconomySto
                 var total = store.Bump(key, "online-total", AllDays, 1);
 
                 if (o.ListenEveryMinutes > 0 && minutes % o.ListenEveryMinutes == 0)
-                    economy.GrantSequenced(nick, o.ListenReward, "listen",
+                    // стеля рахує нарахування, а не черепки, тож × Boost її не чіпає: 12 разів по 10 = 120 на день
+                    economy.GrantSequenced(nick, o.Earn(o.ListenReward), "listen",
                         n => $"listen:{key}:{day}:{n}", "listen", o.ListenDailyCap);
 
                 achievements.OnOnlineMinutes(nick, total);

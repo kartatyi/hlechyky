@@ -691,6 +691,33 @@
     await ctx.closeOverlay(ov);
   };
 
+  // Доплата Глека (+N % до виграшу, стеля на день): табличка «🏺 Глек докинув +N» над лічильником виграшу, монетки,
+  // лічильник докручується до base + N. script.win уже з доплатою — finish() нічого не додає. ≤ 1,2 с (турбо, calm — швидше).
+  SK.steps.dobavka = async function (s, ctx) {
+    const amt = Math.max(0, Math.round(s.amount || 0));
+    if (!amt) return;
+    const base = Math.max(0, Math.round(s.base != null ? s.base : ctx.meter));
+    const calm = SK.calm(), fast = ctx.turbo || calm;
+    ctx.emit('dobavka', amt);
+    const wb = ctx.hud.querySelector('.sk-winbox') || ctx.hud;
+    const [x, y] = ctx.rel(wb, ctx.box);
+    const tag = div('sk-dobavka', '🏺 Глек докинув <b>+' + fmt(amt) + '</b>');
+    tag.style.left = x + 'px'; tag.style.top = y + 'px';
+    ctx.layer.appendChild(tag);
+    ctx.sound('coin');
+    if (!calm) ctx.fx.at(wb, { kind: 'coin', n: fast ? 6 : 12, speed: 460, size: 10 });
+    const ms = calm ? 700 : 1150;   // ctx.animate у турбо сам ×0,6
+    const a = ctx.animate(tag, calm ? [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }] : [
+      { transform: 'translate(-50%,-60%) scale(.6)', opacity: 0 },
+      { transform: 'translate(-50%,-125%) scale(1.08)', opacity: 1, offset: 0.2 },
+      { transform: 'translate(-50%,-130%) scale(1)', opacity: 1, offset: 0.8 },
+      { transform: 'translate(-50%,-150%) scale(1)', opacity: 0 },
+    ], { duration: ms, easing: 'ease-out', fill: 'forwards' });
+    await ctx.rollMeter(base + amt, fast ? 260 : 520);
+    await a.finished.catch(() => {});
+    tag.remove();
+  };
+
   // ---------- Монтування ----------
   // SlotKit.mount(el, idАбоАвтомат, {api, balance, onBalance}) → екземпляр
   SK.mount = function (host, idOrMachine, opts) {
@@ -939,8 +966,10 @@
       hud.querySelector('.sk-bp').disabled = ctx.busy || bi >= bets.length - 1;
       spinBtn.classList.toggle('busy', ctx.busy);
       spinBtn.classList.toggle('auto', !!ctx.auto);
-      spinBtn.classList.toggle('poor', !ctx.busy && ctx.balance < ctx.bet);
-      hud.querySelector('.sk-spin-t').textContent = ctx.busy ? (ctx.auto ? 'стоп' : 'швидше') : 'крутити';
+      spinBtn.classList.toggle('poor', !ctx.busy && !ctx.free && ctx.balance < ctx.bet);
+      spinBtn.classList.toggle('free', !!ctx.free);
+      hud.querySelector('.sk-spin-t').textContent = ctx.busy ? (ctx.auto ? 'стоп' : 'швидше') : ctx.free ? '🎁 ' + ctx.free.left : 'крутити';
+      if (ctx.free) { hud.querySelector('.sk-bm').disabled = true; hud.querySelector('.sk-bp').disabled = true; }
       root.classList.toggle('sk-busy', ctx.busy);
       tourneyHud();
     }
@@ -962,6 +991,16 @@
       ctx.tourney = t || null;
       if (t) { ctx.bet = t.bet; ctx.balance = t.chips; }
       root.classList.toggle('sk-tourney', !!t);
+      updateHud();
+    };
+    // 🎁 безкоштовні прокрути (gift.js): f = { bet, left } — ставка прокруту, баланс не чіпаємо; null — назад на свою ставку
+    ctx.free = null;
+    ctx.setFree = function (f) {
+      if (f && !ctx.free) ctx.freeBet0 = ctx.bet;
+      if (!f && ctx.free && ctx.freeBet0) ctx.bet = ctx.freeBet0;
+      ctx.free = f || null;
+      if (f) ctx.bet = f.bet;
+      root.classList.toggle('sk-free', !!f);
       updateHud();
     };
     function tourneyHud() {
@@ -1197,7 +1236,13 @@
           return g + '</div></div>';
         }).join('') + '</div>';
       }
-      const rules = typeof machine.rules === 'function' ? machine.rules(ctx) : (machine.rules || '');
+      let rules = typeof machine.rules === 'function' ? machine.rules(ctx) : (machine.rules || '');
+      // доплата Глека (сайт кладе вид у machine.dobavka: { pct, cap, left })
+      const dob = machine.dobavka;
+      if (dob && dob.pct > 0) {
+        rules = '<p class="sk-pt-dob">🏺 Глек доплачує ' + fmt(dob.pct) + ' % до кожного виграшу' + (dob.cap > 0 ? ' (до ' + fmt(dob.cap) + ' 🏺 на день)' : '')
+          + (dob.cap > 0 && dob.left != null ? '<br><small>доплати сьогодні ще ' + fmt(dob.left) + ' 🏺</small>' : '') + '</p>' + rules;
+      }
       const ov = div('sk-modal', '<div class="sk-modal-c"><button class="sk-x" aria-label="закрити">✕</button><h3>' + esc(machine.title || id) + ' — виплати</h3>'
         + '<div class="sk-pt-bet">за ставки ' + fmt(ctx.bet) + ' 🏺</div><div class="sk-pt">' + rows + '</div>' + linesH + '<div class="sk-pt-rules">' + rules + '</div></div>');
       layer.appendChild(ov);
@@ -1336,13 +1381,13 @@
     async function doSpin(given) {
       if (ctx.busy) return;
       closeMenus();
-      if (ctx.balance < ctx.bet && !given) {
+      if (ctx.balance < ctx.bet && !given && !ctx.free) {
         ctx.auto = 0; updateHud(); ctx.say('черепків бракує — зменш ставку', 2500);
         spinBtn.classList.remove('shake'); void spinBtn.offsetWidth; spinBtn.classList.add('shake'); return;
       }
       ctx.busy = true; ctx.meter = 0; setMeter(0); ctx.lastWins = null; ctx.say('');
-      if (ctx.balance >= ctx.bet) ctx.addBalance(-ctx.bet);
-      if (ctx.auto) ctx.autoNet -= ctx.bet;   // пакет 5: рахунок «стопу на мінусі» від старту автогри
+      if (!ctx.free && ctx.balance >= ctx.bet) ctx.addBalance(-ctx.bet);   // безкоштовний прокрут ставку не знімає
+      if (ctx.auto && !ctx.free) ctx.autoNet -= ctx.bet;   // пакет 5: рахунок «стопу на мінусі» від старту автогри
       updateHud();
       ctx.emit('spinStart');
       let script;
@@ -1367,7 +1412,7 @@
         ctx.autoNet += script ? (script.win || 0) + (script.jackpot || 0) : 0;
         if (hadBonus && ctx.autoStopBonus) ctx.auto = 0;
         else if (autoLossHit()) { ctx.auto = 0; ctx.say('Авто стоп: мінус ' + fmt(-ctx.autoNet) + ' 🏺', 4000); }
-        else if (ctx.balance < ctx.bet) ctx.auto = 0;
+        else if (!ctx.free && ctx.balance < ctx.bet) ctx.auto = 0;
         else { if (ctx.auto !== Infinity) ctx.auto--; if (ctx.auto) ctx.timeout(() => { if (ctx.auto && !ctx.busy) doSpin(); }, ctx.turbo ? 200 : 550); }
         updateHud();
       }

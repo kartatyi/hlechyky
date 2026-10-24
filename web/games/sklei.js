@@ -1120,7 +1120,7 @@
       + (mineList ? '<button type="button" class="ghost small" data-hide="' + x.id + '" data-h="' + (x.hidden ? 0 : 1) + '">' + (x.hidden ? '↩ повернути' : '🙈 сховати') + '</button>' : '')
       + (!mineList && d.admin ? '<button type="button" class="ghost small skl-del" data-del="' + x.id + '" title="Зняти з колоди">🗑</button>' : '') + '</figure>';
     const buy = d.account
-      ? '<button type="button" class="primary" data-buy>📷 Своя картинка — ' + d.price + ' 🏺</button> <span class="muted small">у тебе ' + d.balance + ' 🏺 · хтось склав твою — тобі +1 🏺</span>'
+      ? '<button type="button" class="primary" data-buy>📷 Своя картинка — ' + d.price + ' 🏺</button> <span class="muted small">у тебе ' + d.balance + ' 🏺 · хтось склав твою — тобі +' + (d.author || 1) + ' 🏺</span>'
       : '<span class="muted small">📷 Свою картинку в колоду можна купити за ' + d.price + ' 🏺 — лише з акаунта</span>';
     const mine = m && m.items && m.items.length
       ? '<div class="skl-sub">Мої картинки</div><div class="skl-grid">' + m.items.map((x) => thumb(x, true)).join('') + '</div>' : '';

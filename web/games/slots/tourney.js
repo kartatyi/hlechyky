@@ -64,6 +64,7 @@
     if (!t || !k || k.busy || !t.here || !t.open) return;
     const my = t.my;
     if (my && my.done) return;
+    if (st.gmode && window.SlotGift) SlotGift.leave(st);   // з безкоштовних — у турнір: спершу назад на свою ставку
     st.tmode = true;
     st.tour.chips = my ? my.chips : t.chips;
     st.tour.spin = my ? my.spin : 0;

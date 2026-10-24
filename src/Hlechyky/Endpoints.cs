@@ -36,9 +36,11 @@ public static class Endpoints
             IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel, IOptionsMonitor<Bets.BetsOptions> bets,
             IOptionsMonitor<Games.Impl.SlotsOptions> slots,
             IOptionsMonitor<Games.Impl.LelkaOptions> lelka, IOptionsMonitor<Games.Impl.KoloOptions> kolo,
-            IOptionsMonitor<Games.Impl.KavunyOptions> kavuny, IOptionsMonitor<Games.Impl.PlinkoOptions> plinko) => new
+            IOptionsMonitor<Games.Impl.KavunyOptions> kavuny, IOptionsMonitor<Games.Impl.PlinkoOptions> plinko, IOptionsMonitor<EconomyOptions> economy) => new
         {
             nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice,
+            // множник заробітку (Economy:Boost): ігри, що самі рахують черепки за очки («Скільки?», «Де це?»), множать на нього
+            boost = Math.Max(1, economy.CurrentValue.Boost),
             // вимкнене в конфігу — кнопок і вкладок нема: черепки за гривні (ShardShop:Buy / Sell, web/buy.js),
             // розділ «Ігри» (Games:Enabled; окремі ігри — позначкою off у каталозі) і Падельня (Padel:Enabled)
             shards = new { buy = shop.CurrentValue.Buy, sell = shop.CurrentValue.Sell },

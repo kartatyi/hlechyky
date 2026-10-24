@@ -12,6 +12,8 @@ public sealed class LelkaBet
     public int? Auto { get; set; }
     public int? Out { get; set; }
     public int Win { get; set; }
+    /// <summary>Доплата Глека, що вже сидить у <see cref="Win"/> (для показу «+M від Глека»).</summary>
+    public int Bonus { get; set; }
     /// <summary>Каса вже списала ставку (після закриття прийому; відповідь черги каси приходить за мить після зльоту).</summary>
     public bool Taken { get; set; }
 }
@@ -131,6 +133,7 @@ public sealed class Lelka : Game, ISharedTable
     LelkaBook? _book;
     IAzartSaldo? _saldo;
     Db? _db;
+    GlekBonus? _bonus;
     bool _dirty, _settledOnLoad;
     DateTimeOffset? _emptySince;
     /// <summary>Відповіді черги каси (списання, гаманці) — стан столу міняємо лише під замком кімнати, на тіку чи дії.</summary>
@@ -157,6 +160,8 @@ public sealed class Lelka : Game, ISharedTable
             _db = Ctx?.Services?.GetService(typeof(Db)) as Db;
         }
         catch { _saldo = null; _db = null; }
+        try { _bonus = Ctx?.Services?.GetService<GlekBonus>(); }
+        catch { _bonus = null; }
         if (_book is { Options.Enabled: false }) throw new GameError(OffText);
     }
 
@@ -475,7 +480,10 @@ public sealed class Lelka : Game, ISharedTable
     void CashOut(LelkaBet b, int cents)
     {
         b.Out = cents;
-        b.Win = LelkaCore.Win(b.Amount, cents);
+        var win = LelkaCore.Win(b.Amount, cents);
+        // Доплата Глека — лише до виграшу (на повернення ставки її нема): Return у касу вже з нею, тож відновлення платить те саме
+        b.Bonus = win > 0 && _bonus is { } gb ? gb.Take(b.Nick, win) : 0;
+        b.Win = win + b.Bonus;
         var key = Rooms.NickKey(b.Nick);
         S.Wallets[key] = (int)Math.Min(int.MaxValue, (long)S.Wallets.GetValueOrDefault(key) + b.Win);
         if (S.Pending is { } p) _book?.Cash(p.Table, p.Round, b.Nick, b.Win);
@@ -722,6 +730,7 @@ public sealed class Lelka : Game, ISharedTable
         auto = b.Auto is { } a ? LelkaCore.X(a) : (double?)null,
         @out = b.Out is { } o ? LelkaCore.X(o) : (double?)null,
         win = b.Win,
+        glek = b.Bonus > 0 ? b.Bonus : (int?)null,   // доплата Глека, уже в win
     };
 
     public override object? Frame() => FrameData(Now);
@@ -733,8 +742,9 @@ public sealed class Lelka : Game, ISharedTable
         var key = nick is null ? null : Rooms.NickKey(nick);
         var o = Opts;
         view["mine"] = key is not null && BetOf(key) is { } b
-            ? new { amount = b.Amount, auto = b.Auto is { } a ? LelkaCore.X(a) : (double?)null, @out = b.Out is { } x ? LelkaCore.X(x) : (double?)null, win = b.Win }
+            ? new { amount = b.Amount, auto = b.Auto is { } a ? LelkaCore.X(a) : (double?)null, @out = b.Out is { } x ? LelkaCore.X(x) : (double?)null, win = b.Win, glek = b.Bonus > 0 ? b.Bonus : (int?)null }
             : null;
+        view["dobavka"] = _bonus?.View(nick);   // доплата Глека: { pct, cap, left } (null — нема)
         view["wallet"] = key is null ? null : S.Wallets.TryGetValue(key, out var w) ? Math.Max(0, w) : null;
         view["limits"] = new { min = o.MinBet, max = o.MaxBet };
         view["on"] = o.Enabled && _book is not null;

@@ -516,7 +516,7 @@
         buys: [], markBtns: [], styleBtns: [], secretBtns: [],
         base: 0, total: 0, lastSync: 0, viewNow: 0, recvAt: Date.now(), offlineMs: 8 * 3600 * 1000,
         clickBase: 1, baseSecond: 0, fairUntil: 0, fairMult: 7, inspireUntil: 0, inspireMult: 25,
-        rateOf: 100, canSell: 0, mine: false, wear: null,
+        rateOf: 100, per: 1, canSell: 0, mine: false, wear: null,
         golden: null, goldenGone: 0, lookedFor: 0,
         fall: null, fallGone: 0, fallBroke: 0, fallLooked: 0, fallGain: 0, fallStreak: 0, streakBonus: 0,
         // Натиски на глеки, що ще не дійшли до сервера (grab — з полиці, catch — розписний), і що ми сказали про коло на
@@ -948,7 +948,7 @@
     if (st.all.disabled !== all) st.all.disabled = all;
     const pots = String(many * st.rateOf);
     if (st.all.dataset.pots !== pots) st.all.dataset.pots = pots;
-    const label = 'Обміняти все (' + num(many) + ' 🏺)';
+    const label = 'Обміняти все (' + num(many * st.per) + ' 🏺)';
     if (st.all.textContent !== label) st.all.textContent = label;
     // Новачок одним дотиком міг вилити ранні глеки в черепки сайту (QA-3): значок — лише з «Клеймами» і коли весь
     // сьогоднішній обмін — не більше відсотка глеків на руках.
@@ -2818,6 +2818,7 @@
     const v = ctx.view || {};
     const bonus = allText(stampPct(st, st.stamps));
     const cap = v.stampCap || 0;
+    const per = v.per || 1;   // черепків за сотню глеків (Economy:Boost)
     // Записка #28 (Smaug, 05.10): велике число — клейма за весь час (від них бонус, витрати його не чіпають), а скільки
     // ще можна витратити, стояло дрібним сірим рядком. Тепер вільні — поруч і того самого розміру.
     const head = '<div class="clk-stamps"><b>🔖 ' + stampsShort(st.stamps) + '</b>'
@@ -2830,8 +2831,8 @@
         + 'за весь час. Перша тисяча клейм дає по +' + dec(st.stampBonus * 100) + ' % до всього назавжди, далі кожне нове '
         + 'клеймо важить дедалі менше: на 4 000 — половину, на 16 000 — чверть, а після 4 млн бонус росте зовсім '
         + 'повільно — удесятеро більше клейм додають ту саму частку. Розписи, секрети, альбом і таблиця '
-        + 'лишаються. Кожні ' + STAMPS_PER_CAP + ' клейм — ще один черепок до денної стелі обміну'
-        + (cap ? ' (зараз +' + cap + ')' : '') + '.') + '</div>'
+        + 'лишаються. Кожні ' + STAMPS_PER_CAP + ' клейм — ще ' + (per > 1 ? per + ' ' + shards(per) : 'один черепок') + ' до денної стелі обміну'
+        + (cap ? ' (зараз +' + cap * per + ')' : '') + '.') + '</div>'
       + scienceLine(st, esc);
     // Два кола секретів (v9 §A.5): родинні — з першого дня, дідівські — на сотні клейм.
     // Записка #28: вільні клейма й «бракує N 🔖» малює stampButtons() поверх готової розмітки — витрата чи нове клеймо
@@ -4836,6 +4837,7 @@
         st.fairHeld = ((v.fair && v.fair.held) || 0) * 1000;
         st.inspireHeld = ((v.inspire && v.inspire.held) || 0) * 1000;
         st.rateOf = v.rate || 100;
+        st.per = v.per || 1;   // черепків за сотню глеків (Economy:Boost); canSell — у сотнях
         st.canSell = v.canSellToday || 0;
         st.ups = v.upgrades || {};
         st.markList = v.marks || [];
@@ -4983,10 +4985,11 @@
           helloLater(st);
         }
       }
-      const one = 'Обміняти ' + num(st.rateOf) + ' → 🏺1';
+      const one = 'Обміняти ' + num(st.rateOf) + ' → 🏺' + num(st.per);
       if (st.one.textContent !== one) st.one.textContent = one;
       const left = st.canSell > 0
-        ? 'сьогодні ще ' + num(st.canSell) + ' ' + shards(st.canSell) + ', по ' + num(st.rateOf) + ' глеків за черепок'
+        ? 'сьогодні ще ' + num(st.canSell * st.per) + ' ' + shards(st.canSell * st.per) + ', по ' + num(st.rateOf) + ' глеків за '
+          + (st.per > 1 ? num(st.per) + ' ' + shards(st.per) : 'черепок')
         : 'на сьогодні черепки скінчились, приходь завтра';
       if (st.left.textContent !== left) st.left.textContent = left;
       // Денну стелю вичерпано — дві вимкнені кнопки до завтра нічого не роблять, лише забирають рядок (13.10): на ПК
@@ -5048,7 +5051,7 @@
       return ['усього наліплено ' + short(v.total)]
         .concat(v.caught ? ['розписних спіймано ' + num(v.caught)] : [])
         .concat(v.grabbed ? ['з полиці ' + num(v.grabbed)] : [])
-        .concat(v.soldToday ? ['обміняно сьогодні ' + num(v.soldToday)] : [])
+        .concat(v.soldToday ? ['обміняно сьогодні ' + num(v.soldToday * (v.per || 1))] : [])
         .join(' · ');
     },
 

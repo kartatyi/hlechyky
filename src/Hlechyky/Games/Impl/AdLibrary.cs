@@ -368,8 +368,10 @@ public sealed class AdListenRewards(Economy.Economy economy, Presence presence, 
         foreach (var nick in p.Listeners.Where(still.Contains))
         {
             var key = EconomyStore.Key(nick);
-            var r = economy.GrantCapped(nick, o.ListenReward, "ad:listen",
-                $"ad-listen:{p.TrackId}:{p.StartedAt.UtcTicks}:{key}", CapKey, Math.Max(o.ListenReward, o.ListenDailyCap), o.ListenReward);
+            // і нагорода, і стеля (вона тут у черепках) — база × Economy:Boost
+            var shards = economy.Earn(o.ListenReward);
+            var r = economy.GrantCapped(nick, shards, "ad:listen",
+                $"ad-listen:{p.TrackId}:{p.StartedAt.UtcTicks}:{key}", CapKey, economy.Earn(Math.Max(o.ListenReward, o.ListenDailyCap)), shards);
             if (r == GrantResult.Applied) paid++;
         }
         if (paid > 0) log.LogInformation("за рекламу {Track} черепки отримали {N}", p.TrackId, paid);

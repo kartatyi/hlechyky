@@ -924,6 +924,12 @@ public sealed partial class Clicker : Game
     int DailyCap => BaseCap == 0 ? 0 : Math.Min(BaseCap + (int)Math.Min(MaxStampCap, _stamps / StampsPerCap), CapMax);
     /// <summary>Скільки черепків до стелі справді додали клейма (після всіх обмежень).</summary>
     int StampCap => DailyCap - BaseCap;
+    /// <summary>
+    /// Скільки черепків дає одна сотня глеків — <see cref="EconomyOptions.Boost"/> (15.10.2026: ×10 на все зароблене).
+    /// Лічильники дня (<see cref="DailyCap"/>, <see cref="_soldShards"/>) лишаються в сотнях глеків, а людина бачить і
+    /// отримує сотні × Per — так само множить і стелю економіка (Rewards.ClickerCap).
+    /// </summary>
+    int Per => Math.Max(1, _opts?.CurrentValue.Boost ?? 1);
 
     /// <summary>Скільки вже виміняно САМЕ сьогодні: після півночі лічильник сам стає нулем.</summary>
     int SoldToday => _soldDay == Days.Today(Ctx.Clock) ? _soldShards : 0;
@@ -1835,12 +1841,12 @@ public sealed partial class Clicker : Game
         };
     }
 
-    /// <summary>Прилавок: сотня глеків за черепок, не більше <see cref="DailyCap"/> черепків на день.</summary>
+    /// <summary>Прилавок: сотня глеків за <see cref="Per"/> черепків, не більше <see cref="DailyCap"/> сотень на день.</summary>
     ActResult Sell(JsonElement payload)
     {
         RollDay();   // після київської півночі лічильник дня чистий — і перевірка, і запис бачать нуль
         var pots = Num(payload, "pots") ?? 0;
-        if (pots <= 0 || pots % Rate != 0) return ActResult.Fail($"Міняю сотнями: {Rate} глеків — один черепок");
+        if (pots <= 0 || pots % Rate != 0) return ActResult.Fail($"Міняю сотнями: {Rate} глеків — {(Per == 1 ? "один черепок" : $"{Per} {Shards(Per)}")}");
         if (pots > _pots) return ActResult.Fail("Стільки глеків ще не наліплено");
 
         var left = Math.Max(0, DailyCap - _soldShards);
@@ -1848,14 +1854,15 @@ public sealed partial class Clicker : Game
         // Рахуємо в long і ріжемо стелею ДО приведення: глеків у стані може лежати скільки завгодно
         // (стан — це JSON у базі), а (int) від такої частки мовчки загорнувся б у мінус.
         var want = pots / Rate;
-        if (want > left) return ActResult.Fail($"Сьогодні лишилось {left} — більше не візьму");
-        var shards = (int)want;
+        if (want > left) return ActResult.Fail($"Сьогодні лишилось {left * Per} — більше не візьму");
+        var lots = (int)want;
+        var shards = lots * Per;
 
         _pots -= pots;
-        _soldShards += shards;
+        _soldShards += lots;
         // Стеля дня в економіці своя (Economy:ClickerDailyCap). Коли клейма її підняли, кажемо економіці
-        // власне число — вона однаково не пустить вище за Economy:ClickerDailyCapMax.
-        Ctx.Award(0, shards, StampCap > 0 ? $"clicker:{DailyCap}" : "clicker");
+        // власне число — вона однаково не пустить вище за Economy:ClickerDailyCapMax. Обидва — у черепках (× Per).
+        Ctx.Award(0, shards, StampCap > 0 ? $"clicker:{DailyCap * Per}" : "clicker");
         return ActResult.Accept($"Обміняв {pots} глеків на {shards} {Shards(shards)}");
     }
 
@@ -2413,6 +2420,7 @@ public sealed partial class Clicker : Game
             soldToday = SoldToday,
             cap = DailyCap,
             rate = Rate,
+            per = Per,   // черепків за сотню глеків (Economy:Boost); canSellToday, soldToday, cap і stampCap — у сотнях
             // Клієнт доліковує глеки від цієї мітки — тому вона мусить бути на дроті, а не лише в пам'яті.
             lastSync = _lastSync,
             // І серверне «зараз» поруч: інакше клієнт міряв би серверну мітку своїм годинником, а збитий

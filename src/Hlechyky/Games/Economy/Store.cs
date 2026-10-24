@@ -656,6 +656,23 @@ public sealed class EconomyStore(Db db)
         return list;
     });
 
+    // ---------- подарунок-перерахунок (Regift) ----------
+
+    /// <summary>Люди: акаунти, що не боти (<see cref="Bots.NotBot"/>), — ключ і нік акаунта.</summary>
+    public List<(string Key, string Nick)> People() => db.With(c =>
+    {
+        using var cmd = Cmd(c, $"SELECT a.nick_key, a.nick FROM accounts a WHERE {Bots.NotBot("a.nick_key")} ORDER BY a.nick_key");
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, string)>();
+        while (r.Read()) list.Add((r.GetString(0), r.GetString(1)));
+        return list;
+    });
+
+    /// <summary>Скільки ніку прийшло за ачівки за весь час: самі ачівки (<c>ach:*</c>) і минулі перерахунки (<c>regift-ach:*</c>).</summary>
+    public long PaidForAchievements(string nickKey) => db.With(c =>
+        Scalar(c, "SELECT COALESCE(SUM(delta), 0) FROM ledger WHERE nick_key=$n AND delta > 0 " +
+            "AND (substr(reason, 1, 4) = 'ach:' OR substr(reason, 1, 11) = 'regift-ach:')", ("$n", nickKey)));
+
     // ---------- щоденне ----------
 
     /// <summary>
@@ -702,6 +719,33 @@ public sealed class EconomyStore(Db db)
         using var r = cmd.ExecuteReader();
         var list = new List<DailyRow>();
         while (r.Read()) list.Add(new DailyRow(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetInt32(4) == 1, r.GetInt32(5), r.GetInt32(6)));
+        return list;
+    });
+
+    /// <summary>Людина: акаунт і не бот (<see cref="Bots.NotBot"/>). Надбавки «Щоденного глека» — лише людям.</summary>
+    public bool IsPerson(string nickKey) => db.With(c =>
+        Convert.ToInt64(Scalar(c, $"SELECT {Bots.NotBot("$n")}", ("$n", nickKey))) == 1);
+
+    /// <summary>Які головоломки нік розв'язав за день.</summary>
+    public HashSet<string> DailySolvedGames(string day, string nickKey) => db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT game FROM daily_results WHERE day=$d AND nick_key=$n AND solved=1", ("$d", day), ("$n", nickKey));
+        using var r = cmd.ExecuteReader();
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        while (r.Read()) set.Add(r.GetString(0));
+        return set;
+    });
+
+    /// <summary>Усі люди (акаунти без ботів), що розв'язали головоломку дня, — у порядку топу дня.</summary>
+    public List<DailyRow> DailySolvers(string day, string game) => db.With(c =>
+    {
+        using var cmd = Cmd(c, $"""
+            SELECT day, game, nick_key, nick, solved, attempts, ms FROM daily_results
+            WHERE day = $d AND game = $g AND solved = 1 AND {Bots.NotBot("nick_key")} ORDER BY attempts ASC, ms ASC, created_at ASC
+            """, ("$d", day), ("$g", game));
+        using var r = cmd.ExecuteReader();
+        var list = new List<DailyRow>();
+        while (r.Read()) list.Add(ReadDailyRow(r));
         return list;
     });
 
