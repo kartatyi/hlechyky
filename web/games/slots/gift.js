@@ -80,6 +80,10 @@
     });
     if (st.inst) st.inst.ctx.on('spinEnd', (script) => afterSpin(st, script));
     render(st);
+    // прийшли з 🎁 у шапці чи з картки в «Сьогодні» (HGames.openGift) — одразу в режим «безкоштовно»
+    let want = false;
+    try { want = sessionStorage.getItem('slots.gift') === '1'; sessionStorage.removeItem('slots.gift'); } catch (e) { /* приватне вікно */ }
+    if (want) setTimeout(() => enter(st), 300);
   }
 
   function update(st) {

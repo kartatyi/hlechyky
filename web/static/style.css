@@ -139,6 +139,12 @@ header .mechip .nick { overflow: hidden; text-overflow: ellipsis; white-space: n
 header .mechip.guest .nick { color: var(--muted); }
 header .mechip.admin .nick::after { content: " · адмін"; color: var(--accent); }
 header .mechip .wallet { color: var(--accent); font-size: .9em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* 🎁 безкоштовні прокрути — зелений значок поруч із профілем */
+header .hdrfree { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 999px; font: inherit; font-size: .9em;
+  cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; color: #bff0c9; background: rgba(79, 179, 106, .16);
+  border: 1px solid rgba(79, 179, 106, .55); }
+header .hdrfree:hover { background: rgba(79, 179, 106, .28); }
+header .hdrfree[hidden] { display: none; }
 /* Хід у покроковій грі, поки ти деінде: «Ігри» в шапці тихенько світяться. */
 header .vswitch button.turn { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent2); }
 @media (prefers-reduced-motion: no-preference) { header .vswitch button.turn { animation: turnGlow 1.6s ease-in-out infinite; } }
@@ -861,6 +867,9 @@ body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
   .mtabs button.on { color: var(--accent); }
   .mtabs button .chip.badge { position: absolute; top: 3px; left: calc(50% + 8px); }
   .mtabs .badge.turn { background: var(--accent); }
+  /* 🎁 безкоштовні прокрути: у шапці телефона місця нема — бейджем на «Іграх», ліворуч від значка */
+  header .hdrfree { display: none; }
+  .mtabs button .chip.badge.gift { left: auto; right: calc(50% + 8px); background: #3f9a57; color: #fff; }
   /* Шторка балачки столу — над міні-плеєром і вкладками; розгорнута — на всю ширину. */
   .tchat.drawer { right: 12px; bottom: calc(var(--tabs-h) + var(--mini-h) + 10px); }
   .tchat.drawer.open { left: 12px; }

@@ -160,6 +160,7 @@
     if (st.waitG && g && (g.n || 0) > st.waitG.n) st.waitG.done(Object.assign({}, g, { balance: v.balance }));
     if (window.SlotTour) SlotTour.update(st);
     if (window.SlotGift) SlotGift.update(st);
+    if (v.free) document.dispatchEvent(new CustomEvent('hgames:free', { detail: v.free }));   // 🎁 у шапці й у «Сьогодні»
     if (st.inst && !st.inst.busy && !st.waitSpin && !st.hold && !st.tmode) { const b = liveBal() != null ? liveBal() : v.balance; if (b != null) st.inst.ctx.setBalance(b); }
   }
 
@@ -214,6 +215,7 @@
     if (v.gamble && v.gamble.open && machine._resumeGamble) machine._resumeGamble(st.inst.ctx, v.gamble);
     if (window.SlotTour) SlotTour.mount(st);
     if (window.SlotGift) SlotGift.mount(st);
+    try { localStorage.setItem('slots.last', id); } catch (e) { /* приватне вікно */ }   // 🎁 у шапці веде в останній автомат
     st.inst.ctx.on('spinEnd', () => { st.hold = false; release(); if (st.tmode) return; const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
     fitH(st);
     feedOn();

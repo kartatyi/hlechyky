@@ -77,7 +77,11 @@ public static class EconomySetup
         api.MapGet("/daily", (HttpContext c, Daily daily, IOptionsMonitor<EconomyOptions> o) =>
         {
             var s = daily.Status(Auth.Nick(c));
-            return s with { Pay = DailyPay.Of(o.CurrentValue, s.Puzzles.Count, s.Puzzles.Count(p => p.Me?.Solved == true)) };
+            return s with
+            {
+                Pay = DailyPay.Of(o.CurrentValue, s.Puzzles.Count, s.Puzzles.Count(p => p.Me?.Solved == true)),
+                Money = daily.Money(Auth.Nick(c), s, o.CurrentValue),
+            };
         });
 
         Impl.AdSetup.MapAds(app);        // /api/ads/library*, /api/ads/air* — реклама, лише господар
