@@ -17,33 +17,37 @@
 
   function card(root) {
     root.innerHTML = '<div class="fura-card">'
-      + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">етап 0 · полігон</span></div>'
-      + '<p>Тягач із причепом на майданчику: покатайся, спробуй кермо й зачепи причіп заднім ходом. '
-      + 'Рейсів і черепків ще нема — це проба, як фура відчувається.</p>'
+      + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">етап 1 · у роботі</span></div>'
+      + '<p><b>Чумацький край</b> — пагорби, річка з мостами, траса, сільські дороги й ґрунтовки між депо, Гончарівкою, '
+      + 'Цегельнею, Медовим, Соляним складом і Полтавкою. Рейси й черепки — скоро. <b>Полігон</b> — майданчик, щоб '
+      + 'потренуватись чіплятись заднім ходом.</p>'
       + '<ul class="fura-dev"><li>🛞 <b>Кермо</b> (G29 та інші) — при першому вході гра попросить відкалібрувати</li>'
       + '<li>🎮 <b>Пад / Steam Deck</b> — лівий стік кермо, R2 газ, L2 гальмо, Ⓐ зчепити</li>'
       + '<li>⌨ <b>Клавіатура</b> — W/S газ і гальмо, A/D кермо, T зчепити, C камера</li></ul>'
-      + '<button class="btn fura-go" type="button">🚚 На полігон</button>'
+      + '<div class="fura-row"><button class="btn fura-go" type="button" data-mode="kray">🗺 Чумацький край</button>'
+      + '<button class="btn fura-go fura-go2" type="button" data-mode="polygon">🚧 Полігон</button></div>'
       + '<div class="fura-err muted small"></div></div>';
-    root.querySelector('.fura-go').addEventListener('click', () => start(root));
+    root.querySelectorAll('.fura-go').forEach((b) => b.addEventListener('click', () => start(root, b)));
   }
 
-  async function start(root) {
+  async function start(root, btn) {
     if (game || starting) return;
     starting = true;
-    const btn = root.querySelector('.fura-go');
     const err = root.querySelector('.fura-err');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Заводимо…'; }
+    const label = btn.textContent;
+    root.querySelectorAll('.fura-go').forEach((b) => { b.disabled = true; });
+    btn.textContent = '⏳ Заводимо…';
     if (err) err.textContent = '';
     try {
       const mod = await import('/games/fura/main.js');
-      game = await mod.start({ onExit: stop });
+      game = await mod.start({ onExit: stop, mode: btn.dataset.mode });
     } catch (e) {
       console.error('[fura]', e);
       if (err) err.textContent = 'Не завелось: ' + (e && e.message ? e.message : e);
     } finally {
       starting = false;
-      if (btn) { btn.disabled = false; btn.textContent = '🚚 На полігон'; }
+      root.querySelectorAll('.fura-go').forEach((b) => { b.disabled = false; });
+      btn.textContent = label;
     }
   }
 

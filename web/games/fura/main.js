@@ -4,7 +4,8 @@
 
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
 import * as RAPIER from '/static/vendor/rapier-0.21.0/rapier.js';
-import { buildWorld, SPAWN } from './world.js';
+import { buildWorld, SPAWN as POLY_SPAWN } from './world.js';
+import { buildKray } from './kray.js';
 import { Truck, TRACTOR, TRAILER } from './truck.js';
 import { buildModels } from './model.js';
 import { Input, pads, isPad, looksLikeWheel, loadCalib, shortName } from './input.js';
@@ -27,10 +28,11 @@ const store = {
   set(k, v) { try { localStorage.setItem('fura.' + k, v); } catch { /* пусто */ } },
 };
 
-export async function start({ onExit } = {}) {
+/** mode: 'kray' — «Чумацький край» (мапа з сервера), 'polygon' — полігон етапу 0 для тренування. */
+export async function start({ onExit, mode = 'kray' } = {}) {
   const app = document.createElement('div');
   app.className = 'fura-app';
-  app.innerHTML = '<div class="fura-loading">🚚 Заводимо фуру…</div>';
+  app.innerHTML = '<div class="fura-loading">' + (mode === 'kray' ? '🗺 Будуємо Чумацький край…' : '🚚 Заводимо фуру…') + '</div>';
   document.body.appendChild(app);
   try { if (app.requestFullscreen && !document.fullscreenElement) app.requestFullscreen().catch(() => {}); } catch { /* пусто */ }
 
@@ -68,8 +70,23 @@ export async function start({ onExit } = {}) {
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = STEP;
   try { world.integrationParameters.numSolverIterations = 8; } catch { /* стара назва — лишаємо типове */ }
-  const level = buildWorld(THREE, RAPIER, scene, world, quality);
+  let level, SPAWN;
+  if (mode === 'kray') {
+    const res = await fetch('/api/games/fura/map/kray');
+    if (!res.ok) throw new Error('мапа не приїхала (' + res.status + ')');
+    const map = await res.json();
+    await new Promise((r) => setTimeout(r, 30));            // дати браузеру домалювати «Будуємо…»
+    level = buildKray(THREE, RAPIER, scene, world, quality, map);
+    // поки рейсів нема (крок 1d) — тягач у депо, порожній причіп у боксі 1
+    const s = level.spawn, dock = level.places.find((p) => p.depot).docks[0];
+    SPAWN = { tractor: s, trailer: { x: dock.x, z: dock.z, yaw: dock.yaw, y: level.height(dock.x, dock.z) } };
+    scene.fog.near = 240; scene.fog.far = 760; camera.far = 1100;
+  } else {
+    level = buildWorld(THREE, RAPIER, scene, world, quality);
+    SPAWN = POLY_SPAWN;
+  }
   const truck = new Truck(THREE, RAPIER, world, scene, { spawn: SPAWN });
+  truck.ground = level.height || (() => 0);
   const model = buildModels(THREE, scene);
   // Промені коліс бачать лише нерухоме: ні свій тягач/причіп, ні конуси під колесами (конус штовхаємо корпусом)
   const onlyFixed = (col) => { const p = col.parent(); return !p || p.isFixed(); };
@@ -118,6 +135,10 @@ export async function start({ onExit } = {}) {
   // ---- камера за фурою
   const chase = { pos: new THREE.Vector3(0, 6, 30), yaw: 0, look: new THREE.Vector3() };
   function placeCamera(dt) {
+    if (api.freeCam) {                     // огляд з консолі: __fura.freeCam = {pos:[x,y,z], look:[x,y,z]}
+      camera.position.set(...api.freeCam.pos); camera.lookAt(...api.freeCam.look); camera.fov = api.freeCam.fov || 60;
+      camera.updateProjectionMatrix(); return;
+    }
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(pose.tq);
     const yaw = Math.atan2(fwd.x, fwd.z);
     if (cam === 'cabin') {
@@ -287,7 +308,7 @@ export async function start({ onExit } = {}) {
 
   // ---- кадр
   let hudAt = 0, jugX = 0, jugZ = 0, jugVX = 0, jugVZ = 0, flashAt = 0;
-  const api = { truck, world, input, sound, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
+  const api = { truck, world, input, sound, level, camera, scene, sun, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
   window.__fura = api;   // для перевірки з консолі: __fura.fake = {throttle: 1, …}
 
   function idleInput() { return { steer: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, horn: false, hit: new Set(), hGear: null, lookX: 0, lookY: 0, source: 'kbd' }; }
@@ -413,7 +434,7 @@ export async function start({ onExit } = {}) {
     ui.hint.innerHTML = hint;
     ui.hint.classList.toggle('on', !!hint);
     const src = { kbd: '⌨ клавіатура', pad: '🎮 пад', wheel: '🛞 кермо' }[inp.source] || '';
-    ui.dev.textContent = 'етап 0 · ' + src + ' · камера ' + CAM_NAME[cam] + ' · ' + Math.round(fps) + ' fps';
+    ui.dev.textContent = (mode === 'kray' ? 'Чумацький край' : 'полігон') + ' · ' + src + ' · камера ' + CAM_NAME[cam] + ' · ' + Math.round(fps) + ' fps';
   }
 
   raf = requestAnimationFrame(frame);

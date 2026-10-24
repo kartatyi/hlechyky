@@ -115,13 +115,17 @@ export class Truck {
 
   /** Поставити фуру: spawn = {tractor:{x,z}, trailer:{x,z}}, coupled — одразу зчеплено (причіп під сідлом). */
   place(spawn, coupled) {
+    // spawn: {tractor:{x,z,yaw?,y?}, trailer:{x,z,yaw?,y?}} — y — висота землі (на мапі з рельєфом), yaw — курс
     const s = spawn || { tractor: { x: 0, z: 17 }, trailer: { x: 0, z: 0 } };
     this.unjoin();
-    const zero = V(0, 0, 0), id = { x: 0, y: 0, z: 0, w: 1 };
-    const tz = coupled ? s.trailer.z + TRAILER.kingpin.z - TRACTOR.fifth.z : s.tractor.z;
-    const tx = coupled ? s.trailer.x : s.tractor.x;
-    for (const [b, x, y, z] of [[this.tb, tx, 1.18, tz], [this.rb, s.trailer.x, coupled ? 1.3 : 1.36, s.trailer.z]]) {
-      b.setTranslation(V(x, y, z), true); b.setRotation(id, true); b.setLinvel(zero, true); b.setAngvel(zero, true);
+    const zero = V(0, 0, 0);
+    const ry = s.trailer.yaw || 0, ty = coupled ? ry : (s.tractor.yaw || 0);
+    const d = TRAILER.kingpin.z - TRACTOR.fifth.z;
+    const tx = coupled ? s.trailer.x + Math.sin(ry) * d : s.tractor.x;
+    const tz = coupled ? s.trailer.z + Math.cos(ry) * d : s.tractor.z;
+    const tg = coupled ? (s.trailer.y || 0) : (s.tractor.y || 0);
+    for (const [b, x, y, z, yaw] of [[this.tb, tx, tg + 1.18, tz, ty], [this.rb, s.trailer.x, (s.trailer.y || 0) + (coupled ? 1.3 : 1.36), s.trailer.z, ry]]) {
+      b.setTranslation(V(x, y, z), true); b.setRotation(this.yawQuat(yaw), true); b.setLinvel(zero, true); b.setAngvel(zero, true);
     }
     this.legsCol.setEnabled(!coupled);
     if (coupled) this.join();
@@ -142,18 +146,20 @@ export class Truck {
     const zero = V(0, 0, 0);
     this.unjoin();
     this.settle();
-    this.tb.setTranslation(V(t.x, 1.6, t.z), true); this.tb.setRotation(q, true);
+    const g = this.ground || (() => 0);       // висота землі: main.js дає її з мапи (на полігоні — нуль)
+    this.tb.setTranslation(V(t.x, g(t.x, t.z) + 1.6, t.z), true); this.tb.setRotation(q, true);
     this.tb.setLinvel(zero, true); this.tb.setAngvel(zero, true);
     if (keep) {
       const d = TRAILER.kingpin.z - TRACTOR.fifth.z;
-      this.rb.setTranslation(V(t.x - fwd.x * d, 1.7, t.z - fwd.z * d), true); this.rb.setRotation(q, true);
+      const rx = t.x - fwd.x * d, rz = t.z - fwd.z * d;
+      this.rb.setTranslation(V(rx, g(rx, rz) + 1.7, rz), true); this.rb.setRotation(q, true);
       this.rb.setLinvel(zero, true); this.rb.setAngvel(zero, true);
       this.legsCol.setEnabled(false);
       this.join();
     } else {
       const r = this.rb.translation(), up = this.upOf(this.rb);
       if (up < 0.5) {   // причіп лежить на боці — теж підняти
-        this.rb.setTranslation(V(r.x, 1.8, r.z), true); this.rb.setRotation(this.yawQuat(this.yawOf(this.rb)), true);
+        this.rb.setTranslation(V(r.x, g(r.x, r.z) + 1.8, r.z), true); this.rb.setRotation(this.yawQuat(this.yawOf(this.rb)), true);
         this.rb.setLinvel(zero, true); this.rb.setAngvel(zero, true);
       }
     }

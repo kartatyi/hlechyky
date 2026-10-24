@@ -5,6 +5,8 @@
 .fura-dev { margin: .5em 0 1em; padding-left: 1.2em; }
 .fura-dev li { margin: .2em 0; }
 .fura-go { font-size: 1.1em; padding: .6em 1.2em; }
+.fura-card .fura-row { display: flex; gap: .6em; flex-wrap: wrap; }
+.fura-go2 { opacity: .85; }
 .fura-err { margin-top: .6em; min-height: 1.2em; }
 
 /* Сама гра — поверх усього сайту */
