@@ -46,6 +46,7 @@
     css(id + '-art.css'); const c = css(id + '.css');
     await js('kit.js');
     await js('tourney.js');   // турнір тижня (пакет 5): смуга над автоматом і режим фішок
+    await js('gift.js');   // 🎁 безкоштовні прокрути: смуга над автоматом і режим «безкоштовно»
     for (const d of DEPS[id] || []) await js(d + '.js');
     await Promise.all([js(id + '-art.js'), js(id + '.js'), c]);
     if (!window.SlotKit || !SlotKit.machines || !SlotKit.machines[id]) throw new Error('нема автомата ' + id);
@@ -114,7 +115,7 @@
           };
           t = setTimeout(() => done(null), 12000);
           st.waitSpin = { seq, done };
-          st.ctx.act(st.tmode ? 'tspin' : 'spin', { bet, seq }).then((r) => { if (!r || r.ok === false) done(null); else check(st); });
+          st.ctx.act(st.tmode ? 'tspin' : 'spin', st.gmode ? { bet, seq, free: true } : { bet, seq }).then((r) => { if (!r || r.ok === false) done(null); else check(st); });
         });
       },
       gamble(pick) {
@@ -158,6 +159,7 @@
     const g = v.gamble;
     if (st.waitG && g && (g.n || 0) > st.waitG.n) st.waitG.done(Object.assign({}, g, { balance: v.balance }));
     if (window.SlotTour) SlotTour.update(st);
+    if (window.SlotGift) SlotGift.update(st);
     if (st.inst && !st.inst.busy && !st.waitSpin && !st.hold && !st.tmode) { const b = liveBal() != null ? liveBal() : v.balance; if (b != null) st.inst.ctx.setBalance(b); }
   }
 
@@ -211,6 +213,7 @@
     // Ворожка лишилась відкритою (перезавантаження посеред неї) — кнопка знову з тією сумою
     if (v.gamble && v.gamble.open && machine._resumeGamble) machine._resumeGamble(st.inst.ctx, v.gamble);
     if (window.SlotTour) SlotTour.mount(st);
+    if (window.SlotGift) SlotGift.mount(st);
     st.inst.ctx.on('spinEnd', () => { st.hold = false; release(); if (st.tmode) return; const b = liveBal() != null ? liveBal() : st.ctx.view && st.ctx.view.balance; if (b != null) st.inst.ctx.setBalance(b); });
     fitH(st);
     feedOn();
@@ -230,6 +233,7 @@
     if (st.waitSpin) st.waitSpin.done(null);
     if (st.waitG) st.waitG.done({ open: false });
     if (window.SlotTour) SlotTour.unmount(st);
+    if (window.SlotGift) SlotGift.unmount(st);
     window.removeEventListener('resize', st.onResize);
     try { if (st.inst) st.inst.destroy(); } catch (e) { console.warn('[slot] destroy', e); }
     roots.delete(root);

@@ -966,8 +966,10 @@
       hud.querySelector('.sk-bp').disabled = ctx.busy || bi >= bets.length - 1;
       spinBtn.classList.toggle('busy', ctx.busy);
       spinBtn.classList.toggle('auto', !!ctx.auto);
-      spinBtn.classList.toggle('poor', !ctx.busy && ctx.balance < ctx.bet);
-      hud.querySelector('.sk-spin-t').textContent = ctx.busy ? (ctx.auto ? 'стоп' : 'швидше') : 'крутити';
+      spinBtn.classList.toggle('poor', !ctx.busy && !ctx.free && ctx.balance < ctx.bet);
+      spinBtn.classList.toggle('free', !!ctx.free);
+      hud.querySelector('.sk-spin-t').textContent = ctx.busy ? (ctx.auto ? 'стоп' : 'швидше') : ctx.free ? '🎁 ' + ctx.free.left : 'крутити';
+      if (ctx.free) { hud.querySelector('.sk-bm').disabled = true; hud.querySelector('.sk-bp').disabled = true; }
       root.classList.toggle('sk-busy', ctx.busy);
       tourneyHud();
     }
@@ -989,6 +991,16 @@
       ctx.tourney = t || null;
       if (t) { ctx.bet = t.bet; ctx.balance = t.chips; }
       root.classList.toggle('sk-tourney', !!t);
+      updateHud();
+    };
+    // 🎁 безкоштовні прокрути (gift.js): f = { bet, left } — ставка прокруту, баланс не чіпаємо; null — назад на свою ставку
+    ctx.free = null;
+    ctx.setFree = function (f) {
+      if (f && !ctx.free) ctx.freeBet0 = ctx.bet;
+      if (!f && ctx.free && ctx.freeBet0) ctx.bet = ctx.freeBet0;
+      ctx.free = f || null;
+      if (f) ctx.bet = f.bet;
+      root.classList.toggle('sk-free', !!f);
       updateHud();
     };
     function tourneyHud() {
@@ -1369,13 +1381,13 @@
     async function doSpin(given) {
       if (ctx.busy) return;
       closeMenus();
-      if (ctx.balance < ctx.bet && !given) {
+      if (ctx.balance < ctx.bet && !given && !ctx.free) {
         ctx.auto = 0; updateHud(); ctx.say('черепків бракує — зменш ставку', 2500);
         spinBtn.classList.remove('shake'); void spinBtn.offsetWidth; spinBtn.classList.add('shake'); return;
       }
       ctx.busy = true; ctx.meter = 0; setMeter(0); ctx.lastWins = null; ctx.say('');
-      if (ctx.balance >= ctx.bet) ctx.addBalance(-ctx.bet);
-      if (ctx.auto) ctx.autoNet -= ctx.bet;   // пакет 5: рахунок «стопу на мінусі» від старту автогри
+      if (!ctx.free && ctx.balance >= ctx.bet) ctx.addBalance(-ctx.bet);   // безкоштовний прокрут ставку не знімає
+      if (ctx.auto && !ctx.free) ctx.autoNet -= ctx.bet;   // пакет 5: рахунок «стопу на мінусі» від старту автогри
       updateHud();
       ctx.emit('spinStart');
       let script;
@@ -1400,7 +1412,7 @@
         ctx.autoNet += script ? (script.win || 0) + (script.jackpot || 0) : 0;
         if (hadBonus && ctx.autoStopBonus) ctx.auto = 0;
         else if (autoLossHit()) { ctx.auto = 0; ctx.say('Авто стоп: мінус ' + fmt(-ctx.autoNet) + ' 🏺', 4000); }
-        else if (ctx.balance < ctx.bet) ctx.auto = 0;
+        else if (!ctx.free && ctx.balance < ctx.bet) ctx.auto = 0;
         else { if (ctx.auto !== Infinity) ctx.auto--; if (ctx.auto) ctx.timeout(() => { if (ctx.auto && !ctx.busy) doSpin(); }, ctx.turbo ? 200 : 550); }
         updateHud();
       }
