@@ -1341,6 +1341,8 @@ header .fbbtn .badge { position: absolute; top: -4px; right: -4px; }
 header .hdrskip { display: none; padding: 6px 9px; font-size: 1.05em; }
 /* dvh — висота того, що видно: на телефоні 92vh вищі за екран під рядком адреси. */
 .modal .card.fbcard { width: min(94vw, 520px); max-height: 92vh; max-height: 92dvh; overflow: auto; }
+.fbcard .fbpay { margin: 0 0 8px; padding: 6px 10px; border-radius: 8px; background: rgba(244, 197, 66, .1); border: 1px solid rgba(244, 197, 66, .35); }
+.fbcard .fbpay b { color: var(--accent); }
 /* Заголовок із ✕ пришпилений угорі вікна: на телефоні «Закрити» внизу ховалось під клавіатуру чи довгі «Мої записки». */
 .fbcard h3 {
   position: sticky; top: -22px; z-index: 1; margin: -22px -22px 0; padding: 14px 12px 8px 22px;
