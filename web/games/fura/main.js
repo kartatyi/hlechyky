@@ -368,6 +368,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     document.removeEventListener('fullscreenchange', resize);
     input.dispose();
     if (voice) voice.stop();
+    if (trips) trips.dispose();
     sound.stop();
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch { /* пусто */ }
     renderer.dispose();

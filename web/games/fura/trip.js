@@ -16,6 +16,15 @@ export class Trips {
     this.poseAt = 0; this.saveAt = 0; this.lastC = false;
     this.restored = false; this.shownResult = 0; this.voidShown = '';
     this.busy = false;
+    // Сховав вкладку довше ніж на 15 с — сервер не рахує цей час у рейс (пауза без телеметрії), тож і наш годинник
+    // між видами має стояти: зсуваємо точку відліку на тривалість паузи.
+    this.onVis = () => {
+      if (document.hidden) { this.hiddenAt = performance.now(); return; }
+      const gap = this.hiddenAt ? performance.now() - this.hiddenAt : 0;
+      this.hiddenAt = 0;
+      if (gap > 15000 && this.clock) this.clock.at += gap;
+    };
+    document.addEventListener('visibilitychange', this.onVis);
 
     const panel = document.createElement('div');
     panel.className = 'fura-panel fura-order';
@@ -40,6 +49,8 @@ export class Trips {
     if (!this.restored) {
       this.restored = true; this.restore(v);
       if (v.phase === 'free') setTimeout(() => this.voice.say('hello'), 1500);
+      // перевідкрив гру з незакритим підсумком — показати мовчки: Глек цей рейс уже прокоментував
+      if (v.phase === 'done' && v.result) { this.shownResult = v.result.trip; this.summary(v.result, true); }
     }
     else if (before && before.phase !== v.phase) this.onPhase(before.phase, v.phase);
     this.target();
@@ -81,6 +92,8 @@ export class Trips {
     }
     if (to === 'free' && from !== 'done') this.say('Замовлення знято', 2500);
   }
+
+  dispose() { document.removeEventListener('visibilitychange', this.onVis); }
 
   title(o) { const c = this.cargo[o.cargo]; return (c ? c.emoji + ' ' + c.title : o.cargo) + ': ' + this.places[o.from].short + ' → ' + this.places[o.to].short; }
 
