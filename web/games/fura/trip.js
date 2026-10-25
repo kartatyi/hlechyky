@@ -415,10 +415,10 @@ export class Trips {
     });
   }
 
-  /** Рядок «Колона» в підсумку: бонус уже нараховано (r.colBonus) чи ще чекає, щоб хтось здав у вікні 5 хв. */
+  /** Рядок «Колона» в підсумку: бонус уже нараховано (r.bonus, черепки × Boost) чи ще чекає, щоб хтось здав у вікні 5 хв. */
   colRow(r) {
     const row = (a, b) => '<tr><td>' + a + '</td><td>' + b + '</td></tr>';
-    if (r.colBonus > 0) return row('Колона', '<b>+' + r.colBonus + ' 🏺</b> — здали разом, +15 %');
+    if (r.bonus > 0) return row('Колона', '<b>+' + r.bonus + ' 🏺</b> — здали разом, +15 %');
     const col = this.view && this.view.col, me = this.myNick();
     const mine = col && (col.done || []).some((d) => same(d.nick, me));
     if (!r.col && !mine) return '';
