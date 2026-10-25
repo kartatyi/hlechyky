@@ -7,8 +7,18 @@
 //
 // Осі ті самі, що в truck.js: x — схід, z — північ, y — вгору. Висоти heightfield Rapier бере стовпцями по X:
 // індекс = ix·(N+1) + iz (перевірено на малому полі).
+//
+// Дорога 2.0 (B2): дороги, перехрестя, мости, відбійники — road.js (функція від ребра графа, не від краю); усе
+// нерухоме — у пакет по чанках 240 м (batch.js), матеріали — materials.js. Рельєф під корідором дороги рівний на
+// всю ширину з узбіччям (+6 м), біля перехресть — на площині перехрестя: фізика й око бачать той самий профіль.
+
+import { makeMaterials, PAL } from './materials.js';
+import { ChunkBatch } from './batch.js';
+import { planRoads, drawRoads, LIFT } from './road.js';
 
 const CELL = 4;
+const CH = 60;                    // чанк рельєфу й пакета: 60 клітин = 240 м
+const FAR = 1000;                 // далі чанк не малюємо, поки нема туману; з туманом — межа = кінець туману (sync)
 
 // ---------------------------------------------------------------- шум
 function hash2(ix, iz, seed) {
@@ -81,12 +91,8 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
   const X = (ix) => B.x0 + ix * CELL, Z = (iz) => B.z0 + iz * CELL;
   const I = (ix, iz) => ix * S + iz;
 
-  const mats = new Map();
-  const mat = (color, extra) => {
-    const k = color + (extra ? JSON.stringify(extra) : '');
-    if (!mats.has(k)) mats.set(k, new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra }));
-    return mats.get(k);
-  };
+  const M = makeMaterials(THREE, quality);
+  const batch = new ChunkBatch(THREE, { x0: B.x0, z0: B.z0, size: CH * CELL, uvKeys: ['road'], uvScale: 4 });
   const fixed = (x, y, z, yaw) => {
     const d = RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z);
     if (yaw) d.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
@@ -203,30 +209,80 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     r.pts.forEach((p) => { p.bridge = riverDist[I(Math.round((p.x - B.x0) / CELL), Math.round((p.z - B.z0) / CELL))] < rw / 2 + 8; });
   }
   for (const p of places) p.y = nodeY[p.node];
-  // врізати дороги: смуга рівно на профіль, далі плавний укіс; над річкою — не засипати (міст)
+
+  // дорога 2.0: ребра графа з атрибутами (клас — kind; смуги, узбіччя, відбійник — необов'язкові поля kinds у
+  // kray.json, яких сервер не читає), мости — з позначок над річкою (як колайдери настилу нижче), під'їзд до двору
+  // — розширюється на в'їзді й закінчується на межі двору
+  const placeOf = Object.fromEntries(places.map((p) => [p.id, p]));
+  const net = { nodes: Object.fromEntries(Object.entries(map.nodes).map(([id, [x, z]]) => [id, { x, z }])), edges: [] };
+  for (const r of roads) {
+    const k = r.kind === 'yard' ? {} : kinds[r.kind] || {};
+    const e = { id: r.id, cls: r.kind, a: r.a, b: r.kind === 'yard' ? null : r.b, pts: r.pts, width: r.width, lanes: k.lanes, shoulder: k.shoulder, barrier: k.barrier };
+    const bi = r.pts.map((p, i) => (p.bridge ? i : -1)).filter((i) => i >= 0);
+    if (bi.length) e.bridges = [[r.pts[Math.max(0, bi[0] - 2)].s, r.pts[Math.min(r.pts.length - 1, bi[bi.length - 1] + 2)].s]];
+    if (r.kind === 'yard') {
+      const y = placeOf[r.id.slice(5)].yard;
+      const inYard = (p) => Math.abs(p.x - y.x) < y.w / 2 && Math.abs(p.z - y.z) < y.d / 2;
+      const k = r.pts.findIndex(inYard), inside = k > 0 ? r.pts[k] : null;
+      e.endB = r.pts[r.pts.length - 1].s;
+      if (inside) {            // точно на межі двору: далі — площина двору, накладка мерехтіла б
+        const o = r.pts[k - 1];
+        let lo = 0, hi = 1;
+        for (let it = 0; it < 20; it++) { const m = (lo + hi) / 2; if (inYard({ x: o.x + (inside.x - o.x) * m, z: o.z + (inside.z - o.z) * m })) hi = m; else lo = m; }
+        e.endB = o.s + (inside.s - o.s) * hi;
+      }
+      // розширення на в'їзді: з кожного боку — скільки влазить у двір (край розширення не звисає над травою)
+      const end = inside || r.pts[r.pts.length - 1];
+      const fit = (sg) => {
+        let best = 0;
+        for (let x = 0.5; x <= 6; x += 0.5) {
+          const o = sg * (r.width / 2 + x), px = end.x - end.tz * o, pz = end.z + end.tx * o;
+          if (Math.abs(px - y.x) < y.w / 2 + 1 && Math.abs(pz - y.z) < y.d / 2 + 1) best = x;
+        }
+        return best;
+      };
+      e.flareB = { len: 16, extraR: fit(1), extraL: fit(-1) };
+    }
+    r.edge = e;
+    net.edges.push(e);
+  }
+  const plan = planRoads(net);           // перехрестя; висоти ребер біля вершин — на площину перехрестя
+
+  // врізати дороги: корідор (проїзна частина + узбіччя + 6 м: так жодна клітина 4 м під узбіччям не стирчить) рівно
+  // на профіль, далі плавний укіс; біля перехресть і на в'їзді у двір — ширше; над річкою — не засипати (міст)
   const roadPts = [];
-  roads.forEach((r, ri) => r.pts.forEach((p, i) => roadPts.push({ x: p.x, z: p.z, y: p.y, w: r.width, ri, i, bridge: p.bridge })));
-  const roadSt = stamp(roadPts, 30);
+  roads.forEach((r, ri) => {
+    const e = r.edge, S = e.sec, L = e.L;
+    r.pts.forEach((p, i) => {
+      let core = S.cw + 6;
+      const ta = p.s, tb = L - p.s;
+      if (e.trimA > 2.5) core += 8 * (1 - smooth(e.trimA, e.trimA + 12, ta));
+      if (e.trimB > 2.5 || e.flareB) core += (e.flareB ? 6 : 8) * (1 - smooth(e.trimB, e.trimB + (e.flareB ? 20 : 12), tb));
+      roadPts.push({ x: p.x, z: p.z, y: p.y, w: r.width, hw: S.hw, cw: S.cw, core, ri, i, bridge: p.bridge });
+    });
+  });
+  const roadSt = stamp(roadPts, 46);
   // Висота під дорогою — не найближчої точки профілю (на ухилі 7 % це сходинки по 28 см кожні 4 м — причіп трусило
-  // безперервно), а проєкція клітини на відрізок до сусідньої точки тієї самої дороги.
+  // безперервно), а проєкція клітини на відрізок до сусідньої точки тієї самої дороги. Біля перехрестя — ще й нахил
+  // його площини вбік від осі (той самий, що в стрічки й латки road.js).
   const roadY = (j, k) => {
-    const p = roadPts[k], x = X(Math.floor(j / S)), z = Z(j % S);
-    let best = p.y, bd = Infinity;
+    const p = roadPts[k], x = X(Math.floor(j / S)), z = Z(j % S), r = roads[p.ri], rp = r.pts[p.i];
+    let best = p.y, bd = Infinity, at = rp;
     for (const q of [roadPts[k - 1], roadPts[k + 1]]) {
       if (!q || q.ri !== p.ri) continue;
       const ax = q.x - p.x, az = q.z - p.z, l2 = ax * ax + az * az || 1;
       const u = Math.max(0, Math.min(1, ((x - p.x) * ax + (z - p.z) * az) / l2));
       const d = Math.hypot(p.x + ax * u - x, p.z + az * u - z);
-      if (d < bd) { bd = d; best = p.y + (q.y - p.y) * u; }
+      if (d < bd) { bd = d; best = p.y + (q.y - p.y) * u; at = { x: p.x + ax * u, z: p.z + az * u, s: rp.s + (r.pts[q.i].s - rp.s) * u }; }
     }
-    return best;
+    return best + r.edge.tilt(at, x, z);
   };
   for (let j = 0; j < H.length; j++) {
     const k = roadSt.who[j];
     if (k < 0) continue;
     const p = roadPts[k];
     if (riverDist[j] < rw / 2 + 4) continue;
-    const core = p.w / 2 + 1.5, d = roadSt.dist[j];
+    const core = p.core, d = roadSt.dist[j];
     H[j] = lerp(roadY(j, k) - 0.02, H[j], smooth(core, core + 16, d));
   }
   // двори: рівний майданчик на висоті вузла, плавний край
@@ -251,6 +307,8 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
 
   const height = (x, z) => sampleGrid(H, x, z);
   const nearRoad = (x, z) => { const j = I(Math.round((x - B.x0) / CELL), Math.round((z - B.z0) / CELL)); return roadSt.dist[j]; };
+  // далі за край корідору (узбіччя) на pad м? — щоб дерева лісосмуг не ставали на узбіччя траси й на відбійник
+  const offRoad = (x, z, pad) => { const j = I(Math.round((x - B.x0) / CELL), Math.round((z - B.z0) / CELL)); return roadSt.who[j] < 0 || roadSt.dist[j] > roadPts[roadSt.who[j]].cw + pad; };
 
   // ---- 4. фізика рельєфу
   const ground = fixed((B.x0 + B.x1) / 2, 0, (B.z0 + B.z1) / 2);
@@ -263,19 +321,23 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     const fx = Math.floor((x + 37) / 170), fz = Math.floor((z - 11) / 120);
     return FIELD[Math.floor(hash2(fx, fz, seed + 9) * FIELD.length)];
   };
-  // Чанки 200 м із трьома рівнями деталізації: поруч — сітка 4 м (та сама, що у фізики), далі — 8 і 20 м. Між
-  // чанками різних рівнів були б щілини — їх закриває «спідниця»: край чанка, опущений на 4 м.
-  const CH = 50;
-  const LODS = quality === 'low' ? [[1, 0], [2, 170], [5, 380]] : [[1, 0], [2, 260], [5, 560]];
-  const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
+  // Чанки 240 м (той самий квадрат, що в пакета доріг) із трьома рівнями деталізації: поруч — сітка 4 м (та сама,
+  // що у фізики), далі — 8 і 20 м, за туманом — нічого. Між чанками різних рівнів були б щілини — їх закриває
+  // «спідниця»: край чанка, опущений на 4 м.
+  const LODS = quality === 'low' ? [[1, 0], [2, 200], [5, 410]] : [[1, 0], [2, 290], [5, 590]];
+  const terrainMat = M.terrain;
+  // під асфальтом — темне (здалеку, де глибини не вистачає, рельєф проблискує крізь дорогу — хай того ж тону),
+  // під узбіччям — його колір, далі — трав'яний укіс
   const colorAt = (gx, gz) => {
     const x = X(gx), z = Z(gz), j = I(gx, gz);
     let c = fieldOf(x, z);
     const jit = (hash2(gx, gz, seed + 5) - 0.5) * 0.05;
-    const rd = roadSt.dist[j], wd = riverDist[j];
+    const rd = roadSt.dist[j], wd = riverDist[j], rp = roadPts[roadSt.who[j]];
     if (wd < rw / 2 + 10) c = [0.76, 0.7, 0.52];                           // пісок біля води
-    else if (rd < 9) c = [0.52, 0.5, 0.44];                                // узбіччя
-    else if (rd < 20) c = [c[0] * 0.8 + 0.08, c[1] * 0.9 + 0.06, c[2] * 0.8];   // смуга трави вздовж дороги
+    else if (rp && rd < rp.hw) c = [0.3, 0.31, 0.32];                      // під асфальтом
+    else if (rp && rd < rp.cw + 1) c = [0.5, 0.48, 0.4];                   // під узбіччям
+    else if (rp && rd < rp.cw + 7) c = [c[0] * 0.6 + 0.16, c[1] * 0.7 + 0.15, c[2] * 0.6 + 0.04];   // укіс
+    else if (rd < 26) c = [c[0] * 0.8 + 0.08, c[1] * 0.9 + 0.06, c[2] * 0.8];   // смуга трави вздовж дороги
     return [c[0] + jit, c[1] + jit, c[2] + jit];
   };
   const chunkGeo = (cx, cz, nx, nz, st) => {
@@ -307,6 +369,7 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     geo.computeBoundingSphere();
     return geo;
   };
+  const terrainLods = [];
   for (let cx = 0; cx < N; cx += CH) {
     for (let cz = 0; cz < N; cz += CH) {
       const nx = Math.min(CH, N - cx), nz = Math.min(CH, N - cz);
@@ -317,6 +380,8 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
         m.receiveShadow = st === 1;
         lod.addLevel(m, dist);
       }
+      lod.addLevel(new THREE.Object3D(), FAR + CH * CELL * 0.71);
+      terrainLods.push(lod);
       lod.position.set(0, 0, 0);
       // відстань LOD рахує від позиції об'єкта — ставимо його в центр чанка, а сітку зсуваємо назад
       const ccx = X(cx + nx / 2), ccz = Z(cz + nz / 2);
@@ -327,46 +392,11 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     }
   }
 
-  // ---- 6. дороги для ока, мости, вибоїни
-  const roadTex = {};
-  const mkTex = (kind) => {
-    const c = document.createElement('canvas'); c.width = 128; c.height = 256;
-    const g = c.getContext('2d'), r2 = rng(seed + kind.length);
-    const baseC = kind === 'dirt' ? '#8a7356' : kind === 'village' ? '#5d5f63' : kind === 'yard' ? '#626468' : '#4b4e54';
-    g.fillStyle = baseC; g.fillRect(0, 0, 128, 256);
-    for (let i = 0; i < 1600; i++) { const v = (r2() - 0.5) * 0.16; g.fillStyle = v > 0 ? `rgba(255,255,255,${v})` : `rgba(0,0,0,${-v})`; g.fillRect(r2() * 128, r2() * 256, 1 + r2() * 3, 1 + r2() * 3); }
-    if (kind === 'highway') {
-      g.fillStyle = 'rgba(245,240,225,.95)'; g.fillRect(5, 0, 4, 256); g.fillRect(119, 0, 4, 256); g.fillRect(62, 0, 4, 110);
-    } else if (kind === 'village') {
-      g.fillStyle = 'rgba(235,230,215,.55)'; g.fillRect(62, 0, 3, 90);
-    } else if (kind === 'dirt') {
-      g.fillStyle = 'rgba(70,52,35,.35)'; g.fillRect(28, 0, 18, 256); g.fillRect(82, 0, 18, 256);      // колії
-    }
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
-    return t;
-  };
-  const lift = { highway: 0.08, village: 0.07, dirt: 0.06, yard: 0.065 };
+  // ---- 6. дороги для ока (road.js у пакет), колайдери мостів і вибоїни
+  const roadOut = drawRoads(THREE, plan, batch, { ground0: (x, z) => sampleGrid(H0, x, z), ground: height });
+  const BUMP = new THREE.BoxGeometry(1.3, 0.035, 0.8), bumpGeo = new THREE.Object3D();
   for (const r of roads) {
-    if (!roadTex[r.kind]) roadTex[r.kind] = new THREE.MeshLambertMaterial({ map: mkTex(r.kind) });
-    const pos = [], uv = [], idx = [];
-    r.pts.forEach((p, i) => {
-      const nx = -p.tz, nz = p.tx, hw = r.width / 2;
-      const y = p.y + lift[r.kind];
-      pos.push(p.x + nx * hw, y, p.z + nz * hw, p.x - nx * hw, y, p.z - nz * hw);
-      uv.push(0, p.s / 12, 1, p.s / 12);
-      if (i > 0) { const a = (i - 1) * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
-    });
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, roadTex[r.kind]);
-    m.receiveShadow = true;
-    scene.add(m);
-
-    // міст: настил і поручні над річкою, з колайдерами по відрізках
+    // міст: колайдери настилу й поручнів по відрізках (як були); вигляд — у road.js
     const bi = r.pts.map((p, i) => (p.bridge ? i : -1)).filter((i) => i >= 0);
     if (bi.length) {
       const from = Math.max(0, bi[0] - 2), to = Math.min(r.pts.length - 1, bi[bi.length - 1] + 2);
@@ -378,23 +408,13 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
         const pitch = Math.atan2(b.y - a.y, len);
         body.setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch, yaw, 0, 'YXZ')), false);
         world.createCollider(RAPIER.ColliderDesc.cuboid(r.width / 2 + 0.5, 0.3, len / 2 + 0.05).setFriction(0.9), body);
-        const deck = new THREE.Mesh(new THREE.BoxGeometry(r.width + 1, 0.6, len + 0.1), mat('#8d8a84'));
-        deck.position.set(cx, cy - 0.3, cz); deck.rotation.set(-pitch, yaw, 0, 'YXZ');
-        deck.castShadow = deck.receiveShadow = true; scene.add(deck);
+        // парапети: стінка до 1,8 м (бетон для ока — 0,95): з бортиком на 1,0 м кабіна фури (низ ~0,88 м) перелазила
         for (const s of [1, -1]) {
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.0, len + 0.1), mat('#c9c4b8'));
           const ox = Math.cos(yaw) * s * (r.width / 2 + 0.4), oz = -Math.sin(yaw) * s * (r.width / 2 + 0.4);
-          rail.position.set(cx + ox, cy + 0.5, cz + oz); rail.rotation.set(-pitch, yaw, 0, 'YXZ');
-          rail.castShadow = true; scene.add(rail);
-          const rb = fixed(cx + ox, cy + 0.5, cz + oz, yaw);
-          world.createCollider(RAPIER.ColliderDesc.cuboid(0.08, 0.5, len / 2), rb);
+          const rb = fixed(cx + ox, cy + 0.9, cz + oz, yaw);
+          world.createCollider(RAPIER.ColliderDesc.cuboid(0.08, 0.9, len / 2), rb);
         }
       }
-      // опори
-      const mid = r.pts[Math.round((bi[0] + bi[bi.length - 1]) / 2)];
-      const ry = river.reduce((m, p) => (Math.hypot(p.x - mid.x, p.z - mid.z) < Math.hypot(m.x - mid.x, m.z - mid.z) ? p : m), river[0]).y;
-      const pier = new THREE.Mesh(new THREE.BoxGeometry(r.width, Math.max(1, mid.y - ry), 1.2), mat('#9b968c'));
-      pier.position.set(mid.x, (mid.y + ry) / 2 - 0.4, mid.z); pier.rotation.y = Math.atan2(mid.tx, mid.tz); scene.add(pier);
     }
 
     // вибоїни: невеликі горбики під одним колесом
@@ -415,10 +435,20 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
           const rise = 0.06;
           const body = fixed(x, p.y + rise - 0.06, z, yaw);
           world.createCollider(RAPIER.ColliderDesc.roundCuboid(0.61, 0.02, 0.3, 0.04).setFriction(0.9), body);
-          const patch = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.05, 0.8), mat(r.kind === 'dirt' ? '#6b5640' : '#3e4044'));
-          patch.position.set(x, p.y + lift[r.kind] + 0.005, z); patch.rotation.y = yaw; scene.add(patch);
+          // для ока — латка темнішого асфальту (або ґрунту) з горбиком на 3 см над смугою
+          bumpGeo.position.set(x, p.y + LIFT + 0.004, z); bumpGeo.rotation.set(0, yaw, 0); bumpGeo.updateMatrix();
+          batch.add('road', BUMP, bumpGeo.matrix, r.kind === 'dirt' ? PAL.rut : PAL.asphaltPatch);
         }
       }
+    }
+  }
+  // відбійники: колайдери-стіни (фура б'ється, як об стіну, — датчик вантажу рахує удар) — одне тіло на всі
+  if (roadOut.guards.length) {
+    const gb = fixed(0, 0, 0);
+    const q = new THREE.Quaternion(), eu = new THREE.Euler();
+    for (const g of roadOut.guards) {
+      q.setFromEuler(eu.set(-g.pitch, g.yaw, 0, 'YXZ'));
+      world.createCollider(RAPIER.ColliderDesc.cuboid(g.hx, g.hy, g.hz).setTranslation(g.x, g.y, g.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }).setFriction(0.3), gb);
     }
   }
 
@@ -436,39 +466,48 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: '#4f8fb8', transparent: true, opacity: 0.88 })));
   }
   {
-    const strip = (w, dy, color, off = 0) => {
-      const pos = [], idx = [];
-      rail.forEach((p, i) => {
-        const nx = -p.tz, nz = p.tx;
-        pos.push(p.x + nx * (off + w / 2), p.y + dy, p.z + nz * (off + w / 2), p.x + nx * (off - w / 2), p.y + dy, p.z + nz * (off - w / 2));
-        if (i > 0) { const a = (i - 1) * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
-      });
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      geo.setIndex(idx); geo.computeVertexNormals();
-      const m = new THREE.Mesh(geo, mat(color)); m.receiveShadow = true; scene.add(m);
-    };
-    strip(5, 0.02, '#8f8578');
-    strip(0.12, 0.25, '#6c6f75', 0.75); strip(0.12, 0.25, '#6c6f75', -0.75);
+    // залізниця — у пакет: насип-баласт (з укосами), шпали через 2,4 м, рейки коробочками
+    const P = (p, o, dy) => ({ x: p.x - p.tz * o, y: p.y + dy, z: p.z + p.tx * o });
+    const bal = new THREE.Color(PAL.ballast), balS = new THREE.Color(PAL.ballast).multiplyScalar(0.85);
+    const steel = new THREE.Color(PAL.railSteel), sl = new THREE.Color(PAL.sleeper);
+    for (let i = 1; i < rail.length; i++) {
+      const a = rail[i - 1], b = rail[i];
+      batch.quad('road', P(a, -1.6, 0.04), P(b, -1.6, 0.04), P(b, 1.6, 0.04), P(a, 1.6, 0.04), bal);
+      batch.quad('road', P(a, 1.6, 0.04), P(b, 1.6, 0.04), P(b, 2.8, -0.45), P(a, 2.8, -0.45), balS);
+      batch.quad('road', P(a, -1.6, 0.04), P(b, -1.6, 0.04), P(b, -2.8, -0.45), P(a, -2.8, -0.45), balS);
+      for (const o of [-0.75, 0.75]) {
+        batch.quad('metal', P(a, o - 0.04, 0.2), P(b, o - 0.04, 0.2), P(b, o + 0.04, 0.2), P(a, o + 0.04, 0.2), steel);
+        batch.quad('metal', P(a, o - 0.04, 0.05), P(b, o - 0.04, 0.05), P(b, o - 0.04, 0.2), P(a, o - 0.04, 0.2), steel);
+        batch.quad('metal', P(a, o + 0.04, 0.05), P(b, o + 0.04, 0.05), P(b, o + 0.04, 0.2), P(a, o + 0.04, 0.2), steel);
+      }
+    }
+    // шпали: квади поперек через 2,4 м (лише верх — збоку їх ховає баласт)
+    const L = rail[rail.length - 1].s;
+    for (let s = 1; s < L; s += 2.4) {
+      let k = 1; while (k < rail.length - 1 && rail[k].s < s) k++;
+      const a = rail[k - 1], b = rail[k], t = (s - a.s) / (b.s - a.s || 1);
+      const p = { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, y: a.y + (b.y - a.y) * t, tx: a.tx, tz: a.tz };
+      const f = (o, d) => { const q = P(p, o, 0.09); return { x: q.x + p.tx * d, y: q.y, z: q.z + p.tz * d }; };
+      batch.quad('matte', f(-1.3, -0.12), f(1.3, -0.12), f(1.3, 0.12), f(-1.3, 0.12), sl);
+    }
   }
 
   // ---- 8. двори, вивіски, будинки
   const add = (m, shadow = true) => { m.castShadow = shadow; m.receiveShadow = true; scene.add(m); return m; };
+  // будівлі — у пакет (один меш «matte» на чанк), колайдери — як були; низ стін темніший (фейкове AO, STYLE §3.4)
+  const o3 = new THREE.Object3D();
+  const place = (x, y, z, yaw, sx = 1, sy = 1, sz = 1) => { o3.position.set(x, y, z); o3.rotation.set(0, yaw || 0, 0); o3.scale.set(sx, sy, sz); o3.updateMatrix(); return o3.matrix; };
+  const BOX = new THREE.BoxGeometry(1, 1, 1), CONE4 = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4).rotateY(Math.PI / 4);
   const solid = (w, h, d, x, z, yaw, color, y0) => {
     const y = y0 != null ? y0 : Math.min(height(x - w / 2, z - d / 2), height(x + w / 2, z + d / 2), height(x - w / 2, z + d / 2), height(x + w / 2, z - d / 2)) - 0.3;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h + 0.3, d), mat(color));
-    m.position.set(x, y + (h + 0.3) / 2, z); m.rotation.y = yaw || 0; add(m);
-    world.createCollider(RAPIER.ColliderDesc.cuboid(w / 2, (h + 0.3) / 2, d / 2), fixed(x, y + (h + 0.3) / 2, z, yaw));
-    return { m, y };
+    const H2 = h + 0.3;
+    batch.add('matte', BOX, place(x, y + H2 / 2, z, yaw, w, H2, d), color, (ly) => (ly < 0 ? 0.8 + 0.2 * smooth(0, 1.5, ly * H2 + H2 / 2 - 0.3) : 1));
+    world.createCollider(RAPIER.ColliderDesc.cuboid(w / 2, H2 / 2, d / 2), fixed(x, y + H2 / 2, z, yaw));
+    return { y };
   };
   // чотирисхилий дах: конус на 4 грані, розтягнутий на прямокутник стін із виносом ~10 %
-  const roof = (w, d, x, z, yaw, y, color, h = 3.4) => {
-    const r = new THREE.Mesh(new THREE.ConeGeometry(Math.SQRT1_2, h, 4), mat(color));
-    r.position.set(x, y + h / 2, z);
-    r.rotation.y = yaw || 0;
-    r.geometry.rotateY(Math.PI / 4);
-    r.scale.set(w * 1.1, 1, d * 1.1); add(r);
-  };
+  const roof = (w, d, x, z, yaw, y, color, h = 3.4) => batch.add('matte', CONE4, place(x, y + h / 2, z, yaw, w * 1.1, h, d * 1.1), color);
+  const cyl = (rt, rb, h, seg, x, y, z, color) => batch.add('matte', new THREE.CylinderGeometry(rt, rb, h, seg), place(x, y, z, 0), color);
   const hut = (x, z, yaw) => {
     const w = 7 + rnd() * 3, d = 5.5 + rnd() * 2;
     const { y } = solid(w, 2.8, d, x, z, yaw, rnd() < 0.8 ? '#f2ede0' : '#e8dcc0');
@@ -504,7 +543,7 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     const pl = new THREE.Mesh(new THREE.PlaneGeometry(y.w, y.d), new THREE.MeshLambertMaterial({ map: yardTex(p) }));
     pl.rotation.x = -Math.PI / 2; pl.position.set(y.x, p.y + 0.05, y.z); add(pl, false);
     taken.push([y.x, y.z, Math.hypot(y.w, y.d) / 2]);
-    sign(THREE, scene, mat, p.gate[0] + 6, p.gate[1] + 6, p.y, p.short.toUpperCase(), Math.atan2(map.nodes[p.node][0] - p.gate[0], map.nodes[p.node][1] - p.gate[1]));
+    sign(THREE, scene, batch, p.gate[0] + 6, p.gate[1] + 6, p.y, p.short.toUpperCase(), Math.atan2(map.nodes[p.node][0] - p.gate[0], map.nodes[p.node][1] - p.gate[1]));
   }
   // будівлі місць
   const placeById = Object.fromEntries(places.map((p) => [p.id, p]));
@@ -513,12 +552,12 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
   if (placeById.cegel) {
     const p = placeById.cegel, [x, z] = behind(p, 50);
     solid(30, 6, 12, x, z, 0, '#a5482f'); taken.push([x, z, 30]);
-    for (const dx of [-8, 8]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.6, 26, 8), mat('#8e3a28')); c.position.set(x + dx, height(x + dx, z + 10) + 13, z + 10); add(c); world.createCollider(RAPIER.ColliderDesc.cylinder(13, 1.4), fixed(x + dx, height(x + dx, z + 10) + 13, z + 10)); }
+    for (const dx of [-8, 8]) { cyl(1.1, 1.6, 26, 8, x + dx, height(x + dx, z + 10) + 13, z + 10, PAL.brickDark); world.createCollider(RAPIER.ColliderDesc.cylinder(13, 1.4), fixed(x + dx, height(x + dx, z + 10) + 13, z + 10)); }
   }
   if (placeById.sil) {
     const p = placeById.sil, [x, z] = behind(p, 50);
     solid(40, 8, 16, x, z, 0, '#d9d4c7'); taken.push([x, z, 34]);
-    for (const dz of [-12, 0, 12]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 16, 12), mat('#c8ccd1')); const yy = height(x + 30, z + dz); c.position.set(x + 30, yy + 8, z + dz); add(c); world.createCollider(RAPIER.ColliderDesc.cylinder(8, 4), fixed(x + 30, yy + 8, z + dz)); }
+    for (const dz of [-12, 0, 12]) { const yy = height(x + 30, z + dz); cyl(4, 4, 16, 12, x + 30, yy + 8, z + dz, PAL.silo); world.createCollider(RAPIER.ColliderDesc.cylinder(8, 4), fixed(x + 30, yy + 8, z + dz)); }
   }
   if (placeById.medove) { const p = placeById.medove, [x, z] = behind(p, 45); const { y } = solid(22, 4, 10, x, z, 0, '#c9a46a'); roof(22, 10, x, z, 0, y + 4.3, '#8a6a3a', 3); taken.push([x, z, 25]); }
   if (placeById.honchar) { const p = placeById.honchar, [x, z] = behind(p, 45); const { y } = solid(18, 3.5, 9, x, z, 0, '#efe6d2'); roof(18, 9, x, z, 0, y + 3.8, '#9a7a45', 3); taken.push([x, z, 22]); }
@@ -547,15 +586,14 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
       if (!free(x, z, 14) || !clear(x, z, 12)) continue;
       const w = 10 + rnd() * 8, d = 10 + rnd() * 6, h = 6 + Math.floor(rnd() * 4) * 3;
       const { y } = solid(w, h, d, x, z, 0, colors[Math.floor(rnd() * colors.length)]);
-      const top = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.4, d + 0.4), mat('#8b8f96'));
-      top.position.set(x, y + h + 0.5, z); add(top);
+      batch.add('matte', BOX, place(x, y + h + 0.5, z, 0, w + 0.4, 0.4, d + 0.4), PAL.slab);
       taken.push([x, z, Math.max(w, d) * 0.7]); n++;
     }
   }
 
   // ---- 9. дерева: лісосмуги вздовж полів і доріг + гаї
   const trees = [];
-  const tryTree = (x, z, s) => { if (free(x, z, 7) && clear(x, z, 3)) trees.push({ x, z, y: height(x, z), s, pine: hash2(Math.round(x), Math.round(z), seed) < 0.25 }); };
+  const tryTree = (x, z, s) => { if (free(x, z, 7) && offRoad(x, z, 2) && clear(x, z, 3)) trees.push({ x, z, y: height(x, z), s, pine: hash2(Math.round(x), Math.round(z), seed) < 0.25 }); };
   const maxTrees = quality === 'low' ? 2200 : 4200;
   for (let fx = -9; fx <= 9 && trees.length < maxTrees; fx++) {
     if (hash2(fx, 1, seed + 21) < 0.45) continue;               // не на кожній межі поля
@@ -576,11 +614,24 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     for (let k = 0; k < 40; k++) tryTree(gx + (rnd() - 0.5) * 120, gz + (rnd() - 0.5) * 120, 0.8 + rnd() * 0.6);
   }
   {
-    // Квартали по 600 м: інакше всі дерева мапи — три меші на весь край, і їх малює кожен кадр (і тінь) повністю
-    const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5);
-    const crownGeo = new THREE.IcosahedronGeometry(1.8, 0);
-    const pineGeo = new THREE.ConeGeometry(1.5, 4.4, 6);
-    const trunkMat = mat('#6e4a2f'), crownMat = mat('#4c8538'), pineMat = mat('#3a6636');
+    // Квартали по 600 м: інакше всі дерева мапи — один меш на весь край, і його малює кожен кадр (і тінь) повністю.
+    // Стовбур і крону злито в одну геометрію з вертексним кольором: одне дерево = один інстанс, тип = один draw call.
+    const merged = (parts) => {
+      const pos = [], col = [], c = new THREE.Color();
+      for (const [geo, dy, hex] of parts) {
+        const g = geo.toNonIndexed(), P = g.attributes.position;
+        c.set(hex);
+        for (let i = 0; i < P.count; i++) { pos.push(P.getX(i), P.getY(i) + dy, P.getZ(i)); col.push(c.r, c.g, c.b); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      g.computeVertexNormals();
+      return g;
+    };
+    const trunk = new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5);
+    const leafGeo = merged([[trunk, 0, PAL.trunk], [new THREE.IcosahedronGeometry(1.8, 0), 2.2, PAL.crown]]);
+    const pineGeo = merged([[trunk, 0, PAL.trunk], [new THREE.ConeGeometry(1.5, 4.4, 6), 2.6, PAL.pine]]);
     const cells = new Map();
     for (const t of trees) {
       const k = Math.floor((t.x - B.x0) / 600) + ':' + Math.floor((t.z - B.z0) / 600);
@@ -590,56 +641,70 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     }
     const tmp = new THREE.Object3D();
     for (const list of cells.values()) {
-      const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, list.length);
-      const crowns = new THREE.InstancedMesh(crownGeo, crownMat, list.length);
-      const pines = new THREE.InstancedMesh(pineGeo, pineMat, list.length);
+      const leaf = new THREE.InstancedMesh(leafGeo, M.tree, list.length);
+      const pines = new THREE.InstancedMesh(pineGeo, M.tree, list.length);
       let nc = 0, np = 0;
-      list.forEach((t, i) => {
+      list.forEach((t) => {
         tmp.position.set(t.x, t.y + 1.1 * t.s, t.z); tmp.scale.setScalar(t.s); tmp.rotation.set(0, t.x % 6, 0); tmp.updateMatrix();
-        trunks.setMatrixAt(i, tmp.matrix);
-        tmp.position.y = t.y + (t.pine ? 3.7 : 3.3) * t.s; tmp.updateMatrix();
-        if (t.pine) pines.setMatrixAt(np++, tmp.matrix); else crowns.setMatrixAt(nc++, tmp.matrix);
+        if (t.pine) pines.setMatrixAt(np++, tmp.matrix); else leaf.setMatrixAt(nc++, tmp.matrix);
       });
-      crowns.count = nc; pines.count = np;
-      for (const m of [trunks, crowns, pines]) { m.castShadow = true; m.receiveShadow = true; m.computeBoundingSphere(); scene.add(m); }
+      leaf.count = nc; pines.count = np;
+      for (const m of [leaf, pines]) { if (!m.count) continue; m.castShadow = true; m.receiveShadow = true; m.computeBoundingSphere(); scene.add(m); }
     }
   }
 
+  // ---- 10. пакет: меші по чанках (дрібне — розмітка, світлоповертачі — лише ближче 600 м)
+  const packed = batch.build(scene, M, {
+    shadow: { matte: [true, true], metal: [true, true], concrete: [false, true], road: [false, true], mark: [false, true], reflect: [false, false] },
+    near: 600, far: FAR,
+  });
+
   const ms = Math.round(performance.now() - t0);
-  console.info('[fura] край зібрано за', ms, 'мс:', trees.length, 'дерев,', roads.length, 'доріг');
+  console.info('[fura] край зібрано за', ms, 'мс:', trees.length, 'дерев,', roads.length, 'доріг,', plan.junctions.length, 'перехресть,',
+    Math.round(roadOut.stats.guardM), 'м відбійника,', packed.meshes, 'мешів пакета (', packed.tris, '△)');
 
   const depot = places.find((p) => p.depot) || places[0];
+  let fogFar = 0;
   return {
-    map, places, roads, river, height, nearRoad, buildMs: ms,
+    map, places, roads, river, height, nearRoad, buildMs: ms, roadPlan: plan, packed,
     spawn: { x: depot.spawn.x, z: depot.spawn.z, yaw: depot.spawn.yaw, y: height(depot.spawn.x, depot.spawn.z) },
-    sync() {},
+    // кожен кадр: якщо туман посунули (небо 2.0), чанки малюються до нової межі
+    sync() {
+      const f = scene.fog && scene.fog.far;
+      if (!f || f === fogFar) return;
+      fogFar = f;
+      const far = f;                    // за туманом усе одно не видно: чанк ховається, щойно весь за ним
+      batch.setFar(far);
+      for (const lod of terrainLods) lod.levels[lod.levels.length - 1].distance = far + CH * CELL * 0.71;
+    },
     resetCones() {},
   };
 }
 
-/** Вивіска на двох стовпчиках з написом. */
-function sign(THREE, scene, mat, x, z, y, text, rot) {
+/** Вивіска на двох стовпчиках з написом: щит і стовпчики — у пакет, окремим мешем лише лице з текстурою напису. */
+function sign(THREE, scene, batch, x, z, y, text, rot) {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 128;
   const g = c.getContext('2d');
-  g.fillStyle = '#2f5d8a'; g.fillRect(0, 0, 512, 128);
-  g.strokeStyle = '#f2ede0'; g.lineWidth = 8; g.strokeRect(8, 8, 496, 112);
-  g.fillStyle = '#f2ede0'; g.font = 'bold 54px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = PAL.signBlue; g.fillRect(0, 0, 512, 128);
+  g.strokeStyle = PAL.plaster; g.lineWidth = 8; g.strokeRect(8, 8, 496, 112);
+  g.fillStyle = PAL.plaster; g.font = 'bold 54px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(text, 256, 68, 470);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const grp = new THREE.Group();
-  const side = mat('#2f5d8a');
-  const board = new THREE.Mesh(new THREE.BoxGeometry(5, 1.25, 0.1), [side, side, side, side, new THREE.MeshLambertMaterial({ map: tex }), side]);
-  board.position.y = 2.6;
-  grp.add(board);
-  for (const sx of [-2, 2]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.6, 0.12), mat('#888888'));
-    post.position.set(sx, 1.3, -0.07);
-    grp.add(post);
-  }
   grp.position.set(x, y, z);
   grp.rotation.y = rot;
-  grp.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  grp.updateMatrixWorld();
+  const box = new THREE.BoxGeometry(1, 1, 1), o = new THREE.Object3D();
+  const put = (px, py, pz, sx, sy, sz, color) => {
+    o.position.set(px, py, pz); o.scale.set(sx, sy, sz); o.updateMatrix();
+    batch.add('matte', box, new THREE.Matrix4().multiplyMatrices(grp.matrixWorld, o.matrix), color);
+  };
+  put(0, 2.6, 0, 5, 1.25, 0.1, PAL.signBlue);
+  for (const sx of [-2, 2]) put(sx, 1.3, -0.07, 0.12, 2.6, 0.12, PAL.signPost);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshLambertMaterial({ map: tex }));
+  face.position.set(0, 2.6, 0.052);
+  grp.add(face);
   scene.add(grp);
 }
