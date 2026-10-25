@@ -1,0 +1,98 @@
+/* «📈 Літопис кола» (web/gonchar.js) — сторінка #gonchar: аналітика Гончарного кола на всю ширину. Префікс gnr-. */
+body.route-gonchar #viewGonchar { display: flex; animation: fadein .15s ease-out; }
+.gonchar { display: flex; flex-direction: column; gap: 16px; min-width: 0; width: 100%; }
+
+.gnr-head { position: relative; }
+.gnr-kick { font-family: var(--display); font-size: 1.5em; font-weight: 700; }
+.gnr-head p { margin: 6px 0 12px; color: var(--muted); line-height: 1.5; max-width: 760px; }
+.gnr-head p b { color: var(--text); }
+.gnr-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.gnr-stats span { background: var(--bg2); border-radius: 999px; padding: 6px 12px; font-size: .9em; color: var(--muted); }
+.gnr-stats b { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.gnr-go { position: absolute; top: 14px; right: 16px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.gnr-go:hover { text-decoration: underline; }
+
+.gnr-glek { border: 1px solid color-mix(in srgb, var(--clay) 70%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--clay) 14%, var(--panel)), var(--panel)); }
+.gnr-glek-head { display: flex; gap: 12px; align-items: center; }
+.gnr-glek-head .gnr-ava { font-size: 2em; line-height: 1; }
+.gnr-glek-head h2 { margin: 0; font-family: var(--display); font-size: 1.15em; }
+.gnr-glek-head .muted { font-size: .85em; }
+.gnr-glek ol { margin: 12px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; line-height: 1.5; }
+.gnr-glek li::marker { color: var(--accent); font-weight: 700; }
+
+.gnr-card { min-width: 0; }
+.gnr-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.gnr-h h2 { margin: 0; font-family: var(--display); font-size: 1.15em; }
+.gnr-h .muted { font-size: .85em; }
+.gnr-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.gnr-two > .panel { margin: 0; }
+.gnr-empty { color: var(--muted); padding: 18px 2px; }
+.gnr-note { color: var(--muted); font-size: .85em; margin: 10px 0 0; line-height: 1.45; }
+
+/* графіки */
+.gnr-ch { width: 100%; min-width: 0; }
+.gnr-ch svg { display: block; width: 100%; height: auto; overflow: visible; }
+.gnr-ch .g { stroke: var(--line); stroke-width: 1; }
+.gnr-ch .ax { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.gnr-ch .lb { font-size: 12.5px; font-weight: 600; }
+.gnr-ch .lb.me { font-weight: 800; }
+.gnr-ch .xh { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: .7; }
+.gnr-tip { position: fixed; z-index: 90; pointer-events: none; display: none; min-width: 170px; max-width: 300px; padding: 9px 11px;
+  border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, .35); font-size: 13px; }
+.gnr-tip .t { font-weight: 700; margin-bottom: 4px; }
+.gnr-tip .r { display: flex; justify-content: space-between; gap: 14px; line-height: 1.6; }
+.gnr-tip .r i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.gnr-tip .r small { color: var(--muted); }
+.gnr-tip .r b { font-variant-numeric: tabular-nums; }
+.gnr-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: .88em; }
+.gnr-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+.gnr-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; font-size: .9em; }
+.gnr-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+  background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
+.gnr-chip i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); opacity: .45; }
+.gnr-chip.on { color: var(--text); border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+.gnr-chip.on i { opacity: 1; }
+
+/* множники */
+.gnr-mrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; padding: 8px 0;
+  border-bottom: 1px dashed var(--line); }
+.gnr-mrow:last-of-type { border-bottom: 0; }
+.gnr-mrow .nm small { display: block; color: var(--muted); font-size: .8em; }
+.gnr-mrow .gnr-bar { grid-column: 1 / -1; grid-row: 2; }
+.gnr-mrow .v { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gnr-mrow .v b { margin-right: 6px; }
+.gnr-mrow .v em { font-style: normal; color: var(--accent); font-weight: 600; font-size: .85em; }
+.gnr-mrow .v .muted { font-size: .85em; }
+.gnr-bar { height: 8px; border-radius: 4px; background: var(--bg2); overflow: hidden; min-width: 0; }
+.gnr-bar i { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
+
+/* години */
+.gnr-heat { display: grid; grid-template-columns: 28px repeat(24, minmax(0, 1fr)); gap: 4px; align-items: center; font-size: .8em; max-width: 900px; }
+.gnr-heat .hh, .gnr-heat .dd { color: var(--muted); text-align: center; }
+.gnr-heat i { display: block; aspect-ratio: 1; border-radius: 3px; background: var(--accent); opacity: calc(.07 + var(--a) * .93); }
+
+/* обпал */
+.gnr-bars { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 28px; }
+.gnr-brow { display: grid; grid-template-columns: 112px minmax(40px, 1fr) 56px 34px; gap: 10px; align-items: center;
+  font-variant-numeric: tabular-nums; font-size: .92em; }
+.gnr-brow b { text-align: right; }
+.gnr-brow small { color: var(--muted); }
+
+/* ачівки */
+.gnr-tablewrap { overflow-x: auto; }
+.gnr-ach { width: 100%; border-collapse: collapse; font-size: .9em; }
+.gnr-ach th, .gnr-ach td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.gnr-ach th { color: var(--muted); font-weight: 600; }
+.gnr-ach th i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.gnr-ach td:first-child { white-space: normal; min-width: 220px; }
+.gnr-ach td .ic { margin-right: 6px; }
+.gnr-ach td small { display: block; color: var(--muted); font-size: .82em; }
+.gnr-ach .star { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .gnr-two { grid-template-columns: 1fr; }
+  .gnr-go { position: static; display: inline-block; margin-top: 10px; }
+  .gnr-heat { grid-template-columns: 18px repeat(24, minmax(0, 1fr)); gap: 1px; }
+  .gnr-brow { grid-template-columns: minmax(80px, 1fr) minmax(40px, 1.4fr) 56px 30px; gap: 6px; }
+}

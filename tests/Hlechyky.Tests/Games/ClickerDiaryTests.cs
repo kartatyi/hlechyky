@@ -85,6 +85,28 @@ public class ClickerDiaryTests
     // ---------- «📈 Літопис кола»: що віддає ендпоінт ----------
 
     [Fact]
+    public void The_wire_carries_master_of_the_day_and_potter_achievements_for_me_and_the_round()
+    {
+        WithDb(db =>
+        {
+            db.Exec(ClickerDayService.Schema);
+            db.Exec("INSERT INTO clicker_day(day, nick_key, nick, points, at) VALUES('2026-10-24', 'назар', 'Назар', 1012, '2026-10-24T20:00:00Z'), ('2026-09-01', 'назар', 'Назар', 5, '2026-09-01T20:00:00Z')");
+            db.Exec("INSERT INTO achievements(nick_key, key, nick, unlocked_at) VALUES('назар', 'potter-1k', 'Назар', '2026-09-23T10:00:00Z'), ('назар', 'slot-win', 'Назар', '2026-09-23T10:00:00Z')");
+            var svc = new ClickerDiaryService(db, () => new ClickerDiaryOptions(), new FakeClock { UtcNow = Local(2026, 10, 25, 12, 0) }, person: _ => true);
+            svc.Put("Назар", "2026-10-25", Local(2026, 10, 25, 9, 0), "{\"total\":3e40}");
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(svc.Wire("Назар")));
+            var w = doc.RootElement;
+            var master = w.GetProperty("master").GetProperty("Назар");
+            Assert.Equal(1, master.GetArrayLength());                                    // давніше за 21 день — не беремо
+            Assert.Equal(1012, master[0][1].GetInt32());
+            var ach = w.GetProperty("ach").GetProperty("Назар");
+            Assert.True(ach.TryGetProperty("potter-1k", out _));
+            Assert.False(ach.TryGetProperty("slot-win", out _));                        // лише ачівки кола
+            Assert.Equal("Гончар", w.GetProperty("achNames").GetProperty("potter-1k")[0].GetString());
+        });
+    }
+
+    [Fact]
     public void The_wire_gives_my_days_with_minutes_and_the_round_but_only_my_full_snapshot()
     {
         WithDb(db =>
