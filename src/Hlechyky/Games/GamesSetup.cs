@@ -113,6 +113,7 @@ public static class GamesSetup
         Impl.NamystoSetup.MapNamysto(app);                  // /api/games/namysto/tracks — жолоби всіх трас
         Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
         Impl.SlotsSetup.MapSlots(app);                      // /api/slots/feed — Скарбничка й заноси тижня
+        Impl.FuraSetup.MapFura(app);                        // /api/games/fura/map/<id> — мапа «Чумаків-далекобійників»
         return app;
     }
 }
