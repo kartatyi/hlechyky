@@ -8,7 +8,9 @@ export const PRESETS = {
   low: { scale: 0.75, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'smooth', budget: 0, draw: 'near', grass: false, bloom: false, grade: true, dof: 'off', fps: 60 },
   medium: { scale: 1, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'fluffy', budget: 1, draw: 'mid', grass: true, bloom: true, grade: true, dof: 'weak', fps: 60 },
   high: { scale: 1, aa: 'fxaa', shadows: 2048, clouds: 'high', cloudShadows: true, trees: 'fluffy', budget: 2, draw: 'far', grass: true, bloom: true, grade: true, dof: 'strong', fps: 60 },
-  ultra: { scale: 1, aa: 'msaa', shadows: 4096, clouds: 'ultra', cloudShadows: true, trees: 'fluffy', budget: 3, draw: 'far', grass: true, bloom: true, grade: true, dof: 'strong', fps: 0 },
+  // «Ультра» без ліміту кадрів, з MSAA 4×, тінями 4096 і хмарами ultra вантажила 5060 Ti на 100 % (26.10): тримає 60 кадрів,
+  // FXAA, тіні 2048 і хмари high, як «Висока», а відрізняється деталізацією; найважче лишається окремими пунктами меню
+  ultra: { scale: 1, aa: 'fxaa', shadows: 2048, clouds: 'high', cloudShadows: true, trees: 'fluffy', budget: 3, draw: 'far', grass: true, bloom: true, grade: true, dof: 'strong', fps: 60 },
 };
 // особисте — пресет не чіпає: поле зору, пора доби, піксель
 const PERSONAL = { fov: 62, time: 'kyiv', pixel: 1 };
@@ -49,6 +51,8 @@ export function loadGfx(auto) {
   try { saved = JSON.parse(localStorage.getItem('fura.gfx') || 'null'); } catch { /* пусто */ }
   const preset = saved && (PRESETS[saved.preset] || saved.preset === 'custom') ? saved.preset : auto;
   const G = { preset, ...PERSONAL, ...PRESETS[preset === 'custom' ? 'high' : preset], ...(saved || {}) };
+  // названий пресет — його значення, а не збережені (інакше зміна пресета в новій версії до старих гравців не доходить)
+  if (PRESETS[preset]) Object.assign(G, PRESETS[preset]);
   for (const [k, , vals] of OPTIONS) if (k !== 'preset' && !vals.includes(G[k])) G[k] = (PRESETS[preset] || PRESETS.high)[k] ?? PERSONAL[k];
   return { G, first: !saved };
 }
