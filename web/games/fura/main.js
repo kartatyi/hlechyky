@@ -11,6 +11,7 @@ import { buildModels } from './model.js';
 import { Input, pads, isPad, looksLikeWheel, loadCalib, shortName } from './input.js';
 import { openCalib } from './calib.js';
 import { Sound } from './audio.js';
+import { openMixer } from './mixer.js';
 import { Nav } from './nav.js';
 import { Trips } from './trip.js';
 import { Voice } from './voice.js';
@@ -31,6 +32,83 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('fura.' + k); return v == null ? d : v; } catch { return d; } },
   set(k, v) { try { localStorage.setItem('fura.' + k, v); } catch { /* пусто */ } },
 };
+
+/**
+ * Метр смикання: `?furaPerf` в адресі або `__fura.perf.on()`; `__fura.perf.report()` — зведення, `.reset()`, `.off()`.
+ * Міряє проміжок між кадрами rAF, нашу роботу в кадрі по ділянках (lap), кроки фізики на кадр, види й кадри з сервера,
+ * довгі кадри (> 25 мс — з ділянкою, що з'їла найбільше) і, де браузер уміє, long-animation-frame — чужі скрипти поза
+ * нашим rAF (каркас сайту, сокет). Вимкнений коштує одне порівняння на ділянку.
+ */
+function makePerf() {
+  const LONG = 25;
+  const P = { active: false };
+  let s, lapAt = 0, f0 = 0, obs = null;
+  const q = (a, p) => { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return +b[Math.min(b.length - 1, Math.floor(p * b.length))].toFixed(1); };
+  P.reset = () => {
+    s = { t0: performance.now(), iv: [], work: [], steps: [0, 0, 0, 0], lap: {}, long: [], views: 0, viewMs: [], rafN: 0, ghostN: 0,
+      inputs: 0, acts: 0, drift: 0, driftN: 0, loaf: [] };
+  };
+  P.on = () => {
+    P.reset(); P.active = true;
+    try {
+      if (!obs && PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')) {
+        obs = new PerformanceObserver((l) => { if (!P.active) return; for (const e of l.getEntries()) {
+          if (e.duration < 30) continue;
+          const sc = (e.scripts || []).filter((x) => x.duration > 3).sort((a, b) => b.duration - a.duration).slice(0, 3)
+            .map((x) => Math.round(x.duration) + ' мс ' + (x.invoker || '') + ' ' + String(x.sourceURL || '').replace(/^.*\/\/[^/]+/, '') + (x.sourceFunctionName ? ' ' + x.sourceFunctionName : ''));
+          s.loaf.push({ at: Math.round(e.startTime - s.t0), ms: Math.round(e.duration), block: Math.round(e.blockingDuration || 0), render: Math.round(e.renderStart ? e.startTime + e.duration - e.renderStart : 0), sc });
+          if (s.loaf.length > 60) s.loaf.shift();
+        } });
+        obs.observe({ type: 'long-animation-frame', buffered: false });
+      }
+    } catch { /* старий браузер */ }
+    return 'метр увімкнено';
+  };
+  P.off = () => { P.active = false; if (obs) { obs.disconnect(); obs = null; } return 'метр вимкнено'; };
+  P.frame = (now, iv) => { if (!P.active) return; f0 = lapAt = performance.now(); if (iv > 0 && s.rafN++ > 0) s.iv.push(iv); };
+  P.lap = (name) => {
+    if (!P.active) return;
+    const t = performance.now(), l = s.lap[name] || (s.lap[name] = { n: 0, sum: 0, max: 0, last: 0 });
+    const d = t - lapAt; lapAt = t;
+    l.n++; l.sum += d; if (d > l.max) l.max = d; l.last = d;
+  };
+  P.end = (now, iv, steps, extra) => {
+    if (!P.active) return;
+    const w = performance.now() - f0;
+    s.work.push(w);
+    s.steps[Math.min(3, steps)]++;
+    if (iv > LONG || w > LONG) {
+      let top = '', topMs = 0;
+      for (const [k, l] of Object.entries(s.lap)) if (l.last > topMs) { topMs = l.last; top = k; }
+      s.long.push({ at: Math.round(now - s.t0), iv: +iv.toFixed(1), work: +w.toFixed(1), steps, top: top + ' ' + topMs.toFixed(1), ...extra });
+      if (s.long.length > 80) s.long.shift();
+    }
+    for (const l of Object.values(s.lap)) l.last = 0;
+  };
+  /** Намальований тягач за кадр проти швидкості × час: ≠ 1 — проміжна поза бреше (ривок при рівному fps). */
+  P.drift = (moved, expect) => { if (!P.active || expect < 0.05) return; s.driftN++; if (Math.abs(moved / expect - 1) > 0.3) s.drift++; };
+  P.view = (ms) => { if (!P.active) return; s.views++; s.viewMs.push(ms); };
+  P.ghostFrame = () => { if (P.active) s.ghostN++; };
+  P.input = (act) => { if (!P.active) return; if (act) s.acts++; else s.inputs++; };
+  P.report = () => {
+    if (!s) return 'метр не вмикали: __fura.perf.on()';
+    const sec = (performance.now() - s.t0) / 1000, r1 = (x) => +x.toFixed(2);
+    const laps = Object.fromEntries(Object.entries(s.lap).map(([k, l]) => [k, { avg: r1(l.sum / Math.max(1, l.n)), max: r1(l.max) }]));
+    return {
+      sec: +sec.toFixed(1), fps: +(s.iv.length / Math.max(0.001, s.iv.reduce((a, b) => a + b, 0) / 1000)).toFixed(1),
+      iv: { p50: q(s.iv, 0.5), p95: q(s.iv, 0.95), p99: q(s.iv, 0.99), max: q(s.iv, 1), over25: s.iv.filter((x) => x > 25).length, over40: s.iv.filter((x) => x > 40).length },
+      work: { p50: q(s.work, 0.5), p95: q(s.work, 0.95), p99: q(s.work, 0.99), max: q(s.work, 1), over25: s.work.filter((x) => x > 25).length },
+      steps: { 0: s.steps[0], 1: s.steps[1], 2: s.steps[2], '3+': s.steps[3] },
+      drift: s.driftN ? s.drift + ' з ' + s.driftN : '—',
+      laps,
+      views: { n: s.views, perSec: r1(s.views / sec), avgMs: r1(s.viewMs.reduce((a, b) => a + b, 0) / Math.max(1, s.views)), maxMs: q(s.viewMs, 1) },
+      ghostFrames: { n: s.ghostN, perSec: r1(s.ghostN / sec) },
+      pose: { input: r1(s.inputs / sec), act: r1(s.acts / sec) },
+      long: s.long.slice(-25), loaf: s.loaf.slice(-20),
+    };
+  };
+  return P;
+}
 
 /** mode: 'kray' — «Чумацький край» (мапа з сервера), 'polygon' — полігон етапу 0 для тренування. */
 /** server — міст до столу гри (fura.js): { tell(action, payload), input(action, payload), view(), onView, onFrame } */
@@ -122,7 +200,9 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   };
 
   const input = new Input();
-  const sound = new Sound();
+  const perf = makePerf();
+  if (/[?&]furaPerf\b/.test(location.search)) perf.on();
+  const sound = new Sound({ truck, view: () => cam });
   sound.start();
   ui.mute.textContent = sound.muted ? '🔇' : '🔊';
 
@@ -213,6 +293,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     else if (k === 'fs') toggleFs();
     else if (k === 'menu') openMenu();
     else if (k === 'exit') exit();
+    // фокус — назад на полотно: інакше кнопка, клацнута мишею, лишалась би у фокусі для клавіатури (вікно бере його собі)
+    if (!stopped && !modal && document.activeElement === t) cv.focus({ preventScroll: true });
   });
 
   function nextCam() {
@@ -312,6 +394,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       + tripItems
       + '<button type="button" data-m="calib">🛞 Калібрування керма' + (wheels.length ? ' (' + shortName(wheels[0].id) + ')' : '') + '</button>'
       + '<button type="button" data-m="gear">⚙ Коробка: ' + (truck.gearMode === 'auto' ? 'автомат → зробити ручну' : 'ручна → зробити автомат') + '</button>'
+      + '<button type="button" data-m="mixer">🎚 Гучність</button>'
       + '<button type="button" data-m="help">❓ Керування</button>'
       + '<button type="button" data-m="exit">✕ Вийти' + (trips ? ' (рейс чекатиме)' : ' з полігона') + '</button></div>', (el, m) => {
       el.addEventListener('click', (e) => {
@@ -327,6 +410,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
         else if (k === 'depot') { truck.place({ tractor: SPAWN.tractor, trailer: { ...truck.rbPose() } }, false); resetPoses(); }
         else if (k === 'calib') calib();
         else if (k === 'gear') { if (truck.gearMode === 'auto') { truck.gearMode = 'manual'; truck.gear = 1; } else truck.setAuto(); }
+        else if (k === 'mixer') openMixer({ boxModal, sound });
         else if (k === 'help') help();
         else if (k === 'exit') exit();
       });
@@ -387,15 +471,16 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   resetPoses();
 
   // ---- кадр
+  const drawnAt = new THREE.Vector3();
   let hudAt = 0, jugX = 0, jugZ = 0, jugVX = 0, jugVZ = 0, flashAt = 0;
   if (mode === 'kray' && level.roads) {
     nav = new Nav(THREE, scene, level);
     if (server) {
       voice = new Voice({ sound, hud });
       ghosts = new Ghosts({ THREE, scene, camera, level });
-      trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, voice, ghosts, onPlaced: () => resetPoses() });
-      server.onView = (v) => trips.onView(v);
-      server.onFrame = (f) => ghosts.push(f);
+      trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, voice, ghosts, perf, onPlaced: () => resetPoses() });
+      server.onView = (v) => { const t = performance.now(); trips.onView(v); perf.view(performance.now() - t); };
+      server.onFrame = (f) => { ghosts.push(f); perf.ghostFrame(); };
       trips.onView(server.view());
     }
   }
@@ -427,7 +512,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     },
   };
 
-  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, get trips() { return trips; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
+  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, get trips() { return trips; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
   window.__fura = api;   // для перевірки з консолі: __fura.fake = {throttle: 1, …}
 
   function idleInput() { return { steer: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, horn: false, hit: new Set(), hGear: null, lookX: 0, lookY: 0, source: 'kbd' }; }
@@ -444,7 +529,9 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   function frame(now) {
     if (stopped) return;
     raf = requestAnimationFrame(frame);
-    let dt = (now - last) / 1000;
+    const iv = now - last;
+    perf.frame(now, iv);
+    let dt = iv / 1000;
     last = now;
     if (dt > 0.25) dt = 0.25;               // вкладку ховали — не наздоганяємо хвилину фізики
     fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
@@ -458,6 +545,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     } else inp = input.poll(dt, kmh);
     if (api.fake) inp = Object.assign(idleInput(), api.fake, { hit: new Set(api.fake.hit || []) });
     if (api.fake && api.fake.hit) api.fake.hit = [];
+    perf.lap('input');
 
     // ---- щойно натиснуте
     if (inp.hit.has('couple') && trips && trips.couplePress()) inp.hit.delete('couple');   // у зоні отримувача — «здати»
@@ -481,16 +569,19 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     if (!modal && input.keys.has('KeyL') && !api._l) { api._l = true; truck.lights = !truck.lights; model.setLights(truck.lights); say(truck.lights ? '💡 Фари ввімкнено' : 'Фари вимкнено', 1200); }
     else if (!input.keys.has('KeyL')) api._l = false;
     if (inp.horn) sound.start();
+    perf.lap('keys');
 
     // ---- фізика рівним кроком
+    let n = 0;
     if (!document.hidden) {
       acc += dt;
-      let n = 0;
       while (acc >= STEP && n < 8) { physics(inp); acc -= STEP; n++; inp = Object.assign({}, inp, { hit: new Set() }); }
       if (n === 8) acc = 0;
     }
+    perf.lap('physics');
     level.sync();
     if (trips) trips.telemetry(now, inp);
+    perf.lap('telemetry');
 
     // ---- поза для малювання між кроками
     const a = Math.min(1, acc / STEP);
@@ -508,6 +599,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     jugVX += (-g.lat * 0.05 - jugX * 60 - jugVX * 6) * dt; jugX += jugVX * dt;
     jugVZ += (g.lon * 0.04 - jugZ * 60 - jugVZ * 6) * dt; jugZ += jugVZ * dt;
     model.jug.rotation.set(jugZ, 0, jugX);
+    if (perf.active) { perf.drift(pose.tp.distanceTo(drawnAt), Math.abs(truck.speed()) * dt); drawnAt.copy(pose.tp); }
+    perf.lap('model');
 
     // огляд правим стіком
     if (Math.abs(inp.lookX) > 0 || Math.abs(inp.lookY) > 0) {
@@ -515,8 +608,11 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     } else if (!dragging && cam !== 'cabin') { lookYaw *= 0.9; }
 
     placeCamera(dt);
+    perf.lap('camera');
     if (ghosts) ghosts.update(now, dt);
+    perf.lap('ghosts');
     renderer.render(scene, camera);
+    perf.lap('render');
 
     // ---- удари по вантажу
     if (truck.hit > 0.02) {
@@ -537,7 +633,10 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       if (un) { calibAsked.add(un.id); say('🛞 Бачу «' + shortName(un.id) + '» — відкалібруймо', 2500); setTimeout(() => { if (!stopped && !modal) calib(un.id); }, 900); }
     }
 
+    perf.lap('sound');
     if (now - hudAt > 66) { hudAt = now; drawHud(inp, kmh); }
+    perf.lap('hud');
+    perf.end(now, iv, n);
   }
 
   function drawHud(inp, kmh) {

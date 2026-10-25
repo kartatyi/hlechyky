@@ -8,13 +8,19 @@ namespace Hlechyky.Games.Impl;
 public sealed record ShatkuyFruit(int Id, char K, int At, int D, double X0, double X1, double H, double Spin)
 {
     public bool Glek => K == ShatkuyCore.Glek;
-    public bool Big => K == ShatkuyCore.Big;
+    /// <summary>Великий — кавун Ярмарку чи гарбуз-велетень Класики: б'ють багато разів, падіння — не промах.</summary>
+    public bool Big => ShatkuyCore.IsBig(K);
     /// <summary>Остання ігрова мить, коли розріз ще приймаємо (політ + запас на мережу).</summary>
     public int Until => At + D + ShatkuyCore.LagMs;
 }
 
-/// <summary>Режим: тривалість (0 — до трьох промахів), чи є життя, глеки, особливі плоди й великий кавун наприкінці.</summary>
-public sealed record ShatkuyMode(string Id, int LenMs, bool Lives, bool Gleks, bool Specials, bool BigKavun)
+/// <summary>
+/// Режим: тривалість (0 — до трьох промахів), чи є життя, глеки, особливі плоди й великий кавун наприкінці.
+/// v2: <paramref name="Pepper"/> — чи летить перець (у Дзені нема), <paramref name="Series"/> — чи множить серія очки
+/// (у Дзені ні), <paramref name="Giants"/> — гарбуз-велетень кожні <see cref="ShatkuyCore.GiantEvery"/> очок (Класика).
+/// </summary>
+public sealed record ShatkuyMode(string Id, int LenMs, bool Lives, bool Gleks, bool Specials, bool BigKavun,
+    bool Pepper = true, bool Series = true, bool Giants = false)
 {
     public bool Timed => LenMs > 0;
 }
@@ -48,9 +54,31 @@ public struct ShatkuyRng(ulong seed)
 public static class ShatkuyCore
 {
     public const char Glek = 'G', Frost = 'F', Double = 'X', Shower = 'Z', Big = 'B';
-    /// <summary>Звичайні плоди — по одному очку.</summary>
+    /// <summary>
+    /// v2 (контракт _tools/shatkuy-v2.md §1, §4): гарбуз <c>p</c> — два удари; часник <c>c</c> розпадається на три зубчики
+    /// <c>v</c>; перець <c>h</c> — пропущений пече; картопля <c>o</c> — мала й швидка; <c>P</c> — гарбуз-велетень Класики.
+    /// </summary>
+    public const char Pumpkin = 'p', Garlic = 'c', Clove = 'v', Pepper = 'h', Potato = 'o', Giant = 'P';
+    /// <summary>Звичайні плоди (з v1). Ціна — <see cref="Price"/>: гарбуз 3, решта 1.</summary>
     public const string Plain = "sbagdpkrm";
     public const string Specials = "FXZ";
+    /// <summary>Овочі з характером (v2): часник, перець, картопля — підміняють звичайні з третьої хвилі.</summary>
+    public const string Veggies = "cho";
+    /// <summary>Яка частка звичайних плодів хвилі стає новими овочами (з третьої хвилі).</summary>
+    public const double VeggieShare = 0.25;
+    /// <summary>Другий удар по гарбузу — іншим змахом і не раніше ніж за стільки справжніх мс після першого.</summary>
+    public const int CrackGapMs = 120;
+    /// <summary>Картопля летить у 1,35 раза швидше: її політ — стільки від звичайного.</summary>
+    public const double PotatoFly = 0.75;
+    /// <summary>Пропущений перець пече стільки справжніх мс (марево по краях поля) і рве серію.</summary>
+    public const int BurnMs = 2_500;
+    public const int Cloves = 3;
+    /// <summary>Номери зубчиків: <c>CloveBase + часник·4 + j</c> (часник — лише з основного розкладу).</summary>
+    public const int CloveBase = 2_000_000;
+    /// <summary>Класика: кожні стільки очок наступна хвиля — гарбуз-велетень.</summary>
+    public const int GiantEvery = 100;
+    /// <summary>Пороги множника серії: ×2 з 10, ×3 з 25, ×4 з 50 (стеля).</summary>
+    public static readonly int[] SeriesAt = [10, 25, 50];
 
     /// <summary>Скільки ігрових мс після падіння ще приймаємо розріз (мережа, годинник).</summary>
     public const int LagMs = 600;
@@ -71,12 +99,30 @@ public static class ShatkuyCore
     public const int GlekPenalty = 10;
     public const int Lives = 3, LifeEvery = 100;
 
-    public static readonly ShatkuyMode Classic = new("classic", 0, Lives: true, Gleks: true, Specials: false, BigKavun: false);
+    public static readonly ShatkuyMode Classic = new("classic", 0, Lives: true, Gleks: true, Specials: false, BigKavun: false, Giants: true);
     public static readonly ShatkuyMode Fair = new("fair", 60_000, Lives: false, Gleks: true, Specials: true, BigKavun: true);
-    public static readonly ShatkuyMode Zen = new("zen", 90_000, Lives: false, Gleks: false, Specials: false, BigKavun: false);
+    public static readonly ShatkuyMode Zen = new("zen", 90_000, Lives: false, Gleks: false, Specials: false, BigKavun: false, Pepper: false, Series: false);
     public static readonly ShatkuyMode Daily = new("daily", 45_000, Lives: false, Gleks: true, Specials: true, BigKavun: true);
+    /// <summary>«Шаткуй разом» (v2 §6): хвилина за правилами Ярмарку, кожен на своєму полі з тим самим розкладом.</summary>
+    public static readonly ShatkuyMode Party = new("party", 60_000, Lives: false, Gleks: true, Specials: true, BigKavun: true);
 
     public static bool IsPlain(char k) => Plain.Contains(k);
+    public static bool IsBig(char k) => k is Big or Giant;
+
+    /// <summary>Чи падіння плоду — промах (життя в Класиці, кінець серії): звичайні, часник і картопля. Перець пече окремо, зубчики, глек, особливі й великі — ні.</summary>
+    public static bool IsMiss(char k) => IsPlain(k) || k is Garlic or Potato;
+
+    /// <summary>Основна ціна розрізаного плоду (її й множить серія).</summary>
+    public static int Price(char k) => k switch { Pumpkin => 3, Pepper or Potato => 2, _ => 1 };
+
+    /// <summary>Множник серії: ×1 до 9 поспіль, ×2 з 10, ×3 з 25, ×4 з 50.</summary>
+    public static int Mult(int streak) => streak >= SeriesAt[2] ? 4 : streak >= SeriesAt[1] ? 3 : streak >= SeriesAt[0] ? 2 : 1;
+
+    /// <summary>Радіуси нових плодів (частки меншого боку поля, як <c>KINDS[k].r</c> у shatkuy.js) — для клієнта у <c>k.r</c>.</summary>
+    public static readonly IReadOnlyDictionary<string, double> NewRadii = new Dictionary<string, double>
+    {
+        ["c"] = 0.055, ["v"] = 0.035, ["h"] = 0.05, ["o"] = 0.045, ["P"] = 0.17,
+    };
 
     // ---------- ігровий час ----------
 
@@ -126,6 +172,36 @@ public static class ShatkuyCore
         }
         return list;
     }
+
+    // ---------- часник ----------
+
+    public static int CloveId(int garlic, int j) => CloveBase + garlic * 4 + j;
+
+    /// <summary>
+    /// Три зубчики часнику, розрізаного на ігровій <paramref name="g"/>: вилітають віялом угору з точки, де часник був
+    /// за формулою польоту (частки поля, без радіуса). Кожен — звичайна дуга, яку браузер малює тим самим <c>where</c>:
+    /// її виліт <c>at</c> — у минулому, так що на <c>g</c> зубчик саме в точці розрізу й ще піднімається. Розкид — із сіду
+    /// розкладу й номера часнику: той самий розріз дає ті самі зубчики (Шаткуй дня, «разом»).
+    /// </summary>
+    public static List<ShatkuyFruit> ClovesOf(ulong seed, ShatkuyFruit garlic, int g)
+    {
+        var s = Math.Clamp((g - garlic.At) / (double)garlic.D, 0, 1);
+        var x = garlic.X0 + (garlic.X1 - garlic.X0) * s;
+        var y = garlic.H * 4 * s * (1 - s);   // висота над низом поля, частки висоти
+        var rng = new ShatkuyRng(seed ^ (0xC1C1_0B0B_5EED_0001UL * (ulong)(garlic.Id + 1)));
+        var list = new List<ShatkuyFruit>(Cloves);
+        for (var j = 0; j < Cloves; j++)
+        {
+            var d = 1_500 + rng.I(300);
+            var h = Math.Clamp(y + rng.D(0.12, 0.22), 0.2, 0.95);
+            var q = Math.Clamp(y / h, 0, 0.98);   // 4·s0·(1 − s0) на висоті розрізу
+            var s0 = (1 - Math.Sqrt(1 - q)) / 2;    // висхідна гілка дуги
+            var x1 = Math.Clamp(x + (j - 1) * 0.16 + rng.D(-0.03, 0.03), 0.04, 0.96);
+            var x0 = (x - x1 * s0) / (1 - s0);
+            list.Add(new ShatkuyFruit(CloveId(garlic.Id, j), Clove, g - (int)Math.Round(s0 * d), d, x0, x1, h, rng.D(-2, 2)));
+        }
+        return list;
+    }
 }
 
 /// <summary>
@@ -140,6 +216,7 @@ public sealed class ShatkuyPlan
     int _specialAt;
     char _lastSpecial;
     bool _big;
+    int _giants;
 
     public List<ShatkuyFruit> Fruits { get; } = [];
     public ulong Seed { get; }
@@ -152,11 +229,24 @@ public sealed class ShatkuyPlan
         _specialAt = 7_000 + _rng.I(4_000);
     }
 
+    /// <summary>
+    /// Класика (v2 §4): наступна ще не докинута хвиля — гарбуз-велетень; хвилі на час його польоту не летять.
+    /// ГВЧ велетень не чіпає — далі розклад той самий, лише зсунутий.
+    /// </summary>
+    public void QueueGiant() => _giants++;
+
     /// <summary>Докинути хвилі, що вилітають до ігрової <paramref name="g"/> включно.</summary>
     public void Until(int g)
     {
         while (_next <= g)
         {
+            if (_giants > 0 && !_mode.Timed)
+            {
+                _giants--;
+                Fruits.Add(new ShatkuyFruit(++_id, ShatkuyCore.Giant, _next, ShatkuyCore.BigFlyMs, 0.5, 0.5, 0.6, 0.25));
+                _next += ShatkuyCore.BigFlyMs + 600;
+                continue;
+            }
             if (_mode.Timed && _next >= _mode.LenMs - (_mode.BigKavun ? ShatkuyCore.BigBeforeEndMs : 1_200))
             {
                 if (_mode.BigKavun && !_big)
@@ -193,7 +283,7 @@ public sealed class ShatkuyPlan
 
         // що летить: звичайні, глек(и), особливий
         var kinds = new List<char>(n + 2);
-        for (var i = 0; i < n; i++) kinds.Add(ShatkuyCore.Plain[_rng.I(ShatkuyCore.Plain.Length)]);
+        for (var i = 0; i < n; i++) kinds.Add(Plain());
         if (_mode.Gleks && g > 5_000)
         {
             var p = _mode.Timed ? 0.22 + 0.18 * (g / (double)_mode.LenMs) : Math.Min(0.45, 0.1 + g / 250_000.0);
@@ -244,11 +334,21 @@ public sealed class ShatkuyPlan
         _next = g + gap + _rng.I(gap / 3 + 1) - gap / 6;
     }
 
+    /// <summary>Звичайний плід хвилі; з третьої хвилі ~25 % — нові овочі (картопля й часник частіше, перець рідше).</summary>
+    char Plain()
+    {
+        var k = ShatkuyCore.Plain[_rng.I(ShatkuyCore.Plain.Length)];
+        if (_wave <= 2 || !_rng.P(ShatkuyCore.VeggieShare)) return k;
+        var r = _rng.D();
+        if (!_mode.Pepper) return r < 0.5 ? ShatkuyCore.Potato : ShatkuyCore.Garlic;
+        return r < 0.4 ? ShatkuyCore.Potato : r < 0.8 ? ShatkuyCore.Garlic : ShatkuyCore.Pepper;
+    }
+
     double Toward(double x0) => Math.Clamp(x0 + (0.5 - x0) * _rng.D(0.1, 0.6) + _rng.D(-0.08, 0.08), 0.08, 0.92);
 
     void Add(char k, int at, double x0, double x1, double speed)
     {
-        var d = (int)((2_600 + _rng.I(600)) * speed);
+        var d = (int)((2_600 + _rng.I(600)) * speed * (k == ShatkuyCore.Potato ? ShatkuyCore.PotatoFly : 1));
         var h = k == ShatkuyCore.Glek ? _rng.D(0.5, 0.78) : _rng.D(0.55, 0.88);
         Fruits.Add(new ShatkuyFruit(++_id, k, at, d, x0, x1, h, _rng.D(-1.5, 1.5)));
     }

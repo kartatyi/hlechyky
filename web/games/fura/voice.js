@@ -59,11 +59,11 @@ export class Voice {
     const canPlay = line.url && !this.sound.muted && this.sound.ctx;
     if (!canPlay) { this.timer = setTimeout(() => this.finish(), 2200 + line.text.length * 45); return; }
     this.duck(true);
-    this.sound.burst(0.18, 'bandpass', 2400, 0.18, 1.5);         // «кшш» — натиснув тангенту
+    this.sound.burst(0.18, 'bandpass', 2400, 0.18, 1.5, this.sound.bus.voice);   // «кшш» — натиснув тангенту
     try {
       this.ensureChain();
       this.el.src = line.url;
-      this.el.onended = () => { this.sound.burst(0.12, 'bandpass', 2000, 0.12, 1.5); this.finish(); };
+      this.el.onended = () => { this.sound.burst(0.12, 'bandpass', 2000, 0.12, 1.5, this.sound.bus.voice); this.finish(); };
       this.el.onerror = () => this.finish();
       await this.el.play();
     } catch { this.timer = setTimeout(() => this.finish(), 2000 + line.text.length * 45); }
@@ -84,7 +84,8 @@ export class Voice {
     this.sub.classList.add('on');
   }
 
-  /** Рація: медіа-елемент → смуга 300–3200 Гц → легкий хрип → гучність. Будуємо раз (джерело з елемента — лише одне). */
+  /** Рація: медіа-елемент → смуга 300–3200 Гц → легкий хрип → гучність → шина «Глек» мікшера. Будуємо раз (джерело
+   *  з елемента — лише одне). */
   ensureChain() {
     if (this.el) return;
     const ctx = this.sound.ctx;
@@ -99,16 +100,21 @@ export class Voice {
     for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(x * 2.2) / Math.tanh(2.2); }
     shaper.curve = curve;
     const g = ctx.createGain(); g.gain.value = 1.6;
-    src.connect(hp); hp.connect(lp); lp.connect(peak); peak.connect(shaper); shaper.connect(g); g.connect(this.sound.master);
+    src.connect(hp); hp.connect(lp); lp.connect(peak); peak.connect(shaper); shaper.connect(g); g.connect(this.sound.bus.voice);
   }
 
-  /** Поки Глек говорить — двигун і ефір сайту тихіше. */
+  /** Поки Глек говорить — двигун і ефір сайту тихіше. Назад — через повзунок сайту (#volume): за фразу гравець міг
+   *  крутнути гучність радіо в мікшері, і старе значення її б перетерло. */
   duck(on) {
     this.sound.duck && this.sound.duck(on);
     const radio = document.getElementById('audio');
     if (!radio) return;
     if (on) { if (this.radioVol == null) { this.radioVol = radio.volume; radio.volume = Math.min(radio.volume, this.radioVol * 0.3); } }
-    else if (this.radioVol != null) { radio.volume = this.radioVol; this.radioVol = null; }
+    else if (this.radioVol != null) {
+      const vol = document.getElementById('volume');
+      if (vol) vol.dispatchEvent(new Event('input')); else radio.volume = this.radioVol;
+      this.radioVol = null;
+    }
   }
 
   stop() {
