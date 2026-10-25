@@ -4269,6 +4269,8 @@
     openGift,
     send,
     get catalog() { return catalog; },
+    /// Живі столи лобі (остання подія 'rooms', копія — лише читати): картка «Чумаків» показує, хто в рейсі, й кличе приєднатися.
+    get rooms() { return rooms.slice(); },
   };
 
   window.HGames = HGames;
