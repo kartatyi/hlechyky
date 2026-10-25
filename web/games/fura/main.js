@@ -143,7 +143,9 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
 
   const scene = new THREE.Scene();
   await progress('🌤 Готуємо небо…');
-  const sky = new Sky(THREE, renderer, scene);
+  let sky;
+  try { sky = new Sky(THREE, renderer, scene); }
+  catch (e) { renderer.dispose(); app.remove(); throw e; }   // без HDR — помилка в картці гри, а не чорний екран поверх сайту
   const sun = sky.sun;
 
   const camera = new THREE.PerspectiveCamera(gfx.fov, 1, 0.08, 900);
@@ -466,8 +468,11 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     if (ghosts) ghosts.dispose();
     sound.stop();
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch { /* пусто */ }
+    if (trees) trees.dispose();
+    if (grass) grass.dispose();
     sky.dispose();
     renderer.dispose();
+    try { renderer.forceContextLoss(); } catch { /* пусто */ }   // віддати GPU одразу, не чекаючи збирача сміття
     try { world.free(); } catch { /* пусто */ }
     app.remove();
     if (window.__fura === api) delete window.__fura;
@@ -540,8 +545,13 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   function frame(now) {
     if (stopped) return;
     raf = requestAnimationFrame(frame);
-    if (gfx.fps > 0 && now - drawAt < 1000 / gfx.fps - 2) return;     // обмеження FPS (меню «Графіка»): фізика наздожене
-    drawAt = now;
+    // обмеження FPS (меню «Графіка»): фаза накопичується (drawAt += період), інакше на 75/144 Гц ліміт 60 давав
+    // ~37–50 fps рваним кроком; відстали на 3 періоди (вкладку ховали) — підтягуємо до «зараз». Фізика наздожене.
+    if (gfx.fps > 0) {
+      const per = 1000 / gfx.fps;
+      if (now - drawAt < per - 1) return;
+      drawAt = now - drawAt > per * 3 ? now : drawAt + per;
+    }
     const iv = now - last;
     perf.frame(now, iv);
     let dt = iv / 1000;
@@ -722,6 +732,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   const lostBox = document.createElement('div');
   lostBox.className = 'fura-panel fura-gl-lost';
   cv.addEventListener('webglcontextlost', (e) => {
+    if (stopped) return;                  // forceContextLoss при виході — це ми самі
     e.preventDefault(); glLost = true;
     lostBox.textContent = '⚠ Відеокарта забрала графіку — відновлюємо…';
     if (!lostBox.parentNode) hud.appendChild(lostBox);

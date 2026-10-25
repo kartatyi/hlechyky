@@ -134,6 +134,12 @@ export class Post {
     for (let k = 1; k <= 4; k++) this.chain.push(new T.WebGLRenderTarget(Math.max(1, w >> k), Math.max(1, h >> k), { type: T.HalfFloatType, depthBuffer: false }));
     this.uber.uniforms.px.value.set(1 / w, 1 / h);
   }
+  dispose() {
+    if (this.rt) { this.rt.dispose(); this.ldr.dispose(); }
+    for (const b of this.chain || []) b.dispose();
+    for (const m of [this.uber, this.blit, this.pre, this.down, this.up, this.black, this.quad.geometry]) m.dispose();
+    this.rt = null; this.chain = [];
+  }
   _pass(mat, target, clear = true) {
     this.quad.material = mat;
     this.r.setRenderTarget(target);

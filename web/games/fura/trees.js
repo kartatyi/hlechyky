@@ -280,6 +280,15 @@ export function makeTrees(THREE, scene, renderer, list, patch) {
     /** Після відновлення WebGL-контексту — текстури імпостерів знову. */
     rebake() { bakeImpostors(); },
     info() { return { trees: list.length, style, budget: B.name, mult, counts }; },
+    /** Вихід: інстанси, геометрії, матеріали, текстури листя й імпостерів. */
+    dispose() {
+      for (const G of Object.values(groups)) for (const im of [G.full, G.simple, G.imp]) { scene.remove(im); im.dispose(); }
+      const geos = new Set([...Object.values(full), ...Object.values(simple), ...Object.values(smoothFull), ...Object.values(smoothSimple), ...Object.values(fluffy), ...Object.values(impGeo)]);
+      for (const g of geos) g.dispose();
+      for (const m of [matFlat, matSmooth, matLeaf, depthLeaf, ...Object.values(impMat)]) m.dispose();
+      leafTex.dispose();
+      for (const rt of Object.values(impRT)) rt.dispose();
+    },
   };
   return api;
 }
@@ -353,5 +362,6 @@ export function makeGrass(THREE, scene, level, patch, max = 9000) {
       im.count = k; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
     },
     info() { return { tufts: im.count, R, cells: cells.size }; },
+    dispose() { scene.remove(im); im.dispose(); g.dispose(); mat.dispose(); cells.clear(); },
   };
 }

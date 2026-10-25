@@ -100,6 +100,10 @@ export function makeLUT(THREE, g) {
 }
 
 const lum = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+// Уніформи неба — одні на модуль three: матеріали світу (materials.js) кешуються на модуль і латаються раз; новий
+// вхід у край (новий Sky) лише підміняє значення, а не латає ті самі матеріали вдруге (подвійний vPW — шейдер не
+// компілювався, рецензія 25.10).
+const SHARED_U = new WeakMap();
 const GROUND_ALB = [0.22, 0.2, 0.13];
 
 export class Sky {
@@ -109,6 +113,11 @@ export class Sky {
     this.T = T; this.r = renderer; this.scene = scene;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
     renderer.toneMapping = T.NoToneMapping;               // тон — у пості (Neutral + LUT)
+    // HDR-цілі (HalfFloat) без EXT_color_buffer_float/half_float — чорний екран; краще чесна помилка на старті
+    const gl = renderer.getContext();
+    if (!gl.getExtension('EXT_color_buffer_float') && !gl.getExtension('EXT_color_buffer_half_float')) {
+      throw new Error('відеокарта чи браузер не вміє малювати в HDR (нема EXT_color_buffer_float) — онови браузер або драйвер відеокарти');
+    }
     this.hemi = new T.HemisphereLight('#ffffff', '#888888', 1);
     this.sun = new T.DirectionalLight('#ffffff', 3);
     this.sun.castShadow = true;
@@ -119,7 +128,8 @@ export class Sky {
     progress && progress('☁ Печемо хмари…');
     this.atmo = new Atmosphere(T, renderer);
     this.clouds = new Clouds(T, renderer);
-    this.U = atmoUniforms(T);
+    if (!SHARED_U.has(T)) SHARED_U.set(T, atmoUniforms(T));
+    this.U = SHARED_U.get(T);
     this.U.tSkyView.value = this.atmo.view.texture;
     this.dome = new T.Mesh(new T.SphereGeometry(5000, 48, 24), makeSky(T, this.U));
     this.dome.renderOrder = -1; this.dome.frustumCulled = false; this.dome.userData.noAtmo = true;
@@ -133,7 +143,6 @@ export class Sky {
     this.off = new T.Vector2(); this._vR = new T.Vector3(); this._vU = new T.Vector3();
     this.light = { sunCol: new T.Color(), ambTop: new T.Color(), ambBot: new T.Color(), keyE: 1, keyDir: new T.Vector3(0, 1, 0) };
     this.irr = new T.Color(0.05, 0.08, 0.15);
-    this.patched = new WeakSet();
     this.mode = 'kyiv'; this.fastT = kyivHour(Date.now()); this.fixedMs = null; this.coverOverride = null;
     this.clock = 0; this.cloudTick = 0; this.lightsOn = false;
     this._lut = null; this._lutEl = -999; this._envDir = new T.Vector3(0, -1, 0); this._env = null; this._atmoEl = -999;
@@ -271,7 +280,7 @@ export class Sky {
   // ---------------------------------------------------------------- матеріали
   /** Латка неба на один матеріал (раз). Для дерев: латку білборда листя trees.js кладе поверх. */
   patch(m, key) {
-    if (!this.patched.has(m)) { this.patched.add(m); patchAtmo(this.T, m, this.U, key || m.type); }
+    if (!m.userData.atmo) { m.userData.atmo = true; patchAtmo(this.T, m, this.U, key || m.type); }
     return m;
   }
   /** Підлатати всі матеріали в дереві root (раз на матеріал): тінь хмар, rim, туман неба. Нові (привиди, позначки) — при наступному виклику. */
@@ -280,7 +289,7 @@ export class Sky {
     root.traverse((o) => {
       if (!o.material || o.userData.noAtmo) return;
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-        if (this.patched.has(m) || m.isShaderMaterial || m.userData.noAtmo) continue;
+        if (m.userData.atmo || m.isShaderMaterial || m.userData.noAtmo) continue;
         if (!(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial || m.isMeshBasicMaterial)) continue;
         if (m.blending === this.T.AdditiveBlending) continue;
         this.patch(m, m.type + (m.name || ''));
@@ -321,12 +330,13 @@ export class Sky {
   /** Коробка тіні — перед камерою, прив'язана до сітки текселів тіні (тінь не «повзе» при русі). */
   follow(camera) {
     const T = this.T, st = this.st, sun = this.sun;
-    const f = this._f || (this._f = new T.Vector3());
+    const v = this._fv || (this._fv = { f: new T.Vector3(), c: new T.Vector3(), up: new T.Vector3(), r: new T.Vector3(), u: new T.Vector3() });
+    const f = v.f;
     camera.getWorldDirection(f); f.y = 0; if (f.lengthSq() < 1e-6) f.set(0, 0, 1); f.normalize();
-    const c = camera.position.clone().addScaledVector(f, this.shadowHalf * 0.55);
+    const c = v.c.copy(camera.position).addScaledVector(f, this.shadowHalf * 0.55);
     const Ld = st.night ? st.moonDir : st.sunDir;
-    const up = Math.abs(Ld.y) > 0.99 ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 1, 0);
-    const r = new T.Vector3().crossVectors(up, Ld).normalize(), u = new T.Vector3().crossVectors(Ld, r);
+    const up = Math.abs(Ld.y) > 0.99 ? v.up.set(1, 0, 0) : v.up.set(0, 1, 0);
+    const r = v.r.crossVectors(up, Ld).normalize(), u = v.u.crossVectors(Ld, r);
     const tex = 2 * this.shadowHalf / Math.max(1, sun.shadow.mapSize.x);
     const pr = c.dot(r), pu = c.dot(u);
     c.addScaledVector(r, Math.round(pr / tex) * tex - pr).addScaledVector(u, Math.round(pu / tex) * tex - pu);
@@ -389,8 +399,14 @@ export class Sky {
     this._env = null;
     this._apply(true);
   }
+  /** Вихід із гри: усі цілі й текстури GPU, що належать небу (матеріали світу — кеш модуля, їх не чіпаємо). */
   dispose() {
-    for (const x of [this.pmrem, this._env, this._lut]) try { x && x.dispose(); } catch { /* пусто */ }
+    for (const x of [this.pmrem, this._env, this._lut, this.post, this.clouds, this.atmo,
+      this.dome.geometry, this.dome.material, ...this.envScene.children.flatMap((m) => [m.geometry, m.material])]) {
+      try { x && x.dispose(); } catch { /* пусто */ }
+    }
+    this._env = this._lut = null;
+    if (this.U.tClouds.value) this.U.tClouds.value = null;
   }
   info() {
     const st = this.st;

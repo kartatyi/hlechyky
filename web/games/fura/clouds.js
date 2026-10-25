@@ -158,6 +158,7 @@ export class Clouds {
     });
     this.frame = 0; this.rt = []; this.cur = 0; this.prevVP = new T.Matrix4(); this.hasPrev = false;
     this.scale = 0.25;
+    this._rot = new T.Matrix4();
   }
   /** Шум — при завантаженні й ще раз після відновлення WebGL-контексту (вміст цілей тоді пропадає). */
   bake() {
@@ -193,6 +194,11 @@ export class Clouds {
     this.hasPrev = false;
   }
   get texture() { return this.rt[this.cur].texture; }
+  dispose() {
+    for (const r of [this.shape, this.detail, ...this.rt]) if (r) r.dispose();
+    this.rt = [];
+    this.mat.dispose(); this.quad.geometry.dispose();
+  }
   /** Кадр хмар для камери cam. o: { sky (Atmosphere), keyDir, keyE, sunCol, ambTop, ambBot, cover, time, steps, lightSteps, detail, dens }. */
   render(cam, o) {
     const u = this.mat.uniforms;
@@ -208,7 +214,7 @@ export class Clouds {
     this.r.setRenderTarget(next); this.r.render(this.qs, this.cam); this.r.setRenderTarget(pr);
     this.cur ^= 1; this.hasPrev = true;
     // «поворот без зсуву» поточної камери — для перепроєкції наступного кадру
-    const rot = new this.T.Matrix4().extractRotation(cam.matrixWorld).invert();
+    const rot = this._rot.extractRotation(cam.matrixWorld).invert();
     this.prevVP.multiplyMatrices(cam.projectionMatrix, rot);
   }
 }

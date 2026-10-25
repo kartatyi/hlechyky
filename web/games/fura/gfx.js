@@ -4,7 +4,8 @@
 // Меню — вікно гри (boxModal): кожен рядок — кнопка, натиск (миша, Enter, Ⓐ пада, «зчепити» керма) — наступне значення.
 
 export const PRESETS = {
-  low: { scale: 0.75, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'smooth', budget: 0, draw: 'near', grass: false, bloom: false, grade: true, fps: 30 },
+  // 30 fps для керування фурою — погано (рецензія 25.10): «Низька» тримає 60, 30 — окремим пунктом меню
+  low: { scale: 0.75, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'smooth', budget: 0, draw: 'near', grass: false, bloom: false, grade: true, fps: 60 },
   medium: { scale: 1, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'fluffy', budget: 1, draw: 'mid', grass: true, bloom: true, grade: true, fps: 60 },
   high: { scale: 1, aa: 'fxaa', shadows: 2048, clouds: 'high', cloudShadows: true, trees: 'fluffy', budget: 2, draw: 'far', grass: true, bloom: true, grade: true, fps: 60 },
   ultra: { scale: 1, aa: 'msaa', shadows: 4096, clouds: 'ultra', cloudShadows: true, trees: 'fluffy', budget: 3, draw: 'far', grass: true, bloom: true, grade: true, fps: 0 },

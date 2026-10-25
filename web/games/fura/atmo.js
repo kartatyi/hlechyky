@@ -137,6 +137,9 @@ export class Atmosphere {
   }
   /** Таблиця пропускання — раз (і ще раз після відновлення WebGL-контексту: вміст цілей тоді пропадає). */
   bake() { this._pass(this.tMat, this.trans); }
+  dispose() {
+    for (const x of [this.trans, this.view, this.irr, this.tMat, this.sMat, this.iMat, this.quad.geometry]) x.dispose();
+  }
   _pass(mat, target) { this.quad.material = mat; const prev = this.r.getRenderTarget(); this.r.setRenderTarget(target); this.r.render(this.qs, this.cam); this.r.setRenderTarget(prev); }
   /** Перерахувати вигляд неба для напряму ключового світила; повертає опромінення неба (лінійне RGB на одиницю світила). */
   update(keyDir) {
