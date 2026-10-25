@@ -30,7 +30,8 @@ export class Ghosts {
     this.T = THREE; this.scene = scene; this.camera = camera; this.level = level;
     this.interp = window.HGames && HGames.ui && HGames.ui.Interp ? HGames.ui.Interp(TICK) : null;
     this.me = null;              // своє місце — з кадру не малюємо
-    this.names = new Map();      // seat → нік (з виду convoy)
+    this.names = new Map();      // seat → нік (з виду convoy); кого там нема — не малюємо
+    this.alone = true;           // за столом менше двох фур — кадрів більше не буде, привидів ховаємо одразу
     this.rigs = new Map();       // seat → { g: модель, label, nick, pose, at }
     this.lastAt = 0;
     this.frames = 0;
@@ -52,6 +53,7 @@ export class Ghosts {
     const next = new Map();
     for (const c of list || []) if (c && c.seat != null) next.set(c.seat, c.nick || '');
     this.names = next;
+    this.alone = next.size < 2;
     for (const [seat, r] of this.rigs) if (r.nick !== (next.get(seat) || '')) this.relabel(seat, r, r.horn);
   }
 
@@ -98,13 +100,13 @@ export class Ghosts {
 
   /** Раз на кадр малювання. dt — с від попереднього. */
   update(now, dt) {
-    const fresh = this.interp && this.lastAt && now - this.lastAt < STALE_MS;
+    const fresh = !this.alone && this.interp && this.lastAt && now - this.lastAt < STALE_MS;
     const s = fresh ? this.interp.at(now) : null;
     const seen = new Set();
     if (s) {
       const A = parse(s.a), B = parse(s.b), t = s.t;
       for (const [seat, b] of B) {
-        if (seat === this.me) continue;
+        if (seat === this.me || !this.names.has(seat)) continue;   // своя фура чи місце, якого в колоні вже нема
         const a = A.get(seat) || b;
         seen.add(seat);
         this.place(this.rig(seat), {

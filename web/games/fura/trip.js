@@ -82,6 +82,8 @@ export class Trips {
       if (v.phase === 'done' && v.result) { this.shownResult = v.result.trip; this.summary(v.result, true); }
     }
     else if (before && before.phase !== v.phase) this.onPhase(before.phase, v.phase);
+    // нова дошка — наступне take, хай навіть на той самий бокс (відмовився й узяв колонне знову), ставить причіп наново
+    if (v.phase === 'free') this.placed = '';
     // колонне: бокс стає відомий лише з виду (col.docks) — тоді й ставимо причіп
     if (v.phase === 'pickup' && v.order && this.placed !== this.placeKey(v.order) && this.dockOf(v.order) != null) this.putTrailerAtDock(v.order);
     this.target();
@@ -91,7 +93,24 @@ export class Trips {
       this.voice.say('voided', { urgent: true });
     }
     if (v.phase === 'done' && v.result && this.shownResult !== v.result.trip) { this.shownResult = v.result.trip; this.summary(v.result); }
-    if (v.stage >= 2) this.convoyEvents(before, v);     // після підсумку: його фраза перебиває чергу, бонус — за нею
+    if (v.stage >= 2) this.convoyEvents(before, v);
+    this.bonusCheck(v, !before);                        // після підсумку: його фраза перебиває чергу, бонус — за нею
+  }
+
+  /** Бонус колони — з мого підсумку: result.bonus з 0 став > 0. Першому, хто здав, сервер дописує його, коли здає другий
+   *  (і тією ж дією закриває колону — col: null), тож col.done тут не допоможе. Відкритий підсумок — лише рядок «Колона». */
+  bonusCheck(v, first) {
+    const r = v.phase === 'done' ? v.result : null;
+    if (!r || !(r.bonus > 0) || this.bonusTrip === r.trip) return;
+    this.bonusTrip = r.trip;
+    const s = this.sum;
+    if (s && s.m && s.m.open && s.trip === r.trip) {
+      const tb = s.m.el.querySelector('table'), old = tb && tb.querySelector('.fura-colrow');
+      if (old) old.outerHTML = this.colRow(r); else if (tb) tb.insertAdjacentHTML('beforeend', this.colRow(r));
+    }
+    if (first) return;                                  // перевідкрив гру з уже нарахованим бонусом — мовчки
+    this.say('🎉 Колона здала разом — +' + r.bonus + ' 🏺 бонусу', 5000);
+    this.voice.say('col_bonus');
   }
 
   /** Перший вид: поставити фуру й причіп туди, де лишились (перевідкрив гру посеред рейсу). */
@@ -130,7 +149,7 @@ export class Trips {
 
   placeKey(o) { return o ? o.id + ':' + o.from + ':' + this.dockOf(o) : ''; }
 
-  /** Колона з різниці двох видів: хто сів і пішов, колонне взяли, приєднались, здали разом. */
+  /** Колона з різниці двох видів: хто сів і пішов, колонне взяли, приєднались (бонус — bonusCheck). */
   convoyEvents(b, v) {
     const me = this.myNick();
     if (!b || b.stage < 2) return;                 // перший вид — без «приєднався» для всіх, хто вже сидить
@@ -154,13 +173,6 @@ export class Trips {
         else this.say('⛓ У колонному +1: <b>' + escH(n) + '</b>', 3500);
         this.voice.say('col_join', { gap: 3000 });
       }
-    }
-    // бонус: здали двоє й більше у вікні 5 хв, і я серед них (мить бонусу — коли done виріс до ≥ 2)
-    const col = vc || bc, bd = bc ? (bc.done || []) : [], vd = vc ? (vc.done || []) : [];
-    if (col && vd.length >= 2 && vd.length > (bc && vc && bc.no === vc.no ? bd.length : 0) && vd.some((d) => same(d.nick, me)) && this.bonusNo !== col.no) {
-      this.bonusNo = col.no;
-      this.say('🎉 Колона здала разом — +15 % кожному, хто встиг за 5 хв', 5000);
-      this.voice.say('col_bonus');            // за фразою підсумку (вона urgent і йде першою), не замість неї
     }
   }
 
@@ -417,16 +429,13 @@ export class Trips {
 
   /** Рядок «Колона» в підсумку: бонус уже нараховано (r.bonus, черепки × Boost) чи ще чекає, щоб хтось здав у вікні 5 хв. */
   colRow(r) {
-    const row = (a, b) => '<tr><td>' + a + '</td><td>' + b + '</td></tr>';
+    const row = (a, b) => '<tr class="fura-colrow"><td>' + a + '</td><td>' + b + '</td></tr>';
     if (r.bonus > 0) return row('Колона', '<b>+' + r.bonus + ' 🏺</b> — здали разом, +15 %');
-    const col = this.view && this.view.col, me = this.myNick();
-    const mine = col && (col.done || []).some((d) => same(d.nick, me));
-    if (!r.col && !mine) return '';
-    const done = col ? col.done || [] : [];
-    if (mine && done.length >= 2) return row('Колона', 'здали разом — +15 % окремою нагородою');
+    if (!r.col) return '';
+    const col = this.view && this.view.col;
     const t0 = col && col.firstAt != null ? (typeof col.firstAt === 'number' ? col.firstAt : Date.parse(col.firstAt)) : NaN;
     const until = Number.isFinite(t0) ? new Date(t0 + 5 * 60000).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) : '';
-    return row('Колона', col ? '+15 %, якщо ще хтось із колони здасть' + (until ? ' до ' + until : ' за 5 хв') : 'сам один — без бонусу');
+    return row('Колона', col ? '+15 %, якщо ще хтось із колони здасть' + (until ? ' до ' + until : ' за 5 хв') : 'разом не здали — без бонусу');
   }
 
   summary(r, quiet) {
@@ -435,7 +444,8 @@ export class Trips {
     const c = this.cargo[r.cargo] || {};
     if (!quiet) this.voice.say(r.broken ? 'done_broken' : r.k >= 95 ? 'done_good' : 'done_ok', { urgent: true });
     if (!quiet && r.exact) this.voice.say('exact');
-    this.boxModal('<h3>' + (r.broken ? '💔 Усе розбито' : '✅ Рейс №' + r.trip + ' здано') + '</h3>'
+    this.sum = { trip: r.trip, m: null };
+    this.sum.m = this.boxModal('<h3>' + (r.broken ? '💔 Усе розбито' : '✅ Рейс №' + r.trip + ' здано') + '</h3>'
       + '<table>' + row('Вантаж', (c.emoji || '') + ' ' + (c.title || r.cargo)) + row('Маршрут', this.places[r.from].short + ' → ' + this.places[r.to].short)
       + row('Відстань', String(r.km).replace('.', ',') + ' км (проїхав ' + String(r.driven).replace('.', ',') + ')')
       + row('Час', mmss(r.sec) + ' з ' + r.minutes + ':00' + (r.onTime ? ' — вчасно, +10 %' : ' — запізнився'))
