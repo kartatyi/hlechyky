@@ -222,6 +222,7 @@ export class Sky {
     U.uCover.value = cv; U.uCloudsOn.value = G.clouds === 'off' ? 0 : 1; U.uCloudShadowAmt.value = G.cloudShadows && G.clouds !== 'off' ? 0.7 : 0;
     const D = DRAW[G.draw] || DRAW.far;
     U.uFogDens.value = st.fog * D.fog * (1 + 0.6 * cv); U.uFogFar.value = D.far;
+    U.uHaze.value = G.dof === 'off' ? 0.35 : 0.6;             // повітряна перспектива: далеке блідне до неба разом із розмиттям
     U.uRimCol.value.copy(sun.color).multiplyScalar(st.night ? 0.3 : 0.8);
     this.scene.fog.far = D.far; this.scene.fog.near = D.far * 0.3;
     this.scene.fog.color.copy(skyE).multiplyScalar(exp * 0.3);
@@ -311,7 +312,7 @@ export class Sky {
     Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 420 });
     sun.shadow.camera.updateProjectionMatrix();
     this.shadowHalf = half;
-    this.post.setSize(W, H, g.pixel, g.scale, g.aa === 'msaa');
+    this.post.setSize(W, H, g.pixel, g.scale, g.aa === 'msaa', g.dof);
     const cq = CLOUDQ[g.clouds];
     if (cq) this.clouds.setSize(this.post.rw, this.post.rh, cq[0]);
     this._apply(true);
@@ -386,6 +387,9 @@ export class Sky {
   }
   drawPost(q) {
     if (q) q.begin('post');
+    // розмиття вдалині: від ~100–120 м до 0,45 дальності (близько 900 м → 405, далеко 2000 → 900)
+    const D = DRAW[this.G.draw] || DRAW.far;
+    this.post.setDof(Math.max(100, D.far * 0.06), D.far * 0.45, this.rcam.near, this.rcam.far);
     this.post.finish(this.clock, this.off);
     if (q) q.end('post');
   }

@@ -3,16 +3,31 @@
 // px = 1 і без MSAA) → bloom → експозиція → Neutral або AgX → LUT пори доби → віньєтка → дизеринг проти смуг (або
 // палітра з упорядкованим дизерингом) → на екран; зі зниженням — через ціль низької роздільності й «блит» (піксель —
 // найближчим текселем зі зсувом на дробову частину: камера прив'язана до сітки текселів, див. sky.js).
+// Розмиття вдалині (0.0.5, відгук «далеке має м'якнути»): з глибини сцени — «коло розмиття» k від uDofStart до uDofEnd
+// (лінійна глибина), копія кадру в ½ роздільності, домножена на k (близьке не розтікається ореолом по далекому), кілька
+// проходів Kawase; в uber — змішування різкого й розмитого на k. Небо розмивається лише злегка (uDofSky), без шва.
 
 const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
 
+// «коло розмиття» з глибини: 0 — різко, uDofAmt — найбільше; небо (глибина 1) — uDofSky
+const COC = `uniform sampler2D tDepth;
+uniform float uNear, uFar, uDofStart, uDofEnd, uDofAmt, uDofSky;
+float coc(vec2 uv) {
+  float d = texture2D(tDepth, uv).r;
+  if (d >= 0.999999) return uDofSky;
+  float z = uNear * uFar / (uFar - d * (uFar - uNear));
+  return smoothstep(uDofStart, uDofEnd, z) * uDofAmt;
+}`;
 const UBER = `
 precision highp sampler3D;
-uniform sampler2D tColor, tBloom;
+uniform sampler2D tColor, tBloom, tDof;
 uniform sampler3D tLut;
 uniform vec2 px;
 uniform float uExposure, uTone, uVig, uGrain, uTime, uBloom, uLutAmt, uFxaa, uQuant, uDither;
 varying vec2 vUv;
+#ifdef DOF
+${COC}
+#endif
 
 float lum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 float tl(vec3 c) { float l = lum(c); return l / (1.0 + l); }
@@ -60,6 +75,15 @@ float bayer4(vec2 p) {
 
 void main() {
   vec3 c = uFxaa > 0.5 ? fxaa(vUv) : col(vUv);
+#ifdef DOF
+  {
+    float k = coc(vUv);
+    vec4 b = texture2D(tDof, vUv);
+    // b — розмите c·k і k: колір лише з того, що саме розмивається; там, де поруч близьке (k сусідів менше), — слабше
+    vec3 bc = b.rgb / max(b.a, 1e-4);
+    c = mix(c, bc, k * clamp(b.a / max(k, 1e-3), 0.0, 1.0));
+  }
+#endif
   c += texture2D(tBloom, vUv).rgb * uBloom;
   c *= uExposure;
   vec3 d = uTone > 0.5 ? agx(c) : srgb(clamp(neutral(c), 0.0, 1.0));
@@ -71,6 +95,23 @@ void main() {
   gl_FragColor = vec4(clamp(d, 0.0, 1.0), 1.0);
 }`;
 
+const DOF_DOWN = COC + `
+uniform sampler2D t; uniform vec2 px; uniform float uSpan; varying vec2 vUv;
+void main() {
+  vec4 s = vec4(0.0);
+  for (int i = 0; i < 4; i++) {
+    vec2 o = vec2(i == 0 || i == 2 ? -uSpan : uSpan, i < 2 ? -uSpan : uSpan) * px;
+    float k = coc(vUv + o);
+    s += vec4(texture2D(t, vUv + o).rgb * k, k);
+  }
+  gl_FragColor = s * 0.25;
+}`;
+const KAWASE = `uniform sampler2D t; uniform vec2 px; uniform float uO; varying vec2 vUv;
+void main() {
+  vec2 o = (uO + 0.5) * px;
+  gl_FragColor = 0.25 * (texture2D(t, vUv + vec2(-o.x, -o.y)) + texture2D(t, vUv + vec2(o.x, -o.y))
+                       + texture2D(t, vUv + vec2(-o.x, o.y)) + texture2D(t, vUv + vec2(o.x, o.y)));
+}`;
 const BLIT = `uniform sampler2D t; uniform vec2 uSrc, uInner, uOff; varying vec2 vUv;
 void main() { gl_FragColor = texture2D(t, (vUv * uInner + 1.0 + uOff) / uSrc); }`;
 
@@ -115,30 +156,67 @@ export class Post {
     this.down = sm(DOWN, { t: f(null), px: f(new THREE.Vector2()) });
     this.up = sm(UP, { t: f(null), px: f(new THREE.Vector2()) }, { blending: THREE.AdditiveBlending, transparent: true });
     this.bloomOn = false;
+    // розмиття вдалині: спільні уніформи глибини (uber + зниження), «вимк» — без глибини й проходів
+    this.dofU = { tDepth: f(null), uNear: f(0.1), uFar: f(2400), uDofStart: f(200), uDofEnd: f(1400), uDofAmt: f(0), uDofSky: f(0) };
+    Object.assign(this.uber.uniforms, this.dofU, { tDof: f(this.black) });
+    this.dofDown = sm(DOF_DOWN, { ...this.dofU, t: f(null), px: f(new THREE.Vector2()), uSpan: f(0.5) });
+    this.kawase = sm(KAWASE, { t: f(null), px: f(new THREE.Vector2()), uO: f(0) });
+    this.dof = 'off'; this.dofRT = [];
   }
   /** W×H — екран (canvas), pxs — розмір «пікселя» (1…4), scale — масштаб рендеру (0,5…1; збільшення плавне),
-   *  msaa — 4× на цілі сцени (лише без пікселя). Ціль сцени — (W·scale/pxs + 2)×(H·scale/pxs + 2), коли є зниження. */
-  setSize(W, H, pxs, scale = 1, msaa = false) {
+   *  msaa — 4× на цілі сцени (лише без пікселя), dof — розмиття вдалині: 'off' | 'weak' | 'strong'.
+   *  Ціль сцени — (W·scale/pxs + 2)×(H·scale/pxs + 2), коли є зниження. */
+  setSize(W, H, pxs, scale = 1, msaa = false, dof = 'off') {
     const T = this.T;
-    if (this.rt) { this.rt.dispose(); this.ldr.dispose(); }
-    for (const b of this.chain || []) b.dispose();
+    this._free();
+    this.dof = dof === 'weak' || dof === 'strong' ? dof : 'off';
     this.W = W; this.H = H; this.pxs = pxs; this.scale = scale; this.msaa = msaa && pxs === 1;
     this.low = pxs > 1 || scale < 0.999;
     this.wl = Math.floor(W * scale / pxs); this.hl = Math.floor(H * scale / pxs);
     const m = this.low ? 2 : 0, w = this.wl + m, h = this.hl + m;
     this.rw = w; this.rh = h;
-    this.rt = new T.WebGLRenderTarget(w, h, { type: T.HalfFloatType, samples: this.msaa ? 4 : 0 });
+    this.rt = new T.WebGLRenderTarget(w, h, { type: T.HalfFloatType, samples: this.msaa ? 4 : 0,
+      ...(this.dof !== 'off' ? { depthTexture: new T.DepthTexture(w, h) } : {}) });
+    const sh = this.dof === 'strong' ? 2 : 1, dw = Math.max(1, w >> sh), dh = Math.max(1, h >> sh);   // сильне — ¼, слабке — ½ роздільності
+    if (this.dof !== 'off') this.dofRT = [0, 1].map(() => new T.WebGLRenderTarget(dw, dh, { type: T.HalfFloatType, depthBuffer: false }));
+    const on = this.dof !== 'off';
+    if (!!this.uber.defines.DOF !== on) { if (on) this.uber.defines.DOF = 1; else delete this.uber.defines.DOF; this.uber.needsUpdate = true; }
+    this.uber.uniforms.tDof.value = this.black;
     const filt = pxs > 1 ? T.NearestFilter : T.LinearFilter;           // піксель — чіткий, масштаб рендеру — плавний
     this.ldr = new T.WebGLRenderTarget(w, h, { depthBuffer: false, minFilter: filt, magFilter: filt });
     this.chain = [];
     for (let k = 1; k <= 4; k++) this.chain.push(new T.WebGLRenderTarget(Math.max(1, w >> k), Math.max(1, h >> k), { type: T.HalfFloatType, depthBuffer: false }));
     this.uber.uniforms.px.value.set(1 / w, 1 / h);
   }
+  _free() {
+    if (this.rt) { if (this.rt.depthTexture) this.rt.depthTexture.dispose(); this.rt.dispose(); this.ldr.dispose(); }
+    for (const b of [...(this.chain || []), ...(this.dofRT || [])]) b.dispose();
+    this.rt = null; this.chain = []; this.dofRT = [];
+  }
   dispose() {
-    if (this.rt) { this.rt.dispose(); this.ldr.dispose(); }
-    for (const b of this.chain || []) b.dispose();
-    for (const m of [this.uber, this.blit, this.pre, this.down, this.up, this.black, this.quad.geometry]) m.dispose();
-    this.rt = null; this.chain = [];
+    this._free();
+    for (const m of [this.uber, this.blit, this.pre, this.down, this.up, this.dofDown, this.kawase, this.black, this.quad.geometry]) m.dispose();
+  }
+  /** Розмиття вдалині: межі в метрах (від — до), near/far — камери рендеру; сила — за режимом. */
+  setDof(start, end, near, far) {
+    const d = this.dofU, amt = this.dof === 'strong' ? 1 : this.dof === 'weak' ? 0.8 : 0;
+    d.uDofStart.value = start; d.uDofEnd.value = end; d.uNear.value = near; d.uFar.value = far;
+    d.uDofAmt.value = amt; d.uDofSky.value = amt * 0.35;
+  }
+  _dof() {
+    const [a, b] = this.dofRT, k = this.kawase.uniforms;
+    this.dofU.tDepth.value = this.rt.depthTexture;
+    this.dofDown.uniforms.t.value = this.rt.texture; this.dofDown.uniforms.px.value.set(1 / this.rw, 1 / this.rh);
+    this.dofDown.uniforms.uSpan.value = this.dof === 'strong' ? 1 : 0.5;
+    this._pass(this.dofDown, a);
+    const n = this.dof === 'strong' ? 4 : 3;            // слабке: 3 проходи на ½ (~10 px екрана), сильне: 4 на ¼ (~32 px)
+    let src = a, dst = b;
+    for (let i = 0; i < n; i++) {
+      k.t.value = src.texture; k.px.value.set(1 / src.width, 1 / src.height); k.uO.value = i;
+      this._pass(this.kawase, dst);
+      [src, dst] = [dst, src];
+    }
+    this.uber.uniforms.tDof.value = src.texture;
   }
   _pass(mat, target, clear = true) {
     this.quad.material = mat;
@@ -158,6 +236,7 @@ export class Post {
       for (let k = c.length - 1; k > 0; k--) { this.up.uniforms.t.value = c[k].texture; this.up.uniforms.px.value.set(1 / c[k].width, 1 / c[k].height); this._pass(this.up, c[k - 1], false); }
       u.tBloom.value = c[0].texture;
     } else u.tBloom.value = this.black;
+    if (this.dof !== 'off') this._dof();
     u.tColor.value = this.rt.texture; u.uTime.value = time;
     if (this.low) {
       this._pass(this.uber, this.ldr);

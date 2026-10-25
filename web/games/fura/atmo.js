@@ -194,7 +194,7 @@ export function atmoUniforms(THREE) {
     tSkyView: f(null), uKeyDir: f(new THREE.Vector3(0, 1, 0)), uKeyE: f(1), tClouds: f(null), uRes: f(new THREE.Vector2(1, 1)),
     uSunDir: f(new THREE.Vector3(0, 1, 0)), uSunDisc: f(new THREE.Color()), uMoonDir: f(new THREE.Vector3(0, 1, 0)), uMoonVis: f(0), uStars: f(0),
     uCloudsOn: f(1), uCover: f(0.4), uTime: f(0), uWind: f(new THREE.Vector2(0.008, 0.003)), uCloudShadowAmt: f(0.7),
-    uFogDens: f(0.0007), uFogStart: f(60), uFogFall: f(0.02), uFogFar: f(1600), uRim: f(0.35), uRimCol: f(new THREE.Color()),
+    uFogDens: f(0.0007), uFogStart: f(60), uFogFall: f(0.02), uFogFar: f(1600), uHaze: f(0.5), uRim: f(0.35), uRimCol: f(new THREE.Color()),
   };
 }
 
@@ -258,7 +258,7 @@ export function patchAtmo(THREE, mat, U, tag = 'a') {
           vPW = (modelMatrix * pw).xyz; }`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <fog_pars_fragment>', `varying vec3 vPW;
-        uniform float uFogDens, uFogStart, uFogFall, uFogFar, uRim, uCloudShadowAmt;
+        uniform float uFogDens, uFogStart, uFogFall, uFogFar, uHaze, uRim, uCloudShadowAmt;
         uniform vec3 uRimCol;
         ${SKYLUT_GLSL}
         ${COVER_GLSL}
@@ -279,6 +279,10 @@ export function patchAtmo(THREE, mat, U, tag = 'a') {
           float f = 1.0 - exp(-max(dist - uFogStart, 0.0) * uFogDens * mix(0.45, 1.0, hf));
           f = max(f, smoothstep(uFogFar * 0.62, uFogFar, dist));
           vec3 fc = skyLUT(normalize(vec3(vd.x, max(vd.y, 0.0) * 0.3 + 0.01, vd.z)));
+          // повітряна перспектива: далеке втрачає контраст і насиченість — до сірого тону власної яскравості, підфарбованого небом
+          float hz = uHaze * smoothstep(uFogFar * 0.1, uFogFar * 0.75, dist);
+          float lg = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722)), lf = dot(fc, vec3(0.2126, 0.7152, 0.0722));
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(vec3(lg), fc * (lg / max(lf, 1e-4)), 0.5) * 0.85 + fc * 0.15, hz * 0.6);
           gl_FragColor.rgb = mix(gl_FragColor.rgb, fc, clamp(f, 0.0, 1.0));
         }`);
   };
