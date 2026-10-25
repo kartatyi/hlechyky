@@ -200,13 +200,9 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   };
 
   const input = new Input();
-<<<<<<< HEAD
   const perf = makePerf();
-  if (/[?&]furaPerf/.test(location.search)) perf.on();
-  const sound = new Sound();
-=======
+  if (/[?&]furaPerf\b/.test(location.search)) perf.on();
   const sound = new Sound({ truck, view: () => cam });
->>>>>>> fura/sound
   sound.start();
   ui.mute.textContent = sound.muted ? '🔇' : '🔊';
 
