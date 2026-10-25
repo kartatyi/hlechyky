@@ -124,5 +124,10 @@ public sealed partial class Clicker
         },
         passive = PassiveBase,
         playMinute = PlayMinute,
+        // модель години гри (ClickerAdvisor.cs): поточна глина й кожна своя — звідки гроші біля кола й без гравця
+        hour = DiaryHour(HourModel()),
+        clays = ClayModels().ToDictionary(c => c.Key.Length == 0 ? "plain" : c.Key, c => new { level = c.Level, play = c.Hour.Play, idle = c.Hour.Idle, work = c.Work }),
     };
+
+    static object DiaryHour(ClickerHour h) => new { passive = h.Passive, click = h.Click, fall = h.Fall, eye = h.Eye, merchant = h.Merchant, idle = h.Idle, play = h.Play };
 }
