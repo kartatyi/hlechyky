@@ -271,6 +271,7 @@ export function drawRoads(THREE, plan, batch, opts = {}) {
         [cb, S.walk, LIFT + cb, LIFT + cb, 'road', col(PAL.asphaltOld)]);
     } else if (S.sh > 0) outer.push([0, S.sh, LIFT - 0.004, LIFT - 0.018, 'road', col(S.shoulderCol)]);
     const onBridge = (s) => (e.bridges || []).some(([b0, b1]) => s >= b0 - 0.1 && s <= b1 + 0.1);
+    const inner = S.median && S.shift ? -Math.sign(S.shift) : 0;
     const flare = e.flareB;
     // розширення з'їзду: краї проїзної частини розходяться дугою (як заокруглення R = len), праворуч і ліворуч — свої
     const ext = (s, sg) => {
@@ -291,6 +292,7 @@ export function drawRoads(THREE, plan, batch, opts = {}) {
       }
       if (onBridge((a.s + b.s) / 2)) continue;
       for (const sg of [1, -1]) {
+        if (sg === inner) continue;            // половина пари: з боку розділювача — ні узбіччя, ні тротуару
         const edgeO = sg > 0 ? S.shift + S.W / 2 : S.shift - S.W / 2;
         for (const [q0, q1, d0, d1, key, c] of outer) {
           const A0 = map(a, edgeO) + sg * q0, A1 = map(a, edgeO) + sg * q1, B0 = map(b, edgeO) + sg * q0, B1 = map(b, edgeO) + sg * q1;
@@ -529,12 +531,13 @@ export function drawRoads(THREE, plan, batch, opts = {}) {
         batch.quad('reflect', f(r0, -0.05, 0.71), f(r0, 0.05, 0.71), f(r0, 0.05, 0.79), f(r0, -0.05, 0.79), refl);
       }
     });
-    // колайдери: коробки по ≤ 8 м від −0,25 до 0,95 над профілем
+    // колайдери: коробки по ≤ 8 м від −0,25 до 1,55 над профілем — вище за брус (0,9): низ кабіни фури на ~0,88 м,
+    // і з колайдером до 0,95 кабіна перелазила, а колеса-промені «їхали» по ньому (25.10, автопілот у відбійник)
     for (let s0 = a; s0 < b - 0.5; s0 += 8) {
       const s1 = Math.min(b, s0 + 8), p = at(e.pts, s0), q = at(e.pts, s1);
       const P = side(p, sg * (off(s0) + 0.05), 0), Q = side(q, sg * (off(s1) + 0.05), 0);
       const len = Math.hypot(Q.x - P.x, Q.z - P.z);
-      out.guards.push({ x: (P.x + Q.x) / 2, y: (P.y + Q.y) / 2 + 0.35, z: (P.z + Q.z) / 2, yaw: Math.atan2(Q.x - P.x, Q.z - P.z), pitch: Math.atan2(Q.y - P.y, len), hx: 0.1, hy: 0.6, hz: len / 2 + 0.05 });
+      out.guards.push({ x: (P.x + Q.x) / 2, y: (P.y + Q.y) / 2 + 0.65, z: (P.z + Q.z) / 2, yaw: Math.atan2(Q.x - P.x, Q.z - P.z), pitch: Math.atan2(Q.y - P.y, len), hx: 0.1, hy: 0.9, hz: len / 2 + 0.05 });
     }
     out.stats.guardM += b - a;
   }

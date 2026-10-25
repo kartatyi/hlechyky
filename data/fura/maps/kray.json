@@ -6,9 +6,9 @@
   "seed": 1918,
   "bounds": { "x0": -1500, "z0": -1500, "x1": 1500, "z1": 1500 },
   "kinds": {
-    "highway": { "title": "траса", "width": 10, "speed": 90, "bumps": 0 },
-    "village": { "title": "сільська", "width": 7, "speed": 60, "bumps": 0.25 },
-    "dirt": { "title": "ґрунтовка", "width": 6, "speed": 40, "bumps": 0.8 }
+    "highway": { "title": "траса", "width": 10, "speed": 90, "bumps": 0, "lanes": 2, "shoulder": 2.5, "barrier": "auto" },
+    "village": { "title": "сільська", "width": 7, "speed": 60, "bumps": 0.25, "lanes": 2, "shoulder": 1.5, "barrier": "none" },
+    "dirt": { "title": "ґрунтовка", "width": 6, "speed": 40, "bumps": 0.8, "lanes": 2, "shoulder": 0.8, "barrier": "none" }
   },
   "nodes": {
     "dvir": [-150, -250],

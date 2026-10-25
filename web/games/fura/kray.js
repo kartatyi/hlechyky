@@ -408,10 +408,11 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
         const pitch = Math.atan2(b.y - a.y, len);
         body.setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch, yaw, 0, 'YXZ')), false);
         world.createCollider(RAPIER.ColliderDesc.cuboid(r.width / 2 + 0.5, 0.3, len / 2 + 0.05).setFriction(0.9), body);
+        // парапети: стінка до 1,8 м (бетон для ока — 0,95): з бортиком на 1,0 м кабіна фури (низ ~0,88 м) перелазила
         for (const s of [1, -1]) {
           const ox = Math.cos(yaw) * s * (r.width / 2 + 0.4), oz = -Math.sin(yaw) * s * (r.width / 2 + 0.4);
-          const rb = fixed(cx + ox, cy + 0.5, cz + oz, yaw);
-          world.createCollider(RAPIER.ColliderDesc.cuboid(0.08, 0.5, len / 2), rb);
+          const rb = fixed(cx + ox, cy + 0.9, cz + oz, yaw);
+          world.createCollider(RAPIER.ColliderDesc.cuboid(0.08, 0.9, len / 2), rb);
         }
       }
     }
