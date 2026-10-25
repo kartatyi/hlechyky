@@ -1173,6 +1173,8 @@ public sealed partial class Clicker : Game
         ShanaAfterAct();
         // Звання: лічильники → звання, нові — у Журнал, звіт цехові (раз на хвилину або одразу, коли щось сталось).
         TitlesAfterAct(Ctx.Clock.UtcNow);
+        // Щоденник гончаря (ClickerDiary.cs): години гри й знімок дня для аналітики кола.
+        DiaryAfterAct(action, quiet, Ctx.Clock.UtcNow);
         if (!quiet && result.Ok && TakeShanaToast() is { Length: > 0 } shana)
             result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + shana : shana);
         // Подарунок майстерні (ClickerGifts.cs) — після вдалої справжньої дії: гончар тут і побачить тост.
