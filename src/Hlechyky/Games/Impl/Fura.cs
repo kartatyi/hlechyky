@@ -213,7 +213,7 @@ public sealed partial class Fura : Game
     /// <summary>
     /// П'ять замовлень детерміновано від дня, ніка й кількості рейсів (сід — <see cref="Days.Seed"/>, не <c>Ctx.Rng</c>):
     /// та сама людина того самого дня після того самого рейсу бачить ту саму дошку, хоч скільки перевідкривай.
-    /// Гараж 0.6: лише вантажі під <paramref name="types"/> причепів (null — тент, як до гаража), а з рівня 10
+    /// Гараж 0.0.6: лише вантажі під <paramref name="types"/> причепів (null — тент, як до гаража), а з рівня 10
     /// (<paramref name="far"/>) — шосте, «далеке»: найдовше з решти комбінацій.
     /// </summary>
     public static List<FuraOrder> MakeBoard(FuraMap map, string day, string nickKey, int trips,
@@ -810,7 +810,7 @@ public sealed partial class Fura : Game
 /// <summary>
 /// Замовлення на дошці. <see cref="Base"/> — орієнтовна база плати (ціле 100 %, без бонусів), у виді — × Boost.
 /// <see cref="Col"/> — колонне (<c>id: "k"</c>); у фурі учасника <see cref="Dock"/> — його бокс. <see cref="Far"/> — далеке
-/// (гараж 0.6, з рівня 10: ДВ × 1,3).
+/// (гараж 0.0.6, з рівня 10: ДВ × 1,3).
 /// </summary>
 public sealed record FuraOrder(int Id, string Cargo, string From, string Dock, string To, double Km, int Minutes, int Base, bool Col = false,
     bool Far = false);

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// Гараж 0.6 за столом «Чумаків» (specs/fura.md, «Гараж (0.6) — контракт»; ТЗ D:\or-wt\_fura\GARAGE.md). Гараж водія
+/// Гараж 0.0.6 за столом «Чумаків» (specs/fura.md, «Гараж (0.0.6) — контракт»; ТЗ D:\or-wt\_fura\GARAGE.md). Гараж водія
 /// (<see cref="FuraCareer"/>) приходить разом із фурою, коли нік сідає, і пишеться під тією самою заявкою — після рейсу,
 /// покупки й вибору, не в тику. ДВ — у <c>deliver</c>, дії <c>garage</c> / <c>buy</c> / <c>pick</c>, вид <c>career</c> і
 /// <c>car</c>, дошка під свої причепи. У <see cref="Fura"/> — лише гачки.

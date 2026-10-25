@@ -3,7 +3,7 @@ namespace Hlechyky.Games.Impl;
 /// <summary>
 /// HTTP і сервіси «Чумаків-далекобійників»: <c>GET /api/games/fura/map/{id}</c> — мапа як є (браузер будує з неї світ;
 /// лише id зі списку <see cref="FuraMap.Known"/>, шлях до файлу з клієнта не будується), <c>GET /api/games/fura/voice</c> —
-/// голос Глека-диспетчера (<see cref="FuraVoice"/>) і <c>GET /api/games/fura/garage</c> — книга гаража 0.6
+/// голос Глека-диспетчера (<see cref="FuraVoice"/>) і <c>GET /api/games/fura/garage</c> — книга гаража 0.0.6
 /// (<see cref="FuraBook"/>). Кличеться рядками з <see cref="GamesSetup"/>.
 /// </summary>
 public static class FuraSetup
@@ -14,8 +14,8 @@ public static class FuraSetup
     {
         services.AddSingleton<FuraVoice>();
         services.AddSingleton(sp => new FuraGarage(sp.GetRequiredService<IGameStore>(), log: sp.GetService<ILogger<FuraGarage>>()));   // фури гравців (етап 2)
-        services.AddOptions<FuraOptions>().BindConfiguration("Fura");   // Fura:Garage — вимикач гаража 0.6
-        // гараж 0.6: акаунт (купувати — лише акаунтам) і вигляд фури з Лавки; Лавку беремо ліниво — вона тягне пів сервера
+        services.AddOptions<FuraOptions>().BindConfiguration("Fura");   // Fura:Garage — вимикач гаража 0.0.6
+        // гараж 0.0.6: акаунт (купувати — лише акаунтам) і вигляд фури з Лавки; Лавку беремо ліниво — вона тягне пів сервера
         services.AddSingleton(sp => new FuraWardrobe(
             nick => sp.GetService<Db>()?.FindAccount(nick) is not null,
             nick => sp.GetService<Lavka>()?.FuraWorn(nick) ?? new Dictionary<string, string>()));

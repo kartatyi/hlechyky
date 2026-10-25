@@ -37,7 +37,7 @@ public static class LavkaKind
     public const string Curse = "curse";
     public const string Perk = "perk";
 
-    // Група «🚚 Фура» (specs/fura.md, «Гараж (0.6)»): вигляд фури в «Чумаках-далекобійниках». Кожен вид — свій слот;
+    // Група «🚚 Фура» (specs/fura.md, «Гараж (0.0.6)»): вигляд фури в «Чумаках-далекобійниках». Кожен вид — свій слот;
     // наліпок — до трьох (слоти fura-sticker, fura-sticker2, fura-sticker3). У профілі не малюються.
     public const string FuraPaint = "fura-paint";
     public const string FuraGloss = "fura-gloss";
@@ -246,7 +246,7 @@ public static class LavkaCatalog
         Title("lark", "Ранкова пташка"), Title("vet", "Бувалий гравець"),
         Earned("meloman", "Меломан", "listener-100h"), Earned("tsar", "Цар-гончар", "potter-1t"), Earned("sage", "Знавець", "svoya-win"),
         Earned("commissar", "Комісар", "sheriff"), Earned("cowboy", "Ковбой", "duel-10"),
-        // титули «Чумаків» за рівень водія (гараж 0.6): Р10 і Р20
+        // титули «Чумаків» за рівень водія (гараж 0.0.6): Р10 і Р20
         Earned("chumak", "Чумак", "fura-chumak"), Earned("otaman", "Отаман валки", "fura-otaman"),
 
         Bg("stars", "Зоряна ніч", 800), Bg("stripes", "Смуги", 800), Bg("vyshyvanka", "Вишиванка", 1200),

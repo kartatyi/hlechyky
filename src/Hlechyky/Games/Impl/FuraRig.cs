@@ -41,7 +41,7 @@ public sealed class FuraRig
     [JsonIgnore] public List<FuraSent> Sent { get; } = [];
     /// <summary>Номер для пози старого клієнта без <c>n</c> (сервер нумерує сам).</summary>
     [JsonIgnore] public int AutoN { get; set; }
-    /// <summary>Гараж водія (0.6): досвід, куплене, обране — окремий запис <see cref="FuraCareer.Key"/>, не в JSON фури.</summary>
+    /// <summary>Гараж водія (0.0.6): досвід, куплене, обране — окремий запис <see cref="FuraCareer.Key"/>, не в JSON фури.</summary>
     [JsonIgnore] public FuraCareer? Career { get; set; }
 
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -107,7 +107,7 @@ public sealed class FuraRig
 /// Гараж фур: один на сервер. Тримає останній JSON кожної фури в пам'яті (стіл, що сів пізніше, бере свіже, навіть якщо
 /// база ще не дописала) і пише в <see cref="IGameStore"/> з пулу потоків — ніколи з-під замка кімнати (як
 /// <see cref="RallyLaps"/>). Ще знає, який стіл зараз «судить» нік: <see cref="Claim"/> віддає фуру новому столу, і старий
-/// своїми діями її вже не перепише. Гараж водія (0.6, <see cref="FuraCareer"/>) живе тут само під своїм ключем і тією самою
+/// своїми діями її вже не перепише. Гараж водія (0.0.6, <see cref="FuraCareer"/>) живе тут само під своїм ключем і тією самою
 /// заявкою: пишеться рідко (рейс, покупка), тож поза раз на 5 с його не переписує.
 /// </summary>
 public sealed class FuraGarage

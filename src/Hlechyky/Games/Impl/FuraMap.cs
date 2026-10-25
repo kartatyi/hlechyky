@@ -190,7 +190,7 @@ public sealed record FuraPlace(string Id, string Title, string Short, string Nod
 
 /// <summary>
 /// Вантаж: <see cref="Mult"/> — множник плати; звідки й куди його возять (лише відомі місця). <see cref="Trailer"/> — тип
-/// причепа, під який він їде (гараж 0.6: дошка показує лише вантажі під свої причепи), <see cref="Term"/> — множник терміну.
+/// причепа, під який він їде (гараж 0.0.6: дошка показує лише вантажі під свої причепи), <see cref="Term"/> — множник терміну.
 /// </summary>
 public sealed record FuraCargo(string Id, string Title, string Emoji, double Mult, string[] From, string[] To,
     string Trailer = FuraCargo.Tent, double Term = 1)

@@ -242,7 +242,7 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             "curse" => $"Лавка — {LavkaCatalog.Label(tail)}",
             "curse-ransom" => "Лавка — відкуп від прокльону",
             "curse-reveal" => "Лавка — хто наслав прокльон",
-            // гараж «Чумаків» (specs/fura.md, «Гараж (0.6)»): хвіст — id тягача, причепа чи щабля (engine2)
+            // гараж «Чумаків» (specs/fura.md, «Гараж (0.0.6)»): хвіст — id тягача, причепа чи щабля (engine2)
             "fura-buy" => $"🔧 Гараж: {Impl.FuraBook.Label(tail)}",
             "liveads" => "прожарка від Дядька Глека",
             // подарунок-перерахунок після ×10 (Regift.cs): хвіст — ярлик
