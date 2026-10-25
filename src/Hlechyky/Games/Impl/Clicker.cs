@@ -1152,6 +1152,8 @@ public sealed partial class Clicker : Game
             "paint" => Paint(payload),
             "wear" => Wear(payload),
             "answer" => Answer(payload),
+            // Покликати майстра кнопкою — лише з Clicker:EyeTest (дев, ClickerEyeTest.cs).
+            "eyetest" => EyeTest(payload),
             // Хата: глина на коло, знаряддя на стіну, прикраса в хату, замовлення з дошки купців (ClickerHouse.cs).
             "knead" => Knead(payload),
             "tool" => BuyTool(payload),
@@ -2527,6 +2529,7 @@ public sealed partial class Clicker : Game
             shopCatalog = ShopCatalog(),
             // Око майстра: null, поки коло крутиться вільно; інакше полиця-картинка (без зерна), пауза й платня.
             guard = _guard.View(Ctx.Clock.UtcNow, EyeGain),
+            eyeTest = EyeTestView(),
         };
     }
 
