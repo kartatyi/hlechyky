@@ -6,6 +6,7 @@ import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
 import * as RAPIER from '/static/vendor/rapier-0.21.0/rapier.js';
 import { buildWorld, SPAWN as POLY_SPAWN } from './world.js';
 import { buildKray } from './kray.js';
+import { buildCity } from './city.js';
 import { Truck, TRACTOR, TRAILER } from './truck.js';
 import { buildModels } from './model.js';
 import { Input, pads, isPad, looksLikeWheel, loadCalib, shortName } from './input.js';
@@ -159,11 +160,22 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
   try { world.integrationParameters.numSolverIterations = 8; } catch { /* стара назва — лишаємо типове */ }
   let level, SPAWN;
   if (mode === 'kray') {
-    const res = await fetch('/api/games/fura/map/kray');
+    // мапа — з виду столу (D3: view.map); без столу чи невідома — край
+    const mapId = ((server && server.view && server.view()) || {}).map === 'zhytomyr' ? 'zhytomyr' : 'kray';
+    const res = await fetch('/api/games/fura/map/' + mapId);
     if (!res.ok) throw new Error('мапа не приїхала (' + res.status + ')');
     const map = await res.json();
-    await progress('🗺 Будуємо Чумацький край…');
-    level = buildKray(THREE, RAPIER, scene, world, quality, map);
+    if (mapId === 'zhytomyr') {
+      const cr = await fetch('/static/fura/maps/zhytomyr-city.json');
+      if (!cr.ok) throw new Error('місто не приїхало (' + cr.status + ')');
+      const city = await cr.json();
+      await progress('🏙 Будуємо Житомир…');
+      level = buildCity(THREE, RAPIER, scene, world, quality, map, city);
+    } else {
+      await progress('🗺 Будуємо Чумацький край…');
+      level = buildKray(THREE, RAPIER, scene, world, quality, map);
+    }
+    if (level.credits) { const c = document.createElement('div'); c.className = 'fura-credits'; c.textContent = level.credits; app.appendChild(c); }
     // поки рейсів нема (крок 1d) — тягач у депо, порожній причіп у боксі 1
     const s = level.spawn, dock = level.places.find((p) => p.depot).docks[0];
     SPAWN = { tractor: s, trailer: { x: dock.x, z: dock.z, yaw: dock.yaw, y: level.height(dock.x, dock.z) } };

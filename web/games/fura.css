@@ -37,6 +37,7 @@
   font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; }
 .fura-app canvas.fura-3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
 .fura-app button { font: inherit; }
+.fura-app .fura-credits { position: absolute; left: 6px; bottom: 4px; max-width: 60%; font-size: 10px; line-height: 1.2; opacity: .7; color: #fff; text-shadow: 0 0 3px #000; pointer-events: none; }
 
 .fura-hud { position: absolute; inset: 0; pointer-events: none; }
 .fura-hud .fura-panel { position: absolute; background: rgba(20, 22, 28, .62); border-radius: 12px; padding: 10px 14px;

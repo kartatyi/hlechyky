@@ -50,6 +50,15 @@
   const stored = () => { try { return localStorage.getItem('fura.collide') === 'crash' ? 'crash' : 'ghosts'; } catch { return 'ghosts'; } };
   let garageNext = false;   // «🔧 Гараж» з картки: щойно гра заведеться в краю — відкрити гараж
   let want = null;          // режим, обраний у картці (null — як у мого столу чи як минулого разу)
+  // мапа — опція столу map (D3); плитки — лише мап з /api/games/fura/maps (Житомир ховає вимикач Fura:Maps)
+  const MAP_TILE = {
+    kray: ['🌾', 'Чумацький край', 'пагорби, траса, села й річка'],
+    zhytomyr: ['🏙', 'Житомир', 'місто: вулиці, ринок, вокзал, МЕТРО'],
+  };
+  let maps = null, wantMap = null;
+  const mapOf = (r) => (r && r.options && r.options.map === 'zhytomyr' ? 'zhytomyr' : 'kray');
+  const mapOk = (k) => k === 'kray' || !!(maps && maps.some((m) => m.id === k));
+  const storedMap = () => { try { const k = localStorage.getItem('fura.map'); return k && MAP_TILE[k] ? k : 'kray'; } catch { return 'kray'; } };
 
   /** Мій живий стіл Чумаків: цей, якщо сиджу тут, інакше — з лобі (сервер тримає за одним столом). Перерваний
    *  (перезапуск сайту, status finished) — не в рейсі: «Їхати» ставить новий. */
@@ -64,6 +73,7 @@
   function card(root) {
     root.innerHTML = '<div class="fura-card">'
       + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">колона до 8 фур · версія 0.0.7</span></div>'
+      + '<div class="fura-modes fura-maps" role="radiogroup" aria-label="Мапа" hidden></div>'
       + '<div class="fura-modes" role="radiogroup" aria-label="Чужі фури"></div>'
       + '<div class="fura-main"></div>'
       + '<div class="fura-tables"></div>'
@@ -84,6 +94,10 @@
       if (b && !b.disabled) press(root, b);
     });
     paint(root);
+    if (!maps) fetch('/api/games/fura/maps', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      maps = (j && j.maps) || [];
+      if (root.isConnected) paint(root);
+    }).catch(() => { maps = []; });
   }
 
   /** Режим, вхід і живі столи — з поточного ctx і лобі; перемальовуємо лише, коли змінилось. */
@@ -93,8 +107,21 @@
     const room = ctx.room || {};
     const mineR = seatRoom(ctx), has = mineR ? modeOf(mineR) : null;
     const wm = want || has || stored();
+    const hasMap = mineR ? mapOf(mineR) : null;
+    let wmap = wantMap || hasMap || storedMap();
+    if (!mapOk(wmap)) wmap = 'kray';
 
-    const modes = root.querySelector('.fura-modes');
+    const mapsEl = root.querySelector('.fura-maps');
+    const showMaps = !!(maps && maps.length > 1);
+    const mh = !showMaps ? '' : Object.keys(MAP_TILE).filter(mapOk).map((k) => {
+      const [ico, name, sub] = MAP_TILE[k];
+      return '<button class="fura-mode-b" type="button" role="radio" data-do="map" data-map="' + k + '" aria-checked="' + (k === wmap) + '">'
+        + '<span class="i">' + ico + '</span><span class="t"><b>' + name + '</b><small>' + sub + '</small></span></button>';
+    }).join('');
+    if (mapsEl._html !== mh) { mapsEl.innerHTML = mh; mapsEl._html = mh; mapsEl.hidden = !showMaps; }
+    const mapName = (k) => (showMaps ? ' · ' + MAP_TILE[k][0] + ' ' + MAP_TILE[k][1] : '');
+
+    const modes = root.querySelector('.fura-modes:not(.fura-maps)');
     const m = Object.keys(MODE_TILE).map((k) => {
       const [ico, name, sub] = MODE_TILE[k];
       return '<button class="fura-mode-b" type="button" role="radio" data-do="mode" data-mode="' + k + '" aria-checked="' + (k === wm) + '">'
@@ -104,14 +131,14 @@
 
     // велика «Їхати» й рядок під нею: куди саме поїду
     let label = '🚚 Їхати', sub, go = 'own';
-    if (mineR && has === wm) {
+    if (mineR && has === wm && hasMap === wmap) {
       go = mineR.id === room.id ? 'kray' : 'mine';
       const others = nicksOf(mineR).filter((n) => !same(n, ctx.me && ctx.me.nick));
-      sub = 'твій стіл · ' + MODES[has] + (others.length ? ' · з тобою: ' + others.map(esc).join(', ') : ' · друзі приєднаються тут, у «Хто зараз у рейсі»');
+      sub = 'твій стіл · ' + MODES[has] + mapName(hasMap) + (others.length ? ' · з тобою: ' + others.map(esc).join(', ') : ' · друзі приєднаються тут, у «Хто зараз у рейсі»');
     } else if (mineR) {
-      label = '🚚 Їхати — новий стіл ' + MODES[wm].split(' ')[0];
-      sub = 'твій стіл зараз — ' + MODES[has] + '; новий буде ' + MODES[wm] + ' (зі старого встанеш)';
-    } else sub = 'свій стіл · ' + MODES[wm] + ' · друзі приєднаються до тебе';
+      label = '🚚 Їхати — новий стіл ' + MODES[wm].split(' ')[0] + (hasMap !== wmap ? ' ' + MAP_TILE[wmap][0] : '');
+      sub = 'твій стіл зараз — ' + MODES[has] + mapName(hasMap) + '; новий буде ' + MODES[wm] + mapName(wmap) + ' (зі старого встанеш)';
+    } else sub = 'свій стіл · ' + MODES[wm] + mapName(wmap) + ' · друзі приєднаються до тебе';
     const mm = '<button class="btn primary fura-go fura-go-main" type="button" data-do="go" data-go="' + go + '"'
       + (go === 'mine' ? ' data-room="' + esc(mineR.id) + '"' : '') + '>' + label + '</button>'
       + '<div class="fura-sub muted small">' + sub + '</div>';
@@ -128,6 +155,7 @@
       const ns = nicksOf(r), free = ns.length < r.maxPlayers, md = modeOf(r);
       return '<div class="fura-table' + (r.id === room.id ? ' here' : '') + '">'
         + '<span class="fura-tmode ' + md + '" title="' + MODES[md] + '">' + MODES[md] + '</span>'
+        + (mapOf(r) !== 'kray' ? '<span class="fura-tmode" title="' + MAP_TILE[mapOf(r)][1] + '">' + MAP_TILE[mapOf(r)].slice(0, 2).join(' ') + '</span>' : '')
         + '<span class="fura-tnick">' + ns.map(esc).join(', ') + ' <span class="muted small">' + ns.length + '/' + r.maxPlayers + '</span></span>'
         + (free ? '<button class="btn fura-go2" type="button" data-do="sit" data-room="' + esc(r.id) + '">Їхати разом</button>'
           : '<span class="muted small">повна колона</span>') + '</div>';
@@ -146,6 +174,11 @@
       try { localStorage.setItem('fura.collide', want); } catch { /* пусто */ }
       return paint(root);
     }
+    if (k === 'map') {
+      wantMap = b.dataset.map;
+      try { localStorage.setItem('fura.map', wantMap); } catch { /* пусто */ }
+      return paint(root);
+    }
     if (k === 'go' && b.dataset.go === 'kray') return start(root, b, 'kray');
     if (k === 'go' && b.dataset.go === 'mine') { autoStart = b.dataset.room; HGames.openAt(b.dataset.room); return; }
     if (k === 'sit') {
@@ -162,7 +195,8 @@
     b.disabled = true;
     b.textContent = '⏳ Ставимо стіл…';
     try {
-      const r = await HGames.call('CreateRoom', 'fura', { collide: want || (seatRoom(ctxNow) ? modeOf(seatRoom(ctxNow)) : stored()) });
+      const r = await HGames.call('CreateRoom', 'fura', { collide: want || (seatRoom(ctxNow) ? modeOf(seatRoom(ctxNow)) : stored()),
+        map: (() => { const k = wantMap || (seatRoom(ctxNow) ? mapOf(seatRoom(ctxNow)) : storedMap()); return mapOk(k) ? k : 'kray'; })() });
       if (r && r.ok && r.roomId) { autoStart = r.roomId; HGames.openAt(r.roomId); }
       else { garageNext = false; if (err && r && r.message) err.textContent = r.message; }
     } finally { b.disabled = false; b.textContent = label; }
