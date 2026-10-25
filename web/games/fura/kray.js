@@ -14,7 +14,7 @@
 
 import { makeMaterials, PAL } from './materials.js';
 import { ChunkBatch } from './batch.js';
-import { planRoads, drawRoads, LIFT } from './road.js';
+import { planRoads, drawRoads, LIFT, at as roadAt } from './road.js';
 
 const CELL = 4;
 const CH = 60;                    // чанк рельєфу й пакета: 60 клітин = 240 м
@@ -312,7 +312,9 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
 
   // ---- 4. фізика рельєфу
   const ground = fixed((B.x0 + B.x1) / 2, 0, (B.z0 + B.z1) / 2);
-  world.createCollider(RAPIER.ColliderDesc.heightfield(N, N, H, { x: B.x1 - B.x0, y: 1, z: B.z1 - B.z0 }).setFriction(0.9), ground);
+  // «поверхня» — по чому їздять (рельєф, настил мостів, вибоїни); усе інше нерухоме — перешкода (unstick нижче)
+  const surface = new Set();
+  surface.add(world.createCollider(RAPIER.ColliderDesc.heightfield(N, N, H, { x: B.x1 - B.x0, y: 1, z: B.z1 - B.z0 }).setFriction(0.9), ground).handle);
 
   // ---- 5. рельєф для ока: чанки з кольорами полів
   // зелень, пшениця, рілля, соняшник, лука, стерня
@@ -393,6 +395,7 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
   }
 
   // ---- 6. дороги для ока (road.js у пакет), колайдери мостів і вибоїни
+  const decks = [];                     // відрізки настилу мостів — для topY() нижче
   const roadOut = drawRoads(THREE, plan, batch, { ground0: (x, z) => sampleGrid(H0, x, z), ground: height });
   const BUMP = new THREE.BoxGeometry(1.3, 0.035, 0.8), bumpGeo = new THREE.Object3D();
   for (const r of roads) {
@@ -405,9 +408,10 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
         const len = Math.hypot(b.x - a.x, b.z - a.z), yaw = Math.atan2(b.x - a.x, b.z - a.z);
         const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, cy = (a.y + b.y) / 2;
         const body = fixed(cx, cy - 0.3, cz, yaw);
+        decks.push({ a, b, hw: r.width / 2 + 0.5 });
         const pitch = Math.atan2(b.y - a.y, len);
         body.setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch, yaw, 0, 'YXZ')), false);
-        world.createCollider(RAPIER.ColliderDesc.cuboid(r.width / 2 + 0.5, 0.3, len / 2 + 0.05).setFriction(0.9), body);
+        surface.add(world.createCollider(RAPIER.ColliderDesc.cuboid(r.width / 2 + 0.5, 0.3, len / 2 + 0.05).setFriction(0.9), body).handle);
         // парапети: стінка до 1,8 м (бетон для ока — 0,95): з бортиком на 1,0 м кабіна фури (низ ~0,88 м) перелазила
         for (const s of [1, -1]) {
           const ox = Math.cos(yaw) * s * (r.width / 2 + 0.4), oz = -Math.sin(yaw) * s * (r.width / 2 + 0.4);
@@ -434,7 +438,7 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
           // виступає над дорогою на 6 см; півтовщина горбика з заокругленням — 6 см
           const rise = 0.06;
           const body = fixed(x, p.y + rise - 0.06, z, yaw);
-          world.createCollider(RAPIER.ColliderDesc.roundCuboid(0.61, 0.02, 0.3, 0.04).setFriction(0.9), body);
+          surface.add(world.createCollider(RAPIER.ColliderDesc.roundCuboid(0.61, 0.02, 0.3, 0.04).setFriction(0.9), body).handle);
           // для ока — латка темнішого асфальту (або ґрунту) з горбиком на 3 см над смугою
           bumpGeo.position.set(x, p.y + LIFT + 0.004, z); bumpGeo.rotation.set(0, yaw, 0); bumpGeo.updateMatrix();
           batch.add('road', BUMP, bumpGeo.matrix, r.kind === 'dirt' ? PAL.rut : PAL.asphaltPatch);
@@ -663,10 +667,100 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
   console.info('[fura] край зібрано за', ms, 'мс:', trees.length, 'дерев,', roads.length, 'доріг,', plan.junctions.length, 'перехресть,',
     Math.round(roadOut.stats.guardM), 'м відбійника,', packed.meshes, 'мешів пакета (', packed.tris, '△)');
 
+  // ---- висота поверхні (topY): рельєф або верх настилу мосту, де він є. Наверх (level.height) іде вона: відновлення пози,
+  // «на колеса» (truck.ground), привиди й стовп цілі на мосту інакше опинялись унизу, в річці (рельєф під настилом).
+  const topY = (x, z) => {
+    let y = height(x, z);
+    for (const { a, b, hw } of decks) {
+      const ax = b.x - a.x, az = b.z - a.z, l2 = ax * ax + az * az || 1;
+      const u = ((x - a.x) * ax + (z - a.z) * az) / l2;
+      if (u < 0 || u > 1) continue;
+      if (Math.hypot(a.x + ax * u - x, a.z + az * u - z) > hw) continue;
+      y = Math.max(y, a.y + (b.y - a.y) * u);
+    }
+    return y;
+  };
+
+  // ---- фура в перешкоді → на найближчу вільну смугу
+  // Поза рейсу зберігається без курсу тягача (у pickup restore ставить його лише переміщенням, курс — від спавну),
+  // а біля доріг тепер є стінки відбійників: тягач ставав носом у хату чи відбійник і стояв з газом у підлогу (25.10,
+  // Депо: кабіна впритул до хати, не всередині). «Застряг» = форми колайдерів фури перетинають перешкоду на місці, на
+  // ahead м попереду (зсувом уздовж курсу) або з боковим запасом side м. Рухаємо не далі maxMove (суддя: після паузи
+  // ≤ 30 м від останньої пози; після «на колеса» стрибок пози мінус 3 м має бути < 160 км/год за 0,25 с).
+  const Q = (r) => new THREE.Quaternion(r.x, r.y, r.z, r.w);
+  const obstacle = (c) => { const b = c.parent(); return !!b && b.isFixed() && !surface.has(c.handle); };
+  const KING = 7.85;                    // шворень причепа від сідла (truck.js: TRAILER.kingpin.z − TRACTOR.fifth.z)
+  function unstick(truck, { maxMove = 25, ahead = 2, side = 0.3 } = {}) {
+    world.propagateModifiedBodyPositionsToColliders();
+    const coupled = truck.coupled;
+    // форми фури відносно тіл (тягач; причіп — лише зчеплений: відчеплений стоїть у боксі, його не чіпаємо)
+    const rel = (b) => {
+      const bt = b.translation(), iq = Q(b.rotation()).invert(), out = [];
+      for (let i = 0; i < b.numColliders(); i++) {
+        const c = b.collider(i);
+        if (!c.isEnabled() || c.isSensor()) continue;
+        const ct = c.translation();
+        out.push({ c, p: new THREE.Vector3(ct.x - bt.x, ct.y - bt.y, ct.z - bt.z).applyQuaternion(iq), q: iq.clone().multiply(Q(c.rotation())) });
+      }
+      return out;
+    };
+    const parts = [rel(truck.tb)].concat(coupled ? [rel(truck.rb)] : []);
+    // кубоїди фури з боковим запасом (інших форм у фури нема; про всяк — як є)
+    const grow = (sh) => (sh.halfExtents ? new RAPIER.Cuboid(sh.halfExtents.x + side, sh.halfExtents.y, sh.halfExtents.z) : sh);
+    for (const list of parts) for (const r of list) r.shape = grow(r.c.shape);
+    const hits = (poses) => {
+      let hit = false;
+      poses.forEach((ps, k) => {
+        const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(ps.q);
+        for (const r of parts[k]) {
+          const q = ps.q.clone().multiply(r.q);
+          for (let a = 0; a <= ahead + 1e-6 && !hit; a += 0.5) {
+            const p = r.p.clone().applyQuaternion(ps.q).add(ps.p).addScaledVector(fwd, k === 0 ? a : 0);
+            world.intersectionsWithShape(p, q, r.shape, () => { hit = true; return false; }, undefined, undefined, undefined, undefined, obstacle);
+          }
+        }
+      });
+      return hit;
+    };
+    const now = (b) => { const t = b.translation(); return { p: new THREE.Vector3(t.x, t.y, t.z), q: Q(b.rotation()) }; };
+    if (!hits(coupled ? [now(truck.tb), now(truck.rb)] : [now(truck.tb)])) return null;
+    // кандидати: права смуга кожної дороги в радіусі maxMove, курс — уздовж дороги, спершу ближчий до теперішнього
+    const t0 = truck.tb.translation(), yaw0 = truck.yawOf(truck.tb), cand = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const r of roads) {
+      const S = r.edge.sec, o = S.shift + S.lane * (S.lanes / 2 - 0.5), pts = r.pts, L = pts[pts.length - 1].s;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        if (Math.hypot(p.x - t0.x, p.z - t0.z) > maxMove + 4) continue;
+        for (const dir of [1, -1]) {
+          const lane = (s) => { const a = roadAt(pts, Math.max(0, Math.min(L, s))), fx = a.tx * dir, fz = a.tz * dir; return { x: a.x - fz * o, z: a.z + fx * o, yaw: Math.atan2(fx, fz) }; };
+          const tr = lane(p.s), tl = lane(p.s - dir * KING);
+          const d = Math.hypot(tr.x - t0.x, tr.z - t0.z);
+          if (d > maxMove) continue;
+          const turn = Math.abs(Math.atan2(Math.sin(tr.yaw - yaw0), Math.cos(tr.yaw - yaw0)));
+          cand.push({ tr, tl, d: d + turn * 2 });
+        }
+      }
+    }
+    cand.sort((a, b) => a.d - b.d);
+    for (const c of cand.slice(0, 300)) {
+      const pose = (x, z, yaw, lift) => ({ p: new THREE.Vector3(x, topY(x, z) + lift, z), q: new THREE.Quaternion().setFromAxisAngle(up, yaw) });
+      const poses = [pose(c.tr.x, c.tr.z, c.tr.yaw, 1.18)].concat(coupled ? [pose(c.tl.x, c.tl.z, c.tr.yaw, 1.3)] : []);
+      if (hits(poses)) continue;
+      const k = truck.cargo, rt = truck.rb.translation();
+      const trailer = coupled ? { x: c.tl.x, z: c.tl.z, yaw: c.tr.yaw, y: topY(c.tl.x, c.tl.z) } : { x: rt.x, z: rt.z, yaw: truck.yawOf(truck.rb), y: topY(rt.x, rt.z) };
+      if (coupled) truck.place({ tractor: { x: 0, z: 0 }, trailer }, true);
+      else truck.place({ tractor: { x: c.tr.x, z: c.tr.z, yaw: c.tr.yaw, y: topY(c.tr.x, c.tr.z) }, trailer }, false);
+      truck.cargo = k;                    // place() ставить 100 — ціле вантажу лишаємо, як було
+      return { moved: +Math.hypot(c.tr.x - t0.x, c.tr.z - t0.z).toFixed(1), x: c.tr.x, z: c.tr.z, yaw: c.tr.yaw };
+    }
+    return false;                         // вільної смуги поруч нема — лишаємо як є
+  }
+
   const depot = places.find((p) => p.depot) || places[0];
   let fogFar = 0;
   return {
-    map, places, roads, river, height, nearRoad, buildMs: ms, roadPlan: plan, packed,
+    map, places, roads, river, height: topY, ground: height, nearRoad, buildMs: ms, roadPlan: plan, packed, unstick,
     spawn: { x: depot.spawn.x, z: depot.spawn.z, yaw: depot.spawn.yaw, y: height(depot.spawn.x, depot.spawn.z) },
     // кожен кадр: якщо туман посунули (небо 2.0), чанки малюються до нової межі
     sync() {

@@ -568,7 +568,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     if (inp.hit.has('reset')) {
       // спершу сказати судді: наступний стрибок пози — не телепорт
       if (trips) { trips.act('rescue'); voice.say('rescue', { gap: 5000 }); }
-      truck.rescue(); resetPoses(); say('Фура на колесах');
+      truck.rescue(); if (level.unstick) level.unstick(truck, { maxMove: 12 }); resetPoses(); say('Фура на колесах');
     }
     if (inp.hit.has('menu')) { if (modal) modal.close(); else openMenu(); }
     if (!modal && input.keys.has('KeyF') && !api._f) { api._f = true; toggleFs(); } else if (!input.keys.has('KeyF')) api._f = false;

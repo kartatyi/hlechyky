@@ -120,14 +120,16 @@ export class Trips {
     if (o && v.phase !== 'pickup') this.placed = this.placeKey(o);
     if (v.phase === 'pickup' && o) {
       this.putTrailerAtDock(o);
-      if (p) t.tb.setTranslation({ x: p.x, y: h(p.x, p.z) + 1.4, z: p.z }, true);
+      if (p) { t.tb.setTranslation({ x: p.x, y: h(p.x, p.z) + 1.4, z: p.z }, true); if (p.h != null) t.tb.setRotation(t.yawQuat(p.h), true); }
     } else if (v.phase === 'haul' && o && p) {
       this.dress(o);
       if (p.c) t.place({ tractor: { x: p.x, z: p.z }, trailer: { x: p.rx, z: p.rz, yaw: p.ry, y: h(p.rx, p.rz) } }, true);
-      else t.place({ tractor: { x: p.x, z: p.z, yaw: p.ry, y: h(p.x, p.z) }, trailer: { x: p.rx, z: p.rz, yaw: p.ry, y: h(p.rx, p.rz) } }, false);
+      else t.place({ tractor: { x: p.x, z: p.z, yaw: p.h ?? p.ry, y: h(p.x, p.z) }, trailer: { x: p.rx, z: p.rz, yaw: p.ry, y: h(p.rx, p.rz) } }, false);
       t.cargo = v.trip ? v.trip.minK : 100;
       this.say('Рейс триває: ' + this.title(o), 3000);
     }
+    // поза зі старої дороги (тепер поруч стінки відбійників) чи впритул до хати: фура стояла б носом у стіну — на смугу
+    if (p && o && this.level.unstick) this.level.unstick(t);
     this.onPlaced && this.onPlaced();
     if (v.phase === 'free') setTimeout(() => this.board(), 500);
   }
