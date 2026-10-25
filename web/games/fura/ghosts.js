@@ -33,10 +33,13 @@ const RATE = 0.1;                    // годинник малювання на
 // затримка = p90 спізнень + пів кроку поз + 10 мс: решту (рідкі сплески, пізню позу) бере екстраполяція — на «змійці»
 // вона помиляється на сантиметри, а p95 + цілий крок тримав привида на 0,1–0,15 с далі (specs/fura.md, A5)
 const LATE_Q = 0.9, STEP_K = 0.5;
-// прогноз на «тепер» для зіткнень (2c, crash.js): base уже має в собі найкоротшу дорогу пози до мене, справжнє «тепер»
-// відправника — ще трохи далі (LEAD); далі за останню позу прогноз не їде довше PRED_MAX; поправка, коли доїхали нові
-// пози, тане за PRED_EASE (кінематичне тіло не стрибає), а стрибок понад PRED_JUMP — це телепорт (рятунок, F5)
-const LEAD = 60, PRED_MAX = 600, PRED_EASE = 120, PRED_JUMP = 2;
+// прогноз на «тепер» для зіткнень (2c, crash.js): base — найкоротша дорога пози до мене плюс зсув годинників, тож
+// справжнє «тепер» відправника — на ту дорогу далі. Її міряємо на СВОЇЙ доріжці (свої пози теж приходять у кадрі, годинник
+// той самий: base своєї = мій шлях угору + вниз) і вважаємо, що в нього шлях такий самий (C1: без цього на інтернеті
+// 60–150 мс в один бік прогноз відставав на 150–250 мс, 1,5–2,5 м); без своєї доріжки — LEAD. Далі за останню позу
+// прогноз не їде довше PRED_MAX; поправка, коли доїхали нові пози, тане за PRED_EASE, але не швидше PRED_V (кінематичне
+// тіло не стрибає й лишається твердим); стрибок понад PRED_SNAP — телепорт (рятунок, F5): тоді колізію гасять на мить
+const LEAD = 60, LEAD_MIN = 20, LEAD_MAX = 450, PRED_MAX = 600, PRED_EASE = 150, PRED_V = 8, PRED_SNAP = 12;
 
 /** Кадр → Map(seat → {x, z, h, v, c, rx, rz, ry, f}); розбираємо раз на кадр (старий шлях, без q). */
 function parse(f) {
@@ -206,7 +209,7 @@ class Track {
    * Прогноз на «тепер» (2c): де фура відправника є зараз, а не де її малюємо (at — на затримку позаду). Нові пози
    * зсувають прогноз — різниця тане за PRED_EASE; jump — прогноз стрибнув на понад PRED_JUMP (тоді колізію гасять).
    */
-  predict(now) {
+  predict(now, lead = LEAD) {
     if (!this.b.length || this.base == null) return null;
     const dt = this.pLast ? clamp(now - this.pLast, 0, 250) : 0;
     this.pLast = now;
@@ -214,14 +217,20 @@ class Track {
     let jump = false;
     if (this.pVer !== this.ver && this.pRaw) {
       const re = this.predRaw(this.pS), was = this.pRaw;
-      const jx = was.x - re.x, jz = was.z - re.z;
-      if (Math.hypot(jx, jz) > PRED_JUMP) { o.x = o.z = o.h = o.ry = 0; jump = true; }
-      else { o.x += jx; o.z += jz; o.h += dA(re.h, was.h); o.ry += dA(re.ry, was.ry); }
+      const jx = was.x - re.x, jz = was.z - re.z, j = Math.hypot(jx, jz);
+      if (j > PRED_SNAP) { o.x = o.z = o.h = o.ry = 0; jump = true; }
+      else {
+        o.x += jx; o.z += jz; o.h += dA(re.h, was.h); o.ry += dA(re.ry, was.ry);
+        if (j > 0.5) { this.fixN = (this.fixN || 0) + 1; this.fixMax = Math.max(this.fixMax || 0, j); }
+      }
     }
     this.pVer = this.ver;
-    const k = Math.exp(-dt / PRED_EASE);
+    // поправка тане за PRED_EASE, але тіло зсувається нею не швидше PRED_V м/с
+    const m = Math.hypot(o.x, o.z);
+    let k = Math.exp(-dt / PRED_EASE);
+    if (m * (1 - k) > PRED_V * dt / 1000) k = 1 - PRED_V * dt / 1000 / m;
     o.x *= k; o.z *= k; o.h *= k; o.ry *= k;
-    const s = now - this.cur(now) + LEAD;
+    const s = now - this.cur(now) + lead;
     const r = this.predRaw(s);
     this.pRaw = r; this.pS = s;
     const p = dress(r, o);
@@ -261,7 +270,14 @@ export class Ghosts {
   predict(seat, now) {
     const t = this.tracks.get(seat);
     if (!t || seat === this.me || !this.names.has(seat) || this.alone || now - t.inAt > STALE_MS) return null;
-    return t.predict(now);
+    return t.predict(now, this.leadMs(now));
+  }
+
+  /** Скільки мс від «тепер» відправника до пози, що щойно прийшла: мій шлях угору й униз (base своєї доріжки). */
+  leadMs(now) {
+    const t = this.me == null ? null : this.tracks.get(this.me);
+    if (!t || t.base == null || t.late.length < 10 || now - t.inAt > STALE_MS) return LEAD;
+    return clamp(t.cur(now), LEAD_MIN, LEAD_MAX);
   }
 
   /** Кадр із сервера (або підставний з консолі). */
@@ -442,7 +458,7 @@ export class Ghosts {
     const out = {};
     for (const [seat, t] of this.tracks) {
       out[seat] = { poses: t.b.length, want: Math.round(t.want), behind: t.tau == null ? null : Math.round(performance.now() - t.cur(performance.now()) - t.tau),
-        extra: t.frames ? +(100 * t.extraN / t.frames).toFixed(1) + ' %' : '—' };
+        extra: t.frames ? +(100 * t.extraN / t.frames).toFixed(1) + ' %' : '—', fix: t.fixN || 0, fixMax: +(t.fixMax || 0).toFixed(2) };
     }
     return out;
   }

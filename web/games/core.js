@@ -1938,6 +1938,23 @@
       + (x.points != null ? ', очок ' + x.points : '')).join('\n');
   }
 
+  /// Варіант, обраний при створенні (зникаючі хрестики, розмір поля, «💥 зіткнення» Чумаків), — чипами, якщо він не
+  /// типовий: у шапці столу й у «Живих столах» лобі (short — лише назва до «:»/«—», повний підпис у підказці).
+  function modeChips(room, short) {
+    const g = gameOf(room.game);
+    let out = '';
+    for (const o of (g && g.options) || []) {
+      const v = room.options && room.options[o.key];
+      if (v == null || v === o.default) continue;
+      // multi-опція: «ukraine,science» → «Україна · Наука, природа й тіло» (кома вже буває в самих підписах)
+      const label = (o.multi ? v.split(',') : [v])
+        .map((x) => { const pair = optPairs(o).find((p) => p[0] === x); return pair ? pair[1] : x; }).join(' · ');
+      const cut = short ? label.split(/\s*[:—(]/)[0] : label;
+      out += '<span class="gmode"' + (cut !== label ? ' title="' + esc(label) + '"' : '') + '>' + esc(cut) + '</span>';
+    }
+    return out;
+  }
+
   function roomSummaryHtml(r) {
     const rv = views[r.id];
     const seat = seatOfMe(r);
@@ -1961,6 +1978,7 @@
         + '<button data-open="' + esc(r.id) + '">Дивитись</button>';
     return '<div class="gsum' + (mine ? ' mine' : '') + '">'
       + '<div class="gs-head"><span class="gtitle">' + iconOf(r.game) + esc(titleOf(r.game)) + '</span>'
+      + modeChips(r, true)
       + (r.stake ? '<span class="gmode stake">🏺' + r.stake + '</span>' : '')
       + '<span class="chip">' + (all > 1 ? took + '/' + all : 'соло') + '</span></div>'
       + '<div class="gs-who">' + (nicks.length ? who + bots : '<span class="muted">поки ні душі</span>')
@@ -3449,7 +3467,6 @@
 
   function headHtml(rv) {
     const room = rv.room;
-    const g = gameOf(room.game);
     const solo = room.maxPlayers === 1;
     const chips = [];
     if (!solo) {
@@ -3478,18 +3495,8 @@
       if (taken > 4) chips.push('<button type="button" class="gseat gmany" data-many title="Показати всіх за столом">👥 '
         + taken + '</button>');
     }
-    // Варіант, обраний при створенні (зникаючі хрестики, розмір поля) — підписуємо, якщо він не типовий.
-    const modes = [];
-    for (const o of (g && g.options) || []) {
-      const v = room.options && room.options[o.key];
-      if (v == null || v === o.default) continue;
-      // multi-опція: «ukraine,science» → «Україна · Наука, природа й тіло» (кома вже буває в самих підписах)
-      const label = (o.multi ? v.split(',') : [v])
-        .map((x) => { const pair = optPairs(o).find((p) => p[0] === x); return pair ? pair[1] : x; }).join(' · ');
-      modes.push('<span class="gmode">' + esc(label) + '</span>');
-    }
     return '<span class="gtitle">' + iconOf(room.game) + esc(titleOf(room.game)) + '</span>'
-      + modes.join('')
+      + modeChips(room)
       + (room.stake ? '<span class="gmode stake">🏺' + room.stake + '</span>' : '')
       + chips.join('')
       + (room.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + room.watchers + '</span>' : '')

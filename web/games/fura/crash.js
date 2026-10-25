@@ -9,9 +9,15 @@
 // контактної сили дає імпульс. Частку (SHARE, зважену тим, хто з двох наближався) шлю `input hit {to, ix, iz, at, ox, oz}`;
 // сервер пересилає її адресату в кадрі (поле h), адресат прикладає імпульс до своєї фури (Δv ≤ DV_MAX).
 //
-// Примарна (крізь неї їдеш, напівпрозора поблизу): у дворі (+10 м) моя чи її фура; відносна швидкість < 5 км/год (не
-// заблокуєш бокс і не підштовхнеш того, хто чіпляється); прогноз стрибнув > 2 м (на мить); щойно з'явилась чи стала
-// твердою там, де ми перекриваємось, — доки не роз'їдемось. Промені коліс бачать лише нерухоме (onlyFixed) — і далі так.
+// Примарна (крізь неї їдеш, поблизу напівпрозора): моя чи її фура біля боксів (20 м від боксу: не заблокуєш бокс і не
+// підштовхнеш того, хто чіпляється); обидві майже стоять (< 3 км/год); вона щойно вдарила мене (0,4 с); телепорт прогнозу (рятунок,
+// F5 — на мить); щойно з'явилась чи стала твердою там, де ми перекриваємось, — доки не роз'їдемось. Решта двору (місце
+// старту, виїзд), дороги й поле — тверді. Промені коліс бачать лише нерухоме (onlyFixed) — і далі так.
+//
+// Наживо (C1, 26.10): раніше весь двір +10 м і «відносна < 5 км/год» (поруч на однаковій швидкості, впритул) були
+// примарні — двоє, що щойно сіли в депо, їздили одне крізь одного. Прогноз «на тепер» тепер бере затримку мережі з
+// власної доріжки (ghosts.js leadMs), а стрибок прогнозу поправляється плавно, тіло лишається твердим.
+// __fura.crash.stats(): pct — частка кроків «тверда» / чому примарна.
 
 import { TRACTOR, TRAILER } from './truck.js';
 
@@ -21,11 +27,11 @@ const SHARE = 0.5;         // у моїй фізиці чужа фура — с�
 const DV_MAX = 3;          // м/с: удар міняє швидкість моєї фури не більше за це (~11 км/год)
 const GAP_MS = 250;        // удар пари — не частіше за 4/с (і сервер так само)
 const EPISODE = 6;         // кроків: довший контакт ділимо на окремі удари
-const AFTER_MS = 400;      // після удару (завдав чи отримав) пара на мить примарна: без повторних дрібних ударів і «доштовхування»
+const AFTER_MS = 400;      // мене вдарили — її фура на мить примарна: її прогноз ще їде в мене, без «доштовхування»
 const REBOUND = 0.5, REBOUND_MS = 300;   // м/с: відскок від чужої фури — не більше (м'який розв'язувач Rapier дає 2+ м/с)
-const SLOW = 5 / 3.6;      // м/с: відносна швидкість менша — примарна
-const YARD_M = 10;         // як Fura.HitYardM
-const JUMP_MS = 500;       // прогноз стрибнув — колізію гасимо на стільки
+const SLOW = 3 / 3.6;      // м/с: обидві повільніші — примарна (стоять поруч, маневр)
+const DOCK_M = 20;         // як Fura.HitDockM: ближче до боксу — примарна
+const JUMP_MS = 500;       // телепорт прогнозу (рятунок, F5) — колізію гасимо на стільки
 const NEAR_DRAW = 30, FAR_DRAW = 60;   // ближче — малюємо прогноз, далі — плавну позу A5 (між — суміш)
 const ALPHA = 0.45, ALPHA_M = 40;      // примарна ближче за 40 м — напівпрозора
 // висота тіл над землею (як привид у ghosts.js) і коробки в осях тіла: [пів-ширина, пів-висота, пів-довжина, x, y, z]
@@ -68,12 +74,15 @@ export class Crash {
     this.log = [];               // для консолі: що й кому, скільки
     this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ');
     this.myVel = [{ x: 0, z: 0 }, { x: 0, z: 0 }];
+    this.cnt = {};               // кроки фізики × чужа фура: тверда чи чому примарна (stats)
+    this.badge = null;           // плашка режиму в HUD
     ghosts.crash = this;
   }
 
   /** З виду столу: collide 'crash' — зіткнення, інакше привиди (тіла лишаються, але крізь них). */
   view(v) {
     const on = !!(v && v.collide === 'crash');
+    if (v && v.collide) this.showMode(on);
     if (on === this.on) return;
     this.on = on;
     if (!on) for (const r of this.rigs.values()) this.solid(r, false);
@@ -87,8 +96,27 @@ export class Crash {
     return null;
   }
 
+  /** Плашка режиму столу в HUD (під кнопками): «💥 зіткнення» / «👻 привиди». */
+  showMode(on) {
+    let b = this.badge;
+    if (!b) {
+      const hud = document.querySelector('.fura-app .fura-hud');
+      if (!hud) return;
+      b = this.badge = document.createElement('div');
+      b.className = 'fura-panel fura-modebadge';
+      hud.appendChild(b);
+    }
+    const t = on ? '💥 зіткнення' : '👻 привиди';
+    if (b.textContent === t) return;
+    b.textContent = t;
+    b.classList.toggle('crash', on);
+    b.title = on ? 'Чужі фури тверді. Крізь — лише біля боксів, коли обидві стоять, і на мить після удару (тоді вона напівпрозора)'
+      : 'Чужі фури — привиди, крізь них їдеш. Зіткнення — інший стіл: «💥» перед «Їхати»';
+  }
+
+  /** Біля боксів (ближче DOCK_M до боксу): тут фури не б'ються — ніхто не заблокує бокс і не штовхне того, хто чіпляється. */
   inYard(x, z) {
-    return this.level.places.some((p) => Math.abs(x - p.yard.x) <= p.yard.w / 2 + YARD_M && Math.abs(z - p.yard.z) <= p.yard.d / 2 + YARD_M);
+    return this.level.places.some((p) => (p.docks || []).some((d) => Math.hypot(x - d.x, z - d.z) <= DOCK_M));
   }
 
   /** Моя фура в плані: [тягач, причіп]. */
@@ -158,25 +186,27 @@ export class Crash {
       const p = g.predict(seat, now);
       if (!p) { const r = this.rigs.get(seat); if (r) { this.solid(r, false); r.pose = null; } continue; }
       const r = this.rig(seat);
-      if (p.jump || !r.pose) { r.offUntil = now + JUMP_MS; r.off = 'стрибок'; }
+      if (p.jump || !r.pose) { r.offUntil = now + JUMP_MS; r.off = r.pose ? 'стрибок' : 'новий'; }
       r.pose = p;
       const near = (x, z) => (Math.hypot(a.x - x, a.z - z) < Math.hypot(ra.x - x, ra.z - z) ? a : ra);
       this.put(r.tb, p.x, p.z, p.h, TRACTOR_Y, 2.4, 2.2, p.v, near(p.x, p.z));
       this.put(r.rb, p.rx, p.rz, p.ry, TRAILER_Y, 5.0, 5.6, p.v, near(p.rx, p.rz));
       // тверда чи примарна
-      const rel = Math.hypot(va.x - p.v * Math.sin(p.h), va.z - p.v * Math.cos(p.h));
       let why = '';
-      if (meYard || this.inYard(p.x, p.z) || this.inYard(p.rx, p.rz)) why = 'двір';
-      else if (rel < SLOW) why = 'повільно';
+      if (meYard || this.inYard(p.x, p.z) || this.inYard(p.rx, p.rz)) why = 'бокси';
+      else if (Math.hypot(va.x, va.z) < SLOW && Math.abs(p.v) < SLOW) why = 'стоять';
       else if (now < r.offUntil) why = r.off || 'стрибок';
       if (!why && !r.solid) {
-        // твердою стає лише там, де ми не перекриваємось (інакше Rapier вистрілив би нас одне з одного)
-        mine = mine || this.mine(0.3);
+        // твердою стає лише там, де ми не перекриваємось глибше за 0,25 м (інакше Rapier вистрілив би нас одне з одного;
+        // неглибоке перекриття розв'язувач розводить м'яко, а з запасом +0,3 м «крізь» тягнулось секундами)
+        mine = mine || this.mine(-0.25);
         const hers = [rect(p.x, p.z, p.h, 0), rect(p.rx, p.rz, p.ry, 1)];
         if (mine.some((m) => hers.some((o) => overlap(m, o)))) why = 'крізь';
       }
       r.why = why;
       this.solid(r, !why);
+      const k = why || 'тверда';
+      this.cnt[k] = (this.cnt[k] || 0) + 1;
     }
   }
 
@@ -239,9 +269,14 @@ export class Crash {
   finish(seat, h, now) {
     this.hits.delete(seat);
     const r = this.rigs.get(seat);
-    if (r) { r.offUntil = now + AFTER_MS; r.off = 'удар'; }
     const J = Math.hypot(h.ix, h.iz);
-    if (h.me <= 0.3) { this.note('out', seat, J, 0, 'мене штовхнули'); return; }    // мене вдарили: я лише відлетів
+    if (h.me <= 0.3) {
+      // мене вдарили: я лише відлетів, а її прогноз ще «доїжджає» в мене — на мить примарна, щоб не доштовхувала
+      if (r) { r.offUntil = now + AFTER_MS; r.off = 'удар'; }
+      this.note('out', seat, J, 0, 'мене штовхнули'); return;
+    }
+    // бив я — вона лишається твердою: інакше, тиснучи кермо в неї (удар збоку, впритул), заїжджаю всередину й далі «крізь»
+    // (C1: 675 кроків крізь після одного удару збоку); повтор удару стримують GAP_MS і SEND_MIN
     const w = h.me / (h.me + Math.max(0, h.her)), t = this.truck;
     const m = stdMass(t.coupled, h.mine);
     const sent = Math.min(J * SHARE * w, 0.5 * m * h.me), k = J > 0 ? sent / J : 0, ix = h.ix * k, iz = h.iz * k;
@@ -304,7 +339,8 @@ export class Crash {
     if (!this.on || !r || !r.pose) return { p, alpha: 1 };
     const q = r.pose, a = this.truck.tb.translation(), d = Math.hypot(q.x - a.x, q.z - a.z);
     const w = clamp((FAR_DRAW - d) / (FAR_DRAW - NEAR_DRAW), 0, 1);
-    const alpha = !r.solid && r.why !== 'стрибок' && r.why !== 'удар' && d < ALPHA_M ? ALPHA : 1;
+    // примарна з причиною, яку видно (бокси, стоять, після удару, крізь) — напівпрозора; мить телепорту — ні (блимала б)
+    const alpha = !r.solid && r.why !== 'стрибок' && r.why !== 'новий' && d < ALPHA_M ? ALPHA : 1;
     if (w <= 0) return { p, alpha };
     const L = (x, y) => x + (y - x) * w, LA = (x, y) => x + Math.atan2(Math.sin(y - x), Math.cos(y - x)) * w;
     return { p: { ...p, x: L(p.x, q.x), z: L(p.z, q.z), h: LA(p.h, q.h), rx: L(p.rx, q.rx), rz: L(p.rz, q.rz), ry: LA(p.ry, q.ry) }, alpha };
@@ -312,14 +348,18 @@ export class Crash {
 
   /** Для консолі: хто де і чому примарний, останні удари. */
   stats() {
-    const out = { on: this.on, rigs: {}, log: this.log.slice(-12) };
+    const n = Object.values(this.cnt).reduce((a, b) => a + b, 0), pct = {};
+    for (const [k, v] of Object.entries(this.cnt)) pct[k] = +(100 * v / n).toFixed(1);
+    const out = { on: this.on, n, pct, lead: this.ghosts.leadMs ? Math.round(this.ghosts.leadMs(performance.now())) : null, rigs: {}, log: this.log.slice(-12) };
     for (const r of this.rigs.values()) out.rigs[r.seat] = { solid: r.solid, why: r.why, x: r.pose && +r.pose.x.toFixed(2), z: r.pose && +r.pose.z.toFixed(2), v: r.pose && +r.pose.v.toFixed(2) };
     return out;
   }
+  resetStats() { this.cnt = {}; this.log.length = 0; }
 
   dispose() {
     for (const r of [...this.rigs.values()]) { try { this.drop(r); } catch { /* світ уже звільнено */ } }
     try { this.queue.free(); } catch { /* пусто */ }
+    if (this.badge) this.badge.remove();
     this.ghosts.crash = null;
   }
 }
