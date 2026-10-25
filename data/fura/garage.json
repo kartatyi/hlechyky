@@ -1,0 +1,64 @@
+{
+  "_": "Гараж і тюнінг «Чумаків-далекобійників» (0.0.6, docs/games/specs/fura.md «Гараж (0.0.6) — контракт», ТЗ D:/or-wt/_fura/GARAGE.md). Один файл на обидва боки: сервер рахує з нього рівні, ціни й params, браузер — картки гаража й тест-драйв. Ціни — у справжніх черепках (вже × Boost). Потужність у Вт, сила й маса — Н і кг, як у truck.js.",
+  "v": 1,
+  "levels": { "max": 20, "base": 150, "step": 50, "star": 2500 },
+  "xp": {
+    "base": 20, "perKm": 25, "onTime": 1.1, "exact": 1.1, "col": 1.15, "mentor": 1.2, "mentorGap": 5, "minK": 20,
+    "fullTrips": 10, "tired": 0.5, "retroPerTrip": 80, "retroMax": 2100
+  },
+  "far": { "lvl": 10, "xp": 1.3 },
+  "cap": { "power": 560000, "hurt": 0.6, "limits": 1.3 },
+  "base": {
+    "power": 400000, "fmax": 64000, "mass": 7500, "steer": 0.6, "sway": 1,
+    "brake": 150, "trailerBrake": 330, "slip": 1.5, "side": 1.15,
+    "limits": 1, "hurt": 1, "trailerStiff": 12, "trailerRelax": 1.4,
+    "engineBrake": 0.06, "shiftPause": 1, "cabVol": 1, "shake": 1,
+    "cruise": false, "abs": false, "allSeason": false, "nav": false
+  },
+  "tractors": [
+    { "id": "chumak", "title": "Чумак", "lvl": 1, "price": 0, "power": 400000, "fmax": 64000, "mass": 7500, "steer": 0.6, "sway": 1, "limits": 1, "sound": "diesel",
+      "note": "Теперішній тягач: 400 кВт (~540 к.с.), 64 кН, 7,5 т" },
+    { "id": "vil", "title": "Віл", "lvl": 6, "price": 8000, "power": 470000, "fmax": 74000, "mass": 8300, "steer": 0.6, "sway": 1, "limits": 1, "sound": "v8",
+      "note": "Важкий: 470 кВт (~640 к.с.), 74 кН, 8,3 т — гірка 10 % з 12 т вантажу ~64 км/год проти ~56" },
+    { "id": "lastivka", "title": "Ластівка", "lvl": 12, "price": 14000, "power": 430000, "fmax": 66000, "mass": 7000, "steer": 0.65, "sway": 0.7, "limits": 1.1, "sound": "six",
+      "note": "Легка й м'яка: кермо 0,65 рад, пороги вантажу +10 %, кабіна хитається менше" }
+  ],
+  "trailers": [
+    { "id": "tent", "title": "Тент", "lvl": 1, "price": 0, "carries": "tent", "xp": 1, "note": "Усі теперішні вантажі краю" },
+    { "id": "izoterm", "title": "Ізотерм", "lvl": 4, "price": 4000, "carries": "izoterm", "xp": 1.1, "note": "«Молоко» й «Морозиво», ×1,1 ДВ" },
+    { "id": "puh", "title": "Пух", "lvl": 8, "price": 7000, "carries": "tent", "xp": 1, "hurt": 0.8, "trailerStiff": 10, "trailerRelax": 1.8,
+      "note": "Пневмопідвіска для крихкого: шкода вантажу ×0,8" },
+    { "id": "low", "title": "Низькорамник", "lvl": 14, "price": 10000, "carries": "low", "xp": 1.2, "note": "«Дзвін для церкви» й «Трактор», ×1,2 ДВ" }
+  ],
+  "tune": {
+    "prices": [500, 1000, 2000, 3500, 5500],
+    "levels": [2, 5, 9, 13, 17],
+    "branches": [
+      { "id": "engine", "title": "Двигун", "steps": 4, "mul": { "power": 0.05, "fmax": 0.05 },
+        "note": "Потужність і тяга +5 % за щабель: гірка з повним причепом ~56 → ~67 км/год; рівна дорога — та сама 90" },
+      { "id": "gear", "title": "Коробка", "steps": 3, "levels": [3, 5, 9],
+        "set": { "1": { "cruise": true }, "2": { "shiftPause": 0.5 }, "3": { "engineBrake": 0.1 } },
+        "perks": [
+          { "step": 1, "id": "cruise", "title": "Круїз-контроль" },
+          { "step": 2, "id": "quickShift", "title": "Швидке перемикання" },
+          { "step": 3, "id": "retarder", "title": "Сповільнювач" }
+        ] },
+      { "id": "brakes", "title": "Гальма", "steps": 3, "mul": { "brake": 0.1, "trailerBrake": 0.1 }, "mulSteps": 2,
+        "set": { "3": { "abs": true } },
+        "perks": [{ "step": 3, "id": "abs", "title": "ABS" }] },
+      { "id": "susp", "title": "Підвіска «М'якість»", "steps": 5, "mul": { "limits": 0.05 }, "hurtPer": 0.96,
+        "note": "Пороги вантажу +5 % і шкода ×0,96 за щабель" },
+      { "id": "tires", "title": "Шини", "steps": 3, "mul": { "slip": 0.04, "side": 0.04 },
+        "set": { "3": { "allSeason": true } },
+        "perks": [{ "step": 3, "id": "allSeason", "title": "Всесезонні" }] },
+      { "id": "cab", "title": "Кабіна", "steps": 3,
+        "set": { "1": { "cabVol": 0.7 }, "2": { "nav": true }, "3": { "shake": 0.5 } },
+        "perks": [
+          { "step": 1, "id": "quiet", "title": "Тихий салон" },
+          { "step": 2, "id": "nav", "title": "Навігатор" },
+          { "step": 3, "id": "seat", "title": "Крісло на пневмі" }
+        ] }
+    ]
+  },
+  "titles": { "10": "chumak", "20": "otaman" }
+}

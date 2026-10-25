@@ -41,6 +41,8 @@ public sealed class FuraRig
     [JsonIgnore] public List<FuraSent> Sent { get; } = [];
     /// <summary>Номер для пози старого клієнта без <c>n</c> (сервер нумерує сам).</summary>
     [JsonIgnore] public int AutoN { get; set; }
+    /// <summary>Гараж водія (0.0.6): досвід, куплене, обране — окремий запис <see cref="FuraCareer.Key"/>, не в JSON фури.</summary>
+    [JsonIgnore] public FuraCareer? Career { get; set; }
 
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -105,7 +107,8 @@ public sealed class FuraRig
 /// Гараж фур: один на сервер. Тримає останній JSON кожної фури в пам'яті (стіл, що сів пізніше, бере свіже, навіть якщо
 /// база ще не дописала) і пише в <see cref="IGameStore"/> з пулу потоків — ніколи з-під замка кімнати (як
 /// <see cref="RallyLaps"/>). Ще знає, який стіл зараз «судить» нік: <see cref="Claim"/> віддає фуру новому столу, і старий
-/// своїми діями її вже не перепише.
+/// своїми діями її вже не перепише. Гараж водія (0.0.6, <see cref="FuraCareer"/>) живе тут само під своїм ключем і тією самою
+/// заявкою: пишеться рідко (рейс, покупка), тож поза раз на 5 с його не переписує.
 /// </summary>
 public sealed class FuraGarage
 {
@@ -118,9 +121,10 @@ public sealed class FuraGarage
     readonly ILogger? _log;
     readonly object _lock = new();
     readonly object _writeLock = new();
+    /// <summary>Ключ сховища (<see cref="Key"/> чи <see cref="FuraCareer.Key"/>) → останній JSON.</summary>
     readonly Dictionary<string, string> _latest = new(StringComparer.Ordinal);
     readonly Dictionary<string, long> _owners = new(StringComparer.Ordinal);
-    /// <summary>Фури, чий останній запис у базу впав: їх дописує наступний <see cref="Save"/> (будь-чий).</summary>
+    /// <summary>Ключі, чий останній запис у базу впав: їх дописує наступний <see cref="Save"/> (будь-чий).</summary>
     readonly HashSet<string> _unsaved = new(StringComparer.Ordinal);
     long _claims;
     int _failures;
@@ -143,11 +147,16 @@ public sealed class FuraGarage
     }
 
     /// <summary>Свіжий JSON фури: з пам'яті, інакше з бази. null — нема.</summary>
-    public string? Load(string nickKey)
+    public string? Load(string nickKey) => Get(Key(nickKey));
+
+    /// <summary>Свіжий JSON гаража водія (<see cref="FuraCareer"/>): з пам'яті, інакше з бази. null — нема.</summary>
+    public string? LoadCareer(string nickKey) => Get(FuraCareer.Key(nickKey));
+
+    string? Get(string key)
     {
         lock (_lock)
-            if (_latest.TryGetValue(nickKey, out var json)) return json;
-        return _store.LoadState(Key(nickKey));
+            if (_latest.TryGetValue(key, out var json)) return json;
+        return _store.LoadState(key);
     }
 
     /// <summary>Старий соло-запис етапу 1 (не видаляється).</summary>
@@ -177,40 +186,45 @@ public sealed class FuraGarage
     }
 
     /// <summary>Записати фуру — лише якщо заявка ще чинна. false — фуру вже забрав інший стіл, нічого не записано.</summary>
-    public bool Save(string nickKey, long claim, string json)
+    public bool Save(string nickKey, long claim, string json) => Put(nickKey, Key(nickKey), claim, json);
+
+    /// <summary>Записати гараж водія — за тією самою заявкою, що й фуру (стіл, що забрав нік, забирає і його гараж).</summary>
+    public bool SaveCareer(string nickKey, long claim, string json) => Put(nickKey, FuraCareer.Key(nickKey), claim, json);
+
+    bool Put(string nickKey, string key, long claim, string json)
     {
         string[] retry;
         lock (_lock)
         {
             if (!_owners.TryGetValue(nickKey, out var c) || c != claim) return false;
-            _latest[nickKey] = json;
-            retry = _unsaved.Count == 0 ? [] : [.. _unsaved.Where(k => k != nickKey)];
+            _latest[key] = json;
+            retry = _unsaved.Count == 0 ? [] : [.. _unsaved.Where(k => k != key)];
         }
-        _defer(() => Flush(nickKey));
+        _defer(() => Flush(key));
         foreach (var k in retry) _defer(() => Flush(k));
         return true;
     }
 
     /// <summary>Запис у сховище: знімок береться вже під замком запису, тож останній запис — завжди найсвіжіший.</summary>
-    void Flush(string nickKey)
+    void Flush(string key)
     {
         lock (_writeLock)
         {
             string? json;
-            lock (_lock) _latest.TryGetValue(nickKey, out json);
+            lock (_lock) _latest.TryGetValue(key, out json);
             if (json is null) return;
             try
             {
-                _store.SaveState(Key(nickKey), json);
-                lock (_lock) _unsaved.Remove(nickKey);
+                _store.SaveState(key, json);
+                lock (_lock) _unsaved.Remove(key);
             }
             catch (Exception ex)
             {
-                // база впала — фура лишається в пам'яті, наступний Save (будь-чий) спробує ще раз
+                // база впала — запис лишається в пам'яті, наступний Save (будь-чий) спробує ще раз
                 bool first;
-                lock (_lock) first = _unsaved.Add(nickKey);
+                lock (_lock) first = _unsaved.Add(key);
                 Interlocked.Increment(ref _failures);
-                if (first) _log?.LogWarning(ex, "Чумаки: фуру {Nick} не записано в базу — повторю наступним записом", nickKey);
+                if (first) _log?.LogWarning(ex, "Чумаки: {Key} не записано в базу — повторю наступним записом", key);
             }
         }
     }
