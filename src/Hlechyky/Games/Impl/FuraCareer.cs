@@ -68,9 +68,12 @@ public sealed class FuraBook
     /// <summary>Рівень → id титулу Лавки, що він дає (ачівка <c>fura-&lt;id&gt;</c>).</summary>
     public required IReadOnlyDictionary<int, string> Titles { get; init; }
 
-    static readonly Lazy<FuraBook> Default = new(() => Parse(System.IO.File.ReadAllText(Paths.Resolve(File))));
+    static readonly OkOnce<FuraBook> Default = new(() => Parse(System.IO.File.ReadAllText(Paths.Resolve(File))));
 
-    /// <summary>Книга з диска (раз за життя процесу; перший раз — з Configure, поза замком кімнати).</summary>
+    /// <summary>
+    /// Книга з диска (раз за життя процесу; перший раз — з Configure, поза замком кімнати). Пам'ятає лише успіх: невдалий
+    /// читок (файл саме переписують) не лишає столи fura без книги до перезапуску — наступний виклик читає знову.
+    /// </summary>
     public static FuraBook Load() => Default.Value;
 
     /// <summary>«Віл», «Двигун, щабель 2» — підпис покупки в гаманці. Невідомий id — як є.</summary>
@@ -246,6 +249,26 @@ public sealed class FuraBook
         foreach (var k in p.Keys.ToList())
             if (p[k] is double d) p[k] = Math.Round(d, 4);
         return p;
+    }
+}
+
+/// <summary>Ліниве значення, що пам'ятає лише успіх: виняток іде викликачу, а наступний виклик пробує знову (на відміну від <see cref="Lazy{T}"/>).</summary>
+public sealed class OkOnce<T>(Func<T> make) where T : class
+{
+    readonly object _gate = new();
+    T? _value;
+
+    public T Value
+    {
+        get
+        {
+            if (Volatile.Read(ref _value) is { } v) return v;
+            lock (_gate)
+            {
+                if (_value is null) Volatile.Write(ref _value, make());
+                return _value!;
+            }
+        }
     }
 }
 

@@ -149,7 +149,9 @@
       bridge.onView = null;
       bridge.onFrame = null;
       gameMode = mode;
-      const back = () => { stop(); setTimeout(() => { const k = root.isConnected && root.querySelector('button[data-do=kray]'); if (k) start(root, k, 'kray'); }, 0); };
+      // назад у край — за той самий стіл; кнопки «🗺 Чумацький край» може й не бути (у картці обрано інший режим —
+      // «Новий стіл»), тоді крутимо «⏳» на першій кнопці картки
+      const back = () => { stop(); setTimeout(() => { const k = root.isConnected && (root.querySelector('button[data-do=kray]') || root.querySelector('button.fura-go')); if (k) start(root, k, 'kray'); }, 0); };
       game = await mod.start({ onExit: extra.testDrive ? back : stop, mode, server: mode === 'kray' ? bridge : null,
         testDrive: extra.testDrive || null, openGarage: !!extra.openGarage,
         onTestDrive: mode === 'kray' ? (params, label, career) => {

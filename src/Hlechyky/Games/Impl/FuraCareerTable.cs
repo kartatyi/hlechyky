@@ -113,7 +113,8 @@ public sealed partial class Fura
         var (lvl1, stars1) = (b.LevelOf(c.Xp), b.StarsOf(c.Xp));
         foreach (var (lvl, title) in b.Titles)
             if (lvl0 < lvl && lvl1 >= lvl) Ctx.Award(seat, 0, $"ach:fura-{title}");
-        if (rig.Trips == GoldHornTrips) Ctx.Award(seat, 0, "ach:" + AchGoldHorn);
+        // ≥, а не ==: хто вже за 500 рейсів до гаража, отримає ріжок наступним рейсом (ачівка разова — повтор нічого не дає)
+        if (rig.Trips >= GoldHornTrips) Ctx.Award(seat, 0, "ach:" + AchGoldHorn);
         if (stars0 < StarSticker && stars1 >= StarSticker) Ctx.Award(seat, 0, "ach:" + AchStars);
         return gain;
     }

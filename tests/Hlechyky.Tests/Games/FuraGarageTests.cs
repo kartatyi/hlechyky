@@ -216,6 +216,25 @@ public sealed class FuraGarageTests
     }
 
     [Fact]
+    public void The_gold_horn_comes_on_the_next_trip_to_a_driver_already_past_500()
+    {
+        var (h, _) = Table(trips: 600);
+        Deliver(h);
+        Assert.Contains(h.Awards, a => a.Reason == "ach:" + Fura.AchGoldHorn && a.Shards == 0);
+    }
+
+    [Fact]
+    public void The_book_cache_remembers_only_success()
+    {
+        var calls = 0;
+        var once = new OkOnce<string>(() => ++calls == 1 ? throw new IOException("файл саме переписують") : "книга");
+        Assert.Throws<IOException>(() => once.Value);     // невдалий читок не запам'ятовується
+        Assert.Equal("книга", once.Value);
+        Assert.Equal("книга", once.Value);
+        Assert.Equal(2, calls);                           // успіх — раз і назавжди
+    }
+
+    [Fact]
     public void Retro_xp_on_first_open_is_trips_times_80_capped_at_level_8_and_only_once()
     {
         var (h, _) = Table(trips: 5);
