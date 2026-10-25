@@ -72,8 +72,11 @@ public sealed class Fura : Game
     /// <summary>Удар — лише між фурами, що стоять ближче за це (центри тягачів і причепів, будь-яка пара).</summary>
     public const double HitNearM = 25;
 
-    /// <summary>У дворі (розширеному на стільки) фури не б'ються: ніхто не заблокує бокс і не штовхне того, хто чіпляється.</summary>
-    public const double HitYardM = 10;
+    /// <summary>
+    /// Біля боксів (тягач чи причіп ближче за стільки до будь-якого боксу) фури не б'ються: ніхто не заблокує бокс і не
+    /// штовхне того, хто чіпляється. Решта двору (виїзд, місце старту) — тверда: двоє, що щойно сіли, б'ються вже там (C1).
+    /// </summary>
+    public const double HitDockM = 20;
 
     /// <summary>Порожній стіл чекає свого (оновив сторінку — повернувся за той самий стіл).</summary>
     public override TimeSpan HoldEmpty => TimeSpan.FromSeconds(60);
@@ -566,7 +569,7 @@ public sealed class Fura : Game
             || (now - rig.LastAt).TotalSeconds > GhostFreshSec || (now - victim.LastAt).TotalSeconds > GhostFreshSec)
             return ActResult.Fail("Нема свіжої телеметрії");
         if (Gap(a, b) > HitNearM) return ActResult.Fail("Задалеко для удару");
-        if (InYard(a) || InYard(b)) return ActResult.Fail("У дворі фури не б'ються");
+        if (AtDocks(a) || AtDocks(b)) return ActResult.Fail("Біля боксів фури не б'ються");
         if (_hitAt.TryGetValue((seat, to), out var last) && (now - last).TotalSeconds < HitGapSec) return ActResult.Done;
 
         double Num(string name, double max) =>
@@ -587,8 +590,9 @@ public sealed class Fura : Game
         Math.Min(FuraJudge.Dist(a.X, a.Z, b.X, b.Z), FuraJudge.Dist(a.X, a.Z, b.Rx, b.Rz)),
         Math.Min(FuraJudge.Dist(a.Rx, a.Rz, b.X, b.Z), FuraJudge.Dist(a.Rx, a.Rz, b.Rx, b.Rz)));
 
-    /// <summary>Тягач чи причіп у дворі якогось місця (розширеному на <see cref="HitYardM"/>).</summary>
-    bool InYard(FuraPose p) => Map.Places.Any(pl => pl.Yard.Contains(p.X, p.Z, HitYardM) || pl.Yard.Contains(p.Rx, p.Rz, HitYardM));
+    /// <summary>Тягач чи причіп ближче за <see cref="HitDockM"/> до якогось боксу.</summary>
+    bool AtDocks(FuraPose p) => Map.Places.Any(pl => pl.Docks.Any(d =>
+        FuraJudge.Dist(p.X, p.Z, d.X, d.Z) <= HitDockM || FuraJudge.Dist(p.Rx, p.Rz, d.X, d.Z) <= HitDockM));
 
     // ---------- тик ----------
 
