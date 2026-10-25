@@ -42,3 +42,20 @@
   .clkdy-mbar { grid-column: 1 / -1; grid-row: 2; }
   .clkdy-heat { grid-template-columns: 18px repeat(24, minmax(0, 1fr)); gap: 1px; }
 }
+
+/* «🏺 Дядько Глек радить» — картка в Літописі й плашка в моменті */
+.clkdy-glek { border-color: var(--clay, var(--accent)); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.clkdy-tip { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.clkdy-tip:last-child { border-bottom: 0; padding-bottom: 2px; }
+.clkdy-tipt { flex: 1 1 auto; min-width: 0; line-height: 1.35; }
+.clkdy-tipb { display: flex; gap: 6px; flex: 0 0 auto; }
+.clkdy-pop { position: fixed; left: 12px; bottom: 84px; z-index: 40; width: min(560px, calc(100vw - 24px));
+  display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--accent);
+  background: var(--panel, #1f2a22); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
+.clkdy-popi { font-size: 1.5em; }
+.clkdy-popt { flex: 1 1 auto; min-width: 0; line-height: 1.35; }
+@media (max-width: 560px) {
+  .clkdy-tip, .clkdy-pop { flex-wrap: wrap; }
+  .clkdy-tipb { width: 100%; justify-content: flex-end; }
+  .clkdy-pop { bottom: 72px; }
+}

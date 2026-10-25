@@ -41,7 +41,8 @@ public sealed partial class Clicker
         if (quiet && !leaving) return;
         DiaryHours(svc, nick, now);
         var day = Days.Of(now);
-        if (leaving || day != _dDay || now - _dSnapAt >= svc.O.SnapshotEvery)
+        // Поміняв глину — картка Глека в Літописі має це бачити одразу, а не за п'ять хвилин.
+        if (leaving || action == "knead" || day != _dDay || now - _dSnapAt >= svc.O.SnapshotEvery)
         {
             _dDay = day;
             _dSnapAt = now;
@@ -65,7 +66,14 @@ public sealed partial class Clicker
     }
 
     /// <summary>Знімок гончаря для щоденника: усе, з чого потім малюються криві й рахуються поради.</summary>
-    object DiarySnapshot(DateTimeOffset now) => new
+    object DiarySnapshot(DateTimeOffset now)
+    {
+        // Аналітик — один раз на знімок: з нього модель години, глина, множники зі стелею й картка Глека.
+        var advice = Advise();
+        return DiarySnapshot(now, advice);
+    }
+
+    object DiarySnapshot(DateTimeOffset now, ClickerAdvice advice) => new
     {
         v = DiaryVersion,
         at = now,
@@ -126,9 +134,11 @@ public sealed partial class Clicker
         playMinute = PlayMinute,
         // модель години гри (ClickerAdvisor.cs): поточна глина й кожна своя — звідки гроші біля кола й без гравця
         // множники зараз і на стелі (ClickerAdvisor.cs): «до стелі» — що ще можна взяти альбомом, шаною, віхами, обпалом
-        multMax = MultParts().ToDictionary(x => x.Key, x => new { now = x.Now, max = x.Max }),
-        hour = DiaryHour(HourModel()),
-        clays = ClayModels().ToDictionary(c => c.Key.Length == 0 ? "plain" : c.Key, c => new { level = c.Level, play = c.Hour.Play, idle = c.Hour.Idle, work = c.Work }),
+        multMax = advice.Mult.ToDictionary(x => x.Key, x => new { now = x.Now, max = x.Max }),
+        hour = DiaryHour(advice.Hour),
+        clays = advice.Clays.ToDictionary(c => c.Key.Length == 0 ? "plain" : c.Key, c => new { level = c.Level, play = c.Hour.Play, idle = c.Hour.Idle, work = c.Work }),
+        // картка «🏺 Глек радить» (ClickerGlek.cs) — у знімку, щоб Літопис бачив її без живої кімнати
+        glek = GlekCard(advice, now).Select(t => new { kind = t.Kind, text = t.Text, where = t.Where, gain = t.Gain }),
     };
 
     static object DiaryHour(ClickerHour h) => new { passive = h.Passive, click = h.Click, fall = h.Fall, eye = h.Eye, merchant = h.Merchant, idle = h.Idle, play = h.Play };

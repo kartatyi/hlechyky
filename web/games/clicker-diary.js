@@ -31,6 +31,73 @@
   ];
   const DOW = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'нд'];
 
+  /// Куди веде кнопка поради (where з ClickerAdvisor): глину ставимо одразу, решта — вкладка чи розділ.
+  const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire' };
+
+  function go(st, api, where) {
+    const [head, key] = String(where || '').split(':');
+    if (head === 'clay') {
+      return api.act(st, 'knead', { kind: key || '' }).then((r) => {
+        if (r && r.message) api.toast(st, r.message, r.ok === false ? 'bad' : 'ok');
+        load(st, true);
+      });
+    }
+    const tab = WHERE_TAB[head];
+    if (tab) api.showTab(st, tab);
+    return Promise.resolve();
+  }
+
+  const goLabel = (where) => (String(where).startsWith('clay:') ? 'Постав' : 'Показати');
+
+  function later(st, api, kind) {
+    return api.act(st, 'glek', { later: kind }).then((r) => {
+      if (r && r.message) api.toast(st, r.message, 'ok');
+      load(st, true);
+    });
+  }
+
+  /// Картка «🏺 Дядько Глек радить» угорі Літопису: поради зі знімка щоденника (вже словами).
+  function glekCard(st, api, n) {
+    const tips = Array.isArray(n.glek) ? n.glek : [];
+    if (!tips.length) return '';
+    const esc = (x) => api.esc(st, x);
+    return '<section class="clkdy-card clkdy-glek"><div class="clkdy-h">🏺 Дядько Глек радить</div>'
+      + tips.map((t) => '<div class="clkdy-tip"><div class="clkdy-tipt">' + esc(t.text) + '</div><div class="clkdy-tipb">'
+        + '<button type="button" class="primary small" data-go="' + esc(t.where) + '">' + goLabel(t.where) + '</button>'
+        + '<button type="button" class="ghost small" data-later="' + esc(t.kind) + '">Потім</button></div></div>').join('')
+      + '</section>';
+  }
+
+  /// Підказка в моменті (вид glek): плашка над колом з тими самими двома кнопками; сама зникає за 40 с.
+  function moment(st, api, g) {
+    if (!g || !g.id || st.glekSeen === g.id || !st.el) return;
+    st.glekSeen = g.id;
+    if (st.glekPop) st.glekPop.remove();
+    const el = document.createElement('div');
+    el.className = 'clkdy-pop';
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="clkdy-popi">🏺</span><div class="clkdy-popt">' + api.esc(st, g.text) + '</div><div class="clkdy-tipb">'
+      + '<button type="button" class="primary small">' + goLabel(g.where) + '</button>'
+      + '<button type="button" class="ghost small">Потім</button><button type="button" class="ghost small" aria-label="Закрити">✕</button></div>';
+    const [bGo, bLater, bX] = el.querySelectorAll('button');
+    const close = () => { el.remove(); if (st.glekPop === el) st.glekPop = null; window.removeEventListener('resize', fit); };
+    bGo.onclick = () => { go(st, api, g.where); close(); };
+    bLater.onclick = () => { later(st, api, g.kind); close(); };
+    bX.onclick = close;
+    st.el.appendChild(el);
+    st.glekPop = el;
+    // Над самою карткою кола, а не по центру вікна: праворуч бувають балачки, і кнопки ховались би під ними.
+    function fit() {
+      if (!el.isConnected || !st.el) return;
+      const r = st.el.getBoundingClientRect();
+      el.style.left = Math.max(8, r.left + 10) + 'px';
+      el.style.width = Math.max(240, Math.min(r.width - 20, window.innerWidth - 16)) + 'px';
+    }
+    fit();
+    window.addEventListener('resize', fit);
+    setTimeout(close, 40000);
+  }
+
   const myNick = (st) => (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
   const dayMs = (d) => Date.parse(d + 'T12:00:00Z');
   const hueOf = (nick, i) => (window.HPeople && window.HPeople.hue ? window.HPeople.hue(nick) : (i * 67) % 360);
@@ -159,7 +226,7 @@
     const n = d.now || {};
     const restored = d.days.some((x) => x.restored);
     const roundNote = d.round.length > 1 ? 'ти й гончарі округи' : 'ти';
-    pane.innerHTML = tiles(st, api, d)
+    pane.innerHTML = glekCard(st, api, n) + tiles(st, api, d)
       + card('Заробіток за весь час', 'шкала в степенях: кожна поділка — у рази більше · ' + roundNote, '<div class="clkdy-ch" data-ch="total"></div>')
       + card('Хвилин у колі щодня', roundNote, '<div class="clkdy-ch" data-ch="minutes"></div>')
       + '<div class="clkdy-two">'
@@ -171,6 +238,8 @@
       + card('Коли я граю', '', heatHtml(d))
       + card('Що я обпалюю', 'вироби з горна за весь час', firedHtml(n))
       + (restored ? '<div class="muted small clkdy-foot">Дні до 25.10 відновлено з копій бази — там точки рідші, а хвилини рахуються з 26.09.</div>' : '');
+    for (const b of pane.querySelectorAll('[data-go]')) b.onclick = () => go(st, api, b.dataset.go);
+    for (const b of pane.querySelectorAll('[data-later]')) b.onclick = () => later(st, api, b.dataset.later);
     if (!window.HChart) return;
     const chart = (key, s, o) => {
       const el = pane.querySelector('[data-ch="' + key + '"]');
@@ -196,6 +265,10 @@
       api.showWhen(st, TAB, (st2, v) => (v && v.total >= SHOW_FROM) || !!st2.diary);
     },
 
+    update(st, v, api) {
+      if (v && v.glek !== undefined) moment(st, api, v.glek);
+    },
+
     slow(st) {
       const pane = st.diaryPane;
       if (!pane) return;
@@ -206,6 +279,7 @@
     },
 
     unmount(st) {
+      if (st.glekPop) { st.glekPop.remove(); st.glekPop = null; }
       for (const c of st.diaryCharts || []) c.destroy();
       st.diaryCharts = [];
       st.diary = null;

@@ -1162,6 +1162,8 @@ public sealed partial class Clicker : Game
             "hold" => HoldAct(payload, Ctx.Clock.UtcNow),
             "bazaar" => Bazaar(payload),
             "craft" => ActCraft(payload),
+            // Порада Дядька Глека: «потім» — сховати на добу (ClickerGlek.cs).
+            "glek" => GlekAct(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
             _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
                 ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActTrade(action, payload)
@@ -2493,6 +2495,8 @@ public sealed partial class Clicker : Game
             },
             // «Що нового»: поки гончар цього оновлення не бачив — версія, інакше нічого.
             news = _news == NewsVersion ? null : NewsVersion,
+            // Підказка Дядька Глека в моменті (ClickerGlek.cs): глина біля кола чи перед виходом, Толока — або нічого.
+            glek = GlekMoment(Ctx.Clock.UtcNow),
             // Яку версію гончар бачив востаннє: хто пропустив «v9.1», тому клієнт допише й ті рядки.
             newsSeen = _news == NewsVersion ? null : _news,
             // Гроші (v10 §6): до якої одиниці доріс і яку церемонію вже бачив.
@@ -2616,7 +2620,9 @@ public sealed partial class Clicker : Game
         // v12: заморська торгівля — Слава й кораблі (ClickerTrade.cs). Старе збереження — «кораблів ще не було».
         TradeRow? Trade = null,
         // Тріщини серії поспіль і коли кіт заснув (ClickerCatNap.cs, 21.10). Старе збереження — тріщин нема, кіт не спить.
-        int Cracks = 0, DateTimeOffset NapAt = default);
+        int Cracks = 0, DateTimeOffset NapAt = default,
+        // Поради Дядька Глека, відкладені «потім» (ClickerGlek.cs, 25.10): вид → до коли. Старе збереження — нічого.
+        Dictionary<string, DateTimeOffset>? GlekLater = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2632,7 +2638,7 @@ public sealed partial class Clicker : Game
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
             _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt,
             _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList(),
-            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt),
+            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt, SaveGlek()),
         Wire);
 
     public override void Load(string json)
@@ -2709,6 +2715,7 @@ public sealed partial class Clicker : Game
         _fallStreak = Math.Max(0, s.FallStreak);
         _cracks = Math.Clamp(s.Cracks, 0, 100);
         _napAt = s.NapAt;
+        LoadGlek(s.GlekLater);
         _grabbed = Math.Max(0, s.Grabbed);
         if (s.Fall is { } f && f.Until > f.At)
             _fall = f with { X = Math.Clamp(f.X, 0, 90) };
