@@ -101,6 +101,7 @@ public static class GamesSetup
         TablesKeeper.Map(app);                              // /api/internal/freeze, thaw, busy — лише з цієї машини з ключем
         TickHealth.Map(app);                                // /api/diag/jerk — метр «дьоргання» з браузера, /api/diag/tick — розробнику
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
+        Impl.ClickerDiarySetup.Map(app);                    // /api/games/clicker/diary — «📈 Літопис кола»
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
         Impl.DiceSetup.MapDice(app);                       // /api/games/dice/bet, /api/games/dice/season

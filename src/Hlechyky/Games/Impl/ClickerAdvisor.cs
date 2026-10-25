@@ -129,6 +129,20 @@ public sealed partial class Clicker
         return new ClickerAdvice(hour, clays, mult, [.. tips.OrderByDescending(t => t.Gain)]);
     }
 
+    /// <summary>Лише розклад множника «до всього» (для щоденника): ті самі розрахунки, що й <see cref="Advise"/>, без порад.</summary>
+    public List<ClickerMultPart> MultParts()
+    {
+        var tips = new List<ClickerTip>();
+        var mult = new List<ClickerMultPart> { new("styles", 1 + StyleBonus * _styles.Count, 0) };
+        AdviseAlbum(tips, mult);
+        AdviseRep(tips, mult);
+        AdvisePassiveMarks(tips, mult, 0);
+        AdviseFire(tips, mult);
+        mult.Add(new ClickerMultPart("house", HouseAllMult, 0));
+        mult.Add(new ClickerMultPart("toloka", TolokaAllMult, 0));
+        return mult;
+    }
+
     static Dictionary<string, object> Facts(params (string Key, object Value)[] kv) =>
         kv.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
 

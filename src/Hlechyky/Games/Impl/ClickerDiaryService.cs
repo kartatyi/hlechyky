@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace Hlechyky.Games.Impl;
@@ -175,6 +176,114 @@ public sealed class ClickerDiaryService : BackgroundService
     static DateTimeOffset ParseAt(string s) =>
         DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) ? at : default;
 
+    // ---------- «📈 Літопис кола» (етап 3): що бачить вкладка ----------
+
+    /// <summary>Скільки гончарів округи на графіках поруч зі мною (за заробітком на останній день).</summary>
+    public const int RoundShown = 8;
+    /// <summary>Години для «коли я граю» — за стільки останніх днів.</summary>
+    public const int HoursDays = 35;
+    static readonly TimeSpan RoundCache = TimeSpan.FromSeconds(60);
+
+    /// <summary>День гончаря на графіку: з чого малюються криві (повний знімок — лише останній, у <c>now</c>).</summary>
+    public sealed record DayPoint(string Day, bool Restored, double Total, long Formed, long Grabbed, long Slava, int Minutes);
+
+    (DateTimeOffset At, Dictionary<string, (string Nick, List<DayPoint> Days)> ByKey)? _round;
+
+    static double Num(JsonElement j, string name) =>
+        j.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d) && double.IsFinite(d) ? d : 0;
+
+    /// <summary>Усі щоденники (лише підсумкові числа) і хвилини в колі з лічильників сайту — раз на хвилину з бази.</summary>
+    Dictionary<string, (string Nick, List<DayPoint> Days)> Round()
+    {
+        var now = _clock.UtcNow;
+        lock (_gate) if (_round is { } r && now - r.At < RoundCache) return r.ByKey;
+        var rows = new List<(string Key, string Nick, string Day, string Json, bool Restored)>();
+        var minutes = new Dictionary<(string Key, string Day), int>();
+        _db?.With(c =>
+        {
+            using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = "SELECT nick_key, nick, day, json, restored FROM clicker_diary";
+                using var rd = cmd.ExecuteReader();
+                while (rd.Read()) rows.Add((rd.GetString(0), rd.GetString(1), rd.GetString(2), rd.GetString(3), rd.GetInt64(4) != 0));
+            }
+            using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = "SELECT nick_key, day, n FROM economy_counters WHERE key = 'time:game:clicker'";
+                try
+                {
+                    using var rd = cmd.ExecuteReader();
+                    while (rd.Read()) minutes[(rd.GetString(0), rd.GetString(1))] = (int)Math.Round(rd.GetDouble(2) / 60);
+                }
+                catch (Microsoft.Data.Sqlite.SqliteException) { }   // база без лічильників часу (тести) — без хвилин
+            }
+        });
+        // Ще не записані знімки — поверх бази: свіжий день видно одразу.
+        lock (_gate) foreach (var s in _snaps.Values) rows.Add((Auth.NickKey(s.Nick), s.Nick, s.Day, s.Json, false));
+        var byKey = new Dictionary<string, (string Nick, List<DayPoint> Days)>(StringComparer.Ordinal);
+        foreach (var g in rows.GroupBy(x => x.Key))
+        {
+            var days = new Dictionary<string, DayPoint>(StringComparer.Ordinal);
+            var nick = g.Key;
+            foreach (var x in g)
+            {
+                nick = x.Nick;
+                try
+                {
+                    using var doc = JsonDocument.Parse(x.Json);
+                    var j = doc.RootElement;
+                    days[x.Day] = new DayPoint(x.Day, x.Restored, Num(j, "total"), (long)Num(j, "formed"), (long)Num(j, "grabbed"),
+                        (long)Num(j, "slava"), minutes.GetValueOrDefault((g.Key, x.Day)));
+                }
+                catch (JsonException) { }
+            }
+            byKey[g.Key] = (nick, [.. days.Values.OrderBy(d => d.Day, StringComparer.Ordinal)]);
+        }
+        lock (_gate) _round = (now, byKey);
+        return byKey;
+    }
+
+    /// <summary>Скинути кеш округи (тести, відновлення історії).</summary>
+    public void Forget() { lock (_gate) _round = null; }
+
+    /// <summary>
+    /// <c>GET /api/games/clicker/diary</c>: мій щоденник (дні, години, останній повний знімок) і криві округи — заробіток,
+    /// вироби, Слава, хвилини. Розклад множників і модель години — лише свої (вони в моєму знімку), чужих не віддаємо.
+    /// </summary>
+    public object Wire(string nick)
+    {
+        var key = Auth.NickKey(nick);
+        var round = Round();
+        var mine = round.TryGetValue(key, out var m) ? m.Days : [];
+        string? last = null;
+        if (mine.Count > 0)
+        {
+            var day = mine[^1].Day;
+            lock (_gate) last = _snaps.TryGetValue((day, key), out var s) ? s.Json : null;
+            last ??= Diary(nick).LastOrDefault()?.Json;
+        }
+        var since = TimeZoneInfo.ConvertTime(_clock.UtcNow, Days.Kyiv).Date.AddDays(-HoursDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var others = round.Where(kv => kv.Key != key && kv.Value.Days.Count > 0)
+            .OrderByDescending(kv => kv.Value.Days[^1].Total).Take(RoundShown);
+        object Series(string k, string n, List<DayPoint> d) => new
+        {
+            nick = n, me = k == key,
+            days = d.Select(p => new object[] { p.Day, p.Total, p.Formed, p.Slava, p.Minutes, p.Restored ? 1 : 0 }),
+        };
+        return new
+        {
+            ok = true,
+            me = nick,
+            person = IsPerson(nick),
+            now = last is null ? (JsonElement?)null : JsonDocument.Parse(last).RootElement.Clone(),
+            days = mine.Select(p => new { day = p.Day, restored = p.Restored, total = p.Total, formed = p.Formed, grabbed = p.Grabbed, slava = p.Slava, minutes = p.Minutes }),
+            hours = Hours(nick).Where(h => string.CompareOrdinal(h.Day, since) >= 0)
+                .Select(h => new object[] { h.Day, h.Hour, h.Seconds, h.Formed, h.Grabbed, h.Clicks }),
+            round = (mine.Count > 0 ? new[] { Series(key, m.Nick, mine) } : [])
+                .Concat(others.Select(kv => Series(kv.Key, kv.Value.Nick, kv.Value.Days))),
+        };
+    }
+
     // ---------- база ----------
 
     public void FlushNow()
@@ -291,5 +400,12 @@ public static class ClickerDiarySetup
         });
         services.AddHostedService(sp => sp.GetRequiredService<ClickerDiaryService>());
         return services;
+    }
+
+    /// <summary><c>GET /api/games/clicker/diary</c> — «📈 Літопис кола» того, хто питає (ніка в адресі нема: чужого не видно).</summary>
+    public static WebApplication Map(WebApplication app)
+    {
+        app.MapGet("/api/games/clicker/diary", (HttpContext c, ClickerDiaryService diary) => Results.Ok(diary.Wire(Auth.Nick(c))));
+        return app;
     }
 }

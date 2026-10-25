@@ -125,6 +125,8 @@ public sealed partial class Clicker
         passive = PassiveBase,
         playMinute = PlayMinute,
         // модель години гри (ClickerAdvisor.cs): поточна глина й кожна своя — звідки гроші біля кола й без гравця
+        // множники зараз і на стелі (ClickerAdvisor.cs): «до стелі» — що ще можна взяти альбомом, шаною, віхами, обпалом
+        multMax = MultParts().ToDictionary(x => x.Key, x => new { now = x.Now, max = x.Max }),
         hour = DiaryHour(HourModel()),
         clays = ClayModels().ToDictionary(c => c.Key.Length == 0 ? "plain" : c.Key, c => new { level = c.Level, play = c.Hour.Play, idle = c.Hour.Idle, work = c.Work }),
     };

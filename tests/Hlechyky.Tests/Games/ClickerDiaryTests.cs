@@ -82,6 +82,48 @@ public class ClickerDiaryTests
         Assert.Empty(off.Diary("Назар"));
     }
 
+    // ---------- «📈 Літопис кола»: що віддає ендпоінт ----------
+
+    [Fact]
+    public void The_wire_gives_my_days_with_minutes_and_the_round_but_only_my_full_snapshot()
+    {
+        WithDb(db =>
+        {
+            db.Exec("INSERT INTO economy_counters(nick_key, key, day, n) VALUES('назар', 'time:game:clicker', '2026-10-24', 3600)");
+            var svc = Svc(db);
+            svc.Put("Назар", "2026-10-24", Local(2026, 10, 24, 22, 0), "{\"total\":1e40,\"formed\":100,\"slava\":5,\"secret\":\"назар\"}");
+            svc.Put("Назар", "2026-10-25", Local(2026, 10, 25, 9, 0), "{\"total\":3e40,\"formed\":150,\"slava\":9,\"secret\":\"назар\"}");
+            svc.Put("Smaug", "2026-10-25", Local(2026, 10, 25, 9, 0), "{\"total\":5e40,\"formed\":70,\"secret\":\"smaug\"}");
+            svc.Put("владік", "2026-10-25", Local(2026, 10, 25, 9, 0), "{\"total\":2e40,\"formed\":90,\"secret\":\"владік\"}");
+            svc.FlushNow();
+            svc.AddHour("Назар", Local(2026, 10, 25, 9, 0), 120, 6, 2, 300);
+
+            var json = JsonSerializer.Serialize(svc.Wire("назар"));
+            using var doc = JsonDocument.Parse(json);
+            var w = doc.RootElement;
+            Assert.Equal(["2026-10-24", "2026-10-25"], w.GetProperty("days").EnumerateArray().Select(d => d.GetProperty("day").GetString()));
+            Assert.Equal(60, w.GetProperty("days")[0].GetProperty("minutes").GetInt32());
+            Assert.Equal(150, w.GetProperty("now").GetProperty("formed").GetInt64());
+            Assert.Equal(1, w.GetProperty("hours").GetArrayLength());
+            // Округа: я першим, далі за заробітком; чужих повних знімків нема — лише числа кривих.
+            Assert.Equal(["Назар", "Smaug", "владік"], w.GetProperty("round").EnumerateArray().Select(r => r.GetProperty("nick").GetString()));
+            Assert.True(w.GetProperty("round")[0].GetProperty("me").GetBoolean());
+            Assert.DoesNotContain("\"smaug\"", json.Replace("\"nick\":\"Smaug\"", ""));
+            Assert.DoesNotContain("владік\"}", json);
+        });
+    }
+
+    [Fact]
+    public void A_potter_without_a_diary_gets_an_empty_page_not_an_error()
+    {
+        WithDb(db =>
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(Svc(db).Wire("Микола")));
+            Assert.Equal(0, doc.RootElement.GetProperty("days").GetArrayLength());
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("now").ValueKind);
+        });
+    }
+
     // ---------- коло з щоденником ----------
 
     static (RoomHarness H, ClickerDiaryService Svc) Wheel(ClickerDiaryOptions? o = null)
