@@ -11,6 +11,7 @@ import { buildModels } from './model.js';
 import { Input, pads, isPad, looksLikeWheel, loadCalib, shortName } from './input.js';
 import { openCalib } from './calib.js';
 import { Sound } from './audio.js';
+import { openMixer } from './mixer.js';
 import { Nav } from './nav.js';
 import { Trips } from './trip.js';
 import { Voice } from './voice.js';
@@ -122,7 +123,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   };
 
   const input = new Input();
-  const sound = new Sound();
+  const sound = new Sound({ truck, view: () => cam });
   sound.start();
   ui.mute.textContent = sound.muted ? '🔇' : '🔊';
 
@@ -312,6 +313,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       + tripItems
       + '<button type="button" data-m="calib">🛞 Калібрування керма' + (wheels.length ? ' (' + shortName(wheels[0].id) + ')' : '') + '</button>'
       + '<button type="button" data-m="gear">⚙ Коробка: ' + (truck.gearMode === 'auto' ? 'автомат → зробити ручну' : 'ручна → зробити автомат') + '</button>'
+      + '<button type="button" data-m="mixer">🎚 Гучність</button>'
       + '<button type="button" data-m="help">❓ Керування</button>'
       + '<button type="button" data-m="exit">✕ Вийти' + (trips ? ' (рейс чекатиме)' : ' з полігона') + '</button></div>', (el, m) => {
       el.addEventListener('click', (e) => {
@@ -327,6 +329,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
         else if (k === 'depot') { truck.place({ tractor: SPAWN.tractor, trailer: { ...truck.rbPose() } }, false); resetPoses(); }
         else if (k === 'calib') calib();
         else if (k === 'gear') { if (truck.gearMode === 'auto') { truck.gearMode = 'manual'; truck.gear = 1; } else truck.setAuto(); }
+        else if (k === 'mixer') openMixer({ boxModal, sound });
         else if (k === 'help') help();
         else if (k === 'exit') exit();
       });
