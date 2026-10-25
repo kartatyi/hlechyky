@@ -71,6 +71,12 @@
 
 .fura-tools button.on { background: rgba(208, 138, 44, .85); }
 
+/* 🎚 Гучність (fura/mixer.js): назва, −, повзунок, +, число */
+.fura-box .fura-mix { display: grid; grid-template-columns: 1fr 34px minmax(90px, 160px) 34px 2.4em; align-items: center; gap: 6px; margin-top: 8px; }
+.fura-box .fura-mix button { padding: 4px 0; font-size: 16px; }
+.fura-box .fura-mix b { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .fura-box .fura-mix { grid-template-columns: 34px 1fr 34px 2.4em; } .fura-box .fura-mix-n { grid-column: 1 / -1; } }
+
 /* Глек у рації: субтитр унизу посередині */
 .fura-radio-sub { left: 50%; bottom: 22px; transform: translateX(-50%); max-width: min(620px, 70vw); font-size: 15px;
   opacity: 0; transition: opacity .3s; }
