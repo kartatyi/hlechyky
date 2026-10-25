@@ -88,14 +88,15 @@ export function buildModels(THREE, scene) {
 
   // ---------------- причіп
   const trailer = new THREE.Group();
-  const side = sideTexture(THREE);
+  // Два малюнки борту, а не один віддзеркалений: дзеркало перевертало й літери («ГЛЕЧИКИ» задом наперед, 25.10).
+  // На +X глечик ліворуч, на −X — праворуч: з обох боків він біля кабіни, а напис читається.
+  const side = sideTexture(THREE, null, null, false), sideR = sideTexture(THREE, null, null, true);
   const cream = M('#efe6d2');
   const sideMat = new THREE.MeshLambertMaterial({ map: side });
-  const sideMatR = new THREE.MeshLambertMaterial({ map: side.clone() });
-  sideMatR.map.repeat.x = -1; sideMatR.map.offset.x = 1; sideMatR.map.wrapS = THREE.RepeatWrapping; sideMatR.map.needsUpdate = true;
+  const sideMatR = new THREE.MeshLambertMaterial({ map: sideR });
   const back = M('#e2d7bf');
   // BoxGeometry: +X, −X, +Y, −Y, +Z, −Z
-  const boxMesh = new THREE.Mesh(new THREE.BoxGeometry(TRAILER.w, TRAILER.h, TRAILER.len), [sideMatR, sideMat, cream, dark, cream, back]);
+  const boxMesh = new THREE.Mesh(new THREE.BoxGeometry(TRAILER.w, TRAILER.h, TRAILER.len), [sideMat, sideMatR, cream, dark, cream, back]);
   boxMesh.position.set(0, TRAILER.h / 2, 0);
   trailer.add(boxMesh);
   box(trailer, 1.1, 0.26, 13.0, 0, -0.14, 0, dark);
@@ -148,8 +149,9 @@ export function buildModels(THREE, scene) {
     setLegs(down) { legs.position.y = down ? 0 : 0.55; legs.scale.y = down ? 1 : 0.5; },
     /** Борт причепа під вантаж замовлення: колір смуги й підпис. */
     setCargo(cargo) {
-      sideTexture(THREE, cargo, side.image);
-      side.needsUpdate = true; sideMatR.map.needsUpdate = true;
+      sideTexture(THREE, cargo, side.image, false);
+      sideTexture(THREE, cargo, sideR.image, true);
+      side.needsUpdate = true; sideR.needsUpdate = true;
     },
     tmpQ,
   };
@@ -158,25 +160,28 @@ export function buildModels(THREE, scene) {
 // колір смуги на борту за вантажем
 const STRIPE = { jugs: '#b5482f', tiles: '#2f6fa8', roof: '#a5352a', honey: '#d39a1c', hay: '#8a9a2a', salt: '#8b96a3', clay: '#7a5234', goods: '#2f8a7a' };
 
-function sideTexture(THREE, cargo, canvas) {
+/** Борт причепа. potRight — глечик праворуч, напис ліворуч від нього (для борту, де кабіна праворуч). */
+function sideTexture(THREE, cargo, canvas, potRight) {
   const c = canvas || document.createElement('canvas');
   c.width = 1024; c.height = 208;
   const g = c.getContext('2d');
   g.fillStyle = '#efe6d2'; g.fillRect(0, 0, 1024, 208);
   g.fillStyle = (cargo && STRIPE[cargo.id]) || '#b5482f'; g.fillRect(0, 168, 1024, 18);
   g.fillStyle = '#d08a2c'; g.fillRect(0, 186, 1024, 8);
-  // глечик
+  // глечик (вушко — у бік напису)
+  const px = potRight ? 1024 - 130 : 130, dir = potRight ? -1 : 1;
   g.fillStyle = '#c26a3a';
-  g.beginPath(); g.ellipse(130, 100, 52, 58, 0, 0, Math.PI * 2); g.fill();
-  g.fillRect(112, 28, 36, 30);
-  g.beginPath(); g.ellipse(130, 28, 26, 8, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(px, 100, 52, 58, 0, 0, Math.PI * 2); g.fill();
+  g.fillRect(px - 18, 28, 36, 30);
+  g.beginPath(); g.ellipse(px, 28, 26, 8, 0, 0, Math.PI * 2); g.fill();
   g.strokeStyle = '#c26a3a'; g.lineWidth = 9;
-  g.beginPath(); g.arc(178, 78, 24, -1.2, 1.4); g.stroke();
-  g.fillStyle = '#efe6d2'; g.fillRect(84, 98, 92, 6);
+  g.beginPath(); g.arc(px + dir * 48, 78, 24, potRight ? Math.PI - 1.4 : -1.2, potRight ? Math.PI + 1.2 : 1.4); g.stroke();
+  g.fillStyle = '#efe6d2'; g.fillRect(px - 46, 98, 92, 6);
+  g.textAlign = potRight ? 'right' : 'left';
   g.fillStyle = '#2f3a4a'; g.font = '900 88px system-ui'; g.textBaseline = 'middle';
-  g.fillText('ГЛЕЧИКИ', 230, 92);
+  g.fillText('ГЛЕЧИКИ', potRight ? 1024 - 230 : 230, 92);
   g.fillStyle = '#6b5c46'; g.font = '600 30px system-ui';
-  g.fillText(cargo ? 'вантаж: ' + cargo.title.toLowerCase() + ' · чумацька служба' : 'перевезення крихкого · чумацька служба', 236, 146);
+  g.fillText(cargo ? 'вантаж: ' + cargo.title.toLowerCase() + ' · чумацька служба' : 'перевезення крихкого · чумацька служба', potRight ? 1024 - 236 : 236, 146);
   if (canvas) return null;
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
