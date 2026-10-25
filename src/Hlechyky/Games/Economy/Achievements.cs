@@ -263,6 +263,11 @@ public static class AchievementCatalog
         new("kakhli-chain",      "Каскад",            "Кахлі: шість каскадів одним ходом", "🌊", 25),
         new("kakhli-hot",        "Гаряча піч",        "Кахлі на час: 9 000 очок за дві хвилини", "🔥", 25),
         new("kakhli-master",     "Майстер-кахляр",    "Кахлі: усі 90 зірок «Шляху кахляра»", "👑", 25),
+        // Шаткуй! — гра просить сама (specs/shatkuy.md §6)
+        new("shatkuy-combo",     "Шість одним махом", "Шаткуй!: комбо ×6 — шість плодів одним змахом", "🔪", 25),
+        new("shatkuy-classic",   "Борщ на все село",  "Шаткуй!: 250 очок у Класиці", "🥣", 25),
+        new("shatkuy-big",       "Кавунище",          "Шаткуй!: 25 ударів по великому кавуну", "🍉", 25),
+        new("shatkuy-clean",     "Глек цілий",        "Шаткуй! Ярмарок: 150 очок і жодного розбитого глека", "🏺", 25),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);
