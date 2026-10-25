@@ -250,6 +250,84 @@ public sealed class FuraConvoyTests
         Assert.Contains("\"phase\":\"done\"", store.LoadState(FuraGarage.Key("оля")));
     }
 
+    [Fact]
+    public void A_broken_trip_in_storage_falls_back_to_free_and_keeps_the_trip_number()
+    {
+        // Бокс, якого мапа вже не знає: рейс скасовано, а номер рейсу — той самий (інакше ref fura:<нік>:<N> уже оплачений)
+        var x = Open();
+        Assert.True(x.Act(0, "take", new { id = 1 }).Ok);
+        var dock = DockOf(Order(x));
+        Assert.True(x.Act(0, "pose", new { x = dock.X, z = dock.Z, c = true, rx = dock.X, rz = dock.Z }).Ok);
+        Assert.Equal("haul", Phase(x));
+        var node = JsonNode.Parse(x.Store.LoadState(FuraGarage.Key("оля"))!)!.AsObject();
+        node["order"]!["dock"] = "нема";
+        node["trips"] = 7;
+
+        var h = New();
+        h.Clock.UtcNow = x.Clock.UtcNow.AddSeconds(20);   // стара поза не свіжа — новий рейс не міряє від неї
+        h.Store.SaveState(FuraGarage.Key("оля"), node.ToJsonString());
+        h.Store.SaveState(FuraGarage.OldKey("оля"), "{\"trips\":2}");   // старий запис новий не перебиває
+        Assert.True(h.Solo("Оля").Ok, h.Reply.Message);
+        Assert.Equal("free", Phase(h));
+        Assert.Equal(7, h.View(0).GetProperty("trips").GetInt32());
+        Assert.Equal(5, h.View(0).GetProperty("board").GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("order").ValueKind);
+
+        Haul(h);
+        Assert.True(h.Act(0, "deliver").Ok, h.Reply.Message);
+        Assert.Equal("fura:8", Assert.Single(h.Awards).Reason);
+    }
+
+    [Fact]
+    public void An_unreadable_record_keeps_the_highest_trip_number_it_can_find()
+    {
+        var h = New();
+        h.Store.SaveState(FuraGarage.Key("оля"), "{\"trips\":9,\"phase\":5}");   // JSON є, фури з нього не прочитати
+        h.Store.SaveState(FuraGarage.OldKey("оля"), "{\"phase\":\"free\",\"trips\":3}");
+        Assert.True(h.Solo("Оля").Ok);
+        Assert.Equal(9, h.View(0).GetProperty("trips").GetInt32());
+        Assert.Contains("\"trips\":9", h.Store.LoadState(FuraGarage.Key("оля")));   // одразу полагоджено
+
+        var p = New();
+        p.Store.SaveState(FuraGarage.Key("петро"), "не json");
+        p.Store.SaveState(FuraGarage.OldKey("петро"), "{\"phase\":\"free\",\"trips\":3}");
+        Assert.True(p.Solo("Петро").Ok);
+        Assert.Equal(3, p.View(0).GetProperty("trips").GetInt32());
+    }
+
+    /// <summary>Сховище, що вміє падати на записі.</summary>
+    sealed class FlakyStore : IGameStore
+    {
+        public bool Down { get; set; }
+        public Dictionary<string, string> States { get; } = new(StringComparer.Ordinal);
+        public void SaveState(string key, string json)
+        {
+            if (Down) throw new IOException("база лягла");
+            States[key] = json;
+        }
+        public string? LoadState(string key) => States.TryGetValue(key, out var j) ? j : null;
+        public void DeleteState(string key) => States.Remove(key);
+    }
+
+    [Fact]
+    public void A_failed_write_is_counted_and_retried_by_the_next_save()
+    {
+        var store = new FlakyStore { Down = true };
+        var g = new FuraGarage(store, a => a());
+        var olya = g.Claim("оля");
+        var petro = g.Claim("петро");
+        Assert.True(g.Save("оля", olya, "{\"trips\":1}"));
+        Assert.Equal(1, g.Failures);
+        Assert.Equal(1, g.Unsaved);
+        Assert.Equal("{\"trips\":1}", g.Load("оля"));   // у пам'яті є — стіл, що сяде, візьме свіже
+
+        store.Down = false;
+        Assert.True(g.Save("петро", petro, "{\"trips\":4}"));   // чужий запис дописує й Олину фуру
+        Assert.Equal(0, g.Unsaved);
+        Assert.Equal("{\"trips\":1}", store.LoadState(FuraGarage.Key("оля")));
+        Assert.Equal("{\"trips\":4}", store.LoadState(FuraGarage.Key("петро")));
+    }
+
     // ---------- колонне замовлення ----------
 
     [Fact]
@@ -303,6 +381,9 @@ public sealed class FuraConvoyTests
         r = h.Act(1, "deliver");
         Assert.True(r.Ok, r.Message);
         Assert.Contains("+15 %", r.Message);
+        h.Outbox.Clear();
+        h.Tick();
+        Assert.Contains(h.Outbox, m => m is RoomViews);   // вид із тика — і першому, кому бонус щойно дописано
         var base1 = h.View(1).GetProperty("result").GetProperty("base").GetInt32();
         var bonuses = h.Awards.Where(a => a.Reason.EndsWith('k')).ToDictionary(a => a.Nick, a => (a.Reason, a.Shards));
         Assert.Equal(("fura:1k", Bonus(base0)), bonuses["Оля"]);
@@ -320,6 +401,26 @@ public sealed class FuraConvoyTests
         var second = Fura.MakeColOrder(Map, Days.Today(h.Clock), h.RoomId, 2)!;
         Assert.Equal(second.Cargo + second.From + second.To,
             next.GetProperty("cargo").GetString() + next.GetProperty("from").GetString() + next.GetProperty("to").GetString());
+    }
+
+    [Fact]
+    public void Smashed_cargo_does_not_count_as_delivering_together()
+    {
+        // Розбите вщент (база 0) — не «здали разом»: поріг бонусу рахує лише здачі з базою
+        var h = Two();
+        Assert.True(h.Act(0, "take", new { id = "k" }).Ok);
+        Assert.True(h.Act(1, "take", new { id = "k" }).Ok);
+        var o0 = Haul(h, seat: 0, take: false, k: 15);
+        var o1 = Haul(h, seat: 1, take: false);
+        Stand(h, o0, 0);
+        Assert.True(h.Act(0, "deliver").Ok, h.Reply.Message);
+        Assert.Equal(0, h.View(0).GetProperty("result").GetProperty("base").GetInt32());
+        Stand(h, o1, 1);
+        var r = h.Act(1, "deliver");
+        Assert.True(r.Ok, r.Message);
+        Assert.DoesNotContain("+15 %", r.Message);
+        Assert.Equal(["fura:1"], h.Awards.Select(a => a.Reason));
+        Assert.Equal(0, h.View(1).GetProperty("result").GetProperty("bonus").GetInt32());
     }
 
     [Fact]

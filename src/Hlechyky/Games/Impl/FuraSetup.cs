@@ -12,7 +12,7 @@ public static class FuraSetup
     public static IServiceCollection AddFura(this IServiceCollection services)
     {
         services.AddSingleton<FuraVoice>();
-        services.AddSingleton(sp => new FuraGarage(sp.GetRequiredService<IGameStore>()));   // фури гравців (етап 2)
+        services.AddSingleton(sp => new FuraGarage(sp.GetRequiredService<IGameStore>(), log: sp.GetService<ILogger<FuraGarage>>()));   // фури гравців (етап 2)
         services.AddHostedService<FuraWarmup>();
         return services;
     }

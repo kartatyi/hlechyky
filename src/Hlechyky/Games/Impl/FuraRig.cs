@@ -39,7 +39,11 @@ public sealed class FuraRig
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
-    /// <summary>Фура з JSON (свого або старого соло-запису етапу 1 — поля ті самі). Криве чи незнайоме мапі — null.</summary>
+    /// <summary>
+    /// Фура з JSON (свого або старого соло-запису етапу 1 — поля ті самі). null — лише коли JSON нечитний зовсім. Рейс, якого
+    /// мапа не знає (битий бокс, вантаж, місце), скасовується → free; <see cref="Trips"/> лишається: інакше номери рейсів
+    /// пішли б назад і повторили вже оплачені ref-и <c>fura:&lt;нік&gt;:&lt;N&gt;</c> — гравець возив би задарма.
+    /// </summary>
     public static FuraRig? Parse(string? json, FuraMap map)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
@@ -47,19 +51,46 @@ public sealed class FuraRig
         try { r = JsonSerializer.Deserialize<FuraRig>(json, Json); }
         catch (JsonException) { return null; }
         catch (NotSupportedException) { return null; }
-        if (r is null || r.Phase is not (Fura.Free or Fura.Pickup or Fura.Haul or Fura.Done) || r.Trips < 0) return null;
+        if (r is null) return null;
+        r.Trips = Math.Max(0, r.Trips);
         bool Valid(FuraOrder? o) => o is { Cargo: not null, From: not null, To: not null, Dock: not null }
             && map.CargoOf(o.Cargo) is not null && map.Place(o.To) is not null && map.Place(o.From)?.Dock(o.Dock) is not null;
         r.Board = (r.Board ?? []).ToList();
         if (!r.Board.All(Valid)) r.Board = [];
-        if (r.Phase is Fura.Pickup or Fura.Haul && !Valid(r.Order)) return null;
-        if (r.Phase == Fura.Done && (r.Result is null || !Valid(r.Result.Order))) return null;
+        var broken = r.Phase switch
+        {
+            Fura.Free => false,
+            Fura.Pickup or Fura.Haul => !Valid(r.Order),
+            Fura.Done => r.Result is null || !Valid(r.Result.Order),
+            _ => true,
+        };
+        if (broken)
+        {
+            r.Phase = Fura.Free;
+            r.Board = [];   // нова — з першого ж EnsureBoard
+            r.Auto = false;
+            r.Judge = new();
+        }
         if (r.Phase == Fura.Free) r.Order = null;
         if (r.Phase != Fura.Done) r.Result = null;
         r.Judge ??= new();
         r.BoardDay ??= "";
         r.V = 2;
         return r;
+    }
+
+    /// <summary>Скільки рейсів записано в JSON, навіть коли сама фура з нього не читається (0 — не дістати).</summary>
+    public static int TripsOf(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return 0;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("trips", out var t) && t.ValueKind == JsonValueKind.Number
+                && t.TryGetInt32(out var n) ? Math.Max(0, n) : 0;
+        }
+        catch (JsonException) { return 0; }
     }
 }
 
@@ -77,17 +108,31 @@ public sealed class FuraGarage
 
     readonly IGameStore _store;
     readonly Action<Action> _defer;
+    readonly ILogger? _log;
     readonly object _lock = new();
     readonly object _writeLock = new();
     readonly Dictionary<string, string> _latest = new(StringComparer.Ordinal);
     readonly Dictionary<string, long> _owners = new(StringComparer.Ordinal);
+    /// <summary>Фури, чий останній запис у базу впав: їх дописує наступний <see cref="Save"/> (будь-чий).</summary>
+    readonly HashSet<string> _unsaved = new(StringComparer.Ordinal);
     long _claims;
+    int _failures;
 
     /// <param name="defer">Як виконати запис у сховище: типово — пул потоків; тести передають «одразу».</param>
-    public FuraGarage(IGameStore store, Action<Action>? defer = null)
+    public FuraGarage(IGameStore store, Action<Action>? defer = null, ILogger? log = null)
     {
         _store = store;
         _defer = defer ?? (a => ThreadPool.QueueUserWorkItem(_ => a()));
+        _log = log;
+    }
+
+    /// <summary>Скільки разів запис у базу впав (за життя процесу).</summary>
+    public int Failures => Volatile.Read(ref _failures);
+
+    /// <summary>Скільки фур зараз лише в пам'яті: запис у базу впав і ще не повторений.</summary>
+    public int Unsaved
+    {
+        get { lock (_lock) return _unsaved.Count; }
     }
 
     /// <summary>Свіжий JSON фури: з пам'яті, інакше з бази. null — нема.</summary>
@@ -127,12 +172,15 @@ public sealed class FuraGarage
     /// <summary>Записати фуру — лише якщо заявка ще чинна. false — фуру вже забрав інший стіл, нічого не записано.</summary>
     public bool Save(string nickKey, long claim, string json)
     {
+        string[] retry;
         lock (_lock)
         {
             if (!_owners.TryGetValue(nickKey, out var c) || c != claim) return false;
             _latest[nickKey] = json;
+            retry = _unsaved.Count == 0 ? [] : [.. _unsaved.Where(k => k != nickKey)];
         }
         _defer(() => Flush(nickKey));
+        foreach (var k in retry) _defer(() => Flush(k));
         return true;
     }
 
@@ -144,8 +192,19 @@ public sealed class FuraGarage
             string? json;
             lock (_lock) _latest.TryGetValue(nickKey, out json);
             if (json is null) return;
-            try { _store.SaveState(Key(nickKey), json); }
-            catch (Exception) { /* база впала — наступна дія спробує ще раз */ }
+            try
+            {
+                _store.SaveState(Key(nickKey), json);
+                lock (_lock) _unsaved.Remove(nickKey);
+            }
+            catch (Exception ex)
+            {
+                // база впала — фура лишається в пам'яті, наступний Save (будь-чий) спробує ще раз
+                bool first;
+                lock (_lock) first = _unsaved.Add(nickKey);
+                Interlocked.Increment(ref _failures);
+                if (first) _log?.LogWarning(ex, "Чумаки: фуру {Nick} не записано в базу — повторю наступним записом", nickKey);
+            }
         }
     }
 }

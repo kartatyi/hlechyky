@@ -113,19 +113,28 @@ public sealed class Fura : Game
     }
 
     /// <summary>
-    /// Нік сів: фура з гаража (свіжа з пам'яті чи з бази), а нема — зі старого соло-запису етапу 1 (рейси й незакінчений
-    /// рейс; старий не видаляємо), а нема й того — нова. Стіл забирає заявку: інший стіл цей нік більше не судить.
+    /// Нік сів: фура з гаража (свіжа з пам'яті чи з бази). Запису нема зовсім — зі старого соло-запису етапу 1 (рейси й
+    /// незакінчений рейс; старий не видаляємо), а нема й того — нова. Запис є, але нечитний — нова фура, проте номер рейсу
+    /// не йде назад: найбільший, що вдасться дістати з нього чи зі старого запису. Стіл забирає заявку: інший стіл цей нік
+    /// більше не судить.
     /// </summary>
     void Sit(int seat)
     {
         var nick = Ctx.NickOf(seat) ?? "";
         var key = Rooms.NickKey(nick);
-        var rig = FuraRig.Parse(_garage.Load(key), Map);
-        var migrated = false;
-        if (rig is null && FuraRig.Parse(_garage.LoadOld(key), Map) is { } old)
+        var raw = _garage.Load(key);
+        var rig = FuraRig.Parse(raw, Map);
+        var fix = false;
+        if (raw is null)
         {
-            rig = old;
-            migrated = true;
+            rig = FuraRig.Parse(_garage.LoadOld(key), Map);
+            fix = rig is not null;
+        }
+        else if (rig is null)
+        {
+            var old = _garage.LoadOld(key);
+            rig = new FuraRig { Trips = Math.Max(FuraRig.TripsOf(raw), FuraRig.Parse(old, Map)?.Trips ?? FuraRig.TripsOf(old)) };
+            fix = true;
         }
         rig ??= new FuraRig();
         rig.Nick = nick;
@@ -133,7 +142,7 @@ public sealed class Fura : Game
         rig.Claim = _garage.Claim(key);
         _rigs[seat] = rig;
         EnsureBoard(rig);
-        if (migrated) Keep(rig);
+        if (fix) Keep(rig);
     }
 
     /// <summary>Фуру — в гараж (запис у базу — з пулу потоків). Забрав інший стіл — тихо нічого.</summary>
@@ -449,7 +458,8 @@ public sealed class Fura : Game
         m.Base = pay;
         col.FirstAt ??= now;
         var paid = false;
-        if (col.Members.Count(x => !x.Left && x.DoneAt is not null) >= 2)
+        // «Здали разом» — лише ті, кому є за що платити: розбите вщент (база 0) поріг не рахує.
+        if (col.Members.Count(x => !x.Left && x.DoneAt is not null && x.Base > 0) >= 2)
             foreach (var x in col.Members)
             {
                 if (x.Left || x.DoneAt is null || x.Bonused) continue;
