@@ -14,11 +14,21 @@ public sealed class FuraMap
     /// <summary>Тека мап відносно кореня репо.</summary>
     public const string Dir = "data/fura/maps";
 
-    /// <summary>Мапа, на якій їздять зараз (етап 1 — одна).</summary>
+    /// <summary>Типова мапа: Чумацький край. Старий запис фури без мапи — теж про неї.</summary>
     public const string DefaultId = "kray";
 
+    /// <summary>Центр Житомира 2,4 × 2,4 км (A4, з OSM; хвиля D — 0.0.8).</summary>
+    public const string Zhytomyr = "zhytomyr";
+
     /// <summary>Які мапи є взагалі. Шлях будується лише з цього списку — з клієнта в нього не потрапить нічого.</summary>
-    public static readonly IReadOnlyList<string> Known = [DefaultId];
+    public static readonly IReadOnlyList<string> Known = [DefaultId, Zhytomyr];
+
+    /// <summary>
+    /// Мапа столу з опції: відома й дозволена вимикачем (<see cref="FuraOptions.Maps"/>) — вона, інакше край.
+    /// <paramref name="allowed"/> null — дозволено все відоме (тести без конфігу).
+    /// </summary>
+    public static string Pick(string? asked, IReadOnlyCollection<string>? allowed = null) =>
+        asked is not null && Known.Contains(asked) && (allowed?.Contains(asked) ?? true) ? asked : DefaultId;
 
     static readonly ConcurrentDictionary<string, Lazy<FuraMap>> Cache = new(StringComparer.Ordinal);
 
@@ -50,6 +60,8 @@ public sealed class FuraMap
 
     readonly Dictionary<string, FuraPlace> _places;
     readonly Dictionary<string, FuraCargo> _cargo;
+    /// <summary>Список суміжності: вузол → (сусід, довжина дороги). Дороги двобічні; паралельні ребра лишаються всі.</summary>
+    readonly Dictionary<string, List<(string To, double M)>> _adj;
     /// <summary>Найкоротший шлях графом між вузлами місць, метри: [від][до].</summary>
     readonly Dictionary<string, Dictionary<string, double>> _between;
 
@@ -65,6 +77,12 @@ public sealed class FuraMap
         Cargo = cargo;
         _places = places.ToDictionary(p => p.Id, StringComparer.Ordinal);
         _cargo = cargo.ToDictionary(c => c.Id, StringComparer.Ordinal);
+        _adj = new(StringComparer.Ordinal);
+        foreach (var road in roads)
+        {
+            Adj(road.A).Add((road.B, road.Length));
+            if (road.B != road.A) Adj(road.B).Add((road.A, road.Length));
+        }
         _between = new(StringComparer.Ordinal);
         foreach (var from in places)
         {
@@ -83,7 +101,16 @@ public sealed class FuraMap
     /// <summary>Те саме в кілометрах з одним знаком — так його бачить людина і так рахують плату й час.</summary>
     public double Km(string fromPlace, string toPlace) => Math.Round(Meters(fromPlace, toPlace) / 1000, 1, MidpointRounding.AwayFromZero);
 
-    /// <summary>Дейкстра від вузла: довжина ребра — сума відрізків полілінії a → via… → b (дороги двобічні).</summary>
+    List<(string To, double M)> Adj(string node)
+    {
+        if (!_adj.TryGetValue(node, out var list)) _adj[node] = list = [];
+        return list;
+    }
+
+    /// <summary>
+    /// Дейкстра від вузла списком суміжності: довжина ребра — сума відрізків полілінії a → via… → b (дороги двобічні).
+    /// Житомир — 430 вузлів і 659 доріг: перебір усіх доріг на кожен вузол був би 430 × 659 на кожне місце.
+    /// </summary>
     Dictionary<string, double> Dijkstra(string start)
     {
         var dist = new Dictionary<string, double>(StringComparer.Ordinal) { [start] = 0 };
@@ -93,11 +120,11 @@ public sealed class FuraMap
         while (queue.TryDequeue(out var node, out var d))
         {
             if (!done.Add(node)) continue;
-            foreach (var road in Roads)
+            if (!_adj.TryGetValue(node, out var next)) continue;
+            foreach (var (other, m) in next)
             {
-                var other = road.A == node ? road.B : road.B == node ? road.A : null;
-                if (other is null || done.Contains(other)) continue;
-                var nd = d + road.Length;
+                if (done.Contains(other)) continue;
+                var nd = d + m;
                 if (nd < dist.GetValueOrDefault(other, double.PositiveInfinity))
                 {
                     dist[other] = nd;

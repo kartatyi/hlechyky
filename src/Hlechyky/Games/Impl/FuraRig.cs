@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Hlechyky.Games.Impl;
@@ -8,6 +9,12 @@ namespace Hlechyky.Games.Impl;
 /// підсумок і скільки рейсів зроблено. Належить ніку, не столу: живе в <see cref="FuraGarage"/> під
 /// <c>fura:rig:&lt;nickKey&gt;</c>, стіл бере її, коли нік сідає, і віддає назад після кожного Act і в OnLeave.
 /// Стан — публічні властивості (як у <see cref="FuraJudge"/>): у JSON іде як є; [JsonIgnore] — лише те, що знає стіл.
+/// <para>
+/// Мапи (хвиля D): поза й рейс — свої на кожну мапу, <see cref="Trips"/> — спільний (від нього номери рейсів і ref-и
+/// нагород). Запис один: стан краю — зверху, як і був (старий запис без мап — це край; старий код після відкату читає
+/// край як є), стан інших мап — у полі <c>maps: {id: стан}</c>. Об'єкт у пам'яті — фура однієї мапи (<see cref="MapId"/>),
+/// стани решти лежать у <see cref="Elsewhere"/> як є, до повернення на них.
+/// </para>
 /// </summary>
 public sealed class FuraRig
 {
@@ -43,24 +50,81 @@ public sealed class FuraRig
     [JsonIgnore] public int AutoN { get; set; }
     /// <summary>Гараж водія (0.0.6): досвід, куплене, обране — окремий запис <see cref="FuraCareer.Key"/>, не в JSON фури.</summary>
     [JsonIgnore] public FuraCareer? Career { get; set; }
+    /// <summary>Мапа, на якій ця фура (стіл, що її взяв). У JSON — місцем стану: край зверху, решта в <c>maps</c>.</summary>
+    [JsonIgnore] public string MapId { get; set; } = FuraMap.DefaultId;
+    /// <summary>Стани фури на інших мапах (id → JSON без <c>trips</c>), як прочитано: пишуться назад незмінними.</summary>
+    [JsonIgnore] public Dictionary<string, JsonObject> Elsewhere { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Поле запису зі станами не-крайових мап.</summary>
+    public const string MapsField = "maps";
 
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public string ToJson() => JsonSerializer.Serialize(this, Json);
+    /// <summary>Увесь запис: стан цієї мапи на своєму місці, решта — з <see cref="Elsewhere"/>, <c>trips</c> — зверху.</summary>
+    public string ToJson()
+    {
+        var self = JsonSerializer.SerializeToNode(this, Json)!.AsObject();
+        JsonObject root;
+        if (MapId == FuraMap.DefaultId) root = self;
+        else
+        {
+            root = Elsewhere.TryGetValue(FuraMap.DefaultId, out var kray) ? kray.DeepClone().AsObject() : [];
+            root["v"] = V;
+            root["trips"] = Trips;
+            self.Remove("trips");
+        }
+        var maps = new JsonObject();
+        foreach (var (id, state) in Elsewhere)
+            if (id != FuraMap.DefaultId) maps[id] = state.DeepClone();
+        if (MapId != FuraMap.DefaultId) maps[MapId] = self;
+        root.Remove(MapsField);
+        if (maps.Count > 0) root[MapsField] = maps;
+        return root.ToJsonString(Json);
+    }
 
     /// <summary>
-    /// Фура з JSON (свого або старого соло-запису етапу 1 — поля ті самі). null — лише коли JSON нечитний зовсім. Рейс, якого
-    /// мапа не знає (битий бокс, вантаж, місце), скасовується → free; <see cref="Trips"/> лишається: інакше номери рейсів
-    /// пішли б назад і повторили вже оплачені ref-и <c>fura:&lt;нік&gt;:&lt;N&gt;</c> — гравець возив би задарма.
+    /// Фура мапи <paramref name="map"/> з JSON (свого або старого соло-запису етапу 1 — поля ті самі). null — лише коли JSON
+    /// нечитний зовсім. На цій мапі ще не їздив — нова фура в депо з тими самими <see cref="Trips"/>; стани інших мап —
+    /// у <see cref="Elsewhere"/>. Рейс, якого мапа не знає (битий бокс, вантаж, місце), скасовується → free; <see cref="Trips"/>
+    /// лишається: інакше номери рейсів пішли б назад і повторили вже оплачені ref-и <c>fura:&lt;нік&gt;:&lt;N&gt;</c> —
+    /// гравець возив би задарма.
     /// </summary>
     public static FuraRig? Parse(string? json, FuraMap map)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         FuraRig? r;
-        try { r = JsonSerializer.Deserialize<FuraRig>(json, Json); }
+        var elsewhere = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonObject root) return null;
+            var kray = root.DeepClone().AsObject();
+            var maps = kray[MapsField] as JsonObject;
+            kray.Remove(MapsField);
+            JsonObject? mine = null;
+            if (map.Id == FuraMap.DefaultId) mine = kray;
+            else elsewhere[FuraMap.DefaultId] = kray;
+            foreach (var (id, state) in maps ?? [])
+            {
+                if (state is not JsonObject o || id == FuraMap.DefaultId) continue;
+                if (id == map.Id) mine = o.DeepClone().AsObject();
+                else elsewhere[id] = o.DeepClone().AsObject();
+            }
+            if (map.Id == FuraMap.DefaultId) r = mine!.Deserialize<FuraRig>(Json);
+            else
+            {
+                // стан цієї мапи битий — нова фура в депо, а край і решта мап лишаються як були
+                try { r = mine?.Deserialize<FuraRig>(Json) ?? new FuraRig(); }
+                catch (JsonException) { r = new FuraRig(); }
+                // рейси — спільні, лежать зверху
+                r!.Trips = kray["trips"] is JsonValue t && t.TryGetValue<int>(out var n) ? n : 0;
+            }
+        }
         catch (JsonException) { return null; }
         catch (NotSupportedException) { return null; }
+        catch (InvalidOperationException) { return null; }   // JsonNode не того типу
         if (r is null) return null;
+        r.MapId = map.Id;
+        r.Elsewhere = elsewhere;
         r.Trips = Math.Max(0, r.Trips);
         bool Valid(FuraOrder? o) => o is { Cargo: not null, From: not null, To: not null, Dock: not null }
             && map.CargoOf(o.Cargo) is not null && map.Place(o.To) is not null && map.Place(o.From)?.Dock(o.Dock) is not null;

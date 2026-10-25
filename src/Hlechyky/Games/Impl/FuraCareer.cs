@@ -8,6 +8,19 @@ public sealed class FuraOptions
 {
     /// <summary>Гараж 0.0.6. false — усі їдуть «Чумаком» без тюнінгу, купувати й обирати не можна; ДВ рахується як завжди.</summary>
     public bool Garage { get; set; } = true;
+
+    /// <summary>
+    /// Які мапи можна обрати опцією столу (<see cref="FuraMap.Known"/> через кому; хвиля D). Недозволена чи невідома в
+    /// опціях стола — край. Прод — «kray», поки клієнт міста (D2) не готовий; дев — «kray,zhytomyr».
+    /// </summary>
+    public string Maps { get; set; } = FuraMap.DefaultId;
+
+    /// <summary>Дозволені мапи: відомі з <see cref="Maps"/>; край — завжди.</summary>
+    public IReadOnlyList<string> AllowedMaps() =>
+    [
+        .. FuraMap.Known.Where(id => id == FuraMap.DefaultId
+            || (Maps ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Contains(id, StringComparer.Ordinal)),
+    ];
 }
 
 /// <summary>
