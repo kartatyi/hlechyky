@@ -39,6 +39,13 @@ public sealed class Fura : Game
     /// <summary>Поза (Act чи Input — для гри однаково) пишеться в гараж не частіше за це, хіба змінились фаза чи зчеплення.</summary>
     public const double KeepPoseSec = 5;
 
+    /// <summary>
+    /// Вид, що несе лише нове ціле (вантаж побився), — не частіше за це на стіл. Своє ціле браузер малює сам, з виду бере
+    /// його лише на відновлення; а за столом до восьми фур кожна вибоїна будь-кого розсилала б вид усім місцям до 10/с
+    /// (тик 100 мс), і кожен такий вид — мілісекунди головного потоку браузера (каркас перемальовує картку столу).
+    /// </summary>
+    public const double KViewSec = 1;
+
     public const string Free = "free", Pickup = "pickup", Haul = "haul", Done = "done";
 
     /// <summary>Порожній стіл чекає свого (оновив сторінку — повернувся за той самий стіл).</summary>
@@ -59,6 +66,10 @@ public sealed class Fura : Game
     (string Day, int No, FuraOrder? Order) _colOffer;
     long _tick;
     bool _dirty;
+    /// <summary>Ціле якоїсь фури спало, а вид про це ще не йшов (<see cref="KViewSec"/>).</summary>
+    bool _kStale;
+    /// <summary>Коли тик востаннє розіслав вид.</summary>
+    DateTimeOffset _viewAt;
 
     FuraMap Map => _map ??= FuraMap.Get();
 
@@ -399,7 +410,12 @@ public sealed class Fura : Game
 
     void Pose(FuraRig rig, FuraPose p, DateTimeOffset now)
     {
-        if (rig.Phase is Pickup or Haul && rig.Judge.Feed(p, now)) _dirty = true;
+        if (rig.Phase is Pickup or Haul)
+        {
+            var k = rig.Judge.MinK;
+            if (rig.Judge.Feed(p, now)) _dirty = true;
+            else if (rig.Judge.MinK != k) _kStale = true;
+        }
         rig.Last = p;
         rig.LastAt = now;
         if (rig.Phase == Pickup && rig.Order is not null && FuraJudge.PickedUp(p, Map.Place(rig.Order.From)!.Dock(rig.Order.Dock)!))
@@ -501,8 +517,11 @@ public sealed class Fura : Game
                 EndCol();
         }
         var frame = RigCount >= 2;
+        if (_kStale && (now - _viewAt).TotalSeconds >= KViewSec) _dirty = true;
         if (!_dirty) return frame ? TickResult.FrameOnly : TickResult.None;
         _dirty = false;
+        _kStale = false;
+        _viewAt = now;
         return new TickResult(frame, true);
     }
 

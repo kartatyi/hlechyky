@@ -55,6 +55,15 @@ function pedalOf(gp, p) {
 }
 const btn = (gp, i) => i != null && i >= 0 && !!(gp.buttons[i] && gp.buttons[i].pressed);
 
+// Клавіші гри (див. poll і main.js). Поки гра відкрита, вони лише її: пробіл не тисне кнопку у фокусі (📻 чи ☰ у панелі
+// після кліку мишею, кнопку сайту під грою), Enter теж, стрілки не гортають сторінку, Esc не виводить каркас зі столу.
+const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Enter',
+  'KeyH', 'KeyT', 'KeyC', 'KeyE', 'KeyQ', 'KeyR', 'KeyL', 'KeyF', 'KeyM', 'Escape']);
+/** Друкують: балачка, пошук — там клавіші людини, не фури. */
+const typing = (t) => !!t && ((t.matches && t.matches('input, textarea, select')) || t.isContentEditable);
+/** Вікно гри: там Enter і Пробіл тиснуть кнопку у фокусі самі (↑↓ і Esc вікну дає main.js navModal). */
+const inBox = (t) => !!(t && t.closest && t.closest('.fura-modal'));
+
 // Стандартна розкладка пада (W3C): 0 Ⓐ 1 Ⓑ 2 Ⓧ 3 Ⓨ 4 LB 5 RB 6 LT 7 RT 8 Back 9 Start 10 L3 11 R3 12–15 хрестовина
 const PAD = { couple: 0, handbrake: 1, camera: 2, horn: 3, gearDown: 4, gearUp: 5, reset: 8, menu: 9 };
 
@@ -71,6 +80,9 @@ export class Input {
     this.onKey = (e) => {
       // Лише справжні натиски: pad.js на час гри теж шле стрілки — ми читаємо пад самі, вдруге не треба
       if (!e.isTrusted || !this.enabled) return;
+      const t = e.target;
+      if (typing(t)) { if (e.type === 'keyup') this.keys.delete(e.code); return; }
+      if (GAME_KEYS.has(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey && !((e.code === 'Space' || e.code === 'Enter') && inBox(t))) e.preventDefault();
       if (e.type === 'keydown') {
         if (!this.keys.has(e.code)) this.pressed.add(e.code);
         this.keys.add(e.code);
