@@ -4,7 +4,7 @@
 «Кавунах на ярмарку»). Дядько Глек підкидає з воза овочі й фрукти, людина шаткує змахом пальця чи миші.
 
 Код: `src/Hlechyky/Games/Impl/ShatkuyCore.cs` (розклад, ігровий час), `Impl/Shatkuy.cs` (ігри, таблиця дня),
-клієнт `web/games/shatkuy.js` + `.css` (префікс `sk-`), тести `tests/Hlechyky.Tests/Games/ShatkuyTests.cs`.
+клієнт `web/games/shatkuy.js` + `.css` (префікс `shk-`: `sk-` уже зайняла «Скирта»), тести `tests/Hlechyky.Tests/Games/ShatkuyTests.cs`.
 
 ## 1. Ігри
 

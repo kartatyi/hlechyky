@@ -459,20 +459,20 @@
   // Каркас сторінки
   // ---------------------------------------------------------------------------------------------
   function skeleton(root, st) {
-    root.innerHTML = '<div class="sk">'
-      + '<div class="sk-stage"><canvas class="sk-cv"></canvas>'
-      + '<div class="sk-tint"></div>'
-      + '<img class="sk-glek" src="/static/glek.svg" alt="" draggable="false">'
-      + '<div class="sk-hud"><div class="sk-score"><b>0</b><small></small></div>'
-      + '<div class="sk-right"><div class="sk-lives"></div><div class="sk-time"><b></b><i><i></i></i></div><div class="sk-buffs"></div></div></div>'
-      + '<button type="button" class="sk-snd" data-pad-skip title="Звук"></button>'
-      + '<div class="sk-say"></div><div class="sk-fx"></div><div class="sk-big"></div>'
-      + '<div class="sk-card" hidden></div></div></div>';
+    root.innerHTML = '<div class="shk">'
+      + '<div class="shk-stage"><canvas class="shk-cv"></canvas>'
+      + '<div class="shk-tint"></div>'
+      + '<img class="shk-glek" src="/static/glek.svg" alt="" draggable="false">'
+      + '<div class="shk-hud"><div class="shk-score"><b>0</b><small></small></div>'
+      + '<div class="shk-right"><div class="shk-lives"></div><div class="shk-time"><b></b><i><i></i></i></div><div class="shk-buffs"></div></div></div>'
+      + '<button type="button" class="shk-snd" data-pad-skip title="Звук"></button>'
+      + '<div class="shk-say"></div><div class="shk-fx"></div><div class="shk-big"></div>'
+      + '<div class="shk-card" hidden></div></div></div>';
     const q = (s) => root.querySelector(s);
     st.el = {
-      box: q('.sk'), stage: q('.sk-stage'), cv: q('.sk-cv'), tint: q('.sk-tint'), glek: q('.sk-glek'), score: q('.sk-score b'), best: q('.sk-score small'),
-      lives: q('.sk-lives'), time: q('.sk-time'), timeB: q('.sk-time b'), timeBar: q('.sk-time i i'), buffs: q('.sk-buffs'), snd: q('.sk-snd'),
-      say: q('.sk-say'), fx: q('.sk-fx'), big: q('.sk-big'), card: q('.sk-card'),
+      box: q('.shk'), stage: q('.shk-stage'), cv: q('.shk-cv'), tint: q('.shk-tint'), glek: q('.shk-glek'), score: q('.shk-score b'), best: q('.shk-score small'),
+      lives: q('.shk-lives'), time: q('.shk-time'), timeB: q('.shk-time b'), timeBar: q('.shk-time i i'), buffs: q('.shk-buffs'), snd: q('.shk-snd'),
+      say: q('.shk-say'), fx: q('.shk-fx'), big: q('.shk-big'), card: q('.shk-card'),
     };
     wire(root, st);
   }
@@ -801,7 +801,7 @@
     const el = st.el.fx;
     if (el.childElementCount > 6) el.firstChild.remove();
     const d = document.createElement('div');
-    d.className = 'sk-combo' + (n >= 5 ? ' hot' : '');
+    d.className = 'shk-combo' + (n >= 5 ? ' hot' : '');
     d.innerHTML = '<b>Комбо ×' + n + '</b><small>+' + n + '</small>';
     d.style.left = Math.round(clamp(pos.x, 80, st.g.W - 80)) + 'px'; d.style.top = Math.round(clamp(pos.y - 40, 60, st.g.H - 60)) + 'px';
     el.appendChild(d);
@@ -826,7 +826,7 @@
   function big(st, html, cls, ms) {
     const el = st.el.big;
     el.innerHTML = html || '';
-    el.className = 'sk-big' + (cls ? ' B-' + cls : '');
+    el.className = 'shk-big' + (cls ? ' B-' + cls : '');
     void el.offsetWidth; el.classList.add('on');
     clearTimeout(st.bigT);
     if (ms) st.bigT = setTimeout(() => { el.classList.remove('on'); }, ms);
@@ -849,31 +849,31 @@
     el._k = sig;
     let h = '';
     if (kind === 'ready') {
-      h = '<div class="sk-c sk-ready"><h3>' + md.icon + ' ' + esc(md.title) + (dl && dl.no ? ' №' + dl.no : '') + '</h3><ul>' + md.rules.map((x) => '<li>' + x + '</li>').join('') + '</ul>'
-        + (v.best ? '<p class="sk-rec">🏆 рекорд — <b>' + fmtN(v.best) + '</b></p>' : '')
-        + (st.ctx.mine ? '<button type="button" class="sk-go" data-a="go" data-pad-first>Поїхали!</button><p class="sk-hint">або розріж кавун змахом</p>' : '<p class="sk-hint">дивишся збоку</p>')
+      h = '<div class="shk-c shk-ready"><h3>' + md.icon + ' ' + esc(md.title) + (dl && dl.no ? ' №' + dl.no : '') + '</h3><ul>' + md.rules.map((x) => '<li>' + x + '</li>').join('') + '</ul>'
+        + (v.best ? '<p class="shk-rec">🏆 рекорд — <b>' + fmtN(v.best) + '</b></p>' : '')
+        + (st.ctx.mine ? '<button type="button" class="shk-go" data-a="go" data-pad-first>Поїхали!</button><p class="shk-hint">або розріж кавун змахом</p>' : '<p class="shk-hint">дивишся збоку</p>')
         + '</div>';
     } else {
       const e = v.end || {};
       const why = { glek: '💥 Глек розбито!', miss: '✕ Три промахи', time: '⏱ Час!', left: '🚪 Пішов з поля' }[e.why] || 'Кінець';
-      h = '<div class="sk-c sk-over"><div class="sk-why">' + why + '</div>'
-        + '<div class="sk-total"><b data-n="' + (e.score || 0) + '">' + fmtN(e.score || 0) + '</b><small>' + points(e.score || 0) + '</small></div>'
-        + (e.rec && e.score > 0 ? '<div class="sk-newrec">🏆 Новий рекорд!</div>' : v.best ? '<div class="sk-old">рекорд — ' + fmtN(v.best) + '</div>' : '')
-        + '<div class="sk-stats"><span>🔪 <b>' + (e.cuts || 0) + '</b> порізано</span>'
+      h = '<div class="shk-c shk-over"><div class="shk-why">' + why + '</div>'
+        + '<div class="shk-total"><b data-n="' + (e.score || 0) + '">' + fmtN(e.score || 0) + '</b><small>' + points(e.score || 0) + '</small></div>'
+        + (e.rec && e.score > 0 ? '<div class="shk-newrec">🏆 Новий рекорд!</div>' : v.best ? '<div class="shk-old">рекорд — ' + fmtN(v.best) + '</div>' : '')
+        + '<div class="shk-stats"><span>🔪 <b>' + (e.cuts || 0) + '</b> порізано</span>'
         + (e.combo >= 3 ? '<span>⚡ комбо <b>×' + e.combo + '</b></span>' : '')
         + (e.big ? '<span>🍉 <b>' + e.big + '</b> по кавуну</span>' : '')
         + (v.mode !== 'zen' ? '<span>🏺 ' + (e.gleks ? '<b>' + e.gleks + '</b> ' + (e.gleks === 1 ? 'глек' : 'глеки') : 'глеки цілі') + '</span>' : '') + '</div>';
       if (dl) {
         const rows = dl.board || [];
-        h += '<div class="sk-day"><h4>Сьогодні' + (dl.place ? ' — ти <b>' + dl.place + '</b> з ' + dl.players : '') + '</h4>'
+        h += '<div class="shk-day"><h4>Сьогодні' + (dl.place ? ' — ти <b>' + dl.place + '</b> з ' + dl.players : '') + '</h4>'
           + (rows.length ? '<ol>' + rows.map((r) => '<li' + (r.nick === st.ctx.me.nick ? ' class="me"' : '') + '><span>' + esc(r.nick) + '</span><b>' + fmtN(r.points) + '</b></li>').join('') + '</ol>' : '')
-          + '<button type="button" class="sk-share" data-a="share">📋 Поділитись</button><p class="sk-hint">новий віз — після півночі</p></div>';
-      } else if (st.ctx.mine) h += '<button type="button" class="sk-go" data-a="again" data-pad-first>Ще раз!</button>';
+          + '<button type="button" class="shk-share" data-a="share">📋 Поділитись</button><p class="shk-hint">новий віз — після півночі</p></div>';
+      } else if (st.ctx.mine) h += '<button type="button" class="shk-go" data-a="again" data-pad-first>Ще раз!</button>';
       h += '</div>';
     }
     el.innerHTML = h;
     el.hidden = false;
-    const n = el.querySelector('.sk-total b');
+    const n = el.querySelector('.shk-total b');
     if (n && !reduced()) countUp(n, +n.dataset.n);
   }
   function countUp(el, to) {
@@ -943,7 +943,7 @@
       el.buffs._s = bs;
       el.buffs.innerHTML = (fLeft > 0 ? '<span class="frost">❄ ' + Math.ceil(fLeft / 1000) + '</span>' : '') + (dLeft > 0 ? '<span class="gold">×2 ' + Math.ceil(dLeft / 1000) + '</span>' : '');
     }
-    el.tint.className = 'sk-tint' + (fLeft > 0 ? ' frost' : '') + (dLeft > 0 ? ' gold' : '');
+    el.tint.className = 'shk-tint' + (fLeft > 0 ? ' frost' : '') + (dLeft > 0 ? ' gold' : '');
     el.box.classList.toggle('P-go', !!go);
   }
   function paintSnd(st) { st.el.snd.textContent = Snd.on() ? '🔊' : '🔇'; st.el.snd.title = Snd.on() ? 'Звук увімкнено' : 'Звук вимкнено — увімкнути'; }
@@ -1246,7 +1246,7 @@
         st.ro.observe(st.el.stage);
       }
       const cardEl = root.closest && root.closest('.gtable');
-      if (cardEl) cardEl.classList.add('sk-wide');
+      if (cardEl) cardEl.classList.add('shk-wide');
     }
     st.ctx = ctx; ctx._sk = st;
     return st;
@@ -1304,7 +1304,7 @@
       if (st.ro) st.ro.disconnect();
       st.offs.forEach((f) => f()); st.offs = [];
       const cardEl = root.closest && root.closest('.gtable');
-      if (cardEl) cardEl.classList.remove('sk-wide');
+      if (cardEl) cardEl.classList.remove('shk-wide');
       if (st.ctx) st.ctx._sk = null;
       root._sk = null;
     },
