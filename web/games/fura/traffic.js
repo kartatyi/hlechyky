@@ -10,7 +10,8 @@
 // Удар: найближчі до моєї фури машини (до MAX_PHYS у радіусі PHYS_R) — кінематичні коробки Rapier, фура б'ється об них, як
 // об чужу фуру (вантаж б'ється від прискорення, truck.raw); Δv моєї фури за удар — не більше DV_CAP (машина легка: важка фура
 // її відкидає, а не стає як укопана), далі машина для мене примарна, доки стоїть. Тост і звук — гачок crash.js carBump.
-// Малювання — 2 InstancedMesh (легковик і бус), 2 draw calls. __fura.traffic.stats() / list().
+// Малювання — 2 InstancedMesh (легковик і бус), 2 draw calls, лише найближчі до моєї фури (VIS: 350 м і 40 машин на «мало»,
+// 600 м і 100 на «багато»); вибірка — раз на PICK_S. __fura.traffic.stats() / list().
 
 import { rect, overlap, carBump } from './crash.js';
 
@@ -21,7 +22,8 @@ const BRAKE_M = 15, BRAKE_A = 4;   // фура попереду: стаємо з
 const STOP_S = 5;           // після удару стоїть
 const PHYS_R = 90, MAX_PHYS = 8;
 const DV_CAP = 3, EPISODE = 8;   // м/с: удар (до 8 кроків контакту) міняє швидкість моєї фури не більше (як DV_MAX у фур)
-const DRAW_M = 800;
+const VIS = { few: [350, 40], many: [600, 100] };   // малюємо найближчі до моєї фури: радіус, м, і стеля
+const PICK_S = 0.3;         // вибірка видимих і «живих» машин — раз на стільки секунд
 const CAR = { w: 0.9, h: 0.72, l: 2.2 };          // пів-розміри коробки колайдера
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -114,21 +116,43 @@ export class Traffic {
     });
     for (const sl of this.pool) this.free(sl);
     this.cars = cars;
+    this.vis = []; this.act = []; this.pickT = -1;
+    const cap = (VIS[d] || VIS.few)[1];
     this.meshes.forEach((m, i) => {
-      const n = cars.filter((c) => c.model === i).length;
-      if (m.instanceMatrix.count < n) {
-        const fresh = new this.T.InstancedMesh(m.geometry, m.material, Math.max(1, n));
+      if (m.instanceMatrix.count < cap) {
+        const fresh = new this.T.InstancedMesh(m.geometry, m.material, cap);
         fresh.frustumCulled = false; fresh.castShadow = true;
         this.scene.remove(m); m.dispose(); this.scene.add(fresh); this.meshes[i] = fresh;
       }
       this.meshes[i].count = 0;
     });
-    let k0 = 0, k1 = 0;
-    for (const c of cars) {
-      c.ix = c.model ? k1++ : k0++;
-      this.meshes[c.model].setColorAt(c.ix, new this.T.Color(c.paint));
+  }
+
+  /**
+   * Вибірка (≈3/с, від часу машин — і під __fura.step): vis — найближчі до моєї фури в радіусі VIS (стеля), їх малюємо;
+   * act — ті, кому потрібен локальний крок: поблизу будь-якої фури (гальмо, коробки) або ще стоять/розганяються.
+   * Решта машин мапи — лише формула позиції, нічого не коштують.
+   */
+  pick() {
+    this.pickT = this.t;
+    const [R, cap] = VIS[this.density] || VIS.few, me = this.truck.tb.translation(), t = this.t;
+    const hubs = [me];
+    const g = this.ghosts;
+    if (g && g.names) { const now = performance.now(); for (const seat of g.names.keys()) { if (seat === g.me) continue; const p = g.predict(seat, now); if (p) hubs.push(p); } }
+    const vis = [], act = [], A = PHYS_R + 40;    // +40 м: за 0,3 с між вибірками і 20 м корпусу
+    for (const c of this.cars) {
+      const p = this.pose(c, t);
+      if (!p) { if (c.f < 1 || t < c.stopUntil) act.push(c); continue; }
+      const d = Math.hypot(p.x - me.x, p.z - me.z);
+      if (d < R) vis.push([d, c]);
+      if (c.f < 1 || t < c.stopUntil || hubs.some((q) => Math.abs(q.x - p.x) < A && Math.abs(q.z - p.z) < A)) act.push(c);
     }
-    for (const m of this.meshes) { m.count = m === this.meshes[0] ? k0 : k1; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+    vis.sort((a, b) => a[0] - b[0]);
+    this.vis = vis.slice(0, cap).map((x) => x[1]);
+    this.act = act;
+    const n = [0, 0], col = this.col || (this.col = new this.T.Color());
+    for (const c of this.vis) { c.ix = n[c.model]++; this.meshes[c.model].setColorAt(c.ix, col.set(c.paint)); }
+    this.meshes.forEach((m, i) => { m.count = n[i]; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
   }
 
   /** Поза машини на час t: точка смуги, курс, нахил; null — схована (кінець смуги, біля боксів). */
@@ -172,8 +196,9 @@ export class Traffic {
     const va = tr.tb.linvel(), vr = tr.rb.linvel();
     this.v0[0] = { x: va.x, y: va.y, z: va.z }; this.v0[1] = { x: vr.x, y: vr.y, z: vr.z };
     if (!this.cars.length) return;
+    if (!(t - this.pickT < PICK_S && t >= this.pickT)) this.pick();
     const rigs = this.rigs(), near = [];
-    for (const c of this.cars) {
+    for (const c of this.act) {
       const p = c.p = this.pose(c, t);
       if (!p) continue;
       const dMe = Math.hypot(p.x - me.x, p.z - me.z);
@@ -289,10 +314,11 @@ export class Traffic {
     if (Math.abs(d) > 30) this.t += d;
     else this.catch = clamp(this.catch + d * 0.05, -0.05, 0.05);
     if (!this.cars.length) return;
-    const o = this.o, cx = cam.position.x, cz = cam.position.z;
-    for (const c of this.cars) {
+    if (!(this.t - this.pickT < PICK_S && this.t >= this.pickT)) this.pick();
+    const o = this.o;
+    for (const c of this.vis) {
       const p = c.slot ? c.p : this.pose(c, this.t);
-      if (!p || Math.abs(p.x - cx) > DRAW_M || Math.abs(p.z - cz) > DRAW_M) { o.scale.setScalar(0); }
+      if (!p) o.scale.setScalar(0);
       else { o.position.set(p.x, p.y, p.z); o.rotation.set(p.pitch, p.h, 0, 'YXZ'); o.scale.setScalar(1); }
       o.updateMatrix();
       this.meshes[c.model].setMatrixAt(c.ix, o.matrix);
@@ -307,7 +333,7 @@ export class Traffic {
     return out;
   }
   stats() {
-    return { density: this.density, lanes: this.lanes.length, cars: this.cars.length, t: +this.t.toFixed(2), ...this.n,
+    return { density: this.density, lanes: this.lanes.length, cars: this.cars.length, vis: this.vis.length, act: this.act.length, t: +this.t.toFixed(2), ...this.n,
       phys: this.pool.filter((s) => s.car).map((s) => ({ id: s.car.id, solid: s.solid, f: +s.car.f.toFixed(2), x: +s.car.p.x.toFixed(1), z: +s.car.p.z.toFixed(1) })),
       log: this.log.slice(-8) };
   }
