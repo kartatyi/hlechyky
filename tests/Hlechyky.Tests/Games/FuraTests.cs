@@ -624,6 +624,58 @@ public sealed class FuraTests
         Assert.DoesNotContain(h.Outbox, m => m is RoomFrame);
     }
 
+    /// <summary>Фура в haul, щойно зачепила причіп у відправника; вид уже пішов.</summary>
+    static (RoomHarness H, FuraDock Dock) Hauling()
+    {
+        var h = Open();
+        Assert.True(h.Act(0, "take", new { id = 1 }).Ok, h.Reply.Message);
+        var dock = DockOf(Order(h));
+        Pose(h, dock.X, dock.Z);
+        h.Tick();
+        Pose(h, dock.X, dock.Z, c: true);
+        Assert.Equal("haul", Phase(h));
+        h.Tick();
+        h.Outbox.Clear();
+        return (h, dock);
+    }
+
+    [Fact]
+    public void A_cracking_load_sends_a_view_at_most_once_a_second()
+    {
+        var (h, dock) = Hauling();
+        // вантаж б'ється щокадру пози (10/с) на відсоток: за 3 с — 30 нових цілих, а видів — по одному на секунду
+        var at = (dock.X, dock.Z);
+        var views = 0;
+        for (var i = 1; i <= 30; i++)
+        {
+            Drive(h, ref at, (at.X + 1.5, at.Z), 15, k: 100 - i);
+            if (h.Outbox.Any(m => m is RoomViews)) views++;
+            h.Outbox.Clear();
+        }
+        Assert.InRange(views, 2, 4);
+        // остання цифра не губиться: щойно мине секунда від попереднього виду — вид із нею
+        h.Tick((int)(Fura.KViewSec / Dt));
+        Assert.Contains(h.Outbox, m => m is RoomViews);
+        Assert.Equal(70, h.View(0).GetProperty("trip").GetProperty("minK").GetInt32());
+        h.Outbox.Clear();
+        h.Tick(20);
+        Assert.DoesNotContain(h.Outbox, m => m is RoomViews);   // ціле стоїть — тиша
+    }
+
+    [Fact]
+    public void A_speeding_violation_still_reaches_the_browser_on_the_next_tick()
+    {
+        var (h, dock) = Hauling();
+        var at = (dock.X, dock.Z);
+        Drive(h, ref at, (at.X + 1.5, at.Z), 15, k: 90);    // ціле спало — вид із ним чекав би ще секунду
+        h.Outbox.Clear();
+        h.Tick(2);
+        Pose(h, at.X + 10, at.Z, 50, c: true, k: 90);      // 10 м за 0,2 с — 180 км/год
+        h.Tick();
+        Assert.Contains(h.Outbox, m => m is RoomViews);
+        Assert.Equal(1, h.View(0).GetProperty("trip").GetProperty("violations").GetInt32());
+    }
+
     // ---------- мапа по HTTP ----------
 
     [Fact]

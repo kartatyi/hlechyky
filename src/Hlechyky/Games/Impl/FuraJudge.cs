@@ -72,20 +72,21 @@ public sealed class FuraJudge
     }
 
     /// <summary>
-    /// Ще один знімок. true — змінилось те, що людина бачить (порушення, недійсність, ціле): тоді гра шле вид.
+    /// Ще один знімок. true — змінилось те, про що людині треба сказати одразу (порушення, недійсність): тоді гра шле вид
+    /// з найближчого тика. Ціле (<see cref="MinK"/>) свій HUD браузер малює сам — його гра розсилає рідше (Fura.KViewSec).
     /// </summary>
     public bool Feed(FuraPose p, DateTimeOffset at)
     {
-        var before = (Violations, Void, MinK);
+        var before = (Violations, Void);
         if (Hauling) MinK = Math.Min(MinK, Math.Clamp(p.K, 0, 100));
         if (Ref is null)
         {
             Ref = p;
             RefAt = at;
-            return before != (Violations, Void, MinK);
+            return before != (Violations, Void);
         }
         var dt = (at - RefAt).TotalSeconds;
-        if (dt < MinDtSec) return before != (Violations, Void, MinK);   // точка відліку стоїть, дочекаємось довшого проміжку
+        if (dt < MinDtSec) return false;   // точка відліку стоїть, дочекаємось довшого проміжку
 
         var d = Dist(Ref.X, Ref.Z, p.X, p.Z);
         if (dt > PauseSec)
@@ -112,7 +113,7 @@ public sealed class FuraJudge
         Rescue = false;
         Ref = p;
         RefAt = at;
-        return before != (Violations, Void, MinK);
+        return before != (Violations, Void);
     }
 
     /// <summary>

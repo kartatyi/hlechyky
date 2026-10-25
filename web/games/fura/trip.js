@@ -250,7 +250,8 @@ export class Trips {
     this.poseAt = now - this.poseAt < every * 2 ? this.poseAt + every : now;
     const p = this.pose();
     this.server.input('pose', p);
-    if (now - this.saveAt >= SAVE_MS || p.c !== this.lastC) { this.saveAt = now; this.act('pose', p); }
+    if (this.perf) this.perf.input(false);
+    if (now - this.saveAt >= SAVE_MS || p.c !== this.lastC) { this.saveAt = now; this.act('pose', p); if (this.perf) this.perf.input(true); }
     this.lastC = p.c;
   }
 
