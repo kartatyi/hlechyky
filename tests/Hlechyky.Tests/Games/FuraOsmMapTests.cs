@@ -7,7 +7,7 @@ namespace Hlechyky.Tests.Games;
 /// <summary>
 /// Мапа Житомира з OpenStreetMap (<c>data/fura/maps/zhytomyr.json</c>, зібрана <c>tools/osm</c>; specs/fura.md,
 /// «Мапи з OSM (A4)») у теперішньому форматі kray.json: сервер її читає, граф зв'язний, між усіма місцями є шлях
-/// адекватної довжини, двори й бокси на місці. У <see cref="FuraMap.Known"/> її ще нема — розбираємо з файлу.
+/// адекватної довжини, двори й бокси на місці. Розбираємо з файлу (не з кешу <see cref="FuraMap.Get"/>), щоб міряти час розбору.
 /// </summary>
 public sealed class FuraOsmMapTests
 {

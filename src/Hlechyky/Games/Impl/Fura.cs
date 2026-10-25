@@ -26,6 +26,7 @@ public sealed partial class Fura : Game
         [
             new GameOption(CollideKey, "Чужі фури", [(Ghosts, "👻 привиди"), (Crash, "💥 зіткнення")], Ghosts),
             new GameOption(EqualKey, "Фури", [(EqualOff, "🔧 свій гараж"), (EqualOn, "⚖ рівні фури")], EqualOff),
+            new GameOption(MapKey, "Мапа", [(FuraMap.DefaultId, "🌾 Чумацький край"), (FuraMap.Zhytomyr, "🏙 Житомир")], FuraMap.DefaultId),
         ],
         Hint: "Тягач із причепом по Чумацькому краю: бери замовлення, чіпляй причіп у відправника й вези — сам чи колоною до восьми фур. Кермо G29, пад або клавіатура");
 
@@ -55,6 +56,12 @@ public sealed partial class Fura : Game
     public const double KViewSec = 1;
 
     public const string Free = "free", Pickup = "pickup", Haul = "haul", Done = "done";
+
+    /// <summary>
+    /// Опція столу (хвиля D): на якій мапі стіл — <see cref="FuraMap.Known"/>, типово край. Дозволені — вимикачем
+    /// <c>Fura:Maps</c> (<see cref="FuraOptions.Maps"/>); недозволена чи невідома — край. Обирається при створенні столу.
+    /// </summary>
+    public const string MapKey = "map";
 
     // ---------- зіткнення (2c) ----------
 
@@ -113,11 +120,12 @@ public sealed partial class Fura : Game
 
     public override string SeatName(int seat) => "чумак";
 
-    /// <summary>Мапу читаємо тут — поза замком кімнати (перший раз це диск). Опцію столу — теж: обирається при створенні,
-    /// посеред гри каркас налаштувань не міняє.</summary>
+    /// <summary>Мапу читаємо тут — поза замком кімнати (перший раз це диск). Опції столу — теж: обираються при створенні,
+    /// посеред гри каркас налаштувань не міняє. Мапа — з опції <see cref="MapKey"/>, якщо її дозволяє вимикач.</summary>
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
-        _map = FuraMap.Get();
+        var allowed = Ctx?.Services.GetService<IOptionsMonitor<FuraOptions>>()?.CurrentValue.AllowedMaps();
+        _map = FuraMap.Get(FuraMap.Pick(options.GetValueOrDefault(MapKey), allowed));
         _crash = options.TryGetValue(CollideKey, out var c) && c == Crash;
         ConfigureGarage(options);
     }
@@ -172,7 +180,8 @@ public sealed partial class Fura : Game
     }
 
     /// <summary>
-    /// Нік сів: фура з гаража (свіжа з пам'яті чи з бази). Запису нема зовсім — зі старого соло-запису етапу 1 (рейси й
+    /// Нік сів: фура з гаража (свіжа з пам'яті чи з бази) — стан на мапі цього столу; на ній ще не їздив — фура в депо, а рейс
+    /// на іншій мапі лежить у записі до повернення туди (<see cref="FuraRig.Elsewhere"/>). Запису нема зовсім — зі старого соло-запису етапу 1 (рейси й
     /// незакінчений рейс; старий не видаляємо), а нема й того — нова. Запис є, але нечитний — нова фура, проте номер рейсу
     /// не йде назад: найбільший, що вдасться дістати з нього чи зі старого запису. Стіл забирає заявку: інший стіл цей нік
     /// більше не судить.
@@ -196,6 +205,7 @@ public sealed partial class Fura : Game
             fix = true;
         }
         rig ??= new FuraRig();
+        rig.MapId = Map.Id;
         rig.Nick = nick;
         rig.NickKey = key;
         rig.Claim = _garage.Claim(key);
@@ -890,6 +900,9 @@ public sealed partial class Fura : Game
             back.NickKey = now.NickKey;
             back.Claim = now.Claim;
             back.Career = now.Career;
+            // зі знімка — лише стан цієї мапи: інші мапи й рейси свіжіші в гаражі (нік міг їздити деінде після знімка)
+            back.Elsewhere = now.Elsewhere;
+            back.Trips = Math.Max(back.Trips, now.Trips);
             EnsureBoard(back);
             _rigs[seat] = back;
             Keep(back);
