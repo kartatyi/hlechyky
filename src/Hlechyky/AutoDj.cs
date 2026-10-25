@@ -16,7 +16,7 @@ namespace Hlechyky;
 /// ніч він доїжджав від «ДК Енергетик» до іспанських пісень про One Piece.
 /// </summary>
 public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpService ytdlp, RoomTaste taste, ArtistQuality quality,
-    IOptionsMonitor<AutoDjOptions> options, ILogger<AutoDj> log)
+    Reputation reputation, IOptionsMonitor<AutoDjOptions> options, ILogger<AutoDj> log)
 {
     /// <param name="SeedId">Трек-сід, від якого прийшла порада: якщо кімната її відкине, цей сід на якийсь час слабшає.</param>
     /// <param name="Source">
@@ -45,6 +45,22 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
 
     /// <summary>Скільки важить для артиста одна відмова від його пісні: щоб артиста прибрало, треба чотири різні пісні.</summary>
     public const double ArtistStrike = 0.5;
+
+    /// <summary>
+    /// Артист, якого кімната ще не знає. З «живих» програвань 10.10–25.10: новий кириличний від кириличного сіда скіпали
+    /// 56 %, новий латиничний від латиничного — 30 %, відомий кириличний — 30 %; стрибок на інше письмо з новим артистом —
+    /// ще гірше (за всі почуті: 27–37 % проти 6–22 %). Схожість тегів Last.fm з сідом нічого не відрізняла (20 % проти 18 %),
+    /// тож її тут нема. Новий кириличний, якого показали два джерела, притискається слабше: з <c>plays.pick_source</c>
+    /// це вже можна буде перевірити.
+    /// </summary>
+    public static double Novelty(bool known, string seedScript, string candScript, int sources, AutoDjOptions o)
+    {
+        if (known) return 1;
+        var m = 1.0;
+        if (candScript == "cyr") m *= sources >= 2 ? o.NewCyrAgreeDamp : o.NewCyrDamp;
+        if (seedScript.Length > 0 && candScript.Length > 0 && seedScript != candScript) m *= o.CrossScriptNewDamp;
+        return m;
+    }
 
     sealed class Cand
     {
@@ -83,12 +99,27 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
     {
         var banned = db.BannedIds();
         var st = StrikesFor(listening);
-        var pool = db.ArchiveTracks(DateTimeOffset.UtcNow.AddHours(-Math.Max(24, O.NoRepeatHours)), 40)
+        var pool = db.ArchiveTracks(DateTimeOffset.UtcNow.AddHours(-Math.Max(24, O.NoRepeatHours)), 80)
             .Where(t => !excludeIds.Contains(t.Id) && !banned.Contains(t.Id) && !st.Song(KeyOf(t.Artist, t.Title), t.Id)
                         && (t.DurationSec == 0 || t.DurationSec <= O.MaxDurationSeconds))
             .ToList();
         if (pool.Count == 0) return null;
-        var t = pool[_rng.Next(pool.Count)];
+        // не навмання: лайкнуте з архіву скіпали 8,8 %, нелайкнуте — 23,3 %; тож вага — репутація (з лайками присутніх) і смак присутніх, у квадраті
+        var rep = reputation.Current;
+        var weights = pool.Select(x =>
+        {
+            var c = RoomTaste.Credit(x);
+            return Math.Pow(Reputation.Multiplier(rep, c.Artist, c.Title, listening) * taste.Multiplier(c.Artist, c.Title, 1, listening), 2);
+        }).ToList();
+        var roll = _rng.NextDouble() * weights.Sum();
+        var t = pool[^1];
+        for (var i = 0; i < pool.Count; i++)
+        {
+            roll -= weights[i];
+            if (roll > 0) continue;
+            t = pool[i];
+            break;
+        }
         log.LogInformation("auto-DJ archive pick: {Label}", t.Label);
         return new Pick(t, "з нашого архіву", Source: "archive");
     }
@@ -276,6 +307,7 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
 
         foreach (var seed in s.List) await CollectAsync(seed);
 
+        var rep = reputation.Current;
         var pool = cands.Values
             .Where(c => c.Yt is null || (!Blocked(c.Yt.Id) && Fits(c.Yt)))
             .Where(c => !strikes.Songs.Contains(c.Key))
@@ -288,6 +320,9 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
             else if (recentArtists.Contains(a)) c.Mult *= 0.35;
             c.Mult *= Math.Pow(0.25, artistStrikes.GetValueOrDefault(a));
             c.Mult *= taste.Multiplier(c.Artist, c.Title, s.Bias, s.Listening);
+            c.Mult *= Reputation.Multiplier(rep, c.Artist, c.Title, s.Listening);
+            var from = seedById[c.TopSeed];
+            c.Mult *= Novelty(taste.IsKnown(c.Artist), RoomTaste.ScriptOf(from.Artist, from.Title), RoomTaste.ScriptOf(c.Artist, c.Title), c.Sources.Count, O);
         }
         // a little jitter only keeps two fills from being identical; the gate below throws some of the top out, so take plenty
         var top = pool.OrderByDescending(c => c.Score * (0.88 + 0.12 * _rng.NextDouble())).Take(40).ToList();

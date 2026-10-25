@@ -679,6 +679,21 @@ public sealed class Db
         return list;
     }
 
+    /// <summary>Програвання від <paramref name="since"/>, коли хтось слухав на сайті (для <see cref="Reputation"/>): артист, назва, чи скіпнули.</summary>
+    public List<(string Artist, string Title, bool Skipped)> HeardPlays(DateTimeOffset since)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, """
+            SELECT t.artist, t.title, p.skipped FROM plays p JOIN tracks t ON t.id = p.track_id
+            WHERE p.started_at >= $s AND p.ended_at IS NOT NULL AND t.id NOT LIKE 'voice-%'
+              AND EXISTS (SELECT 1 FROM play_listeners l WHERE l.play_id = p.id)
+            """, ("$s", since.ToUniversalTime().ToString("o")));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, string, bool)>();
+        while (r.Read()) list.Add((r.GetString(0), r.GetString(1), r.GetInt32(2) == 1));
+        return list;
+    }
+
     /// <summary>Хто що скіпнув від <paramref name="since"/> (будь-яке джерело: і замовлення, і Глека, і запаску).</summary>
     public List<(TrackInfo Track, string Nick, DateTimeOffset At)> SkipsSince(DateTimeOffset since)
     {

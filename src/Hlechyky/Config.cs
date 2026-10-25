@@ -139,6 +139,12 @@ public sealed class AutoDjOptions
     public int SongFeedbackDays { get; set; } = 30;
     /// <summary>Відмови однієї людини з проміжком до стількох секунд — одна серія «не той настрій», а не окремі вироки.</summary>
     public int BurstSeconds { get; set; } = 60;
+    /// <summary>Множник для нового (кімнаті ще не відомого) кириличного артиста, якого показало одне джерело (AutoDj.Novelty).</summary>
+    public double NewCyrDamp { get; set; } = 0.6;
+    /// <summary>Те саме, коли його показали щонайменше два джерела.</summary>
+    public double NewCyrAgreeDamp { get; set; } = 0.85;
+    /// <summary>Новий артист іншим письмом, ніж трек-сід (кирилиця ↔ латиниця).</summary>
+    public double CrossScriptNewDamp { get; set; } = 0.5;
     /// <summary>Скіп авто-треку раніше за стільки секунд — сигнал «не те», а не «вже набридло».</summary>
     public int QuickSkipSeconds { get; set; } = 45;
 }
