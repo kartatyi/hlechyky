@@ -70,6 +70,7 @@
   HGames.register({
     id: 'fura',
     icon: ICON,
+    added: '2026-10-25',
     pad: {
       get dirs() { return !!game; },
       rstick: true,
