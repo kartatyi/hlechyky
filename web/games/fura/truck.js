@@ -42,6 +42,22 @@ export const TRAILER = {
   brake: 330,
 };
 
+/**
+ * «Чумак» з «Тентом» без тюнінгу — те саме, що `base` у data/fura/garage.json. Гараж (0.0.6) шле готові числа у виді
+ * (`career.params`), фура бере їх через setParams; гість, «⚖ Рівні фури» і полігон без тест-драйву їдуть цим.
+ * Константи TRACTOR/TRAILER не міняємо: з них crash.js бере «стандартну фуру» для ударів (маса в 💥 — завжди ця).
+ */
+export const BASE = {
+  power: TRACTOR.power, fmax: TRACTOR.fmax, mass: TRACTOR.mass.cab + TRACTOR.mass.frame, steer: TRACTOR.maxSteer, sway: 1,
+  brake: TRACTOR.brake, trailerBrake: TRAILER.brake, slip: TRACTOR.slip, side: TRACTOR.side, limits: 1, hurt: 1,
+  trailerStiff: TRAILER.stiff, trailerRelax: TRAILER.relax, engineBrake: 0.06, shiftPause: 1, cabVol: 1, shake: 1,
+  cruise: false, abs: false, allSeason: false, nav: false,
+};
+const NUM = ['power', 'fmax', 'mass', 'steer', 'sway', 'brake', 'trailerBrake', 'slip', 'side', 'limits', 'hurt',
+  'trailerStiff', 'trailerRelax', 'engineBrake', 'shiftPause', 'cabVol', 'shake'];
+const FLAG = ['cruise', 'abs', 'allSeason', 'nav'];
+const ABS_K = 0.9;                   // ABS: гальмо колеса — не більше 90 % того, що шина тримає (колесо котиться, не ковзає)
+
 /** Передачі. Тягнемо F = fmax · ratio (і не більше за P/v), понад vmax — відсічка. */
 const AUTO = [8, 12, 17, 23, 30, 38, 47, 57, 66, 75, 84, 90].map((k) => k / 3.6);
 const MANUAL = [13, 22, 34, 50, 68, 90].map((k) => k / 3.6);
@@ -61,6 +77,10 @@ export class Truck {
     this.prevVel = null; this.acc = { x: 0, y: 0, z: 0 };
     this.steerNow = 0;
     this.lights = false;
+    this.P = { ...BASE };              // числа фізики зараз (setParams)
+    this.cruiseV = 0; this.cruiseI = 0; this.cruiseDropped = false;   // круїз-контроль: швидкість, м/с (0 — вимкнено)
+    this.dragNow = 0; this.massNow = 1; this.vPrev = null;            // опір руху для автомата (canUp)
+    this.raw = false;                  // 💥 удар чужої фури: вантаж б'ється без пом'якшення тюнінгом (main.js з crash)
     this.buildTractor();
     this.buildTrailer();
     this.place(opts.spawn, false);
@@ -113,6 +133,50 @@ export class Truck {
     }
   }
 
+  /**
+   * Числа гаража (`career.params` з виду чи тест-драйв): потужність, тяга, маса тягача, кермо, гальма й ABS, шини,
+   * підвіска причепа, пороги й шкода вантажу, гальмо двигуном, коробка. Чого нема — як у «Чумака». true — щось змінилось.
+   */
+  setParams(p) {
+    const next = { ...BASE };
+    if (p) {
+      for (const k of NUM) if (Number.isFinite(+p[k]) && p[k] !== null && p[k] !== '') next[k] = +p[k];
+      for (const k of FLAG) if (p[k] != null) next[k] = !!p[k];
+      next.tractor = p.tractor || 'chumak'; next.trailer = p.trailer || 'tent';
+    }
+    const old = this.P;
+    if (NUM.every((k) => old[k] === next[k]) && FLAG.every((k) => old[k] === next[k]) && old.tractor === next.tractor && old.trailer === next.trailer) return false;
+    this.P = next;
+    if (old.mass !== next.mass) {
+      // кабіна й рама — у тій самій пропорції, що в «Чумака» (центр ваги той самий)
+      const k = next.mass / (TRACTOR.mass.cab + TRACTOR.mass.frame);
+      this.cabCol.setMass(TRACTOR.mass.cab * k);
+      this.frameCol.setMass(TRACTOR.mass.frame * k);
+    }
+    for (let i = 0; i < this.tvc.numWheels(); i++) {
+      this.tvc.setWheelFrictionSlip(i, next.slip);
+      this.tvc.setWheelSideFrictionStiffness(i, next.side);
+    }
+    for (let i = 0; i < this.rvc.numWheels(); i++) {
+      this.rvc.setWheelFrictionSlip(i, next.slip * TRAILER.slip / TRACTOR.slip);
+      this.rvc.setWheelSideFrictionStiffness(i, next.side * TRAILER.side / TRACTOR.side);
+      this.rvc.setWheelSuspensionStiffness(i, next.trailerStiff);
+      this.rvc.setWheelSuspensionRelaxation(i, next.trailerRelax);
+    }
+    if (!next.cruise) this.cruiseV = 0;
+    return true;
+  }
+
+  /** Круїз (коробка, щабель 1): увімкнути на теперішній швидкості чи вимкнути. 'none' — не куплено, 'slow' — замало. */
+  toggleCruise() {
+    if (!this.P.cruise) return 'none';
+    if (this.cruiseV) { this.cruiseV = 0; return 'off'; }
+    const v = this.speed();
+    if (this.gear < 1 || v < 20 / 3.6) return 'slow';
+    this.cruiseV = v; this.cruiseI = 0;
+    return 'on';
+  }
+
   /** Поставити фуру: spawn = {tractor:{x,z}, trailer:{x,z}}, coupled — одразу зчеплено (причіп під сідлом). */
   place(spawn, coupled) {
     // spawn: {tractor:{x,z,yaw?,y?}, trailer:{x,z,yaw?,y?}} — y — висота землі (на мапі з рельєфом), yaw — курс
@@ -134,7 +198,7 @@ export class Truck {
   }
 
   /** Після телепорту фура осідає на підвіску — це не удар по вантажу: датчик мовчить пів секунди. */
-  settle() { this.prevVel = null; this.acc = { x: 0, y: 0, z: 0 }; this.calm = 30; }
+  settle() { this.prevVel = null; this.acc = { x: 0, y: 0, z: 0 }; this.calm = 30; this.vPrev = null; this.dragNow = 0; }
 
   /** Поставити на колеса там, де стоїш (перекинувся, застряг): та сама точка й курс, на метр вище. */
   rescue() {
@@ -261,18 +325,33 @@ export class Truck {
   /** Один крок фізики керування: input з Input.poll, dt — крок (1/60). */
   drive(inp, dt) {
     if (this.glide) { this.stepGlide(dt); return; }
-    const C = TRACTOR, vc = this.tvc;
+    const C = TRACTOR, P = this.P, vc = this.tvc;
     const v = this.speed();
     const av = Math.abs(v);
+    // що тягне фуру назад (гора, кочення), згладжене ~0,5 с: тяга минулого кроку мінус m·a — автомату, щоб знати,
+    // чи потягне вища передача (на відсічці тяга 0, тож згладжуємо саме опір, а не прискорення)
+    const mass = this.tb.mass() + (this.coupled ? this.rb.mass() : 0);
+    if (this.vPrev != null) this.dragNow += ((this.forceNow || 0) - mass * (v - this.vPrev) / dt - this.dragNow) * Math.min(1, dt / 0.5);
+    this.vPrev = v; this.massNow = mass;
 
     // ---- кермо: колеса доганяють бажаний кут (рульова ~0,25 с від упору до упору)
-    const want = inp.steer * C.maxSteer;
+    const want = inp.steer * P.steer;
     this.steerNow += Math.max(-dt * 4, Math.min(dt * 4, want - this.steerNow));
     // мінус: додатний кут Rapier повертає ліворуч, а наше «кермо +» — праворуч
     for (let i = 0; i < 2; i++) vc.setWheelSteering(i, -this.steerNow);
 
     // ---- передачі
     let throttle = inp.throttle, brake = inp.brake;
+    // круїз: тримає швидкість газом (а на спуску — легким гальмом); газ, гальмо, ручник чи не та передача — знімають
+    if (this.cruiseV) {
+      if (throttle > 0.05 || brake > 0.05 || inp.handbrake || this.gear < 1 || !P.cruise) { this.cruiseV = 0; this.cruiseDropped = true; }
+      else {
+        const e = this.cruiseV - v;
+        this.cruiseI = Math.max(-0.3, Math.min(0.6, this.cruiseI + e * dt * 0.15));
+        throttle = Math.max(0, Math.min(1, e * 0.6 + this.cruiseI));
+        brake = e < -1.5 ? Math.min(0.3, (-e - 1.5) * 0.12) : 0;
+      }
+    }
     // H-перемикач бере коробку на себе, лише коли в ньому ввімкнули передачу: інакше з відкаліброваним
     // перемикачем у нейтралі фура вічно стояла б на N, хоч людина їздить автоматом
     if (inp.hGear && inp.hGear !== 'N' && !this.hUsed) { this.hUsed = true; this.gearMode = 'manual'; }
@@ -284,8 +363,9 @@ export class Truck {
       if (this.gear < 0) { const t = throttle; throttle = brake; brake = t; }
       if (this.gear > 0) {
         const top = AUTO[this.gear - 1];
-        if (av > top * 0.92 && this.gear < AUTO.length) this.gear++;
-        else if (this.gear > 1 && av < AUTO[this.gear - 2] * 0.62) this.gear--;
+        if (av > top * 0.92 && this.gear < AUTO.length && this.canUp(av, throttle)) this.gear++;
+        // «швидке перемикання» (коробка, щабель 2: shiftPause 0,5) — автомат раніше скидає передачу на підйомі
+        else if (this.gear > 1 && av < AUTO[this.gear - 2] * (0.62 + (1 - P.shiftPause) * 0.26)) this.gear--;
       }
     } else if (this.hUsed) {
       this.gear = inp.hGear === 'N' ? 0 : inp.hGear === 'R' ? -1 : +inp.hGear;
@@ -303,7 +383,7 @@ export class Truck {
     this.rpm += (rpmGoal - this.rpm) * Math.min(1, dt * 8);
     let force = 0;
     if (!clutchIn && top && throttle > 0) {
-      force = Math.min(C.fmax * Math.pow(ratio, 0.85), C.power / Math.max(av, 2)) * throttle;
+      force = this.pull(ratio, av) * throttle;
       if (av > top) force = 0;                                  // відсічка
       if (this.gearMode === 'manual' && av < top * 0.12 && this.gear > 2) force *= 0.35;   // «душить» на високій
       if (this.gear < 0) force = -force * 0.6;
@@ -311,17 +391,33 @@ export class Truck {
     const drives = C.wheels.map((w) => w[4]);
     const nDrive = drives.filter(Boolean).length;
     for (let i = 0; i < drives.length; i++) vc.setWheelEngineForce(i, drives[i] ? force / nDrive : 0);
+    this.forceNow = force;
 
     // ---- гальма: педаль на всі, ручник — задні тягача й причеп; легке гальмо двигуном без газу
-    const engineBrake = throttle < 0.02 && top && !clutchIn ? 0.06 : 0;
+    const engineBrake = throttle < 0.02 && top && !clutchIn ? P.engineBrake : 0;
     const b = Math.max(brake, engineBrake);
+    // ABS (гальма, щабель 3): педаль не дає колесу більше, ніж шина тримає, — колесо котиться й тримає бік; ручник — без ABS
+    const abs = (c, i, imp) => (P.abs && imp > 0 ? Math.min(imp, Math.max(1, c.wheelSuspensionForce(i) || 0) * dt * c.wheelFrictionSlip(i) * ABS_K) : imp);
     for (let i = 0; i < vc.numWheels(); i++) {
-      const hb = inp.handbrake && i >= 2 ? 1 : 0;
-      vc.setWheelBrake(i, Math.max(b, hb) * C.brake + 0.4);
+      const hb = inp.handbrake && i >= 2;
+      vc.setWheelBrake(i, (hb ? P.brake : abs(vc, i, b * P.brake)) + 0.4);
     }
     const rvc = this.rvc;
-    for (let i = 0; i < rvc.numWheels(); i++) rvc.setWheelBrake(i, (inp.handbrake || !this.coupled ? 1 : b) * TRAILER.brake + 0.4);
+    for (let i = 0; i < rvc.numWheels(); i++) rvc.setWheelBrake(i, (inp.handbrake || !this.coupled ? P.trailerBrake : abs(rvc, i, b * P.trailerBrake)) + 0.4);
     this.throttleNow = throttle; this.brakeNow = b;
+  }
+
+  /** Тяга на колесах при повному газі: передача ratio (перша — 1), швидкість av, м/с. */
+  pull(ratio, av) { return Math.min(this.P.fmax * Math.pow(ratio, 0.85), this.P.power / Math.max(av, 2)); }
+
+  /**
+   * Автомат «швидке перемикання» (коробка, щабель 2): на підйомі вгору не перемикає, якщо на вищій фура вже не
+   * розганялась би (інакше — вгору, тяга падає, вниз, і так по колу: «полювання» передач). Без щабля — як було.
+   */
+  canUp(av, throttle) {
+    if (this.P.shiftPause >= 1 || throttle < 0.5) return true;
+    const r1 = AUTO[0] / AUTO[this.gear - 1], r2 = AUTO[0] / AUTO[this.gear];
+    return (this.pull(r2, av) * throttle - this.dragNow) / this.massNow > 0.05 || this.pull(r1, av) <= this.pull(r2, av);
   }
 
   shift(d) {
@@ -351,7 +447,9 @@ export class Truck {
       const over = (x, t) => Math.max(0, Math.abs(x) - t);
       // Лінійно від перевищення: горби на 30 км/год — кілька відсотків, удар об дерево — десяток-два, а не все.
       // Пороги: трясе вгору-вниз (ями) найчутливіше, бокове — лише понад звичайний поворот, гальмо — лише різке.
-      const hurt = 3 * over(a.y, 1.8) + 0.5 * over(a.x, 4.5) + 0.8 * over(a.z, 5.0);
+      // Тюнінг (підвіска, «Пух», «Ластівка»): пороги × limits, шкода × hurt — лише від доріг: удар чужої фури (raw) — як у всіх
+      const L = this.raw ? 1 : this.P.limits, H = this.raw ? 1 : this.P.hurt;
+      const hurt = (3 * over(a.y, 1.8 * L) + 0.5 * over(a.x, 4.5 * L) + 0.8 * over(a.z, 5.0 * L)) * H;
       if (this.calm > 0) this.calm--;
       else if (hurt > 0) {
         const loss = hurt * dt * 8 * (this.fragile == null ? 1 : this.fragile);

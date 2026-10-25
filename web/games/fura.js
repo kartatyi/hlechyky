@@ -14,7 +14,10 @@
 
    2c — опція столу collide: «👻 привиди» (типово) чи «💥 зіткнення». Обирається при створенні столу (попап лобі або
    перемикач у картці) і посеред гри не міняється: інший режим — це новий стіл (CreateRoom з опцією; сидиш за цим —
-   каркас спершу спитає «встати?»). Режим столу видно в шапці столу (каркас підписує нетипову опцію) і 💥 у списку живих. */
+   каркас спершу спитає «встати?»). Режим столу видно в шапці столу (каркас підписує нетипову опцію) і 💥 у списку живих.
+
+   0.0.6 — 🔧 гараж (fura/garage.js): кнопка картки заводить край і одразу відкриває гараж. Тест-драйв із гаража —
+   гра перезапускається на полігоні з числами обраного (onTestDrive), ✕ на полігоні — назад у край. */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<rect x="1" y="4" width="9" height="7" rx="1" fill="var(--clay, #b5582f)"/>'
@@ -44,10 +47,12 @@
 
   function card(root) {
     root.innerHTML = '<div class="fura-card">'
-      + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">колона до 8 фур · версія 0.0.3</span></div>'
+      + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">колона до 8 фур · версія 0.0.6 «Гараж»</span></div>'
       + '<p><b>Чумацький край</b> — пагорби, річка з мостами, траса, сільські дороги й ґрунтовки між депо, Гончарівкою, '
       + 'Цегельнею, Медовим, Соляним складом і Полтавкою. Бери замовлення, чіпляй причіп і вези — сам чи колоною з друзями: '
       + 'колонне замовлення дає +15 % тим, хто здасть разом. <b>Полігон</b> — майданчик, щоб потренуватись чіплятись заднім ходом.</p>'
+      + '<p>🔧 <b>Гараж</b>: рейси дають досвід водія — рівні відкривають тягачі «Віл» і «Ластівку», причепи й тюнінг (двигун, гальма з ABS, '
+      + 'круїз-контроль…), а купуєш їх черепками. Вигляд фури — у Лавці, група «🚚 Фура».</p>'
       + '<ul class="fura-dev"><li>🛞 <b>Кермо</b> (G29 та інші) — при першому вході гра попросить відкалібрувати</li>'
       + '<li>🎮 <b>Пад / Steam Deck</b> — лівий стік кермо, R2 газ, L2 гальмо, Ⓐ зчепити</li>'
       + '<li>⌨ <b>Клавіатура</b> — W/S газ і гальмо, A/D кермо, T зчепити, C камера</li></ul>'
@@ -83,6 +88,7 @@
       b += '<button class="btn fura-go' + (full ? '' : ' fura-go2') + '" type="button" data-do="own">🗺 Свій стіл у краю' + (wm === 'crash' ? ' 💥' : '') + '</button>';
     } else if (ctx.mine && wm !== has) b += '<button class="btn fura-go" type="button" data-do="own">🗺 Новий стіл: ' + MODES[wm] + '</button>';
     else b += '<button class="btn fura-go" type="button" data-do="kray">🗺 Чумацький край' + (has === 'crash' ? ' 💥' : '') + '</button>';
+    if (!watch && !(ctx.mine && wm !== has)) b += '<button class="btn fura-go fura-go2" type="button" data-do="garage">🔧 Гараж</button>';
     b += '<button class="btn fura-go fura-go2" type="button" data-do="polygon">🚧 Полігон</button>';
     if (btns._html !== b) { btns.innerHTML = b; btns._html = b; }
 
@@ -103,6 +109,7 @@
     const k = b.dataset.do, err = root.querySelector('.fura-err');
     if (err) err.textContent = '';
     if (k === 'kray' || k === 'polygon') return start(root, b, k);
+    if (k === 'garage') return start(root, b, 'kray', { openGarage: true });
     if (k === 'mode') {
       want = b.dataset.mode;
       try { localStorage.setItem('fura.collide', want); } catch { /* пусто */ }
@@ -128,7 +135,8 @@
     } finally { b.disabled = false; b.textContent = label; }
   }
 
-  async function start(root, btn, mode) {
+  /** extra: { openGarage } — одразу 🔧 гараж; { testDrive: {params, label, career} } — полігон тест-драйву (✕ — назад у край). */
+  async function start(root, btn, mode, extra = {}) {
     if (game || starting) return;
     starting = true;
     const err = root.querySelector('.fura-err');
@@ -141,7 +149,14 @@
       bridge.onView = null;
       bridge.onFrame = null;
       gameMode = mode;
-      game = await mod.start({ onExit: stop, mode, server: mode === 'kray' ? bridge : null });
+      const back = () => { stop(); setTimeout(() => { const k = root.isConnected && root.querySelector('button[data-do=kray]'); if (k) start(root, k, 'kray'); }, 0); };
+      game = await mod.start({ onExit: extra.testDrive ? back : stop, mode, server: mode === 'kray' ? bridge : null,
+        testDrive: extra.testDrive || null, openGarage: !!extra.openGarage,
+        onTestDrive: mode === 'kray' ? (params, label, career) => {
+          stop();
+          const p = root.isConnected && root.querySelector('button[data-do=polygon]');
+          if (p) start(root, p, 'polygon', { testDrive: { params, label, career } });
+        } : null });
     } catch (e) {
       console.error('[fura]', e);
       if (err) err.textContent = 'Не завелось: ' + (e && e.message ? e.message : e);

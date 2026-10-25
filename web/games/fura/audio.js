@@ -3,6 +3,8 @@
 // турбіна (свист від тиску наддуву), гальмо двигуном, шум дороги від швидкості. З кабіни все глухіше (фільтр), зовні —
 // відкритіше. Ефекти: «пшш» пневматики, сигнал, зчеп, «дзень» вантажу — записами, де є, інакше синтезом.
 // Шини: двигун / ефекти / рація → загальна; рівні — з мікшера (mixer.js), 🔇 — у localStorage, як було.
+// Гараж (0.0.6): ріжок із Лавки «🚚 Фура» (setHorn) — синтез, як гімни, без чужих прав; голос тягача (setVoiceOf:
+// «Віл» нижче, «Ластівка» вище); «Тихий салон» — двигун у кабіні тихіше (truck.P.cabVol).
 // AudioContext — лише з натиску (вимога браузерів); вкладка у фоні — контекст на паузі.
 
 import { SampleEngine, loadBank } from './engine.js';
@@ -10,6 +12,20 @@ import { loadVol, gainOf } from './mixer.js';
 
 const MUTE = 'fura.mute';
 const BASE = 0.5;                  // загальна до мікшера — щоб «80» звучало як раніше
+
+// Ріжки: tones — тон, поки тримаєш ([Гц, хвиля, гучність]); pulse — «га-га» ([звучить, тиша], с) з bend (кінець/початок
+// висоти); seq — ноти MIDI групами (акорд), step — с на долю, hold — останній акорд тягнеться, loop — наспів по колу.
+const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+const HORNS = {
+  hornpneumo: { tones: [[220, 'sawtooth', 0.5], [277.2, 'sawtooth', 0.42], [110, 'square', 0.12]], lp: 1700, attack: 0.04 },
+  horngoose: { tones: [[311, 'square', 0.32], [466, 'sawtooth', 0.16]], lp: 1500, attack: 0.015, pulse: [0.17, 0.09], bend: 0.82 },
+  horntrembita: { tones: [[116.5, 'sawtooth', 0.42], [233, 'sawtooth', 0.36], [349.2, 'triangle', 0.24]], lp: 2100, attack: 0.3, vib: [5.2, 0.008] },
+  hornthree: { seq: [[[63], 1], [[67], 1], [[70], 1], [[63, 67, 70], 2]], step: 0.15, type: 'sawtooth', lp: 2600, hold: true },
+  horngold: { seq: [[[72], 1], [[76], 1], [[79], 1], [[72, 76, 79, 84], 2]], step: 0.11, type: 'square', lp: 3400, hold: true },
+  // «Ой на горі два дубки» — народна; наспів на слух, не нотами з видання
+  horndubky: { seq: [[[62], 1], [[65], 1], [[69], 2], [[69], 1], [[67], 1], [[65], 1], [[64], 1], [[62], 2], [[64], 1], [[65], 1], [[67], 2], [[64], 1], [[62], 3], [[0], 1]],
+    step: 0.2, type: 'sawtooth', lp: 1900, loop: true },
+};
 
 export class Sound {
   /** truck — для швидкості й передачі; view() — 'cabin' | 'chase' | 'far'. Обидва необов'язкові. */
@@ -21,6 +37,7 @@ export class Sound {
     this.view = view || (() => 'chase');
     this.vol = loadVol();
     this.load = 0; this.boost = 0; this.jake = 0; this.gear = null;
+    this.pitch = 1; this.hornKind = null; this.hv = null;
     this.onVis = () => {
       if (!this.ctx) return;
       if (document.hidden) this.ctx.suspend(); else this.ctx.resume();
@@ -163,6 +180,9 @@ export class Sound {
     const gear = tr ? tr.gear : 1;
     const inGear = gear !== 0;
     const k = this.ducked ? 0.35 : 1;                // говорить Глек — двигун тихіше
+    const cab = this.view() === 'cabin';
+    const cv = cab && tr && tr.P && tr.P.cabVol ? tr.P.cabVol : 1;   // «Тихий салон»
+    rpm *= this.pitch;                               // голос тягача: «Віл» нижче, «Ластівка» вище
 
     // навантаження: газ, згладжений (педаль не клацає тембром)
     this.load += (throttle - this.load) * Math.min(1, dt * 7);
@@ -176,7 +196,7 @@ export class Sound {
 
     if (this.samples) {
       this.samples.update(rpm, this.load, this.jake, t, this.view() !== 'cabin');
-      this.engIn.gain.setTargetAtTime(0.9 * k, t, 0.08);
+      this.engIn.gain.setTargetAtTime(0.9 * k * cv, t, 0.08);
     } else {
       const f = (rpm / 60) * 3;                     // шість циліндрів: три спалахи на оберт
       this.o1.frequency.setTargetAtTime(f, t, 0.05);
@@ -184,7 +204,7 @@ export class Sound {
       this.lp.frequency.setTargetAtTime(260 + throttle * 900 + rpm * 0.12, t, 0.08);
       this.eng.gain.setTargetAtTime(0.16 + throttle * 0.16, t, 0.08);
       this.ng.gain.setTargetAtTime(0.02 + throttle * 0.07, t, 0.1);
-      this.engIn.gain.setTargetAtTime(k, t, 0.08);
+      this.engIn.gain.setTargetAtTime(k * cv, t, 0.08);
     }
     // турбіна
     const tf = 1800 + this.boost * 3800 + rpm * 0.4;
@@ -197,15 +217,18 @@ export class Sound {
     this.roadLp.frequency.setTargetAtTime(160 + v * 14, t, 0.2);
 
     // кабіна: глухіше, більше низу; зовні — відкрито
-    const cab = this.view() === 'cabin';
     if (cab !== this.cab) {
       this.cab = cab;
       this.cabLp.frequency.setTargetAtTime(cab ? 1300 : 9000, t, 0.08);
       this.cabLow.gain.setTargetAtTime(cab ? 5 : 0, t, 0.08);
     }
 
-    // сигнал
-    if (this.hornS) {
+    // сигнал: ріжок із Лавки — свій синтез; інакше запис (чи синтез, доки запису нема)
+    if (this.hornKind) {
+      this.hornCustom(horn, t);
+      if (this.hornS) this.hornS.gain.setTargetAtTime(0, t, 0.02);
+      this.hornG.gain.setTargetAtTime(0, t, 0.02);
+    } else if (this.hornS) {
       this.hornS.gain.setTargetAtTime(horn ? 0.7 * (this.hornFx.gain || 1) : 0, t, horn ? 0.015 : 0.06);
       this.hornG.gain.setTargetAtTime(0, t, 0.02);
     } else this.hornG.gain.setTargetAtTime(horn ? 0.22 : 0, t, 0.02);
@@ -215,6 +238,84 @@ export class Sound {
     // перемикання передачі — коротке «пш» пневматики коробки
     if (this.gear != null && gear !== this.gear && gear > 0 && this.gear > 0) this.burst(0.12, 'highpass', 4000, 0.035);
     this.gear = gear;
+  }
+
+  /** Ріжок із вигляду фури (id речі Лавки) чи null — звичайний сигнал. */
+  setHorn(id) {
+    const k = id && HORNS[id] ? id : null;
+    if (k === this.hornKind) return;
+    this.hornOff(this.ctx ? this.ctx.currentTime : 0);
+    this.hornKind = k;
+  }
+
+  /** Голос тягача: 'diesel' (Чумак), 'v8' (Віл — нижче), 'six' (Ластівка — вища «шістка»). */
+  setVoiceOf(kind) { this.pitch = kind === 'v8' ? 0.8 : kind === 'six' ? 1.15 : 1; }
+
+  /** Ріжок, поки тримаєш: тон / «га-га» / ноти, наспів — по колу. */
+  hornCustom(on, t) {
+    const H = HORNS[this.hornKind], ctx = this.ctx;
+    if (!on) { if (this.hv) this.hornOff(t); return; }
+    let v = this.hv;
+    if (!v) {
+      const env = ctx.createGain(); env.gain.value = 0;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = H.lp; lp.Q.value = 0.9;
+      lp.connect(env); env.connect(this.bus.fx);
+      v = this.hv = { env, lp, oscs: [], next: t, i: 0, held: null };
+      if (H.tones) {
+        let lfo = null;
+        if (H.vib) { lfo = ctx.createOscillator(); lfo.frequency.value = H.vib[0]; lfo.start(t); v.oscs.push(lfo); }
+        for (const [hz, type, g] of H.tones) {
+          const o = ctx.createOscillator(); o.type = type; o.frequency.value = hz;
+          if (lfo) { const d = ctx.createGain(); d.gain.value = hz * H.vib[1]; lfo.connect(d); d.connect(o.frequency); }
+          const og = ctx.createGain(); og.gain.value = g; o.connect(og); og.connect(lp); o.start(t); v.oscs.push(o);
+        }
+        if (!H.pulse) env.gain.setTargetAtTime(0.2, t, H.attack);
+      } else env.gain.value = 0.2;
+    }
+    if (H.pulse) {
+      // «га-га»: вмикаємо й гасимо огинаючу, висота спадає до кінця кожного «га»
+      while (v.next < t + 0.15) {
+        const at = Math.max(v.next, t), [onS, offS] = H.pulse;
+        v.env.gain.setTargetAtTime(0.22, at, H.attack);
+        v.env.gain.setTargetAtTime(0.0001, at + onS, 0.02);
+        for (let i = 0; i < v.oscs.length; i++) {
+          const f0 = H.tones[i][0];
+          v.oscs[i].frequency.setValueAtTime(f0, at);
+          v.oscs[i].frequency.linearRampToValueAtTime(f0 * H.bend, at + onS);
+        }
+        v.next = at + onS + offS;
+      }
+    }
+    if (H.seq) {
+      while (v.next < t + 0.15 && (H.loop || v.i < H.seq.length)) {
+        const [notes, beats] = H.seq[v.i % H.seq.length], at = Math.max(v.next, t), dur = beats * H.step;
+        const last = !H.loop && v.i === H.seq.length - 1;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, at);
+        g.gain.linearRampToValueAtTime(0.8, at + 0.012);
+        g.gain.setTargetAtTime(0.55, at + 0.03, 0.08);
+        if (!(last && H.hold)) g.gain.setTargetAtTime(0.0001, at + dur - 0.03, 0.015);
+        g.connect(v.lp);
+        for (const n of notes) {
+          if (!n) continue;                      // пауза
+          const o = ctx.createOscillator(); o.type = H.type; o.frequency.value = midi(n);
+          const og = ctx.createGain(); og.gain.value = 0.5 / Math.sqrt(notes.length);
+          o.connect(og); og.connect(g); o.start(at);
+          if (last && H.hold) v.oscs.push(o); else o.stop(at + dur + 0.05);
+        }
+        v.next = at + dur; v.i++;
+      }
+    }
+  }
+
+  hornOff(t) {
+    const v = this.hv;
+    if (!v) return;
+    this.hv = null;
+    try {
+      v.env.gain.cancelScheduledValues(t);
+      v.env.gain.setTargetAtTime(0, t, 0.05);
+      for (const o of v.oscs) o.stop(t + 0.4);
+    } catch { /* контекст закрито */ }
   }
 
   /** Зіграти запис-ефект із банку (air, couple…). Нема — false. */

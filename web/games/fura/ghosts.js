@@ -246,6 +246,7 @@ export class Ghosts {
     this.interp = window.HGames && HGames.ui && HGames.ui.Interp ? HGames.ui.Interp(TICK) : null;
     this.me = null;              // своє місце — з кадру не малюємо
     this.names = new Map();      // seat → нік (з виду convoy); кого там нема — не малюємо
+    this.cars = new Map();       // seat → car з convoy (гараж 0.0.6): рівень для таблички, вигляд — фарба, наліпки, номер
     this.alone = true;           // за столом менше двох фур — кадрів більше не буде, привидів ховаємо одразу
     this.rigs = new Map();       // seat → { g: модель, label, nick, pose, at }
     this.tracks = new Map();     // seat → Track (кадри з q)
@@ -287,11 +288,14 @@ export class Ghosts {
 
   /** Ніки з виду: convoy [{seat, nick, …}]. */
   setConvoy(list) {
-    const next = new Map();
-    for (const c of list || []) if (c && c.seat != null) next.set(c.seat, c.nick || '');
-    this.names = next;
+    const next = new Map(), cars = new Map();
+    for (const c of list || []) if (c && c.seat != null) { next.set(c.seat, c.nick || ''); cars.set(c.seat, c.car || null); }
+    this.names = next; this.cars = cars;
     this.alone = next.size < 2;
-    for (const [seat, r] of this.rigs) if (r.nick !== (next.get(seat) || '')) this.relabel(seat, r, r.horn);
+    for (const [seat, r] of this.rigs) {
+      if (r.nick !== (next.get(seat) || '') || r.tag !== this.tagOf(seat)) this.relabel(seat, r, r.horn);
+      this.dress(seat, r);
+    }
     // місце звільнилось — його доріжка більше не потрібна (хто сяде, почне свою)
     for (const seat of this.tracks.keys()) if (!next.has(seat)) this.tracks.delete(seat);
   }
@@ -310,8 +314,17 @@ export class Ghosts {
     r = { seat, g, label: null, nick: null, pose: null, spin: 0, hornAt: 0 };
     this.rigs.set(seat, r);
     this.relabel(seat, r);
+    this.dress(seat, r);
     return r;
   }
+
+  /** «· Р12 ★» до ніка — з convoy[].car (гараж); нема гаража — порожньо. */
+  tagOf(seat) {
+    const car = this.cars.get(seat);
+    return car && car.lvl ? ' · Р' + car.lvl + (car.stars ? ' ★' + (car.stars > 1 ? car.stars : '') : '') : '';
+  }
+
+  dress(seat, r) { const car = this.cars.get(seat); r.g.setLook(car && car.look, this.names.get(seat) || ''); }
 
   /** Табличка з ніком над кабіною: спрайт із canvas (завжди лицем до камери). */
   relabel(seat, r, horn) {
@@ -321,7 +334,8 @@ export class Ghosts {
     c.width = 512; c.height = 128;
     const g = c.getContext('2d');
     g.font = '700 54px system-ui, sans-serif';
-    const text = (horn ? '📯 ' : '') + nick, w = Math.min(500, g.measureText(text).width + 56);
+    r.tag = this.tagOf(seat);
+    const text = (horn ? '📯 ' : '') + nick + r.tag, w = Math.min(500, g.measureText(text).width + 56);
     g.fillStyle = 'rgba(20,22,28,.72)';
     g.beginPath(); g.roundRect((512 - w) / 2, 18, w, 92, 30); g.fill();
     g.fillStyle = COLORS[seat % COLORS.length]; g.fillRect((512 - w) / 2 + 22, 50, 12, 28);

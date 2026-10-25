@@ -404,17 +404,21 @@ export class Trips {
       const frag = c.fragile >= 1.2 ? '💥 дуже крихке' : c.fragile >= 0.9 ? '⚠ крихке' : c.fragile > 0 ? 'обережно' : 'не б\'ється';
       // колонне (етап 2): одне на стіл, хто вже в ньому — видно; бокс кожному свій
       const k = o.id === 'k', mem = k && v.col && v.col.members && v.col.members.length ? v.col.members : null;
+      // гараж (0.0.6): далеке замовлення (×1,3 ДВ) і вантаж під свій причіп — «Ізотерм» чи «Низькорамник»
+      const tag = (o.far ? ' · 🧭 далеке, ×1,3 ДВ' : '') + (c.trailer === 'izoterm' ? ' · 🧊 ізотерм' : c.trailer === 'low' ? ' · 🛤 низькорамник' : '');
       const colLine = !k ? '' : '<br><span class="fura-ord-k">' + (mem ? '🚚 приєднатися (' + mem.map(escH).join(', ') + ')' : '🚚 почати колону — +15 % тим, хто здасть разом') + '</span>';
       return '<button type="button" class="fura-ord' + (k ? ' fura-ord-col' : '') + '" data-id="' + o.id + '"><span class="e">' + (c.emoji || '📦') + '</span>'
         + '<span class="t"><b>' + (k ? '⛓ Колонне: ' : '') + (c.title || o.cargo) + '</b><br>' + this.places[o.from].short + ' → ' + this.places[o.to].short
-        + '<br><small>' + String(o.km).replace('.', ',') + ' км · ' + o.minutes + ' хв · ' + frag + '</small>' + colLine + '</span>'
+        + '<br><small>' + String(o.km).replace('.', ',') + ' км · ' + o.minutes + ' хв · ' + frag + tag + '</small>' + colLine + '</span>'
         + '<span class="p">~' + o.pay + ' 🏺' + (k ? '<small>+15 %</small>' : '') + '</span></button>';
     }).join('');
     this.boxModal('<h3>📋 Дошка замовлень</h3><p class="muted">Причіп забираєш у відправника сам. Плата — коли довезеш; ціле менше — менше черепків. Денна стеля — ' + v.cap + ' 🏺.</p>'
-      + '<div class="fura-ords">' + rows + '</div><div class="fura-row"><button type="button" class="close">Покататись без замовлення</button></div>', (el, m) => {
+      + '<div class="fura-ords">' + rows + '</div><div class="fura-row"><button type="button" class="close">Покататись без замовлення</button>'
+      + (this.openGarage ? '<button type="button" class="garage">🔧 Гараж' + this.lvlTag() + '</button>' : '') + '</div>', (el, m) => {
       el.addEventListener('click', (e) => {
         const b = e.target.closest('.fura-ord');
         if (b) { m.close(); this.take(b.dataset.id === 'k' ? 'k' : +b.dataset.id); }
+        else if (e.target.closest('.garage')) { m.close(); this.openGarage(); }
         else if (e.target.closest('.close')) m.close();
       });
     });
@@ -434,6 +438,19 @@ export class Trips {
         else if (e.target.closest('.go')) m.close();
       });
     });
+  }
+
+  /** «· Р7» для кнопки гаража. */
+  lvlTag() { const c = this.view && this.view.career; return c ? ' · Р' + c.lvl : ''; }
+
+  /** Рядок «Досвід» у підсумку: ДВ за рейс (сервер, result.xp) і чому стільки — втома, наставник, новий рівень. */
+  xpRow(r) {
+    const c = this.view && this.view.career;
+    if (r.xp == null && !c) return '';
+    const l = c && c.last && c.last.trip === r.trip ? c.last : null;
+    const why = [l && l.mentor ? 'наставник ×1,2' : '', l && l.tired ? 'втома ×0,5 (11-й рейс за день)' : '', l && l.up ? '🎉 <b>рівень ' + l.up + '!</b>' : '']
+      .filter(Boolean).join(' · ');
+    return '<tr><td>Досвід</td><td><b>+' + (r.xp || 0) + ' ДВ</b>' + (why ? ' · ' + why : '') + (c ? ' <span class="muted">· Р' + c.lvl + ' ' + (c.xp - c.from) + '/' + (c.next - c.from) + '</span>' : '') + '</td></tr>';
   }
 
   /** Рядок «Колона» в підсумку: бонус уже нараховано (r.bonus, черепки × Boost) чи ще чекає, щоб хтось здав у вікні 5 хв. */
@@ -460,7 +477,7 @@ export class Trips {
       + row('Час', mmss(r.sec) + ' з ' + r.minutes + ':00' + (r.onTime ? ' — вчасно, +10 %' : ' — запізнився'))
       + row('Ціле', r.k + ' %') + row('У бокс', r.exact ? 'точно, +10 %' : 'не в бокс')
       + (r.auto ? row('Автозчеп', '−10 %') : '')
-      + row('Черепки', '<b>+' + r.shards + ' 🏺</b>') + this.colRow(r) + '</table>'
+      + row('Черепки', '<b>+' + r.shards + ' 🏺</b>') + this.colRow(r) + this.xpRow(r) + '</table>'
       + '<p class="muted small">Денна стеля рейсів — ' + this.view.cap + ' 🏺: понад неї рейс зараховано, але черепків нема.</p>'
       + '<div class="fura-row"><button type="button" class="main next">Далі — нові замовлення</button></div>', (el, m) => {
       el.querySelector('.next').addEventListener('click', async () => { m.close(); await this.next(); setTimeout(() => this.board(), 400); });

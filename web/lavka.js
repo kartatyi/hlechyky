@@ -37,7 +37,7 @@
 
   const TABS = [['icon', '🏺 Значки'], ['frame', '⭕ Рамки'], ['color', '🎨 Колір ніка'], ['title', '🏷 Титули'],
     ['bg', '🖼 Тло'], ['perk', '✨ Вміння'], ['photo', '📷 Своя фотка'], ['anthem', '🎺 Гімни'], ['fx', '🎉 Святкування'],
-    ['blade', '🔪 Леза'], ['curse', '😈 Прокльони'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
+    ['blade', '🔪 Леза'], ['fura', '🚚 Фура'], ['curse', '😈 Прокльони'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
   /// Чого в подарунку нема: полиці — шафа своя, а прожарку не дарують (її замовляють самі, web/liveads.js), прокльон
   /// насилають, а не дарують; речі — «Свій трек» (його ставлять собі: уривок обирає сама людина, сервер подарунок теж
   /// відмовить) і «Свій дзвінок» (не дарується, flair.md §2).
@@ -248,8 +248,27 @@
       case 'curse': return '<span class="lv-emoji">' + emo(artEmoji(it) || '😈') + '</span>';
       case 'fx': return '<span class="lv-emoji">' + emo(artEmoji(it) || '🎉') + '</span>';
       case 'blade': return '<span class="lv-emoji">' + emo(artEmoji(it) || '🔪') + '</span>';
+      case 'fura-paint': {
+        // фарба кабіни: той самий відтінок, що колір ніка (art — hue), «Веселка» — смугами
+        const bg = it.art === 'rainbow' ? 'linear-gradient(180deg,#e53935,#fb8c00,#fdd835,#43a047,#1e88e5,#8e24aa)' : 'hsl(' + (+it.art || 0) + ' 58% 42%)';
+        return '<span class="lv-emoji" style="display:inline-flex;align-items:center;justify-content:center;width:1.6em;height:1.6em;border-radius:.3em;background:' + bg + '">🚚</span>';
+      }
+      case 'fura-art': return '<span class="lv-emoji">' + ({ petrykivka: '🌺', vyshyvanka: '🧵', viz: '🐂', trypillia: '🌀' }[it.art] || '🎨') + '</span>';
     }
+    if (isFura(it)) return '<span class="lv-emoji">' + emo(artEmoji(it) || '🚚') + '</span>';
     return '';
+  }
+  /// «🚚 Фура» — вигляд фури в «Чумаках-далекобійниках» (specs/fura.md, «Гараж (0.0.6)»): вид fura-paint, fura-horn…
+  const isFura = (it) => !!it && /^fura-/.test(it.kind || '');
+  const FURA_TEXT = { 'fura-paint': 'Фарба кабіни фури в «Чумаках».', 'fura-gloss': 'Блиск поверх будь-якої фарби фури.',
+    'fura-art': 'Розпис на кабіну й борт причепа.', 'fura-horn': 'Ріжок фури замість звичайного сигналу.',
+    'fura-dash': 'На панель кабіни.', 'fura-sticker': 'Наліпка на задні двері причепа — до трьох.', 'fura-flag': 'На дах кабіни.',
+    'fura-lamp': 'Люстра на дах кабіни — світиться з фарами.' };
+  /// Слот для вдягання: наліпок три (fura-sticker, fura-sticker2, fura-sticker3) — у перший вільний; зняти — той, де вона.
+  function furaSlot(it, off) {
+    if (!it || it.kind !== 'fura-sticker') return it ? it.kind : null;
+    const worn = (data && data.worn && data.worn.fura) || {}, slots = ['fura-sticker', 'fura-sticker2', 'fura-sticker3'];
+    return off ? slots.find((s) => worn[s] === it.id) || 'fura-sticker' : slots.find((s) => !worn[s]) || 'fura-sticker3';
   }
   /// Емодзі речі: у гімнів і прокльонів art — { emoji, url }, у святкувань — { emoji } або сам рядок.
   const artEmoji = (it) => (it && it.art ? (typeof it.art === 'string' ? it.art : it.art.emoji || '') : '');
@@ -320,7 +339,7 @@
     const url = (it.kind === 'anthem' || it.kind === 'curse') && artUrl(it);
     const tryBtn = url ? '<button class="ghost" type="button" data-anth="' + esc(url) + '" title="Прослухати — нічого не купує">▶</button>'
       : it.kind === 'fx' ? '<button class="ghost" type="button" data-fx-try="' + esc(it.id) + '" title="Подивитись — нічого не купує">▶</button>'
-      : !['perk', 'anthem', 'curse', 'blade'].includes(it.kind) && !gift && !it.worn && !(it.id === OWN_BG && !(data.ownBg && data.ownBg.url))
+      : !['perk', 'anthem', 'curse', 'blade'].includes(it.kind) && !isFura(it) && !gift && !it.worn && !(it.id === OWN_BG && !(data.ownBg && data.ownBg.url))
         ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
     // У подарунку «моє / вдягнуто» ні до чого: річ вибирають для іншої людини.
     const mine = !gift;
@@ -333,6 +352,7 @@
       + (it.id === OWN_BG ? '<div class="muted small lv-desc">' + esc(OWN_BG_TEXT) + '</div>' : '')
       + (it.kind === 'fx' && FX_TEXT[it.id] ? '<div class="muted small lv-desc">' + esc(FX_TEXT[it.id]) + '</div>' : '')
       + (it.kind === 'blade' ? '<div class="muted small lv-desc">' + esc(BLADE_TEXT[it.id] || 'Лезо для «Шаткуй!»: свій слід і свист.') + '</div>' : '')
+      + (isFura(it) ? '<div class="muted small lv-desc">' + esc(FURA_TEXT[it.kind] || '') + '</div>' : '')
       + (it.kind === 'curse' && CURSE_TEXT[it.id] ? '<div class="muted small lv-desc">' + esc(CURSE_TEXT[it.id]) + '</div>' : '')
       + (url ? '<div class="muted small lv-dur" data-dur="' + esc(url) + '">' + durText(url) + '</div>' : '')
       + '<div class="lv-state">' + state + '</div>'
@@ -388,7 +408,7 @@
     // Титули за ачівки не дарують і не купують — у подарунковому режимі їх не показуємо зовсім.
     // «Свій дзвінок» — вміння, але живе на полиці гімнів (дзвінком стає свій гімн): там і купується, і обирається.
     const list = tab === 'mine' ? items.filter((x) => x.owned)
-      : items.filter((x) => x.kind === tab && x.id !== RING && !(giftTo && (x.earned || NO_GIFT.includes(x.id))));
+      : items.filter((x) => (tab === 'fura' ? isFura(x) : x.kind === tab) && x.id !== RING && !(giftTo && (x.earned || NO_GIFT.includes(x.id))));
     // Сезонне, що продається саме зараз (🎃 восени, 🎄 на свята), — першим: воно ненадовго, і в кінці полиці його не видно.
     const now = (x) => (x.season && x.season.open ? 0 : 1);
     if (tab !== 'mine') list.sort((a, b) => now(a) - now(b));
@@ -463,8 +483,11 @@
     if (reset) reset.onclick = () => { for (const k of Object.keys(preview)) delete preview[k]; paint(); };
     root.querySelectorAll('[data-buy]').forEach((b) => b.onclick = (e) => buy(b.dataset.buy, null, e.currentTarget));
     root.querySelectorAll('[data-gift]').forEach((b) => b.onclick = (e) => buy(b.dataset.gift, giftTo, e.currentTarget));
-    root.querySelectorAll('[data-wear]').forEach((b) => b.onclick = (e) => wear(item(b.dataset.wear).kind, b.dataset.wear, e.currentTarget));
-    root.querySelectorAll('[data-off]').forEach((b) => b.onclick = (e) => wear(b.dataset.off, null, e.currentTarget));
+    root.querySelectorAll('[data-wear]').forEach((b) => b.onclick = (e) => wear(furaSlot(item(b.dataset.wear)), b.dataset.wear, e.currentTarget));
+    root.querySelectorAll('[data-off]').forEach((b) => b.onclick = (e) => {
+      const it = b.closest('[data-id]') && item(b.closest('[data-id]').dataset.id);
+      wear(it && it.kind === 'fura-sticker' ? furaSlot(it, true) : b.dataset.off, null, e.currentTarget);
+    });
     // Файл вибираємо просто в обробнику кліку: Safari відкриває вибір фото лише з живого натиску.
     root.querySelectorAll('[data-ph-pick]').forEach((b) => b.onclick = () => pickPhoto('photo'));
     root.querySelectorAll('[data-ph-off]').forEach((b) => b.onclick = (e) => removePhoto(e.currentTarget));

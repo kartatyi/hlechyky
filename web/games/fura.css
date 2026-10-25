@@ -122,3 +122,53 @@
   .fura-speed { font-size: 34px; } .fura-speedo, .fura-cargo { min-width: 0; padding: 8px 10px; }
   .fura-cargo .fura-pct { font-size: 20px; }
 }
+
+/* 🔧 Гараж (fura/garage.js, 0.0.6): на весь екран поверх гри — вкладки, список, тягач на постаменті, картка */
+.fura-garage { position: absolute; inset: 0; z-index: 5; display: grid; grid-template-rows: auto auto 1fr auto; gap: 10px; padding: 16px 20px;
+  background: radial-gradient(ellipse at 50% 42%, #3d352a 0%, #1c1d22 72%); color: #f3efe8; pointer-events: auto; }
+.fura-garage .muted { opacity: .72; }
+.fura-garage .small { font-size: 12px; }
+.fura-gr-top { display: flex; align-items: center; gap: 14px; font-size: 16px; }
+.fura-gr-top b { font-size: 22px; }
+.fura-gr-lvl { color: #f2c94c; font-weight: 700; }
+.fura-gr-bal { margin-left: auto; font-weight: 700; }
+.fura-gr-x { width: 40px; height: 40px; border-radius: 10px; border: 0; background: #3a3f4b; color: #fff; font-size: 18px; cursor: pointer; }
+.fura-gr-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.fura-gr-tabs button { padding: 8px 16px; border-radius: 10px; border: 0; background: #2c303a; color: #f3efe8; cursor: pointer; font-weight: 600; }
+.fura-gr-tabs button.on { background: #d08a2c; color: #1b1205; }
+.fura-gr-body { display: grid; grid-template-columns: minmax(200px, 270px) 1fr minmax(280px, 400px); gap: 14px; min-height: 0; }
+.fura-gr-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
+.fura-gr-it { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 0;
+  background: #2c303a; color: #f3efe8; cursor: pointer; text-align: left; }
+.fura-gr-it small { opacity: .8; white-space: nowrap; }
+.fura-gr-it.on { background: #4a422c; box-shadow: inset 0 0 0 2px #d08a2c; }
+.fura-gr-it.locked span { opacity: .6; }
+.fura-gr-stage { position: relative; min-height: 0; }
+.fura-gr-stage canvas { width: 100%; height: 100%; display: block; }
+.fura-gr-tag { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-weight: 800; font-size: 20px; color: #f2c94c;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
+.fura-gr-card { background: rgba(32, 35, 43, .92); border-radius: 14px; padding: 14px 16px; overflow: auto; min-height: 0; }
+.fura-gr-card h4 { margin: 0 0 6px; font-size: 20px; }
+.fura-gr-card p { margin: 6px 0; }
+.fura-gr-card table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.fura-gr-card td { padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, .08); vertical-align: top; }
+.fura-gr-card td:first-child { white-space: nowrap; color: #f2c94c; }
+.fura-gr-card tr.fura-gr-next td, .fura-gr-card tr.next td { background: rgba(208, 138, 44, .14); }
+.fura-gr-acts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.fura-gr-acts button { padding: 10px 14px; border-radius: 10px; border: 0; background: #3a3f4b; color: #fff; cursor: pointer; font-weight: 600; }
+.fura-gr-acts button.main { background: #d08a2c; color: #1b1205; }
+.fura-gr-buy { position: relative; overflow: hidden; touch-action: none; }
+.fura-gr-buy i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255, 255, 255, .5); }
+.fura-gr-buy span { position: relative; }
+.fura-gr-why { color: #ffcf8a; }
+.fura-gr-msg { margin-top: 8px; font-weight: 600; }
+.fura-gr-help { font-size: 12px; text-align: center; }
+@media (max-width: 900px) { .fura-gr-body { grid-template-columns: 1fr; grid-template-rows: minmax(120px, auto) 180px auto; overflow: auto; } }
+
+/* Смуга досвіду водія під тахометром («Р7 · 420/450») і навігатор (кабіна, щабель 2) */
+.fura-xp { position: relative; height: 15px; margin-top: 7px; border-radius: 7px; background: rgba(255, 255, 255, .14); overflow: hidden;
+  font-size: 11px; line-height: 15px; white-space: nowrap; }
+.fura-xp i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #b5482f, #f2c94c); }
+.fura-xp span { position: relative; padding-left: 6px; font-weight: 700; }
+.fura-navi { left: 16px; bottom: 172px; font-size: 17px; }
+.fura-navi b { font-size: 26px; margin-right: 6px; }

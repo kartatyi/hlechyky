@@ -16,6 +16,7 @@ export const ACTIONS = [
   ['gearDown', 'Передача вниз (пелюстка)'],
   ['reset', 'Поставити фуру на колеса'],
   ['menu', 'Меню / пауза'],
+  ['cruise', 'Круїз-контроль (з гаража)'],
 ];
 export const H_GEARS = ['1', '2', '3', '4', '5', '6', 'R'];
 
@@ -58,14 +59,14 @@ const btn = (gp, i) => i != null && i >= 0 && !!(gp.buttons[i] && gp.buttons[i].
 // Клавіші гри (див. poll і main.js). Поки гра відкрита, вони лише її: пробіл не тисне кнопку у фокусі (📻 чи ☰ у панелі
 // після кліку мишею, кнопку сайту під грою), Enter теж, стрілки не гортають сторінку, Esc не виводить каркас зі столу.
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Enter',
-  'KeyH', 'KeyT', 'KeyC', 'KeyE', 'KeyQ', 'KeyR', 'KeyL', 'KeyF', 'KeyM', 'Escape']);
+  'KeyH', 'KeyT', 'KeyC', 'KeyE', 'KeyQ', 'KeyR', 'KeyL', 'KeyF', 'KeyM', 'KeyK', 'KeyG', 'KeyP', 'Escape']);
 /** Друкують: балачка, пошук — там клавіші людини, не фури. */
 const typing = (t) => !!t && ((t.matches && t.matches('input, textarea, select')) || t.isContentEditable);
 /** Вікно гри: там Enter і Пробіл тиснуть кнопку у фокусі самі (↑↓ і Esc вікну дає main.js navModal). */
 const inBox = (t) => !!(t && t.closest && t.closest('.fura-modal'));
 
 // Стандартна розкладка пада (W3C): 0 Ⓐ 1 Ⓑ 2 Ⓧ 3 Ⓨ 4 LB 5 RB 6 LT 7 RT 8 Back 9 Start 10 L3 11 R3 12–15 хрестовина
-const PAD = { couple: 0, handbrake: 1, camera: 2, horn: 3, gearDown: 4, gearUp: 5, reset: 8, menu: 9 };
+const PAD = { couple: 0, handbrake: 1, camera: 2, horn: 3, gearDown: 4, gearUp: 5, reset: 8, menu: 9, cruise: 15 };
 
 export class Input {
   constructor() {
@@ -135,6 +136,7 @@ export class Input {
     if (this.took('KeyE')) out.hit.add('gearUp');
     if (this.took('KeyQ')) out.hit.add('gearDown');
     if (this.took('KeyR')) out.hit.add('reset');
+    if (this.took('KeyK')) out.hit.add('cruise');
     if (this.took('Escape')) out.hit.add('menu');
     use('kbd', target !== 0 || out.throttle || out.brake);
 
