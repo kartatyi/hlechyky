@@ -235,6 +235,11 @@ public sealed class EconomyOptions
     public int ClickerDailyCapMax { get; set; } = 40;
     /// <summary>Скільки черепків на день можуть принести всі позастандартні нагороди разом.</summary>
     public int AwardDailyCap { get; set; } = 30;
+    /// <summary>
+    /// Денна стеля рейсів «Чумаків-далекобійників» (причина <c>fura:N</c>, specs/fura.md): база, × <see cref="Boost"/>
+    /// (200 → 2000). Окремо від <see cref="AwardDailyCap"/> — рейс за 150–500 інакше з'їв би її першим же разом.
+    /// </summary>
+    public int FuraDailyCap { get; set; } = 200;
 
     /// <summary>Бан треку, що грає, за черепки (адміну безкоштовно). 0 — за черепки не можна.</summary>
     public int BanPrice { get; set; } = 100;

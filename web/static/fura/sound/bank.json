@@ -1,0 +1,82 @@
+{
+ "rpmMap": {
+  "from": [
+   600,
+   2100
+  ],
+  "to": [
+   620,
+   1800
+  ]
+ },
+ "loops": [
+  {
+   "file": "on1300.mp3",
+   "rpm": 1300,
+   "set": "on",
+   "loopStart": 0.15,
+   "loopEnd": 2.28889,
+   "gain": 1
+  },
+  {
+   "file": "on1450.mp3",
+   "rpm": 1450,
+   "set": "on",
+   "loopStart": 0.15,
+   "loopEnd": 3.36454,
+   "gain": 1
+  },
+  {
+   "file": "on1600.mp3",
+   "rpm": 1600,
+   "set": "on",
+   "loopStart": 0.15,
+   "loopEnd": 4.46565,
+   "gain": 1
+  },
+  {
+   "file": "on1720.mp3",
+   "rpm": 1720,
+   "set": "on",
+   "loopStart": 0.15,
+   "loopEnd": 2.28814,
+   "gain": 1
+  },
+  {
+   "file": "idle700.mp3",
+   "rpm": 700,
+   "set": "on",
+   "loopStart": 0.15,
+   "loopEnd": 3.06379,
+   "gain": 1
+  },
+  {
+   "file": "ext1690.mp3",
+   "rpm": 1690,
+   "set": "ext",
+   "loopStart": 0.15,
+   "loopEnd": 3.98268,
+   "gain": 1
+  }
+ ],
+ "fx": {
+  "horn": {
+   "file": "horn.mp3",
+   "gain": 0.55,
+   "loopStart": 0.05,
+   "loopEnd": 0.31807
+  },
+  "couple": {
+   "file": "couple.mp3",
+   "gain": 0.9
+  },
+  "air": {
+   "file": "air.mp3",
+   "gain": 0.5
+  },
+  "start": {
+   "file": "start.mp3",
+   "gain": 0.8
+  }
+ }
+}

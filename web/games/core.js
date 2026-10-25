@@ -98,6 +98,9 @@
     // Кахлі (три в ряд): шлях рівнів і дві хвилини на час. Кахлі дня — окремо, у «Щоденних» і «Сьогодні».
     { id: 'kakhli', title: 'Кахлі', games: [['kakhli', '🏺 Шлях кахляра'], ['kakhli-blitz', '⏱ На час']],
       hint: 'Три в ряд на розписних кахлях: міняй сусідні, складай рядки, рушники, жаринки й чарівні глеки. Тридцять рівнів із глиною й мотузками — або дві хвилини, поки піч гаряча.' },
+    // Шаткуй! (наш Fruit Ninja): Класика з життями, хвилина Ярмарку з морозом і зливою, Дзен без глеків. Шаткуй дня — у «Щоденних».
+    { id: 'shatkuy', title: 'Шаткуй!', games: [['shatkuy', '🔪 Класика'], ['shatkuy-fair', '🎪 Ярмарок'], ['shatkuy-zen', '🍃 Дзен']],
+      hint: 'Дядько Глек підкидає з воза овочі — шаткуй змахом пальця чи миші! Кілька одним махом — комбо. Тільки глек не чіпай.' },
   ];
   const familyOf = {};
   for (const f of FAMILIES) for (const [id] of f.games) familyOf[id] = f;
@@ -127,10 +130,10 @@
       { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'memy', 'geese'] },
     ],
     solo: [
-      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'namysto', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
+      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'namysto', 'shatkuy', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
       // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
       { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'kakhli-daily', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
-        'tyr-daily', 'namysto-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
+        'tyr-daily', 'namysto-daily', 'shatkuy-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
       { id: 'slots', title: 'Слоти', icon: '🍒', ids: ['slot-glek', 'slot-cascade', 'slot-hold', 'slot-cluster', 'slot-slidy'] },
@@ -4352,6 +4355,8 @@
     openGift,
     send,
     get catalog() { return catalog; },
+    /// Живі столи лобі (остання подія 'rooms', копія — лише читати): картка «Чумаків» показує, хто в рейсі, й кличе приєднатися.
+    get rooms() { return rooms.slice(); },
   };
 
   window.HGames = HGames;

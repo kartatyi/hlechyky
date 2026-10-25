@@ -213,6 +213,10 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             // тієї самої події — ні.
             else if (e.Reason.StartsWith("points:", StringComparison.Ordinal))
                 economy.Grant(e.Nick, o.Earn(e.Shards), $"points:{e.GameId}", $"points:{e.GameId}:{e.RoomId}:{e.Reason[7..]}:{nickKey}");
+            // Рейс «Чумаків» (fura:<номер рейсу>, бонус колони — fura:<номер>k): база × Boost, як award:, але своя денна
+            // стеля FuraDailyCap. Те, що в стелю вже не влазить цілком, платимо залишком — рейс на 500 при 1800 з 2000 дає 200.
+            else if (e.Reason.StartsWith("fura:", StringComparison.Ordinal))
+                Fura(e, nickKey, day, o);
             else if (!e.Reason.StartsWith("ach:", StringComparison.Ordinal))
             {
                 var shards = o.Earn(e.Shards);
@@ -221,6 +225,25 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
             }
         }
         achievements.OnAward(e);
+    }
+
+    /// <summary>Лічильник денної стелі рейсів «Чумаків» (economy_counters.key).</summary>
+    public const string FuraCapKey = "fura";
+
+    void Fura(AwardEvent e, string nickKey, string day, EconomyOptions o)
+    {
+        var shards = o.Earn(e.Shards);
+        var cap = o.Earn(o.FuraDailyCap);
+        var pay = Math.Min(shards, cap - store.Counter(nickKey, FuraCapKey, day));
+        if (pay <= 0) return;
+        var trip = e.Reason["fura:".Length..];
+        var what = trip.EndsWith('k') ? $"колона за рейс №{trip[..^1]}" : $"рейс №{trip}";
+        var text = pay < shards
+            ? $"+{pay} {Economy.Shards(pay)}: {what} — далі денна стеля {cap} 🏺"
+            : $"+{pay} {Economy.Shards(pay)}: {what}";
+        // Ref без кімнати (етап 2): рейс належить ніку, тож той самий рейс за двома столами платиться раз. Старі ref-и
+        // етапу 1 (fura:<кімната>:<N>:<нік>) з цими не збігаються — номер рейсу після міграції йде далі.
+        economy.GrantCapped(e.Nick, pay, $"award:{e.Reason}", $"fura:{nickKey}:{trip}", FuraCapKey, cap, pay, text);
     }
 
     /// <summary>

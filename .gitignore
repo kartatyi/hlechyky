@@ -38,6 +38,8 @@ data/words/*
 !data/melody/
 # «Своя гра»: вбудовані пакети й книга фраз ведучого їдуть разом із грою; медіа користувачів (data/svoya/media) — ні.
 !data/svoya/
+# «Чумаки-далекобійники»: мапи (граф доріг, місця, вантажі) — їх читають і сервер, і браузер.
+!data/fura/
 data/svoya/*
 !data/svoya/builtin/
 !data/svoya/host.json
@@ -52,7 +54,10 @@ data/svoya/*
 cache/
 logs/
 # binaries (copy yt-dlp.exe, ffmpeg.exe, ffprobe.exe into tools/yt-dlp/)
-tools/
+tools/*
+# імпорт мап OSM для «Чумаків» (Python) — у гіті; кеш завантажень лежить поза репо
+!tools/osm/
+tools/osm/__pycache__/
 # build output
 bin/
 obj/
