@@ -119,8 +119,8 @@ export class Nav {
     return -Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw));
   }
 
-  /** Мінімапа: canvas, фура в центрі, курсом угору; scale — пікселів на метр. */
-  draw(cv, x, z, yaw, scale = 0.33) {
+  /** Мінімапа: canvas, фура в центрі, курсом угору; scale — пікселів на метр. others — колона: [{x, z, nick, color}]. */
+  draw(cv, x, z, yaw, scale = 0.33, others = null) {
     const g = cv.getContext('2d'), w = cv.width, h = cv.height;
     g.clearRect(0, 0, w, h);
     g.save();
@@ -144,6 +144,29 @@ export class Nav {
     }
     if (this.target) { g.beginPath(); g.arc(this.target.x, this.target.z, 6 / scale, 0, Math.PI * 2); g.fillStyle = '#f2c94c'; g.fill(); }
     g.restore();
+    // колона: крапки з ніками; хто за краєм — притиснутий до кола, щоб було видно, в який бік
+    if (others && others.length) {
+      const R = w / 2 - 8, c = Math.cos(yaw), s = Math.sin(yaw);
+      g.save();
+      g.font = '600 11px system-ui'; g.textAlign = 'center'; g.textBaseline = 'bottom';
+      const tags = [];          // де вже підписали: ближчі одне до одного ніки не громадимо — видно крапки
+      for (const o of others) {
+        // та сама поза, що й у світі вище: зсув, дзеркало осей, поворот на курс
+        const dx = -(o.x - x) * scale, dz = -(o.z - z) * scale;
+        let px = dx * c - dz * s, py = dx * s + dz * c;
+        const d = Math.hypot(px, py), edge = d > R;
+        if (edge) { px *= R / d; py *= R / d; }
+        px += w / 2; py += h / 2;
+        g.beginPath(); g.arc(px, py, edge ? 4 : 5, 0, Math.PI * 2);
+        g.fillStyle = o.color || '#6ba7f2'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
+        if (o.nick && !edge && !tags.some((t) => Math.abs(t.x - px) < 46 && Math.abs(t.y - py) < 13)) {
+          tags.push({ x: px, y: py });
+          g.lineWidth = 3; g.strokeStyle = 'rgba(20,22,28,.8)'; g.strokeText(o.nick, px, py - 6);
+          g.fillStyle = '#fff'; g.fillText(o.nick, px, py - 6);
+        }
+      }
+      g.restore();
+    }
     // фура — трикутник у центрі, носом угору
     g.save(); g.translate(w / 2, h / 2);
     g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(-6, 7); g.closePath();

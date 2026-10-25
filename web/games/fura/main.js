@@ -14,6 +14,7 @@ import { Sound } from './audio.js';
 import { Nav } from './nav.js';
 import { Trips } from './trip.js';
 import { Voice } from './voice.js';
+import { Ghosts, fakeConvoy } from './ghosts.js';
 
 const STEP = 1 / 60;
 const CAMS = ['chase', 'cabin', 'far'];
@@ -32,7 +33,7 @@ const store = {
 };
 
 /** mode: 'kray' — «Чумацький край» (мапа з сервера), 'polygon' — полігон етапу 0 для тренування. */
-/** server — міст до столу гри (fura.js): { tell(action, payload), input(action, payload), view(), onView } */
+/** server — міст до столу гри (fura.js): { tell(action, payload), input(action, payload), view(), onView, onFrame } */
 export async function start({ onExit, mode = 'kray', server = null } = {}) {
   const app = document.createElement('div');
   app.className = 'fura-app';
@@ -92,6 +93,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   const truck = new Truck(THREE, RAPIER, world, scene, { spawn: SPAWN });
   truck.ground = level.height || (() => 0);
   let trips = null, nav = null, voice = null;   // рейси й Глек у рації — лише в краю й лише зі столом (з картки гри)
+  let ghosts = null, fake = null;               // колона (етап 2): чужі фури з кадру; fake — підставна з консолі
   const model = buildModels(THREE, scene);
   // Промені коліс бачать лише нерухоме: ні свій тягач/причіп, ні конуси під колесами (конус штовхаємо корпусом)
   const onlyFixed = (col) => { const p = col.parent(); return !p || p.isFixed(); };
@@ -343,6 +345,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       + row('Зчепити причіп', 'T', 'Ⓐ', 'кнопка з калібрування')
       + row('Камера', 'C', 'Ⓧ', 'кнопка')
       + row('Сигнал', 'H', 'Ⓨ', 'кнопка')
+      + row('Фари', 'L', '', '')
       + row('Передачі (ручна)', 'E / Q', 'RB / LB', 'пелюстки або H')
       + row('Поставити на колеса', 'R', 'Back', 'кнопка')
       + row('Меню', 'Esc', 'Start', 'кнопка')
@@ -369,6 +372,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     input.dispose();
     if (voice) voice.stop();
     if (trips) trips.dispose();
+    if (fake) fake.stop();
+    if (ghosts) ghosts.dispose();
     sound.stop();
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch { /* пусто */ }
     renderer.dispose();
@@ -387,13 +392,42 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     nav = new Nav(THREE, scene, level);
     if (server) {
       voice = new Voice({ sound, hud });
-      trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, voice, onPlaced: () => resetPoses() });
+      ghosts = new Ghosts({ THREE, scene, camera, level });
+      trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, voice, ghosts, onPlaced: () => resetPoses() });
       server.onView = (v) => trips.onView(v);
+      server.onFrame = (f) => ghosts.push(f);
       trips.onView(server.view());
     }
   }
 
-  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, get trips() { return trips; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
+  // Перевірка колони без сервера етапу 2: __fura.ghosts.demo() — три підставні фури й вид із convoy/col/колонним
+  const ghostApi = ghosts && {
+    get obj() { return ghosts; },
+    push: (f) => ghosts.push(f),
+    list: () => ghosts.list(),
+    /** Підставний вид поверх справжнього: patch — поля етапу 2 (convoy, col, board…). */
+    view(patch) { trips.onView(Object.assign({}, trips.view || { phase: 'free', trips: 0, cap: 2000 }, { stage: 2 }, patch)); return trips.view; },
+    /** Підставна колона: n фур по дорогах краю, кадри 10 Гц з дрижанням приходу ±jitter мс. */
+    fake(o) { if (fake) fake.stop(); fake = fakeConvoy(ghosts, level, o || {}); return fake; },
+    stop() { if (fake) fake.stop(); fake = null; ghosts.reset(); },
+    demo(o) {
+      o = o || {};
+      const n = o.n || 3, nicks = ['Smaug', 'владік', 'бібочка', 'Микола', 'Назар', 'Оля', 'Петро'];
+      const map = level.map, c0 = map.cargo[0], from = level.places.find((p) => c0.from.includes(p.id)) || level.places[0];
+      const to = level.places.find((p) => c0.to.includes(p.id) && p !== from) || level.places[1];
+      const col = { no: 1, order: { id: 'k', cargo: c0.id, from: from.id, to: to.id, km: 4.2, minutes: 9, pay: 260 },
+        members: nicks.slice(0, 2), docks: Object.fromEntries(nicks.slice(0, 2).map((nn, i) => [nn, from.docks[i % from.docks.length].id])), firstAt: null, done: [] };
+      const convoy = [{ seat: 0, nick: o.me || 'я', phase: (trips.view && trips.view.phase) || 'free', cargo: null, to: null, col: false }]
+        .concat(nicks.slice(0, n).map((nn, i) => ({ seat: i + 1, nick: nn, phase: i < 2 ? 'haul' : 'free', cargo: i < 2 ? c0.id : null, to: i < 2 ? to.id : null, col: i < 2 })));
+      const base = trips.view || {};
+      const board = (base.board || []).filter((x) => x.id !== 'k').concat(base.phase === 'free' || !base.phase ? [col.order] : []);
+      this.view({ seat: 0, convoy, col, board });
+      this.fake({ n, jitter: o.jitter == null ? 40 : o.jitter, me: 0 });
+      return { convoy, col };
+    },
+  };
+
+  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, get trips() { return trips; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
   window.__fura = api;   // для перевірки з консолі: __fura.fake = {throttle: 1, …}
 
   function idleInput() { return { steer: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, horn: false, hit: new Set(), hGear: null, lookX: 0, lookY: 0, source: 'kbd' }; }
@@ -444,6 +478,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     if (inp.hit.has('menu')) { if (modal) modal.close(); else openMenu(); }
     if (!modal && input.keys.has('KeyF') && !api._f) { api._f = true; toggleFs(); } else if (!input.keys.has('KeyF')) api._f = false;
     if (!modal && input.keys.has('KeyM') && !api._m) { api._m = true; toggleMute(); } else if (!input.keys.has('KeyM')) api._m = false;
+    if (!modal && input.keys.has('KeyL') && !api._l) { api._l = true; truck.lights = !truck.lights; model.setLights(truck.lights); say(truck.lights ? '💡 Фари ввімкнено' : 'Фари вимкнено', 1200); }
+    else if (!input.keys.has('KeyL')) api._l = false;
     if (inp.horn) sound.start();
 
     // ---- фізика рівним кроком
@@ -454,6 +490,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       if (n === 8) acc = 0;
     }
     level.sync();
+    if (trips) trips.telemetry(now, inp);
 
     // ---- поза для малювання між кроками
     const a = Math.min(1, acc / STEP);
@@ -478,6 +515,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     } else if (!dragging && cam !== 'cabin') { lookYaw *= 0.9; }
 
     placeCamera(dt);
+    if (ghosts) ghosts.update(now, dt);
     renderer.render(scene, camera);
 
     // ---- удари по вантажу

@@ -5,7 +5,11 @@
 
    Пад: поки гра відкрита, вона сама читає стіки й курки (fura/input.js), тож pad.js не має ні гортати сторінку,
    ні тиснути кнопки сайту — `dirs` вмикається лише на час гри, а `on` з'їдає всі кнопки. Кермо pad.js і так
-   відсіює, його гра читає прямо з navigator.getGamepads(). */
+   відсіює, його гра читає прямо з navigator.getGamepads().
+
+   Етап 2 — колона: стіл до 8 фур. Сидиш за цим столом — «🗺 Чумацький край» їде за ним (це й є свій стіл); дивишся
+   чужий — «приєднатися» (JoinRoom: каркас сам «Сісти» посеред партії не показує) або «свій стіл» (CreateRoom). Нижче —
+   живі столи fura з лобі (HGames.rooms, якщо каркас його віддає). Кадри привидів — у гру через міст (onFrame). */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<rect x="1" y="4" width="9" height="7" rx="1" fill="var(--clay, #b5582f)"/>'
@@ -20,25 +24,87 @@
     input: (a, p) => { if (ctxNow) ctxNow.input(a, p); },
     view: () => (ctxNow ? ctxNow.view : null),
     onView: null,
+    onFrame: null,
   };
-  let starting = false;
+  let starting = false, gameMode = '';
+  let autoStart = null;     // стіл, за який щойно сіли чи який поставили з картки: щойно там сидимо — одразу в край
+  let paintT = 0;
+  const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const nicksOf = (r) => (r.seats || []).map((x) => (typeof x === 'string' ? x : x && x.nick)).filter(Boolean);
 
   function card(root) {
     root.innerHTML = '<div class="fura-card">'
-      + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">етап 1 · у роботі</span></div>'
+      + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">колона до 8 фур</span></div>'
       + '<p><b>Чумацький край</b> — пагорби, річка з мостами, траса, сільські дороги й ґрунтовки між депо, Гончарівкою, '
-      + 'Цегельнею, Медовим, Соляним складом і Полтавкою. Рейси й черепки — скоро. <b>Полігон</b> — майданчик, щоб '
-      + 'потренуватись чіплятись заднім ходом.</p>'
+      + 'Цегельнею, Медовим, Соляним складом і Полтавкою. Бери замовлення, чіпляй причіп і вези — сам чи колоною з друзями: '
+      + 'колонне замовлення дає +15 % тим, хто здасть разом. <b>Полігон</b> — майданчик, щоб потренуватись чіплятись заднім ходом.</p>'
       + '<ul class="fura-dev"><li>🛞 <b>Кермо</b> (G29 та інші) — при першому вході гра попросить відкалібрувати</li>'
       + '<li>🎮 <b>Пад / Steam Deck</b> — лівий стік кермо, R2 газ, L2 гальмо, Ⓐ зчепити</li>'
       + '<li>⌨ <b>Клавіатура</b> — W/S газ і гальмо, A/D кермо, T зчепити, C камера</li></ul>'
-      + '<div class="fura-row"><button class="btn fura-go" type="button" data-mode="kray">🗺 Чумацький край</button>'
-      + '<button class="btn fura-go fura-go2" type="button" data-mode="polygon">🚧 Полігон</button></div>'
+      + '<div class="fura-row fura-btns"></div>'
+      + '<div class="fura-tables"></div>'
       + '<div class="fura-err muted small"></div></div>';
-    root.querySelectorAll('.fura-go').forEach((b) => b.addEventListener('click', () => start(root, b)));
+    root.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-do]');
+      if (b && !b.disabled) press(root, b);
+    });
+    paint(root);
   }
 
-  async function start(root, btn) {
+  /** Кнопки й живі столи — з поточного ctx і лобі; перемальовуємо лише, коли змінилось. */
+  function paint(root) {
+    const ctx = ctxNow, btns = root.querySelector('.fura-btns'), tables = root.querySelector('.fura-tables');
+    if (!ctx || !btns) return;
+    const room = ctx.room || {}, here = nicksOf(room);
+    const watch = !ctx.mine && room.maxPlayers > 1;          // дивлюсь чужий стіл
+    const full = here.length >= (room.maxPlayers || 1);
+    let b = '';
+    if (watch) {
+      if (!full) b += '<button class="btn fura-go" type="button" data-do="join" data-room="' + esc(room.id) + '">🚚 Приєднатися до колони'
+        + (here.length ? ' (' + here.map(esc).join(', ') + ')' : '') + '</button>';
+      b += '<button class="btn fura-go' + (full ? '' : ' fura-go2') + '" type="button" data-do="own">🗺 Свій стіл у краю</button>';
+    } else b += '<button class="btn fura-go" type="button" data-do="kray">🗺 Чумацький край</button>';
+    b += '<button class="btn fura-go fura-go2" type="button" data-do="polygon">🚧 Полігон</button>';
+    if (btns._html !== b) { btns.innerHTML = b; btns._html = b; }
+
+    // живі столи fura, крім цього
+    let t = '';
+    const all = window.HGames && Array.isArray(HGames.rooms) ? HGames.rooms : null;
+    if (all) {
+      const list = all.filter((r) => r.game === 'fura' && r.id !== room.id && r.maxPlayers > 1 && nicksOf(r).length);
+      if (list.length) {
+        t = '<div class="fura-tables-h">🚚 У рейсі зараз</div>' + list.map((r) => {
+          const ns = nicksOf(r), free = ns.length < r.maxPlayers;
+          return '<div class="fura-table"><span>' + ns.map(esc).join(', ') + ' <span class="muted small">' + ns.length + '/' + r.maxPlayers + '</span></span>'
+            + (free ? '<button class="btn" type="button" data-do="sit" data-room="' + esc(r.id) + '">приєднатися</button>' : '<span class="muted small">повна колона</span>') + '</div>';
+        }).join('');
+      }
+    } else if (room.maxPlayers > 1) t = '<p class="muted small">Хто ще в рейсі — видно в лобі «Ігор»: стіл 🚚 з ніками, заходь і тисни «приєднатися».</p>';
+    if (tables._html !== t) { tables.innerHTML = t; tables._html = t; }
+  }
+
+  async function press(root, b) {
+    const k = b.dataset.do, err = root.querySelector('.fura-err');
+    if (err) err.textContent = '';
+    if (k === 'kray' || k === 'polygon') return start(root, b, k);
+    const label = b.textContent;
+    b.disabled = true;
+    try {
+      if (k === 'join') {
+        const r = await HGames.call('JoinRoom', b.dataset.room);
+        if (r && r.ok) autoStart = b.dataset.room;
+      } else if (k === 'sit') {
+        const r = await HGames.sitAt(b.dataset.room, b);
+        if (r && r.ok) autoStart = b.dataset.room;
+      } else if (k === 'own') {
+        b.textContent = '⏳ Ставимо стіл…';
+        const r = await HGames.call('CreateRoom', 'fura', {});
+        if (r && r.ok && r.roomId) { autoStart = r.roomId; HGames.openAt(r.roomId); }
+      }
+    } finally { b.disabled = false; b.textContent = label; }
+  }
+
+  async function start(root, btn, mode) {
     if (game || starting) return;
     starting = true;
     const err = root.querySelector('.fura-err');
@@ -49,7 +115,9 @@
     try {
       const mod = await import('/games/fura/main.js');
       bridge.onView = null;
-      game = await mod.start({ onExit: stop, mode: btn.dataset.mode, server: btn.dataset.mode === 'kray' ? bridge : null });
+      bridge.onFrame = null;
+      gameMode = mode;
+      game = await mod.start({ onExit: stop, mode, server: mode === 'kray' ? bridge : null });
     } catch (e) {
       console.error('[fura]', e);
       if (err) err.textContent = 'Не завелось: ' + (e && e.message ? e.message : e);
@@ -64,6 +132,7 @@
     const g = game;
     game = null;
     bridge.onView = null;
+    bridge.onFrame = null;
     if (g) { try { g.stop(); } catch (e) { console.warn('[fura] stop', e); } }
   }
 
@@ -78,12 +147,26 @@
       on() { return !!game; },
       hint: '{dpad} кермо · R2 газ · L2 гальмо · {a} зчепити',
     },
-    mount(root, ctx) { ctxNow = ctx; card(root); },
+    mount(root, ctx) {
+      ctxNow = ctx; card(root);
+      clearInterval(paintT);
+      paintT = setInterval(() => { if (root.isConnected) paint(root); }, 2000);   // лобі міняється й без нашого виду
+    },
     update(root, ctx) {
       ctxNow = ctx;
       if (game && bridge.onView) { try { bridge.onView(ctx.view); } catch (e) { console.warn('[fura] view', e); } }
+      paint(root);
+      // сіли за стіл (чи поставили свій) з картки — одразу в край
+      if (!game && autoStart && ctx.room && ctx.room.id === autoStart && ctx.mine) {
+        autoStart = null;
+        const b = root.querySelector('button[data-do=kray]');
+        if (b) start(root, b, 'kray');
+      }
     },
-    unmount() { stop(); },
-    status() { return game ? 'на полігоні' : ''; },
+    frame(root, ctx, f) {
+      if (game && bridge.onFrame && f && Array.isArray(f.p)) { try { bridge.onFrame(f); } catch (e) { console.warn('[fura] frame', e); } }
+    },
+    unmount() { clearInterval(paintT); paintT = 0; stop(); },
+    status() { return game ? (gameMode === 'kray' ? 'у рейсі' : 'на полігоні') : ''; },
   });
 })();
