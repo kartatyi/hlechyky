@@ -4,40 +4,58 @@ using Hlechyky.Games.Economy;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hlechyky.Tests.Games;
 
 /// <summary>
-/// «Чумаки-далекобійники», етап 1 (specs/fura.md, «Етап 1»): дошка, фази рейсу, підбір і здача, плата й Save/Load —
-/// через справжні кімнати (<see cref="RoomHarness"/>). Правила судді окремо — <see cref="FuraJudgeTests"/>.
+/// «Чумаки-далекобійники», етап 1 (specs/fura.md, «Етап 1»): дошка, фази рейсу, підбір і здача, плата — через справжні
+/// кімнати (<see cref="RoomHarness"/>) за столом на одного (етап 2: стіл до восьми, фура — у <see cref="FuraGarage"/>).
+/// Правила судді окремо — <see cref="FuraJudgeTests"/>, колона й кілька фур — <see cref="FuraConvoyTests"/>.
 /// </summary>
 public sealed class FuraTests
 {
-    static readonly FuraMap Map = FuraMap.Get();
+    internal static readonly FuraMap Map = FuraMap.Get();
 
-    static RoomHarness Open(string nick = "Оля", int seed = 42)
+    /// <summary>Тик гри, с (TickMs 100).</summary>
+    internal const double Dt = 0.1;
+
+    /// <summary>Гараж фур (запис одразу, без пулу потоків) поверх сховища <paramref name="store"/>. Той самий провайдер
+    /// у двох столів — та сама фура за двома столами (дві вкладки, перезапуск сайту).</summary>
+    internal static IServiceProvider Garage(Func<IGameStore> store) =>
+        new ServiceCollection().AddSingleton(_ => new FuraGarage(store(), a => a())).BuildServiceProvider();
+
+    /// <summary>Стіл зі своїм гаражем поверх <see cref="RoomHarness.Store"/> (або спільним — <paramref name="garage"/>).</summary>
+    internal static RoomHarness New(int seed = 42, IServiceProvider? garage = null)
     {
-        var h = new RoomHarness("fura", seed: seed);
+        RoomHarness? h = null;
+        h = new RoomHarness("fura", seed: seed, services: garage ?? Garage(() => h!.Store));
+        return h;
+    }
+
+    internal static RoomHarness Open(string nick = "Оля", int seed = 42, IServiceProvider? garage = null)
+    {
+        var h = New(seed, garage);
         Assert.True(h.Solo(nick).Ok, h.Reply.Message);
         return h;
     }
 
-    static void Pose(RoomHarness h, double x, double z, double v = 0, bool c = false, int k = 100,
-        double? rx = null, double? rz = null, double ry = 0) =>
-        h.Input(0, "pose", new { x, z, v, c, k, rx = rx ?? x, rz = rz ?? z, ry });
+    internal static void Pose(RoomHarness h, double x, double z, double v = 0, bool c = false, int k = 100,
+        double? rx = null, double? rz = null, double ry = 0, int seat = 0) =>
+        h.Input(seat, "pose", new { x, z, v, c, k, rx = rx ?? x, rz = rz ?? z, ry });
 
-    static JsonElement Order(RoomHarness h) => h.View(0).GetProperty("order");
+    internal static JsonElement Order(RoomHarness h, int seat = 0) => h.View(seat).GetProperty("order");
 
-    static FuraPlace From(JsonElement order) => Map.Place(order.GetProperty("from").GetString()!)!;
-    static FuraPlace To(JsonElement order) => Map.Place(order.GetProperty("to").GetString()!)!;
-    static FuraDock DockOf(JsonElement order) => From(order).Dock(order.GetProperty("dock").GetString()!)!;
+    internal static FuraPlace From(JsonElement order) => Map.Place(order.GetProperty("from").GetString()!)!;
+    internal static FuraPlace To(JsonElement order) => Map.Place(order.GetProperty("to").GetString()!)!;
+    internal static FuraDock DockOf(JsonElement order) => From(order).Dock(order.GetProperty("dock").GetString()!)!;
 
-    static string Phase(RoomHarness h) => h.View(0).GetProperty("phase").GetString()!;
+    internal static string Phase(RoomHarness h, int seat = 0) => h.View(seat).GetProperty("phase").GetString()!;
 
-    /// <summary>Їхати прямо з <paramref name="at"/> до <paramref name="to"/> зі швидкістю м/с, знімок на кожен тик (0,25 с).</summary>
-    static void Drive(RoomHarness h, ref (double X, double Z) at, (double X, double Z) to, double speed, int k = 100)
+    /// <summary>Їхати прямо з <paramref name="at"/> до <paramref name="to"/> зі швидкістю м/с, знімок на кожен тик (0,1 с).</summary>
+    internal static void Drive(RoomHarness h, ref (double X, double Z) at, (double X, double Z) to, double speed, int k = 100, int seat = 0)
     {
-        var step = speed * 0.25;
+        var step = speed * Dt;
         while (true)
         {
             var d = FuraJudge.Dist(at.X, at.Z, to.X, to.Z);
@@ -45,7 +63,7 @@ public sealed class FuraTests
             var s = Math.Min(step, d);
             at = (at.X + (to.X - at.X) / d * s, at.Z + (to.Z - at.Z) / d * s);
             h.Tick();
-            Pose(h, at.X, at.Z, speed, c: true, k: k);
+            Pose(h, at.X, at.Z, speed, c: true, k: k, seat: seat);
         }
     }
 
@@ -54,38 +72,44 @@ public sealed class FuraTests
     /// (щоб пройдено ≥ 0,9 км; <paramref name="loop"/> false — без неї), далі навпростець до першого боксу отримувача,
     /// стати й відчепитись рівно в боксі.
     /// </summary>
-    static JsonElement Haul(RoomHarness h, int id = 1, double speed = 20, int k = 100, bool auto = false, bool loop = true)
+    internal static JsonElement Haul(RoomHarness h, object? id = null, double speed = 20, int k = 100, bool auto = false, bool loop = true,
+        int seat = 0, bool take = true)
     {
-        Assert.True(h.Act(0, "take", new { id }).Ok, h.Reply.Message);
-        var order = Order(h);
+        if (take) Assert.True(h.Act(seat, "take", new { id = id ?? 1 }).Ok, h.Reply.Message);
+        var order = Order(h, seat);
         var dock = DockOf(order);
-        Pose(h, dock.X, dock.Z);
-        if (auto) Assert.True(h.Act(0, "auto").Ok, h.Reply.Message);
+        Pose(h, dock.X, dock.Z, seat: seat);
+        if (auto) Assert.True(h.Act(seat, "auto").Ok, h.Reply.Message);
         h.Tick();
-        Pose(h, dock.X, dock.Z, c: true);
-        Assert.Equal("haul", Phase(h));
+        Pose(h, dock.X, dock.Z, c: true, seat: seat);
+        Assert.Equal("haul", Phase(h, seat));
         var km = order.GetProperty("km").GetDouble();
         var at = (dock.X, dock.Z);
         if (loop)
         {
-            Drive(h, ref at, (dock.X + km * 500, dock.Z), speed, k);
-            Drive(h, ref at, (dock.X, dock.Z), speed, k);
+            Drive(h, ref at, (dock.X + km * 500, dock.Z), speed, k, seat);
+            Drive(h, ref at, (dock.X, dock.Z), speed, k, seat);
         }
         var target = To(order).Docks[0];
-        Drive(h, ref at, (target.X, target.Z), speed, k);
+        Drive(h, ref at, (target.X, target.Z), speed, k, seat);
         h.Tick();
-        Pose(h, target.X, target.Z, 0, c: false, k: k, ry: target.Yaw);
+        Pose(h, target.X, target.Z, 0, c: false, k: k, ry: target.Yaw, seat: seat);
         return order;
     }
 
     // ---------- стіл і вид ----------
 
     [Fact]
-    public void Solo_opens_on_stage_one_with_a_board_of_five()
+    public void Solo_opens_a_table_for_one_on_stage_two_with_a_board_of_five()
     {
         var h = Open();
         var v = h.View(0);
-        Assert.Equal(1, v.GetProperty("stage").GetInt32());
+        Assert.Equal(2, v.GetProperty("stage").GetInt32());
+        Assert.Equal(0, v.GetProperty("seat").GetInt32());
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("col").ValueKind);
+        var me = Assert.Single(v.GetProperty("convoy").EnumerateArray());
+        Assert.Equal("Оля", me.GetProperty("nick").GetString());
+        Assert.Equal("free", me.GetProperty("phase").GetString());
         Assert.Equal("kray", v.GetProperty("map").GetString());
         Assert.Equal("free", v.GetProperty("phase").GetString());
         Assert.Equal(0, v.GetProperty("trips").GetInt32());
@@ -95,7 +119,10 @@ public sealed class FuraTests
         Assert.Equal(JsonValueKind.Null, v.GetProperty("pose").ValueKind);
         Assert.Equal(JsonValueKind.Null, v.GetProperty("result").ValueKind);
         Assert.Equal(200, v.GetProperty("cap").GetInt32());   // Boost 1 у тестах
-        Assert.True(h.Room.Info.Persistent && h.Room.Info.Private && h.Room.Info.TickMs == 250);
+        var info = h.Room.Info;
+        Assert.True(info is { MinPlayers: 1, MaxPlayers: 8, Persistent: false, Private: false, TickMs: 100, Start: StartMode.Immediate });
+        Assert.Equal(TimeSpan.FromSeconds(60), h.Room.Game.HoldEmpty);
+        Assert.True(h.Room.Game.LateJoin("Петро"));
     }
 
     [Fact]
@@ -253,12 +280,27 @@ public sealed class FuraTests
         Assert.Equal(1.5, pose.GetProperty("x").GetDouble());
         Assert.True(pose.GetProperty("c").GetBoolean());
         Assert.Equal(77, pose.GetProperty("k").GetInt32());
+        Assert.Equal(0.5, pose.GetProperty("h").GetDouble());   // старий клієнт без h — курс тягача = курс причепа
+        Assert.Equal(0, pose.GetProperty("f").GetInt32());
         Assert.Equal(h.Clock.UtcNow, pose.GetProperty("at").GetDateTimeOffset());
-        // дія, на відміну від Input, зберігає стан
+        Assert.Contains("\"x\":1.5", h.Store.LoadState(FuraGarage.Key("оля")));
+
+        // Каркас кличе Act і для Input — поза пишеться не частіше за раз на 5 с (і коли змінилось зчеплення)
         var saves = h.Store.Saves;
-        Assert.Contains("\"x\":1.5", h.Store.LoadState("fura:оля"));
-        h.Input(0, "pose", new { x = 2.0, z = -2, rx = 2.0, rz = -10 });
+        h.Tick();
+        h.Input(0, "pose", new { x = 2.0, z = -2, c = 1, rx = 2.0, rz = -10 });
         Assert.Equal(saves, h.Store.Saves);
+        h.Tick();
+        h.Input(0, "pose", new { x = 2.0, z = -2, c = 0, rx = 2.0, rz = -10 });
+        Assert.Equal(saves + 1, h.Store.Saves);
+        h.Clock.Advance(Fura.KeepPoseSec);
+        h.Input(0, "pose", new { x = 2.5, z = -2, rx = 2.5, rz = -10, h = 1.2, f = 6 });
+        Assert.Equal(saves + 2, h.Store.Saves);
+        Assert.Contains("\"h\":1.2", h.Store.LoadState(FuraGarage.Key("оля")));
+        // решта дій пишуться завжди
+        Assert.True(h.Act(0, "take", new { id = 1 }).Ok);
+        Assert.Equal(saves + 3, h.Store.Saves);
+        Assert.Contains("\"phase\":\"pickup\"", h.Store.LoadState(FuraGarage.Key("оля")));
     }
 
     // ---------- підбір ----------
@@ -307,12 +349,12 @@ public sealed class FuraTests
         var minutes = order.GetProperty("minutes").GetInt32();
         // порожняком повільно, довше за весь термін
         var at = (X: dock.X + 400, Z: dock.Z);
-        var ticks = (int)Math.Ceiling((minutes * 60 + 60) / 0.25);
+        var ticks = (int)Math.Ceiling((minutes * 60 + 60) / Dt);
         for (var i = 0; i < ticks; i++)
         {
             at = (dock.X + 400 * (1 - (i + 1.0) / ticks), dock.Z);
             h.Tick();
-            Pose(h, at.X, at.Z, 400.0 / (ticks * 0.25));
+            Pose(h, at.X, at.Z, 400.0 / (ticks * Dt));
         }
         h.Tick();
         Pose(h, dock.X, dock.Z, c: true);
@@ -417,7 +459,7 @@ public sealed class FuraTests
         var order = Order(h);
         var dock = DockOf(order);
         Pose(h, dock.X, dock.Z, c: true);
-        h.Tick();
+        h.Tick(2);   // швидкість міряється від 0,15 с
         var to = To(order).Docks[0];
         Pose(h, to.X, to.Z, c: false, ry: to.Yaw);
         Assert.Equal(JsonValueKind.String, h.View(0).GetProperty("trip").GetProperty("voided").ValueKind);
@@ -480,19 +522,20 @@ public sealed class FuraTests
         Pose(h, dock.X, dock.Z, c: true);
         Assert.True(h.Act(0, "rescue").Ok);
         Assert.True(h.View(0).GetProperty("trip").GetProperty("rescue").GetBoolean());
-        h.Tick();
-        // 150 км/год (10,4 м за тик) + 3 м «на колеса»
-        Pose(h, dock.X + 150 / 3.6 * 0.25 + 3, dock.Z, c: true);
+        h.Tick(2);
+        // 150 км/год (8,3 м за два тики) + 3 м «на колеса»
+        Pose(h, dock.X + 150 / 3.6 * 2 * Dt + 3, dock.Z, c: true);
         var trip = h.View(0).GetProperty("trip");
         Assert.Equal(0, trip.GetProperty("violations").GetInt32());
         Assert.False(trip.GetProperty("rescue").GetBoolean());
     }
 
-    // ---------- Save/Load ----------
+    // ---------- фура в гаражі ----------
 
     [Fact]
-    public void Load_of_Save_mid_haul_gives_the_same_view()
+    public void A_new_table_picks_the_trip_up_from_the_store_mid_haul()
     {
+        // Деплой чи «закрив і відкрив»: стола вже нема, а фура в сховищі — новий стіл бере рейс посеред haul
         var h = Open();
         h.Act(0, "take", new { id = 2 });
         var dock = DockOf(Order(h));
@@ -503,57 +546,62 @@ public sealed class FuraTests
         Assert.Equal("haul", Phase(h));
         var view = h.View(0).GetRawText();
         Assert.Contains("\"minK\":87", view);
-        var saved = h.Room.Game.Save()!;
 
-        // та сама гра
-        lock (h.Room.Sync) h.Room.Game.Load(saved);
-        Assert.Equal(view, h.View(0).GetRawText());
-
-        // нова кімната з того самого сховища (як після перезапуску)
-        var again = new RoomHarness("fura", seed: 7);
+        var again = New(seed: 7);
         again.Clock.UtcNow = h.Clock.UtcNow;
-        again.Store.SaveState("fura:оля", saved);
+        again.Store.SaveState(FuraGarage.Key("оля"), h.Store.LoadState(FuraGarage.Key("оля"))!);
         Assert.True(again.Solo("Оля").Ok, again.Reply.Message);
         Assert.Equal(view, again.View(0).GetRawText());
 
         // і їде далі з тієї самої пози, без паузи-телепорту
-        again.Tick();
-        Pose(again, at.X + 5, at.Z, 20, c: true, k: 87);
+        again.Tick(2);
+        Pose(again, at.X + 4, at.Z, 20, c: true, k: 87);
         Assert.Equal(JsonValueKind.Null, again.View(0).GetProperty("trip").GetProperty("voided").ValueKind);
     }
 
     [Fact]
-    public void Load_of_Save_in_free_and_done_too()
+    public void Load_of_Save_restores_the_table_after_a_restart()
     {
+        // Стіл Resumable: інакше вічна партія тримала б деплой (Rooms.Busy)
         var h = Open();
+        Assert.True(h.Room.Game.Resumable);
         var free = h.View(0).GetRawText();
-        var json = h.Room.Game.Save()!;
-        lock (h.Room.Sync) h.Room.Game.Load(json);
+        lock (h.Room.Sync) h.Room.Game.Load(h.Room.Game.Save()!);
         Assert.Equal(free, h.View(0).GetRawText());
 
-        Haul(h);
-        Assert.True(h.Act(0, "deliver").Ok);
-        var done = h.View(0).GetRawText();
-        json = h.Room.Game.Save()!;
-        lock (h.Room.Sync) h.Room.Game.Load(json);
-        Assert.Equal(done, h.View(0).GetRawText());
+        h.Act(0, "take", new { id = 1 });
+        var dock = DockOf(Order(h));
+        Pose(h, dock.X, dock.Z, c: true);
+        var at = (dock.X, dock.Z);
+        Drive(h, ref at, (dock.X + 200, dock.Z), 20);   // лише Input: у знімку поза свіжа
+        var haul = h.View(0).GetRawText();
+        lock (h.Room.Sync) h.Room.Game.Load(h.Room.Game.Save()!);
+        Assert.Equal(haul, h.View(0).GetRawText());
+
+        var d = Open("Петро");
+        Haul(d);
+        Assert.True(d.Act(0, "deliver").Ok, d.Reply.Message);
+        var done = d.View(0).GetRawText();
+        lock (d.Room.Sync) d.Room.Game.Load(d.Room.Game.Save()!);
+        Assert.Equal(done, d.View(0).GetRawText());
     }
 
     [Fact]
     public void Garbage_in_storage_starts_clean()
     {
-        var h = new RoomHarness("fura");
-        h.Store.SaveState("fura:оля", "{\"phase\":\"haul\",\"order\":{\"cargo\":\"нема\"}}");
+        var h = New();
+        h.Store.SaveState(FuraGarage.Key("оля"), "{\"phase\":\"haul\",\"order\":{\"cargo\":\"нема\"}}");
         Assert.True(h.Solo("Оля").Ok);
         Assert.Equal("free", Phase(h));
 
-        var p = new RoomHarness("fura");
-        p.Store.SaveState("fura:петро", "не json");
+        var p = New();
+        p.Store.SaveState(FuraGarage.Key("петро"), "не json");
+        p.Store.SaveState(FuraGarage.OldKey("петро"), "[1,2]");
         Assert.True(p.Solo("Петро").Ok);
         Assert.Equal("free", Phase(p));
 
-        var q = new RoomHarness("fura");
-        q.Store.SaveState("fura:яся", "{\"phase\":\"pickup\",\"order\":{\"id\":1}}");
+        var q = New();
+        q.Store.SaveState(FuraGarage.OldKey("яся"), "{\"phase\":\"pickup\",\"order\":{\"id\":1}}");
         Assert.True(q.Solo("Яся").Ok);
         Assert.Equal("free", Phase(q));
     }
@@ -630,12 +678,30 @@ public sealed class FuraRewardsTests
     }
 
     [Fact]
-    public void The_same_trip_pays_once()
+    public void The_same_trip_pays_once_even_from_another_table()
     {
+        // Ref без кімнати (fura:<нік>:<N>): той самий рейс за двома столами (дві вкладки) — одна плата
         using var rig = new EconomyRig();
         rig.Events.Raise(new AwardEvent("fura", "r1", "Оля", 40, "fura:1"));
         rig.Events.Raise(new AwardEvent("fura", "r1", "Оля", 40, "fura:1"));
+        rig.Events.Raise(new AwardEvent("fura", "r2", "Оля", 40, "fura:1"));
         Assert.Equal(40, rig.Paid("Оля", "award:fura"));
+        rig.Events.Raise(new AwardEvent("fura", "r2", "Петро", 40, "fura:1"));   // інший нік — свій рейс №1
+        Assert.Equal(40, rig.Paid("Петро", "award:fura"));
+    }
+
+    [Fact]
+    public void Convoy_bonus_pays_once_per_trip_under_the_same_cap()
+    {
+        using var rig = new EconomyRig();
+        rig.Options.Boost = 10;
+        rig.Options.FuraDailyCap = 60;
+        rig.Events.Raise(new AwardEvent("fura", "r1", "Оля", 50, "fura:3"));
+        rig.Events.Raise(new AwardEvent("fura", "r1", "Оля", 8, "fura:3k"));
+        rig.Events.Raise(new AwardEvent("fura", "r2", "Оля", 8, "fura:3k"));    // повтор — нічого
+        Assert.Equal(580, rig.Paid("Оля", "award:fura"));
+        rig.Events.Raise(new AwardEvent("fura", "r1", "Оля", 8, "fura:4k"));    // влазить лише 20 з 80
+        Assert.Equal(600, rig.Paid("Оля", "award:fura"));
     }
 
     [Fact]
@@ -664,10 +730,28 @@ public sealed class FuraPerfTests
         for (var i = 0; i < 1000; i++)
         {
             h.Tick();
-            h.Input(0, "pose", new { x = i * 5.0, z = 0.0, v = 20.0, c = true, k = 100, rx = i * 5.0, rz = -8.0, ry = 1.57 });
+            h.Input(0, "pose", new { x = i * 2.0, z = 0.0, v = 20.0, c = true, k = 100, rx = i * 2.0, rz = -8.0, ry = 1.57 });
             _ = h.View(0);
         }
         sw.Stop();
+        Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
+    }
+
+    [Fact]
+    public void A_thousand_ticks_of_eight_rigs_with_ghost_frames_take_well_under_two_seconds()
+    {
+        var h = new RoomHarness("fura");
+        Assert.True(h.Solo("Гравець0").Ok);
+        for (var s = 1; s < 8; s++) Assert.True(h.Join($"Гравець{s}").Ok, h.Reply.Message);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        for (var i = 0; i < 1000; i++)
+        {
+            h.Tick();
+            for (var s = 0; s < 8; s++)
+                h.Input(s, "pose", new { x = i * 2.0, z = s * 20.0, v = 20.0, c = true, k = 100, rx = i * 2.0, rz = s * 20.0 - 8, ry = 1.57, h = 1.57, f = 2 });
+        }
+        sw.Stop();
+        Assert.Contains(h.Outbox, m => m is RoomFrame);
         Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
     }
 }
