@@ -6,11 +6,35 @@
 
 import { TRACTOR, TRAILER } from './truck.js';
 
+// PBR фури (0.0.5, гібрид B, STYLE.md §15.1): шорсткість і метал — за кольором (фарба з лаком, хром, скло, гума);
+// оточення — небо тієї ж миті (sky.js), тож хром і скло відбивають небо
+const PBR = { '#b5482f': [0.38, 0.1], '#c9ccd1': [0.25, 1], '#9aa0a8': [0.25, 1], '#26394d': [0.05, 0.2], '#1d1d1f': [0.95, 0] };
+export const truckMaterial = (THREE, o) => {
+  const [roughness, metalness] = PBR[String(o.color).toLowerCase()] || [0.8, 0];
+  return new THREE.MeshStandardMaterial({ roughness, metalness, ...o });
+};
+
+/** Оточення для сцен без неба (постамент гаража, garage.js): без нього хром і «Металік» PBR майже чорні. Небо гри
+ *  (sky.js) ставить своє оточення раніше, ніж будується фура, — тоді цього не треба. */
+function studioEnv(THREE) {
+  const W = 64, H = 32, d = new Uint8Array(W * H * 4), top = new THREE.Color('#cfe0f0'), hor = new THREE.Color('#eee6d6'), low = new THREE.Color('#3a3530'), c = new THREE.Color();
+  for (let y = 0; y < H; y++) {
+    const v = 1 - (y + 0.5) / H;                       // 1 — зеніт (рядок 0 — верх), 0 — надир
+    if (v > 0.5) c.copy(hor).lerp(top, (v - 0.5) * 2); else c.copy(low).lerp(hor, Math.pow(v * 2, 3)); c.convertLinearToSRGB();   // текстура — sRGB
+    for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; d[i] = c.r * 255; d[i + 1] = c.g * 255; d[i + 2] = c.b * 255; d[i + 3] = 255; }
+  }
+  const t = new THREE.DataTexture(d, W, H);
+  t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace; t.magFilter = t.minFilter = THREE.LinearFilter;
+  t.needsUpdate = true;
+  return t;
+}
+
 export function buildModels(THREE, scene) {
+  if (scene && !scene.environment) { scene.environment = studioEnv(THREE); scene.environmentIntensity = 0.7; }
   const cache = new Map();
   const M = (color, extra) => {
     const k = color + JSON.stringify(extra || {});
-    if (!cache.has(k)) cache.set(k, new THREE.MeshLambertMaterial({ color, flatShading: true, ...(extra || {}) }));
+    if (!cache.has(k)) cache.set(k, truckMaterial(THREE, { color, flatShading: true, ...(extra || {}) }));
     return cache.get(k);
   };
   const box = (g, w, h, d, x, y, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); return o; };
@@ -45,8 +69,8 @@ export function buildModels(THREE, scene) {
   // вигляд: що фарбується (кабіна, дефлектор), блиск «Металік», розпис на боках кабіни, номер спереду
   const paintMeshes = [];
   ext.traverse((o) => { if (o.material === paint) paintMeshes.push(o); });
-  const gloss = new THREE.MeshPhongMaterial({ color: '#b5482f', shininess: 80, specular: '#8a8a8a', flatShading: true });
-  const artMat = new THREE.MeshLambertMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  const gloss = truckMaterial(THREE, { color: '#b5482f', roughness: 0.16, metalness: 0.55, flatShading: true });   // «Металік»
+  const artMat = truckMaterial(THREE, { transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, roughness: 0.4 });
   artMat.visible = false;
   for (const s of [1, -1]) {
     const a = new THREE.Mesh(new THREE.PlaneGeometry(1.95, 0.98), artMat);
@@ -54,7 +78,7 @@ export function buildModels(THREE, scene) {
   }
   const plateTex = new THREE.CanvasTexture(plateCanvas(null, ''));
   plateTex.colorSpace = THREE.SRGBColorSpace;
-  const frontPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.115), new THREE.MeshLambertMaterial({ map: plateTex }));
+  const frontPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.115), truckMaterial(THREE, { map: plateTex, roughness: 0.5 }));
   frontPlate.position.set(0, -0.27, 3.28); ext.add(frontPlate);
   const roof = new THREE.Group();          // вимпел / прапорці / люстра — будуються, коли вдягнуто
   ext.add(roof);
@@ -112,12 +136,12 @@ export function buildModels(THREE, scene) {
   // На +X глечик ліворуч, на −X — праворуч: з обох боків він біля кабіни, а напис читається.
   const side = sideTexture(THREE, null, null, false), sideR = sideTexture(THREE, null, null, true);
   const cream = M('#efe6d2');
-  const sideMat = new THREE.MeshLambertMaterial({ map: side });
-  const sideMatR = new THREE.MeshLambertMaterial({ map: sideR });
+  const sideMat = truckMaterial(THREE, { map: side });
+  const sideMatR = truckMaterial(THREE, { map: sideR });
   const backCv = backCanvas(null, [], '');
   const backTex = new THREE.CanvasTexture(backCv);
   backTex.colorSpace = THREE.SRGBColorSpace; backTex.anisotropy = 4;
-  const back = new THREE.MeshLambertMaterial({ map: backTex });
+  const back = truckMaterial(THREE, { map: backTex });
   // BoxGeometry: +X, −X, +Y, −Y, +Z, −Z
   const boxMesh = new THREE.Mesh(new THREE.BoxGeometry(TRAILER.w, TRAILER.h, TRAILER.len), [sideMat, sideMatR, cream, dark, cream, back]);
   boxMesh.position.set(0, TRAILER.h / 2, 0);
@@ -197,13 +221,13 @@ export function buildModels(THREE, scene) {
     if (look.flag === 'flagvympel') {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 6), chrome); pole.position.set(-1.05, 2.75, 1.2); roof.add(pole);
       const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(0, 0.28); sh.lineTo(-0.7, 0.14); sh.closePath();
-      const pen = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshLambertMaterial({ color: '#c8322a', side: THREE.DoubleSide }));
+      const pen = new THREE.Mesh(new THREE.ShapeGeometry(sh), truckMaterial(THREE, { color: '#c8322a', side: THREE.DoubleSide }));
       pen.position.set(-1.05, 2.9, 1.2); pen.rotation.y = Math.PI / 2; roof.add(pen);
     } else if (look.flag === 'flagua') {
       for (const s of [1, -1]) {
         const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.6, 6), chrome); pole.position.set(s * 1.15, 2.6, 3.0); roof.add(pole);
         for (const [c, y] of [['#2a5bd7', 2.8], ['#f5d000', 2.68]]) {
-          const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.12), new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide }));
+          const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.12), truckMaterial(THREE, { color: c, side: THREE.DoubleSide }));
           fl.position.set(s * 1.15 - s * 0.17, y, 3.0); fl.rotation.y = Math.PI / 2; roof.add(fl);
         }
       }
@@ -211,7 +235,7 @@ export function buildModels(THREE, scene) {
     if (look.lamp) {
       const gold = look.lamp === 'lampotaman';
       box(roof, 2.1, 0.12, 0.16, 0, 2.88, 2.35, gold ? M('#b8902a') : dark);
-      lampMat = new THREE.MeshLambertMaterial({ color: gold ? '#fff0b0' : '#fff7dd', emissive: gold ? '#ffcc40' : '#fff0c0', emissiveIntensity: lightsOn ? 2.6 : 0.5 });
+      lampMat = truckMaterial(THREE, { color: gold ? '#fff0b0' : '#fff7dd', emissive: gold ? '#ffcc40' : '#fff0c0', emissiveIntensity: lightsOn ? 2.6 : 0.5 });
       for (let i = 0; i < 6; i++) box(roof, 0.26, 0.08, 0.02, -0.82 + i * 0.33, 2.88, 2.44, lampMat);
     }
     roof.traverse((o) => { if (o.isMesh) o.castShadow = true; });

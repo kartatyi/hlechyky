@@ -18,6 +18,9 @@ import { Voice } from './voice.js';
 import { Ghosts, fakeConvoy } from './ghosts.js';
 import { Crash } from './crash.js';
 import { Garage } from './garage.js';
+import { Sky, DRAW } from './sky.js';
+import { makeTrees, makeGrass } from './trees.js';
+import { loadGfx, saveGfx, patchGfx, autoPreset, openGfx, PRESET_NAME } from './gfx.js';
 
 const STEP = 1 / 60;
 const CAMS = ['chase', 'cabin', 'far'];
@@ -123,35 +126,32 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
   document.body.appendChild(app);
   try { if (app.requestFullscreen && !document.fullscreenElement) app.requestFullscreen().catch(() => {}); } catch { /* пусто */ }
 
+  const tLoad = performance.now();
   await RAPIER.init();
   const low = isDeck() || (navigator.hardwareConcurrency || 8) <= 4;
   const quality = low ? 'low' : 'high';
 
-  // ---- рендер
-  const renderer = new THREE.WebGLRenderer({ antialias: !low, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, low ? 1 : 1.5));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  // ---- рендер і небо (0.0.5: sky.js — фізичне небо, хмари, світло, пост; gfx.js — меню «⚙ Графіка»)
+  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   renderer.domElement.className = 'fura-3d';
   renderer.domElement.tabIndex = 0;
   app.innerHTML = '';
   app.appendChild(renderer.domElement);
+  const loading = document.createElement('div');
+  loading.className = 'fura-loading';
+  app.appendChild(loading);
+  const progress = async (t) => { loading.textContent = t; await new Promise((r) => setTimeout(r, 30)); };   // дати браузеру домалювати
+  const gpuName = () => { try { const gl = renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); } catch { return ''; } };
+  const { G: gfx, first: gfxFirst } = loadGfx(autoPreset({ deck: isDeck(), gpu: gpuName(), cores: navigator.hardwareConcurrency || 8 }));
 
   const scene = new THREE.Scene();
-  const sky = new THREE.Color('#a9cfe8');
-  scene.background = sky;
-  scene.fog = new THREE.Fog(sky, 140, 560);
-  scene.add(new THREE.HemisphereLight('#e4f1ff', '#6f7d4d', 1.1));
-  const sun = new THREE.DirectionalLight('#fff1d6', 2.3);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(low ? 1024 : 2048, low ? 1024 : 2048);
-  const sc = sun.shadow.camera;
-  sc.left = -40; sc.right = 40; sc.top = 40; sc.bottom = -40; sc.near = 1; sc.far = 220;
-  sun.shadow.bias = -0.0006;
-  scene.add(sun, sun.target);
+  await progress('🌤 Готуємо небо…');
+  let sky;
+  try { sky = new Sky(THREE, renderer, scene); }
+  catch (e) { renderer.dispose(); app.remove(); throw e; }   // без HDR — помилка в картці гри, а не чорний екран поверх сайту
+  const sun = sky.sun;
 
-  const camera = new THREE.PerspectiveCamera(62, 1, 0.08, 900);
+  const camera = new THREE.PerspectiveCamera(gfx.fov, 1, 0.08, 900);
 
   // ---- фізика
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -162,12 +162,11 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     const res = await fetch('/api/games/fura/map/kray');
     if (!res.ok) throw new Error('мапа не приїхала (' + res.status + ')');
     const map = await res.json();
-    await new Promise((r) => setTimeout(r, 30));            // дати браузеру домалювати «Будуємо…»
+    await progress('🗺 Будуємо Чумацький край…');
     level = buildKray(THREE, RAPIER, scene, world, quality, map);
     // поки рейсів нема (крок 1d) — тягач у депо, порожній причіп у боксі 1
     const s = level.spawn, dock = level.places.find((p) => p.depot).docks[0];
     SPAWN = { tractor: s, trailer: { x: dock.x, z: dock.z, yaw: dock.yaw, y: level.height(dock.x, dock.z) } };
-    scene.fog.near = 240; scene.fog.far = 760; camera.far = 1100;
   } else {
     level = buildWorld(THREE, RAPIER, scene, world, quality);
     SPAWN = POLY_SPAWN;
@@ -179,6 +178,10 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
   let crash = null;                             // 2c: стіл «💥 зіткнення» — чужі фури твердими тілами (crash.js)
   let garage = null;                            // 0.0.6: 🔧 гараж (garage.js) — і в краю, і на полігоні (тест-драйв)
   const model = buildModels(THREE, scene);
+  sky.attachHeadlights(model.tractor);
+  sky.trimShadows(model.tractor); sky.trimShadows(model.trailer);
+  const trees = level.treeList ? makeTrees(THREE, scene, renderer, level.treeList, (m, k) => sky.patch(m, k)) : null;
+  const grass = level.offRoad ? makeGrass(THREE, scene, level, (m, k) => sky.patch(m, k)) : null;
   // Промені коліс бачать лише нерухоме: ні свій тягач/причіп, ні конуси під колесами (конус штовхаємо корпусом)
   const onlyFixed = (col) => { const p = col.parent(); return !p || p.isFixed(); };
 
@@ -241,7 +244,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
       // погляд трохи вниз: щоб у кадрі були панель, кермо й глечик
       const q = pose.tq.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(lookPitch - 0.16, Math.PI + lookYaw, 0, 'YXZ')));
       camera.quaternion.copy(q);
-      camera.fov = 70;
+      camera.fov = gfx.fov + 8;
     } else {
       // ззаду фури, на курсі, що повільно доганяє тягач (на розворотах камера не крутиться разом із кабіною)
       const d = Math.atan2(Math.sin(yaw - chase.yaw), Math.cos(yaw - chase.yaw));
@@ -256,20 +259,20 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
       camera.position.copy(chase.pos);
       chase.look.set(pose.tp.x + Math.sin(chase.yaw) * 5, pose.tp.y + 1.8, pose.tp.z + Math.cos(chase.yaw) * 5);
       camera.lookAt(chase.look);
-      camera.fov = 62;
+      camera.fov = gfx.fov;
     }
     camera.updateProjectionMatrix();
     model.setCabin(cam === 'cabin');
-    // тінь їде за фурою
-    sun.position.set(pose.tp.x + 40, pose.tp.y + 80, pose.tp.z + 25);
-    sun.target.position.copy(pose.tp);
   }
 
   function resize() {
     const w = app.clientWidth || window.innerWidth, h = app.clientHeight || window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, low ? 1 : 1.5);
+    renderer.setPixelRatio(dpr);
     renderer.setSize(w, h, false);
     camera.aspect = w / Math.max(1, h);
     camera.updateProjectionMatrix();
+    sky.resize(Math.round(w * dpr), Math.round(h * dpr));
   }
   window.addEventListener('resize', resize);
   document.addEventListener('fullscreenchange', resize);
@@ -401,6 +404,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
       + (garage ? '<button type="button" data-m="garage">🔧 Гараж' + (trips ? '' : ' · тест-драйв') + ' (G)</button>' : '')
       + '<button type="button" data-m="calib">🛞 Калібрування керма' + (wheels.length ? ' (' + shortName(wheels[0].id) + ')' : '') + '</button>'
       + '<button type="button" data-m="gear">⚙ Коробка: ' + (truck.gearMode === 'auto' ? 'автомат → зробити ручну' : 'ручна → зробити автомат') + '</button>'
+      + '<button type="button" data-m="gfx">⚙ Графіка</button>'
       + '<button type="button" data-m="mixer">🎚 Гучність</button>'
       + '<button type="button" data-m="help">❓ Керування</button>'
       + '<button type="button" data-m="exit">✕ Вийти' + (trips ? ' (рейс чекатиме)' : testDrive ? ' з тест-драйву — назад у край' : ' з полігона') + '</button></div>', (el, m) => {
@@ -418,6 +422,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
         else if (k === 'calib') calib();
         else if (k === 'garage') garage.open();
         else if (k === 'gear') { if (truck.gearMode === 'auto') { truck.gearMode = 'manual'; truck.gear = 1; } else truck.setAuto(); }
+        else if (k === 'gfx') openGfxMenu();
         else if (k === 'mixer') openMixer({ boxModal, sound });
         else if (k === 'help') help();
         else if (k === 'exit') exit();
@@ -471,7 +476,11 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     if (ghosts) ghosts.dispose();
     sound.stop();
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch { /* пусто */ }
+    if (trees) trees.dispose();
+    if (grass) grass.dispose();
+    sky.dispose();
     renderer.dispose();
+    try { renderer.forceContextLoss(); } catch { /* пусто */ }   // віддати GPU одразу, не чекаючи збирача сміття
     try { world.free(); } catch { /* пусто */ }
     app.remove();
     if (window.__fura === api) delete window.__fura;
@@ -541,7 +550,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     },
   };
 
-  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, get trips() { return trips; }, get crash() { return crash; }, get garage() { return garage; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
+  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, sky, trees, grass, gfx: null, get trips() { return trips; }, get crash() { return crash; }, get garage() { return garage; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
   window.__fura = api;   // для перевірки з консолі: __fura.fake = {throttle: 1, …}
 
   function idleInput() { return { steer: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, horn: false, hit: new Set(), hGear: null, lookX: 0, lookY: 0, source: 'kbd' }; }
@@ -563,6 +572,14 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
   function frame(now) {
     if (stopped) return;
     raf = requestAnimationFrame(frame);
+    // обмеження FPS (меню «Графіка»): фаза накопичується (drawAt += період), інакше на 75/144 Гц ліміт 60 давав
+    // ~37–50 fps рваним кроком; відстали на 3 періоди (вкладку ховали) — підтягуємо до «зараз». Фізика наздожене.
+    // Поки відкрите вікно (гараж із постаментом, меню) — без ліміту: modal.tick і навігація падом ідуть кожен кадр.
+    if (gfx.fps > 0 && !(modal && modal.open)) {
+      const per = 1000 / gfx.fps;
+      if (now - drawAt < per - 1) return;
+      drawAt = now - drawAt > per * 3 ? now : drawAt + per;
+    }
     const iv = now - last;
     perf.frame(now, iv);
     let dt = iv / 1000;
@@ -655,7 +672,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     perf.lap('camera');
     if (ghosts) ghosts.update(now, dt);
     perf.lap('ghosts');
-    renderer.render(scene, camera);
+    drawWorld(dt);
     perf.lap('render');
 
     // ---- удари по вантажу
@@ -719,6 +736,67 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     const rb = hud.querySelector('[data-t=radio]');
     if (rb) rb.classList.toggle('on', radioOn());
   }
+
+  // ---- небо й графіка (0.0.5): налаштування, кадр, утрата WebGL-контексту
+  let drawAt = 0, glLost = false, adoptAt = 0, wasDark = null, lostTimer = 0;
+  function applyGfx() {
+    const D = DRAW[gfx.draw] || DRAW.far;
+    camera.far = D.far + 400; camera.updateProjectionMatrix();
+    sky.setMode(gfx.time);
+    sky.setGfx(gfx);
+    if (trees) { trees.setStyle(gfx.trees); trees.setBudget(gfx.budget, D.imp, D.far); trees.update(camera.position, true); }
+    if (grass) { grass.setRadius(gfx.grass ? Math.max(30, trees ? trees.budget.grass : 40) : 0); grass.update(camera.position, true); }
+    saveGfx(gfx);
+  }
+  function setGfx(patch) { patchGfx(gfx, patch); applyGfx(); }
+  function openGfxMenu() {
+    openGfx({ boxModal, G: gfx, onChange: setGfx,
+      info: () => { const i = sky.info(); return PRESET_NAME[gfx.preset] + ' · ' + Math.round(fps) + ' fps · небо ' + i.hour + ' (сонце ' + Math.round(i.elev) + '°), хмарність ' + Math.round(i.cover * 100) + ' %'; } });
+  }
+  /** Кадр світу: небо → світло, дерева й трава біля камери, фари (уночі вмикаються самі), малювання з постом. */
+  function drawWorld(dt) {
+    sky.tick(dt, camera);
+    if (trees) trees.update(camera.position);
+    if (grass) grass.update(camera.position);
+    if (sky.dark !== wasDark) {                  // смеркає — фари самі; світає — гасимо (L перемикає будь-коли)
+      if (wasDark !== null || sky.dark) { truck.lights = sky.dark; model.setLights(truck.lights); }
+      wasDark = sky.dark;
+    }
+    sky.setHeadlights(!!truck.lights);
+    if (performance.now() - adoptAt > 2000) { adoptAt = performance.now(); sky.adopt(scene); }   // нові матеріали (привиди, позначки)
+    if (!glLost) sky.draw(scene, camera);
+  }
+  // Утрата контексту (A3: після багатьох F5 Chrome віддає чорні текстури): чекаємо відновлення й перепікаємо все, що
+  // жило лише в цілях GPU (таблиці неба, шум хмар, імпостери, оточення). Не повернувся за 6 с — чесно кажемо.
+  const lostBox = document.createElement('div');
+  lostBox.className = 'fura-panel fura-gl-lost';
+  cv.addEventListener('webglcontextlost', (e) => {
+    if (stopped) return;                  // forceContextLoss при виході — це ми самі
+    e.preventDefault(); glLost = true;
+    lostBox.textContent = '⚠ Відеокарта забрала графіку — відновлюємо…';
+    if (!lostBox.parentNode) hud.appendChild(lostBox);
+    clearTimeout(lostTimer);
+    lostTimer = setTimeout(() => { if (glLost) lostBox.innerHTML = '⚠ Графіка не повернулась (WebGL-контекст утрачено). Онови сторінку — <b>F5</b>; рейс чекатиме.'; }, 6000);
+  });
+  cv.addEventListener('webglcontextrestored', () => {
+    clearTimeout(lostTimer);
+    try { sky.restore(); if (trees) trees.rebake(); glLost = false; lostBox.remove(); say('🖥 Графіку відновлено', 1800); }
+    catch (err) { lostBox.textContent = '⚠ Графіку не вдалось відновити: ' + err.message + '. Онови сторінку (F5).'; }
+  });
+
+  await progress('🧪 Компілюємо шейдери…');
+  sky.adopt(scene);
+  applyGfx();
+  resize();
+  placeCamera(1);
+  try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); } catch { /* компілюємо першим кадром */ }
+  sky.tick(0, camera);
+  for (let i = 0; i < 4; i++) sky.draw(scene, camera);          // хмарам — кілька кадрів накопичення
+  loading.remove();
+  const loadMs = Math.round(performance.now() - tLoad);
+  console.info('[fura] завантаження', loadMs, 'мс; хмари', sky.clouds.bakeMs, 'мс; дерева', trees ? trees.bakeMs : 0, 'мс; графіка', gfx.preset, gfxFirst ? '(перший запуск)' : '');
+  api.gfx = { get G() { return gfx; }, set: setGfx, apply: applyGfx, open: openGfxMenu, loadMs, get lost() { return glLost; } };
+  if (gfxFirst) say('⚙ Графіка: ' + PRESET_NAME[gfx.preset] + ' — змінити: ☰ → ⚙ Графіка', 3500);
 
   raf = requestAnimationFrame(frame);
   cv.focus();
