@@ -5,12 +5,12 @@
 
 export const PRESETS = {
   // 30 fps для керування фурою — погано (рецензія 25.10): «Низька» тримає 60, 30 — окремим пунктом меню
-  low: { scale: 0.75, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'smooth', budget: 0, draw: 'near', grass: false, bloom: false, grade: true, dof: 'off', fps: 60 },
-  medium: { scale: 1, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'fluffy', budget: 1, draw: 'mid', grass: true, bloom: true, grade: true, dof: 'weak', fps: 60 },
-  high: { scale: 1, aa: 'fxaa', shadows: 2048, clouds: 'high', cloudShadows: true, trees: 'fluffy', budget: 2, draw: 'far', grass: true, bloom: true, grade: true, dof: 'strong', fps: 60 },
+  low: { scale: 0.75, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'smooth', budget: 0, draw: 'near', grass: false, bloom: false, grade: true, dof: 'off', fps: 60, traffic: 'few' },
+  medium: { scale: 1, aa: 'fxaa', shadows: 1024, clouds: 'low', cloudShadows: true, trees: 'fluffy', budget: 1, draw: 'mid', grass: true, bloom: true, grade: true, dof: 'weak', fps: 60, traffic: 'few' },
+  high: { scale: 1, aa: 'fxaa', shadows: 2048, clouds: 'high', cloudShadows: true, trees: 'fluffy', budget: 2, draw: 'far', grass: true, bloom: true, grade: true, dof: 'strong', fps: 60, traffic: 'many' },
   // «Ультра» без ліміту кадрів, з MSAA 4×, тінями 4096 і хмарами ultra вантажила 5060 Ti на 100 % (26.10): тримає 60 кадрів,
   // FXAA, тіні 2048 і хмари high, як «Висока», а відрізняється деталізацією; найважче лишається окремими пунктами меню
-  ultra: { scale: 1, aa: 'fxaa', shadows: 2048, clouds: 'high', cloudShadows: true, trees: 'fluffy', budget: 3, draw: 'far', grass: true, bloom: true, grade: true, dof: 'strong', fps: 60 },
+  ultra: { scale: 1, aa: 'fxaa', shadows: 2048, clouds: 'high', cloudShadows: true, trees: 'fluffy', budget: 3, draw: 'far', grass: true, bloom: true, grade: true, dof: 'strong', fps: 60, traffic: 'many' },
 };
 // особисте — пресет не чіпає: поле зору, пора доби, піксель
 const PERSONAL = { fov: 62, time: 'kyiv', pixel: 1 };
@@ -30,6 +30,7 @@ export const OPTIONS = [
   ['budget', 'Деталізація', [0, 1, 2, 3], (v) => ['низька', 'середня', 'висока', 'ультра'][v]],
   ['trees', 'Крони дерев', ['flat', 'smooth', 'fluffy'], (v) => ({ flat: 'грані', smooth: 'гладкі', fluffy: 'пухнасті' }[v])],
   ['grass', 'Трава', [true, false], onOff],
+  ['traffic', 'Трафік', ['off', 'few', 'many'], (v) => ({ off: 'вимк', few: 'мало', many: 'багато' }[v])],
   ['dof', 'Розмиття вдалині', ['off', 'weak', 'strong'], (v) => ({ off: 'вимк', weak: 'слабке', strong: 'сильне' }[v])],
   ['bloom', 'Сяйво (bloom)', [true, false], onOff],
   ['grade', 'Кольорокорекція', [true, false], onOff],

@@ -784,10 +784,32 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     return false;                         // вільної смуги поруч нема — лишаємо як є
   }
 
+  // ---- праві смуги для трафіку (traffic.js): осі в напрямку руху, крок ~4 м, висота — поверхня; під'їзди до дворів — ні
+  let laneCache = null;
+  function lanes() {
+    if (laneCache) return laneCache;
+    laneCache = [];
+    for (const r of roads) {
+      if (r.kind === 'yard') continue;
+      const S = r.edge.sec, o = S.shift + S.lane * (S.oneway ? 0 : S.lanes / 2 - 0.5), pts = r.pts, L = pts[pts.length - 1].s;
+      const speed = ((kinds[r.kind] && kinds[r.kind].speed) || 50) / 3.6 * 0.85;
+      for (const dir of S.oneway ? [1] : [1, -1]) {
+        const out = [], n = Math.max(2, Math.round(L / 4));
+        for (let i = 0; i <= n; i++) {
+          const a = roadAt(pts, dir > 0 ? L * i / n : L * (1 - i / n)), fx = a.tx * dir, fz = a.tz * dir;
+          const x = a.x - fz * o, z = a.z + fx * o;
+          out.push({ x, y: topY(x, z), z });
+        }
+        laneCache.push({ id: r.id + (dir > 0 ? '+' : '-'), pts: out, speed, loop: false });
+      }
+    }
+    return laneCache;
+  }
+
   const depot = places.find((p) => p.depot) || places[0];
   let fogFar = 0;
   return {
-    map, places, roads, river, height: topY, ground: height, nearRoad, buildMs: ms, roadPlan: plan, packed, unstick, treeList: trees, pools, offRoad,
+    map, places, roads, river, height: topY, ground: height, nearRoad, buildMs: ms, roadPlan: plan, packed, unstick, treeList: trees, pools, offRoad, lanes,
     spawn: { x: depot.spawn.x, z: depot.spawn.z, yaw: depot.spawn.yaw, y: height(depot.spawn.x, depot.spawn.z) },
     // кожен кадр: якщо туман посунули (небо 2.0), чанки малюються до нової межі
     sync() {

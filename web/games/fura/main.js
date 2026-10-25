@@ -17,6 +17,7 @@ import { Trips } from './trip.js';
 import { Voice } from './voice.js';
 import { Ghosts, fakeConvoy } from './ghosts.js';
 import { Crash } from './crash.js';
+import { Traffic } from './traffic.js';
 import { Garage } from './garage.js';
 import { Sky, DRAW } from './sky.js';
 import { makeTrees, makeGrass } from './trees.js';
@@ -176,6 +177,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
   let trips = null, nav = null, voice = null;   // рейси й Глек у рації — лише в краю й лише зі столом (з картки гри)
   let ghosts = null, fake = null;               // колона (етап 2): чужі фури з кадру; fake — підставна з консолі
   let crash = null;                             // 2c: стіл «💥 зіткнення» — чужі фури твердими тілами (crash.js)
+  let traffic = null;                           // T1: машини на смугах level.lanes() (traffic.js), б'ються з моєю фурою
   let garage = null;                            // 0.0.6: 🔧 гараж (garage.js) — і в краю, і на полігоні (тест-драйв)
   const model = buildModels(THREE, scene);
   sky.attachHeadlights(model.tractor);
@@ -473,6 +475,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     if (trips) trips.dispose();
     if (fake) fake.stop();
     if (crash) crash.dispose();
+    if (traffic) traffic.dispose();
     if (ghosts) ghosts.dispose();
     sound.stop();
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch { /* пусто */ }
@@ -509,6 +512,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
       garage.view(server.view());
     }
   }
+  if (level.lanes) traffic = new Traffic({ THREE, RAPIER, world, scene, level, truck, ghosts, say, sound, density: gfx.traffic });
   if (!server) {
     garage = makeGarage();
     if (testDrive && testDrive.params) {
@@ -550,7 +554,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     },
   };
 
-  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, sky, trees, grass, gfx: null, get trips() { return trips; }, get crash() { return crash; }, get garage() { return garage; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
+  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, sky, trees, grass, gfx: null, get trips() { return trips; }, get crash() { return crash; }, get traffic() { return traffic; }, get garage() { return garage; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
   window.__fura = api;   // для перевірки з консолі: __fura.fake = {throttle: 1, …}
 
   function idleInput() { return { steer: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, horn: false, hit: new Set(), hGear: null, lookX: 0, lookY: 0, source: 'kbd' }; }
@@ -559,11 +563,14 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     truck.drive(inp, STEP);
     truck.update(STEP, onlyFixed, onlyFixed);
     if (crash) crash.before();
+    if (traffic) traffic.before(STEP);
     world.step(crash ? crash.queue : undefined);
     if (crash) crash.after();
+    if (traffic) traffic.after();
     // удар чужої фури (контакт іде чи щойно був): вантаж б'ється без пом'якшення тюнінгом (GARAGE.md §6)
     const lg = crash && crash.log.length ? crash.log[crash.log.length - 1] : null;
     truck.raw = !!crash && (crash.hits.size > 0 || (!!lg && performance.now() - lg.at < 700));
+    if (traffic && traffic.raw) truck.raw = true;   // удар з машиною — як від чужої фури
     truck.afterStep(STEP);
     prevT = curT; curT = snap(truck.tb);
     prevR = curR; curR = snap(truck.rb);
@@ -671,6 +678,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     placeCamera(dt);
     perf.lap('camera');
     if (ghosts) ghosts.update(now, dt);
+    if (traffic) traffic.update(camera);
     perf.lap('ghosts');
     drawWorld(dt);
     perf.lap('render');
@@ -746,6 +754,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     sky.setGfx(gfx);
     if (trees) { trees.setStyle(gfx.trees); trees.setBudget(gfx.budget, D.imp, D.far); trees.update(camera.position, true); }
     if (grass) { grass.setRadius(gfx.grass ? Math.max(30, trees ? trees.budget.grass : 40) : 0); grass.update(camera.position, true); }
+    if (traffic) traffic.setDensity(gfx.traffic);
     saveGfx(gfx);
   }
   function setGfx(patch) { patchGfx(gfx, patch); applyGfx(); }

@@ -49,7 +49,7 @@ const stdMass = (coupled, part) => (coupled ? STD_T + STD_R : part ? STD_R : STD
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 /** Прямокутник у плані: центр, курс, пів-розміри → чи перетинаються два (теорема про розділову вісь). */
-function overlap(a, b) {
+export function overlap(a, b) {
   const axes = [a.h, a.h + Math.PI / 2, b.h, b.h + Math.PI / 2];
   for (const t of axes) {
     const ux = Math.sin(t), uz = Math.cos(t);
@@ -59,7 +59,15 @@ function overlap(a, b) {
   }
   return true;
 }
-const rect = (x, z, h, i, pad = 0) => ({ x: x + Math.sin(h) * FLAT[i][2], z: z + Math.cos(h) * FLAT[i][2], h, w: FLAT[i][0] + pad, l: FLAT[i][1] + pad });
+export const rect = (x, z, h, i, pad = 0) => ({ x: x + Math.sin(h) * FLAT[i][2], z: z + Math.cos(h) * FLAT[i][2], h, w: FLAT[i][0] + pad, l: FLAT[i][1] + pad });
+
+/** Гачок трафіку (traffic.js): удар з машиною — лише в себе; той самий відгук, що в удару фури (тост, звук, вібрація). */
+export function carBump({ say, sound }, p, text) {
+  p = clamp(p, 0.1, 1);
+  say(text, 1800);
+  try { sound.thump(); } catch { /* пусто */ }
+  if (window.HPad && HPad.rumble) try { HPad.rumble(150 + p * 250, 0.4 + p * 0.6, 0.6); } catch { /* пусто */ }
+}
 
 export class Crash {
   constructor({ THREE, RAPIER, world, truck, ghosts, level, server, say, sound }) {
@@ -321,12 +329,7 @@ export class Crash {
 
   nick(seat) { return this.ghosts.names.get(seat) || 'фура ' + (seat + 1); }
 
-  bump(p, text) {
-    p = clamp(p, 0.1, 1);
-    this.say(text, 1800);
-    try { this.sound.thump(); } catch { /* пусто */ }
-    if (window.HPad && HPad.rumble) try { HPad.rumble(150 + p * 250, 0.4 + p * 0.6, 0.6); } catch { /* пусто */ }
-  }
+  bump(p, text) { carBump(this, p, text); }
 
   note(dir, seat, J, sent, what) {
     this.log.push({ at: Math.round(performance.now()), dir, seat, J: Math.round(J), [dir === 'out' ? 'sent' : 'dv']: dir === 'out' ? Math.round(sent) : +sent.toFixed(2), what });
