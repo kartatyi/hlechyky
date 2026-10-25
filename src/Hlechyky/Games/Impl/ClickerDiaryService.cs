@@ -178,8 +178,13 @@ public sealed class ClickerDiaryService : BackgroundService
 
     // ---------- «📈 Літопис кола» (етап 3): що бачить вкладка ----------
 
-    /// <summary>Скільки гончарів округи на графіках поруч зі мною (за заробітком на останній день).</summary>
-    public const int RoundShown = 8;
+    /// <summary>Скільки гончарів округи на графіках поруч зі мною (за заробітком на останній день): шість кольорів палітри
+    /// сторінки «📈 Літопис кола» (web/kolo.js) — я свій, акцентний, а сьомого кольору, що не зливався б із зеленим тлом, нема.</summary>
+    public const int RoundShown = 6;
+    /// <summary>«Майстер дня» на сторінці — за стільки останніх днів.</summary>
+    public const int MasterDays = 21;
+    /// <summary>Хвилини біля кола на сторінці — за стільки останніх днів.</summary>
+    public const int MinutesDays = 30;
     /// <summary>Години для «коли я граю» — за стільки останніх днів.</summary>
     public const int HoursDays = 35;
     static readonly TimeSpan RoundCache = TimeSpan.FromSeconds(60);
@@ -250,8 +255,9 @@ public sealed class ClickerDiaryService : BackgroundService
     /// <c>GET /api/games/clicker/diary</c>: мій щоденник (дні, години, останній повний знімок) і криві округи — заробіток,
     /// вироби, Слава, хвилини. Розклад множників і модель години — лише свої (вони в моєму знімку), чужих не віддаємо.
     /// </summary>
-    public object Wire(string nick)
+    public object Wire(string nick, bool glekOnly = false)
     {
+        if (glekOnly) return GlekWire(nick);
         var key = Auth.NickKey(nick);
         var round = Round();
         var mine = round.TryGetValue(key, out var m) ? m.Days : [];
@@ -265,6 +271,9 @@ public sealed class ClickerDiaryService : BackgroundService
         var since = TimeZoneInfo.ConvertTime(_clock.UtcNow, Days.Kyiv).Date.AddDays(-HoursDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var others = round.Where(kv => kv.Key != key && kv.Value.Days.Count > 0)
             .OrderByDescending(kv => kv.Value.Days[^1].Total).Take(RoundShown);
+        var keys = new List<string> { key };
+        keys.AddRange(others.Select(kv => kv.Key));
+        var (master, ach, minutesBy) = Extras(keys);
         object Series(string k, string n, List<DayPoint> d) => new
         {
             nick = n, me = k == key,
@@ -281,7 +290,91 @@ public sealed class ClickerDiaryService : BackgroundService
                 .Select(h => new object[] { h.Day, h.Hour, h.Seconds, h.Formed, h.Grabbed, h.Clicks }),
             round = (mine.Count > 0 ? new[] { Series(key, m.Nick, mine) } : [])
                 .Concat(others.Select(kv => Series(kv.Key, kv.Value.Nick, kv.Value.Days))),
+            // «Майстер дня» і ачівки кола — для мене й тих самих гончарів округи (ключ — нік як у round).
+            minutes = keys.Where(minutesBy.ContainsKey).ToDictionary(k => round.TryGetValue(k, out var r) ? r.Nick : k, k => minutesBy[k]),
+            master = keys.Where(master.ContainsKey).ToDictionary(k => round.TryGetValue(k, out var r) ? r.Nick : k, k => master[k]),
+            ach = keys.Where(ach.ContainsKey).ToDictionary(k => round.TryGetValue(k, out var r) ? r.Nick : k, k => ach[k]),
+            achNames = Hlechyky.Games.Economy.AchievementCatalog.All.Where(a => a.Key.StartsWith("potter", StringComparison.Ordinal) && !a.Hidden)
+                .ToDictionary(a => a.Key, a => new[] { a.Title, a.Text, a.Icon }),
         };
+    }
+
+    /// <summary>
+    /// <c>?glek=1</c> — лише поради Дядька Глека з останнього знімка: картка в самому колі питає їх раз на кілька хвилин,
+    /// і тягнути з ними всі криві округи нема чого.
+    /// </summary>
+    object GlekWire(string nick)
+    {
+        var key = Auth.NickKey(nick);
+        string? json = null;
+        lock (_gate)
+            json = _snaps.Values.Where(x => Auth.NickKey(x.Nick) == key).OrderByDescending(x => x.Day, StringComparer.Ordinal).FirstOrDefault()?.Json;
+        json ??= Diary(nick).LastOrDefault()?.Json;
+        JsonElement? glek = null;
+        if (json is not null)
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("glek", out var g)) glek = g.Clone();
+        }
+        return new { ok = true, glek };
+    }
+
+    /// <summary>Очки «Майстра дня» за останні дні й ачівки кола (коли здобуто) для ключів ніків.</summary>
+    (Dictionary<string, List<object[]>> Master, Dictionary<string, Dictionary<string, string>> Ach, Dictionary<string, List<object[]>> Minutes) Extras(List<string> keys)
+    {
+        var minutes = new Dictionary<string, List<object[]>>(StringComparer.Ordinal);
+        var master = new Dictionary<string, List<object[]>>(StringComparer.Ordinal);
+        var ach = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+        if (_db is null || keys.Count == 0) return (master, ach, minutes);
+        var since = TimeZoneInfo.ConvertTime(_clock.UtcNow, Days.Kyiv).Date.AddDays(-MasterDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var sinceMin = TimeZoneInfo.ConvertTime(_clock.UtcNow, Days.Kyiv).Date.AddDays(-MinutesDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var set = new HashSet<string>(keys, StringComparer.Ordinal);
+        _db.With(c =>
+        {
+            try
+            {
+                using var cmd = c.CreateCommand();
+                cmd.CommandText = "SELECT nick_key, day, points FROM clicker_day WHERE day >= $d ORDER BY day";
+                cmd.Parameters.AddWithValue("$d", since);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    if (set.Contains(r.GetString(0)))
+                    {
+                        if (!master.TryGetValue(r.GetString(0), out var l)) master[r.GetString(0)] = l = [];
+                        l.Add([r.GetString(1), r.GetInt32(2)]);
+                    }
+            }
+            catch (Microsoft.Data.Sqlite.SqliteException) { }   // без таблиці Майстра дня (тести) — без нього
+            try
+            {
+                using var cmd = c.CreateCommand();
+                cmd.CommandText = "SELECT nick_key, key, unlocked_at FROM achievements WHERE key LIKE 'potter%'";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    if (set.Contains(r.GetString(0)))
+                    {
+                        if (!ach.TryGetValue(r.GetString(0), out var d)) ach[r.GetString(0)] = d = new(StringComparer.Ordinal);
+                        d[r.GetString(1)] = r.GetString(2);
+                    }
+            }
+            catch (Microsoft.Data.Sqlite.SqliteException) { }
+            // Хвилини біля кола — з лічильників сайту за кожен день, а не лише за дні зі знімком щоденника.
+            try
+            {
+                using var cmd = c.CreateCommand();
+                cmd.CommandText = "SELECT nick_key, day, n FROM economy_counters WHERE key = 'time:game:clicker' AND day >= $d ORDER BY day";
+                cmd.Parameters.AddWithValue("$d", sinceMin);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    if (set.Contains(r.GetString(0)))
+                    {
+                        if (!minutes.TryGetValue(r.GetString(0), out var l)) minutes[r.GetString(0)] = l = [];
+                        l.Add([r.GetString(1), (int)Math.Round(r.GetDouble(2) / 60)]);
+                    }
+            }
+            catch (Microsoft.Data.Sqlite.SqliteException) { }
+        });
+        return (master, ach, minutes);
     }
 
     // ---------- база ----------
@@ -405,7 +498,8 @@ public static class ClickerDiarySetup
     /// <summary><c>GET /api/games/clicker/diary</c> — «📈 Літопис кола» того, хто питає (ніка в адресі нема: чужого не видно).</summary>
     public static WebApplication Map(WebApplication app)
     {
-        app.MapGet("/api/games/clicker/diary", (HttpContext c, ClickerDiaryService diary) => Results.Ok(diary.Wire(Auth.Nick(c))));
+        app.MapGet("/api/games/clicker/diary", (HttpContext c, ClickerDiaryService diary, string? glek) =>
+            Results.Ok(diary.Wire(Auth.Nick(c), glek == "1")));
         return app;
     }
 }
