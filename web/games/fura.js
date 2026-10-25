@@ -8,8 +8,9 @@
    відсіює, його гра читає прямо з navigator.getGamepads().
 
    Етап 2 — колона: стіл до 8 фур. Сидиш за цим столом — «🗺 Чумацький край» їде за ним (це й є свій стіл); дивишся
-   чужий — «приєднатися» (JoinRoom: каркас сам «Сісти» посеред партії не показує) або «свій стіл» (CreateRoom). Нижче —
-   живі столи fura з лобі (HGames.rooms, якщо каркас його віддає). Кадри привидів — у гру через міст (onFrame). */
+   чужий — «приєднатися» або «свій стіл» (CreateRoom). Приєднатися — тим самим шляхом, яким каркас садить за стіл
+   (HGames.sitAt → JoinRoom; посеред рейсу сервер садить сам, бо гра LateJoin), лише кнопку дає картка: «Сісти» на
+   playing-столі каркас не показує. Нижче — живі столи fura з лобі (HGames.rooms). Кадри привидів — у гру через міст. */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<rect x="1" y="4" width="9" height="7" rx="1" fill="var(--clay, #b5582f)"/>'
@@ -69,17 +70,14 @@
 
     // живі столи fura, крім цього
     let t = '';
-    const all = window.HGames && Array.isArray(HGames.rooms) ? HGames.rooms : null;
-    if (all) {
-      const list = all.filter((r) => r.game === 'fura' && r.id !== room.id && r.maxPlayers > 1 && nicksOf(r).length);
-      if (list.length) {
-        t = '<div class="fura-tables-h">🚚 У рейсі зараз</div>' + list.map((r) => {
-          const ns = nicksOf(r), free = ns.length < r.maxPlayers;
-          return '<div class="fura-table"><span>' + ns.map(esc).join(', ') + ' <span class="muted small">' + ns.length + '/' + r.maxPlayers + '</span></span>'
-            + (free ? '<button class="btn" type="button" data-do="sit" data-room="' + esc(r.id) + '">приєднатися</button>' : '<span class="muted small">повна колона</span>') + '</div>';
-        }).join('');
-      }
-    } else if (room.maxPlayers > 1) t = '<p class="muted small">Хто ще в рейсі — видно в лобі «Ігор»: стіл 🚚 з ніками, заходь і тисни «приєднатися».</p>';
+    const list = (HGames.rooms || []).filter((r) => r.game === 'fura' && r.id !== room.id && r.maxPlayers > 1 && nicksOf(r).length);
+    if (list.length) {
+      t = '<div class="fura-tables-h">🚚 У рейсі зараз</div>' + list.map((r) => {
+        const ns = nicksOf(r), free = ns.length < r.maxPlayers;
+        return '<div class="fura-table"><span>' + ns.map(esc).join(', ') + ' <span class="muted small">' + ns.length + '/' + r.maxPlayers + '</span></span>'
+          + (free ? '<button class="btn" type="button" data-do="sit" data-room="' + esc(r.id) + '">приєднатися</button>' : '<span class="muted small">повна колона</span>') + '</div>';
+      }).join('');
+    }
     if (tables._html !== t) { tables.innerHTML = t; tables._html = t; }
   }
 
@@ -90,12 +88,11 @@
     const label = b.textContent;
     b.disabled = true;
     try {
-      if (k === 'join') {
-        const r = await HGames.call('JoinRoom', b.dataset.room);
-        if (r && r.ok) autoStart = b.dataset.room;
-      } else if (k === 'sit') {
+      if (k === 'join' || k === 'sit') {
+        // спершу autoStart: вид «я за столом» може прийти раніше за відповідь на JoinRoom
+        autoStart = b.dataset.room;
         const r = await HGames.sitAt(b.dataset.room, b);
-        if (r && r.ok) autoStart = b.dataset.room;
+        if (!r || !r.ok) autoStart = null;
       } else if (k === 'own') {
         b.textContent = '⏳ Ставимо стіл…';
         const r = await HGames.call('CreateRoom', 'fura', {});
