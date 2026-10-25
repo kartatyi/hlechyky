@@ -2742,7 +2742,7 @@
     if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
     if (window.HHistory) { if (r === 'history') HHistory.show(); else HHistory.hide(); }
     if (window.HTryvoga) { if (r === 'tryvoga') HTryvoga.show(); else HTryvoga.hide(); }
-    if (window.HGonchar) { if (r === 'gonchar') HGonchar.show(); else HGonchar.hide(); }
+    if (window.HGonchar) { if (r === 'gonchar') HGonchar.show(tail); else HGonchar.hide(); }
     if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
     if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);

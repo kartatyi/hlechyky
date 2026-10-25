@@ -64,14 +64,16 @@
     if (st.glekBox && st.glekBox.isConnected) return;
     const host = api.layer(st, 'front', 'glek');
     host.innerHTML = '<button type="button" class="clkgl-glek" aria-label="Дядько Глек радить"><img src="/static/glek.svg" alt=""><i hidden></i></button>'
-      + '<div class="clkgl-bubble" role="dialog" aria-label="Порада Дядька Глека" hidden></div>';
+      + '<div class="clkgl-bubble" role="dialog" aria-label="Порада Дядька Глека" hidden></div>'
+      // Постійне посилання на поради саме в хаті — видно й на телефоні (рядок під лічильником там стиснутий).
+      + '<a class="clkgl-how" href="#gonchar/tips">💡 Як грати краще</a>';
     st.glekBox = host;
     st.glekBtn = host.querySelector('.clkgl-glek');
     st.glekDot = st.glekBtn.querySelector('i');
     st.glekBub = host.querySelector('.clkgl-bubble');
     // Глек — не коло: натиск по ньому не крутить коло й не ловить нічого під ним.
     for (const ev of ['pointerdown', 'mousedown', 'touchstart']) {
-      host.addEventListener(ev, (e) => { if (e.target.closest('.clkgl-glek, .clkgl-bubble')) e.stopPropagation(); }, { passive: true });
+      host.addEventListener(ev, (e) => { if (e.target.closest('.clkgl-glek, .clkgl-bubble, .clkgl-how')) e.stopPropagation(); }, { passive: true });
     }
     st.glekBtn.onclick = (e) => {
       e.stopPropagation();
@@ -92,8 +94,8 @@
     const tips = st.glekTips || [];
     const m = st.glekMoment;
     if (!m && !tips.length) {
-      st.glekBub.innerHTML = '<div class="clkgl-t">Поки все добре — грай далі, я підкажу, коли буде що.</div>'
-        + '<div class="clkgl-foot"><a href="#gonchar">📈 Літопис кола</a><button type="button" class="clkgl-x" aria-label="Закрити">✕</button></div>';
+      st.glekBub.innerHTML = '<div class="clkgl-t">Поки все гаразд — грай, як тобі до душі. Підкажу, коли буде що.</div>'
+        + '<div class="clkgl-foot"><a href="#gonchar/tips">💡 Як грати краще</a><button type="button" class="clkgl-x" aria-label="Закрити">✕</button></div>';
     } else {
       const t = m || tips[Math.min(st.glekI || 0, tips.length - 1)];
       const esc = (x) => api.esc(st, x);
@@ -103,7 +105,7 @@
       st.glekBub.innerHTML = '<div class="clkgl-t">' + esc(t.text) + '</div>'
         + '<div class="clkgl-act"><button type="button" class="primary small" data-go>' + goLabel(t.where) + '</button>'
         + '<button type="button" class="ghost small" data-later>Потім</button>' + nav + '</div>'
-        + '<div class="clkgl-foot"><a href="#gonchar">📈 Літопис кола</a><button type="button" class="clkgl-x" aria-label="Закрити">✕</button></div>';
+        + '<div class="clkgl-foot"><a href="#gonchar/tips">💡 Усі поради</a><button type="button" class="clkgl-x" aria-label="Закрити">✕</button></div>';
       st.glekBub.querySelector('[data-go]').onclick = () => { go(st, api, t.where); close(st); };
       st.glekBub.querySelector('[data-later]').onclick = () => { later(st, api, t.kind); close(st); };
       for (const b of st.glekBub.querySelectorAll('[data-step]')) {
@@ -117,23 +119,8 @@
     if (st.glekDot) st.glekDot.hidden = true;
   }
 
-  /// «📈 Літопис» у рядку під лічильником (поруч із «🏆 Майстер дня»): постійний вхід на сторінку #gonchar.
-  function chip(st) {
-    const rr = st.el && st.el.querySelector('.clk-rr');
-    if (!rr) return;
-    if (!st.glekChip) {
-      st.glekChip = document.createElement('a');
-      st.glekChip.className = 'clkgl-chip small';
-      st.glekChip.href = '#gonchar';
-      st.glekChip.title = 'Літопис кола: як ти граєш і що робити далі';
-      st.glekChip.textContent = '📈 Літопис';
-    }
-    if (st.glekChip.parentElement !== rr) rr.appendChild(st.glekChip);
-  }
-
   function paint(st, api) {
     if (!st.mine || !st.front) return;
-    chip(st);
     build(st, api);
     const tips = st.glekTips || [];
     st.glekDot.hidden = !tips.length || lsGet(SEEN_LS) === sig(tips);
@@ -177,7 +164,6 @@
     unmount(st) {
       clearTimeout(st.glekT);
       if (st.glekBox) st.glekBox.innerHTML = '';
-      if (st.glekChip) { st.glekChip.remove(); st.glekChip = null; }
       st.glekBox = st.glekBtn = st.glekBub = st.glekDot = null;
       st.glekTips = [];
     },

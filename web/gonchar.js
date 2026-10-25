@@ -47,6 +47,8 @@
   let loadedAt = 0;
   let tip = null;
   let resizeT = 0;
+  /// Прийшли за посиланням «💡 Як грати краще» (#gonchar/tips) — після малювання прокрутити до порад.
+  let wantTips = false;
 
   // ---------- числа ----------
 
@@ -280,9 +282,10 @@
   /// «Як грати краще» — усі персональні поради Глека з числом: що дасть і про що вона.
   function glekHtml(n) {
     const tips = Array.isArray(n.glek) ? n.glek : [];
-    const head = '<div class="gnr-glek-head"><img class="gnr-ava" src="/static/glek.svg" alt=""><div><h2>Як грати краще — каже Дядько Глек</h2>'
-      + '<span class="muted">поради саме для тебе, порахував на твоєму колі; «Постав» і «Потім» — у хаті: клацни на Глека в кутку</span></div></div>';
-    if (!tips.length) return '<section class="panel gnr-glek">' + head + '<p class="gnr-note">Поки все добре — грай далі, я підкажу, коли буде що.</p></section>';
+    const head = '<div class="gnr-glek-head"><img class="gnr-ava" src="/static/glek.svg" alt=""><div><h2>Як грати краще — поради Дядька Глека</h2>'
+      + '<span class="muted">Це лише поради — грай, як тобі до душі. Я порахував на твоєму колі, що дало б найбільше, якщо захочеш рости швидше. '
+      + '«Постав» і «Потім» — у хаті: клацни на мене в кутку.</span></div></div>';
+    if (!tips.length) return '<section class="panel gnr-glek">' + head + '<p class="gnr-note">Поки все гаразд — грай, як тобі до душі. Підкажу, коли буде що.</p></section>';
     return '<section class="panel gnr-glek">' + head + '<ol class="gnr-tips">' + tips.map((t) => {
       const what = TIP_WHAT[t.kind] || 'до всього';
       return '<li><span class="ic">' + (TIP_ICON[t.kind] || '🏺') + '</span><span class="tx">' + o.esc(t.text) + '</span>'
@@ -391,6 +394,11 @@
       };
     }
     charts(root, shown, n);
+    if (wantTips) {
+      wantTips = false;
+      const tips = root.querySelector('.gnr-glek');
+      if (tips) requestAnimationFrame(() => tips.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    }
   }
 
   function charts(root, shown, n) {
@@ -450,14 +458,15 @@
         resizeT = setTimeout(() => { if (document.body.classList.contains('route-gonchar')) render(); }, 150);
       });
     },
-    show() {
+    show(tail) {
+      wantTips = tail === 'tips';
       render();
       load(false);
     },
     hide() { hideTip(); },
     /// Рядок у своєму профілі («Я»): шлях на сторінку літопису кола.
     cardHtml() {
-      return '<a class="gnr-mine" href="#gonchar">📈 <b>Літопис кола</b> — як ти граєш і що робити далі →</a>';
+      return '<a class="gnr-mine" href="#gonchar">📈 <b>Літопис кола</b> — як ти граєш і поради Глека →</a>';
     },
   };
 })();
