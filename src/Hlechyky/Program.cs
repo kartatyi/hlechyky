@@ -51,6 +51,7 @@ builder.Services.AddSingleton<LastFmClient>();
 builder.Services.AddSingleton<LiquidsoapClient>();
 builder.Services.AddSingleton<MusicBrainzClient>();
 builder.Services.AddSingleton<RoomTaste>();
+builder.Services.AddSingleton<Reputation>();  // репутація пісень і артистів з наших програвань (Reputation.cs)
 builder.Services.AddSingleton<ArtistQuality>();
 builder.Services.AddSingleton<AutoDj>();
 builder.Services.AddSingleton<Presence>();

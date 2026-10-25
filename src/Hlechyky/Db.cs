@@ -107,6 +107,14 @@ public sealed class Db
         try { Exec(c, "ALTER TABLE plays ADD COLUMN duration_sec INTEGER"); } catch (SqliteException) { /* exists */ }
         try { Exec(c, "ALTER TABLE plays ADD COLUMN stream_peak INTEGER"); } catch (SqliteException) { /* exists */ }
         try { Exec(c, "ALTER TABLE tracks ADD COLUMN song_key TEXT"); } catch (SqliteException) { /* exists */ }
+        // звідки Глек узяв авто-трек (related / radio / lastfm / archive, через «+») і від якого сіда — щоб міряти джерела
+        try { Exec(c, "ALTER TABLE plays ADD COLUMN pick_source TEXT"); } catch (SqliteException) { /* exists */ }
+        try { Exec(c, "ALTER TABLE plays ADD COLUMN seed_id TEXT"); } catch (SqliteException) { /* exists */ }
+        // хто скіпнув (сирий нік): з цього RoomTaste знає, що кому не заходить — не лише з порад Глека
+        try { Exec(c, "ALTER TABLE plays ADD COLUMN skipped_by TEXT"); } catch (SqliteException) { /* exists */ }
+        // відмова — передусім про пісню: її ключ (AutoDj.KeyOf) і id, а не лише артист
+        try { Exec(c, "ALTER TABLE dj_feedback ADD COLUMN song TEXT"); } catch (SqliteException) { /* exists */ }
+        try { Exec(c, "ALTER TABLE dj_feedback ADD COLUMN track_id TEXT"); } catch (SqliteException) { /* exists */ }
         // скільки черепків віддали за бан; 0 — забанив адмін
         try { Exec(c, "ALTER TABLE bans ADD COLUMN price INTEGER NOT NULL DEFAULT 0"); } catch (SqliteException) { /* exists */ }
         // id столу, про який цей рядок Журналу: фронт малює біля нього кнопку «Сісти»/«Дивитись»
@@ -150,6 +158,45 @@ public sealed class Db
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_likes_nick ON likes(nick)");
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_chat_nick ON chat(nick)");
         BackfillSongKeys(c);
+        BackfillSkippedBy(c);
+    }
+
+    /// <summary>
+    /// Хто скіпав до появи <c>plays.skipped_by</c>: рушій щоразу пише в Журнал «нік скіпає Артист — Пісня», тож
+    /// кожен такий рядок приписуємо останньому скіпнутому програванню, що почалося до нього й скінчилося не
+    /// раніше ніж за 10 секунд до нього (рядок лягає слідом за скіпом). Раз на базу.
+    /// </summary>
+    static void BackfillSkippedBy(SqliteConnection c)
+    {
+        const string key = "plays-skipped-by-2026-10";
+        using (var check = Cmd(c, "SELECT 1 FROM migrations WHERE key=$k", ("$k", key)))
+            if (check.ExecuteScalar() is not null) return;
+
+        var plays = new List<(long Id, DateTimeOffset Start, DateTimeOffset End)>();
+        using (var cmd = Cmd(c, "SELECT id, started_at, ended_at FROM plays WHERE skipped = 1 AND skipped_by IS NULL AND ended_at IS NOT NULL ORDER BY started_at"))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read()) plays.Add((r.GetInt64(0), Ts(r.GetString(1)), Ts(r.GetString(2))));
+        var starts = plays.Select(p => p.Start).ToList();
+        var found = new Dictionary<long, string>();
+        using (var cmd = Cmd(c, "SELECT text, created_at FROM chat WHERE kind = 'system' AND text LIKE '% скіпає %'"))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read())
+            {
+                var text = r.GetString(0);
+                var nick = text[..text.IndexOf(" скіпає ", StringComparison.Ordinal)].Trim();
+                var at = Ts(r.GetString(1));
+                var i = starts.BinarySearch(at);
+                if (i < 0) i = ~i - 1;
+                if (nick.Length == 0 || i < 0) continue;
+                var p = plays[i];
+                if (at - p.End <= TimeSpan.FromSeconds(10)) found.TryAdd(p.Id, nick);
+            }
+
+        using var tx = c.BeginTransaction();
+        foreach (var (id, nick) in found)
+            using (var up = Cmd(c, "UPDATE plays SET skipped_by=$n WHERE id=$id", ("$n", nick), ("$id", id))) { up.Transaction = tx; up.ExecuteNonQuery(); }
+        using (var mark = Cmd(c, "INSERT INTO migrations(key, done_at) VALUES($k, $now)", ("$k", key), ("$now", Now()))) { mark.Transaction = tx; mark.ExecuteNonQuery(); }
+        tx.Commit();
     }
 
     /// <summary>Ключ пісні рахується в C#: SQLite-івський lower() не знає кирилиці.</summary>
@@ -405,22 +452,28 @@ public sealed class Db
 
     // ---- plays ----
 
-    public long StartPlay(string? trackId, string source, string? requestedBy, string? reason, string? via)
+    /// <param name="pickSource">Для авто-треку: з яких джерел Глек його знайшов (<see cref="AutoDj.Pick.Source"/>).</param>
+    /// <param name="seedId">Для авто-треку: від якого треку-сіда.</param>
+    public long StartPlay(string? trackId, string source, string? requestedBy, string? reason, string? via,
+        string? pickSource = null, string? seedId = null)
     {
         using var c = Open();
         Exec(c, "UPDATE plays SET ended_at=$now WHERE ended_at IS NULL", ("$now", Now()));
         using var cmd = Cmd(c, """
-            INSERT INTO plays(track_id, source, requested_by, reason, via, started_at) VALUES($t, $s, $b, $r, $v, $now);
+            INSERT INTO plays(track_id, source, requested_by, reason, via, pick_source, seed_id, started_at)
+            VALUES($t, $s, $b, $r, $v, $ps, $sd, $now);
             SELECT last_insert_rowid();
-            """, ("$t", trackId), ("$s", source), ("$b", requestedBy), ("$r", reason), ("$v", via), ("$now", Now()));
+            """, ("$t", trackId), ("$s", source), ("$b", requestedBy), ("$r", reason), ("$v", via),
+            ("$ps", pickSource), ("$sd", seedId), ("$now", Now()));
         return (long)cmd.ExecuteScalar()!;
     }
 
-    public void EndPlay(long id, bool skipped)
+    /// <param name="by">Хто скіпнув (сирий нік), якщо скіпнули.</param>
+    public void EndPlay(long id, bool skipped, string? by = null)
     {
         using var c = Open();
-        Exec(c, "UPDATE plays SET ended_at=$now, skipped=$s WHERE id=$id AND ended_at IS NULL",
-            ("$now", Now()), ("$s", skipped ? 1 : 0), ("$id", id));
+        Exec(c, "UPDATE plays SET ended_at=$now, skipped=$s, skipped_by=$by WHERE id=$id AND ended_at IS NULL",
+            ("$now", Now()), ("$s", skipped ? 1 : 0), ("$by", skipped ? by : null), ("$id", id));
     }
 
     /// <summary>Справжня довжина треку, щойно liquidsoap її знає: від неї рахується, скільки дослухали.</summary>
@@ -591,37 +644,68 @@ public sealed class Db
     }
 
     /// <summary>
-    /// Треки, які ставили люди, найсвіжіші перші. Це і є смак кімнати: те, що Дядько Глек накрутив
-    /// собі сам, сюди не потрапляє, інакше він би вчився на власному дрейфі. Голосові не музика.
+    /// Треки, які ставили люди, найсвіжіші перші, — разом із тим, хто поставив востаннє і чи тоді скіпнули.
+    /// З цього RoomTaste рахує смак кімнати: те, що Дядько Глек накрутив собі сам, сюди не потрапляє, інакше
+    /// він би вчився на власному дрейфі. Голосові не музика. Гостей і ботів відсіює вже RoomTaste
+    /// (<see cref="Bots.Set"/>): <c>requested_by</c> — сирий нік, а SQLite <c>lower()</c> кирилиці не знає.
     /// </summary>
-    public List<TrackInfo> RecentUserTracks(int n)
+    public List<(TrackInfo Track, string? Nick, bool Skipped, DateTimeOffset At)> RecentRequests(int n)
     {
         using var c = Open();
+        // SQLite: голі стовпці поруч із MAX() беруться з того самого рядка — тобто з останнього замовлення треку
         using var cmd = Cmd(c, $"""
-            SELECT {TrackCols}, MAX(p.id) AS m FROM plays p JOIN tracks t ON t.id = p.track_id
+            SELECT {TrackCols}, p.requested_by, p.skipped, p.started_at, MAX(p.id) AS m FROM plays p JOIN tracks t ON t.id = p.track_id
             WHERE p.source = 'user' AND t.id NOT LIKE 'voice-%'
             GROUP BY t.id ORDER BY m DESC LIMIT $n
             """, ("$n", n));
         using var r = cmd.ExecuteReader();
-        var list = new List<TrackInfo>();
-        while (r.Read()) list.Add(ReadTrack(r));
+        var list = new List<(TrackInfo, string?, bool, DateTimeOffset)>();
+        while (r.Read()) list.Add((ReadTrack(r), Str(r, 7), r.GetInt32(8) == 1, Ts(r.GetString(9))));
         return list;
     }
 
-    /// <summary>Артисти, яких кімната ставила сама або лайкала — «свої» для авто-DJ.</summary>
-    public List<string> TasteArtists(int n)
+    /// <summary>Лайки, найсвіжіші перші: трек, хто лайкнув і коли (сирий нік — людей відбирає RoomTaste).</summary>
+    public List<(TrackInfo Track, string Nick, DateTimeOffset At)> RecentLikes(int n)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+            SELECT {TrackCols}, l.nick, l.created_at FROM likes l JOIN tracks t ON t.id = l.track_id
+            WHERE t.id NOT LIKE 'voice-%'
+            ORDER BY l.created_at DESC LIMIT $n
+            """, ("$n", n));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(TrackInfo, string, DateTimeOffset)>();
+        while (r.Read()) list.Add((ReadTrack(r), r.GetString(7), Ts(r.GetString(8))));
+        return list;
+    }
+
+    /// <summary>Програвання від <paramref name="since"/>, коли хтось слухав на сайті (для <see cref="Reputation"/>): артист, назва, чи скіпнули.</summary>
+    public List<(string Artist, string Title, bool Skipped)> HeardPlays(DateTimeOffset since)
     {
         using var c = Open();
         using var cmd = Cmd(c, """
-            SELECT t.artist FROM plays p JOIN tracks t ON t.id = p.track_id
-            WHERE p.source = 'user' AND t.id NOT LIKE 'voice-%'
-            UNION
-            SELECT t.artist FROM likes l JOIN tracks t ON t.id = l.track_id
-            LIMIT $n
-            """, ("$n", n));
+            SELECT t.artist, t.title, p.skipped FROM plays p JOIN tracks t ON t.id = p.track_id
+            WHERE p.started_at >= $s AND p.ended_at IS NOT NULL AND t.id NOT LIKE 'voice-%'
+              AND EXISTS (SELECT 1 FROM play_listeners l WHERE l.play_id = p.id)
+            """, ("$s", since.ToUniversalTime().ToString("o")));
         using var r = cmd.ExecuteReader();
-        var list = new List<string>();
-        while (r.Read()) list.Add(r.GetString(0));
+        var list = new List<(string, string, bool)>();
+        while (r.Read()) list.Add((r.GetString(0), r.GetString(1), r.GetInt32(2) == 1));
+        return list;
+    }
+
+    /// <summary>Хто що скіпнув від <paramref name="since"/> (будь-яке джерело: і замовлення, і Глека, і запаску).</summary>
+    public List<(TrackInfo Track, string Nick, DateTimeOffset At)> SkipsSince(DateTimeOffset since)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+            SELECT {TrackCols}, p.skipped_by, p.started_at FROM plays p JOIN tracks t ON t.id = p.track_id
+            WHERE p.started_at >= $s AND p.skipped = 1 AND p.skipped_by IS NOT NULL AND t.id NOT LIKE 'voice-%'
+            ORDER BY p.id DESC
+            """, ("$s", since.ToUniversalTime().ToString("o")));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(TrackInfo, string, DateTimeOffset)>();
+        while (r.Read()) list.Add((ReadTrack(r), r.GetString(7), Ts(r.GetString(8))));
         return list;
     }
 
@@ -1178,22 +1262,25 @@ public sealed class Db
 
     // ---- що кімнаті не зайшло з порад Глека ----
 
-    /// <summary>«Не те» чи швидкий скіп авто-треку: артист і сід, від якого порада прийшла.</summary>
-    public void AddDjFeedback(string artistKey, string? seedId, string kind, string? nick)
+    /// <summary>Рядок <c>dj_feedback</c>. <paramref name="Song"/> і <paramref name="TrackId"/> — null у записах до 25.10.</summary>
+    public sealed record DjFeedbackRow(string ArtistKey, string? SeedId, string? Song, string? TrackId, string? Nick, DateTimeOffset At);
+
+    /// <summary>«Не те» чи швидкий скіп авто-треку: пісня (ключ і id), її артист і сід, від якого порада прийшла.</summary>
+    public void AddDjFeedback(string artistKey, string? seedId, string kind, string? nick, string? song = null, string? trackId = null)
     {
         using var c = Open();
-        Exec(c, "INSERT INTO dj_feedback(artist_key, seed_id, kind, nick, created_at) VALUES($a, $s, $k, $n, $now)",
-            ("$a", artistKey), ("$s", seedId), ("$k", kind), ("$n", nick), ("$now", Now()));
+        Exec(c, "INSERT INTO dj_feedback(artist_key, seed_id, kind, nick, song, track_id, created_at) VALUES($a, $s, $k, $n, $song, $t, $now)",
+            ("$a", artistKey), ("$s", seedId), ("$k", kind), ("$n", nick), ("$song", song), ("$t", trackId), ("$now", Now()));
     }
 
-    public List<(string ArtistKey, string? SeedId)> DjFeedbackSince(DateTimeOffset since)
+    public List<DjFeedbackRow> DjFeedbackSince(DateTimeOffset since)
     {
         using var c = Open();
-        using var cmd = Cmd(c, "SELECT artist_key, seed_id FROM dj_feedback WHERE created_at >= $s",
+        using var cmd = Cmd(c, "SELECT artist_key, seed_id, song, track_id, nick, created_at FROM dj_feedback WHERE created_at >= $s ORDER BY id",
             ("$s", since.ToUniversalTime().ToString("o")));
         using var r = cmd.ExecuteReader();
-        var list = new List<(string, string?)>();
-        while (r.Read()) list.Add((r.GetString(0), Str(r, 1)));
+        var list = new List<DjFeedbackRow>();
+        while (r.Read()) list.Add(new DjFeedbackRow(r.GetString(0), Str(r, 1), Str(r, 2), Str(r, 3), Str(r, 4), Ts(r.GetString(5))));
         return list;
     }
 

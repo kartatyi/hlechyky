@@ -284,6 +284,38 @@ public sealed class ClickerGuard
         Ask();
     }
 
+    // ---------- ручне тестування (Clicker:EyeTest, лише дев) ----------
+
+    /// <summary>Наче минув повний спокійний крок чистою рукою: наступна <see cref="Check"/> стане спокійною й заплатить сповна.</summary>
+    public void TestCalm()
+    {
+        Wary = false;
+        Doubt = "";
+        Clicks = Math.Max(Clicks, CalmMin);
+        Left = 0;
+    }
+
+    /// <summary>Звичайна перевірка — через стільки зарахованих кліків: щоб побачити, як майстер приходить сам.</summary>
+    public void TestSoon(int clicks) => Left = Math.Max(1, clicks);
+
+    public void TestLock(DateTimeOffset now) => Lock(now);
+
+    /// <summary>Прибрати полицю й паузу, почерк забути — коло крутиться, наче майстер і не приходив.</summary>
+    public void TestClear(Random rng)
+    {
+        Shelf = null;
+        LockUntil = default;
+        Misses = 0;
+        Why = "";
+        Doubt = "";
+        Calm = false;
+        Wary = false;
+        PressTrusted = false;
+        RhythmTrusted = false;
+        _window.Clear();
+        Left = Next(rng, wary: false);
+    }
+
     public enum Verdict { Passed, Wrong, Locked }
 
     /// <summary>

@@ -957,6 +957,8 @@
         + gamesCard(p, mine)
         + achCard(p, mine, fun)
         + (mine && window.HTrucker ? HTrucker.cardHtml() : '')
+        // 📈 Літопис кола: як я граю в Гончарне коло й поради Глека (web/gonchar.js)
+        + (mine && window.HGonchar ? HGonchar.cardHtml() : '')
         // 📜 Версія сайту й шлях до його історії (web/history.js)
         + (mine && window.HHistory ? HHistory.cardHtml() : '')
         + '</div>'

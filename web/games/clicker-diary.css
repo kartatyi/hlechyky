@@ -1,0 +1,40 @@
+/* Дядько Глек у хаті (clicker-diary.js): глечик у кутку сцени й бульбашка з порадою. Префікс clkgl-.
+   Розміри — у cqw сцени (.clk-stage — container-type: inline-size), щоб Глек ріс і малів разом із хатою. */
+.clkgl-glek { position: absolute; left: 2.5%; bottom: 2.5%; width: clamp(38px, 13cqw, 76px); aspect-ratio: 1; padding: 0; border: 0;
+  background: none; cursor: pointer; z-index: 6; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .45)); transition: transform .15s; }
+.clkgl-glek:hover { transform: translateY(-2px) rotate(-4deg); }
+.clkgl-glek img { width: 100%; height: 100%; display: block; }
+.clkgl-glek i { position: absolute; top: 4%; right: 6%; width: 22%; aspect-ratio: 1; border-radius: 50%; background: #e57373;
+  box-shadow: 0 0 0 2px #0f1f18; animation: clkgl-ping 1.6s ease-in-out infinite; }
+.clkgl-glek i[hidden] { display: none; }
+.clkgl-glek.hop { animation: clkgl-hop .9s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes clkgl-hop { 0% { transform: translateY(0); } 30% { transform: translateY(-38%) rotate(-8deg); } 55% { transform: translateY(0) rotate(4deg); }
+  75% { transform: translateY(-12%); } 100% { transform: translateY(0); } }
+@keyframes clkgl-ping { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+
+/* Бульбашка — пергамент над Глеком, з хвостиком до нього. */
+.clkgl-bubble { position: absolute; left: 3%; bottom: calc(2.5% + clamp(38px, 13cqw, 76px) + 10px); width: min(78%, 360px); z-index: 7;
+  padding: 10px 12px 8px; border-radius: 14px 14px 14px 4px; background: #fdf6e3; color: #2b2420; font-size: clamp(12.5px, 3cqw, 14.5px);
+  line-height: 1.4; box-shadow: 0 8px 22px rgba(0, 0, 0, .45); animation: clkgl-in .18s ease-out; }
+.clkgl-bubble[hidden] { display: none; }
+.clkgl-bubble::after { content: ''; position: absolute; left: clamp(14px, 4cqw, 26px); bottom: -9px; width: 18px; height: 18px; background: #fdf6e3;
+  clip-path: polygon(0 0, 100% 0, 0 100%); }
+@keyframes clkgl-in { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+.clkgl-t { font-weight: 500; }
+.clkgl-act { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.clkgl-act .ghost { color: #6b5a4c; border-color: #d8c9b1; }
+.clkgl-nav { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; color: #7a6b5f; font-size: .9em; font-variant-numeric: tabular-nums; }
+.clkgl-nav button { border: 0; background: none; color: #7a6b5f; font-size: 1.3em; line-height: 1; padding: 2px 6px; cursor: pointer; border-radius: 6px; }
+.clkgl-nav button:hover { background: #efe3cc; color: #2b2420; }
+.clkgl-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2d4bb; font-size: .85em; }
+.clkgl-foot a { color: #a65a2a; font-weight: 600; text-decoration: none; }
+.clkgl-foot a:hover { text-decoration: underline; }
+.clkgl-x { border: 0; background: none; color: #7a6b5f; cursor: pointer; font-size: 1em; padding: 2px 6px; border-radius: 6px; }
+.clkgl-x:hover { background: #efe3cc; }
+@media (prefers-reduced-motion: reduce) { .clkgl-glek.hop, .clkgl-glek i, .clkgl-bubble { animation: none; } }
+
+/* «💡 Як грати краще» — плашка поруч із Глеком: веде на розділ порад сторінки #gonchar. */
+.clkgl-how { position: absolute; left: calc(2.5% + clamp(38px, 13cqw, 76px) + 6px); bottom: 3.5%; z-index: 6; padding: 3px 9px;
+  border-radius: 999px; background: rgba(15, 31, 24, .78); border: 1px solid rgba(244, 197, 66, .55); color: #f4c542;
+  font-size: clamp(11px, 2.6cqw, 13px); font-weight: 600; text-decoration: none; white-space: nowrap; backdrop-filter: blur(2px); }
+.clkgl-how:hover, .clkgl-how:focus-visible { background: rgba(15, 31, 24, .92); border-color: #f4c542; }

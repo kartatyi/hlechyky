@@ -25,6 +25,8 @@ public sealed class QueueItem
     public string? Via { get; init; }
     /// <summary>Трек-сід, від якого Глек це підібрав: «Не те» чи швидкий скіп послаблюють і його.</summary>
     public string? SeedId { get; init; }
+    /// <summary>Звідки Глек це взяв (<see cref="AutoDj.Pick.Source"/>): лягає в <c>plays.pick_source</c>.</summary>
+    public string? PickSource { get; init; }
 }
 
 public sealed class NowPlaying
@@ -45,6 +47,9 @@ public sealed class NowPlaying
     /// <summary>Від якого сіда Глек підібрав цей авто-трек (для швидкого скіпу); клієнту не потрібне.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? SeedId { get; set; }
+    /// <summary>Звідки Глек узяв цей авто-трек (для <c>plays.pick_source</c>); клієнту не потрібне.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? PickSource { get; set; }
 }
 
 /// <summary>

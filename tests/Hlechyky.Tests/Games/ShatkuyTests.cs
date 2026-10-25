@@ -43,7 +43,8 @@ public class ShatkuyTests(Xunit.Abstractions.ITestOutputHelper output)
 
         var zen = new ShatkuyPlan(ShatkuyCore.Zen, 7);
         zen.Until(200_000);
-        Assert.DoesNotContain(zen.Fruits, f => f.Glek || f.Big || !ShatkuyCore.IsPlain(f.K));
+        // у Дзені — самі плоди: звичайні, часник і картопля (v2), без перцю, глеків, особливих і великих
+        Assert.DoesNotContain(zen.Fruits, f => f.Glek || f.Big || !(ShatkuyCore.IsPlain(f.K) || f.K is ShatkuyCore.Garlic or ShatkuyCore.Potato));
         Assert.True(zen.Fruits.Count > 90);
 
         var classic = new ShatkuyPlan(ShatkuyCore.Classic, 7);
@@ -138,6 +139,30 @@ public class ShatkuyTests(Xunit.Abstractions.ITestOutputHelper output)
     }
 
     [Fact]
+    public void Every_fruit_reaches_the_client_a_look_ahead_before_it_flies()
+    {
+        // #68: плід хвилі, що вилітав трохи пізніше за обрій, сервер знав, але вид не розсилав —
+        // клієнт бачив його лише з наступною хвилею, уже в польоті
+        var (h, g) = Open("shatkuy");
+        Go(h, g);
+        var seen = new Dictionary<int, int>();
+        var first = h.View(0).GetProperty("fruits").EnumerateArray().Select(f => f.GetProperty("id").GetInt32()).ToHashSet();   // до старту — поза заміром
+        for (var i = 0; i < 60_000 / ShatkuyGame.TickMs && g.Phase == ShatkuyGame.PhGo; i++)
+        {
+            var sent = h.Outbox.Count;
+            Bot(h, g, 1);
+            if (h.Outbox.Count == sent) continue;
+            foreach (var f in h.View(0).GetProperty("fruits").EnumerateArray())
+                seen.TryAdd(f.GetProperty("id").GetInt32(), g.GameNow);
+        }
+        // зубчики часнику (v2) народжуються вже в польоті з точки розрізу — їх клієнт пускає з часнику, обрій їм ні до чого
+        var late = g.Fruits.Where(f => f.K != ShatkuyCore.Clove && !first.Contains(f.Id) && f.At < g.GameNow - 2_000 && (!seen.TryGetValue(f.Id, out var at) || f.At - at < ShatkuyCore.LookMs - 3 * ShatkuyGame.TickMs))
+            .Select(f => $"#{f.Id} {(seen.TryGetValue(f.Id, out var at) ? f.At - at : -1)} мс").ToList();
+        Assert.True(seen.Count > 30, $"плодів {seen.Count}");
+        Assert.True(late.Count == 0, "пізно: " + string.Join(", ", late));
+    }
+
+    [Fact]
     public void Cut_only_what_is_in_the_air_once_and_combo_gives_n_on_top()
     {
         var (h, g) = Open("shatkuy-zen");
@@ -148,8 +173,10 @@ public class ShatkuyTests(Xunit.Abstractions.ITestOutputHelper output)
         if (future is not null) Assert.False(h.Act(0, "cut", new { c = new[] { new[] { future.Id, 1 } } }).Ok);
 
         // зібрати три в повітрі разом і різонути одним змахом
-        for (var i = 0; i < 4_000 && Air(g).Count < 3; i++) h.Tick();
-        var three = Air(g).Take(3).ToList();
+        // по одному очку й одним ударом: гарбуз (v2) — два удари, картопля — 2 очки
+        static bool One(ShatkuyFruit f) => f.K != ShatkuyCore.Pumpkin && ShatkuyCore.Price(f.K) == 1;
+        for (var i = 0; i < 4_000 && Air(g).Count(One) < 3; i++) h.Tick();
+        var three = Air(g).Where(One).Take(3).ToList();
         Assert.Equal(3, three.Count);
         var before = g.Score;
         Assert.True(h.Act(0, "cut", new { c = three.Select(f => new[] { f.Id, 9_000 }).ToArray() }).Ok);
@@ -331,6 +358,40 @@ public class ShatkuyTests(Xunit.Abstractions.ITestOutputHelper output)
                 var line = $"{id} {(skill == 0 ? "людина" : "ідеал")}: {string.Join(" ", scores)}";
                 output.WriteLine(line);
                 File.AppendAllText(Path.Combine(Path.GetTempPath(), "shatkuy-calib.txt"), line + Environment.NewLine);
+            }
+    }
+
+    [Fact]
+    public void Calibrate_scores_with_party_bots()
+    {
+        // SHATKUY_CALIB=1: соло-режими ботом «разом» трьох рівнів — для ціни черепка й порогів ачівок
+        if (Environment.GetEnvironmentVariable("SHATKUY_CALIB") != "1") return;
+        foreach (var id in new[] { "shatkuy", "shatkuy-fair", "shatkuy-daily" })
+            foreach (var lvl in new[] { LiveBots.Level.Easy, LiveBots.Level.Normal, LiveBots.Level.Hard })
+            {
+                var scores = new List<int>();
+                var info = new List<string>();
+                for (var seed = 1; seed <= 12; seed++)
+                {
+                    var h = new RoomHarness(id, seed: seed, services: RoomHarness.WithService(new ShatkuyDailyBoard(null)));
+                    Assert.True(h.Solo("бот" + seed).Ok);
+                    var g = (ShatkuyGame)h.Room.Game;
+                    Go(h, g);
+                    var bot = new ShatkuyBot(lvl, seed);
+                    for (var i = 0; i < 40_000 && g.Phase == ShatkuyGame.PhGo; i++)
+                    {
+                        var f = g.Field;
+                        var cuts = bot.Think(f, g.GameNow, g.GameNow);
+                        if (cuts.Count > 0) h.Input(0, "cut", new { c = cuts.Select(c => new[] { c.Id, c.W, c.Precise ? 1 : 0 }).ToArray() });
+                        h.Tick();
+                    }
+                    scores.Add(g.Score);
+                    info.Add($"{g.Score}/{g.GameNow / 1000}s/s{g.Field.BestStreak}");
+                }
+                scores.Sort();
+                var line = $"{id} {lvl}: медіана {scores[scores.Count / 2]} [{string.Join(" ", info)}]";
+                output.WriteLine(line);
+                File.AppendAllText(Path.Combine(Path.GetTempPath(), "shatkuy-calib2.txt"), line + Environment.NewLine);
             }
     }
 

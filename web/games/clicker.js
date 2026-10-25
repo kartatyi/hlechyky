@@ -83,7 +83,7 @@
   /// Ремесло, жива хата, горно, альбом, ярмарок і цех живуть в окремих файлах clicker-<id>.js (+ .css): інакше
   /// цей файл виріс би втричі, а паралельні роботи бились би в одному місці. Частина кличе HClicker.part({...}) і
   /// дістає ті самі st, що й ядро, плюс спільний api. Каркас ігор знає лише clicker.js — частини вантажимо самі.
-  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles', 'guests', 'toloka', 'trade', 'day'];
+  const PART_IDS = ['craft', 'scene', 'kiln', 'album', 'fair', 'guild', 'titles', 'guests', 'toloka', 'trade', 'day', 'diary'];
   const H = window.HClicker = window.HClicker || { parts: [], mounted: new Set(), loaded: false };
 
   /// Одна частина впала — решта гри живе далі: помилку в консоль, а не білу картку.
@@ -1448,6 +1448,27 @@
       }, () => { st.taps = []; st.eyeBusy = false; paintEye(st); });
     }
     paintEye(st);
+  }
+
+  /// Панель «👁 тест майстра» (лише дев, view.eyeTest): скільки кліків до звичайної перевірки й чи майстер пильнує.
+  function paintEyeTest(st, t) {
+    const el = st.eyeTestEl;
+    if (!el) return;
+    const on = !!t && st.mine;
+    if (el.hidden === on) el.hidden = !on;
+    if (!on) return;
+    const s = '· до майстра ' + Math.max(0, t.left) + ' кл.' + (t.wary ? ' · пильнує' : '') + ' · спокійних ' + t.calmPassed;
+    const span = el.querySelector('.clk-eyetest-s');
+    if (span.textContent !== s) span.textContent = s;
+  }
+
+  /// Кнопка панелі тесту: покликати майстра потрібним способом (дія eyetest).
+  function eyeTest(st, e) {
+    const b = e.target.closest('button[data-k]');
+    if (!b || !st.ctx) return;
+    st.ctx.act('eyetest', { kind: b.dataset.k }).then((r) => {
+      if (r && r.message && st.ctx) st.ctx.toast(r.message, r.ok ? 'ok' : 'err');
+    });
   }
 
   // ---------- розписний глек і глек з полиці ----------
@@ -4561,6 +4582,16 @@
         + '<button type="button" class="primary clk-eye-go" disabled>👁 Показати полицю</button></div></div>'
         + '<button type="button" class="ghost small clk-eye-reset" hidden disabled>Скинути торкання</button></div>'
         + '</div>'
+        // Ручне тестування Ока майстра — лише коли сервер шле view.eyeTest (Clicker:EyeTest, дев).
+        + '<details class="clk-eyetest" hidden><summary class="small">👁 тест майстра <span class="muted clk-eyetest-s"></span></summary>'
+        + '<div class="clk-eyetest-b">'
+        + '<button type="button" class="ghost small" data-k="calm" title="Наче минув спокійний крок: платить сповна">🪙 За розкладом</button>'
+        + '<button type="button" class="ghost small" data-k="rhythm" title="Підозра: кліки надто рівні">🎵 Ритм</button>'
+        + '<button type="button" class="ghost small" data-k="press" title="Підозра: кнопку відпускають миттєво">👆 Тачпад</button>'
+        + '<button type="button" class="ghost small" data-k="soon" title="Звичайна перевірка через 20 кліків">⏳ Через 20 кліків</button>'
+        + '<button type="button" class="ghost small" data-k="lock" title="Пауза, як за три промахи">🔒 Пауза 10 хв</button>'
+        + '<button type="button" class="ghost small" data-k="clear" title="Прибрати полицю й паузу">✖ Прибрати</button>'
+        + '</div></details>'
         + '<div class="clk-buffs" hidden></div>'
         + '<div class="clk-sell"><button type="button" class="primary clk-one" disabled></button>'
         + '<button type="button" class="ghost clk-all" data-pots="0" disabled></button></div>'
@@ -4718,6 +4749,8 @@
       st.eye.img.addEventListener('pointerdown', (e) => tapShelf(st, e));
       st.eye.img.addEventListener('contextmenu', (e) => e.preventDefault());
       st.eye.reset.onclick = () => { st.taps = []; paintEye(st); };
+      st.eyeTestEl = q('.clk-eyetest');
+      st.eyeTestEl.querySelector('.clk-eyetest-b').addEventListener('click', (e) => eyeTest(st, e));
       // Пробіл: натиснули (onKey) → відпустили (тут). Слухаємо весь документ: фокус між ними міг утекти.
       if (st.onKeyUp) document.removeEventListener('keyup', st.onKeyUp);
       st.onKeyUp = (e) => {
@@ -4940,6 +4973,7 @@
         } : null;
         // Майстер спитав — усе, що ще не полетіло, однаково не зарахується: не малюємо цих глеків на лічильнику.
         if (st.guard) { st.hands.length = 0; st.handsGain = 0; }
+        paintEyeTest(st, v.eyeTest);
         // Під вікном частини Око майстра було б невидиме, а кліки — не зараховані: майстер важливіший за вікно.
         // Виняток — мінігра розпису, де вже водять пальцем: вона однаково скінчиться за кілька секунд, а обірвати
         // її посеред штриха означало б згаяти всю роботу. Майстер зачекає — кола ми в ці секунди й не крутимо.

@@ -2627,9 +2627,9 @@
   // Кожен екран має адресу: #efir, #lib/<вкладка>, #games(/…), #stats/<вкладка>, #who/<нік>, #chat (вкладка
   // балачок на телефоні), #history (📜 історія сайту, web/history.js), #tryvoga (🚨 мапа тривог, web/tryvoga.js).
   // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
-  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history', 'tryvoga'];
+  const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history', 'tryvoga', 'gonchar'];
   const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod'];
-  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія', tryvoga: 'Тривога' };
+  const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія', tryvoga: 'Тривога', gonchar: 'Літопис кола' };
   const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото й тла людей', mod: 'Модерація Балачок' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
@@ -2745,6 +2745,7 @@
     if (r === 'lavka') HLavka.show(tail); else HLavka.hide();
     if (window.HHistory) { if (r === 'history') HHistory.show(); else HHistory.hide(); }
     if (window.HTryvoga) { if (r === 'tryvoga') HTryvoga.show(); else HTryvoga.hide(); }
+    if (window.HGonchar) { if (r === 'gonchar') HGonchar.show(tail); else HGonchar.hide(); }
     if (r === 'lib' && libShown !== libTab) { libShown = libTab; loadLib(); }
     if (r === 'chat') { const box = $('messages'); box.scrollTop = box.scrollHeight; }
     if (chatVisible()) setUnread(0);
@@ -4789,6 +4790,8 @@
   if (window.HSiteNews) HSiteNews.init({ esc, api, me, go, games: window.HGames });
   // 📜 Історія Глечиків (web/history.js): сторінка #history і версія сайту в «Я»
   if (window.HHistory) HHistory.init({ esc, go });
+  // 📈 Літопис кола (web/gonchar.js): сторінка #gonchar — аналітика Гончарного кола
+  if (window.HGonchar) HGonchar.init({ esc, go, api, me });
   // 🚨 Тривога (web/tryvoga.js): плашка під шапкою, кнопка 🚨 і сторінка #tryvoga з мапою
   if (window.HTryvoga) HTryvoga.init({ esc, go, api, me });
   // 🚚 Для далекобійників (web/trucker.js): картка в профілі — бат радіо для ETS2/ATS і скіп кнопкою керма (те саме, що ⏭)

@@ -4,11 +4,14 @@ using Microsoft.Extensions.Options;
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
-/// Розділ <c>Clicker</c> конфігу (на проді — appsettings.Local.json). Поки що лише подарунки гончарям від майстерні.
+/// Розділ <c>Clicker</c> конфігу (на проді — appsettings.Local.json): подарунки гончарям від майстерні й вимикач
+/// ручного тестування Ока майстра.
 /// </summary>
 public sealed class ClickerOptions
 {
     public List<ClickerGift> Gifts { get; set; } = [];
+    /// <summary>Панель «👁 тест» у колі: покликати майстра кнопкою (ClickerEyeTest.cs). Лише дев — на проді false.</summary>
+    public bool EyeTest { get; set; }
 }
 
 /// <summary>
