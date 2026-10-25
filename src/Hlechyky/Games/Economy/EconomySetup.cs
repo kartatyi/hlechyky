@@ -47,6 +47,9 @@ public static class EconomySetup
         // нічний підсумок «Щоденного глека»: «за кращий результат» і призи топу за вчора
         services.AddSingleton<DailyPrizes>();
         services.AddHostedService(sp => sp.GetRequiredService<DailyPrizes>());
+        // Січ щоденних: тижневий залік, вічний Ело зі званнями, підсумок у ніч на понеділок і Глек у Балачках
+        services.AddSingleton<Sich>();
+        services.AddHostedService(sp => sp.GetRequiredService<Sich>());
 
         // Каркас реєструє заглушки через TryAdd і робить це раніше — тому саме Replace, а не TryAdd.
         services.Replace(ServiceDescriptor.Singleton<IStakes>(sp => sp.GetRequiredService<Economy>()));
@@ -74,14 +77,24 @@ public static class EconomySetup
             return boards.Time(period);
         });
 
-        api.MapGet("/daily", (HttpContext c, Daily daily, IOptionsMonitor<EconomyOptions> o) =>
+        api.MapGet("/daily", (HttpContext c, Daily daily, Sich sich, IOptionsMonitor<EconomyOptions> o) =>
         {
             var s = daily.Status(Auth.Nick(c));
             return s with
             {
                 Pay = DailyPay.Of(o.CurrentValue, s.Puzzles.Count, s.Puzzles.Count(p => p.Me?.Solved == true)),
                 Money = daily.Money(Auth.Nick(c), s, o.CurrentValue),
+                Sich = sich.Brief(Auth.Nick(c)),
             };
+        });
+
+        // Січ щоденних: тиждень (week — будь-який день потрібного тижня; без нього — поточний), вічний рейтинг, мої дуелі
+        api.MapGet("/sich", (string? week, HttpContext c, Sich sich) => sich.View(Auth.Nick(c), week));
+        // 👑 Гетьмана тижня й звання — для ніків по всьому сайту (картка людини, онлайн)
+        api.MapGet("/sich/marks", (Sich sich) => new
+        {
+            crown = sich.Crown(),
+            ranks = sich.Ranks().ToDictionary(r => r.Key, r => new { icon = r.Value.Icon, title = r.Value.Title, elo = r.Value.Elo }),
         });
 
         Impl.AdSetup.MapAds(app);        // /api/ads/library*, /api/ads/air* — реклама, лише господар
