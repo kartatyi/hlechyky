@@ -241,39 +241,67 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     const fx = Math.floor((x + 37) / 170), fz = Math.floor((z - 11) / 120);
     return FIELD[Math.floor(hash2(fx, fz, seed + 9) * FIELD.length)];
   };
+  // Чанки 200 м із трьома рівнями деталізації: поруч — сітка 4 м (та сама, що у фізики), далі — 8 і 20 м. Між
+  // чанками різних рівнів були б щілини — їх закриває «спідниця»: край чанка, опущений на 4 м.
   const CH = 50;
-  const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const LODS = quality === 'low' ? [[1, 0], [2, 170], [5, 380]] : [[1, 0], [2, 260], [5, 560]];
+  const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
+  const colorAt = (gx, gz) => {
+    const x = X(gx), z = Z(gz), j = I(gx, gz);
+    let c = fieldOf(x, z);
+    const jit = (hash2(gx, gz, seed + 5) - 0.5) * 0.05;
+    const rd = roadSt.dist[j], wd = riverDist[j];
+    if (wd < rw / 2 + 10) c = [0.76, 0.7, 0.52];                           // пісок біля води
+    else if (rd < 9) c = [0.52, 0.5, 0.44];                                // узбіччя
+    else if (rd < 20) c = [c[0] * 0.8 + 0.08, c[1] * 0.9 + 0.06, c[2] * 0.8];   // смуга трави вздовж дороги
+    return [c[0] + jit, c[1] + jit, c[2] + jit];
+  };
+  const chunkGeo = (cx, cz, nx, nz, st) => {
+    const mx = nx / st, mz = nz / st, row = mz + 1;
+    const pos = [], col = [], idx = [];
+    for (let ix = 0; ix <= mx; ix++) for (let iz = 0; iz <= mz; iz++) {
+      const gx = cx + ix * st, gz = cz + iz * st;
+      pos.push(X(gx), H[I(gx, gz)], Z(gz));
+      col.push(...colorAt(gx, gz));
+    }
+    for (let ix = 0; ix < mx; ix++) for (let iz = 0; iz < mz; iz++) {
+      const a = ix * row + iz, b = (ix + 1) * row + iz;
+      idx.push(a, a + 1, b, b, a + 1, b + 1);
+    }
+    // спідниця: по периметру — опущена копія краю
+    const edge = [];
+    for (let iz = 0; iz <= mz; iz++) edge.push(iz);
+    for (let ix = 1; ix <= mx; ix++) edge.push(ix * row + mz);
+    for (let iz = mz - 1; iz >= 0; iz--) edge.push(mx * row + iz);
+    for (let ix = mx - 1; ix >= 0; ix--) edge.push(ix * row);
+    const base0 = pos.length / 3;
+    edge.forEach((v) => { pos.push(pos[v * 3], pos[v * 3 + 1] - 4, pos[v * 3 + 2]); col.push(col[v * 3], col[v * 3 + 1], col[v * 3 + 2]); });
+    for (let e = 0; e < edge.length - 1; e++) idx.push(edge[e], edge[e + 1], base0 + e + 1, edge[e], base0 + e + 1, base0 + e);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    return geo;
+  };
   for (let cx = 0; cx < N; cx += CH) {
     for (let cz = 0; cz < N; cz += CH) {
       const nx = Math.min(CH, N - cx), nz = Math.min(CH, N - cz);
-      const pos = new Float32Array((nx + 1) * (nz + 1) * 3), col = new Float32Array((nx + 1) * (nz + 1) * 3);
-      let k = 0;
-      for (let ix = 0; ix <= nx; ix++) for (let iz = 0; iz <= nz; iz++) {
-        const gx = cx + ix, gz = cz + iz, x = X(gx), z = Z(gz), j = I(gx, gz);
-        pos[k] = x; pos[k + 1] = H[j]; pos[k + 2] = z;
-        let c = fieldOf(x, z);
-        const jit = (hash2(gx, gz, seed + 5) - 0.5) * 0.05;
-        const rd = roadSt.dist[j], wd = riverDist[j];
-        if (wd < rw / 2 + 10) c = [0.76, 0.7, 0.52];                           // пісок біля води
-        else if (rd < 9) c = [0.52, 0.5, 0.44];                                // узбіччя
-        else if (rd < 20) c = [c[0] * 0.8 + 0.08, c[1] * 0.9 + 0.06, c[2] * 0.8];   // смуга трави вздовж дороги
-        col[k] = c[0] + jit; col[k + 1] = c[1] + jit; col[k + 2] = c[2] + jit;
-        k += 3;
+      const lod = new THREE.LOD();
+      for (const [st, dist] of LODS) {
+        if (nx % st || nz % st) continue;
+        const m = new THREE.Mesh(chunkGeo(cx, cz, nx, nz, st), terrainMat);
+        m.receiveShadow = st === 1;
+        lod.addLevel(m, dist);
       }
-      const idx = [];
-      for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
-        const a = ix * (nz + 1) + iz, b = (ix + 1) * (nz + 1) + iz;
-        idx.push(a, a + 1, b, b, a + 1, b + 1);
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      geo.setIndex(idx);
-      geo.computeVertexNormals();
-      geo.computeBoundingSphere();
-      const m = new THREE.Mesh(geo, terrainMat);
-      m.receiveShadow = true;
-      scene.add(m);
+      lod.position.set(0, 0, 0);
+      // відстань LOD рахує від позиції об'єкта — ставимо його в центр чанка, а сітку зсуваємо назад
+      const ccx = X(cx + nx / 2), ccz = Z(cz + nz / 2);
+      lod.position.set(ccx, 0, ccz);
+      for (const l of lod.levels) l.object.position.set(-ccx, 0, -ccz);
+      lod.autoUpdate = true;
+      scene.add(lod);
     }
   }
 
@@ -520,23 +548,33 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     for (let k = 0; k < 40; k++) tryTree(gx + (rnd() - 0.5) * 120, gz + (rnd() - 0.5) * 120, 0.8 + rnd() * 0.6);
   }
   {
+    // Квартали по 600 м: інакше всі дерева мапи — три меші на весь край, і їх малює кожен кадр (і тінь) повністю
     const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5);
     const crownGeo = new THREE.IcosahedronGeometry(1.8, 0);
     const pineGeo = new THREE.ConeGeometry(1.5, 4.4, 6);
-    const trunks = new THREE.InstancedMesh(trunkGeo, mat('#6e4a2f'), trees.length);
-    const crowns = new THREE.InstancedMesh(crownGeo, mat('#4c8538'), trees.length);
-    const pines = new THREE.InstancedMesh(pineGeo, mat('#3a6636'), trees.length);
-    const tmp = new THREE.Object3D();
-    let nc = 0, np = 0;
-    trees.forEach((t, i) => {
-      tmp.position.set(t.x, t.y + 1.1 * t.s, t.z); tmp.scale.setScalar(t.s); tmp.rotation.set(0, t.x % 6, 0); tmp.updateMatrix();
-      trunks.setMatrixAt(i, tmp.matrix);
-      tmp.position.y = t.y + (t.pine ? 3.7 : 3.3) * t.s; tmp.updateMatrix();
-      if (t.pine) pines.setMatrixAt(np++, tmp.matrix); else crowns.setMatrixAt(nc++, tmp.matrix);
+    const trunkMat = mat('#6e4a2f'), crownMat = mat('#4c8538'), pineMat = mat('#3a6636');
+    const cells = new Map();
+    for (const t of trees) {
+      const k = Math.floor((t.x - B.x0) / 600) + ':' + Math.floor((t.z - B.z0) / 600);
+      if (!cells.has(k)) cells.set(k, []);
+      cells.get(k).push(t);
       world.createCollider(RAPIER.ColliderDesc.cylinder(1.1 * t.s, 0.3 * t.s), fixed(t.x, t.y + 1.1 * t.s, t.z));
-    });
-    crowns.count = nc; pines.count = np;
-    for (const m of [trunks, crowns, pines]) { m.castShadow = true; m.receiveShadow = true; m.computeBoundingSphere(); scene.add(m); }
+    }
+    const tmp = new THREE.Object3D();
+    for (const list of cells.values()) {
+      const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, list.length);
+      const crowns = new THREE.InstancedMesh(crownGeo, crownMat, list.length);
+      const pines = new THREE.InstancedMesh(pineGeo, pineMat, list.length);
+      let nc = 0, np = 0;
+      list.forEach((t, i) => {
+        tmp.position.set(t.x, t.y + 1.1 * t.s, t.z); tmp.scale.setScalar(t.s); tmp.rotation.set(0, t.x % 6, 0); tmp.updateMatrix();
+        trunks.setMatrixAt(i, tmp.matrix);
+        tmp.position.y = t.y + (t.pine ? 3.7 : 3.3) * t.s; tmp.updateMatrix();
+        if (t.pine) pines.setMatrixAt(np++, tmp.matrix); else crowns.setMatrixAt(nc++, tmp.matrix);
+      });
+      crowns.count = nc; pines.count = np;
+      for (const m of [trunks, crowns, pines]) { m.castShadow = true; m.receiveShadow = true; m.computeBoundingSphere(); scene.add(m); }
+    }
   }
 
   const ms = Math.round(performance.now() - t0);
