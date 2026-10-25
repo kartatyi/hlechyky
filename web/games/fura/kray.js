@@ -705,6 +705,16 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
       return out;
     };
     const parts = [rel(truck.tb)].concat(coupled ? [rel(truck.rb)] : []);
+    // перешкоди поблизу — перебором, а не запитом світу: restore() іде ще до першого world.step, а запити Rapier
+    // (intersectionsWithShape) ходять через broad-phase, яку будує лише step, — до нього вони нічого не бачать
+    // (25.10: з консолі фікс працював, а на відкритті гри — ні). Позиції нерухомих колайдерів відомі від створення.
+    const t0 = truck.tb.translation(), near = [];
+    world.forEachCollider((c) => {
+      if (!obstacle(c)) return;
+      const t = c.translation(), sh = c.shape;
+      const r = sh.halfExtents ? Math.hypot(sh.halfExtents.x, sh.halfExtents.y, sh.halfExtents.z) : sh.halfHeight != null ? Math.hypot(sh.halfHeight, sh.radius || 0) : sh.radius != null ? sh.radius : 40;
+      if (Math.hypot(t.x - t0.x, t.z - t0.z) < maxMove + 25 + r) near.push({ c, x: t.x, z: t.z, r });
+    });
     // кубоїди фури з боковим запасом (інших форм у фури нема; про всяк — як є)
     const grow = (sh) => (sh.halfExtents ? new RAPIER.Cuboid(sh.halfExtents.x + side, sh.halfExtents.y, sh.halfExtents.z) : sh);
     for (const list of parts) for (const r of list) r.shape = grow(r.c.shape);
@@ -716,7 +726,10 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
           const q = ps.q.clone().multiply(r.q);
           for (let a = 0; a <= ahead + 1e-6 && !hit; a += 0.5) {
             const p = r.p.clone().applyQuaternion(ps.q).add(ps.p).addScaledVector(fwd, k === 0 ? a : 0);
-            world.intersectionsWithShape(p, q, r.shape, () => { hit = true; return false; }, undefined, undefined, undefined, undefined, obstacle);
+            for (const o of near) {
+              if (Math.hypot(o.x - p.x, o.z - p.z) > o.r + 9) continue;          // 9 м — більше за піврозмір будь-якої форми фури
+              if (o.c.intersectsShape(r.shape, p, q)) { hit = true; break; }
+            }
           }
         }
       });
@@ -725,7 +738,7 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     const now = (b) => { const t = b.translation(); return { p: new THREE.Vector3(t.x, t.y, t.z), q: Q(b.rotation()) }; };
     if (!hits(coupled ? [now(truck.tb), now(truck.rb)] : [now(truck.tb)])) return null;
     // кандидати: права смуга кожної дороги в радіусі maxMove, курс — уздовж дороги, спершу ближчий до теперішнього
-    const t0 = truck.tb.translation(), yaw0 = truck.yawOf(truck.tb), cand = [];
+    const yaw0 = truck.yawOf(truck.tb), cand = [];
     const up = new THREE.Vector3(0, 1, 0);
     for (const r of roads) {
       const S = r.edge.sec, o = S.shift + S.lane * (S.lanes / 2 - 0.5), pts = r.pts, L = pts[pts.length - 1].s;
