@@ -36,6 +36,20 @@ public static class LavkaKind
     /// </summary>
     public const string Curse = "curse";
     public const string Perk = "perk";
+
+    // Група «🚚 Фура» (specs/fura.md, «Гараж (0.6)»): вигляд фури в «Чумаках-далекобійниках». Кожен вид — свій слот;
+    // наліпок — до трьох (слоти fura-sticker, fura-sticker2, fura-sticker3). У профілі не малюються.
+    public const string FuraPaint = "fura-paint";
+    public const string FuraGloss = "fura-gloss";
+    public const string FuraArt = "fura-art";
+    public const string FuraHorn = "fura-horn";
+    public const string FuraDash = "fura-dash";
+    public const string FuraSticker = "fura-sticker";
+    public const string FuraFlag = "fura-flag";
+    public const string FuraLamp = "fura-lamp";
+
+    /// <summary>Вид із групи «🚚 Фура».</summary>
+    public static bool IsFura(string kind) => kind.StartsWith("fura-", StringComparison.Ordinal);
 }
 
 /// <summary>
@@ -139,6 +153,17 @@ public static class LavkaCatalog
     public static readonly IReadOnlyList<string> Slots =
         [LavkaKind.Icon, LavkaKind.Frame, LavkaKind.Color, LavkaKind.Title, LavkaKind.Bg, LavkaKind.Anthem, LavkaKind.Fx, LavkaKind.Blade];
 
+    /// <summary>Слоти фури «Чумаків» (група «🚚 Фура»): по одному на вид, наліпок — три.</summary>
+    public static readonly IReadOnlyList<string> FuraSlots =
+    [
+        LavkaKind.FuraPaint, LavkaKind.FuraGloss, LavkaKind.FuraArt, LavkaKind.FuraHorn, LavkaKind.FuraDash,
+        LavkaKind.FuraSticker, LavkaKind.FuraSticker + "2", LavkaKind.FuraSticker + "3", LavkaKind.FuraFlag, LavkaKind.FuraLamp,
+    ];
+
+    /// <summary>Який вид речі стає в слот: <c>fura-sticker2</c> → <c>fura-sticker</c>, решта — слот і є вид.</summary>
+    public static string KindOfSlot(string slot) =>
+        slot.StartsWith(LavkaKind.FuraSticker, StringComparison.Ordinal) ? LavkaKind.FuraSticker : slot;
+
     /// <summary>Леза «Шаткуй!» за ачівки: id речі → ключ ачівки (видає гра, ShatkuyGame.Achievements).</summary>
     public const string Sickle = "sickle", FireBlade = "fireblade";
 
@@ -163,6 +188,11 @@ public static class LavkaCatalog
         new(id, LavkaKind.Blade, title, price, new LavkaBladeArt(emoji), price switch { <= 500 => 1, <= 1500 => 2, _ => 3 });
     static LavkaItem EarnedBlade(string id, string title, string emoji, string ach) =>
         new(id, LavkaKind.Blade, title, 0, new LavkaBladeArt(emoji), 3, Ach: ach);
+    // Фура «Чумаків»: art — відтінок (фарба, як колір ніка), назва візерунка або емодзі; рівень — з ціни
+    static LavkaItem Fura(string id, string kind, string title, int price, object art, LavkaSeason? season = null) =>
+        new(id, kind, title, price, art, price switch { <= 500 => 1, <= 1500 => 2, _ => 3 }, season);
+    static LavkaItem FuraPaint(string id, string title, int hue) => Fura(id, LavkaKind.FuraPaint, title, 600, hue);
+    static LavkaItem EarnedFura(string id, string kind, string title, string emoji, string ach) => new(id, kind, title, 0, emoji, 3, Ach: ach);
 
     public static readonly IReadOnlyList<LavkaItem> All =
     [
@@ -216,6 +246,8 @@ public static class LavkaCatalog
         Title("lark", "Ранкова пташка"), Title("vet", "Бувалий гравець"),
         Earned("meloman", "Меломан", "listener-100h"), Earned("tsar", "Цар-гончар", "potter-1t"), Earned("sage", "Знавець", "svoya-win"),
         Earned("commissar", "Комісар", "sheriff"), Earned("cowboy", "Ковбой", "duel-10"),
+        // титули «Чумаків» за рівень водія (гараж 0.6): Р10 і Р20
+        Earned("chumak", "Чумак", "fura-chumak"), Earned("otaman", "Отаман валки", "fura-otaman"),
 
         Bg("stars", "Зоряна ніч", 800), Bg("stripes", "Смуги", 800), Bg("vyshyvanka", "Вишиванка", 1200),
         Bg("petrykivka", "Петриківка", 1200), Bg("trypillia", "Трипілля", 1500),
@@ -239,6 +271,35 @@ public static class LavkaCatalog
         // леза «Шаткуй!» (shatkuy-v2 §5): типовий ніж Глека — без речі; два — за ачівки гри, не продаються
         Blade("kosa", "Коса", "🌾", 500), Blade("shablia", "Козацька шабля", "⚔️", 1500), Blade("goldknife", "Золотий ніж", "🔪", 3000),
         EarnedBlade(Sickle, "Срібний серп", "🌙", "shatkuy-streak"), EarnedBlade(FireBlade, "Вогняне лезо", "🔥", "shatkuy-fire"),
+
+        // «🚚 Фура» — вигляд фури в «Чумаках» (D:\or-wt\_fura\GARAGE.md §4): фарби — ті самі відтінки, що кольори ніка
+        FuraPaint("paintember", "Полум'я", 0), FuraPaint("paintamber", "Бурштин", 32), FuraPaint("paintlinden", "Липа", 62),
+        FuraPaint("paintgrass", "Трава", 85), FuraPaint("paintemerald", "Смарагд", 110), FuraPaint("paintmint", "М'ята", 135),
+        FuraPaint("paintsky", "Небо", 195), FuraPaint("paintcornflower", "Волошка", 212), FuraPaint("paintsapphire", "Сапфір", 228),
+        FuraPaint("paintlilac", "Бузок", 248), FuraPaint("paintviolet", "Фіалка", 270), FuraPaint("paintraspberry", "Малина", 318),
+        Fura("paintrainbow", LavkaKind.FuraPaint, "Веселка", 4000, "rainbow"),
+        Fura("glossmetal", LavkaKind.FuraGloss, "Металік", 1200, "✨"),
+        Fura("artpetrykivka", LavkaKind.FuraArt, "Петриківка", 2500, "petrykivka"),
+        Fura("artvyshyvanka", LavkaKind.FuraArt, "Вишиванка", 2500, "vyshyvanka"),
+        Fura("artviz", LavkaKind.FuraArt, "Чумацький віз", 2500, "viz"),
+        Fura("arttrypillia", LavkaKind.FuraArt, "Трипілля", 2500, "trypillia"),
+        // ріжки синтезовані, як гімни, — без чужих прав; «Ой на горі два дубки» — народна
+        Fura("hornpneumo", LavkaKind.FuraHorn, "Пневмо-дуду", 500, "🎺"), Fura("horngoose", LavkaKind.FuraHorn, "Гусак", 500, "🪿"),
+        Fura("horntrembita", LavkaKind.FuraHorn, "Трембіта", 1200, "📯"), Fura("hornthree", LavkaKind.FuraHorn, "Три тони", 1200, "🎶"),
+        Fura("horndubky", LavkaKind.FuraHorn, "Ой на горі два дубки", 1500, "🌳"),
+        EarnedFura("horngold", LavkaKind.FuraHorn, "Золотий ріжок", "🏆", "fura-500"),
+        Fura("dashjug", LavkaKind.FuraDash, "Глечик на панелі", 800, "🏺"), Fura("dashcat", LavkaKind.FuraDash, "Кіт на панелі", 600, "🐈"),
+        Fura("dashcharm", LavkaKind.FuraDash, "Вервечка-оберіг", 300, "🧿"),
+        Fura("dashtree", LavkaKind.FuraDash, "Ароматна ялинка", 500, "🎄", new("12-15", "01-15")),
+        Fura("stickhlechyky", LavkaKind.FuraSticker, "Наліпка «Глечики»", 300, "🏺"),
+        Fura("stickshlyakh", LavkaKind.FuraSticker, "Наліпка «Чумацький шлях»", 400, "🌌"),
+        Fura("stickmama", LavkaKind.FuraSticker, "Наліпка «Їду до мами»", 500, "💛"),
+        Fura("stickmakitry", LavkaKind.FuraSticker, "Наліпка «Обережно: макітри»", 600, "⚠️"),
+        EarnedFura("stickstar", LavkaKind.FuraSticker, "Наліпка «Зоряний чумак»", "⭐", "fura-stars5"),
+        Fura("flagvympel", LavkaKind.FuraFlag, "Вимпел", 400, "🚩"),
+        Fura("flagua", LavkaKind.FuraFlag, "Прапорці", 400, "🇺🇦", new("08-18", "08-31")),
+        Fura("lampdiode", LavkaKind.FuraLamp, "Діодна люстра", 1500, "💡"),
+        EarnedFura("lampotaman", LavkaKind.FuraLamp, "Люстра Отамана", "👑", "fura-otaman"),
 
         // прокльони: синтезовані docs/games/dev/curses-make.py, як і гімни, — без чужих прав
         Curse("sadtrombone", "Сумний тромбон", "🎷", AnthemUrlPrefix + "trombone.mp3"), Curse("boo", "Бу-у-у", "👎"),
@@ -289,6 +350,10 @@ public static class LavkaCatalog
         LavkaKind.Fx => $"святкування «{i.Title}»",
         LavkaKind.Blade => $"лезо «{i.Title}»",
         LavkaKind.Curse => $"прокльон «{i.Title}»",
+        LavkaKind.FuraPaint => $"фарба фури «{i.Title}»",
+        LavkaKind.FuraArt => $"розпис фури «{i.Title}»",
+        LavkaKind.FuraHorn => $"ріжок «{i.Title}»",
+        LavkaKind.FuraLamp or LavkaKind.FuraFlag or LavkaKind.FuraDash or LavkaKind.FuraGloss => $"«{i.Title}» на фуру",
         _ => i.Title,
     };
 
@@ -297,6 +362,9 @@ public static class LavkaCatalog
 
     /// <summary>Назва в лапках там, де своїх лапок нема: «дарує Петрові «Срібна рамка»», але «дарує Петрові значок «Лис» 🦊».</summary>
     public static string Quoted(LavkaItem i) => i.Kind is LavkaKind.Frame or LavkaKind.Perk || i.Id == OwnBg ? $"«{Label(i)}»" : Label(i);
+
+    /// <summary>Чим людина вдягається: її слот — це вид речі (<see cref="Slots"/>) або місце на фурі (<see cref="FuraSlots"/>).</summary>
+    public static bool IsSlot(string slot) => Slots.Contains(slot) || FuraSlots.Contains(slot);
 
     static readonly ConcurrentDictionary<string, double?> Lens = new(StringComparer.Ordinal);
 
@@ -819,7 +887,10 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
                 season = i.Season is { } s ? new { from = s.From, to = s.To, open = s.Open(md) } : null,
                 earned = i.Ach is { } a ? new { ach = a, achTitle = AchTitle(a) } : null,
                 owned = i.Ach is { } got ? achs.Contains(got) : mine.Contains(i.Id),
-                worn = wearing.TryGetValue(i.Kind, out var w) && w == i.Id,
+                // наліпка фури може бути в будь-якому з трьох своїх слотів
+                worn = LavkaKind.IsFura(i.Kind)
+                    ? wearing.Any(kv => kv.Value == i.Id && LavkaCatalog.KindOfSlot(kv.Key) == i.Kind)
+                    : wearing.TryGetValue(i.Kind, out var w) && w == i.Id,
             }),
             worn = new
             {
@@ -828,6 +899,8 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
                 bg = wearing.GetValueOrDefault(LavkaKind.Bg), anthem = wearing.GetValueOrDefault(LavkaKind.Anthem),
                 fx = wearing.GetValueOrDefault(LavkaKind.Fx), ring = wearing.GetValueOrDefault(LavkaCatalog.RingSlot),
                 blade = wearing.GetValueOrDefault(LavkaKind.Blade),
+                // «🚚 Фура»: слот фури → id речі (null — порожньо)
+                fura = LavkaCatalog.FuraSlots.ToDictionary(s => s, s => wearing.GetValueOrDefault(s)),
             },
             perks = new
             {
@@ -951,6 +1024,19 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     public string? BladeOf(string nick) =>
         store.Worn(nick, LavkaKind.Blade) is { } id && LavkaCatalog.Get(id) is { Kind: LavkaKind.Blade } item && Has(nick, item) ? item.Id : null;
 
+    /// <summary>
+    /// Вигляд фури <paramref name="nick"/> у «Чумаках» (група «🚚 Фура»): слот → id речі, лише справді своєї (куплена чи
+    /// ачівка є) і свого виду. Нічого — порожньо.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> FuraWorn(string nick)
+    {
+        var look = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (slot, id) in store.WornBy(nick))
+            if (LavkaCatalog.FuraSlots.Contains(slot) && LavkaCatalog.Get(id) is { } item && item.Kind == LavkaCatalog.KindOfSlot(slot) && Has(nick, item))
+                look[slot] = item.Id;
+        return look;
+    }
+
     /// <summary>Святкування, яке злетить над столом, коли <paramref name="nick"/> виграє: id вдягнутого й свого; інакше null.</summary>
     public string? FxOf(string nick) =>
         store.Worn(nick, LavkaKind.Fx) is { } id && LavkaCatalog.Get(id) is { Kind: LavkaKind.Fx } item && store.Owns(nick, item.Id) ? item.Id : null;
@@ -1039,7 +1125,13 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
                 return No($"Бракує {Math.Max(1, item.Price - economy.Balance(nick))} 🏺");
             store.Own(owner, item.Id, to is null ? "buy" : "gift", to is null ? null : nick, item.Price, clock.UtcNow);
             // своє тло без картинки вдягати нема чого: воно вдягнеться саме, щойно людина її поставить
-            if (item.Kind != LavkaKind.Perk && item.Id != LavkaCatalog.OwnBg && (to is null || store.Worn(owner, item.Kind) is null))
+            if (item.Kind == LavkaKind.FuraSticker)
+            {
+                // наліпка — у перший вільний із трьох слотів; усі зайняті — лежить у шафі
+                if (LavkaCatalog.FuraSlots.FirstOrDefault(s => LavkaCatalog.KindOfSlot(s) == item.Kind && store.Worn(owner, s) is null) is { } free)
+                    store.Wear(owner, free, item.Id);
+            }
+            else if (item.Kind != LavkaKind.Perk && item.Id != LavkaCatalog.OwnBg && (to is null || store.Worn(owner, item.Kind) is null))
                 store.Wear(owner, item.Kind, item.Id);
         }
 
@@ -1063,11 +1155,14 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     /// <summary>Чому річ за ачівку не купується (і не дарується): титул — як було, лезо — своїми словами.</summary>
     static string NotForSale(LavkaItem i, string ach) => i.Kind == LavkaKind.Blade
         ? $"Це лезо не купується — його дає ачівка «{AchTitle(ach)}» у «Шаткуй!»"
-        : $"Цей титул не купується — його дає ачівка «{AchTitle(ach)}»";
+        : LavkaKind.IsFura(i.Kind)
+            ? $"Це не купується — його дає ачівка «{AchTitle(ach)}» у «Чумаках»"
+            : $"Цей титул не купується — його дає ачівка «{AchTitle(ach)}»";
 
     static string Bought(LavkaItem i) => i.Kind switch
     {
         LavkaKind.Blade => $"Лезо «{i.Title}» тепер твоє назавжди — уже в руці в «Шаткуй!»",
+        _ when LavkaKind.IsFura(i.Kind) => $"{Capital(LavkaCatalog.Label(i))} — твоє назавжди, уже на фурі в «Чумаках»",
         LavkaKind.Icon => $"Значок «{i.Title}» {i.Art} тепер твій назавжди — уже на аватарці",
         LavkaKind.Frame => $"«{i.Title} рамка» тепер твоя назавжди — уже на аватарці",
         LavkaKind.Color => $"Колір ніка «{i.Title}» тепер твій назавжди — уже світиться",
@@ -1225,9 +1320,9 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
     {
         if (!account) return new(false, NotAccount);
         var s = (slot ?? "").Trim().ToLowerInvariant();
-        if (!LavkaCatalog.Slots.Contains(s)) return new(false, NoSlot);
-        // Гімн, святкування й лезо у вигляді не малюються — розсилати всім той самий вигляд через них ні до чого
-        var seen = s is not (LavkaKind.Anthem or LavkaKind.Fx or LavkaKind.Blade);
+        if (!LavkaCatalog.IsSlot(s)) return new(false, NoSlot);
+        // Гімн, святкування, лезо й фура у вигляді не малюються — розсилати всім той самий вигляд через них ні до чого
+        var seen = s is not (LavkaKind.Anthem or LavkaKind.Fx or LavkaKind.Blade) && !LavkaKind.IsFura(s);
         if (string.IsNullOrWhiteSpace(itemId))
         {
             lock (_gate) store.Unwear(nick, s);
@@ -1235,10 +1330,20 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             return new(true, "Знято");
         }
         if (LavkaCatalog.Get(itemId) is not { } item) return new(false, NoItem);
-        if (item.Kind != s) return new(false, WrongSlot);
-        if (!Has(nick, item)) return new(false, item.Ach is { } ach ? $"{(item.Kind == LavkaKind.Blade ? "Це лезо" : "Цей титул")} дає ачівка «{AchTitle(ach)}»" : NotOwned);
+        if (item.Kind != LavkaCatalog.KindOfSlot(s)) return new(false, WrongSlot);
+        if (!Has(nick, item))
+            return new(false, item.Ach is { } ach
+                ? $"{(item.Kind == LavkaKind.Blade ? "Це лезо" : LavkaKind.IsFura(item.Kind) ? "Це" : "Цей титул")} дає ачівка «{AchTitle(ach)}»"
+                : NotOwned);
         if (item.Id == LavkaCatalog.OwnBg && store.BgPhoto(nick) is null) return new(false, NoOwnBg);
-        lock (_gate) store.Wear(nick, s, item.Id);
+        lock (_gate)
+        {
+            // та сама наліпка двічі не клеїться: з іншого свого слота вона переходить сюди
+            if (item.Kind == LavkaKind.FuraSticker)
+                foreach (var other in LavkaCatalog.FuraSlots)
+                    if (other != s && LavkaCatalog.KindOfSlot(other) == item.Kind && store.Worn(nick, other) == item.Id) store.Unwear(nick, other);
+            store.Wear(nick, s, item.Id);
+        }
         if (seen) Announce(nick);
         return new(true, "Вдягнуто");
     }

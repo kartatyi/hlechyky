@@ -98,7 +98,11 @@
     { "id": "hay", "title": "Сіно", "emoji": "🌾", "mult": 1.0, "fragile": 0, "mass": 6000, "from": ["medove"], "to": ["honchar", "sil", "dvir"] },
     { "id": "salt", "title": "Сіль", "emoji": "🧂", "mult": 1.0, "fragile": 0, "mass": 20000, "from": ["sil"], "to": ["poltavka", "honchar", "medove", "cegel"] },
     { "id": "clay", "title": "Глина", "emoji": "🟫", "mult": 1.0, "fragile": 0, "mass": 18000, "from": ["cegel"], "to": ["honchar"] },
-    { "id": "goods", "title": "Товари для крамниць", "emoji": "📦", "mult": 1.1, "fragile": 0.3, "mass": 8000, "from": ["poltavka"], "to": ["honchar", "medove", "cegel", "sil"] }
+    { "id": "goods", "title": "Товари для крамниць", "emoji": "📦", "mult": 1.1, "fragile": 0.3, "mass": 8000, "from": ["poltavka"], "to": ["honchar", "medove", "cegel", "sil"] },
+    { "id": "milk", "title": "Молоко", "emoji": "🥛", "mult": 1.2, "fragile": 0.4, "mass": 12000, "trailer": "izoterm", "from": ["medove"], "to": ["poltavka", "dvir", "sil"] },
+    { "id": "icecream", "title": "Морозиво", "emoji": "🍦", "mult": 1.4, "fragile": 0.2, "mass": 9000, "trailer": "izoterm", "term": 0.8, "from": ["poltavka"], "to": ["honchar", "medove", "cegel", "sil"] },
+    { "id": "bell", "title": "Дзвін для церкви", "emoji": "🔔", "mult": 1.6, "fragile": 0.6, "mass": 28000, "trailer": "low", "from": ["cegel"], "to": ["poltavka", "honchar", "medove"] },
+    { "id": "tractor", "title": "Трактор", "emoji": "🚜", "mult": 1.5, "fragile": 0.2, "mass": 24000, "trailer": "low", "wide": true, "from": ["poltavka"], "to": ["medove", "sil", "honchar", "dvir"] }
   ],
   "river": { "width": 22, "pts": [[600, 1500], [450, 900], [500, 300], [420, -400], [300, -1500]] },
   "railway": { "pts": [[1300, -1500], [1250, 0], [1050, 1500]] }

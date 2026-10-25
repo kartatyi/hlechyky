@@ -153,7 +153,8 @@ public sealed class FuraMap
         {
             static string[] Ids(JsonNode? n) => n is JsonArray a ? [.. a.Select(x => (string)x!)] : [];
             cargo.Add(new FuraCargo((string)c!["id"]!, (string?)c["title"] ?? "", (string?)c["emoji"] ?? "",
-                (double?)c["mult"] ?? 1, [.. Ids(c["from"]).Where(known.Contains)], [.. Ids(c["to"]).Where(known.Contains)]));
+                (double?)c["mult"] ?? 1, [.. Ids(c["from"]).Where(known.Contains)], [.. Ids(c["to"]).Where(known.Contains)],
+                (string?)c["trailer"] is { Length: > 0 } tr ? tr : FuraCargo.Tent, (double?)c["term"] is double term and > 0 ? term : 1));
         }
 
         return new FuraMap(id, (string?)root["title"] ?? id, json, nodes, roads, places, cargo);
@@ -187,5 +188,13 @@ public sealed record FuraPlace(string Id, string Title, string Short, string Nod
     public FuraDock? Dock(string id) => Docks.FirstOrDefault(d => d.Id == id);
 }
 
-/// <summary>Вантаж: <see cref="Mult"/> — множник плати; звідки й куди його возять (лише відомі місця).</summary>
-public sealed record FuraCargo(string Id, string Title, string Emoji, double Mult, string[] From, string[] To);
+/// <summary>
+/// Вантаж: <see cref="Mult"/> — множник плати; звідки й куди його возять (лише відомі місця). <see cref="Trailer"/> — тип
+/// причепа, під який він їде (гараж 0.6: дошка показує лише вантажі під свої причепи), <see cref="Term"/> — множник терміну.
+/// </summary>
+public sealed record FuraCargo(string Id, string Title, string Emoji, double Mult, string[] From, string[] To,
+    string Trailer = FuraCargo.Tent, double Term = 1)
+{
+    /// <summary>Звичайний тентований причіп: усі вантажі, що були до гаража.</summary>
+    public const string Tent = "tent";
+}

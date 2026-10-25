@@ -43,7 +43,7 @@
           { "step": 2, "id": "quickShift", "title": "Швидке перемикання" },
           { "step": 3, "id": "retarder", "title": "Сповільнювач" }
         ] },
-      { "id": "brakes", "title": "Гальма", "steps": 3, "mul": { "brake": 0.1, "trailerBrake": 0.1 },
+      { "id": "brakes", "title": "Гальма", "steps": 3, "mul": { "brake": 0.1, "trailerBrake": 0.1 }, "mulSteps": 2,
         "set": { "3": { "abs": true } },
         "perks": [{ "step": 3, "id": "abs", "title": "ABS" }] },
       { "id": "susp", "title": "Підвіска «М'якість»", "steps": 5, "mul": { "limits": 0.05 }, "hurtPer": 0.96,
