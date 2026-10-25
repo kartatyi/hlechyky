@@ -504,7 +504,7 @@
       for (const ev of list.length ? list : [e]) {
         const p = pt(st, ev), now = performance.now();
         if (now - st.ptr.at > 260) newSwipe(st);   // спинився — новий змах (комбо — лише одним рухом)
-        moveBlade(st, st.ptr.x, st.ptr.y, p.x, p.y, st.ptr.touch ? 10 : 4, now - st.ptr.at);
+        moveBlade(st, st.ptr.x, st.ptr.y, p.x, p.y, st.ptr.touch ? 16 : 10, now - st.ptr.at);
         st.ptr.x = p.x; st.ptr.y = p.y; st.ptr.at = now;
       }
       loop(st);
@@ -614,7 +614,7 @@
     const speed = len / Math.max(8, dt) * 1000;   // пікс/с
     if (speed > 900 && now - (st.swooshAt || 0) > 220) { st.swooshAt = now; Snd.swoosh(speed); }
     if (st.phase === 'ready' && !st.startCut && st.ctx.mine) { startSlash(st, ax, ay, bx, by, slack); return; }
-    if (!playing(st) || speed < 120) return;
+    if (!playing(st) || speed < 60) return;
     const g = gNow(st);
     if (tNow(st) < -150) return;
     const v = cur(st), len0 = v && v.len;
@@ -623,7 +623,8 @@
       if (f.cut && f.k !== 'B') continue;
       const p = where(st, f, g);
       if (!p || p.s > 1.05 || p.y > st.g.H + p.r * 0.6) continue;
-      if (segDist(p.x, p.y, ax, ay, bx, by) <= p.r * (f.k === 'B' ? 0.95 : 0.85) + slack) cut(st, f, p, { dx: bx - ax, dy: by - ay });
+      // глек — тісніше: зачепити його краєм не має бути легко; решта — по всьому малюнку (#68: «не з першого разу»)
+      if (segDist(p.x, p.y, ax, ay, bx, by) <= p.r * (f.k === 'G' ? 0.8 : 1.05) + slack) cut(st, f, p, { dx: bx - ax, dy: by - ay });
       else if (f.k === 'B') f.inBlade = false;
     }
   }

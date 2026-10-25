@@ -29,6 +29,8 @@ public abstract class ShatkuyGame : Game
     readonly Dictionary<int, ShatkuyFruit> _byId = [];
     /// <summary>Ще не розрізані й не впалі — їх тік перевіряє на промах.</summary>
     readonly List<ShatkuyFruit> _air = [];
+    /// <summary>Відомі, але ще за обрієм виду (At &gt; g + LookMs): вид треба розіслати, щойно котрийсь увійде в обрій.</summary>
+    readonly List<ShatkuyFruit> _soon = [];
     readonly HashSet<int> _cut = [], _missed = [], _bigWs = [];
     readonly Dictionary<int, int> _combo = [];
     readonly List<(int S, int E)> _frost = [], _double = [];
@@ -62,7 +64,7 @@ public abstract class ShatkuyGame : Game
     {
         _phase = PhReady;
         _plan = null;
-        _byId.Clear(); _air.Clear(); _cut.Clear(); _missed.Clear(); _bigWs.Clear(); _combo.Clear(); _frost.Clear(); _double.Clear();
+        _byId.Clear(); _air.Clear(); _soon.Clear(); _cut.Clear(); _missed.Clear(); _bigWs.Clear(); _combo.Clear(); _frost.Clear(); _double.Clear();
         _planSeen = _showers = 0;
         _bigAt = -1_000_000;
         _score = _misses = _bestCombo = _gleks = _cuts = _bigHits = _endT = 0;
@@ -94,6 +96,7 @@ public abstract class ShatkuyGame : Game
                 _plan = new ShatkuyPlan(Mode, NewSeed());
                 _t0 = now.AddMilliseconds(ShatkuyCore.LeadMs);
                 _phase = PhGo;
+                Grow(0);
                 _dirty = true;
                 return ActResult.Done;
             case "cut":
@@ -196,6 +199,7 @@ public abstract class ShatkuyGame : Game
     {
         if (!_byId.TryAdd(f.Id, f)) return;
         if (!f.Big) _air.Add(f);
+        _soon.Add(f);
         _dirty = true;
     }
 
@@ -204,6 +208,8 @@ public abstract class ShatkuyGame : Game
         if (_plan is null) return;
         _plan.Until(g + ShatkuyCore.LookMs);
         while (_planSeen < _plan.Fruits.Count) Put(_plan.Fruits[_planSeen++]);
+        // плід хвилі, що вилітає пізніше за обрій, інакше доходив би лише з наступною хвилею — уже в польоті
+        if (_soon.RemoveAll(f => f.At <= g + ShatkuyCore.LookMs) > 0) _dirty = true;
     }
 
     /// <summary>Прожити партію до <paramref name="now"/>: докинути розклад, порахувати впалі (у Класиці — промахи), кінець часу.</summary>
@@ -211,9 +217,9 @@ public abstract class ShatkuyGame : Game
     {
         if (_phase != PhGo) return;
         var t = T(now);
-        if (t < 0) return;
         var g = G(t);
-        Grow(g);
+        Grow(g);   // і під час відліку «Ану!» — перша хвиля теж приходить за обрій до вильоту
+        if (t < 0) return;
         for (var i = _air.Count - 1; i >= 0 && _phase == PhGo; i--)
         {
             var f = _air[i];

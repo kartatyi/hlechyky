@@ -138,6 +138,29 @@ public class ShatkuyTests(Xunit.Abstractions.ITestOutputHelper output)
     }
 
     [Fact]
+    public void Every_fruit_reaches_the_client_a_look_ahead_before_it_flies()
+    {
+        // #68: плід хвилі, що вилітав трохи пізніше за обрій, сервер знав, але вид не розсилав —
+        // клієнт бачив його лише з наступною хвилею, уже в польоті
+        var (h, g) = Open("shatkuy");
+        Go(h, g);
+        var seen = new Dictionary<int, int>();
+        var first = h.View(0).GetProperty("fruits").EnumerateArray().Select(f => f.GetProperty("id").GetInt32()).ToHashSet();   // до старту — поза заміром
+        for (var i = 0; i < 60_000 / ShatkuyGame.TickMs && g.Phase == ShatkuyGame.PhGo; i++)
+        {
+            var sent = h.Outbox.Count;
+            Bot(h, g, 1);
+            if (h.Outbox.Count == sent) continue;
+            foreach (var f in h.View(0).GetProperty("fruits").EnumerateArray())
+                seen.TryAdd(f.GetProperty("id").GetInt32(), g.GameNow);
+        }
+        var late = g.Fruits.Where(f => !first.Contains(f.Id) && f.At < g.GameNow - 2_000 && (!seen.TryGetValue(f.Id, out var at) || f.At - at < ShatkuyCore.LookMs - 3 * ShatkuyGame.TickMs))
+            .Select(f => $"#{f.Id} {(seen.TryGetValue(f.Id, out var at) ? f.At - at : -1)} мс").ToList();
+        Assert.True(seen.Count > 30, $"плодів {seen.Count}");
+        Assert.True(late.Count == 0, "пізно: " + string.Join(", ", late));
+    }
+
+    [Fact]
     public void Cut_only_what_is_in_the_air_once_and_combo_gives_n_on_top()
     {
         var (h, g) = Open("shatkuy-zen");
