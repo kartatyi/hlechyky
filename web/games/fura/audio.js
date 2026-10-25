@@ -67,8 +67,9 @@ export class Sound {
     this.o1.frequency.setTargetAtTime(f, t, 0.05);
     this.o2.frequency.setTargetAtTime(f * 0.5, t, 0.05);
     this.lp.frequency.setTargetAtTime(260 + throttle * 900 + rpm * 0.12, t, 0.08);
-    this.eng.gain.setTargetAtTime(0.16 + throttle * 0.16, t, 0.08);
-    this.ng.gain.setTargetAtTime(0.02 + throttle * 0.07, t, 0.1);
+    const k = this.ducked ? 0.35 : 1;                // говорить Глек — двигун тихіше
+    this.eng.gain.setTargetAtTime((0.16 + throttle * 0.16) * k, t, 0.08);
+    this.ng.gain.setTargetAtTime((0.02 + throttle * 0.07) * k, t, 0.1);
     this.hornG.gain.setTargetAtTime(horn ? 0.22 : 0, t, 0.02);
     // «пшш» — коли довго тримав гальмо й відпустив
     if (brake > 0.3) this.braking += 1; else { if (this.braking > 40) this.hiss(); this.braking = 0; }
@@ -104,6 +105,9 @@ export class Sound {
   }
 
   thump() { this.burst(0.25, 'lowpass', 220, 0.5); }
+
+  /** Приглушити двигун (поки говорить рація). */
+  duck(on) { this.ducked = !!on; }
 
   stop() { if (this.ctx) { try { this.ctx.close(); } catch { /* пусто */ } this.ctx = null; } }
 }

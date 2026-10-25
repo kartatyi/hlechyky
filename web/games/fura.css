@@ -69,6 +69,14 @@
 .fura-box select, .fura-box input[type=range] { width: 100%; }
 .fura-box label { display: block; margin-top: 10px; }
 
+.fura-tools button.on { background: rgba(208, 138, 44, .85); }
+
+/* Глек у рації: субтитр унизу посередині */
+.fura-radio-sub { left: 50%; bottom: 22px; transform: translateX(-50%); max-width: min(620px, 70vw); font-size: 15px;
+  opacity: 0; transition: opacity .3s; }
+.fura-radio-sub.on { opacity: 1; }
+.fura-radio-sub .who { color: #f2c94c; font-weight: 700; }
+
 /* Рейс: панель замовлення, мапа в куті, дошка */
 .fura-order { left: 16px; top: 52px; max-width: min(420px, 60vw); font-size: 13px; }
 .fura-order .fura-o1 { font-size: 15px; }

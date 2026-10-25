@@ -13,6 +13,7 @@ import { openCalib } from './calib.js';
 import { Sound } from './audio.js';
 import { Nav } from './nav.js';
 import { Trips } from './trip.js';
+import { Voice } from './voice.js';
 
 const STEP = 1 / 60;
 const CAMS = ['chase', 'cabin', 'far'];
@@ -90,7 +91,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   }
   const truck = new Truck(THREE, RAPIER, world, scene, { spawn: SPAWN });
   truck.ground = level.height || (() => 0);
-  let trips = null, nav = null;           // рейси — лише в краю й лише зі столом (з картки гри)
+  let trips = null, nav = null, voice = null;   // рейси й Глек у рації — лише в краю й лише зі столом (з картки гри)
   const model = buildModels(THREE, scene);
   // Промені коліс бачать лише нерухоме: ні свій тягач/причіп, ні конуси під колесами (конус штовхаємо корпусом)
   const onlyFixed = (col) => { const p = col.parent(); return !p || p.isFixed(); };
@@ -106,6 +107,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     + '<span class="fura-steerbar"><i></i></span></div></div>'
     + '<div class="fura-panel fura-cargo"><div class="muted">🏺 вантаж ціле</div><div class="fura-pct">100 %</div><div class="fura-link"></div></div>'
     + '<div class="fura-tools"><button type="button" data-t="cam" title="Камера (C)">📷</button>'
+    + (server ? '<button type="button" data-t="radio" title="Радіо Глечиків у кабіні">📻</button>' : '')
     + '<button type="button" data-t="mute" title="Звук (M)">🔊</button><button type="button" data-t="fs" title="Повний екран (F)">⛶</button>'
     + '<button type="button" data-t="menu" title="Меню (Esc)">☰</button><button type="button" data-t="exit" title="Вийти">✕</button></div>'
     + '<div class="fura-flash"></div>';
@@ -205,6 +207,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     const k = t.dataset.t;
     if (k === 'cam') nextCam();
     else if (k === 'mute') toggleMute();
+    else if (k === 'radio') toggleRadio();
     else if (k === 'fs') toggleFs();
     else if (k === 'menu') openMenu();
     else if (k === 'exit') exit();
@@ -217,6 +220,16 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     say('📷 Камера: ' + CAM_NAME[cam], 1200);
   }
   function toggleMute() { sound.setMuted(!sound.muted); ui.mute.textContent = sound.muted ? '🔇' : '🔊'; }
+  // 📻 — той самий ефір, що й у плеєрі сайту (кнопка ▶ у шапці): гра його не дублює, а вмикає й вимикає.
+  // Поки Глек говорить, voice.js приглушує саме цей елемент <audio id="audio">.
+  const radioOn = () => { const b = document.getElementById('playBtn'); return !!b && /\b(live|busy)\b/.test(b.className); };
+  function toggleRadio() {
+    const b = document.getElementById('playBtn');
+    if (!b) { say('Плеєра радіо на цій сторінці нема'); return; }
+    const was = radioOn();
+    b.click();
+    say(was ? '📻 Радіо вимкнено' : '📻 Радіо Глечиків у кабіні', 1600);
+  }
   function toggleFs() {
     try { if (document.fullscreenElement) document.exitFullscreen(); else app.requestFullscreen(); } catch { /* пусто */ }
   }
@@ -354,6 +367,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     window.removeEventListener('resize', resize);
     document.removeEventListener('fullscreenchange', resize);
     input.dispose();
+    if (voice) voice.stop();
     sound.stop();
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch { /* пусто */ }
     renderer.dispose();
@@ -371,7 +385,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   if (mode === 'kray' && level.roads) {
     nav = new Nav(THREE, scene, level);
     if (server) {
-      trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, onPlaced: () => resetPoses() });
+      voice = new Voice({ sound, hud });
+      trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, voice, onPlaced: () => resetPoses() });
       server.onView = (v) => trips.onView(v);
       trips.onView(server.view());
     }
@@ -422,7 +437,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     if (inp.hit.has('camera')) nextCam();
     if (inp.hit.has('reset')) {
       // спершу сказати судді: наступний стрибок пози — не телепорт
-      if (trips) trips.act('rescue');
+      if (trips) { trips.act('rescue'); voice.say('rescue', { gap: 5000 }); }
       truck.rescue(); resetPoses(); say('Фура на колесах');
     }
     if (inp.hit.has('menu')) { if (modal) modal.close(); else openMenu(); }
@@ -467,6 +482,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     // ---- удари по вантажу
     if (truck.hit > 0.02) {
       const p = Math.min(1, truck.hit / 1.5);
+      if (voice && trips && trips.phase === 'haul' && p > 0.12) voice.say('clink', { gap: 12000 });
       sound.clink(p);
       if (window.HPad && HPad.rumble) try { HPad.rumble(120 + p * 200, 0.3 + p * 0.6, 0.4); } catch { /* пусто */ }
       ui.flash.classList.add('on'); flashAt = now;
@@ -517,6 +533,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     ui.hint.classList.toggle('on', !!hint);
     const src = { kbd: '⌨ клавіатура', pad: '🎮 пад', wheel: '🛞 кермо' }[inp.source] || '';
     ui.dev.textContent = (mode === 'kray' ? 'Чумацький край' : 'полігон') + ' · ' + src + ' · камера ' + CAM_NAME[cam] + ' · ' + Math.round(fps) + ' fps';
+    const rb = hud.querySelector('[data-t=radio]');
+    if (rb) rb.classList.toggle('on', radioOn());
   }
 
   raf = requestAnimationFrame(frame);

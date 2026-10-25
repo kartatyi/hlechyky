@@ -56,6 +56,7 @@ public static class GamesSetup
         Impl.VechirkaSetup.AddVechirka(services);           // Глечикова вечірка: корона «Голова вечірки»
         Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
         Impl.DotepySetup.AddDotepy(services);               // «Додепи»: голос Глека, голос публіки
+        Impl.FuraSetup.AddFura(services);                   // «Чумаки-далекобійники»: голос Глека-диспетчера
         Impl.GeoSetup.AddGeo(services);   // «Де це?»: фото з Вікісховища в cache/geo
         Impl.MemySetup.AddMemy(services);                   // «Мемологія»: банк мемів, картинки й кадри проявлення в cache/memes
         Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
@@ -113,7 +114,7 @@ public static class GamesSetup
         Impl.NamystoSetup.MapNamysto(app);                  // /api/games/namysto/tracks — жолоби всіх трас
         Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
         Impl.SlotsSetup.MapSlots(app);                      // /api/slots/feed — Скарбничка й заноси тижня
-        Impl.FuraSetup.MapFura(app);                        // /api/games/fura/map/<id> — мапа «Чумаків-далекобійників»
+        Impl.FuraSetup.MapFura(app);                        // /api/games/fura/map/<id> — мапа, /voice — голос диспетчера «Чумаків»
         return app;
     }
 }

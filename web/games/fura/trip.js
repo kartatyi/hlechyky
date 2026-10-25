@@ -37,12 +37,16 @@ export class Trips {
     this.view = v;
     // Сервер шле вид лише при змінах — час рейсу між видами рахуємо самі від останнього відомого
     this.clock = { sec: v.trip ? v.trip.sec : 0, haul: v.trip ? v.trip.haulSec : 0, at: performance.now() };
-    if (!this.restored) { this.restored = true; this.restore(v); }
+    if (!this.restored) {
+      this.restored = true; this.restore(v);
+      if (v.phase === 'free') setTimeout(() => this.voice.say('hello'), 1500);
+    }
     else if (before && before.phase !== v.phase) this.onPhase(before.phase, v.phase);
     this.target();
     if (v.trip && v.trip.voided && this.voidShown !== v.trip.voided) {
       this.voidShown = v.trip.voided;
       this.say('⚠ Цей рейс уже не зарахують: ' + v.trip.voided, 5000);
+      this.voice.say('voided', { urgent: true });
     }
     if (v.phase === 'done' && v.result && this.shownResult !== v.result.trip) { this.shownResult = v.result.trip; this.summary(v.result); }
   }
@@ -66,7 +70,15 @@ export class Trips {
 
   onPhase(from, to) {
     const o = this.order;
-    if (to === 'haul' && o) { this.truck.cargo = 100; this.truck.settle(); this.say('🔗 Причіп твій. Вези в ' + this.places[o.to].short + ', не розбий!', 3500); this.sound.radio && this.sound.radio(); }
+    if (to === 'haul' && o) {
+      this.truck.cargo = 100; this.truck.settle();
+      this.say('🔗 Причіп твій. Вези в ' + this.places[o.to].short + ', не розбий!', 3500);
+      this.marks = {};                       // пів дороги / близько / запізнився — кожне раз за рейс
+      const c = this.cargo[o.cargo];
+      this.voice.say('coupled');
+      if (c && c.fragile >= 1) this.voice.say('fragile');
+      else if (c && c.fragile === 0) this.voice.say('sturdy');
+    }
     if (to === 'free' && from !== 'done') this.say('Замовлення знято', 2500);
   }
 
@@ -160,10 +172,11 @@ export class Trips {
     if (r && r.ok) {
       const o = this.view.board && this.view.board.find((x) => x.id === id);
       if (o) { this.view = { ...this.view, phase: 'pickup', order: o }; this.putTrailerAtDock(o); this.target(); }
+      this.voice.say('take');
     }
   }
 
-  async cancel() { await this.act('cancel'); }
+  async cancel() { const r = await this.act('cancel'); if (r && r.ok) this.voice.say('cancel'); }
 
   async next() { await this.act('next'); }
 
@@ -192,6 +205,7 @@ export class Trips {
     const route = this.nav.update(a.x, a.z, now);
     this.nav.draw(this.mm, a.x, a.z, t.yawOf(t.tb));
     this.drawPanel(route);
+    this.cues(route, now);
     // підказка
     const o = this.order, ph = this.phase;
     if (ph === 'pickup' && o && !t.coupled && this.nearPickup(30))
@@ -201,6 +215,20 @@ export class Trips {
       return { text: '✅ Тисни <b>T</b> · <b>Ⓐ</b> — здати вантаж', strong: true };
     }
     return null;
+  }
+
+  /** Голос на подіях рейсу, які сервер не рахує: пів дороги, близько, запізнився, стоїть без діла. */
+  cues(route, now) {
+    const o = this.order, ph = this.phase, m = this.marks || (this.marks = {});
+    if (ph === 'haul' && o && route) {
+      const km = o.km * 1000;
+      if (!m.half && km > 600 && route.len < km * 0.5) { m.half = true; this.voice.say('half'); }
+      if (!m.near && route.len < 300) { m.near = true; this.voice.say('near'); }
+      const sec = this.clock ? this.clock.haul + (now - this.clock.at) / 1000 : 0;
+      if (!m.late && sec > o.minutes * 60) { m.late = true; this.voice.say('late'); }
+    }
+    if (ph !== 'free') this.busyAt = now;
+    else if (now - (this.busyAt || (this.busyAt = now)) > 120000) { this.busyAt = now; this.voice.say('idle', { gap: 180000 }); }
   }
 
   drawPanel(route) {
@@ -228,7 +256,7 @@ export class Trips {
   board() {
     const v = this.view;
     if (!v) return;
-    if (v.phase === 'done' && v.result) return this.summary(v.result);
+    if (v.phase === 'done' && v.result) return this.summary(v.result, true);
     if (v.phase !== 'free') return this.current();
     const list = v.board || [];
     const rows = list.map((o) => {
@@ -265,11 +293,12 @@ export class Trips {
     });
   }
 
-  summary(r) {
+  summary(r, quiet) {
     const row = (a, b) => '<tr><td>' + a + '</td><td>' + b + '</td></tr>';
     const mmss = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
     const c = this.cargo[r.cargo] || {};
-    this.sound.cheer && this.sound.cheer();
+    if (!quiet) this.voice.say(r.broken ? 'done_broken' : r.k >= 95 ? 'done_good' : 'done_ok', { urgent: true });
+    if (!quiet && r.exact) this.voice.say('exact');
     this.boxModal('<h3>' + (r.broken ? '💔 Усе розбито' : '✅ Рейс №' + r.trip + ' здано') + '</h3>'
       + '<table>' + row('Вантаж', (c.emoji || '') + ' ' + (c.title || r.cargo)) + row('Маршрут', this.places[r.from].short + ' → ' + this.places[r.to].short)
       + row('Відстань', String(r.km).replace('.', ',') + ' км (проїхав ' + String(r.driven).replace('.', ',') + ')')
