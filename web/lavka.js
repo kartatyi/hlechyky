@@ -37,7 +37,7 @@
 
   const TABS = [['icon', '🏺 Значки'], ['frame', '⭕ Рамки'], ['color', '🎨 Колір ніка'], ['title', '🏷 Титули'],
     ['bg', '🖼 Тло'], ['perk', '✨ Вміння'], ['photo', '📷 Своя фотка'], ['anthem', '🎺 Гімни'], ['fx', '🎉 Святкування'],
-    ['curse', '😈 Прокльони'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
+    ['blade', '🔪 Леза'], ['curse', '😈 Прокльони'], ['roast', '🔥 Прожарка'], ['mine', '👜 Моя шафа']];
   /// Чого в подарунку нема: полиці — шафа своя, а прожарку не дарують (її замовляють самі, web/liveads.js), прокльон
   /// насилають, а не дарують; речі — «Свій трек» (його ставлять собі: уривок обирає сама людина, сервер подарунок теж
   /// відмовить) і «Свій дзвінок» (не дарується, flair.md §2).
@@ -59,7 +59,15 @@
     salute: 'Феєрверк над столом — як «🎆 Феєрверк», лише над твоєю перемогою.',
     glekhopak: 'Дядько Глек вистрибує на стіл і танцює гопак присядкою.',
   };
-  FX_TEXT.hopak = FX_TEXT.glekhopak;   // у каталозі — glekhopak (hopak уже зайнятий гімном), у spec — hopak
+  FX_TEXT.hopak = FX_TEXT.glekhopak;
+  /// Леза «Шаткуй!» (слот blade): вигляд сліду й свист змаху. Нічого не вдягнуто — ніж Глека.
+  const BLADE_TEXT = {
+    kosa: 'Широкий солом’яний помах і сухий шелест — як на сінокосі.',
+    shablia: 'Сталевий блиск і дзвінкий свист — козацький удар.',
+    goldknife: 'Золотий слід з іскорками й теплим дзвоном.',
+    sickle: 'Тонкий місячний слід і срібний дзвін — за серію ×4 у «Шаткуй!».',
+    fireblade: 'Полум’я за лезом, іскри й тріск — за 300 очок у Класиці «Шаткуй!».',
+  };   // у каталозі — glekhopak (hopak уже зайнятий гімном), у spec — hopak
   /// Що звучить (flair.md §1.1): підпис під карткою прокльону.
   const CURSE_TEXT = {
     sadtrombone: '«Уа-уа-уа-уааа» на кожен програш.',
@@ -239,6 +247,7 @@
       case 'anthem': return '<span class="lv-emoji">' + emo((it.art && it.art.emoji) || '🎺') + '</span>';
       case 'curse': return '<span class="lv-emoji">' + emo(artEmoji(it) || '😈') + '</span>';
       case 'fx': return '<span class="lv-emoji">' + emo(artEmoji(it) || '🎉') + '</span>';
+      case 'blade': return '<span class="lv-emoji">' + emo(artEmoji(it) || '🔪') + '</span>';
     }
     return '';
   }
@@ -311,7 +320,7 @@
     const url = (it.kind === 'anthem' || it.kind === 'curse') && artUrl(it);
     const tryBtn = url ? '<button class="ghost" type="button" data-anth="' + esc(url) + '" title="Прослухати — нічого не купує">▶</button>'
       : it.kind === 'fx' ? '<button class="ghost" type="button" data-fx-try="' + esc(it.id) + '" title="Подивитись — нічого не купує">▶</button>'
-      : !['perk', 'anthem', 'curse'].includes(it.kind) && !gift && !it.worn && !(it.id === OWN_BG && !(data.ownBg && data.ownBg.url))
+      : !['perk', 'anthem', 'curse', 'blade'].includes(it.kind) && !gift && !it.worn && !(it.id === OWN_BG && !(data.ownBg && data.ownBg.url))
         ? '<button class="ghost" data-try="' + it.id + '" title="Подивитись на собі — нічого не купує">Приміряти</button>' : '';
     // У подарунку «моє / вдягнуто» ні до чого: річ вибирають для іншої людини.
     const mine = !gift;
@@ -323,6 +332,7 @@
       + (it.id === OWN_ANTHEM ? '<div class="muted small lv-desc">' + esc(OWN_ANTHEM_TEXT) + '</div>' : '')
       + (it.id === OWN_BG ? '<div class="muted small lv-desc">' + esc(OWN_BG_TEXT) + '</div>' : '')
       + (it.kind === 'fx' && FX_TEXT[it.id] ? '<div class="muted small lv-desc">' + esc(FX_TEXT[it.id]) + '</div>' : '')
+      + (it.kind === 'blade' ? '<div class="muted small lv-desc">' + esc(BLADE_TEXT[it.id] || 'Лезо для «Шаткуй!»: свій слід і свист.') + '</div>' : '')
       + (it.kind === 'curse' && CURSE_TEXT[it.id] ? '<div class="muted small lv-desc">' + esc(CURSE_TEXT[it.id]) + '</div>' : '')
       + (url ? '<div class="muted small lv-dur" data-dur="' + esc(url) + '">' + durText(url) + '</div>' : '')
       + '<div class="lv-state">' + state + '</div>'
@@ -419,7 +429,8 @@
     const body = tab === 'photo' ? photoPanel()
       : tab === 'roast' ? '<div class="la-host" data-la-host></div>'
       : shelf.length
-      ? (tab === 'anthem' ? anthemHead() : tab === 'curse' ? curseHead() : tab === 'fx' ? fxHead() : '') + (own ? cardHtml(own) : '')
+      ? (tab === 'anthem' ? anthemHead() : tab === 'curse' ? curseHead() : tab === 'fx' ? fxHead()
+        : tab === 'blade' ? '<p class="muted small">🔪 Лезо — для гри «Шаткуй!»: свій слід і свист змаху. Без леза ріжеш ножем Глека. Обрати можна й просто в грі — кнопкою біля 🔇.</p>' : '') + (own ? cardHtml(own) : '')
         + (tab === 'anthem' && !giftTo ? ringPanel() : '')
         + '<div class="lv-grid">' + cardsOf.map(cardHtml).join('') + '</div>' + soon
       : '<div class="gempty glek">' + (tab === 'mine' ? 'Шафа ще порожня. Обери щось на полицях — і воно лишиться з тобою назавжди.' : 'Тут поки порожньо.') + '</div>';
