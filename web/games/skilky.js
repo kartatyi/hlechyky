@@ -24,7 +24,10 @@
   const RULES = 'Очки за точність: до 2 % — 5, до 10 % — 4 (промах на одиницю — теж 4), до 25 % — 3, до 50 % — 2, '
     + 'до двох разів — 1. Роки: точно — 5, ±2 — 4, ±5 — 3, ±15 — 2, ±50 — 1. '
     + 'Найближчому +1, навіть коли всі мимо (самому — без цього). Однаково близько — швидшому ще +1. '
-    + 'За кожні 5 очок партії — 🏺 черепок';
+    + 'За кожні 5 очок партії — 🏺 ';
+  /// Черепки за очки множаться на Economy:Boost (/api/me → ctx.me.boost): «🏺 10 черепків», а не «🏺 черепок».
+  const boostOf = (ctx) => Math.max(1, (ctx && ctx.me && ctx.me.boost) || 1);
+  const rulesFor = (ctx) => RULES + (boostOf(ctx) > 1 ? boostOf(ctx) + ' ' + plural(boostOf(ctx), 'черепок', 'черепки', 'черепків') : 'черепок');
 
   /// Скільки очок партії коштує черепок — те саме, що Skilky.PointsPerShard на сервері.
   const POINTS_PER_SHARD = 5;
@@ -221,7 +224,7 @@
       .sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b)
       .map((i) => {
         // Після кінця партії поруч із рахунком — скільки черепків він приніс (сервер платить так само).
-        const shards = v.result ? Math.floor((sc[i] || 0) / POINTS_PER_SHARD) : 0;
+        const shards = v.result ? Math.floor((sc[i] || 0) / POINTS_PER_SHARD) * boostOf(ctx) : 0;
         return '<div class="sksrow' + (win.includes(i) ? ' win' : '') + '">'
           + '<span>' + ctx.esc(nameAt(ctx, i)) + hcBadge(v, i) + '</span>'
           + (shards > 0 ? '<i class="skshard" title="черепки за очки">🏺+' + shards + '</i>' : '')
@@ -309,7 +312,7 @@
 
   const PLACE = ['перше', 'друге', 'третє', 'четверте', 'п’яте', 'шосте', 'сьоме', 'восьме', 'дев’яте', 'десяте', 'одинадцяте', 'дванадцяте'];
   const pts = (n) => n + ' ' + plural(Math.abs(n), 'очко', 'очки', 'очок');
-  const shardsOf = (n) => Math.floor((n || 0) / POINTS_PER_SHARD);
+  const shardsOf = (n, k) => Math.floor((n || 0) / POINTS_PER_SHARD) * (k || 1);
 
   /// Підсумок угорі картки, коли партію зіграно: хто виграв — першим рядком, нижче — твоє місце. Раніше тут
   /// лишалась таблиця останнього розкриття, і її 🏆 («найближчий у цьому питанні») плутали з переможцем партії;
@@ -319,7 +322,8 @@
     const sc = v.scores || [];
     const list = seats(ctx);
     if (!list.length) return '';
-    const bonus = (n) => (shardsOf(n) > 0 ? ' <span class="skshard">🏺+' + shardsOf(n) + '</span>' : '');
+    const k = boostOf(ctx);
+    const bonus = (n) => (shardsOf(n, k) > 0 ? ' <span class="skshard">🏺+' + shardsOf(n, k) + '</span>' : '');
     if (list.length === 1) {
       const i = list[0], n = sc[i] || 0;
       return '<div class="skpodt">🎯 ' + (i === ctx.seat ? 'Твій результат' : ctx.esc(nameAt(ctx, i))) + ': <b>' + pts(n) + '</b>' + bonus(n) + '</div>';
@@ -650,7 +654,7 @@
         + '<div class="skby small" hidden></div>'
         + '<div class="skq"></div>'
         + '<figure class="skphoto" hidden><img alt="Фото — якого року?" decoding="async"><figcaption class="skcredit small"></figcaption></figure>'
-        + '<div class="skrules muted small" hidden>' + RULES + '</div>'
+        + '<div class="skrules muted small" hidden>' + rulesFor(ctx) + '</div>'
         + '<div class="skask" hidden><input class="skin" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off"'
         + ' placeholder="твоє число" aria-label="Твоє число"><span class="skunit muted small"></span>'
         + '<button type="button" class="primary skgo">Відповісти</button></div>'

@@ -361,7 +361,7 @@ public sealed class SlotsBank : BackgroundService
 
     /// <summary>
     /// Розрахувати записи журналу, старші за <paramref name="olderThan"/>: є списання <c>{Ref}:bet</c> у леджері — платимо
-    /// (ідемпотентно), нема — прибираємо. Повертає, скільки розраховано.
+    /// (ідемпотентно), нема — прибираємо. Безкоштовний прокрут (ставка 0) платимо завжди. Повертає, скільки розраховано.
     /// </summary>
     public int Recover(DateTimeOffset olderThan)
     {
@@ -370,6 +370,12 @@ public sealed class SlotsBank : BackgroundService
         var done = 0;
         foreach (var p in due)
         {
+            // безкоштовний прокрут (SlotFreeSpins): списувати нічого, прокрут уже взято — виграш винні завжди
+            if (p.Bet <= 0)
+            {
+                if (Close(p)) done++;
+                continue;
+            }
             IReadOnlyList<LedgerMove>? moves;
             try { moves = _stakes.Moves(p.Ref + ":bet"); }
             catch (Exception ex)
@@ -556,7 +562,7 @@ public sealed class HubSlotsWire(Db db, IHubContext<RadioHub> hub, IOptionsMonit
     }
 }
 
-/// <summary>Підключення слотів у <see cref="GamesSetup"/>: опції, каса-Скарбничка, Балачки, <c>/api/slots/feed</c>.</summary>
+/// <summary>Підключення слотів у <see cref="GamesSetup"/>: опції, каса-Скарбничка, доплата Глека, Балачки, <c>/api/slots/feed</c>.</summary>
 public static class SlotsSetup
 {
     public static IServiceCollection AddSlots(IServiceCollection services)
@@ -571,6 +577,23 @@ public static class SlotsSetup
         });
         services.AddHostedService(sp => sp.GetRequiredService<SlotsBank>());
         SlotTourneySetup.Add(services);   // турнір тижня на фішках (SlotTourney.cs)
+        // Безкоштовні прокрути (Slots:Free): N на день кожному акаунту, спільні на всі автомати
+        services.AddOptions<SlotFreeOptions>().BindConfiguration("Slots:Free");
+        services.AddSingleton(sp =>
+        {
+            var opts = sp.GetRequiredService<IOptionsMonitor<SlotFreeOptions>>();
+            var store = sp.GetRequiredService<Hlechyky.Games.Economy.EconomyStore>();
+            return new SlotFreeSpins(new EconomyDayCounters(store), () => opts.CurrentValue, nick => store.IsPerson(Hlechyky.Games.Economy.EconomyStore.Key(nick)),
+                sp.GetService<IClock>(), log: sp.GetService<ILogger<SlotFreeSpins>>());
+        });
+        // Доплата Глека (+6 % до виграшу в слотах і Лелеці, стеля на день) — секція «Azart»
+        services.AddOptions<AzartBonusOptions>().BindConfiguration("Azart");
+        services.AddSingleton(sp =>
+        {
+            var opts = sp.GetRequiredService<IOptionsMonitor<AzartBonusOptions>>();
+            return new GlekBonus(new EconomyDayCounters(sp.GetRequiredService<Hlechyky.Games.Economy.EconomyStore>()), () => opts.CurrentValue,
+                sp.GetService<IClock>(), log: sp.GetService<ILogger<GlekBonus>>());
+        });
         return services;
     }
 

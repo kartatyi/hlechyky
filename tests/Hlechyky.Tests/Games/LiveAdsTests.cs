@@ -221,6 +221,7 @@ public class LiveAdsTests
         ["g"] = "5", ["b"] = "900", ["h"] = "3", ["min"] = "190", ["wh"] = "12", ["all"] = "9", ["game"] = "Мотоцикли",
         ["track"] = "Я Канівес", ["artist"] = "Ем Сі Петя", ["ach"] = "Шериф", ["item"] = "Веселка", ["nicks"] = "владік, Смауг",
         ["hh"] = "7", ["mm"] = "05", ["l"] = "19", ["p"] = "22", ["place"] = "2", ["date"] = "16 вересня",
+        ["x"] = "4", ["d"] = "12",
     };
 
     static IEnumerable<(string Where, string Template)> AllTemplates(LiveLines l)
@@ -462,6 +463,34 @@ public class LiveAdsTests
     }
 
     [Fact]
+    public void Fresh_facts_clicker_azart_and_daily()
+    {
+        using var r = new Rig();
+        var at = Rig.Iso(r.Clock.UtcNow);
+        // коло: серія, «число на N цифр» і хто з присутніх відстає
+        r.Exec("INSERT INTO game_state(key, json, updated_at) VALUES('clicker:smaug', $j, $t)",
+            ("$j", "{\"total\":4.5e41,\"fallStreak\":1612}"), ("$t", at));
+        r.Exec("INSERT INTO game_state(key, json, updated_at) VALUES('clicker:владік', $j, $t)",
+            ("$j", "{\"total\":1.5e41,\"fallStreak\":12}"), ("$t", at));
+        // азарт сьогодні: поставила 9000, повернула 2000
+        r.Exec("INSERT INTO ledger(nick_key, delta, reason, ref, created_at) VALUES('smaug', -9000, 'slot-bet:slot-glek', 'b1', $t)", ("$t", at));
+        r.Exec("INSERT INTO ledger(nick_key, delta, reason, ref, created_at) VALUES('smaug', 2000, 'slot-win:slot-glek', 'w1', $t)", ("$t", at));
+        // щоденні: «повний глек» і приз топу вночі
+        r.Exec("INSERT INTO ledger(nick_key, delta, reason, ref, created_at) VALUES('smaug', 500, 'daily-full', 'f1', $t)", ("$t", at));
+        r.Exec("INSERT INTO ledger(nick_key, delta, reason, ref, created_at) VALUES('smaug', 300, 'daily-top:tron', 't1', $t)", ("$t", at));
+
+        var f = r.Facts.For("Smaug", ["Smaug", "владік"]);
+        Assert.Equal("1612", Fact(f, "clicker_streak")!.Values["n"]);
+        Assert.Equal("42", Fact(f, "clicker_digits")!.Values["d"]);
+        Assert.Equal("3", Fact(f, "clicker_ahead")!.Values["x"]);
+        Assert.Equal("7000", Fact(f, "azart_down")!.Values["n"]);
+        Assert.Equal("слоти", Fact(f, "azart_down")!.Values["game"]);
+        Assert.NotNull(Fact(f, "daily_full"));
+        Assert.Equal("Мотоцикли", Fact(f, "daily_top")!.Values["game"]);
+        Assert.Null(Fact(r.Facts.For("владік", ["Smaug", "владік"]), "clicker_ahead"));   // відстає — не хвалимо
+    }
+
+    [Fact]
     public void Ne_te_and_likes_today()
     {
         using var r = new Rig();
@@ -478,7 +507,7 @@ public class LiveAdsTests
     public void Wallet_facts_compare_with_who_is_present()
     {
         using var r = new Rig();
-        r.Eco.Economy.Grant("Назар", 1200, "award");
+        r.Eco.Economy.Grant("Назар", 12000, "award");   // «скнара» — з 3000 зароблених (×10 з 25.10)
         r.Eco.Economy.Grant("владік", 50, "award");
         var f = r.Facts.For("Назар", ["Назар", "владік"]);
         Assert.NotNull(Fact(f, "hoarder"));

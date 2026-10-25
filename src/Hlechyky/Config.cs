@@ -202,17 +202,73 @@ public sealed class EconomyOptions
 
     /// <summary>Типова нагорода за розв'язану головоломку дня.</summary>
     public int DailyReward { get; set; } = 5;
+
+    // ---- надбавки «Щоденного глека» (25.10.2026). Лише людям: акаунт і не бот. Суми — база, × Boost; відсотки — як є.
+    // Типово в коді все вимкнено (тести й чужі гілки рахують старе), у appsettings.json — увімкнено.
+
+    /// <summary>Серія: +стільки відсотків до нагороди дня за кожен день серії цієї головоломки.</summary>
+    public int DailyStreakPct { get; set; }
+    /// <summary>Стеля надбавки за серію, у відсотках.</summary>
+    public int DailyStreakMaxPct { get; set; }
+    /// <summary>Скільки різних головоломок за день треба розв'язати на бонус «повний глек». 0 — бонусу нема.</summary>
+    public int DailyFullNeed { get; set; }
+    /// <summary>Бонус «повний глек» — раз на день.</summary>
+    public int DailyFullBonus { get; set; }
+    /// <summary>
+    /// «За кращий результат»: уночі за кожну головоломку вчорашнього дня — до стількох черепків за місцем серед людей,
+    /// що її розв'язали (перший — усе, останній — нуль, сам-один — половина). 0 — нема.
+    /// </summary>
+    public int DailyBestMax { get; set; }
+    /// <summary>Призи першим місцям кожної головоломки дня (уночі). Порожньо — нема.</summary>
+    public int[]? DailyTopPrizes { get; set; }
+    /// <summary>Призи топу платимо, лише коли головоломку розв'язало стільки людей.</summary>
+    public int DailyTopMinSolvers { get; set; } = 3;
+
+    /// <summary>Надбавка за серію в <paramref name="streak"/> днів (з сьогоднішнім) до нагороди <paramref name="reward"/>.</summary>
+    public int DailyStreakBonus(int reward, int streak)
+    {
+        var pct = Math.Clamp((long)Math.Max(0, DailyStreakPct) * Math.Max(0, streak), 0, Math.Max(0, DailyStreakMaxPct));
+        return reward <= 0 || pct <= 0 ? 0 : (int)Math.Round(reward * pct / 100.0, MidpointRounding.AwayFromZero);
+    }
     /// <summary>Скільки черепків на день можна виміняти в гончарному колі.</summary>
     public int ClickerDailyCap { get; set; } = 20;
     /// <summary>Вище цього клейма майстра стелю обміну не піднімуть, хоч скільки їх набери.</summary>
     public int ClickerDailyCapMax { get; set; } = 40;
     /// <summary>Скільки черепків на день можуть принести всі позастандартні нагороди разом.</summary>
     public int AwardDailyCap { get; set; } = 30;
+    /// <summary>
+    /// Денна стеля рейсів «Чумаків-далекобійників» (причина <c>fura:N</c>, specs/fura.md): база, × <see cref="Boost"/>
+    /// (200 → 2000). Окремо від <see cref="AwardDailyCap"/> — рейс за 150–500 інакше з'їв би її першим же разом.
+    /// </summary>
+    public int FuraDailyCap { get; set; } = 200;
 
     /// <summary>Бан треку, що грає, за черепки (адміну безкоштовно). 0 — за черепки не можна.</summary>
     public int BanPrice { get; set; } = 100;
     /// <summary>Викупити трек із бану. 0 — за черепки не можна, розбанює лише адмін.</summary>
     public int UnbanPrice { get; set; } = 100;
+
+    /// <summary>
+    /// Множник усього, що черепки ЗАРОБЛЯЄ (15.10.2026, донат і вивід вимикаються — азарт має жити на заробленому):
+    /// перемоги, нічиї й участь, щоденки, ачівки, обмін у колі разом зі стелею, слухання й реклама, очки й нагороди
+    /// ігор, автор «Склей». Числа вище й ціни ачівок у каталозі — «база», людина отримує базу × Boost. Не множиться
+    /// те, де черепки лише переходять із рук у руки: азарт, ставки й банк столу, подарунки, Лавка, купівля й продаж.
+    /// 1 — як до перебудови (типове в коді, щоб тести й чужі гілки рахували старі суми); у appsettings.json — 10.
+    /// Менше за 1 не буває.
+    /// </summary>
+    public int Boost { get; set; } = 1;
+
+    /// <summary>База × <see cref="Boost"/>: скільки черепків людина справді отримає (і побачить у тексті).</summary>
+    public int Earn(int n) => n <= 0 ? n : (int)Math.Min(int.MaxValue, (long)n * Math.Max(1, Boost));
+
+    /// <summary>
+    /// Разовий подарунок-перерахунок (<see cref="Economy.Regift"/>): з цим ярликом сервер на старті один раз дає кожному
+    /// акаунту (не гостю й не боту) доплату за вже здобуті ачівки до ціни × <see cref="Boost"/> і ще
+    /// <see cref="RegiftShards"/>. Ярлик лежить у ключах леджера: повторний старт нічого не подвоює, новий ярлик — новий
+    /// подарунок (ачівки тоді доплачуються лише на різницю). Порожньо (типове в коді) — подарунку нема; у appsettings.json — «x10».
+    /// </summary>
+    public string RegiftId { get; set; } = "";
+    /// <summary>Рівний подарунок кожному акаунту разом із перерахунком ачівок.</summary>
+    public int RegiftShards { get; set; } = 5000;
 }
 
 public sealed class DeployOptions

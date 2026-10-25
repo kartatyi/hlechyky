@@ -25,3 +25,7 @@
 /* режим турніру в кіті: Ворожки й купівлі бонусу нема */
 .sk-tourney .gl-gamble-btn, .sk-tourney .sl-buy { display: none !important; }
 .sk-tourney .sk-bal b { color: var(--sk-gold, #ffd27a); }
+
+/* 🎁 безкоштовні прокрути (slots/gift.js): та сама смуга, лише зелена, і зелена кнопка оберту в режимі */
+.slot-gift { background: color-mix(in srgb, #4fb36a 12%, transparent); border-color: color-mix(in srgb, #4fb36a 40%, transparent); }
+.sk-spin.free { box-shadow: 0 0 0 3px #4fb36a, 0 0 18px rgba(79, 179, 106, .55); }

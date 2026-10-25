@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Hlechyky.Games.Economy;
@@ -40,6 +41,12 @@ public static class EconomySetup
             sp.GetRequiredService<IClock>(), sp.GetService<ILogger<AzartSaldo>>()));
         services.AddSingleton<IAzartSaldo>(sp => sp.GetRequiredService<AzartSaldo>());
         services.AddHostedService(sp => sp.GetRequiredService<AzartSaldo>());
+        // разовий подарунок-перерахунок за ярликом Economy:RegiftId (15.10.2026, ×10): ачівки за новим курсом + рівний подарунок
+        services.AddSingleton<Regift>();
+        services.AddHostedService(sp => sp.GetRequiredService<Regift>());
+        // нічний підсумок «Щоденного глека»: «за кращий результат» і призи топу за вчора
+        services.AddSingleton<DailyPrizes>();
+        services.AddHostedService(sp => sp.GetRequiredService<DailyPrizes>());
 
         // Каркас реєструє заглушки через TryAdd і робить це раніше — тому саме Replace, а не TryAdd.
         services.Replace(ServiceDescriptor.Singleton<IStakes>(sp => sp.GetRequiredService<Economy>()));
@@ -67,7 +74,15 @@ public static class EconomySetup
             return boards.Time(period);
         });
 
-        api.MapGet("/daily", (HttpContext c, Daily daily) => daily.Status(Auth.Nick(c)));
+        api.MapGet("/daily", (HttpContext c, Daily daily, IOptionsMonitor<EconomyOptions> o) =>
+        {
+            var s = daily.Status(Auth.Nick(c));
+            return s with
+            {
+                Pay = DailyPay.Of(o.CurrentValue, s.Puzzles.Count, s.Puzzles.Count(p => p.Me?.Solved == true)),
+                Money = daily.Money(Auth.Nick(c), s, o.CurrentValue),
+            };
+        });
 
         Impl.AdSetup.MapAds(app);        // /api/ads/library*, /api/ads/air* — реклама, лише господар
         return app;

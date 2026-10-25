@@ -322,14 +322,18 @@ public sealed class Achievements
         catch (Exception) { _granted.TryRemove(mark, out _); throw; }
         if (!granted) return false;
 
-        if (a.Reward > 0)
-            _economy.Grant(nick, a.Reward, $"ach:{key}", $"ach:{key}:{nickKey}",
-                $"+{a.Reward} {Economy.Shards(a.Reward)}: ачівка «{a.Title}»");
-        _outbox.Post(new AchievementUnlocked(nick, a.Key, a.Title, a.Text, a.Icon, a.Reward));
+        var reward = Reward(a);
+        if (reward > 0)
+            _economy.Grant(nick, reward, $"ach:{key}", $"ach:{key}:{nickKey}",
+                $"+{reward} {Economy.Shards(reward)}: ачівка «{a.Title}»");
+        _outbox.Post(new AchievementUnlocked(nick, a.Key, a.Title, a.Text, a.Icon, reward));
         _outbox.Post(new Journal($"🏅 {nick} хапає ачівку «{a.Title}»" +
-            (a.Reward > 0 ? $" (+{a.Reward} {Economy.Shards(a.Reward)})" : "")));
+            (reward > 0 ? $" (+{reward} {Economy.Shards(reward)})" : "")));
         return true;
     }
+
+    /// <summary>Скільки ачівка приносить зараз: ціна з каталогу — база, × <see cref="EconomyOptions.Boost"/>.</summary>
+    public int Reward(Achievement a) => _economy.Earn(a.Reward);
 
     public bool Has(string nick, string key) => _store.HasAchievement(Economy.Key(nick), key);
 

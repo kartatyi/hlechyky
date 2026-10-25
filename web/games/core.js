@@ -2330,6 +2330,7 @@
     dailyAt = Date.now();
     api('GET', '/api/games/daily').then((d) => {
       daily = d || null;
+      nightToast(daily && daily.money);
       if (shown && view.kind === 'lobby') renderView();
     }).catch(() => { dailyAt = 0; });
   }
@@ -2343,6 +2344,35 @@
       popular = map;
       if (shown && view.kind === 'lobby') renderView();
     }).catch(() => { /* старий сервер цього не вміє — сортуємо за назвою, «часто граємо» не показуємо */ });
+  }
+  /// 🎁 Безкоштовні прокрути: в останній автомат (slot.js пам'ятає його), одразу в режимі «безкоштовно» (gift.js).
+  function openGift() {
+    if (!me.nick) { askNick(); return; }
+    let id = 'slot-glek';
+    try { id = localStorage.getItem('slots.last') || id; sessionStorage.setItem('slots.gift', '1'); } catch (e) { /* приватне вікно */ }
+    return openRoom('OpenSolo', id, null);
+  }
+  function giftCard() {
+    const f = me.freeSpins;
+    if (!f || !f.person || !(f.left > 0) || me.slots === false) return '';
+    return '<div class="gdc tour gift"><span class="gemo">🎁</span><div><b>Безкоштовні прокрути</b><span class="muted small">'
+      + f.left + ' з ' + f.total + ' по ' + f.bet + ' 🏺 · згорають опівночі</span></div>'
+      + '<button class="primary" data-gift="1">Крутити</button></div>';
+  }
+  /// Нічні виплати за вчорашні щоденні: рядок у «Сьогодні» на весь день і тост раз на день (уночі всі сплять — інакше
+  /// ніхто й не помітить, що Глек заплатив).
+  function nightLine(m) {
+    if (!m || !(m.night > 0)) return '';
+    const d = String(m.nightDay || '').split('-');
+    const date = d.length === 3 ? d[2] + '.' + d[1] : '';
+    const list = (m.nightItems || []).slice(0, 4).map((x) => (x.kind === 'top' ? '🏆 ' : '') + x.title + ' +' + x.amount).join(', ');
+    return '🌙 Уночі за ' + date + ': +' + m.night + ' 🏺' + (list ? ' — ' + list : '');
+  }
+  function nightToast(m) {
+    if (!m || !(m.night > 0) || !daily) return;
+    const key = 'daily.night.' + daily.day;
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { return; }
+    toast(nightLine(m), 'ok');
   }
   function tourCard() {
     const T = window.HTournament;
@@ -2401,15 +2431,45 @@
         : p.me
         ? '✗ не вийшло' + (p.me.attempts ? ' · ' + tries(p.me.attempts) : '') + (p.solvedCount ? ' · ' + p.solvedCount + ' розгадали' : '')
         : 'ще не розгадано' + (p.solvedCount ? ' · ' + p.solvedCount + ' вже розгадали' : '');
+      // скільки ця головоломка дала сьогодні (з серією) — з daily.money; старий сервер не шле
+      const got = daily && daily.money && daily.money.byGame ? daily.money.byGame[p.game] || 0 : 0;
       return '<div class="gdc' + (solved ? ' done' : '') + '">' + iconOf(p.game) + '<div><b>' + esc(p.title || titleOf(p.game)) + '</b>'
-        + '<span class="muted small">' + esc(what) + (p.streak ? ' · 🔥 ' + p.streak : '') + '</span></div>'
+        + '<span class="muted small">' + esc(what) + (p.streak ? ' · 🔥 ' + p.streak : '') + (got > 0 ? ' · +' + got + ' 🏺' : '') + '</span></div>'
         + '<button class="' + (solved ? 'ghost' : 'primary') + '" data-solo="' + esc(p.game) + '"'
         + (solved ? '' : ' title="Розгадай — і хапай щоденний глек"') + '>' + (solved ? 'Глянути' : 'Грати') + '</button></div>';
     }).join('');
-    const tour = tourCard() + padelCard();
+    const tour = giftCard() + tourCard() + padelCard();
     if (!cards && !tour) return '';
     return '<section class="gpanel gtoday"><h3>☀ Сьогодні' + (daily && daily.no ? ' <span class="muted small">· щоденний глек №' + daily.no + '</span>' : '') + '</h3>'
+      + (cards ? todayPay() : '')
       + '<div class="gtoday-row">' + cards + tour + '</div></section>';
+  }
+  /// Що платить щоденний глек (view: /api/games/daily → pay; старий сервер не шле — рядка нема): база, серія,
+  /// «повний глек» з поступом і нічні «за місце» й топ.
+  function todayPay() {
+    const p = daily && daily.pay;
+    if (!p || !p.reward) return '';
+    const bits = ['🏺 ' + p.reward + ' за кожну'];
+    if (p.streakPct > 0 && p.streakMaxPct > 0) bits.push('🔥 серія +' + p.streakPct + ' % за день, до +' + p.streakMaxPct + ' %');
+    if (p.fullNeed > 0 && p.fullBonus > 0) {
+      bits.push(p.solved >= p.fullNeed ? '✓ повний глек +' + p.fullBonus
+        : 'повний глек ' + Math.min(p.solved, p.fullNeed) + '/' + p.fullNeed + ' → +' + p.fullBonus);
+    }
+    const top = (p.top || []).filter((x) => x > 0);
+    const night = [];
+    if (p.bestMax > 0) night.push('за місце до +' + p.bestMax);
+    if (top.length) night.push('топ ' + top.map((x, i) => (['🥇', '🥈', '🥉'][i] || (i + 1) + '.') + x).join(' '));
+    if (night.length) bits.push('уночі: ' + night.join(', '));
+    const m = daily.money;
+    const money = m ? '<b>Сьогодні зі щоденних: +' + (m.today || 0) + ' 🏺</b>' + (m.left > 0 ? ' · ще можна ~' + m.left : ' · усе взято') : '';
+    const nl = nightLine(m);
+    const tip = 'Черепки за щоденні: ' + p.reward + ' за розв\'язок; серія додає +' + p.streakPct + ' % за кожен день поспіль (до +' + p.streakMaxPct + ' %)'
+      + (p.fullNeed ? '; ' + p.fullNeed + ' різних за день — ще +' + p.fullBonus : '')
+      + (p.bestMax ? '; опівночі — до +' + p.bestMax + ' за місце серед тих, хто розв\'язав (перший — усе, останній — нуль)' : '')
+      + (top.length ? '; першим місцям кожної — ' + top.join(' / ') + ', коли розв\'язало щонайменше ' + (p.topMin || 1) : '') + '.';
+    return (money ? '<p class="small gtoday-money">' + money + '</p>' : '')
+      + (nl ? '<p class="small gtoday-night">' + esc(nl) + '</p>' : '')
+      + '<p class="muted small gtoday-pay" title="' + esc(tip) + '">' + esc(bits.join(' · ')) + '</p>';
   }
 
   /// Кнопка швидкого запуску (ряди «⭐ Мої», «🕘 Нещодавно», «📈 Часто граємо»): та сама дія, що й на плитці.
@@ -2736,6 +2796,7 @@
       if (await joinRoom(b.dataset.sit, e.currentTarget)) go('#games/room/' + encodeURIComponent(b.dataset.sit));
     });
     box.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => go(b.dataset.go));
+    box.querySelectorAll('[data-gift]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, 'мить…', () => openGift()));
     box.querySelectorAll('[data-nick]').forEach((b) => b.onclick = () => askNick());
     azartWatch();
   }
@@ -4205,8 +4266,11 @@
     call,
     /// Відкрити соло-гру за id (турнір тижня в слотах веде з одного автомата в інший).
     openSolo: (id) => openRoom('OpenSolo', id, null),
+    openGift,
     send,
     get catalog() { return catalog; },
+    /// Живі столи лобі (остання подія 'rooms', копія — лише читати): картка «Чумаків» показує, хто в рейсі, й кличе приєднатися.
+    get rooms() { return rooms.slice(); },
   };
 
   window.HGames = HGames;

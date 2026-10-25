@@ -45,6 +45,8 @@ public sealed class GeoThanks
     public Func<string, int, string, string, string, bool>? Pay { get; init; }
     /// <summary>Рядок у Журнал (розсилка ігор).</summary>
     public Action<string>? Journal { get; init; }
+    /// <summary>Множник заробітку (Economy:Boost): подяка — заробіток, тож × Boost. Типово — як є (тести).</summary>
+    public Func<int, int> Earn { get; init; } = n => n;
     /// <summary>Де виконати подяку: типово фоном; тести підставляють «одразу».</summary>
     public Func<Action, Task> Run { get; init; } = Task.Run;
 
@@ -74,9 +76,10 @@ public sealed class GeoThanks
                 _done[photo.Id] = photo.NickKey;
                 Write(photo, guesser);
             }
-            var paid = Pay?.Invoke(photo.Nick, Shards, Reason, "geo-thanks:" + photo.Id,
+            var amount = Earn(Shards);
+            var paid = Pay?.Invoke(photo.Nick, amount, Reason, "geo-thanks:" + photo.Id,
                 $"Глек дякує: твоє фото «{photo.Title}» вгадали") ?? false;
-            if (paid) Journal?.Invoke($"📷 Глек дякує · {photo.Nick}: фото «{photo.Title}» вгадали — +{Shards} 🏺");
+            if (paid) Journal?.Invoke($"📷 Глек дякує · {photo.Nick}: фото «{photo.Title}» вгадали — +{amount} 🏺");
         }
         catch (Exception)
         {

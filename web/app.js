@@ -2646,6 +2646,21 @@
     : r === 'who' ? '#who/' + encodeURIComponent(me.nick || '') : r === 'games' && me.games === false ? '#padel' : '#' + r);
 
   /// Вимкнене в конфігу сайту: без ігор кнопка «🎮 Ігри» веде в Падельню (вона жила в лобі ігор), без обох — кнопки нема.
+  /// 🎁 у шапці: скільки безкоштовних прокрутів лишилось сьогодні (0 — значка нема). Лічильник оновлюють і самі
+  /// автомати (подія hgames:free зі slot.js) — після кожного прокруту.
+  function paintFree() {
+    const b = $('hdrFree'), f = me.freeSpins;
+    const n = f && f.person ? f.left : 0;
+    b.hidden = !(n > 0) || me.games === false;
+    b.querySelector('b').textContent = String(n || 0);
+    b.title = n > 0 ? 'Безкоштовні прокрути в слотах: ' + n + ' з ' + f.total + ' по ' + f.bet + ' черепків — згорають опівночі' : '';
+    const m = $('mNavGift');   // на телефоні — бейдж на вкладці «Ігри» замість значка в шапці
+    m.hidden = b.hidden;
+    m.textContent = '🎁' + (n || '');
+  }
+  $('hdrFree').onclick = () => { if (window.HGames && HGames.openGift) HGames.openGift(); };
+  document.addEventListener('hgames:free', (e) => { if (e.detail) { me.freeSpins = e.detail; paintFree(); } });
+
   function paintSwitches() {
     const noGames = me.games === false;
     document.querySelectorAll('#mainNav button[data-route="games"], .mtabs button[data-route="games"]').forEach((b) => {
@@ -3114,7 +3129,7 @@
   /// Розробнику під полем відповіді: писати від імені Дядька Глека (вибір пам'ятаємо) і скільки черепків дати автору.
   /// Кнопки — часті суми; натиснув ту саму ще раз — подарунок знято. Сума видна й на «Тяпнути», щоб Enter не роздав
   /// черепків непомітно.
-  const FB_GIFTS = [50, 100, 250, 500];
+  const FB_GIFTS = [1250, 2500, 5000];   // з 25.10: 5000 за баг чи зроблену ідею, 1250 — «зробили зрозуміліше» (так написано у формі)
   let fbAsGlek = false;
   try { fbAsGlek = localStorage.getItem('fbAsGlek') === '1'; } catch { /* приватне вікно */ }
   const fbDevRow = () => `<div class="fbdev"><label class="fbas"><input type="checkbox" class="fbglek"${fbAsGlek ? ' checked' : ''}> 🏺 від Дядька Глека</label>
@@ -3187,7 +3202,7 @@
     fbMineUnread = n;
     $('fbBadge').hidden = !n;
     $('fbBadge').textContent = n > 99 ? '99+' : String(n);
-    $('fbBtn').title = n ? `Розробник відповів у записках: ${n}` : 'Пропозиції й баги — розробнику';
+    $('fbBtn').title = n ? `Розробник відповів у записках: ${n}` : 'Пропозиції й баги — розробнику. За баг чи зроблену ідею — 5000 черепків від Дядька Глека';
   }
   // Свої записки справді видно: вікно відкрите, «Мої записки» розгорнуті, вкладка браузера спереду.
   const fbMineVisible = () => !$('fbModal').hidden && $('fbMine').open && !document.hidden;
@@ -4808,6 +4823,7 @@
     me.google = !!m.google;
     me.email = m.email || '';
     me.banPrice = m.banPrice || 0;
+    me.boost = m.boost || 1;        // Economy:Boost — множник заробітку; ігри з черепками за очки множать на нього
     me.shards = m.shards || null;   // { buy, sell } — черепки за гривні увімкнено в конфігу (web/buy.js)
     me.games = m.games !== false;   // розділ «Ігри» (Games:Enabled)
     me.padel = m.padel !== false;   // Падельня (Padel:Enabled)
@@ -4816,6 +4832,8 @@
     me.kolo = m.kolo !== false;     // Гончарне колесо (Kolo:Enabled): false — плитки в лобі нема
     me.kavuny = m.kavuny !== false; // Кавуни на ярмарку (Kavuny:Enabled): false — плитки в лобі нема
     me.plinko = m.plinko !== false; // Горохова дошка (Plinko:Enabled): false — плитки в лобі нема
+    me.freeSpins = m.freeSpins || null;   // 🎁 безкоштовні прокрути { bet, total, left, person } — значок у шапці
+    paintFree();
     me.bets = m.bets || { events: false, tables: false };   // 🎲 Ставки (Bets:*) — web/bets.js і столи
     paintSwitches();
     // Адресу намалювали ще до /api/me: вимкнене — переводимо в Ефір

@@ -40,6 +40,7 @@ public static class GeoSetup
             Pay = (nick, amount, reason, refKey, text) =>
                 sp.GetService<Economy.Economy>()?.Grant(nick, amount, reason, refKey, text) == Economy.GrantResult.Applied,
             Journal = text => sp.GetService<IOutbox>()?.Post(new Journal(text)),
+            Earn = n => sp.GetService<Economy.Economy>()?.Earn(n) ?? n,
         });
         services.AddHostedService(sp => sp.GetRequiredService<GeoPhotos>());
         return services;

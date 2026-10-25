@@ -924,6 +924,12 @@ public sealed partial class Clicker : Game
     int DailyCap => BaseCap == 0 ? 0 : Math.Min(BaseCap + (int)Math.Min(MaxStampCap, _stamps / StampsPerCap), CapMax);
     /// <summary>Скільки черепків до стелі справді додали клейма (після всіх обмежень).</summary>
     int StampCap => DailyCap - BaseCap;
+    /// <summary>
+    /// Скільки черепків дає одна сотня глеків — <see cref="EconomyOptions.Boost"/> (15.10.2026: ×10 на все зароблене).
+    /// Лічильники дня (<see cref="DailyCap"/>, <see cref="_soldShards"/>) лишаються в сотнях глеків, а людина бачить і
+    /// отримує сотні × Per — так само множить і стелю економіка (Rewards.ClickerCap).
+    /// </summary>
+    int Per => Math.Max(1, _opts?.CurrentValue.Boost ?? 1);
 
     /// <summary>Скільки вже виміняно САМЕ сьогодні: після півночі лічильник сам стає нулем.</summary>
     int SoldToday => _soldDay == Days.Today(Ctx.Clock) ? _soldShards : 0;
@@ -1156,6 +1162,8 @@ public sealed partial class Clicker : Game
             "hold" => HoldAct(payload, Ctx.Clock.UtcNow),
             "bazaar" => Bazaar(payload),
             "craft" => ActCraft(payload),
+            // Порада Дядька Глека: «потім» — сховати на добу (ClickerGlek.cs).
+            "glek" => GlekAct(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
             _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
                 ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActTrade(action, payload)
@@ -1167,6 +1175,8 @@ public sealed partial class Clicker : Game
         ShanaAfterAct();
         // Звання: лічильники → звання, нові — у Журнал, звіт цехові (раз на хвилину або одразу, коли щось сталось).
         TitlesAfterAct(Ctx.Clock.UtcNow);
+        // Щоденник гончаря (ClickerDiary.cs): години гри й знімок дня для аналітики кола.
+        DiaryAfterAct(action, quiet, Ctx.Clock.UtcNow);
         if (!quiet && result.Ok && TakeShanaToast() is { Length: > 0 } shana)
             result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + shana : shana);
         // Подарунок майстерні (ClickerGifts.cs) — після вдалої справжньої дії: гончар тут і побачить тост.
@@ -1835,12 +1845,12 @@ public sealed partial class Clicker : Game
         };
     }
 
-    /// <summary>Прилавок: сотня глеків за черепок, не більше <see cref="DailyCap"/> черепків на день.</summary>
+    /// <summary>Прилавок: сотня глеків за <see cref="Per"/> черепків, не більше <see cref="DailyCap"/> сотень на день.</summary>
     ActResult Sell(JsonElement payload)
     {
         RollDay();   // після київської півночі лічильник дня чистий — і перевірка, і запис бачать нуль
         var pots = Num(payload, "pots") ?? 0;
-        if (pots <= 0 || pots % Rate != 0) return ActResult.Fail($"Міняю сотнями: {Rate} глеків — один черепок");
+        if (pots <= 0 || pots % Rate != 0) return ActResult.Fail($"Міняю сотнями: {Rate} глеків — {(Per == 1 ? "один черепок" : $"{Per} {Shards(Per)}")}");
         if (pots > _pots) return ActResult.Fail("Стільки глеків ще не наліплено");
 
         var left = Math.Max(0, DailyCap - _soldShards);
@@ -1848,14 +1858,15 @@ public sealed partial class Clicker : Game
         // Рахуємо в long і ріжемо стелею ДО приведення: глеків у стані може лежати скільки завгодно
         // (стан — це JSON у базі), а (int) від такої частки мовчки загорнувся б у мінус.
         var want = pots / Rate;
-        if (want > left) return ActResult.Fail($"Сьогодні лишилось {left} — більше не візьму");
-        var shards = (int)want;
+        if (want > left) return ActResult.Fail($"Сьогодні лишилось {left * Per} — більше не візьму");
+        var lots = (int)want;
+        var shards = lots * Per;
 
         _pots -= pots;
-        _soldShards += shards;
+        _soldShards += lots;
         // Стеля дня в економіці своя (Economy:ClickerDailyCap). Коли клейма її підняли, кажемо економіці
-        // власне число — вона однаково не пустить вище за Economy:ClickerDailyCapMax.
-        Ctx.Award(0, shards, StampCap > 0 ? $"clicker:{DailyCap}" : "clicker");
+        // власне число — вона однаково не пустить вище за Economy:ClickerDailyCapMax. Обидва — у черепках (× Per).
+        Ctx.Award(0, shards, StampCap > 0 ? $"clicker:{DailyCap * Per}" : "clicker");
         return ActResult.Accept($"Обміняв {pots} глеків на {shards} {Shards(shards)}");
     }
 
@@ -2413,6 +2424,7 @@ public sealed partial class Clicker : Game
             soldToday = SoldToday,
             cap = DailyCap,
             rate = Rate,
+            per = Per,   // черепків за сотню глеків (Economy:Boost); canSellToday, soldToday, cap і stampCap — у сотнях
             // Клієнт доліковує глеки від цієї мітки — тому вона мусить бути на дроті, а не лише в пам'яті.
             lastSync = _lastSync,
             // І серверне «зараз» поруч: інакше клієнт міряв би серверну мітку своїм годинником, а збитий
@@ -2483,6 +2495,8 @@ public sealed partial class Clicker : Game
             },
             // «Що нового»: поки гончар цього оновлення не бачив — версія, інакше нічого.
             news = _news == NewsVersion ? null : NewsVersion,
+            // Підказка Дядька Глека в моменті (ClickerGlek.cs): глина біля кола чи перед виходом, Толока — або нічого.
+            glek = GlekMoment(Ctx.Clock.UtcNow),
             // Яку версію гончар бачив востаннє: хто пропустив «v9.1», тому клієнт допише й ті рядки.
             newsSeen = _news == NewsVersion ? null : _news,
             // Гроші (v10 §6): до якої одиниці доріс і яку церемонію вже бачив.
@@ -2606,7 +2620,9 @@ public sealed partial class Clicker : Game
         // v12: заморська торгівля — Слава й кораблі (ClickerTrade.cs). Старе збереження — «кораблів ще не було».
         TradeRow? Trade = null,
         // Тріщини серії поспіль і коли кіт заснув (ClickerCatNap.cs, 21.10). Старе збереження — тріщин нема, кіт не спить.
-        int Cracks = 0, DateTimeOffset NapAt = default);
+        int Cracks = 0, DateTimeOffset NapAt = default,
+        // Поради Дядька Глека, відкладені «потім» (ClickerGlek.cs, 25.10): вид → до коли. Старе збереження — нічого.
+        Dictionary<string, DateTimeOffset>? GlekLater = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2622,7 +2638,7 @@ public sealed partial class Clicker : Game
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
             _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt,
             _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList(),
-            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt),
+            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt, SaveGlek()),
         Wire);
 
     public override void Load(string json)
@@ -2699,6 +2715,7 @@ public sealed partial class Clicker : Game
         _fallStreak = Math.Max(0, s.FallStreak);
         _cracks = Math.Clamp(s.Cracks, 0, 100);
         _napAt = s.NapAt;
+        LoadGlek(s.GlekLater);
         _grabbed = Math.Max(0, s.Grabbed);
         if (s.Fall is { } f && f.Until > f.At)
             _fall = f with { X = Math.Clamp(f.X, 0, 90) };

@@ -43,6 +43,8 @@ public static class GamesSetup
         services.AddHostedService(sp => sp.GetRequiredService<TablesKeeper>());
         Impl.ClickerGuildSetup.AddClickerGuild(services);   // цех Гончарного кола: віз, дарунки, хата друга
         Impl.ClickerDaySetup.Add(services);                 // «Майстер дня» Гончарного кола: табло й призи о 23:30 (v12)
+        Impl.ClickerDiarySetup.Add(services);
+        Impl.ClickerGlekSetup.Add(services);                // поради Дядька Глека в колі: книга фраз data/clicker/glek-tips.json               // щоденник гончаря: знімок дня й години гри для аналітики кола
         // «Вгадай мелодію»: один на всі столи — щоб пісню з добірки не качали двічі два столи водночас
         services.AddSingleton(sp => new Impl.MelodyLibrary(
             sp.GetService<Db>(), sp.GetService<Microsoft.Extensions.Options.IOptionsMonitor<YtDlpOptions>>(),
@@ -56,6 +58,7 @@ public static class GamesSetup
         Impl.VechirkaSetup.AddVechirka(services);           // Глечикова вечірка: корона «Голова вечірки»
         Impl.VohnykSetup.AddVohnyk(services);              // «Вогник і Крапля»: прогрес рівнів і найкращі часи пар
         Impl.DotepySetup.AddDotepy(services);               // «Додепи»: голос Глека, голос публіки
+        Impl.FuraSetup.AddFura(services);                   // «Чумаки-далекобійники»: голос Глека-диспетчера
         Impl.GeoSetup.AddGeo(services);   // «Де це?»: фото з Вікісховища в cache/geo
         Impl.MemySetup.AddMemy(services);                   // «Мемологія»: банк мемів, картинки й кадри проявлення в cache/memes
         Impl.BattleshipSetup.AddBattleship(services);       // Морський бій: гаманці шелягів для «⚓ Арсеналу»
@@ -99,6 +102,7 @@ public static class GamesSetup
         TablesKeeper.Map(app);                              // /api/internal/freeze, thaw, busy — лише з цієї машини з ключем
         TickHealth.Map(app);                                // /api/diag/jerk — метр «дьоргання» з браузера, /api/diag/tick — розробнику
         Impl.ClickerGuildSetup.MapClickerGuild(app);        // /api/games/clicker/guild і /house
+        Impl.ClickerDiarySetup.Map(app);                    // /api/games/clicker/diary — «📈 Літопис кола»
         Impl.MelodyClips.Map(app);                          // /api/games/melody/<токен>.mp3 — уривки «Вгадай мелодію»
         Impl.SvoyaSetup.MapSvoya(app);                      // /api/games/svoya/… — пакети «Своєї гри»
         Impl.DiceSetup.MapDice(app);                       // /api/games/dice/bet, /api/games/dice/season
@@ -114,6 +118,7 @@ public static class GamesSetup
         Impl.NamystoSetup.MapNamysto(app);                  // /api/games/namysto/tracks — жолоби всіх трас
         Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
         Impl.SlotsSetup.MapSlots(app);                      // /api/slots/feed — Скарбничка й заноси тижня
+        Impl.FuraSetup.MapFura(app);                        // /api/games/fura/map/<id> — мапа, /voice — голос диспетчера «Чумаків»
         return app;
     }
 }
