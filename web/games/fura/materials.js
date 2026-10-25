@@ -1,6 +1,7 @@
 // Матеріали й палітра «Чумаків» — одне місце на весь світ (STYLE.md §2). Колір об'єкта — вертексний атрибут `color`,
-// матеріал — лише «тип поверхні»: сто хат різних кольорів — один матеріал і один draw call на чанк. Небо 2.0 (світло,
-// PBR на ПК) підключається тут: досить підмінити makeMaterials, геометрія лишається та сама.
+// матеріал — лише «тип поверхні»: сто хат різних кольорів — один матеріал і один draw call на чанк. З 0.0.5 («Небо й
+// графіка», гібрид B + V3, STYLE.md §15.1) усі — MeshStandardMaterial (PBR, оточення — небо тієї ж миті); туман, тінь
+// хмар і rim додає sky.js латкою, вікна й ліхтарі вмикає воно ж за висотою сонця.
 //
 // Палітра — sRGB hex; three.js сам переводить у лінійні (ColorManagement увімкнено). Нових кольорів у модулях «від
 // руки» не пишемо: беремо звідси або додаємо сюди з назвою.
@@ -19,8 +20,23 @@ export const PAL = {
   cream: '#efe6d2', brick: '#a5482f', brickDark: '#8e3a28', silo: '#c8ccd1', siloHall: '#d9d4c7', honey: '#c9a46a',
   honeyRoof: '#8a6a3a', slab: '#8b8f96', signBlue: '#2f5d8a', signPost: '#888888',
   // рослинність
-  crown: '#4c8538', pine: '#3a6636', trunk: '#6e4a2f',
+  crown: '#4c8538', crownLight: '#6d9e3e', crownDark: '#3a6a33', poplar: '#517d3a', willow: '#7fa04e', pine: '#3a6636',
+  pineDark: '#2f5a33', trunk: '#6e4a2f',
+  // вікна й ліхтарі (0.0.5): скло вдень, тепле світло вночі
+  glass: '#3c5468', windowLit: '#ffc77a', lampHead: '#d8d8d0', lampLit: '#ffe2b0', lampPost: '#7d8288',
 };
+
+/** Пляма світла ліхтаря: радіальний спад (білий — колір дає матеріал). */
+function poolTexture(THREE) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
 
 /**
  * Зерно 256² (сірий шум із середнім ≈ 0,74) — ламає «пластмасу» асфальту найдешевше. Колір матеріалу множимо на
@@ -63,32 +79,42 @@ const cache = new WeakMap();
  * Матеріали світу. Ключі = «тип поверхні» для пакета (batch.js):
  * - `road` — асфальт, узбіччя, кути перехресть, настил: вертексний колір × зерно (UV — світові метри / 4);
  * - `mark` — розмітка: на 1 см над асфальтом і з більшим polygonOffset — лінії чіткі на будь-якій відстані;
- * - `matte` — хати, дахи, шпали, вивіски; `concrete` — мости (настил, парапети, опори); `metal` — відбійник і
- *   стійки; `reflect` — світлоповертачі;
+ * - `matte` — хати, дахи, шпали, вивіски; `concrete` — мости (настил, парапети, опори); `metal` — відбійник,
+ *   стійки й стовпи ліхтарів; `reflect` — світлоповертачі;
+ * - `glass` — темні вікна; `win` — вікна, що світять уночі; `lamp` — плафони ліхтарів; `pool` — пляма світла
+ *   ліхтаря на землі (адитивна, без туману);
  * - `tree` — дерева (інстанси з вертексним кольором), `terrain` — рельєф.
  * Усі двобічні (бік квада не важить), без власного кольору — він у вершинах.
  */
 export function makeMaterials(THREE, quality) {
   if (cache.has(THREE)) return cache.get(THREE);
   const grain = grainTexture(THREE);
-  const L = (o) => new THREE.MeshLambertMaterial(Object.assign({ vertexColors: true, side: THREE.DoubleSide }, o));
+  const S = (o) => new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.92, metalness: 0 }, o));
   const k = 1 / 0.74;
   const M = {
     grain,
-    road: L({ map: grain, color: new THREE.Color(k, k, k), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }),
-    mark: L({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -10 }),
-    matte: L({ flatShading: true }),
-    // бетон мостів: як matte, але тіні не кидає — інакше без normalBias сонця (main.js) парапет сам себе «смугує»
-    concrete: L({ flatShading: true }),
-    tree: L({ flatShading: true, side: THREE.FrontSide }),
-    terrain: L({ flatShading: true }),
+    road: S({ map: grain, color: new THREE.Color(k, k, k), roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }),
+    mark: S({ roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -10 }),
+    matte: S({ flatShading: true }),
+    // бетон мостів: як matte, але тіні не кидає — інакше без normalBias сонця (sky.js) парапет сам себе «смугує»
+    concrete: S({ flatShading: true, roughness: 0.95 }),
+    metal: S({ flatShading: true, roughness: 0.45, metalness: 0.35 }),
+    reflect: S({ roughness: 0.5, emissive: new THREE.Color(PAL.reflector), emissiveIntensity: 0.15, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -10 }),
+    glass: S({ flatShading: true, roughness: 0.08, metalness: 0.1 }),
+    win: S({ flatShading: true, roughness: 0.08, metalness: 0.1, emissive: new THREE.Color(PAL.windowLit), emissiveIntensity: 0 }),
+    lamp: S({ flatShading: true, roughness: 0.4, emissive: new THREE.Color(PAL.lampLit), emissiveIntensity: 0 }),
+    pool: new THREE.MeshBasicMaterial({ map: poolTexture(THREE), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -12 }),
+    tree: S({ flatShading: true, side: THREE.FrontSide }),
+    terrain: S({ roughness: 0.98 }),
     quality,
   };
-  // Поки світло одне (Lambert), метал — той самий матеріал, що й матове, а світлоповертачі — що й розмітка: пакет
-  // зливає ключі з одним матеріалом в один меш (−2 draw calls на чанк). Небо 2.0 / PBR: дати їм свої матеріали тут —
-  // пакет розведе їх сам.
-  M.metal = M.matte;
-  M.reflect = M.mark;
+  M.pool.userData.noAtmo = true;
+  // кольори полів у kray.js записані числами «як у палітрі» (sRGB), а вертексний колір three читає як лінійний — з
+  // Lambert і ACES це давало блідо-пастельний край; тепер переводимо в шейдері (степінь 1,6, а не 2,2: смуги укосів і
+  // узбіч підібрано під старе світло — з повним 2,2 вони ставали брудно-темними)
+  M.terrain.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <color_vertex>', '#include <color_vertex>\n\tvColor.rgb = pow(max(vColor.rgb, vec3(0.0)), vec3(1.6));'); };
+  M.terrain.customProgramCacheKey = () => 'terrain-srgb';
   for (const [name, m] of Object.entries(M)) if (m && m.isMaterial && !m.name) m.name = 'fura:' + name;
   cache.set(THREE, M);
   return M;

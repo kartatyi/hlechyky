@@ -4,11 +4,19 @@
 
 import { TRACTOR, TRAILER } from './truck.js';
 
+// PBR фури (0.0.5, гібрид B, STYLE.md §15.1): шорсткість і метал — за кольором (фарба з лаком, хром, скло, гума);
+// оточення — небо тієї ж миті (sky.js), тож хром і скло відбивають небо
+const PBR = { '#b5482f': [0.38, 0.1], '#c9ccd1': [0.25, 1], '#9aa0a8': [0.25, 1], '#26394d': [0.05, 0.2], '#1d1d1f': [0.95, 0] };
+export const truckMaterial = (THREE, o) => {
+  const [roughness, metalness] = PBR[String(o.color).toLowerCase()] || [0.8, 0];
+  return new THREE.MeshStandardMaterial({ roughness, metalness, ...o });
+};
+
 export function buildModels(THREE, scene) {
   const cache = new Map();
   const M = (color, extra) => {
     const k = color + JSON.stringify(extra || {});
-    if (!cache.has(k)) cache.set(k, new THREE.MeshLambertMaterial({ color, flatShading: true, ...(extra || {}) }));
+    if (!cache.has(k)) cache.set(k, truckMaterial(THREE, { color, flatShading: true, ...(extra || {}) }));
     return cache.get(k);
   };
   const box = (g, w, h, d, x, y, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); g.add(o); return o; };
@@ -92,8 +100,8 @@ export function buildModels(THREE, scene) {
   // На +X глечик ліворуч, на −X — праворуч: з обох боків він біля кабіни, а напис читається.
   const side = sideTexture(THREE, null, null, false), sideR = sideTexture(THREE, null, null, true);
   const cream = M('#efe6d2');
-  const sideMat = new THREE.MeshLambertMaterial({ map: side });
-  const sideMatR = new THREE.MeshLambertMaterial({ map: sideR });
+  const sideMat = truckMaterial(THREE, { map: side });
+  const sideMatR = truckMaterial(THREE, { map: sideR });
   const back = M('#e2d7bf');
   // BoxGeometry: +X, −X, +Y, −Y, +Z, −Z
   const boxMesh = new THREE.Mesh(new THREE.BoxGeometry(TRAILER.w, TRAILER.h, TRAILER.len), [sideMat, sideMatR, cream, dark, cream, back]);

@@ -467,7 +467,7 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setIndex(idx); geo.computeVertexNormals();
-    scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: '#4f8fb8', transparent: true, opacity: 0.88 })));
+    scene.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#4f8fb8', transparent: true, opacity: 0.88, roughness: 0.12, metalness: 0 })));
   }
   {
     // залізниця — у пакет: насип-баласт (з укосами), шпали через 2,4 м, рейки коробочками
@@ -512,10 +512,29 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
   // чотирисхилий дах: конус на 4 грані, розтягнутий на прямокутник стін із виносом ~10 %
   const roof = (w, d, x, z, yaw, y, color, h = 3.4) => batch.add('matte', CONE4, place(x, y + h / 2, z, yaw, w * 1.1, h, d * 1.1), color);
   const cyl = (rt, rb, h, seg, x, y, z, color) => batch.add('matte', new THREE.CylinderGeometry(rt, rb, h, seg), place(x, y, z, 0), color);
+  // вікна (0.0.5): квад на 4 см перед стіною; уночі частина світиться (ключ «win», sky.js), решта — темне скло («glass»)
+  const winQuad = (cx, cy, cz, nx, nz, w, h, lit) => {
+    const tx = -nz, tz = nx, x0 = cx + nx * 0.04, z0 = cz + nz * 0.04;
+    const P = (a, b) => ({ x: x0 + tx * a, y: cy + b, z: z0 + tz * a });
+    batch.quad(lit ? 'win' : 'glass', P(-w / 2, -h / 2), P(w / 2, -h / 2), P(w / 2, h / 2), P(-w / 2, h / 2), PAL.glass);
+  };
+  // вікна на чотирьох стінах коробки w×d з курсом yaw: floors рядів від висоти y0 через fh, крок step уздовж стіни
+  const windows = (x, z, yaw, w, d, floors, y0, fh, ww, wh, step) => {
+    const c = Math.cos(yaw), sn = Math.sin(yaw);
+    for (const [ax, az, len, off] of [[0, 1, w, d / 2], [0, -1, w, d / 2], [1, 0, d, w / 2], [-1, 0, d, w / 2]]) {
+      const n = Math.max(1, Math.floor(len / step)), nx = ax * c + az * sn, nz = -ax * sn + az * c;
+      for (let f = 0; f < floors; f++) for (let i = 0; i < n; i++) {
+        const a = (i + 0.5) / n * len - len / 2, lx = ax ? ax * off : a, lz = az ? az * off : a;
+        const wx = x + lx * c + lz * sn, wz = z - lx * sn + lz * c;
+        winQuad(wx, y0 + f * fh, wz, nx, nz, ww, wh, hash2(Math.round(wx * 3), Math.round(wz * 3) + f * 17, seed + 41) < 0.55);
+      }
+    }
+  };
   const hut = (x, z, yaw) => {
     const w = 7 + rnd() * 3, d = 5.5 + rnd() * 2;
     const { y } = solid(w, 2.8, d, x, z, yaw, rnd() < 0.8 ? '#f2ede0' : '#e8dcc0');
     roof(w, d, x, z, yaw, y + 3.1, rnd() < 0.6 ? '#9a7a45' : '#8b3b2e');
+    windows(x, z, yaw, w, d, 1, y + 1.75, 0, 0.9, 0.9, 3.2);
   };
   const free = (x, z, r) => nearRoad(x, z) > r && riverDist[I(Math.round((x - B.x0) / CELL), Math.round((z - B.z0) / CELL))] > rw / 2 + 25
     && places.every((p) => Math.abs(x - p.yard.x) > p.yard.w / 2 + r || Math.abs(z - p.yard.z) > p.yard.d / 2 + r)
@@ -544,7 +563,7 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
   };
   for (const p of places) {
     const y = p.yard;
-    const pl = new THREE.Mesh(new THREE.PlaneGeometry(y.w, y.d), new THREE.MeshLambertMaterial({ map: yardTex(p) }));
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(y.w, y.d), new THREE.MeshStandardMaterial({ map: yardTex(p), roughness: 0.9 }));
     pl.rotation.x = -Math.PI / 2; pl.position.set(y.x, p.y + 0.05, y.z); add(pl, false);
     taken.push([y.x, y.z, Math.hypot(y.w, y.d) / 2]);
     sign(THREE, scene, batch, p.gate[0] + 6, p.gate[1] + 6, p.y, p.short.toUpperCase(), Math.atan2(map.nodes[p.node][0] - p.gate[0], map.nodes[p.node][1] - p.gate[1]));
@@ -591,8 +610,38 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
       const w = 10 + rnd() * 8, d = 10 + rnd() * 6, h = 6 + Math.floor(rnd() * 4) * 3;
       const { y } = solid(w, h, d, x, z, 0, colors[Math.floor(rnd() * colors.length)]);
       batch.add('matte', BOX, place(x, y + h + 0.5, z, 0, w + 0.4, 0.4, d + 0.4), PAL.slab);
+      windows(x, z, 0, w, d, Math.floor(h / 3), y + 1.9, 3, 1.2, 1.4, 2.8);
       taken.push([x, z, Math.max(w, d) * 0.7]); n++;
     }
+  }
+
+  // ліхтарі (0.0.5): у селах і місті — уздовж доріг через 34 м, по черзі з боків. Плафон світить уночі (ключ «lamp»),
+  // під ним — пляма світла: одна InstancedMesh на весь край. Колайдерів нема — стовп стоїть за узбіччям, а фізика
+  // краю лишається тією самою, що й до 0.0.5 (набір колайдерів міняє результати серій, spec «Дорога 2.0»).
+  const towns = [['honchar', 320], ['medove', 240], ['dvir', 200], ['poltavka', 380]].filter(([id]) => placeById[id]).map(([id, R]) => [...map.nodes[placeById[id].node], R]);
+  const POST = new THREE.CylinderGeometry(0.07, 0.11, 1, 6), lampAt = [];
+  roads.forEach((r) => {
+    const e = r.edge, S = e.sec, L = e.L;
+    let next = 0, side = 1;
+    for (const p of r.pts) {
+      if (p.s < next || p.bridge || p.s < (e.trimA || 0) + 6 || p.s > L - (e.trimB || 0) - 6) continue;
+      if (!towns.some(([cx, cz, R]) => Math.hypot(p.x - cx, p.z - cz) < R)) continue;
+      next = p.s + 34; side = -side;
+      const nx = -p.tz * side, nz = p.tx * side, off = S.cw + 1.3;
+      const x = p.x + nx * off, z = p.z + nz * off, gy = height(x, z), yaw = Math.atan2(-nx, -nz);
+      if (!clear(x, z, 1.5)) continue;
+      batch.add('metal', POST, place(x, gy + 3.3, z, 0, 1, 6.6, 1), PAL.lampPost);
+      batch.add('metal', BOX, place(x - nx * 0.8, gy + 6.5, z - nz * 0.8, yaw, 0.08, 0.08, 1.7), PAL.lampPost);
+      batch.add('lamp', BOX, place(x - nx * 1.55, gy + 6.42, z - nz * 1.55, yaw, 0.32, 0.12, 0.6), PAL.lampHead);
+      lampAt.push([x - nx * 1.55, p.y + 0.08, z - nz * 1.55]);
+    }
+  });
+  let pools = null;
+  if (lampAt.length) {
+    pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(14, 14).rotateX(-Math.PI / 2), M.pool, lampAt.length);
+    lampAt.forEach(([x, y, z], i) => pools.setMatrixAt(i, place(x, y, z, 0)));
+    pools.frustumCulled = false; pools.renderOrder = 2; pools.userData.noAtmo = true; pools.name = 'lamp-pools';
+    scene.add(pools);
   }
 
   // ---- 9. дерева: лісосмуги вздовж полів і доріг + гаї
@@ -617,49 +666,14 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     const gx = B.x0 + 100 + rnd() * (B.x1 - B.x0 - 200), gz = B.z0 + 100 + rnd() * (B.z1 - B.z0 - 200);
     for (let k = 0; k < 40; k++) tryTree(gx + (rnd() - 0.5) * 120, gz + (rnd() - 0.5) * 120, 0.8 + rnd() * 0.6);
   }
-  {
-    // Квартали по 600 м: інакше всі дерева мапи — один меш на весь край, і його малює кожен кадр (і тінь) повністю.
-    // Стовбур і крону злито в одну геометрію з вертексним кольором: одне дерево = один інстанс, тип = один draw call.
-    const merged = (parts) => {
-      const pos = [], col = [], c = new THREE.Color();
-      for (const [geo, dy, hex] of parts) {
-        const g = geo.toNonIndexed(), P = g.attributes.position;
-        c.set(hex);
-        for (let i = 0; i < P.count; i++) { pos.push(P.getX(i), P.getY(i) + dy, P.getZ(i)); col.push(c.r, c.g, c.b); }
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-      g.computeVertexNormals();
-      return g;
-    };
-    const trunk = new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5);
-    const leafGeo = merged([[trunk, 0, PAL.trunk], [new THREE.IcosahedronGeometry(1.8, 0), 2.2, PAL.crown]]);
-    const pineGeo = merged([[trunk, 0, PAL.trunk], [new THREE.ConeGeometry(1.5, 4.4, 6), 2.6, PAL.pine]]);
-    const cells = new Map();
-    for (const t of trees) {
-      const k = Math.floor((t.x - B.x0) / 600) + ':' + Math.floor((t.z - B.z0) / 600);
-      if (!cells.has(k)) cells.set(k, []);
-      cells.get(k).push(t);
-      world.createCollider(RAPIER.ColliderDesc.cylinder(1.1 * t.s, 0.3 * t.s), fixed(t.x, t.y + 1.1 * t.s, t.z));
-    }
-    const tmp = new THREE.Object3D();
-    for (const list of cells.values()) {
-      const leaf = new THREE.InstancedMesh(leafGeo, M.tree, list.length);
-      const pines = new THREE.InstancedMesh(pineGeo, M.tree, list.length);
-      let nc = 0, np = 0;
-      list.forEach((t) => {
-        tmp.position.set(t.x, t.y + 1.1 * t.s, t.z); tmp.scale.setScalar(t.s); tmp.rotation.set(0, t.x % 6, 0); tmp.updateMatrix();
-        if (t.pine) pines.setMatrixAt(np++, tmp.matrix); else leaf.setMatrixAt(nc++, tmp.matrix);
-      });
-      leaf.count = nc; pines.count = np;
-      for (const m of [leaf, pines]) { if (!m.count) continue; m.castShadow = true; m.receiveShadow = true; m.computeBoundingSphere(); scene.add(m); }
-    }
-  }
+  // вигляд дерев (стилі крон, LOD повне → просте → імпостер) — trees.js (main.js будує його з treeList, коли є небо);
+  // тут — лише колайдери стовбурів
+  for (const t of trees) world.createCollider(RAPIER.ColliderDesc.cylinder(1.1 * t.s, 0.3 * t.s), fixed(t.x, t.y + 1.1 * t.s, t.z));
 
   // ---- 10. пакет: меші по чанках (дрібне — розмітка, світлоповертачі — лише ближче 600 м)
   const packed = batch.build(scene, M, {
-    shadow: { matte: [true, true], metal: [true, true], concrete: [false, true], road: [false, true], mark: [false, true], reflect: [false, false] },
+    shadow: { matte: [true, true], metal: [true, true], concrete: [false, true], road: [false, true], mark: [false, true], reflect: [false, false],
+      win: [false, true], glass: [false, true], lamp: [false, false] },
     near: 600, far: FAR,
   });
 
@@ -760,7 +774,7 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
   const depot = places.find((p) => p.depot) || places[0];
   let fogFar = 0;
   return {
-    map, places, roads, river, height: topY, ground: height, nearRoad, buildMs: ms, roadPlan: plan, packed, unstick,
+    map, places, roads, river, height: topY, ground: height, nearRoad, buildMs: ms, roadPlan: plan, packed, unstick, treeList: trees, pools, offRoad,
     spawn: { x: depot.spawn.x, z: depot.spawn.z, yaw: depot.spawn.yaw, y: height(depot.spawn.x, depot.spawn.z) },
     // кожен кадр: якщо туман посунули (небо 2.0), чанки малюються до нової межі
     sync() {
@@ -797,7 +811,7 @@ function sign(THREE, scene, batch, x, z, y, text, rot) {
   };
   put(0, 2.6, 0, 5, 1.25, 0.1, PAL.signBlue);
   for (const sx of [-2, 2]) put(sx, 1.3, -0.07, 0.12, 2.6, 0.12, PAL.signPost);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshLambertMaterial({ map: tex }));
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
   face.position.set(0, 2.6, 0.052);
   grp.add(face);
   scene.add(grp);
