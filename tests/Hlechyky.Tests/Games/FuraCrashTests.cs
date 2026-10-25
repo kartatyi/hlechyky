@@ -8,7 +8,7 @@ namespace Hlechyky.Tests.Games;
 
 /// <summary>
 /// «Чумаки», крок 2c (specs/fura.md, «Зіткнення (2c)»): опція столу <c>collide</c>, пересилання удару лише адресату
-/// (поле <c>h</c> кадру), ліміт частоти пари, відмови (далеко, двір, привиди) і поблажка судді адресату.
+/// (поле <c>h</c> кадру), ліміт частоти пари, відмови (далеко, бокси, привиди) і поблажка судді адресату.
 /// </summary>
 public sealed class FuraCrashTests
 {
@@ -41,7 +41,7 @@ public sealed class FuraCrashTests
     [Fact]
     public void The_table_option_is_ghosts_by_default_and_crash_only_when_chosen()
     {
-        var opt = Assert.Single(RoomHarness.NewRegistry().Info("fura")!.Options!);
+        var opt = Assert.Single(RoomHarness.NewRegistry().Info("fura")!.Options!, o => o.Key == Fura.CollideKey);
         Assert.Equal((Fura.CollideKey, Fura.Ghosts), (opt.Key, opt.Default));
         Assert.Equal([Fura.Ghosts, Fura.Crash], opt.Values.Select(v => v.Value));
 
@@ -133,7 +133,7 @@ public sealed class FuraCrashTests
     }
 
     [Fact]
-    public void A_hit_is_refused_far_away_in_a_yard_on_itself_and_on_an_empty_seat()
+    public void A_hit_is_refused_far_away_at_the_docks_on_itself_and_on_an_empty_seat()
     {
         var h = Table("crash");
         At(h, 0, 0, 0);
@@ -143,12 +143,12 @@ public sealed class FuraCrashTests
         Assert.False(h.Act(0, "hit", new { to = 5, iz = 9000 }).Ok);
         Assert.False(h.Act(0, "hit", new { iz = 9000 }).Ok);
 
-        // двір депо (−60, −370, 90 × 70): Петро чіпляється біля боксу — Оля його не штовхне, і він її теж
-        var yard = Map.Place("dvir")!.Yard;
-        At(h, 1, yard.X, yard.Z);
-        At(h, 0, yard.X, yard.Z + 20);
-        Assert.Equal("У дворі фури не б'ються", h.Act(0, "hit", new { to = 1, iz = 9000 }).Message);
-        Assert.Equal("У дворі фури не б'ються", h.Act(1, "hit", new { to = 0, iz = -9000 }).Message);
+        // двір депо: Петро чіпляється біля боксу 2 — Оля його не штовхне, і він її теж
+        var dock = Map.Place("dvir")!.Dock("2")!;
+        At(h, 1, dock.X, dock.Z + 8);
+        At(h, 0, dock.X, dock.Z + 28);
+        Assert.Equal("Біля боксів фури не б'ються", h.Act(0, "hit", new { to = 1, iz = 9000 }).Message);
+        Assert.Equal("Біля боксів фури не б'ються", h.Act(1, "hit", new { to = 0, iz = -9000 }).Message);
 
         // поза старша за 3 с — удару нема
         At(h, 0, 0, 0);
@@ -157,6 +157,13 @@ public sealed class FuraCrashTests
         At(h, 0, 0, 0);
         Assert.False(h.Act(0, "hit", new { to = 1, iz = 9000 }).Ok);
         Assert.Empty(Hits(Frame(h)));
+
+        // а решта двору тверда: двоє щойно сіли на місці старту депо (35 м від боксів) — удар іде
+        At(h, 0, -25, -350);
+        At(h, 1, -25, -340);
+        Assert.True(Map.Place("dvir")!.Yard.Contains(-25, -350));
+        Assert.True(h.Act(0, "hit", new { to = 1, iz = 9000 }).Ok);
+        Assert.Contains(Hits(Frame(h)), x => x[5] == 9000);
     }
 
     [Fact]

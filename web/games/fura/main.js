@@ -17,6 +17,7 @@ import { Trips } from './trip.js';
 import { Voice } from './voice.js';
 import { Ghosts, fakeConvoy } from './ghosts.js';
 import { Crash } from './crash.js';
+import { Garage } from './garage.js';
 import { Sky, DRAW } from './sky.js';
 import { makeTrees, makeGrass } from './trees.js';
 import { loadGfx, saveGfx, patchGfx, autoPreset, openGfx, PRESET_NAME } from './gfx.js';
@@ -116,7 +117,9 @@ function makePerf() {
 
 /** mode: 'kray' — «Чумацький край» (мапа з сервера), 'polygon' — полігон етапу 0 для тренування. */
 /** server — міст до столу гри (fura.js): { tell(action, payload), input(action, payload), view(), onView, onFrame } */
-export async function start({ onExit, mode = 'kray', server = null } = {}) {
+/** testDrive — тест-драйв із гаража на полігоні: { params, label, career }; onTestDrive(params, label, career) — з краю
+ *  (fura.js перезапускає гру на полігоні); openGarage — одразу відкрити 🔧 гараж (кнопка картки). */
+export async function start({ onExit, mode = 'kray', server = null, testDrive = null, onTestDrive = null, openGarage = false } = {}) {
   const app = document.createElement('div');
   app.className = 'fura-app';
   app.innerHTML = '<div class="fura-loading">' + (mode === 'kray' ? '🗺 Будуємо Чумацький край…' : '🚚 Заводимо фуру…') + '</div>';
@@ -173,6 +176,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   let trips = null, nav = null, voice = null;   // рейси й Глек у рації — лише в краю й лише зі столом (з картки гри)
   let ghosts = null, fake = null;               // колона (етап 2): чужі фури з кадру; fake — підставна з консолі
   let crash = null;                             // 2c: стіл «💥 зіткнення» — чужі фури твердими тілами (crash.js)
+  let garage = null;                            // 0.0.6: 🔧 гараж (garage.js) — і в краю, і на полігоні (тест-драйв)
   const model = buildModels(THREE, scene);
   sky.attachHeadlights(model.tractor);
   sky.trimShadows(model.tractor); sky.trimShadows(model.trailer);
@@ -235,7 +239,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(pose.tq);
     const yaw = Math.atan2(fwd.x, fwd.z);
     if (cam === 'cabin') {
-      const eye = new THREE.Vector3(0.6, 1.66, 1.95).applyQuaternion(pose.tq).add(pose.tp);
+      const eye = new THREE.Vector3(0.6, 1.66 + Math.max(-0.08, Math.min(0.08, cabBob)), 1.95).applyQuaternion(pose.tq).add(pose.tp);
       camera.position.copy(eye);
       // погляд трохи вниз: щоб у кадрі були панель, кермо й глечик
       const q = pose.tq.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(lookPitch - 0.16, Math.PI + lookYaw, 0, 'YXZ')));
@@ -397,12 +401,13 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       + '<div class="fura-row" style="flex-direction:column;align-items:stretch">'
       + '<button type="button" class="main" data-m="go">▶ Їхати далі</button>'
       + tripItems
+      + (garage ? '<button type="button" data-m="garage">🔧 Гараж' + (trips ? '' : ' · тест-драйв') + ' (G)</button>' : '')
       + '<button type="button" data-m="calib">🛞 Калібрування керма' + (wheels.length ? ' (' + shortName(wheels[0].id) + ')' : '') + '</button>'
       + '<button type="button" data-m="gear">⚙ Коробка: ' + (truck.gearMode === 'auto' ? 'автомат → зробити ручну' : 'ручна → зробити автомат') + '</button>'
       + '<button type="button" data-m="gfx">⚙ Графіка</button>'
       + '<button type="button" data-m="mixer">🎚 Гучність</button>'
       + '<button type="button" data-m="help">❓ Керування</button>'
-      + '<button type="button" data-m="exit">✕ Вийти' + (trips ? ' (рейс чекатиме)' : ' з полігона') + '</button></div>', (el, m) => {
+      + '<button type="button" data-m="exit">✕ Вийти' + (trips ? ' (рейс чекатиме)' : testDrive ? ' з тест-драйву — назад у край' : ' з полігона') + '</button></div>', (el, m) => {
       el.addEventListener('click', (e) => {
         const b = e.target.closest('[data-m]');
         if (!b) return;
@@ -415,6 +420,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
         else if (k === 'cancel') trips.cancel();
         else if (k === 'depot') { truck.place({ tractor: SPAWN.tractor, trailer: { ...truck.rbPose() } }, false); resetPoses(); }
         else if (k === 'calib') calib();
+        else if (k === 'garage') garage.open();
         else if (k === 'gear') { if (truck.gearMode === 'auto') { truck.gearMode = 'manual'; truck.gear = 1; } else truck.setAuto(); }
         else if (k === 'gfx') openGfxMenu();
         else if (k === 'mixer') openMixer({ boxModal, sound });
@@ -436,6 +442,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       + row('Зчепити причіп', 'T', 'Ⓐ', 'кнопка з калібрування')
       + row('Камера', 'C', 'Ⓧ', 'кнопка')
       + row('Сигнал', 'H', 'Ⓨ', 'кнопка')
+      + row('Круїз-контроль (з гаража)', 'K', 'хрестовина →', 'кнопка з калібрування')
+      + row('🔧 Гараж', 'G', 'Start → «Гараж»', 'меню → «Гараж»')
       + row('Фари', 'L', '', '')
       + row('Передачі (ручна)', 'E / Q', 'RB / LB', 'пелюстки або H')
       + row('Поставити на колеса', 'R', 'Back', 'кнопка')
@@ -484,7 +492,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
 
   // ---- кадр
   const drawnAt = new THREE.Vector3();
-  let hudAt = 0, jugX = 0, jugZ = 0, jugVX = 0, jugVZ = 0, flashAt = 0;
+  let hudAt = 0, jugX = 0, jugZ = 0, jugVX = 0, jugVZ = 0, flashAt = 0, cabBob = 0;
   if (mode === 'kray' && level.roads) {
     nav = new Nav(THREE, scene, level);
     if (server) {
@@ -492,11 +500,27 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       ghosts = new Ghosts({ THREE, scene, camera, level });
       trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, voice, ghosts, perf, onPlaced: () => resetPoses() });
       crash = new Crash({ THREE, RAPIER, world, truck, ghosts, level, server, say, sound });
-      server.onView = (v) => { const t = performance.now(); trips.onView(v); crash.view(v); perf.view(performance.now() - t); };
+      server.onView = (v) => { const t = performance.now(); trips.onView(v); crash.view(v); garage.view(v); perf.view(performance.now() - t); };
       server.onFrame = (f) => { ghosts.push(f); crash.frame(f); perf.ghostFrame(); };
+      garage = makeGarage();
+      trips.openGarage = () => garage.open();
       trips.onView(server.view());
       crash.view(server.view());
+      garage.view(server.view());
     }
+  }
+  if (!server) {
+    garage = makeGarage();
+    if (testDrive && testDrive.params) {
+      truck.setParams(testDrive.params);
+      garage.tractorSound(testDrive.params.tractor);
+      setTimeout(() => say('🧪 Тест-драйв: ' + (testDrive.label || 'гараж') + '. Гірка 10 % — на схід від майданчика · ✕ — назад у край', 5000), 600);
+    }
+  }
+  function makeGarage() {
+    return new Garage({ THREE, app, hud, truck, model, sound, voice, input, nav, server, say, testDrive,
+      takeModal: (m) => { if (modal && modal !== m) modal.close(); modal = m; m.onClosed = () => { if (modal === m) modal = null; if (!stopped) cv.focus({ preventScroll: true }); }; },
+      onTestDrive, onLavka: () => { exit(); setTimeout(() => { location.hash = '#lavka/fura'; }, 50); } });
   }
 
   // Перевірка колони без сервера етапу 2: __fura.ghosts.demo() — три підставні фури й вид із convoy/col/колонним
@@ -526,7 +550,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     },
   };
 
-  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, sky, trees, grass, gfx: null, get trips() { return trips; }, get crash() { return crash; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
+  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, sky, trees, grass, gfx: null, get trips() { return trips; }, get crash() { return crash; }, get garage() { return garage; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
   window.__fura = api;   // для перевірки з консолі: __fura.fake = {throttle: 1, …}
 
   function idleInput() { return { steer: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, horn: false, hit: new Set(), hGear: null, lookX: 0, lookY: 0, source: 'kbd' }; }
@@ -537,6 +561,9 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     if (crash) crash.before();
     world.step(crash ? crash.queue : undefined);
     if (crash) crash.after();
+    // удар чужої фури (контакт іде чи щойно був): вантаж б'ється без пом'якшення тюнінгом (GARAGE.md §6)
+    const lg = crash && crash.log.length ? crash.log[crash.log.length - 1] : null;
+    truck.raw = !!crash && (crash.hits.size > 0 || (!!lg && performance.now() - lg.at < 700));
     truck.afterStep(STEP);
     prevT = curT; curT = snap(truck.tb);
     prevR = curR; curR = snap(truck.rb);
@@ -547,7 +574,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     raf = requestAnimationFrame(frame);
     // обмеження FPS (меню «Графіка»): фаза накопичується (drawAt += період), інакше на 75/144 Гц ліміт 60 давав
     // ~37–50 fps рваним кроком; відстали на 3 періоди (вкладку ховали) — підтягуємо до «зараз». Фізика наздожене.
-    if (gfx.fps > 0) {
+    // Поки відкрите вікно (гараж із постаментом, меню) — без ліміту: modal.tick і навігація падом ідуть кожен кадр.
+    if (gfx.fps > 0 && !(modal && modal.open)) {
       const per = 1000 / gfx.fps;
       if (now - drawAt < per - 1) return;
       drawAt = now - drawAt > per * 3 ? now : drawAt + per;
@@ -563,7 +591,8 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     let inp;
     if (modal && modal.open) {
       inp = idleInput();
-      if (!modal.noNav) navModal(now);
+      if (modal.tick) modal.tick(now, dt);      // гараж водить себе сам (вкладки, утримання Ⓐ)
+      else if (!modal.noNav) navModal(now);
       input.pressed.clear();                 // натиски у вікні не мають спрацювати в грі, щойно воно закриється
     } else inp = input.poll(dt, kmh);
     if (api.fake) inp = Object.assign(idleInput(), api.fake, { hit: new Set(api.fake.hit || []) });
@@ -587,6 +616,13 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       truck.rescue(); if (level.unstick) level.unstick(truck, { maxMove: 12 }); resetPoses(); say('Фура на колесах');
     }
     if (inp.hit.has('menu')) { if (modal) modal.close(); else openMenu(); }
+    if (!modal && garage && input.keys.has('KeyG') && !api._g) { api._g = true; garage.open(); } else if (!input.keys.has('KeyG')) api._g = false;
+    if (inp.hit.has('cruise')) {
+      const r = truck.toggleCruise();
+      say(r === 'on' ? '⏩ Круїз: ' + Math.round(truck.cruiseV * 3.6) + ' км/год · газ чи гальмо знімають' : r === 'off' ? 'Круїз вимкнено'
+        : r === 'slow' ? 'Круїз — від 20 км/год, на передачі вперед' : '⏩ Круїз-контроль — у 🔧 гаражі: коробка, щабель 1 (з рівня 3)', 2200);
+    }
+    if (truck.cruiseDropped) { truck.cruiseDropped = false; say('Круїз вимкнено', 1200); }
     if (!modal && input.keys.has('KeyF') && !api._f) { api._f = true; toggleFs(); } else if (!input.keys.has('KeyF')) api._f = false;
     if (!modal && input.keys.has('KeyM') && !api._m) { api._m = true; toggleMute(); } else if (!input.keys.has('KeyM')) api._m = false;
     if (!modal && input.keys.has('KeyL') && !api._l) { api._l = true; truck.lights = !truck.lights; model.setLights(truck.lights); say(truck.lights ? '💡 Фари ввімкнено' : 'Фари вимкнено', 1200); }
@@ -621,7 +657,9 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     const g = truck.gforce || { lat: 0, lon: 0 };
     jugVX += (-g.lat * 0.05 - jugX * 60 - jugVX * 6) * dt; jugX += jugVX * dt;
     jugVZ += (g.lon * 0.04 - jugZ * 60 - jugVZ * 6) * dt; jugZ += jugVZ * dt;
-    model.jug.rotation.set(jugZ, 0, jugX);
+    model.setDash(jugZ, jugX, now);       // хитається лише «Глечик на панелі» з Лавки; без нього — стоїть
+    // трус кабіни від ям (камера з кабіни): «Крісло на пневмі» — ×0,5, «Ластівка» хитається менше
+    cabBob += (-(g.vert || 0) * 0.01 * truck.P.shake * truck.P.sway - cabBob) * Math.min(1, dt * 12);
     if (perf.active) { perf.drift(pose.tp.distanceTo(drawnAt), Math.abs(truck.speed()) * dt); drawnAt.copy(pose.tp); }
     perf.lap('model');
 
@@ -665,7 +703,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   function drawHud(inp, kmh) {
     ui.speed.innerHTML = Math.round(Math.abs(kmh)) + '<small>км/год</small>';
     const gm = truck.gearMode === 'auto' ? 'D' : '';
-    ui.gear.textContent = truck.gear < 0 ? 'R' : truck.gear === 0 ? 'N' : gm + truck.gear;
+    ui.gear.textContent = (truck.gear < 0 ? 'R' : truck.gear === 0 ? 'N' : gm + truck.gear) + (truck.cruiseV ? ' ⏩' + Math.round(truck.cruiseV * 3.6) : '');
     ui.rpm.style.width = Math.round(((truck.rpm - 600) / 1500) * 100) + '%';
     ui.pg.style.height = Math.round(inp.throttle * 100) + '%';
     ui.pb.style.height = Math.round(inp.brake * 100) + '%';
@@ -678,6 +716,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
 
     let hint = '';
     const th = trips ? trips.tick(performance.now(), inp) : null;     // рейс: телеметрія, мапа в куті, своя підказка
+    if (garage) garage.navHint();
     if (th && th.strong) hint = th.text;
     else if (!truck.coupled && !(trips && trips.phase === 'done')) {      // зданий причіп — уже не наш
       const h = truck.hitch();
@@ -761,6 +800,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
 
   raf = requestAnimationFrame(frame);
   cv.focus();
+  if (openGarage && garage) setTimeout(() => { if (!stopped) garage.open(); }, 700);
   if (!store.get('helped', '')) { store.set('helped', '1'); setTimeout(() => { if (!stopped && !modal) help(); }, 400); }
   return { stop: exit };
 }

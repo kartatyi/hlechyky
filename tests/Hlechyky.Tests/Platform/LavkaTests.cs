@@ -155,13 +155,14 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(45, all.Count(i => i.Kind == LavkaKind.Icon));        // 24 звичайних + 21 сезонний (календар на весь рік з 28.09)
         Assert.Equal(4, all.Count(i => i.Kind == LavkaKind.Frame));
         Assert.Equal(18, all.Count(i => i.Kind == LavkaKind.Color));       // 16 кольорів, жар і веселка
-        Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Title));       // 8 купованих і 5 за ачівки
+        Assert.Equal(15, all.Count(i => i.Kind == LavkaKind.Title));       // 8 купованих і 7 за ачівки (2 — рівні «Чумаків»)
         Assert.Equal(6, all.Count(i => i.Kind == LavkaKind.Bg));          // 5 візерунків і «Своє тло» (LavkaBgTests)
         Assert.Equal(["dedication", "fireworks", "photo", "ring"], all.Where(i => i.Kind == LavkaKind.Perk).Select(i => i.Id));
         Assert.Equal(13, all.Count(i => i.Kind == LavkaKind.Anthem));     // 12 готових гімнів і «Свій трек» (AnthemTests)
         Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Fx));          // святкування перемоги (FlairTests)
         Assert.Equal(6, all.Count(i => i.Kind == LavkaKind.Curse));       // прокльони (FlairTests)
         Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Blade));       // леза «Шаткуй!»: 3 куповані й 2 за ачівки
+        Assert.Equal(37, all.Count(i => LavkaKind.IsFura(i.Kind)));       // «🚚 Фура»: 34 куповані й 3 за ачівки (FuraGarageTests)
         // id латиницею — без пробілів і великих літер; дефіс — лише в «own-anthem», так його назвав контракт гімнів
         Assert.All(all, i => Assert.Matches("^[a-z]+(-[a-z]+)?$", i.Id));
         Assert.Equal([LavkaCatalog.OwnAnthem], all.Where(i => i.Id.Contains('-')).Select(i => i.Id));
@@ -268,7 +269,8 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(LavkaCatalog.All.Count, items.Count);
         Assert.All(items, i => Assert.False(i.GetProperty("owned").GetBoolean()));
         Assert.All(items, i => Assert.False(i.GetProperty("worn").GetBoolean()));
-        Assert.All(e.GetProperty("worn").EnumerateObject(), p => Assert.Equal(JsonValueKind.Null, p.Value.ValueKind));
+        Assert.All(e.GetProperty("worn").EnumerateObject().Where(p => p.Name != "fura"), p => Assert.Equal(JsonValueKind.Null, p.Value.ValueKind));
+        Assert.All(e.GetProperty("worn").GetProperty("fura").EnumerateObject(), p => Assert.Equal(JsonValueKind.Null, p.Value.ValueKind));
         Assert.False(e.GetProperty("perks").GetProperty("fireworks").GetProperty("owned").GetBoolean());
         Assert.False(e.GetProperty("perks").GetProperty("dedication").GetProperty("owned").GetBoolean());
     }
@@ -303,7 +305,7 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(0, sky.GetProperty("tier").GetInt32());
 
         var worn = e.GetProperty("worn");
-        Assert.Equal(["icon", "frame", "color", "title", "bg", "anthem", "fx", "ring", "blade"], worn.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["icon", "frame", "color", "title", "bg", "anthem", "fx", "ring", "blade", "fura"], worn.EnumerateObject().Select(p => p.Name));
         Assert.Equal("fox", worn.GetProperty("icon").GetString());
         Assert.Equal("sky", worn.GetProperty("color").GetString());
         Assert.Equal(JsonValueKind.Null, worn.GetProperty("frame").ValueKind);
@@ -1275,5 +1277,72 @@ public sealed class LavkaTests : IDisposable
     public void Preposition_at_the_start_follows_euphony(string next, string preposition)
     {
         Assert.Equal(preposition, NickCases.AtStart(next));
+    }
+
+    // =============================================================================================
+    // «🚚 Фура» — вигляд фури в «Чумаках» (specs/fura.md, «Гараж (0.0.6)»)
+    // =============================================================================================
+
+    [Fact]
+    public void Fura_cosmetics_are_bought_worn_on_the_truck_and_not_in_the_profile()
+    {
+        _r.Give("Оля", 10_000);
+        var r = _r.Buy("Оля", "paintsky");
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal("Фарба фури «Небо» — твоє назавжди, уже на фурі в «Чумаках»", r.Message);
+        Assert.Equal(new Dictionary<string, string> { ["fura-paint"] = "paintsky" }, _r.Lavka.FuraWorn("Оля"));
+        Assert.Null(_r.Lavka.LookOf("Оля"));                                 // у профілі фура не малюється
+        Assert.True(_r.Buy("Оля", "paintamber").Ok);
+        Assert.Equal("paintamber", _r.Lavka.FuraWorn("Оля")["fura-paint"]);  // куплене собі — одразу на фурі, як решта Лавки
+        Assert.True(_r.Wear("Оля", "fura-paint", "paintsky").Ok);
+        Assert.True(_r.Wear("Оля", "fura-paint", "paintamber").Ok);
+        Assert.Equal("paintamber", _r.Lavka.FuraWorn("Оля")["fura-paint"]);
+        Assert.Equal(Lavka.WrongSlot, _r.Wear("Оля", "fura-horn", "paintamber").Message);
+        Assert.Equal(Lavka.NotOwned, _r.Wear("Оля", "fura-horn", "horngoose").Message);
+        Assert.Equal(Lavka.NotAccount, _r.Lavka.Wear("Гість", false, "fura-paint", "paintsky").Message);
+
+        var shop = Views.Json(_r.Lavka.View("Оля", true));
+        Assert.Equal("paintamber", shop.GetProperty("worn").GetProperty("fura").GetProperty("fura-paint").GetString());
+        Assert.Equal(JsonValueKind.Null, shop.GetProperty("worn").GetProperty("fura").GetProperty("fura-horn").ValueKind);
+        var sky = shop.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("id").GetString() == "paintsky");
+        Assert.Equal("fura-paint", sky.GetProperty("kind").GetString());
+        Assert.Equal(195, sky.GetProperty("art").GetInt32());
+        Assert.True(sky.GetProperty("owned").GetBoolean());
+        Assert.False(sky.GetProperty("worn").GetBoolean());
+    }
+
+    [Fact]
+    public void Up_to_three_stickers_at_once_and_one_sticker_never_twice()
+    {
+        _r.Give("Оля", 10_000);
+        foreach (var id in new[] { "stickhlechyky", "stickshlyakh", "stickmama", "stickmakitry" }) Assert.True(_r.Buy("Оля", id).Ok, id);
+        var worn = _r.Lavka.FuraWorn("Оля");
+        Assert.Equal("stickhlechyky", worn["fura-sticker"]);
+        Assert.Equal("stickshlyakh", worn["fura-sticker2"]);
+        Assert.Equal("stickmama", worn["fura-sticker3"]);                    // четверта — у шафі
+        Assert.True(_r.Wear("Оля", "fura-sticker2", "stickmakitry").Ok);
+        Assert.Equal("stickmakitry", _r.Lavka.FuraWorn("Оля")["fura-sticker2"]);
+        Assert.True(_r.Wear("Оля", "fura-sticker3", "stickmakitry").Ok);   // та сама — переходить, а не клеїться двічі
+        worn = _r.Lavka.FuraWorn("Оля");
+        Assert.Equal("stickmakitry", worn["fura-sticker3"]);
+        Assert.False(worn.ContainsKey("fura-sticker2"));
+        var shop = Views.Json(_r.Lavka.View("Оля", true));
+        Assert.True(shop.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("id").GetString() == "stickmakitry")
+            .GetProperty("worn").GetBoolean());
+    }
+
+    [Fact]
+    public void Fura_cosmetics_can_be_gifted_but_earned_ones_are_not_for_sale()
+    {
+        _r.Give("Оля", 10_000);
+        var g = _r.Buy("Оля", "dashcat", to: "Петро");
+        Assert.True(g.Ok, g.Message);
+        Assert.True(_r.Owns("Петро", "dashcat"));
+        Assert.Equal("dashcat", _r.Lavka.FuraWorn("Петро")["fura-dash"]);   // слот був порожній — вдягнулось
+        Assert.Equal("Це не купується — його дає ачівка «Золотий ріжок» у «Чумаках»", _r.Buy("Оля", "horngold").Message);
+        Assert.Equal("Це дає ачівка «Отаман валки»", _r.Wear("Оля", "fura-lamp", "lampotaman").Message);
+        Assert.Equal("Цей титул не купується — його дає ачівка «Чумак»", _r.Buy("Оля", "chumak").Message);
+        Assert.Equal("🔧 Гараж: Віл", _r.Eco.Economy.Reason("fura-buy:vil"));
+        Assert.Equal("🔧 Гараж: Двигун, щабель 2", _r.Eco.Economy.Reason("fura-buy:engine2"));
     }
 }

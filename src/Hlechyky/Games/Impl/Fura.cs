@@ -17,7 +17,7 @@ namespace Hlechyky.Games.Impl;
 /// коли фур ≥ 2. Види після Act каркас у реалтаймі не шле — дія ставить <see cref="_dirty"/>, найближчий тик розсилає.
 /// </para>
 /// </summary>
-public sealed class Fura : Game
+public sealed partial class Fura : Game
 {
     public override GameInfo Info { get; } = new(
         "fura", "Чумаки-далекобійники", "«Чумаків-далекобійників»", GameGroup.Solo, 1, 8,
@@ -25,6 +25,7 @@ public sealed class Fura : Game
         Options:
         [
             new GameOption(CollideKey, "Чужі фури", [(Ghosts, "👻 привиди"), (Crash, "💥 зіткнення")], Ghosts),
+            new GameOption(EqualKey, "Фури", [(EqualOff, "🔧 свій гараж"), (EqualOn, "⚖ рівні фури")], EqualOff),
         ],
         Hint: "Тягач із причепом по Чумацькому краю: бери замовлення, чіпляй причіп у відправника й вези — сам чи колоною до восьми фур. Кермо G29, пад або клавіатура");
 
@@ -72,8 +73,11 @@ public sealed class Fura : Game
     /// <summary>Удар — лише між фурами, що стоять ближче за це (центри тягачів і причепів, будь-яка пара).</summary>
     public const double HitNearM = 25;
 
-    /// <summary>У дворі (розширеному на стільки) фури не б'ються: ніхто не заблокує бокс і не штовхне того, хто чіпляється.</summary>
-    public const double HitYardM = 10;
+    /// <summary>
+    /// Біля боксів (тягач чи причіп ближче за стільки до будь-якого боксу) фури не б'ються: ніхто не заблокує бокс і не
+    /// штовхне того, хто чіпляється. Решта двору (виїзд, місце старту) — тверда: двоє, що щойно сіли, б'ються вже там (C1).
+    /// </summary>
+    public const double HitDockM = 20;
 
     /// <summary>Порожній стіл чекає свого (оновив сторінку — повернувся за той самий стіл).</summary>
     public override TimeSpan HoldEmpty => TimeSpan.FromSeconds(60);
@@ -115,6 +119,7 @@ public sealed class Fura : Game
     {
         _map = FuraMap.Get();
         _crash = options.TryGetValue(CollideKey, out var c) && c == Crash;
+        ConfigureGarage(options);
     }
 
     public override void Start()
@@ -122,6 +127,7 @@ public sealed class Fura : Game
         // Сервіси — тут, як у колі: у тестах економіки нема, тоді Boost 1 і стеля типова; гаража нема — свій у пам'яті.
         _opts = Ctx.Services.GetService<IOptionsMonitor<EconomyOptions>>();
         _garage = Ctx.Services.GetService<FuraGarage>() ?? new FuraGarage(new MemoryGameStore(), a => a());
+        StartGarage();
         _rigs = new FuraRig?[Info.MaxPlayers];
         _colNo = 1;
         _col = null;
@@ -157,6 +163,7 @@ public sealed class Fura : Game
         if (_rigs[seat] is { } rig)
         {
             Keep(rig);
+            KeepCareer(rig);
             _garage.Release(rig.NickKey, rig.Claim);
             if (_col?.Member(rig.NickKey) is { DoneAt: null } m) m.AwaySince = Ctx.Clock.UtcNow;
         }
@@ -193,6 +200,7 @@ public sealed class Fura : Game
         rig.NickKey = key;
         rig.Claim = _garage.Claim(key);
         _rigs[seat] = rig;
+        SitCareer(rig);
         EnsureBoard(rig);
         if (fix) Keep(rig);
     }
@@ -232,7 +240,7 @@ public sealed class Fura : Game
         if (rig.Phase != Free) return false;
         var day = Days.Today(Ctx.Clock);
         if (rig.BoardDay == day && rig.Board.Count > 0) return false;
-        rig.Board = MakeBoard(Map, day, rig.NickKey, rig.Trips);
+        rig.Board = MakeBoard(Map, day, rig.NickKey, rig.Trips, CargoTypes(rig), FarOn(rig));
         rig.BoardDay = day;
         return true;
     }
@@ -240,14 +248,19 @@ public sealed class Fura : Game
     /// <summary>
     /// П'ять замовлень детерміновано від дня, ніка й кількості рейсів (сід — <see cref="Days.Seed"/>, не <c>Ctx.Rng</c>):
     /// та сама людина того самого дня після того самого рейсу бачить ту саму дошку, хоч скільки перевідкривай.
+    /// Гараж 0.0.6: лише вантажі під <paramref name="types"/> причепів (null — тент, як до гаража), а з рівня 10
+    /// (<paramref name="far"/>) — шосте, «далеке»: найдовше з решти комбінацій.
     /// </summary>
-    public static List<FuraOrder> MakeBoard(FuraMap map, string day, string nickKey, int trips)
+    public static List<FuraOrder> MakeBoard(FuraMap map, string day, string nickKey, int trips,
+        IReadOnlyCollection<string>? types = null, bool far = false)
     {
         var rng = new Random(Days.Seed("fura", $"{day}:{nickKey}:{trips}"));
-        var combos = Combos(map, rng, _ => true);
-        var list = new List<FuraOrder>(BoardSize);
+        var combos = Combos(map, rng, _ => true, c => types?.Contains(c.Trailer) ?? c.Trailer == FuraCargo.Tent);
+        var list = new List<FuraOrder>(BoardSize + 1);
         foreach (var (cargo, from, to) in combos.Take(BoardSize))
             list.Add(MakeOrder(map, list.Count + 1, cargo, from, to, from.Docks[rng.Next(from.Docks.Length)]));
+        if (far && combos.Skip(BoardSize).MaxBy(c => map.Meters(c.From.Id, c.To.Id)) is { Cargo: not null } f)
+            list.Add(MakeOrder(map, BoardSize + 1, f.Cargo, f.From, f.To, f.From.Docks[rng.Next(f.From.Docks.Length)]) with { Far = true });
         return list;
     }
 
@@ -258,15 +271,16 @@ public sealed class Fura : Game
     public static FuraOrder? MakeColOrder(FuraMap map, string day, string roomId, int no)
     {
         var rng = new Random(Days.Seed("fura", $"{day}:{roomId}:k{no}"));
-        foreach (var (cargo, from, to) in Combos(map, rng, p => p.Docks.Length >= 2).Take(1))
+        foreach (var (cargo, from, to) in Combos(map, rng, p => p.Docks.Length >= 2, c => c.Trailer == FuraCargo.Tent).Take(1))
             return MakeOrder(map, 0, cargo, from, to, from.Docks[rng.Next(from.Docks.Length)]) with { Col = true };
         return null;
     }
 
-    static List<(FuraCargo Cargo, FuraPlace From, FuraPlace To)> Combos(FuraMap map, Random rng, Func<FuraPlace, bool> fromOk)
+    static List<(FuraCargo Cargo, FuraPlace From, FuraPlace To)> Combos(FuraMap map, Random rng, Func<FuraPlace, bool> fromOk,
+        Func<FuraCargo, bool> cargoOk)
     {
         var combos = new List<(FuraCargo Cargo, FuraPlace From, FuraPlace To)>();
-        foreach (var c in map.Cargo)
+        foreach (var c in map.Cargo.Where(cargoOk))
             foreach (var f in c.From)
                 foreach (var t in c.To)
                     if (f != t && map.Place(f) is { } from && fromOk(from) && map.Place(t) is { } to && double.IsFinite(map.Meters(f, t)))
@@ -282,7 +296,7 @@ public sealed class Fura : Game
     static FuraOrder MakeOrder(FuraMap map, int id, FuraCargo cargo, FuraPlace from, FuraPlace to, FuraDock dock)
     {
         var km = map.Km(from.Id, to.Id);
-        return new FuraOrder(id, cargo.Id, from.Id, dock.Id, to.Id, km, FuraJudge.Minutes(km),
+        return new FuraOrder(id, cargo.Id, from.Id, dock.Id, to.Id, km, (int)Math.Ceiling(FuraJudge.Minutes(km) * cargo.Term - 1e-9),
             FuraJudge.Pay(km, cargo.Mult, 100, false, false, false));
     }
 
@@ -310,6 +324,7 @@ public sealed class Fura : Game
         var now = Ctx.Clock.UtcNow;
         var (phase, hitched) = (rig.Phase, rig.Last?.C);
         var result = Do(seat, rig, action, payload, now);
+        KeepCareer(rig);   // гараж водія — лише коли змінився (рейс, покупка, вибір)
         // Писати після кожної дії цього місця (take, deliver…), не в тику. Поза — виняток: каркас кличе Act і для Input
         // (10/с), і гра їх не розрізняє, тож поза пишеться раз на KeepPoseSec або коли змінились фаза чи зчеплення —
         // так само часто, як браузер шле act pose. Удар (до 4/с) фуру того, хто б'є, не міняє — не пишеться зовсім.
@@ -378,6 +393,9 @@ public sealed class Fura : Game
                 EnsureBoard(rig);
                 _dirty = true;
                 return ActResult.Done;
+
+            case "garage" or "buy" or "pick":
+                return GarageAct(rig, action, payload);
 
             default:
                 return ActResult.Fail("Тут так не їздять");
@@ -501,13 +519,14 @@ public sealed class Fura : Game
         rig.Result = new FuraResult(rig.Trips, order, Math.Round(rig.Judge.HaulM / 1000, 2), (int)Math.Round(rig.Judge.TripSec),
             k, onTime, exact, rig.Auto, pay, order.Col);
         if (pay > 0) Ctx.Award(seat, pay, $"fura:{rig.Trips}");
+        var gain = GainXp(seat, rig, order, k, onTime, exact);
         rig.Phase = Done;
         rig.Auto = false;
         rig.Judge = new();
         _dirty = true;
         var bonus = ColDone(rig, pay, now);
-        return ActResult.Accept(pay <= 0 ? "Рейс здано, але все розбито — плати нема"
-            : bonus ? $"Рейс №{rig.Trips} здано — колоні +15 %" : $"Рейс №{rig.Trips} здано");
+        return ActResult.Accept((pay <= 0 ? "Рейс здано, але все розбито — плати нема"
+            : bonus ? $"Рейс №{rig.Trips} здано — колоні +15 %" : $"Рейс №{rig.Trips} здано") + LevelNote(gain));
     }
 
     /// <summary>
@@ -566,7 +585,7 @@ public sealed class Fura : Game
             || (now - rig.LastAt).TotalSeconds > GhostFreshSec || (now - victim.LastAt).TotalSeconds > GhostFreshSec)
             return ActResult.Fail("Нема свіжої телеметрії");
         if (Gap(a, b) > HitNearM) return ActResult.Fail("Задалеко для удару");
-        if (InYard(a) || InYard(b)) return ActResult.Fail("У дворі фури не б'ються");
+        if (AtDocks(a) || AtDocks(b)) return ActResult.Fail("Біля боксів фури не б'ються");
         if (_hitAt.TryGetValue((seat, to), out var last) && (now - last).TotalSeconds < HitGapSec) return ActResult.Done;
 
         double Num(string name, double max) =>
@@ -587,8 +606,9 @@ public sealed class Fura : Game
         Math.Min(FuraJudge.Dist(a.X, a.Z, b.X, b.Z), FuraJudge.Dist(a.X, a.Z, b.Rx, b.Rz)),
         Math.Min(FuraJudge.Dist(a.Rx, a.Rz, b.X, b.Z), FuraJudge.Dist(a.Rx, a.Rz, b.Rx, b.Rz)));
 
-    /// <summary>Тягач чи причіп у дворі якогось місця (розширеному на <see cref="HitYardM"/>).</summary>
-    bool InYard(FuraPose p) => Map.Places.Any(pl => pl.Yard.Contains(p.X, p.Z, HitYardM) || pl.Yard.Contains(p.Rx, p.Rz, HitYardM));
+    /// <summary>Тягач чи причіп ближче за <see cref="HitDockM"/> до якогось боксу.</summary>
+    bool AtDocks(FuraPose p) => Map.Places.Any(pl => pl.Docks.Any(d =>
+        FuraJudge.Dist(p.X, p.Z, d.X, d.Z) <= HitDockM || FuraJudge.Dist(p.Rx, p.Rz, d.X, d.Z) <= HitDockM));
 
     // ---------- тик ----------
 
@@ -789,8 +809,10 @@ public sealed class Fura : Game
                 shards = Earn(result.Base),
                 col = result.Col,
                 bonus = Earn(result.Bonus),
+                xp = ResultXp(rig!),
             },
             cap = Earn(Econ.FuraDailyCap),
+            career = CareerView(rig),
             convoy = Convoy(),
             col = ColView(),
         };
@@ -801,7 +823,7 @@ public sealed class Fura : Game
         var list = new List<object>(_rigs.Length);
         for (var s = 0; s < _rigs.Length; s++)
             if (_rigs[s] is { } r)
-                list.Add(new { seat = s, nick = r.Nick, phase = r.Phase, cargo = r.Order?.Cargo, to = r.Order?.To, col = ColMember(r) is not null });
+                list.Add(new { seat = s, nick = r.Nick, phase = r.Phase, cargo = r.Order?.Cargo, to = r.Order?.To, col = ColMember(r) is not null, car = CarTag(r) });
         return [.. list];
     }
 
@@ -830,6 +852,7 @@ public sealed class Fura : Game
         from = o.From,
         dock = board ? null : o.Dock,
         to = o.To, km = o.Km, minutes = o.Minutes, pay = Earn(o.Base),
+        far = o.Far,
     };
 
     // ---------- перезапуск ----------
@@ -866,6 +889,7 @@ public sealed class Fura : Game
             back.Nick = now.Nick;
             back.NickKey = now.NickKey;
             back.Claim = now.Claim;
+            back.Career = now.Career;
             EnsureBoard(back);
             _rigs[seat] = back;
             Keep(back);
@@ -879,9 +903,11 @@ public readonly record struct FuraHit(int To, int From, int Id, int At, int Ix, 
 
 /// <summary>
 /// Замовлення на дошці. <see cref="Base"/> — орієнтовна база плати (ціле 100 %, без бонусів), у виді — × Boost.
-/// <see cref="Col"/> — колонне (<c>id: "k"</c>); у фурі учасника <see cref="Dock"/> — його бокс.
+/// <see cref="Col"/> — колонне (<c>id: "k"</c>); у фурі учасника <see cref="Dock"/> — його бокс. <see cref="Far"/> — далеке
+/// (гараж 0.0.6, з рівня 10: ДВ × 1,3).
 /// </summary>
-public sealed record FuraOrder(int Id, string Cargo, string From, string Dock, string To, double Km, int Minutes, int Base, bool Col = false);
+public sealed record FuraOrder(int Id, string Cargo, string From, string Dock, string To, double Km, int Minutes, int Base, bool Col = false,
+    bool Far = false);
 
 /// <summary>
 /// Підсумок зданого рейсу: проїхано (км), час без пауз (с), ціле, бонуси й база плати (до × Boost); колонне — і бонус
