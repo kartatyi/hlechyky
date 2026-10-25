@@ -2371,6 +2371,18 @@
     try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { return; }
     toast(nightLine(m), 'ok');
   }
+  /// 🏆 Січ щоденних: моє місце в тижневому заліку, лідер і скільки ще можна відіграти сьогодні (daily.sich; старий сервер не шле).
+  function sichCard() {
+    const s = daily && daily.sich;
+    if (!s || !extraPanels.some((p) => p.id === 'sich')) return '';
+    const me = s.place ? s.place + ' місце з ' + s.of + ' · ' + s.points + ' оч.' : s.of ? 'ти ще без очок · у заліку ' + s.of : 'ще ніхто не в заліку — будь першим';
+    const lead = s.leader && !(s.place === 1) ? ' · лідер ' + s.leader + ' ' + s.leaderPoints : s.place === 1 ? ' · ти лідер!' : '';
+    const tip = 'Тижневий залік щоденних: 1 очко за розгадану і ще по очку за кожного, кого обійшов. Неділя опівночі — 👑 і черепки'
+      + (s.gain > 0 ? '. Сьогодні ще можна до +' + s.gain + ' за одну гру' : '');
+    return '<button type="button" class="gdc gdc-link sich-card" data-go="#games/x:sich" title="' + esc(tip) + '">'
+      + '<span class="gemo">🏆</span><div><b>Січ щоденних</b><span class="muted small">' + esc(me + lead) + '</span></div>'
+      + '<span class="muted small">→</span></button>';
+  }
   function tourCard() {
     const T = window.HTournament;
     const s = T && T.state;
@@ -2435,7 +2447,7 @@
         + '<button class="' + (solved ? 'ghost' : 'primary') + '" data-solo="' + esc(p.game) + '"'
         + (solved ? '' : ' title="Розгадай — і хапай щоденний глек"') + '>' + (solved ? 'Глянути' : 'Грати') + '</button></div>';
     }).join('');
-    const tour = giftCard() + tourCard() + padelCard();
+    const tour = sichCard() + giftCard() + tourCard() + padelCard();
     if (!cards && !tour) return '';
     return '<section class="gpanel gtoday"><h3>☀ Сьогодні' + (daily && daily.no ? ' <span class="muted small">· щоденний глек №' + daily.no + '</span>' : '') + '</h3>'
       + (cards ? todayPay() : '')

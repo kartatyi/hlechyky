@@ -14,7 +14,7 @@ public sealed record DailyPuzzle(string Game, string Title, DailyMe? Me, int Str
 
 /// <summary>Те, що віддає GET /api/games/daily.</summary>
 public sealed record DailyStatus(string Day, int No, DateTimeOffset NextMidnight, IReadOnlyList<DailyPuzzle> Puzzles,
-    DailyPay? Pay = null, DailyMoney? Money = null);
+    DailyPay? Pay = null, DailyMoney? Money = null, SichBrief? Sich = null);
 
 /// <summary>Одна нічна виплата: гра, що за неї (best — «за місце», top — приз топу), скільки.</summary>
 public sealed record DailyNightItem(string Game, string Title, string Kind, int Amount);

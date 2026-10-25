@@ -293,6 +293,15 @@
     el.style.top = y + 'px';
   }
 
+  /// Звання в Січі щоденних (web/games/sich.js) — чипом у картці людини; 👑 — коли вона Гетьман тижня.
+  function sichChip(nick) {
+    const r = window.HSich && HSich.rankOf(nick);
+    if (!r) return '';
+    const crown = HSich.crowned(nick) ? '👑 ' : '';
+    return '<span class="chip" title="' + esc('Звання в Січі щоденних · ' + r.elo + ' Ело' + (crown ? ' · Гетьман тижня' : '')) + '">'
+      + crown + r.icon + ' ' + esc(r.title) + '</span>';
+  }
+
   async function card(nick, anchor) {
     if (!o || !nick) return;
     if (cardEl && same(cardEl.dataset.nick, nick)) { closeCard(); return; }
@@ -323,7 +332,8 @@
     box.innerHTML = '<span class="chip" title="Черепків зараз">🏺 ' + (w.balance != null ? lbNum(w.balance) : '—') + '</span>'
       + (t ? '<span class="chip" title="' + esc('Скільки часу тусить на сайті — ' + (p.timeSince ? 'з ' + sinceWord(p.timeSince) : 'за весь час')) + '">⏱ ' + dur(timeTotal(t)) + '</span>' : '')
       + '<span class="chip" title="Ачівки">🏅 ' + achs + '</span>'
-      + (fav ? '<span class="chip" title="У що найбільше грає">' + iconOf(fav.game) + esc(fav.title || titleOf(fav.game)) + '</span>' : '');
+      + (fav ? '<span class="chip" title="У що найбільше грає">' + iconOf(fav.game) + esc(fav.title || titleOf(fav.game)) + '</span>' : '')
+      + sichChip(nick);
     placeCard(el, anchor);
   }
 
