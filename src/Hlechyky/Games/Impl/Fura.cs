@@ -22,6 +22,10 @@ public sealed class Fura : Game
     public override GameInfo Info { get; } = new(
         "fura", "Чумаки-далекобійники", "«Чумаків-далекобійників»", GameGroup.Solo, 1, 8,
         TickMs: 100, Start: StartMode.Immediate,
+        Options:
+        [
+            new GameOption(CollideKey, "Чужі фури", [(Ghosts, "👻 привиди"), (Crash, "💥 зіткнення")], Ghosts),
+        ],
         Hint: "Тягач із причепом по Чумацькому краю: бери замовлення, чіпляй причіп у відправника й вези — сам чи колоною до восьми фур. Кермо G29, пад або клавіатура");
 
     /// <summary>Номер етапу — клієнт показує його, щоб було видно, яка збірка відкрита.</summary>
@@ -51,6 +55,26 @@ public sealed class Fura : Game
 
     public const string Free = "free", Pickup = "pickup", Haul = "haul", Done = "done";
 
+    // ---------- зіткнення (2c) ----------
+
+    /// <summary>Опція столу: чужі фури — привиди (крізь них їдеш) чи тверді (удар). Обирається при створенні столу.</summary>
+    public const string CollideKey = "collide", Ghosts = "ghosts", Crash = "crash";
+
+    /// <summary>Удар однієї пари (хто → кого) пересилається не частіше за це; частіші — мовчки відкидаються.</summary>
+    public const double HitGapSec = 0.25;
+
+    /// <summary>Імпульс удару (Н·с) понад це сервер зрізає до цього (браузер адресата ще обмежує Δv своєї фури).</summary>
+    public const double HitMaxNs = 120_000;
+
+    /// <summary>Скільки тиків удар лежить у кадрі: каркас згортає кадри, коли розсилка не встигає, — повтор не губить удар.</summary>
+    public const int HitTicks = 3;
+
+    /// <summary>Удар — лише між фурами, що стоять ближче за це (центри тягачів і причепів, будь-яка пара).</summary>
+    public const double HitNearM = 25;
+
+    /// <summary>У дворі (розширеному на стільки) фури не б'ються: ніхто не заблокує бокс і не штовхне того, хто чіпляється.</summary>
+    public const double HitYardM = 10;
+
     /// <summary>Порожній стіл чекає свого (оновив сторінку — повернувся за той самий стіл).</summary>
     public override TimeSpan HoldEmpty => TimeSpan.FromSeconds(60);
 
@@ -62,6 +86,13 @@ public sealed class Fura : Game
     FuraGarage _garage = null!;
 
     FuraRig?[] _rigs = [];
+    /// <summary>Стіл «💥 зіткнення» (<see cref="CollideKey"/> = <see cref="Crash"/>).</summary>
+    bool _crash;
+    /// <summary>Переслані удари, що ще лежать у кадрі (<see cref="HitTicks"/>), і номер наступного.</summary>
+    readonly List<FuraHit> _hits = [];
+    int _hitNo;
+    /// <summary>Коли востаннє переслано удар пари (хто, кого).</summary>
+    readonly Dictionary<(int From, int To), DateTimeOffset> _hitAt = [];
     /// <summary>Номер колони, що йде, або наступної.</summary>
     int _colNo = 1;
     FuraConvoy? _col;
@@ -78,8 +109,13 @@ public sealed class Fura : Game
 
     public override string SeatName(int seat) => "чумак";
 
-    /// <summary>Мапу читаємо тут — поза замком кімнати (перший раз це диск).</summary>
-    public override void Configure(IReadOnlyDictionary<string, string> options) => _map = FuraMap.Get();
+    /// <summary>Мапу читаємо тут — поза замком кімнати (перший раз це диск). Опцію столу — теж: обирається при створенні,
+    /// посеред гри каркас налаштувань не міняє.</summary>
+    public override void Configure(IReadOnlyDictionary<string, string> options)
+    {
+        _map = FuraMap.Get();
+        _crash = options.TryGetValue(CollideKey, out var c) && c == Crash;
+    }
 
     public override void Start()
     {
@@ -91,6 +127,8 @@ public sealed class Fura : Game
         _col = null;
         _colOffer = default;
         _tick = 0;
+        _hits.Clear();
+        _hitAt.Clear();
         for (var s = 0; s < _rigs.Length; s++)
             if (Ctx.Seated(s)) Sit(s);
         _dirty = true;
@@ -274,7 +312,8 @@ public sealed class Fura : Game
         var result = Do(seat, rig, action, payload, now);
         // Писати після кожної дії цього місця (take, deliver…), не в тику. Поза — виняток: каркас кличе Act і для Input
         // (10/с), і гра їх не розрізняє, тож поза пишеться раз на KeepPoseSec або коли змінились фаза чи зчеплення —
-        // так само часто, як браузер шле act pose.
+        // так само часто, як браузер шле act pose. Удар (до 4/с) фуру того, хто б'є, не міняє — не пишеться зовсім.
+        if (action == "hit") return result;
         if (action != "pose" || rig.Phase != phase || rig.Last?.C != hitched || (now - rig.KeptAt).TotalSeconds >= KeepPoseSec)
             Keep(rig, now);
         return result;
@@ -326,6 +365,9 @@ public sealed class Fura : Game
 
             case "deliver":
                 return Deliver(seat, rig, now);
+
+            case "hit":
+                return Hit(seat, rig, payload, now);
 
             case "next":
                 if (rig.Phase != Done) return ActResult.Fail("Рейс ще не здано");
@@ -503,12 +545,58 @@ public sealed class Fura : Game
         return paid;
     }
 
+    // ---------- зіткнення (2c) ----------
+
+    /// <summary>
+    /// <c>hit {to, ix, iz, at, ox, oz}</c>: моя фура вдарилась у фуру місця <c>to</c>. Удар рахує той, хто б'є (у його
+    /// фізиці чужа фура — тверде тіло); сервер лише пересилає адресату імпульс (Н·с, ix/iz — по X/Z), частину
+    /// (<c>at</c>: 0 тягач, 1 причіп) і точку (ox — вбік, oz — уздовж, м в осях тієї частини), а адресат застосовує його до
+    /// своєї фури сам. Перевірки: стіл «💥», обидві фури свіжі й поруч, жодна не в дворі, пара — не частіше за
+    /// <see cref="HitGapSec"/> (частіше — мовчки), імпульс ≤ <see cref="HitMaxNs"/>. Адресату суддя кілька секунд
+    /// пробачає стрибок (<see cref="FuraJudge.Shove"/>).
+    /// </summary>
+    ActResult Hit(int seat, FuraRig rig, JsonElement payload, DateTimeOffset now)
+    {
+        if (!_crash) return ActResult.Fail("За цим столом фури — привиди: крізь них їдеш");
+        if (payload.ValueKind != JsonValueKind.Object) throw new GameError("Нема удару");
+        var to = payload.TryGetProperty("to", out var te) && te.ValueKind == JsonValueKind.Number && te.TryGetInt32(out var t) ? t : -1;
+        if (to == seat || to < 0 || to >= _rigs.Length || _rigs[to] is not { } victim || !Owned(victim))
+            return ActResult.Fail("Нема такої фури");
+        if (rig.Last is not { } a || victim.Last is not { } b
+            || (now - rig.LastAt).TotalSeconds > GhostFreshSec || (now - victim.LastAt).TotalSeconds > GhostFreshSec)
+            return ActResult.Fail("Нема свіжої телеметрії");
+        if (Gap(a, b) > HitNearM) return ActResult.Fail("Задалеко для удару");
+        if (InYard(a) || InYard(b)) return ActResult.Fail("У дворі фури не б'ються");
+        if (_hitAt.TryGetValue((seat, to), out var last) && (now - last).TotalSeconds < HitGapSec) return ActResult.Done;
+
+        double Num(string name, double max) =>
+            payload.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.Number && e.TryGetDouble(out var v) && double.IsFinite(v)
+                ? Math.Clamp(v, -max, max) : 0;
+        var (ix, iz) = (Num("ix", 1e9), Num("iz", 1e9));
+        var len = Math.Sqrt(ix * ix + iz * iz);
+        if (len > HitMaxNs) (ix, iz) = (ix * HitMaxNs / len, iz * HitMaxNs / len);
+        var part = Num("at", 1) >= 0.5 ? 1 : 0;
+        _hitAt[(seat, to)] = now;
+        _hits.Add(new FuraHit(to, seat, ++_hitNo, part, I(ix), I(iz), I(Num("ox", 8) * 10), I(Num("oz", 8) * 10), _tick));
+        victim.Judge.Shove(now);
+        return ActResult.Done;
+    }
+
+    /// <summary>Найменша відстань між центрами тягачів і причепів двох фур.</summary>
+    static double Gap(FuraPose a, FuraPose b) => Math.Min(
+        Math.Min(FuraJudge.Dist(a.X, a.Z, b.X, b.Z), FuraJudge.Dist(a.X, a.Z, b.Rx, b.Rz)),
+        Math.Min(FuraJudge.Dist(a.Rx, a.Rz, b.X, b.Z), FuraJudge.Dist(a.Rx, a.Rz, b.Rx, b.Rz)));
+
+    /// <summary>Тягач чи причіп у дворі якогось місця (розширеному на <see cref="HitYardM"/>).</summary>
+    bool InYard(FuraPose p) => Map.Places.Any(pl => pl.Yard.Contains(p.X, p.Z, HitYardM) || pl.Yard.Contains(p.Rx, p.Rz, HitYardM));
+
     // ---------- тик ----------
 
     public override TickResult Tick()
     {
         _tick++;
         var now = Ctx.Clock.UtcNow;
+        _hits.RemoveAll(x => _tick - x.Tick > HitTicks || _rigs[x.To] is null);
         foreach (var rig in _rigs)
             if (rig is not null && EnsureBoard(rig)) _dirty = true;   // північ за Києвом застала на дошці — нова дошка
         if (_col is { } col)
@@ -563,7 +651,11 @@ public sealed class Fura : Game
                 q.Add(I(x.Rx * 100)); q.Add(I(x.Rz * 100)); q.Add(I(x.Ry * 1000)); q.Add(x.F);
             }
         }
-        return new { t = _tick, v = 2, p = p.ToArray(), q = q.ToArray() };
+        if (_hits.Count == 0) return new { t = _tick, v = 2, p = p.ToArray(), q = q.ToArray() };
+        // 2c: удари для адресатів: [to, from, id, at, ix, iz, ox·10, oz·10, …] — застосовує лише to, за id — раз
+        var h = new List<int>(_hits.Count * 8);
+        foreach (var x in _hits) { h.Add(x.To); h.Add(x.From); h.Add(x.Id); h.Add(x.At); h.Add(x.Ix); h.Add(x.Iz); h.Add(x.Ox); h.Add(x.Oz); }
+        return new { t = _tick, v = 2, p = p.ToArray(), q = q.ToArray(), h = h.ToArray() };
     }
 
     /// <summary>
@@ -651,6 +743,7 @@ public sealed class Fura : Game
         {
             stage = Stage,
             map = Map.Id,
+            collide = _crash ? Crash : Ghosts,
             seat = rig is null ? null : seat,
             phase = rig?.Phase,
             trips = rig?.Trips ?? 0,
@@ -780,6 +873,9 @@ public sealed class Fura : Game
         _dirty = true;
     }
 }
+
+/// <summary>Удар у кадрі для адресата <see cref="To"/> (2c): імпульс Н·с, частина (0 тягач, 1 причіп), точка в дм, тик пересилання.</summary>
+public readonly record struct FuraHit(int To, int From, int Id, int At, int Ix, int Iz, int Ox, int Oz, long Tick);
 
 /// <summary>
 /// Замовлення на дошці. <see cref="Base"/> — орієнтовна база плати (ціле 100 %, без бонусів), у виді — × Boost.

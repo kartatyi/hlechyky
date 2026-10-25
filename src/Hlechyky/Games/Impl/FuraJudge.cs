@@ -32,6 +32,10 @@ public sealed class FuraJudge
     public const int MaxViolations = 3;
     /// <summary>Стрибок пози одразу після «поставити на колеса», якого не рахуємо.</summary>
     public const double RescueSlackM = 3;
+    /// <summary>Скільки секунд після пересланого удару (2c) суддя пробачає адресату стрибок.</summary>
+    public const double ShoveSec = 3;
+    /// <summary>Стільки метрів стрибка на кожен вимір у ці секунди не рахуємо (удар штовхнув фуру).</summary>
+    public const double ShoveSlackM = 3;
     /// <summary>Довший проміжок — пауза: час не йде в годинник рейсу.</summary>
     public const double PauseSec = 15;
     /// <summary>Після паузи тягач має стояти не далі за стільки від останньої пози.</summary>
@@ -62,6 +66,11 @@ public sealed class FuraJudge
     public string? Void { get; set; }
     /// <summary>Попросили «поставити на колеса»: наступний стрибок до <see cref="RescueSlackM"/> не рахуємо.</summary>
     public bool Rescue { get; set; }
+    /// <summary>До цієї миті фуру штовхнув чужий удар (2c): на кожному вимірі від стрибка віднімаємо <see cref="ShoveSlackM"/>.</summary>
+    public DateTimeOffset ShoveUntil { get; set; }
+
+    /// <summary>Чужа фура вдарила цю (сервер переслав удар): кілька секунд стрибок пози — не порушення.</summary>
+    public void Shove(DateTimeOffset now) => ShoveUntil = now.AddSeconds(ShoveSec);
 
     /// <summary>Новий рейс від миті <paramref name="now"/>. Свіжа поза (не старша за паузу) — точка відліку, інакше відлік із першого знімка.</summary>
     public static FuraJudge Begin(DateTimeOffset now, FuraPose? last, DateTimeOffset lastAt)
@@ -106,7 +115,8 @@ public sealed class FuraJudge
             var counted = Math.Max(0, (at - (RefAt > Since ? RefAt : Since)).TotalSeconds);
             TripSec += counted;
             if (Hauling) { HaulSec += counted; HaulM += d; }
-            var jump = Rescue ? Math.Max(0, d - RescueSlackM) : d;
+            var slack = (Rescue ? RescueSlackM : 0) + (at <= ShoveUntil ? ShoveSlackM : 0);
+            var jump = Math.Max(0, d - slack);
             var kmh = jump / dt * 3.6;
             if (Void is null)
             {

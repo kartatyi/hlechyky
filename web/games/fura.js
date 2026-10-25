@@ -10,7 +10,11 @@
    Етап 2 — колона: стіл до 8 фур. Сидиш за цим столом — «🗺 Чумацький край» їде за ним (це й є свій стіл); дивишся
    чужий — «приєднатися» або «свій стіл» (CreateRoom). Приєднатися — тим самим шляхом, яким каркас садить за стіл
    (HGames.sitAt → JoinRoom; посеред рейсу сервер садить сам, бо гра LateJoin), лише кнопку дає картка: «Сісти» на
-   playing-столі каркас не показує. Нижче — живі столи fura з лобі (HGames.rooms). Кадри привидів — у гру через міст. */
+   playing-столі каркас не показує. Нижче — живі столи fura з лобі (HGames.rooms). Кадри привидів — у гру через міст.
+
+   2c — опція столу collide: «👻 привиди» (типово) чи «💥 зіткнення». Обирається при створенні столу (попап лобі або
+   перемикач у картці) і посеред гри не міняється: інший режим — це новий стіл (CreateRoom з опцією; сидиш за цим —
+   каркас спершу спитає «встати?»). Режим столу видно в шапці столу (каркас підписує нетипову опцію) і 💥 у списку живих. */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<rect x="1" y="4" width="9" height="7" rx="1" fill="var(--clay, #b5582f)"/>'
@@ -32,6 +36,11 @@
   let paintT = 0;
   const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const nicksOf = (r) => (r.seats || []).map((x) => (typeof x === 'string' ? x : x && x.nick)).filter(Boolean);
+  const MODES = { ghosts: '👻 привиди', crash: '💥 зіткнення' };
+  const modeOf = (r) => (r && r.options && r.options.collide === 'crash' ? 'crash' : 'ghosts');
+  // який режим обрано в картці для нового столу: спершу — як у столу, за яким сидиш (чи як обирав минулого разу)
+  let want = null;
+  const wantMode = (room, mine) => want || (mine ? modeOf(room) : (() => { try { return localStorage.getItem('fura.collide') === 'crash' ? 'crash' : 'ghosts'; } catch { return 'ghosts'; } })());
 
   function card(root) {
     root.innerHTML = '<div class="fura-card">'
@@ -42,6 +51,7 @@
       + '<ul class="fura-dev"><li>🛞 <b>Кермо</b> (G29 та інші) — при першому вході гра попросить відкалібрувати</li>'
       + '<li>🎮 <b>Пад / Steam Deck</b> — лівий стік кермо, R2 газ, L2 гальмо, Ⓐ зчепити</li>'
       + '<li>⌨ <b>Клавіатура</b> — W/S газ і гальмо, A/D кермо, T зчепити, C камера</li></ul>'
+      + '<div class="fura-row fura-mode"></div>'
       + '<div class="fura-row fura-btns"></div>'
       + '<div class="fura-tables"></div>'
       + '<div class="fura-err muted small"></div></div>';
@@ -59,12 +69,20 @@
     const room = ctx.room || {}, here = nicksOf(room);
     const watch = !ctx.mine && room.maxPlayers > 1;          // дивлюсь чужий стіл
     const full = here.length >= (room.maxPlayers || 1);
+    const has = modeOf(room), wm = wantMode(room, ctx.mine);
+    // перемикач режиму: за своїм столом — інший режим означає новий стіл; дивлюсь чужий — режим мого нового столу
+    const mode = root.querySelector('.fura-mode');
+    const m = '<span class="muted small">Чужі фури:</span>' + Object.keys(MODES).map((k) => '<button class="btn" type="button" data-do="mode" data-mode="' + k
+      + '" aria-pressed="' + (k === wm) + '"' + (k === wm ? ' style="outline:2px solid var(--accent, #d08a2c);font-weight:700"' : '') + '>' + MODES[k] + '</button>').join('')
+      + '<span class="muted small">' + (ctx.mine || watch ? 'за цим столом — ' + MODES[has] : '') + '</span>';
+    if (mode && mode._html !== m) { mode.innerHTML = m; mode._html = m; }
     let b = '';
     if (watch) {
       if (!full) b += '<button class="btn fura-go" type="button" data-do="join" data-room="' + esc(room.id) + '">🚚 Приєднатися до колони'
-        + (here.length ? ' (' + here.map(esc).join(', ') + ')' : '') + '</button>';
-      b += '<button class="btn fura-go' + (full ? '' : ' fura-go2') + '" type="button" data-do="own">🗺 Свій стіл у краю</button>';
-    } else b += '<button class="btn fura-go" type="button" data-do="kray">🗺 Чумацький край</button>';
+        + (here.length ? ' (' + here.map(esc).join(', ') + ')' : '') + (has === 'crash' ? ' 💥' : '') + '</button>';
+      b += '<button class="btn fura-go' + (full ? '' : ' fura-go2') + '" type="button" data-do="own">🗺 Свій стіл у краю' + (wm === 'crash' ? ' 💥' : '') + '</button>';
+    } else if (ctx.mine && wm !== has) b += '<button class="btn fura-go" type="button" data-do="own">🗺 Новий стіл: ' + MODES[wm] + '</button>';
+    else b += '<button class="btn fura-go" type="button" data-do="kray">🗺 Чумацький край' + (has === 'crash' ? ' 💥' : '') + '</button>';
     b += '<button class="btn fura-go fura-go2" type="button" data-do="polygon">🚧 Полігон</button>';
     if (btns._html !== b) { btns.innerHTML = b; btns._html = b; }
 
@@ -74,7 +92,7 @@
     if (list.length) {
       t = '<div class="fura-tables-h">🚚 У рейсі зараз</div>' + list.map((r) => {
         const ns = nicksOf(r), free = ns.length < r.maxPlayers;
-        return '<div class="fura-table"><span>' + ns.map(esc).join(', ') + ' <span class="muted small">' + ns.length + '/' + r.maxPlayers + '</span></span>'
+        return '<div class="fura-table"><span>' + (modeOf(r) === 'crash' ? '<span title="зіткнення">💥</span> ' : '') + ns.map(esc).join(', ') + ' <span class="muted small">' + ns.length + '/' + r.maxPlayers + '</span></span>'
           + (free ? '<button class="btn" type="button" data-do="sit" data-room="' + esc(r.id) + '">приєднатися</button>' : '<span class="muted small">повна колона</span>') + '</div>';
       }).join('');
     }
@@ -85,6 +103,11 @@
     const k = b.dataset.do, err = root.querySelector('.fura-err');
     if (err) err.textContent = '';
     if (k === 'kray' || k === 'polygon') return start(root, b, k);
+    if (k === 'mode') {
+      want = b.dataset.mode;
+      try { localStorage.setItem('fura.collide', want); } catch { /* пусто */ }
+      return paint(root);
+    }
     if (k === 'join' || k === 'sit') {
       // Кнопку не вимикаємо самі: sitAt крутить «підсідаю…» через busy (app.js), а той на вимкненій кнопці мовчки
       // нічого не робить — JoinRoom так і не йшов (25.10, живий баг зі зведення). Спершу autoStart: вид «я за столом»
@@ -99,7 +122,7 @@
     try {
       if (k === 'own') {
         b.textContent = '⏳ Ставимо стіл…';
-        const r = await HGames.call('CreateRoom', 'fura', {});
+        const r = await HGames.call('CreateRoom', 'fura', { collide: wantMode(ctxNow && ctxNow.room, false) });
         if (r && r.ok && r.roomId) { autoStart = r.roomId; HGames.openAt(r.roomId); }
       }
     } finally { b.disabled = false; b.textContent = label; }
@@ -149,7 +172,7 @@
       hint: '{dpad} кермо · R2 газ · L2 гальмо · {a} зчепити',
     },
     mount(root, ctx) {
-      ctxNow = ctx; card(root);
+      ctxNow = ctx; want = null; card(root);   // новий стіл — перемикач знову показує його режим
       clearInterval(paintT);
       paintT = setInterval(() => { if (root.isConnected) paint(root); }, 2000);   // лобі міняється й без нашого виду
     },
