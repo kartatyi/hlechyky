@@ -146,6 +146,8 @@ export function buildModels(THREE, scene) {
     },
     tWheels, rWheels, legs, wheelPivot, jug,
     setCabin(on) { ext.visible = !on; cabin.visible = on; },
+    /** Фари (L): у колоні їх бачать і інші — прапорець 2 у позі. */
+    setLights(on) { lamp.emissiveIntensity = on ? 2.4 : 0.9; },
     setLegs(down) { legs.position.y = down ? 0 : 0.55; legs.scale.y = down ? 1 : 0.5; },
     /** Борт причепа під вантаж замовлення: колір смуги й підпис. */
     setCargo(cargo) {
@@ -154,6 +156,56 @@ export function buildModels(THREE, scene) {
       side.needsUpdate = true; sideR.needsUpdate = true;
     },
     tmpQ,
+  };
+}
+
+/** Чужа фура колони — «привид»: та сама форма грубо (кабіна, рама, кузов, по шість коліс), без салону й текстур, щоб
+ *  вісім фур коштували менше за одну свою. Осі ті самі, що в buildModels; фари, стоп і поворот кольору — з прапорців кадру. */
+export function buildGhost(THREE, scene, color) {
+  const mats = [];
+  const M = (c, extra) => { const m = new THREE.MeshLambertMaterial({ color: c, flatShading: true, ...(extra || {}) }); mats.push(m); return m; };
+  const geos = [];
+  const box = (g, w, h, d, x, y, z, m) => { const geo = new THREE.BoxGeometry(w, h, d); geos.push(geo); const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); g.add(o); return o; };
+  const paint = M(color), dark = M('#2a2b2e'), glass = M('#26394d'), cream = M('#efe6d2'), tyre = M('#1d1d1f'),
+    lamp = M('#fff3c4', { emissive: '#ffe7a0', emissiveIntensity: 0.25 }), red = M('#d93a2b', { emissive: '#ff2a12', emissiveIntensity: 0.15 });
+  const wheelGeo = new THREE.CylinderGeometry(1, 1, 1, 8); geos.push(wheelGeo);
+  wheelGeo.rotateZ(Math.PI / 2);
+  const wheel = (g, x, y, z, r, w) => { const o = new THREE.Mesh(wheelGeo, tyre); o.scale.set(w, r, r); o.position.set(x, y, z); g.add(o); return o; };
+
+  const tractor = new THREE.Group();
+  box(tractor, 2.5, 2.6, 2.2, 0, 1.0, 2.1, paint);
+  box(tractor, 2.3, 0.55, 1.5, 0, 2.55, 1.9, paint);
+  box(tractor, 2.2, 0.95, 0.06, 0, 1.55, 3.2, glass);
+  box(tractor, 2.5, 0.38, 0.3, 0, -0.27, 3.12, dark);
+  box(tractor, 1.1, 0.32, 5.7, 0, -0.18, -0.55, dark);
+  for (const s of [1, -1]) { box(tractor, 0.36, 0.2, 0.06, s * 0.88, -0.05, 3.27, lamp); box(tractor, 0.25, 0.14, 0.06, s * 0.9, -0.15, -3.42, red); }
+  const tw = TRACTOR.wheels.map(([x, y, z], i) => wheel(tractor, x, y - 0.42, z, TRACTOR.wheelR, i >= 2 ? 0.62 : 0.38));
+
+  const trailer = new THREE.Group();
+  box(trailer, TRAILER.w, TRAILER.h, TRAILER.len, 0, TRAILER.h / 2, 0, cream);
+  box(trailer, TRAILER.w + 0.02, 0.3, TRAILER.len - 0.4, 0, 0.35, 0, paint);                    // смуга колонника
+  box(trailer, 1.1, 0.26, 13.0, 0, -0.14, 0, dark);
+  for (const s of [1, -1]) box(trailer, 0.3, 0.14, 0.06, s * 0.95, -0.35, -6.83, red);
+  const rw = TRAILER.wheels.map(([x, y, z]) => wheel(trailer, x, y - 0.5, z, TRAILER.wheelR, 0.62));
+
+  for (const g of [tractor, trailer]) g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+  scene.add(tractor, trailer);
+  let flags = -1;
+  return {
+    tractor, trailer, wheels: tw.concat(rw),
+    /** f: 1 сигнал, 2 фари, 4 стоп. */
+    setFlags(f) {
+      if (f === flags) return;
+      flags = f;
+      lamp.emissiveIntensity = f & 2 ? 2.2 : 0.25;
+      red.emissiveIntensity = f & 4 ? 2.4 : 0.15;
+    },
+    setVisible(on) { tractor.visible = trailer.visible = on; },
+    dispose() {
+      scene.remove(tractor, trailer);
+      for (const g of geos) g.dispose();
+      for (const m of mats) m.dispose();
+    },
   };
 }
 
