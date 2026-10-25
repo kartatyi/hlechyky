@@ -362,6 +362,40 @@ public class ShatkuyTests(Xunit.Abstractions.ITestOutputHelper output)
     }
 
     [Fact]
+    public void Calibrate_scores_with_party_bots()
+    {
+        // SHATKUY_CALIB=1: соло-режими ботом «разом» трьох рівнів — для ціни черепка й порогів ачівок
+        if (Environment.GetEnvironmentVariable("SHATKUY_CALIB") != "1") return;
+        foreach (var id in new[] { "shatkuy", "shatkuy-fair", "shatkuy-daily" })
+            foreach (var lvl in new[] { LiveBots.Level.Easy, LiveBots.Level.Normal, LiveBots.Level.Hard })
+            {
+                var scores = new List<int>();
+                var info = new List<string>();
+                for (var seed = 1; seed <= 12; seed++)
+                {
+                    var h = new RoomHarness(id, seed: seed, services: RoomHarness.WithService(new ShatkuyDailyBoard(null)));
+                    Assert.True(h.Solo("бот" + seed).Ok);
+                    var g = (ShatkuyGame)h.Room.Game;
+                    Go(h, g);
+                    var bot = new ShatkuyBot(lvl, seed);
+                    for (var i = 0; i < 40_000 && g.Phase == ShatkuyGame.PhGo; i++)
+                    {
+                        var f = g.Field;
+                        var cuts = bot.Think(f, g.GameNow, g.GameNow);
+                        if (cuts.Count > 0) h.Input(0, "cut", new { c = cuts.Select(c => new[] { c.Id, c.W, c.Precise ? 1 : 0 }).ToArray() });
+                        h.Tick();
+                    }
+                    scores.Add(g.Score);
+                    info.Add($"{g.Score}/{g.GameNow / 1000}s/s{g.Field.BestStreak}");
+                }
+                scores.Sort();
+                var line = $"{id} {lvl}: медіана {scores[scores.Count / 2]} [{string.Join(" ", info)}]";
+                output.WriteLine(line);
+                File.AppendAllText(Path.Combine(Path.GetTempPath(), "shatkuy-calib2.txt"), line + Environment.NewLine);
+            }
+    }
+
+    [Fact]
     public void Daily_played_day_stays_played_after_reload()
     {
         var table = new ShatkuyDailyBoard(null);

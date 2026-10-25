@@ -16,10 +16,10 @@ public abstract class ShatkuyGame : Game
     public const string PhReady = "ready", PhGo = "go", PhOver = "over";
     public const string WhyMiss = "miss", WhyGlek = "glek", WhyTime = "time", WhyLeft = "left";
     /// <summary>Пороги ачівок (specs/shatkuy.md §6): v2 — ще серія 50 («Срібний серп») і 300 у Класиці («Вогняне лезо»).</summary>
-    public const int ComboAch = 6, ClassicAch = 250, BigAch = 25, CleanAch = 150, StreakAch = 50, FireAch = 300;
+    public const int ComboAch = 6, ClassicAch = 400, BigAch = 25, CleanAch = 350, StreakAch = 50, FireAch = 600;   // v2: очки ×4–5 проти v1
     public const string AchStreak = "shatkuy-streak", AchFire = "shatkuy-fire";
     /// <summary>Черепків за кожні стільки очок (через денну стелю нагород), не більше <see cref="MaxShards"/> за партію.</summary>
-    public const int PointsPerShard = 50, MaxShards = 10;
+    public const int PointsPerShard = 250, MaxShards = 10;   // v2: було 50, очки виросли ×4–5
 
     protected abstract ShatkuyMode Mode { get; }
     protected static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);

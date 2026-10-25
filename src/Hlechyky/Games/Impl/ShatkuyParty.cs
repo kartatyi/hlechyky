@@ -279,27 +279,31 @@ public sealed class ShatkuyBot(LiveBots.Level level, int seed)
     readonly Dictionary<int, int> _plan = [];
     int _w = 1_000_000, _bigAt;
 
-    int Reaction => level switch { LiveBots.Level.Easy => 520, LiveBots.Level.Hard => 230, _ => 340 };
-    double Skip => level switch { LiveBots.Level.Easy => 0.22, LiveBots.Level.Hard => 0.04, _ => 0.1 };
-    double GlekSlip => level switch { LiveBots.Level.Easy => 0.12, LiveBots.Level.Hard => 0.02, _ => 0.05 };
-    double Exact => level switch { LiveBots.Level.Easy => 0.05, LiveBots.Level.Hard => 0.3, _ => 0.15 };
+    int Reaction => level switch { LiveBots.Level.Easy => 560, LiveBots.Level.Hard => 300, _ => 420 };
+    double Skip => level switch { LiveBots.Level.Easy => 0.24, LiveBots.Level.Hard => 0.08, _ => 0.15 };
+    double GlekSlip => level switch { LiveBots.Level.Easy => 0.12, LiveBots.Level.Hard => 0.03, _ => 0.07 };
+    double Exact => level switch { LiveBots.Level.Easy => 0.02, LiveBots.Level.Hard => 0.12, _ => 0.06 };
+    /// <summary>Велетня/великого кавуна б'є не частіше: людина не молотить по ньому щокадру.</summary>
+    (int, int) BigGap => level switch { LiveBots.Level.Easy => (380, 640), LiveBots.Level.Hard => (200, 360), _ => (280, 480) };
 
     public List<ShatkuyCut> Think(ShatkuyField f, int t, int g)
     {
         var cuts = new List<ShatkuyCut>();
         var w = ++_w;
+        // коли в повітрі тісно, людина губить плоди: кожен понад три — +5 % пропустити
+        var crowd = Math.Max(0, f.Flying(g).Count(x => !x.Big && !x.Glek) - 3) * 0.05;
         foreach (var fr in f.Flying(g))
         {
             if (fr.Big)
             {
                 if (g - fr.At < Reaction || t < _bigAt) continue;
-                _bigAt = t + _rng.Next(150, 300);
+                _bigAt = t + _rng.Next(BigGap.Item1, BigGap.Item2);
                 cuts.Add(new ShatkuyCut(fr.Id, ++_w, false));
                 continue;
             }
             if (!_plan.TryGetValue(fr.Id, out var at))
             {
-                var skip = fr.Glek ? _rng.NextDouble() >= GlekSlip : _rng.NextDouble() < Skip;
+                var skip = fr.Glek ? _rng.NextDouble() >= GlekSlip : _rng.NextDouble() < Skip + crowd;
                 at = skip ? -1 : fr.At + Reaction + _rng.Next(0, 250);
                 _plan[fr.Id] = at;
             }

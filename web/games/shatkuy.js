@@ -51,7 +51,7 @@
   const isBig = (k) => k === 'B' || k === 'P';
   /// Пропущене, що не промах: зубчик, перець (пече, але без життя), глек, великі.
   const noMiss = (k) => k === 'v' || k === 'h' || k === 'G' || isBig(k);
-  const PRECISE = 0.28;   // точний удар: відрізок змаху ближче за 0,28 r від центру
+  const PRECISE = 0.14, PRECISE_SPEED = 500, PRECISE_BONUS = 2;   // точний удар: пряма змаху ближче за 0,14 r від центру, змах ≥ 500 пікс/с — +2
   const FROST_MS = 5000, DOUBLE_MS = 7000;
 
   const MODES = {
@@ -843,11 +843,11 @@
       const p = where(st, f, g);
       if (!p || p.s > 1.05 || p.y > st.g.H + p.r * 0.6) continue;
       // глек — тісніше: зачепити його краєм не має бути легко; решта — по всьому малюнку (#68: «не з першого разу»)
-      if (segDist(p.x, p.y, ax, ay, bx, by) <= p.r * (f.k === 'G' ? 0.8 : 1.05) + slack) cut(st, f, p, { dx: bx - ax, dy: by - ay }, aimed(p, ax, ay, bx, by));
+      if (segDist(p.x, p.y, ax, ay, bx, by) <= p.r * (f.k === 'G' ? 0.8 : 1.05) + slack) cut(st, f, p, { dx: bx - ax, dy: by - ay }, speed >= PRECISE_SPEED && aimed(p, ax, ay, bx, by));
       else if (isBig(f.k)) f.inBlade = false;
     }
   }
-  /// Точний удар: напрям змаху проходить через центр плоду (≤ 0,28 r від прямої) і центр не позаду змаху.
+  /// Точний удар: напрям змаху проходить через центр плоду (≤ 0,14 r від прямої) і центр не позаду змаху.
   /// Пряму, а не сам відрізок: перший відрізок, що зачепив плід, ще не дійшов до центру, а змах — пряма.
   function aimed(p, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy);
@@ -913,7 +913,7 @@
     st.wCount++; st.wPos = { x: p.x, y: p.y };
     // ціна × серія (сервер ще скаже точно) + комбо + точний, усе × золоте
     const v = cur(st), sm = (K(st).series || []).length ? (v && v.mult) || 1 : 1;
-    const base = ((K(st).pts || {})[f.k] || 1) * sm + (precise ? 1 : 0);
+    const base = ((K(st).pts || {})[f.k] || 1) * sm + (precise ? PRECISE_BONUS : 0);
     let gain = base;
     if (st.wCount === 3) gain += 3; else if (st.wCount > 3) gain += 1;
     gain *= mult;

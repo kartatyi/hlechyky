@@ -10,6 +10,8 @@ public readonly record struct ShatkuyCut(int Id, int W, bool Precise);
 /// </summary>
 public sealed class ShatkuyField(ShatkuyMode mode)
 {
+    /// <summary>Точний удар (клієнт: пряма змаху ≤ 0,14 r від центру й змах ≥ 500 пікс/с): рідкісний, тож дорожчий.</summary>
+    public const int PreciseBonus = 2;
     public ShatkuyMode Mode { get; } = mode;
     ShatkuyPlan? _plan;
     readonly Dictionary<int, ShatkuyFruit> _byId = [];
@@ -234,7 +236,7 @@ public sealed class ShatkuyField(ShatkuyMode mode)
         if (c >= 3) { LastCombo = c; LastComboT = t; }
         BestCombo = Math.Max(BestCombo, c >= 3 ? c : 0);
         if (_combo.Count > 12) foreach (var old in _combo.Keys.Where(k => k < w - 8).ToList()) _combo.Remove(old);
-        if (precise) { gain += 1; Precise++; }
+        if (precise) { gain += PreciseBonus; Precise++; }
         Score += gain * dbl;
         switch (f.K)
         {

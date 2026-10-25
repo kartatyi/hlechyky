@@ -194,13 +194,13 @@ public class ShatkuyV2Tests
     }
 
     [Fact]
-    public void Precise_flag_adds_one_only_to_a_fresh_plain_cut()
+    public void Precise_flag_adds_a_bonus_only_to_a_fresh_plain_cut()
     {
         var (h, g) = Go("shatkuy-zen");
         var a = WaitFor(h, g, f => ShatkuyCore.Price(f.K) == 1 && f.K != ShatkuyCore.Pumpkin && f.K != ShatkuyCore.Garlic);
         var before = g.Score;
         Assert.True(h.Act(0, "cut", new { c = new[] { new[] { a.Id, ++_w, 1 } } }).Ok);
-        Assert.Equal(before + 2, g.Score);
+        Assert.Equal(before + 1 + ShatkuyField.PreciseBonus, g.Score);
         Assert.Equal(1, g.Precise);
         // уже розрізаний з прапорцем — нічого
         Assert.False(h.Act(0, "cut", new { c = new[] { new[] { a.Id, ++_w, 1 } } }).Ok);
