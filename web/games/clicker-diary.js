@@ -1,21 +1,26 @@
 /*
-  Поради Дядька Глека в самому Гончарному колі (аналітика кола, етап 4). Частина ядра clicker.js.
-  Усі графіки й літопис — на окремій сторінці #gonchar (web/gonchar.js): у колі для них замало місця (25.10 користувач).
-  Тут лишається те, що треба просто біля кола:
-  - згортна картка «🏺 Глек радить» угорі «Майстерні»: поради з GET /api/games/clicker/diary?glek=1 (вже словами),
-    кнопки «Постав» (глину — одразу) / «Показати» (вкладка) і «Потім» (дія glek — сховати на добу),
-    а внизу — «📈 Увесь літопис →»;
-  - плашка в моменті (вид glek: глина біля кола чи перед виходом, Толока) з тими самими кнопками; сама зникає за 40 с.
+  Дядько Глек у хаті (аналітика кола, етап 4; вибір користувача 25.10 — «Глек на сцені з бульбашкою»). Частина ядра clicker.js.
+  Усі графіки й літопис — на окремій сторінці #gonchar (web/gonchar.js). Тут — лише Глек:
+  - маленький глечик-Глек у лівому нижньому куті сцени (шар api.layer front). Є свіжі поради — на ньому крапка;
+  - клік по Глеку — бульбашка з однією порадою за раз (‹ 1 / 3 ›), кнопки «Постав» (глину — одразу) / «Показати»
+    (вкладка), «Потім» (дія glek — сховати на добу) і «📈 Літопис кола»; поради — GET /api/games/clicker/diary?glek=1;
+  - підказка в моменті (вид glek: глина біля кола чи перед виходом, Толока) — Глек підстрибує й сам відкриває
+    бульбашку з нею; за 30 с бульбашка ховається.
 */
 (() => {
   if (!window.HClicker || !window.HClicker.part) return;
 
   const LOAD_MS = 120000;
+  const MOMENT_MS = 30000;
+  const SEEN_LS = 'clk.glek.seen';
   /// Куди веде кнопка поради (where з ClickerAdvisor): глину ставимо одразу, решта — вкладка.
   const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire' };
 
   const myNick = (st) => (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
   const goLabel = (where) => (String(where).startsWith('clay:') ? 'Постав' : 'Показати');
+  const sig = (tips) => tips.map((t) => t.kind + ':' + t.text).join('|');
+  const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватне вікно */ } };
 
   function load(st, force) {
     if (st.glekBusy || !st.mine || (!force && Date.now() - (st.glekAt || 0) < LOAD_MS)) return;
@@ -23,7 +28,12 @@
     st.glekAt = Date.now();
     fetch('/api/games/clicker/diary?glek=1', { headers: { 'X-Nick': encodeURIComponent(myNick(st)) } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && d.ok) { st.glekTips = Array.isArray(d.glek) ? d.glek : []; paint(st, window.HClicker.api); } })
+      .then((d) => {
+        if (!d || !d.ok) return;
+        st.glekTips = Array.isArray(d.glek) ? d.glek : [];
+        if (st.glekI >= st.glekTips.length) st.glekI = 0;
+        paint(st, window.HClicker.api);
+      })
       .catch(() => { /* мережа — спробуємо пізніше */ })
       .finally(() => { st.glekBusy = false; });
   }
@@ -48,63 +58,100 @@
     });
   }
 
-  /// Місце картки — угорі «Майстерні», над перемикачами ×1/×10: там вирішують, що робити далі.
-  function place(st) {
-    const pane = st.el && st.el.querySelector('.clk-pane[data-pane="shop"]');
-    if (!pane || !st.glekEl) return;
-    if (pane.firstElementChild !== st.glekEl) pane.prepend(st.glekEl);
+  // ---------- Глек і бульбашка ----------
+
+  function build(st, api) {
+    if (st.glekBox && st.glekBox.isConnected) return;
+    const host = api.layer(st, 'front', 'glek');
+    host.innerHTML = '<button type="button" class="clkgl-glek" aria-label="Дядько Глек радить"><img src="/static/glek.svg" alt=""><i hidden></i></button>'
+      + '<div class="clkgl-bubble" role="dialog" aria-label="Порада Дядька Глека" hidden></div>';
+    st.glekBox = host;
+    st.glekBtn = host.querySelector('.clkgl-glek');
+    st.glekDot = st.glekBtn.querySelector('i');
+    st.glekBub = host.querySelector('.clkgl-bubble');
+    // Глек — не коло: натиск по ньому не крутить коло й не ловить нічого під ним.
+    for (const ev of ['pointerdown', 'mousedown', 'touchstart']) {
+      host.addEventListener(ev, (e) => { if (e.target.closest('.clkgl-glek, .clkgl-bubble')) e.stopPropagation(); }, { passive: true });
+    }
+    st.glekBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (!st.glekBub.hidden && !st.glekMoment) { close(st); return; }
+      st.glekMoment = null;
+      open(st, api);
+    };
+  }
+
+  function close(st) {
+    if (st.glekBub) st.glekBub.hidden = true;
+    st.glekMoment = null;
+    clearTimeout(st.glekT);
+  }
+
+  /// Бульбашка: підказка в моменті (якщо є) або порада з карток — одна за раз.
+  function open(st, api) {
+    const tips = st.glekTips || [];
+    const m = st.glekMoment;
+    if (!m && !tips.length) {
+      st.glekBub.innerHTML = '<div class="clkgl-t">Поки все добре — грай далі, я підкажу, коли буде що.</div>'
+        + '<div class="clkgl-foot"><a href="#gonchar">📈 Літопис кола</a><button type="button" class="clkgl-x" aria-label="Закрити">✕</button></div>';
+    } else {
+      const t = m || tips[Math.min(st.glekI || 0, tips.length - 1)];
+      const esc = (x) => api.esc(st, x);
+      const nav = !m && tips.length > 1
+        ? '<span class="clkgl-nav"><button type="button" data-step="-1" aria-label="Попередня">‹</button>' + ((st.glekI || 0) + 1) + ' / ' + tips.length
+          + '<button type="button" data-step="1" aria-label="Наступна">›</button></span>' : '';
+      st.glekBub.innerHTML = '<div class="clkgl-t">' + esc(t.text) + '</div>'
+        + '<div class="clkgl-act"><button type="button" class="primary small" data-go>' + goLabel(t.where) + '</button>'
+        + '<button type="button" class="ghost small" data-later>Потім</button>' + nav + '</div>'
+        + '<div class="clkgl-foot"><a href="#gonchar">📈 Літопис кола</a><button type="button" class="clkgl-x" aria-label="Закрити">✕</button></div>';
+      st.glekBub.querySelector('[data-go]').onclick = () => { go(st, api, t.where); close(st); };
+      st.glekBub.querySelector('[data-later]').onclick = () => { later(st, api, t.kind); close(st); };
+      for (const b of st.glekBub.querySelectorAll('[data-step]')) {
+        b.onclick = () => { st.glekI = ((st.glekI || 0) + +b.dataset.step + tips.length) % tips.length; open(st, api); };
+      }
+    }
+    st.glekBub.querySelector('.clkgl-x').onclick = () => close(st);
+    st.glekBub.hidden = false;
+    // Відкрив — значить бачив: крапка гасне, доки поради не зміняться.
+    lsSet(SEEN_LS, sig(tips));
+    if (st.glekDot) st.glekDot.hidden = true;
+  }
+
+  /// «📈 Літопис» у рядку під лічильником (поруч із «🏆 Майстер дня»): постійний вхід на сторінку #gonchar.
+  function chip(st) {
+    const rr = st.el && st.el.querySelector('.clk-rr');
+    if (!rr) return;
+    if (!st.glekChip) {
+      st.glekChip = document.createElement('a');
+      st.glekChip.className = 'clkgl-chip small';
+      st.glekChip.href = '#gonchar';
+      st.glekChip.title = 'Літопис кола: як ти граєш і що робити далі';
+      st.glekChip.textContent = '📈 Літопис';
+    }
+    if (st.glekChip.parentElement !== rr) rr.appendChild(st.glekChip);
   }
 
   function paint(st, api) {
+    if (!st.mine || !st.front) return;
+    chip(st);
+    build(st, api);
     const tips = st.glekTips || [];
-    if (!tips.length || !st.mine) { if (st.glekEl) st.glekEl.hidden = true; return; }
-    if (!st.glekEl) {
-      st.glekEl = document.createElement('section');
-      st.glekEl.className = 'clkdy-card';
-      st.glekEl.dataset.fold = 'glek.tips';
-    }
-    st.glekEl.hidden = false;
-    place(st);
-    const esc = (x) => api.esc(st, x);
-    const html = api.foldHead('🏺 Дядько Глек радить <span class="muted small">· ' + tips.length + '</span>')
-      + '<div class="clkdy-body">' + tips.map((t) => '<div class="clkdy-tip"><div class="clkdy-tipt">' + esc(t.text) + '</div><div class="clkdy-tipb">'
-        + '<button type="button" class="primary small" data-go="' + esc(t.where) + '">' + goLabel(t.where) + '</button>'
-        + '<button type="button" class="ghost small" data-later="' + esc(t.kind) + '">Потім</button></div></div>').join('')
-      + '<a class="clkdy-all" href="#gonchar">📈 Увесь літопис кола →</a></div>';
-    if (api.swap(st.glekEl, html)) {
-      for (const b of st.glekEl.querySelectorAll('[data-go]')) b.onclick = () => go(st, api, b.dataset.go);
-      for (const b of st.glekEl.querySelectorAll('[data-later]')) b.onclick = () => later(st, api, b.dataset.later);
-    }
+    st.glekDot.hidden = !tips.length || lsGet(SEEN_LS) === sig(tips);
+    if (!st.glekBub.hidden && !st.glekMoment) open(st, api);   // поради оновились, поки бульбашка відкрита
   }
 
-  /// Підказка в моменті (вид glek): плашка над карткою кола з тими самими кнопками; сама зникає за 40 с.
+  /// Підказка в моменті (вид glek): Глек підстрибує й сам каже її в бульбашці.
   function moment(st, api, g) {
-    if (!g || !g.id || st.glekSeen === g.id || !st.el) return;
+    if (!g || !g.id || st.glekSeen === g.id || !st.mine || !st.front) return;
     st.glekSeen = g.id;
-    if (st.glekPop) st.glekPop.remove();
-    const el = document.createElement('div');
-    el.className = 'clkdy-pop';
-    el.setAttribute('role', 'status');
-    el.innerHTML = '<span class="clkdy-popi">🏺</span><div class="clkdy-popt">' + api.esc(st, g.text) + '</div><div class="clkdy-tipb">'
-      + '<button type="button" class="primary small">' + goLabel(g.where) + '</button>'
-      + '<button type="button" class="ghost small">Потім</button><button type="button" class="ghost small" aria-label="Закрити">✕</button></div>';
-    const [bGo, bLater, bX] = el.querySelectorAll('button');
-    // Над самою карткою кола, а не по центру вікна: праворуч бувають балачки, і кнопки ховались би під ними.
-    function fit() {
-      if (!el.isConnected || !st.el) return;
-      const r = st.el.getBoundingClientRect();
-      el.style.left = Math.max(8, r.left + 10) + 'px';
-      el.style.width = Math.max(240, Math.min(r.width - 20, window.innerWidth - 16)) + 'px';
-    }
-    const close = () => { el.remove(); if (st.glekPop === el) st.glekPop = null; window.removeEventListener('resize', fit); };
-    bGo.onclick = () => { go(st, api, g.where); close(); };
-    bLater.onclick = () => { later(st, api, g.kind); close(); };
-    bX.onclick = close;
-    st.el.appendChild(el);
-    st.glekPop = el;
-    fit();
-    window.addEventListener('resize', fit);
-    setTimeout(close, 40000);
+    build(st, api);
+    st.glekMoment = g;
+    open(st, api);
+    st.glekBtn.classList.remove('hop');
+    void st.glekBtn.offsetWidth;            // перезапуск анімації стрибка
+    st.glekBtn.classList.add('hop');
+    clearTimeout(st.glekT);
+    st.glekT = setTimeout(() => { if (st.glekMoment === g) close(st); }, MOMENT_MS);
   }
 
   window.HClicker.part({
@@ -114,12 +161,13 @@
     mount(st) {
       st.glekTips = [];
       st.glekAt = 0;
-      st.glekEl = null;
+      st.glekI = 0;
+      st.glekBox = null;
     },
 
     update(st, v, api) {
+      paint(st, api);
       if (v && v.glek !== undefined) moment(st, api, v.glek);
-      place(st);
     },
 
     slow(st) {
@@ -127,8 +175,10 @@
     },
 
     unmount(st) {
-      if (st.glekPop) { st.glekPop.remove(); st.glekPop = null; }
-      if (st.glekEl) { st.glekEl.remove(); st.glekEl = null; }
+      clearTimeout(st.glekT);
+      if (st.glekBox) st.glekBox.innerHTML = '';
+      if (st.glekChip) { st.glekChip.remove(); st.glekChip = null; }
+      st.glekBox = st.glekBtn = st.glekBub = st.glekDot = null;
       st.glekTips = [];
     },
   });

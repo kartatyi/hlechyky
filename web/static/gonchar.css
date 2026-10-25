@@ -14,11 +14,23 @@ body.route-gonchar #viewGonchar { display: flex; animation: fadein .15s ease-out
 
 .gnr-glek { border: 1px solid color-mix(in srgb, var(--clay) 70%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--clay) 14%, var(--panel)), var(--panel)); }
 .gnr-glek-head { display: flex; gap: 12px; align-items: center; }
-.gnr-glek-head .gnr-ava { font-size: 2em; line-height: 1; }
+.gnr-glek-head .gnr-ava { width: 48px; height: 48px; flex: none; }
 .gnr-glek-head h2 { margin: 0; font-family: var(--display); font-size: 1.15em; }
 .gnr-glek-head .muted { font-size: .85em; }
-.gnr-glek ol { margin: 12px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; line-height: 1.5; }
-.gnr-glek li::marker { color: var(--accent); font-weight: 700; }
+.gnr-tips { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gnr-tips li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px;
+  border-radius: 12px; background: color-mix(in srgb, var(--bg2) 70%, transparent); line-height: 1.45; }
+.gnr-tips .ic { font-size: 1.5em; text-align: center; }
+.gnr-tips .gain { text-align: right; font-weight: 800; color: var(--accent); font-size: 1.15em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gnr-tips .gain small { display: block; font-weight: 500; font-size: .62em; color: var(--muted); }
+.gnr-mine { display: block; margin-top: 4px; color: var(--muted); font-size: .88em; text-decoration: none; text-align: center; }
+.gnr-mine:hover, .gnr-mine:focus-visible { color: var(--accent); }
+.gnr-mine b { color: var(--text); }
+@media (max-width: 560px) {
+  .gnr-tips li { grid-template-columns: 28px minmax(0, 1fr); }
+  .gnr-tips .gain { grid-column: 2; text-align: left; }
+  .gnr-tips .gain small { display: inline; margin-left: 6px; }
+}
 
 .gnr-card { min-width: 0; }
 .gnr-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
