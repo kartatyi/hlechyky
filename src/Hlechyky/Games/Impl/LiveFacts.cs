@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Hlechyky.Games.Economy;
 using Microsoft.Data.Sqlite;
@@ -46,6 +47,10 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
         "same_track" or "fav_track" => "track",
         "worst_game" or "best_game" => "game_all",
         "skipped_by_others" or "skip_rate" => "skipped",
+        "clicker_ahead" or "clicker_digits" => "clicker_big",
+        "master_lead" or "master_chase" or "master_wins" => "master",
+        "daily_full" or "daily_streak" or "daily_top" => "daily_good",
+        "azart_down" or "azart_up" or "jackpot" => "azart",
         _ => kind,
     };
 
@@ -54,7 +59,7 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
     /// ці майже не міняються, тож і звучать рідше — у них свій кулдаун (<c>LiveAds:LoreCooldownHours</c>).
     /// </summary>
     public static bool IsLore(string kind) => kind is "gachi" or "first_order" or "top_artist" or "fav_track" or "worst_game"
-        or "best_game" or "orders_total" or "skip_rate" or "liker" or "chatty" or "ach_total";
+        or "best_game" or "orders_total" or "skip_rate" or "liker" or "chatty" or "ach_total" or "clicker_digits" or "master_wins";
 
     // =================================================================================================================
     // Факти про одного гравця
@@ -85,6 +90,12 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
             First(c, key, say, list);
             Lore(c, nick, say, list);
             LoreGames(c, nick, key, say, list);
+            // свіже (25.10, записка #65): коло v12, «Майстер дня», щоденні з надбавками, азарт
+            // Таблиці кола й «Майстра дня» заводять їхні сервіси — без них (стара база, тести) факту просто нема.
+            Safe(() => Clicker(c, key, say, present ?? [], list));
+            Safe(() => Master(c, nick, key, say, list));
+            Safe(() => DailyGood(c, key, say, list));
+            Safe(() => Azart(c, key, say, list));
         });
         return list.OrderByDescending(f => f.Juice).ToList();
     }
@@ -223,7 +234,7 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
     {
         var me = Rows(c, "SELECT balance, earned, spent FROM wallets WHERE nick_key = $k",
             r => (Balance: r.GetInt64(0), Earned: r.GetInt64(1), Spent: r.GetInt64(2)), ("$k", key)).FirstOrDefault();
-        if (me.Earned >= 300 && me.Spent * 50 <= me.Earned)
+        if (me.Earned >= 3000 && me.Spent * 50 <= me.Earned)   // ×10 з 25.10 (Economy:Boost)
             list.Add(LiveFact.Of("hoarder", 0.55, ("nick", say), ("n", me.Earned), ("m", me.Spent), ("b", me.Balance)));
         var others = present.Select(Auth.NickKey).Where(k => k != key).Distinct().ToList();
         if (others.Count > 0 && me.Balance > 0)
@@ -231,7 +242,8 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
             var balances = others.Select(k => Scalar(c, "SELECT COALESCE(MAX(balance), 0) FROM wallets WHERE nick_key = $k", ("$k", k))).ToList();
             if (me.Balance > balances.Max())
                 list.Add(LiveFact.Of("rich", 0.45, ("nick", say), ("n", me.Balance)));
-            else if (me.Balance < balances.Min())
+            // «Бідний» — лише справді: після ×10 у всіх тисячі, і «найскромніші 17 506» звучали б як знущання
+            else if (me.Balance < balances.Min() && me.Balance < 5000 && me.Balance * 2 < balances.Min())
                 list.Add(LiveFact.Of("poor", 0.45, ("nick", say), ("n", me.Balance)));
         }
         if (me.Balance > 0)
@@ -242,8 +254,8 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
     {
         var (n, sum) = Rows(c, "SELECT COUNT(*), COALESCE(SUM(price), 0) FROM lavka_owned WHERE nick_key = $k AND source = 'buy' AND at >= $w",
             r => (r.GetInt32(0), r.GetInt64(1)), ("$k", key), ("$w", Week)).FirstOrDefault();
-        if (n >= 1 && sum >= 300)
-            list.Add(LiveFact.Of("lavka_buys", 0.35 + sum / 5000.0, ("nick", say), ("n", n), ("m", sum)));
+        if (n >= 1 && sum >= 3000)   // ×10 з 25.10: 300 черепків у Лавці тепер — дрібниця
+            list.Add(LiveFact.Of("lavka_buys", 0.35 + sum / 50000.0, ("nick", say), ("n", n), ("m", sum)));
     }
 
     void Stakes(SqliteConnection c, string key, string say, List<LiveFact> list)
@@ -422,6 +434,143 @@ public sealed class LiveFacts(Db db, GameNames names, IClock clock)
         var ach = Scalar(c, "SELECT COUNT(*) FROM achievements WHERE nick_key = $k", ("$k", key));
         if (ach >= 40)
             list.Add(LiveFact.Of("ach_total", 0.2, ("nick", say), ("n", ach)));
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Свіже: коло v12, «Майстер дня», щоденні, азарт (25.10.2026, записка #65 — «щось мега старе звучить»)
+    // -----------------------------------------------------------------------------------------------------------------
+
+    /// <summary>Збереження гончарного кола гравця (game_state «clicker:ключ»): серія впійманих глеків і глеки за весь час.</summary>
+    static (int Streak, double Total)? ClickerSave(SqliteConnection c, string key)
+    {
+        var json = Rows(c, "SELECT json FROM game_state WHERE key = $k", r => r.GetString(0), ("$k", "clicker:" + key)).FirstOrDefault();
+        if (json is null) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var streak = root.TryGetProperty("fallStreak", out var s) && s.TryGetInt32(out var si) ? si : 0;
+            var total = root.TryGetProperty("total", out var t) && t.TryGetDouble(out var td) ? td : 0;
+            return (streak, total);
+        }
+        catch (JsonException) { return null; }
+    }
+
+    static void Safe(Action read)
+    {
+        try { read(); }
+        catch (SqliteException) { /* таблиці ще нема */ }
+    }
+
+    /// <summary>Скільки цифр у числі глеків: «число на 42 цифри» Глек вимовить, а 4,58·10⁴¹ — ні.</summary>
+    static int Digits(double n) => n < 1 ? 1 : (int)Math.Floor(Math.Log10(n)) + 1;
+
+    void Clicker(SqliteConnection c, string key, string say, IReadOnlyCollection<string> present, List<LiveFact> list)
+    {
+        if (ClickerSave(c, key) is not { } me) return;
+        if (me.Streak >= 200)
+            list.Add(LiveFact.Of("clicker_streak", 0.4 + Math.Min(0.3, me.Streak / 5000.0), ("nick", say), ("n", me.Streak)));
+        if (me.Total >= 1e15)
+            list.Add(LiveFact.Of("clicker_digits", 0.3, ("nick", say), ("d", Digits(me.Total))));
+        // Хто з присутніх відстає за колом найбільше — у скільки разів (або на скільки цифр, коли разів уже не вимовити)
+        var behind = present.Where(p => Auth.NickKey(p) != key && !Auth.IsGuestNick(p)).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(p => (Nick: p, Save: ClickerSave(c, Auth.NickKey(p))))
+            .Where(x => x.Save is { Total: > 0 } s && me.Total >= 2 * s.Total)
+            .Select(x => (x.Nick, Ratio: me.Total / x.Save!.Value.Total))
+            .OrderBy(x => x.Ratio).FirstOrDefault();   // найближчий з тих, кого обігнав, — це живіше за «у мільярд разів»
+        if (behind.Nick is not null && me.Total >= 1e6)
+        {
+            var values = new List<(string, object)> { ("nick", say), ("rival", Say(behind.Nick)) };
+            if (behind.Ratio < 1000) values.Add(("x", (int)Math.Round(behind.Ratio)));
+            else values.Add(("d", Digits(me.Total) - Digits(me.Total / behind.Ratio)));
+            list.Add(LiveFact.Of("clicker_ahead", 0.5 + Math.Min(0.2, Math.Log10(behind.Ratio) / 20), [.. values]));
+        }
+    }
+
+    /// <summary>«Майстер дня» у колі (clicker_day): хто веде сьогодні, хто наступає, скільки днів уже вигравав.</summary>
+    void Master(SqliteConnection c, string nick, string key, string say, List<LiveFact> list)
+    {
+        var day = ClickerDayService.DayOf(clock.UtcNow);
+        var board = Rows(c, "SELECT nick_key, nick, points FROM clicker_day WHERE day = $d ORDER BY points DESC, at",
+            r => (Key: r.GetString(0), Nick: r.GetString(1), Points: r.GetInt32(2)), ("$d", day));
+        var i = board.FindIndex(r => r.Key == key);
+        if (i == 0 && board.Count >= 2 && board[0].Points >= 10)
+            list.Add(LiveFact.Of("master_lead", 0.45 + Math.Min(0.25, (board[0].Points - board[1].Points) / 100.0),
+                ("nick", say), ("n", board[0].Points), ("m", board[1].Points), ("rival", Say(board[1].Nick))));
+        else if (i > 0 && board[i].Points >= 10)
+            list.Add(LiveFact.Of("master_chase", 0.4, ("nick", say), ("n", board[0].Points - board[i].Points), ("place", i + 1),
+                ("rival", Say(board[0].Nick))));
+        var wins = Scalar(c, "SELECT COUNT(*) FROM clicker_day_paid WHERE winner = $n", ("$n", nick));
+        if (wins >= 2)
+            list.Add(LiveFact.Of("master_wins", 0.3 + Math.Min(0.2, wins / 50.0), ("nick", say), ("n", wins)));
+    }
+
+    /// <summary>
+    /// Щоденні з надбавками (25.10): «повний глек» сьогодні, найдовша жива серія, приз топу, що прийшов уночі.
+    /// Невдачі дня — у <see cref="DailyTries"/>.
+    /// </summary>
+    void DailyGood(SqliteConnection c, string key, string say, List<LiveFact> list)
+    {
+        var day = Days.Of(clock.UtcNow);
+        var start = Iso(Daily.StartOfDayUtc(day));
+        var full = Scalar(c, "SELECT COUNT(*) FROM ledger WHERE nick_key = $k AND reason = 'daily-full' AND created_at >= $s", ("$k", key), ("$s", start));
+        if (full > 0)
+        {
+            var solved = Scalar(c, "SELECT COUNT(*) FROM daily_results WHERE nick_key = $k AND day = $d AND solved = 1", ("$k", key), ("$d", day));
+            list.Add(LiveFact.Of("daily_full", 0.45, ("nick", say), ("n", solved)));
+        }
+        var top = Rows(c, """
+            SELECT reason, delta FROM ledger WHERE nick_key = $k AND reason LIKE 'daily-top:%' AND created_at >= $s ORDER BY delta DESC LIMIT 1
+            """, r => (Reason: r.GetString(0), Amount: r.GetInt32(1)), ("$k", key), ("$s", start)).FirstOrDefault();
+        if (top.Reason is not null)
+            list.Add(LiveFact.Of("daily_top", 0.45, ("nick", say), ("game", Title(top.Reason["daily-top:".Length..])), ("n", top.Amount)));
+        // Найдовша серія, що ще живе (сьогодні чи вчора розгадано): дні з daily_results, без сервісу Daily
+        var days = Rows(c, "SELECT game, day FROM daily_results WHERE nick_key = $k AND solved = 1 AND day >= $f",
+            r => (Game: r.GetString(0), Day: r.GetString(1)), ("$k", key),
+            ("$f", DateOnly.ParseExact(day, "yyyy-MM-dd").AddDays(-120).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        var best = (Game: "", N: 0);
+        foreach (var g in days.GroupBy(d => d.Game))
+        {
+            var set = g.Select(d => d.Day).ToHashSet(StringComparer.Ordinal);
+            var d0 = DateOnly.ParseExact(day, "yyyy-MM-dd");
+            if (!set.Contains(day)) d0 = d0.AddDays(-1);
+            var n = 0;
+            while (set.Contains(d0.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))) { n++; d0 = d0.AddDays(-1); }
+            if (n > best.N) best = (g.Key, n);
+        }
+        if (best.N >= 7)
+            list.Add(LiveFact.Of("daily_streak", 0.35 + Math.Min(0.3, best.N / 60.0), ("nick", say), ("n", best.N), ("game", Title(best.Game))));
+    }
+
+    /// <summary>Азарт сьогодні (з 06:00): сальдо всіх автоматів і столів, де черепки ставлять у дім, і Скарбничка.</summary>
+    static readonly (string Head, string Title)[] AzartGames =
+    [
+        ("slot", "слоти"), ("lelka", "Лелека"), ("plinko", "Горохова дошка"), ("roulette", "Рулетка"),
+        ("kolo", "Гончарне колесо"), ("kavuny", "Кавуни"), ("blackjack", "Двадцять одно"),
+    ];
+
+    void Azart(SqliteConnection c, string key, string say, List<LiveFact> list)
+    {
+        var rows = Rows(c, """
+            SELECT substr(reason, 1, instr(reason || ':', ':') - 1), SUM(delta), SUM(CASE WHEN delta < 0 THEN -delta ELSE 0 END)
+            FROM ledger WHERE nick_key = $k AND created_at >= $d AND (reason LIKE 'slot-%' OR reason LIKE 'lelka-%' OR reason LIKE 'plinko-%'
+                OR reason LIKE 'roulette-%' OR reason LIKE 'kolo-%' OR reason LIKE 'kavuny-%' OR reason LIKE 'blackjack-%')
+            GROUP BY 1
+            """, r => (Head: r.GetString(0), Sum: r.GetInt64(1), Staked: r.GetInt64(2)), ("$k", key), ("$d", Today));
+        var jackpot = rows.Where(r => r.Head == "slot-jackpot").Sum(r => r.Sum);
+        if (jackpot > 0)
+            list.Add(LiveFact.Of("jackpot", 0.8, ("nick", say), ("n", jackpot)));
+        string GameOf(string head) => head[..Math.Max(0, head.IndexOf('-'))];
+        var byGame = rows.Where(r => r.Head.Contains('-')).GroupBy(r => GameOf(r.Head))
+            .Select(g => (Game: g.Key, Sum: g.Sum(r => r.Sum), Staked: g.Sum(r => r.Staked))).ToList();
+        var saldo = byGame.Sum(g => g.Sum);
+        if (byGame.Count == 0) return;
+        var main = byGame.OrderByDescending(g => g.Staked).First();
+        var title = AzartGames.FirstOrDefault(a => a.Head == main.Game).Title ?? main.Game;
+        if (saldo <= -3000)
+            list.Add(LiveFact.Of("azart_down", 0.45 + Math.Min(0.3, -saldo / 100000.0), ("nick", say), ("n", -saldo), ("game", title)));
+        else if (saldo >= 3000)
+            list.Add(LiveFact.Of("azart_up", 0.45 + Math.Min(0.3, saldo / 100000.0), ("nick", say), ("n", saldo), ("game", title)));
     }
 
     // =================================================================================================================
