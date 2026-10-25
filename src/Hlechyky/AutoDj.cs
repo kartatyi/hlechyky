@@ -19,14 +19,32 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
     IOptionsMonitor<AutoDjOptions> options, ILogger<AutoDj> log)
 {
     /// <param name="SeedId">Трек-сід, від якого прийшла порада: якщо кімната її відкине, цей сід на якийсь час слабшає.</param>
-    public sealed record Pick(TrackInfo Track, string Reason, string? SeedId = null);
+    /// <param name="Source">
+    /// Звідки кандидат: <c>related</c> (схожі артисти), <c>radio</c> (YT радіо), <c>lastfm</c> — через «+», якщо збіглися
+    /// кілька; <c>archive</c> — свій архів, <c>seedquery</c> — стартовий пошук. Лягає в <c>plays.pick_source</c>.
+    /// </param>
+    public sealed record Pick(TrackInfo Track, string Reason, string? SeedId = null, string? Source = null);
 
     /// <param name="Weight">1 — повноцінний сід; менше — лише підмішується.</param>
     public sealed record Seed(TrackInfo Track, double Weight);
 
     /// <param name="List">Від чого шукати схоже.</param>
     /// <param name="Bias">Наскільки тиснути смаком кімнати: 1 — в ефірі вибір самого Глека, менше — трек поставила людина.</param>
-    public sealed record Seeds(IReadOnlyList<Seed> List, double Bias = 1);
+    /// <param name="Listening">Хто зараз слухає на сайті: зважаємо на відмови саме цих людей (див. <see cref="CountStrikes"/>).</param>
+    public sealed record Seeds(IReadOnlyList<Seed> List, double Bias = 1, IReadOnlyCollection<string>? Listening = null);
+
+    /// <summary>
+    /// Що кімнаті не зайшло. <paramref name="Artists"/> — дробові «штрафи» артистам (від 2 — артиста не беремо),
+    /// <paramref name="Seeds"/> — скільки разів відкинули поради від сіда, <paramref name="Songs"/> і
+    /// <paramref name="TrackIds"/> — пісні, яких поки не пропонувати зовсім.
+    /// </summary>
+    public sealed record Strikes(Dictionary<string, double> Artists, Dictionary<string, int> Seeds, HashSet<string> Songs, HashSet<string> TrackIds)
+    {
+        public bool Song(string key, string? trackId) => Songs.Contains(key) || (trackId is not null && TrackIds.Contains(trackId));
+    }
+
+    /// <summary>Скільки важить для артиста одна відмова від його пісні: щоб артиста прибрало, треба чотири різні пісні.</summary>
+    public const double ArtistStrike = 0.5;
 
     sealed class Cand
     {
@@ -61,37 +79,98 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
     /// Своє, давно забуте: трек, який кімната вже ставила або лайкала, а в ефірі його не було вже
     /// добу. Нічого не коштує, зате гарантовано вертає Глека у свою колію.
     /// </summary>
-    public Pick? ArchivePick(IReadOnlySet<string> excludeIds)
+    public Pick? ArchivePick(IReadOnlySet<string> excludeIds, IReadOnlyCollection<string>? listening = null)
     {
         var banned = db.BannedIds();
+        var st = StrikesFor(listening);
         var pool = db.ArchiveTracks(DateTimeOffset.UtcNow.AddHours(-Math.Max(24, O.NoRepeatHours)), 40)
-            .Where(t => !excludeIds.Contains(t.Id) && !banned.Contains(t.Id)
+            .Where(t => !excludeIds.Contains(t.Id) && !banned.Contains(t.Id) && !st.Song(KeyOf(t.Artist, t.Title), t.Id)
                         && (t.DurationSec == 0 || t.DurationSec <= O.MaxDurationSeconds))
             .ToList();
         if (pool.Count == 0) return null;
         var t = pool[_rng.Next(pool.Count)];
         log.LogInformation("auto-DJ archive pick: {Label}", t.Label);
-        return new Pick(t, "з нашого архіву");
+        return new Pick(t, "з нашого архіву", Source: "archive");
     }
 
-    /// <summary>Скільки разів за <see cref="AutoDjOptions.FeedbackHours"/> кімната відкинула поради артиста і поради від сіда.</summary>
-    public (Dictionary<string, int> Artists, Dictionary<string, int> Seeds) Strikes() =>
-        CountStrikes(db.DjFeedbackSince(DateTimeOffset.UtcNow.AddHours(-Math.Max(1, O.FeedbackHours))));
-
-    public static (Dictionary<string, int> Artists, Dictionary<string, int> Seeds) CountStrikes(IEnumerable<(string ArtistKey, string? SeedId)> rows)
+    /// <summary>Що не зайшло тим, хто зараз слухає (нікого — тоді всім), за останні <see cref="AutoDjOptions.SongFeedbackDays"/>.</summary>
+    public Strikes StrikesFor(IReadOnlyCollection<string>? listening)
     {
-        var list = rows.ToList();
-        return (list.GroupBy(r => r.ArtistKey).ToDictionary(g => g.Key, g => g.Count()),
-                list.Where(r => r.SeedId is not null).GroupBy(r => r.SeedId!).ToDictionary(g => g.Key, g => g.Count()));
+        var now = DateTimeOffset.UtcNow;
+        var days = Math.Max(O.SongFeedbackDays, Math.Max(1, O.FeedbackHours) / 24.0);
+        return CountStrikes(db.DjFeedbackSince(now.AddDays(-days)), listening, now, O);
     }
 
-    /// <summary>Сіди, від яких кімната вже двічі відкинула поради: якорем їх поки не беремо.</summary>
-    public HashSet<string> WornOutSeeds() => Strikes().Seeds.Where(kv => kv.Value >= 2).Select(kv => kv.Key).ToHashSet();
+    /// <summary>
+    /// Рахує відмови. Що змінилося 25.10 (дані з 13.09 по 25.10: 85 % відмов від однієї людини, 25 із 60 найчастіше
+    /// відкинутих артистів вона ж сама лайкає, 321 її скіп — менш ніж за 40 с після попереднього):
+    /// <list type="bullet">
+    /// <item>Відмова — передусім про пісню: її не пропонуємо <see cref="AutoDjOptions.FeedbackHours"/>, а відкинуту двічі —
+    /// <see cref="AutoDjOptions.SongFeedbackDays"/>. Артист отримує лише <see cref="ArtistStrike"/>.</item>
+    /// <item>Серія скіпів однієї людини (кожен наступний не пізніше <see cref="AutoDjOptions.BurstSeconds"/>) — це «не той
+    /// настрій»: артисти серії ділять один штраф на всіх, а сід (напрям) отримує не більше двох.</item>
+    /// <item>Зважаємо на відмови лише тих, хто зараз слухає: не слухає — його смак ефіру не стосується. Нікого нема —
+    /// рахуємо всіх. Записи без ніка рахуються завжди.</item>
+    /// </list>
+    /// </summary>
+    public static Strikes CountStrikes(IEnumerable<Db.DjFeedbackRow> rows, IReadOnlyCollection<string>? listening, DateTimeOffset now, AutoDjOptions o)
+    {
+        var here = listening is { Count: > 0 } ? new HashSet<string>(listening.Select(Auth.NickKey)) : null;
+        var all = rows.Where(r => here is null || r.Nick is null || here.Contains(Auth.NickKey(r.Nick))).ToList();
+        var fresh = now.AddHours(-Math.Max(1, o.FeedbackHours));
+        var recent = all.Where(r => r.At >= fresh).ToList();
+
+        var artists = new Dictionary<string, double>();
+        var seeds = new Dictionary<string, int>();
+        foreach (var burst in Bursts(recent, TimeSpan.FromSeconds(Math.Max(0, o.BurstSeconds))))
+        {
+            foreach (var r in burst)
+                artists[r.ArtistKey] = artists.GetValueOrDefault(r.ArtistKey) + ArtistStrike / burst.Count;
+            foreach (var g in burst.Where(r => r.SeedId is not null).GroupBy(r => r.SeedId!))
+                seeds[g.Key] = seeds.GetValueOrDefault(g.Key) + Math.Min(2, g.Count());
+        }
+
+        var songs = new HashSet<string>();
+        var ids = new HashSet<string>();
+        foreach (var r in recent)
+        {
+            if (r.Song is { Length: > 0 } s) songs.Add(s);
+            if (r.TrackId is { Length: > 0 } id) ids.Add(id);
+        }
+        foreach (var g in all.Where(r => r.Song is { Length: > 0 }).GroupBy(r => r.Song!).Where(g => g.Count() >= 2)) songs.Add(g.Key);
+        foreach (var g in all.Where(r => r.TrackId is { Length: > 0 }).GroupBy(r => r.TrackId!).Where(g => g.Count() >= 2)) ids.Add(g.Key);
+        return new Strikes(artists, seeds, songs, ids);
+    }
+
+    /// <summary>Серії відмов однієї людини: наступна не пізніше <paramref name="gap"/> після попередньої. Без ніка — кожна окремо.</summary>
+    static IEnumerable<List<Db.DjFeedbackRow>> Bursts(IEnumerable<Db.DjFeedbackRow> rows, TimeSpan gap)
+    {
+        foreach (var byNick in rows.GroupBy(r => r.Nick is null ? null : Auth.NickKey(r.Nick)))
+        {
+            if (byNick.Key is null || gap <= TimeSpan.Zero)
+            {
+                foreach (var r in byNick) yield return [r];
+                continue;
+            }
+            List<Db.DjFeedbackRow>? cur = null;
+            foreach (var r in byNick.OrderBy(r => r.At))
+            {
+                if (cur is not null && r.At - cur[^1].At <= gap) { cur.Add(r); continue; }
+                if (cur is not null) yield return cur;
+                cur = [r];
+            }
+            if (cur is not null) yield return cur;
+        }
+    }
+
+    /// <summary>Сіди, від яких присутні вже двічі відкинули поради: якорем їх поки не беремо.</summary>
+    public HashSet<string> WornOutSeeds(IReadOnlyCollection<string>? listening = null) =>
+        StrikesFor(listening).Seeds.Where(kv => kv.Value >= 2).Select(kv => kv.Key).ToHashSet();
 
     /// <summary>Записати, що порада не зайшла: «Не те» або швидкий скіп.</summary>
     public void Reject(TrackInfo track, string? seedId, string kind, string? nick)
     {
-        db.AddDjFeedback(ArtistKey(track.Artist), seedId, kind, nick);
+        db.AddDjFeedback(ArtistKey(track.Artist), seedId, kind, nick, KeyOf(track.Artist, track.Title), track.Id);
         log.LogInformation("auto-DJ feedback: {Kind} {Label} (seed {Seed}) by {Nick}", kind, track.Label, seedId ?? "—", nick ?? "—");
     }
 
@@ -103,15 +182,16 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
         var played = db.PlayedTrackIdsSince(DateTimeOffset.UtcNow.AddHours(-O.NoRepeatHours));
         var banned = db.BannedIds();
         var recentArtists = db.RecentArtists(3).Select(ArtistKey).ToHashSet();
-        var (artistStrikes, seedStrikes) = Strikes();
-        bool Blocked(string id) => excludeIds.Contains(id) || played.Contains(id) || banned.Contains(id);
+        var strikes = StrikesFor(s.Listening);
+        var (artistStrikes, seedStrikes) = (strikes.Artists, strikes.Seeds);
+        bool Blocked(string id) => excludeIds.Contains(id) || played.Contains(id) || banned.Contains(id) || strikes.TrackIds.Contains(id);
 
         if (s.List.Count == 0)
         {
             if (string.IsNullOrWhiteSpace(O.SeedQuery)) return picks;
             var found = await ytm.SearchSongsAsync(O.SeedQuery, 10, ct);
             foreach (var r in found.Where(r => !Blocked(r.Id) && Fits(r)).OrderBy(_ => _rng.Next()).Take(count))
-                picks.Add(new Pick(ToTrack(r), $"стартовий сід «{O.SeedQuery}»"));
+                picks.Add(new Pick(ToTrack(r), $"стартовий сід «{O.SeedQuery}»", Source: "seedquery"));
             return picks;
         }
 
@@ -147,7 +227,7 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
                     {
                         var songs = related[i]?.TopSongs ?? [];
                         for (var j = 0; j < Math.Min(5, songs.Count); j++)
-                            Add(seed, songs[j].Artist, songs[j].Title, w * 0.9 * Math.Pow(0.92, i) * (1 - 0.1 * j), "схожі артисти", songs[j]);
+                            Add(seed, songs[j].Artist, songs[j].Title, w * 0.9 * Math.Pow(0.92, i) * (1 - 0.1 * j), "related", songs[j]);
                     }
                 }
             }
@@ -166,7 +246,7 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
                 }
                 var pos = 0;
                 foreach (var r in radio.Where(r => r.Id != t.Id))
-                    Add(seed, r.Artist, r.Title, w * O.RadioWeight * Math.Pow(0.97, pos++), "YT радіо", r);
+                    Add(seed, r.Artist, r.Title, w * O.RadioWeight * Math.Pow(0.97, pos++), "radio", r);
             }
 
             // 3) Last.fm similar tracks: agreement with the others is a strong signal, its own finds come with a lower weight
@@ -184,7 +264,7 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
             foreach (var si in sim)
             {
                 var known = cands.ContainsKey(KeyOf(si.Artist, si.Title));
-                Add(seed, si.Artist, si.Title, w * (known ? 0.8 : 0.45) * si.Match, "Last.fm", null);
+                Add(seed, si.Artist, si.Title, w * (known ? 0.8 : 0.45) * si.Match, "lastfm", null);
             }
         }
 
@@ -192,6 +272,7 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
 
         var pool = cands.Values
             .Where(c => c.Yt is null || (!Blocked(c.Yt.Id) && Fits(c.Yt)))
+            .Where(c => !strikes.Songs.Contains(c.Key))
             .Where(c => artistStrikes.GetValueOrDefault(ArtistKey(c.Artist)) < 2)
             .ToList();
         foreach (var c in pool)
@@ -228,11 +309,12 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "resolve failed for {A} - {T}", c.Artist, c.Title); }
             }
-            if (yt is null || Blocked(yt.Id) || !Fits(yt) || !chosen.Add(yt.Id)) continue;
+            if (yt is null || Blocked(yt.Id) || !Fits(yt) || strikes.Songs.Contains(KeyOf(yt.Artist, yt.Title)) || !chosen.Add(yt.Id)) continue;
             chosenArtists.Add(ArtistKey(c.Artist));
             var from = seedById[c.TopSeed];
-            log.LogInformation("auto-DJ pick: {Label} ({Sources}; ×{Mult:F2}; від {Seed})", c.Artist + " - " + c.Title, string.Join("+", c.Sources), c.Mult, from.Label);
-            picks.Add(new Pick(ToTrack(yt), $"схоже на {from.Label}", from.Id));
+            var sources = string.Join("+", c.Sources.Order(StringComparer.Ordinal));
+            log.LogInformation("auto-DJ pick: {Label} ({Sources}; ×{Mult:F2}; від {Seed})", c.Artist + " - " + c.Title, sources, c.Mult, from.Label);
+            picks.Add(new Pick(ToTrack(yt), $"схоже на {from.Label}", from.Id, sources));
         }
         return picks;
     }
@@ -274,7 +356,8 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
     bool Fits(SearchResult r) => r.DurationSec == 0 || r.DurationSec <= O.MaxDurationSeconds;
 
     public static string ArtistKey(string artist) => YtMusicClient.Norm(YtMusicClient.FirstArtist(artist));
-    static string KeyOf(string artist, string title) => ArtistKey(artist) + "|" + YtMusicClient.Norm(title);
+    /// <summary>Ключ пісні для порад і відмов (<c>dj_feedback.song</c>): перший артист і назва без розділових знаків.</summary>
+    public static string KeyOf(string artist, string title) => ArtistKey(artist) + "|" + YtMusicClient.Norm(title);
 
     public static TrackInfo ToTrack(SearchResult r) =>
         new(r.Id, r.Title, r.Artist, r.DurationSec, r.ThumbUrl, $"https://music.youtube.com/watch?v={r.Id}", r.Album);

@@ -11,7 +11,12 @@ public class RoomTasteTests
     static TrackInfo T(string id, string artist, string title) =>
         new(id, title, artist, 200, null, "https://music.youtube.com/watch?v=" + id, null);
 
-    static RoomTaste Rig(TempDb db, AutoDjOptions? o = null) => new(db.Db, new FixedOptions<AutoDjOptions>(o ?? new AutoDjOptions()));
+    /// <summary>«микола» — акаунт: смак кімнати рахується лише з людей з акаунтами.</summary>
+    static RoomTaste Rig(TempDb db, AutoDjOptions? o = null)
+    {
+        db.Db.AddAccount("микола", "h", "s");
+        return new(db.Db, new FixedOptions<AutoDjOptions>(o ?? new AutoDjOptions()));
+    }
 
     /// <summary>Ставить трек в ефір від імені людини або самого Глека — рівно так, як це робить рушій.</summary>
     static void Play(TempDb db, TrackInfo t, string source)

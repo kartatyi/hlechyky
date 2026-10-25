@@ -133,8 +133,12 @@ public sealed class AutoDjOptions
     public int MinListeners { get; set; } = 5000;
     /// <summary>Те саме для кириличних треків: своя сцена на Last.fm сильно недорахована.</summary>
     public int MinListenersCyr { get; set; } = 1000;
-    /// <summary>Скільки годин пам'ятати «Не те» і швидкі скіпи авто-треків.</summary>
+    /// <summary>Скільки годин пам'ятати «Не те» і швидкі скіпи авто-треків (для артиста й сіда; саму пісню — не пропонувати).</summary>
     public int FeedbackHours { get; set; } = 48;
+    /// <summary>Пісню, яку відкинули двічі, не пропонувати стільки днів.</summary>
+    public int SongFeedbackDays { get; set; } = 30;
+    /// <summary>Відмови однієї людини з проміжком до стількох секунд — одна серія «не той настрій», а не окремі вироки.</summary>
+    public int BurstSeconds { get; set; } = 60;
     /// <summary>Скіп авто-треку раніше за стільки секунд — сигнал «не те», а не «вже набридло».</summary>
     public int QuickSkipSeconds { get; set; } = 45;
 }

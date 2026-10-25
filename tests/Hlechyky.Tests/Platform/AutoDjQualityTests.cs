@@ -40,10 +40,13 @@ public class AutoDjQualityTests
         db.Db.Exec("INSERT INTO dj_feedback(artist_key, seed_id, kind, created_at) VALUES('sadsvit', 'uOld', 'dismiss', $t)",
             ("$t", DateTimeOffset.UtcNow.AddDays(-5).ToString("o")));
 
-        var (artists, seeds) = AutoDj.CountStrikes(db.Db.DjFeedbackSince(DateTimeOffset.UtcNow.AddHours(-48)));
+        // ніхто не слухає — рахуємо всіх; серії вимкнено (BurstSeconds = 0), тож кожна відмова — по ArtistStrike
+        var st = AutoDj.CountStrikes(db.Db.DjFeedbackSince(DateTimeOffset.UtcNow.AddDays(-30)), null, DateTimeOffset.UtcNow,
+            new AutoDjOptions { BurstSeconds = 0 });
+        var (artists, seeds) = (st.Artists, st.Seeds);
 
-        Assert.Equal(2, artists["dannyho"]);
-        Assert.Equal(1, artists["velvet smoke"]);
+        Assert.Equal(2 * AutoDj.ArtistStrike, artists["dannyho"], 3);
+        Assert.Equal(AutoDj.ArtistStrike, artists["velvet smoke"], 3);
         Assert.False(artists.ContainsKey("sadsvit"), "відмова п'ятиденної давнини вже не має тиснути");
         Assert.Equal(2, seeds["uSeedTrack1"]);
         Assert.Single(seeds);
