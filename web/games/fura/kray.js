@@ -163,24 +163,46 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     roads.push({ id: 'yard-' + p.id, kind: 'yard', a: p.node, bxz: [ex, ez], via: [] });
   }
   const kindOf = (r) => (r.kind === 'yard' ? { width: 9, speed: 30, bumps: 0, title: 'під\'їзд' } : kinds[r.kind]);
+  // профіль: згладити (вікно ±w зразків по 4 м) і обмежити ухил
+  const profile = (pts, w, grade) => {
+    const y = blur(pts.map((p) => sampleGrid(H0, p.x, p.z)), w);
+    const n = y.length, step = pts[n - 1].s / Math.max(1, n - 1) || 4;
+    for (let i = 1; i < n; i++) y[i] = Math.max(y[i - 1] - grade * step, Math.min(y[i - 1] + grade * step, y[i]));
+    for (let i = n - 2; i >= 0; i--) y[i] = Math.max(y[i + 1] - grade * step, Math.min(y[i + 1] + grade * step, y[i]));
+    return y;
+  };
   for (const r of roads) {
     const a = map.nodes[r.a], b = r.bxz || map.nodes[r.b];
     r.pts = curve([a, ...(r.via || []), b], 4);
-    const k = kindOf(r);
-    r.width = k.width;
-    const w = r.kind === 'highway' ? 22 : r.kind === 'dirt' ? 6 : 14;          // ±зразків (×4 м)
-    const grade = r.kind === 'highway' ? 0.05 : r.kind === 'dirt' ? 0.1 : 0.07;
-    let y = blur(r.pts.map((p) => sampleGrid(H0, p.x, p.z)), w);
-    const n = y.length, step = r.pts[n - 1].s / Math.max(1, n - 1);
-    for (let i = 1; i < n; i++) y[i] = Math.max(y[i - 1] - grade * step, Math.min(y[i - 1] + grade * step, y[i]));
-    for (let i = n - 2; i >= 0; i--) y[i] = Math.max(y[i + 1] - grade * step, Math.min(y[i + 1] + grade * step, y[i]));
-    // кінці — точно на висоту вузлів (лінійна поправка вздовж дороги)
-    const ya = nodeY[r.a], yb = r.kind === 'yard' ? nodeY[r.a] : nodeY[r.b];
-    const da = ya - y[0], db = yb - y[n - 1], L = r.pts[n - 1].s || 1;
-    r.pts.forEach((p, i) => { p.y = y[i] + lerp(da, db, p.s / L); });
-    // міст: де дорога над річкою
-    r.pts.forEach((p, i) => { p.bridge = riverDist[I(Math.round((p.x - B.x0) / CELL), Math.round((p.z - B.z0) / CELL))] < rw / 2 + 8; });
+    r.width = kindOf(r).width;
   }
+  // Траса — одним профілем через усі свої вузли: кожен шматок окремо згладжувався до висоти вузла зі своїм ухилом,
+  // і у вузлі ухил ламався — на 80 км/год причіп підкидало (25.10, j4). Вузли траси беруть висоту з цього профілю.
+  const chain = roads.filter((r) => r.kind === 'highway');
+  if (chain.length) {
+    const all = [];
+    chain.forEach((r, ci) => r.pts.forEach((p, i) => { if (ci === 0 || i > 0) all.push({ p, r, i }); }));
+    let s = 0;
+    const seq = all.map((q, i) => { if (i) s += Math.hypot(q.p.x - all[i - 1].p.x, q.p.z - all[i - 1].p.z); return { x: q.p.x, z: q.p.z, s }; });
+    const y = profile(seq, 34, 0.05);
+    all.forEach((q, i) => { q.p.y = y[i]; });
+    // перша точка кожного наступного шматка — та сама, що остання попереднього (у all її не брали)
+    for (let ci = 1; ci < chain.length; ci++) chain[ci].pts[0].y = chain[ci - 1].pts[chain[ci - 1].pts.length - 1].y;
+    for (const r of chain) { nodeY[r.a] = r.pts[0].y; nodeY[r.b] = r.pts[r.pts.length - 1].y; }
+  }
+  for (const r of roads) {
+    if (r.kind !== 'highway') {
+      const w = r.kind === 'dirt' ? 6 : 14, grade = r.kind === 'dirt' ? 0.1 : 0.07;
+      const y = profile(r.pts, w, grade), n = y.length;
+      // кінці — точно на висоту вузлів (лінійна поправка вздовж дороги): так бічна дорога сходиться з трасою рівно
+      const ya = nodeY[r.a], yb = r.kind === 'yard' ? nodeY[r.a] : nodeY[r.b];
+      const da = ya - y[0], db = yb - y[n - 1], L = r.pts[n - 1].s || 1;
+      r.pts.forEach((p, i) => { p.y = y[i] + lerp(da, db, p.s / L); });
+    }
+    // міст: де дорога над річкою
+    r.pts.forEach((p) => { p.bridge = riverDist[I(Math.round((p.x - B.x0) / CELL), Math.round((p.z - B.z0) / CELL))] < rw / 2 + 8; });
+  }
+  for (const p of places) p.y = nodeY[p.node];
   // врізати дороги: смуга рівно на профіль, далі плавний укіс; над річкою — не засипати (міст)
   const roadPts = [];
   roads.forEach((r, ri) => r.pts.forEach((p, i) => roadPts.push({ x: p.x, z: p.z, y: p.y, w: r.width, ri, i, bridge: p.bridge })));
@@ -378,18 +400,24 @@ export function buildKray(THREE, RAPIER, scene, world, quality, map) {
     // вибоїни: невеликі горбики під одним колесом
     const kb = kindOf(r).bumps;
     if (kb > 0) {
-      const every = Math.round(30 / kb);
+      const every = Math.round(14 / kb);          // м між вибоїнами: сільська ~56, ґрунтовка ~18
       for (let i = 6; i < r.pts.length - 6; i += Math.max(3, Math.round(every / 4 * (0.6 + rnd() * 0.8)))) {
         const p = r.pts[i];
         if (p.bridge) continue;
-        const off = (rnd() < 0.5 ? -1 : 1) * (0.8 + rnd() * (r.width / 2 - 1.8));
-        const x = p.x - p.tz * off, z = p.z + p.tx * off, yaw = Math.atan2(p.tx, p.tz);
-        // виступає над дорогою на 7 см (сільська) / 9 см (ґрунтовка); півтовщина горбика з заокругленням — 6 см
-        const rise = r.kind === 'dirt' ? 0.09 : 0.07;
-        const body = fixed(x, p.y + rise - 0.06, z, yaw);
-        world.createCollider(RAPIER.ColliderDesc.roundCuboid(0.55, 0.02, 0.3, 0.04).setFriction(0.9), body);
-        const patch = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.05, 0.8), mat(r.kind === 'dirt' ? '#6b5640' : '#3e4044'));
-        patch.position.set(x, p.y + lift[r.kind] + 0.005, z); patch.rotation.y = yaw; scene.add(patch);
+        // Лягає в колію: колеса їдуть у своїй смузі (центр смуги ±¼ ширини, колеса ±1 м від нього) або посередині
+        // дороги — 1,3-метрова вибоїна на ±0,75 / ±2,75 м від осі ловить і тих, і тих. Раніше — будь-де поперек,
+        // і колесо то влучало, то ні: на 40 км/год било більше, ніж на 60 (25.10).
+        const tracks = [-2.75, -0.75, 0.75, 2.75].filter((t) => Math.abs(t) < r.width / 2 - 0.4);
+        const pick = rnd() < 0.3 ? tracks : [tracks[Math.floor(rnd() * tracks.length)]];
+        for (const off of pick) {
+          const x = p.x - p.tz * off, z = p.z + p.tx * off, yaw = Math.atan2(p.tx, p.tz);
+          // виступає над дорогою на 6 см; півтовщина горбика з заокругленням — 6 см
+          const rise = 0.06;
+          const body = fixed(x, p.y + rise - 0.06, z, yaw);
+          world.createCollider(RAPIER.ColliderDesc.roundCuboid(0.61, 0.02, 0.3, 0.04).setFriction(0.9), body);
+          const patch = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.05, 0.8), mat(r.kind === 'dirt' ? '#6b5640' : '#3e4044'));
+          patch.position.set(x, p.y + lift[r.kind] + 0.005, z); patch.rotation.y = yaw; scene.add(patch);
+        }
       }
     }
   }

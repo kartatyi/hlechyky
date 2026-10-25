@@ -12,7 +12,15 @@
     + '<path d="M10 6h2.6l2.4 2.6V11h-5z" fill="var(--accent, #d08a2c)"/>'
     + '<circle cx="4" cy="12" r="1.6" fill="var(--muted, #555)"/><circle cx="12" cy="12" r="1.6" fill="var(--muted, #555)"/></svg>';
 
-  let game = null;        // запущений полігон: { stop() } з fura/main.js
+  let game = null;        // запущена гра: { stop() } з fura/main.js
+  let ctxNow = null;      // останній ctx столу: з нього міст бере вид і шле дії
+  // Міст «стіл ↔ 3D»: тихі дії (відповідь гра показує сама — тости сайту сховані під грою), телеметрія Input і вид
+  const bridge = {
+    tell: (a, p) => (ctxNow ? ctxNow.tell(a, p) : Promise.resolve(null)),
+    input: (a, p) => { if (ctxNow) ctxNow.input(a, p); },
+    view: () => (ctxNow ? ctxNow.view : null),
+    onView: null,
+  };
   let starting = false;
 
   function card(root) {
@@ -40,7 +48,8 @@
     if (err) err.textContent = '';
     try {
       const mod = await import('/games/fura/main.js');
-      game = await mod.start({ onExit: stop, mode: btn.dataset.mode });
+      bridge.onView = null;
+      game = await mod.start({ onExit: stop, mode: btn.dataset.mode, server: btn.dataset.mode === 'kray' ? bridge : null });
     } catch (e) {
       console.error('[fura]', e);
       if (err) err.textContent = 'Не завелось: ' + (e && e.message ? e.message : e);
@@ -54,6 +63,7 @@
   function stop() {
     const g = game;
     game = null;
+    bridge.onView = null;
     if (g) { try { g.stop(); } catch (e) { console.warn('[fura] stop', e); } }
   }
 
@@ -67,8 +77,11 @@
       on() { return !!game; },
       hint: '{dpad} кермо · R2 газ · L2 гальмо · {a} зчепити',
     },
-    mount(root) { card(root); },
-    update() {},
+    mount(root, ctx) { ctxNow = ctx; card(root); },
+    update(root, ctx) {
+      ctxNow = ctx;
+      if (game && bridge.onView) { try { bridge.onView(ctx.view); } catch (e) { console.warn('[fura] view', e); } }
+    },
     unmount() { stop(); },
     status() { return game ? 'на полігоні' : ''; },
   });

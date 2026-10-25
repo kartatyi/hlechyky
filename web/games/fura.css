@@ -69,6 +69,21 @@
 .fura-box select, .fura-box input[type=range] { width: 100%; }
 .fura-box label { display: block; margin-top: 10px; }
 
+/* Рейс: панель замовлення, мапа в куті, дошка */
+.fura-order { left: 16px; top: 52px; max-width: min(420px, 60vw); font-size: 13px; }
+.fura-order .fura-o1 { font-size: 15px; }
+.fura-order .fura-o2, .fura-order .fura-o3 { margin-top: 3px; }
+.fura-order .bad { color: #ffb4a8; font-weight: 700; }
+.fura-minimap { position: absolute; right: 16px; bottom: 120px; width: 200px; height: 200px; border-radius: 50%;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .45); pointer-events: none; }
+.fura-ords { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.fura-box button.fura-ord { display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px 12px; background: #2c303a; }
+.fura-box button.fura-ord:hover, .fura-box button.fura-ord:focus-visible { background: #3a4050; }
+.fura-ord .e { font-size: 30px; width: 40px; text-align: center; }
+.fura-ord .t { flex: 1; line-height: 1.35; }
+.fura-ord .p { font-weight: 800; color: #f2c94c; white-space: nowrap; }
+@media (max-width: 700px) { .fura-minimap { width: 130px; height: 130px; bottom: 96px; } .fura-order { font-size: 12px; } }
+
 .fura-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 20px;
   background: #9ec7e6; color: #20232b; }
 @media (max-width: 700px) {

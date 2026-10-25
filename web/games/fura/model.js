@@ -146,16 +146,24 @@ export function buildModels(THREE, scene) {
     tWheels, rWheels, legs, wheelPivot, jug,
     setCabin(on) { ext.visible = !on; cabin.visible = on; },
     setLegs(down) { legs.position.y = down ? 0 : 0.55; legs.scale.y = down ? 1 : 0.5; },
+    /** Борт причепа під вантаж замовлення: колір смуги й підпис. */
+    setCargo(cargo) {
+      sideTexture(THREE, cargo, side.image);
+      side.needsUpdate = true; sideMatR.map.needsUpdate = true;
+    },
     tmpQ,
   };
 }
 
-function sideTexture(THREE) {
-  const c = document.createElement('canvas');
+// колір смуги на борту за вантажем
+const STRIPE = { jugs: '#b5482f', tiles: '#2f6fa8', roof: '#a5352a', honey: '#d39a1c', hay: '#8a9a2a', salt: '#8b96a3', clay: '#7a5234', goods: '#2f8a7a' };
+
+function sideTexture(THREE, cargo, canvas) {
+  const c = canvas || document.createElement('canvas');
   c.width = 1024; c.height = 208;
   const g = c.getContext('2d');
   g.fillStyle = '#efe6d2'; g.fillRect(0, 0, 1024, 208);
-  g.fillStyle = '#b5482f'; g.fillRect(0, 168, 1024, 18);
+  g.fillStyle = (cargo && STRIPE[cargo.id]) || '#b5482f'; g.fillRect(0, 168, 1024, 18);
   g.fillStyle = '#d08a2c'; g.fillRect(0, 186, 1024, 8);
   // глечик
   g.fillStyle = '#c26a3a';
@@ -168,7 +176,8 @@ function sideTexture(THREE) {
   g.fillStyle = '#2f3a4a'; g.font = '900 88px system-ui'; g.textBaseline = 'middle';
   g.fillText('ГЛЕЧИКИ', 230, 92);
   g.fillStyle = '#6b5c46'; g.font = '600 30px system-ui';
-  g.fillText('перевезення крихкого · чумацька служба', 236, 146);
+  g.fillText(cargo ? 'вантаж: ' + cargo.title.toLowerCase() + ' · чумацька служба' : 'перевезення крихкого · чумацька служба', 236, 146);
+  if (canvas) return null;
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;

@@ -297,6 +297,39 @@ public sealed class FuraTests
     // ---------- рейс і плата ----------
 
     [Fact]
+    public void A_long_drive_to_the_trailer_does_not_eat_the_deadline()
+    {
+        // Термін — на рейс із вантажем: 25.10 перший живий рейс «запізнився», бо годинник рахував і дорогу порожняком
+        var h = Open();
+        Assert.True(h.Act(0, "take", new { id = 1 }).Ok, h.Reply.Message);
+        var order = Order(h);
+        var dock = DockOf(order);
+        var minutes = order.GetProperty("minutes").GetInt32();
+        // порожняком повільно, довше за весь термін
+        var at = (X: dock.X + 400, Z: dock.Z);
+        var ticks = (int)Math.Ceiling((minutes * 60 + 60) / 0.25);
+        for (var i = 0; i < ticks; i++)
+        {
+            at = (dock.X + 400 * (1 - (i + 1.0) / ticks), dock.Z);
+            h.Tick();
+            Pose(h, at.X, at.Z, 400.0 / (ticks * 0.25));
+        }
+        h.Tick();
+        Pose(h, dock.X, dock.Z, c: true);
+        Assert.Equal("haul", Phase(h));
+        var km = order.GetProperty("km").GetDouble();
+        var p = (dock.X, dock.Z);
+        Drive(h, ref p, (dock.X + km * 500, dock.Z), 20);
+        Drive(h, ref p, (dock.X, dock.Z), 20);
+        var target = To(order).Docks[0];
+        Drive(h, ref p, (target.X, target.Z), 20);
+        h.Tick();
+        Pose(h, target.X, target.Z, 0, c: false, ry: target.Yaw);
+        Assert.True(h.Act(0, "deliver").Ok, h.Reply.Message);
+        Assert.True(h.View(0).GetProperty("result").GetProperty("onTime").GetBoolean());
+    }
+
+    [Fact]
     public void An_honest_trip_pays_with_bonuses_and_awards_fura_n()
     {
         var h = Open();

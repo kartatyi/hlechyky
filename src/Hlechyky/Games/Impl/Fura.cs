@@ -227,7 +227,9 @@ public sealed class Fura : Game
         if (_judge.Verdict(order.Km) is { } bad) { Drop(); return ActResult.Fail(bad); }
 
         var last = _last!;
-        var onTime = _judge.TripSec <= order.Minutes * 60;
+        // Термін — на сам рейс із вантажем (від зчеплення у відправника): км у замовленні — це шлях від відправника до
+        // отримувача, а дорога порожняком до причепа в нього не входить (25.10: перший же рейс «запізнився» на 22 с саме так).
+        var onTime = _judge.HaulSec <= order.Minutes * 60;
         var exact = FuraJudge.Exact(last, to);
         var k = _judge.MinK;
         var mult = Map.CargoOf(order.Cargo)?.Mult ?? 1;

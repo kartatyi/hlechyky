@@ -165,6 +165,9 @@ export class Truck {
     }
   }
 
+  /** Де стоїть причіп: {x, z, yaw, y — земля під ним} (для place, щоб лишити причіп на місці). */
+  rbPose() { const r = this.rb.translation(); return { x: r.x, z: r.z, yaw: this.yawOf(this.rb), y: (this.ground || (() => 0))(r.x, r.z) }; }
+
   yawOf(b) { const q = b.rotation(); return Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x)); }
   yawQuat(yaw) { return { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }; }
   upOf(b) { const q = b.rotation(); return 1 - 2 * (q.x * q.x + q.z * q.z); }
@@ -216,8 +219,48 @@ export class Truck {
 
   speed() { return this.tvc.currentVehicleSpeed(); }
 
+  /** Вантаж замовлення: маса (кг) у причепі й крихкість (0 — не б'ється, 1 — глечики, 1,3 — кахлі). */
+  setCargo(mass, fragile) {
+    this.cargoCol.setMass(Math.max(500, mass || TRAILER.mass.cargo));
+    this.fragile = fragile == null ? 1 : fragile;
+  }
+
+  /**
+   * «Автозчеп»: тягач плавно (за sec с) їде під шворень і чіпляється. Плавно — бо сервер судить позу 4 рази на секунду
+   * і стрибок на 30 м прийняв би за телепорт. Поки ковзаємо, тягач ні з чим не стикається (інакше штовхнув би причіп).
+   */
+  glideUnder(sec, done) {
+    const T = this.T, r = this.rb.translation(), ry = this.yawOf(this.rb), d = TRAILER.kingpin.z - TRACTOR.fifth.z;
+    const g = this.ground || (() => 0);
+    const tx = r.x + Math.sin(ry) * d, tz = r.z + Math.cos(ry) * d;
+    const a = this.tb.translation(), q = this.tb.rotation();
+    this.glide = {
+      t: 0, sec, done,
+      p0: new T.Vector3(a.x, a.y, a.z), p1: new T.Vector3(tx, Math.max(g(tx, tz) + 1.2, r.y - 0.12), tz),
+      q0: new T.Quaternion(q.x, q.y, q.z, q.w), q1: new T.Quaternion(0, Math.sin(ry / 2), 0, Math.cos(ry / 2)),
+    };
+    for (const c of [this.cabCol, this.frameCol]) c.setCollisionGroups(0);
+  }
+
+  stepGlide(dt) {
+    const G = this.glide, T = this.T;
+    G.t += dt;
+    const k = Math.min(1, G.t / G.sec), e = k * k * (3 - 2 * k);
+    const p = new T.Vector3().lerpVectors(G.p0, G.p1, e), q = new T.Quaternion().slerpQuaternions(G.q0, G.q1, e);
+    this.tb.setTranslation(p, true); this.tb.setRotation(q, true);
+    this.tb.setLinvel({ x: 0, y: 0, z: 0 }, true); this.tb.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    if (k >= 1) {
+      this.glide = null;
+      for (const c of [this.cabCol, this.frameCol]) c.setCollisionGroups(0xFFFFFFFF);
+      this.join();
+      this.settle();
+      G.done && G.done();
+    }
+  }
+
   /** Один крок фізики керування: input з Input.poll, dt — крок (1/60). */
   drive(inp, dt) {
+    if (this.glide) { this.stepGlide(dt); return; }
     const C = TRACTOR, vc = this.tvc;
     const v = this.speed();
     const av = Math.abs(v);
@@ -308,10 +351,10 @@ export class Truck {
       const over = (x, t) => Math.max(0, Math.abs(x) - t);
       // Лінійно від перевищення: горби на 30 км/год — кілька відсотків, удар об дерево — десяток-два, а не все.
       // Пороги: трясе вгору-вниз (ями) найчутливіше, бокове — лише понад звичайний поворот, гальмо — лише різке.
-      const hurt = 3 * over(a.y, 2.0) + 0.5 * over(a.x, 4.5) + 0.8 * over(a.z, 5.0);
+      const hurt = 3 * over(a.y, 1.8) + 0.5 * over(a.x, 4.5) + 0.8 * over(a.z, 5.0);
       if (this.calm > 0) this.calm--;
       else if (hurt > 0) {
-        const loss = hurt * dt * 8;
+        const loss = hurt * dt * 8 * (this.fragile == null ? 1 : this.fragile);
         this.cargo = Math.max(0, this.cargo - loss);
         this.hit = Math.max(this.hit, loss);
       }

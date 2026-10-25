@@ -11,6 +11,8 @@ import { buildModels } from './model.js';
 import { Input, pads, isPad, looksLikeWheel, loadCalib, shortName } from './input.js';
 import { openCalib } from './calib.js';
 import { Sound } from './audio.js';
+import { Nav } from './nav.js';
+import { Trips } from './trip.js';
 
 const STEP = 1 / 60;
 const CAMS = ['chase', 'cabin', 'far'];
@@ -29,7 +31,8 @@ const store = {
 };
 
 /** mode: 'kray' — «Чумацький край» (мапа з сервера), 'polygon' — полігон етапу 0 для тренування. */
-export async function start({ onExit, mode = 'kray' } = {}) {
+/** server — міст до столу гри (fura.js): { tell(action, payload), input(action, payload), view(), onView } */
+export async function start({ onExit, mode = 'kray', server = null } = {}) {
   const app = document.createElement('div');
   app.className = 'fura-app';
   app.innerHTML = '<div class="fura-loading">' + (mode === 'kray' ? '🗺 Будуємо Чумацький край…' : '🚚 Заводимо фуру…') + '</div>';
@@ -87,6 +90,7 @@ export async function start({ onExit, mode = 'kray' } = {}) {
   }
   const truck = new Truck(THREE, RAPIER, world, scene, { spawn: SPAWN });
   truck.ground = level.height || (() => 0);
+  let trips = null, nav = null;           // рейси — лише в краю й лише зі столом (з картки гри)
   const model = buildModels(THREE, scene);
   // Промені коліс бачать лише нерухоме: ні свій тягач/причіп, ні конуси під колесами (конус штовхаємо корпусом)
   const onlyFixed = (col) => { const p = col.parent(); return !p || p.isFixed(); };
@@ -224,7 +228,7 @@ export async function start({ onExit, mode = 'kray' } = {}) {
     el.className = 'fura-modal';
     el.innerHTML = '<div class="fura-box">' + html + '</div>';
     app.appendChild(el);
-    const m = { open: true, close() { if (!m.open) return; m.open = false; el.remove(); if (modal === m) modal = null; } };
+    const m = { open: true, el, close() { if (!m.open) return; m.open = false; el.remove(); if (modal === m) modal = null; } };
     el.addEventListener('click', (e) => { if (e.target === el) m.close(); });
     modal = m;
     wire && wire(el, m);
@@ -233,17 +237,68 @@ export async function start({ onExit, mode = 'kray' } = {}) {
     return m;
   }
 
+  // Вікна з пада й керма: поки гра відкрита, pad.js кнопок не тисне (вони наші), тож водимо фокусом самі.
+  // Пад: хрестовина/стік ↑↓, Ⓐ — натиснути, Ⓑ — закрити. Кермо: пелюстки ↑↓, «зчепити» — натиснути, «меню» — закрити.
+  // Клавіатура: ↑↓ (Enter і Пробіл тиснуть кнопку самі, Esc закриває). Перший кадр вікна лише запам'ятовує, що вже
+  // натиснуто: інакше Ⓐ, що відкрив вікно, одразу натиснув би в ньому першу кнопку.
+  const navPrev = new Map();
+  let navFor = null;
+  function navModal() {
+    const el = modal && modal.el;
+    if (!el) return;
+    const fresh = navFor !== modal;
+    navFor = modal;
+    const btns = [...el.querySelectorAll('button')].filter((b) => b.offsetParent && !b.disabled);
+    let i = btns.indexOf(document.activeElement);
+    let move = 0, press = false, back = false;
+    if (input.took('ArrowDown')) move = 1;
+    if (input.took('ArrowUp')) move = -1;
+    if (input.took('Escape')) back = true;
+    const on = (gp, k) => k != null && k >= 0 && gp.buttons[k] && gp.buttons[k].pressed;
+    for (const gp of pads()) {
+      const held = new Set();
+      if (isPad(gp)) {
+        if (on(gp, 12) || (gp.axes[1] || 0) < -0.6) held.add('up');
+        if (on(gp, 13) || (gp.axes[1] || 0) > 0.6) held.add('down');
+        if (on(gp, 0)) held.add('ok');
+        if (on(gp, 1)) held.add('back');
+      } else {
+        const c = loadCalib(gp.id);
+        if (c && c.buttons) {
+          if (on(gp, c.buttons.gearDown)) held.add('up');
+          if (on(gp, c.buttons.gearUp)) held.add('down');
+          if (on(gp, c.buttons.couple)) held.add('ok');
+          if (on(gp, c.buttons.menu)) held.add('back');
+        }
+      }
+      const before = navPrev.get(gp.id) || new Set();
+      if (!fresh) for (const a of held) if (!before.has(a)) { if (a === 'up') move = -1; else if (a === 'down') move = 1; else if (a === 'ok') press = true; else back = true; }
+      navPrev.set(gp.id, held);
+    }
+    if (!btns.length) { if (back) modal.close(); return; }
+    if (move) { i = i < 0 ? 0 : (i + move + btns.length) % btns.length; btns[i].focus(); }
+    if (press) (i >= 0 ? btns[i] : btns[0]).click();
+    else if (back && modal) modal.close();
+  }
+
   function openMenu() {
     const wheels = pads().filter((p) => !isPad(p));
-    boxModal('<h3>☰ Полігон</h3>'
+    const ph = trips ? trips.phase : '';
+    const tripItems = !trips ? '<button type="button" data-m="start">↺ На старт: причіп окремо</button>'
+      + '<button type="button" data-m="startc">🔗 На старт зчепленим</button>'
+      : (ph === 'free' || ph === 'done' ? '<button type="button" data-m="board">📋 Дошка замовлень</button>'
+        + '<button type="button" data-m="depot">↺ У депо</button>'
+        : '<button type="button" data-m="board">🚚 Поточне замовлення</button>'
+        + (ph === 'pickup' ? '<button type="button" data-m="auto">🔗 Автозчеп (−10 %)</button>' : '')
+        + '<button type="button" data-m="cancel">✖ Відмовитись від замовлення</button>');
+    boxModal('<h3>☰ ' + (trips ? 'Чумацький край' : 'Полігон') + '</h3>'
       + '<div class="fura-row" style="flex-direction:column;align-items:stretch">'
       + '<button type="button" class="main" data-m="go">▶ Їхати далі</button>'
-      + '<button type="button" data-m="start">↺ На старт: причіп окремо</button>'
-      + '<button type="button" data-m="startc">🔗 На старт зчепленим</button>'
+      + tripItems
       + '<button type="button" data-m="calib">🛞 Калібрування керма' + (wheels.length ? ' (' + shortName(wheels[0].id) + ')' : '') + '</button>'
       + '<button type="button" data-m="gear">⚙ Коробка: ' + (truck.gearMode === 'auto' ? 'автомат → зробити ручну' : 'ручна → зробити автомат') + '</button>'
       + '<button type="button" data-m="help">❓ Керування</button>'
-      + '<button type="button" data-m="exit">✕ Вийти з полігона</button></div>', (el, m) => {
+      + '<button type="button" data-m="exit">✕ Вийти' + (trips ? ' (рейс чекатиме)' : ' з полігона') + '</button></div>', (el, m) => {
       el.addEventListener('click', (e) => {
         const b = e.target.closest('[data-m]');
         if (!b) return;
@@ -251,6 +306,10 @@ export async function start({ onExit, mode = 'kray' } = {}) {
         m.close();
         if (k === 'start') { truck.place(SPAWN, false); level.resetCones(); resetPoses(); }
         else if (k === 'startc') { truck.place(SPAWN, true); level.resetCones(); resetPoses(); }
+        else if (k === 'board') trips.board();
+        else if (k === 'auto') trips.auto();
+        else if (k === 'cancel') trips.cancel();
+        else if (k === 'depot') { truck.place({ tractor: SPAWN.tractor, trailer: { ...truck.rbPose() } }, false); resetPoses(); }
         else if (k === 'calib') calib();
         else if (k === 'gear') { if (truck.gearMode === 'auto') { truck.gearMode = 'manual'; truck.gear = 1; } else truck.setAuto(); }
         else if (k === 'help') help();
@@ -283,6 +342,7 @@ export async function start({ onExit, mode = 'kray' } = {}) {
     if (modal) modal.close();
     const w = pads().find((p) => !isPad(p));
     const c = openCalib(app, id || (w && w.id), (saved) => { if (modal === c) modal = null; if (saved) say('🛞 Кермо відкалібровано — поїхали', 2500); });
+    c.noNav = true;          // майстер сам читає кнопки керма — навігація вікнами з пада тут заважала б
     modal = c;
   }
 
@@ -308,7 +368,16 @@ export async function start({ onExit, mode = 'kray' } = {}) {
 
   // ---- кадр
   let hudAt = 0, jugX = 0, jugZ = 0, jugVX = 0, jugVZ = 0, flashAt = 0;
-  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
+  if (mode === 'kray' && level.roads) {
+    nav = new Nav(THREE, scene, level);
+    if (server) {
+      trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, onPlaced: () => resetPoses() });
+      server.onView = (v) => trips.onView(v);
+      trips.onView(server.view());
+    }
+  }
+
+  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, get trips() { return trips; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
   window.__fura = api;   // для перевірки з консолі: __fura.fake = {throttle: 1, …}
 
   function idleInput() { return { steer: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, horn: false, hit: new Set(), hGear: null, lookX: 0, lookY: 0, source: 'kbd' }; }
@@ -331,11 +400,17 @@ export async function start({ onExit, mode = 'kray' } = {}) {
     fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
 
     const kmh = truck.speed() * 3.6;
-    let inp = modal && modal.open ? idleInput() : input.poll(dt, kmh);
+    let inp;
+    if (modal && modal.open) {
+      inp = idleInput();
+      if (!modal.noNav) navModal(now);
+      input.pressed.clear();                 // натиски у вікні не мають спрацювати в грі, щойно воно закриється
+    } else inp = input.poll(dt, kmh);
     if (api.fake) inp = Object.assign(idleInput(), api.fake, { hit: new Set(api.fake.hit || []) });
     if (api.fake && api.fake.hit) api.fake.hit = [];
 
     // ---- щойно натиснуте
+    if (inp.hit.has('couple') && trips && trips.couplePress()) inp.hit.delete('couple');   // у зоні отримувача — «здати»
     if (inp.hit.has('couple')) {
       const r = truck.toggleCouple();
       if (r === 'on') { say('🔗 Зчеплено. Підняв ноги — можна їхати'); sound.thump(); }
@@ -345,7 +420,11 @@ export async function start({ onExit, mode = 'kray' } = {}) {
       else say('Причіп далеко: здай назад під нього');
     }
     if (inp.hit.has('camera')) nextCam();
-    if (inp.hit.has('reset')) { truck.rescue(); resetPoses(); say('Фура на колесах'); }
+    if (inp.hit.has('reset')) {
+      // спершу сказати судді: наступний стрибок пози — не телепорт
+      if (trips) trips.act('rescue');
+      truck.rescue(); resetPoses(); say('Фура на колесах');
+    }
     if (inp.hit.has('menu')) { if (modal) modal.close(); else openMenu(); }
     if (!modal && input.keys.has('KeyF') && !api._f) { api._f = true; toggleFs(); } else if (!input.keys.has('KeyF')) api._f = false;
     if (!modal && input.keys.has('KeyM') && !api._m) { api._m = true; toggleMute(); } else if (!input.keys.has('KeyM')) api._m = false;
@@ -421,7 +500,9 @@ export async function start({ onExit, mode = 'kray' } = {}) {
     ui.link.textContent = truck.coupled ? '🔗 причіп зчеплено' : '⛓ причіп окремо';
 
     let hint = '';
-    if (!truck.coupled) {
+    const th = trips ? trips.tick(performance.now(), inp) : null;     // рейс: телеметрія, мапа в куті, своя підказка
+    if (th && th.strong) hint = th.text;
+    else if (!truck.coupled && !(trips && trips.phase === 'done')) {      // зданий причіп — уже не наш
       const h = truck.hitch();
       if (h.ok) hint = '🔗 Під шворнем! Тисни <b>T</b> · <b>Ⓐ</b> · кнопку «зчепити»';
       else if (h.flat < 14) {
@@ -430,6 +511,7 @@ export async function start({ onExit, mode = 'kray' } = {}) {
         if (!h.slow) hint += ' · повільніше';
       }
     }
+    if (!hint && th) hint = th.text;
     if (performance.now() < toastUntil) hint = toast;
     ui.hint.innerHTML = hint;
     ui.hint.classList.toggle('on', !!hint);
