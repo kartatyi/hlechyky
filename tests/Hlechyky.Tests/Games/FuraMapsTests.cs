@@ -96,12 +96,13 @@ public sealed class FuraMapsTests
     }
 
     [Fact]
-    public void Prod_config_allows_only_kray()
+    public void Without_config_only_kray_and_prod_config_opens_zhytomyr()
     {
+        // без конфігу — лише край (безпечно); прод з 0.0.7 відкриває й Житомир (клієнт D2 готовий)
         Assert.Equal(["kray"], new FuraOptions().AllowedMaps());
         using var doc = JsonDocument.Parse(File.ReadAllText(Paths.Resolve("appsettings.json")),
             new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-        Assert.Equal("kray", doc.RootElement.GetProperty("Fura").GetProperty("Maps").GetString());
+        Assert.Equal("kray,zhytomyr", doc.RootElement.GetProperty("Fura").GetProperty("Maps").GetString());
     }
 
     [Fact]
