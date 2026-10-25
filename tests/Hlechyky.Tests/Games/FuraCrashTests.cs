@@ -41,7 +41,7 @@ public sealed class FuraCrashTests
     [Fact]
     public void The_table_option_is_ghosts_by_default_and_crash_only_when_chosen()
     {
-        var opt = Assert.Single(RoomHarness.NewRegistry().Info("fura")!.Options!);
+        var opt = Assert.Single(RoomHarness.NewRegistry().Info("fura")!.Options!, o => o.Key == Fura.CollideKey);
         Assert.Equal((Fura.CollideKey, Fura.Ghosts), (opt.Key, opt.Default));
         Assert.Equal([Fura.Ghosts, Fura.Crash], opt.Values.Select(v => v.Value));
 
