@@ -157,6 +157,18 @@
     return out;
   }
 
+  /// Осі, що вже при першій зустрічі відхилені, — не стік, а педаль, ручка газу чи важіль, який у спокої стоїть на -1
+  /// (так DirectInput віддає джойстики, яких sim() не впізнав). Інакше «правий стік» щокадру гортав би сайт угору:
+  /// крутнув коліщатком униз, відпустив — і сторінка повзе назад нагору. Такі осі для цього пада не слухаємо.
+  const stuckAxes = new Map();
+  function axesOf(p) {
+    const a = p.axes || [];
+    const k = p.index + ' ' + p.id;
+    let st = stuckAxes.get(k);
+    if (!st) { st = [0, 1, 2, 3].map((i) => Math.abs(a[i] || 0) > DEAD_ON); stuckAxes.set(k, st); }
+    return [0, 1, 2, 3].map((i) => (st[i] ? 0 : a[i] || 0));
+  }
+
   // ---------- опитування пада ----------
 
   function scan() {
@@ -201,11 +213,11 @@
       live++;
       const bs = p.buttons || [];
       for (let i = 0; i < NBUT && i < bs.length; i++) if (bs[i] && bs[i].pressed) down[i] = true;
-      const a = p.axes || [];
-      if (Math.abs(a[0] || 0) > Math.abs(ax)) ax = a[0] || 0;
-      if (Math.abs(a[1] || 0) > Math.abs(ay)) ay = a[1] || 0;
-      if (Math.abs(a[2] || 0) > Math.abs(rx)) rx = a[2] || 0;
-      if (Math.abs(a[3] || 0) > Math.abs(ry)) ry = a[3] || 0;
+      const a = axesOf(p);
+      if (Math.abs(a[0]) > Math.abs(ax)) ax = a[0];
+      if (Math.abs(a[1]) > Math.abs(ay)) ay = a[1];
+      if (Math.abs(a[2]) > Math.abs(rx)) rx = a[2];
+      if (Math.abs(a[3]) > Math.abs(ry)) ry = a[3];
     }
     if (!live) { pads = 0; sleep(); return; }
     // Вікно не в фокусі — пад зараз грає в щось інше (сайт на другому моніторі, гра поверх браузера), а Chrome
