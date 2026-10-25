@@ -39,6 +39,9 @@ public sealed class Fura : Game
     /// <summary>Поза (Act чи Input — для гри однаково) пишеться в гараж не частіше за це, хіба змінились фаза чи зчеплення.</summary>
     public const double KeepPoseSec = 5;
 
+    /// <summary>Скільки поз фури тримати в пам'яті для кадру (A5) і скільки найсвіжіших з одного тика класти в кадр.</summary>
+    public const int SentKeep = 8, FramePoses = 4;
+
     /// <summary>
     /// Вид, що несе лише нове ціле (вантаж побився), — не частіше за це на стіл. Своє ціле браузер малює сам, з виду бере
     /// його лише на відновлення; а за столом до восьми фур кожна вибоїна будь-кого розсилала б вид усім місцям до 10/с
@@ -282,8 +285,12 @@ public sealed class Fura : Game
         switch (action)
         {
             case "pose":
-                Pose(rig, ReadPose(payload), now);
+            {
+                var p = ReadPose(payload);
+                Pose(rig, p, now);
+                Queue(rig, p, payload, now);
                 return ActResult.Done;
+            }
 
             case "take":
             {
@@ -526,22 +533,51 @@ public sealed class Fura : Game
     }
 
     /// <summary>
-    /// Кадр привидів (один на всіх, пласкі цілі): <c>{ t, p: [seat, x·10, z·10, h·1000, v·10, c, rx·10, rz·10, ry·1000, f, …] }</c>
-    /// — 10 чисел на кожну фуру з позою, свіжішою за 3 с. Соло (фура одна) — null: кадру нема.
+    /// Кадр привидів (один на всіх, пласкі цілі): <c>{ t, v: 2, p: [seat, x·10, z·10, h·1000, v·10, c, rx·10, rz·10, ry·1000, f, …],
+    /// q: [seat, s, n, x·100, z·100, h·1000, v·100, c, rx·100, rz·100, ry·1000, f, …] }</c>. <c>p</c> — як і було (етап 2):
+    /// остання поза кожної фури, свіжішої за 3 с, 10 чисел. <c>q</c> (A5) — УСІ пози, що прийшли з минулого тика (до
+    /// <see cref="FramePoses"/> найсвіжіших на фуру), по 12 чисел, з часом <c>s</c> і номером <c>n</c> відправника: клієнт
+    /// малює за часом відправника, і нерівний прихід поз на сервер (дві за тик, жодної за тик) рухом більше не стає.
+    /// Соло (фура одна) — null: кадру нема.
     /// </summary>
     public override object? Frame()
     {
         if (RigCount < 2) return null;
         var now = Ctx.Clock.UtcNow;
         var p = new List<int>(_rigs.Length * 10);
+        var q = new List<long>(_rigs.Length * 24);
         for (var s = 0; s < _rigs.Length; s++)
         {
-            if (_rigs[s] is not { Last: { } q } rig || (now - rig.LastAt).TotalSeconds > GhostFreshSec || !Owned(rig)) continue;
+            if (_rigs[s] is not { Last: { } l } rig || (now - rig.LastAt).TotalSeconds > GhostFreshSec || !Owned(rig)) continue;
             p.Add(s);
-            p.Add(I(q.X * 10)); p.Add(I(q.Z * 10)); p.Add(I(q.H * 1000)); p.Add(I(q.V * 10)); p.Add(q.C ? 1 : 0);
-            p.Add(I(q.Rx * 10)); p.Add(I(q.Rz * 10)); p.Add(I(q.Ry * 1000)); p.Add(q.F);
+            p.Add(I(l.X * 10)); p.Add(I(l.Z * 10)); p.Add(I(l.H * 1000)); p.Add(I(l.V * 10)); p.Add(l.C ? 1 : 0);
+            p.Add(I(l.Rx * 10)); p.Add(I(l.Rz * 10)); p.Add(I(l.Ry * 1000)); p.Add(l.F);
+            // з минулого тика: Tick() уже зробив _tick++, а пози між тиками мітились тим, що був до нього
+            var from = rig.Sent.Count;
+            while (from > 0 && rig.Sent[from - 1].Tick == _tick - 1) from--;
+            for (var i = Math.Max(from, rig.Sent.Count - FramePoses); i < rig.Sent.Count; i++)
+            {
+                var (x, ms, n, _) = rig.Sent[i];
+                q.Add(s); q.Add(ms); q.Add(n);
+                q.Add(I(x.X * 100)); q.Add(I(x.Z * 100)); q.Add(I(x.H * 1000)); q.Add(I(x.V * 100)); q.Add(x.C ? 1 : 0);
+                q.Add(I(x.Rx * 100)); q.Add(I(x.Rz * 100)); q.Add(I(x.Ry * 1000)); q.Add(x.F);
+            }
         }
-        return new { t = _tick, p = p.ToArray() };
+        return new { t = _tick, v = 2, p = p.ToArray(), q = q.ToArray() };
+    }
+
+    /// <summary>
+    /// Поза — у чергу кадру (A5). Той самий номер, що вже в черзі, — це <c>act pose</c>, який браузер шле поряд з <c>input</c>
+    /// раз на 5 с: удруге не кладемо. Старий клієнт без <c>s</c>/<c>n</c> — час приходу на сервері й свій номер.
+    /// </summary>
+    void Queue(FuraRig rig, FuraPose p, JsonElement payload, DateTimeOffset now)
+    {
+        var (s, n) = ReadStamp(payload);
+        var last = rig.Sent.Count > 0 ? rig.Sent[^1] : (FuraSent?)null;
+        if (n is null && last is { } l0 && l0.P == p) return;          // старий клієнт: act-двійник input
+        if (n is { } nn && last is { } l1 && l1.N == nn && l1.S == s) return;
+        rig.Sent.Add(new FuraSent(p, s ?? now.ToUnixTimeMilliseconds(), n ?? rig.AutoN++, _tick));
+        if (rig.Sent.Count > SentKeep) rig.Sent.RemoveRange(0, rig.Sent.Count - SentKeep);
     }
 
     static int I(double v) => (int)Math.Round(Math.Clamp(v, int.MinValue, int.MaxValue));
@@ -584,6 +620,23 @@ public sealed class Fura : Game
         var ry = Num("ry", 0);
         var f = (int)Math.Clamp(Math.Round(Num("f", 0)), 0, 7);
         return new FuraPose(Num("x", null), Num("z", null), Num("v", 0), c, k, Num("rx", null), Num("rz", null), ry, Num("h", ry), f);
+    }
+
+    /// <summary>
+    /// Час і номер пози у відправника (A5): <c>s</c> — мс монотонного годинника браузера (0…10¹³), <c>n</c> — ціле ≥ 0.
+    /// Нема чи погане — null (поза однаково йде судді й у кадр, лише з часом приходу на сервері).
+    /// </summary>
+    public static (long? S, int? N) ReadStamp(JsonElement p)
+    {
+        long? s = null;
+        int? n = null;
+        if (p.ValueKind != JsonValueKind.Object) return (s, n);
+        if (p.TryGetProperty("s", out var se) && se.ValueKind == JsonValueKind.Number && se.TryGetDouble(out var sv)
+            && double.IsFinite(sv) && sv >= 0 && sv <= 1e13)
+            s = (long)Math.Round(sv);
+        if (p.TryGetProperty("n", out var ne) && ne.ValueKind == JsonValueKind.Number && ne.TryGetInt32(out var nv) && nv >= 0)
+            n = nv;
+        return (s, n);
     }
 
     // ---------- вид ----------

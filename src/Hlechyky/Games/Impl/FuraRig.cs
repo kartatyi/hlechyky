@@ -34,6 +34,13 @@ public sealed class FuraRig
     [JsonIgnore] public long Claim { get; set; }
     /// <summary>Коли востаннє віддано в гараж (поза пишеться не частіше за <see cref="Fura.KeepPoseSec"/>).</summary>
     [JsonIgnore] public DateTimeOffset KeptAt { get; set; }
+    /// <summary>
+    /// Пози, що прийшли за останні тики (A5): у кадр привидів ідуть УСІ, що прийшли з минулого тика, з часом і номером
+    /// відправника — не лише остання. Пам'ять, не гараж; найстаріші зрізаються (<see cref="Fura.SentKeep"/>).
+    /// </summary>
+    [JsonIgnore] public List<FuraSent> Sent { get; } = [];
+    /// <summary>Номер для пози старого клієнта без <c>n</c> (сервер нумерує сам).</summary>
+    [JsonIgnore] public int AutoN { get; set; }
 
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 

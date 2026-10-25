@@ -1,17 +1,39 @@
-// Колона: чужі фури «привидами» (specs/fura.md «Етап 2 — колона»). Сервер кожен тик (100 мс) шле один кадр на всіх:
-// { t, p: [seat, x·10, z·10, h·1000, v·10, c, rx·10, rz·10, ry·1000, f, …] } — по 10 чисел на фуру. Малюємо між двома
-// кадрами за годинником сервера (HGames.ui.Interp(100)): нерівний прихід кадрів рухом не смикає. Висоту, нахил і крен
-// беремо з рельєфу, бо в кадрі їх нема. У фізику привиди не йдуть — зіткнення буде кроком 2c.
+// Колона: чужі фури «привидами» (specs/fura.md «Етап 2 — колона», «Плавні привиди (A5)»). Сервер кожен тик (100 мс) шле
+// один кадр на всіх: { t, v: 2, p: [seat, x·10, z·10, h·1000, v·10, c, rx·10, rz·10, ry·1000, f, …],
+// q: [seat, s, n, x·100, z·100, h·1000, v·100, c, rx·100, rz·100, ry·1000, f, …] }.
+//
+// q — усі пози, що прийшли на сервер за тик, з часом відправника s (мс його performance.now()) і номером n. Кожен привид —
+// своя доріжка поз за часом відправника (Track): «його час → мій» — найменший зсув (прихід − s) з повільним дрейфом
+// угору, малюємо мить «тепер − зсув − затримка», затримка = p90 спізнень + пів кроку поз (не менше 100 мс). Між сусідніми
+// позами — Hermite з дотичними зі швидкості й курсу (рух тягача гладкий, не ламана), курс — по найкоротшій дузі,
+// причіп — від тягача через сідло (не роз'їжджаються). Поз забракло (сплеск у мережі) — їде далі швидкістю й курсом
+// (~0,2 с як є, далі плавно гальмує й за 0,4 с стає), а коли пози доїдуть, різниця тане за 0,15–0,6 с, без телепорта.
+// Годинник малювання сам не стрибає: до цілі підтягується швидкістю ±10 %.
+//
+// Кадр без q (старий сервер) — як було: між двома кадрами за годинником сервера (HGames.ui.Interp(100)). Висоту, нахил і
+// крен беремо з рельєфу, бо в кадрі їх нема. У фізику привиди не йдуть — зіткнення буде кроком 2c.
 
 import { buildGhost } from './model.js';
 
-const N = 10, TICK = 100, STALE_MS = 3000;
+const N = 10, Q = 12, TICK = 100, STALE_MS = 3000;
 const COLORS = ['#2f6fa8', '#2f8a7a', '#8a5bb5', '#d39a1c', '#5a8f2a', '#c2477a', '#3d8fc7', '#a5352a'];
 // висота тіла над землею, як стоїть своя фура на підвісці (заміряно в краю, 25.10)
 const TRACTOR_Y = 1.08, TRAILER_Y = 1.33;
 const KP = 5.6, BACK = 5.0;          // від центру причепа до шворня і до заднього моста — де мацати рельєф
+const FIFTH = -2.25;                 // сідло в осях тягача (truck.js TRACTOR.fifth.z): центр причепа = тягач + FIFTH·курс − KP·курс причепа
+// доріжка привида (A5)
+const D_MIN = 100, D_MAX = 800, D_START = 220;   // затримка малювання, мс
+const EXTRA = 300;                   // скільки мс їдемо далі без поз
+const KEEP = 4000;                   // скільки мс поз тримати
+const SNAP = 30;                     // стрибок більший за це (м) — справжній телепорт (рятунок), не згладжуємо
+const EASE = 150, EASE_M = 30, EASE_MAX = 600;   // поправка після екстраполяції тане за 150 мс + 30 мс на метр (до 0,6 с)
+const GAP = 0.5;                     // проміжок між позами довший за це (с) — без дотичних
+const RATE = 0.1;                    // годинник малювання наздоганяє ціль не швидше ±10 %
+// затримка = p90 спізнень + пів кроку поз + 10 мс: решту (рідкі сплески, пізню позу) бере екстраполяція — на «змійці»
+// вона помиляється на сантиметри, а p95 + цілий крок тримав привида на 0,1–0,15 с далі (specs/fura.md, A5)
+const LATE_Q = 0.9, STEP_K = 0.5;
 
-/** Кадр → Map(seat → {x, z, h, v, c, rx, rz, ry, f}); розбираємо раз на кадр. */
+/** Кадр → Map(seat → {x, z, h, v, c, rx, rz, ry, f}); розбираємо раз на кадр (старий шлях, без q). */
 function parse(f) {
   if (f._m) return f._m;
   const m = new Map(), p = f.p || [];
@@ -23,7 +45,153 @@ function parse(f) {
   return m;
 }
 const lerp = (a, b, t) => a + (b - a) * t;
-const lerpA = (a, b, t) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
+const dA = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+const lerpA = (a, b, t) => a + dA(a, b) * t;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+/** Залишок «причіп мінус те, де він мав би бути за сідлом» — тримаємо його, щоб причіп малювати від тягача. */
+function hitch(o) {
+  o.ex = o.rx - (o.x + FIFTH * Math.sin(o.h) - KP * Math.sin(o.ry));
+  o.ez = o.rz - (o.z + FIFTH * Math.cos(o.h) - KP * Math.cos(o.ry));
+  o.hooked = o.c && Math.hypot(o.ex, o.ez) < 1;
+  return o;
+}
+
+/** Скільки мс їхати навмання, коли поз нема вже e мс: до 2/3 EXTRA — як є, далі плавно гальмуємо й стаємо на EXTRA
+ *  (не обрив руху: швидкість спадає до нуля за ще 2/3 EXTRA). */
+function fade(e) {
+  const a = EXTRA * 2 / 3, b = EXTRA - a;
+  if (e <= a) return Math.max(0, e);
+  const k = Math.min(1, (e - a) / (2 * b));
+  return a + 2 * b * (k - k * k / 2);
+}
+
+/** Їхати від пози a ще e мс: швидкістю по дузі (кутова швидкість — з двох останніх поз). */
+function ahead(a, w, wr, e) {
+  const t = e / 1000, h1 = a.h + w * t, ry = a.ry + wr * t;
+  let dx, dz;
+  if (Math.abs(w) < 1e-4) { dx = Math.sin(a.h) * a.v * t; dz = Math.cos(a.h) * a.v * t; }
+  else { dx = (a.v / w) * (Math.cos(a.h) - Math.cos(h1)); dz = (a.v / w) * (Math.sin(h1) - Math.sin(a.h)); }
+  return { x: a.x + dx, z: a.z + dz, h: h1, v: a.v, c: a.c, ry, rx: a.rx, rz: a.rz, ex: a.ex, ez: a.ez, hooked: a.hooked, f: a.f, extra: e };
+}
+
+/**
+ * Пози одного привида за часом відправника. add() — поза з кадру (now — коли прийшла), at(now, dt) — що малювати.
+ * Годинник: base — найменше (прихід − s), повзе вгору на 1 % (інакше годинник відправника, що трохи відстає, з часом
+ * накопичив би запізнення); затримка — p90 спізнень над base + пів медіанного кроку поз + 10 мс.
+ */
+class Track {
+  constructor() { this.reset(); }
+  reset() {
+    this.b = []; this.base = null; this.baseAt = 0; this.late = []; this.gaps = [];
+    this.want = D_START; this.tau = null; this.lastNow = 0; this.inAt = 0;
+    this.ver = 0; this.seen = -1; this.raw = null; this.rawTau = 0;
+    this.off = { x: 0, z: 0, h: 0, ry: 0 }; this.ease = EASE;
+    this.extraN = 0; this.frames = 0;
+  }
+  cur(now) { return this.base + (now - this.baseAt) * 0.01; }
+
+  add(o, now) {
+    const b = this.b, last = b[b.length - 1];
+    // відправник перезавантажив сторінку (годинник із нуля) чи пропав надовго — доріжка наново
+    if (last && (o.s < last.s - 1000 || o.s > last.s + 10000)) this.reset();
+    for (let i = b.length - 1; i >= 0 && i >= b.length - 8; i--) if (b[i].n === o.n && b[i].s === o.s) return;
+    hitch(o);
+    let i = b.length;
+    while (i > 0 && b[i - 1].s > o.s) i--;
+    if (i > 0 && b[i - 1].s === o.s) b[i - 1] = o; else b.splice(i, 0, o);
+    if (i === b.length - 1 && i > 0) { this.gaps.push(o.s - b[i - 1].s); if (this.gaps.length > 30) this.gaps.shift(); }
+    while (b.length > 4 && b[0].s < b[b.length - 1].s - KEEP) b.shift();
+    // годинник
+    const off = now - o.s;
+    if (this.base == null || off < this.cur(now) - 1000) { this.base = off; this.late.length = 0; this.tau = null; }
+    else this.base = Math.min(this.cur(now), off);
+    this.baseAt = now;
+    this.late.push(off - this.base);
+    if (this.late.length > 60) this.late.shift();
+    if (this.late.length >= 10) {
+      const s = this.late.slice().sort((x, y) => x - y), g = this.gaps.slice().sort((x, y) => x - y);
+      const hi = s[Math.min(s.length - 1, Math.floor(s.length * LATE_Q))];
+      const step = g.length ? g[g.length >> 1] : TICK;
+      this.want = clamp(hi + step * STEP_K + 10, D_MIN, D_MAX);
+    }
+    this.inAt = now;
+    this.ver++;
+  }
+
+  /** Поза доріжки на мить s відправника (без згладжування). */
+  eval(s) {
+    const b = this.b, n = b.length;
+    if (!n) return null;
+    if (s <= b[0].s) return Object.assign({}, b[0], { extra: 0 });
+    let j = n - 1;
+    while (j > 0 && b[j].s > s) j--;
+    const a = b[j];
+    if (j === n - 1) {
+      // далі поз нема — їдемо швидкістю й курсом, до EXTRA мс
+      const p = j > 0 ? b[j - 1] : null, dt = p ? (a.s - p.s) / 1000 : 0;
+      const w = p && dt > 0.02 && dt < 0.5 ? clamp(dA(p.h, a.h) / dt, -0.8, 0.8) : 0;
+      const wr = p && dt > 0.02 && dt < 0.5 ? clamp(dA(p.ry, a.ry) / dt, -0.8, 0.8) : 0;
+      return ahead(a, w, wr, fade(s - a.s));
+    }
+    const c = b[j + 1], T = (c.s - a.s) / 1000, u = (s - a.s) / (c.s - a.s);
+    // телепорт (рятунок, перезапуск): ковзати між ними нема чого — стоїмо на старій, далі одразу на новій
+    if (Math.hypot(c.x - a.x, c.z - a.z) > SNAP) return Object.assign({}, u < 1 ? a : c, { extra: 0 });
+    // Hermite: дотичні — швидкість уздовж курсу тягача, на весь проміжок. Дірка довша за GAP (вкладку ховали, зв'язок
+    // рвався) — рівна лінія: дотичні v·T на секунди дали б петлю
+    const u2 = u * u, u3 = u2 * u, gap = T > GAP;
+    const h00 = gap ? 1 - u : 2 * u3 - 3 * u2 + 1, h10 = gap ? 0 : u3 - 2 * u2 + u;
+    const h01 = gap ? u : -2 * u3 + 3 * u2, h11 = gap ? 0 : u3 - u2;
+    const ta = a.v * T, tc = c.v * T;
+    return {
+      x: h00 * a.x + h10 * ta * Math.sin(a.h) + h01 * c.x + h11 * tc * Math.sin(c.h),
+      z: h00 * a.z + h10 * ta * Math.cos(a.h) + h01 * c.z + h11 * tc * Math.cos(c.h),
+      h: lerpA(a.h, c.h, u), v: lerp(a.v, c.v, u), c: c.c, ry: lerpA(a.ry, c.ry, u),
+      rx: lerp(a.rx, c.rx, u), rz: lerp(a.rz, c.rz, u), ex: lerp(a.ex, c.ex, u), ez: lerp(a.ez, c.ez, u),
+      hooked: a.hooked && c.hooked, f: u < 0.5 ? a.f : c.f, extra: 0,
+    };
+  }
+
+  /** Що малювати зараз (now — мить кадру, мс). */
+  at(now) {
+    if (!this.b.length) return null;
+    const dt = this.lastNow ? clamp(now - this.lastNow, 0, 250) : 0;
+    this.lastNow = now;
+    // годинник малювання: ціль — тепер − base − затримка; тягнемося до неї швидкістю 1 ± 10 %, не стрибком
+    const goal = now - this.cur(now) - this.want;
+    if (this.tau == null || Math.abs(goal - this.tau) > 1500) this.tau = goal;
+    else this.tau += dt * (1 + clamp((goal - this.tau) / 400, -RATE, RATE));
+    // нові пози після того, як ми їхали навмання: різниця «що малювали — що тепер виходить» тане, а не стрибає
+    const o = this.off;
+    if (this.ver !== this.seen && this.raw) {
+      const was = this.raw, now2 = this.eval(this.rawTau);
+      if (now2 && was.extra > 0) {
+        const jx = was.x - now2.x, jz = was.z - now2.z;
+        if (Math.hypot(jx, jz) < SNAP) {
+          o.x += jx; o.z += jz; o.h += dA(now2.h, was.h); o.ry += dA(now2.ry, was.ry);
+          // велика поправка (пози не йшли пів секунди й більше) тане довше: наздоганяє, а не пролітає метри за мить
+          this.ease = clamp(EASE + EASE_M * Math.hypot(o.x, o.z), EASE, EASE_MAX);
+        }
+        else { o.x = o.z = o.h = o.ry = 0; }
+      }
+    }
+    this.seen = this.ver;
+    const k = Math.exp(-dt / this.ease);
+    o.x *= k; o.z *= k; o.h *= k; o.ry *= k;
+    const r = this.eval(this.tau);
+    if (!r) return null;
+    this.raw = r; this.rawTau = this.tau;
+    this.frames++;
+    if (r.extra > 0) this.extraN++;
+    const p = { x: r.x + o.x, z: r.z + o.z, h: r.h + o.h, v: r.v, c: r.c, ry: r.ry + o.ry, f: r.f };
+    if (r.hooked) {
+      // причіп — від намальованого тягача через сідло: тягач і причіп не роз'їжджаються ні в Hermite, ні в поправці
+      p.rx = p.x + FIFTH * Math.sin(p.h) - KP * Math.sin(p.ry) + r.ex;
+      p.rz = p.z + FIFTH * Math.cos(p.h) - KP * Math.cos(p.ry) + r.ez;
+    } else { p.rx = r.rx; p.rz = r.rz; }
+    return p;
+  }
+}
 
 export class Ghosts {
   constructor({ THREE, scene, camera, level }) {
@@ -33,16 +201,30 @@ export class Ghosts {
     this.names = new Map();      // seat → нік (з виду convoy); кого там нема — не малюємо
     this.alone = true;           // за столом менше двох фур — кадрів більше не буде, привидів ховаємо одразу
     this.rigs = new Map();       // seat → { g: модель, label, nick, pose, at }
+    this.tracks = new Map();     // seat → Track (кадри з q)
+    this.q = false;              // сервер шле q — малюємо за часом відправника
     this.lastAt = 0;
     this.frames = 0;
-    this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ');
+    this.e = new THREE.Euler(0, 0, 0, 'YXZ');
   }
 
   /** Кадр із сервера (або підставний з консолі). */
   push(f) {
-    if (!f || !Array.isArray(f.p) || !this.interp) return;
-    this.interp.push(f);
-    this.lastAt = performance.now();
+    if (!f || !Array.isArray(f.p)) return;
+    const now = performance.now();
+    if (Array.isArray(f.q)) {
+      this.q = true;
+      const q = f.q;
+      for (let i = 0; i + Q <= q.length; i += Q) {
+        const seat = q[i];
+        let t = this.tracks.get(seat);
+        if (!t) this.tracks.set(seat, (t = new Track()));
+        t.add({ s: q[i + 1], n: q[i + 2], x: q[i + 3] / 100, z: q[i + 4] / 100, h: q[i + 5] / 1000, v: q[i + 6] / 100, c: !!q[i + 7],
+          rx: q[i + 8] / 100, rz: q[i + 9] / 100, ry: q[i + 10] / 1000, f: q[i + 11] | 0 }, now);
+      }
+    } else if (this.interp) this.interp.push(f);
+    else return;
+    this.lastAt = now;
     this.frames++;
   }
 
@@ -55,10 +237,13 @@ export class Ghosts {
     this.names = next;
     this.alone = next.size < 2;
     for (const [seat, r] of this.rigs) if (r.nick !== (next.get(seat) || '')) this.relabel(seat, r, r.horn);
+    // місце звільнилось — його доріжка більше не потрібна (хто сяде, почне свою)
+    for (const seat of this.tracks.keys()) if (!next.has(seat)) this.tracks.delete(seat);
   }
 
   reset() {
     if (this.interp) this.interp.reset();
+    this.tracks.clear();
     this.lastAt = 0;
     for (const r of this.rigs.values()) { r.g.setVisible(false); r.label.visible = false; r.pose = null; }
   }
@@ -98,21 +283,31 @@ export class Ghosts {
     r.horn = !!horn;
   }
 
-  /** Раз на кадр малювання. dt — с від попереднього. */
+  /** Раз на кадр малювання. now — мить кадру (мс), dt — с від попереднього. */
   update(now, dt) {
-    const fresh = !this.alone && this.interp && this.lastAt && now - this.lastAt < STALE_MS;
-    const s = fresh ? this.interp.at(now) : null;
+    const fresh = !this.alone && this.lastAt && now - this.lastAt < STALE_MS;
     const seen = new Set();
-    if (s) {
-      const A = parse(s.a), B = parse(s.b), t = s.t;
-      for (const [seat, b] of B) {
-        if (seat === this.me || !this.names.has(seat)) continue;   // своя фура чи місце, якого в колоні вже нема
-        const a = A.get(seat) || b;
+    if (fresh && this.q) {
+      for (const [seat, t] of this.tracks) {
+        if (seat === this.me || !this.names.has(seat) || now - t.inAt > STALE_MS) continue;
+        const p = t.at(now);
+        if (!p) continue;
         seen.add(seat);
-        this.place(this.rig(seat), {
-          x: lerp(a.x, b.x, t), z: lerp(a.z, b.z, t), h: lerpA(a.h, b.h, t), v: lerp(a.v, b.v, t), c: b.c,
-          rx: lerp(a.rx, b.rx, t), rz: lerp(a.rz, b.rz, t), ry: lerpA(a.ry, b.ry, t), f: t < 0.5 ? a.f : b.f,
-        }, now, dt);
+        this.place(this.rig(seat), p, now, dt);
+      }
+    } else if (fresh && this.interp) {
+      const s = this.interp.at(now);
+      if (s) {
+        const A = parse(s.a), B = parse(s.b), t = s.t;
+        for (const [seat, b] of B) {
+          if (seat === this.me || !this.names.has(seat)) continue;   // своя фура чи місце, якого в колоні вже нема
+          const a = A.get(seat) || b;
+          seen.add(seat);
+          this.place(this.rig(seat), {
+            x: lerp(a.x, b.x, t), z: lerp(a.z, b.z, t), h: lerpA(a.h, b.h, t), v: lerp(a.v, b.v, t), c: b.c,
+            rx: lerp(a.rx, b.rx, t), rz: lerp(a.rz, b.rz, t), ry: lerpA(a.ry, b.ry, t), f: t < 0.5 ? a.f : b.f,
+          }, now, dt);
+        }
       }
     }
     for (const [seat, r] of this.rigs) {
@@ -164,23 +359,34 @@ export class Ghosts {
   poseOf(seat) { const r = this.rigs.get(seat); return r && r.pose; }
   colorOf(seat) { return COLORS[seat % COLORS.length]; }
 
+  /** Для консолі (__fura.ghosts.stats()): затримка й скільки кадрів кожен привид їхав без поз. */
+  stats() {
+    const out = {};
+    for (const [seat, t] of this.tracks) {
+      out[seat] = { poses: t.b.length, want: Math.round(t.want), behind: t.tau == null ? null : Math.round(performance.now() - t.cur(performance.now()) - t.tau),
+        extra: t.frames ? +(100 * t.extraN / t.frames).toFixed(1) + ' %' : '—' };
+    }
+    return out;
+  }
+
   dispose() {
     for (const r of this.rigs.values()) {
       r.g.dispose();
       if (r.label) { this.scene.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
     }
     this.rigs.clear();
+    this.tracks.clear();
   }
 }
 
-/** Підставна колона для перевірки без сервера 2a: n фур їдуть по дорогах краю, кадри — 10 Гц із дрижанням приходу.
- *  Повертає { stop() }. Кадр будуємо так само, як мав би сервер: цілі числа ×10/×1000. */
+/** Підставна колона для перевірки без сервера: n фур їдуть по дорогах краю, кадри — 10 Гц із дрижанням приходу, з q
+ *  (час відправника — мить, коли поза «знята»). Повертає { stop() }. Кадр будуємо так само, як сервер: цілі числа. */
 export function fakeConvoy(ghosts, level, { n = 3, jitter = 40, speed = 14, me = 0, onFrame, manual = false } = {}) {
   const roads = level.roads.filter((r) => r.kind !== 'yard' && r.pts.length > 4);
   const trucks = [];
   for (let i = 0; i < n; i++) {
     const r = roads[(i * 3) % roads.length];
-    trucks.push({ seat: me + 1 + i, road: r, s: (r.pts[r.pts.length - 1].s * (0.2 + 0.25 * i)) % r.pts[r.pts.length - 1].s, dir: i % 2 ? -1 : 1, v: speed * (0.8 + 0.15 * i) });
+    trucks.push({ seat: me + 1 + i, road: r, s: (r.pts[r.pts.length - 1].s * (0.2 + 0.25 * i)) % r.pts[r.pts.length - 1].s, dir: i % 2 ? -1 : 1, v: speed * (0.8 + 0.15 * i), n: 0 });
   }
   const at = (road, s) => {
     const P = road.pts, L = P[P.length - 1].s;
@@ -193,7 +399,7 @@ export function fakeConvoy(ghosts, level, { n = 3, jitter = 40, speed = 14, me =
   let t = 1000, stopped = false, timer = 0;
   const t0 = performance.now();
   function frame() {
-    const p = [];
+    const p = [], q = [], sAt = Math.round(t0 + (t - 1000) * TICK);
     for (const tr of trucks) {
       tr.s += tr.dir * tr.v * TICK / 1000;
       const L = tr.road.pts[tr.road.pts.length - 1].s;
@@ -206,16 +412,19 @@ export function fakeConvoy(ghosts, level, { n = 3, jitter = 40, speed = 14, me =
       const f = (t % 40 < 3 ? 1 : 0) | 2 | (t % 60 > 50 ? 4 : 0);
       p.push(tr.seat, Math.round(a.x * 10), Math.round(a.z * 10), Math.round(h * 1000), Math.round(tr.v * 10), 1,
         Math.round(rc.x * 10), Math.round(rc.z * 10), Math.round(ry * 1000), f);
+      q.push(tr.seat, sAt, tr.n++, Math.round(a.x * 100), Math.round(a.z * 100), Math.round(h * 1000), Math.round(tr.v * 100), 1,
+        Math.round(rc.x * 100), Math.round(rc.z * 100), Math.round(ry * 1000), f);
     }
-    return { t: t++, p };
+    return { t: t++, v: 2, p, q };
   }
   // manual — без таймерів: next() дає наступний кадр, а коли його «доставити», вирішує той, хто перевіряє (схована
   // Browser-панель гальмує і rAF, і таймери — заміри плавності там ідуть на підміненому годиннику)
   if (manual) return { trucks, next: frame, stop() {} };
   function send() {
     const fr = frame();
-    // прихід: рівний тик сервера + дрижання ±jitter мс (кадр може й обігнати сусіда — Interp відкине запізнілий)
-    const due = t0 + (fr.t - 1000) * TICK + (Math.random() * 2 - 1) * jitter;
+    // прихід: рівний тик сервера + дрижання ±jitter мс; порядок зберігається, як у WebSocket
+    const due = Math.max(send.last || 0, t0 + (fr.t - 1000) * TICK + 50 + (Math.random() * 2 - 1) * jitter);
+    send.last = due;
     setTimeout(() => { if (!stopped) { ghosts.push(fr); onFrame && onFrame(fr); } }, Math.max(0, due - performance.now()));
   }
   // кадри «народжуються» рівно раз на 100 мс; що приходять нерівно — робить setTimeout вище

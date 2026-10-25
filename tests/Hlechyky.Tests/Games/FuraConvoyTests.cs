@@ -73,6 +73,71 @@ public sealed class FuraConvoyTests
         Assert.DoesNotContain(h.Outbox, m => m is RoomFrame);
     }
 
+    static long[] Longs(JsonElement a) => [.. a.EnumerateArray().Select(x => x.GetInt64())];
+
+    /// <summary>Записи <c>q</c> кадру (по 12 чисел) лише цього місця.</summary>
+    static long[][] Q(JsonElement f, int seat) =>
+        [.. Longs(f.GetProperty("q")).Chunk(12).Where(r => r[0] == seat)];
+
+    [Fact]
+    public void Every_pose_since_the_last_tick_reaches_the_frame_with_sender_time_and_number()
+    {
+        var h = Two();
+        h.Tick();
+        // дві пози Олі між тиками (прийшли пачкою) — обидві в кадрі, по порядку, з s і n відправника
+        h.Input(0, "pose", new { x = 10.0, z = 20.0, v = 12.0, c = true, rx = 10.0, rz = 12.0, ry = 0.5, h = 0.25, f = 2, s = 5000.4, n = 7 });
+        h.Input(0, "pose", new { x = 11.25, z = 20.5, v = 12.5, c = true, rx = 11.0, rz = 12.5, ry = 0.51, h = 0.26, f = 3, s = 5100, n = 8 });
+        h.Outbox.Clear();
+        h.Tick();
+        var f = LastFrame(h);
+        Assert.Equal(2, f.GetProperty("v").GetInt32());
+        Assert.Equal([[0, 5000, 7, 1000, 2000, 250, 1200, 1, 1000, 1200, 500, 2], [0, 5100, 8, 1125, 2050, 260, 1250, 1, 1100, 1250, 510, 3]], Q(f, 0));
+        // p — як і було: остання поза, 10 чисел (старий клієнт не помічає різниці; 112,5 → 112 — до парного)
+        Assert.Equal([0, 112, 205, 260, 125, 1, 110, 125, 510, 3], Ints(f.GetProperty("p"))[..10]);
+
+        // тик без нових поз — у q цієї фури нічого (у p вона лишається, поки поза свіжа)
+        h.Outbox.Clear();
+        h.Tick();
+        f = LastFrame(h);
+        Assert.Empty(Q(f, 0));
+        Assert.Equal(0, Ints(f.GetProperty("p"))[0]);
+    }
+
+    [Fact]
+    public void A_burst_of_poses_keeps_the_newest_four_and_the_act_twin_is_not_queued_twice()
+    {
+        var h = Two();
+        h.Tick();
+        for (var i = 0; i < 6; i++)
+            h.Input(1, "pose", new { x = i * 1.0, z = 0.0, v = 10.0, rx = i * 1.0, rz = -8.0, s = 1000 + i * 100, n = i });
+        // act pose — той самий знімок, що й input (браузер шле обидва раз на 5 с): удруге в чергу не йде
+        Assert.True(h.Act(1, "pose", new { x = 5.0, z = 0.0, v = 10.0, rx = 5.0, rz = -8.0, s = 1500, n = 5 }).Ok);
+        h.Outbox.Clear();
+        h.Tick();
+        var q = Q(LastFrame(h), 1);
+        Assert.Equal([2L, 3, 4, 5], q.Select(r => r[2]));
+        Assert.Equal([1200L, 1300, 1400, 1500], q.Select(r => r[1]));
+    }
+
+    [Fact]
+    public void An_old_client_pose_without_a_stamp_gets_server_time_and_a_number()
+    {
+        var h = Two();
+        h.Tick();
+        var t0 = h.Clock.UtcNow.ToUnixTimeMilliseconds();
+        h.Input(1, "pose", new { x = -3.2, z = 7.0, rx = -3.2, rz = 0.0 });
+        Assert.True(h.Act(1, "pose", new { x = -3.2, z = 7.0, rx = -3.2, rz = 0.0 }).Ok);   // act-двійник — той самий знімок
+        h.Clock.Advance(0.05);
+        h.Input(1, "pose", new { x = -3.0, z = 7.0, rx = -3.0, rz = 0.0, s = "погано", n = -4 });   // погане s/n — як без них
+        h.Outbox.Clear();
+        h.Tick();
+        var q = Q(LastFrame(h), 1);
+        Assert.Equal(2, q.Length);
+        Assert.Equal([t0, t0 + 50], q.Select(r => r[1]));
+        Assert.Equal([0L, 1], q.Select(r => r[2]));
+        Assert.Equal([-320L, -300], q.Select(r => r[3]));
+    }
+
     [Fact]
     public void A_friend_joins_mid_trip_and_the_trip_goes_on()
     {

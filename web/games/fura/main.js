@@ -580,7 +580,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     }
     perf.lap('physics');
     level.sync();
-    if (trips) trips.telemetry(now, inp);
+    if (trips) trips.telemetry(now, inp, now - acc * 1000);   // стан фізики — на acc позаду кадру (A5: час пози)
     perf.lap('telemetry');
 
     // ---- поза для малювання між кроками

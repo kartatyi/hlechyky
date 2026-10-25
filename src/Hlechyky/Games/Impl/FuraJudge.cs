@@ -8,6 +8,12 @@ namespace Hlechyky.Games.Impl;
 public sealed record FuraPose(double X, double Z, double V, bool C, int K, double Rx, double Rz, double Ry, double H = 0, int F = 0);
 
 /// <summary>
+/// Поза в черзі кадру привидів (A5): S — мс годинника відправника (монотонний <c>performance.now()</c> браузера; у старого
+/// клієнта без <c>s</c> — мс годинника сервера на приході), N — номер пози у відправника, Tick — тик столу, за якого прийшла.
+/// </summary>
+public readonly record struct FuraSent(FuraPose P, long S, int N, long Tick);
+
+/// <summary>
 /// Суддя рейсу «Чумаків» (docs/games/specs/fura.md, «Суддя»): з потоку поз рахує годинник рейсу без пауз, проїдене в
 /// haul, найменше ціле, порушення швидкості й причину, з якої рейс недійсний. Окремий клас без <see cref="IRoomContext"/> —
 /// щоб кожне правило тестувалось напряму. Стан — публічні властивості: гра кладе суддю в Save як є.

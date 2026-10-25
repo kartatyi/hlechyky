@@ -22,6 +22,7 @@ export class Trips {
     this.places = Object.fromEntries(this.level.places.map((p) => [p.id, p]));
     this.cargo = Object.fromEntries(this.level.map.cargo.map((c) => [c.id, c]));
     this.poseAt = 0; this.saveAt = 0; this.lastC = false; this.flags = 0;
+    this.poseN = 0; this.stateAt = 0;  // A5: номер пози й мить стану фізики (мс performance.now()), з якої вона знята
     this.placed = '';                // для якого замовлення й боксу причіп уже стоїть у відправника
     this.restored = false; this.shownResult = 0; this.voidShown = '';
     this.busy = false;
@@ -236,12 +237,17 @@ export class Trips {
     };
     // етап 2: курс тягача (0 = +Z, π/2 = +X — так само рахує yawOf) і прапорці для привида: 1 сигнал, 2 фари, 4 стоп
     if (this.stage2) { p.h = +t.yawOf(t.tb).toFixed(3); p.f = this.flags; }
+    // A5: мить знімка за годинником браузера (s, мс) і номер (n) — привид у друга малюється за часом знімка, а не за тим,
+    // коли поза доїхала до сервера й у який його тик потрапила (specs/fura.md, «Плавні привиди (A5)»)
+    if (this.stage2) { p.s = Math.round(this.stateAt || performance.now()); p.n = this.poseN++; }
     return p;
   }
 
   /** Телеметрія судді й кадру привидів — з кожного кадру малювання (HUD малюється раз на 66 мс, а треба рівно 10/с). */
-  telemetry(now, inp) {
+  telemetry(now, inp, stateAt) {
     if (!this.view) return;
+    // stateAt — мить, якій відповідає стан фізики (кадр мінус залишок кроку): поза знята саме з нього
+    this.stateAt = Number.isFinite(stateAt) ? stateAt : now;
     const t = this.truck;
     this.flags = (inp && inp.horn ? 1 : 0) | (t.lights ? 2 : 0) | ((t.brakeNow || 0) > 0.05 ? 4 : 0);
     const every = this.stage2 ? POSE2_MS : POSE_MS;
