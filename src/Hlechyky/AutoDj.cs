@@ -94,11 +94,17 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
     }
 
     /// <summary>Що не зайшло тим, хто зараз слухає (нікого — тоді всім), за останні <see cref="AutoDjOptions.SongFeedbackDays"/>.</summary>
+    /// <remarks>
+    /// До пісень, відкинутих з порад, додаються й ті, що присутні скіпнули будь-де (і людські замовлення, і архів):
+    /// Smaug скіпала й третину чужих замовлень, а архів потім пропонував їх знову.
+    /// </remarks>
     public Strikes StrikesFor(IReadOnlyCollection<string>? listening)
     {
         var now = DateTimeOffset.UtcNow;
         var days = Math.Max(O.SongFeedbackDays, Math.Max(1, O.FeedbackHours) / 24.0);
-        return CountStrikes(db.DjFeedbackSince(now.AddDays(-days)), listening, now, O);
+        var st = CountStrikes(db.DjFeedbackSince(now.AddDays(-days)), listening, now, O);
+        st.Songs.UnionWith(taste.SkippedBy(listening));
+        return st;
     }
 
     /// <summary>
@@ -281,14 +287,15 @@ public sealed class AutoDj(Db db, LastFmClient lastFm, YtMusicClient ytm, YtDlpS
             if (seedArtists.Contains(a)) c.Mult *= 0.5;      // same artist again is fine, just not all the time
             else if (recentArtists.Contains(a)) c.Mult *= 0.35;
             c.Mult *= Math.Pow(0.25, artistStrikes.GetValueOrDefault(a));
-            c.Mult *= taste.Multiplier(c.Artist, c.Title, s.Bias);
+            c.Mult *= taste.Multiplier(c.Artist, c.Title, s.Bias, s.Listening);
         }
         // a little jitter only keeps two fills from being identical; the gate below throws some of the top out, so take plenty
         var top = pool.OrderByDescending(c => c.Score * (0.88 + 0.12 * _rng.NextDouble())).Take(40).ToList();
         var profile = taste.Current;
-        log.LogInformation("auto-DJ: seeds {Seeds}, room {Script}/{Lean:F2}, {Cands} candidates, top: {Top}",
+        log.LogInformation("auto-DJ: seeds {Seeds}, room {Script}/{Lean:F2}, for {Listening}, {Cands} candidates, top: {Top}",
             string.Join(" + ", s.List.Select(x => $"{x.Track.Label} ×{x.Weight:F2}")),
-            profile.Script.Length > 0 ? profile.Script : "—", profile.Lean, cands.Count,
+            profile.Script.Length > 0 ? profile.Script : "—", profile.Lean,
+            s.Listening is { Count: > 0 } l ? string.Join(", ", l) : "кімнати", cands.Count,
             string.Join(" | ", top.Take(5).Select(c => $"{c.Artist} - {c.Title} ({c.Score:F2})")));
 
         var chosen = new HashSet<string>();

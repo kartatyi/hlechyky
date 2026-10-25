@@ -471,7 +471,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
         lock (_lock)
         {
             _now.SkipPending = true;
-            if (_now.PlayId > 0) _db.EndPlay(_now.PlayId, skipped: true);
+            if (_now.PlayId > 0) _db.EndPlay(_now.PlayId, skipped: true, by: nick);
         }
         if (quickAuto is not null) _autoDj.Reject(quickAuto, seedId, "skip", nick);
         SystemChat($"{nick} скіпає {label}");
@@ -659,7 +659,7 @@ public sealed class RadioEngine : BackgroundService, IOnAir
                 if (seed is not null) taken.Add(seed.Id);
                 foreach (var weight in new[] { 1.0, 0.75 })
                 {
-                    if (_taste.Anchor(taken) is not { } anchor) break;
+                    if (_taste.Anchor(taken, listening) is not { } anchor) break;
                     seeds.Add(new AutoDj.Seed(anchor, weight));
                     taken.Add(anchor.Id);
                 }

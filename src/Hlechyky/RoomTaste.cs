@@ -14,9 +14,36 @@ namespace Hlechyky;
 /// (кімнаті не зайшло), а один нік дає не більше <see cref="MaxShare"/> смаку і якорів: решту добирають старші
 /// замовлення інших.
 /// </para>
+/// <para>
+/// А ще в кожного свій смак (<see cref="Person"/>): поки слухає владік, він скіпає 1 % треків Глека, Smaug — 52 %, а
+/// смак кімнати на 58 % був владіковим. Тож коли на сайті хтось слухає, множник і якорі рахуються за тими, хто тут:
+/// «своє» — що свої для когось із присутніх, письмо — за їхніми нахилами, а артист, якого хтось із присутніх скіпає,
+/// притискається (хто часто скіпає, того «не те» і важить більше). Нікого нема — як раніше, смаком кімнати.
+/// </para>
 /// </summary>
 public sealed partial class RoomTaste(Db db, IOptionsMonitor<AutoDjOptions> options)
 {
+    /// <summary>Смак однієї людини.</summary>
+    /// <param name="Key">Ключ ніка (<see cref="Auth.NickKey"/>).</param>
+    /// <param name="Artists">Артисти з її замовлень (не скіпнутих) і лайків.</param>
+    /// <param name="Script">Її переважне письмо (як у <see cref="Profile"/>).</param>
+    /// <param name="Disliked">Артисти, яких вона скіпнула щонайменше двічі за <see cref="SkipDays"/> днів і сама не ставила й не лайкала.</param>
+    /// <param name="SkippedSongs">Пісні (<see cref="AutoDj.KeyOf"/>), які вона скіпнула за <see cref="SkippedSongDays"/> днів і не лайкнула.</param>
+    /// <param name="Tracks">Скільки в неї своїх треків: менше <see cref="MinTracksForPerson"/> — свого смаку ще не видно.</param>
+    public sealed record Person(string Key, HashSet<string> Artists, string Script, double Lean, HashSet<string> Disliked,
+        HashSet<string> SkippedSongs, int Tracks)
+    {
+        public bool HasTaste => Tracks >= MinTracksForPerson;
+    }
+
+    /// <summary>Від скількох своїх треків у людини вже є смак, на який можна спертися замість кімнатного.</summary>
+    public const int MinTracksForPerson = 8;
+    /// <summary>За скільки днів скіпи кажуть, що людині не заходить артист.</summary>
+    public const int SkipDays = 60;
+    /// <summary>Скільки днів не пропонувати пісню, яку хтось із присутніх скіпнув.</summary>
+    public const int SkippedSongDays = 30;
+    /// <summary>Сила «не заходить» одного присутнього: ×(1 − <see cref="DislikeDamp"/>·k).</summary>
+    const double DislikeDamp = 0.5;
     /// <param name="Artists">Нормалізовані ключі артистів, яких кімната знає.</param>
     /// <param name="Script">Переважне письмо — <c>cyr</c>, <c>lat</c> або порожньо, якщо ще нема з чого судити.</param>
     /// <param name="Lean">0 — кімната мішана, 1 — слухає виключно одне. Сила всіх множників нижче.</param>
@@ -31,8 +58,8 @@ public sealed partial class RoomTaste(Db db, IOptionsMonitor<AutoDjOptions> opti
     /// <summary>Найбільша частка одного ніка в смаку й серед якорів.</summary>
     public const double MaxShare = 0.3;
 
-    /// <summary>Скільки замовлень дивимось назад: з запасом, бо гості, скіпи й стеля на нік частину відсіють.</summary>
-    const int Lookback = 600;
+    /// <summary>Скільки замовлень дивимось назад: з запасом — і на людей, що ставлять рідко, і бо гості, скіпи й стеля на нік частину відсіють.</summary>
+    const int Lookback = 5000;
     const int ProfileTracks = 200;
     const int AnchorPool = 15;
 
@@ -40,57 +67,110 @@ public sealed partial class RoomTaste(Db db, IOptionsMonitor<AutoDjOptions> opti
     readonly object _lock = new();
     readonly Random _rng = new();
     readonly Queue<string> _lastAnchors = new();
-    Profile _cached = Profile.Empty;
+    sealed record Snapshot(Profile Room, Dictionary<string, Person> People, Bots.Set NotPeople);
+    Snapshot? _cached;
     DateTime _builtAt = DateTime.MinValue;
 
-    public Profile Current
+    Snapshot Snap
     {
         get
         {
             lock (_lock)
             {
-                if (DateTime.UtcNow - _builtAt < Ttl) return _cached;
+                if (_cached is not null && DateTime.UtcNow - _builtAt < Ttl) return _cached;
                 _builtAt = DateTime.UtcNow;
                 return _cached = Build();
             }
         }
     }
 
+    public Profile Current => Snap.Room;
+
+    /// <summary>Смак кожної людини (ключ — <see cref="Auth.NickKey"/>), у кого є хоч щось: замовлення, лайки чи скіпи.</summary>
+    public IReadOnlyDictionary<string, Person> People => Snap.People;
+
     /// <summary>Замовлення людей (акаунти, не боти), яких не скіпнули, — найсвіжіші перші, з виправленим артистом.</summary>
-    List<(TrackInfo Track, string Nick)> Requests(Bots.Set notPeople) =>
+    List<(TrackInfo Track, string Nick, DateTimeOffset At)> Requests(Bots.Set notPeople) =>
         db.RecentRequests(Lookback)
             .Where(x => x.Nick is not null && !notPeople.Has(x.Nick) && !x.Skipped)
-            .Select(x => (Credit(x.Track), x.Nick!))
+            .Select(x => (Credit(x.Track), x.Nick!, x.At))
             .ToList();
 
-    List<(TrackInfo Track, string Nick)> Likes(Bots.Set notPeople) =>
-        db.RecentLikes(Lookback).Where(x => !notPeople.Has(x.Nick)).Select(x => (Credit(x.Track), x.Nick)).ToList();
+    List<(TrackInfo Track, string Nick, DateTimeOffset At)> Likes(Bots.Set notPeople) =>
+        db.RecentLikes(Lookback).Where(x => !notPeople.Has(x.Nick)).Select(x => (Credit(x.Track), x.Nick, x.At)).ToList();
 
-    Profile Build()
+    Snapshot Build()
     {
         var notPeople = Bots.Load(db);
         var requests = Requests(notPeople);
         var likes = Likes(notPeople);
-        var artists = requests.Concat(likes).Select(x => AutoDj.ArtistKey(x.Track.Artist)).Where(a => a.Length > 0).ToHashSet();
-        var recent = Fair(requests, ProfileTracks);
-        var counts = recent.Select(t => ScriptOf(t.Artist, t.Title)).Where(s => s.Length > 0)
-            .GroupBy(s => s).ToDictionary(g => g.Key, g => g.Count());
+        var skips = db.SkipsSince(DateTimeOffset.UtcNow.AddDays(-SkipDays)).Where(x => !notPeople.Has(x.Nick))
+            .Select(x => (Track: Credit(x.Track), x.Nick, x.At)).ToList();
+        var artists = requests.Select(x => x.Track).Concat(likes.Select(x => x.Track))
+            .Select(t => AutoDj.ArtistKey(t.Artist)).Where(a => a.Length > 0).ToHashSet();
         var forced = options.CurrentValue.PreferScript?.Trim().ToLowerInvariant() ?? "";
-        if (forced is "cyr" or "lat") return new Profile(artists, forced, 1);
+        var pinned = forced is "cyr" or "lat";
+        var (script, lean) = pinned ? (forced, 1.0) : LeanOf(Fair(requests.Select(x => (x.Track, x.Nick)), ProfileTracks));
+        var people = BuildPeople(requests, likes, skips, DateTimeOffset.UtcNow);
+        // письмо, перебите вручну, — для всіх, а не лише для кімнати
+        if (pinned) people = people.ToDictionary(kv => kv.Key, kv => kv.Value with { Script = forced, Lean = 1 });
+        return new Snapshot(new Profile(artists, script, lean), people, notPeople);
+    }
+
+    /// <summary>Переважне письмо і наскільки воно переважає. Менше <see cref="MinTracksForLean"/> підписаних треків — нахилу нема.</summary>
+    static (string Script, double Lean) LeanOf(IEnumerable<TrackInfo> tracks)
+    {
+        var counts = tracks.Select(t => ScriptOf(t.Artist, t.Title)).Where(s => s.Length > 0)
+            .GroupBy(s => s).ToDictionary(g => g.Key, g => g.Count());
         var total = counts.Values.Sum();
-        if (total < MinTracksForLean) return new Profile(artists, "", 0);
+        if (total < MinTracksForLean) return ("", 0);
         var top = counts.MaxBy(kv => kv.Value);
         // рівно навпіл — нахилу нема; що далі від половини, то впевненіше
-        return new Profile(artists, top.Key, Math.Clamp((top.Value / (double)total - 0.5) * 2, 0, 1));
+        return (top.Key, Math.Clamp((top.Value / (double)total - 0.5) * 2, 0, 1));
     }
 
     /// <summary>
-    /// Перші <paramref name="take"/> треків, але від кожного ніка не більше <see cref="MaxShare"/> з них (хоч один):
-    /// хто закинув цілий плейлист, не перекриває решту кімнати. Порядок (свіжіше — вище) зберігається.
+    /// Смак кожної людини: свої треки — замовлення (не скіпнуті) і лайки; «не заходить» — артисти, яких вона скіпнула
+    /// двічі й більше, але сама не ставила й не лайкала (Smaug лайкає Jerry Heil і скіпає окремі її пісні — це про
+    /// пісні, не про артистку); пісні, скіпнуті за <see cref="SkippedSongDays"/> днів, — крім лайкнутих.
     /// </summary>
-    public static List<TrackInfo> Fair(IEnumerable<(TrackInfo Track, string Nick)> rows, int take)
+    public static Dictionary<string, Person> BuildPeople(
+        IEnumerable<(TrackInfo Track, string Nick, DateTimeOffset At)> requests,
+        IEnumerable<(TrackInfo Track, string Nick, DateTimeOffset At)> likes,
+        IEnumerable<(TrackInfo Track, string Nick, DateTimeOffset At)> skips,
+        DateTimeOffset now)
     {
-        var cap = Math.Max(1, (int)Math.Ceiling(take * MaxShare));
+        var own = requests.Concat(likes).GroupBy(x => Auth.NickKey(x.Nick))
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Track).DistinctBy(t => t.Id).ToList());
+        var liked = likes.GroupBy(x => Auth.NickKey(x.Nick))
+            .ToDictionary(g => g.Key, g => g.Select(x => AutoDj.KeyOf(x.Track.Artist, x.Track.Title)).ToHashSet());
+        var skipped = skips.GroupBy(x => Auth.NickKey(x.Nick)).ToDictionary(g => g.Key, g => g.ToList());
+
+        var people = new Dictionary<string, Person>();
+        foreach (var key in own.Keys.Union(skipped.Keys))
+        {
+            var tracks = own.GetValueOrDefault(key) ?? [];
+            var artists = tracks.Select(t => AutoDj.ArtistKey(t.Artist)).Where(a => a.Length > 0).ToHashSet();
+            var mine = skipped.GetValueOrDefault(key) ?? [];
+            var likedSongs = liked.GetValueOrDefault(key) ?? [];
+            var disliked = mine.GroupBy(x => AutoDj.ArtistKey(x.Track.Artist))
+                .Where(g => g.Key.Length > 0 && g.Count() >= 2 && !artists.Contains(g.Key)).Select(g => g.Key).ToHashSet();
+            var songs = mine.Where(x => x.At >= now.AddDays(-SkippedSongDays))
+                .Select(x => AutoDj.KeyOf(x.Track.Artist, x.Track.Title)).Where(s => !likedSongs.Contains(s)).ToHashSet();
+            var (script, lean) = LeanOf(tracks);
+            people[key] = new Person(key, artists, script, lean, disliked, songs, tracks.Count);
+        }
+        return people;
+    }
+
+    /// <summary>
+    /// Перші <paramref name="take"/> треків, але від кожного ніка не більше <paramref name="share"/> з них (хоч один;
+    /// за замовчуванням <see cref="MaxShare"/>): хто закинув цілий плейлист, не перекриває решту кімнати. Порядок
+    /// (свіжіше — вище) зберігається.
+    /// </summary>
+    public static List<TrackInfo> Fair(IEnumerable<(TrackInfo Track, string Nick)> rows, int take, double share = MaxShare)
+    {
+        var cap = Math.Max(1, (int)Math.Ceiling(take * share));
         var per = new Dictionary<string, int>();
         var list = new List<TrackInfo>();
         foreach (var (t, nick) in rows)
@@ -166,20 +246,58 @@ public sealed partial class RoomTaste(Db db, IOptionsMonitor<AutoDjOptions> opti
     /// Сила тиску: 1 — коли в ефірі вибір самого Глека (тоді й тягнути назад найпотрібніше),
     /// менше — коли трек поставила людина: її вибір сам по собі теж заява про смак.
     /// </param>
-    public double Multiplier(string artist, string title, double bias)
+    /// <param name="listening">
+    /// Хто зараз слухає на сайті. Порожньо (чи лише гості) — тиснемо смаком кімнати. Інакше — смаком присутніх:
+    /// «свій» артист і письмо — середнє за ними (у кого свого смаку ще нема, той «голосує» кімнатним), а
+    /// «не заходить» кожного присутнього притискає окремо.
+    /// </param>
+    public double Multiplier(string artist, string title, double bias, IReadOnlyCollection<string>? listening = null)
     {
         var k = Math.Clamp(bias, 0, 1) * Math.Clamp(options.CurrentValue.TasteBias, 0, 2);
         if (k <= 0) return 1;
-        var p = Current;
-        var m = 1.0;
-        if (p.Artists.Contains(AutoDj.ArtistKey(artist))) m *= 1 + 0.7 * k;
-        if (p.Script.Length > 0 && p.Lean > 0)
+        var snap = Snap;
+        var room = snap.Room;
+        var a = AutoDj.ArtistKey(artist);
+        var script = ScriptOf(artist, title);
+        var here = Present(snap, listening);
+        if (here.Count == 0) return Lift(room.Artists, room.Script, room.Lean, a, script, k);
+
+        double lift = 0, damp = 1;
+        foreach (var p in here)
         {
-            var script = ScriptOf(artist, title);
-            if (script == p.Script) m *= 1 + 0.35 * p.Lean * k;
-            else if (script.Length > 0) m *= 1 - 0.6 * p.Lean * k;
+            lift += p is { HasTaste: true } ? Lift(p.Artists, p.Script, p.Lean, a, script, k) : Lift(room.Artists, room.Script, room.Lean, a, script, k);
+            if (p is not null && p.Disliked.Contains(a)) damp *= Math.Max(0.1, 1 - DislikeDamp * k);
+        }
+        return lift / here.Count * damp;
+    }
+
+    /// <summary>Підйом за «свого» артиста і звичне письмо (той самий, що й був для кімнати).</summary>
+    static double Lift(HashSet<string> artists, string prefer, double lean, string artistKey, string script, double k)
+    {
+        var m = 1.0;
+        if (artists.Contains(artistKey)) m *= 1 + 0.7 * k;
+        if (prefer.Length > 0 && lean > 0)
+        {
+            if (script == prefer) m *= 1 + 0.35 * lean * k;
+            else if (script.Length > 0) m *= 1 - 0.6 * lean * k;
         }
         return m;
+    }
+
+    /// <summary>
+    /// Присутні люди: для кожного акаунта серед <paramref name="listening"/> — його смак або null (акаунт без жодних
+    /// слідів). Гості й боти не рахуються. Порожньо — нікого з людей.
+    /// </summary>
+    static List<Person?> Present(Snapshot snap, IReadOnlyCollection<string>? listening) =>
+        listening is null ? [] :
+        [.. listening.Where(n => !snap.NotPeople.Has(n)).Select(Auth.NickKey).Distinct().Select(k => snap.People.GetValueOrDefault(k))];
+
+    /// <summary>Пісні, які хтось із присутніх скіпнув за <see cref="SkippedSongDays"/> днів (ключі <see cref="AutoDj.KeyOf"/>).</summary>
+    public HashSet<string> SkippedBy(IReadOnlyCollection<string>? listening)
+    {
+        var set = new HashSet<string>();
+        foreach (var p in Present(Snap, listening)) if (p is not null) set.UnionWith(p.SkippedSongs);
+        return set;
     }
 
     /// <summary>
@@ -187,13 +305,27 @@ public sealed partial class RoomTaste(Db db, IOptionsMonitor<AutoDjOptions> opti
     /// Глек будує поради, коли в ефірі вже його власний вибір. Свіжіше важить більше, але й старіше
     /// має шанс, і кілька останніх якорів поспіль не повторюються. Від одного ніка — не більше
     /// <see cref="MaxShare"/> пулу.
+    /// <para>
+    /// Слухають люди — якір з їхніх замовлень і лайків (кожному рівна частка пулу): сам владік — від владікового, удвох зі
+    /// Smaug — навпіл. Нічого свого в присутніх нема — з кімнатного, як раніше.
+    /// </para>
     /// </summary>
-    public TrackInfo? Anchor(IReadOnlySet<string> exclude)
+    public TrackInfo? Anchor(IReadOnlySet<string> exclude, IReadOnlyCollection<string>? listening = null)
     {
         bool Ok(TrackInfo t) => !exclude.Contains(t.Id) && !VoiceService.IsVoice(t.Id);
         var notPeople = Bots.Load(db);
-        var pool = Fair(Requests(notPeople).Where(x => Ok(x.Track)), AnchorPool);
-        if (pool.Count == 0) pool = Fair(Likes(notPeople).Where(x => Ok(x.Track)).DistinctBy(x => x.Track.Id), AnchorPool);
+        var requests = Requests(notPeople);
+        var likes = Likes(notPeople);
+        var pool = new List<TrackInfo>();
+        var here = listening?.Where(n => !notPeople.Has(n)).Select(Auth.NickKey).ToHashSet() ?? [];
+        if (here.Count > 0)
+        {
+            var theirs = requests.Concat(likes).Where(x => here.Contains(Auth.NickKey(x.Nick)) && Ok(x.Track))
+                .OrderByDescending(x => x.At).DistinctBy(x => x.Track.Id).Select(x => (x.Track, x.Nick));
+            pool = Fair(theirs, AnchorPool, Math.Max(MaxShare, 1.0 / here.Count));
+        }
+        if (pool.Count == 0) pool = Fair(requests.Where(x => Ok(x.Track)).Select(x => (x.Track, x.Nick)), AnchorPool);
+        if (pool.Count == 0) pool = Fair(likes.Where(x => Ok(x.Track)).DistinctBy(x => x.Track.Id).Select(x => (x.Track, x.Nick)), AnchorPool);
         if (pool.Count == 0) return null;
         lock (_lock)
         {
