@@ -178,6 +178,30 @@ public class DailyPayTests
     }
 
     [Fact]
+    public void Money_counts_today_left_and_last_night()
+    {
+        using var rig = new Rig();
+        var y = rig.Day(-1);
+        rig.Solve("g1", "Оля", attempts: 2, day: y);
+        rig.Solve("g1", "Петро", attempts: 3, day: y);
+        rig.Solve("g1", "Яся", attempts: 4, day: y);
+        rig.Prizes.Settle(y);
+        rig.Solve("g2", "Оля");
+
+        var s = rig.Daily.Status("Оля");
+        var m = rig.Daily.Money("Оля", s, rig.E.Options)!;
+        Assert.Equal(210, m.Today);              // 200 + серія 1 (+5 %)
+        Assert.Equal(210, m.ByGame["g2"]);
+        // 9 нерозв'язаних: g1 із серією 1 → завтра 2 (+10 %), решта +5 %; плюс «повний глек»
+        Assert.Equal(220 + 8 * 210 + 500, m.Left);
+        Assert.Equal(y, m.NightDay);
+        Assert.Equal(400, m.Night);              // 100 за місце + 300 за перше
+        Assert.Equal("top", m.NightItems[0].Kind);
+
+        Assert.Null(rig.Daily.Money("гість Іван", rig.Daily.Status("гість Іван"), rig.E.Options));
+    }
+
+    [Fact]
     public void Lone_solver_gets_half_for_place()
     {
         Assert.Equal(50, DailyPrizes.Best(100, 1, 1));

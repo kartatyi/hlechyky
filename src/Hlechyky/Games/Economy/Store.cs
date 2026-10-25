@@ -722,6 +722,22 @@ public sealed class EconomyStore(Db db)
         return list;
     });
 
+    /// <summary>Скільки нік отримав за причинами, що починаються з <paramref name="prefixes"/>, від і до (UTC) — по причинах.</summary>
+    public Dictionary<string, int> LedgerByReason(string nickKey, DateTimeOffset from, DateTimeOffset to, params string[] prefixes) => db.With(c =>
+    {
+        var map = new Dictionary<string, int>(StringComparer.Ordinal);
+        using var cmd = Cmd(c, """
+            SELECT reason, SUM(delta) FROM ledger WHERE nick_key = $n AND created_at >= $f AND created_at < $t GROUP BY reason
+            """, ("$n", nickKey), ("$f", Iso(from)), ("$t", Iso(to)));
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var reason = r.GetString(0);
+            if (prefixes.Any(p => reason.StartsWith(p, StringComparison.Ordinal))) map[reason] = r.GetInt32(1);
+        }
+        return map;
+    });
+
     /// <summary>Людина: акаунт і не бот (<see cref="Bots.NotBot"/>). Надбавки «Щоденного глека» — лише людям.</summary>
     public bool IsPerson(string nickKey) => db.With(c =>
         Convert.ToInt64(Scalar(c, $"SELECT {Bots.NotBot("$n")}", ("$n", nickKey))) == 1);

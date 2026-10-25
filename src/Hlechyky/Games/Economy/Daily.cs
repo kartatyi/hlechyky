@@ -14,7 +14,17 @@ public sealed record DailyPuzzle(string Game, string Title, DailyMe? Me, int Str
 
 /// <summary>Те, що віддає GET /api/games/daily.</summary>
 public sealed record DailyStatus(string Day, int No, DateTimeOffset NextMidnight, IReadOnlyList<DailyPuzzle> Puzzles,
-    DailyPay? Pay = null);
+    DailyPay? Pay = null, DailyMoney? Money = null);
+
+/// <summary>Одна нічна виплата: гра, що за неї (best — «за місце», top — приз топу), скільки.</summary>
+public sealed record DailyNightItem(string Game, string Title, string Kind, int Amount);
+
+/// <summary>
+/// Черепки «Щоденного глека» для смужки «Сьогодні»: скільки вже прийшло сьогодні (усього й по головоломках), скільки ще
+/// можна взяти до кінця дня (оцінка: решта головоломок із серією + «повний глек») і що прийшло вночі за вчора.
+/// </summary>
+public sealed record DailyMoney(int Today, IReadOnlyDictionary<string, int> ByGame, int Left, string NightDay, int Night,
+    IReadOnlyList<DailyNightItem> NightItems);
 
 /// <summary>
 /// Скільки платить «Щоденний глек» (уже × Boost) — для смужки «Сьогодні»: база, серія, «повний глек» (скільки треба й
@@ -122,6 +132,42 @@ public sealed class Daily(EconomyStore store, GameNames names, IClock clock, IEn
 
     public List<DailyTopRow> Top(string game, string? day = null, int n = 10) =>
         store.DailyTop(day ?? Today(), game, n).Select(r => new DailyTopRow(r.Nick, r.Attempts, r.Ms)).ToList();
+
+    /// <summary>
+    /// Черепки щоденних для ніка (лише людям — гостям надбавок нема, і рахувати їм «ще можна» було б неправдою; null).
+    /// </summary>
+    public DailyMoney? Money(string nick, DailyStatus status, EconomyOptions o)
+    {
+        var key = Economy.Key(nick);
+        if (string.IsNullOrWhiteSpace(nick) || !store.IsPerson(key)) return null;
+        var day = status.Day;
+        var from = StartOfDayUtc(day);
+        var today = store.LedgerByReason(key, from, from.AddDays(2), "daily:", "daily-streak:", "daily-full");
+        var byGame = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (reason, n) in today)
+        {
+            var i = reason.IndexOf(':');
+            if (i < 0) continue;
+            var game = reason[(i + 1)..];
+            byGame[game] = byGame.GetValueOrDefault(game) + n;
+        }
+        var reward = o.Earn(o.DailyReward);
+        var left = status.Puzzles.Where(p => p.Me?.Solved != true)
+            .Sum(p => reward + (o.DailyStreakPct > 0 && o.DailyStreakMaxPct > 0 ? o.DailyStreakBonus(reward, p.Streak + 1) : 0));
+        var need = o.DailyFullBonus > 0 ? Math.Min(Math.Max(0, o.DailyFullNeed), status.Puzzles.Count) : 0;
+        if (need > 0 && !today.ContainsKey("daily-full")) left += o.Earn(o.DailyFullBonus);
+        var yday = Prev(day);
+        // нічні виплати за вчора приходять після опівночі — тобто вже сьогоднішньою датою
+        var night = store.LedgerByReason(key, from, from.AddDays(2), "daily-best:", "daily-top:")
+            .Select(x => (Reason: x.Key, Amount: x.Value)).ToList();
+        var items = night.Select(x =>
+        {
+            var i = x.Reason.IndexOf(':');
+            var game = x.Reason[(i + 1)..];
+            return new DailyNightItem(game, names.Title(game), x.Reason[..i] == "daily-top" ? "top" : "best", x.Amount);
+        }).Where(x => x.Amount > 0).OrderByDescending(x => x.Amount).ToList();
+        return new DailyMoney(today.Values.Sum(), byGame, left, yday, items.Sum(x => x.Amount), items);
+    }
 
     /// <summary>Панель «Щоденний глек» для одного ніка. Уся вибірка — двома походами в базу, не по чотири на гру.</summary>
     public DailyStatus Status(string nick)

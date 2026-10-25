@@ -139,32 +139,31 @@
 
   /// Число в клітинці таблиці. Від мільйона — коротко, як у Гончарному колі: «3,6 трлн», від квадрильйона — у гривнях
   /// («5,93 млн ₴»), від 10²⁷ — у червоних золотих (десяте оновлення кола, docs/games/specs/clicker-v10.md §6; ті самі
-  /// пороги, що Clicker.Short). Інакше глеки гончарів стояли б у таблиці як «3.601004441162112e+21».
+  /// пороги, що Clicker.Short), від 10³⁹ — у дукачах (v12 §6). Інакше глеки гончарів стояли б у таблиці як
+  /// «3.601004441162112e+21», а рекорд Назара — «4,3e15 золотих», хоч у колі він бачить «4 317 дукачів» (записка #67).
   const LB_BIG = ['млн', 'млрд', 'трлн'];
   function lbCount(n) {
     if (Math.abs(n) < 1e6) return n % 1 && Math.abs(n) < 1000 ? (Math.round(n * 10) / 10).toLocaleString('uk-UA') : Math.trunc(n * (1 + 1e-12)).toLocaleString('uk-UA');
     const i = Math.floor(Math.log10(Math.abs(n)) / 3) - 2;
-    if (i >= LB_BIG.length) {
-      let e = Math.floor(Math.log10(Math.abs(n)));
-      let m = Math.round((n / Math.pow(10, e)) * 10) / 10;
-      if (Math.abs(m) >= 10) { m /= 10; e += 1; }
-      return m.toLocaleString('uk-UA', { maximumFractionDigits: 1 }) + 'e' + e;
-    }
+    // За трильйонами — «1 200 трлн», як Clicker.Count: степеня («1,2e15») гравець не бачить ніде.
+    if (i >= LB_BIG.length) return Math.trunc(n / 1e12 * (1 + 1e-12)).toLocaleString('uk-UA') + ' ' + LB_BIG[LB_BIG.length - 1];
     const v = n / Math.pow(1000, i + 2);
     const digits = v < 10 ? 2 : v < 100 ? 1 : 0;
     const k = Math.pow(10, digits);
     return (Math.trunc(v * k * (1 + 1e-12)) / k).toLocaleString('uk-UA', { maximumFractionDigits: digits }) + ' ' + LB_BIG[i];
   }
   function lbNum(n) {
-    if (typeof n !== 'number' || !Number.isFinite(n) || Math.abs(n) < 1e6) return n;
-    const a = Math.abs(n);
+    if (typeof n !== 'number' || !Number.isFinite(n)) return n;
+    const a = Math.abs(n);   // до мільйона — теж з пробілами («593 821», а не «593821»)
     if (a < 1e15) return lbCount(n);
     if (a < 1e27) return lbCount(n / 1e15) + ' ₴';
-    const g = n / 1e27;
-    const shown = Math.abs(g) >= 1000 ? Math.trunc(g * (1 + 1e-12)) : Math.round(g * 10) / 10;
-    const word = Math.abs(g) >= 1e6 ? 'золотих' : shown % 1 ? 'золотого'
-      : shown % 100 >= 11 && shown % 100 <= 14 ? 'золотих' : shown % 10 === 1 ? 'золотий' : shown % 10 >= 2 && shown % 10 <= 4 ? 'золоті' : 'золотих';
-    return lbCount(g) + ' ' + word;
+    // Слово — за тим, що видно (як Clicker.GoldWord/DukachWord): дробове — «золотого», після «млн» — «золотих».
+    const coin = (g, one, few, many, frac) => {
+      if (Math.abs(g) >= 1e6) return lbCount(g) + ' ' + many;
+      const shown = Math.abs(g) >= 1000 ? Math.trunc(g * (1 + 1e-12)) : Math.round(g * 10) / 10;
+      return lbCount(g) + ' ' + (shown % 1 ? frac : plural(shown, one, few, many));
+    };
+    return a < 1e39 ? coin(n / 1e27, 'золотий', 'золоті', 'золотих', 'золотого') : coin(n / 1e39, 'дукач', 'дукачі', 'дукачів', 'дукача');
   }
   const secs = (ms) => (ms == null ? '' : (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + ' с');
   const shards = (n) => {
@@ -678,7 +677,8 @@
   const SCORE_FMT = {
     'mines-daily': msText, 'mines-daily-easy': msText, 'chess-daily': msText, 'bricks-daily': msText,
     'bricks-sprint': (s) => msText(s * 1000),
-    clicker: (n) => (n < 1e15 ? lbNum(n) + ' ' + plural(Math.trunc(n), 'глек', 'глеки', 'глеків') : lbNum(n)),
+    // «1,47 млн глеків», а не «глеки»: після скорочення слово узгоджується з «млн», а не з останньою цифрою.
+    clicker: (n) => (n < 1e15 ? lbNum(n) + ' ' + (n >= 1e6 ? 'глеків' : plural(Math.trunc(n), 'глек', 'глеки', 'глеків')) : lbNum(n)),
     'dino-daily': (n) => num(n) + ' м',
     'geo-solo': (n) => cnt(n, 'очко', 'очки', 'очок'),
     'geo-daily': (n) => cnt(n, 'очко', 'очки', 'очок'),
@@ -780,6 +780,9 @@
     if (kind === 'rated') notes.push('Ело й рахунок — за весь час: рейтинг періоду не має.');
     if (kind === 'solo' && r.order === 'lower' && !NO_SCORE.has(game)) notes.push('⬇ Тут менше — краще.');
     if (NO_SCORE.has(game)) notes.push('Очки цієї щоденної гри — у її власній таблиці дня; тут — скільки днів грали.');
+    // Записка #67: голе «рекорд» з дукачами нічого не казало. Коло шле глеки за весь час — період лише відбирає, хто грав.
+    if (game === 'clicker') notes.push('🏺 Скільки глеків гончар зліпив за весь час гри' + (period === 'all' ? '' : ' (у таблиці — хто крутив коло ' + PERIOD_WORD[period] + ')')
+      + '. Великі суми — як у самому колі: 1 ₴ = мільйон мільярдів глеків, 1 золотий = трильйон ₴, 1 дукач = трильйон золотих.');
     note.textContent = notes.join(' ');
     if (!rows.length) { box.innerHTML = '<div class="gempty">' + cap(PERIOD_WORD[period]) + ' тут ще ніхто не відзначився.</div>'; return; }
     const games = (x) => (x.games != null ? x.games : (x.wins || 0) + (x.losses || 0) + (x.draws || 0));
@@ -800,7 +803,8 @@
         ['партій', (x) => games(x), 'усього партій', ''], ['% перемог', (x) => winPct(x.wins, games(x)), 'частка перемог', 'pct']];
     } else if (kind === 'solo') {
       const tl = triesLabel(game);
-      cols = (NO_SCORE.has(game) ? [] : [['рекорд', (x) => esc(scoreText(game, x.best)), r.order === 'lower' ? 'найкраще — найменше' : 'найкращий результат', 'main']])
+      cols = (NO_SCORE.has(game) ? [] : [[game === 'clicker' ? 'зліпив за весь час' : 'рекорд', (x) => esc(scoreText(game, x.best)),
+        game === 'clicker' ? 'глеків за весь час гри' : r.order === 'lower' ? 'найкраще — найменше' : 'найкращий результат', 'main']])
         .concat(tl ? [[tl, (x) => num(x.tries), tl === 'днів' ? 'скільки днів грали' : 'скільки разів пробували', NO_SCORE.has(game) ? 'main' : '']] : []);
     } else {
       cols = LB_COLS.filter(([k]) => rows.some((x) => x[k] != null))

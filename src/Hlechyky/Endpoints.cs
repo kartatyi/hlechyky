@@ -36,7 +36,7 @@ public static class Endpoints
             IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel, IOptionsMonitor<Bets.BetsOptions> bets,
             IOptionsMonitor<Games.Impl.SlotsOptions> slots,
             IOptionsMonitor<Games.Impl.LelkaOptions> lelka, IOptionsMonitor<Games.Impl.KoloOptions> kolo,
-            IOptionsMonitor<Games.Impl.KavunyOptions> kavuny, IOptionsMonitor<Games.Impl.PlinkoOptions> plinko, IOptionsMonitor<EconomyOptions> economy) => new
+            IOptionsMonitor<Games.Impl.KavunyOptions> kavuny, IOptionsMonitor<Games.Impl.PlinkoOptions> plinko, IOptionsMonitor<EconomyOptions> economy, IServiceProvider sp) => new
         {
             nick = Auth.Nick(c), role = Auth.Role(c), banPrice = bans.BanPrice,
             // множник заробітку (Economy:Boost): ігри, що самі рахують черепки за очки («Скільки?», «Де це?»), множать на нього
@@ -51,6 +51,8 @@ public static class Endpoints
             kolo = kolo.CurrentValue.Enabled,     // Гончарне колесо (Kolo:Enabled): false — тайла нема, ставок не приймає
             kavuny = kavuny.CurrentValue.Enabled, // Кавуни на ярмарку (Kavuny:Enabled): false — тайла нема, раунду не почати
             plinko = plinko.CurrentValue.Enabled, // Горохова дошка (Plinko:Enabled): false — тайла нема, кидок відмовляє
+            // 🎁 безкоштовні прокрути (Slots:Free): { bet, total, left, person } — значок у шапці; null — нема чи слоти вимкнені
+            freeSpins = slots.CurrentValue.Enabled && Auth.IsUser(c) ? sp.GetService<Games.Impl.SlotFreeSpins>()?.View(Auth.Nick(c)) : null,
             // «🎲 Ставки»: сторінка з подіями й панель ставок на столах (Bets:Enabled + Bets:Events / Bets:Tables)
             bets = new { events = bets.CurrentValue.EventsOn, tables = bets.CurrentValue.TablesOn },
             night = curfew.ForMe(c),   // нічний відбій — лише тим, кого стосується; решті null

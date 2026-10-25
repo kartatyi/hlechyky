@@ -75,6 +75,8 @@
       <span id="nickBtn" class="nick">…</span>
       <span id="hdrWallet" class="wallet" title="Черепки">🏺 <b>—</b></span>
     </a>
+    <!-- 🎁 безкоштовні прокрути в слотах (Slots:Free): видно, поки є невикручені; дотик — в автомат одразу в режимі «безкоштовно» -->
+    <button id="hdrFree" class="hdrfree" type="button" hidden>🎁 <b>0</b></button>
     <!-- ⏭ у шапці — лише на телефоні за столом і в балачках, де міні-плеєр унизу сховано (style.css, renderNow). -->
     <button id="hdrSkip" class="icon hdrskip" type="button" title="Перемкнути на наступний трек" aria-label="Скіп — наступний трек" hidden>⏭</button>
     <!-- 🚨 Тривога (web/tryvoga.js): мапа тривог і цілей; під час тривоги в моєму районі — крапка кольором рівня. -->
@@ -82,7 +84,7 @@
     <!-- 🎙 Посиденьки: голосовий чат (web/voice.js). Бейдж — скільки людей зараз у голосі; панель — по кліку. -->
     <button id="vcBtn" class="icon vcbtn" type="button" title="Посиденьки — голосовий чат" aria-label="Посиденьки — голосовий чат" aria-expanded="false"><span class="vc-ico">🎙</span><span class="vc-n chip badge" hidden>0</span></button>
     <!-- «💡 Розробнику»: пропозиції й баги. Бейдж — скільки записок чекає (адміну) або в скількох своїх записках нова відповідь розробника (решті). -->
-    <button id="fbBtn" class="icon fbbtn" type="button" title="Пропозиції й баги — розробнику" aria-label="Написати розробнику">💡<span id="fbBadge" class="chip badge" hidden>0</span></button>
+    <button id="fbBtn" class="icon fbbtn" type="button" title="Пропозиції й баги — розробнику. За баг чи зроблену ідею — 5000 черепків від Дядька Глека" aria-label="Написати розробнику">💡<span id="fbBadge" class="chip badge" hidden>0</span></button>
     <button id="chatToggle" class="icon chat-toggle" title="Балачки — клавіша ]" aria-label="Показати чи сховати балачки">💬<span id="hdrChatBadge" class="chip badge" hidden>0</span></button>
   </div>
   <div class="hdrprog" id="hdrProg" title="Скільки лишилось треку"><div id="hdrBar"></div></div>
@@ -245,7 +247,7 @@
 <nav class="mtabs" aria-label="Розділи">
   <button data-route="efir" class="on"><span class="ico">📻</span>Ефір</button>
   <button data-route="lib"><span class="ico">🎵</span>Бібліотека</button>
-  <button data-route="games"><span class="ico">🎮</span>Ігри <span id="mNavGames" class="chip badge turn" hidden>хід</span></button>
+  <button data-route="games"><span class="ico">🎮</span>Ігри <span id="mNavGames" class="chip badge turn" hidden>хід</span><span id="mNavGift" class="chip badge gift" hidden>🎁</span></button>
   <button data-route="stats"><span class="ico">📊</span>Хто скільки</button>
   <button data-route="chat" id="mtabChat"><span class="ico">💬</span>Балачки <span id="mChatBadge" class="chip badge" hidden>0</span></button>
 </nav>
@@ -299,6 +301,8 @@
   <form id="fbForm" class="card fbcard">
     <h3>💡 Розробнику<button id="fbX" class="icon ghost fbx" type="button" title="Закрити (Esc)" aria-label="Закрити">✕</button></h3>
     <p class="muted small">Що додати, що змінити, що зламалось — пиши як є. Читає той, хто робить сайт, і відповідає просто тут — а ти можеш відписати.</p>
+    <!-- Нагорода за записки (25.10.2026, ×5 після економіки ×10): платить Дядько Глек руками адміна — Feedback.cs, MaxGift -->
+    <p class="fbpay small">🏺 Знайшов баг чи дав ідею, яку зробили, — Дядько Глек дасть <b>5000 черепків</b>. Не баг, але зробили зрозуміліше — <b>1250</b>.</p>
     <div class="tabs seg" id="fbKinds">
       <button type="button" data-k="idea" class="on">💡 Додати</button>
       <button type="button" data-k="change">✏ Змінити</button>
