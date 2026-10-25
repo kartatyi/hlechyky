@@ -2376,6 +2376,80 @@
     try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { return; }
     toast(nightLine(m), 'ok');
   }
+  /// 🏆 Січ щоденних (daily.sich; старий сервер не шле): картка зі стрілкою — коли сервер ще без таблички (top),
+  /// інакше табличка тижня поруч із головоломками.
+  const sichOn = () => !!(daily && daily.sich && extraPanels.some((p) => p.id === 'sich'));
+  const sichTip = (s) => 'Тижневий залік щоденних: 1 очко за розгадану і ще по очку за кожного, кого обійшов. Неділя опівночі — 👑 і черепки'
+    + (s.gain > 0 ? '. Сьогодні ще можна до +' + s.gain + ' за одну гру' : '');
+  function sichCard() {
+    const s = daily && daily.sich;
+    if (!sichOn() || s.top) return '';
+    const me = s.place ? s.place + ' місце з ' + s.of + ' · ' + s.points + ' оч.' : s.of ? 'ти ще без очок · у заліку ' + s.of : 'ще ніхто не в заліку — будь першим';
+    const lead = s.leader && !(s.place === 1) ? ' · лідер ' + s.leader + ' ' + s.leaderPoints : s.place === 1 ? ' · ти лідер!' : '';
+    return '<button type="button" class="gdc gdc-link sich-card" data-go="#games/x:sich" title="' + esc(sichTip(s)) + '">'
+      + '<span class="gemo">🏆</span><div><b>Січ щоденних</b><span class="muted small">' + esc(me + lead) + '</span></div>'
+      + '<span class="muted small">→</span></button>';
+  }
+  const isMe = (n) => !!me.nick && String(n).toLowerCase() === me.nick.toLowerCase();
+  /// Кружечок з першою літерою ніка, у кольорі ніка.
+  const sichDot = (n, cls) => '<i class="sich-dot' + (cls ? ' ' + cls : '') + (isMe(n) ? ' me' : '') + '" style="--h:' + hueOf(n) + '" title="' + esc(n) + '">'
+    + esc(Array.from(String(n))[0] || '?').toUpperCase() + '</i>';
+  function sichBoard() {
+    const s = daily && daily.sich;
+    if (!sichOn() || !s.top) return '';
+    const max = Math.max(1, ...s.top.map((t) => t.points));
+    const rows = s.top.map((t, i) => {
+      const gap = i > 0 && t.place > s.top[i - 1].place + 1 ? ' gap' : '';   // я — нижче п'ятірки
+      const move = t.new ? '<span class="sich-up" title="Сьогодні вперше в заліку">новий</span>'
+        : t.move > 0 ? '<span class="sich-up" title="За сьогодні піднявся">▲' + t.move + '</span>'
+        : t.move < 0 ? '<span class="sich-down" title="За сьогодні опустився">▼' + -t.move + '</span>' : '';
+      return '<div class="sich-lb-r' + (isMe(t.nick) ? ' me' : '') + (t.place <= 3 ? ' p' + t.place : '') + gap + '">'
+        + '<span class="sich-pl">' + t.place + '</span><span class="sich-who">' + esc(t.nick) + crownMark(t.nick) + move + '</span>'
+        + '<span class="sich-bar"><i style="width:' + Math.round(t.points / max * 100) + '%"></i></span><b>' + t.points + '</b></div>';
+    }).join('') || '<p class="muted small">Тиждень ще порожній — розгадай щось першим, і Січ твоя.</p>';
+    // моя відстань: до лідера, або — коли лідер я — запас над другим
+    const mine = s.top.find((t) => isMe(t.nick));
+    const lead = s.top[0];
+    let foot = '';
+    if (mine && lead && mine.place > 1) foot = 'до ' + lead.nick + ' −' + (lead.points - mine.points);
+    else if (mine && s.top[1]) foot = 'ти попереду на ' + (mine.points - s.top[1].points);
+    else if (!mine) foot = 'тебе ще нема в заліку';
+    if (s.gain > 0) foot += (foot ? ' · ' : '') + 'одна гра дасть до +' + s.gain;
+    const week = (s.myDays || []).map((v, i) => '<i class="' + (v > 0 ? 'on' : '') + (i === s.todayIndex ? ' today' : '') + (i > s.todayIndex ? ' later' : '')
+      + '" title="' + ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'нд'][i] + (v > 0 ? ': ' + points(v) : '') + '"></i>').join('');
+    const left = s.daysLeft > 0 ? 'ще ' + s.daysLeft + ' ' + (s.daysLeft === 1 ? 'день' : s.daysLeft < 5 ? 'дні' : 'днів') : 'фінал сьогодні';
+    return '<div class="sich-lb" data-go="#games/x:sich" title="' + esc(sichTip(s)) + '">'
+      + '<div class="sich-lb-h"><b>🏆 Січ · тиждень</b><span class="sich-tag' + (s.daysLeft ? '' : ' hot') + '">' + left + '</span></div>'
+      + '<div class="sich-lb-t">' + rows + '</div>'
+      + (foot ? '<div class="muted small sich-lb-f">' + esc(foot) + '</div>' : '')
+      + (week ? '<div class="sich-lb-w muted small">мій тиждень <span class="sich-wk">' + week + '</span></div>' : '') + '</div>';
+  }
+  const crownMark = (n) => (window.HSich && HSich.crowned && HSich.crowned(n) ? ' <span class="crown" title="Гетьман тижня">👑</span>' : '');
+  /// Хто вже зіграв цю головоломку сьогодні (daily.sich.games): кружечки за місцями й рядок «ти 2-й з 4, обійшов…»
+  /// або, коли ще не грав, — хто попереду і скільки дасть. Повертає { dots, line, hot }.
+  function sichSeats(p) {
+    const s = daily && daily.sich;
+    if (!sichOn() || !s.games) return null;
+    const seats = s.games[p.game] || [];
+    const mine = seats.find((x) => isMe(x.nick));
+    const dots = seats.slice(0, 5).map((x) => sichDot(x.nick, x.solved ? '' : 'miss')).join('')
+      + (seats.length > 5 ? '<i class="sich-dot more">+' + (seats.length - 5) + '</i>' : '');
+    if (mine) {
+      const beat = seats.filter((x) => x.place > mine.place).map((x) => x.nick);
+      const line = !mine.solved ? 'Січ: 0 очок цього разу'
+        : (mine.place + '-й з ' + seats.length + ' · +' + points(mine.score)
+          + (beat.length ? ' · обійшов ' + beat.slice(0, 2).join(', ') + (beat.length > 2 ? ' і ще ' + (beat.length - 2) : '') : ''));
+      return { dots, line, hot: false };
+    }
+    if (!seats.length) return { dots: '', line: 'ніхто ще не грав — будь першим', hot: false };
+    // найкращий результат дня: очки гри, а де їх нема — спроби й час з топу дня
+    const best = seats[0];
+    const t = (p.top || [])[0];
+    const clock = (ms) => (ms < 60000 ? secs(ms) : Math.floor(ms / 60000) + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0'));
+    const how = best.pts != null ? ' — ' + points(best.pts)
+      : t && t.nick === best.nick && t.attempts ? ' — за ' + tries(t.attempts) + (t.ms ? ', ' + clock(t.ms) : '') : '';
+    return { dots, line: 'попереду ' + best.nick + how + ' · до +' + (seats.length + 1) + ' в Січ', hot: true };
+  }
   function tourCard() {
     const T = window.HTournament;
     const s = T && T.state;
@@ -2424,6 +2498,9 @@
     const list = ((daily && daily.puzzles) || []).filter((p) => !(byId[p.game] && byId[p.game].off));
     const cards = list.map((p) => {
       const solved = p.me && p.me.solved;
+      const seat = sichSeats(p);
+      // хто вже розгадав — видно з кружечків Січі, лічильник тоді зайвий
+      const sc = seat ? 0 : p.solvedCount;
       // Щоденні «більше — краще» (Скільки? дня) міряються очками, а не спробами: старий сервер points не шле.
       const what = solved && p.me.points != null
         ? '✓ зіграно · ' + points(p.me.points)
@@ -2431,20 +2508,29 @@
         ? '✓ розгадано ' + (p.me.attempts ? 'за ' + tries(p.me.attempts) : '') + (p.me.ms ? ' · ' + secs(p.me.ms) : '')
         // невдалий день теж пишеться (solved = false): у сапері ще можна спробувати, у слові — завтра
         : p.me
-        ? '✗ не вийшло' + (p.me.attempts ? ' · ' + tries(p.me.attempts) : '') + (p.solvedCount ? ' · ' + p.solvedCount + ' розгадали' : '')
-        : 'ще не розгадано' + (p.solvedCount ? ' · ' + p.solvedCount + ' вже розгадали' : '');
+        ? '✗ не вийшло' + (p.me.attempts ? ' · ' + tries(p.me.attempts) : '') + (sc ? ' · ' + sc + ' розгадали' : '')
+        : 'ще не розгадано' + (sc ? ' · ' + sc + ' вже розгадали' : '');
       // скільки ця головоломка дала сьогодні (з серією) — з daily.money; старий сервер не шле
       const got = daily && daily.money && daily.money.byGame ? daily.money.byGame[p.game] || 0 : 0;
-      return '<div class="gdc' + (solved ? ' done' : '') + '">' + iconOf(p.game) + '<div><b>' + esc(p.title || titleOf(p.game)) + '</b>'
-        + '<span class="muted small">' + esc(what) + (p.streak ? ' · 🔥 ' + p.streak : '') + (got > 0 ? ' · +' + got + ' 🏺' : '') + '</span></div>'
+      return '<div class="gdc' + (solved ? ' done' : '') + (seat && seat.hot ? ' hot' : '') + '">' + iconOf(p.game) + '<div><b>' + esc(p.title || titleOf(p.game)) + '</b>'
+        + '<span class="muted small">' + esc(what) + (p.streak ? ' · 🔥 ' + p.streak : '') + (got > 0 ? ' · +' + got + ' 🏺' : '') + '</span>'
+        + (seat ? '<span class="small gdc-seats">' + (seat.dots ? '<span class="sich-dots">' + seat.dots + '</span>' : '') + '<span>' + esc(seat.line) + '</span></span>' : '')
+        + '</div>'
         + '<button class="' + (solved ? 'ghost' : 'primary') + '" data-solo="' + esc(p.game) + '"'
         + (solved ? '' : ' title="Розгадай — і хапай щоденний глек"') + '>' + (solved ? 'Глянути' : 'Грати') + '</button></div>';
     }).join('');
-    const tour = giftCard() + tourCard() + padelCard();
-    if (!cards && !tour) return '';
-    return '<section class="gpanel gtoday"><h3>☀ Сьогодні' + (daily && daily.no ? ' <span class="muted small">· щоденний глек №' + daily.no + '</span>' : '') + '</h3>'
-      + (cards ? todayPay() : '')
-      + '<div class="gtoday-row">' + cards + tour + '</div></section>';
+    const tour = sichCard() + giftCard() + tourCard() + padelCard();
+    const board = sichBoard();
+    if (!cards && !tour && !board) return '';
+    // «3 з 11 зіграно · ще можна +14 очок Січі»
+    const played = list.filter((p) => p.me).length;
+    const left = daily && daily.sich && sichOn() ? daily.sich.left || 0 : 0;
+    const count = list.length ? '<p class="muted small gtoday-count">' + played + ' з ' + list.length + ' зіграно'
+      + (left > 0 ? ' · <b class="gtoday-left">ще можна +' + points(left) + ' Січі</b>' : '') + '</p>' : '';
+    const grid = '<div class="gtoday-row">' + cards + tour + '</div>';
+    return '<section class="gpanel gtoday' + (board ? ' split' : '') + '"><h3>☀ Сьогодні' + (daily && daily.no ? ' <span class="muted small">· щоденний глек №' + daily.no + '</span>' : '') + '</h3>'
+      + count + (cards ? todayPay() : '')
+      + (board ? '<div class="gtoday-split">' + grid + board + '</div>' : grid) + '</section>';
   }
   /// Що платить щоденний глек (view: /api/games/daily → pay; старий сервер не шле — рядка нема): база, серія,
   /// «повний глек» з поступом і нічні «за місце» й топ.

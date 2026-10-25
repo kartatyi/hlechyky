@@ -224,6 +224,15 @@ public sealed class EconomyOptions
     /// <summary>Призи топу платимо, лише коли головоломку розв'язало стільки людей.</summary>
     public int DailyTopMinSolvers { get; set; } = 3;
 
+    // ---- Січ щоденних (25.10.2026): тижневий залік усіх щоденних. Суми — база, × Boost. Типово в коді — без призів.
+
+    /// <summary>Призи тижня за 1, 2, 3… місце (у ніч на понеділок). Порожньо — лише корона й слава.</summary>
+    public int[]? SichPrizes { get; set; }
+    /// <summary>Номінація тижня (🐓 🎯 ⚡ 🔗) — кожному, хто її взяв.</summary>
+    public int SichNomPrize { get; set; }
+    /// <summary>Тиждень «відбувся» (призи, номінації, 👑), коли очки набрало щонайменше стільки людей.</summary>
+    public int SichMinPlayers { get; set; } = 3;
+
     /// <summary>Надбавка за серію в <paramref name="streak"/> днів (з сьогоднішнім) до нагороди <paramref name="reward"/>.</summary>
     public int DailyStreakBonus(int reward, int streak)
     {

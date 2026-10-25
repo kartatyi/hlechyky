@@ -765,6 +765,29 @@ public sealed class EconomyStore(Db db)
         return list;
     });
 
+    /// <summary>
+    /// Усі результати людей (акаунти без ботів) за дні від <paramref name="from"/> до <paramref name="to"/> включно — і
+    /// розв'язки, і невдалі дні — з часом розв'язку (для промаху — часом рядка). Січ щоденних рахує з цього тиждень.
+    /// </summary>
+    public List<(DailyRow Row, DateTimeOffset At)> DailyPeople(string from, string to) => db.With(c =>
+    {
+        using var cmd = Cmd(c, $"""
+            SELECT day, game, nick_key, nick, solved, attempts, ms, created_at FROM daily_results
+            WHERE day >= $f AND day <= $t AND {Bots.NotBot("nick_key")} ORDER BY day, game
+            """, ("$f", from), ("$t", to));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(DailyRow, DateTimeOffset)>();
+        while (r.Read()) list.Add((ReadDailyRow(r), Ts(r.GetString(7))));
+        return list;
+    });
+
+    /// <summary>Найперший день у таблиці щоденних (null — порожня): з нього Січ перераховує вічний рейтинг.</summary>
+    public string? DailyFirstDay() => db.With(c =>
+    {
+        using var cmd = Cmd(c, "SELECT MIN(day) FROM daily_results");
+        return cmd.ExecuteScalar() as string;
+    });
+
     public int DailySolvedCount(string day, string game) => db.With(c =>
         (int)Scalar(c, "SELECT COUNT(*) FROM daily_results WHERE day=$d AND game=$g AND solved=1", ("$d", day), ("$g", game)));
 

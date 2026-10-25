@@ -1460,7 +1460,10 @@
   const loadPartyCrown = () => fetch('/api/games/vechirka/crown').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j && j.nicks) partyCrown = new Set(j.nicks.map((n) => String(n).toLowerCase())); }).catch(() => {});
   window.HPartyCrown = { refresh: loadPartyCrown };
   loadPartyCrown();
-  const crownOf = (nick) => (window.HTournament && HTournament.crowned(nick) ? '<span class="crown" title="Чемпіон турніру">👑</span>' : '')
+  // 👑 Гетьмана тижня (Січ щоденних, web/games/sich.js) приїжджає вже після перших ніків — перемалювати їх
+  if (window.HSich) HSich.loadMarks().then(() => { try { if (state) renderOnline(); repaintCrowns(); } catch (e) { /* ще не намальовано */ } });
+  const crownOf = (nick) => (window.HTournament && HTournament.crowned(nick) ? '<span class="crown" title="Чемпіон турніру">👑</span>'
+    : window.HSich && HSich.crowned(nick) ? '<span class="crown" title="Гетьман тижня в Січі щоденних">👑</span>' : '')
     + (partyCrown.has(String(nick).toLowerCase()) ? '<span class="crown" title="Голова вечірки">🏆</span>' : '');
 
   /// Ніки, які сайт знає: хто зараз онлайн і хто писав у балачках. З них — підказка після @ і підсвітка.
@@ -2310,9 +2313,9 @@
       const msg = n.closest('.msg');
       const nick = msg && msg.dataset.nick;
       if (!nick) return;
-      const old = n.querySelector('.crown');
-      if (old) old.remove();
-      if (window.HTournament && HTournament.crowned(nick)) n.insertAdjacentHTML('beforeend', crownOf(nick));
+      n.querySelectorAll('.crown').forEach((c) => c.remove());
+      const c = crownOf(nick);
+      if (c) n.insertAdjacentHTML('beforeend', c);
     });
   }
 
