@@ -62,9 +62,59 @@
 .sich-rules ul { margin: 6px 0 0; padding-left: 1.2em; }
 .sich-rules li { margin: 2px 0; }
 
-/* картка в «☀ Сьогодні» */
+/* картка в «☀ Сьогодні» (старий сервер без таблички) */
 .gdc.sich-card { border-color: rgba(240, 192, 64, .55); }
 
+/* «☀ Сьогодні»: головоломки ліворуч, табличка тижня праворуч */
+.gtoday-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 310px); gap: 10px; align-items: start; }
+.gtoday-count { margin: 0 0 6px; }
+.gtoday-left { color: #f0c040; font-weight: 600; }
+.sich-lb { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  background: var(--panel2); border: 1px solid rgba(240, 192, 64, .55); position: sticky; top: 8px; }
+.sich-lb:hover { border-color: #f0c040; }
+.sich-lb-h { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.sich-tag { font-size: .78em; padding: 1px 8px; border-radius: 8px; background: var(--panel3); color: var(--muted); white-space: nowrap; }
+.sich-tag.hot { background: rgba(240, 192, 64, .2); color: #f0c040; }
+.sich-lb-t { display: flex; flex-direction: column; gap: 2px; }
+.sich-lb-r { display: grid; grid-template-columns: 1.4em minmax(0, 1fr) 3.4em 2.2em; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 8px; font-size: .92em; }
+.sich-lb-r b { text-align: right; }
+.sich-lb-r.me { background: var(--panel3); box-shadow: inset 0 0 0 1px var(--accent); }
+.sich-lb-r.gap { margin-top: 8px; position: relative; }
+.sich-lb-r.gap::before { content: '⋯'; position: absolute; top: -12px; left: 8px; color: var(--muted); font-size: .8em; }
+.sich-lb-r.p1 .sich-pl { color: #f0c040; }
+.sich-lb-r.p2 .sich-pl { color: #c8c8d7; }
+.sich-lb-r.p3 .sich-pl { color: #cd7f32; }
+.sich-bar { height: 6px; border-radius: 3px; background: var(--panel3); overflow: hidden; }
+.sich-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent2); }
+.sich-lb-r.p1 .sich-bar i { background: #f0c040; }
+.sich-lb-r.me .sich-bar i { background: var(--accent); }
+.sich-lb-f { border-top: 1px solid var(--line); padding-top: 5px; }
+.sich-lb-w { display: flex; align-items: center; gap: 6px; }
+.sich-wk { display: inline-flex; gap: 3px; }
+.sich-wk i { width: 11px; height: 11px; border-radius: 3px; background: var(--panel3); }
+.sich-wk i.on { background: #f0c040; }
+.sich-wk i.today { outline: 1px solid var(--accent2); outline-offset: 1px; }
+.sich-wk i.later { opacity: .45; }
+
+/* хто вже зіграв головоломку: кружечки за місцями й рядок «ти 2-й з 4» / «попереду…» */
+.gdc .gdc-seats { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); }
+.gdc-seats > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sich-dots { display: inline-flex; flex: none; padding-left: 4px; }
+.sich-dot { width: 17px; height: 17px; margin-left: -4px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-style: normal; font-size: 10px; font-weight: 600; color: #fff; border: 1.5px solid var(--panel2);
+  background: hsl(var(--h, 30) 55% 42%); }
+.sich-dot.me { box-shadow: 0 0 0 1px var(--accent); }
+.sich-dot.miss { opacity: .45; }
+.sich-dot.more { background: var(--panel3); color: var(--muted); }
+.gdc.hot { border-color: rgba(240, 192, 64, .55); }
+.gdc.hot .gdc-seats > span:last-child { color: #f0c040; }
+
+/* вузька смужка (телефон, відкриті Балачки) — табличка над головоломками: вона й є «хто кого» */
+.gtoday.split { container-type: inline-size; }
+@container (max-width: 720px) {
+  .gtoday-split { grid-template-columns: 1fr; }
+  .gtoday-split .sich-lb { order: -1; position: static; }
+}
 @media (max-width: 640px) {
   .sich-row { grid-template-columns: 1.8em minmax(0, 1fr) 2.6em 4.6em; gap: 6px; }
   .sich-row .sich-days { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(7, 1fr); }

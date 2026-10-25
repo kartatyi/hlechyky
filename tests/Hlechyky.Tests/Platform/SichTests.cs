@@ -172,6 +172,31 @@ public class SichTests
     }
 
     [Fact]
+    public void Brief_shows_the_table_with_moves_who_played_today_and_points_left()
+    {
+        using var rig = new Rig();   // середа
+        rig.Solve("g1", "Петро", 1, rig.Day(-1));
+        rig.Solve("g1", "Оля", 2, rig.Day(-1));   // учора: Петро 2, Оля 1
+        rig.Solve("g1", "Оля", 1);
+        rig.Solve("g1", "Петро", 2);
+        rig.Solve("g2", "Оля", 1);
+        rig.Solve("g3", "Яся", 1);
+        var b = rig.Sich.Brief("Яся");
+        Assert.Equal(["Оля", "Петро", "Яся"], b.Top!.Select(t => t.Nick));
+        Assert.Equal(1, b.Top![0].Move);    // обійшла Петра сьогодні
+        Assert.Equal(-1, b.Top![1].Move);
+        Assert.True(b.Top![2].New);
+        Assert.Equal([0, 0, 1, 0, 0, 0, 0], b.MyDays);
+        Assert.Equal(2, b.TodayIndex);
+        Assert.Equal(4, b.DaysLeft);
+        Assert.Equal(3 + 2, b.Left);         // g1 — обійти двох, g2 — одну
+        var g1 = b.Games!["g1"];
+        Assert.Equal(["Оля", "Петро"], g1.Select(s => s.Nick));
+        Assert.Equal([2, 1], g1.Select(s => s.Score));
+        Assert.False(b.Games.ContainsKey("g2") && b.Games["g2"].Any(s => s.Nick == "Яся"));
+    }
+
+    [Fact]
     public void Glek_announces_an_overtake_but_not_the_first_leader_or_at_night()
     {
         using var rig = new Rig();

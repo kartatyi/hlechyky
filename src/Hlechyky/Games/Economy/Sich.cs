@@ -33,8 +33,22 @@ public sealed record SichView(string Week, string From, string To, bool Live, in
     IReadOnlyList<SichNom> Noms, IReadOnlyList<SichEternal> Eternal, IReadOnlyList<string> Crown, IReadOnlyList<string> Weeks,
     SichRules Rules, SichMe? Me);
 
-/// <summary>Коротко для картки в «☀ Сьогодні».</summary>
-public sealed record SichBrief(int? Place, int Of, int Points, string? Leader, int LeaderPoints, int Gain);
+/// <summary>
+/// Рядок таблички тижня в «☀ Сьогодні»: <see cref="Move"/> — на скільки місць піднявся (+) чи впав (−) за сьогодні;
+/// <see cref="New"/> — до сьогодні очок не мав.
+/// </summary>
+public sealed record SichTop(string Nick, int Place, int Points, int Move, bool New = false);
+
+/// <summary>Хто сьогодні вже зіграв головоломку: місце, очки Січі за неї, чи розв'язав; <see cref="Pts"/> — очки гри (лише «очкові»).</summary>
+public sealed record SichSeat(string Nick, int Place, int Score, bool Solved, long? Pts = null);
+
+/// <summary>
+/// Коротко для «☀ Сьогодні»: картка, табличка тижня (<see cref="Top"/>, я — <see cref="MyDays"/> за пн…нд), хто що сьогодні
+/// зіграв (<see cref="Games"/>) і скільки очок ще лежить на столі (<see cref="Left"/> — якщо закрити все, що не торкався, першим).
+/// </summary>
+public sealed record SichBrief(int? Place, int Of, int Points, string? Leader, int LeaderPoints, int Gain,
+    IReadOnlyList<SichTop>? Top = null, int[]? MyDays = null, int TodayIndex = 0, int DaysLeft = 0, int Left = 0,
+    IReadOnlyDictionary<string, IReadOnlyList<SichSeat>>? Games = null);
 
 /// <summary>Підбитий тиждень — так, як його побачили в ніч на понеділок (дошки очок старі дні потім забувають).</summary>
 public sealed class SichWeek
@@ -506,7 +520,7 @@ public sealed class Sich(EconomyStore store, Daily daily, Economy economy, GameN
     }
 
     /// <summary>Головоломки, яких я сьогодні ще не торкався: скільки дадуть, якщо закрити першим, і на яке місце підніме.</summary>
-    List<SichIf> WhatIf(WeekCalc w, string me, string today)
+    List<SichIf> WhatIf(WeekCalc w, string me, string today, int take = 3)
     {
         var mine = w.Table.FirstOrDefault(t => t.S.Key == me).S?.Points ?? 0;
         var others = w.Table.Where(t => t.S.Key != me).Select(t => t.S.Points).ToList();
@@ -519,17 +533,47 @@ public sealed class Sich(EconomyStore store, Daily daily, Economy economy, GameN
             var gain = 1 + (gd?.All.Count ?? 0);
             list.Add(new SichIf(game, names.Title(game), gain, 1 + others.Count(p => p > mine + gain)));
         }
-        return list.OrderByDescending(x => x.Gain).ThenBy(x => x.Place).Take(3).ToList();
+        return list.OrderByDescending(x => x.Gain).ThenBy(x => x.Place).Take(take).ToList();
+    }
+
+    /// <summary>Скільки рядків таблички тижня в «☀ Сьогодні» (я — завжди, навіть нижче).</summary>
+    const int BriefTop = 5;
+
+    /// <summary>
+    /// Місця тижня до сьогоднішнього дня — щоб показати ▲▼ за сьогодні. Рівні очки — спільне місце (розв'язки до сьогодні
+    /// окремо не зберігаємо, тож без другого ключа).
+    /// </summary>
+    static Dictionary<string, int> PlacesBefore(WeekCalc w, int todayIndex)
+    {
+        var pts = w.Table.Select(t => (t.S.Key, P: t.S.Points - (todayIndex is >= 0 and < 7 ? t.S.ByDay[todayIndex] : 0)))
+            .Where(x => x.P > 0).ToList();
+        return pts.ToDictionary(x => x.Key, x => 1 + pts.Count(o => o.P > x.P), StringComparer.Ordinal);
     }
 
     public SichBrief Brief(string nick)
     {
-        var w = Calc(WeekOf(Today()));
+        var today = Today();
+        var monday = WeekOf(today);
+        var w = Calc(monday);
         var key = Economy.Key(nick);
         var me = w.Table.FirstOrDefault(t => t.S.Key == key);
         var lead = w.Table.FirstOrDefault();
-        var gain = WhatIf(w, key, Today()).Select(x => x.Gain).DefaultIfEmpty(0).Max();
-        return new SichBrief(me.S is null ? null : me.Place, Players(w), me.S?.Points ?? 0, lead.S?.Nick, lead.S?.Points ?? 0, gain);
+        var ifs = WhatIf(w, key, today, int.MaxValue);
+        var gain = ifs.Select(x => x.Gain).DefaultIfEmpty(0).Max();
+        var idx = D(today).DayNumber - D(monday).DayNumber;
+        var before = PlacesBefore(w, idx);
+        var scored = w.Table.Where(t => t.S.Points > 0).ToList();
+        // нуль очок (самі промахи) — не в табличці: це залік, а не список гравців
+        SichTop Row((Stand S, int Place) t) => before.TryGetValue(t.S.Key, out var b)
+            ? new SichTop(t.S.Nick, t.Place, t.S.Points, b - t.Place)
+            : new SichTop(t.S.Nick, t.Place, t.S.Points, 0, New: true);
+        var top = scored.Take(BriefTop).Select(Row).ToList();
+        if (me.S is { Points: > 0 } && !top.Any(t => Economy.Key(t.Nick) == key)) top.Add(Row(me));
+        var games = w.Days.Where(g => g.Day == today).ToDictionary(g => g.Game,
+            g => (IReadOnlyList<SichSeat>)g.All.OrderBy(p => p.Place).Select(p => new SichSeat(p.E.Nick, p.Place, p.Score, p.E.Solved, p.E.Pts)).ToList(),
+            StringComparer.Ordinal);
+        return new SichBrief(me.S is null ? null : me.Place, Players(w), me.S?.Points ?? 0, lead.S?.Nick, lead.S?.Points ?? 0, gain,
+            top, me.S?.ByDay ?? new int[7], idx, Math.Max(0, 6 - idx), ifs.Sum(x => x.Gain), games);
     }
 
     // ------------------------------------------------------------------ підсумок тижня
