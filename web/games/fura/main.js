@@ -16,6 +16,7 @@ import { Nav } from './nav.js';
 import { Trips } from './trip.js';
 import { Voice } from './voice.js';
 import { Ghosts, fakeConvoy } from './ghosts.js';
+import { Crash } from './crash.js';
 
 const STEP = 1 / 60;
 const CAMS = ['chase', 'cabin', 'far'];
@@ -172,6 +173,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   truck.ground = level.height || (() => 0);
   let trips = null, nav = null, voice = null;   // рейси й Глек у рації — лише в краю й лише зі столом (з картки гри)
   let ghosts = null, fake = null;               // колона (етап 2): чужі фури з кадру; fake — підставна з консолі
+  let crash = null;                             // 2c: стіл «💥 зіткнення» — чужі фури твердими тілами (crash.js)
   const model = buildModels(THREE, scene);
   // Промені коліс бачать лише нерухоме: ні свій тягач/причіп, ні конуси під колесами (конус штовхаємо корпусом)
   const onlyFixed = (col) => { const p = col.parent(); return !p || p.isFixed(); };
@@ -457,6 +459,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     if (voice) voice.stop();
     if (trips) trips.dispose();
     if (fake) fake.stop();
+    if (crash) crash.dispose();
     if (ghosts) ghosts.dispose();
     sound.stop();
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch { /* пусто */ }
@@ -479,9 +482,11 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
       voice = new Voice({ sound, hud });
       ghosts = new Ghosts({ THREE, scene, camera, level });
       trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, voice, ghosts, perf, onPlaced: () => resetPoses() });
-      server.onView = (v) => { const t = performance.now(); trips.onView(v); perf.view(performance.now() - t); };
-      server.onFrame = (f) => { ghosts.push(f); perf.ghostFrame(); };
+      crash = new Crash({ THREE, RAPIER, world, truck, ghosts, level, server, say, sound });
+      server.onView = (v) => { const t = performance.now(); trips.onView(v); crash.view(v); perf.view(performance.now() - t); };
+      server.onFrame = (f) => { ghosts.push(f); crash.frame(f); perf.ghostFrame(); };
       trips.onView(server.view());
+      crash.view(server.view());
     }
   }
 
@@ -512,7 +517,7 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
     },
   };
 
-  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, get trips() { return trips; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
+  const api = { truck, world, input, sound, level, camera, scene, sun, renderer, quality, nav, model, ghosts: ghostApi, perf, get trips() { return trips; }, get crash() { return crash; }, fake: null, get cam() { return cam; }, set cam(v) { cam = v; }, nextCam, step: (n) => { for (let i = 0; i < n; i++) physics(Object.assign(idleInput(), api.fake || {}, { hit: new Set() })); } };
   window.__fura = api;   // для перевірки з консолі: __fura.fake = {throttle: 1, …}
 
   function idleInput() { return { steer: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, horn: false, hit: new Set(), hGear: null, lookX: 0, lookY: 0, source: 'kbd' }; }
@@ -520,7 +525,9 @@ export async function start({ onExit, mode = 'kray', server = null } = {}) {
   function physics(inp) {
     truck.drive(inp, STEP);
     truck.update(STEP, onlyFixed, onlyFixed);
-    world.step();
+    if (crash) crash.before();
+    world.step(crash ? crash.queue : undefined);
+    if (crash) crash.after();
     truck.afterStep(STEP);
     prevT = curT; curT = snap(truck.tb);
     prevR = curR; curR = snap(truck.rb);

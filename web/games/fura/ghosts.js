@@ -11,7 +11,8 @@
 // Годинник малювання сам не стрибає: до цілі підтягується швидкістю ±10 %.
 //
 // Кадр без q (старий сервер) — як було: між двома кадрами за годинником сервера (HGames.ui.Interp(100)). Висоту, нахил і
-// крен беремо з рельєфу, бо в кадрі їх нема. У фізику привиди не йдуть — зіткнення буде кроком 2c.
+// крен беремо з рельєфу, бо в кадрі їх нема. У фізику привиди йдуть лише за столом «💥 зіткнення» (2c, crash.js): там
+// Track.predict дає позу на «тепер» для кінематичних тіл, а поблизу й малюємо її (Ghosts.crash.draw).
 
 import { buildGhost } from './model.js';
 
@@ -32,6 +33,10 @@ const RATE = 0.1;                    // годинник малювання на
 // затримка = p90 спізнень + пів кроку поз + 10 мс: решту (рідкі сплески, пізню позу) бере екстраполяція — на «змійці»
 // вона помиляється на сантиметри, а p95 + цілий крок тримав привида на 0,1–0,15 с далі (specs/fura.md, A5)
 const LATE_Q = 0.9, STEP_K = 0.5;
+// прогноз на «тепер» для зіткнень (2c, crash.js): base уже має в собі найкоротшу дорогу пози до мене, справжнє «тепер»
+// відправника — ще трохи далі (LEAD); далі за останню позу прогноз не їде довше PRED_MAX; поправка, коли доїхали нові
+// пози, тане за PRED_EASE (кінематичне тіло не стрибає), а стрибок понад PRED_JUMP — це телепорт (рятунок, F5)
+const LEAD = 60, PRED_MAX = 600, PRED_EASE = 120, PRED_JUMP = 2;
 
 /** Кадр → Map(seat → {x, z, h, v, c, rx, rz, ry, f}); розбираємо раз на кадр (старий шлях, без q). */
 function parse(f) {
@@ -88,6 +93,7 @@ class Track {
     this.ver = 0; this.seen = -1; this.raw = null; this.rawTau = 0;
     this.off = { x: 0, z: 0, h: 0, ry: 0 }; this.ease = EASE;
     this.extraN = 0; this.frames = 0;
+    this.pLast = 0; this.pVer = -1; this.pRaw = null; this.pS = 0; this.pOff = { x: 0, z: 0, h: 0, ry: 0 };
   }
   cur(now) { return this.base + (now - this.baseAt) * 0.01; }
 
@@ -183,14 +189,55 @@ class Track {
     this.raw = r; this.rawTau = this.tau;
     this.frames++;
     if (r.extra > 0) this.extraN++;
-    const p = { x: r.x + o.x, z: r.z + o.z, h: r.h + o.h, v: r.v, c: r.c, ry: r.ry + o.ry, f: r.f };
-    if (r.hooked) {
-      // причіп — від намальованого тягача через сідло: тягач і причіп не роз'їжджаються ні в Hermite, ні в поправці
-      p.rx = p.x + FIFTH * Math.sin(p.h) - KP * Math.sin(p.ry) + r.ex;
-      p.rz = p.z + FIFTH * Math.cos(p.h) - KP * Math.cos(p.ry) + r.ez;
-    } else { p.rx = r.rx; p.rz = r.rz; }
+    return dress(r, o);
+  }
+
+  /** Поза на мить s відправника для прогнозу: між позами — як eval, за останньою — швидкістю й курсом до PRED_MAX. */
+  predRaw(s) {
+    const b = this.b, n = b.length, a = b[n - 1];
+    if (s < a.s) return this.eval(s);
+    const p = n > 1 ? b[n - 2] : null, dt = p ? (a.s - p.s) / 1000 : 0;
+    const w = p && dt > 0.02 && dt < 0.5 ? clamp(dA(p.h, a.h) / dt, -0.8, 0.8) : 0;
+    const wr = p && dt > 0.02 && dt < 0.5 ? clamp(dA(p.ry, a.ry) / dt, -0.8, 0.8) : 0;
+    return ahead(a, w, wr, Math.min(s - a.s, PRED_MAX));
+  }
+
+  /**
+   * Прогноз на «тепер» (2c): де фура відправника є зараз, а не де її малюємо (at — на затримку позаду). Нові пози
+   * зсувають прогноз — різниця тане за PRED_EASE; jump — прогноз стрибнув на понад PRED_JUMP (тоді колізію гасять).
+   */
+  predict(now) {
+    if (!this.b.length || this.base == null) return null;
+    const dt = this.pLast ? clamp(now - this.pLast, 0, 250) : 0;
+    this.pLast = now;
+    const o = this.pOff;
+    let jump = false;
+    if (this.pVer !== this.ver && this.pRaw) {
+      const re = this.predRaw(this.pS), was = this.pRaw;
+      const jx = was.x - re.x, jz = was.z - re.z;
+      if (Math.hypot(jx, jz) > PRED_JUMP) { o.x = o.z = o.h = o.ry = 0; jump = true; }
+      else { o.x += jx; o.z += jz; o.h += dA(re.h, was.h); o.ry += dA(re.ry, was.ry); }
+    }
+    this.pVer = this.ver;
+    const k = Math.exp(-dt / PRED_EASE);
+    o.x *= k; o.z *= k; o.h *= k; o.ry *= k;
+    const s = now - this.cur(now) + LEAD;
+    const r = this.predRaw(s);
+    this.pRaw = r; this.pS = s;
+    const p = dress(r, o);
+    p.jump = jump;
     return p;
   }
+}
+
+/** Поза доріжки + поправка o; причіп у зчепі — від тягача через сідло (тягач і причіп не роз'їжджаються). */
+function dress(r, o) {
+  const p = { x: r.x + o.x, z: r.z + o.z, h: r.h + o.h, v: r.v, c: r.c, ry: r.ry + o.ry, f: r.f };
+  if (r.hooked) {
+    p.rx = p.x + FIFTH * Math.sin(p.h) - KP * Math.sin(p.ry) + r.ex;
+    p.rz = p.z + FIFTH * Math.cos(p.h) - KP * Math.cos(p.ry) + r.ez;
+  } else { p.rx = r.rx; p.rz = r.rz; }
+  return p;
 }
 
 export class Ghosts {
@@ -206,6 +253,14 @@ export class Ghosts {
     this.lastAt = 0;
     this.frames = 0;
     this.e = new THREE.Euler(0, 0, 0, 'YXZ');
+    this.crash = null;           // 2c (crash.js): поблизу малюємо прогноз, примарну фуру — напівпрозорою
+  }
+
+  /** Прогноз на «тепер» для фізики зіткнень (2c): лише живі доріжки чужих фур, що є в колоні. */
+  predict(seat, now) {
+    const t = this.tracks.get(seat);
+    if (!t || seat === this.me || !this.names.has(seat) || this.alone || now - t.inAt > STALE_MS) return null;
+    return t.predict(now);
   }
 
   /** Кадр із сервера (або підставний з консолі). */
@@ -290,10 +345,11 @@ export class Ghosts {
     if (fresh && this.q) {
       for (const [seat, t] of this.tracks) {
         if (seat === this.me || !this.names.has(seat) || now - t.inAt > STALE_MS) continue;
-        const p = t.at(now);
+        let p = t.at(now), alpha = 1;
         if (!p) continue;
+        if (this.crash) ({ p, alpha } = this.crash.draw(seat, p));
         seen.add(seat);
-        this.place(this.rig(seat), p, now, dt);
+        this.place(this.rig(seat), p, now, dt, alpha);
       }
     } else if (fresh && this.interp) {
       const s = this.interp.at(now);
@@ -316,10 +372,18 @@ export class Ghosts {
     }
   }
 
-  place(r, p, now, dt) {
+  place(r, p, now, dt, alpha = 1) {
     const H = this.level.height, e = this.e;
     r.pose = p;
     r.g.setVisible(true);
+    if (r.alpha !== alpha) {
+      // примарна фура (2c: двір, повільно, щойно з'явилась) — напівпрозора; матеріали в кожного привида свої
+      r.alpha = alpha;
+      for (const g of [r.g.tractor, r.g.trailer]) g.traverse((o) => {
+        if (!o.isMesh) return;
+        o.material.transparent = alpha < 1; o.material.opacity = alpha; o.material.depthWrite = alpha >= 1; o.material.needsUpdate = true;
+      });
+    }
     // тягач: нахил по осі з рельєфу під передком і задком, крен — з боків
     const sh = Math.sin(p.h), ch = Math.cos(p.h);
     const hf = H(p.x + sh * 2.2, p.z + ch * 2.2), hb = H(p.x - sh * 2.4, p.z - ch * 2.4);
