@@ -85,15 +85,19 @@
     const k = b.dataset.do, err = root.querySelector('.fura-err');
     if (err) err.textContent = '';
     if (k === 'kray' || k === 'polygon') return start(root, b, k);
+    if (k === 'join' || k === 'sit') {
+      // Кнопку не вимикаємо самі: sitAt крутить «підсідаю…» через busy (app.js), а той на вимкненій кнопці мовчки
+      // нічого не робить — JoinRoom так і не йшов (25.10, живий баг зі зведення). Спершу autoStart: вид «я за столом»
+      // може прийти раніше за відповідь на JoinRoom.
+      autoStart = b.dataset.room;
+      const r = await HGames.sitAt(b.dataset.room, b);
+      if (!r || !r.ok) autoStart = null;
+      return;
+    }
     const label = b.textContent;
     b.disabled = true;
     try {
-      if (k === 'join' || k === 'sit') {
-        // спершу autoStart: вид «я за столом» може прийти раніше за відповідь на JoinRoom
-        autoStart = b.dataset.room;
-        const r = await HGames.sitAt(b.dataset.room, b);
-        if (!r || !r.ok) autoStart = null;
-      } else if (k === 'own') {
+      if (k === 'own') {
         b.textContent = '⏳ Ставимо стіл…';
         const r = await HGames.call('CreateRoom', 'fura', {});
         if (r && r.ok && r.roomId) { autoStart = r.roomId; HGames.openAt(r.roomId); }
