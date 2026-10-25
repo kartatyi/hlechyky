@@ -2,9 +2,10 @@ namespace Hlechyky.Games.Impl;
 
 /// <summary>
 /// Знімок телеметрії з браузера (<c>Input pose</c>): тягач (X, Z), швидкість м/с зі знаком (V), зчеплено (C), ціле % (K),
-/// центр причепа (Rx, Rz) і його курс (Ry, 0 = +Z, π/2 = +X). Час знімка ставить сервер (<see cref="IRoomContext.Clock"/>).
+/// центр причепа (Rx, Rz) і його курс (Ry, 0 = +Z, π/2 = +X), з етапу 2 — курс тягача (H) і прапорці (F: 1 сигнал, 2 фари,
+/// 4 стоп-сигнал) для привидів. Час знімка ставить сервер (<see cref="IRoomContext.Clock"/>).
 /// </summary>
-public sealed record FuraPose(double X, double Z, double V, bool C, int K, double Rx, double Rz, double Ry);
+public sealed record FuraPose(double X, double Z, double V, bool C, int K, double Rx, double Rz, double Ry, double H = 0, int F = 0);
 
 /// <summary>
 /// Суддя рейсу «Чумаків» (docs/games/specs/fura.md, «Суддя»): з потоку поз рахує годинник рейсу без пауз, проїдене в

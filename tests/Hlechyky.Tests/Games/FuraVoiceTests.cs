@@ -23,7 +23,9 @@ public sealed class FuraVoiceTests : IDisposable
     /// <summary>Події, на які чекає браузер (web/games/fura/voice.js) — кожна має бути в книзі.</summary>
     static readonly string[] Events =
         ["hello", "take", "coupled", "fragile", "sturdy", "clink", "half", "near", "late", "done_good", "done_ok",
-         "done_broken", "exact", "voided", "rescue", "idle", "cancel"];
+         "done_broken", "exact", "voided", "rescue", "idle", "cancel",
+         // етап 2 — колона
+         "join", "leave", "col_take", "col_join", "col_bonus"];
 
     [Fact]
     public void Book_has_every_event_with_variants_and_no_numbers()
