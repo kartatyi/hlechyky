@@ -17,8 +17,30 @@ const osm = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(root, 'data/fur
 const map = JSON.parse(fs.readFileSync(path.join(root, 'data/fura/maps', id + '.json'), 'utf8'));
 
 const MARGIN = 700, RADIUS = 260, CELL = 50;
+// рамка: двори місць і всі ребра найкоротших шляхів між місцями (так сервер прокладає маршрути) — жоден маршрут не
+// виходить за край збудованого
 const xs = [], zs = [];
 for (const p of map.places) { xs.push(p.yard.x); zs.push(p.yard.z); }
+{
+  const adj = {};
+  for (const r of map.roads) {
+    const pts = [map.nodes[r.a], ...(r.via || []), map.nodes[r.b]];
+    r.pts = pts; r.L = 0;
+    for (let i = 1; i < pts.length; i++) r.L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    (adj[r.a] ||= []).push([r.b, r]); (adj[r.b] ||= []).push([r.a, r]);
+  }
+  for (const p of map.places) {
+    const d = { [p.node]: 0 }, prev = {}, done = new Set();
+    for (;;) {
+      let u = null, du = Infinity;
+      for (const k in d) if (!done.has(k) && d[k] < du) { du = d[k]; u = k; }
+      if (u === null) break;
+      done.add(u);
+      for (const [v, e] of adj[u] || []) if (du + e.L < (d[v] ?? Infinity)) { d[v] = du + e.L; prev[v] = [u, e]; }
+    }
+    for (const q of map.places) for (let k = q.node; prev[k]; k = prev[k][0]) for (const [x, z] of prev[k][1].pts) { xs.push(x); zs.push(z); }
+  }
+}
 const B = {
   x0: Math.floor((Math.min(...xs) - MARGIN) / 30) * 30, x1: Math.ceil((Math.max(...xs) + MARGIN) / 30) * 30,
   z0: Math.floor((Math.min(...zs) - MARGIN) / 30) * 30, z1: Math.ceil((Math.max(...zs) + MARGIN) / 30) * 30,
