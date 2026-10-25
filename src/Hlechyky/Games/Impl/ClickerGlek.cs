@@ -186,8 +186,8 @@ public sealed record ClickerGlekTip(string Kind, string Text, string Where, doub
 /// </summary>
 public sealed partial class Clicker
 {
-    /// <summary>Скільки порад на картці.</summary>
-    public const int GlekCardSize = 3;
+    /// <summary>Скільки порад у списку Глека (бульбашка в хаті гортає їх «‹ ›», сторінка #gonchar показує всі).</summary>
+    public const int GlekCardSize = 8;
     /// <summary>Підказка «постав іншу глину» — лише коли виграш хоч такий: дрібниця не варта того, щоб смикати гравця.</summary>
     public const double GlekClayMin = 1.2;
     /// <summary>Гончар без дії стільки — уже «відходить»: час підказати білу глину.</summary>

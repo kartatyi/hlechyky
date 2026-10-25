@@ -269,12 +269,25 @@
       + '</div><a class="gnr-go" href="#games">🏺 До кола →</a></section>';
   }
 
+  /// Значок поради за видом (ClickerAdvisor): видно, про що вона, ще до тексту.
+  const TIP_ICON = { 'clay-play': '🪣', 'clay-leave': '🌙', 'clay-form': '🫙', 'album-stove': '🧱', 'album-grid': '📒', 'fair-rep': '🎪',
+    'guest-rep': '🏛', 'mark-passive': '🏺', slava: '🚢', 'toloka-gate': '🤝', 'toloka-lay': '🤝', 'toloka-collect': '🤝', wallet: '💰', fire: '🔥' };
+  const TIP_WHAT = { 'clay-play': 'година біля кола', 'clay-leave': 'поки тебе нема', 'clay-form': 'ліплення', wallet: 'до пасиву',
+    fire: 'до всього, але згорить комора' };
+
+  const gainText = (g) => (g >= 1.5 ? '×' + nf(g, 1) : '+' + nf(Math.max(1, Math.round((g - 1) * 100))) + ' %');
+
+  /// «Як грати краще» — усі персональні поради Глека з числом: що дасть і про що вона.
   function glekHtml(n) {
     const tips = Array.isArray(n.glek) ? n.glek : [];
-    if (!tips.length) return '';
-    return '<section class="panel gnr-glek"><div class="gnr-glek-head"><span class="gnr-ava">🏺</span><div><h2>Дядько Глек радить</h2>'
-      + '<span class="muted">натиснути «Постав» чи «Потім» можна біля кола — там ці поради теж є</span></div></div>'
-      + '<ol>' + tips.map((t) => '<li>' + o.esc(t.text) + '</li>').join('') + '</ol></section>';
+    const head = '<div class="gnr-glek-head"><img class="gnr-ava" src="/static/glek.svg" alt=""><div><h2>Як грати краще — каже Дядько Глек</h2>'
+      + '<span class="muted">поради саме для тебе, порахував на твоєму колі; «Постав» і «Потім» — у хаті: клацни на Глека в кутку</span></div></div>';
+    if (!tips.length) return '<section class="panel gnr-glek">' + head + '<p class="gnr-note">Поки все добре — грай далі, я підкажу, коли буде що.</p></section>';
+    return '<section class="panel gnr-glek">' + head + '<ol class="gnr-tips">' + tips.map((t) => {
+      const what = TIP_WHAT[t.kind] || 'до всього';
+      return '<li><span class="ic">' + (TIP_ICON[t.kind] || '🏺') + '</span><span class="tx">' + o.esc(t.text) + '</span>'
+        + (t.gain > 1.005 ? '<span class="gain">' + gainText(t.gain) + '<small>' + o.esc(what) + '</small></span>' : '') + '</li>';
+    }).join('') + '</ol></section>';
   }
 
   function pickHtml(ps, sel) {
@@ -442,5 +455,9 @@
       load(false);
     },
     hide() { hideTip(); },
+    /// Рядок у своєму профілі («Я»): шлях на сторінку літопису кола.
+    cardHtml() {
+      return '<a class="gnr-mine" href="#gonchar">📈 <b>Літопис кола</b> — як ти граєш і що робити далі →</a>';
+    },
   };
 })();
