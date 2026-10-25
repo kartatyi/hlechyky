@@ -268,6 +268,9 @@ public static class AchievementCatalog
         new("shatkuy-classic",   "Борщ на все село",  "Шаткуй!: 250 очок у Класиці", "🥣", 25),
         new("shatkuy-big",       "Кавунище",          "Шаткуй!: 25 ударів по великому кавуну", "🍉", 25),
         new("shatkuy-clean",     "Глек цілий",        "Шаткуй! Ярмарок: 150 очок і жодного розбитого глека", "🏺", 25),
+        // v2: дають леза Лавки («Срібний серп», «Вогняне лезо») — LavkaCatalog.EarnedBlade
+        new("shatkuy-streak",    "Срібний серп",      "Шаткуй!: серія ×4 — 50 плодів поспіль без промаху (лезо «Срібний серп»)", "🌙", 30),
+        new("shatkuy-fire",      "Вогняне лезо",      "Шаткуй! Класика: 300 очок за партію (лезо «Вогняне лезо»)", "🔥", 30),
     ];
 
     static readonly Dictionary<string, Achievement> ByKey = All.ToDictionary(a => a.Key, StringComparer.Ordinal);

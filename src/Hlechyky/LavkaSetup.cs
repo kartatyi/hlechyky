@@ -145,6 +145,7 @@ public static class LavkaSetup
         api.MapGet("/looks", Looks);
         api.MapPost("/buy", Buy);
         api.MapPost("/wear", Wear);
+        api.MapGet("/blades", Blades);
         api.MapPost("/dedicate", Dedicate);
         api.MapPost("/curse", Curse);
         api.MapPost("/curse/ransom", Ransom);
@@ -173,6 +174,9 @@ public static class LavkaSetup
 
     /// <summary>GET /api/lavka — вітрина: каталог зі станом «моє / вдягнуто», вміння, фрази присвяти. Гостю — те саме, але порожнє.</summary>
     public static object Shop(HttpContext c, Lavka lavka) => lavka.View(Auth.Nick(c), Auth.IsUser(c));
+
+    /// <summary>GET /api/lavka/blades — леза «Шаткуй!» для кнопки в грі: { account, worn, items }. Вдягають через /wear (slot blade).</summary>
+    public static object Blades(HttpContext c, Lavka lavka) => lavka.Blades(Auth.Nick(c), Auth.IsUser(c));
 
     /// <summary>GET /api/lavka/looks — вигляд усіх, у кого щось вдягнуто. Публічно: бачити вигляд інших може кожен.</summary>
     public static object Looks(Lavka lavka) => new { looks = lavka.Looks() };

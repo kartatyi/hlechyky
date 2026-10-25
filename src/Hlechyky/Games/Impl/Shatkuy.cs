@@ -15,8 +15,9 @@ public abstract class ShatkuyGame : Game
     public const int TickMs = 50, MaxCuts = 64;
     public const string PhReady = "ready", PhGo = "go", PhOver = "over";
     public const string WhyMiss = "miss", WhyGlek = "glek", WhyTime = "time", WhyLeft = "left";
-    /// <summary>Пороги ачівок (specs/shatkuy.md §6).</summary>
-    public const int ComboAch = 6, ClassicAch = 250, BigAch = 25, CleanAch = 150;
+    /// <summary>Пороги ачівок (specs/shatkuy.md §6): v2 — ще серія 50 («Срібний серп») і 300 у Класиці («Вогняне лезо»).</summary>
+    public const int ComboAch = 6, ClassicAch = 250, BigAch = 25, CleanAch = 150, StreakAch = 50, FireAch = 300;
+    public const string AchStreak = "shatkuy-streak", AchFire = "shatkuy-fire";
     /// <summary>Черепків за кожні стільки очок (через денну стелю нагород), не більше <see cref="MaxShards"/> за партію.</summary>
     public const int PointsPerShard = 50, MaxShards = 10;
 
@@ -25,35 +26,28 @@ public abstract class ShatkuyGame : Game
 
     protected string _phase = PhReady;
     DateTimeOffset _t0;
-    ShatkuyPlan? _plan;
-    readonly Dictionary<int, ShatkuyFruit> _byId = [];
-    /// <summary>Ще не розрізані й не впалі — їх тік перевіряє на промах.</summary>
-    readonly List<ShatkuyFruit> _air = [];
-    /// <summary>Відомі, але ще за обрієм виду (At &gt; g + LookMs): вид треба розіслати, щойно котрийсь увійде в обрій.</summary>
-    readonly List<ShatkuyFruit> _soon = [];
-    readonly HashSet<int> _cut = [], _missed = [], _bigWs = [];
-    readonly Dictionary<int, int> _combo = [];
-    readonly List<(int S, int E)> _frost = [], _double = [];
-    int _planSeen, _showers, _bigAt = -1_000_000;
-    protected int _score, _misses, _bestCombo, _gleks, _cuts, _bigHits, _endT;
-    int _nextLife = ShatkuyCore.LifeEvery;
-    protected string _why = "";
+    ShatkuyField? _field;
+    protected ShatkuyField F => _field ??= new ShatkuyField(Mode);
     protected int _best, _games;
     protected bool _record;
     bool _dirty;
 
     public string Phase => _phase;
-    public int Score => _score;
-    public int Misses => _misses;
-    public int BestCombo => _bestCombo;
-    public int BigHits => _bigHits;
-    public string Why => _why;
+    public ShatkuyField Field => F;
+    public int Score => F.Score;
+    public int Misses => F.Misses;
+    public int BestCombo => F.BestCombo;
+    public int BigHits => F.BigHits;
+    public int Streak => F.Streak;
+    public int BestStreak => F.BestStreak;
+    public int Precise => F.Precise;
+    public string Why => F.Why;
     public int Best => _best;
-    public IReadOnlyCollection<ShatkuyFruit> Fruits => _byId.Values;
-    public bool IsCut(int id) => _cut.Contains(id);
-    public IReadOnlyList<(int S, int E)> Frost => _frost;
+    public IReadOnlyCollection<ShatkuyFruit> Fruits => F.Fruits;
+    public bool IsCut(int id) => F.IsCut(id);
+    public IReadOnlyList<(int S, int E)> Frost => F.Frost;
     /// <summary>Ігрова мілісекунда зараз (0 — партія не йде).</summary>
-    public int GameNow => _phase == PhGo ? G(T(Now)) : 0;
+    public int GameNow => _phase == PhGo ? F.G(T(Now)) : 0;
     DateTimeOffset Now => Ctx.Clock.UtcNow;
 
     public override string SeatName(int seat) => "шаткар";
@@ -63,13 +57,7 @@ public abstract class ShatkuyGame : Game
     protected void Reset()
     {
         _phase = PhReady;
-        _plan = null;
-        _byId.Clear(); _air.Clear(); _soon.Clear(); _cut.Clear(); _missed.Clear(); _bigWs.Clear(); _combo.Clear(); _frost.Clear(); _double.Clear();
-        _planSeen = _showers = 0;
-        _bigAt = -1_000_000;
-        _score = _misses = _bestCombo = _gleks = _cuts = _bigHits = _endT = 0;
-        _nextLife = ShatkuyCore.LifeEvery;
-        _why = "";
+        F.Reset();
         _record = false;
         _dirty = true;
     }
@@ -93,10 +81,9 @@ public abstract class ShatkuyGame : Game
             case "go":
                 if (CanGo() is { } no) return ActResult.Fail(no);
                 if (_phase != PhReady) return ActResult.Fail(_phase == PhGo ? "Уже ріжемо!" : "Партію скінчено — «Ще раз»");
-                _plan = new ShatkuyPlan(Mode, NewSeed());
                 _t0 = now.AddMilliseconds(ShatkuyCore.LeadMs);
                 _phase = PhGo;
-                Grow(0);
+                F.Begin(NewSeed());
                 _dirty = true;
                 return ActResult.Done;
             case "cut":
@@ -107,82 +94,42 @@ public abstract class ShatkuyGame : Game
     }
 
     int T(DateTimeOffset now) => (int)Math.Clamp((now - _t0).TotalMilliseconds, -1e9, 1e9);
-    int G(int t) => ShatkuyCore.Game(Math.Max(0, t), _frost);
 
     /// <summary>
-    /// Розріз (реалтайм-ввід, пачкою): <c>{ c: [[id, w], …] }</c>, де w — номер змаху. Плід ріжеться, лише якщо вже вилетів
-    /// і ще в повітрі за ігровим часом сервера (з запасом <see cref="ShatkuyCore.LagMs"/>); великий кавун — раз на змах.
-    /// Майбутній, уже розрізаний, невідомий номер — мовчки ні.
+    /// Розбір розрізів <c>{ c: [[id, w], [id, w, 1], …] }</c>: w — номер змаху, третій елемент 1 — змах пройшов через
+    /// центр (v2 §2). Зіпсовані елементи пропускаються. null — payload не той.
+    /// </summary>
+    public static List<ShatkuyCut>? ReadCuts(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("c", out var list) || list.ValueKind != JsonValueKind.Array)
+            return null;
+        var cuts = new List<ShatkuyCut>();
+        foreach (var e in list.EnumerateArray())
+        {
+            if (cuts.Count >= MaxCuts) break;
+            if (e.ValueKind != JsonValueKind.Array || e.GetArrayLength() < 2) continue;
+            if (!e[0].TryGetInt32(out var id) || !e[1].TryGetInt32(out var w)) continue;
+            var precise = e.GetArrayLength() >= 3 && e[2].ValueKind == JsonValueKind.Number && e[2].TryGetInt32(out var p) && p == 1;
+            cuts.Add(new ShatkuyCut(id, w, precise));
+        }
+        return cuts;
+    }
+
+    /// <summary>
+    /// Розріз (реалтайм-ввід, пачкою): див. <see cref="ReadCuts"/> і <see cref="ShatkuyField.CutMany"/>. Великий — раз на
+    /// змах, гарбуз — двома різними змахами, точний удар — лише щойно розрізаному плоду.
     /// </summary>
     ActResult CutMany(JsonElement payload, DateTimeOffset now)
     {
         if (_phase != PhGo) return ActResult.Fail("Зараз нема чого різати");
         var t = T(now);
         if (t < -200) return ActResult.Fail("Ще не почали");
-        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("c", out var list) || list.ValueKind != JsonValueKind.Array)
-            return ActResult.Fail("Що різати?");
-        var g = G(t);
-        if (Mode.Timed && g > Mode.LenMs + ShatkuyCore.LagMs) return ActResult.Fail("Час вийшов");
-        Grow(g);
-        var any = false;
-        var n = 0;
-        foreach (var e in list.EnumerateArray())
-        {
-            if (++n > MaxCuts || _phase != PhGo) break;
-            if (e.ValueKind != JsonValueKind.Array || e.GetArrayLength() < 2) continue;
-            if (!e[0].TryGetInt32(out var id) || !e[1].TryGetInt32(out var w)) continue;
-            if (!_byId.TryGetValue(id, out var f) || g < f.At - 100 || g > f.Until) continue;
-            if (Cut(f, w, t, g)) any = true;
-        }
+        if (ReadCuts(payload) is not { } cuts) return ActResult.Fail("Що різати?");
+        if (!F.TimeLeft(t)) return ActResult.Fail("Час вийшов");
+        var any = F.CutMany(cuts, t, MaxCuts) > 0;
+        if (F.Over) End(F.Why, t);
         if (any) _dirty = true;
         return any ? ActResult.Done : ActResult.Fail("Не влучив");
-    }
-
-    bool Cut(ShatkuyFruit f, int w, int t, int g)
-    {
-        var mult = Mode.Specials && ShatkuyCore.Inside(_double, t) ? 2 : 1;
-        if (f.Big)
-        {
-            // удар — раз на змах і не частіше за BigGapMs (браузер дає кожному заходу леза свій номер)
-            if (_bigHits >= ShatkuyCore.BigMaxHits || t - _bigAt < ShatkuyCore.BigGapMs || !_bigWs.Add(w)) return false;
-            _bigAt = t;
-            _bigHits++;
-            _score += mult;
-            return true;
-        }
-        if (!_cut.Add(f.Id)) return false;
-        _air.Remove(f);
-        if (f.Glek)
-        {
-            _gleks++;
-            if (Mode.Lives) End(WhyGlek, t);
-            else _score = Math.Max(0, _score - ShatkuyCore.GlekPenalty);
-            return true;
-        }
-        _cuts++;
-        var gain = 1;
-        // комбо: третій плід одним змахом дає +3, кожен наступний +1 — разом комбо з n дає n очок зверху
-        var c = _combo[w] = _combo.GetValueOrDefault(w) + 1;
-        if (c == 3) gain += 3;
-        else if (c > 3) gain += 1;
-        _bestCombo = Math.Max(_bestCombo, c >= 3 ? c : 0);
-        if (_combo.Count > 12) foreach (var old in _combo.Keys.Where(k => k < w - 8).ToList()) _combo.Remove(old);
-        _score += gain * mult;
-        switch (f.K)
-        {
-            case ShatkuyCore.Frost: ShatkuyCore.AddFrost(_frost, t); break;
-            case ShatkuyCore.Double: ShatkuyCore.AddSpan(_double, t, ShatkuyCore.DoubleMs); break;
-            case ShatkuyCore.Shower:
-                foreach (var s in ShatkuyCore.ShowerOf(_plan!.Seed, ++_showers, g)) Put(s);
-                break;
-        }
-        if (Mode.Lives)
-            while (_score >= _nextLife)
-            {
-                if (_misses > 0) _misses--;
-                _nextLife += ShatkuyCore.LifeEvery;
-            }
-        return true;
     }
 
     // ---------- час ----------
@@ -190,26 +137,10 @@ public abstract class ShatkuyGame : Game
     public override TickResult Tick()
     {
         Advance(Now);
-        if (!_dirty) return TickResult.None;
+        if (!_dirty && !F.Dirty) return TickResult.None;
         _dirty = false;
+        F.Dirty = F.Urgent = false;
         return new TickResult(false, true);
-    }
-
-    void Put(ShatkuyFruit f)
-    {
-        if (!_byId.TryAdd(f.Id, f)) return;
-        if (!f.Big) _air.Add(f);
-        _soon.Add(f);
-        _dirty = true;
-    }
-
-    void Grow(int g)
-    {
-        if (_plan is null) return;
-        _plan.Until(g + ShatkuyCore.LookMs);
-        while (_planSeen < _plan.Fruits.Count) Put(_plan.Fruits[_planSeen++]);
-        // плід хвилі, що вилітає пізніше за обрій, інакше доходив би лише з наступною хвилею — уже в польоті
-        if (_soon.RemoveAll(f => f.At <= g + ShatkuyCore.LookMs) > 0) _dirty = true;
     }
 
     /// <summary>Прожити партію до <paramref name="now"/>: докинути розклад, порахувати впалі (у Класиці — промахи), кінець часу.</summary>
@@ -217,21 +148,8 @@ public abstract class ShatkuyGame : Game
     {
         if (_phase != PhGo) return;
         var t = T(now);
-        var g = G(t);
-        Grow(g);   // і під час відліку «Ану!» — перша хвиля теж приходить за обрій до вильоту
-        if (t < 0) return;
-        for (var i = _air.Count - 1; i >= 0 && _phase == PhGo; i--)
-        {
-            var f = _air[i];
-            if (f.Until >= g) continue;
-            _air.RemoveAt(i);
-            if (!Mode.Lives || f.Glek) continue;
-            _missed.Add(f.Id);
-            _misses++;
-            _dirty = true;
-            if (_misses >= ShatkuyCore.Lives) End(WhyMiss, t);
-        }
-        if (_phase == PhGo && Mode.Timed && g >= Mode.LenMs + ShatkuyCore.LagMs) End(WhyTime, t);
+        F.Advance(t);   // і під час відліку «Ану!» — перша хвиля теж приходить за обрій до вильоту
+        if (F.Over) End(F.Why, t);
     }
 
     /// <summary>Кінець партії: рекорд, ачівки, черепки, таблиця, Журнал.</summary>
@@ -245,30 +163,35 @@ public abstract class ShatkuyGame : Game
     /// <summary>Кінець без подій каркаса (рекорд і підсумок) — для «пішов посеред партії», де Ctx нікуди не доносить.</summary>
     protected void Close(string why, int t)
     {
+        F.Close(why, t);
         _phase = PhOver;
-        _why = why;
-        _endT = t;
         _games++;
-        _record = _score > _best;
-        if (_record) _best = _score;
+        _record = F.Score > _best;
+        if (_record) _best = F.Score;
         _dirty = true;
     }
 
-    protected void Achievements()
+    /// <summary>Ачівки партії поля <paramref name="f"/> місця <paramref name="seat"/> (соло — 0; «разом» — кожному).</summary>
+    public static void Achievements(IRoomContext ctx, int seat, ShatkuyField f)
     {
-        if (_bestCombo >= ComboAch) Ctx.Award(0, 0, "ach:shatkuy-combo");
-        if (Mode == ShatkuyCore.Classic && _score >= ClassicAch) Ctx.Award(0, 0, "ach:shatkuy-classic");
-        if (_bigHits >= BigAch) Ctx.Award(0, 0, "ach:shatkuy-big");
-        if (Mode == ShatkuyCore.Fair && _gleks == 0 && _score >= CleanAch) Ctx.Award(0, 0, "ach:shatkuy-clean");
+        if (f.BestCombo >= ComboAch) ctx.Award(seat, 0, "ach:shatkuy-combo");
+        if (f.Mode == ShatkuyCore.Classic && f.Score >= ClassicAch) ctx.Award(seat, 0, "ach:shatkuy-classic");
+        if (f.KavunHits >= BigAch) ctx.Award(seat, 0, "ach:shatkuy-big");
+        if (f.Mode == ShatkuyCore.Fair && f.Gleks == 0 && f.Score >= CleanAch) ctx.Award(seat, 0, "ach:shatkuy-clean");
+        // v2: леза за ачівки (Лавка, LavkaCatalog.EarnedBlades) — серп за серію 50 будь-де, вогняне — 300 у Класиці
+        if (f.BestStreak >= StreakAch) ctx.Award(seat, 0, "ach:" + AchStreak);
+        if (f.Mode == ShatkuyCore.Classic && f.Score >= FireAch) ctx.Award(seat, 0, "ach:" + AchFire);
     }
+
+    protected void Achievements() => Achievements(Ctx, 0, F);
 
     protected virtual void Report()
     {
         Achievements();
-        Ctx.Score(0, _score);
-        var shards = Math.Min(MaxShards, _score / PointsPerShard);
+        Ctx.Score(0, F.Score);
+        var shards = Math.Min(MaxShards, F.Score / PointsPerShard);
         if (shards > 0) Ctx.Award(0, shards, $"shatkuy:{Ctx.Round}");
-        Ctx.Finish([0], $"{Info.Title}: {Ctx.NickOf(0)} — {_score} {Points(_score)}", new Dictionary<int, long> { [0] = _score });
+        Ctx.Finish([0], $"{Info.Title}: {Ctx.NickOf(0)} — {F.Score} {Points(F.Score)}", new Dictionary<int, long> { [0] = F.Score });
     }
 
     public static string Points(int n) =>
@@ -280,19 +203,56 @@ public abstract class ShatkuyGame : Game
 
     public override object View(int? seat) => BaseView();
 
+    /// <summary>Правила числами — однакові для всіх режимів (клієнт малює й передбачає за ними).</summary>
+    public static object Rules(ShatkuyMode mode) => new
+    {
+        lag = ShatkuyCore.LagMs, look = ShatkuyCore.LookMs, frost = ShatkuyCore.FrostRate, bigMax = ShatkuyCore.BigMaxHits,
+        glek = mode.Lives ? 0 : ShatkuyCore.GlekPenalty,
+        // v2
+        crackGap = ShatkuyCore.CrackGapMs, burn = ShatkuyCore.BurnMs, series = mode.Series ? ShatkuyCore.SeriesAt : [],
+        giantEvery = mode.Giants ? ShatkuyCore.GiantEvery : 0, r = ShatkuyCore.NewRadii,
+        pts = new { p = ShatkuyCore.Price(ShatkuyCore.Pumpkin), h = ShatkuyCore.Price(ShatkuyCore.Pepper), o = ShatkuyCore.Price(ShatkuyCore.Potato), c = 1, v = 1 },
+    };
+
+    /// <summary>
+    /// Поля виду одного поля (соло й «разом»): рахунок, промахи, серія, множник, мороз/×2/печія, плоди в обрії, підсумок.
+    /// <paramref name="go"/> — партія поля йде (плоди показуються).
+    /// </summary>
+    public static Dictionary<string, object?> FieldView(ShatkuyField f, bool go, int t, bool over)
+    {
+        var g = go ? f.G(t) : 0;
+        return new Dictionary<string, object?>
+        {
+            ["misses"] = f.Misses,
+            ["score"] = f.Score,
+            ["combo"] = f.BestCombo,
+            ["gleks"] = f.Gleks,
+            ["big"] = f.BigHits,
+            ["cuts"] = f.Cuts,
+            ["streak"] = f.Streak,
+            ["mult"] = f.Mult,
+            ["bestStreak"] = f.BestStreak,
+            ["precise"] = f.Precise,
+            ["frz"] = ShatkuyField.Spans(f.Frost),
+            ["dbl"] = f.DoubleSpans,
+            ["burn"] = ShatkuyField.Spans(f.Burn),
+            ["fruits"] = go ? f.FruitsView(g) : Array.Empty<object>(),
+            ["end"] = over ? End(f) : null,
+        };
+    }
+
+    public static object End(ShatkuyField f, string? why = null, int? t = null) => new
+    {
+        why = why ?? f.Why, score = f.Score, combo = f.BestCombo, cuts = f.Cuts, big = f.BigHits, gleks = f.Gleks, t = t ?? f.EndT,
+        streak = f.BestStreak, precise = f.Precise,
+    };
+
     protected Dictionary<string, object?> BaseView()
     {
         var now = Now;
         var go = _phase == PhGo;
-        var g = go ? G(T(now)) : 0;
-        var fruits = go
-            ? _byId.Values.Where(f => f.At <= g + ShatkuyCore.LookMs && f.Until + 400 >= g).OrderBy(f => f.Id).Select(f => new
-            {
-                id = f.Id, k = f.K.ToString(), at = f.At, d = f.D, x0 = R(f.X0), x1 = R(f.X1), h = R(f.H), sp = R(f.Spin),
-                c = _cut.Contains(f.Id), m = _missed.Contains(f.Id),
-            }).ToArray()
-            : [];
-        return new Dictionary<string, object?>
+        var over = _phase == PhOver;
+        var v = new Dictionary<string, object?>
         {
             ["mode"] = Mode.Id,
             ["phase"] = _phase,
@@ -301,23 +261,21 @@ public abstract class ShatkuyGame : Game
             ["t0"] = _phase == PhReady ? null : _t0.ToString("o", CultureInfo.InvariantCulture),
             ["len"] = Mode.LenMs,
             ["lives"] = Mode.Lives ? ShatkuyCore.Lives : 0,
-            ["misses"] = _misses,
-            ["score"] = _score,
             ["best"] = _best,
             ["games"] = _games,
-            ["combo"] = _bestCombo,
-            ["gleks"] = _gleks,
-            ["big"] = _bigHits,
-            ["cuts"] = _cuts,
-            ["frz"] = _frost.Select(s => new[] { s.S, s.E }).ToArray(),
-            ["dbl"] = _double.Select(s => new[] { s.S, s.E }).ToArray(),
-            ["fruits"] = fruits,
-            ["end"] = _phase == PhOver ? new { why = _why, score = _score, best = _best, rec = _record, combo = _bestCombo, cuts = _cuts, big = _bigHits, gleks = _gleks, t = _endT } : null,
-            ["k"] = new { lag = ShatkuyCore.LagMs, look = ShatkuyCore.LookMs, frost = ShatkuyCore.FrostRate, bigMax = ShatkuyCore.BigMaxHits, glek = Mode.Lives ? 0 : ShatkuyCore.GlekPenalty },
         };
+        foreach (var (key, value) in FieldView(F, go, go ? T(now) : 0, false)) v[key] = value;
+        v["end"] = over ? EndView() : null;
+        v["k"] = Rules(Mode);
+        return v;
     }
 
-    static double R(double x) => Math.Round(x, 3);
+    /// <summary>Підсумок соло: поля поля + рекорд.</summary>
+    protected object EndView(string? why = null, int? t = null, bool? rec = null) => new
+    {
+        why = why ?? F.Why, score = F.Score, best = _best, rec = rec ?? _record, combo = F.BestCombo, cuts = F.Cuts, big = F.BigHits,
+        gleks = F.Gleks, t = t ?? F.EndT, streak = F.BestStreak, precise = F.Precise,
+    };
 
     // ---------- збереження: рекорд і кількість партій ----------
 
@@ -448,7 +406,7 @@ public sealed class ShatkuyDaily : ShatkuyGame, IDailyGame
     void Record()
     {
         _reported = true;
-        _table?.Record(_day, Ctx.NickOf(0) ?? "", _score, Marks(), Ctx.Clock.UtcNow);
+        _table?.Record(_day, Ctx.NickOf(0) ?? "", F.Score, Marks(), Ctx.Clock.UtcNow);
     }
 
     void Credit()
@@ -458,10 +416,11 @@ public sealed class ShatkuyDaily : ShatkuyGame, IDailyGame
         // Спроба в щоденному каркасі одна; очки там не лягають (він рахує «менше — краще»), тож час — 0.
         Ctx.Score(0, 0, 1);
         Ctx.Award(0, 0, $"daily:{Info.Id}");
-        Ctx.Finish([0], $"{Info.Title}: {nick} — {_score} {Points(_score)}", new Dictionary<int, long> { [0] = _score });
+        Ctx.Finish([0], $"{Info.Title}: {nick} — {F.Score} {Points(F.Score)}", new Dictionary<int, long> { [0] = F.Score });
     }
 
-    string Marks() => $"🔪 {_cuts} · комбо ×{Math.Max(_bestCombo, 1)} · 🍉 {_bigHits}" + (_gleks > 0 ? $" · 💥 {_gleks}" : "");
+    string Marks() => $"🔪 {F.Cuts} · комбо ×{Math.Max(F.BestCombo, 1)} · 🍉 {F.BigHits}" + (F.BestStreak >= 10 ? $" · серія {F.BestStreak}" : "")
+        + (F.Gleks > 0 ? $" · 💥 {F.Gleks}" : "");
 
     public override object View(int? seat)
     {
@@ -479,17 +438,19 @@ public sealed class ShatkuyDaily : ShatkuyGame, IDailyGame
             board = _reported ? top.Take(10).Select(r => new { nick = r.Nick, points = r.Points, marks = r.Marks }).ToArray() : null,
             place = _reported && mine >= 0 ? mine + 1 : (int?)null,
             players = top.Count,
-            share = _reported ? $"Шаткуй дня №{Days.Number(_day)} — {_score} {Points(_score)}\n{Marks()}\nhttps://hlechyky.pp.ua/#games" : null,
+            share = _reported ? $"Шаткуй дня №{Days.Number(_day)} — {F.Score} {Points(F.Score)}\n{Marks()}\nhttps://hlechyky.pp.ua/#games" : null,
         };
         if (_reported && v["end"] is null)
-            v["end"] = new { why = _why.Length > 0 ? _why : WhyTime, score = _score, best = _best, rec = false, combo = _bestCombo, cuts = _cuts, big = _bigHits, gleks = _gleks, t = 0 };
+            v["end"] = EndView(F.Why.Length > 0 ? F.Why : WhyTime, 0, false);
         return v;
     }
 
-    sealed record Saved(string Day, bool Done, int Score, int Cuts, int Combo, int Big, int Gleks, string Why, int Best, bool Owed = false);
+    sealed record Saved(string Day, bool Done, int Score, int Cuts, int Combo, int Big, int Gleks, string Why, int Best, bool Owed = false,
+        int Streak = 0, int Precise = 0);
 
     public override string? Save() => _day.Length == 0 ? null
-        : JsonSerializer.Serialize(new Saved(_day, _reported, _score, _cuts, _bestCombo, _bigHits, _gleks, _why, _best, _owed), Json);
+        : JsonSerializer.Serialize(new Saved(_day, _reported, F.Score, F.Cuts, F.BestCombo, F.BigHits, F.Gleks, F.Why, _best, _owed,
+            F.BestStreak, F.Precise), Json);
 
     /// <summary>Зіграний день лишається зіграним. Партія, яку перервав перезапуск сайту, не рахується — можна ще раз.</summary>
     public override void Load(string json)
@@ -502,7 +463,7 @@ public sealed class ShatkuyDaily : ShatkuyGame, IDailyGame
         if (s.Day != _day || !s.Done) return;
         _reported = true;
         _phase = PhOver;
-        _score = s.Score; _cuts = s.Cuts; _bestCombo = s.Combo; _bigHits = s.Big; _gleks = s.Gleks; _why = s.Why ?? "";
+        F.Restore(s.Score, s.Cuts, s.Combo, s.Big, s.Gleks, s.Why ?? "", s.Streak, s.Precise);
         _owed = s.Owed;
     }
 }

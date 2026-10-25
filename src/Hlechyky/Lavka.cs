@@ -26,6 +26,11 @@ public static class LavkaKind
     /// <summary>Святкування перемоги (docs/games/specs/flair.md §3): анімація на столі переможця. Вдягається, як гімн.</summary>
     public const string Fx = "fx";
     /// <summary>
+    /// Лезо «Шаткуй!» (контракт _tools/shatkuy-v2.md §5): вигляд сліду й звук змаху в грі. Вдягається, як гімн; нічого не
+    /// вдягнуто — типовий ніж Глека. У вигляді профілю не малюється.
+    /// </summary>
+    public const string Blade = "blade";
+    /// <summary>
     /// Прокльон (docs/games/specs/flair.md §1): не вдягають і не мають назавжди — його насилають на іншого, і він звучить
     /// на трьох його програшах. Звичайним «Купити»/«Подарувати» не продається.
     /// </summary>
@@ -83,6 +88,9 @@ public sealed record AnthemPlay(string Title, string Emoji, string Url, double? 
 /// <summary><c>Art</c> святкування перемоги: <c>{ emoji }</c> — саму анімацію малює браузер за id речі.</summary>
 public sealed record LavkaFxArt([property: JsonPropertyName("emoji")] string Emoji);
 
+/// <summary><c>Art</c> леза «Шаткуй!»: <c>{ emoji }</c> — слід, частинки й свист малює браузер за id речі.</summary>
+public sealed record LavkaBladeArt([property: JsonPropertyName("emoji")] string Emoji);
+
 /// <summary>Прокльон спрацював на програші: що зіграти за столом і скільки програшів йому ще лишилось.</summary>
 public sealed record CurseHit(long Id, string Title, string Emoji, string Url, int Left);
 
@@ -129,7 +137,10 @@ public static class LavkaCatalog
     /// вдягання ні до чого.
     /// </summary>
     public static readonly IReadOnlyList<string> Slots =
-        [LavkaKind.Icon, LavkaKind.Frame, LavkaKind.Color, LavkaKind.Title, LavkaKind.Bg, LavkaKind.Anthem, LavkaKind.Fx];
+        [LavkaKind.Icon, LavkaKind.Frame, LavkaKind.Color, LavkaKind.Title, LavkaKind.Bg, LavkaKind.Anthem, LavkaKind.Fx, LavkaKind.Blade];
+
+    /// <summary>Леза «Шаткуй!» за ачівки: id речі → ключ ачівки (видає гра, ShatkuyGame.Achievements).</summary>
+    public const string Sickle = "sickle", FireBlade = "fireblade";
 
     static LavkaItem Icon(string id, string title, string art, int price, LavkaSeason? season = null) =>
         new(id, LavkaKind.Icon, title, price, art, price switch { <= 150 => 1, <= 250 => 2, _ => 3 }, season);
@@ -148,6 +159,10 @@ public static class LavkaCatalog
         new(id, LavkaKind.Curse, title, CursePrice, new LavkaAnthemArt(emoji, url ?? CurseUrlPrefix + id + ".mp3"));
     static LavkaItem Fx(string id, string title, string emoji, int price) =>
         new(id, LavkaKind.Fx, title, price, new LavkaFxArt(emoji), price switch { <= 400 => 1, <= 600 => 2, _ => 3 });
+    static LavkaItem Blade(string id, string title, string emoji, int price) =>
+        new(id, LavkaKind.Blade, title, price, new LavkaBladeArt(emoji), price switch { <= 500 => 1, <= 1500 => 2, _ => 3 });
+    static LavkaItem EarnedBlade(string id, string title, string emoji, string ach) =>
+        new(id, LavkaKind.Blade, title, 0, new LavkaBladeArt(emoji), 3, Ach: ach);
 
     public static readonly IReadOnlyList<LavkaItem> All =
     [
@@ -221,6 +236,10 @@ public static class LavkaCatalog
         Fx("confetti", "Конфеті", "🎊", 400), Fx("shards", "Дощ черепків", "🏺", 600), Fx("sunflowers", "Соняшники", "🌻", 600),
         Fx("salute", "Салют", "🎆", 1000), Fx("glekhopak", "Глек танцює гопак", "💃", 1500),
 
+        // леза «Шаткуй!» (shatkuy-v2 §5): типовий ніж Глека — без речі; два — за ачівки гри, не продаються
+        Blade("kosa", "Коса", "🌾", 500), Blade("shablia", "Козацька шабля", "⚔️", 1500), Blade("goldknife", "Золотий ніж", "🔪", 3000),
+        EarnedBlade(Sickle, "Срібний серп", "🌙", "shatkuy-streak"), EarnedBlade(FireBlade, "Вогняне лезо", "🔥", "shatkuy-fire"),
+
         // прокльони: синтезовані docs/games/dev/curses-make.py, як і гімни, — без чужих прав
         Curse("sadtrombone", "Сумний тромбон", "🎷", AnthemUrlPrefix + "trombone.mp3"), Curse("boo", "Бу-у-у", "👎"),
         Curse("crickets", "Цвіркуни", "🦗"), Curse("funeral", "Похоронний марш", "⚰️"), Curse("goat", "Цап", "🐐"),
@@ -268,6 +287,7 @@ public static class LavkaCatalog
         LavkaKind.Bg => $"тло «{i.Title}»",
         LavkaKind.Anthem => $"гімн «{i.Title}»",
         LavkaKind.Fx => $"святкування «{i.Title}»",
+        LavkaKind.Blade => $"лезо «{i.Title}»",
         LavkaKind.Curse => $"прокльон «{i.Title}»",
         _ => i.Title,
     };
@@ -807,6 +827,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
                 color = wearing.GetValueOrDefault(LavkaKind.Color), title = wearing.GetValueOrDefault(LavkaKind.Title),
                 bg = wearing.GetValueOrDefault(LavkaKind.Bg), anthem = wearing.GetValueOrDefault(LavkaKind.Anthem),
                 fx = wearing.GetValueOrDefault(LavkaKind.Fx), ring = wearing.GetValueOrDefault(LavkaCatalog.RingSlot),
+                blade = wearing.GetValueOrDefault(LavkaKind.Blade),
             },
             perks = new
             {
@@ -905,6 +926,31 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             : null;
     }
 
+    /// <summary>
+    /// Леза «Шаткуй!» для кнопки в грі (<c>GET /api/lavka/blades</c>): що вдягнуто (null — ніж Глека) і всі леза каталогу
+    /// з «моє». Гостю — лише ніж: <c>account: false</c>, нічого не його.
+    /// </summary>
+    public object Blades(string nick, bool account)
+    {
+        var mine = account ? store.OwnedBy(nick) : [];
+        var achs = account ? econ.AchievementsOf(EconomyStore.Key(nick)).Select(a => a.Key).ToHashSet(StringComparer.Ordinal) : [];
+        return new
+        {
+            account,
+            worn = account ? BladeOf(nick) : null,
+            items = LavkaCatalog.All.Where(i => i.Kind == LavkaKind.Blade).Select(i => new
+            {
+                id = i.Id, title = i.Title, price = i.Price, art = i.Art, tier = i.Tier,
+                earned = i.Ach is { } a ? new { ach = a, achTitle = AchTitle(a) } : null,
+                owned = i.Ach is { } got ? achs.Contains(got) : mine.Contains(i.Id),
+            }),
+        };
+    }
+
+    /// <summary>Вдягнуте лезо <paramref name="nick"/>: id, якщо воно справді його (куплене чи ачівка є); інакше null — ніж Глека.</summary>
+    public string? BladeOf(string nick) =>
+        store.Worn(nick, LavkaKind.Blade) is { } id && LavkaCatalog.Get(id) is { Kind: LavkaKind.Blade } item && Has(nick, item) ? item.Id : null;
+
     /// <summary>Святкування, яке злетить над столом, коли <paramref name="nick"/> виграє: id вдягнутого й свого; інакше null.</summary>
     public string? FxOf(string nick) =>
         store.Worn(nick, LavkaKind.Fx) is { } id && LavkaCatalog.Get(id) is { Kind: LavkaKind.Fx } item && store.Owns(nick, item.Id) ? item.Id : null;
@@ -973,7 +1019,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
             to = db.FindAccount(name);
             if (to is null) return No($"«{name}» — не акаунт: дарувати можна лише тим, хто закріпив нік");
         }
-        if (item.Ach is { } ach) return No($"Цей титул не купується — його дає ачівка «{AchTitle(ach)}»");
+        if (item.Ach is { } ach) return No(NotForSale(item, ach));
         if (item.Kind == LavkaKind.Curse) return No(CurseNotSold);
         if (to is not null && item.Id == LavkaCatalog.OwnAnthem) return No(NoGiftAnthem);
         if (to is not null && item.Id == LavkaCatalog.Ring) return No(NoGiftRing);
@@ -1014,8 +1060,14 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         return new LavkaReply(true, said, economy.Balance(nick));
     }
 
+    /// <summary>Чому річ за ачівку не купується (і не дарується): титул — як було, лезо — своїми словами.</summary>
+    static string NotForSale(LavkaItem i, string ach) => i.Kind == LavkaKind.Blade
+        ? $"Це лезо не купується — його дає ачівка «{AchTitle(ach)}» у «Шаткуй!»"
+        : $"Цей титул не купується — його дає ачівка «{AchTitle(ach)}»";
+
     static string Bought(LavkaItem i) => i.Kind switch
     {
+        LavkaKind.Blade => $"Лезо «{i.Title}» тепер твоє назавжди — уже в руці в «Шаткуй!»",
         LavkaKind.Icon => $"Значок «{i.Title}» {i.Art} тепер твій назавжди — уже на аватарці",
         LavkaKind.Frame => $"«{i.Title} рамка» тепер твоя назавжди — уже на аватарці",
         LavkaKind.Color => $"Колір ніка «{i.Title}» тепер твій назавжди — уже світиться",
@@ -1174,8 +1226,8 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         if (!account) return new(false, NotAccount);
         var s = (slot ?? "").Trim().ToLowerInvariant();
         if (!LavkaCatalog.Slots.Contains(s)) return new(false, NoSlot);
-        // Гімн і святкування у вигляді не малюються — розсилати всім той самий вигляд через них ні до чого
-        var seen = s is not (LavkaKind.Anthem or LavkaKind.Fx);
+        // Гімн, святкування й лезо у вигляді не малюються — розсилати всім той самий вигляд через них ні до чого
+        var seen = s is not (LavkaKind.Anthem or LavkaKind.Fx or LavkaKind.Blade);
         if (string.IsNullOrWhiteSpace(itemId))
         {
             lock (_gate) store.Unwear(nick, s);
@@ -1184,7 +1236,7 @@ public sealed class Lavka(LavkaStore store, Economy economy, EconomyStore econ, 
         }
         if (LavkaCatalog.Get(itemId) is not { } item) return new(false, NoItem);
         if (item.Kind != s) return new(false, WrongSlot);
-        if (!Has(nick, item)) return new(false, item.Ach is { } ach ? $"Цей титул дає ачівка «{AchTitle(ach)}»" : NotOwned);
+        if (!Has(nick, item)) return new(false, item.Ach is { } ach ? $"{(item.Kind == LavkaKind.Blade ? "Це лезо" : "Цей титул")} дає ачівка «{AchTitle(ach)}»" : NotOwned);
         if (item.Id == LavkaCatalog.OwnBg && store.BgPhoto(nick) is null) return new(false, NoOwnBg);
         lock (_gate) store.Wear(nick, s, item.Id);
         if (seen) Announce(nick);
