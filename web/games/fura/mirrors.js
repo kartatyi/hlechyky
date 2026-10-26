@@ -16,7 +16,7 @@ export function makeMirrors(THREE, tractor, glasses) {
     for (let k = 0; k < uv.count; k++) uv.setX(k, (i + 1 - uv.getX(k)) / glasses.length);
     const m = new THREE.Mesh(geo, dark);
     m.position.set(...g.pos);
-    m.rotation.y = Math.PI + g.out * 0.12;                        // лицем назад і трохи до водія
+    m.rotation.y = Math.PI + g.out * 0.06;                        // лицем назад і трохи до водія
     m.userData.noAtmo = true;
     m.castShadow = false; m.receiveShadow = false;
     tractor.add(m);
@@ -52,7 +52,7 @@ export function makeMirrors(THREE, tractor, glasses) {
       // камера: у склі, назад, назовні 0,06 рад і трохи вниз
       it.m.getWorldPosition(v);
       tractor.getWorldQuaternion(q);
-      e.set(-0.035, -it.g.out * 0.06, 0, 'YXZ');                   // камера дивиться вздовж своєї −Z = назад тягача
+      e.set(-0.07, -it.g.out * 0.06, 0, 'YXZ');                   // камера дивиться вздовж своєї −Z = назад тягача
       cam.position.copy(v);
       cam.quaternion.copy(q).multiply(new THREE.Quaternion().setFromEuler(e));
       cam.updateMatrixWorld();

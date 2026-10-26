@@ -213,7 +213,7 @@ export function buildModels(THREE, scene) {
   // салон і дзеркала
   const cab = buildCab(THREE, tractor);
   const cabin = cab.group;
-  const mirrors = makeMirrors(THREE, tractor, [1, -1].map((s) => ({ pos: [s * 1.55, 1.52, 3.112], w: 0.23, h: 0.44, out: s })));
+  const mirrors = makeMirrors(THREE, tractor, [1, -1].map((s) => ({ pos: [s * 1.55, 1.52, 3.098], w: 0.23, h: 0.44, out: s })));
 
   // ---------------- колеса: InstancedMesh на тіло (1 call), матриці — з контролера (syncWheels)
   const tmpM = new THREE.Matrix4(), tmpP = new THREE.Vector3(), tmpS = new THREE.Vector3(), tmpQ2 = new THREE.Quaternion(), tmpE = new THREE.Euler(0, 0, 0, 'YXZ');

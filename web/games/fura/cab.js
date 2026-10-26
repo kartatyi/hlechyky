@@ -221,7 +221,7 @@ export function buildCab(THREE, parent) {
   const eye = new THREE.Vector3(...EYE), E = EYE;
 
   // кольори
-  const DASH = '#2d2f33', DASH2 = '#46484c', DOOR = '#5c5d60', INSERT = '#b3a68f', PILLAR = '#a29c90', WALL = '#8a8274',
+  const DASH = '#3b3e43', DASH2 = '#585b60', DOOR = '#5c5d60', INSERT = '#b3a68f', PILLAR = '#a29c90', WALL = '#8a8274',
     ROOF = '#d3cab8', FLOOR = '#26272a', CHROME = '#c8ccd2', DARK = '#1f2023';
 
   // ---- підлога, тунель, стіни, стеля
@@ -256,8 +256,8 @@ export function buildCab(THREE, parent) {
   P('trim', RB(2.34, 0.14, 0.44, 0.05), 0, 1.05, 2.9, { c: DASH });
   P('trim', RB(2.3, 0.6, 0.32, 0.06), 0, 0.72, 2.92, { c: DASH2 });
   P('trim', RB(0.72, 0.3, 0.12, 0.05), 0.6, 0.78, 2.72, { c: '#3e4044' });                   // коліна водія
-  P('trim', RB(0.8, 0.3, 0.26, 0.06), 0.6, 1.2, 2.86, { c: DASH });                           // щиток приладів
-  P('trim', RB(0.84, 0.05, 0.2, 0.02), 0.6, 1.372, 2.86, { c: '#232528', rx: 0.1 });         // козирок над приладами
+  P('trim', RB(0.8, 0.3, 0.26, 0.06), 0.6, 1.2, 2.93, { c: DASH });                           // щиток приладів
+  P('trim', RB(0.84, 0.05, 0.2, 0.02), 0.6, 1.37, 2.93, { c: '#232528', rx: 0.1 });   // за площиною приладів — не ховає циферблати         // козирок над приладами
   P('trim', RB(0.6, 0.44, 0.16, 0.05), 0.02, 1.0, 2.82, { c: '#3a3c40', ry: 0.35 });          // крило з екраном
   P('trim', B(0.62, 0.28, 0.012), -0.6, 0.86, 2.758, { c: '#3d3f43' });                       // бардачок
   P('trim', B(0.08, 0.015, 0.012), -0.6, 0.96, 2.75, { c: '#202124' });
@@ -471,8 +471,10 @@ export function buildCab(THREE, parent) {
     light(sky) {
       if (!sky || !sky.irr) return;
       const i = sky.irr;
-      U.uCabAmb.value.setRGB(Math.min(1.5, i.r * 9), Math.min(1.5, i.g * 9), Math.min(1.5, i.b * 9));   // irr неба — у малих одиницях (сонце ~3)
-      U.uCabSun.value = 0.45;
+      const k = 1 / Math.max(1, sky.exposure || 1);                 // уночі пост підсилює кадр ×20 — розсіяне ділимо на експозицію
+      U.uCabAmb.value.setRGB(Math.min(2, i.r * 22 * k), Math.min(2, i.g * 18 * k), Math.min(2, i.b * 14 * k));
+      U.uCabSun.value = 0.7 * Math.max(0.3, k);
+      gaugeMat.emissiveIntensity = Math.max(0.05, 0.55 * k * (night ? 1.6 : 1));   // підсвітка — у тих самих одиницях експозиції
     },
     setNight(on) {
       night = on;
