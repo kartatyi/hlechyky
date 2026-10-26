@@ -6,7 +6,7 @@
 //
 // Формат (fura-city/1): bounds — рамка світу гри; height — як у fura-osm/1 (u16le-base64, iz*nx+ix, scale, y0), обрізана
 // до рамки; buildings — [h, x0, z0, dx1, dz1, …] (дециметри, дельти від попередньої точки, контур без повтору першої);
-// water — [x0, z0, dx1, dz1, …] (метри). Будинки — лише ближче RADIUS м до доріг мапи (далі їх за туманом не видно).
+// water — [x0, z0, dx1, dz1, …] (метри); bridges — лінії мостів OSM так само; woods — [ліс 1 | парк 0, x0, z0, …]. Будинки — лише ближче RADIUS м до доріг мапи (далі їх за туманом не видно).
 import fs from 'fs';
 import zlib from 'zlib';
 import path from 'path';
@@ -100,8 +100,17 @@ for (const a of osm.areas) {
   water.push(row);
 }
 
-const res = { format: 'fura-city/1', id, attribution: map.attribution || osm.attribution, bounds: B, height, buildings, water };
+// мости OSM (без водопропускних труб): лише лінії — браузер позначає ними настил на дорогах мапи
+const delta = (pts) => { const row = []; let px = 0, pz = 0; for (const [x, z] of pts) { const qx = Math.round(x), qz = Math.round(z); row.push(qx - px, qz - pz); px = qx; pz = qz; } return row; };
+const bridges = osm.edges.filter((e) => e.bridge && e.bridge !== 'no' && e.bridge !== 'culvert' && e.pts.some(([x, z]) => inB(x, z))).map((e) => delta(e.pts));
+// річки й струмки лініями (у многокутниках води є не всі): [річка 1 | струмок 0, x0, z0, …] — щоб знати, де міст над водою
+const streams = osm.waterways.filter((w) => (w.k === 'river' || w.k === 'stream') && w.pts.some(([x, z]) => inB(x, z))).map((w) => [w.k === 'river' ? 1 : 0, ...delta(w.pts)]);
+// ліс, парки, цвинтарі — під дерева
+const woods = osm.areas.filter((a) => ['wood', 'park', 'cemetery'].includes(a.k) && a.outer && a.outer.length >= 3 && a.outer.some(([x, z]) => inB(x, z)))
+  .map((a) => [a.k === 'wood' ? 1 : 0, ...delta(a.outer)]);
+
+const res = { format: 'fura-city/1', id, attribution: map.attribution || osm.attribution, bounds: B, height, buildings, water, bridges, streams, woods };
 const file = path.join(root, 'web/static/fura/maps', id + '-city.json');
 fs.mkdirSync(path.dirname(file), { recursive: true });
 fs.writeFileSync(file, JSON.stringify(res));
-console.log(file, (fs.statSync(file).size / 1024).toFixed(0), 'КБ;', 'рамка', B, 'рельєф', nx, '×', nz, '; будинків', buildings.length, '(поза рамкою чи далеко від доріг', skipped + ')', '; води', water.length);
+console.log(file, (fs.statSync(file).size / 1024).toFixed(0), 'КБ;', 'рамка', B, 'рельєф', nx, '×', nz, '; будинків', buildings.length, '(поза рамкою чи далеко від доріг', skipped + ')', '; води', water.length, '; мостів', bridges.length, '; річок і струмків', streams.length, '; лісу й парків', woods.length);

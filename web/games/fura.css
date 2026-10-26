@@ -209,3 +209,9 @@
 .fura-xp span { position: relative; padding-left: 6px; font-weight: 700; }
 .fura-navi { left: 16px; bottom: 172px; font-size: 17px; }
 .fura-navi b { font-size: 26px; margin-right: 6px; }
+/* Гараж 2 (G3): що можна купити зараз — лічильник на вкладці, підсвічений рядок, підказка вгорі */
+.fura-gr-can { color: #9fdc7c; font-weight: 700; }
+.fura-gr-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: #5fb04a; color: #10200a;
+  font-style: normal; font-size: 12px; line-height: 18px; text-align: center; }
+.fura-gr-it.can { box-shadow: inset 3px 0 0 #5fb04a; }
+.fura-gr-it.can.on { box-shadow: inset 0 0 0 2px #d08a2c, inset 5px 0 0 #5fb04a; }

@@ -337,9 +337,35 @@ public sealed class FuraGarageTests
     {
         var (h, _) = Table(xp: Book.Total(6));
         Assert.True(h.Act(0, "take", new { id = 1 }).Ok, h.Reply.Message);
-        Assert.Equal("Гараж — між рейсами", h.Act(0, "buy", new { id = "vil" }).Message);
-        Assert.Equal("Гараж — між рейсами", h.Act(0, "pick", new { tractor = "chumak" }).Message);
+        Assert.Equal(Fura.MidTrip, h.Act(0, "buy", new { id = "vil" }).Message);
+        Assert.Equal(Fura.MidTrip, h.Act(0, "pick", new { tractor = "chumak" }).Message);
         Assert.True(h.Act(0, "garage").Ok);   // перечитати вигляд можна будь-коли
+    }
+
+    /// <summary>
+    /// Стан владіка 26.10: Р3, 59 тис. 🏺, tune {} — і рейс здано, а «далі» не тиснув (done). Це теж «між рейсами»:
+    /// перший щабель купується, у виді — одразу щабель, нові числа фізики й списані черепки.
+    /// </summary>
+    [Fact]
+    public void A_level_3_driver_buys_the_first_tune_step_right_after_delivering()
+    {
+        var (h, wallet) = Table(career: """{"v":1,"xp":548,"lastTrip":8,"tune":{}}""", balance: 59_114, trips: 8);
+        Assert.Equal(3, Career(h).GetProperty("lvl").GetInt32());
+        Haul(h);
+        Assert.True(h.Act(0, "deliver").Ok, h.Reply.Message);
+        Assert.Equal("done", h.View(0).GetProperty("phase").GetString());
+        var power = Params(h).GetProperty("power").GetDouble();
+        var before = wallet.Balance("Оля");
+
+        var r = h.Act(0, "buy", new { id = "engine1" });
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(1, Career(h).GetProperty("tune").GetProperty("engine").GetInt32());
+        Assert.Equal(power * 1.05, Params(h).GetProperty("power").GetDouble(), 3);
+        Assert.Equal(before - 500, wallet.Balance("Оля"));
+        Assert.True(h.Act(0, "buy", new { id = "gear1" }).Ok, h.Reply.Message);   // круїз — з Р3
+        Assert.True(Params(h).GetProperty("cruise").GetBoolean());
+        Assert.True(h.Act(0, "next").Ok, h.Reply.Message);
+        Assert.True(h.View(0).GetProperty("board").GetArrayLength() > 0);
     }
 
     [Fact]
@@ -548,5 +574,112 @@ public sealed class FuraGarageTests
         Assert.InRange(voice.Lines["level_up"].Count, 2, 4);
         Assert.InRange(voice.Lines["buy"].Count, 2, 4);
         Assert.All(voice.Lines["level_up"].Concat(voice.Lines["buy"]), l => Assert.DoesNotMatch("[0-9]", l));
+    }
+
+    // ---------- догляд: номер, мийка, рихтування (Гараж 2) ----------
+
+    [Theory]
+    [InlineData("ВЗ 4938 ЧК", "ВЗ 4938")]
+    [InlineData("  глек-1  ", "ГЛЕК-1")]
+    [InlineData("ыэъ<b>ok</b>", "BOKB")]
+    [InlineData("Їжак  ґава", "ЇЖАК ҐАВ")]
+    [InlineData("!!!", null)]
+    [InlineData(null, null)]
+    public void Plate_is_cleaned_to_8_letters_digits_space_and_dash(string? raw, string? plate) =>
+        Assert.Equal(plate, FuraCareer.CleanPlate(raw));
+
+    [Fact]
+    public void Plate_wash_and_fix_cost_shards_show_in_the_look_and_work_mid_trip()
+    {
+        var (h, wallet) = Table(career: """{"xp":0,"dirt":0.6,"dents":0.4}""", balance: 5_000);
+        var look = Career(h).GetProperty("look");
+        Assert.Equal(0.6, look.GetProperty("dirt").GetDouble());
+        Assert.Equal(JsonValueKind.Null, look.GetProperty("plate").ValueKind);
+        Assert.True(h.Act(0, "take", new { id = 1 }).Ok, h.Reply.Message);                // посеред рейсу — можна: це лише вигляд
+
+        Assert.True(h.Act(0, "plate", new { text = "глек 01" }).Ok, h.Reply.Message);
+        Assert.Equal("ГЛЕК 01", Career(h).GetProperty("look").GetProperty("plate").GetString());
+        Assert.Equal(5_000 - Book.Care.Plate, wallet.Balance("Оля"));
+        Assert.Equal("Такий номер уже на фурі", h.Act(0, "plate", new { text = "Глек 01" }).Message);
+        Assert.True(h.Act(0, "wash").Ok, h.Reply.Message);
+        Assert.True(h.Act(0, "fix").Ok, h.Reply.Message);
+        Assert.Equal(5_000 - Book.Care.Plate - Book.Care.Wash - Book.Care.Fix, wallet.Balance("Оля"));
+        look = Career(h).GetProperty("look");
+        Assert.Equal(0, look.GetProperty("dirt").GetDouble());
+        Assert.Equal(0, look.GetProperty("dents").GetDouble());
+        Assert.Equal("Фура й так чиста", h.Act(0, "wash").Message);
+        Assert.True(h.Act(0, "plate", new { text = "" }).Ok);                                // знову з ніка — безплатно
+        Assert.Equal(JsonValueKind.Null, Career(h).GetProperty("look").ValueKind);                 // нічого не вдягнуто, чиста, номер з ніка
+        var stored = FuraCareer.Parse(h.Store.LoadState(FuraCareer.Key("оля")), Book)!;
+        Assert.Null(stored.Plate);
+        Assert.Equal(0, stored.Dirt);
+    }
+
+    [Fact]
+    public void A_trip_dirties_the_truck_by_km_and_broken_cargo_dents_it_once()
+    {
+        var (h, _) = Table(xp: 0);
+        Deliver(h, k: 80);
+        var c = FuraCareer.Parse(h.Store.LoadState(FuraCareer.Key("оля")), Book)!;
+        Assert.True(c.Dirt > 0, "бруд за км");
+        Assert.Equal(0.2 * Book.Care.DentsPerLoss, c.Dents, 3);
+        Assert.Equal(c.Dirt, Career(h).GetProperty("look").GetProperty("dirt").GetDouble(), 3);
+    }
+
+    [Fact]
+    public void Guests_cannot_buy_care()
+    {
+        var (h, _) = Table(account: _ => false);
+        Assert.Equal(Fura.NotAccount, h.Act(0, "plate", new { text = "AA" }).Message);
+    }
+
+    // ---------- гість → акаунт (Гараж 2) ----------
+
+    static FuraCareer CareerIn(FakeStore s, string key) => FuraCareer.Parse(s.States[FuraCareer.Key(key)], Book)!;
+
+    [Fact]
+    public void A_guest_who_makes_an_account_brings_the_xp_and_the_truck_once()
+    {
+        var s = new FakeStore();
+        s.SaveState(FuraCareer.Key("гість вася"), """{"xp":700,"lastTrip":5}""");
+        s.SaveState(FuraGarage.Key("гість вася"), """{"trips":5}""");
+        var g = new FuraGarage(s, a => a());
+        g.Adopt("гість Вася", "Вася");
+        Assert.Equal(700, CareerIn(s, "вася").Xp);
+        Assert.Equal(5, CareerIn(s, "вася").LastTrip);
+        Assert.Contains("\"trips\":5", s.States[FuraGarage.Key("вася")]);
+        Assert.False(s.States.ContainsKey(FuraCareer.Key("гість вася")));
+        Assert.False(s.States.ContainsKey(FuraGarage.Key("гість вася")));
+        g.Adopt("гість Вася", "Вася");                                   // удруге — нема чого додавати
+        Assert.Equal(700, CareerIn(s, "вася").Xp);
+    }
+
+    [Fact]
+    public void Guest_xp_adds_to_the_account_that_already_drives_and_the_accounts_truck_stays()
+    {
+        var s = new FakeStore();
+        s.SaveState(FuraCareer.Key("гість оля"), """{"xp":300,"lastTrip":4}""");
+        s.SaveState(FuraGarage.Key("гість оля"), """{"trips":4}""");
+        s.SaveState(FuraCareer.Key("оля"), """{"xp":1000,"lastTrip":9,"tune":{"engine":1}}""");
+        s.SaveState(FuraGarage.Key("оля"), """{"trips":9}""");
+        new FuraGarage(s, a => a()).Adopt("гість Оля", "Оля");
+        var c = CareerIn(s, "оля");
+        Assert.Equal(1300, c.Xp);
+        Assert.Equal(9, c.LastTrip);                                       // їде своєю фурою — її рейси
+        Assert.Equal(1, c.TuneOf("engine"));
+        Assert.Contains("\"trips\":9", s.States[FuraGarage.Key("оля")]);
+        Assert.Contains(s.States.Keys, k => k.StartsWith("lost:" + FuraGarage.Key("оля"), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_guest_from_before_the_garage_brings_retro_xp_for_the_trips()
+    {
+        var s = new FakeStore();
+        s.SaveState(FuraGarage.Key("гість петро"), """{"trips":3}""");
+        s.SaveState(FuraGarage.Key("петро"), """{"trips":2}""");
+        new FuraGarage(s, a => a()).Adopt("гість Петро", "Петро");
+        var c = CareerIn(s, "петро");
+        Assert.Equal((3 + 2) * Book.Xp.RetroPerTrip, c.Xp);                 // ретро гостя + ретро акаунта
+        Assert.Equal(2, c.LastTrip);
     }
 }

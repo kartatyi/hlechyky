@@ -15,6 +15,7 @@ public sealed partial class Fura
     public const string EqualKey = "equal", EqualOff = "off", EqualOn = "on";
 
     public const string NotAccount = "Закріпи нік — тоді гараж твій";
+    public const string MidTrip = "Посеред рейсу гараж зачинено — здай вантаж чи відмовся від замовлення";
 
     /// <summary>Слоти Лавки з наліпками: до трьох одночасно.</summary>
     static readonly string[] StickerSlots = [LavkaKind.FuraSticker, LavkaKind.FuraSticker + "2", LavkaKind.FuraSticker + "3"];
@@ -108,6 +109,7 @@ public sealed partial class Fura
         var (lvl0, stars0) = (b.LevelOf(c.Xp), b.StarsOf(c.Xp));
         var cargo = Map.CargoOf(order.Cargo);
         var trailerXp = cargo is { Trailer: not FuraCargo.Tent } ? b.TrailerFor(cargo.Trailer)?.Xp ?? 1 : 1;
+        c.Wear(b, rig.Trips, order.Km, k);   // бруд і вм'ятини (лише вигляд) — до Gain: той пам'ятає рейс як зарахований
         if (c.Gain(b, rig.Trips, order.Km, k, onTime, exact, order.Col, Mentor(rig, lvl0), trailerXp, order.Far, Days.Today(Ctx.Clock))
             is not { } gain) return null;
         var (lvl1, stars1) = (b.LevelOf(c.Xp), b.StarsOf(c.Xp));
@@ -142,7 +144,8 @@ public sealed partial class Fura
 
     /// <summary>
     /// <c>garage</c> — перечитати акаунт і вдягнуте (вид — наступним тиком). <c>buy {id}</c> і <c>pick {tractor|trailer}</c> —
-    /// лише акаунт, лише між рейсами (free) і лише коли гараж увімкнено (<c>Fura:Garage</c>).
+    /// лише акаунт, лише між рейсами (free чи done — рейс здано, а «далі» ще не тиснув) і лише коли гараж увімкнено
+    /// (<c>Fura:Garage</c>). Done теж «між рейсами»: 26.10 владік сидів у done пів години й не міг купити нічого.
     /// </summary>
     ActResult GarageAct(FuraRig rig, string action, JsonElement payload)
     {
@@ -153,8 +156,9 @@ public sealed partial class Fura
             _dirty = true;
             return ActResult.Done;
         }
+        if (action is "plate" or "wash" or "fix") return Care(rig, c, action, payload);
         if (!GarageOn) return ActResult.Fail("Гараж зачинено");
-        if (rig.Phase != Free) return ActResult.Fail("Гараж — між рейсами");
+        if (rig.Phase is not (Free or Done)) return ActResult.Fail(MidTrip);
         Refresh(rig);
         if (!c.Account) return ActResult.Fail(NotAccount);
         return action == "buy" ? Buy(rig, c, Str(payload, "id")) : Pick(c, payload);
@@ -180,13 +184,71 @@ public sealed partial class Fura
         // купив — одразу їде ним: тягач і «Пух» обираються самі (назад — pick)
         if (item.Kind == FuraBook.Tractor) c.Pick.Tractor = item.Id;
         if (item.Kind == FuraBook.Trailer && Book.TrailerOf(item.Id)?.Carries == FuraCargo.Tent) c.Pick.Trailer = item.Id;
-        if (!BoardFits(rig))   // новий причіп відкрив вантажі
+        if (rig.Phase == Free && !BoardFits(rig))   // новий причіп відкрив вантажі (у done дошку складе «next»)
         {
             rig.Board = [];
             EnsureBoard(rig);
         }
         _dirty = true;
         return ActResult.Accept($"🔧 {item.Title} — твоє назавжди");
+    }
+
+    /// <summary>
+    /// Догляд (Гараж 2), лише вигляд — тож будь-коли, і посеред рейсу, і з вимкненим гаражем; лише акаунт. Свій номер
+    /// (<c>plate {text}</c>; порожній — знову з ніка, безплатно), мийка (<c>wash</c>, бруд → 0), рихтування (<c>fix</c>,
+    /// вм'ятини → 0). Ref номера — з текстом: повернутись до вже оплаченого номера — безплатно; мийка й рихтування — щоразу нові.
+    /// </summary>
+    ActResult Care(FuraRig rig, FuraCareer c, string action, JsonElement payload)
+    {
+        Refresh(rig);
+        if (!c.Account) return ActResult.Fail(NotAccount);
+        var care = Book.Care;
+        string? plate = null;
+        int price;
+        string reason, refKey, done;
+        switch (action)
+        {
+            case "plate":
+                plate = FuraCareer.CleanPlate(payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("text", out var t)
+                    && t.ValueKind == JsonValueKind.String ? t.GetString() : null);
+                if (plate == c.Plate) return ActResult.Fail(plate is null ? "Номер і так із ніка" : "Такий номер уже на фурі");
+                if (plate is null)
+                {
+                    c.Plate = null;
+                    c.Dirty = true;
+                    _dirty = true;
+                    return ActResult.Accept("🔢 Номер знову з ніка");
+                }
+                (price, reason, refKey, done) = (care.Plate, "fura-buy:plate", $"fura-buy:{rig.NickKey}:plate:{plate}", $"🔢 Номер «{plate}» — на фурі");
+                break;
+            case "wash":
+                if (c.Dirt < 0.01) return ActResult.Fail("Фура й так чиста");
+                (price, reason, refKey, done) = (care.Wash, "fura-buy:wash", $"fura-buy:{rig.NickKey}:wash:{Ctx.Clock.UtcNow.Ticks}", "🧽 Помили — блищить");
+                break;
+            default:
+                if (c.Dents < 0.01) return ActResult.Fail("Рихтувати нічого — ані вм'ятини");
+                (price, reason, refKey, done) = (care.Fix, "fura-buy:fix", $"fura-buy:{rig.NickKey}:fix:{Ctx.Clock.UtcNow.Ticks}", "🔨 Вирихтували — як нова");
+                break;
+        }
+        if (Ctx.Services.GetService<IStakes>() is not { } wallet) return ActResult.Fail("Каса зачинена");
+        var have = wallet.Balance(rig.Nick);
+        bool paid;
+        try { paid = wallet.TrySpend(rig.Nick, price, reason, refKey); }
+        catch (Exception) { return ActResult.Fail("Каса не відповіла — спробуй ще раз"); }
+        if (!paid) return ActResult.Fail($"Бракує {Math.Max(1, price - have)} 🏺");
+        if (action == "plate") c.Plate = plate;
+        else if (action == "wash") c.Dirt = 0;
+        else c.Dents = 0;
+        c.Dirty = true;
+        _dirty = true;
+        return ActResult.Accept(done);
+    }
+
+    /// <summary>Удар чужої фури (💥 зіткнення): вм'ятини обом, сила — частка найбільшого удару. Пишемо, лише коли помітно.</summary>
+    void DentBoth(FuraRig a, FuraRig b, double force)
+    {
+        if (a.Career?.Hit(Book, force) == true) KeepCareer(a);
+        if (b.Career?.Hit(Book, force) == true) KeepCareer(b);
     }
 
     ActResult Pick(FuraCareer c, JsonElement payload)
@@ -275,7 +337,7 @@ public sealed partial class Fura
     static object? Look(FuraCareer c)
     {
         var w = c.Worn;
-        if (w.Count == 0) return null;
+        if (w.Count == 0 && c.Plate is null && c.Dirt == 0 && c.Dents == 0) return null;
         string? Of(string slot) => w.TryGetValue(slot, out var id) ? id : null;
         return new
         {
@@ -285,8 +347,16 @@ public sealed partial class Fura
             horn = Of(LavkaKind.FuraHorn),
             dash = Of(LavkaKind.FuraDash),
             stickers = StickerSlots.Select(Of).Where(x => x is not null).ToArray(),
+            plate = c.Plate,
+            dirt = c.Dirt,
+            dents = c.Dents,
             flag = Of(LavkaKind.FuraFlag),
             lamp = Of(LavkaKind.FuraLamp),
+            seat = CabOf(LavkaKind.FuraSeat),
+            wheel = CabOf(LavkaKind.FuraWheel),
+            curtain = CabOf(LavkaKind.FuraCurtain),
         };
+        // кабіна: не id речі, а значення контракту («leather-brown», «none»); нічого — null, D1 малює типове
+        string? CabOf(string slot) => Of(slot) is { } id && LavkaCatalog.Get(id)?.Art is LavkaFuraArt a ? a.Look : null;
     }
 }

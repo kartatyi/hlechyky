@@ -44,7 +44,13 @@ public sealed class GoogleVerifier(IOptionsMonitor<GoogleOptions> options, ILogg
 /// Вхід і реєстрація: паролем, через Google, прив'язка Google до наявного акаунта, зміна пароля.
 /// Тут лише база й правила; куку кладе Endpoints. Відповідь — або акаунт, або текст помилки з HTTP-кодом.
 /// </summary>
-public sealed class Accounts(Db db, IOptionsMonitor<SiteOptions> site)
+/// <summary>Гра, що тримає щось під ніком поза <see cref="Db.MergeNick"/> (своя пам'ять, свої ключі): гість став акаунтом — переносить.</summary>
+public interface INickAdopter
+{
+    void Adopt(string guestNick, string nick);
+}
+
+public sealed class Accounts(Db db, IOptionsMonitor<SiteOptions> site, IEnumerable<INickAdopter>? adopters = null)
 {
     /// <summary>
     /// <see cref="NeedNick"/> — Google підтвердив людину, якої тут ще нема: хай назветься (<see cref="Suggest"/> —
@@ -117,6 +123,9 @@ public sealed class Accounts(Db db, IOptionsMonitor<SiteOptions> site)
     {
         if (string.IsNullOrEmpty(guestNick) || !Auth.IsGuestNick(guestNick) || Auth.NickKey(guestNick) == Auth.Guest) return;
         db.MergeNick(guestNick, a.Nick);
+        // «Чумаки»: ДВ і фура гостя (specs/fura.md, «Гараж 2»). Гра не вийшла — вхід однаково вдався
+        foreach (var x in adopters ?? [])
+            try { x.Adopt(guestNick, a.Nick); } catch (Exception) { /* гостьове лишилось під гостем */ }
     }
 
     /// <summary>Поставити чи змінити пароль. Теперішній питаємо лише в того, у кого він є (Google-акаунт ставить перший).</summary>
