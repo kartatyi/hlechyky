@@ -72,7 +72,7 @@
 
   function card(root) {
     root.innerHTML = '<div class="fura-card">'
-      + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">колона до 8 фур · версія 0.0.7</span></div>'
+      + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">колона до 8 фур · версія 0.0.8</span></div>'
       + '<div class="fura-modes fura-maps" role="radiogroup" aria-label="Мапа" hidden></div>'
       + '<div class="fura-modes" role="radiogroup" aria-label="Чужі фури"></div>'
       + '<div class="fura-main"></div>'
