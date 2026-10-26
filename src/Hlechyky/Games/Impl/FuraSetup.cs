@@ -21,6 +21,7 @@ public static class FuraSetup
     {
         services.AddSingleton<FuraVoice>();
         services.AddSingleton(sp => new FuraGarage(sp.GetRequiredService<IGameStore>(), log: sp.GetService<ILogger<FuraGarage>>()));   // фури гравців (етап 2)
+        services.AddSingleton<INickAdopter>(sp => sp.GetRequiredService<FuraGarage>());   // гість → акаунт: ДВ і фура (Гараж 2)
         services.AddOptions<FuraOptions>().BindConfiguration("Fura");   // Fura:Garage — вимикач гаража 0.0.6
         // гараж 0.0.6: акаунт (купувати — лише акаунтам) і вигляд фури з Лавки; Лавку беремо ліниво — вона тягне пів сервера
         services.AddSingleton(sp => new FuraWardrobe(

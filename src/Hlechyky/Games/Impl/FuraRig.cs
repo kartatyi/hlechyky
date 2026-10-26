@@ -174,7 +174,7 @@ public sealed class FuraRig
 /// своїми діями її вже не перепише. Гараж водія (0.0.6, <see cref="FuraCareer"/>) живе тут само під своїм ключем і тією самою
 /// заявкою: пишеться рідко (рейс, покупка), тож поза раз на 5 с його не переписує.
 /// </summary>
-public sealed class FuraGarage
+public sealed class FuraGarage : INickAdopter
 {
     public static string Key(string nickKey) => $"fura:rig:{nickKey}";
     /// <summary>Старий соло-запис етапу 1 (<see cref="Game.SoloKey"/> типовий: <c>fura:&lt;nickKey&gt;</c>) — для міграції.</summary>
@@ -267,6 +267,65 @@ public sealed class FuraGarage
         _defer(() => Flush(key));
         foreach (var k in retry) _defer(() => Flush(k));
         return true;
+    }
+
+    /// <summary>
+    /// Гість «гість Вася» зробив акаунт «Вася» (<see cref="Accounts.Adopt"/>): ДВ і фура гостя — акаунту, без дублів.
+    /// Фура акаунта є — лишається вона, гостьова йде в <c>lost:</c>; нема — переїжджає гостьова (з її рейсами). ДВ гостя
+    /// (гараж, а без нього — ретро за його рейси) додається до ДВ акаунта (а без гаража — до ретро за рейси акаунта); номер
+    /// останнього зарахованого рейсу — тієї фури, якою акаунт поїде далі. Гостьові ключі стираються: вдруге не додасться.
+    /// Хтось із двох зараз за кермом (заявка стола) — не чіпаємо: стіл однаково перепише своє.
+    /// </summary>
+    public void Adopt(string guestNick, string nick)
+    {
+        var (g, a) = (Rooms.NickKey(guestNick), Rooms.NickKey(nick));
+        if (g.Length == 0 || g == a) return;
+        lock (_lock)
+            if (_owners.ContainsKey(g) || _owners.ContainsKey(a)) return;
+        var book = FuraBook.Load();
+        var (gRig, aRig) = (Get(Key(g)), Get(Key(a)));
+        var gCar = FuraCareer.Parse(Get(FuraCareer.Key(g)), book) ?? (gRig is null ? null : FuraCareer.Retro(TripsOf(gRig), book));
+        if (gRig is null && gCar is null) return;
+        var aCar = FuraCareer.Parse(Get(FuraCareer.Key(a)), book) ?? (aRig is null ? null : FuraCareer.Retro(TripsOf(aRig), book));
+        if (gCar is not null)
+        {
+            if (aCar is null) aCar = gCar;
+            else
+            {
+                aCar.Xp += gCar.Xp;
+                if (aRig is null) aCar.LastTrip = gCar.LastTrip;   // поїде гостьовою фурою — її рейси вже зараховані
+            }
+            Write(FuraCareer.Key(a), aCar.ToJson());
+        }
+        if (gRig is not null)
+        {
+            if (aRig is null) Write(Key(a), gRig);
+            else _store.SaveState($"lost:{Key(a)}:{DateTimeOffset.UtcNow:O}", gRig);
+        }
+        Drop(Key(g));
+        Drop(FuraCareer.Key(g));
+    }
+
+    void Write(string key, string json)
+    {
+        lock (_lock) _latest[key] = json;
+        _store.SaveState(key, json);
+    }
+
+    void Drop(string key)
+    {
+        lock (_lock) _latest.Remove(key);
+        _store.DeleteState(key);
+    }
+
+    static int TripsOf(string rigJson)
+    {
+        try
+        {
+            using var d = JsonDocument.Parse(rigJson);
+            return d.RootElement.TryGetProperty("trips", out var t) && t.TryGetInt32(out var n) ? n : 0;
+        }
+        catch (JsonException) { return 0; }
     }
 
     /// <summary>Запис у сховище: знімок береться вже під замком запису, тож останній запис — завжди найсвіжіший.</summary>

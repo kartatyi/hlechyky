@@ -9,6 +9,8 @@
 // з неї сервер складає кадр привидів (ghosts.js). Список колони, колонне замовлення «k» на дошці й події (сів, пішов,
 // узяли колонне, приєднався, бонус) — з різниці двох видів. Вид stage: 1 (старий сервер) — усе як було, без колони.
 
+import { loadBook, openNow } from './garage.js';
+
 const POSE_MS = 250, POSE2_MS = 100, SAVE_MS = 5000;
 const PHASE_ICON = { free: '📋', pickup: '🅿', haul: '🚚', done: '✅' };
 const escH = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -19,6 +21,8 @@ export class Trips {
   constructor(o) {
     Object.assign(this, o);          // THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, onPlaced
     this.view = null;
+    this.book = null;                // книга гаража: «🔧 Гараж · Р3 · можна 6»
+    loadBook().then((b) => { this.book = b; });
     this.places = Object.fromEntries(this.level.places.map((p) => [p.id, p]));
     this.cargo = Object.fromEntries(this.level.map.cargo.map((c) => [c.id, c]));
     this.poseAt = 0; this.saveAt = 0; this.lastC = false; this.flags = 0;
@@ -441,7 +445,13 @@ export class Trips {
   }
 
   /** «· Р7» для кнопки гаража. */
-  lvlTag() { const c = this.view && this.view.career; return c ? ' · Р' + c.lvl : ''; }
+  /** «· Р3 · 🛒 6» на кнопці гаража: рівень і скільки вже можна купити (Гараж 2: владік на Р3 не знайшов, що купити). */
+  lvlTag() {
+    const c = this.view && this.view.career;
+    if (!c) return '';
+    const n = openNow(this.book, c).length;
+    return ' · Р' + c.lvl + (n ? ' · 🛒 можна ' + n : '');
+  }
 
   /** Рядок «Досвід» у підсумку: ДВ за рейс (сервер, result.xp) і чому стільки — втома, наставник, новий рівень. */
   xpRow(r) {
@@ -451,6 +461,15 @@ export class Trips {
     const why = [l && l.mentor ? 'наставник ×1,2' : '', l && l.tired ? 'втома ×0,5 (11-й рейс за день)' : '', l && l.up ? '🎉 <b>рівень ' + l.up + '!</b>' : '']
       .filter(Boolean).join(' · ');
     return '<tr><td>Досвід</td><td><b>+' + (r.xp || 0) + ' ДВ</b>' + (why ? ' · ' + why : '') + (c ? ' <span class="muted">· Р' + c.lvl + ' ' + (c.xp - c.from) + '/' + (c.next - c.from) + '</span>' : '') + '</td></tr>';
+  }
+
+  /** Рядок «Фура» в підсумку (Гараж 2): бруд і вм'ятини — лише вигляд; помітні (≥ 30 %) — підказка про мийку й рихтування. */
+  careRow() {
+    const lk = this.view && this.view.career && this.view.career.look;
+    if (!lk || (!(lk.dirt >= 0.3) && !(lk.dents >= 0.3))) return '';
+    const pc = (x) => Math.round((x || 0) * 100) + ' %';
+    return '<tr><td>Фура</td><td>бруд ' + pc(lk.dirt) + ' · вм\'ятини ' + pc(lk.dents)
+      + ' <span class="muted">· 🧽 мийка й 🔨 рихтування — 🔧 гараж, «Вигляд»</span></td></tr>';
   }
 
   /** Рядок «Колона» в підсумку: бонус уже нараховано (r.bonus, черепки × Boost) чи ще чекає, щоб хтось здав у вікні 5 хв. */
@@ -477,10 +496,13 @@ export class Trips {
       + row('Час', mmss(r.sec) + ' з ' + r.minutes + ':00' + (r.onTime ? ' — вчасно, +10 %' : ' — запізнився'))
       + row('Ціле', r.k + ' %') + row('У бокс', r.exact ? 'точно, +10 %' : 'не в бокс')
       + (r.auto ? row('Автозчеп', '−10 %') : '')
-      + row('Черепки', '<b>+' + r.shards + ' 🏺</b>') + this.colRow(r) + this.xpRow(r) + '</table>'
+      + row('Черепки', '<b>+' + r.shards + ' 🏺</b>') + this.colRow(r) + this.xpRow(r) + this.careRow() + '</table>'
       + '<p class="muted small">Денна стеля рейсів — ' + this.view.cap + ' 🏺: понад неї рейс зараховано, але черепків нема.</p>'
-      + '<div class="fura-row"><button type="button" class="main next">Далі — нові замовлення</button></div>', (el, m) => {
+      + '<div class="fura-row"><button type="button" class="main next">Далі — нові замовлення</button>'
+      + (this.openGarage && this.view.career ? '<button type="button" class="garage">🔧 Гараж' + this.lvlTag() + '</button>' : '') + '</div>', (el, m) => {
       el.querySelector('.next').addEventListener('click', async () => { m.close(); await this.next(); setTimeout(() => this.board(), 400); });
+      const g = el.querySelector('.garage');
+      if (g) g.addEventListener('click', () => { m.close(); this.openGarage(); });
     });
   }
 }

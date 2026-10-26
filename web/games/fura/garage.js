@@ -48,6 +48,37 @@ export function paramsFor(book, tractor, trailer, tune) {
   return p;
 }
 
+/**
+ * Що вже можна купити за рівнем (черепки не рахуємо): [{ tab, row, id, title, price }] — лічильники на вкладках,
+ * вкладка, з якої гараж відкривається, і «🔧 Гараж · можна 6» на дошці й у підсумку. Гість, гараж зачинено — нічого.
+ */
+export function openNow(book, c) {
+  if (!book || !c || !c.account || c.on === false) return [];
+  const out = [], lvl = c.lvl || 1, owned = c.owned || {}, tune = c.tune || {};
+  for (const [tab, list] of [['tractors', book.tractors], ['trailers', book.trailers]]) {
+    for (const t of list) if (t.price && lvl >= t.lvl && !(owned[tab] || []).includes(t.id)) out.push({ tab, row: t.id, id: t.id, title: t.title, price: t.price });
+  }
+  for (const br of book.tune.branches) {
+    const n = Math.min(br.steps, tune[br.id] || 0);
+    if (n < br.steps && lvl >= levelsOf(book, br)[n]) out.push({ tab: 'tune', row: br.id, id: br.id + (n + 1), title: br.title + ' ' + (n + 1), price: book.tune.prices[n] });
+  }
+  return out;
+}
+
+/** Купують між рейсами: на дошці (free) і щойно здавши (done — підсумок, «далі» ще не тиснув). */
+export const betweenTrips = (phase) => phase === 'free' || phase === 'done';
+
+/** Що дає щабель s гілки — словами й числами (картка Майстерні й повідомлення після покупки). */
+function stepText(book, br, s, tr) {
+  const perk = (br.perks || []).find((p) => p.step === s);
+  if (perk) return PERK[perk.id] || perk.title;
+  if (br.id === 'engine') return 'потужність ' + kw(tr.power * (1 + 0.05 * s)) + ', тяга ' + kn(tr.fmax * (1 + 0.05 * s));
+  if (br.id === 'brakes') return 'гальма +' + (10 * s) + ' %: тягач ' + Math.round(book.base.brake * (1 + 0.1 * s)) + ', причіп ' + Math.round(book.base.trailerBrake * (1 + 0.1 * s));
+  if (br.id === 'susp') return 'пороги вантажу +' + (5 * s) + ' %, шкода ×' + num(Math.pow(br.hurtPer, s), 2);
+  if (br.id === 'tires') return 'зчеплення +' + (4 * s) + ' %';
+  return br.note || '';
+}
+
 /** Що відкриває рівень L: «тягач «Віл»», «Двигун 2», «далекі замовлення», титул. */
 export function unlocksAt(book, L) {
   const out = [];
@@ -196,9 +227,14 @@ export class Garage {
   open(tab) {
     if (this.m && this.m.open) { if (tab) { this.tab = tab; this.render(); } return; }
     if (tab) this.tab = tab;
+    else {
+      // одразу туди, де є що купити (Майстерня першою): на Р3 «Тягачі» — суцільні 🔒, і здається, що купити нічого
+      const o = openNow(this.book, this.career), first = o.find((x) => x.tab === 'tune') || o[0];
+      if (first) { this.tab = first.tab; this.sel[first.tab] = first.row; }
+    }
     const el = document.createElement('div');
     el.className = 'fura-garage';
-    el.innerHTML = '<div class="fura-gr-top"><b>🔧 Гараж</b><span class="fura-gr-lvl"></span><span class="fura-gr-bal"></span>'
+    el.innerHTML = '<div class="fura-gr-top"><b>🔧 Гараж</b><span class="fura-gr-lvl"></span><span class="fura-gr-can"></span><span class="fura-gr-bal"></span>'
       + '<button type="button" class="fura-gr-x" title="Назад (Esc · Ⓑ)">✕</button></div>'
       + '<nav class="fura-gr-tabs"></nav>'
       + '<div class="fura-gr-body"><div class="fura-gr-list"></div><div class="fura-gr-stage"><canvas></canvas><div class="fura-gr-tag"></div></div>'
@@ -212,7 +248,7 @@ export class Garage {
     this.takeModal(m);
     el.addEventListener('click', (e) => this.onClick(e));
     el.addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-act=hold]'); if (b && !b.disabled) { e.preventDefault(); this.startHold('mouse'); } });
-    const up = () => { if (this.hold && this.hold.by === 'mouse') this.hold = null; };
+    const up = () => { if (this.hold && this.hold.by === 'mouse') this.letGo(); };
     el.addEventListener('pointerup', up); el.addEventListener('pointerleave', up);
     this.stage(el.querySelector('.fura-gr-stage canvas'));
     this.render();
@@ -297,6 +333,11 @@ export class Garage {
     const out = [];
     const items = ((this.lavka && this.lavka.items) || []).filter((x) => /^fura-/.test(x.kind) && x.owned);
     for (const it of items) out.push({ key: 'look', id: it.id, it, title: it.title, has: true, worn: !!it.worn, act: { kind: 'wear', it } });
+    // догляд (Гараж 2): свій номер, мийка, рихтування — лише вигляд, будь-коли; купують утриманням, як решту
+    const care = b.care || {}, lk = c.look || {}, pc = (x) => Math.round((x || 0) * 100) + ' %';
+    out.push({ key: 'care', id: 'plate', title: '🔢 Свій номер', price: care.plate, act: { kind: 'buy', id: 'plate' } });
+    out.push({ key: 'care', id: 'wash', title: '🧽 Мийка · бруд ' + pc(lk.dirt), price: care.wash, act: (lk.dirt || 0) >= 0.01 ? { kind: 'buy', id: 'wash' } : null });
+    out.push({ key: 'care', id: 'fix', title: '🔨 Рихтування · вм\'ятини ' + pc(lk.dents), price: care.fix, act: (lk.dents || 0) >= 0.01 ? { kind: 'buy', id: 'fix' } : null });
     out.push({ key: 'shop', id: 'shop', title: '🛒 Купити в Лавці «🚚 Фура»', act: { kind: 'shop' } });
     return out;
   }
@@ -311,28 +352,37 @@ export class Garage {
   render() {
     const m = this.m;
     if (!m || !m.open) return;
-    const el = m.el, b = this.book, c = this.career;
+    const el = m.el, b = this.book, c = this.career, can = openNow(b, c);
     const top = c ? 'Р' + c.lvl + (c.stars ? ' ★' + c.stars : '') + ' · ' + c.xp + ' ДВ' + (c.lvl < (b ? b.levels.max : 20) ? ' · до Р' + (c.lvl + 1) + ': ' + (c.next - c.xp) : '') : 'гість полігона';
+    const hint = !c ? '' : can.length ? '🛒 Можна купити зараз: ' + can.length + (betweenTrips(this.phase) ? '' : ' — після рейсу') : '';
     const bal = this.lavka && this.lavka.balance != null ? '🏺 ' + this.lavka.balance : '';
-    const tabs = TABS.map(([k, l]) => '<button type="button" data-tab="' + k + '"' + (k === this.tab ? ' class="on"' : '') + '>' + l + '</button>').join('');
+    const tabs = TABS.map(([k, l]) => {
+      const n = can.filter((x) => x.tab === k).length;
+      return '<button type="button" data-tab="' + k + '"' + (k === this.tab ? ' class="on"' : '') + (n ? ' title="Можна купити зараз: ' + n + '"' : '') + '>' + l
+        + (n ? ' <i class="fura-gr-n">' + n + '</i>' : '') + '</button>';
+    }).join('');
     const list = this.items(), s = this.selected(list);
+    const canRow = new Set(can.filter((x) => x.tab === this.tab).map((x) => x.row));
     if (s) this.sel[this.tab] = s.id;
     const rows = !b ? '<div class="muted">⏳ Відчиняю гараж…</div>' : list.map((x) => {
       let state = '';
       if (x.key === 'tune') state = x.has ? '✓ усе' : x.n + '/' + x.br.steps + (x.locked ? ' · 🔒 Р' + x.lvl : ' · ' + x.price + ' 🏺');
       else if (x.key === 'look') state = x.worn ? '✓ на фурі' : '';
       else if (x.key !== 'shop') state = x.picked ? '✓ їду' : x.has ? (x.self ? '✓ сам під вантаж' : '✓ твій') : x.locked ? '🔒 Р' + x.lvl : x.price + ' 🏺';
-      return '<button type="button" class="fura-gr-it' + (x === s ? ' on' : '') + (x.locked ? ' locked' : '') + '" data-id="' + escH(x.id) + '"><span>' + escH(x.title) + '</span><small>' + state + '</small></button>';
+      return '<button type="button" class="fura-gr-it' + (x === s ? ' on' : '') + (x.locked ? ' locked' : '') + (canRow.has(x.id) ? ' can' : '') + '" data-id="' + escH(x.id) + '"><span>' + escH(x.title) + '</span><small>' + state + '</small></button>';
     }).join('');
     const card = s ? this.cardHtml(s) : '';
-    const html = [top, bal, tabs, rows, card, this.msg].join('|');
+    const html = [top, hint, bal, tabs, rows, card, this.msg].join('|');
     if (m._html === html) return;
     m._html = html;
     el.querySelector('.fura-gr-lvl').textContent = top;
+    el.querySelector('.fura-gr-can').textContent = hint;
     el.querySelector('.fura-gr-bal').textContent = bal;
     el.querySelector('.fura-gr-tabs').innerHTML = tabs;
     el.querySelector('.fura-gr-list').innerHTML = rows;
     el.querySelector('.fura-gr-card').innerHTML = card + (this.msg ? '<div class="fura-gr-msg">' + this.msg + '</div>' : '');
+    const pi = el.querySelector('.fura-gr-plate');   // номер: текст живе поза html картки, інакше перемальовка з'їдала б фокус
+    if (pi) { pi.value = this.plateText || ''; pi.oninput = () => { this.plateText = pi.value; }; }
     const on = el.querySelector('.fura-gr-it.on');
     if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
     el.querySelector('.fura-gr-tag').textContent = s && (s.key === 'tractor') ? s.title : '';
@@ -345,7 +395,7 @@ export class Garage {
     if (!c) return 'Сядь за стіл — тоді гараж твій';
     if (!c.account) return 'Закріпи нік (акаунт) — тоді гараж твій. Тест-драйв — можна й так';
     if (c.on === false) return 'Гараж зачинено';
-    if (this.phase !== 'free') return 'Гараж — між рейсами: здай чи зніми замовлення';
+    if (!betweenTrips(this.phase) && !(x && x.key === 'care')) return 'Посеред рейсу гараж зачинено — здай вантаж чи відмовся від замовлення (☰ → дошка). Подивитись і тест-драйв — можна';
     if (x && x.locked) return '🔒 Це відкриється з рівня ' + x.lvl;
     return null;
   }
@@ -379,14 +429,7 @@ export class Garage {
       const br = x.br, L = levelsOf(b, br), tr = b.tractors.find((y) => y.id === pick.tractor) || b.tractors[0];
       h += '<table>';
       for (let s = 1; s <= br.steps; s++) {
-        const perk = (br.perks || []).find((p) => p.step === s);
-        let what = '';
-        if (perk) what = (PERK[perk.id] || perk.title);
-        else if (br.id === 'engine') what = 'потужність ' + kw(tr.power * (1 + 0.05 * s)) + ', тяга ' + kn(tr.fmax * (1 + 0.05 * s));
-        else if (br.id === 'brakes') what = 'гальма +' + (10 * s) + ' %: тягач ' + Math.round(b.base.brake * (1 + 0.1 * s)) + ', причіп ' + Math.round(b.base.trailerBrake * (1 + 0.1 * s));
-        else if (br.id === 'susp') what = 'пороги вантажу +' + (5 * s) + ' %, шкода ×' + num(Math.pow(br.hurtPer, s), 2);
-        else if (br.id === 'tires') what = 'зчеплення +' + (4 * s) + ' %';
-        else what = br.note || '';
+        const what = stepText(b, br, s, tr);
         const st = s <= x.n ? '✓' : s === x.next ? (x.locked ? '🔒 Р' + L[s - 1] : '<b>' + b.tune.prices[s - 1] + ' 🏺</b>') : '🔒 Р' + L[s - 1];
         h += '<tr' + (s === x.next ? ' class="fura-gr-next"' : '') + '><td>' + s + ' · ' + st + '</td><td>' + escH(what) + '</td></tr>';
       }
@@ -395,21 +438,36 @@ export class Garage {
     } else if (x.key === 'look') {
       const it = x.it;
       h += '<p>' + escH(lookText(it)) + '</p><p class="muted small">Видно всім у колоні' + (it.kind === 'fura-horn' ? '; ріжок звучить у тебе (H · Ⓨ)' : '') + '.</p>';
+    } else if (x.key === 'care') {
+      const lk = c.look || {};
+      if (x.id === 'plate') {
+        h += '<p>Зараз: <b>' + escH(lk.plate || plateOf(this.myNick())) + '</b>' + (lk.plate ? '' : ' (з ніка)') + '</p>'
+          + '<p><input class="fura-gr-plate" maxlength="12" placeholder="до 8 знаків: ГЛЕК 01" autocomplete="off"></p>'
+          + '<p class="muted small">Літери (українські й латинські), цифри, пробіл і дефіс; решту сервер викине. Повернутись до вже оплаченого номера — безплатно; порожнє — знову з ніка.</p>';
+      } else {
+        const v = x.id === 'wash' ? lk.dirt : lk.dents;
+        h += '<p>' + (x.id === 'wash' ? 'Бруд росте з кілометрами рейсів. Мийка — і фура знову блищить.' : 'Вм\'ятини — від розбитого вантажу й ударів чужих фур. Рихтування — і як нова.')
+          + '</p><p>Зараз: <b>' + Math.round((v || 0) * 100) + ' %</b></p><p class="muted small">Лише вигляд: на фізику й черепки не впливає. Видно всім у колоні.</p>';
+      }
     } else if (x.key === 'shop') {
-      h += '<p>Фарби, «Металік», розписи, ріжки, глечик і кіт на панель, наліпки, вимпел, люстра — у Лавці, група «🚚 Фура». Купують назавжди й можна дарувати.</p>'
-        + '<p class="muted small">Номер на фурі поки рахується з ніка: ' + escH(plateOf(this.myNick())) + '.</p>';
+      h += '<p>Фарби, «Металік», розписи, ріжки, глечик і кіт на панель, наліпки, вимпел, люстра, а для кабіни — чохли сидінь, кермо й шторки — у Лавці, група «🚚 Фура». Купують назавжди й можна дарувати.</p>'
+        + '<p class="muted small">Свій номер, мийка й рихтування — тут же, у «Вигляді».</p>';
     }
     // дія
     const a = x.act;
     let btn = '';
     if (a && a.kind === 'buy') {
       const why = this.why(x);
-      btn = why ? '<p class="fura-gr-why">' + escH(why) + '</p>' : '<button type="button" class="main fura-gr-buy" data-act="hold"><i></i><span>Тримай 1 с — купити за ' + x.price + ' 🏺</span></button>';
+      const verb = x.key !== 'care' ? 'купити' : x.id === 'plate' ? 'поставити' : x.id === 'wash' ? 'помити' : 'вирихтувати';
+      btn = why ? '<p class="fura-gr-why">' + escH(why) + '</p>' : '<button type="button" class="main fura-gr-buy" data-act="hold"><i></i><span>🛒 Затисни й тримай 1 с — ' + verb + ' за ' + x.price + ' 🏺</span></button>'
+        + '<p class="muted small">Мишею — тримай кнопку · Enter — тримай · 🎮 Ⓐ — тримай. '
+        + (x.key === 'tune' ? 'Діє одразу, назавжди, на кожному тягачі.' : x.key === 'care' ? 'Лише вигляд, будь-коли.' : 'Назавжди.') + '</p>';
     } else if (a && a.kind === 'pick') {
       const why = this.why(null);
       btn = why ? '<p class="fura-gr-why">' + escH(why) + '</p>' : '<button type="button" class="main" data-act="press">✓ Їхати ним</button>';
     } else if (a && a.kind === 'wear') btn = '<button type="button" class="main" data-act="press">' + (x.worn ? 'Зняти з фури' : 'Вдягти на фуру') + '</button>';
     else if (a && a.kind === 'shop') btn = '<button type="button" class="main" data-act="press">🛒 У Лавку (гра чекатиме)</button>';
+    else if (x.key === 'care') btn = '<p class="muted">' + (x.id === 'wash' ? '✓ Фура чиста' : '✓ Ані вм\'ятини') + '</p>';
     else if (x.key !== 'look') btn = '<p class="muted">' + (x.picked ? '✓ Ти їдеш ним' : x.self ? '✓ Твій — чіпляється сам під свій вантаж' : '✓ Усе куплено') + '</p>';
     if (canTest) btn += '<button type="button" data-act="test">🧪 Тест-драйв на полігоні (Ⓨ · P)</button>';
     return h + '<div class="fura-gr-acts">' + btn + '</div>';
@@ -460,6 +518,16 @@ export class Garage {
     this.hold = { by, at: performance.now(), id: s.act.id };
   }
 
+  /** Відпустив раніше за 1 с: не купили — і кажемо чому, а не мовчимо (клік мишею тут нічого не купує). */
+  letGo() {
+    const H = this.hold;
+    this.hold = null;
+    if (H && performance.now() - H.at < HOLD_MS * 0.9) {
+      this.msg = '✋ Затисни й тримай, поки смужка не заповниться (1 с) — так випадково не купиш';
+      this.render();
+    }
+  }
+
   async act() {
     const s = this.selected();
     if (!s || !s.act || this.busy) return;
@@ -485,14 +553,29 @@ export class Garage {
     if (why) { this.msg = escH(why); this.render(); return; }
     this.busy = true; this.msg = '⏳ Купую…'; this.render();
     try {
-      const r = await this.server.tell('buy', { id });
+      const r = s && s.key === 'care'
+        ? await this.server.tell(id, id === 'plate' ? { text: this.plateText || '' } : {})
+        : await this.server.tell('buy', { id });
       if (r && r.ok) {
-        this.msg = '✓ ' + escH(r.message || 'Куплено');
+        this.msg = '✓ ' + escH(r.message || 'Куплено') + escH(this.boughtText(s));
         if (this.voice) this.voice.say('buy');
         this.say(r.message || '🔧 Куплено', 3000);
         this.loadLavka();                 // баланс
       } else this.msg = '⚠ ' + escH((r && r.message) || 'Нема зв\'язку з сервером');
     } finally { this.busy = false; this.render(); }
+  }
+
+  /** «— уже у фурі: потужність 420 кВт…» — що змінилось, одразу після покупки. */
+  boughtText(s) {
+    const b = this.book;
+    if (!b || !s) return '';
+    if (s.key === 'tune' && s.next) {
+      const pick = (this.career && this.career.pick) || {}, tr = b.tractors.find((y) => y.id === pick.tractor) || b.tractors[0];
+      return '. Уже у фурі: ' + stepText(b, s.br, s.next, tr);
+    }
+    if (s.key === 'tractor') return '. Ти вже їдеш ним';
+    if (s.key === 'trailer') return s.t.carries === 'tent' ? '. Уже причеплено' : '. Його вантажі — на дошці';
+    return '';
   }
 
   async wear(it) {
@@ -588,7 +671,8 @@ export class Garage {
     if (H) {
       const still = H.by === 'mouse' || held;
       const s = this.selected();
-      if (!still || !s || !s.act || s.act.id !== H.id) this.hold = null;
+      if (!still) this.letGo();
+      else if (!s || !s.act || s.act.id !== H.id) this.hold = null;
       else if (now - H.at >= HOLD_MS) { this.hold = null; this.buy(H.id, s); }
     }
     const bar = this.m.el.querySelector('.fura-gr-buy i');
@@ -612,6 +696,8 @@ export class Garage {
     const c = this.career, s = this.selected();
     let look = (c && c.look) ? { ...c.look, stickers: [...(c.look.stickers || [])] } : { stickers: [] };
     if (s && s.key === 'look' && !s.worn) look = tryOn(look, s.it);
+    if (s && s.key === 'care' && s.id === 'plate' && this.plateText) look.plate = this.plateText.toUpperCase().slice(0, 8);   // примірка
+    if (s && s.key === 'care' && s.id !== 'plate') look[s.id === 'wash' ? 'dirt' : 'dents'] = 0;                            // «як буде»
     const key = JSON.stringify(look);
     if (key !== pd.look) { pd.look = key; if (pd.model.setLook) pd.model.setLook(look, this.myNick()); }
     pd.pivot.rotation.y += dt * 0.45;
@@ -622,7 +708,9 @@ export class Garage {
 /** Вигляд із приміряною річчю (на постаменті, нічого не вдягає). */
 function tryOn(look, it) {
   const k = { 'fura-paint': 'paint', 'fura-gloss': 'gloss', 'fura-art': 'art', 'fura-horn': 'horn', 'fura-dash': 'dash', 'fura-flag': 'flag', 'fura-lamp': 'lamp' }[it.kind];
+  const cab = { 'fura-seat': 'seat', 'fura-wheel': 'wheel', 'fura-curtain': 'curtain' }[it.kind];
   if (k) look[k] = it.id;
+  else if (cab) look[cab] = it.art && it.art.look;         // кабіна: у виді — значення контракту, не id речі
   else if (it.kind === 'fura-sticker' && !look.stickers.includes(it.id)) look.stickers = look.stickers.concat(it.id).slice(-3);
   return look;
 }
@@ -637,6 +725,9 @@ function lookText(it) {
     case 'fura-sticker': return 'Наліпка на задні двері причепа (до трьох).';
     case 'fura-flag': return 'На дах кабіни.';
     case 'fura-lamp': return 'Діодна люстра на дах — світиться з фарами.';
+    case 'fura-seat': return 'Чохли на сидіння в кабіні — видно з керма.';
+    case 'fura-wheel': return 'Кермо в кабіні.';
+    case 'fura-curtain': return 'Шторки на вікнах кабіни.';
   }
   return it.title;
 }
