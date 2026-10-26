@@ -19,6 +19,8 @@
   const L = 200, WD = 120, MID = 100, PAD_R = 8, PUCK_R = 4.5, GOAL_LO = 40, GOAL_HI = 80;
   const H = 0.004, SUB_MS = 4, PAD_STEP = 900 * H, KEY_STEP = 420 * H, D = 0.7071067811865476;
   const TICK_MS = 40, E_WALL = 0.92;
+  /// Стеля швидкості шайби (HockeyCore.VMax, з 27.10 — 360 замість 1000): від неї рахуються жар шайби, іскри й клацання.
+  const V_MAX = 360;
   const minX = (team) => (team === 0 ? PAD_R : MID + PAD_R);
   const maxX = (team) => (team === 0 ? MID - PAD_R : L - PAD_R);
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
@@ -584,9 +586,10 @@
     if (prev.startIn > 0 && f.startIn === 0 && f.ph === 1) Snd.whistle();
     if (f.hit != null && f.hit >= 0) {
       st.flash[f.hit] = now;
-      Snd.hit(Math.min(1, sp / 1000));
+      const hot = Math.min(1, sp / V_MAX);
+      Snd.hit(hot);
       toScreen(st, f.x, f.y, tmp);
-      spark(st, tmp[0], tmp[1], 8 + Math.min(6, sp / 120), teamOf(st, f.hit) || 0, 90 + sp * 0.15);
+      spark(st, tmp[0], tmp[1], 8 + 6 * hot, teamOf(st, f.hit) || 0, 90 + 150 * hot);
     } else if (f.ph === 1 && !f.serveIn && !prev.serveIn && sp > 0 && Math.hypot(prev.vx || 0, prev.vy || 0) > 0) {
       // борт: знак швидкості змінився без удару біти
       if ((prev.vy > 0) !== (f.vy > 0) && f.vy !== 0) { st.rail[f.y < WD / 2 ? 0 : 1] = now; Snd.wall(); }
@@ -729,8 +732,8 @@
   // ---- малювання ----
   /// Шайба розжарюється зі швидкістю: біла → світло-жовта → жовта. Не червона: руді й так теплого кольору.
   function puckColor(pal, sp) {
-    if (sp < 200) return pal.text;
-    if (sp < 600) return '#ffe9a3';
+    if (sp < 0.2 * V_MAX) return pal.text;
+    if (sp < 0.6 * V_MAX) return '#ffe9a3';
     return pal.accent;
   }
 
@@ -850,7 +853,7 @@
     if (!(goalK > 0.78 && ph === 1 && rp == null)) {
       toScreen(st, puck.x, puck.y, tmp);
       g.shadowColor = colr;
-      g.shadowBlur = sp >= 600 ? 16 : 10;
+      g.shadowBlur = sp >= 0.6 * V_MAX ? 16 : 10;
       g.fillStyle = colr;
       g.beginPath();
       g.arc(tmp[0], tmp[1], PUCK_R * k, 0, Math.PI * 2);
@@ -1217,12 +1220,11 @@
     // Ⓐ забираємо собі й нічого нею не робимо: інакше посеред партії вона тиснула б кнопку, на якій стоїть рамка
     pad: { dirs: true, a: 'Space', hint: 'стік — біта (відпустив — до воріт) · {dpad} — точно' },
     news: {
-      v: '2026-09-30',
-      title: 'Аерохокей: сам на сам з ботом',
+      v: '2026-10-27',
+      title: 'Аерохокей: шайба повільніша',
       items: [
-        '🤖 Сам за столом? Тисни «🤖 + бот» — він стане навпроти й захищатиме свої ворота (без нагород)',
-        '🎚 Опція столу «🤖 Бот»: легкий (повільний і маже), звичайний чи сильний — бачить швидше, б’є сильніше, вміє через борт',
-        '👥 Утрьох бот, як і раніше, стає в пару до самотнього — тепер теж свого рівня',
+        '🐢 Шайба літає майже втричі повільніше — удар з того боку стола тепер видно, встигаєш підставити біту',
+        '🤖 Боти грають у новому темпі: легкий так само мазун, сильний — найсильніший',
       ],
     },
 

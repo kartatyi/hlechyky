@@ -326,11 +326,11 @@ public class HockeyTests(ITestOutputHelper output)
         Assert.Equal(100, b.Vx);
 
         var c = Bare(0, 1);
-        c.Puck = new ArenaBody(100, 110, HockeyCore.PuckR, 1) { Vy = 500 };
+        c.Puck = new ArenaBody(100, 110, HockeyCore.PuckR, 1) { Vy = 300 };
         for (var t = 0; t < 3; t++) c.Step();
         Assert.True(c.Puck.Vy < 0);
         // 30 підкроків тертя по (1 − 0.6·0.004) і один відбій 0.92 — множники, порядок не важить
-        Assert.Equal(0.92 * 500 * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, 3 * HockeyCore.Sub), -c.Puck.Vy, 6);
+        Assert.Equal(0.92 * 300 * Math.Pow(1 - HockeyCore.Mu * HockeyCore.H, 3 * HockeyCore.Sub), -c.Puck.Vy, 6);
         Assert.True(c.Puck.Y <= HockeyCore.TableH - HockeyCore.PuckR);
     }
 
@@ -376,15 +376,26 @@ public class HockeyTests(ITestOutputHelper output)
     [Fact] // 14
     public void A_moving_paddle_adds_its_speed_to_the_puck()
     {
+        // ледь штовхнула: 0.6 за один підкрок — 150/с, шайба ≈ 1.9 · 150 = 285 мінус тертя решти підкроків
         var c = Bare(0, 1);
+        Put(c, 0, 30, 60);
+        c.Puck = new ArenaBody(30 + HockeyCore.PadR + HockeyCore.PuckR + 0.3, 60, HockeyCore.PuckR, 1);
+        c.Aim(0, 30.6, 60);
+        c.Step();
+        Assert.Equal(0, c.HitBy);
+        Assert.Equal(0, c.LastTouch);
+        Assert.InRange(c.Puck.Vx, 1.9 * 150 * 0.97, 1.9 * 150 + 1e-6);
+        Assert.Equal(0, c.Puck.Vy, 6);
+
+        // клавішами (420/с): 1.9 · 420 = 798 — урізано до стелі, а біта, швидша за шайбу, ще веде її на собі
+        c = Bare(0, 1);
         Put(c, 0, 30, 60);
         c.Move(0, 1, 0);
         c.Puck = new ArenaBody(30 + HockeyCore.PadR + HockeyCore.PuckR + 2, 60, HockeyCore.PuckR, 1);
         c.Step();
         Assert.Equal(0, c.HitBy);
-        Assert.Equal(0, c.LastTouch);
-        Assert.InRange(c.Puck.Vx, 1.9 * 420 * 0.98, 1.9 * 420 + 1e-6);   // ≈ 798 мінус тертя пари підкроків
-        Assert.Equal(0, c.Puck.Vy, 6);
+        Assert.InRange(c.Puck.Vx, HockeyCore.VMax * 0.98, HockeyCore.VMax + 1e-6);
+        Assert.True(c.Puck.X - c.Pads[0].X < HockeyCore.PadR + HockeyCore.PuckR + 0.5, $"{c.Puck.X - c.Pads[0].X}");
     }
 
     [Fact] // 15
@@ -409,20 +420,42 @@ public class HockeyTests(ITestOutputHelper output)
     }
 
     [Fact] // 16
-    public void Puck_speed_is_capped_at_1000()
+    public void Puck_speed_is_capped_at_360()
     {
+        Assert.Equal(360, HockeyCore.VMax);
         var c = Bare(0, 1);
         Put(c, 1, 150, 60);
         c.Move(1, -1, 0);
-        c.Puck = new ArenaBody(130, 60, HockeyCore.PuckR, 1) { Vx = 990 };
+        c.Puck = new ArenaBody(130, 60, HockeyCore.PuckR, 1) { Vx = 350 };
         var fastest = 0.0;
         for (var t = 0; t < 3; t++)
         {
             c.Step();
             Assert.True(Speed(c.Puck) <= HockeyCore.VMax + 1e-9);
-            fastest = Math.Min(fastest, c.Puck.Vx);             // потім шайба влітає в ліві ворота й стає на подачу
+            fastest = Math.Min(fastest, c.Puck.Vx);
         }
-        Assert.True(fastest < -950, $"{fastest}");                // 990 + 1.9·(990+420) урізано до 1000
+        Assert.True(fastest < -0.95 * HockeyCore.VMax, $"{fastest}");   // 0.9·350 + 1.9·420 урізано до 360
+    }
+
+    [Fact] // 27.10: «занадто швидко, нереально реагувати» — на 1000 удар з чужої половини долітав до воріт за 0,15 с
+    public void A_hard_hit_from_the_far_half_leaves_the_goalie_time_to_react()
+    {
+        var c = Bare(0, 1);
+        Put(c, 0, 25, 110);                                         // синій — осторонь, шайба летить повз нього
+        Put(c, 1, 185, 60);
+        c.Puck = new ArenaBody(170, 60, HockeyCore.PuckR, 1);
+        c.Aim(1, 160, 60);                                          // рудий б'є з усієї руки (900/с) крізь шайбу
+        int hit = -1, at = -1;
+        for (var t = 0; t < 100 && at < 0; t++)
+        {
+            c.Step();
+            if (hit < 0 && c.HitBy == 1) hit = t;
+            if (hit >= 0 && c.Puck.X <= 25) at = t;                 // лінія, де стоїть воротар
+        }
+        Assert.True(hit >= 0 && at > hit, $"удар {hit}, долетіла {at}");
+        var ms = (at - hit) * HockeyCore.TickMs;
+        output.WriteLine($"від удару до лінії воротаря — {ms} мс");
+        Assert.True(ms >= 360, $"{ms} мс");
     }
 
     [Fact] // 17

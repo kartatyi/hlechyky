@@ -38,7 +38,7 @@ public class HockeySoloTests(ITestOutputHelper output)
         var p = c.Puck;
         var own = team == 0 ? p.X < HockeyCore.Mid : p.X > HockeyCore.Mid;
         double x = gx + dir * 20, y = Math.Clamp(p.Y, HockeyCore.GoalLo, HockeyCore.GoalHi);
-        if (own && p.Speed < 300 && Math.Abs(p.X - gx) > HockeyCore.PadR + HockeyCore.PuckR)
+        if (own && p.Speed < 0.3 * HockeyCore.VMax && Math.Abs(p.X - gx) > HockeyCore.PadR + HockeyCore.PuckR)
         {
             double ux = HockeyCore.W - gx - p.X, uy = HockeyCore.TableH / 2 - p.Y;
             var l = Math.Sqrt(ux * ux + uy * uy);
@@ -211,6 +211,7 @@ public class HockeySoloTests(ITestOutputHelper output)
         double Share((int D, int B) r) => r.D / (double)Math.Max(1, r.D + r.B);
         Assert.True(Share(hd) < Share(e) * 0.7, $"сильний пропускає частку {Share(hd):0.00}, легкий {Share(e):0.00}");
         Assert.True(Share(n) < Share(e), "звичайний мусить бути сильнішим за легкого");
+        Assert.True(Share(hd) < Share(n), $"сильний пропускає частку {Share(hd):0.00}, звичайний {Share(n):0.00}");
         Assert.True(hd.D > 0, "сильний бот не мусить бути стіною");
         Assert.True(e.D > e.B, "легкого манекен мусить обігравати");
     }
