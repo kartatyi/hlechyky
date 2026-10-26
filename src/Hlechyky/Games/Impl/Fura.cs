@@ -404,7 +404,7 @@ public sealed partial class Fura : Game
                 _dirty = true;
                 return ActResult.Done;
 
-            case "garage" or "buy" or "pick":
+            case "garage" or "buy" or "pick" or "plate" or "wash" or "fix":
                 return GarageAct(rig, action, payload);
 
             default:
@@ -608,6 +608,7 @@ public sealed partial class Fura : Game
         _hitAt[(seat, to)] = now;
         _hits.Add(new FuraHit(to, seat, ++_hitNo, part, I(ix), I(iz), I(Num("ox", 8) * 10), I(Num("oz", 8) * 10), _tick));
         victim.Judge.Shove(now);
+        DentBoth(rig, victim, Math.Sqrt(ix * ix + iz * iz) / HitMaxNs);   // Гараж 2: вм'ятини обом (лише вигляд)
         return ActResult.Done;
     }
 

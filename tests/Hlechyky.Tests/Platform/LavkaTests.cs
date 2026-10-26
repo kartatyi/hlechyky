@@ -162,7 +162,7 @@ public sealed class LavkaTests : IDisposable
         Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Fx));          // святкування перемоги (FlairTests)
         Assert.Equal(6, all.Count(i => i.Kind == LavkaKind.Curse));       // прокльони (FlairTests)
         Assert.Equal(5, all.Count(i => i.Kind == LavkaKind.Blade));       // леза «Шаткуй!»: 3 куповані й 2 за ачівки
-        Assert.Equal(37, all.Count(i => LavkaKind.IsFura(i.Kind)));       // «🚚 Фура»: 34 куповані й 3 за ачівки (FuraGarageTests)
+        Assert.Equal(48, all.Count(i => LavkaKind.IsFura(i.Kind)));       // «🚚 Фура»: 45 купованих (з них 11 — кабіна) і 3 за ачівки
         // id латиницею — без пробілів і великих літер; дефіс — лише в «own-anthem», так його назвав контракт гімнів
         Assert.All(all, i => Assert.Matches("^[a-z]+(-[a-z]+)?$", i.Id));
         Assert.Equal([LavkaCatalog.OwnAnthem], all.Where(i => i.Id.Contains('-')).Select(i => i.Id));
@@ -1282,6 +1282,24 @@ public sealed class LavkaTests : IDisposable
     // =============================================================================================
     // «🚚 Фура» — вигляд фури в «Чумаках» (specs/fura.md, «Гараж (0.0.6)»)
     // =============================================================================================
+
+    [Fact]
+    public void Cab_things_are_their_own_slots_and_carry_the_contract_look_value()
+    {
+        _r.Give("Оля", 10_000);
+        Assert.True(_r.Buy("Оля", "seatsheepskin").Ok);
+        Assert.True(_r.Buy("Оля", "wheelwood").Ok);
+        Assert.True(_r.Buy("Оля", "curtainnone").Ok);
+        var worn = _r.Lavka.FuraWorn("Оля");
+        Assert.Equal("seatsheepskin", worn[LavkaKind.FuraSeat]);
+        Assert.Equal("wheelwood", worn[LavkaKind.FuraWheel]);
+        Assert.Equal("curtainnone", worn[LavkaKind.FuraCurtain]);
+        Assert.Equal("sheepskin", Assert.IsType<LavkaFuraArt>(LavkaCatalog.Get("seatsheepskin")!.Art).Look);
+        Assert.Equal(Lavka.WrongSlot, _r.Wear("Оля", LavkaKind.FuraSeat, "wheelwood").Message);
+        // значення контракту хвилі E (specs/fura.md, «Нові слоти»): D1 малює саме їх
+        string[] looks = ["leather-brown", "leather-black", "vyshyvanka", "sheepskin", "wood", "leather", "braided", "blue", "green", "yellow", "none"];
+        Assert.Equal(looks.Order(), LavkaCatalog.All.Select(i => i.Art).OfType<LavkaFuraArt>().Select(a => a.Look).Order());
+    }
 
     [Fact]
     public void Fura_cosmetics_are_bought_worn_on_the_truck_and_not_in_the_profile()

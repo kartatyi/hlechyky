@@ -80,6 +80,14 @@ public sealed class FuraBook
     public required IReadOnlyList<Branch> Branches { get; init; }
     /// <summary>Рівень → id титулу Лавки, що він дає (ачівка <c>fura-&lt;id&gt;</c>).</summary>
     public required IReadOnlyDictionary<int, string> Titles { get; init; }
+    /// <summary>Догляд (Гараж 2) — лише вигляд: свій номер, мийка, рихтування й як швидко брудниться та б'ється.</summary>
+    public required CareRules Care { get; init; }
+
+    /// <summary>
+    /// Ціни догляду й темп: бруд — <see cref="DirtPerKm"/> за км рейсу; вм'ятини — <see cref="DentsPerLoss"/> × частка
+    /// розбитого вантажу (здав 80 % — +0,2 × це) і <see cref="DentsPerHit"/> за удар чужої фури (масштаб — сила удару).
+    /// </summary>
+    public sealed record CareRules(int Plate, int Wash, int Fix, double DirtPerKm, double DentsPerLoss, double DentsPerHit);
 
     static readonly OkOnce<FuraBook> Default = new(() => Parse(System.IO.File.ReadAllText(Paths.Resolve(File))));
 
@@ -148,6 +156,7 @@ public sealed class FuraBook
             branches.Add(new Branch(S(b, "id", ""), S(b, "title", ""), steps, Ints(b, "levels"), mul, Math.Clamp(I(b, "mulSteps", steps), 0, steps),
                 D(b, "hurtPer", 0), set));
         }
+        var care = r.TryGetProperty("care", out var ca) && ca.ValueKind == JsonValueKind.Object ? ca : JsonDocument.Parse("{}").RootElement;
         var titles = new Dictionary<int, string>();
         if (r.TryGetProperty("titles", out var ti) && ti.ValueKind == JsonValueKind.Object)
             foreach (var p in ti.EnumerateObject())
@@ -172,6 +181,8 @@ public sealed class FuraBook
             StepLevels = Ints(tune, "levels"),
             Branches = branches,
             Titles = titles,
+            Care = new(I(care, "plate", 1000), I(care, "wash", 100), I(care, "fix", 300), D(care, "dirtPerKm", 0.05),
+                D(care, "dentsPerLoss", 0.5), D(care, "dentsPerHit", 0.1)),
         };
     }
 
@@ -307,6 +318,11 @@ public sealed class FuraCareer
     public FuraPick Pick { get; set; } = new();
     /// <summary>Що дав останній рейс (підсумок «+105 ДВ», новий рівень — голос Глека).</summary>
     public FuraGain? Last { get; set; }
+    /// <summary>Свій номер (≤ 8 знаків, <see cref="CleanPlate"/>); null — номер із ніка (браузер, <c>plateOf</c>).</summary>
+    public string? Plate { get; set; }
+    /// <summary>Бруд 0…1 (росте з км рейсів, мийка → 0) і вм'ятини 0…1 (розбитий вантаж, удари; рихтування → 0). Лише вигляд.</summary>
+    public double Dirt { get; set; }
+    public double Dents { get; set; }
 
     /// <summary>Змінилось і ще не віддано в гараж.</summary>
     [JsonIgnore] public bool Dirty { get; set; }
@@ -334,6 +350,9 @@ public sealed class FuraCareer
         c.LastTrip = Math.Max(0, c.LastTrip);
         c.DayTrips = Math.Max(0, c.DayTrips);
         c.Day ??= "";
+        c.Plate = CleanPlate(c.Plate);
+        c.Dirt = Wear01(c.Dirt);
+        c.Dents = Wear01(c.Dents);
         c.Owned ??= new();
         c.Owned.Tractors = Known(c.Owned.Tractors, FuraBook.Chumak, id => book.TractorOf(id) is not null);
         c.Owned.Trailers = Known(c.Owned.Trailers, FuraBook.Tent, id => book.TrailerOf(id) is not null);
@@ -354,6 +373,51 @@ public sealed class FuraCareer
         foreach (var id in ids ?? [])
             if (id is not null && known(id) && !list.Contains(id)) list.Add(id);
         return list;
+    }
+
+    public const int PlateMax = 8;
+
+    /// <summary>
+    /// Свій номер: великі літери (українська й латинська абетки), цифри, пробіл і дефіс; решта викидається, пробіли не
+    /// подвоюються, ≤ <see cref="PlateMax"/> знаків. Порожній — null (номер із ніка).
+    /// </summary>
+    public static string? CleanPlate(string? raw)
+    {
+        if (raw is null) return null;
+        var sb = new System.Text.StringBuilder();
+        foreach (var ch in raw.Normalize(System.Text.NormalizationForm.FormC).ToUpperInvariant())
+        {
+            var ok = ch is >= 'A' and <= 'Z' or >= '0' and <= '9' or >= 'А' and <= 'Я' or 'Є' or 'І' or 'Ї' or 'Ґ' or '-'
+                && ch is not ('Ы' or 'Э' or 'Ъ' or 'Ё');
+            if (ok) sb.Append(ch);
+            else if (char.IsWhiteSpace(ch) && sb.Length > 0 && sb[^1] != ' ') sb.Append(' ');
+        }
+        var s = sb.ToString().Trim();
+        if (s.Length > PlateMax) s = s[..PlateMax].TrimEnd();
+        return s.Length == 0 ? null : s;
+    }
+
+    static double Wear01(double x) => double.IsFinite(x) ? Math.Clamp(Math.Round(x, 3), 0, 1) : 0;
+
+    /// <summary>
+    /// Знос за щойно зданий рейс <paramref name="trip"/> (ідемпотентно разом із ДВ: рейс, уже зарахований, не брудить удруге).
+    /// Бруд — від км, вм'ятини — від розбитого вантажу (ціле <paramref name="k"/> %).
+    /// </summary>
+    public void Wear(FuraBook book, int trip, double km, int k)
+    {
+        if (trip <= LastTrip) return;
+        Dirt = Wear01(Dirt + Math.Max(0, km) * book.Care.DirtPerKm);
+        Dents = Wear01(Dents + Math.Clamp(100 - k, 0, 100) / 100.0 * book.Care.DentsPerLoss);
+    }
+
+    /// <summary>Удар чужої фури (сила 0…1 від найбільшої): вм'ятини. true — помітно змінилось (≥ 0,05), варто записати.</summary>
+    public bool Hit(FuraBook book, double force)
+    {
+        var before = Dents;
+        Dents = Wear01(Dents + Math.Clamp(force, 0, 1) * book.Care.DentsPerHit);
+        var seen = Math.Floor(Dents * 20) != Math.Floor(before * 20);
+        if (seen) Dirty = true;
+        return seen;
     }
 
     /// <summary>Перше відкриття гаража: ретро-досвід за вже зроблені рейси, не вище Р8 (<see cref="FuraBook.XpRules.RetroMax"/>).</summary>

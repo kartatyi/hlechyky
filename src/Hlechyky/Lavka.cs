@@ -47,6 +47,11 @@ public static class LavkaKind
     public const string FuraSticker = "fura-sticker";
     public const string FuraFlag = "fura-flag";
     public const string FuraLamp = "fura-lamp";
+    // Гараж 2 (хвиля E): кабіна зсередини — чохли сидінь, кермо, шторки. Типові (тканина, просте кермо, червоні шторки) —
+    // без речі; у виді фури — значення з контракту (art.look: «leather-brown», «wood», «none»…), малює D1.
+    public const string FuraSeat = "fura-seat";
+    public const string FuraWheel = "fura-wheel";
+    public const string FuraCurtain = "fura-curtain";
 
     /// <summary>Вид із групи «🚚 Фура».</summary>
     public static bool IsFura(string kind) => kind.StartsWith("fura-", StringComparison.Ordinal);
@@ -105,6 +110,9 @@ public sealed record LavkaFxArt([property: JsonPropertyName("emoji")] string Emo
 /// <summary><c>Art</c> леза «Шаткуй!»: <c>{ emoji }</c> — слід, частинки й свист малює браузер за id речі.</summary>
 public sealed record LavkaBladeArt([property: JsonPropertyName("emoji")] string Emoji);
 
+/// <summary><c>Art</c> речі кабіни фури: <c>{ emoji, look }</c> — емодзі на вітрині, <c>look</c> — значення в <c>career.look</c>.</summary>
+public sealed record LavkaFuraArt([property: JsonPropertyName("emoji")] string Emoji, [property: JsonPropertyName("look")] string Look);
+
 /// <summary>Прокльон спрацював на програші: що зіграти за столом і скільки програшів йому ще лишилось.</summary>
 public sealed record CurseHit(long Id, string Title, string Emoji, string Url, int Left);
 
@@ -158,6 +166,7 @@ public static class LavkaCatalog
     [
         LavkaKind.FuraPaint, LavkaKind.FuraGloss, LavkaKind.FuraArt, LavkaKind.FuraHorn, LavkaKind.FuraDash,
         LavkaKind.FuraSticker, LavkaKind.FuraSticker + "2", LavkaKind.FuraSticker + "3", LavkaKind.FuraFlag, LavkaKind.FuraLamp,
+        LavkaKind.FuraSeat, LavkaKind.FuraWheel, LavkaKind.FuraCurtain,
     ];
 
     /// <summary>Який вид речі стає в слот: <c>fura-sticker2</c> → <c>fura-sticker</c>, решта — слот і є вид.</summary>
@@ -193,6 +202,9 @@ public static class LavkaCatalog
         new(id, kind, title, price, art, price switch { <= 500 => 1, <= 1500 => 2, _ => 3 }, season);
     static LavkaItem FuraPaint(string id, string title, int hue) => Fura(id, LavkaKind.FuraPaint, title, 600, hue);
     static LavkaItem EarnedFura(string id, string kind, string title, string emoji, string ach) => new(id, kind, title, 0, emoji, 3, Ach: ach);
+    // Кабіна: на вітрині — емодзі, у виді фури — значення контракту (LavkaFuraArt.Look)
+    static LavkaItem Cab(string id, string kind, string title, int price, string emoji, string look) =>
+        Fura(id, kind, title, price, new LavkaFuraArt(emoji, look));
 
     public static readonly IReadOnlyList<LavkaItem> All =
     [
@@ -300,6 +312,18 @@ public static class LavkaCatalog
         Fura("flagua", LavkaKind.FuraFlag, "Прапорці", 400, "🇺🇦", new("08-18", "08-31")),
         Fura("lampdiode", LavkaKind.FuraLamp, "Діодна люстра", 1500, "💡"),
         EarnedFura("lampotaman", LavkaKind.FuraLamp, "Люстра Отамана", "👑", "fura-otaman"),
+        // кабіна (Гараж 2): ціни — у ряду з панеллю й наліпками (300–1500), вишиванка — як розпис, дорожча
+        Cab("seatleatherbrown", LavkaKind.FuraSeat, "Шкіряні сидіння, коричневі", 900, "🟫", "leather-brown"),
+        Cab("seatleatherblack", LavkaKind.FuraSeat, "Шкіряні сидіння, чорні", 900, "⬛", "leather-black"),
+        Cab("seatsheepskin", LavkaKind.FuraSeat, "Кожушок на сидіння", 1200, "🐑", "sheepskin"),
+        Cab("seatvyshyvanka", LavkaKind.FuraSeat, "Вишиті чохли", 1500, "🧵", "vyshyvanka"),
+        Cab("wheelbraided", LavkaKind.FuraWheel, "Оплітка на кермо", 300, "🪢", "braided"),
+        Cab("wheelleather", LavkaKind.FuraWheel, "Шкіряне кермо", 600, "🛞", "leather"),
+        Cab("wheelwood", LavkaKind.FuraWheel, "Дерев'яне кермо", 1000, "🪵", "wood"),
+        Cab("curtainblue", LavkaKind.FuraCurtain, "Сині шторки", 300, "🟦", "blue"),
+        Cab("curtaingreen", LavkaKind.FuraCurtain, "Зелені шторки", 300, "🟩", "green"),
+        Cab("curtainyellow", LavkaKind.FuraCurtain, "Жовті шторки", 300, "🟨", "yellow"),
+        Cab("curtainnone", LavkaKind.FuraCurtain, "Без шторок", 100, "🪟", "none"),
 
         // прокльони: синтезовані docs/games/dev/curses-make.py, як і гімни, — без чужих прав
         Curse("sadtrombone", "Сумний тромбон", "🎷", AnthemUrlPrefix + "trombone.mp3"), Curse("boo", "Бу-у-у", "👎"),
@@ -354,6 +378,7 @@ public static class LavkaCatalog
         LavkaKind.FuraArt => $"розпис фури «{i.Title}»",
         LavkaKind.FuraHorn => $"ріжок «{i.Title}»",
         LavkaKind.FuraLamp or LavkaKind.FuraFlag or LavkaKind.FuraDash or LavkaKind.FuraGloss => $"«{i.Title}» на фуру",
+        LavkaKind.FuraSeat or LavkaKind.FuraWheel or LavkaKind.FuraCurtain => $"«{i.Title}» у кабіну фури",
         _ => i.Title,
     };
 
