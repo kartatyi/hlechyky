@@ -1277,12 +1277,23 @@
     st.spr = st.sprMini = st.back = st.backMini = null;
     st.dirty = true;
     // Сторінка все ж вилазить за екран — меншаємо стіни рівно на стільки й перебудовуємо одразу, ще до малювання.
-    // Лише ПК (на телефоні сторінку гортають) і не більше двох спроб; скидається на зміну розміру вікна.
-    if (!coarse() && root.offsetParent && (st.fitTries = (st.fitTries || 0) + 1) <= 2) {
+    // Лише ПК (на телефоні сторінку гортають) і не більше двох спроб; скидається на зміну розміру вікна й новий раунд.
+    if (!coarse() && root.offsetParent && !st.fitHold) {
       const doc = document.documentElement, over = doc.scrollHeight - (doc.clientHeight || window.innerHeight);
-      if (over > 0 && over < 300) { st.fitCut = (st.fitCut || 0) + over; st.layout = ''; return build(root, st); }
+      const p = st.fitPass || (st.fitPass = { over, cut: 0, tries: 0 });
+      if (over > 0 && over < 300 && p.tries < 2) {
+        p.tries++; p.cut += over; st.fitCut = (st.fitCut || 0) + over; st.layout = '';
+        return build(root, st);
+      }
+      st.fitPass = null;
+      // Різали, а сторінка вилазить не менше — вилазить не через стіни (сусідня колонка, щось під карткою).
+      // Зріз повертаємо: інакше кожна перебудова різала б ще трохи, аж до найменшої клітинки (записка #69).
+      if (p.cut && over >= p.over) {
+        st.fitCut = Math.max(0, (st.fitCut || 0) - p.cut); st.layout = '';
+        st.fitHold = true;
+        try { return build(root, st); } finally { st.fitHold = false; }
+      }
     }
-    st.fitTries = 0;
     return L;
   }
 
@@ -2436,6 +2447,7 @@
     if (fresh) {
       st.round = v.round;
       st.seed = v.seed >>> 0;
+      st.fitCut = 0;   // підгонку «в кадр» міряємо наново: зріз минулого раунду міг бути через те, чого вже нема
       st.others = {};
       st.fx.parts.length = 0;
       st.fx.labels.length = 0;

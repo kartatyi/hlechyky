@@ -177,6 +177,48 @@
     };
   }
 
+  // Стрибки прокрутки (записка #69): сторінка сама їде вгору, а відтворити не вдається. Пишемо кожен помітний рух
+  // угору, якого людина не просила (ні коліщатка, ні дотику, ні клавіші, ні затиснутої миші за останні 0,8 с),
+  // і поруч — що могло його дати: хто востаннє гортав зі скрипту, висота сторінки до й після (перемальовка, що на
+  // мить спорожнила сторінку), пади (правий стік гортає сторінку) і чи вікно було у фокусі. steps 1 — один ривок,
+  // багато — повзе кадр за кадром.
+  const diagJumps = [];
+  {
+    let intentAt = 0, held = false, lastY = scrollY, lastH = 0, run = null, scriptAt = 0, scriptBy = '';
+    const intent = () => { intentAt = performance.now(); };
+    for (const ev of ['wheel', 'touchmove', 'keydown']) addEventListener(ev, intent, { capture: true, passive: true });
+    addEventListener('pointerdown', () => { held = true; intent(); }, true);
+    for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { held = false; intent(); }, true);
+    const tag = (name, orig) => function (...a) {
+      scriptAt = performance.now();
+      scriptBy = name + ' ← ' + diagCut((new Error().stack || '').split('\n').slice(2, 4).map((s) => s.trim().replace(location.origin, '')).join(' ← '), 240);
+      return orig.apply(this, a);
+    };
+    window.scrollTo = tag('scrollTo', window.scrollTo);
+    window.scrollBy = tag('scrollBy', window.scrollBy);
+    Element.prototype.scrollIntoView = tag('scrollIntoView', Element.prototype.scrollIntoView);
+    addEventListener('scroll', () => {
+      const y = scrollY, h = document.documentElement.scrollHeight, now = performance.now();
+      if (y < lastY && !held && now - intentAt > 800) {
+        if (!run || now - run.at > 1500) run = { from: lastY, h0: lastH || h, t0: now, steps: 0, j: null };
+        run.at = now;
+        run.steps++;
+        if (run.j) Object.assign(run.j, { to: y, ms: Math.round(now - run.t0), steps: run.steps, h1: h });
+        else if (run.from - y >= Math.min(400, innerHeight / 2)) {
+          run.j = {
+            t: Date.now(), place: location.hash || '#efir', from: run.from, to: y, ms: Math.round(now - run.t0), steps: run.steps,
+            h0: run.h0, h1: h, by: now - scriptAt < 1000 ? scriptBy : undefined,
+            pads: window.HPad ? HPad.pads : 0, padOn: window.HPad ? HPad.on : undefined, focus: document.hasFocus(),
+          };
+          diagJumps.push(run.j);
+          if (diagJumps.length > 8) diagJumps.shift();
+        }
+      } else if (y > lastY || now - intentAt <= 800) run = null;
+      lastY = y;
+      lastH = h;
+    }, { passive: true });
+  }
+
   // ---------- api ----------
   async function api(method, path, body) {
     // Лише дивишся (ще не назвався) — дивитись можна все, а робити щось — спершу назвись.
@@ -2950,6 +2992,23 @@
     } catch { /* без гри */ }
     let vol;
     try { vol = +$('volume').value; } catch { /* нема повзунка */ }
+    // Стіл на екрані: «гра дрібна» без цифр не розібрати — картка, найбільше полотно в ній, звідки картка починається
+    // і скільки місця каркас віддав грі (--gfit-h).
+    let table;
+    try {
+      const card = document.querySelector('.groom:not([hidden]) .gtable');
+      if (card) {
+        const r = card.getBoundingClientRect();
+        let cv = null;
+        for (const el of card.querySelectorAll('canvas')) if (!cv || el.clientWidth * el.clientHeight > cv.clientWidth * cv.clientHeight) cv = el;
+        table = {
+          card: `${Math.round(r.width)}×${Math.round(r.height)}`, top: Math.round(r.top), y: Math.round(scrollY),
+          cv: cv && cv.clientWidth ? `${cv.clientWidth}×${cv.clientHeight}` : undefined,
+          fit: getComputedStyle(document.documentElement).getPropertyValue('--gfit-h').trim() || undefined,
+          over: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+        };
+      }
+    } catch { /* без столу */ }
     const iso = (t) => new Date(t).toISOString();
     return {
       dev: {
@@ -2964,7 +3023,7 @@
       view: {
         win: `${innerWidth}×${innerHeight}`, scr: `${screen.width}×${screen.height}`,
         dpr: Math.round((window.devicePixelRatio || 1) * 100) / 100,
-        orient: (screen.orientation && screen.orientation.type) || undefined,
+        orient: (screen.orientation && screen.orientation.type) || undefined, table,
       },
       site: {
         place: location.hash || '#efir', game, account: !!me.account, role: me.role,
@@ -2974,6 +3033,7 @@
       },
       errs: diagErrs.map((e) => ({ ...e, t: iso(e.t) })),
       reqs: diagReqs.map((e) => ({ ...e, t: iso(e.t) })),
+      jumps: diagJumps.map((e) => ({ ...e, t: iso(e.t) })),
     };
   }
 
@@ -4015,7 +4075,7 @@
   function fbDiagHtml(x) {
     const d = x.diag || {};
     const dev = d.dev || {}, v = d.view || {}, s = d.site || {}, srv = d.srv || {};
-    const errs = d.errs || [], reqs = d.reqs || [];
+    const errs = d.errs || [], reqs = d.reqs || [], jumps = d.jumps || [], tb = v.table;
     const yes = (b) => (b ? 'так' : 'ні');
     const join = (...a) => a.filter((p) => p !== undefined && p !== null && p !== '').join(' · ');
     const devIco = dev.kind === 'телефон' ? '📱' : dev.kind === 'планшет' ? '📲' : '💻';
@@ -4028,6 +4088,8 @@
       ['Пристрій', join(dev.kind, dev.model, dev.os)],
       ['Браузер', join(dev.browser, dev.app ? 'встановлено як застосунок' : '')],
       ['Вікно', join(`${v.win} у вікні`, `екран ${v.scr}`, v.dpr ? v.dpr + 'x' : '', v.orient)],
+      ['Стіл', tb ? join(`картка ${tb.card}`, tb.cv ? `полотно ${tb.cv}` : '', `зверху ${tb.top} px`, tb.y ? `прогорнуто ${tb.y}` : '',
+        tb.fit ? `місця грі ${tb.fit}` : '', tb.over > 0 ? `вилазить на ${tb.over} px` : '') : ''],
       ['Керування', join(dev.pointer, dev.touch ? `дотиків ${dev.touch}` : '', dev.pads ? `джойстиків ${dev.pads}` : '')],
       ['Мова й час', join(dev.lang, dev.tz)],
       ['Мережа', join(dev.online === false ? 'офлайн' : '', net)],
@@ -4045,9 +4107,13 @@
       line(e, `${esc(e.m)}${e.s ? ` <code>${esc(e.s)}</code>` : ''}${e.st ? `<pre>${esc(e.st)}</pre>` : ''}`)).join('')}</ol>` : '';
     const reqList = reqs.length ? `<div class="fbdiag-h">Невдалі запити</div><ol class="fbdiag-log">${reqs.slice().reverse().map((e) =>
       line(e, `<code>${esc(e.m)}</code> → ${esc(e.s)}${e.e ? ' — ' + esc(e.e) : ''}`)).join('')}</ol>` : '';
-    return `<details class="fbdiag"><summary class="muted small">🔧 ${esc(sum)}${warn}</summary>
+    const jumpList = jumps.length ? `<div class="fbdiag-h">Сторінка сама їхала вгору</div><ol class="fbdiag-log">${jumps.slice().reverse().map((e) =>
+      line(e, esc(join(e.place, `${e.from} → ${e.to} px`, e.steps > 1 ? `повзла ${e.steps} кроків за ${e.ms} мс` : 'одним ривком',
+        e.h0 !== e.h1 ? `висота ${e.h0} → ${e.h1}` : '', e.pads ? `джойстиків ${e.pads}${e.padOn ? ', пад активний' : ''}` : '',
+        e.focus === false ? 'вікно не у фокусі' : '')) + (e.by ? `<pre>${esc(e.by)}</pre>` : ''))).join('')}</ol>` : '';
+    return `<details class="fbdiag"><summary class="muted small">🔧 ${esc(sum)}${warn}${jumps.length ? ` <span class="chip err">↑ ${jumps.length}</span>` : ''}</summary>
       <dl>${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
-      ${errList}${reqList}
+      ${errList}${reqList}${jumpList}
       ${x.ua ? `<div class="fbdiag-ua muted small">${esc(x.ua)}</div>` : ''}
     </details>`;
   }
