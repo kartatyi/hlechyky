@@ -430,7 +430,7 @@ export class Ghosts {
     r.g.trailer.quaternion.setFromEuler(e);
     // колеса крутяться від швидкості (кадр її несе)
     r.spin += (p.v * dt) / 0.52;
-    for (const w of r.g.wheels) w.rotation.x = r.spin;
+    r.g.spin(r.spin);
     r.g.setFlags(p.f);
     // табличка: над кабіною, з відстанню трохи більшає, щоб нік читався й за сотню метрів
     const d = this.camera.position.distanceTo(r.g.tractor.position);

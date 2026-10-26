@@ -253,7 +253,9 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(pose.tq);
     const yaw = Math.atan2(fwd.x, fwd.z);
     if (cam === 'cabin') {
-      const eye = new THREE.Vector3(0.6, 1.66 + Math.max(-0.08, Math.min(0.08, cabBob)), 1.95).applyQuaternion(pose.tq).add(pose.tp);
+      const e0 = model.eye || { x: 0.6, y: 1.66, z: 1.95 };       // око водія — з моделі (cab.js EYE)
+      const eye = new THREE.Vector3(e0.x, e0.y + Math.max(-0.08, Math.min(0.08, cabBob)), e0.z).applyQuaternion(pose.tq).add(pose.tp);
+      model.updateCab?.(performance.now(), truck);                 // прилади на панелі, ≤ 10 Гц
       camera.position.copy(eye);
       // погляд трохи вниз: щоб у кадрі були панель, кермо й глечик
       const q = pose.tq.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(lookPitch - 0.16, Math.PI + lookYaw, 0, 'YXZ')));
@@ -785,6 +787,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
     }
     sky.setHeadlights(!!truck.lights);
     if (performance.now() - adoptAt > 2000) { adoptAt = performance.now(); sky.adopt(scene); }   // нові матеріали (привиди, позначки)
+    if (!glLost && cam === 'cabin') model.renderMirrors?.(renderer, scene, camera, { sky, low: gfx.preset === 'low' });   // дзеркала — лише з кабіни
     if (!glLost) sky.draw(scene, camera);
   }
   // Утрата контексту (A3: після багатьох F5 Chrome віддає чорні текстури): чекаємо відновлення й перепікаємо все, що
