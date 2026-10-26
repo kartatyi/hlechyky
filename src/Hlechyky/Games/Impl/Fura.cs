@@ -656,7 +656,7 @@ public sealed partial class Fura : Game
     /// остання поза кожної фури, свіжішої за 3 с, 10 чисел. <c>q</c> (A5) — УСІ пози, що прийшли з минулого тика (до
     /// <see cref="FramePoses"/> найсвіжіших на фуру), по 12 чисел, з часом <c>s</c> і номером <c>n</c> відправника: клієнт
     /// малює за часом відправника, і нерівний прихід поз на сервер (дві за тик, жодної за тик) рухом більше не стає.
-    /// Соло (фура одна) — null: кадру нема.
+    /// <c>ms</c> — серверний час (Unix, мс) для годинника трафіку. Соло (фура одна) — null: кадру нема.
     /// </summary>
     public override object? Frame()
     {
@@ -681,11 +681,13 @@ public sealed partial class Fura : Game
                 q.Add(I(x.Rx * 100)); q.Add(I(x.Rz * 100)); q.Add(I(x.Ry * 1000)); q.Add(x.F);
             }
         }
-        if (_hits.Count == 0) return new { t = _tick, v = 2, p = p.ToArray(), q = q.ToArray() };
+        // ms — серверний час (Unix, мс): годинник трафіку (traffic.js) у всіх від нього, а не від годинника ПК
+        var srv = now.ToUnixTimeMilliseconds();
+        if (_hits.Count == 0) return new { t = _tick, v = 2, ms = srv, p = p.ToArray(), q = q.ToArray() };
         // 2c: удари для адресатів: [to, from, id, at, ix, iz, ox·10, oz·10, …] — застосовує лише to, за id — раз
         var h = new List<int>(_hits.Count * 8);
         foreach (var x in _hits) { h.Add(x.To); h.Add(x.From); h.Add(x.Id); h.Add(x.At); h.Add(x.Ix); h.Add(x.Iz); h.Add(x.Ox); h.Add(x.Oz); }
-        return new { t = _tick, v = 2, p = p.ToArray(), q = q.ToArray(), h = h.ToArray() };
+        return new { t = _tick, v = 2, ms = srv, p = p.ToArray(), q = q.ToArray(), h = h.ToArray() };
     }
 
     /// <summary>

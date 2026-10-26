@@ -1,8 +1,9 @@
 // Трафік (T1, specs/fura.md «Хвиля D (продовження) — Житомир-клієнт і трафік»): машини на правих смугах level.lanes().
 //
 // Детерміновано: на смузі N машин рівними проміжками, s = (t·speed + зсув) mod довжина, зсув — від map.seed і номера
-// смуги, t — годинник (Date.now; серверного часу в кадрі Чумаків нема, а годинники гравців NTP-синхронні до ~0,1 с),
-// тож у всіх гравців ті самі машини. Між собою машини не б'ються. Не з'являються ближче DOCK_M до боксів і біля кінців смуги.
+// смуги, t — годинник сервера: монотонний performance.now + зсув «сервер − я» з кадру (ms; найменша затримка за 3 с), тож
+// машини на тих самих місцях, навіть коли годинники ПК розходяться (соло, без кадру, — свій Date.now на старті).
+// Між собою машини не б'ються. Не з'являються ближче DOCK_M до боксів і біля кінців смуги.
 //
 // Локально (лише в мене, сервер не знає): машина гальмує й чекає, коли фура (моя чи привид) на смузі ближче BRAKE_M
 // попереду; після удару стоїть STOP_S. І те й те — зсув часу машини (lag), далі їде своїм ходом.
@@ -19,6 +20,7 @@ const DENSITY = { off: 0, few: 1 / 450, many: 1 / 160 };   // машин на м
 const END_M = 8;            // біля кінців смуги не малюємо (перехрестя: машина переходить на початок)
 const DOCK_M = 20;          // як Fura.HitDockM
 const BRAKE_M = 15, BRAKE_A = 4;   // фура попереду: стаємо за 15 м, гальмуємо ~4 м/с² заздалегідь
+const QGAP = 7;             // м: черга — проміжок до машини попереду, що стоїть
 const STOP_S = 5;           // після удару стоїть
 const PHYS_R = 90, MAX_PHYS = 8;
 const DV_CAP = 3, EPISODE = 8;   // м/с: удар (до 8 кроків контакту) міняє швидкість моєї фури не більше (як DV_MAX у фур)
@@ -75,7 +77,8 @@ export class Traffic {
       const dock = pts.map((p) => docks.some((d) => Math.hypot(p.x - d.x, p.z - d.z) < DOCK_M));
       return { ...ln, s, L: s[s.length - 1], dock };
     }).filter((ln) => ln.L > 2 * END_M + 10);
-    this.t = Date.now() / 1000; this.catch = 0;
+    this.base = Date.now() - performance.now(); this.skews = [];   // годинник машин = performance.now + base (мс)
+    this.t = this.now(); this.catch = 0;
     this.cars = [];
     this.meshes = MODELS.map((m) => {
       const mesh = new THREE.InstancedMesh(boxes(THREE, m), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.15 }), 1);
@@ -140,13 +143,19 @@ export class Traffic {
     const g = this.ghosts;
     if (g && g.names) { const now = performance.now(); for (const seat of g.names.keys()) { if (seat === g.me) continue; const p = g.predict(seat, now); if (p) hubs.push(p); } }
     const vis = [], act = [], A = PHYS_R + 40;    // +40 м: за 0,3 с між вибірками і 20 м корпусу
+    const tail = new Map(), rest = [];            // смуга → s хвоста черги (найзадніша машина, що стоїть/гальмує)
     for (const c of this.cars) {
       const p = this.pose(c, t);
-      if (!p) { if (c.f < 1 || t < c.stopUntil) act.push(c); continue; }
+      const slow = c.f < 1 || t < c.stopUntil;
+      if (slow && p && !(tail.get(c.ln) <= p.s)) tail.set(c.ln, p.s);
+      if (!p) { if (slow) act.push(c); continue; }
       const d = Math.hypot(p.x - me.x, p.z - me.z);
       if (d < R) vis.push([d, c]);
-      if (c.f < 1 || t < c.stopUntil || hubs.some((q) => Math.abs(q.x - p.x) < A && Math.abs(q.z - p.z) < A)) act.push(c);
+      if (slow || hubs.some((q) => Math.abs(q.x - p.x) < A && Math.abs(q.z - p.z) < A)) act.push(c);
+      else rest.push([c, p.s]);
     }
+    // ті, хто наближається до хвоста черги (200 м позаду), — теж крокують: гальмують за нею
+    for (const [c, s] of rest) { const ts = tail.get(c.ln); if (ts != null && s < ts && s > ts - 200) act.push(c); }
     vis.sort((a, b) => a[0] - b[0]);
     this.vis = vis.slice(0, cap).map((x) => x[1]);
     this.act = act;
@@ -198,12 +207,19 @@ export class Traffic {
     if (!this.cars.length) return;
     if (!(t - this.pickT < PICK_S && t >= this.pickT)) this.pick();
     const rigs = this.rigs(), near = [];
+    // черга: попередня машина на тій самій смузі (серед act); стоїть чи гальмує — стаємо за нею з проміжком QGAP
+    const byLane = new Map();
     for (const c of this.act) {
-      const p = c.p = this.pose(c, t);
+      c.p = this.pose(c, t); c.lead = null;
+      if (c.p) { let a = byLane.get(c.ln); if (!a) byLane.set(c.ln, a = []); a.push(c); }
+    }
+    for (const a of byLane.values()) { a.sort((x, y) => y.p.s - x.p.s); for (let i = 1; i < a.length; i++) a[i].lead = a[i - 1]; }
+    for (const c of this.act) {
+      const p = c.p;
       if (!p) continue;
-      const dMe = Math.hypot(p.x - me.x, p.z - me.z);
-      // далеко від усіх фур і їде — нічого локального (гальмо з 76 км/год до 15 м від фури — ~80 м)
-      if (c.f === 1 && t >= c.stopUntil && !rigs.some((q) => Math.abs(q.x - p.x) < PHYS_R && Math.abs(q.z - p.z) < PHYS_R)) continue;
+      const dMe = Math.hypot(p.x - me.x, p.z - me.z), L = c.lead, slowL = L && (L.f < 1 || t < L.stopUntil);
+      // далеко від усіх фур, їде й попереду не черга — нічого локального (гальмо з 76 км/год до 15 м від фури — ~80 м)
+      if (c.f === 1 && t >= c.stopUntil && !slowL && !rigs.some((q) => Math.abs(q.x - p.x) < PHYS_R && Math.abs(q.z - p.z) < PHYS_R)) continue;
       // чекати фуру попереду: на смузі (вбік < 3 м) — стати за BRAKE_M до її краю, гальмуючи ~BRAKE_A заздалегідь
       let want = t < c.stopUntil ? 0 : 1;
       if (want) {
@@ -213,6 +229,10 @@ export class Traffic {
           if (along <= 0 || side > 1.25 + CAR.w + 0.4) continue;
           const gap = along - CAR.l - BRAKE_M;
           want = Math.min(want, gap <= 0 ? 0 : Math.sqrt(2 * BRAKE_A * gap) / c.ln.speed);
+        }
+        if (slowL) {
+          const gap = L.p.s - p.s - 2 * CAR.l - QGAP;
+          want = Math.min(want, gap <= 0 ? 0 : (L.f * c.ln.speed + Math.sqrt(2 * BRAKE_A * gap)) / c.ln.speed);
         }
       }
       const rate = (want < c.f ? 7 : 2.5) / c.ln.speed * dt;            // гальмо ~7 м/с², розгін ~2,5
@@ -285,7 +305,8 @@ export class Traffic {
       this.n.hits++;
       this.log.push({ at: Math.round(performance.now()), car: c.id, dv: +ep.dv.toFixed(2), rel: +(ep.rel * 3.6).toFixed(1), through: !sl.solid, cargo: +tr.cargo.toFixed(1) });
       if (this.log.length > 20) this.log.shift();
-      carBump({ say: this.say, sound: this.sound }, ep.dv / DV_CAP, '💥 Удар — машина');
+      // кілька машин разом (черга, перехрестя) — один тост і звук за 0,6 с
+      if (performance.now() - (this.bumpAt || 0) > 600) { this.bumpAt = performance.now(); this.n.toasts = (this.n.toasts || 0) + 1; carBump({ say: this.say, sound: this.sound }, ep.dv / DV_CAP, '💥 Удар — машина'); }
     }
   }
 
@@ -306,11 +327,22 @@ export class Traffic {
     sl.b.setTranslation({ x: 0, y: -100, z: 0 }, false);
   }
 
-  /** Кадр: годинник до Date.now (після __fura.step наздоганяє), матриці екземплярів. */
+  /** Годинник машин, с: сервер (з кадру) або свій на старті; монотонний — зміна годинника ПК машин не рухає. */
+  now() { return (performance.now() + this.base) / 1000; }
+
+  /** Кадр сервера (ms): base — найбільший «сервер − performance.now» за останні 30 кадрів (~3 с) = найменша затримка. */
+  frame(f) {
+    if (!f || !(f.ms > 0)) return;
+    this.skews.push(f.ms - performance.now());
+    if (this.skews.length > 30) this.skews.shift();
+    this.base = Math.max(...this.skews);
+  }
+
+  /** Кадр: годинник до сервера (після __fura.step наздоганяє), матриці екземплярів. */
   update(cam) {
     // плавно (≤ 0,05 с за кадр, через крок фізики — машина, що стоїть, поглинає й це): стрибок часу — це телепорт машин
     // просто у фуру; стрибком — лише після схованої вкладки
-    const wall = Date.now() / 1000, d = wall - this.t;
+    const wall = this.now(), d = wall - this.t;
     if (Math.abs(d) > 30) this.t += d;
     else this.catch = clamp(this.catch + d * 0.05, -0.05, 0.05);
     if (!this.cars.length) return;

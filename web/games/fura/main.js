@@ -516,7 +516,7 @@ export async function start({ onExit, mode = 'kray', server = null, testDrive = 
       trips = new Trips({ THREE, app, hud, level, truck, model, nav, server, say, boxModal, sound, voice, ghosts, perf, onPlaced: () => resetPoses() });
       crash = new Crash({ THREE, RAPIER, world, truck, ghosts, level, server, say, sound });
       server.onView = (v) => { const t = performance.now(); trips.onView(v); crash.view(v); garage.view(v); perf.view(performance.now() - t); };
-      server.onFrame = (f) => { ghosts.push(f); crash.frame(f); perf.ghostFrame(); };
+      server.onFrame = (f) => { ghosts.push(f); crash.frame(f); if (traffic) traffic.frame(f); perf.ghostFrame(); };
       garage = makeGarage();
       trips.openGarage = () => garage.open();
       trips.onView(server.view());

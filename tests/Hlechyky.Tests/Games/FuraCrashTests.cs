@@ -99,6 +99,19 @@ public sealed class FuraCrashTests
     }
 
     [Fact]
+    public void The_frame_carries_server_time_for_the_traffic_clock()
+    {
+        var h = Table(null);
+        At(h, 0, 0, 0);
+        At(h, 1, 0, 30);
+        var f = Frame(h);                                                // тік сам посуває годинник — порівнюємо після кадру
+        Assert.Equal(h.Clock.UtcNow.ToUnixTimeMilliseconds(), f.GetProperty("ms").GetInt64());
+        h.Clock.AdvanceMs(1500);
+        f = Frame(h);
+        Assert.Equal(h.Clock.UtcNow.ToUnixTimeMilliseconds(), f.GetProperty("ms").GetInt64());
+    }
+
+    [Fact]
     public void A_huge_impulse_is_cut_to_the_ceiling_keeping_its_direction()
     {
         var h = Table("crash");
