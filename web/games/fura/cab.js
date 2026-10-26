@@ -243,7 +243,7 @@ export function buildCab(THREE, parent) {
     P('trim', RB(0.03, 0.035, 0.15, 0.01), s * 1.13, 1.06, 2.86, { c: CHROME });              // ручка
     P('trim', new THREE.CylinderGeometry(0.075, 0.075, 0.02, 12), s * 1.143, 0.38, 2.75, { c: '#202124', rz: Math.PI / 2 });   // динамік
     P('trim', RB(0.1, 0.035, 1.02, 0.01), s * 1.15, 1.1, 2.56, { c: DARK });                  // підвіконня
-    P('trim', RB(0.1, 0.1, 0.98, 0.03), s * 1.12, 1.56, 3.07, { c: PILLAR, rz: -s * 0.05 }); // стійка лобового
+    P('trim', RB(0.1, 0.98, 0.1, 0.03), s * 1.12, 1.56, 3.07, { c: PILLAR, rz: -s * 0.05 }); // стійка лобового
     P('trim', RB(0.03, 0.03, 0.5, 0.012), s * 1.12, 2.0, 2.55, { c: DARK });                 // поручень над дверима
     kit.bar('trim', [s * 1.12, 1.66, 1.62], [s * (1.12 - 0.5), 0.92, 1.92], 0.012, { c: '#2a2b30', w: 0.05 });   // ремінь
   }
@@ -257,7 +257,7 @@ export function buildCab(THREE, parent) {
   P('trim', RB(2.3, 0.6, 0.32, 0.06), 0, 0.72, 2.92, { c: DASH2 });
   P('trim', RB(0.72, 0.3, 0.12, 0.05), 0.6, 0.78, 2.72, { c: '#3e4044' });                   // коліна водія
   P('trim', RB(0.8, 0.3, 0.26, 0.06), 0.6, 1.2, 2.86, { c: DASH });                           // щиток приладів
-  P('trim', RB(0.84, 0.05, 0.24, 0.02), 0.6, 1.365, 2.8, { c: '#232528', rx: 0.18 });         // козирок над приладами
+  P('trim', RB(0.84, 0.05, 0.2, 0.02), 0.6, 1.372, 2.86, { c: '#232528', rx: 0.1 });         // козирок над приладами
   P('trim', RB(0.6, 0.44, 0.16, 0.05), 0.02, 1.0, 2.82, { c: '#3a3c40', ry: 0.35 });          // крило з екраном
   P('trim', B(0.62, 0.28, 0.012), -0.6, 0.86, 2.758, { c: '#3d3f43' });                       // бардачок
   P('trim', B(0.08, 0.015, 0.012), -0.6, 0.96, 2.75, { c: '#202124' });
@@ -276,8 +276,8 @@ export function buildCab(THREE, parent) {
     const t = i / 40, a = t * Math.PI * 16;
     return new THREE.Vector3(-0.02 + t * 0.14 + Math.cos(a) * 0.012, 1.95 - t * 0.06 - Math.sin(t * Math.PI) * 0.05, 2.68 + Math.sin(a) * 0.012);
   }));
-  P('trim', new THREE.TubeGeometry(coil, 120, 0.004, 3), 0, 0, 0, { c: '#18191b' });
-  for (const s of [1, -1]) P('trim', RB(0.8, 0.028, 0.34, 0.012), s * 0.55, 1.93, 3.0, { c: '#c9bfac', rx: 0.55 });   // козирки
+  P('trim', new THREE.TubeGeometry(coil, 60, 0.004, 3), 0, 0, 0, { c: '#18191b' });
+  for (const s of [1, -1]) P('trim', RB(0.8, 0.026, 0.26, 0.012), s * 0.55, 1.952, 3.0, { c: '#b9af9c', rx: 0.12 });   // козирки
   // ---- сидіння (каркас; оббивка — свій матеріал)
   const seatKit = makeKit(THREE);
   for (const x of [0.6, -0.62]) {
@@ -311,7 +311,7 @@ export function buildCab(THREE, parent) {
     curt(drape(0.14, 0.82, 6, 0.018, 3), s * 1.135, 1.54, 2.12, { ry: -s * Math.PI / 2 });
     curt(drape(0.34, 1.25, 10, 0.03, 4), s * 0.98, 1.55, 1.12, {});
   }
-  const val = drape(2.16, 0.13, 48, 0.012, 14), vp = val.attributes.position;
+  const val = drape(2.16, 0.13, 36, 0.012, 14), vp = val.attributes.position;
   for (let i = 0; i < vp.count; i++) if (vp.getY(i) < 0) vp.setY(i, vp.getY(i) - 0.035 * Math.abs(Math.sin((vp.getX(i) / 2.16 + 0.5) * Math.PI * 9)));
   curt(val, 0, 1.885, 3.06, { ry: Math.PI });
   for (let k = 0; k < 9; k++) P('trim', new THREE.OctahedronGeometry(0.017), -0.96 + k * 0.24, 1.8, 3.05, { c: '#ecdca8' });   // китиці
@@ -471,8 +471,8 @@ export function buildCab(THREE, parent) {
     light(sky) {
       if (!sky || !sky.irr) return;
       const i = sky.irr;
-      U.uCabAmb.value.setRGB(Math.min(1.2, i.r * 0.55), Math.min(1.2, i.g * 0.55), Math.min(1.2, i.b * 0.55));
-      U.uCabSun.value = 0.3;
+      U.uCabAmb.value.setRGB(Math.min(1.5, i.r * 9), Math.min(1.5, i.g * 9), Math.min(1.5, i.b * 9));   // irr неба — у малих одиницях (сонце ~3)
+      U.uCabSun.value = 0.45;
     },
     setNight(on) {
       night = on;
