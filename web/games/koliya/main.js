@@ -19,18 +19,28 @@ const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
 const U_PER_TICK = R.U / R.TPS;   // 1 клітинка/с у підодиницях за тик
 
+// K21: у localStorage можуть лежати ключі й значення попередніх версій — беремо лише відомі, числа в межах повзунка,
+// варіант — лише зі списку (інакше newGame отримав би, скажімо, stripLen 5 чи overheat 'smoke')
 function loadParams() {
   const p = R.defaultParams();
-  try { Object.assign(p, JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}')); } catch { }
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}'); } catch { }
+  if (!o || typeof o !== 'object') return p;
+  for (const k in R.PARAM_META) {
+    const m = R.PARAM_META[k], v = o[k];
+    if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
+  }
+  for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
   return p;
 }
 
+const LOCAL = Math.max(1, Math.min(2, (+q.get('p') | 0) || 1));   // K21: ?p=abc давав NaN
 const game = {
   R,
   params: loadParams(),
   seed: (q.get('seed') ? +q.get('seed') : (Math.random() * 1e9) | 0) >>> 0,
-  local: Math.max(1, Math.min(2, +(q.get('p') || 1))),
-  bots: Math.max(0, Math.min(3, +(q.get('bot') || 0))),
+  local: LOCAL,
+  bots: Math.max(0, Math.min(R.MAX_PLAYERS - LOCAL, +q.get('bot') | 0)),   // K21: p=2&bot=3 — бот №5 без гравця в стані
   state: null,
   bot: [],          // [{ p, think(state) → { mx, my, use } }]
   cmds: [],         // черга команд наступного тику (мережа/панель кладуть сюди)
@@ -49,11 +59,16 @@ async function makeView() {
 }
 
 const input = createInput();
+const coopKeys = game.coopKeys = createCoopKeys();   // K18 (K21: одразу, щоб на паузі зливати натиски)
 const audio = createAudio();
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
 const prefs = { quality: 'high', rumble: true };
-try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch { }
+try {   // K21: лише відомі значення (старе 'medium' чи рядок 'false' не ламають slowCheck і вібрацію)
+  const o = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {};
+  if (o.quality === 'low') prefs.quality = 'low';
+  if (o.rumble === false) prefs.rumble = false;
+} catch { }
 input.setRumble(prefs.rumble);
 const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
 const panel = createPanel(document.getElementById('kol-panel'), {
@@ -89,7 +104,7 @@ function restart(seed = game.seed) {
 function tickOnce() {
   const s = game.state;
   const cmds = game.cmds.splice(0);
-  (game.coopKeys ??= createCoopKeys()).poll(cmds, game.local);   // K18
+  coopKeys.poll(cmds, game.local);   // K18
   const ins = input.poll();
   for (let i = 0; i < game.local; i++) {
     const v = ins[i]; if (!v) continue;
@@ -122,9 +137,12 @@ function frame(now) {
   const dt = Math.min(250, now - last); last = now;
   if (input.restartPressed?.()) nextRestart();
   if (!net && game.local === 1 && !game.wantLocal && (++padPoll & 15) === 0 && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
-  if (!game.paused && dt < 250) slowCheck(dt);   // K12
+  // K21: пауза — стартовий екран (HUD ставить game.paused) або відкрита панель (лише локально: мережа не чекає)
+  const hold = game.paused || (!net && panel.isOpen());
+  if (hold) coopKeys.poll([], game.local);   // K21: Q/F, натиснуті на паузі, не стріляють кидком/гудком після неї
+  if (!hold && dt < 250) slowCheck(dt);   // K12
   if (net) net.update(now);   // K3
-  else if (!game.paused) {
+  else if (!hold) {
     acc += dt * game.speed;
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
