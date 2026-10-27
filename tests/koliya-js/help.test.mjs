@@ -27,3 +27,20 @@ test('тема «Чумацький шлях» — свої слова в дов
     assert.ok(!c.includes('паротяг'), 'без паротяга');
   } finally { setTheme('koliya'); }
 });
+
+test('K69: покращення в «Чумацькому шляху» — чумацькими словами (довідка), у «Колії» — як в extras.js', async () => {
+  const { upName } = await import('../../web/games/koliya/theme.js');
+  const ko = helpSections().find((x) => x.id === 'ups').html;
+  for (const [k, u] of Object.entries(UPGRADES)) assert.deepEqual(upName(k, u), u, k);
+  setTheme('chumak');
+  try {
+    const c = helpSections().find((x) => x.id === 'ups').html;
+    assert.notEqual(c, ko);
+    for (const [k, u] of Object.entries(UPGRADES)) {
+      const v = upName(k, u);
+      assert.ok(v.label !== u.label && v.short && c.includes(v.label), `чумацька назва ${k}`);
+      assert.ok(!/паротяг|котел|потяг|майстерн|склад|вагон/i.test(v.label + v.short), `без залізниці: ${v.label}`);
+      assert.equal(v.icon, u.icon, 'значок як на табличці в 3D');
+    }
+  } finally { setTheme('koliya'); }
+});

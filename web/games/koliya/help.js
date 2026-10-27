@@ -6,7 +6,7 @@
 //   Поки відкрито: пад — input.setMenu (✚↑↓ гортати, ◀▶/A — розділи, B/Start — закрити); клавіші — ↑↓/WS гортати,
 //   ←→/AD — розділи, PgUp/PgDn/Home/End, Esc/H/Backspace — закрити; дотик — гортається пальцем, ✕ закриває.
 // Без DOM на імпорті.
-import { t, isChumak } from './theme.js';
+import { t, isChumak, upName } from './theme.js';
 import { UPGRADES } from './extras.js';
 import { pcol, pmark } from './panel.js';
 
@@ -17,7 +17,8 @@ export function helpSections() {
   const loco = t('icon.loco', '🚂'), rails = t('icon.rails', '🛤'), st = t('icon.station', '🏁'), heat = t('icon.heat', '♨');
   const L = w('паротяг', 'воли з мажею'), R = w('рейки', 'гать'), S = w('станції', 'ярмарку');
   const store = w('склад (зелений вагон)', 'віз-комора'), craft = w('майстерня', 'віз-кузня'), water = w('вода', 'криниця');
-  const ups = Object.values(UPGRADES).map((u) => `<li>${u.icon} ${u.label}</li>`).join('');
+  const ups = Object.entries(UPGRADES).map(([k, u]) => upName(k, u)).map((u) =>   // K69: слова теми
+    `<li>${u.icon} ${u.label}</li>`).join('');
   const P = (i) => `<b style="color:${pcol(i)}">${pmark(i)}П${i + 1}</b>`;
   return [
     { id: 'goal', icon: '🎯', title: 'Мета', html: `<p>${loco} ${w('Паротяг сам повзе', 'Воли самі тягнуть мажу')} до ${S} ${st}.
@@ -91,6 +92,17 @@ const CSS = `
 .kol-hp-t td:first-child { text-align: left; }
 .kol-hp-foot { padding: .35em 1em; border-top: 1px solid #ffffff1a; font-size: .85em; opacity: .7; text-align: center; }
 @media (max-width: 640px) { .kol-help { padding: 8px; } .kol-hp-card { font-size: .78em; } .kol-hp-head h2 { font-size: 1.1em; } }
+/* K69: телефон — текст не дрібніший за 12 px (було 9–11), кнопки-розділи ≥ 40 px, ландшафт — тонша шапка, тіло гортається */
+.kol-hp-card { font-size: max(13px, .82em); }
+.kol-hp-s, .kol-hp-t { font-size: max(12px, .92em); }
+.kol-hp-foot { font-size: max(12px, .85em); }
+.kol-hp-nav button { min-height: 40px; }
+.kol-hp-body { min-height: 0; flex: 1 1 auto; }
+.kol-hp-head, .kol-hp-nav, .kol-hp-foot { flex: none; }   /* K69: низька картка стискала смугу розділів до 16–28 px */
+@media (max-width: 640px) { .kol-hp-card { font-size: 13px; } .kol-hp-body { padding: .2em .9em .8em; } }
+@media (max-height: 500px) { .kol-help { padding: 4px 8px; } .kol-hp-head { padding: .2em .5em .2em .9em; } .kol-hp-nav { padding: .25em .6em; }
+  .kol-hp-foot { display: none; } }
+@media (hover: none) and (pointer: coarse) { .kol-help:not(.kol-haspad *) .kol-hp-foot { display: none; } }
 `;
 
 export function createHelp(root, opts = {}) {
