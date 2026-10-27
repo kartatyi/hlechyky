@@ -8,6 +8,7 @@
 //  переважують пам'ять. У мережі (KOL.net) — лише «Грати», «Копіювати посилання для друга» і «Без мережі».
 import { BIOME_NAMES, generate } from './gen.js';
 import { MAX_PLAYERS } from './rules.js';
+import { t } from './theme.js';   // K42: слова «Чумацького шляху»
 
 const KEY = 'kol-menu';
 export const PICKS = [8, 19, 23, 53, 43];   // K22: добірка сідів (_kolia/k22-seeds.md)
@@ -76,19 +77,19 @@ export function createMenu(box, opts = {}) {
 
   const ITEMS = [
     { id: 'resume', label: () => '▶ Продовжити', show: () => canResume },
-    { id: 'play', main: true, label: () => `▶ Грати <small>${st.seed === 'r' ? '🎲 нова смуга' : `смуга №${st.seed}`}</small>`, show: () => true },
+    { id: 'play', main: true, label: () => `▶ ${t('menu.play', 'Грати')} <small>${st.seed === 'r' ? t('menu.newStrip', '🎲 нова смуга') : t('menu.strip', `смуга №${st.seed}`, st.seed)}</small>`, show: () => true },
     { id: 'seed', opt: true, label: () => {
-      if (st.seed === 'r') return '🗺 Смуга: 🎲 випадкова';
-      return `🗺 Смуга №${st.seed}${PICK_TAG[st.seed] ? ` · ${PICK_TAG[st.seed]}` : ''}`;
+      if (st.seed === 'r') return t('menu.seedRandom', '🗺 Смуга: 🎲 випадкова');
+      return `${t('menu.seed', `🗺 Смуга №${st.seed}`, st.seed)}${PICK_TAG[st.seed] ? ` · ${PICK_TAG[st.seed]}` : ''}`;
     }, show: () => !net(), step: (d) => { const l = seeds(); st.seed = l[(l.indexOf(st.seed) + d + l.length) % l.length]; } },
-    { id: 'players', opt: true, label: () => `👥 Гравці: ${st.players === 1 ? '1' : '2 на одному ПК'}`, show: () => !net(),
+    { id: 'players', opt: true, label: () => `${t('menu.players', '👥 Гравці')}: ${st.players === 1 ? '1' : '2 на одному ПК'}`, show: () => !net(),
       step: () => { st.players = st.players === 1 ? 2 : 1; st.bots = Math.min(st.bots, MAX_PLAYERS - st.players); } },
-    { id: 'bots', opt: true, label: () => `🤖 Боти-помічники: ${st.bots}`, show: () => !net(),
+    { id: 'bots', opt: true, label: () => `${t('menu.bots', '🤖 Боти-помічники')}: ${st.bots}`, show: () => !net(),
       step: (d) => { const m = Math.min(3, MAX_PLAYERS - st.players) + 1; st.bots = (st.bots + d + m) % m; } },
-    { id: 'tutorial', label: () => '🎓 Навчання', show: () => !net() },
-    { id: 'daily', label: () => '📅 Маршрут дня', show: () => !net() },
-    { id: 'endless', label: () => '♾ Нескінченна', show: () => !net() },
-    { id: 'net', label: () => '🌐 Грати з друзями <small>посилання для друга</small>', show: () => !net() },
+    { id: 'tutorial', label: () => t('menu.tutorial', '🎓 Навчання'), show: () => !net() },
+    { id: 'daily', label: () => t('menu.daily', '📅 Маршрут дня'), show: () => !net() },
+    { id: 'endless', label: () => t('menu.endless', '♾ Нескінченна'), show: () => !net() },
+    { id: 'net', label: () => `${t('menu.net', '🌐 Грати з друзями')} <small>посилання для друга</small>`, show: () => !net() },
     { id: 'replays', label: () => '📼 Повтори <small>свої й за кодом</small>', show: () => !net() },   // K35
     { id: 'copy', label: () => '📋 Копіювати посилання для друга', show: () => net() },
     { id: 'offline', label: () => '🏠 Грати без мережі', show: () => net() },
@@ -129,7 +130,7 @@ export function createMenu(box, opts = {}) {
       b.classList.toggle('kol-mf', vis[idx] === it);
     }
     const z = !net() && st.seed !== 'r' ? seedZones(st.seed, G()?.params).names : '';
-    sub.textContent = net() ? '' : z ? `ділянки: ${z}` : 'щоразу нова смуга — або оберіть із добірки ◀ ▶';
+    sub.textContent = net() ? '' : z ? `${t('menu.zones', 'ділянки')}: ${z}` : t('menu.zonesNone', 'щоразу нова смуга — або оберіть із добірки ◀ ▶');
     sub.style.display = net() ? 'none' : '';
     const L = friendLink();
     link.style.display = net() ? '' : 'none';
