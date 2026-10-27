@@ -708,6 +708,7 @@ export function createHud(root, opts = {}) {
   }
   function events(ev, s) {
     if (!ev || !s) return;
+    if (game0?.replay?.active && game0.state && s !== game0.state) return;   // K59: світ повтору — ні ачівок, ні тостів, ні звань
     if (s !== evState) { evState = s; seenGeese = new Set(); tally = []; tallyTick = -1; prevPos = []; magTick = -1e9; }
     tallyTick1(ev, s);
     // K50: досягнення — бот не відкриває; маршрут дня — сід дня; тост «🏆 …» через наявні тости

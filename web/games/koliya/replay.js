@@ -384,8 +384,23 @@ export function createReplay(game, opts = {}) {
     opts.audio?.setTrain?.(0);
     if (opts.hud) opts.hud.style.visibility = '';
     if (game.state) game.view?.setWorld?.(game.state);
-    if (quiet !== true) opts.input?.swallow?.();
+    if (quiet !== true) { opts.input?.swallow?.(); held = heldPads(); }
   }
+  // K59: кнопки пада, затиснуті на виході з повтору (B «вийти»), — гра й меню не бачать, поки не відпустять (≤ 2 с).
+  // input.js під час повтору не сканує пади, тож відпущене після виходу B він прийняв би за новий натиск
+  // («Продовжити» в меню, кидок на фіналі). main.js питає padHeld() щокадру й не чіпає ввід, поки true.
+  let held = null;
+  function heldPads() {
+    const out = { at: Date.now(), b: new Set() };
+    try { for (const p of navigator.getGamepads?.() || []) if (p && p.connected !== false) (p.buttons || []).forEach((x, i) => { if (x && (x.pressed || x.value > 0.5)) out.b.add(p.index + ':' + i); }); } catch { }
+    return out.b.size ? out : null;
+  }
+  ctl.padHeld = () => {
+    if (!held) return false;
+    const now = heldPads();
+    if (!now || Date.now() - held.at > 2000 || ![...held.b].some((k) => now.b.has(k))) { held = null; return false; }
+    return true;
+  };
   function setSpeed(v) { if (!SPEEDS.includes(v)) return; act.speed = v; act.spBtns.forEach((x, i) => x.classList.toggle('on', SPEEDS[i] === v)); }
   function togglePause() {
     if (act.verdict || act.pl.done) { seekTo(0); act.paused = false; return; }   // скінчився — ще раз
