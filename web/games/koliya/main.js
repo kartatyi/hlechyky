@@ -129,7 +129,7 @@ function frame(now) {
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
   if (!game.state) return nextFrame();   // K3: мережа ще бере журнал
-  view?.draw(game.state, net ? net.alpha : acc / R.TICK_MS);
+  if (net) net.draw(view); else view?.draw(game.state, acc / R.TICK_MS);   // K6: мережа малює гравців згладжено
   if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();
   (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
