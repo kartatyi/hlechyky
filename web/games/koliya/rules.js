@@ -30,6 +30,8 @@ export const PARAM_META = {
   stepN:       { def: 10,   min: 2,    max: 40,  step: 1,    label: 'Розгін не від часу: кожні N рейок (сходинки) / клітинок шляху', group: 'Паротяг' },   // K14
   stepGain:    { def: 0.02, min: 0,    max: 0.2, step: 0.005, label: 'Розгін не від часу: + клітинок/с за N', group: 'Паротяг' },                     // K14
   startSec:    { def: 30,   min: 0,    max: 90,  step: 1,    label: 'Пауза перед рушанням, с', group: 'Паротяг' },
+  soloSpeed:   { def: 0.75, min: 0.4,  max: 1,   step: 0.05, label: 'Соло-знижка: швидкість паротяга, коли гравець один (частка)', group: 'Паротяг' },   // K13
+  finishSpeed: { def: 2,    min: 0,    max: 5,   step: 0.25, label: 'Колію дотягли до станції — паротяг мчить, клітинок/с (0 — ні)', group: 'Паротяг' },  // K13
   heatSec:     { def: 50,   min: 10,   max: 240, step: 5,    label: 'Від холодного до перегріву, с', group: 'Котел' },
   fireSec:     { def: 12,   min: 3,    max: 60,  step: 1,    label: 'Пожежа: скільки до поразки, с', group: 'Котел' },
   craftSec:    { def: 2,    min: 0.5,  max: 15,  step: 0.5,  label: 'Майстерня: секунд на рейку', group: 'Ресурси' },
@@ -698,6 +700,7 @@ function stepTrain(s) {
   // швидкість
   const el = s.tick - t0;
   t.speed = stopped ? 0 : Math.min(spd(P.speedMax), trainSpeed(s, el));   // K14: крива — варіант speedCurve
+  if (!stopped) t.speed = balanceSpeed(s, t.speed);   // K13: соло-знижка, ривок до станції
   if (t.speed > s.stats.maxSpeed) s.stats.maxSpeed = t.speed;
   t.sub += t.speed;
   const d = Math.floor(t.sub / 1000);
@@ -725,6 +728,17 @@ function trainSpeed(s, el) {
   if (P.speedCurve === 'steps') return base + spd(P.stepGain) * Math.floor(Math.max(0, s.stats.railsLaid) / n);
   if (P.speedCurve === 'distance') return base + Math.floor(spd(P.stepGain) * s.stats.cells / n);
   return base + Math.floor(spd(P.speedGrowth) * el / (60 * TPS));
+}
+
+/** K13: соло (за столом один гравець) — швидкість × soloSpeed; колія вже дотягнута до станції — не повільніше за
+ *  finishSpeed (кінець без нудного чекання, як «прискорити» в Unrailed). */
+function balanceSpeed(s, v) {
+  const P = s.params;
+  let n = 0;
+  for (const p of s.players) if (p && !p.out) n++;
+  if (n <= 1 && P.soloSpeed > 0 && P.soloSpeed < 1) v = Math.round(v * P.soloSpeed);
+  if (P.finishSpeed > 0 && s.ground[s.path[s.path.length - 1]] === G.STATION) v = Math.max(v, spd(P.finishSpeed));
+  return v;
 }
 
 function lose(s, why, x, y) {

@@ -151,7 +151,7 @@ test("useMode='auto': з сокирою перед деревом б'є сам �
 // ---------------- speedCurve ----------------
 /** колія далеко вперед (щоб не сходив), потяг рушає одразу */
 function longTrack(params) {
-  const s = blank({ startSec: 0, heatSec: 240, ...params });
+  const s = blank({ startSec: 0, heatSec: 240, soloSpeed: 1, finishSpeed: 0, ...params });   // K13: крива без соло-знижки
   let L = s.path[s.path.length - 1];
   while ((L % s.w) < s.w - 3) { L += 1; s.path.push(L); }
   return s;
