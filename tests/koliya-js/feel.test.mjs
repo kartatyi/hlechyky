@@ -195,3 +195,71 @@ test("speedCurve='distance': швидкість від проїханого шл
   assert.equal(late.train.speed, spdOf(0.15) + Math.floor(spdOf(0.1) * lc / 10));
   assert.ok(late.train.speed <= s.train.speed + spdOf(0.1), 'не швидший за ранній на тій самій відстані');
 });
+
+// ---------------- aim ----------------
+const tap = (s) => { R.step(s, [{ p: 0, k: 'use' }]); run(s, 6); };
+
+test("aim='front' (типове): дерево збоку не рубається, p.aim не ставиться", () => {
+  const s = blank();
+  assert.equal(s.params.aim, 'front');
+  const pl = at(s, 0, 60, 8, 1, 0); pl.hold.k = I.AXE; pl.hold.n = 1;
+  const t = id(s, 60, 7); s.obj[t] = O.TREE; s.hp[t] = 3;
+  run(s, 2);
+  assert.equal(pl.aim, null);
+  tap(s);
+  assert.equal(s.hp[t], 3);
+  assert.equal(pl.hold.k, I.NONE, 'кинув сокиру перед собою');
+});
+
+test("aim='smart': перед собою нічого — б'є дерево збоку, повертається до нього, p.aim підсвічує", () => {
+  const s = blank({ aim: 'smart' });
+  const pl = at(s, 0, 60, 8, 1, 0); pl.hold.k = I.AXE; pl.hold.n = 1;
+  const t = id(s, 60, 7); s.obj[t] = O.TREE; s.hp[t] = 3;
+  run(s, 1);
+  assert.deepEqual(pl.aim, { x: 60, y: 7 });
+  tap(s);
+  assert.equal(s.hp[t], 2);
+  assert.deepEqual([pl.fx, pl.fy], [0, -1]);
+  // перед собою теж є дерево — б'є те, що перед собою
+  const t2 = id(s, 59, 8); s.obj[t2] = O.TREE; s.hp[t2] = 3;
+  pl.fx = -1; pl.fy = 0; run(s, 1);
+  assert.deepEqual(pl.aim, { x: 59, y: 8 });
+  tap(s);
+  assert.equal(s.hp[t2], 2); assert.equal(s.hp[t], 2);
+});
+
+test("aim='smart': рейка — у продовження колії поруч, хоч дивишся вбік; навскіс — підбирає річ; нема що робити — як front", () => {
+  const s = blank({ aim: 'smart' });
+  const L = s.path[s.path.length - 1], lx = L % s.w, ly = (L / s.w) | 0;
+  // стоїмо за клітинку від кінця колії (lx+2, ly), дивимось угору; рейку можна класти в (lx+1, ly) — ліворуч
+  const pl = at(s, 0, lx + 2, ly, 0, -1); pl.hold.k = I.RAIL; pl.hold.n = 2;
+  run(s, 1);
+  assert.deepEqual(pl.aim, { x: lx + 1, y: ly });
+  const n0 = s.path.length;
+  tap(s);
+  assert.equal(s.path.length, n0 + 1);
+  assert.equal(s.path[s.path.length - 1], id(s, lx + 1, ly));
+  assert.deepEqual([pl.fx, pl.fy], [-1, 0], 'повернувся до колії');
+  // порожні руки, річ навскіс
+  const q = blank({ aim: 'smart' });
+  const p2 = at(q, 0, 60, 8, 1, 0);
+  q.drop[id(q, 61, 9)] = I.PICK; q.dropN[id(q, 61, 9)] = 1;
+  run(q, 1);
+  assert.deepEqual(p2.aim, { x: 61, y: 9 });
+  tap(q);
+  assert.equal(p2.hold.k, I.PICK);
+  // нема доречного поруч — кладе перед собою, aim = null
+  run(q, 1);
+  assert.equal(p2.aim, null);
+  tap(q);
+  assert.equal(q.drop[id(q, 61, 8)], I.PICK);
+});
+
+test("aim='smart' + useMode='auto': рубає дерева довкола сам", () => {
+  const s = blank({ aim: 'smart', useMode: 'auto', treeHits: 1 });
+  const pl = at(s, 0, 60, 8, 1, 0); pl.hold.k = I.AXE; pl.hold.n = 1;
+  for (const [x, y] of [[60, 7], [60, 9], [59, 8]]) { s.obj[id(s, x, y)] = O.TREE; s.hp[id(s, x, y)] = 1; }
+  run(s, 20);
+  assert.equal(s.stats.hits, 3);
+  assert.equal(pl.aim, null);
+});

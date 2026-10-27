@@ -54,6 +54,7 @@ export const VARIANTS = {
   move: { values: ['free', 'grid', 'snappy'], labels: ['Вільно', 'Клітинками', 'Чітко'], label: 'Рух гравця' },
   useMode: { values: ['press', 'tap', 'auto'], labels: ['Затиснув — б\'є', 'Кожен удар — натиск', 'Б\'є сам'], label: 'Дія (рубати/бити)' },
   speedCurve: { values: ['linear', 'steps', 'distance'], labels: ['Від часу', 'Сходинками за рейки', 'Від шляху'], label: 'Як розганяється паротяг' },
+  aim: { values: ['front', 'smart'], labels: ['Перед собою', 'Розумний (поруч, з підсвіткою)'], label: 'Куди діє кнопка' },
 };
 
 export function defaultParams() {
@@ -127,7 +128,8 @@ export function newGame(seed, params = defaultParams(), nPlayers = 1) {
 function newPlayer(c) {
   return { x: c.x * U + U / 2, y: c.y * U + U / 2, fx: 1, fy: 0, hold: { k: I.NONE, n: 0 }, cd: 0,
            mx: 0, my: 0, ut: 0, out: 0, st: 0,
-           gx: -1, gy: -1, gt: 0 };   // K14: ціль кроку й лічильник повороту (лише move='grid')
+           gx: -1, gy: -1, gt: 0,     // K14: ціль кроку й лічильник повороту (лише move='grid')
+           aim: null };               // K14: aim='smart' — клітинка, де спрацює use ({x,y}), null — нема що робити (для підсвітки)
 }
 
 /**
@@ -372,11 +374,57 @@ function feelTick(s, n) {
   if (!pl || pl.out) return;
   const h = pl.hold.k;
   if (s.params.useMode === 'auto' && pl.cd === 0 && (h === I.AXE || h === I.PICK)) {
-    const f = facingCell(pl);
+    const f = aimCell(s, pl);
     if (inside(s, f.x, f.y) && s.obj[f.y * s.w + f.x] === (h === I.AXE ? O.TREE : O.ROCK)) {
       const ut = pl.ut; use(s, n, pl); pl.ut = ut;   // автоудар не рахується натиском кнопки
     }
   }
+  if (s.params.aim === 'smart') {
+    const f = aimCell(s, pl);
+    const ok = useful(s, pl, f.x, f.y);
+    if (!ok) pl.aim = null;
+    else if (!pl.aim || pl.aim.x !== f.x || pl.aim.y !== f.y) pl.aim = { x: f.x, y: f.y };
+  }
+}
+
+/** Чи дія на клітинці має сенс (для aim='smart'): удар інструментом, вагон, набрати воду, рейка в колію, взяти річ,
+ *  долити свій стос. Просто «покласти на порожнє», міст і розібрати рейку — лише перед собою (щоб не сюрпризило). */
+function useful(s, pl, cx, cy) {
+  if (!inside(s, cx, cy)) return false;
+  const i = cy * s.w + cx, h = pl.hold, P = s.params, t = s.train;
+  if ((h.k === I.AXE && s.obj[i] === O.TREE) || (h.k === I.PICK && s.obj[i] === O.ROCK)) return true;
+  const wk = wagonAt(s, cx, cy);
+  if (wk >= 0) {
+    if (wk === 0) return h.k === I.BUCKET_FULL;
+    if (h.k === I.WOOD || h.k === I.IRON) return t[h.k === I.WOOD ? 'wood' : 'iron'] < (P.storeMax | 0);
+    return wk === 2 && t.rails > 0 && (h.k === I.NONE || (h.k === I.RAIL && h.n < P.carryMax));
+  }
+  if (h.k === I.BUCKET) return s.ground[i] === G.WATER;
+  if (h.k === I.RAIL && canLay(s, cx, cy)) return true;
+  if (s.obj[i] !== O.NONE || s.ground[i] === G.WATER || s.drop[i] === I.NONE) return false;
+  if (h.k === I.NONE) return true;
+  return s.drop[i] === h.k && STACKABLE.has(h.k) && s.dropN[i] < FLOOR_STACK_MAX;
+}
+
+// сусіди в радіусі 1: спершу по сторонах, потім навскіс (на рівних відстанях)
+const AIM8 = [[1, 0], [0, 1], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+/** Клітинка, на яку діє use. aim='front' — facingCell; 'smart' — facingCell, якщо там є що робити, інакше найближча
+ *  доречна з 8 сусідніх (трохи краще ті, що спереду), а як нема — facingCell. turn — повернутись до неї (по сторонах). */
+export function aimCell(s, pl, turn = false) {
+  const f = facingCell(pl);
+  if (s.params.aim !== 'smart' || useful(s, pl, f.x, f.y)) return f;
+  const cx = Math.floor(pl.x / U), cy = Math.floor(pl.y / U);
+  let best = null, bd = Infinity;
+  for (const [dx, dy] of AIM8) {
+    const x = cx + dx, y = cy + dy;
+    if ((x === f.x && y === f.y) || !useful(s, pl, x, y)) continue;
+    const ex = x * U + U / 2 - pl.x, ey = y * U + U / 2 - pl.y;
+    const d = ex * ex + ey * ey - (dx * pl.fx + dy * pl.fy) * 1000;
+    if (d < bd) { bd = d; best = { x, y }; }
+  }
+  if (!best) return f;
+  if (turn && (best.x === cx || best.y === cy)) { pl.fx = best.x - cx; pl.fy = best.y - cy; }
+  return best;
 }
 
 /** Несеш стос — і стаєш на такий самий: добираєш до carryMax */
@@ -444,7 +492,7 @@ function use(s, n, pl) {
   if (held && s.params.useMode === 'tap') return;   // K14: без автоповтору — лише натиск
   if (pl.cd > 0) return;
   const P = s.params;
-  const f = facingCell(pl);
+  const f = aimCell(s, pl, true);   // K14: aim='front' — facingCell, 'smart' — доречна поруч
   const cx = f.x, cy = f.y;
   if (!inside(s, cx, cy)) return;
   const i = cy * s.w + cx;
