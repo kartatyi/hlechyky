@@ -7,6 +7,7 @@ import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: до�
 import { coopInit, coopCmd, coopUse, coopStep, coopHash } from './coop.js';   // K18: кооп-фішки за перемикачем
 import { tutorialParams, tutorialWorld } from './tutorial.js';   // K22: навчальна смуга (mode='tutorial')
 import { endlessHash } from './endless.js';                          // K19: нескінченна колія
+import { lostInit, lostPre, lostStep, passTick, passMask, leaveHold, tailCell } from './lost.js';   // K33: нічого не губиться
 
 export const TICK_MS = 50;           // 20 тиків/с
 export const TPS = 1000 / TICK_MS;
@@ -14,7 +15,8 @@ export const U = 1000;               // підодиниць у клітинці
 export const MAX_PLAYERS = 4;
 
 // Підлога (state.ground)
-export const G = { GRASS: 0, WATER: 1, BRIDGE: 2, STATION: 3, SAND: 4, SWAMP: 5 };   // SWAMP — болото: ходити повільно (swampSlow), рейки класти можна
+export const G = { GRASS: 0, WATER: 1, BRIDGE: 2, STATION: 3, SAND: 4, SWAMP: 5,   // SWAMP — болото: ходити повільно (swampSlow), рейки класти можна
+  ICE: 6, SNOW: 7, CHASM: 8, FRAME: 9 };   // K26: лід (ковзаєш, рейки можна), сніг (повільніше, snowSlow), урвище яру (не пройти; дерево → FRAME), каркас мосту (залізо → BRIDGE)
 // Предмет на клітинці, що заважає ходити (state.obj)
 export const O = { NONE: 0, TREE: 1, ROCK: 2, WALL: 3 };   // WALL — непробивна скеля по краях
 // Речі на підлозі й у руках (state.drop / player.hold.k)
@@ -60,6 +62,9 @@ export const PARAM_META = {
   hardGrow:    { def: 0.6,  min: 0,    max: 1.5, step: 0.05, label: 'Складність до станції (приріст)', group: 'Світ' },
   swamp:       { def: 0.06, min: 0,    max: 0.4, step: 0.01, label: 'Частка болота', group: 'Світ' },
   swampSlow:   { def: 0.55, min: 0.2,  max: 1,   step: 0.05, label: 'Болото: швидкість ходи (частка)', group: 'Світ' },
+  newBiomes:   { def: 1,    min: 0,    max: 3,   step: 0.1,  label: 'Нові біоми (зима ❄, яр 🏞): частота', group: 'Світ' },   // K26
+  snowSlow:    { def: 0.8,  min: 0.3,  max: 1,   step: 0.05, label: 'Сніг: швидкість ходи (частка)', group: 'Світ' },             // K26
+  iceSlide:    { def: 0.9,  min: 0.5,  max: 0.98, step: 0.01, label: 'Лід: ковзання (скільки швидкості лишається за тик)', group: 'Світ' },   // K26
 };
 // Перемикачі варіантів (рядкові значення; перше — типове)
 export const VARIANTS = {
@@ -76,6 +81,13 @@ export const VARIANTS = {
   throw: { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Кидок речі на 3 клітинки (ловиться руками) 🎯' },
   pass: { values: ['on', 'off'], labels: ['Так', 'Ні'], label: 'Передати річ партнерові в руки (дія на нього) 🤝' },
   stun: { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Сокирою по партнеру — 1 с зірочок 💫' },
+  // K26 «Нові біоми» (gen.js — черга біомів; rules — moveIce, bridgeChasm). Типово: зима — так, яр — ні.
+  // Бот (2 боти, 30 сідів, 12 хв): без нових — перемог 12, голова x≈134; зима — 13, x≈131, зимових ділянок пройдено 13/13;
+  // яр — 14, x≈134, ярів 12/13 (на рівні річок 16/21 і скель 18/21). Яр поки вимкнено: render.js малює урвище як рівну
+  // землю (K20 ще не намалював), а обидва разом перекидають світи сідів, на яких тримаються тести бота.
+  winter: { values: ['off', 'on'], labels: ['Ні', 'Так'],   // оркестратор: типово вимк. — інакше міняє світ усіх сідів (добірка K22)
+ label: 'Зима ❄: сніг і лід (ковзаєш)' },
+  yar: { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Яр 🏞: урвище, міст — дерево + залізо' },
   mode: { values: ['normal', 'tutorial'], labels: ['Звичайна смуга', 'Навчання 🎓'], label: 'Смуга', group: 'Світ' },   // K22 (tutorial.js)
 };
 
@@ -148,6 +160,7 @@ export function newGame(seed, params = defaultParams(), nPlayers = 1) {
   for (let i = 0; i < nPlayers; i++) s.players.push(newPlayer(s.spawn[i % s.spawn.length]));
   extrasInit(s, params);   // K11: гуси, проміжна станція (вимкнене — лише порожні поля)
   coopInit(s);             // K18: s.flying
+  lostInit(s);             // K33: s.keep — скільки інструментів на старті
   return s;
 }
 
@@ -173,10 +186,12 @@ export function step(s, cmds = []) {
   s.ev.length = 0;
   if (s.status !== 'run') return s;
   for (const c of cmds) applyCmd(s, c);
+  const pre = lostPre(s);   // K33: де хто стояв до руху
   for (let i = 0; i < s.players.length; i++) { movePlayer(s, i); feelTick(s, i); }   // K14: feelTick — автоудар, приціл
   coopStep(s);   // K18: штовханина, політ кинутого
   stepCraft(s);
   if (!extrasStep(s, cmds)) stepTrain(s);   // K11: true — паротяг стоїть на проміжній станції
+  lostStep(s, pre);   // K33: вагон виштовхує, порятунок, інструменти не губляться
   s.tick++;
   return s;
 }
@@ -223,8 +238,10 @@ function setPose(s, pl, c, near = false) {
 export function cellBlocked(s, cx, cy) {
   if (!inside(s, cx, cy)) return true;
   const i = cy * s.w + cx;
-  return s.obj[i] !== O.NONE || s.ground[i] === G.WATER;
+  return s.obj[i] !== O.NONE || noFoot(s.ground[i]);
 }
+/** K26: підлога, на яку не стати й не покласти річ: вода, урвище, каркас мосту */
+export const noFoot = (g) => g === G.WATER || g === G.CHASM || g === G.FRAME;
 
 function circleBox(px, py, r, x0, y0, x1, y1) {
   const qx = px < x0 ? x0 : px > x1 ? x1 : px, qy = py < y0 ? y0 : py > y1 ? y1 : py;
@@ -232,14 +249,14 @@ function circleBox(px, py, r, x0, y0, x1, y1) {
   return dx * dx + dy * dy < r * r;
 }
 
-function wagonsXY(s) {
+export function wagonsXY(s) {   // K33: export — lost.js
   const a = [];
   for (let k = 0; k < WAGONS.length; k++) a.push(wagonPos(s, k));
   return a;
 }
 
 /** Чи коло гравця в (x,y) зачіпає стіну/obj/воду або вагон (крім тих, що в маску ign) */
-function hitsAt(s, x, y, wag, ign) {
+export function hitsAt(s, x, y, wag, ign) {   // K33: export — lost.js
   const cx0 = Math.floor((x - PR) / U), cx1 = Math.floor((x + PR) / U);
   const cy0 = Math.floor((y - PR) / U), cy1 = Math.floor((y + PR) / U);
   for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
@@ -254,7 +271,7 @@ function hitsAt(s, x, y, wag, ign) {
 }
 
 /** Найбільший зсув по одній осі (0..d), що не впирається (бінарний пошук, цілі) */
-function slide(s, pl, dx, dy, wag, ign) {
+export function slide(s, pl, dx, dy, wag, ign) {   // K33: export — lost.js
   if (!dx && !dy) return 0;
   if (!hitsAt(s, pl.x + dx, pl.y + dy, wag, ign)) { pl.x += dx; pl.y += dy; return 1; }
   let lo = 0, hi = 1024;   // частка ×1024
@@ -271,6 +288,8 @@ function movePlayer(s, n) {
   if (pl.out) return;
   if (pl.cd > 0) pl.cd--;
   if (pl.stun > 0) { pl.stun--; return; }   // K18: зірочки — стоїть
+  passTick(s, pl);                           // K33: тиснеш у вагон — згодом протиснешся
+  if (s.params.move !== 'grid' && moveIce(s, n, pl)) return;           // K26: на льоду ковзаємо
   if (s.params.move === 'grid') { moveGrid(s, n, pl); return; }       // K14
   if (s.params.move === 'snappy') { moveSnappy(s, n, pl); return; }   // K14
   let mx = pl.mx, my = pl.my;
@@ -283,11 +302,13 @@ function movePlayer(s, n) {
   const len = Math.floor(Math.sqrt(mx * mx + my * my));
   if (len < 12) return;
   let v = Math.round(s.params.playerSpeed * U / TPS);
-  if (s.ground[Math.floor(pl.y / U) * s.w + Math.floor(pl.x / U)] === G.SWAMP) v = Math.round(v * clampI(+s.params.swampSlow || 1, 0.05, 1));
+  const gk = s.ground[Math.floor(pl.y / U) * s.w + Math.floor(pl.x / U)];
+  if (gk === G.SWAMP) v = Math.round(v * clampI(+s.params.swampSlow || 1, 0.05, 1));
+  else if (gk === G.SNOW) v = Math.round(v * clampI(+s.params.snowSlow || 1, 0.05, 1));   // K26
   const d = Math.max(100, len);
   const dx = Math.trunc(v * mx / d), dy = Math.trunc(v * my / d);
   const wag = wagonsXY(s);
-  let ign = 0;   // вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти
+  let ign = passMask(pl);   // вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти; K33: протиснувся — усі
   for (let k = 0; k < wag.length; k++) if (hitsAt(s, pl.x, pl.y, [wag[k]], 0)) ign |= 1 << k;
   const x0 = pl.x, y0 = pl.y;
   const rx = slide(s, pl, dx, 0, wag, ign);
@@ -328,7 +349,7 @@ function axisDir(pl, mx, my) {
 }
 /** Вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти */
 function wagIgnore(s, pl, wag) {
-  let ign = 0;
+  let ign = passMask(pl);   // K33
   for (let k = 0; k < wag.length; k++) if (hitsAt(s, pl.x, pl.y, [wag[k]], 0)) ign |= 1 << k;
   return ign;
 }
@@ -483,6 +504,53 @@ function autoPick(s, n, pl) {
   ev(s, 'pick', cx, cy, n);
 }
 
+// ================= K26 «Нові біоми»: лід і міст через яр =================
+/** Лід (G.ICE, move ≠ 'grid'): гравець ковзає. Своя швидкість pl.ivx/pl.ivy (підодиниць/тик, цілі): з наміром тягнеться
+ *  до нього на A = v·(1 − iceSlide) за тик (розвернутись — ~1 с), без наміру — гасне множенням на iceSlide (зупинка
+ *  ≈ v/(1 − iceSlide) ≈ 2 клітинки). Уперся в перешкоду — та вісь у нуль. Ступив на лід з ходу — інерція = намір.
+ *  Зійшов з льоду — звичайний рух. Поля ivx/ivy/ion з'являються лише на льоду (без зими hash той самий).
+ *  true — рух цього тику зроблено тут. */
+function moveIce(s, n, pl) {
+  const on = s.ground[Math.floor(pl.y / U) * s.w + Math.floor(pl.x / U)] === G.ICE;
+  if (!on) { if (pl.ion) { pl.ion = 0; pl.ivx = 0; pl.ivy = 0; } return false; }
+  const mx = pl.mx, my = pl.my, len = Math.floor(Math.sqrt(mx * mx + my * my));
+  if (mx || my) {
+    const ax = Math.abs(mx), ay = Math.abs(my);
+    if (ax > ay || (ax === ay && !(pl.fy && Math.sign(my) === pl.fy))) { pl.fx = Math.sign(mx); pl.fy = 0; }
+    else { pl.fx = 0; pl.fy = Math.sign(my); }
+  }
+  const v = Math.round(s.params.playerSpeed * U / TPS);
+  const keep = clampI(Math.round((+s.params.iceSlide || 0.9) * 1000), 0, 990);
+  const acc = Math.max(1, Math.round(v * (1000 - keep) / 1000));
+  const d = Math.max(100, len);
+  const tx = len < 12 ? 0 : Math.trunc(v * mx / d), ty = len < 12 ? 0 : Math.trunc(v * my / d);
+  if (!pl.ion) { pl.ion = 1; pl.ivx = tx; pl.ivy = ty; }   // з ходу на лід — несе з тією ж швидкістю
+  const glide = (c, t) => {
+    if (!t) { const r = Math.trunc(c * keep / 1000); return Math.abs(r) < 4 ? 0 : r; }
+    return c + clampI(t - c, -acc, acc);
+  };
+  pl.ivx = glide(pl.ivx | 0, tx); pl.ivy = glide(pl.ivy | 0, ty);
+  if (!pl.ivx && !pl.ivy) return true;
+  const wag = wagonsXY(s), ign = wagIgnore(s, pl, wag);
+  const x0 = pl.x, y0 = pl.y;
+  if (slide(s, pl, pl.ivx, 0, wag, ign) < 0) pl.ivx = 0;
+  if (slide(s, pl, 0, pl.ivy, wag, ign) < 0) pl.ivy = 0;
+  if (pl.x !== x0 || pl.y !== y0) movedFeel(s, n, pl);
+  return true;
+}
+
+/** Міст через яр — у два кроки, бо дорожчий за місток через воду: дерево на урвище (G.CHASM) → каркас (G.FRAME, ще не
+ *  пройти й не класти рейку), залізо на каркас → міст (G.BRIDGE). Як і місток — і «затиснуто» теж. true — зроблено. */
+function bridgeChasm(s, n, pl, i, cx, cy) {
+  const h = pl.hold, g = s.ground[i];
+  if (s.obj[i] !== O.NONE || !((h.k === I.WOOD && g === G.CHASM) || (h.k === I.IRON && g === G.FRAME))) return false;
+  s.ground[i] = g === G.CHASM ? G.FRAME : G.BRIDGE;
+  h.n--; if (!h.n) hold0(pl);
+  if (g === G.FRAME) s.stats.bridges++;
+  ev(s, 'rail', cx, cy, n); pl.cd = ACT_CD;
+  return true;
+}
+
 // ---------------- дія ----------------
 /** Клітинка, на яку дивиться гравець: { x, y } (може бути поза смугою) — сусідня до тієї, де стоїть центр */
 export function facingCell(pl) {
@@ -508,7 +576,7 @@ export function canLay(s, cx, cy) {
   const lx = last % s.w, ly = (last / s.w) | 0;
   if (Math.abs(lx - cx) + Math.abs(ly - cy) !== 1) return false;
   const i = cy * s.w + cx;
-  if (s.obj[i] !== O.NONE || s.ground[i] === G.WATER || s.drop[i] !== I.NONE) return false;
+  if (s.obj[i] !== O.NONE || noFoot(s.ground[i]) || s.drop[i] !== I.NONE) return false;   // K26: не на урвище/каркас
   if (s.path.includes(i)) return false;
   return true;
 }
@@ -522,7 +590,7 @@ export function canUnlay(s) {
 function cellFreeForDrop(s, cx, cy) {
   if (!inside(s, cx, cy)) return false;
   const i = cy * s.w + cx;
-  return s.obj[i] === O.NONE && s.ground[i] !== G.WATER && wagonAt(s, cx, cy) < 0;
+  return s.obj[i] === O.NONE && !noFoot(s.ground[i]) && wagonAt(s, cx, cy) < 0;
 }
 
 function hold0(pl) { pl.hold.k = I.NONE; pl.hold.n = 0; }
@@ -588,6 +656,7 @@ function use(s, n, pl) {
     s.ground[i] = G.BRIDGE; h.n--; if (!h.n) hold0(pl);
     s.stats.bridges++; ev(s, 'rail', cx, cy, n); pl.cd = ACT_CD; return;
   }
+  if (bridgeChasm(s, n, pl, i, cx, cy)) return;   // K26: міст через яр
   if (coopUse(s, n, pl, cx, cy, held)) return;   // K18: передати партнерові / «бац»
   if (held) return;   // далі — лише на натиск
   // 6) порожні руки: взяти стос / розібрати останню рейку
@@ -643,12 +712,12 @@ function join(s) {
   let n = s.players.findIndex((p) => p.out);
   if (n < 0) { if (s.players.length >= MAX_PLAYERS) return; n = s.players.length; s.players.push(null); }
   // з'являємося біля потяга (старт міг лишитися далеко позаду)
-  const c = nearFree(s, wagonPos(s, WAGONS.length - 1));
+  const c = tailCell(s) || nearFree(s, wagonPos(s, WAGONS.length - 1));   // K33: досяжна пішки, не за скелями
   s.players[n] = newPlayer(c || s.spawn[n % s.spawn.length]);
 }
 
 function leave(s, pl) {
-  if (pl.hold.k !== I.NONE) putDrop(s, Math.floor(pl.x / U), Math.floor(pl.y / U), pl.hold.k, pl.hold.n);
+  if (pl.hold.k !== I.NONE) leaveHold(s, pl);   // K33: поруч, а нема місця — у склад / біля кінця колії
   hold0(pl); pl.out = 1; pl.mx = pl.my = 0; pl.cd = 0;
   pl.x = -5 * U; pl.y = -5 * U;
 }

@@ -7,7 +7,7 @@ const { U, G, O, I, TPS } = R;
 
 /** Порожня смуга: без лісу/скель/води, гравці подалі від колії */
 function blank(params = {}, n = 1) {
-  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, soloSpeed: 1, ...params };   // K13: числа тестів — без соло-знижки
+  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, winter: 'off', soloSpeed: 1, ...params };   // K13: числа тестів — без соло-знижки (K26: без зими)
   const s = R.newGame(7, p, n);
   for (let i = 0; i < s.w * s.h; i++) {
     const y = (i / s.w) | 0;
@@ -84,7 +84,7 @@ test('рух: не крізь воду (міст — можна) і не крі�
   // вагон: паротяг на path[3] — підходимо згори
   const hc = s.path[3], hx = hc % s.w, hy = (hc / s.w) | 0;
   at(s, 0, hx, hy - 3, 0, 1);
-  for (let i = 0; i < 30; i++) R.step(s, [{ p: 0, k: 'in', mx: 0, my: 100 }]);
+  for (let i = 0; i < 14; i++) R.step(s, [{ p: 0, k: 'in', mx: 0, my: 100 }]);   // K33: тиснути довше 0,5 с — протиснешся (lost.test)
   assert.ok(pl.y < hy * U + U / 2 - 420 - R.PR + 5, 'не залазить у паротяг');
   assert.deepEqual(R.facingCell(pl), { x: hx, y: hy });
 });

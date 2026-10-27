@@ -159,6 +159,110 @@ export function prep(s, cmds) {
   for (const c of cmds) if (c.k === 'use' && c.h) { const pl = s.players[c.p]; if (pl) pl.ut = s.tick; }
 }
 
+/**
+ * K28: нік для мітки над гравцем — до 10 символів (довший — 9 і «…»), суфікс « ²» (другий за тим самим ПК) не ріжемо.
+ * Порожній/не рядок — null (мітка лишиться «П1»).
+ */
+export function shortNick(n) {
+  if (typeof n !== 'string' || !n.trim()) return null;
+  let base = n.trim(), sup = '';
+  if (base.endsWith(' ²')) { sup = ' ²'; base = base.slice(0, -2).trimEnd(); }
+  if (/^гість\s+\S/i.test(base)) base = base.replace(/^гість\s+/i, '');   // Auth.GuestPrefix — над головою лише ім'я
+  const ch = [...base];
+  return (ch.length > 10 ? ch.slice(0, 9).join('') + '…' : base) + sup;
+}
+
+/** K28: реакції — 1–4 на клавіатурі (Num1–4 — другий за ПК), на паді LB/RB/LT/RT (їх input.js не чіпає). */
+export const REACTS = ['👋', '👍', '😂', '😱'];
+export const REACT_GAP = 1000;   // мс між реакціями одного гравця (сервер — 900, із запасом на тремтіння)
+
+/** K28: ліміт «раз на gap мс» за ключем (гравець); true — можна. Чисте, для тестів. */
+export function createReactGate(gap = REACT_GAP) {
+  const last = new Map();
+  return (key, now) => {
+    const t = last.get(key);
+    if (t != null && now - t < gap) return false;
+    last.set(key, now);
+    return true;
+  };
+}
+
+/**
+ * K28: нові реакції з кадру (r = [seq, p, e, i] × N; запис їде в кадрах ~1,5 с): лише seq > seen, і без своїх
+ * (isMine(p, i) — їх уже показано одразу при натиску). Номери зменшились (сервер перезапустився) — рахуємо з нуля.
+ */
+export function freshReacts(r, seen, isMine = () => false) {
+  const list = [];
+  if (!Array.isArray(r) || r.length < 4) return { seen, list };
+  if (r[r.length - 4] < seen - 1000) seen = -1;
+  for (let j = 0; j + 3 < r.length; j += 4) {
+    const seq = r[j], p = r[j + 1], e = r[j + 2], i = r[j + 3];
+    if (seq <= seen) continue;
+    seen = seq;
+    if (!(e >= 0 && e < REACTS.length) || isMine(p, i)) continue;
+    list.push({ p, e });
+  }
+  return { seen, list };
+}
+
+export const LOST_MS = 3000;   // K28: без кадрів довше — «відпав» (сервер так само про мовчазне місце, pg = -1)
+export const PING_EVERY = 1000;
+
+/** K28: колір пінгу — зелений / жовтий / помаранчевий / червоний; null (ще не заміряно чи відпав) — сірий. */
+export function pingColor(ms) {
+  if (ms == null || ms < 0) return '#9a9a9a';
+  return ms < 80 ? '#8fe36b' : ms < 150 ? '#ffd23f' : ms < 250 ? '#ff9a3c' : '#ff5a4f';
+}
+
+/**
+ * K28: замір пінгу. Шлемо 'ping' {i} → кадр несе pa[місце] = [i, скільки мс пінг пролежав на сервері до кадру];
+ * пінг = (зараз − коли слали) − пролежав. Згладжено: новий зразок важить 0,3, але менший приймаємо одразу наполовину.
+ */
+export function createPinger(every = PING_EVERY) {
+  const sent = new Map();
+  let ms = null, next = 0, seq = 0;
+  return {
+    get ms() { return ms; },
+    /** Час слати? → номер пінгу (і запам'ятати), інакше 0. */
+    due(now) {
+      if (now < next) return 0;
+      next = now + every;
+      const i = ++seq;
+      sent.set(i, now);
+      if (sent.size > 10) sent.delete(sent.keys().next().value);
+      return i;
+    },
+    /** Луна з кадру: i, age (мс на сервері). */
+    echo(i, age, now) {
+      const t = sent.get(i);
+      if (t == null) return ms;
+      sent.delete(i);
+      const v = Math.max(0, Math.round(now - t - (age | 0)));
+      ms = ms == null ? v : Math.round(v < ms ? (ms + v) / 2 : ms * 0.7 + v * 0.3);
+      return ms;
+    },
+  };
+}
+
+/** K28: хто «відпав»: p → true за pg (-1) з кадру, а якщо кадрів нема довше LOST_MS — і свої (mine). */
+export function lostFrom(pg, stale, mine = []) {
+  const a = Array.isArray(pg) ? pg.map((v) => v === -1) : [];
+  if (stale) for (const p of mine) if (p >= 0) a[p] = true;
+  return a;
+}
+
+/** K28: «👀 N глядачів» — відмінок за числом. */
+export function watchersText(n) {
+  const a = n % 10, b = n % 100;
+  return `👀 ${n} ` + (a === 1 && b !== 11 ? 'глядач' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'глядачі' : 'глядачів');
+}
+export const WATCH_EVERY = 2000;   // глядач озивається (…/watch) — сервер забуває за 5 с
+
+/** K28: мапа p → короткий нік з виду/журналу сервера (nm). */
+export function namesFrom(nm) {
+  return Array.isArray(nm) ? nm.map(shortNick) : [];
+}
+
 export function toCmd(c, j) {
   const p = c[j + 2], k = K[c[j + 3]];
   if (k === 'in') return { p, k, mx: c[j + 4], my: c[j + 5] };
@@ -251,6 +355,12 @@ export function createNet(game, opts = {}) {
   let pending = [];                     // свої без луни: { t, i, cmd }
   const hashes = new Map();             // тик → хеш C
   const stats = { frames: 0, rebuilds: 0, resyncs: 0, sent: 0, dropped: 0 };
+  // K28: люди за столом — реакції (повз журнал), панелька в куті
+  let reactSeen = -1, ui = null;
+  const myReacts = new Set(), reactGate = createReactGate();
+  const pinger = createPinger();
+  let lastFrameAt = 0, pg = null;
+  const watchPing = createPinger(WATCH_EVERY), wid = Math.random().toString(36).slice(2, 12);   // глядач: номер вкладки
 
   const net = {
     p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1,
@@ -261,12 +371,128 @@ export function createNet(game, opts = {}) {
     info() {
       return { room, seat, p: net.p, p2: net.p2, e, count, w, cTick: C?.tick, pTick: game.state?.tick, pending: pending.length,
         status: net.status, desync: net.desync, cStatus: C?.status, hash: C ? R.hash(C) : 0, stats: { ...stats },
-        lag, jit, smooth: { ...smooth.st } };
+        lag, jit, smooth: { ...smooth.st },
+        ping: net.ping, pg, names: game.names, lost: game.lost, reactSeen };   // K28
     },
     hashAt: (t) => hashes.get(t),
     hashes: () => [...hashes.entries()],
     setBot(b) { bot = b; },
+    react,
   };
+
+  /** K28: реакція k (0..3) від свого гравця (q 1 — другий за ПК): показати одразу й надіслати. false — не можна/зарано. */
+  function react(k, q = 0) {
+    const p = q ? net.p2 : net.p;
+    if (!conn || !ready || p < 0 || !(k >= 0 && k < REACTS.length)) return false;
+    const now = performance.now();
+    if (!reactGate(q, now)) return false;
+    const i = ++idSeq;
+    myReacts.add(i);
+    if (myReacts.size > 32) myReacts.delete(myReacts.values().next().value);
+    showReact(p, k, now);
+    const m = { em: k, i, e, ...(q ? { q: 1 } : {}) };   // e — епоха (K24: стару сервер викидає)
+    lagOut(() => conn.send('Input', room, 'react', m).catch(() => { }));
+    return true;
+  }
+  function showReact(p, k, at = performance.now()) { (game.reacts ||= [])[p] = { e: REACTS[k], k, at }; }
+
+  /** K28: панелька в правому куті під ⚙ — кнопки реакцій (миша/дотик); клавіші 1–4 і плечі пада. */
+  function mountPeople() {
+    if (typeof document === 'undefined' || ui) return;
+    const st = document.createElement('style');
+    st.textContent = `.kol-net{position:fixed;right:8px;top:62px;z-index:25;display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+font:600 13px system-ui,sans-serif;pointer-events:none;user-select:none}
+.kol-net-tag{background:rgba(0,0,0,.5);padding:2px 8px;border-radius:6px;color:#ddd;white-space:nowrap}
+.kol-net-re{display:flex;flex-direction:column;gap:4px;pointer-events:auto}
+.kol-net-re button{position:relative;width:42px;height:42px;padding:0;border-radius:10px;border:1px solid #fff3;background:rgba(20,22,28,.6);
+font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
+.kol-net-re button:active{transform:scale(.92)}
+.kol-net-re button.cool{opacity:.4}
+.kol-net-re small{position:absolute;right:3px;bottom:1px;font-size:9px;color:#aaa}`;
+    document.head.appendChild(st);
+    const el = document.createElement('div');
+    el.className = 'kol-net';
+    const re = document.createElement('div');
+    re.className = 'kol-net-re';
+    const btns = REACTS.map((e, k) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.tabIndex = -1; b.title = `Реакція (клавіша ${k + 1}; пад — ${['LB', 'RB', 'LT', 'RT'][k]})`;
+      b.innerHTML = `${e}<small>${k + 1}</small>`;
+      b.addEventListener('pointerdown', (ev) => { ev.preventDefault(); react(k, 0); });
+      re.appendChild(b);
+      return b;
+    });
+    const ping = document.createElement('div');
+    ping.className = 'kol-net-tag';
+    ping.title = 'Пінг до сервера (туди й назад)';
+    const watch = document.createElement('div');
+    watch.className = 'kol-net-tag';
+    watch.style.display = 'none';
+    el.append(ping, watch, re);
+    document.body.appendChild(el);
+    ui = { el, re, btns, ping, pingKey: '', watch, watchKey: '' };
+    addEventListener('keydown', (ev) => {
+      if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      const t = ev.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const m = /^(Digit|Numpad)([1-4])$/.exec(ev.code);
+      if (!m) return;
+      react(+m[2] - 1, m[1] === 'Numpad' && net.p2 >= 0 ? 1 : 0);
+    });
+  }
+
+  // K28: плечі пада — реакції (input.js їх не чіпає); керма/педалі — не пади
+  const SIM = /wheel|racing|driving force|steering|pedal|shifter|handbrake|hotas|throttle|flight|yoke|rudder|simucube|simagic|cammus/i;
+  const padPrev = new Map();
+  function padReacts() {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    let pads;
+    try { pads = [...navigator.getGamepads()].filter((g) => g && g.connected && !SIM.test(g.id || '')); } catch { return; }
+    pads.forEach((g, n) => {
+      const q = net.p2 >= 0 ? (pads.length >= 2 ? Math.min(n, 1) : 1) : 0;   // як input.js: p=2 і один пад — пад у другого
+      const cur = [4, 5, 6, 7].map((b) => { const x = g.buttons?.[b]; return !!x && (x.pressed || x.value > 0.5); });
+      const prev = padPrev.get(g.index) || [];
+      cur.forEach((d, k) => { if (d && !prev[k]) react(k, q); });
+      padPrev.set(g.index, cur);
+    });
+  }
+
+  /** K28: панелька щокадру — кнопки реакцій лише гравцю, «охолола» — напівпрозора. */
+  function peopleUi(now) {
+    // пінг: раз на секунду, якщо маємо місце (Input без місця сервер не приймає)
+    if (conn && room && seat != null && ready) {
+      const i = pinger.due(now);
+      if (i) { const m = { i, r: pinger.ms ?? 0 }; lagOut(() => conn.send('Input', room, 'ping', m).catch(() => { })); }
+    }
+    // глядач (не грає): озивається на …/watch раз на 2 с — стіл рахує глядачів; відповідь — його пінг
+    if (room && ready && net.p < 0) {
+      const i = watchPing.due(now);
+      if (i) lagOut(() => fetch(`/api/games/koliya/${encodeURIComponent(room)}/watch?id=${wid}`, { method: 'POST', cache: 'no-store' })
+        .then((r) => lagIn(() => { if (r.ok) watchPing.echo(i, 0, performance.now()); })).catch(() => { }));
+    }
+    const stale = ready && lastFrameAt > 0 && now - lastFrameAt > LOST_MS;
+    game.lost = lostFrom(pg, stale, [net.p, net.p2]);
+    const ms = seat != null ? pinger.ms : watchPing.ms;
+    net.ping = stale ? -1 : ms;
+    if (!ui) return;
+    const key = stale ? 'lost' : String(ms);
+    if (ui.pingKey !== key) {
+      ui.pingKey = key;
+      ui.ping.textContent = stale ? '📶? нема зв’язку' : ms == null ? '📶 …' : `📶 ${ms} мс`;
+      ui.ping.style.color = pingColor(stale ? null : ms);
+    }
+    const playing = net.p >= 0;
+    ui.re.style.display = playing ? '' : 'none';
+    const wk = (playing ? '' : 'я') + (game.watchers | 0);
+    if (ui.watchKey !== wk) {
+      ui.watchKey = wk;
+      const n = game.watchers | 0;
+      ui.watch.textContent = playing ? watchersText(n) : `👀 дивишся збоку${n > 1 ? ` · ${watchersText(n).slice(3)}` : ''}`;
+      ui.watch.style.display = playing && !n ? 'none' : '';
+    }
+    const r = game.reacts?.[net.p], cool = !!r && now - r.at < REACT_GAP;
+    for (const b of ui.btns) b.classList.toggle('cool', cool);
+  }
 
   function say(st) { net.status = st; }
 
@@ -283,6 +509,7 @@ export function createNet(game, opts = {}) {
     conn.onreconnected(() => enter().catch((x) => { console.warn('Колія: не зайшов знову', x); say('не зайшов: ' + x.message); }));
     say('підключаюсь…');
     try {
+      mountPeople();   // K28
       await conn.start();
       await enter();
     } catch (x) {
@@ -322,6 +549,7 @@ export function createNet(game, opts = {}) {
     net.p = v.p ?? -1;
     net.p2 = v.p2 ?? -1;
     game.me = net.p;
+    if (v.nm) game.names = namesFrom(v.nm);   // K28
     if (v.e !== e && !resyncing) resync();
     else if (ready) want2();
   }
@@ -356,6 +584,7 @@ export function createNet(game, opts = {}) {
     if (seat != null && j.pOf) net.p = j.pOf[seat] ?? -1;
     if (seat != null && j.p2Of) net.p2 = j.p2Of[seat] ?? -1;
     game.me = net.p;
+    if (j.nm) game.names = namesFrom(j.nm);   // K28: мітки над гравцями — ніки
     game.seed = j.seed >>> 0;
     if (off == null) off = j.t * R.TICK_MS - performance.now();
     if (!ingest(j.f | 0, j.c || [])) { console.warn('Колія: журнал з дірою'); return; }
@@ -388,11 +617,21 @@ export function createNet(game, opts = {}) {
   function onFrame(f) {
     stats.frames++;
     if (!f) return;
+    const now = performance.now();   // K28: пінг і «відпав»
+    lastFrameAt = now;
+    if (f.pg) pg = f.pg;
+    if (f.sp != null) game.watchers = f.sp | 0;
+    if (seat != null && f.pa && f.pa[seat * 2] > 0) pinger.echo(f.pa[seat * 2], f.pa[seat * 2 + 1], now);
     if (f.e === e) {
       const sample = f.t * R.TICK_MS - performance.now();
       off = off == null ? sample : Math.max(sample, off - 1);
     }
     if (f.d >= 0) noteDesync(f.d);
+    if (f.r?.length) {   // K28: реакції — повз журнал і світ
+      const fr = freshReacts(f.r, reactSeen, (p, i) => (p === net.p || p === net.p2) && myReacts.has(i));
+      reactSeen = fr.seen;
+      for (const x of fr.list) showReact(x.p, x.e);
+    }
     if (resyncing || !C) return;
     if (f.e !== e || f.f > count) { resync(); return; }
     if (!ingest(f.f, f.c)) { resync(); return; }
@@ -534,6 +773,7 @@ export function createNet(game, opts = {}) {
   }
 
   function update(now = performance.now()) {
+    padReacts(); peopleUi(now);   // K28
     if (!ready || !C || !game.state) return;
     if (dirty) { dirty = false; rebuild(); }
     const est = (now + off) / R.TICK_MS;

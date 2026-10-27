@@ -16,13 +16,14 @@
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES } from './extras.js';             // K16: тост покращення
+import { t as tt } from './theme.js';               // K25: слова теми «Чумацький шлях»
 import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
 
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
 const HOLD_ICON = { [I.WOOD]: '🪵', [I.IRON]: '⛓', [I.RAIL]: '🛤', [I.AXE]: '🪓', [I.PICK]: '⛏', [I.BUCKET]: '🪣', [I.BUCKET_FULL]: '💧' };
 const HOLD_NAME = { [I.WOOD]: 'дерево', [I.IRON]: 'залізо', [I.RAIL]: 'рейки', [I.AXE]: 'сокира', [I.PICK]: 'кайло', [I.BUCKET]: 'відро', [I.BUCKET_FULL]: 'повне відро' };
 const ALARM_SEC = 3;
-const BIOME_ICON = { glade: '🌱', steppe: '🌾', grove: '🌳', stone: '🪨', river: '🌊', swamp: '🐸', pass: '⛰' };
+const BIOME_ICON = { glade: '🌱', steppe: '🌾', grove: '🌳', stone: '🪨', river: '🌊', swamp: '🐸', pass: '⛰', winter: '❄', yar: '🏞' };
 const STEAL_NAME = { [I.AXE]: 'сокиру', [I.PICK]: 'кайло', [I.BUCKET]: 'відро', [I.BUCKET_FULL]: 'відро з водою' };
 const TOASTS = 2;
 const BEST_KEY = 'kol-best';   // K23: рекорди { 'endless|<гравців>': станцій, 'time|<режим>|<сід>|<гравців>': тиків до станції }
@@ -145,6 +146,12 @@ const CSS = `
 .kol-ptab td.kol-ttl { text-align: left; font-weight: 700; color: #ffe9a8; }
 .kol-ptab i { opacity: .35; font-style: normal; }
 #kol-hud .kol-top { right: 124px; }
+/* K37: верхня смуга компактніша й напівпрозора — бульбашки-реакції й ніки гравців біля верхнього краю видно крізь неї */
+#kol-hud .kol-top { top: 6px; font-size: .85em; gap: .45em; }
+#kol-hud .kol-top .kol-box { background: #0f120d70; border-color: #ffffff16; padding: .15em .5em; }
+#kol-hud .kol-top .kol-prog { height: 1.35em; padding: 0; }
+#kol-hud .kol-top .kol-prog-track { background: #8a7a5a40; }
+#kol-hud .kol-res, #kol-hud .kol-toasts { top: calc(6px + 2.1em); }
 .kol-pausebtn { position: fixed; right: 62px; top: 8px; width: 46px; height: 46px; border-radius: 10px; border: 1px solid #fff3;
   background: rgba(20,24,18,.7); color: #f4efe2; font-size: 20px; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
 .kol-modes { display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; }
@@ -175,6 +182,16 @@ function el(tag, cls, parent, html) {
   if (html != null) e.innerHTML = html;
   if (parent) parent.appendChild(e);
   return e;
+}
+const esc = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+/** K37: підпис гравця, як над головою (render.js): у мережі — нік (game.names, до 10 символів, «нік ²»; відпав — «📶?»),
+ *  інакше П1…П4; локальний бот — 🤖 спереду. Екранований для innerHTML (raw — для textContent). */
+export function playerLabel(game, i, n = 0, raw = false) {
+  const nk = game?.names?.[i];
+  if (nk) return (raw ? nk : esc(nk)) +(game?.lost?.[i] ? ' 📶?' : '');
+  const net = !!(game?.net || globalThis.KOL?.net);
+  const bot = !net && (game?.bot?.some?.((b) => b.p === i) || i >= (game?.local ?? n));
+  return `${bot ? '🤖' : ''}П${i + 1}`;
 }
 const fmtTime = (sec) => { sec = Math.max(0, Math.floor(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
 
@@ -209,7 +226,7 @@ export function createHud(root, opts = {}) {
   const cRails = el('span', null, craft);
   const cBar = el('span', 'kol-craft', craft); const cFill = el('i', null, cBar);
   const boiler = el('div', 'kol-box kol-row', res);
-  el('span', null, boiler, '♨');
+  const hIcon = el('span', null, boiler, '♨');   // K25
   const hBar = el('span', 'kol-heat', boiler); const hFill = el('i', null, hBar);
   const hPct = el('span', null, boiler);
 
@@ -237,8 +254,8 @@ export function createHud(root, opts = {}) {
   const start = el('div', 'kol-screen', root);
   // K30: стартовий екран — меню (menu.js): режими, гравці, боти, смуга; котел — за params (пожежа чи зупинка)
   const startCard = el('div', 'kol-card', start, `
-    <h1>🚂 Колія</h1>
-    <p>Паротяг сам повзе до станції 🏁 — кладіть рейки перед ним: ліс 🪓 і скелі ⛏ → склад → майстерня робить рейки 🛤.
+    <h1>${tt('start.title', '🚂 Колія')}</h1>
+    <p>${tt('start.p', 'Паротяг сам повзе до станції 🏁 — кладіть рейки перед ним: ліс 🪓 і скелі ⛏ → склад → майстерня робить рейки 🛤.')}
       <span class="kol-boil"></span></p>
     <div class="kol-mbox"></div>
     <div class="kol-hint kol-dayrec"></div>`);
@@ -309,7 +326,7 @@ export function createHud(root, opts = {}) {
     if (paused || !canPause()) return;
     paused = true; pauseState = lastState;
     if (!isNet() && game0) game0.paused = true;
-    pauseNet.textContent = isNet() ? '🌐 Гра в мережі — світ не стоїть, паротяг їде далі!' : '';
+    pauseNet.textContent = isNet() ? tt('pauseNet', '🌐 Гра в мережі — світ не стоїть, паротяг їде далі!') : '';
     pauseBtns[2].style.display = opts.onSettings ? '' : 'none';
     pause.style.display = 'flex'; pauseFocus(0);
     opts.input?.setMenu?.((k) => {
@@ -359,7 +376,7 @@ export function createHud(root, opts = {}) {
       else if (!menuOwned) { menuOwned = true; opts.input?.setMenu?.((k) => menu.pad(k)); }
       menu.sync(s);
       const f = menu.focus(), oh = f === 'resume' ? s.params?.overheat : f === 'tutorial' ? 'stop' : f === 'daily' ? 'fire' : game0?.params?.overheat ?? s.params?.overheat;
-      txt(boilEl, 'boil', `Котел гріється: відро води 💧 на паротяг, інакше ${oh === 'stop' ? 'він стане' : 'пожежа 🔥'}.`);
+      txt(boilEl, 'boil', tt('boil', `Котел гріється: відро води 💧 на паротяг, інакше ${oh === 'stop' ? 'він стане' : 'пожежа 🔥'}.`, oh));
     }
     if (!started && typeof game0?.startDaily === 'function' && !cache.has('dayrec|textContent')) {
       const d = kyivDate(), r = judgeDaily({ players: s.players, status: '', endless: null }, d, false);
@@ -422,7 +439,7 @@ export function createHud(root, opts = {}) {
     const sec = (s.tick ?? 0) / TPS;
     set(endlEl.style, 'endl|display', E ? 'block' : 'none');
     if (E) set(endlEl, 'endl|innerHTML', `🚉 ${E.stations} · <span class="kol-wd">ділянка </span>📍${E.segment}`);   // K30: вузько — без слів
-    txt(progSt, 'progSt', E ? '🚉' : '🏁');
+    txt(progSt, 'progSt', E ? '🚉' : tt('icon.station', '🏁'));
 
     // прогрес: голова, кінець колії, станція (за x уздовж смуги)
     let headX = 0;
@@ -434,7 +451,9 @@ export function createHud(root, opts = {}) {
     set(progEnd.style, 'end|left', `${Math.min(100, endX / span * 100).toFixed(1)}%`);
     set(progHead.style, 'head|left', `${Math.min(100, headX / span * 100).toFixed(1)}%`);
     const ahead = Math.max(0, path.length - 1 - Math.floor((t.pos ?? 0) / U));
-    set(progAhead, 'ahead|innerHTML', E ? `🛤 ${ahead} · <span class="kol-wd">до наступної </span>🚉 ${E.toNext}` : `🛤 ${ahead}<span class="kol-wd"> попереду</span> · <span class="kol-wd">до </span>🏁 ${Math.max(0, Math.round(stationX - headX))}`);
+    set(progAhead, 'ahead|innerHTML', E ? `${tt('icon.rails', '🛤')} ${ahead} · <span class="kol-wd">до наступної </span>🚉 ${E.toNext}` : `${tt('icon.rails', '🛤')} ${ahead}<span class="kol-wd"> попереду</span> · <span class="kol-wd">до </span>${tt('icon.station', '🏁')} ${Math.max(0, Math.round(stationX - headX))}`);
+    txt(progHead, 'headI', tt('icon.loco', '🚂')); txt(hIcon, 'hIcon', tt('icon.heat', '♨'));   // K25
+    txt(alarm, 'alarmT', tt('alarm', '⚠ Рейки закінчуються!')); txt(countT, 'countT', tt('count', 'паротяг рушає'));
     // K16: проміжна станція — позначка на смузі й банер, поки паротяг чекає вибору
     const mid = s.mid;
     const midX = mid ? (mid.x0 + mid.x1 + 1) / 2 : -1;
@@ -449,7 +468,7 @@ export function createHud(root, opts = {}) {
     const midWait = eStop || !!(mid && mid.wait && !mid.pick && s.status === 'run');
     let midT = '';
     if (eStop) midT = `🚉 Станція ${E.stations}! ${mid && !mid.pick ? `Оберіть покращення — дія на табличку: ${signs()}` : 'Рушаємо'} · ⏳ ${Math.ceil(E.stop / TPS)} с`;
-    else if (midWait) midT = `🏪 Проміжна станція! Оберіть покращення — дія на табличку: ${signs()}`;
+    else if (midWait) midT = `${tt('midWait', '🏪 Проміжна станція!')} Оберіть покращення — дія на табличку: ${signs()}`;
     txt(midEl, 'midE', midT);
     set(midEl.style, 'midE|display', midWait ? 'block' : 'none');
     // K16: біом під паротягом (і наступний, якщо колія вже туди дійшла)
@@ -466,7 +485,7 @@ export function createHud(root, opts = {}) {
     const sm = p.storeMax ?? 0;
     txt(sWood, 'wood', `🪵 ${t.wood ?? 0}/${sm}`); set(sWood, 'wood|className', (t.wood ?? 0) >= sm ? 'kol-full' : '');
     txt(sIron, 'iron', `⛓ ${t.iron ?? 0}/${sm}`); set(sIron, 'iron|className', (t.iron ?? 0) >= sm ? 'kol-full' : '');
-    txt(cRails, 'rails', `🛤 ${t.rails ?? 0}/${p.railsMax ?? 0}`);
+    txt(cRails, 'rails', `${tt('icon.rails', '🛤')} ${t.rails ?? 0}/${p.railsMax ?? 0}`);
     const craftTot = Math.max(1, (p.craftSec ?? 1) * TPS);
     const cT = t.craftT ?? 0;
     set(cFill.style, 'craft|width', cT > 0 ? `${Math.round((1 - cT / craftTot) * 100)}%` : '0%');
@@ -481,8 +500,9 @@ export function createHud(root, opts = {}) {
     const run = s.status === 'run';
     const fireT = t.fire ?? 0;
     let fireTxt = '';
-    if (run && fireT > 0) fireTxt = `🔥 ПОЖЕЖА! Відро води на паротяг · ${Math.max(0, Math.ceil((p.fireSec ?? 0) - fireT / TPS))}`;
-    else if (run && heat >= 1000 && p.overheat === 'stop') fireTxt = '♨ Котел перегрівся — паротяг стоїть! Відро води';
+    const fireLeft = Math.max(0, Math.ceil((p.fireSec ?? 0) - fireT / TPS));
+    if (run && fireT > 0) fireTxt = tt('fire', `🔥 ПОЖЕЖА! Відро води на паротяг · ${fireLeft}`, fireLeft);
+    else if (run && heat >= 1000 && p.overheat === 'stop') fireTxt = tt('overheatStop', '♨ Котел перегрівся — паротяг стоїть! Відро води');
     txt(fire, 'fire', fireTxt); set(fire.style, 'fire|display', fireTxt ? 'block' : 'none');
 
     // тривога: до кінця колії менше ALARM_SEC ходу
@@ -508,10 +528,10 @@ export function createHud(root, opts = {}) {
       set(d.style, `pl${i}|display`, pl ? 'block' : 'none');
       if (!pl) continue;
       const k = pl.hold?.k ?? 0, nn = pl.hold?.n ?? 0;
-      const what = k ? `${HOLD_ICON[k] ?? '?'}${nn > 1 ? ' ×' + nn : ''}` : '✋';
-      const name = `${i >= local ? '🤖' : ''}П${i + 1}`;
+      const what = k ? `${k === I.RAIL ? tt('icon.rails', HOLD_ICON[k]) : HOLD_ICON[k] ?? '?'}${nn > 1 ? ' ×' + nn : ''}` : '✋';
+      const name = playerLabel(game, i, local);   // K37: у мережі — нік
       set(d, `pl${i}|innerHTML`, `<b style="color:${COLORS[i % 4]}">${name}</b> ${what}`);
-      set(d, `pl${i}|title`, HOLD_NAME[k] ?? 'порожні руки');
+      set(d, `pl${i}|title`, k === I.RAIL ? tt('hold.rails', HOLD_NAME[k]) : HOLD_NAME[k] ?? 'порожні руки');
     }
 
     // кінець
@@ -519,7 +539,7 @@ export function createHud(root, opts = {}) {
     set(end.style, 'end|display', over ? 'flex' : 'none');
     if (over) {
       const st = s.stats || {};
-      const head = s.status === 'won' ? '🏁 Доїхали!' : s.reason === 'fire' ? '🔥 Згоріли' : '💥 Зійшли з колії';
+      const head = s.status === 'won' ? tt('end.won', '🏁 Доїхали!') : s.reason === 'fire' ? tt('end.fire', '🔥 Згоріли') : tt('end.derail', '💥 Зійшли з колії');
       const maxCps = (st.maxSpeed ?? 0) / 1000 / U * TPS;
       if (recState !== s) {
         recState = s;
@@ -529,7 +549,7 @@ export function createHud(root, opts = {}) {
       set(endCard, 'endc|innerHTML', `<h1>${head}</h1>${E ? `<div class="kol-big">🚉 Станцій: <b>${E.stations}</b></div>` : ''}${recHtml(rec)}
         <div class="kol-sum">
           <span>⏱ Час</span><b>${fmtTime(sec)}</b>
-          <span>🛤 Рейок покладено</span><b>${st.railsLaid ?? 0}</b>
+          <span>${tt('sum.rails', '🛤 Рейок покладено')}</span><b>${st.railsLaid ?? 0}</b>
           <span>🪓 Ударів</span><b>${st.hits ?? 0}</b>
           <span>💨 Найшвидше</span><b>${maxCps.toFixed(2)} кл/с</b>
         </div>${playersHtml(s)}
@@ -586,7 +606,7 @@ export function createHud(root, opts = {}) {
 
   // K16: тости подій тику (гачок у main.js afterStep — бачить кожен тик, не лише кадр)
   let seenGeese = new Set(), evState = null;
-  const pName = (s, p) => `${p >= (game0?.local ?? s.players?.length ?? 0) ? '🤖' : ''}П${p + 1}`;
+  const pName = (s, p, raw) => playerLabel(game0, p, s.players?.length ?? 0, raw);   // K37: ніки й у тостах, і в таблиці звань
   // K23: підсумок по гравцях — лічильники з s.ev (тик рахуємо раз: мережевий відкат тики не подвоює)
   let tally = [], tallyTick = -1, prevPos = [];
   function tallyTick1(ev, s) {
@@ -672,7 +692,7 @@ export function createHud(root, opts = {}) {
           say(`🪿 Гуска вкрала ${STEAL_NAME[g.hold] ?? 'річ'}! Наздожени — дія поруч`, 4000, true);
         }
       } else if (e.t === 'goose_lost') say('🪿 Гуска впустила крадене десь попереду', 3500);
-      else if (e.t === 'stun' && e.by !== undefined) say(`💫 ${pName(s, e.by)} приголомшив ${pName(s, e.p)}`, 2500, true);
+      else if (e.t === 'stun' && e.by !== undefined) say(`💫 ${pName(s, e.by, true)} приголомшив ${pName(s, e.p, true)}`, 2500, true);
     }
   }
 
