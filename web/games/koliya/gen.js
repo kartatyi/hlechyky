@@ -22,18 +22,30 @@
 // латками до частки swamp, пісок на берегах → ліс і скелі за множниками біому → маршрут колії BFS (вода поспіль ≤ 3;
 // нема — пробиваємо WALL скелею й намиваємо мілини) → дерево й залізо не далі за RES_R від будь-якої прохідної
 // клітинки → запас дерев/скель на весь маршрут.
-import { G, O, I } from './rules.js';
+import { G, O, I, VARIANTS } from './rules.js';
 
 export const GLADE = 9;          // ширина стартової галявини (± 1 по рядках)
 export const STATION_W = 3;      // станція: 3 стовпці біля кінця × 3 рядки
 export const MAX_WATER_RUN = 3;  // скільки води поспіль може перетнути колія (мости)
 export const RES_R = 10;         // дерево й залізо — не далі за стільки клітинок від будь-якої прохідної клітинки
 export const BIOMES = ['steppe', 'grove', 'stone', 'river', 'swamp', 'pass'];
-export const BIOME_NAMES = { steppe: 'степ', grove: 'гай', stone: "кам'яне поле", river: 'річкова долина', swamp: 'болото', pass: 'прохід між скелями' };
+// K26 «Нові біоми» — за перемикачами VARIANTS.winter / VARIANTS.yar, частота — повзунок newBiomes:
+//   winter «зима» — сніг (G.SNOW: ходити повільніше, snowSlow, слабше за болото), замерзлі калюжі й озеро з льоду
+//          (G.ICE: ковзаєш — rules.moveIce; рейки класти можна) з ополонками (вода для відра) і відталим краєм;
+//   yar «яр»     — урвище (G.CHASM) поперек смуги шириною 1–2 з 1–2 перешийками; пішки не пройти, рейки — лише
+//          мостом: дерево на урвище → каркас (G.FRAME), залізо на каркас → міст (G.BRIDGE). Береги скелясті.
+export const BIOMES_NEW = ['winter', 'yar'];
+export const BIOME_NAMES = { steppe: 'степ', grove: 'гай', stone: "кам'яне поле", river: 'річкова долина', swamp: 'болото', pass: 'прохід між скелями', winter: 'зима', yar: 'яр' };
 const FEAT0 = GLADE + 3;         // ближче до старту — жодних річок/стін
 // множники лісу й скель за біомом (середнє ≈ 0,9 — загальна частка лишається близькою до повзунка)
-const MF = { steppe: 0.5, grove: 2.0, stone: 0.45, river: 1.0, swamp: 0.55, pass: 0.6 };
-const MR = { steppe: 0.6, grove: 0.45, stone: 2.1, river: 0.6, swamp: 0.35, pass: 1.3 };
+const MF = { steppe: 0.5, grove: 2.0, stone: 0.45, river: 1.0, swamp: 0.55, pass: 0.6, winter: 0.8, yar: 1.0 };   // K26: яр — ліс густіший (мости їдять дерево)
+const MR = { steppe: 0.6, grove: 0.45, stone: 2.1, river: 0.6, swamp: 0.35, pass: 1.3, winter: 0.6, yar: 1.0 };
+/** K26: чи ввімкнено новий біом (параметр 'on'/'off'; нема — типове з VARIANTS rules.js) */
+function newOn(P, key) {
+  const v = P[key] !== undefined ? P[key] : (VARIANTS[key] ? VARIANTS[key].values[0] : 'off');
+  return v === 'on';
+}
+const footless = (g) => g === G.WATER || g === G.CHASM;   // K26: де не стати й не посадити (міст — окремо)
 
 function prng(seed) {
   let a = seed >>> 0;
@@ -85,6 +97,9 @@ function planZones(r, x0, x1, P) {
   const grow = clamp(num(P.hardGrow, 0.6), 0, 5);
   const fF = num(P.forest, 0.3), fR = num(P.rocks, 0.18), fW = num(P.water, 0.08), fS = num(P.swamp, 0.06);
   const zones = [], used = {};
+  // K26: нові біоми — у тій самій черзі; вимкнені мають вагу 0 (світ старих сідів не змінюється)
+  const ALL = [...BIOMES, ...BIOMES_NEW];
+  const fN = clamp(num(P.newBiomes, 1), 0, 5), onW = newOn(P, 'winter') && fN > 0, onY = newOn(P, 'yar') && fN > 0;
   let prev = '';
   for (let k = 0; k < nZ; k++) {
     const d = nZ > 1 ? grow * k / (nZ - 1) : 0, dd = Math.min(1, d);
@@ -95,15 +110,17 @@ function planZones(r, x0, x1, P) {
       river: fW > 0 ? 0.7 + 0.7 * dd : 0,
       swamp: fS > 0 ? (0.6 + 0.6 * dd) * clamp(fS / 0.06, 0.4, 2) : 0,
       pass: 0.5 + 0.9 * dd,
+      winter: onW ? (0.6 + 0.4 * dd) * fN : 0,
+      yar: onY ? (0.4 + 0.8 * dd) * fN : 0,
     };
-    if (k === 0) { for (const b of BIOMES) if (b !== 'steppe' && b !== 'grove') wt[b] = 0; wt.steppe *= 1.6; }
+    if (k === 0) { for (const b of ALL) if (b !== 'steppe' && b !== 'grove') wt[b] = 0; wt.steppe *= 1.6; }
     if (prev) wt[prev] = 0;
-    for (const b of BIOMES) if (!used[b]) wt[b] *= 5;
-    let sum = 0; for (const b of BIOMES) sum += Math.max(0, wt[b]);
+    for (const b of ALL) if (!used[b]) wt[b] *= 5;
+    let sum = 0; for (const b of ALL) sum += Math.max(0, wt[b]);
     let kind = 'steppe';
     if (sum > 0) {
       let t = r() * sum;
-      for (const b of BIOMES) { const v = Math.max(0, wt[b]); if (t < v) { kind = b; break; } t -= v; }
+      for (const b of ALL) { const v = Math.max(0, wt[b]); if (t < v) { kind = b; break; } t -= v; }
     }
     used[kind] = 1; prev = kind;
     zones.push({ x0: cuts[k], x1: cuts[k + 1], kind, d: Math.round(d * 100) / 100, traps: 0 });
@@ -140,7 +157,9 @@ export function generate(seed, params) {
   zones.forEach((z, k) => { for (let x = z.x0; x < z.x1; x++) zoneOf[x] = k; });
   const fx0 = (z) => Math.max(z.x0, FEAT0), fx1 = (z) => Math.min(z.x1, X1 - 1);   // де можна ставити риси
 
-  const setW = (x, y) => { if (y > 0 && y < h - 1 && x >= FEAT0 && x < X1 - 1) { const i = y * w + x; if (obj[i] !== O.WALL) ground[i] = G.WATER; } };
+  const setW = (x, y) => { if (y > 0 && y < h - 1 && x >= FEAT0 && x < X1 - 1) { const i = y * w + x; if (obj[i] !== O.WALL && ground[i] !== G.CHASM) ground[i] = G.WATER; } };
+  // K26: підлога біомів зими/яру (ті самі межі, що й у води)
+  const setG = (x, y, g) => { if (y > 0 && y < h - 1 && x >= FEAT0 && x < X1 - 1) { const i = y * w + x; if (obj[i] !== O.WALL) ground[i] = g; } };
   const setWall = (x, y) => { if (y > 0 && y < h - 1 && x >= FEAT0 && x < X1 - 1) { const i = y * w + x; obj[i] = O.WALL; ground[i] = G.GRASS; } };
   const lake = (cx, cy, rx, ry) => {
     for (let y = Math.floor(cy - ry - 1); y <= cy + ry + 1; y++) for (let x = Math.floor(cx - rx - 1); x <= cx + rx + 1; x++) {
@@ -148,6 +167,67 @@ export function generate(seed, params) {
       if (dx * dx + dy * dy + (hash3(x, y, sL + 9) - 0.5) * 0.4 < 1) setW(x, y);
     }
   };
+
+  // K26 зима: замерзле озеро (лід; по краю латками відтала вода — проходи на лід є; посередині ополонки — вода для
+  // відра) і замерзлі калюжі — латки льоду з шуму. Сніг на суші — пізніше, після піску.
+  function winterZone(z, a, b, dd) {
+    const len = b - a;
+    const nL = len >= 22 && r() < 0.5 ? 2 : 1;
+    for (let k = 0; k < nL; k++) {
+      const rx = 2.6 + r() * 1.6 + dd * 1.5, ry = Math.min((h - 2) * 0.32, 2.2 + r() * 1.5 + dd);
+      const cx = a + len * (k + 0.5) / nL + (r() - 0.5) * len * 0.2 / nL;
+      const cy = mid + (r() - 0.5) * Math.max(0, h - 4 - 2 * ry);
+      let holes = 0;
+      for (let y = Math.floor(cy - ry - 1); y <= cy + ry + 1; y++) for (let x = Math.max(a, Math.floor(cx - rx - 1)); x <= cx + rx + 1 && x < b; x++) {
+        const dx = (x - cx) / rx, dy = (y - cy) / ry, q = dx * dx + dy * dy + (hash3(x, y, sL + 21) - 0.5) * 0.35;
+        if (q >= 1) continue;
+        const thaw = q > 0.62 && vnoise(x * 0.7, y * 0.7, sL + 23) > 0.55;   // відталий край
+        const hole = q < 0.5 && hash3(x, y, sL + 25) < 0.07;                  // ополонка
+        if (thaw || hole) { setW(x, y); holes++; } else setG(x, y, G.ICE);
+      }
+      if (!holes) setW(Math.round(cx), Math.round(cy));
+    }
+    const c = [], sc = new Float32Array(n);
+    for (let y = 1; y < h - 1; y++) for (let x = a; x < b; x++) {
+      const i = y * w + x;
+      if (ground[i] !== G.GRASS || obj[i] === O.WALL) continue;
+      sc[i] = fbm(x / 2.6, y / 2.6, sM + 41) + hash3(x, y, sM + 43) * 0.05; c.push(i);
+    }
+    for (const i of top(c, sc, Math.round(c.length * (0.06 + 0.04 * dd)))) setG(i % w, (i / w) | 0, G.ICE);
+  }
+  // K26 яр: урвище поперек смуги шириною 1–2 (з глибиною частіше 2), 1–2 перешийки (пішки на той бік), береги скелясті
+  function yarZone(z, a, b, dd) {
+    const len = b - a;
+    const nY = len >= 24 && dd > 0.4 && r() < 0.5 ? 2 : 1;
+    for (let k = 0; k < nY; k++) {
+      const cx = a + len * (k + 0.5) / nY + (r() - 0.5) * len * 0.25 / nY;
+      const amp = 1 + r() * 2, fq = 0.1 + r() * 0.08;
+      const base = dd > 0.5 && r() < 0.6 ? 2 : 1;
+      const nC = dd > 0.7 && r() < 0.6 ? 1 : 2;
+      const necks = [];
+      for (let c = 0; c < nC; c++) {
+        const lo = 1 + Math.floor((h - 2) * c / nC), hi = Math.floor((h - 2) * (c + 1) / nC) - 1;
+        const y0 = clamp(lo + Math.floor(r() * Math.max(1, hi - lo)), 2, h - 3);
+        necks.push({ y0, y1: y0 + (r() < 0.5 ? 1 : 0) });
+      }
+      let prevL = null;
+      for (let y = 1; y < h - 1; y++) {
+        let wd = Math.min(2, base + (vnoise(y * 0.35, k * 4.3 + z.x0 * 0.29, sW + 51) > 0.62 ? 1 : 0));
+        let neck = false;
+        for (const q of necks) if (y >= q.y0 && y <= q.y1) { wd = 0; neck = true; }
+        let L = Math.round(cx + (vnoise(y * fq, k * 6.1 + z.x0 * 0.17, sW + 53) - 0.5) * 2 * amp - wd / 2);
+        if (prevL !== null) L = clamp(L, prevL - 1, prevL + 1);
+        L = clamp(L, a + 1, b - 3);
+        prevL = L;
+        for (let x = L; x < L + wd; x++) setG(x, y, G.CHASM);
+        if (neck) for (let x = L - 1; x <= L + 2; x++) if (x >= a && x < b) clear[y * w + x] = 1;
+      }
+    }
+    for (let y = 1; y < h - 1; y++) for (let x = a; x < b; x++) {
+      const i = y * w + x;
+      if (ground[i] !== G.CHASM && (ground[i - 1] === G.CHASM || ground[i + 1] === G.CHASM || ground[i - w] === G.CHASM || ground[i + w] === G.CHASM)) bR[i] += 0.15;
+    }
+  }
 
   // --- Біоми: вода, стіни, пастки ---
   for (const z of zones) {
@@ -231,6 +311,8 @@ export function generate(seed, params) {
         for (let y = 2; y < h - 2; y++) for (let x = a; x < b; x++) { const i = y * w + x; sc[i] = fbm(x / 3.2, y / 3.2, sM + 3) + hash3(x, y, sM) * 0.1; c.push(i); }
         for (const i of top(c, sc, Math.round(c.length * (0.05 + 0.04 * dd)))) setW(i % w, (i / w) | 0);
       }
+    } else if (z.kind === 'winter') { winterZone(z, a, b, dd);   // K26
+    } else if (z.kind === 'yar') { yarZone(z, a, b, dd);         // K26
     } else if (z.kind === 'pass') {
       const nBand = len >= 24 && dd > 0.5 ? 2 : 1;
       for (let k = 0; k < nBand; k++) {
@@ -301,7 +383,7 @@ export function generate(seed, params) {
       const x = i % w, y = (i / w) | 0;
       if (ground[i] === G.WATER || obj[i] === O.WALL || clear[i] || x < FEAT0 || x >= X1 - 1) continue;
       const z = zones[zoneOf[x]];
-      if (!z || z.kind === 'pass' || z.kind === 'stone') continue;
+      if (!z || z.kind === 'pass' || z.kind === 'stone' || z.kind === 'winter' || z.kind === 'yar') continue;   // K26: свої води
       const edge = Math.abs(y - mid) / (h / 2);   // до країв охочіше — менше перегороджують
       sc[i] = fbm(x / 5.5, y / 4.2, sL) + edge * 0.08 + hash3(x, y, sL + 3) * 0.05;
       c.push(i);
@@ -357,7 +439,7 @@ export function generate(seed, params) {
         const x = i % w, y = (i / w) | 0;
         if (ground[i] !== G.GRASS || obj[i] === O.WALL || x < FEAT0 || clear[i]) continue;
         const z = zones[zoneOf[x]];
-        if (!z || z.kind === 'pass' || z.kind === 'stone') continue;
+        if (!z || z.kind === 'pass' || z.kind === 'stone' || z.kind === 'winter' || z.kind === 'yar') continue;
         let wet = 0;
         for (let dy = -2; dy <= 2 && !wet; dy++) for (let dx = -2; dx <= 2; dx++) {
           const yy = y + dy, xx = x + dx;
@@ -381,6 +463,12 @@ export function generate(seed, params) {
     else if (fbm(x / 6, y / 5, sS) > 0.72) ground[i] = G.SAND;
   }
 
+  // --- K26: зима — сніг на всій суші ділянки (лід і вода лишаються) ---
+  for (const z of zones) if (z.kind === 'winter') for (let y = 1; y < h - 1; y++) for (let x = Math.max(z.x0, glade[y]); x < Math.min(z.x1, X1); x++) {
+    const i = y * w + x;
+    if (ground[i] === G.GRASS || ground[i] === G.SAND || ground[i] === G.SWAMP) ground[i] = G.SNOW;
+  }
+
   // --- Ліс і скелі (кластери з шуму, кількість — за біомом) ---
   const scF = new Float32Array(n), scR = new Float32Array(n);
   for (const i of zone) {
@@ -396,7 +484,7 @@ export function generate(seed, params) {
     const cells = [];
     for (let y = 1; y < h - 1; y++) for (let x = Math.max(z.x0, glade[y]); x < z.x1; x++) {
       const i = y * w + x;
-      if (ground[i] !== G.WATER && obj[i] === O.NONE && !clear[i]) cells.push(i);
+      if (!footless(ground[i]) && ground[i] !== G.ICE && obj[i] === O.NONE && !clear[i]) cells.push(i);   // K26: не на льоду/урвищі
     }
     const dd = Math.min(1, z.d);
     const mf = z.kind === 'grove' ? MF.grove * (0.7 + 0.3 * dd) : MF[z.kind];     // гай біля старту рідший
@@ -431,7 +519,7 @@ export function generate(seed, params) {
     let run = 0;
     for (const i of loose) {
       if (obj[i] === O.WALL) { obj[i] = O.ROCK; }
-      if (ground[i] === G.WATER) { run++; if (run > MAX_WATER_RUN) { ground[i] = G.SAND; run = 0; } } else run = 0;
+      if (footless(ground[i])) { run++; if (run > MAX_WATER_RUN) { ground[i] = G.SAND; run = 0; } } else run = 0;
     }
     route = findRoute({ w, h, ground, obj, path });
   }
@@ -442,7 +530,7 @@ export function generate(seed, params) {
     const x = i % w, y = (i / w) | 0;
     // нестрого — можна й у привокзальну смугу (не на станцію): біля кінця інакше буває ніде
     if (y < 1 || y > h - 2 || x < glade[y] || x >= (strict ? X1 : station.x0 - 1)) return false;
-    if (obj[i] !== O.NONE || ground[i] === G.WATER || ground[i] === G.STATION || onPath[i]) return false;
+    if (obj[i] !== O.NONE || footless(ground[i]) || ground[i] === G.ICE || ground[i] === G.STATION || onPath[i]) return false;
     return !strict || !clear[i];
   };
   const cover = (kind, sc) => {
@@ -466,7 +554,7 @@ export function generate(seed, params) {
     const ld = new Int16Array(n), lq = new Int32Array(n);
     for (let x = GLADE - 1; x < w; x++) for (let y = 1; y < h - 1; y++) {
       const c = y * w + x;
-      if (dist[c] <= RES_R || obj[c] === O.WALL || ground[c] === G.WATER) continue;
+      if (dist[c] <= RES_R || obj[c] === O.WALL || footless(ground[c])) continue;
       // найкраща вільна клітинка поруч — у межах ходу (BFS крізь усе, крім WALL), ближча й «природніша» за шумом
       let best = -1, bs = -1e9;
       ld.fill(-1); lq[0] = c; ld[c] = 0;
@@ -515,10 +603,10 @@ export function generate(seed, params) {
 
   // --- Запас на весь маршрут (рейка = дерево + залізо, міст = дерево) із запасом 15 % ---
   if (route) {
-    const len = route.length, br = route.filter((i) => ground[i] === G.WATER).length;
+    const len = route.length, br = route.filter((i) => footless(ground[i])).length, ch = route.filter((i) => ground[i] === G.CHASM).length;
     let trees = 0, rocks = 0;
     for (let i = 0; i < n; i++) { if (obj[i] === O.TREE) trees++; else if (obj[i] === O.ROCK) rocks++; }
-    let dw = Math.ceil(((len + br) * 1.15) / wpt) - trees, di = Math.ceil((len * 1.15) / ipr) - rocks;
+    let dw = Math.ceil(((len + br) * 1.15) / wpt) - trees, di = Math.ceil(((len + ch) * 1.15) / ipr) - rocks;   // K26: міст через яр — ще й залізо
     const CH = 10, nCh = Math.max(1, Math.ceil((X1 - GLADE) / CH));
     const addIn = (ch, kind, sc) => {
       const cand = [];
@@ -567,7 +655,7 @@ export function findRoute(wd) {
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
       const nc = ny * w + nx;
       if (obj[nc] === O.WALL || onPath[nc]) continue;
-      const nr = ground[nc] === G.WATER ? run + 1 : 0;
+      const nr = footless(ground[nc]) ? run + 1 : 0;   // K26: урвище — теж міст (поспіль із водою)
       if (nr > MAX_WATER_RUN) continue;
       const ns = nc * R + nr;
       if (from[ns] !== -2) continue;
@@ -597,7 +685,7 @@ function cheapest({ w, h, ground, obj, path }) {
         if (nx < 0 || ny < 1 || nx >= w || ny > h - 2) continue;
         const nc = ny * w + nx;
         if (onPath[nc]) continue;
-        const nd = d + (obj[nc] === O.WALL ? 40 : ground[nc] === G.WATER ? 6 : 1);
+        const nd = d + (obj[nc] === O.WALL ? 40 : footless(ground[nc]) ? 6 : 1);
         if (nd < dist[nc]) { dist[nc] = nd; prev[nc] = c; (buckets[nd] ||= []).push(nc); }
       }
     }

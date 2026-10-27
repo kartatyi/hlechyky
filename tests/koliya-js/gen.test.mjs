@@ -1,7 +1,7 @@
 // «Колія» — генератор смуги (K1 → K7): детермінізм, прохідність, межі повзунків, біоми, ресурси вздовж маршруту.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generate, findRoute, MAX_WATER_RUN, RES_R, BIOMES, GLADE, STATION_W } from '../../web/games/koliya/gen.js';
+import { generate, findRoute, MAX_WATER_RUN, RES_R, BIOMES, BIOMES_NEW, GLADE, STATION_W } from '../../web/games/koliya/gen.js';
 import { defaultParams, newGame, step, PARAM_META, G, O, I, U, WAGONS } from '../../web/games/koliya/rules.js';
 
 const P = (o = {}) => ({ ...defaultParams(), stripLen: 150, ...o });   // K13: типова смуга тепер 100 — властивості генератора міряємо на 150
@@ -12,7 +12,7 @@ function check(wd, p, label) {
   assert.equal(w, p.stripLen | 0, label); assert.equal(h, p.stripWidth | 0, label);
   for (const a of [ground, obj, hp, drop, wd.dropN]) assert.equal(a.length, w * h, label);
   for (let x = 0; x < w; x++) { assert.equal(obj[x], O.WALL, label); assert.equal(obj[(h - 1) * w + x], O.WALL, label); }
-  for (let i = 0; i < w * h; i++) assert.ok(ground[i] <= G.SWAMP, `${label}: невідома підлога ${ground[i]}`);
+  for (let i = 0; i < w * h; i++) assert.ok(ground[i] <= G.CHASM, `${label}: невідома підлога ${ground[i]}`);   // K26: + лід, сніг, урвище
   // колія: ≥ вагонів + 2, суміжні клітинки, чисті
   assert.ok(path.length >= WAGONS.length + 2, label);
   for (let k = 0; k < path.length; k++) {
@@ -128,7 +128,7 @@ test('біоми: суцільні ділянки, перша легка, пос
     assert.equal(z[0].x0, GLADE); assert.equal(z[z.length - 1].x1, wd.w - STATION_W - 3);
     assert.ok(['steppe', 'grove'].includes(z[0].kind), `сід ${s}: перша ${z[0].kind}`);
     for (let k = 0; k < z.length; k++) {
-      assert.ok(BIOMES.includes(z[k].kind));
+      assert.ok(BIOMES.includes(z[k].kind) || BIOMES_NEW.includes(z[k].kind));   // K26
       seen[z[k].kind] = (seen[z[k].kind] || 0) + 1;
       if (k) {
         assert.equal(z[k].x0, z[k - 1].x1);
@@ -215,7 +215,7 @@ test('болото: є в болотяних ділянках і латками;
 test('проходи між скелями: хребет WALL з пастками, а маршрут усе одно є', () => {
   let n = 0;
   for (const s of SEEDS50) {
-    const wd = generate(s, P({ hardGrow: 1 }));
+    const wd = generate(s, P({ hardGrow: 1, winter: 'off' }));   // K26: світ сідів — як до зими (сід 110866 інакше без пастки)
     for (const z of wd.zones) {
       if (z.kind !== 'pass') continue;
       n++;

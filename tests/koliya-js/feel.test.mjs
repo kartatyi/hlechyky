@@ -7,7 +7,7 @@ const { U, G, O, I, TPS } = R;
 
 /** Порожня смуга: без лісу/скель/води (як у rules.test.mjs) */
 function blank(params = {}, n = 1) {
-  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, startSec: 90, ...params };
+  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, winter: 'off', startSec: 90, ...params };   // K26: порожня смуга — без снігу й льоду
   const s = R.newGame(7, p, n);
   for (let i = 0; i < s.w * s.h; i++) {
     const y = (i / s.w) | 0;
