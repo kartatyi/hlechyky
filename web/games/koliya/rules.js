@@ -11,7 +11,7 @@ export const U = 1000;               // підодиниць у клітинці
 export const MAX_PLAYERS = 4;
 
 // Підлога (state.ground)
-export const G = { GRASS: 0, WATER: 1, BRIDGE: 2, STATION: 3, SAND: 4 };
+export const G = { GRASS: 0, WATER: 1, BRIDGE: 2, STATION: 3, SAND: 4, SWAMP: 5 };   // SWAMP — болото: ходити повільно (swampSlow), рейки класти можна
 // Предмет на клітинці, що заважає ходити (state.obj)
 export const O = { NONE: 0, TREE: 1, ROCK: 2, WALL: 3 };   // WALL — непробивна скеля по краях
 // Речі на підлозі й у руках (state.drop / player.hold.k)
@@ -50,6 +50,10 @@ export const PARAM_META = {
   geeseSec:    { def: 45,   min: 10,   max: 180, step: 5,    label: 'Гуси: зграя раз на, с', group: 'Додатки' },      // K11
   geeseMax:    { def: 3,    min: 1,    max: 3,   step: 1,    label: 'Гуси: у зграї до', group: 'Додатки' },           // K11
   geeseSpeed:  { def: 2.5,  min: 1,    max: 6,   step: 0.5,  label: 'Гуси: швидкість, клітинок/с', group: 'Додатки' }, // K11
+  zoneLen:     { def: 28,   min: 12,   max: 80,  step: 1,    label: 'Довжина ділянки (біому), клітинок', group: 'Світ' },
+  hardGrow:    { def: 0.6,  min: 0,    max: 1.5, step: 0.05, label: 'Складність до станції (приріст)', group: 'Світ' },
+  swamp:       { def: 0.06, min: 0,    max: 0.4, step: 0.01, label: 'Частка болота', group: 'Світ' },
+  swampSlow:   { def: 0.55, min: 0.2,  max: 1,   step: 0.05, label: 'Болото: швидкість ходи (частка)', group: 'Світ' },
 };
 // Перемикачі варіантів (рядкові значення; перше — типове)
 export const VARIANTS = {
@@ -117,6 +121,7 @@ export function newGame(seed, params = defaultParams(), nPlayers = 1) {
     w: world.w, h: world.h,
     ground: world.ground, obj: world.obj, hp: world.hp, drop: world.drop, dropN: world.dropN,
     path: world.path.slice(),
+    zones: world.zones || [],   // K7: ділянки-біоми (для HUD); на правила не впливають
     spawn: world.spawn.map((c) => ({ x: c.x, y: c.y })),
     train: { pos: (WAGONS.length) * U, speed: 0, heat: 0, fire: 0, wood: 0, iron: 0, rails: params.startRails | 0, craftT: 0,
              sub: 0, ht: 0, started: 0 },
@@ -256,7 +261,8 @@ function movePlayer(s, n) {
   // мертва зона й нормування (довжина ≤ 100)
   const len = Math.floor(Math.sqrt(mx * mx + my * my));
   if (len < 12) return;
-  const v = Math.round(s.params.playerSpeed * U / TPS);
+  let v = Math.round(s.params.playerSpeed * U / TPS);
+  if (s.ground[Math.floor(pl.y / U) * s.w + Math.floor(pl.x / U)] === G.SWAMP) v = Math.round(v * clampI(+s.params.swampSlow || 1, 0.05, 1));
   const d = Math.max(100, len);
   const dx = Math.trunc(v * mx / d), dy = Math.trunc(v * my / d);
   const wag = wagonsXY(s);

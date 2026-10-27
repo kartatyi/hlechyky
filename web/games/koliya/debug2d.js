@@ -1,7 +1,7 @@
 // «Колія» — налагоджувальний вид згори на 2D-канві (?view=2d). Той самий інтерфейс, що й render.js.
 import { U, G, O, I, WAGONS, wagonPos } from './rules.js';
 
-const GC = ['#5a8f3a', '#2f6fb0', '#8a6a3a', '#c9b26b', '#d8c88a'];
+const GC = ['#5a8f3a', '#2f6fb0', '#8a6a3a', '#c9b26b', '#d8c88a', '#55603a'];   // …, болото (K7)
 const OC = [null, '#1f5a22', '#7d7f86', '#3b3b40'];
 const IC = [null, '#a0703a', '#c0c4cc', '#555', '#d33', '#38c', '#9bd', '#16e'];
 const PC = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
