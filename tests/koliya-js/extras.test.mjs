@@ -127,7 +127,7 @@ test('гра не глухне: 30 хв з гусьми — інструмент
 });
 
 test('проміжна станція: смуга вдвічі, станція перша — SAND, паротяг чекає, покращення діє', () => {
-  const p = { ...R.defaultParams(), stationMode: 'upgrade', startSec: 0, speedStart: 1.5, heatSec: 240 };
+  const p = { ...R.defaultParams(), stationMode: 'upgrade', startSec: 0, speedStart: 1.5, heatSec: 240, soloSpeed: 1 };   // K13: без соло-знижки
   const s = R.newGame(9, p, 1);
   const m = s.mid;
   assert.ok(m);
