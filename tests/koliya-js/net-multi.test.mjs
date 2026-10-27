@@ -54,9 +54,9 @@ class Srv {
     this.lastT.fill(0); this.n = 0;
     for (let s = 0; s < 4; s++) { this.pOf[s] = this.seats[s] != null && this.n < MaxRules ? this.n++ : -1; if (this.pOf[s] >= 0) this.out.push(false); }
     for (let s = 0; s < 4; s++) { this.p2Of[s] = this.p2Of[s] >= 0 && this.pOf[s] >= 0 && this.n < MaxRules ? this.n++ : -1; if (this.p2Of[s] >= 0) this.out.push(false); }
-    this.startAt = clock; this.dirty = true;
+    this.startAt = clock; this.dirty = true; this.wait = true;   // K62: збір — годинник стоїть до 'go'
   }
-  nowTick() { return Math.max(0, Math.floor((clock - this.startAt) / StepMs)); }
+  nowTick() { return this.wait ? 0 : Math.max(0, Math.floor((clock - this.startAt) / StepMs)); }
   mark() { return (this.w = Math.max(this.w, this.nowTick() - Grace - 1)); }
   onJoin(seat) { if (this.pOf[seat] >= 0) return; const p = this.newPlayer(seat); if (p != null) this.pOf[seat] = p; }
   newPlayer(seat) {
@@ -76,12 +76,14 @@ class Srv {
   act(seat, action, pl) {
     if (seat == null || seat < 0) throw new GameError('Ти не за столом');
     if (!['restart', 'join2', 'leave2'].includes(action) && Number.isInteger(pl?.e) && pl.e !== this.epoch) { this.stale = (this.stale | 0) + 1; return; }   // K24: стара епоха
+    if (this.wait && ['in', 'use', 'throw', 'horn'].includes(action)) { this.waitDrop = (this.waitDrop | 0) + 1; return; }   // K62
     const c = (k, a, b) => { const v = pl?.[k]; if (v === undefined) return Math.min(b, Math.max(a, 0)); if (!Number.isFinite(v)) throw new GameError('Погана команда'); return Math.min(b, Math.max(a, Math.round(v))); };
     const req = Number.isInteger(pl?.t) ? pl.t : null;
     const player = () => { const p = c('q', 0, 1) ? this.p2Of[seat] : this.pOf[seat]; if (p < 0) throw new GameError('нема'); return p; };
     const XY = 10_000_000;
     switch (action) {
       case 'restart': this.newEpoch(pl.seed >>> 0, pl.params || {}); return;
+      case 'go': if (this.wait) { this.wait = false; this.startAt = clock; this.dirty = true; } return;   // K62
       case 'in': this.add(seat, { p: player(), k: KIND.in, a: c('mx', -100, 100), b: c('my', -100, 100), i: c('i', 0, 2 ** 31 - 1) }, req); return;
       case 'use': this.add(seat, { p: player(), k: KIND.use, a: c('x', 0, XY), b: c('y', 0, XY), c: c('fx', -1, 1), d: c('fy', -1, 1), e: c('h', 0, 1), i: c('i', 0, 2 ** 31 - 1) }, req); return;
       case 'throw': this.add(seat, { p: player(), k: KIND.throw, a: c('x', 0, XY), b: c('y', 0, XY), c: c('fx', -1, 1), d: c('fy', -1, 1), i: c('i', 0, 2 ** 31 - 1) }, req); return;
@@ -144,16 +146,16 @@ class Srv {
     }
     return a;
   }
-  frame() { return { e: this.epoch, t: this.nowTick(), w: this.w, n: this.log.length, f: this.keepFrom, c: this.flat(this.keepFrom), d: this.desync }; }
+  frame() { return { e: this.epoch, t: this.nowTick(), w: this.w, n: this.log.length, f: this.keepFrom, c: this.flat(this.keepFrom), d: this.desync, wait: this.wait ? 1 : 0 }; }
   view(seat) {
     return { e: this.epoch, seed: this.seed, prm: JSON.parse(this.params), n0: this.n, p: seat != null && seat >= 0 ? this.pOf[seat] : -1,
-      pOf: this.pOf.slice(), p2: seat != null && seat >= 0 ? this.p2Of[seat] : -1, p2Of: this.p2Of.slice(), d: this.desync };
+      pOf: this.pOf.slice(), p2: seat != null && seat >= 0 ? this.p2Of[seat] : -1, p2Of: this.p2Of.slice(), d: this.desync, wait: this.wait ? 1 : 0 };
   }
   logBody(from, snap = false) {
     const sn = snap && from === 0 ? this.snap : null;
     if (sn) { from = 0; while (from < this.log.length && this.log[from].T < sn.t) from++; }
     return { s: sn && { t: sn.t, h: sn.h, z: sn.z ? 1 : 0, b: Buffer.from(sn.b).toString('base64') }, e: this.epoch, seed: this.seed, prm: JSON.parse(this.params), n0: this.n, t: this.nowTick(), w: this.mark(), n: this.log.length,
-      f: Math.max(0, Math.min(from, this.log.length)), c: this.flat(from), pOf: this.pOf.slice(), p2Of: this.p2Of.slice(), d: this.desync };
+      f: Math.max(0, Math.min(from, this.log.length)), c: this.flat(from), pOf: this.pOf.slice(), p2Of: this.p2Of.slice(), d: this.desync, wait: this.wait ? 1 : 0 };
   }
 }
 
@@ -296,6 +298,8 @@ async function scenario(opts) {
     const B = W.addClient('B', 23);
     await runUntil(900);
     const Cc = W.addClient('C', 41);
+    await runUntil(1500);
+    assert.ok(W.as(B, () => B.net.go()), 'B не зміг сказати go');   // K62: зібрались — рушаємо
     await runUntil(opts.lateAt);
     const D = W.addClient('D', 13);   // пізній вхід: світ з журналу GET
     await runUntil(opts.lateAt + 15_000);
@@ -305,6 +309,9 @@ async function scenario(opts) {
     await runUntil(opts.restartAt);
     checkHashes(srv, [A, Cc, D, E], 'до перезапуску', 2);   // K44: E щойно зі знімка — звірки лише від його тику
     W.as(A, () => A.net.restart(0xC0FFEE + opts.seed, PARAMS));   // перезапуск посеред: нова епоха всім
+    await runUntil(opts.restartAt + 3000);
+    assert.ok(srv.wait && D.net.wait, 'після перезапуску — знову збір');
+    assert.ok(W.as(D, () => D.net.go()));                          // K62: «Почали» тисне інший
     await runUntil(opts.endAt);
     const live = [A, Cc, D, E];
     for (const cl of live) assert.ok(cl.net.ready, cl.nick + ': не готовий — ' + cl.net.status);
@@ -354,6 +361,8 @@ test('K44: пізній вхід на 5-й хвилині зі знімка — 
     const B = W.addClient('B', 23, { zip: true });
     await runUntil(1200);
     const Cc = W.addClient('C', 41, { zip: true });
+    await runUntil(1500);
+    W.as(A, () => A.net.go());   // K62
     await runUntil(300_000);
     assert.ok(srv.snap && srv.snap.t >= 4800, 'сервер не має підтвердженого знімка: ' + JSON.stringify(srv.snap && srv.snap.t));
     const D = W.addClient('D', 13, { zip: true });     // гравець — зі знімка (gzip)
@@ -383,6 +392,7 @@ test('модель сервера: join після leave не раніше за 
   const srv = new Srv(mulberry(3));
   srv.seats = ['A', 'B', 'C', 'D'];
   srv.start();
+  srv.act(0, 'go', {});   // K62
   clock = 5000;   // тик 100
   srv.act(1, 'in', { mx: 100, my: 0, t: 135, i: 1 });   // B просить тик наперед (годинник браузера біжить швидше)
   srv.seats[1] = null; srv.onLeave(1);                   // leave B — не раніше за його попередню команду (135)
@@ -395,6 +405,44 @@ test('модель сервера: join після leave не раніше за 
   const s = straight(srv, jn.t + 1);
   assert.equal(s.players.length, 4);
   assert.equal(s.players[srv.pOf[1]].out, 0);
+});
+
+test('K62: збір — до go тик стоїть (і ввід не пишеться), після — росте; пізній вхід зі знімка; хеші однакові', { timeout: 600_000 }, async () => {
+  clock = 0; queue.length = 0;
+  const W = world({ seed: 21, base: 60, jit: 100, reorder: 0.1 });
+  try {
+    const { srv } = W;
+    srv.seats[0] = 'A';
+    srv.start();
+    W.serverLoop();
+    const A = W.addClient('A', 7);
+    await runUntil(5000);
+    const B = W.addClient('B', 23);   // друг іде за посиланням 5 с
+    await runUntil(45_000);           // колись тут партія вже була б програна
+    for (const cl of [A, B]) {
+      assert.ok(cl.net.ready && cl.net.wait, cl.nick + ': не в зборі — ' + cl.net.status);
+      assert.equal(cl.net.C.tick, 0, cl.nick + ': C пішов у зборі');
+      assert.equal(cl.game.state.tick, 0, cl.nick + ': P пішов у зборі');
+      assert.equal(cl.net.status, 'чекаємо гравців');
+    }
+    assert.equal(srv.nowTick(), 0);
+    assert.deepEqual(srv.log.map((x) => [x.k, x.T]), [[KIND.join, 0]], 'у зборі в журналі лише join на тик 0');
+    assert.equal(srv.waitDrop | 0, 0, 'браузер слав рух/дії в зборі');
+    assert.ok(W.as(B, () => B.net.go()));
+    assert.ok(!W.as(B, () => B.net.go()), 'повтор go — ні');
+    await runUntil(112_000);          // 67 с гри: знімок на тику 1200
+    assert.ok(!A.net.wait && !B.net.wait);
+    assert.ok(A.net.C.tick > 1250 && A.net.C.tick < 1360, 'тик після go: ' + A.net.C.tick);
+    assert.ok(srv.log.length > 20, 'гравці не грали після go');
+    assert.ok(srv.snap && srv.snap.t >= 1200, 'нема знімка');
+    const D = W.addClient('D', 13);   // пізній — зі знімка
+    await runUntil(130_000);
+    assert.ok(D.net.ready && !D.net.wait);
+    assert.ok(D.net.info().stats.snapFrom >= 1200, 'D не взяв знімок');
+    checkHashes(W.srv, [A, B, D], 'K62', 2);
+    assert.deepEqual(srv.desyncs, []);
+    assert.ok(!W.warns.some((x) => /розійшлись|знімок не/.test(x)), W.warns.join(' | '));
+  } finally { W.restore(); }
 });
 
 test('K24: поза з use/throw — лише поруч і не в непрохідне (запізніла команда не телепортує в скелю)', () => {
