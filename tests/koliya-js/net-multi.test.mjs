@@ -357,6 +357,7 @@ test('K44: пізній вхід на 5-й хвилині зі знімка — 
     await runUntil(300_000);
     assert.ok(srv.snap && srv.snap.t >= 4800, 'сервер не має підтвердженого знімка: ' + JSON.stringify(srv.snap && srv.snap.t));
     const D = W.addClient('D', 13, { zip: true });     // гравець — зі знімка (gzip)
+    await runUntil(301_000);                            // D уже сів — останнє місце його
     const F = W.addClient('F', 17, { snap: false });   // глядач (місць нема) — з нуля, для порівняння
     await runUntil(325_000);
     const live = [A, B, Cc, D, F];
