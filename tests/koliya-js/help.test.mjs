@@ -44,3 +44,19 @@ test('K69: покращення в «Чумацькому шляху» — чу�
     }
   } finally { setTheme('koliya'); }
 });
+
+test('картка «Як грати» на час збору: чотири кроки циклу — і словами «Чумацького шляху»', async () => {
+  const { introSteps } = await import('../../web/games/koliya/help.js');
+  const k = introSteps();
+  assert.equal(k.length, 4);
+  const all = k.join('\n');
+  for (const w of ['Паротяг', 'станції', 'Рубай', 'скелі', 'склад', 'Майстерня', 'рейки', 'впритул', 'Котел', 'відром'])
+    assert.ok(all.includes(w), w);
+  assert.ok(!/undefined|\$\{/.test(all));
+  setTheme('chumak');
+  try {
+    const c = introSteps().join('\n');
+    assert.ok(c.includes('Воли') && c.includes('гать') && c.includes('віз-комор') && c.includes('кузня'), c);
+    assert.ok(!c.includes('аротяг'), 'без паротяга');
+  } finally { setTheme('koliya'); }
+});

@@ -5,7 +5,8 @@
 //     open(canResume) — показати знову (з паузи чи фіналу), opts() → { players, bots, seed } }
 //  act: 'play' | 'tutorial' | 'daily' | 'endless' | 'net' | 'resume' | 'copy' | 'offline' | 'help' (K65); o = { players, bots, seed }.
 //  Вибране пам'ятає localStorage 'kol-menu' { players, bots, seed: 'r' | число, last }; ?p= / ?bot= / ?seed= в адресі
-//  переважують пам'ять лише на цей запуск (K46: у пам'ять не пишуться, поки їх не змінять у меню). У мережі (KOL.net) — лише «Грати», «Копіювати посилання для друга» і «Без мережі».
+//  переважують пам'ять лише на цей запуск (K46: у пам'ять не пишуться, поки їх не змінять у меню). У мережі (KOL.net) — лише «Грати», «Копіювати посилання для друга» і «Без мережі»;
+//  ще «🎓 Навчання» для всіх за столом — поки стіл чекає «▶ Почали» чи партію скінчено.
 import { BIOME_NAMES, generate } from './gen.js';
 import { MAX_PLAYERS } from './rules.js';
 import { t } from './theme.js';   // K42: слова «Чумацького шляху»
@@ -91,6 +92,8 @@ export function createMenu(box, opts = {}) {
   const fromUrl = new Set([q.get('p') && 'players', q.get('bot') && 'bots', q.get('seed') && 'seed'].filter(Boolean));   // K46: адреса — лише на цей запуск
   const seeds = () => { const l = ['r', ...PICKS]; if (st.seed !== 'r' && !l.includes(st.seed)) l.splice(1, 0, st.seed); return l; };
   const net = () => !!(G()?.net || window.KOL?.net);
+  // навчання для всіх — лише тому, хто сидить за столом (глядача сервер не послухає), і поки ніхто не грає
+  const calm = () => { const s = G()?.state, n = window.KOL?.net; return n?.p >= 0 && (!!n.wait || (!!s && s.status !== 'run')); };
   let canResume = false, idx = 0, lastLocal = g0?.local, keysTwo = null;
 
   box.innerHTML = '';
@@ -110,7 +113,8 @@ export function createMenu(box, opts = {}) {
       step: () => { fromUrl.delete('players'); st.players = st.players === 1 ? 2 : 1; st.bots = Math.min(st.bots, MAX_PLAYERS - st.players); } },
     { id: 'bots', opt: true, label: () => `${t('menu.bots', '🤖 Боти-помічники')}: ${st.bots}`, show: () => !net(),
       step: (d) => { fromUrl.delete('bots'); const m = Math.min(3, MAX_PLAYERS - st.players) + 1; st.bots = (st.bots + d + m) % m; } },
-    { id: 'tutorial', label: () => t('menu.tutorial', '🎓 Навчання'), show: () => !net() },
+    // у мережі — навчальна смуга для всіх за столом, тож лише поки стіл чекає «▶ Почали» чи партію вже скінчено
+    { id: 'tutorial', label: () => t('menu.tutorial', '🎓 Навчання') + (net() ? ' <small>для всіх за столом</small>' : ''), show: () => !net() || calm() },
     { id: 'daily', label: () => t('menu.daily', '📅 Маршрут дня'), show: () => !net() },
     { id: 'endless', label: () => t('menu.endless', '♾ Нескінченна'), show: () => !net() },
     { id: 'net', label: () => `${t('menu.net', '🌐 Грати з друзями')} <small>посилання для друга</small>`, show: () => !net() },

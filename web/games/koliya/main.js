@@ -16,6 +16,7 @@ import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд�
 import { mountThemeUi } from './theme.js';          // K25: «Тема» (Колія / Чумацький шлях) у «🎨 Вигляд»
 import { createTouch, isTouchDevice } from './touch.js';   // K27: телефон і планшет
 import { createReplay } from './replay.js';   // K35: повтор партії
+import { createReport } from './report.js';   // звіт партії на сервер (data/diag/koliya-*.jsonl; ?report=0 — ні)
 import { createMusic } from './music.js';            // K29: музика й тло (вимкнено типово)
 
 const q = new URLSearchParams(location.search);
@@ -110,6 +111,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
   bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: true, zeal: botZeal() }) : null, onWorld: (s) => { if (!replay.active) view?.setWorld?.(s); }, onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
+const report = game.report = createReport(game, { net, prefs });
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
 // K23: «📅 Маршрут дня» — сід від дати (Київ), типові params (панель — для звичайної гри); «ще раз» лишає маршрут дня
@@ -193,6 +195,7 @@ function frame(now) {
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
   if (!game.state) return nextFrame();   // K3: мережа ще бере журнал
+  report.frame(now, game.state);
   if (net) net.draw(view); else view?.draw(game.state, acc / R.TICK_MS);   // K6: мережа малює гравців згладжено
   if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();

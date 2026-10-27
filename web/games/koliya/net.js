@@ -2,7 +2,8 @@
 // Контракт: createNet(game, { table, nick, input, bot | makeBot(p), onWorld(s), onStep(s) }) → net
 //   net.start() — підключитись до столу (table: id столу, 'new' — новий, 'auto' — перший відкритий «Колії» чи новий);
 //   net.update(now) — щокадру замість локального циклу тиків (крутить game.state); net.alpha — частка тику для draw;
-//   net.restart(seed, params?) — нова партія всім за столом; net.info() — стан для перевірок (KOL.net).
+//   net.restart(seed, params?) — нова партія всім за столом; net.info() — стан для перевірок (KOL.net);
+//   net.standStill() — «стій» своїм гравцям одразу (start() сам кличе її, коли вкладку сховано чи вікно без фокуса).
 //
 // СХЕМА: сервер (src/Hlechyky/Games/Impl/Koliya.cs) — лише «секретар»: правил не знає, ставить кожній команді номер
 // тику партії й розсилає всім однаковий журнал. Світ рахує кожен браузер сам тими самими rules.js — однаковий журнал +
@@ -456,8 +457,9 @@ export function createNet(game, opts = {}) {
     p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1, wait: false,
     get room() { return room; },
     get ready() { return ready; },
+    get epoch() { return e; },
     get C() { return C; },
-    start, update, restart, draw, go,
+    start, update, restart, draw, go, standStill,
     info() {
       return { room, seat, p: net.p, p2: net.p2, e, count, w, cTick: C?.tick, pTick: game.state?.tick, pending: pending.length,
         status: net.status, desync: net.desync, cStatus: C?.status, hash: C ? R.hash(C) : 0, stats: { ...stats },
@@ -636,6 +638,12 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
     }));
     conn.onreconnecting(() => { ready = false; say('перепідключаюсь…'); });
     conn.onreconnected(() => enter().catch((x) => { console.warn('Колія: не зайшов знову', x); say('не зайшов: ' + x.message); }));
+    if (typeof document !== 'undefined') {   // перемкнув вкладку, згорнув вікно, клацнув повз гру — стій (standStill)
+      document.addEventListener('visibilitychange', () => { if (document.hidden) standStill(); });
+      document.addEventListener('freeze', standStill);
+      addEventListener('blur', standStill);
+      addEventListener('pagehide', standStill);
+    }
     say('підключаюсь…');
     try {
       mountPeople();   // K28
@@ -761,6 +769,8 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
     game.me = net.p;
     if (j.nm) game.names = namesFrom(j.nm);   // K28: мітки над гравцями — ніки
     game.seed = j.seed >>> 0;
+    // режим столу (навчання обрав хтось інший чи повернув на звичайну) — щоб «ще раз» звідси не перемикав його назад
+    if (game.params) game.params = { ...game.params, mode: C.params?.mode === 'tutorial' ? 'tutorial' : 'normal' };
     net.wait = !!j.wait;   // K62
     if (off == null || net.wait) off = j.t * R.TICK_MS - performance.now();
     if (!ingest(j.f | 0, j.c || [], !!snap)) { console.warn('Колія: журнал з дірою'); return; }
@@ -895,7 +905,20 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
     return a;
   }
 
-  /** Своє керування на тик t: шлемо зміни руху (не частіше GAP_IN) і натиски/повтори дії. */
+  /** Вкладку сховано чи вікно без фокуса: «стій» — одразу, а не з наступного кадру. У схованій вкладці кадрів нема
+   *  (rAF мовчить), localInput не кличуть, а 'in' у rules тримається до нового — тож гравець біг би далі в усіх, доки
+   *  не повернеться (27.10: біг, поки не вперся). Повернувся — керування знову з localInput. */
+  function standStill() {
+    const s = game.state;
+    if (!ready || !conn || net.wait || bot || !s || s.status !== 'run') return;
+    for (let q = 0; q < 2; q++) {
+      const p = q ? net.p2 : net.p, li = lastIn[q];
+      if (p < 0 || !li || (!li.mx && !li.my)) continue;
+      lastIn[q] = { mx: 0, my: 0, t: s.tick };
+      send('in', { mx: 0, my: 0, ...(q ? { q: 1 } : {}) }, s.tick, { p, k: 'in', mx: 0, my: 0 });
+    }
+  }
+
   /** Своє керування на тик t: шлемо зміни руху (не частіше GAP_IN) і натиски/повтори дії. Двоє за ПК — обидва. */
   function localInput(t) {
     const s = game.state;
