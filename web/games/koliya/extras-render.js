@@ -5,7 +5,10 @@
 //        main.js — у frame() після view.draw: `if (q.get('view') === '2d') drawExtras2d(canvas, game.state);`
 import { U, G, I, wagonPos } from './rules.js';
 import { UPGRADES } from './extras.js';
+import { theme, upName } from './theme.js';   // K72: табличка словами теми — як у довідці й тостах
 
+// K72: тема в ключі — перемкнули тему на ходу, таблички перемалюються новими словами
+const signKey = (s) => s.seed + ':' + s.w + ':' + s.mid.x0 + ':' + s.mid.y0 + ':' + theme();
 const ITEM_COL = { [I.AXE]: 0xd33333, [I.PICK]: 0x3388cc, [I.BUCKET]: 0x99bbdd, [I.BUCKET_FULL]: 0x1166ee };
 
 export function createExtrasRender(scene, THREE) {
@@ -82,23 +85,23 @@ export function createExtrasRender(scene, THREE) {
       const back = cube(b, 0, 0.85, 0, 0.84, 0.54, 0.04, M.board); back.rotation.x = -0.5;
       return { k: sg.k, b, back };
     });
-    sign = { key: s.seed + ':' + s.w + ':' + m.x0 + ':' + m.y0, g, boards };
+    sign = { key: signKey(s), g, boards };
   }
   function labelTex(k) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 160;
     const x = c.getContext('2d');
     x.fillStyle = '#e9d8a6'; x.fillRect(0, 0, 256, 160);
     x.strokeStyle = '#6b4520'; x.lineWidth = 8; x.strokeRect(4, 4, 248, 152);
-    x.font = '72px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(UPGRADES[k].icon, 128, 62);
+    x.font = '72px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; const u = upName(k, UPGRADES[k]); x.fillText(u.icon, 128, 62);
     x.font = 'bold 32px sans-serif'; x.fillStyle = '#3a2410';
-    x.fillText(UPGRADES[k].short, 128, 128, 236);
+    x.fillText(u.short, 128, 128, 236);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace || t.colorSpace; return t;
   }
 
   return {
     update(s, alpha = 0, opts = {}) {
       // таблички
-      const key = s.mid ? s.seed + ':' + s.w + ':' + s.mid.x0 + ':' + s.mid.y0 : null;   // K20: + рамка (K19 зсуває табличку)
+      const key = s.mid ? signKey(s) : null;   // K20: + рамка (K19 зсуває табличку); K72: + тема
       if ((sign && sign.key) !== key) makeSigns(s);
       if (sign && s.mid) for (const b of sign.boards) {
         const picked = s.mid.pick === b.k, gone = s.mid.pick && !picked;
@@ -156,7 +159,7 @@ export function drawExtras2d(canvas, s) {
       if (m.pick && m.pick !== sg.k) continue;
       g.fillStyle = m.pick === sg.k ? '#6fd36f' : '#e9d8a6';
       g.fillRect(sg.x * c + 1, sg.y * c + 1, c - 2, c - 2);
-      g.fillText(UPGRADES[sg.k].icon, sg.x * c + c / 2, sg.y * c + c / 2);
+      g.fillText(upName(sg.k, UPGRADES[sg.k]).icon, sg.x * c + c / 2, sg.y * c + c / 2);
     }
   }
   for (const gs of s.geese || []) {
