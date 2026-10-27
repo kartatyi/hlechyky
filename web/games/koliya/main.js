@@ -25,12 +25,14 @@ function loadParams() {
   const p = R.defaultParams();
   let o = null;
   try { o = JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}'); } catch { }
-  if (!o || typeof o !== 'object') return p;
-  for (const k in R.PARAM_META) {
-    const m = R.PARAM_META[k], v = o[k];
-    if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
+  if (o && typeof o === 'object') {
+    for (const k in R.PARAM_META) {
+      const m = R.PARAM_META[k], v = o[k];
+      if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
+    }
+    for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
   }
-  for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
+  p.mode = q.get('tut') && q.get('tut') !== '0' ? 'tutorial' : 'normal';   // K22: навчання — лише ?tut=1 чи game.startTutorial(), не з пам'яті
   return p;
 }
 
@@ -72,7 +74,14 @@ try {   // K21: лише відомі значення (старе 'medium' чи
 } catch { }
 input.setRumble(prefs.rumble);
 input.setTouch(game.touch = createTouch({ canvas }));   // K27
-const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+const nextRestart = () => {
+  if (game.state?.status === 'won' && game.params.mode === 'tutorial') return game.stopTutorial();   // K22: навчання пройдено — далі справжня смуга
+  restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+};
+// K22: навчальна смуга (tutorial.js) — кнопка «🎓 Навчання» на стартовому екрані HUD кличе game.startTutorial()
+const setMode = (mode) => { game.params = { ...game.params, mode }; panel?.set?.({ mode }); restart(); };
+game.startTutorial = () => setMode('tutorial');
+game.stopTutorial = () => setMode('normal');
 const panel = createPanel(document.getElementById('kol-panel'), {
   meta: R.PARAM_META, variants: R.VARIANTS, values: game.params,
   onChange(values) { game.params = { ...values }; try { localStorage.setItem(PARAMS_KEY, JSON.stringify(values)); } catch { } },

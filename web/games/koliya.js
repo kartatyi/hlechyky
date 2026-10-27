@@ -10,6 +10,7 @@
   HGames.register({
     id: 'koliya',
     icon: ICON,
+    leaveFree: true,   // вихід посеред партії — не поразка (Koliya.OnLeave: решта грає далі); core.js askLeave
     mount(root, ctx) { this.update(root, ctx); },
     update(root, ctx) {
       const id = ctx.room && ctx.room.id;
