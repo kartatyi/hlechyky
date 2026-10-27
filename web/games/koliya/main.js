@@ -51,7 +51,7 @@ const input = game.input = createInput();   // K16: game.input.hasPad(p) — п�
 const audio = createAudio();
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
-const prefs = { quality: 'high', rumble: true };
+const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — «Підказки: так/ні»
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch { }
 input.setRumble(prefs.rumble);
 const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
@@ -65,6 +65,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
     prefs[k] = v; try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { }
     if (k === 'quality') view?.setQuality?.(v);
     if (k === 'rumble') { input.setRumble(v); if (v) input.rumble(0, 'hit'); }
+    if (k === 'tips') game.tips?.setEnabled(v);   // K16
   },
   // K12: поки панель відкрита — гравці стоять, пад водить по панелі (Start — рестарт і закрити)
   onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
@@ -133,7 +134,7 @@ function frame(now) {
   view?.draw(game.state, net ? net.alpha : acc / R.TICK_MS);
   if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();
-  (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
+  (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' && prefs.tips !== false })).update(game.state, game, view);   // K10
   nextFrame();
 }
 
