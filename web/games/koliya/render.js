@@ -145,15 +145,18 @@ function disposeMerged(g) { g.traverse((o) => { if (o.userData.merged) o.geometr
 
 // ---------- пул кубиків на одному InstancedMesh (вільні слоти, ріст удвічі) ----------
 class Pool {
-  constructor(parent, mat, cap, { cast = true, receive = true, geo = BOX } = {}) {
-    this.parent = parent; this.mat = mat; this.cast = cast; this.receive = receive; this.geo = geo;
+  constructor(parent, mat, cap, { cast = true, receive = true, geo = BOX, sphere = null, order = 0 } = {}) {
+    this.parent = parent; this.mat = mat; this.cast = cast; this.receive = receive; this.geo = geo; this.sphere = sphere; this.order = order;
     this.free = []; this.n = 0; this.mesh = null; this.make(cap);
   }
   make(cap) {
     const m = new THREE.InstancedMesh(this.geo, this.mat, cap);
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     m.setColorAt(0, _c.setHex(0xffffff));
-    m.castShadow = this.cast; m.receiveShadow = this.receive; m.frustumCulled = false;
+    m.castShadow = this.cast; m.receiveShadow = this.receive; m.renderOrder = this.order;
+    // чанк смуги: стала сфера-межа → відтинається поза кадром і поза тінь-камерою
+    if (this.sphere) { m.boundingSphere = this.sphere; m.frustumCulled = true; } else m.frustumCulled = false;
+    if (this.mesh) m.visible = this.mesh.visible;
     if (this.mesh) {
       m.instanceMatrix.array.set(this.mesh.instanceMatrix.array);
       m.instanceColor.array.set(this.mesh.instanceColor.array);
@@ -180,6 +183,37 @@ class Pool {
     this.mesh.instanceMatrix.needsUpdate = true; this.mesh.instanceColor.needsUpdate = true; this.dirty = false;
   }
   dispose() { this.parent.remove(this.mesh); this.mesh.dispose(); }
+}
+
+// ---------- пул, порізаний на чанки по CH стовпців (кожен — свій InstancedMesh зі сталою сферою-межею) ----------
+// Той самий API, що й Pool; посилання = (чанк << 20) | слот. Чанк вибирається за x першого put/add.
+const CH = 24, CH_X0 = -24;
+class ChunkPool {
+  constructor(parent, mat, h, capPer, opts = {}) {
+    this.parent = parent; this.mat = mat; this.h = h; this.capPer = capPer; this.opts = opts;
+    this.pools = []; this.visible = true;
+  }
+  chunk(x) {
+    const c = Math.max(0, Math.floor((x - CH_X0) / CH));
+    let p = this.pools[c];
+    if (!p) {
+      const x0 = CH_X0 + c * CH, cx = x0 + CH / 2, cz = this.h / 2;
+      const sphere = new THREE.Sphere(new THREE.Vector3(cx, 0, cz), Math.hypot(CH / 2 + 1.5, this.h / 2 + 1.5, 4));
+      p = this.pools[c] = new Pool(this.parent, this.mat, this.capPer, { ...this.opts, sphere });
+      p.mesh.visible = this.visible;
+    }
+    return c;
+  }
+  alloc(x) { const c = this.chunk(x); return (c << 20) | this.pools[c].alloc(); }
+  release(r) { this.pools[r >>> 20].release(r & 0xFFFFF); }
+  put(r, ...a) { this.pools[r >>> 20].put(r & 0xFFFFF, ...a); return r; }
+  add(list, x, ...a) { const r = this.alloc(x); this.put(r, x, ...a); list.push(r); return r; }
+  getMatrixAt(r, m) { this.pools[r >>> 20].mesh.getMatrixAt(r & 0xFFFFF, m); }
+  setMatrixAt(r, m) { const p = this.pools[r >>> 20]; p.mesh.setMatrixAt(r & 0xFFFFF, m); p.dirty = true; }
+  setVisible(v) { this.visible = v; for (const p of this.pools) if (p) p.mesh.visible = v; }
+  flush() { for (const p of this.pools) if (p) p.flush(); }
+  dispose() { for (const p of this.pools) if (p) p.dispose(); this.pools = []; }
+  get count() { let n = 0; for (const p of this.pools) if (p) n += p.n - p.free.length; return n; }
 }
 
 // ---------- матеріали й прості моделі (звичайні Mesh для потяга, гравців, речей) ----------
@@ -356,7 +390,7 @@ export function createRenderer(canvas) {
 
   // ---- вигляд (K5): палітра, світло, туман, небо, камера; якість ----
   const prefs = loadPrefs();
-  let look = LOOKS[prefs.look], lowQ = prefs.quality === 'low';
+  let look = LOOKS[prefs.look], lowQ = false;   // якість ставить main.js (K12: view.setQuality)
   const skyCanvas = document.createElement('canvas'); skyCanvas.width = 4; skyCanvas.height = 256;
   const skyTex = new THREE.CanvasTexture(skyCanvas); skyTex.colorSpace = THREE.SRGBColorSpace;
   // віньєтка — CSS-шар над полотном (не перехоплює мишу; HUD і панель — вище в DOM)
@@ -377,8 +411,7 @@ export function createRenderer(canvas) {
     hemi.color.setHex(look.hemi.sky); hemi.groundColor.setHex(look.hemi.ground); hemi.intensity = look.hemi.i;
     sun.color.setHex(look.sun.color); sun.intensity = look.sun.i; SUN_DIR.set(...look.sun.dir).normalize();
     sun.shadow.radius = lowQ ? 1 : look.sun.radius;
-    sun.castShadow = look.shadow === 'sun';
-    for (const b of blobs) b.visible = look.shadow === 'blob';
+    applyShadowMode();
     waterMat.color.setHex(look.water.color); waterMat.specular.setHex(look.water.spec); waterMat.opacity = look.water.opacity;
     FX.uEdge.value = look.edge; FX.uAO.value = look.ao; FXG.uEdge.value = look.edgeG;
     camera.fov = look.cam.fov; camera.updateProjectionMatrix();
@@ -387,13 +420,23 @@ export function createRenderer(canvas) {
     if (rebuild && W) setWorld(W.s);
   }
   function setQuality(q) {
-    lowQ = q === 'low'; prefs.quality = lowQ ? 'low' : 'high';
-    renderer.setPixelRatio(lowQ ? 1 : Math.min(2, window.devicePixelRatio || 1));
+    if ((q === 'low') === lowQ && W) return;
+    lowQ = q === 'low';
+    renderer.setPixelRatio(lowQ ? Math.min(1, window.devicePixelRatio || 1) * 0.75 : Math.min(2, window.devicePixelRatio || 1));
+    applyShadowMode();
     const ms = lowQ ? 1024 : 2048;
     if (sun.shadow.mapSize.x !== ms) { sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     sun.shadow.radius = lowQ ? 1 : look.sun.radius;
     if (W) { W.cw = 0; setWorld(W.s); }          // менше декору — перебудова (гра йде далі)
     shadowHalf = 0;
+  }
+  // тіні: справжні від сонця (вигляд 'sun' і висока якість) або круглі плями ('blob' чи низька якість)
+  let blobOn = false;
+  function applyShadowMode() {
+    blobOn = look.shadow === 'blob' || lowQ;
+    sun.castShadow = look.shadow === 'sun' && !lowQ;
+    for (const b of blobs) b.visible = blobOn;
+    if (W) W.pBlob.setVisible(blobOn);
   }
   function camAngle() { return prefs.angle === 'look' ? look.cam.el : +prefs.angle; }
   function camDist() { return look.cam.dist * (CAM_DIST[prefs.dist]?.k || 1); }
@@ -474,7 +517,7 @@ export function createRenderer(canvas) {
     for (const p of [W.pGround, W.pBox, W.pBlob]) p.dispose();
     for (const g of W.drops) if (g) W.root.remove(g);
     W.root.traverse((o) => { if (o.userData.merged) o.geometry.dispose(); });
-    W.water.geometry.dispose();
+    for (const wm of W.waters) wm.geometry.dispose();
     scene.remove(W.root);
     blobs.clear(); wobbles.clear();
     W = null;
@@ -484,26 +527,28 @@ export function createRenderer(canvas) {
     disposeWorld();
     const { w, h } = s, n = w * h;
     const root = new THREE.Group(); scene.add(root);
-    const pGround = new Pool(root, groundMat, n, { cast: false, receive: true });
-    const pBox = new Pool(root, boxMat, Math.max(2048, n * 3));
-    const pBlob = new Pool(root, blobMat, 512, { cast: false, receive: false, geo: BLOB_GEO });
-    pBlob.mesh.renderOrder = 1;
-    W = { root, s, w, h, n, pGround, pBox, pBlob,
+    const pGround = new ChunkPool(root, groundMat, h, CH * h, { cast: false, receive: true });
+    const pBox = new ChunkPool(root, boxMat, h, CH * h * 3);
+    const pBlob = new ChunkPool(root, blobMat, h, 64, { cast: false, receive: false, geo: BLOB_GEO, order: 1 });
+    W = { root, s, w, h, n, pGround, pBox, pBlob, gRef: new Int32Array(n), waters: [],
       obj: new Uint8Array(n), hp: new Uint8Array(n), ground: new Uint8Array(n), drop: new Uint8Array(n), dropN: new Uint8Array(n),
       onPath: new Uint8Array(n), objRefs: new Array(n), decoRefs: new Array(n), railRefs: new Array(n), blobRefs: new Array(n), objGen: new Uint32Array(n),
       railSig: new Array(n).fill(''), drops: new Array(n),
       pathLen: -1, pathLast: -1, treeMax: Math.max(1, s.params?.treeHits | 0), rockMax: Math.max(1, s.params?.rockHits | 0) };
     for (let i = 0; i < n; i++) { W.objRefs[i] = []; W.decoRefs[i] = []; W.railRefs[i] = []; W.blobRefs[i] = []; }
-    pGround.n = n; pGround.mesh.count = n;
+    for (let i = 0; i < n; i++) W.gRef[i] = pGround.alloc(i % w);   // підлога: слот на клітинку, у чанку свого стовпця
 
     // земляна плита під смугою (діорама) і берег за кінцем
     cube(root, w / 2, -3.2, h / 2, w + 0.02, 2.7, h + 0.02, C.dirt).castShadow = false;
     cube(root, w / 2, -0.52, h / 2, w, 0.02, h, C.bed).castShadow = false;
     const strata = cube(root, w / 2, -1.6, h / 2, w + 0.06, 0.12, h + 0.06, C.dirtDark); strata.castShadow = false;
-    // вода — одна площина з хвилями; трава її перекриває, видно лише в западинах
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(w, h, w * 2, h * 2), waterMat);
-    water.rotation.x = -Math.PI / 2; water.position.set(w / 2, -0.16, h / 2); water.receiveShadow = true;
-    root.add(water); W.water = water;
+    // вода — площини з хвилями по чанках (відтинаються поза кадром); трава їх перекриває, видно лише в западинах
+    for (let x0 = 0; x0 < w; x0 += CH) {
+      const ww = Math.min(CH, w - x0);
+      const water = new THREE.Mesh(new THREE.PlaneGeometry(ww, h, ww * 2, h * 2), waterMat);
+      water.rotation.x = -Math.PI / 2; water.position.set(x0 + ww / 2, -0.16, h / 2); water.receiveShadow = true;
+      root.add(water); W.waters.push(water);
+    }
     buildStation(root, s);
     buildOutskirts(-16, 0, s); buildOutskirts(w, w + 22, s);
     for (let i = 0; i < n; i++) syncCell(i, true);
@@ -517,9 +562,7 @@ export function createRenderer(canvas) {
     W.players = [];
     W.marks = [];          // підсвітка клітинки перед гравцем і рамка прицілу (p.aim, K14)
     syncPlayers(s);
-    const blobOn = look.shadow === 'blob';
-    for (const b of blobs) b.visible = blobOn;
-    pBlob.mesh.visible = blobOn;
+    applyShadowMode();
     W.snap = null; snapshot(s); W.prev = W.cur;
     cam.init = false;
   }
@@ -619,7 +662,7 @@ export function createRenderer(canvas) {
     const cx = x + 0.5, cz = y + 0.5, v = hh(x, y, 1);
     if (gChanged) {
       const top = topOf(gk, x, y);
-      if (gk === G.WATER || gk === G.BRIDGE) W.pGround.put(i, cx, -0.5, cz, 1, 0.05, 1, tint(C.bed, (v - 0.5) * 0.15));
+      if (gk === G.WATER || gk === G.BRIDGE) W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.05, 1, tint(C.bed, (v - 0.5) * 0.15));
       else {
         let col;
         if (gk === G.SAND) col = tint((x + y) & 1 ? C.sand : C.sandB, (v - 0.5) * 0.06);
@@ -630,7 +673,7 @@ export function createRenderer(canvas) {
           const dark = hh(x >> 2, y >> 2, 9) * 0.5 + hh(x >> 1, y >> 1, 10) * 0.5;
           col = tint((x + y) & 1 ? C.grassA : C.grassB, (v - 0.5) * 0.07 - (dark > 0.7 ? 0.08 : 0));
         }
-        W.pGround.put(i, cx, -0.5, cz, 1, 0.5 + top, 1, col);
+        W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.5 + top, 1, col);
       }
     }
     if (oChanged) buildObj(i, x, y);
@@ -832,7 +875,7 @@ export function createRenderer(canvas) {
   function syncPlayers(s) {
     while (W.players.length < s.players.length) { const p = makePlayer(W.players.length); W.root.add(p.root); W.players.push(p); }
     while (W.players.length > s.players.length) { const p = W.players.pop(); W.root.remove(p.root); }
-    for (const b of blobs) b.visible = look.shadow === 'blob';
+    for (const b of blobs) b.visible = blobOn;
     while (W.marks.length < W.players.length) W.marks.push(makeMarks(PLAYER[W.marks.length % PLAYER.length].shirt));
     while (W.marks.length > W.players.length) { const mk = W.marks.pop(); W.root.remove(mk.face, mk.aim); }
   }
@@ -885,12 +928,12 @@ export function createRenderer(canvas) {
   }
   function updateWobbles(dt) {
     if (!wobbles.size) return;
-    const P = W.pBox, mesh = P.mesh;
+    const P = W.pBox;
     for (const [i, wb] of wobbles) {
       const refs = W.objRefs[i];
       if (wb.gen !== W.objGen[i]) {        // предмет щойно перебудовано (менший після удару) — нова основа
         wb.gen = W.objGen[i]; wb.refs = refs.slice(); wb.base = new Float32Array(refs.length * 16);
-        refs.forEach((r, k) => { mesh.getMatrixAt(r, _wm); _wm.toArray(wb.base, k * 16); });
+        refs.forEach((r, k) => { P.getMatrixAt(r, _wm); _wm.toArray(wb.base, k * 16); });
       }
       wb.t += dt;
       const done = wb.t >= wb.dur || !refs.length;
@@ -898,8 +941,7 @@ export function createRenderer(canvas) {
       const x = i % W.w + 0.5, z = ((i / W.w) | 0) + 0.5, y = topOf(W.s.ground[i], i % W.w, (i / W.w) | 0);
       _wt.makeRotationAxis(_wa.set(wb.ax, 0, wb.az).normalize(), ang);
       _wt.premultiply(_wm.makeTranslation(x, y, z)).multiply(_wm.makeTranslation(-x, -y, -z));
-      wb.refs.forEach((r, k) => { _wm.fromArray(wb.base, k * 16).premultiply(_wt); mesh.setMatrixAt(r, _wm); });
-      P.dirty = true;
+      wb.refs.forEach((r, k) => { _wm.fromArray(wb.base, k * 16).premultiply(_wt); P.setMatrixAt(r, _wm); });
       if (done) wobbles.delete(i);
     }
   }
@@ -1195,12 +1237,12 @@ export function createRenderer(canvas) {
 
   // вигляд і якість — з localStorage (looks.js), перемикаються без рестарту гри
   applyLook(prefs.look, false);
-  if (lowQ) setQuality('low');
   const api = { setWorld, draw, events, dispose, project, get frames() { return frames; }, renderer, scene, camera,
     prefs,
     setLook(name) { applyLook(name); savePrefs(prefs); },
     setCam({ dist, angle } = {}) { if (dist) prefs.dist = dist; if (angle) prefs.angle = String(angle); savePrefs(prefs); },
-    setQuality(q) { setQuality(q); savePrefs(prefs); },
+    setQuality,
+    get quality() { return lowQ ? 'low' : 'high'; },
     get look() { return prefs.look; } };
   if (globalThis.KOL) globalThis.KOL.view = api;      // для перевірок у консолі
   return api;

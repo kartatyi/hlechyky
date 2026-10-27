@@ -31,6 +31,9 @@ export function createDebug2d(canvas) {
         g.fillStyle = n === 0 ? (s.train.fire ? '#f60' : '#222') : n === 1 ? '#6b4' : '#a64';
         g.fillRect(w.x / U * c - c * 0.4, w.y / U * c - c * 0.4, c * 0.8, c * 0.8);
       });
+      s.players.forEach((p, n) => {   // приціл (K14, aim='smart') — рамка кольором гравця
+        if (p.aim) { g.strokeStyle = PC[n]; g.lineWidth = 2; g.strokeRect(p.aim.x * c + 1, p.aim.y * c + 1, c - 2, c - 2); g.lineWidth = 1; }
+      });
       s.players.forEach((p, n) => {
         g.fillStyle = PC[n]; g.beginPath(); g.arc(p.x / U * c, p.y / U * c, c * 0.3, 0, 7); g.fill();
         g.strokeStyle = '#000'; g.beginPath(); g.moveTo(p.x / U * c, p.y / U * c); g.lineTo((p.x / U + p.fx * 0.5) * c, (p.y / U + p.fy * 0.5) * c); g.stroke();

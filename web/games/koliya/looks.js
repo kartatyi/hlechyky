@@ -4,8 +4,8 @@
 //   (справжні тіні) або 'blob' (круглі плями під речами, без тіней сонця); edge/edgeG/ao — затемнення країв кубиків
 //   (предмети/підлога) і низу стін; cam — кут (°), поле зору (°), множник відстані; vignette — темні кути (0..1);
 //   leaves — листопад частинками.
-//  loadPrefs()/savePrefs(p) — { look, dist, angle, quality } у localStorage (kol-look, kol-cam, kol-quality).
-//  mountLookUi(panelRoot, view) — секція «🎨 Вигляд» у панелі K4 (view.setLook / setCam / setQuality — без рестарту).
+//  loadPrefs()/savePrefs(p) — { look, dist, angle } у localStorage (kol-look, kol-cam). Якість — у розділі K12 «Пристрій».
+//  mountLookUi(panelRoot, view) — секція «🎨 Вигляд» у панелі K4 (view.setLook / setCam — без рестарту).
 
 export const LOOKS = {
   summer: {
@@ -74,13 +74,11 @@ export function loadPrefs() {
     look: LOOKS[look] ? look : 'summer',
     dist: CAM_DIST[cam.dist] ? cam.dist : 'mid',
     angle: cam.angle in CAM_ANGLE ? String(cam.angle) : 'look',
-    quality: get('kol-quality', 'high') === 'low' ? 'low' : 'high',
   };
 }
 export function savePrefs(p) {
   set('kol-look', p.look);
   set('kol-cam', JSON.stringify({ dist: p.dist, angle: p.angle }));
-  set('kol-quality', p.quality);
 }
 
 // секція в панелі K4 (класи її CSS); якщо панелі нема — нічого не робить
@@ -104,7 +102,6 @@ export function mountLookUi(panelRoot, view) {
   seg('Вигляд', Object.fromEntries(LOOK_KEYS.map((k) => [k, LOOKS[k].label])), 'look', (v) => view.setLook(v));
   seg('Камера', Object.fromEntries(Object.entries(CAM_DIST).map(([k, v]) => [k, v.label])), 'dist', () => view.setCam({ dist: prefs.dist, angle: prefs.angle }));
   seg('Кут камери', CAM_ANGLE, 'angle', () => view.setCam({ dist: prefs.dist, angle: prefs.angle }));
-  seg('Якість', { high: 'Висока', low: 'Низька' }, 'quality', (v) => view.setQuality?.(v));
   const note = pan.querySelector('.kol-note');
   if (note && note.parentNode === pan) note.after(d); else pan.append(d);
   return { dispose() { d.remove(); } };

@@ -26,6 +26,8 @@ export const PARAM_META = {
   speedStart:  { def: 0.15, min: 0.05, max: 1.5, step: 0.01, label: 'Швидкість паротяга, клітинок/с', group: 'Паротяг' },
   speedGrowth: { def: 0.04, min: 0,    max: 0.5, step: 0.01, label: 'Приріст швидкості, клітинок/с за хвилину', group: 'Паротяг' },
   speedMax:    { def: 0.80, min: 0.1,  max: 3,   step: 0.05, label: 'Стеля швидкості', group: 'Паротяг' },
+  stepN:       { def: 10,   min: 2,    max: 40,  step: 1,    label: 'Розгін не від часу: кожні N рейок (сходинки) / клітинок шляху', group: 'Паротяг' },   // K14
+  stepGain:    { def: 0.02, min: 0,    max: 0.2, step: 0.005, label: 'Розгін не від часу: + клітинок/с за N', group: 'Паротяг' },                     // K14
   startSec:    { def: 30,   min: 0,    max: 90,  step: 1,    label: 'Пауза перед рушанням, с', group: 'Паротяг' },
   heatSec:     { def: 50,   min: 10,   max: 240, step: 5,    label: 'Від холодного до перегріву, с', group: 'Котел' },
   fireSec:     { def: 12,   min: 3,    max: 60,  step: 1,    label: 'Пожежа: скільки до поразки, с', group: 'Котел' },
@@ -52,8 +54,13 @@ export const PARAM_META = {
 // Перемикачі варіантів (рядкові значення; перше — типове)
 export const VARIANTS = {
   overheat: { values: ['fire', 'stop'], labels: ['Пожежа', 'Зупинка'], label: 'Перегрів котла' },
-  geese:       { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Гуси-злодюжки 🪿' },                      // K11
+  geese:      { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Гуси-злодюжки 🪿' },                      // K11
   stationMode: { values: ['end', 'upgrade'], labels: ['Кінець', 'Проміжна з покращеннями'], label: 'Станція 🏪' }, // K11
+  // K14 «Відчуття ядра»: move/useMode/aim — блоки «K14» біля руху гравця, speedCurve — trainSpeed()
+  move: { values: ['free', 'grid', 'snappy'], labels: ['Вільно', 'Клітинками', 'Чітко'], label: 'Рух гравця' },
+  useMode: { values: ['press', 'tap', 'auto'], labels: ['Затиснув — б\'є', 'Кожен удар — натиск', 'Б\'є сам'], label: 'Дія (рубати/бити)' },
+  speedCurve: { values: ['linear', 'steps', 'distance'], labels: ['Від часу', 'Сходинками за рейки', 'Від шляху'], label: 'Як розганяється паротяг' },
+  aim: { values: ['front', 'smart'], labels: ['Перед собою', 'Розумний (поруч, з підсвіткою)'], label: 'Куди діє кнопка' },
 };
 
 export function defaultParams() {
@@ -127,7 +134,9 @@ export function newGame(seed, params = defaultParams(), nPlayers = 1) {
 
 function newPlayer(c) {
   return { x: c.x * U + U / 2, y: c.y * U + U / 2, fx: 1, fy: 0, hold: { k: I.NONE, n: 0 }, cd: 0,
-           mx: 0, my: 0, ut: 0, out: 0, st: 0 };
+           mx: 0, my: 0, ut: 0, out: 0, st: 0,
+           gx: -1, gy: -1, gt: 0,     // K14: ціль кроку й лічильник повороту (лише move='grid')
+           aim: null };               // K14: aim='smart' — клітинка, де спрацює use ({x,y}), null — нема що робити (для підсвітки)
 }
 
 /**
@@ -145,7 +154,7 @@ export function step(s, cmds = []) {
   s.ev.length = 0;
   if (s.status !== 'run') return s;
   for (const c of cmds) applyCmd(s, c);
-  for (let i = 0; i < s.players.length; i++) movePlayer(s, i);
+  for (let i = 0; i < s.players.length; i++) { movePlayer(s, i); feelTick(s, i); }   // K14: feelTick — автоудар, приціл
   stepCraft(s);
   if (!extrasStep(s, cmds)) stepTrain(s);   // K11: true — паротяг стоїть на проміжній станції
   s.tick++;
@@ -236,6 +245,8 @@ function movePlayer(s, n) {
   const pl = s.players[n];
   if (pl.out) return;
   if (pl.cd > 0) pl.cd--;
+  if (s.params.move === 'grid') { moveGrid(s, n, pl); return; }       // K14
+  if (s.params.move === 'snappy') { moveSnappy(s, n, pl); return; }   // K14
   let mx = pl.mx, my = pl.my;
   if (!mx && !my) return;
   // куди дивиться — переважна вісь (на рівних лишаємо поточну, якщо вона серед натиснутих)
@@ -270,6 +281,157 @@ function nudge(s, pl, axis, v, wag, ign) {
   if (!diff) return;
   const m = Math.sign(diff) * Math.min(Math.abs(diff), v >> 1);
   if (axis === 'y') slide(s, pl, 0, m, wag, ign); else slide(s, pl, m, 0, wag, ign);
+}
+
+// ================= K14 «Відчуття ядра»: варіанти руху (move) =================
+const GRID_TURN = 3;   // move='grid': з місця в новий бік — поворот; рушаємо, якщо тримати ще ~0,1 с
+
+/** Намір (mx,my) → крок по одній осі [dx,dy]; на рівних — поточна вісь, якщо вона серед натиснутих */
+function axisDir(pl, mx, my) {
+  const ax = Math.abs(mx), ay = Math.abs(my);
+  if (ax > ay || (ax === ay && !(pl.fy && Math.sign(my) === pl.fy))) return [Math.sign(mx), 0];
+  return [0, Math.sign(my)];
+}
+/** Вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти */
+function wagIgnore(s, pl, wag) {
+  let ign = 0;
+  for (let k = 0; k < wag.length; k++) if (hitsAt(s, pl.x, pl.y, [wag[k]], 0)) ign |= 1 << k;
+  return ign;
+}
+/** Після зсуву: подія кроку й підбір свого стосу (як у movePlayer) */
+function movedFeel(s, n, pl) {
+  if (++pl.st >= 7) { pl.st = 0; ev(s, 'step', Math.floor(pl.x / U), Math.floor(pl.y / U), n); }
+  autoPick(s, n, pl);
+}
+/** Ціль кроку — сусідня клітинка, куди дивимось; false — там стіна/вода/вагон */
+function gridTarget(s, pl, wag, ign) {
+  const nx = Math.floor(pl.x / U) + pl.fx, ny = Math.floor(pl.y / U) + pl.fy;
+  if (cellBlocked(s, nx, ny) || hitsAt(s, nx * U + U / 2, ny * U + U / 2, wag, ign)) return false;
+  pl.gx = nx; pl.gy = ny; return true;
+}
+
+/** move='grid' (як Unrailed): ходиш від центру до центру клітинок; з місця в новий бік — спершу поворот на місці
+ *  (короткий натиск лише повертає — легко націлитись), утримання — крок; у русі повороти без паузи, назад — одразу. */
+function moveGrid(s, n, pl) {
+  const mx = pl.mx, my = pl.my;
+  const len = Math.floor(Math.sqrt(mx * mx + my * my));
+  const want = mx || my ? axisDir(pl, mx, my) : null;
+  const go = want && len >= 12;              // легкий нахил (< мертвої зони) — лише дивитись
+  const wag = wagonsXY(s), ign = wagIgnore(s, pl, wag);
+  const x0 = pl.x, y0 = pl.y;
+  if (pl.gx >= 0 && Math.abs(pl.gx - Math.floor(pl.x / U)) + Math.abs(pl.gy - Math.floor(pl.y / U)) > 1) pl.gx = pl.gy = -1;  // поза (мережа) перенесла
+  if (pl.gx < 0) {   // стоїмо
+    if (!want) { pl.gt = 0; return; }
+    if (want[0] !== pl.fx || want[1] !== pl.fy) { pl.fx = want[0]; pl.fy = want[1]; pl.gt = 1; return; }
+    if (!go) { pl.gt = 0; return; }
+    if (pl.gt > 0 && pl.gt < GRID_TURN) { pl.gt++; return; }
+    if (!gridTarget(s, pl, wag, ign)) return;
+  } else if (go) {   // у русі: назад — розвертаємось одразу
+    const dx = Math.sign(pl.gx * U + U / 2 - pl.x), dy = Math.sign(pl.gy * U + U / 2 - pl.y);
+    if ((dx || dy) && want[0] === -dx && want[1] === -dy) { pl.gx -= dx; pl.gy -= dy; pl.fx = want[0]; pl.fy = want[1]; }
+  }
+  let rest = Math.round(s.params.playerSpeed * U / TPS);
+  for (let seg = 0; seg < 3 && rest > 0 && pl.gx >= 0; seg++) {
+    const tx = pl.gx * U + U / 2, ty = pl.gy * U + U / 2;
+    const ax = pl.x, ay = pl.y;
+    slide(s, pl, clampI(tx - pl.x, -rest, rest), 0, wag, ign);
+    rest -= Math.abs(pl.x - ax);
+    slide(s, pl, 0, clampI(ty - pl.y, -rest, rest), wag, ign);
+    rest -= Math.abs(pl.y - ay);
+    if (pl.x === tx && pl.y === ty) {        // доїхали до центру: тримаєш — без паузи далі
+      pl.gx = pl.gy = -1; pl.gt = 0;
+      if (!go) break;
+      pl.fx = want[0]; pl.fy = want[1];
+      if (!gridTarget(s, pl, wag, ign)) break;
+    } else if (pl.x === ax && pl.y === ay) { // уперлись (вагон наїхав) — назад до центру своєї клітинки
+      const cx = Math.floor(pl.x / U), cy = Math.floor(pl.y / U);
+      if (cx === pl.gx && cy === pl.gy) break;
+      pl.gx = cx; pl.gy = cy;
+    }
+  }
+  if (pl.x !== x0 || pl.y !== y0) movedFeel(s, n, pl);
+}
+
+/** move='snappy': вільно, але 8 чітких напрямків на повній швидкості за будь-якого нахилу; ідеш уздовж осі — тягне до
+ *  середини ряду (прохід у клітинку не муляє); погляд «прилипає» — по діагоналі не перескакує, легкий нахил лише повертає. */
+function moveSnappy(s, n, pl) {
+  const mx = pl.mx, my = pl.my;
+  if (!mx && !my) return;
+  const ax = Math.abs(mx), ay = Math.abs(my), m = Math.max(ax, ay);
+  if (Math.floor(Math.sqrt(mx * mx + my * my)) < 12) { const d = axisDir(pl, mx, my); pl.fx = d[0]; pl.fy = d[1]; return; }
+  const sx = ax * 1000 >= 414 * m ? Math.sign(mx) : 0, sy = ay * 1000 >= 414 * m ? Math.sign(my) : 0;   // сектори по 45°
+  if (!sy) { pl.fx = sx; pl.fy = 0; } else if (!sx) { pl.fx = 0; pl.fy = sy; }
+  else if (!((pl.fx && pl.fx === sx) || (pl.fy && pl.fy === sy))) { const d = axisDir(pl, mx, my); pl.fx = d[0]; pl.fy = d[1]; }
+  const v = Math.round(s.params.playerSpeed * U / TPS), k = sx && sy ? 707 : 1000;
+  const wag = wagonsXY(s), ign = wagIgnore(s, pl, wag);
+  const x0 = pl.x, y0 = pl.y;
+  const rx = slide(s, pl, Math.trunc(sx * v * k / 1000), 0, wag, ign);
+  const ry = slide(s, pl, 0, Math.trunc(sy * v * k / 1000), wag, ign);
+  if (!sy) nudge(s, pl, 'y', rx < 0 ? v : (v * 2 / 3) | 0, wag, ign);   // до середини ряду (уперся — швидше)
+  if (!sx) nudge(s, pl, 'x', ry < 0 ? v : (v * 2 / 3) | 0, wag, ign);
+  if (pl.x !== x0 || pl.y !== y0) movedFeel(s, n, pl);
+}
+
+// ================= K14: дія (useMode) і приціл — щотику після руху гравця =================
+/** useMode: 'press' — затиснув → удари/рейки/мости повторюються з hitMs, взяти/покласти лише на натиск (як було);
+ *  'tap' — кожна дія лише на новий натиск; 'auto' — з сокирою/кайлом перед деревом/скелею б'є сам (як Unrailed),
+ *  кнопка — для решти. */
+function feelTick(s, n) {
+  const pl = s.players[n];
+  if (!pl || pl.out) return;
+  const h = pl.hold.k;
+  if (s.params.useMode === 'auto' && pl.cd === 0 && (h === I.AXE || h === I.PICK)) {
+    const f = aimCell(s, pl);
+    if (inside(s, f.x, f.y) && s.obj[f.y * s.w + f.x] === (h === I.AXE ? O.TREE : O.ROCK)) {
+      const ut = pl.ut; use(s, n, pl); pl.ut = ut;   // автоудар не рахується натиском кнопки
+    }
+  }
+  if (s.params.aim === 'smart') {
+    const f = aimCell(s, pl);
+    const ok = useful(s, pl, f.x, f.y);
+    if (!ok) pl.aim = null;
+    else if (!pl.aim || pl.aim.x !== f.x || pl.aim.y !== f.y) pl.aim = { x: f.x, y: f.y };
+  }
+}
+
+/** Чи дія на клітинці має сенс (для aim='smart'): удар інструментом, вагон, набрати воду, рейка в колію, взяти річ,
+ *  долити свій стос. Просто «покласти на порожнє», міст і розібрати рейку — лише перед собою (щоб не сюрпризило). */
+function useful(s, pl, cx, cy) {
+  if (!inside(s, cx, cy)) return false;
+  const i = cy * s.w + cx, h = pl.hold, P = s.params, t = s.train;
+  if ((h.k === I.AXE && s.obj[i] === O.TREE) || (h.k === I.PICK && s.obj[i] === O.ROCK)) return true;
+  const wk = wagonAt(s, cx, cy);
+  if (wk >= 0) {
+    if (wk === 0) return h.k === I.BUCKET_FULL;
+    if (h.k === I.WOOD || h.k === I.IRON) return t[h.k === I.WOOD ? 'wood' : 'iron'] < (P.storeMax | 0);
+    return wk === 2 && t.rails > 0 && (h.k === I.NONE || (h.k === I.RAIL && h.n < P.carryMax));
+  }
+  if (h.k === I.BUCKET) return s.ground[i] === G.WATER;
+  if (h.k === I.RAIL && canLay(s, cx, cy)) return true;
+  if (s.obj[i] !== O.NONE || s.ground[i] === G.WATER || s.drop[i] === I.NONE) return false;
+  if (h.k === I.NONE) return true;
+  return s.drop[i] === h.k && STACKABLE.has(h.k) && s.dropN[i] < FLOOR_STACK_MAX;
+}
+
+// сусіди в радіусі 1: спершу по сторонах, потім навскіс (на рівних відстанях)
+const AIM8 = [[1, 0], [0, 1], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+/** Клітинка, на яку діє use. aim='front' — facingCell; 'smart' — facingCell, якщо там є що робити, інакше найближча
+ *  доречна з 8 сусідніх (трохи краще ті, що спереду), а як нема — facingCell. turn — повернутись до неї (по сторонах). */
+export function aimCell(s, pl, turn = false) {
+  const f = facingCell(pl);
+  if (s.params.aim !== 'smart' || useful(s, pl, f.x, f.y)) return f;
+  const cx = Math.floor(pl.x / U), cy = Math.floor(pl.y / U);
+  let best = null, bd = Infinity;
+  for (const [dx, dy] of AIM8) {
+    const x = cx + dx, y = cy + dy;
+    if ((x === f.x && y === f.y) || !useful(s, pl, x, y)) continue;
+    const ex = x * U + U / 2 - pl.x, ey = y * U + U / 2 - pl.y;
+    const d = ex * ex + ey * ey - (dx * pl.fx + dy * pl.fy) * 1000;
+    if (d < bd) { bd = d; best = { x, y }; }
+  }
+  if (!best) return f;
+  if (turn && (best.x === cx || best.y === cy)) { pl.fx = best.x - cx; pl.fy = best.y - cy; }
+  return best;
 }
 
 /** Несеш стос — і стаєш на такий самий: добираєш до carryMax */
@@ -334,9 +496,10 @@ function hold0(pl) { pl.hold.k = I.NONE; pl.hold.n = 0; }
 function use(s, n, pl) {
   const held = pl.ut > 0 && pl.ut === s.tick;   // use був і в попередньому тику
   pl.ut = s.tick + 1;
+  if (held && s.params.useMode === 'tap') return;   // K14: без автоповтору — лише натиск
   if (pl.cd > 0) return;
   const P = s.params;
-  const f = facingCell(pl);
+  const f = aimCell(s, pl, true);   // K14: aim='front' — facingCell, 'smart' — доречна поруч
   const cx = f.x, cy = f.y;
   if (extrasUse(s, n, f)) { pl.cd = ACT_CD; return; }   // K11: гуска / табличка покращень
   if (!inside(s, cx, cy)) return;
@@ -509,7 +672,7 @@ function stepTrain(s) {
   }
   // швидкість
   const el = s.tick - t0;
-  t.speed = stopped ? 0 : Math.min(spd(P.speedMax), spd(P.speedStart) + Math.floor(spd(P.speedGrowth) * el / (60 * TPS)));
+  t.speed = stopped ? 0 : Math.min(spd(P.speedMax), trainSpeed(s, el));   // K14: крива — варіант speedCurve
   if (t.speed > s.stats.maxSpeed) s.stats.maxSpeed = t.speed;
   t.sub += t.speed;
   const d = Math.floor(t.sub / 1000);
@@ -527,6 +690,16 @@ function stepTrain(s) {
     return;
   }
   if (over) lose(s, 'derail', hc % s.w, (hc / s.w) | 0);
+}
+
+/** K14: швидкість паротяга до стелі (підодиниць/тик ×1000). speedCurve: 'linear' — speedStart + speedGrowth·хвилини
+ *  (як було); 'steps' — + stepGain за кожні stepN покладених рейок (повільно класти — повільно їде);
+ *  'distance' — + stepGain за кожні stepN проїханих клітинок, плавно (повільний старт не карає). */
+function trainSpeed(s, el) {
+  const P = s.params, base = spd(P.speedStart), n = Math.max(1, P.stepN | 0);
+  if (P.speedCurve === 'steps') return base + spd(P.stepGain) * Math.floor(Math.max(0, s.stats.railsLaid) / n);
+  if (P.speedCurve === 'distance') return base + Math.floor(spd(P.stepGain) * s.stats.cells / n);
+  return base + Math.floor(spd(P.speedGrowth) * el / (60 * TPS));
 }
 
 function lose(s, why, x, y) {
@@ -566,6 +739,7 @@ export function hash(s) {
   for (const p of s.players) {
     mix(p.x); mix(p.y); mix(p.fx); mix(p.fy); mix(p.hold.k); mix(p.hold.n); mix(p.cd);
     mix(p.mx); mix(p.my); mix(p.ut); mix(p.out); mix(p.st);
+    if (s.params.move === 'grid') { mix(p.gx); mix(p.gy); mix(p.gt); }   // K14 (типовий hash не змінюється)
   }
   return h >>> 0;
 }
