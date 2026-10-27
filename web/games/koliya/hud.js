@@ -105,6 +105,14 @@ const CSS = `
 .kol-rec { margin: .3em 0; font-weight: 600; }
 .kol-rec.kol-new { color: #ffd23f; font-size: 1.3em; animation: kol-pulse2 .7s ease-in-out infinite alternate; }
 @keyframes kol-pulse2 { to { transform: scale(1.08); } }
+.kol-card .kol-sum { grid-template-columns: auto auto auto auto; }
+.kol-ptab { margin: .5em auto .2em; border-collapse: collapse; font-size: .85em; font-weight: 500; }
+.kol-ptab th, .kol-ptab td { padding: .15em .45em; text-align: center; white-space: nowrap; }
+.kol-ptab tr + tr { border-top: 1px solid #ffffff1a; }
+.kol-ptab td:first-child { text-align: left; }
+.kol-ptab td.kol-ttl { text-align: left; font-weight: 700; color: #ffe9a8; }
+.kol-ptab i { opacity: .35; font-style: normal; }
+@media (max-width: 640px) { .kol-card .kol-sum { grid-template-columns: auto auto; } .kol-ptab { font-size: .72em; } .kol-ptab th, .kol-ptab td { padding: .1em .25em; } }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
 
@@ -375,7 +383,7 @@ export function createHud(root, opts = {}) {
           <span>🛤 Рейок покладено</span><b>${st.railsLaid ?? 0}</b>
           <span>🪓 Ударів</span><b>${st.hits ?? 0}</b>
           <span>💨 Найшвидше</span><b>${maxCps.toFixed(2)} кл/с</b>
-        </div>
+        </div>${playersHtml(s)}
         <div class="kol-go">R / ≡ Start — ${s.status === 'won' ? 'далі' : 'ще раз'}</div>
         <button class="kol-again" type="button">${s.status === 'won' ? '▶ Далі' : '↻ Ще раз'}</button>`);
     }
@@ -385,9 +393,73 @@ export function createHud(root, opts = {}) {
   // K16: тости подій тику (гачок у main.js afterStep — бачить кожен тик, не лише кадр)
   let seenGeese = new Set(), evState = null;
   const pName = (s, p) => `${p >= (game0?.local ?? s.players?.length ?? 0) ? '🤖' : ''}П${p + 1}`;
+  // K23: підсумок по гравцях — лічильники з s.ev (тик рахуємо раз: мережевий відкат тики не подвоює)
+  let tally = [], tallyTick = -1, prevPos = [];
+  function tallyTick1(ev, s) {
+    if ((s.tick ?? 0) <= tallyTick) return;
+    tallyTick = s.tick ?? 0;
+    const acted = new Set();
+    const T = (p) => (tally[p] ??= { chop: 0, rock: 0, rail: 0, douse: 0, water: 0, carry: 0, throw: 0, catch: 0, pass: 0, stun: 0, hurt: 0, honk: 0, bump: 0, scare: 0, idle: 0, ticks: 0 });
+    for (const e of ev) {
+      const p = e.t === 'stun' ? e.by : e.p;
+      if (p === undefined || p < 0 || p > 3) continue;
+      const c = T(p);
+      switch (e.t) {
+        case 'chop': case 'rock': case 'rail': case 'douse': case 'water': case 'throw': case 'catch': case 'pass': case 'honk': case 'scare': c[e.t]++; break;
+        case 'pick': case 'drop': c.carry++; break;
+        case 'stun': c.stun++; if (e.p !== undefined) T(e.p).hurt++; break;
+        case 'bump': continue;   // p — кого штовхнули, не дія
+        default: continue;
+      }
+      acted.add(p);
+    }
+    if (s.status !== 'run' || !s.train?.started) return;   // «стояв» — лише поки паротяг їде
+    (s.players ?? []).forEach((pl, i) => {
+      if (!pl) return;
+      const c = T(i), pp = prevPos[i];
+      c.ticks++;
+      if (pp && pp[0] === pl.x && pp[1] === pl.y && !acted.has(i)) c.idle++;
+      prevPos[i] = [pl.x, pl.y];
+    });
+  }
+  // жартівливі звання: найбільший у категорії (≥ min) — звання; кожному до 2, нікому — «🧩 На підхваті»
+  const TITLES = [
+    ['rail', '🛤 Колійник', 3], ['chop', '🪓 Лісоруб', 5], ['rock', '⛏ Каменяр', 5], ['douse', '💧 Пожежник', 1],
+    ['stun', '🤕 Небезпечний', 1], ['catch', '🧤 Воротар', 2], ['throw', '🎯 Метальник', 3], ['pass', '🤝 Передавальник', 3],
+    ['carry', '🚚 Вантажник', 8], ['scare', '🪿 Гусятник', 1], ['honk', '📯 Горлань', 5], ['hurt', '🌀 Груша для биття', 2],
+  ];
+  function titles(n) {
+    const out = Array.from({ length: n }, () => []);
+    const row = (i) => tally[i] ?? {};
+    for (const [k, name, min] of TITLES) {
+      let best = 0;
+      for (let i = 0; i < n; i++) best = Math.max(best, row(i)[k] ?? 0);
+      if (best < min) continue;
+      for (let i = 0; i < n; i++) if ((row(i)[k] ?? 0) === best && out[i].length < 2) out[i].push(name);
+    }
+    // пасажир: найбільша частка простою (≥ 25 %), удвох і більше — навіть якщо щось інше вже має
+    let pi = -1, ps = 0.25;
+    for (let i = 0; i < n; i++) { const r = row(i), sh = r.ticks ? r.idle / r.ticks : 0; if (sh >= ps) { ps = sh; pi = i; } }
+    if (pi >= 0 && (n > 1 || !out[pi].length)) out[pi].unshift('🛋 Пасажир'), out[pi].length = Math.min(2, out[pi].length);
+    return out.map((a) => a.length ? a : ['🧩 На підхваті']);
+  }
+  function playersHtml(s) {
+    const n = s.players?.length ?? 0;
+    if (!n) return '';
+    const tt = titles(n), z = (v) => v ? v : '<i>·</i>';
+    let h = '<table class="kol-ptab"><tr><th></th><th title="нарубав">🪓</th><th title="набив каміння">⛏</th><th title="поклав рейок">🛤</th><th title="полив котел">💧</th><th title="кинув / зловив">🎯</th><th title="бац колегу">💫</th><th title="стояв без діла">🛋</th><th></th></tr>';
+    for (let i = 0; i < n; i++) {
+      const r = tally[i] ?? {};
+      const idle = r.ticks ? Math.round(r.idle / r.ticks * 100) : 0;
+      h += `<tr><td><b style="color:${COLORS[i % 4]}">${pName(s, i)}</b></td><td>${z(r.chop)}</td><td>${z(r.rock)}</td><td>${z(r.rail)}</td><td>${z(r.douse)}</td>`
+        + `<td>${z(r.throw || r.catch ? `${r.throw ?? 0}/${r.catch ?? 0}` : 0)}</td><td>${z(r.stun)}</td><td>${idle}%</td><td class="kol-ttl">${tt[i].join(' ')}</td></tr>`;
+    }
+    return h + '</table>';
+  }
   function events(ev, s) {
     if (!ev || !s) return;
-    if (s !== evState) { evState = s; seenGeese = new Set(); }
+    if (s !== evState) { evState = s; seenGeese = new Set(); tally = []; tallyTick = -1; prevPos = []; }
+    tallyTick1(ev, s);
     for (const e of ev) {
       if (e.t === 'upgrade') {
         const u = UPGRADES[s.mid?.pick];
