@@ -7,6 +7,7 @@ import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: до�
 import { coopInit, coopCmd, coopUse, coopStep, coopHash } from './coop.js';   // K18: кооп-фішки за перемикачем
 import { tutorialParams, tutorialWorld } from './tutorial.js';   // K22: навчальна смуга (mode='tutorial')
 import { endlessHash } from './endless.js';                          // K19: нескінченна колія
+import { lostInit, lostPre, lostStep, passTick, passMask, leaveHold, tailCell } from './lost.js';   // K33: нічого не губиться
 
 export const TICK_MS = 50;           // 20 тиків/с
 export const TPS = 1000 / TICK_MS;
@@ -159,6 +160,7 @@ export function newGame(seed, params = defaultParams(), nPlayers = 1) {
   for (let i = 0; i < nPlayers; i++) s.players.push(newPlayer(s.spawn[i % s.spawn.length]));
   extrasInit(s, params);   // K11: гуси, проміжна станція (вимкнене — лише порожні поля)
   coopInit(s);             // K18: s.flying
+  lostInit(s);             // K33: s.keep — скільки інструментів на старті
   return s;
 }
 
@@ -184,10 +186,12 @@ export function step(s, cmds = []) {
   s.ev.length = 0;
   if (s.status !== 'run') return s;
   for (const c of cmds) applyCmd(s, c);
+  const pre = lostPre(s);   // K33: де хто стояв до руху
   for (let i = 0; i < s.players.length; i++) { movePlayer(s, i); feelTick(s, i); }   // K14: feelTick — автоудар, приціл
   coopStep(s);   // K18: штовханина, політ кинутого
   stepCraft(s);
   if (!extrasStep(s, cmds)) stepTrain(s);   // K11: true — паротяг стоїть на проміжній станції
+  lostStep(s, pre);   // K33: вагон виштовхує, порятунок, інструменти не губляться
   s.tick++;
   return s;
 }
@@ -245,14 +249,14 @@ function circleBox(px, py, r, x0, y0, x1, y1) {
   return dx * dx + dy * dy < r * r;
 }
 
-function wagonsXY(s) {
+export function wagonsXY(s) {   // K33: export — lost.js
   const a = [];
   for (let k = 0; k < WAGONS.length; k++) a.push(wagonPos(s, k));
   return a;
 }
 
 /** Чи коло гравця в (x,y) зачіпає стіну/obj/воду або вагон (крім тих, що в маску ign) */
-function hitsAt(s, x, y, wag, ign) {
+export function hitsAt(s, x, y, wag, ign) {   // K33: export — lost.js
   const cx0 = Math.floor((x - PR) / U), cx1 = Math.floor((x + PR) / U);
   const cy0 = Math.floor((y - PR) / U), cy1 = Math.floor((y + PR) / U);
   for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
@@ -267,7 +271,7 @@ function hitsAt(s, x, y, wag, ign) {
 }
 
 /** Найбільший зсув по одній осі (0..d), що не впирається (бінарний пошук, цілі) */
-function slide(s, pl, dx, dy, wag, ign) {
+export function slide(s, pl, dx, dy, wag, ign) {   // K33: export — lost.js
   if (!dx && !dy) return 0;
   if (!hitsAt(s, pl.x + dx, pl.y + dy, wag, ign)) { pl.x += dx; pl.y += dy; return 1; }
   let lo = 0, hi = 1024;   // частка ×1024
@@ -284,6 +288,7 @@ function movePlayer(s, n) {
   if (pl.out) return;
   if (pl.cd > 0) pl.cd--;
   if (pl.stun > 0) { pl.stun--; return; }   // K18: зірочки — стоїть
+  passTick(s, pl);                           // K33: тиснеш у вагон — згодом протиснешся
   if (s.params.move !== 'grid' && moveIce(s, n, pl)) return;           // K26: на льоду ковзаємо
   if (s.params.move === 'grid') { moveGrid(s, n, pl); return; }       // K14
   if (s.params.move === 'snappy') { moveSnappy(s, n, pl); return; }   // K14
@@ -303,7 +308,7 @@ function movePlayer(s, n) {
   const d = Math.max(100, len);
   const dx = Math.trunc(v * mx / d), dy = Math.trunc(v * my / d);
   const wag = wagonsXY(s);
-  let ign = 0;   // вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти
+  let ign = passMask(pl);   // вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти; K33: протиснувся — усі
   for (let k = 0; k < wag.length; k++) if (hitsAt(s, pl.x, pl.y, [wag[k]], 0)) ign |= 1 << k;
   const x0 = pl.x, y0 = pl.y;
   const rx = slide(s, pl, dx, 0, wag, ign);
@@ -344,7 +349,7 @@ function axisDir(pl, mx, my) {
 }
 /** Вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти */
 function wagIgnore(s, pl, wag) {
-  let ign = 0;
+  let ign = passMask(pl);   // K33
   for (let k = 0; k < wag.length; k++) if (hitsAt(s, pl.x, pl.y, [wag[k]], 0)) ign |= 1 << k;
   return ign;
 }
@@ -707,12 +712,12 @@ function join(s) {
   let n = s.players.findIndex((p) => p.out);
   if (n < 0) { if (s.players.length >= MAX_PLAYERS) return; n = s.players.length; s.players.push(null); }
   // з'являємося біля потяга (старт міг лишитися далеко позаду)
-  const c = nearFree(s, wagonPos(s, WAGONS.length - 1));
+  const c = tailCell(s) || nearFree(s, wagonPos(s, WAGONS.length - 1));   // K33: досяжна пішки, не за скелями
   s.players[n] = newPlayer(c || s.spawn[n % s.spawn.length]);
 }
 
 function leave(s, pl) {
-  if (pl.hold.k !== I.NONE) putDrop(s, Math.floor(pl.x / U), Math.floor(pl.y / U), pl.hold.k, pl.hold.n);
+  if (pl.hold.k !== I.NONE) leaveHold(s, pl);   // K33: поруч, а нема місця — у склад / біля кінця колії
   hold0(pl); pl.out = 1; pl.mx = pl.my = 0; pl.cd = 0;
   pl.x = -5 * U; pl.y = -5 * U;
 }
