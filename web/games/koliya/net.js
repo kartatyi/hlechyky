@@ -47,7 +47,7 @@ const SMOOTH = 0.55;       // частка зсуву, що лишається �
 const SNAP = 3 * R.U;      // більший стрибок (поява, телепорт) — не згладжуємо
 const CATCH = 2;           // зсув тане не швидше за 2 кроки гравця за тик (разом із ходою — до 3× швидкості)
 const JERK = 3.5;          // замір: стрибок за тик більший за 3,5 кроку — ривок (згладжене не перевищує 1 + CATCH)
-const K = { 1: 'in', 2: 'use', 3: 'join', 4: 'leave' };
+const K = { 1: 'in', 2: 'use', 3: 'join', 4: 'leave', 5: 'throw', 6: 'horn' };   // 5, 6 — кооп-фішки K18
 
 /**
  * Згладжування поз гравців для малювання (K6): зсув на перерахунку, тане щотику. Чисте, без DOM — тестується в Node.
@@ -163,8 +163,11 @@ export function toCmd(c, j) {
   const p = c[j + 2], k = K[c[j + 3]];
   if (k === 'in') return { p, k, mx: c[j + 4], my: c[j + 5] };
   if (k === 'use') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7], h: c[j + 8] };
-  if (k === 'join') return { p, k };
-  return { p, k: 'leave' };
+  if (k === 'throw') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7] };
+  if (k === 'join' || k === 'horn') return { p, k };
+  // K24: невідомий вид (новий сервер, стара вкладка без F5) — не 'leave' (вибив би гравця), а порожня команда:
+  // rules її пропустить, світ розійдеться лише на цій дії, і звірка хешу це покаже
+  return k === 'leave' ? { p, k } : { p, k: 'k' + c[j + 3] };
 }
 
 /**
@@ -178,6 +181,13 @@ export function createDriver() {
   const { U, I, O } = R;
   return {
     think(s, p) {
+      const v = this.walk(s, p), pl = s.players[p];
+      // K18 у мережі: з річчю в руках зрідка кидає, ще рідше гудить (перевірка throw/horn через журнал)
+      if (pl && pl.hold.k !== R.I.NONE && n % 37 === 0) v.throw = true;
+      if (n % 211 === 0) v.horn = true;
+      return v;
+    },
+    walk(s, p) {
       n++;
       const pl = s.players[p];
       if (!pl) return { mx: 0, my: 0, use: false };
@@ -272,8 +282,13 @@ export function createNet(game, opts = {}) {
     conn.onreconnecting(() => { ready = false; say('перепідключаюсь…'); });
     conn.onreconnected(() => enter().catch((x) => { console.warn('Колія: не зайшов знову', x); say('не зайшов: ' + x.message); }));
     say('підключаюсь…');
-    await conn.start();
-    await enter();
+    try {
+      await conn.start();
+      await enter();
+    } catch (x) {
+      say('не підключився: ' + (x?.message || x));   // QA K21: не висіти на «підключаюсь…»
+      throw x;
+    }
     return net;
   }
 
@@ -325,7 +340,7 @@ export function createNet(game, opts = {}) {
       build(j);
     } catch (x) {
       console.warn('Колія: журнал не взявся', x);
-      say('журнал не взявся');
+      say(/: 404$/.test(x?.message || '') ? 'стола нема (закрився?) — відкрий новий' : 'журнал не взявся: ' + (x?.message || x));
       setTimeout(() => { if (!ready) resync(); }, 2000);
     } finally { resyncing = false; }
   }
@@ -422,8 +437,12 @@ export function createNet(game, opts = {}) {
         const h = R.hash(C);
         hashes.set(C.tick, h);
         if (hashes.size > 64) hashes.delete(hashes.keys().next().value);
-        const m = { t: C.tick, h };   // тик — зараз, а не коли затримка відпустить (C тим часом піде далі)
-        lagOut(() => conn?.send('Input', room, 'hash', m).catch(() => { }));
+        // K24: e — щоб сервер не звірив хеш старої епохи з новою; лише останні звірки — пізній вхід доганяє тисячі тиків
+        // за раз, і пачка хешів (раз на 100 тиків) з'їла б квоту 30 Input/с, а з нею — власні команди гравця
+        if (w + 1 - C.tick < 2 * HASH_EVERY) {
+          const m = { t: C.tick, h, e };   // тик — зараз, а не коли затримка відпустить (C тим часом піде далі)
+          lagOut(() => conn?.send('Input', room, 'hash', m).catch(() => { }));
+        }
       }
     }
     const before = pending.length;
@@ -450,7 +469,7 @@ export function createNet(game, opts = {}) {
       let v;
       if (q === 0 && opts.makeBot && (!bot || bot.p !== p)) bot = opts.makeBot(p);   // справжній бот (bot.js) знає своє p
       if (q === 0 && bot) v = bot.think(s, p);
-      else { ins ??= input?.poll?.() || []; const a = ins[q]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use } : null; }
+      else { ins ??= input?.poll?.() || []; const a = ins[q]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use, throw: !!a.throw, horn: !!a.horn } : null; }
       if (!v) continue;
       const li = lastIn[q], lu = lastUse[q], Q = q ? { q: 1 } : {};
       const mx = Math.max(-100, Math.min(100, v.mx | 0)), my = Math.max(-100, Math.min(100, v.my | 0));
@@ -468,6 +487,9 @@ export function createNet(game, opts = {}) {
         }
       }
       lu.down = !!v.use;
+      // K18: кидок (з позою — куди полетить, залежить від пози) і гудок — раз на натиск
+      if (v.throw) { const pose = { x: pl.x, y: pl.y, fx: pl.fx, fy: pl.fy }; send('throw', { ...pose, ...Q }, t, { p, k: 'throw', ...pose }); }
+      if (v.horn) send('horn', { ...Q }, t, { p, k: 'horn' });
     }
   }
 
@@ -475,7 +497,8 @@ export function createNet(game, opts = {}) {
     const i = ++idSeq;
     pending.push({ t, i, cmd });
     stats.sent++;
-    lagOut(() => conn.send('Input', room, kind, { ...payload, t, i }).catch((x) => console.warn('Колія: Input', x)));
+    const ep = e;   // K24: епоха — запізнілий після перезапуску ввід сервер викине
+    lagOut(() => conn.send('Input', room, kind, { ...payload, t, i, e: ep }).catch((x) => console.warn('Колія: Input', x)));
   }
 
   /** Передбачений світ до тику target; нові тики — зі своїм керуванням і подіями. */
@@ -519,7 +542,9 @@ export function createNet(game, opts = {}) {
 
   async function restart(seed = game.seed, params = game.params) {
     if (!conn || !room) return;
-    const r = await conn.invoke('Act', room, 'restart', { seed: seed >>> 0, params: params || {} });
+    let r;
+    try { r = await conn.invoke('Act', room, 'restart', { seed: seed >>> 0, params: params || {} }); }
+    catch (x) { console.warn('Колія: перезапуск не дійшов', x); return; }   // QA K21: обрив — без unhandled rejection
     if (!r.ok) console.warn('Колія: перезапуск —', r.message);
     else resync();
   }

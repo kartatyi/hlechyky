@@ -10,6 +10,8 @@
 import { U, G, O, I, WAGONS, TPS, wagonPos, wagonAt, canLay, startTick } from './rules.js';
 
 const DIRS = [[1, 0], [0, 1], [0, -1], [-1, 0]];
+// K13: пороги «запасу колії» (клітинок від голови до кінця): urg — по рейки будь-скільки, far — повний стос лише ближче
+const TUNE = { urg: 10, far: 40, ...(globalThis.KOL_BOT_TUNE || {}) };
 const shared = new WeakMap();    // state → { t, occ, route, routeSet, N, rt, pl, claims: Map, bots: Map }
 
 function sh(s) {
@@ -31,6 +33,7 @@ function sh(s) {
       o.pl = s.path.length; o.rt = s.tick;
       o.route = planRoute(s);
       o.routeSet = new Set(o.route.slice(0, 30));
+      o.ahead = new Set(o.route.slice(1, 13));   // K13: найближчі клітинки маршруту — перешкоди тут рубаємо/б'ємо насамперед
       // «біля колії»: маршрут попереду і хвіст колії біля паротяга з сусідами — тут рубаємо/б'ємо насамперед,
       // щоб розширити коридор (інакше потяг затуляє вузький прохід)
       o.near = new Set();
@@ -46,6 +49,13 @@ function sh(s) {
       for (const c of o.route.slice(0, 6)) {
         const x = c % s.w, y = (c / s.w) | 0;
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (x + dx >= 0 && y + dy >= 0 && x + dx < s.w && y + dy < s.h) o.front.add((y + dy) * s.w + x + dx);
+      }
+      // K13: «біля паротяга попереду»: обабіч уже покладеної колії на 2–10 клітинок перед головою — тут тримаємо
+      // повне відро (паротяг сам під'їде, гасити — два кроки), а не там, де набрали воду
+      o.wet = new Set();
+      for (const c of s.path.slice(hi + 2, hi + 11)) {
+        const x = c % s.w, y = (c / s.w) | 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (x + dx >= 0 && y + dy >= 0 && x + dx < s.w && y + dy < s.h) o.wet.add((y + dy) * s.w + x + dx);
       }
       // що далі класти: перша клітинка маршруту після кінця колії
     }
@@ -319,6 +329,20 @@ export function createBot(p) {
     if (key) claim(o, key(r.target), s);
     return steer(ctx, r.next);
   }
+  /** K13: покласти річ на сусідню вільну клітинку, найближчу до goal (клітинка); нема поруч — як actAdj */
+  function dropToward(ctx, goal) {
+    const { s, cur } = ctx;
+    const gx = goal % s.w, gy = (goal / s.w) | 0, cx = cur % s.w, cy = (cur / s.w) | 0;
+    let best = -1, bd = 1e9;
+    for (const [dx, dy] of DIRS) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= s.w || y >= s.h || !freeDrop(ctx, y * s.w + x)) continue;
+      const d = Math.abs(x - gx) + Math.abs(y - gy);
+      if (d < bd) { bd = d; best = y * s.w + x; }
+    }
+    if (best >= 0) return actAdj(ctx, (n) => n === best);
+    return actAdj(ctx, (n) => freeDrop(ctx, n));
+  }
   /** Стати на клітинку з pred (підбір стосу ногами) */
   function walkOn(ctx, pred, maxD) {
     const { s, o, cur } = ctx;
@@ -344,6 +368,17 @@ export function createBot(p) {
     if (Math.abs((e % s.w) - (n % s.w)) + Math.abs(((e / s.w) | 0) - ((n / s.w) | 0)) <= 1) return false;
     return true;
   }
+  /** K13: скільки речей k лежить у ромбі радіуса r довкола клітинки c */
+  function looseAround(s, c, k, r) {
+    const x0 = c % s.w, y0 = (c / s.w) | 0;
+    let n = 0;
+    for (let y = Math.max(0, y0 - r); y <= Math.min(s.h - 1, y0 + r); y++) for (let x = Math.max(0, x0 - r); x <= Math.min(s.w - 1, x0 + r); x++) {
+      if (Math.abs(x - x0) + Math.abs(y - y0) > r) continue;
+      const i = y * s.w + x;
+      if (s.drop[i] === k) n += s.dropN[i];
+    }
+    return n;
+  }
   const hasDrop = (s, k) => { for (let i = 0; i < s.drop.length; i++) if (s.drop[i] === k) return true; return false; };
   function needOf(ctx, k) {    // скільки ще влізе на склад (з урахуванням того, що в руках)
     const { s, P } = ctx;
@@ -354,8 +389,11 @@ export function createBot(p) {
     const { s, o } = ctx, N = o.N;
     if (N < 0 || o.side >= 0 || !canLay(s, N % s.w, (N / s.w) | 0) || claimedByOther(o, 'lay', s)) return false;
     if (!(s.train.rails > 0 || hasDrop(s, I.RAIL))) return false;
-    return s.path.length - 1 - Math.floor(s.train.pos / U) < 12;
+    const lead = s.path.length - 1 - Math.floor(s.train.pos / U);
+    return lead < TUNE.urg || (railsFull(ctx) && lead < TUNE.far);   // K13: повний стос у майстерні — теж пора
   }
+  /** K13: у майстерні вже повний стос (ходити по рейки варто лише по повний — інакше бігаємо туди-сюди по 2) */
+  const railsFull = (ctx) => ctx.s.train.rails >= Math.min(ctx.cap, ctx.P.railsMax | 0);
 
   // ---------- вибір завдання ----------
   function choose(ctx) {
@@ -377,8 +415,10 @@ export function createBot(p) {
     }
     if (h === I.BUCKET) return { k: bfs(s, o, ctx.cur, (n) => s.ground[n] === G.WATER, 'adj', 12) ? 'fill' : 'drop' };
     const list = [];
-    // перешкода на маршруті просто перед кінцем колії
-    if (N >= 0) {
+    // перешкода на маршруті просто перед кінцем колії (K13: першою — лише коли є що класти; інакше спершу ресурс,
+    // якого бракує, — розчистку маршруту gather і так обирає першою)
+    const railsAvail = s.train.rails > 0 || hasDrop(s, I.RAIL) || s.train.craftT > 0;
+    if (N >= 0 && (railsAvail || role !== 'all')) {
       if (s.drop[N]) list.push({ k: 'clearN' });
       else if (s.obj[N] === O.TREE) list.push({ k: 'gather', r: I.WOOD, target: N });
       else if (s.obj[N] === O.ROCK) list.push({ k: 'gather', r: I.IRON, target: N });
@@ -392,7 +432,8 @@ export function createBot(p) {
     const wood = { k: 'gather', r: I.WOOD }, iron = { k: 'gather', r: I.IRON };
     const res = s.train.wood <= s.train.iron ? [wood, iron] : [iron, wood];
     if (role === 'all') {
-      if (canRails && (lead < 15 || (wNeed <= 1 && iNeed <= 1))) list.push(rails);
+      // K13: майстерня повна (стоїть) чи склад майже повний — класти, а не збирати ще
+      if (canRails && (lead < TUNE.urg || (railsFull(ctx) && lead < TUNE.far) || (wNeed <= 2 && iNeed <= 2))) list.push(rails);
       list.push(...res);
       if (canRails) list.push(rails);
     } else if (role === 'build') {
@@ -434,6 +475,7 @@ export function createBot(p) {
       }
       case 'drop': {
         if (h === I.NONE) return null;
+        if (h === I.BUCKET_FULL) { const r = actAdj(ctx, (n) => o.wet.has(n) && freeDrop(ctx, n), null, 80); if (r) return r; }   // K13
         if (h === I.BUCKET || h === I.BUCKET_FULL) { const r = actAdj(ctx, (n) => o.front.has(n) && freeDrop(ctx, n), null, 25); if (r) return r; }
         return actAdj(ctx, (n) => freeDrop(ctx, n));
       }
@@ -445,7 +487,7 @@ export function createBot(p) {
         if (h !== I.WOOD && h !== I.IRON) return null;
         if (h === I.WOOD && N >= 0 && s.ground[N] === G.WATER) return actAdj(ctx, isN);
         if (pl.hold.n < ctx.cap) {     // добрати поруч ногами
-          const r = walkOn(ctx, (n) => s.drop[n] === h, 4);
+          const r = walkOn(ctx, (n) => s.drop[n] === h, 8);   // K13: 4 → 8 — добрати свої купки
           if (r) return r;
         }
         if (needOf(ctx, h) <= 0) { t.k = 'drop'; return runTask(ctx, t); }
@@ -499,7 +541,9 @@ export function createBot(p) {
       let near = 0;
       const cx = ctx.cur % s.w, cy = (ctx.cur / s.w) | 0;
       for (let y = Math.max(0, cy - 3); y <= Math.min(s.h - 1, cy + 3); y++) for (let x = Math.max(0, cx - 3); x <= Math.min(s.w - 1, cx + 3); x++) if (s.drop[y * s.w + x] === k) near += s.dropN[y * s.w + x];
-      if (t.bridge ? near >= 1 : near >= cap) t.enough = 1;    // рішення «досить» тримаємо (інакше смикається на межі радіуса)
+      // K13: і купки з того, що ми самі щойно збили (вони могли лишитися далі 3 клітинок)
+      if (t.cut) { let mine = 0; for (const c of t.cut) if (s.drop[c] === k) mine += s.dropN[c]; if (mine > near) near = mine; }
+      if (t.bridge ? near >= 1 : near >= Math.min(cap, Math.max(1, needOf(ctx, k)))) t.enough = 1;   // K13: досить — скільки треба складу    // рішення «досить» тримаємо (інакше смикається на межі радіуса)
       const enough = t.enough && near > 0;
       if (!enough ||(t.target !== undefined && s.obj[t.target] === ob)) {
         // що бити: ціль на маршруті, інакше найближче (спершу ті, що на маршруті попереду)
@@ -509,6 +553,7 @@ export function createBot(p) {
         t.hit = undefined;
         // нова ціль: найкоротший рейс «я → ціль → склад»; біля колії (розширити коридор) — з бонусом
         const dB = distMap(s, o, [ctx.cur]);
+        const storeX = Math.floor(wagonPos(s, 2).x / U);
         let best = -1, bs = 1e9;
         for (let c = 0; c < s.obj.length; c++) {
           if (s.obj[c] !== ob || claimedByOther(o, 'c' + c, s)) continue;
@@ -522,23 +567,29 @@ export function createBot(p) {
           }
           if (sc >= 1e9) continue;
           if (o.near.has(c)) sc -= 4;
+          if (o.ahead.has(c)) sc -= 10;   // K13: розчистка маршруту — однаково треба
+          if (x < storeX) sc += 2 * (storeX - x);   // K13: позаду складу — інструмент лишився б там, де потяг уже проїхав
           if (sc < bs) { bs = sc; best = c; }
         }
         if (best >= 0) {
           t.hit = best;
+          (t.cut || (t.cut = [])).push(best);
           const r = actAdj(ctx, (n) => n === best, (n) => 'c' + n);
           if (r) return r;
         }
         if (!near) return null;
       }
-      // досить — кладемо інструмент поруч і збираємо
-      return actAdj(ctx, (n) => freeDrop(ctx, n));
+      // досить — кладемо інструмент поруч (K13: з того боку, що ближче до кінця колії — туди ще повернемось) і збираємо
+      return dropToward(ctx, s.path[s.path.length - 1]);
     }
     if (h !== I.NONE && h !== I.AXE && h !== I.PICK && h !== I.BUCKET && h !== I.BUCKET_FULL) return null;
     // порожні руки (або інший інструмент): є що зібрати поруч — збираємо, ні — по інструмент
     if (t.target === undefined) {
       const l = loose(h === I.NONE ? 30 : 6);
-      if (l) {
+      // K13: не носити по одній — купка далі 3 кроків варта ходіння, лише якщо біля неї набереться min(руки, потреба)
+      const worth = l && (l.d <= 3 || looseAround(s, l.target, k, 4) >= Math.min(cap, Math.max(1, needOf(ctx, k))) ||
+        !(h === T || hasDrop(s, T)));
+      if (l && worth) {
         if (h !== I.NONE) return actAdj(ctx, (n) => freeDrop(ctx, n));
         return actAdj(ctx, (n) => s.drop[n] === k && !claimedByOther(o, 'c' + n, s), (n) => 'c' + n, 30);
       }

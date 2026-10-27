@@ -197,7 +197,7 @@ export function createPanel(root, opts) {
       box.append(el('div', 'kol-lab', label), s); d.append(box);
     };
     seg('Якість картинки', 'quality', ['high', 'low'], ['Висока', 'Низька (слабкий ноут)']);
-    seg('Вібрація пада', 'rumble', [true, false], ['Увімк.', 'Вимк.']);
+    seg('Вібрація (пад, телефон)', 'rumble', [true, false], ['Увімк.', 'Вимк.']);
     seg('Підказки', 'tips', [true, false], ['Так', 'Ні']);   // K16
     return d;
   };

@@ -272,7 +272,7 @@ export function pickTips(s, memory = {}, opts = {}) {
       if (taken.has(p)) continue;
       const pl = P[p], h = pl.hold ?? { k: 0, n: 0 }, me = cellOf(pl), key = useK(p);
       // K16: болото під ногами — раз пояснити
-      if (free(p, 'swamp') && s.ground[me.y * s.w + me.x] === G.SWAMP && info(p, 'swamp', 'Болото — повільно, але рейки класти можна', null)) continue;
+      if (free(p, 'swamp') && s.ground[me.y * s.w + me.x] === G.SWAMP && info(p, 'swamp', tt('tip.swamp', 'Болото — повільно, але рейки класти можна'), null)) continue;
       const axe = () => nearestDrop(s, me, I.AXE), pick = () => nearestDrop(s, me, I.PICK);
       const near = (k) => nearest(s, me, NEAR, (i) => s.drop[i] === k);
       // ролі: двоє і більше — на старті кожному своя справа
@@ -400,7 +400,7 @@ export function createTips(root, { enabled = true } = {}) {
         const local = game?.local ?? state.players.length;
         const inp = game?.input, nLocal = game?.local ?? 1;
         tips = pickTips(state, mem, { players: state.players.map((_, i) => i).filter((i) => i < local),
-          keys: (p) => keysFor(p, !!inp?.hasPad?.(p), nLocal) });
+          keys: (p) => (p === 0 && game?.touch?.active && !inp?.hasPad?.(0) ? { use: '✋ Дія', throw: '«Кинути»' } : keysFor(p, !!inp?.hasPad?.(p), nLocal)) });   // K27: телефон
         lastTick = state.tick; lastSeed = state.seed;
       }
       const v = game?.view ?? view;
