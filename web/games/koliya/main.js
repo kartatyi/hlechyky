@@ -18,6 +18,7 @@ import { createTouch, isTouchDevice } from './touch.js';   // K27: телефо�
 import { createMusic } from './music.js';            // K29: музика й тло (вимкнено типово)
 
 const q = new URLSearchParams(location.search);
+const BUDDY = q.get('buddy') !== '0';   // K34: бот поруч із людиною — напарник; ?buddy=0 — сильний «автопілот» (перебиває, зате виграє частіше)
 const PARAMS_KEY = 'kol-params';
 const U_PER_TICK = R.U / R.TPS;   // 1 клітинка/с у підодиницях за тик
 
@@ -102,7 +103,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
 });
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
-  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
+  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: BUDDY }) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
@@ -128,7 +129,7 @@ function restart(seed = game.seed) {
   panel?.setSeed?.(game.seed);
   game.state = R.newGame(game.seed, P, game.local + game.bots);
   game.bot = [];
-  for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b));
+  for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b, { buddy: BUDDY && game.local > 0 }));   // K34: з людьми — напарник
   view?.setWorld?.(game.state);
 }
 
