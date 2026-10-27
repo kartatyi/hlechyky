@@ -59,7 +59,6 @@ async function makeView() {
 }
 
 const input = createInput();
-const coopKeys = game.coopKeys = createCoopKeys();   // K18 (K21: одразу, щоб на паузі зливати натиски)
 const audio = createAudio();
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
@@ -104,7 +103,7 @@ function restart(seed = game.seed) {
 function tickOnce() {
   const s = game.state;
   const cmds = game.cmds.splice(0);
-  coopKeys.poll(cmds, game.local);   // K18
+  (game.coopKeys ??= createCoopKeys()).poll(cmds, game.local);   // K18
   const ins = input.poll();
   for (let i = 0; i < game.local; i++) {
     const v = ins[i]; if (!v) continue;
@@ -139,7 +138,6 @@ function frame(now) {
   if (!net && game.local === 1 && !game.wantLocal && (++padPoll & 15) === 0 && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
   // K21: пауза — стартовий екран (HUD ставить game.paused) або відкрита панель (лише локально: мережа не чекає)
   const hold = game.paused || (!net && panel.isOpen());
-  if (hold) coopKeys.poll([], game.local);   // K21: Q/F, натиснуті на паузі, не стріляють кидком/гудком після неї
   if (!hold && dt < 250) slowCheck(dt);   // K12
   if (net) net.update(now);   // K3
   else if (!hold) {
