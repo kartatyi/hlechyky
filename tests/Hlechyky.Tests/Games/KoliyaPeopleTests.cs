@@ -66,6 +66,29 @@ public class KoliyaPeopleTests
         Assert.Empty(R(LastFrame(h)));
     }
 
+    static int[] Ints(JsonElement frame, string name) => [.. frame.GetProperty(name).EnumerateArray().Select(x => x.GetInt32())];
+
+    [Fact]
+    public void Пінг_луна_по_місцю_а_мовчазний_гравець_відпадає()
+    {
+        var h = Table("Оля", "Петро");
+        Assert.True(h.Act(1, "join2").Ok);                   // Петро ² — p 2, те саме місце 1
+        h.Tick(2);
+        h.Input(0, "ping", new { i = 5, r = 118 });
+        h.Tick(1);
+        var f = LastFrame(h);
+        Assert.Equal([5, 50, 0, 0, 0, 0, 0, 0], Ints(f, "pa"));   // пролежав до кадру 50 мс
+        Assert.Equal([118, 0, 0], Ints(f, "pg"));
+        h.Tick(40);                                           // 2 с: Оля мовчить, Петро мовчить
+        h.Input(0, "ping", new { i = 6, r = 120 });
+        h.Tick(30);                                           // ще 1,5 с — Петро > 3 с без нічого
+        f = LastFrame(h);
+        Assert.Equal([120, -1, -1], Ints(f, "pg"));          // відпав — і другий за його ПК
+        h.Input(1, "in", new { mx = 1, i = 1 });              // будь-яка дія — знову живий
+        h.Tick(1);
+        Assert.Equal([120, 0, 0], Ints(LastFrame(h), "pg"));
+    }
+
     [Fact]
     public void Погана_реакція_відмовляє()
     {

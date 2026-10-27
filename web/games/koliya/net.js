@@ -204,6 +204,52 @@ export function freshReacts(r, seen, isMine = () => false) {
   return { seen, list };
 }
 
+export const LOST_MS = 3000;   // K28: без кадрів довше — «відпав» (сервер так само про мовчазне місце, pg = -1)
+export const PING_EVERY = 1000;
+
+/** K28: колір пінгу — зелений / жовтий / помаранчевий / червоний; null (ще не заміряно чи відпав) — сірий. */
+export function pingColor(ms) {
+  if (ms == null || ms < 0) return '#9a9a9a';
+  return ms < 80 ? '#8fe36b' : ms < 150 ? '#ffd23f' : ms < 250 ? '#ff9a3c' : '#ff5a4f';
+}
+
+/**
+ * K28: замір пінгу. Шлемо 'ping' {i} → кадр несе pa[місце] = [i, скільки мс пінг пролежав на сервері до кадру];
+ * пінг = (зараз − коли слали) − пролежав. Згладжено: новий зразок важить 0,3, але менший приймаємо одразу наполовину.
+ */
+export function createPinger(every = PING_EVERY) {
+  const sent = new Map();
+  let ms = null, next = 0, seq = 0;
+  return {
+    get ms() { return ms; },
+    /** Час слати? → номер пінгу (і запам'ятати), інакше 0. */
+    due(now) {
+      if (now < next) return 0;
+      next = now + every;
+      const i = ++seq;
+      sent.set(i, now);
+      if (sent.size > 10) sent.delete(sent.keys().next().value);
+      return i;
+    },
+    /** Луна з кадру: i, age (мс на сервері). */
+    echo(i, age, now) {
+      const t = sent.get(i);
+      if (t == null) return ms;
+      sent.delete(i);
+      const v = Math.max(0, Math.round(now - t - (age | 0)));
+      ms = ms == null ? v : Math.round(v < ms ? (ms + v) / 2 : ms * 0.7 + v * 0.3);
+      return ms;
+    },
+  };
+}
+
+/** K28: хто «відпав»: p → true за pg (-1) з кадру, а якщо кадрів нема довше LOST_MS — і свої (mine). */
+export function lostFrom(pg, stale, mine = []) {
+  const a = Array.isArray(pg) ? pg.map((v) => v === -1) : [];
+  if (stale) for (const p of mine) if (p >= 0) a[p] = true;
+  return a;
+}
+
 /** K28: мапа p → короткий нік з виду/журналу сервера (nm). */
 export function namesFrom(nm) {
   return Array.isArray(nm) ? nm.map(shortNick) : [];
@@ -302,6 +348,8 @@ export function createNet(game, opts = {}) {
   // K28: люди за столом — реакції (повз журнал), панелька в куті
   let reactSeen = -1, ui = null;
   const myReacts = new Set(), reactGate = createReactGate();
+  const pinger = createPinger();
+  let lastFrameAt = 0, pg = null;
 
   const net = {
     p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1,
@@ -312,7 +360,8 @@ export function createNet(game, opts = {}) {
     info() {
       return { room, seat, p: net.p, p2: net.p2, e, count, w, cTick: C?.tick, pTick: game.state?.tick, pending: pending.length,
         status: net.status, desync: net.desync, cStatus: C?.status, hash: C ? R.hash(C) : 0, stats: { ...stats },
-        lag, jit, smooth: { ...smooth.st } };
+        lag, jit, smooth: { ...smooth.st },
+        ping: net.ping, pg, names: game.names, lost: game.lost, reactSeen };   // K28
     },
     hashAt: (t) => hashes.get(t),
     hashes: () => [...hashes.entries()],
@@ -362,9 +411,12 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
       re.appendChild(b);
       return b;
     });
-    el.append(re);
+    const ping = document.createElement('div');
+    ping.className = 'kol-net-tag';
+    ping.title = 'Пінг до сервера (туди й назад)';
+    el.append(ping, re);
     document.body.appendChild(el);
-    ui = { el, re, btns };
+    ui = { el, re, btns, ping, pingKey: '' };
     addEventListener('keydown', (ev) => {
       if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
       const t = ev.target;
@@ -393,7 +445,21 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
 
   /** K28: панелька щокадру — кнопки реакцій лише гравцю, «охолола» — напівпрозора. */
   function peopleUi(now) {
+    // пінг: раз на секунду, якщо маємо місце (Input без місця сервер не приймає)
+    if (conn && room && seat != null && ready) {
+      const i = pinger.due(now);
+      if (i) { const m = { i, r: pinger.ms ?? 0 }; lagOut(() => conn.send('Input', room, 'ping', m).catch(() => { })); }
+    }
+    const stale = ready && lastFrameAt > 0 && now - lastFrameAt > LOST_MS;
+    game.lost = lostFrom(pg, stale, [net.p, net.p2]);
+    net.ping = stale ? -1 : pinger.ms;
     if (!ui) return;
+    const ms = pinger.ms, key = stale ? 'lost' : String(ms);
+    if (ui.pingKey !== key) {
+      ui.pingKey = key;
+      ui.ping.textContent = stale ? '📶? нема зв’язку' : ms == null ? '📶 …' : `📶 ${ms} мс`;
+      ui.ping.style.color = pingColor(stale ? null : ms);
+    }
     const playing = net.p >= 0;
     ui.re.style.display = playing ? '' : 'none';
     const r = game.reacts?.[net.p], cool = !!r && now - r.at < REACT_GAP;
@@ -522,6 +588,10 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
   function onFrame(f) {
     stats.frames++;
     if (!f) return;
+    const now = performance.now();   // K28: пінг і «відпав»
+    lastFrameAt = now;
+    if (f.pg) pg = f.pg;
+    if (seat != null && f.pa && f.pa[seat * 2] > 0) pinger.echo(f.pa[seat * 2], f.pa[seat * 2 + 1], now);
     if (f.e === e) {
       const sample = f.t * R.TICK_MS - performance.now();
       off = off == null ? sample : Math.max(sample, off - 1);

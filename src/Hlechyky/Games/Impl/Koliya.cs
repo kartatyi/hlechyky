@@ -100,6 +100,15 @@ public sealed class Koliya : Game, IUnlistedGame
     readonly DateTimeOffset[] _reactAt = new DateTimeOffset[MaxRulesPlayers];
     int _reactSeq;
 
+    /// <summary>Без жодної команди/пінгу від місця довше — гравець «відпав» (браузер пінгує раз на секунду).</summary>
+    public const int LostMs = 3000;
+    /// <summary>Місце → коли востаннє щось прислало (будь-яка дія).</summary>
+    readonly DateTimeOffset[] _seen = new DateTimeOffset[4];
+    /// <summary>Місце → пінг, що його браузер сам заміряв (мс), номер і час приходу останнього пінгу.</summary>
+    readonly int[] _rtt = new int[4];
+    readonly int[] _pingI = new int[4];
+    readonly DateTimeOffset[] _pingAt = new DateTimeOffset[4];
+
     public override string SeatName(int seat) => "колійник";
 
     public override bool LateJoin(string nick) => true;
@@ -138,6 +147,7 @@ public sealed class Koliya : Game, IUnlistedGame
             if (_p2Of[s] >= 0) _out.Add(false);
         }
         _startAt = Ctx.Clock.UtcNow;
+        for (var s = 0; s < _seen.Length; s++) if (_seen[s] == default) _seen[s] = _startAt;   // K28: перший старт — усі живі
         _dirty = true;
     }
 
@@ -150,6 +160,7 @@ public sealed class Koliya : Game, IUnlistedGame
     public override void OnJoin(int seat)
     {
         if (seat < 0 || seat >= _pOf.Length || _pOf[seat] >= 0) return;
+        _seen[seat] = Ctx.Clock.UtcNow; _rtt[seat] = 0; _pingI[seat] = 0;   // K28: новий за місцем — ще не «відпав»
         if (NewPlayer(seat) is { } p) _pOf[seat] = p;   // усі 4 слоти rules зайняті (двоє за ПК) — дивиться
     }
 
@@ -185,8 +196,14 @@ public sealed class Koliya : Game, IUnlistedGame
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (seat < 0 || seat >= _pOf.Length) throw new GameError("Ти не за столом");
+        _seen[seat] = Ctx.Clock.UtcNow;   // K28: живий
         switch (action)
         {
+            case "ping":    // K28: { i, r } — номер пінгу (луна в кадрі pa) і заміряний браузером пінг для всіх
+                _pingI[seat] = Clamp(payload, "i", 0, int.MaxValue);
+                _pingAt[seat] = Ctx.Clock.UtcNow;
+                _rtt[seat] = Clamp(payload, "r", 0, 9999);
+                return ActResult.Done;
             case "restart":
                 NewEpoch(ReadSeed(payload), ReadParams(payload));
                 return ActResult.Done;
@@ -294,7 +311,36 @@ public sealed class Koliya : Game, IUnlistedGame
     {
         e = _epoch, t = NowTick(), w = _w, n = _log.Count, f = _keepFrom, c = Flat(_keepFrom), d = _desync,
         r = Reacts(),   // K28: [seq, p, e, i] × N — свіжі реакції
+        pg = Pings(), pa = PingEcho(),
     };
+
+    /// <summary>K28: гравець rules p → пінг його браузера (мс) або -1 — «відпав» (місце мовчить довше за <see cref="LostMs"/>).</summary>
+    int[] Pings()
+    {
+        var a = new int[_out.Count];
+        var now = Ctx.Clock.UtcNow;
+        for (var s = 0; s < _pOf.Length; s++)
+        {
+            var v = now - _seen[s] > TimeSpan.FromMilliseconds(LostMs) ? -1 : _rtt[s];
+            if (_pOf[s] >= 0 && _pOf[s] < a.Length) a[_pOf[s]] = v;
+            if (_p2Of[s] >= 0 && _p2Of[s] < a.Length) a[_p2Of[s]] = v;
+        }
+        return a;
+    }
+
+    /// <summary>K28: місце → [номер останнього пінгу, скільки мс він тут пролежав] — браузер віднімає це від свого заміру.</summary>
+    int[] PingEcho()
+    {
+        var a = new int[_pOf.Length * 2];
+        var now = Ctx.Clock.UtcNow;
+        for (var s = 0; s < _pOf.Length; s++)
+        {
+            if (_pingI[s] == 0) continue;
+            a[s * 2] = _pingI[s];
+            a[s * 2 + 1] = (int)Math.Clamp((now - _pingAt[s]).TotalMilliseconds, 0, 60_000);
+        }
+        return a;
+    }
 
     int[] Reacts()
     {

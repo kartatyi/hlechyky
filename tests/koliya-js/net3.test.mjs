@@ -1,7 +1,30 @@
 // K28 «Мережа 3: люди за столом» — чисті частини net.js: ніки, реакції, пінг, глядачі.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shortNick, namesFrom, REACTS, createReactGate, freshReacts } from '../../web/games/koliya/net.js';
+import { shortNick, namesFrom, REACTS, createReactGate, freshReacts, createPinger, pingColor, lostFrom } from '../../web/games/koliya/net.js';
+
+test('пінг: раз на секунду, луна мінус час на сервері, згладжено', () => {
+  const pg = createPinger(1000);
+  const i = pg.due(0);
+  assert.equal(i, 1);
+  assert.equal(pg.due(500), 0);           // ще зарано
+  assert.equal(pg.echo(i, 30, 150), 120); // 150 мс туди-назад, 30 з них — чекав кадру на сервері
+  assert.equal(pg.echo(i, 0, 900), 120);  // повтор луни — уже не рахується
+  const j = pg.due(1000);
+  assert.equal(pg.echo(j, 0, 1220), 150); // 220 → 0,7·120 + 0,3·220 = 150
+  const k = pg.due(2000);
+  assert.equal(pg.echo(k, 10, 2060), 100); // менший — одразу наполовину
+  assert.equal(pingColor(50), '#8fe36b');
+  assert.equal(pingColor(120), '#ffd23f');
+  assert.equal(pingColor(null), '#9a9a9a');
+});
+
+test('«відпав»: -1 з кадру, а без кадрів > 3 с — і свої', () => {
+  assert.deepEqual(lostFrom([120, -1, 80], false, [0]), [false, true, false]);
+  assert.deepEqual(lostFrom([120, -1, 80], true, [0, -1]), [true, true, false]);
+  assert.equal(lostFrom(null, true, [1])[1], true);
+  assert.equal(!!lostFrom(null, true, [1])[0], false);
+});
 import * as R from '../../web/games/koliya/rules.js';
 
 test('реакції: ліміт раз на секунду з гравця, кожен свій', () => {
