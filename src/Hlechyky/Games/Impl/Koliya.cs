@@ -19,7 +19,12 @@ namespace Hlechyky.Games.Impl;
 /// згорнути кадри, тож запис іде в кількох кадрах поспіль. Хто відстав більше (діра в номерах) чи щойно прийшов —
 /// бере журнал окремо: <c>GET /api/games/koliya/{стіл}/log?from=N</c> (<see cref="KoliyaSetup"/>).
 /// Запис — 10 цілих: <c>[seq, t, p, k, a, b, c, d, e, i]</c>, k: 1 in (a=mx, b=my), 2 use (a=x, b=y, c=fx, d=fy,
-/// e=1 — «затиснуто»), 3 join, 4 leave; i — номер команди у відправника (щоб він упізнав свою).
+/// e=1 — «затиснуто»), 3 join, 4 leave, 5 throw (a=x, b=y, c=fx, d=fy — кидок K18 залежить від пози), 6 horn (гудок K18); i — номер команди у відправника (щоб він упізнав свою).
+/// </para>
+/// <para>
+/// Двоє за одним ПК (K6): місце може мати другого гравця rules (<c>Act "join2"</c> / <c>"leave2"</c>; команди 'in'/'use'
+/// з <c>q = 1</c> — від нього). Разом гравців rules ≤ 4: коли всі слоти зайняті, «join2» відмовляє, а новий за столом
+/// дивиться, доки хтось не встане. Перезапуск зберігає другого: гравці rules — за порядком місць, перший, потім другий.
 /// </para>
 /// </summary>
 public sealed class Koliya : Game, IUnlistedGame
@@ -48,7 +53,10 @@ public sealed class Koliya : Game, IUnlistedGame
     public const int HashKeep = 64;
 
     public const int Stride = 10;
-    public const int In = 1, Use = 2, Join = 3, Leave = 4;
+
+    /// <summary>Гравців rules.js (MAX_PLAYERS) — з двома за ПК місць може бути менше.</summary>
+    public const int MaxRulesPlayers = 4;
+    public const int In = 1, Use = 2, Join = 3, Leave = 4, Throw = 5, Horn = 6;
 
     /// <summary>Порожній стіл чекає свого (F5, обрив).</summary>
     public override TimeSpan HoldEmpty => TimeSpan.FromSeconds(60);
@@ -58,6 +66,8 @@ public sealed class Koliya : Game, IUnlistedGame
     readonly List<Entry> _log = [];
     /// <summary>Місце → гравець у rules (-1 — не грає).</summary>
     readonly int[] _pOf = [-1, -1, -1, -1];
+    /// <summary>Місце → другий гравець rules за тим самим ПК (-1 — нема).</summary>
+    readonly int[] _p2Of = [-1, -1, -1, -1];
     /// <summary>Гравці rules: true — пішов (слот вільний, join займе перший такий, як у rules.js join).</summary>
     readonly List<bool> _out = [];
     readonly int[] _lastT = new int[4];
@@ -97,10 +107,16 @@ public sealed class Koliya : Game, IUnlistedGame
         _w = -1;
         Array.Fill(_lastT, 0);
         _n = 0;
+        // спершу кожне місце по гравцю, тоді другі за ПК — скільки влізе в 4
         for (var s = 0; s < _pOf.Length; s++)
         {
-            _pOf[s] = s < Info.MaxPlayers && Ctx.Seated(s) ? _n++ : -1;
+            _pOf[s] = s < Info.MaxPlayers && Ctx.Seated(s) && _n < MaxRulesPlayers ? _n++ : -1;
             if (_pOf[s] >= 0) _out.Add(false);
+        }
+        for (var s = 0; s < _p2Of.Length; s++)
+        {
+            _p2Of[s] = _p2Of[s] >= 0 && _pOf[s] >= 0 && _n < MaxRulesPlayers ? _n++ : -1;
+            if (_p2Of[s] >= 0) _out.Add(false);
         }
         _startAt = Ctx.Clock.UtcNow;
         _dirty = true;
@@ -115,24 +131,36 @@ public sealed class Koliya : Game, IUnlistedGame
     public override void OnJoin(int seat)
     {
         if (seat < 0 || seat >= _pOf.Length || _pOf[seat] >= 0) return;
-        // rules.js join: перший вільний слот, інакше новий у кінці
+        if (NewPlayer(seat) is { } p) _pOf[seat] = p;   // усі 4 слоти rules зайняті (двоє за ПК) — дивиться
+    }
+
+    /// <summary>rules.js join: перший вільний слот, інакше новий у кінці (не більше 4).</summary>
+    int? NewPlayer(int seat)
+    {
         var p = _out.IndexOf(true);
+        if (p < 0 && _out.Count >= MaxRulesPlayers) return null;
         if (p < 0) { p = _out.Count; _out.Add(false); }
         else _out[p] = false;
-        _pOf[seat] = p;
         Add(seat, new Entry(0, p, Join, 0, 0, 0, 0, 0, 0), null);
+        _dirty = true;
+        return p;
+    }
+
+    void Gone(int seat, int p)
+    {
+        Add(seat, new Entry(0, p, Leave, 0, 0, 0, 0, 0, 0), null);
+        _out[p] = true;
         _dirty = true;
     }
 
-    /// <summary>Не техпоразка: гравець іде (rules кладе його речі на землю), решта грає далі.</summary>
+    /// <summary>Не техпоразка: гравець іде (rules кладе його речі на землю), решта грає далі. Другий за його ПК — теж.</summary>
     public override void OnLeave(int seat)
     {
-        if (seat < 0 || seat >= _pOf.Length || _pOf[seat] < 0) return;
-        var p = _pOf[seat];
-        Add(seat, new Entry(0, p, Leave, 0, 0, 0, 0, 0, 0), null);
-        _out[p] = true;
+        if (seat < 0 || seat >= _pOf.Length) return;
+        if (_p2Of[seat] >= 0) { Gone(seat, _p2Of[seat]); _p2Of[seat] = -1; }
+        if (_pOf[seat] < 0) return;
+        Gone(seat, _pOf[seat]);
         _pOf[seat] = -1;
-        _dirty = true;
     }
 
     public override ActResult Act(int seat, string action, JsonElement payload)
@@ -143,17 +171,37 @@ public sealed class Koliya : Game, IUnlistedGame
             case "restart":
                 NewEpoch(ReadSeed(payload), ReadParams(payload));
                 return ActResult.Done;
+            case "join2":
+                Player(seat);
+                if (_p2Of[seat] < 0) _p2Of[seat] = NewPlayer(seat) ?? throw new GameError("Усі четверо вже грають");
+                return ActResult.Done;
+            case "leave2":
+                if (_p2Of[seat] >= 0) { Gone(seat, _p2Of[seat]); _p2Of[seat] = -1; }
+                return ActResult.Done;
             case "in":
             {
-                var p = Player(seat);
+                var p = Player(seat, payload);
                 Add(seat, new Entry(0, p, In, Clamp(payload, "mx", -100, 100), Clamp(payload, "my", -100, 100), 0, 0, 0, Clamp(payload, "i", 0, int.MaxValue)), ReqTick(payload));
                 return ActResult.Done;
             }
             case "use":
             {
-                var p = Player(seat);
+                var p = Player(seat, payload);
                 Add(seat, new Entry(0, p, Use, Clamp(payload, "x", 0, 10_000_000), Clamp(payload, "y", 0, 10_000_000),
                     Clamp(payload, "fx", -1, 1), Clamp(payload, "fy", -1, 1), Clamp(payload, "h", 0, 1), Clamp(payload, "i", 0, int.MaxValue)), ReqTick(payload));
+                return ActResult.Done;
+            }
+            case "throw":   // K18: кидок речі — з позою, як use
+            {
+                var p = Player(seat, payload);
+                Add(seat, new Entry(0, p, Throw, Clamp(payload, "x", 0, 10_000_000), Clamp(payload, "y", 0, 10_000_000),
+                    Clamp(payload, "fx", -1, 1), Clamp(payload, "fy", -1, 1), 0, Clamp(payload, "i", 0, int.MaxValue)), ReqTick(payload));
+                return ActResult.Done;
+            }
+            case "horn":    // K18: гудок — без пози
+            {
+                var p = Player(seat, payload);
+                Add(seat, new Entry(0, p, Horn, 0, 0, 0, 0, 0, Clamp(payload, "i", 0, int.MaxValue)), ReqTick(payload));
                 return ActResult.Done;
             }
             case "hash":
@@ -165,6 +213,10 @@ public sealed class Koliya : Game, IUnlistedGame
     }
 
     int Player(int seat) => _pOf[seat] >= 0 ? _pOf[seat] : throw new GameError("Ти ще не в цій партії — перезапусти");
+
+    /// <summary>Гравець команди: q = 1 — другий за тим самим ПК.</summary>
+    int Player(int seat, JsonElement payload) =>
+        Clamp(payload, "q", 0, 1) == 0 ? Player(seat) : _p2Of[seat] >= 0 ? _p2Of[seat] : throw new GameError("Другого гравця нема");
 
     /// <summary>Записати команду: тик — бажаний, але не в закрите, не раніше попередньої цього ж місця й не надто наперед.</summary>
     void Add(int seat, Entry e, int? want)
@@ -227,14 +279,14 @@ public sealed class Koliya : Game, IUnlistedGame
     public override object View(int? seat) => new
     {
         e = _epoch, seed = _seed, prm = Prm(), n0 = _n, p = seat is { } s && s >= 0 && s < _pOf.Length ? _pOf[s] : -1,
-        pOf = _pOf.ToArray(), d = _desync,
+        pOf = _pOf.ToArray(), p2 = seat is { } s2 && s2 >= 0 && s2 < _p2Of.Length ? _p2Of[s2] : -1, p2Of = _p2Of.ToArray(), d = _desync,
     };
 
     /// <summary>Журнал від запису <paramref name="from"/> — пізньому, після F5 чи діри в кадрах. Кличеться під замком кімнати.</summary>
     public object Log(int from) => new
     {
         e = _epoch, seed = _seed, prm = Prm(), n0 = _n, t = NowTick(), w = Mark(), n = _log.Count, f = Math.Clamp(from, 0, _log.Count),
-        c = Flat(from), pOf = _pOf.ToArray(), d = _desync,
+        c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync,
     };
 
     JsonElement Prm()

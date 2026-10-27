@@ -19,6 +19,7 @@
 // УВАГА: rules.js імпортує цей файл, а цей — rules.js (цикл). Тому на верхньому рівні тут — лише літерали, без G/I/U.
 import { U, TPS, G, O, I, rnd, wagonPos } from './rules.js';
 import { generate } from './gen.js';
+import { endlessInit, endlessStep } from './endless.js';   // K19
 
 export const EXTRA_PARAMS = {
   geeseSec:   { def: 45,  min: 10, max: 180, step: 5,   label: 'Гуси: зграя раз на, с', group: 'Додатки' },
@@ -27,7 +28,7 @@ export const EXTRA_PARAMS = {
 };
 export const EXTRA_VARIANTS = {
   geese:       { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Гуси-злодюжки 🪿' },
-  stationMode: { values: ['end', 'upgrade'], labels: ['Кінець', 'Проміжна з покращеннями'], label: 'Станція 🏪' },
+  stationMode: { values: ['end', 'upgrade', 'endless'], labels: ['Кінець', 'Проміжна з покращеннями', 'Нескінченна ♾'], label: 'Станція 🏪' },
 };
 
 /** Покращення проміжної станції: ключ → { label, icon } (застосування — applyUpgrade) */
@@ -65,7 +66,9 @@ export function extrasInit(s, params = s.params) {
   s.geeseId = 0;
   s.geeseT = Math.max(1, Math.round(par(s, 'geeseSec') * TPS));
   s.mid = null;
+  s.endless = null;   // K19: нескінченна колія (endless.js)
   if (par(s, 'stationMode') === 'upgrade') addMidStation(s);
+  else if (par(s, 'stationMode') === 'endless') endlessInit(s);
   return s;
 }
 
@@ -117,6 +120,7 @@ function addMidStation(s) {
 export function extrasStep(s, cmds) {
   if (s.status !== 'run') return false;
   if (s.geese && par(s, 'geese') === 'on') stepGeese(s);
+  if (s.endless) return endlessStep(s);   // K19: зупинки на станціях, зсув вікна
   return s.mid ? stepMid(s) : false;
 }
 

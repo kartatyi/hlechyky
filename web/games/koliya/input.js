@@ -9,6 +9,10 @@
 //   rumble(p | -1, 'hit' | 'lost'): коротка вібрація пада гравця p (-1 — усіх), setRumble(on) }
 //   opts.players — скільки локальних гравців (1..2); без нього — з адреси ?p= (як у main.js).
 // Клавіші: гравець 0 — WASD + Space/E; гравець 1 — стрілки + Enter/правий Shift; R — рестарт.
+// K16 (кооп K18): poll() дає ще throw/horn — true раз на натиск: П1 Q / F, П2 правий Ctrl, Num0 / «/», Num.; пад B / Y.
+//   hasPad(p) — чи має локальний гравець p пад (за тим самим розподілом), для підказок.
+// K27: setTouch(t) — дотикове керування (touch.js): поки воно активне, гравець 0 бере ще й t.read(); rumble гравця 0 —
+//   ще й вібрація телефона (t.buzz), setRumble вмикає/вимикає її разом із вібрацією пада.
 // Пади: лівий стік або хрестовина, A — дія, Start — рестарт, Select/View — панель; мертва зона 0,25; осі, відхилені
 //   вже при першому погляді на пад (педаль/ручка газу стоїть на -1), ігноруємо назавжди — інакше «гравець сам іде».
 //   Керма, педалі, КПП (як sim() у web/static/pad.js) — не пади: їх не читаємо взагалі.
@@ -17,9 +21,13 @@
 const DEAD = 0.25, STUCK = 0.5;
 const BA = 0, BB = 1, SELECT = 8, START = 9, UP = 12, DOWN = 13, LEFT = 14, RIGHT = 15;
 const REPEAT_FIRST = 380, REPEAT_NEXT = 110;
-const K0 = { up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], use: ['Space', 'KeyE'] };
-const K1 = { up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], use: ['Enter', 'NumpadEnter', 'ShiftRight'] };
-const KALL = { up: [...K0.up, ...K1.up], down: [...K0.down, ...K1.down], left: [...K0.left, ...K1.left], right: [...K0.right, ...K1.right], use: [...K0.use, ...K1.use] };
+const BY = 3;   // K16: кооп K18 — B (BB) кидок, Y гудок
+// throw/horn — кооп-фішки K18 (K16 переніс з coop-keys.js): на натиск, не затиснуто
+const K0 = { up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], use: ['Space', 'KeyE'], throw: ['KeyQ'], horn: ['KeyF'] };
+const K1 = { up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], use: ['Enter', 'NumpadEnter', 'ShiftRight'],
+  throw: ['ControlRight', 'Numpad0'], horn: ['Slash', 'NumpadDecimal'] };
+const KALL = {};
+for (const k in K0) KALL[k] = [...K0[k], ...K1[k]];
 const GAME_KEYS = new Set([...Object.values(KALL).flat(), 'KeyR']);
 
 // керма й педалі — не пади (той самий список, що в web/static/pad.js)
@@ -47,12 +55,15 @@ export function createInput(opts = {}) {
   const down = new Set();
   let restart = false;
   let menu = null, onMenu = null, rumbleOn = true;
+  let touch = null;               // K27
   const typing = (e) => { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); };
+  const hits = new Set();         // K16: клавіші, натиснуті з минулого poll (кидок/гудок — на натиск)
   const kd = (e) => {
-    if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (typing(e) || (e.ctrlKey && e.code !== 'ControlRight') || e.metaKey || e.altKey) return;
     if (!GAME_KEYS.has(e.code)) return;
     e.preventDefault();
     if (e.code === 'KeyR' && !e.repeat) restart = true;
+    if (!e.repeat && !menu) hits.add(e.code);
     down.add(e.code);
   };
   const ku = (e) => { if (GAME_KEYS.has(e.code) && !typing(e)) e.preventDefault(); down.delete(e.code); };
@@ -64,7 +75,10 @@ export function createInput(opts = {}) {
     mx: (anyDown(m.right) ? 1 : 0) - (anyDown(m.left) ? 1 : 0),
     my: (anyDown(m.down) ? 1 : 0) - (anyDown(m.up) ? 1 : 0),
     use: anyDown(m.use),
+    throw: m.throw.some((c) => hits.has(c)),
+    horn: m.horn.some((c) => hits.has(c)),
   });
+  const padHits = new Map();      // K16: index+id → Set('throw'|'horn') — фронти B/Y з минулого poll
 
   // --- пади ---
   const stuck = new Map();        // index+id → [bool × осі] відхилені при першому погляді
@@ -116,6 +130,7 @@ export function createInput(opts = {}) {
       } else {
         rep.delete(key);
         if (hit(START)) restart = true;
+        if (hit(BB) || hit(BY)) { const h = padHits.get(key) || new Set(); if (hit(BB)) h.add('throw'); if (hit(BY)) h.add('horn'); padHits.set(key, h); }
         if (hit(SELECT)) onMenu?.();
       }
       was.set(key, cur);
@@ -130,12 +145,13 @@ export function createInput(opts = {}) {
     // хрестовина (стандартна розкладка: 12 ↑, 13 ↓, 14 ←, 15 →)
     const dx = (b(RIGHT) ? 1 : 0) - (b(LEFT) ? 1 : 0), dy = (b(DOWN) ? 1 : 0) - (b(UP) ? 1 : 0);
     if (dx || dy) { ax = dx; ay = dy; }
-    return { mx: ax, my: ay, use: b(BA) };
+    const h = padHits.get(key);
+    return { mx: ax, my: ay, use: b(BA), throw: !!h?.has('throw'), horn: !!h?.has('horn') };
   }
 
   const merge = (...src) => {
-    const o = { mx: 0, my: 0, use: false };
-    for (const v of src) { if (!v) continue; o.mx += v.mx; o.my += v.my; o.use = o.use || v.use; }
+    const o = { mx: 0, my: 0, use: false, throw: false, horn: false };
+    for (const v of src) { if (!v) continue; o.mx += v.mx; o.my += v.my; o.use = o.use || v.use; o.throw = o.throw || v.throw; o.horn = o.horn || v.horn; }
     o.mx = Math.max(-1, Math.min(1, o.mx)); o.my = Math.max(-1, Math.min(1, o.my));
     return o;
   };
@@ -158,19 +174,27 @@ export function createInput(opts = {}) {
   return {
     poll() {
       const list = scan();
-      if (menu) return players <= 1 ? [still()] : [still(), still()];
+      if (menu) { hits.clear(); padHits.clear(); touch?.swallow?.(); return players <= 1 ? [still()] : [still(), still()]; }
       const ps = list.map(readPad);     // читаємо всі — щоб Start з будь-якого пада рестартив
-      if (players <= 1) return [merge(keyb(KALL), ps[0])];
-      if (ps.length >= 2) return [merge(keyb(K0), ps[0]), merge(keyb(K1), ps[1])];
-      if (ps.length === 1) return [keyb(KALL), ps[0]];
-      return [keyb(K0), keyb(K1)];
+      let out;
+      if (players <= 1) out = [merge(keyb(KALL), ps[0])];
+      else if (ps.length >= 2) out = [merge(keyb(K0), ps[0]), merge(keyb(K1), ps[1])];
+      else if (ps.length === 1) out = [merge(keyb(KALL)), merge(ps[0])];
+      else out = [keyb(K0), keyb(K1)];
+      const t = touch?.read?.();   // K27: дотик — гравцю 0
+      if (t) out[0] = merge(out[0], t);
+      hits.clear(); padHits.clear();   // натиски кидка/гудка — один раз
+      return out;
     },
+    /** K16: у кого з локальних гравців пад (для підказок «A» чи «Space») — як розподіляє poll */
+    hasPad(pl) { const n = pads().length; return players <= 1 ? pl === 0 && n > 0 : n >= 2 ? pl < 2 : n === 1 && pl === 1; },
     restartPressed() { scan(); const r = restart; restart = false; return r; },
     setPlayers(n) { players = Math.max(1, Math.min(2, n | 0)); },
     padCount() { return pads().length; },
     setMenu(fn) { menu = typeof fn === 'function' ? fn : null; rep.clear(); if (!menu) this.swallow(); },
     onMenuKey(fn) { onMenu = fn; },
     swallow() {
+      hits.clear(); padHits.clear(); touch?.swallow?.();   // K21: Q/F, якими закрили стартовий екран, не стають кидком/гудком у першому тику
       for (const p of pads()) {
         const key = keyOf(p), s = muted.get(key) || new Set();
         for (let i = 0; i < (p.buttons ? p.buttons.length : 0); i++) if (btn(p, i)) s.add(i);
@@ -179,11 +203,13 @@ export function createInput(opts = {}) {
     },
     rumble(pl, kind = 'hit') {
       if (!rumbleOn) return;
+      if (pl <= 0) touch?.buzz?.(kind);   // K27: телефон
       const list = pads();
       if (pl < 0) { for (const p of list) shake(p, kind); return; }
       shake(padOf(pl, list), kind);
     },
-    setRumble(on) { rumbleOn = !!on; },
+    setRumble(on) { rumbleOn = !!on; touch?.setVibrate?.(rumbleOn); },
+    setTouch(t) { touch = t || null; touch?.setVibrate?.(rumbleOn); },   // K27
     get rumbleOn() { return rumbleOn; },
     dispose() { removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('blur', blur); },
   };

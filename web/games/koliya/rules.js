@@ -5,6 +5,8 @@
 import { generate } from './gen.js';
 import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: додатки за перемикачем
 import { coopInit, coopCmd, coopUse, coopStep, coopHash } from './coop.js';   // K18: кооп-фішки за перемикачем
+import { tutorialParams, tutorialWorld } from './tutorial.js';   // K22: навчальна смуга (mode='tutorial')
+import { endlessHash } from './endless.js';                          // K19: нескінченна колія
 
 export const TICK_MS = 50;           // 20 тиків/с
 export const TPS = 1000 / TICK_MS;
@@ -63,7 +65,7 @@ export const PARAM_META = {
 export const VARIANTS = {
   overheat: { values: ['fire', 'stop'], labels: ['Пожежа', 'Зупинка'], label: 'Перегрів котла' },
   geese:      { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Гуси-злодюжки 🪿' },                      // K11
-  stationMode: { values: ['end', 'upgrade'], labels: ['Кінець', 'Проміжна з покращеннями'], label: 'Станція 🏪' }, // K11
+  stationMode: { values: ['end', 'upgrade', 'endless'], labels: ['Кінець', 'Проміжна з покращеннями', 'Нескінченна ♾'], label: 'Станція 🏪' }, // K11, K19 (endless.js)
   // K14 «Відчуття ядра»: move/useMode/aim — блоки «K14» біля руху гравця, speedCurve — trainSpeed()
   move: { values: ['free', 'grid', 'snappy'], labels: ['Вільно', 'Клітинками', 'Чітко'], label: 'Рух гравця' },
   useMode: { values: ['press', 'tap', 'auto'], labels: ['Затиснув — б\'є', 'Кожен удар — натиск', 'Б\'є сам'], label: 'Дія (рубати/бити)' },
@@ -74,6 +76,7 @@ export const VARIANTS = {
   throw: { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Кидок речі на 3 клітинки (ловиться руками) 🎯' },
   pass: { values: ['on', 'off'], labels: ['Так', 'Ні'], label: 'Передати річ партнерові в руки (дія на нього) 🤝' },
   stun: { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Сокирою по партнеру — 1 с зірочок 💫' },
+  mode: { values: ['normal', 'tutorial'], labels: ['Звичайна смуга', 'Навчання 🎓'], label: 'Смуга', group: 'Світ' },   // K22 (tutorial.js)
 };
 
 export function defaultParams() {
@@ -123,7 +126,8 @@ const ACT_CD = 3;                   // тиків паузи після взят
 export function newGame(seed, params = defaultParams(), nPlayers = 1) {
   seed = seed >>> 0;
   params = { ...defaultParams(), ...params };
-  const world = generate(seed, params);   // { w, h, ground, obj, hp, drop, dropN, path, spawn: [{x,y}] (клітинки) }
+  if (params.mode === 'tutorial') params = tutorialParams(params);   // K22: навчальна смуга — свої повільні числа
+  const world = params.mode === 'tutorial' ? tutorialWorld(params) : generate(seed, params);   // { w, h, ground, obj, hp, drop, dropN, path, spawn: [{x,y}] (клітинки) }
   const s = {
     seed, tick: 0, rng: (seed ^ 0x9E3779B9) >>> 0, params,
     status: 'run', reason: '',
@@ -786,7 +790,28 @@ export function hash(s) {
     mix(p.x); mix(p.y); mix(p.fx); mix(p.fy); mix(p.hold.k); mix(p.hold.n); mix(p.cd);
     mix(p.mx); mix(p.my); mix(p.ut); mix(p.out); mix(p.st);
     if (s.params.move === 'grid') { mix(p.gx); mix(p.gy); mix(p.gt); }   // K14 (типовий hash не змінюється)
+    for (const k of Object.keys(p).sort()) if (!HASH_PL[k]) { mixStr(mix, k); mixAny(mix, p[k]); }   // K6: нові поля гравця
   }
   coopHash(s, mix);   // K18 (лише ввімкнене)
+  for (const k of Object.keys(t).sort()) if (!HASH_TR[k]) { mixStr(mix, k); mixAny(mix, t[k]); }      // K6: нові поля потяга
+  for (const k of Object.keys(s).sort()) if (!HASH_TOP[k]) { mixStr(mix, k); mixAny(mix, s[k]); }     // K6: гуси, s.mid, s.flying…
+  if (s.endless) mix(endlessHash(s));   // K19 (типовий hash не змінюється)
   return h >>> 0;
+}
+
+// K6: що hash уже мішає поштучно (чи що не впливає на світ: ev, stats, params, spawn, aim) — решта полів стану (додатки
+// K11 гуси/s.mid, K18 s.flying і що з'явиться далі) іде в hash сама, загально, за відсортованими ключами.
+const HASH_TOP = Object.fromEntries('seed tick rng params status reason w h ground obj hp drop dropN path spawn train players ev stats'.split(' ').map((k) => [k, 1]));
+const HASH_PL = Object.fromEntries('x y fx fy hold cd mx my ut out st gx gy gt aim'.split(' ').map((k) => [k, 1]));
+const HASH_TR = Object.fromEntries('pos speed heat fire wood iron rails craftT sub ht started'.split(' ').map((k) => [k, 1]));
+function mixStr(mix, str) { mix(str.length); for (let i = 0; i < str.length; i++) mix(str.charCodeAt(i)); }
+function mixAny(mix, v) {
+  if (v === null || v === undefined) { mix(v === null ? -1 : -2); return; }
+  if (typeof v === 'number') { if (Number.isInteger(v) && Math.abs(v) < 2 ** 31) mix(v); else mixStr(mix, String(v)); return; }
+  if (typeof v === 'boolean') { mix(v ? -3 : -4); return; }
+  if (typeof v === 'string') { mix(-5); mixStr(mix, v); return; }
+  if (typeof v !== 'object') return;   // функції тощо — не стан
+  if (Array.isArray(v) || ArrayBuffer.isView(v)) { mix(-6); mix(v.length); for (let i = 0; i < v.length; i++) mixAny(mix, v[i]); return; }
+  mix(-7);
+  for (const k of Object.keys(v).sort()) { mixStr(mix, k); mixAny(mix, v[k]); }
 }
