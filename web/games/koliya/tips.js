@@ -399,7 +399,7 @@ export function createTips(root, { enabled = true } = {}) {
         const local = game?.local ?? state.players.length;
         const inp = game?.input, nLocal = game?.local ?? 1;
         tips = pickTips(state, mem, { players: state.players.map((_, i) => i).filter((i) => i < local),
-          keys: (p) => keysFor(p, !!inp?.hasPad?.(p), nLocal) });
+          keys: (p) => (p === 0 && game?.touch?.active && !inp?.hasPad?.(0) ? { use: '✋ Дія', throw: '«Кинути»' } : keysFor(p, !!inp?.hasPad?.(p), nLocal)) });   // K27: телефон
         lastTick = state.tick; lastSeed = state.seed;
       }
       const v = game?.view ?? view;

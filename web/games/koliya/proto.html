@@ -2,12 +2,12 @@
 <html lang="uk">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><!-- K27: без зуму пальцями -->
 <title>Колія — прототип</title>
 <link rel="icon" href="data:,"><!-- K21: без запиту favicon.ico (404 у консолі) -->
 <style>
   html, body { margin: 0; height: 100%; background: #1b1f17; color: #eee; font: 14px system-ui, sans-serif; overflow: hidden; }
-  #kol-view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #kol-view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; -webkit-touch-callout: none; }   /* K27 */
   #kol-hud { position: fixed; left: 10px; top: 8px; padding: 4px 10px; background: rgba(0,0,0,.45); border-radius: 6px; pointer-events: none; }
   #kol-panel { position: fixed; right: 0; top: 0; }
 </style>
