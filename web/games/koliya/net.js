@@ -159,6 +159,23 @@ export function prep(s, cmds) {
   for (const c of cmds) if (c.k === 'use' && c.h) { const pl = s.players[c.p]; if (pl) pl.ut = s.tick; }
 }
 
+/**
+ * K28: нік для мітки над гравцем — до 10 символів (довший — 9 і «…»), суфікс « ²» (другий за тим самим ПК) не ріжемо.
+ * Порожній/не рядок — null (мітка лишиться «П1»).
+ */
+export function shortNick(n) {
+  if (typeof n !== 'string' || !n.trim()) return null;
+  let base = n.trim(), sup = '';
+  if (base.endsWith(' ²')) { sup = ' ²'; base = base.slice(0, -2).trimEnd(); }
+  const ch = [...base];
+  return (ch.length > 10 ? ch.slice(0, 9).join('') + '…' : base) + sup;
+}
+
+/** K28: мапа p → короткий нік з виду/журналу сервера (nm). */
+export function namesFrom(nm) {
+  return Array.isArray(nm) ? nm.map(shortNick) : [];
+}
+
 export function toCmd(c, j) {
   const p = c[j + 2], k = K[c[j + 3]];
   if (k === 'in') return { p, k, mx: c[j + 4], my: c[j + 5] };
@@ -320,6 +337,7 @@ export function createNet(game, opts = {}) {
     net.p = v.p ?? -1;
     net.p2 = v.p2 ?? -1;
     game.me = net.p;
+    if (v.nm) game.names = namesFrom(v.nm);   // K28
     if (v.e !== e && !resyncing) resync();
     else if (ready) want2();
   }
@@ -353,6 +371,7 @@ export function createNet(game, opts = {}) {
     if (seat != null && j.pOf) net.p = j.pOf[seat] ?? -1;
     if (seat != null && j.p2Of) net.p2 = j.p2Of[seat] ?? -1;
     game.me = net.p;
+    if (j.nm) game.names = namesFrom(j.nm);   // K28: мітки над гравцями — ніки
     game.seed = j.seed >>> 0;
     if (off == null) off = j.t * R.TICK_MS - performance.now();
     if (!ingest(j.f | 0, j.c || [])) { console.warn('Колія: журнал з дірою'); return; }

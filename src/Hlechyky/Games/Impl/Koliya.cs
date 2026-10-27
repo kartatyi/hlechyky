@@ -280,13 +280,31 @@ public sealed class Koliya : Game, IUnlistedGame
     {
         e = _epoch, seed = _seed, prm = Prm(), n0 = _n, p = seat is { } s && s >= 0 && s < _pOf.Length ? _pOf[s] : -1,
         pOf = _pOf.ToArray(), p2 = seat is { } s2 && s2 >= 0 && s2 < _p2Of.Length ? _p2Of[s2] : -1, p2Of = _p2Of.ToArray(), d = _desync,
+        nm = Names(),
     };
+
+    /// <summary>
+    /// K28: ніки гравців rules — p → нік місця (другий за тим самим ПК — «нік ²»); null — слот вільний (пішов).
+    /// Їде у вид і в журнал: міняється лише разом із місцями, а мітки над гравцями — з нього.
+    /// </summary>
+    public string?[] Names()
+    {
+        var a = new string?[_out.Count];
+        for (var s = 0; s < _pOf.Length; s++)
+        {
+            var nick = Ctx.NickOf(s);
+            if (nick is null) continue;
+            if (_pOf[s] >= 0 && _pOf[s] < a.Length) a[_pOf[s]] = nick;
+            if (_p2Of[s] >= 0 && _p2Of[s] < a.Length) a[_p2Of[s]] = nick + " ²";
+        }
+        return a;
+    }
 
     /// <summary>Журнал від запису <paramref name="from"/> — пізньому, після F5 чи діри в кадрах. Кличеться під замком кімнати.</summary>
     public object Log(int from) => new
     {
         e = _epoch, seed = _seed, prm = Prm(), n0 = _n, t = NowTick(), w = Mark(), n = _log.Count, f = Math.Clamp(from, 0, _log.Count),
-        c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync,
+        c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync, nm = Names(),
     };
 
     JsonElement Prm()
