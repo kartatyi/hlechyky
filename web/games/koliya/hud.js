@@ -16,10 +16,12 @@
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES } from './extras.js';             // K16: тост покращення
-import { t as tt } from './theme.js';               // K25: слова теми «Чумацький шлях»
+import { t as tt, isChumak } from './theme.js';      // K25: слова теми «Чумацький шлях»; K50: «Чумак»
+import { achievements } from './achievements.js';   // K50: досягнення 🏆 — тости з s.ev
 import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
+import { A11Y, pcol, pmark } from './panel.js';   // K49: кольори для дальтоніків і значки форми
 
-const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
+// K49: колір гравця — pcol(i) з panel.js (з урахуванням «Кольори для дальтоніків»)
 const HOLD_ICON = { [I.WOOD]: '🪵', [I.IRON]: '⛓', [I.RAIL]: '🛤', [I.AXE]: '🪓', [I.PICK]: '⛏', [I.BUCKET]: '🪣', [I.BUCKET_FULL]: '💧' };
 const HOLD_NAME = { [I.WOOD]: 'дерево', [I.IRON]: 'залізо', [I.RAIL]: 'рейки', [I.AXE]: 'сокира', [I.PICK]: 'кайло', [I.BUCKET]: 'відро', [I.BUCKET_FULL]: 'повне відро' };
 const ALARM_SEC = 3;
@@ -163,6 +165,11 @@ const CSS = `
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 /* K41: меню вище за вікно (ноутбук ~620 px, Deck у браузері) — картка не обрізається згори, екран гортається */
 .kol-screen { overflow-y: auto; } .kol-screen > .kol-card { margin: auto; }
+/* K49: «Великий текст HUD» ×1.25; «Менше блимань» — тривоги статичні, червоні */
+html.kol-a-big #kol-hud.kol-root { font-size: clamp(17.5px, 2vw, 27.5px); }
+html.kol-a-calm .kol-root *, html.kol-a-calm .kol-root { animation: none !important; transition: none !important; }
+html.kol-a-calm .kol-hot { border-color: #ff3b2f; background: #5a0f0bcc; }
+html.kol-a-calm .kol-alarm { background: #a3160ee6; border-color: #ff3b2f; }
 `;
 
 /** Ділянки-біоми всієї смуги: s.zones (перша смуга) + з проміжною станцією — зони другої (той самий сід, що в extras) */
@@ -190,10 +197,10 @@ const esc = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
  *  інакше П1…П4; локальний бот — 🤖 спереду. Екранований для innerHTML (raw — для textContent). */
 export function playerLabel(game, i, n = 0, raw = false) {
   const nk = game?.names?.[i];
-  if (nk) return (raw ? nk : esc(nk)) +(game?.lost?.[i] ? ' 📶?' : '');
+  if (nk) return pmark(i) + (raw ? nk : esc(nk)) +(game?.lost?.[i] ? ' 📶?' : '');   // K49: значок форми спереду
   const net = !!(game?.net || globalThis.KOL?.net);
   const bot = !net && (game?.bot?.some?.((b) => b.p === i) || i >= (game?.local ?? n));
-  return `${bot ? '🤖' : ''}П${i + 1}`;
+  return `${pmark(i)}${bot ? '🤖' : ''}П${i + 1}`;
 }
 const fmtTime = (sec) => { sec = Math.max(0, Math.floor(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
 
@@ -428,7 +435,7 @@ export function createHud(root, opts = {}) {
     if (!started) { if (game) game.paused = true; padPressed(); }   // K30: пад веде меню (pauseTick), тут — лише «чи є пад»
     pauseTick(s);   // K23
     // DOM — лише коли щось могло змінитись (тик, статус, старт), а не щокадру
-    const key = `${s.tick}|${s.status}|${started}|${s.players?.length}`;
+    const key = `${s.tick}|${s.status}|${started}|${s.players?.length}|${A11Y.v}`;   // K49: зміна доступності — перемалювати
     if (s === lastState && key === lastKey) return;
     lastKey = key;
     set(start.style, 'start|display', started ? 'none' : 'flex');
@@ -522,17 +529,18 @@ export function createHud(root, opts = {}) {
     const local = game?.local ?? players.length;
     while (plEls.length < players.length) {
       const i = plEls.length, d = el('div', 'kol-box kol-pl', pls);
-      d.style.borderColor = COLORS[i % 4];
+      d.style.borderColor = pcol(i);
       plEls.push(d);
     }
     for (let i = 0; i < plEls.length; i++) {
       const pl = players[i], d = plEls[i];
       set(d.style, `pl${i}|display`, pl ? 'block' : 'none');
+      set(d.style, `pl${i}|borderColor`, pcol(i));   // K49: палітра може змінитись на ходу
       if (!pl) continue;
       const k = pl.hold?.k ?? 0, nn = pl.hold?.n ?? 0;
       const what = k ? `${k === I.RAIL ? tt('icon.rails', HOLD_ICON[k]) : HOLD_ICON[k] ?? '?'}${nn > 1 ? ' ×' + nn : ''}` : '✋';
       const name = playerLabel(game, i, local);   // K37: у мережі — нік
-      set(d, `pl${i}|innerHTML`, `<b style="color:${COLORS[i % 4]}">${name}</b> ${what}`);
+      set(d, `pl${i}|innerHTML`, `<b style="color:${pcol(i)}">${name}</b> ${what}`);
       set(d, `pl${i}|title`, k === I.RAIL ? tt('hold.rails', HOLD_NAME[k]) : HOLD_NAME[k] ?? 'порожні руки');
     }
 
@@ -673,7 +681,7 @@ export function createHud(root, opts = {}) {
     for (let i = 0; i < n; i++) {
       const r = tally[i] ?? {};
       const idle = r.ticks ? Math.round(r.idle / r.ticks * 100) : 0;
-      h += `<tr><td><b style="color:${COLORS[i % 4]}">${pName(s, i)}</b></td><td>${z(r.chop)}</td><td>${z(r.rock)}</td><td>${z(r.rail)}</td><td>${z(r.douse)}</td>`
+      h += `<tr><td><b style="color:${pcol(i)}">${pName(s, i)}</b></td><td>${z(r.chop)}</td><td>${z(r.rock)}</td><td>${z(r.rail)}</td><td>${z(r.douse)}</td>`
         + `<td>${z(r.throw || r.catch ? `${r.throw ?? 0}/${r.catch ?? 0}` : 0)}</td><td>${z(r.stun)}</td><td>${idle}%</td><td class="kol-ttl">${tt[i].join(' ')}</td></tr>`;
     }
     return h + '</table>';
@@ -682,6 +690,12 @@ export function createHud(root, opts = {}) {
     if (!ev || !s) return;
     if (s !== evState) { evState = s; seenGeese = new Set(); tally = []; tallyTick = -1; prevPos = []; }
     tallyTick1(ev, s);
+    // K50: досягнення — бот не відкриває; маршрут дня — сід дня; тост «🏆 …» через наявні тости
+    try {
+      const g = game0, net = !!(g?.net || globalThis.KOL?.net);
+      const bot = (p) => !net && (g?.bot?.some?.((b) => b.p === p) || p >= (g?.local ?? (s.players?.length ?? 1)));
+      for (const a of achievements().tick(ev, s, { bot, daily: !!(g?.daily && g.daily.seed === s.seed), chumak: isChumak() })) say(`🏆 ${a.name}!`, 5000);
+    } catch { }
     for (const e of ev) {
       if (e.t === 'upgrade') {
         const u = UPGRADES[s.mid?.pick];

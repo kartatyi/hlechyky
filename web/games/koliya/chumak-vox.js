@@ -39,8 +39,15 @@ export function pal(look) {
 
 const th = (K, hex, a) => K.tint(hex, a).getHex();
 // модель потяга: g (render масштабує її 1 × 1,2 × 1,2) і m — внутрішня з оберненим масштабом, щоб колеса були круглі
-function inner(K) { const g = new K.THREE.Group(), m = new K.THREE.Group(); m.scale.set(1, 1 / 1.2, 1 / 1.2); g.add(m); return { g, m }; }
-const toG = (K, x, y, z) => new K.THREE.Vector3(x, y / 1.2, z / 1.2);
+// K45: k — збільшення моделі (висота й ширина; kx — уздовж ходу), земля (y = GY) лишається на місці
+function inner(K, k = 1, kx = 1) {
+  const g = new K.THREE.Group(), m = new K.THREE.Group();
+  m.scale.set(kx, k / 1.2, k / 1.2); m.position.y = GY * (1 - k) / 1.2; g.add(m);
+  return { g, m, k, kx };
+}
+const toG = (K, x, y, z, I = { k: 1, kx: 1 }) => new K.THREE.Vector3(x * I.kx, (GY * (1 - I.k) + y * I.k) / 1.2, z * I.k / 1.2);
+// K45: камера K20 далеко — воли й мажа трохи більші (уздовж ходу менше, щоб вози не налазили одне на одного)
+const LOCO_K = 1.16, LOCO_KX = 1.08, CART_K = 1.1;
 
 // ---------- віл (дивиться в +X; земля — y = 0 групи) ----------
 const OXK = 1.35;   // віл більший за «модельний» — поряд із гравцями (×1,35) мусить читатися
@@ -101,6 +108,62 @@ function team(K, m, off1, off2) {
   return oxen;
 }
 
+// ---------- K45: погонич — чумак у брилі з батогом, іде поруч із волами (дивиться в +X, земля — y = GY) ----------
+const DRK = 0.78;   // менший за гравця: віл у холці йому по груди
+function driver(K, parent, x, z) {
+  const { THREE, cube } = K;
+  const root = new THREE.Group(); root.position.set(x, GY, z); root.scale.setScalar(DRK); parent.add(root);
+  const body = new THREE.Group(); root.add(body);
+  const leg = (lz) => {
+    const p = new THREE.Group(); p.position.set(0, 0.26, lz); body.add(p);
+    cube(p, 0, -0.26, 0, 0.14, 0.26, 0.14, 0x2f3a5a);              // широкі шаровари
+    cube(p, 0.02, -0.26, 0, 0.17, 0.08, 0.14, 0x3a2418);           // чоботи
+    return p;
+  };
+  const legs = [leg(-0.085), leg(0.085)];
+  cube(body, 0, 0.24, 0, 0.27, 0.3, 0.34, 0xf3efe4);               // біла сорочка
+  cube(body, 0.136, 0.38, 0, 0.01, 0.15, 0.06, 0xb0262a);          // вишивка на грудях
+  cube(body, 0, 0.24, 0, 0.28, 0.07, 0.35, 0xb0262a);              // червоний пояс
+  cube(body, -0.03, 0.31, -0.18, 0.1, 0.12, 0.04, LEATHER);        // калита на поясі
+  const head = new THREE.Group(); head.position.set(0, 0.54, 0); body.add(head);
+  cube(head, 0, 0, 0, 0.27, 0.26, 0.27, 0xe8b48c);
+  for (const s of [-1, 1]) cube(head, 0.136, 0.12, s * 0.065, 0.01, 0.05, 0.04, 0x222222);
+  bryl(K, head, 0x2f3a5a);
+  const arm = (lz) => {
+    const p = new THREE.Group(); p.position.set(0, 0.5, lz); body.add(p);
+    cube(p, 0, -0.26, 0, 0.1, 0.26, 0.1, 0xf3efe4); cube(p, 0, -0.3, 0, 0.09, 0.05, 0.09, 0xe8b48c);
+    return p;
+  };
+  const armF = arm(0.215), armW = arm(-0.215);   // батіг — у руці з боку волів
+  // батіг: пужално (держак) у руці й ремінь із трьох ланок, що відстають від руки хвилею
+  const hand = new THREE.Group(); hand.position.set(0, -0.3, 0); armW.add(hand);
+  cube(hand, 0, -0.42, 0, 0.035, 0.44, 0.035, WD_L);
+  const lash = [];
+  let at = hand, y = -0.42;
+  for (let k = 0; k < 3; k++) {
+    const seg = new THREE.Group(); seg.position.set(0, y, 0); at.add(seg);
+    cube(seg, 0, -0.2, 0, 0.022, 0.2, 0.022, k === 2 ? 0x2a1f16 : LEATHER);
+    lash.push(seg); at = seg; y = -0.2;
+  }
+  return { root, body, legs, armF, armW, lash, ph: 0, w: 0, wa: 0, crack: 0 };
+}
+// крок: amp 0…1 (іде); whip 0…1 (воли пріють — махає батогом); → true, коли батіг ляснув цього кадру
+function poseDriver(d, ph, amp, whip, dt) {
+  const sw = Math.sin(ph) * 0.55 * amp;
+  d.legs[0].rotation.z = sw; d.legs[1].rotation.z = -sw;
+  d.armF.rotation.z = -sw * 0.8;
+  d.body.position.y = amp * Math.abs(Math.cos(ph)) * 0.03;
+  d.wa += (whip - d.wa) * Math.min(1, dt * 4);
+  const was = Math.sin(d.w);
+  d.w += dt * (2.2 + 5.5 * d.wa);
+  const s = Math.sin(d.w);
+  // спокійно: рука трохи вперед, батіг волочиться; пріють — замах угору й удар уперед, ремінь доганяє хвилею
+  d.armW.rotation.z = (0.25 + sw * 0.6) * (1 - d.wa) + (1.7 + 0.9 * s) * d.wa;
+  d.armW.rotation.x = -0.25 * d.wa;
+  for (let k = 0; k < d.lash.length; k++) d.lash[k].rotation.z = 0.5 * (1 - d.wa) + Math.sin(d.w - 0.9 * (k + 1)) * 0.75 * d.wa;
+  return d.wa > 0.5 && was > 0.6 && s <= 0.6 && Math.cos(d.w) < 0;
+}
+
 // ---------- колесо (дерев'яне, 10 ободів, 8 спиць) ----------
 function wheel(K, parent, x, z, r) {
   const { THREE, cube } = K, w = new THREE.Group();
@@ -149,7 +212,7 @@ function spin(wheels, d) { for (const w of wheels) w.rotation.z -= d / w.userDat
 // ---------- паротяг → мажа з волами ----------
 export function makeLoco(K) {
   const { THREE, cube, mergeGroup, addBlob } = K;
-  const { g, m } = inner(K), wheels = [];
+  const IN = inner(K, LOCO_K, LOCO_KX), { g, m } = IN, wheels = [];   // K45: більші
   const bed = cartBody(K, m, -0.2, 0.6, wheels);
   // вантаж: сіль під рядном, мотузки; на задку — дьогтярка (мазати осі)
   cube(m, -0.22, bed, 0, 0.5, 0.15, 0.38, SALT);
@@ -159,6 +222,7 @@ export function makeLoco(K) {
   cube(m, -0.53, GY + 0.16, 0.12, 0.07, 0.08, 0.07, TAR); cube(m, -0.53, GY + 0.24, 0.12, 0.012, 0.06, 0.012, 0x3a3532);
   // воли в ярмі, дишло між ними
   const oxen = team(K, m, 0, Math.PI);
+  const drv = driver(K, m, 0.62, 0.56);   // K45: погонич поруч із волами (з боку камери)
   mergeGroup(g); addBlob(g, 1.75, 0.95, 0.2, 0, -0.09);
   const boilerMat = new THREE.MeshLambertMaterial();   // render фарбує «котел» — у волів його нема
   const moved = mover();
@@ -173,6 +237,8 @@ export function makeLoco(K) {
     const tired = st.fire || (st.lost && st.reason === 'fire');
     lie += ((tired ? 1 : 0) - lie) * Math.min(1, dt * 2.2);
     for (const o of oxen) poseOx(o, ph, amp * (1 - lie), lie, now);
+    // K45: погонич крокує з волами; пріють чи знесилились — махає батогом, ляскіт — пилок над волами
+    if (poseDriver(drv, ph * 0.8, amp, Math.max(st.hot > 0.3 ? 1 : 0, tired ? 0.6 : 0), dt)) { g.updateMatrixWorld(true); const p = at(0.75, GY + 0.75, 0.15); puff(p.x, p.y, p.z, 1, DUST[2], 0.1, 0.5, 0.2); }
     g.updateMatrixWorld(true);
     // курява з-під копит
     dustT -= dt;
@@ -194,13 +260,13 @@ export function makeLoco(K) {
       spawn(p.x, p.y, p.z, (Math.random() - 0.5) * 0.4, 0.6, (o.root.position.z > 0 ? 0.4 : -0.4), 0.55, 0.045, 0xcdeeff, 7, 0);
     }
   }
-  return { g, boilerMat, chimney: null, boiler: null, top: toG(K, 0.85, GY + 0.75, 0), fx };
+  return { g, boilerMat, chimney: null, boiler: null, top: toG(K, 0.85, GY + 0.75, 0, IN), fx };
 }
 
 // ---------- склад → віз-комора ----------
 export function makeStore(K) {
   const { THREE, cube, mergeGroup, addBlob } = K;
-  const { g, m } = inner(K), wheels = [];
+  const { g, m } = inner(K, CART_K), wheels = [];   // K45: більший
   const bed = cartBody(K, m, 0, 0.84, wheels);
   cube(m, 0.5, GY + 0.27, 0, 0.2, 0.04, 0.04, WD_D);                         // дишло до переднього воза
   cube(m, 0.36, bed, 0.13, 0.09, 0.12, 0.12, SALT_B); cube(m, 0.36, bed + 0.12, 0.13, 0.05, 0.03, 0.05, ROPE);   // мішечок солі
@@ -216,7 +282,7 @@ export function makeStore(K) {
 // ---------- майстерня → віз-кузня ----------
 export function makeCraft(K) {
   const { THREE, cube, mat, mergeGroup, addBlob } = K;
-  const { g, m } = inner(K), wheels = [];
+  const IN = inner(K, CART_K), { g, m } = IN, wheels = [];   // K45: більший
   const bed = cartBody(K, m, 0, 0.84, wheels);
   cube(m, 0.5, GY + 0.27, 0, 0.2, 0.04, 0.04, WD_D);
   // горн: глиняна піч, жар, димар
@@ -237,7 +303,7 @@ export function makeCraft(K) {
   const rails = new THREE.Group(); rails.position.set(-0.27, bed, 0); m.add(rails);
   mergeGroup(g); addBlob(g, 1.1, 0.85, 0, 0, -0.09);
   const moved = mover();
-  return { g, rails, nR: -1, stack: toG(K, 0.3, bed + 0.66, 0.12),
+  return { g, rails, nR: -1, stack: toG(K, 0.3, bed + 0.66, 0.12, IN),
     fx({ now }) { spin(wheels, moved(g)); coal.emissiveIntensity = 0.75 + 0.25 * Math.sin(now / 90) * Math.sin(now / 37); } };
 }
 
@@ -645,6 +711,57 @@ export function fair(K, g, s, fx) {
   // лелече гніздо на стовпі, тополі
   cube(g, 6.9, 0.02, 2.8, 0.13, 1.9, 0.13, WD_D); nest(K, g, 6.9, 1.92, 2.8);
   poplar(K, g, 7.3, -4.1, 2.6); poplar(K, g, 0.4, -4.2, 2.3); poplar(K, g, 7.6, 4.0, 2.2);
+}
+
+// ---------- K45: малий ярмарок на проміжній станції (K11, s.mid) і станціях нескінченної колії (K19, s.endless.st) ----------
+// Шатро, бочки, віз із сіллю й віл на постої — у ряду біля платформи, де найбільше вільних клітинок (без дерев/скель/води,
+// не на колії й не в ряду табличок K11). Колія K19 не мусить іти крізь рамку станції — тож кожна річ, на чию клітинку
+// згодом ляже гать, ховається (fx). Лише вигляд, без колізій.
+export function miniFairs(K, root, s, fx) {
+  const frames = s.endless ? s.endless.st || [] : s.mid ? [s.mid] : [];
+  for (const f of frames) if (f && f.x1 >= f.x0) miniFair(K, root, f, s, fx);
+}
+function miniFair(K, root, f, s, fx) {
+  const { THREE, mergeGroup, G } = K, { w, h } = s;
+  const signY = f.y1 + 2 <= h - 2 ? f.y1 + 2 : f.y0 - 2;     // ряд табличок K11 (extras.js / endless.js)
+  const onPath = new Set(s.path);
+  const free = (x, y) => { const i = y * w + x; return x >= 0 && x < w && s.obj[i] === 0 && !onPath.has(i) && s.ground[i] !== G.WATER && s.ground[i] !== G.BRIDGE; };
+  let yf = -1, best = 0;
+  // спершу через ряд від платформи: навіс K11 (дах на 1,45) з камери накриває сусідній ряд за платформою
+  for (const y of [f.y0 - 2, f.y0 - 1, f.y1 + 1, f.y0 - 3]) {
+    if (y < 1 || y > h - 2 || y === signY || (s.mid?.signs || []).some((g) => g.y === y)) continue;
+    let n = 0; for (let x = f.x0 - 1; x <= f.x1 + 1; x++) n += free(x, y);
+    if (n > best) { best = n; yf = y; }
+  }
+  if (yf < 0) return;
+  const back = yf < f.y0, dz = back ? -0.12 : 0.12;           // за платформою (−y) чи перед нею
+  const g = new THREE.Group(); g.position.set(0, 0.03, yf + 0.5); root.add(g);
+  const parts = [];
+  const sub = (x, k = 1, ry = 0) => {
+    if (!free(x, yf)) return null;
+    const q = new THREE.Group(); q.position.set(x + 0.5, 0, dz); q.scale.setScalar(k); q.rotation.y = ry; g.add(q);
+    parts.push({ q, i: yf * w + x }); return q;
+  };
+  const cx = (f.x0 + f.x1) >> 1;
+  const t = sub(cx, 0.62, back ? 0 : Math.PI);                // шатро прилавком до платформи
+  if (t) tent(K, t, 0, 0, 1.6, 1.1, (f.x0 & 1) ? 0x2f6fb5 : 0xc8322a, 0xf3e6c8);
+  const b = sub(cx - 1, 0.9);                                 // бочки біля шатра
+  if (b) for (const [x, z, y] of [[-0.18, -0.12, 0], [0.18, -0.12, 0], [0, 0.2, 0], [0, 0.02, 0.42]]) barrel(K, b, x, z, y);
+  const c = sub(cx + 1, 1, 0.25);                             // віз із сіллю на постої
+  if (c) parkedCart(K, c, 0, 0, 0);
+  const o = sub(cx - 2);                                      // віл лежить біля бочок
+  if (o) { const v = ox(K, o, 0, 0, 0, f.x0 & 1, 1.3); poseOx(v, 0, 0, 1, 0); v.root.rotation.y = back ? 2.6 : -2.6; }
+  const b2 = sub(cx + 2, 0.8);                                // ще бочка й кавуни за возом
+  if (b2) { barrel(K, b2, -0.15, 0, 0); melons(K, b2, 0, -0.2); }
+  mergeGroup(g);
+  if (!parts.length) return;
+  let len = -1;
+  fx.push(() => {   // гать лягла на клітинку — річ прибрано (зсув вікна K19 перебудовує все заново)
+    if (s.path.length === len) return;
+    len = s.path.length;
+    const on = new Set(s.path);
+    for (const p of parts) p.q.visible = !on.has(p.i);
+  });
 }
 
 // ---------- степ за далеким краєм смуги + валка + лелеки ----------

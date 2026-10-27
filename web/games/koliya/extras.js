@@ -17,7 +17,7 @@
 // Гачки в rules.js: newGame → extrasInit(s, params) перед return; step → if (!extrasStep(s, cmds)) stepTrain(s);
 //   use → після обчислення клітинки: if (extrasUse(s, n, {x: cx, y: cy})) { pl.cd = ACT_CD; return; }
 // УВАГА: rules.js імпортує цей файл, а цей — rules.js (цикл). Тому на верхньому рівні тут — лише літерали, без G/I/U.
-import { U, TPS, G, O, I, rnd, wagonPos } from './rules.js';
+import { U, TPS, G, O, I, WAGONS, rnd, wagonPos, wagonAt } from './rules.js';
 import { generate } from './gen.js';
 import { endlessInit, endlessStep } from './endless.js';   // K19
 
@@ -37,8 +37,21 @@ export const UPGRADES = {
   craft: { icon: '🔨', short: 'Майстерня ×2', label: 'Майстерня вдвічі швидша' },
   store: { icon: '📦', short: 'Склад ×1,5', label: 'Склад більший у півтора раза' },
   carry: { icon: '💪', short: '+1 у руки', label: '+1 до того, скільки несеш' },
+  // K48: нові — стан у s.ups (з'являється лише після вибору, тож без них hash той самий)
+  cist:   { icon: '🚿', short: 'Вагон-цистерна', label: 'Вагон-цистерна: сама поливає котел раз на 20 с, поки є вода; повне відро — у склад (+2)' },
+  magnet: { icon: '🧲', short: 'Магніт', label: 'Магніт: майстерня сама тягне дрова й залізо з землі за 2 клітинки від потяга' },
+  brake:  { icon: '🐢', short: 'Гальма', label: 'Гальма: раз за станцію — дія на паротяг, і 10 с він їде вдвічі повільніше' },
 };
-const UP_KEYS = ['tank', 'craft', 'store', 'carry'];
+const UP_KEYS = ['tank', 'craft', 'store', 'carry', 'cist', 'magnet', 'brake'];
+
+// K48: числа нових покращень (цілі; секунди → тики через TPS усередині функцій — цикл імпорту)
+export const CIST_SEC = 20;      // цистерна поливає раз на стільки секунд…
+export const CIST_HEAT = 250;    // …і лише коли котел уже теплий (heat 0..1000), щоб не лити дарма
+export const CIST_MAX = 3;       // води на рівень (поливів)
+export const CIST_BUCKET = 2;    // повне відро в склад — стільки поливів
+export const MAG_R = 2;          // магніт: радіус (клітинок, квадрат) довкола кожного вагона
+export const MAG_TICKS = 10;     // магніт тягне один стос раз на стільки тиків (0,5 с)
+export const BRAKE_SEC = 10;     // гальма: скільки секунд потяг їде вдвічі повільніше
 
 const par = (s, k) => {
   const v = s.params[k];
@@ -46,6 +59,8 @@ const par = (s, k) => {
   return EXTRA_PARAMS[k] ? EXTRA_PARAMS[k].def : EXTRA_VARIANTS[k].values[0];
 };
 const ev = (s, t, x, y, p) => { const e = { t, x, y }; if (p !== undefined) e.p = p; s.ev.push(e); };
+// K48: події покращень — наявні типи (свій звук і ефект уже є), а що це покращення — у полі u (для HUD)
+const evU = (s, t, x, y, p, u) => { const e = { t, x, y, u }; if (p !== undefined) e.p = p; s.ev.push(e); };
 const isTool = (k) => k === I.AXE || k === I.PICK || k === I.BUCKET || k === I.BUCKET_FULL;
 const rndN = (s, n) => rnd(s) % n;
 
@@ -104,9 +119,9 @@ function addMidStation(s) {
       if (s.obj[i] !== O.WALL) { s.obj[i] = O.NONE; s.hp[i] = 0; }
       if (s.ground[i] === G.WATER) s.ground[i] = G.GRASS;
     }
-  // 3 з 4 покращень (за rnd стану)
+  // 3 з усіх покращень (за rnd стану)
   const keys = UP_KEYS.slice();
-  keys.splice(rndN(s, keys.length), 1);
+  while (keys.length > 3) keys.splice(rndN(s, keys.length), 1);
   const signs = keys.map((k, j) => ({ x: x0 + j, y: sy, k }));
   for (const g of signs) { const i = g.y * W + g.x; s.drop[i] = I.NONE; s.dropN[i] = 0; }
   s.mid = { x0, y0, x1, y1, signs, pick: '', wait: 0, len1: w1 };
@@ -120,8 +135,83 @@ function addMidStation(s) {
 export function extrasStep(s, cmds) {
   if (s.status !== 'run') return false;
   if (s.geese && par(s, 'geese') === 'on') stepGeese(s);
-  if (s.endless) return endlessStep(s);   // K19: зупинки на станціях, зсув вікна
-  return s.mid ? stepMid(s) : false;
+  if (s.ups) stepUps(s);                  // K48: цистерна, магніт
+  const stand = s.endless ? endlessStep(s) : s.mid ? stepMid(s) : false;   // K19: зупинки на станціях, зсув вікна
+  return stand || brakeSkip(s);           // K48: гальма — паротяг пропускає кожен другий тик
+}
+
+// ================= K48: цистерна, магніт, гальма =================
+// s.ups = { cist (рівень), cw (води, поливів), ct (тиків до поливу), mag (0/1), mt (тиків до тяги),
+//           brake (рівень), bn (гальмувань лишилось до наступної станції), bt (тиків гальмування) } — усе цілі.
+function ups(s) {
+  return (s.ups ??= { cist: 0, cw: 0, ct: 0, mag: 0, mt: 0, brake: 0, bn: 0, bt: 0 });
+}
+
+function stepUps(s) {
+  const u = s.ups, t = s.train;
+  if (u.cist && t.started) {
+    if (u.ct > 0) u.ct--;
+    if (u.ct === 0 && u.cw > 0 && t.heat >= CIST_HEAT) {
+      t.heat = 0; t.ht = 0; t.fire = 0; u.cw--; u.ct = CIST_SEC * TPS;
+      const w = wagonPos(s, 0); evU(s, 'douse', Math.floor(w.x / U), Math.floor(w.y / U), undefined, 'cist');
+    }
+  }
+  if (u.mag && --u.mt <= 0) { u.mt = MAG_TICKS; magnet(s); }
+}
+
+/** Магніт: перший (за індексом клітинки) стос дров/заліза в радіусі MAG_R від будь-якого вагона — у склад, скільки влізе */
+function magnet(s) {
+  const t = s.train, cap = s.params.storeMax | 0, W = s.w, h = s.h;
+  if (t.wood >= cap && t.iron >= cap) return;
+  const cells = [];
+  for (let k = 0; k < WAGONS.length; k++) {
+    const p = wagonPos(s, k), wx = Math.floor(p.x / U), wy = Math.floor(p.y / U);
+    for (let y = Math.max(0, wy - MAG_R); y <= Math.min(h - 1, wy + MAG_R); y++)
+      for (let x = Math.max(0, wx - MAG_R); x <= Math.min(W - 1, wx + MAG_R); x++) cells.push(y * W + x);
+  }
+  cells.sort((a, b) => a - b);
+  for (let j = 0; j < cells.length; j++) {
+    const i = cells[j];
+    if (j && cells[j - 1] === i) continue;
+    const k = s.drop[i];
+    if (k !== I.WOOD && k !== I.IRON) continue;
+    const key = k === I.WOOD ? 'wood' : 'iron', take = Math.min(s.dropN[i], cap - t[key]);
+    if (take <= 0) continue;
+    t[key] += take; s.dropN[i] -= take;
+    if (!s.dropN[i]) s.drop[i] = I.NONE;
+    evU(s, 'pick', i % W, (i / W) | 0, undefined, 'magnet');
+    return;
+  }
+}
+
+/** Гальма: true — цей тик паротяг пропускає (кожен другий з BRAKE_SEC) */
+function brakeSkip(s) {
+  const u = s.ups;
+  if (!u || !u.bt) return false;
+  u.bt--;
+  return (u.bt & 1) === 1;
+}
+
+/** use на вагон: повне відро в склад/майстерню — у цистерну; на паротяг (без повного відра) — гальма */
+function upsUse(s, p, pl, cell) {
+  const u = s.ups, wk = wagonAt(s, cell.x, cell.y);
+  if (wk < 0) return false;
+  if (u.cist && wk >= 1 && pl.hold.k === I.BUCKET_FULL && u.cw < u.cist * CIST_MAX) {
+    u.cw = Math.min(u.cist * CIST_MAX, u.cw + CIST_BUCKET); pl.hold.k = I.BUCKET;
+    evU(s, 'drop', cell.x, cell.y, p, 'cist');
+    return true;
+  }
+  if (u.brake && wk === 0 && pl.hold.k !== I.BUCKET_FULL && u.bn > 0 && !u.bt && s.train.started) {
+    u.bn--; u.bt = BRAKE_SEC * TPS;
+    evU(s, 'whistle', cell.x, cell.y, p, 'brake');
+    return true;
+  }
+  return false;
+}
+
+/** K19: нова станція нескінченної колії — гальма знову заряджені */
+export function upsStation(s) {
+  if (s.ups && s.ups.brake) s.ups.bn = s.ups.brake;
 }
 
 function headCell(s) {
@@ -267,6 +357,7 @@ export function extrasUse(s, p, cell) {
   const pl = s.players[p];
   if (!pl) return false;
   if (s.geese && s.geese.length && scare(s, p, pl, cell)) return true;
+  if (s.ups && upsUse(s, p, pl, cell)) return true;   // K48
   if (s.mid && !s.mid.pick) {
     const g = s.mid.signs.find((g) => g.x === cell.x && g.y === cell.y);
     if (g) { applyUpgrade(s, g.k); s.mid.pick = g.k; ev(s, 'upgrade', g.x, g.y, p); return true; }
@@ -317,4 +408,7 @@ export function applyUpgrade(s, k) {
   else if (k === 'craft') { P.craftSec = Math.max(0.5, P.craftSec / 2); if (t.craftT) t.craftT = Math.ceil(t.craftT / 2); }
   else if (k === 'store') P.storeMax = (P.storeMax | 0) + Math.max(3, Math.round((P.storeMax | 0) / 2));
   else if (k === 'carry') P.carryMax = (P.carryMax | 0) + 1;
+  else if (k === 'cist') { const u = ups(s); u.cist++; u.cw = u.cist * CIST_MAX; u.ct = CIST_SEC * TPS; }   // K48: повна
+  else if (k === 'magnet') { const u = ups(s); u.mag = 1; u.mt = MAG_TICKS; }
+  else if (k === 'brake') { const u = ups(s); u.brake++; u.bn = u.brake; }
 }

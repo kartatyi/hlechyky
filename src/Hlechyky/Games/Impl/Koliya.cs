@@ -164,6 +164,7 @@ public sealed class Koliya : Game, IUnlistedGame
         _log.Clear();
         _out.Clear();
         _hashes.Clear();
+        _votes.Clear(); _snap = null; _snapWait = null;   // K44: знімки старої епохи — не для нової
         _reacts.Clear();   // K28: номери реакцій не скидаємо — браузер відкидає бачене за номером
         _desync = -1;
         _keepFrom = 0;
@@ -282,7 +283,7 @@ public sealed class Koliya : Game, IUnlistedGame
                 return ActResult.Done;
             }
             case "hash":
-                Hash(payload);
+                Hash(seat, payload);
                 return ActResult.Done;
             case "react":   // K28: емодзі над гравцем — повз журнал правил, світ і хеш не чіпає
             {
@@ -323,7 +324,7 @@ public sealed class Koliya : Game, IUnlistedGame
     /// Звірка: браузер шле хеш остаточного світу на тик t (до того, як рахувати тик t). Перший хеш тику — еталон;
     /// інший від будь-кого — розбіжність, номер першого такого тику йде в кадр (<c>d</c>) і в вид.
     /// </summary>
-    void Hash(JsonElement payload)
+    void Hash(int seat, JsonElement payload)
     {
         var t = Clamp(payload, "t", 0, int.MaxValue);
         if (!payload.TryGetProperty("h", out var he) || !he.TryGetInt64(out var hl) || hl < 0 || hl > uint.MaxValue) throw new GameError("Поганий хеш");
@@ -332,11 +333,61 @@ public sealed class Koliya : Game, IUnlistedGame
         if (_hashes.TryGetValue(t, out var was))
         {
             if (was != h && _desync < 0) { _desync = t; _dirty = true; }
+            if (was == h) { _votes[t] = _votes.GetValueOrDefault(t) | 1 << seat; Confirm(); }   // K44
             return;
         }
         _hashes[t] = h;
-        if (_hashes.Count > HashKeep) _hashes.Remove(_hashes.Keys.Min());
+        _votes[t] = 1 << seat;
+        if (_hashes.Count > HashKeep) { var k = _hashes.Keys.Min(); _hashes.Remove(k); _votes.Remove(k); }
+        Confirm();
     }
+
+    // ---- K44: знімки стану для пізнього входу ----
+    /// <summary>Стеля знімка (стиснутий світ смуги — кілька КБ; нескінченна — більше).</summary>
+    public const int MaxSnap = 256 * 1024;
+    /// <summary>Тик → місця (біти), чий хеш на цьому тику збігся з першим (еталоном).</summary>
+    readonly Dictionary<int, int> _votes = [];
+    sealed record Snap(int T, uint H, bool Z, byte[] B);
+    /// <summary>Чекає підтвердження хешами (_snapWait) і останній підтверджений (_snap) — віддається з журналом.</summary>
+    Snap? _snapWait, _snap;
+
+    /// <summary>
+    /// K44: браузер прислав знімок остаточного світу на тик t (до кроку t) з його хешем h — непрозорий blob, сервер не
+    /// розбирає. Підтверджений він, коли хеш тику t від ≥ 2 місць (чи від одного, якщо грає одне місце) — такий самий.
+    /// Кличеться під замком кімнати. Повертає помилку чи null.
+    /// </summary>
+    public string? PutSnap(int e, int t, long h, bool z, byte[] b)
+    {
+        if (e != _epoch) return "стара епоха";
+        if (b.Length == 0 || b.Length > MaxSnap) return "розмір";
+        if (h < 0 || h > uint.MaxValue || t <= 0 || t > Mark() + 1) return "тик чи хеш";
+        if (_snap is { } s && t <= s.T) return null;               // уже є свіжіший підтверджений
+        if (_snapWait is { } q && t <= q.T) return null;           // цей тик (чи новіший) уже чекає — повтор від іншого
+        if (_hashes.TryGetValue(t, out var was) && was != (uint)h) return "хеш не той";
+        _snapWait = new Snap(t, (uint)h, z, b);
+        Confirm();
+        return null;
+    }
+
+    /// <summary>Скільки місць мусять підтвердити знімок: 2, а якщо грає одне — 1.</summary>
+    int Need()
+    {
+        var n = 0;
+        foreach (var p in _pOf) if (p >= 0) n++;
+        return Math.Clamp(n, 1, 2);
+    }
+
+    void Confirm()
+    {
+        if (_snapWait is not { } q || !_hashes.TryGetValue(q.T, out var h)) return;
+        if (h != q.H || _desync >= 0 && _desync <= q.T) { _snapWait = null; return; }   // світ не той — геть
+        if (System.Numerics.BitOperations.PopCount((uint)_votes.GetValueOrDefault(q.T)) < Need()) return;
+        _snap = q;
+        _snapWait = null;
+    }
+
+    /// <summary>Тик підтвердженого знімка (-1 — нема), для тестів.</summary>
+    public int SnapTick => _snap?.T ?? -1;
 
     public override TickResult Tick()
     {
@@ -434,11 +485,22 @@ public sealed class Koliya : Game, IUnlistedGame
     }
 
     /// <summary>Журнал від запису <paramref name="from"/> — пізньому, після F5 чи діри в кадрах. Кличеться під замком кімнати.</summary>
-    public object Log(int from) => new
+    /// <remarks>
+    /// K44: <paramref name="snap"/> (лише з from = 0) — якщо є підтверджений знімок, журнал не з нуля, а з першого запису
+    /// з тиком ≥ тику знімка (<c>f</c>), і <c>s = {t, h, z, b}</c> — знімок (b — base64). Записи після f з тиком &lt; t
+    /// (просились наперед раніше за інші) браузер пропускає: вони вже у знімку.
+    /// </remarks>
+    public object Log(int from, bool snap = false)
     {
-        e = _epoch, seed = _seed, prm = Prm(), n0 = _n, t = NowTick(), w = Mark(), n = _log.Count, f = Math.Clamp(from, 0, _log.Count),
-        c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync, nm = Names(),
-    };
+        var s = snap && from == 0 ? _snap : null;
+        if (s is not null) { from = 0; while (from < _log.Count && _log[from].T < s.T) from++; }
+        return new
+        {
+            e = _epoch, seed = _seed, prm = Prm(), n0 = _n, t = NowTick(), w = Mark(), n = _log.Count, f = Math.Clamp(from, 0, _log.Count),
+            c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync, nm = Names(),
+            s = s is null ? null : new { t = s.T, h = s.H, z = s.Z ? 1 : 0, b = s.B },
+        };
+    }
 
     JsonElement Prm()
     {

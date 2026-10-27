@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Колія K52 — детермінізм</title>
+<!-- K52: відкрити в будь-якому браузері, коли тека worktree подається від кореня (python -m http.server --directory <worktree>):
+     /tests/koliya-js/xeng.html. Програє коди повтору з xeng-codes.json і записує ті самі партії ботами наново;
+     пише підсумок на сторінку, у window.XENG і стукає GET /xeng-result?… (видно в журналі сервера — для headless Firefox). -->
+<pre id="out">рахую…</pre>
+<script type="module">
+import * as P from '../../web/games/koliya/replay.js';
+// .mjs простий http.server віддає як text/plain — тягнемо текстом і підставляємо абсолютні шляхи модулів гри
+const src = (await (await fetch('./xeng-cases.mjs')).text()).replaceAll("'../../web/", `'${new URL('../../web/', location.href)}`);
+const { XENG_CASES, xengRecord, xengPlay } = await import(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+const out = document.getElementById('out');
+const gold = await (await fetch('./xeng-codes.json')).json();
+const rows = []; let ok = true;
+for (let i = 0; i < gold.length; i++) {
+  const g = gold[i];
+  const rec = await P.decode(g.code);
+  const p = xengPlay(rec);
+  const r = xengRecord(XENG_CASES[i]);
+  const playOk = p.end === g.hash && p.marks.join() === g.marks.join();
+  const botOk = r.rec.hash === g.hash && r.marks.join() === g.marks.join();
+  ok = ok && playOk && botOk;
+  rows.push(`${g.seed}:${playOk ? 'P' : 'p!' + p.end}${botOk ? 'B' : 'b!' + r.rec.hash}`);
+}
+const line = `${ok ? 'OK' : 'FAIL'} ${navigator.userAgent.match(/(Firefox|Chrome|Safari)\/[\d.]+/)?.[0] || '?'} ${rows.join(' ')}`;
+out.textContent = line;
+window.XENG = { ok, line };
+fetch('/xeng-result?' + encodeURIComponent(line)).catch(() => {});
+</script>
