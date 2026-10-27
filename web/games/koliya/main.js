@@ -103,6 +103,9 @@ function tickOnce() {
   view?.events?.(s.ev);
 }
 
+// Тестовий режим (?test або headless-автоматизація): не більше 10 к/с — headless Chrome малює WebGL програмно й їсть CPU проду
+const TEST = q.has('test') || navigator.webdriver;
+const nextFrame = () => TEST ? setTimeout(() => requestAnimationFrame(frame), 100) : requestAnimationFrame(frame);
 let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(250, now - last); last = now;
@@ -116,7 +119,7 @@ function frame(now) {
   if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();
   (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
-  requestAnimationFrame(frame);
+  nextFrame();
 }
 
 // K12: другий пад під'єднано при p=1 — П2 одразу (правила вміють 'join'), а з ботами — з наступного рестарту
