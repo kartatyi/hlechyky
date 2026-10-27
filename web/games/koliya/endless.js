@@ -25,7 +25,7 @@
 // Гачки: extras.js — extrasInit/extrasStep кличуть endlessInit/endlessStep; rules.js — VARIANTS.stationMode +'endless',
 //   hash() домішує endlessHash(s).
 // УВАГА: цикл імпорту rules → extras → endless → rules: на верхньому рівні тут лише літерали.
-import { U, TPS, G, O, I, WAGONS, rnd, wagonPos, wagonAt } from './rules.js';
+import { U, TPS, G, O, I, WAGONS, rnd, wagonPos, wagonAt, noFoot } from './rules.js';
 import { generate } from './gen.js';
 
 export const STOP_SEC = 6;       // зупинка на станції, с
@@ -160,7 +160,7 @@ function arrive(s, f) {
     if (x >= W) break;
     const i = sy * W + x;
     if (s.obj[i] !== O.WALL) { s.obj[i] = O.NONE; s.hp[i] = 0; }
-    if (s.ground[i] === G.WATER) s.ground[i] = G.SAND;
+    if (noFoot(s.ground[i])) s.ground[i] = G.SAND;   // K26: і урвище
     signs.push({ x, y: sy, k: keys[j] });
   }
   s.mid = signs.length ? { x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, signs, pick: '', wait: 1, len1: 0 } : null;
@@ -214,6 +214,15 @@ function shift(s, cut) {
       if (g.tx < 0 && g.mode === 'go') g.mode = 'flee';
     }
   }
+  // K24: кинуте в польоті (K18) — теж −L: coopStep іде раніше за зсув, і наступного тику річ летіла б зі старих
+  // координат і впала на L клітинок правіше; що летіло у відрізане — рятуємо до хвоста, як інструменти звідти
+  if (s.flying) {
+    for (let j = s.flying.length - 1; j >= 0; j--) {
+      const f = s.flying[j];
+      f.x -= LU; f.sx -= LU; f.tx -= L;
+      if (f.tx < 0) { if (isTool(f.k)) tools.push(f.k); s.flying.splice(j, 1); }
+    }
+  }
   for (const k of tools) {
     const c = freeNearTail(s, true);
     if (c) { const i = c.y * W + c.x; s.drop[i] = k; s.dropN[i] = 1; }
@@ -228,7 +237,7 @@ function freeNearTail(s, forDrop) {
   const start = Math.floor(t.y / U) * W + Math.floor(t.x / U);
   const onPath = new Uint8Array(n); for (const c of s.path) onPath[c] = 1;
   const seen = new Uint8Array(n), q = [start]; seen[start] = 1;
-  const pass = (i) => s.obj[i] === O.NONE && s.ground[i] !== G.WATER;
+  const pass = (i) => s.obj[i] === O.NONE && !noFoot(s.ground[i]);   // K26: і не на урвище яру
   for (let k = 0; k < q.length && k < 4000; k++) {
     const i = q[k], x = i % W, y = (i / W) | 0;
     if (!onPath[i] && pass(i) && s.ground[i] !== G.STATION && wagonAt(s, x, y) < 0 && (!forDrop || s.drop[i] === I.NONE)) return { x, y };

@@ -7,7 +7,9 @@
 // і натиснути use) та «стати на клітинку» (підбір свого стосу). Завдання переобирається, коли скінчилось чи стало неможливим.
 // Кілька ботів ділять ролі за рангом серед ботів (парні — будівник: дерево, рейки, розчистка; непарні — копач: залізо, вода,
 // скелі) і «займають» цілі (дерево, інструмент, «вода», «класти») у спільному реєстрі на стан, щоб не битися за одне.
-import { U, G, O, I, WAGONS, TPS, wagonPos, wagonAt, canLay, startTick } from './rules.js';
+import { U, G, O, I, WAGONS, TPS, wagonPos, wagonAt, canLay, startTick, noFoot } from './rules.js';
+// K26: чим мостити клітинку c (вода/урвище — дерево, каркас мосту через яр — залізо), 0 — не міст
+const bridgeRes = (s, c) => { const g = s.ground[c]; return g === G.WATER || g === G.CHASM ? I.WOOD : g === G.FRAME ? I.IRON : 0; };
 
 const DIRS = [[1, 0], [0, 1], [0, -1], [-1, 0]];
 // K13: пороги «запасу колії» (клітинок від голови до кінця): urg — по рейки будь-скільки, far — повний стос лише ближче
@@ -106,6 +108,7 @@ function planRoute(s) {
       let cost = 10;
       if (ob === O.TREE) cost = 30; else if (ob === O.ROCK) cost = 40;
       else if (s.ground[m] === G.WATER) cost = 35;
+      else if (s.ground[m] === G.CHASM) cost = 60; else if (s.ground[m] === G.FRAME) cost = 35;   // K26: яр — дерево + залізо
       if (s.drop[m]) cost += 25;
       if (dy) cost += 2;               // трохи краще прямо вздовж смуги
       // краще просторі місця: у вузькому коридорі потяг затуляє прохід, і гравцю не обійти його
@@ -113,7 +116,7 @@ function planRoute(s) {
         const qx = nx + ex, qy = ny + ey;
         if (qx < 0 || qy < 0 || qx >= W || qy >= s.h) { cost += 8; continue; }
         const q = qy * W + qx;
-        if (!inPath[q] && (s.obj[q] !== O.NONE || s.ground[q] === G.WATER)) cost += 8;
+        if (!inPath[q] && (s.obj[q] !== O.NONE || noFoot(s.ground[q]))) cost += 8;
       }
       const nd = d + cost;
       if (nd < dist[m]) { dist[m] = nd; prev[m] = c; push(nd, m); }
@@ -125,9 +128,9 @@ function planRoute(s) {
   return r.reverse();
 }
 
-const passable = (s, o, c, thruWagons) => s.obj[c] === O.NONE && s.ground[c] !== G.WATER && (thruWagons || !o.occ[c]);
+const passable = (s, o, c, thruWagons) => s.obj[c] === O.NONE && !noFoot(s.ground[c]) && (thruWagons || !o.occ[c]);   // K26: noFoot
 
-const freeCell = (s, c) => s.obj[c] === O.NONE && s.ground[c] !== G.WATER;
+const freeCell = (s, c) => s.obj[c] === O.NONE && !noFoot(s.ground[c]);
 const hittable = (s, c) => s.obj[c] === O.TREE || s.obj[c] === O.ROCK;
 function sideNeed(s) {
   const E = s.path[s.path.length - 1], o = shared.get(s), N = o.N;
@@ -203,7 +206,7 @@ function digTarget(s, o, start, pred) {
       if (nx < 0 || ny < 0 || nx >= W || ny >= s.h) continue;
       const m = ny * W + nx;
       const ob = s.obj[m];
-      if (ob === O.WALL || s.ground[m] === G.WATER) continue;
+      if (ob === O.WALL || noFoot(s.ground[m])) continue;
       const nd = d + (ob === O.TREE || ob === O.ROCK ? 6 : 1);
       if (nd < dist[m]) { dist[m] = nd; prev[m] = c; push(nd, m); }
     }
@@ -263,6 +266,10 @@ export function createBot(p) {
       // збирання ресурсів перериваємо, коли є рейки й нема чим їх класти: колія важливіша за запас
       else if (m.task.k === 'gather' && m.task.target === undefined && !m.task.bridge && s.tick % 10 === 0 && ctx.role !== 'mine' &&
                (pl.hold.k === I.NONE || pl.hold.k === I.AXE || pl.hold.k === I.PICK) && railsUrgent(ctx)) { m.task = { k: 'rails' }; m.since = s.tick; }
+      // K13: котел гарячий — водонос кидає будь-яку роботу з порожніми руками/інструментом (інакше пожежа за розчисткою)
+      else if (m.task.k !== 'water' && s.tick % 10 === 0 && (s.train.heat >= (ctx.role === 'all' ? 900 : 700) || s.train.fire) && (ctx.role !== 'build' || s.train.fire) &&
+               (pl.hold.k === I.NONE || pl.hold.k === I.AXE || pl.hold.k === I.PICK || pl.hold.k === I.BUCKET || pl.hold.k === I.BUCKET_FULL) &&
+               !claimedByOther(ctx.o, 'water', s) && feasible(ctx, { k: 'water' })) { m.task = { k: 'water' }; m.since = s.tick; }
       const out = runTask(ctx, m.task);
       if (globalThis.KOL_BOT_DEBUG) console.log('bot', p, JSON.stringify(m.task), '→', JSON.stringify(out));
       if (out) {
@@ -362,7 +369,7 @@ export function createBot(p) {
   }
   function freeDrop(ctx, n) {
     const { s, o } = ctx;
-    if (s.obj[n] !== O.NONE || s.ground[n] === G.WATER || s.drop[n] !== I.NONE || o.occ[n]) return false;
+    if (s.obj[n] !== O.NONE || noFoot(s.ground[n]) || s.drop[n] !== I.NONE || o.occ[n]) return false;
     if (o.routeSet.has(n) || s.path.includes(n)) return false;
     const e = s.path[s.path.length - 1];
     if (Math.abs((e % s.w) - (n % s.w)) + Math.abs(((e / s.w) | 0) - ((n / s.w) | 0)) <= 1) return false;
@@ -422,7 +429,7 @@ export function createBot(p) {
       if (s.drop[N]) list.push({ k: 'clearN' });
       else if (s.obj[N] === O.TREE) list.push({ k: 'gather', r: I.WOOD, target: N });
       else if (s.obj[N] === O.ROCK) list.push({ k: 'gather', r: I.IRON, target: N });
-      else if (s.ground[N] === G.WATER) list.push({ k: 'gather', r: I.WOOD, bridge: 1 });
+      else if (bridgeRes(s, N)) list.push({ k: 'gather', r: bridgeRes(s, N), bridge: 1 });   // K26: і яр
       else if (o.side >= 0) list.push({ k: 'gather', r: s.obj[o.side] === O.TREE ? I.WOOD : I.IRON, target: o.side });
     }
     const lead = s.path.length - 1 - Math.floor(s.train.pos / U);
@@ -449,6 +456,12 @@ export function createBot(p) {
       if (failed(s, t.k + (t.r || ''))) continue;
       if (t.k === 'gather' && !t.target && !t.bridge && needOf(ctx, t.r) <= 0) continue;
       if (feasible(ctx, t)) return t;
+    }
+    // K13: склад повний, рейки несе інший — не стояти: розчищати маршрут наперед (дрова/залізо ляжуть біля колії)
+    for (const c of o.route.slice(2, 30)) {
+      if ((s.obj[c] !== O.TREE && s.obj[c] !== O.ROCK) || claimedByOther(o, 'c' + c, s)) continue;
+      const t = { k: 'gather', r: s.obj[c] === O.TREE ? I.WOOD : I.IRON, target: c };
+      if (!failed(s, t.k + t.r) && feasible(ctx, t)) return t;
     }
     return { k: 'idle' };
   }
@@ -485,7 +498,7 @@ export function createBot(p) {
       }
       case 'deliver': {
         if (h !== I.WOOD && h !== I.IRON) return null;
-        if (h === I.WOOD && N >= 0 && s.ground[N] === G.WATER) return actAdj(ctx, isN);
+        if (N >= 0 && bridgeRes(s, N) === h) return actAdj(ctx, isN);   // K26: дерево на воду/урвище, залізо на каркас
         if (pl.hold.n < ctx.cap) {     // добрати поруч ногами
           const r = walkOn(ctx, (n) => s.drop[n] === h, 8);   // K13: 4 → 8 — добрати свої купки
           if (r) return r;
@@ -534,7 +547,7 @@ export function createBot(p) {
     const k = t.r, T = tool(k), ob = objOf(k), h = pl.hold.k, N = o.N;
     if (h === k) return null;                                  // уже несемо — choose дасть deliver
     if (t.target !== undefined && s.obj[t.target] !== ob && h !== T) return null;
-    if (t.bridge && !(N >= 0 && s.ground[N] === G.WATER)) return null;
+    if (t.bridge && !(N >= 0 && bridgeRes(s, N) === k)) return null;
     // скільки нашого ресурсу лежить поруч
     const loose = (maxD) => bfs(s, o, ctx.cur, (n) => s.drop[n] === k && !claimedByOther(o, 'c' + n, s), 'adj', maxD);
     if (h === T) {
