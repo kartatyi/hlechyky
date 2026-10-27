@@ -122,7 +122,7 @@
     live: [
       { id: 'shoot', title: 'Стрілялки', icon: '🎯', ids: ['duel', 'tyr', 'tanks', 'bomber', 'glekomet'] },
       { id: 'race', title: 'Перегони й м’яч', icon: '🏎', ids: ['rally', 'hockey', 'pong', 'typerace'] },
-      { id: 'arcade', title: 'Аркада', icon: '🕹', ids: ['snake', 'tron', 'bricks', 'dino', 'curve', 'territory', 'vohnyk'] },
+      { id: 'arcade', title: 'Аркада', icon: '🕹', ids: ['snake', 'tron', 'bricks', 'dino', 'curve', 'territory', 'vohnyk', 'koliya'] },
       { id: 'stand', title: 'Хто вистоїть', icon: '🧊', ids: ['icefloe', 'thinice', 'brid', 'bakhne', 'crowd'] },
       { id: 'grab', title: 'Хапай і збирай', icon: '🧺', ids: ['grushi', 'hostyntsi', 'skyrta', 'sklei'] },
     ],

@@ -38,12 +38,12 @@ namespace Hlechyky.Games.Impl;
 /// передбачений світ стоїть на тику 0).
 /// </para>
 /// </summary>
-public sealed class Koliya : Game, IUnlistedGame
+public sealed class Koliya : Game
 {
     public override GameInfo Info { get; } = new(
         "koliya", "Колія", "«Колію»", GameGroup.Live, 1, 4,
         TickMs: StepMs, Start: StartMode.Immediate,
-        Hint: "Кооп до чотирьох: рубай, копай, крафть рейки й веди колію поперед паротяга");
+        Hint: "Кооп до чотирьох: рубай ліс, бий камінь, майструй рейки й веди колію поперед паротяга");
 
     /// <summary>Тик правил (rules.js TICK_MS) і рушія.</summary>
     public const int StepMs = 50;

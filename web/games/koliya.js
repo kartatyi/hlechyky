@@ -1,4 +1,4 @@
-// «Колія» — картка столу в «Іграх». У лобі гри нема (IUnlistedGame): стіл відкривають посиланням #games/new/koliya.
+// «Колія» — картка столу в «Іграх» (лобі: «Жваві» → «Аркада»; стіл і посиланням #games/new/koliya).
 // Сама гра живе на окремій сторінці web/games/koliya/proto.html (світ рахує браузер, сервер лише нумерує команди —
 // див. шапку koliya/net.js), тож картка — рамка з тією сторінкою, підключеною до цього столу (?net=<стіл>).
 (() => {
@@ -10,6 +10,7 @@
   HGames.register({
     id: 'koliya',
     icon: ICON,
+    added: '2026-10-27',
     leaveFree: true,   // вихід посеред партії — не поразка (Koliya.OnLeave: решта грає далі); core.js askLeave
     mount(root, ctx) { this.update(root, ctx); },
     update(root, ctx) {

@@ -36,7 +36,7 @@ public class KoliyaTests
     }
 
     [Fact]
-    public void Стіл_стартує_одразу_й_не_в_каталозі()
+    public void Стіл_стартує_одразу_й_є_в_каталозі()
     {
         var h = Table();
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
@@ -45,7 +45,7 @@ public class KoliyaTests
         Assert.Equal(0, v.GetProperty("p").GetInt32());
         Assert.Equal(1, v.GetProperty("n0").GetInt32());
         Assert.Equal(-1, h.View(null).GetProperty("p").GetInt32());
-        Assert.True(RoomHarness.NewRegistry().Catalog.Single(g => g.Id == "koliya").Unlisted);
+        Assert.False(RoomHarness.NewRegistry().Catalog.Single(g => g.Id == "koliya").Unlisted);
     }
 
     [Fact]
