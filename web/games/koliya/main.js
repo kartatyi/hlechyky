@@ -186,6 +186,9 @@ function drawHud() {
   view = game.view = await makeView();
   mountLookUi(document.getElementById('kol-panel'), view);   // K5
   view?.setQuality?.(prefs.quality);   // K12
-  if (net) net.start().catch((e) => console.warn('Колія: мережа', e)); else restart();   // K3
+  if (net) net.start().catch((e) => {   // K3; K21: без сервера — не чорний екран мовчки
+    console.warn('Колія: мережа', e);
+    if (!game.state) hud.textContent = '⚠ Не вдалося підключитись до столу. Без мережі — прибери &net= з адреси.';
+  }); else restart();
   requestAnimationFrame(frame);
 })();
