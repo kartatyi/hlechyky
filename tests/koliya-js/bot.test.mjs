@@ -28,7 +28,7 @@ test('бот соло і двоє ботів на 3 сідах: доїжджаю
     for (const n of [1, 2]) {
       const r = play(seed, n);
       console.log(`сід ${seed}, ботів ${n}: ${fmt(r)}`);
-      assert.ok(r.status === 'won' || r.headX >= 40, `сід ${seed}/${n}: ${fmt(r)}`);
+      assert.ok(r.status === 'won' || r.headX >= (n === 1 ? 45 : 70), `сід ${seed}/${n}: ${fmt(r)}`);
     }
   }
 });
