@@ -326,6 +326,7 @@ function makePlayer(n) {
 }
 // K20: кольори гравців — як у HUD (П1 жовтий, П2 рожевий, П3 блакитний, П4 салатовий)
 const PHEX = [0xffd23f, 0xff5fa2, 0x5fd3ff, 0xb6ff5f];
+const LBW = 224;   // K28: ширина полотна мітки над гравцем (нік до 10 символів + ×N)
 const RING_GEO = new THREE.RingGeometry(0.3, 0.38, 28).rotateX(-Math.PI / 2);
 const ringMats = [];
 function ringMat(n) {
@@ -567,6 +568,7 @@ export function createRenderer(canvas) {
     for (const wm of W.waters) wm.geometry.dispose();
     scene.remove(W.root);
     for (const lb of W.labels || []) { lb.tex.dispose(); lb.sp.material.dispose(); }
+    for (const bb of W.bubbles || []) { bb.tex.dispose(); bb.sp.material.dispose(); }   // K28
     blobs.clear(); wobbles.clear();
     W = null;
   }
@@ -946,28 +948,65 @@ export function createRenderer(canvas) {
     W.labels ||= [];
     while (W.labels.length < W.players.length) W.labels.push(makeLabel(W.labels.length));
     while (W.labels.length > W.players.length) { const lb = W.labels.pop(); W.root.remove(lb.sp); lb.tex.dispose(); lb.sp.material.dispose(); }
+    W.bubbles ||= [];   // K28: бульбашки-реакції
+    while (W.bubbles.length < W.players.length) W.bubbles.push(makeBubble());
+    while (W.bubbles.length > W.players.length) { const bb = W.bubbles.pop(); W.root.remove(bb.sp); bb.tex.dispose(); bb.sp.material.dispose(); }
+  }
+
+  // ---- K28: бульбашка-реакція над гравцем — KOL.game.reacts[k] = { e: емодзі, at: performance.now() }, видно 2 с ----
+  function makeBubble() {
+    const c = document.createElement('canvas'); c.width = 96; c.height = 96;
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+    sp.renderOrder = 21; sp.center.set(0.5, 0); sp.visible = false; W.root.add(sp);
+    return { sp, tex, c, key: '' };
+  }
+  function drawBubble(bb, e) {
+    if (bb.key === e) return;
+    bb.key = e;
+    const x = bb.c.getContext('2d');
+    x.clearRect(0, 0, 96, 96);
+    x.fillStyle = 'rgba(255,255,255,0.94)';
+    x.beginPath(); if (x.roundRect) x.roundRect(8, 4, 80, 72, 22); else x.rect(8, 4, 80, 72);
+    x.moveTo(40, 74); x.lineTo(48, 92); x.lineTo(58, 74); x.fill();
+    x.font = '48px system-ui, "Segoe UI Emoji", "Apple Color Emoji", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = '#000'; x.fillText(e, 48, 42);
+    bb.tex.needsUpdate = true;
+  }
+  function placeBubble(k, pl, lb, sc) {
+    const bb = W.bubbles?.[k];
+    if (!bb) return;
+    const r = globalThis.KOL?.game?.reacts?.[k], age = r ? performance.now() - r.at : 1e9;
+    bb.sp.visible = !pl.out && age >= 0 && age < 2000;
+    if (!bb.sp.visible) return;
+    drawBubble(bb, r.e);
+    const pop = age < 160 ? 0.4 + 0.6 * age / 160 : age > 1750 ? Math.max(0, (2000 - age) / 250) : 1;
+    const bs = sc * 2.8 * pop;   // утричі вища за мітку — емодзі видно з будь-якого кута смуги
+    bb.sp.position.set(lb.sp.position.x, lb.sp.position.y + sc * 0.95, lb.sp.position.z);
+    bb.sp.scale.set(bs, bs, 1);
   }
 
   // ---- K20: мітка над головою — «П1» (бот — 🤖) кольором гравця, з кількістю в руках (×5); дрібна, крізь дерева ----
   function makeLabel(k) {
-    const c = document.createElement('canvas'); c.width = 128; c.height = 48;
+    const c = document.createElement('canvas'); c.width = LBW; c.height = 48;   // K28: ширше — ніки до 10 символів
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
     sp.renderOrder = 20; sp.center.set(0.5, 0); W.root.add(sp);
     return { sp, tex, c, k, key: '' };
   }
   function drawLabel(lb, name, n) {
-    const key = name + '|' + n;
+    const grey = !!globalThis.KOL?.game?.lost?.[lb.k];   // K28: відпав (нема кадрів > 3 с) — сірий
+    const key = name + '|' + n + '|' + grey;
     if (lb.key === key) return;
     lb.key = key;
-    const x = lb.c.getContext('2d'), col = '#' + PHEX[lb.k % 4].toString(16).padStart(6, '0');
-    x.clearRect(0, 0, 128, 48);
+    const x = lb.c.getContext('2d'), col = grey ? '#9a9a9a' : '#' + PHEX[lb.k % 4].toString(16).padStart(6, '0');
+    x.clearRect(0, 0, LBW, 48);
     const txt = n > 1 ? `${name} ×${n}` : name;
     x.font = '700 30px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-    const tw = Math.min(124, x.measureText(txt).width + 18);
+    const tw = Math.min(LBW - 4, x.measureText(txt).width + 18);
     x.fillStyle = 'rgba(20,22,28,0.72)';
-    x.beginPath(); if (x.roundRect) x.roundRect(64 - tw / 2, 4, tw, 40, 14); else x.rect(64 - tw / 2, 4, tw, 40); x.fill();
-    x.fillStyle = col; x.fillText(txt, 64, 25, 120);
+    x.beginPath(); if (x.roundRect) x.roundRect(LBW / 2 - tw / 2, 4, tw, 40, 14); else x.rect(LBW / 2 - tw / 2, 4, tw, 40); x.fill();
+    x.fillStyle = col; x.fillText(txt, LBW / 2, 25, LBW - 8);
     lb.tex.needsUpdate = true;
   }
 
@@ -1233,6 +1272,7 @@ export function createRenderer(canvas) {
   function playerName(k) {
     const g = globalThis.KOL?.game;
     if (g && !globalThis.KOL?.net && g.bot?.some?.((b) => b.p === k)) return '🤖';
+    if (g?.names?.[k]) return g.names[k] + (g.lost?.[k] ? ' 📶?' : '');   // K28: у мережі — нік (відпав — «📶?»)
     return 'П' + (k + 1);
   }
   function updateArrows(s) {
@@ -1437,7 +1477,8 @@ export function createRenderer(canvas) {
         const lift = stk ? Math.min(pl.hold.n, 12) * 0.13 + 0.1 : 0;
         const sc = cam.d * 0.013;
         lb.sp.position.set(x, m.root.position.y + 1.45 + lift + m.body.position.y, z);
-        lb.sp.scale.set(sc * 128 / 48, sc, 1);
+        lb.sp.scale.set(sc * LBW / 48, sc, 1);
+        placeBubble(k, pl, lb, sc);   // K28
       }
     });
 
