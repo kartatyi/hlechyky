@@ -325,7 +325,7 @@ function cellFreeForDrop(s, cx, cy) {
 function hold0(pl) { pl.hold.k = I.NONE; pl.hold.n = 0; }
 
 function use(s, n, pl) {
-  const held = pl.ut === s.tick;   // use був і в попередньому тику
+  const held = pl.ut > 0 && pl.ut === s.tick;   // use був і в попередньому тику
   pl.ut = s.tick + 1;
   if (pl.cd > 0) return;
   const P = s.params;
