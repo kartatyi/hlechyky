@@ -69,15 +69,58 @@ function toCmd(c, j) {
   return { p, k: 'leave' };
 }
 
-/** Скриптовий водій для перевірок (?drive=1): блукає й тисне «дію». */
+/**
+ * Скриптовий водій для перевірок мережі (?drive=1): порожні руки — до найближчого інструмента й узяти; сокира — рубати
+ * дерева, кайло — бити скелі; інше в руках — покласти. Застряг — трохи блукає. Не бот гри (той — bot.js), лише щоб
+ * за дві хвилини світ змінювався від дій кількох гравців.
+ */
 export function createDriver() {
-  let n = 0, until = 0, dir = [0, 0];
-  const DIRS = [[100, 0], [-100, 0], [0, 100], [0, -100], [70, 70], [0, 0]];
+  let n = 0, wander = 0, dir = [0, 0], lx = 0, ly = 0, still = 0, holdSince = 0, lastK = -1;
+  const DIRS = [[100, 0], [-100, 0], [0, 100], [0, -100]];
+  const { U, I, O } = R;
   return {
-    think() {
+    think(s, p) {
       n++;
-      if (n >= until) { dir = DIRS[(Math.random() * DIRS.length) | 0]; until = n + 8 + ((Math.random() * 40) | 0); }
-      return { mx: dir[0], my: dir[1], use: n % 9 < 3 };
+      const pl = s.players[p];
+      if (!pl) return { mx: 0, my: 0, use: false };
+      if (pl.hold.k !== lastK) { lastK = pl.hold.k; holdSince = n; }
+      if (pl.x === lx && pl.y === ly) still++; else still = 0;
+      lx = pl.x; ly = pl.y;
+      if (still > 12 && !wander) { wander = 10 + ((Math.random() * 20) | 0); dir = DIRS[(Math.random() * 4) | 0]; }
+      if (wander > 0) { wander--; return { mx: dir[0], my: dir[1], use: false }; }
+      const k = pl.hold.k;
+      let want;
+      if (k === I.NONE) want = (i) => s.drop[i] === I.AXE || s.drop[i] === I.PICK || s.drop[i] === I.WOOD;
+      else if (k === I.AXE) want = (i) => s.obj[i] === O.TREE;
+      else if (k === I.PICK) want = (i) => s.obj[i] === O.ROCK;
+      if (k !== I.NONE && (n - holdSince > 400 || !want)) return { mx: 0, my: 0, use: n % 6 === 0 };   // покласти
+      // BFS по прохідних клітинках до тієї, що поруч із ціллю
+      const cx = Math.floor(pl.x / U), cy = Math.floor(pl.y / U), W = s.w, H = s.h;
+      const prev = new Int32Array(W * H).fill(-1), start = cy * W + cx, qu = [start];
+      prev[start] = start;
+      let goal = -1, face = null;
+      for (let qi = 0; qi < qu.length && goal < 0 && qi < 4000; qi++) {
+        const c = qu[qi], x = c % W, y = (c / W) | 0;
+        for (const [dx, dy] of DIRS.map(([a, b]) => [Math.sign(a), Math.sign(b)])) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const ni = ny * W + nx;
+          if (want(ni)) { goal = c; face = [dx, dy]; break; }
+          if (prev[ni] >= 0 || R.cellBlocked(s, nx, ny)) continue;
+          prev[ni] = c; qu.push(ni);
+        }
+      }
+      if (goal < 0) { wander = 20; dir = DIRS[(Math.random() * 4) | 0]; return { mx: dir[0], my: dir[1], use: false }; }
+      if (goal === start) {
+        // на місці: довернутись до цілі (малий намір лише повертає) і тиснути
+        const ok = pl.fx === face[0] && pl.fy === face[1];
+        return { mx: face[0] * 11, my: face[1] * 11, use: ok && n % 3 !== 2 };   // < 12 — мертва зона rules: лише поворот
+      }
+      let c = goal;
+      while (prev[c] !== start) c = prev[c];
+      const tx = (c % W) * U + U / 2, ty = ((c / W) | 0) * U + U / 2;
+      const ddx = tx - pl.x, ddy = ty - pl.y;
+      return { mx: Math.abs(ddx) > 60 ? Math.sign(ddx) * 100 : 0, my: Math.abs(ddy) > 60 ? Math.sign(ddy) * 100 : 0, use: false };
     },
   };
 }
@@ -179,6 +222,7 @@ export function createNet(game, opts = {}) {
 
   /** Світ з нуля: newGame + увесь журнал до водяного знаку. */
   function build(j) {
+    if (j.e !== e) off = null;   // нова епоха — тик партії знову з нуля, старий зсув годинника не годиться
     e = j.e;
     C = R.newGame(j.seed >>> 0, j.prm || {}, j.n0 || 1);
     log.clear(); count = 0; pending = []; hashes.clear(); hi = 0;
@@ -204,8 +248,10 @@ export function createNet(game, opts = {}) {
   function onFrame(f) {
     stats.frames++;
     if (!f) return;
-    const sample = f.t * R.TICK_MS - performance.now();
-    off = off == null ? sample : Math.max(sample, off - 1);
+    if (f.e === e) {
+      const sample = f.t * R.TICK_MS - performance.now();
+      off = off == null ? sample : Math.max(sample, off - 1);
+    }
     if (f.d >= 0) noteDesync(f.d);
     if (resyncing || !C) return;
     if (f.e !== e || f.f > count) { resync(); return; }
