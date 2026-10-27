@@ -373,3 +373,16 @@ test('K56: гальма — заряд є й колії мало: «🐢 Гал�
   pickTips(s, m); tick(s);
   assert.ok(!pickTips(s, m).some((q) => q.id === 'brake'), 'пригальмували — зрозуміли');
 });
+
+// K72: бульбашки не лізуть на фінал/меню/паузу/довідку/панель
+import { overlayOpen } from '../../web/games/koliya/tips.js';
+test('K72: overlayOpen — відкритий екран HUD, довідка чи панель', () => {
+  const fake = (screens, extra = null) => ({
+    querySelectorAll: () => screens.map((d) => ({ style: { display: d } })),
+    querySelector: () => extra,
+  });
+  assert.equal(overlayOpen(null), false);
+  assert.equal(overlayOpen(fake(['', 'none', 'none'])), false);
+  assert.equal(overlayOpen(fake(['none', 'flex'])), true);    // фінал/пауза
+  assert.equal(overlayOpen(fake(['none'], {})), true);        // довідка або панель
+});

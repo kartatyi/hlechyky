@@ -446,6 +446,13 @@ const CSS = `
   animation: kol-tip-bob .7s ease-in-out infinite alternate; }
 @keyframes kol-tip-bob { to { margin-top: -.3em; } }
 `;
+/** K72: чи відкрито щось, що заступає гру: екран HUD (.kol-screen — старт/меню, пауза, фінал; display ставить hud.js
+ *  інлайном, типово CSS none), довідка (.kol-help.kol-on), панель ⚙ (.kol-pan.kol-open). Без DOM (node) — ні. */
+export function overlayOpen(doc) {
+  if (!doc?.querySelectorAll) return false;
+  for (const e of doc.querySelectorAll('.kol-screen')) { const d = e.style.display; if (d && d !== 'none') return true; }
+  return !!doc.querySelector('.kol-help.kol-on, .kol-pan.kol-open');
+}
 const ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
 
 export function createTips(root, { enabled = true } = {}) {
@@ -474,7 +481,12 @@ export function createTips(root, { enabled = true } = {}) {
 
   return {
     update(state, game, view) {
-      if (!on || !state || game?.paused) { hideAll(); return; }
+      // K72: поверх фіналу, меню, паузи, довідки й панелі бульбашок нема (tips z-index 6 > HUD 5 — налазили на картку),
+      //  і після кінця партії — теж (статус не 'run': кеш порад скидаємо, щоб не підкинути стару «Візьми сокиру»)
+      if (!on || !state || game?.paused || state.status !== 'run' || overlayOpen(doc)) {
+        if (state?.status !== 'run') { tips = []; lastTick = -1; }
+        hideAll(); return;
+      }
       if (state.seed !== lastSeed || state.tick !== lastTick) {
         const local = game?.local ?? state.players.length;
         const inp = game?.input, nLocal = game?.local ?? 1;
