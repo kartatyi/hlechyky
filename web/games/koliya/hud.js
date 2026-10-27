@@ -359,7 +359,9 @@ export function createHud(root, opts = {}) {
     const on = started && s.status === 'run' && wait && introOff !== tok && !help.isOpen() && !g?.replay?.active;
     set(intro.style, 'intro|display', on ? 'block' : 'none');
     if (!on) return;
-    const tut = s.params?.mode === 'tutorial', k = `${tut}|${isChumak()}|${!!nt}`;
+    intro._tok = tok;   // ✕ ховає саме цю партію (вміст при «ще раз» не перемальовується — той самий)
+    const tut = s.params?.mode === 'tutorial', canTut = !tut && (!nt || nt.p >= 0);   // глядачеві навчання не перезапустити
+    const k = `${tut}|${canTut}|${isChumak()}|${!!nt}`;
     if (k === introKey) return;
     introKey = k;
     const keys = '<span class="kol-kbonly">WASD — ходити · Space / E — узяти, рубати, покласти</span>'
@@ -369,9 +371,8 @@ export function createHud(root, opts = {}) {
     intro.innerHTML = `<h3><span>Як грати</span><button class="kol-in-x" type="button" data-in="x" aria-label="Сховати">✕</button></h3>`
       + `<ol>${introSteps().map((x) => `<li>${x}</li>`).join('')}</ol><div class="kol-in-keys">${keys}</div>`
       + (tut ? `<div class="kol-in-keys">${tutTxt}: ${isChumak() ? 'воли йдуть поволі' : 'паротяг повзе поволі'}, а підказки над головою ведуть крок за кроком</div>` : '')
-      + `<div class="kol-in-row">${tut ? '' : `<button type="button" data-in="tut">${tutTxt}${nt ? ' гуртом' : ''}</button>`}`
+      + `<div class="kol-in-row">${canTut ? `<button type="button" data-in="tut">${tutTxt}${nt ? ' гуртом' : ''}</button>` : ''}`
       + '<button type="button" data-in="help">❓ Докладніше <small>H</small></button></div>';
-    intro._tok = tok;
   }
   intro.addEventListener('click', (e) => {
     const b = e.target.closest('[data-in]');

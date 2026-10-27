@@ -92,7 +92,8 @@ export function createMenu(box, opts = {}) {
   const fromUrl = new Set([q.get('p') && 'players', q.get('bot') && 'bots', q.get('seed') && 'seed'].filter(Boolean));   // K46: адреса — лише на цей запуск
   const seeds = () => { const l = ['r', ...PICKS]; if (st.seed !== 'r' && !l.includes(st.seed)) l.splice(1, 0, st.seed); return l; };
   const net = () => !!(G()?.net || window.KOL?.net);
-  const calm = () => { const s = G()?.state; return !!window.KOL?.net?.wait || (!!s && s.status !== 'run'); };
+  // навчання для всіх — лише тому, хто сидить за столом (глядача сервер не послухає), і поки ніхто не грає
+  const calm = () => { const s = G()?.state, n = window.KOL?.net; return n?.p >= 0 && (!!n.wait || (!!s && s.status !== 'run')); };
   let canResume = false, idx = 0, lastLocal = g0?.local, keysTwo = null;
 
   box.innerHTML = '';

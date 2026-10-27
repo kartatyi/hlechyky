@@ -89,6 +89,24 @@ test('мережа: звіт шле той, хто сидить (з пінгом
   }
 });
 
+test('мережа: кінець — з остаточного світу C; передбачена «поразка», яку відкіт скасує, звіту не дає', () => {
+  const sent = [];
+  const s = R.newGame(8, R.defaultParams(), 2), C = R.newGame(8, R.defaultParams(), 2);
+  const net = { p: 0, p2: -1, epoch: 1, room: 'r', ping: 50, desync: -1, wait: false, C, info: () => ({ stats: {}, lag: 0 }) };
+  const game = { local: 1, bots: 0, names: ['Оля'], state: s };
+  const rep = createReport(game, { net, send: (r) => sent.push(r) });
+  let now = 0;
+  for (let i = 0; i < 60; i++) { now += 100; if (i % 2 === 0) { play(s, 4); play(C, 4); } rep.frame(now, s); }
+  s.status = 'lost'; s.reason = 'derail';   // передбачене: друг ще не «поклав» рейку
+  for (let i = 0; i < 5; i++) rep.frame(now += 16, s);
+  assert.equal(sent.length, 0, 'звіт за передбаченим світом');
+  s.status = 'run'; s.reason = '';          // відкіт: рейка таки лягла
+  C.status = 'won';
+  rep.frame(now += 16, s);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].end, 'won');
+});
+
 test('?report=0 — не шле нічого', () => {
   globalThis.location = { search: '?report=0' };
   try {

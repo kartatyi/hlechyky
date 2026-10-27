@@ -17,11 +17,11 @@ public static class KoliyaSetup
         app.MapPost(Root + "/{room}/snap", (string room, int e, int t, long h, int? z, HttpRequest req, Rooms rooms) => Snap(rooms, room, e, t, h, z == 1, req));
         app.MapPost(Root + "/{room}/watch", (string room, string? id, Rooms rooms) => Watch(rooms, room, id));
         var reports = new KoliyaReports(app.Services.GetRequiredService<DiagLog>());
-        app.MapPost(Root + "/report", async (HttpContext c, IConfiguration config) =>
+        app.MapPost(Root + "/report", async (HttpContext c, IConfiguration config, string? id) =>
         {
             if (!config.GetValue("Diag:Koliya", true)) return Results.Ok(new { ok = false, off = true });
             var code = await reports.Accept(Auth.Nick(c), c.Connection.RemoteIpAddress?.ToString(), c.Request.ContentLength,
-                c.Request.Body, Environment.TickCount64, c.RequestAborted);
+                c.Request.Body, Environment.TickCount64, c.RequestAborted, id);
             return code == 200 ? Results.Ok(new { ok = true }) : Results.StatusCode(code);
         });
     }
@@ -78,22 +78,33 @@ public static class KoliyaSetup
 
 /// <summary>
 /// Звіт партії «Колії» з браузера (web/games/koliya/report.js): чим скінчилась, скільки тривала, кадри, пінг, пристрій —
-/// рядком у data/diag/koliya-&lt;дата&gt;.jsonl (зводить D:\or-wt\_tools\koliya\report.py). Не більше 8 КБ; з одного ніка
-/// й адреси — не частіше ніж раз на 2 с (кінець партії й «ще раз» поспіль пройдуть, засипати диск — ні). Вимикач — Diag:Koliya.
+/// рядком у data/diag/koliya-&lt;дата&gt;.jsonl (зводить D:\or-wt\_tools\koliya\report.py). Не більше 8 КБ; з однієї вкладки
+/// (нік, адреса й номер вкладки id — гості з однієї домівки мають той самий нік «гість») — не частіше ніж раз на 2 с;
+/// за добу — не більше <see cref="MaxPerDay"/> рядків, хоч би що слали. Вимикач — Diag:Koliya.
 /// </summary>
-public sealed class KoliyaReports(DiagLog diag)
+public sealed class KoliyaReports(DiagLog diag, int maxPerDay = KoliyaReports.MaxPerDay)
 {
     public const int MaxBytes = 8 * 1024;
     public const int MinGapMs = 2000;
+    public const int MaxPerDay = 20_000;   // ~1 КБ рядок — до ~20 МБ на добу, навіть якщо хтось засипає навмисно
 
     readonly ConcurrentDictionary<string, long> _last = new(StringComparer.Ordinal);
+    DateOnly _day;
+    int _today;
 
     /// <summary>HTTP-код відповіді: 200 — лягло в data/diag/koliya-&lt;дата&gt;.jsonl; 413, 429, 400 — ні.</summary>
-    public async Task<int> Accept(string nick, string? ip, long? length, Stream body, long nowMs, CancellationToken ct = default)
+    public async Task<int> Accept(string nick, string? ip, long? length, Stream body, long nowMs, CancellationToken ct = default, string? id = null)
     {
         if (length is not { } len || len > MaxBytes) return 413;
-        var key = nick + "|" + ip;
+        var key = nick + "|" + ip + "|" + (id is { Length: <= 40 } ? id : "");
         if (_last.TryGetValue(key, out var was) && nowMs - was < MinGapMs) return 429;
+        lock (_last)
+        {
+            var day = DateOnly.FromDateTime(DateTime.Now);
+            if (day != _day) { _day = day; _today = 0; }
+            if (_today >= maxPerDay) return 429;
+            _today++;
+        }
         _last[key] = nowMs;
         if (_last.Count > 500)
             foreach (var kv in _last)

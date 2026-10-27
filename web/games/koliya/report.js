@@ -4,7 +4,8 @@
 // Контракт: createReport(game, { net?, prefs?, send? }) → { frame(now, s), flush(end), get cur() }
 //   frame — щокадру з main.js (не в повторі): рахує видимі кадри й пінг; раз на секунду — знімок підсумку; won/lost —
 //   звіт; нова партія замість живої — звіт «restart»; сторінку закрито посеред гри — «left» (pagehide, sendBeacon).
-//   У мережі звіт шле кожен, хто сидить за столом (свої кадри й пінг; партію впізнати за net.room + net.e), глядач — ні.
+//   У мережі звіт шле кожен, хто сидить за столом (свої кадри й пінг; партію впізнати за net.room + net.e), глядач — ні;
+//   кінець і підсумок — з остаточного світу net.C (передбачений може показати поразку, яку відкіт скасує).
 //   Не шле: ?report=0, ?test, автоматизація (navigator.webdriver); коротші за MIN_SEC «restart»/«left» — теж ні.
 //   buildReport(s, x) — чисте, без DOM (Node-тест).
 import { TPS, U, G, wagonPos, defaultParams } from './rules.js';
@@ -66,10 +67,12 @@ export function createReport(game, opts = {}) {
   const q = new URLSearchParams(location.search);
   const off = q.get('report') === '0' || q.has('test') || !!navigator.webdriver;
   const net = opts.net || null, prefs = opts.prefs || {};
+  // номер вкладки — серверові для ліміту частоти: гості з однієї домівки мають той самий нік «гість» і ту саму адресу
+  const url = REPORT_URL + '?id=' + Math.random().toString(36).slice(2, 12);
   const send = opts.send || ((r) => {
     const body = JSON.stringify(r);
-    try { if (navigator.sendBeacon?.(REPORT_URL, new Blob([body], { type: 'application/json' }))) return; } catch { }
-    fetch(REPORT_URL, { method: 'POST', body, keepalive: true, headers: { 'Content-Type': 'application/json' } }).catch(() => { });
+    try { if (navigator.sendBeacon?.(url, new Blob([body], { type: 'application/json' }))) return; } catch { }
+    fetch(url, { method: 'POST', body, keepalive: true, headers: { 'Content-Type': 'application/json' } }).catch(() => { });
   });
   const dev0 = device();
   let cur = null, lastNow = 0;
@@ -121,13 +124,15 @@ export function createReport(game, opts = {}) {
     if (dt > 0 && dt < 1000 && !document.hidden) { cur.frames++; cur.ms += dt; if (dt > SLOW_MS) cur.slow++; if (dt > JANK_MS) cur.jank++; }
     if (net && now - cur.pingAt >= 1000 && net.ping >= 0) { cur.pingAt = now; cur.pingN++; cur.pingSum += net.ping; cur.pingMax = Math.max(cur.pingMax, net.ping | 0); }
     if (cur.sent) return;
-    if (s.status === 'won' || s.status === 'lost') { ship(buildReport(s, extra(s.status))); return; }
-    if (s.status === 'run' && !net?.wait && now - cur.snapAt >= SNAP_MS) { cur.snapAt = now; cur.last = buildReport(s, extra('run')); }
+    // у мережі — остаточний світ (C): передбачений може «програти» й відкотитись, коли дійде запізніла команда друга
+    const w = net?.C || s;
+    if (w.status === 'won' || w.status === 'lost') { ship(buildReport(w, extra(w.status))); return; }
+    if (w.status === 'run' && !net?.wait && now - cur.snapAt >= SNAP_MS) { cur.snapAt = now; cur.last = buildReport(w, extra('run')); }
   }
 
   /** Сторінку закривають (чи гру зупинили самі): жива партія — звіт з кінцем end */
   function flush(end = 'left') {
-    const s = game.state;
+    const s = net?.C || game.state;
     if (!cur || cur.sent || !s || s.status !== 'run' || net?.wait) return;
     const r = buildReport(s, extra(end));
     if (r.sec >= MIN_SEC) ship(r);

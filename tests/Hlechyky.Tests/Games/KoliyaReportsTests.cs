@@ -47,4 +47,19 @@ public sealed class KoliyaReportsTests : IDisposable
         Assert.Equal(143, lines[0].GetProperty("m").GetProperty("sec").GetInt32());
         Assert.Contains("Оля", File.ReadAllText(path));   // кирилиця як є: файл читають очима
     }
+
+    [Fact]
+    public async Task Двоє_гостей_з_однієї_домівки_обидва_а_за_добу_не_більше_стелі()
+    {
+        var inbox = new KoliyaReports(_log, maxPerDay: 3);
+        const string ok = """{"v":1,"end":"won"}""";
+        // той самий нік «гість» і та сама адреса, але різні вкладки — кінець партії в обох одночасно
+        Assert.Equal(200, await inbox.Accept("гість", "5.6.7.8", ok.Length, Body(ok), 10_000, id: "a1"));
+        Assert.Equal(200, await inbox.Accept("гість", "5.6.7.8", ok.Length, Body(ok), 10_000, id: "b2"));
+        Assert.Equal(429, await inbox.Accept("гість", "5.6.7.8", ok.Length, Body(ok), 10_500, id: "b2"));
+        Assert.Equal(200, await inbox.Accept("гість", "5.6.7.8", ok.Length, Body(ok), 20_000, id: "c3"));
+        Assert.Equal(429, await inbox.Accept("гість", "5.6.7.8", ok.Length, Body(ok), 30_000, id: "d4"));   // стеля доби
+        await _log.Drain(TimeSpan.FromSeconds(3));
+        Assert.Equal(3, File.ReadAllLines(_log.PathOf("koliya", DateTime.Now)).Count(l => l.Length > 0));
+    }
 }
