@@ -482,7 +482,7 @@ export function createTips(root, { enabled = true } = {}) {
         if (c && c.style.display !== 'none') { const r = c.getBoundingClientRect(); if (r.width) cr = r; }
       }
       const by = new Map(tips.map((t) => [t.p, t]));
-      const n = Math.max(ui.length, state.players.length);
+      const n = Math.max(ui.length, state.players.length), placed = [];
       for (let p = 0; p < n; p++) {
         const tip = by.get(p), pl = state.players[p];
         if (!tip && !ui[p]) continue;
@@ -515,10 +515,8 @@ export function createTips(root, { enabled = true } = {}) {
           const left = Math.max(6, Math.min(vw - bw - 6, at.x - bw / 2));
           const bot = at.y - 2.2 * u.em, top = bot - u.bh;   // де стала б бульбашка над гравцем
           const dn = !!cr && left < cr.right && left + bw > cr.left && top < cr.bottom && bot > cr.top;
-          u.bub.classList.toggle('kol-tip-up', !dn); u.bub.classList.toggle('kol-tip-dn', dn);
           u.bub.style.setProperty('--tail', `${Math.round(Math.max(10, Math.min(bw - 10, at.x - left)))}px`);
-          u.bub.style.transform = dn ? `translate(${Math.round(left)}px, ${Math.round(at.y)}px) translateY(1.6em)`
-            : `translate(${Math.round(left)}px, ${Math.round(at.y)}px) translateY(calc(-100% - 2.2em))`;
+          placed.push({ u, left, y: at.y, bw, top, bot, dn });   // ставимо після циклу: див. нижче
         } else {
           // фолбек: стос у правому нижньому куті, гравець 1 — найнижче
           if (u.bub.parentNode !== corner) corner.appendChild(u.bub);
@@ -529,6 +527,14 @@ export function createTips(root, { enabled = true } = {}) {
         const mk = proj && !ok && tip && tip.x !== null ? proj(tip.x + 0.5, tip.y + 0.5) : null;
         if (mk) { u.mark.style.display = ''; u.mark.style.transform = `translate(${Math.round(mk.x)}px, ${Math.round(mk.y)}px) translate(-50%, -110%)`; }
         else u.mark.style.display = 'none';
+      }
+      // K46: бульбашка, що пішла під гравця, не має накрити сусідову над ним — тоді й сусідова під свого гравця
+      for (const a of placed) if (!a.dn && placed.some((b) => b.dn && a.left < b.left + b.bw && a.left + a.bw > b.left
+        && a.top < b.y + b.u.bh + 2 * b.u.em && a.bot > b.y)) a.dn = true;
+      for (const a of placed) {
+        a.u.bub.classList.toggle('kol-tip-up', !a.dn); a.u.bub.classList.toggle('kol-tip-dn', a.dn);
+        a.u.bub.style.transform = a.dn ? `translate(${Math.round(a.left)}px, ${Math.round(a.y)}px) translateY(1.6em)`
+          : `translate(${Math.round(a.left)}px, ${Math.round(a.y)}px) translateY(calc(-100% - 2.2em))`;
       }
     },
     setEnabled(b) { on = !!b; if (!on) hideAll(); },
