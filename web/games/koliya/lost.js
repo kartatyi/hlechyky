@@ -180,25 +180,28 @@ export function tailCell(s) {
 
 // ================= 🪓 інструменти =================
 /** Куди можна дійти пішки від гравців (без рубання й мостів; колія прохідна, вагони — ні як перешкода не рахуємо) */
+// K51: черга — типізований масив (той самий порядок обходу), сусіди без нових масивів на кожну клітинку
+const RM_D = [-1, 0, 0, -1, 0, 1, 1, 0];
 function reachMap(s) {
-  const W = s.w, n = W * s.h, seen = new Uint8Array(n), q = [];
+  const W = s.w, n = W * s.h, seen = new Uint8Array(n), qa = new Int32Array(n);
+  let qn = 0;
   for (const p of s.players) {
     if (!p || p.out) continue;
     const x = cellOf(p.x), y = cellOf(p.y);
     if (x < 0 || y < 0 || x >= W || y >= s.h) continue;
     const i = y * W + x;
-    if (!seen[i]) { seen[i] = 1; q.push(i); }
+    if (!seen[i]) { seen[i] = 1; qa[qn++] = i; }
   }
-  for (let k = 0; k < q.length; k++) {
-    const i = q[k], x = i % W, y = (i / W) | 0;
-    for (const [dx, dy] of [[-1, 0], [0, -1], [0, 1], [1, 0]]) {
-      const nx = x + dx, ny = y + dy;
+  for (let k = 0; k < qn; k++) {
+    const i = qa[k], x = i % W, y = (i / W) | 0;
+    for (let e = 0; e < 8; e += 2) {
+      const nx = x + RM_D[e], ny = y + RM_D[e + 1];
       if (cellBlocked(s, nx, ny)) continue;
       const m = ny * W + nx;
-      if (!seen[m]) { seen[m] = 1; q.push(m); }
+      if (!seen[m]) { seen[m] = 1; qa[qn++] = m; }
     }
   }
-  return { seen, q };
+  return { seen, q: qa.subarray(0, qn) };
 }
 
 /** Інструмент на клітинці i можна взяти: дійти до неї чи до сусіда по стороні; не під вагоном, що стоїть */
