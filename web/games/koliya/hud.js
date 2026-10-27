@@ -16,6 +16,7 @@
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES } from './extras.js';             // K16: тост покращення
+import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
 
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
 const HOLD_ICON = { [I.WOOD]: '🪵', [I.IRON]: '⛓', [I.RAIL]: '🛤', [I.AXE]: '🪓', [I.PICK]: '⛏', [I.BUCKET]: '🪣', [I.BUCKET_FULL]: '💧' };
@@ -150,6 +151,7 @@ const CSS = `
 .kol-modes .kol-again { font-size: 1em; }
 .kol-pmenu { display: flex; flex-direction: column; align-items: stretch; gap: .1em; width: fit-content; margin: .4em auto; }
 .kol-pmenu .kol-again.kol-pf, .kol-pmenu .kol-again:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; }
+@media (max-width: 1400px) { .kol-top .kol-wd { display: none; } }
 @media (max-width: 640px) { .kol-card .kol-sum { grid-template-columns: auto auto; } .kol-ptab { font-size: .72em; } .kol-ptab th, .kol-ptab td { padding: .1em .25em; } }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
@@ -233,27 +235,14 @@ export function createHud(root, opts = {}) {
 
   // — старт
   const start = el('div', 'kol-screen', root);
-  const n = opts.players ?? 1;
-  el('div', 'kol-card', start, `
+  // K30: стартовий екран — меню (menu.js): режими, гравці, боти, смуга; котел — за params (пожежа чи зупинка)
+  const startCard = el('div', 'kol-card', start, `
     <h1>🚂 Колія</h1>
-    <p>Паротяг сам повзе до станції 🏁 — встигніть класти рейки перед ним.</p>
-    <p>Рубайте ліс 🪓, бийте скелі ⛏, несіть у склад — майстерня робить рейки 🛤.
-      Котел гріється: відро води 💧 на паротяг, інакше пожежа.</p>
-    <div class="kol-keys">
-      <span class="kol-kbonly"><b style="color:${COLORS[0]}">П1</b></span><span class="kol-kbonly">WASD — ходити, Space / E — дія</span>
-      <span class="kol-kbonly"><b style="color:${COLORS[1]}">П2</b></span><span class="kol-kbonly">стрілки — ходити, Enter — дія</span>
-      <span class="kol-kbonly">🎯📯</span><span class="kol-kbonly">П1 <b>Q</b> / П2 <b>правий Ctrl</b> — кинути річ · <b>F</b> / <b>/</b> — гудок</span>
-      <b>🎮</b><span>стік / ✚ — ходити, <b>A</b> — дія, <b>B</b> — кинути, <b>Y</b> — гудок</span>
-      <b>≡</b><span><b>Start</b> — рестарт · <b>⧉ View</b> — налаштування</span>
-      <span class="kol-kbonly"><b>R</b></span><span class="kol-kbonly">рестарт · <b>F1</b> — налаштування</span>
-    </div>
-    <p class="kol-hint">${n > 1 ? `Гравців: ${n}. ` : ''}Другий пад — другий гравець. <span class="kol-kbonly"><code>?p=2</code> — удвох з клавіатури, <code>&amp;bot=1</code> — бот</span></p>
-    <div class="kol-go"><span class="kol-kbonly">Натисніть будь-яку кнопку</span><span class="kol-padonly">🎮 <b>A</b> — почати</span></div>
-    <div class="kol-modes"><button class="kol-again kol-m" type="button" data-act="daily">📅 Маршрут дня</button><button class="kol-again kol-m" type="button" data-act="tutorial">🎓 Навчання</button></div>
+    <p>Паротяг сам повзе до станції 🏁 — кладіть рейки перед ним: ліс 🪓 і скелі ⛏ → склад → майстерня робить рейки 🛤.
+      <span class="kol-boil"></span></p>
+    <div class="kol-mbox"></div>
     <div class="kol-hint kol-dayrec"></div>`);
-  // K23: «🎓 Навчання» (є game.startTutorial — K22) і «📅 Маршрут дня» (game.startDaily) — інакше кнопки сховані
-  const btnTut = start.querySelector('[data-act="tutorial"]'), btnDay = start.querySelector('[data-act="daily"]'), dayRec = start.querySelector('.kol-dayrec');
-  btnTut.style.display = btnDay.style.display = 'none';
+  const dayRec = start.querySelector('.kol-dayrec'), boilEl = start.querySelector('.kol-boil');
 
   // — пауза (K23): Esc або ⏸; у мережі — лише меню, світ не стоїть
   const pauseBtn = el('button', 'kol-pausebtn', root, '⏸'); pauseBtn.type = 'button'; pauseBtn.title = 'Пауза (Esc)';
@@ -262,7 +251,8 @@ export function createHud(root, opts = {}) {
   const pauseCard = el('div', 'kol-card', pause, `<h1>⏸ Пауза</h1><p class="kol-hint kol-pnet"></p>
     <div class="kol-pmenu"><button class="kol-again" type="button" data-act="resume">▶ Продовжити</button>
     <button class="kol-again" type="button" data-act="restart">↻ Почати заново</button>
-    <button class="kol-again" type="button" data-act="settings">⚙ Налаштування</button></div>
+    <button class="kol-again" type="button" data-act="settings">⚙ Налаштування</button>
+    <button class="kol-again" type="button" data-act="menu">☰ В меню</button></div>
     <p class="kol-hint">Esc — продовжити</p>`);
   const pauseNet = pauseCard.querySelector('.kol-pnet'), pauseBtns = [...pauseCard.querySelectorAll('button')];
 
@@ -272,23 +262,42 @@ export function createHud(root, opts = {}) {
   const endCard = el('div', 'kol-card', end);
 
   let started = false, lastState = null, game0 = null, stationX = -1, zones = [], zonesShift;
+  const menu = createMenu(startCard.querySelector('.kol-mbox'), { game: () => game0 ?? window.KOL?.game, say: (t) => say(t), onPick: (act, o) => menuPick(act, o) });
   let recState = null, rec = null;   // K23: рекорд рахуємо раз на партію
   const begin = () => {
     if (started) return;
     started = true; start.style.display = 'none';
+    if (menuOwned) { menuOwned = false; opts.input?.setMenu?.(null); }   // K30: setMenu(null) ще й ковтає затиснуті кнопки
     if (game0) game0.paused = false;
     opts.onStart?.();
   };
   const onKey = (e) => {
-    if (!started && !['F1', 'Backquote', 'Shift', 'Control', 'Alt', 'Meta'].includes(e.key) && e.code !== 'Backquote') begin();
-    else if (started) pauseKey(e);   // K23
+    if (!started) { if (!opts.panelOpen?.() && !e.ctrlKey && !e.altKey && !e.metaKey) menu.key(e); }   // K30: меню
+    else if (lastState && (lastState.status === 'won' || lastState.status === 'lost')) endKey(e);   // K30: фінал
+    else pauseKey(e);   // K23
   };
   addEventListener('keydown', onKey);
-  start.addEventListener('pointerdown', (e) => {
-    const act = e.target.closest?.('[data-act]')?.dataset.act;   // K23: кнопки режимів
+  // K30: вибір у меню. Мережа — стіл уже є: «Грати» лише закриває меню; «🌐» — перезавантаження з ?net=new
+  function menuPick(act, o) {
+    const g = game0;
+    if (act === 'net') {
+      try { const u = new URL(location.href); u.searchParams.set('net', 'new'); u.searchParams.set('p', o.players); if (o.bots) u.searchParams.set('bot', o.bots); else u.searchParams.delete('bot'); u.searchParams.delete('tut'); location.href = u; } catch { }
+      return;
+    }
+    if (act === 'offline') { try { const u = new URL(location.href); u.searchParams.delete('net'); location.href = u; } catch { } return; }
+    if (act !== 'resume' && !isNet()) g?.startMenu?.(act, o);
+    else if (act === 'resume' && g) g.paused = false;
     begin();
-    if (act) { e.preventDefault(); e.target.blur?.(); if (act === 'tutorial') game0?.startTutorial?.(); else if (act === 'daily') game0?.startDaily?.(); }
-  });
+  }
+  let menuOwned = false;   // пад веде меню (input.setMenu) — повертаємо собі після панелі
+  function toMenu() {
+    if (!started) return;
+    const resume = lastState?.status === 'run';
+    closePause(false);
+    started = false; menuOwned = false;
+    if (game0) game0.paused = true;
+    menu.open(resume);
+  }
 
   // K23: пауза. Локально — game.paused (тики стоять); мережа (KOL.net) — лише меню. Пад у меню: ✚ — вибір, A — так, B — назад
   let paused = false, pauseState = null, waitPanel = false, pauseIdx = 0;
@@ -322,6 +331,7 @@ export function createHud(root, opts = {}) {
     if (act === 'resume') closePause();
     else if (act === 'restart') { closePause(); opts.onRestart?.(); }
     else if (act === 'settings' && opts.onSettings) { closePause(false); waitPanel = !isNet(); opts.onSettings(); }
+    else if (act === 'menu') toMenu();   // K30
   }
   function pauseKey(e) {
     if (e.key === 'Escape') { if (paused) closePause(); else if (!opts.panelOpen?.()) openPause(); return; }
@@ -341,8 +351,15 @@ export function createHud(root, opts = {}) {
     if (waitPanel && s !== pauseState) { waitPanel = false; if (game0) game0.paused = false; }
     const show = started && s.status === 'run' ? 'block' : 'none';
     set(pauseBtn.style, 'pbtn|display', show);
-    set(btnTut.style, 'tut|display', typeof game0?.startTutorial === 'function' ? '' : 'none');
-    set(btnDay.style, 'day|display', typeof game0?.startDaily === 'function' ? '' : 'none');
+    endNav((s.status === 'won' || s.status === 'lost') && started, s);   // K30: пад на фіналі
+    if (!started) {   // K30: меню — пад (поки панель закрита), котел за params того, що обрано
+      const pOpen = !!opts.panelOpen?.();
+      if (pOpen) menuOwned = false;
+      else if (!menuOwned) { menuOwned = true; opts.input?.setMenu?.((k) => menu.pad(k)); }
+      menu.sync(s);
+      const f = menu.focus(), oh = f === 'resume' ? s.params?.overheat : f === 'tutorial' ? 'stop' : f === 'daily' ? 'fire' : game0?.params?.overheat ?? s.params?.overheat;
+      txt(boilEl, 'boil', `Котел гріється: відро води 💧 на паротяг, інакше ${oh === 'stop' ? 'він стане' : 'пожежа 🔥'}.`);
+    }
     if (!started && typeof game0?.startDaily === 'function' && !cache.has('dayrec|textContent')) {
       const d = kyivDate(), r = judgeDaily({ players: s.players, status: '', endless: null }, d, false);
       txt(dayRec, 'dayrec', `📅 ${d.slice(8, 10)}.${d.slice(5, 7)} — однаковий маршрут у всіх${r.prev ? ` · рекорд дня (${whoLabel(r.n)}): ${fmtTime(r.prev / TPS)}` : ''}`);
@@ -388,7 +405,7 @@ export function createHud(root, opts = {}) {
   function update(s, game) {
     if (!s) return;
     game0 = game;
-    if (!started) { if (game) game.paused = true; if (padPressed()) begin(); }
+    if (!started) { if (game) game.paused = true; padPressed(); }   // K30: пад веде меню (pauseTick), тут — лише «чи є пад»
     pauseTick(s);   // K23
     // DOM — лише коли щось могло змінитись (тик, статус, старт), а не щокадру
     const key = `${s.tick}|${s.status}|${started}|${s.players?.length}`;
@@ -403,7 +420,7 @@ export function createHud(root, opts = {}) {
     const w = s.w || 1, path = s.path || [];
     const sec = (s.tick ?? 0) / TPS;
     set(endlEl.style, 'endl|display', E ? 'block' : 'none');
-    if (E) txt(endlEl, 'endl', `🚉 ${E.stations} · ділянка ${E.segment}`);
+    if (E) set(endlEl, 'endl|innerHTML', `🚉 ${E.stations} · <span class="kol-wd">ділянка </span>📍${E.segment}`);   // K30: вузько — без слів
     txt(progSt, 'progSt', E ? '🚉' : '🏁');
 
     // прогрес: голова, кінець колії, станція (за x уздовж смуги)
@@ -416,7 +433,7 @@ export function createHud(root, opts = {}) {
     set(progEnd.style, 'end|left', `${Math.min(100, endX / span * 100).toFixed(1)}%`);
     set(progHead.style, 'head|left', `${Math.min(100, headX / span * 100).toFixed(1)}%`);
     const ahead = Math.max(0, path.length - 1 - Math.floor((t.pos ?? 0) / U));
-    txt(progAhead, 'ahead', E ? `🛤 ${ahead} · до наступної 🚉 ${E.toNext}` : `🛤 ${ahead} попереду · до 🏁 ${Math.max(0, Math.round(stationX - headX))}`);
+    set(progAhead, 'ahead|innerHTML', E ? `🛤 ${ahead} · <span class="kol-wd">до наступної </span>🚉 ${E.toNext}` : `🛤 ${ahead}<span class="kol-wd"> попереду</span> · <span class="kol-wd">до </span>🏁 ${Math.max(0, Math.round(stationX - headX))}`);
     // K16: проміжна станція — позначка на смузі й банер, поки паротяг чекає вибору
     const mid = s.mid;
     const midX = mid ? (mid.x0 + mid.x1 + 1) / 2 : -1;
@@ -436,8 +453,9 @@ export function createHud(root, opts = {}) {
     set(midEl.style, 'midE|display', midWait ? 'block' : 'none');
     // K16: біом під паротягом (і наступний, якщо колія вже туди дійшла)
     const zH = zoneAt(zones, headX), zE = zoneAt(zones, endX);
-    const bName = (z) => `${BIOME_ICON[z?.kind ?? 'glade'] ?? ''} ${z ? BIOME_NAMES[z.kind] ?? z.kind : 'галявина'}`;
-    txt(biomeEl, 'biome', zE !== zH ? `${bName(zH)} → ${bName(zE)}` : bName(zH));
+    const bName = (z, w) => `${BIOME_ICON[z?.kind ?? 'glade'] ?? ''}<span class="${w ? 'kol-wd' : ''}"> ${z ? BIOME_SHORT[z.kind] ?? BIOME_NAMES[z.kind] ?? z.kind : 'галявина'}</span>`;   // K30: коротко
+    set(biomeEl, 'biome|innerHTML', zE !== zH ? `${bName(zH, true)} → ${bName(zE)}` : bName(zH));
+    set(biomeEl, 'biome|title', zE !== zH ? `${BIOME_NAMES[zH?.kind] ?? 'галявина'} → ${BIOME_NAMES[zE?.kind] ?? 'галявина'}` : BIOME_NAMES[zH?.kind] ?? 'галявина');
 
     const cps = (t.speed ?? 0) / 1000 / U * TPS;   // клітинок/с
     txt(timeEl, 'time', `⏱ ${fmtTime(sec)}`);
@@ -496,7 +514,7 @@ export function createHud(root, opts = {}) {
     }
 
     // кінець
-    const over = s.status === 'won' || s.status === 'lost';
+    const over = (s.status === 'won' || s.status === 'lost') && started;   // K30: у меню фінал не заступає
     set(end.style, 'end|display', over ? 'flex' : 'none');
     if (over) {
       const st = s.stats || {};
@@ -514,11 +532,53 @@ export function createHud(root, opts = {}) {
           <span>🪓 Ударів</span><b>${st.hits ?? 0}</b>
           <span>💨 Найшвидше</span><b>${maxCps.toFixed(2)} кл/с</b>
         </div>${playersHtml(s)}
-        <div class="kol-go">R / ≡ Start — ${s.status === 'won' ? 'далі' : 'ще раз'}</div>
-        <button class="kol-again" type="button">${s.status === 'won' ? '▶ Далі' : '↻ Ще раз'}</button>`);
+        <div class="kol-pmenu kol-endm">${endActs(s).map(([a, t]) => `<button class="kol-again" type="button" data-end="${a}">${t}</button>`).join('')}</div>
+        <div class="kol-hint">R / ≡ Start — ${s.status === 'won' ? 'далі' : 'ще раз'} · ↑↓ / ✚ — вибір</div>`);
+      endFocus(endIdx);
     }
   }
-  endCard.addEventListener('click', (e) => { if (e.target.closest('.kol-again')) { e.target.blur(); opts.onRestart?.(); } });
+  // K30: фінал — «Ще раз» / «Наступний сід» / «В меню»; клавіші й пад — через 0,8 с (щоб затиснута дія не тиснула кнопку)
+  const tut = (s) => s.params?.mode === 'tutorial' || s.tutorial;
+  const endActs = (s) => {
+    const next = ['next', tut(s) ? (s.status === 'won' ? '▶ Справжня смуга' : '⏭ Звичайна смуга') : s.status === 'won' ? '▶ Наступний сід' : '⏭ Наступний сід'];
+    const again = ['again', '↻ Ще раз'], m = ['menu', '☰ В меню'];
+    return s.status === 'won' ? [next, again, m] : [again, next, m];
+  };
+  let endIdx = 0, endOn = false, endOwned = false, endAt = 0;
+  const endBtns = () => [...endCard.querySelectorAll('[data-end]')];
+  const endFocus = (i) => { const b = endBtns(); if (!b.length) return; endIdx = (i + b.length) % b.length; b.forEach((x, j) => x.classList.toggle('kol-pf', j === endIdx)); };
+  function endAct(a) {
+    const g = game0, s = lastState;
+    if (!g || !s) return;
+    if (a === 'menu') return toMenu();
+    if (a === 'again') return g.restart ? g.restart(g.seed) : opts.onRestart?.();
+    if (a === 'next') return tut(s) ? g.stopTutorial?.() : g.restart ? g.restart(g.seed + 1) : opts.onRestart?.();
+  }
+  const endReady = () => performance.now() - endAt > 800;
+  function endNav(on, s) {
+    if (on && !endOn) { endOn = true; endAt = performance.now(); endIdx = 0; endOwned = false; }
+    else if (!on && endOn) { endOn = false; if (endOwned && started) opts.input?.setMenu?.(null); endOwned = false; }
+    if (!endOn) return;
+    if (opts.panelOpen?.()) { endOwned = false; return; }
+    if (!endOwned) {
+      endOwned = true;
+      opts.input?.setMenu?.((k) => {
+        if (k === 'up' || k === 'left') endFocus(endIdx - 1);
+        else if (k === 'down' || k === 'right') endFocus(endIdx + 1);
+        else if (k === 'a' && endReady()) endAct(endBtns()[endIdx]?.dataset.end);
+        else if (k === 'start') opts.onRestart?.();
+        else if (k === 'menu') opts.onSettings?.();
+      });
+    }
+  }
+  function endKey(e) {
+    const k = e.code;
+    if (k === 'ArrowUp' || k === 'ArrowLeft') endFocus(endIdx - 1);
+    else if (k === 'ArrowDown' || k === 'ArrowRight') endFocus(endIdx + 1);
+    else if (k === 'Enter' || k === 'NumpadEnter' || k === 'Space') { e.preventDefault(); if (!e.repeat && endReady()) endAct(endBtns()[endIdx]?.dataset.end); }
+    else if (k === 'Escape') toMenu();
+  }
+  endCard.addEventListener('click', (e) => { const b = e.target.closest('[data-end]'); if (b) { b.blur(); endAct(b.dataset.end); } });
 
   // K16: тости подій тику (гачок у main.js afterStep — бачить кожен тик, не лише кадр)
   let seenGeese = new Set(), evState = null;

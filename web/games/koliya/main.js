@@ -13,6 +13,7 @@ import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
+import { createTouch, isTouchDevice } from './touch.js';   // K27: телефон і планшет
 import { createMusic } from './music.js';            // K29: музика й тло (вимкнено типово)
 
 const q = new URLSearchParams(location.search);
@@ -25,12 +26,14 @@ function loadParams() {
   const p = R.defaultParams();
   let o = null;
   try { o = JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}'); } catch { }
-  if (!o || typeof o !== 'object') return p;
-  for (const k in R.PARAM_META) {
-    const m = R.PARAM_META[k], v = o[k];
-    if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
+  if (o && typeof o === 'object') {
+    for (const k in R.PARAM_META) {
+      const m = R.PARAM_META[k], v = o[k];
+      if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
+    }
+    for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
   }
-  for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
+  p.mode = q.get('tut') && q.get('tut') !== '0' ? 'tutorial' : 'normal';   // K22: навчання — лише ?tut=1 чи game.startTutorial(), не з пам'яті
   return p;
 }
 
@@ -67,11 +70,20 @@ const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — 
 try {   // K21: лише відомі значення (старе 'medium' чи рядок 'false' не ламають slowCheck, вібрацію й підказки)
   const o = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {};
   if (o.quality === 'low') prefs.quality = 'low';
+  else if (o.quality !== 'high' && isTouchDevice()) prefs.quality = 'low';   // K27: телефон — «низька», поки не обрали самі
   if (o.rumble === false) prefs.rumble = false;
   if (o.tips === false) prefs.tips = false;
 } catch { }
 input.setRumble(prefs.rumble);
-const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+input.setTouch(game.touch = createTouch({ canvas }));   // K27
+const nextRestart = () => {
+  if (game.state?.status === 'won' && game.params.mode === 'tutorial') return game.stopTutorial();   // K22: навчання пройдено — далі справжня смуга
+  restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+};
+// K22: навчальна смуга (tutorial.js) — кнопка «🎓 Навчання» на стартовому екрані HUD кличе game.startTutorial()
+const setMode = (mode) => { game.params = { ...game.params, mode }; panel?.set?.({ mode }); restart(); };
+game.startTutorial = () => setMode('tutorial');
+game.stopTutorial = () => setMode('normal');
 const panel = createPanel(document.getElementById('kol-panel'), {
   meta: R.PARAM_META, variants: R.VARIANTS, values: game.params,
   onChange(values) { game.params = { ...values }; try { localStorage.setItem(PARAMS_KEY, JSON.stringify(values)); } catch { } },
@@ -95,6 +107,17 @@ input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панел
 
 // K23: «📅 Маршрут дня» — сід від дати (Київ), типові params (панель — для звичайної гри); «ще раз» лишає маршрут дня
 game.startDaily = () => { const date = kyivDate(); game.daily = { date, seed: dailySeed(date) }; restart(game.daily.seed); };
+// K30: стартове меню (menu.js через hud.js) — гравці/боти, режим ('play'|'tutorial'|'daily'|'endless') і сід; фінал — game.restart
+game.restart = (seed) => restart(seed);
+game.startMenu = (act, o) => {
+  game.local = Math.max(1, Math.min(2, o.players | 0 || 1)); game.wantLocal = 0; input.setPlayers(game.local);
+  game.bots = Math.max(0, Math.min(R.MAX_PLAYERS - game.local, o.bots | 0));
+  if (act === 'daily') return game.startDaily();
+  const sm = game.params.stationMode === 'endless' ? (game.smWas ?? 'end') : game.params.stationMode;
+  if (act === 'endless') game.smWas = sm;
+  game.params = { ...game.params, mode: act === 'tutorial' ? 'tutorial' : 'normal', stationMode: act === 'endless' ? 'endless' : sm };
+  panel?.set?.({ mode: game.params.mode, stationMode: game.params.stationMode }); game.daily = null; restart(o.seed ?? game.seed);
+};
 function restart(seed = game.seed) {
   if (game.daily && game.daily.seed !== seed >>> 0) game.daily = null;   // K23
   const P = game.daily ? R.defaultParams() : game.params;   // K23
@@ -201,7 +224,7 @@ function drawHud() {
   view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => {   // K3; K21: без сервера — не чорний екран мовчки
     console.warn('Колія: мережа', e);
-    if (!game.state) hud.textContent = '⚠ Не вдалося підключитись до столу. Без мережі — прибери &net= з адреси.';
+    if (!game.state) { const u = new URL(location.href); u.searchParams.delete('net'); hud.innerHTML = `⚠ Не вдалося підключитись до столу. <a href="${u.pathname + u.search}" style="pointer-events:auto;color:#ffd23f">🏠 Грати без мережі</a>`; }   // K30
   }); else restart();
   requestAnimationFrame(frame);
 })();
