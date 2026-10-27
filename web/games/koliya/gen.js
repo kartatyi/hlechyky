@@ -38,8 +38,8 @@ export const BIOMES_NEW = ['winter', 'yar'];
 export const BIOME_NAMES = { steppe: 'степ', grove: 'гай', stone: "кам'яне поле", river: 'річкова долина', swamp: 'болото', pass: 'прохід між скелями', winter: 'зима', yar: 'яр' };
 const FEAT0 = GLADE + 3;         // ближче до старту — жодних річок/стін
 // множники лісу й скель за біомом (середнє ≈ 0,9 — загальна частка лишається близькою до повзунка)
-const MF = { steppe: 0.5, grove: 2.0, stone: 0.45, river: 1.0, swamp: 0.55, pass: 0.6, winter: 0.8, yar: 0.7 };
-const MR = { steppe: 0.6, grove: 0.45, stone: 2.1, river: 0.6, swamp: 0.35, pass: 1.3, winter: 0.6, yar: 1.2 };
+const MF = { steppe: 0.5, grove: 2.0, stone: 0.45, river: 1.0, swamp: 0.55, pass: 0.6, winter: 0.8, yar: 1.0 };   // K26: яр — ліс густіший (мости їдять дерево)
+const MR = { steppe: 0.6, grove: 0.45, stone: 2.1, river: 0.6, swamp: 0.35, pass: 1.3, winter: 0.6, yar: 1.0 };
 /** K26: чи ввімкнено новий біом (параметр 'on'/'off'; нема — типове з VARIANTS rules.js) */
 function newOn(P, key) {
   const v = P[key] !== undefined ? P[key] : (VARIANTS[key] ? VARIANTS[key].values[0] : 'off');
