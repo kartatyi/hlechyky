@@ -27,10 +27,11 @@
 // УВАГА: цикл імпорту rules → extras → endless → rules: на верхньому рівні тут лише літерали.
 import { U, TPS, G, O, I, WAGONS, rnd, wagonPos, wagonAt, noFoot } from './rules.js';
 import { generate } from './gen.js';
+import { upsStation } from './extras.js';   // K48: гальма заряджаються на кожній станції (цикл імпорту — лише у функції)
 
 export const STOP_SEC = 6;       // зупинка на станції, с
 export const PICK_SEC = 1;       // обрали покращення — рушаємо за стільки
-const UP_KEYS = ['tank', 'craft', 'store', 'carry'];
+const UP_KEYS = ['tank', 'craft', 'store', 'carry', 'cist', 'magnet', 'brake'];   // K48: + цистерна, магніт, гальма
 const isTool = (k) => k === 4 || k === 5 || k === 6 || k === 7;   // I.AXE, I.PICK, I.BUCKET, I.BUCKET_FULL
 const ev = (s, t, x, y, p) => { const e = { t, x, y }; if (p !== undefined) e.p = p; s.ev.push(e); };
 
@@ -150,9 +151,12 @@ function arrive(s, f) {
   const w = wagonPos(s, 0), hx = Math.floor(w.x / U), hy = Math.floor(w.y / U);
   ev(s, 'whistle', hx, hy); ev(s, 'station', hx, hy, E.stations);
   // таблички покращень K11 (3 з доступних, вибір за rnd стану); що вперлося в стелю панелі — не пропонуємо
-  const ok = { tank: P.heatSec * 2 <= 240, craft: P.craftSec > 0.5, store: (P.storeMax | 0) < 40, carry: (P.carryMax | 0) < 10 };
+  const u = s.ups || {};
+  const ok = { tank: P.heatSec * 2 <= 240, craft: P.craftSec > 0.5, store: (P.storeMax | 0) < 40, carry: (P.carryMax | 0) < 10,
+               cist: (u.cist | 0) < 3, magnet: !u.mag, brake: (u.brake | 0) < 3 };   // K48
   const keys = UP_KEYS.filter((k) => ok[k]);
-  if (keys.length > 3) keys.splice(rnd(s) % keys.length, 1);
+  while (keys.length > 3) keys.splice(rnd(s) % keys.length, 1);
+  upsStation(s);   // K48
   const sy = f.y1 + 2 <= h - 2 ? f.y1 + 2 : f.y0 - 2;
   const signs = [];
   for (let j = 0; j < keys.length; j++) {
