@@ -20,6 +20,7 @@ import { t as tt, isChumak } from './theme.js';      // K25: слова теми
 import { achievements } from './achievements.js';   // K50: досягнення 🏆 — тости з s.ev
 import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
 import { A11Y, pcol, pmark } from './panel.js';   // K49: кольори для дальтоніків і значки форми
+import { createHelp } from './help.js';   // K65: «❓ Як грати» — з меню, паузи й клавішею H
 
 // K49: колір гравця — pcol(i) з panel.js (з урахуванням «Кольори для дальтоніків»)
 const HOLD_ICON = { [I.WOOD]: '🪵', [I.IRON]: '⛓', [I.RAIL]: '🛤', [I.AXE]: '🪓', [I.PICK]: '⛏', [I.BUCKET]: '🪣', [I.BUCKET_FULL]: '💧' };
@@ -285,6 +286,7 @@ export function createHud(root, opts = {}) {
     <div class="kol-pmenu"><button class="kol-again" type="button" data-act="resume">▶ Продовжити</button>
     <button class="kol-again" type="button" data-act="restart">↻ Почати заново</button>
     <button class="kol-again" type="button" data-act="settings">⚙ Налаштування</button>
+    <button class="kol-again" type="button" data-act="help">❓ Як грати</button>
     <button class="kol-again" type="button" data-act="menu">☰ В меню</button></div>
     <p class="kol-hint">Esc — продовжити</p>`);
   const pauseNet = pauseCard.querySelector('.kol-pnet'), pauseBtns = [...pauseCard.querySelectorAll('button')];
@@ -304,7 +306,26 @@ export function createHud(root, opts = {}) {
     if (game0) game0.paused = false;
     opts.onStart?.();
   };
+  // K65: довідка «❓ Як грати» — поверх меню/паузи/гри; локально гра стоїть, у мережі — ні
+  let helpState = null, helpWasPaused = false;
+  const help = createHelp(root, { input: opts.input, isNet: () => isNet(), onClose: (f) => {
+    if (game0 && !isNet()) game0.paused = helpWasPaused || !started || paused;
+    if (f === 'menu') menuOwned = false;   // меню забере пад наступним кадром (pauseTick)
+    else if (f === 'pause' && paused) { opts.input?.setMenu?.(pausePad); pauseFocus(pauseIdx); }
+  } });
+  function openHelp(from) {
+    if (help.isOpen()) return;
+    helpState = lastState; helpWasPaused = !!game0?.paused;
+    if (game0 && !isNet()) game0.paused = true;
+    document.activeElement?.blur?.();
+    help.open(from);
+  }
   const onKey = (e) => {
+    if (help.isOpen()) { help.key(e); return; }   // K65
+    if (e.code === 'KeyH' && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey && !opts.panelOpen?.() && !game0?.replay?.active) {
+      const f = !started ? 'menu' : paused ? 'pause' : lastState?.status === 'run' ? 'game' : null;
+      if (f) { e.preventDefault(); openHelp(f); return; }
+    }
     if (!started) { if (!opts.panelOpen?.() && !e.ctrlKey && !e.altKey && !e.metaKey) menu.key(e); }   // K30: меню
     else if (lastState && (lastState.status === 'won' || lastState.status === 'lost')) endKey(e);   // K30: фінал
     else pauseKey(e);   // K23
@@ -317,7 +338,8 @@ export function createHud(root, opts = {}) {
       try { const u = new URL(location.href); u.searchParams.set('net', 'new'); u.searchParams.set('p', o.players); if (o.bots) u.searchParams.set('bot', o.bots); else u.searchParams.delete('bot'); u.searchParams.delete('tut'); location.href = u; } catch { }
       return;
     }
-    if (act === 'replays') { g?.replay?.paste?.(); return; }   // K35: «📼 Повтори» — свої й за кодом
+    if (act === 'replays') { g?.replay?.paste?.(); return; }   // K35
+    if (act === 'help') { openHelp('menu'); return; }   // K65: «📼 Повтори» — свої й за кодом
     if (act === 'offline') { try { const u = new URL(location.href); u.searchParams.delete('net'); location.href = u; } catch { } return; }
     if (act !== 'resume' && !isNet()) g?.startMenu?.(act, o);
     else if (act === 'resume' && g) g.paused = false;
@@ -345,14 +367,15 @@ export function createHud(root, opts = {}) {
     pauseNet.textContent = isNet() ? tt('pauseNet', '🌐 Гра в мережі — світ не стоїть, паротяг їде далі!') : '';
     pauseBtns[2].style.display = opts.onSettings ? '' : 'none';
     pause.style.display = 'flex'; pauseFocus(0);
-    opts.input?.setMenu?.((k) => {
-      if (k === 'up' || k === 'left') pauseFocus(pauseIdx - 1);
-      else if (k === 'down' || k === 'right') pauseFocus(pauseIdx + 1);
-      else if (k === 'a') pauseAct(pauseBtns[pauseIdx].dataset.act);
-      else if (k === 'b') pauseAct('resume');
-      else if (k === 'start') pauseAct('restart');
-      else if (k === 'menu') pauseAct('settings');
-    });
+    opts.input?.setMenu?.(pausePad);
+  }
+  function pausePad(k) {   // K65: окремо — довідка з паузи повертає пад сюди
+    if (k === 'up' || k === 'left') pauseFocus(pauseIdx - 1);
+    else if (k === 'down' || k === 'right') pauseFocus(pauseIdx + 1);
+    else if (k === 'a') pauseAct(pauseBtns[pauseIdx].dataset.act);
+    else if (k === 'b') pauseAct('resume');
+    else if (k === 'start') pauseAct('restart');
+    else if (k === 'menu') pauseAct('settings');
   }
   function closePause(resume = true) {
     if (!paused) return;
@@ -366,6 +389,7 @@ export function createHud(root, opts = {}) {
     else if (act === 'restart') { closePause(); opts.onRestart?.(); }
     else if (act === 'settings' && opts.onSettings) { closePause(false); waitPanel = !isNet(); opts.onSettings(); }
     else if (act === 'menu') toMenu();   // K30
+    else if (act === 'help') openHelp('pause');   // K65
   }
   function pauseKey(e) {
     if (e.key === 'Escape') { if (paused) closePause(); else if (!opts.panelOpen?.()) openPause(); return; }
@@ -379,6 +403,7 @@ export function createHud(root, opts = {}) {
   pauseCard.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) { e.preventDefault(); pauseAct(b.dataset.act); } });
   // кадром: панель закрилась після «Налаштувань» — назад у паузу; нова партія (R/Start) — пауза геть
   function pauseTick(s) {
+    if (help.isOpen() && (help.from === 'game' ? s !== helpState || s.status !== 'run' : help.from === 'pause' ? !paused : started)) help.close();   // K65: R/нова партія — довідка геть
     if (waitPanel && !opts.panelOpen?.()) { waitPanel = false; if (s.status === 'run' && s === pauseState) { openPause(); } else if (game0) game0.paused = false; }
     if (paused && s !== pauseState) closePause();
     if (paused && s.status !== 'run') closePause(false);
@@ -389,7 +414,7 @@ export function createHud(root, opts = {}) {
     if (!started) {   // K30: меню — пад (поки панель закрита), котел за params того, що обрано
       const pOpen = !!opts.panelOpen?.();
       if (pOpen) menuOwned = false;
-      else if (!menuOwned) { menuOwned = true; opts.input?.setMenu?.((k) => menu.pad(k)); }
+      else if (!menuOwned && !help.isOpen()) { menuOwned = true; opts.input?.setMenu?.((k) => menu.pad(k)); }
       menu.sync(s);
       const f = menu.focus(), oh = f === 'resume' ? s.params?.overheat : f === 'tutorial' ? 'stop' : f === 'daily' ? 'fire' : game0?.params?.overheat ?? s.params?.overheat;
       txt(boilEl, 'boil', tt('boil', `Котел гріється: відро води 💧 на паротяг, інакше ${oh === 'stop' ? 'він стане' : 'пожежа 🔥'}.`, oh));
@@ -745,6 +770,7 @@ export function createHud(root, opts = {}) {
     update,
     say,
     events,
-    dispose() { removeEventListener('keydown', onKey); for (const id of timers) clearTimeout(id); style.remove(); root.textContent = ''; root.classList.remove('kol-root'); },
+    help,   // K65
+    dispose() { help.dispose(); removeEventListener('keydown', onKey); for (const id of timers) clearTimeout(id); style.remove(); root.textContent = ''; root.classList.remove('kol-root'); },
   };
 }
