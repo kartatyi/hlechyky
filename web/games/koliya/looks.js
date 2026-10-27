@@ -102,6 +102,7 @@ export function mountLookUi(panelRoot, view) {
   seg('Вигляд', Object.fromEntries(LOOK_KEYS.map((k) => [k, LOOKS[k].label])), 'look', (v) => view.setLook(v));
   seg('Камера', Object.fromEntries(Object.entries(CAM_DIST).map(([k, v]) => [k, v.label])), 'dist', () => view.setCam({ dist: prefs.dist, angle: prefs.angle }));
   seg('Кут камери', CAM_ANGLE, 'angle', () => view.setCam({ dist: prefs.dist, angle: prefs.angle }));
+  for (const r of view.weather?.rows?.() || []) { prefs[r.key] = r.value; seg(r.label, r.opts, r.key, r.pick); }   // K32: час доби й погода
   const note = pan.querySelector('.kol-note');
   if (note && note.parentNode === pan) note.after(d); else pan.append(d);
   return { dispose() { d.remove(); } };

@@ -8,7 +8,7 @@ const { U, G, O, I, PR } = R;
 
 /** Порожня смуга (як у feel.test.mjs), паротяг стоїть довго */
 function blank(params = {}, n = 2) {
-  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, startSec: 90, ...params };
+  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, winter: 'off', startSec: 90, ...params };   // K26: порожня смуга — без снігу й льоду
   const s = R.newGame(7, p, n);
   for (let i = 0; i < s.w * s.h; i++) {
     const y = (i / s.w) | 0;

@@ -26,6 +26,11 @@ namespace Hlechyky.Games.Impl;
 /// з <c>q = 1</c> — від нього). Разом гравців rules ≤ 4: коли всі слоти зайняті, «join2» відмовляє, а новий за столом
 /// дивиться, доки хтось не встане. Перезапуск зберігає другого: гравці rules — за порядком місць, перший, потім другий.
 /// </para>
+/// <para>
+/// K28 «люди за столом» — усе повз журнал (світ і хеш від цього не міняються): <c>nm</c> у виді й журналі — ніки
+/// гравців rules; Input <c>"react"</c> {em, q, i} — емодзі над гравцем (≤ 1 на <see cref="ReactGapMs"/>), у кадрі
+/// <c>r</c> = [seq, p, e, i]×N ще <see cref="ReactKeepMs"/>.
+/// </para>
 /// </summary>
 public sealed class Koliya : Game, IUnlistedGame
 {
@@ -83,6 +88,62 @@ public sealed class Koliya : Game, IUnlistedGame
     int _leaveT;   // K24: тик останнього leave у журналі
     bool _dirty;
 
+    // ---- K28: люди за столом (повз журнал: світ від цього не міняється) ----
+    /// <summary>Скільки є реакцій-емодзі (web/games/koliya/net.js REACTS).</summary>
+    public const int ReactKinds = 4;
+    /// <summary>Не частіше за раз на стільки від одного гравця rules (≈ 1 на секунду з запасом на тремтіння мережі).</summary>
+    public const int ReactGapMs = 900;
+    /// <summary>Скільки реакція їде в кадрах (каркас може згорнути кадри; браузер відкидає вже бачене за номером).</summary>
+    public const int ReactKeepMs = 1500;
+
+    readonly record struct React(int Seq, int P, int E, int I, DateTimeOffset At);
+    readonly List<React> _reacts = [];
+    readonly DateTimeOffset[] _reactAt = new DateTimeOffset[MaxRulesPlayers];
+    int _reactSeq;
+
+    /// <summary>Без жодної команди/пінгу від місця довше — гравець «відпав» (браузер пінгує раз на секунду).</summary>
+    public const int LostMs = 3000;
+    /// <summary>Місце → коли востаннє щось прислало (будь-яка дія).</summary>
+    readonly DateTimeOffset[] _seen = new DateTimeOffset[4];
+    /// <summary>Місце → пінг, що його браузер сам заміряв (мс), номер і час приходу останнього пінгу.</summary>
+    readonly int[] _rtt = new int[4];
+    readonly int[] _pingI = new int[4];
+    readonly DateTimeOffset[] _pingAt = new DateTimeOffset[4];
+
+    /// <summary>Глядач зник, якщо не озивався довше (браузер озивається раз на 2 с).</summary>
+    public const int WatchMs = 5000;
+    /// <summary>Скільки глядачів пам'ятати (далі — забуваємо найдавнішого).</summary>
+    public const int WatchKeep = 64;
+    /// <summary>Номер вкладки глядача → коли востаннє озивався.</summary>
+    readonly Dictionary<string, DateTimeOffset> _watch = [];
+
+    /// <summary>K28: глядач озвався (KoliyaSetup …/watch). Кличеться під замком кімнати. Повертає, скільки глядачів зараз.</summary>
+    public int Watch(string id)
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (!_watch.ContainsKey(id) && _watch.Count >= WatchKeep)
+        {
+            Forget(now);
+            if (_watch.Count >= WatchKeep) _watch.Remove(_watch.MinBy(x => x.Value).Key);
+        }
+        _watch[id] = now;
+        return Watchers();
+    }
+
+    void Forget(DateTimeOffset now)
+    {
+        foreach (var k in _watch.Where(x => now - x.Value > TimeSpan.FromMilliseconds(WatchMs)).Select(x => x.Key).ToList()) _watch.Remove(k);
+    }
+
+    /// <summary>Скільки глядачів озивалось за останні <see cref="WatchMs"/>.</summary>
+    int Watchers()
+    {
+        var old = Ctx.Clock.UtcNow - TimeSpan.FromMilliseconds(WatchMs);
+        var n = 0;
+        foreach (var at in _watch.Values) if (at >= old) n++;
+        return n;
+    }
+
     public override string SeatName(int seat) => "колійник";
 
     public override bool LateJoin(string nick) => true;
@@ -103,6 +164,7 @@ public sealed class Koliya : Game, IUnlistedGame
         _log.Clear();
         _out.Clear();
         _hashes.Clear();
+        _reacts.Clear();   // K28: номери реакцій не скидаємо — браузер відкидає бачене за номером
         _desync = -1;
         _keepFrom = 0;
         _w = -1;
@@ -121,6 +183,7 @@ public sealed class Koliya : Game, IUnlistedGame
             if (_p2Of[s] >= 0) _out.Add(false);
         }
         _startAt = Ctx.Clock.UtcNow;
+        for (var s = 0; s < _seen.Length; s++) if (_seen[s] == default) _seen[s] = _startAt;   // K28: перший старт — усі живі
         _dirty = true;
     }
 
@@ -133,6 +196,7 @@ public sealed class Koliya : Game, IUnlistedGame
     public override void OnJoin(int seat)
     {
         if (seat < 0 || seat >= _pOf.Length || _pOf[seat] >= 0) return;
+        _seen[seat] = Ctx.Clock.UtcNow; _rtt[seat] = 0; _pingI[seat] = 0;   // K28: новий за місцем — ще не «відпав»
         if (NewPlayer(seat) is { } p) _pOf[seat] = p;   // усі 4 слоти rules зайняті (двоє за ПК) — дивиться
     }
 
@@ -170,11 +234,17 @@ public sealed class Koliya : Game, IUnlistedGame
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (seat < 0 || seat >= _pOf.Length) throw new GameError("Ти не за столом");
+        _seen[seat] = Ctx.Clock.UtcNow;   // K28: живий (і старою епохою теж)
         // K24: ввід зі старої епохи (летів, поки хтось перезапустив) — мовчки геть: його тик і поза — зі старого світу
         // (use з позою телепортував би гравця в новому світі, може й у скелю), хеш — звірка зі старим світом.
         if (action is not ("restart" or "join2" or "leave2") && Stale(payload)) return ActResult.Done;
         switch (action)
         {
+            case "ping":    // K28: { i, r } — номер пінгу (луна в кадрі pa) і заміряний браузером пінг для всіх
+                _pingI[seat] = Clamp(payload, "i", 0, int.MaxValue);
+                _pingAt[seat] = Ctx.Clock.UtcNow;
+                _rtt[seat] = Clamp(payload, "r", 0, 9999);
+                return ActResult.Done;
             case "restart":
                 NewEpoch(ReadSeed(payload), ReadParams(payload));
                 return ActResult.Done;
@@ -214,6 +284,17 @@ public sealed class Koliya : Game, IUnlistedGame
             case "hash":
                 Hash(payload);
                 return ActResult.Done;
+            case "react":   // K28: емодзі над гравцем — повз журнал правил, світ і хеш не чіпає
+            {
+                var p = Player(seat, payload);
+                var e = Clamp(payload, "em", -1, 1000);   // не "e": то епоха (K24, Stale)
+                if (e < 0 || e >= ReactKinds) throw new GameError("Такої реакції нема");
+                var now = Ctx.Clock.UtcNow;
+                if (now - _reactAt[p] < TimeSpan.FromMilliseconds(ReactGapMs)) throw new GameError("Не так часто");
+                _reactAt[p] = now;
+                _reacts.Add(new React(++_reactSeq, p, e, Clamp(payload, "i", 0, int.MaxValue), now));
+                return ActResult.Done;
+            }
             default:
                 throw new GameError("Тут так не ходять");
         }
@@ -261,6 +342,9 @@ public sealed class Koliya : Game, IUnlistedGame
     {
         var w = Mark();
         while (_keepFrom < _log.Count && _log[_keepFrom].T <= w - KeepTicks) _keepFrom++;
+        var old = Ctx.Clock.UtcNow - TimeSpan.FromMilliseconds(ReactKeepMs);   // K28
+        _reacts.RemoveAll(r => r.At < old);
+        if (NowTick() % 100 == 0) Forget(Ctx.Clock.UtcNow);
         if (!_dirty) return TickResult.FrameOnly;
         _dirty = false;
         return TickResult.Both;
@@ -269,7 +353,48 @@ public sealed class Koliya : Game, IUnlistedGame
     public override object? Frame() => new
     {
         e = _epoch, t = NowTick(), w = _w, n = _log.Count, f = _keepFrom, c = Flat(_keepFrom), d = _desync,
+        r = Reacts(),   // K28: [seq, p, e, i] × N — свіжі реакції
+        pg = Pings(), pa = PingEcho(), sp = Watchers(),
     };
+
+    /// <summary>K28: гравець rules p → пінг його браузера (мс) або -1 — «відпав» (місце мовчить довше за <see cref="LostMs"/>).</summary>
+    int[] Pings()
+    {
+        var a = new int[_out.Count];
+        var now = Ctx.Clock.UtcNow;
+        for (var s = 0; s < _pOf.Length; s++)
+        {
+            var v = now - _seen[s] > TimeSpan.FromMilliseconds(LostMs) ? -1 : _rtt[s];
+            if (_pOf[s] >= 0 && _pOf[s] < a.Length) a[_pOf[s]] = v;
+            if (_p2Of[s] >= 0 && _p2Of[s] < a.Length) a[_p2Of[s]] = v;
+        }
+        return a;
+    }
+
+    /// <summary>K28: місце → [номер останнього пінгу, скільки мс він тут пролежав] — браузер віднімає це від свого заміру.</summary>
+    int[] PingEcho()
+    {
+        var a = new int[_pOf.Length * 2];
+        var now = Ctx.Clock.UtcNow;
+        for (var s = 0; s < _pOf.Length; s++)
+        {
+            if (_pingI[s] == 0) continue;
+            a[s * 2] = _pingI[s];
+            a[s * 2 + 1] = (int)Math.Clamp((now - _pingAt[s]).TotalMilliseconds, 0, 60_000);
+        }
+        return a;
+    }
+
+    int[] Reacts()
+    {
+        var a = new int[_reacts.Count * 4];
+        for (int k = 0, j = 0; k < _reacts.Count; k++, j += 4)
+        {
+            var r = _reacts[k];
+            a[j] = r.Seq; a[j + 1] = r.P; a[j + 2] = r.E; a[j + 3] = r.I;
+        }
+        return a;
+    }
 
     int[] Flat(int from)
     {
@@ -288,13 +413,31 @@ public sealed class Koliya : Game, IUnlistedGame
     {
         e = _epoch, seed = _seed, prm = Prm(), n0 = _n, p = seat is { } s && s >= 0 && s < _pOf.Length ? _pOf[s] : -1,
         pOf = _pOf.ToArray(), p2 = seat is { } s2 && s2 >= 0 && s2 < _p2Of.Length ? _p2Of[s2] : -1, p2Of = _p2Of.ToArray(), d = _desync,
+        nm = Names(),
     };
+
+    /// <summary>
+    /// K28: ніки гравців rules — p → нік місця (другий за тим самим ПК — «нік ²»); null — слот вільний (пішов).
+    /// Їде у вид і в журнал: міняється лише разом із місцями, а мітки над гравцями — з нього.
+    /// </summary>
+    public string?[] Names()
+    {
+        var a = new string?[_out.Count];
+        for (var s = 0; s < _pOf.Length; s++)
+        {
+            var nick = Ctx.NickOf(s);
+            if (nick is null) continue;
+            if (_pOf[s] >= 0 && _pOf[s] < a.Length) a[_pOf[s]] = nick;
+            if (_p2Of[s] >= 0 && _p2Of[s] < a.Length) a[_p2Of[s]] = nick + " ²";
+        }
+        return a;
+    }
 
     /// <summary>Журнал від запису <paramref name="from"/> — пізньому, після F5 чи діри в кадрах. Кличеться під замком кімнати.</summary>
     public object Log(int from) => new
     {
         e = _epoch, seed = _seed, prm = Prm(), n0 = _n, t = NowTick(), w = Mark(), n = _log.Count, f = Math.Clamp(from, 0, _log.Count),
-        c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync,
+        c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync, nm = Names(),
     };
 
     JsonElement Prm()

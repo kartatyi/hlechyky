@@ -13,7 +13,9 @@ import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
+import { mountThemeUi } from './theme.js';          // K25: «Тема» (Колія / Чумацький шлях) у «🎨 Вигляд»
 import { createTouch, isTouchDevice } from './touch.js';   // K27: телефон і планшет
+import { createMusic } from './music.js';            // K29: музика й тло (вимкнено типово)
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -62,6 +64,7 @@ async function makeView() {
 
 const input = game.input = createInput();   // K16: game.input.hasPad(p) — підказки
 const audio = createAudio();
+const music = game.music = createMusic(audio);   // K29
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
 const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — «Підказки: так/ні»
@@ -88,6 +91,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   onRestart: () => restart(),
   seed: game.seed, onSeed: (seed) => restart(seed),
   audio,
+  music,   // K29
   prefs, onPref(k, v) {   // K12
     prefs[k] = v; try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { }
     if (k === 'quality') view?.setQuality?.(v);
@@ -179,6 +183,7 @@ function frame(now) {
   if (net) net.draw(view); else view?.draw(game.state, acc / R.TICK_MS);   // K6: мережа малює гравців згладжено
   if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();
+  music.update(game.state);   // K29
   (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' && prefs.tips !== false })).update(game.state, game, view);   // K10
   nextFrame();
 }
@@ -217,6 +222,7 @@ function drawHud() {
 (async () => {
   view = game.view = await makeView();
   mountLookUi(document.getElementById('kol-panel'), view);   // K5
+  mountThemeUi(document.getElementById('kol-panel'));       // K25
   view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => {   // K3; K21: без сервера — не чорний екран мовчки
     console.warn('Колія: мережа', e);
