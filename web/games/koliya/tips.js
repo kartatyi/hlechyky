@@ -93,6 +93,8 @@ function initMem(m) {
   return m;
 }
 const isDone = (m, p, id) => !!m.done[p]?.[id];
+/** Зроблено руками (не відвисіло за часом) — лише за таке хвалимо «Є!» */
+export const didIt = (m, p, id) => (m?.done?.[p]?.[id] ?? 0) > 0;
 function markDone(m, p, id, tick) { (m.done[p] ??= {})[id] ??= tick + 1; }
 
 /** Звіряємо з минулим викликом: що гравці щойно зробили з порадженого */
@@ -218,7 +220,7 @@ export function pickTips(s, memory = {}, opts = {}) {
       if (P.filter((q) => q && !q.out).length >= 2) {
         if (free(p, 'role')) {
           const since = m.since[p];
-          if (since?.id === 'role' && (s.tick ?? 0) - since.t >= ROLE_TICKS) markDone(m, p, 'role', s.tick ?? 0);
+          if (since?.id === 'role' && (s.tick ?? 0) - since.t >= ROLE_TICKS) (m.done[p] ??= {}).role = -1;   // відвисіла — без «Є!»
           else {
             const kids = KIDS[P.filter((q) => q && !q.out).length] ?? 'гурт';
             if (p % 2 === 0) give(p, 'role', `Вас ${kids}: один рубає, другий кладе. Ти — рубаєш 🪓`, axe());
@@ -288,7 +290,10 @@ const CSS = `
 .kol-tip { position: absolute; left: 0; top: 0; max-width: min(22em, 70vw); padding: .4em .7em; border-radius: 10px;
   background: #fffbe9f2; color: #20180c; box-shadow: 0 3px 10px #0007; border: 2px solid var(--c); white-space: normal;
   transition: opacity .25s ease; will-change: transform; }
-.kol-tip.kol-tip-up::after { content: ''; position: absolute; left: 50%; bottom: -9px; margin-left: -8px;
+.kol-tips-corner { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column-reverse; gap: .5em; align-items: flex-end; }
+.kol-tips-corner .kol-tip { position: static; }
+.kol-tips-corner .kol-tip.kol-tip-off { display: none; }
+.kol-tip.kol-tip-up::after { content: ''; position: absolute; left: var(--tail, 50%); bottom: -9px; margin-left: -8px;
   border: 8px solid transparent; border-bottom: 0; border-top-color: var(--c); }
 .kol-tip small { display: block; font-size: .72em; opacity: .65; font-weight: 700; }
 .kol-tip .kol-tip-dir { float: right; margin-left: .5em; color: var(--c); text-shadow: 0 0 2px #000; }
@@ -306,6 +311,7 @@ export function createTips(root, { enabled = true } = {}) {
   let on = !!enabled, lastTick = -1, lastSeed = null, tips = [];
   const style = doc.createElement('style'); style.textContent = CSS; doc.head.appendChild(style);
   const box = doc.createElement('div'); box.className = 'kol-tips'; root.appendChild(box);
+  const corner = doc.createElement('div'); corner.className = 'kol-tips-corner'; box.appendChild(corner);
   const ui = [];   // p → { bub, mark, id, text, okUntil }
 
   function slot(p) {
@@ -330,16 +336,17 @@ export function createTips(root, { enabled = true } = {}) {
       const proj = typeof v?.project === 'function' ? (x, y) => v.project(x, y) : null;
       const now = performance.now();
       const by = new Map(tips.map((t) => [t.p, t]));
-      let stack = 0;
       const n = Math.max(ui.length, state.players.length);
       for (let p = 0; p < n; p++) {
         const tip = by.get(p), pl = state.players[p];
         if (!tip && !ui[p]) continue;
         const u = slot(p);
         // щойно зробив пораджене — коротке «Є!»
-        if (!tip && u.id && isDone(mem, p, u.id)) { u.okUntil = now + 1100; u.id = null; u.html = ''; }
+        // щойно зробив пораджене — коротке «Є!», а тоді вже наступна порада
+        if (u.id && (!tip || tip.id !== u.id)) { if (didIt(mem, p, u.id)) u.okUntil = now + 900; u.id = null; }
         let html, ok = false;
-        if (tip) {
+        if (u.okUntil > now) { html = `${proj ? '' : `<small>Гравець ${p + 1}</small>`}Є! 👍`; ok = true; }
+        else if (tip) {
           u.id = tip.id;
           let dir = '';
           if (!proj && tip.x !== null && pl) {
@@ -347,22 +354,28 @@ export function createTips(root, { enabled = true } = {}) {
             dir = dist <= 1 ? '• тут' : `${ARROWS[(Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8]} ${dist}`;
           }
           html = `${proj ? '' : `<span class="kol-tip-dir">${dir}</span><small>Гравець ${p + 1}</small>`}${esc(tip.text)}`;
-        } else if (u.okUntil > now) { html = 'Є! 👍'; ok = true; }
-        else { u.bub.classList.add('kol-tip-off'); u.mark.style.display = 'none'; u.id = null; continue; }
+        } else { u.bub.classList.add('kol-tip-off'); u.mark.style.display = 'none'; u.id = null; continue; }
         if (html !== u.html) { u.bub.innerHTML = html; u.html = html; }
         u.bub.classList.remove('kol-tip-off');
         u.bub.classList.toggle('kol-tip-ok', ok);
         // де малювати
         const at = proj && pl ? proj(pl.x / U, pl.y / U) : null;
         if (at) {
+          if (u.bub.parentNode !== box) box.appendChild(u.bub);
           u.bub.classList.add('kol-tip-up');
-          u.bub.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px) translate(-50%, calc(-100% - 2.2em))`;
+          // по центру над гравцем, але не за краєм вікна (хвостик лишається над гравцем)
+          const bw = u.bub.offsetWidth, vw = doc.documentElement.clientWidth;
+          const left = Math.max(6, Math.min(vw - bw - 6, at.x - bw / 2));
+          u.bub.style.setProperty('--tail', `${Math.round(Math.max(10, Math.min(bw - 10, at.x - left)))}px`);
+          u.bub.style.transform = `translate(${Math.round(left)}px, ${Math.round(at.y)}px) translateY(calc(-100% - 2.2em))`;
         } else {
+          // фолбек: стос у правому нижньому куті, гравець 1 — найнижче
+          if (u.bub.parentNode !== corner) corner.appendChild(u.bub);
           u.bub.classList.remove('kol-tip-up');
-          u.bub.style.transform = `translate(calc(100vw - 100% - 12px), calc(100vh - ${12 + stack * 4.2}em - 100% - 12px))`;
-          stack++;
+          u.bub.style.transform = '';
+          u.bub.style.order = String(p);
         }
-        const mk = proj && tip && tip.x !== null ? proj(tip.x + 0.5, tip.y + 0.5) : null;
+        const mk = proj && !ok && tip && tip.x !== null ? proj(tip.x + 0.5, tip.y + 0.5) : null;
         if (mk) { u.mark.style.display = ''; u.mark.style.transform = `translate(${Math.round(mk.x)}px, ${Math.round(mk.y)}px) translate(-50%, -110%)`; }
         else u.mark.style.display = 'none';
       }

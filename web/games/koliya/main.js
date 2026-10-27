@@ -9,6 +9,7 @@ import { createAudio } from './audio.js';        // K4
 import { createPanel } from './panel.js';        // K4
 import { createDebug2d } from './debug2d.js';
 import { createHud } from './hud.js';            // K9
+import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -92,6 +93,7 @@ function frame(now) {
   }
   view?.draw(game.state, acc / R.TICK_MS);
   drawHud();
+  (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
   requestAnimationFrame(frame);
 }
 

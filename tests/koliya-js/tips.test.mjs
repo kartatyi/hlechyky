@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { U, G, O, I, TPS } from '../../web/games/koliya/rules.js';
-import { pickTips, pathFront } from '../../web/games/koliya/tips.js';
+import { pickTips, pathFront, didIt } from '../../web/games/koliya/tips.js';
 
 const W = 20, H = 9, MID = 4;
 /** Смуга 20×9: стіни по краях, колія x=0..5 по середині, сокира/кайло/відро біля старту */
@@ -171,6 +171,9 @@ test('двоє: ролі «один рубає, другий кладе», рі�
   // далі: рубач іде по сокиру, кладільник — по рейки
   assert.equal(tipOf(t, 0).id, 'axe');
   assert.equal(tipOf(t, 1).id, 'rails');
+  assert.equal(didIt(m, 0, 'role'), false);    // відвисіла — не хвалимо
+  hold(s.players[0], I.AXE); tick(s); pickTips(s, m);
+  assert.equal(didIt(m, 0, 'axe'), true);
 });
 
 test('роль зникає й раніше — щойно гравець узявся за свою справу', () => {
