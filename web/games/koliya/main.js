@@ -98,7 +98,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
 });
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
-  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
+  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: true }) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
@@ -124,7 +124,7 @@ function restart(seed = game.seed) {
   panel?.setSeed?.(game.seed);
   game.state = R.newGame(game.seed, P, game.local + game.bots);
   game.bot = [];
-  for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b));
+  for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b, { buddy: game.local > 0 }));   // K34: з людьми — напарник
   view?.setWorld?.(game.state);
 }
 
