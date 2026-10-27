@@ -31,6 +31,12 @@ namespace Hlechyky.Games.Impl;
 /// гравців rules; Input <c>"react"</c> {em, q, i} — емодзі над гравцем (≤ 1 на <see cref="ReactGapMs"/>), у кадрі
 /// <c>r</c> = [seq, p, e, i]×N ще <see cref="ReactKeepMs"/>.
 /// </para>
+/// <para>
+/// K62 «збір»: нова епоха (новий стіл, перезапуск) не рушає сама — годинник тиків стоїть на 0 (<c>wait = 1</c> у кадрі,
+/// виді й журналі), поки хтось за столом не скаже <c>Act "go"</c>; тоді тик 0 — з цієї миті. У зборі приймаються лише
+/// join/leave (вони лягають на тик 0), реакції, пінги й хеші; 'in'/'use'/'throw'/'horn' мовчки геть (браузер їх і не шле:
+/// передбачений світ стоїть на тику 0).
+/// </para>
 /// </summary>
 public sealed class Koliya : Game, IUnlistedGame
 {
@@ -87,6 +93,7 @@ public sealed class Koliya : Game, IUnlistedGame
     int _desync = -1;
     int _leaveT;   // K24: тик останнього leave у журналі
     bool _dirty;
+    bool _wait;    // K62: збір — годинник стоїть на 0, поки хтось не скаже "go"
 
     // ---- K28: люди за столом (повз журнал: світ від цього не міняється) ----
     /// <summary>Скільки є реакцій-емодзі (web/games/koliya/net.js REACTS).</summary>
@@ -184,12 +191,13 @@ public sealed class Koliya : Game, IUnlistedGame
             if (_p2Of[s] >= 0) _out.Add(false);
         }
         _startAt = Ctx.Clock.UtcNow;
+        _wait = true;   // K62: чекаємо, поки зберуться (друг іде за посиланням)
         for (var s = 0; s < _seen.Length; s++) if (_seen[s] == default) _seen[s] = _startAt;   // K28: перший старт — усі живі
         _dirty = true;
     }
 
     /// <summary>Тик партії зараз (від годинника).</summary>
-    int NowTick() => (int)Math.Max(0, Math.Floor((Ctx.Clock.UtcNow - _startAt).TotalMilliseconds / StepMs));
+    int NowTick() => _wait ? 0 : (int)Math.Max(0, Math.Floor((Ctx.Clock.UtcNow - _startAt).TotalMilliseconds / StepMs));
 
     /// <summary>Водяний знак: тики ≤ W закрито. Лише росте (годинник ПК може ступити назад).</summary>
     int Mark() => _w = Math.Max(_w, NowTick() - Grace - 1);
@@ -239,6 +247,8 @@ public sealed class Koliya : Game, IUnlistedGame
         // K24: ввід зі старої епохи (летів, поки хтось перезапустив) — мовчки геть: його тик і поза — зі старого світу
         // (use з позою телепортував би гравця в новому світі, може й у скелю), хеш — звірка зі старим світом.
         if (action is not ("restart" or "join2" or "leave2") && Stale(payload)) return ActResult.Done;
+        // K62: у зборі світ стоїть — рух і дії не пишемо (тик 0 мусить лишитись однаковим, хоч би хто що тиснув)
+        if (_wait && action is "in" or "use" or "throw" or "horn") return ActResult.Done;
         switch (action)
         {
             case "ping":    // K28: { i, r } — номер пінгу (луна в кадрі pa) і заміряний браузером пінг для всіх
@@ -248,6 +258,9 @@ public sealed class Koliya : Game, IUnlistedGame
                 return ActResult.Done;
             case "restart":
                 NewEpoch(ReadSeed(payload), ReadParams(payload));
+                return ActResult.Done;
+            case "go":      // K62: «▶ Почали» — годинник рушає з цієї миті (повтор — нічого)
+                if (_wait) { _wait = false; _startAt = Ctx.Clock.UtcNow; _dirty = true; }
                 return ActResult.Done;
             case "join2":
                 Player(seat);
@@ -389,6 +402,9 @@ public sealed class Koliya : Game, IUnlistedGame
     /// <summary>Тик підтвердженого знімка (-1 — нема), для тестів.</summary>
     public int SnapTick => _snap?.T ?? -1;
 
+    /// <summary>K62: стіл у зборі (годинник стоїть), для тестів.</summary>
+    public bool Waiting => _wait;
+
     public override TickResult Tick()
     {
         var w = Mark();
@@ -403,7 +419,7 @@ public sealed class Koliya : Game, IUnlistedGame
 
     public override object? Frame() => new
     {
-        e = _epoch, t = NowTick(), w = _w, n = _log.Count, f = _keepFrom, c = Flat(_keepFrom), d = _desync,
+        e = _epoch, t = NowTick(), w = _w, n = _log.Count, f = _keepFrom, c = Flat(_keepFrom), d = _desync, wait = _wait ? 1 : 0,
         r = Reacts(),   // K28: [seq, p, e, i] × N — свіжі реакції
         pg = Pings(), pa = PingEcho(), sp = Watchers(),
     };
@@ -464,7 +480,7 @@ public sealed class Koliya : Game, IUnlistedGame
     {
         e = _epoch, seed = _seed, prm = Prm(), n0 = _n, p = seat is { } s && s >= 0 && s < _pOf.Length ? _pOf[s] : -1,
         pOf = _pOf.ToArray(), p2 = seat is { } s2 && s2 >= 0 && s2 < _p2Of.Length ? _p2Of[s2] : -1, p2Of = _p2Of.ToArray(), d = _desync,
-        nm = Names(),
+        nm = Names(), wait = _wait ? 1 : 0,
     };
 
     /// <summary>
@@ -497,7 +513,7 @@ public sealed class Koliya : Game, IUnlistedGame
         return new
         {
             e = _epoch, seed = _seed, prm = Prm(), n0 = _n, t = NowTick(), w = Mark(), n = _log.Count, f = Math.Clamp(from, 0, _log.Count),
-            c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync, nm = Names(),
+            c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync, nm = Names(), wait = _wait ? 1 : 0,
             s = s is null ? null : new { t = s.T, h = s.H, z = s.Z ? 1 : 0, b = s.B },
         };
     }
