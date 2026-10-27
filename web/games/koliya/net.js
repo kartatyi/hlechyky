@@ -47,7 +47,7 @@ const SMOOTH = 0.55;       // частка зсуву, що лишається �
 const SNAP = 3 * R.U;      // більший стрибок (поява, телепорт) — не згладжуємо
 const CATCH = 2;           // зсув тане не швидше за 2 кроки гравця за тик (разом із ходою — до 3× швидкості)
 const JERK = 3.5;          // замір: стрибок за тик більший за 3,5 кроку — ривок (згладжене не перевищує 1 + CATCH)
-const K = { 1: 'in', 2: 'use', 3: 'join', 4: 'leave' };
+const K = { 1: 'in', 2: 'use', 3: 'join', 4: 'leave', 5: 'throw', 6: 'horn' };   // 5, 6 — кооп-фішки K18
 
 /**
  * Згладжування поз гравців для малювання (K6): зсув на перерахунку, тане щотику. Чисте, без DOM — тестується в Node.
@@ -163,7 +163,8 @@ export function toCmd(c, j) {
   const p = c[j + 2], k = K[c[j + 3]];
   if (k === 'in') return { p, k, mx: c[j + 4], my: c[j + 5] };
   if (k === 'use') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7], h: c[j + 8] };
-  if (k === 'join') return { p, k };
+  if (k === 'throw') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7] };
+  if (k === 'join' || k === 'horn') return { p, k };
   return { p, k: 'leave' };
 }
 
@@ -178,6 +179,13 @@ export function createDriver() {
   const { U, I, O } = R;
   return {
     think(s, p) {
+      const v = this.walk(s, p), pl = s.players[p];
+      // K18 у мережі: з річчю в руках зрідка кидає, ще рідше гудить (перевірка throw/horn через журнал)
+      if (pl && pl.hold.k !== R.I.NONE && n % 37 === 0) v.throw = true;
+      if (n % 211 === 0) v.horn = true;
+      return v;
+    },
+    walk(s, p) {
       n++;
       const pl = s.players[p];
       if (!pl) return { mx: 0, my: 0, use: false };
@@ -450,7 +458,7 @@ export function createNet(game, opts = {}) {
       let v;
       if (q === 0 && opts.makeBot && (!bot || bot.p !== p)) bot = opts.makeBot(p);   // справжній бот (bot.js) знає своє p
       if (q === 0 && bot) v = bot.think(s, p);
-      else { ins ??= input?.poll?.() || []; const a = ins[q]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use } : null; }
+      else { ins ??= input?.poll?.() || []; const a = ins[q]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use, throw: !!a.throw, horn: !!a.horn } : null; }
       if (!v) continue;
       const li = lastIn[q], lu = lastUse[q], Q = q ? { q: 1 } : {};
       const mx = Math.max(-100, Math.min(100, v.mx | 0)), my = Math.max(-100, Math.min(100, v.my | 0));
@@ -468,6 +476,9 @@ export function createNet(game, opts = {}) {
         }
       }
       lu.down = !!v.use;
+      // K18: кидок (з позою — куди полетить, залежить від пози) і гудок — раз на натиск
+      if (v.throw) { const pose = { x: pl.x, y: pl.y, fx: pl.fx, fy: pl.fy }; send('throw', { ...pose, ...Q }, t, { p, k: 'throw', ...pose }); }
+      if (v.horn) send('horn', { ...Q }, t, { p, k: 'horn' });
     }
   }
 
