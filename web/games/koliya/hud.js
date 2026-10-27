@@ -6,12 +6,20 @@
 //  K12: стартовий екран з пада закривається A (або Start); opts.onRestart?() — велика кнопка «Ще раз» на кінці (для
 //  сенсора Deck); say(text, ms?) — коротка плашка зверху («П2 приєднався»). DOM оновлюється лише коли змінився тик чи
 //  статус (20 разів/с, не щокадру).
+//  K16: events(ev, s) — гачок з main.js щотику: тости подій («🪿 Гуска вкрала сокиру!», покращення станції, «💫»);
+//  тости — не більше 2 одночасно (новий витісняє найстаріший). Біля смуги прогресу — біом під паротягом (s.zones від
+//  K7; з проміжною станцією — і зони другої смуги) і позначка 🏪 проміжної; паротяг на проміжній — банер «оберіть».
 import { TPS, U, G, I, wagonPos } from './rules.js';
+import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
+import { UPGRADES } from './extras.js';             // K16: тост покращення
 
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
 const HOLD_ICON = { [I.WOOD]: '🪵', [I.IRON]: '⛓', [I.RAIL]: '🛤', [I.AXE]: '🪓', [I.PICK]: '⛏', [I.BUCKET]: '🪣', [I.BUCKET_FULL]: '💧' };
 const HOLD_NAME = { [I.WOOD]: 'дерево', [I.IRON]: 'залізо', [I.RAIL]: 'рейки', [I.AXE]: 'сокира', [I.PICK]: 'кайло', [I.BUCKET]: 'відро', [I.BUCKET_FULL]: 'повне відро' };
 const ALARM_SEC = 3;
+const BIOME_ICON = { glade: '🌱', steppe: '🌾', grove: '🌳', stone: '🪨', river: '🌊', swamp: '🐸', pass: '⛰' };
+const STEAL_NAME = { [I.AXE]: 'сокиру', [I.PICK]: 'кайло', [I.BUCKET]: 'відро', [I.BUCKET_FULL]: 'відро з водою' };
+const TOASTS = 2;
 
 const CSS = `
 #kol-hud.kol-root { position: fixed; inset: 0; left: 0; top: 0; padding: 0; background: none; border-radius: 0;
@@ -58,13 +66,33 @@ const CSS = `
 .kol-sum { display: grid; grid-template-columns: auto auto; gap: .2em 1em; width: fit-content; margin: .6em auto; text-align: left; font-weight: 500; }
 .kol-again { pointer-events: auto; margin-top: .6em; min-height: 48px; padding: .3em 1.4em; font: inherit; font-size: 1.1em; color: #fff;
   background: #4a6a2a; border: 1px solid #9bc25a; border-radius: 12px; cursor: pointer; touch-action: manipulation; }
-.kol-toast { position: absolute; left: 50%; top: calc(10px + 2.6em); transform: translateX(-50%); display: none; white-space: nowrap;
-  background: #1f3a12ee; border-color: #9bc25a; }
+.kol-toasts { position: absolute; left: 50%; top: calc(10px + 2.6em); transform: translateX(-50%); display: flex; flex-direction: column;
+  align-items: center; gap: .3em; }
+.kol-toast { white-space: nowrap; background: #1f3a12ee; border-color: #9bc25a; animation: kol-in .2s ease-out; }
+.kol-toast.kol-t-warn { background: #4a2c08ee; border-color: #ffb347; }
+@keyframes kol-in { from { opacity: 0; transform: translateY(-.4em); } }
+.kol-biome { white-space: nowrap; font-size: .85em; }
+.kol-prog-mid { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: .9em; }
+.kol-prog-midl { position: absolute; top: 0; bottom: 0; width: 2px; background: #5fd3ff; transform: translateX(-1px); opacity: .8; }
+.kol-mid { top: 36%; font-size: 1.4em; background: #0f3a4ae6; border: 2px solid #5fd3ff; white-space: normal; max-width: 90vw; }
 .kol-padonly { display: none; }
 .kol-haspad .kol-padonly { display: contents; }
 .kol-haspad .kol-kbonly { display: none; }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
+
+/** Ділянки-біоми всієї смуги: s.zones (перша смуга) + з проміжною станцією — зони другої (той самий сід, що в extras) */
+function allZones(s) {
+  const z = [...(s.zones ?? [])];
+  if (s.mid?.len1) {
+    try {
+      const b = generate((s.seed ^ 0x5EED5EED) >>> 0, s.params);
+      for (const q of b.zones ?? []) z.push({ ...q, x0: q.x0 + s.mid.len1, x1: q.x1 + s.mid.len1 });
+    } catch { }
+  }
+  return z;
+}
+const zoneAt = (zones, x) => zones.find((z) => x >= z.x0 && x < z.x1) ?? null;
 
 function el(tag, cls, parent, html) {
   const e = document.createElement(tag);
@@ -90,7 +118,10 @@ export function createHud(root, opts = {}) {
   const progEnd = el('div', 'kol-prog-end', prog);
   const progAhead = el('div', 'kol-prog-ahead', prog);
   el('div', 'kol-prog-st', prog, '🏁');
+  const progMidL = el('div', 'kol-prog-midl', prog); const progMid = el('div', 'kol-prog-mid', prog, '🏪');
+  progMidL.style.display = progMid.style.display = 'none';
   const progHead = el('div', 'kol-prog-head', prog, '🚂');
+  const biomeEl = el('div', 'kol-box kol-biome', top);
   const timeEl = el('div', 'kol-box kol-stat', top);
   const speedEl = el('div', 'kol-box kol-stat', top);
 
@@ -111,11 +142,15 @@ export function createHud(root, opts = {}) {
   const alarm = el('div', 'kol-banner kol-alarm', root, '⚠ Рейки закінчуються!');
   const count = el('div', 'kol-count', root);
   const countN = el('b', null, count); const countT = el('div', 'kol-box', count, 'паротяг рушає');
-  const toast = el('div', 'kol-box kol-toast', root);
-  let toastT = 0;
-  const say = (text, ms = 3500) => {
-    toast.textContent = text; toast.style.display = 'block';
-    clearTimeout(toastT); toastT = setTimeout(() => { toast.style.display = 'none'; }, ms);
+  const midEl = el('div', 'kol-banner kol-mid', root);
+  const toasts = el('div', 'kol-toasts', root);
+  const timers = new Set();
+  // коротка плашка; не більше TOASTS одночасно — новий витісняє найстаріший; той самий текст не дублюється
+  const say = (text, ms = 3500, warn = false) => {
+    for (const t of [...toasts.children]) if (t.textContent === text) t.remove();
+    while (toasts.children.length >= TOASTS) toasts.firstChild.remove();
+    const t = el('div', `kol-box kol-toast${warn ? ' kol-t-warn' : ''}`, toasts); t.textContent = text;
+    const id = setTimeout(() => { t.remove(); timers.delete(id); }, ms); timers.add(id);
   };
 
   // — таблички гравців
@@ -133,7 +168,8 @@ export function createHud(root, opts = {}) {
     <div class="kol-keys">
       <span class="kol-kbonly"><b style="color:${COLORS[0]}">П1</b></span><span class="kol-kbonly">WASD — ходити, Space / E — дія</span>
       <span class="kol-kbonly"><b style="color:${COLORS[1]}">П2</b></span><span class="kol-kbonly">стрілки — ходити, Enter — дія</span>
-      <b>🎮</b><span>стік / ✚ — ходити, <b>A</b> — дія</span>
+      <span class="kol-kbonly">🎯📯</span><span class="kol-kbonly">П1 <b>Q</b> / П2 <b>правий Ctrl</b> — кинути річ · <b>F</b> / <b>/</b> — гудок</span>
+      <b>🎮</b><span>стік / ✚ — ходити, <b>A</b> — дія, <b>B</b> — кинути, <b>Y</b> — гудок</span>
       <b>≡</b><span><b>Start</b> — рестарт · <b>⧉ View</b> — налаштування</span>
       <span class="kol-kbonly"><b>R</b></span><span class="kol-kbonly">рестарт · <b>F1</b> — налаштування</span>
     </div>
@@ -145,7 +181,7 @@ export function createHud(root, opts = {}) {
   end.style.pointerEvents = 'none';   // не заступати ⚙ панелі
   const endCard = el('div', 'kol-card', end);
 
-  let started = false, lastState = null, game0 = null, stationX = -1;
+  let started = false, lastState = null, game0 = null, stationX = -1, zones = [];
   const begin = () => {
     if (started) return;
     started = true; start.style.display = 'none';
@@ -186,7 +222,7 @@ export function createHud(root, opts = {}) {
     if (s === lastState && key === lastKey) return;
     lastKey = key;
     set(start.style, 'start|display', started ? 'none' : 'flex');
-    if (s !== lastState) { lastState = s; stationX = findStation(s); }
+    if (s !== lastState) { lastState = s; stationX = findStation(s); zones = allZones(s); }
 
     const p = s.params || {}, t = s.train || {};
     const w = s.w || 1, path = s.path || [];
@@ -203,6 +239,22 @@ export function createHud(root, opts = {}) {
     set(progHead.style, 'head|left', `${Math.min(100, headX / span * 100).toFixed(1)}%`);
     const ahead = Math.max(0, path.length - 1 - Math.floor((t.pos ?? 0) / U));
     txt(progAhead, 'ahead', `🛤 ${ahead} попереду · до 🏁 ${Math.max(0, Math.round(stationX - headX))}`);
+    // K16: проміжна станція — позначка на смузі й банер, поки паротяг чекає вибору
+    const mid = s.mid;
+    const midX = mid ? (mid.x0 + mid.x1 + 1) / 2 : -1;
+    set(progMid.style, 'mid|display', mid ? 'block' : 'none'); set(progMidL.style, 'midl|display', mid ? 'block' : 'none');
+    if (mid) {
+      const pc = `${Math.min(100, midX / span * 100).toFixed(1)}%`;
+      set(progMid.style, 'mid|left', pc); set(progMidL.style, 'midl|left', pc);
+      txt(progMid, 'midT', mid.pick ? (UPGRADES[mid.pick]?.icon ?? '✔') : '🏪');
+    }
+    const midWait = !!(mid && mid.wait && !mid.pick && s.status === 'run');
+    txt(midEl, 'midE', midWait ? `🏪 Проміжна станція! Оберіть покращення — дія на табличку: ${mid.signs.map((g) => `${UPGRADES[g.k]?.icon} ${UPGRADES[g.k]?.short}`).join(' · ')}` : '');
+    set(midEl.style, 'midE|display', midWait ? 'block' : 'none');
+    // K16: біом під паротягом (і наступний, якщо колія вже туди дійшла)
+    const zH = zoneAt(zones, headX), zE = zoneAt(zones, endX);
+    const bName = (z) => `${BIOME_ICON[z?.kind ?? 'glade'] ?? ''} ${z ? BIOME_NAMES[z.kind] ?? z.kind : 'галявина'}`;
+    txt(biomeEl, 'biome', zE !== zH ? `${bName(zH)} → ${bName(zE)}` : bName(zH));
 
     const cps = (t.speed ?? 0) / 1000 / U * TPS;   // клітинок/с
     txt(timeEl, 'time', `⏱ ${fmtTime(sec)}`);
@@ -233,7 +285,7 @@ export function createHud(root, opts = {}) {
 
     // тривога: до кінця колії менше ALARM_SEC ходу
     const toEnd = cps > 0 ? (ahead - ((t.pos ?? 0) % U) / U) / cps : Infinity;
-    set(alarm.style, 'alarm|display', run && !fireTxt && toEnd < ALARM_SEC ? 'block' : 'none');
+    set(alarm.style, 'alarm|display', run && !fireTxt && !midWait && toEnd < ALARM_SEC ? 'block' : 'none');
 
     // відлік до рушання
     const left = (p.startSec ?? 0) - sec;
@@ -280,9 +332,32 @@ export function createHud(root, opts = {}) {
   }
   endCard.addEventListener('click', (e) => { if (e.target.closest('.kol-again')) { e.target.blur(); opts.onRestart?.(); } });
 
+  // K16: тости подій тику (гачок у main.js afterStep — бачить кожен тик, не лише кадр)
+  let seenGeese = new Set(), evState = null;
+  const pName = (s, p) => `${p >= (game0?.local ?? s.players?.length ?? 0) ? '🤖' : ''}П${p + 1}`;
+  function events(ev, s) {
+    if (!ev || !s) return;
+    if (s !== evState) { evState = s; seenGeese = new Set(); }
+    for (const e of ev) {
+      if (e.t === 'upgrade') {
+        const u = UPGRADES[s.mid?.pick];
+        if (u) say(`${u.icon} ${u.label}`, 5000);
+      } else if (e.t === 'honk' && e.p === undefined) {
+        // гуска щойно вхопила річ: нова «run» з річчю в лапах
+        for (const g of s.geese ?? []) {
+          if (g.mode !== 'run' || !g.hold || seenGeese.has(g.id)) continue;
+          seenGeese.add(g.id);
+          say(`🪿 Гуска вкрала ${STEAL_NAME[g.hold] ?? 'річ'}! Наздожени — дія поруч`, 4000, true);
+        }
+      } else if (e.t === 'goose_lost') say('🪿 Гуска впустила крадене десь попереду', 3500);
+      else if (e.t === 'stun' && e.by !== undefined) say(`💫 ${pName(s, e.by)} приголомшив ${pName(s, e.p)}`, 2500, true);
+    }
+  }
+
   return {
     update,
     say,
-    dispose() { removeEventListener('keydown', onKey); clearTimeout(toastT); style.remove(); root.textContent = ''; root.classList.remove('kol-root'); },
+    events,
+    dispose() { removeEventListener('keydown', onKey); for (const id of timers) clearTimeout(id); style.remove(); root.textContent = ''; root.classList.remove('kol-root'); },
   };
 }

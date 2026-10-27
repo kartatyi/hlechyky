@@ -4,6 +4,10 @@
 //    x,y — клітинка, куди вказати (або null). memory — будь-який об'єкт ({} на старті), pickTips сама веде в ньому
 //    що вже зроблено (done[p][id] — більше не показується, і після рестарту теж) і знімок минулого виклику.
 //    opts.players — індекси гравців, яким підказувати (типово всі, крім тих, що вийшли); боти — не треба.
+//    opts.keys(p) → { use, throw } — назви кнопок гравця за пристроєм (K16: пад — «A»/«B», клавіатура — Space/Q чи
+//    Enter/правий Ctrl); без нього — useKey/throwKey за номером. createTips бере їх з game.input.hasPad(p).
+//  K16: ще підказки — болото, брід (мілина в річковій долині), гуси (geese='on'), розумний приціл (aim='smart'),
+//    кидок (throw='on'). «Довідкові» (болото, брід, приціл) висять INFO_TICKS і більше не показуються.
 //  createTips(root, { enabled }) → { update(state, game, view?), setEnabled(b), dispose() }
 //    update — щокадру; логіку рахує раз на тик, бульбашки водить щокадру. Проєкція клітинки на екран —
 //    (game.view ?? view).project(x, y): x,y у клітинках (дробові, центр клітинки = +0,5) → { x, y } у CSS px вікна
@@ -20,6 +24,15 @@ const SEARCH = 14;               // радіус пошуку дерева/ск�
 
 /** Кнопка дії гравця p (заглушка input.js: гравець 0 — Space, 1 — Enter) */
 export const useKey = (p) => (p === 1 ? 'Enter' : 'Space');
+export const throwKey = (p) => (p === 1 ? 'правий Ctrl' : 'Q');
+/** K16: кнопки гравця p за пристроєм; hasPad(p) — з input.js, local — скільки локальних гравців */
+export function keysFor(p, hasPad, local = 1) {
+  if (hasPad) return { use: 'A', throw: 'B' };
+  if (local <= 1) return { use: 'Space', throw: 'Q' };
+  return { use: useKey(p), throw: throwKey(p) };
+}
+const INFO_TICKS = 5 * TPS;      // довідкова підказка висить 5 с
+const THROW_FAR = 2, THROW_NEAR = 4;   // з якої відстані до складу радимо кинути (клітинок)
 
 const KIDS = ['', 'одинак', 'двоє', 'троє', 'четверо'];
 
@@ -84,6 +97,12 @@ export function pathFront(s) {
   return { last, front: kind ? found[kind] : null, kind, dead: !kind };
 }
 
+/** Біом клітинки x (s.zones від K7; null — галявина/нема) */
+function zoneKind(s, x) {
+  for (const z of s.zones ?? []) if (x >= z.x0 && x < z.x1) return z.kind;
+  return null;
+}
+
 // ---------------- пам'ять ----------------
 function initMem(m) {
   m.done ??= [];        // done[p] = { id: тик, коли зроблено }
@@ -131,6 +150,8 @@ function learn(s, m) {
     if (e.t === 'chop') markDone(m, e.p, 'chop', tick);
     if (e.t === 'rock') markDone(m, e.p, 'mine', tick);
     if (e.t === 'douse') all('heat');
+    if (e.t === 'scare') markDone(m, e.p, 'goose', tick);   // K16
+    if (e.t === 'throw') markDone(m, e.p, 'throw', tick);   // K16
   }
   if (g) {
     if ((st.douses ?? 0) > g.douses) all('heat');
@@ -168,6 +189,20 @@ export function pickTips(s, memory = {}, opts = {}) {
     const taken = new Map();   // p → підказка
     const give = (p, id, text, at) => { taken.set(p, { p, id, text, x: at?.x ?? null, y: at?.y ?? null }); };
     const free = (p, id) => !taken.has(p) && !isDone(m, p, id);
+    const keys = (p) => (typeof opts.keys === 'function' ? opts.keys(p) : null) ?? { use: useKey(p), throw: throwKey(p) };
+    const useK = (p) => keys(p).use;
+    const tick = s.tick ?? 0;
+    // K16: довідкова — висить сумарно dur тиків (з перервами теж), далі «зроблено» без «Є!» (shared — одразу всім)
+    const info = (p, id, text, at, shared = false, dur = INFO_TICKS) => {
+      const rec = ((m.info ??= [])[p] ??= {})[id] ??= { n: 0, t: -1 };
+      if (rec.t !== tick) { rec.n += rec.t >= 0 && m.g && rec.t === m.g.tick ? tick - rec.t : 1; rec.t = tick; }
+      if (rec.n > dur) {
+        for (const q of shared ? P.map((_, i) => i) : [p]) (m.done[q] ??= {})[id] = -1;
+        return false;
+      }
+      give(p, id, text, at); return true;
+    };
+    const nearestOf = (cands, at) => cands.reduce((a, b) => (d2(cellOf(P[b]), at) < d2(cellOf(P[a]), at) ? b : a));
     const t = s.train ?? {};
     const pf = pathFront(s);
     const loco = wagonCell(s, 0), store = wagonCell(s, 1), craft = wagonCell(s, 2);
@@ -184,7 +219,7 @@ export function pickTips(s, memory = {}, opts = {}) {
         p = (empty.length ? empty : cands).reduce((a, b) => (d2(cellOf(P[b]), aim) < d2(cellOf(P[a]), aim) ? b : a));
       }
       if (p !== undefined) {
-        const k = P[p].hold?.k, me = cellOf(P[p]), key = useKey(p);
+        const k = P[p].hold?.k, me = cellOf(P[p]), key = useK(p);
         if (k === I.BUCKET_FULL) give(p, 'heat', `Котел гріється! Повне відро — на паротяг, ${key} 💦`, loco);
         else if (k === I.BUCKET) give(p, 'heat', `Котел гріється! До води й ${key} — набрати відро`,
           nearest(s, me, SEARCH, (i) => s.ground[i] === G.WATER) ?? loco);
@@ -198,7 +233,7 @@ export function pickTips(s, memory = {}, opts = {}) {
       const cands = who.filter((p) => free(p, 'dead') && (!P[p].hold?.k || P[p].hold.k === I.RAIL));
       if (cands.length) {
         const p = cands.reduce((a, b) => (d2(cellOf(P[b]), pf.last) < d2(cellOf(P[a]), pf.last) ? b : a));
-        give(p, 'dead', `Глухий кут? Розбери останню рейку: порожні руки й ${useKey(p)}`, pf.last);
+        give(p, 'dead', `Глухий кут? Розбери останню рейку: порожні руки й ${useK(p)}`, pf.last);
       }
     }
 
@@ -209,11 +244,34 @@ export function pickTips(s, memory = {}, opts = {}) {
       if (p !== undefined) give(p, 'bridge', 'Річка: поклади дрова на воду — буде місток', pf.front);
     }
 
+    // K16 3а) гуси: хтось тягне інструмент — найближчому, хто ще не лякав
+    if (s.params?.geese === 'on' && s.geese?.length) {
+      const g = s.geese.find((q) => q.hold) ?? s.geese.find((q) => q.mode === 'go');
+      const cands = g ? who.filter((p) => free(p, 'goose')) : [];
+      if (cands.length) {
+        const at = { x: Math.floor(g.x / U), y: Math.floor(g.y / U) };
+        const p = nearestOf(cands, at);
+        info(p, 'goose', g.hold ? `Гуска тягне інструмент! Наздожени й тисни ${useK(p)} — впустить` : `Гуска йде красти! Підбіжи й ${useK(p)} — налякаєш`, at, false, 2 * INFO_TICKS);
+      }
+    }
+
+    // K16 3б) брід: колія впирається в мілину річкової долини — рейки кладуться без мосту
+    if (pf?.kind === 'ok' && pf.front && s.ground[pf.front.y * s.w + pf.front.x] === G.SAND && zoneKind(s, pf.front.x) === 'river'
+        && nearest(s, pf.front, 2, (i) => s.ground[i] === G.WATER)) {
+      const cands = who.filter((p) => free(p, 'ford'));
+      if (cands.length) {
+        const p = cands.find((q) => P[q].hold?.k === I.RAIL) ?? nearestOf(cands, pf.front);
+        info(p, 'ford', 'Брід: тут мілина — рейки кладуться без мосту', pf.front, true);
+      }
+    }
+
     // 4) решта — кожному своє
     const ahead = (s.path.length - 1) - (t.pos ?? 0) / U;   // клітинок колії перед головою
     for (const p of who) {
       if (taken.has(p)) continue;
-      const pl = P[p], h = pl.hold ?? { k: 0, n: 0 }, me = cellOf(pl), key = useKey(p);
+      const pl = P[p], h = pl.hold ?? { k: 0, n: 0 }, me = cellOf(pl), key = useK(p);
+      // K16: болото під ногами — раз пояснити
+      if (free(p, 'swamp') && s.ground[me.y * s.w + me.x] === G.SWAMP && info(p, 'swamp', 'Болото — повільно, але рейки класти можна', null)) continue;
       const axe = () => nearestDrop(s, me, I.AXE), pick = () => nearestDrop(s, me, I.PICK);
       const near = (k) => nearest(s, me, NEAR, (i) => s.drop[i] === k);
       // ролі: двоє і більше — на старті кожному своя справа
@@ -229,6 +287,9 @@ export function pickTips(s, memory = {}, opts = {}) {
           }
         }
       }
+      // K16: розумний приціл — раз пояснити, коли ролі вже позаду
+      if (s.params?.aim === 'smart' && free(p, 'aim') && (isDone(m, p, 'role') || P.filter((q) => q && !q.out).length < 2)
+          && info(p, 'aim', `Кнопка ${key} сама знаходить справу поруч — дивись на підсвітку`, pl.aim ?? null)) continue;
       if (h.k === I.RAIL) {
         if (free(p, 'lay') && pf?.front) {
           give(p, 'lay', pf.kind === 'blocked' ? 'Клади рейку перед колією — та спершу розчисть місце' : `Клади рейку перед колією: стань поруч і ${key}`, pf.front);
@@ -237,6 +298,10 @@ export function pickTips(s, memory = {}, opts = {}) {
       }
       if (h.k === I.WOOD || h.k === I.IRON) {
         if (free(p, 'store')) give(p, 'store', `Неси ${h.k === I.WOOD ? 'дрова' : 'залізо'} на склад — зелений вагон`, store);
+        else if (s.params?.throw === 'on' && free(p, 'throw')) {   // K16: кидок у склад з кількох кроків
+          const d = Math.max(Math.abs(store.x - me.x), Math.abs(store.y - me.y));
+          if (d >= THROW_FAR && d <= THROW_NEAR) info(p, 'throw', `Можна кинути на склад: стань лицем до вагона й ${keys(p).throw} 🎯`, store);
+        }
         continue;
       }
       if (h.k === I.AXE) {
@@ -312,7 +377,10 @@ export function createTips(root, { enabled = true } = {}) {
   const style = doc.createElement('style'); style.textContent = CSS; doc.head.appendChild(style);
   const box = doc.createElement('div'); box.className = 'kol-tips'; root.appendChild(box);
   const corner = doc.createElement('div'); corner.className = 'kol-tips-corner'; box.appendChild(corner);
-  const ui = [];   // p → { bub, mark, id, text, okUntil }
+  const ui = [];   // p → { bub, mark, id, text, okUntil, bw (кеш ширини) }
+  let vwCache = 0;
+  const onResize = () => { vwCache = 0; for (const u of ui) if (u) u.bw = 0; };
+  addEventListener('resize', onResize);
 
   function slot(p) {
     if (ui[p]) return ui[p];
@@ -329,7 +397,9 @@ export function createTips(root, { enabled = true } = {}) {
       if (!on || !state || game?.paused) { hideAll(); return; }
       if (state.seed !== lastSeed || state.tick !== lastTick) {
         const local = game?.local ?? state.players.length;
-        tips = pickTips(state, mem, { players: state.players.map((_, i) => i).filter((i) => i < local) });
+        const inp = game?.input, nLocal = game?.local ?? 1;
+        tips = pickTips(state, mem, { players: state.players.map((_, i) => i).filter((i) => i < local),
+          keys: (p) => keysFor(p, !!inp?.hasPad?.(p), nLocal) });
         lastTick = state.tick; lastSeed = state.seed;
       }
       const v = game?.view ?? view;
@@ -355,16 +425,17 @@ export function createTips(root, { enabled = true } = {}) {
           }
           html = `${proj ? '' : `<span class="kol-tip-dir">${dir}</span><small>Гравець ${p + 1}</small>`}${esc(tip.text)}`;
         } else { u.bub.classList.add('kol-tip-off'); u.mark.style.display = 'none'; u.id = null; continue; }
-        if (html !== u.html) { u.bub.innerHTML = html; u.html = html; }
+        if (html !== u.html) { u.bub.innerHTML = html; u.html = html; u.bw = 0; }
         u.bub.classList.remove('kol-tip-off');
         u.bub.classList.toggle('kol-tip-ok', ok);
         // де малювати
         const at = proj && pl ? proj(pl.x / U, pl.y / U) : null;
         if (at) {
-          if (u.bub.parentNode !== box) box.appendChild(u.bub);
+          if (u.bub.parentNode !== box) { box.appendChild(u.bub); u.bw = 0; }
           u.bub.classList.add('kol-tip-up');
           // по центру над гравцем, але не за краєм вікна (хвостик лишається над гравцем)
-          const bw = u.bub.offsetWidth, vw = doc.documentElement.clientWidth;
+          // K16: ширину міряємо раз на текст (offsetWidth щокадру — примусове перекомпонування)
+          const bw = u.bw || (u.bw = u.bub.offsetWidth), vw = vwCache || (vwCache = doc.documentElement.clientWidth);
           const left = Math.max(6, Math.min(vw - bw - 6, at.x - bw / 2));
           u.bub.style.setProperty('--tail', `${Math.round(Math.max(10, Math.min(bw - 10, at.x - left)))}px`);
           u.bub.style.transform = `translate(${Math.round(left)}px, ${Math.round(at.y)}px) translateY(calc(-100% - 2.2em))`;
@@ -381,7 +452,7 @@ export function createTips(root, { enabled = true } = {}) {
       }
     },
     setEnabled(b) { on = !!b; if (!on) hideAll(); },
-    dispose() { box.remove(); style.remove(); ui.length = 0; },
+    dispose() { removeEventListener('resize', onResize); box.remove(); style.remove(); ui.length = 0; },
   };
 }
 
