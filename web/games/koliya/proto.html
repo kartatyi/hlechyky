@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Колія — прототип</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1b1f17; color: #eee; font: 14px system-ui, sans-serif; overflow: hidden; }
+  #kol-view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #kol-hud { position: fixed; left: 10px; top: 8px; padding: 4px 10px; background: rgba(0,0,0,.45); border-radius: 6px; pointer-events: none; }
+  #kol-panel { position: fixed; right: 0; top: 0; }
+</style>
+</head>
+<body>
+<canvas id="kol-view"></canvas>
+<div id="kol-hud"></div>
+<div id="kol-panel"></div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
