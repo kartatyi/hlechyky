@@ -537,7 +537,8 @@ export function createReplay(game, opts = {}) {
     try { navigator.clipboard?.readText?.().then((t) => { if (dlg && !ta.value && /K1z?\./.test(t || '')) ta.value = t.trim(); }, () => { }); } catch { }
     (list.length ? box.querySelector('button') : ta).focus();
   }
-  function dlgGuard(e) { if (dlg && !dlg.contains(e.target)) { if (e.key === 'Escape') closeDialog(); e.stopPropagation(); } }
+  // K74: подія на window (синтетичні клавіші) — target не Node, contains() кидав виняток
+  function dlgGuard(e) { if (dlg && !(e.target instanceof Node && dlg.contains(e.target))) { if (e.key === 'Escape') closeDialog(); e.stopPropagation(); } }
   function closeDialog() { if (!dlg) return; removeEventListener('keydown', dlgGuard, true); dlg.remove(); dlg = null; opts.input?.swallow?.(); }
   ctl.closeDialog = closeDialog;
   ctl.dialogOpen = () => !!dlg;
