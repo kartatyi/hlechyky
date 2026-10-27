@@ -13,7 +13,6 @@ import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
-import { createCoopKeys } from './coop-keys.js';     // K18: кидок/гудок, доки їх нема в input.js
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -48,7 +47,7 @@ async function makeView() {
   catch (e) { console.warn('render.js ще нема — налагоджувальний вид', e); return createDebug2d(canvas); }
 }
 
-const input = createInput();
+const input = game.input = createInput();   // K16: game.input.hasPad(p) — підказки
 const audio = createAudio();
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
@@ -89,12 +88,13 @@ function restart(seed = game.seed) {
 function tickOnce() {
   const s = game.state;
   const cmds = game.cmds.splice(0);
-  (game.coopKeys ??= createCoopKeys()).poll(cmds, game.local);   // K18
   const ins = input.poll();
   for (let i = 0; i < game.local; i++) {
     const v = ins[i]; if (!v) continue;
     cmds.push({ p: i, k: 'in', mx: Math.round(v.mx * 100), my: Math.round(v.my * 100) });
     if (v.use) cmds.push({ p: i, k: 'use' });
+    if (v.throw) cmds.push({ p: i, k: 'throw' });   // K18 (кнопки — input.js, K16)
+    if (v.horn) cmds.push({ p: i, k: 'horn' });
   }
   for (const b of game.bot) {
     const v = b.think(s);
@@ -105,7 +105,7 @@ function tickOnce() {
   afterStep(s);
 }
 function afterStep(s) {
-  audio.play(s.ev);
+  audio.play(s.ev, s);   // K16: зі станом — кроки за підлогою
   for (const e of s.ev) {   // K12: вібрація пада — удар і поразка
     if ((e.t === 'chop' || e.t === 'rock') && e.p < game.local) input.rumble(e.p, 'hit');
     else if (e.t === 'lost') input.rumble(-1, 'lost');
