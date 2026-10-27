@@ -156,7 +156,7 @@ function makePlayer(n) {
   const hand = new THREE.Group(); hand.position.set(0, -0.3, 0); armR.add(hand);
   const top = new THREE.Group(); top.position.set(0.02, 0.86, 0); body.add(top);
   // тінь-пляма під ногами не потрібна — є справжні тіні
-  root.scale.setScalar(1.2);
+  root.scale.setScalar(1.35);
   return { root, body, legL, legR, armL, armR, hand, top, holdKey: '', held: null, phase: 0, swing: 0, yaw: 0, x: 0, z: 0 };
 }
 
@@ -436,6 +436,7 @@ export function createRenderer(canvas) {
         let col;
         if (gk === G.SAND) col = tint((x + y) & 1 ? C.sand : C.sandB, (v - 0.5) * 0.06);
         else if (gk === G.STATION) col = tint((x + y) & 1 ? C.station : C.stationB, (v - 0.5) * 0.06);
+        else if (gk !== G.GRASS) col = tint(0x7d8a62, (v - 0.5) * 0.08);   // невідомий тип підлоги — нейтральний
         else {
           const dark = hh(x >> 2, y >> 2, 9) * 0.5 + hh(x >> 1, y >> 1, 10) * 0.5;
           col = tint((x + y) & 1 ? C.grassA : C.grassB, (v - 0.5) * 0.07 - (dark > 0.7 ? 0.08 : 0));
@@ -860,7 +861,16 @@ export function createRenderer(canvas) {
     renderer.dispose();
   }
 
-  const api = { setWorld, draw, events, dispose, get frames() { return frames; }, renderer, scene, camera };
+  // клітинка (дробові координати, центр = x + 0.5) → { x, y } у CSS-пікселях вікна або null, якщо поза кадром
+  const _pj = new THREE.Vector3();
+  function project(cx, cy, hgt = 0) {
+    _pj.set(cx, hgt, cy).project(camera);
+    if (_pj.z < -1 || _pj.z > 1 || _pj.x < -1 || _pj.x > 1 || _pj.y < -1 || _pj.y > 1) return null;
+    const r = canvas.getBoundingClientRect();
+    return { x: r.left + (_pj.x + 1) / 2 * r.width, y: r.top + (1 - _pj.y) / 2 * r.height };
+  }
+
+  const api = { setWorld, draw, events, dispose, project, get frames() { return frames; }, renderer, scene, camera };
   if (globalThis.KOL) globalThis.KOL.view = api;      // для перевірок у консолі
   return api;
 }
