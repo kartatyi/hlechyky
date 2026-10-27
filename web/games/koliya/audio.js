@@ -4,6 +4,8 @@
 // AudioContext створюється лише в setEnabled(true) (жест користувача). play() при enabled=false — нічого.
 // setTrain(speed01) — ОПЦІЙНО (оркестратор): пихкання паротяга, 0 = стоїть (тиша), 1 = на стелі швидкості.
 // state — ОПЦІЙНО: з ним кроки звучать за підлогою (болото чвакає, місток гупає).
+// K29: + volume / setVolume(0..1) — гучність ефектів; shared() → { ctx, out, noise } і hold(who, on) — гачок music.js
+//   (музика й тло йдуть у той самий майстер-лімітер; 🔇 ефектів не присипляє контекст, поки музика/тло тримають його).
 //
 // K16: кожна подія s.ev має звук (rules, extras — гуси/станція, coop — кооп-фішки K18). Подія → звук: soundOf(e, s).
 //   'honk' з p — гудок паротяга (гравець гукнув, coop), без p — гуска. Гучності зведено ярусами (LEVEL, дБ відносно
@@ -117,14 +119,20 @@ export function createAudio() {
   const lastAt = {};
   let puffSpeed = 0, puffTimer = 0;
 
+  let limiter = null;
+  const holds = new Set();   // K29: хто ще тримає контекст живим (музика, тло) — 🔇 ефектів його не присипляє
   function init() {
     if (ctx) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
+    const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
-    master = ctx.createGain(); master.gain.value = 0.5;
+    master = ctx.createGain(); master.gain.value = 0.5 * api.volume;
     const comp = ctx.createDynamicsCompressor();
-    master.connect(comp); comp.connect(ctx.destination);
+    // K29: майстер-лімітер наприкінці (ефекти + музика + тло) — щоб сума не кліпала
+    limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 20;
+    limiter.attack.value = 0.003; limiter.release.value = 0.25;
+    master.connect(comp); comp.connect(limiter); limiter.connect(ctx.destination);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -176,10 +184,23 @@ export function createAudio() {
 
   const api = {
     enabled: false,
+    volume: 1,   // K29: гучність ефектів 0..1 (повзунок у «Пристрої»)
     setEnabled(b) {
       this.enabled = !!b;
       if (this.enabled) { init(); ctx?.resume?.(); if (!puffTimer) puffLoop(); }
-      else { ctx?.suspend?.(); clearTimeout(puffTimer); puffTimer = 0; }
+      else { if (!holds.size) ctx?.suspend?.(); clearTimeout(puffTimer); puffTimer = 0; }
+    },
+    // K29: гачок музики й тла (music.js) — спільний контекст і лімітер. shared() кличеться лише з жесту (кнопка в панелі):
+    //   створює контекст, якщо ще нема; → { ctx, out (вхід лімітера), noise (буфер шуму 1 с) } або null без WebAudio.
+    //   hold(who, on) — тримати контекст живим, поки музика/тло грають, навіть коли ефекти 🔇.
+    shared() { init(); return ctx ? { ctx, out: limiter, noise: noiseBuf } : null; },
+    hold(who, on) {
+      if (on) { holds.add(who); ctx?.resume?.(); }
+      else { holds.delete(who); if (!holds.size && !this.enabled) ctx?.suspend?.(); }
+    },
+    setVolume(v) {
+      this.volume = Math.max(0, Math.min(1, +v || 0));
+      if (master) master.gain.setTargetAtTime(0.5 * this.volume, ctx.currentTime, 0.05);
     },
     play(events, state) {
       if (!this.enabled || !ctx || !events || !events.length) return;

@@ -12,6 +12,7 @@
 //  у своїх групах (GROUP_OF), короткі підписи SHORT (повний — у підказці title), «Типові» на групу; зверху пресети
 //  PRESETS («Затишно», «Як Unrailed», «Хаос») — лише ставлять значення (від типових), рестарт — кнопкою.
 //  prefs.tips (true/false) — «Підказки: так/ні» у «Пристрої» (onPref('tips', b) → game.tips.setEnabled).
+//  K29: music? (createMusic, music.js) — у «Пристрої» «🎵 Музика», «🌿 Тло» (вимк. типово) і гучності музики/тла/ефектів.
 
 const CSS = `
 .kol-gear{position:fixed;right:8px;top:8px;z-index:30;width:46px;height:46px;border-radius:10px;border:1px solid #fff3;
@@ -199,6 +200,35 @@ export function createPanel(root, opts) {
     seg('Якість картинки', 'quality', ['high', 'low'], ['Висока', 'Низька (слабкий ноут)']);
     seg('Вібрація пада', 'rumble', [true, false], ['Увімк.', 'Вимк.']);
     seg('Підказки', 'tips', [true, false], ['Так', 'Ні']);   // K16
+    // K29: музика й тло (music.js) — вимкнено типово; натиск «Увімк.» — це жест, що будить звук. Гучності — одразу.
+    const mu = opts.music;
+    if (mu) {
+      const mseg = (label, title, get, set) => {
+        const box = el('div', 'kol-p'), s = el('div', 'kol-seg');
+        const btns = [true, false].map((val) => {
+          const b = el('button', null, val ? 'Увімк.' : 'Вимк.');
+          b.onclick = () => { if (!!get() !== val) set(val); put(); };
+          s.append(b); return b;
+        });
+        const put = () => btns.forEach((b, i) => b.classList.toggle('kol-on', (i === 0) === !!get()));
+        put(); prefCtl.push(put);
+        const lab = el('div', 'kol-lab', label); lab.title = title;
+        box.append(lab, s); d.append(box);
+      };
+      mseg('🎵 Музика', 'Сопілка, басоля й бубон — генеративна, під швидкість і небезпеку', () => mu.music, (v) => mu.setMusic(v));
+      mseg('🌿 Тло', 'Птахи в гаю, вітер у степу, жаби в болоті, вода біля річки', () => mu.amb, (v) => mu.setAmb(v));
+      const vol = (label, k) => {
+        const box = el('div', 'kol-p'), lab = el('div', 'kol-lab'), val = el('span');
+        lab.append(el('span', null, label), val);
+        const c = el('div', 'kol-ctl'), rg = el('input'); rg.type = 'range'; rg.min = 0; rg.max = 100; rg.step = 5;
+        const put = () => { const v = Math.round((mu.vol?.[k] ?? 0) * 100); rg.value = v; val.textContent = `${v}%`; };
+        rg.addEventListener('input', () => { mu.setVolume(k, +rg.value / 100); put(); });
+        put(); prefCtl.push(put);
+        c.append(rg); box.append(lab, c); d.append(box);
+      };
+      vol('🎵 Гучність музики', 'music'); vol('🌿 Гучність тла', 'amb'); vol('🔊 Гучність ефектів', 'sfx');
+      mu.onChange = () => prefCtl.forEach((f) => f());
+    }
     return d;
   };
 
