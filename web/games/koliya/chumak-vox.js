@@ -714,28 +714,54 @@ export function fair(K, g, s, fx) {
 }
 
 // ---------- K45: малий ярмарок на проміжній станції (K11, s.mid) і станціях нескінченної колії (K19, s.endless.st) ----------
-// Шатро, бочки й віз із волом на постої — у розчищеному ряду за платформою (з протилежного від табличок K11 боку,
-// щоб не ховали їх і саму платформу від камери). Лише вигляд, без колізій.
-export function miniFairs(K, root, s) {
+// Шатро, бочки, віз із сіллю й віл на постої — у ряду біля платформи, де найбільше вільних клітинок (без дерев/скель/води,
+// не на колії й не в ряду табличок K11). Колія K19 не мусить іти крізь рамку станції — тож кожна річ, на чию клітинку
+// згодом ляже гать, ховається (fx). Лише вигляд, без колізій.
+export function miniFairs(K, root, s, fx) {
   const frames = s.endless ? s.endless.st || [] : s.mid ? [s.mid] : [];
-  for (const f of frames) if (f && f.x1 >= f.x0) miniFair(K, root, f, s);
+  for (const f of frames) if (f && f.x1 >= f.x0) miniFair(K, root, f, s, fx);
 }
-function miniFair(K, root, f, s) {
-  const { THREE, mergeGroup } = K, h = s.h;
-  const far = f.y1 + 2 <= h - 2;                              // таблички йдуть на +y → ярмарок за платформою, на −y
-  const yf = far ? f.y0 - 1 : f.y1 + 1;
-  if (yf < 1 || yf > h - 2) return;
+function miniFair(K, root, f, s, fx) {
+  const { THREE, mergeGroup, G } = K, { w, h } = s;
+  const signY = f.y1 + 2 <= h - 2 ? f.y1 + 2 : f.y0 - 2;     // ряд табличок K11 (extras.js / endless.js)
+  const onPath = new Set(s.path);
+  const free = (x, y) => { const i = y * w + x; return x >= 0 && x < w && s.obj[i] === 0 && !onPath.has(i) && s.ground[i] !== G.WATER && s.ground[i] !== G.BRIDGE; };
+  let yf = -1, best = 0;
+  // спершу через ряд від платформи: навіс K11 (дах на 1,45) з камери накриває сусідній ряд за платформою
+  for (const y of [f.y0 - 2, f.y0 - 1, f.y1 + 1, f.y0 - 3]) {
+    if (y < 1 || y > h - 2 || y === signY || (s.mid?.signs || []).some((g) => g.y === y)) continue;
+    let n = 0; for (let x = f.x0 - 1; x <= f.x1 + 1; x++) n += free(x, y);
+    if (n > best) { best = n; yf = y; }
+  }
+  if (yf < 0) return;
+  const back = yf < f.y0, dz = back ? -0.12 : 0.12;           // за платформою (−y) чи перед нею
   const g = new THREE.Group(); g.position.set(0, 0.03, yf + 0.5); root.add(g);
-  const cx = (f.x0 + f.x1 + 1) / 2, dz = far ? -0.12 : 0.12;
-  const sub = (x, z, k, ry = 0) => { const q = new THREE.Group(); q.position.set(x, 0, z); q.scale.setScalar(k); q.rotation.y = ry; g.add(q); return q; };
-  const t = sub(cx, dz, 0.62, far ? 0 : Math.PI);             // шатро прилавком до платформи
-  tent(K, t, 0, 0, 1.6, 1.1, (f.x0 & 1) ? 0x2f6fb5 : 0xc8322a, 0xf3e6c8);
-  const b = sub(f.x0 + 0.5, dz, 0.9);                         // бочки біля шатра
-  for (const [x, z, y] of [[-0.18, -0.12, 0], [0.18, -0.12, 0], [0, 0.2, 0], [0, 0.02, 0.42]]) barrel(K, b, x, z, y);
-  parkedCart(K, g, f.x1 + 0.5, dz, 0.25);                     // віз із сіллю на постої
-  const o = ox(K, g, f.x0 - 0.5, 0, dz, f.x0 & 1, 1.3);       // віл лежить біля бочок (ряд розчищено на клітинку ширше)
-  poseOx(o, 0, 0, 1, 0); o.root.rotation.y = far ? 2.6 : -2.6;
+  const parts = [];
+  const sub = (x, k = 1, ry = 0) => {
+    if (!free(x, yf)) return null;
+    const q = new THREE.Group(); q.position.set(x + 0.5, 0, dz); q.scale.setScalar(k); q.rotation.y = ry; g.add(q);
+    parts.push({ q, i: yf * w + x }); return q;
+  };
+  const cx = (f.x0 + f.x1) >> 1;
+  const t = sub(cx, 0.62, back ? 0 : Math.PI);                // шатро прилавком до платформи
+  if (t) tent(K, t, 0, 0, 1.6, 1.1, (f.x0 & 1) ? 0x2f6fb5 : 0xc8322a, 0xf3e6c8);
+  const b = sub(cx - 1, 0.9);                                 // бочки біля шатра
+  if (b) for (const [x, z, y] of [[-0.18, -0.12, 0], [0.18, -0.12, 0], [0, 0.2, 0], [0, 0.02, 0.42]]) barrel(K, b, x, z, y);
+  const c = sub(cx + 1, 1, 0.25);                             // віз із сіллю на постої
+  if (c) parkedCart(K, c, 0, 0, 0);
+  const o = sub(cx - 2);                                      // віл лежить біля бочок
+  if (o) { const v = ox(K, o, 0, 0, 0, f.x0 & 1, 1.3); poseOx(v, 0, 0, 1, 0); v.root.rotation.y = back ? 2.6 : -2.6; }
+  const b2 = sub(cx + 2, 0.8);                                // ще бочка й кавуни за возом
+  if (b2) { barrel(K, b2, -0.15, 0, 0); melons(K, b2, 0, -0.2); }
   mergeGroup(g);
+  if (!parts.length) return;
+  let len = -1;
+  fx.push(() => {   // гать лягла на клітинку — річ прибрано (зсув вікна K19 перебудовує все заново)
+    if (s.path.length === len) return;
+    len = s.path.length;
+    const on = new Set(s.path);
+    for (const p of parts) p.q.visible = !on.has(p.i);
+  });
 }
 
 // ---------- степ за далеким краєм смуги + валка + лелеки ----------

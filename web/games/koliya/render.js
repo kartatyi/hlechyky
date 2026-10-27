@@ -627,7 +627,7 @@ export function createRenderer(canvas) {
     if (!endless) buildStation(root, s);
     buildOutskirts(-16, 0, s, !shifted); buildOutskirts(w, w + 22, s, false, endless);
     if (isChumak()) CV.steppe(K25, root, s, W.fx, lowQ);   // K25: степ за смугою, валка, лелеки
-    if (isChumak()) CV.miniFairs(K25, root, s);            // K45: малий ярмарок на проміжній станції й станціях нескінченної
+    if (isChumak()) CV.miniFairs(K25, root, s, W.fx);              // K45: малий ярмарок на проміжній станції й станціях нескінченної
     for (let i = 0; i < n; i++) syncCell(i, true);
     syncPath(true);
     pGround.flush(); pBox.flush(); pBlob.flush(); pTree.flush(); W.pIce.flush();   // K36
