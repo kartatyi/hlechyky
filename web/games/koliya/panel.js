@@ -25,7 +25,7 @@ const CSS = `
 .kol-btn{flex:1 1 auto;min-height:36px;padding:6px 10px;border-radius:6px;border:1px solid #fff3;background:#2a3125;color:#eee;cursor:pointer;font:inherit}
 .kol-btn:hover{background:#3a4433}
 .kol-btn.kol-main{background:#4a6a2a;border-color:#7a9a4a;font-weight:600}
-.kol-note{opacity:.65;font-size:11.5px;margin:2px 0 10px}
+.kol-note,.kol-note2{opacity:.65;font-size:11.5px;margin:2px 0 10px}
 .kol-grp{border-top:1px solid #fff2;padding:4px 0}
 .kol-grp>summary{cursor:pointer;font-weight:600;padding:4px 0;list-style:none;user-select:none}
 .kol-grp>summary::before{content:'▸ ';opacity:.6}
@@ -176,7 +176,7 @@ export function createPanel(root, opts) {
     r4.append(b);
   }
   pan.append(el('div', 'kol-padnote', '🎮 ✚ ↑↓ — рядок · ←→ — значення · A — натиснути · B — закрити'),
-    r1, r2, el('div', 'kol-lab kol-pres', 'Пресети'), r4, el('div', 'kol-note kol-note-top', 'Зміни світу й правил діють з наступного рестарту.'));
+    r1, r2, el('div', 'kol-lab kol-pres', 'Пресети'), r4, el('div', 'kol-note2', 'Зміни світу й правил діють з наступного рестарту.'));
 
   // — пристрій (K12): діє одразу, не правила
   const prefs = { quality: 'high', rumble: true, tips: true, ...(opts.prefs || {}) };
