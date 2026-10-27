@@ -592,7 +592,8 @@ export function createBot(p, opts = {}) {
     const wNeed = needOf(ctx, I.WOOD), iNeed = needOf(ctx, I.IRON);
     const wood = { k: 'gather', r: I.WOOD }, iron = { k: 'gather', r: I.IRON };
     let res = s.train.wood <= s.train.iron ? [wood, iron] : [iron, wood];
-    if (ctx.buddy && m.hpref) res = m.hpref === I.IRON ? [iron, wood] : [wood, iron];   // K34: протилежне людині
+    // K34: «протилежний» ресурс лише на рівних (жорсткий пріоритет: x̄ 65 проти 72 — склад важливіший)
+    if (ctx.buddy && m.hpref && Math.abs(s.train.wood - s.train.iron) <= 2) res = m.hpref === I.IRON ? [iron, wood] : [wood, iron];
     if (role === 'all') {
       // K13: майстерня повна (стоїть) чи склад майже повний — класти, а не збирати ще
       if (canRails && (lead < TUNE.urg || (railsFull(ctx) && lead < TUNE.far) || (wNeed <= 2 && iNeed <= 2))) list.push(rails);
