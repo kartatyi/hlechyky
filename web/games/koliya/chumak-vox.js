@@ -18,7 +18,7 @@
 import { isChumak } from './theme.js';
 
 // ---------- барви ----------
-const OX = 0xcfc9bc, OX_D = 0xa69f92, OX2 = 0xbdb6a8, OX2_D = 0x938c80, HORN = 0xf0e6cc, HORN_T = 0x2b2724, HOOF = 0x2e2a26, MUZ = 0x5c544b;
+const OX = 0xdcd6ca, OX_D = 0x8f887b, OX2 = 0xcec7b9, OX2_D = 0x837c70, HORN = 0xf0e6cc, HORN_T = 0x2b2724, HOOF = 0x2e2a26, MUZ = 0x5c544b;
 const WD = 0x9a6a3c, WD_D = 0x704b2a, WD_L = 0xc29560, CAP = 0xdcb67e, RIM = 0x4e341e;
 const SALT = 0xf7f5ef, SALT_B = 0xe7e3d6, CLOTH = 0xd9c9a2, CLOTH_D = 0xc4b38a, ROPE = 0xcbb07a, TAR = 0x1e1b18;
 const CLAY = 0xa8583a, CLAY_D = 0x8a4630, IRON = 0x474c55, LEATHER = 0x6b4a33;
@@ -43,9 +43,10 @@ function inner(K) { const g = new K.THREE.Group(), m = new K.THREE.Group(); m.sc
 const toG = (K, x, y, z) => new K.THREE.Vector3(x, y / 1.2, z / 1.2);
 
 // ---------- віл (дивиться в +X; земля — y = 0 групи) ----------
+const OXK = 1.35;   // віл більший за «модельний» — поряд із гравцями (×1,35) мусить читатися
 function ox(K, parent, x, y, z, tone = 0, off = 0) {
   const { THREE, cube } = K;
-  const root = new THREE.Group(); root.position.set(x, y, z); parent.add(root);
+  const root = new THREE.Group(); root.position.set(x, y, z); root.scale.setScalar(OXK); parent.add(root);
   const col = tone ? OX2 : OX, dk = tone ? OX2_D : OX_D;
   const legs = [];
   for (const [lx, lz] of [[0.15, -0.065], [0.15, 0.065], [-0.16, -0.065], [-0.16, 0.065]]) {
@@ -60,6 +61,7 @@ function ox(K, parent, x, y, z, tone = 0, off = 0) {
   cube(body, -0.03, 0.18, 0, 0.32, 0.03, 0.18, dk);        // черево
   cube(body, 0.2, 0.15, 0, 0.07, 0.12, 0.09, col);         // підгрудок
   cube(body, -0.19, 0.4, 0, 0.11, 0.035, 0.19, col);       // крижі
+  cube(body, -0.02, 0.418, 0, 0.3, 0.01, 0.05, dk);        // темна смуга хребта
   const tail = new THREE.Group(); tail.position.set(-0.25, 0.39, 0); body.add(tail);
   cube(tail, -0.012, -0.2, 0, 0.025, 0.2, 0.025, dk); cube(tail, -0.012, -0.26, 0, 0.045, 0.07, 0.045, 0x3a332c);
   const head = new THREE.Group(); head.position.set(0.24, 0.33, 0); body.add(head);
@@ -70,10 +72,10 @@ function ox(K, parent, x, y, z, tone = 0, off = 0) {
     cube(head, 0.13, -0.02, s * 0.069, 0.03, 0.028, 0.006, 0x151515);   // око
     cube(head, 0.08, -0.01, s * 0.092, 0.035, 0.03, 0.05, dk);          // вухо
     // роги-ліра сірої степової худоби: убік, тоді вгору, чорні кінчики
-    cube(head, 0.1, 0.03, s * 0.09, 0.034, 0.034, 0.06, HORN);
-    cube(head, 0.1, 0.045, s * 0.118, 0.032, 0.07, 0.03, HORN);
-    cube(head, 0.115, 0.105, s * 0.124, 0.027, 0.06, 0.027, HORN);
-    cube(head, 0.128, 0.16, s * 0.116, 0.021, 0.035, 0.021, HORN_T);
+    cube(head, 0.1, 0.03, s * 0.095, 0.036, 0.036, 0.07, HORN);
+    cube(head, 0.105, 0.05, s * 0.13, 0.034, 0.08, 0.034, HORN);
+    cube(head, 0.125, 0.12, s * 0.135, 0.03, 0.07, 0.03, HORN);
+    cube(head, 0.145, 0.18, s * 0.125, 0.024, 0.04, 0.024, HORN_T);
   }
   return { root, body, legs, head, tail, off, y };
 }
@@ -82,10 +84,21 @@ function poseOx(o, ph, amp, lie, now) {
   const p = ph + o.off, sw = Math.sin(p) * 0.5 * amp, f = 1.5 * lie;
   const [fl, fr, rl, rr] = o.legs;
   fl.rotation.z = sw - f; rr.rotation.z = sw + f; fr.rotation.z = -sw - f; rl.rotation.z = -sw + f;
-  o.root.position.y = o.y - 0.17 * lie;
+  o.root.position.y = o.y - 0.17 * OXK * lie;
   o.body.position.y = amp * Math.abs(Math.sin(p)) * 0.012;
   o.head.rotation.z = Math.sin(p * 2) * 0.07 * amp + Math.sin(now / 1100 + o.off) * 0.05 * (1 - amp) - 0.35 * lie;
   o.tail.rotation.x = Math.sin(now / 380 + o.off * 3) * 0.35;
+}
+
+// пара волів у ярмі перед возом (передок воза — x = 0,1), дишло між ними → [віл, віл]
+function team(K, m, off1, off2) {
+  const { cube } = K, X = 0.5, Z = 0.2;
+  const oxen = [ox(K, m, X, GY, -Z, 0, off1), ox(K, m, X, GY, Z, 1, off2)];
+  const yx = X + 0.16 * OXK, yy = GY + 0.44 * OXK;
+  cube(m, yx, yy, 0, 0.065, 0.065, 2 * Z + 0.34, WD_D);
+  for (const z of [-Z, Z]) for (const d of [-0.16, 0.16]) cube(m, yx, yy - 0.18, z + d, 0.035, 0.2, 0.035, WD_L);
+  cube(m, (yx + 0.1) / 2, GY + 0.36, 0, yx - 0.1, 0.045, 0.045, WD_D);
+  return oxen;
 }
 
 // ---------- колесо (дерев'яне, 10 ободів, 8 спиць) ----------
@@ -145,12 +158,8 @@ export function makeLoco(K) {
   for (const x of [-0.37, -0.07]) cube(m, x, bed - 0.005, 0, 0.025, 0.27, 0.41, ROPE);
   cube(m, -0.53, GY + 0.16, 0.12, 0.07, 0.08, 0.07, TAR); cube(m, -0.53, GY + 0.24, 0.12, 0.012, 0.06, 0.012, 0x3a3532);
   // воли в ярмі, дишло між ними
-  const oxen = [ox(K, m, 0.42, GY, -0.17, 0, 0), ox(K, m, 0.42, GY, 0.17, 1, Math.PI)];
-  const yx = 0.58;
-  cube(m, yx, GY + 0.44, 0, 0.055, 0.055, 0.66, WD_D);
-  for (const z of [-0.17, 0.17]) for (const d of [-0.125, 0.125]) cube(m, yx, GY + 0.3, z + d, 0.03, 0.15, 0.03, WD_L);
-  cube(m, (yx + 0.1) / 2, GY + 0.3, 0, yx - 0.1, 0.04, 0.04, WD_D);
-  mergeGroup(g); addBlob(g, 1.5, 0.85, 0.12, 0, -0.09);
+  const oxen = team(K, m, 0, Math.PI);
+  mergeGroup(g); addBlob(g, 1.75, 0.95, 0.2, 0, -0.09);
   const boilerMat = new THREE.MeshLambertMaterial();   // render фарбує «котел» — у волів його нема
   const moved = mover();
   let ph = 0, amp = 0, lie = 0, dustT = 0, breathT = 0;
@@ -169,23 +178,23 @@ export function makeLoco(K) {
     dustT -= dt;
     if (d > 0.0005 && dustT <= 0) {
       dustT = 0.11;
-      for (const o of oxen) { const p = at(0.3 + Math.random() * 0.2, GY + 0.04, o.root.position.z); puff(p.x, p.y, p.z, 1, DUST[(Math.random() * 3) | 0], 0.17, 1.0, 0.22); }
+      for (const o of oxen) { const p = at(0.35 + Math.random() * 0.3, GY + 0.04, o.root.position.z); puff(p.x, p.y, p.z, 1, DUST[(Math.random() * 3) | 0], 0.17, 1.0, 0.22); }
       if (Math.random() < 0.5) { const p = at(-0.3, GY + 0.03, (Math.random() - 0.5) * 0.6); puff(p.x, p.y, p.z, 1, DUST[1], 0.13, 0.8, 0.15); }
     }
     // пара з ніздрів — частіша й густіша, коли пріють
     breathT -= dt;
     if (breathT <= 0) {
       breathT = 1.5 - 1.1 * st.hot + Math.random() * 0.3;
-      for (const o of oxen) { const p = at(0.66, GY + 0.24 - 0.12 * lie, o.root.position.z); puff(p.x, p.y, p.z, 1, 0xf4f4f2, 0.07 + 0.08 * st.hot, 0.7, 0.25); }
+      for (const o of oxen) { const p = at(0.5 + 0.46 * OXK, GY + (0.24 - 0.12 * lie) * OXK, o.root.position.z); puff(p.x, p.y, p.z, 1, 0xf4f4f2, 0.07 + 0.08 * st.hot, 0.7, 0.25); }
     }
     // піт: краплі з боків; знесилились — ще й важкий видих
     const sweat = Math.max(st.hot, tired ? 1 : 0);
     if (sweat > 0.2 && Math.random() < dt * 14 * sweat) {
-      const o = oxen[(Math.random() * 2) | 0], p = at(0.3 + Math.random() * 0.3, GY + 0.36 - 0.17 * lie, o.root.position.z + (o.root.position.z > 0 ? 0.11 : -0.11));
+      const o = oxen[(Math.random() * 2) | 0], p = at(0.35 + Math.random() * 0.4, GY + (0.36 - 0.17 * lie) * OXK, o.root.position.z + (o.root.position.z > 0 ? 0.15 : -0.15));
       spawn(p.x, p.y, p.z, (Math.random() - 0.5) * 0.4, 0.6, (o.root.position.z > 0 ? 0.4 : -0.4), 0.55, 0.045, 0xcdeeff, 7, 0);
     }
   }
-  return { g, boilerMat, chimney: null, boiler: null, top: toG(K, 0.72, GY + 0.62, 0), fx };
+  return { g, boilerMat, chimney: null, boiler: null, top: toG(K, 0.85, GY + 0.75, 0), fx };
 }
 
 // ---------- склад → віз-комора ----------
@@ -316,8 +325,10 @@ export function bridge(P, list, x, y, K) {
 }
 
 // ---------- криниця на малій калюжі ----------
+const WELL_GAP = 9;
 export function findWells(s, G) {
   const { w, h, ground } = s, n = w * h, seen = new Uint8Array(n), out = new Map();
+  const cands = [];
   const wet = (i) => ground[i] === G.WATER;
   for (let i0 = 0; i0 < n; i0++) {
     if (!wet(i0) || seen[i0]) continue;
@@ -327,9 +338,18 @@ export function findWells(s, G) {
       for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < n && wet(j) && !seen[j]) { seen[j] = 1; comp.push(j); }
     }
     if (comp.length > 4) continue;
+    // болотяні баюри лишаються водою; криниці — не густіше ніж раз на WELL_GAP стовпців
+    if (comp.some((i) => [i - 1, i + 1, i - w, i + w].some((j) => j >= 0 && j < n && ground[j] === G.SWAMP))) continue;
     const nb = (i) => [i - 1, i + 1, i - w, i + w].filter((j) => comp.includes(j)).length;
     const best = comp.reduce((a, b) => (nb(b) > nb(a) ? b : a));
-    for (const c of comp) out.set(c, c === best ? 'well' : 'trough');
+    cands.push({ x: best % w, best, comp });
+  }
+  cands.sort((a, b) => a.x - b.x);
+  let lastX = -1e9;
+  for (const c of cands) {
+    if (c.x - lastX < WELL_GAP) continue;
+    lastX = c.x;
+    for (const i of c.comp) out.set(i, i === c.best ? 'well' : 'trough');
   }
   return out;
 }
@@ -372,25 +392,25 @@ export function well(P, list, x, y, role, K) {
 // ---------- трава: ковила, маки, волошки ----------
 export function grassDeco(P, list, x, y, top, v, K) {
   const { hh, tint } = K, cx = x + 0.5, cz = y + 0.5;
-  if (v < 0.3) {
-    const nC = v < 0.1 ? 2 : 1;
+  if (v < 0.13) {
+    const nC = v < 0.04 ? 2 : 1;
     for (let c = 0; c < nC; c++) {
       const fx = cx + (hh(x, y, 62 + c) - 0.5) * 0.55, fz = cz + (hh(x, y, 64 + c) - 0.5) * 0.55;
       const n = 4 + Math.floor(hh(x, y, 66 + c) * 3);
       for (let j = 0; j < n; j++) {
         const ox = (hh(x, y, 70 + j + c * 7) - 0.5) * 0.2, oz = (hh(x, y, 80 + j + c * 7) - 0.5) * 0.2, hg = 0.14 + hh(x, y, 90 + j + c * 7) * 0.2;
         P.add(list, fx + ox, top, fz + oz, 0.022, hg, 0.022, tint(0xb5b479, (hh(x, y, 100 + j) - 0.5) * 0.15));
-        P.add(list, fx + ox + 0.04, top + hg - 0.01, fz + oz, 0.1, 0.022, 0.018, 0xf2ecd6);   // пір'їнка, хилить вітер
+        P.add(list, fx + ox + 0.035, top + hg - 0.01, fz + oz, 0.08, 0.02, 0.016, 0xe2dbbd);   // пір'їнка, хилить вітер
       }
     }
-  } else if (v < 0.355) {
-    const col = v < 0.33 ? 0xd8302a : 0x4a72d8;   // мак / волошка
+  } else if (v < 0.17) {
+    const col = v < 0.155 ? 0xd8302a : 0x4a72d8;   // мак / волошка
     for (let j = 0; j < 3; j++) {
       const fx = cx + (hh(x, y, 110 + j) - 0.5) * 0.7, fz = cz + (hh(x, y, 113 + j) - 0.5) * 0.7, hg = 0.1 + hh(x, y, 116 + j) * 0.08;
       P.add(list, fx, top, fz, 0.025, hg, 0.025, 0x6f9a3c); P.add(list, fx, top + hg, fz, 0.08, 0.05, 0.08, col);
       if (col === 0xd8302a) P.add(list, fx, top + hg + 0.05, fz, 0.03, 0.006, 0.03, 0x1e1b18);
     }
-  } else if (v < 0.5) {
+  } else if (v < 0.36) {
     for (let j = 0; j < 3; j++) {
       const fx = cx + (hh(x, y, 120 + j) - 0.5) * 0.7, fz = cz + (hh(x, y, 123 + j) - 0.5) * 0.7;
       P.add(list, fx, top, fz, 0.05, 0.06 + hh(x, y, 126 + j) * 0.07, 0.05, tint(K.C.tuft, (j - 1) * 0.08));
@@ -658,8 +678,7 @@ export function steppe(K, root, s, fx, lowQ) {
     const c = new THREE.Group(); c.position.x = -k * 1.55; cv.add(c);
     const bed = cartBody(K, c, -0.2, 0.6, wheels);
     cube(c, -0.22, bed, 0, 0.5, 0.16, 0.38, k === 1 ? 0xd8b862 : SALT); cube(c, -0.22, bed + 0.16, 0, 0.42, 0.06, 0.3, CLOTH);
-    oxen.push(ox(K, c, 0.42, GY, -0.17, k & 1, k), ox(K, c, 0.42, GY, 0.17, (k + 1) & 1, k + Math.PI));
-    cube(c, 0.58, GY + 0.44, 0, 0.055, 0.055, 0.66, WD_D); cube(c, 0.34, GY + 0.3, 0, 0.48, 0.04, 0.04, WD_D);
+    oxen.push(...team(K, c, k, k + Math.PI));
   }
   mergeGroup(cv);
   const span = X1 - X0 + 4, SP = 0.3;
@@ -671,8 +690,8 @@ export function steppe(K, root, s, fx, lowQ) {
   });
   // лелеки кружляють над смугою за камерою
   const birds = [0, 1, 2].map((k) => {
-    const b = stork(K, root, true); b.g.scale.setScalar(1.7);
-    return { ...b, a: k * 2.1, R: 5 + k * 1.6, y: 3.6 + k * 0.6, w: 0.16 + k * 0.03, cx: 0, cz: mid - 2 + k, off: k * 1.3, init: false };
+    const b = stork(K, root, true); b.g.scale.setScalar(0.95);
+    return { ...b, a: k * 2.1, R: 5 + k * 1.6, y: 2.4 + k * 0.35, w: 0.16 + k * 0.03, cx: 0, cz: 0.6 - k * 0.5, off: k * 1.3, init: false };
   });
   fx.push((dt, now, cam) => {
     for (const b of birds) {
@@ -680,9 +699,9 @@ export function steppe(K, root, s, fx, lowQ) {
       if (!b.init) { b.cx = tx; b.init = true; }
       b.cx += (tx - b.cx) * Math.min(1, dt * 0.3);
       b.a += dt * b.w;
-      const x = b.cx + Math.cos(b.a) * b.R, z = b.cz + Math.sin(b.a) * b.R * 0.45;
+      const x = b.cx + Math.cos(b.a) * b.R, z = b.cz + Math.sin(b.a) * 1.4;
       b.g.position.set(x, b.y + Math.sin(now / 1700 + b.off) * 0.25, z);
-      b.g.rotation.y = -Math.atan2(Math.cos(b.a) * b.R * 0.45, -Math.sin(b.a) * b.R);
+      b.g.rotation.y = Math.atan2(-Math.cos(b.a) * 1.4, -Math.sin(b.a) * b.R);
       const flap = Math.sin(now / 2300 + b.off * 2) > 0.35 ? 0.6 : 0.08;
       for (const { wg, s: sd } of b.wings) wg.rotation.x = sd * Math.sin(now / 140 + b.off) * flap;
     }
