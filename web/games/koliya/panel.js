@@ -5,17 +5,20 @@
 //  зберігає в localStorage і застосовує з наступного рестарту); onRestart — кнопка «Почати заново».
 //  onSeed(seed) — ОПЦІЙНО: поле сіду / «новий сід» (оркестратор має підключити: game.seed = seed; restart()).
 //  Відкрити/закрити — кнопка ⚙ або F1 чи `. Стан звуку не зберігається: на старті завжди 🔇.
+//  K12 (пад): prefs?: { quality: 'high'|'low', rumble: bool } + onPref?(k, v) — розділ «Пристрій» (не правила, діють
+//  одразу); onToggle?(open) — панель відкрилась/закрилась; isOpen(); nav(key) — керування з пада: 'up'/'down' — рядок,
+//  'left'/'right' — значення (повзунок, перемикач) або сусідня кнопка, 'a' — натиснути, 'b'/'menu' — закрити.
 
 const CSS = `
-.kol-gear{position:fixed;right:8px;top:8px;z-index:30;width:34px;height:34px;border-radius:8px;border:1px solid #fff3;
-  background:rgba(15,18,14,.7);color:#eee;font-size:18px;cursor:pointer;line-height:1}
+.kol-gear{position:fixed;right:8px;top:8px;z-index:30;width:46px;height:46px;border-radius:10px;border:1px solid #fff3;
+  background:rgba(15,18,14,.7);color:#eee;font-size:24px;cursor:pointer;line-height:1;touch-action:manipulation}
 .kol-gear:hover{background:rgba(40,46,36,.85)}
-.kol-pan{position:fixed;right:0;top:0;bottom:0;width:320px;max-width:92vw;z-index:29;box-sizing:border-box;
-  padding:48px 10px 12px;overflow-y:auto;background:rgba(14,17,13,.86);color:#e8e8e0;font:12.5px system-ui,sans-serif;
+.kol-pan{position:fixed;right:0;top:0;bottom:0;width:340px;max-width:92vw;z-index:29;box-sizing:border-box;
+  padding:60px 12px 14px;overflow-y:auto;background:rgba(14,17,13,.9);color:#e8e8e0;font:14px system-ui,sans-serif;
   border-left:1px solid #fff2;transform:translateX(100%);transition:transform .18s ease;backdrop-filter:blur(3px)}
 .kol-pan.kol-open{transform:none}
 .kol-row{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
-.kol-btn{flex:1 1 auto;padding:5px 8px;border-radius:6px;border:1px solid #fff3;background:#2a3125;color:#eee;cursor:pointer;font:inherit}
+.kol-btn{flex:1 1 auto;min-height:36px;padding:6px 10px;border-radius:6px;border:1px solid #fff3;background:#2a3125;color:#eee;cursor:pointer;font:inherit}
 .kol-btn:hover{background:#3a4433}
 .kol-btn.kol-main{background:#4a6a2a;border-color:#7a9a4a;font-weight:600}
 .kol-note{opacity:.65;font-size:11.5px;margin:2px 0 10px}
@@ -27,15 +30,18 @@ const CSS = `
 .kol-lab{display:flex;justify-content:space-between;gap:6px;opacity:.9}
 .kol-lab.kol-ch{color:#ffd27a}
 .kol-ctl{display:flex;gap:6px;align-items:center}
-.kol-ctl input[type=range]{flex:1;min-width:0;accent-color:#9bc25a}
+.kol-ctl input[type=range]{flex:1;min-width:0;height:28px;accent-color:#9bc25a}
 .kol-num{width:58px;padding:2px 4px;border-radius:4px;border:1px solid #fff3;background:#111;color:#eee;font:inherit}
 .kol-seg{display:flex;border:1px solid #fff3;border-radius:6px;overflow:hidden}
-.kol-seg button{flex:1;padding:4px 6px;border:0;background:#20261c;color:#ccc;cursor:pointer;font:inherit}
+.kol-seg button{flex:1;min-height:34px;padding:5px 8px;border:0;background:#20261c;color:#ccc;cursor:pointer;font:inherit}
 .kol-seg button+button{border-left:1px solid #fff2}
 .kol-seg button.kol-on{background:#4a6a2a;color:#fff}
 .kol-seed{width:110px}
 .kol-ta{width:100%;box-sizing:border-box;height:90px;background:#111;color:#ddd;border:1px solid #fff3;border-radius:6px;font:11px monospace}
 .kol-msg{min-height:14px;font-size:11.5px;color:#b8e08a}
+.kol-pan .kol-foc{outline:3px solid #ffd23f;outline-offset:2px;border-radius:6px}
+.kol-padnote{display:none;font-size:12.5px;color:#ffd27a;margin:0 0 8px}
+.kol-pan.kol-bypad .kol-padnote{display:block}
 `;
 
 export function createPanel(root, opts) {
@@ -69,9 +75,12 @@ export function createPanel(root, opts) {
   pan.addEventListener('change', (e) => { if (e.target.type === 'range') e.target.blur(); });
 
   function toggle(open) {
-    const o = open ?? !pan.classList.contains('kol-open');
+    const was = pan.classList.contains('kol-open');
+    const o = open ?? !was;
     pan.classList.toggle('kol-open', o);
+    if (!o) { pan.classList.remove('kol-bypad'); setFoc(null); }
     if (!o && pan.contains(document.activeElement)) document.activeElement.blur();
+    if (o !== was) opts.onToggle?.(o);
   }
   const onKey = (e) => {
     if (e.key === 'F1' || e.code === 'Backquote') { e.preventDefault(); toggle(); }
@@ -103,7 +112,31 @@ export function createPanel(root, opts) {
   seedIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') bSeedGo.click(); });
   r2.append(el('span', null, 'Сід'), seedIn, bSeedGo, bSeedNew);
 
-  pan.append(r1, r2, el('div', 'kol-note', 'Зміни світу й правил діють з наступного рестарту.'));
+  pan.append(el('div', 'kol-padnote', '🎮 ✚ ↑↓ — рядок · ←→ — значення · A — натиснути · B — закрити'),
+    r1, r2, el('div', 'kol-note', 'Зміни світу й правил діють з наступного рестарту.'));
+
+  // — пристрій (K12): діє одразу, не правила
+  const prefs = { quality: 'high', rumble: true, ...(opts.prefs || {}) };
+  const prefCtl = [];
+  {
+    const d = el('details', 'kol-grp'); d.open = true;
+    d.append(el('summary', null, 'Пристрій'));
+    const seg = (label, k, vals, labels) => {
+      const box = el('div', 'kol-p');
+      const s = el('div', 'kol-seg');
+      const btns = vals.map((val, i) => {
+        const b = el('button', null, labels[i]);
+        b.onclick = () => { if (prefs[k] !== val) { prefs[k] = val; put(); opts.onPref?.(k, val); } };
+        s.append(b); return b;
+      });
+      const put = () => btns.forEach((b, i) => b.classList.toggle('kol-on', vals[i] === prefs[k]));
+      put(); prefCtl.push(put);
+      box.append(el('div', 'kol-lab', label), s); d.append(box);
+    };
+    seg('Якість картинки', 'quality', ['high', 'low'], ['Висока', 'Низька (слабкий ноут)']);
+    seg('Вібрація пада', 'rumble', [true, false], ['Увімк.', 'Вимк.']);
+    pan.append(d);
+  }
 
   // — групи повзунків
   const ctl = {};   // k → { set(v) }
@@ -202,9 +235,67 @@ export function createPanel(root, opts) {
   function refresh() { for (const k in ctl) ctl[k].set(values[k] ?? defs[k]); }
   refresh();
 
+  // — керування з пада (K12): фокус-рамка ходить по рядках, ←→ міняють значення
+  let foc = null;
+  function setFoc(e) {
+    if (foc) foc.classList.remove('kol-foc');
+    foc = e;
+    if (foc) { foc.classList.add('kol-foc'); foc.scrollIntoView?.({ block: 'nearest' }); }
+  }
+  // цілі: кнопки поза перемикачами, перемикачі (.kol-seg), повзунки (.kol-p з range), заголовки груп
+  function targets() {
+    const out = [];
+    for (const e of pan.querySelectorAll('button, .kol-seg, .kol-p, summary')) {
+      if (e.disabled || !e.getClientRects().length) continue;
+      if (e.tagName === 'BUTTON' && e.parentElement.classList.contains('kol-seg')) continue;
+      if (e.classList.contains('kol-p') && !e.querySelector('input[type=range]')) continue;
+      out.push(e);
+    }
+    return out;
+  }
+  function nav(key) {
+    if (key === 'b' || key === 'menu') { toggle(false); return; }
+    if (!pan.classList.contains('kol-open')) toggle(true);
+    pan.classList.add('kol-bypad');
+    const list = targets();
+    if (!list.length) return;
+    let i = list.indexOf(foc);
+    if (i < 0) { setFoc(list[0]); return; }
+    const sameRow = (a, b) => a && b && a.tagName === 'BUTTON' && b.tagName === 'BUTTON' && a.parentElement === b.parentElement;
+    if (key === 'up' || key === 'down') {
+      // кнопки одного рядка — один крок
+      const d = key === 'down' ? 1 : -1;
+      let j = i + d;
+      while (j >= 0 && j < list.length && sameRow(list[j], list[i])) j += d;
+      if (j >= 0 && j < list.length) setFoc(key === 'up' && list[j].tagName === 'BUTTON'
+        ? list.find((e) => sameRow(e, list[j]) || e === list[j]) : list[j]);
+      return;
+    }
+    if (key === 'left' || key === 'right') {
+      const d = key === 'right' ? 1 : -1;
+      if (foc.classList.contains('kol-seg')) {
+        const bs = [...foc.children], k = bs.findIndex((b) => b.classList.contains('kol-on'));
+        const n = bs[Math.max(0, Math.min(bs.length - 1, (k < 0 ? 0 : k) + d))];
+        n?.click();
+      } else if (foc.classList.contains('kol-p')) {
+        const rg = foc.querySelector('input[type=range]');
+        const st = +rg.step || 1, v = Math.min(+rg.max, Math.max(+rg.min, +rg.value + d * st));
+        rg.value = v; rg.dispatchEvent(new Event('input', { bubbles: true }));
+      } else if (sameRow(list[i + d], foc)) setFoc(list[i + d]);
+      return;
+    }
+    if (key === 'a') {
+      if (foc.tagName === 'SUMMARY') { foc.parentElement.open = !foc.parentElement.open; return; }
+      if (foc.tagName === 'BUTTON') foc.click();
+    }
+  }
+
   return {
     set(v) { values = { ...values, ...v }; refresh(); },
     setSeed(s) { seedIn.value = s; },
+    setPrefs(p) { Object.assign(prefs, p); prefCtl.forEach((f) => f()); },
+    isOpen: () => pan.classList.contains('kol-open'),
+    nav,
     toggle,
     dispose() { removeEventListener('keydown', onKey); clearTimeout(msgT); gear.remove(); pan.remove(); style.remove(); },
   };

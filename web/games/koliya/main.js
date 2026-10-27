@@ -48,19 +48,34 @@ async function makeView() {
 
 const input = createInput();
 const audio = createAudio();
+// K12: пристрій (якість, вібрація) — не правила, діють одразу
+const PREFS_KEY = 'kol-prefs';
+const prefs = { quality: 'high', rumble: true };
+try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch { }
+input.setRumble(prefs.rumble);
+const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
 const panel = createPanel(document.getElementById('kol-panel'), {
   meta: R.PARAM_META, variants: R.VARIANTS, values: game.params,
   onChange(values) { game.params = { ...values }; try { localStorage.setItem(PARAMS_KEY, JSON.stringify(values)); } catch { } },
   onRestart: () => restart(),
   seed: game.seed, onSeed: (seed) => restart(seed),
   audio,
+  prefs, onPref(k, v) {   // K12
+    prefs[k] = v; try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { }
+    if (k === 'quality') view?.setQuality?.(v);
+    if (k === 'rumble') { input.setRumble(v); if (v) input.rumble(0, 'hit'); }
+  },
+  // K12: поки панель відкрита — гравці стоять, пад водить по панелі (Start — рестарт і закрити)
+  onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
 });
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
   bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
+input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
 function restart(seed = game.seed) {
   if (net) return net.restart(seed, game.params);   // K3
+  if (game.wantLocal) { game.local = game.wantLocal; game.wantLocal = 0; game.bots = Math.min(game.bots, R.MAX_PLAYERS - game.local); input.setPlayers(game.local); }   // K12
   game.seed = seed >>> 0;
   panel?.setSeed?.(game.seed);
   game.state = R.newGame(game.seed, game.params, game.local + game.bots);
@@ -88,6 +103,10 @@ function tickOnce() {
 }
 function afterStep(s) {
   audio.play(s.ev);
+  for (const e of s.ev) {   // K12: вібрація пада — удар і поразка
+    if ((e.t === 'chop' || e.t === 'rock') && e.p < game.local) input.rumble(e.p, 'hit');
+    else if (e.t === 'lost') input.rumble(-1, 'lost');
+  }
   audio.setTrain?.(s.status === 'run' ? Math.min(1, s.train.speed / 1000 / (s.params.speedMax * U_PER_TICK)) : 0);
   view?.events?.(s.ev);
 }
@@ -98,7 +117,9 @@ const nextFrame = () => TEST ? setTimeout(() => requestAnimationFrame(frame), 10
 let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(250, now - last); last = now;
-  if (input.restartPressed?.()) restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+  if (input.restartPressed?.()) nextRestart();
+  if (!net && game.local === 1 && !game.wantLocal && (++padPoll & 15) === 0 && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
+  if (!game.paused && dt < 250) slowCheck(dt);   // K12
   if (net) net.update(now);   // K3
   else if (!game.paused) {
     acc += dt * game.speed;
@@ -112,14 +133,39 @@ function frame(now) {
   nextFrame();
 }
 
+// K12: перші 6 с гри тягне повільно (середній кадр > 24 мс, < ~40 к/с) — сам вмикаємо «Якість: низька», раз
+let padPoll = 0, slowN = 0, slowSum = 0;
+function slowCheck(dt) {
+  if (slowN < 0 || TEST || prefs.quality !== 'high' || typeof view?.setQuality !== 'function') return;
+  slowN++; slowSum += dt;
+  if (slowSum < 6000) return;
+  const avg = slowSum / slowN; slowN = -1;
+  game.fpsStart = Math.round(1000 / avg);
+  if (avg <= 24) return;
+  prefs.quality = 'low'; view.setQuality('low'); panel.setPrefs?.({ quality: 'low' });
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { }
+  hudUi?.say?.(`🐢 ${game.fpsStart} к/с — увімкнув «Якість: низька» (⚙ / ⧉ View — повернути)`, 6000);
+}
+
+// K12: другий пад під'єднано при p=1 — П2 одразу (правила вміють 'join'), а з ботами — з наступного рестарту
+function joinP2() {
+  const s = game.state;
+  if (!s || s.tick === 0 || s.status !== 'run') { game.wantLocal = 2; restart(); hudUi?.say?.('🎮 П2 приєднався'); return; }
+  if (game.bots === 0 && s.players.length < R.MAX_PLAYERS) { game.local = 2; input.setPlayers(2); game.cmds.push({ k: 'join' }); hudUi?.say?.('🎮 П2 приєднався'); return; }
+  game.wantLocal = 2;
+  hudUi?.say?.('🎮 П2 приєднався — з’явиться з наступного рестарту (≡ Start)', 5000);
+}
+
 let hudUi = null;
 function drawHud() {
-  hudUi ??= createHud(hud, { players: game.local + game.bots });   // K9
+  hudUi ??= createHud(hud, { players: game.local + game.bots, onStart: () => input.swallow(), onRestart: nextRestart });   // K9, K12
+  game.hud = hudUi;   // K12: для замірів у консолі
   hudUi.update(game.state, game);
 }
 
 (async () => {
   view = game.view = await makeView();
+  view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => console.warn('Колія: мережа', e)); else restart();   // K3
   requestAnimationFrame(frame);
 })();
