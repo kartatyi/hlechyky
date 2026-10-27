@@ -20,7 +20,7 @@ import { t as tt, isChumak, upName } from './theme.js';      // K25: слова 
 import { achievements } from './achievements.js';   // K50: досягнення 🏆 — тости з s.ev
 import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
 import { A11Y, pcol, pmark } from './panel.js';   // K49: кольори для дальтоніків і значки форми
-import { createHelp } from './help.js';   // K65: «❓ Як грати» — з меню, паузи й клавішею H
+import { createHelp, introSteps } from './help.js';   // K65: «❓ Як грати» — з меню, паузи й клавішею H; картка збору
 
 // K49: колір гравця — pcol(i) з panel.js (з урахуванням «Кольори для дальтоніків»)
 const HOLD_ICON = { [I.WOOD]: '🪵', [I.IRON]: '⛓', [I.RAIL]: '🛤', [I.AXE]: '🪓', [I.PICK]: '⛏', [I.BUCKET]: '🪣', [I.BUCKET_FULL]: '💧' };
@@ -114,6 +114,20 @@ const CSS = `
 @keyframes kol-pulse { to { transform: translateX(-50%) scale(1.06); } }
 .kol-count { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; display: none; }
 .kol-count b { display: block; font-size: 5em; line-height: 1; color: #ffd23f; text-shadow: 0 3px 10px #000; }
+/* картка «Як грати» на час збору (introSteps з help.js) */
+.kol-intro { position: absolute; left: 50%; bottom: 3.4em; transform: translateX(-50%); width: min(94%, 31em); display: none; pointer-events: auto;
+  font-size: max(12px, .82em); font-weight: 500; line-height: 1.35; text-align: left; background: #0f120de8; padding: .5em .8em .6em; }
+.kol-intro h3 { margin: 0 0 .25em; font-size: 1.15em; color: #ffd23f; display: flex; align-items: center; }
+.kol-intro h3 span { flex: 1; }
+.kol-intro ol { margin: 0; padding-left: 1.3em; display: grid; gap: .15em; }
+.kol-intro .kol-in-keys { margin-top: .35em; opacity: .8; }
+.kol-intro .kol-in-row { display: flex; gap: .4em; flex-wrap: wrap; margin-top: .45em; }
+.kol-intro button { font: inherit; color: #fff; background: #2c3a22; border: 1px solid #ffffff2a; border-radius: 10px; padding: .2em .7em; min-height: 36px;
+  cursor: pointer; touch-action: manipulation; }
+.kol-intro .kol-in-x { background: none; border: 0; min-width: 36px; padding: 0; opacity: .8; }
+.kol-touchonly { display: none; }
+.kol-touch .kol-touchonly { display: contents; }
+.kol-touch .kol-intro .kol-kbonly, .kol-touch .kol-intro .kol-padonly { display: none; }
 .kol-pls { position: absolute; left: 12px; bottom: 12px; display: flex; gap: .5em; flex-wrap: wrap; }
 .kol-pl { border-left: 5px solid; min-width: 5.5em; }
 .kol-screen { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: #0b0d09c4; pointer-events: auto; }
@@ -261,6 +275,10 @@ export function createHud(root, opts = {}) {
   const count = el('div', 'kol-count', root);
   const countN = el('b', null, count); const countT = el('div', 'kol-box', count, 'паротяг рушає');
   const midEl = el('div', 'kol-banner kol-mid', root);
+  // Картка «Як грати» (introSteps): поки стіл чекає «▶ Почали» (у мережі світ тоді стоїть), а новачкові — і на першому
+  // відліку без мережі. ✕ — сховати до наступної партії; «🎓» — навчальна смуга (у мережі — для всіх за столом).
+  const intro = el('div', 'kol-box kol-intro', root);
+  let introKey = '', introOff = null, freshTok = null, freshV = false;
   const toasts = el('div', 'kol-toasts', root);
   const timers = new Set();
   // коротка плашка; не більше TOASTS одночасно — новий витісняє найстаріший; той самий текст не дублюється
@@ -328,6 +346,41 @@ export function createHud(root, opts = {}) {
     document.activeElement?.blur?.();
     help.open(from);
   }
+  // Картка «Як грати»: щокадру (стан у мережі — той самий об'єкт і в новій партії, тож партію впізнаємо за епохою)
+  function introTick(s) {
+    const g = game0, nt = isNet() ? window.KOL?.net : null, tok = nt ? 'e' + (nt.epoch ?? 0) : s;
+    const left = (s.params?.startSec ?? 0) - (s.tick ?? 0) / TPS;
+    if (freshTok !== tok) {   // новачок: навчання не пройдене й рейок за всі партії ще жменька
+      freshTok = tok;
+      const l = achievements().list();
+      freshV = !l.find((a) => a.id === 'tutorial')?.got && (l.find((a) => a.id === 'railman')?.n | 0) < 20;
+    }
+    const wait = nt ? !!nt.wait : !((s.train?.speed ?? 0) > 0) && left > 0 && freshV;
+    const on = started && s.status === 'run' && wait && introOff !== tok && !help.isOpen() && !g?.replay?.active;
+    set(intro.style, 'intro|display', on ? 'block' : 'none');
+    if (!on) return;
+    const tut = s.params?.mode === 'tutorial', k = `${tut}|${isChumak()}|${!!nt}`;
+    if (k === introKey) return;
+    introKey = k;
+    const keys = '<span class="kol-kbonly">WASD — ходити · Space / E — узяти, рубати, покласти</span>'
+      + '<span class="kol-padonly">стік — ходити · A — узяти, рубати, покласти</span>'
+      + '<span class="kol-touchonly">палець ліворуч — ходити · ✋ — узяти, рубати, покласти</span>';
+    const tutTxt = tt('menu.tutorial', '🎓 Навчання');
+    intro.innerHTML = `<h3><span>Як грати</span><button class="kol-in-x" type="button" data-in="x" aria-label="Сховати">✕</button></h3>`
+      + `<ol>${introSteps().map((x) => `<li>${x}</li>`).join('')}</ol><div class="kol-in-keys">${keys}</div>`
+      + (tut ? `<div class="kol-in-keys">${tutTxt}: ${isChumak() ? 'воли йдуть поволі' : 'паротяг повзе поволі'}, а підказки над головою ведуть крок за кроком</div>` : '')
+      + `<div class="kol-in-row">${tut ? '' : `<button type="button" data-in="tut">${tutTxt}${nt ? ' гуртом' : ''}</button>`}`
+      + '<button type="button" data-in="help">❓ Докладніше <small>H</small></button></div>';
+    intro._tok = tok;
+  }
+  intro.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-in]');
+    if (!b) return;
+    e.preventDefault(); b.blur();
+    if (b.dataset.in === 'x') { introOff = intro._tok; set(intro.style, 'intro|display', 'none'); }
+    else if (b.dataset.in === 'help') openHelp('game');
+    else if (b.dataset.in === 'tut') game0?.startTutorial?.();   // у мережі — перезапуск столу в навчання для всіх
+  });
   const onKey = (e) => {
     if (help.isOpen()) { help.key(e); return; }   // K65
     if (e.code === 'KeyH' && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey && !opts.panelOpen?.() && !game0?.replay?.active) {
@@ -349,6 +402,7 @@ export function createHud(root, opts = {}) {
     if (act === 'replays') { g?.replay?.paste?.(); return; }   // K35
     if (act === 'help') { openHelp('menu'); return; }   // K65: «📼 Повтори» — свої й за кодом
     if (act === 'offline') { try { const u = new URL(location.href); u.searchParams.delete('net'); location.href = u; } catch { } return; }
+    if (act === 'tutorial' && isNet()) { g?.startTutorial?.(); begin(); return; }   // навчання гуртом: стіл — у навчальну смугу для всіх
     if (act !== 'resume' && !isNet()) g?.startMenu?.(act, o);
     else if (act === 'resume' && g) g.paused = false;
     begin();
@@ -474,6 +528,7 @@ export function createHud(root, opts = {}) {
     game0 = game;
     if (!started) { if (game) game.paused = true; padPressed(); }   // K30: пад веде меню (pauseTick), тут — лише «чи є пад»
     pauseTick(s);   // K23
+    introTick(s);
     // DOM — лише коли щось могло змінитись (тик, статус, старт), а не щокадру
     const key = `${s.tick}|${s.status}|${started}|${s.players?.length}|${A11Y.v}`;   // K49: зміна доступності — перемалювати
     if (s === lastState && key === lastKey) return;

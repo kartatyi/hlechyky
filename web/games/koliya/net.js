@@ -457,6 +457,7 @@ export function createNet(game, opts = {}) {
     p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1, wait: false,
     get room() { return room; },
     get ready() { return ready; },
+    get epoch() { return e; },
     get C() { return C; },
     start, update, restart, draw, go, standStill,
     info() {
@@ -768,6 +769,8 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
     game.me = net.p;
     if (j.nm) game.names = namesFrom(j.nm);   // K28: мітки над гравцями — ніки
     game.seed = j.seed >>> 0;
+    // режим столу (навчання обрав хтось інший чи повернув на звичайну) — щоб «ще раз» звідси не перемикав його назад
+    if (game.params) game.params = { ...game.params, mode: C.params?.mode === 'tutorial' ? 'tutorial' : 'normal' };
     net.wait = !!j.wait;   // K62
     if (off == null || net.wait) off = j.t * R.TICK_MS - performance.now();
     if (!ingest(j.f | 0, j.c || [], !!snap)) { console.warn('Колія: журнал з дірою'); return; }
