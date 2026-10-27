@@ -247,6 +247,9 @@ export function saveStore(st, ls = globalThis.localStorage) { try { ls?.setItem(
 // ---------------- перегляд у браузері (DOM) ----------------
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
 const SPEEDS = [1, 2, 4, 8];
+// K42: звук у повторі — лише на ×1–×2 і не більше SOUND_TICKS тиків за кадр (×8 чи ривок кадру — без лавини звуків)
+export const SOUND_TICKS = 3;
+export const soundTicks = (speed, n) => (speed > 2 ? 0 : Math.min(n, SOUND_TICKS));
 const CSS = `
 .kol-rp { position: fixed; inset: 0; pointer-events: none; z-index: 30; font: 600 15px/1.3 system-ui, sans-serif; color: #fff; }
 .kol-rp .kol-rpbar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(96vw, 760px); pointer-events: auto;
@@ -339,7 +342,7 @@ export function createReplay(game, opts = {}) {
     view?.setWorld?.(pl.s);
     view?.setFollow?.(-1);
     if (opts.hud) opts.hud.style.visibility = 'hidden';
-    game.tips?.hide?.();
+    hideOverlays(true);   // K42: підказки й сенсорні кнопки — геть на час повтору
     const root = act.root = el('div', 'kol-rp', document.body);
     act.top = el('div', 'kol-rptop', root);
     const bar = el('div', 'kol-rpbar', root);
@@ -365,6 +368,11 @@ export function createReplay(game, opts = {}) {
     return act;
   }
   const endTick = () => Math.max(1, lastTick(act.rec));
+  function hideOverlays(on) {
+    const tp = game.tips;
+    if (on) { if (tp?.hide) tp.hide(); else tp?.update?.(null, game); }   // update без стану — hideAll (tips.js)
+    game.touch?.setHidden?.(on);
+  }
 
   function exit(quiet = false) {
     if (!act) return;
@@ -372,6 +380,8 @@ export function createReplay(game, opts = {}) {
     act.root.remove();
     act.view?.setFollow?.(-1);
     act = null;
+    hideOverlays(false);   // K42: підказки main.js покаже сам з наступного кадру
+    opts.audio?.setTrain?.(0);
     if (opts.hud) opts.hud.style.visibility = '';
     if (game.state) game.view?.setWorld?.(game.state);
     if (quiet !== true) opts.input?.swallow?.();
@@ -453,13 +463,17 @@ export function createReplay(game, opts = {}) {
       let n = Math.min(400, Math.floor(act.acc / R.TICK_MS));
       act.acc -= n * R.TICK_MS;
       const end = lastTick(rec);
+      const snd = soundTicks(act.speed, n);   // K42: звучать лише останні тики кадру
       while (n-- > 0 && pl.s.tick < end && pl.step()) {
         const s = pl.s;
         if (act.speed <= 2) view?.events?.(s.ev);
+        if (n < snd) opts.audio?.play?.(s.ev, s);   // audio сам мовчить, коли 🔇 (типово)
         if (s.endless && s.ev.some((e) => e.t === 'shift')) view?.setWorld?.(s);
       }
       check();
-    }
+      const tr = pl.s.train, P = pl.s.params;   // K42: пихкання — як у main.js, на ×4–×8 тихо
+      opts.audio?.setTrain?.(act.speed <= 2 && pl.s.status === 'run' && tr && P ? Math.min(1, tr.speed / 1000 / (P.speedMax * R.U / R.TPS)) : 0);
+    } else opts.audio?.setTrain?.(0);
     view?.draw?.(pl.s, act.paused ? 0 : Math.min(1, act.acc / R.TICK_MS));
     const s = pl.s, end = endTick();
     put('top', act.top, `📼 Повтор · смуга №${rec.seed} · ⏱ ${fmtT(s.tick)} / ${fmtT(end)} · тик ${s.tick}/${end} · ×${act.speed}${act.paused ? ' · ⏸' : ''}`);
