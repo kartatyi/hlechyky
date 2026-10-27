@@ -12,6 +12,7 @@ import { createHud } from './hud.js';            // K9
 import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new|auto&nick=…&drive=1
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
+import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -165,6 +166,7 @@ function drawHud() {
 
 (async () => {
   view = game.view = await makeView();
+  mountLookUi(document.getElementById('kol-panel'), view);   // K5
   view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => console.warn('Колія: мережа', e)); else restart();   // K3
   requestAnimationFrame(frame);
