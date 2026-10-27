@@ -10,6 +10,7 @@ import { createExtrasRender } from './extras-render.js';   // K11: гуси й �
 import { LOOKS, CAM_DIST, loadPrefs, savePrefs } from './looks.js';   // K5: вигляди
 import { isChumak, onTheme } from './theme.js';   // K25: тема «Чумацький шлях» (лише вигляд)
 import * as CV from './chumak-vox.js';             // K25: воли, мажі, гать, ярмарок, степ
+import { createWeather, WX } from './weather.js';   // K32: час доби й погода (лише вигляд)
 
 // ---------- палітра (BASE — «Літо»; вигляд K5 накладає свої заміни в C, див. looks.js) ----------
 const BASE = {
@@ -55,8 +56,9 @@ BOX.setAttribute('aHalf', new THREE.Float32BufferAttribute(new Float32Array(BOX.
 function tint(hex, amt) { _c.setHex(hex); if (amt) _c.multiplyScalar(1 + amt); return _c; }
 
 // ---------- затемнення країв кубиків і низу стін («іграшковий» AO), спільні uniform-и на всі матеріали ----------
-const FX = { uEdge: { value: 0.1 }, uEdgeW: { value: 0.06 }, uAO: { value: 0.15 } };
-const FXG = { uEdge: { value: 0.035 }, uEdgeW: { value: 0.06 }, uAO: { value: 0 } };   // підлога: ледь помітна сітка
+const FX = { uEdge: { value: 0.1 }, uEdgeW: { value: 0.06 }, uAO: { value: 0.15 }, uSnow: { value: 0 }, uWet: { value: 0 } };
+const FXG = { uEdge: { value: 0.035 }, uEdgeW: { value: 0.06 }, uAO: { value: 0 }, uSnow: WX.snowG, uWet: WX.wetG };   // підлога: ледь помітна сітка
+const FXW = { ...FX, uSnow: WX.snow, uWet: WX.wet };   // K32: світ (кубики, дерева) — сніг на верхівках і мокре; гравці й потяг — без
 const FX_VERT = `#include <begin_vertex>
   if (aHalf.x > 0.0) { vBoxP = aBox; vBoxH = aHalf; }
   else {
@@ -79,13 +81,14 @@ const FX_FRAG = `#include <color_fragment>
     float kw = min(uEdgeW, 0.6 * min(vBoxH.x, min(vBoxH.y, vBoxH.z)));
     diffuseColor.rgb *= 1.0 - uEdge * (1.0 - smoothstep(0.0, kw, ke));
     diffuseColor.rgb *= 1.0 - uAO * (1.0 - vKN) * (1.0 - smoothstep(-0.05, 0.42, vKY));
+    diffuseColor.rgb = mix(diffuseColor.rgb * (1.0 - uWet), vec3(0.93, 0.95, 1.0), uSnow * step(0.9, vKN) * step(0.09, min(vBoxH.x, vBoxH.z)));   // K32
   }`;
 function fxPatch(m, set = FX, key = 'kfx') {
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, set);
     sh.vertexShader = 'attribute vec3 aBox;\nattribute vec3 aHalf;\nvarying vec3 vBoxP;\nvarying vec3 vBoxH;\nvarying float vKY;\nvarying float vKN;\n'
       + sh.vertexShader.replace('#include <begin_vertex>', FX_VERT);
-    sh.fragmentShader = 'uniform float uEdge;\nuniform float uEdgeW;\nuniform float uAO;\nvarying vec3 vBoxP;\nvarying vec3 vBoxH;\nvarying float vKY;\nvarying float vKN;\n'
+    sh.fragmentShader = 'uniform float uEdge;\nuniform float uEdgeW;\nuniform float uAO;\nuniform float uSnow;\nuniform float uWet;\nvarying vec3 vBoxP;\nvarying vec3 vBoxH;\nvarying float vKY;\nvarying float vKN;\n'
       + sh.fragmentShader.replace('#include <color_fragment>', FX_FRAG);
   };
   m.customProgramCacheKey = () => key;
@@ -471,12 +474,12 @@ export function createRenderer(canvas) {
       transformed.z += 0.035 * sin(transformed.x * 1.9 + uTime * 1.7) + 0.03 * sin(transformed.y * 2.7 - uTime * 1.3)
                      + 0.015 * sin((transformed.x + transformed.y) * 4.1 + uTime * 2.6);`);
   };
-  const boxMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  const boxMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }), FXW);   // K32: FXW (сніг/мокре)
   const groundMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }), FXG, 'kfxg');
   // K20: дерева хитаються від вітру — у вершинному шейдері (окремий пул дерев): зсув росте з висотою над землею,
   // фаза — від клітинки (усе дерево разом), сила — від вигляду (осінь вітряніша). Тіні не хитаються (зсув ≤ 0,06).
   const windT = { value: 0 }, windK = { value: 1 };
-  const treeMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }), FX, 'kfxt');
+  const treeMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }), FXW, 'kfxt');   // K32: FXW
   { const base = treeMat.onBeforeCompile;
     treeMat.onBeforeCompile = (sh, r) => {
       base(sh, r); sh.uniforms.uWT = windT; sh.uniforms.uWK = windK;
@@ -495,6 +498,7 @@ export function createRenderer(canvas) {
         mvPosition = modelViewMatrix * mvPosition;
         gl_Position = projectionMatrix * mvPosition;`);
     }; }
+  const weather = createWeather({ THREE, scene, camera, renderer, hemi, sun, waterMat, restore: () => applyLook(prefs.look, false) });   // K32
 
   // ---- частинки ----
   const PMAX = 900;
@@ -614,6 +618,7 @@ export function createRenderer(canvas) {
     W.marks = [];          // підсвітка клітинки перед гравцем і рамка прицілу (p.aim, K14)
     syncPlayers(s);
     applyShadowMode();
+    weather.setWorld(s, root);   // K32: калюжі, вікна вокзалу
     W.snap = null; snapshot(s); W.prev = W.cur;
     if (!keepCam) cam.init = false;
   }
@@ -1465,6 +1470,7 @@ export function createRenderer(canvas) {
     extras.update(s, alpha, { blob: blobOn });
     waterTime.value = now / 1000;
     stepParticles(dt);
+    weather.update(dt, now, s, { cam, halfW, look, lowQ, loco: W.train[0].g, players: W.players });   // K32
     renderer.render(scene, camera);
   }
 
@@ -1560,7 +1566,7 @@ export function createRenderer(canvas) {
 
   function dispose() {
     disposeWorld();
-    extras.dispose();
+    extras.dispose(); weather.dispose();   // K32
     vignette.remove(); arrowBox.remove();
     pMesh.dispose();
     renderer.dispose();
@@ -1585,6 +1591,7 @@ export function createRenderer(canvas) {
     setLook(name) { applyLook(name); savePrefs(prefs); },
     setCam({ dist, angle } = {}) { if (dist) prefs.dist = dist; if (angle) prefs.angle = String(angle); savePrefs(prefs); },
     setQuality,
+    weather,   // K32: rows() для «🎨 Вигляд», state для перевірок
     get quality() { return lowQ ? 'low' : 'high'; },
     get look() { return prefs.look; } };
   if (globalThis.KOL) globalThis.KOL.view = api;      // для перевірок у консолі
