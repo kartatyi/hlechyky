@@ -106,14 +106,16 @@ const CSS = `
 .kol-hot .kol-heat > i { background: #ff3b2f; }
 .kol-hot { animation: kol-blink .6s steps(2) infinite; }
 @keyframes kol-blink { 50% { border-color: #ff3b2f; background: #5a0f0bcc; } }
-.kol-banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; font-size: 2.1em;
-  padding: .3em .9em; border-radius: 14px; display: none; white-space: nowrap; }
+/* Сповіщення — одна колонка вгорі по центру, під смугою: тривоги (пожежа, рейки, станція, відлік), під ними тости.
+   Раніше банери й відлік стояли на 22–36 % висоти — посеред поля, якраз де гравці (скарга 28.10). */
+.kol-alerts { position: absolute; left: 50%; top: calc(10px + 2.6em); transform: translateX(-50%); display: flex; flex-direction: column;
+  align-items: center; gap: .3em; width: max-content; max-width: min(92vw, 34em); }
+.kol-banner { text-align: center; font-size: 1.1em; padding: .2em .8em; border-radius: 12px; display: none; white-space: nowrap; }
 .kol-fire { background: #a3160ee6; border: 2px solid #ffb347; animation: kol-pulse .5s ease-in-out infinite alternate; }
-.kol-fire { font-size: 1.6em; }   /* K61: на 2,1em банер (≈ 540 px) лягав на лівий стовпчик — саме на шкалу котла */
-.kol-alarm { top: 36%; font-size: 1.6em; background: #8a5a00e6; border: 2px solid #ffd23f; animation: kol-pulse .4s ease-in-out infinite alternate; }
-@keyframes kol-pulse { to { transform: translateX(-50%) scale(1.06); } }
-.kol-count { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; display: none; }
-.kol-count b { display: block; font-size: 5em; line-height: 1; color: #ffd23f; text-shadow: 0 3px 10px #000; }
+.kol-alarm { background: #8a5a00e6; border: 2px solid #ffd23f; animation: kol-pulse .4s ease-in-out infinite alternate; }
+@keyframes kol-pulse { to { filter: brightness(1.35); } }
+.kol-count { display: none; text-align: center; padding: .15em .8em; }
+.kol-count b { font-size: 1.5em; line-height: 1; color: #ffd23f; margin-right: .3em; vertical-align: -.1em; }
 /* картка «Як грати» на час збору (introSteps з help.js) */
 .kol-intro { position: absolute; left: 50%; bottom: 3.4em; transform: translateX(-50%); width: min(94%, 31em); display: none; pointer-events: auto;
   font-size: max(12px, .82em); font-weight: 500; line-height: 1.35; text-align: left; background: #0f120de8; padding: .5em .8em .6em; }
@@ -142,15 +144,15 @@ const CSS = `
 .kol-sum { display: grid; grid-template-columns: auto auto; gap: .2em 1em; width: fit-content; margin: .6em auto; text-align: left; font-weight: 500; }
 .kol-again { pointer-events: auto; margin-top: .6em; min-height: 48px; padding: .3em 1.4em; font: inherit; font-size: 1.1em; color: #fff;
   background: #4a6a2a; border: 1px solid #9bc25a; border-radius: 12px; cursor: pointer; touch-action: manipulation; }
-.kol-toasts { position: absolute; left: 50%; top: calc(10px + 2.6em); transform: translateX(-50%); display: flex; flex-direction: column;
-  align-items: center; gap: .3em; }
+.kol-toasts { display: flex; flex-direction: column; align-items: center; gap: .3em; }
+.kol-toasts:empty { display: none; }
 .kol-toast { white-space: nowrap; background: #1f3a12ee; border-color: #9bc25a; animation: kol-in .2s ease-out; }
 .kol-toast.kol-t-warn { background: #4a2c08ee; border-color: #ffb347; }
 @keyframes kol-in { from { opacity: 0; transform: translateY(-.4em); } }
 .kol-biome { white-space: nowrap; font-size: .85em; }
 .kol-prog-mid { position: absolute; top: 50%; transform: translate(-50%, -50%); font-size: .9em; }
 .kol-prog-midl { position: absolute; top: 0; bottom: 0; width: 2px; background: #5fd3ff; transform: translateX(-1px); opacity: .8; }
-.kol-mid { top: 36%; font-size: 1.4em; background: #0f3a4ae6; border: 2px solid #5fd3ff; white-space: normal; max-width: 90vw; }
+.kol-mid { background: #0f3a4ae6; border: 2px solid #5fd3ff; white-space: normal; }
 .kol-padonly { display: none; }
 .kol-haspad .kol-padonly { display: contents; }
 .kol-haspad .kol-kbonly { display: none; }
@@ -166,15 +168,17 @@ const CSS = `
 .kol-ptab td:first-child { text-align: left; }
 .kol-ptab td.kol-ttl { text-align: left; font-weight: 700; color: #ffe9a8; }
 .kol-ptab i { opacity: .35; font-style: normal; }
-#kol-hud .kol-top { right: 124px; }
+#kol-hud .kol-top { right: 178px; }   /* праворуч угорі: ⏸ ⛶ ⚙ */
 /* K37: верхня смуга компактніша й напівпрозора — бульбашки-реакції й ніки гравців біля верхнього краю видно крізь неї */
 #kol-hud .kol-top { top: 6px; font-size: .85em; gap: .45em; }
 #kol-hud .kol-top .kol-box { background: #0f120d70; border-color: #ffffff16; padding: .15em .5em; }
 #kol-hud .kol-top .kol-prog { height: 1.35em; padding: 0; }
 #kol-hud .kol-top .kol-prog-track { background: #8a7a5a40; }
-#kol-hud .kol-res, #kol-hud .kol-toasts { top: calc(6px + 2.1em); }
-.kol-pausebtn { position: fixed; right: 62px; top: 8px; width: 46px; height: 46px; border-radius: 10px; border: 1px solid #fff3;
+#kol-hud .kol-res, #kol-hud .kol-alerts { top: calc(6px + 2.1em); }
+.kol-pausebtn { position: fixed; right: 116px; top: 8px; width: 46px; height: 46px; border-radius: 10px; border: 1px solid #fff3;
   background: rgba(20,24,18,.7); color: #f4efe2; font-size: 20px; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
+/* телефон: ⛶ гри нема (panel.js — там ⛶ столу), смуга знову ширша; сповіщення — під стовпчиком ресурсів, а не на ньому */
+@media (max-width: 640px) { #kol-hud .kol-top { right: 124px; } .kol-pausebtn { right: 62px; } #kol-hud .kol-alerts { top: calc(10px + 11em); } }
 .kol-modes { display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; }
 .kol-modes .kol-again { font-size: 1em; }
 .kol-pmenu { display: flex; flex-direction: column; align-items: stretch; gap: .1em; width: fit-content; margin: .4em auto; }
@@ -270,16 +274,17 @@ export function createHud(root, opts = {}) {
   const cistEl = el('span', 'kol-up', boiler);   // K56: 🚿 заряди цистерни біля котла
 
   // — банери
-  const fire = el('div', 'kol-banner kol-fire', root);
-  const alarm = el('div', 'kol-banner kol-alarm', root, '⚠ Рейки закінчуються!');
-  const count = el('div', 'kol-count', root);
-  const countN = el('b', null, count); const countT = el('div', 'kol-box', count, 'паротяг рушає');
-  const midEl = el('div', 'kol-banner kol-mid', root);
+  const alerts = el('div', 'kol-alerts', root);   // банери й тости — колонкою вгорі, не посеред поля
+  const fire = el('div', 'kol-banner kol-fire', alerts);
+  const alarm = el('div', 'kol-banner kol-alarm', alerts, '⚠ Рейки закінчуються!');
+  const midEl = el('div', 'kol-banner kol-mid', alerts);
+  const count = el('div', 'kol-box kol-count', alerts);
+  const countN = el('b', null, count); const countT = el('span', null, count, 'паротяг рушає');
   // Картка «Як грати» (introSteps): поки стіл чекає «▶ Почали» (у мережі світ тоді стоїть), а новачкові — і на першому
   // відліку без мережі. ✕ — сховати до наступної партії; «🎓» — навчальна смуга (у мережі — для всіх за столом).
   const intro = el('div', 'kol-box kol-intro', root);
   let introKey = '', introOff = null, freshTok = null, freshV = false;
-  const toasts = el('div', 'kol-toasts', root);
+  const toasts = el('div', 'kol-toasts', alerts);
   const timers = new Set();
   // коротка плашка; не більше TOASTS одночасно — новий витісняє найстаріший; той самий текст не дублюється
   const say = (text, ms = 3500, warn = false) => {
