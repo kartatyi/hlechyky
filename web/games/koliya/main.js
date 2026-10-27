@@ -13,6 +13,7 @@ import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
+import { createCoopKeys } from './coop-keys.js';     // K18: кидок/гудок, доки їх нема в input.js
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -88,6 +89,7 @@ function restart(seed = game.seed) {
 function tickOnce() {
   const s = game.state;
   const cmds = game.cmds.splice(0);
+  (game.coopKeys ??= createCoopKeys()).poll(cmds, game.local);   // K18
   const ins = input.poll();
   for (let i = 0; i < game.local; i++) {
     const v = ins[i]; if (!v) continue;
