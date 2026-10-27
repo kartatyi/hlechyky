@@ -19,7 +19,7 @@ namespace Hlechyky.Games.Impl;
 /// згорнути кадри, тож запис іде в кількох кадрах поспіль. Хто відстав більше (діра в номерах) чи щойно прийшов —
 /// бере журнал окремо: <c>GET /api/games/koliya/{стіл}/log?from=N</c> (<see cref="KoliyaSetup"/>).
 /// Запис — 10 цілих: <c>[seq, t, p, k, a, b, c, d, e, i]</c>, k: 1 in (a=mx, b=my), 2 use (a=x, b=y, c=fx, d=fy,
-/// e=1 — «затиснуто»), 3 join, 4 leave; i — номер команди у відправника (щоб він упізнав свою).
+/// e=1 — «затиснуто»), 3 join, 4 leave, 5 throw (a=x, b=y, c=fx, d=fy — кидок K18 залежить від пози), 6 horn (гудок K18); i — номер команди у відправника (щоб він упізнав свою).
 /// </para>
 /// <para>
 /// Двоє за одним ПК (K6): місце може мати другого гравця rules (<c>Act "join2"</c> / <c>"leave2"</c>; команди 'in'/'use'
@@ -56,7 +56,7 @@ public sealed class Koliya : Game, IUnlistedGame
 
     /// <summary>Гравців rules.js (MAX_PLAYERS) — з двома за ПК місць може бути менше.</summary>
     public const int MaxRulesPlayers = 4;
-    public const int In = 1, Use = 2, Join = 3, Leave = 4;
+    public const int In = 1, Use = 2, Join = 3, Leave = 4, Throw = 5, Horn = 6;
 
     /// <summary>Порожній стіл чекає свого (F5, обрив).</summary>
     public override TimeSpan HoldEmpty => TimeSpan.FromSeconds(60);
@@ -189,6 +189,19 @@ public sealed class Koliya : Game, IUnlistedGame
                 var p = Player(seat, payload);
                 Add(seat, new Entry(0, p, Use, Clamp(payload, "x", 0, 10_000_000), Clamp(payload, "y", 0, 10_000_000),
                     Clamp(payload, "fx", -1, 1), Clamp(payload, "fy", -1, 1), Clamp(payload, "h", 0, 1), Clamp(payload, "i", 0, int.MaxValue)), ReqTick(payload));
+                return ActResult.Done;
+            }
+            case "throw":   // K18: кидок речі — з позою, як use
+            {
+                var p = Player(seat, payload);
+                Add(seat, new Entry(0, p, Throw, Clamp(payload, "x", 0, 10_000_000), Clamp(payload, "y", 0, 10_000_000),
+                    Clamp(payload, "fx", -1, 1), Clamp(payload, "fy", -1, 1), 0, Clamp(payload, "i", 0, int.MaxValue)), ReqTick(payload));
+                return ActResult.Done;
+            }
+            case "horn":    // K18: гудок — без пози
+            {
+                var p = Player(seat, payload);
+                Add(seat, new Entry(0, p, Horn, 0, 0, 0, 0, 0, Clamp(payload, "i", 0, int.MaxValue)), ReqTick(payload));
                 return ActResult.Done;
             }
             case "hash":
