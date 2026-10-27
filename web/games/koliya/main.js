@@ -10,6 +10,8 @@ import { createPanel } from './panel.js';        // K4
 import { createDebug2d } from './debug2d.js';
 import { createHud } from './hud.js';            // K9
 import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new|auto&nick=…&drive=1
+import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
+import { drawExtras2d } from './extras-render.js';   // K11
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -90,6 +92,9 @@ function afterStep(s) {
   view?.events?.(s.ev);
 }
 
+// Тестовий режим (?test або headless-автоматизація): не більше 10 к/с — headless Chrome малює WebGL програмно й їсть CPU проду
+const TEST = q.has('test') || navigator.webdriver;
+const nextFrame = () => TEST ? setTimeout(() => requestAnimationFrame(frame), 100) : requestAnimationFrame(frame);
 let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(250, now - last); last = now;
@@ -99,8 +104,12 @@ function frame(now) {
     acc += dt * game.speed;
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
-  if (game.state) { view?.draw(game.state, net ? net.alpha : acc / R.TICK_MS); drawHud(); }
-  requestAnimationFrame(frame);
+  if (!game.state) return nextFrame();   // K3: мережа ще бере журнал
+  view?.draw(game.state, net ? net.alpha : acc / R.TICK_MS);
+  if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
+  drawHud();
+  (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
+  nextFrame();
 }
 
 let hudUi = null;
@@ -110,7 +119,7 @@ function drawHud() {
 }
 
 (async () => {
-  view = await makeView();
+  view = game.view = await makeView();
   if (net) net.start().catch((e) => console.warn('Колія: мережа', e)); else restart();   // K3
   requestAnimationFrame(frame);
 })();
