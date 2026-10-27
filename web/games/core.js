@@ -122,7 +122,7 @@
     live: [
       { id: 'shoot', title: 'Стрілялки', icon: '🎯', ids: ['duel', 'tyr', 'tanks', 'bomber', 'glekomet'] },
       { id: 'race', title: 'Перегони й м’яч', icon: '🏎', ids: ['rally', 'hockey', 'pong', 'typerace'] },
-      { id: 'arcade', title: 'Аркада', icon: '🕹', ids: ['snake', 'tron', 'bricks', 'dino', 'curve', 'territory', 'vohnyk'] },
+      { id: 'arcade', title: 'Аркада', icon: '🕹', ids: ['snake', 'tron', 'bricks', 'dino', 'curve', 'territory', 'vohnyk', 'koliya'] },
       { id: 'stand', title: 'Хто вистоїть', icon: '🧊', ids: ['icefloe', 'thinice', 'brid', 'bakhne', 'crowd'] },
       { id: 'grab', title: 'Хапай і збирай', icon: '🧺', ids: ['grushi', 'hostyntsi', 'skyrta', 'sklei'] },
     ],
@@ -1064,13 +1064,16 @@
   function askLeave(other, labels) {
     const playing = other.status === 'playing';
     const stake = playing && other.stake ? ', а ставка 🏺' + other.stake + ' лишиться суперникові' : '';
+    // Кооп без поразки за вихід (модуль каже leaveFree, напр. «Колія»): гравець іде, решта грає далі
+    const free = playing && modules[other.game] && modules[other.game].leaveFree;
     return ask({
       title: 'Ти вже за столом',
       html: '<b>' + iconOf(other.game) + esc(titleOf(other.game)) + '</b>'
-        + (playing ? ' — там іде партія. Якщо встанеш зараз, вона зарахується як поразка' + stake + '.'
+        + (free ? ' — там іде партія. Встати можна: поразкою це не рахується, решта грає далі без тебе.'
+          : playing ? ' — там іде партія. Якщо встанеш зараз, вона зарахується як поразка' + stake + '.'
           : other.status === 'finished' ? ' — партію там дограно, встати можна без наслідків.'
           : ' — партія ще не почалась, встати можна без наслідків.'),
-      ok: playing ? labels[1] : labels[0],
+      ok: playing && !free ? labels[1] : labels[0],
       cancel: 'Лишитись там',
     });
   }

@@ -119,6 +119,7 @@ public static class GamesSetup
         Impl.SkleiSetup.MapSklei(app);                      // /api/games/sklei/… — колода, своя картинка, адмін знімає
         Impl.SlotsSetup.MapSlots(app);                      // /api/slots/feed — Скарбничка й заноси тижня
         Impl.FuraSetup.MapFura(app);                        // /api/games/fura/map/<id> — мапа, /voice — голос диспетчера «Чумаків»
+        Impl.KoliyaSetup.MapKoliya(app);                    // /api/games/koliya/<стіл>/log — журнал команд «Колії»
         return app;
     }
 }
