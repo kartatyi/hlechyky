@@ -45,6 +45,14 @@ const CSS = `
 .kol-ach .kol-ach-on { border-color: #ffd23f88; background: #3a3414; }
 @media (max-width: 520px) { .kol-ach { grid-template-columns: 1fr; } }
 @media (max-height: 820px) { .kol-menu .kol-mi { min-height: 42px; } .kol-menu .kol-mi.kol-main { min-height: 48px; } .kol-menu .kol-opt { min-height: 36px; } }
+/* K69: телефон — дрібний текст не менший за 12 px (було 9–11), стрілки й рядки-опції ≥ 40 px дотику */
+.kol-menu .kol-mi small, .kol-msub, .kol-mkeys, .kol-mlink, .kol-ach div { font-size: max(12px, .72em); }
+.kol-menu .kol-mi.kol-main small { font-size: max(12px, .55em); }
+.kol-ach div small { font-size: max(12px, .85em); }
+.kol-menu .kol-arr, .kol-menu .kol-opt { min-height: 40px; }
+@media (max-height: 820px) { .kol-menu .kol-opt { min-height: 40px; } }
+@media (max-height: 500px) { .kol-menu { gap: .25em; margin-top: .3em; } .kol-menu .kol-mi { min-height: 40px; } .kol-menu .kol-mi.kol-main { min-height: 44px; }
+  .kol-mkeys { margin-top: .3em; } }
 `;
 
 function load() { try { const o = JSON.parse(localStorage.getItem(KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch { return {}; } }

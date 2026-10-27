@@ -16,7 +16,7 @@
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES, CIST_MAX, BRAKE_SEC } from './extras.js';   // K16: тост покращення; K56: тости й значки K48
-import { t as tt, isChumak } from './theme.js';      // K25: слова теми «Чумацький шлях»; K50: «Чумак»
+import { t as tt, isChumak, upName } from './theme.js';      // K25: слова теми «Чумацький шлях»; K50: «Чумак»
 import { achievements } from './achievements.js';   // K50: досягнення 🏆 — тости з s.ev
 import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
 import { A11Y, pcol, pmark } from './panel.js';   // K49: кольори для дальтоніків і значки форми
@@ -175,6 +175,14 @@ html.kol-a-big #kol-hud.kol-root { font-size: clamp(17.5px, 2vw, 27.5px); }
 html.kol-a-calm .kol-root *, html.kol-a-calm .kol-root { animation: none !important; transition: none !important; }
 html.kol-a-calm .kol-hot { border-color: #ff3b2f; background: #5a0f0bcc; }
 html.kol-a-calm .kol-alarm { background: #a3160ee6; border-color: #ff3b2f; }
+/* K69: телефон — тости переносяться (довгі покращення вилазили за край), підказки й таблиця званнь ≥ 12 px (таблиця гортається
+   вбік, а не обрізається), картка паузи/фіналу тонша; ландшафт (висота ≤ 500) — менший заголовок і кнопки, екран гортається */
+.kol-toast { white-space: normal; max-width: min(92vw, 34em); text-align: center; }
+.kol-hint { font-size: max(12px, .85em); }
+.kol-ptab { font-size: max(12px, .85em); display: block; max-width: 100%; width: fit-content; overflow-x: auto; }
+@media (max-width: 640px) { .kol-ptab { font-size: 12px; } .kol-card { padding: .8em .7em; max-width: calc(100vw - 16px); } }
+@media (max-height: 500px) { .kol-screen { align-items: flex-start; padding: 6px 0; } .kol-card { padding: .5em 1em; } .kol-card h1 { font-size: 1.6em; }
+  .kol-card .kol-again { min-height: 42px; margin-top: .3em; } .kol-card .kol-sum { grid-template-columns: repeat(4, auto); margin: .3em auto; } }
 `;
 
 /** Ділянки-біоми всієї смуги: s.zones (перша смуга) + з проміжною станцією — зони другої (той самий сід, що в extras) */
@@ -504,7 +512,7 @@ export function createHud(root, opts = {}) {
       set(progMid.style, 'mid|left', pc); set(progMidL.style, 'midl|left', pc);
       txt(progMid, 'midT', mid.pick ? (UPGRADES[mid.pick]?.icon ?? '✔') : '🏪');
     }
-    const signs = () => (mid?.signs ?? []).map((g) => `${UPGRADES[g.k]?.icon} ${UPGRADES[g.k]?.short}`).join(' · ');
+    const signs = () => (mid?.signs ?? []).map((g) => { const u = upName(g.k, UPGRADES[g.k]); return `${u?.icon} ${u?.short}`; }).join(' · ');
     const eStop = !!(E && E.stop > 0 && s.status === 'run');   // K23: зупинка на станції нескінченної — відлік
     const midWait = eStop || !!(mid && mid.wait && !mid.pick && s.status === 'run');
     let midT = '';
@@ -752,7 +760,7 @@ export function createHud(root, opts = {}) {
         continue;
       }
       if (e.t === 'upgrade') {
-        const u = UPGRADES[s.mid?.pick];
+        const u = upName(s.mid?.pick, UPGRADES[s.mid?.pick]);   // K69: слова теми
         if (u) say(`${u.icon} ${u.label}`, 5000);
       } else if (e.t === 'honk' && e.p === undefined) {
         // гуска щойно вхопила річ: нова «run» з річчю в лапах
