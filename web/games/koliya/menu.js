@@ -16,7 +16,7 @@ export const PICKS = [8, 19, 23, 53, 43];   // K22: добірка сідів (_
 const PICK_TAG = { 8: 'м’який', 19: 'річка рано', 23: 'старт у лісі', 53: 'прохід рано', 43: 'найважчий' };
 const ICON = { glade: '🌱', steppe: '🌾', grove: '🌳', stone: '🪨', river: '🌊', swamp: '🐸', pass: '⛰' };
 export const BIOME_SHORT = { steppe: 'степ', grove: 'гай', stone: 'каміння', river: 'річка', swamp: 'болото', pass: 'прохід', glade: 'галявина' };
-const COLORS = ['#ffd23f', '#ff5fa2'];
+import { A11Y, pcol, pmark } from './panel.js';   // K53: кольори гравців — з урахуванням «Кольори для дальтоніків»
 
 const CSS = `
 .kol-menu { display: flex; flex-direction: column; gap: .3em; width: min(100%, 24em); margin: .5em auto 0; }
@@ -161,9 +161,10 @@ export function createMenu(box, opts = {}) {
     link.style.display = net() ? '' : 'none';
     if (net()) { const v = L || `🌐 ${window.KOL?.net?.status ?? 'підключаюсь…'}`; if (link.value !== v) link.value = v; }
     const two = st.players === 2;
-    if (keysTwo === two) return;
-    keysTwo = two;
-    keys.innerHTML = `<span class="kol-kbonly"><b style="color:${COLORS[0]}">П1</b> WASD + Space/E${two ? ` · <b style="color:${COLORS[1]}">П2</b> стрілки + Enter` : ''} · Q — кинути · F — гудок · Esc — пауза<br></span>`
+    const kk = `${two}|${A11Y.v}`;   // K53: палітра могла змінитись у «⚙»
+    if (keysTwo === kk) return;
+    keysTwo = kk;
+    keys.innerHTML = `<span class="kol-kbonly"><b style="color:${pcol(0)}">${pmark(0)}П1</b> WASD + Space/E${two ? ` · <b style="color:${pcol(1)}">${pmark(1)}П2</b> стрілки + Enter` : ''} · Q — кинути · F — гудок · Esc — пауза<br></span>`
       + `🎮 стік — ходити · <b>A</b> — дія · <b>B</b> — кинути · <b>Y</b> — гудок${two ? ' · другий пад — П2' : ''}<br>`
       + `<span class="kol-kbonly">меню: ↑↓ — вибір · ←→ — змінити · Enter — так · F1 — налаштування</span><span class="kol-padonly">меню: ✚ — вибір · ◀▶ — змінити · <b>A</b> — так</span>`;
   }

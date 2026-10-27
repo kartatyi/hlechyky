@@ -21,7 +21,7 @@
 import { U, G, O, I, TPS, wagonPos, canLay, canUnlay } from './rules.js';
 import { t as tt } from './theme.js';   // K25: слова теми «Чумацький шлях»
 
-const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];   // як у HUD/debug2d
+import { A11Y, pcol } from './panel.js';   // K53: колір гравця — як у HUD (з «Кольори для дальтоніків»)
 const ROLE_TICKS = 8 * TPS;      // підказка ролей висить до 8 с, якщо гравець не взявся до діла раніше
 const HEAT_TIP = 600;            // з якого нагріву вчимо гасити (HUD тривожить з 750)
 const NEAR = 3;                  // «поруч» для дров на землі, клітинок
@@ -448,13 +448,15 @@ export function createTips(root, { enabled = true } = {}) {
   const onResize = () => { vwCache = 0; for (const u of ui) if (u) u.bw = 0; };
   addEventListener('resize', onResize);
 
+  function paint(u, p) { u.cv = A11Y.v; u.bub.style.setProperty('--c', pcol(p)); u.mark.style.setProperty('--c', pcol(p)); }
   function slot(p) {
-    if (ui[p]) return ui[p];
+    if (ui[p]) { if (ui[p].cv !== A11Y.v) paint(ui[p], p); return ui[p]; }   // K53: палітра змінилась на ходу
     const bub = doc.createElement('div'); bub.className = 'kol-tip kol-tip-off';
     const mark = doc.createElement('div'); mark.className = 'kol-tip-mark'; mark.textContent = '▼'; mark.style.display = 'none';
-    bub.style.setProperty('--c', COLORS[p % 4]); mark.style.setProperty('--c', COLORS[p % 4]);
     box.append(bub, mark);
-    return (ui[p] = { bub, mark, id: null, html: '', okUntil: 0 });
+    const u = (ui[p] = { bub, mark, id: null, html: '', okUntil: 0, cv: -1 });
+    paint(u, p);
+    return u;
   }
   function hideAll() { for (const u of ui) if (u) { u.bub.classList.add('kol-tip-off'); u.mark.style.display = 'none'; } }
 
