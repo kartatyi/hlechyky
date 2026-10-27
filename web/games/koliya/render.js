@@ -55,7 +55,7 @@ function tint(hex, amt) { _c.setHex(hex); if (amt) _c.multiplyScalar(1 + amt); r
 
 // ---------- затемнення країв кубиків і низу стін («іграшковий» AO), спільні uniform-и на всі матеріали ----------
 const FX = { uEdge: { value: 0.1 }, uEdgeW: { value: 0.06 }, uAO: { value: 0.15 }, uSnow: { value: 0 }, uWet: { value: 0 } };
-const FXG = { uEdge: { value: 0.035 }, uEdgeW: { value: 0.06 }, uAO: { value: 0 }, uSnow: WX.snow, uWet: WX.wetG };   // підлога: ледь помітна сітка
+const FXG = { uEdge: { value: 0.035 }, uEdgeW: { value: 0.06 }, uAO: { value: 0 }, uSnow: WX.snowG, uWet: WX.wetG };   // підлога: ледь помітна сітка
 const FXW = { ...FX, uSnow: WX.snow, uWet: WX.wet };   // K32: світ (кубики, дерева) — сніг на верхівках і мокре; гравці й потяг — без
 const FX_VERT = `#include <begin_vertex>
   if (aHalf.x > 0.0) { vBoxP = aBox; vBoxH = aHalf; }

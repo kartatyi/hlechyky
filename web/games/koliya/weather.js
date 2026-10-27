@@ -10,7 +10,7 @@
 //  шейдері кубиків render.js (гачок K32 у FX_FRAG).
 //  Адреса для перевірок: ?tod=night&wx=rain (не зберігається).
 
-export const WX = { snow: { value: 0 }, wet: { value: 0 }, wetG: { value: 0 } };
+export const WX = { snow: { value: 0 }, snowG: { value: 0 }, wet: { value: 0 }, wetG: { value: 0 } };
 
 export const TOD = { day: 'День', eve: 'Вечір', night: 'Ніч', flow: 'Плин часу' };
 export const WEATHER = { clear: 'Ясно', rain: 'Дощ', snow: 'Сніг', fog: 'Туман' };
@@ -275,6 +275,19 @@ export function createWeather({ THREE, scene, camera, renderer, hemi, sun, water
   const num3 = (a, b, c, t) => t <= 1 ? a + (b - a) * t : b + (c - b) * (t - 1);
   const cSkyT = new THREE.Color(), cSkyB = new THREE.Color(), cFog = new THREE.Color(), cHs = new THREE.Color(), cHg = new THREE.Color(), cSun = new THREE.Color(), cW = new THREE.Color();
   const fogLin = scene.fog;
+  // туман-головоломка: FogExp2, але «глибина» — відстань від осі погляду (центру кадру), а не від камери:
+  // довкола центру ясно, до країв кадру (і попереду колії) — молоко. Лише для FOG_EXP2 (його вживає тільки K32);
+  // звичайний туман вигляду (Fog) не змінюється. Чанк підміняємо до першої компіляції шейдерів.
+  const fogExp = new THREE.FogExp2(0xc6cdd2, 0);
+  if (!THREE.ShaderChunk.fog_vertex.includes('K32')) {
+    THREE.ShaderChunk.fog_vertex = `#ifdef USE_FOG
+#ifdef FOG_EXP2
+  vFogDepth = length(vec2(mvPosition.x, mvPosition.y * 0.8)); // K32
+#else
+  vFogDepth = - mvPosition.z;
+#endif
+#endif`;
+  }
 
   function update(dt, now, s, f) {
     lowQ = !!f.lowQ;
@@ -287,7 +300,7 @@ export function createWeather({ THREE, scene, camera, renderer, hemi, sun, water
     cur.wet = approach(cur.wet, prefs.wx === 'rain' ? 1 : 0, 1 - Math.exp(-dt * (prefs.wx === 'rain' ? 0.35 : 0.12)));
     if (cur.snow < 0.003 && prefs.wx !== 'snow') cur.snow = 0;
     if (cur.wet < 0.003 && prefs.wx !== 'rain') cur.wet = 0;
-    WX.snow.value = cur.snow * 0.92; WX.wet.value = cur.wet * 0.14; WX.wetG.value = cur.wet * 0.26;
+    WX.snow.value = cur.snow * 0.72; WX.snowG.value = cur.snow * 0.84; WX.wet.value = cur.wet * 0.14; WX.wetG.value = cur.wet * 0.26;
     syncLights();
     const aR = cur.a.rain, aS = cur.a.snow, aF = cur.a.fog, aW = aR + aS + aF;
     const busy = cur.t > 0 || aW > 0 || cur.snow > 0 || cur.wet > 0 || lightsOn;   // світла в сцені — лишаємось (інакше перекомпіляція)
@@ -320,8 +333,6 @@ export function createWeather({ THREE, scene, camera, renderer, hemi, sun, water
         hm *= 1 + (w.hm - 1) * a; sm *= 1 + (w.sm - 1) * a; fk *= 1 + (w.fogK - 1) * a;
       }
       hi *= hm; si *= sm; fogNear *= fk; fogFar *= fk;
-      // туман-головоломка: далі ~1,25 відстані камери — не видно (край кадру й попереду колії тонуть)
-      fogNear += (0.8 - fogNear) * aF; fogFar += (1.24 - fogFar) * aF;
     }
     // блискавка в дощ (рідко, коротко)
     if (aR > 0.6) {
@@ -332,10 +343,12 @@ export function createWeather({ THREE, scene, camera, renderer, hemi, sun, water
     hemi.color.copy(cHs); hemi.groundColor.copy(cHg); hemi.intensity = hi;
     sun.color.copy(cSun); sun.intensity = si;
     sun.position.copy(sun.target.position).addScaledVector(dir, 50);
-    scene.fog = fogLin; fogLin.color.copy(cFog);
-    fogLin.near = cam.d * fogNear; fogLin.far = cam.d * fogFar;
+    fogLin.color.copy(cFog); fogLin.near = cam.d * fogNear; fogLin.far = cam.d * fogFar;
+    // туман: перемкнути на FogExp2 (одна перекомпіляція), густина — від ширини кадру: на півдорозі до краю ~35 %, на краю ~88 %
+    if (aF > 0.004) { scene.fog = fogExp; fogExp.color.copy(cFog); fogExp.density = aF * 1.35 / Math.max(6, f.halfW); }
+    else scene.fog = fogLin;
     drawSky(cSkyT, cSkyB, cFog, n * (1 - Math.min(1, aW * 1.2)));
-    scene.background = skyTex;
+    scene.background = aF > 0.5 ? fogExp.color : skyTex;   // у тумані край діорами тоне в тому ж кольорі
     mix3(cW, look.water.color, EVE.water, NIGHT.water, t); if (aW > 0) cW.lerp(_c.setHex(0x4a5e70).multiplyScalar(num3(1, 0.7, 0.3, t)), aR * 0.6 + aF * 0.3);
     waterMat.color.copy(cW);
 
@@ -417,7 +430,7 @@ export function createWeather({ THREE, scene, camera, renderer, hemi, sun, water
     bulbG.dispose(); bulbs.material.dispose(); pools.dispose(); poolMat.dispose(); beamMat.dispose(); radTex.dispose(); coneTex.dispose();
     PLANE.dispose(); PUD_GEO.dispose(); puddleMat.dispose(); winMat.dispose(); skyTex.dispose();
     if (puddles) puddles.dispose();
-    WX.snow.value = WX.wet.value = WX.wetG.value = 0;
+    WX.snow.value = WX.snowG.value = WX.wet.value = WX.wetG.value = 0;
   }
   // рядки для «🎨 Вигляд» (looks.js): { label, opts, key, value, pick }
   function rows() {
