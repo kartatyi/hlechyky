@@ -530,7 +530,7 @@ export function createTips(root, { enabled = true } = {}) {
           const bot = at.y - 2.2 * u.em, top = bot - u.bh;   // де стала б бульбашка над гравцем
           const dn = !!cr && left < cr.right && left + bw > cr.left && top < cr.bottom && bot > cr.top;
           u.bub.style.setProperty('--tail', `${Math.round(Math.max(10, Math.min(bw - 10, at.x - left)))}px`);
-          placed.push({ u, left, y: at.y, bw, top, bot, dn });   // ставимо після циклу: див. нижче
+          placed.push({ u, left, y: at.y, bw, top, bot, dn, at });   // ставимо після циклу: див. нижче
         } else {
           // фолбек: стос у правому нижньому куті, гравець 1 — найнижче
           if (u.bub.parentNode !== corner) corner.appendChild(u.bub);
@@ -539,9 +539,13 @@ export function createTips(root, { enabled = true } = {}) {
           u.bub.style.order = String(p);
         }
         const mk = proj && !ok && tip && tip.x !== null ? proj(tip.x + 0.5, tip.y + 0.5) : null;
-        if (mk) { u.mark.style.display = ''; u.mark.style.transform = `translate(${Math.round(mk.x)}px, ${Math.round(mk.y)}px) translate(-50%, -110%)`; }
+        if (mk) { u.mark.style.display = ''; if (u.mark.textContent !== '▼') u.mark.textContent = '▼'; u.mark.style.transform = `translate(${Math.round(mk.x)}px, ${Math.round(mk.y)}px) translate(-50%, -110%)`; }
         else u.mark.style.display = 'none';
+        if (at && placed.length && placed[placed.length - 1].u === u) placed[placed.length - 1].mk = mk;
       }
+      // K61: бульбашка над гравцем не має накривати іншого гравця (удвох П2 стояв під бульбашкою П1 і навпаки) — тоді під свого
+      for (const a of placed) if (!a.dn && placed.some((b) => b !== a && b.at.x > a.left && b.at.x < a.left + a.bw
+        && b.at.y > a.top - a.u.em && b.at.y < a.bot + a.u.em)) a.dn = true;
       // K46: бульбашка, що пішла під гравця, не має накрити сусідову над ним — тоді й сусідова під свого гравця
       for (const a of placed) if (!a.dn && placed.some((b) => b.dn && a.left < b.left + b.bw && a.left + a.bw > b.left
         && a.top < b.y + b.u.bh + 2 * b.u.em && a.bot > b.y)) a.dn = true;
@@ -549,6 +553,15 @@ export function createTips(root, { enabled = true } = {}) {
         a.u.bub.classList.toggle('kol-tip-up', !a.dn); a.u.bub.classList.toggle('kol-tip-dn', a.dn);
         a.u.bub.style.transform = a.dn ? `translate(${Math.round(a.left)}px, ${Math.round(a.y)}px) translateY(1.6em)`
           : `translate(${Math.round(a.left)}px, ${Math.round(a.y)}px) translateY(calc(-100% - 2.2em))`;
+      }
+      // K61: ціль поруч із гравцем — «▼» над нею лягав на текст бульбашки; тоді «▲» під клітинкою
+      const rect = (a) => { const t = a.dn ? a.y + 1.6 * a.u.em : a.y - 2.2 * a.u.em - a.u.bh; return { l: a.left, r: a.left + a.bw, t, b: t + a.u.bh }; };
+      for (const a of placed) {
+        if (!a.mk) continue;
+        const w = 0.8 * a.u.em, l = a.mk.x - w, r = a.mk.x + w, t = a.mk.y - 2.3 * a.u.em, b = a.mk.y;
+        if (!placed.some((o) => { const q = rect(o); return l < q.r && r > q.l && t < q.b && b > q.t; })) continue;
+        if (a.u.mark.textContent !== '▲') a.u.mark.textContent = '▲';
+        a.u.mark.style.transform = `translate(${Math.round(a.mk.x)}px, ${Math.round(a.mk.y)}px) translate(-50%, 10%)`;
       }
     },
     setEnabled(b) { on = !!b; if (!on) hideAll(); },
