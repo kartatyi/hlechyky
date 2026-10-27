@@ -418,7 +418,10 @@ function askSeated(other) {
 export function createNet(game, opts = {}) {
   const { input, onWorld, onStep } = opts;
   let table = String(opts.table || 'auto');
-  const nick = opts.nick || '';
+  // K55: proto.html?net=… без &nick — нік сайту (той самий origin, app.js тримає його в localStorage), інакше гість
+  // без акаунта отримував «Спершу скажи, як тебе кликати»
+  let nick = opts.nick || '';
+  if (!nick) try { nick = localStorage.getItem('nick') || ''; } catch { /* приватне вікно / Node */ }
   let bot = opts.bot || null;           // { think(state) → { mx, my, use } } — керує своїм гравцем замість клавіатури
   const qs = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
   const lag = +(opts.lag ?? qs.get('lag') ?? 0) || 0, jit = +(opts.jit ?? qs.get('jit') ?? (lag ? lag / 3 : 0)) || 0;
@@ -631,8 +634,11 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
   /** K46: CreateRoom відмовив — сидимо за іншим столом. Питаємо: повернутись туди чи встати й поставити новий. */
   async function seatedElsewhere(r0) {
     for (let i = 0; i < 20 && !lobby && !mineRv; i++) await new Promise((r) => setTimeout(r, 100));
-    const me = String(nick || '').toLowerCase();
-    const other = mineRv || (me && (lobby || []).find((r) => (r.seats || []).some((x) => String((typeof x === 'string' ? x : x?.nick) || '').toLowerCase() === me))) || null;
+    const me = String(nick || '').toLowerCase(), guest = 'гість ' + me;   // K55: гостя сервер садить як «гість <нік>»
+    const other = mineRv || (me && (lobby || []).find((r) => (r.seats || []).some((x) => {
+      const n = String((typeof x === 'string' ? x : x?.nick) || '').toLowerCase();
+      return n === me || n === guest;
+    }))) || null;
     if (!other?.id) return r0;   // не знаємо, де сидимо, — main.js покаже «не вдалося» з «Грати без мережі»
     say('ти вже за іншим столом');
     const v = await askSeated(other);

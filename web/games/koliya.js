@@ -21,7 +21,10 @@
       root.innerHTML = '';
       f = document.createElement('iframe');
       f.dataset.room = id;
-      f.src = '/games/koliya/proto.html?net=' + encodeURIComponent(id) + (nick ? '&nick=' + encodeURIComponent(nick) : '');
+      // K55: перевірочні ключі сайту (/?lag=120&drive=1#games/room/…) — у рамку: пінг, автоводій, ≤ 10 кадрів/с
+      const pass = new URLSearchParams(location.search), extra = ['lag', 'jit', 'drive', 'smooth', 'test']
+        .filter((k) => pass.has(k)).map((k) => '&' + k + (pass.get(k) ? '=' + encodeURIComponent(pass.get(k)) : '')).join('');
+      f.src = '/games/koliya/proto.html?net=' + encodeURIComponent(id) + (nick ? '&nick=' + encodeURIComponent(nick) : '') + extra;
       f.style.cssText = 'width:100%;height:min(78vh,720px);border:0;border-radius:8px;display:block';
       f.allow = 'gamepad; autoplay';
       root.appendChild(f);
