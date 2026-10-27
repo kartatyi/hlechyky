@@ -112,6 +112,7 @@ function afterStep(s) {
   }
   audio.setTrain?.(s.status === 'run' ? Math.min(1, s.train.speed / 1000 / (s.params.speedMax * U_PER_TICK)) : 0);
   view?.events?.(s.ev);
+  hudUi?.events?.(s.ev, s);   // K16: тости подій
 }
 
 // Тестовий режим (?test або headless-автоматизація): не більше 10 к/с — headless Chrome малює WebGL програмно й їсть CPU проду
