@@ -648,7 +648,7 @@ function join(s) {
   let n = s.players.findIndex((p) => p.out);
   if (n < 0) { if (s.players.length >= MAX_PLAYERS) return; n = s.players.length; s.players.push(null); }
   // з'являємося біля потяга (старт міг лишитися далеко позаду)
-  const c = nearFree(s, wagonPos(s, WAGONS.length - 1));
+  const c = tailCell(s) || nearFree(s, wagonPos(s, WAGONS.length - 1));   // K33: досяжна пішки, не за скелями
   s.players[n] = newPlayer(c || s.spawn[n % s.spawn.length]);
 }
 

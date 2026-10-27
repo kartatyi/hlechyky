@@ -193,6 +193,44 @@ test('K33-3: склад повний — решта біля кінця колі
   assert.deepEqual(L.toolCount(s), [1, 1, 1], 'сокира не чекає 10 с');
 });
 
+// ================= 4. глухі кути =================
+test('K33-4: замурований (скелі/вода, без інструментів) 5 с тисне в стіну — переноситься до хвоста потяга', () => {
+  const s = blank();
+  for (let y = 2; y <= 6; y++) for (let x = 48; x <= 52; x++) if (Math.max(Math.abs(x - 50), Math.abs(y - 4)) === 2) s.obj[id(s, x, y)] = O.ROCK;
+  for (let x = 48; x <= 52; x++) s.ground[id(s, x, 6)] = G.WATER;
+  const pl = at(s, 0, 50, 4);
+  const ev = run(s, 140, [{ p: 0, k: 'in', mx: 100, my: 0 }]);
+  const r = ev.filter((e) => e.t === 'rescue');
+  assert.equal(r.length, 1);
+  const t = R.wagonPos(s, 2);
+  assert.ok(Math.abs(r[0].x - Math.floor(t.x / U)) + Math.abs(r[0].y - Math.floor(t.y / U)) <= 3, 'біля хвоста');
+  assert.ok(Math.floor(pl.x / U) < 40, 'вийшов з кишені');
+});
+
+test('K33-4: просто вперся в стіну, а дійти до колії можна — не переносить', () => {
+  const s = blank();
+  const pl = at(s, 0, 30, 1, 0, -1);   // під верхньою стіною
+  const ev = run(s, 200, [{ p: 0, k: 'in', mx: 0, my: -100 }]);
+  assert.equal(ev.filter((e) => e.t === 'rescue').length, 0);
+  assert.equal(Math.floor(pl.y / U), 1);
+});
+
+test('K33-4: join — з\'являємося на клітинці, звідки дійти до колії (не в кишені за скелями)', () => {
+  const s = blank({}, 1);
+  const t = R.wagonPos(s, 2), tx = Math.floor(t.x / U), ty = Math.floor(t.y / U);
+  // усе в радіусі 6 від хвоста, крім колії, — скелі, а одна кишенька (перша в порядку старого nearFree) порожня
+  for (let y = ty - 6; y <= ty + 6; y++) for (let x = tx - 6; x <= tx + 6; x++) {
+    if (!R.inside(s, x, y) || s.path.includes(id(s, x, y))) continue;
+    if (y > 0 && y < s.h - 1) s.obj[id(s, x, y)] = O.ROCK;
+  }
+  const pocket = id(s, tx - 1, ty - 2); s.obj[pocket] = O.NONE;
+  const free = id(s, tx + 2, ty + 1); s.obj[free] = O.NONE;   // сусід колії по стороні — досяжний
+  run(s, 1, [{ k: 'join' }]);
+  const p = s.players[1], c = id(s, Math.floor(p.x / U), Math.floor(p.y / U));
+  assert.notEqual(c, pocket);
+  assert.equal(c, free);
+});
+
 // ================= детермінізм =================
 test('K33: детермінізм — однакові команди дають однаковий hash; s.keep іде в hash', () => {
   const mk = () => { const s = blank({ throw: 'on' }); const pl = at(s, 0, 30, 3); pl.hold = { k: I.BUCKET_FULL, n: 1 }; for (let x = 31; x <= 34; x++) s.ground[id(s, x, 3)] = G.WATER; return s; };
