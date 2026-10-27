@@ -10,6 +10,7 @@ import { createPanel } from './panel.js';        // K4
 import { createDebug2d } from './debug2d.js';
 import { createHud } from './hud.js';            // K9
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
+import { drawExtras2d } from './extras-render.js';   // K11
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -92,6 +93,7 @@ function frame(now) {
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
   view?.draw(game.state, acc / R.TICK_MS);
+  if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();
   (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
   requestAnimationFrame(frame);
