@@ -148,7 +148,7 @@ test('взяти/покласти: стоси до carryMax, затиснуте 
 });
 
 test('склад і майстерня: дрова й залізо → рейки за craftSec, до railsMax; рейки з майстерні в руки', () => {
-  const s = blank({ craftSec: 2, startRails: 0, railsMax: 2, storeMax: 4, startSec: 90 });
+  const s = blank({ craftSec: 2, startRails: 0, railsMax: 2, railsPerCraft: 1, storeMax: 4, startSec: 90 });
   const st = R.wagonPos(s, 1), sx = Math.floor(st.x / U), sy = Math.floor(st.y / U);
   const pl = at(s, 0, sx, sy - 1, 0, 1);
   pl.hold = { k: I.WOOD, n: 3 };

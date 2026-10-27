@@ -35,15 +35,34 @@ function sh(s) {
       // щоб розширити коридор (інакше потяг затуляє вузький прохід)
       o.near = new Set();
       const hi = Math.floor(s.train.pos / U);
-      const cells = [...s.path.slice(Math.max(0, hi - 3)), ...o.route.slice(1, 25)];
+      const cells = [...s.path.slice(Math.max(0, hi - 3)), ...o.route.slice(1, 10)];
       for (const c of cells) {
         o.near.add(c);
         const x = c % s.w, y = (c / s.w) | 0;
         for (const [dx, dy] of DIRS) if (x + dx >= 0 && y + dy >= 0 && x + dx < s.w && y + dy < s.h) o.near.add((y + dy) * s.w + x + dx);
       }
+      // «попереду»: біля кінця колії й перших клітинок маршруту — сюди кладемо відро, щоб потяг під'їхав до нього
+      o.front = new Set();
+      for (const c of o.route.slice(0, 6)) {
+        const x = c % s.w, y = (c / s.w) | 0;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (x + dx >= 0 && y + dy >= 0 && x + dx < s.w && y + dy < s.h) o.front.add((y + dy) * s.w + x + dx);
+      }
       // що далі класти: перша клітинка маршруту після кінця колії
     }
     o.N = o.route.length > 1 ? o.route[1] : -1;
+    // бічний прохід: біля N з одного боку має бути прохідно (і біля кінця колії з того ж боку) — інакше потяг
+    // у вузькому коридорі затулить прохід. Перешкоду збоку прибираємо перед тим, як класти N. 20 с не вийшло — забуваємо.
+    if (o.sideN !== o.N) { o.sideN = o.N; o.sideT = s.tick; }
+    o.side = s.tick - o.sideT < 20 * TPS ? sideNeed(s) : -1;
+    if (!o.dS || s.tick - o.dst >= 10) {      // відстані від складу/майстерні (куди носимо) — щоб рубати там, звідки ближче нести
+      o.dst = s.tick;
+      const src = [];
+      for (const k of [1, 2]) {
+        const w = wagonPos(s, k), cx = Math.floor(w.x / U), cy = Math.floor(w.y / U);
+        for (const [dx, dy] of DIRS) { const x = cx + dx, y = cy + dy; if (x >= 0 && y >= 0 && x < s.w && y < s.h) src.push(y * s.w + x); }
+      }
+      o.dS = distMap(s, o, src);
+    }
     for (const [k, c] of o.claims) if (c.t < s.tick - 6) o.claims.delete(k);
     for (const [p, t] of o.bots) if (t < s.tick - 20) o.bots.delete(p);
   }
@@ -82,9 +101,9 @@ function planRoute(s) {
       // краще просторі місця: у вузькому коридорі потяг затуляє прохід, і гравцю не обійти його
       for (const [ex, ey] of DIRS) {
         const qx = nx + ex, qy = ny + ey;
-        if (qx < 0 || qy < 0 || qx >= W || qy >= s.h) { cost += 4; continue; }
+        if (qx < 0 || qy < 0 || qx >= W || qy >= s.h) { cost += 8; continue; }
         const q = qy * W + qx;
-        if (!inPath[q] && (s.obj[q] !== O.NONE || s.ground[q] === G.WATER)) cost += 4;
+        if (!inPath[q] && (s.obj[q] !== O.NONE || s.ground[q] === G.WATER)) cost += 8;
       }
       const nd = d + cost;
       if (nd < dist[m]) { dist[m] = nd; prev[m] = c; push(nd, m); }
@@ -98,10 +117,90 @@ function planRoute(s) {
 
 const passable = (s, o, c, thruWagons) => s.obj[c] === O.NONE && s.ground[c] !== G.WATER && (thruWagons || !o.occ[c]);
 
+const freeCell = (s, c) => s.obj[c] === O.NONE && s.ground[c] !== G.WATER;
+const hittable = (s, c) => s.obj[c] === O.TREE || s.obj[c] === O.ROCK;
+function sideNeed(s) {
+  const E = s.path[s.path.length - 1], o = shared.get(s), N = o.N;
+  if (N < 0) return -1;
+  const ex = E % s.w, ey = (E / s.w) | 0, nx = N % s.w, ny = (N / s.w) | 0;
+  const dx = nx - ex, dy = ny - ey;
+  let best = -1, bc = 9;
+  for (const [px, py] of [[dy, dx], [-dy, -dx]]) {
+    const ax = ex + px, ay = ey + py, bx = nx + px, by = ny + py;
+    if (ax < 0 || ay < 0 || bx < 0 || by < 0 || ax >= s.w || bx >= s.w || ay >= s.h || by >= s.h) continue;
+    const a = ay * s.w + ax, b = by * s.w + bx;
+    if (s.path.includes(a) || s.path.includes(b)) continue;
+    const ok = (c) => freeCell(s, c) || hittable(s, c);
+    if (!ok(a) || !ok(b)) continue;
+    const cnt = (hittable(s, a) ? 1 : 0) + (hittable(s, b) ? 1 : 0);
+    if (cnt === 0) return -1;
+    if (cnt < bc) { bc = cnt; best = hittable(s, b) ? b : a; }
+  }
+  return best;
+}
+
+/** Карта відстаней BFS від набору клітинок (крізь вагони — потяг рухається, а нам потрібна оцінка). -1 — недосяжно */
+function distMap(s, o, src) {
+  const n = s.w * s.h, W = s.w;
+  const d = new Int16Array(n).fill(-1), q = new Int32Array(n);
+  let qh = 0, qt = 0;
+  for (const c of src) if (d[c] < 0 && passable(s, o, c, true)) { d[c] = 0; q[qt++] = c; }
+  while (qh < qt) {
+    const c = q[qh++], x = c % W, y = (c / W) | 0;
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= s.h) continue;
+      const m = ny * W + nx;
+      if (d[m] >= 0 || !passable(s, o, m, true)) continue;
+      d[m] = d[c] + 1; q[qt++] = m;
+    }
+  }
+  return d;
+}
+
 /**
  * BFS від клітинки гравця. mode 'adj': ціль — прохідна клітинка, в якої сусід задовольняє pred (повертає й того сусіда);
  * mode 'on': ціль — сама клітинка з pred. Повертає { next, goal, target } або null. maxD — межа глибини.
  */
+/**
+ * «Прокопатись»: Дейкстра від гравця, де дерево/скеля прохідні за ціну 6 — до клітинки, сусідньої з pred.
+ * Повертає першу перешкоду на шляху (її рубати/бити) або -1, якщо перешкод нема чи шляху нема.
+ */
+function digTarget(s, o, start, pred) {
+  const n = s.w * s.h, W = s.w;
+  const dist = new Int32Array(n).fill(0x3fffffff), prev = new Int32Array(n).fill(-1);
+  const heap = [];
+  const push = (d, c) => { heap.push([d, c]); let i = heap.length - 1; while (i > 0) { const q = (i - 1) >> 1; if (heap[q][0] <= heap[i][0]) break; [heap[q], heap[i]] = [heap[i], heap[q]]; i = q; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  dist[start] = 0; push(0, start);
+  while (heap.length) {
+    const [d, c] = pop();
+    if (d !== dist[c]) continue;
+    const x = c % W, y = (c / W) | 0;
+    let hit = false;
+    if (s.obj[c] === O.NONE) for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < W && ny < s.h && pred(ny * W + nx)) { hit = true; break; }
+    }
+    if (hit) {
+      let first = -1;
+      for (let k = c; k !== -1; k = prev[k]) if (s.obj[k] !== O.NONE) first = k;
+      return first;
+    }
+    if (d > 4000) continue;
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= s.h) continue;
+      const m = ny * W + nx;
+      const ob = s.obj[m];
+      if (ob === O.WALL || s.ground[m] === G.WATER) continue;
+      const nd = d + (ob === O.TREE || ob === O.ROCK ? 6 : 1);
+      if (nd < dist[m]) { dist[m] = nd; prev[m] = c; push(nd, m); }
+    }
+  }
+  return -1;
+}
+
 function bfs(s, o, start, pred, mode, maxD = 400, thru = false) {
   const W = s.w, n = s.w * s.h;
   const par = new Int32Array(n).fill(-2), dep = new Uint16Array(n);
@@ -136,7 +235,9 @@ function bfs(s, o, start, pred, mode, maxD = 400, thru = false) {
 }
 
 export function createBot(p) {
-  const m = { task: null, lastUse: -9, lx: 0, ly: 0, still: 0, jit: 0, since: 0 };
+  const m = { task: null, lastUse: -9, lx: 0, ly: 0, still: 0, jit: 0, since: 0, fail: {} };
+  // завдання, що щойно виявилось неможливим (вода за скелями, інструмент недосяжний), 5 с не обираємо знову
+  const failed = (s, k) => m.fail[k] !== undefined && s.tick - m.fail[k] < 5 * TPS;
   const IDLE = { mx: 0, my: 0, use: false };
 
   function think(s) {
@@ -149,6 +250,9 @@ export function createBot(p) {
     const ctx = mkCtx(s, o, pl);
     for (let tries = 0; tries < 4; tries++) {
       if (!m.task || s.tick - m.since > 30 * TPS) { m.task = choose(ctx); m.since = s.tick; }
+      // збирання ресурсів перериваємо, коли є рейки й нема чим їх класти: колія важливіша за запас
+      else if (m.task.k === 'gather' && m.task.target === undefined && !m.task.bridge && s.tick % 10 === 0 && ctx.role !== 'mine' &&
+               (pl.hold.k === I.NONE || pl.hold.k === I.AXE || pl.hold.k === I.PICK) && railsUrgent(ctx)) { m.task = { k: 'rails' }; m.since = s.tick; }
       const out = runTask(ctx, m.task);
       if (globalThis.KOL_BOT_DEBUG) console.log('bot', p, JSON.stringify(m.task), '→', JSON.stringify(out));
       if (out) {
@@ -160,6 +264,7 @@ export function createBot(p) {
         m.lx = pl.x; m.ly = pl.y;
         return out;
       }
+      if (m.since === s.tick) m.fail[m.task.k + (m.task.r || '')] = s.tick;
       m.task = null;
     }
     m.lx = pl.x; m.ly = pl.y;
@@ -203,12 +308,14 @@ export function createBot(p) {
       if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
       const n = ny * s.w + nx;
       if (!pred(n)) continue;
+      m.tg = n;
       if (key) claim(o, key(n), s);
       if (pl.fx === dx && pl.fy === dy) return press(ctx);
       return { mx: dx * 10, my: dy * 10, use: false };     // лише повернутись (менше мертвої зони — не рушаємо)
     }
     const r = bfs(s, o, cur, pred, 'adj', maxD) || bfs(s, o, cur, pred, 'adj', maxD, true);   // за потягом — чекаємо, доки проїде
     if (!r) return null;
+    m.tg = r.target;
     if (key) claim(o, key(r.target), s);
     return steer(ctx, r.next);
   }
@@ -243,6 +350,13 @@ export function createBot(p) {
     return (P.storeMax | 0) - s.train[stockKey(k)];
   }
 
+  function railsUrgent(ctx) {
+    const { s, o } = ctx, N = o.N;
+    if (N < 0 || o.side >= 0 || !canLay(s, N % s.w, (N / s.w) | 0) || claimedByOther(o, 'lay', s)) return false;
+    if (!(s.train.rails > 0 || hasDrop(s, I.RAIL))) return false;
+    return s.path.length - 1 - Math.floor(s.train.pos / U) < 12;
+  }
+
   // ---------- вибір завдання ----------
   function choose(ctx) {
     const { s, o, pl, role } = ctx;
@@ -252,8 +366,16 @@ export function createBot(p) {
     if (h === I.BUCKET_FULL) return s.train.heat >= 250 || s.train.fire ? { k: 'water' } : { k: 'drop' };
     const wn = waterNeeded(ctx);
     const waterOk = !claimedByOther(o, 'water', s);
-    if (wn && waterOk && (role !== 'build' || s.train.fire)) return { k: 'water' };
-    if (h === I.BUCKET) return { k: 'drop' };
+    if (wn && waterOk && !failed(s, 'water') && (role !== 'build' || s.train.fire)) return { k: 'water' };
+    // до води не дійти (за скелями/лісом) — прокопуємось, доки котел ще терпить
+    if (s.train.started && s.train.heat >= 300 && !bfs(s, o, ctx.cur, (n) => s.ground[n] === G.WATER, 'adj', 400, true)) {
+      const c = digTarget(s, o, ctx.cur, (n) => s.ground[n] === G.WATER);
+      if (c >= 0) {
+        const tk = { k: 'gather', r: s.obj[c] === O.TREE ? I.WOOD : I.IRON, target: c };
+        if (!failed(s, tk.k + tk.r) && feasible(ctx, tk)) return tk;
+      }
+    }
+    if (h === I.BUCKET) return { k: bfs(s, o, ctx.cur, (n) => s.ground[n] === G.WATER, 'adj', 12) ? 'fill' : 'drop' };
     const list = [];
     // перешкода на маршруті просто перед кінцем колії
     if (N >= 0) {
@@ -261,15 +383,16 @@ export function createBot(p) {
       else if (s.obj[N] === O.TREE) list.push({ k: 'gather', r: I.WOOD, target: N });
       else if (s.obj[N] === O.ROCK) list.push({ k: 'gather', r: I.IRON, target: N });
       else if (s.ground[N] === G.WATER) list.push({ k: 'gather', r: I.WOOD, bridge: 1 });
+      else if (o.side >= 0) list.push({ k: 'gather', r: s.obj[o.side] === O.TREE ? I.WOOD : I.IRON, target: o.side });
     }
     const lead = s.path.length - 1 - Math.floor(s.train.pos / U);
     const rails = { k: 'rails' };
-    const canRails = s.train.rails > 0 && N >= 0 && canLay(s, N % s.w, (N / s.w) | 0) && !claimedByOther(o, 'lay', s);
+    const canRails = (s.train.rails > 0 || hasDrop(s, I.RAIL)) && N >= 0 && canLay(s, N % s.w, (N / s.w) | 0) && !claimedByOther(o, 'lay', s);
     const wNeed = needOf(ctx, I.WOOD), iNeed = needOf(ctx, I.IRON);
     const wood = { k: 'gather', r: I.WOOD }, iron = { k: 'gather', r: I.IRON };
     const res = s.train.wood <= s.train.iron ? [wood, iron] : [iron, wood];
     if (role === 'all') {
-      if (canRails && (lead < 6 || s.train.rails >= 3 || (wNeed <= 1 && iNeed <= 1))) list.push(rails);
+      if (canRails && (lead < 15 || (wNeed <= 1 && iNeed <= 1))) list.push(rails);
       list.push(...res);
       if (canRails) list.push(rails);
     } else if (role === 'build') {
@@ -282,6 +405,7 @@ export function createBot(p) {
     }
     if (wn && waterOk) list.push({ k: 'water' });
     for (const t of list) {
+      if (failed(s, t.k + (t.r || ''))) continue;
       if (t.k === 'gather' && !t.target && !t.bridge && needOf(ctx, t.r) <= 0) continue;
       if (feasible(ctx, t)) return t;
     }
@@ -310,7 +434,12 @@ export function createBot(p) {
       }
       case 'drop': {
         if (h === I.NONE) return null;
+        if (h === I.BUCKET || h === I.BUCKET_FULL) { const r = actAdj(ctx, (n) => o.front.has(n) && freeDrop(ctx, n), null, 25); if (r) return r; }
         return actAdj(ctx, (n) => freeDrop(ctx, n));
+      }
+      case 'fill': {
+        if (h !== I.BUCKET) return null;
+        return actAdj(ctx, (n) => s.ground[n] === G.WATER, null, 12);
       }
       case 'deliver': {
         if (h !== I.WOOD && h !== I.IRON) return null;
@@ -324,14 +453,17 @@ export function createBot(p) {
       }
       case 'lay': {
         if (h !== I.RAIL) return null;
-        if (N >= 0 && canLay(s, N % s.w, (N / s.w) | 0)) { claim(o, 'lay', s); return actAdj(ctx, isN); }
+        const sideTool = o.side >= 0 ? (s.obj[o.side] === O.TREE ? I.AXE : I.PICK) : 0;
+        if (N >= 0 && canLay(s, N % s.w, (N / s.w) | 0) && !(sideTool && hasDrop(s, sideTool))) { claim(o, 'lay', s); return actAdj(ctx, isN); }
         t.k = 'drop'; return runTask(ctx, t);
       }
       case 'rails': {
         if (h === I.RAIL) return null;
         if (h !== I.NONE) { const r = actAdj(ctx, (n) => freeDrop(ctx, n)); return r; }
-        if (s.train.rails <= 0) return null;
         claim(o, 'lay', s);
+        const loose = actAdj(ctx, (n) => s.drop[n] === I.RAIL && !claimedByOther(o, 'c' + n, s), (n) => 'c' + n, 12);   // рейки, що хтось поклав
+        if (loose) return loose;
+        if (s.train.rails <= 0) return null;
         return actAdj(ctx, (n) => o.occ[n] && wagonAt(s, n % s.w, (n / s.w) | 0) === 2);
       }
       case 'clearN': {
@@ -367,14 +499,36 @@ export function createBot(p) {
       let near = 0;
       const cx = ctx.cur % s.w, cy = (ctx.cur / s.w) | 0;
       for (let y = Math.max(0, cy - 3); y <= Math.min(s.h - 1, cy + 3); y++) for (let x = Math.max(0, cx - 3); x <= Math.min(s.w - 1, cx + 3); x++) if (s.drop[y * s.w + x] === k) near += s.dropN[y * s.w + x];
-      const enough = t.bridge ? near >= 1 : near >= cap;
-      if (!enough || (t.target !== undefined && s.obj[t.target] === ob)) {
+      if (t.bridge ? near >= 1 : near >= cap) t.enough = 1;    // рішення «досить» тримаємо (інакше смикається на межі радіуса)
+      const enough = t.enough && near > 0;
+      if (!enough ||(t.target !== undefined && s.obj[t.target] === ob)) {
         // що бити: ціль на маршруті, інакше найближче (спершу ті, що на маршруті попереду)
         if (t.target !== undefined && s.obj[t.target] === ob) { const r = actAdj(ctx, (n) => n === t.target); if (r) return r; }
-        const onRoute = actAdj(ctx, (n) => s.obj[n] === ob && o.near.has(n) && !claimedByOther(o, 'c' + n, s), (n) => 'c' + n, 10);
-        if (onRoute) return onRoute;
-        const any = actAdj(ctx, (n) => s.obj[n] === ob && !claimedByOther(o, 'c' + n, s), (n) => 'c' + n);
-        if (any) return any;
+        // обрану ціль тримаємо, доки вона є (інакше межа пошуку смикає туди-сюди між двома)
+        if (t.hit !== undefined && s.obj[t.hit] === ob) { const r = actAdj(ctx, (n) => n === t.hit, (n) => 'c' + n); if (r) return r; }
+        t.hit = undefined;
+        // нова ціль: найкоротший рейс «я → ціль → склад»; біля колії (розширити коридор) — з бонусом
+        const dB = distMap(s, o, [ctx.cur]);
+        let best = -1, bs = 1e9;
+        for (let c = 0; c < s.obj.length; c++) {
+          if (s.obj[c] !== ob || claimedByOther(o, 'c' + c, s)) continue;
+          const x = c % s.w, y = (c / s.w) | 0;
+          let sc = 1e9;
+          for (const [dx, dy] of DIRS) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
+            const q = ny * s.w + nx;
+            if (dB[q] >= 0 && o.dS[q] >= 0) sc = Math.min(sc, dB[q] + o.dS[q]);
+          }
+          if (sc >= 1e9) continue;
+          if (o.near.has(c)) sc -= 4;
+          if (sc < bs) { bs = sc; best = c; }
+        }
+        if (best >= 0) {
+          t.hit = best;
+          const r = actAdj(ctx, (n) => n === best, (n) => 'c' + n);
+          if (r) return r;
+        }
         if (!near) return null;
       }
       // досить — кладемо інструмент поруч і збираємо
@@ -394,3 +548,6 @@ export function createBot(p) {
 
   return { p, think, dbg: () => (m.task ? m.task.k + (m.task.r ? ':' + m.task.r : '') + (m.task.target !== undefined ? '@' + m.task.target : '') + (m.task.bridge ? ':br' : '') : '-') };
 }
+
+/** Для налагодження й тестів: що бот думає про світ (маршрут, наступна клітинка N, бічна перешкода) */
+export function botView(s) { return shared.get(s) || null; }

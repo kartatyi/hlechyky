@@ -23,9 +23,9 @@ export const WAGONS = ['loco', 'store', 'craft'];  // від голови: па�
 // panel.js будує панель з PARAM_META; gen.js читає параметри смуги.
 // Типові числа підібрано під соло ~5–8 хв на смузі 150 (див. tests/koliya-js/bot.test.mjs).
 export const PARAM_META = {
-  speedStart:  { def: 0.15, min: 0.05, max: 1.5, step: 0.01, label: 'Швидкість паротяга, клітинок/с', group: 'Паротяг' },
-  speedGrowth: { def: 0.04, min: 0,    max: 0.5, step: 0.01, label: 'Приріст швидкості, клітинок/с за хвилину', group: 'Паротяг' },
-  speedMax:    { def: 0.80, min: 0.1,  max: 3,   step: 0.05, label: 'Стеля швидкості', group: 'Паротяг' },
+  speedStart:  { def: 0.12, min: 0.05, max: 1.5, step: 0.01, label: 'Швидкість паротяга, клітинок/с', group: 'Паротяг' },
+  speedGrowth: { def: 0.03, min: 0,    max: 0.5, step: 0.01, label: 'Приріст швидкості, клітинок/с за хвилину', group: 'Паротяг' },
+  speedMax:    { def: 0.60, min: 0.1,  max: 3,   step: 0.05, label: 'Стеля швидкості', group: 'Паротяг' },
   stepN:       { def: 10,   min: 2,    max: 40,  step: 1,    label: 'Розгін не від часу: кожні N рейок (сходинки) / клітинок шляху', group: 'Паротяг' },   // K14
   stepGain:    { def: 0.02, min: 0,    max: 0.2, step: 0.005, label: 'Розгін не від часу: + клітинок/с за N', group: 'Паротяг' },                     // K14
   startSec:    { def: 30,   min: 0,    max: 90,  step: 1,    label: 'Пауза перед рушанням, с', group: 'Паротяг' },
@@ -37,10 +37,11 @@ export const PARAM_META = {
   woodPerTree: { def: 2,    min: 1,    max: 5,   step: 1,    label: 'Дерева з дерева', group: 'Ресурси' },
   ironPerRock: { def: 2,    min: 1,    max: 5,   step: 1,    label: 'Заліза зі скелі', group: 'Ресурси' },
   storeMax:    { def: 10,   min: 2,    max: 40,  step: 1,    label: 'Склад: місткість кожного', group: 'Ресурси' },
-  railsMax:    { def: 6,    min: 1,    max: 20,  step: 1,    label: 'Майстерня: готових рейок до', group: 'Ресурси' },
+  railsMax:    { def: 8,    min: 1,    max: 20,  step: 1,    label: 'Майстерня: готових рейок до', group: 'Ресурси' },
+  railsPerCraft: { def: 2,  min: 1,    max: 4,   step: 1,    label: 'Майстерня: рейок з дерева+заліза', group: 'Ресурси' },
   startRails:  { def: 4,    min: 0,    max: 20,  step: 1,    label: 'Рейок на старті в майстерні', group: 'Ресурси' },
   playerSpeed: { def: 4.5,  min: 1,    max: 10,  step: 0.5,  label: 'Швидкість гравця, клітинок/с', group: 'Гравці' },
-  carryMax:    { def: 4,    min: 1,    max: 10,  step: 1,    label: 'Скільки несеш у руках', group: 'Гравці' },
+  carryMax:    { def: 5,    min: 1,    max: 10,  step: 1,    label: 'Скільки несеш у руках', group: 'Гравці' },
   hitMs:       { def: 200,  min: 80,   max: 800, step: 10,   label: 'Пауза між ударами, мс', group: 'Гравці' },
   stripLen:    { def: 150,  min: 40,   max: 400, step: 10,   label: 'Довжина смуги', group: 'Світ' },
   stripWidth:  { def: 20,   min: 10,   max: 40,  step: 1,    label: 'Ширина смуги', group: 'Світ' },
@@ -640,7 +641,7 @@ function stepCraft(s) {
   const t = s.train, P = s.params;
   if (t.craftT > 0) {
     if (--t.craftT === 0) {
-      t.rails++; s.stats.crafted++;
+      t.rails = Math.min(Math.max(t.rails, P.railsMax | 0), t.rails + Math.max(1, P.railsPerCraft | 0)); s.stats.crafted++;
       const w = wagonPos(s, 2); ev(s, 'craft', Math.floor(w.x / U), Math.floor(w.y / U));
     }
     return;
