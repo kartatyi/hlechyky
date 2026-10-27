@@ -353,7 +353,7 @@ export function createBot(p, opts = {}) {
         else if (e.t !== 'step') h.act = s.tick;
       }
       for (const [c, t] of h.hits) if (s.tick - t > 3 * TPS || s.obj[c] === O.NONE) h.hits.delete(c);
-      for (const [c, t] of h.put) if (s.tick - t > 15 * TPS || !isTool(s.drop[c])) h.put.delete(c);
+      for (const [c, t] of h.put) if (s.tick - t > 8 * TPS || !isTool(s.drop[c])) h.put.delete(c);
       H.push({ q, pl, h, hc, d: md(s, mc, hc) });
     }
     H.sort((a, b) => a.d - b.d || a.q - b.q);
@@ -387,7 +387,8 @@ export function createBot(p, opts = {}) {
       for (const c of h.hits.keys()) hcl('c' + c);
       const hk = hp.hold.k;
       if (hk === I.AXE || hk === I.PICK) { const ob = hk === I.AXE ? O.TREE : O.ROCK; around(s, hc, 2, (c) => { if (s.obj[c] === ob) hcl('c' + c); }); }
-      if (hk === I.RAIL) hcl('lay');
+      // рейки в руках і йде класти (≤ 8 клітинок від кінця колії) чи запас колії ще є — класти лишаємо їй
+      if (hk === I.RAIL && (md(s, hc, s.path[s.path.length - 1]) <= 8 || s.path.length - 1 - Math.floor(s.train.pos / U) >= TUNE.urg)) hcl('lay');
       if (hk === I.BUCKET || hk === I.BUCKET_FULL) hcl('water');
       if (idle) continue;
       // речі біля неї: інструмент/відро ≤ 2 клітинок, щойно нею покладене (≤ 10) чи те, до чого вона йде; купка під руками
@@ -408,7 +409,9 @@ export function createBot(p, opts = {}) {
     // роль: людина з сокирою — ми на скелі й воду; з кайлом — дрова й рейки; стоїть ~10 с чи без інструмента — усе
     const a = H[0];
     let role = 'all';
-    if (busy && a.h.toolT >= s.tick - 20 * TPS) role = a.h.tool === I.AXE ? 'mine' : 'build';
+    // (жорсткі ролі 'mine'/'build' пробували: повільна людина + бот, що чекає, — x̄ 58 зі 100 проти 72; тож роль
+    //  лишається 'all', а «протилежне» — пріоритет ресурсу: людина з сокирою — ми спершу залізо, з кайлом — дрова)
+    m.hpref = busy && a.h.toolT >= s.tick - 20 * TPS ? (a.h.tool === I.AXE ? I.IRON : I.WOOD) : 0;
     if (role !== m.hrole) {
       if (m.hrole && m.task && (m.task.k === 'gather' || m.task.k === 'idle' || m.task.k === 'rails')) m.task = null;
       m.hrole = role;
@@ -588,7 +591,8 @@ export function createBot(p, opts = {}) {
     const canRails = (s.train.rails > 0 || hasDrop(s, I.RAIL)) && N >= 0 && canLay(s, N % s.w, (N / s.w) | 0) && !claimedByOther(o, 'lay', s);
     const wNeed = needOf(ctx, I.WOOD), iNeed = needOf(ctx, I.IRON);
     const wood = { k: 'gather', r: I.WOOD }, iron = { k: 'gather', r: I.IRON };
-    const res = s.train.wood <= s.train.iron ? [wood, iron] : [iron, wood];
+    let res = s.train.wood <= s.train.iron ? [wood, iron] : [iron, wood];
+    if (ctx.buddy && m.hpref) res = m.hpref === I.IRON ? [iron, wood] : [wood, iron];   // K34: протилежне людині
     if (role === 'all') {
       // K13: майстерня повна (стоїть) чи склад майже повний — класти, а не збирати ще
       if (canRails && (lead < TUNE.urg || (railsFull(ctx) && lead < TUNE.far) || (wNeed <= 2 && iNeed <= 2))) list.push(rails);
@@ -614,6 +618,8 @@ export function createBot(p, opts = {}) {
       const t = { k: 'gather', r: s.obj[c] === O.TREE ? I.WOOD : I.IRON, target: c };
       if (!failed(s, t.k + t.r) && feasible(ctx, t)) return t;
     }
+    // K34: класти лишили людині — тримаємо рейки готовими: приносимо стос із майстерні їй під руку попереду
+    if (ctx.buddy && s.train.rails > 0 && !hasDrop(s, I.RAIL) && pl.hold.k === I.NONE && !failed(s, 'rails')) return { k: 'rails' };
     return { k: 'idle' };
   }
 
@@ -661,6 +667,7 @@ export function createBot(p, opts = {}) {
       case 'lay': {
         if (h !== I.RAIL) return null;
         const sideTool = o.side >= 0 ? (s.obj[o.side] === O.TREE ? I.AXE : I.PICK) : 0;
+        if (ctx.buddy && claimedByOther(o, 'lay', s)) { const r = actAdj(ctx, (n) => o.front.has(n) && freeDrop(ctx, n), null, 40); if (r) return r; }
         if (N >= 0 && canLay(s, N % s.w, (N / s.w) | 0) && !(sideTool && hasDrop(s, sideTool))) { claim(o, 'lay', s); return actAdj(ctx, isN); }
         // K34: рейки несе людина — свої кладемо стосом попереду (їй під руку), а не обганяємо її
         if (ctx.buddy && claimedByOther(o, 'lay', s)) { const r = actAdj(ctx, (n) => o.front.has(n) && freeDrop(ctx, n), null, 40); if (r) return r; }
