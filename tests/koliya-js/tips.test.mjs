@@ -262,3 +262,98 @@ test('K16: розумний приціл — пояснення одинаков
   const t = pickTips(s, m);
   assert.equal(t[0].id, 'aim');
 });
+
+// ---------------- K39 ----------------
+import { hornFor } from '../../web/games/koliya/tips.js';
+
+test('K39: лід і сніг під ногами — раз, 5 с, далі звичайна порада', () => {
+  const s = mk(), m = {};
+  s.ground[at(s, 2, 3)] = G.ICE;
+  let t = pickTips(s, m);
+  assert.equal(t[0].id, 'ice'); assert.match(t[0].text, /гальмуй заздалегідь/);
+  tick(s, 5 * TPS + 1); pickTips(s, m);
+  tick(s); assert.equal(pickTips(s, m)[0].id, 'axe');
+  s.ground[at(s, 2, 3)] = G.SNOW; tick(s);
+  t = pickTips(s, m);
+  assert.equal(t[0].id, 'snow'); assert.match(t[0].text, /Сніг/);
+});
+
+test('K39: яр перед колією — «спершу дрова (каркас)»; каркас ліг — «неси залізо»; міст — тиша', () => {
+  const s = mk(), m = {};
+  for (let y = 1; y < H - 1; y++) s.ground[at(s, 7, y)] = G.CHASM;
+  hold(s.players[0], I.WOOD, 2);
+  let t = pickTips(s, m);
+  assert.equal(t[0].id, 'chasm'); assert.match(t[0].text, /дрова \(каркас\), потім залізо/);
+  assert.equal(t[0].x, 7);
+  s.ground[at(s, t[0].x, t[0].y)] = G.FRAME; hold(s.players[0], I.IRON, 1); tick(s);
+  t = pickTips(s, m);
+  assert.equal(didIt(m, 0, 'chasm'), true);
+  assert.equal(t[0].id, 'frame'); assert.match(t[0].text, /залізо/);
+  s.ground[at(s, t[0].x, t[0].y)] = G.BRIDGE; hold(s.players[0], I.NONE, 0); tick(s);
+  t = pickTips(s, m);
+  assert.equal(didIt(m, 0, 'frame'), true);
+  assert.equal(t.find((x) => x.id === 'chasm' || x.id === 'frame'), undefined);
+});
+
+test('K39: нескінченна — на зупинці «оберіть покращення» на найближчу табличку; обрали — більше не каже', () => {
+  const s = mk(2), m = {};
+  m.done = [{ role: 1 }, { role: 1 }];
+  s.endless = { stop: 50 };
+  s.mid = { signs: [{ x: 3, y: 2, k: 'tank' }, { x: 3, y: 6, k: 'craft' }], pick: '' };
+  let t = pickTips(s, m);
+  assert.deepEqual(ids(t), ['0:station', '1:station']);
+  assert.match(tipOf(t, 0).text, /Станція! Оберіть покращення/);
+  assert.deepEqual([tipOf(t, 0).x, tipOf(t, 0).y], [3, 2]);
+  assert.deepEqual([tipOf(t, 1).x, tipOf(t, 1).y], [3, 6]);
+  tick(s); s.mid.pick = 'tank'; s.ev = [{ t: 'upgrade', x: 3, y: 2, p: 0 }];
+  s.mid.pick = ''; s.endless.stop = 50;   // наступна станція
+  t = pickTips(s, m);
+  assert.equal(t.find((x) => x.id === 'station'), undefined);
+});
+
+test('K39: кидок — несе дрова за кілька кроків від складу: «Кинь у вагон — B»; кинув — більше не каже', () => {
+  const s = mk(), m = {};
+  s.params.throw = 'on';
+  const p = s.players[0]; hold(p, I.WOOD, 2);
+  p.x = 6 * U + U / 2; p.y = MID * U + U / 2;   // склад на (2, MID) — 4 клітинки
+  let t = pickTips(s, m, { keys: () => ({ use: 'A', throw: 'B' }) });
+  assert.equal(t[0].id, 'throw'); assert.match(t[0].text, /Кинь у вагон — B/);
+  tick(s); s.ev = [{ t: 'throw', x: 6, y: MID, p: 0 }];
+  t = pickTips(s, m);
+  assert.notEqual(t[0]?.id, 'throw');
+  // без перемикача — звичайне «неси на склад»
+  const s2 = mk(); hold(s2.players[0], I.WOOD, 2); s2.players[0].x = 6 * U + U / 2; s2.players[0].y = MID * U + U / 2;
+  assert.equal(pickTips(s2, {})[0].id, 'store');
+});
+
+test('K39: гудок біля бота — «📯 F — покликати бота»; гукнув — більше не каже; без бота поруч — мовчить', () => {
+  assert.deepEqual(hornFor(0, true), { horn: 'Y', react: 'LB/RB/LT/RT' });
+  assert.equal(hornFor(0, false, 1).horn, 'F');
+  const s = mk(2), m = {};
+  m.done = [{ role: 1, axe: 1 }, {}];
+  tick(s, 20 * TPS);
+  let t = pickTips(s, m, { players: [0], bots: [1] });   // бот (3,5) — поруч з (2,3)
+  assert.equal(t[0].id, 'horn'); assert.match(t[0].text, /📯 F — покликати бота/);
+  assert.deepEqual([t[0].x, t[0].y], [3, 5]);
+  tick(s); s.ev = [{ t: 'honk', x: 3, y: 4, p: 0 }];
+  t = pickTips(s, m, { players: [0], bots: [1] });
+  assert.notEqual(t[0]?.id, 'horn');
+  assert.equal(didIt(m, 0, 'horn'), true);
+  const s2 = mk(2), m2 = { done: [{ role: 1, axe: 1 }, {}] };
+  s2.players[1].x = 15 * U; tick(s2, 20 * TPS);
+  assert.notEqual(pickTips(s2, m2, { players: [0], bots: [1] })[0]?.id, 'horn');
+  // на старті (до LATER) — не відволікаємо
+  const s3 = mk(2), m3 = { done: [{ role: 1, axe: 1 }, {}] };
+  assert.notEqual(pickTips(s3, m3, { players: [0], bots: [1] })[0]?.id, 'horn');
+});
+
+test('K39: реакції в мережі — «1–4 — реакції» раз за партію; без мережі — ні', () => {
+  const s = mk(), m = { done: [{ axe: 1 }] };
+  tick(s, 20 * TPS);
+  let t = pickTips(s, m, { net: true });
+  assert.equal(t[0].id, 'react'); assert.match(t[0].text, /1–4 — реакції/);
+  tick(s, 5 * TPS + 1); pickTips(s, m, { net: true });
+  tick(s); assert.notEqual(pickTips(s, m, { net: true })[0]?.id, 'react');
+  const s2 = mk(); tick(s2, 20 * TPS);
+  assert.notEqual(pickTips(s2, { done: [{ axe: 1 }] })[0]?.id, 'react');
+});

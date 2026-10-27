@@ -1319,6 +1319,7 @@ export function createRenderer(canvas) {
   // (без «дихання»). Рух — критично згасаюча пружина (без ривків на зміні цілі). Хто не влазить — стрілка на краю.
   const cam = { x: 0, z: 0, d: 30, el: 56 * Math.PI / 180, init: false, vx: 0, vz: 0, vd: 0, dT: 0, fwd: 0 };
   const CAM_MARGIN = 2.5, CAM_AHEAD = 3.5, CAM_DMAX = 1.75;
+  let camFollow = -1;   // K35: setFollow(k) — гравець k у центрі кадру (повтор), -1 — гурт
   function damp(key, vkey, target, T, dt) {   // SmoothDamp: T — час згасання, с
     const om = 2 / T, x = om * dt, e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
     const ch = cam[key] - target, tmp = (cam[vkey] + om * ch) * dt;
@@ -1347,6 +1348,7 @@ export function createRenderer(canvas) {
     // не влазять усі — головне паротяг: він лишається у внутрішніх 70 % кадру, решта — стрілками
     const inner = Math.max(1, halfW * 0.7);
     gx = Math.max(headX - inner, Math.min(headX + inner, gx));
+    if (camFollow >= 0 && W?.players?.[camFollow]?.seen) gx = W.players[camFollow].x;   // K35: повтор — камера за гравцем
     gx = Math.max(halfW - 4, Math.min(Math.max(halfW - 4, s.w + 4 - halfW * 0.6), gx));
     const gz = s.h / 2 + 0.6;
     if (cam.init) {
@@ -1798,6 +1800,7 @@ export function createRenderer(canvas) {
     setLook(name) { applyLook(name); savePrefs(prefs); },
     setCam({ dist, angle } = {}) { if (dist) prefs.dist = dist; if (angle) prefs.angle = String(angle); savePrefs(prefs); },
     setQuality,
+    setFollow(k) { camFollow = Number.isInteger(k) ? k : -1; },   // K35
     weather,   // K32: rows() для «🎨 Вигляд», state для перевірок
     get quality() { return lowQ ? 'low' : 'high'; },
     get look() { return prefs.look; } };
