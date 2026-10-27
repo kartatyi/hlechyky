@@ -579,7 +579,7 @@ export function createRenderer(canvas) {
   function disposeWorld() {
     if (!W) return;
     for (const p of [W.pGround, W.pBox, W.pBlob, W.pTree, W.pIce]) p.dispose();   // K36: pIce
-    for (const g of W.drops) if (g) W.root.remove(g);
+    for (const g of W.drops) if (g) { W.root.remove(g); disposeMerged(g); }   // K71: вийняті з root речі traverse нижче не бачив — їхні геометрії текли на кожному setWorld (зсув вікна)
     W.root.traverse((o) => { if (o.userData.merged) o.geometry.dispose(); });
     for (const wm of W.waters) wm.geometry.dispose();
     scene.remove(W.root);
