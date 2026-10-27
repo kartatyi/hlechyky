@@ -15,6 +15,7 @@
 //    Підказуємо лише локальним (game.local, типово всім); при game.paused (стартовий екран HUD) — сховано.
 // HUD (K9) уже кричить тривоги («котел», «рейки закінчуються») — тут лише «що робити руками».
 import { U, G, O, I, TPS, wagonPos, canLay, canUnlay } from './rules.js';
+import { t as tt } from './theme.js';   // K25: слова теми «Чумацький шлях»
 
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];   // як у HUD/debug2d
 const ROLE_TICKS = 8 * TPS;      // підказка ролей висить до 8 с, якщо гравець не взявся до діла раніше
@@ -220,11 +221,11 @@ export function pickTips(s, memory = {}, opts = {}) {
       }
       if (p !== undefined) {
         const k = P[p].hold?.k, me = cellOf(P[p]), key = useK(p);
-        if (k === I.BUCKET_FULL) give(p, 'heat', `Котел гріється! Повне відро — на паротяг, ${key} 💦`, loco);
-        else if (k === I.BUCKET) give(p, 'heat', `Котел гріється! До води й ${key} — набрати відро`,
+        if (k === I.BUCKET_FULL) give(p, 'heat', tt('tip.heatFull', `Котел гріється! Повне відро — на паротяг, ${key} 💦`, key), loco);
+        else if (k === I.BUCKET) give(p, 'heat', tt('tip.heatEmpty', `Котел гріється! До води й ${key} — набрати відро`, key),
           nearest(s, me, SEARCH, (i) => s.ground[i] === G.WATER) ?? loco);
-        else if (k) give(p, 'heat', 'Котел гріється! Кинь що в руках — і бігом по відро 🪣', bucket ?? loco);
-        else give(p, 'heat', 'Котел гріється! Відро → вода → паротяг', bucket ?? loco);
+        else if (k) give(p, 'heat', tt('tip.heatDrop', 'Котел гріється! Кинь що в руках — і бігом по відро 🪣'), bucket ?? loco);
+        else give(p, 'heat', tt('tip.heat', 'Котел гріється! Відро → вода → паротяг'), bucket ?? loco);
       }
     }
 
@@ -233,7 +234,7 @@ export function pickTips(s, memory = {}, opts = {}) {
       const cands = who.filter((p) => free(p, 'dead') && (!P[p].hold?.k || P[p].hold.k === I.RAIL));
       if (cands.length) {
         const p = cands.reduce((a, b) => (d2(cellOf(P[b]), pf.last) < d2(cellOf(P[a]), pf.last) ? b : a));
-        give(p, 'dead', `Глухий кут? Розбери останню рейку: порожні руки й ${useK(p)}`, pf.last);
+        give(p, 'dead', tt('tip.dead', `Глухий кут? Розбери останню рейку: порожні руки й ${useK(p)}`, useK(p)), pf.last);
       }
     }
 
@@ -241,7 +242,7 @@ export function pickTips(s, memory = {}, opts = {}) {
     if (pf?.kind === 'water') {
       const cands = who.filter((p) => free(p, 'bridge'));
       const p = cands.find((q) => P[q].hold?.k === I.WOOD) ?? cands.find((q) => !P[q].hold?.k || P[q].hold.k === I.RAIL);
-      if (p !== undefined) give(p, 'bridge', 'Річка: поклади дрова на воду — буде місток', pf.front);
+      if (p !== undefined) give(p, 'bridge', tt('tip.bridge', 'Річка: поклади дрова на воду — буде місток'), pf.front);
     }
 
     // K16 3а) гуси: хтось тягне інструмент — найближчому, хто ще не лякав
@@ -261,7 +262,7 @@ export function pickTips(s, memory = {}, opts = {}) {
       const cands = who.filter((p) => free(p, 'ford'));
       if (cands.length) {
         const p = cands.find((q) => P[q].hold?.k === I.RAIL) ?? nearestOf(cands, pf.front);
-        info(p, 'ford', 'Брід: тут мілина — рейки кладуться без мосту', pf.front, true);
+        info(p, 'ford', tt('tip.ford', 'Брід: тут мілина — рейки кладуться без мосту'), pf.front, true);
       }
     }
 
@@ -271,7 +272,7 @@ export function pickTips(s, memory = {}, opts = {}) {
       if (taken.has(p)) continue;
       const pl = P[p], h = pl.hold ?? { k: 0, n: 0 }, me = cellOf(pl), key = useK(p);
       // K16: болото під ногами — раз пояснити
-      if (free(p, 'swamp') && s.ground[me.y * s.w + me.x] === G.SWAMP && info(p, 'swamp', 'Болото — повільно, але рейки класти можна', null)) continue;
+      if (free(p, 'swamp') && s.ground[me.y * s.w + me.x] === G.SWAMP && info(p, 'swamp', tt('tip.swamp', 'Болото — повільно, але рейки класти можна'), null)) continue;
       const axe = () => nearestDrop(s, me, I.AXE), pick = () => nearestDrop(s, me, I.PICK);
       const near = (k) => nearest(s, me, NEAR, (i) => s.drop[i] === k);
       // ролі: двоє і більше — на старті кожному своя справа
@@ -281,8 +282,8 @@ export function pickTips(s, memory = {}, opts = {}) {
           if (since?.id === 'role' && (s.tick ?? 0) - since.t >= ROLE_TICKS) (m.done[p] ??= {}).role = -1;   // відвисіла — без «Є!»
           else {
             const kids = KIDS[P.filter((q) => q && !q.out).length] ?? 'гурт';
-            if (p % 2 === 0) give(p, 'role', `Вас ${kids}: один рубає, другий кладе. Ти — рубаєш 🪓`, axe());
-            else give(p, 'role', `Вас ${kids}: один рубає, другий кладе. Ти — кладеш рейки 🛤`, craft);
+            if (p % 2 === 0) give(p, 'role', tt('tip.roleChop', `Вас ${kids}: один рубає, другий кладе. Ти — рубаєш 🪓`, kids), axe());
+            else give(p, 'role', tt('tip.roleLay', `Вас ${kids}: один рубає, другий кладе. Ти — кладеш рейки 🛤`, kids), craft);
             continue;
           }
         }
@@ -292,15 +293,15 @@ export function pickTips(s, memory = {}, opts = {}) {
           && info(p, 'aim', `Кнопка ${key} сама знаходить справу поруч — дивись на підсвітку`, pl.aim ?? null)) continue;
       if (h.k === I.RAIL) {
         if (free(p, 'lay') && pf?.front) {
-          give(p, 'lay', pf.kind === 'blocked' ? 'Клади рейку перед колією — та спершу розчисть місце' : `Клади рейку перед колією: стань поруч і ${key}`, pf.front);
+          give(p, 'lay', pf.kind === 'blocked' ? tt('tip.layBlocked', 'Клади рейку перед колією — та спершу розчисть місце') : tt('tip.lay', `Клади рейку перед колією: стань поруч і ${key}`, key), pf.front);
         }
         continue;
       }
       if (h.k === I.WOOD || h.k === I.IRON) {
-        if (free(p, 'store')) give(p, 'store', `Неси ${h.k === I.WOOD ? 'дрова' : 'залізо'} на склад — зелений вагон`, store);
+        if (free(p, 'store')) give(p, 'store', tt('tip.store', `Неси ${h.k === I.WOOD ? 'дрова' : 'залізо'} на склад — зелений вагон`, h.k === I.WOOD ? 'дрова' : 'залізо'), store);
         else if (s.params?.throw === 'on' && free(p, 'throw')) {   // K16: кидок у склад з кількох кроків
           const d = Math.max(Math.abs(store.x - me.x), Math.abs(store.y - me.y));
-          if (d >= THROW_FAR && d <= THROW_NEAR) info(p, 'throw', `Можна кинути на склад: стань лицем до вагона й ${keys(p).throw} 🎯`, store);
+          if (d >= THROW_FAR && d <= THROW_NEAR) info(p, 'throw', tt('tip.throw', `Можна кинути на склад: стань лицем до вагона й ${keys(p).throw} 🎯`, keys(p).throw), store);
         }
         continue;
       }
@@ -327,14 +328,14 @@ export function pickTips(s, memory = {}, opts = {}) {
       if (h.k) continue;   // відро тощо — без порад, поки котел не гріється
       // порожні руки: рейки (кладільнику, або всім, коли колії лишилось мало) чи інструмент
       const railsUrgent = (t.rails ?? 0) > 0 && (p % 2 === 1 || (t.started && ahead < 4));
-      const railsTip = () => { if ((t.rails ?? 0) > 0 && free(p, 'rails')) { give(p, 'rails', `Рейки готові — візьми з майстерні (${key} біля вагона)`, craft); return true; } return false; };
+      const railsTip = () => { if ((t.rails ?? 0) > 0 && free(p, 'rails')) { give(p, 'rails', tt('tip.railsReady', `Рейки готові — візьми з майстерні (${key} біля вагона)`, key), craft); return true; } return false; };
       if (railsUrgent && railsTip()) continue;
       const wood = near(I.WOOD) ?? near(I.IRON);
       if (wood && free(p, 'grab')) { give(p, 'grab', `Бери ${s.drop[wood.y * s.w + wood.x] === I.WOOD ? 'дрова' : 'залізо'}: стань поруч і ${key}`, wood); continue; }
       const a = axe();
       if (a && free(p, 'axe')) { give(p, 'axe', 'Візьми сокиру — он лежить', a); continue; }
       const k = pick();
-      if (k && free(p, 'pick') && (isDone(m, p, 'chop') || !a)) { give(p, 'pick', 'Тепер кайло — скелі дають залізо, без нього рейок не буде', k); continue; }
+      if (k && free(p, 'pick') && (isDone(m, p, 'chop') || !a)) { give(p, 'pick', tt('tip.pick', 'Тепер кайло — скелі дають залізо, без нього рейок не буде'), k); continue; }
       railsTip();
     }
     for (const p of who) if (taken.has(p)) out.push(taken.get(p));

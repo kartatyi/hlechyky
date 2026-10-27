@@ -13,7 +13,9 @@ import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
+import { mountThemeUi } from './theme.js';          // K25: «Тема» (Колія / Чумацький шлях) у «🎨 Вигляд»
 import { createTouch, isTouchDevice } from './touch.js';   // K27: телефон і планшет
+import { createMusic } from './music.js';            // K29: музика й тло (вимкнено типово)
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -62,6 +64,7 @@ async function makeView() {
 
 const input = game.input = createInput();   // K16: game.input.hasPad(p) — підказки
 const audio = createAudio();
+const music = game.music = createMusic(audio);   // K29
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
 const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — «Підказки: так/ні»
@@ -88,6 +91,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   onRestart: () => restart(),
   seed: game.seed, onSeed: (seed) => restart(seed),
   audio,
+  music,   // K29
   prefs, onPref(k, v) {   // K12
     prefs[k] = v; try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { }
     if (k === 'quality') view?.setQuality?.(v);
@@ -98,12 +102,23 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
 });
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
-  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
+  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: true }) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
 // K23: «📅 Маршрут дня» — сід від дати (Київ), типові params (панель — для звичайної гри); «ще раз» лишає маршрут дня
 game.startDaily = () => { const date = kyivDate(); game.daily = { date, seed: dailySeed(date) }; restart(game.daily.seed); };
+// K30: стартове меню (menu.js через hud.js) — гравці/боти, режим ('play'|'tutorial'|'daily'|'endless') і сід; фінал — game.restart
+game.restart = (seed) => restart(seed);
+game.startMenu = (act, o) => {
+  game.local = Math.max(1, Math.min(2, o.players | 0 || 1)); game.wantLocal = 0; input.setPlayers(game.local);
+  game.bots = Math.max(0, Math.min(R.MAX_PLAYERS - game.local, o.bots | 0));
+  if (act === 'daily') return game.startDaily();
+  const sm = game.params.stationMode === 'endless' ? (game.smWas ?? 'end') : game.params.stationMode;
+  if (act === 'endless') game.smWas = sm;
+  game.params = { ...game.params, mode: act === 'tutorial' ? 'tutorial' : 'normal', stationMode: act === 'endless' ? 'endless' : sm };
+  panel?.set?.({ mode: game.params.mode, stationMode: game.params.stationMode }); game.daily = null; restart(o.seed ?? game.seed);
+};
 function restart(seed = game.seed) {
   if (game.daily && game.daily.seed !== seed >>> 0) game.daily = null;   // K23
   const P = game.daily ? R.defaultParams() : game.params;   // K23
@@ -113,7 +128,7 @@ function restart(seed = game.seed) {
   panel?.setSeed?.(game.seed);
   game.state = R.newGame(game.seed, P, game.local + game.bots);
   game.bot = [];
-  for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b));
+  for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b, { buddy: game.local > 0 }));   // K34: з людьми — напарник
   view?.setWorld?.(game.state);
 }
 
@@ -168,6 +183,7 @@ function frame(now) {
   if (net) net.draw(view); else view?.draw(game.state, acc / R.TICK_MS);   // K6: мережа малює гравців згладжено
   if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();
+  music.update(game.state);   // K29
   (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' && prefs.tips !== false })).update(game.state, game, view);   // K10
   nextFrame();
 }
@@ -206,10 +222,11 @@ function drawHud() {
 (async () => {
   view = game.view = await makeView();
   mountLookUi(document.getElementById('kol-panel'), view);   // K5
+  mountThemeUi(document.getElementById('kol-panel'));       // K25
   view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => {   // K3; K21: без сервера — не чорний екран мовчки
     console.warn('Колія: мережа', e);
-    if (!game.state) hud.textContent = '⚠ Не вдалося підключитись до столу. Без мережі — прибери &net= з адреси.';
+    if (!game.state) { const u = new URL(location.href); u.searchParams.delete('net'); hud.innerHTML = `⚠ Не вдалося підключитись до столу. <a href="${u.pathname + u.search}" style="pointer-events:auto;color:#ffd23f">🏠 Грати без мережі</a>`; }   // K30
   }); else restart();
   requestAnimationFrame(frame);
 })();
