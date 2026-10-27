@@ -89,6 +89,7 @@ export function createMenu(box, opts = {}) {
     { id: 'daily', label: () => '📅 Маршрут дня', show: () => !net() },
     { id: 'endless', label: () => '♾ Нескінченна', show: () => !net() },
     { id: 'net', label: () => '🌐 Грати з друзями <small>посилання для друга</small>', show: () => !net() },
+    { id: 'replays', label: () => '📼 Повтори <small>свої й за кодом</small>', show: () => !net() },   // K35
     { id: 'copy', label: () => '📋 Копіювати посилання для друга', show: () => net() },
     { id: 'offline', label: () => '🏠 Грати без мережі', show: () => net() },
   ];
