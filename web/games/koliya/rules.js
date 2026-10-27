@@ -740,6 +740,26 @@ export function hash(s) {
     mix(p.x); mix(p.y); mix(p.fx); mix(p.fy); mix(p.hold.k); mix(p.hold.n); mix(p.cd);
     mix(p.mx); mix(p.my); mix(p.ut); mix(p.out); mix(p.st);
     if (s.params.move === 'grid') { mix(p.gx); mix(p.gy); mix(p.gt); }   // K14 (типовий hash не змінюється)
+    for (const k of Object.keys(p).sort()) if (!HASH_PL[k]) { mixStr(mix, k); mixAny(mix, p[k]); }   // K6: нові поля гравця
   }
+  for (const k of Object.keys(t).sort()) if (!HASH_TR[k]) { mixStr(mix, k); mixAny(mix, t[k]); }      // K6: нові поля потяга
+  for (const k of Object.keys(s).sort()) if (!HASH_TOP[k]) { mixStr(mix, k); mixAny(mix, s[k]); }     // K6: гуси, s.mid, s.flying…
   return h >>> 0;
+}
+
+// K6: що hash уже мішає поштучно (чи що не впливає на світ: ev, stats, params, spawn, aim) — решта полів стану (додатки
+// K11 гуси/s.mid, K18 s.flying і що з'явиться далі) іде в hash сама, загально, за відсортованими ключами.
+const HASH_TOP = Object.fromEntries('seed tick rng params status reason w h ground obj hp drop dropN path spawn train players ev stats'.split(' ').map((k) => [k, 1]));
+const HASH_PL = Object.fromEntries('x y fx fy hold cd mx my ut out st gx gy gt aim'.split(' ').map((k) => [k, 1]));
+const HASH_TR = Object.fromEntries('pos speed heat fire wood iron rails craftT sub ht started'.split(' ').map((k) => [k, 1]));
+function mixStr(mix, str) { mix(str.length); for (let i = 0; i < str.length; i++) mix(str.charCodeAt(i)); }
+function mixAny(mix, v) {
+  if (v === null || v === undefined) { mix(v === null ? -1 : -2); return; }
+  if (typeof v === 'number') { if (Number.isInteger(v) && Math.abs(v) < 2 ** 31) mix(v); else mixStr(mix, String(v)); return; }
+  if (typeof v === 'boolean') { mix(v ? -3 : -4); return; }
+  if (typeof v === 'string') { mix(-5); mixStr(mix, v); return; }
+  if (typeof v !== 'object') return;   // функції тощо — не стан
+  if (Array.isArray(v) || ArrayBuffer.isView(v)) { mix(-6); mix(v.length); for (let i = 0; i < v.length; i++) mixAny(mix, v[i]); return; }
+  mix(-7);
+  for (const k of Object.keys(v).sort()) { mixStr(mix, k); mixAny(mix, v[k]); }
 }

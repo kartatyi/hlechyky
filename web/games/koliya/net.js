@@ -27,6 +27,14 @@
 // Затиснута кнопка: rules вважає use «затиснутим», коли він був і в попередньому тику, а мережа шле до ~6 use/с; тож
 // повтор іде з h=1, і перед кроком ставимо гравцеві ut = tick (однаково в усіх браузерах — це ж із журналу).
 // Ліміти каркаса: 30 Input/с з з'єднання (тут 'in' ≤ 10/с, use ≤ ~7/с, хеш раз на 5 с), payload ≤ 8 КБ.
+//
+// K6. Гладкість: перерахунок від запізнілої чужої команди зсуває фігури в P на тому ж тику — рендер (render.js, без
+// змін) показав би ривок. Тому net.draw(view) малює гравців у «видимій» позі: справжня + зсув (ox, oy), де зсув при
+// перерахунку набирає рівно стільки, щоб видима поза не зрушила, а далі тане щотику (×SMOOTH, ~100–150 мс). Зсув
+// додається до p.x/p.y лише на час view.draw і одразу знімається — правила, HUD, підказки бачать справжній світ.
+// Свого гравця це не гальмує: свої дії йдуть у P одразу, зсув з'являється лише від перерахунку (рідко).
+// Затримка для перевірок: ?lag=<RTT мс>&jit=<мс> — кадри, вид столу, журнал і свої Input ідуть з половиною RTT
+// (± jit/2) у кожен бік, порядок зберігається (як TCP). ?smooth=0 — без згладжування (порівняти ривки).
 import * as R from './rules.js';
 
 const GAP_IN = 2;          // тиків між 'in' (≤ 10/с)
@@ -35,7 +43,96 @@ const HASH_EVERY = 100;    // тиків між звірками
 const AHEAD = 40;          // на скільки тиків P може випередити W
 const PENDING_TTL = 60;    // своя команда без луни стільки тиків після закриття — загубилась (квота), викидаємо
 const STEPS_PER_FRAME = 600;
+const SMOOTH = 0.55;       // частка зсуву, що лишається за тик (50 мс): за 3 тики ~17 %
+const SNAP = 3 * R.U;      // більший стрибок (поява, телепорт) — не згладжуємо
+const CATCH = 2;           // зсув тане не швидше за 2 кроки гравця за тик (разом із ходою — до 3× швидкості)
+const JERK = 3.5;          // замір: стрибок за тик більший за 3,5 кроку — ривок (згладжене не перевищує 1 + CATCH)
 const K = { 1: 'in', 2: 'use', 3: 'join', 4: 'leave' };
+
+/**
+ * Згладжування поз гравців для малювання (K6): зсув на перерахунку, тане щотику. Чисте, без DOM — тестується в Node.
+ * before(s) — запам'ятати справжні пози перед перерахунком; after(s) — після нього (той самий тик) додати різницю в зсув;
+ * apply(s) — на час малювання додати зсув до p.x/p.y (повертає функцію, що знімає); jerks — лічильник ривків видимої пози.
+ */
+export function createSmoother(on = true) {
+  const off = [], seen = [];
+  let saved = null, tick = -1;
+  // ticks — тиків заміряно; rawMax/visMax — найбільший стрибок справжньої/видимої пози за тик (підодиниці);
+  // rawJerk/visJerk — скільки разів стрибок за тик був більший за JERK × крок гравця (ривок, а не хода); corr — перерахунків, що зсунули гравця
+  const st = { ticks: 0, rawJerk: 0, visJerk: 0, rawMax: 0, visMax: 0, corr: 0 };
+  let cap = 0;
+  function decay(t) {
+    const n = t - tick;
+    if (tick >= 0 && n > 0) {
+      for (const o of off) if (o) for (let i = 0; i < Math.min(n, 40) && (o.x || o.y); i++) {
+        // тане ×SMOOTH за тик, але не швидше за CATCH кроків гравця — великий зсув доїжджає за 4–5 тиків, а не стрибком
+        const d = Math.hypot(o.x, o.y), k = Math.max(SMOOTH, 1 - cap / d);
+        o.x = Math.trunc(o.x * k); o.y = Math.trunc(o.y * k);
+      }
+    }
+    tick = t;
+  }
+  return {
+    st, off,
+    before(s) { saved = s.players.map((p) => ({ x: p.x, y: p.y })); },
+    after(s) {
+      if (!saved) return;
+      s.players.forEach((p, k) => {
+        const b = saved[k]; if (!b) return;
+        const dx = b.x - p.x, dy = b.y - p.y;
+        if (!dx && !dy) return;
+        st.corr++;
+        const o = (off[k] ??= { x: 0, y: 0 });
+        if (!on || Math.abs(o.x + dx) + Math.abs(o.y + dy) > SNAP) { o.x = 0; o.y = 0; return; }
+        o.x += dx; o.y += dy;
+      });
+      saved = null;
+    },
+    /** Видима поза гравця k (для заміру й малювання). */
+    vis(s, k) { const p = s.players[k], o = off[k]; return o ? { x: p.x + o.x, y: p.y + o.y } : { x: p.x, y: p.y }; },
+    apply(s) {
+      const stepU = Math.round(s.params.playerSpeed * R.U / R.TPS);
+      cap = CATCH * stepU;
+      decay(s.tick);
+      // замір: за один тик справжня поза (з перерахунками) і видима — наскільки стрибнули понад швидкість гравця
+      const lim = JERK * stepU;
+      s.players.forEach((p, k) => {
+        const v = this.vis(s, k), w = seen[k];
+        if (w && w.t === s.tick - 1 && !p.out) {
+          const raw = Math.hypot(p.x - w.rx, p.y - w.ry), vis = Math.hypot(v.x - w.vx, v.y - w.vy);
+          st.ticks++;
+          st.rawMax = Math.max(st.rawMax, raw); st.visMax = Math.max(st.visMax, vis);
+          if (raw > lim) st.rawJerk++;
+          if (vis > lim) st.visJerk++;
+        }
+        if (!w || w.t !== s.tick) seen[k] = { t: s.tick, rx: p.x, ry: p.y, vx: v.x, vy: v.y };
+      });
+      const back = [];
+      s.players.forEach((p, k) => { const o = off[k]; if (o && (o.x || o.y)) { back.push(p, p.x, p.y); p.x += o.x; p.y += o.y; } });
+      return () => { for (let i = 0; i < back.length; i += 3) { back[i].x = back[i + 1]; back[i].y = back[i + 2]; } };
+    },
+    reset() { off.length = 0; seen.length = 0; saved = null; tick = -1; },
+  };
+}
+
+/** Затримка мережі для перевірок: одна сторона, ordered — наступне не обганяє попереднє. */
+export function createLag(rtt = 0, jit = 0, rnd = Math.random) {
+  let last = 0, timer = null;
+  const q = [];   // [{ due, fn }] — due не спадає
+  function pump() {
+    timer = null;
+    const now = performance.now();
+    while (q.length && q[0].due <= now + 0.5) { try { q.shift().fn(); } catch (x) { console.warn('Колія: затримка', x); } }
+    if (q.length) timer = setTimeout(pump, Math.max(0, q[0].due - now));
+  }
+  return (fn) => {
+    if (!(rtt > 0 || jit > 0)) return fn();
+    const now = performance.now(), d = Math.max(0, rtt / 2 + (rnd() - 0.5) * jit);
+    last = Math.max(last, now + d);
+    q.push({ due: last, fn });
+    if (!timer) timer = setTimeout(pump, Math.max(0, q[0].due - now));
+  };
+}
 
 function loadScript(src) {
   return new Promise((ok, bad) => {
@@ -130,6 +227,10 @@ export function createNet(game, opts = {}) {
   let table = String(opts.table || 'auto');
   const nick = opts.nick || '';
   let bot = opts.bot || null;           // { think(state) → { mx, my, use } } — керує своїм гравцем замість клавіатури
+  const qs = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
+  const lag = +(opts.lag ?? qs.get('lag') ?? 0) || 0, jit = +(opts.jit ?? qs.get('jit') ?? (lag ? lag / 3 : 0)) || 0;
+  const lagIn = createLag(lag, jit), lagOut = createLag(lag, jit);   // K6: ?lag=120 — емуляція пінгу
+  const smooth = createSmoother((opts.smooth ?? qs.get('smooth')) !== '0' && opts.smooth !== false);
 
   let conn = null, room = null, seat = null, ready = false, resyncing = false, lobby = null;
   let e = 0, C = null, count = 0, w = -1, hi = 0, dirty = false, off = null, idSeq = 0, desyncSaid = false;
@@ -144,10 +245,11 @@ export function createNet(game, opts = {}) {
     get room() { return room; },
     get ready() { return ready; },
     get C() { return C; },
-    start, update, restart,
+    start, update, restart, draw,
     info() {
       return { room, seat, p: net.p, e, count, w, cTick: C?.tick, pTick: game.state?.tick, pending: pending.length,
-        status: net.status, desync: net.desync, cStatus: C?.status, hash: C ? R.hash(C) : 0, stats: { ...stats } };
+        status: net.status, desync: net.desync, cStatus: C?.status, hash: C ? R.hash(C) : 0, stats: { ...stats },
+        lag, jit, smooth: { ...smooth.st } };
     },
     hashAt: (t) => hashes.get(t),
     hashes: () => [...hashes.entries()],
@@ -163,8 +265,8 @@ export function createNet(game, opts = {}) {
       .withAutomaticReconnect({ nextRetryDelayInMilliseconds: (r) => [0, 1000, 2000, 3000, 5000][Math.min(r.previousRetryCount, 4)] })
       .build();
     conn.on('rooms', (list) => { lobby = list; });
-    conn.on('frame', (m) => { if (m && m.id === room) onFrame(m.f); });
-    conn.on('room', (rv) => { if (rv && rv.room && rv.room.id === room) onRoom(rv); });
+    conn.on('frame', (m) => lagIn(() => { if (m && m.id === room) onFrame(m.f); }));
+    conn.on('room', (rv) => lagIn(() => { if (rv && rv.room && rv.room.id === room) onRoom(rv); }));
     conn.onreconnecting(() => { ready = false; say('перепідключаюсь…'); });
     conn.onreconnected(() => enter().catch((x) => { console.warn('Колія: не зайшов знову', x); say('не зайшов: ' + x.message); }));
     say('підключаюсь…');
@@ -210,9 +312,12 @@ export function createNet(game, opts = {}) {
     stats.resyncs++;
     say('беру журнал…');
     try {
+      if (lag) await new Promise((r) => lagOut(r));
       const res = await fetch(`/api/games/koliya/${encodeURIComponent(room)}/log?from=0`, { cache: 'no-store' });
       if (!res.ok) throw new Error('журнал: ' + res.status);
-      build(await res.json());
+      const j = await res.json();
+      if (lag) await new Promise((r) => lagIn(r));
+      build(j);
     } catch (x) {
       console.warn('Колія: журнал не взявся', x);
       say('журнал не взявся');
@@ -239,6 +344,7 @@ export function createNet(game, opts = {}) {
     if (me) lastIn = { mx: me.mx | 0, my: me.my | 0, t: -99 };
     const fresh =!game.state || game.state.w !== C.w || game.state.h !== C.h;
     if (fresh) game.state = R.clone(C); else copyInto(game.state, C);
+    smooth.reset();
     hi = C.tick;
     ready = true;
     say('грає');
@@ -298,7 +404,7 @@ export function createNet(game, opts = {}) {
         const h = R.hash(C);
         hashes.set(C.tick, h);
         if (hashes.size > 64) hashes.delete(hashes.keys().next().value);
-        conn?.send('Input', room, 'hash', { t: C.tick, h }).catch(() => { });
+        lagOut(() => conn?.send('Input', room, 'hash', { t: C.tick, h }).catch(() => { }));
       }
     }
     const before = pending.length;
@@ -344,7 +450,7 @@ export function createNet(game, opts = {}) {
     const i = ++idSeq;
     pending.push({ t, i, cmd });
     stats.sent++;
-    conn.send('Input', room, kind, { ...payload, t, i }).catch((x) => console.warn('Колія: Input', x));
+    lagOut(() => conn.send('Input', room, kind, { ...payload, t, i }).catch((x) => console.warn('Колія: Input', x)));
   }
 
   /** Передбачений світ до тику target; нові тики — зі своїм керуванням і подіями. */
@@ -363,8 +469,18 @@ export function createNet(game, opts = {}) {
   function rebuild() {
     stats.rebuilds++;
     const s = game.state, back = s.tick;
+    smooth.before(s);
     copyInto(s, C);
     advanceP(back, STEPS_PER_FRAME * 4);
+    if (s.tick === back) smooth.after(s); else smooth.before({ players: [] });   // інший тик — не згладжуємо
+  }
+
+  /** Малювання (гачок main.js): гравці — у видимій (згладженій) позі лише на час view.draw. */
+  function draw(view) {
+    const s = game.state;
+    if (!s || !view) return;
+    const undo = smooth.apply(s);
+    try { view.draw(s, net.alpha); } finally { undo(); }
   }
 
   function update(now = performance.now()) {
