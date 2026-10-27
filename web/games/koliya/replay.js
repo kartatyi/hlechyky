@@ -10,6 +10,7 @@
 //   menu.js («📼 Повтори»), render.js (setFollow — камера за гравцем).
 // Затиснутий use з мережі (h) — як net.prep: перед кроком гравцеві ut = tick.
 import * as R from './rules.js';
+import { pcol, pmark } from './panel.js';   // K53: кольори гравців — з урахуванням «Кольори для дальтоніків»
 
 export const STORE_KEY = 'kol-replays';
 const STORE_MAX = 1000 * 1000;   // ~1 МБ на всі збережені
@@ -245,7 +246,6 @@ export function pushStore(st, code, rec) {
 export function saveStore(st, ls = globalThis.localStorage) { try { ls?.setItem(STORE_KEY, JSON.stringify(st)); return true; } catch { return false; } }
 
 // ---------------- перегляд у браузері (DOM) ----------------
-const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
 const SPEEDS = [1, 2, 4, 8];
 // K42: звук у повторі — лише на ×1–×2 і не більше SOUND_TICKS тиків за кадр (×8 чи ривок кадру — без лавини звуків)
 export const SOUND_TICKS = 3;
@@ -479,8 +479,8 @@ export function createReplay(game, opts = {}) {
     put('top', act.top, `📼 Повтор · смуга №${rec.seed} · ⏱ ${fmtT(s.tick)} / ${fmtT(end)} · тик ${s.tick}/${end} · ×${act.speed}${act.paused ? ' · ⏸' : ''}`);
     put('fill', act.fill.style, `${Math.min(100, s.tick / Math.max(1, end) * 100).toFixed(2)}%`, 'width');
     put('play', act.playBtn, act.paused ? '▶' : '⏸');
-    put('cam', act.camBtn, act.follow < 0 ? '👥 Гурт' : `🎥 ${act.follow >= rec.local ? '🤖' : ''}П${act.follow + 1}`);
-    put('camc', act.camBtn.style, act.follow >= 0 ? COLORS[act.follow % 4] : '', 'color');
+    put('cam', act.camBtn, act.follow < 0 ? '👥 Гурт' : `🎥 ${act.follow >= rec.local ? '🤖' : ''}${pmark(act.follow)}П${act.follow + 1}`);
+    put('camc', act.camBtn.style, act.follow >= 0 ? pcol(act.follow) : '', 'color');
     const v = act.verdict, en = endName({ status: s.status, reason: s.reason });
     put('verd', act.verdEl, !v ? '' : v.ok === null ? `${en} — без звірки (запис неповний) · ▶ — ще раз`
       : v.ok ? `✔ ${en} — повтор зійшовся з партією · ▶ — ще раз` : `⚠ Повтор розійшовся з партією (тик ${v.tick}) — правила змінились після запису? · ▶ — ще раз`);
