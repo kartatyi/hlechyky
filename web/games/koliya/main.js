@@ -71,7 +71,7 @@ try {   // K21: лише відомі значення (старе 'medium' чи
   if (o.tips === false) prefs.tips = false;
 } catch { }
 input.setRumble(prefs.rumble);
-input.setTouch(game.touch = createTouch({ canvas, onPause: q.get('net') ? null : (on) => { game.paused = on; } }));   // K27
+input.setTouch(game.touch = createTouch({ canvas }));   // K27
 const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
 const panel = createPanel(document.getElementById('kol-panel'), {
   meta: R.PARAM_META, variants: R.VARIANTS, values: game.params,

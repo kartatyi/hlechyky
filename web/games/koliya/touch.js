@@ -1,9 +1,9 @@
 // «Колія» — керування з телефона й планшета (K27).
 // Контракт: createTouch(opts?) → { read(): { mx, my (-1..1), use (затиснуто), throw, horn (раз на натиск) } | null,
-//   active (чи вже показали дотикове керування), swallow(), setVibrate(on), buzz('tap'|'hit'|'lost'), setPaused(on), dispose() }
-//   opts: { canvas (зона стіка), root (куди вставити шар; document.body), onPause?(on) — ⏸ (без нього кнопки нема),
-//           onGear?() — ⚙ (панель K4 має свою кнопку, тому опційно) }.
-//   input.js (гачок setTouch) зливає read() у гравця 0; main.js створює й передає canPause лише без мережі.
+//   active (чи вже показали дотикове керування), swallow(), setVibrate(on), buzz('tap'|'hit'|'lost'), dispose() }
+//   opts: { canvas (зона стіка), root (куди вставити шар; document.body) }.
+//   input.js (гачок setTouch) зливає read() у гравця 0. ⚙ — кнопка панелі (K4), ⏸ — кнопка паузи HUD (K23): обидві 46 px,
+//   пальцем досяжні, тут не дублюємо.
 // Показуємо лише на дотиковому пристрої: (pointer: coarse) одразу або з першого дотику; мишку на ПК не чіпаємо
 // (стік слухає лише pointerType touch/pen, шар кнопок прозорий для подій поза кнопками).
 // Стік плаваючий: де торкнувся в лівій ~60 % екрана — там центр; палець далі за радіус — центр тягнеться слідом.
@@ -58,7 +58,6 @@ html.kol-touch .kol-tl { display: block; }
 .kol-tthrow, .kol-thorn { --s: clamp(54px, 16vmin, 74px); width: var(--s); height: var(--s); font-size: calc(var(--s) * .38); }
 .kol-tthrow { right: calc(28px + env(safe-area-inset-right) + clamp(78px, 25vmin, 112px)); bottom: calc(12px + env(safe-area-inset-bottom)); }
 .kol-thorn { right: calc(10px + env(safe-area-inset-right)); bottom: calc(26px + env(safe-area-inset-bottom) + clamp(78px, 25vmin, 112px)); }
-.kol-tpause { right: calc(8px + env(safe-area-inset-right)); top: 62px; width: 46px; height: 46px; border-radius: 10px; font-size: 22px; }
 @media (orientation: portrait) {
   .kol-tuse { --s: clamp(72px, 21vmin, 96px); }
   .kol-tthrow, .kol-thorn { --s: clamp(50px, 14vmin, 64px); }
@@ -68,15 +67,13 @@ html.kol-touch .kol-tl { display: block; }
   border: 1px solid #ffffff2a; font-size: 13px; }
 .kol-tpo button { font: inherit; font-size: 18px; color: #fff; background: none; border: 0; min-width: 36px; min-height: 36px; }
 @media (orientation: portrait) { .kol-tl.kol-po .kol-tpo { display: flex; } }
-.kol-tpz { position: absolute; inset: 0; display: none; pointer-events: auto; touch-action: none; background: #0b0d09b0;
-  align-items: center; justify-content: center; flex-direction: column; gap: .4em; font-size: 22px; }
-.kol-tl.kol-paused .kol-tpz { display: flex; }
-.kol-tpz small { font-size: 14px; opacity: .85; }
-/* стартовий екран HUD (K9): на дотику клавіші ховаємо, пояснюємо пальцем */
-html.kol-touch .kol-card .kol-keys, html.kol-touch .kol-card .kol-hint, html.kol-touch .kol-card .kol-go > span { display: none; }
-html.kol-touch .kol-card .kol-go::before { content: 'Ліворуч веди пальцем — ходити · ✋ дія · 🎯 кинути · 📯 гудок';
+/* екрани HUD (K9/K23): на дотику клавіші ховаємо, пояснюємо пальцем. Старт: .kol-keys + .kol-hint + .kol-go;
+   кінець: .kol-sum … .kol-go (лишається кнопка «Ще раз»); пауза: «Esc — продовжити» */
+html.kol-touch .kol-keys, html.kol-touch .kol-keys + .kol-hint, html.kol-touch .kol-keys + .kol-hint + .kol-go > span,
+html.kol-touch .kol-sum ~ .kol-go, html.kol-touch .kol-pnet ~ .kol-hint:last-child { display: none; }
+html.kol-touch .kol-keys + .kol-hint + .kol-go::before { content: 'Ліворуч веди пальцем — ходити · ✋ дія · 🎯 кинути · 📯 гудок';
   display: block; font-size: .8em; font-weight: 500; margin-bottom: .5em; animation: none; }
-html.kol-touch .kol-card .kol-go::after { content: '👆 Торкнись — почати'; }
+html.kol-touch .kol-keys + .kol-hint + .kol-go::after { content: '👆 Торкнись — почати'; }
 `;
 
 const BTN = [
@@ -96,16 +93,11 @@ export function createTouch(opts = {}) {
   const knob = el('kol-sk', layer);
   const btns = {};
   for (const [k, cls, ico, cap] of BTN) { const b = el('kol-tb ' + cls, layer, `${ico}<small>${cap}</small>`); b.dataset.k = k; btns[k] = b; }
-  let pauseBtn = null, pauseScr = null;
-  if (opts.onPause) {
-    pauseBtn = el('kol-tb kol-tpause', layer, '⏸'); pauseBtn.dataset.k = 'pause'; pauseBtn.title = 'Пауза';
-    pauseScr = el('kol-tpz', layer, '⏸ Пауза<small>торкнись — грати далі</small>');
-  }
   const po = el('kol-tpo', layer, '<span>📱↻ Поверни телефон боком — колію видно далі. Можна й так.</span><button aria-label="Закрити">✕</button>');
   let poClosed = false;
   try { poClosed = sessionStorage.getItem('kol-po') === '1'; } catch { }
 
-  let active = false, vibrate = true, paused = false;
+  let active = false, vibrate = true;
   let R = 56;                                     // радіус стіка, px
   let sid = null, cx = 0, cy = 0, fx = 0, fy = 0; // палець стіка: id, центр, поточна точка
   const held = new Map();                         // pointerId → ключ кнопки
@@ -150,7 +142,7 @@ export function createTouch(opts = {}) {
     if (!touchy(e)) return;
     activate();
     e.preventDefault();
-    if (sid != null || paused || e.clientX > innerWidth * 0.6) return;
+    if (sid != null || e.clientX > innerWidth * 0.6) return;
     sid = e.pointerId; radius();
     cx = fx = e.clientX; cy = fy = e.clientY;
     try { canvas.setPointerCapture(sid); } catch { }
@@ -176,7 +168,6 @@ export function createTouch(opts = {}) {
     e.preventDefault();
     activate();
     const k = b.dataset.k;
-    if (k === 'pause') { setPaused(true); return; }
     held.set(e.pointerId, k); b.classList.add('kol-on');
     try { b.setPointerCapture(e.pointerId); } catch { }
     if (k === 'throw' || k === 'horn') hits.add(k);
@@ -192,7 +183,6 @@ export function createTouch(opts = {}) {
   layer.addEventListener('pointercancel', release);
   layer.addEventListener('lostpointercapture', release);
   po.querySelector('button').addEventListener('click', () => { poClosed = true; try { sessionStorage.setItem('kol-po', '1'); } catch { } orient(); });
-  pauseScr?.addEventListener('pointerdown', (e) => { e.preventDefault(); setPaused(false); });
 
   // — без меню на довгий натиск, зуму жестом (iOS), скролу
   const noMenu = (e) => { if (active && !e.target.closest?.('input, textarea, .kol-pan')) e.preventDefault(); };
@@ -208,13 +198,6 @@ export function createTouch(opts = {}) {
   doc.addEventListener('visibilitychange', onVis);
   addEventListener('blur', reset);
 
-  function setPaused(on) {
-    on = !!on && !!opts.onPause;
-    if (on === paused) return;
-    paused = on; if (on) reset();
-    layer.classList.toggle('kol-paused', on);
-    opts.onPause?.(on);
-  }
   function buzz(kind) {
     if (!vibrate || !active || typeof navigator.vibrate !== 'function') return;
     if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;   // до першого справжнього дотику браузер однаково не дасть
@@ -226,19 +209,17 @@ export function createTouch(opts = {}) {
 
   return {
     get active() { return active; },
-    get paused() { return paused; },
     read() {
       if (!active) return null;
-      const o = sid == null || paused ? { mx: 0, my: 0 } : stickVec(fx - cx, fy - cy, R);
+      const o = sid == null ? { mx: 0, my: 0 } : stickVec(fx - cx, fy - cy, R);
       const keys = new Set(held.values());
-      const r = { mx: o.mx, my: o.my, use: !paused && keys.has('use'), throw: hits.has('throw'), horn: hits.has('horn') };
+      const r = { mx: o.mx, my: o.my, use: keys.has('use'), throw: hits.has('throw'), horn: hits.has('horn') };
       hits.clear();
       return r;
     },
     swallow() { hits.clear(); },
     setVibrate(on) { vibrate = !!on; },
     buzz,
-    setPaused,
     dispose() {
       canvas?.removeEventListener('pointerdown', onDown); canvas?.removeEventListener('lostpointercapture', onUp);
       removeEventListener('pointermove', onMove); removeEventListener('pointerup', onUp); removeEventListener('pointercancel', onUp);
