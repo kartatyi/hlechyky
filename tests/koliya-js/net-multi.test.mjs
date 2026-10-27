@@ -50,7 +50,7 @@ class Srv {
   start() { this.epoch = 0; this.newEpoch((this.rng() * 2 ** 32) >>> 0, {}); }
   newEpoch(seed, prm) {
     this.epoch++; this.seed = seed; this.params = JSON.stringify(prm);
-    this.log = []; this.out = []; this.hashes.clear(); this.desync = -1; this.keepFrom = 0; this.w = -1; this.leaveT = 0;
+    this.log = []; this.out = []; this.hashes.clear(); this.desync = -1; this.votes = new Map(); this.snap = null; this.snapWait = null; this.keepFrom = 0; this.w = -1; this.leaveT = 0;
     this.lastT.fill(0); this.n = 0;
     for (let s = 0; s < 4; s++) { this.pOf[s] = this.seats[s] != null && this.n < MaxRules ? this.n++ : -1; if (this.pOf[s] >= 0) this.out.push(false); }
     for (let s = 0; s < 4; s++) { this.p2Of[s] = this.p2Of[s] >= 0 && this.pOf[s] >= 0 && this.n < MaxRules ? this.n++ : -1; if (this.p2Of[s] >= 0) this.out.push(false); }
@@ -89,13 +89,38 @@ class Srv {
       case 'hash': {
         const t = c('t', 0, 2 ** 31 - 1), h = pl.h;
         if (t > this.w + 1) return;
-        if (this.hashes.has(t)) { if (this.hashes.get(t) !== h && this.desync < 0) { this.desync = t; this.desyncs.push(t); this.dirty = true; } return; }
-        this.hashes.set(t, h);
-        if (this.hashes.size > 64) this.hashes.delete(Math.min(...this.hashes.keys()));
+        if (this.hashes.has(t)) {
+          if (this.hashes.get(t) !== h && this.desync < 0) { this.desync = t; this.desyncs.push(t); this.dirty = true; }
+          if (this.hashes.get(t) === h) { this.votes.set(t, (this.votes.get(t) | 0) | (1 << seat)); this.confirm(); }   // K44
+          return;
+        }
+        this.hashes.set(t, h); this.votes.set(t, 1 << seat);
+        if (this.hashes.size > 64) { const k = Math.min(...this.hashes.keys()); this.hashes.delete(k); this.votes.delete(k); }
+        this.confirm();
         return;
       }
       default: throw new GameError('Тут так не ходять');
     }
+  }
+  // K44: знімки — як Koliya.cs PutSnap/Need/Confirm
+  putSnap(e, t, h, z, b) {
+    if (e !== this.epoch || !b.length || t <= 0 || t > this.mark() + 1) return;
+    if (this.snap && t <= this.snap.t) return;
+    if (this.snapWait && t <= this.snapWait.t) return;
+    if (this.hashes.has(t) && this.hashes.get(t) !== h) return;
+    this.snapWait = { t, h, z, b };
+    this.snapPuts = (this.snapPuts | 0) + 1;
+    this.confirm();
+  }
+  need() { return Math.min(2, Math.max(1, this.pOf.filter((p) => p >= 0).length)); }
+  confirm() {
+    const q = this.snapWait;
+    if (!q || !this.hashes.has(q.t)) return;
+    if (this.hashes.get(q.t) !== q.h || (this.desync >= 0 && this.desync <= q.t)) { this.snapWait = null; return; }
+    let m = this.votes.get(q.t) | 0, n = 0;
+    for (; m; m &= m - 1) n++;
+    if (n < this.need()) return;
+    this.snap = q; this.snapWait = null;
   }
   add(seat, e, want) {
     const now = this.nowTick();
@@ -124,8 +149,10 @@ class Srv {
     return { e: this.epoch, seed: this.seed, prm: JSON.parse(this.params), n0: this.n, p: seat != null && seat >= 0 ? this.pOf[seat] : -1,
       pOf: this.pOf.slice(), p2: seat != null && seat >= 0 ? this.p2Of[seat] : -1, p2Of: this.p2Of.slice(), d: this.desync };
   }
-  logBody(from) {
-    return { e: this.epoch, seed: this.seed, prm: JSON.parse(this.params), n0: this.n, t: this.nowTick(), w: this.mark(), n: this.log.length,
+  logBody(from, snap = false) {
+    const sn = snap && from === 0 ? this.snap : null;
+    if (sn) { from = 0; while (from < this.log.length && this.log[from].T < sn.t) from++; }
+    return { s: sn && { t: sn.t, h: sn.h, z: sn.z ? 1 : 0, b: Buffer.from(sn.b).toString('base64') }, e: this.epoch, seed: this.seed, prm: JSON.parse(this.params), n0: this.n, t: this.nowTick(), w: this.mark(), n: this.log.length,
       f: Math.max(0, Math.min(from, this.log.length)), c: this.flat(from), pOf: this.pOf.slice(), p2Of: this.p2Of.slice(), d: this.desync };
   }
 }
@@ -181,22 +208,31 @@ function world({ seed = 1, base = 40, jit = 80, reorder = 0 }) {
       }
     },
   };
-  globalThis.fetch = (url) => {
+  globalThis.fetch = (url, o) => {
+    const u = new URL(url, 'http://x'), q = u.searchParams;
+    if (o?.method === 'POST' && u.pathname.endsWith('/snap')) {   // K44: знімок — хто прислав, неважливо
+      const b = new Uint8Array(o.body);
+      return new Promise((ok) => at(clock + delay(), () => { srv.putSnap(+q.get('e'), +q.get('t'), +q.get('h'), q.get('z') === '1', b); ok({ ok: true, status: 200 }); }));
+    }
     const cl = cur;
     if (!cl) throw new Error('fetch поза клієнтом');
-    const from = +new URL(url, 'http://x').searchParams.get('from') || 0;
-    return new Promise((ok) => cl.up(() => { const body = clone(srv.logBody(from)); cl.down(() => ok({ ok: true, status: 200, json: async () => body })); }));
+    const from = +q.get('from') || 0, snap = q.get('snap') === '1';
+    return new Promise((ok) => cl.up(() => {
+      const body = clone(srv.logBody(from, snap));
+      cl.logBytes = JSON.stringify(body).length;
+      cl.down(() => ok({ ok: true, status: 200, json: async () => body }));
+    }));
   };
   Object.defineProperty(globalThis, 'performance', { value: { now: () => clock }, configurable: true, writable: true });
   const warn0 = console.warn, info0 = console.info;
   console.warn = (...a) => warns.push(a.map(String).join(' '));
   console.info = () => {};
 
-  function addClient(nick, phase) {
+  function addClient(nick, phase, more = {}) {
     const cl = { nick, seat: null, h: {}, gone: false, rate: new Map(), game: { state: null, params: PARAMS, seed: 0, local: 1 } };
     cl.up = pipe(cl); cl.down = pipe(cl);
     let n = 0;
-    cl.net = createNet(cl.game, { table: ROOM, nick, makeBot: (p) => {
+    cl.net = createNet(cl.game, { ...more, table: ROOM, nick, makeBot: (p) => {
       const b = createBot(p);
       return { p, think: (s, q) => { const v = { ...b.think(s, q) }; if (++n % 53 === 0) v.throw = true; if (n % 197 === 0) v.horn = true; return v; } };
     } });
@@ -303,6 +339,42 @@ test('мережа наживо: 4 клієнти з ботами, джитер,
 test('мережа наживо: перестановки доставки (кадри, вид, ввід обганяють одне одного), пізній вхід на 3-й хвилині', { timeout: 600_000 }, async () => {
   const r = await scenario({ seed: 9, base: 30, jit: 200, reorder: 0.25, lateAt: 200_000, restartAt: 240_000, endAt: 300_000 });
   assert.ok(r.C.tick > 600);
+});
+
+test('K44: пізній вхід на 5-й хвилині зі знімка — той самий світ, переграє лише хвіст і швидше', { timeout: 600_000 }, async () => {
+  clock = 0; queue.length = 0;
+  const W = world({ seed: 13, base: 50, jit: 100, reorder: 0.1 });
+  try {
+    const { srv } = W;
+    srv.seats[0] = 'A';
+    srv.start();
+    W.serverLoop();
+    const A = W.addClient('A', 7);
+    await runUntil(400);
+    const B = W.addClient('B', 23);
+    await runUntil(1200);
+    const Cc = W.addClient('C', 41);
+    await runUntil(300_000);
+    assert.ok(srv.snap && srv.snap.t >= 4800, 'сервер не має підтвердженого знімка: ' + JSON.stringify(srv.snap && srv.snap.t));
+    const D = W.addClient('D', 13);                    // гравець — зі знімка
+    const F = W.addClient('F', 17, { snap: false });   // глядач (місць нема) — з нуля, для порівняння
+    await runUntil(325_000);
+    const live = [A, B, Cc, D, F];
+    for (const cl of live) assert.ok(cl.net.ready, cl.nick + ': не готовий — ' + cl.net.status);
+    checkHashes(srv, live, 'зі знімком');
+    assert.deepEqual(srv.desyncs, [], 'сервер бачив розбіжність хешів');
+    assert.ok(!W.warns.some((x) => /розійшлись|знімок не/.test(x)), W.warns.join(' | '));
+    const sd = D.net.info().stats, sf = F.net.info().stats;
+    if (process.env.K44_LOG) console.log(JSON.stringify({ snapT: srv.snap.t, puts: srv.snapPuts, bytes: srv.snap.b.length, D: sd, F: sf, logD: D.logBytes, logF: F.logBytes }));
+    assert.ok(sd.snapFrom >= 4800, 'D не взяв знімок');
+    assert.equal(sf.snapFrom, -1);
+    assert.equal(D.net.p, srv.pOf[D.seat]);
+    assert.ok(sd.buildTicks < 1500 && sf.buildTicks > 5500, `переграно: зі знімка ${sd.buildTicks}, з нуля ${sf.buildTicks}`);
+    assert.ok(sd.buildMs < sf.buildMs, `відновлення: зі знімка ${sd.buildMs} мс, з нуля ${sf.buildMs} мс`);
+    assert.ok(D.logBytes < F.logBytes / 2, `журнал: ${D.logBytes} Б проти ${F.logBytes} Б`);
+    assert.ok(srv.snap.b.length < 8 * 1024, 'знімок більший за 8 КБ');
+    for (const cl of W.clients) assert.ok(Math.max(...cl.rate.values()) <= 30, cl.nick + ': квота Input');
+  } finally { W.restore(); }
 });
 
 test('модель сервера: join після leave не раніше за тик leave (слот rules той самий)', () => {

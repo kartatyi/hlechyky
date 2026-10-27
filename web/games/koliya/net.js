@@ -176,10 +176,12 @@ export async function encodeSnap(s) {
   return { z: 0, b: u8 };
 }
 /** Знімок з журналу (b — base64, z — gzip) → світ. */
-export async function decodeSnap(b, z) {
+export async function decodeSnap(b, z) { return snapParse(await unzipSnap(b, z)); }
+/** Знімок з журналу → JSON-текст (розпаковка асинхронна, розбір — snapParse). */
+export async function unzipSnap(b, z) {
   let u8 = fromB64(b);
   if (z) u8 = await through(u8, new DecompressionStream('gzip'));
-  return snapParse(new TextDecoder().decode(u8));
+  return new TextDecoder().decode(u8);
 }
 
 function loadScript(src) {
@@ -614,11 +616,12 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
       if (!res.ok) throw new Error('журнал: ' + res.status);
       let j = await res.json();
       if (lag) await new Promise((r) => lagIn(r));
-      const t0 = Date.now();
-      let snap = null;
+      let snap = null, text = null, t0 = Date.now();
       if (j.s) {   // K44: знімок — розпакувати й звірити; не той — журнал з нуля
         try {
-          snap = await decodeSnap(j.s.b, j.s.z);
+          text = await unzipSnap(j.s.b, j.s.z);
+          t0 = Date.now();   // замір відновлення — без очікування розпаковки (кілька КБ; між await іде інше)
+          snap = snapParse(text);
           if (snap.tick !== j.s.t || R.hash(snap) >>> 0 !== j.s.h >>> 0) throw new Error('хеш знімка не той');
         } catch (x) {
           console.warn('Колія: знімок не годиться —', x?.message || x);
@@ -627,6 +630,7 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
           res = await fetch(`/api/games/koliya/${encodeURIComponent(room)}/log?from=0`, { cache: 'no-store' });
           if (!res.ok) throw new Error('журнал: ' + res.status);
           j = await res.json();
+          t0 = Date.now();
         }
       }
       build(j, snap);
