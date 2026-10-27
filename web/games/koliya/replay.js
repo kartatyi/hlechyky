@@ -389,6 +389,7 @@ export function createReplay(game, opts = {}) {
   function seekTo(t) {
     const end = lastTick(act.rec);
     t = Math.max(0, Math.min(end, t));
+    if (act.verdict && t < end) act.paused = false;   // з кінця назад — грає далі
     if (act.pl.seek(t)) act.view?.setWorld?.(act.pl.s);
     act.acc = 0;
     check();
