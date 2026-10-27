@@ -653,7 +653,7 @@ function join(s) {
 }
 
 function leave(s, pl) {
-  if (pl.hold.k !== I.NONE) putDrop(s, Math.floor(pl.x / U), Math.floor(pl.y / U), pl.hold.k, pl.hold.n);
+  if (pl.hold.k !== I.NONE) leaveHold(s, pl);   // K33: поруч, а нема місця — у склад / біля кінця колії
   hold0(pl); pl.out = 1; pl.mx = pl.my = 0; pl.cd = 0;
   pl.x = -5 * U; pl.y = -5 * U;
 }

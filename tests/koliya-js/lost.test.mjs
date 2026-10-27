@@ -126,6 +126,46 @@ test('K33-1: 15 хв ботів з гусьми й кидком — інстру
   }
 });
 
+// ================= 3. вихід зі столу =================
+/** Гравець 1 стоїть посеред води 7×7 — поруч покласти нікуди */
+function wet(s) {
+  for (let y = 2; y <= 8; y++) for (let x = 40; x <= 46; x++) s.ground[id(s, x, y)] = G.WATER;
+  return at(s, 1, 43, 5);
+}
+
+test('K33-3: вийшов з деревом — є місце поруч: на підлогу', () => {
+  const s = blank({}, 2);
+  const pl = at(s, 1, 20, 4); pl.hold = { k: I.WOOD, n: 4 };
+  run(s, 1, [{ p: 1, k: 'leave' }]);
+  assert.equal(s.drop[id(s, 20, 4)], I.WOOD); assert.equal(s.dropN[id(s, 20, 4)], 4);
+});
+
+test('K33-3: вийшов з деревом/залізом/рейками, поруч нема місця — у склад і майстерню', () => {
+  const s = blank({}, 2);
+  for (const [k, key] of [[I.WOOD, 'wood'], [I.IRON, 'iron'], [I.RAIL, 'rails']]) {
+    const before = s.train[key];
+    const pl = wet(s); pl.hold = { k, n: 3 };
+    run(s, 1, [{ p: 1, k: 'leave' }]);
+    assert.equal(s.train[key], before + 3, key);
+    run(s, 1, [{ k: 'join' }]);
+  }
+});
+
+test('K33-3: склад повний — решта біля кінця колії; сокира — теж туди, одразу', () => {
+  const s = blank({}, 2);
+  s.train.wood = (s.params.storeMax | 0) - 1;
+  let pl = wet(s); pl.hold = { k: I.WOOD, n: 3 };
+  run(s, 1, [{ p: 1, k: 'leave' }]);
+  assert.equal(s.train.wood, s.params.storeMax | 0);
+  let floor = 0; for (let i = 0; i < s.drop.length; i++) if (s.drop[i] === I.WOOD) floor += s.dropN[i];
+  assert.equal(floor, 2, 'решта на підлозі');
+  run(s, 1, [{ k: 'join' }]);
+  const a = findTool(s, I.AXE); s.drop[a] = I.NONE; s.dropN[a] = 0;
+  pl = wet(s); pl.hold = { k: I.AXE, n: 1 };
+  run(s, 1, [{ p: 1, k: 'leave' }]);
+  assert.deepEqual(L.toolCount(s), [1, 1, 1], 'сокира не чекає 10 с');
+});
+
 // ================= детермінізм =================
 test('K33: детермінізм — однакові команди дають однаковий hash; s.keep іде в hash', () => {
   const mk = () => { const s = blank({ throw: 'on' }); const pl = at(s, 0, 30, 3); pl.hold = { k: I.BUCKET_FULL, n: 1 }; for (let x = 31; x <= 34; x++) s.ground[id(s, x, 3)] = G.WATER; return s; };
