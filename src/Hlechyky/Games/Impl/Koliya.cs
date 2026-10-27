@@ -26,6 +26,11 @@ namespace Hlechyky.Games.Impl;
 /// з <c>q = 1</c> — від нього). Разом гравців rules ≤ 4: коли всі слоти зайняті, «join2» відмовляє, а новий за столом
 /// дивиться, доки хтось не встане. Перезапуск зберігає другого: гравці rules — за порядком місць, перший, потім другий.
 /// </para>
+/// <para>
+/// K28 «люди за столом» — усе повз журнал (світ і хеш від цього не міняються): <c>nm</c> у виді й журналі — ніки
+/// гравців rules; Input <c>"react"</c> {e, q, i} — емодзі над гравцем (≤ 1 на <see cref="ReactGapMs"/>), у кадрі
+/// <c>r</c> = [seq, p, e, i]×N ще <see cref="ReactKeepMs"/>.
+/// </para>
 /// </summary>
 public sealed class Koliya : Game, IUnlistedGame
 {
@@ -82,6 +87,19 @@ public sealed class Koliya : Game, IUnlistedGame
     int _desync = -1;
     bool _dirty;
 
+    // ---- K28: люди за столом (повз журнал: світ від цього не міняється) ----
+    /// <summary>Скільки є реакцій-емодзі (web/games/koliya/net.js REACTS).</summary>
+    public const int ReactKinds = 4;
+    /// <summary>Не частіше за раз на стільки від одного гравця rules (≈ 1 на секунду з запасом на тремтіння мережі).</summary>
+    public const int ReactGapMs = 900;
+    /// <summary>Скільки реакція їде в кадрах (каркас може згорнути кадри; браузер відкидає вже бачене за номером).</summary>
+    public const int ReactKeepMs = 1500;
+
+    readonly record struct React(int Seq, int P, int E, int I, DateTimeOffset At);
+    readonly List<React> _reacts = [];
+    readonly DateTimeOffset[] _reactAt = new DateTimeOffset[MaxRulesPlayers];
+    int _reactSeq;
+
     public override string SeatName(int seat) => "колійник";
 
     public override bool LateJoin(string nick) => true;
@@ -102,6 +120,7 @@ public sealed class Koliya : Game, IUnlistedGame
         _log.Clear();
         _out.Clear();
         _hashes.Clear();
+        _reacts.Clear();   // K28: номери реакцій не скидаємо — браузер відкидає бачене за номером
         _desync = -1;
         _keepFrom = 0;
         _w = -1;
@@ -207,6 +226,17 @@ public sealed class Koliya : Game, IUnlistedGame
             case "hash":
                 Hash(payload);
                 return ActResult.Done;
+            case "react":   // K28: емодзі над гравцем — повз журнал правил, світ і хеш не чіпає
+            {
+                var p = Player(seat, payload);
+                var e = Clamp(payload, "e", -1, 1000);
+                if (e < 0 || e >= ReactKinds) throw new GameError("Такої реакції нема");
+                var now = Ctx.Clock.UtcNow;
+                if (now - _reactAt[p] < TimeSpan.FromMilliseconds(ReactGapMs)) throw new GameError("Не так часто");
+                _reactAt[p] = now;
+                _reacts.Add(new React(++_reactSeq, p, e, Clamp(payload, "i", 0, int.MaxValue), now));
+                return ActResult.Done;
+            }
             default:
                 throw new GameError("Тут так не ходять");
         }
@@ -253,6 +283,8 @@ public sealed class Koliya : Game, IUnlistedGame
     {
         var w = Mark();
         while (_keepFrom < _log.Count && _log[_keepFrom].T <= w - KeepTicks) _keepFrom++;
+        var old = Ctx.Clock.UtcNow - TimeSpan.FromMilliseconds(ReactKeepMs);   // K28
+        _reacts.RemoveAll(r => r.At < old);
         if (!_dirty) return TickResult.FrameOnly;
         _dirty = false;
         return TickResult.Both;
@@ -261,7 +293,19 @@ public sealed class Koliya : Game, IUnlistedGame
     public override object? Frame() => new
     {
         e = _epoch, t = NowTick(), w = _w, n = _log.Count, f = _keepFrom, c = Flat(_keepFrom), d = _desync,
+        r = Reacts(),   // K28: [seq, p, e, i] × N — свіжі реакції
     };
+
+    int[] Reacts()
+    {
+        var a = new int[_reacts.Count * 4];
+        for (int k = 0, j = 0; k < _reacts.Count; k++, j += 4)
+        {
+            var r = _reacts[k];
+            a[j] = r.Seq; a[j + 1] = r.P; a[j + 2] = r.E; a[j + 3] = r.I;
+        }
+        return a;
+    }
 
     int[] Flat(int from)
     {

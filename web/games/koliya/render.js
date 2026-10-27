@@ -557,6 +557,7 @@ export function createRenderer(canvas) {
     for (const wm of W.waters) wm.geometry.dispose();
     scene.remove(W.root);
     for (const lb of W.labels || []) { lb.tex.dispose(); lb.sp.material.dispose(); }
+    for (const bb of W.bubbles || []) { bb.tex.dispose(); bb.sp.material.dispose(); }   // K28
     blobs.clear(); wobbles.clear();
     W = null;
   }
@@ -924,6 +925,42 @@ export function createRenderer(canvas) {
     W.labels ||= [];
     while (W.labels.length < W.players.length) W.labels.push(makeLabel(W.labels.length));
     while (W.labels.length > W.players.length) { const lb = W.labels.pop(); W.root.remove(lb.sp); lb.tex.dispose(); lb.sp.material.dispose(); }
+    W.bubbles ||= [];   // K28: бульбашки-реакції
+    while (W.bubbles.length < W.players.length) W.bubbles.push(makeBubble());
+    while (W.bubbles.length > W.players.length) { const bb = W.bubbles.pop(); W.root.remove(bb.sp); bb.tex.dispose(); bb.sp.material.dispose(); }
+  }
+
+  // ---- K28: бульбашка-реакція над гравцем — KOL.game.reacts[k] = { e: емодзі, at: performance.now() }, видно 2 с ----
+  function makeBubble() {
+    const c = document.createElement('canvas'); c.width = 96; c.height = 96;
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+    sp.renderOrder = 21; sp.center.set(0.5, 0); sp.visible = false; W.root.add(sp);
+    return { sp, tex, c, key: '' };
+  }
+  function drawBubble(bb, e) {
+    if (bb.key === e) return;
+    bb.key = e;
+    const x = bb.c.getContext('2d');
+    x.clearRect(0, 0, 96, 96);
+    x.fillStyle = 'rgba(255,255,255,0.94)';
+    x.beginPath(); if (x.roundRect) x.roundRect(8, 4, 80, 72, 22); else x.rect(8, 4, 80, 72);
+    x.moveTo(40, 74); x.lineTo(48, 92); x.lineTo(58, 74); x.fill();
+    x.font = '48px system-ui, "Segoe UI Emoji", "Apple Color Emoji", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = '#000'; x.fillText(e, 48, 42);
+    bb.tex.needsUpdate = true;
+  }
+  function placeBubble(k, pl, lb, sc) {
+    const bb = W.bubbles?.[k];
+    if (!bb) return;
+    const r = globalThis.KOL?.game?.reacts?.[k], age = r ? performance.now() - r.at : 1e9;
+    bb.sp.visible = !pl.out && age >= 0 && age < 2000;
+    if (!bb.sp.visible) return;
+    drawBubble(bb, r.e);
+    const pop = age < 160 ? 0.4 + 0.6 * age / 160 : age > 1750 ? Math.max(0, (2000 - age) / 250) : 1;
+    const bs = sc * 1.6 * pop;
+    bb.sp.position.set(lb.sp.position.x, lb.sp.position.y + sc * 0.95, lb.sp.position.z);
+    bb.sp.scale.set(bs, bs, 1);
   }
 
   // ---- K20: мітка над головою — «П1» (бот — 🤖) кольором гравця, з кількістю в руках (×5); дрібна, крізь дерева ----
@@ -1415,6 +1452,7 @@ export function createRenderer(canvas) {
         const sc = cam.d * 0.013;
         lb.sp.position.set(x, m.root.position.y + 1.45 + lift + m.body.position.y, z);
         lb.sp.scale.set(sc * LBW / 48, sc, 1);
+        placeBubble(k, pl, lb, sc);   // K28
       }
     });
 

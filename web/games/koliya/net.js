@@ -171,6 +171,39 @@ export function shortNick(n) {
   return (ch.length > 10 ? ch.slice(0, 9).join('') + '…' : base) + sup;
 }
 
+/** K28: реакції — 1–4 на клавіатурі (Num1–4 — другий за ПК), на паді LB/RB/LT/RT (їх input.js не чіпає). */
+export const REACTS = ['👋', '👍', '😂', '😱'];
+export const REACT_GAP = 1000;   // мс між реакціями одного гравця (сервер — 900, із запасом на тремтіння)
+
+/** K28: ліміт «раз на gap мс» за ключем (гравець); true — можна. Чисте, для тестів. */
+export function createReactGate(gap = REACT_GAP) {
+  const last = new Map();
+  return (key, now) => {
+    const t = last.get(key);
+    if (t != null && now - t < gap) return false;
+    last.set(key, now);
+    return true;
+  };
+}
+
+/**
+ * K28: нові реакції з кадру (r = [seq, p, e, i] × N; запис їде в кадрах ~1,5 с): лише seq > seen, і без своїх
+ * (isMine(p, i) — їх уже показано одразу при натиску). Номери зменшились (сервер перезапустився) — рахуємо з нуля.
+ */
+export function freshReacts(r, seen, isMine = () => false) {
+  const list = [];
+  if (!Array.isArray(r) || r.length < 4) return { seen, list };
+  if (r[r.length - 4] < seen - 1000) seen = -1;
+  for (let j = 0; j + 3 < r.length; j += 4) {
+    const seq = r[j], p = r[j + 1], e = r[j + 2], i = r[j + 3];
+    if (seq <= seen) continue;
+    seen = seq;
+    if (!(e >= 0 && e < REACTS.length) || isMine(p, i)) continue;
+    list.push({ p, e });
+  }
+  return { seen, list };
+}
+
 /** K28: мапа p → короткий нік з виду/журналу сервера (nm). */
 export function namesFrom(nm) {
   return Array.isArray(nm) ? nm.map(shortNick) : [];
@@ -266,6 +299,9 @@ export function createNet(game, opts = {}) {
   let pending = [];                     // свої без луни: { t, i, cmd }
   const hashes = new Map();             // тик → хеш C
   const stats = { frames: 0, rebuilds: 0, resyncs: 0, sent: 0, dropped: 0 };
+  // K28: люди за столом — реакції (повз журнал), панелька в куті
+  let reactSeen = -1, ui = null;
+  const myReacts = new Set(), reactGate = createReactGate();
 
   const net = {
     p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1,
@@ -281,7 +317,88 @@ export function createNet(game, opts = {}) {
     hashAt: (t) => hashes.get(t),
     hashes: () => [...hashes.entries()],
     setBot(b) { bot = b; },
+    react,
   };
+
+  /** K28: реакція k (0..3) від свого гравця (q 1 — другий за ПК): показати одразу й надіслати. false — не можна/зарано. */
+  function react(k, q = 0) {
+    const p = q ? net.p2 : net.p;
+    if (!conn || !ready || p < 0 || !(k >= 0 && k < REACTS.length)) return false;
+    const now = performance.now();
+    if (!reactGate(q, now)) return false;
+    const i = ++idSeq;
+    myReacts.add(i);
+    if (myReacts.size > 32) myReacts.delete(myReacts.values().next().value);
+    showReact(p, k, now);
+    const m = { e: k, i, ...(q ? { q: 1 } : {}) };
+    lagOut(() => conn.send('Input', room, 'react', m).catch(() => { }));
+    return true;
+  }
+  function showReact(p, k, at = performance.now()) { (game.reacts ||= [])[p] = { e: REACTS[k], k, at }; }
+
+  /** K28: панелька в правому куті під ⚙ — кнопки реакцій (миша/дотик); клавіші 1–4 і плечі пада. */
+  function mountPeople() {
+    if (typeof document === 'undefined' || ui) return;
+    const st = document.createElement('style');
+    st.textContent = `.kol-net{position:fixed;right:8px;top:62px;z-index:25;display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+font:600 13px system-ui,sans-serif;pointer-events:none;user-select:none}
+.kol-net-tag{background:rgba(0,0,0,.5);padding:2px 8px;border-radius:6px;color:#ddd;white-space:nowrap}
+.kol-net-re{display:flex;flex-direction:column;gap:4px;pointer-events:auto}
+.kol-net-re button{position:relative;width:42px;height:42px;padding:0;border-radius:10px;border:1px solid #fff3;background:rgba(20,22,28,.6);
+font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
+.kol-net-re button:active{transform:scale(.92)}
+.kol-net-re button.cool{opacity:.4}
+.kol-net-re small{position:absolute;right:3px;bottom:1px;font-size:9px;color:#aaa}`;
+    document.head.appendChild(st);
+    const el = document.createElement('div');
+    el.className = 'kol-net';
+    const re = document.createElement('div');
+    re.className = 'kol-net-re';
+    const btns = REACTS.map((e, k) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.tabIndex = -1; b.title = `Реакція (клавіша ${k + 1}; пад — ${['LB', 'RB', 'LT', 'RT'][k]})`;
+      b.innerHTML = `${e}<small>${k + 1}</small>`;
+      b.addEventListener('pointerdown', (ev) => { ev.preventDefault(); react(k, 0); });
+      re.appendChild(b);
+      return b;
+    });
+    el.append(re);
+    document.body.appendChild(el);
+    ui = { el, re, btns };
+    addEventListener('keydown', (ev) => {
+      if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      const t = ev.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const m = /^(Digit|Numpad)([1-4])$/.exec(ev.code);
+      if (!m) return;
+      react(+m[2] - 1, m[1] === 'Numpad' && net.p2 >= 0 ? 1 : 0);
+    });
+  }
+
+  // K28: плечі пада — реакції (input.js їх не чіпає); керма/педалі — не пади
+  const SIM = /wheel|racing|driving force|steering|pedal|shifter|handbrake|hotas|throttle|flight|yoke|rudder|simucube|simagic|cammus/i;
+  const padPrev = new Map();
+  function padReacts() {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    let pads;
+    try { pads = [...navigator.getGamepads()].filter((g) => g && g.connected && !SIM.test(g.id || '')); } catch { return; }
+    pads.forEach((g, n) => {
+      const q = net.p2 >= 0 ? (pads.length >= 2 ? Math.min(n, 1) : 1) : 0;   // як input.js: p=2 і один пад — пад у другого
+      const cur = [4, 5, 6, 7].map((b) => { const x = g.buttons?.[b]; return !!x && (x.pressed || x.value > 0.5); });
+      const prev = padPrev.get(g.index) || [];
+      cur.forEach((d, k) => { if (d && !prev[k]) react(k, q); });
+      padPrev.set(g.index, cur);
+    });
+  }
+
+  /** K28: панелька щокадру — кнопки реакцій лише гравцю, «охолола» — напівпрозора. */
+  function peopleUi(now) {
+    if (!ui) return;
+    const playing = net.p >= 0;
+    ui.re.style.display = playing ? '' : 'none';
+    const r = game.reacts?.[net.p], cool = !!r && now - r.at < REACT_GAP;
+    for (const b of ui.btns) b.classList.toggle('cool', cool);
+  }
 
   function say(st) { net.status = st; }
 
@@ -298,6 +415,7 @@ export function createNet(game, opts = {}) {
     conn.onreconnected(() => enter().catch((x) => { console.warn('Колія: не зайшов знову', x); say('не зайшов: ' + x.message); }));
     say('підключаюсь…');
     try {
+      mountPeople();   // K28
       await conn.start();
       await enter();
     } catch (x) {
@@ -409,6 +527,11 @@ export function createNet(game, opts = {}) {
       off = off == null ? sample : Math.max(sample, off - 1);
     }
     if (f.d >= 0) noteDesync(f.d);
+    if (f.r?.length) {   // K28: реакції — повз журнал і світ
+      const fr = freshReacts(f.r, reactSeen, (p, i) => (p === net.p || p === net.p2) && myReacts.has(i));
+      reactSeen = fr.seen;
+      for (const x of fr.list) showReact(x.p, x.e);
+    }
     if (resyncing || !C) return;
     if (f.e !== e || f.f > count) { resync(); return; }
     if (!ingest(f.f, f.c)) { resync(); return; }
@@ -544,6 +667,7 @@ export function createNet(game, opts = {}) {
   }
 
   function update(now = performance.now()) {
+    padReacts(); peopleUi(now);   // K28
     if (!ready || !C || !game.state) return;
     if (dirty) { dirty = false; rebuild(); }
     const est = (now + off) / R.TICK_MS;

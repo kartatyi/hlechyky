@@ -41,4 +41,39 @@ public class KoliyaPeopleTests
         h.Leave("Петро");
         Assert.Equal(["Оля", null, "Оля ²"], Names(h.View(0)));
     }
+
+    static int[] R(JsonElement frame) => [.. frame.GetProperty("r").EnumerateArray().Select(x => x.GetInt32())];
+
+    [Fact]
+    public void Реакція_йде_в_кадрах_повз_журнал_не_частіше_раз_на_секунду()
+    {
+        var h = Table("Оля", "Петро");
+        h.Tick(5);
+        var n = Log(h).GetProperty("n").GetInt32();
+        h.Input(1, "react", new { e = 2, i = 7 });
+        h.Input(1, "react", new { e = 0, i = 8 });          // зарано — мовчки викинуто
+        h.Tick(1);
+        Assert.Equal([1, 1, 2, 7], R(LastFrame(h)));
+        Assert.Equal(n, Log(h).GetProperty("n").GetInt32());   // журнал правил (і світ, і хеш) не зачеплено
+        h.Tick(10);                                          // 0,5 с — ще їде в кадрах
+        Assert.Equal([1, 1, 2, 7], R(LastFrame(h)));
+        h.Tick(10);                                          // 1 с від першої — можна знову; перша ще в кадрі
+        h.Input(1, "react", new { e = 3, i = 9 });
+        h.Input(0, "react", new { e = 1, i = 1 });           // інший гравець — свій ліміт
+        h.Tick(1);
+        Assert.Equal([1, 1, 2, 7, 2, 1, 3, 9, 3, 0, 1, 1], R(LastFrame(h)));
+        h.Tick(30);                                          // > 1,5 с — зникли з кадрів
+        Assert.Empty(R(LastFrame(h)));
+    }
+
+    [Fact]
+    public void Погана_реакція_відмовляє()
+    {
+        var h = Table("Оля");
+        Assert.False(h.Act(0, "react", new { e = 4 }).Ok);
+        Assert.False(h.Act(0, "react", new { e = -1 }).Ok);
+        Assert.False(h.Act(0, "react", new { e = 1, q = 1 }).Ok);   // другого за ПК нема
+        Assert.True(h.Act(0, "react", new { e = 1 }).Ok);
+        Assert.False(h.Act(0, "react", new { e = 1 }).Ok);           // зарано
+    }
 }
