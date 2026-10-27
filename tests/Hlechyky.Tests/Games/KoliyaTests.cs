@@ -128,6 +128,36 @@ public class KoliyaTests
     }
 
     [Fact]
+    public void K24_join_не_раніше_за_leave_що_ліг_наперед()
+    {
+        var h = Table("Оля", "Петро");
+        h.Tick(100);
+        h.Input(1, "in", new { mx = 100, my = 0, t = 130, i = 1 });   // годинник Петра біжить наперед
+        h.Leave("Петро");                                             // leave — не раніше його команди (130)
+        h.Join("Іра");                                                // Іра на той самий слот rules
+        var e = Entries(Log(h));
+        var leave = e.Single(x => x[3] == Koliya.Leave);
+        var join = e.Last(x => x[3] == Koliya.Join);
+        Assert.Equal(leave[2], join[2]);
+        Assert.True(join[1] >= leave[1], $"join на тику {join[1]} раніше за leave на {leave[1]} — rules дасть інший слот");
+    }
+
+    [Fact]
+    public void K24_ввід_старої_епохи_мовчки_викидаємо()
+    {
+        var h = Table("Оля", "Петро");
+        h.Tick(30);
+        Assert.True(h.Act(1, "restart", new { seed = 5u, @params = new { } }).Ok);
+        h.Input(0, "use", new { x = 1500, y = 2500, fx = 1, fy = 0, t = 3000, i = 7, e = 1 });   // летів до перезапуску
+        h.Input(0, "hash", new { t = 0, h = 1L, e = 1 });
+        h.Input(0, "in", new { mx = 100, my = 0, i = 8, e = 2 });                                 // нова епоха — лягає
+        h.Input(1, "in", new { mx = -100, my = 0, i = 9 });                                       // без e — як було
+        var e = Entries(Log(h));
+        Assert.Equal([Koliya.In, Koliya.In], e.Select(x => x[3]).ToArray());
+        Assert.Equal([8, 9], e.Select(x => x[9]).ToArray());
+    }
+
+    [Fact]
     public void Перезапуск_нова_епоха_сід_і_параметри_журнал_з_нуля()
     {
         var h = Table("Оля", "Петро");
