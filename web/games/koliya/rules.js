@@ -48,6 +48,8 @@ export const PARAM_META = {
 // Перемикачі варіантів (рядкові значення; перше — типове)
 export const VARIANTS = {
   overheat: { values: ['fire', 'stop'], labels: ['Пожежа', 'Зупинка'], label: 'Перегрів котла' },
+  // K14 «Відчуття ядра» — див. блок «Відчуття» нижче
+  move: { values: ['free', 'grid', 'snappy'], labels: ['Вільно', 'Клітинками', 'Чітко'], label: 'Рух гравця' },
 };
 
 export function defaultParams() {
@@ -120,7 +122,8 @@ export function newGame(seed, params = defaultParams(), nPlayers = 1) {
 
 function newPlayer(c) {
   return { x: c.x * U + U / 2, y: c.y * U + U / 2, fx: 1, fy: 0, hold: { k: I.NONE, n: 0 }, cd: 0,
-           mx: 0, my: 0, ut: 0, out: 0, st: 0 };
+           mx: 0, my: 0, ut: 0, out: 0, st: 0,
+           gx: -1, gy: -1, gt: 0 };   // K14: ціль кроку й лічильник повороту (лише move='grid')
 }
 
 /**
@@ -229,6 +232,8 @@ function movePlayer(s, n) {
   const pl = s.players[n];
   if (pl.out) return;
   if (pl.cd > 0) pl.cd--;
+  if (s.params.move === 'grid') { moveGrid(s, n, pl); return; }       // K14
+  if (s.params.move === 'snappy') { moveSnappy(s, n, pl); return; }   // K14
   let mx = pl.mx, my = pl.my;
   if (!mx && !my) return;
   // куди дивиться — переважна вісь (на рівних лишаємо поточну, якщо вона серед натиснутих)
@@ -263,6 +268,95 @@ function nudge(s, pl, axis, v, wag, ign) {
   if (!diff) return;
   const m = Math.sign(diff) * Math.min(Math.abs(diff), v >> 1);
   if (axis === 'y') slide(s, pl, 0, m, wag, ign); else slide(s, pl, m, 0, wag, ign);
+}
+
+// ================= K14 «Відчуття ядра»: варіанти руху (move) =================
+const GRID_TURN = 3;   // move='grid': з місця в новий бік — поворот; рушаємо, якщо тримати ще ~0,1 с
+
+/** Намір (mx,my) → крок по одній осі [dx,dy]; на рівних — поточна вісь, якщо вона серед натиснутих */
+function axisDir(pl, mx, my) {
+  const ax = Math.abs(mx), ay = Math.abs(my);
+  if (ax > ay || (ax === ay && !(pl.fy && Math.sign(my) === pl.fy))) return [Math.sign(mx), 0];
+  return [0, Math.sign(my)];
+}
+/** Вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти */
+function wagIgnore(s, pl, wag) {
+  let ign = 0;
+  for (let k = 0; k < wag.length; k++) if (hitsAt(s, pl.x, pl.y, [wag[k]], 0)) ign |= 1 << k;
+  return ign;
+}
+/** Після зсуву: подія кроку й підбір свого стосу (як у movePlayer) */
+function movedFeel(s, n, pl) {
+  if (++pl.st >= 7) { pl.st = 0; ev(s, 'step', Math.floor(pl.x / U), Math.floor(pl.y / U), n); }
+  autoPick(s, n, pl);
+}
+/** Ціль кроку — сусідня клітинка, куди дивимось; false — там стіна/вода/вагон */
+function gridTarget(s, pl, wag, ign) {
+  const nx = Math.floor(pl.x / U) + pl.fx, ny = Math.floor(pl.y / U) + pl.fy;
+  if (cellBlocked(s, nx, ny) || hitsAt(s, nx * U + U / 2, ny * U + U / 2, wag, ign)) return false;
+  pl.gx = nx; pl.gy = ny; return true;
+}
+
+/** move='grid' (як Unrailed): ходиш від центру до центру клітинок; з місця в новий бік — спершу поворот на місці
+ *  (короткий натиск лише повертає — легко націлитись), утримання — крок; у русі повороти без паузи, назад — одразу. */
+function moveGrid(s, n, pl) {
+  const mx = pl.mx, my = pl.my;
+  const len = Math.floor(Math.sqrt(mx * mx + my * my));
+  const want = mx || my ? axisDir(pl, mx, my) : null;
+  const go = want && len >= 12;              // легкий нахил (< мертвої зони) — лише дивитись
+  const wag = wagonsXY(s), ign = wagIgnore(s, pl, wag);
+  const x0 = pl.x, y0 = pl.y;
+  if (pl.gx >= 0 && Math.abs(pl.gx - Math.floor(pl.x / U)) + Math.abs(pl.gy - Math.floor(pl.y / U)) > 1) pl.gx = pl.gy = -1;  // поза (мережа) перенесла
+  if (pl.gx < 0) {   // стоїмо
+    if (!want) { pl.gt = 0; return; }
+    if (want[0] !== pl.fx || want[1] !== pl.fy) { pl.fx = want[0]; pl.fy = want[1]; pl.gt = 1; return; }
+    if (!go) { pl.gt = 0; return; }
+    if (pl.gt > 0 && pl.gt < GRID_TURN) { pl.gt++; return; }
+    if (!gridTarget(s, pl, wag, ign)) return;
+  } else if (go) {   // у русі: назад — розвертаємось одразу
+    const dx = Math.sign(pl.gx * U + U / 2 - pl.x), dy = Math.sign(pl.gy * U + U / 2 - pl.y);
+    if ((dx || dy) && want[0] === -dx && want[1] === -dy) { pl.gx -= dx; pl.gy -= dy; pl.fx = want[0]; pl.fy = want[1]; }
+  }
+  let rest = Math.round(s.params.playerSpeed * U / TPS);
+  for (let seg = 0; seg < 3 && rest > 0 && pl.gx >= 0; seg++) {
+    const tx = pl.gx * U + U / 2, ty = pl.gy * U + U / 2;
+    const ax = pl.x, ay = pl.y;
+    slide(s, pl, clampI(tx - pl.x, -rest, rest), 0, wag, ign);
+    rest -= Math.abs(pl.x - ax);
+    slide(s, pl, 0, clampI(ty - pl.y, -rest, rest), wag, ign);
+    rest -= Math.abs(pl.y - ay);
+    if (pl.x === tx && pl.y === ty) {        // доїхали до центру: тримаєш — без паузи далі
+      pl.gx = pl.gy = -1; pl.gt = 0;
+      if (!go) break;
+      pl.fx = want[0]; pl.fy = want[1];
+      if (!gridTarget(s, pl, wag, ign)) break;
+    } else if (pl.x === ax && pl.y === ay) { // уперлись (вагон наїхав) — назад до центру своєї клітинки
+      const cx = Math.floor(pl.x / U), cy = Math.floor(pl.y / U);
+      if (cx === pl.gx && cy === pl.gy) break;
+      pl.gx = cx; pl.gy = cy;
+    }
+  }
+  if (pl.x !== x0 || pl.y !== y0) movedFeel(s, n, pl);
+}
+
+/** move='snappy': вільно, але 8 чітких напрямків на повній швидкості за будь-якого нахилу; ідеш уздовж осі — тягне до
+ *  середини ряду (прохід у клітинку не муляє); погляд «прилипає» — по діагоналі не перескакує, легкий нахил лише повертає. */
+function moveSnappy(s, n, pl) {
+  const mx = pl.mx, my = pl.my;
+  if (!mx && !my) return;
+  const ax = Math.abs(mx), ay = Math.abs(my), m = Math.max(ax, ay);
+  if (Math.floor(Math.sqrt(mx * mx + my * my)) < 12) { const d = axisDir(pl, mx, my); pl.fx = d[0]; pl.fy = d[1]; return; }
+  const sx = ax * 1000 >= 414 * m ? Math.sign(mx) : 0, sy = ay * 1000 >= 414 * m ? Math.sign(my) : 0;   // сектори по 45°
+  if (!sy) { pl.fx = sx; pl.fy = 0; } else if (!sx) { pl.fx = 0; pl.fy = sy; }
+  else if (!((pl.fx && pl.fx === sx) || (pl.fy && pl.fy === sy))) { const d = axisDir(pl, mx, my); pl.fx = d[0]; pl.fy = d[1]; }
+  const v = Math.round(s.params.playerSpeed * U / TPS), k = sx && sy ? 707 : 1000;
+  const wag = wagonsXY(s), ign = wagIgnore(s, pl, wag);
+  const x0 = pl.x, y0 = pl.y;
+  const rx = slide(s, pl, Math.trunc(sx * v * k / 1000), 0, wag, ign);
+  const ry = slide(s, pl, 0, Math.trunc(sy * v * k / 1000), wag, ign);
+  if (!sy) nudge(s, pl, 'y', rx < 0 ? v : (v * 2 / 3) | 0, wag, ign);   // до середини ряду (уперся — швидше)
+  if (!sx) nudge(s, pl, 'x', ry < 0 ? v : (v * 2 / 3) | 0, wag, ign);
+  if (pl.x !== x0 || pl.y !== y0) movedFeel(s, n, pl);
 }
 
 /** Несеш стос — і стаєш на такий самий: добираєш до carryMax */
@@ -558,6 +652,7 @@ export function hash(s) {
   for (const p of s.players) {
     mix(p.x); mix(p.y); mix(p.fx); mix(p.fy); mix(p.hold.k); mix(p.hold.n); mix(p.cd);
     mix(p.mx); mix(p.my); mix(p.ut); mix(p.out); mix(p.st);
+    if (s.params.move === 'grid') { mix(p.gx); mix(p.gy); mix(p.gt); }   // K14 (типовий hash не змінюється)
   }
   return h >>> 0;
 }
