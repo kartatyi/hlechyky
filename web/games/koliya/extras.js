@@ -32,10 +32,10 @@ export const EXTRA_VARIANTS = {
 
 /** Покращення проміжної станції: ключ → { label, icon } (застосування — applyUpgrade) */
 export const UPGRADES = {
-  tank:  { icon: '🛢', label: 'Цистерна: котел гріється вдвічі повільніше' },
-  craft: { icon: '🔨',label: 'Майстерня вдвічі швидша' },
-  store: { icon: '📦', label: 'Склад більший у півтора раза' },
-  carry: { icon: '💪', label: '+1 до того, скільки несеш' },
+  tank:  { icon: '🛢', short: 'Цистерна', label: 'Цистерна: котел гріється вдвічі повільніше' },
+  craft: { icon: '🔨', short: 'Майстерня ×2', label: 'Майстерня вдвічі швидша' },
+  store: { icon: '📦', short: 'Склад ×1,5', label: 'Склад більший у півтора раза' },
+  carry: { icon: '💪', short: '+1 у руки', label: '+1 до того, скільки несеш' },
 };
 const UP_KEYS = ['tank', 'craft', 'store', 'carry'];
 
@@ -94,7 +94,7 @@ function addMidStation(s) {
   s.w = W;
   // платформа: SAND (не STATION — інакше rules оголосить перемогу); довкола чисто
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) s.ground[y * W + x] = G.SAND;
-  const sy = y0 - 2 >= 1 ? y0 - 2 : y1 + 2;
+  const sy = y1 + 2 <= h - 2 ? y1 + 2 : y0 - 2;   // таблички з боку камери (півдня, +y), щоб навіс їх не ховав
   for (let y = Math.max(1, Math.min(y0, sy) - 1); y <= Math.min(h - 2, Math.max(y1, sy) + 1); y++)
     for (let x = x0 - 1; x <= x1 + 1; x++) {
       const i = y * W + x;

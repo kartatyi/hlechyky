@@ -78,9 +78,8 @@ export function createExtrasRender(scene, THREE) {
     x.fillStyle = '#e9d8a6'; x.fillRect(0, 0, 256, 160);
     x.strokeStyle = '#6b4520'; x.lineWidth = 8; x.strokeRect(4, 4, 248, 152);
     x.font = '72px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(UPGRADES[k].icon, 128, 62);
-    x.font = 'bold 22px sans-serif'; x.fillStyle = '#3a2410';
-    const words = UPGRADES[k].label.split(':')[0].split(' ').slice(0, 3).join(' ');
-    x.fillText(words, 128, 128);
+    x.font = 'bold 32px sans-serif'; x.fillStyle = '#3a2410';
+    x.fillText(UPGRADES[k].short, 128, 128, 236);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace || t.colorSpace; return t;
   }
 
