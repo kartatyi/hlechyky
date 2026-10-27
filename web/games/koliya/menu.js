@@ -5,7 +5,7 @@
 //     open(canResume) — показати знову (з паузи чи фіналу), opts() → { players, bots, seed } }
 //  act: 'play' | 'tutorial' | 'daily' | 'endless' | 'net' | 'resume' | 'copy' | 'offline'; o = { players, bots, seed }.
 //  Вибране пам'ятає localStorage 'kol-menu' { players, bots, seed: 'r' | число, last }; ?p= / ?bot= / ?seed= в адресі
-//  переважують пам'ять. У мережі (KOL.net) — лише «Грати», «Копіювати посилання для друга» і «Без мережі».
+//  переважують пам'ять лише на цей запуск (K46: у пам'ять не пишуться, поки їх не змінять у меню). У мережі (KOL.net) — лише «Грати», «Копіювати посилання для друга» і «Без мережі».
 import { BIOME_NAMES, generate } from './gen.js';
 import { MAX_PLAYERS } from './rules.js';
 
@@ -39,6 +39,12 @@ const CSS = `
 
 function load() { try { const o = JSON.parse(localStorage.getItem(KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch { return {}; } }
 function save(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch { } }
+/** K46: що писати в пам'ять — поля, взяті з адреси (?p= / ?bot= / ?seed=) і не змінені руками, лишаються як були в пам'яті */
+export function memToSave(st, mem, fromUrl, last) {
+  const o = { players: st.players, bots: st.bots, seed: st.seed, last };
+  for (const k of fromUrl) { if (mem?.[k] === undefined) delete o[k]; else o[k] = mem[k]; }
+  return o;
+}
 
 /** Ділянки сіду коротко: { icons: '🌾🌳⛰', names: 'степ → гай → прохід' } (те саме generate, що й гра) */
 const zoneCache = new Map();
@@ -64,6 +70,7 @@ export function createMenu(box, opts = {}) {
     bots: q.get('bot') ? (g0?.bots ?? 0) : Math.max(0, Math.min(3, mem.bots | 0)),
     seed: q.get('seed') ? (g0?.seed ?? +q.get('seed')) >>> 0 : (mem.seed === 'r' || mem.seed == null ? 'r' : mem.seed >>> 0),
   };
+  const fromUrl = new Set([q.get('p') && 'players', q.get('bot') && 'bots', q.get('seed') && 'seed'].filter(Boolean));   // K46: адреса — лише на цей запуск
   const seeds = () => { const l = ['r', ...PICKS]; if (st.seed !== 'r' && !l.includes(st.seed)) l.splice(1, 0, st.seed); return l; };
   const net = () => !!(G()?.net || window.KOL?.net);
   let canResume = false, idx = 0, lastLocal = g0?.local, keysTwo = null;
@@ -80,11 +87,11 @@ export function createMenu(box, opts = {}) {
     { id: 'seed', opt: true, label: () => {
       if (st.seed === 'r') return '🗺 Смуга: 🎲 випадкова';
       return `🗺 Смуга №${st.seed}${PICK_TAG[st.seed] ? ` · ${PICK_TAG[st.seed]}` : ''}`;
-    }, show: () => !net(), step: (d) => { const l = seeds(); st.seed = l[(l.indexOf(st.seed) + d + l.length) % l.length]; } },
+    }, show: () => !net(), step: (d) => { fromUrl.delete('seed'); const l = seeds(); st.seed = l[(l.indexOf(st.seed) + d + l.length) % l.length]; } },
     { id: 'players', opt: true, label: () => `👥 Гравці: ${st.players === 1 ? '1' : '2 на одному ПК'}`, show: () => !net(),
-      step: () => { st.players = st.players === 1 ? 2 : 1; st.bots = Math.min(st.bots, MAX_PLAYERS - st.players); } },
+      step: () => { fromUrl.delete('players'); st.players = st.players === 1 ? 2 : 1; st.bots = Math.min(st.bots, MAX_PLAYERS - st.players); } },
     { id: 'bots', opt: true, label: () => `🤖 Боти-помічники: ${st.bots}`, show: () => !net(),
-      step: (d) => { const m = Math.min(3, MAX_PLAYERS - st.players) + 1; st.bots = (st.bots + d + m) % m; } },
+      step: (d) => { fromUrl.delete('bots'); const m = Math.min(3, MAX_PLAYERS - st.players) + 1; st.bots = (st.bots + d + m) % m; } },
     { id: 'tutorial', label: () => '🎓 Навчання', show: () => !net() },
     { id: 'daily', label: () => '📅 Маршрут дня', show: () => !net() },
     { id: 'endless', label: () => '♾ Нескінченна', show: () => !net() },
@@ -141,7 +148,7 @@ export function createMenu(box, opts = {}) {
       + `🎮 стік — ходити · <b>A</b> — дія · <b>B</b> — кинути · <b>Y</b> — гудок${two ? ' · другий пад — П2' : ''}<br>`
       + `<span class="kol-kbonly">меню: ↑↓ — вибір · ←→ — змінити · Enter — так · F1 — налаштування</span><span class="kol-padonly">меню: ✚ — вибір · ◀▶ — змінити · <b>A</b> — так</span>`;
   }
-  function remember(last) { save({ players: st.players, bots: st.bots, seed: st.seed, last }); }
+  function remember(last) { save(memToSave(st, mem, fromUrl, last)); }
   function pick(id) {
     const it = ITEMS.find((x) => x.id === id);
     if (!it || !it.show()) return;
