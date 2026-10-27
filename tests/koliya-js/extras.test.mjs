@@ -8,7 +8,7 @@ const { U, G, O, I, TPS } = R;
 const id = (s, x, y) => y * s.w + x;
 
 function blank(params = {}, n = 1) {
-  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, ...params };
+  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, winter: 'off', ...params };   // K26: порожня смуга — без снігу й льоду
   const s = R.newGame(7, p, n);
   for (let i = 0; i < s.w * s.h; i++) {
     const y = (i / s.w) | 0;
@@ -127,7 +127,7 @@ test('гра не глухне: 30 хв з гусьми — інструмент
 });
 
 test('проміжна станція: смуга вдвічі, станція перша — SAND, паротяг чекає, покращення діє', () => {
-  const p = { ...R.defaultParams(), stationMode: 'upgrade', startSec: 0, speedStart: 1.5, heatSec: 240 };
+  const p = { ...R.defaultParams(), stationMode: 'upgrade', startSec: 0, speedStart: 1.5, heatSec: 240, soloSpeed: 1 };   // K13: без соло-знижки
   const s = R.newGame(9, p, 1);
   const m = s.mid;
   assert.ok(m);

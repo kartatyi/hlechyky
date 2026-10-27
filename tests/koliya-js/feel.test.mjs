@@ -7,7 +7,7 @@ const { U, G, O, I, TPS } = R;
 
 /** Порожня смуга: без лісу/скель/води (як у rules.test.mjs) */
 function blank(params = {}, n = 1) {
-  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, startSec: 90, ...params };
+  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, winter: 'off', startSec: 90, ...params };   // K26: порожня смуга — без снігу й льоду
   const s = R.newGame(7, p, n);
   for (let i = 0; i < s.w * s.h; i++) {
     const y = (i / s.w) | 0;
@@ -43,7 +43,8 @@ test("move='grid': короткий натиск у новий бік лише �
   assert.equal(pl.x, 60 * U + U / 2);
   assert.equal(pl.y % U, U / 2, 'стоїть у центрі клітинки');
   const c = cellOf(pl);
-  assert.ok(8 - c.y >= 4 && 8 - c.y <= 5, `пройшов ${8 - c.y}`);
+  const ps = s.params.playerSpeed;   // K13: від params, не від типових 4,5
+  assert.ok(8 - c.y >= Math.floor(ps) && 8 - c.y <= Math.ceil(ps) + 1, `пройшов ${8 - c.y} при ${ps} кл/с`);
   // з місця вбік: перші GRID_TURN тиків — поворот на місці, далі йде
   const x0 = pl.x;
   R.step(s, [inp(100, 0)]); R.step(s, []);
@@ -86,7 +87,7 @@ test("move='snappy': неповний нахил — повна швидкіст
   R.step(f, [inp(40, 0)]); R.step(sn, [inp(40, 0)]);
   run(f, 9); run(sn, 9);
   const x0 = 60 * U + U / 2;
-  assert.equal(b.x - x0, 10 * Math.round(4.5 * U / TPS), 'повна швидкість');
+  assert.equal(b.x - x0, 10 * Math.round(sn.params.playerSpeed * U / TPS), 'повна швидкість');
   assert.ok(b.x - x0 > (a.x - x0) * 2, `snappy ${b.x} vs free ${a.x}`);
   // діагональ: дивився вправо — лишається вправо, хоч вертикаль трохи більша
   const c = at(sn, 0, 60, 8, 1, 0);
@@ -151,7 +152,7 @@ test("useMode='auto': з сокирою перед деревом б'є сам �
 // ---------------- speedCurve ----------------
 /** колія далеко вперед (щоб не сходив), потяг рушає одразу */
 function longTrack(params) {
-  const s = blank({ startSec: 0, heatSec: 240, ...params });
+  const s = blank({ startSec: 0, heatSec: 240, soloSpeed: 1, finishSpeed: 0, ...params });   // K13: крива без соло-знижки
   let L = s.path[s.path.length - 1];
   while ((L % s.w) < s.w - 3) { L += 1; s.path.push(L); }
   return s;
@@ -162,19 +163,19 @@ test("speedCurve='linear' (типове): швидкість росте з ча�
   const s = longTrack({});
   assert.equal(s.params.speedCurve, 'linear');
   run(s, 60 * TPS + 1);
-  assert.equal(s.train.speed, spdOf(0.15) + spdOf(0.04));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart) + spdOf(s.params.speedGrowth));
 });
 
 test("speedCurve='steps': без рейок не розганяється; кожні stepN покладених — сходинка", () => {
   const s = longTrack({ speedCurve: 'steps', stepN: 5, stepGain: 0.05 });
   run(s, 60 * TPS);
-  assert.equal(s.train.speed, spdOf(0.15));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart));
   s.stats.railsLaid = 4; R.step(s, []);
-  assert.equal(s.train.speed, spdOf(0.15));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart));
   s.stats.railsLaid = 5; R.step(s, []);
-  assert.equal(s.train.speed, spdOf(0.15) + spdOf(0.05));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart) + spdOf(0.05));
   s.stats.railsLaid = 12; R.step(s, []);
-  assert.equal(s.train.speed, spdOf(0.15) + 2 * spdOf(0.05));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart) + 2 * spdOf(0.05));
   s.stats.railsLaid = 999; R.step(s, []);
   assert.equal(s.train.speed, spdOf(s.params.speedMax), 'стеля');
 });
@@ -186,13 +187,13 @@ test("speedCurve='distance': швидкість від проїханого шл
   let c = 0;
   for (let i = 0; i < 30 * TPS; i++) c = stepC(s);
   assert.ok(c > 3);
-  assert.equal(s.train.speed, spdOf(0.15) + Math.floor(spdOf(0.1) * c / 10));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart) + Math.floor(spdOf(0.1) * c / 10));
   // повільний старт не карає: довго стояв (startSec) — та сама швидкість на тій самій відстані
   const late = longTrack({ speedCurve: 'distance', stepN: 10, stepGain: 0.1, startSec: 60 });
   let lc = 0;
   while (late.stats.cells <= c) lc = stepC(late);
   while (lc < c) lc = stepC(late);
-  assert.equal(late.train.speed, spdOf(0.15) + Math.floor(spdOf(0.1) * lc / 10));
+  assert.equal(late.train.speed, spdOf(late.params.speedStart) + Math.floor(spdOf(0.1) * lc / 10));
   assert.ok(late.train.speed <= s.train.speed + spdOf(0.1), 'не швидший за ранній на тій самій відстані');
 });
 

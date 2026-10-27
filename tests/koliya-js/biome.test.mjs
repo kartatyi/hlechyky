@@ -267,7 +267,8 @@ test('бот: 20 сідів з новими біомами — як далеко
   console.log(`K26 бот (2): перемог ${won}/20, голова в середньому x=${(sumX / 20).toFixed(1)}, нових ділянок пройдено ${passed}/${reached}; застряг: ${out.join(' ') || '—'}`);
   assert.ok(reached >= 10, `нових ділянок досягнуто ${reached}`);
   assert.ok(passed / reached >= 0.6, `пройдено ${passed}/${reached}`);
-  assert.ok(sumX / 20 >= 90, `в середньому x=${sumX / 20}`);
+  const W = R.defaultParams().stripLen - 3;   // голова на станції
+  assert.ok(sumX / 20 >= 0.75 * W, `в середньому x=${sumX / 20} із ${W}`);
 });
 
 // ---------------- нескінченна колія ----------------

@@ -178,7 +178,7 @@ export function generate(seed, params) {
       const cx = a + len * (k + 0.5) / nL + (r() - 0.5) * len * 0.2 / nL;
       const cy = mid + (r() - 0.5) * Math.max(0, h - 4 - 2 * ry);
       let holes = 0;
-      for (let y = Math.floor(cy - ry - 1); y <= cy + ry + 1; y++) for (let x = Math.floor(cx - rx - 1); x <= cx + rx + 1; x++) {
+      for (let y = Math.floor(cy - ry - 1); y <= cy + ry + 1; y++) for (let x = Math.max(a, Math.floor(cx - rx - 1)); x <= cx + rx + 1 && x < b; x++) {
         const dx = (x - cx) / rx, dy = (y - cy) / ry, q = dx * dx + dy * dy + (hash3(x, y, sL + 21) - 0.5) * 0.35;
         if (q >= 1) continue;
         const thaw = q > 0.62 && vnoise(x * 0.7, y * 0.7, sL + 23) > 0.55;   // відталий край

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { generate, findRoute, MAX_WATER_RUN, RES_R, BIOMES, BIOMES_NEW, GLADE, STATION_W } from '../../web/games/koliya/gen.js';
 import { defaultParams, newGame, step, PARAM_META, G, O, I, U, WAGONS } from '../../web/games/koliya/rules.js';
 
-const P = (o = {}) => ({ ...defaultParams(), ...o });
+const P = (o = {}) => ({ ...defaultParams(), stripLen: 150, ...o });   // K13: типова смуга тепер 100 — властивості генератора міряємо на 150
 const SEEDS50 = Array.from({ length: 50 }, (_, k) => (k + 1) * 7919);
 
 function check(wd, p, label) {

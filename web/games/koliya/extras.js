@@ -280,7 +280,9 @@ function scare(s, p, pl, cell) {
   let hit = false;
   for (const g of s.geese) {
     if (g.mode === 'flee') continue;
-    const d1 = isqrt((g.x - cx) ** 2 + (g.y - cy) ** 2), d2 = isqrt((g.x - pl.x) ** 2 + (g.y - pl.y) ** 2);
+    // K24: квадрати множенням, не ** (Math.pow — «implementation-approximated» у специфікації; цілі тут точні)
+    const ax = g.x - cx, ay = g.y - cy, bx = g.x - pl.x, by = g.y - pl.y;
+    const d1 = isqrt(ax * ax + ay * ay), d2 = isqrt(bx * bx + by * by);
     if (d1 > R1 && d2 > R2) continue;
     hit = true;
     if (g.hold) {

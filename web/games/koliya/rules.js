@@ -5,6 +5,7 @@
 import { generate } from './gen.js';
 import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: додатки за перемикачем
 import { coopInit, coopCmd, coopUse, coopStep, coopHash } from './coop.js';   // K18: кооп-фішки за перемикачем
+import { tutorialParams, tutorialWorld } from './tutorial.js';   // K22: навчальна смуга (mode='tutorial')
 import { endlessHash } from './endless.js';                          // K19: нескінченна колія
 
 export const TICK_MS = 50;           // 20 тиків/с
@@ -24,14 +25,16 @@ export const WAGONS = ['loco', 'store', 'craft'];  // від голови: па�
 
 // Повзунки. Значення в «людських» одиницях; rules переводить у тики/підодиниці сам.
 // panel.js будує панель з PARAM_META; gen.js читає параметри смуги.
-// Типові числа підібрано під соло ~5–8 хв на смузі 150 (див. tests/koliya-js/bot.test.mjs).
+// Типові числа — K13 (баланс на 20 сідах ботами, D:\or-wt\_kolia\k13\BALANCE.md): соло ~8 хв і ~2/3 перемог, удвох ~5,5 хв і ~85 %.
 export const PARAM_META = {
-  speedStart:  { def: 0.12, min: 0.05, max: 1.5, step: 0.01, label: 'Швидкість паротяга, клітинок/с', group: 'Паротяг' },
-  speedGrowth: { def: 0.03, min: 0,    max: 0.5, step: 0.01, label: 'Приріст швидкості, клітинок/с за хвилину', group: 'Паротяг' },
+  speedStart:  { def: 0.20, min: 0.05, max: 1.5, step: 0.01, label: 'Швидкість паротяга, клітинок/с', group: 'Паротяг' },
+  speedGrowth: { def: 0.06, min: 0,    max: 0.5, step: 0.01, label: 'Приріст швидкості, клітинок/с за хвилину', group: 'Паротяг' },
   speedMax:    { def: 0.60, min: 0.1,  max: 3,   step: 0.05, label: 'Стеля швидкості', group: 'Паротяг' },
   stepN:       { def: 10,   min: 2,    max: 40,  step: 1,    label: 'Розгін не від часу: кожні N рейок (сходинки) / клітинок шляху', group: 'Паротяг' },   // K14
   stepGain:    { def: 0.02, min: 0,    max: 0.2, step: 0.005, label: 'Розгін не від часу: + клітинок/с за N', group: 'Паротяг' },                     // K14
   startSec:    { def: 30,   min: 0,    max: 90,  step: 1,    label: 'Пауза перед рушанням, с', group: 'Паротяг' },
+  soloSpeed:   { def: 0.55, min: 0.4,  max: 1,   step: 0.05, label: 'Соло-знижка: паротяг їде й гріється повільніше, коли гравець один (частка)', group: 'Паротяг' },   // K13
+  finishSpeed: { def: 2,    min: 0,    max: 5,   step: 0.25, label: 'Колію дотягли до станції — паротяг мчить, клітинок/с (0 — ні)', group: 'Паротяг' },  // K13
   heatSec:     { def: 50,   min: 10,   max: 240, step: 5,    label: 'Від холодного до перегріву, с', group: 'Котел' },
   fireSec:     { def: 12,   min: 3,    max: 60,  step: 1,    label: 'Пожежа: скільки до поразки, с', group: 'Котел' },
   craftSec:    { def: 2,    min: 0.5,  max: 15,  step: 0.5,  label: 'Майстерня: секунд на рейку', group: 'Ресурси' },
@@ -41,12 +44,12 @@ export const PARAM_META = {
   ironPerRock: { def: 2,    min: 1,    max: 5,   step: 1,    label: 'Заліза зі скелі', group: 'Ресурси' },
   storeMax:    { def: 10,   min: 2,    max: 40,  step: 1,    label: 'Склад: місткість кожного', group: 'Ресурси' },
   railsMax:    { def: 8,    min: 1,    max: 20,  step: 1,    label: 'Майстерня: готових рейок до', group: 'Ресурси' },
-  railsPerCraft: { def: 2,  min: 1,    max: 4,   step: 1,    label: 'Майстерня: рейок з дерева+заліза', group: 'Ресурси' },
+  railsPerCraft: { def: 3,  min: 1,    max: 4,   step: 1,    label: 'Майстерня: рейок з дерева+заліза', group: 'Ресурси' },
   startRails:  { def: 4,    min: 0,    max: 20,  step: 1,    label: 'Рейок на старті в майстерні', group: 'Ресурси' },
-  playerSpeed: { def: 4.5,  min: 1,    max: 10,  step: 0.5,  label: 'Швидкість гравця, клітинок/с', group: 'Гравці' },
-  carryMax:    { def: 5,    min: 1,    max: 10,  step: 1,    label: 'Скільки несеш у руках', group: 'Гравці' },
+  playerSpeed: { def: 5,  min: 1,    max: 10,  step: 0.5,  label: 'Швидкість гравця, клітинок/с', group: 'Гравці' },
+  carryMax:    { def: 6,    min: 1,    max: 10,  step: 1,    label: 'Скільки несеш у руках', group: 'Гравці' },
   hitMs:       { def: 200,  min: 80,   max: 800, step: 10,   label: 'Пауза між ударами, мс', group: 'Гравці' },
-  stripLen:    { def: 150,  min: 40,   max: 400, step: 10,   label: 'Довжина смуги', group: 'Світ' },
+  stripLen:    { def: 100,  min: 40,   max: 400, step: 10,   label: 'Довжина смуги', group: 'Світ' },
   stripWidth:  { def: 20,   min: 10,   max: 40,  step: 1,    label: 'Ширина смуги', group: 'Світ' },
   forest:      { def: 0.30, min: 0,    max: 0.7, step: 0.01, label: 'Частка лісу', group: 'Світ' },
   rocks:       { def: 0.18, min: 0,    max: 0.6, step: 0.01, label: 'Частка скель', group: 'Світ' },
@@ -83,6 +86,7 @@ export const VARIANTS = {
   // землю (K20 ще не намалював), а обидва разом перекидають світи сідів, на яких тримаються тести бота.
   winter: { values: ['on', 'off'], labels: ['Так', 'Ні'], label: 'Зима ❄: сніг і лід (ковзаєш)' },
   yar: { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Яр 🏞: урвище, міст — дерево + залізо' },
+  mode: { values: ['normal', 'tutorial'], labels: ['Звичайна смуга', 'Навчання 🎓'], label: 'Смуга', group: 'Світ' },   // K22 (tutorial.js)
 };
 
 export function defaultParams() {
@@ -132,7 +136,8 @@ const ACT_CD = 3;                   // тиків паузи після взят
 export function newGame(seed, params = defaultParams(), nPlayers = 1) {
   seed = seed >>> 0;
   params = { ...defaultParams(), ...params };
-  const world = generate(seed, params);   // { w, h, ground, obj, hp, drop, dropN, path, spawn: [{x,y}] (клітинки) }
+  if (params.mode === 'tutorial') params = tutorialParams(params);   // K22: навчальна смуга — свої повільні числа
+  const world = params.mode === 'tutorial' ? tutorialWorld(params) : generate(seed, params);   // { w, h, ground, obj, hp, drop, dropN, path, spawn: [{x,y}] (клітинки) }
   const s = {
     seed, tick: 0, rng: (seed ^ 0x9E3779B9) >>> 0, params,
     status: 'run', reason: '',
@@ -200,18 +205,22 @@ export function applyCmd(s, c) {
       break;
     case 'pose': setPose(s, pl, c); break;
     case 'use':
-      if (c.x !== undefined) setPose(s, pl, c);
+      if (c.x !== undefined) setPose(s, pl, c, true);   // K24: поза з дією — лише поруч і не в стіну
       use(s, c.p | 0, pl);
       break;
     case 'leave': leave(s, pl); break;
-    case 'throw': case 'horn': if (c.x !== undefined) setPose(s, pl, c); coopCmd(s, c.p | 0, pl, c.k); break;   // K18
+    case 'throw': case 'horn': if (c.x !== undefined) setPose(s, pl, c, true); coopCmd(s, c.p | 0, pl, c.k); break;   // K18
   }
 }
 
-function setPose(s, pl, c) {
+// K24: поза, що їде з use/throw, — це «де я стояв у своєму передбаченому світі»; запізніла команда (сервер зсунув її
+// на кілька тиків, через зсув вікна endless чи з минулої партії) несла б позу з іншого місця — телепорт, може й у
+// скелю/воду, звідки не вийти. Тож таку позу (далі POSE_NEAR чи в непрохідне) не ставимо: дія — з того місця, де є.
+const POSE_NEAR = 5 * U;
+function setPose(s, pl, c, near = false) {
   if (Number.isFinite(c.x) && Number.isFinite(c.y)) {
-    pl.x = clampI(Math.round(c.x), PR, s.w * U - PR);
-    pl.y = clampI(Math.round(c.y), PR, s.h * U - PR);
+    const x = clampI(Math.round(c.x), PR, s.w * U - PR), y = clampI(Math.round(c.y), PR, s.h * U - PR);
+    if (!near || (Math.abs(x - pl.x) + Math.abs(y - pl.y) <= POSE_NEAR && !hitsAt(s, x, y, [], 0))) { pl.x = x; pl.y = y; }
   }
   if (Number.isFinite(c.fx) && Number.isFinite(c.fy)) {
     const fx = Math.sign(c.fx) | 0, fy = Math.sign(c.fy) | 0;
@@ -743,7 +752,7 @@ function stepTrain(s) {
   if (s.tick === t0) { t.started = 1; const w = wagonPos(s, 0); ev(s, 'whistle', Math.floor(w.x / U), Math.floor(w.y / U)); }
   const head = wagonPos(s, 0), hx = Math.floor(head.x / U), hy = Math.floor(head.y / U);
   // котел
-  const heatT = ticks(P.heatSec);
+  const heatT = ticks(P.heatSec / soloK(s));   // K13: соло — котел гріється так само повільніше, як їде
   if (t.heat < 1000) {
     t.ht++;
     const prev = t.heat;
@@ -762,6 +771,7 @@ function stepTrain(s) {
   // швидкість
   const el = s.tick - t0;
   t.speed = stopped ? 0 : Math.min(spd(P.speedMax), trainSpeed(s, el));   // K14: крива — варіант speedCurve
+  if (!stopped) t.speed = balanceSpeed(s, t.speed);   // K13: соло-знижка, ривок до станції
   if (t.speed > s.stats.maxSpeed) s.stats.maxSpeed = t.speed;
   t.sub += t.speed;
   const d = Math.floor(t.sub / 1000);
@@ -789,6 +799,24 @@ function trainSpeed(s, el) {
   if (P.speedCurve === 'steps') return base + spd(P.stepGain) * Math.floor(Math.max(0, s.stats.railsLaid) / n);
   if (P.speedCurve === 'distance') return base + Math.floor(spd(P.stepGain) * s.stats.cells / n);
   return base + Math.floor(spd(P.speedGrowth) * el / (60 * TPS));
+}
+
+/** K13: множник соло-знижки: 1 — за столом двоє й більше (чи знижку вимкнено) */
+function soloK(s) {
+  const k = +s.params.soloSpeed;
+  if (!(k > 0 && k < 1)) return 1;
+  let n = 0;
+  for (const p of s.players) if (p && !p.out) n++;
+  return n <= 1 ? k : 1;
+}
+
+/** K13: соло (за столом один гравець) — швидкість × soloSpeed; колія вже дотягнута до станції — не повільніше за
+ *  finishSpeed (кінець без нудного чекання, як «прискорити» в Unrailed). */
+function balanceSpeed(s, v) {
+  const P = s.params, k = soloK(s);
+  if (k < 1) v = Math.round(v * k);
+  if (P.finishSpeed > 0 && s.ground[s.path[s.path.length - 1]] === G.STATION) v = Math.max(v, spd(P.finishSpeed));
+  return v;
 }
 
 function lose(s, why, x, y) {
