@@ -32,8 +32,8 @@ export const BIOMES = ['steppe', 'grove', 'stone', 'river', 'swamp', 'pass'];
 export const BIOME_NAMES = { steppe: 'степ', grove: 'гай', stone: "кам'яне поле", river: 'річкова долина', swamp: 'болото', pass: 'прохід між скелями' };
 const FEAT0 = GLADE + 3;         // ближче до старту — жодних річок/стін
 // множники лісу й скель за біомом (середнє ≈ 0,9 — загальна частка лишається близькою до повзунка)
-const MF = { steppe: 0.35, grove: 2.0, stone: 0.45, river: 1.0, swamp: 0.55, pass: 0.6 };
-const MR = { steppe: 0.45, grove: 0.45, stone: 2.1, river: 0.6, swamp: 0.35, pass: 1.3 };
+const MF = { steppe: 0.5, grove: 2.0, stone: 0.45, river: 1.0, swamp: 0.55, pass: 0.6 };
+const MR = { steppe: 0.6, grove: 0.45, stone: 2.1, river: 0.6, swamp: 0.35, pass: 1.3 };
 
 function prng(seed) {
   let a = seed >>> 0;
@@ -495,6 +495,21 @@ export function generate(seed, params) {
       obj[best] = kind; dist[best] = 0; qh = qt = 0; q[qt++] = best; flood();
     }
   };
+  // Стартовий запас: гайок і купка скель одразу за галявиною, обабіч колії (перші рейки — без далеких походів)
+  const stash = (kind, ax, ay, need) => {
+    const c = [], sc = new Float32Array(n);
+    let have = 0;
+    for (let y = Math.max(1, ay - 3); y <= Math.min(h - 2, ay + 3); y++) for (let x = ax - 3; x <= ax + 4; x++) {
+      const i = y * w + x;
+      if (obj[i] === kind) have++;
+      if (Math.abs(y - mid) < 2 || !canPut(i, true)) continue;
+      sc[i] = -(Math.abs(x - ax) + Math.abs(y - ay)) + hash3(x, y, sJ + 11) * 0.5; c.push(i);
+    }
+    for (const i of top(c, sc, need - have)) obj[i] = kind;
+  };
+  const up = hash3(1, 2, sJ) < 0.5 ? -1 : 1;
+  stash(O.TREE, GLADE + 2, clamp(mid + up * 4, 2, h - 3), Math.ceil(10 / wpt));
+  stash(O.ROCK, GLADE + 3, clamp(mid - up * 4, 2, h - 3), Math.ceil(8 / ipr));
   cover(O.TREE, scF);      // навіть з лісом 0 — без дерева колію не покласти
   cover(O.ROCK, scR);
 
