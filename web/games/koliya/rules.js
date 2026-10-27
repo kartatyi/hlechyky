@@ -878,9 +878,9 @@ const HASH_TOP = Object.fromEntries('seed tick rng params status reason w h grou
 const HASH_PL = Object.fromEntries('x y fx fy hold cd mx my ut out st gx gy gt aim'.split(' ').map((k) => [k, 1]));
 const HASH_TR = Object.fromEntries('pos speed heat fire wood iron rails craftT sub ht started'.split(' ').map((k) => [k, 1]));
 function mixStr(mix, str) { mix(str.length); for (let i = 0; i < str.length; i++) mix(str.charCodeAt(i)); }
-function mixAny(mix, v) {
+function mixAny(mix, v) {   // K52: 0x80000000 замість 2 ** 31 (** у специфікації «implementation-approximated»)
   if (v === null || v === undefined) { mix(v === null ? -1 : -2); return; }
-  if (typeof v === 'number') { if (Number.isInteger(v) && Math.abs(v) < 2 ** 31) mix(v); else mixStr(mix, String(v)); return; }
+  if (typeof v === 'number') { if (Number.isInteger(v) && Math.abs(v) < 0x80000000) mix(v); else mixStr(mix, String(v)); return; }
   if (typeof v === 'boolean') { mix(v ? -3 : -4); return; }
   if (typeof v === 'string') { mix(-5); mixStr(mix, v); return; }
   if (typeof v !== 'object') return;   // функції тощо — не стан
