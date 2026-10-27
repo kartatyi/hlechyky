@@ -146,6 +146,12 @@ const CSS = `
 .kol-ptab td.kol-ttl { text-align: left; font-weight: 700; color: #ffe9a8; }
 .kol-ptab i { opacity: .35; font-style: normal; }
 #kol-hud .kol-top { right: 124px; }
+/* K37: верхня смуга компактніша й напівпрозора — бульбашки-реакції й ніки гравців біля верхнього краю видно крізь неї */
+#kol-hud .kol-top { top: 6px; font-size: .85em; gap: .45em; }
+#kol-hud .kol-top .kol-box { background: #0f120d70; border-color: #ffffff16; padding: .15em .5em; }
+#kol-hud .kol-top .kol-prog { height: 1.35em; padding: 0; }
+#kol-hud .kol-top .kol-prog-track { background: #8a7a5a40; }
+#kol-hud .kol-res, #kol-hud .kol-toasts { top: calc(6px + 2.1em); }
 .kol-pausebtn { position: fixed; right: 62px; top: 8px; width: 46px; height: 46px; border-radius: 10px; border: 1px solid #fff3;
   background: rgba(20,24,18,.7); color: #f4efe2; font-size: 20px; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
 .kol-modes { display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; }
