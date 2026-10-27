@@ -9,6 +9,7 @@
 import { BIOME_NAMES, generate } from './gen.js';
 import { MAX_PLAYERS } from './rules.js';
 import { t } from './theme.js';   // K42: слова «Чумацького шляху»
+import { achievements } from './achievements.js';   // K50: «🏆 Досягнення» — сірі/відкриті
 
 const KEY = 'kol-menu';
 export const PICKS = [8, 19, 23, 53, 43];   // K22: добірка сідів (_kolia/k22-seeds.md)
@@ -35,6 +36,14 @@ const CSS = `
 .kol-mkeys b { opacity: 1; }
 .kol-mlink { pointer-events: auto; width: 100%; font: 500 .7em/1.3 ui-monospace, monospace; color: #cfe; background: #0b0d09; border: 1px solid #ffffff2a;
   border-radius: 6px; padding: .3em .5em; text-align: center; }
+.kol-ach { display: grid; grid-template-columns: 1fr 1fr; gap: .3em; margin: .2em 0; text-align: left; }   /* K50 */
+.kol-ach div { display: flex; gap: .45em; align-items: center; padding: .25em .45em; border-radius: 8px; background: #1d2418; border: 1px solid #ffffff1a;
+  font-size: .78em; line-height: 1.2; font-weight: 500; }
+.kol-ach div > span { font-size: 1.5em; }
+.kol-ach div small { display: block; opacity: .75; font-size: .85em; }
+.kol-ach .kol-ach-off { filter: grayscale(1); opacity: .45; }
+.kol-ach .kol-ach-on { border-color: #ffd23f88; background: #3a3414; }
+@media (max-width: 520px) { .kol-ach { grid-template-columns: 1fr; } }
 @media (max-height: 820px) { .kol-menu .kol-mi { min-height: 42px; } .kol-menu .kol-mi.kol-main { min-height: 48px; } .kol-menu .kol-opt { min-height: 36px; } }
 `;
 
@@ -98,6 +107,7 @@ export function createMenu(box, opts = {}) {
     { id: 'endless', label: () => t('menu.endless', '♾ Нескінченна'), show: () => !net() },
     { id: 'net', label: () => `${t('menu.net', '🌐 Грати з друзями')} <small>посилання для друга</small>`, show: () => !net() },
     { id: 'replays', label: () => '📼 Повтори <small>свої й за кодом</small>', show: () => !net() },   // K35
+    { id: 'ach', label: () => { const [a, n] = achievements().count(); return `🏆 Досягнення <small>${a}/${n}</small>`; }, show: () => true },   // K50
     { id: 'copy', label: () => '📋 Копіювати посилання для друга', show: () => net() },
     { id: 'offline', label: () => '🏠 Грати без мережі', show: () => net() },
   ];
@@ -110,6 +120,14 @@ export function createMenu(box, opts = {}) {
     if (it.opt) b.innerHTML = '<button class="kol-arr" type="button" data-d="-1" aria-label="менше">◀</button><b></b><button class="kol-arr" type="button" data-d="1" aria-label="більше">▶</button>';
     list.appendChild(b); nodes.set(it.id, b);
     if (it.id === 'seed') list.appendChild(sub);
+  }
+  // K50: список досягнень під пунктом «🏆» — відкрите кольорове, решта сіра (накопичувальні — з поступом)
+  const achBox = document.createElement('div'); achBox.className = 'kol-ach'; achBox.style.display = 'none';
+  nodes.get('ach').after(achBox);
+  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  function achToggle(on = achBox.style.display === 'none') {
+    achBox.style.display = on ? '' : 'none';
+    if (on) achBox.innerHTML = achievements().list().map((a) => `<div class="${a.got ? 'kol-ach-on' : 'kol-ach-off'}" title="${esc(a.desc)}"><span>${a.icon}</span><b>${esc(a.name)}<small>${esc(a.desc)}${a.goal && !a.got ? ` · ${a.n}/${a.goal}` : ''}</small></b></div>`).join('');
   }
   const link = document.createElement('input'); link.className = 'kol-mlink'; link.readOnly = true; link.style.display = 'none';
   list.appendChild(link);
@@ -155,6 +173,7 @@ export function createMenu(box, opts = {}) {
     if (!it || !it.show()) return;
     if (it.opt) { it.step(1); remember(); render(); return; }
     if (id === 'copy') { copy(); return; }
+    if (id === 'ach') { achToggle(); return; }   // K50
     if (['play', 'tutorial', 'daily', 'endless'].includes(id)) remember(id);
     const seed = st.seed === 'r' ? (Math.random() * 1e9) >>> 0 : st.seed;
     opts.onPick?.(id, { players: st.players, bots: st.bots, seed });
@@ -189,7 +208,7 @@ export function createMenu(box, opts = {}) {
   return {
     opts: () => ({ ...st }),
     focus: () => visible()[idx]?.id,
-    open(resume) { canResume = !!resume; focusId(resume ? 'resume' : 'play'); render(); },
+    open(resume) { canResume = !!resume; focusId(resume ? 'resume' : 'play'); achToggle(false); render(); },
     sync(s) {
       const g = G();
       if (g && g.local !== lastLocal) { lastLocal = g.local; if (g.local === 2 && st.players === 1) { st.players = 2; st.bots = Math.min(st.bots, MAX_PLAYERS - 2); } }   // другий пад → П2
