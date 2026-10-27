@@ -294,7 +294,8 @@ export function createNet(game, opts = {}) {
       try { const u = new URL(location.href); u.searchParams.set('net', room); history.replaceState(null, '', u); } catch { }
     }
     const j = await conn.invoke('JoinRoom', room);
-    if (!j.ok) console.info('Колія: JoinRoom —', j.message);   // «уже за столом» — це нормально
+    net.joinMsg = j.ok ? '' : j.message || '';
+    if (!j.ok) console.info('Колія: JoinRoom —', j.message);   // «уже за столом» — це нормально; інше — дивимось збоку (net.joinMsg)
     await conn.invoke('WatchRoom', room);
     await resync();
   }
@@ -355,7 +356,7 @@ export function createNet(game, opts = {}) {
     smooth.reset();
     hi = C.tick;
     ready = true;
-    say('грає');
+    say(net.p >= 0 ? 'грає' : 'дивишся збоку' + (net.joinMsg ? ': ' + net.joinMsg : ''));
     onWorld?.(game.state);
   }
 
