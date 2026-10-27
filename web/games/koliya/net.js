@@ -386,6 +386,35 @@ export function createDriver() {
   };
 }
 
+// K46: «Ти вже за столом. Встань, якщо хочеш новий» (Rooms.Say.Seated) — сидиш за ІНШИМ столом; «Ти вже за цим столом» — ні
+export const seatedElsewhereMsg = (m) => /^Ти вже за столом/.test(String(m || ''));
+/** K46: пауза перед n-м (з 1) повтором журналу: 2, 4, 8, 15 с…; стола нема (404) — після 3 спроб годі (-1), без вічних 404 */
+export function resyncDelay(n, is404) { return is404 && n >= 3 ? -1 : Math.min(15000, 2000 * 2 ** Math.max(0, n - 1)); }
+
+/** K46: «Ти вже за іншим столом» — дві кнопки; ok → 'back' | 'new' | null (DOM нема) */
+function askSeated(other) {
+  if (typeof document === 'undefined') return Promise.resolve(null);
+  return new Promise((done) => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:#000a;font:600 16px system-ui,sans-serif;color:#fff';
+    const here = other?.game === 'koliya';
+    d.innerHTML = `<div style="max-width:min(26em,92vw);padding:1em 1.2em;border-radius:14px;background:#1d2418;border:1px solid #9bc25a;text-align:center">
+<div style="font-size:1.15em;margin-bottom:.4em">🚂 Ти вже за іншим столом</div>
+<div style="opacity:.8;font-weight:500;margin-bottom:.9em">${here ? 'Там іде твоя «Колія».' : 'Там інша гра.'} Новий стіл можна поставити, лише вставши з того.</div>
+<div style="display:flex;flex-direction:column;gap:.5em"></div></div>`;
+    const row = d.firstElementChild.lastElementChild;
+    const btn = (t, v) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+      b.style.cssText = 'pointer-events:auto;min-height:46px;font:inherit;color:#fff;background:#2c3a22;border:1px solid #ffffff2a;border-radius:12px;cursor:pointer';
+      b.addEventListener('click', () => { d.remove(); done(v); });
+      row.appendChild(b); return b;
+    };
+    btn('↩ Повернутися туди', 'back').focus();
+    btn('🆕 Вийти з нього й створити новий', 'new');
+    document.body.appendChild(d);
+  });
+}
+
 export function createNet(game, opts = {}) {
   const { input, onWorld, onStep } = opts;
   let table = String(opts.table || 'auto');
@@ -397,6 +426,7 @@ export function createNet(game, opts = {}) {
   const smooth = createSmoother((opts.smooth ?? qs.get('smooth')) !== '0' && opts.smooth !== false);
 
   let conn = null, room = null, seat = null, ready = false, resyncing = false, lobby = null;
+  let miss = 0, mineRv = null;          // K46: невдалих спроб журналу підряд; вид столу, де сидимо (з події 'room')
   let e = 0, C = null, count = 0, w = -1, hi = 0, dirty = false, off = null, idSeq = 0, desyncSaid = false;
   let lastIn = [], lastUse = [];       // [q] — свій рух/дія: q 0 — я, 1 — другий за цим ПК (?p=2)
   let asked2 = 0;                       // епоха, у якій уже просили другого гравця
@@ -556,7 +586,10 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
       .build();
     conn.on('rooms', (list) => { lobby = list; });
     conn.on('frame', (m) => lagIn(() => { if (m && m.id === room) onFrame(m.f); }));
-    conn.on('room', (rv) => lagIn(() => { if (rv && rv.room && rv.room.id === room) onRoom(rv); }));
+    conn.on('room', (rv) => lagIn(() => {
+      if (rv?.room && rv.seat != null && rv.room.id !== room) mineRv = rv.room;   // K46: де ми вже сидимо
+      if (rv && rv.room && rv.room.id === room) onRoom(rv);
+    }));
     conn.onreconnecting(() => { ready = false; say('перепідключаюсь…'); });
     conn.onreconnected(() => enter().catch((x) => { console.warn('Колія: не зайшов знову', x); say('не зайшов: ' + x.message); }));
     say('підключаюсь…');
@@ -581,7 +614,8 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
         table = open ? open.id : 'new';
       }
       if (table === 'new') {
-        const r = await conn.invoke('CreateRoom', 'koliya', {});
+        let r = await conn.invoke('CreateRoom', 'koliya', {});
+        if (!r.ok && seatedElsewhereMsg(r.message)) r = await seatedElsewhere(r);   // K46
         if (!r.ok) throw new Error(r.message || 'стіл не створився');
         room = r.roomId;
       } else room = table;
@@ -592,6 +626,26 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     if (!j.ok) console.info('Колія: JoinRoom —', j.message);   // «уже за столом» — це нормально; інше — дивимось збоку (net.joinMsg)
     await conn.invoke('WatchRoom', room);
     await resync();
+  }
+
+  /** K46: CreateRoom відмовив — сидимо за іншим столом. Питаємо: повернутись туди чи встати й поставити новий. */
+  async function seatedElsewhere(r0) {
+    for (let i = 0; i < 20 && !lobby && !mineRv; i++) await new Promise((r) => setTimeout(r, 100));
+    const me = String(nick || '').toLowerCase();
+    const other = mineRv || (me && (lobby || []).find((r) => (r.seats || []).some((x) => String((typeof x === 'string' ? x : x?.nick) || '').toLowerCase() === me))) || null;
+    if (!other?.id) return r0;   // не знаємо, де сидимо, — main.js покаже «не вдалося» з «Грати без мережі»
+    say('ти вже за іншим столом');
+    const v = await askSeated(other);
+    if (v === 'back') {
+      if (other.game === 'koliya') return { ok: true, roomId: other.id };
+      try { (window.top || window).location.href = '/'; } catch { location.href = '/'; }
+      return r0;
+    }
+    if (v !== 'new') return r0;
+    const left = await conn.invoke('LeaveRoom', other.id);
+    if (!left?.ok) return left || r0;
+    mineRv = null;
+    return conn.invoke('CreateRoom', 'koliya', {});
   }
 
   function onRoom(rv) {
@@ -616,6 +670,7 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
       let res = await fetch(`/api/games/koliya/${encodeURIComponent(room)}/log?from=0${useSnap ? '&snap=1' : ''}`, { cache: 'no-store' });
       if (!res.ok) throw new Error('журнал: ' + res.status);
       let j = await res.json();
+      miss = 0;
       if (lag) await new Promise((r) => lagIn(r));
       let snap = null, text = null, t0 = Date.now();
       if (j.s) {   // K44: знімок — розпакувати й звірити; не той — журнал з нуля
@@ -638,8 +693,9 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
       stats.buildMs = Date.now() - t0;
     } catch (x) {
       console.warn('Колія: журнал не взявся', x);
-      say(/: 404$/.test(x?.message || '') ? 'стола нема (закрився?) — відкрий новий' : 'журнал не взявся: ' + (x?.message || x));
-      setTimeout(() => { if (!ready) resync(); }, 2000);
+      const is404 = /: 404$/.test(x?.message || ''), wait = resyncDelay(++miss, is404);   // K46: без вічних 404
+      say(is404 ? 'стола нема (закрився?) — відкрий новий' : 'журнал не взявся: ' + (x?.message || x));
+      if (wait >= 0) setTimeout(() => { if (!ready) resync(); }, wait);
     } finally { resyncing = false; }
   }
 

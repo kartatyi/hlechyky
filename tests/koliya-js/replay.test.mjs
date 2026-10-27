@@ -133,3 +133,11 @@ test('збережені: останні 3 + найкраща, ліміт роз
   assert.ok(JSON.stringify(st).length <= 1_000_000);
   mem.set(P.STORE_KEY, '{зламане'); assert.deepEqual(P.loadStore(ls), { last: [], best: null });
 });
+
+test('K42: звук повтору — лише ×1–×2 і не більше SOUND_TICKS тиків за кадр (×8 — без лавини)', () => {
+  assert.equal(P.soundTicks(8, 400), 0);
+  assert.equal(P.soundTicks(4, 10), 0);
+  assert.equal(P.soundTicks(2, 400), P.SOUND_TICKS);
+  assert.equal(P.soundTicks(1, 1), 1);
+  assert.equal(P.soundTicks(1, 0), 0);
+});
