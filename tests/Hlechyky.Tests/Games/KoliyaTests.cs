@@ -15,6 +15,7 @@ public class KoliyaTests
     {
         var h = new RoomHarness("koliya", seed: 7);
         foreach (var n in nicks.Length > 0 ? nicks : ["Оля"]) h.Join(n);
+        Assert.True(h.Act(0, "go").Ok);   // K62: зібрались — рушаємо
         return h;
     }
 
@@ -148,6 +149,7 @@ public class KoliyaTests
         var h = Table("Оля", "Петро");
         h.Tick(30);
         Assert.True(h.Act(1, "restart", new { seed = 5u, @params = new { } }).Ok);
+        Assert.True(h.Act(1, "go").Ok);   // K62
         h.Input(0, "use", new { x = 1500, y = 2500, fx = 1, fy = 0, t = 3000, i = 7, e = 1 });   // летів до перезапуску
         h.Input(0, "hash", new { t = 0, h = 1L, e = 1 });
         h.Input(0, "in", new { mx = 100, my = 0, i = 8, e = 2 });                                 // нова епоха — лягає
@@ -274,6 +276,50 @@ public class KoliyaTests
         Assert.Equal(4, h.View(0).GetProperty("n0").GetInt32());
     }
 
+    [Fact]
+    public void K62_новий_стіл_і_перезапуск_чекають_на_go()
+    {
+        var h = new RoomHarness("koliya", seed: 7);
+        h.Join("Оля");
+        h.Tick(200);                                                    // 10 с — годинник стоїть
+        var f = LastFrame(h);
+        Assert.Equal(1, f.GetProperty("wait").GetInt32());
+        Assert.Equal(0, f.GetProperty("t").GetInt32());
+        Assert.Equal(-1, f.GetProperty("w").GetInt32());
+        Assert.Equal(1, h.View(0).GetProperty("wait").GetInt32());
+        Assert.Equal(1, Log(h).GetProperty("wait").GetInt32());
+        // у зборі рух/дії мовчки геть; join/leave — на тик 0
+        h.Input(0, "in", new { mx = 100, my = 0, t = 5, i = 1 });
+        h.Input(0, "use", new { x = 1500, y = 2500, fx = 1, fy = 0, t = 5, i = 2 });
+        h.Join("Петро");
+        Assert.Equal(1, h.View(1).GetProperty("p").GetInt32());
+        var e = Entries(Log(h));
+        Assert.Equal([[Koliya.Join, 0]], e.Select(x => new[] { x[3], x[1] }).ToArray());
+        Assert.True(h.Act(1, "react", new { em = 1, i = 3 }).Ok);       // реакції — можна
+        // «▶ Почали» від будь-кого за столом — годинник рушає з цієї миті
+        Assert.True(h.Act(1, "go").Ok);
+        Assert.False(Game(h).Waiting);
+        h.Tick(20);
+        f = LastFrame(h);
+        Assert.Equal(0, f.GetProperty("wait").GetInt32());
+        Assert.Equal(20, f.GetProperty("t").GetInt32());
+        Assert.Equal(20 - Koliya.Grace - 1, f.GetProperty("w").GetInt32());
+        Assert.True(h.Act(0, "go").Ok);                                 // повтор — нічого
+        Assert.Equal(20, Log(h).GetProperty("t").GetInt32());
+        h.Input(0, "in", new { mx = 100, my = 0, t = 21, i = 4 });
+        Assert.Equal(21, Entries(Log(h)).Last()[1]);
+        // перезапуск — знову збір
+        Assert.True(h.Act(0, "restart", new { seed = 5 }).Ok);
+        Assert.True(Game(h).Waiting);
+        h.Tick(50);
+        Assert.Equal(0, LastFrame(h).GetProperty("t").GetInt32());
+        Assert.True(h.Act(0, "go", new { e = 1 }).Ok);                  // «go» старої епохи — геть
+        Assert.True(Game(h).Waiting);
+        Assert.True(h.Act(0, "go", new { e = 2 }).Ok);
+        h.Tick(3);
+        Assert.Equal(3, LastFrame(h).GetProperty("t").GetInt32());
+    }
+
     static string? Put(RoomHarness h, int t, long hash, byte[]? b = null, int e = 1)
     {
         lock (h.Room.Sync) return Game(h).PutSnap(e, t, hash, true, b ?? [1, 2, 3]);
@@ -352,6 +398,7 @@ public class KoliyaPerfTests
     {
         var h = new RoomHarness("koliya", seed: 7);
         foreach (var n in new[] { "Оля", "Петро", "Іра", "Тарас" }) h.Join(n);
+        h.Act(0, "go");   // K62
         var sw = Stopwatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {

@@ -15,6 +15,7 @@ public class KoliyaPeopleTests
     {
         var h = new RoomHarness("koliya", seed: 7);
         foreach (var n in nicks) h.Join(n);
+        if (nicks.Length > 0) h.Act(0, "go");   // K62: зібрались — рушаємо
         return h;
     }
 
