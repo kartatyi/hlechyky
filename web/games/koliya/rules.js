@@ -10,7 +10,7 @@ export const U = 1000;               // підодиниць у клітинці
 export const MAX_PLAYERS = 4;
 
 // Підлога (state.ground)
-export const G = { GRASS: 0, WATER: 1, BRIDGE: 2, STATION: 3, SAND: 4 };
+export const G = { GRASS: 0, WATER: 1, BRIDGE: 2, STATION: 3, SAND: 4, SWAMP: 5 };   // SWAMP — болото: ходити повільно (swampSlow), рейки класти можна
 // Предмет на клітинці, що заважає ходити (state.obj)
 export const O = { NONE: 0, TREE: 1, ROCK: 2, WALL: 3 };   // WALL — непробивна скеля по краях
 // Речі на підлозі й у руках (state.drop / player.hold.k)
@@ -44,6 +44,10 @@ export const PARAM_META = {
   forest:      { def: 0.30, min: 0,    max: 0.7, step: 0.01, label: 'Частка лісу', group: 'Світ' },
   rocks:       { def: 0.18, min: 0,    max: 0.6, step: 0.01, label: 'Частка скель', group: 'Світ' },
   water:       { def: 0.08, min: 0,    max: 0.4, step: 0.01, label: 'Частка води', group: 'Світ' },
+  zoneLen:     { def: 28,   min: 12,   max: 80,  step: 1,    label: 'Довжина ділянки (біому), клітинок', group: 'Світ' },
+  hardGrow:    { def: 0.6,  min: 0,    max: 1.5, step: 0.05, label: 'Складність до станції (приріст)', group: 'Світ' },
+  swamp:       { def: 0.06, min: 0,    max: 0.4, step: 0.01, label: 'Частка болота', group: 'Світ' },
+  swampSlow:   { def: 0.55, min: 0.2,  max: 1,   step: 0.05, label: 'Болото: швидкість ходи (частка)', group: 'Світ' },
 };
 // Перемикачі варіантів (рядкові значення; перше — типове)
 export const VARIANTS = {
@@ -238,7 +242,8 @@ function movePlayer(s, n) {
   // мертва зона й нормування (довжина ≤ 100)
   const len = Math.floor(Math.sqrt(mx * mx + my * my));
   if (len < 12) return;
-  const v = Math.round(s.params.playerSpeed * U / TPS);
+  let v = Math.round(s.params.playerSpeed * U / TPS);
+  if (s.ground[Math.floor(pl.y / U) * s.w + Math.floor(pl.x / U)] === G.SWAMP) v = Math.round(v * clampI(+s.params.swampSlow || 1, 0.05, 1));
   const d = Math.max(100, len);
   const dx = Math.trunc(v * mx / d), dy = Math.trunc(v * my / d);
   const wag = wagonsXY(s);
