@@ -12,6 +12,8 @@ import { createHud } from './hud.js';            // K9
 import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new|auto&nick=…&drive=1
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
+import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
+import { createCoopKeys } from './coop-keys.js';     // K18: кидок/гудок, доки їх нема в input.js
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -87,6 +89,7 @@ function restart(seed = game.seed) {
 function tickOnce() {
   const s = game.state;
   const cmds = game.cmds.splice(0);
+  (game.coopKeys ??= createCoopKeys()).poll(cmds, game.local);   // K18
   const ins = input.poll();
   for (let i = 0; i < game.local; i++) {
     const v = ins[i]; if (!v) continue;
@@ -127,7 +130,7 @@ function frame(now) {
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
   if (!game.state) return nextFrame();   // K3: мережа ще бере журнал
-  view?.draw(game.state, net ? net.alpha : acc / R.TICK_MS);
+  if (net) net.draw(view); else view?.draw(game.state, acc / R.TICK_MS);   // K6: мережа малює гравців згладжено
   if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();
   (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
@@ -166,6 +169,7 @@ function drawHud() {
 
 (async () => {
   view = game.view = await makeView();
+  mountLookUi(document.getElementById('kol-panel'), view);   // K5
   view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => console.warn('Колія: мережа', e)); else restart();   // K3
   requestAnimationFrame(frame);

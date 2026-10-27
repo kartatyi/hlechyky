@@ -38,7 +38,18 @@ export function createDebug2d(canvas) {
         g.fillStyle = PC[n]; g.beginPath(); g.arc(p.x / U * c, p.y / U * c, c * 0.3, 0, 7); g.fill();
         g.strokeStyle = '#000'; g.beginPath(); g.moveTo(p.x / U * c, p.y / U * c); g.lineTo((p.x / U + p.fx * 0.5) * c, (p.y / U + p.fy * 0.5) * c); g.stroke();
         if (p.hold.k) { g.fillStyle = IC[p.hold.k]; g.fillRect(p.x / U * c - 3, p.y / U * c - c * 0.6, 6, 6); }
+        if (p.stun > 0) {   // K18: зірочки
+          g.fillStyle = '#fff36b';
+          for (let k = 0; k < 3; k++) {
+            const a = s.tick * 0.5 + k * 2.1;
+            g.fillRect(p.x / U * c + Math.cos(a) * c * 0.35 - 2, p.y / U * c - c * 0.55 + Math.sin(a) * c * 0.12 - 2, 4, 4);
+          }
+        }
       });
+      for (const f of s.flying || []) {   // K18: кинуте — тінь на землі й річ над нею
+        g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.ellipse(f.x / U * c, f.y / U * c, c * 0.2, c * 0.1, 0, 0, 7); g.fill();
+        g.fillStyle = IC[f.k] || '#fff'; g.fillRect(f.x / U * c - c * 0.18, (f.y - f.z) / U * c - c * 0.18, c * 0.36, c * 0.36);
+      }
       g.restore();
     },
   };
