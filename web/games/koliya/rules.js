@@ -25,12 +25,12 @@ export const WAGONS = ['loco', 'store', 'craft'];  // від голови: па�
 // Типові числа — K13 (баланс на 20 сідах ботами, D:\or-wt\_kolia\k13\BALANCE.md): соло ~8 хв і ~2/3 перемог, удвох ~5,5 хв і ~85 %.
 export const PARAM_META = {
   speedStart:  { def: 0.20, min: 0.05, max: 1.5, step: 0.01, label: 'Швидкість паротяга, клітинок/с', group: 'Паротяг' },
-  speedGrowth: { def: 0.05, min: 0,    max: 0.5, step: 0.01, label: 'Приріст швидкості, клітинок/с за хвилину', group: 'Паротяг' },
+  speedGrowth: { def: 0.06, min: 0,    max: 0.5, step: 0.01, label: 'Приріст швидкості, клітинок/с за хвилину', group: 'Паротяг' },
   speedMax:    { def: 0.60, min: 0.1,  max: 3,   step: 0.05, label: 'Стеля швидкості', group: 'Паротяг' },
   stepN:       { def: 10,   min: 2,    max: 40,  step: 1,    label: 'Розгін не від часу: кожні N рейок (сходинки) / клітинок шляху', group: 'Паротяг' },   // K14
   stepGain:    { def: 0.02, min: 0,    max: 0.2, step: 0.005, label: 'Розгін не від часу: + клітинок/с за N', group: 'Паротяг' },                     // K14
   startSec:    { def: 30,   min: 0,    max: 90,  step: 1,    label: 'Пауза перед рушанням, с', group: 'Паротяг' },
-  soloSpeed:   { def: 0.6, min: 0.4,  max: 1,   step: 0.05, label: 'Соло-знижка: паротяг їде й гріється повільніше, коли гравець один (частка)', group: 'Паротяг' },   // K13
+  soloSpeed:   { def: 0.55, min: 0.4,  max: 1,   step: 0.05, label: 'Соло-знижка: паротяг їде й гріється повільніше, коли гравець один (частка)', group: 'Паротяг' },   // K13
   finishSpeed: { def: 2,    min: 0,    max: 5,   step: 0.25, label: 'Колію дотягли до станції — паротяг мчить, клітинок/с (0 — ні)', group: 'Паротяг' },  // K13
   heatSec:     { def: 50,   min: 10,   max: 240, step: 5,    label: 'Від холодного до перегріву, с', group: 'Котел' },
   fireSec:     { def: 12,   min: 3,    max: 60,  step: 1,    label: 'Пожежа: скільки до поразки, с', group: 'Котел' },
