@@ -12,6 +12,10 @@
     icon: ICON,
     added: '2026-10-27',
     leaveFree: true,   // вихід посеред партії — не поразка (Koliya.OnLeave: решта грає далі); core.js askLeave
+    // Джойстик гра читає сама, у рамці (koliya/input.js). Шар пада сайту (web/static/pad.js) за столом лише мовчить:
+    // стік не водить кільце фокуса сторінкою, кнопки не тиснуть сайт — інакше Ⓑ виводила зі столу, а плечі гортали
+    // розділи. Зі столу — утримання Ⓑ, як в інших живих іграх.
+    pad: { dirs: true, rstick: true, on: (b) => b !== 'b', hint: '{dpad} ходити · {a} рубати, брати, класти · {y} гудок' },
     mount(root, ctx) { this.update(root, ctx); },
     update(root, ctx) {
       const id = ctx.room && ctx.room.id;
