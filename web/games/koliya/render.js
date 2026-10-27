@@ -588,8 +588,10 @@ export function createRenderer(canvas) {
       water.rotation.x = -Math.PI / 2; water.position.set(x0 + ww / 2, -0.16, h / 2); water.receiveShadow = true;
       root.add(water); W.waters.push(water);
     }
-    buildStation(root, s);
-    buildOutskirts(-16, 0, s); buildOutskirts(w, w + 22, s);
+    // K20: нескінченна колія (K19) — за правим краєм вікна нема вокзалу (смуга ще допишеться), а після зсуву зліва — ліс, не тунель
+    const endless = !!s.endless, shifted = endless && (s.endless.base | 0) > 0;
+    if (!endless) buildStation(root, s);
+    buildOutskirts(-16, 0, s, !shifted); buildOutskirts(w, w + 22, s, false, endless);
     for (let i = 0; i < n; i++) syncCell(i, true);
     syncPath(true);
     pGround.flush(); pBox.flush(); pBlob.flush(); pTree.flush();
@@ -638,7 +640,7 @@ export function createRenderer(canvas) {
   }
 
   // околиці за кінцями смуги (лише вигляд): поле, ліс, скелі; на старті — тунель, з якого виходить колія
-  function buildOutskirts(x0, x1, s) {
+  function buildOutskirts(x0, x1, s, tunnel = x1 <= 0, noYard = false) {
     const { w, h } = s, mid = h >> 1, list = W.outRefs || (W.outRefs = []), P = W.pBox;
     W.outBlob ||= [];
     const start = x1 <= 0;
@@ -648,16 +650,16 @@ export function createRenderer(canvas) {
       const dark = hh(x >> 2, y >> 2, 9) * 0.5 + hh(x >> 1, y >> 1, 10) * 0.5;
       P.add(list, x + 0.5, -0.5, y + 0.5, 1, 0.5 + top, 1, tint((x + y) & 1 ? C.grassA : C.grassB, (v - 0.5) * 0.07 - (dark > 0.7 ? 0.08 : 0) - Math.min(0.12, d * 0.006)));
       if (y === 0 || y === h - 1) { objBoxes(list, O.WALL, 1, x, y, top, h); continue; }
-      if (start && x >= -3) continue;                              // портал тунелю
-      if (start && Math.abs(y - mid) <= 1) continue;
-      if (!start && d < 7 && Math.abs(y - mid) <= 4) continue;     // вокзал і подвір'я
+      if (tunnel && x >= -3) continue;                             // портал тунелю
+      if (tunnel && Math.abs(y - mid) <= 1) continue;
+      if (!start && !noYard && d < 7 && Math.abs(y - mid) <= 4) continue;     // вокзал і подвір'я
       const r = hh(x, y, 5), dens = Math.min(0.55, 0.12 + d * 0.03);
       if (r < dens) objBoxes(list, O.TREE, 1, x, y, top, h, W.outBlob);
       else if (r < dens + 0.06) objBoxes(list, O.ROCK, 1, x, y, top, h, W.outBlob);
       else if (r > 0.93 && !lowQ) { P.add(list, x + 0.5, top, y + 0.5, 0.05, 0.12, 0.05, C.tuft); P.add(list, x + 0.5, top + 0.12, y + 0.5, 0.09, 0.07, 0.09, pick(C.flower, hh(x, y, 6))); }
     }
     cube(W.root, (x0 + x1) / 2, -3.2, h / 2, x1 - x0, 2.7, h + 0.02, C.dirt).castShadow = false;
-    if (!start) return;
+    if (!tunnel) return;
     // колія з тунелю: прямі рейки по середньому рядку
     for (let x = x0; x < 0; x++) {
       const cx = x + 0.5, cz = mid + 0.5;
