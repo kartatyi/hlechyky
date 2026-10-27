@@ -1,21 +1,21 @@
 // K16: кожна подія s.ev має звук, а гучності зведено ярусами (без вух — за амплітудою й тривалістю).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
-import { SFX, LEVEL, soundOf } from '../../web/games/koliya/audio.js';
+import { readFileSync, readdirSync } from 'node:fs';
+import { SFX, SFX_CHUMAK, LEVEL, SILENT, soundOf } from '../../web/games/koliya/audio.js';
 import { G } from '../../web/games/koliya/rules.js';
 
 const dir = new URL('../../web/games/koliya/', import.meta.url);
 
-/** Усі типи подій, що пишуться в s.ev: ev(s, 'x', …) і ev(s, { t: 'x', … }) у rules/extras/coop */
+/** Усі типи подій, що пишуться в s.ev: ev(s, 'x', …), ev(s, { t: 'x', … }) і s.ev.push({ t: 'x', … }) — у будь-якому
+ *  модулі гри (K40: не лише rules/extras/coop — ще lost.js, endless.js і що з'явиться) */
 function eventTypes() {
   const out = new Set();
-  for (const f of ['rules.js', 'extras.js', 'coop.js']) {
-    const u = new URL(f, dir);
-    if (!existsSync(u)) continue;
-    const src = readFileSync(u, 'utf8');
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.js'))) {
+    const src = readFileSync(new URL(f, dir), 'utf8');
     for (const m of src.matchAll(/\bev\(s,\s*'([a-z_]+)'/g)) out.add(m[1]);
     for (const m of src.matchAll(/\bev\(s,\s*\{\s*t:\s*'([a-z_]+)'/g)) out.add(m[1]);
+    for (const m of src.matchAll(/\bs\.ev\.push\(\s*\{\s*t:\s*'([a-z_]+)'/g)) out.add(m[1]);
     for (const m of src.matchAll(/\bev\(s,\s*tree \? '([a-z_]+)' : '([a-z_]+)'/g)) { out.add(m[1]); out.add(m[2]); }
   }
   // контракт (CONTRACT.md) + кооп-фішки K18, навіть якщо coop.js ще не злито
@@ -43,7 +43,7 @@ function aWeight(f) {   // A-зважування, лінійно
   return ra * 10 ** (2 / 20);
 }
 const decayDiv = (vol) => 2 * Math.log(Math.max(1.0001, vol / 1e-4));   // ∫ спаду exp від vol до 1e-4: dur / (2·ln)
-function loudness(name) {
+function loudness(name, fn = SFX[name]) {
   let E = 0;
   const k = 10 ** ((LEVEL[name] ?? 0) / 20);
   const A = {
@@ -57,18 +57,27 @@ function loudness(name) {
       E += (v * 0.577 * Math.sqrt(Math.min(1, bw / 22050)) * aWeight(fc)) ** 2 * d / decayDiv(v);
     },
   };
-  const dur = SFX[name](0, A);
+  const dur = fn(0, A);
   assert.ok(dur > 0 && dur < 2, `${name}: тривалість ${dur}`);
   return 10 * Math.log10(E / Math.max(0.2, dur));
 }
 
-test('кожна подія з rules/extras/coop має звук', () => {
-  const miss = [];
-  for (const t of eventTypes()) {
+test('кожна подія з усіх модулів має звук (або свідомо тиха)', () => {
+  const miss = [], types = eventTypes();
+  for (const t of ['respawn', 'rescue', 'station', 'shift']) assert.ok(types.includes(t), `сканер не бачить «${t}» (lost/endless)`);
+  for (const t of types) {
+    if (SILENT.has(t)) { assert.equal(soundOf({ t, x: 0, y: 0 }), null, `${t}: тиха`); continue; }
     const variants = t === 'honk' ? [{ t }, { t, p: 0 }] : [{ t, x: 0, y: 0 }];
     for (const e of variants) { const n = soundOf(e); if (!SFX[n]) miss.push(`${t}→${n}`); }
   }
   assert.deepEqual(miss, []);
+  for (const t of SILENT) assert.ok(types.includes(t), `тиха «${t}» — нема такої події`);
+  for (const n of Object.keys(SFX_CHUMAK)) assert.ok(SFX[n], `чумацький «${n}» без звичайного`);
+});
+
+test('K40: нові події мають і вигляд у render.js', () => {
+  const src = readFileSync(new URL('render.js', dir), 'utf8');
+  for (const t of ['respawn', 'rescue', 'station']) assert.ok(src.includes(`case '${t}':`), `render.js: нема case '${t}'`);
 });
 
 test('кроки за підлогою; гудок гравця ≠ гуска', () => {
@@ -96,6 +105,7 @@ const TIER_OF = {
   honk: 'event', scare: 'event', goose_lost: 'event', stun: 'event',
   whistle: 'loud', alarm: 'loud', horn: 'loud', upgrade: 'loud',
   won: 'final', lost: 'final',
+  respawn: 'event', rescue: 'event', station: 'loud',   // K40
 };
 
 test('гучності зведено ярусами (відносно удару сокирою)', () => {
@@ -107,6 +117,11 @@ test('гучності зведено ярусами (відносно удар�
     assert.ok(tier, `${name}: нема ярусу`);
     const [lo, hi] = TIER[tier];
     if (rel < lo || rel > hi) bad.push(`${name} ${rel.toFixed(1)} поза ${tier} [${lo}, ${hi}]`);
+  }
+  for (const [name, fn] of Object.entries(SFX_CHUMAK)) {   // K40: чумацькі варіанти — у тому ж ярусі
+    const rel = loudness(name, fn) - ref, [lo, hi] = TIER[TIER_OF[name]];
+    rows.push(`${('ч:' + name).padEnd(11)} ${rel.toFixed(1).padStart(6)} дБ  ${TIER_OF[name]}`);
+    if (rel < lo || rel > hi) bad.push(`чумацький ${name} ${rel.toFixed(1)} поза ${TIER_OF[name]} [${lo}, ${hi}]`);
   }
   if (process.env.KOL_AUDIO) console.log(rows.join('\n'));
   assert.deepEqual(bad, []);

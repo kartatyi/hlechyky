@@ -1627,6 +1627,7 @@ export function createRenderer(canvas) {
     windT.value += dt; windK.value = look === LOOKS.autumn ? 1.45 : look === LOOKS.toy ? 0.8 : 1;
     extras.update(s, alpha, { blob: blobOn });
     waterTime.value = now / 1000;
+    updateFalls(dt);   // K40
     stepParticles(dt);
     weather.update(dt, now, s, { cam, halfW, look, lowQ, loco: W.train[0].g, players: W.players });   // K32
     renderer.render(scene, camera);
@@ -1718,7 +1719,57 @@ export function createRenderer(canvas) {
         case 'step': if (c && Math.random() < 0.5) spawn(c.x + R(0.15), 0.05, c.z + R(0.15), R(0.3), 0.6, R(0.3), 0.35, 0.06, 0xd8cfa8, 4); break;
         case 'won': { const p = lp(); for (let k = 0; k < 90; k++) spawn(p.x + R(1.5), p.y + 0.5, p.z + R(1.5), R(2.5), 4 + Math.random() * 4, R(2.5), 2 + Math.random(), 0.09, pick([0xffd23f, 0xff5fa2, 0x4fc3ff, 0x9be15d, 0xffffff, 0x1f6fd1], Math.random()), 5); break; }
         case 'lost': { const p = lp(); puff(p.x, p.y, p.z, 16, 0x55585e, 0.4, 2.2, 1.3); burst(p.x, p.y - 0.3, p.z, 14, [0xff7a1a, 0xffb300, 0x3a3d44], 3, 3, 0.1, 0.8); break; }
+        // K40: загублений інструмент повернувся — сам предмет (W.drops) падає з неба з іскорками (updateFalls)
+        case 'respawn': if (c) {
+          const ci = cellIdx(e);
+          if (ci >= 0) (W.falls ||= []).push({ i: ci, t: 0, x: c.x, z: c.z });
+          burst(c.x, 0.05, c.z, 6, K40_SPARK, 0.8, 1.2, 0.05, 0.6, 2);   // мітка, куди впаде
+        } break;
+        // K40: гравця визволено з глухого кута — хмарка куряви там, де зник (меш ще на старому місці), і там, де з'явився
+        case 'rescue': {
+          const m = e.p !== undefined ? W.players[e.p] : null;
+          if (m && Number.isFinite(m.x)) dust(m.x, m.z);
+          if (c) dust(c.x, c.z);
+        } break;
+        // K40: прибули на станцію — конфеті й гірлянда прапорців над паротягом
+        case 'station': {
+          const p = lp(), y = p.y + 0.8;
+          for (let k = 0; k < 60; k++) spawn(p.x + R(1.6), y + 0.6 + Math.random(), p.z + R(1.6), R(1.5), 2 + Math.random() * 2.5, R(1.5), 2.2 + Math.random(), 0.08, pick(K40_CONF, Math.random()), 3, 2);
+          for (let k = 0; k <= 12; k++) {   // прапорці: провислий шнур упоперек колії
+            const f = k / 12 - 0.5;
+            spawn(p.x + f * 0.6, y + 0.35 - (0.25 - f * f) * 1.2, p.z + f * 2.6, 0, 0, 0, 2.6, 0.16, K40_CONF[k % K40_CONF.length], 0, 4);
+          }
+        } break;
       }
+    }
+  }
+
+  // K40: курява (rescue) — хмарка пилу й грудочки землі
+  function dust(x, z) {
+    puff(x, 0.15, z, 9, 0xe8dcc0, 0.34, 1.1, 0.55);
+    burst(x, 0.1, z, 7, [0xd8c9a0, 0xc7b88e, 0xb9ae96], 1.6, 1.4, 0.07, 0.5);
+  }
+  // K40: падіння інструмента з неба (respawn): опускаємо меш W.drops[i] з висоти, за ним — слід іскорок; приземлення — пил
+  const K40_SPARK = [0xfff2a0, 0xffd23f, 0xffffff, 0xbfe6ff], K40_CONF = [0xffd23f, 0xff5fa2, 0x4fc3ff, 0x9be15d, 0xffffff, 0xe04b3a];
+  const FALL_T = 0.75, FALL_H = 7;
+  function updateFalls(dt) {
+    if (!W || !W.falls?.length) return;
+    for (let k = W.falls.length - 1; k >= 0; k--) {
+      const f = W.falls[k], g = W.drops[f.i];
+      f.t += dt;
+      if (!g) { if (f.t > 0.4) W.falls.splice(k, 1); continue; }   // підняли раніше, ніж побачили, — нема що ронити
+      if (f.y0 === undefined) { f.y0 = g.position.y; f.r0 = g.rotation.y; }
+      const u = Math.min(1, f.t / FALL_T);
+      g.position.y = f.y0 + FALL_H * (1 - u * u);
+      g.rotation.y = f.r0 + (1 - u) * 9;
+      if (u < 1) {
+        for (let j = 0; j < 2; j++) spawn(g.position.x + R(0.18), g.position.y + 0.15, g.position.z + R(0.18), R(0.4), 0.3 + Math.random() * 0.5, R(0.4), 0.5 + Math.random() * 0.3, 0.06, pick(K40_SPARK, Math.random()), 0.5, 3);
+        continue;
+      }
+      g.position.y = f.y0; g.rotation.y = f.r0;
+      burst(f.x, 0.25, f.z, 14, K40_SPARK, 2.2, 2.4, 0.05, 0.55, 5);
+      puff(f.x, 0.1, f.z, 4, 0xe8dcc0, 0.24, 0.8, 0.35);
+      W.falls.splice(k, 1);
     }
   }
 
