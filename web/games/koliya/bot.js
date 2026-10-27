@@ -13,7 +13,7 @@ const bridgeRes = (s, c) => { const g = s.ground[c]; return g === G.WATER || g =
 
 const DIRS = [[1, 0], [0, 1], [0, -1], [-1, 0]];
 // K13: пороги «запасу колії» (клітинок від голови до кінця): urg — по рейки будь-скільки, far — повний стос лише ближче
-const TUNE = { urg: 10, far: 40, ...(globalThis.KOL_BOT_TUNE || {}) };
+const TUNE = { urg: 10, far: 40, avB: 0.7, avS: 0.7, avH: 0.4, tol: 0, ...(globalThis.KOL_BOT_TUNE || {}) };
 const shared = new WeakMap();    // state → { t, occ, route, routeSet, N, rt, pl, claims: Map, bots: Map }
 // K34: клітинки, яких BFS обходить (людина й клітинка перед нею) — ставить напарник на час свого think
 let AV = null;
@@ -437,12 +437,13 @@ export function createBot(p, opts = {}) {
    */
   function buddyPre(ctx, H) {
     const { s, o, cur } = ctx;
-    AV = new Set();
+    const av = new Set();   // K60: клітинки людини; обхід у пошуку шляху (AV) і відступ — окремо
     let busy = false;
     // K60: характер — 0 ввічливий … 1 завзятий; заявки людини тануть плавно, обхід — східцями
     const z = zeal / 100, kz = 1 - z;
     const idleT = Math.round(10 * TPS * (1 - 0.8 * z));       // «людина не будує»: 10 с → 2 с
     const hitW = Math.round(3 * TPS * kz), putW = Math.round(8 * TPS * kz);   // скільки тримаємо її ціль / покладене
+    const avZ = Math.max(TUNE.avB, TUNE.avS);
     const rTool = Math.round(2 * kz), rNear = Math.round(10 * kz), rWalk = 6 * kz, rLay = z < 0.5 ? Math.round(8 * (1 - 2 * z)) : -1;   // класти лишаємо їй лише до середини
     for (const { q, pl: hp, h, hc } of H) {
       const hx = hc % s.w, hy = (hc / s.w) | 0;
@@ -450,13 +451,13 @@ export function createBot(p, opts = {}) {
       if (!idle) busy = true;
       const hcl = (key) => o.claims.set(key, { p: q, t: s.tick });
       // не стояти на дорозі: клітинка людини, перед нею і та, куди вона йде (K60: завзятіший — менше обходить)
-      if (z < 0.7) AV.add(hc);
-      if (z < 0.7 && hx + hp.fx >= 0 && hy + hp.fy >= 0 && hx + hp.fx < s.w && hy + hp.fy < s.h) AV.add((hy + hp.fy) * s.w + hx + hp.fx);
-      if (z < 0.4 && h.hx.length >= 12) {
+      if (z < avZ) av.add(hc);
+      if (z < avZ && hx + hp.fx >= 0 && hy + hp.fy >= 0 && hx + hp.fx < s.w && hy + hp.fy < s.h) av.add((hy + hp.fy) * s.w + hx + hp.fx);
+      if (z < TUNE.avH && h.hx.length >= 12) {
         const vx = hp.x - h.hx[h.hx.length - 12], vy = hp.y - h.hx[h.hx.length - 11];
         if (Math.abs(vx) + Math.abs(vy) > 400) {
           const ex = Math.abs(vx) >= Math.abs(vy) ? hx + Math.sign(vx) : hx, ey = Math.abs(vx) >= Math.abs(vy) ? hy : hy + Math.sign(vy);
-          if (ex >= 0 && ey >= 0 && ex < s.w && ey < s.h) AV.add(ey * s.w + ex);
+          if (ex >= 0 && ey >= 0 && ex < s.w && ey < s.h) av.add(ey * s.w + ex);
         }
       }
       // її ціль: що била останні 3 с, а з інструментом — те, що поруч (≤ 2 клітинки)
@@ -486,6 +487,7 @@ export function createBot(p, opts = {}) {
       });
     }
     // роль: людина з сокирою — ми на скелі й воду; з кайлом — дрова й рейки; стоїть ~10 с чи без інструмента — усе
+    AV = z < TUNE.avB ? av : null;
     const a = H[0];
     let role = 'all';
     // (жорсткі ролі 'mine'/'build' пробували: повільна людина + бот, що чекає, — x̄ 58 зі 100 проти 72; тож роль
@@ -513,14 +515,16 @@ export function createBot(p, opts = {}) {
     }
     if (m.anchor >= 0 && s.tick > m.anchorT) m.anchor = -1;
     // стоїмо перед людиною чи на її дорозі — відступити вбік
-    if (AV.has(cur)) {
+    // K60: відступ — не одразу, а після терпіння tol·z с (0 — одразу, як K34)
+    m.inFront = av.has(cur) ? (m.inFront | 0) + 1 : 0;
+    if (z < TUNE.avS && m.inFront > Math.round(TUNE.tol * z * TPS)) {
       const x = cur % s.w, y = (cur / s.w) | 0;
       let best = -1, bd = -1;
       for (const [dx, dy] of DIRS) {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= s.w || ny >= s.h) continue;
         const n = ny * s.w + nx;
-        if (!passable(s, o, n, false) || AV.has(n)) continue;
+        if (!passable(s, o, n, false) || av.has(n)) continue;
         const d = Math.min(...H.map((u) => md(s, n, u.hc)));
         if (d > bd) { bd = d; best = n; }
       }
