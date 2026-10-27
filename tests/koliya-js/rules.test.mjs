@@ -84,7 +84,7 @@ test('рух: не крізь воду (міст — можна) і не крі�
   // вагон: паротяг на path[3] — підходимо згори
   const hc = s.path[3], hx = hc % s.w, hy = (hc / s.w) | 0;
   at(s, 0, hx, hy - 3, 0, 1);
-  for (let i = 0; i < 30; i++) R.step(s, [{ p: 0, k: 'in', mx: 0, my: 100 }]);
+  for (let i = 0; i < 14; i++) R.step(s, [{ p: 0, k: 'in', mx: 0, my: 100 }]);   // K33: тиснути довше 0,5 с — протиснешся (lost.test)
   assert.ok(pl.y < hy * U + U / 2 - 420 - R.PR + 5, 'не залазить у паротяг');
   assert.deepEqual(R.facingCell(pl), { x: hx, y: hy });
 });

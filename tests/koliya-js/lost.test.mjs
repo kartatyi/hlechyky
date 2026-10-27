@@ -126,6 +126,32 @@ test('K33-1: 15 хв ботів з гусьми й кидком — інстру
   }
 });
 
+// ================= 2. потяг виштовхує / протиснутись =================
+test('K33-2: гравець стоїть на колії — паротяг м\'яко виштовхує його вбік, а не їде крізь', () => {
+  const s = blank({ startSec: 0, speedStart: 1.5, speedMax: 3, soloSpeed: 1 });
+  const hi = Math.floor(s.train.pos / U), c = s.path[hi + 2];
+  const pl = at(s, 0, c % s.w, (c / s.w) | 0);
+  let inside = 0, maxIn = 0;
+  for (let t = 0; t < 60; t++) {
+    R.step(s, []);
+    const w = R.wagonsXY(s);
+    inside = R.hitsAt(s, pl.x, pl.y, w, 0) ? inside + 1 : 0;
+    maxIn = Math.max(maxIn, inside);
+  }
+  assert.ok(maxIn <= 8, 'у вагоні не довше 0,4 с: ' + maxIn);
+  assert.ok(!s.path.includes(id(s, Math.floor(pl.x / U), Math.floor(pl.y / U))), 'стоїть поза колією');
+});
+
+test('K33-2: тиснеш у вагон — спершу впираєшся, за 0,5 с протискаєшся крізь', () => {
+  const s = blank({ startSec: 900 });
+  const w = R.wagonPos(s, 1), wx = Math.floor(w.x / U), wy = Math.floor(w.y / U);
+  const pl = at(s, 0, wx, wy - 2, 0, 1);
+  run(s, 6, [{ p: 0, k: 'in', mx: 0, my: 100 }]);
+  assert.ok(pl.y < w.y - 600, 'уперся');
+  run(s, 40);
+  assert.ok(pl.y > w.y + 600, 'протиснувся: ' + pl.y + ' ' + w.y);
+});
+
 // ================= 3. вихід зі столу =================
 /** Гравець 1 стоїть посеред води 7×7 — поруч покласти нікуди */
 function wet(s) {

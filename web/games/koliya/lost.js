@@ -21,7 +21,7 @@
 import { U, G, I, WAGONS, PR, cellBlocked, wagonAt, wagonPos, putDrop, hitsAt, wagonsXY, slide } from './rules.js';
 
 /** Числа K33. Змінювати лише для дослідів (k33/botrun.mjs) — у грі це сталі, однакові в усіх. */
-export const K33 = { keep: 1, push: 0, passT: -1, rescue: 0 };
+export const K33 = { keep: 1, push: 1, passT: 10, rescue: 0 };
 const CHECK = 10;          // тиків між перевірками інструментів (0,5 с)
 const RESPAWN = 200;       // 10 с без інструмента — з'являється знову
 const PUSH = 150;          // підодиниць/тик, з якими вагон відсуває гравця (3 клітинки/с)
