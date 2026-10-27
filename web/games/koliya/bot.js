@@ -387,8 +387,9 @@ export function createBot(p, opts = {}) {
       for (const c of h.hits.keys()) hcl('c' + c);
       const hk = hp.hold.k;
       if (hk === I.AXE || hk === I.PICK) { const ob = hk === I.AXE ? O.TREE : O.ROCK; around(s, hc, 2, (c) => { if (s.obj[c] === ob) hcl('c' + c); }); }
-      // рейки в руках і йде класти (≤ 8 клітинок від кінця колії) чи запас колії ще є — класти лишаємо їй
-      if (hk === I.RAIL && (md(s, hc, s.path[s.path.length - 1]) <= 8 || s.path.length - 1 - Math.floor(s.train.pos / U) >= TUNE.urg)) hcl('lay');
+      // рейки в руках і вже біля кінця колії (≤ 3) — класти лишаємо їй; далі чи потяг близько — кладемо й ми
+      // (лишати завжди: x̄ 64 зі 100 проти 84 у старого бота — повільна людина не встигала)
+      if (hk === I.RAIL && md(s, hc, s.path[s.path.length - 1]) <= 3 && s.path.length - 1 - Math.floor(s.train.pos / U) >= TUNE.urg) hcl('lay');
       if (hk === I.BUCKET || hk === I.BUCKET_FULL) hcl('water');
       if (idle) continue;
       // речі біля неї: інструмент/відро ≤ 2 клітинок, щойно нею покладене (≤ 10) чи те, до чого вона йде; купка під руками
