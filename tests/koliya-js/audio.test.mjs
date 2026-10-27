@@ -106,7 +106,17 @@ const TIER_OF = {
   whistle: 'loud', alarm: 'loud', horn: 'loud', upgrade: 'loud',
   won: 'final', lost: 'final',
   respawn: 'event', rescue: 'event', station: 'loud',   // K40
+  cist: 'action', brake: 'event',                       // K56
 };
+
+test('K56: покращення K48 (поле u) — свої звуки', () => {
+  assert.equal(soundOf({ t: 'douse', x: 0, y: 0, u: 'cist' }), 'cist');
+  assert.equal(soundOf({ t: 'drop', x: 0, y: 0, p: 0, u: 'cist' }), 'cist');
+  assert.equal(soundOf({ t: 'whistle', x: 0, y: 0, p: 0, u: 'brake' }), 'brake');
+  assert.equal(soundOf({ t: 'pick', x: 0, y: 0, u: 'magnet' }), 'pick');
+  assert.equal(soundOf({ t: 'whistle', x: 0, y: 0 }), 'whistle');   // станційний свисток — як був
+  assert.equal(soundOf({ t: 'douse', x: 0, y: 0, p: 0 }), 'douse');
+});
 
 test('гучності зведено ярусами (відносно удару сокирою)', () => {
   const ref = loudness('chop');
