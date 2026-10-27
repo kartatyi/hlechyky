@@ -8,6 +8,8 @@ import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
 import { U, G, O, I, WAGONS, canLay } from './rules.js';
 import { createExtrasRender } from './extras-render.js';   // K11: гуси й таблички станції
 import { LOOKS, CAM_DIST, loadPrefs, savePrefs } from './looks.js';   // K5: вигляди
+import { isChumak, onTheme } from './theme.js';   // K25: тема «Чумацький шлях» (лише вигляд)
+import * as CV from './chumak-vox.js';             // K25: воли, мажі, гать, ярмарок, степ
 
 // ---------- палітра (BASE — «Літо»; вигляд K5 накладає свої заміни в C, див. looks.js) ----------
 const BASE = {
@@ -251,7 +253,8 @@ function makeItem(k, n = 1, ground = false) {
       cube(g, 0, layer * 0.09, side ? 0.08 : -0.08, 0.32, 0.09, 0.14, j % 2 ? 0x5b6470 : 0x4b535e);
       cube(g, 0, layer * 0.09 + 0.09, side ? 0.08 : -0.08, 0.24, 0.012, 0.1, 0x8a96a6);
     }
-  } else if (k === I.RAIL) {
+  } else if (k === I.RAIL && isChumak()) CV.logBundle(K25, g, n);   // K25: «рейки» — в'язка колод
+  else if (k === I.RAIL) {
     for (let j = 0; j < n; j++) {
       const y = j * 0.1;
       cube(g, -0.14, y, 0, 0.08, 0.05, 0.4, C.tie); cube(g, 0.14, y, 0, 0.08, 0.05, 0.4, C.tie);
@@ -287,6 +290,9 @@ function addBlob(parent, sx, sz, x = 0, z = 0, y = 0.012) {
   b.userData.keep = true; parent.add(b); blobs.add(b); return b;
 }
 
+// K25: інструменти для будівників теми (chumak-vox.js не імпортує render.js)
+const K25 = { THREE, cube, mat, mergeGroup, addBlob, C, hh, pick, tint, G, I };
+
 // ---------- гравець із кубиків ----------
 function makePlayer(n) {
   const pc = PLAYER[n % PLAYER.length];
@@ -299,7 +305,8 @@ function makePlayer(n) {
   cube(head, 0, 0, 0, 0.28, 0.27, 0.28, SKIN);
   cube(head, 0.141, 0.12, -0.065, 0.01, 0.05, 0.04, 0x222222); cube(head, 0.141, 0.12, 0.065, 0.01, 0.05, 0.04, 0x222222);
   cube(head, 0.141, 0.05, 0, 0.012, 0.025, 0.08, 0xd88a6a);
-  cube(head, 0, 0.25, 0, 0.3, 0.07, 0.3, pc.hat); cube(head, 0.1, 0.25, 0, 0.18, 0.035, 0.3, pc.hat);
+  if (isChumak()) CV.bryl(K25, head, pc.hat);   // K25: солом'яний бриль зі стрічкою кольору гравця й вуса
+  else { cube(head, 0, 0.25, 0, 0.3, 0.07, 0.3, pc.hat); cube(head, 0.1, 0.25, 0, 0.18, 0.035, 0.3, pc.hat); }
   const arm = (z) => { const p = new THREE.Group(); p.position.set(0, 0.48, z); body.add(p); cube(p, 0, -0.26, 0, 0.1, 0.26, 0.1, pc.shirt); cube(p, 0, -0.3, 0, 0.09, 0.05, 0.09, SKIN); return p; };
   const armL = arm(-0.215), armR = arm(0.215);
   const hand = new THREE.Group(); hand.position.set(0, -0.3, 0); armR.add(hand);
@@ -415,7 +422,7 @@ export function createRenderer(canvas) {
   function applyLook(name, rebuild = true) {
     look = LOOKS[name] || LOOKS.summer; prefs.look = LOOKS[name] ? name : 'summer';
     for (const k in C) delete C[k];
-    Object.assign(C, BASE, look.pal);
+    Object.assign(C, BASE, look.pal, CV.pal(prefs.look));   // K25: степова палітра теми
     // небо: вертикальний градієнт; туман того ж кольору, що й обрій, — далеке зливається з тлом
     const x = skyCanvas.getContext('2d'), gr = x.createLinearGradient(0, 0, 0, 256);
     gr.addColorStop(0, hex6(look.sky[0])); gr.addColorStop(0.75, hex6(look.sky[1])); gr.addColorStop(1, hex6(look.fog.color));
@@ -575,6 +582,7 @@ export function createRenderer(canvas) {
       railSig: new Array(n).fill(''), drops: new Array(n),
       pathLen: -1, pathLast: -1, treeMax: Math.max(1, s.params?.treeHits | 0), rockMax: Math.max(1, s.params?.rockHits | 0) };
     for (let i = 0; i < n; i++) { W.objRefs[i] = []; W.decoRefs[i] = []; W.railRefs[i] = []; W.blobRefs[i] = []; }
+    W.fx = []; W.wells = isChumak() ? CV.findWells(s, G) : null;   // K25: анімації теми й криниці на малих калюжах
     for (let i = 0; i < n; i++) W.gRef[i] = pGround.alloc(i % w);   // підлога: слот на клітинку, у чанку свого стовпця
 
     // земляна плита під смугою (діорама) і берег за кінцем
@@ -592,12 +600,14 @@ export function createRenderer(canvas) {
     const endless = !!s.endless, shifted = endless && (s.endless.base | 0) > 0;
     if (!endless) buildStation(root, s);
     buildOutskirts(-16, 0, s, !shifted); buildOutskirts(w, w + 22, s, false, endless);
+    if (isChumak()) CV.steppe(K25, root, s, W.fx, lowQ);   // K25: степ за смугою, валка, лелеки
     for (let i = 0; i < n; i++) syncCell(i, true);
     syncPath(true);
     pGround.flush(); pBox.flush(); pBlob.flush(); pTree.flush();
 
     // потяг і гравці
-    const loco = makeLoco(), store = makeStore(), craft = makeCraft();
+    const ch = isChumak();   // K25: воли з мажею, віз-комора, віз-кузня
+    const loco = ch ? CV.makeLoco(K25) : makeLoco(), store = ch ? CV.makeStore(K25) : makeStore(), craft = ch ? CV.makeCraft(K25) : makeCraft();
     for (const m of [loco, store, craft]) { m.g.scale.set(1, 1.2, 1.2); root.add(m.g); }
     W.train = [loco, store, craft];
     W.players = [];
@@ -611,6 +621,7 @@ export function createRenderer(canvas) {
   function buildStation(root, s) {
     const { w, h } = s, mid = h >> 1;
     const g = new THREE.Group(); g.position.set(w, 0, mid + 0.5); root.add(g);
+    if (isChumak()) { CV.fair(K25, g, s, W.fx); mergeGroup(g); return; }   // K25: ярмарок замість вокзалу
     // будиночок вокзалу
     cube(g, 1.6, 0, -2.6, 2.4, 0.14, 3.6, C.stationB);
     cube(g, 1.7, 0.14, -3.1, 1.8, 1.2, 2.2, 0xf3e3c3);
@@ -650,6 +661,7 @@ export function createRenderer(canvas) {
       const dark = hh(x >> 2, y >> 2, 9) * 0.5 + hh(x >> 1, y >> 1, 10) * 0.5;
       P.add(list, x + 0.5, -0.5, y + 0.5, 1, 0.5 + top, 1, tint((x + y) & 1 ? C.grassA : C.grassB, (v - 0.5) * 0.07 - (dark > 0.7 ? 0.08 : 0) - Math.min(0.12, d * 0.006)));
       if (y === 0 || y === h - 1) { objBoxes(list, O.WALL, 1, x, y, top, h); continue; }
+      if (tunnel && isChumak() && x >= -14 && y >= mid - 5 && y <= mid + 4) continue;   // K25: місце під хутір
       if (tunnel && x >= -3) continue;                             // портал тунелю
       if (tunnel && Math.abs(y - mid) <= 1) continue;
       if (!start && !noYard && d < 7 && Math.abs(y - mid) <= 4) continue;     // вокзал і подвір'я
@@ -660,6 +672,7 @@ export function createRenderer(canvas) {
     }
     cube(W.root, (x0 + x1) / 2, -3.2, h / 2, x1 - x0, 2.7, h + 0.02, C.dirt).castShadow = false;
     if (!tunnel) return;
+    if (isChumak()) return CV.village(K25, W.root, P, list, x0, s, W.fx);   // K25: хутір замість гори з тунелем
     // колія з тунелю: прямі рейки по середньому рядку
     for (let x = x0; x < 0; x++) {
       const cx = x + 0.5, cz = mid + 0.5;
@@ -703,18 +716,18 @@ export function createRenderer(canvas) {
     const cx = x + 0.5, cz = y + 0.5, v = hh(x, y, 1);
     if (gChanged) {
       const top = topOf(gk, x, y);
-      if (gk === G.WATER || gk === G.BRIDGE) W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.05, 1, tint(C.bed, (v - 0.5) * 0.15));
+      if ((gk === G.WATER && !W.wells?.has(i)) || gk === G.BRIDGE) W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.05, 1, tint(C.bed, (v - 0.5) * 0.15));
       else {
         let col;
         if (gk === G.SAND) col = tint((x + y) & 1 ? C.sand : C.sandB, (v - 0.5) * 0.06);
         else if (gk === G.STATION) col = tint((x + y) & 1 ? C.station : C.stationB, (v - 0.5) * 0.06);
         else if (gk === SWAMP) col = tint((x + y) & 1 ? C.swamp : C.swampB, (v - 0.5) * 0.12);
-        else if (gk !== G.GRASS) col = tint(0x7d8a62, (v - 0.5) * 0.08);   // невідомий тип підлоги — нейтральний
+        else if (gk !== G.GRASS && gk !== G.WATER) col = tint(0x7d8a62, (v - 0.5) * 0.08);   // невідомий тип підлоги — нейтральний
         else {
           const dark = hh(x >> 2, y >> 2, 9) * 0.5 + hh(x >> 1, y >> 1, 10) * 0.5;
           col = tint((x + y) & 1 ? C.grassA : C.grassB, (v - 0.5) * 0.07 - (dark > 0.7 ? 0.08 : 0));
         }
-        W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.5 + top, 1, col);
+        W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.5 + (gk === G.WATER ? 0.03 : top), 1, col);   // K25: вода-криниця — під травою
       }
     }
     if (oChanged) buildObj(i, x, y);
@@ -776,7 +789,8 @@ export function createRenderer(canvas) {
         const hy = side === 4 ? hgt + 0.01 : (0.15 + b * 0.6) * hgt;
         P.add(list, cx - 0.1 * sx * k + hx * k, base + hy - 0.06, cz - 0.08 * sz * k + hz * k, 0.15 + a * 0.06, 0.12, 0.15 + b * 0.06, tint(oc, (a - 0.5) * 0.2));
       }
-    } else if (ok === O.WALL) {
+    } else if (ok === O.WALL && isChumak()) CV.wall(P, list, x, y, base, y <= 0, K25);   // K25: земляний вал
+    else if (ok === O.WALL) {
       // далекий край — скелястий хребет (вищий, з травою й ялинками), ближній — низькі камені, щоб не застували поле
       const far = y <= 0;
       const hgt = far ? 1.0 + v1 * 1.4 : 0.3 + v1 * 0.35;
@@ -803,6 +817,8 @@ export function createRenderer(canvas) {
     const s = W.s, list = W.decoRefs[i], P = W.pBox;
     freeRefs(list, P);
     const gk = s.ground[i], cx = x + 0.5, cz = y + 0.5;
+    if (gk === G.WATER && W.wells?.has(i)) return CV.well(P, list, x, y, W.wells.get(i), K25);   // K25: криниця/корито
+    if (gk === G.BRIDGE && isChumak()) return CV.bridge(P, list, x, y, K25);                    // K25: хмизова гребля
     if (gk === G.BRIDGE) {
       for (let j = 0; j < 4; j++) P.add(list, x + 0.125 + j * 0.25, -0.1, cz, 0.22, 0.1, 1.04, pick(C.plank, hh(x, y, 50 + j)));
       P.add(list, cx, -0.14, y + 0.08, 1.0, 0.06, 0.1, 0x6e4a2e); P.add(list, cx, -0.14, y + 0.92, 1.0, 0.06, 0.1, 0x6e4a2e);
@@ -822,6 +838,7 @@ export function createRenderer(canvas) {
       return;
     }
     if (lowQ) return;                            // низька якість — без квітів, трави й камінців
+    if (gk === G.GRASS && isChumak()) return CV.grassDeco(P, list, x, y, top, v, K25);   // K25: ковила, маки, волошки
     if (gk === G.GRASS) {
       if (v < 0.07) {
         const col = pick(C.flower, hh(x, y, 61));
@@ -890,6 +907,7 @@ export function createRenderer(canvas) {
     let d1 = a, d2 = b;
     if (d1 < 0) d1 = (d2 + 2) % 4; if (d2 < 0) d2 = (d1 + 2) % 4;
     if (d1 < 0) { d1 = 2; d2 = 0; }
+    if (isChumak()) return CV.rail(P, list, x, y, base, d1, d2, W.s.ground[i], K25);   // K25: гать / битий шлях
     if ((d1 + 2) % 4 === d2) {                     // пряма
       const along = d1 % 2 === 0;                  // уздовж X
       for (const o of [-0.33, 0, 0.33]) P.add(list, cx + (along ? o : 0), base, cz + (along ? 0 : o), along ? 0.15 : 0.82, 0.06, along ? 0.82 : 0.15, tint(C.tie, (hh(x, y, 100 + o * 10) - 0.5) * 0.2));
@@ -1318,13 +1336,16 @@ export function createRenderer(canvas) {
     W.lastPos = B.pos;
     smokeT -= dt;
     loco.g.updateMatrixWorld();
-    if (smokeT <= 0 && !(s.status === 'won')) {
+    // K25: у темі моделі самі ведуть рух і частинки (ноги волів, колеса, курява, пара, піт) — без диму й вогню паротяга
+    const themed = !!loco.fx;
+    if (themed) for (const m of W.train) m.fx?.({ dt, now, spawn, puff, moving, hot, heat, fire: t.fire > 0, lost, reason: s.reason });
+    if (!themed && smokeT <= 0 && !(s.status === 'won')) {
       smokeT = moving ? 0.09 : 0.32;
       _v.copy(loco.top).applyMatrix4(loco.g.matrixWorld);
       const sooty = hot > 0.4 || t.fire;
       puff(_v.x, _v.y, _v.z, 1, sooty ? 0x55585e : (Math.random() < 0.5 ? 0xf4f4f4 : 0xe2e4e8), moving ? 0.24 : 0.17, moving ? 1.5 : 2.0, moving ? 1.2 : 0.7);
     }
-    if (t.fire > 0 || (lost && s.reason === 'fire')) {
+    if (!themed && (t.fire > 0 || (lost && s.reason === 'fire'))) {
       _v.set(0.1, 0.6, 0).applyMatrix4(loco.g.matrixWorld);
       for (let k = 0; k < 2; k++) spawn(_v.x + R(0.25), _v.y + R(0.05), _v.z + R(0.2), R(0.3), 1.2 + Math.random(), R(0.3), 0.45 + Math.random() * 0.3, 0.14 + Math.random() * 0.1, pick([0xff7a1a, 0xffb300, 0xff4a1a, 0xffe066], Math.random()), -0.5, 1);
       if (Math.random() < 0.15) puff(_v.x, _v.y + 0.3, _v.z, 1, 0x3a3d44, 0.3, 1.8, 1.0);
@@ -1435,6 +1456,7 @@ export function createRenderer(canvas) {
     sun.position.set(tx + SUN_DIR.x * 50, SUN_DIR.y * 50, tz + SUN_DIR.z * 50);
 
     updateMarks(s, now);
+    for (const f of W.fx) f(dt, now, cam);   // K25: вітряки, валка, лелеки
     updateHints(s, now);
     updateFlying(s, alpha, now);
     updateWobbles(dt); W.pBox.flush(); W.pTree.flush();
@@ -1555,6 +1577,7 @@ export function createRenderer(canvas) {
 
   // вигляд і якість — з localStorage (looks.js), перемикаються без рестарту гри
   applyLook(prefs.look, false);
+  onTheme(() => applyLook(prefs.look));   // K25: тема — палітра й моделі заново, гра йде далі
   const api = { setWorld, draw, events, dispose, project, get frames() { return frames; }, renderer, scene, camera,
     get hints() { return W && W.hints; },
     get shadowChunks() { return shadowChunks; }, get cam() { return cam; },   // K20: для перевірок

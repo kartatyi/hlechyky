@@ -13,6 +13,7 @@
 //   Перевірка — tests/koliya-js/audio.test.mjs: заглушка AudioContext міряє «гучність» кожного звуку (RMS × грубе
 //   A-зважування, інтеграція ~300 мс) і звіряє з ярусом; і що кожен тип події з rules/extras/coop має звук.
 import { G } from './rules.js';
+import { themeSfx } from './theme.js';   // K25: у «Чумацькому шляху» воли «му» замість свистка й гудка
 
 const MAX_VOICES = 7;          // одночасних коротких звуків
 // мінімальна пауза між однаковими звуками, мс
@@ -165,7 +166,7 @@ export function createAudio() {
   };
 
   function fire(name) {
-    const fn = SFX[name]; if (!fn) return;
+    const fn = themeSfx(name) ?? SFX[name]; if (!fn) return;   // K25
     const now = ctx.currentTime * 1000;
     const gap = PER_TYPE_MS[name] ?? 50;
     if (lastAt[name] != null && now - lastAt[name] < gap) return;

@@ -13,6 +13,7 @@ import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
+import { mountThemeUi } from './theme.js';          // K25: «Тема» (Колія / Чумацький шлях) у «🎨 Вигляд»
 import { createTouch, isTouchDevice } from './touch.js';   // K27: телефон і планшет
 import { createMusic } from './music.js';            // K29: музика й тло (вимкнено типово)
 
@@ -221,6 +222,7 @@ function drawHud() {
 (async () => {
   view = game.view = await makeView();
   mountLookUi(document.getElementById('kol-panel'), view);   // K5
+  mountThemeUi(document.getElementById('kol-panel'));       // K25
   view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => {   // K3; K21: без сервера — не чорний екран мовчки
     console.warn('Колія: мережа', e);
