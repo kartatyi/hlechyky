@@ -56,7 +56,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   audio,
 });
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
-  bot: q.get('drive') ? createDriver() : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
+  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
 
 function restart(seed = game.seed) {

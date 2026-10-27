@@ -3,13 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as R from '../../web/games/koliya/rules.js';
 import { copyInto, prep, toCmd, createDriver } from '../../web/games/koliya/net.js';
+import { createBot } from '../../web/games/koliya/bot.js';
 
 const PARAMS = { ...R.defaultParams(), startSec: 90, overheat: 'stop' };
 
 /** Журнал на n тиків: двоє водіїв грають в одному світі; команди — як їх запише сервер ('in' лише на зміну). */
-function makeLog(n, seed = 7) {
+function makeLog(n, seed = 7, bots = false) {
   const s = R.newGame(seed, PARAMS, 2);
-  const d = [createDriver(), createDriver()];
+  const d = bots ? [createBot(0), createBot(1)] : [createDriver(), createDriver()];
   const last = [{}, {}], log = [];
   for (let t = 0; t < n; t++) {
     const cmds = [];
@@ -40,9 +41,9 @@ test('прямий прогін журналу повторює гру', () => {
   assert.equal(R.hash(straight(log, 600)), hash);
 });
 
-test('перекочування: чужі команди з запізненням, після перерахунку світ той самий', () => {
-  const N = 600, DELAY = 9;
-  const { log, hash, s: ref } = makeLog(N);
+for (const bots of [false, true]) test(`перекочування (${bots ? 'боти bot.js' : 'водії'}): чужі команди з запізненням, після перерахунку світ той самий`, () => {
+  const N = bots ? 1200 : 600, DELAY = 9;
+  const { log, hash, s: ref } = makeLog(N, 7, bots);
   // браузер гравця 0: свої команди знає одразу, чужі (гравця 1) — через DELAY тиків; C — остаточний, P — передбачений
   const C = R.newGame(7, PARAMS, 2), P = R.clone(C);
   const arrays = [P.ground, P.obj, P.drop];

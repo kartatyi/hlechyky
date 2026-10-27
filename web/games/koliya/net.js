@@ -1,5 +1,5 @@
 // «Колія» — мережа: кілька браузерів грають одну партію за столом сайту. Власник: K3.
-// Контракт: createNet(game, { table, nick, input, bot, onWorld(s), onStep(s) }) → net
+// Контракт: createNet(game, { table, nick, input, bot | makeBot(p), onWorld(s), onStep(s) }) → net
 //   net.start() — підключитись до столу (table: id столу, 'new' — новий, 'auto' — перший відкритий «Колії» чи новий);
 //   net.update(now) — щокадру замість локального циклу тиків (крутить game.state); net.alpha — частка тику для draw;
 //   net.restart(seed, params?) — нова партія всім за столом; net.info() — стан для перевірок (KOL.net).
@@ -319,6 +319,7 @@ export function createNet(game, opts = {}) {
     const s = game.state, pl = s.players[net.p];
     if (net.p < 0 || !pl || pl.out) return;
     let v;
+    if (opts.makeBot && (!bot || bot.p !== net.p)) bot = opts.makeBot(net.p);   // справжній бот (bot.js) знає своє p
     if (bot) v = bot.think(s, net.p);
     else { const a = input?.poll?.()[0]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use } : null; }
     if (!v) return;
