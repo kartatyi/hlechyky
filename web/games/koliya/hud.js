@@ -161,6 +161,8 @@ const CSS = `
 @media (max-width: 1400px) { .kol-top .kol-wd { display: none; } }
 @media (max-width: 640px) { .kol-card .kol-sum { grid-template-columns: auto auto; } .kol-ptab { font-size: .72em; } .kol-ptab th, .kol-ptab td { padding: .1em .25em; } }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
+/* K41: меню вище за вікно (ноутбук ~620 px, Deck у браузері) — картка не обрізається згори, екран гортається */
+.kol-screen { overflow-y: auto; } .kol-screen > .kol-card { margin: auto; }
 `;
 
 /** Ділянки-біоми всієї смуги: s.zones (перша смуга) + з проміжною станцією — зони другої (той самий сід, що в extras) */
