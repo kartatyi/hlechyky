@@ -3,7 +3,7 @@
 //   { key(e) → bool (клавіатура: ↑↓/WS — вибір, ←→/AD — змінити, Enter/Space/E — обрати, Esc — назад у гру),
 //     pad(k) ('up'|'down'|'left'|'right'|'a'|'b'|'start' з input.setMenu), sync(s) — щокадру, поки меню видно,
 //     open(canResume) — показати знову (з паузи чи фіналу), opts() → { players, bots, seed } }
-//  act: 'play' | 'tutorial' | 'daily' | 'endless' | 'net' | 'resume' | 'copy' | 'offline'; o = { players, bots, seed }.
+//  act: 'play' | 'tutorial' | 'daily' | 'endless' | 'net' | 'resume' | 'copy' | 'offline' | 'help' (K65); o = { players, bots, seed }.
 //  Вибране пам'ятає localStorage 'kol-menu' { players, bots, seed: 'r' | число, last }; ?p= / ?bot= / ?seed= в адресі
 //  переважують пам'ять лише на цей запуск (K46: у пам'ять не пишуться, поки їх не змінять у меню). У мережі (KOL.net) — лише «Грати», «Копіювати посилання для друга» і «Без мережі».
 import { BIOME_NAMES, generate } from './gen.js';
@@ -108,6 +108,7 @@ export function createMenu(box, opts = {}) {
     { id: 'net', label: () => `${t('menu.net', '🌐 Грати з друзями')} <small>посилання для друга</small>`, show: () => !net() },
     { id: 'replays', label: () => '📼 Повтори <small>свої й за кодом</small>', show: () => !net() },   // K35
     { id: 'ach', label: () => { const [a, n] = achievements().count(); return `🏆 Досягнення <small>${a}/${n}</small>`; }, show: () => true },   // K50
+    { id: 'help', label: () => '❓ Як грати <small>H</small>', show: () => true },   // K65: довідка (help.js; відкриває hud.js)
     { id: 'copy', label: () => '📋 Копіювати посилання для друга', show: () => net() },
     { id: 'offline', label: () => '🏠 Грати без мережі', show: () => net() },
   ];
