@@ -214,6 +214,15 @@ function shift(s, cut) {
       if (g.tx < 0 && g.mode === 'go') g.mode = 'flee';
     }
   }
+  // K24: кинуте в польоті (K18) — теж −L: coopStep іде раніше за зсув, і наступного тику річ летіла б зі старих
+  // координат і впала на L клітинок правіше; що летіло у відрізане — рятуємо до хвоста, як інструменти звідти
+  if (s.flying) {
+    for (let j = s.flying.length - 1; j >= 0; j--) {
+      const f = s.flying[j];
+      f.x -= LU; f.sx -= LU; f.tx -= L;
+      if (f.tx < 0) { if (isTool(f.k)) tools.push(f.k); s.flying.splice(j, 1); }
+    }
+  }
   for (const k of tools) {
     const c = freeNearTail(s, true);
     if (c) { const i = c.y * W + c.x; s.drop[i] = k; s.dropN[i] = 1; }

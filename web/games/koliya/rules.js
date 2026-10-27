@@ -195,18 +195,22 @@ export function applyCmd(s, c) {
       break;
     case 'pose': setPose(s, pl, c); break;
     case 'use':
-      if (c.x !== undefined) setPose(s, pl, c);
+      if (c.x !== undefined) setPose(s, pl, c, true);   // K24: поза з дією — лише поруч і не в стіну
       use(s, c.p | 0, pl);
       break;
     case 'leave': leave(s, pl); break;
-    case 'throw': case 'horn': if (c.x !== undefined) setPose(s, pl, c); coopCmd(s, c.p | 0, pl, c.k); break;   // K18
+    case 'throw': case 'horn': if (c.x !== undefined) setPose(s, pl, c, true); coopCmd(s, c.p | 0, pl, c.k); break;   // K18
   }
 }
 
-function setPose(s, pl, c) {
+// K24: поза, що їде з use/throw, — це «де я стояв у своєму передбаченому світі»; запізніла команда (сервер зсунув її
+// на кілька тиків, через зсув вікна endless чи з минулої партії) несла б позу з іншого місця — телепорт, може й у
+// скелю/воду, звідки не вийти. Тож таку позу (далі POSE_NEAR чи в непрохідне) не ставимо: дія — з того місця, де є.
+const POSE_NEAR = 5 * U;
+function setPose(s, pl, c, near = false) {
   if (Number.isFinite(c.x) && Number.isFinite(c.y)) {
-    pl.x = clampI(Math.round(c.x), PR, s.w * U - PR);
-    pl.y = clampI(Math.round(c.y), PR, s.h * U - PR);
+    const x = clampI(Math.round(c.x), PR, s.w * U - PR), y = clampI(Math.round(c.y), PR, s.h * U - PR);
+    if (!near || (Math.abs(x - pl.x) + Math.abs(y - pl.y) <= POSE_NEAR && !hitsAt(s, x, y, [], 0))) { pl.x = x; pl.y = y; }
   }
   if (Number.isFinite(c.fx) && Number.isFinite(c.fy)) {
     const fx = Math.sign(c.fx) | 0, fy = Math.sign(c.fy) | 0;
