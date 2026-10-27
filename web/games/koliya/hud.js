@@ -16,7 +16,8 @@
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES } from './extras.js';             // K16: тост покращення
-import { t as tt } from './theme.js';               // K25: слова теми «Чумацький шлях»
+import { t as tt, isChumak } from './theme.js';      // K25: слова теми «Чумацький шлях»; K50: «Чумак»
+import { achievements } from './achievements.js';   // K50: досягнення 🏆 — тости з s.ev
 import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
 
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
@@ -682,6 +683,12 @@ export function createHud(root, opts = {}) {
     if (!ev || !s) return;
     if (s !== evState) { evState = s; seenGeese = new Set(); tally = []; tallyTick = -1; prevPos = []; }
     tallyTick1(ev, s);
+    // K50: досягнення — бот не відкриває; маршрут дня — сід дня; тост «🏆 …» через наявні тости
+    try {
+      const g = game0, net = !!(g?.net || globalThis.KOL?.net);
+      const bot = (p) => !net && (g?.bot?.some?.((b) => b.p === p) || p >= (g?.local ?? (s.players?.length ?? 1)));
+      for (const a of achievements().tick(ev, s, { bot, daily: !!(g?.daily && g.daily.seed === s.seed), chumak: isChumak() })) say(`🏆 ${a.name}!`, 5000);
+    } catch { }
     for (const e of ev) {
       if (e.t === 'upgrade') {
         const u = UPGRADES[s.mid?.pick];
