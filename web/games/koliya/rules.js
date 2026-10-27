@@ -5,6 +5,7 @@
 import { generate } from './gen.js';
 import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: додатки за перемикачем
 import { coopInit, coopCmd, coopUse, coopStep, coopHash } from './coop.js';   // K18: кооп-фішки за перемикачем
+import { tutorialParams, tutorialWorld } from './tutorial.js';   // K22: навчальна смуга (mode='tutorial')
 import { endlessHash } from './endless.js';                          // K19: нескінченна колія
 
 export const TICK_MS = 50;           // 20 тиків/с
@@ -73,6 +74,7 @@ export const VARIANTS = {
   throw: { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Кидок речі на 3 клітинки (ловиться руками) 🎯' },
   pass: { values: ['on', 'off'], labels: ['Так', 'Ні'], label: 'Передати річ партнерові в руки (дія на нього) 🤝' },
   stun: { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Сокирою по партнеру — 1 с зірочок 💫' },
+  mode: { values: ['normal', 'tutorial'], labels: ['Звичайна смуга', 'Навчання 🎓'], label: 'Смуга', group: 'Світ' },   // K22 (tutorial.js)
 };
 
 export function defaultParams() {
@@ -122,7 +124,8 @@ const ACT_CD = 3;                   // тиків паузи після взят
 export function newGame(seed, params = defaultParams(), nPlayers = 1) {
   seed = seed >>> 0;
   params = { ...defaultParams(), ...params };
-  const world = generate(seed, params);   // { w, h, ground, obj, hp, drop, dropN, path, spawn: [{x,y}] (клітинки) }
+  if (params.mode === 'tutorial') params = tutorialParams(params);   // K22: навчальна смуга — свої повільні числа
+  const world = params.mode === 'tutorial' ? tutorialWorld(params) : generate(seed, params);   // { w, h, ground, obj, hp, drop, dropN, path, spawn: [{x,y}] (клітинки) }
   const s = {
     seed, tick: 0, rng: (seed ^ 0x9E3779B9) >>> 0, params,
     status: 'run', reason: '',
