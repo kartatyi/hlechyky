@@ -4,7 +4,7 @@
 //  seed — сід смуги; p — локальних гравців (1..2); bot=N — додати N ботів; view=2d — налагоджувальний вид без three
 import * as R from './rules.js';
 import { createInput } from './input.js';        // K2
-import { createBot } from './bot.js';            // K2
+import { createBot, zealOf } from './bot.js';    // K2; K60: zealOf — характер бота
 import { createAudio } from './audio.js';        // K4
 import { createPanel } from './panel.js';        // K4
 import { createDebug2d } from './debug2d.js';
@@ -20,6 +20,7 @@ import { createMusic } from './music.js';            // K29: музика й т�
 
 const q = new URLSearchParams(location.search);
 const BUDDY = q.get('buddy') !== '0';   // K34: бот поруч із людиною — напарник; ?buddy=0 — сильний «автопілот» (перебиває, зате виграє частіше)
+const botZeal = () => (BUDDY ? prefs.zeal : 100);   // K60: характер бота з «Пристрою»; ?buddy=0 = 100 (автопілот)
 const PARAMS_KEY = 'kol-params';
 const U_PER_TICK = R.U / R.TPS;   // 1 клітинка/с у підодиницях за тик
 
@@ -69,13 +70,14 @@ const audio = createAudio();
 const music = game.music = createMusic(audio);   // K29
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
-const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — «Підказки: так/ні»
+const prefs = { quality: 'high', rumble: true, tips: true, zeal: 30 };   // K16: tips — «Підказки: так/ні»; K60: zeal — характер бота 0..100
 try {   // K21: лише відомі значення (старе 'medium' чи рядок 'false' не ламають slowCheck, вібрацію й підказки)
   const o = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {};
   if (o.quality === 'low') prefs.quality = 'low';
   else if (o.quality !== 'high' && isTouchDevice()) prefs.quality = 'low';   // K27: телефон — «низька», поки не обрали самі
   if (o.rumble === false) prefs.rumble = false;
   if (o.tips === false) prefs.tips = false;
+  if (zealOf(o.zeal) !== null) prefs.zeal = zealOf(o.zeal);   // K60
 } catch { }
 input.setRumble(prefs.rumble);
 input.setTouch(game.touch = createTouch({ canvas }));   // K27
@@ -100,12 +102,13 @@ const panel = createPanel(document.getElementById('kol-panel'), {
     if (k === 'quality') view?.setQuality?.(v);
     if (k === 'rumble') { input.setRumble(v); if (v) input.rumble(0, 'hit'); }
     if (k === 'tips') game.tips?.setEnabled(v);   // K16
+    if (k === 'zeal') for (const b of game.bot || []) b.setZeal?.(botZeal());   // K60: характер — одразу
   },
   // K12: поки панель відкрита — гравці стоять, пад водить по панелі (Start — рестарт і закрити)
   onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
 });
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
-  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: BUDDY }) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
+  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: true, zeal: botZeal() }) : null, onWorld: (s) => { if (!replay.active) view?.setWorld?.(s); }, onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
@@ -132,7 +135,7 @@ function restart(seed = game.seed) {
   game.state = R.newGame(game.seed, P, game.local + game.bots);
   replay.begin(game.state, game.seed, P, game.local + game.bots, { local: game.local });   // K35: запис партії
   game.bot = [];
-  for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b, { buddy: BUDDY && game.local > 0 }));   // K34: з людьми — напарник
+  for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b, { buddy: game.local > 0, zeal: botZeal() }));   // K34: з людьми — напарник; K60: характер
   view?.setWorld?.(game.state);
 }
 
@@ -157,6 +160,9 @@ function tickOnce() {
   afterStep(s);
 }
 function afterStep(s) {
+  // K59: живий світ ступив, поки йде повтор (мережа, KOL.run) — підсумок/ачівки HUD рахують, а сцену, звук і вібрацію
+  // тримає повтор (exit сам поверне setWorld(game.state))
+  if (replay.active) { hudUi?.events?.(s.ev, s); return; }
   audio.play(s.ev, s);   // K16: зі станом — кроки за підлогою
   for (const e of s.ev) {   // K12: вібрація пада — удар і поразка
     if ((e.t === 'chop' || e.t === 'rock') && e.p < game.local) input.rumble(e.p, 'hit');
@@ -175,12 +181,13 @@ let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(250, now - last); last = now;
   if (replay.active) { replay.frame(dt); return nextFrame(); } else replay.watch();   // K35: повтор — гра й ввід стоять
-  if (input.restartPressed?.()) nextRestart();
+  const padLock = !!replay.padHeld?.();   // K59: B, яким вийшли з повтору, ще затиснуте — ввід і тики стоять
+  if (!padLock && input.restartPressed?.()) nextRestart();
   if (!net && game.local === 1 && !game.wantLocal && (++padPoll & 15) === 0 && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
   // K21: пауза — стартовий екран (HUD ставить game.paused) або відкрита панель (лише локально: мережа не чекає)
-  const hold = game.paused || (!net && panel.isOpen());
+  const hold = game.paused || (!net && panel.isOpen()) || padLock;   // K59
   if (!hold && dt < 250) slowCheck(dt);   // K12
-  if (net) net.update(now);   // K3
+  if (net) { if (!padLock) net.update(now); }   // K3; K59
   else if (!hold) {
     acc += dt * game.speed;
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
