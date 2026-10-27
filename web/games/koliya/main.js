@@ -108,7 +108,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
 });
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
-  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: true, zeal: botZeal() }) : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
+  bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: true, zeal: botZeal() }) : null, onWorld: (s) => { if (!replay.active) view?.setWorld?.(s); }, onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
@@ -160,6 +160,9 @@ function tickOnce() {
   afterStep(s);
 }
 function afterStep(s) {
+  // K59: живий світ ступив, поки йде повтор (мережа, KOL.run) — підсумок/ачівки HUD рахують, а сцену, звук і вібрацію
+  // тримає повтор (exit сам поверне setWorld(game.state))
+  if (replay.active) { hudUi?.events?.(s.ev, s); return; }
   audio.play(s.ev, s);   // K16: зі станом — кроки за підлогою
   for (const e of s.ev) {   // K12: вібрація пада — удар і поразка
     if ((e.t === 'chop' || e.t === 'rock') && e.p < game.local) input.rumble(e.p, 'hit');
@@ -178,12 +181,13 @@ let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(250, now - last); last = now;
   if (replay.active) { replay.frame(dt); return nextFrame(); } else replay.watch();   // K35: повтор — гра й ввід стоять
-  if (input.restartPressed?.()) nextRestart();
+  const padLock = !!replay.padHeld?.();   // K59: B, яким вийшли з повтору, ще затиснуте — ввід і тики стоять
+  if (!padLock && input.restartPressed?.()) nextRestart();
   if (!net && game.local === 1 && !game.wantLocal && (++padPoll & 15) === 0 && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
   // K21: пауза — стартовий екран (HUD ставить game.paused) або відкрита панель (лише локально: мережа не чекає)
-  const hold = game.paused || (!net && panel.isOpen());
+  const hold = game.paused || (!net && panel.isOpen()) || padLock;   // K59
   if (!hold && dt < 250) slowCheck(dt);   // K12
-  if (net) net.update(now);   // K3
+  if (net) { if (!padLock) net.update(now); }   // K3; K59
   else if (!hold) {
     acc += dt * game.speed;
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
