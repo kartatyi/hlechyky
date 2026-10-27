@@ -578,6 +578,7 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     if (j.e !== e) { off = null; net.desync = -1; desyncSaid = false; }   // нова епоха — тик з нуля, старий зсув годинника й розбіжність не годяться
     e = j.e;
     C = R.newGame(j.seed >>> 0, j.prm || {}, j.n0 || 1);
+    game.replay?.begin?.(C, j.seed >>> 0, j.prm || {}, j.n0 || 1, { net: true, local: 99 });   // K35: повтор — із журналу
     log.clear(); count = 0; pending = []; hashes.clear(); hi = 0;
     lastIn = [0, 1].map(() => ({ mx: 0, my: 0, t: -99 })); lastUse = [0, 1].map(() => ({ t: -99, down: false }));
     if (seat != null && j.pOf) net.p = j.pOf[seat] ?? -1;
@@ -669,6 +670,7 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     while (C.status === 'run' && C.tick <= w) {
       const t = C.tick;
       const cmds = log.get(t) || [];
+      game.replay?.rec?.(C, cmds);   // K35
       prep(C, cmds);
       R.step(C, cmds);
       log.delete(t);

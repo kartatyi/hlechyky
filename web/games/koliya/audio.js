@@ -13,13 +13,13 @@
 //   Перевірка — tests/koliya-js/audio.test.mjs: заглушка AudioContext міряє «гучність» кожного звуку (RMS × грубе
 //   A-зважування, інтеграція ~300 мс) і звіряє з ярусом; і що кожен тип події з rules/extras/coop має звук.
 import { G } from './rules.js';
-import { themeSfx } from './theme.js';   // K25: у «Чумацькому шляху» воли «му» замість свистка й гудка
+import { themeSfx, isChumak } from './theme.js';   // K25: у «Чумацькому шляху» воли «му» замість свистка й гудка
 
 const MAX_VOICES = 7;          // одночасних коротких звуків
 // мінімальна пауза між однаковими звуками, мс
 const PER_TYPE_MS = { chop: 70, rock: 70, step: 120, squelch: 160, plank: 120, pick: 60, drop: 60, craft: 400, water: 150,
   alarm: 1000, whistle: 1500, bump: 250, honk: 700, horn: 500, throw: 120, land: 100, catch: 100, sink: 150, pass: 100,
-  stun: 300, scare: 200, goose_lost: 600, upgrade: 800 };
+  stun: 300, scare: 200, goose_lost: 600, upgrade: 800, respawn: 300, rescue: 300, station: 1500 };
 
 /** Підсилення кожного звуку, дБ (зведення гучностей; міряно в audio.test.mjs) */
 export const LEVEL = {
@@ -30,11 +30,14 @@ export const LEVEL = {
   honk: 3, scare: 1, goose_lost: 5, stun: 1,                              // ціль −3…0: події світу
   whistle: 3, alarm: 2, horn: 7, upgrade: -3,                             // ціль +2…+4: важливе
   won: 1, lost: 9,                                                        // ціль +3…+5: кінець
+  respawn: -5, rescue: 4, station: 0,                                     // K40: події світу / події світу / важливе
 };
+/** K40: події без звуку (службові: 'shift' — зсув вікна нескінченної колії) */
+export const SILENT = new Set(['shift']);
 
 /** Яким звуком озвучити подію (null — не озвучувати) */
 export function soundOf(e, s) {
-  if (!e) return null;
+  if (!e || SILENT.has(e.t)) return null;   // K40
   if (e.t === 'honk') return e.p !== undefined ? 'horn' : 'honk';
   if (e.t === 'step' && s?.ground && s.w) {
     const g = s.ground[(e.y | 0) * s.w + (e.x | 0)];
@@ -111,8 +114,40 @@ export const SFX = {
     [1319, 1568, 1760].forEach((f, i) => A.tone(t + 0.08 + i * 0.07, f, 0.12, { vol: 0.04 }));
     return 0.35;
   },
+
+  // — K40: нові події (lost.js, endless.js)
+  respawn(t, A) {   // загублений інструмент повернувся: «чарівне дзинь» — висхідне арпеджіо з іскристим шелестом
+    [1319, 1661, 1976, 2637].forEach((f, i) => A.tone(t + i * 0.05, f, 0.22, { vol: 0.05 }));
+    A.noise(t, 0.3, { vol: 0.03, f: 6000, q: 3, a: 0.05 });
+    return 0.38;
+  },
+  rescue(t, A) {   // гравця визволено з глухого кута: «пуф» — м'який видих шуму й низький вдарчик
+    A.noise(t, 0.22, { vol: 0.18, f: 700, q: 0.8, a: 0.01 });
+    A.tone(t, 260, 0.12, { type: 'triangle', vol: 0.1, to: 130 });
+    return 0.22;
+  },
+  station(t, A) {   // прибули на станцію: короткий свисток + станційний дзвін (тричі «бам»)
+    A.tone(t, 988, 0.18, { type: 'sawtooth', vol: 0.03, a: 0.02 }); A.tone(t, 1482, 0.18, { vol: 0.03, a: 0.02 });
+    for (let k = 0; k < 3; k++) {
+      const st = t + 0.22 + k * 0.32;
+      A.tone(st, 880, 0.5, { vol: 0.09 }); A.tone(st, 2200, 0.3, { vol: 0.03 }); A.tone(st, 2640, 0.2, { vol: 0.02 });
+    }
+    return 1.3;
+  },
 };
-const PRIO = { won: 1, lost: 1, whistle: 1, alarm: 1, horn: 1, upgrade: 1 };   // ці не ріжуться лімітом голосів
+/** K40: «Чумацький шлях» — свої звуки, яких нема в theme.js (там лише воли): станція = ярмарок (бубон і дзвоники) */
+export const SFX_CHUMAK = {
+  station(t, A) {
+    for (let k = 0; k < 4; k++) {
+      const st = t + k * 0.18;
+      A.noise(st, 0.08, { vol: 0.2, f: 900, q: 1 }); A.tone(st, 150, 0.1, { vol: 0.2, to: 100 });     // бубон
+      A.noise(st + 0.02, 0.15, { vol: 0.03, f: 7000, q: 2 });                                          // брязкальця
+    }
+    [1568, 1760, 2093].forEach((f, i) => A.tone(t + 0.75 + i * 0.1, f, 0.3, { vol: 0.07 }));            // дзвоники
+    return 1.15;
+  },
+};
+const PRIO = { won: 1, lost: 1, whistle: 1, alarm: 1, horn: 1, upgrade: 1, station: 1 };   // ці не ріжуться лімітом голосів
 
 export function createAudio() {
   let ctx = null, master = null, noiseBuf = null;
@@ -166,7 +201,7 @@ export function createAudio() {
   };
 
   function fire(name) {
-    const fn = themeSfx(name) ?? SFX[name]; if (!fn) return;   // K25
+    const fn = themeSfx(name) ?? (isChumak() ? SFX_CHUMAK[name] : null) ?? SFX[name]; if (!fn) return;   // K25, K40
     const now = ctx.currentTime * 1000;
     const gap = PER_TYPE_MS[name] ?? 50;
     if (lastAt[name] != null && now - lastAt[name] < gap) return;

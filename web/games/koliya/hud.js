@@ -303,6 +303,7 @@ export function createHud(root, opts = {}) {
       try { const u = new URL(location.href); u.searchParams.set('net', 'new'); u.searchParams.set('p', o.players); if (o.bots) u.searchParams.set('bot', o.bots); else u.searchParams.delete('bot'); u.searchParams.delete('tut'); location.href = u; } catch { }
       return;
     }
+    if (act === 'replays') { g?.replay?.paste?.(); return; }   // K35: «📼 Повтори» — свої й за кодом
     if (act === 'offline') { try { const u = new URL(location.href); u.searchParams.delete('net'); location.href = u; } catch { } return; }
     if (act !== 'resume' && !isNet()) g?.startMenu?.(act, o);
     else if (act === 'resume' && g) g.paused = false;
@@ -564,7 +565,8 @@ export function createHud(root, opts = {}) {
   const endActs = (s) => {
     const next = ['next', tut(s) ? (s.status === 'won' ? '▶ Справжня смуга' : '⏭ Звичайна смуга') : s.status === 'won' ? '▶ Наступний сід' : '⏭ Наступний сід'];
     const again = ['again', '↻ Ще раз'], m = ['menu', '☰ В меню'];
-    return s.status === 'won' ? [next, again, m] : [again, next, m];
+    const rp = game0?.replay?.has?.() ? [['replay', '📼 Повтор'], ['rcode', '📋 Код повтору']] : [];   // K35
+    return s.status === 'won' ? [next, again, ...rp, m] : [again, next, ...rp, m];
   };
   let endIdx = 0, endOn = false, endOwned = false, endAt = 0;
   const endBtns = () => [...endCard.querySelectorAll('[data-end]')];
@@ -573,6 +575,8 @@ export function createHud(root, opts = {}) {
     const g = game0, s = lastState;
     if (!g || !s) return;
     if (a === 'menu') return toMenu();
+    if (a === 'replay') return g.replay?.open?.();   // K35
+    if (a === 'rcode') return g.replay?.copyCode?.();   // K35
     if (a === 'again') return g.restart ? g.restart(g.seed) : opts.onRestart?.();
     if (a === 'next') return tut(s) ? g.stopTutorial?.() : g.restart ? g.restart(g.seed + 1) : opts.onRestart?.();
   }
