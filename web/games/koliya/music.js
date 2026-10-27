@@ -244,6 +244,56 @@ export function themeNow() {
   return 'koliya';
 }
 
+// — тло за біомом під камерою: шари wind (вітер), birds (птахи), frogs (жаби), water (плюскіт), 0..1
+export const AMB_LAYERS = ['wind', 'birds', 'frogs', 'water'];
+export const AMB = {
+  steppe: { wind: 0.8, birds: 0.15 },             // степ: вітер, зрідка жайворонок
+  grove: { birds: 0.9, wind: 0.2 },               // гай: птахи
+  stone: {},                                      // кам'яне поле: тиша
+  river: { water: 0.7, birds: 0.3, frogs: 0.1 },  // річкова долина
+  swamp: { frogs: 0.9, water: 0.2, wind: 0.1 },   // болото: жаби
+  pass: { wind: 0.3 },                            // прохід між скелями: майже тиша, вітер свистить вище
+  winter: { wind: 0.7 },                          // K26: зима
+  yar: { wind: 0.25, birds: 0.2 },                // K26: яр
+};
+const AMB_OTHER = { wind: 0.4 };
+const WATER = 1;   // G.WATER (rules.js)
+
+/** Де камера, у клітинках по x: посередині між паротягом і гуртом (камера render.js тримає обох) */
+export function focusX(s) {
+  if (!s?.path?.length || !s.w) return 0;
+  let head = 0;
+  try { head = wagonPos(s, 0).x / U; } catch { }
+  const ps = s.players || [];
+  if (!ps.length) return head;
+  let sx = 0; for (const p of ps) sx += p.x / U;
+  return (head + sx / ps.length) / 2;
+}
+export function biomeAt(s, x) {
+  const z = (s?.zones || []).find((q) => x >= q.x0 && x < q.x1);
+  return z ? z.kind : null;
+}
+/** Частка води в стовпцях x±r (уся висота смуги) */
+export function waterNear(s, x, r = 4) {
+  if (!s?.ground || !s.w || !s.h) return 0;
+  let k = 0, all = 0;
+  for (let cx = Math.max(0, Math.floor(x - r)); cx <= Math.min(s.w - 1, Math.floor(x + r)); cx++)
+    for (let cy = 0; cy < s.h; cy++) { all++; if (s.ground[cy * s.w + cx] === WATER) k++; }
+  return all ? k / all : 0;
+}
+/** Цілі рівні шарів тла для стану (біом під камерою + вода поруч) → { biome, wind, birds, frogs, water, windHi } */
+export function ambienceFor(s) {
+  const out = { biome: null, wind: 0, birds: 0, frogs: 0, water: 0, windHi: false };
+  if (!s?.zones) return out;
+  const x = focusX(s), b = biomeAt(s, x);
+  const t = b ? AMB[b] ?? AMB_OTHER : AMB_OTHER;
+  out.biome = b;
+  for (const k of AMB_LAYERS) out[k] = t[k] || 0;
+  out.water = Math.max(out.water, Math.min(0.8, waterNear(s, x) * 4));
+  out.windHi = b === 'pass' || b === 'winter';
+  return out;
+}
+
 // ————————————————————————————————————————————— звук (браузер) —————————————————————————————————————————————
 const KEY = 'kol-music';
 const LOOKAHEAD = 0.4, TICK = 90;
@@ -261,13 +311,16 @@ export function createMusic(audio, opts = {}) {
   // музика
   let mode = 'play', seed = 0, n = 0, ph = null, bar = 0, nextT = 0, theme = 'koliya';
   let danger = 0, speed = 0, lastStatus = 'run', lastWall = 0;
+  // тло
+  let busA = null, ambSrc = null, ambEv = [], ambT = ambienceFor(null), ambAt = 0;
+  const lv = { wind: 0, birds: 0, frogs: 0, water: 0 };
 
   const api = {
     music: false, amb: false,
     vol: { music: vol0(saved.vm, 0.6), amb: vol0(saved.va, 0.5), sfx: vol0(saved.vs, 1) },
     onChange: null,
     setMusic(on) { on = !!on; if (on === api.music) return; api.music = on; on ? startMusic() : stopMusic(); save(); api.onChange?.(); },
-    setAmb(on) { on = !!on; if (on === api.amb) return; api.amb = on; save(); api.onChange?.(); },
+    setAmb(on) { on = !!on; if (on === api.amb) return; api.amb = on; on ? startAmb() : stopAmb(); save(); api.onChange?.(); },
     setVolume(kind, v) {
       if (!(kind in api.vol)) return;
       api.vol[kind] = clamp01(v); save();
@@ -276,10 +329,11 @@ export function createMusic(audio, opts = {}) {
     },
     update(s) { state = s; },
     /** Для перевірок у консолі: що зараз (без звуку — лише числа) */
-    debug: () => ({ music: api.music, amb: api.amb, ctx: !!ctx, mode, theme, n, bar, bpm: Math.round(tempoOf(theme, speed, danger)), danger: +danger.toFixed(2), speed: +speed.toFixed(2), nodes: nodes.length }),
+    debug: () => ({ music: api.music, amb: api.amb, ambLv: Object.fromEntries(AMB_LAYERS.map((k) => [k, +lv[k].toFixed(2)])), biome: ambT.biome, ambEv: ambEv.length, ctx: !!ctx, mode, theme, n, bar, bpm: Math.round(tempoOf(theme, speed, danger)), danger: +danger.toFixed(2), speed: +speed.toFixed(2), nodes: nodes.length }),
     dispose() {
       clearInterval(timer); timer = 0; stopAll(0);
       if (api.music) audio?.hold?.('music', false);
+      if (api.amb) { stopAmb(); }
       api.music = false; api.amb = false;
       if (gestureOn) for (const e of ['pointerdown', 'keydown']) globalThis.removeEventListener?.(e, gestureOn, true);
     },
@@ -290,6 +344,7 @@ export function createMusic(audio, opts = {}) {
   function applyVol() {
     if (!ctx) return;
     busM?.gain.setTargetAtTime(MIX.music * api.vol.music, ctx.currentTime, 0.05);
+    if (busA && api.amb) busA.gain.setTargetAtTime(MIX.amb * api.vol.amb, ctx.currentTime, 0.05);
   }
 
   // — спільний контекст: лише з жесту (перемикач у панелі або перший жест після збереженого «увімк.»)
@@ -303,7 +358,7 @@ export function createMusic(audio, opts = {}) {
   }
   function runTimer() {
     const need = api.music || api.amb;
-    if (need && !timer) timer = setInterval(tick, TICK);
+    if (need && !timer) { timer = setInterval(tick, TICK); timer?.unref?.(); }   // unref — node-тести не висять
     if (!need && timer) { clearInterval(timer); timer = 0; }
   }
   function startMusic() {
@@ -321,6 +376,92 @@ export function createMusic(audio, opts = {}) {
     audio?.hold?.('music', false);
     runTimer();
   }
+  // — тло: два безперервні шари (вітер, вода — фільтрований шум) і події (птахи, жаби, плюскіт)
+  const LAYER = { wind: 0.55, water: 0.3, bird: 0.22, frog: 0.3, plip: 0.14 };
+  function startAmb() {
+    if (!ensure()) return;
+    audio.hold?.('amb', true);
+    const now = ctx.currentTime;
+    if (!busA) { busA = ctx.createGain(); busA.connect(sh.out); }
+    busA.gain.cancelScheduledValues(now); busA.gain.setValueAtTime(0, now);
+    busA.gain.linearRampToValueAtTime(MIX.amb * api.vol.amb, now + 1.5);   // вступає плавно
+    if (!ambSrc) {
+      // свій шум на 3 с (буфер ефектів — 1 с, петля чутна як «пульс»)
+      const len = Math.floor(ctx.sampleRate * 3), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+      let b = 0;
+      for (let i = 0; i < len; i++) { b = b * 0.6 + (Math.random() * 2 - 1) * 0.4; d[i] = b * 1.6; }   // трохи «рожевіший» за білий
+      const layer = (f, q, off) => {
+        const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain(), gust = ctx.createGain();
+        src.buffer = buf; src.loop = true; bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+        g.gain.value = 0; gust.gain.value = 0.65;
+        src.connect(bp); bp.connect(g); g.connect(gust); gust.connect(busA); src.start(now, off);
+        return { src, bp, g, gust };
+      };
+      const wind = layer(380, 0.7, 0), water = layer(1500, 0.5, 1.4);
+      // пориви: повільні LFO на гучність і висоту вітру; вода «хлюпає» трохи швидше
+      const lfo = (hz, depth, param) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = hz; g.gain.value = depth; o.connect(g); g.connect(param); o.start(now); return o; };
+      const lfos = [lfo(0.09, 0.35, wind.gust.gain), lfo(0.053, 120, wind.bp.frequency), lfo(0.7, 0.2, water.gust.gain), lfo(0.23, 300, water.bp.frequency)];
+      ambSrc = { wind, water, lfos };
+    }
+    for (const k of AMB_LAYERS) lv[k] = 0;
+    ambAt = -1;
+    runTimer();
+  }
+  function stopAmb() {
+    if (ctx && busA) {
+      const now = ctx.currentTime;
+      busA.gain.cancelScheduledValues(now); busA.gain.setValueAtTime(busA.gain.value, now); busA.gain.linearRampToValueAtTime(0, now + 0.6);
+      const a = ambSrc; ambSrc = null;
+      if (a) for (const x of [a.wind.src, a.water.src, ...a.lfos]) { try { x.stop(now + 0.7); } catch { } }
+      for (const x of ambEv) { try { x.n.stop(now + 0.7); } catch { } }
+      ambEv = [];
+    }
+    audio?.hold?.('amb', false);
+    runTimer();
+  }
+  const keepA = (n, t1) => { ambEv.push({ n, t1 }); };
+  function bird(t, k) {   // 2–5 коротких посвистів угору/вниз
+    const n = 2 + Math.floor(Math.random() * 4), f0 = 2300 + Math.random() * 2200, up = Math.random() < 0.5;
+    for (let i = 0; i < n; i++) {
+      const st = t + i * (0.09 + Math.random() * 0.05), d = 0.05 + Math.random() * 0.05, f = f0 * (1 + (Math.random() - 0.5) * 0.15);
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.setValueAtTime(up ? f * 0.8 : f * 1.15, st); o.frequency.exponentialRampToValueAtTime(up ? f * 1.2 : f * 0.85, st + d);
+      g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(LAYER.bird * k, st + 0.01); g.gain.setTargetAtTime(0, st + d * 0.6, 0.015);
+      o.connect(g); g.connect(busA); o.start(st); o.stop(st + d + 0.1); keepA(o, st + d + 0.1);
+    }
+  }
+  function frog(t, k) {   // «ква-ква»: серія глухих імпульсів пилки через смугу
+    const n = 3 + Math.floor(Math.random() * 4), f = 110 + Math.random() * 90, gap = 0.028 + Math.random() * 0.012;
+    const o = ctx.createOscillator(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.value = f; bp.type = 'bandpass'; bp.frequency.value = f * 4; bp.Q.value = 3;
+    g.gain.setValueAtTime(0, t);
+    for (let i = 0; i < n; i++) { const st = t + i * gap; g.gain.setValueAtTime(LAYER.frog * k, st); g.gain.setTargetAtTime(0, st + 0.004, 0.006); }
+    o.connect(bp); bp.connect(g); g.connect(busA); o.start(t); o.stop(t + n * gap + 0.05); keepA(o, t + n * gap + 0.05);
+  }
+  function plip(t, k) {   // краплинний «плюх»: синус стрибає вгору
+    const o = ctx.createOscillator(), g = ctx.createGain(), f = 500 + Math.random() * 500;
+    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 2.6, t + 0.05);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(LAYER.plip * k, t + 0.005); g.gain.setTargetAtTime(0, t + 0.02, 0.015);
+    o.connect(g); g.connect(busA); o.start(t); o.stop(t + 0.12); keepA(o, t + 0.12);
+  }
+  // подій за секунду на повному рівні шару
+  const RATE = { birds: 1.2, frogs: 1.0, water: 1.5 };
+  function ambTick(now, dt) {
+    if (!ambSrc) return;
+    if (now - ambAt > 0.3) { ambAt = now; ambT = ambienceFor(state); }
+    const a = 1 - Math.exp(-dt / 1.5);   // плавно: ~1,5 с на перехід між біомами
+    for (const k of AMB_LAYERS) lv[k] += (ambT[k] - lv[k]) * a;
+    ambSrc.wind.g.gain.setTargetAtTime(lv.wind * LAYER.wind, now, 0.3);
+    ambSrc.water.g.gain.setTargetAtTime(lv.water * LAYER.water, now, 0.3);
+    ambSrc.wind.bp.frequency.setTargetAtTime(ambT.windHi ? 900 : 380, now, 2);
+    ambEv = ambEv.filter((x) => x.t1 > now);
+    if (ambEv.length > 40) return;
+    const t = now + 0.05 + Math.random() * 0.05;
+    if (Math.random() < RATE.birds * lv.birds * dt) bird(t, 0.6 + 0.4 * Math.random());
+    if (Math.random() < RATE.frogs * lv.frogs * dt) frog(t, 0.6 + 0.4 * Math.random());
+    if (Math.random() < RATE.water * lv.water * dt) plip(t, 0.5 + 0.5 * Math.random());
+  }
+
   /** Заглушити все, що вже заплановано (fade — с; 0 — обрив) */
   function stopAll(fade) {
     if (!ctx) { nodes = []; return; }
@@ -448,6 +589,7 @@ export function createMusic(audio, opts = {}) {
     }
     nodes = nodes.filter((x) => x.t1 > now);
     if (api.music) pumpMusic(now);
+    if (api.amb) ambTick(now, dt);
   }
 
   // — збережене «увімк.» повертається на перший жест (не сам); під автоматизацією — ніколи

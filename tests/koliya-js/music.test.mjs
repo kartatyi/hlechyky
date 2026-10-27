@@ -1,7 +1,7 @@
 // K29: музика й тло — без вух, лише числа: лад, темп від небезпеки, детермінізм фраз, тиша без увімкнення.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SCALES, STYLE, TONIC, MIX, VOICE, tempoOf, densityOf, dangerOf, speedOf, makePhrase, barEvents, cadence, degToMidi,
+import { SCALES, STYLE, TONIC, MIX, VOICE, AMB_LAYERS, ambienceFor, focusX, tempoOf, densityOf, dangerOf, speedOf, makePhrase, barEvents, cadence, degToMidi,
   createMusic } from '../../web/games/koliya/music.js';
 import { createAudio } from '../../web/games/koliya/audio.js';
 import { newGame, defaultParams, U, TPS } from '../../web/games/koliya/rules.js';
@@ -124,7 +124,7 @@ function stubAudio() {
     get(o, k) { if (!(k in o)) o[k] = typeof k === 'string' ? param() : undefined; return o[k]; },
   });
   class Ctx {
-    constructor() { count.ctx++; this.currentTime = 0; this.sampleRate = 8000; this.destination = node(); this.state = 'running'; }
+    constructor() { count.ctx++; count.c = this; this.currentTime = 0; this.sampleRate = 8000; this.destination = node(); this.state = 'running'; }
     createGain() { return node(); }
     createOscillator() { count.osc++; return node(); }
     createBufferSource() { count.src++; return node(); }
@@ -180,6 +180,59 @@ test('увімкнена музика планує ноти; поразка — 
   s.status = 'won'; const b2 = count.osc; mu._tick();
   assert.ok(count.osc > b2, 'каденція');
   mu.setMusic(false);
+  mu.dispose();
+  delete globalThis.AudioContext;
+});
+
+test('тло за біомом під камерою: птахи в гаю, вітер у степу, жаби в болоті, тиша в скелях, плюскіт біля води', () => {
+  const s = newGame(7, defaultParams(), 2);
+  s.ground = new Array(s.w * s.h).fill(0);   // без води
+  const at = (kind) => { s.zones = [{ x0: 0, x1: s.w, kind, d: 0, traps: 0 }]; return ambienceFor(s); };
+  const g = at('grove'), st = at('steppe'), sw = at('swamp'), stone = at('stone');
+  assert.equal(g.biome, 'grove');
+  assert.ok(g.birds > 0.8 && g.birds > g.wind);
+  assert.ok(st.wind > 0.7 && st.wind > st.birds);
+  assert.ok(sw.frogs > 0.8);
+  for (const k of AMB_LAYERS) assert.equal(stone[k], 0, `тиша в скелях: ${k}`);
+  assert.equal(stone.water, 0);
+  // вода поруч з камерою — плюскіт навіть у скелях
+  const x = Math.floor(focusX(s));
+  for (let y = 0; y < s.h; y++) for (let dx = -2; dx <= 2; dx++) s.ground[y * s.w + x + dx] = 1;
+  assert.ok(at('stone').water > 0.5);
+  // біом береться під камерою — між паротягом і гуртом
+  s.ground.fill(0);
+  s.zones = [{ x0: 0, x1: 4, kind: 'grove' }, { x0: 4, x1: s.w, kind: 'swamp' }];
+  for (const p of s.players) p.x = 40 * U;
+  assert.ok(focusX(s) > 4);
+  assert.equal(ambienceFor(s).biome, 'swamp');
+});
+
+test('тло: без «Увімк.» нічого; увімкнене — переходи плавні, у скелях змовкає', () => {
+  const count = stubAudio();
+  const audio = createAudio();
+  const mu = createMusic(audio, { storage: null, test: true });
+  const s = newGame(7, defaultParams(), 1);
+  s.ground = new Array(s.w * s.h).fill(0);
+  s.zones = [{ x0: 0, x1: s.w, kind: 'grove' }];
+  mu.update(s); for (let i = 0; i < 20; i++) mu._tick();
+  assert.equal(count.ctx, 0);
+  mu.setAmb(true);
+  const step = () => { count.c.currentTime += 0.09; mu._tick(); };
+  assert.equal(count.ctx, 1);
+  assert.equal(mu.debug().mode, 'play'); assert.equal(mu.music, false, 'тло не вмикає музику');
+  step();
+  const first = mu.debug().ambLv.birds;
+  assert.ok(first > 0 && first < 0.1, `перший тик — лише початок переходу (${first})`);
+  for (let i = 0; i < 60; i++) step();   // ~5,4 с
+  assert.ok(mu.debug().ambLv.birds > 0.8, 'за кілька секунд — гай');
+  s.zones = [{ x0: 0, x1: s.w, kind: 'stone' }];
+  for (let i = 0; i < 4; i++) step();
+  const mid = mu.debug().ambLv.birds;
+  assert.ok(mid > 0.4, `не обривається різко (${mid})`);
+  for (let i = 0; i < 120; i++) step();
+  assert.ok(mu.debug().ambLv.birds < 0.01 && mu.debug().ambLv.wind < 0.01, 'у скелях тиша');
+  mu.setAmb(false);
+  assert.equal(mu.debug().ambEv, 0);
   mu.dispose();
   delete globalThis.AudioContext;
 });
