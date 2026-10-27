@@ -392,7 +392,8 @@ export function createBot(p, opts = {}) {
       if (hk === I.AXE || hk === I.PICK) { const ob = hk === I.AXE ? O.TREE : O.ROCK; around(s, hc, 2, (c) => { if (s.obj[c] === ob) hcl('c' + c); }); }
       // рейки в руках і йде класти (≤ 8 клітинок від кінця колії) чи запас колії ще є — класти лишаємо їй
       // (пробували лишати лише за ≤ 3 і не на тісному запасі: x̄ 65 проти 64, а перебивань 8,8 проти 1,6 на гру)
-      if (hk === I.RAIL && (md(s, hc, s.path[s.path.length - 1]) <= 8 || s.path.length - 1 - Math.floor(s.train.pos / U) >= TUNE.urg)) hcl('lay');
+      // K34b: але запас колії < ~10 с ходу паротяга — кладемо й ми (небезпека важливіша за ввічливість)
+      if (hk === I.RAIL && (md(s, hc, s.path[s.path.length - 1]) <= 8 || s.path.length - 1 - Math.floor(s.train.pos / U) >= TUNE.urg) && !leadShort(s)) hcl('lay');
       if (hk === I.BUCKET || hk === I.BUCKET_FULL) hcl('water');
       if (idle) continue;
       // речі біля неї: інструмент/відро ≤ 2 клітинок, щойно нею покладене (≤ 10) чи те, до чого вона йде; купка під руками
@@ -628,6 +629,13 @@ export function createBot(p, opts = {}) {
     return { k: 'idle' };
   }
 
+  /** K34b: запас колії перед паротягом менший за ~10 с його ходу (до старту — не поспішаємо) */
+  function leadShort(s) {
+    if (!s.train.started) return false;
+    const lead = s.path.length - 1 - Math.floor(s.train.pos / U);
+    const cps = Math.max(1, s.train.speed) * TPS / (1000 * U);   // клітинок/с
+    return lead < Math.max(4, 10 * cps);
+  }
   function feasible(ctx, t) {
     const { s, pl } = ctx;
     if (t.k === 'gather') {
