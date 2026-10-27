@@ -280,8 +280,13 @@ export function createNet(game, opts = {}) {
     conn.onreconnecting(() => { ready = false; say('перепідключаюсь…'); });
     conn.onreconnected(() => enter().catch((x) => { console.warn('Колія: не зайшов знову', x); say('не зайшов: ' + x.message); }));
     say('підключаюсь…');
-    await conn.start();
-    await enter();
+    try {
+      await conn.start();
+      await enter();
+    } catch (x) {
+      say('не підключився: ' + (x?.message || x));   // QA K21: не висіти на «підключаюсь…»
+      throw x;
+    }
     return net;
   }
 
@@ -333,7 +338,7 @@ export function createNet(game, opts = {}) {
       build(j);
     } catch (x) {
       console.warn('Колія: журнал не взявся', x);
-      say('журнал не взявся');
+      say(/: 404$/.test(x?.message || '') ? 'стола нема (закрився?) — відкрий новий' : 'журнал не взявся: ' + (x?.message || x));
       setTimeout(() => { if (!ready) resync(); }, 2000);
     } finally { resyncing = false; }
   }
@@ -530,7 +535,9 @@ export function createNet(game, opts = {}) {
 
   async function restart(seed = game.seed, params = game.params) {
     if (!conn || !room) return;
-    const r = await conn.invoke('Act', room, 'restart', { seed: seed >>> 0, params: params || {} });
+    let r;
+    try { r = await conn.invoke('Act', room, 'restart', { seed: seed >>> 0, params: params || {} }); }
+    catch (x) { console.warn('Колія: перезапуск не дійшов', x); return; }   // QA K21: обрив — без unhandled rejection
     if (!r.ok) console.warn('Колія: перезапуск —', r.message);
     else resync();
   }
