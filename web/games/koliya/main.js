@@ -8,6 +8,7 @@ import { createBot } from './bot.js';            // K2
 import { createAudio } from './audio.js';        // K4
 import { createPanel } from './panel.js';        // K4
 import { createDebug2d } from './debug2d.js';
+import { createHud } from './hud.js';            // K9
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -94,10 +95,10 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+let hudUi = null;
 function drawHud() {
-  const s = game.state, t = s.train;
-  const st = s.status === 'won' ? '🏁 Доїхали! (R — далі)' : s.status === 'lost' ? `💥 ${s.reason === 'fire' ? 'Згорів' : 'Зійшов з колії'} (R — ще раз)` : '';
-  hud.textContent = `сід ${game.seed} · 🪵 ${t.wood} ⛓ ${t.iron} 🛤 ${t.rails} · 🔥 ${Math.round(t.heat / 10)}% · ${(s.tick / R.TPS).toFixed(0)} с ${st}`;
+  hudUi ??= createHud(hud, { players: game.local + game.bots });   // K9
+  hudUi.update(game.state, game);
 }
 
 (async () => {
