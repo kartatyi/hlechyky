@@ -162,6 +162,45 @@ function distMap(s, o, src) {
  * BFS від клітинки гравця. mode 'adj': ціль — прохідна клітинка, в якої сусід задовольняє pred (повертає й того сусіда);
  * mode 'on': ціль — сама клітинка з pred. Повертає { next, goal, target } або null. maxD — межа глибини.
  */
+/**
+ * «Прокопатись»: Дейкстра від гравця, де дерево/скеля прохідні за ціну 6 — до клітинки, сусідньої з pred.
+ * Повертає першу перешкоду на шляху (її рубати/бити) або -1, якщо перешкод нема чи шляху нема.
+ */
+function digTarget(s, o, start, pred) {
+  const n = s.w * s.h, W = s.w;
+  const dist = new Int32Array(n).fill(0x3fffffff), prev = new Int32Array(n).fill(-1);
+  const heap = [];
+  const push = (d, c) => { heap.push([d, c]); let i = heap.length - 1; while (i > 0) { const q = (i - 1) >> 1; if (heap[q][0] <= heap[i][0]) break; [heap[q], heap[i]] = [heap[i], heap[q]]; i = q; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  dist[start] = 0; push(0, start);
+  while (heap.length) {
+    const [d, c] = pop();
+    if (d !== dist[c]) continue;
+    const x = c % W, y = (c / W) | 0;
+    let hit = false;
+    if (s.obj[c] === O.NONE) for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < W && ny < s.h && pred(ny * W + nx)) { hit = true; break; }
+    }
+    if (hit) {
+      let first = -1;
+      for (let k = c; k !== -1; k = prev[k]) if (s.obj[k] !== O.NONE) first = k;
+      return first;
+    }
+    if (d > 4000) continue;
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= s.h) continue;
+      const m = ny * W + nx;
+      const ob = s.obj[m];
+      if (ob === O.WALL || s.ground[m] === G.WATER) continue;
+      const nd = d + (ob === O.TREE || ob === O.ROCK ? 6 : 1);
+      if (nd < dist[m]) { dist[m] = nd; prev[m] = c; push(nd, m); }
+    }
+  }
+  return -1;
+}
+
 function bfs(s, o, start, pred, mode, maxD = 400, thru = false) {
   const W = s.w, n = s.w * s.h;
   const par = new Int32Array(n).fill(-2), dep = new Uint16Array(n);
@@ -196,7 +235,9 @@ function bfs(s, o, start, pred, mode, maxD = 400, thru = false) {
 }
 
 export function createBot(p) {
-  const m = { task: null, lastUse: -9, lx: 0, ly: 0, still: 0, jit: 0, since: 0 };
+  const m = { task: null, lastUse: -9, lx: 0, ly: 0, still: 0, jit: 0, since: 0, fail: {} };
+  // завдання, що щойно виявилось неможливим (вода за скелями, інструмент недосяжний), 5 с не обираємо знову
+  const failed = (s, k) => m.fail[k] !== undefined && s.tick - m.fail[k] < 5 * TPS;
   const IDLE = { mx: 0, my: 0, use: false };
 
   function think(s) {
@@ -223,6 +264,7 @@ export function createBot(p) {
         m.lx = pl.x; m.ly = pl.y;
         return out;
       }
+      if (m.since === s.tick) m.fail[m.task.k + (m.task.r || '')] = s.tick;
       m.task = null;
     }
     m.lx = pl.x; m.ly = pl.y;
@@ -324,7 +366,15 @@ export function createBot(p) {
     if (h === I.BUCKET_FULL) return s.train.heat >= 250 || s.train.fire ? { k: 'water' } : { k: 'drop' };
     const wn = waterNeeded(ctx);
     const waterOk = !claimedByOther(o, 'water', s);
-    if (wn && waterOk && (role !== 'build' || s.train.fire)) return { k: 'water' };
+    if (wn && waterOk && !failed(s, 'water') && (role !== 'build' || s.train.fire)) return { k: 'water' };
+    // до води не дійти (за скелями/лісом) — прокопуємось, доки котел ще терпить
+    if (s.train.started && s.train.heat >= 300 && !bfs(s, o, ctx.cur, (n) => s.ground[n] === G.WATER, 'adj', 400, true)) {
+      const c = digTarget(s, o, ctx.cur, (n) => s.ground[n] === G.WATER);
+      if (c >= 0) {
+        const tk = { k: 'gather', r: s.obj[c] === O.TREE ? I.WOOD : I.IRON, target: c };
+        if (!failed(s, tk.k + tk.r) && feasible(ctx, tk)) return tk;
+      }
+    }
     if (h === I.BUCKET) return { k: bfs(s, o, ctx.cur, (n) => s.ground[n] === G.WATER, 'adj', 12) ? 'fill' : 'drop' };
     const list = [];
     // перешкода на маршруті просто перед кінцем колії
@@ -355,6 +405,7 @@ export function createBot(p) {
     }
     if (wn && waterOk) list.push({ k: 'water' });
     for (const t of list) {
+      if (failed(s, t.k + (t.r || ''))) continue;
       if (t.k === 'gather' && !t.target && !t.bridge && needOf(ctx, t.r) <= 0) continue;
       if (feasible(ctx, t)) return t;
     }
