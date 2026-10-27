@@ -19,7 +19,8 @@ const MAX_VOICES = 7;          // одночасних коротких звук
 // мінімальна пауза між однаковими звуками, мс
 const PER_TYPE_MS = { chop: 70, rock: 70, step: 120, squelch: 160, plank: 120, pick: 60, drop: 60, craft: 400, water: 150,
   alarm: 1000, whistle: 1500, bump: 250, honk: 700, horn: 500, throw: 120, land: 100, catch: 100, sink: 150, pass: 100,
-  stun: 300, scare: 200, goose_lost: 600, upgrade: 800, respawn: 300, rescue: 300, station: 1500 };
+  stun: 300, scare: 200, goose_lost: 600, upgrade: 800, respawn: 300, rescue: 300, station: 1500,
+  cist: 400, brake: 1500 };   // K56
 
 /** Підсилення кожного звуку, дБ (зведення гучностей; міряно в audio.test.mjs) */
 export const LEVEL = {
@@ -31,6 +32,7 @@ export const LEVEL = {
   whistle: 3, alarm: 2, horn: 7, upgrade: -3,                             // ціль +2…+4: важливе
   won: 1, lost: 9,                                                        // ціль +3…+5: кінець
   respawn: -5, rescue: 4, station: 0,                                     // K40: події світу / події світу / важливе
+  cist: -8, brake: 4,                                                     // K56: дія / подія світу
 };
 /** K40: події без звуку (службові: 'shift' — зсув вікна нескінченної колії) */
 export const SILENT = new Set(['shift']);
@@ -39,6 +41,9 @@ export const SILENT = new Set(['shift']);
 export function soundOf(e, s) {
   if (!e || SILENT.has(e.t)) return null;   // K40
   if (e.t === 'honk') return e.p !== undefined ? 'horn' : 'honk';
+  // K56: покращення K48 (поле u) — свої звуки: цистерна шипить і булькає, гальма скрегочуть; магніт — звичайне «взяв»
+  if (e.u === 'cist' && (e.t === 'douse' || e.t === 'drop')) return 'cist';
+  if (e.u === 'brake' && e.t === 'whistle') return 'brake';
   if (e.t === 'step' && s?.ground && s.w) {
     const g = s.ground[(e.y | 0) * s.w + (e.x | 0)];
     if (g === G.SWAMP) return 'squelch';
@@ -133,6 +138,19 @@ export const SFX = {
       A.tone(st, 880, 0.5, { vol: 0.09 }); A.tone(st, 2200, 0.3, { vol: 0.03 }); A.tone(st, 2640, 0.2, { vol: 0.02 });
     }
     return 1.3;
+  },
+
+  // — K56: покращення K48
+  cist(t, A) {   // вагон-цистерна: шипіння пари на котлі + три «бульк» (синус, що швидко злітає вгору)
+    A.noise(t, 0.5, { vol: 0.22, f: 3500, q: 0.6, kind: 'highpass', a: 0.02 });
+    [[0.08, 260], [0.2, 330], [0.31, 290]].forEach(([dt, f]) => A.tone(t + dt, f, 0.07, { vol: 0.12, to: f * 2.4, a: 0.004 }));
+    return 0.5;
+  },
+  brake(t, A) {   // гальма: металевий скрегіт колодок — високий пилкоподібний з легким спадом + шум у смузі
+    A.tone(t, 2300, 0.7, { type: 'sawtooth', vol: 0.025, a: 0.03, to: 1900 });
+    A.tone(t, 3150, 0.6, { type: 'square', vol: 0.012, a: 0.05, to: 2700 });
+    A.noise(t, 0.75, { vol: 0.08, f: 2800, q: 5, a: 0.04 });
+    return 0.75;
   },
 };
 /** K40: «Чумацький шлях» — свої звуки, яких нема в theme.js (там лише воли): станція = ярмарок (бубон і дзвоники) */

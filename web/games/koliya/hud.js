@@ -15,7 +15,7 @@
 //  є startDaily / startTutorial.
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
-import { UPGRADES } from './extras.js';             // K16: тост покращення
+import { UPGRADES, CIST_MAX, BRAKE_SEC } from './extras.js';   // K16: тост покращення; K56: тости й значки K48
 import { t as tt, isChumak } from './theme.js';      // K25: слова теми «Чумацький шлях»; K50: «Чумак»
 import { achievements } from './achievements.js';   // K50: досягнення 🏆 — тости з s.ev
 import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
@@ -95,6 +95,9 @@ const CSS = `
 .kol-res { position: absolute; left: 12px; top: calc(10px + 2.6em); display: flex; flex-direction: column; gap: .4em; }
 .kol-row { display: flex; gap: .7em; align-items: center; white-space: nowrap; }
 .kol-full { color: #ffb347; }
+.kol-up { margin-left: .35em; white-space: nowrap; }
+.kol-up:empty { display: none; }
+.kol-up.kol-up-on { color: #9be7ff; }
 .kol-craft { display: inline-block; width: 3em; height: .5em; background: #ffffff22; border-radius: 4px; overflow: hidden; vertical-align: middle; }
 .kol-craft > i { display: block; height: 100%; width: 0; background: #b6ff5f; }
 .kol-heat { display: inline-block; width: 7em; height: .7em; background: #ffffff22; border-radius: 5px; overflow: hidden; vertical-align: middle; }
@@ -226,11 +229,13 @@ export function createHud(root, opts = {}) {
   const biomeEl = el('div', 'kol-box kol-biome', top);
   const timeEl = el('div', 'kol-box kol-stat', top);
   const speedEl = el('div', 'kol-box kol-stat', top);
+  const speedT = el('span', null, speedEl), brakeEl = el('span', 'kol-up', speedEl);   // K56: 🐢 гальма біля швидкості
 
   // — ресурси й котел
   const res = el('div', 'kol-res', root);
   const store = el('div', 'kol-box kol-row', res);
   const sWood = el('span', null, store), sIron = el('span', null, store);
+  const magEl = el('span', 'kol-up', store);   // K56: 🧲 магніт тягне в склад
   const craft = el('div', 'kol-box kol-row', res);
   const cRails = el('span', null, craft);
   const cBar = el('span', 'kol-craft', craft); const cFill = el('i', null, cBar);
@@ -238,6 +243,7 @@ export function createHud(root, opts = {}) {
   const hIcon = el('span', null, boiler, '♨');   // K25
   const hBar = el('span', 'kol-heat', boiler); const hFill = el('i', null, hBar);
   const hPct = el('span', null, boiler);
+  const cistEl = el('span', 'kol-up', boiler);   // K56: 🚿 заряди цистерни біля котла
 
   // — банери
   const fire = el('div', 'kol-banner kol-fire', root);
@@ -488,7 +494,18 @@ export function createHud(root, opts = {}) {
 
     const cps = (t.speed ?? 0) / 1000 / U * TPS;   // клітинок/с
     txt(timeEl, 'time', `⏱ ${fmtTime(sec)}`);
-    txt(speedEl, 'speed', `💨 ${cps.toFixed(2)}`);
+    txt(speedT, 'speed', `💨 ${cps.toFixed(2)}`);
+    // K56: значки покращень K48 (s.ups з'являється лише після вибору)
+    const ups = s.ups;
+    const bt = ups?.bt ?? 0;
+    txt(brakeEl, 'brake', ups?.brake ? (bt > 0 ? `🐢 ${Math.ceil(bt / TPS)}с` : `🐢×${ups.bn ?? 0}`) : '');
+    set(brakeEl, 'brake|className', `kol-up${bt > 0 ? ' kol-up-on' : (ups?.bn ?? 0) ? '' : ' kol-full'}`);
+    set(brakeEl, 'brake|title', ups?.brake ? (bt > 0 ? 'Гальма: паротяг їде вдвічі повільніше' : `Гальма: ${ups.bn ?? 0} до наступної станції — дія на паротяг`) : '');
+    txt(cistEl, 'cist', ups?.cist ? `🚿 ${ups.cw ?? 0}/${ups.cist * CIST_MAX}` : '');
+    set(cistEl, 'cist|className', `kol-up${ups?.cist && !(ups.cw ?? 0) ? ' kol-full' : ''}`);
+    set(cistEl, 'cist|title', ups?.cist ? 'Вагон-цистерна: поливів води (повне відро у склад — +2)' : '');
+    txt(magEl, 'mag', ups?.mag ? '🧲' : '');
+    set(magEl, 'mag|title', ups?.mag ? 'Магніт: склад сам тягне дрова й залізо поруч' : '');
 
     // склад і майстерня
     const sm = p.storeMax ?? 0;
@@ -616,6 +633,8 @@ export function createHud(root, opts = {}) {
 
   // K16: тости подій тику (гачок у main.js afterStep — бачить кожен тик, не лише кадр)
   let seenGeese = new Set(), evState = null;
+  let magTick = -1e9;                 // K56: тост магніту — не частіше ніж раз на MAG_TOAST тиків (тягне раз на 0,5 с)
+  const MAG_TOAST = 20 * TPS;
   const pName = (s, p, raw) => playerLabel(game0, p, s.players?.length ?? 0, raw);   // K37: ніки й у тостах, і в таблиці звань
   // K23: підсумок по гравцях — лічильники з s.ev (тик рахуємо раз: мережевий відкат тики не подвоює)
   let tally = [], tallyTick = -1, prevPos = [];
@@ -688,7 +707,7 @@ export function createHud(root, opts = {}) {
   }
   function events(ev, s) {
     if (!ev || !s) return;
-    if (s !== evState) { evState = s; seenGeese = new Set(); tally = []; tallyTick = -1; prevPos = []; }
+    if (s !== evState) { evState = s; seenGeese = new Set(); tally = []; tallyTick = -1; prevPos = []; magTick = -1e9; }
     tallyTick1(ev, s);
     // K50: досягнення — бот не відкриває; маршрут дня — сід дня; тост «🏆 …» через наявні тости
     try {
@@ -697,6 +716,14 @@ export function createHud(root, opts = {}) {
       for (const a of achievements().tick(ev, s, { bot, daily: !!(g?.daily && g.daily.seed === s.seed), chumak: isChumak() })) say(`🏆 ${a.name}!`, 5000);
     } catch { }
     for (const e of ev) {
+      if (e.u) {   // K56: події покращень K48 (поле u) — свій тост
+        const u = s.ups ?? {}, max = (u.cist ?? 0) * CIST_MAX;
+        if (e.u === 'cist' && e.t === 'douse') say(`🚿 Цистерна полила котел${max ? ` · води ${u.cw ?? 0}/${max}` : ''}`, 3500);
+        else if (e.u === 'cist' && e.t === 'drop') say(`🚿 ${e.p !== undefined ? pName(s, e.p, true) + ' долив' : 'Долито'} цистерну · води ${u.cw ?? 0}/${max}`, 3000);
+        else if (e.u === 'brake' && e.t === 'whistle') say(`🐢 Гальма! −50 % на ${BRAKE_SEC} с${e.p !== undefined ? ` · ${pName(s, e.p, true)}` : ''}`, 4000);
+        else if (e.u === 'magnet' && (s.tick ?? 0) - magTick >= MAG_TOAST) { magTick = s.tick ?? 0; say('🧲 Магніт підтягнув у склад', 2500); }
+        continue;
+      }
       if (e.t === 'upgrade') {
         const u = UPGRADES[s.mid?.pick];
         if (u) say(`${u.icon} ${u.label}`, 5000);

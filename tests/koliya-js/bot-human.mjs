@@ -35,7 +35,7 @@ export function createHuman(p, seed, opt = {}) {
  * Партія: людина-імітація (гравець 0) + помічник ('none' — соло, 'old' — звичайний бот, 'buddy' — напарник).
  * Рахує «перебивання» помічника: узяв інструмент/відро біля людини (≤ 2) чи щойно нею покладене (15 с); ударив ціль,
  * яку людина била останні 3 с; підібрав купку з-під її рук (≤ 2, руки порожні чи той самий ресурс); поклав рейку,
- * коли людина несла рейки. Плюс скільки секунд стояв на клітинці перед людиною.
+ * коли людина несла рейки (останні 5 с) і за ≤ 4 клітинки від неї. Плюс скільки секунд стояв на клітинці перед людиною.
  * hornAt — тики, коли людина гуде (для «йди за мною»).
  */
 export function playMix(seed, kind, { maxMin = 15, params = {}, hornAt = [], onTick } = {}) {
@@ -45,6 +45,7 @@ export function playMix(seed, kind, { maxMin = 15, params = {}, hornAt = [], onT
   const bot = kind === 'none' ? null : createBot(1, kind === 'buddy' ? { buddy: true } : {});
   const it = { tool: 0, target: 0, loot: 0, rails: 0, block: 0 };
   const hHits = new Map(), hPut = new Map(), counted = new Set();
+  let hRailT = -1e9;
   const maxT = maxMin * 60 * TPS, W = s.w;
   const cellOf = (q) => Math.floor(q.y / U) * W + Math.floor(q.x / U);
   const md = (a, b) => Math.abs((a % W) - (b % W)) + Math.abs(((a / W) | 0) - ((b / W) | 0));
@@ -62,6 +63,7 @@ export function playMix(seed, kind, { maxMin = 15, params = {}, hornAt = [], onT
       if (u.use) cmds.push({ p: 1, k: 'use' });
     }
     const pre = bot ? s.drop.slice() : null, h0 = s.players[0], hHold = h0.hold.k, hc = cellOf(h0);
+    if (hHold === I.RAIL) hRailT = s.tick;
     if (bot) { const bc = cellOf(s.players[1]), fc = (Math.floor(h0.y / U) + h0.fy) * W + Math.floor(h0.x / U) + h0.fx; if (bc === fc) it.block++; }
     R.step(s, cmds);
     if (onTick) onTick(s, bot);
@@ -80,7 +82,7 @@ export function playMix(seed, kind, { maxMin = 15, params = {}, hornAt = [], onT
         const k = pre[c], d = md(c, hc);
         if (isTool(k)) { const t = hPut.get(c); if (d <= 2 || (t !== undefined && s.tick - t <= 15 * TPS)) it.tool++; }
         else if (d <= 2 && (hHold === I.NONE || hHold === k)) it.loot++;
-      } else if (e.t === 'rail' && hHold === I.RAIL && s.ground[c] !== R.G.BRIDGE) it.rails++;
+      } else if (e.t === 'rail' && s.tick - hRailT <= 5 * TPS && md(c, hc) <= 4 && s.ground[c] !== R.G.BRIDGE) it.rails++;   // K34c: лише біля людини, що будує
     }
   }
   const sec = Math.round(s.tick / TPS);
