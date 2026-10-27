@@ -234,20 +234,21 @@ export function createNet(game, opts = {}) {
 
   let conn = null, room = null, seat = null, ready = false, resyncing = false, lobby = null;
   let e = 0, C = null, count = 0, w = -1, hi = 0, dirty = false, off = null, idSeq = 0, desyncSaid = false;
-  let lastIn = { mx: 0, my: 0, t: -99 }, lastUse = { t: -99, down: false };
+  let lastIn = [], lastUse = [];       // [q] — свій рух/дія: q 0 — я, 1 — другий за цим ПК (?p=2)
+  let asked2 = 0;                       // епоха, у якій уже просили другого гравця
   const log = new Map();                // тик → [cmd] (лише тики ≥ C.tick)
   let pending = [];                     // свої без луни: { t, i, cmd }
   const hashes = new Map();             // тик → хеш C
   const stats = { frames: 0, rebuilds: 0, resyncs: 0, sent: 0, dropped: 0 };
 
   const net = {
-    p: -1, alpha: 0, status: 'старт', desync: -1,
+    p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1,
     get room() { return room; },
     get ready() { return ready; },
     get C() { return C; },
     start, update, restart, draw,
     info() {
-      return { room, seat, p: net.p, e, count, w, cTick: C?.tick, pTick: game.state?.tick, pending: pending.length,
+      return { room, seat, p: net.p, p2: net.p2, e, count, w, cTick: C?.tick, pTick: game.state?.tick, pending: pending.length,
         status: net.status, desync: net.desync, cStatus: C?.status, hash: C ? R.hash(C) : 0, stats: { ...stats },
         lag, jit, smooth: { ...smooth.st } };
     },
@@ -302,8 +303,10 @@ export function createNet(game, opts = {}) {
     const v = rv.view;
     if (!v) return;
     net.p = v.p ?? -1;
+    net.p2 = v.p2 ?? -1;
     game.me = net.p;
     if (v.e !== e && !resyncing) resync();
+    else if (ready) want2();
   }
 
   async function resync() {
@@ -331,8 +334,9 @@ export function createNet(game, opts = {}) {
     e = j.e;
     C = R.newGame(j.seed >>> 0, j.prm || {}, j.n0 || 1);
     log.clear(); count = 0; pending = []; hashes.clear(); hi = 0;
-    lastIn = { mx: 0, my: 0, t: -99 }; lastUse = { t: -99, down: false };
+    lastIn = [0, 1].map(() => ({ mx: 0, my: 0, t: -99 })); lastUse = [0, 1].map(() => ({ t: -99, down: false }));
     if (seat != null && j.pOf) net.p = j.pOf[seat] ?? -1;
+    if (seat != null && j.p2Of) net.p2 = j.p2Of[seat] ?? -1;
     game.me = net.p;
     game.seed = j.seed >>> 0;
     if (off == null) off = j.t * R.TICK_MS - performance.now();
@@ -340,8 +344,11 @@ export function createNet(game, opts = {}) {
     w = j.w;
     if (j.d >= 0) noteDesync(j.d);
     advanceC();
-    const me = C.players[net.p];   // що rules уже знає про мій рух — від цього й міряємо зміни
-    if (me) lastIn = { mx: me.mx | 0, my: me.my | 0, t: -99 };
+    [net.p, net.p2].forEach((p, q) => {   // що rules уже знає про мій рух — від цього й міряємо зміни
+      const me = C.players[p];
+      if (p >= 0 && me) lastIn[q] = { mx: me.mx | 0, my: me.my | 0, t: -99 };
+    });
+    want2();
     const fresh =!game.state || game.state.w !== C.w || game.state.h !== C.h;
     if (fresh) game.state = R.clone(C); else copyInto(game.state, C);
     smooth.reset();
@@ -349,6 +356,15 @@ export function createNet(game, opts = {}) {
     ready = true;
     say('грає');
     onWorld?.(game.state);
+  }
+
+  /** Двоє за одним ПК (?p=2): попросити сервер про другого гравця за цим місцем (раз на епоху). */
+  function want2() {
+    if ((game.local | 0) < 2 || net.p < 0 || net.p2 >= 0 || asked2 === e || !conn) return;
+    asked2 = e;
+    conn.invoke('Act', room, 'join2', {}).then((r) => {
+      if (!r.ok) { console.info('Колія: другий гравець —', r.message); say('грає (другому місця нема)'); }
+    }).catch((x) => console.warn('Колія: join2', x));
   }
 
   function onFrame(f) {
@@ -385,7 +401,7 @@ export function createNet(game, opts = {}) {
       log.get(t).push(cmd);
       count++;
       const i = c[j + 9];
-      const k = i > 0 && cmd.p === net.p ? pending.findIndex((x) => x.i === i) : -1;
+      const k = i > 0 && (cmd.p === net.p || cmd.p === net.p2) ? pending.findIndex((x) => x.i === i) : -1;
       if (k >= 0) { if (pending[k].t !== t) dirty = true; pending.splice(k, 1); }
       else if (t < pTick) dirty = true;
     }
@@ -421,29 +437,35 @@ export function createNet(game, opts = {}) {
   }
 
   /** Своє керування на тик t: шлемо зміни руху (не частіше GAP_IN) і натиски/повтори дії. */
+  /** Своє керування на тик t: шлемо зміни руху (не частіше GAP_IN) і натиски/повтори дії. Двоє за ПК — обидва. */
   function localInput(t) {
-    const s = game.state, pl = s.players[net.p];
-    if (net.p < 0 || !pl || pl.out) return;
-    let v;
-    if (opts.makeBot && (!bot || bot.p !== net.p)) bot = opts.makeBot(net.p);   // справжній бот (bot.js) знає своє p
-    if (bot) v = bot.think(s, net.p);
-    else { const a = input?.poll?.()[0]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use } : null; }
-    if (!v) return;
-    const mx = Math.max(-100, Math.min(100, v.mx | 0)), my = Math.max(-100, Math.min(100, v.my | 0));
-    if ((mx !== lastIn.mx || my !== lastIn.my) && t - lastIn.t >= GAP_IN) {
-      lastIn = { mx, my, t };
-      send('in', { mx, my }, t, { p: net.p, k: 'in', mx, my });
-    }
-    if (v.use) {
-      const press = !lastUse.down;
-      if (press || (pl.cd === 0 && t - lastUse.t >= GAP_USE)) {
-        const h = press ? 0 : 1;
-        const pose = { x: pl.x, y: pl.y, fx: pl.fx, fy: pl.fy };
-        lastUse.t = t;
-        send('use', { ...pose, h }, t, { p: net.p, k: 'use', ...pose, h });
+    const s = game.state;
+    let ins = null;
+    for (let q = 0; q < 2; q++) {
+      const p = q ? net.p2 : net.p, pl = s.players[p];
+      if (p < 0 || !pl || pl.out) continue;
+      let v;
+      if (q === 0 && opts.makeBot && (!bot || bot.p !== p)) bot = opts.makeBot(p);   // справжній бот (bot.js) знає своє p
+      if (q === 0 && bot) v = bot.think(s, p);
+      else { ins ??= input?.poll?.() || []; const a = ins[q]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use } : null; }
+      if (!v) continue;
+      const li = lastIn[q], lu = lastUse[q], Q = q ? { q: 1 } : {};
+      const mx = Math.max(-100, Math.min(100, v.mx | 0)), my = Math.max(-100, Math.min(100, v.my | 0));
+      if ((mx !== li.mx || my !== li.my) && t - li.t >= GAP_IN) {
+        lastIn[q] = { mx, my, t };
+        send('in', { mx, my, ...Q }, t, { p, k: 'in', mx, my });
       }
+      if (v.use) {
+        const press = !lu.down;
+        if (press || (pl.cd === 0 && t - lu.t >= GAP_USE)) {
+          const h = press ? 0 : 1;
+          const pose = { x: pl.x, y: pl.y, fx: pl.fx, fy: pl.fy };
+          lu.t = t;
+          send('use', { ...pose, h, ...Q }, t, { p, k: 'use', ...pose, h });
+        }
+      }
+      lu.down = !!v.use;
     }
-    lastUse.down = !!v.use;
   }
 
   function send(kind, payload, t, cmd) {

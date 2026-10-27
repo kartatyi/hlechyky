@@ -178,6 +178,55 @@ public class KoliyaTests
         Assert.Equal(Run(), Run());
     }
 
+    [Fact]
+    public void Двоє_за_одним_ПК_другий_гравець_місця()
+    {
+        var h = Table("Оля", "Петро");
+        h.Tick(10);
+        Assert.False(h.Act(0, "in", new { mx = 1, q = 1 }).Ok);        // другого ще нема
+        Assert.True(h.Act(0, "join2").Ok);
+        Assert.True(h.Act(0, "join2").Ok);                              // повтор — той самий
+        var v = h.View(0);
+        Assert.Equal(2, v.GetProperty("p2").GetInt32());
+        Assert.Equal(-1, h.View(1).GetProperty("p2").GetInt32());
+        h.Input(0, "in", new { mx = 100, my = 0, q = 1, i = 1 });
+        h.Input(0, "in", new { mx = -100, my = 0, i = 2 });
+        var e = Entries(Log(h)).Skip(1).ToArray();                     // перший запис — join Петра
+        Assert.Equal([Koliya.Join, Koliya.In, Koliya.In], e.Select(x => x[3]).ToArray());
+        Assert.Equal([2, 2, 0], e.Select(x => x[2]).ToArray());
+        // перезапуск зберігає другого: спершу по гравцю на місце, тоді другі
+        Assert.True(h.Act(1, "restart", new { seed = 5 }).Ok);
+        v = h.View(0);
+        Assert.Equal(3, v.GetProperty("n0").GetInt32());
+        Assert.Equal(0, v.GetProperty("p").GetInt32());
+        Assert.Equal(2, v.GetProperty("p2").GetInt32());
+        Assert.Equal(1, h.View(1).GetProperty("p").GetInt32());
+        // встала — обидва її гравці виходять
+        h.Leave("Оля");
+        e = Entries(Log(h));
+        Assert.Equal([2, 0], e.Where(x => x[3] == Koliya.Leave).Select(x => x[2]).ToArray());
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void Двоє_за_ПК_не_більше_чотирьох_гравців_rules()
+    {
+        var h = Table("Оля", "Петро");
+        Assert.True(h.Act(0, "join2").Ok);
+        Assert.True(h.Act(1, "join2").Ok);                              // 4 гравці rules
+        h.Join("Іра");
+        var ira = h.Room.SeatOf("Іра")!.Value;
+        Assert.Equal(-1, h.View(ira).GetProperty("p").GetInt32());     // дивиться
+        Assert.False(h.Act(ira, "in", new { mx = 1 }).Ok);
+        Assert.True(h.Act(1, "leave2").Ok);
+        Assert.False(h.Act(1, "in", new { mx = 1, q = 1 }).Ok);
+        // перезапуск: спершу кожне місце (Іра теж), другий Олин — у залишок
+        Assert.True(h.Act(0, "restart", new { seed = 9 }).Ok);
+        Assert.Equal(3, h.View(0).GetProperty("p2").GetInt32());
+        Assert.Equal(2, h.View(ira).GetProperty("p").GetInt32());
+        Assert.Equal(4, h.View(0).GetProperty("n0").GetInt32());
+    }
+
 }
 
 /// <summary>Швидкодія «Колії» — окремою колекцією: у паралельному прогоні стінний годинник бреше.</summary>
