@@ -323,3 +323,25 @@ test('модель сервера: join після leave не раніше за 
   assert.equal(s.players.length, 4);
   assert.equal(s.players[srv.pOf[1]].out, 0);
 });
+
+test('K24: поза з use/throw — лише поруч і не в непрохідне (запізніла команда не телепортує в скелю)', () => {
+  const s = R.newGame(7, PARAMS, 1), pl = s.players[0], U = R.U;
+  // вільна клітинка f поруч із непрохідною bad (дерево/скеля/вода/стіна) і вільна far далеко
+  let bad = null, f = null, far = null;
+  for (let y = 1; y < s.h - 1 && !bad; y++) for (let x = 1; x < s.w - 1 && !bad; x++) {
+    if (!R.cellBlocked(s, x, y) || R.cellBlocked(s, x - 1, y)) continue;
+    bad = [x, y]; f = [x - 1, y];
+  }
+  for (let y = 1; y < s.h - 1 && !far; y++) for (let x = 1; x < s.w - 1; x++) if (!R.cellBlocked(s, x, y) && Math.abs(x - f[0]) + Math.abs(y - f[1]) > 8) { far = [x, y]; break; }
+  assert.ok(bad && far);
+  R.step(s, [{ p: 0, k: 'pose', x: f[0] * U + U / 2, y: f[1] * U + U / 2 }]);
+  const x0 = pl.x, y0 = pl.y;
+  R.step(s, [{ p: 0, k: 'use', x: bad[0] * U + U / 2, y: bad[1] * U + U / 2, fx: 1, fy: 0, h: 0 }]);
+  assert.deepEqual([pl.x, pl.y], [x0, y0], 'поза в непрохідне не ставиться');
+  R.step(s, [{ p: 0, k: 'use', x: far[0] * U + U / 2, y: far[1] * U + U / 2, fx: 1, fy: 0, h: 0 }]);
+  assert.deepEqual([pl.x, pl.y], [x0, y0], 'далека поза не ставиться');
+  R.step(s, [{ p: 0, k: 'pose', x: far[0] * U + U / 2, y: far[1] * U + U / 2, fx: 0, fy: 1 }]);
+  assert.deepEqual([pl.x, pl.y, pl.fx, pl.fy], [far[0] * U + U / 2, far[1] * U + U / 2, 0, 1], 'явна pose — як була');
+  R.step(s, [{ p: 0, k: 'use', x: pl.x + 400, y: pl.y, fx: -1, fy: 0, h: 0 }]);
+  assert.deepEqual([pl.x, pl.fx], [far[0] * U + U / 2 + 400, -1], 'поруч — ставиться');
+});
