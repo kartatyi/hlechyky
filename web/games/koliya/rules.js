@@ -50,6 +50,7 @@ export const VARIANTS = {
   overheat: { values: ['fire', 'stop'], labels: ['Пожежа', 'Зупинка'], label: 'Перегрів котла' },
   // K14 «Відчуття ядра» — див. блок «Відчуття» нижче
   move: { values: ['free', 'grid', 'snappy'], labels: ['Вільно', 'Клітинками', 'Чітко'], label: 'Рух гравця' },
+  useMode: { values: ['press', 'tap', 'auto'], labels: ['Затиснув — б\'є', 'Кожен удар — натиск', 'Б\'є сам'], label: 'Дія (рубати/бити)' },
 };
 
 export function defaultParams() {
@@ -141,7 +142,7 @@ export function step(s, cmds = []) {
   s.ev.length = 0;
   if (s.status !== 'run') return s;
   for (const c of cmds) applyCmd(s, c);
-  for (let i = 0; i < s.players.length; i++) movePlayer(s, i);
+  for (let i = 0; i < s.players.length; i++) { movePlayer(s, i); feelTick(s, i); }   // K14: feelTick — автоудар, приціл
   stepCraft(s);
   stepTrain(s);
   s.tick++;
@@ -359,6 +360,22 @@ function moveSnappy(s, n, pl) {
   if (pl.x !== x0 || pl.y !== y0) movedFeel(s, n, pl);
 }
 
+// ================= K14: дія (useMode) і приціл — щотику після руху гравця =================
+/** useMode: 'press' — затиснув → удари/рейки/мости повторюються з hitMs, взяти/покласти лише на натиск (як було);
+ *  'tap' — кожна дія лише на новий натиск; 'auto' — з сокирою/кайлом перед деревом/скелею б'є сам (як Unrailed),
+ *  кнопка — для решти. */
+function feelTick(s, n) {
+  const pl = s.players[n];
+  if (!pl || pl.out) return;
+  const h = pl.hold.k;
+  if (s.params.useMode === 'auto' && pl.cd === 0 && (h === I.AXE || h === I.PICK)) {
+    const f = facingCell(pl);
+    if (inside(s, f.x, f.y) && s.obj[f.y * s.w + f.x] === (h === I.AXE ? O.TREE : O.ROCK)) {
+      const ut = pl.ut; use(s, n, pl); pl.ut = ut;   // автоудар не рахується натиском кнопки
+    }
+  }
+}
+
 /** Несеш стос — і стаєш на такий самий: добираєш до carryMax */
 function autoPick(s, n, pl) {
   const k = pl.hold.k;
@@ -421,6 +438,7 @@ function hold0(pl) { pl.hold.k = I.NONE; pl.hold.n = 0; }
 function use(s, n, pl) {
   const held = pl.ut > 0 && pl.ut === s.tick;   // use був і в попередньому тику
   pl.ut = s.tick + 1;
+  if (held && s.params.useMode === 'tap') return;   // K14: без автоповтору — лише натиск
   if (pl.cd > 0) return;
   const P = s.params;
   const f = facingCell(pl);

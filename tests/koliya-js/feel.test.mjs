@@ -102,3 +102,48 @@ test("move='snappy': неповний нахил — повна швидкіст
   R.step(sn, [inp(0, 10)]);
   assert.deepEqual([e.fx, e.fy, e.x, e.y], [0, 1, 60 * U + U / 2, 8 * U + U / 2]);
 });
+
+// ---------------- useMode ----------------
+/** гравець із сокирою перед деревом (3 удари) */
+function axeTree(useMode) {
+  const s = blank({ useMode, treeHits: 3 });
+  const pl = at(s, 0, 60, 8, 1, 0);
+  pl.hold.k = I.AXE; pl.hold.n = 1;
+  const t = id(s, 61, 8); s.obj[t] = O.TREE; s.hp[t] = 3;
+  return { s, pl, t };
+}
+const holdUse = (s, n) => { for (let i = 0; i < n; i++) R.step(s, [{ p: 0, k: 'use' }]); };
+
+test("useMode='press' (типове): затиснув — б'є з hitMs, дерево падає", () => {
+  const { s, t } = axeTree('press');
+  assert.equal(s.params.useMode, R.defaultParams().useMode);
+  holdUse(s, 12);
+  assert.equal(s.obj[t], O.NONE);
+  assert.equal(s.stats.hits, 3);
+});
+
+test("useMode='tap': затиснув — лише один удар; кожен новий натиск — ще удар", () => {
+  const { s, t } = axeTree('tap');
+  holdUse(s, 20);
+  assert.equal(s.stats.hits, 1);
+  for (let k = 0; k < 2; k++) { R.step(s, []); run(s, 4); holdUse(s, 1); }
+  assert.equal(s.stats.hits, 3);
+  assert.equal(s.obj[t], O.NONE);
+});
+
+test("useMode='auto': з сокирою перед деревом б'є сам без кнопки; без інструмента й речі — нічого", () => {
+  const { s, t } = axeTree('auto');
+  run(s, 1);
+  assert.equal(s.stats.hits, 1);
+  run(s, 12);
+  assert.equal(s.obj[t], O.NONE);
+  assert.equal(s.stats.hits, 3);
+  assert.equal(s.drop[t], I.WOOD, 'дрова лежать — самі не підбираються');
+  // відвернувся — не б'є
+  const b = axeTree('auto');
+  b.pl.fx = -1; run(b.s, 20);
+  assert.equal(b.s.stats.hits, 0);
+  // кнопка далі працює: кинути сокиру
+  holdUse(b.s, 1);
+  assert.equal(b.pl.hold.k, I.NONE);
+});
