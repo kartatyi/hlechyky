@@ -28,7 +28,7 @@ namespace Hlechyky.Games.Impl;
 /// </para>
 /// <para>
 /// K28 «люди за столом» — усе повз журнал (світ і хеш від цього не міняються): <c>nm</c> у виді й журналі — ніки
-/// гравців rules; Input <c>"react"</c> {e, q, i} — емодзі над гравцем (≤ 1 на <see cref="ReactGapMs"/>), у кадрі
+/// гравців rules; Input <c>"react"</c> {em, q, i} — емодзі над гравцем (≤ 1 на <see cref="ReactGapMs"/>), у кадрі
 /// <c>r</c> = [seq, p, e, i]×N ще <see cref="ReactKeepMs"/>.
 /// </para>
 /// </summary>
@@ -85,6 +85,7 @@ public sealed class Koliya : Game, IUnlistedGame
     int _w = -1;
     int _keepFrom;
     int _desync = -1;
+    int _leaveT;   // K24: тик останнього leave у журналі
     bool _dirty;
 
     // ---- K28: люди за столом (повз журнал: світ від цього не міняється) ----
@@ -167,6 +168,7 @@ public sealed class Koliya : Game, IUnlistedGame
         _desync = -1;
         _keepFrom = 0;
         _w = -1;
+        _leaveT = 0;
         Array.Fill(_lastT, 0);
         _n = 0;
         // спершу кожне місце по гравцю, тоді другі за ПК — скільки влізе в 4
@@ -205,14 +207,16 @@ public sealed class Koliya : Game, IUnlistedGame
         if (p < 0 && _out.Count >= MaxRulesPlayers) return null;
         if (p < 0) { p = _out.Count; _out.Add(false); }
         else _out[p] = false;
-        Add(seat, new Entry(0, p, Join, 0, 0, 0, 0, 0, 0), null);
+        // K24: rules.js join бере перший вільний слот НА СВОЄМУ тику — тож не раніше за останній leave (той міг лягти
+        // наперед, за _lastT того місця), інакше rules дасть інший слот чи відмовить, а місце керуватиме вибулим.
+        Add(seat, new Entry(0, p, Join, 0, 0, 0, 0, 0, 0), Math.Max(NowTick(), _leaveT));
         _dirty = true;
         return p;
     }
 
     void Gone(int seat, int p)
     {
-        Add(seat, new Entry(0, p, Leave, 0, 0, 0, 0, 0, 0), null);
+        _leaveT = Math.Max(_leaveT, Add(seat, new Entry(0, p, Leave, 0, 0, 0, 0, 0, 0), null));   // K24
         _out[p] = true;
         _dirty = true;
     }
@@ -230,7 +234,10 @@ public sealed class Koliya : Game, IUnlistedGame
     public override ActResult Act(int seat, string action, JsonElement payload)
     {
         if (seat < 0 || seat >= _pOf.Length) throw new GameError("Ти не за столом");
-        _seen[seat] = Ctx.Clock.UtcNow;   // K28: живий
+        _seen[seat] = Ctx.Clock.UtcNow;   // K28: живий (і старою епохою теж)
+        // K24: ввід зі старої епохи (летів, поки хтось перезапустив) — мовчки геть: його тик і поза — зі старого світу
+        // (use з позою телепортував би гравця в новому світі, може й у скелю), хеш — звірка зі старим світом.
+        if (action is not ("restart" or "join2" or "leave2") && Stale(payload)) return ActResult.Done;
         switch (action)
         {
             case "ping":    // K28: { i, r } — номер пінгу (луна в кадрі pa) і заміряний браузером пінг для всіх
@@ -280,7 +287,7 @@ public sealed class Koliya : Game, IUnlistedGame
             case "react":   // K28: емодзі над гравцем — повз журнал правил, світ і хеш не чіпає
             {
                 var p = Player(seat, payload);
-                var e = Clamp(payload, "e", -1, 1000);
+                var e = Clamp(payload, "em", -1, 1000);   // не "e": то епоха (K24, Stale)
                 if (e < 0 || e >= ReactKinds) throw new GameError("Такої реакції нема");
                 var now = Ctx.Clock.UtcNow;
                 if (now - _reactAt[p] < TimeSpan.FromMilliseconds(ReactGapMs)) throw new GameError("Не так часто");
@@ -300,7 +307,7 @@ public sealed class Koliya : Game, IUnlistedGame
         Clamp(payload, "q", 0, 1) == 0 ? Player(seat) : _p2Of[seat] >= 0 ? _p2Of[seat] : throw new GameError("Другого гравця нема");
 
     /// <summary>Записати команду: тик — бажаний, але не в закрите, не раніше попередньої цього ж місця й не надто наперед.</summary>
-    void Add(int seat, Entry e, int? want)
+    int Add(int seat, Entry e, int? want)
     {
         if (_log.Count >= MaxLog) throw new GameError("Партія задовга — перезапусти");
         var now = NowTick();
@@ -309,6 +316,7 @@ public sealed class Koliya : Game, IUnlistedGame
         t = Math.Max(t, _lastT[seat]);
         _lastT[seat] = t;
         _log.Add(e with { T = t });
+        return t;
     }
 
     /// <summary>
@@ -437,6 +445,11 @@ public sealed class Koliya : Game, IUnlistedGame
         using var doc = JsonDocument.Parse(_params);
         return doc.RootElement.Clone();
     }
+
+    /// <summary>K24: команда несе епоху <c>e</c> (net.js) — і вона не поточна. Без <c>e</c> — як було.</summary>
+    bool Stale(JsonElement p) =>
+        p.ValueKind == JsonValueKind.Object && p.TryGetProperty("e", out var e) && e.ValueKind == JsonValueKind.Number
+        && e.TryGetInt32(out var v) && v != _epoch;
 
     static int? ReqTick(JsonElement p) =>
         p.ValueKind == JsonValueKind.Object && p.TryGetProperty("t", out var t) && t.ValueKind == JsonValueKind.Number && t.TryGetInt32(out var v) ? v : null;

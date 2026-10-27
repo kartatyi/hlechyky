@@ -144,12 +144,13 @@ test('throw: партнер з порожніми руками на клітин
   assert.equal(e.length, 1); assert.equal(e[0].p, 1);
   assert.equal(s.players[1].hold.k, I.WOOD); assert.equal(s.players[1].hold.n, 3);
   assert.equal(s.drop[id(s, X + 3, Y)], I.NONE);
-  // з дровами в руках (3 з 4) ловить одне, решта лягає
+  // з дровами в руках (carryMax−1) ловить одне, решта лягає (числа — від params, не від типових)
   const s2 = blank({ throw: 'on' });
+  const cap = s2.params.carryMax | 0;
   hold(at(s2, 0, X, Y), I.WOOD, 3);
-  hold(at(s2, 1, X + 3, Y), I.WOOD, 3);
+  hold(at(s2, 1, X + 3, Y), I.WOOD, cap - 1);
   run(s2, 1, [{ p: 0, k: 'throw' }]); run(s2, 20);
-  assert.equal(s2.players[1].hold.n, 4);
+  assert.equal(s2.players[1].hold.n, cap);
   assert.equal(s2.drop[id(s2, X + 3, Y)], I.WOOD); assert.equal(s2.dropN[id(s2, X + 3, Y)], 2);
 });
 
@@ -177,9 +178,10 @@ test('pass: use з річчю на партнера — у його руки; т
   assert.equal(s.players[0].hold.k, I.NONE);
   assert.deepEqual({ ...s.players[1].hold }, { k: I.WOOD, n: 2 });
   run(s, 5);
-  hold(s.players[0], I.WOOD, 3);
+  const cap = s.params.carryMax | 0;   // у партнера 2: влізе cap−2, одне лишається в руках
+  hold(s.players[0], I.WOOD, cap - 1);
   run(s, 1, [{ p: 0, k: 'use' }]);
-  assert.equal(s.players[1].hold.n, 4); assert.equal(s.players[0].hold.n, 1);
+  assert.equal(s.players[1].hold.n, cap); assert.equal(s.players[0].hold.n, 1);
   // в партнера сокира — як раніше: річ лягає на землю
   run(s, 5);
   hold(s.players[1], I.AXE);

@@ -8,11 +8,12 @@ import { createBot } from './bot.js';            // K2
 import { createAudio } from './audio.js';        // K4
 import { createPanel } from './panel.js';        // K4
 import { createDebug2d } from './debug2d.js';
-import { createHud } from './hud.js';            // K9
+import { createHud, dailySeed, kyivDate } from './hud.js';   // K9; K23: маршрут дня
 import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new|auto&nick=…&drive=1
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
+import { createTouch, isTouchDevice } from './touch.js';   // K27: телефон і планшет
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -24,12 +25,14 @@ function loadParams() {
   const p = R.defaultParams();
   let o = null;
   try { o = JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}'); } catch { }
-  if (!o || typeof o !== 'object') return p;
-  for (const k in R.PARAM_META) {
-    const m = R.PARAM_META[k], v = o[k];
-    if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
+  if (o && typeof o === 'object') {
+    for (const k in R.PARAM_META) {
+      const m = R.PARAM_META[k], v = o[k];
+      if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
+    }
+    for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
   }
-  for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
+  p.mode = q.get('tut') && q.get('tut') !== '0' ? 'tutorial' : 'normal';   // K22: навчання — лише ?tut=1 чи game.startTutorial(), не з пам'яті
   return p;
 }
 
@@ -65,11 +68,20 @@ const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — 
 try {   // K21: лише відомі значення (старе 'medium' чи рядок 'false' не ламають slowCheck, вібрацію й підказки)
   const o = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {};
   if (o.quality === 'low') prefs.quality = 'low';
+  else if (o.quality !== 'high' && isTouchDevice()) prefs.quality = 'low';   // K27: телефон — «низька», поки не обрали самі
   if (o.rumble === false) prefs.rumble = false;
   if (o.tips === false) prefs.tips = false;
 } catch { }
 input.setRumble(prefs.rumble);
-const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+input.setTouch(game.touch = createTouch({ canvas }));   // K27
+const nextRestart = () => {
+  if (game.state?.status === 'won' && game.params.mode === 'tutorial') return game.stopTutorial();   // K22: навчання пройдено — далі справжня смуга
+  restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+};
+// K22: навчальна смуга (tutorial.js) — кнопка «🎓 Навчання» на стартовому екрані HUD кличе game.startTutorial()
+const setMode = (mode) => { game.params = { ...game.params, mode }; panel?.set?.({ mode }); restart(); };
+game.startTutorial = () => setMode('tutorial');
+game.stopTutorial = () => setMode('normal');
 const panel = createPanel(document.getElementById('kol-panel'), {
   meta: R.PARAM_META, variants: R.VARIANTS, values: game.params,
   onChange(values) { game.params = { ...values }; try { localStorage.setItem(PARAMS_KEY, JSON.stringify(values)); } catch { } },
@@ -90,12 +102,16 @@ const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('n
 window.KOL.net = net;
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
+// K23: «📅 Маршрут дня» — сід від дати (Київ), типові params (панель — для звичайної гри); «ще раз» лишає маршрут дня
+game.startDaily = () => { const date = kyivDate(); game.daily = { date, seed: dailySeed(date) }; restart(game.daily.seed); };
 function restart(seed = game.seed) {
-  if (net) return net.restart(seed, game.params);   // K3
+  if (game.daily && game.daily.seed !== seed >>> 0) game.daily = null;   // K23
+  const P = game.daily ? R.defaultParams() : game.params;   // K23
+  if (net) return net.restart(seed, P);   // K3
   if (game.wantLocal) { game.local = game.wantLocal; game.wantLocal = 0; game.bots = Math.min(game.bots, R.MAX_PLAYERS - game.local); input.setPlayers(game.local); }   // K12
   game.seed = seed >>> 0;
   panel?.setSeed?.(game.seed);
-  game.state = R.newGame(game.seed, game.params, game.local + game.bots);
+  game.state = R.newGame(game.seed, P, game.local + game.bots);
   game.bot = [];
   for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b));
   view?.setWorld?.(game.state);
@@ -181,7 +197,8 @@ function joinP2() {
 
 let hudUi = null;
 function drawHud() {
-  hudUi ??= createHud(hud, { players: game.local + game.bots, onStart: () => input.swallow(), onRestart: nextRestart });   // K9, K12
+  hudUi ??= createHud(hud, { players: game.local + game.bots, onStart: () => input.swallow(), onRestart: nextRestart,   // K9, K12
+    input, onSettings: () => panel.toggle(true), panelOpen: () => !!panel.isOpen?.() });   // K23: пауза
   game.hud = hudUi;   // K12: для замірів у консолі
   hudUi.update(game.state, game);
 }

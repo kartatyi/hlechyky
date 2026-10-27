@@ -50,16 +50,16 @@ public class KoliyaPeopleTests
         var h = Table("Оля", "Петро");
         h.Tick(5);
         var n = Log(h).GetProperty("n").GetInt32();
-        h.Input(1, "react", new { e = 2, i = 7 });
-        h.Input(1, "react", new { e = 0, i = 8 });          // зарано — мовчки викинуто
+        h.Input(1, "react", new { em = 2, i = 7 });
+        h.Input(1, "react", new { em = 0, i = 8 });          // зарано — мовчки викинуто
         h.Tick(1);
         Assert.Equal([1, 1, 2, 7], R(LastFrame(h)));
         Assert.Equal(n, Log(h).GetProperty("n").GetInt32());   // журнал правил (і світ, і хеш) не зачеплено
         h.Tick(10);                                          // 0,5 с — ще їде в кадрах
         Assert.Equal([1, 1, 2, 7], R(LastFrame(h)));
         h.Tick(10);                                          // 1 с від першої — можна знову; перша ще в кадрі
-        h.Input(1, "react", new { e = 3, i = 9 });
-        h.Input(0, "react", new { e = 1, i = 1 });           // інший гравець — свій ліміт
+        h.Input(1, "react", new { em = 3, i = 9 });
+        h.Input(0, "react", new { em = 1, i = 1 });           // інший гравець — свій ліміт
         h.Tick(1);
         Assert.Equal([1, 1, 2, 7, 2, 1, 3, 9, 3, 0, 1, 1], R(LastFrame(h)));
         h.Tick(30);                                          // > 1,5 с — зникли з кадрів
@@ -114,10 +114,10 @@ public class KoliyaPeopleTests
     public void Погана_реакція_відмовляє()
     {
         var h = Table("Оля");
-        Assert.False(h.Act(0, "react", new { e = 4 }).Ok);
-        Assert.False(h.Act(0, "react", new { e = -1 }).Ok);
-        Assert.False(h.Act(0, "react", new { e = 1, q = 1 }).Ok);   // другого за ПК нема
-        Assert.True(h.Act(0, "react", new { e = 1 }).Ok);
-        Assert.False(h.Act(0, "react", new { e = 1 }).Ok);           // зарано
+        Assert.False(h.Act(0, "react", new { em = 4 }).Ok);
+        Assert.False(h.Act(0, "react", new { em = -1 }).Ok);
+        Assert.False(h.Act(0, "react", new { em = 1, q = 1 }).Ok);   // другого за ПК нема
+        Assert.True(h.Act(0, "react", new { em = 1, e = 1 }).Ok);     // e — епоха (K24), не емодзі
+        Assert.False(h.Act(0, "react", new { em = 1 }).Ok);           // зарано
     }
 }

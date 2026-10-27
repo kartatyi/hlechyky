@@ -269,7 +269,9 @@ export function toCmd(c, j) {
   if (k === 'use') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7], h: c[j + 8] };
   if (k === 'throw') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7] };
   if (k === 'join' || k === 'horn') return { p, k };
-  return { p, k: 'leave' };
+  // K24: невідомий вид (новий сервер, стара вкладка без F5) — не 'leave' (вибив би гравця), а порожня команда:
+  // rules її пропустить, світ розійдеться лише на цій дії, і звірка хешу це покаже
+  return k === 'leave' ? { p, k } : { p, k: 'k' + c[j + 3] };
 }
 
 /**
@@ -388,7 +390,7 @@ export function createNet(game, opts = {}) {
     myReacts.add(i);
     if (myReacts.size > 32) myReacts.delete(myReacts.values().next().value);
     showReact(p, k, now);
-    const m = { e: k, i, ...(q ? { q: 1 } : {}) };
+    const m = { em: k, i, e, ...(q ? { q: 1 } : {}) };   // e — епоха (K24: стару сервер викидає)
     lagOut(() => conn.send('Input', room, 'react', m).catch(() => { }));
     return true;
   }
@@ -674,8 +676,12 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
         const h = R.hash(C);
         hashes.set(C.tick, h);
         if (hashes.size > 64) hashes.delete(hashes.keys().next().value);
-        const m = { t: C.tick, h };   // тик — зараз, а не коли затримка відпустить (C тим часом піде далі)
-        lagOut(() => conn?.send('Input', room, 'hash', m).catch(() => { }));
+        // K24: e — щоб сервер не звірив хеш старої епохи з новою; лише останні звірки — пізній вхід доганяє тисячі тиків
+        // за раз, і пачка хешів (раз на 100 тиків) з'їла б квоту 30 Input/с, а з нею — власні команди гравця
+        if (w + 1 - C.tick < 2 * HASH_EVERY) {
+          const m = { t: C.tick, h, e };   // тик — зараз, а не коли затримка відпустить (C тим часом піде далі)
+          lagOut(() => conn?.send('Input', room, 'hash', m).catch(() => { }));
+        }
       }
     }
     const before = pending.length;
@@ -730,7 +736,8 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     const i = ++idSeq;
     pending.push({ t, i, cmd });
     stats.sent++;
-    lagOut(() => conn.send('Input', room, kind, { ...payload, t, i }).catch((x) => console.warn('Колія: Input', x)));
+    const ep = e;   // K24: епоха — запізнілий після перезапуску ввід сервер викине
+    lagOut(() => conn.send('Input', room, kind, { ...payload, t, i, e: ep }).catch((x) => console.warn('Колія: Input', x)));
   }
 
   /** Передбачений світ до тику target; нові тики — зі своїм керуванням і подіями. */
