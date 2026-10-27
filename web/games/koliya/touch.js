@@ -63,7 +63,7 @@ html.kol-touch .kol-tl { display: block; }
   .kol-tuse { --s: clamp(72px, 21vmin, 96px); }
   .kol-tthrow, .kol-thorn { --s: clamp(50px, 14vmin, 64px); }
 }
-.kol-tpo { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); max-width: calc(100vw - 24px); display: none;
+.kol-tpo { position: absolute; left: 50%; bottom: calc(45% + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 24px); display: none;
   pointer-events: auto; align-items: center; gap: .6em; padding: .45em .5em .45em .8em; border-radius: 10px; background: #171b13ee;
   border: 1px solid #ffffff2a; font-size: 13px; }
 .kol-tpo button { font: inherit; font-size: 18px; color: #fff; background: none; border: 0; min-width: 36px; min-height: 36px; }
@@ -128,7 +128,16 @@ export function createTouch(opts = {}) {
     const dx = fx - cx, dy = fy - cy, d = Math.hypot(dx, dy), k = d > R ? R / d : 1;
     put(cx, cy, dx * k, dy * k);
   }
-  function orient() { layer.classList.toggle('kol-po', !poClosed && innerHeight > innerWidth); }
+  let poTimer = 0, wasPortrait = null;
+  function orient() {   // підказка в портреті — до ✕ (на сесію) або 12 с (до наступного повороту)
+    const portrait = innerHeight > innerWidth;
+    if (portrait === wasPortrait && !poClosed) return;   // resize від панелі адреси — не показувати знову
+    wasPortrait = portrait;
+    const on = !poClosed && portrait;
+    layer.classList.toggle('kol-po', on);
+    clearTimeout(poTimer);
+    if (on) poTimer = setTimeout(() => layer.classList.remove('kol-po'), 12000);
+  }
   function activate() {
     if (active) return;
     active = true; html.classList.add('kol-touch');
@@ -208,6 +217,7 @@ export function createTouch(opts = {}) {
   }
   function buzz(kind) {
     if (!vibrate || !active || typeof navigator.vibrate !== 'function') return;
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;   // до першого справжнього дотику браузер однаково не дасть
     const pat = kind === 'lost' ? [60, 40, 120] : kind === 'hit' ? 18 : 10;
     try { navigator.vibrate(pat); } catch { }
   }
