@@ -59,6 +59,8 @@ const par = (s, k) => {
   return EXTRA_PARAMS[k] ? EXTRA_PARAMS[k].def : EXTRA_VARIANTS[k].values[0];
 };
 const ev = (s, t, x, y, p) => { const e = { t, x, y }; if (p !== undefined) e.p = p; s.ev.push(e); };
+// K48: події покращень — наявні типи (свій звук і ефект уже є), а що це покращення — у полі u (для HUD)
+const evU = (s, t, x, y, p, u) => { const e = { t, x, y, u }; if (p !== undefined) e.p = p; s.ev.push(e); };
 const isTool = (k) => k === I.AXE || k === I.PICK || k === I.BUCKET || k === I.BUCKET_FULL;
 const rndN = (s, n) => rnd(s) % n;
 
@@ -151,7 +153,7 @@ function stepUps(s) {
     if (u.ct > 0) u.ct--;
     if (u.ct === 0 && u.cw > 0 && t.heat >= CIST_HEAT) {
       t.heat = 0; t.ht = 0; t.fire = 0; u.cw--; u.ct = CIST_SEC * TPS;
-      const w = wagonPos(s, 0); ev(s, 'cist', Math.floor(w.x / U), Math.floor(w.y / U));
+      const w = wagonPos(s, 0); evU(s, 'douse', Math.floor(w.x / U), Math.floor(w.y / U), undefined, 'cist');
     }
   }
   if (u.mag && --u.mt <= 0) { u.mt = MAG_TICKS; magnet(s); }
@@ -177,7 +179,7 @@ function magnet(s) {
     if (take <= 0) continue;
     t[key] += take; s.dropN[i] -= take;
     if (!s.dropN[i]) s.drop[i] = I.NONE;
-    ev(s, 'magnet', i % W, (i / W) | 0, k);
+    evU(s, 'pick', i % W, (i / W) | 0, undefined, 'magnet');
     return;
   }
 }
@@ -196,12 +198,12 @@ function upsUse(s, p, pl, cell) {
   if (wk < 0) return false;
   if (u.cist && wk >= 1 && pl.hold.k === I.BUCKET_FULL && u.cw < u.cist * CIST_MAX) {
     u.cw = Math.min(u.cist * CIST_MAX, u.cw + CIST_BUCKET); pl.hold.k = I.BUCKET;
-    ev(s, 'cist_fill', cell.x, cell.y, p);
+    evU(s, 'drop', cell.x, cell.y, p, 'cist');
     return true;
   }
   if (u.brake && wk === 0 && pl.hold.k !== I.BUCKET_FULL && u.bn > 0 && !u.bt && s.train.started) {
     u.bn--; u.bt = BRAKE_SEC * TPS;
-    ev(s, 'brake', cell.x, cell.y, p);
+    evU(s, 'whistle', cell.x, cell.y, p, 'brake');
     return true;
   }
   return false;

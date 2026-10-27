@@ -62,7 +62,7 @@ test('K48 🚿: цистерна поливає теплий котел раз �
   // таймер вийшов — полив
   u.ct = 1;
   R.step(s, []);
-  assert.ok(s.ev.some((e) => e.t === 'cist'));
+  assert.ok(s.ev.some((e) => e.t === 'douse' && e.u === 'cist'));
   assert.ok(t.heat < X.CIST_HEAT, 'котел холодний: ' + t.heat);
   assert.equal(u.cw, X.CIST_MAX - 1);
   assert.equal(u.ct, X.CIST_SEC * TPS);
@@ -72,7 +72,7 @@ test('K48 🚿: цистерна поливає теплий котел раз �
   // порожня цистерна — не поливає
   u.cw = 0; u.ct = 1; t.ht = 10000; t.heat = 900;
   R.step(s, []);
-  assert.ok(t.heat >= 900 && !s.ev.some((e) => e.t === 'cist'));
+  assert.ok(t.heat >= 900 && !s.ev.some((e) => e.u === 'cist'));
   t.ht = 0; t.heat = 0;   // інакше долита вода одразу ж поллється на гарячий котел
   // повне відро на склад (вагон 1) — +CIST_BUCKET, відро порожнє; котел (вагон 0) відро далі гасить як було
   const pl = under(s, 0, 1);
@@ -80,7 +80,7 @@ test('K48 🚿: цистерна поливає теплий котел раз �
   R.step(s, [{ p: 0, k: 'use' }]);
   assert.equal(u.cw, X.CIST_BUCKET);
   assert.equal(pl.hold.k, I.BUCKET);
-  assert.ok(s.ev.some((e) => e.t === 'cist_fill' && e.p === 0));
+  assert.ok(s.ev.some((e) => e.t === 'drop' && e.u === 'cist' && e.p === 0));
   // повна цистерна — відро в склад не з'їдається
   u.cw = X.CIST_MAX; pl.hold.k = I.BUCKET_FULL; under(s, 0, 1);
   assert.equal(X.extrasUse(s, 0, cellOf(s, 1)), false);
@@ -114,7 +114,7 @@ test('K48 🐢: гальма — дія на паротяг, 10 с удвічі 
   under(s, 0, 0); under(a, 0, 0);
   const p0 = s.train.pos;
   R.step(s, [{ p: 0, k: 'use' }]); R.step(a, []);
-  assert.ok(s.ev.some((e) => e.t === 'brake' && e.p === 0));
+  assert.ok(s.ev.some((e) => e.t === 'whistle' && e.u === 'brake' && e.p === 0));
   assert.equal(s.ups.bn, 0);
   for (let t = 1; t < X.BRAKE_SEC * TPS; t++) { R.step(s, []); R.step(a, []); }
   assert.equal(s.ups.bt, 0);
