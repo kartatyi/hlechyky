@@ -109,6 +109,7 @@ function afterStep(s) {
   }
   audio.setTrain?.(s.status === 'run' ? Math.min(1, s.train.speed / 1000 / (s.params.speedMax * U_PER_TICK)) : 0);
   view?.events?.(s.ev);
+  if (s.endless && s.ev.some((e) => e.t === 'shift')) view?.setWorld?.(s);   // K19: вікно нескінченної колії зсунулось — сцену заново
 }
 
 // Тестовий режим (?test або headless-автоматизація): не більше 10 к/с — headless Chrome малює WebGL програмно й їсть CPU проду
