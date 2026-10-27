@@ -142,6 +142,7 @@ test('K33-3: вийшов з деревом — є місце поруч: на �
 
 test('K33-3: вийшов з деревом/залізом/рейками, поруч нема місця — у склад і майстерню', () => {
   const s = blank({}, 2);
+  s.params.railsMax = 0;   // майстерня не з'їдає дерево+залізо в тому ж тику
   for (const [k, key] of [[I.WOOD, 'wood'], [I.IRON, 'iron'], [I.RAIL, 'rails']]) {
     const before = s.train[key];
     const pl = wet(s); pl.hold = { k, n: 3 };
