@@ -146,6 +146,10 @@ export function createMenu(box, opts = {}) {
     const room = window.KOL?.net?.room;
     if (!room) return '';
     try {
+      // У рамці столу на сайті — посилання на сам стіл: друг зайде через сайт (нік, балачки), а не на голу сторінку гри
+      if (window.parent !== window && window.parent.location.origin === location.origin) return location.origin + '/#games/room/' + encodeURIComponent(room);
+    } catch { /* чужа рамка — як без неї */ }
+    try {
       const u = new URL(location.href);
       for (const k of ['nick', 'drive', 'lag', 'jit', 'test', 'seed']) u.searchParams.delete(k);
       u.searchParams.set('net', room); u.searchParams.delete('p');
