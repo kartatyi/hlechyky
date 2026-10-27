@@ -4,6 +4,7 @@
 // Власник: K2 «Правила» (контракт — D:\or-wt\_kolia\CONTRACT.md).
 import { generate } from './gen.js';
 import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: додатки за перемикачем
+import { endlessHash } from './endless.js';                          // K19: нескінченна колія
 
 export const TICK_MS = 50;           // 20 тиків/с
 export const TPS = 1000 / TICK_MS;
@@ -60,7 +61,7 @@ export const PARAM_META = {
 export const VARIANTS = {
   overheat: { values: ['fire', 'stop'], labels: ['Пожежа', 'Зупинка'], label: 'Перегрів котла' },
   geese:      { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Гуси-злодюжки 🪿' },                      // K11
-  stationMode: { values: ['end', 'upgrade'], labels: ['Кінець', 'Проміжна з покращеннями'], label: 'Станція 🏪' }, // K11
+  stationMode: { values: ['end', 'upgrade', 'endless'], labels: ['Кінець', 'Проміжна з покращеннями', 'Нескінченна ♾'], label: 'Станція 🏪' }, // K11, K19 (endless.js)
   // K14 «Відчуття ядра»: move/useMode/aim — блоки «K14» біля руху гравця, speedCurve — trainSpeed()
   move: { values: ['free', 'grid', 'snappy'], labels: ['Вільно', 'Клітинками', 'Чітко'], label: 'Рух гравця' },
   useMode: { values: ['press', 'tap', 'auto'], labels: ['Затиснув — б\'є', 'Кожен удар — натиск', 'Б\'є сам'], label: 'Дія (рубати/бити)' },
@@ -748,5 +749,6 @@ export function hash(s) {
     mix(p.mx); mix(p.my); mix(p.ut); mix(p.out); mix(p.st);
     if (s.params.move === 'grid') { mix(p.gx); mix(p.gy); mix(p.gt); }   // K14 (типовий hash не змінюється)
   }
+  if (s.endless) mix(endlessHash(s));   // K19 (типовий hash не змінюється)
   return h >>> 0;
 }
