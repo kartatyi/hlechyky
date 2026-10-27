@@ -209,6 +209,23 @@ public class KoliyaTests
     }
 
     [Fact]
+    public void Кидок_з_позою_і_гудок_K18_у_журналі()
+    {
+        var h = Table();
+        h.Tick(20);
+        h.Input(0, "throw", new { x = 1500, y = 2500, fx = 0, fy = -1, t = 21, i = 1 });
+        h.Input(0, "horn", new { t = 22, i = 2 });
+        Assert.False(h.Act(0, "throw", new { x = "сюди" }).Ok);
+        Assert.False(h.Act(0, "horn", new { q = 1 }).Ok);              // другого за ПК нема
+        var e = Entries(Log(h));
+        Assert.Equal(2, e.Length);
+        Assert.Equal([0, 21, 0, Koliya.Throw, 1500, 2500, 0, -1, 0, 1], e[0]);
+        Assert.Equal([1, 22, 0, Koliya.Horn, 0, 0, 0, 0, 0, 2], e[1]);
+        h.Tick(1);
+        Assert.Equal(2, Entries(LastFrame(h)).Length);                   // і в кадрі
+    }
+
+    [Fact]
     public void Двоє_за_ПК_не_більше_чотирьох_гравців_rules()
     {
         var h = Table("Оля", "Петро");
