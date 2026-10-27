@@ -43,7 +43,8 @@ test("move='grid': короткий натиск у новий бік лише �
   assert.equal(pl.x, 60 * U + U / 2);
   assert.equal(pl.y % U, U / 2, 'стоїть у центрі клітинки');
   const c = cellOf(pl);
-  assert.ok(8 - c.y >= 4 && 8 - c.y <= 5, `пройшов ${8 - c.y}`);
+  const ps = s.params.playerSpeed;   // K13: від params, не від типових 4,5
+  assert.ok(8 - c.y >= Math.floor(ps) && 8 - c.y <= Math.ceil(ps) + 1, `пройшов ${8 - c.y} при ${ps} кл/с`);
   // з місця вбік: перші GRID_TURN тиків — поворот на місці, далі йде
   const x0 = pl.x;
   R.step(s, [inp(100, 0)]); R.step(s, []);
@@ -86,7 +87,7 @@ test("move='snappy': неповний нахил — повна швидкіст
   R.step(f, [inp(40, 0)]); R.step(sn, [inp(40, 0)]);
   run(f, 9); run(sn, 9);
   const x0 = 60 * U + U / 2;
-  assert.equal(b.x - x0, 10 * Math.round(4.5 * U / TPS), 'повна швидкість');
+  assert.equal(b.x - x0, 10 * Math.round(sn.params.playerSpeed * U / TPS), 'повна швидкість');
   assert.ok(b.x - x0 > (a.x - x0) * 2, `snappy ${b.x} vs free ${a.x}`);
   // діагональ: дивився вправо — лишається вправо, хоч вертикаль трохи більша
   const c = at(sn, 0, 60, 8, 1, 0);

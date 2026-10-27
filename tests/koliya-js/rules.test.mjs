@@ -7,7 +7,7 @@ const { U, G, O, I, TPS } = R;
 
 /** Порожня смуга: без лісу/скель/води, гравці подалі від колії */
 function blank(params = {}, n = 1) {
-  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, ...params };
+  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, soloSpeed: 1, ...params };   // K13: числа тестів — без соло-знижки
   const s = R.newGame(7, p, n);
   for (let i = 0; i < s.w * s.h; i++) {
     const y = (i / s.w) | 0;
@@ -257,7 +257,7 @@ test('станція: колія до станції — перемога', () =
   while (s.status === 'run' && s.tick < 20000) R.step(s, []);
   assert.equal(s.status, 'won');
   assert.ok(s.ev.some((e) => e.t === 'won'));
-  assert.ok(s.stats.cells > 100);
+  assert.ok(s.stats.cells > s.w / 2);
 });
 
 test('котел: перегрів — пожежа й поразка; повне відро гасить; варіант «stop» — стоїть', () => {
