@@ -11,6 +11,7 @@ import { createDebug2d } from './debug2d.js';
 import { createHud } from './hud.js';            // K9
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
+import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -110,6 +111,7 @@ function drawHud() {
 
 (async () => {
   view = game.view = await makeView();
+  mountLookUi(document.getElementById('kol-panel'), view);   // K5
   restart();
   requestAnimationFrame(frame);
 })();
