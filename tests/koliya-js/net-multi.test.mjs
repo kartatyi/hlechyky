@@ -345,3 +345,27 @@ test('K24: поза з use/throw — лише поруч і не в непрох
   R.step(s, [{ p: 0, k: 'use', x: pl.x + 400, y: pl.y, fx: -1, fy: 0, h: 0 }]);
   assert.deepEqual([pl.x, pl.fx], [far[0] * U + U / 2 + 400, -1], 'поруч — ставиться');
 });
+
+test('K24: endless — зсув вікна посеред кидка: річ у польоті сунеться разом зі світом', () => {
+  const s = R.newGame(7, { ...PARAMS, startSec: 90 }, 1), E = s.endless, L = E.L, W = s.w;
+  // штучно: станцію лівої ділянки проїхали, колія й хвіст потяга далеко в правій — наступний тик зсуває вікно
+  E.stations = 1;
+  const last = s.path[s.path.length - 1], y = (last / W) | 0;
+  for (let x = (last % W) + 1; x <= L + 20; x++) s.path.push(y * W + x);
+  s.train.pos = (s.path.length - 1) * R.U;
+  const tx = L + 12, ty = 3;
+  s.flying.push({ k: R.I.WOOD, n: 2, x: (tx - 2) * R.U, y: ty * R.U, z: 0, sx: (tx - 2) * R.U, sy: ty * R.U, tx, ty, t: 0, T: 10, p: 0 });
+  R.step(s, []);
+  assert.ok(s.ev.some((e) => e.t === 'shift'), 'зсуву не було — тест нічого не перевірив');
+  const f = s.flying[0];
+  assert.equal(f.tx, tx - L);
+  assert.ok(Math.abs(f.x - (tx - 2 - L) * R.U) < 2 * R.U, 'політ лишився в старих координатах');
+  for (let i = 0; i < 12 && s.flying.length; i++) R.step(s, []);
+  assert.equal(s.flying.length, 0);
+  let near = false;
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+    const x = tx - L + dx, yy = ty + dy;
+    if (R.inside(s, x, yy) && s.drop[yy * W + x] === R.I.WOOD) near = true;
+  }
+  assert.ok(near, 'дерево впало не там, куди летіло');
+});
