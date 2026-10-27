@@ -443,7 +443,7 @@ export function createBot(p, opts = {}) {
     const z = zeal / 100, kz = 1 - z;
     const idleT = Math.round(10 * TPS * (1 - 0.8 * z));       // «людина не будує»: 10 с → 2 с
     const hitW = Math.round(3 * TPS * kz), putW = Math.round(8 * TPS * kz);   // скільки тримаємо її ціль / покладене
-    const rTool = Math.round(2 * kz), rNear = Math.round(10 * kz), rWalk = 6 * kz, rLay = Math.round(8 * kz);
+    const rTool = Math.round(2 * kz), rNear = Math.round(10 * kz), rWalk = 6 * kz, rLay = z < 0.5 ? Math.round(8 * (1 - 2 * z)) : -1;   // класти лишаємо їй лише до середини
     for (const { q, pl: hp, h, hc } of H) {
       const hx = hc % s.w, hy = (hc / s.w) | 0;
       const idle = s.tick - h.act >= idleT;
