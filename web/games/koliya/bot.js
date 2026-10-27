@@ -92,7 +92,7 @@ const RT = { n: -1, inPath: null, dist: null, prev: null, hd: null, hc: null, co
 function rtBuf(n) {
   if (RT.n === n) return;
   RT.n = n; RT.inPath = new Uint8Array(n); RT.dist = new Int32Array(n); RT.prev = new Int32Array(n);
-  RT.hd = new Int32Array(4 * n + 4); RT.hc = new Int32Array(4 * n + 4);
+  RT.hd = new Int32Array(4 * n + 4); RT.hc = new Int32Array(4 * n + 4); RT.cost = new Int32Array(n);
   RT.obj = new Uint8Array(n); RT.ground = new Uint8Array(n); RT.drop = new Uint8Array(n); RT.route = null;
 }
 function rtSame(s) {
@@ -112,7 +112,7 @@ function planRoute(s) {
   const inPath = RT.inPath.fill(0);
   for (let i = 0; i < path.length; i++) inPath[path[i]] = 1;
   const dist = RT.dist.fill(0x3fffffff), prev = RT.prev.fill(-1);
-  const hd = RT.hd, hc = RT.hc;
+  const hd = RT.hd, hc = RT.hc, cc = RT.cost.fill(-2);
   let hn = 0;
   const push = (d, c) => {
     let i = hn++; hd[i] = d; hc[i] = c;
@@ -137,23 +137,30 @@ function planRoute(s) {
       const nx = x + dx, ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const m = ny * W + nx;
-      if (inPath[m]) continue;
-      const ob = obj[m];
-      if (ob === O.WALL) continue;
-      let cost = 10;
-      const gm = ground[m];
-      if (ob === O.TREE) cost = 30; else if (ob === O.ROCK) cost = 40;
-      else if (gm === G.WATER) cost = 35;
-      else if (gm === G.CHASM) cost = 60; else if (gm === G.FRAME) cost = 35;   // K26: яр — дерево + залізо
-      if (drop[m]) cost += 25;
-      if (dy) cost += 2;               // трохи краще прямо вздовж смуги
-      // краще просторі місця: у вузькому коридорі потяг затуляє прохід, і гравцю не обійти його
-      for (let e = 0; e < 4; e++) {
-        const qx = nx + DIRS[e][0], qy = ny + DIRS[e][1];
-        if (qx < 0 || qy < 0 || qx >= W || qy >= H) { cost += 8; continue; }
-        const q = qy * W + qx;
-        if (!inPath[q] && (obj[q] !== O.NONE || noFoot(ground[q]))) cost += 8;
+      // K51: ціна входу в клітинку (без «+2 поперек») залежить лише від клітинки — рахуємо раз за виклик (cc, -2 — ще ні)
+      let cost = cc[m];
+      if (cost === -2) {
+        const ob = obj[m];
+        if (inPath[m] || ob === O.WALL) cost = -1;
+        else {
+          cost = 10;
+          const gm = ground[m];
+          if (ob === O.TREE) cost = 30; else if (ob === O.ROCK) cost = 40;
+          else if (gm === G.WATER) cost = 35;
+          else if (gm === G.CHASM) cost = 60; else if (gm === G.FRAME) cost = 35;   // K26: яр — дерево + залізо
+          if (drop[m]) cost += 25;
+          // краще просторі місця: у вузькому коридорі потяг затуляє прохід, і гравцю не обійти його
+          for (let e = 0; e < 4; e++) {
+            const qx = nx + DIRS[e][0], qy = ny + DIRS[e][1];
+            if (qx < 0 || qy < 0 || qx >= W || qy >= H) { cost += 8; continue; }
+            const q = qy * W + qx;
+            if (!inPath[q] && (obj[q] !== O.NONE || noFoot(ground[q]))) cost += 8;
+          }
+        }
+        cc[m] = cost;
       }
+      if (cost < 0) continue;
+      if (dy) cost += 2;               // трохи краще прямо вздовж смуги
       const nd = d + cost;
       if (nd < dist[m]) { dist[m] = nd; prev[m] = c; push(nd, m); }
     }
