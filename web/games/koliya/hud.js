@@ -9,6 +9,10 @@
 //  K16: events(ev, s) — гачок з main.js щотику: тости подій («🪿 Гуска вкрала сокиру!», покращення станції, «💫»);
 //  тости — не більше 2 одночасно (новий витісняє найстаріший). Біля смуги прогресу — біом під паротягом (s.zones від
 //  K7; з проміжною станцією — і зони другої смуги) і позначка 🏪 проміжної; паротяг на проміжній — банер «оберіть».
+//  K23: нескінченна (s.endless) — «🚉 N · ділянка», до наступної, відлік зупинки; рекорди kol-best (станції / час сіду),
+//  kol-daily (маршрут дня: dailySeed/kyivDate для main.js); підсумок по гравцях із s.ev і звання; пауза Esc/⏸
+//  (opts.input — пад у меню, opts.onSettings(), opts.panelOpen()); на старті «📅 Маршрут дня» / «🎓 Навчання», якщо в game
+//  є startDaily / startTutorial.
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES } from './extras.js';             // K16: тост покращення
@@ -27,6 +31,33 @@ function loadBest() { try { const b = JSON.parse(localStorage.getItem(BEST_KEY) 
 function saveBest(b) { try { localStorage.setItem(BEST_KEY, JSON.stringify(b)); } catch { } }
 const plural = (n, a, b, c) => { const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c; };
 const whoLabel = (n) => n <= 1 ? 'соло' : `${n} ${plural(n, 'гравець', 'гравці', 'гравців')}`;
+// K23: «📅 Маршрут дня» — дата за Києвом (YYYY-MM-DD) і сід від неї, однаковий у всіх; рекорд дня — kol-daily
+const DAILY_KEY = 'kol-daily';
+export function kyivDate(d = new Date()) {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
+  catch { return d.toISOString().slice(0, 10); }
+}
+export function dailySeed(date = kyivDate()) {
+  let h = (Number(String(date).replace(/\D/g, '')) ^ 0x4B4F4C49) >>> 0;   // YYYYMMDD ^ «KOLI»
+  h = Math.imul(h ^ (h >>> 16), 0x85EBCA6B); h = Math.imul(h ^ (h >>> 13), 0xC2B2AE35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+function loadDaily() { try { const b = JSON.parse(localStorage.getItem(DAILY_KEY) || '{}'); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
+/** Рекорд дня: { kind: 'dst'|'dtime', val, prev, isNew, n } — час до станції (менше краще) чи станції нескінченної */
+function judgeDaily(s, date, save = true) {
+  const n = s.players?.length ?? 1, b = loadDaily(), day = b[date] ?? {};
+  const kind = s.endless ? 'dst' : 'dtime', key = `${s.endless ? 'e' : 't'}${n}`, prev = +day[key] || 0;
+  let val = 0, isNew = false;
+  if (s.endless) { val = s.endless.stations | 0; isNew = val > prev; }
+  else if (s.status === 'won') { val = s.tick | 0; isNew = !prev || val < prev; }
+  if (isNew && save) {
+    b[date] = { ...day, [key]: val };
+    for (const d of Object.keys(b).sort().slice(0, -7)) delete b[d];   // тримаємо тиждень
+    try { localStorage.setItem(DAILY_KEY, JSON.stringify(b)); } catch { }
+  }
+  return { kind, val, prev, isNew, n };
+}
+
 /** Підсумок рекорду партії, що скінчилась: { kind: 'st'|'time', val, prev, isNew } або null (рахувати нема що) */
 function judgeRecord(s) {
   const n = s.players?.length ?? 1;
@@ -112,6 +143,13 @@ const CSS = `
 .kol-ptab td:first-child { text-align: left; }
 .kol-ptab td.kol-ttl { text-align: left; font-weight: 700; color: #ffe9a8; }
 .kol-ptab i { opacity: .35; font-style: normal; }
+#kol-hud .kol-top { right: 124px; }
+.kol-pausebtn { position: fixed; right: 62px; top: 8px; width: 46px; height: 46px; border-radius: 10px; border: 1px solid #fff3;
+  background: rgba(20,24,18,.7); color: #f4efe2; font-size: 20px; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
+.kol-modes { display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; }
+.kol-modes .kol-again { font-size: 1em; }
+.kol-pmenu { display: flex; flex-direction: column; align-items: stretch; gap: .1em; width: fit-content; margin: .4em auto; }
+.kol-pmenu .kol-again:focus { outline: 3px solid #ffd23f; outline-offset: 2px; }
 @media (max-width: 640px) { .kol-card .kol-sum { grid-template-columns: auto auto; } .kol-ptab { font-size: .72em; } .kol-ptab th, .kol-ptab td { padding: .1em .25em; } }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
@@ -210,7 +248,23 @@ export function createHud(root, opts = {}) {
       <span class="kol-kbonly"><b>R</b></span><span class="kol-kbonly">рестарт · <b>F1</b> — налаштування</span>
     </div>
     <p class="kol-hint">${n > 1 ? `Гравців: ${n}. ` : ''}Другий пад — другий гравець. <span class="kol-kbonly"><code>?p=2</code> — удвох з клавіатури, <code>&amp;bot=1</code> — бот</span></p>
-    <div class="kol-go"><span class="kol-kbonly">Натисніть будь-яку кнопку</span><span class="kol-padonly">🎮 <b>A</b> — почати</span></div>`);
+    <div class="kol-go"><span class="kol-kbonly">Натисніть будь-яку кнопку</span><span class="kol-padonly">🎮 <b>A</b> — почати</span></div>
+    <div class="kol-modes"><button class="kol-again kol-m" type="button" data-act="daily">📅 Маршрут дня</button><button class="kol-again kol-m" type="button" data-act="tutorial">🎓 Навчання</button></div>
+    <div class="kol-hint kol-dayrec"></div>`);
+  // K23: «🎓 Навчання» (є game.startTutorial — K22) і «📅 Маршрут дня» (game.startDaily) — інакше кнопки сховані
+  const btnTut = start.querySelector('[data-act="tutorial"]'), btnDay = start.querySelector('[data-act="daily"]'), dayRec = start.querySelector('.kol-dayrec');
+  btnTut.style.display = btnDay.style.display = 'none';
+
+  // — пауза (K23): Esc або ⏸; у мережі — лише меню, світ не стоїть
+  const pauseBtn = el('button', 'kol-pausebtn', root, '⏸'); pauseBtn.type = 'button'; pauseBtn.title = 'Пауза (Esc)';
+  pauseBtn.style.display = 'none';
+  const pause = el('div', 'kol-screen', root);
+  const pauseCard = el('div', 'kol-card', pause, `<h1>⏸ Пауза</h1><p class="kol-hint kol-pnet"></p>
+    <div class="kol-pmenu"><button class="kol-again" type="button" data-act="resume">▶ Продовжити</button>
+    <button class="kol-again" type="button" data-act="restart">↻ Почати заново</button>
+    <button class="kol-again" type="button" data-act="settings">⚙ Налаштування</button></div>
+    <p class="kol-hint">Esc — продовжити</p>`);
+  const pauseNet = pauseCard.querySelector('.kol-pnet'), pauseBtns = [...pauseCard.querySelectorAll('button')];
 
   // — кінець
   const end = el('div', 'kol-screen', root);
@@ -225,9 +279,75 @@ export function createHud(root, opts = {}) {
     if (game0) game0.paused = false;
     opts.onStart?.();
   };
-  const onKey = (e) => { if (!started && !['F1', 'Backquote', 'Shift', 'Control', 'Alt', 'Meta'].includes(e.key) && e.code !== 'Backquote') begin(); };
+  const onKey = (e) => {
+    if (!started && !['F1', 'Backquote', 'Shift', 'Control', 'Alt', 'Meta'].includes(e.key) && e.code !== 'Backquote') begin();
+    else if (started) pauseKey(e);   // K23
+  };
   addEventListener('keydown', onKey);
-  start.addEventListener('pointerdown', begin);
+  start.addEventListener('pointerdown', (e) => {
+    const act = e.target.closest?.('[data-act]')?.dataset.act;   // K23: кнопки режимів
+    begin();
+    if (act) { e.preventDefault(); e.target.blur?.(); if (act === 'tutorial') game0?.startTutorial?.(); else if (act === 'daily') game0?.startDaily?.(); }
+  });
+
+  // K23: пауза. Локально — game.paused (тики стоять); мережа (KOL.net) — лише меню. Пад у меню: ✚ — вибір, A — так, B — назад
+  let paused = false, pauseState = null, waitPanel = false, pauseIdx = 0;
+  const isNet = () => !!(game0?.net || window.KOL?.net);
+  const canPause = () => started && lastState?.status === 'run' && !opts.panelOpen?.();
+  const pauseFocus = (i) => { pauseIdx = (i + pauseBtns.length) % pauseBtns.length; pauseBtns[pauseIdx].focus({ preventScroll: true }); };
+  function openPause() {
+    if (paused || !canPause()) return;
+    paused = true; pauseState = lastState;
+    if (!isNet() && game0) game0.paused = true;
+    pauseNet.textContent = isNet() ? '🌐 Гра в мережі — світ не стоїть, паротяг їде далі!' : '';
+    pauseBtns[2].style.display = opts.onSettings ? '' : 'none';
+    pause.style.display = 'flex'; pauseFocus(0);
+    opts.input?.setMenu?.((k) => {
+      if (k === 'up' || k === 'left') pauseFocus(pauseIdx - 1);
+      else if (k === 'down' || k === 'right') pauseFocus(pauseIdx + 1);
+      else if (k === 'a') pauseAct(pauseBtns[pauseIdx].dataset.act);
+      else if (k === 'b') pauseAct('resume');
+      else if (k === 'start') pauseAct('restart');
+      else if (k === 'menu') pauseAct('settings');
+    });
+  }
+  function closePause(resume = true) {
+    if (!paused) return;
+    paused = false; pause.style.display = 'none';
+    document.activeElement?.blur?.();
+    opts.input?.setMenu?.(null);
+    if (resume && game0 && started) game0.paused = false;
+  }
+  function pauseAct(act) {
+    if (act === 'resume') closePause();
+    else if (act === 'restart') { closePause(); opts.onRestart?.(); }
+    else if (act === 'settings' && opts.onSettings) { closePause(false); waitPanel = !isNet(); opts.onSettings(); }
+  }
+  function pauseKey(e) {
+    if (e.key === 'Escape') { if (paused) closePause(); else if (!opts.panelOpen?.()) openPause(); return; }
+    if (!paused) return;
+    const k = e.code;
+    if (k === 'ArrowUp' || k === 'KeyW' || k === 'ArrowLeft' || k === 'KeyA') pauseFocus(pauseIdx - 1);
+    else if (k === 'ArrowDown' || k === 'KeyS' || k === 'ArrowRight' || k === 'KeyD') pauseFocus(pauseIdx + 1);
+    else if (k === 'Enter' || k === 'Space' || k === 'KeyE' || k === 'NumpadEnter') { e.preventDefault(); if (!e.repeat) pauseAct(pauseBtns[pauseIdx].dataset.act); }
+  }
+  pauseBtn.addEventListener('click', () => { pauseBtn.blur(); if (paused) closePause(); else openPause(); });
+  pauseCard.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) { e.preventDefault(); pauseAct(b.dataset.act); } });
+  // кадром: панель закрилась після «Налаштувань» — назад у паузу; нова партія (R/Start) — пауза геть
+  function pauseTick(s) {
+    if (waitPanel && !opts.panelOpen?.()) { waitPanel = false; if (s.status === 'run' && s === pauseState) { openPause(); } else if (game0) game0.paused = false; }
+    if (paused && s !== pauseState) closePause();
+    if (paused && s.status !== 'run') closePause(false);
+    if (waitPanel && s !== pauseState) { waitPanel = false; if (game0) game0.paused = false; }
+    const show = started && s.status === 'run' ? 'block' : 'none';
+    set(pauseBtn.style, 'pbtn|display', show);
+    set(btnTut.style, 'tut|display', typeof game0?.startTutorial === 'function' ? '' : 'none');
+    set(btnDay.style, 'day|display', typeof game0?.startDaily === 'function' ? '' : 'none');
+    if (!started && typeof game0?.startDaily === 'function' && !cache.has('dayrec|textContent')) {
+      const d = kyivDate(), r = judgeDaily({ players: s.players, status: '', endless: null }, d, false);
+      txt(dayRec, 'dayrec', `📅 ${d.slice(8, 10)}.${d.slice(5, 7)} — однаковий маршрут у всіх${r.prev ? ` · рекорд дня (${whoLabel(r.n)}): ${fmtTime(r.prev / TPS)}` : ''}`);
+    }
+  }
 
   // A або Start; повертає ще й «чи є пад» — для підказок
   let hasPad = false;
@@ -248,6 +368,11 @@ export function createHud(root, opts = {}) {
   function recHtml(r) {
     if (!r) return '';
     const who = whoLabel(r.n);
+    if (r.kind === 'dst' || r.kind === 'dtime') {
+      const f = (v) => r.kind === 'dst' ? `${v} ${plural(v, 'станція', 'станції', 'станцій')}` : fmtTime(v / TPS);
+      if (r.isNew) return `<div class="kol-rec kol-new">📅 Новий рекорд дня! ${f(r.val)}${r.prev ? ` (було ${f(r.prev)})` : ''}</div>`;
+      return `<div class="kol-rec">📅 Рекорд дня (${who}): ${r.prev ? f(r.prev) : 'ще нема — доїдьте першими'}</div>`;
+    }
     if (r.kind === 'st') return r.isNew ? `<div class="kol-rec kol-new">🏆 Новий рекорд! (${who})</div>`
       : `<div class="kol-rec">🏆 Рекорд (${who}): ${r.prev} ${plural(r.prev, 'станція', 'станції', 'станцій')}</div>`;
     if (r.isNew) return `<div class="kol-rec kol-new">🏆 Новий рекорд сіду! ${fmtTime(r.val / TPS)}${r.prev ? ` (було ${fmtTime(r.prev / TPS)})` : ''}</div>`;
@@ -264,6 +389,7 @@ export function createHud(root, opts = {}) {
     if (!s) return;
     game0 = game;
     if (!started) { if (game) game.paused = true; if (padPressed()) begin(); }
+    pauseTick(s);   // K23
     // DOM — лише коли щось могло змінитись (тик, статус, старт), а не щокадру
     const key = `${s.tick}|${s.status}|${started}|${s.players?.length}`;
     if (s === lastState && key === lastKey) return;
@@ -376,7 +502,11 @@ export function createHud(root, opts = {}) {
       const st = s.stats || {};
       const head = s.status === 'won' ? '🏁 Доїхали!' : s.reason === 'fire' ? '🔥 Згоріли' : '💥 Зійшли з колії';
       const maxCps = (st.maxSpeed ?? 0) / 1000 / U * TPS;
-      if (recState !== s) { recState = s; rec = s.tutorial || game?.tutorial ? null : judgeRecord(s); }
+      if (recState !== s) {
+        recState = s;
+        const day = game?.daily && game.daily.seed === s.seed ? game.daily.date : '';
+        rec = s.tutorial || game?.tutorial ? null : day ? judgeDaily(s, day) : judgeRecord(s);
+      }
       set(endCard, 'endc|innerHTML', `<h1>${head}</h1>${E ? `<div class="kol-big">🚉 Станцій: <b>${E.stations}</b></div>` : ''}${recHtml(rec)}
         <div class="kol-sum">
           <span>⏱ Час</span><b>${fmtTime(sec)}</b>
