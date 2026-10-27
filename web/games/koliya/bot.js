@@ -260,37 +260,48 @@ function digTarget(s, o, start, pred) {
   return -1;
 }
 
+// K51: буфери BFS — спільні (раніше три нові масиви на кожен виклик, ~15 викликів на тик). «Відвідано» — мітка
+// покоління vis[c] === gen замість заповнення par -2. Якщо pred раптом сам кличе bfs (busy) — свіжі буфери, як було.
+const BF = { n: -1, gen: 0, vis: null, par: null, dep: null, q: null, busy: false };
 function bfs(s, o, start, pred, mode, maxD = 400, thru = false) {
-  const W = s.w, n = s.w * s.h;
-  const par = new Int32Array(n).fill(-2), dep = new Uint16Array(n);
-  const q = new Int32Array(n);
-  let qh = 0, qt = 0;
-  par[start] = -1; q[qt++] = start;
-  while (qh < qt) {
-    const c = q[qh++];
-    const x = c % W, y = (c / W) | 0;
-    let tgt = -1;
-    if (mode === 'on') { if (c !== start && pred(c)) tgt = c; }
-    else for (const [dx, dy] of DIRS) {
-      const nx = x + dx, ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= W || ny >= s.h) continue;
-      if (pred(ny * W + nx)) { tgt = ny * W + nx; break; }
+  const W = s.w, H = s.h, n = s.w * s.h;
+  const own = !BF.busy;
+  let vis, par, dep, q, gen;
+  if (own) {
+    if (BF.n !== n) { BF.n = n; BF.gen = 0; BF.vis = new Uint32Array(n); BF.par = new Int32Array(n); BF.dep = new Uint16Array(n); BF.q = new Int32Array(n); }
+    if (++BF.gen >= 0xFFFFFFFF) { BF.gen = 1; BF.vis.fill(0); }
+    vis = BF.vis; par = BF.par; dep = BF.dep; q = BF.q; gen = BF.gen;
+    BF.busy = true;
+  } else { vis = new Uint32Array(n); par = new Int32Array(n); dep = new Uint16Array(n); q = new Int32Array(n); gen = 1; }
+  try {
+    let qh = 0, qt = 0;
+    vis[start] = gen; par[start] = -1; dep[start] = 0; q[qt++] = start;
+    while (qh < qt) {
+      const c = q[qh++];
+      const x = c % W, y = (c / W) | 0;
+      let tgt = -1;
+      if (mode === 'on') { if (c !== start && pred(c)) tgt = c; }
+      else for (let k = 0; k < 4; k++) {
+        const nx = x + DIRS[k][0], ny = y + DIRS[k][1];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        if (pred(ny * W + nx)) { tgt = ny * W + nx; break; }
+      }
+      if (tgt >= 0) {
+        let k = c;
+        while (par[k] >= 0 && par[k] !== start) k = par[k];
+        return { next: c === start ? start : k, goal: c, target: tgt, d: dep[c] };
+      }
+      if (dep[c] >= maxD) continue;
+      for (let k = 0; k < 4; k++) {
+        const nx = x + DIRS[k][0], ny = y + DIRS[k][1];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const m = ny * W + nx;
+        if (vis[m] === gen || !passable(s, o, m, thru) || (AV && AV.has(m))) continue;
+        vis[m] = gen; par[m] = c; dep[m] = dep[c] + 1; q[qt++] = m;
+      }
     }
-    if (tgt >= 0) {
-      let k = c;
-      while (par[k] >= 0 && par[k] !== start) k = par[k];
-      return { next: c === start ? start : k, goal: c, target: tgt, d: dep[c] };
-    }
-    if (dep[c] >= maxD) continue;
-    for (const [dx, dy] of DIRS) {
-      const nx = x + dx, ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= W || ny >= s.h) continue;
-      const m = ny * W + nx;
-      if (par[m] !== -2 || !passable(s, o, m, thru) || (AV && AV.has(m))) continue;
-      par[m] = c; dep[m] = dep[c] + 1; q[qt++] = m;
-    }
-  }
-  return null;
+    return null;
+  } finally { if (own) BF.busy = false; }
 }
 
 /**
