@@ -12,6 +12,7 @@
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES } from './extras.js';             // K16: тост покращення
+import { t as tt } from './theme.js';               // K25: слова теми «Чумацький шлях»
 
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
 const HOLD_ICON = { [I.WOOD]: '🪵', [I.IRON]: '⛓', [I.RAIL]: '🛤', [I.AXE]: '🪓', [I.PICK]: '⛏', [I.BUCKET]: '🪣', [I.BUCKET_FULL]: '💧' };
@@ -121,6 +122,7 @@ export function createHud(root, opts = {}) {
   const progMidL = el('div', 'kol-prog-midl', prog); const progMid = el('div', 'kol-prog-mid', prog, '🏪');
   progMidL.style.display = progMid.style.display = 'none';
   const progHead = el('div', 'kol-prog-head', prog, '🚂');
+  const progSt = prog.querySelector('.kol-prog-st');   // K25
   const biomeEl = el('div', 'kol-box kol-biome', top);
   const timeEl = el('div', 'kol-box kol-stat', top);
   const speedEl = el('div', 'kol-box kol-stat', top);
@@ -133,7 +135,7 @@ export function createHud(root, opts = {}) {
   const cRails = el('span', null, craft);
   const cBar = el('span', 'kol-craft', craft); const cFill = el('i', null, cBar);
   const boiler = el('div', 'kol-box kol-row', res);
-  el('span', null, boiler, '♨');
+  const hIcon = el('span', null, boiler, '♨');   // K25
   const hBar = el('span', 'kol-heat', boiler); const hFill = el('i', null, hBar);
   const hPct = el('span', null, boiler);
 
@@ -161,10 +163,10 @@ export function createHud(root, opts = {}) {
   const start = el('div', 'kol-screen', root);
   const n = opts.players ?? 1;
   el('div', 'kol-card', start, `
-    <h1>🚂 Колія</h1>
-    <p>Паротяг сам повзе до станції 🏁 — встигніть класти рейки перед ним.</p>
-    <p>Рубайте ліс 🪓, бийте скелі ⛏, несіть у склад — майстерня робить рейки 🛤.
-      Котел гріється: відро води 💧 на паротяг, інакше пожежа.</p>
+    <h1>${tt('start.title', '🚂 Колія')}</h1>
+    <p>${tt('start.p1', 'Паротяг сам повзе до станції 🏁 — встигніть класти рейки перед ним.')}</p>
+    <p>${tt('start.p2', `Рубайте ліс 🪓, бийте скелі ⛏, несіть у склад — майстерня робить рейки 🛤.
+      Котел гріється: відро води 💧 на паротяг, інакше пожежа.`)}</p>
     <div class="kol-keys">
       <span class="kol-kbonly"><b style="color:${COLORS[0]}">П1</b></span><span class="kol-kbonly">WASD — ходити, Space / E — дія</span>
       <span class="kol-kbonly"><b style="color:${COLORS[1]}">П2</b></span><span class="kol-kbonly">стрілки — ходити, Enter — дія</span>
@@ -238,7 +240,9 @@ export function createHud(root, opts = {}) {
     set(progEnd.style, 'end|left', `${Math.min(100, endX / span * 100).toFixed(1)}%`);
     set(progHead.style, 'head|left', `${Math.min(100, headX / span * 100).toFixed(1)}%`);
     const ahead = Math.max(0, path.length - 1 - Math.floor((t.pos ?? 0) / U));
-    txt(progAhead, 'ahead', `🛤 ${ahead} попереду · до 🏁 ${Math.max(0, Math.round(stationX - headX))}`);
+    txt(progAhead, 'ahead', `${tt('icon.rails', '🛤')} ${ahead} попереду · до ${tt('icon.station', '🏁')} ${Math.max(0, Math.round(stationX - headX))}`);
+    txt(progHead, 'headI', tt('icon.loco', '🚂')); txt(progSt, 'stI', tt('icon.station', '🏁')); txt(hIcon, 'hIcon', tt('icon.heat', '♨'));   // K25
+    txt(alarm, 'alarmT', tt('alarm', '⚠ Рейки закінчуються!')); txt(countT, 'countT', tt('count', 'паротяг рушає'));
     // K16: проміжна станція — позначка на смузі й банер, поки паротяг чекає вибору
     const mid = s.mid;
     const midX = mid ? (mid.x0 + mid.x1 + 1) / 2 : -1;
@@ -249,7 +253,7 @@ export function createHud(root, opts = {}) {
       txt(progMid, 'midT', mid.pick ? (UPGRADES[mid.pick]?.icon ?? '✔') : '🏪');
     }
     const midWait = !!(mid && mid.wait && !mid.pick && s.status === 'run');
-    txt(midEl, 'midE', midWait ? `🏪 Проміжна станція! Оберіть покращення — дія на табличку: ${mid.signs.map((g) => `${UPGRADES[g.k]?.icon} ${UPGRADES[g.k]?.short}`).join(' · ')}` : '');
+    txt(midEl, 'midE', midWait ? `${tt('midWait', '🏪 Проміжна станція!')} Оберіть покращення — дія на табличку: ${mid.signs.map((g) => `${UPGRADES[g.k]?.icon} ${UPGRADES[g.k]?.short}`).join(' · ')}` : '');
     set(midEl.style, 'midE|display', midWait ? 'block' : 'none');
     // K16: біом під паротягом (і наступний, якщо колія вже туди дійшла)
     const zH = zoneAt(zones, headX), zE = zoneAt(zones, endX);
@@ -264,7 +268,7 @@ export function createHud(root, opts = {}) {
     const sm = p.storeMax ?? 0;
     txt(sWood, 'wood', `🪵 ${t.wood ?? 0}/${sm}`); set(sWood, 'wood|className', (t.wood ?? 0) >= sm ? 'kol-full' : '');
     txt(sIron, 'iron', `⛓ ${t.iron ?? 0}/${sm}`); set(sIron, 'iron|className', (t.iron ?? 0) >= sm ? 'kol-full' : '');
-    txt(cRails, 'rails', `🛤 ${t.rails ?? 0}/${p.railsMax ?? 0}`);
+    txt(cRails, 'rails', `${tt('icon.rails', '🛤')} ${t.rails ?? 0}/${p.railsMax ?? 0}`);
     const craftTot = Math.max(1, (p.craftSec ?? 1) * TPS);
     const cT = t.craftT ?? 0;
     set(cFill.style, 'craft|width', cT > 0 ? `${Math.round((1 - cT / craftTot) * 100)}%` : '0%');
@@ -279,8 +283,9 @@ export function createHud(root, opts = {}) {
     const run = s.status === 'run';
     const fireT = t.fire ?? 0;
     let fireTxt = '';
-    if (run && fireT > 0) fireTxt = `🔥 ПОЖЕЖА! Відро води на паротяг · ${Math.max(0, Math.ceil((p.fireSec ?? 0) - fireT / TPS))}`;
-    else if (run && heat >= 1000 && p.overheat === 'stop') fireTxt = '♨ Котел перегрівся — паротяг стоїть! Відро води';
+    const fireLeft = Math.max(0, Math.ceil((p.fireSec ?? 0) - fireT / TPS));
+    if (run && fireT > 0) fireTxt = tt('fire', `🔥 ПОЖЕЖА! Відро води на паротяг · ${fireLeft}`, fireLeft);
+    else if (run && heat >= 1000 && p.overheat === 'stop') fireTxt = tt('overheatStop', '♨ Котел перегрівся — паротяг стоїть! Відро води');
     txt(fire, 'fire', fireTxt); set(fire.style, 'fire|display', fireTxt ? 'block' : 'none');
 
     // тривога: до кінця колії менше ALARM_SEC ходу
@@ -306,10 +311,10 @@ export function createHud(root, opts = {}) {
       set(d.style, `pl${i}|display`, pl ? 'block' : 'none');
       if (!pl) continue;
       const k = pl.hold?.k ?? 0, nn = pl.hold?.n ?? 0;
-      const what = k ? `${HOLD_ICON[k] ?? '?'}${nn > 1 ? ' ×' + nn : ''}` : '✋';
+      const what = k ? `${k === I.RAIL ? tt('icon.rails', HOLD_ICON[k]) : HOLD_ICON[k] ?? '?'}${nn > 1 ? ' ×' + nn : ''}` : '✋';
       const name = `${i >= local ? '🤖' : ''}П${i + 1}`;
       set(d, `pl${i}|innerHTML`, `<b style="color:${COLORS[i % 4]}">${name}</b> ${what}`);
-      set(d, `pl${i}|title`, HOLD_NAME[k] ?? 'порожні руки');
+      set(d, `pl${i}|title`, k === I.RAIL ? tt('hold.rails', HOLD_NAME[k]) : HOLD_NAME[k] ?? 'порожні руки');
     }
 
     // кінець
@@ -317,12 +322,12 @@ export function createHud(root, opts = {}) {
     set(end.style, 'end|display', over ? 'flex' : 'none');
     if (over) {
       const st = s.stats || {};
-      const head = s.status === 'won' ? '🏁 Доїхали!' : s.reason === 'fire' ? '🔥 Згоріли' : '💥 Зійшли з колії';
+      const head = s.status === 'won' ? tt('end.won', '🏁 Доїхали!') : s.reason === 'fire' ? tt('end.fire', '🔥 Згоріли') : tt('end.derail', '💥 Зійшли з колії');
       const maxCps = (st.maxSpeed ?? 0) / 1000 / U * TPS;
       set(endCard, 'endc|innerHTML', `<h1>${head}</h1>
         <div class="kol-sum">
           <span>⏱ Час</span><b>${fmtTime(sec)}</b>
-          <span>🛤 Рейок покладено</span><b>${st.railsLaid ?? 0}</b>
+          <span>${tt('sum.rails', '🛤 Рейок покладено')}</span><b>${st.railsLaid ?? 0}</b>
           <span>🪓 Ударів</span><b>${st.hits ?? 0}</b>
           <span>💨 Найшвидше</span><b>${maxCps.toFixed(2)} кл/с</b>
         </div>
