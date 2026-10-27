@@ -263,6 +263,10 @@ export function createBot(p) {
       // збирання ресурсів перериваємо, коли є рейки й нема чим їх класти: колія важливіша за запас
       else if (m.task.k === 'gather' && m.task.target === undefined && !m.task.bridge && s.tick % 10 === 0 && ctx.role !== 'mine' &&
                (pl.hold.k === I.NONE || pl.hold.k === I.AXE || pl.hold.k === I.PICK) && railsUrgent(ctx)) { m.task = { k: 'rails' }; m.since = s.tick; }
+      // K13: котел гарячий — водонос кидає будь-яку роботу з порожніми руками/інструментом (інакше пожежа за розчисткою)
+      else if (m.task.k !== 'water' && s.tick % 10 === 0 && (s.train.heat >= (ctx.role === 'all' ? 900 : 700) || s.train.fire) && (ctx.role !== 'build' || s.train.fire) &&
+               (pl.hold.k === I.NONE || pl.hold.k === I.AXE || pl.hold.k === I.PICK || pl.hold.k === I.BUCKET || pl.hold.k === I.BUCKET_FULL) &&
+               !claimedByOther(ctx.o, 'water', s) && feasible(ctx, { k: 'water' })) { m.task = { k: 'water' }; m.since = s.tick; }
       const out = runTask(ctx, m.task);
       if (globalThis.KOL_BOT_DEBUG) console.log('bot', p, JSON.stringify(m.task), '→', JSON.stringify(out));
       if (out) {
@@ -449,6 +453,12 @@ export function createBot(p) {
       if (failed(s, t.k + (t.r || ''))) continue;
       if (t.k === 'gather' && !t.target && !t.bridge && needOf(ctx, t.r) <= 0) continue;
       if (feasible(ctx, t)) return t;
+    }
+    // K13: склад повний, рейки несе інший — не стояти: розчищати маршрут наперед (дрова/залізо ляжуть біля колії)
+    for (const c of o.route.slice(2, 30)) {
+      if ((s.obj[c] !== O.TREE && s.obj[c] !== O.ROCK) || claimedByOther(o, 'c' + c, s)) continue;
+      const t = { k: 'gather', r: s.obj[c] === O.TREE ? I.WOOD : I.IRON, target: c };
+      if (!failed(s, t.k + t.r) && feasible(ctx, t)) return t;
     }
     return { k: 'idle' };
   }
