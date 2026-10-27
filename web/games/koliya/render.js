@@ -28,9 +28,19 @@ const BASE = {
   tie: 0x6e4a2e, steel: 0xb4bac2,
   flower: [0xffffff, 0xffe066, 0xff6b6b, 0xc69cff], tuft: 0x6aa843, pebble: 0xb9ae96,
   swamp: 0x4f5a2c, swampB: 0x48522a, swampWater: 0x34503e, tussock: 0x76923e,   // болото (G.SWAMP, K7)
+  // K36: зима й яр (K26) — сніг, лід (дно під напівпрозорою плитою), урвище (дно й кам'яні стінки), каркас мосту
+  snow: 0xeef2f5, snowB: 0xe6edf2, snowBlue: 0xd6e4f0, ice: 0xbfe6f5, iceDeep: 0x6fa8c4, crack: 0xf4fbff,
+  chasm: 0x2a1d14, chasmWall: [0x6b6560, 0x5d5853, 0x77716a], frame: 0xb07a40,
 };
+// K36: вигляди (looks.js не чіпаємо — заміни тут): осінь — сутінкова, іграшковий — яскравіший; «Чумацький шлях» — тепліше
+const K36PAL = {
+  autumn: { snow: 0xf1eeee, snowB: 0xe9e5e6, snowBlue: 0xd9d6e6, ice: 0xb6d9ea, iceDeep: 0x5f8aa6, chasm: 0x24170f, frame: 0xa06c38 },
+  toy: { snow: 0xf6faff, snowB: 0xedf4fb, snowBlue: 0xdcebfb, ice: 0xc6f0ff, iceDeep: 0x7cc8ea, chasm: 0x33231a, chasmWall: [0x9a94a8, 0x8a8498, 0xa8a2b6], frame: 0xc88a4c },
+};
+const K36CH = { snow: 0xf3f1ea, snowB: 0xece9e0, snowBlue: 0xdde3e6, frame: 0xb8823e, chasmWall: [0x76695a, 0x6a5e50, 0x837463] };
 const C = { ...BASE };
 const SWAMP = G.SWAMP ?? 5;
+const K36G = { ICE: G.ICE ?? 6, SNOW: G.SNOW ?? 7, CHASM: G.CHASM ?? 8, FRAME: G.FRAME ?? 9 };   // K36
 const PLAYER = [
   { shirt: 0xffd23f, hat: 0xe04b3a }, { shirt: 0xff5fa2, hat: 0x6b4cff },
   { shirt: 0x4fc3ff, hat: 0xff9f1c }, { shirt: 0x9be15d, hat: 0x2a9d8f },
@@ -46,7 +56,7 @@ function hh(x, y, s) {
 const pick = (arr, v) => arr[Math.min(arr.length - 1, Math.floor(v * arr.length))];
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
-const _c = new THREE.Color(), _UP = new THREE.Vector3(0, 1, 0), _eu = new THREE.Euler();
+const _c = new THREE.Color(), _c2 = new THREE.Color(), _UP = new THREE.Vector3(0, 1, 0), _eu = new THREE.Euler();
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 // aBox/aHalf — координата в кубику й половина розміру (для злитих моделей); у простого кубика aHalf = 0 → шейдер бере масштаб із матриць
@@ -426,7 +436,7 @@ export function createRenderer(canvas) {
   function applyLook(name, rebuild = true) {
     look = LOOKS[name] || LOOKS.summer; prefs.look = LOOKS[name] ? name : 'summer';
     for (const k in C) delete C[k];
-    Object.assign(C, BASE, look.pal, CV.pal(prefs.look));   // K25: степова палітра теми
+    Object.assign(C, BASE, look.pal, K36PAL[prefs.look], CV.pal(prefs.look), isChumak() ? K36CH : null);   // K25: степова палітра теми; K36: зима/яр
     // небо: вертикальний градієнт; туман того ж кольору, що й обрій, — далеке зливається з тлом
     const x = skyCanvas.getContext('2d'), gr = x.createLinearGradient(0, 0, 0, 256);
     gr.addColorStop(0, hex6(look.sky[0])); gr.addColorStop(0.75, hex6(look.sky[1])); gr.addColorStop(1, hex6(look.fog.color));
@@ -475,6 +485,8 @@ export function createRenderer(canvas) {
       transformed.z += 0.035 * sin(transformed.x * 1.9 + uTime * 1.7) + 0.03 * sin(transformed.y * 2.7 - uTime * 1.3)
                      + 0.015 * sin((transformed.x + transformed.y) * 4.1 + uTime * 2.6);`);
   };
+  // K36: лід — напівпрозора глянцева плита над темнішим дном (видно «глибину»); окремий пул підлоги
+  const iceMat = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0.72, shininess: 110, specular: 0xffffff, depthWrite: false });
   const boxMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }), FXW);   // K32: FXW (сніг/мокре)
   const groundMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }), FXG, 'kfxg');
   // K20: дерева хитаються від вітру — у вершинному шейдері (окремий пул дерев): зсув росте з висотою над землею,
@@ -562,7 +574,7 @@ export function createRenderer(canvas) {
 
   function disposeWorld() {
     if (!W) return;
-    for (const p of [W.pGround, W.pBox, W.pBlob, W.pTree]) p.dispose();
+    for (const p of [W.pGround, W.pBox, W.pBlob, W.pTree, W.pIce]) p.dispose();   // K36: pIce
     for (const g of W.drops) if (g) W.root.remove(g);
     W.root.traverse((o) => { if (o.userData.merged) o.geometry.dispose(); });
     for (const wm of W.waters) wm.geometry.dispose();
@@ -588,17 +600,25 @@ export function createRenderer(canvas) {
       railSig: new Array(n).fill(''), drops: new Array(n),
       pathLen: -1, pathLast: -1, treeMax: Math.max(1, s.params?.treeHits | 0), rockMax: Math.max(1, s.params?.rockHits | 0) };
     for (let i = 0; i < n; i++) { W.objRefs[i] = []; W.decoRefs[i] = []; W.railRefs[i] = []; W.blobRefs[i] = []; }
+    W.pIce = new ChunkPool(root, iceMat, h, 32, { cast: false, receive: true, order: 1 }); W.iceRef = new Int32Array(n).fill(-1);   // K36
+    let anyPit = false;   // K36: у світі є яр → земляна плита нижча (дно урвища на −0,9)
+    for (let i = 0; i < n; i++) if (s.ground[i] === K36G.CHASM || s.ground[i] === K36G.FRAME) { anyPit = true; break; }
     W.fx = []; W.wells = isChumak() ? CV.findWells(s, G) : null;   // K25: анімації теми й криниці на малих калюжах
     for (let i = 0; i < n; i++) W.gRef[i] = pGround.alloc(i % w);   // підлога: слот на клітинку, у чанку свого стовпця
 
     // земляна плита під смугою (діорама) і берег за кінцем
-    cube(root, w / 2, -3.2, h / 2, w + 0.02, 2.7, h + 0.02, C.dirt).castShadow = false;
-    cube(root, w / 2, -0.52, h / 2, w, 0.02, h, C.bed).castShadow = false;
+    // K36: якщо є яр — плита й «ложе» опущені на 0,5 (інакше накривають дно урвища), а бокові смуги закривають щілину по краях
+    const slabTop = anyPit ? -1.0 : -0.5;
+    cube(root, w / 2, -3.2, h / 2, w + 0.02, slabTop + 3.2, h + 0.02, C.dirt).castShadow = false;
+    cube(root, w / 2, slabTop - 0.02, h / 2, w, 0.02, h, C.bed).castShadow = false;
+    if (anyPit) for (const [x, z, sx, sz] of [[w / 2, 0.02, w + 0.02, 0.06], [w / 2, h - 0.02, w + 0.02, 0.06], [0.02, h / 2, 0.06, h + 0.02], [w - 0.02, h / 2, 0.06, h + 0.02]])
+      cube(root, x, -1.0, z, sx, 0.5, sz, C.dirt).castShadow = false;
     const strata = cube(root, w / 2, -1.6, h / 2, w + 0.06, 0.12, h + 0.06, C.dirtDark); strata.castShadow = false;
     // вода — площини з хвилями по чанках (відтинаються поза кадром); трава їх перекриває, видно лише в западинах
     for (let x0 = 0; x0 < w; x0 += CH) {
       const ww = Math.min(CH, w - x0);
       const water = new THREE.Mesh(new THREE.PlaneGeometry(ww, h, ww * 2, h * 2), waterMat);
+      if (anyPit) k36SinkWater(water.geometry, x0, ww, h);   // K36: над яром води нема (вершини — під дно)
       water.rotation.x = -Math.PI / 2; water.position.set(x0 + ww / 2, -0.16, h / 2); water.receiveShadow = true;
       root.add(water); W.waters.push(water);
     }
@@ -609,7 +629,7 @@ export function createRenderer(canvas) {
     if (isChumak()) CV.steppe(K25, root, s, W.fx, lowQ);   // K25: степ за смугою, валка, лелеки
     for (let i = 0; i < n; i++) syncCell(i, true);
     syncPath(true);
-    pGround.flush(); pBox.flush(); pBlob.flush(); pTree.flush();
+    pGround.flush(); pBox.flush(); pBlob.flush(); pTree.flush(); W.pIce.flush();   // K36
 
     // потяг і гравці
     const ch = isChumak();   // K25: воли з мажею, віз-комора, віз-кузня
@@ -702,9 +722,62 @@ export function createRenderer(canvas) {
     P.add(list, gx + 0.72, 1.18, mid + 0.5, 0.08, 0.14, 1.2, 0xb8a27a);    // замковий камінь арки
   }
 
+  // ---- K36: яр. Урвище/каркас — яма; міст — яма, якщо його група мостів торкається урвища/каркаса і не торкається води ----
+  function isPit(i) {
+    const s = W.s, g = s.ground[i];
+    if (g === K36G.CHASM || g === K36G.FRAME) return true;
+    if (g !== G.BRIDGE) return false;
+    const seen = new Set([i]), q = [i]; let pit = false;
+    while (q.length && seen.size < 64) {
+      const j = q.pop(), x = j % W.w, y = (j / W.w) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W.w || ny >= W.h) continue;
+        const k = ny * W.w + nx, gk = s.ground[k];
+        if (gk === G.WATER) return false;
+        if (gk === K36G.CHASM || gk === K36G.FRAME) pit = true;
+        else if (gk === G.BRIDGE && !seen.has(k)) { seen.add(k); q.push(k); }
+      }
+    }
+    return pit;
+  }
+  // вершини площини води над ямою (жодна сусідня клітинка не вода) — на 2 нижче, під дно урвища
+  function k36SinkWater(geo, x0, ww, h) {
+    const pos = geo.attributes.position, s = W.s, cache = new Map();
+    const pitAt = (cx, cy) => { if (cx < 0 || cy < 0 || cx >= W.w || cy >= h) return 0; const k = cy * W.w + cx;
+      if (!cache.has(k)) cache.set(k, s.ground[k] === G.WATER ? -1 : isPit(k) ? 1 : 0); return cache.get(k); };
+    for (let v = 0; v < pos.count; v++) {
+      const X = x0 + ww / 2 + pos.getX(v), Z = h / 2 - pos.getY(v);
+      let pit = false, wet = false;
+      for (const cx of [Math.floor(X - 0.01), Math.floor(X + 0.01)]) for (const cy of [Math.floor(Z - 0.01), Math.floor(Z + 0.01)]) {
+        const t = pitAt(cx, cy); if (t > 0) pit = true; else if (t < 0) wet = true;
+      }
+      if (pit && !wet) pos.setZ(v, pos.getZ(v) - 2);
+    }
+    pos.needsUpdate = true;
+  }
+  // стінки ями: кам'яні плити вздовж країв, де сусід — не яма (від дна до трави); дно — окремо (підлога)
+  function k36PitWalls(P, list, x, y) {
+    const s = W.s;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W.w || ny >= W.h || isPit(ny * W.w + nx)) continue;
+      const along = dx === 0, n = lowQ ? 1 : 3;
+      for (let j = 0; j < n; j++) {
+        const v = hh(x * 4 + dx, y * 4 + dy, 140 + j), len = 1 / n, off = (j + 0.5) * len - 0.5;
+        const th = 0.1 + v * 0.06, ex = x + 0.5 + (along ? off : dx * (0.5 - th / 2)), ez = y + 0.5 + (along ? dy * (0.5 - th / 2) : off);
+        const top = -0.02 - v * 0.06;
+        P.add(list, ex, -0.9, ez, along ? len : th, top + 0.9, along ? th : len, tint(pick(C.chasmWall, v), (v - 0.5) * 0.12));
+        if (!lowQ && v > 0.6) P.add(list, ex, -0.9, ez, along ? len * 0.6 : th + 0.08, 0.22, along ? th + 0.08 : len * 0.6, tint(C.chasmWall[1], -0.15));   // осип унизу
+      }
+    }
+  }
+
   // верх підлоги клітинки (на чому стоять речі)
   function topOf(gk, x, y) {
     if (gk === G.WATER) return -0.45;
+    if (gk === K36G.CHASM) return -0.9;          // K36: дно урвища
+    if (gk === K36G.FRAME) return -0.04;         // K36: на балках каркаса
+    if (gk === K36G.ICE) return -0.03;           // K36: лід трохи нижче трави
     if (gk === G.BRIDGE) return 0.0;
     if (gk === G.STATION) return 0.07;
     if (gk === SWAMP) return -0.03;              // болото трохи нижче трави — мокре
@@ -723,12 +796,23 @@ export function createRenderer(canvas) {
     const cx = x + 0.5, cz = y + 0.5, v = hh(x, y, 1);
     if (gChanged) {
       const top = topOf(gk, x, y);
-      if ((gk === G.WATER && !W.wells?.has(i)) || gk === G.BRIDGE) W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.05, 1, tint(C.bed, (v - 0.5) * 0.15));
+      if (W.iceRef[i] >= 0) { W.pIce.release(W.iceRef[i]); W.iceRef[i] = -1; }   // K36
+      if (gk === K36G.CHASM || gk === K36G.FRAME || (gk === G.BRIDGE && isPit(i))) {   // K36: яма яру — темне дно на −0,9
+        W.pGround.put(W.gRef[i], cx, -0.95, cz, 1, 0.05, 1, tint(C.chasm, (v - 0.5) * 0.25));
+      } else if (gk === K36G.ICE) {   // K36: темніше дно + напівпрозора глянцева плита
+        W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.4, 1, tint(C.iceDeep, (v - 0.5) * 0.1));
+        W.iceRef[i] = W.pIce.alloc(x);
+        W.pIce.put(W.iceRef[i], cx, -0.1, cz, 1, 0.07, 1, tint(C.ice, (v - 0.5) * 0.05));
+      } else if ((gk === G.WATER && !W.wells?.has(i)) || gk === G.BRIDGE) W.pGround.put(W.gRef[i], cx, -0.5, cz, 1, 0.05, 1, tint(C.bed, (v - 0.5) * 0.15));
       else {
         let col;
         if (gk === G.SAND) col = tint((x + y) & 1 ? C.sand : C.sandB, (v - 0.5) * 0.06);
         else if (gk === G.STATION) col = tint((x + y) & 1 ? C.station : C.stationB, (v - 0.5) * 0.06);
         else if (gk === SWAMP) col = tint((x + y) & 1 ? C.swamp : C.swampB, (v - 0.5) * 0.12);
+        else if (gk === K36G.SNOW) {   // K36: сніг — білий, у плямах шуму легка синява
+          const b = hh(x >> 1, y >> 1, 141) * 0.6 + hh(x, y, 142) * 0.4;
+          col = _c.setHex((x + y) & 1 ? C.snow : C.snowB).lerp(_c2.setHex(C.snowBlue), b > 0.62 ? (b - 0.62) * 1.6 : 0).multiplyScalar(1 + (v - 0.5) * 0.04);
+        }
         else if (gk !== G.GRASS && gk !== G.WATER) col = tint(0x7d8a62, (v - 0.5) * 0.08);   // невідомий тип підлоги — нейтральний
         else {
           const dark = hh(x >> 2, y >> 2, 9) * 0.5 + hh(x >> 1, y >> 1, 10) * 0.5;
@@ -825,6 +909,30 @@ export function createRenderer(canvas) {
     freeRefs(list, P);
     const gk = s.ground[i], cx = x + 0.5, cz = y + 0.5;
     if (gk === G.WATER && W.wells?.has(i)) return CV.well(P, list, x, y, W.wells.get(i), K25);   // K25: криниця/корито
+    // K36: яр — стінки ями; каркас — скелет балок без настилу; міст над ямою — ще й опори вниз
+    const pit = gk === K36G.CHASM || gk === K36G.FRAME || (gk === G.BRIDGE && isPit(i));
+    if (pit) {
+      k36PitWalls(P, list, x, y);
+      if (gk === K36G.CHASM) {
+        if (!lowQ && hh(x, y, 150) < 0.4) P.add(list, cx + (hh(x, y, 151) - 0.5) * 0.5, -0.9, cz + (hh(x, y, 152) - 0.5) * 0.5, 0.18, 0.1, 0.15, tint(C.chasmWall[0], -0.3));   // камінець на дні
+        return;
+      }
+      const fr = C.frame;
+      for (const ex of [x + 0.1, x + 0.9]) for (const ez of [y + 0.12, y + 0.88]) P.add(list, ex, -0.9, ez, 0.1, 0.76, 0.1, tint(fr, -0.18));   // опори з дна
+      if (gk === K36G.FRAME) {
+        P.add(list, cx, -0.16, y + 0.12, 1.02, 0.1, 0.1, fr); P.add(list, cx, -0.16, y + 0.88, 1.02, 0.1, 0.1, fr);   // поздовжні балки
+        P.add(list, x + 0.1, -0.15, cz, 0.1, 0.09, 0.8, tint(fr, -0.06)); P.add(list, x + 0.9, -0.15, cz, 0.1, 0.09, 0.8, tint(fr, -0.06));   // поперечки
+        if (!lowQ) for (const ez of [y + 0.12, y + 0.88]) P.add(list, cx, -0.55, ez, 0.86, 0.07, 0.07, tint(fr, -0.12));   // розпірка
+        return;
+      }
+    } else if (gk === K36G.ICE) {   // K36: тонкі тріщини на льоду (одна й на низькій якості — це «читання» підлоги)
+      const n = lowQ ? 1 : 1 + Math.floor(hh(x, y, 160) * 2);
+      for (let j = 0; j < n; j++) {
+        const a = hh(x, y, 161 + j), b = hh(x, y, 163 + j);
+        P.add(list, cx + (a - 0.5) * 0.4, -0.029, cz + (b - 0.5) * 0.4, 0.42 + a * 0.3, 0.004, 0.025, C.crack, a * Math.PI);
+        if (!lowQ && b > 0.5) P.add(list, cx + (a - 0.5) * 0.4 + 0.12, -0.029, cz + (b - 0.5) * 0.4, 0.22, 0.004, 0.02, C.crack, a * Math.PI + 0.9);
+      }
+    }
     if (gk === G.BRIDGE && isChumak()) return CV.bridge(P, list, x, y, K25);                    // K25: хмизова гребля
     if (gk === G.BRIDGE) {
       for (let j = 0; j < 4; j++) P.add(list, x + 0.125 + j * 0.25, -0.1, cz, 0.22, 0.1, 1.04, pick(C.plank, hh(x, y, 50 + j)));
@@ -845,6 +953,13 @@ export function createRenderer(canvas) {
       return;
     }
     if (lowQ) return;                            // низька якість — без квітів, трави й камінців
+    if (gk === K36G.SNOW) {                      // K36: кучугури — 1–2 пологі горбики
+      if (v < 0.2) for (let j = 0; j < (v < 0.08 ? 2 : 1); j++) {
+        const fx = cx + (hh(x, y, 170 + j) - 0.5) * 0.4, fz = cz + (hh(x, y, 172 + j) - 0.5) * 0.4, sz = 0.36 + hh(x, y, 174 + j) * 0.25;
+        P.add(list, fx, top, fz, sz, 0.07, sz * 0.8, C.snow); P.add(list, fx, top + 0.07, fz, sz * 0.6, 0.05, sz * 0.5, tint(C.snow, 0.03));
+      }
+      return;
+    }
     if (gk === G.GRASS && isChumak()) return CV.grassDeco(P, list, x, y, top, v, K25);   // K25: ковила, маки, волошки
     if (gk === G.GRASS) {
       if (v < 0.07) {
@@ -1349,7 +1464,7 @@ export function createRenderer(canvas) {
     } else if (W.cur.pos !== s.train.pos || W.cur.pl.length !== s.players.length || s.players.some((p, k) => p.x !== W.cur.pl[k].x || p.y !== W.cur.pl[k].y)) {
       snapshot(s); W.prev = W.cur;          // стан правили руками без тику — без інтерполяції
     }
-    W.pGround.flush(); W.pBox.flush(); W.pTree.flush();
+    W.pGround.flush(); W.pBox.flush(); W.pTree.flush(); W.pIce.flush();   // K36: pIce
     alpha = Math.max(0, Math.min(1, alpha));
     const A = W.prev || W.cur, B = W.cur;
 
