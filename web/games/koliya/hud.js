@@ -20,6 +20,28 @@ const ALARM_SEC = 3;
 const BIOME_ICON = { glade: '🌱', steppe: '🌾', grove: '🌳', stone: '🪨', river: '🌊', swamp: '🐸', pass: '⛰' };
 const STEAL_NAME = { [I.AXE]: 'сокиру', [I.PICK]: 'кайло', [I.BUCKET]: 'відро', [I.BUCKET_FULL]: 'відро з водою' };
 const TOASTS = 2;
+const BEST_KEY = 'kol-best';   // K23: рекорди { 'endless|<гравців>': станцій, 'time|<режим>|<сід>|<гравців>': тиків до станції }
+
+// K23: рекорди в localStorage (приватне вікно / заблоковане сховище — просто без рекорду)
+function loadBest() { try { const b = JSON.parse(localStorage.getItem(BEST_KEY) || '{}'); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
+function saveBest(b) { try { localStorage.setItem(BEST_KEY, JSON.stringify(b)); } catch { } }
+const plural = (n, a, b, c) => { const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c; };
+const whoLabel = (n) => n <= 1 ? 'соло' : `${n} ${plural(n, 'гравець', 'гравці', 'гравців')}`;
+/** Підсумок рекорду партії, що скінчилась: { kind: 'st'|'time', val, prev, isNew } або null (рахувати нема що) */
+function judgeRecord(s) {
+  const n = s.players?.length ?? 1;
+  if (s.endless) {
+    const key = `endless|${n}`, val = s.endless.stations | 0, b = loadBest(), prev = +b[key] || 0;
+    const isNew = val > prev;
+    if (isNew) { b[key] = val; saveBest(b); }
+    return { kind: 'st', val, prev, isNew, n };
+  }
+  const key = `time|${s.params?.stationMode ?? 'end'}|${s.seed >>> 0}|${n}`, b = loadBest(), prev = +b[key] || 0;
+  if (s.status !== 'won') return prev ? { kind: 'time', val: 0, prev, isNew: false, n } : null;
+  const val = s.tick | 0, isNew = !prev || val < prev;
+  if (isNew) { b[key] = val; saveBest(b); }
+  return { kind: 'time', val, prev, isNew, n };
+}
 
 const CSS = `
 #kol-hud.kol-root { position: fixed; inset: 0; left: 0; top: 0; padding: 0; background: none; border-radius: 0;
@@ -78,6 +100,11 @@ const CSS = `
 .kol-padonly { display: none; }
 .kol-haspad .kol-padonly { display: contents; }
 .kol-haspad .kol-kbonly { display: none; }
+.kol-endl { white-space: nowrap; background: #123a4acc; border-color: #5fd3ff88; }
+.kol-big { font-size: 1.6em; margin: .2em 0; color: #fff; }
+.kol-rec { margin: .3em 0; font-weight: 600; }
+.kol-rec.kol-new { color: #ffd23f; font-size: 1.3em; animation: kol-pulse2 .7s ease-in-out infinite alternate; }
+@keyframes kol-pulse2 { to { transform: scale(1.08); } }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
 
@@ -117,10 +144,11 @@ export function createHud(root, opts = {}) {
   const progTrack = el('div', 'kol-prog-track', prog);
   const progEnd = el('div', 'kol-prog-end', prog);
   const progAhead = el('div', 'kol-prog-ahead', prog);
-  el('div', 'kol-prog-st', prog, '🏁');
+  const progSt = el('div', 'kol-prog-st', prog, '🏁');
   const progMidL = el('div', 'kol-prog-midl', prog); const progMid = el('div', 'kol-prog-mid', prog, '🏪');
   progMidL.style.display = progMid.style.display = 'none';
   const progHead = el('div', 'kol-prog-head', prog, '🚂');
+  const endlEl = el('div', 'kol-box kol-endl', top); endlEl.style.display = 'none';   // K23: 🚉 станцій · ділянка
   const biomeEl = el('div', 'kol-box kol-biome', top);
   const timeEl = el('div', 'kol-box kol-stat', top);
   const speedEl = el('div', 'kol-box kol-stat', top);
@@ -181,7 +209,8 @@ export function createHud(root, opts = {}) {
   end.style.pointerEvents = 'none';   // не заступати ⚙ панелі
   const endCard = el('div', 'kol-card', end);
 
-  let started = false, lastState = null, game0 = null, stationX = -1, zones = [];
+  let started = false, lastState = null, game0 = null, stationX = -1, zones = [], zonesShift;
+  let recState = null, rec = null;   // K23: рекорд рахуємо раз на партію
   const begin = () => {
     if (started) return;
     started = true; start.style.display = 'none';
@@ -207,6 +236,16 @@ export function createHud(root, opts = {}) {
     return hit;
   }
 
+  // K23: рядок рекорду на фіналі
+  function recHtml(r) {
+    if (!r) return '';
+    const who = whoLabel(r.n);
+    if (r.kind === 'st') return r.isNew ? `<div class="kol-rec kol-new">🏆 Новий рекорд! (${who})</div>`
+      : `<div class="kol-rec">🏆 Рекорд (${who}): ${r.prev} ${plural(r.prev, 'станція', 'станції', 'станцій')}</div>`;
+    if (r.isNew) return `<div class="kol-rec kol-new">🏆 Новий рекорд сіду! ${fmtTime(r.val / TPS)}${r.prev ? ` (було ${fmtTime(r.prev / TPS)})` : ''}</div>`;
+    return `<div class="kol-rec">🏆 Рекорд сіду (${who}): ${fmtTime(r.prev / TPS)}</div>`;
+  }
+
   function findStation(s) {
     if (s.ground) for (let x = 0; x < s.w; x++) for (let y = 0; y < s.h; y++) if (s.ground[y * s.w + x] === G.STATION) return x;
     return (s.w ?? 1) - 1;
@@ -222,11 +261,16 @@ export function createHud(root, opts = {}) {
     if (s === lastState && key === lastKey) return;
     lastKey = key;
     set(start.style, 'start|display', started ? 'none' : 'flex');
-    if (s !== lastState) { lastState = s; stationX = findStation(s); zones = allZones(s); }
+    const E = s.endless;   // K23: нескінченна колія — вікно зсувається, станції міняються
+    if (s !== lastState || (E && E.shift !== zonesShift)) { lastState = s; zonesShift = E?.shift; stationX = findStation(s); zones = allZones(s); }
+    if (E) { const f = E.st?.[E.stations - E.base]; stationX = f ? f.x0 : (s.w ?? 1) - 1; }
 
     const p = s.params || {}, t = s.train || {};
     const w = s.w || 1, path = s.path || [];
     const sec = (s.tick ?? 0) / TPS;
+    set(endlEl.style, 'endl|display', E ? 'block' : 'none');
+    if (E) txt(endlEl, 'endl', `🚉 ${E.stations} · ділянка ${E.segment}`);
+    txt(progSt, 'progSt', E ? '🚉' : '🏁');
 
     // прогрес: голова, кінець колії, станція (за x уздовж смуги)
     let headX = 0;
@@ -238,7 +282,7 @@ export function createHud(root, opts = {}) {
     set(progEnd.style, 'end|left', `${Math.min(100, endX / span * 100).toFixed(1)}%`);
     set(progHead.style, 'head|left', `${Math.min(100, headX / span * 100).toFixed(1)}%`);
     const ahead = Math.max(0, path.length - 1 - Math.floor((t.pos ?? 0) / U));
-    txt(progAhead, 'ahead', `🛤 ${ahead} попереду · до 🏁 ${Math.max(0, Math.round(stationX - headX))}`);
+    txt(progAhead, 'ahead', `🛤 ${ahead} попереду · до ${E ? `наступної 🚉 ${E.toNext}` : `🏁 ${Math.max(0, Math.round(stationX - headX))}`}`);
     // K16: проміжна станція — позначка на смузі й банер, поки паротяг чекає вибору
     const mid = s.mid;
     const midX = mid ? (mid.x0 + mid.x1 + 1) / 2 : -1;
@@ -248,8 +292,13 @@ export function createHud(root, opts = {}) {
       set(progMid.style, 'mid|left', pc); set(progMidL.style, 'midl|left', pc);
       txt(progMid, 'midT', mid.pick ? (UPGRADES[mid.pick]?.icon ?? '✔') : '🏪');
     }
-    const midWait = !!(mid && mid.wait && !mid.pick && s.status === 'run');
-    txt(midEl, 'midE', midWait ? `🏪 Проміжна станція! Оберіть покращення — дія на табличку: ${mid.signs.map((g) => `${UPGRADES[g.k]?.icon} ${UPGRADES[g.k]?.short}`).join(' · ')}` : '');
+    const signs = () => (mid?.signs ?? []).map((g) => `${UPGRADES[g.k]?.icon} ${UPGRADES[g.k]?.short}`).join(' · ');
+    const eStop = !!(E && E.stop > 0 && s.status === 'run');   // K23: зупинка на станції нескінченної — відлік
+    const midWait = eStop || !!(mid && mid.wait && !mid.pick && s.status === 'run');
+    let midT = '';
+    if (eStop) midT = `🚉 Станція ${E.stations}! ${mid && !mid.pick ? `Оберіть покращення — дія на табличку: ${signs()}` : 'Рушаємо'} · ⏳ ${Math.ceil(E.stop / TPS)} с`;
+    else if (midWait) midT = `🏪 Проміжна станція! Оберіть покращення — дія на табличку: ${signs()}`;
+    txt(midEl, 'midE', midT);
     set(midEl.style, 'midE|display', midWait ? 'block' : 'none');
     // K16: біом під паротягом (і наступний, якщо колія вже туди дійшла)
     const zH = zoneAt(zones, headX), zE = zoneAt(zones, endX);
@@ -319,7 +368,8 @@ export function createHud(root, opts = {}) {
       const st = s.stats || {};
       const head = s.status === 'won' ? '🏁 Доїхали!' : s.reason === 'fire' ? '🔥 Згоріли' : '💥 Зійшли з колії';
       const maxCps = (st.maxSpeed ?? 0) / 1000 / U * TPS;
-      set(endCard, 'endc|innerHTML', `<h1>${head}</h1>
+      if (recState !== s) { recState = s; rec = s.tutorial || game?.tutorial ? null : judgeRecord(s); }
+      set(endCard, 'endc|innerHTML', `<h1>${head}</h1>${E ? `<div class="kol-big">🚉 Станцій: <b>${E.stations}</b></div>` : ''}${recHtml(rec)}
         <div class="kol-sum">
           <span>⏱ Час</span><b>${fmtTime(sec)}</b>
           <span>🛤 Рейок покладено</span><b>${st.railsLaid ?? 0}</b>
