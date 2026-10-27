@@ -39,6 +39,10 @@
 // (або одного, якщо грає один), не розбираючи вмісту. Пізній чи після діри — GET …/log?from=0&snap=1 → { s: знімок,
 // f: журнал з першого запису з тиком ≥ тику знімка }; знімок розпаковуємо, звіряємо тик і R.hash — і переграємо лише
 // хвіст. Не зійшлось — журнал з нуля, як раніше. Знімки йдуть повз правила: на детермінізм не впливають.
+// K62. Збір: нова епоха (новий стіл, перезапуск) стоїть на тику 0, поки хтось за столом не тисне «▶ Почали» (net.go(),
+// Act 'go'; або дія — E/A — коли меню закрите): кадр/журнал несуть wait = 1, P не йде далі C (тик 0), свого вводу не
+// шлемо. Сервер у зборі приймає лише join/leave (на тик 0), тож світ на тику 0 однаковий у всіх. Після go годинник
+// рушає з нуля — зсув off береться з першого ж кадру без wait заново.
 // Затримка для перевірок: ?lag=<RTT мс>&jit=<мс> — кадри, вид столу, журнал і свої Input ідуть з половиною RTT
 // (± jit/2) у кожен бік, порядок зберігається (як TCP). ?smooth=0 — без згладжування (порівняти ривки).
 import * as R from './rules.js';
@@ -445,19 +449,20 @@ export function createNet(game, opts = {}) {
   const myReacts = new Set(), reactGate = createReactGate();
   const pinger = createPinger();
   let lastFrameAt = 0, pg = null;
+  let goSent = 0, goPrev = true;        // K62: епоха, де вже казали go; дія була затиснута (чекаємо відпуску)
   const watchPing = createPinger(WATCH_EVERY), wid = Math.random().toString(36).slice(2, 12);   // глядач: номер вкладки
 
   const net = {
-    p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1,
+    p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1, wait: false,
     get room() { return room; },
     get ready() { return ready; },
     get C() { return C; },
-    start, update, restart, draw,
+    start, update, restart, draw, go,
     info() {
       return { room, seat, p: net.p, p2: net.p2, e, count, w, cTick: C?.tick, pTick: game.state?.tick, pending: pending.length,
         status: net.status, desync: net.desync, cStatus: C?.status, hash: C ? R.hash(C) : 0, stats: { ...stats },
         lag, jit, smooth: { ...smooth.st },
-        ping: net.ping, pg, names: game.names, lost: game.lost, reactSeen };   // K28
+        ping: net.ping, pg, names: game.names, lost: game.lost, reactSeen, wait: net.wait };   // K28, K62
     },
     hashAt: (t) => hashes.get(t),
     hashes: () => [...hashes.entries()],
@@ -493,7 +498,12 @@ font:600 13px system-ui,sans-serif;pointer-events:none;user-select:none}
 font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
 .kol-net-re button:active{transform:scale(.92)}
 .kol-net-re button.cool{opacity:.4}
-.kol-net-re small{position:absolute;right:3px;bottom:1px;font-size:9px;color:#aaa}`;
+.kol-net-re small{position:absolute;right:3px;bottom:1px;font-size:9px;color:#aaa}
+.kol-net-wait{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:24;display:none;align-items:center;gap:10px;
+max-width:calc(100vw - 32px);padding:8px 10px 8px 14px;border-radius:12px;background:rgba(20,26,16,.85);border:1px solid #9bc25a;
+font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
+.kol-net-wait button{min-height:40px;padding:0 14px;font:inherit;color:#1d2418;background:#ffd23f;border:0;border-radius:10px;cursor:pointer;white-space:nowrap}
+.kol-net-wait button:disabled{opacity:.6;cursor:default}`;
     document.head.appendChild(st);
     const el = document.createElement('div');
     el.className = 'kol-net';
@@ -515,7 +525,16 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     watch.style.display = 'none';
     el.append(ping, watch, re);
     document.body.appendChild(el);
-    ui = { el, re, btns, ping, pingKey: '', watch, watchKey: '' };
+    // K62: збір — «Чекаємо гравців: N за столом · ▶ Почали»
+    const wait = document.createElement('div');
+    wait.className = 'kol-net-wait';
+    const waitTxt = document.createElement('span');
+    const goBtn = document.createElement('button');
+    goBtn.type = 'button'; goBtn.textContent = '▶ Почали'; goBtn.title = 'Паротяг рушає для всіх (клавіша E / пад A)';
+    goBtn.addEventListener('click', () => go());
+    wait.append(waitTxt, goBtn);
+    document.body.appendChild(wait);
+    ui = { el, re, btns, ping, pingKey: '', watch, watchKey: '', wait, waitTxt, goBtn, waitKey: '' };
     addEventListener('keydown', (ev) => {
       if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
       const t = ev.target;
@@ -575,11 +594,33 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
       ui.watch.textContent = playing ? watchersText(n) : `👀 дивишся збоку${n > 1 ? ` · ${watchersText(n).slice(3)}` : ''}`;
       ui.watch.style.display = playing && !n ? 'none' : '';
     }
+    const wk2 = ready && net.wait ? `${waitCount()}|${seat != null ? 1 : 0}|${goSent === e ? 1 : 0}` : '';
+    if (ui.waitKey !== wk2) {
+      ui.waitKey = wk2;
+      ui.wait.style.display = wk2 ? 'flex' : 'none';
+      ui.waitTxt.textContent = `⏳ Чекаємо гравців: ${waitCount()} за столом`;
+      ui.goBtn.style.display = seat != null ? '' : 'none';   // глядач без місця не стартує
+      ui.goBtn.disabled = goSent === e;
+    }
     const r = game.reacts?.[net.p], cool = !!r && now - r.at < REACT_GAP;
     for (const b of ui.btns) b.classList.toggle('cool', cool);
   }
 
   function say(st) { net.status = st; }
+
+  /** K62: скільки гравців за столом (ніки з виду/журналу), щонайменше 1. */
+  function waitCount() { return Math.max(1, (game.names || []).filter(Boolean).length); }
+
+  /** K62: «▶ Почали» — годинник партії рушає для всіх (будь-хто за столом). false — не можна / уже. */
+  function go() {
+    if (!conn || !room || seat == null || !ready || !net.wait || goSent === e) return false;
+    goSent = e;
+    const m = { e };
+    lagOut(() => conn.invoke('Act', room, 'go', m).then((r) => {
+      if (!r?.ok) { console.info('Колія: go —', r?.message); if (goSent === m.e) goSent = 0; }
+    }).catch((x) => { console.warn('Колія: go', x); if (goSent === m.e) goSent = 0; }));
+    return true;
+  }
 
   async function start() {
     if (!window.signalR) await loadScript('/static/signalr.min.js');
@@ -720,7 +761,8 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     game.me = net.p;
     if (j.nm) game.names = namesFrom(j.nm);   // K28: мітки над гравцями — ніки
     game.seed = j.seed >>> 0;
-    if (off == null) off = j.t * R.TICK_MS - performance.now();
+    net.wait = !!j.wait;   // K62
+    if (off == null || net.wait) off = j.t * R.TICK_MS - performance.now();
     if (!ingest(j.f | 0, j.c || [], !!snap)) { console.warn('Колія: журнал з дірою'); return; }
     w = j.w;
     if (j.d >= 0) noteDesync(j.d);
@@ -737,8 +779,12 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     smooth.reset();
     hi = C.tick;
     ready = true;
-    say(net.p >= 0 ? 'грає' : 'дивишся збоку' + (net.joinMsg ? ': ' + net.joinMsg : ''));
+    sayPlay();
     onWorld?.(game.state);
+  }
+
+  function sayPlay() {
+    say(net.wait ? 'чекаємо гравців' : net.p >= 0 ? 'грає' : 'дивишся збоку' + (net.joinMsg ? ': ' + net.joinMsg : ''));
   }
 
   /** Двоє за одним ПК (?p=2): попросити сервер про другого гравця за цим місцем (раз на епоху). */
@@ -759,8 +805,11 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     if (f.sp != null) game.watchers = f.sp | 0;
     if (seat != null && f.pa && f.pa[seat * 2] > 0) pinger.echo(f.pa[seat * 2], f.pa[seat * 2 + 1], now);
     if (f.e === e) {
+      const was = net.wait;
+      net.wait = !!f.wait;   // K62: збір — годинник стоїть; рушив — зсув з першого ж кадру заново
       const sample = f.t * R.TICK_MS - performance.now();
-      off = off == null ? sample : Math.max(sample, off - 1);
+      off = off == null || was || net.wait ? sample : Math.max(sample, off - 1);
+      if (was !== net.wait && ready) sayPlay();
     }
     if (f.d >= 0) noteDesync(f.d);
     if (f.r?.length) {   // K28: реакції — повз журнал і світ
@@ -924,9 +973,19 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     if (!ready || !C || !game.state) return;
     if (dirty) { dirty = false; rebuild(); }
     const est = (now + off) / R.TICK_MS;
-    const target = Math.min(Math.floor(est), w + 1 + AHEAD);
+    let target = Math.min(Math.floor(est), w + 1 + AHEAD);
+    if (net.wait) { target = Math.min(target, C.tick); waitKeys(); }   // K62: збір — світ стоїть на тику 0
     advanceP(target, STEPS_PER_FRAME);
     net.alpha = Math.max(0, Math.min(1, est - game.state.tick));
+  }
+
+  /** K62: у зборі дія (E / пад A) свого гравця — як «▶ Почали»; лише свіжий натиск і не в меню (game.paused). */
+  function waitKeys() {
+    if (bot || game.paused || seat == null) { goPrev = true; return; }
+    const a = input?.poll?.() || [];
+    const down = a.some((x) => x && x.use);
+    if (down && !goPrev) go();
+    goPrev = down;
   }
 
   async function restart(seed = game.seed, params = game.params) {
