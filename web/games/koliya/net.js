@@ -165,7 +165,9 @@ export function toCmd(c, j) {
   if (k === 'use') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7], h: c[j + 8] };
   if (k === 'throw') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7] };
   if (k === 'join' || k === 'horn') return { p, k };
-  return { p, k: 'leave' };
+  // K24: невідомий вид (новий сервер, стара вкладка без F5) — не 'leave' (вибив би гравця), а порожня команда:
+  // rules її пропустить, світ розійдеться лише на цій дії, і звірка хешу це покаже
+  return k === 'leave' ? { p, k } : { p, k: 'k' + c[j + 3] };
 }
 
 /**

@@ -369,3 +369,13 @@ test('K24: endless — зсув вікна посеред кидка: річ у 
   }
   assert.ok(near, 'дерево впало не там, куди летіло');
 });
+
+test('K24: невідомий вид запису журналу — не leave', () => {
+  assert.deepEqual(toCmd([0, 0, 1, 4, 0, 0, 0, 0, 0, 0], 0), { p: 1, k: 'leave' });
+  const c = toCmd([0, 0, 1, 99, 0, 0, 0, 0, 0, 0], 0);
+  assert.notEqual(c.k, 'leave');
+  const s = R.newGame(7, PARAMS, 2), h = R.hash(s);
+  R.applyCmd(s, c);
+  assert.equal(s.players[1].out, 0);
+  assert.equal(R.hash(s), h);
+});
