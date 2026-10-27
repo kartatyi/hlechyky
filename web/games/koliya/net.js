@@ -250,6 +250,13 @@ export function lostFrom(pg, stale, mine = []) {
   return a;
 }
 
+/** K28: «👀 N глядачів» — відмінок за числом. */
+export function watchersText(n) {
+  const a = n % 10, b = n % 100;
+  return `👀 ${n} ` + (a === 1 && b !== 11 ? 'глядач' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'глядачі' : 'глядачів');
+}
+export const WATCH_EVERY = 2000;   // глядач озивається (…/watch) — сервер забуває за 5 с
+
 /** K28: мапа p → короткий нік з виду/журналу сервера (nm). */
 export function namesFrom(nm) {
   return Array.isArray(nm) ? nm.map(shortNick) : [];
@@ -350,6 +357,7 @@ export function createNet(game, opts = {}) {
   const myReacts = new Set(), reactGate = createReactGate();
   const pinger = createPinger();
   let lastFrameAt = 0, pg = null;
+  const watchPing = createPinger(WATCH_EVERY), wid = Math.random().toString(36).slice(2, 12);   // глядач: номер вкладки
 
   const net = {
     p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1,
@@ -414,9 +422,12 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     const ping = document.createElement('div');
     ping.className = 'kol-net-tag';
     ping.title = 'Пінг до сервера (туди й назад)';
-    el.append(ping, re);
+    const watch = document.createElement('div');
+    watch.className = 'kol-net-tag';
+    watch.style.display = 'none';
+    el.append(ping, watch, re);
     document.body.appendChild(el);
-    ui = { el, re, btns, ping, pingKey: '' };
+    ui = { el, re, btns, ping, pingKey: '', watch, watchKey: '' };
     addEventListener('keydown', (ev) => {
       if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
       const t = ev.target;
@@ -450,11 +461,18 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
       const i = pinger.due(now);
       if (i) { const m = { i, r: pinger.ms ?? 0 }; lagOut(() => conn.send('Input', room, 'ping', m).catch(() => { })); }
     }
+    // глядач (не грає): озивається на …/watch раз на 2 с — стіл рахує глядачів; відповідь — його пінг
+    if (room && ready && net.p < 0) {
+      const i = watchPing.due(now);
+      if (i) lagOut(() => fetch(`/api/games/koliya/${encodeURIComponent(room)}/watch?id=${wid}`, { method: 'POST', cache: 'no-store' })
+        .then((r) => lagIn(() => { if (r.ok) watchPing.echo(i, 0, performance.now()); })).catch(() => { }));
+    }
     const stale = ready && lastFrameAt > 0 && now - lastFrameAt > LOST_MS;
     game.lost = lostFrom(pg, stale, [net.p, net.p2]);
-    net.ping = stale ? -1 : pinger.ms;
+    const ms = seat != null ? pinger.ms : watchPing.ms;
+    net.ping = stale ? -1 : ms;
     if (!ui) return;
-    const ms = pinger.ms, key = stale ? 'lost' : String(ms);
+    const key = stale ? 'lost' : String(ms);
     if (ui.pingKey !== key) {
       ui.pingKey = key;
       ui.ping.textContent = stale ? '📶? нема зв’язку' : ms == null ? '📶 …' : `📶 ${ms} мс`;
@@ -462,6 +480,13 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     }
     const playing = net.p >= 0;
     ui.re.style.display = playing ? '' : 'none';
+    const wk = (playing ? '' : 'я') + (game.watchers | 0);
+    if (ui.watchKey !== wk) {
+      ui.watchKey = wk;
+      const n = game.watchers | 0;
+      ui.watch.textContent = playing ? watchersText(n) : `👀 дивишся збоку${n > 1 ? ` · ${watchersText(n).slice(3)}` : ''}`;
+      ui.watch.style.display = playing && !n ? 'none' : '';
+    }
     const r = game.reacts?.[net.p], cool = !!r && now - r.at < REACT_GAP;
     for (const b of ui.btns) b.classList.toggle('cool', cool);
   }
@@ -591,6 +616,7 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     const now = performance.now();   // K28: пінг і «відпав»
     lastFrameAt = now;
     if (f.pg) pg = f.pg;
+    if (f.sp != null) game.watchers = f.sp | 0;
     if (seat != null && f.pa && f.pa[seat * 2] > 0) pinger.echo(f.pa[seat * 2], f.pa[seat * 2 + 1], now);
     if (f.e === e) {
       const sample = f.t * R.TICK_MS - performance.now();

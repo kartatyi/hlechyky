@@ -109,6 +109,40 @@ public sealed class Koliya : Game, IUnlistedGame
     readonly int[] _pingI = new int[4];
     readonly DateTimeOffset[] _pingAt = new DateTimeOffset[4];
 
+    /// <summary>Глядач зник, якщо не озивався довше (браузер озивається раз на 2 с).</summary>
+    public const int WatchMs = 5000;
+    /// <summary>Скільки глядачів пам'ятати (далі — забуваємо найдавнішого).</summary>
+    public const int WatchKeep = 64;
+    /// <summary>Номер вкладки глядача → коли востаннє озивався.</summary>
+    readonly Dictionary<string, DateTimeOffset> _watch = [];
+
+    /// <summary>K28: глядач озвався (KoliyaSetup …/watch). Кличеться під замком кімнати. Повертає, скільки глядачів зараз.</summary>
+    public int Watch(string id)
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (!_watch.ContainsKey(id) && _watch.Count >= WatchKeep)
+        {
+            Forget(now);
+            if (_watch.Count >= WatchKeep) _watch.Remove(_watch.MinBy(x => x.Value).Key);
+        }
+        _watch[id] = now;
+        return Watchers();
+    }
+
+    void Forget(DateTimeOffset now)
+    {
+        foreach (var k in _watch.Where(x => now - x.Value > TimeSpan.FromMilliseconds(WatchMs)).Select(x => x.Key).ToList()) _watch.Remove(k);
+    }
+
+    /// <summary>Скільки глядачів озивалось за останні <see cref="WatchMs"/>.</summary>
+    int Watchers()
+    {
+        var old = Ctx.Clock.UtcNow - TimeSpan.FromMilliseconds(WatchMs);
+        var n = 0;
+        foreach (var at in _watch.Values) if (at >= old) n++;
+        return n;
+    }
+
     public override string SeatName(int seat) => "колійник";
 
     public override bool LateJoin(string nick) => true;
@@ -302,6 +336,7 @@ public sealed class Koliya : Game, IUnlistedGame
         while (_keepFrom < _log.Count && _log[_keepFrom].T <= w - KeepTicks) _keepFrom++;
         var old = Ctx.Clock.UtcNow - TimeSpan.FromMilliseconds(ReactKeepMs);   // K28
         _reacts.RemoveAll(r => r.At < old);
+        if (NowTick() % 100 == 0) Forget(Ctx.Clock.UtcNow);
         if (!_dirty) return TickResult.FrameOnly;
         _dirty = false;
         return TickResult.Both;
@@ -311,7 +346,7 @@ public sealed class Koliya : Game, IUnlistedGame
     {
         e = _epoch, t = NowTick(), w = _w, n = _log.Count, f = _keepFrom, c = Flat(_keepFrom), d = _desync,
         r = Reacts(),   // K28: [seq, p, e, i] × N — свіжі реакції
-        pg = Pings(), pa = PingEcho(),
+        pg = Pings(), pa = PingEcho(), sp = Watchers(),
     };
 
     /// <summary>K28: гравець rules p → пінг його браузера (мс) або -1 — «відпав» (місце мовчить довше за <see cref="LostMs"/>).</summary>

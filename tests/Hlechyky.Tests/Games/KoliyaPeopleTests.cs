@@ -90,6 +90,27 @@ public class KoliyaPeopleTests
     }
 
     [Fact]
+    public void Глядачі_рахуються_поки_озиваються()
+    {
+        var h = Table("Оля", "Петро", "Іра", "Тарас");
+        h.Join("Гість");                                      // п'ятий — місць нема, дивиться
+        Assert.Null(h.Room.SeatOf("Гість"));
+        int Watch(string id) { lock (h.Room.Sync) return Game(h).Watch(id); }
+        Assert.Equal(1, Watch("a1"));
+        Assert.Equal(1, Watch("a1"));                          // та сама вкладка — той самий глядач
+        Assert.Equal(2, Watch("b2"));
+        h.Tick(1);
+        Assert.Equal(2, LastFrame(h).GetProperty("sp").GetInt32());
+        h.Tick(60);                                           // 3 с — a1 озвався, b2 ні
+        Watch("a1");
+        h.Tick(50);                                           // b2 мовчить > 5 с
+        Assert.Equal(1, LastFrame(h).GetProperty("sp").GetInt32());
+        for (var i = 0; i < Koliya.WatchKeep + 10; i++) Watch("x" + i);   // пам'ять не росте без меж
+        Assert.Equal(Koliya.WatchKeep, Watch("y"));
+        Assert.Equal(4, Ints(LastFrame(h), "pg").Length);     // глядачі — не гравці
+    }
+
+    [Fact]
     public void Погана_реакція_відмовляє()
     {
         var h = Table("Оля");

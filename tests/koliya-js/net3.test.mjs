@@ -1,7 +1,7 @@
 // K28 «Мережа 3: люди за столом» — чисті частини net.js: ніки, реакції, пінг, глядачі.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shortNick, namesFrom, REACTS, createReactGate, freshReacts, createPinger, pingColor, lostFrom } from '../../web/games/koliya/net.js';
+import { shortNick, namesFrom, REACTS, createReactGate, freshReacts, createPinger, pingColor, lostFrom, watchersText } from '../../web/games/koliya/net.js';
 
 test('пінг: раз на секунду, луна мінус час на сервері, згладжено', () => {
   const pg = createPinger(1000);
@@ -17,6 +17,15 @@ test('пінг: раз на секунду, луна мінус час на се
   assert.equal(pingColor(50), '#8fe36b');
   assert.equal(pingColor(120), '#ffd23f');
   assert.equal(pingColor(null), '#9a9a9a');
+});
+
+test('глядачі: відмінок за числом', () => {
+  assert.equal(watchersText(1), '👀 1 глядач');
+  assert.equal(watchersText(3), '👀 3 глядачі');
+  assert.equal(watchersText(5), '👀 5 глядачів');
+  assert.equal(watchersText(11), '👀 11 глядачів');
+  assert.equal(watchersText(22), '👀 22 глядачі');
+  assert.equal(watchersText(12), '👀 12 глядачів');
 });
 
 test('«відпав»: -1 з кадру, а без кадрів > 3 с — і свої', () => {
