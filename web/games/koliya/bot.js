@@ -84,50 +84,94 @@ function sh(s) {
 }
 
 // ---------- маршрут колії: Дейкстра від кінця колії до будь-якої клітинки станції ----------
+// K51: Дейкстра — 60 % часу бота (смуга 300: ~1,4 мс/тик). Те саме до біта (купа з тими самими порівняннями й обмінами,
+// лише на типізованих масивах; сусіди в тому ж порядку DIRS), плюс пам'ять: входи (w, h, path, obj, ground, drop) ті
+// самі, що минулого разу, — маршрут той самий, не рахуємо. Порівняння точне (копії), не хеш — колізій нема.
+const RT = { n: -1, inPath: null, dist: null, prev: null, hd: null, hc: null, cost: null,
+             w: -1, h: -1, path: new Int32Array(0), pathN: -1, obj: null, ground: null, drop: null, route: null };
+function rtBuf(n) {
+  if (RT.n === n) return;
+  RT.n = n; RT.inPath = new Uint8Array(n); RT.dist = new Int32Array(n); RT.prev = new Int32Array(n);
+  RT.hd = new Int32Array(4 * n + 4); RT.hc = new Int32Array(4 * n + 4);
+  RT.obj = new Uint8Array(n); RT.ground = new Uint8Array(n); RT.drop = new Uint8Array(n); RT.route = null;
+}
+function rtSame(s) {
+  if (!RT.route || RT.w !== s.w || RT.h !== s.h || RT.pathN !== s.path.length) return false;
+  const P = s.path, Q = RT.path;
+  for (let i = P.length - 1; i >= 0; i--) if (P[i] !== Q[i]) return false;
+  const a = s.obj, b = RT.obj, g = s.ground, gb = RT.ground, d = s.drop, db = RT.drop, n = RT.n;
+  for (let i = 0; i < n; i++) if (a[i] !== b[i] || d[i] !== db[i] || g[i] !== gb[i]) return false;
+  return true;
+}
 function planRoute(s) {
-  const n = s.w * s.h, W = s.w;
-  const start = s.path[s.path.length - 1];
-  const inPath = new Uint8Array(n);
-  for (const c of s.path) inPath[c] = 1;
-  const dist = new Int32Array(n).fill(0x3fffffff), prev = new Int32Array(n).fill(-1);
-  const heap = [];   // [d, c]
-  const push = (d, c) => { heap.push([d, c]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
-  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  const n = s.w * s.h, W = s.w, H = s.h;
+  rtBuf(n);
+  if (rtSame(s)) return RT.route.slice();
+  const path = s.path, obj = s.obj, ground = s.ground, drop = s.drop;
+  const start = path[path.length - 1];
+  const inPath = RT.inPath.fill(0);
+  for (let i = 0; i < path.length; i++) inPath[path[i]] = 1;
+  const dist = RT.dist.fill(0x3fffffff), prev = RT.prev.fill(-1);
+  const hd = RT.hd, hc = RT.hc;
+  let hn = 0;
+  const push = (d, c) => {
+    let i = hn++; hd[i] = d; hc[i] = c;
+    while (i > 0) { const p = (i - 1) >> 1; if (hd[p] <= hd[i]) break; const td = hd[p], tc = hc[p]; hd[p] = hd[i]; hc[p] = hc[i]; hd[i] = td; hc[i] = tc; i = p; }
+  };
   dist[start] = 0; push(0, start);
   let goal = -1;
-  while (heap.length) {
-    const [d, c] = pop();
+  while (hn) {
+    // pop: верх, останній — на місце верху, просіяти вниз (як було)
+    const d = hd[0], c = hc[0];
+    hn--;
+    if (hn) {
+      hd[0] = hd[hn]; hc[0] = hc[hn];
+      let i = 0;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < hn && hd[l] < hd[m]) m = l; if (r < hn && hd[r] < hd[m]) m = r; if (m === i) break; const td = hd[m], tc = hc[m]; hd[m] = hd[i]; hc[m] = hc[i]; hd[i] = td; hc[i] = tc; i = m; }
+    }
     if (d !== dist[c]) continue;
-    if (c !== start && s.ground[c] === G.STATION) { goal = c; break; }
+    if (c !== start && ground[c] === G.STATION) { goal = c; break; }
     const x = c % W, y = (c / W) | 0;
-    for (const [dx, dy] of DIRS) {
+    for (let k = 0; k < 4; k++) {
+      const dx = DIRS[k][0], dy = DIRS[k][1];
       const nx = x + dx, ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= W || ny >= s.h) continue;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const m = ny * W + nx;
       if (inPath[m]) continue;
-      const ob = s.obj[m];
+      const ob = obj[m];
       if (ob === O.WALL) continue;
       let cost = 10;
+      const gm = ground[m];
       if (ob === O.TREE) cost = 30; else if (ob === O.ROCK) cost = 40;
-      else if (s.ground[m] === G.WATER) cost = 35;
-      else if (s.ground[m] === G.CHASM) cost = 60; else if (s.ground[m] === G.FRAME) cost = 35;   // K26: яр — дерево + залізо
-      if (s.drop[m]) cost += 25;
+      else if (gm === G.WATER) cost = 35;
+      else if (gm === G.CHASM) cost = 60; else if (gm === G.FRAME) cost = 35;   // K26: яр — дерево + залізо
+      if (drop[m]) cost += 25;
       if (dy) cost += 2;               // трохи краще прямо вздовж смуги
       // краще просторі місця: у вузькому коридорі потяг затуляє прохід, і гравцю не обійти його
-      for (const [ex, ey] of DIRS) {
-        const qx = nx + ex, qy = ny + ey;
-        if (qx < 0 || qy < 0 || qx >= W || qy >= s.h) { cost += 8; continue; }
+      for (let e = 0; e < 4; e++) {
+        const qx = nx + DIRS[e][0], qy = ny + DIRS[e][1];
+        if (qx < 0 || qy < 0 || qx >= W || qy >= H) { cost += 8; continue; }
         const q = qy * W + qx;
-        if (!inPath[q] && (s.obj[q] !== O.NONE || noFoot(s.ground[q]))) cost += 8;
+        if (!inPath[q] && (obj[q] !== O.NONE || noFoot(ground[q]))) cost += 8;
       }
       const nd = d + cost;
       if (nd < dist[m]) { dist[m] = nd; prev[m] = c; push(nd, m); }
     }
   }
-  if (goal < 0) return [start];
-  const r = [];
-  for (let c = goal; c !== -1; c = prev[c]) r.push(c);
-  return r.reverse();
+  let r;
+  if (goal < 0) r = [start];
+  else {
+    r = [];
+    for (let c = goal; c !== -1; c = prev[c]) r.push(c);
+    r.reverse();
+  }
+  // K51: запам'ятати входи
+  RT.w = W; RT.h = H; RT.pathN = path.length;
+  if (RT.path.length < path.length) RT.path = new Int32Array(path.length * 2 + 16);
+  for (let i = 0; i < path.length; i++) RT.path[i] = path[i];
+  RT.obj.set(obj); RT.ground.set(ground); RT.drop.set(drop);
+  RT.route = r.slice();
+  return r;
 }
 
 const passable = (s, o, c, thruWagons) => s.obj[c] === O.NONE && !noFoot(s.ground[c]) && (thruWagons || !o.occ[c]);   // K26: noFoot
