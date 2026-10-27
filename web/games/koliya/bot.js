@@ -13,7 +13,7 @@ const bridgeRes = (s, c) => { const g = s.ground[c]; return g === G.WATER || g =
 
 const DIRS = [[1, 0], [0, 1], [0, -1], [-1, 0]];
 // K13: пороги «запасу колії» (клітинок від голови до кінця): urg — по рейки будь-скільки, far — повний стос лише ближче
-const TUNE = { urg: 10, far: 40, avB: 0.7, avS: 0.7, avH: 0.4, tol: 0, ...(globalThis.KOL_BOT_TUNE || {}) };
+const TUNE = { urg: 10, far: 40, avB: 0.3, avS: 1, avH: 0.4, tol: 3, lay: 1, ...(globalThis.KOL_BOT_TUNE || {}) };   // K60b: характер — обхід у шляху до 30, відступ з терпінням 3·z с, класти лишаємо людині ≤ 8·(1−z) клітинок
 const shared = new WeakMap();    // state → { t, occ, route, routeSet, N, rt, pl, claims: Map, bots: Map }
 // K34: клітинки, яких BFS обходить (людина й клітинка перед нею) — ставить напарник на час свого think
 let AV = null;
@@ -444,7 +444,7 @@ export function createBot(p, opts = {}) {
     const idleT = Math.round(10 * TPS * (1 - 0.8 * z));       // «людина не будує»: 10 с → 2 с
     const hitW = Math.round(3 * TPS * kz), putW = Math.round(8 * TPS * kz);   // скільки тримаємо її ціль / покладене
     const avZ = Math.max(TUNE.avB, TUNE.avS);
-    const rTool = Math.round(2 * kz), rNear = Math.round(10 * kz), rWalk = 6 * kz, rLay = z < 0.5 ? Math.round(8 * (1 - 2 * z)) : -1;   // класти лишаємо їй лише до середини
+    const rTool = Math.round(2 * kz), rNear = Math.round(10 * kz), rWalk = 6 * kz, rLay = TUNE.lay ? Math.round(8 * kz) : z < 0.5 ? Math.round(8 * (1 - 2 * z)) : -1;   // класти лишаємо їй лише до середини
     for (const { q, pl: hp, h, hc } of H) {
       const hx = hc % s.w, hy = (hc / s.w) | 0;
       const idle = s.tick - h.act >= idleT;
