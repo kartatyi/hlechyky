@@ -217,7 +217,7 @@ function drawHud() {
   view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => {   // K3; K21: без сервера — не чорний екран мовчки
     console.warn('Колія: мережа', e);
-    if (!game.state) hud.textContent = '⚠ Не вдалося підключитись до столу. Без мережі — прибери &net= з адреси.';
+    if (!game.state) { const u = new URL(location.href); u.searchParams.delete('net'); hud.innerHTML = `⚠ Не вдалося підключитись до столу. <a href="${u.pathname + u.search}" style="pointer-events:auto;color:#ffd23f">🏠 Грати без мережі</a>`; }   // K30
   }); else restart();
   requestAnimationFrame(frame);
 })();
