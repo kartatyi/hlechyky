@@ -232,6 +232,16 @@ export function makeCraft(K) {
     fx({ now }) { spin(wheels, moved(g)); coal.emissiveIntensity = 0.75 + 0.25 * Math.sin(now / 90) * Math.sin(now / 37); } };
 }
 
+// ---------- гравець-чумак: бриль (широкі криси, стрічка кольору гравця) і вуса ----------
+export function bryl(K, head, band) {
+  const { cube } = K;
+  cube(head, 0, 0.25, 0, 0.48, 0.03, 0.48, 0xe2c47a);
+  cube(head, 0, 0.28, 0, 0.29, 0.1, 0.29, 0xd9b968);
+  cube(head, 0, 0.28, 0, 0.3, 0.035, 0.3, band);
+  cube(head, 0.142, 0.022, 0, 0.014, 0.028, 0.15, 0x3a2a1a);
+  for (const s of [-1, 1]) cube(head, 0.142, -0.01, s * 0.07, 0.014, 0.04, 0.02, 0x3a2a1a);
+}
+
 // ---------- «рейки» в руках і на возі: в'язка колод ----------
 export function logBundle(K, g, n) {
   for (let j = 0; j < n; j++) {

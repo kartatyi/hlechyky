@@ -305,7 +305,8 @@ function makePlayer(n) {
   cube(head, 0, 0, 0, 0.28, 0.27, 0.28, SKIN);
   cube(head, 0.141, 0.12, -0.065, 0.01, 0.05, 0.04, 0x222222); cube(head, 0.141, 0.12, 0.065, 0.01, 0.05, 0.04, 0x222222);
   cube(head, 0.141, 0.05, 0, 0.012, 0.025, 0.08, 0xd88a6a);
-  cube(head, 0, 0.25, 0, 0.3, 0.07, 0.3, pc.hat); cube(head, 0.1, 0.25, 0, 0.18, 0.035, 0.3, pc.hat);
+  if (isChumak()) CV.bryl(K25, head, pc.hat);   // K25: солом'яний бриль зі стрічкою кольору гравця й вуса
+  else { cube(head, 0, 0.25, 0, 0.3, 0.07, 0.3, pc.hat); cube(head, 0.1, 0.25, 0, 0.18, 0.035, 0.3, pc.hat); }
   const arm = (z) => { const p = new THREE.Group(); p.position.set(0, 0.48, z); body.add(p); cube(p, 0, -0.26, 0, 0.1, 0.26, 0.1, pc.shirt); cube(p, 0, -0.3, 0, 0.09, 0.05, 0.09, SKIN); return p; };
   const armL = arm(-0.215), armR = arm(0.215);
   const hand = new THREE.Group(); hand.position.set(0, -0.3, 0); armR.add(hand);
