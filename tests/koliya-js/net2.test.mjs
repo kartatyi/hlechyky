@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as R from '../../web/games/koliya/rules.js';
-import { copyInto, prep, createDriver, createSmoother, createLag } from '../../web/games/koliya/net.js';
+import { copyInto, prep, toCmd, createDriver, createSmoother, createLag } from '../../web/games/koliya/net.js';
 
 const PARAMS = { ...R.defaultParams(), startSec: 90, overheat: 'stop' };
 
@@ -100,4 +100,43 @@ test('hash бачить додатки: гуси, проміжну станці�
   const g = R.newGame(7, { ...PARAMS, geese: 'on', geeseSec: 10 }, 1), hs = new Set();
   for (let i = 0; i < 400; i++) { R.step(g, []); if (i % 20 === 0) hs.add(R.hash(g)); }
   assert.ok(hs.size > 10);
+});
+
+test('K18 у мережі: throw (з позою) і horn — з кадру в команду rules', () => {
+  const c = [0, 5, 1, 5, 1500, 2500, 0, -1, 0, 7, 1, 6, 0, 6, 0, 0, 0, 0, 0, 8];
+  assert.deepEqual(toCmd(c, 0), { p: 1, k: 'throw', x: 1500, y: 2500, fx: 0, fy: -1 });
+  assert.deepEqual(toCmd(c, 10), { p: 0, k: 'horn' });
+});
+
+test('K18 у мережі: кидки й гудки через журнал із запізненням — перерахунок дає той самий світ', () => {
+  const PRM = { ...PARAMS, throw: 'on' }, N = 1200, DELAY = 5;
+  const s = R.newGame(11, PRM, 2), d = [createDriver(), createDriver()], last = [{}, {}], log = [];
+  let throws = 0, honks = 0;
+  for (let t = 0; t < N; t++) {
+    const cmds = [];
+    for (let p = 0; p < 2; p++) {
+      const v = d[p].think(s, p), pl = s.players[p], pose = { x: pl.x, y: pl.y, fx: pl.fx, fy: pl.fy };
+      if (v.mx !== last[p].mx || v.my !== last[p].my) { last[p] = v; cmds.push({ p, k: 'in', mx: v.mx, my: v.my }); }
+      if (v.use) cmds.push({ p, k: 'use', ...pose, h: 0 });
+      if (v.throw) cmds.push({ p, k: 'throw', ...pose });
+      if (v.horn) cmds.push({ p, k: 'horn' });
+    }
+    for (const c of cmds) log.push({ t, c });
+    R.step(s, cmds);
+    throws += s.ev.filter((e) => e.t === 'throw').length; honks += s.ev.filter((e) => e.t === 'honk').length;
+  }
+  assert.ok(throws > 0 && honks > 0, `кидків ${throws}, гудків ${honks} — інакше тест нічого не перевірив`);
+  // браузер гравця 0: чужі команди — через DELAY тиків
+  const C = R.newGame(11, PRM, 2), P = R.clone(C);
+  const known = (t, now) => log.filter((x) => x.t === t && (x.c.p === 0 || x.t + DELAY <= now)).map((x) => x.c);
+  for (let now = 0; now < N + DELAY; now++) {
+    while (C.tick + DELAY <= now && C.tick < N) { const c = known(C.tick, now); prep(C, c); R.step(C, c); }
+    if (log.some((x) => x.c.p === 1 && x.t + DELAY === now && x.t < P.tick)) {
+      const back = P.tick; copyInto(P, C);
+      while (P.tick < back) { const c = known(P.tick, now); prep(P, c); R.step(P, c); }
+    }
+    if (P.tick < Math.min(now + 1, N)) { const c = known(P.tick, now); prep(P, c); R.step(P, c); }
+  }
+  assert.equal(R.hash(C), R.hash(s));
+  assert.equal(R.hash(P), R.hash(s));
 });
