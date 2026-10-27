@@ -411,6 +411,8 @@ export function createRenderer(canvas) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  let gpu = '';   // звіт партії (report.js): на якому залізі гальмує
+  try { const gl = renderer.getContext(), d = gl.getExtension('WEBGL_debug_renderer_info'); gpu = String(gl.getParameter(d ? d.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '').slice(0, 80); } catch { }
 
   const scene = new THREE.Scene();
   const extras = createExtrasRender(scene, THREE);
@@ -1809,7 +1811,7 @@ export function createRenderer(canvas) {
     setFollow(k) { camFollow = Number.isInteger(k) ? k : -1; },   // K35
     weather,   // K32: rows() для «🎨 Вигляд», state для перевірок
     get quality() { return lowQ ? 'low' : 'high'; },
-    get look() { return prefs.look; } };
+    get look() { return prefs.look; }, gpu };
   if (globalThis.KOL) globalThis.KOL.view = api;      // для перевірок у консолі
   return api;
 }

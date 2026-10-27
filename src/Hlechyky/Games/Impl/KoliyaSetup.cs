@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
+
 namespace Hlechyky.Games.Impl;
 
 /// <summary>
@@ -13,6 +16,14 @@ public static class KoliyaSetup
         app.MapGet(Root + "/{room}/log", (string room, int? from, int? snap, Rooms rooms) => Log(rooms, room, from ?? 0, snap == 1));
         app.MapPost(Root + "/{room}/snap", (string room, int e, int t, long h, int? z, HttpRequest req, Rooms rooms) => Snap(rooms, room, e, t, h, z == 1, req));
         app.MapPost(Root + "/{room}/watch", (string room, string? id, Rooms rooms) => Watch(rooms, room, id));
+        var reports = new KoliyaReports(app.Services.GetRequiredService<DiagLog>());
+        app.MapPost(Root + "/report", async (HttpContext c, IConfiguration config) =>
+        {
+            if (!config.GetValue("Diag:Koliya", true)) return Results.Ok(new { ok = false, off = true });
+            var code = await reports.Accept(Auth.Nick(c), c.Connection.RemoteIpAddress?.ToString(), c.Request.ContentLength,
+                c.Request.Body, Environment.TickCount64, c.RequestAborted);
+            return code == 200 ? Results.Ok(new { ok = true }) : Results.StatusCode(code);
+        });
     }
 
     /// <summary>
@@ -62,5 +73,39 @@ public static class KoliyaSetup
             body = game.Log(Math.Max(0, from), snap);
         }
         return Results.Json(body);
+    }
+}
+
+/// <summary>
+/// Звіт партії «Колії» з браузера (web/games/koliya/report.js): чим скінчилась, скільки тривала, кадри, пінг, пристрій —
+/// рядком у data/diag/koliya-&lt;дата&gt;.jsonl (зводить D:\or-wt\_tools\koliya\report.py). Не більше 8 КБ; з одного ніка
+/// й адреси — не частіше ніж раз на 2 с (кінець партії й «ще раз» поспіль пройдуть, засипати диск — ні). Вимикач — Diag:Koliya.
+/// </summary>
+public sealed class KoliyaReports(DiagLog diag)
+{
+    public const int MaxBytes = 8 * 1024;
+    public const int MinGapMs = 2000;
+
+    readonly ConcurrentDictionary<string, long> _last = new(StringComparer.Ordinal);
+
+    /// <summary>HTTP-код відповіді: 200 — лягло в data/diag/koliya-&lt;дата&gt;.jsonl; 413, 429, 400 — ні.</summary>
+    public async Task<int> Accept(string nick, string? ip, long? length, Stream body, long nowMs, CancellationToken ct = default)
+    {
+        if (length is not { } len || len > MaxBytes) return 413;
+        var key = nick + "|" + ip;
+        if (_last.TryGetValue(key, out var was) && nowMs - was < MinGapMs) return 429;
+        _last[key] = nowMs;
+        if (_last.Count > 500)
+            foreach (var kv in _last)
+                if (nowMs - kv.Value > 60_000) _last.TryRemove(kv.Key, out _);
+        JsonDocument doc;
+        try { doc = await JsonDocument.ParseAsync(body, cancellationToken: ct); }
+        catch (JsonException) { return 400; }
+        using (doc)
+        {
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return 400;
+            diag.Write("koliya", new { k = "koliya", at = DateTimeOffset.Now.ToString("O"), nick, m = doc.RootElement.Clone() });
+        }
+        return 200;
     }
 }
