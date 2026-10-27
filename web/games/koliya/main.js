@@ -13,6 +13,7 @@ import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
+import { createTouch, isTouchDevice } from './touch.js';   // K27: телефон і планшет
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -67,10 +68,12 @@ const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — 
 try {   // K21: лише відомі значення (старе 'medium' чи рядок 'false' не ламають slowCheck, вібрацію й підказки)
   const o = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {};
   if (o.quality === 'low') prefs.quality = 'low';
+  else if (o.quality !== 'high' && isTouchDevice()) prefs.quality = 'low';   // K27: телефон — «низька», поки не обрали самі
   if (o.rumble === false) prefs.rumble = false;
   if (o.tips === false) prefs.tips = false;
 } catch { }
 input.setRumble(prefs.rumble);
+input.setTouch(game.touch = createTouch({ canvas }));   // K27
 const nextRestart = () => {
   if (game.state?.status === 'won' && game.params.mode === 'tutorial') return game.stopTutorial();   // K22: навчання пройдено — далі справжня смуга
   restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
