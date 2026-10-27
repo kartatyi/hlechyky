@@ -9,6 +9,10 @@
 //  K16: events(ev, s) — гачок з main.js щотику: тости подій («🪿 Гуска вкрала сокиру!», покращення станції, «💫»);
 //  тости — не більше 2 одночасно (новий витісняє найстаріший). Біля смуги прогресу — біом під паротягом (s.zones від
 //  K7; з проміжною станцією — і зони другої смуги) і позначка 🏪 проміжної; паротяг на проміжній — банер «оберіть».
+//  K23: нескінченна (s.endless) — «🚉 N · ділянка», до наступної, відлік зупинки; рекорди kol-best (станції / час сіду),
+//  kol-daily (маршрут дня: dailySeed/kyivDate для main.js); підсумок по гравцях із s.ev і звання; пауза Esc/⏸
+//  (opts.input — пад у меню, opts.onSettings(), opts.panelOpen()); на старті «📅 Маршрут дня» / «🎓 Навчання», якщо в game
+//  є startDaily / startTutorial.
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES } from './extras.js';             // K16: тост покращення
@@ -20,6 +24,55 @@ const ALARM_SEC = 3;
 const BIOME_ICON = { glade: '🌱', steppe: '🌾', grove: '🌳', stone: '🪨', river: '🌊', swamp: '🐸', pass: '⛰' };
 const STEAL_NAME = { [I.AXE]: 'сокиру', [I.PICK]: 'кайло', [I.BUCKET]: 'відро', [I.BUCKET_FULL]: 'відро з водою' };
 const TOASTS = 2;
+const BEST_KEY = 'kol-best';   // K23: рекорди { 'endless|<гравців>': станцій, 'time|<режим>|<сід>|<гравців>': тиків до станції }
+
+// K23: рекорди в localStorage (приватне вікно / заблоковане сховище — просто без рекорду)
+function loadBest() { try { const b = JSON.parse(localStorage.getItem(BEST_KEY) || '{}'); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
+function saveBest(b) { try { localStorage.setItem(BEST_KEY, JSON.stringify(b)); } catch { } }
+const plural = (n, a, b, c) => { const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c; };
+const whoLabel = (n) => n <= 1 ? 'соло' : `${n} ${plural(n, 'гравець', 'гравці', 'гравців')}`;
+// K23: «📅 Маршрут дня» — дата за Києвом (YYYY-MM-DD) і сід від неї, однаковий у всіх; рекорд дня — kol-daily
+const DAILY_KEY = 'kol-daily';
+export function kyivDate(d = new Date()) {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
+  catch { return d.toISOString().slice(0, 10); }
+}
+export function dailySeed(date = kyivDate()) {
+  let h = (Number(String(date).replace(/\D/g, '')) ^ 0x4B4F4C49) >>> 0;   // YYYYMMDD ^ «KOLI»
+  h = Math.imul(h ^ (h >>> 16), 0x85EBCA6B); h = Math.imul(h ^ (h >>> 13), 0xC2B2AE35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+function loadDaily() { try { const b = JSON.parse(localStorage.getItem(DAILY_KEY) || '{}'); return b && typeof b === 'object' ? b : {}; } catch { return {}; } }
+/** Рекорд дня: { kind: 'dst'|'dtime', val, prev, isNew, n } — час до станції (менше краще) чи станції нескінченної */
+function judgeDaily(s, date, save = true) {
+  const n = s.players?.length ?? 1, b = loadDaily(), day = b[date] ?? {};
+  const kind = s.endless ? 'dst' : 'dtime', key = `${s.endless ? 'e' : 't'}${n}`, prev = +day[key] || 0;
+  let val = 0, isNew = false;
+  if (s.endless) { val = s.endless.stations | 0; isNew = val > prev; }
+  else if (s.status === 'won') { val = s.tick | 0; isNew = !prev || val < prev; }
+  if (isNew && save) {
+    b[date] = { ...day, [key]: val };
+    for (const d of Object.keys(b).sort().slice(0, -7)) delete b[d];   // тримаємо тиждень
+    try { localStorage.setItem(DAILY_KEY, JSON.stringify(b)); } catch { }
+  }
+  return { kind, val, prev, isNew, n };
+}
+
+/** Підсумок рекорду партії, що скінчилась: { kind: 'st'|'time', val, prev, isNew } або null (рахувати нема що) */
+function judgeRecord(s) {
+  const n = s.players?.length ?? 1;
+  if (s.endless) {
+    const key = `endless|${n}`, val = s.endless.stations | 0, b = loadBest(), prev = +b[key] || 0;
+    const isNew = val > prev;
+    if (isNew) { b[key] = val; saveBest(b); }
+    return { kind: 'st', val, prev, isNew, n };
+  }
+  const key = `time|${s.params?.stationMode ?? 'end'}|${s.seed >>> 0}|${n}`, b = loadBest(), prev = +b[key] || 0;
+  if (s.status !== 'won') return prev ? { kind: 'time', val: 0, prev, isNew: false, n } : null;
+  const val = s.tick | 0, isNew = !prev || val < prev;
+  if (isNew) { b[key] = val; saveBest(b); }
+  return { kind: 'time', val, prev, isNew, n };
+}
 
 const CSS = `
 #kol-hud.kol-root { position: fixed; inset: 0; left: 0; top: 0; padding: 0; background: none; border-radius: 0;
@@ -78,6 +131,26 @@ const CSS = `
 .kol-padonly { display: none; }
 .kol-haspad .kol-padonly { display: contents; }
 .kol-haspad .kol-kbonly { display: none; }
+.kol-endl { white-space: nowrap; background: #123a4acc; border-color: #5fd3ff88; }
+.kol-big { font-size: 1.6em; margin: .2em 0; color: #fff; }
+.kol-rec { margin: .3em 0; font-weight: 600; }
+.kol-rec.kol-new { color: #ffd23f; font-size: 1.3em; animation: kol-pulse2 .7s ease-in-out infinite alternate; }
+@keyframes kol-pulse2 { to { transform: scale(1.08); } }
+.kol-card .kol-sum { grid-template-columns: auto auto auto auto; }
+.kol-ptab { margin: .5em auto .2em; border-collapse: collapse; font-size: .85em; font-weight: 500; }
+.kol-ptab th, .kol-ptab td { padding: .15em .45em; text-align: center; white-space: nowrap; }
+.kol-ptab tr + tr { border-top: 1px solid #ffffff1a; }
+.kol-ptab td:first-child { text-align: left; }
+.kol-ptab td.kol-ttl { text-align: left; font-weight: 700; color: #ffe9a8; }
+.kol-ptab i { opacity: .35; font-style: normal; }
+#kol-hud .kol-top { right: 124px; }
+.kol-pausebtn { position: fixed; right: 62px; top: 8px; width: 46px; height: 46px; border-radius: 10px; border: 1px solid #fff3;
+  background: rgba(20,24,18,.7); color: #f4efe2; font-size: 20px; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
+.kol-modes { display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; }
+.kol-modes .kol-again { font-size: 1em; }
+.kol-pmenu { display: flex; flex-direction: column; align-items: stretch; gap: .1em; width: fit-content; margin: .4em auto; }
+.kol-pmenu .kol-again.kol-pf, .kol-pmenu .kol-again:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; }
+@media (max-width: 640px) { .kol-card .kol-sum { grid-template-columns: auto auto; } .kol-ptab { font-size: .72em; } .kol-ptab th, .kol-ptab td { padding: .1em .25em; } }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
 
@@ -117,10 +190,11 @@ export function createHud(root, opts = {}) {
   const progTrack = el('div', 'kol-prog-track', prog);
   const progEnd = el('div', 'kol-prog-end', prog);
   const progAhead = el('div', 'kol-prog-ahead', prog);
-  el('div', 'kol-prog-st', prog, '🏁');
+  const progSt = el('div', 'kol-prog-st', prog, '🏁');
   const progMidL = el('div', 'kol-prog-midl', prog); const progMid = el('div', 'kol-prog-mid', prog, '🏪');
   progMidL.style.display = progMid.style.display = 'none';
   const progHead = el('div', 'kol-prog-head', prog, '🚂');
+  const endlEl = el('div', 'kol-box kol-endl', top); endlEl.style.display = 'none';   // K23: 🚉 станцій · ділянка
   const biomeEl = el('div', 'kol-box kol-biome', top);
   const timeEl = el('div', 'kol-box kol-stat', top);
   const speedEl = el('div', 'kol-box kol-stat', top);
@@ -174,23 +248,106 @@ export function createHud(root, opts = {}) {
       <span class="kol-kbonly"><b>R</b></span><span class="kol-kbonly">рестарт · <b>F1</b> — налаштування</span>
     </div>
     <p class="kol-hint">${n > 1 ? `Гравців: ${n}. ` : ''}Другий пад — другий гравець. <span class="kol-kbonly"><code>?p=2</code> — удвох з клавіатури, <code>&amp;bot=1</code> — бот</span></p>
-    <div class="kol-go"><span class="kol-kbonly">Натисніть будь-яку кнопку</span><span class="kol-padonly">🎮 <b>A</b> — почати</span></div>`);
+    <div class="kol-go"><span class="kol-kbonly">Натисніть будь-яку кнопку</span><span class="kol-padonly">🎮 <b>A</b> — почати</span></div>
+    <div class="kol-modes"><button class="kol-again kol-m" type="button" data-act="daily">📅 Маршрут дня</button><button class="kol-again kol-m" type="button" data-act="tutorial">🎓 Навчання</button></div>
+    <div class="kol-hint kol-dayrec"></div>`);
+  // K23: «🎓 Навчання» (є game.startTutorial — K22) і «📅 Маршрут дня» (game.startDaily) — інакше кнопки сховані
+  const btnTut = start.querySelector('[data-act="tutorial"]'), btnDay = start.querySelector('[data-act="daily"]'), dayRec = start.querySelector('.kol-dayrec');
+  btnTut.style.display = btnDay.style.display = 'none';
+
+  // — пауза (K23): Esc або ⏸; у мережі — лише меню, світ не стоїть
+  const pauseBtn = el('button', 'kol-pausebtn', root, '⏸'); pauseBtn.type = 'button'; pauseBtn.title = 'Пауза (Esc)';
+  pauseBtn.style.display = 'none';
+  const pause = el('div', 'kol-screen', root);
+  const pauseCard = el('div', 'kol-card', pause, `<h1>⏸ Пауза</h1><p class="kol-hint kol-pnet"></p>
+    <div class="kol-pmenu"><button class="kol-again" type="button" data-act="resume">▶ Продовжити</button>
+    <button class="kol-again" type="button" data-act="restart">↻ Почати заново</button>
+    <button class="kol-again" type="button" data-act="settings">⚙ Налаштування</button></div>
+    <p class="kol-hint">Esc — продовжити</p>`);
+  const pauseNet = pauseCard.querySelector('.kol-pnet'), pauseBtns = [...pauseCard.querySelectorAll('button')];
 
   // — кінець
   const end = el('div', 'kol-screen', root);
   end.style.pointerEvents = 'none';   // не заступати ⚙ панелі
   const endCard = el('div', 'kol-card', end);
 
-  let started = false, lastState = null, game0 = null, stationX = -1, zones = [];
+  let started = false, lastState = null, game0 = null, stationX = -1, zones = [], zonesShift;
+  let recState = null, rec = null;   // K23: рекорд рахуємо раз на партію
   const begin = () => {
     if (started) return;
     started = true; start.style.display = 'none';
     if (game0) game0.paused = false;
     opts.onStart?.();
   };
-  const onKey = (e) => { if (!started && !['F1', 'Backquote', 'Shift', 'Control', 'Alt', 'Meta'].includes(e.key) && e.code !== 'Backquote') begin(); };
+  const onKey = (e) => {
+    if (!started && !['F1', 'Backquote', 'Shift', 'Control', 'Alt', 'Meta'].includes(e.key) && e.code !== 'Backquote') begin();
+    else if (started) pauseKey(e);   // K23
+  };
   addEventListener('keydown', onKey);
-  start.addEventListener('pointerdown', begin);
+  start.addEventListener('pointerdown', (e) => {
+    const act = e.target.closest?.('[data-act]')?.dataset.act;   // K23: кнопки режимів
+    begin();
+    if (act) { e.preventDefault(); e.target.blur?.(); if (act === 'tutorial') game0?.startTutorial?.(); else if (act === 'daily') game0?.startDaily?.(); }
+  });
+
+  // K23: пауза. Локально — game.paused (тики стоять); мережа (KOL.net) — лише меню. Пад у меню: ✚ — вибір, A — так, B — назад
+  let paused = false, pauseState = null, waitPanel = false, pauseIdx = 0;
+  const isNet = () => !!(game0?.net || window.KOL?.net);
+  const canPause = () => started && lastState?.status === 'run' && !opts.panelOpen?.();
+  const pauseFocus = (i) => { pauseIdx = (i + pauseBtns.length) % pauseBtns.length; pauseBtns.forEach((x, j) => x.classList.toggle('kol-pf', j === pauseIdx)); pauseBtns[pauseIdx].focus({ preventScroll: true }); };
+  function openPause() {
+    if (paused || !canPause()) return;
+    paused = true; pauseState = lastState;
+    if (!isNet() && game0) game0.paused = true;
+    pauseNet.textContent = isNet() ? '🌐 Гра в мережі — світ не стоїть, паротяг їде далі!' : '';
+    pauseBtns[2].style.display = opts.onSettings ? '' : 'none';
+    pause.style.display = 'flex'; pauseFocus(0);
+    opts.input?.setMenu?.((k) => {
+      if (k === 'up' || k === 'left') pauseFocus(pauseIdx - 1);
+      else if (k === 'down' || k === 'right') pauseFocus(pauseIdx + 1);
+      else if (k === 'a') pauseAct(pauseBtns[pauseIdx].dataset.act);
+      else if (k === 'b') pauseAct('resume');
+      else if (k === 'start') pauseAct('restart');
+      else if (k === 'menu') pauseAct('settings');
+    });
+  }
+  function closePause(resume = true) {
+    if (!paused) return;
+    paused = false; pause.style.display = 'none';
+    document.activeElement?.blur?.();
+    opts.input?.setMenu?.(null);
+    if (resume && game0 && started) game0.paused = false;
+  }
+  function pauseAct(act) {
+    if (act === 'resume') closePause();
+    else if (act === 'restart') { closePause(); opts.onRestart?.(); }
+    else if (act === 'settings' && opts.onSettings) { closePause(false); waitPanel = !isNet(); opts.onSettings(); }
+  }
+  function pauseKey(e) {
+    if (e.key === 'Escape') { if (paused) closePause(); else if (!opts.panelOpen?.()) openPause(); return; }
+    if (!paused) return;
+    const k = e.code;
+    if (k === 'ArrowUp' || k === 'KeyW' || k === 'ArrowLeft' || k === 'KeyA') pauseFocus(pauseIdx - 1);
+    else if (k === 'ArrowDown' || k === 'KeyS' || k === 'ArrowRight' || k === 'KeyD') pauseFocus(pauseIdx + 1);
+    else if (k === 'Enter' || k === 'Space' || k === 'KeyE' || k === 'NumpadEnter') { e.preventDefault(); if (!e.repeat) pauseAct(pauseBtns[pauseIdx].dataset.act); }
+  }
+  pauseBtn.addEventListener('click', () => { pauseBtn.blur(); if (paused) closePause(); else openPause(); });
+  pauseCard.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) { e.preventDefault(); pauseAct(b.dataset.act); } });
+  // кадром: панель закрилась після «Налаштувань» — назад у паузу; нова партія (R/Start) — пауза геть
+  function pauseTick(s) {
+    if (waitPanel && !opts.panelOpen?.()) { waitPanel = false; if (s.status === 'run' && s === pauseState) { openPause(); } else if (game0) game0.paused = false; }
+    if (paused && s !== pauseState) closePause();
+    if (paused && s.status !== 'run') closePause(false);
+    if (waitPanel && s !== pauseState) { waitPanel = false; if (game0) game0.paused = false; }
+    const show = started && s.status === 'run' ? 'block' : 'none';
+    set(pauseBtn.style, 'pbtn|display', show);
+    set(btnTut.style, 'tut|display', typeof game0?.startTutorial === 'function' ? '' : 'none');
+    set(btnDay.style, 'day|display', typeof game0?.startDaily === 'function' ? '' : 'none');
+    if (!started && typeof game0?.startDaily === 'function' && !cache.has('dayrec|textContent')) {
+      const d = kyivDate(), r = judgeDaily({ players: s.players, status: '', endless: null }, d, false);
+      txt(dayRec, 'dayrec', `📅 ${d.slice(8, 10)}.${d.slice(5, 7)} — однаковий маршрут у всіх${r.prev ? ` · рекорд дня (${whoLabel(r.n)}): ${fmtTime(r.prev / TPS)}` : ''}`);
+    }
+  }
 
   // A або Start; повертає ще й «чи є пад» — для підказок
   let hasPad = false;
@@ -207,6 +364,21 @@ export function createHud(root, opts = {}) {
     return hit;
   }
 
+  // K23: рядок рекорду на фіналі
+  function recHtml(r) {
+    if (!r) return '';
+    const who = whoLabel(r.n);
+    if (r.kind === 'dst' || r.kind === 'dtime') {
+      const f = (v) => r.kind === 'dst' ? `${v} ${plural(v, 'станція', 'станції', 'станцій')}` : fmtTime(v / TPS);
+      if (r.isNew) return `<div class="kol-rec kol-new">📅 Новий рекорд дня! ${f(r.val)}${r.prev ? ` (було ${f(r.prev)})` : ''}</div>`;
+      return `<div class="kol-rec">📅 Рекорд дня (${who}): ${r.prev ? f(r.prev) : 'ще нема — доїдьте першими'}</div>`;
+    }
+    if (r.kind === 'st') return r.isNew ? `<div class="kol-rec kol-new">🏆 Новий рекорд! (${who})</div>`
+      : !r.prev ? '<div class="kol-rec">🏆 Рекорду ще нема — доїдьте до першої 🚉</div>' : `<div class="kol-rec">🏆 Рекорд (${who}): ${r.prev} ${plural(r.prev, 'станція', 'станції', 'станцій')}</div>`;
+    if (r.isNew) return `<div class="kol-rec kol-new">🏆 Новий рекорд сіду! ${fmtTime(r.val / TPS)}${r.prev ? ` (було ${fmtTime(r.prev / TPS)})` : ''}</div>`;
+    return `<div class="kol-rec">🏆 Рекорд сіду (${who}): ${fmtTime(r.prev / TPS)}</div>`;
+  }
+
   function findStation(s) {
     if (s.ground) for (let x = 0; x < s.w; x++) for (let y = 0; y < s.h; y++) if (s.ground[y * s.w + x] === G.STATION) return x;
     return (s.w ?? 1) - 1;
@@ -217,16 +389,22 @@ export function createHud(root, opts = {}) {
     if (!s) return;
     game0 = game;
     if (!started) { if (game) game.paused = true; if (padPressed()) begin(); }
+    pauseTick(s);   // K23
     // DOM — лише коли щось могло змінитись (тик, статус, старт), а не щокадру
     const key = `${s.tick}|${s.status}|${started}|${s.players?.length}`;
     if (s === lastState && key === lastKey) return;
     lastKey = key;
     set(start.style, 'start|display', started ? 'none' : 'flex');
-    if (s !== lastState) { lastState = s; stationX = findStation(s); zones = allZones(s); }
+    const E = s.endless;   // K23: нескінченна колія — вікно зсувається, станції міняються
+    if (s !== lastState || (E && E.shift !== zonesShift)) { lastState = s; zonesShift = E?.shift; stationX = findStation(s); zones = allZones(s); }
+    if (E) { const f = E.st?.[E.stations - E.base]; stationX = f ? f.x0 : (s.w ?? 1) - 1; }
 
     const p = s.params || {}, t = s.train || {};
     const w = s.w || 1, path = s.path || [];
     const sec = (s.tick ?? 0) / TPS;
+    set(endlEl.style, 'endl|display', E ? 'block' : 'none');
+    if (E) txt(endlEl, 'endl', `🚉 ${E.stations} · ділянка ${E.segment}`);
+    txt(progSt, 'progSt', E ? '🚉' : '🏁');
 
     // прогрес: голова, кінець колії, станція (за x уздовж смуги)
     let headX = 0;
@@ -238,7 +416,7 @@ export function createHud(root, opts = {}) {
     set(progEnd.style, 'end|left', `${Math.min(100, endX / span * 100).toFixed(1)}%`);
     set(progHead.style, 'head|left', `${Math.min(100, headX / span * 100).toFixed(1)}%`);
     const ahead = Math.max(0, path.length - 1 - Math.floor((t.pos ?? 0) / U));
-    txt(progAhead, 'ahead', `🛤 ${ahead} попереду · до 🏁 ${Math.max(0, Math.round(stationX - headX))}`);
+    txt(progAhead, 'ahead', E ? `🛤 ${ahead} · до наступної 🚉 ${E.toNext}` : `🛤 ${ahead} попереду · до 🏁 ${Math.max(0, Math.round(stationX - headX))}`);
     // K16: проміжна станція — позначка на смузі й банер, поки паротяг чекає вибору
     const mid = s.mid;
     const midX = mid ? (mid.x0 + mid.x1 + 1) / 2 : -1;
@@ -248,8 +426,13 @@ export function createHud(root, opts = {}) {
       set(progMid.style, 'mid|left', pc); set(progMidL.style, 'midl|left', pc);
       txt(progMid, 'midT', mid.pick ? (UPGRADES[mid.pick]?.icon ?? '✔') : '🏪');
     }
-    const midWait = !!(mid && mid.wait && !mid.pick && s.status === 'run');
-    txt(midEl, 'midE', midWait ? `🏪 Проміжна станція! Оберіть покращення — дія на табличку: ${mid.signs.map((g) => `${UPGRADES[g.k]?.icon} ${UPGRADES[g.k]?.short}`).join(' · ')}` : '');
+    const signs = () => (mid?.signs ?? []).map((g) => `${UPGRADES[g.k]?.icon} ${UPGRADES[g.k]?.short}`).join(' · ');
+    const eStop = !!(E && E.stop > 0 && s.status === 'run');   // K23: зупинка на станції нескінченної — відлік
+    const midWait = eStop || !!(mid && mid.wait && !mid.pick && s.status === 'run');
+    let midT = '';
+    if (eStop) midT = `🚉 Станція ${E.stations}! ${mid && !mid.pick ? `Оберіть покращення — дія на табличку: ${signs()}` : 'Рушаємо'} · ⏳ ${Math.ceil(E.stop / TPS)} с`;
+    else if (midWait) midT = `🏪 Проміжна станція! Оберіть покращення — дія на табличку: ${signs()}`;
+    txt(midEl, 'midE', midT);
     set(midEl.style, 'midE|display', midWait ? 'block' : 'none');
     // K16: біом під паротягом (і наступний, якщо колія вже туди дійшла)
     const zH = zoneAt(zones, headX), zE = zoneAt(zones, endX);
@@ -319,13 +502,18 @@ export function createHud(root, opts = {}) {
       const st = s.stats || {};
       const head = s.status === 'won' ? '🏁 Доїхали!' : s.reason === 'fire' ? '🔥 Згоріли' : '💥 Зійшли з колії';
       const maxCps = (st.maxSpeed ?? 0) / 1000 / U * TPS;
-      set(endCard, 'endc|innerHTML', `<h1>${head}</h1>
+      if (recState !== s) {
+        recState = s;
+        const day = game?.daily && game.daily.seed === s.seed ? game.daily.date : '';
+        rec = s.tutorial || game?.tutorial ? null : day ? judgeDaily(s, day) : judgeRecord(s);
+      }
+      set(endCard, 'endc|innerHTML', `<h1>${head}</h1>${E ? `<div class="kol-big">🚉 Станцій: <b>${E.stations}</b></div>` : ''}${recHtml(rec)}
         <div class="kol-sum">
           <span>⏱ Час</span><b>${fmtTime(sec)}</b>
           <span>🛤 Рейок покладено</span><b>${st.railsLaid ?? 0}</b>
           <span>🪓 Ударів</span><b>${st.hits ?? 0}</b>
           <span>💨 Найшвидше</span><b>${maxCps.toFixed(2)} кл/с</b>
-        </div>
+        </div>${playersHtml(s)}
         <div class="kol-go">R / ≡ Start — ${s.status === 'won' ? 'далі' : 'ще раз'}</div>
         <button class="kol-again" type="button">${s.status === 'won' ? '▶ Далі' : '↻ Ще раз'}</button>`);
     }
@@ -335,9 +523,79 @@ export function createHud(root, opts = {}) {
   // K16: тости подій тику (гачок у main.js afterStep — бачить кожен тик, не лише кадр)
   let seenGeese = new Set(), evState = null;
   const pName = (s, p) => `${p >= (game0?.local ?? s.players?.length ?? 0) ? '🤖' : ''}П${p + 1}`;
+  // K23: підсумок по гравцях — лічильники з s.ev (тик рахуємо раз: мережевий відкат тики не подвоює)
+  let tally = [], tallyTick = -1, prevPos = [];
+  function tallyTick1(ev, s) {
+    if ((s.tick ?? 0) <= tallyTick) return;
+    tallyTick = s.tick ?? 0;
+    const acted = new Set();
+    const T = (p) => (tally[p] ??= { chop: 0, rock: 0, rail: 0, douse: 0, water: 0, carry: 0, throw: 0, catch: 0, pass: 0, stun: 0, hurt: 0, honk: 0, bump: 0, scare: 0, idle: 0, ticks: 0 });
+    for (const e of ev) {
+      const p = e.t === 'stun' ? e.by : e.p;
+      if (p === undefined || p < 0 || p > 3) continue;
+      const c = T(p);
+      switch (e.t) {
+        case 'chop': case 'rock': case 'rail': case 'douse': case 'water': case 'throw': case 'catch': case 'pass': case 'honk': case 'scare': c[e.t]++; break;
+        case 'pick': case 'drop': c.carry++; break;
+        case 'stun': c.stun++; if (e.p !== undefined) T(e.p).hurt++; break;
+        case 'bump': continue;   // p — кого штовхнули, не дія
+        default: continue;
+      }
+      acted.add(p);
+    }
+    if (s.status !== 'run' || !s.train?.started) return;   // «стояв» — лише поки паротяг їде
+    (s.players ?? []).forEach((pl, i) => {
+      if (!pl) return;
+      const c = T(i), pp = prevPos[i];
+      c.ticks++;
+      if (pp && pp[0] === pl.x && pp[1] === pl.y && !acted.has(i)) c.idle++;
+      prevPos[i] = [pl.x, pl.y];
+    });
+  }
+  // жартівливі звання: найбільший у категорії (≥ min) — звання; кожному до 2, нікому — «🧩 На підхваті»
+  const TITLES = [
+    ['rail', '🛤 Колійник', 3], ['chop', '🪓 Лісоруб', 5], ['rock', '⛏ Каменяр', 5], ['douse', '💧 Пожежник', 1],
+    ['stun', '🤕 Небезпечний', 1], ['catch', '🧤 Воротар', 2], ['throw', '🎯 Метальник', 3], ['pass', '🤝 Передавальник', 3],
+    ['carry', '🚚 Вантажник', 8], ['scare', '🪿 Гусятник', 1], ['honk', '📯 Горлань', 5], ['hurt', '🌀 Груша для биття', 2],
+  ];
+  function titles(n) {
+    const cand = Array.from({ length: n }, () => []);
+    const row = (i) => tally[i] ?? {};
+    for (const [k, name, min] of TITLES) {
+      let best = 0, sum = 0;
+      for (let i = 0; i < n; i++) { const v = row(i)[k] ?? 0; best = Math.max(best, v); sum += v; }
+      if (best < min) continue;
+      for (let i = 0; i < n; i++) if ((row(i)[k] ?? 0) === best) cand[i].push([best / sum, name]);
+    }
+    // кожному — 2 найвиразніші (частка від усіх у категорії)
+    const out = cand.map((c) => c.sort((a, b) => b[0] - a[0]).slice(0, 2).map((x) => x[1]));
+    // пасажир: найбільша частка простою (≥ 25 %), удвох і більше — навіть якщо щось інше вже має
+    const share = (i) => { const r = row(i); return r.ticks ? r.idle / r.ticks : 0; };
+    let ps = 0.25;
+    for (let i = 0; i < n; i++) ps = Math.max(ps, share(i));
+    for (let i = 0; i < n; i++) {
+      if (share(i) < ps || (n === 1 && out[i].length)) continue;
+      out[i].unshift('🛋 Пасажир'); out[i].length = Math.min(2, out[i].length);
+    }
+    return out.map((a) => a.length ? a : ['🧩 На підхваті']);
+  }
+  function playersHtml(s) {
+    const n = s.players?.length ?? 0;
+    if (!n) return '';
+    const tt = titles(n), z = (v) => v ? v : '<i>·</i>';
+    let h = '<table class="kol-ptab"><tr><th></th><th title="нарубав">🪓</th><th title="набив каміння">⛏</th><th title="поклав рейок">🛤</th><th title="полив котел">💧</th><th title="кинув / зловив">🎯</th><th title="бац колегу">💫</th><th title="стояв без діла">🛋</th><th></th></tr>';
+    for (let i = 0; i < n; i++) {
+      const r = tally[i] ?? {};
+      const idle = r.ticks ? Math.round(r.idle / r.ticks * 100) : 0;
+      h += `<tr><td><b style="color:${COLORS[i % 4]}">${pName(s, i)}</b></td><td>${z(r.chop)}</td><td>${z(r.rock)}</td><td>${z(r.rail)}</td><td>${z(r.douse)}</td>`
+        + `<td>${z(r.throw || r.catch ? `${r.throw ?? 0}/${r.catch ?? 0}` : 0)}</td><td>${z(r.stun)}</td><td>${idle}%</td><td class="kol-ttl">${tt[i].join(' ')}</td></tr>`;
+    }
+    return h + '</table>';
+  }
   function events(ev, s) {
     if (!ev || !s) return;
-    if (s !== evState) { evState = s; seenGeese = new Set(); }
+    if (s !== evState) { evState = s; seenGeese = new Set(); tally = []; tallyTick = -1; prevPos = []; }
+    tallyTick1(ev, s);
     for (const e of ev) {
       if (e.t === 'upgrade') {
         const u = UPGRADES[s.mid?.pick];
