@@ -21,6 +21,7 @@ const U_PER_TICK = R.U / R.TPS;   // 1 клітинка/с у підодиниц
 function loadParams() {
   const p = R.defaultParams();
   try { Object.assign(p, JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}')); } catch { }
+  p.mode = q.get('tut') && q.get('tut') !== '0' ? 'tutorial' : 'normal';   // K22: навчання — лише ?tut=1 чи game.startTutorial(), не з пам'яті
   return p;
 }
 
@@ -54,7 +55,14 @@ const PREFS_KEY = 'kol-prefs';
 const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — «Підказки: так/ні»
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch { }
 input.setRumble(prefs.rumble);
-const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+const nextRestart = () => {
+  if (game.state?.status === 'won' && game.params.mode === 'tutorial') return game.stopTutorial();   // K22: навчання пройдено — далі справжня смуга
+  restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+};
+// K22: навчальна смуга (tutorial.js) — кнопка «🎓 Навчання» на стартовому екрані HUD кличе game.startTutorial()
+const setMode = (mode) => { game.params = { ...game.params, mode }; panel?.set?.({ mode }); restart(); };
+game.startTutorial = () => setMode('tutorial');
+game.stopTutorial = () => setMode('normal');
 const panel = createPanel(document.getElementById('kol-panel'), {
   meta: R.PARAM_META, variants: R.VARIANTS, values: game.params,
   onChange(values) { game.params = { ...values }; try { localStorage.setItem(PARAMS_KEY, JSON.stringify(values)); } catch { } },
