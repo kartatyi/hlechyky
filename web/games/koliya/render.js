@@ -417,7 +417,7 @@ export function createRenderer(canvas) {
     camera.fov = look.cam.fov; camera.updateProjectionMatrix();
     vignette.style.background = `radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(${look === LOOKS.autumn ? '60,20,40' : '0,10,30'},${look.vignette}) 100%)`;
     shadowHalf = 0;
-    if (rebuild && W) setWorld(W.s);
+    if (rebuild && W) setWorld(W.s, true);
   }
   function setQuality(q) {
     if ((q === 'low') === lowQ && W) return;
@@ -427,7 +427,7 @@ export function createRenderer(canvas) {
     const ms = lowQ ? 1024 : 2048;
     if (sun.shadow.mapSize.x !== ms) { sun.shadow.mapSize.set(ms, ms); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     sun.shadow.radius = lowQ ? 1 : look.sun.radius;
-    if (W) { W.cw = 0; setWorld(W.s); }          // менше декору — перебудова (гра йде далі)
+    if (W) { W.cw = 0; setWorld(W.s, true); }          // менше декору — перебудова (гра йде далі)
     shadowHalf = 0;
   }
   // тіні: справжні від сонця (вигляд 'sun' і висока якість) або круглі плями ('blob' чи низька якість)
@@ -523,7 +523,7 @@ export function createRenderer(canvas) {
     W = null;
   }
 
-  function setWorld(s) {
+  function setWorld(s, keepCam = false) {
     disposeWorld();
     const { w, h } = s, n = w * h;
     const root = new THREE.Group(); scene.add(root);
@@ -564,7 +564,7 @@ export function createRenderer(canvas) {
     syncPlayers(s);
     applyShadowMode();
     W.snap = null; snapshot(s); W.prev = W.cur;
-    cam.init = false;
+    if (!keepCam) cam.init = false;
   }
 
   function buildStation(root, s) {
@@ -966,8 +966,109 @@ export function createRenderer(canvas) {
     return { x: ax + (bx - ax) * f, z: az + (bz - az) * f };
   }
 
-  // ---- камера ----
-  const cam = { x: 0, z: 0, d: 30, el: 56 * Math.PI / 180, init: false };
+  // ---- камера гурту ----
+  // Тримає в кадрі паротяг (з вагонами) і ВСІХ гравців у грі, трохи забігає вперед у бік руху колії. Відстань —
+  // від dMin (уся ширина смуги) до dMax (×1,9); віддаляється одразу, наближається лише коли ціль ближча на ≥ 7 %
+  // (без «дихання»). Рух — критично згасаюча пружина (без ривків на зміні цілі). Хто не влазить — стрілка на краю.
+  const cam = { x: 0, z: 0, d: 30, el: 56 * Math.PI / 180, init: false, vx: 0, vz: 0, vd: 0, dT: 0, fwd: 0 };
+  const CAM_MARGIN = 2.5, CAM_AHEAD = 3.5, CAM_DMAX = 1.75;
+  function damp(key, vkey, target, T, dt) {   // SmoothDamp: T — час згасання, с
+    const om = 2 / T, x = om * dt, e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+    const ch = cam[key] - target, tmp = (cam[vkey] + om * ch) * dt;
+    cam[vkey] = (cam[vkey] - om * tmp) * e;
+    cam[key] = target + (ch + tmp) * e;
+  }
+  function updateCamera(s, dt, headX, headDX, tailX, crowd) {
+    const aspect = camera.aspect || 1.6;
+    const tanH = Math.tan(camera.fov * Math.PI / 360);
+    cam.el += (camAngle() * Math.PI / 180 - cam.el) * (cam.init ? 1 - Math.exp(-dt * 4) : 1);
+    const EL = cam.el, dk = camDist();
+    const dH = (s.h + 1.2) * Math.sin(EL) / (2 * tanH);
+    // «вперед»: напрям голови колії (згладжений, щоб поворот колії не смикав)
+    const dir = Math.abs(headDX) > 1e-4 ? Math.sign(headDX) : cam.fwd || 1;
+    cam.fwd = cam.init ? cam.fwd + (dir - cam.fwd) * (1 - Math.exp(-dt * 1.5)) : dir;
+    let lo = Math.min(headX, tailX), hi = Math.max(headX, tailX);
+    const ahead = headX + cam.fwd * CAM_AHEAD;
+    lo = Math.min(lo, ahead); hi = Math.max(hi, ahead);
+    for (const x of crowd) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
+    const need = hi - lo + 2 * CAM_MARGIN;
+    const dMin = dH * dk, dMax = dH * CAM_DMAX * dk;
+    const dGoal = Math.max(dMin, Math.min(dMax, Math.max(dMin, need / (2 * tanH * aspect))));
+    if (!cam.init || dGoal > cam.dT || dGoal < cam.dT * 0.93 || cam.dT > dMax || cam.dT < dMin) cam.dT = dGoal;
+    const halfW = cam.dT * tanH * aspect;
+    let gx = (lo + hi) / 2;
+    // не влазять усі — головне паротяг: він лишається у внутрішніх 70 % кадру, решта — стрілками
+    const inner = Math.max(1, halfW * 0.7);
+    gx = Math.max(headX - inner, Math.min(headX + inner, gx));
+    gx = Math.max(halfW - 4, Math.min(Math.max(halfW - 4, s.w + 4 - halfW * 0.6), gx));
+    const gz = s.h / 2 + 0.6;
+    if (cam.init) {
+      // стрибок світу (нескінченний режим зсунув смугу; рестарт) — камера переїжджає разом, без «пролітання»
+      if (Math.abs(gx - cam.x) > halfW * 2.5) { cam.x = gx; cam.vx = 0; }
+      damp('x', 'vx', gx, 0.55, dt); damp('z', 'vz', gz, 0.6, dt);
+      damp('d', 'vd', cam.dT, cam.dT > cam.d ? 0.7 : 1.3, dt);
+    } else { cam.x = gx; cam.z = gz; cam.d = cam.dT; cam.vx = cam.vz = cam.vd = 0; }
+    cam.init = true;
+    camera.position.set(cam.x, cam.d * Math.sin(EL), cam.z + cam.d * Math.cos(EL));
+    camera.lookAt(cam.x, 0, cam.z);
+    camera.updateMatrixWorld();
+    return cam.d * tanH * aspect;
+  }
+
+  // ---- стрілки на краю екрана: гравець поза кадром (колір і мітка гравця) ----
+  const PCOL = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];   // як у HUD
+  const arrowBox = document.createElement('div');
+  arrowBox.style.cssText = 'position:fixed;inset:0;pointer-events:none;overflow:hidden';
+  canvas.after(arrowBox);
+  const arrows = [];
+  const _ap = new THREE.Vector3();
+  function playerName(k) {
+    const g = globalThis.KOL?.game;
+    if (g && !globalThis.KOL?.net && g.bot?.some?.((b) => b.p === k)) return '🤖';
+    return 'П' + (k + 1);
+  }
+  function updateArrows(s) {
+    const r = canvas.getBoundingClientRect();
+    for (let k = 0; k < Math.max(arrows.length, s.players.length); k++) {
+      const pl = s.players[k], m = W.players[k];
+      let a = arrows[k];
+      let show = false, x = 0, y = 0, ang = 0;
+      if (pl && m && !pl.out && s.status === 'run') {
+        _ap.set(m.x, 0.8, m.z).project(camera);
+        const behind = _ap.z > 1;
+        let nx = behind ? -_ap.x : _ap.x, ny = behind ? -_ap.y : _ap.y;
+        const EX = 0.93, EY = 0.88;
+        if (behind || Math.abs(nx) > EX || Math.abs(ny) > EY) {
+          const sc = Math.max(Math.abs(nx) / EX, Math.abs(ny) / EY, 1e-6);
+          nx /= sc; ny /= sc; show = true;
+          x = r.left + (nx + 1) / 2 * r.width; y = r.top + (1 - ny) / 2 * r.height;
+          ang = Math.atan2(-ny, nx) * 180 / Math.PI;
+        }
+      }
+      if (!a) {
+        if (!show) continue;
+        const el = document.createElement('div'), tip = document.createElement('div'), lab = document.createElement('div');
+        const col = PCOL[k % PCOL.length];
+        el.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;display:none';
+        tip.style.cssText = `position:absolute;left:-14px;top:-14px;width:28px;height:28px;clip-path:polygon(100% 50%,15% 0,35% 50%,15% 100%);background:${col};filter:drop-shadow(0 0 2px #000)`;
+        lab.style.cssText = `position:absolute;transform:translate(-50%,-50%);font:700 13px/1 system-ui,sans-serif;color:#111;background:${col};padding:3px 5px;border-radius:9px;box-shadow:0 0 0 2px rgba(0,0,0,.55);white-space:nowrap`;
+        el.append(tip, lab); arrowBox.append(el);
+        a = arrows[k] = { el, tip, lab, on: false, key: '' };
+      }
+      if (show !== a.on) { a.on = show; a.el.style.display = show ? '' : 'none'; }
+      if (!show) continue;
+      const name = playerName(k);
+      if (a.lab.textContent !== name) a.lab.textContent = name;
+      // мітка трохи всередину від вістря
+      const rad = ang * Math.PI / 180, lx = -Math.cos(rad) * 30, ly = -Math.sin(rad) * 30;
+      const key = `${x | 0},${y | 0},${ang | 0}`;
+      if (key === a.key) continue;
+      a.key = key;
+      a.el.style.transform = `translate(${x.toFixed(0)}px,${y.toFixed(0)}px)`;
+      a.tip.style.transform = `rotate(${ang.toFixed(0)}deg)`;
+      a.lab.style.left = lx.toFixed(0) + 'px'; a.lab.style.top = ly.toFixed(0) + 'px';
+    }
+  }
   let leafT = 0;
   let shadowHalf = 0;
 
@@ -978,6 +1079,8 @@ export function createRenderer(canvas) {
   function draw(s, alpha = 0) {
     if (!s) return;
     if (!W || W.s !== s) setWorld(s);
+    // нескінченний режим (K19): смуга виросла/зсунулась у тому ж стані — перебудова без скидання камери
+    else if (s.w !== W.w || s.h !== W.h || s.ground.length !== W.n) setWorld(s, true);
     const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; frames++;
     // розмір
     const cw = canvas.clientWidth | 0, ch = canvas.clientHeight | 0;
@@ -1005,13 +1108,14 @@ export function createRenderer(canvas) {
     // потяг
     const pos = A.pos + (B.pos - A.pos) * alpha;
     const t = s.train, lost = s.status === 'lost';
-    let headX = 0, headZ = 0;
+    let headX = 0, headZ = 0, headDX = 1, tailX = 0;
     W.train.forEach((m, k) => {
       const c = along(s, pos - k * U), f = along(s, pos - k * U + 300), b = along(s, pos - k * U - 300);
       m.g.position.set(c.x, 0.13, c.z);       // колеса на рейках (верх рейки ≈ 0,15)
       m.g.rotation.set(0, Math.atan2(-(f.z - b.z), f.x - b.x), 0);
       if (lost && s.reason === 'derail') { m.g.rotation.x = (k === 0 ? 0.25 : 0.1) * (k % 2 ? -1 : 1); m.g.rotation.order = 'YXZ'; }
-      if (k === 0) { headX = c.x; headZ = c.z; }
+      if (k === 0) { headX = c.x; headZ = c.z; headDX = f.x - b.x; }
+      tailX = c.x;
     });
     const loco = W.train[0], store = W.train[1], craft = W.train[2];
     // котел: червоніє з нагрівом, горить при пожежі
@@ -1047,13 +1151,25 @@ export function createRenderer(canvas) {
     }
 
     // гравці
-    let minX = headX, maxX = headX, sumX = headX, cnt = 1;
+    const crowd = [];      // x гравців у грі — для камери гурту
+    const plaus = dt * (s.params?.playerSpeed || 5) * 1.6 + 0.05;   // скільки гравець може пройти за кадр
     s.players.forEach((pl, k) => {
       const m = W.players[k]; if (!m) return;
       const a = A.pl[k] || B.pl[k], b = B.pl[k] || a;
-      const x = (a.x + (b.x - a.x) * alpha) / U, z = (a.y + (b.y - a.y) * alpha) / U;
+      const tx = (a.x + (b.x - a.x) * alpha) / U, tz = (a.y + (b.y - a.y) * alpha) / U;
+      // мережа (K6): поправка секретаря «стрибає» гравця — стрибок < 1,5 клітинки згладжуємо зсувом, що тане (~0,15 с);
+      // далі — телепорт. Звичайний рух не запізнюється: зсув додається лише на стрибку.
+      if (m.seen) {
+        const jx = tx - m.tx, jz = tz - m.tz, j = Math.hypot(jx, jz);
+        if (j > plaus) { if (j < 1.5) { m.ox -= jx; m.oz -= jz; } else m.ox = m.oz = 0; }
+        const kd = Math.exp(-dt * 14); m.ox *= kd; m.oz *= kd;
+        if (Math.abs(m.ox) + Math.abs(m.oz) < 1e-3) m.ox = m.oz = 0;
+      } else { m.seen = true; m.ox = m.oz = 0; }
+      m.tx = tx; m.tz = tz;
+      const x = tx + m.ox, z = tz + m.oz;
       const dist = Math.hypot(x - m.x, z - m.z);
       m.x = x; m.z = z;
+      if (!pl.out) crowd.push(x);
       const speed = dt > 0 ? dist / dt : 0;
       const gi = Math.floor(z) * s.w + Math.floor(x);
       const gy = gi >= 0 && gi < W.n ? topOf(s.ground[gi], Math.floor(x), Math.floor(z)) : 0;
@@ -1093,27 +1209,10 @@ export function createRenderer(canvas) {
       } else {
         m.armL.rotation.z = -sw * 0.8; m.armR.rotation.z = sw * 0.8; m.armL.rotation.x = m.armR.rotation.x = 0;
       }
-      minX = Math.min(minX, x); maxX = Math.max(maxX, x); sumX += x; cnt++;
     });
 
-    // камера: тримає паротяг у кадрі, тягнеться до гравців
-    const aspect = camera.aspect || 1.6;
-    const tanH = Math.tan(camera.fov * Math.PI / 360);
-    const kk = cam.init ? 1 - Math.exp(-dt * 2.2) : 1;
-    cam.el += (camAngle() * Math.PI / 180 - cam.el) * (cam.init ? 1 - Math.exp(-dt * 4) : 1);
-    const EL = cam.el, dk = camDist();
-    const dH = (s.h + 1.2) * Math.sin(EL) / (2 * tanH);
-    const spread = maxX - minX + 10;
-    const dW = Math.max(18, Math.min(60, spread)) / (2 * tanH * aspect);
-    const dGoal = Math.max(dH, Math.min(dW, dH * 1.7)) * dk;
-    const halfW = dGoal * tanH * aspect;
-    let gx = (minX + maxX) / 2;
-    gx = Math.max(headX - halfW * 0.55, Math.min(headX + halfW * 0.55, gx));
-    gx = Math.max(halfW - 4, Math.min(s.w + 4 - halfW * 0.6, gx));
-    const gz = s.h / 2 + 0.6;
-    cam.x += (gx - cam.x) * kk; cam.z += (gz - cam.z) * kk; cam.d += (dGoal - cam.d) * kk; cam.init = true;
-    camera.position.set(cam.x, cam.d * Math.sin(EL), cam.z + cam.d * Math.cos(EL));
-    camera.lookAt(cam.x, 0, cam.z);
+    const halfW = updateCamera(s, dt, headX, headDX, tailX, crowd);
+    updateArrows(s);
     scene.fog.near = cam.d * look.fog.near; scene.fog.far = cam.d * look.fog.far;
     if (look.leaves && !lowQ && s.status === 'run') {      // листопад над видимою частиною смуги
       leafT -= dt;
@@ -1121,7 +1220,7 @@ export function createRenderer(canvas) {
     }
 
     // сонце й тіні ходять за камерою (крок — тексель, щоб тіні не мерехтіли)
-    const half = Math.ceil(Math.max(cam.d * tanH * aspect * 1.15, s.h * 0.75) + 3);
+    const half = Math.ceil(Math.max(halfW * 1.15, s.h * 0.75) + 3);
     if (half !== shadowHalf) {
       shadowHalf = half; const sc = sun.shadow.camera;
       sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 1; sc.far = 120; sc.updateProjectionMatrix();
@@ -1221,7 +1320,7 @@ export function createRenderer(canvas) {
   function dispose() {
     disposeWorld();
     extras.dispose();
-    vignette.remove();
+    vignette.remove(); arrowBox.remove();
     pMesh.dispose();
     renderer.dispose();
   }
