@@ -46,7 +46,7 @@ function loadScript(src) {
 }
 
 /** Скопіювати світ src у dst на місці: типізовані масиви тієї ж довжини — .set(), решта — глибока копія. */
-function copyInto(dst, src) {
+export function copyInto(dst, src) {
   for (const k of Object.keys(dst)) if (!(k in src)) delete dst[k];
   for (const k of Object.keys(src)) {
     const a = src[k], b = dst[k];
@@ -57,11 +57,11 @@ function copyInto(dst, src) {
 }
 
 /** Затиснутий use з журналу: rules має бачити «use був і в попередньому тику». */
-function prep(s, cmds) {
+export function prep(s, cmds) {
   for (const c of cmds) if (c.k === 'use' && c.h) { const pl = s.players[c.p]; if (pl) pl.ut = s.tick; }
 }
 
-function toCmd(c, j) {
+export function toCmd(c, j) {
   const p = c[j + 2], k = K[c[j + 3]];
   if (k === 'in') return { p, k, mx: c[j + 4], my: c[j + 5] };
   if (k === 'use') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7], h: c[j + 8] };
