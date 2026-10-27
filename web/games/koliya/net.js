@@ -167,6 +167,7 @@ export function shortNick(n) {
   if (typeof n !== 'string' || !n.trim()) return null;
   let base = n.trim(), sup = '';
   if (base.endsWith(' ²')) { sup = ' ²'; base = base.slice(0, -2).trimEnd(); }
+  if (/^гість\s+\S/i.test(base)) base = base.replace(/^гість\s+/i, '');   // Auth.GuestPrefix — над головою лише ім'я
   const ch = [...base];
   return (ch.length > 10 ? ch.slice(0, 9).join('') + '…' : base) + sup;
 }

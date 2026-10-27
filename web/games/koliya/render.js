@@ -958,7 +958,7 @@ export function createRenderer(canvas) {
     if (!bb.sp.visible) return;
     drawBubble(bb, r.e);
     const pop = age < 160 ? 0.4 + 0.6 * age / 160 : age > 1750 ? Math.max(0, (2000 - age) / 250) : 1;
-    const bs = sc * 1.6 * pop;
+    const bs = sc * 2.8 * pop;   // утричі вища за мітку — емодзі видно з будь-якого кута смуги
     bb.sp.position.set(lb.sp.position.x, lb.sp.position.y + sc * 0.95, lb.sp.position.z);
     bb.sp.scale.set(bs, bs, 1);
   }

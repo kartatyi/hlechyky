@@ -69,6 +69,8 @@ test('нік над гравцем — до 10 символів, «²» друг
   assert.equal(shortNick('Владислав1'), 'Владислав1');
   assert.equal(shortNick('Дуже довгий нік ²'), 'Дуже довг… ²');
   assert.equal(shortNick('Оля ²'), 'Оля ²');
+  assert.equal(shortNick('гість Тарас ²'), 'Тарас ²');   // гостьовий префікс сайту не їсть мітку
+  assert.equal(shortNick('гість'), 'гість');
   assert.equal(shortNick(''), null);
   assert.equal(shortNick(null), null);
   assert.deepEqual(namesFrom(['Оля', null, 'Оля ²']), ['Оля', null, 'Оля ²']);
