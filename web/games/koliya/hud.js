@@ -146,6 +146,12 @@ const CSS = `
 .kol-ptab td.kol-ttl { text-align: left; font-weight: 700; color: #ffe9a8; }
 .kol-ptab i { opacity: .35; font-style: normal; }
 #kol-hud .kol-top { right: 124px; }
+/* K37: верхня смуга компактніша й напівпрозора — бульбашки-реакції й ніки гравців біля верхнього краю видно крізь неї */
+#kol-hud .kol-top { top: 6px; font-size: .85em; gap: .45em; }
+#kol-hud .kol-top .kol-box { background: #0f120d70; border-color: #ffffff16; padding: .15em .5em; }
+#kol-hud .kol-top .kol-prog { height: 1.35em; padding: 0; }
+#kol-hud .kol-top .kol-prog-track { background: #8a7a5a40; }
+#kol-hud .kol-res, #kol-hud .kol-toasts { top: calc(6px + 2.1em); }
 .kol-pausebtn { position: fixed; right: 62px; top: 8px; width: 46px; height: 46px; border-radius: 10px; border: 1px solid #fff3;
   background: rgba(20,24,18,.7); color: #f4efe2; font-size: 20px; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
 .kol-modes { display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; }
@@ -176,6 +182,16 @@ function el(tag, cls, parent, html) {
   if (html != null) e.innerHTML = html;
   if (parent) parent.appendChild(e);
   return e;
+}
+const esc = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+/** K37: підпис гравця, як над головою (render.js): у мережі — нік (game.names, до 10 символів, «нік ²»; відпав — «📶?»),
+ *  інакше П1…П4; локальний бот — 🤖 спереду. Екранований для innerHTML (raw — для textContent). */
+export function playerLabel(game, i, n = 0, raw = false) {
+  const nk = game?.names?.[i];
+  if (nk) return (raw ? nk : esc(nk)) +(game?.lost?.[i] ? ' 📶?' : '');
+  const net = !!(game?.net || globalThis.KOL?.net);
+  const bot = !net && (game?.bot?.some?.((b) => b.p === i) || i >= (game?.local ?? n));
+  return `${bot ? '🤖' : ''}П${i + 1}`;
 }
 const fmtTime = (sec) => { sec = Math.max(0, Math.floor(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
 
@@ -512,7 +528,7 @@ export function createHud(root, opts = {}) {
       if (!pl) continue;
       const k = pl.hold?.k ?? 0, nn = pl.hold?.n ?? 0;
       const what = k ? `${k === I.RAIL ? tt('icon.rails', HOLD_ICON[k]) : HOLD_ICON[k] ?? '?'}${nn > 1 ? ' ×' + nn : ''}` : '✋';
-      const name = `${i >= local ? '🤖' : ''}П${i + 1}`;
+      const name = playerLabel(game, i, local);   // K37: у мережі — нік
       set(d, `pl${i}|innerHTML`, `<b style="color:${COLORS[i % 4]}">${name}</b> ${what}`);
       set(d, `pl${i}|title`, k === I.RAIL ? tt('hold.rails', HOLD_NAME[k]) : HOLD_NAME[k] ?? 'порожні руки');
     }
@@ -586,7 +602,7 @@ export function createHud(root, opts = {}) {
 
   // K16: тости подій тику (гачок у main.js afterStep — бачить кожен тик, не лише кадр)
   let seenGeese = new Set(), evState = null;
-  const pName = (s, p) => `${p >= (game0?.local ?? s.players?.length ?? 0) ? '🤖' : ''}П${p + 1}`;
+  const pName = (s, p, raw) => playerLabel(game0, p, s.players?.length ?? 0, raw);   // K37: ніки й у тостах, і в таблиці звань
   // K23: підсумок по гравцях — лічильники з s.ev (тик рахуємо раз: мережевий відкат тики не подвоює)
   let tally = [], tallyTick = -1, prevPos = [];
   function tallyTick1(ev, s) {
@@ -672,7 +688,7 @@ export function createHud(root, opts = {}) {
           say(`🪿 Гуска вкрала ${STEAL_NAME[g.hold] ?? 'річ'}! Наздожени — дія поруч`, 4000, true);
         }
       } else if (e.t === 'goose_lost') say('🪿 Гуска впустила крадене десь попереду', 3500);
-      else if (e.t === 'stun' && e.by !== undefined) say(`💫 ${pName(s, e.by)} приголомшив ${pName(s, e.p)}`, 2500, true);
+      else if (e.t === 'stun' && e.by !== undefined) say(`💫 ${pName(s, e.by, true)} приголомшив ${pName(s, e.p, true)}`, 2500, true);
     }
   }
 
