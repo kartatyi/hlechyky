@@ -79,7 +79,7 @@ try {   // K21: лише відомі значення (старе 'medium' чи
 } catch { }
 input.setRumble(prefs.rumble);
 input.setTouch(game.touch = createTouch({ canvas }));   // K27
-const replay = game.replay = createReplay(game, { hud, input, say: (t, ms) => hudUi?.say?.(t, ms) });   // K35
+const replay = game.replay = createReplay(game, { hud, input, audio, say: (t, ms) => hudUi?.say?.(t, ms) });   // K35; K42: audio — звук повтору (лише ×1–×2 і коли звук увімкнено)
 const nextRestart = () => {
   if (game.state?.status === 'won' && game.params.mode === 'tutorial') return game.stopTutorial();   // K22: навчання пройдено — далі справжня смуга
   restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);

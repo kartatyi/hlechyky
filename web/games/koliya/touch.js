@@ -1,6 +1,6 @@
 // «Колія» — керування з телефона й планшета (K27).
 // Контракт: createTouch(opts?) → { read(): { mx, my (-1..1), use (затиснуто), throw, horn (раз на натиск) } | null,
-//   active (чи вже показали дотикове керування), swallow(), setVibrate(on), buzz('tap'|'hit'|'lost'), dispose() }
+//   active (чи вже показали дотикове керування), swallow(), setHidden(on) (K42: повтор), setVibrate(on), buzz('tap'|'hit'|'lost'), dispose() }
 //   opts: { canvas (зона стіка), root (куди вставити шар; document.body) }.
 //   input.js (гачок setTouch) зливає read() у гравця 0. ⚙ — кнопка панелі (K4), ⏸ — кнопка паузи HUD (K23): обидві 46 px,
 //   пальцем досяжні, тут не дублюємо.
@@ -218,6 +218,8 @@ export function createTouch(opts = {}) {
       return r;
     },
     swallow() { hits.clear(); },
+    // K42: на час повтору (replay.js) шар стіка й кнопок ховаємо — пальці не тиснуть у гру, що стоїть
+    setHidden(on) { layer.style.display = on ? 'none' : ''; if (on) reset(); },
     setVibrate(on) { vibrate = !!on; },
     buzz,
     dispose() {
