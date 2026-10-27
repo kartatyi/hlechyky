@@ -13,7 +13,7 @@ const KEY = 'kol-menu';
 export const PICKS = [8, 19, 23, 53, 43];   // K22: добірка сідів (_kolia/k22-seeds.md)
 const PICK_TAG = { 8: 'м’який', 19: 'річка рано', 23: 'старт у лісі', 53: 'прохід рано', 43: 'найважчий' };
 const ICON = { glade: '🌱', steppe: '🌾', grove: '🌳', stone: '🪨', river: '🌊', swamp: '🐸', pass: '⛰' };
-const SHORT = { steppe: 'степ', grove: 'гай', stone: 'каміння', river: 'річка', swamp: 'болото', pass: 'прохід', glade: 'галявина' };
+export const BIOME_SHORT = { steppe: 'степ', grove: 'гай', stone: 'каміння', river: 'річка', swamp: 'болото', pass: 'прохід', glade: 'галявина' };
 const COLORS = ['#ffd23f', '#ff5fa2'];
 
 const CSS = `
@@ -47,7 +47,7 @@ export function seedZones(seed, params) {
   if (zoneCache.has(key)) return zoneCache.get(key);
   let z = [];
   try { z = generate(seed >>> 0, { ...params, mode: 'normal' }).zones ?? []; } catch { }
-  const r = { icons: z.map((q) => ICON[q.kind] ?? '').join(''), names: z.map((q) => (ICON[q.kind] ?? '') + ' ' + (SHORT[q.kind] ?? BIOME_NAMES[q.kind] ?? q.kind)).join(' → ') };
+  const r = { icons: z.map((q) => ICON[q.kind] ?? '').join(''), names: z.map((q) => (ICON[q.kind] ?? '') + ' ' + (BIOME_SHORT[q.kind] ?? BIOME_NAMES[q.kind] ?? q.kind)).join(' → ') };
   zoneCache.set(key, r);
   return r;
 }

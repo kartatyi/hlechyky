@@ -16,7 +16,7 @@
 import { TPS, U, G, I, wagonPos } from './rules.js';
 import { BIOME_NAMES, generate } from './gen.js';   // K16: біоми
 import { UPGRADES } from './extras.js';             // K16: тост покращення
-import { createMenu } from './menu.js';             // K30: стартове меню
+import { createMenu, BIOME_SHORT } from './menu.js';   // K30: стартове меню, короткі назви біомів
 
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
 const HOLD_ICON = { [I.WOOD]: '🪵', [I.IRON]: '⛓', [I.RAIL]: '🛤', [I.AXE]: '🪓', [I.PICK]: '⛏', [I.BUCKET]: '🪣', [I.BUCKET_FULL]: '💧' };
@@ -151,6 +151,7 @@ const CSS = `
 .kol-modes .kol-again { font-size: 1em; }
 .kol-pmenu { display: flex; flex-direction: column; align-items: stretch; gap: .1em; width: fit-content; margin: .4em auto; }
 .kol-pmenu .kol-again.kol-pf, .kol-pmenu .kol-again:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; }
+@media (max-width: 1400px) { .kol-top .kol-wd { display: none; } }
 @media (max-width: 640px) { .kol-card .kol-sum { grid-template-columns: auto auto; } .kol-ptab { font-size: .72em; } .kol-ptab th, .kol-ptab td { padding: .1em .25em; } }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
@@ -419,7 +420,7 @@ export function createHud(root, opts = {}) {
     const w = s.w || 1, path = s.path || [];
     const sec = (s.tick ?? 0) / TPS;
     set(endlEl.style, 'endl|display', E ? 'block' : 'none');
-    if (E) txt(endlEl, 'endl', `🚉 ${E.stations} · ділянка ${E.segment}`);
+    if (E) set(endlEl, 'endl|innerHTML', `🚉 ${E.stations} · <span class="kol-wd">ділянка </span>📍${E.segment}`);   // K30: вузько — без слів
     txt(progSt, 'progSt', E ? '🚉' : '🏁');
 
     // прогрес: голова, кінець колії, станція (за x уздовж смуги)
@@ -432,7 +433,7 @@ export function createHud(root, opts = {}) {
     set(progEnd.style, 'end|left', `${Math.min(100, endX / span * 100).toFixed(1)}%`);
     set(progHead.style, 'head|left', `${Math.min(100, headX / span * 100).toFixed(1)}%`);
     const ahead = Math.max(0, path.length - 1 - Math.floor((t.pos ?? 0) / U));
-    txt(progAhead, 'ahead', E ? `🛤 ${ahead} · до наступної 🚉 ${E.toNext}` : `🛤 ${ahead} попереду · до 🏁 ${Math.max(0, Math.round(stationX - headX))}`);
+    set(progAhead, 'ahead|innerHTML', E ? `🛤 ${ahead} · <span class="kol-wd">до наступної </span>🚉 ${E.toNext}` : `🛤 ${ahead}<span class="kol-wd"> попереду</span> · <span class="kol-wd">до </span>🏁 ${Math.max(0, Math.round(stationX - headX))}`);
     // K16: проміжна станція — позначка на смузі й банер, поки паротяг чекає вибору
     const mid = s.mid;
     const midX = mid ? (mid.x0 + mid.x1 + 1) / 2 : -1;
@@ -452,8 +453,9 @@ export function createHud(root, opts = {}) {
     set(midEl.style, 'midE|display', midWait ? 'block' : 'none');
     // K16: біом під паротягом (і наступний, якщо колія вже туди дійшла)
     const zH = zoneAt(zones, headX), zE = zoneAt(zones, endX);
-    const bName = (z) => `${BIOME_ICON[z?.kind ?? 'glade'] ?? ''} ${z ? BIOME_NAMES[z.kind] ?? z.kind : 'галявина'}`;
-    txt(biomeEl, 'biome', zE !== zH ? `${bName(zH)} → ${bName(zE)}` : bName(zH));
+    const bName = (z, w) => `${BIOME_ICON[z?.kind ?? 'glade'] ?? ''}<span class="${w ? 'kol-wd' : ''}"> ${z ? BIOME_SHORT[z.kind] ?? BIOME_NAMES[z.kind] ?? z.kind : 'галявина'}</span>`;   // K30: коротко
+    set(biomeEl, 'biome|innerHTML', zE !== zH ? `${bName(zH, true)} → ${bName(zE)}` : bName(zH));
+    set(biomeEl, 'biome|title', zE !== zH ? `${BIOME_NAMES[zH?.kind] ?? 'галявина'} → ${BIOME_NAMES[zE?.kind] ?? 'галявина'}` : BIOME_NAMES[zH?.kind] ?? 'галявина');
 
     const cps = (t.speed ?? 0) / 1000 / U * TPS;   // клітинок/с
     txt(timeEl, 'time', `⏱ ${fmtTime(sec)}`);
