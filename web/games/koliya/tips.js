@@ -424,6 +424,8 @@ const CSS = `
 .kol-tips-corner .kol-tip.kol-tip-off { display: none; }
 .kol-tip.kol-tip-up::after { content: ''; position: absolute; left: var(--tail, 50%); bottom: -9px; margin-left: -8px;
   border: 8px solid transparent; border-bottom: 0; border-top-color: var(--c); }
+.kol-tip.kol-tip-dn::after { content: ''; position: absolute; left: var(--tail, 50%); top: -9px; margin-left: -8px;
+  border: 8px solid transparent; border-top: 0; border-bottom-color: var(--c); }
 .kol-tip small { display: block; font-size: .72em; opacity: .65; font-weight: 700; }
 .kol-tip .kol-tip-dir { float: right; margin-left: .5em; color: var(--c); text-shadow: 0 0 2px #000; }
 .kol-tip.kol-tip-ok { background: #e6ffd2f2; }
@@ -473,6 +475,12 @@ export function createTips(root, { enabled = true } = {}) {
       const v = game?.view ?? view;
       const proj = typeof v?.project === 'function' ? (x, y) => v.project(x, y) : null;
       const now = performance.now();
+      // K46: поки йде великий відлік «…рушають» (hud.js, .kol-count), бульбашка, що на нього налазить, — під гравцем
+      let cr = null;
+      if (proj && state.status === 'run' && !(state.train?.speed > 0) && (state.tick ?? 0) < (state.params?.startSec ?? 0) * TPS) {
+        const c = doc.querySelector('.kol-count');
+        if (c && c.style.display !== 'none') { const r = c.getBoundingClientRect(); if (r.width) cr = r; }
+      }
       const by = new Map(tips.map((t) => [t.p, t]));
       const n = Math.max(ui.length, state.players.length);
       for (let p = 0; p < n; p++) {
@@ -500,17 +508,21 @@ export function createTips(root, { enabled = true } = {}) {
         const at = proj && pl ? proj(pl.x / U, pl.y / U) : null;
         if (at) {
           if (u.bub.parentNode !== box) { box.appendChild(u.bub); u.bw = 0; }
-          u.bub.classList.add('kol-tip-up');
           // по центру над гравцем, але не за краєм вікна (хвостик лишається над гравцем)
           // K16: ширину міряємо раз на текст (offsetWidth щокадру — примусове перекомпонування)
-          const bw = u.bw || (u.bw = u.bub.offsetWidth), vw = vwCache || (vwCache = doc.documentElement.clientWidth);
+          if (!u.bw) { u.bw = u.bub.offsetWidth; u.bh = u.bub.offsetHeight; u.em = parseFloat(getComputedStyle(u.bub).fontSize) || 16; }
+          const bw = u.bw, vw = vwCache || (vwCache = doc.documentElement.clientWidth);
           const left = Math.max(6, Math.min(vw - bw - 6, at.x - bw / 2));
+          const bot = at.y - 2.2 * u.em, top = bot - u.bh;   // де стала б бульбашка над гравцем
+          const dn = !!cr && left < cr.right && left + bw > cr.left && top < cr.bottom && bot > cr.top;
+          u.bub.classList.toggle('kol-tip-up', !dn); u.bub.classList.toggle('kol-tip-dn', dn);
           u.bub.style.setProperty('--tail', `${Math.round(Math.max(10, Math.min(bw - 10, at.x - left)))}px`);
-          u.bub.style.transform = `translate(${Math.round(left)}px, ${Math.round(at.y)}px) translateY(calc(-100% - 2.2em))`;
+          u.bub.style.transform = dn ? `translate(${Math.round(left)}px, ${Math.round(at.y)}px) translateY(1.6em)`
+            : `translate(${Math.round(left)}px, ${Math.round(at.y)}px) translateY(calc(-100% - 2.2em))`;
         } else {
           // фолбек: стос у правому нижньому куті, гравець 1 — найнижче
           if (u.bub.parentNode !== corner) corner.appendChild(u.bub);
-          u.bub.classList.remove('kol-tip-up');
+          u.bub.classList.remove('kol-tip-up', 'kol-tip-dn');
           u.bub.style.transform = '';
           u.bub.style.order = String(p);
         }
