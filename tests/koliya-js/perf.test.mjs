@@ -27,7 +27,7 @@ export function run(c, ticks = 3000, tm = null) {
     }
     const t1 = tm ? performance.now() : 0;
     R.step(s, cmds);
-    if (tm) { tm.think += t1 - t0; tm.step += performance.now() - t1; tm.n++; }
+    if (tm) { const t2 = performance.now(); tm.think += t1 - t0; tm.step += t2 - t1; tm.n++; if (t2 - t0 > tm.max) tm.max = t2 - t0; }
     if (s.tick % 100 === 0) h = (Math.imul(h, 31) + R.hash(s)) >>> 0;
   }
   return (Math.imul(h, 31) + R.hash(s)) >>> 0;
@@ -44,8 +44,8 @@ test('K51: hash 10 сідів × 3000 тиків з ботами й усіма �
 if (process.argv.includes('--print')) console.log(JSON.stringify(CASES.map((c) => run(c))));
 if (process.argv.includes('--bench')) {
   for (const len of [100, 300]) for (const n of [1, 4]) {
-    const tm = { step: 0, think: 0, n: 0 };
+    const tm = { step: 0, think: 0, n: 0, max: 0 };
     for (const seed of [11, 22, 33]) run({ seed, n, params: { ...ALL, stripLen: len } }, 3000, tm);
-    console.log(`смуга ${len}, гравців ${n}: step ${(tm.step / tm.n).toFixed(3)} мс, think (усі боти) ${(tm.think / tm.n).toFixed(3)} мс, тиків ${tm.n}`);
+    console.log(`смуга ${len}, гравців ${n}: step ${(tm.step / tm.n).toFixed(3)} мс, think (усі боти) ${(tm.think / tm.n).toFixed(3)} мс, найдовший тик ${tm.max.toFixed(2)} мс, тиків ${tm.n}`);
   }
 }
