@@ -33,7 +33,7 @@ export const EXTRA_VARIANTS = {
 /** Покращення проміжної станції: ключ → { label, icon } (застосування — applyUpgrade) */
 export const UPGRADES = {
   tank:  { icon: '🛢', label: 'Цистерна: котел гріється вдвічі повільніше' },
-  craft: { icon: '⚒', label: 'Майстерня вдвічі швидша' },
+  craft: { icon: '🔨',label: 'Майстерня вдвічі швидша' },
   store: { icon: '📦', label: 'Склад більший у півтора раза' },
   carry: { icon: '💪', label: '+1 до того, скільки несеш' },
 };
@@ -209,7 +209,8 @@ function spawnFlock(s) {
     const c = tools[rndN(s, tools.length)];
     const tx = c % s.w, ty = (c / s.w) | 0;
     const x = Math.max(U / 2, Math.min(s.w * U - U / 2, tx * U + U / 2 + (rndN(s, 5) - 2) * U));
-    s.geese.push({ id: ++s.geeseId, x, y: side < 0 ? -U / 2 : s.h * U + U / 2, hold: I.NONE, mode: 'go', t: 0,
+    const y = side < 0 ? -U / 2 - j * 600 : s.h * U + U / 2 + j * 600;   // зграя — вервечкою, не купою
+    s.geese.push({ id: ++s.geeseId, x, y, hold: I.NONE, mode: 'go', t: 0,
                    tx, ty, side, sp: walkSp(s) });
   }
   ev(s, 'honk', tools[0] % s.w, side < 0 ? 0 : s.h - 1);
