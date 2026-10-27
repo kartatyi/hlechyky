@@ -220,3 +220,45 @@ test('бідний стан (поля бракує) не падає', () => {
   const s = mk(); delete s.stats; delete s.train.heat; s.ev = undefined;
   assert.doesNotThrow(() => pickTips(s, {}));
 });
+
+// ---------------- K16 ----------------
+import { keysFor } from '../../web/games/koliya/tips.js';
+
+test('K16: кнопки за пристроєм — пад «A», клавіатура Space/Enter; opts.keys іде в текст', () => {
+  assert.deepEqual(keysFor(0, true, 1), { use: 'A', throw: 'B' });
+  assert.deepEqual(keysFor(0, false, 1), { use: 'Space', throw: 'Q' });
+  assert.equal(keysFor(1, false, 2).use, 'Enter');
+  const s = mk(), m = {};
+  hold(s.players[0], I.AXE);
+  const t = pickTips(s, m, { keys: () => ({ use: 'A', throw: 'B' }) });
+  assert.match(t[0].text, /\bA\b/);
+});
+
+test('K16: болото під ногами — раз, 5 с, далі звичайна порада', () => {
+  const s = mk(), m = {};
+  s.ground[at(s, 2, 3)] = G.SWAMP;
+  let t = pickTips(s, m);
+  assert.equal(t[0].id, 'swamp'); assert.match(t[0].text, /Болото/);
+  tick(s, 5 * TPS + 1); pickTips(s, m);
+  tick(s); t = pickTips(s, m);
+  assert.equal(t[0].id, 'axe');
+});
+
+test('K16: гуси — найближчому порада наздогнати; налякав — більше не каже', () => {
+  const s = mk(2), m = {};
+  s.params.geese = 'on';
+  m.done = [{ role: 1 }, { role: 1 }];
+  s.geese = [{ id: 1, x: 3 * U, y: 5 * U, hold: I.AXE, mode: 'run' }];
+  let t = pickTips(s, m);
+  assert.equal(tipOf(t, 1)?.id, 'goose');
+  tick(s); s.ev = [{ t: 'scare', x: 3, y: 5, p: 1 }];
+  t = pickTips(s, m);
+  assert.notEqual(tipOf(t, 1)?.id, 'goose');
+});
+
+test('K16: розумний приціл — пояснення одинакові', () => {
+  const s = mk(), m = {};
+  s.params.aim = 'smart';
+  const t = pickTips(s, m);
+  assert.equal(t[0].id, 'aim');
+});
