@@ -101,6 +101,17 @@ input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панел
 
 // K23: «📅 Маршрут дня» — сід від дати (Київ), типові params (панель — для звичайної гри); «ще раз» лишає маршрут дня
 game.startDaily = () => { const date = kyivDate(); game.daily = { date, seed: dailySeed(date) }; restart(game.daily.seed); };
+// K30: стартове меню (menu.js через hud.js) — гравці/боти, режим ('play'|'tutorial'|'daily'|'endless') і сід; фінал — game.restart
+game.restart = (seed) => restart(seed);
+game.startMenu = (act, o) => {
+  game.local = Math.max(1, Math.min(2, o.players | 0 || 1)); game.wantLocal = 0; input.setPlayers(game.local);
+  game.bots = Math.max(0, Math.min(R.MAX_PLAYERS - game.local, o.bots | 0));
+  if (act === 'daily') return game.startDaily();
+  const sm = game.params.stationMode === 'endless' ? (game.smWas ?? 'end') : game.params.stationMode;
+  if (act === 'endless') game.smWas = sm;
+  game.params = { ...game.params, mode: act === 'tutorial' ? 'tutorial' : 'normal', stationMode: act === 'endless' ? 'endless' : sm };
+  panel?.set?.({ mode: game.params.mode, stationMode: game.params.stationMode }); game.daily = null; restart(o.seed ?? game.seed);
+};
 function restart(seed = game.seed) {
   if (game.daily && game.daily.seed !== seed >>> 0) game.daily = null;   // K23
   const P = game.daily ? R.defaultParams() : game.params;   // K23
