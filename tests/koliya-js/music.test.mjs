@@ -1,7 +1,7 @@
 // K29: музика й тло — без вух, лише числа: лад, темп від небезпеки, детермінізм фраз, тиша без увімкнення.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SCALES, STYLE, TONIC, MIX, VOICE, AMB_LAYERS, ambienceFor, focusX, tempoOf, densityOf, dangerOf, speedOf, makePhrase, barEvents, cadence, degToMidi,
+import { SCALES, STYLE, TONIC, MIX, VOICE, AMB_GAIN, AMB_LAYERS, ambienceFor, focusX, tempoOf, densityOf, dangerOf, speedOf, makePhrase, barEvents, cadence, degToMidi,
   createMusic } from '../../web/games/koliya/music.js';
 import { createAudio } from '../../web/games/koliya/audio.js';
 import { newGame, defaultParams, U, TPS } from '../../web/games/koliya/rules.js';
@@ -109,9 +109,9 @@ test('перемога — каденція до тоніки з тонікою 
 
 test('зведення: музика тихіша за ефекти, тло ще тихіше', () => {
   assert.ok(MIX.music < MIX.sfx && MIX.amb < MIX.music);
-  // найгучніший момент музики (сопілка + басоля + «дум» разом) — тихіше за удар сокирою (піки chop ×0,5 майстра)
+  // найгучніший момент музики (сопілка + басоля + «дум» разом) — тихіше за удар сокирою (тон 0,35 + шум 0,35, ×0,5 майстра)
   const musicPeak = MIX.music * (VOICE.mel + VOICE.bass * 0.5 + VOICE.dum);
-  const chopPeak = MIX.sfx * 0.35;
+  const chopPeak = MIX.sfx * (0.35 + 0.35);
   assert.ok(musicPeak < chopPeak, `${musicPeak} < ${chopPeak}`);
 });
 
@@ -233,6 +233,54 @@ test('тло: без «Увімк.» нічого; увімкнене — пер
   assert.ok(mu.debug().ambLv.birds < 0.01 && mu.debug().ambLv.wind < 0.01, 'у скелях тиша');
   mu.setAmb(false);
   assert.equal(mu.debug().ambEv, 0);
+  mu.dispose();
+  delete globalThis.AudioContext;
+});
+
+test('гучності: тло тихіше за музику; лімітер наприкінці; повзунки зберігаються й діють', () => {
+  // груба модель RMS (без вух): сопілка — трикутник (RMS 0,577) на сталій 0,8; басоля — дві пилки (0,577) по половині;
+  // тло — смуговий шум: RMS ≈ 1,5·0,577·√(смуга/12 кГц), птахи/жаби/краплі звучать ~30 % часу. Усі шари тла разом на
+  // повну (так не буває — біом дає 1–2) мають бути тихіші за музику щонайменше на 6 дБ.
+  const musicRms = MIX.music * Math.hypot(VOICE.mel * 0.577 * 0.8, VOICE.bass * 0.5 * 0.577 * Math.SQRT2 * 0.9);
+  const band = (f, q) => 1.5 * 0.577 * Math.sqrt(Math.min(1, f / q / 24000));
+  const ambRms = MIX.amb * Math.hypot(AMB_GAIN.wind * band(380, 0.7), AMB_GAIN.water * band(1500, 0.5),
+    AMB_GAIN.bird * 0.707 * 0.3, AMB_GAIN.frog * 0.5 * 0.3, AMB_GAIN.plip * 0.707 * 0.1);
+  const db = (x) => 20 * Math.log10(x);
+  assert.ok(db(musicRms) - db(ambRms) >= 6, `музика ${db(musicRms).toFixed(1)} дБ, тло ${db(ambRms).toFixed(1)} дБ`);
+  assert.ok(db(musicRms) < -20 && db(ambRms) > -50, 'обидва чутні, жодне не гучне');
+  const count = stubAudio();
+  const mem = new Map(), storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  const audio = createAudio();
+  const mu = createMusic(audio, { storage, test: true });
+  assert.deepEqual(mu.vol, { music: 0.6, amb: 0.5, sfx: 1 });
+  mu.setVolume('music', 0.25); mu.setVolume('amb', 2); mu.setVolume('sfx', 0.4);
+  assert.deepEqual(mu.vol, { music: 0.25, amb: 1, sfx: 0.4 });
+  const mu2 = createMusic(createAudio(), { storage, test: true });
+  assert.deepEqual(mu2.vol, { music: 0.25, amb: 1, sfx: 0.4 }, 'зберіглось');
+  assert.equal(count.ctx, 0, 'повзунки не будять звук');
+  const sh = audio.shared();
+  assert.ok(sh.out.threshold.value <= -1 && sh.out.ratio.value >= 12, 'лімітер');
+  mu.dispose(); mu2.dispose();
+  delete globalThis.AudioContext;
+});
+
+test('музика з часом іде фразами; під небезпекою темп росте', () => {
+  const count = stubAudio();
+  const mu = createMusic(createAudio(), { storage: null, test: true });
+  const s = newGame(7, defaultParams(), 1);
+  s.path.push(...Array.from({ length: 300 }, (_, i) => s.path[s.path.length - 1] + 1 + i));
+  s.train.speed = 0.3 * s.params.speedMax * U / TPS * 1000;
+  mu.update(s); mu.setMusic(true);
+  const step = (k) => { for (let i = 0; i < k; i++) { count.c.currentTime += 0.09; mu._tick(); } };
+  step(150);
+  const calm = mu.debug();
+  assert.ok(calm.n >= 2, `фраз зіграно ${calm.n}`);
+  assert.ok(calm.danger < 0.05);
+  s.train.fire = 3; step(30);
+  const hot = mu.debug();
+  assert.ok(hot.danger > 0.9 && hot.bpm > calm.bpm + 20, `${calm.bpm} → ${hot.bpm}`);
+  s.train.fire = 0; step(10);
+  assert.ok(mu.debug().danger > 0.5, 'небезпека спадає поволі');
   mu.dispose();
   delete globalThis.AudioContext;
 });

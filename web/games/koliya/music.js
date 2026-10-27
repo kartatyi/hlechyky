@@ -32,7 +32,10 @@ export const STYLE = {
 const styleOf = (theme) => STYLE[theme] || STYLE.koliya;
 
 /** Зведення (підсилення шин на вході лімітера): ефекти audio.js — master 0,5; музика тихіша, тло ще тихіше */
-export const MIX = { sfx: 0.5, music: 0.09, amb: 0.05 };
+// (тло — фільтрований шум, його RMS у ~5 разів менший за підсилення; модель — у music.test.mjs «гучності»)
+export const MIX = { sfx: 0.5, music: 0.14, amb: 0.12 };
+/** Підсилення шарів тла всередині шини (до MIX.amb) */
+export const AMB_GAIN = { wind: 0.55, water: 0.3, bird: 0.22, frog: 0.3, plip: 0.14 };
 /** Підсилення голосів музики всередині шини (до MIX.music) */
 export const VOICE = { mel: 0.55, bass: 0.5, dum: 0.9, tek: 0.3, jingle: 0.22 };
 
@@ -377,7 +380,7 @@ export function createMusic(audio, opts = {}) {
     runTimer();
   }
   // — тло: два безперервні шари (вітер, вода — фільтрований шум) і події (птахи, жаби, плюскіт)
-  const LAYER = { wind: 0.55, water: 0.3, bird: 0.22, frog: 0.3, plip: 0.14 };
+  const LAYER = AMB_GAIN;
   function startAmb() {
     if (!ensure()) return;
     audio.hold?.('amb', true);
