@@ -1,5 +1,5 @@
 // «Колія» — малювання додатків K11: гуси 🪿 і таблички проміжної станції 🏪.
-//  createExtrasRender(scene, THREE) → { update(s, alpha), dispose() } — для render.js (3D: x → X, y → Z, вгору — Y, 1 клітинка = 1)
+//  createExtrasRender(scene, THREE) → { update(s, alpha, opts?), dispose() }; opts.blob — тінь-пляма під гусьми (K20: вигляд «Іграшковий» / низька якість, де нема тіней сонця) — для render.js (3D: x → X, y → Z, вгору — Y, 1 клітинка = 1)
 //  drawExtras2d(canvas, s) — поверх налагоджувального виду debug2d (той самий масштаб і зсув, що й там)
 // Гачки: render.js — після створення scene: `const extras = createExtrasRender(scene, THREE);`, у draw: `extras.update(s, alpha);`
 //        main.js — у frame() після view.draw: `if (q.get('view') === '2d') drawExtras2d(canvas, game.state);`
@@ -19,6 +19,17 @@ export function createExtrasRender(scene, THREE) {
     const o = new THREE.Mesh(box, m); o.position.set(x, y, z); o.scale.set(sx, sy, sz); o.castShadow = true; parent.add(o); return o;
   };
 
+  // K20: кругла тінь-пляма під гускою (як у render.js) — коли нема справжніх тіней
+  const blobTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 32;
+    const x = c.getContext('2d'), gr = x.createRadialGradient(16, 16, 2, 16, 16, 15.5);
+    gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.4)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 32, 32);
+    return new THREE.CanvasTexture(c);
+  })();
+  const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+
   // ---- гуска: дивиться вздовж +X ----
   function makeGoose() {
     const g = new THREE.Group();
@@ -37,8 +48,9 @@ export function createExtrasRender(scene, THREE) {
     const legL = cube(g, 0.02, 0.05, 0.07, 0.04, 0.1, 0.04, M.orange);
     const legR = cube(g, 0.02, 0.05, -0.07, 0.04, 0.1, 0.04, M.orange);
     const held = new THREE.Group(); held.position.set(0.16, -0.06, 0); head.add(held);
+    const blob = new THREE.Mesh(blobGeo, blobMat); blob.scale.set(0.55, 1, 0.38); blob.position.y = -0.015; blob.renderOrder = 1; blob.visible = false; g.add(blob);
     root.add(g);
-    return { g, body, neck, head, legL, legR, held, heldK: -1, px: 0, py: 0, x: 0, y: 0, tick: -1, yaw: 0 };
+    return { g, body, neck, head, legL, legR, held, blob, heldK: -1, px: 0, py: 0, x: 0, y: 0, tick: -1, yaw: 0 };
   }
   function setHeld(m, k) {
     if (m.heldK === k) return;
@@ -70,7 +82,7 @@ export function createExtrasRender(scene, THREE) {
       const back = cube(b, 0, 0.85, 0, 0.84, 0.54, 0.04, M.board); back.rotation.x = -0.5;
       return { k: sg.k, b, back };
     });
-    sign = { key: s.seed + ':' + s.w, g, boards };
+    sign = { key: s.seed + ':' + s.w + ':' + m.x0 + ':' + m.y0, g, boards };
   }
   function labelTex(k) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 160;
@@ -84,9 +96,9 @@ export function createExtrasRender(scene, THREE) {
   }
 
   return {
-    update(s, alpha = 0) {
+    update(s, alpha = 0, opts = {}) {
       // таблички
-      const key = s.mid ? s.seed + ':' + s.w : null;
+      const key = s.mid ? s.seed + ':' + s.w + ':' + s.mid.x0 + ':' + s.mid.y0 : null;   // K20: + рамка (K19 зсуває табличку)
       if ((sign && sign.key) !== key) makeSigns(s);
       if (sign && s.mid) for (const b of sign.boards) {
         const picked = s.mid.pick === b.k, gone = s.mid.pick && !picked;
@@ -101,6 +113,7 @@ export function createExtrasRender(scene, THREE) {
         let m = geese.get(gs.id);
         if (!m) { m = makeGoose(); m.px = m.x = gs.x; m.py = m.y = gs.y; m.tick = s.tick; geese.set(gs.id, m); }
         if (m.tick !== s.tick) { m.px = m.x; m.py = m.y; m.x = gs.x; m.y = gs.y; m.tick = s.tick; }
+        if (Math.abs(m.x - m.px) + Math.abs(m.y - m.py) > 2 * U) { m.px = m.x; m.py = m.y; }   // K20: зсув вікна (K19) — без перельоту
         const x = (m.px + (m.x - m.px) * alpha) / U, z = (m.py + (m.y - m.py) * alpha) / U;
         const dx = m.x - m.px, dz = m.y - m.py;
         if (dx || dz) { const want = Math.atan2(-dz, dx); let d = want - m.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); m.yaw += d * 0.3; }
@@ -115,12 +128,13 @@ export function createExtrasRender(scene, THREE) {
         m.body.position.y = Math.abs(Math.sin(ph)) * 0.03;
         m.legL.position.x = 0.02 + Math.sin(ph) * 0.05; m.legR.position.x = 0.02 - Math.sin(ph) * 0.05;
         m.legL.visible = m.legR.visible = !swim;
+        m.blob.visible = !!opts.blob && !swim;
         m.neck.rotation.z = gs.mode === 'flee' ? -0.5 : Math.sin(ph * 0.5) * 0.15;   // тікає — шия вперед
         setHeld(m, gs.hold || 0);
       }
       for (const [k, m] of geese) if (!live.has(k)) { root.remove(m.g); geese.delete(k); }
     },
-    dispose() { scene.remove(root); geese.clear(); sign = null; },
+    dispose() { scene.remove(root); geese.clear(); sign = null; blobTex.dispose(); blobGeo.dispose(); blobMat.dispose(); },
   };
 }
 

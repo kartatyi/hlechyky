@@ -8,7 +8,7 @@ import { createBot } from './bot.js';            // K2
 import { createAudio } from './audio.js';        // K4
 import { createPanel } from './panel.js';        // K4
 import { createDebug2d } from './debug2d.js';
-import { createHud } from './hud.js';            // K9
+import { createHud, dailySeed, kyivDate } from './hud.js';   // K9; K23: маршрут дня
 import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new|auto&nick=…&drive=1
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
@@ -93,12 +93,16 @@ const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('n
 window.KOL.net = net;
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
+// K23: «📅 Маршрут дня» — сід від дати (Київ), типові params (панель — для звичайної гри); «ще раз» лишає маршрут дня
+game.startDaily = () => { const date = kyivDate(); game.daily = { date, seed: dailySeed(date) }; restart(game.daily.seed); };
 function restart(seed = game.seed) {
-  if (net) return net.restart(seed, game.params);   // K3
+  if (game.daily && game.daily.seed !== seed >>> 0) game.daily = null;   // K23
+  const P = game.daily ? R.defaultParams() : game.params;   // K23
+  if (net) return net.restart(seed, P);   // K3
   if (game.wantLocal) { game.local = game.wantLocal; game.wantLocal = 0; game.bots = Math.min(game.bots, R.MAX_PLAYERS - game.local); input.setPlayers(game.local); }   // K12
   game.seed = seed >>> 0;
   panel?.setSeed?.(game.seed);
-  game.state = R.newGame(game.seed, game.params, game.local + game.bots);
+  game.state = R.newGame(game.seed, P, game.local + game.bots);
   game.bot = [];
   for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b));
   view?.setWorld?.(game.state);
@@ -184,7 +188,8 @@ function joinP2() {
 
 let hudUi = null;
 function drawHud() {
-  hudUi ??= createHud(hud, { players: game.local + game.bots, onStart: () => input.swallow(), onRestart: nextRestart });   // K9, K12
+  hudUi ??= createHud(hud, { players: game.local + game.bots, onStart: () => input.swallow(), onRestart: nextRestart,   // K9, K12
+    input, onSettings: () => panel.toggle(true), panelOpen: () => !!panel.isOpen?.() });   // K23: пауза
   game.hud = hudUi;   // K12: для замірів у консолі
   hudUi.update(game.state, game);
 }
