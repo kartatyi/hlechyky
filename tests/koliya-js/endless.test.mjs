@@ -8,7 +8,7 @@ import { createBot } from '../../web/games/koliya/bot.js';
 
 const { U, G, O, I, TPS } = R;
 const P = (o = {}) => ({ ...R.defaultParams(), stationMode: 'endless', ...o });
-const EASY = { stripLen: 60, speedStart: 0.12, speedGrowth: 0, heatSec: 240, startSec: 20 };   // бот поки слабкий — легка смуга
+const EASY = { stripLen: 60, speedStart: 0.12, speedGrowth: 0, heatSec: 240, startSec: 20, winter: 'off' };   // K26: світ сідів — як до зими (зима в нескінченній — biome.test)   // бот поки слабкий — легка смуга
 const adj = (s, a, b) => Math.abs(a % s.w - b % s.w) + Math.abs(((a / s.w) | 0) - ((b / s.w) | 0)) === 1;
 
 function playBots(seed, nBots, params, maxMin, onTick) {
