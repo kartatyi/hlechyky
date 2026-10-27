@@ -47,11 +47,11 @@ async function makeView() {
   catch (e) { console.warn('render.js ще нема — налагоджувальний вид', e); return createDebug2d(canvas); }
 }
 
-const input = createInput();
+const input = game.input = createInput();   // K16: game.input.hasPad(p) — підказки
 const audio = createAudio();
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
-const prefs = { quality: 'high', rumble: true };
+const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — «Підказки: так/ні»
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch { }
 input.setRumble(prefs.rumble);
 const nextRestart = () => restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
@@ -65,6 +65,7 @@ const panel = createPanel(document.getElementById('kol-panel'), {
     prefs[k] = v; try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { }
     if (k === 'quality') view?.setQuality?.(v);
     if (k === 'rumble') { input.setRumble(v); if (v) input.rumble(0, 'hit'); }
+    if (k === 'tips') game.tips?.setEnabled(v);   // K16
   },
   // K12: поки панель відкрита — гравці стоять, пад водить по панелі (Start — рестарт і закрити)
   onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
@@ -93,6 +94,8 @@ function tickOnce() {
     const v = ins[i]; if (!v) continue;
     cmds.push({ p: i, k: 'in', mx: Math.round(v.mx * 100), my: Math.round(v.my * 100) });
     if (v.use) cmds.push({ p: i, k: 'use' });
+    if (v.throw) cmds.push({ p: i, k: 'throw' });   // K18 (кнопки — input.js, K16)
+    if (v.horn) cmds.push({ p: i, k: 'horn' });
   }
   for (const b of game.bot) {
     const v = b.think(s);
@@ -103,13 +106,15 @@ function tickOnce() {
   afterStep(s);
 }
 function afterStep(s) {
-  audio.play(s.ev);
+  audio.play(s.ev, s);   // K16: зі станом — кроки за підлогою
   for (const e of s.ev) {   // K12: вібрація пада — удар і поразка
     if ((e.t === 'chop' || e.t === 'rock') && e.p < game.local) input.rumble(e.p, 'hit');
     else if (e.t === 'lost') input.rumble(-1, 'lost');
   }
   audio.setTrain?.(s.status === 'run' ? Math.min(1, s.train.speed / 1000 / (s.params.speedMax * U_PER_TICK)) : 0);
   view?.events?.(s.ev);
+  hudUi?.events?.(s.ev, s);   // K16: тости подій
+  if (s.endless && s.ev.some((e) => e.t === 'shift')) view?.setWorld?.(s);   // K19: вікно нескінченної колії зсунулось — сцену заново
 }
 
 // Тестовий режим (?test або headless-автоматизація): не більше 10 к/с — headless Chrome малює WebGL програмно й їсть CPU проду
@@ -127,10 +132,10 @@ function frame(now) {
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
   if (!game.state) return nextFrame();   // K3: мережа ще бере журнал
-  view?.draw(game.state, net ? net.alpha : acc / R.TICK_MS);
+  if (net) net.draw(view); else view?.draw(game.state, acc / R.TICK_MS);   // K6: мережа малює гравців згладжено
   if (q.get('view') === '2d') drawExtras2d(canvas, game.state);   // K11: 🪿 й таблички
   drawHud();
-  (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
+  (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' && prefs.tips !== false })).update(game.state, game, view);   // K10
   nextFrame();
 }
 
