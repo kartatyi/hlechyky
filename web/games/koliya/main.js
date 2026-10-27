@@ -11,6 +11,7 @@ import { createDebug2d } from './debug2d.js';
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
+const U_PER_TICK = R.U / R.TPS;   // 1 клітинка/с у підодиницях за тик
 
 function loadParams() {
   const p = R.defaultParams();
@@ -47,11 +48,13 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   meta: R.PARAM_META, variants: R.VARIANTS, values: game.params,
   onChange(values) { game.params = { ...values }; try { localStorage.setItem(PARAMS_KEY, JSON.stringify(values)); } catch { } },
   onRestart: () => restart(),
+  seed: game.seed, onSeed: (seed) => restart(seed),
   audio,
 });
 
 function restart(seed = game.seed) {
   game.seed = seed >>> 0;
+  panel?.setSeed?.(game.seed);
   game.state = R.newGame(game.seed, game.params, game.local + game.bots);
   game.bot = [];
   for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b));
@@ -74,6 +77,7 @@ function tickOnce() {
   }
   R.step(s, cmds);
   audio.play(s.ev);
+  audio.setTrain?.(s.status === 'run' ? Math.min(1, s.train.speed / 1000 / (s.params.speedMax * U_PER_TICK)) : 0);
   view?.events?.(s.ev);
 }
 
