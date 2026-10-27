@@ -234,15 +234,15 @@ function world({ seed = 1, base = 40, jit = 80, reorder = 0 }) {
     const cl = { nick, seat: null, h: {}, gone: false, rate: new Map(), game: { state: null, params: PARAMS, seed: 0, local: 1 } };
     cl.up = pipe(cl); cl.down = pipe(cl);
     let n = 0;
-    cl.net = createNet(cl.game, { zip: false, ...more, table: ROOM, nick, makeBot: (p) => {   // K44: без gzip — детерміновано
+    cl.net = createNet(cl.game, { zip: false, ...more, table: ROOM, nick, makeBot: more.input ? undefined : (p) => {   // K44: без gzip — детерміновано
       const b = createBot(p);
       return { p, think: (s, q) => { const v = { ...b.think(s, q) }; if (++n % 53 === 0) v.throw = true; if (n % 197 === 0) v.horn = true; return v; } };
-    } });
+    } });   // more.input — «людина» з клавіатурою замість бота
     clients.push(cl);
     building = cl; cur = cl;
     cl.net.start();
     building = null;
-    const loop = () => { if (cl.gone) return; cur = cl; cl.net.update(clock); at(clock + 50, loop); };
+    const loop = () => { if (cl.gone) return; cur = cl; if (!cl.hidden) cl.net.update(clock); at(clock + 50, loop); };   // hidden — вкладку сховано: кадрів нема
     at(clock + phase, loop);
     return cl;
   }
@@ -442,6 +442,42 @@ test('K62: збір — до go тик стоїть (і ввід не пишет
     checkHashes(W.srv, [A, B, D], 'K62', 2);
     assert.deepEqual(srv.desyncs, []);
     assert.ok(!W.warns.some((x) => /розійшлись|знімок не/.test(x)), W.warns.join(' | '));
+  } finally { W.restore(); }
+});
+
+test('схована вкладка: «стій» іде на сервер одразу, без кадрів — інакше гравець біг би далі в усіх (27.10)', { timeout: 600_000 }, async () => {
+  clock = 0; queue.length = 0;
+  const W = world({ seed: 5, base: 60, jit: 40 });
+  try {
+    const { srv } = W;
+    srv.seats[0] = 'A';
+    srv.start();
+    W.serverLoop();
+    const keys = { mx: 1, my: 0, use: false };   // затиснуто «праворуч»
+    const A = W.addClient('A', 7, { input: { poll: () => [keys] } });
+    await runUntil(2000);
+    assert.ok(W.as(A, () => A.net.go()));
+    await runUntil(4000);
+    const p = A.net.p, last = () => srv.log.filter((x) => x.p === p && x.k === KIND.in).at(-1);
+    assert.equal(last()?.a, 100, 'гравець не біжить');
+    // перемкнув вкладку: кадрів більше нема (rAF мовчить), клавішу ніхто не відпустив — лишається обробник схованої вкладки
+    A.hidden = true;
+    const t0 = A.game.state.tick;
+    W.as(A, () => A.net.standStill());
+    await runUntil(9000);
+    const stop = last();
+    assert.deepEqual([stop.a, stop.b], [0, 0], 'на сервері нема «стій»');
+    assert.ok(stop.T <= t0 + Grace + 1, `«стій» ліг пізно: тик ${stop.T}, сховав на ${t0}`);
+    assert.ok(A.net.C.tick > t0 + 80, 'остаточний світ схованої вкладки не йде за кадрами сервера');
+    // повернувся: кадри знову, P наздоганяє C, а поки стоїть — нових команд руху нема
+    const n = srv.log.length;
+    keys.mx = 0; A.hidden = false;
+    await runUntil(11_000);
+    assert.ok(A.game.state.tick >= A.net.C.tick, 'передбачений світ не наздогнав остаточний');
+    assert.equal(srv.log.slice(n).filter((x) => x.p === p && x.k === KIND.in).length, 0, 'зайвий «стій» після повернення');
+    assert.equal(W.as(A, () => A.net.standStill()), undefined);   // уже стоїть — нічого не шле
+    await runUntil(12_000);
+    assert.equal(srv.log.slice(n).filter((x) => x.p === p && x.k === KIND.in).length, 0);
   } finally { W.restore(); }
 });
 
