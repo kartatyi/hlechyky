@@ -13,6 +13,8 @@
 //  PRESETS («Затишно», «Як Unrailed», «Хаос») — лише ставлять значення (від типових), рестарт — кнопкою.
 //  prefs.tips (true/false) — «Підказки: так/ні» у «Пристрої» (onPref('tips', b) → game.tips.setEnabled).
 //  K29: music? (createMusic, music.js) — у «Пристрої» «🎵 Музика», «🌿 Тло» (вимк. типово) і гучності музики/тла/ефектів.
+//  K49: у «Пристрої» — «Великий текст HUD», «Кольори для дальтоніків», «Менше блимань» (prefs big/cb/calm); експорт
+//  A11Y / pcol(i) / pmark(i) / setA11y — для hud.js і render.js (див. нижче).
 
 const CSS = `
 .kol-gear{position:fixed;right:8px;top:8px;z-index:30;width:46px;height:46px;border-radius:10px;border:1px solid #fff3;
@@ -53,6 +55,29 @@ const CSS = `
 .kol-preset{font-size:13px;padding:6px 6px}
 .kol-pan.kol-bypad .kol-padnote{display:block}
 `;
+
+// K49: доступність — стан спільний для HUD (hud.js) і світу (render.js); зберігається в kol-prefs (big/cb/calm).
+//  big — HUD ×1.25; cb — палітра для протан/дейтан (жовтий/блакитний/білий/помаранчевий) + значок форми П1 ● П2 ▲ П3 ■ П4 ◆;
+//  calm — без миготіння тривог і рейки (статичний червоний). Клас на <html>: kol-a-big / kol-a-cb / kol-a-calm.
+//  A11Y.v зростає на кожну зміну — ключ кешів (мітки, стрілки, кільця). Подія 'kol-a11y' на window.
+const PCOL0 = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
+const PCOL_CB = ['#f0e442', '#56b4e9', '#ffffff', '#e69f00'];   // Okabe–Ito: розрізняються при протан/дейтан
+const PMARK = ['●', '▲', '■', '◆'];
+export const A11Y = { big: false, cb: false, calm: false, v: 0 };
+try { const o = JSON.parse(globalThis.localStorage?.getItem('kol-prefs') || '{}') || {}; for (const k of ['big', 'cb', 'calm']) A11Y[k] = o[k] === true; } catch { }
+/** колір гравця i (рядок #rrggbb) з урахуванням «Кольори для дальтоніків» */
+export const pcol = (i) => (A11Y.cb ? PCOL_CB : PCOL0)[(i | 0) % 4];
+/** значок форми гравця з пробілом («● ») — лише в режимі дальтоніків, інакше '' */
+export const pmark = (i) => A11Y.cb ? PMARK[(i | 0) % 4] + ' ' : '';
+export function setA11y(k, v) {
+  if (!(k in A11Y) || k === 'v') return;
+  A11Y[k] = !!v; A11Y.v++; a11yClasses();
+  try { globalThis.dispatchEvent?.(new Event('kol-a11y')); } catch { }
+}
+function a11yClasses() {
+  const h = globalThis.document?.documentElement; if (!h) return;
+  h.classList.toggle('kol-a-big', A11Y.big); h.classList.toggle('kol-a-cb', A11Y.cb); h.classList.toggle('kol-a-calm', A11Y.calm);
+}
 
 // K16: порядок груп і куди йдуть ключі, яким PARAM_META/VARIANTS дає іншу групу (або жодної — перемикачі)
 const GROUPS = ['Відчуття', 'Паротяг', 'Котел', 'Ресурси', 'Гравці', 'Світ', 'Додатки', 'Інше'];
@@ -180,26 +205,41 @@ export function createPanel(root, opts) {
     r1, r2, el('div', 'kol-lab kol-pres', 'Пресети'), r4, el('div', 'kol-note2', 'Зміни світу й правил діють з наступного рестарту.'));
 
   // — пристрій (K12): діє одразу, не правила
+  // K49: доступність — main.js читає з kol-prefs лише свої ключі; наші дописуємо в його prefs, щоб onPref зберігав і їх
+  if (opts.prefs) for (const k of ['big', 'cb', 'calm']) opts.prefs[k] = A11Y[k];
+  a11yClasses();
   const prefs = { quality: 'high', rumble: true, tips: true, ...(opts.prefs || {}) };
+  for (const k of ['big', 'cb', 'calm']) prefs[k] = A11Y[k];
   const prefCtl = [];
   const devGroup = () => {
     const d = el('details', 'kol-grp'); d.open = true;
     d.append(el('summary', null, 'Пристрій'));
-    const seg = (label, k, vals, labels) => {
+    const seg = (label, k, vals, labels, title) => {
       const box = el('div', 'kol-p');
       const s = el('div', 'kol-seg');
       const btns = vals.map((val, i) => {
         const b = el('button', null, labels[i]);
-        b.onclick = () => { if (prefs[k] !== val) { prefs[k] = val; put(); opts.onPref?.(k, val); } };
+        b.onclick = () => {
+          if (prefs[k] === val) return;
+          prefs[k] = val; put();
+          if (k in A11Y) { setA11y(k, val); if (!opts.onPref) try { const o = JSON.parse(localStorage.getItem('kol-prefs') || '{}') || {}; o[k] = val; localStorage.setItem('kol-prefs', JSON.stringify(o)); } catch { } }   // K49
+          opts.onPref?.(k, val);
+        };
         s.append(b); return b;
       });
       const put = () => btns.forEach((b, i) => b.classList.toggle('kol-on', vals[i] === prefs[k]));
       put(); prefCtl.push(put);
-      box.append(el('div', 'kol-lab', label), s); d.append(box);
+      const lab = el('div', 'kol-lab', label); if (title) lab.title = title;
+      box.append(lab, s); d.append(box);
     };
     seg('Якість картинки', 'quality', ['high', 'low'], ['Висока', 'Низька (слабкий ноут)']);
     seg('Вібрація (пад, телефон)', 'rumble', [true, false], ['Увімк.', 'Вимк.']);
     seg('Підказки', 'tips', [true, false], ['Так', 'Ні']);   // K16
+    // K49: доступність — діє одразу
+    seg('🔠 Великий текст HUD', 'big', [false, true], ['Звичайний', 'Великий ×1.25'], 'Написи поверх гри більші на чверть');
+    seg('🎨 Кольори для дальтоніків', 'cb', [false, true], ['Звичайні', 'Для дальтоніків'],
+      'Жовтий / блакитний / білий / помаранчевий + значок форми: П1 ●, П2 ▲, П3 ■, П4 ◆ — у мітках, кільцях і табличках');
+    seg('🚨 Менше блимань', 'calm', [false, true], ['Як є', 'Без миготіння'], 'Тривоги й остання рейка — статичним червоним, без миготіння');
     // K29: музика й тло (music.js) — вимкнено типово; натиск «Увімк.» — це жест, що будить звук. Гучності — одразу.
     const mu = opts.music;
     if (mu) {

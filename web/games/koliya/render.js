@@ -11,6 +11,7 @@ import { LOOKS, CAM_DIST, loadPrefs, savePrefs } from './looks.js';   // K5: в�
 import { isChumak, onTheme } from './theme.js';   // K25: тема «Чумацький шлях» (лише вигляд)
 import * as CV from './chumak-vox.js';             // K25: воли, мажі, гать, ярмарок, степ
 import { createWeather, WX } from './weather.js';   // K32: час доби й погода (лише вигляд)
+import { A11Y, pcol, pmark } from './panel.js';   // K49: доступність — кольори для дальтоніків, значки, менше блимань
 
 // ---------- палітра (BASE — «Літо»; вигляд K5 накладає свої заміни в C, див. looks.js) ----------
 const BASE = {
@@ -340,9 +341,12 @@ const LBW = 224;   // K28: ширина полотна мітки над гра�
 const RING_GEO = new THREE.RingGeometry(0.3, 0.38, 28).rotateX(-Math.PI / 2);
 const ringMats = [];
 function ringMat(n) {
-  return ringMats[n % 4] ||= new THREE.MeshBasicMaterial({ color: PHEX[n % 4], transparent: true, opacity: 0.95, depthWrite: false,
+  return ringMats[n % 4] ||= new THREE.MeshBasicMaterial({ color: k49Hex(n), transparent: true, opacity: 0.95, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
 }
+// K49: колір гравця з урахуванням «Кольори для дальтоніків»; зміна на ходу — перефарбувати кешовані кільця
+const k49Hex = (n) => A11Y.cb ? parseInt(pcol(n).slice(1), 16) : PHEX[(n | 0) % 4];
+globalThis.addEventListener?.('kol-a11y', () => ringMats.forEach((m, i) => m?.color.setHex(k49Hex(i))));
 const STAR_MAT = new THREE.MeshBasicMaterial({ color: 0xfff36b });
 
 // ---------- паротяг і вагони ----------
@@ -1111,10 +1115,10 @@ export function createRenderer(canvas) {
   }
   function drawLabel(lb, name, n) {
     const grey = !!globalThis.KOL?.game?.lost?.[lb.k];   // K28: відпав (нема кадрів > 3 с) — сірий
-    const key = name + '|' + n + '|' + grey;
+    const key = name + '|' + n + '|' + grey + '|' + A11Y.v;   // K49
     if (lb.key === key) return;
     lb.key = key;
-    const x = lb.c.getContext('2d'), col = grey ? '#9a9a9a' : '#' + PHEX[lb.k % 4].toString(16).padStart(6, '0');
+    const x = lb.c.getContext('2d'), col = grey ? '#9a9a9a' : '#' + k49Hex(lb.k).toString(16).padStart(6, '0');
     x.clearRect(0, 0, LBW, 48);
     const txt = n > 1 ? `${name} ×${n}` : name;
     x.font = '700 30px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
@@ -1202,7 +1206,7 @@ export function createRenderer(canvas) {
         if (!canLay(s, x, y)) continue;
         const g = H.lay[j++]; g.visible = true; g.position.set(x + 0.5, cellY(x, y), y + 0.5);
       }
-      const p = 0.5 + 0.5 * Math.sin(now / 220);
+      const p = A11Y.calm ? 0.6 : 0.5 + 0.5 * Math.sin(now / 220);   // K49
       H.layMat.opacity = 0.55 + 0.4 * p; H.layFill.opacity = 0.1 + 0.12 * p;
     }
     for (; j < H.lay.length; j++) H.lay[j].visible = false;
@@ -1217,7 +1221,7 @@ export function createRenderer(canvas) {
       if (near) {
         const urg = Math.max(0, Math.min(1, Math.max((2.5 - left) / 2.5, (7 - sec) / 7)));
         const hz = 1.6 + urg * 4.5;
-        const blink = 0.5 + 0.5 * Math.sin(now / 1000 * hz * Math.PI * 2);
+        const blink = A11Y.calm ? 1 : 0.5 + 0.5 * Math.sin(now / 1000 * hz * Math.PI * 2);   // K49: «Менше блимань» — статично
         H.dangerMat.opacity = (0.25 + 0.45 * urg) * (0.2 + 0.8 * blink);
         H.frameMat.opacity = 0.35 + 0.65 * blink;
         const x = last % s.w, y = (last / s.w) | 0;
@@ -1388,9 +1392,9 @@ export function createRenderer(canvas) {
   const _ap = new THREE.Vector3();
   function playerName(k) {
     const g = globalThis.KOL?.game;
-    if (g && !globalThis.KOL?.net && g.bot?.some?.((b) => b.p === k)) return '🤖';
-    if (g?.names?.[k]) return g.names[k] + (g.lost?.[k] ? ' 📶?' : '');   // K28: у мережі — нік (відпав — «📶?»)
-    return 'П' + (k + 1);
+    if (g && !globalThis.KOL?.net && g.bot?.some?.((b) => b.p === k)) return pmark(k) + '🤖';   // K49: значок форми спереду
+    if (g?.names?.[k]) return pmark(k) + g.names[k] + (g.lost?.[k] ? ' 📶?' : '');   // K28: у мережі — нік (відпав — «📶?»)
+    return pmark(k) + 'П' + (k + 1);
   }
   function updateArrows(s) {
     const r = canvas.getBoundingClientRect();
@@ -1424,6 +1428,7 @@ export function createRenderer(canvas) {
       if (!show) continue;
       const name = playerName(k);
       if (a.lab.textContent !== name) a.lab.textContent = name;
+      if (a.v !== A11Y.v) { a.v = A11Y.v; a.tip.style.background = a.lab.style.background = pcol(k); }   // K49: палітра на ходу
       // мітка трохи всередину від вістря
       const rad = ang * Math.PI / 180, lx = -Math.cos(rad) * 30, ly = -Math.sin(rad) * 30;
       const key = `${x | 0},${y | 0},${ang | 0}`;
@@ -1710,7 +1715,7 @@ export function createRenderer(canvas) {
         case 'shift': if (e.x) { cam.x -= e.x; W.needRebuild = true; } break;
         // K18 кооп-фішки (у клітинках)
         case 'throw': if (c) puff(c.x, 0.5, c.z, 3, 0xf2f2f2, 0.14, 0.5, 0.4); break;
-        case 'catch': case 'pass': if (c) burst(c.x, 1.0, c.z, 8, [0xffffff, 0xfff3b0, PHEX[(e.p | 0) % 4]], 1.4, 2.2, 0.05, 0.45, 5); break;
+        case 'catch': case 'pass': if (c) burst(c.x, 1.0, c.z, 8, [0xffffff, 0xfff3b0, k49Hex(e.p | 0)], 1.4, 2.2, 0.05, 0.45, 5); break;
         case 'land': if (c) { burst(c.x, 0.05, c.z, 6, [0xd8c9a0, 0xc7b88e], 1.4, 1.4, 0.07, 0.45); puff(c.x, 0.1, c.z, 2, 0xe8dcc0, 0.2, 0.7, 0.3); } break;
         case 'sink': if (c) { burst(c.x, -0.1, c.z, 14, [0x7cc8f2, 0xbfe6ff, 0xffffff], 1.6, 3.4, 0.09, 0.7); puff(c.x, -0.1, c.z, 2, 0xffffff, 0.2, 0.6, 0.6); } break;
         case 'stun': if (c) { burst(c.x, 1.1, c.z, 12, [0xfff36b, 0xffffff, 0xffb300], 2.2, 2.5, 0.06, 0.5, 4); if (W.players[e.p]) W.players[e.p].swing = 0; } break;
