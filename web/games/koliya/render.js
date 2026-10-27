@@ -18,7 +18,7 @@ const C = {
   wallA: 0x8f949c, wallB: 0x7b8088, wallC: 0xa4a8ae, cap: 0x86bf55,
   trunk: 0x7a5232, trunkB: 0x8c5f39,
   leaf: [0x4fa83f, 0x5cb848, 0x45a03c, 0x68c24f], pine: [0x2f8a4a, 0x3a9a55, 0x2b7d44],
-  rock: [0x9ea4ab, 0x8d939b, 0xb0b5bb], ore: [0xc26a35, 0xd98a4a, 0x4a4e57],
+  rock: [0x8e949c, 0x7f858e, 0x9ca1a8, 0x878a8f], ore: [0xc8642c, 0xe0843e, 0x3f434b],
   plank: [0xb07a45, 0x9a6838, 0xc08850],
   tie: 0x6e4a2e, steel: 0xb4bac2,
   flower: [0xffffff, 0xffe066, 0xff6b6b, 0xc69cff], tuft: 0x6aa843, pebble: 0xb9ae96,
@@ -156,6 +156,7 @@ function makePlayer(n) {
   const hand = new THREE.Group(); hand.position.set(0, -0.3, 0); armR.add(hand);
   const top = new THREE.Group(); top.position.set(0.02, 0.86, 0); body.add(top);
   // тінь-пляма під ногами не потрібна — є справжні тіні
+  root.scale.setScalar(1.2);
   return { root, body, legL, legR, armL, armR, hand, top, holdKey: '', held: null, phase: 0, swing: 0, yaw: 0, x: 0, z: 0 };
 }
 
@@ -224,8 +225,8 @@ export function createRenderer(canvas) {
   scene.fog = new THREE.Fog(C.sky, 60, 120);
   const camera = new THREE.PerspectiveCamera(32, 1, 1, 400);
 
-  const hemi = new THREE.HemisphereLight(0xdff1ff, 0x7a8a50, 1.55); scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff0d8, 2.4);
+  const hemi = new THREE.HemisphereLight(0xd8ecff, 0x6f7f48, 1.15); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffeccc, 3.0);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.025;
@@ -324,13 +325,14 @@ export function createRenderer(canvas) {
     water.rotation.x = -Math.PI / 2; water.position.set(w / 2, -0.16, h / 2); water.receiveShadow = true;
     root.add(water); W.water = water;
     buildStation(root, s);
+    buildOutskirts(-16, 0, s); buildOutskirts(w, w + 22, s);
     for (let i = 0; i < n; i++) syncCell(i, true);
     syncPath(true);
     pGround.flush(); pBox.flush();
 
     // потяг і гравці
     const loco = makeLoco(), store = makeStore(), craft = makeCraft();
-    for (const m of [loco, store, craft]) root.add(m.g);
+    for (const m of [loco, store, craft]) { m.g.scale.set(1, 1.2, 1.2); root.add(m.g); }
     W.train = [loco, store, craft];
     W.players = [];
     syncPlayers(s);
@@ -341,8 +343,6 @@ export function createRenderer(canvas) {
   function buildStation(root, s) {
     const { w, h } = s, mid = h >> 1;
     const g = new THREE.Group(); g.position.set(w, 0, mid + 0.5); root.add(g);
-    cube(g, 2.2, -3.2, 0, 4.4, 3.2, h * 0.6, C.dirt).castShadow = false;
-    cube(g, 2.2, -0.5, 0, 4.4, 0.52, h * 0.6, C.grassB);
     // будиночок вокзалу
     cube(g, 1.6, 0, -2.6, 2.4, 0.14, 3.6, C.stationB);
     cube(g, 1.7, 0.14, -3.1, 1.8, 1.2, 2.2, 0xf3e3c3);
@@ -367,6 +367,48 @@ export function createRenderer(canvas) {
       if (Math.abs(z) > h * 0.3) continue;
       cube(g, x, 0, z, 0.22, 0.5, 0.22, C.trunk); cube(g, x, 0.45, z, 0.8, 0.6, 0.8, C.leaf[1]); cube(g, x, 1.0, z, 0.5, 0.35, 0.5, C.leaf[3]);
     }
+  }
+
+  // околиці за кінцями смуги (лише вигляд): поле, ліс, скелі; на старті — тунель, з якого виходить колія
+  function buildOutskirts(x0, x1, s) {
+    const { w, h } = s, mid = h >> 1, list = W.outRefs || (W.outRefs = []), P = W.pBox;
+    const start = x1 <= 0;
+    for (let x = x0; x < x1; x++) for (let y = 0; y < h; y++) {
+      const v = hh(x, y, 1), d = start ? -x : x - w + 1;           // відстань від смуги
+      const top = 0.015 + Math.floor(hh(x, y, 3) * 3) * 0.012;
+      const dark = hh(x >> 2, y >> 2, 9) * 0.5 + hh(x >> 1, y >> 1, 10) * 0.5;
+      P.add(list, x + 0.5, -0.5, y + 0.5, 1, 0.5 + top, 1, tint((x + y) & 1 ? C.grassA : C.grassB, (v - 0.5) * 0.07 - (dark > 0.7 ? 0.08 : 0) - Math.min(0.12, d * 0.006)));
+      if (y === 0 || y === h - 1) { objBoxes(list, O.WALL, 1, x, y, top, h); continue; }
+      if (start && x >= -3) continue;                              // портал тунелю
+      if (start && Math.abs(y - mid) <= 1) continue;
+      if (!start && d < 7 && Math.abs(y - mid) <= 4) continue;     // вокзал і подвір'я
+      const r = hh(x, y, 5), dens = Math.min(0.55, 0.12 + d * 0.03);
+      if (r < dens) objBoxes(list, O.TREE, 1, x, y, top, h);
+      else if (r < dens + 0.06) objBoxes(list, O.ROCK, 1, x, y, top, h);
+      else if (r > 0.93) { P.add(list, x + 0.5, top, y + 0.5, 0.05, 0.12, 0.05, C.tuft); P.add(list, x + 0.5, top + 0.12, y + 0.5, 0.09, 0.07, 0.09, pick(C.flower, hh(x, y, 6))); }
+    }
+    cube(W.root, (x0 + x1) / 2, -3.2, h / 2, x1 - x0, 2.7, h + 0.02, C.dirt).castShadow = false;
+    if (!start) return;
+    // колія з тунелю: прямі рейки по середньому рядку
+    for (let x = x0; x < 0; x++) {
+      const cx = x + 0.5, cz = mid + 0.5;
+      for (const o of [-0.33, 0, 0.33]) P.add(list, cx + o, 0.015, cz, 0.15, 0.06, 0.82, C.tie);
+      for (const o of [-0.2, 0.2]) P.add(list, cx, 0.075, cz + o, 1.0, 0.08, 0.07, C.steel);
+    }
+    // гора з порталом: кам'яна стіна поперек смуги, темний отвір над колією, трава й ялинки згори
+    const gx = -3.5;
+    for (let y = 1; y < h - 1; y++) {
+      const v = hh(y, 7, 70), hg = 2.2 + v * 1.4 + (Math.abs(y - mid) > 3 ? 0.6 : 0);
+      if (Math.abs(y - mid) <= 1) {
+        P.add(list, gx, 1.25, y + 0.5, 1.4, hg - 1.25, 1.0, pick([C.wallA, C.wallB], v));
+        if (y === mid) P.add(list, gx + 0.05, 0, y + 0.5, 1.32, 1.25, 1.02, 0x1e1f24);
+        else P.add(list, gx + 0.1, 0, y + 0.5, 1.4, 1.25, 0.6 + 0.0, 0x6b7078);
+      } else P.add(list, gx, 0, y + 0.5, 1.4, hg, 1.0, pick([C.wallA, C.wallB, C.wallC], v));
+      P.add(list, gx - 0.3, hg, y + 0.5, 1.0, 0.1, 1.02, tint(C.cap, (v - 0.5) * 0.15));
+      for (let k = 1; k < 4; k++) P.add(list, gx - 0.7 - k, 0, y + 0.5, 1.0, hg + k * 0.5 + hh(k, y, 71) * 0.6, 1.0, pick([C.wallA, C.wallB, C.wallC], hh(k, y, 72)));
+      if (v > 0.6) objBoxes(list, O.TREE, 1, Math.floor(gx - 1.2), y, hg + 0.5, h);
+    }
+    P.add(list, gx + 0.72, 1.18, mid + 0.5, 0.08, 0.14, 1.2, 0xb8a27a);    // замковий камінь арки
   }
 
   // верх підлоги клітинки (на чому стоять речі)
@@ -409,13 +451,18 @@ export function createRenderer(canvas) {
   function freeRefs(list, pool) { for (const k of list) pool.release(k); list.length = 0; }
 
   function buildObj(i, x, y) {
-    const s = W.s, list = W.objRefs[i], P = W.pBox;
-    freeRefs(list, P);
-    const ok = s.obj[i], cx = x + 0.5, cz = y + 0.5;
+    const s = W.s, list = W.objRefs[i];
+    freeRefs(list, W.pBox);
+    const ok = s.obj[i];
+    const f = ok === O.TREE ? s.hp[i] / W.treeMax : ok === O.ROCK ? s.hp[i] / W.rockMax : 1;
+    objBoxes(list, ok, Math.min(1, f), x, y, topOf(s.ground[i], x, y), s.h);
+  }
+  // кубики предмета клітинки (дерево/скеля/стіна); f — частка міцності (менше — менший), також для околиць за смугою
+  function objBoxes(list, ok, f, x, y, base, h) {
+    const P = W.pBox, cx = x + 0.5, cz = y + 0.5;
     const v1 = hh(x, y, 11), v2 = hh(x, y, 12), v3 = hh(x, y, 13), v4 = hh(x, y, 14);
-    const base = topOf(s.ground[i], x, y);
     if (ok === O.TREE) {
-      const k = 0.55 + 0.45 * Math.min(1, s.hp[i] / W.treeMax);
+      const k = 0.55 + 0.45 * f;
       const ox = cx + (v2 - 0.5) * 0.16, oz = cz + (v3 - 0.5) * 0.16, hs = (0.85 + v4 * 0.4) * k;
       P.add(list, ox, base, oz, 0.2 * k, 0.4 * hs, 0.2 * k, v1 > 0.5 ? C.trunk : C.trunkB);
       if (v1 < 0.42) {          // ялинка ярусами
@@ -432,27 +479,42 @@ export function createRenderer(canvas) {
         if (v3 > 0.7) P.add(list, ox + 0.3 * k, base + 0.7 * hs, oz - 0.1, 0.12, 0.1, 0.12, 0xe0453a);   // яблучко
       }
     } else if (ok === O.ROCK) {
-      const k = 0.6 + 0.4 * Math.min(1, s.hp[i] / W.rockMax);
-      const col = pick(C.rock, v1), hgt = (0.45 + v2 * 0.4) * k;
-      P.add(list, cx, base, cz, 0.9 * k, hgt, 0.9 * k, col);
-      P.add(list, cx + (v3 - 0.5) * 0.3, base + hgt, cz + (v4 - 0.5) * 0.3, 0.5 * k, 0.22 * k, 0.5 * k, tint(col, 0.06));
-      if (v4 > 0.4) P.add(list, cx + 0.32 * (v1 > 0.5 ? 1 : -1), base, cz + 0.3 * (v2 > 0.5 ? 1 : -1), 0.36 * k, 0.28 * k, 0.36 * k, tint(col, -0.05));
-      // жили руди
-      const nOre = 1 + Math.floor(v3 * 3);
+      // валун із 2–3 брил, на гранях — руда (руда, іржава) і темні вкраплення
+      const k = 0.6 + 0.4 * f;
+      const col = pick(C.rock, v1), hgt = (0.5 + v2 * 0.35) * k;
+      const sx = v3 > 0.5 ? 1 : -1, sz = v4 > 0.5 ? 1 : -1;
+      P.add(list, cx - 0.1 * sx * k, base, cz - 0.08 * sz * k, 0.74 * k, hgt, 0.72 * k, col);
+      P.add(list, cx + 0.16 * sx * k, base, cz + 0.14 * sz * k, 0.6 * k, hgt * (0.6 + v1 * 0.3), 0.62 * k, tint(col, -0.07));
+      P.add(list, cx - 0.06 * sx * k, base + hgt, cz - 0.04 * sz * k, 0.46 * k, (0.14 + v4 * 0.16) * k, 0.44 * k, tint(col, 0.07));
+      if (v2 > 0.6) P.add(list, cx + 0.34 * sx * k, base, cz - 0.3 * sz * k, 0.22 * k, 0.16 * k, 0.22 * k, tint(col, -0.12));
+      const nOre = 2 + Math.floor(v3 * 3);
       for (let j = 0; j < nOre; j++) {
-        const a = hh(x, y, 20 + j), b = hh(x, y, 30 + j), side = Math.floor(hh(x, y, 40 + j) * 4);
-        const oc = j === 2 ? C.ore[2] : pick(C.ore, a * 0.66);
-        const hx = side === 0 ? 0.45 : side === 1 ? -0.45 : (a - 0.5) * 0.7, hz = side === 2 ? 0.45 : side === 3 ? -0.45 : (a - 0.5) * 0.7;
-        P.add(list, cx + hx * k, base + (0.1 + b * 0.6) * hgt, cz + hz * k, 0.16, 0.12, 0.16, oc);
+        const a = hh(x, y, 20 + j), b = hh(x, y, 30 + j), side = Math.floor(hh(x, y, 40 + j) * 5);
+        const oc = j === 3 ? C.ore[2] : (a < 0.6 ? C.ore[0] : C.ore[1]);
+        const hx = side === 0 ? 0.37 : side === 1 ? -0.37 : (a - 0.5) * 0.5, hz = side === 2 ? 0.36 : side === 3 ? -0.36 : (b - 0.5) * 0.5;
+        const hy = side === 4 ? hgt + 0.01 : (0.15 + b * 0.6) * hgt;
+        P.add(list, cx - 0.1 * sx * k + hx * k, base + hy - 0.06, cz - 0.08 * sz * k + hz * k, 0.15 + a * 0.06, 0.12, 0.15 + b * 0.06, tint(oc, (a - 0.5) * 0.2));
       }
     } else if (ok === O.WALL) {
-      const far = y === 0;
-      const hgt = far ? 1.1 + v1 * 1.7 : 0.35 + v1 * 0.45;
+      // далекий край — скелястий хребет (вищий, з травою й ялинками), ближній — низькі камені, щоб не застували поле
+      const far = y <= 0;
+      const hgt = far ? 1.0 + v1 * 1.4 : 0.3 + v1 * 0.35;
       const col = pick([C.wallA, C.wallB, C.wallC], v2);
       P.add(list, cx, base, cz, 1.0, hgt, 1.0, col);
-      if (far && v3 > 0.3) P.add(list, cx + (v4 - 0.5) * 0.3, base + hgt, cz + (far ? -0.15 : 0.15), 0.6, 0.3 + v4 * 0.6, 0.6, tint(col, 0.05));
-      if (v4 > 0.55) P.add(list, cx, base + hgt, cz, 1.02, 0.08, 1.02, tint(C.cap, (v2 - 0.5) * 0.1));
-      if (!far && v3 > 0.6) P.add(list, cx + (v4 - 0.5) * 0.4, base + hgt, cz, 0.4, 0.2, 0.4, tint(col, -0.05));
+      if (far) {
+        const h2 = 0.3 + v4 * 0.9;
+        P.add(list, cx + (v4 - 0.5) * 0.3, base + hgt, cz - 0.15, 0.7, h2, 0.6, tint(col, 0.06));
+        if (v3 > 0.5) P.add(list, cx + (v4 - 0.5) * 0.3, base + hgt + h2, cz - 0.15, 0.72, 0.08, 0.62, tint(C.cap, (v2 - 0.5) * 0.15));
+        else P.add(list, cx, base + hgt, cz + 0.2, 1.0, 0.08, 0.5, tint(C.cap, (v2 - 0.5) * 0.15));
+        if (v3 > 0.82) {
+          const py = base + hgt + (v3 > 0.5 ? h2 + 0.08 : 0);
+          P.add(list, cx, py, cz - 0.1, 0.12, 0.2, 0.12, C.trunk);
+          P.add(list, cx, py + 0.18, cz - 0.1, 0.55, 0.3, 0.55, C.pine[0]); P.add(list, cx, py + 0.45, cz - 0.1, 0.32, 0.28, 0.32, C.pine[1]);
+        }
+      } else {
+        if (v4 > 0.5) P.add(list, cx, base + hgt, cz, 1.02, 0.07, 1.02, tint(C.cap, (v2 - 0.5) * 0.1));
+        if (v3 > 0.6) P.add(list, cx + (v4 - 0.5) * 0.4, base + hgt, cz, 0.4, 0.2, 0.4, tint(col, -0.05));
+      }
     }
   }
 
@@ -492,6 +554,7 @@ export function createRenderer(canvas) {
     if (W.drops[i]) { W.root.remove(W.drops[i]); W.drops[i] = null; }
     const k = s.drop[i]; if (!k) return;
     const g = makeItem(k, s.dropN[i] || 1, true);
+    g.scale.setScalar(1.25);
     g.position.set(x + 0.5, topOf(s.ground[i], x, y), y + 0.5);
     g.rotation.y = (hh(x, y, 90) - 0.5) * 0.5 + (k === I.RAIL ? 0 : 0);
     W.root.add(g); W.drops[i] = g;
@@ -600,17 +663,20 @@ export function createRenderer(canvas) {
     const cw = canvas.clientWidth | 0, ch = canvas.clientHeight | 0;
     if (cw && ch && (cw !== W.cw || ch !== W.ch)) { W.cw = cw; W.ch = ch; renderer.setSize(cw, ch, false); camera.aspect = cw / ch; camera.updateProjectionMatrix(); }
 
-    // світ: інкрементно, лише коли змінився тик
+    // світ: інкрементно — порівняння з копією (≈ 5·w·h байтів, дешево), перебудова лише змінених клітинок
+    const so = s.obj, sh = s.hp, sg = s.ground, sd = s.drop, sn = s.dropN;
+    for (let i = 0; i < W.n; i++) {
+      if (so[i] !== W.obj[i] || sh[i] !== W.hp[i] || sg[i] !== W.ground[i] || sd[i] !== W.drop[i] || sn[i] !== W.dropN[i]) syncCell(i, false);
+    }
+    syncPath(false);
+    syncPlayers(s);
     if (s.tick !== W.tick) {
       const jump = W.tick === undefined || s.tick < W.tick || s.tick - W.tick > 3;
       W.tick = s.tick;
-      for (let i = 0; i < W.n; i++) {
-        if (s.obj[i] !== W.obj[i] || s.hp[i] !== W.hp[i] || s.ground[i] !== W.ground[i] || s.drop[i] !== W.drop[i] || s.dropN[i] !== W.dropN[i]) syncCell(i, false);
-      }
-      syncPath(false);
-      syncPlayers(s);
       snapshot(s);
       if (jump) W.prev = W.cur;
+    } else if (W.cur.pos !== s.train.pos || W.cur.pl.length !== s.players.length || s.players.some((p, k) => p.x !== W.cur.pl[k].x || p.y !== W.cur.pl[k].y)) {
+      snapshot(s); W.prev = W.cur;          // стан правили руками без тику — без інтерполяції
     }
     W.pGround.flush(); W.pBox.flush();
     alpha = Math.max(0, Math.min(1, alpha));
@@ -713,14 +779,14 @@ export function createRenderer(canvas) {
     // камера: тримає паротяг у кадрі, тягнеться до гравців
     const aspect = camera.aspect || 1.6;
     const tanH = Math.tan(camera.fov * Math.PI / 360);
-    const dH = (s.h + 3) * Math.sin(EL) / (2 * tanH);
+    const dH = (s.h + 1.2) * Math.sin(EL) / (2 * tanH);
     const spread = maxX - minX + 10;
     const dW = Math.max(18, Math.min(60, spread)) / (2 * tanH * aspect);
     const dGoal = Math.max(dH, Math.min(dW, dH * 1.7));
     const halfW = dGoal * tanH * aspect;
     let gx = (minX + maxX) / 2;
     gx = Math.max(headX - halfW * 0.55, Math.min(headX + halfW * 0.55, gx));
-    gx = Math.max(halfW * 0.7 - 1, Math.min(s.w + 3 - halfW * 0.5, gx));
+    gx = Math.max(halfW - 4, Math.min(s.w + 4 - halfW * 0.6, gx));
     const gz = s.h / 2 + 0.6;
     const kk = cam.init ? 1 - Math.exp(-dt * 2.2) : 1;
     cam.x += (gx - cam.x) * kk; cam.z += (gz - cam.z) * kk; cam.d += (dGoal - cam.d) * kk; cam.init = true;
