@@ -110,7 +110,8 @@ let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(250, now - last); last = now;
   if (input.restartPressed?.()) nextRestart();
-  if (game.local === 1 && !game.wantLocal && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
+  if (game.local === 1 && !game.wantLocal && (++padPoll & 15) === 0 && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
+  if (!game.paused && dt < 250) slowCheck(dt);   // K12
   if (!game.paused) {
     acc += dt * game.speed;
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
@@ -120,6 +121,20 @@ function frame(now) {
   drawHud();
   (game.tips ??= createTips(document.body, { enabled: q.get('tips') !== '0' })).update(game.state, game, view);   // K10
   nextFrame();
+}
+
+// K12: перші 6 с гри тягне повільно (середній кадр > 24 мс, < ~40 к/с) — сам вмикаємо «Якість: низька», раз
+let padPoll = 0, slowN = 0, slowSum = 0;
+function slowCheck(dt) {
+  if (slowN < 0 || TEST || prefs.quality !== 'high' || typeof view?.setQuality !== 'function') return;
+  slowN++; slowSum += dt;
+  if (slowSum < 6000) return;
+  const avg = slowSum / slowN; slowN = -1;
+  game.fpsStart = Math.round(1000 / avg);
+  if (avg <= 24) return;
+  prefs.quality = 'low'; view.setQuality('low'); panel.setPrefs?.({ quality: 'low' });
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { }
+  hudUi?.say?.(`🐢 ${game.fpsStart} к/с — увімкнув «Якість: низька» (⚙ / ⧉ View — повернути)`, 6000);
 }
 
 // K12: другий пад під'єднано при p=1 — П2 одразу (правила вміють 'join'), а з ботами — з наступного рестарту
@@ -134,6 +149,7 @@ function joinP2() {
 let hudUi = null;
 function drawHud() {
   hudUi ??= createHud(hud, { players: game.local + game.bots, onStart: () => input.swallow(), onRestart: nextRestart });   // K9, K12
+  game.hud = hudUi;   // K12: для замірів у консолі
   hudUi.update(game.state, game);
 }
 
