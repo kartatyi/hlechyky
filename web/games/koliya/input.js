@@ -189,6 +189,7 @@ export function createInput(opts = {}) {
     setMenu(fn) { menu = typeof fn === 'function' ? fn : null; rep.clear(); if (!menu) this.swallow(); },
     onMenuKey(fn) { onMenu = fn; },
     swallow() {
+      hits.clear(); padHits.clear();   // K21: Q/F, якими закрили стартовий екран, не стають кидком/гудком у першому тику
       for (const p of pads()) {
         const key = keyOf(p), s = muted.get(key) || new Set();
         for (let i = 0; i < (p.buttons ? p.buttons.length : 0); i++) if (btn(p, i)) s.add(i);

@@ -18,19 +18,30 @@ const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
 const U_PER_TICK = R.U / R.TPS;   // 1 клітинка/с у підодиницях за тик
 
+// K21: у localStorage можуть лежати ключі й значення попередніх версій — беремо лише відомі, числа в межах повзунка,
+// варіант — лише зі списку (інакше newGame отримав би, скажімо, stripLen 5 чи overheat 'smoke')
 function loadParams() {
   const p = R.defaultParams();
-  try { Object.assign(p, JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}')); } catch { }
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(PARAMS_KEY) || '{}'); } catch { }
+  if (o && typeof o === 'object') {
+    for (const k in R.PARAM_META) {
+      const m = R.PARAM_META[k], v = o[k];
+      if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
+    }
+    for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
+  }
   p.mode = q.get('tut') && q.get('tut') !== '0' ? 'tutorial' : 'normal';   // K22: навчання — лише ?tut=1 чи game.startTutorial(), не з пам'яті
   return p;
 }
 
+const LOCAL = Math.max(1, Math.min(2, (+q.get('p') | 0) || 1));   // K21: ?p=abc давав NaN
 const game = {
   R,
   params: loadParams(),
   seed: (q.get('seed') ? +q.get('seed') : (Math.random() * 1e9) | 0) >>> 0,
-  local: Math.max(1, Math.min(2, +(q.get('p') || 1))),
-  bots: Math.max(0, Math.min(3, +(q.get('bot') || 0))),
+  local: LOCAL,
+  bots: Math.max(0, Math.min(R.MAX_PLAYERS - LOCAL, +q.get('bot') | 0)),   // K21: p=2&bot=3 — бот №5 без гравця в стані
   state: null,
   bot: [],          // [{ p, think(state) → { mx, my, use } }]
   cmds: [],         // черга команд наступного тику (мережа/панель кладуть сюди)
@@ -53,7 +64,12 @@ const audio = createAudio();
 // K12: пристрій (якість, вібрація) — не правила, діють одразу
 const PREFS_KEY = 'kol-prefs';
 const prefs = { quality: 'high', rumble: true, tips: true };   // K16: tips — «Підказки: так/ні»
-try { Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch { }
+try {   // K21: лише відомі значення (старе 'medium' чи рядок 'false' не ламають slowCheck, вібрацію й підказки)
+  const o = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {};
+  if (o.quality === 'low') prefs.quality = 'low';
+  if (o.rumble === false) prefs.rumble = false;
+  if (o.tips === false) prefs.tips = false;
+} catch { }
 input.setRumble(prefs.rumble);
 const nextRestart = () => {
   if (game.state?.status === 'won' && game.params.mode === 'tutorial') return game.stopTutorial();   // K22: навчання пройдено — далі справжня смуга
@@ -122,6 +138,7 @@ function afterStep(s) {
   audio.setTrain?.(s.status === 'run' ? Math.min(1, s.train.speed / 1000 / (s.params.speedMax * U_PER_TICK)) : 0);
   view?.events?.(s.ev);
   hudUi?.events?.(s.ev, s);   // K16: тости подій
+  if (s.endless && s.ev.some((e) => e.t === 'shift')) view?.setWorld?.(s);   // K19: вікно нескінченної колії зсунулось — сцену заново
 }
 
 // Тестовий режим (?test або headless-автоматизація): не більше 10 к/с — headless Chrome малює WebGL програмно й їсть CPU проду
@@ -132,9 +149,11 @@ function frame(now) {
   const dt = Math.min(250, now - last); last = now;
   if (input.restartPressed?.()) nextRestart();
   if (!net && game.local === 1 && !game.wantLocal && (++padPoll & 15) === 0 && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
-  if (!game.paused && dt < 250) slowCheck(dt);   // K12
+  // K21: пауза — стартовий екран (HUD ставить game.paused) або відкрита панель (лише локально: мережа не чекає)
+  const hold = game.paused || (!net && panel.isOpen());
+  if (!hold && dt < 250) slowCheck(dt);   // K12
   if (net) net.update(now);   // K3
-  else if (!game.paused) {
+  else if (!hold) {
     acc += dt * game.speed;
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
@@ -180,6 +199,9 @@ function drawHud() {
   view = game.view = await makeView();
   mountLookUi(document.getElementById('kol-panel'), view);   // K5
   view?.setQuality?.(prefs.quality);   // K12
-  if (net) net.start().catch((e) => console.warn('Колія: мережа', e)); else restart();   // K3
+  if (net) net.start().catch((e) => {   // K3; K21: без сервера — не чорний екран мовчки
+    console.warn('Колія: мережа', e);
+    if (!game.state) hud.textContent = '⚠ Не вдалося підключитись до столу. Без мережі — прибери &net= з адреси.';
+  }); else restart();
   requestAnimationFrame(frame);
 })();

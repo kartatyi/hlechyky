@@ -6,6 +6,7 @@ import { generate } from './gen.js';
 import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: додатки за перемикачем
 import { coopInit, coopCmd, coopUse, coopStep, coopHash } from './coop.js';   // K18: кооп-фішки за перемикачем
 import { tutorialParams, tutorialWorld } from './tutorial.js';   // K22: навчальна смуга (mode='tutorial')
+import { endlessHash } from './endless.js';                          // K19: нескінченна колія
 
 export const TICK_MS = 50;           // 20 тиків/с
 export const TPS = 1000 / TICK_MS;
@@ -62,7 +63,7 @@ export const PARAM_META = {
 export const VARIANTS = {
   overheat: { values: ['fire', 'stop'], labels: ['Пожежа', 'Зупинка'], label: 'Перегрів котла' },
   geese:      { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Гуси-злодюжки 🪿' },                      // K11
-  stationMode: { values: ['end', 'upgrade'], labels: ['Кінець', 'Проміжна з покращеннями'], label: 'Станція 🏪' }, // K11
+  stationMode: { values: ['end', 'upgrade', 'endless'], labels: ['Кінець', 'Проміжна з покращеннями', 'Нескінченна ♾'], label: 'Станція 🏪' }, // K11, K19 (endless.js)
   // K14 «Відчуття ядра»: move/useMode/aim — блоки «K14» біля руху гравця, speedCurve — trainSpeed()
   move: { values: ['free', 'grid', 'snappy'], labels: ['Вільно', 'Клітинками', 'Чітко'], label: 'Рух гравця' },
   useMode: { values: ['press', 'tap', 'auto'], labels: ['Затиснув — б\'є', 'Кожен удар — натиск', 'Б\'є сам'], label: 'Дія (рубати/бити)' },
@@ -773,6 +774,7 @@ export function hash(s) {
   coopHash(s, mix);   // K18 (лише ввімкнене)
   for (const k of Object.keys(t).sort()) if (!HASH_TR[k]) { mixStr(mix, k); mixAny(mix, t[k]); }      // K6: нові поля потяга
   for (const k of Object.keys(s).sort()) if (!HASH_TOP[k]) { mixStr(mix, k); mixAny(mix, s[k]); }     // K6: гуси, s.mid, s.flying…
+  if (s.endless) mix(endlessHash(s));   // K19 (типовий hash не змінюється)
   return h >>> 0;
 }
 
