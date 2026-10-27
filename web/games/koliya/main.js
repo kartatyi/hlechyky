@@ -15,6 +15,7 @@ import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
 import { mountThemeUi } from './theme.js';          // K25: «Тема» (Колія / Чумацький шлях) у «🎨 Вигляд»
 import { createTouch, isTouchDevice } from './touch.js';   // K27: телефон і планшет
+import { createReplay } from './replay.js';   // K35: повтор партії
 import { createMusic } from './music.js';            // K29: музика й тло (вимкнено типово)
 
 const q = new URLSearchParams(location.search);
@@ -78,6 +79,7 @@ try {   // K21: лише відомі значення (старе 'medium' чи
 } catch { }
 input.setRumble(prefs.rumble);
 input.setTouch(game.touch = createTouch({ canvas }));   // K27
+const replay = game.replay = createReplay(game, { hud, input, say: (t, ms) => hudUi?.say?.(t, ms) });   // K35
 const nextRestart = () => {
   if (game.state?.status === 'won' && game.params.mode === 'tutorial') return game.stopTutorial();   // K22: навчання пройдено — далі справжня смуга
   restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
@@ -128,6 +130,7 @@ function restart(seed = game.seed) {
   game.seed = seed >>> 0;
   panel?.setSeed?.(game.seed);
   game.state = R.newGame(game.seed, P, game.local + game.bots);
+  replay.begin(game.state, game.seed, P, game.local + game.bots, { local: game.local });   // K35: запис партії
   game.bot = [];
   for (let b = 0; b < game.bots; b++) game.bot.push(createBot(game.local + b, { buddy: BUDDY && game.local > 0 }));   // K34: з людьми — напарник
   view?.setWorld?.(game.state);
@@ -149,6 +152,7 @@ function tickOnce() {
     cmds.push({ p: b.p, k: 'in', mx: v.mx | 0, my: v.my | 0 });
     if (v.use) cmds.push({ p: b.p, k: 'use' });
   }
+  replay.rec(s, cmds);   // K35
   R.step(s, cmds);
   afterStep(s);
 }
@@ -170,6 +174,7 @@ const nextFrame = () => TEST ? setTimeout(() => requestAnimationFrame(frame), 10
 let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(250, now - last); last = now;
+  if (replay.active) { replay.frame(dt); return nextFrame(); } else replay.watch();   // K35: повтор — гра й ввід стоять
   if (input.restartPressed?.()) nextRestart();
   if (!net && game.local === 1 && !game.wantLocal && (++padPoll & 15) === 0 && input.padCount() >= 2) joinP2();   // K12: другий пад — П2
   // K21: пауза — стартовий екран (HUD ставить game.paused) або відкрита панель (лише локально: мережа не чекає)
