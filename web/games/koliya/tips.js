@@ -46,6 +46,7 @@ const LATER = 20 * TPS;          // K39: гудок і реакції — кол
 const BOT_NEAR = 4;              // K39: бот «поруч» для поради про гудок, клітинок
 const INFO_TICKS = 5 * TPS;      // довідкова підказка висить 5 с
 const THROW_FAR = 2, THROW_NEAR = 4;   // з якої відстані до складу радимо кинути (клітинок)
+const BRAKE_AHEAD = 3;           // K56: «рейок мало» для поради про гальма — колії перед головою менше, клітинок
 
 const KIDS = ['', 'одинак', 'двоє', 'троє', 'четверо'];
 
@@ -167,6 +168,7 @@ function learn(s, m) {
     if (e.t === 'throw') markDone(m, e.p, 'throw', tick);   // K16
     if (e.t === 'honk') markDone(m, e.p, 'horn', tick);     // K39: гукнув сам
     if (e.t === 'upgrade') all('station');                  // K39: покращення обрано — станцію всі зрозуміли
+    if (e.t === 'whistle' && e.u === 'brake') all('brake'); // K56: хтось пригальмував — гальма всі зрозуміли
   }
   // K39: яр — на урвище, куди вказували, лягли дрова (каркас); каркас — став мостом
   for (const e of s.ev ?? []) if (e.t === 'shift') m.chasmAt = m.frameAt = -1;   // нескінченна: світ зсунувся
@@ -264,6 +266,16 @@ export function pickTips(s, memory = {}, opts = {}) {
       if (cands.length) {
         const p = cands.reduce((a, b) => (d2(cellOf(P[b]), pf.last) < d2(cellOf(P[a]), pf.last) ? b : a));
         give(p, 'dead', tt('tip.dead', `Глухий кут? Розбери останню рейку: порожні руки й ${useK(p)}`, useK(p)), pf.last);
+      }
+    }
+
+    // K56 2а) гальма (покращення K48): заряд є, паротяг їде, а колії попереду мало — найближчому до паротяга
+    const ups = s.ups, aheadB = (s.path.length - 1) - (t.pos ?? 0) / U;
+    if (ups?.brake && (ups.bn ?? 0) > 0 && !ups.bt && t.started && aheadB < BRAKE_AHEAD) {
+      const cands = who.filter((p) => free(p, 'brake') && P[p].hold?.k !== I.BUCKET_FULL);
+      if (cands.length) {
+        const p = nearestOf(cands, loco);
+        info(p, 'brake', tt('tip.brake', `🐢 Гальма — дія на паротяг (${useK(p)}), 10 с удвічі повільніше`, useK(p)), loco, false, 3 * INFO_TICKS);
       }
     }
 

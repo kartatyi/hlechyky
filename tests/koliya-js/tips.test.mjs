@@ -357,3 +357,19 @@ test('K39: реакції в мережі — «1–4 — реакції» ра�
   const s2 = mk(); tick(s2, 20 * TPS);
   assert.notEqual(pickTips(s2, { done: [{ axe: 1 }] })[0]?.id, 'react');
 });
+
+test('K56: гальма — заряд є й колії мало: «🐢 Гальма — дія на паротяг»; пригальмували — більше не каже', () => {
+  const s = mk(), m = {};
+  s.train.started = 1;
+  assert.ok(!pickTips(s, m).some((t) => t.id === 'brake'), 'без покращення — мовчимо');
+  s.ups = { cist: 0, cw: 0, ct: 0, mag: 0, mt: 0, brake: 1, bn: 1, bt: 0 };
+  tick(s);
+  const t = tipOf(pickTips(s, m), 0);
+  assert.equal(t?.id, 'brake');
+  assert.match(t.text, /Гальма — дія на паротяг/);
+  s.ups.bn = 0; tick(s);
+  assert.ok(!pickTips(s, m).some((q) => q.id === 'brake'), 'заряду нема — мовчимо');
+  s.ups.bn = 1; tick(s); s.ev.push({ t: 'whistle', x: 3, y: MID, p: 0, u: 'brake' });
+  pickTips(s, m); tick(s);
+  assert.ok(!pickTips(s, m).some((q) => q.id === 'brake'), 'пригальмували — зрозуміли');
+});
