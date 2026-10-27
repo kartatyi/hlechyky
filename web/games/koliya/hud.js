@@ -3,6 +3,9 @@
 //  root — <div id="kol-hud"> (стилі тут, класи з префіксом kol-); update — щокадру з main.js.
 //  Стартовий екран тримає game.paused = true до першого натиску клавіші/кнопки пада/кліку, тоді onStart().
 //  Поля стану читаються обережно (?? 0): правила пишуться паралельно.
+//  K12: стартовий екран з пада закривається A (або Start); opts.onRestart?() — велика кнопка «Ще раз» на кінці (для
+//  сенсора Deck); say(text, ms?) — коротка плашка зверху («П2 приєднався»). DOM оновлюється лише коли змінився тик чи
+//  статус (20 разів/с, не щокадру).
 import { TPS, U, G, I, wagonPos } from './rules.js';
 
 const COLORS = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];
@@ -53,6 +56,14 @@ const CSS = `
 .kol-go { margin-top: .8em; font-size: 1.2em; color: #b6ff5f; animation: kol-blink2 1.2s ease-in-out infinite; }
 @keyframes kol-blink2 { 50% { opacity: .35; } }
 .kol-sum { display: grid; grid-template-columns: auto auto; gap: .2em 1em; width: fit-content; margin: .6em auto; text-align: left; font-weight: 500; }
+.kol-again { pointer-events: auto; margin-top: .6em; min-height: 48px; padding: .3em 1.4em; font: inherit; font-size: 1.1em; color: #fff;
+  background: #4a6a2a; border: 1px solid #9bc25a; border-radius: 12px; cursor: pointer; touch-action: manipulation; }
+.kol-toast { position: absolute; left: 50%; top: calc(10px + 2.6em); transform: translateX(-50%); display: none; white-space: nowrap;
+  background: #1f3a12ee; border-color: #9bc25a; }
+.kol-padonly { display: none; }
+.kol-haspad .kol-padonly { display: contents; }
+.kol-haspad .kol-kbonly { display: none; }
+@media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
 
 function el(tag, cls, parent, html) {
@@ -100,6 +111,12 @@ export function createHud(root, opts = {}) {
   const alarm = el('div', 'kol-banner kol-alarm', root, '⚠ Рейки закінчуються!');
   const count = el('div', 'kol-count', root);
   const countN = el('b', null, count); const countT = el('div', 'kol-box', count, 'паротяг рушає');
+  const toast = el('div', 'kol-box kol-toast', root);
+  let toastT = 0;
+  const say = (text, ms = 3500) => {
+    toast.textContent = text; toast.style.display = 'block';
+    clearTimeout(toastT); toastT = setTimeout(() => { toast.style.display = 'none'; }, ms);
+  };
 
   // — таблички гравців
   const pls = el('div', 'kol-pls', root);
@@ -114,13 +131,14 @@ export function createHud(root, opts = {}) {
     <p>Рубайте ліс 🪓, бийте скелі ⛏, несіть у склад — майстерня робить рейки 🛤.
       Котел гріється: відро води 💧 на паротяг, інакше пожежа.</p>
     <div class="kol-keys">
-      <b style="color:${COLORS[0]}">П1</b><span>WASD — ходити, Space / E — дія</span>
-      <b style="color:${COLORS[1]}">П2</b><span>стрілки — ходити, Enter — дія</span>
-      <b>🎮</b><span>стік — ходити, A — дія</span>
-      <b>R</b><span>рестарт · <b>F1</b> — налаштування</span>
+      <span class="kol-kbonly"><b style="color:${COLORS[0]}">П1</b></span><span class="kol-kbonly">WASD — ходити, Space / E — дія</span>
+      <span class="kol-kbonly"><b style="color:${COLORS[1]}">П2</b></span><span class="kol-kbonly">стрілки — ходити, Enter — дія</span>
+      <b>🎮</b><span>стік / ✚ — ходити, <b>A</b> — дія</span>
+      <b>≡</b><span><b>Start</b> — рестарт · <b>⧉ View</b> — налаштування</span>
+      <span class="kol-kbonly"><b>R</b></span><span class="kol-kbonly">рестарт · <b>F1</b> — налаштування</span>
     </div>
-    <p class="kol-hint">${n > 1 ? `Гравців: ${n}. ` : ''}<code>?p=2</code> — удвох, <code>&amp;bot=1</code> — додати бота</p>
-    <div class="kol-go">Натисніть будь-яку кнопку</div>`);
+    <p class="kol-hint">${n > 1 ? `Гравців: ${n}. ` : ''}Другий пад — другий гравець. <span class="kol-kbonly"><code>?p=2</code> — удвох з клавіатури, <code>&amp;bot=1</code> — бот</span></p>
+    <div class="kol-go"><span class="kol-kbonly">Натисніть будь-яку кнопку</span><span class="kol-padonly">🎮 <b>A</b> — почати</span></div>`);
 
   // — кінець
   const end = el('div', 'kol-screen', root);
@@ -138,9 +156,19 @@ export function createHud(root, opts = {}) {
   addEventListener('keydown', onKey);
   start.addEventListener('pointerdown', begin);
 
+  // A або Start; повертає ще й «чи є пад» — для підказок
+  let hasPad = false;
   function padPressed() {
-    try { for (const p of navigator.getGamepads?.() || []) if (p && p.buttons.some((b) => b.pressed)) return true; } catch { }
-    return false;
+    let hit = false, any = false;
+    try {
+      for (const p of navigator.getGamepads?.() || []) {
+        if (!p || p.connected === false) continue;
+        any = true;
+        if (p.buttons[0]?.pressed || p.buttons[9]?.pressed) hit = true;
+      }
+    } catch { }
+    if (any !== hasPad) { hasPad = any; root.classList.toggle('kol-haspad', any); }
+    return hit;
   }
 
   function findStation(s) {
@@ -148,11 +176,16 @@ export function createHud(root, opts = {}) {
     return (s.w ?? 1) - 1;
   }
 
+  let lastKey = '';
   function update(s, game) {
     if (!s) return;
     game0 = game;
     if (!started) { if (game) game.paused = true; if (padPressed()) begin(); }
-    start.style.display = started ? 'none' : 'flex';
+    // DOM — лише коли щось могло змінитись (тик, статус, старт), а не щокадру
+    const key = `${s.tick}|${s.status}|${started}|${s.players?.length}`;
+    if (s === lastState && key === lastKey) return;
+    lastKey = key;
+    set(start.style, 'start|display', started ? 'none' : 'flex');
     if (s !== lastState) { lastState = s; stationX = findStation(s); }
 
     const p = s.params || {}, t = s.train || {};
@@ -241,12 +274,15 @@ export function createHud(root, opts = {}) {
           <span>🪓 Ударів</span><b>${st.hits ?? 0}</b>
           <span>💨 Найшвидше</span><b>${maxCps.toFixed(2)} кл/с</b>
         </div>
-        <div class="kol-go">R — ${s.status === 'won' ? 'далі' : 'ще раз'}</div>`);
+        <div class="kol-go">R / ≡ Start — ${s.status === 'won' ? 'далі' : 'ще раз'}</div>
+        <button class="kol-again" type="button">${s.status === 'won' ? '▶ Далі' : '↻ Ще раз'}</button>`);
     }
   }
+  endCard.addEventListener('click', (e) => { if (e.target.closest('.kol-again')) { e.target.blur(); opts.onRestart?.(); } });
 
   return {
     update,
-    dispose() { removeEventListener('keydown', onKey); style.remove(); root.textContent = ''; root.classList.remove('kol-root'); },
+    say,
+    dispose() { removeEventListener('keydown', onKey); clearTimeout(toastT); style.remove(); root.textContent = ''; root.classList.remove('kol-root'); },
   };
 }
