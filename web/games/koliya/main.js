@@ -104,6 +104,17 @@ input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панел
 
 // K23: «📅 Маршрут дня» — сід від дати (Київ), типові params (панель — для звичайної гри); «ще раз» лишає маршрут дня
 game.startDaily = () => { const date = kyivDate(); game.daily = { date, seed: dailySeed(date) }; restart(game.daily.seed); };
+// K30: стартове меню (menu.js через hud.js) — гравці/боти, режим ('play'|'tutorial'|'daily'|'endless') і сід; фінал — game.restart
+game.restart = (seed) => restart(seed);
+game.startMenu = (act, o) => {
+  game.local = Math.max(1, Math.min(2, o.players | 0 || 1)); game.wantLocal = 0; input.setPlayers(game.local);
+  game.bots = Math.max(0, Math.min(R.MAX_PLAYERS - game.local, o.bots | 0));
+  if (act === 'daily') return game.startDaily();
+  const sm = game.params.stationMode === 'endless' ? (game.smWas ?? 'end') : game.params.stationMode;
+  if (act === 'endless') game.smWas = sm;
+  game.params = { ...game.params, mode: act === 'tutorial' ? 'tutorial' : 'normal', stationMode: act === 'endless' ? 'endless' : sm };
+  panel?.set?.({ mode: game.params.mode, stationMode: game.params.stationMode }); game.daily = null; restart(o.seed ?? game.seed);
+};
 function restart(seed = game.seed) {
   if (game.daily && game.daily.seed !== seed >>> 0) game.daily = null;   // K23
   const P = game.daily ? R.defaultParams() : game.params;   // K23
@@ -209,7 +220,7 @@ function drawHud() {
   view?.setQuality?.(prefs.quality);   // K12
   if (net) net.start().catch((e) => {   // K3; K21: без сервера — не чорний екран мовчки
     console.warn('Колія: мережа', e);
-    if (!game.state) hud.textContent = '⚠ Не вдалося підключитись до столу. Без мережі — прибери &net= з адреси.';
+    if (!game.state) { const u = new URL(location.href); u.searchParams.delete('net'); hud.innerHTML = `⚠ Не вдалося підключитись до столу. <a href="${u.pathname + u.search}" style="pointer-events:auto;color:#ffd23f">🏠 Грати без мережі</a>`; }   // K30
   }); else restart();
   requestAnimationFrame(frame);
 })();
