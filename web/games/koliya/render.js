@@ -6,6 +6,7 @@
 // Світ: 1 клітинка = 1 одиниця; x стану → X, y стану → Z; підлога на Y = 0. Моделі дивляться в +X.
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
 import { U, G, O, I, WAGONS } from './rules.js';
+import { createExtrasRender } from './extras-render.js';   // K11: гуси й таблички станції
 
 // ---------- палітра ----------
 const C = {
@@ -221,6 +222,7 @@ export function createRenderer(canvas) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
+  const extras = createExtrasRender(scene, THREE);
   scene.background = new THREE.Color(C.sky);
   scene.fog = new THREE.Fog(C.sky, 60, 120);
   const camera = new THREE.PerspectiveCamera(32, 1, 1, 400);
@@ -806,6 +808,7 @@ export function createRenderer(canvas) {
     sun.target.position.set(tx, 0, tz);
     sun.position.set(tx + SUN_DIR.x * 50, SUN_DIR.y * 50, tz + SUN_DIR.z * 50);
 
+    extras.update(s, alpha);
     waterTime.value = now / 1000;
     stepParticles(dt);
     renderer.render(scene, camera);
@@ -857,6 +860,7 @@ export function createRenderer(canvas) {
 
   function dispose() {
     disposeWorld();
+    extras.dispose();
     pMesh.dispose();
     renderer.dispose();
   }
