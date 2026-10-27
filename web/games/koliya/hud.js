@@ -108,6 +108,7 @@ const CSS = `
 .kol-banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; font-size: 2.1em;
   padding: .3em .9em; border-radius: 14px; display: none; white-space: nowrap; }
 .kol-fire { background: #a3160ee6; border: 2px solid #ffb347; animation: kol-pulse .5s ease-in-out infinite alternate; }
+.kol-fire { font-size: 1.6em; }   /* K61: на 2,1em банер (≈ 540 px) лягав на лівий стовпчик — саме на шкалу котла */
 .kol-alarm { top: 36%; font-size: 1.6em; background: #8a5a00e6; border: 2px solid #ffd23f; animation: kol-pulse .4s ease-in-out infinite alternate; }
 @keyframes kol-pulse { to { transform: translateX(-50%) scale(1.06); } }
 .kol-count { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; display: none; }
