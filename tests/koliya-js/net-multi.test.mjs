@@ -172,7 +172,8 @@ function world({ seed = 1, base = 40, jit = 80, reorder = 0 }) {
           start: () => Promise.resolve(),
           invoke: (method, ...a) => new Promise((ok) => cl.up(() => { const r = clone(hubCall(cl, method, a)); cl.down(() => ok(r)); })),
           send: (method, room, kind, payload) => {
-            const p = clone(payload);
+            const p = clone(payload), sec = Math.floor(clock / 1000);
+            cl.rate.set(sec, (cl.rate.get(sec) || 0) + 1);   // квота каркаса: 30 Input/с з з'єднання (зайве мовчки викидає)
             cl.up(() => { if (cl.gone) return; try { srv.act(cl.seat, kind, p); } catch (x) { if (!(x instanceof GameError)) throw x; } });
             return Promise.resolve();
           },
@@ -192,7 +193,7 @@ function world({ seed = 1, base = 40, jit = 80, reorder = 0 }) {
   console.info = () => {};
 
   function addClient(nick, phase) {
-    const cl = { nick, seat: null, h: {}, gone: false, game: { state: null, params: PARAMS, seed: 0, local: 1 } };
+    const cl = { nick, seat: null, h: {}, gone: false, rate: new Map(), game: { state: null, params: PARAMS, seed: 0, local: 1 } };
     cl.up = pipe(cl); cl.down = pipe(cl);
     let n = 0;
     cl.net = createNet(cl.game, { table: ROOM, nick, makeBot: (p) => {
@@ -284,6 +285,10 @@ async function scenario(opts) {
       assert.ok(C0.players[p] && !C0.players[p].out, cl.nick + `: гравець ${p} вибулий чи відсутній`);
     }
     const st = live.map((cl) => cl.net.info().stats);
+    for (const cl of W.clients) {
+      const top = Math.max(...cl.rate.values());
+      assert.ok(top <= 30, `${cl.nick}: ${top} Input за секунду — квота каркаса 30 з'їла б власні команди`);
+    }
     if (process.env.K24_LOG) console.log(JSON.stringify({ tick: C0.tick, status: C0.status, common: common.length, path: C0.path.length, E: C0.endless && [C0.endless.stations, C0.endless.shift], stale: srv.stale, flying: C0.flying.length, geese: C0.geese.length, st, players: C0.players.map((p) => [p.out, p.hold.k]) }));
     return { srv, common, st, C: C0, warns: W.warns };
   } finally { W.restore(); }
@@ -295,8 +300,8 @@ test('мережа наживо: 4 клієнти з ботами, джитер,
   assert.ok(r.C.tick > 800);
 });
 
-test('мережа наживо: перестановки доставки (кадри, вид, ввід обганяють одне одного)', { timeout: 600_000 }, async () => {
-  const r = await scenario({ seed: 9, base: 30, jit: 200, reorder: 0.25, lateAt: 60_000, restartAt: 100_000, endAt: 160_000 });
+test('мережа наживо: перестановки доставки (кадри, вид, ввід обганяють одне одного), пізній вхід на 3-й хвилині', { timeout: 600_000 }, async () => {
+  const r = await scenario({ seed: 9, base: 30, jit: 200, reorder: 0.25, lateAt: 200_000, restartAt: 240_000, endAt: 300_000 });
   assert.ok(r.C.tick > 600);
 });
 

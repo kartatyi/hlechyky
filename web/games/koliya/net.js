@@ -422,8 +422,12 @@ export function createNet(game, opts = {}) {
         const h = R.hash(C);
         hashes.set(C.tick, h);
         if (hashes.size > 64) hashes.delete(hashes.keys().next().value);
-        const m = { t: C.tick, h };   // тик — зараз, а не коли затримка відпустить (C тим часом піде далі)
-        lagOut(() => conn?.send('Input', room, 'hash', m).catch(() => { }));
+        // K24: e — щоб сервер не звірив хеш старої епохи з новою; лише останні звірки — пізній вхід доганяє тисячі тиків
+        // за раз, і пачка хешів (раз на 100 тиків) з'їла б квоту 30 Input/с, а з нею — власні команди гравця
+        if (w + 1 - C.tick < 2 * HASH_EVERY) {
+          const m = { t: C.tick, h, e };   // тик — зараз, а не коли затримка відпустить (C тим часом піде далі)
+          lagOut(() => conn?.send('Input', room, 'hash', m).catch(() => { }));
+        }
       }
     }
     const before = pending.length;
@@ -475,7 +479,8 @@ export function createNet(game, opts = {}) {
     const i = ++idSeq;
     pending.push({ t, i, cmd });
     stats.sent++;
-    lagOut(() => conn.send('Input', room, kind, { ...payload, t, i }).catch((x) => console.warn('Колія: Input', x)));
+    const ep = e;   // K24: епоха — запізнілий після перезапуску ввід сервер викине
+    lagOut(() => conn.send('Input', room, kind, { ...payload, t, i, e: ep }).catch((x) => console.warn('Колія: Input', x)));
   }
 
   /** Передбачений світ до тику target; нові тики — зі своїм керуванням і подіями. */
