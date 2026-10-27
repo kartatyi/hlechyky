@@ -9,6 +9,7 @@ import { createAudio } from './audio.js';        // K4
 import { createPanel } from './panel.js';        // K4
 import { createDebug2d } from './debug2d.js';
 import { createHud } from './hud.js';            // K9
+import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new|auto&nick=…&drive=1
 
 const q = new URLSearchParams(location.search);
 const PARAMS_KEY = 'kol-params';
@@ -52,8 +53,12 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   seed: game.seed, onSeed: (seed) => restart(seed),
   audio,
 });
+const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
+  bot: q.get('drive') ? createDriver() : null, onWorld: (s) => view?.setWorld?.(s), onStep: (s) => afterStep(s) }) : null;
+window.KOL.net = net;
 
 function restart(seed = game.seed) {
+  if (net) return net.restart(seed, game.params);   // K3
   game.seed = seed >>> 0;
   panel?.setSeed?.(game.seed);
   game.state = R.newGame(game.seed, game.params, game.local + game.bots);
@@ -77,6 +82,9 @@ function tickOnce() {
     if (v.use) cmds.push({ p: b.p, k: 'use' });
   }
   R.step(s, cmds);
+  afterStep(s);
+}
+function afterStep(s) {
   audio.play(s.ev);
   audio.setTrain?.(s.status === 'run' ? Math.min(1, s.train.speed / 1000 / (s.params.speedMax * U_PER_TICK)) : 0);
   view?.events?.(s.ev);
@@ -85,13 +93,13 @@ function tickOnce() {
 let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(250, now - last); last = now;
-  if (input.restartPressed?.()) restart(game.state.status === 'won' ? game.seed + 1 : game.seed);
-  if (!game.paused) {
+  if (input.restartPressed?.()) restart(game.state?.status === 'won' ? game.seed + 1 : game.seed);
+  if (net) net.update(now);   // K3
+  else if (!game.paused) {
     acc += dt * game.speed;
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
   }
-  view?.draw(game.state, acc / R.TICK_MS);
-  drawHud();
+  if (game.state) { view?.draw(game.state, net ? net.alpha : acc / R.TICK_MS); drawHud(); }
   requestAnimationFrame(frame);
 }
 
@@ -103,6 +111,6 @@ function drawHud() {
 
 (async () => {
   view = await makeView();
-  restart();
+  if (net) net.start().catch((e) => console.warn('Колія: мережа', e)); else restart();   // K3
   requestAnimationFrame(frame);
 })();
