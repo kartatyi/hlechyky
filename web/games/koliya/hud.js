@@ -149,7 +149,7 @@ const CSS = `
 .kol-modes { display: flex; gap: .6em; justify-content: center; flex-wrap: wrap; }
 .kol-modes .kol-again { font-size: 1em; }
 .kol-pmenu { display: flex; flex-direction: column; align-items: stretch; gap: .1em; width: fit-content; margin: .4em auto; }
-.kol-pmenu .kol-again:focus { outline: 3px solid #ffd23f; outline-offset: 2px; }
+.kol-pmenu .kol-again.kol-pf, .kol-pmenu .kol-again:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; }
 @media (max-width: 640px) { .kol-card .kol-sum { grid-template-columns: auto auto; } .kol-ptab { font-size: .72em; } .kol-ptab th, .kol-ptab td { padding: .1em .25em; } }
 @media (max-height: 820px) { .kol-card { padding: .8em 1.2em; } .kol-card h1 { font-size: 2.1em; } .kol-keys { margin: .5em auto; } }
 `;
@@ -294,7 +294,7 @@ export function createHud(root, opts = {}) {
   let paused = false, pauseState = null, waitPanel = false, pauseIdx = 0;
   const isNet = () => !!(game0?.net || window.KOL?.net);
   const canPause = () => started && lastState?.status === 'run' && !opts.panelOpen?.();
-  const pauseFocus = (i) => { pauseIdx = (i + pauseBtns.length) % pauseBtns.length; pauseBtns[pauseIdx].focus({ preventScroll: true }); };
+  const pauseFocus = (i) => { pauseIdx = (i + pauseBtns.length) % pauseBtns.length; pauseBtns.forEach((x, j) => x.classList.toggle('kol-pf', j === pauseIdx)); pauseBtns[pauseIdx].focus({ preventScroll: true }); };
   function openPause() {
     if (paused || !canPause()) return;
     paused = true; pauseState = lastState;
@@ -374,7 +374,7 @@ export function createHud(root, opts = {}) {
       return `<div class="kol-rec">📅 Рекорд дня (${who}): ${r.prev ? f(r.prev) : 'ще нема — доїдьте першими'}</div>`;
     }
     if (r.kind === 'st') return r.isNew ? `<div class="kol-rec kol-new">🏆 Новий рекорд! (${who})</div>`
-      : `<div class="kol-rec">🏆 Рекорд (${who}): ${r.prev} ${plural(r.prev, 'станція', 'станції', 'станцій')}</div>`;
+      : !r.prev ? '<div class="kol-rec">🏆 Рекорду ще нема — доїдьте до першої 🚉</div>' : `<div class="kol-rec">🏆 Рекорд (${who}): ${r.prev} ${plural(r.prev, 'станція', 'станції', 'станцій')}</div>`;
     if (r.isNew) return `<div class="kol-rec kol-new">🏆 Новий рекорд сіду! ${fmtTime(r.val / TPS)}${r.prev ? ` (було ${fmtTime(r.prev / TPS)})` : ''}</div>`;
     return `<div class="kol-rec">🏆 Рекорд сіду (${who}): ${fmtTime(r.prev / TPS)}</div>`;
   }
@@ -416,7 +416,7 @@ export function createHud(root, opts = {}) {
     set(progEnd.style, 'end|left', `${Math.min(100, endX / span * 100).toFixed(1)}%`);
     set(progHead.style, 'head|left', `${Math.min(100, headX / span * 100).toFixed(1)}%`);
     const ahead = Math.max(0, path.length - 1 - Math.floor((t.pos ?? 0) / U));
-    txt(progAhead, 'ahead', `🛤 ${ahead} попереду · до ${E ? `наступної 🚉 ${E.toNext}` : `🏁 ${Math.max(0, Math.round(stationX - headX))}`}`);
+    txt(progAhead, 'ahead', E ? `🛤 ${ahead} · до наступної 🚉 ${E.toNext}` : `🛤 ${ahead} попереду · до 🏁 ${Math.max(0, Math.round(stationX - headX))}`);
     // K16: проміжна станція — позначка на смузі й банер, поки паротяг чекає вибору
     const mid = s.mid;
     const midX = mid ? (mid.x0 + mid.x1 + 1) / 2 : -1;
@@ -559,18 +559,24 @@ export function createHud(root, opts = {}) {
     ['carry', '🚚 Вантажник', 8], ['scare', '🪿 Гусятник', 1], ['honk', '📯 Горлань', 5], ['hurt', '🌀 Груша для биття', 2],
   ];
   function titles(n) {
-    const out = Array.from({ length: n }, () => []);
+    const cand = Array.from({ length: n }, () => []);
     const row = (i) => tally[i] ?? {};
     for (const [k, name, min] of TITLES) {
-      let best = 0;
-      for (let i = 0; i < n; i++) best = Math.max(best, row(i)[k] ?? 0);
+      let best = 0, sum = 0;
+      for (let i = 0; i < n; i++) { const v = row(i)[k] ?? 0; best = Math.max(best, v); sum += v; }
       if (best < min) continue;
-      for (let i = 0; i < n; i++) if ((row(i)[k] ?? 0) === best && out[i].length < 2) out[i].push(name);
+      for (let i = 0; i < n; i++) if ((row(i)[k] ?? 0) === best) cand[i].push([best / sum, name]);
     }
+    // кожному — 2 найвиразніші (частка від усіх у категорії)
+    const out = cand.map((c) => c.sort((a, b) => b[0] - a[0]).slice(0, 2).map((x) => x[1]));
     // пасажир: найбільша частка простою (≥ 25 %), удвох і більше — навіть якщо щось інше вже має
-    let pi = -1, ps = 0.25;
-    for (let i = 0; i < n; i++) { const r = row(i), sh = r.ticks ? r.idle / r.ticks : 0; if (sh >= ps) { ps = sh; pi = i; } }
-    if (pi >= 0 && (n > 1 || !out[pi].length)) out[pi].unshift('🛋 Пасажир'), out[pi].length = Math.min(2, out[pi].length);
+    const share = (i) => { const r = row(i); return r.ticks ? r.idle / r.ticks : 0; };
+    let ps = 0.25;
+    for (let i = 0; i < n; i++) ps = Math.max(ps, share(i));
+    for (let i = 0; i < n; i++) {
+      if (share(i) < ps || (n === 1 && out[i].length)) continue;
+      out[i].unshift('🛋 Пасажир'); out[i].length = Math.min(2, out[i].length);
+    }
     return out.map((a) => a.length ? a : ['🧩 На підхваті']);
   }
   function playersHtml(s) {
