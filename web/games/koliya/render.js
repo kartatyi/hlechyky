@@ -156,7 +156,7 @@ function makePlayer(n) {
   const hand = new THREE.Group(); hand.position.set(0, -0.3, 0); armR.add(hand);
   const top = new THREE.Group(); top.position.set(0.02, 0.86, 0); body.add(top);
   // тінь-пляма під ногами не потрібна — є справжні тіні
-  root.scale.setScalar(1.2);
+  root.scale.setScalar(1.35);
   return { root, body, legL, legR, armL, armR, hand, top, holdKey: '', held: null, phase: 0, swing: 0, yaw: 0, x: 0, z: 0 };
 }
 
