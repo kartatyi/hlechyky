@@ -33,6 +33,12 @@
 // перерахунку набирає рівно стільки, щоб видима поза не зрушила, а далі тане щотику (×SMOOTH, ~100–150 мс). Зсув
 // додається до p.x/p.y лише на час view.draw і одразу знімається — правила, HUD, підказки бачать справжній світ.
 // Свого гравця це не гальмує: свої дії йдуть у P одразу, зсув з'являється лише від перерахунку (рідко).
+// K44. Знімки для пізнього входу: раз на SNAP_EVERY тиків (1 хв) кожен гравець, чий C живий (не доганяє), шле на
+// сервер стиснутий знімок C (JSON, типізовані масиви — base64, gzip через CompressionStream) окремим POST …/snap
+// (у Input ≤ 8 КБ не влазить) разом із хешем. Сервер зберігає останній знімок, хеш якого підтвердили звірки ≥ 2 місць
+// (або одного, якщо грає один), не розбираючи вмісту. Пізній чи після діри — GET …/log?from=0&snap=1 → { s: знімок,
+// f: журнал з першого запису з тиком ≥ тику знімка }; знімок розпаковуємо, звіряємо тик і R.hash — і переграємо лише
+// хвіст. Не зійшлось — журнал з нуля, як раніше. Знімки йдуть повз правила: на детермінізм не впливають.
 // Затримка для перевірок: ?lag=<RTT мс>&jit=<мс> — кадри, вид столу, журнал і свої Input ідуть з половиною RTT
 // (± jit/2) у кожен бік, порядок зберігається (як TCP). ?smooth=0 — без згладжування (порівняти ривки).
 import * as R from './rules.js';
@@ -47,6 +53,7 @@ const SMOOTH = 0.55;       // частка зсуву, що лишається �
 const SNAP = 3 * R.U;      // більший стрибок (поява, телепорт) — не згладжуємо
 const CATCH = 2;           // зсув тане не швидше за 2 кроки гравця за тик (разом із ходою — до 3× швидкості)
 const JERK = 3.5;          // замір: стрибок за тик більший за 3,5 кроку — ривок (згладжене не перевищує 1 + CATCH)
+export const SNAP_EVERY = 1200;   // K44: тиків між знімками (1 хв); кратне HASH_EVERY — знімок на тику звірки
 const K = { 1: 'in', 2: 'use', 3: 'join', 4: 'leave', 5: 'throw', 6: 'horn' };   // 5, 6 — кооп-фішки K18
 
 /**
@@ -133,6 +140,46 @@ export function createLag(rtt = 0, jit = 0, rnd = Math.random) {
     q.push({ due: last, fn });
     if (!timer) timer = setTimeout(pump, Math.max(0, q[0].due - now));
   };
+}
+
+// ---------------- K44: знімок світу (чисте, без DOM — тестується в Node) ----------------
+const TA = { Uint8Array, Int8Array, Uint8ClampedArray, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array };
+function toB64(u8) {
+  let str = '';
+  for (let i = 0; i < u8.length; i += 0x8000) str += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(str);
+}
+function fromB64(b) {
+  const str = atob(b), a = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) a[i] = str.charCodeAt(i);
+  return a;
+}
+/** Світ → JSON-текст: типізовані масиви — { $ta: тип, b: base64 байтів }. */
+export function snapText(s) {
+  return JSON.stringify(s, (k, v) => (ArrayBuffer.isView(v)
+    ? { $ta: v.constructor.name, b: toB64(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) } : v));
+}
+/** JSON-текст знімка → світ. */
+export function snapParse(text) {
+  return JSON.parse(text, (k, v) => (v && typeof v === 'object' && typeof v.$ta === 'string' && TA[v.$ta]
+    ? new TA[v.$ta](fromB64(v.b).buffer) : v));
+}
+async function through(u8, stream) {
+  return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer());
+}
+/** Знімок C → { z: 1 — gzip, b: байти }. Текст береться одразу (синхронно) — C після виклику може йти далі. */
+export async function encodeSnap(s) {
+  const u8 = new TextEncoder().encode(snapText(s));
+  if (typeof CompressionStream === 'function') {
+    try { return { z: 1, b: await through(u8, new CompressionStream('gzip')) }; } catch { }
+  }
+  return { z: 0, b: u8 };
+}
+/** Знімок з журналу (b — base64, z — gzip) → світ. */
+export async function decodeSnap(b, z) {
+  let u8 = fromB64(b);
+  if (z) u8 = await through(u8, new DecompressionStream('gzip'));
+  return snapParse(new TextDecoder().decode(u8));
 }
 
 function loadScript(src) {
@@ -354,7 +401,9 @@ export function createNet(game, opts = {}) {
   const log = new Map();                // тик → [cmd] (лише тики ≥ C.tick)
   let pending = [];                     // свої без луни: { t, i, cmd }
   const hashes = new Map();             // тик → хеш C
-  const stats = { frames: 0, rebuilds: 0, resyncs: 0, sent: 0, dropped: 0 };
+  const stats = { frames: 0, rebuilds: 0, resyncs: 0, sent: 0, dropped: 0,
+    snapUp: 0, snapBytes: 0, snapFrom: -1, snapBad: 0, buildTicks: 0, buildMs: 0 };   // K44
+  const useSnap = opts.snap !== false && qs.get('snap') !== '0';   // K44: ?snap=0 — пізній вхід завжди з нуля (порівняти)
   // K28: люди за столом — реакції (повз журнал), панелька в куті
   let reactSeen = -1, ui = null;
   const myReacts = new Set(), reactGate = createReactGate();
@@ -561,11 +610,27 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     say('беру журнал…');
     try {
       if (lag) await new Promise((r) => lagOut(r));
-      const res = await fetch(`/api/games/koliya/${encodeURIComponent(room)}/log?from=0`, { cache: 'no-store' });
+      let res = await fetch(`/api/games/koliya/${encodeURIComponent(room)}/log?from=0${useSnap ? '&snap=1' : ''}`, { cache: 'no-store' });
       if (!res.ok) throw new Error('журнал: ' + res.status);
-      const j = await res.json();
+      let j = await res.json();
       if (lag) await new Promise((r) => lagIn(r));
-      build(j);
+      const t0 = Date.now();
+      let snap = null;
+      if (j.s) {   // K44: знімок — розпакувати й звірити; не той — журнал з нуля
+        try {
+          snap = await decodeSnap(j.s.b, j.s.z);
+          if (snap.tick !== j.s.t || R.hash(snap) >>> 0 !== j.s.h >>> 0) throw new Error('хеш знімка не той');
+        } catch (x) {
+          console.warn('Колія: знімок не годиться —', x?.message || x);
+          stats.snapBad++;
+          snap = null;
+          res = await fetch(`/api/games/koliya/${encodeURIComponent(room)}/log?from=0`, { cache: 'no-store' });
+          if (!res.ok) throw new Error('журнал: ' + res.status);
+          j = await res.json();
+        }
+      }
+      build(j, snap);
+      stats.buildMs = Date.now() - t0;
     } catch (x) {
       console.warn('Колія: журнал не взявся', x);
       say(/: 404$/.test(x?.message || '') ? 'стола нема (закрився?) — відкрий новий' : 'журнал не взявся: ' + (x?.message || x));
@@ -573,13 +638,15 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     } finally { resyncing = false; }
   }
 
-  /** Світ з нуля: newGame + увесь журнал до водяного знаку. */
-  function build(j) {
+  /** Світ з нуля: newGame + увесь журнал до водяного знаку. K44: snap — світ зі знімка, журнал лише з його тику. */
+  function build(j, snap = null) {
     if (j.e !== e) { off = null; net.desync = -1; desyncSaid = false; }   // нова епоха — тик з нуля, старий зсув годинника й розбіжність не годяться
     e = j.e;
-    C = R.newGame(j.seed >>> 0, j.prm || {}, j.n0 || 1);
-    game.replay?.begin?.(C, j.seed >>> 0, j.prm || {}, j.n0 || 1, { net: true, local: 99 });   // K35: повтор — із журналу
-    log.clear(); count = 0; pending = []; hashes.clear(); hi = 0;
+    C = snap || R.newGame(j.seed >>> 0, j.prm || {}, j.n0 || 1);
+    // K35: повтор — із журналу від тику 0; зі знімка початку нема — повтору цієї партії не пишемо
+    if (!snap) game.replay?.begin?.(C, j.seed >>> 0, j.prm || {}, j.n0 || 1, { net: true, local: 99 });
+    stats.snapFrom = snap ? C.tick : -1;
+    log.clear(); count = snap ? j.f | 0 : 0; pending = []; hashes.clear(); hi = 0;
     lastIn = [0, 1].map(() => ({ mx: 0, my: 0, t: -99 })); lastUse = [0, 1].map(() => ({ t: -99, down: false }));
     if (seat != null && j.pOf) net.p = j.pOf[seat] ?? -1;
     if (seat != null && j.p2Of) net.p2 = j.p2Of[seat] ?? -1;
@@ -587,10 +654,12 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     if (j.nm) game.names = namesFrom(j.nm);   // K28: мітки над гравцями — ніки
     game.seed = j.seed >>> 0;
     if (off == null) off = j.t * R.TICK_MS - performance.now();
-    if (!ingest(j.f | 0, j.c || [])) { console.warn('Колія: журнал з дірою'); return; }
+    if (!ingest(j.f | 0, j.c || [], !!snap)) { console.warn('Колія: журнал з дірою'); return; }
     w = j.w;
     if (j.d >= 0) noteDesync(j.d);
+    const c0 = C.tick;
     advanceC();
+    stats.buildTicks = C.tick - c0;
     [net.p, net.p2].forEach((p, q) => {   // що rules уже знає про мій рух — від цього й міряємо зміни
       const me = C.players[p];
       if (p >= 0 && me) lastIn[q] = { mx: me.mx | 0, my: me.my | 0, t: -99 };
@@ -645,14 +714,14 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
   }
 
   /** Нові записи журналу (номери з from). false — діра чи запис у вже остаточний тик: треба журнал заново. */
-  function ingest(from, c) {
+  function ingest(from, c, old = false) {
     const pTick = game.state ? game.state.tick : 0;
     for (let j = 0; j < c.length; j += 10) {
       const seq = c[j];
       if (seq < count) continue;
       if (seq !== count) return false;
       const t = c[j + 1];
-      if (C && t < C.tick) return false;
+      if (C && t < C.tick) { if (old) { count++; continue; } return false; }   // K44: зі знімком — уже в ньому
       const cmd = toCmd(c, j);
       if (!log.has(t)) log.set(t, []);
       log.get(t).push(cmd);
@@ -683,6 +752,7 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
         if (w + 1 - C.tick < 2 * HASH_EVERY) {
           const m = { t: C.tick, h, e };   // тик — зараз, а не коли затримка відпустить (C тим часом піде далі)
           lagOut(() => conn?.send('Input', room, 'hash', m).catch(() => { }));
+          if (C.tick % SNAP_EVERY === 0 && net.p >= 0) upSnap(C.tick, h);   // K44
         }
       }
     }
@@ -691,6 +761,16 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
     if (pending.length !== before) { stats.dropped += before - pending.length; dirty = true; }
     // C наздогнав P (рідко: зв'язок стояв) — P не може бути позаду остаточного
     if (game.state && game.state.tick < C.tick) dirty = true;
+  }
+
+  /** K44: знімок C на тику t (хеш h) — на сервер окремим POST; він тримає підтверджений хешами інших. */
+  function upSnap(t, h) {
+    const ep = e, rm = room;
+    encodeSnap(C).then(({ z, b }) => {
+      stats.snapUp++; stats.snapBytes = b.length;
+      lagOut(() => fetch(`/api/games/koliya/${encodeURIComponent(rm)}/snap?e=${ep}&t=${t}&h=${h >>> 0}&z=${z}`,
+        { method: 'POST', body: b, headers: { 'Content-Type': 'application/octet-stream' }, cache: 'no-store' }).catch(() => { }));
+    }).catch((x) => console.warn('Колія: знімок не стиснувся', x));
   }
 
   function cmdsFor(t) {
