@@ -104,7 +104,7 @@ function drawHud() {
 }
 
 (async () => {
-  view = await makeView();
+  view = game.view = await makeView();
   restart();
   requestAnimationFrame(frame);
 })();
