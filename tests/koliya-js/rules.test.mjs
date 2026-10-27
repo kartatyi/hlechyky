@@ -7,7 +7,7 @@ const { U, G, O, I, TPS } = R;
 
 /** Порожня смуга: без лісу/скель/води, гравці подалі від колії */
 function blank(params = {}, n = 1) {
-  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, ...params };
+  const p = { ...R.defaultParams(), forest: 0, rocks: 0, water: 0, soloSpeed: 1, ...params };   // K13: числа тестів — без соло-знижки
   const s = R.newGame(7, p, n);
   for (let i = 0; i < s.w * s.h; i++) {
     const y = (i / s.w) | 0;
@@ -257,7 +257,7 @@ test('станція: колія до станції — перемога', () =
   while (s.status === 'run' && s.tick < 20000) R.step(s, []);
   assert.equal(s.status, 'won');
   assert.ok(s.ev.some((e) => e.t === 'won'));
-  assert.ok(s.stats.cells > 100);
+  assert.ok(s.stats.cells > s.w / 2);
 });
 
 test('котел: перегрів — пожежа й поразка; повне відро гасить; варіант «stop» — стоїть', () => {
@@ -315,4 +315,32 @@ test('join/leave: вихід кладе річ на підлогу, гра не 
   // поза: мережа ставить позицію й погляд
   R.step(s, [{ p: 0, k: 'pose', x: 30500, y: 7500, fx: 0, fy: -1 }]);
   assert.deepEqual([s.players[0].x, s.players[0].y, s.players[0].fx, s.players[0].fy], [30500, 7500, 0, -1]);
+});
+
+test('K13: соло-знижка — один гравець їде повільніше; двоє — повна швидкість; вийшов партнер — знову знижка', () => {
+  const spdOf = (cps) => Math.round(cps * U * 1000 / TPS);
+  const P = { startSec: 0, speedStart: 0.4, speedGrowth: 0, speedMax: 1, heatSec: 240, soloSpeed: 0.75, finishSpeed: 0 };
+  const one = blank(P, 1), two = blank(P, 2);
+  R.step(one, []); R.step(two, []);
+  assert.equal(one.train.speed, Math.round(spdOf(0.4) * 0.75));
+  assert.equal(two.train.speed, spdOf(0.4));
+  R.step(two, [{ p: 1, k: 'leave' }]);
+  assert.equal(two.train.speed, Math.round(spdOf(0.4) * 0.75));
+  const off = blank({ ...P, soloSpeed: 1 }, 1); R.step(off, []);
+  assert.equal(off.train.speed, spdOf(0.4), 'soloSpeed 1 — без знижки');
+});
+
+test('K13: колію дотягли до станції — паротяг мчить finishSpeed і швидко виграє; 0 — як було', () => {
+  const spdOf = (cps) => Math.round(cps * U * 1000 / TPS);
+  const mk = (fs) => {
+    const s = blank({ startSec: 0, speedStart: 1, speedGrowth: 0, speedMax: 3, heatSec: 240, finishSpeed: fs }, 2);
+    const L = lastXY(s);
+    for (let x = L.x + 1; x < s.w; x++) { const c = id(s, x, L.y); s.path.push(c); if (s.ground[c] === G.STATION) break; }
+    while (s.status === 'run' && s.tick < 60000) R.step(s, []);
+    return s;
+  };
+  const fast = mk(4), slow = mk(0);
+  assert.equal(fast.status, 'won'); assert.equal(slow.status, 'won');
+  assert.equal(fast.stats.maxSpeed, spdOf(4));
+  assert.ok(fast.tick * 3 < slow.tick, `ривок: ${fast.tick} проти ${slow.tick} тиків`);
 });
