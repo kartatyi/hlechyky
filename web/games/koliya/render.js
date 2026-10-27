@@ -5,7 +5,7 @@
 //  events — події тику (s.ev): тріски, бризки, пара, конфеті.
 // Світ: 1 клітинка = 1 одиниця; x стану → X, y стану → Z; підлога на Y = 0. Моделі дивляться в +X.
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
-import { U, G, O, I, WAGONS } from './rules.js';
+import { U, G, O, I, WAGONS, canLay } from './rules.js';
 import { createExtrasRender } from './extras-render.js';   // K11: гуси й таблички станції
 import { LOOKS, CAM_DIST, loadPrefs, savePrefs } from './looks.js';   // K5: вигляди
 
@@ -306,9 +306,23 @@ function makePlayer(n) {
   const top = new THREE.Group(); top.position.set(0.02, 0.86, 0); body.add(top);
   mergeGroup(root);
   addBlob(root, 0.62, 0.62);              // пляма під ногами — лише в «Іграшковому» (інакше справжні тіні)
+  // K20: кільце кольором гравця під ногами — видно, хто де, навіть у гурті й за деревом
+  const ring = new THREE.Mesh(RING_GEO, ringMat(n)); ring.position.y = 0.02; ring.renderOrder = 3; ring.userData.keep = true; root.add(ring);
+  // K20: зірочки приголомшення (K18 p.stun) — три кубики колом над головою
+  const stars = new THREE.Group(); stars.position.set(0, 1.0, 0); stars.visible = false; root.add(stars);
+  for (let j = 0; j < 3; j++) { const st = new THREE.Mesh(BOX, STAR_MAT); st.scale.setScalar(0.09); stars.add(st); }
   root.scale.setScalar(1.35);
-  return { root, body, legL, legR, armL, armR, hand, top, holdKey: '', held: null, phase: 0, swing: 0, yaw: 0, x: 0, z: 0 };
+  return { root, body, legL, legR, armL, armR, hand, top, ring, stars, holdKey: '', held: null, phase: 0, swing: 0, yaw: 0, x: 0, z: 0 };
 }
+// K20: кольори гравців — як у HUD (П1 жовтий, П2 рожевий, П3 блакитний, П4 салатовий)
+const PHEX = [0xffd23f, 0xff5fa2, 0x5fd3ff, 0xb6ff5f];
+const RING_GEO = new THREE.RingGeometry(0.3, 0.38, 28).rotateX(-Math.PI / 2);
+const ringMats = [];
+function ringMat(n) {
+  return ringMats[n % 4] ||= new THREE.MeshBasicMaterial({ color: PHEX[n % 4], transparent: true, opacity: 0.95, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+}
+const STAR_MAT = new THREE.MeshBasicMaterial({ color: 0xfff36b });
 
 // ---------- паротяг і вагони ----------
 function makeLoco() {
@@ -452,6 +466,28 @@ export function createRenderer(canvas) {
   };
   const boxMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }));
   const groundMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }), FXG, 'kfxg');
+  // K20: дерева хитаються від вітру — у вершинному шейдері (окремий пул дерев): зсув росте з висотою над землею,
+  // фаза — від клітинки (усе дерево разом), сила — від вигляду (осінь вітряніша). Тіні не хитаються (зсув ≤ 0,06).
+  const windT = { value: 0 }, windK = { value: 1 };
+  const treeMat = fxPatch(new THREE.MeshLambertMaterial({ color: 0xffffff }), FX, 'kfxt');
+  { const base = treeMat.onBeforeCompile;
+    treeMat.onBeforeCompile = (sh, r) => {
+      base(sh, r); sh.uniforms.uWT = windT; sh.uniforms.uWK = windK;
+      sh.vertexShader = 'uniform float uWT;\nuniform float uWK;\n' + sh.vertexShader.replace('#include <project_vertex>', `vec4 mvPosition = vec4( transformed, 1.0 );
+        #ifdef USE_INSTANCING
+        mvPosition = instanceMatrix * mvPosition;
+        vec2 kio = floor(instanceMatrix[3].xz);
+        #else
+        vec2 kio = floor(mvPosition.xz);
+        #endif
+        float kh = max(0.0, mvPosition.y - 0.3);
+        float kph = uWT * 1.6 + kio.x * 0.45 + kio.y * 0.31;
+        float ksw = (sin(kph) * 0.7 + sin(kph * 2.3 + 1.7) * 0.3) * uWK;
+        mvPosition.x += ksw * kh * kh * 0.05;
+        mvPosition.z += cos(kph * 0.8 + 0.6) * uWK * kh * kh * 0.022;
+        mvPosition = modelViewMatrix * mvPosition;
+        gl_Position = projectionMatrix * mvPosition;`);
+    }; }
 
   // ---- частинки ----
   const PMAX = 900;
@@ -514,23 +550,26 @@ export function createRenderer(canvas) {
 
   function disposeWorld() {
     if (!W) return;
-    for (const p of [W.pGround, W.pBox, W.pBlob]) p.dispose();
+    for (const p of [W.pGround, W.pBox, W.pBlob, W.pTree]) p.dispose();
     for (const g of W.drops) if (g) W.root.remove(g);
     W.root.traverse((o) => { if (o.userData.merged) o.geometry.dispose(); });
     for (const wm of W.waters) wm.geometry.dispose();
     scene.remove(W.root);
+    for (const lb of W.labels || []) { lb.tex.dispose(); lb.sp.material.dispose(); }
     blobs.clear(); wobbles.clear();
     W = null;
   }
 
-  function setWorld(s, keepCam = false) {
+  // keepCam: той самий стан (зсув вікна нескінченної колії K19, зміна вигляду/якості) — камера не скидається; новий стан (рестарт) — скидається
+  function setWorld(s, keepCam = !!(W && W.s === s)) {
     disposeWorld();
     const { w, h } = s, n = w * h;
     const root = new THREE.Group(); scene.add(root);
     const pGround = new ChunkPool(root, groundMat, h, CH * h, { cast: false, receive: true });
     const pBox = new ChunkPool(root, boxMat, h, CH * h * 3);
     const pBlob = new ChunkPool(root, blobMat, h, 64, { cast: false, receive: false, geo: BLOB_GEO, order: 1 });
-    W = { root, s, w, h, n, pGround, pBox, pBlob, gRef: new Int32Array(n), waters: [],
+    const pTree = new ChunkPool(root, treeMat, h, CH * h);   // K20: дерева — свій матеріал із вітром
+    W = { root, s, w, h, n, pGround, pBox, pBlob, pTree, objPool: new Array(n), gRef: new Int32Array(n), waters: [],
       obj: new Uint8Array(n), hp: new Uint8Array(n), ground: new Uint8Array(n), drop: new Uint8Array(n), dropN: new Uint8Array(n),
       onPath: new Uint8Array(n), objRefs: new Array(n), decoRefs: new Array(n), railRefs: new Array(n), blobRefs: new Array(n), objGen: new Uint32Array(n),
       railSig: new Array(n).fill(''), drops: new Array(n),
@@ -553,7 +592,7 @@ export function createRenderer(canvas) {
     buildOutskirts(-16, 0, s); buildOutskirts(w, w + 22, s);
     for (let i = 0; i < n; i++) syncCell(i, true);
     syncPath(true);
-    pGround.flush(); pBox.flush(); pBlob.flush();
+    pGround.flush(); pBox.flush(); pBlob.flush(); pTree.flush();
 
     // потяг і гравці
     const loco = makeLoco(), store = makeStore(), craft = makeCraft();
@@ -685,16 +724,17 @@ export function createRenderer(canvas) {
 
   function buildObj(i, x, y) {
     const s = W.s, list = W.objRefs[i];
-    freeRefs(list, W.pBox); freeRefs(W.blobRefs[i], W.pBlob);
+    freeRefs(list, W.objPool[i] || W.pBox); freeRefs(W.blobRefs[i], W.pBlob);
     W.objGen[i]++;
     const ok = s.obj[i];
     const f = ok === O.TREE ? s.hp[i] / W.treeMax : ok === O.ROCK ? s.hp[i] / W.rockMax : 1;
     objBoxes(list, ok, Math.min(1, f), x, y, topOf(s.ground[i], x, y), s.h, W.blobRefs[i]);
+    W.objPool[i] = ok === O.TREE ? W.pTree : W.pBox;   // K20: дерева — у пулі з вітром
   }
   // кубики предмета клітинки (дерево/скеля/стіна); f — частка міцності (менше — менший), також для околиць за смугою
   // blist — куди класти кругу тінь-пляму (вигляд «Іграшковий»)
   function objBoxes(list, ok, f, x, y, base, h, blist) {
-    const P = W.pBox, cx = x + 0.5, cz = y + 0.5;
+    const P = ok === O.TREE ? W.pTree : W.pBox, cx = x + 0.5, cz = y + 0.5;
     const v1 = hh(x, y, 11), v2 = hh(x, y, 12), v3 = hh(x, y, 13), v4 = hh(x, y, 14);
     if (blist && (ok === O.TREE || ok === O.ROCK)) {
       const r = (ok === O.TREE ? 0.98 : 1.1) * (0.6 + 0.4 * f);
@@ -878,6 +918,135 @@ export function createRenderer(canvas) {
     for (const b of blobs) b.visible = blobOn;
     while (W.marks.length < W.players.length) W.marks.push(makeMarks(PLAYER[W.marks.length % PLAYER.length].shirt));
     while (W.marks.length > W.players.length) { const mk = W.marks.pop(); W.root.remove(mk.face, mk.aim); }
+    W.labels ||= [];
+    while (W.labels.length < W.players.length) W.labels.push(makeLabel(W.labels.length));
+    while (W.labels.length > W.players.length) { const lb = W.labels.pop(); W.root.remove(lb.sp); lb.tex.dispose(); lb.sp.material.dispose(); }
+  }
+
+  // ---- K20: мітка над головою — «П1» (бот — 🤖) кольором гравця, з кількістю в руках (×5); дрібна, крізь дерева ----
+  function makeLabel(k) {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 48;
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+    sp.renderOrder = 20; sp.center.set(0.5, 0); W.root.add(sp);
+    return { sp, tex, c, k, key: '' };
+  }
+  function drawLabel(lb, name, n) {
+    const key = name + '|' + n;
+    if (lb.key === key) return;
+    lb.key = key;
+    const x = lb.c.getContext('2d'), col = '#' + PHEX[lb.k % 4].toString(16).padStart(6, '0');
+    x.clearRect(0, 0, 128, 48);
+    const txt = n > 1 ? `${name} ×${n}` : name;
+    x.font = '700 30px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const tw = Math.min(124, x.measureText(txt).width + 18);
+    x.fillStyle = 'rgba(20,22,28,0.72)';
+    x.beginPath(); if (x.roundRect) x.roundRect(64 - tw / 2, 4, tw, 40, 14); else x.rect(64 - tw / 2, 4, tw, 40); x.fill();
+    x.fillStyle = col; x.fillText(txt, 64, 25, 120);
+    lb.tex.needsUpdate = true;
+  }
+
+  // ---- K20: летючі речі (K18 s.flying: { k, n, x, y, z (підодиниці), sx, sy, tx, ty, t, T, p }) ----
+  // Ключ польоту — звідки, хто й що (індекси в масиві зсуваються, коли щось приземлилось); між тиками — інтерполяція.
+  // Під річчю — тінь-пляма на землі (менша й світліша, що вище), на клітинці приземлення — тонкий хрестик кольором кидальника.
+  const flyBlobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  function updateFlying(s, alpha, now) {
+    const F = s.flying;
+    const fly = W.fly ||= new Map();
+    if (!F?.length && !fly.size) return;
+    const live = new Set();
+    for (const f of F || []) {
+      const id = `${f.sx},${f.sy},${f.p},${f.k}`;
+      live.add(id);
+      let o = fly.get(id);
+      if (!o) {
+        const g = makeItem(f.k, Math.min(f.n || 1, 4), false); g.scale.setScalar(1.15); W.root.add(g);
+        const blob = new THREE.Mesh(BLOB_GEO, flyBlobMat); blob.renderOrder = 1; W.root.add(blob);
+        const tgt = new THREE.Group();
+        const tm = ringMat(f.p | 0);
+        for (const r of [0.785, -0.785]) { const b = new THREE.Mesh(markGeo, tm); b.scale.set(0.5, 0.02, 0.05); b.rotation.y = r; b.renderOrder = 2; tgt.add(b); }
+        W.root.add(tgt);
+        o = { g, blob, tgt, tick: s.tick, px: f.x, py: f.y, pz: f.z || 0, cx: f.x, cy: f.y, cz: f.z || 0, spin: Math.random() * 6 };
+        fly.set(id, o);
+      }
+      if (o.tick !== s.tick) { o.px = o.cx; o.py = o.cy; o.pz = o.cz; o.cx = f.x; o.cy = f.y; o.cz = f.z || 0; o.tick = s.tick; }
+      const x = (o.px + (o.cx - o.px) * alpha) / U, z = (o.py + (o.cy - o.py) * alpha) / U, h = (o.pz + (o.cz - o.pz) * alpha) / U;
+      const gy = cellY(Math.floor(x), Math.floor(z));
+      o.g.position.set(x, gy + 0.35 + h, z);
+      o.g.rotation.set(0, o.spin + now / 180, (f.k === I.AXE || f.k === I.PICK) ? now / 90 : Math.sin(now / 120) * 0.25);
+      const bs = 0.7 / (1 + h * 0.8);
+      o.blob.position.set(x, gy + 0.015, z); o.blob.scale.set(bs, 1, bs);
+      o.tgt.position.set((f.tx | 0) + 0.5, cellY(f.tx | 0, f.ty | 0) + 0.01, (f.ty | 0) + 0.5);
+    }
+    for (const [id, o] of fly) if (!live.has(id)) {
+      W.root.remove(o.g, o.blob, o.tgt); disposeMerged(o.g); fly.delete(id);
+    }
+  }
+
+  // ---- K20: де можна покласти рейку (несеш рейки) і небезпека — потяг близько до кінця колії ----
+  function makeHints() {
+    const lay = [];
+    const layMat = new THREE.MeshBasicMaterial({ color: 0xfff3b0, transparent: true, opacity: 0.9, depthWrite: false });
+    const layFill = new THREE.MeshBasicMaterial({ color: 0xfff3b0, transparent: true, opacity: 0.18, depthWrite: false });
+    for (let j = 0; j < 4; j++) {
+      const g = new THREE.Group();
+      for (const s of [-1, 1]) {
+        const a = new THREE.Mesh(markGeo, layMat); a.position.set(0, 0.02, s * 0.46); a.scale.set(0.92, 0.025, 0.035); a.renderOrder = 2; g.add(a);
+        const b = new THREE.Mesh(markGeo, layMat); b.position.set(s * 0.46, 0.02, 0); b.scale.set(0.035, 0.025, 0.92); b.renderOrder = 2; g.add(b);
+      }
+      const f = new THREE.Mesh(BLOB_GEO, layFill); f.scale.set(0.9, 1, 0.9); f.position.y = 0.008; f.renderOrder = 2; g.add(f);
+      g.visible = false; W.root.add(g); lay.push(g);
+    }
+    const dangerMat = new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, opacity: 0, depthWrite: false });
+    const danger = new THREE.Group(); danger.visible = false;
+    const dBox = new THREE.Mesh(markGeo, dangerMat); dBox.scale.set(0.96, 0.26, 0.96); dBox.renderOrder = 4; danger.add(dBox);
+    // яскрава червона рамка довкола клітинки (видно й з-під потяга/гравця)
+    const frameMat = new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 1, depthWrite: false, depthTest: false });
+    for (const s of [-1, 1]) {
+      const a = new THREE.Mesh(markGeo, frameMat); a.position.set(0, -0.1, s * 0.5); a.scale.set(1.06, 0.03, 0.07); a.renderOrder = 5; danger.add(a);
+      const b = new THREE.Mesh(markGeo, frameMat); b.position.set(s * 0.5, -0.1, 0); b.scale.set(0.07, 0.03, 1.06); b.renderOrder = 5; danger.add(b);
+    }
+    W.root.add(danger);
+    return { lay, layMat, layFill, danger, dangerMat, frameMat };
+  }
+  function updateHints(s, now) {
+    const H = W.hints ||= makeHints();
+    const run = s.status === 'run', path = s.path, L = path.length;
+    // 1) несе рейки хтось — тонка рамка на клітинках, що продовжують колію
+    let rails = false;
+    if (run) for (const pl of s.players) if (!pl.out && pl.hold?.k === I.RAIL) { rails = true; break; }
+    let j = 0;
+    if (rails && L) {
+      const last = path[L - 1], lx = last % s.w, ly = (last / s.w) | 0;
+      for (const [dx, dy] of DIRS) {
+        const x = lx + dx, y = ly + dy;
+        if (!canLay(s, x, y)) continue;
+        const g = H.lay[j++]; g.visible = true; g.position.set(x + 0.5, cellY(x, y), y + 0.5);
+      }
+      const p = 0.5 + 0.5 * Math.sin(now / 220);
+      H.layMat.opacity = 0.55 + 0.4 * p; H.layFill.opacity = 0.1 + 0.12 * p;
+    }
+    for (; j < H.lay.length; j++) H.lay[j].visible = false;
+    // 2) небезпека: до кінця колії лишилось мало (за клітинками або секундами) — остання рейка мигає червоним, частіше ближче
+    let show = false;
+    if (run && L > 1) {
+      const last = path[L - 1], gk = s.ground[last];
+      const left = ((L - 1) * U - s.train.pos) / U;                          // клітинок до кінця
+      const v = (s.train.speed || 0) / 1000 * 20 / U;                         // клітинок/с
+      const sec = v > 1e-3 ? left / v : Infinity;
+      const near = gk !== G.STATION && (s.train.speed > 0 || s.train.started) && (left < 2.5 || sec < 7);
+      if (near) {
+        const urg = Math.max(0, Math.min(1, Math.max((2.5 - left) / 2.5, (7 - sec) / 7)));
+        const hz = 1.6 + urg * 4.5;
+        const blink = 0.5 + 0.5 * Math.sin(now / 1000 * hz * Math.PI * 2);
+        H.dangerMat.opacity = (0.25 + 0.45 * urg) * (0.2 + 0.8 * blink);
+        H.frameMat.opacity = 0.35 + 0.65 * blink;
+        const x = last % s.w, y = (last / s.w) | 0;
+        H.danger.position.set(x + 0.5, topOf(gk, x, y) + 0.12, y + 0.5);   // коробка 0,26 заввишки накриває рейку
+        show = true;
+      }
+    }
+    H.danger.visible = show;
   }
 
   // ---- підсвітка клітинки перед гравцем (кутики кольором гравця) і тонка рамка прицілу p.aim (K14) ----
@@ -928,12 +1097,11 @@ export function createRenderer(canvas) {
   }
   function updateWobbles(dt) {
     if (!wobbles.size) return;
-    const P = W.pBox;
     for (const [i, wb] of wobbles) {
       const refs = W.objRefs[i];
       if (wb.gen !== W.objGen[i]) {        // предмет щойно перебудовано (менший після удару) — нова основа
-        wb.gen = W.objGen[i]; wb.refs = refs.slice(); wb.base = new Float32Array(refs.length * 16);
-        refs.forEach((r, k) => { P.getMatrixAt(r, _wm); _wm.toArray(wb.base, k * 16); });
+        wb.gen = W.objGen[i]; wb.refs = refs.slice(); wb.base = new Float32Array(refs.length * 16); wb.P = W.objPool[i] || W.pBox;
+        refs.forEach((r, k) => { wb.P.getMatrixAt(r, _wm); _wm.toArray(wb.base, k * 16); });
       }
       wb.t += dt;
       const done = wb.t >= wb.dur || !refs.length;
@@ -941,7 +1109,7 @@ export function createRenderer(canvas) {
       const x = i % W.w + 0.5, z = ((i / W.w) | 0) + 0.5, y = topOf(W.s.ground[i], i % W.w, (i / W.w) | 0);
       _wt.makeRotationAxis(_wa.set(wb.ax, 0, wb.az).normalize(), ang);
       _wt.premultiply(_wm.makeTranslation(x, y, z)).multiply(_wm.makeTranslation(-x, -y, -z));
-      wb.refs.forEach((r, k) => { _wm.fromArray(wb.base, k * 16).premultiply(_wt); P.setMatrixAt(r, _wm); });
+      wb.refs.forEach((r, k) => { _wm.fromArray(wb.base, k * 16).premultiply(_wt); wb.P.setMatrixAt(r, _wm); });
       if (done) wobbles.delete(i);
     }
   }
@@ -1015,6 +1183,21 @@ export function createRenderer(canvas) {
     return cam.d * tanH * aspect;
   }
 
+  // ---- K20: тіні лише від видимих чанків: чанк поза кадром (з запасом на довжину тіні) не малюється в карту тіней ----
+  const _fr = new THREE.Frustum(), _pmx = new THREE.Matrix4(), _sph = new THREE.Sphere();
+  let shadowChunks = 0;   // скільки чанків кинуло тінь цього кадру (для перевірок)
+  function cullShadows() {
+    shadowChunks = 0;
+    const on = sun.castShadow;
+    if (on) _fr.setFromProjectionMatrix(_pmx.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    for (const cp of [W.pBox, W.pTree]) for (const p of cp.pools) {
+      if (!p) continue;
+      let v = false;
+      if (on) { _sph.copy(p.sphere); _sph.radius += 1 + 3.5 * Math.hypot(SUN_DIR.x, SUN_DIR.z) / Math.max(0.2, SUN_DIR.y); v = _fr.intersectsSphere(_sph); }
+      p.mesh.castShadow = v; if (v) shadowChunks++;
+    }
+  }
+
   // ---- стрілки на краю екрана: гравець поза кадром (колір і мітка гравця) ----
   const PCOL = ['#ffd23f', '#ff5fa2', '#5fd3ff', '#b6ff5f'];   // як у HUD
   const arrowBox = document.createElement('div');
@@ -1078,7 +1261,7 @@ export function createRenderer(canvas) {
 
   function draw(s, alpha = 0) {
     if (!s) return;
-    if (!W || W.s !== s) setWorld(s);
+    if (!W || W.s !== s || W.needRebuild) setWorld(s);
     // нескінченний режим (K19): смуга виросла/зсунулась у тому ж стані — перебудова без скидання камери
     else if (s.w !== W.w || s.h !== W.h || s.ground.length !== W.n) setWorld(s, true);
     const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; frames++;
@@ -1101,7 +1284,7 @@ export function createRenderer(canvas) {
     } else if (W.cur.pos !== s.train.pos || W.cur.pl.length !== s.players.length || s.players.some((p, k) => p.x !== W.cur.pl[k].x || p.y !== W.cur.pl[k].y)) {
       snapshot(s); W.prev = W.cur;          // стан правили руками без тику — без інтерполяції
     }
-    W.pGround.flush(); W.pBox.flush();
+    W.pGround.flush(); W.pBox.flush(); W.pTree.flush();
     alpha = Math.max(0, Math.min(1, alpha));
     const A = W.prev || W.cur, B = W.cur;
 
@@ -1209,6 +1392,25 @@ export function createRenderer(canvas) {
       } else {
         m.armL.rotation.z = -sw * 0.8; m.armR.rotation.z = sw * 0.8; m.armL.rotation.x = m.armR.rotation.x = 0;
       }
+      // K20: вийшов — не малюємо; приголомшений (K18 p.stun) — зірочки колом і похитування
+      m.root.visible = !pl.out;
+      const stun = (pl.stun | 0) > 0;
+      m.stars.visible = stun;
+      if (stun) {
+        m.stars.rotation.y = now / 160;
+        m.stars.children.forEach((st, j) => { const a = j * 2.094; st.position.set(Math.cos(a) * 0.24, Math.sin(now / 120 + j) * 0.04, Math.sin(a) * 0.24); });
+        m.body.rotation.x = Math.sin(now / 90) * 0.12;
+      } else if (m.body.rotation.x) m.body.rotation.x = 0;
+      const lb = W.labels[k];
+      if (lb) {
+        lb.sp.visible = !pl.out;
+        const stk = !!(m.held && m.stack);
+        drawLabel(lb, playerName(k), stk ? pl.hold.n : 0);
+        const lift = stk ? Math.min(pl.hold.n, 12) * 0.13 + 0.1 : 0;
+        const sc = cam.d * 0.013;
+        lb.sp.position.set(x, m.root.position.y + 1.45 + lift + m.body.position.y, z);
+        lb.sp.scale.set(sc * 128 / 48, sc, 1);
+      }
     });
 
     const halfW = updateCamera(s, dt, headX, headDX, tailX, crowd);
@@ -1231,8 +1433,12 @@ export function createRenderer(canvas) {
     sun.position.set(tx + SUN_DIR.x * 50, SUN_DIR.y * 50, tz + SUN_DIR.z * 50);
 
     updateMarks(s, now);
-    updateWobbles(dt); W.pBox.flush();
-    extras.update(s, alpha);
+    updateHints(s, now);
+    updateFlying(s, alpha, now);
+    updateWobbles(dt); W.pBox.flush(); W.pTree.flush();
+    cullShadows();
+    windT.value += dt; windK.value = look === LOOKS.autumn ? 1.45 : look === LOOKS.toy ? 0.8 : 1;
+    extras.update(s, alpha, { blob: blobOn });
     waterTime.value = now / 1000;
     stepParticles(dt);
     renderer.render(scene, camera);
@@ -1310,6 +1516,17 @@ export function createRenderer(canvas) {
         case 'douse': { const p = lp(); puff(p.x, p.y - 0.2, p.z, 14, 0xffffff, 0.3, 1.6, 1.6); burst(p.x, p.y - 0.2, p.z, 10, [0x7cc8f2, 0xbfe6ff], 1.8, 2.5, 0.08, 0.6); break; }
         case 'whistle': { const p = lp(); puff(p.x, p.y, p.z, 8, 0xffffff, 0.26, 1.2, 2.2); break; }
         case 'alarm': { const p = lp(); burst(p.x, p.y, p.z, 5, [0xff4a1a, 0xffb300], 1.5, 2, 0.06, 0.4); break; }
+        // K19: вікно нескінченної колії зсунулось ліворуч на e.x клітинок — камера їде разом зі світом; сцену перебудує
+        // main.js (view.setWorld), а як ні — draw (needRebuild)
+        case 'shift': if (e.x) { cam.x -= e.x; W.needRebuild = true; } break;
+        // K18 кооп-фішки (у клітинках)
+        case 'throw': if (c) puff(c.x, 0.5, c.z, 3, 0xf2f2f2, 0.14, 0.5, 0.4); break;
+        case 'catch': case 'pass': if (c) burst(c.x, 1.0, c.z, 8, [0xffffff, 0xfff3b0, PHEX[(e.p | 0) % 4]], 1.4, 2.2, 0.05, 0.45, 5); break;
+        case 'land': if (c) { burst(c.x, 0.05, c.z, 6, [0xd8c9a0, 0xc7b88e], 1.4, 1.4, 0.07, 0.45); puff(c.x, 0.1, c.z, 2, 0xe8dcc0, 0.2, 0.7, 0.3); } break;
+        case 'sink': if (c) { burst(c.x, -0.1, c.z, 14, [0x7cc8f2, 0xbfe6ff, 0xffffff], 1.6, 3.4, 0.09, 0.7); puff(c.x, -0.1, c.z, 2, 0xffffff, 0.2, 0.6, 0.6); } break;
+        case 'stun': if (c) { burst(c.x, 1.1, c.z, 12, [0xfff36b, 0xffffff, 0xffb300], 2.2, 2.5, 0.06, 0.5, 4); if (W.players[e.p]) W.players[e.p].swing = 0; } break;
+        case 'bump': if (c && Math.random() < 0.6) puff(c.x, 0.15, c.z, 2, 0xe8e2d0, 0.14, 0.5, 0.3); break;
+        case 'honk': { const p = lp(); puff(p.x, p.y, p.z, 6, 0xffffff, 0.24, 1.0, 2.4); break; }
         case 'step': if (c && Math.random() < 0.5) spawn(c.x + R(0.15), 0.05, c.z + R(0.15), R(0.3), 0.6, R(0.3), 0.35, 0.06, 0xd8cfa8, 4); break;
         case 'won': { const p = lp(); for (let k = 0; k < 90; k++) spawn(p.x + R(1.5), p.y + 0.5, p.z + R(1.5), R(2.5), 4 + Math.random() * 4, R(2.5), 2 + Math.random(), 0.09, pick([0xffd23f, 0xff5fa2, 0x4fc3ff, 0x9be15d, 0xffffff, 0x1f6fd1], Math.random()), 5); break; }
         case 'lost': { const p = lp(); puff(p.x, p.y, p.z, 16, 0x55585e, 0.4, 2.2, 1.3); burst(p.x, p.y - 0.3, p.z, 14, [0xff7a1a, 0xffb300, 0x3a3d44], 3, 3, 0.1, 0.8); break; }
@@ -1337,6 +1554,8 @@ export function createRenderer(canvas) {
   // вигляд і якість — з localStorage (looks.js), перемикаються без рестарту гри
   applyLook(prefs.look, false);
   const api = { setWorld, draw, events, dispose, project, get frames() { return frames; }, renderer, scene, camera,
+    get hints() { return W && W.hints; },
+    get shadowChunks() { return shadowChunks; }, get cam() { return cam; },   // K20: для перевірок
     prefs,
     setLook(name) { applyLook(name); savePrefs(prefs); },
     setCam({ dist, angle } = {}) { if (dist) prefs.dist = dist; if (angle) prefs.angle = String(angle); savePrefs(prefs); },
