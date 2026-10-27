@@ -96,9 +96,9 @@ function planZones(r, x0, x1, P) {
       swamp: fS > 0 ? (0.6 + 0.6 * dd) * clamp(fS / 0.06, 0.4, 2) : 0,
       pass: 0.5 + 0.9 * dd,
     };
-    if (k === 0) for (const b of BIOMES) if (b !== 'steppe' && b !== 'grove') wt[b] = 0;
+    if (k === 0) { for (const b of BIOMES) if (b !== 'steppe' && b !== 'grove') wt[b] = 0; wt.steppe *= 1.6; }
     if (prev) wt[prev] = 0;
-    for (const b of BIOMES) if (!used[b]) wt[b] *= 3;
+    for (const b of BIOMES) if (!used[b]) wt[b] *= 5;
     let sum = 0; for (const b of BIOMES) sum += Math.max(0, wt[b]);
     let kind = 'steppe';
     if (sum > 0) {
@@ -317,16 +317,22 @@ export function generate(seed, params) {
       for (let y = 1; y < h - 1; y++) if (ground[y * w + x] === G.WATER) { has = true; break; }
       if (has) { last = x; continue; }
       if (x - last < 20) continue;
-      const px = x - 3, up = hash3(px, 1, sL + 5) < 0.5;
-      const ys = up ? [2, 3, 4, 5, 6] : [h - 3, h - 4, h - 5, h - 6, h - 7];
-      for (const py of ys) {
-        if (py < 1 || py > h - 2) continue;
-        const cells = [[px, py], [px + 1, py], [px, py + (up ? 1 : -1)]];
-        if (!cells.every(([cx, cy]) => cy > 0 && cy < h - 1 && obj[cy * w + cx] !== O.WALL && !clear[cy * w + cx])) continue;
-        for (const [cx, cy] of cells) setW(cx, cy);
-        last = px; break;
+      // калюжа (3 клітинки) ближче до краю смуги, щоб не перегороджувати; шукаємо назад по стовпцях і вглиб по рядках
+      const up = hash3(x, 1, sL + 5) < 0.5;
+      let done = false;
+      for (const dx of [3, 5, 1, 7, 9, 11, 13]) {
+        const px = x - dx;
+        if (px < FEAT0) continue;
+        for (let k = 0; k < h - 4 && !done; k++) {
+          const py = up ? 2 + k : h - 3 - k, sy = up ? 1 : -1;
+          const cells = [[px, py], [px + 1, py], [px, py + sy]];
+          if (!cells.every(([cx, cy]) => cy > 0 && cy < h - 1 && cx < X1 - 1 && obj[cy * w + cx] !== O.WALL && !clear[cy * w + cx])) continue;
+          for (const [cx, cy] of cells) setW(cx, cy);
+          done = true;
+        }
+        if (done) { last = px; break; }
       }
-      if (last !== px) last = x;   // ніде — далі
+      if (!done) last = x;   // ніде — далі
     }
   }
 
@@ -380,8 +386,8 @@ export function generate(seed, params) {
   for (const i of zone) {
     const x = i % w, y = (i / w) | 0;
     const z = zones[zoneOf[x]];
-    let gl = 0;
-    if (z && z.kind === 'grove' && fbm(x / 4, y / 4, sJ) > 0.66) gl = -0.45;    // галявини в гаю
+    let gl = x < GLADE + 6 ? -0.25 : 0;                                           // узлісся за галявиною рідке
+    if (z && z.kind === 'grove' && fbm(x / 4, y / 4, sJ) > 0.66) gl -= 0.45;    // галявини в гаю
     scF[i] = fbm(x / 6.5, y / 4.8, sF) + hash3(x, y, sF + 5) * 0.16 + (ground[i] === G.SAND ? -0.12 : 0) + (ground[i] === G.SWAMP ? -0.05 : 0) + bF[i] + gl;
     const ridge = 1 - Math.abs(2 * fbm(x / 8.5, y / 7, sV) - 1);
     scR[i] = fbm(x / 5.5, y / 4.2, sR) * 0.55 + ridge * ridge * 0.45 + hash3(x, y, sR + 5) * 0.1 + bR[i] + (ground[i] === G.SWAMP ? -0.1 : 0);
@@ -393,7 +399,8 @@ export function generate(seed, params) {
       if (ground[i] !== G.WATER && obj[i] === O.NONE && !clear[i]) cells.push(i);
     }
     const dd = Math.min(1, z.d);
-    const nT = Math.min(Math.round(fF * MF[z.kind] * cells.length), Math.round(cells.length * 0.7));
+    const mf = z.kind === 'grove' ? MF.grove * (0.7 + 0.3 * dd) : MF[z.kind];     // гай біля старту рідший
+    const nT = Math.min(Math.round(fF * mf * cells.length), Math.round(cells.length * 0.7));
     for (const i of top(cells, scF, nT)) obj[i] = O.TREE;
     const free = cells.filter((i) => obj[i] === O.NONE);
     const nQ = Math.min(Math.round(fR * MR[z.kind] * (1 + 0.3 * dd) * cells.length), Math.round(free.length * 0.6));
@@ -433,8 +440,9 @@ export function generate(seed, params) {
   const wpt = Math.max(1, P.woodPerTree | 0), ipr = Math.max(1, P.ironPerRock | 0);
   const canPut = (i, strict) => {
     const x = i % w, y = (i / w) | 0;
-    if (y < 1 || y > h - 2 || x < glade[y] || x >= X1) return false;
-    if (obj[i] !== O.NONE || ground[i] === G.WATER || onPath[i]) return false;
+    // нестрого — можна й у привокзальну смугу (не на станцію): біля кінця інакше буває ніде
+    if (y < 1 || y > h - 2 || x < glade[y] || x >= (strict ? X1 : station.x0 - 1)) return false;
+    if (obj[i] !== O.NONE || ground[i] === G.WATER || ground[i] === G.STATION || onPath[i]) return false;
     return !strict || !clear[i];
   };
   const cover = (kind, sc) => {
@@ -455,21 +463,31 @@ export function generate(seed, params) {
     };
     for (let i = 0; i < n; i++) if (obj[i] === kind) { dist[i] = 0; q[qt++] = i; }
     flood();
-    for (let x = glade[mid]; x < w; x++) for (let y = 1; y < h - 1; y++) {
+    const ld = new Int16Array(n), lq = new Int32Array(n);
+    for (let x = GLADE - 1; x < w; x++) for (let y = 1; y < h - 1; y++) {
       const c = y * w + x;
       if (dist[c] <= RES_R || obj[c] === O.WALL || ground[c] === G.WATER) continue;
-      // найкраща вільна клітинка поруч (ближче й «природніше» за шумом)
+      // найкраща вільна клітинка поруч — у межах ходу (BFS крізь усе, крім WALL), ближча й «природніша» за шумом
       let best = -1, bs = -1e9;
+      ld.fill(-1); lq[0] = c; ld[c] = 0;
+      const cand = [];
+      for (let qa = 0, qb = 1; qa < qb; qa++) {
+        const m = lq[qa], mx = m % w, my = (m / w) | 0;
+        cand.push(m);
+        if (ld[m] >= RES_R - 3) continue;
+        for (const [dx, dy] of DIRS) {
+          const nx = mx + dx, ny = my + dy;
+          if (nx < 0 || nx >= w || ny < 1 || ny > h - 2) continue;
+          const k = ny * w + nx;
+          if (ld[k] >= 0 || obj[k] === O.WALL) continue;
+          ld[k] = ld[m] + 1; lq[qb++] = k;
+        }
+      }
       for (const strict of [true, false]) {
-        for (let rr = 2; rr <= 9 && best < 0; rr += 3) {
-          for (let dy = -rr; dy <= rr; dy++) for (let dx = -rr; dx <= rr; dx++) {
-            const nx = x + dx, ny = y + dy;
-            if (nx < 0 || nx >= w || ny < 1 || ny > h - 2) continue;
-            const m = ny * w + nx;
-            if (!canPut(m, strict)) continue;
-            const s = sc[m] - 0.03 * (Math.abs(dx) + Math.abs(dy)) + (nx > x ? 0.02 : 0);
-            if (s > bs) { bs = s; best = m; }
-          }
+        for (const m of cand) {
+          if (!canPut(m, strict)) continue;
+          const s = sc[m] - 0.05 * ld[m] + ((m % w) > x ? 0.02 : 0);
+          if (s > bs) { bs = s; best = m; }
         }
         if (best >= 0) break;
       }
