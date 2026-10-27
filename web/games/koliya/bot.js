@@ -318,9 +318,15 @@ function bfs(s, o, start, pred, mode, maxD = 400, thru = false) {
  *   покладене, не б'є її ціль, не підбирає купку з-під її рук, не стоїть на клітинці перед нею (обходить). Гудок 📯
  *   людини поблизу — «йди сюди»: бот іде до неї й 15 с робить найближче корисне. Людей нема — грає як звичайний бот.
  * opts.ghost — «імітація людини» для плейтестів: не реєструється ботом, заявок не ставить і не бачить.
+ * opts.zeal (K60) — «характер» напарника 0..100: 0 — ввічливий (як K34), 100 — завзятий (звичайний бот-автопілот);
+ *   між — плавно: радіус заявок людини, скільки триматимемо її інструменти й ціль, поріг «людина не будує», обхід.
+ *   Лише вхід бота (бот шле звичайні команди) — у хеш стану не йде. Міняти на ходу — bot.setZeal(z).
  */
+export const zealOf = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : null);
 export function createBot(p, opts = {}) {
-  const buddy = !!opts.buddy, ghost = !!opts.ghost;
+  const ghost = !!opts.ghost;
+  let zeal = zealOf(opts.zeal) ?? (opts.buddy ? 0 : 100);
+  let buddy = !!opts.buddy && zeal < 100;
   const m = { task: null, lastUse: -9, lx: 0, ly: 0, still: 0, jit: 0, since: 0, fail: {},
               hu: new Map(), follow: null, anchor: -1, anchorT: -1, hrole: null };
   // завдання, що щойно виявилось неможливим (вода за скелями, інструмент недосяжний), 5 с не обираємо знову
@@ -433,15 +439,20 @@ export function createBot(p, opts = {}) {
     const { s, o, cur } = ctx;
     AV = new Set();
     let busy = false;
+    // K60: характер — 0 ввічливий … 1 завзятий; заявки людини тануть плавно, обхід — східцями
+    const z = zeal / 100, kz = 1 - z;
+    const idleT = Math.round(10 * TPS * (1 - 0.8 * z));       // «людина не будує»: 10 с → 2 с
+    const hitW = Math.round(3 * TPS * kz), putW = Math.round(8 * TPS * kz);   // скільки тримаємо її ціль / покладене
+    const rTool = Math.round(2 * kz), rNear = Math.round(10 * kz), rWalk = 6 * kz, rLay = Math.round(8 * kz);
     for (const { q, pl: hp, h, hc } of H) {
       const hx = hc % s.w, hy = (hc / s.w) | 0;
-      const idle = s.tick - h.act >= 10 * TPS;
+      const idle = s.tick - h.act >= idleT;
       if (!idle) busy = true;
       const hcl = (key) => o.claims.set(key, { p: q, t: s.tick });
-      // не стояти на дорозі: клітинка людини, перед нею і та, куди вона йде
-      AV.add(hc);
-      if (hx + hp.fx >= 0 && hy + hp.fy >= 0 && hx + hp.fx < s.w && hy + hp.fy < s.h) AV.add((hy + hp.fy) * s.w + hx + hp.fx);
-      if (h.hx.length >= 12) {
+      // не стояти на дорозі: клітинка людини, перед нею і та, куди вона йде (K60: завзятіший — менше обходить)
+      if (z < 0.7) AV.add(hc);
+      if (z < 0.7 && hx + hp.fx >= 0 && hy + hp.fy >= 0 && hx + hp.fx < s.w && hy + hp.fy < s.h) AV.add((hy + hp.fy) * s.w + hx + hp.fx);
+      if (z < 0.4 && h.hx.length >= 12) {
         const vx = hp.x - h.hx[h.hx.length - 12], vy = hp.y - h.hx[h.hx.length - 11];
         if (Math.abs(vx) + Math.abs(vy) > 400) {
           const ex = Math.abs(vx) >= Math.abs(vy) ? hx + Math.sign(vx) : hx, ey = Math.abs(vx) >= Math.abs(vy) ? hy : hy + Math.sign(vy);
@@ -449,28 +460,29 @@ export function createBot(p, opts = {}) {
         }
       }
       // її ціль: що била останні 3 с, а з інструментом — те, що поруч (≤ 2 клітинки)
-      for (const c of h.hits.keys()) hcl('c' + c);
+      for (const [c, t] of h.hits) if (s.tick - t <= hitW) hcl('c' + c);
       const hk = hp.hold.k;
-      if (hk === I.AXE || hk === I.PICK) { const ob = hk === I.AXE ? O.TREE : O.ROCK; around(s, hc, 2, (c) => { if (s.obj[c] === ob) hcl('c' + c); }); }
+      if ((hk === I.AXE || hk === I.PICK) && rTool > 0) { const ob = hk === I.AXE ? O.TREE : O.ROCK; around(s, hc, rTool, (c) => { if (s.obj[c] === ob) hcl('c' + c); }); }
       // рейки в руках і йде класти (≤ 8 клітинок від кінця колії) чи запас колії ще є — класти лишаємо їй
       // (пробували лишати лише за ≤ 3 і не на тісному запасі: x̄ 65 проти 64, а перебивань 8,8 проти 1,6 на гру)
       // K34b: але запас колії < ~10 с ходу паротяга — кладемо й ми (небезпека важливіша за ввічливість)
-      if (hk === I.RAIL && (md(s, hc, s.path[s.path.length - 1]) <= 8 || s.path.length - 1 - Math.floor(s.train.pos / U) >= TUNE.urg) && !leadShort(s)) hcl('lay');
-      if (hk === I.BUCKET || hk === I.BUCKET_FULL) hcl('water');
-      if (idle) continue;
+      if (hk === I.RAIL && (md(s, hc, s.path[s.path.length - 1]) <= rLay || (z < 0.5 && s.path.length - 1 - Math.floor(s.train.pos / U) >= TUNE.urg)) && !leadShort(s)) hcl('lay');
+      if ((hk === I.BUCKET || hk === I.BUCKET_FULL) && z < 0.8) hcl('water');
+      if (idle || rNear <= 0) continue;
       // речі біля неї: інструмент/відро ≤ 2 клітинок, щойно нею покладене (≤ 10) чи те, до чого вона йде; купка під руками
       const ox = h.hx[0], oy = h.hx[1];
-      around(s, hc, 10, (c, d) => {
+      around(s, hc, rNear, (c, d) => {
         const k = s.drop[c];
         if (k === I.NONE) return;
         if (isTool(k)) {
-          if (d <= 2 || h.put.has(c)) { hcl('c' + c); return; }
-          if (d <= 6 && hk !== k) {
+          const pt = h.put.get(c);
+          if (d <= rTool || (pt !== undefined && s.tick - pt <= putW)) { hcl('c' + c); return; }
+          if (d <= rWalk && hk !== k) {
             const cx = (c % s.w) * U + U / 2, cy = ((c / s.w) | 0) * U + U / 2;
             const was = Math.abs(cx - ox) + Math.abs(cy - oy), now = Math.abs(cx - hp.x) + Math.abs(cy - hp.y);
             if (was - now >= 1500) hcl('c' + c);    // за 2 с наблизилась на 1,5 клітинки — йде брати
           }
-        } else if (d <= 2 && (hk === I.NONE || hk === k)) hcl('c' + c);
+        } else if (d <= rTool && (hk === I.NONE || hk === k)) hcl('c' + c);
       });
     }
     // роль: людина з сокирою — ми на скелі й воду; з кайлом — дрова й рейки; стоїть ~10 с чи без інструмента — усе
@@ -848,7 +860,13 @@ export function createBot(p, opts = {}) {
     return actAdj(ctx, (n) => s.drop[n] === T && !claimedByOther(o, 'c' + n, s), (n) => 'c' + n);
   }
 
-  return { p, think, dbg: () => (m.task ? m.task.k + (m.task.r ? ':' + m.task.r : '') + (m.task.target !== undefined ? '@' + m.task.target : '') + (m.task.bridge ? ':br' : '') : '-') };
+  // K60: характер на ходу (повзунок у панелі); 100 — звичайний бот, ролі/роль-пам'ять напарника скидаємо
+  const setZeal = (v) => {
+    const zz = zealOf(v); if (zz === null || !opts.buddy) return;
+    zeal = zz; const was = buddy; buddy = zeal < 100;
+    if (was && !buddy) { m.hrole = null; m.hpref = 0; m.follow = null; m.anchor = -1; m.task = null; }
+  };
+  return { p, think, setZeal, get zeal() { return zeal; }, dbg: () => (m.task ? m.task.k + (m.task.r ? ':' + m.task.r : '') + (m.task.target !== undefined ? '@' + m.task.target : '') + (m.task.bridge ? ':br' : '') : '-') };
 }
 
 /** Для налагодження й тестів: що бот думає про світ (маршрут, наступна клітинка N, бічна перешкода) */

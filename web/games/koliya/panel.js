@@ -38,6 +38,7 @@ const CSS = `
 .kol-lab.kol-ch{color:#ffd27a}
 .kol-ctl{display:flex;gap:6px;align-items:center}
 .kol-ctl input[type=range]{flex:1;min-width:0;height:28px;accent-color:#9bc25a}
+.kol-zl{font-size:11px;opacity:.7;white-space:nowrap}
 .kol-num{width:58px;padding:2px 4px;border-radius:4px;border:1px solid #fff3;background:#111;color:#eee;font:inherit}
 .kol-seg{display:flex;border:1px solid #fff3;border-radius:6px;overflow:hidden}
 .kol-seg button{flex:1;min-height:34px;padding:5px 8px;border:0;background:#20261c;color:#ccc;cursor:pointer;font:inherit}
@@ -235,6 +236,19 @@ export function createPanel(root, opts) {
     seg('Якість картинки', 'quality', ['high', 'low'], ['Висока', 'Низька (слабкий ноут)']);
     seg('Вібрація (пад, телефон)', 'rumble', [true, false], ['Увімк.', 'Вимк.']);
     seg('Підказки', 'tips', [true, false], ['Так', 'Ні']);   // K16
+    // K60: характер бота-напарника — prefs.zeal 0..100 (не правило: лише вхід бота, у хеш стану не йде), діє одразу
+    if (typeof prefs.zeal === 'number') {
+      const box = el('div', 'kol-p'), lab = el('div', 'kol-lab'), val = el('span');
+      lab.title = 'Ввічливий — не бере твої інструменти й цілі, обходить, лишає тобі класти рейки. Завзятий — грає на перемогу, як автопілот, і частіше перебиває';
+      lab.append(el('span', null, '🤖 Характер бота'), val);
+      const c = el('div', 'kol-ctl'), rg = el('input'); rg.type = 'range'; rg.min = 0; rg.max = 100; rg.step = 10;
+      const word = (v) => (v <= 15 ? 'ввічливий' : v <= 45 ? 'чемний' : v <= 75 ? 'діловий' : v < 100 ? 'завзятий' : 'автопілот');
+      const put = () => { rg.value = prefs.zeal; val.textContent = `${prefs.zeal} — ${word(prefs.zeal)}`; };
+      rg.addEventListener('input', () => { prefs.zeal = +rg.value; put(); opts.onPref?.('zeal', prefs.zeal); });
+      put(); prefCtl.push(put);
+      c.append(el('span', 'kol-zl', 'ввічливий'), rg, el('span', 'kol-zl', 'завзятий'));
+      box.append(lab, c); d.append(box);
+    }
     // K49: доступність — діє одразу
     seg('🔠 Великий текст HUD', 'big', [false, true], ['Звичайний', 'Великий ×1.25'], 'Написи поверх гри більші на чверть');
     seg('🎨 Кольори для дальтоніків', 'cb', [false, true], ['Звичайні', 'Для дальтоніків'],

@@ -38,11 +38,11 @@ export function createHuman(p, seed, opt = {}) {
  * коли людина несла рейки (останні 5 с) і за ≤ 4 клітинки від неї. Плюс скільки секунд стояв на клітинці перед людиною.
  * hornAt — тики, коли людина гуде (для «йди за мною»).
  */
-export function playMix(seed, kind, { maxMin = 15, params = {}, hornAt = [], onTick } = {}) {
+export function playMix(seed, kind, { maxMin = 15, params = {}, hornAt = [], onTick, zeal } = {}) {   // K60: zeal — характер напарника
   const n = kind === 'none' ? 1 : 2;
   const s = R.newGame(seed, { ...R.defaultParams(), ...params }, n);
   const hu = createHuman(0, seed);
-  const bot = kind === 'none' ? null : createBot(1, kind === 'buddy' ? { buddy: true } : {});
+  const bot = kind === 'none' ? null : createBot(1, kind === 'buddy' ? { buddy: true, zeal } : {});
   const it = { tool: 0, target: 0, loot: 0, rails: 0, block: 0 };
   const hHits = new Map(), hPut = new Map(), counted = new Set();
   let hRailT = -1e9;
