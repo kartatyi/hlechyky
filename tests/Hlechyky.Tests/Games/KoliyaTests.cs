@@ -274,6 +274,72 @@ public class KoliyaTests
         Assert.Equal(4, h.View(0).GetProperty("n0").GetInt32());
     }
 
+    static string? Put(RoomHarness h, int t, long hash, byte[]? b = null, int e = 1)
+    {
+        lock (h.Room.Sync) return Game(h).PutSnap(e, t, hash, true, b ?? [1, 2, 3]);
+    }
+
+    static JsonElement SnapLog(RoomHarness h)
+    {
+        lock (h.Room.Sync) return Views.Json(Game(h).Log(0, snap: true));
+    }
+
+    [Fact]
+    public void K44_знімок_підтверджують_хеші_двох_місць_і_журнал_іде_з_його_тику()
+    {
+        var h = Table("Оля", "Петро");
+        h.Tick(30);
+        h.Input(0, "in", new { mx = 100, my = 0, t = 30, i = 1 });     // до знімка
+        h.Input(1, "in", new { mx = 0, my = 100, t = 60, i = 1 });     // просився наперед — після знімка за тиком, але раніше в журналі
+        h.Tick(100);                                                    // T = 130, W = 123
+        h.Input(0, "in", new { mx = -100, my = 0, i = 2 });            // після знімка
+        Assert.Null(Put(h, 50, 777));
+        h.Input(0, "hash", new { t = 50, h = 777L });
+        Assert.Equal(-1, Game(h).SnapTick);                              // одне місце з двох — ще ні
+        Assert.Equal(JsonValueKind.Null, SnapLog(h).GetProperty("s").ValueKind);
+        h.Input(1, "hash", new { t = 50, h = 777L });
+        Assert.Equal(50, Game(h).SnapTick);
+        var j = SnapLog(h);
+        var s = j.GetProperty("s");
+        Assert.Equal(50, s.GetProperty("t").GetInt32());
+        Assert.Equal(777u, s.GetProperty("h").GetUInt32());
+        Assert.Equal(1, s.GetProperty("z").GetInt32());
+        Assert.Equal([1, 2, 3], s.GetProperty("b").GetBytesFromBase64());
+        var f = j.GetProperty("f").GetInt32();
+        var es = Entries(j);
+        Assert.True(f > 0);
+        Assert.All(es, x => Assert.True(x[1] >= 50));                    // усе до тику знімка — уже в ньому
+        Assert.Equal(f, es[0][0]);
+        Assert.Equal(j.GetProperty("n").GetInt32() - f, es.Length);
+        // без snap=1 (старий браузер) — журнал з нуля, без знімка
+        Assert.Equal(0, Log(h).GetProperty("f").GetInt32());
+        Assert.Equal(JsonValueKind.Null, Log(h).GetProperty("s").ValueKind);
+    }
+
+    [Fact]
+    public void K44_знімок_не_той_не_приймається_а_один_гравець_підтверджує_сам()
+    {
+        var h = Table();
+        h.Tick(300);                                                    // W = 293
+        Assert.NotNull(Put(h, 290, 5, e: 9));                          // стара епоха
+        Assert.NotNull(Put(h, 290, 5, new byte[Koliya.MaxSnap + 1])); // завеликий
+        Assert.NotNull(Put(h, 290, 5, []));                            // порожній
+        Assert.NotNull(Put(h, 500, 5));                                // тик ще не закрито
+        h.Input(0, "hash", new { t = 200, h = 11L });
+        Assert.NotNull(Put(h, 200, 12));                               // хеш не той, що в звірці
+        Assert.Null(Put(h, 200, 11));
+        Assert.Equal(200, Game(h).SnapTick);                             // один за столом — досить одного
+        Assert.Null(Put(h, 100, 11));                                  // старший за підтверджений — мовчки ні
+        Assert.Equal(200, Game(h).SnapTick);
+        // знімок, що чекає, а звірка прийшла іншою — викидаємо
+        Assert.Null(Put(h, 290, 33));
+        h.Input(0, "hash", new { t = 290, h = 34L });
+        h.Input(0, "hash", new { t = 290, h = 33L });
+        Assert.Equal(200, Game(h).SnapTick);
+        // перезапуск — знімки старої епохи геть
+        Assert.True(h.Act(0, "restart", new { seed = 5 }).Ok);
+        Assert.Equal(-1, Game(h).SnapTick);
+    }
 }
 
 /// <summary>Швидкодія «Колії» — окремою колекцією: у паралельному прогоні стінний годинник бреше.</summary>
@@ -296,4 +362,5 @@ public class KoliyaPerfTests
         // стіл стартує з першим (Immediate), троє решти — join посеред партії
         lock (h.Room.Sync) Assert.Equal(1003, Views.Json(((Koliya)h.Room.Game).Log(0)).GetProperty("n").GetInt32());
     }
+
 }

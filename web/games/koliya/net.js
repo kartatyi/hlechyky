@@ -168,9 +168,9 @@ async function through(u8, stream) {
   return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer());
 }
 /** Знімок C → { z: 1 — gzip, b: байти }. Текст береться одразу (синхронно) — C після виклику може йти далі. */
-export async function encodeSnap(s) {
+export async function encodeSnap(s, zip = true) {
   const u8 = new TextEncoder().encode(snapText(s));
-  if (typeof CompressionStream === 'function') {
+  if (zip && typeof CompressionStream === 'function') {
     try { return { z: 1, b: await through(u8, new CompressionStream('gzip')) }; } catch { }
   }
   return { z: 0, b: u8 };
@@ -406,6 +406,7 @@ export function createNet(game, opts = {}) {
   const stats = { frames: 0, rebuilds: 0, resyncs: 0, sent: 0, dropped: 0,
     snapUp: 0, snapBytes: 0, snapFrom: -1, snapBad: 0, buildTicks: 0, buildMs: 0 };   // K44
   const useSnap = opts.snap !== false && qs.get('snap') !== '0';   // K44: ?snap=0 — пізній вхід завжди з нуля (порівняти)
+  const zip = opts.zip !== false;   // K44: false — без gzip (Node-тести: стиснення йде реальним часом повз віртуальний годинник)
   // K28: люди за столом — реакції (повз журнал), панелька в куті
   let reactSeen = -1, ui = null;
   const myReacts = new Set(), reactGate = createReactGate();
@@ -770,7 +771,7 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
   /** K44: знімок C на тику t (хеш h) — на сервер окремим POST; він тримає підтверджений хешами інших. */
   function upSnap(t, h) {
     const ep = e, rm = room;
-    encodeSnap(C).then(({ z, b }) => {
+    encodeSnap(C, zip).then(({ z, b }) => {
       stats.snapUp++; stats.snapBytes = b.length;
       lagOut(() => fetch(`/api/games/koliya/${encodeURIComponent(rm)}/snap?e=${ep}&t=${t}&h=${h >>> 0}&z=${z}`,
         { method: 'POST', body: b, headers: { 'Content-Type': 'application/octet-stream' }, cache: 'no-store' }).catch(() => { }));

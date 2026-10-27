@@ -232,7 +232,7 @@ function world({ seed = 1, base = 40, jit = 80, reorder = 0 }) {
     const cl = { nick, seat: null, h: {}, gone: false, rate: new Map(), game: { state: null, params: PARAMS, seed: 0, local: 1 } };
     cl.up = pipe(cl); cl.down = pipe(cl);
     let n = 0;
-    cl.net = createNet(cl.game, { ...more, table: ROOM, nick, makeBot: (p) => {
+    cl.net = createNet(cl.game, { zip: false, ...more, table: ROOM, nick, makeBot: (p) => {   // K44: без gzip — детерміновано
       const b = createBot(p);
       return { p, think: (s, q) => { const v = { ...b.think(s, q) }; if (++n % 53 === 0) v.throw = true; if (n % 197 === 0) v.horn = true; return v; } };
     } });
@@ -270,10 +270,10 @@ function straight(srv, T) {
 }
 
 /** Звірки hash: на кожному спільному тику однаково в усіх клієнтів, і так само в прямому прогоні журналу сервера */
-function checkHashes(srv, live, label) {
+function checkHashes(srv, live, label, min = 5) {
   const maps = live.map((cl) => new Map(cl.net.hashes()));
   const common = [...maps[0].keys()].filter((t) => maps.every((m) => m.has(t))).sort((a, b) => a - b);
-  assert.ok(common.length >= 5, label + ': мало спільних звірок: ' + common.length);
+  assert.ok(common.length >= min, label + ': мало спільних звірок: ' + common.length);
   for (const t of common) {
     const hs = maps.map((m) => m.get(t));
     assert.ok(hs.every((h) => h === hs[0]), `${label}: розбіжність на тику ${t}: ${hs}`);
@@ -303,7 +303,7 @@ async function scenario(opts) {
     await runUntil(opts.lateAt + 15_500);
     const E = W.addClient('E', 29);   // сів на звільнене місце — займає той самий слот rules
     await runUntil(opts.restartAt);
-    checkHashes(srv, [A, Cc, D, E], 'до перезапуску');
+    checkHashes(srv, [A, Cc, D, E], 'до перезапуску', 2);   // K44: E щойно зі знімка — звірки лише від його тику
     W.as(A, () => A.net.restart(0xC0FFEE + opts.seed, PARAMS));   // перезапуск посеред: нова епоха всім
     await runUntil(opts.endAt);
     const live = [A, Cc, D, E];
@@ -349,14 +349,14 @@ test('K44: пізній вхід на 5-й хвилині зі знімка — 
     srv.seats[0] = 'A';
     srv.start();
     W.serverLoop();
-    const A = W.addClient('A', 7);
+    const A = W.addClient('A', 7, { zip: true });
     await runUntil(400);
-    const B = W.addClient('B', 23);
+    const B = W.addClient('B', 23, { zip: true });
     await runUntil(1200);
-    const Cc = W.addClient('C', 41);
+    const Cc = W.addClient('C', 41, { zip: true });
     await runUntil(300_000);
     assert.ok(srv.snap && srv.snap.t >= 4800, 'сервер не має підтвердженого знімка: ' + JSON.stringify(srv.snap && srv.snap.t));
-    const D = W.addClient('D', 13);                    // гравець — зі знімка
+    const D = W.addClient('D', 13, { zip: true });     // гравець — зі знімка (gzip)
     const F = W.addClient('F', 17, { snap: false });   // глядач (місць нема) — з нуля, для порівняння
     await runUntil(325_000);
     const live = [A, B, Cc, D, F];
