@@ -98,8 +98,9 @@ export function createSmoother(on = true) {
       const lim = JERK * stepU;
       s.players.forEach((p, k) => {
         const v = this.vis(s, k), w = seen[k];
-        if (w && w.t === s.tick - 1 && !p.out) {
-          const raw = Math.hypot(p.x - w.rx, p.y - w.ry), vis = Math.hypot(v.x - w.vx, v.y - w.vy);
+        const n = w ? s.tick - w.t : 0;   // тиків від попереднього заміру (кадр ≤ 10/с у ?test — по 2 тики)
+        if (n >= 1 && n <= 3 && !p.out) {
+          const raw = Math.hypot(p.x - w.rx, p.y - w.ry) / n, vis = Math.hypot(v.x - w.vx, v.y - w.vy) / n;
           st.ticks++;
           st.rawMax = Math.max(st.rawMax, raw); st.visMax = Math.max(st.visMax, vis);
           if (raw > lim) st.rawJerk++;
@@ -330,7 +331,7 @@ export function createNet(game, opts = {}) {
 
   /** Світ з нуля: newGame + увесь журнал до водяного знаку. */
   function build(j) {
-    if (j.e !== e) off = null;   // нова епоха — тик партії знову з нуля, старий зсув годинника не годиться
+    if (j.e !== e) { off = null; net.desync = -1; desyncSaid = false; }   // нова епоха — тик з нуля, старий зсув годинника й розбіжність не годяться
     e = j.e;
     C = R.newGame(j.seed >>> 0, j.prm || {}, j.n0 || 1);
     log.clear(); count = 0; pending = []; hashes.clear(); hi = 0;
@@ -420,7 +421,8 @@ export function createNet(game, opts = {}) {
         const h = R.hash(C);
         hashes.set(C.tick, h);
         if (hashes.size > 64) hashes.delete(hashes.keys().next().value);
-        lagOut(() => conn?.send('Input', room, 'hash', { t: C.tick, h }).catch(() => { }));
+        const m = { t: C.tick, h };   // тик — зараз, а не коли затримка відпустить (C тим часом піде далі)
+        lagOut(() => conn?.send('Input', room, 'hash', m).catch(() => { }));
       }
     }
     const before = pending.length;
