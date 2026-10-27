@@ -162,19 +162,19 @@ test("speedCurve='linear' (типове): швидкість росте з ча�
   const s = longTrack({});
   assert.equal(s.params.speedCurve, 'linear');
   run(s, 60 * TPS + 1);
-  assert.equal(s.train.speed, spdOf(0.15) + spdOf(0.04));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart) + spdOf(s.params.speedGrowth));
 });
 
 test("speedCurve='steps': без рейок не розганяється; кожні stepN покладених — сходинка", () => {
   const s = longTrack({ speedCurve: 'steps', stepN: 5, stepGain: 0.05 });
   run(s, 60 * TPS);
-  assert.equal(s.train.speed, spdOf(0.15));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart));
   s.stats.railsLaid = 4; R.step(s, []);
-  assert.equal(s.train.speed, spdOf(0.15));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart));
   s.stats.railsLaid = 5; R.step(s, []);
-  assert.equal(s.train.speed, spdOf(0.15) + spdOf(0.05));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart) + spdOf(0.05));
   s.stats.railsLaid = 12; R.step(s, []);
-  assert.equal(s.train.speed, spdOf(0.15) + 2 * spdOf(0.05));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart) + 2 * spdOf(0.05));
   s.stats.railsLaid = 999; R.step(s, []);
   assert.equal(s.train.speed, spdOf(s.params.speedMax), 'стеля');
 });
@@ -186,13 +186,13 @@ test("speedCurve='distance': швидкість від проїханого шл
   let c = 0;
   for (let i = 0; i < 30 * TPS; i++) c = stepC(s);
   assert.ok(c > 3);
-  assert.equal(s.train.speed, spdOf(0.15) + Math.floor(spdOf(0.1) * c / 10));
+  assert.equal(s.train.speed, spdOf(s.params.speedStart) + Math.floor(spdOf(0.1) * c / 10));
   // повільний старт не карає: довго стояв (startSec) — та сама швидкість на тій самій відстані
   const late = longTrack({ speedCurve: 'distance', stepN: 10, stepGain: 0.1, startSec: 60 });
   let lc = 0;
   while (late.stats.cells <= c) lc = stepC(late);
   while (lc < c) lc = stepC(late);
-  assert.equal(late.train.speed, spdOf(0.15) + Math.floor(spdOf(0.1) * lc / 10));
+  assert.equal(late.train.speed, spdOf(late.params.speedStart) + Math.floor(spdOf(0.1) * lc / 10));
   assert.ok(late.train.speed <= s.train.speed + spdOf(0.1), 'не швидший за ранній на тій самій відстані');
 });
 
