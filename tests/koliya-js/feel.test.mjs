@@ -147,3 +147,51 @@ test("useMode='auto': з сокирою перед деревом б'є сам �
   holdUse(b.s, 1);
   assert.equal(b.pl.hold.k, I.NONE);
 });
+
+// ---------------- speedCurve ----------------
+/** колія далеко вперед (щоб не сходив), потяг рушає одразу */
+function longTrack(params) {
+  const s = blank({ startSec: 0, heatSec: 240, ...params });
+  let L = s.path[s.path.length - 1];
+  while ((L % s.w) < s.w - 3) { L += 1; s.path.push(L); }
+  return s;
+}
+const spdOf = (cps) => Math.round(cps * U * 1000 / TPS);
+
+test("speedCurve='linear' (типове): швидкість росте з часом, хоч рейок не кладуть", () => {
+  const s = longTrack({});
+  assert.equal(s.params.speedCurve, 'linear');
+  run(s, 60 * TPS + 1);
+  assert.equal(s.train.speed, spdOf(0.15) + spdOf(0.04));
+});
+
+test("speedCurve='steps': без рейок не розганяється; кожні stepN покладених — сходинка", () => {
+  const s = longTrack({ speedCurve: 'steps', stepN: 5, stepGain: 0.05 });
+  run(s, 60 * TPS);
+  assert.equal(s.train.speed, spdOf(0.15));
+  s.stats.railsLaid = 4; R.step(s, []);
+  assert.equal(s.train.speed, spdOf(0.15));
+  s.stats.railsLaid = 5; R.step(s, []);
+  assert.equal(s.train.speed, spdOf(0.15) + spdOf(0.05));
+  s.stats.railsLaid = 12; R.step(s, []);
+  assert.equal(s.train.speed, spdOf(0.15) + 2 * spdOf(0.05));
+  s.stats.railsLaid = 999; R.step(s, []);
+  assert.equal(s.train.speed, spdOf(s.params.speedMax), 'стеля');
+});
+
+test("speedCurve='distance': швидкість від проїханого шляху, плавно; стоїть — не росте", () => {
+  // швидкість тику рахується з шляху до руху цього тику
+  const stepC = (g) => { const c0 = g.stats.cells; R.step(g, []); return c0; };
+  const s = longTrack({ speedCurve: 'distance', stepN: 10, stepGain: 0.1 });
+  let c = 0;
+  for (let i = 0; i < 30 * TPS; i++) c = stepC(s);
+  assert.ok(c > 3);
+  assert.equal(s.train.speed, spdOf(0.15) + Math.floor(spdOf(0.1) * c / 10));
+  // повільний старт не карає: довго стояв (startSec) — та сама швидкість на тій самій відстані
+  const late = longTrack({ speedCurve: 'distance', stepN: 10, stepGain: 0.1, startSec: 60 });
+  let lc = 0;
+  while (late.stats.cells <= c) lc = stepC(late);
+  while (lc < c) lc = stepC(late);
+  assert.equal(late.train.speed, spdOf(0.15) + Math.floor(spdOf(0.1) * lc / 10));
+  assert.ok(late.train.speed <= s.train.speed + spdOf(0.1), 'не швидший за ранній на тій самій відстані');
+});

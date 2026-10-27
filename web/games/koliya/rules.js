@@ -25,6 +25,8 @@ export const PARAM_META = {
   speedStart:  { def: 0.15, min: 0.05, max: 1.5, step: 0.01, label: 'Швидкість паротяга, клітинок/с', group: 'Паротяг' },
   speedGrowth: { def: 0.04, min: 0,    max: 0.5, step: 0.01, label: 'Приріст швидкості, клітинок/с за хвилину', group: 'Паротяг' },
   speedMax:    { def: 0.80, min: 0.1,  max: 3,   step: 0.05, label: 'Стеля швидкості', group: 'Паротяг' },
+  stepN:       { def: 10,   min: 2,    max: 40,  step: 1,    label: 'Розгін не від часу: кожні N рейок (сходинки) / клітинок шляху', group: 'Паротяг' },   // K14
+  stepGain:    { def: 0.02, min: 0,    max: 0.2, step: 0.005, label: 'Розгін не від часу: + клітинок/с за N', group: 'Паротяг' },                     // K14
   startSec:    { def: 30,   min: 0,    max: 90,  step: 1,    label: 'Пауза перед рушанням, с', group: 'Паротяг' },
   heatSec:     { def: 50,   min: 10,   max: 240, step: 5,    label: 'Від холодного до перегріву, с', group: 'Котел' },
   fireSec:     { def: 12,   min: 3,    max: 60,  step: 1,    label: 'Пожежа: скільки до поразки, с', group: 'Котел' },
@@ -48,9 +50,10 @@ export const PARAM_META = {
 // Перемикачі варіантів (рядкові значення; перше — типове)
 export const VARIANTS = {
   overheat: { values: ['fire', 'stop'], labels: ['Пожежа', 'Зупинка'], label: 'Перегрів котла' },
-  // K14 «Відчуття ядра» — див. блок «Відчуття» нижче
+  // K14 «Відчуття ядра»: move/useMode/aim — блоки «K14» біля руху гравця, speedCurve — trainSpeed()
   move: { values: ['free', 'grid', 'snappy'], labels: ['Вільно', 'Клітинками', 'Чітко'], label: 'Рух гравця' },
   useMode: { values: ['press', 'tap', 'auto'], labels: ['Затиснув — б\'є', 'Кожен удар — натиск', 'Б\'є сам'], label: 'Дія (рубати/бити)' },
+  speedCurve: { values: ['linear', 'steps', 'distance'], labels: ['Від часу', 'Сходинками за рейки', 'Від шляху'], label: 'Як розганяється паротяг' },
 };
 
 export function defaultParams() {
@@ -613,7 +616,7 @@ function stepTrain(s) {
   }
   // швидкість
   const el = s.tick - t0;
-  t.speed = stopped ? 0 : Math.min(spd(P.speedMax), spd(P.speedStart) + Math.floor(spd(P.speedGrowth) * el / (60 * TPS)));
+  t.speed = stopped ? 0 : Math.min(spd(P.speedMax), trainSpeed(s, el));   // K14: крива — варіант speedCurve
   if (t.speed > s.stats.maxSpeed) s.stats.maxSpeed = t.speed;
   t.sub += t.speed;
   const d = Math.floor(t.sub / 1000);
@@ -631,6 +634,16 @@ function stepTrain(s) {
     return;
   }
   if (over) lose(s, 'derail', hc % s.w, (hc / s.w) | 0);
+}
+
+/** K14: швидкість паротяга до стелі (підодиниць/тик ×1000). speedCurve: 'linear' — speedStart + speedGrowth·хвилини
+ *  (як було); 'steps' — + stepGain за кожні stepN покладених рейок (повільно класти — повільно їде);
+ *  'distance' — + stepGain за кожні stepN проїханих клітинок, плавно (повільний старт не карає). */
+function trainSpeed(s, el) {
+  const P = s.params, base = spd(P.speedStart), n = Math.max(1, P.stepN | 0);
+  if (P.speedCurve === 'steps') return base + spd(P.stepGain) * Math.floor(Math.max(0, s.stats.railsLaid) / n);
+  if (P.speedCurve === 'distance') return base + Math.floor(spd(P.stepGain) * s.stats.cells / n);
+  return base + Math.floor(spd(P.speedGrowth) * el / (60 * TPS));
 }
 
 function lose(s, why, x, y) {
