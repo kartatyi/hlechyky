@@ -3,6 +3,7 @@
 // (structuredClone копіює його цілком), тож однаковий потік команд дає однаковий стан у будь-якому браузері й у Node.
 // Власник: K2 «Правила» (контракт — D:\or-wt\_kolia\CONTRACT.md).
 import { generate } from './gen.js';
+import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: додатки за перемикачем
 
 export const TICK_MS = 50;           // 20 тиків/с
 export const TPS = 1000 / TICK_MS;
@@ -44,10 +45,15 @@ export const PARAM_META = {
   forest:      { def: 0.30, min: 0,    max: 0.7, step: 0.01, label: 'Частка лісу', group: 'Світ' },
   rocks:       { def: 0.18, min: 0,    max: 0.6, step: 0.01, label: 'Частка скель', group: 'Світ' },
   water:       { def: 0.08, min: 0,    max: 0.4, step: 0.01, label: 'Частка води', group: 'Світ' },
+  geeseSec:    { def: 45,   min: 10,   max: 180, step: 5,    label: 'Гуси: зграя раз на, с', group: 'Додатки' },      // K11
+  geeseMax:    { def: 3,    min: 1,    max: 3,   step: 1,    label: 'Гуси: у зграї до', group: 'Додатки' },           // K11
+  geeseSpeed:  { def: 2.5,  min: 1,    max: 6,   step: 0.5,  label: 'Гуси: швидкість, клітинок/с', group: 'Додатки' }, // K11
 };
 // Перемикачі варіантів (рядкові значення; перше — типове)
 export const VARIANTS = {
   overheat: { values: ['fire', 'stop'], labels: ['Пожежа', 'Зупинка'], label: 'Перегрів котла' },
+  geese:       { values: ['off', 'on'], labels: ['Ні', 'Так'], label: 'Гуси-злодюжки 🪿' },                      // K11
+  stationMode: { values: ['end', 'upgrade'], labels: ['Кінець', 'Проміжна з покращеннями'], label: 'Станція 🏪' }, // K11
 };
 
 export function defaultParams() {
@@ -115,6 +121,7 @@ export function newGame(seed, params = defaultParams(), nPlayers = 1) {
   if (s.train.pos > (s.path.length - 1) * U) s.train.pos = (s.path.length - 1) * U;
   nPlayers = Math.max(1, Math.min(MAX_PLAYERS, nPlayers | 0));
   for (let i = 0; i < nPlayers; i++) s.players.push(newPlayer(s.spawn[i % s.spawn.length]));
+  extrasInit(s, params);   // K11: гуси, проміжна станція (вимкнене — лише порожні поля)
   return s;
 }
 
@@ -140,7 +147,7 @@ export function step(s, cmds = []) {
   for (const c of cmds) applyCmd(s, c);
   for (let i = 0; i < s.players.length; i++) movePlayer(s, i);
   stepCraft(s);
-  stepTrain(s);
+  if (!extrasStep(s, cmds)) stepTrain(s);   // K11: true — паротяг стоїть на проміжній станції
   s.tick++;
   return s;
 }
@@ -331,6 +338,7 @@ function use(s, n, pl) {
   const P = s.params;
   const f = facingCell(pl);
   const cx = f.x, cy = f.y;
+  if (extrasUse(s, n, f)) { pl.cd = ACT_CD; return; }   // K11: гуска / табличка покращень
   if (!inside(s, cx, cy)) return;
   const i = cy * s.w + cx;
   const h = pl.hold;
