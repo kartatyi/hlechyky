@@ -484,17 +484,22 @@ export function addPort(b, A, B, rng) {
 // ---------------------------------------------------------------------------------------------------------- море, рамка, стіл
 
 /** Трикутна сітка в шестикутнику (плаский верх) — щоб хвилі мали грані. Кольори: мілина біля землі світліша. */
-export function seaGeo(landCenters) {
-  const N = 20, s = SEA_R / N, arr = [], cols = [];
+/** Колір води за відстанню до найближчої суші: мілина біля берега світліша. Спільне для моря поля й відкритого моря. */
+function seaShade(landCenters) {
   const deep = col(SEA_COLOR).clone().multiplyScalar(0.78), shallow = mix(SEA_COLOR, '#8fd0d8', 0.55);
-  const P = (i, j) => [s * (i + j / 2), SEA_Y, s * (j * S3 / 2)];
-  const inside = (i, j) => Math.abs(i) <= N && Math.abs(j) <= N && Math.abs(i + j) <= N;
-  const shade = (p) => {
+  return (p) => {
     let d = 99;
     for (const [x, z] of landCenters) d = Math.min(d, Math.hypot(p[0] - x, p[2] - z));
     const k = Math.min(1, Math.max(0, (d - 1.05) / 1.3));
     return shallow.clone().lerp(deep, k);
   };
+}
+
+export function seaGeo(landCenters) {
+  const N = 20, s = SEA_R / N, arr = [], cols = [];
+  const P = (i, j) => [s * (i + j / 2), SEA_Y, s * (j * S3 / 2)];
+  const inside = (i, j) => Math.abs(i) <= N && Math.abs(j) <= N && Math.abs(i + j) <= N;
+  const shade = seaShade(landCenters);
   const rng = rngOf(77);
   const push = (a, b, c) => {
     arr.push(...a, ...b, ...c);
@@ -533,7 +538,59 @@ export function addFrame(b) {
   }
 }
 
-/** Стільниця з дощок. */
+// ---------------------------------------------------------------------------------------------------------- тло довкола поля
+
+/**
+ * Варіанти тла (scene.js: opts.bg, типовий — BG_DEFAULT). clear — колір тла й туману; frame — дерев'яна рамка довкола моря.
+ * Усі, крім «planks», — темні й спокійні: світло лампи на полі, краї в тінь, щоб дошка «вистрибувала».
+ */
+export const BACKDROP = {
+  planks:  { clear: '#2b1f16', frame: true },    // було до 28.10: світла руда підлога з дощок
+  lamp:    { clear: '#0f0905', frame: true },    // темна стільниця в теплому світлі лампи
+  rushnyk: { clear: '#0f0905', frame: true },    // те саме + рушник-вишиванка за полем
+  khata:   { clear: '#0d0805', frame: true },    // вечірня хата: темне дерево, глечик і свічка на краях
+  sea:     { clear: '#1a2f3f', frame: false },   // море на весь фон, поле — острів, серпанок до краю
+};
+
+const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+/**
+ * Пляма світла лампи на кольорах вершин: повна яскравість до r0 від центру, далі згасає до kMin на r1.
+ * warm — теплі плями [x, z, радіус, сила] (свічка): множать червоне/зелене/синє по-різному — помаранчевий відблиск.
+ */
+export function lampShade(g, { r0 = 6.3, r1 = 12, kMin = 0.16, warm = [] } = {}) {
+  const p = g.attributes.position, c = g.attributes.color;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i);
+    const k = kMin + (1 - kMin) * (1 - smoothstep(r0, r1, Math.hypot(x, z)));
+    let r = k, gg = k, b = k;
+    for (const [wx, wz, wr, ws] of warm) {
+      const w = ws * (1 - smoothstep(0, wr, Math.hypot(x - wx, z - wz)));
+      r += w; gg += w * 0.62; b += w * 0.25;
+    }
+    c.setXYZ(i, c.getX(i) * r, c.getY(i) * gg, c.getZ(i) * b);
+  }
+  c.needsUpdate = true;
+  return g;
+}
+
+/** Дошки стільниці вздовж x; кожна дошка — один тон (без «ряботиння» по гранях), поділена вздовж, щоб пляма лампи була плавною. */
+function plankTable(tones, { W = 0.9, L = 44, seg = 0.9, spread = 0.12, seed = 31 } = {}) {
+  const b = new Builder(), rng = rngOf(seed);
+  for (let i = -25; i <= 25; i++) {
+    const z = i * W;
+    let x = -L / 2 - rng() * 6;
+    while (x < L / 2) {
+      const len = 5 + rng() * 7, x1 = Math.max(-L / 2, x), x2 = Math.min(L / 2, x + len), w = x2 - x1 - 0.025;
+      const c = col(tones[Math.floor(rng() * tones.length)]).clone().multiplyScalar(1 - spread / 2 + rng() * spread);
+      b.add(new THREE.PlaneGeometry(w, W - 0.03, Math.max(1, Math.ceil(w / seg)), 1), mat((x1 + x2) / 2, 0, z, 0, 1, 1, 1, -Math.PI / 2), c, { rng, jitter: 0 });
+      x += len;
+    }
+  }
+  return b.geometry();
+}
+
+/** Стара світла підлога (варіант «planks», «було»). */
 export function tableGeo() {
   const b = new Builder(), rng = rngOf(31), W = 0.95, L = 40;
   const tones = ['#9c6a3c', '#a6743f', '#94623a', '#a06c3a', '#8f5f36'];
@@ -547,6 +604,154 @@ export function tableGeo() {
     }
   }
   return b.geometry();
+}
+
+const DARK_WOOD = ['#4a2f1d', '#462c1b', '#4e321f', '#432a19'];
+/** Де стоять речі «вечірньої хати» (за полем, у верхніх кутах кадру). */
+export const KHATA_JUG = [-6.0, -5.2], KHATA_CANDLE = [6.1, -4.9];
+/** Рушник: довгий, за полем упоперек кадру (частково під рамкою); кінці з вишивкою — у верхніх кутах. */
+export const RUSHNYK = { x: 0.3, z: -6.1, len: 14.5, w: 2.4, ry: 0.035 };
+
+/** Глечик (точене тіло + ручка) і свічник зі свічкою — один статичний меш (кольори вершин). */
+function khataProps() {
+  const b = new Builder(), rng = rngOf(57);
+  const prof = [[0, 0], [0.2, 0], [0.27, 0.06], [0.34, 0.22], [0.37, 0.36], [0.34, 0.5], [0.25, 0.62], [0.15, 0.7], [0.13, 0.78], [0.17, 0.86], [0.15, 0.88]]
+    .map(([r, y]) => new THREE.Vector2(r * 1.5, y * 1.5));
+  const jugCol = (c) => (c.y > 0.66 && c.y < 0.78 ? col('#4a2614') : c.y > 0.82 && c.y < 0.86 ? col('#e6d3a8') : col('#a4552e'));
+  const [jx, jz] = KHATA_JUG;
+  b.add(new THREE.LatheGeometry(prof, 14), mat(jx, 0, jz), jugCol, { rng, jitter: 0.05 });
+  b.add(new THREE.TorusGeometry(0.2, 0.045, 5, 8, Math.PI * 1.1), mat(jx - 0.47, 0.98, jz, 0, 1, 1.25, 1, 0, Math.PI / 2 + 0.25), '#93492a', { rng, jitter: 0.05 });
+  // Менший глечик-кухлик поруч.
+  const prof2 = [[0, 0], [0.14, 0], [0.18, 0.1], [0.19, 0.26], [0.16, 0.36], [0.17, 0.4]].map(([r, y]) => new THREE.Vector2(r * 1.4, y * 1.4));
+  b.add(new THREE.LatheGeometry(prof2, 10), mat(jx + 0.75, 0, jz + 0.55), '#7d4a2b', { rng, jitter: 0.05 });
+  // Свічник: глиняна тарілочка, свічка, ґнотик.
+  const [cx, cz] = KHATA_CANDLE;
+  b.add(new THREE.CylinderGeometry(0.34, 0.3, 0.07, 12), mat(cx, 0.035, cz), '#6b3a20', { rng, jitter: 0.04 });
+  b.add(new THREE.CylinderGeometry(0.1, 0.11, 0.62, 8), mat(cx, 0.38, cz), '#efe2c2', { rng, jitter: 0.03 });
+  b.add(new THREE.CylinderGeometry(0.008, 0.008, 0.07, 4), mat(cx, 0.72, cz), '#1a120c', { rng, jitter: 0 });
+  return b.geometry();
+}
+
+/** Рушник: біле полотно, на кінцях червоно-чорна вишивка хрестиком (ромби), торочки. Полотно 2048×304. */
+export function rushnykTexture() {
+  const Wc = 2048, Hc = 304, cv = document.createElement('canvas');
+  cv.width = Wc; cv.height = Hc;
+  const g = cv.getContext('2d'), rng = rngOf(91);
+  const ppu = Wc / RUSHNYK.len;   // пікселів на одиницю довжини
+  const fr = Math.round(0.32 * ppu);   // торочки
+  g.fillStyle = '#ece3cf'; g.fillRect(fr, 0, Wc - 2 * fr, Hc);
+  // Ледь видне переплетення.
+  for (let i = 0; i < 900; i++) {
+    g.fillStyle = rng() < 0.5 ? 'rgba(120,100,70,.05)' : 'rgba(255,255,255,.06)';
+    if (rng() < 0.5) g.fillRect(fr + rng() * (Wc - 2 * fr), 0, 1, Hc); else g.fillRect(fr, rng() * Hc, Wc - 2 * fr, 1);
+  }
+  // Торочки: нитки з проміжками (alphaTest у матеріалі).
+  for (const side of [0, 1]) {
+    for (let y = 2; y < Hc - 2; y += 5) {
+      const len = fr * (0.75 + rng() * 0.25), x0 = side ? Wc - fr : fr - len;
+      g.fillStyle = '#e4d9c0'; g.fillRect(x0, y, len, 2.4);
+    }
+  }
+  const R = '#b0221c', K = '#22170f', cell = 8;
+  const stitch = (x, y, c) => { g.fillStyle = c; g.fillRect(x + 1, y + 1, cell - 2, cell - 2); };
+  // Вздовж довгих країв — смуга дрібних ромбиків між двома нитками.
+  for (const y0 of [6, Hc - 6 - 7 * cell]) {
+    g.fillStyle = R; g.fillRect(fr, y0, Wc - 2 * fr, 3); g.fillRect(fr, y0 + 7 * cell - 3, Wc - 2 * fr, 3);
+    for (let x = fr + 4; x + 5 * cell < Wc - fr; x += 6 * cell)
+      for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) {
+        const d = Math.abs(i) + Math.abs(j);
+        if (d === 2 || d === 0) stitch(x + (i + 2) * cell, y0 + cell + (j + 2) * cell, d ? R : K);
+      }
+  }
+  // Ромб 13×13 клітинок: кільця й хрест посередині.
+  const motif = (ox, oy) => {
+    for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) {
+      const d = Math.abs(i) + Math.abs(j);
+      const c = d === 6 || d === 3 ? R : d === 5 || d === 0 || (d === 1) ? K : (d === 2 && (i === 0 || j === 0)) ? R : null;
+      if (c) stitch(ox + (i + 6) * cell, oy + (j + 6) * cell, c);
+    }
+  };
+  for (const side of [0, 1]) {
+    const bandW = 13 * cell + 24, x0 = side ? Wc - fr - 0.35 * ppu - bandW : fr + 0.35 * ppu;
+    // Смуги-рамки й ряд ромбів упоперек полотна (по ширині рушника).
+    for (const dx of [0, bandW - 6]) { g.fillStyle = K; g.fillRect(x0 + dx, 0, 6, Hc); }
+    for (const dx of [10, bandW - 16]) { g.fillStyle = R; g.fillRect(x0 + dx, 0, 4, Hc); }
+    for (let oy = 4; oy + 13 * cell <= Hc; oy += 13 * cell + 4) motif(x0 + 12, oy);
+    // «Ялинка» з хрестиків трохи далі до середини.
+    const x1 = side ? x0 - 3 * cell - 10 : x0 + bandW + 10;
+    for (let y = 0; y < Hc; y += cell) stitch(x1 + ((y / cell) % 2) * cell, y, R);
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Плями світла від полум'я (sprite): м'який радіальний градієнт. */
+export function flameGlowTexture() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,214,140,1)'); gr.addColorStop(0.25, 'rgba(255,170,80,.45)'); gr.addColorStop(1, 'rgba(255,120,40,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Відкрите море на весь фон (варіант «sea»): трикутна сітка-кільце довкола моря поля; біля поля — колір глибини поля, далі темніше. */
+export function openSeaGeo(landCenters) {
+  const s = 0.75, N = 56, arr = [], cols = [], rng = rngOf(78);
+  const shade = seaShade(landCenters), far = col('#1d3a50');
+  const hexR = (x, z) => Math.max(Math.abs(z) * 2 / S3, Math.abs(x) + Math.abs(z) / S3);   // «радіус» у шестикутнику з пласким верхом
+  const P = (i, j) => [s * (i + j / 2), SEA_Y - 0.02, s * (j * S3 / 2)];
+  const push = (a, b, c) => {
+    const cx = (a[0] + b[0] + c[0]) / 3, cz = (a[2] + b[2] + c[2]) / 3;
+    if (hexR(cx, cz) < SEA_R - 0.35) return;
+    arr.push(...a, ...b, ...c);
+    const cc = shade([cx, 0, cz]).lerp(far, smoothstep(SEA_R - 0.3, SEA_R + 9, Math.hypot(cx, cz))), j = 1 + (rng() - 0.5) * 0.07;
+    for (let k = 0; k < 3; k++) cols.push(cc.r * j, cc.g * j, cc.b * j);
+  };
+  for (let i = -N; i <= N; i++)
+    for (let j = -N; j <= N; j++) {
+      if (Math.abs(i + j) > N) continue;
+      push(P(i, j), P(i, j + 1), P(i + 1, j));
+      push(P(i + 1, j), P(i, j + 1), P(i + 1, j + 1));
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Що лежить довкола поля для варіанта kind: { table, cloth, props, flame } (null — нема).
+ * table — стільниця (кольори вершин, ловить тінь); cloth — геометрія рушника (uv + кольори-пляма лампи);
+ * props — статичні речі (кольори вершин); flame — [x, y, z] полум'я свічки; sea — відкрите море.
+ */
+export function backdrop(kind) {
+  const out = { table: null, cloth: null, props: null, flame: null, sea: null };
+  if (kind === 'planks') { out.table = tableGeo(); return out; }
+  if (kind === 'sea') { out.sea = true; return out; }   // саме море — у setBoard (openSeaGeo потребує суші)
+  const LAMP = { r0: 4.5, r1: 10.5, kMin: 0.08 };   // пляма лампи: під рамкою ще повна, на краях кадру — майже темрява
+  if (kind === 'lamp') { out.table = lampShade(plankTable(DARK_WOOD), LAMP); return out; }
+  if (kind === 'rushnyk') {
+    out.table = lampShade(plankTable(DARK_WOOD), LAMP);
+    const { x, z, len, w, ry } = RUSHNYK;
+    const g = new THREE.PlaneGeometry(len, w, 34, 5);
+    g.rotateX(-Math.PI / 2); g.rotateY(ry); g.translate(x, 0.004, z);
+    const n = g.attributes.position.count;
+    g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(0.82), 3));
+    out.cloth = lampShade(g, LAMP);
+    return out;
+  }
+  if (kind === 'khata') {
+    const [jx, jz] = KHATA_JUG, [cx, cz] = KHATA_CANDLE;
+    // Світла менше, ніж у «лампі» (вечір), зате від свічки — тепла пляма на стільниці й глечику.
+    const warm = [[cx, cz, 3.2, 0.9]];
+    out.table = lampShade(plankTable(DARK_WOOD), { r0: 4, r1: 9.5, kMin: 0.07, warm });
+    out.props = lampShade(khataProps(), { r0: 4, r1: 9.5, kMin: 0.25, warm: [[cx, cz, 3.2, 0.7], [jx, jz, 2, 0.2]] });
+    out.flame = [cx, 0.81, cz];
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------- фігури

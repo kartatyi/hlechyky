@@ -19,7 +19,11 @@ const DEF_POLAR = 50 * D2R, PORTRAIT_POLAR = 36 * D2R, POLAR_MIN = 35 * D2R, POL
 const ZOOM_MIN = 0.65, ZOOM_MAX = 1.6;
 const S3 = Math.sqrt(3);
 const UP = new THREE.Vector3(0, 1, 0);
-const BG = '#2b1f16';
+// Тло довкола поля (models.BACKDROP): lamp — темна стільниця під лампою; rushnyk — те саме + рушник за полем;
+// khata — вечірня хата (глечик і свічка); sea — море на весь фон, поле-острів без рамки; planks — стара руда підлога («було»).
+// Типовий — одна стала нижче; opts.bg перекриває (стенд: ?bg=…).
+export const BG_VARIANTS = ['lamp', 'rushnyk', 'khata', 'sea', 'planks'];
+export const BG_DEFAULT = 'lamp';
 const PIECE_S = 1.3;   // фігури трохи більші за «правдиві» — щоб читались здалеку й на телефоні
 const ROOF_LIGHT = '#e6d6b0';   // дах «білих»: кремовий, темніший за білені стіни (кант дає models.roofGeo)
 
@@ -34,6 +38,7 @@ export async function createScene(host, opts = {}) {
   const bgAnim = quality === 'high' && !reduced;
   const onPick = typeof opts.onPick === 'function' ? opts.onPick : () => {};
   const onHover = typeof opts.onHover === 'function' ? opts.onHover : () => {};
+  const bgKind = BG_VARIANTS.includes(opts.bg) ? opts.bg : BG_DEFAULT, look = M.BACKDROP[bgKind];
 
   // ------------------------------------------------------------------------------------------------ рендерер
   let renderer;
@@ -54,8 +59,8 @@ export async function createScene(host, opts = {}) {
   host.appendChild(canvas);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(BG);
-  scene.fog = new THREE.Fog(BG, 20, 45);
+  scene.background = new THREE.Color(look.clear);
+  scene.fog = new THREE.Fog(look.clear, 20, 45);
   const cam = new THREE.PerspectiveCamera(34, 1, 0.1, 120);
 
   scene.add(new THREE.HemisphereLight('#fff1dc', '#5a4030', 1.35));
@@ -70,9 +75,24 @@ export async function createScene(host, opts = {}) {
   scene.add(sun); scene.add(sun.target);
 
   const matVC = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.88, metalness: 0 });
-  const table = new THREE.Mesh(M.tableGeo(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }));
-  table.receiveShadow = true; table.matrixAutoUpdate = false;
-  scene.add(table);
+  const back = M.backdrop(bgKind), bgTex = [];   // тло: ≤ 3 виклики малювання (стільниця/море, рушник чи речі, полум'я)
+  const still = (m, shadow = false) => { m.receiveShadow = quality === 'high'; m.castShadow = shadow && quality === 'high'; m.matrixAutoUpdate = false; scene.add(m); return m; };
+  if (back.table) still(new THREE.Mesh(back.table, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 })));
+  if (back.cloth) {
+    const t = M.rushnykTexture(); bgTex.push(t);
+    t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    still(new THREE.Mesh(back.cloth, new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.97, alphaTest: 0.5,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })));
+  }
+  if (back.props) still(new THREE.Mesh(back.props, matVC), true);
+  let flame = null;
+  if (back.flame) {
+    const t = M.flameGlowTexture(); bgTex.push(t);
+    const [fx, fy, fz] = back.flame;
+    flame = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false }));
+    flame.position.set(fx, fy, fz); flame.scale.set(1.5, 1.5, 1);
+    scene.add(flame);
+  }
 
   const seaTime = { value: 0 };
   const seaMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.35, metalness: 0.05 });
@@ -194,7 +214,7 @@ export async function createScene(host, opts = {}) {
       M.decorate(sb, h.t, p.x, p.z, rng, out);
       if (h.num != null) { M.addTokenBody(sb, p.x, p.z, rng); M.addTokenTop(tb, p.x, p.z, h.num); }
     });
-    M.addFrame(sb);
+    if (look.frame) M.addFrame(sb);
     const signs = [];
     (b.ports || []).forEach((pt, i) => {
       const e = b.edges[pt.e]; if (!e) return;
@@ -202,6 +222,10 @@ export async function createScene(host, opts = {}) {
       const at = M.addPort(sb, A, C, M.rngOf(seed + 5000 + i));
       signs.push([at, pt.kind]);
     });
+    // Що мусить влізти в стартовий кадр: уся суша і таблички пристаней (з запасом на їхню ширину й висоту). Море й рамку — можна обрізати.
+    fitPts = vxPos.map((v) => v.clone());
+    for (const [[x, y, z]] of signs)
+      for (const [dx, dz] of [[0.3, 0], [-0.3, 0], [0, 0.2], [0, -0.2]]) fitPts.push(new THREE.Vector3(x + dx, y - 0.12, z + dz), new THREE.Vector3(x + dx, y + 0.3, z + dz));
     const stat = new THREE.Mesh(sb.geometry(), matVC);
     stat.castShadow = stat.receiveShadow = quality === 'high';
     stat.matrixAutoUpdate = false;
@@ -214,6 +238,12 @@ export async function createScene(host, opts = {}) {
     const sea = new THREE.Mesh(M.seaGeo(hexPos.map((p) => [p.x, p.z])), seaMat);
     sea.receiveShadow = quality === 'high'; sea.matrixAutoUpdate = false;
     boardGroup.add(sea);
+    if (back.sea) {   // тло «море»: відкрита вода до обрію, кольори біля поля — ті самі, що в морі поля (без шва)
+      const open = new THREE.Mesh(M.openSeaGeo(hexPos.map((p) => [p.x, p.z])), seaMat);
+      open.receiveShadow = quality === 'high'; open.matrixAutoUpdate = false;
+      boardGroup.add(open);
+    }
+    if (W > 1) fit();
     for (const [[x, y, z], kind] of signs) {
       const t = atlas.clone();
       const [u0, v0, su, sv] = M.atlasCell(M.portCell(kind));
@@ -514,11 +544,14 @@ export async function createScene(host, opts = {}) {
     const save = { az: cs.az, pol: cs.pol, zoom: cs.zoom, t: cs.target.clone() };
     defPol = W / H < 0.9 ? PORTRAIT_POLAR : DEF_POLAR;   // вузька висока рамка — дивимось згори, поле виходить вищим
     cs.az = 0; cs.pol = defPol; cs.zoom = 1; cs.target.set(0, 0, 0);
-    // Вузька рамка (телефон): впритул до суші й пристаней — кути моря й рамки можна обрізати, а поле стає вдвічі помітнішим.
-    // Широка — теж ближче (khutory-look.md §3): раніше поле займало ~60 % рамки, решта — стільниця й море.
-    const R = W / H < 0.9 ? 5.1 : 5.2, pts = [];
-    for (let i = 0; i < 6; i++) for (const y of [0, 0.25]) pts.push(new THREE.Vector3(R * Math.cos(i * Math.PI / 3), y, R * Math.sin(i * Math.PI / 3)));
-    const lim = W / H < 0.8 ? 0.97 : 0.93;
+    // Кадр — впритул до суші й табличок пристаней (fitPts із setBoard): кути моря й рамки можна обрізати, поле — на всю рамку.
+    // Поки поля нема — шестикутник R = 5,1/5,2 (як було).
+    let pts = fitPts, lim = 0.955;
+    if (!pts.length) {
+      const R = W / H < 0.9 ? 5.1 : 5.2; pts = [];
+      for (let i = 0; i < 6; i++) for (const y of [0, 0.25]) pts.push(new THREE.Vector3(R * Math.cos(i * Math.PI / 3), y, R * Math.sin(i * Math.PI / 3)));
+      lim = W / H < 0.8 ? 0.97 : 0.93;
+    }
     // Відстань — двійковим пошуком, потім зсув цілі вглиб/до себе, щоб рамка стояла посередині по вертикалі; двічі.
     let tz = 0;
     for (let pass = 0; pass < 3; pass++) {
@@ -542,7 +575,7 @@ export async function createScene(host, opts = {}) {
     applyCam();
     dirty = true;
   }
-  let defTargetZ = 0, touchedView = false, defPol = DEF_POLAR;
+  let defTargetZ = 0, touchedView = false, defPol = DEF_POLAR, fitPts = [];
   let resetAnim = null;
   function resetView() {
     touchedView = false;
@@ -954,6 +987,10 @@ export async function createScene(host, opts = {}) {
     if (runTweens(now)) active = true;
     if (popT.size) { popping = placePieces(now); if (popping) active = true; }
     if (bgAnim && boardGroup) { animBg(clockT); active = true; }
+    if (flame && bgAnim) {   // свічка мерехтить (reducedMotion/low — рівне світло)
+      const f = 1 + 0.07 * Math.sin(clockT * 9.3) + 0.05 * Math.sin(clockT * 15.7 + 1.3) + 0.04 * Math.sin(clockT * 3.1);
+      flame.scale.set(1.5 * f, 1.5 * f, 1);
+    }
     if (legal.kind && !reduced) {
       rebuildLegal(clockT); active = true;
       if (legal.kind === 'road') antsTex.offset.x = (antsTex.offset.x - dt * 1.4) % 1;
@@ -1012,6 +1049,7 @@ export async function createScene(host, opts = {}) {
     });
     geos.forEach((g) => g.dispose());
     mats.forEach((m) => m.dispose());
+    bgTex.forEach((t) => t.dispose());
     [atlas, dieTex, seaMat, tokenMat, ghostWhite, ghostCol, hlMat, matVC, dieMat, glowTex, antsTex, glowMat, antsMat, showMat].forEach((x) => x.dispose());
     sun.dispose();   // карта тіні
     renderer.renderLists.dispose();
