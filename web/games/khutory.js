@@ -101,8 +101,10 @@
         }
         const can = me.can || {}, sp = me.spots || {};
         const ok = ['town', 'city', 'road', 'dev'].filter((k) => can[k] && (k === 'dev' || (sp[k] || []).length));
-        const names = { town: 'хату', city: 'містечко', road: 'шлях', dev: 'грамоту' };
-        if (ok.length) return { s: 'Будуй, торгуй або завершуй хід', l: '🔨 Можеш збудувати ' + ok.map((k) => names[k]).join(', ') + '. Або поторгуйся — і «Завершити хід»' };
+        const names = { town: 'хату', city: 'містечко', road: 'шлях' };
+        const bld = ok.filter((k) => k !== 'dev').map((k) => names[k]);
+        const can1 = (bld.length ? 'збудувати ' + bld.join(', ') : '') + (ok.includes('dev') ? (bld.length ? ' або ' : '') + 'купити грамоту 📜' : '');
+        if (ok.length) return { s: 'Будуй, торгуй або завершуй хід', l: '🔨 Можеш ' + can1 + '. Або поторгуйся — і «Завершити хід»' };
         return { s: 'Торгуй або завершуй хід', l: '🤝 На будівлі поки бракує — спробуй обмін або завершуй хід' };
       }
     }
@@ -212,7 +214,9 @@
     const v = st.view, sc = st.sc;
     if (!sc || !v || !v.board) return;
     if (v.board.id !== st.boardId) { sc.setBoard(v.board); st.boardId = v.board.id; }
-    sc.setState(v);
+    // Кидок ще не зіграно (черга анімацій зайнята) — кубики лишаємо старі, інакше сцена спершу покаже результат, а тоді покотить.
+    if (rollHeld(st)) sc.setState(Object.assign({}, v, { dice: st.diceShown || null }));
+    else { sc.setState(v); st.diceShown = v.dice || null; }
     const L = legalFor(v, v.me, st);
     const sig = L ? JSON.stringify(L) : '';
     if (sig !== st.legalSig) {
@@ -227,8 +231,24 @@
       for (const t of v.towns || []) if (t.seat === v.me.seat) for (const it of M.K.vertexYield(v.board, t.v).items) have[it.res] = 1;
       st.marks = M.K.adviseTowns(v.board, (v.me.spots || {}).town || [], 3, Object.keys(have).length ? have : null);
     }
-    st.el.marks.innerHTML = st.marks.map((id, i) => '<span class="kh-mark" data-i="' + i + '">⭐' + (i === 0 ? ' Глек радить' : '') + '</span>').join('');
+    // Позначки — лише зірки (підпис «⭐ Глек радить» — у смузі над полем): довгий напис ховав сусідню зірку.
+    setHtml(st.el.marks, st.marks.map((id, i) => '<span class="kh-mark' + (i === 0 ? ' best' : '') + '" data-i="' + i + '" title="Глек радить">⭐</span>').join(''));
     placeMarks(st);
+    followMarks(st);
+  }
+
+  const rollHeld = (st) => !!st.rolling || st.queue.some((e) => e.k === 'roll');
+
+  /// Поки є позначки — ставимо їх щокадру (камеру крутять мишею/пальцем; таймер на 250 мс відставав).
+  function followMarks(st) {
+    if (st.mrAF || !st.marks.length) return;
+    const loop = () => {
+      st.mrAF = 0;
+      if (!st.el || !st.marks.length || !st.sc) return;
+      placeMarks(st);
+      st.mrAF = requestAnimationFrame(loop);
+    };
+    st.mrAF = requestAnimationFrame(loop);
   }
 
   function placeMarks(st) {
@@ -237,7 +257,9 @@
     st.marks.forEach((id, i) => {
       const p = st.sc.screenPos('v', id), m = kids[i];
       if (!m) return;
-      if (!p) { m.hidden = true; return; }
+      const W = st.el.fieldwrap.clientWidth, H = st.el.fieldwrap.clientHeight;
+      // Поза полем (камеру відвели) — ховаємо, а не вилазимо за край.
+      if (!p || p.x < 8 || p.x > W - 8 || p.y < 28 || p.y > H) { m.hidden = true; return; }
       m.hidden = false;
       m.style.transform = 'translate(' + Math.round(p.x) + 'px,' + Math.round(p.y - 16) + 'px) translate(-50%,-100%)';
     });
@@ -350,9 +372,9 @@
     renderSum(st, v);
     st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
     st.el.view.title = st.scKind === '3d' ? 'Показати пласку карту (легша для слабких пристроїв)' : (st.no3d ? '3D не вдалося — спробувати ще' : 'Показати об\'ємне поле');
+    queueEvents(root, st, v);   // до syncScene: кидок у черзі притримує кубики сцени
     if (!st.sc) ensureScene(root, st);
     else syncScene(root, st);
-    queueEvents(root, st, v);
     nudge(root, st);
   }
 
@@ -417,7 +439,8 @@
     let h = '';
     if (v.phase === 'over' || v.phase === 'setup') { setHtml(st.el.act, ''); return; }
     const myTurn = me && v.turn === me.seat;
-    h += '<div class="kh-dice">' + (v.dice ? diceHtml(v.dice) : '<span class="muted">кубики ще не кинуто</span>') + '</div>';
+    const dice = rollHeld(st) ? null : v.dice;
+    h += '<div class="kh-dice">' + (dice ? diceHtml(dice) : '<span class="muted">' + (v.dice ? '🎲 котяться…' : 'кубики ще не кинуто') + '</span>') + '</div>';
     if (me && me.must === 'roll') {
       h += '<button type="button" class="kh-big primary" data-a="roll">🎲 Кинути кубики</button>';
       if ((me.dev || []).some((d) => d.k === 'knight' && !d.fresh) && !me.playedDev) h += '<p class="kh-note">Можна спершу зіграти ⚔️ Козака з руки — прогнати Кармелюка зі своєї землі</p>';
@@ -734,6 +757,11 @@
   // ─── Події: анімації по черзі ───────────────────────────────────────────
   function queueEvents(root, st, v) {
     if (typeof v.seq !== 'number') return;
+    // Нова партія («Ще раз»): seq міг початись з 0, карта інша, або over → setup. Без анімацій старого, черга — геть.
+    const bid = v.board && v.board.id, fresh0 = st.seq != null && (v.seq < st.seq || (st.seqBoard != null && bid !== st.seqBoard)
+      || (st.seqPhase === 'over' && v.phase !== 'over'));
+    st.seqBoard = bid; st.seqPhase = v.phase;
+    if (fresh0) { st.seq = v.seq; st.queue.length = 0; st.diceShown = null; return; }
     if (st.seq == null) { st.seq = v.seq; return; }   // перший mount — нічого не анімуємо
     const fresh = (v.events || []).filter((e) => e.seq > st.seq).sort((a, b) => a.seq - b.seq);
     st.seq = Math.max(st.seq, v.seq);
@@ -762,8 +790,10 @@
     const C = M.C;
     if (e.k === 'roll') {
       const sum = (e.d || [0, 0])[0] + (e.d || [0, 0])[1];
+      st.rolling = true;
+      try { if (sc) await cap(sc.roll(e.d[0], e.d[1]), 1400); } finally { st.rolling = false; st.diceShown = e.d; }
       flash(st, '🎲 ' + esc(nickOf(v, e.seat)) + ' кидає ' + sum + (sum === 7 ? ' — Кармелюк іде!' : ''));
-      if (sc) await sc.roll(e.d[0], e.d[1]);
+      if (st.view) renderAct(st, st.view, st.view.me);
       gainsToChips(st, v, e.gains || []);
       if (sc && e.gains && e.gains.length) await sc.produce(e.gains);
     } else if (e.k === 'build') {
@@ -902,7 +932,7 @@
     unmount(root) {
       const st = root._kh;
       if (st) {
-        clearInterval(st.tick); clearTimeout(st.nt); clearTimeout(st.flashT);
+        clearInterval(st.tick); clearTimeout(st.nt); clearTimeout(st.flashT); cancelAnimationFrame(st.mrAF);
         if (st.ro) st.ro.disconnect();
         if (st.onClick) root.removeEventListener('click', st.onClick);
         if (st.sc) { try { st.sc.dispose(); } catch (e) { /* уже прибрано */ } }

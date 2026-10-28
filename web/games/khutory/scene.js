@@ -14,7 +14,7 @@ import * as M from './models.js';
 import { SEAT_COLOR, RES_COLOR } from './consts.js';
 
 const D2R = Math.PI / 180;
-const DEF_POLAR = 50 * D2R, POLAR_MIN = 35 * D2R, POLAR_MAX = 70 * D2R, AZ_LIM = 70 * D2R;
+const DEF_POLAR = 50 * D2R, PORTRAIT_POLAR = 36 * D2R, POLAR_MIN = 35 * D2R, POLAR_MAX = 70 * D2R, AZ_LIM = 70 * D2R;
 const ZOOM_MIN = 0.65, ZOOM_MAX = 1.6;
 const S3 = Math.sqrt(3);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -448,7 +448,8 @@ export async function createScene(host, opts = {}) {
   const _pj = new THREE.Vector3();
   function fit() {
     const save = { az: cs.az, pol: cs.pol, zoom: cs.zoom, t: cs.target.clone() };
-    cs.az = 0; cs.pol = DEF_POLAR; cs.zoom = 1; cs.target.set(0, 0, 0);
+    defPol = W / H < 0.9 ? PORTRAIT_POLAR : DEF_POLAR;   // вузька висока рамка — дивимось згори, поле виходить вищим
+    cs.az = 0; cs.pol = defPol; cs.zoom = 1; cs.target.set(0, 0, 0);
     const R = M.SEA_R + M.FRAME_W, pts = [];
     for (let i = 0; i < 6; i++) for (const y of [0, 0.25]) pts.push(new THREE.Vector3(R * Math.cos(i * Math.PI / 3), y, R * Math.sin(i * Math.PI / 3)));
     const lim = W / H < 0.8 ? 0.97 : 0.93;
@@ -466,23 +467,23 @@ export async function createScene(host, opts = {}) {
       baseDist = hi; applyCam();
       let y0 = 1, y1 = -1;
       for (const p of pts) { _pj.copy(p).project(cam); y0 = Math.min(y0, _pj.y); y1 = Math.max(y1, _pj.y); }
-      tz -= (y0 + y1) / 2 * baseDist * Math.tan(cam.fov * D2R / 2) / Math.cos(DEF_POLAR);
+      tz -= (y0 + y1) / 2 * baseDist * Math.tan(cam.fov * D2R / 2) / Math.cos(defPol);
     }
     defTargetZ = tz;
     diceRest = computeRest();
     cs.az = save.az; cs.pol = save.pol; cs.zoom = save.zoom; cs.target.copy(save.t);
-    if (!touchedView) cs.target.set(0, 0, defTargetZ);
+    if (!touchedView) { cs.target.set(0, 0, defTargetZ); cs.pol = defPol; }
     applyCam();
     dirty = true;
   }
-  let defTargetZ = 0, touchedView = false;
+  let defTargetZ = 0, touchedView = false, defPol = DEF_POLAR;
   let resetAnim = null;
   function resetView() {
     touchedView = false;
     vel.az = vel.pol = 0;
     if (resetAnim) resetAnim.cancel();
     const from = { az: cs.az, pol: cs.pol, zoom: cs.zoom, t: cs.target.clone() };
-    const to = { az: 0, pol: DEF_POLAR, zoom: 1, t: new THREE.Vector3(0, 0, defTargetZ) };
+    const to = { az: 0, pol: defPol, zoom: 1, t: new THREE.Vector3(0, 0, defTargetZ) };
     const step = (k) => {
       const e = easeInOut(k);
       cs.az = from.az + (to.az - from.az) * e; cs.pol = from.pol + (to.pol - from.pol) * e; cs.zoom = from.zoom + (to.zoom - from.zoom) * e;
