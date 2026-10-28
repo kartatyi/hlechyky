@@ -39,12 +39,99 @@
   padding: 2px 8px; border-radius: 10px; white-space: nowrap; pointer-events: none; animation: khgain 1.8s ease-out forwards; z-index: 2; }
 @keyframes khgain { 0% { opacity: 0; transform: translate(-50%, 6px); } 15% { opacity: 1; transform: translate(-50%, -6px); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -16px); } }
 
+/* Плашка гравця (khutory-look.md §4–6): сітка «аватарка | нік / ⭐ зі смужкою / карти й грамоти / шлях і сотня». */
+.khu-pl { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 8px; row-gap: 1px; align-items: center;
+  padding: 6px 10px 8px 6px; flex: 1 1 210px; max-width: 290px; overflow: hidden; }
+.khu-pl > .khu-av { grid-row: 1 / span 4; align-self: center; }
+.khu-pl.light .khu-av b { color: #1d1a14; text-shadow: none; }
+.khu-pl.light .khu-av .bg { stroke: #3a3328; stroke-width: 2.5; }
+.khu-pl.light.turn { border-color: #3a3328; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc) 60%, transparent); }
+.khu-shp { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; background: #10201a;
+  color: var(--pc); display: grid; place-items: center; font-size: 11px; line-height: 1; box-shadow: 0 0 0 1.5px var(--panel2); cursor: help; }
+.khu-pp { display: flex; align-items: center; gap: 6px; font-size: .86em; color: var(--muted); white-space: nowrap; min-width: 0; }
+.khu-pp b { color: var(--text); }
+.khu-pp small { color: var(--accent); }
+.khu-mb { display: inline-block; height: 5px; border-radius: 3px; background: rgba(0,0,0,.3); overflow: hidden; vertical-align: middle; width: 30px; margin-left: 3px; }
+.khu-mb i { display: block; height: 100%; background: var(--muted); }
+.khu-mb.gold { flex: 1 1 auto; min-width: 24px; height: 6px; margin-left: 0; }
+.khu-mb.gold i, .khu-aw.near .khu-mb i { background: var(--accent); }
+.khu-pl .khu-ps { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; gap: 0 9px; min-width: 0; }
+.khu-ic { cursor: help; border-radius: 6px; }
+.khu-ic:hover { background: rgba(255,255,255,.06); }
+.khu-aw { font-weight: 600; color: var(--muted); }
+.khu-aw.near { color: var(--text); }
+.khu-aw.has { color: var(--accent); font-weight: 800; }
+.khu-warn { margin-left: 2px; filter: drop-shadow(0 0 3px var(--danger)); }
+.khu-port { font-size: .92em; letter-spacing: -.02em; }
+/* Таймер: смужка на всю ширину плашки того, хто думає; останні 10 с — червона рамка пульсує, секунди великим. */
+.khu-tm { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.28); pointer-events: none; }
+.khu-tm i { display: block; height: 100%; width: 100%; background: var(--pc); transition: width .25s linear; }
+.khu-pl.light .khu-tm i { background: #8a7d66; }
+.khu-pl.late { border-color: var(--danger); animation: khu-late 1s ease-in-out infinite; }
+.khu-pl.late .khu-tm i { background: var(--danger); }
+.khu-pl.think .khu-pn { padding-right: 2.4em; }
+.khu-pl.late .khu-pn { padding-right: 3.8em; }
+.khu-pl.late .khu-sec { font-size: 1.15em; font-weight: 800; color: var(--danger); top: 3px; }
+@keyframes khu-late { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 45%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .khu-pl.late { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 45%, transparent); } }
+/* Поповер значка (дотик) — над усім, під плашкою. */
+.khu-pop { position: absolute; z-index: 30; padding: 8px 10px; border-radius: 10px; background: var(--panel, #1d2a24); color: var(--text);
+  border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0,0,0,.4); font-size: .86em; line-height: 1.35; }
+.khu-pop[hidden] { display: none; }
+/* Знак гравця: колір + фігура ●▲■◆ (підсумок, графік). */
+.khu-pmark { display: inline-grid; place-items: center; width: 1.15em; height: 1.15em; border-radius: 4px; background: var(--pc); color: #fff;
+  font-style: normal; font-size: .85em; line-height: 1; margin-right: .3em; vertical-align: -.1em; box-shadow: 0 0 0 1.5px rgba(0,0,0,.35); }
+.khu-pmark.light { color: #1d1a14; box-shadow: 0 0 0 1.5px #3a3328; }
+@container khu (max-width: 699px) {
+  /* Телефон: сітка 2×2 замість прокрутки вбік; слова-підписи ховаються (лишаються числа й значки). */
+  .khu-players { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; overflow: visible; }
+  .khu-players > .khu-target { grid-column: 1 / -1; justify-self: start; }
+  .khu-players > .khu-pl { max-width: none; grid-template-columns: 34px minmax(0, 1fr); padding: 4px 7px 7px 4px; column-gap: 6px; }
+  .khu-players > .khu-pl .khu-av { width: 34px; height: 34px; }
+  .khu-pl .khu-w { display: none; }
+  .khu-pl .khu-ps { gap: 0 7px; }
+  .khu-pl .khu-mb { width: 22px; }
+  .khu-pl .khu-sec { right: 5px; top: 2px; }
+}
+
 /* ─── Що зараз ───────────────────────────────────────────── */
 .khu-say { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--panel2); font-size: 1.02em; line-height: 1.35; }
 .khu-say.mine { background: color-mix(in srgb, var(--accent) 18%, var(--panel2)); border-left: 4px solid var(--accent); }
 .khu-say-t { flex: 1; min-width: 0; }
 .khu-back { margin: 6px 0 2px; min-height: 40px; padding: 6px 14px; border-radius: 10px; }
 .khu-x { flex: none; background: var(--panel3, var(--panel)); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; min-height: 36px; }
+
+/* ─── Числа ──────────────────────────────────────────────── */
+/* Смуга «що дасть кожне число» 2…12 (khutory-look.md §9): крапки ймовірності, що дасть мені, останні кидки. */
+.khu-nums { display: flex; flex-direction: column; gap: 6px; }
+.khu-nums[hidden] { display: none; }
+.khu-numh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.khu-numt { background: none; border: 0; padding: 2px 0; font-weight: 700; color: var(--text); }
+.khu-numh b { color: var(--ok); }
+.khu-nrow { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 3px; }
+.khu-num { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 1px 5px; border-radius: 9px; min-width: 0;
+  background: var(--panel2); border: 2px solid transparent; }
+.khu-num .n { font-weight: 800; font-size: .98em; font-variant-numeric: tabular-nums; }
+.khu-num .n.hot { color: #ff6b5e; }
+.khu-num .p { display: flex; flex-wrap: wrap; justify-content: center; gap: 1px; max-width: 22px; min-height: 4px; }
+.khu-num .p i { width: 3px; height: 3px; border-radius: 50%; background: var(--muted); }
+.khu-num .y { font-size: .74em; line-height: 1.1; text-align: center; min-height: 1.1em; overflow-wrap: anywhere; }
+.khu-num .y sup { font-size: .75em; font-weight: 800; }
+.khu-num.mine { background: color-mix(in srgb, var(--ok) 28%, var(--panel2)); box-shadow: inset 0 3px 0 var(--ok); }
+.khu-num.seven { background: color-mix(in srgb, var(--danger) 18%, var(--panel2)); }
+.khu-num.robbed .y { opacity: .6; }
+.khu-num.cur { border-color: var(--accent); }
+.khu-num.sel { background: color-mix(in srgb, var(--accent) 28%, var(--panel2)); border-color: var(--accent); }
+.khu-rolls { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.khu-rolls > span:not(.muted) { min-width: 1.5em; text-align: center; padding: 1px 4px; border-radius: 999px; background: var(--panel2); font-weight: 700; font-size: .88em; }
+.khu-rolls .s7 { background: color-mix(in srgb, var(--danger) 30%, var(--panel2)); }
+.khu-rolls .my { box-shadow: inset 0 0 0 2px var(--ok); }
+.khu-rolls .last { outline: 2px solid var(--accent); outline-offset: 1px; }
+@container khu (max-width: 699px) {
+  .khu-nums { order: 5; }
+  /* Телефон: 11 чисел у ряд не влазять — смуга прокручується вбік. */
+  .khu-nrow { grid-template-columns: repeat(11, 38px); overflow-x: auto; padding-bottom: 3px; scrollbar-width: thin; }
+}
 
 /* ─── Поле ───────────────────────────────────────────────── */
 .khu-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 310px); gap: 12px; align-items: start; }
@@ -210,6 +297,28 @@
 .khu-stats { border-collapse: collapse; width: 100%; font-size: .9em; }
 .khu-stats th, .khu-stats td { padding: 4px 6px; text-align: center; border-bottom: 1px solid var(--line); }
 .khu-stats td:first-child { text-align: left; white-space: nowrap; }
+
+/* Шапка «Голова громади», звання, «твій момент» (khutory-look.md §12). */
+.khu-sumh { justify-content: flex-start; padding: 8px 10px; border-radius: 12px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--pc, var(--accent)) 26%, transparent), transparent 70%); }
+.khu-sumh > div { flex: 1 1 200px; min-width: 0; }
+.khu-cup { font-size: 2.1em; line-height: 1; }
+.khu-titles { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 8px; }
+.khu-ti { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 12px; background: var(--panel, rgba(0,0,0,.18));
+  border-top: 4px solid var(--pc, var(--accent)); min-width: 0; }
+.khu-ti .i { font-size: 1.5em; line-height: 1.1; }
+.khu-ti > div { min-width: 0; }
+.khu-ti .n { font-weight: 800; }
+.khu-ti .w { font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.khu-ti .d { font-size: .8em; color: var(--muted); }
+.khu-moment { padding: 8px 12px; border-radius: 12px; border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.khu-chart .shp { font-size: 12px; font-weight: 800; paint-order: stroke; stroke: rgba(0,0,0,.55); stroke-width: 2px; }
+@container khu (max-width: 699px) {
+  .khu-titles { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+  .khu-ti { padding: 6px 7px; gap: 5px; }
+  .khu-ti .i { font-size: 1.25em; }
+  .khu-cup { font-size: 1.6em; }
+}
 
 /* ─── Телефон (картка < 700 px) ──────────────────────────── */
 @container khu (max-width: 699px) {
