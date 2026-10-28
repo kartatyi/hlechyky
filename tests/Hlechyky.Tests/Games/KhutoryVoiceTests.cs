@@ -57,9 +57,11 @@ public class KhutoryVoiceTests
         while (h.Finished.Count == 0)
         {
             Assert.True(++steps < 6000, "партія не кінчається");
-            if (h.View(0).GetProperty("botIn").ValueKind == JsonValueKind.Number)
+            var botIn = h.View(0).GetProperty("botIn");
+            if (botIn.ValueKind == JsonValueKind.Number)
             {
-                h.Clock.AdvanceMs(BoardBots.ThinkMs);
+                // Задрімала людина має 5 с на свій кидок — тоді botIn довший за ThinkMs.
+                h.Clock.AdvanceMs(Math.Max(BoardBots.ThinkMs, botIn.GetInt32()));
                 Assert.True(h.Act(0, "bot").Ok);
             }
             else

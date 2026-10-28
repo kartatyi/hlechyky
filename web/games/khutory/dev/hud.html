@@ -64,7 +64,7 @@
   function ctxOf(v) {
     const seat = v.me ? v.me.seat : null;
     return {
-      room: { id: 'kh-dev', status: v.phase === 'over' ? 'done' : 'playing' },
+      room: { id: 'khu-dev', status: v.phase === 'over' ? 'done' : 'playing' },
       seat, view: v, me: 'Smaug', playing: v.phase !== 'over', mine: seat !== null, myTurn: seat !== null && v.turn === seat,
       act(a, p) { window.__acts.push({ a, p }); hlog('act ' + a + ' ' + JSON.stringify(p)); return Promise.resolve({ ok: true }); },
       toast: (s) => hlog('toast ' + s), esc: (s) => String(s), seatName: (i) => 'місце ' + i,

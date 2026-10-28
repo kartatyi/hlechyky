@@ -52,6 +52,28 @@ public sealed class KhutoryCore
     public static readonly string[] DevKinds = ["knight", "vp", "road", "plenty", "mono"];
     public static readonly string[] ResGen = ["дерева", "глини", "вовни", "зерна", "заліза"];
     public static readonly string[] ResAcc = ["дерево", "глину", "вовну", "зерно", "залізо"];
+    public static readonly string[] ResNom = ["дерево", "глина", "вовна", "зерно", "залізо"];
+    /// <summary>Після 5–20 («5 дерев»); вовна й залізо — незлічені, тож лишаються «вовни», «заліза».</summary>
+    public static readonly string[] ResMany = ["дерев", "глин", "вовни", "зерен", "заліза"];
+
+    /// <summary>«1 дерево», «2 дерева», «5 дерев», «21 дерево» — число з ресурсом у називному.</summary>
+    public static string ResCount(int n, int r)
+    {
+        var m10 = n % 10;
+        var m100 = n % 100;
+        var word = m10 == 1 && m100 != 11 ? ResNom[r]
+            : m10 is >= 2 and <= 4 && m100 is < 12 or > 14 ? ResGen[r]
+            : ResMany[r];
+        return $"{n} {word}";
+    }
+
+    /// <summary>«1 дерево + 2 глини» — набір ресурсів для журналу.</summary>
+    public static string ResList(int[] a)
+    {
+        var parts = new List<string>();
+        for (var r = 0; r < 5; r++) if (a[r] > 0) parts.Add(ResCount(a[r], r));
+        return parts.Count == 0 ? "нічого" : string.Join(" + ", parts);
+    }
     public static readonly int[] RoadCost = [1, 1, 0, 0, 0], TownCost = [1, 1, 1, 1, 0], CityCost = [0, 0, 0, 2, 3], DevCost = [0, 0, 1, 1, 1];
 
     static readonly KhutoryGeo G = KhutoryGeo.I;
@@ -798,7 +820,7 @@ public sealed class KhutoryCore
         Hand[s][get] += n; Bank[get] -= n;
         Trades[s]++;
         Emit("trade", ("seat", s), ("with", "bank"), ("give", ResMap(give, rate * n)), ("get", ResMap(get, n)));
-        Say($"{NameOf(s)} міняє в банку {rate * n} {ResGen[give]} на {n} {ResGen[get]}");
+        Say($"{NameOf(s)} міняє в банку: {ResCount(rate * n, give)} ⇄ {ResCount(n, get)}");
         Prune();
         return null;
     }
@@ -894,7 +916,7 @@ public sealed class KhutoryCore
         Trades[s]++;
         Trades[with]++;
         Emit("trade", ("seat", s), ("with", with), ("give", ResMap(give)), ("get", ResMap(get)));
-        Say($"{NameOf(s)} міняється з {NameOf(with)}");
+        Say($"{NameOf(s)} і {NameOf(with)} міняються: {ResList(give)} ⇄ {ResList(get)}");
         Prune();
         return null;
     }

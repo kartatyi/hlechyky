@@ -782,7 +782,8 @@ public class KhutoryTests
             var v = h.View(0);
             if (v.GetProperty("botIn").ValueKind == JsonValueKind.Number)
             {
-                h.Clock.AdvanceMs(BoardBots.ThinkMs);
+                // Задрімала людина має 5 с на свій кидок — botIn тоді довший за ThinkMs.
+                h.Clock.AdvanceMs(Math.Max(BoardBots.ThinkMs, v.GetProperty("botIn").GetInt32()));
                 Assert.True(h.Act(0, "bot").Ok);
             }
             else
