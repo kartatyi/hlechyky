@@ -234,6 +234,7 @@
 /* Грамота в руці: тиц — пояснення, «▶ Зіграти» — окремо (khutory-look.md §11). */
 .khu-dtap { display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: 0; padding: 2px; color: inherit; text-shadow: inherit; width: 100%; }
 .khu-dinfo { font-style: normal; opacity: .8; font-size: .9em; }
+.khu-dtap .khu-dn { white-space: normal; overflow-wrap: anywhere; text-align: center; line-height: 1.15; min-width: 0; max-width: 100%; }
 .khu-card.dev.open { width: 200px; }
 .khu-dh { font-size: .78em; line-height: 1.25; padding: 0 2px; }
 
