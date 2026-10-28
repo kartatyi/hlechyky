@@ -142,14 +142,35 @@ test('K33-2: гравець стоїть на колії — паротяг м\'
   assert.ok(!s.path.includes(id(s, Math.floor(pl.x / U), Math.floor(pl.y / U))), 'стоїть поза колією');
 });
 
-test('K33-2: тиснеш у вагон — спершу впираєшся, за 0,5 с протискаєшся крізь', () => {
+test('K33-2: у вагон заходиш одразу, але крізь нього йдеш повільно (~1 с), далі — звична швидкість', () => {
   const s = blank({ startSec: 900 });
   const w = R.wagonPos(s, 1), wx = Math.floor(w.x / U), wy = Math.floor(w.y / U);
   const pl = at(s, 0, wx, wy - 2, 0, 1);
-  run(s, 6, [{ p: 0, k: 'in', mx: 0, my: 100 }]);
-  assert.ok(pl.y < w.y - 600, 'уперся');
-  run(s, 40);
-  assert.ok(pl.y > w.y + 600, 'протиснувся: ' + pl.y + ' ' + w.y);
+  const v = Math.round(s.params.playerSpeed * U / TPS);
+  let inside = 0, outStep = 0;
+  for (let t = 0; t < 80 && pl.y < w.y + 2000; t++) {
+    const y0 = pl.y;
+    R.step(s, t === 0 ? [{ p: 0, k: 'in', mx: 0, my: 100 }] : []);
+    if (L.inWagon(s, pl.x, y0)) { inside++; assert.ok(pl.y - y0 > 0 && pl.y - y0 <= v * 0.35, 'у вагоні повільно: ' + (pl.y - y0)); }
+    else outStep = Math.max(outStep, pl.y - y0);
+  }
+  assert.ok(pl.y > w.y + 600, 'пройшов крізь: ' + pl.y + ' ' + w.y);
+  assert.ok(inside >= 15 && inside <= 30, 'у вагоні ' + inside + ' тиків');
+  assert.equal(outStep, v, 'поза вагоном — повна швидкість');
+});
+
+test('K33-2: старий спосіб (passT > 0) — спершу впираєшся, за passT тиків протискаєшся', () => {
+  const was = L.K33.passT;
+  L.K33.passT = 10;
+  try {
+    const s = blank({ startSec: 900 });
+    const w = R.wagonPos(s, 1), wx = Math.floor(w.x / U), wy = Math.floor(w.y / U);
+    const pl = at(s, 0, wx, wy - 2, 0, 1);
+    run(s, 6, [{ p: 0, k: 'in', mx: 0, my: 100 }]);
+    assert.ok(pl.y < w.y - 600, 'уперся');
+    run(s, 40);
+    assert.ok(pl.y > w.y + 600, 'протиснувся: ' + pl.y + ' ' + w.y);
+  } finally { L.K33.passT = was; }
 });
 
 // ================= 3. вихід зі столу =================

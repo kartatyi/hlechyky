@@ -198,7 +198,7 @@ html.kol-a-calm .kol-alarm { background: #a3160ee6; border-color: #ff3b2f; }
 .kol-toast { white-space: normal; max-width: min(92vw, 34em); text-align: center; }
 .kol-hint { font-size: max(12px, .85em); }
 .kol-ptab { font-size: max(12px, .85em); display: block; max-width: 100%; width: fit-content; overflow-x: auto; }
-@media (max-width: 640px) { .kol-ptab { font-size: 12px; } .kol-card { padding: .8em .7em; max-width: calc(100vw - 16px); } }
+@media (max-width: 640px) { .kol-ptab { font-size: 12px; } .kol-ttl span { display: block; } .kol-card { padding: .8em .7em; max-width: calc(100vw - 16px); } }
 @media (max-height: 500px) { .kol-screen { align-items: flex-start; padding: 6px 0; } .kol-card { padding: .5em 1em; } .kol-card h1 { font-size: 1.6em; }
   .kol-card .kol-again { min-height: 42px; margin-top: .3em; } .kol-card .kol-sum { grid-template-columns: repeat(4, auto); margin: .3em auto; } }
 `;
@@ -731,44 +731,19 @@ export function createHud(root, opts = {}) {
   let magTick = -1e9;                 // K56: тост магніту — не частіше ніж раз на MAG_TOAST тиків (тягне раз на 0,5 с)
   const MAG_TOAST = 20 * TPS;
   const pName = (s, p, raw) => playerLabel(game0, p, s.players?.length ?? 0, raw);   // K37: ніки й у тостах, і в таблиці звань
-  // K23: підсумок по гравцях — лічильники з s.ev (тик рахуємо раз: мережевий відкат тики не подвоює)
-  let tally = [], tallyTick = -1, prevPos = [];
-  function tallyTick1(ev, s) {
-    if ((s.tick ?? 0) <= tallyTick) return;
-    tallyTick = s.tick ?? 0;
-    const acted = new Set();
-    const T = (p) => (tally[p] ??= { chop: 0, rock: 0, rail: 0, douse: 0, water: 0, carry: 0, throw: 0, catch: 0, pass: 0, stun: 0, hurt: 0, honk: 0, bump: 0, scare: 0, idle: 0, ticks: 0 });
-    for (const e of ev) {
-      const p = e.t === 'stun' ? e.by : e.p;
-      if (p === undefined || p < 0 || p > 3) continue;
-      const c = T(p);
-      switch (e.t) {
-        case 'chop': case 'rock': case 'rail': case 'douse': case 'water': case 'throw': case 'catch': case 'pass': case 'honk': case 'scare': c[e.t]++; break;
-        case 'pick': case 'drop': c.carry++; break;
-        case 'stun': c.stun++; if (e.p !== undefined) T(e.p).hurt++; break;
-        case 'bump': continue;   // p — кого штовхнули, не дія
-        default: continue;
-      }
-      acted.add(p);
-    }
-    if (s.status !== 'run' || !s.train?.started) return;   // «стояв» — лише поки паротяг їде
-    (s.players ?? []).forEach((pl, i) => {
-      if (!pl) return;
-      const c = T(i), pp = prevPos[i];
-      c.ticks++;
-      if (pp && pp[0] === pl.x && pp[1] === pl.y && !acted.has(i)) c.idle++;
-      prevPos[i] = [pl.x, pl.y];
-    });
-  }
+  // K23: підсумок по гравцях — рахують правила (tally.js → s.stats.pl), тож у мережі він однаковий в усіх і переживає
+  // відкат; до 28.10 рахував HUD з подій «свіжих» тиків — дії інших гравців губилися
+  const rowsOf = (s) => s.stats?.pl ?? [];
   // жартівливі звання: найбільший у категорії (≥ min) — звання; кожному до 2, нікому — «🧩 На підхваті»
   const TITLES = [
     ['rail', '🛤 Колійник', 3], ['chop', '🪓 Лісоруб', 5], ['rock', '⛏ Каменяр', 5], ['douse', '💧 Пожежник', 1],
-    ['stun', '🤕 Небезпечний', 1], ['catch', '🧤 Воротар', 2], ['throw', '🎯 Метальник', 3], ['pass', '🤝 Передавальник', 3],
-    ['carry', '🚚 Вантажник', 8], ['scare', '🪿 Гусятник', 1], ['honk', '📯 Горлань', 5], ['hurt', '🌀 Груша для биття', 2],
+    ['store', '📦 Комірник', 10], ['stun', '🤕 Небезпечний', 1], ['catch', '🧤 Воротар', 2], ['throw', '🎯 Метальник', 3],
+    ['pass', '🤝 Передавальник', 3], ['carry', '🚚 Вантажник', 8], ['scare', '🪿 Гусятник', 1], ['honk', '📯 Горлань', 5],
+    ['hurt', '🌀 Груша для биття', 2],
   ];
-  function titles(n) {
+  function titles(n, rows) {
     const cand = Array.from({ length: n }, () => []);
-    const row = (i) => tally[i] ?? {};
+    const row = (i) => rows[i] ?? {};
     for (const [k, name, min] of TITLES) {
       let best = 0, sum = 0;
       for (let i = 0; i < n; i++) { const v = row(i)[k] ?? 0; best = Math.max(best, v); sum += v; }
@@ -790,21 +765,21 @@ export function createHud(root, opts = {}) {
   function playersHtml(s) {
     const n = s.players?.length ?? 0;
     if (!n) return '';
-    const tt = titles(n), z = (v) => v ? v : '<i>·</i>';
-    let h = '<table class="kol-ptab"><tr><th></th><th title="нарубав">🪓</th><th title="набив каміння">⛏</th><th title="поклав рейок">🛤</th><th title="полив котел">💧</th><th title="кинув / зловив">🎯</th><th title="бац колегу">💫</th><th title="стояв без діла">🛋</th><th></th></tr>';
+    const rows = rowsOf(s), tt = titles(n, rows), z = (v) => v ? v : '<i>·</i>';
+    let h = '<table class="kol-ptab"><tr><th></th><th title="ударів по деревах">🪓</th><th title="ударів по скелях">⛏</th><th title="склав у потяг дров і заліза">📦</th><th title="поклав рейок і містків">🛤</th><th title="полив котел">💧</th><th title="кинув / зловив">🎯</th><th title="бац колегу">💫</th><th title="стояв без діла, поки потяг їхав">🛋</th><th></th></tr>';
     for (let i = 0; i < n; i++) {
-      const r = tally[i] ?? {};
+      if (!s.players[i]) continue;
+      const r = rows[i] ?? {};
       const idle = r.ticks ? Math.round(r.idle / r.ticks * 100) : 0;
-      h += `<tr><td><b style="color:${pcol(i)}">${pName(s, i)}</b></td><td>${z(r.chop)}</td><td>${z(r.rock)}</td><td>${z(r.rail)}</td><td>${z(r.douse)}</td>`
-        + `<td>${z(r.throw || r.catch ? `${r.throw ?? 0}/${r.catch ?? 0}` : 0)}</td><td>${z(r.stun)}</td><td>${idle}%</td><td class="kol-ttl">${tt[i].join(' ')}</td></tr>`;
+      h += `<tr><td><b style="color:${pcol(i)}">${pName(s, i)}</b></td><td>${z(r.chop)}</td><td>${z(r.rock)}</td><td>${z(r.store)}</td><td>${z(r.rail)}</td><td>${z(r.douse)}</td>`
+        + `<td>${z(r.throw || r.catch ? `${r.throw ?? 0}/${r.catch ?? 0}` : 0)}</td><td>${z(r.stun)}</td><td>${r.ticks ? idle + '%' : z(0)}</td><td class="kol-ttl">${tt[i].map((x) => `<span>${x}</span>`).join(' ')}</td></tr>`;
     }
     return h + '</table>';
   }
   function events(ev, s) {
     if (!ev || !s) return;
     if (game0?.replay?.active && game0.state && s !== game0.state) return;   // K59: світ повтору — ні ачівок, ні тостів, ні звань
-    if (s !== evState) { evState = s; seenGeese = new Set(); tally = []; tallyTick = -1; prevPos = []; magTick = -1e9; }
-    tallyTick1(ev, s);
+    if (s !== evState) { evState = s; seenGeese = new Set(); magTick = -1e9; }
     // K50: досягнення — бот не відкриває; маршрут дня — сід дня; тост «🏆 …» через наявні тости
     try {
       const g = game0, net = !!(g?.net || globalThis.KOL?.net);

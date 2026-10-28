@@ -113,7 +113,7 @@ test('розмір коду 8-хв партії: 4 гравці (живий + 3 
     const { s, rec } = record(8, 3, { human, params: prm });
     const code = await P.encode(rec);
     console.log(`${name}: партія ${Math.round(s.tick / R.TPS)} с (${s.status}), тиків з командами ${rec.ticks.length}, сирі ${P.encodeBytes(rec).length} Б, код ${code.length} символів`);
-    assert.ok(s.tick >= 7 * 60 * R.TPS, `партія коротка: ${s.tick}`);
+    assert.ok(s.tick >= 6 * 60 * R.TPS, `партія коротка: ${s.tick}`);   // з 28.10 боти не стоять під вагонами — доїжджають за ~7 хв
     assert.ok(code.length <= lim, `${name}: код ${code.length}`);
     assert.equal(R.hash(P.playAll(await P.decode(code))), R.hash(s));
   }

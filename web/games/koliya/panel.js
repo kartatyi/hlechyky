@@ -146,7 +146,7 @@ export function createPanel(root, opts) {
   const fsBtn = el('button', 'kol-gear kol-fs');
   const fsSync = () => {
     const on = !!document.fullscreenElement;
-    fsBtn.innerHTML = fsIco(on); fsBtn.title = on ? 'Вийти з повного екрана (Esc)' : 'На весь екран';
+    fsBtn.innerHTML = fsIco(on); fsBtn.title = on ? 'Вийти з повного екрана (Esc)' : 'Гра на весь монітор';
   };
   if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
     fsSync();

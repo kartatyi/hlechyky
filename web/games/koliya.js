@@ -7,28 +7,6 @@
     + '<path d="M3 3h10M3 6.5h10M3 10h10M3 13.5h10" stroke="var(--clay)" stroke-width="1.4"/></svg>';
   const frames = new WeakMap();
 
-  // Рамка: звично — до 720 px заввишки; у ⛶ столу (body.gfull) — до низу вікна, щоб гра не стояла віконцем посеред
-  // порожнього екрана. Що під рамкою в картці (місця гравців) — лишаємо видимим.
-  let booted = false;
-  function fitFrame(f) {
-    if (!document.body.classList.contains('gfull')) { if (f.style.height) f.style.height = ''; return; }
-    const r = f.getBoundingClientRect(), box = f.closest('.gtable');
-    const below = box ? Math.max(0, box.getBoundingClientRect().bottom - r.bottom) : 0;
-    const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h')) || 0;
-    const h = Math.max(320, Math.floor(window.innerHeight - dock - (r.top + window.scrollY) - below - 12)) + 'px';
-    if (f.style.height !== h) f.style.height = h;
-  }
-  function boot() {
-    if (booted) return;
-    booted = true;
-    const st = document.createElement('style');
-    st.textContent = '.kol-frame{width:100%;height:min(78vh,720px);border:0;border-radius:8px;display:block}';
-    document.head.appendChild(st);
-    const all = () => document.querySelectorAll('iframe.kol-frame').forEach(fitFrame);
-    new MutationObserver(all).observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    window.addEventListener('resize', all);
-  }
-
   HGames.register({
     id: 'koliya',
     icon: ICON,
@@ -52,12 +30,12 @@
       const pass = new URLSearchParams(location.search), extra = ['lag', 'jit', 'drive', 'smooth', 'test']
         .filter((k) => pass.has(k)).map((k) => '&' + k + (pass.get(k) ? '=' + encodeURIComponent(pass.get(k)) : '')).join('');
       f.src = '/games/koliya/proto.html?net=' + encodeURIComponent(id) + (nick ? '&nick=' + encodeURIComponent(nick) : '') + extra;
-      f.className = 'kol-frame';
-      f.allow = 'gamepad; autoplay; fullscreen';   // fullscreen — ⛶ у самій грі (koliya/panel.js) розгортає рамку на весь екран
-      boot();
+      // Розгорнути — два способи: ⛶ столу (core.js) ховає сайт навколо, гра лишається рамкою до 720 px; ⛶ у самій грі
+      // (koliya/panel.js) — справжній повний екран, гра на весь монітор (для цього allow="fullscreen")
+      f.style.cssText = 'width:100%;height:min(78vh,720px);border:0;border-radius:8px;display:block';
+      f.allow = 'gamepad; autoplay; fullscreen';
       root.appendChild(f);
       frames.set(root, f);
-      fitFrame(f);
     },
     unmount(root) { frames.delete(root); root.innerHTML = ''; },
   });
