@@ -150,10 +150,13 @@
       + '<div class="khu-fieldwrap"><div class="khu-field"></div><div class="khu-marks"></div><div class="khu-tip" hidden></div>'
       + '<div class="khu-flash" hidden></div><div class="khu-tools"><button type="button" class="khu-view" data-a="view"></button><button type="button" class="khu-view khu-snd" data-a="snd"></button></div>'
       + '<div class="khu-fab"></div>'
+      + '<div class="khu-inc"></div>'
+      + '<div class="khu-ask" hidden></div>'
       + '<div class="khu-dlg" hidden></div></div>'
       + '<div class="khu-side"><div class="khu-act"></div><div class="khu-trade"></div><div class="khu-offers"></div><div class="khu-log"></div></div>'
       + '</div>'
       + '<div class="khu-hand"></div>'
+      + '<div class="khu-incm"></div>'
       + '</div>';
     st.el = {};
     for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'fab', 'snd'])
@@ -165,6 +168,7 @@
     st.el.players.insertAdjacentHTML('afterend', '<div class="khu-pop" role="tooltip" hidden></div>');
     st.el.pop = root.querySelector('.khu-pop');
     st.el.players.parentElement.addEventListener('click', (e) => onPlateTap(root, e));
+    for (const k of ['inc', 'incm', 'ask']) st.el[k] = root.querySelector('.khu-' + k);
     // Звук: типово вимкнено, стан пам'ятає сам модуль; AudioContext — лише на першому play() при ввімкненому.
     try { st.snd = M.S && M.S.createSound ? M.S.createSound() : null; } catch (e) { st.snd = null; }
     paintSnd(st);
@@ -427,6 +431,8 @@
     renderLog(st, v);
     renderHand(st, v, me);
     renderDlg(st, v, me);
+    renderInc(st, v, me);
+    attention(st, v, me);
     renderSum(st, v);
     renderNumbers(st, v, me);
     st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
@@ -559,33 +565,35 @@
       if ((me.dev || []).some((d) => d.k === 'knight' && !d.fresh) && !me.playedDev) h += '<p class="khu-note">Можна спершу зіграти ⚔️ Козака з руки — прогнати Кармелюка зі своєї землі</p>';
     } else if (myTurn && v.phase === 'main') {
       const can = me.can || {}, why = me.why || {}, sp = me.spots || {};
+      const left = (playerOf(v, me.seat) || {}).left || {};
       h += '<div class="khu-builds">';
       for (const k of ['road', 'town', 'city', 'dev']) {
         const room = k === 'dev' || (sp[k] || []).length > 0;
         const ok = !!can[k] && room;
         const reason = why[k] || (!room && can[k] ? 'нема де поставити' : !can[k] && k === 'dev' && !v.devLeft ? 'грамоти скінчились' : '');
         const on = st.pick === k;
-        h += '<button type="button" class="khu-b' + (on ? ' on' : '') + (ok ? ' ok' : '') + '" data-a="build" data-k="' + k + '"' + (ok || on ? '' : ' disabled')
+        // «🔁 обміняй і будуй»: сірій будівлі бракує 1–2 карт, а банк їх покриває (і місце та фігура є).
+        const fix = !ok && !on && room && (k === 'dev' ? v.devLeft > 0 : left[k] == null || left[k] > 0) ? M.K.bankFix(me.hand, M.C.COST[k], me.rates) : null;
+        const btn = '<button type="button" class="khu-b' + (on ? ' on' : '') + (ok ? ' ok' : '') + '" data-a="build" data-k="' + k + '"' + (ok || on ? '' : ' disabled')
           + ' title="' + esc(k === 'dev' ? 'Грамота: козак, скарб, Толока, Врожайний рік або Ярмарок' : M.C.BUILD_NAME[k]) + '">'
           + '<span class="khu-bn">' + BUILD_ICON[k] + ' ' + (on ? '✕ Скасувати' : M.C.BUILD_NAME[k]) + '</span>'
           + '<span class="khu-cost">' + costDots(k, me.hand) + '</span>'
           + (ok || on ? '<span class="khu-why ok">' + (on ? 'обери місце на полі' : k === 'dev' ? 'купити' : 'можна!') + '</span>' : '<span class="khu-why">' + esc(reason || 'не зараз') + '</span>')
           + '</button>';
+        h += fix ? '<div class="khu-bw">' + btn + '<button type="button" class="khu-fix" data-a="fix" data-k="' + k + '"' + (st.fixing ? ' disabled' : '')
+          + ' title="Обміняти в банку ' + esc(fix.map((t) => M.K.resPhraseAcc(t.give, t.n * t.rate) + ' на ' + M.K.resPhraseAcc(t.get, t.n)).join(' і ')) + (k === 'dev' ? '' : ' й одразу обрати місце') + '">🔁 '
+          + fix.map((t) => t.n * t.rate + RES_ICON[t.give] + '→' + (t.n > 1 ? t.n : '') + RES_ICON[t.get]).join(' ') + (k === 'dev' ? ' обміняй' : ' і будуй') + '</button></div>' : btn;
       }
       h += '</div>';
-      h += '<div class="khu-row"><button type="button" class="khu-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Торгувати</button>'
+      h += bankRow(st, v, me);
+      h += '<div class="khu-row"><button type="button" class="khu-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Торгувати' + incBadge(v, me) + '</button>'
         + '<button type="button" class="khu-mid primary" data-a="end">✅ Завершити хід</button></div>';
     } else if (me && v.phase === 'main' && v.turn != null && !isBot(v, v.turn) && v.rolled !== false) {
-      h += '<button type="button" class="khu-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Запропонувати обмін ' + esc(nickOf(v, v.turn)) + '</button>';
+      h += '<button type="button" class="khu-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Запропонувати обмін ' + esc(nickOf(v, v.turn)) + incBadge(v, me) + '</button>';
     } else if (me && me.must === 'discard') {
       h += '<button type="button" class="khu-big primary" data-a="disc-open">🃏 Скинути карти</button>';
     }
-    if (me && v.phase === 'main' && v.turn != null && isBot(v, v.turn) && !myTurn) h += '<p class="khu-note">Глек торгується сам — з ним обмін не відкриваємо</p>';
-    if (myTurn && v.phase === 'main') {
-      const rates = me.rates || {};
-      const best = Math.min(...RES.map((r) => rates[r] || 4));
-      h += '<p class="khu-note khu-bnote">Банк міняє ' + best + ' однакові на 1 будь-яку' + (best < 4 ? ' (твої пристані)' : '') + ' — у «Торгувати»</p>';
-    }
+    if (me && v.phase === 'main' && v.turn != null && isBot(v, v.turn) && !myTurn && !incList(v, me).length) h += '<p class="khu-note">🤖 Зараз ходить Глек — він міняє лише з банком. Твоя черга торгуватись — у твій хід</p>';
     setHtml(st.el.act, h);
   }
 
@@ -615,23 +623,12 @@
     if (myTurn) {
       const others = v.players.filter((p) => p.seat !== me.seat);
       h += '<div class="khu-to">Кому: <button type="button" class="khu-chip' + (T.to == null ? ' on' : '') + '" data-a="tr-to" data-to="">Усім</button>'
-        + others.map((p) => '<button type="button" class="khu-chip' + (T.to === p.seat ? ' on' : '') + '" data-a="tr-to" data-to="' + p.seat + '">' + who(v, p.seat) + '</button>').join('') + '</div>';
+        + others.map((p) => '<button type="button" class="khu-chip' + (T.to === p.seat ? ' on' : '') + '" data-a="tr-to" data-to="' + p.seat + '">' + whoS(v, p.seat) + '</button>').join('') + '</div>';
     }
     h += '<button type="button" class="khu-mid primary" data-a="offer"' + (ready ? '' : ' disabled') + '>'
-      + (ready ? 'Запропонувати: ' + esc(K.resList(give)) + ' ⇄ ' + esc(K.resList(get)) : 'Обери, що даєш і що хочеш') + '</button>';
-    if (myTurn) {
-      const ch = K.bankChoices(hand, me.rates);
-      h += '<div class="khu-bank"><div class="khu-trl">🏦 Банк — віддай однакові, візьми 1 будь-яку</div><div class="khu-bankrow">'
-        + ch.map((c) => '<button type="button" class="khu-chip' + (st.bankGive === c.res ? ' on' : '') + '" data-a="bank-give" data-r="' + c.res + '"' + (c.can ? '' : ' disabled')
-          + ' title="' + (c.can ? '' : 'є ' + c.have + ' з ' + c.rate) + '">' + c.rate + ' ' + RES_ICON[c.res] + ' → 1</button>').join('') + '</div>';
-      if (st.bankGive) {
-        const r0 = st.bankGive, rate = (me.rates || {})[r0] || 4;
-        h += '<div class="khu-trl">Що береш за ' + esc(K.resPhrase(r0, rate)) + '?</div><div class="khu-bankrow">'
-          + RES.filter((r) => r !== r0).map((r) => '<button type="button" class="khu-chip big" data-a="bank-get" data-r="' + r + '" style="--rc:' + M.C.RES_COLOR[r] + '">' + RES_ICON[r] + ' ' + M.C.RES_NAME[r] + '</button>').join('')
-          + '</div>';
-      }
-      h += '</div>';
-    }
+      + (ready ? 'Запропонувати: даю ' + esc(K.resListAcc(give)) + ' ⇄ хочу ' + esc(K.resListAcc(get)) : 'Обери, що даєш і що хочеш') + '</button>';
+    // Банк — тепер завжди в панелі ходу (bankRow), тут лише нагадка.
+    if (myTurn) h += '<p class="khu-note">🏦 З банком — чипами «4🪵→1» у панелі ходу, без пропозицій</p>';
     setHtml(st.el.trade, h + '</div>');
   }
 
@@ -646,20 +643,28 @@
       const toMe = me && !mine && fromCur && (o.to == null || o.to === me.seat);
       const counterToMe = me && !mine && !fromCur && me.seat === v.turn;
       let s = '<div class="khu-offer' + (toMe || counterToMe ? ' forme' : '') + '">';
-      s += '<div class="khu-ot">' + (mine ? '<b>Твоя пропозиція</b>' : who(v, o.from) + (fromCur ? '' : ' <span class="muted">(зустрічна)</span>'))
-        + (fromCur ? ' <span class="muted">→ ' + (o.to == null ? 'усім' : esc(nickOf(v, o.to))) + '</span>' : '') + '</div>';
-      s += '<div class="khu-od">' + (mine ? 'даєш' : 'дає') + ' <b>' + esc(K.resList(o.give)) + '</b> · ' + (mine ? 'хочеш' : 'хоче') + ' <b>' + esc(K.resList(o.get)) + '</b></div>';
       const acc = o.acc || [], dec = o.dec || [];
+      const refused = mine && me.seat === v.turn && K.allRefused(o, v.players.map((p) => p.seat));
+      s += '<div class="khu-ot">' + (refused ? '<b>🙅 Усі відмовились</b>' : mine ? '<b>Твоя пропозиція</b>' : whoS(v, o.from) + (fromCur ? '' : ' <span class="muted">(зустрічна)</span>'))
+        + (fromCur ? ' <span class="muted">→ ' + (o.to == null ? 'усім' : esc(nickOf(v, o.to))) + '</span>' : '') + '</div>';
+      s += '<div class="khu-od">' + (mine ? 'даєш' : 'дає') + ' <b>' + esc(K.resListAcc(o.give)) + '</b> · ' + (mine ? 'хочеш' : 'хоче') + ' <b>' + esc(K.resListAcc(o.get)) + '</b></div>';
       if (fromCur && (acc.length || dec.length)) {
         s += '<div class="khu-oa">' + acc.map((x) => '<span class="ok">✅ ' + esc(nickOf(v, x)) + '</span>').join(' ') + ' '
           + dec.map((x) => '<span class="no">❌ ' + esc(nickOf(v, x)) + '</span>').join(' ') + '</div>';
       }
       const btn = [];
-      if (mine && me.seat === v.turn) {
+      if (refused) {
+        // Ніхто не хоче — не «чекаємо» до кінця ходу, а що робити далі.
+        const want = Object.keys(K.compact(o.get));
+        const bankOk = want.length === 1 && K.bankChips(hand, me.rates).some((c) => c.res !== want[0] && c.max >= 1);
+        btn.push('<button type="button" class="primary" data-a="of-edit" data-id="' + o.id + '">✏ Змінити</button>');
+        btn.push('<button type="button" data-a="cancel" data-id="' + o.id + '">🗑 Прибрати</button>');
+        if (bankOk) btn.push('<button type="button" data-a="of-bank" data-id="' + o.id + '" data-r="' + want[0] + '">🏦 У банк</button>');
+      } else if (mine && me.seat === v.turn) {
         for (const x of acc) btn.push('<button type="button" class="primary" data-a="deal" data-id="' + o.id + '" data-seat="' + x + '">🤝 Обміняти з ' + esc(nickOf(v, x)) + '</button>');
         if (!acc.length) btn.push('<span class="muted small">чекаємо, хто погодиться…</span>');
       }
-      if (mine) btn.push('<button type="button" data-a="cancel" data-id="' + o.id + '">Скасувати</button>');
+      if (mine && !refused) btn.push('<button type="button" data-a="cancel" data-id="' + o.id + '">Скасувати</button>');
       if (toMe) {
         const lack = K.lacking(hand, o.get);
         const can = !Object.keys(lack).length;
@@ -682,11 +687,161 @@
     setHtml(st.el.offers, '<div class="khu-box"><div class="khu-boxh">📨 Пропозиції</div>' + h + '</div>');
   }
 
+  // ─── Вхідна пропозиція, банк чипами, увага без звуку (khutory-look.md §1, §10, §13) ─────
+  /// Гравець із фігурою ●▲■◆ (колір сам не розрізняє всіх); на світлому — темний знак.
+  function whoS(v, seat) {
+    const p = playerOf(v, seat), ci = p ? p.color : seat;
+    const light = M && M.C.SEAT_LIGHT ? M.C.SEAT_LIGHT[ci] : false;
+    const shp = (M && M.C.SEAT_SHAPE ? M.C.SEAT_SHAPE[ci] : '') || '●';
+    return '<i class="khu-shp' + (light ? ' light' : '') + '" style="--pc:' + colorOf(v, seat) + '" aria-hidden="true">' + shp + '</i><b>' + esc(nickOf(v, seat)) + '</b>';
+  }
+  const incList = (v, me) => (me && v && v.phase === 'main' ? M.K.incomingOffers(v.offers, me.seat, v.turn) : []);
+  const incBadge = (v, me) => { const n = incList(v, me).length; return n ? ' <span class="khu-badge" title="Чекають твоєї відповіді">' + n + '</span>' : ''; };
+  const resIcons = (o) => RES.filter((r) => o && o[r] > 0).map((r) => RES_ICON[r] + '&nbsp;' + o[r]).join(' ');
+
+  /// 🏦 Банк завжди під рукою: чипи «4🪵→1» з найкращим курсом; дотик — що береш і скільки (×1/×2…).
+  function bankRow(st, v, me) {
+    const K = M.K, hand = me.hand || {};
+    const ch = K.bankChips(hand, me.rates);
+    if (st.bankGive && !ch.some((c) => c.res === st.bankGive && c.max >= 1)) st.bankGive = null;
+    let h = '<div class="khu-bankr"><span class="khu-bl" title="Банк: віддай однакові — візьми 1 будь-яку">🏦 Банк</span>'
+      + ch.map((c) => '<button type="button" class="khu-bchip' + (st.bankGive === c.res ? ' on' : '') + (c.port ? ' port' : '') + '" data-a="bank-give" data-r="' + c.res + '"'
+        + (c.max >= 1 ? '' : ' disabled') + ' title="' + esc(M.C.RES_NAME[c.res]) + ': ' + c.rate + ' на 1' + (c.port ? ' (пристань)' : '') + (c.max >= 1 ? '' : ' — є ' + c.have) + '">'
+        + c.rate + RES_ICON[c.res] + '→1' + (c.port ? '<small>⚓</small>' : '') + '</button>').join('') + '</div>';
+    if (st.bankGive) {
+      const g = ch.find((c) => c.res === st.bankGive), n = Math.min(st.bankN || 1, g.max);
+      h += '<div class="khu-bpick"><span class="khu-bl">за ' + n * g.rate + RES_ICON[g.res] + ' бери:</span>'
+        + RES.filter((r) => r !== g.res).map((r) => '<button type="button" class="khu-bget' + (st.bankWant === r ? ' want' : '') + '" data-a="bank-get" data-r="' + r + '" style="--rc:' + M.C.RES_COLOR[r] + '"'
+          + ' title="' + esc(M.K.resPhraseAcc(r, n)) + '"' + ((v.bank || {})[r] === 0 ? ' disabled' : '') + '>' + RES_ICON[r] + (n > 1 ? '×' + n : '') + '</button>').join('')
+        + (g.max > 1 ? [1, 2, 3].filter((x) => x <= g.max).map((x) => '<button type="button" class="khu-bn2' + (x === n ? ' on' : '') + '" data-a="bank-n" data-n="' + x + '">×' + x + '</button>').join('') : '')
+        + '</div>';
+    }
+    return h;
+  }
+
+  /// Що показати у вхідній картці: найновіша (чи обрана «ще N ▸») і скільки ще.
+  function incPick(st, v, me) {
+    const list = incList(v, me);
+    if (!list.length) return null;
+    let i = list.findIndex((x) => x.o.id === st.incPick);
+    if (i < 0) i = 0;
+    return { cur: list[i], i, n: list.length, list };
+  }
+
+  /// До коли пропозиція жива: строк ходу (deadline) або кінець очікування Глека (botIn, KhutoryBot.OfferWaitMs) — що ближче.
+  function incEnd(st, v, o) {
+    let end = v.deadline ? Date.parse(v.deadline) : Infinity;
+    if (o.from === v.turn && isBot(v, o.from) && st.botAt) end = Math.min(end, st.botAt);
+    return end;
+  }
+
+  function renderInc(st, v, me) {
+    if (st.botV !== v) { st.botV = v; st.botAt = typeof v.botIn === 'number' ? Date.now() + v.botIn : null; }
+    const P = incPick(st, v, me);
+    st.inc = null;
+    if (!P) { setHtml(st.el.inc, ''); setHtml(st.el.incm, ''); return; }
+    const { o, kind } = P.cur, K = M.K, hand = me.hand || {};
+    st.incSeen = st.incSeen || {};
+    if (!st.incSeen[o.id]) st.incSeen[o.id] = Date.now();
+    st.inc = { id: o.id, t0: st.incSeen[o.id], end: incEnd(st, v, o) };
+    const lack = K.lacking(hand, o.get), can = !Object.keys(lack).length;
+    const head = kind === 'counter' ? whoS(v, o.from) + '&nbsp;відповідає зустрічною' : whoS(v, o.from) + '&nbsp;пропонує обмін' + (o.to === me.seat ? ' тобі' : '');
+    const bar = st.inc.end < Infinity ? '<div class="khu-ibar"><i data-ibar></i></div>' : '';
+    let h;
+    if (st.incHid === o.id) {
+      h = '<div class="khu-incc mini"><button type="button" class="khu-istrip" data-a="inc-show" aria-label="Розгорнути пропозицію">📨 ' + head
+        + ' <span class="khu-ideal1">' + resIcons(o.give) + ' ⇄ ' + resIcons(o.get) + '</span><span class="khu-isec" data-isec></span> ▴</button>' + bar + '</div>';
+    } else {
+      const after = RES.filter((r) => (o.get[r] || 0) || (o.give[r] || 0))
+        .map((r) => RES_ICON[r] + ' ' + (hand[r] || 0) + ' → ' + ((hand[r] || 0) - (o.get[r] || 0) + (o.give[r] || 0))).join(' · ');
+      const yes = kind === 'counter'
+        ? '<button type="button" class="primary" data-a="deal" data-id="' + o.id + '" data-seat="' + o.from + '"' + (can ? '' : ' disabled') + '>🤝 Обміняти</button>'
+        : '<button type="button" class="primary" data-a="ans" data-id="' + o.id + '" data-ok="1"' + (can ? '' : ' disabled') + '>✅ Згоден</button>';
+      h = '<div class="khu-incc" role="alertdialog" aria-label="Пропозиція обміну">'
+        + '<div class="khu-inch"><span class="khu-bell" aria-hidden="true">🔔</span><span class="khu-inw">' + head + '</span><span class="khu-isec" data-isec></span>'
+        + '<button type="button" class="khu-ilater" data-a="inc-hide" title="Згорнути — відповім пізніше">▾ пізніше</button></div>'
+        + '<div class="khu-ideal"><span class="side"><small>отримаєш</small>' + resIcons(o.give) + '</span><span class="arr">⇄</span><span class="side"><small>віддаси</small>' + resIcons(o.get) + '</span></div>'
+        + '<div class="khu-ileft">у тебе: ' + after + '</div>'
+        + (can ? '' : '<div class="khu-ileft no">не вистачає: ' + resIcons(lack) + '</div>')
+        + '<div class="khu-ib">' + yes + '<button type="button" data-a="ans" data-id="' + o.id + '" data-ok="0">❌ Ні</button>'
+        + '<button type="button" data-a="counter" data-id="' + o.id + '">↩ Інакше</button></div>'
+        + (P.n > 1 ? '<button type="button" class="khu-imore" data-a="inc-next">ще ' + (P.n - 1) + ' ▸</button>' : '')
+        + bar + '</div>';
+    }
+    setHtml(st.el.inc, h);
+    setHtml(st.el.incm, h);
+    tickInc(st);
+  }
+
+  /// Смужка часу й секунди вхідної картки — щотіку (без перемальовування).
+  function tickInc(st) {
+    const I = st.inc;
+    if (!I || !st.el) return;
+    const now = Date.now(), left = Math.max(0, I.end - now);
+    const f = I.end < Infinity ? Math.max(0, Math.min(1, left / Math.max(1, I.end - I.t0))) : 1;
+    for (const host of [st.el.inc, st.el.incm]) {
+      for (const b of host.querySelectorAll('[data-ibar]')) { b.style.transform = 'scaleX(' + f.toFixed(3) + ')'; b.classList.toggle('late', left < 4000); }
+      const t = I.end < Infinity ? Math.ceil(left / 1000) + ' с' : '';
+      for (const s of host.querySelectorAll('[data-isec]')) if (s.textContent !== t) s.textContent = t;
+    }
+  }
+
+  /// Увага без звуку: вібрація на «твій хід» і нову пропозицію, мигання вкладки у фоні, раз — «увімкнути звук?».
+  /// Каркас (app.js paintTitle) уже ставить «🎲 Твій хід ·» у заголовок, коли хід мій; тут — мигання й пропозиції/скидання.
+  function attention(st, v, me) {
+    const live = me && v.phase !== 'over' && !v.over;
+    const mine = !!(live && (me.must || (v.turn === me.seat && (v.phase === 'main' || v.phase === 'road2'))));
+    const inc = live ? incList(v, me) : [];
+    const top = inc.length ? inc[0].o.id : -1;
+    const first = st.attn == null;
+    const was = st.attn || { mine: false, top: -1 };
+    st.attn = { mine, top: Math.max(top, was.top) };
+    if (!first && ((mine && !was.mine) || top > was.top)) {
+      const now = Date.now();
+      if (!(now - (st.vibAt || 0) < 5000)) {
+        st.vibAt = now;
+        try { if (navigator.vibrate) navigator.vibrate(top > was.top ? [90, 60, 90] : 120); } catch (e) { /* не всюди можна */ }
+      }
+      if (top > was.top) sfx(st, 'trade');
+    }
+    st.attnTitle = inc.length ? '🤝 Тобі пропонують обмін — Хутори'
+      : mine ? (me.must === 'discard' ? '🃏 Скинь карти — Хутори' : '🎲 Твій хід — Хутори') : null;
+    // «🔊 Увімкнути звук гри?» — один раз, коли щось чекає саме від мене, а звук вимкнено.
+    const ask = !!(st.snd && !st.snd.on && (mine || inc.length) && store.get('kh.sndAsk') == null);
+    if (ask && !st.askAt) st.askAt = Date.now();
+    setHtml(st.el.ask, ask ? '<span>🔊 Увімкнути звук гри?</span><button type="button" class="primary" data-a="snd-yes">Так</button><button type="button" data-a="snd-no">Ні, тихо</button>' : '');
+    st.el.ask.hidden = !ask;
+  }
+
+  function tickAttn(st) {
+    tickInc(st);
+    // Питання про звук висить 20 с — далі вважаємо, що бачили, і більше не питаємо.
+    if (st.askAt && !st.el.ask.hidden && Date.now() - st.askAt > 20000) { store.set('kh.sndAsk', 'seen'); st.el.ask.hidden = true; st.askAt = 0; }
+    if (typeof document === 'undefined') return;
+    const want = document.hidden && st.attnTitle ? st.attnTitle : null;
+    if (want) {
+      const t = document.title;
+      if (t !== want && t !== st.titleBase) st.titleBase = t;   // app.js міг переписати назву (трек, непрочитане)
+      st.blinkT = want;
+      const on = Math.floor(Date.now() / 1000) % 2 === 0;
+      const next = on ? want : st.titleBase;
+      if (next != null && document.title !== next) document.title = next;
+    } else stopBlink(st);
+  }
+  function stopBlink(st) {
+    if (!st || !st.blinkT) return;
+    if (typeof document !== 'undefined' && document.title === st.blinkT && st.titleBase != null) document.title = st.titleBase;
+    st.blinkT = null;
+  }
+
   const HELP = '<div class="khu-box khu-help"><div class="khu-boxh">❔ Як грати<button type="button" class="khu-x" data-a="help" aria-label="Сховати">✕</button></div><ol>'
     + '<li><b>Кидай кубики</b> 🎲 — кожна земля з цим числом дає карту всім, чия хата стоїть на її куті. 🔴 6 і 8 випадають найчастіше</li>'
     + '<li><b>Будуй</b> за карти: 🛤 шлях веде до нових місць, 🏠 хата = 1 ⭐, 🏛 містечко = 2 ⭐ і вдвічі більше карт</li>'
-    + '<li><b>Торгуйся</b> 🤝 з сусідами або з банком (4 однакові → 1 будь-яка; біля пристані ⚓ — вигідніше)</li>'
-    + '<li>Випала <b>сімка</b> — приходить Кармелюк 🥷: хто має понад 7 карт, віддає половину</li>'
+    + '<li><b>Правило відстані:</b> хату ставиш на перехресті, не ближче ніж через одне перехрестя від будь-якої іншої хати. Після розстановки — лише біля свого шляху</li>'
+    + '<li><b>Торгуйся</b> 🤝 з сусідами або з банком: 4 однакові → 1 будь-яка. ⚓ <b>Пристані</b> на березі: хата біля «3:1» міняє 3 однакові на 1, біля пристані з ресурсом — 2 цього ресурсу на 1</li>'
+    + '<li>Випала <b>сімка</b> — приходить Кармелюк 🥷: хто має понад 7 карт, віддає половину; той, хто кинув, ставить Кармелюка на землю (вона не родить) і забирає карту в сусіда</li>'
+    + '<li><b>Нагороди</b> по +2 ⭐: 🛤 <b>Чумацький шлях</b> — найдовший шлях без розривів, щонайменше 5; ⚔ <b>Найсильніша сотня</b> — найбільше зіграних козаків, щонайменше 3. Хто переважить — забирає</li>'
+    + '<li>📜 <b>Грамоти</b> (🧶 + 🌾 + ⛏️): ⚔️ Козак — пересунь Кармелюка й візьми карту; 💰 Скарб — +1 ⭐ потай; 🛤 Толока — два шляхи задарма; 🌻 Врожайний рік — дві карти з банку; 🎪 Ярмарок — усі віддають тобі названий ресурс. Одна грамота за хід, куплену — не того ж ходу. Тицни грамоту в руці — побачиш, що вона робить</li>'
     + '<li>Перший, хто набере потрібні ⭐ у свій хід, — <b>переміг</b></li></ol></div>';
 
   function renderLog(st, v) {
@@ -722,12 +877,18 @@
     }
     h += '<div class="khu-cards">' + RES.map((r) => '<div class="khu-card' + ((hand[r] || 0) ? '' : ' zero') + ((st.pulse[r] || 0) > now ? ' new' : '') + '" style="--rc:' + C.RES_COLOR[r] + '">'
       + '<span class="khu-ci">' + RES_ICON[r] + '</span><b>' + (hand[r] || 0) + '</b><span class="khu-cn">' + C.RES_NAME[r] + '</span></div>').join('');
+    // Грамота: тиц — розгорнути пояснення; «▶ Зіграти» — окрема кнопка в розгорнутій (не грати випадковим дотиком).
+    if (st.devOpen != null && st.devOpen >= (me.dev || []).length) st.devOpen = null;
     for (let i = 0; i < (me.dev || []).length; i++) {
       const d = me.dev[i];
       const s = devState(v, me, d);
-      h += '<div class="khu-card dev' + (s.ok ? ' ok' : ' off') + '" title="' + esc(C.DEV_HINT[d.k] || '') + '">'
-        + '<span class="khu-ci">' + (DEV_ICON[d.k] || '📜') + '</span><span class="khu-dn">' + esc(C.DEV_NAME[d.k] || d.k) + '</span>'
-        + (s.ok ? '<button type="button" class="primary" data-a="play" data-k="' + d.k + '">Зіграти</button>' : '<span class="khu-cw">' + esc(s.why) + '</span>')
+      const open = st.devOpen === i;
+      h += '<div class="khu-card dev' + (s.ok ? ' ok' : ' off') + (open ? ' open' : '') + '">'
+        + '<button type="button" class="khu-dtap" data-a="dev-open" data-i="' + i + '" aria-expanded="' + open + '" title="' + esc(open ? 'Згорнути' : 'Що робить ця грамота') + '">'
+        + '<span class="khu-ci">' + (DEV_ICON[d.k] || '📜') + '</span><span class="khu-dn">' + esc(C.DEV_NAME[d.k] || d.k) + ' <i class="khu-dinfo">' + (open ? '▴' : 'ⓘ') + '</i></span></button>'
+        + (open ? '<span class="khu-dh">' + esc(C.DEV_HINT[d.k] || '') + '</span>' : '')
+        + (s.ok ? (open ? '<button type="button" class="primary" data-a="play" data-k="' + d.k + '">▶ Зіграти</button>' : '<span class="khu-cw">можна зіграти — тицни</span>')
+          : '<span class="khu-cw">' + esc(s.why) + '</span>')
         + '</div>';
     }
     h += '</div>';
@@ -949,6 +1110,7 @@
     tickArcs(st);
     if (st.marks.length) placeMarks(st);
     tickSound(st, st.view);
+    tickAttn(st);
     // Строк минув — будь-хто за столом штовхає сервер (той звірить із годинником і зробить автохід).
     const v = st.view, ctx = st.ctx;
     if (!v.deadline || !ctx || !ctx.mine || !ctx.playing || !ctx.room || v.phase === 'over') return;
@@ -1130,17 +1292,76 @@
         if (!(v && me && v.turn === me.seat)) T.open = false;
         break;
       }
-      case 'bank-give': st.bankGive = st.bankGive === r ? null : r; break;
-      case 'bank-get': if (st.bankGive) act('bank', { give: st.bankGive, get: r, n: 1 }); st.bankGive = null; break;
+      case 'bank-give': st.bankGive = st.bankGive === r ? null : r; st.bankN = 1; if (!st.bankGive) st.bankWant = null; break;
+      case 'bank-n': st.bankN = Number(b.dataset.n) || 1; break;
+      case 'bank-get': {
+        if (st.bankGive && me) {
+          const g = M.K.bankChips(me.hand, me.rates).find((c) => c.res === st.bankGive);
+          const n = Math.max(1, Math.min(st.bankN || 1, g ? g.max : 1));
+          act('bank', { give: st.bankGive, get: r, n });
+        }
+        st.bankGive = null; st.bankN = 1; st.bankWant = null;
+        break;
+      }
+      case 'fix': {
+        // «🔁 обміняй і будуй»: обміни з банком по черзі, тоді — вибір місця для цієї будови.
+        const k = b.dataset.k, fix = me && M.K.bankFix(me.hand, M.C.COST[k], me.rates);
+        if (!fix || !ctx || st.fixing) break;
+        st.fixing = true;
+        (async () => {
+          let ok = true;
+          for (const t of fix) {
+            const res = await Promise.resolve(ctx.act('bank', { give: t.give, get: t.get, n: t.n })).catch(() => null);
+            if (!res || res.ok === false) { ok = false; break; }
+          }
+          st.fixing = false;
+          if (root._kh !== st) return;
+          if (ok && k !== 'dev') { st.pick = k; T.open = false; st.bankGive = null; }
+          paint(root, st.ctx);
+        })();
+        break;
+      }
+      case 'of-edit': case 'of-bank': {
+        // Усі відмовились: «Змінити» — прибрати й відкрити ту саму в «Торгувати»; «У банк» — прибрати й показати банк.
+        const o = ((v && v.offers) || []).find((x) => x.id === id);
+        if (!o) break;
+        act('cancel', { id });
+        if (a === 'of-edit') { T.open = true; T.give = { ...o.give }; T.get = { ...o.get }; T.to = o.to; st.pick = null; }
+        else {
+          const ch = M.K.bankChips(me.hand, me.rates).filter((c) => c.res !== r && c.max >= 1).sort((x, y) => x.rate - y.rate || y.have - x.have);
+          st.bankGive = ch.length ? ch[0].res : null; st.bankN = 1; st.bankWant = r; T.open = false;
+        }
+        break;
+      }
+      case 'inc-hide': st.incHid = st.inc ? st.inc.id : null; break;
+      case 'inc-show': st.incHid = null; break;
+      case 'inc-next': {
+        const P = incPick(st, v, me);
+        if (P) { st.incPick = P.list[(P.i + 1) % P.n].o.id; st.incHid = null; }
+        break;
+      }
+      case 'snd-yes': case 'snd-no':
+        store.set('kh.sndAsk', a === 'snd-yes' ? 'on' : 'off');
+        if (a === 'snd-yes' && st.snd) { st.snd.setOn(true); paintSnd(st); }
+        st.askAt = 0;
+        break;
+      case 'dev-open': { const i = Number(b.dataset.i); st.devOpen = st.devOpen === i ? null : i; break; }
       case 'ans': act('answer', { id, ok: b.dataset.ok === '1' }); break;
       case 'counter': {
         const o = ((v && v.offers) || []).find((x) => x.id === id);
-        if (o) { T.open = true; T.give = { ...o.get }; T.get = { ...o.give }; T.to = null; }
+        if (o) {
+          T.open = true; T.give = { ...o.get }; T.get = { ...o.give };
+          T.to = me && v.turn === me.seat ? o.from : null;   // у свій хід — відповідь автору зустрічної
+          st.incHid = id;                                     // картку — у смужку, щоб не закривала торг
+          // Торг на телефоні — під рукою: підвезти до нього.
+          setTimeout(() => { try { st.el.trade.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch (e) { /* нема куди */ } }, 30);
+        }
         break;
       }
       case 'deal': act('deal', { id, seat: Number(b.dataset.seat) }); break;
       case 'cancel': act('cancel', { id }); break;
       case 'play': {
+        st.devOpen = null;
         const k = b.dataset.k;
         if (k === 'plenty') st.dlg = { k, res: [] };
         else if (k === 'mono') st.dlg = { k, res: null };
@@ -1189,6 +1410,7 @@
         if (st.onClick) root.removeEventListener('click', st.onClick);
         if (st.sc) { try { st.sc.dispose(); } catch (e) { /* уже прибрано */ } }
         if (st.snd) { try { st.snd.dispose(); } catch (e) { /* уже прибрано */ } st.snd = null; }
+        stopBlink(st);
         st.queue.length = 0;
       }
       root._kh = null;
