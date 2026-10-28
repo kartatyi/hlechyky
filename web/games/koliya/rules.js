@@ -7,7 +7,8 @@ import { extrasInit, extrasStep, extrasUse } from './extras.js';   // K11: до�
 import { coopInit, coopCmd, coopUse, coopStep, coopHash } from './coop.js';   // K18: кооп-фішки за перемикачем
 import { tutorialParams, tutorialWorld } from './tutorial.js';   // K22: навчальна смуга (mode='tutorial')
 import { endlessHash } from './endless.js';                          // K19: нескінченна колія
-import { lostInit, lostPre, lostStep, passTick, passMask, leaveHold, tailCell } from './lost.js';   // K33: нічого не губиться
+import { lostInit, lostPre, lostStep, passTick, passMask, passSpeed, leaveHold, tailCell } from './lost.js';   // K33: нічого не губиться
+import { tallyStep, tallyRow } from './tally.js';   // хто що робив — фінальна таблиця
 
 export const TICK_MS = 50;           // 20 тиків/с
 export const TPS = 1000 / TICK_MS;
@@ -115,7 +116,7 @@ const ticks = (sec) => Math.max(1, Math.round(sec * TPS));
 /** швидкість у підодиницях/тик ×1000 з клітинок/с */
 const spd = (cps) => Math.round(cps * U * 1000 / TPS);
 export const PR = 300;              // радіус гравця, підодиниць (0,3 клітинки)
-const WAGON_HALF = 420;             // напівширина вагона-коробки
+export const WAGON_HALF = 420;      // напівширина вагона-коробки
 const FLOOR_STACK_MAX = 99;         // стос на підлозі
 const ACT_CD = 3;                   // тиків паузи після взяти/покласти
 
@@ -192,6 +193,7 @@ export function step(s, cmds = []) {
   stepCraft(s);
   if (!extrasStep(s, cmds)) stepTrain(s);   // K11: true — паротяг стоїть на проміжній станції
   lostStep(s, pre);   // K33: вагон виштовхує, порятунок, інструменти не губляться
+  tallyStep(s, pre);  // підсумок по гравцях (s.stats.pl)
   s.tick++;
   return s;
 }
@@ -243,7 +245,7 @@ export function cellBlocked(s, cx, cy) {
 /** K26: підлога, на яку не стати й не покласти річ: вода, урвище, каркас мосту */
 export const noFoot = (g) => g === G.WATER || g === G.CHASM || g === G.FRAME;
 
-function circleBox(px, py, r, x0, y0, x1, y1) {
+export function circleBox(px, py, r, x0, y0, x1, y1) {   // export — lost.js (у вагоні)
   const qx = px < x0 ? x0 : px > x1 ? x1 : px, qy = py < y0 ? y0 : py > y1 ? y1 : py;
   const dx = px - qx, dy = py - qy;
   return dx * dx + dy * dy < r * r;
@@ -288,7 +290,7 @@ function movePlayer(s, n) {
   if (pl.out) return;
   if (pl.cd > 0) pl.cd--;
   if (pl.stun > 0) { pl.stun--; return; }   // K18: зірочки — стоїть
-  passTick(s, pl);                           // K33: тиснеш у вагон — згодом протиснешся
+  passTick(s, pl);                           // K33: старий спосіб (passT > 0) — тиснеш у вагон, згодом протиснешся
   if (s.params.move !== 'grid' && moveIce(s, n, pl)) return;           // K26: на льоду ковзаємо
   if (s.params.move === 'grid') { moveGrid(s, n, pl); return; }       // K14
   if (s.params.move === 'snappy') { moveSnappy(s, n, pl); return; }   // K14
@@ -306,8 +308,9 @@ function movePlayer(s, n) {
   if (gk === G.SWAMP) v = Math.round(v * clampI(+s.params.swampSlow || 1, 0.05, 1));
   else if (gk === G.SNOW) v = Math.round(v * clampI(+s.params.snowSlow || 1, 0.05, 1));   // K26
   const d = Math.max(100, len);
-  const dx = Math.trunc(v * mx / d), dy = Math.trunc(v * my / d);
   const wag = wagonsXY(s);
+  v = passSpeed(s, pl, v, wag);   // K33: крізь вагон — повільно
+  const dx = Math.trunc(v * mx / d), dy = Math.trunc(v * my / d);
   let ign = passMask(pl);   // вагони, у яких уже стоїмо (потяг наїхав) — з них можна вийти; K33: протиснувся — усі
   for (let k = 0; k < wag.length; k++) if (hitsAt(s, pl.x, pl.y, [wag[k]], 0)) ign |= 1 << k;
   const x0 = pl.x, y0 = pl.y;
@@ -385,7 +388,7 @@ function moveGrid(s, n, pl) {
     const dx = Math.sign(pl.gx * U + U / 2 - pl.x), dy = Math.sign(pl.gy * U + U / 2 - pl.y);
     if ((dx || dy) && want[0] === -dx && want[1] === -dy) { pl.gx -= dx; pl.gy -= dy; pl.fx = want[0]; pl.fy = want[1]; }
   }
-  let rest = Math.round(s.params.playerSpeed * U / TPS);
+  let rest = passSpeed(s, pl, Math.round(s.params.playerSpeed * U / TPS), wag);   // K33: крізь вагон — повільно
   for (let seg = 0; seg < 3 && rest > 0 && pl.gx >= 0; seg++) {
     const tx = pl.gx * U + U / 2, ty = pl.gy * U + U / 2;
     const ax = pl.x, ay = pl.y;
@@ -417,8 +420,8 @@ function moveSnappy(s, n, pl) {
   const sx = ax * 1000 >= 414 * m ? Math.sign(mx) : 0, sy = ay * 1000 >= 414 * m ? Math.sign(my) : 0;   // сектори по 45°
   if (!sy) { pl.fx = sx; pl.fy = 0; } else if (!sx) { pl.fx = 0; pl.fy = sy; }
   else if (!((pl.fx && pl.fx === sx) || (pl.fy && pl.fy === sy))) { const d = axisDir(pl, mx, my); pl.fx = d[0]; pl.fy = d[1]; }
-  const v = Math.round(s.params.playerSpeed * U / TPS), k = sx && sy ? 707 : 1000;
-  const wag = wagonsXY(s), ign = wagIgnore(s, pl, wag);
+  const wag = wagonsXY(s), ign = wagIgnore(s, pl, wag), k = sx && sy ? 707 : 1000;
+  const v = passSpeed(s, pl, Math.round(s.params.playerSpeed * U / TPS), wag);   // K33: крізь вагон — повільно
   const x0 = pl.x, y0 = pl.y;
   const rx = slide(s, pl, Math.trunc(sx * v * k / 1000), 0, wag, ign);
   const ry = slide(s, pl, 0, Math.trunc(sy * v * k / 1000), wag, ign);
@@ -631,7 +634,7 @@ function use(s, n, pl) {
     if (wk >= 1 && (h.k === I.WOOD || h.k === I.IRON)) {     // на склад (майстерня теж приймає — вона бере зі складу)
       const key = h.k === I.WOOD ? 'wood' : 'iron';
       const put = Math.min(h.n, Math.max(0, (P.storeMax | 0) - t[key]));
-      if (put > 0) { t[key] += put; h.n -= put; if (!h.n) hold0(pl); ev(s, 'drop', cx, cy, n); pl.cd = ACT_CD; }
+      if (put > 0) { t[key] += put; h.n -= put; if (!h.n) hold0(pl); tallyRow(s, n).store += put; ev(s, 'drop', cx, cy, n); pl.cd = ACT_CD; }
       return;
     }
     if (wk === 2 && (h.k === I.NONE || (h.k === I.RAIL && h.n < P.carryMax)) && t.rails > 0) {

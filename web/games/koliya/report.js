@@ -48,6 +48,8 @@ export function buildReport(s, x = {}) {
       douses: st.douses | 0, bridges: st.bridges | 0 },
     prm,
   };
+  // хто що робив (tally.js): [удари 🪓, ⛏, 📦 у склад, 🛤, 💧, % стояв] — як таблиця на фінальній картці
+  if (st.pl?.length) r.who = st.pl.map((q) => q ? [q.chop | 0, q.rock | 0, q.store | 0, q.rail | 0, q.douse | 0, q.ticks ? Math.round(q.idle / q.ticks * 100) : 0] : null);
   if (E) r.stations = E.stations | 0;
   for (const k of ['theme', 'look', 'tips', 'zeal', 'net', 'fps', 'dev', 'hid']) if (x[k] !== undefined) r[k] = x[k];
   return r;

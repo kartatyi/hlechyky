@@ -30,8 +30,10 @@
       const pass = new URLSearchParams(location.search), extra = ['lag', 'jit', 'drive', 'smooth', 'test']
         .filter((k) => pass.has(k)).map((k) => '&' + k + (pass.get(k) ? '=' + encodeURIComponent(pass.get(k)) : '')).join('');
       f.src = '/games/koliya/proto.html?net=' + encodeURIComponent(id) + (nick ? '&nick=' + encodeURIComponent(nick) : '') + extra;
+      // Розгорнути — два способи: ⛶ столу (core.js) ховає сайт навколо, гра лишається рамкою до 720 px; ⛶ у самій грі
+      // (koliya/panel.js) — справжній повний екран, гра на весь монітор (для цього allow="fullscreen")
       f.style.cssText = 'width:100%;height:min(78vh,720px);border:0;border-radius:8px;display:block';
-      f.allow = 'gamepad; autoplay';
+      f.allow = 'gamepad; autoplay; fullscreen';
       root.appendChild(f);
       frames.set(root, f);
     },
