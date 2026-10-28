@@ -472,8 +472,9 @@
     st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
     renderTabs(st, v, me);
     renderBar(st, v, me);
-    // ПК: торг відкрито — смуга чисел ховається, вкладці торгу більше місця; зміст колонки змінився — переміряти (fitPc).
-    st.el.main.parentElement.classList.toggle('khu-trading', !!st.trade.open);
+    // ПК: торг відкрито або видно пропозиції — смуга чисел ховається, вкладці торгу більше місця; зміст колонки змінився —
+    // переміряти (fitPc).
+    st.el.main.parentElement.classList.toggle('khu-trading', !!st.trade.open || (!!(v.offers || []).length && tabNow(st, v) === 'trade'));
     sizeVars(root, st);
     st.el.view.title = st.scKind === '3d' ? 'Показати пласку карту (легша для слабких пристроїв)' : (st.no3d ? '3D не вдалося — спробувати ще' : 'Показати об\'ємне поле');
     queueEvents(root, st, v);   // до syncScene: кидок у черзі притримує кубики сцени
