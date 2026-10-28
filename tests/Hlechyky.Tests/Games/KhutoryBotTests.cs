@@ -247,6 +247,41 @@ public class KhutoryBotTests(ITestOutputHelper output)
         return (h, c, bot, spare);
     }
 
+    static DateTimeOffset? Until(JsonElement offer) =>
+        offer.GetProperty("until") is { ValueKind: JsonValueKind.String } u ? u.GetDateTimeOffset() : null;
+
+    /// <summary>
+    /// Вид несе строк самої пропозиції (§5 <c>offers[].until</c>): у Глека — коли перестане чекати (час пропозиції +
+    /// <see cref="KhutoryBot.OfferWaitMs"/>), не найближчий крок бота (<c>botIn</c>); після перезапуску — зсунутий на паузу.
+    /// </summary>
+    [Fact]
+    public void Bot_offer_in_the_view_carries_its_own_wait_end()
+    {
+        var (h, _, _, _) = BotOffers();
+        var made = h.Clock.UtcNow;
+        var until = Until(Offers(h).Single());
+        Assert.Equal(made.AddMilliseconds(KhutoryBot.OfferWaitMs), until);
+        // Крок Глека («чекаю») строк не рухає.
+        h.Clock.AdvanceMs(BoardBots.ThinkMs);
+        Assert.False(h.Act(0, "bot").Ok);
+        Assert.Equal(until, Until(Offers(h).Single()));
+        // Перезапуск на 47 с: 10 с не згоряють — строк зсувається на паузу.
+        var pause = TimeSpan.FromSeconds(47);
+        KhutorySaveTests.Restart(h, pause);
+        Assert.Equal(until + pause, Until(Offers(h).Single()));
+    }
+
+    [Fact]
+    public void Human_offer_in_the_view_has_no_own_wait_end()
+    {
+        var h = Table();
+        var bot = BotSeat(h);
+        var c = Main(h, 0);
+        Give(c, 0, ore: 1);
+        Assert.True(h.Act(0, "offer", new { give = new { ore = 1 }, get = new { wood = 1 }, to = bot }).Ok);
+        Assert.Equal(JsonValueKind.Null, Offers(h).Single().GetProperty("until").ValueKind);
+    }
+
     [Fact]
     public void Bot_offer_accepted_by_a_human_turns_into_a_deal()
     {
@@ -413,7 +448,7 @@ public class KhutoryReviewTests
         Assert.True(again.GetProperty("seq").GetInt64() >= last);
         Assert.All(again.GetProperty("events").EnumerateArray(), e => Assert.True(e.GetProperty("seq").GetInt64() > last));
         if (again.GetProperty("botIn") is { ValueKind: JsonValueKind.Number } b) h.Clock.AdvanceMs(b.GetInt32());
-        else h.Clock.Advance(41);
+        else h.Clock.Advance(181);
         Assert.True(h.Act(0, again.GetProperty("botIn").ValueKind == JsonValueKind.Number ? "bot" : "timeout").Ok);
         var first = h.View(0).GetProperty("events").EnumerateArray().Select(e => e.GetProperty("seq").GetInt64()).ToList();
         Assert.NotEmpty(first);
@@ -438,7 +473,7 @@ public class KhutoryReviewTests
         var v = h.View(0);
         Assert.Equal("main", v.GetProperty("phase").GetString());
         var left = (v.GetProperty("deadline").GetDateTimeOffset() - h.Clock.UtcNow).TotalSeconds;
-        Assert.InRange(left, 9, 11);
+        Assert.InRange(left, 19, 21);   // не 10 с, що лишались, а MainBackMs
         Assert.Equal(180_000, v.GetProperty("timerMs").GetInt32());
     }
 

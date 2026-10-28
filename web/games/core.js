@@ -3025,7 +3025,7 @@
       const stakes = stakeable(g) ? (catalog.stakes || []) : [];
       const box = wrap.querySelector('.gvar');
       box.innerHTML = (g.hint ? '<div class="muted small">' + esc(g.hint) + '</div>' : '')
-        + opts.map(optHtml).join('')
+        + opts.map((o) => optHtml(o)).join('')   // не map(optHtml): другим аргументом прийде індекс, і optHtml візьме його за «поточне»
         + (stakes.length > 1 ? '<div class="gopt"><span class="muted small">Ставка з кожного</span><div class="gstakes">'
           + stakes.map((s, i) => '<button type="button" class="gstake' + (i === 0 ? ' on' : '') + '" data-stake="' + s + '">🏺' + s + '</button>').join('')
           + '</div></div>' : '');

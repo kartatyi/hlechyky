@@ -7,7 +7,7 @@ namespace Hlechyky.Games.Impl;
 /// Глеки — <see cref="KhutoryBot"/>, автохід за того, хто проспав, — <see cref="KhutoryAuto"/>; тут каркас: опції, розсадка з Глеками, таймер ходу, вихід і вид.
 /// Гра прихована (<c>Hidden</c>): рука й грамоти кожного їдуть лише йому.
 /// </summary>
-public sealed class Khutory : Game
+public sealed partial class Khutory : Game
 {
     public override GameInfo Info { get; } = new(
         "khutory", "Хутори", "Хутори", GameGroup.Board, 1, KhutoryCore.MaxSeats, Start: StartMode.ByHost, Hidden: true,
@@ -22,9 +22,22 @@ public sealed class Khutory : Game
         Hint: "Хутори — Катан по-нашому на 2–4: став хати на родючі землі, торгуйся з сусідами, будуй Чумацький шлях. "
             + "Бракує людей — підсяде Глек 🤖");
 
-    static readonly string[] Colors = ["червоні", "сині", "помаранчеві", "фіолетові"];
-    /// <summary>Решта фаз (крім main) — не довше за 40 с.</summary>
+    static readonly string[] Colors = ["червоні", "сині", "білі", "рожеві"];
+    /// <summary>Решта фаз (крім main і розстановки) — не довше за 40 с.</summary>
     const int ShortMs = 40_000;
+    /// <summary>Повернувшись у main після Кармелюка (козака) чи Толоки, людина має щонайменше стільки.</summary>
+    public const int MainBackMs = 20_000;
+    /// <summary>За скільки кроків Глек доробляє хід за людину, що проспала main/road2.</summary>
+    const int StandInSteps = 12;
+
+    /// <summary>
+    /// Людей за столом не лишилось (відпав зв'язок) — партія стоїть на паузі й чекає 10 хв, поки хтось повернеться
+    /// на свій хутір. Глеків ніхто не штовхає й строк ніхто не «таймаутить»: Act приймає лише тих, хто сидить.
+    /// </summary>
+    public override TimeSpan HoldEmpty => TimeSpan.FromMinutes(10);
+
+    /// <summary>Останній встав кнопкою — пішов: стіл зникає одразу (пауза лише на обрив зв'язку).</summary>
+    public override bool HoldAfterLeave => false;
 
     int _target = 8;
     bool _starter;
@@ -233,8 +246,8 @@ public sealed class Khutory : Game
     }
 
     /// <summary>
-    /// Минув строк: за того, хто тягне, ходить автохід — розстановка, кидок, скидання, Кармелюк; у main/road2 хід
-    /// просто завершується. Двічі поспіль проспав — далі за нього грає Глек.
+    /// Минув строк: за того, хто тягне, ходить автохід — розстановка, кидок, скидання, Кармелюк; у main/road2 Глек
+    /// доробляє хід (<see cref="StandIn"/>). Двічі поспіль проспав — далі за нього грає Глек.
     /// </summary>
     ActResult Timeout()
     {
@@ -265,7 +278,7 @@ public sealed class Khutory : Game
                         KhutoryAuto.Step(_core, s, Ctx.Rng);
                     break;
                 default:
-                    _core.ForceEnd(s);
+                    StandIn(s);
                     break;
             }
             if (!Auto(s) && ++_missed[s] >= 2)
@@ -278,6 +291,19 @@ public sealed class Khutory : Game
         _deadlineKey = "";   // строк — наново, навіть якщо фаза та сама
         After();
         return ActResult.Done;
+    }
+
+    /// <summary>
+    /// Проспав main/road2: Глек доробляє хід за нього — будує, що вже по кишені (з обміном у банку, якщо так складеться
+    /// цього ж ходу), кладе безкоштовні шляхи Толоки. Без торгівлі з людьми, без грамот (ні купити, ні зіграти — це
+    /// рішення людини). Обмежено кроками; не завершив сам — хід завершується примусово.
+    /// </summary>
+    void StandIn(int s)
+    {
+        bool Mine() => !_core.Over && _core.Phase is KhPhase.Main or KhPhase.Road2 && _core.Turn == s;
+        for (var i = 0; i < StandInSteps && Mine(); i++)
+            if (_brain.Step(_core, s, Ctx.Rng, Ctx.Clock.UtcNow, trade: false, cards: false) is not null) break;
+        if (Mine()) _core.ForceEnd(s);
     }
 
     /// <summary>Після кожної зміни: журнал кімнати, кінець партії, строк, Глеки.</summary>
@@ -303,12 +329,19 @@ public sealed class Khutory : Game
         {
             var main = $"{_core.Turn}|{_core.Rounds}|{_core.TurnIdx}";
             _deadlineMs = _timerMs;
-            if (main == _mainKey && _mainDeadline is { } md) { _deadline = md; return; }
+            if (main == _mainKey && _mainDeadline is { } md)
+            {
+                // Повернувся в main після козака/Толоки: строк той самий, але не менше MainBackMs — інакше хід обривався.
+                var floor = Ctx.Clock.UtcNow.AddMilliseconds(Math.Min(_timerMs, MainBackMs));
+                _deadline = _mainDeadline = md < floor ? floor : md;
+                return;
+            }
             _mainKey = main;
             _deadline = _mainDeadline = Ctx.Clock.UtcNow.AddMilliseconds(_timerMs);
             return;
         }
-        _deadlineMs = Math.Min(_timerMs, ShortMs);
+        // Розстановка — повний час: новачок на 40 с не встигав вибрати місце, і хату ставив автохід.
+        _deadlineMs = _core.Phase == KhPhase.Setup ? _timerMs : Math.Min(_timerMs, ShortMs);
         _deadline = Ctx.Clock.UtcNow.AddMilliseconds(_deadlineMs);
     }
 
@@ -354,17 +387,24 @@ public sealed class Khutory : Game
         Ctx.Finish(winners, $"{Info.Title}: перемагає {Nick(w)} — {_core.Points(w)} очок ({rest})", scores);
     }
 
-    /// <summary>Людина встала посеред партії — за неї сідає Глек; людей не лишилось — партія без переможця.</summary>
+    /// <summary>Чи сидить за столом ще хтось із людей, крім <paramref name="seat"/>.</summary>
+    bool OthersSeated(int seat) => Enumerable.Range(0, KhutoryCore.MaxSeats)
+        .Any(s => s != seat && _core.In[s] && !IsBot(s) && Ctx.Seated(s));
+
+    /// <summary>
+    /// Людина встала посеред партії (кнопкою чи відпав зв'язок — каркас тут не розрізняє) — за неї сідає Глек.
+    /// Людей не лишилось — партія НЕ кінчається, а стає на паузу: місце «away», нікому штовхати Глеків і строк, кімната
+    /// тримається <see cref="HoldEmpty"/>. Хто встав кнопкою, того каркас не чекає (<see cref="HoldAfterLeave"/>) — стіл
+    /// зникає одразу, без Finish; хто відпав — повертається на свій хутір (<see cref="Rejoin"/>).
+    /// </summary>
     public override void OnLeave(int seat)
     {
         if (_core.Over || seat < 0 || seat >= KhutoryCore.MaxSeats || !_core.In[seat] || IsBot(seat)) return;
         var nick = Nick(seat);
-        var people = Enumerable.Range(0, KhutoryCore.MaxSeats)
-            .Any(s => s != seat && _core.In[s] && !IsBot(s) && Ctx.Seated(s));
-        if (!people)
+        if (!OthersSeated(seat))
         {
-            _reason = "left";
-            _core.Abandon();
+            // Пауза — тихо: ні Глека в балачку, ні рядка в журнал (стіл або дочекається, або зникне сам).
+            _away[seat] = true;
             After();
             return;
         }
@@ -395,6 +435,13 @@ public sealed class Khutory : Game
     {
         if (_core.Over || seat < 0 || seat >= KhutoryCore.MaxSeats || !_core.In[seat] || IsBot(seat)) return;
         var nick = Nick(seat);
+        // Повернувся на стіл, що стояв на паузі, чи його черга діяти — строк на поточне рішення свіжий: інакше старий,
+        // що минув, поки нікого не було, дав би timeout одразу.
+        if (!OthersSeated(seat) || _core.MayAct(seat))
+        {
+            _deadlineKey = "";
+            _mainKey = "";
+        }
         _away[seat] = false;
         _missed[seat] = 0;
         _core.Note($"{nick} повертається на свій хутір");
@@ -588,6 +635,8 @@ public sealed class Khutory : Game
             phase = started ? c.PhaseName : null,
             setup = started && c.Phase == KhPhase.Setup ? new { step = c.SetupRoad ? "road" : "town", round = c.SetupIdx < c.Seats ? 1 : 2 } : null,
             dice = c.Dice is { } d ? (int[])d.Clone() : null,
+            rolls = c.Rolls.ToArray(),
+            diceCount = started && c.Phase != KhPhase.Setup ? (int[])c.DiceCount.Clone() : null,
             rolled = c.Rolled,
             robber = c.Robber,
             towns = Enumerable.Range(0, KhutoryGeo.Verts).Where(v => c.VOwner[v] >= 0)
@@ -607,6 +656,7 @@ public sealed class Khutory : Game
             {
                 id = o.Id, from = o.From, to = o.To, give = KhutoryCore.ResMap(o.Give), get = KhutoryCore.ResMap(o.Get),
                 acc = o.Acc.ToArray(), dec = o.Dec.ToArray(),
+                until = over ? null : _brain.OfferUntil(o.Id),   // Глек чекає відповідей до…; людська — null (до deadline)
             }).ToArray(),
             events,
             seq = c.Seq,
@@ -670,7 +720,7 @@ public sealed class Khutory : Game
                 timeline = c.Timeline.Select(r => (int[])r.Clone()).ToArray(),
                 seats = c.Order.Order().Select(s => new
                 {
-                    seat = s, trades = c.Trades[s], got = c.Got[s], stolen = c.Stolen[s],
+                    seat = s, trades = c.Trades[s], got = c.Got[s], stolen = c.Stolen[s], robbed = c.Robbed[s],
                     built = new { road = c.Built[s][0], town = c.Built[s][1], city = c.Built[s][2] },
                 }).ToArray(),
             },

@@ -4,6 +4,8 @@
 
 import { TERRAIN_COLOR, RES_COLOR, SEA_COLOR, SEAT_COLOR, PIPS, TERRAIN_NAME, RES_NAME } from './consts.js';
 
+// Мова підсвітки — та сама, що в 3D (khutory-look.md §3): золото #ffd23f з темним кантом #2a1a00, «мурашки» по шляхах.
+
 const NS = 'http://www.w3.org/2000/svg';
 const U = 60;   // пікселів viewBox на одиницю геометрії (радіус гекса = 1)
 const TERRAIN_ICON = { forest: '🌲', pit: '🏺', pasture: '🐑', field: '🌾', mountain: '⛰️', steppe: '🗿' };
@@ -21,18 +23,26 @@ const CSS = `
 @keyframes k2pop { 0% { transform: scale(0); } 60% { transform: scale(1.35); } 100% { transform: scale(1); } }
 .k2-rob { transition: transform .45s cubic-bezier(.3,1.4,.5,1); }
 .k2-leg { cursor: pointer; }
-.k2-leg .ring { fill: rgba(255,255,255,.88); stroke: #f4c542; stroke-width: 4; transform-box: fill-box; transform-origin: center;
+.k2-leg .halo { fill: none; stroke: rgba(255,210,63,.38); stroke-width: 10; }
+.k2-leg .kant { fill: none; stroke: #2a1a00; stroke-width: 9; }
+.k2-leg .ring { fill: #fff4c2; stroke: #ffd23f; stroke-width: 4.5; transform-box: fill-box; transform-origin: center;
   animation: k2pulse 1.1s ease-in-out infinite alternate; }
-.k2-leg.city .ring { fill: rgba(255,255,255,.25); stroke: #fff; stroke-width: 5; }
-.k2-leg .bar { stroke: rgba(255,255,255,.82); stroke-width: 11; stroke-linecap: round; stroke-dasharray: 10 8;
-  animation: k2march 1s linear infinite; }
-.k2-leg .area { fill: rgba(255,255,255,.12); stroke: #fff; stroke-width: 4; stroke-dasharray: 12 9; animation: k2march 1.2s linear infinite; }
+.k2-leg.city .ring { fill: rgba(255,244,194,.3); }
+.k2-leg line.halo { stroke: rgba(255,210,63,.45); stroke-width: 26; stroke-linecap: round; }
+.k2-leg line.kant { stroke: #2a1a00; stroke-width: 15; stroke-linecap: round; }
+.k2-leg .bar { stroke: #ffd23f; stroke-width: 9; stroke-linecap: round; }
+.k2-leg .ants { stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 7 9; animation: k2march 1s linear infinite; }
+.k2-leg polygon.kant { fill: none; stroke: #2a1a00; stroke-width: 10; stroke-linejoin: round; }
+.k2-leg .area { fill: rgba(255,210,63,.16); stroke: #ffd23f; stroke-width: 5; stroke-linejoin: round; stroke-dasharray: 14 8; animation: k2march 1.2s linear infinite; }
 .k2-leg .hit { fill: transparent; stroke: transparent; }
-.k2-leg:hover .ring, .k2-leg.hot .ring { fill: #fff; stroke: #ffde6b; stroke-width: 6; animation: none; transform: scale(1.35); }
-.k2-leg:hover .bar, .k2-leg.hot .bar { stroke: #fff; stroke-width: 15; stroke-dasharray: none; }
-.k2-leg:hover .area, .k2-leg.hot .area { fill: rgba(255,255,255,.3); }
+.k2-leg:hover .ring, .k2-leg.hot .ring { fill: #fff; stroke-width: 6; animation: none; transform: scale(1.35); }
+.k2-leg:hover .bar, .k2-leg.hot .bar { stroke-width: 12; }
+.k2-leg:hover line.kant, .k2-leg.hot line.kant { stroke-width: 19; }
+.k2-leg:hover .area, .k2-leg.hot .area { fill: rgba(255,210,63,.36); stroke-dasharray: none; }
+.k2-show { fill: rgba(255,210,63,.3); stroke: #ffd23f; stroke-width: 5; stroke-linejoin: round; pointer-events: none; animation: k2breathe 1.6s ease-in-out infinite alternate; }
+@keyframes k2breathe { from { fill-opacity: .55; } to { fill-opacity: 1; } }
 @keyframes k2pulse { from { transform: scale(.85); } to { transform: scale(1.15); } }
-@keyframes k2march { to { stroke-dashoffset: -36; } }
+@keyframes k2march { to { stroke-dashoffset: -32; } }
 .k2-fly { animation: k2fly .95s ease-out forwards; }
 @keyframes k2fly { 0% { transform: translate(0,0) scale(.6); opacity: 0; } 20% { opacity: 1; transform: translate(0,-12px) scale(1.1); }
   100% { transform: translate(0,-70px) scale(1); opacity: 0; } }
@@ -48,7 +58,7 @@ const CSS = `
 .k2-dice.land .k2-die { animation: k2land .35s ease-out; }
 @keyframes k2spin { from { transform: rotate(0); } to { transform: rotate(90deg); } }
 @keyframes k2land { 0% { transform: scale(1.3); } 100% { transform: scale(1); } }
-@media (prefers-reduced-motion: reduce) { .k2-leg .ring, .k2-leg .bar, .k2-leg .area { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .k2-leg .ring, .k2-leg .ants, .k2-leg .area, .k2-show { animation: none; } }
 `;
 
 const PIP_CELLS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
@@ -75,6 +85,8 @@ export async function createBoard2d(host, opts = {}) {
   const gSea = el('g', null, svg), gPorts = el('g', null, svg), gHex = el('g', null, svg), gTok = el('g', null, svg);
   const gRoads = el('g', null, svg), gTowns = el('g', null, svg), gRob = el('g', { class: 'k2-rob' }, svg);
   const gLegal = el('g', null, svg), gFx = el('g', null, svg);
+  const gShow = el('g', null);   // glowHexes — над землями, під жетонами
+  svg.insertBefore(gShow, gTok);
   host.appendChild(svg);
   if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
 
@@ -98,7 +110,7 @@ export async function createBoard2d(host, opts = {}) {
   function setBoard(board) {
     if (!board || board.id === st.boardId) return;
     st.board = board; st.boardId = board.id; st.figSig = '';
-    for (const g of [gSea, gPorts, gHex, gTok, gRoads, gTowns, gRob, gLegal, gFx]) g.textContent = '';
+    for (const g of [gSea, gPorts, gHex, gTok, gRoads, gTowns, gRob, gLegal, gFx, gShow]) g.textContent = '';
     st.centers = board.hexes.map((h) => {
       let x = 0, y = 0;
       for (const v of h.v) { x += board.vx[v][0]; y += board.vx[v][1]; }
@@ -159,6 +171,7 @@ export async function createBoard2d(host, opts = {}) {
       }
     });
     st.legal && setLegal(st.legal);
+    if (st.shown) glowHexes(st.shown);
   }
 
   // ─── Фігури ──────────────────────────────────────────────────────────────
@@ -166,8 +179,26 @@ export async function createBoard2d(host, opts = {}) {
     const p = (st.view && st.view.players || []).find((x) => x.seat === seat);
     return SEAT_COLOR[p ? p.color : seat] || '#ccc';
   };
+  const shapeOf = (seat) => {
+    const p = (st.view && st.view.players || []).find((x) => x.seat === seat);
+    return ((p ? p.color : seat) % 4 + 4) % 4;
+  };
+  /** Фігура гравця ●▲■◆ (як SEAT_SHAPE) з центром (x, y) і «радіусом» r. */
+  function shape(g, k, x, y, r, attrs) {
+    if (k === 0) return el('circle', { cx: x, cy: y, r: r * 0.92, ...attrs }, g);
+    const d = k === 1 ? `M${x},${y - r * 1.05} L${x + r * 1.05},${y + r * 0.8} L${x - r * 1.05},${y + r * 0.8} Z`
+      : k === 2 ? `M${x - r * 0.82},${y - r * 0.82} h${r * 1.64} v${r * 1.64} h${-r * 1.64} Z`
+      : `M${x},${y - r * 1.15} L${x + r},${y} L${x},${y + r * 1.15} L${x - r},${y} Z`;
+    return el('path', { d, 'stroke-linejoin': 'round', ...attrs }, g);
+  }
+  /** Прапорець на даху: держак від гребеня й табличка-фігура в кольорі гравця з темним кантом. */
+  function flag(g, x, y, c, k) {
+    const s = U / 60;
+    el('line', { x1: x, y1: y, x2: x, y2: y - 13 * s, stroke: INK, 'stroke-width': 1.8, 'stroke-linecap': 'round' }, g);
+    shape(g, k, x + 6.5 * s, y - 13 * s, 5.6 * s, { fill: c, stroke: INK, 'stroke-width': 2 });
+  }
 
-  function house(g, x, y, c, city) {
+  function house(g, x, y, c, city, k) {
     const s = U / 60;
     if (city) {
       el('path', { d: `M${x - 17 * s},${y + 12 * s} V${y - 4 * s} L${x - 8 * s},${y - 12 * s} L${x + 1 * s},${y - 4 * s} V${y - 9 * s}`
@@ -175,11 +206,13 @@ export async function createBoard2d(host, opts = {}) {
       el('rect', { x: x - 12 * s, y: y + 1 * s, width: 6 * s, height: 7 * s, fill: '#fbf2d5', stroke: INK, 'stroke-width': 1.2 }, g);
       el('rect', { x: x + 6 * s, y: y - 4 * s, width: 6 * s, height: 7 * s, fill: '#fbf2d5', stroke: INK, 'stroke-width': 1.2 }, g);
       el('circle', { cx: x + 9 * s, cy: y - 21 * s, r: 2.5 * s, fill: '#f4c542', stroke: INK, 'stroke-width': 1 }, g);
+      flag(g, x - 8 * s, y - 12 * s, c, k);
     } else {
       el('rect', { x: x - 11 * s, y: y - 3 * s, width: 22 * s, height: 14 * s, fill: '#fbf2d5', stroke: INK, 'stroke-width': 2.2 }, g);
       el('path', { d: `M${x - 15 * s},${y - 1 * s} L${x},${y - 15 * s} L${x + 15 * s},${y - 1 * s} Z`, fill: c, stroke: INK, 'stroke-width': 2.2,
         'stroke-linejoin': 'round' }, g);
       el('rect', { x: x - 3 * s, y: y + 3 * s, width: 6 * s, height: 8 * s, fill: c, stroke: INK, 'stroke-width': 1 }, g);
+      flag(g, x, y - 15 * s, c, k);
     }
   }
 
@@ -203,7 +236,7 @@ export async function createBoard2d(host, opts = {}) {
       for (const t of view.towns || []) {
         const [x, y] = vxy(t.v);
         const g = el('g', { class: 'k2-fig', 'data-v': t.v }, gTowns);
-        house(g, x, y, colorOf(t.seat), t.city);
+        house(g, x, y, colorOf(t.seat), t.city, shapeOf(t.seat));
       }
     }
     // Кармелюк: числа на його гексі тьмяніють, сам — темна постать у шапці, стрибає переходом.
@@ -235,8 +268,11 @@ export async function createBoard2d(host, opts = {}) {
       for (const v of st.legal.v || []) {
         const [x, y] = vxy(v);
         const g = el('g', { class: 'k2-leg ' + k, 'data-k': 'v', 'data-id': v }, gLegal);
+        const r = k === 'city' ? 0.36 * U : 0.17 * U;
         el('circle', { class: 'hit', cx: x, cy: y, r: 0.4 * U }, g);
-        el('circle', { class: 'ring', cx: x, cy: y, r: k === 'city' ? 0.36 * U : 0.17 * U }, g);
+        el('circle', { class: 'halo', cx: x, cy: y, r: r + 9 }, g);
+        el('circle', { class: 'kant', cx: x, cy: y, r }, g);
+        el('circle', { class: 'ring', cx: x, cy: y, r }, g);
       }
     } else if (k === 'road') {
       for (const e of st.legal.e || []) {
@@ -245,14 +281,28 @@ export async function createBoard2d(host, opts = {}) {
         const x1 = A[0] + (B[0] - A[0]) * q, y1 = A[1] + (B[1] - A[1]) * q, x2 = B[0] - (B[0] - A[0]) * q, y2 = B[1] - (B[1] - A[1]) * q;
         const g = el('g', { class: 'k2-leg', 'data-k': 'e', 'data-id': e }, gLegal);
         el('line', { class: 'hit', x1, y1, x2, y2, 'stroke-width': 0.42 * U, stroke: 'transparent' }, g);
-        el('line', { class: 'bar', x1, y1, x2, y2 }, g);
+        for (const c of ['halo', 'kant', 'bar', 'ants']) el('line', { class: c, x1, y1, x2, y2 }, g);
       }
     } else if (k === 'robber') {
       for (const h of st.legal.h || []) {
         const g = el('g', { class: 'k2-leg', 'data-k': 'h', 'data-id': h }, gLegal);
         const c = st.centers[h];
-        el('polygon', { class: 'area', points: pts(st.board.hexes[h].v.map((v) => { const [x, y] = vxy(v); return [c[0] + (x - c[0]) * 0.88, c[1] + (y - c[1]) * 0.88]; })) }, g);
+        const ring = pts(st.board.hexes[h].v.map((v) => { const [x, y] = vxy(v); return [c[0] + (x - c[0]) * 0.88, c[1] + (y - c[1]) * 0.88]; }));
+        el('polygon', { class: 'kant', points: ring }, g);
+        el('polygon', { class: 'area', points: ring }, g);
       }
+    }
+  }
+
+  // ─── «Показ» гексів без клікабельності (glowHexes) ───────────────────────
+  function glowHexes(ids) {
+    st.shown = Array.isArray(ids) && ids.length ? ids.slice() : null;
+    gShow.textContent = '';
+    if (!st.shown || !st.board) return;
+    for (const h of st.shown) {
+      const hx = st.board.hexes[h], c = st.centers[h];
+      if (!hx || !c) continue;
+      el('polygon', { class: 'k2-show', points: pts(hx.v.map((v) => { const [x, y] = vxy(v); return [c[0] + (x - c[0]) * 0.93, c[1] + (y - c[1]) * 0.93]; })) }, gShow);
     }
   }
 
@@ -355,7 +405,7 @@ export async function createBoard2d(host, opts = {}) {
 
   return {
     kind: '2d',
-    setBoard, setState, setLegal, roll, produce, pop, screenPos,
+    setBoard, setState, setLegal, glowHexes, roll, produce, pop, screenPos,
     resetView() {}, resize() {}, dispose,
   };
 }
