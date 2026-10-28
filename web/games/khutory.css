@@ -43,6 +43,7 @@
 .khu-say { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--panel2); font-size: 1.02em; line-height: 1.35; }
 .khu-say.mine { background: color-mix(in srgb, var(--accent) 18%, var(--panel2)); border-left: 4px solid var(--accent); }
 .khu-say-t { flex: 1; min-width: 0; }
+.khu-back { margin: 6px 0 2px; min-height: 40px; padding: 6px 14px; border-radius: 10px; }
 .khu-x { flex: none; background: var(--panel3, var(--panel)); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; min-height: 36px; }
 
 /* ─── Поле ───────────────────────────────────────────────── */

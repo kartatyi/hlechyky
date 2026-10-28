@@ -3570,6 +3570,14 @@
     try { return !!m.ownLeave(rv); } catch (e) { console.warn('[games] ownLeave', e); return false; }
   }
 
+  /// «Повернутись на своє місце» посеред партії (Game.Rejoin на сервері: гра тримає крісло за ніком того, хто випав).
+  /// Модуль каже напис (mod.rejoin(rv, nick) → «🏡 Повернутись на свій хутір»), коли я дивлюсь збоку, а місце — моє.
+  function rejoinLabel(rv) {
+    const m = modules[rv.room.game];
+    if (!m || typeof m.rejoin !== 'function' || rv.seat != null || rv.room.status !== 'playing' || !me.nick) return '';
+    try { return String(m.rejoin(rv, me.nick) || ''); } catch (e) { console.warn('[games] rejoin', e); return ''; }
+  }
+
   function btnsHtml(rv) {
     const r = rv.room;
     const solo = r.maxPlayers === 1;
@@ -3578,6 +3586,9 @@
     // тож статус тут не питаємо — інакше стіл висів би в лобі до прибиральника, і сісти нікому.
     const canSit = !solo && rv.seat == null && freeSeat(r) >= 0 && r.status !== 'playing';
     if (canSit) out.push('<button class="primary" data-do="JoinRoom">Сісти</button>');
+    // Своє місце посеред партії — та сама JoinRoom: сервер посадить саме туди (Rooms.LateSeat).
+    const back = !solo && !canSit ? rejoinLabel(rv) : '';
+    if (back) out.push('<button class="primary" data-do="JoinRoom">' + esc(back) + '</button>');
     // 🏆 Стіл щойно дограної гри турніру: відлік до наступного столу (tournament.js) замість «Ану ще раз» — нова
     // партія тут посадила б усіх знову, і турнір не зміг би поставити наступну гру.
     const tour = window.HTournament && HTournament.roomBar ? HTournament.roomBar(r.id, panelCtx()) : null;
@@ -3620,7 +3631,7 @@
     // Гра може малювати «Встати» сама (mod.ownLeave(rv) → true; покер-кеш — із сумою й підтвердженням) — тоді каркасної нема.
     if (rv.seat != null) { if (!ownLeave(rv)) out.push('<button class="ghost" data-do="LeaveRoom">' + (solo ? 'Закрити' : 'Встати') + '</button>'); }
     // сісти нема куди (або сидиш за іншим столом) — хоч скажемо, чому кнопок нема
-    else if (!solo && !canSit) out.push('<span class="muted small">Дивлюсь збоку</span>');
+    else if (!solo && !canSit && !back) out.push('<span class="muted small">Дивлюсь збоку</span>');
     return out.join('');
   }
 
@@ -3661,7 +3672,7 @@
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
       rv.room.options, rv.room.result, rv.room.evening, rv.room.ready, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
-      botOffered(rv), !!(rv.view && rv.view.botWanted), ownLeave(rv), window.HTournament && HTournament.barSig ? HTournament.barSig(id) : '']);
+      botOffered(rv), !!(rv.view && rv.view.botWanted), ownLeave(rv), rejoinLabel(rv), window.HTournament && HTournament.barSig ? HTournament.barSig(id) : '']);
     const roomChanged = sig !== card.sig;
     if (roomChanged) {
       card.sig = sig;
