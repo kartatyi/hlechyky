@@ -697,7 +697,7 @@ public class KhutoryTests
         Assert.Equal("town", mine.GetProperty("must").GetString());
         Assert.Equal(54, mine.GetProperty("spots").GetProperty("town").GetArrayLength());
         Assert.Equal(JsonValueKind.Null, h.View(1 - turn).GetProperty("me").GetProperty("spots").ValueKind);
-        Assert.Equal(40000, v0.GetProperty("timerMs").GetInt32());
+        Assert.Equal(60000, v0.GetProperty("timerMs").GetInt32());   // розстановка — повний час
         Assert.Equal(JsonValueKind.String, v0.GetProperty("deadline").ValueKind);
     }
 
@@ -734,15 +734,15 @@ public class KhutoryTests
         var a = core.Order[0];
         var b = core.Order[1];
         Assert.False(h.Act(a, "timeout").Ok);
-        h.Clock.Advance(41);
+        h.Clock.Advance(61);
         Assert.True(h.Act(b, "timeout").Ok);       // будь-хто штовхає
         Assert.Equal(1, core.TownsOf(a));
         Assert.Equal(1, core.RoadsOf(a));
         Assert.Equal(b, core.Turn);
-        h.Clock.Advance(41);
+        h.Clock.Advance(61);
         Assert.True(h.Act(a, "timeout").Ok);
         Assert.False(h.View(a).GetProperty("players")[b].GetProperty("away").GetBoolean());
-        h.Clock.Advance(41);
+        h.Clock.Advance(61);
         Assert.True(h.Act(a, "timeout").Ok);       // друга поспіль — далі за нього Глек
         Assert.Equal(2, core.TownsOf(b));
         Assert.True(h.View(a).GetProperty("players")[b].GetProperty("away").GetBoolean());
@@ -755,7 +755,7 @@ public class KhutoryTests
     }
 
     [Fact]
-    public void Leaver_is_replaced_by_a_bot_and_the_last_one_ends_it()
+    public void Leaver_is_replaced_by_a_bot_and_the_last_one_who_stands_up_takes_the_table_away()
     {
         var h = Table(3);
         h.Leave("Іра");
@@ -767,7 +767,9 @@ public class KhutoryTests
         h.Leave("Петро");
         Assert.Empty(h.Finished);
         h.Leave("Оля");
-        Assert.Single(h.Finished);
+        // Останній встав кнопкою: стіл зникає одразу (HoldAfterLeave = false), без Finish — пауза лише на обрив.
+        Assert.Empty(h.Finished);
+        Assert.Null(h.Rooms.Find(h.RoomId));
     }
 
     [Fact]
