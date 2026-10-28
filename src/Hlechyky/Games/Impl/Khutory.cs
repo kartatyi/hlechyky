@@ -44,6 +44,10 @@ public sealed class Khutory : Game
     string _mainKey = "";
     DateTimeOffset? _mainDeadline;
     DateTimeOffset? _botAt;
+    /// <summary>Скільки задрімала людина має на кидок сама, перш ніж Глек кине за неї.</summary>
+    public const int AwayGraceMs = 5000;
+    string _graceKey = "";
+    DateTimeOffset _graceUntil;
     /// <summary>Розумний Глек (пам'ять його пропозицій — на партію).</summary>
     KhutoryBot _brain = new();
     bool _announced;
@@ -104,6 +108,7 @@ public sealed class Khutory : Game
         _deadline = null;
         _mainKey = "";
         _mainDeadline = null;
+        _graceKey = "";
         _heardSeq = seq;
         _setupSaid = _cityYet = _lastSeven = false;
         _longestWas = null;
@@ -317,6 +322,13 @@ public sealed class Khutory : Game
         {
             if (!Auto(s)) continue;
             var at = _brain.WaitUntil(_core, s, now) ?? now.AddMilliseconds(BoardBots.ThinkMs);
+            // Пільга задрімалому: настав хід людини, за яку грає Глек, — перші 5 с кубики не чіпаємо, хай повернеться сама.
+            if (_away[s] && !IsBot(s) && Ctx.Seated(s) && s == _core.Turn && _core.Phase == KhPhase.Roll)
+            {
+                var key = $"{_core.Turn}|{_core.Rounds}|{_core.TurnIdx}";
+                if (key != _graceKey) { _graceKey = key; _graceUntil = now.AddMilliseconds(AwayGraceMs); }
+                if (at < _graceUntil) at = _graceUntil;
+            }
             if (_botAt is null || at < _botAt) _botAt = at;
         }
     }
@@ -500,7 +512,9 @@ public sealed class Khutory : Game
     public override object View(int? seat)
     {
         var c = _core;
-        var me = seat is { } s0 && s0 >= 0 && s0 < KhutoryCore.MaxSeats && c.In[s0] && !IsBot(s0) ? s0 : -1;
+        // До старту (стіл збирається) ядро порожнє: ні фази, ні ходу, ні «мене».
+        var started = c.Seats > 0;
+        var me = started && seat is { } s0 && s0 >= 0 && s0 < KhutoryCore.MaxSeats && c.In[s0] && !IsBot(s0) ? s0 : -1;
         var g = KhutoryGeo.I;
         var b = c.B;
         var board = new
@@ -542,9 +556,9 @@ public sealed class Khutory : Game
             board,
             players,
             order = (int[])c.Order.Clone(),
-            turn = over ? (int?)null : c.Turn,
-            phase = c.PhaseName,
-            setup = c.Phase == KhPhase.Setup ? new { step = c.SetupRoad ? "road" : "town", round = c.SetupIdx < c.Seats ? 1 : 2 } : null,
+            turn = over || !started ? (int?)null : c.Turn,
+            phase = started ? c.PhaseName : null,
+            setup = started && c.Phase == KhPhase.Setup ? new { step = c.SetupRoad ? "road" : "town", round = c.SetupIdx < c.Seats ? 1 : 2 } : null,
             dice = c.Dice is { } d ? (int[])d.Clone() : null,
             rolled = c.Rolled,
             robber = c.Robber,
