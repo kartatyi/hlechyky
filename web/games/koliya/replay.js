@@ -138,6 +138,7 @@ export function encodeBytes(rec) {
       hd.b(p & 3 | (k << 2) | (pose ? 32 : 0) | (c.h ? 64 : 0) | (p > 3 ? 128 : 0));
       if (p > 3) ex.u(p);
       if (k === 7) ex.str(String(c.k));
+      if (c.k === 'feel') ex.u(c.f | 0);   // своє керування — код рядком не передати
       if (c.k === 'in') { mx.z((c.mx | 0) - (lx[p] ?? 0)); my.z((c.my | 0) - (ly[p] ?? 0)); lx[p] = c.mx | 0; ly[p] = c.my | 0; }
       if (pose) { ex.z(c.x ?? 0); ex.z(c.y ?? 0); ex.b((Math.sign(c.fx | 0) + 1) | ((Math.sign(c.fy | 0) + 1) << 2) | (c.x === undefined ? 16 : 0)); }
     }
@@ -167,6 +168,7 @@ export function decodeBytes(a) {
       const ki = (h >> 2) & 7;
       const k = ki === 7 ? ex.str() : KINDS[ki];
       const c = k === 'join' ? { k } : { p, k };
+      if (k === 'feel') c.f = ex.u();
       if (k === 'in') { c.mx = lx[p] = (lx[p] ?? 0) + mx.z(); c.my = ly[p] = (ly[p] ?? 0) + my.z(); }
       if (h & 32) { const x = ex.z(), y = ex.z(), f = ex.b(); if (!(f & 16)) { c.x = x; c.y = y; } c.fx = (f & 3) - 1; c.fy = ((f >> 2) & 3) - 1; }
       if (h & 64) c.h = 1;

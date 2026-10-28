@@ -51,7 +51,7 @@ export function buildReport(s, x = {}) {
   // хто що робив (tally.js): [удари 🪓, ⛏, 📦 у склад, 🛤, 💧, % стояв] — як таблиця на фінальній картці
   if (st.pl?.length) r.who = st.pl.map((q) => q ? [q.chop | 0, q.rock | 0, q.store | 0, q.rail | 0, q.douse | 0, q.ticks ? Math.round(q.idle / q.ticks * 100) : 0] : null);
   if (E) r.stations = E.stations | 0;
-  for (const k of ['theme', 'look', 'tips', 'zeal', 'net', 'fps', 'dev', 'hid']) if (x[k] !== undefined) r[k] = x[k];
+  for (const k of ['theme', 'look', 'tips', 'zeal', 'feel', 'net', 'fps', 'dev', 'hid']) if (x[k] !== undefined) r[k] = x[k];
   return r;
 }
 
@@ -89,6 +89,7 @@ export function createReport(game, opts = {}) {
     const x = {
       end, local: net ? (net.p2 >= 0 ? 2 : 1) : game.local | 0, bots: net ? 0 : game.bots | 0, daily: !!game.daily,
       theme: isChumak() ? 'chumak' : 'koliya', look: view?.look, tips: prefs.tips !== false, zeal: game.bots ? prefs.zeal : undefined,
+      feel: prefs.feel && Object.entries(prefs.feel).some(([k, v]) => v !== defaultParams()[k]) ? prefs.feel : undefined,   // своє керування, якщо не типове
       fps: { avg: c.ms > 0 ? Math.round(c.frames / (c.ms / 1000)) : 0, slow: c.frames ? Math.round(c.slow / c.frames * 100) : 0,
         jank: c.jank, start: game.fpsStart | 0 },
       dev: { ...dev0, w: innerWidth, h: innerHeight, dpr: Math.round((devicePixelRatio || 1) * 100) / 100, q: view?.quality ?? prefs.quality,
@@ -109,7 +110,12 @@ export function createReport(game, opts = {}) {
   function ship(r) {
     cur.sent = true;
     if (off || (net && !(net.p >= 0))) return;   // перевірки й глядач — без звіту
-    if (net) r.net = netInfo();
+    if (net) {
+      // рамка перезавантажилась (лобі ↔ стіл без moveBefore, F5) і бачить ту саму дограну партію — вдруге не шлемо
+      const key = `kol-rep:${net.room}:${cur.e}:${r.end}`;
+      try { if (globalThis.sessionStorage?.getItem(key)) return; globalThis.sessionStorage?.setItem(key, '1'); } catch { }
+      r.net = netInfo();
+    }
     try { send(r); } catch { }
   }
 

@@ -99,6 +99,25 @@ export function defaultParams() {
   return p;
 }
 
+// Своє керування (28.10): рух, удар і приціл — у кожного гравця свої. Команда { p, k: 'feel', f } кладе на гравця
+// pl.feel = { move, useMode, aim } (f = рух×9 + удар×3 + приціл); без неї — з params, як було. pl.feel іде в hash сам
+// (HASH_PL його не знає), тож партії без 'feel' мають той самий хеш, що й раніше (повтори, еталони).
+export const FEEL_KEYS = ['move', 'useMode', 'aim'];
+/** Керування гравця: його pl.feel, інакше params світу */
+export const feelOf = (s, pl) => (pl && pl.feel) || s.params;
+/** { move, useMode, aim } → код 0..26 (-1 — щось не з VARIANTS) */
+export function feelCode(f) {
+  const i = FEEL_KEYS.map((k) => VARIANTS[k].values.indexOf(f && f[k]));
+  return i.some((x) => x < 0) ? -1 : i[0] * 9 + i[1] * 3 + i[2];
+}
+/** код → { move, useMode, aim } (null — нема такого) */
+export function feelFrom(code) {
+  code = Number.isInteger(code) ? code : -1;
+  if (code < 0 || code > 26) return null;
+  const f = { move: VARIANTS.move.values[(code / 9) | 0], useMode: VARIANTS.useMode.values[((code / 3) | 0) % 3], aim: VARIANTS.aim.values[code % 3] };
+  return FEEL_KEYS.every((k) => f[k] !== undefined) ? f : null;
+}
+
 // PRNG mulberry32: стан — uint32 у state.rng; повертає ціле 0..2^32-1
 export function rnd(state) {
   let t = (state.rng = (state.rng + 0x6D2B79F5) >>> 0);
@@ -180,6 +199,7 @@ function newPlayer(c) {
  *     Якщо use приходить і в попередньому тику («затиснуто»), повторюються лише удари, класти рейки й мости —
  *     взяти/покласти спрацьовує тільки на натиск (інакше стос перекидався б щотику).
  *  { k: 'join' } / { p, k: 'leave' }
+ *  { p, k: 'feel', f }               — своє керування гравця (feelFrom(f)): рух, удар, приціл
  * Рестарт — не команда: newGame(...) заново.
  * Порядок тику: команди → рух гравців (+ підбирання свого стосу під ногами) → майстерня → паротяг і котел → тик++.
  */
@@ -216,8 +236,18 @@ export function applyCmd(s, c) {
       use(s, c.p | 0, pl);
       break;
     case 'leave': leave(s, pl); break;
+    case 'feel': setFeel(s, pl, c.f); break;
     case 'throw': case 'horn': if (c.x !== undefined) setPose(s, pl, c, true); coopCmd(s, c.p | 0, pl, c.k); break;   // K18
   }
+}
+
+/** Своє керування гравця (команда 'feel'). Інший рух — крок клітинками починається заново; не «розумний» приціл — без підсвітки. */
+function setFeel(s, pl, code) {
+  const f = feelFrom(code);
+  if (!f) return;
+  if (feelOf(s, pl).move !== f.move) { pl.gx = pl.gy = -1; pl.gt = 0; }
+  pl.feel = f;
+  if (f.aim !== 'smart') pl.aim = null;
 }
 
 // K24: поза, що їде з use/throw, — це «де я стояв у своєму передбаченому світі»; запізніла команда (сервер зсунув її
@@ -291,9 +321,10 @@ function movePlayer(s, n) {
   if (pl.cd > 0) pl.cd--;
   if (pl.stun > 0) { pl.stun--; return; }   // K18: зірочки — стоїть
   passTick(s, pl);                           // K33: старий спосіб (passT > 0) — тиснеш у вагон, згодом протиснешся
-  if (s.params.move !== 'grid' && moveIce(s, n, pl)) return;           // K26: на льоду ковзаємо
-  if (s.params.move === 'grid') { moveGrid(s, n, pl); return; }       // K14
-  if (s.params.move === 'snappy') { moveSnappy(s, n, pl); return; }   // K14
+  const mv = feelOf(s, pl).move;             // своє керування гравця
+  if (mv !== 'grid' && moveIce(s, n, pl)) return;           // K26: на льоду ковзаємо
+  if (mv === 'grid') { moveGrid(s, n, pl); return; }       // K14
+  if (mv === 'snappy') { moveSnappy(s, n, pl); return; }   // K14
   let mx = pl.mx, my = pl.my;
   if (!mx && !my) return;
   // куди дивиться — переважна вісь (на рівних лишаємо поточну, якщо вона серед натиснутих)
@@ -437,14 +468,14 @@ function moveSnappy(s, n, pl) {
 function feelTick(s, n) {
   const pl = s.players[n];
   if (!pl || pl.out) return;
-  const h = pl.hold.k;
-  if (s.params.useMode === 'auto' && pl.cd === 0 && (h === I.AXE || h === I.PICK)) {
+  const h = pl.hold.k, F = feelOf(s, pl);
+  if (F.useMode === 'auto' && pl.cd === 0 && (h === I.AXE || h === I.PICK)) {
     const f = aimCell(s, pl);
     if (inside(s, f.x, f.y) && s.obj[f.y * s.w + f.x] === (h === I.AXE ? O.TREE : O.ROCK)) {
       const ut = pl.ut; use(s, n, pl); pl.ut = ut;   // автоудар не рахується натиском кнопки
     }
   }
-  if (s.params.aim === 'smart') {
+  if (F.aim === 'smart') {
     const f = aimCell(s, pl);
     const ok = useful(s, pl, f.x, f.y);
     if (!ok) pl.aim = null;
@@ -477,7 +508,7 @@ const AIM8 = [[1, 0], [0, 1], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -
  *  доречна з 8 сусідніх (трохи краще ті, що спереду), а як нема — facingCell. turn — повернутись до неї (по сторонах). */
 export function aimCell(s, pl, turn = false) {
   const f = facingCell(pl);
-  if (s.params.aim !== 'smart' || useful(s, pl, f.x, f.y)) return f;
+  if (feelOf(s, pl).aim !== 'smart' || useful(s, pl, f.x, f.y)) return f;
   const cx = Math.floor(pl.x / U), cy = Math.floor(pl.y / U);
   let best = null, bd = Infinity;
   for (const [dx, dy] of AIM8) {
@@ -601,7 +632,7 @@ function hold0(pl) { pl.hold.k = I.NONE; pl.hold.n = 0; }
 function use(s, n, pl) {
   const held = pl.ut > 0 && pl.ut === s.tick;   // use був і в попередньому тику
   pl.ut = s.tick + 1;
-  if (held && s.params.useMode === 'tap') return;   // K14: без автоповтору — лише натиск
+  if (held && feelOf(s, pl).useMode === 'tap') return;   // K14: без автоповтору — лише натиск
   if (pl.cd > 0 || pl.stun > 0) return;   // K18: stun
   const P = s.params;
   const f = aimCell(s, pl, true);   // K14: aim='front' — facingCell, 'smart' — доречна поруч
@@ -865,7 +896,7 @@ export function hash(s) {
   for (const p of s.players) {
     mix(p.x); mix(p.y); mix(p.fx); mix(p.fy); mix(p.hold.k); mix(p.hold.n); mix(p.cd);
     mix(p.mx); mix(p.my); mix(p.ut); mix(p.out); mix(p.st);
-    if (s.params.move === 'grid') { mix(p.gx); mix(p.gy); mix(p.gt); }   // K14 (типовий hash не змінюється)
+    if (feelOf(s, p).move === 'grid') { mix(p.gx); mix(p.gy); mix(p.gt); }   // K14 (типовий hash не змінюється)
     for (const k of Object.keys(p).sort()) if (!HASH_PL[k]) { mixStr(mix, k); mixAny(mix, p[k]); }   // K6: нові поля гравця
   }
   coopHash(s, mix);   // K18 (лише ввімкнене)

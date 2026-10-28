@@ -137,7 +137,7 @@ export function mountThemeUi(panelRoot) {
   if (!panelRoot || typeof document === 'undefined') return null;
   const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
   let host = [...panelRoot.querySelectorAll('details.kol-grp')].find((d) => d.querySelector('summary')?.textContent.includes('Вигляд'));
-  if (!host) { host = el('details', 'kol-grp'); host.open = true; host.append(el('summary', null, '🎨 Вигляд')); (panelRoot.querySelector('.kol-pan') || panelRoot).append(host); }
+  if (!host) { host = el('details', 'kol-grp'); host.open = true; host.append(el('summary', null, '🎨 Вигляд')); (panelRoot.querySelector('.kol-note')?.parentNode || panelRoot.querySelector('.kol-pan') || panelRoot).append(host); }   // у «🎧 Моє»
   const box = el('div', 'kol-p'), seg = el('div', 'kol-seg');
   const btns = Object.entries(THEMES).map(([k, v]) => {
     const b = el('button', null, v.label);

@@ -1751,6 +1751,8 @@
   }
 
   /// Картки лише переносяться між складом і сторінкою столу й ховаються через hidden.
+  /// Рамку (iframe — «Колія») appendChild перезавантажує: гра вантажилась наново на кожен перехід лобі ↔ стіл. moveBefore
+  /// (Chrome 133+) переносить, не чіпаючи вмісту; де його нема — як було.
   function placeCards(openId) {
     const box = root.querySelector('.grbox');
     const store = root.querySelector('.gtables');
@@ -1759,7 +1761,11 @@
       const c = cards[id];
       const here = id === openId;
       const host = here ? box : store;
-      if (c.el.parentElement !== host) host.appendChild(c.el);
+      if (c.el.parentElement !== host) {
+        if (host.moveBefore && c.el.isConnected && c.el.querySelector('iframe')) {
+          try { host.moveBefore(c.el, null); } catch { host.appendChild(c.el); }
+        } else host.appendChild(c.el);
+      }
       c.el.hidden = !here;
     }
   }
@@ -3693,6 +3699,8 @@
         const r = await busy(e.currentTarget, '…', async () => {
           const r = await call(b.dataset.do, id);
           if (r.ok && b.dataset.do === 'LeaveRoom') {
+            // модуль чує «встав» раніше за вид: рамка «Колії», що перезавантажиться, не сяде сама знову (koliya.js left)
+            if (card.mod && card.mod.left) { try { card.mod.left(id); } catch (x) { console.warn('[games] left', x); } }
             // приватну соло-кімнату сервер із лобі не прибере — прибираємо картку самі
             if (views[id] && views[id].loose) { dropCard(id); delete views[id]; pinned.delete(id); }
             if (view.kind === 'room' && view.id === id) go('#games'); else renderView();

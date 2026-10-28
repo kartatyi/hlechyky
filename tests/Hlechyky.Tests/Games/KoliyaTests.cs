@@ -386,6 +386,86 @@ public class KoliyaTests
         Assert.True(h.Act(0, "restart", new { seed = 5 }).Ok);
         Assert.Equal(-1, Game(h).SnapTick);
     }
+
+    [Fact]
+    public void Налаштування_столу_одні_на_всіх_а_перезапуск_будь_ким_бере_їх()
+    {
+        var h = Table("Оля", "Петро");
+        h.Tick(30);
+        // mode у налаштування столу не йде: навчання вмикає саме перезапуск
+        Assert.True(h.Act(1, "params", new { @params = new { speedStart = 0.1, geese = "on", mode = "tutorial" } }).Ok);
+        var v = h.View(0);
+        Assert.Equal(0.1, v.GetProperty("tp").GetProperty("speedStart").GetDouble());
+        Assert.False(v.GetProperty("tp").TryGetProperty("mode", out _));
+        Assert.Equal("Петро", v.GetProperty("tb").GetString());
+        Assert.Equal(1, v.GetProperty("tv").GetInt32());
+        Assert.Equal(1, v.GetProperty("e").GetInt32());                  // партія йде — світ не чіпаємо, діє з наступної
+        Assert.Equal(0.1, Log(h).GetProperty("tp").GetProperty("speedStart").GetDouble());
+        // «Ще раз» від Олі, яка нічого не крутила, — з налаштуваннями столу, а не зі своїми
+        Assert.True(h.Act(0, "restart", new { seed = 9 }).Ok);
+        var prm = h.View(0).GetProperty("prm");
+        Assert.Equal(0.1, prm.GetProperty("speedStart").GetDouble());
+        Assert.Equal("on", prm.GetProperty("geese").GetString());
+        Assert.False(prm.TryGetProperty("mode", out _));
+        Assert.True(h.Act(0, "restart", new { seed = 9, mode = "tutorial" }).Ok);   // «Навчання для всіх»
+        prm = h.View(0).GetProperty("prm");
+        Assert.Equal("tutorial", prm.GetProperty("mode").GetString());
+        Assert.Equal(0.1, prm.GetProperty("speedStart").GetDouble());
+        // явні params (маршрут дня, стара вкладка) — як прислали
+        Assert.True(h.Act(0, "restart", new { seed = 9, @params = new { speedStart = 0.3 } }).Ok);
+        Assert.Equal(0.3, h.View(0).GetProperty("prm").GetProperty("speedStart").GetDouble());
+        Assert.Equal(0.1, h.View(0).GetProperty("tp").GetProperty("speedStart").GetDouble());
+        Assert.False(h.Act(0, "params", new { @params = 5 }).Ok);
+    }
+
+    [Fact]
+    public void Налаштування_в_зборі_перебудовують_світ_тим_самим_сідом()
+    {
+        var h = new RoomHarness("koliya", seed: 7);
+        h.Join("Оля");
+        h.Join("Петро");
+        var seed = h.View(0).GetProperty("seed").GetUInt32();
+        Assert.True(h.Act(0, "restart", new { seed, mode = "tutorial" }).Ok);   // збір навчання
+        Assert.True(h.Act(1, "params", new { @params = new { stripLen = 60 } }).Ok);
+        var v = h.View(0);
+        Assert.Equal(3, v.GetProperty("e").GetInt32());
+        Assert.Equal(seed, v.GetProperty("seed").GetUInt32());
+        Assert.Equal(60, v.GetProperty("prm").GetProperty("stripLen").GetInt32());
+        Assert.Equal("tutorial", v.GetProperty("prm").GetProperty("mode").GetString());   // з навчання не викинуло
+        Assert.Equal(2, v.GetProperty("n0").GetInt32());
+        Assert.True(Game(h).Waiting);
+    }
+
+    [Fact]
+    public void Своє_керування_feel_у_журналі_у_зборі_на_тик_0()
+    {
+        var h = new RoomHarness("koliya", seed: 7);
+        h.Join("Оля");
+        h.Input(0, "feel", new { f = 13, t = 30, i = 1 });   // у зборі тик 0, хоч би який просили
+        var e = Entries(Log(h)).Last();
+        Assert.Equal(0, e[1]);
+        Assert.Equal(Koliya.Feel, e[3]);
+        Assert.Equal(13, e[4]);
+        Assert.True(h.Act(0, "go").Ok);
+        h.Tick(20);
+        h.Input(0, "feel", new { f = 99, t = 21, i = 2 });   // чужий код — у межах
+        e = Entries(Log(h)).Last();
+        Assert.Equal(21, e[1]);
+        Assert.Equal(Koliya.FeelCodes - 1, e[4]);
+    }
+
+    [Fact]
+    public void Останній_встав_кнопкою_стіл_зникає_а_обрив_чекає_хвилину()
+    {
+        var h = Table("Оля");
+        var id = h.RoomId;
+        h.Leave("Оля");
+        Assert.Null(h.Rooms.Find(id));
+
+        var h2 = Table("Петро");
+        h2.Rooms.DropNick("Петро");                                     // відпав зв'язок (відлік Grace минув)
+        Assert.NotNull(h2.Rooms.Find(h2.RoomId));
+    }
 }
 
 /// <summary>Швидкодія «Колії» — окремою колекцією: у паралельному прогоні стінний годинник бреше.</summary>

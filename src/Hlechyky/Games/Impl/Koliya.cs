@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Hlechyky.Games.Impl;
 
@@ -19,7 +20,13 @@ namespace Hlechyky.Games.Impl;
 /// згорнути кадри, тож запис іде в кількох кадрах поспіль. Хто відстав більше (діра в номерах) чи щойно прийшов —
 /// бере журнал окремо: <c>GET /api/games/koliya/{стіл}/log?from=N</c> (<see cref="KoliyaSetup"/>).
 /// Запис — 10 цілих: <c>[seq, t, p, k, a, b, c, d, e, i]</c>, k: 1 in (a=mx, b=my), 2 use (a=x, b=y, c=fx, d=fy,
-/// e=1 — «затиснуто»), 3 join, 4 leave, 5 throw (a=x, b=y, c=fx, d=fy — кидок K18 залежить від пози), 6 horn (гудок K18); i — номер команди у відправника (щоб він упізнав свою).
+/// e=1 — «затиснуто»), 3 join, 4 leave, 5 throw (a=x, b=y, c=fx, d=fy — кидок K18 залежить від пози), 6 horn (гудок K18),
+/// 7 feel (a — своє керування гравця: рух×9 + удар×3 + приціл, rules.js FEEL); i — номер команди у відправника (щоб він упізнав свою).
+/// </para>
+/// <para>
+/// Налаштування столу — одні на всіх: <c>Act "params"</c> {params} від будь-кого за столом (у зборі світ одразу
+/// перебудовується тим самим сідом), «restart» без params бере саме їх (+ mode з команди). У виді й журналі: <c>tp</c> —
+/// налаштування, <c>tb</c> — хто змінив, <c>tv</c> — номер зміни. Сервер їх не читає, як і params партії (<c>prm</c>).
 /// </para>
 /// <para>
 /// Двоє за одним ПК (K6): місце може мати другого гравця rules (<c>Act "join2"</c> / <c>"leave2"</c>; команди 'in'/'use'
@@ -67,10 +74,15 @@ public sealed class Koliya : Game
 
     /// <summary>Гравців rules.js (MAX_PLAYERS) — з двома за ПК місць може бути менше.</summary>
     public const int MaxRulesPlayers = 4;
-    public const int In = 1, Use = 2, Join = 3, Leave = 4, Throw = 5, Horn = 6;
+    public const int In = 1, Use = 2, Join = 3, Leave = 4, Throw = 5, Horn = 6, Feel = 7;
+    /// <summary>Кодів свого керування (rules.js FEEL: 3 рухи × 3 удари × 3 приціли).</summary>
+    public const int FeelCodes = 27;
 
     /// <summary>Порожній стіл чекає свого (F5, обрив).</summary>
     public override TimeSpan HoldEmpty => TimeSpan.FromSeconds(60);
+
+    /// <summary>Хто встав кнопкою — пішов: останній такий не лишає по собі «іде партія» на хвилину.</summary>
+    public override bool HoldAfterLeave => false;
 
     readonly record struct Entry(int T, int P, int K, int A, int B, int C, int D, int E, int I);
 
@@ -94,6 +106,9 @@ public sealed class Koliya : Game
     int _leaveT;   // K24: тик останнього leave у журналі
     bool _dirty;
     bool _wait;    // K62: збір — годинник стоїть на 0, поки хтось не скаже "go"
+    string _table = "{}";   // налаштування столу (без mode): «restart» без params бере їх
+    string? _tableBy;       // хто змінив останнім
+    int _tableV;            // номер зміни (браузер упізнає нову й каже «Smaug поставив …»)
 
     // ---- K28: люди за столом (повз журнал: світ від цього не міняється) ----
     /// <summary>Скільки є реакцій-емодзі (web/games/koliya/net.js REACTS).</summary>
@@ -246,7 +261,7 @@ public sealed class Koliya : Game
         _seen[seat] = Ctx.Clock.UtcNow;   // K28: живий (і старою епохою теж)
         // K24: ввід зі старої епохи (летів, поки хтось перезапустив) — мовчки геть: його тик і поза — зі старого світу
         // (use з позою телепортував би гравця в новому світі, може й у скелю), хеш — звірка зі старим світом.
-        if (action is not ("restart" or "join2" or "leave2") && Stale(payload)) return ActResult.Done;
+        if (action is not ("restart" or "join2" or "leave2" or "params") && Stale(payload)) return ActResult.Done;
         // K62: у зборі світ стоїть — рух і дії не пишемо (тик 0 мусить лишитись однаковим, хоч би хто що тиснув)
         if (_wait && action is "in" or "use" or "throw" or "horn") return ActResult.Done;
         switch (action)
@@ -256,8 +271,15 @@ public sealed class Koliya : Game
                 _pingAt[seat] = Ctx.Clock.UtcNow;
                 _rtt[seat] = Clamp(payload, "r", 0, 9999);
                 return ActResult.Done;
-            case "restart":
-                NewEpoch(ReadSeed(payload), ReadParams(payload));
+            case "restart":   // з params — як прислали (маршрут дня); без — налаштування столу + mode
+                NewEpoch(ReadSeed(payload), HasParams(payload) ? ReadParams(payload) : WithMode(_table, ReadMode(payload)));
+                return ActResult.Done;
+            case "params":    // налаштування столу — усім; у зборі ще ніхто не рушив, тож світ перебудовуємо одразу
+                _table = WithMode(ReadParams(payload), null);
+                _tableBy = Ctx.NickOf(seat);
+                _tableV++;
+                _dirty = true;
+                if (_wait) NewEpoch(_seed, WithMode(_table, ModeOf(_params)));
                 return ActResult.Done;
             case "go":      // K62: «▶ Почали» — годинник рушає з цієї миті (повтор — нічого)
                 if (_wait) { _wait = false; _startAt = Ctx.Clock.UtcNow; _dirty = true; }
@@ -293,6 +315,13 @@ public sealed class Koliya : Game
             {
                 var p = Player(seat, payload);
                 Add(seat, new Entry(0, p, Horn, 0, 0, 0, 0, 0, Clamp(payload, "i", 0, int.MaxValue)), ReqTick(payload));
+                return ActResult.Done;
+            }
+            case "feel":    // своє керування (рух, удар, приціл) — у журнал, щоб усі браузери поклали його тому самому гравцю
+            {
+                var p = Player(seat, payload);
+                Add(seat, new Entry(0, p, Feel, Clamp(payload, "f", 0, FeelCodes - 1), 0, 0, 0, 0, Clamp(payload, "i", 0, int.MaxValue)),
+                    _wait ? null : ReqTick(payload));
                 return ActResult.Done;
             }
             case "hash":
@@ -480,7 +509,7 @@ public sealed class Koliya : Game
     {
         e = _epoch, seed = _seed, prm = Prm(), n0 = _n, p = seat is { } s && s >= 0 && s < _pOf.Length ? _pOf[s] : -1,
         pOf = _pOf.ToArray(), p2 = seat is { } s2 && s2 >= 0 && s2 < _p2Of.Length ? _p2Of[s2] : -1, p2Of = _p2Of.ToArray(), d = _desync,
-        nm = Names(), wait = _wait ? 1 : 0,
+        nm = Names(), wait = _wait ? 1 : 0, tp = Table(), tb = _tableBy, tv = _tableV,
     };
 
     /// <summary>
@@ -514,6 +543,7 @@ public sealed class Koliya : Game
         {
             e = _epoch, seed = _seed, prm = Prm(), n0 = _n, t = NowTick(), w = Mark(), n = _log.Count, f = Math.Clamp(from, 0, _log.Count),
             c = Flat(from), pOf = _pOf.ToArray(), p2Of = _p2Of.ToArray(), d = _desync, nm = Names(), wait = _wait ? 1 : 0,
+            tp = Table(), tb = _tableBy, tv = _tableV,
             s = s is null ? null : new { t = s.T, h = s.H, z = s.Z ? 1 : 0, b = s.B },
         };
     }
@@ -523,6 +553,15 @@ public sealed class Koliya : Game
         using var doc = JsonDocument.Parse(_params);
         return doc.RootElement.Clone();
     }
+
+    JsonElement Table()
+    {
+        using var doc = JsonDocument.Parse(_table);
+        return doc.RootElement.Clone();
+    }
+
+    /// <summary>Налаштування для тесту: що лежить зараз.</summary>
+    public string TableJson => _table;
 
     /// <summary>K24: команда несе епоху <c>e</c> (net.js) — і вона не поточна. Без <c>e</c> — як було.</summary>
     bool Stale(JsonElement p) =>
@@ -546,6 +585,24 @@ public sealed class Koliya : Game
             && s.TryGetDouble(out var v) && double.IsFinite(v) && v >= 0 && v <= uint.MaxValue)
             return (uint)v;
         throw new GameError("Який сід?");
+    }
+
+    static bool HasParams(JsonElement p) => p.ValueKind == JsonValueKind.Object && p.TryGetProperty("params", out _);
+
+    static string? ReadMode(JsonElement p) =>
+        p.ValueKind == JsonValueKind.Object && p.TryGetProperty("mode", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
+
+    /// <summary>mode партії (навчання чи ні) — щоб перебудова світу в зборі не вивела з навчання.</summary>
+    static string? ModeOf(string prm) =>
+        JsonNode.Parse(prm) is JsonObject o && o["mode"] is JsonValue v && v.TryGetValue<string>(out var m) ? m : null;
+
+    /// <summary>Налаштування столу + mode партії: лише 'tutorial' щось важить (звичайна смуга — без ключа).</summary>
+    static string WithMode(string table, string? mode)
+    {
+        var o = JsonNode.Parse(table) as JsonObject ?? [];
+        o.Remove("mode");
+        if (mode == "tutorial") o["mode"] = "tutorial";
+        return o.ToJsonString();
     }
 
     /// <summary>Параметри світу — як прийшли (об'єкт ≤ 4 КБ); сервер їх не читає, лише віддає всім.</summary>

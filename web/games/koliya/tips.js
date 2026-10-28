@@ -18,7 +18,7 @@
 //    або null (поза кадром). Нема project — бульбашки стосом у правому нижньому куті з кольором гравця й стрілкою.
 //    Підказуємо лише локальним (game.local, типово всім); при game.paused (стартовий екран HUD) — сховано.
 // HUD (K9) уже кричить тривоги («котел», «рейки закінчуються») — тут лише «що робити руками».
-import { U, G, O, I, TPS, wagonPos, canLay, canUnlay } from './rules.js';
+import { U, G, O, I, TPS, wagonPos, canLay, canUnlay, feelOf } from './rules.js';
 import { t as tt } from './theme.js';   // K25: слова теми «Чумацький шлях»
 
 import { A11Y, pcol } from './panel.js';   // K53: колір гравця — як у HUD (з «Кольори для дальтоніків»)
@@ -352,7 +352,7 @@ export function pickTips(s, memory = {}, opts = {}) {
         }
       }
       // K16: розумний приціл — раз пояснити, коли ролі вже позаду
-      if (s.params?.aim === 'smart' && free(p, 'aim') && (isDone(m, p, 'role') || P.filter((q) => q && !q.out).length < 2)
+      if (s.params && feelOf(s, pl).aim === 'smart' && free(p, 'aim') && (isDone(m, p, 'role') || P.filter((q) => q && !q.out).length < 2)
           && info(p, 'aim', `Кнопка ${key} сама знаходить справу поруч — дивись на підсвітку`, pl.aim ?? null)) continue;
       // K39: гудок біля бота-напарника й реакції в мережі — коли основи позаду
       if (tick >= LATER) {

@@ -628,7 +628,7 @@ public sealed partial class Rooms
             if (room.SeatOf(nick) is not { } seat) return RoomOutcome.Fail(Say.NotPlaying);
             Vacate(room, seat, outbox);
         }
-        Sweep(room, outbox);
+        Sweep(room, outbox, left: true);
         outbox.RunAfter(_log);
         return new RoomOutcome(outbox, new RoomReply(true, "Ти вже не за столом", room.Id));
     }
@@ -679,11 +679,13 @@ public sealed partial class Rooms
     }
 
     /// <summary>Кімната без людей зникає одразу: дивитись у порожній стіл нема сенсу.</summary>
-    void Sweep(Room room, Outbox outbox)
+    /// <param name="left">Останній сам натиснув «Встати» (а не відпав зв'язок).</param>
+    void Sweep(Room room, Outbox outbox, bool left = false)
     {
         if (room.Occupied > 0) return;
-        // Гра, що чекає повернення (HoldEmpty), лишається: її прибере Housekeeping, коли мине час.
-        if (room.Status == RoomStatus.Playing && room.Game.HoldEmpty > TimeSpan.Zero) return;
+        // Гра, що чекає повернення (HoldEmpty), лишається: її прибере Housekeeping, коли мине час. Гра може сказати,
+        // що того, хто встав кнопкою, не чекає (Game.HoldAfterLeave) — тоді стіл зникає одразу.
+        if (room.Status == RoomStatus.Playing && room.Game.HoldEmpty > TimeSpan.Zero && !(left && !room.Game.HoldAfterLeave)) return;
         lock (room.Sync) SettleAbandoned(room, outbox);
         Drop(room);
         if (!room.Info.Private) outbox.Add(new LobbyChanged());
