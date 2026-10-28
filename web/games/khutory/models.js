@@ -580,6 +580,10 @@ export function roofGeo(big = false) {
   b.add(rawGeo(arr), null, (c) => c.y > y0 + 0.001 ? col('#ffffff') : col('#b0b0b0'), { rng: rngOf(1), jitter: 0.06 });
   // гребінь
   b.add(new THREE.BoxGeometry(rx * 2 + 0.02, 0.016, 0.022), mat(0, y1, 0), '#d8d8d8', { rng: rngOf(2), jitter: 0 });
+  // Темний кант по стрісі (не тонується кольором гравця): білий/кремовий дах інакше зливався з біленими стінами й ланом.
+  const k = '#2a1d12', t = 0.016;
+  for (const [x, z, lx, lz] of [[0, ez, ex * 2 + t, t], [0, -ez, ex * 2 + t, t], [ex, 0, t, ez * 2], [-ex, 0, t, ez * 2]])
+    b.add(new THREE.BoxGeometry(lx, 0.014, lz), mat(x, y0 + 0.002, z), k, { rng: rngOf(3), jitter: 0 });
   return b.geometry();
 }
 
@@ -673,24 +677,69 @@ export function chipGeo() {
   return b.geometry();
 }
 
-// ---------------------------------------------------------------------------------------------------------- підсвітка
+// ---------------------------------------------------------------------------------------------------------- знак гравця
 
-/** Кільце для вершини: світле з темною облямівкою й напівпрозорою серединою. Лежить у площині XZ. */
+/** Прапорець на даху: держак і табличка-фігура гравця (0 ● коло, 1 ▲ трикутник, 2 ■ квадрат, 3 ◆ ромб) — ті самі
+ *  SEAT_SHAPE, що на аватарках і бейджах. Табличка біла (колір дає екземпляр) з темним кантом, що не тонується, —
+ *  щоб читалась і біла на світлому полі. Початок — низ держака; табличка дивиться на +z (до камери). */
+export const FLAG_H = 0.15;
+export function flagGeo(shape) {
+  const b = new Builder(), r = rngOf(91 + shape), K = '#22170d';
+  b.add(new THREE.BoxGeometry(0.012, FLAG_H + 0.04, 0.012), mat(0, (FLAG_H + 0.04) / 2, 0), K, { rng: r, jitter: 0 });
+  const y = FLAG_H, front = (g, m, c, d) => b.add(g, m, c, { rng: r, jitter: d });
+  if (shape === 0) {
+    front(new THREE.CylinderGeometry(0.064, 0.064, 0.012, 18), mat(0, y, 0, 0, 1, 1, 1, Math.PI / 2), K, 0);
+    front(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 18), mat(0, y, 0, 0, 1, 1, 1, Math.PI / 2), '#ffffff', 0.03);
+  } else if (shape === 1) {
+    front(new THREE.CylinderGeometry(0.082, 0.082, 0.012, 3), mat(0, y - 0.006, 0, 0, 1, 1, 1, -Math.PI / 2), K, 0);
+    front(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 3), mat(0, y - 0.006, 0, 0, 1, 1, 1, -Math.PI / 2), '#ffffff', 0.03);
+  } else if (shape === 2) {
+    front(new THREE.BoxGeometry(0.11, 0.11, 0.012), mat(0, y, 0), K, 0);
+    front(new THREE.BoxGeometry(0.085, 0.085, 0.02), mat(0, y, 0), '#ffffff', 0.03);
+  } else {
+    front(new THREE.BoxGeometry(0.088, 0.088, 0.012), mat(0, y, 0, 0, 1, 1, 1, 0, Math.PI / 4), K, 0);
+    front(new THREE.BoxGeometry(0.066, 0.066, 0.02), mat(0, y, 0, 0, 1, 1, 1, 0, Math.PI / 4), '#ffffff', 0.03);
+  }
+  return b.geometry();
+}
+/** Де на хаті стоїть прапорець (локально, до масштабу фігури): лівий край гребеня; у містечка — гребінь великої хати. */
+export const FLAG_AT = { town: [-0.053, 0.27, 0], city: [-0.14, 0.31, 0.03] };
+
+// ---------------------------------------------------------------------------------------------------------- підсвітка
+// Мова підсвітки (khutory-look.md §3): золото #ffd23f, якого нема на полі, з темним кантом #2a1a00 (читається і на
+// світлому лані, і на білих дахах), м'яке світіння під ним і білі «мурашки» вздовж шляхів.
+
+export const GOLD = '#ffd23f';
+const KANT = '#2a1a00';
+
+/** Кільце для вершини: темний кант, золоте кільце, світла серединка. Лежить у площині XZ. */
 export function ringGeo() {
   const b = new Builder();
-  b.add(new THREE.RingGeometry(0.15, 0.2, 28), mat(0, 0, 0, 0, 1, 1, 1, -Math.PI / 2), '#3a2a14', { jitter: 0 });
-  b.add(new THREE.RingGeometry(0.105, 0.155, 28), mat(0, 0.002, 0, 0, 1, 1, 1, -Math.PI / 2), '#fff6cf', { jitter: 0 });
-  b.add(new THREE.CircleGeometry(0.105, 28), mat(0, 0.001, 0, 0, 1, 1, 1, -Math.PI / 2), '#ffd75e', { jitter: 0 });
+  b.add(new THREE.RingGeometry(0.15, 0.215, 28), mat(0, 0, 0, 0, 1, 1, 1, -Math.PI / 2), KANT, { jitter: 0 });
+  b.add(new THREE.RingGeometry(0.1, 0.163, 28), mat(0, 0.002, 0, 0, 1, 1, 1, -Math.PI / 2), GOLD, { jitter: 0 });
+  b.add(new THREE.CircleGeometry(0.1, 28), mat(0, 0.001, 0, 0, 1, 1, 1, -Math.PI / 2), '#fff4c2', { jitter: 0 });
   return b.geometry();
 }
-/** Смуга ребра (вісь x). */
+/** Стрічка ребра (вісь x): темний кант і золота серединка, піднята над плиткою. */
 export function stripGeo() {
   const b = new Builder();
-  b.add(new THREE.BoxGeometry(0.66, 0.012, 0.15), null, '#3a2a14', { jitter: 0 });
-  b.add(new THREE.BoxGeometry(0.62, 0.02, 0.1), mat(0, 0.004, 0), '#fff6cf', { jitter: 0 });
+  b.add(new THREE.BoxGeometry(0.66, 0.02, 0.17), mat(0, 0.01, 0), KANT, { jitter: 0 });
+  b.add(new THREE.BoxGeometry(0.62, 0.028, 0.105), mat(0, 0.016, 0), GOLD, { jitter: 0 });
   return b.geometry();
 }
-/** Обвідка гекса. */
+/** «Мурашки» поверх стрічки — тонка смужка з uv уздовж x (текстура штрихів зсувається в часі). */
+export function antsGeo() {
+  const g = new THREE.PlaneGeometry(0.56, 0.032);
+  g.applyMatrix4(mat(0, 0.032, 0, 0, 1, 1, 1, -Math.PI / 2));
+  return g;
+}
+/** Площинка світіння (1×1 у XZ) під текстуру glowTexture; масштаб екземпляра робить коло чи овал. */
+export function glowGeo() {
+  const g = new THREE.PlaneGeometry(1, 1);
+  g.applyMatrix4(mat(0, 0, 0, 0, 1, 1, 1, -Math.PI / 2));
+  return g;
+}
+/** Обвідка гекса (Кармелюк): темний кант і золота смуга. */
 export function hexRingGeo() {
   const band = (r0, r1, y) => {
     const arr = [];
@@ -698,7 +747,49 @@ export function hexRingGeo() {
     return rawGeo(arr);
   };
   const b = new Builder();
-  b.add(band(0.66, 0.95, 0), null, '#3a2a14', { jitter: 0 });
-  b.add(band(0.7, 0.9, 0.003), null, '#fff0b0', { jitter: 0 });
+  b.add(band(0.64, 0.97, 0), null, KANT, { jitter: 0 });
+  b.add(band(0.7, 0.91, 0.003), null, GOLD, { jitter: 0 });
   return b.geometry();
+}
+/** М'яке світіння гекса (glowHexes — «показ», без клікабельності): заливка, що світлішає до краю. Для адитивного
+ *  змішування — темніший колір додає менше світла. */
+export function hexGlowGeo() {
+  const arr = [], cs = [];
+  const ring = (r0, r1, c0, c1) => {
+    for (let i = 0; i < 6; i++) {
+      const a = corner(0, 0, r1, i, 0), b2 = corner(0, 0, r1, i + 1, 0), c = corner(0, 0, r0, i + 1, 0), d = corner(0, 0, r0, i, 0);
+      arr.push(...a, ...c, ...b2, ...a, ...d, ...c);
+      cs.push(...c1, ...c0, ...c1, ...c1, ...c0, ...c0);
+    }
+  };
+  const k = (hex, m) => { const c = col(hex); return [c.r * m, c.g * m, c.b * m]; };
+  ring(0, 0.62, k(GOLD, 0.06), k(GOLD, 0.12));
+  ring(0.62, 0.86, k(GOLD, 0.12), k(GOLD, 0.6));
+  ring(0.86, 0.96, k(GOLD, 0.6), k(GOLD, 0.1));
+  const g = rawGeo(arr);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cs, 3));
+  return g;
+}
+
+/** Радіальне золоте світіння (центр яскравий, край прозорий). */
+export function glowTexture() {
+  const S = 64, cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const g = cv.getContext('2d');
+  const gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  gr.addColorStop(0, 'rgba(255,224,110,1)');
+  gr.addColorStop(0.4, 'rgba(255,210,63,0.7)');
+  gr.addColorStop(1, 'rgba(255,210,63,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+/** Штрихи «мурашок»: білий штрих і прозорий проміжок; повтор по u, зсув offset.x рухає їх уздовж стрічки. */
+export function antsTexture() {
+  const cv = document.createElement('canvas'); cv.width = 32; cv.height = 4;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 14, 4);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = THREE.RepeatWrapping; t.repeat.set(6, 1);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }

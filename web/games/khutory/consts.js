@@ -8,6 +8,8 @@ export const RES = ['wood', 'clay', 'wool', 'grain', 'ore'];
 export const RES_NAME = { wood: 'дерево', clay: 'глина', wool: 'вовна', grain: 'зерно', ore: 'залізо' };
 /** Родовий відмінок — «бракує 2 глини». */
 export const RES_GEN = { wood: 'дерева', clay: 'глини', wool: 'вовни', grain: 'зерна', ore: 'заліза' };
+/** Знахідний відмінок однини — «дає 1 глину», «хоче 1 вовну» (2–4 і 5+ — як називний: «2 глини», «5 глин»). */
+export const RES_ACC = { wood: 'дерево', clay: 'глину', wool: 'вовну', grain: 'зерно', ore: 'залізо' };
 
 /** Землі: що родять і як звуться. steppe — Дике поле, нічого не родить, там починає Кармелюк. */
 export const TERRAIN = ['forest', 'pit', 'pasture', 'field', 'mountain', 'steppe'];
@@ -21,9 +23,14 @@ export const TERRAIN_COLOR = {
 export const RES_COLOR = { wood: '#4f7f2e', clay: '#c4663a', wool: '#8fc25a', grain: '#e7b84a', ore: '#8a8f98' };
 export const SEA_COLOR = '#5b8fc7';
 
-/** Кольори гравців за полем players[i].color (0..3). */
-export const SEAT_COLOR = ['#d64541', '#3c78d8', '#e8912d', '#8e6bd8'];
-export const SEAT_COLOR_NAME = ['червоні', 'сині', 'помаранчеві', 'фіолетові'];
+/** Кольори гравців за полем players[i].color (0..3). Білі й рожеві замість помаранчевих і фіолетових: червоний з
+ *  помаранчевим для дейтеранопа зливались в один бурий (khutory-look.md §6). */
+export const SEAT_COLOR = ['#d64541', '#3c78d8', '#f1ece0', '#c86fb5'];
+export const SEAT_COLOR_NAME = ['червоні', 'сині', 'білі', 'рожеві'];
+/** Фігура гравця — поруч із кольором скрізь (аватарка, бейджі, прапорець на даху): колір сам не розрізняє всіх. */
+export const SEAT_SHAPE = ['●', '▲', '■', '◆'];
+/** Чи світлий колір гравця (на ньому — темний текст і темний кант). */
+export const SEAT_LIGHT = [false, false, true, false];
 
 /** Ціни будівель — для кнопок і підказок «бракує …». Сервер рахує сам; тут лише показати. */
 export const COST = {

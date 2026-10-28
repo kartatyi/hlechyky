@@ -60,7 +60,9 @@ export function board() {
   };
 }
 
-export const SCENARIOS = ['setup', 'main', 'other', 'robber', 'steal', 'discard', 'trade', 'road2', 'over', 'spectator'];
+export const SCENARIOS = ['setup', 'main', 'other', 'robber', 'steal', 'discard', 'trade', 'road2', 'over', 'spectator', 'late', 'gap'];
+// Торг і увага (khutory-look.md §1, §10): вхідна пропозиція, від Глека, обміняй і будуй, усі відмовились.
+SCENARIOS.push('incoming', 'incbot', 'fixbuild', 'refused');
 
 const NICKS = ['Smaug', 'владік', 'микола ( справжній )', null];
 const BOT = 'Глек 🤖';
@@ -77,6 +79,28 @@ function adjacency(b) {
  * Фігури розставлено «як посеред партії»; правила відстані дотримано, решта — правдоподібно, не більше.
  */
 export function makeView(scenario = 'main', opts = {}) {
+  if (EXTRA[scenario]) return EXTRA[scenario](opts);
+  // late — мій хід, лишилось 8 с (таймер: пульс, червона рамка). gap — підсумок, де місце 2 порожнє (timeline з нулем).
+  if (scenario === 'late') {
+    const v = makeView('main', opts);
+    v.deadline = new Date(Date.now() + 8000).toISOString();
+    return v;
+  }
+  if (scenario === 'gap') {
+    const v = makeView('over', opts);
+    v.players = v.players.filter((p) => p.seat !== 2);
+    v.order = v.order.filter((x) => x !== 2);
+    v.towns = v.towns.filter((t) => t.seat !== 2);
+    v.roads = v.roads.filter((r) => r.seat !== 2);
+    v.longest = null;
+    const o = v.over;
+    o.winner = 1;
+    o.points = [6, 8, 0, 5].slice(0, o.points.length);
+    o.stats.timeline = [[0, 0, 0, 0], [2, 2, 0, 2], [3, 3, 0, 2], [3, 4, 0, 4], [5, 5, 0, 4], [5, 7, 0, 5], [6, 8, 0, 5]]
+      .map((r) => r.slice(0, o.points.length));
+    o.stats.seats = o.stats.seats.filter((x) => x.seat !== 2);
+    return v;
+  }
   const b = board();
   const { nb, ve } = adjacency(b);
   const seat = scenario === 'spectator' ? null : (opts.seat ?? 0);
@@ -155,6 +179,8 @@ export function makeView(scenario = 'main', opts = {}) {
     bots: n > 3 ? [null, null, null, BOT] : null,
     botIn: null,
     over: null,
+    rolls: early ? [] : [8, 5, 7, 10, 4, 9, 11, 6],   // останні ≤ 8 сум, найсвіжіша — остання
+    diceCount: early ? null : [0, 1, 2, 3, 2, 3, 2, 1, 2, 1, 0],
     log: early ? ['Глек: «Ставте хати, хлопці. Перший — Smaug»'] : [
       'Smaug кидає 4 + 2 = 6', 'Smaug бере 1 глину', 'владік бере 1 дерево', 'микола ( справжній ) бере 1 дерево',
     ],
@@ -177,7 +203,7 @@ export function makeView(scenario = 'main', opts = {}) {
         rounds: 14,
         timeline: [[0, 0, 0, 0], [2, 2, 2, 2], [3, 2, 3, 2], [3, 3, 4, 2], [4, 3, 4, 3], [5, 4, 6, 3], [6, 5, 8, 3]]
           .map((r) => r.slice(0, n)),
-        seats: order.map((s) => ({ seat: s, trades: [4, 2, 6, 1][s], got: [31, 26, 38, 19][s], stolen: [1, 2, 0, 3][s],
+        seats: order.map((s) => ({ seat: s, trades: [4, 2, 6, 1][s], got: [31, 26, 38, 19][s], stolen: [1, 2, 0, 3][s], robbed: [3, 1, 2, 0][s],
           built: { road: [5, 4, 9, 2][s], town: [3, 2, 2, 2][s], city: [0, 1, 2, 0][s] } })),
       },
     };
@@ -234,4 +260,53 @@ export function makeView(scenario = 'main', opts = {}) {
     view.me = me;
   }
   return view;
+}
+
+/** Нові сценарії — латками поверх наявних (самі наявні не міняються). */
+const EXTRA = {
+  // Хід Smaug (місце 0); дивиться владік (місце 1): дві пропозиції від Smaug — усім і особисто йому.
+  incoming(opts) {
+    const v = makeView('main', { ...opts, seat: 0 });
+    const seat = opts.seat ?? 1;
+    v.offers = [
+      { id: 7, from: 0, to: null, give: { grain: 1 }, get: { wood: 1 }, acc: [], dec: [] },
+      { id: 9, from: 0, to: seat, give: { ore: 1 }, get: { clay: 1, wool: 1 }, acc: [], dec: [] },
+    ];
+    return seatView(v, seat);
+  },
+  // Хід Глека (місце 3) — він пропонує обмін усім і чекає відповіді (botIn — до кінця очікування, 10 с).
+  incbot(opts) {
+    const v = makeView('main', { ...opts, seat: 0 });
+    v.turn = 3;
+    v.botIn = 8000;
+    v.offers = [{ id: 11, from: 3, to: null, give: { wool: 1 }, get: { grain: 1 }, acc: [], dec: [] }];
+    return seatView(v, opts.seat ?? 1);
+  },
+  // Мій хід: хаті бракує 1 вовни, зерна 4 при курсі 3 — «🔁 3🌾→🧶 і будуй»; містечку бракує 2 заліза — дерева 9 (4:1).
+  fixbuild(opts) {
+    const v = makeView('main', opts);
+    if (v.me) {
+      v.me.hand = { wood: 9, clay: 1, wool: 0, grain: 4, ore: 1 };
+      v.me.rates = { wood: 4, clay: 4, wool: 4, grain: 3, ore: 4 };
+      v.me.can = { road: true, town: false, city: false, dev: false };
+      v.me.why = { town: 'бракує 1 вовни', city: 'бракує 2 заліза', dev: 'бракує 1 вовни' };
+    }
+    return v;
+  },
+  // Моя пропозиція — усі відмовились.
+  refused(opts) {
+    const v = makeView('main', opts);
+    v.offers = [{ id: 3, from: 0, to: null, give: { clay: 1 }, get: { wool: 1 }, acc: [], dec: [1, 2, 3] }];
+    if (v.me) v.me.hand = { wood: 2, clay: 1, wool: 0, grain: 4, ore: 0 };   // 3 зерна — у банк на вовну
+    return v;
+  },
+};
+
+/** Той самий стіл очима іншого місця: me — з руки «чужого» гравця, без своїх місць і без ходу. */
+function seatView(v, seat) {
+  if (seat == null) { v.me = null; return v; }
+  const me = { ...v.me, seat, must: null, spots: null, can: { road: false, town: false, city: false, dev: false }, why: {},
+    hand: { wood: 3, clay: 2, wool: 1, grain: 2, ore: 0 }, dev: [{ k: 'knight', fresh: false }], points: (v.players[seat]?.points ?? 0) };
+  v.me = me;
+  return v;
 }
