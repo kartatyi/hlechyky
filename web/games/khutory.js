@@ -50,7 +50,7 @@
     return pal[p ? p.color : seat] || '#999';
   };
   const isBot = (v, seat) => { const p = playerOf(v, seat); return !!(p && (p.bot || p.away)); };
-  const dot = (v, seat) => '<i class="kh-pdot" style="--pc:' + colorOf(v, seat) + '"></i>';
+  const dot = (v, seat) => '<i class="khu-pdot" style="--pc:' + colorOf(v, seat) + '"></i>';
   const who = (v, seat) => dot(v, seat) + '<b>' + esc(nickOf(v, seat)) + '</b>';
 
   function state(root) {
@@ -88,7 +88,7 @@
       if (m === 'town') {
         const r = v.setup && v.setup.round === 2;
         return { s: 'Став хату', l: '🏠 Постав ' + (r ? 'другу' : 'першу') + ' хату: клацни світлий кружечок на перехресті.'
-          + ' <span class="kh-gold">⭐ Глек радить</span> — де родить найбільше' + (r ? '. Друга хата одразу дасть по карті з сусідніх земель' : '') };
+          + ' <span class="khu-gold">⭐ Глек радить</span> — де родить найбільше' + (r ? '. Друга хата одразу дасть по карті з сусідніх земель' : '') };
       }
       if (m === 'road' && v.phase === 'setup') return { s: 'Став шлях', l: '🛤 Тепер шлях від щойно поставленої хати: клацни світлу смугу поруч' };
       if (m === 'road') return { s: 'Толока: став шлях', l: '🛤 Толока — шляхи задарма: клацни світлу смугу' };
@@ -131,22 +131,22 @@
 
   // ─── Каркас DOM ─────────────────────────────────────────────────────────
   function build(root, st) {
-    root.innerHTML = '<div class="kh">'
-      + '<div class="kh-players"></div>'
-      + '<div class="kh-sum" hidden></div>'
-      + '<div class="kh-say" aria-live="polite"></div>'
-      + '<div class="kh-main">'
-      + '<div class="kh-fieldwrap"><div class="kh-field"></div><div class="kh-marks"></div><div class="kh-tip" hidden></div>'
-      + '<div class="kh-flash" hidden></div><div class="kh-tools"><button type="button" class="kh-view" data-a="view"></button><button type="button" class="kh-view kh-snd" data-a="snd"></button></div>'
-      + '<div class="kh-fab"></div>'
-      + '<div class="kh-dlg" hidden></div></div>'
-      + '<div class="kh-side"><div class="kh-act"></div><div class="kh-trade"></div><div class="kh-offers"></div><div class="kh-log"></div></div>'
+    root.innerHTML = '<div class="khu">'
+      + '<div class="khu-players"></div>'
+      + '<div class="khu-sum" hidden></div>'
+      + '<div class="khu-say" aria-live="polite"></div>'
+      + '<div class="khu-main">'
+      + '<div class="khu-fieldwrap"><div class="khu-field"></div><div class="khu-marks"></div><div class="khu-tip" hidden></div>'
+      + '<div class="khu-flash" hidden></div><div class="khu-tools"><button type="button" class="khu-view" data-a="view"></button><button type="button" class="khu-view khu-snd" data-a="snd"></button></div>'
+      + '<div class="khu-fab"></div>'
+      + '<div class="khu-dlg" hidden></div></div>'
+      + '<div class="khu-side"><div class="khu-act"></div><div class="khu-trade"></div><div class="khu-offers"></div><div class="khu-log"></div></div>'
       + '</div>'
-      + '<div class="kh-hand"></div>'
+      + '<div class="khu-hand"></div>'
       + '</div>';
     st.el = {};
     for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'fab', 'snd'])
-      st.el[k] = root.querySelector('.kh-' + k);
+      st.el[k] = root.querySelector('.khu-' + k);
     // Звук: типово вимкнено, стан пам'ятає сам модуль; AudioContext — лише на першому play() при ввімкненому.
     try { st.snd = M.S && M.S.createSound ? M.S.createSound() : null; } catch (e) { st.snd = null; }
     paintSnd(st);
@@ -214,7 +214,7 @@
         kind = '2d';
       } catch (e) {
         st.scLoading = false;
-        host.innerHTML = '<p class="kh-err">Не вдалося намалювати поле. Онови сторінку.</p>';
+        host.innerHTML = '<p class="khu-err">Не вдалося намалювати поле. Онови сторінку.</p>';
         throw e;
       }
     }
@@ -271,7 +271,7 @@
       st.marks = M.K.adviseTowns(v.board, (v.me.spots || {}).town || [], 3, Object.keys(have).length ? have : null);
     }
     // Позначки — лише зірки (підпис «⭐ Глек радить» — у смузі над полем): довгий напис ховав сусідню зірку.
-    setHtml(st.el.marks, st.marks.map((id, i) => '<span class="kh-mark' + (i === 0 ? ' best' : '') + '" data-i="' + i + '" title="Глек радить">⭐</span>').join(''));
+    setHtml(st.el.marks, st.marks.map((id, i) => '<span class="khu-mark' + (i === 0 ? ' best' : '') + '" data-i="' + i + '" title="Глек радить">⭐</span>').join(''));
     placeMarks(st);
     followMarks(st);
   }
@@ -343,7 +343,7 @@
       let s = L.kind === 'city' ? '🏛 Містечко родитиме вдвічі: ' : '🏠 Хата тут дасть: ';
       s += esc(K.yieldText(y));
       if (port) s += ' · ⚓ пристань ' + (port.kind === 'any' ? '3:1' : '2:1 (' + C.RES_NAME[port.kind] + ')');
-      if (st.marks.includes(id)) s += ' · <span class="kh-gold">⭐ Глек радить</span>';
+      if (st.marks.includes(id)) s += ' · <span class="khu-gold">⭐ Глек радить</span>';
       return s;
     }
     if (kind === 'h' && L.kind === 'robber') {
@@ -363,7 +363,7 @@
     if (!tip || !st.sc) return;
     const html = tipText(st, kind, id);
     if (!html) { hideTip(st); return; }
-    tip.innerHTML = html + (armed ? '<br><b class="kh-gold">Тицни ще раз — поставити</b>' : '');
+    tip.innerHTML = html + (armed ? '<br><b class="khu-gold">Тицни ще раз — поставити</b>' : '');
     tip.hidden = false;
     st.hover = { kind, id };
     const p = st.sc.screenPos(kind, id);
@@ -384,8 +384,8 @@
     st.ctx = ctx;
     st.view = ctx && ctx.view && ctx.view.players ? ctx.view : null;
     if (!M) {
-      if (!root.firstChild) root.innerHTML = '<p class="kh-wait muted">Розкладаємо хутори…</p>';
-      load().then(() => { if (root._kh === st) paint(root, st.ctx); }, (e) => { root.innerHTML = '<p class="kh-err">Не вдалося завантажити гру. Онови сторінку.</p>'; console.warn(e); });
+      if (!root.firstChild) root.innerHTML = '<p class="khu-wait muted">Розкладаємо хутори…</p>';
+      load().then(() => { if (root._kh === st) paint(root, st.ctx); }, (e) => { root.innerHTML = '<p class="khu-err">Не вдалося завантажити гру. Онови сторінку.</p>'; console.warn(e); });
       return;
     }
     if (!st.built) build(root, st);
@@ -398,7 +398,7 @@
 
     pulseHand(st, me);
     const w = whatNow(v, me, st);
-    setHtml(st.el.say, '<div class="kh-say-t">' + w.l + '</div>' + (st.pick ? '<button type="button" class="kh-x" data-a="pick-cancel">✕ Передумав</button>' : ''));
+    setHtml(st.el.say, '<div class="khu-say-t">' + w.l + '</div>' + (st.pick ? '<button type="button" class="khu-x" data-a="pick-cancel">✕ Передумав</button>' : ''));
     st.el.say.hidden = !!v.over;
     st.el.say.classList.toggle('mine', !!(me && (me.must || v.turn === me.seat) && v.phase !== 'over'));
     renderPlayers(st, v, me);
@@ -411,8 +411,8 @@
     renderSum(st, v);
     st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
     // Телефон: панель дій — під полем, тож головну дію ходу дублюємо кнопкою на самому полі (не гортати щоходу).
-    const fab = me && me.must === 'roll' ? '<button type="button" class="kh-big primary" data-a="roll">🎲 Кинути</button>'
-      : me && me.must === 'discard' && st.disc.hidden ? '<button type="button" class="kh-big primary" data-a="disc-open">🃏 Скинути</button>' : '';
+    const fab = me && me.must === 'roll' ? '<button type="button" class="khu-big primary" data-a="roll">🎲 Кинути</button>'
+      : me && me.must === 'discard' && st.disc.hidden ? '<button type="button" class="khu-big primary" data-a="disc-open">🃏 Скинути</button>' : '';
     setHtml(st.el.fab, fab);
     st.el.view.title = st.scKind === '3d' ? 'Показати пласку карту (легша для слабких пристроїв)' : (st.no3d ? '3D не вдалося — спробувати ще' : 'Показати об\'ємне поле');
     queueEvents(root, st, v);   // до syncScene: кидок у черзі притримує кубики сцени
@@ -435,7 +435,7 @@
     for (const r of RES) {
       const n = cost[r] || 0, have = (hand && hand[r]) || 0;
       for (let i = 0; i < n; i++) {
-        h += '<i class="kh-dot' + (i >= have ? ' miss' : '') + '" style="--rc:' + M.C.RES_COLOR[r] + '" title="' + M.C.RES_NAME[r] + (i >= have ? ' — бракує' : '') + '">' + RES_ICON[r] + '</i>';
+        h += '<i class="khu-dot' + (i >= have ? ' miss' : '') + '" style="--rc:' + M.C.RES_COLOR[r] + '" title="' + M.C.RES_NAME[r] + (i >= have ? ' — бракує' : '') + '">' + RES_ICON[r] + '</i>';
       }
     }
     return h;
@@ -444,8 +444,8 @@
   function diceHtml(d) {
     if (!d) return '';
     const cell = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-    const die = (n, red) => '<span class="kh-die' + (red ? ' red' : '') + '">' + [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => '<i' + (cell[n].includes(i) ? ' class="on"' : '') + '></i>').join('') + '</span>';
-    return die(d[0]) + die(d[1], true) + '<b class="kh-dsum' + (d[0] + d[1] === 7 ? ' seven' : '') + '">= ' + (d[0] + d[1]) + '</b>';
+    const die = (n, red) => '<span class="khu-die' + (red ? ' red' : '') + '">' + [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => '<i' + (cell[n].includes(i) ? ' class="on"' : '') + '></i>').join('') + '</span>';
+    return die(d[0]) + die(d[1], true) + '<b class="khu-dsum' + (d[0] + d[1] === 7 ? ' seven' : '') + '">= ' + (d[0] + d[1]) + '</b>';
   }
 
   function renderPlayers(st, v, me) {
@@ -458,23 +458,23 @@
       const fin = v.over && v.over.points ? v.over.points[p.seat] : null;
       const pts = fin != null ? fin : mine && me.points != null ? me.points : p.points;
       const secret = fin == null && mine && me.points > p.points ? '<small title="Скарби в руці бачиш лише ти">+' + (me.points - p.points) + ' потай</small>' : '';
-      const awards = (v.longest && v.longest.seat === p.seat ? '<span class="kh-aw" title="Чумацький шлях: найдовший шлях (' + v.longest.len + '), +2 очки">🛤 +2</span>' : '')
-        + (v.army && v.army.seat === p.seat ? '<span class="kh-aw" title="Найсильніша сотня: найбільше козаків (' + v.army.n + '), +2 очки">⚔ +2</span>' : '');
+      const awards = (v.longest && v.longest.seat === p.seat ? '<span class="khu-aw" title="Чумацький шлях: найдовший шлях (' + v.longest.len + '), +2 очки">🛤 +2</span>' : '')
+        + (v.army && v.army.seat === p.seat ? '<span class="khu-aw" title="Найсильніша сотня: найбільше козаків (' + v.army.n + '), +2 очки">⚔ +2</span>' : '');
       const think = thinking.has(p.seat);
       const name = esc(p.nick) + (p.bot ? '' : p.away ? ' <span title="Вийшов або проспав — за нього грає Глек">🤖</span>' : '');
-      return '<div class="kh-pl' + (v.turn === p.seat && v.phase !== 'over' ? ' turn' : '') + (mine ? ' me' : '') + '" data-seat="' + p.seat + '" style="--pc:' + colorOf(v, p.seat) + '">'
-        + '<span class="kh-av"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="19"/>'
+      return '<div class="khu-pl' + (v.turn === p.seat && v.phase !== 'over' ? ' turn' : '') + (mine ? ' me' : '') + '" data-seat="' + p.seat + '" style="--pc:' + colorOf(v, p.seat) + '">'
+        + '<span class="khu-av"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="19"/>'
         + (think && v.deadline ? '<circle class="fg" cx="22" cy="22" r="19" transform="rotate(-90 22 22)" stroke-dasharray="' + L.toFixed(1) + '"/>' : '')
         + '</svg><b>' + (p.bot ? '🤖' : esc(String(p.nick || '?').trim().charAt(0).toUpperCase())) + '</b></span>'
-        + '<span class="kh-pi"><span class="kh-pn">' + name + (mine ? ' <em>(ти)</em>' : '') + '</span>'
-        + '<span class="kh-ps"><b title="Очки (до ' + v.target + ')">⭐ ' + pts + '</b>' + secret
+        + '<span class="khu-pi"><span class="khu-pn">' + name + (mine ? ' <em>(ти)</em>' : '') + '</span>'
+        + '<span class="khu-ps"><b title="Очки (до ' + v.target + ')">⭐ ' + pts + '</b>' + secret
         + '<span title="Карт у руці">🂠 ' + p.cards + '</span><span title="Грамот">📜 ' + p.dev + '</span>'
         + (p.knights ? '<span title="Зіграних козаків">⚔ ' + p.knights + '</span>' : '') + '</span>'
-        + (awards ? '<span class="kh-ps">' + awards + '</span>' : '') + '</span>'
-        + (think ? '<span class="kh-sec" data-sec></span>' : '')
+        + (awards ? '<span class="khu-ps">' + awards + '</span>' : '') + '</span>'
+        + (think ? '<span class="khu-sec" data-sec></span>' : '')
         + '</div>';
     }).join('');
-    setHtml(st.el.players, '<div class="kh-target" title="Хто першим набере стільки очок у свій хід — переміг">до ' + v.target + ' ⭐</div>' + h);
+    setHtml(st.el.players, '<div class="khu-target" title="Хто першим набере стільки очок у свій хід — переміг">до ' + v.target + ' ⭐</div>' + h);
     tickArcs(st);
   }
 
@@ -483,47 +483,47 @@
     if (v.phase === 'over' || v.phase === 'setup') { setHtml(st.el.act, ''); return; }
     const myTurn = me && v.turn === me.seat;
     const dice = rollHeld(st) ? null : v.dice;
-    h += '<div class="kh-dice">' + (dice ? diceHtml(dice) : '<span class="muted">' + (v.dice ? '🎲 котяться…' : 'кубики ще не кинуто') + '</span>') + '</div>';
+    h += '<div class="khu-dice">' + (dice ? diceHtml(dice) : '<span class="muted">' + (v.dice ? '🎲 котяться…' : 'кубики ще не кинуто') + '</span>') + '</div>';
     if (me && me.must === 'roll') {
-      h += '<button type="button" class="kh-big primary" data-a="roll">🎲 Кинути кубики</button>';
-      if ((me.dev || []).some((d) => d.k === 'knight' && !d.fresh) && !me.playedDev) h += '<p class="kh-note">Можна спершу зіграти ⚔️ Козака з руки — прогнати Кармелюка зі своєї землі</p>';
+      h += '<button type="button" class="khu-big primary" data-a="roll">🎲 Кинути кубики</button>';
+      if ((me.dev || []).some((d) => d.k === 'knight' && !d.fresh) && !me.playedDev) h += '<p class="khu-note">Можна спершу зіграти ⚔️ Козака з руки — прогнати Кармелюка зі своєї землі</p>';
     } else if (myTurn && v.phase === 'main') {
       const can = me.can || {}, why = me.why || {}, sp = me.spots || {};
-      h += '<div class="kh-builds">';
+      h += '<div class="khu-builds">';
       for (const k of ['road', 'town', 'city', 'dev']) {
         const room = k === 'dev' || (sp[k] || []).length > 0;
         const ok = !!can[k] && room;
         const reason = why[k] || (!room && can[k] ? 'нема де поставити' : !can[k] && k === 'dev' && !v.devLeft ? 'грамоти скінчились' : '');
         const on = st.pick === k;
-        h += '<button type="button" class="kh-b' + (on ? ' on' : '') + (ok ? ' ok' : '') + '" data-a="build" data-k="' + k + '"' + (ok || on ? '' : ' disabled')
+        h += '<button type="button" class="khu-b' + (on ? ' on' : '') + (ok ? ' ok' : '') + '" data-a="build" data-k="' + k + '"' + (ok || on ? '' : ' disabled')
           + ' title="' + esc(k === 'dev' ? 'Грамота: козак, скарб, Толока, Врожайний рік або Ярмарок' : M.C.BUILD_NAME[k]) + '">'
-          + '<span class="kh-bn">' + BUILD_ICON[k] + ' ' + (on ? '✕ Скасувати' : M.C.BUILD_NAME[k]) + '</span>'
-          + '<span class="kh-cost">' + costDots(k, me.hand) + '</span>'
-          + (ok || on ? '<span class="kh-why ok">' + (on ? 'обери місце на полі' : k === 'dev' ? 'купити' : 'можна!') + '</span>' : '<span class="kh-why">' + esc(reason || 'не зараз') + '</span>')
+          + '<span class="khu-bn">' + BUILD_ICON[k] + ' ' + (on ? '✕ Скасувати' : M.C.BUILD_NAME[k]) + '</span>'
+          + '<span class="khu-cost">' + costDots(k, me.hand) + '</span>'
+          + (ok || on ? '<span class="khu-why ok">' + (on ? 'обери місце на полі' : k === 'dev' ? 'купити' : 'можна!') + '</span>' : '<span class="khu-why">' + esc(reason || 'не зараз') + '</span>')
           + '</button>';
       }
       h += '</div>';
-      h += '<div class="kh-row"><button type="button" class="kh-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Торгувати</button>'
-        + '<button type="button" class="kh-mid primary" data-a="end">✅ Завершити хід</button></div>';
+      h += '<div class="khu-row"><button type="button" class="khu-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Торгувати</button>'
+        + '<button type="button" class="khu-mid primary" data-a="end">✅ Завершити хід</button></div>';
     } else if (me && v.phase === 'main' && v.turn != null && !isBot(v, v.turn) && v.rolled !== false) {
-      h += '<button type="button" class="kh-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Запропонувати обмін ' + esc(nickOf(v, v.turn)) + '</button>';
+      h += '<button type="button" class="khu-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Запропонувати обмін ' + esc(nickOf(v, v.turn)) + '</button>';
     } else if (me && me.must === 'discard') {
-      h += '<button type="button" class="kh-big primary" data-a="disc-open">🃏 Скинути карти</button>';
+      h += '<button type="button" class="khu-big primary" data-a="disc-open">🃏 Скинути карти</button>';
     }
-    if (me && v.phase === 'main' && v.turn != null && isBot(v, v.turn) && !myTurn) h += '<p class="kh-note">Глек торгується сам — з ним обмін не відкриваємо</p>';
+    if (me && v.phase === 'main' && v.turn != null && isBot(v, v.turn) && !myTurn) h += '<p class="khu-note">Глек торгується сам — з ним обмін не відкриваємо</p>';
     if (myTurn && v.phase === 'main') {
       const rates = me.rates || {};
       const best = Math.min(...RES.map((r) => rates[r] || 4));
-      h += '<p class="kh-note kh-bnote">Банк міняє ' + best + ' однакові на 1 будь-яку' + (best < 4 ? ' (твої пристані)' : '') + ' — у «Торгувати»</p>';
+      h += '<p class="khu-note khu-bnote">Банк міняє ' + best + ' однакові на 1 будь-яку' + (best < 4 ? ' (твої пристані)' : '') + ' — у «Торгувати»</p>';
     }
     setHtml(st.el.act, h);
   }
 
   function resStepper(side, counts, hand, limitByHand) {
-    return '<div class="kh-steps">' + RES.map((r) => {
+    return '<div class="khu-steps">' + RES.map((r) => {
       const n = counts[r] || 0;
       const max = limitByHand ? (hand[r] || 0) : 19;
-      return '<span class="kh-step" style="--rc:' + M.C.RES_COLOR[r] + '"><span class="kh-ri" title="' + M.C.RES_NAME[r] + '">' + RES_ICON[r] + '</span>'
+      return '<span class="khu-step" style="--rc:' + M.C.RES_COLOR[r] + '"><span class="khu-ri" title="' + M.C.RES_NAME[r] + '">' + RES_ICON[r] + '</span>'
         + '<button type="button" data-a="tr-sub" data-side="' + side + '" data-r="' + r + '"' + (n ? '' : ' disabled') + ' aria-label="менше ' + M.C.RES_GEN[r] + '">−</button>'
         + '<b>' + n + '</b>'
         + '<button type="button" data-a="tr-add" data-side="' + side + '" data-r="' + r + '"' + (n < max ? '' : ' disabled') + ' aria-label="більше ' + M.C.RES_GEN[r] + '">+</button></span>';
@@ -538,26 +538,26 @@
     const hand = me.hand || {};
     const give = K.compact(T.give), get = K.compact(T.get);
     const ready = Object.keys(give).length && Object.keys(get).length;
-    let h = '<div class="kh-box"><div class="kh-boxh">🤝 ' + (myTurn ? 'Обмін із сусідами' : 'Зустрічна для ' + esc(nickOf(v, v.turn)))
-      + '<button type="button" class="kh-x" data-a="trade" aria-label="Закрити">✕</button></div>';
-    h += '<div class="kh-trl">Даю</div>' + resStepper('give', T.give, hand, true);
-    h += '<div class="kh-trl">Хочу</div>' + resStepper('get', T.get, hand, false);
+    let h = '<div class="khu-box"><div class="khu-boxh">🤝 ' + (myTurn ? 'Обмін із сусідами' : 'Зустрічна для ' + esc(nickOf(v, v.turn)))
+      + '<button type="button" class="khu-x" data-a="trade" aria-label="Закрити">✕</button></div>';
+    h += '<div class="khu-trl">Даю</div>' + resStepper('give', T.give, hand, true);
+    h += '<div class="khu-trl">Хочу</div>' + resStepper('get', T.get, hand, false);
     if (myTurn) {
       const others = v.players.filter((p) => p.seat !== me.seat);
-      h += '<div class="kh-to">Кому: <button type="button" class="kh-chip' + (T.to == null ? ' on' : '') + '" data-a="tr-to" data-to="">Усім</button>'
-        + others.map((p) => '<button type="button" class="kh-chip' + (T.to === p.seat ? ' on' : '') + '" data-a="tr-to" data-to="' + p.seat + '">' + who(v, p.seat) + '</button>').join('') + '</div>';
+      h += '<div class="khu-to">Кому: <button type="button" class="khu-chip' + (T.to == null ? ' on' : '') + '" data-a="tr-to" data-to="">Усім</button>'
+        + others.map((p) => '<button type="button" class="khu-chip' + (T.to === p.seat ? ' on' : '') + '" data-a="tr-to" data-to="' + p.seat + '">' + who(v, p.seat) + '</button>').join('') + '</div>';
     }
-    h += '<button type="button" class="kh-mid primary" data-a="offer"' + (ready ? '' : ' disabled') + '>'
+    h += '<button type="button" class="khu-mid primary" data-a="offer"' + (ready ? '' : ' disabled') + '>'
       + (ready ? 'Запропонувати: ' + esc(K.resList(give)) + ' ⇄ ' + esc(K.resList(get)) : 'Обери, що даєш і що хочеш') + '</button>';
     if (myTurn) {
       const ch = K.bankChoices(hand, me.rates);
-      h += '<div class="kh-bank"><div class="kh-trl">🏦 Банк — віддай однакові, візьми 1 будь-яку</div><div class="kh-bankrow">'
-        + ch.map((c) => '<button type="button" class="kh-chip' + (st.bankGive === c.res ? ' on' : '') + '" data-a="bank-give" data-r="' + c.res + '"' + (c.can ? '' : ' disabled')
+      h += '<div class="khu-bank"><div class="khu-trl">🏦 Банк — віддай однакові, візьми 1 будь-яку</div><div class="khu-bankrow">'
+        + ch.map((c) => '<button type="button" class="khu-chip' + (st.bankGive === c.res ? ' on' : '') + '" data-a="bank-give" data-r="' + c.res + '"' + (c.can ? '' : ' disabled')
           + ' title="' + (c.can ? '' : 'є ' + c.have + ' з ' + c.rate) + '">' + c.rate + ' ' + RES_ICON[c.res] + ' → 1</button>').join('') + '</div>';
       if (st.bankGive) {
         const r0 = st.bankGive, rate = (me.rates || {})[r0] || 4;
-        h += '<div class="kh-trl">Що береш за ' + esc(K.resPhrase(r0, rate)) + '?</div><div class="kh-bankrow">'
-          + RES.filter((r) => r !== r0).map((r) => '<button type="button" class="kh-chip big" data-a="bank-get" data-r="' + r + '" style="--rc:' + M.C.RES_COLOR[r] + '">' + RES_ICON[r] + ' ' + M.C.RES_NAME[r] + '</button>').join('')
+        h += '<div class="khu-trl">Що береш за ' + esc(K.resPhrase(r0, rate)) + '?</div><div class="khu-bankrow">'
+          + RES.filter((r) => r !== r0).map((r) => '<button type="button" class="khu-chip big" data-a="bank-get" data-r="' + r + '" style="--rc:' + M.C.RES_COLOR[r] + '">' + RES_ICON[r] + ' ' + M.C.RES_NAME[r] + '</button>').join('')
           + '</div>';
       }
       h += '</div>';
@@ -575,13 +575,13 @@
       const fromCur = o.from === v.turn;
       const toMe = me && !mine && fromCur && (o.to == null || o.to === me.seat);
       const counterToMe = me && !mine && !fromCur && me.seat === v.turn;
-      let s = '<div class="kh-offer' + (toMe || counterToMe ? ' forme' : '') + '">';
-      s += '<div class="kh-ot">' + (mine ? '<b>Твоя пропозиція</b>' : who(v, o.from) + (fromCur ? '' : ' <span class="muted">(зустрічна)</span>'))
+      let s = '<div class="khu-offer' + (toMe || counterToMe ? ' forme' : '') + '">';
+      s += '<div class="khu-ot">' + (mine ? '<b>Твоя пропозиція</b>' : who(v, o.from) + (fromCur ? '' : ' <span class="muted">(зустрічна)</span>'))
         + (fromCur ? ' <span class="muted">→ ' + (o.to == null ? 'усім' : esc(nickOf(v, o.to))) + '</span>' : '') + '</div>';
-      s += '<div class="kh-od">' + (mine ? 'даєш' : 'дає') + ' <b>' + esc(K.resList(o.give)) + '</b> · ' + (mine ? 'хочеш' : 'хоче') + ' <b>' + esc(K.resList(o.get)) + '</b></div>';
+      s += '<div class="khu-od">' + (mine ? 'даєш' : 'дає') + ' <b>' + esc(K.resList(o.give)) + '</b> · ' + (mine ? 'хочеш' : 'хоче') + ' <b>' + esc(K.resList(o.get)) + '</b></div>';
       const acc = o.acc || [], dec = o.dec || [];
       if (fromCur && (acc.length || dec.length)) {
-        s += '<div class="kh-oa">' + acc.map((x) => '<span class="ok">✅ ' + esc(nickOf(v, x)) + '</span>').join(' ') + ' '
+        s += '<div class="khu-oa">' + acc.map((x) => '<span class="ok">✅ ' + esc(nickOf(v, x)) + '</span>').join(' ') + ' '
           + dec.map((x) => '<span class="no">❌ ' + esc(nickOf(v, x)) + '</span>').join(' ') + '</div>';
       }
       const btn = [];
@@ -606,13 +606,13 @@
         btn.push('<button type="button" data-a="ans" data-id="' + o.id + '" data-ok="0">❌ Ні</button>');
         if (Object.keys(lack).length) btn.push('<span class="muted small">бракує ' + esc(K.resList(lack)) + '</span>');
       }
-      if (btn.length) s += '<div class="kh-ob">' + btn.join('') + '</div>';
+      if (btn.length) s += '<div class="khu-ob">' + btn.join('') + '</div>';
       return s + '</div>';
     }).join('');
-    setHtml(st.el.offers, '<div class="kh-box"><div class="kh-boxh">📨 Пропозиції</div>' + h + '</div>');
+    setHtml(st.el.offers, '<div class="khu-box"><div class="khu-boxh">📨 Пропозиції</div>' + h + '</div>');
   }
 
-  const HELP = '<div class="kh-box kh-help"><div class="kh-boxh">❔ Як грати<button type="button" class="kh-x" data-a="help" aria-label="Сховати">✕</button></div><ol>'
+  const HELP = '<div class="khu-box khu-help"><div class="khu-boxh">❔ Як грати<button type="button" class="khu-x" data-a="help" aria-label="Сховати">✕</button></div><ol>'
     + '<li><b>Кидай кубики</b> 🎲 — кожна земля з цим числом дає карту всім, чия хата стоїть на її куті. 🔴 6 і 8 випадають найчастіше</li>'
     + '<li><b>Будуй</b> за карти: 🛤 шлях веде до нових місць, 🏠 хата = 1 ⭐, 🏛 містечко = 2 ⭐ і вдвічі більше карт</li>'
     + '<li><b>Торгуйся</b> 🤝 з сусідами або з банком (4 однакові → 1 будь-яка; біля пристані ⚓ — вигідніше)</li>'
@@ -622,10 +622,10 @@
   function renderLog(st, v) {
     const lines = (v.log || []).slice(-6);
     const help = st.helpOpen != null ? st.helpOpen : v.phase === 'setup';
-    const hb = help ? HELP : '<button type="button" class="kh-logh" data-a="help">❔ Як грати</button>';
+    const hb = help ? HELP : '<button type="button" class="khu-logh" data-a="help">❔ Як грати</button>';
     if (!lines.length) { setHtml(st.el.log, hb); return; }
-    setHtml(st.el.log, hb + '<button type="button" class="kh-logh" data-a="log" aria-expanded="' + st.logOpen + '">📜 Що було ' + (st.logOpen ? '▾' : '▸') + '</button>'
-      + (st.logOpen ? '<ol>' + lines.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ol>' : '<p class="kh-last">' + esc(lines[lines.length - 1]) + '</p>'));
+    setHtml(st.el.log, hb + '<button type="button" class="khu-logh" data-a="log" aria-expanded="' + st.logOpen + '">📜 Що було ' + (st.logOpen ? '▾' : '▸') + '</button>'
+      + (st.logOpen ? '<ol>' + lines.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ol>' : '<p class="khu-last">' + esc(lines[lines.length - 1]) + '</p>'));
   }
 
   function devState(v, me, d) {
@@ -644,20 +644,20 @@
     const C = M.C, now = Date.now();
     const hand = me.hand || {};
     const n = M.K.total(hand);
-    let h = '<div class="kh-hh"><b>Твоя рука</b> · ' + n + ' ' + plural(n, 'карта', 'карти', 'карт')
-      + (n > 7 ? ' <span class="kh-warn" title="Коли випаде сімка, віддаси половину">⚠ понад 7 — на сімці скинеш половину</span>' : '') + '</div>';
+    let h = '<div class="khu-hh"><b>Твоя рука</b> · ' + n + ' ' + plural(n, 'карта', 'карти', 'карт')
+      + (n > 7 ? ' <span class="khu-warn" title="Коли випаде сімка, віддаси половину">⚠ понад 7 — на сімці скинеш половину</span>' : '') + '</div>';
     if (!n && !(me.dev || []).length) {
-      setHtml(st.el.hand, h + '<p class="kh-note">Карт поки нема. Вони прийдуть самі: коли кубики покажуть число на землі біля твоєї хати.</p>');
+      setHtml(st.el.hand, h + '<p class="khu-note">Карт поки нема. Вони прийдуть самі: коли кубики покажуть число на землі біля твоєї хати.</p>');
       return;
     }
-    h += '<div class="kh-cards">' + RES.map((r) => '<div class="kh-card' + ((hand[r] || 0) ? '' : ' zero') + ((st.pulse[r] || 0) > now ? ' new' : '') + '" style="--rc:' + C.RES_COLOR[r] + '">'
-      + '<span class="kh-ci">' + RES_ICON[r] + '</span><b>' + (hand[r] || 0) + '</b><span class="kh-cn">' + C.RES_NAME[r] + '</span></div>').join('');
+    h += '<div class="khu-cards">' + RES.map((r) => '<div class="khu-card' + ((hand[r] || 0) ? '' : ' zero') + ((st.pulse[r] || 0) > now ? ' new' : '') + '" style="--rc:' + C.RES_COLOR[r] + '">'
+      + '<span class="khu-ci">' + RES_ICON[r] + '</span><b>' + (hand[r] || 0) + '</b><span class="khu-cn">' + C.RES_NAME[r] + '</span></div>').join('');
     for (let i = 0; i < (me.dev || []).length; i++) {
       const d = me.dev[i];
       const s = devState(v, me, d);
-      h += '<div class="kh-card dev' + (s.ok ? ' ok' : ' off') + '" title="' + esc(C.DEV_HINT[d.k] || '') + '">'
-        + '<span class="kh-ci">' + (DEV_ICON[d.k] || '📜') + '</span><span class="kh-dn">' + esc(C.DEV_NAME[d.k] || d.k) + '</span>'
-        + (s.ok ? '<button type="button" class="primary" data-a="play" data-k="' + d.k + '">Зіграти</button>' : '<span class="kh-cw">' + esc(s.why) + '</span>')
+      h += '<div class="khu-card dev' + (s.ok ? ' ok' : ' off') + '" title="' + esc(C.DEV_HINT[d.k] || '') + '">'
+        + '<span class="khu-ci">' + (DEV_ICON[d.k] || '📜') + '</span><span class="khu-dn">' + esc(C.DEV_NAME[d.k] || d.k) + '</span>'
+        + (s.ok ? '<button type="button" class="primary" data-a="play" data-k="' + d.k + '">Зіграти</button>' : '<span class="khu-cw">' + esc(s.why) + '</span>')
         + '</div>';
     }
     h += '</div>';
@@ -673,35 +673,35 @@
       const plan = st.disc.plan, sum = K.total(plan), need = me.discard;
       h = '<h3>🃏 Сімка! Скинь ' + need + ' ' + plural(need, 'карту', 'карти', 'карт') + '</h3>'
         + '<p>Глек уже підібрав — з тих, яких у тебе найбільше. Можна поправити.</p>'
-        + '<div class="kh-disc">' + RES.map((r) => {
+        + '<div class="khu-disc">' + RES.map((r) => {
           const has = (me.hand || {})[r] || 0, n = plan[r] || 0;
-          return '<div class="kh-dr" style="--rc:' + C.RES_COLOR[r] + '"><span class="kh-ri">' + RES_ICON[r] + '</span><small>є ' + has + '</small>'
+          return '<div class="khu-dr" style="--rc:' + C.RES_COLOR[r] + '"><span class="khu-ri">' + RES_ICON[r] + '</span><small>є ' + has + '</small>'
             + '<button type="button" data-a="disc-add" data-r="' + r + '"' + (n < has && sum < need ? '' : ' disabled') + ' aria-label="скинути більше">+</button>'
             + '<b>' + n + '</b>'
             + '<button type="button" data-a="disc-sub" data-r="' + r + '"' + (n ? '' : ' disabled') + ' aria-label="скинути менше">−</button></div>';
         }).join('') + '</div>'
-        + '<button type="button" class="kh-big primary" data-a="discard"' + (sum === need ? '' : ' disabled') + '>'
+        + '<button type="button" class="khu-big primary" data-a="discard"' + (sum === need ? '' : ' disabled') + '>'
         + (sum === need ? 'Скинути ' + esc(K.resList(K.compact(plan))) : sum < need ? 'Обери ще ' + (need - sum) : 'Забагато на ' + (sum - need)) + '</button>'
-        + '<button type="button" class="kh-link" data-a="disc-hide">глянути на поле</button>';
+        + '<button type="button" class="khu-link" data-a="disc-hide">глянути на поле</button>';
     } else if (me && me.must === 'steal') {
-      h = '<h3>🥷 Кого обібрати?</h3><p>Кармелюк забере одну випадкову карту.</p><div class="kh-vict">'
+      h = '<h3>🥷 Кого обібрати?</h3><p>Кармелюк забере одну випадкову карту.</p><div class="khu-vict">'
         + (me.steal || []).map((s) => {
           const p = playerOf(v, s) || {};
-          return '<button type="button" class="kh-big" data-a="steal" data-seat="' + s + '">' + who(v, s) + ' <span class="muted">· ' + (p.cards || 0) + ' 🂠 · ⭐ ' + (p.points || 0) + '</span></button>';
+          return '<button type="button" class="khu-big" data-a="steal" data-seat="' + s + '">' + who(v, s) + ' <span class="muted">· ' + (p.cards || 0) + ' 🂠 · ⭐ ' + (p.points || 0) + '</span></button>';
         }).join('') + '</div>';
     } else if (st.dlg && st.dlg.k === 'plenty') {
       const picks = st.dlg.res;
       h = '<h3>🌻 Врожайний рік</h3><p>Візьми з банку будь-які дві карти (можна однакові).</p>'
-        + '<div class="kh-pickres">' + RES.map((r) => '<button type="button" class="kh-chip big" data-a="dlg-res" data-r="' + r + '" style="--rc:' + C.RES_COLOR[r] + '"' + (picks.length < 2 && (v.bank || {})[r] !== 0 ? '' : ' disabled') + '>' + RES_ICON[r] + ' ' + C.RES_NAME[r] + '</button>').join('') + '</div>'
-        + '<p class="kh-picked">Береш: ' + (picks.length ? picks.map((r, i) => '<button type="button" class="kh-chip on" data-a="dlg-pop" data-i="' + i + '">' + RES_ICON[r] + ' ' + C.RES_NAME[r] + ' ✕</button>').join(' ') : '<span class="muted">ще нічого</span>') + '</p>'
-        + '<div class="kh-row"><button type="button" class="kh-mid" data-a="dlg-close">Не зараз</button><button type="button" class="kh-mid primary" data-a="dlg-ok"' + (picks.length === 2 ? '' : ' disabled') + '>Взяти</button></div>';
+        + '<div class="khu-pickres">' + RES.map((r) => '<button type="button" class="khu-chip big" data-a="dlg-res" data-r="' + r + '" style="--rc:' + C.RES_COLOR[r] + '"' + (picks.length < 2 && (v.bank || {})[r] !== 0 ? '' : ' disabled') + '>' + RES_ICON[r] + ' ' + C.RES_NAME[r] + '</button>').join('') + '</div>'
+        + '<p class="khu-picked">Береш: ' + (picks.length ? picks.map((r, i) => '<button type="button" class="khu-chip on" data-a="dlg-pop" data-i="' + i + '">' + RES_ICON[r] + ' ' + C.RES_NAME[r] + ' ✕</button>').join(' ') : '<span class="muted">ще нічого</span>') + '</p>'
+        + '<div class="khu-row"><button type="button" class="khu-mid" data-a="dlg-close">Не зараз</button><button type="button" class="khu-mid primary" data-a="dlg-ok"' + (picks.length === 2 ? '' : ' disabled') + '>Взяти</button></div>';
     } else if (st.dlg && st.dlg.k === 'mono') {
       const r0 = st.dlg.res;
       h = '<h3>🎪 Ярмарок</h3><p>Назви ресурс — усі віддадуть тобі весь свій.</p>'
-        + '<div class="kh-pickres">' + RES.map((r) => '<button type="button" class="kh-chip big' + (r0 === r ? ' on' : '') + '" data-a="dlg-res" data-r="' + r + '" style="--rc:' + C.RES_COLOR[r] + '">' + RES_ICON[r] + ' ' + C.RES_NAME[r] + '</button>').join('') + '</div>'
-        + '<div class="kh-row"><button type="button" class="kh-mid" data-a="dlg-close">Не зараз</button><button type="button" class="kh-mid primary" data-a="dlg-ok"' + (r0 ? '' : ' disabled') + '>' + (r0 ? 'Збирай ' + C.RES_GEN[r0] + '!' : 'Обери ресурс') + '</button></div>';
+        + '<div class="khu-pickres">' + RES.map((r) => '<button type="button" class="khu-chip big' + (r0 === r ? ' on' : '') + '" data-a="dlg-res" data-r="' + r + '" style="--rc:' + C.RES_COLOR[r] + '">' + RES_ICON[r] + ' ' + C.RES_NAME[r] + '</button>').join('') + '</div>'
+        + '<div class="khu-row"><button type="button" class="khu-mid" data-a="dlg-close">Не зараз</button><button type="button" class="khu-mid primary" data-a="dlg-ok"' + (r0 ? '' : ' disabled') + '>' + (r0 ? 'Збирай ' + C.RES_GEN[r0] + '!' : 'Обери ресурс') + '</button></div>';
     }
-    setHtml(st.el.dlg, h ? '<div class="kh-dlgin">' + h + '</div>' : '');
+    setHtml(st.el.dlg, h ? '<div class="khu-dlgin">' + h + '</div>' : '');
     st.el.dlg.hidden = !h;
   }
 
@@ -713,17 +713,17 @@
     const pts = o.points || [];
     const order = v.players.map((p) => p.seat).sort((a, b) => (pts[b] || 0) - (pts[a] || 0));
     // «Ану ще раз» каркаса — під полем і журналом, новачок його не бачить: дублюємо в шапці підсумку (тисне ту саму кнопку).
-    const again = st.ctx && st.ctx.mine ? '<button type="button" class="kh-mid primary kh-again" data-a="again">🔁 Ану ще раз</button>' : '';
-    let h = '<div class="kh-sumh"><h3>' + (o.winner != null ? '🏆 Переміг ' + who(v, o.winner) + ' — ' + (pts[o.winner] || 0) + ' ⭐' : '🏁 Партію скінчено')
+    const again = st.ctx && st.ctx.mine ? '<button type="button" class="khu-mid primary khu-again" data-a="again">🔁 Ану ще раз</button>' : '';
+    let h = '<div class="khu-sumh"><h3>' + (o.winner != null ? '🏆 Переміг ' + who(v, o.winner) + ' — ' + (pts[o.winner] || 0) + ' ⭐' : '🏁 Партію скінчено')
       + (o.reason === 'left' ? ' <span class="muted">(решта вийшли)</span>' : '') + '</h3>' + again + '</div>';
-    h += '<div class="kh-sumgrid"><div><ol class="kh-rank">' + order.map((x) => '<li>' + who(v, x) + ' <b>' + (pts[x] || 0) + ' ⭐</b></li>').join('') + '</ol>';
+    h += '<div class="khu-sumgrid"><div><ol class="khu-rank">' + order.map((x) => '<li>' + who(v, x) + ' <b>' + (pts[x] || 0) + ' ⭐</b></li>').join('') + '</ol>';
     if (s.rounds) h += '<p class="muted small">' + s.rounds + ' ' + plural(s.rounds, 'коло', 'кола', 'кіл') + '</p>';
     h += '</div>';
     // Графік очок за колами.
     if (s.timeline && s.timeline.length > 1) {
       const W = 320, H = 170;
       const g = K.chartGeom(s.timeline, W, H, v.target);
-      let svg = '<svg class="kh-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Очки за колами">';
+      let svg = '<svg class="khu-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Очки за колами">';
       for (let p = 0; p <= g.max; p += 2) svg += '<line x1="22" x2="' + (W - 22) + '" y1="' + g.y(p) + '" y2="' + g.y(p) + '" class="grid"/><text x="16" y="' + (g.y(p) + 4) + '" class="ax">' + p + '</text>';
       if (g.targetY != null) svg += '<line x1="22" x2="' + (W - 22) + '" y1="' + g.targetY + '" y2="' + g.targetY + '" class="goal"/><text x="' + (W - 22) + '" y="' + (g.targetY - 4) + '" class="ax" text-anchor="end">мета ' + v.target + '</text>';
       g.lines.forEach((pl, i) => {
@@ -731,17 +731,17 @@
         svg += '<polyline points="' + pl.map((p) => p.join(',')).join(' ') + '" style="stroke:' + colorOf(v, seat) + '"' + (seat === o.winner ? ' class="win"' : '') + '/>';
       });
       svg += '<text x="' + (W / 2) + '" y="' + (H - 4) + '" class="ax" text-anchor="middle">кола →</text></svg>';
-      h += '<div><div class="kh-trl">Очки за колами</div>' + svg + '</div>';
+      h += '<div><div class="khu-trl">Очки за колами</div>' + svg + '</div>';
     }
     // Гістограма кубиків.
     if (s.dice && s.dice.length === 11) {
       const mx = Math.max(1, ...s.dice);
-      h += '<div><div class="kh-trl">Що випадало</div><div class="kh-hist">' + s.dice.map((n, i) => '<span class="' + (i === 5 ? 'seven' : '') + '" title="' + (i + 2) + ': ' + n + ' раз"><i style="height:' + Math.round(n / mx * 100) + '%"></i><b>' + (i + 2) + '</b></span>').join('')
+      h += '<div><div class="khu-trl">Що випадало</div><div class="khu-hist">' + s.dice.map((n, i) => '<span class="' + (i === 5 ? 'seven' : '') + '" title="' + (i + 2) + ': ' + n + ' раз"><i style="height:' + Math.round(n / mx * 100) + '%"></i><b>' + (i + 2) + '</b></span>').join('')
         + '</div><p class="muted small">сімка — Кармелюк приходив ' + (s.sevens != null ? s.sevens : s.dice[5]) + ' ' + plural(s.sevens != null ? s.sevens : s.dice[5], 'раз', 'рази', 'разів') + '</p></div>';
     }
     h += '</div>';
     if (s.seats && s.seats.length) {
-      h += '<div class="kh-tbl"><table class="kh-stats"><thead><tr><th></th><th>🤝<br><small>обмінів</small></th><th>🂠<br><small>отримав карт</small></th><th>🥷<br><small>вкрав</small></th><th>🛤<br><small>шляхів</small></th><th>🏠<br><small>хат</small></th><th>🏛<br><small>містечок</small></th></tr></thead><tbody>'
+      h += '<div class="khu-tbl"><table class="khu-stats"><thead><tr><th></th><th>🤝<br><small>обмінів</small></th><th>🂠<br><small>отримав карт</small></th><th>🥷<br><small>вкрав</small></th><th>🛤<br><small>шляхів</small></th><th>🏠<br><small>хат</small></th><th>🏛<br><small>містечок</small></th></tr></thead><tbody>'
         + s.seats.map((x) => '<tr><td>' + who(v, x.seat) + '</td><td>' + x.trades + '</td><td>' + x.got + '</td><td>' + x.stolen + '</td><td>' + ((x.built || {}).road || 0) + '</td><td>' + ((x.built || {}).town || 0) + '</td><td>' + ((x.built || {}).city || 0) + '</td></tr>').join('')
         + '</tbody></table></div>';
     }
@@ -755,7 +755,7 @@
     const left = v.deadline ? Math.max(0, Date.parse(v.deadline) - Date.now()) : null;
     const total = v.timerMs || 90000;
     const L = 2 * Math.PI * 19;
-    for (const fg of st.el.players.querySelectorAll('.kh-av .fg')) {
+    for (const fg of st.el.players.querySelectorAll('.khu-av .fg')) {
       fg.style.strokeDashoffset = left == null ? 0 : (L * (1 - Math.min(1, left / total))).toFixed(1);
       fg.classList.toggle('late', left != null && left < 10000);
     }
@@ -893,10 +893,10 @@
     const by = {};
     for (const g of gains) (by[g.seat] = by[g.seat] || {})[g.res] = ((by[g.seat] || {})[g.res] || 0) + g.n;
     for (const s of Object.keys(by)) {
-      const chip = st.el.players.querySelector('.kh-pl[data-seat="' + s + '"]');
+      const chip = st.el.players.querySelector('.khu-pl[data-seat="' + s + '"]');
       if (!chip) continue;
       const b = document.createElement('span');
-      b.className = 'kh-gain';
+      b.className = 'khu-gain';
       b.textContent = Object.keys(by[s]).map((r) => '+' + by[s][r] + ' ' + RES_ICON[r]).join(' ');
       chip.appendChild(b);
       setTimeout(() => b.remove(), 1900);
