@@ -36,6 +36,30 @@ public sealed class TestLateJoin : Game
     public override object View(int? seat) => new { seat };
 }
 
+/// <summary>
+/// Заглушка гри, що тримає крісло за ніком (<see cref="Game.Rejoin"/>, як «Хутори»), а новеньких пускає лише Хому
+/// (<see cref="Game.LateJoin"/> — на перше вільне).
+/// </summary>
+public sealed class TestRejoin : Game
+{
+    public override GameInfo Info { get; } = new(
+        "t-rejoin", "Тестове своє місце", "тестове своє місце", GameGroup.Board, 2, 4, Start: StartMode.ByHost);
+
+    readonly Dictionary<string, int> _own = new(StringComparer.OrdinalIgnoreCase);
+    public readonly List<string> Calls = [];
+
+    public override void Start()
+    {
+        for (var s = 0; s < Info.MaxPlayers; s++) if (Ctx.NickOf(s) is { } n) _own[n] = s;
+    }
+
+    public override int? Rejoin(string nick) => _own.TryGetValue(nick, out var s) ? s : null;
+    public override bool LateJoin(string nick) => nick == "Хома";
+    public override void OnJoin(int seat) => Calls.Add($"join {seat} {Ctx.NickOf(seat)}");
+    public override void OnLeave(int seat) => Calls.Add($"leave {seat} {Ctx.NickOf(seat)}");
+    public override object View(int? seat) => new { seat };
+}
+
 public sealed class LateJoinTests
 {
     static RoomHarness Table(string game, params string[] nicks)
@@ -157,5 +181,34 @@ public sealed class LateJoinTests
         Assert.Equal(RoomStatus.Finished, h.Room.Status);
         h.Leave("Оля"); h.Leave("Петро");
         Assert.Null(h.Rooms.Find(id));
+    }
+
+    [Fact]
+    public void Rejoin_puts_the_nick_back_on_its_own_seat_not_the_first_free_one()
+    {
+        var h = Table("t-rejoin", "Оля", "Петро", "Іван");
+        var g = (TestRejoin)h.Room.Game;
+        Gone(h, "Петро");
+        Gone(h, "Іван");
+        var r = h.Rooms.Join(h.RoomId, "Іван");
+        Assert.True(r.Reply.Ok, r.Reply.Message);
+        Assert.Equal("Іван", h.Room.Seats[2]);   // перше вільне — Петрове (1), але Іванове — 2
+        Assert.Null(h.Room.Seats[1]);
+        Assert.Contains("join 2 Іван", g.Calls);
+    }
+
+    [Fact]
+    public void Rejoin_never_takes_an_occupied_seat()
+    {
+        var h = Table("t-rejoin", "Оля", "Петро", "Іван");
+        Gone(h, "Петро");
+        Assert.True(h.Rooms.Join(h.RoomId, "Хома").Reply.Ok);   // новенький — на перше вільне, Петрове
+        Assert.Equal("Хома", h.Room.Seats[1]);
+        // Своє крісло зайняте, а на інше гра Петра не пускає — звичайне «місць нема», Хома сидить.
+        var r = h.Rooms.Join(h.RoomId, "Петро");
+        Assert.False(r.Reply.Ok);
+        Assert.Contains("місць", r.Reply.Message);
+        Assert.Equal("Хома", h.Room.Seats[1]);
+        Assert.Null(h.Room.Seats[3]);
     }
 }

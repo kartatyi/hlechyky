@@ -50,6 +50,11 @@
     return pal[p ? p.color : seat] || '#999';
   };
   const isBot = (v, seat) => { const p = playerOf(v, seat); return !!(p && (p.bot || p.away)); };
+  const sameNick = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+  /// Мій хутір, за який ходить Глек, поки я дивлюсь збоку (випав за Grace чи встав): сервер тримає крісло (Game.Rejoin).
+  const ownAway = (v, nick) => (v && v.phase !== 'over' && !v.over && nick
+    && ((v.players || []).find((p) => !p.bot && p.away && sameNick(p.nick, nick)))) || null;
+  const REJOIN = '🏡 Повернутись на свій хутір';
   const dot = (v, seat) => '<i class="khu-pdot" style="--pc:' + colorOf(v, seat) + '"></i>';
   const who = (v, seat) => dot(v, seat) + '<b>' + esc(nickOf(v, seat)) + '</b>';
 
@@ -68,6 +73,12 @@
     const w = whatNow0(v, me, st);
     const p = me && v && v.phase !== 'over' ? playerOf(v, me.seat) : null;
     if (p && p.away) w.l = '<b>🤖 За тебе зараз ходить Глек</b> (ти двічі проспав хід). Зроби будь-що сам — і гратимеш далі.<br>' + w.l;
+    const ctx = st && st.ctx;
+    if (!me && ctx && ctx.seat == null && ctx.playing && ownAway(v, ctx.me && ctx.me.nick)) {
+      w.s = 'Твій хутір чекає';
+      w.l = '<b>🏡 Твій хутір чекає:</b> поки тебе не було, за тебе ходить Глек. Повертайся — рука й грамоти ті самі.'
+        + ' <button type="button" class="primary khu-back" data-a="rejoin">' + REJOIN + '</button><br>' + w.l;
+    }
     return w;
   }
   function whatNow0(v, me, st) {
@@ -921,6 +932,13 @@
         if (rb) rb.click(); else if (ctx && ctx.toast) ctx.toast('Ще раз зараз не вийде — замало гравців за столом');
         return;
       }
+      case 'rejoin': {
+        // Та сама кнопка, що в шапці столу (core.js, mod.rejoin): JoinRoom через каркас — він спитає, чи встати з іншого столу.
+        const card = root.closest('.gtable');
+        const jb = card && card.querySelector('.gbtns [data-do="JoinRoom"]');
+        if (jb) jb.click(); else if (ctx && ctx.room) HGames.sitAt(ctx.room.id, b);
+        return;
+      }
       case 'help': st.helpOpen = !(st.helpOpen != null ? st.helpOpen : v && v.phase === 'setup'); break;
       case 'log': st.logOpen = !st.logOpen; store.set('kh.log', st.logOpen ? '1' : '0'); break;
       case 'roll': act('roll', {}); break;
@@ -998,6 +1016,8 @@
     icon: ICON,
     seatClass: ['x', 'o', 'c', 'd'],
     added: '2026-10-28',
+    /// Випав посеред партії й дивлюсь збоку — кнопка в шапці столу садить назад на свій хутір (core.js rejoinLabel).
+    rejoin: (rv, nick) => (ownAway(rv && rv.view, nick) ? REJOIN : ''),
 
     mount(root, ctx) { cur = root; paint(root, ctx); },
     update(root, ctx) { cur = root; paint(root, ctx); },

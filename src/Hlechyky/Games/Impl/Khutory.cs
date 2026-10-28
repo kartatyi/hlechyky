@@ -375,6 +375,34 @@ public sealed class Khutory : Game
         After();
     }
 
+    /// <summary>
+    /// Хто встав посеред партії (чи випав і не встиг за Grace), сідає назад на свій хутір — з тією ж рукою й грамотами.
+    /// Чужий нік чужого місця не отримає: <see cref="Game.LateJoin"/> тут типовий «ні».
+    /// </summary>
+    public override int? Rejoin(string nick)
+    {
+        if (_core.Over) return null;
+        for (var s = 0; s < KhutoryCore.MaxSeats; s++)
+            if (_core.In[s] && !IsBot(s) && !Ctx.Seated(s) && string.Equals(_nicks[s], nick, StringComparison.OrdinalIgnoreCase))
+                return s;
+        return null;
+    }
+
+    public override string? LateJoinGreeting(string nick) => "Твій хутір на місці — Глек його стеріг";
+
+    /// <summary>Людина повернулась на своє місце (<see cref="Rejoin"/>): Глек віддає кермо.</summary>
+    public override void OnJoin(int seat)
+    {
+        if (_core.Over || seat < 0 || seat >= KhutoryCore.MaxSeats || !_core.In[seat] || IsBot(seat)) return;
+        var nick = Nick(seat);
+        _away[seat] = false;
+        _missed[seat] = 0;
+        _core.Note($"{nick} повертається на свій хутір");
+        Ctx.Log($"{Info.Title}: {nick} повертається на свій хутір — Глек віддає кермо");
+        Glek(KhMoment.Back, Who(seat));
+        After();
+    }
+
     // =====================================================================================
     // Глек-ведучий (контракт §7: події ядра → моменти книги KhutoryLines)
     // =====================================================================================
