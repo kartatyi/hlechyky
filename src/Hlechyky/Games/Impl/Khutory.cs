@@ -4,7 +4,7 @@ namespace Hlechyky.Games.Impl;
 
 /// <summary>
 /// «Хутори» — Катан по-нашому на 2–4 (контракт <c>docs/games/specs/khutory.md</c>). Правила — у <see cref="KhutoryCore"/>,
-/// бот і автохід — у <see cref="KhutoryAuto"/>; тут каркас: опції, розсадка з Глеками, таймер ходу, вихід і вид.
+/// Глеки — <see cref="KhutoryBot"/>, автохід за того, хто проспав, — <see cref="KhutoryAuto"/>; тут каркас: опції, розсадка з Глеками, таймер ходу, вихід і вид.
 /// Гра прихована (<c>Hidden</c>): рука й грамоти кожного їдуть лише йому.
 /// </summary>
 public sealed class Khutory : Game
@@ -40,7 +40,12 @@ public sealed class Khutory : Game
     DateTimeOffset? _deadline;
     int _deadlineMs;
     string _deadlineKey = "";
+    /// <summary>Строк main — один на хід: Кармелюк (козак) чи Толока посеред ходу його не поновлюють.</summary>
+    string _mainKey = "";
+    DateTimeOffset? _mainDeadline;
     DateTimeOffset? _botAt;
+    /// <summary>Розумний Глек (пам'ять його пропозицій — на партію).</summary>
+    KhutoryBot _brain = new();
     bool _announced;
     string _reason = "points";
 
@@ -80,11 +85,16 @@ public sealed class Khutory : Game
         Array.Clear(_away);
         Array.Clear(_missed);
         var board = _starter ? KhutoryBoard.Starter() : KhutoryBoard.Random(Ctx.Rng);
-        _core = new KhutoryCore(board, seats, Ctx.Rng) { Target = _target, Friendly = _friendly, NameOf = Nick };
+        // seq подій — наскрізний через усі партії столу: клієнт тримає найбільший побачений і анімує лише новіші.
+        var seq = _core.Seq;
+        _core = new KhutoryCore(board, seats, Ctx.Rng) { Target = _target, Friendly = _friendly, NameOf = Nick, Seq = seq };
+        _brain = new KhutoryBot();
         _announced = false;
         _reason = "points";
         _deadlineKey = "";
         _deadline = null;
+        _mainKey = "";
+        _mainDeadline = null;
         _core.Begin(seats[Ctx.Rng.Next(seats.Length)]);
         After();
     }
@@ -166,21 +176,26 @@ public sealed class Khutory : Game
         }
     }
 
-    /// <summary>Хід Глека (штовхає клієнт людини): один крок першого, на кого чекає стіл, від поточного.</summary>
+    /// <summary>
+    /// Хід Глека (штовхає клієнт людини): один крок першого, на кого чекає стіл, від поточного. Глек, що чекає
+    /// відповідей на свою пропозицію, пропускає — тим часом відповідають інші Глеки.
+    /// </summary>
     ActResult BotTurn()
     {
         if (_core.Over || _botAt is not { } at || Ctx.Clock.UtcNow < at) return ActResult.Fail("Глек ще думає");
         foreach (var s in Waiting())
         {
             if (!Auto(s)) continue;
-            var err = KhutoryAuto.Step(_core, s, Ctx.Rng);
+            // Людину, що відійшла, веде той самий Глек, але без власних пропозицій.
+            var err = _brain.Step(_core, s, Ctx.Rng, Ctx.Clock.UtcNow, trade: IsBot(s));
+            if (err == KhutoryBot.Wait) continue;
             // Крок, що не вдався (не мав би), — завершити хід, щоб стіл не завис.
             if (err is not null && _core.Phase is KhPhase.Main or KhPhase.Road2 && _core.Turn == s) _core.ForceEnd(s);
             After();
             return ActResult.Done;
         }
-        _botAt = null;
-        return ActResult.Fail("Глекам нема що робити");
+        Arm();
+        return ActResult.Fail(_botAt is null ? "Глекам нема що робити" : "Глек чекає відповідей");
     }
 
     /// <summary>Місця, від яких стіл чогось чекає, починаючи з поточного.</summary>
@@ -258,7 +273,16 @@ public sealed class Khutory : Game
             : $"{_core.Phase}|{_core.Turn}|{_core.SetupIdx}|{_core.SetupRoad}";
         if (key == _deadlineKey) return;
         _deadlineKey = key;
-        _deadlineMs = _core.Phase == KhPhase.Main ? _timerMs : Math.Min(_timerMs, ShortMs);
+        if (_core.Phase == KhPhase.Main)
+        {
+            var main = $"{_core.Turn}|{_core.Rounds}|{_core.TurnIdx}";
+            _deadlineMs = _timerMs;
+            if (main == _mainKey && _mainDeadline is { } md) { _deadline = md; return; }
+            _mainKey = main;
+            _deadline = _mainDeadline = Ctx.Clock.UtcNow.AddMilliseconds(_timerMs);
+            return;
+        }
+        _deadlineMs = Math.Min(_timerMs, ShortMs);
         _deadline = Ctx.Clock.UtcNow.AddMilliseconds(_deadlineMs);
     }
 
@@ -266,7 +290,14 @@ public sealed class Khutory : Game
     {
         _botAt = null;
         if (_core.Over) return;
-        if (Waiting().Any(Auto)) _botAt = Ctx.Clock.UtcNow.AddMilliseconds(BoardBots.ThinkMs);
+        // Глек, що чекає відповідей на свою пропозицію, — до кінця очікування (хтось відповів — After перерахує).
+        var now = Ctx.Clock.UtcNow;
+        foreach (var s in Waiting())
+        {
+            if (!Auto(s)) continue;
+            var at = _brain.WaitUntil(_core, s, now) ?? now.AddMilliseconds(BoardBots.ThinkMs);
+            if (_botAt is null || at < _botAt) _botAt = at;
+        }
     }
 
     void Announce()
@@ -283,7 +314,9 @@ public sealed class Khutory : Game
             Ctx.Finish([], $"{Info.Title}: партію покинули — переможця нема", scores);
             return;
         }
-        int[] winners = Ctx.Seated(w) && !IsBot(w) ? [w] : [];
+        // Переможець — місце навіть тоді, коли там Глек (бот чи за людину, що вийшла): решта людей програли, а не нічия.
+        // Каркас це вміє: виплата ставок і гімн шукають нік за місцем і порожнє/Глекове пропускають (як у Доміно).
+        int[] winners = [w];
         var rest = string.Join(", ", _core.Order.Where(s => s != w).Select(s => $"{Nick(s)} {_core.Points(s)}"));
         Ctx.Finish(winners, $"{Info.Title}: перемагає {Nick(w)} — {_core.Points(w)} очок ({rest})", scores);
     }

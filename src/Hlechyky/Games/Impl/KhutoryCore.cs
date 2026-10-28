@@ -385,7 +385,7 @@ public sealed class KhutoryCore
         Pay(s, TownCost);
         Put(s, v);
         Emit("build", ("seat", s), ("what", "town"), ("at", v));
-        Say($"{NameOf(s)} ставить хату", journal: true);
+        Say($"{NameOf(s)} ставить хату");
         AfterBuild();
         return null;
     }
@@ -452,7 +452,8 @@ public sealed class KhutoryCore
         VCity[v] = true;
         Built[s][2]++;
         Emit("build", ("seat", s), ("what", "city"), ("at", v));
-        Say($"{NameOf(s)} ставить містечко", journal: true);
+        // У журнал кімнати — лише перше містечко гравця (решта є у view.log).
+        Say($"{NameOf(s)} ставить містечко", journal: Built[s][2] == 1);
         AfterBuild();
         return null;
     }
@@ -575,7 +576,7 @@ public sealed class KhutoryCore
         Rolled = true;
         var sum = a + b;
         DiceCount[sum - 2]++;
-        Say($"{NameOf(s)} кидає {a} + {b} = {sum}", journal: true);
+        Say($"{NameOf(s)} кидає {a} + {b} = {sum}");
         if (sum == 7)
         {
             Sevens++;
@@ -911,6 +912,8 @@ public sealed class KhutoryCore
     void Prune()
     {
         Offers.RemoveAll(o => !Has(Hand[o.From], o.Give));
+        // Зустрічна, за яку поточному вже нема чим платити, — теж зникає (§6).
+        Offers.RemoveAll(o => o.From != Turn && !Has(Hand[Turn], o.Get));
         foreach (var o in Offers) o.Acc.RemoveAll(a => !Has(Hand[a], o.Get));
     }
 
