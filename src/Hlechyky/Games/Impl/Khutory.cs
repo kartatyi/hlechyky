@@ -7,7 +7,7 @@ namespace Hlechyky.Games.Impl;
 /// Глеки — <see cref="KhutoryBot"/>, автохід за того, хто проспав, — <see cref="KhutoryAuto"/>; тут каркас: опції, розсадка з Глеками, таймер ходу, вихід і вид.
 /// Гра прихована (<c>Hidden</c>): рука й грамоти кожного їдуть лише йому.
 /// </summary>
-public sealed class Khutory : Game
+public sealed partial class Khutory : Game
 {
     public override GameInfo Info { get; } = new(
         "khutory", "Хутори", "Хутори", GameGroup.Board, 1, KhutoryCore.MaxSeats, Start: StartMode.ByHost, Hidden: true,
