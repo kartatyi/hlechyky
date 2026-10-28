@@ -115,15 +115,17 @@
 .khu-bub.red::after { border-top-color: #b3261e; }
 .khu-bub.red.below::after { border-bottom-color: #b3261e; border-top-color: transparent; }
 @keyframes khbub { from { opacity: 0; } }
-.khu-feed { position: absolute; left: 8px; top: 8px; z-index: 3; display: flex; flex-direction: column; gap: 4px; max-width: min(62%, 360px); pointer-events: none; }
+/* Стрічка — ліворуч унизу над «🗺 Пласка»: згори посередині вже «спалах» (flash) і вони наїжджали одне на одне. */
+.khu-feed { position: absolute; left: 8px; bottom: 54px; z-index: 3; display: flex; flex-direction: column; gap: 4px; max-width: min(62%, 360px); pointer-events: none; }
 .khu-feed div { padding: 3px 9px; border-radius: 10px; background: rgba(15, 25, 20, .86); color: #fff; font-size: 12px; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; border-left: 4px solid var(--pc); animation: khfeed 6s linear forwards; }
 .khu-feed div.old { opacity: .62; }
 .khu-feed div.red { background: rgba(150, 30, 24, .92); }
 @keyframes khfeed { 0% { transform: translateX(-6px); } 4%, 85% { transform: none; filter: none; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .khu-fx path.c, .khu-rip, .khu-bub, .khu-feed div { animation: none; } }
-/* Телефон < 400 px: бейджі Кармелюка без чисел — лише кружечки (18 гексів тісно). */
-@media (max-width: 399px) {
+/* Телефон < 400 px: бейджі Кармелюка без чисел — лише кружечки (18 гексів тісно). Міряємо картку (container khu), а не
+   екран: так само працює й вузька картка на стенді/в колонці. */
+@container khu (max-width: 399px) {
   .khu-rbx .vi b { display: none; }
   .khu-rbx > span { font-size: 10px; padding: 1px 5px; }
   .khu-feed div { font-size: 11px; }

@@ -763,9 +763,9 @@ export function hexGlowGeo() {
     }
   };
   const k = (hex, m) => { const c = col(hex); return [c.r * m, c.g * m, c.b * m]; };
-  ring(0, 0.62, k(GOLD, 0.12), k(GOLD, 0.2));
-  ring(0.62, 0.86, k(GOLD, 0.2), k(GOLD, 0.75));
-  ring(0.86, 0.96, k(GOLD, 0.75), k(GOLD, 0.15));
+  ring(0, 0.62, k(GOLD, 0.06), k(GOLD, 0.12));
+  ring(0.62, 0.86, k(GOLD, 0.12), k(GOLD, 0.6));
+  ring(0.86, 0.96, k(GOLD, 0.6), k(GOLD, 0.1));
   const g = rawGeo(arr);
   g.setAttribute('color', new THREE.Float32BufferAttribute(cs, 3));
   return g;

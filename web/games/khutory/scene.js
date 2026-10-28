@@ -341,7 +341,7 @@ export async function createScene(host, opts = {}) {
         const [s, dy] = popS('e' + r.e);
         setM(roads, nr, E.mid.x, E.mid.y + dy - 0.005, E.mid.z, 0, E.ry, 0, s, s * 1.15);
         roads.getMatrixAt(nr, _mw); _mw.scale(_sv.set(1, 1, 1.25)); roads.setMatrixAt(nr, _mw);
-        roads.setColorAt(nr, colorOf(r.seat)); nr++;
+        roads.setColorAt(nr, SEAT_LIGHT[seatIdx(r.seat)] ? _roofLight : colorOf(r.seat)); nr++;
       }
     }
     for (const [m, n] of [[townWalls, nt], [townRoof, nt], [cityWalls, nc], [cityColor, nc], [roads, nr]]) {
