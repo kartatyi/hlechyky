@@ -413,7 +413,7 @@ public class KhutoryReviewTests
         Assert.True(again.GetProperty("seq").GetInt64() >= last);
         Assert.All(again.GetProperty("events").EnumerateArray(), e => Assert.True(e.GetProperty("seq").GetInt64() > last));
         if (again.GetProperty("botIn") is { ValueKind: JsonValueKind.Number } b) h.Clock.AdvanceMs(b.GetInt32());
-        else h.Clock.Advance(41);
+        else h.Clock.Advance(181);
         Assert.True(h.Act(0, again.GetProperty("botIn").ValueKind == JsonValueKind.Number ? "bot" : "timeout").Ok);
         var first = h.View(0).GetProperty("events").EnumerateArray().Select(e => e.GetProperty("seq").GetInt64()).ToList();
         Assert.NotEmpty(first);
@@ -438,7 +438,7 @@ public class KhutoryReviewTests
         var v = h.View(0);
         Assert.Equal("main", v.GetProperty("phase").GetString());
         var left = (v.GetProperty("deadline").GetDateTimeOffset() - h.Clock.UtcNow).TotalSeconds;
-        Assert.InRange(left, 9, 11);
+        Assert.InRange(left, 19, 21);   // не 10 с, що лишались, а MainBackMs
         Assert.Equal(180_000, v.GetProperty("timerMs").GetInt32());
     }
 

@@ -27,9 +27,10 @@ public sealed class KhutoryBot
     /// <summary>
     /// Зробити один крок за місце <paramref name="s"/>. null — зроблено; <see cref="Wait"/> — чекає відповідей на свою
     /// пропозицію; інше — помилка ядра або «нема що робити». <paramref name="trade"/> = false — без власних пропозицій
-    /// (за людину, що відійшла).
+    /// (за людину, що відійшла). <paramref name="cards"/> = false — доробити хід за людину, що проспала main
+    /// (<see cref="BuildStep"/>): лише будувати; грамот не купувати й не грати, з людьми не мінятись.
     /// </summary>
-    public string? Step(KhutoryCore c, int s, Random rng, DateTimeOffset now, bool trade = true)
+    public string? Step(KhutoryCore c, int s, Random rng, DateTimeOffset now, bool trade = true, bool cards = true)
     {
         if (c.Over) return "Партія скінчилась";
         switch (c.Phase)
@@ -51,7 +52,7 @@ public sealed class KhutoryBot
                     return e >= 0 ? c.PlaceRoad(s, e) : c.ForceEnd(s);
                 }
             case KhPhase.Main when s == c.Turn:
-                return MainStep(c, s, now, trade);
+                return cards ? MainStep(c, s, now, trade) : BuildStep(c, s);
             case KhPhase.Main:
                 foreach (var o in c.Offers)
                     if (c.Addressed(o, s) && !o.Acc.Contains(s) && !o.Dec.Contains(s)) return c.Answer(s, o.Id, Accepts(c, s, o));
@@ -77,6 +78,32 @@ public sealed class KhutoryBot
     // =========================================================================================
     // Хід
     // =========================================================================================
+
+    /// <summary>
+    /// Крок за людину, що проспала main: місто, хата, обмін у банку — лише коли так збирається будова цього ж ходу,
+    /// шлях до місця під хату чи (з надлишку) для Чумацького шляху; далі — кінець ходу. Грамоти й зустрічні — її рішення.
+    /// </summary>
+    string? BuildStep(KhutoryCore c, int s)
+    {
+        if (c.WhyNot(s, "city") is null)
+            return c.PlaceCity(s, c.CitySpots(s).OrderByDescending(v => VertexPips(c, v)).ThenBy(v => v).First());
+        if (c.WhyNot(s, "town") is null)
+            return c.PlaceTown(s, BestTown(c, s, c.TownSpots(s)));
+        var t = new Think(c, s);
+        t.Goals.RemoveAll(g => g.Kind == DevGoal);
+        var hand = c.Hand[s];
+        var reach = t.Goals.Where(g => KhutoryCore.Has(hand, g.Cost) || Reachable(hand, g.Cost, t.Rates, c.Bank))
+            .OrderByDescending(g => g.Weight).FirstOrDefault();
+        var goal = reach ?? t.Best(hand);
+        if (goal is null) return c.End(s);
+        if (goal.Kind == RoadGoal && c.WhyNot(s, "road") is null && TowardTown(c, s) is { } road) return c.PlaceRoad(s, road);
+        var missing = Missing(hand, goal.Cost);
+        if (reach is not null && missing.Count > 0 && TradeToward(c, s, goal.Cost, t) is { } err) return err == "" ? null : err;
+        if (c.WhyNot(s, "road") is null && Missing(Sub(hand, KhutoryCore.RoadCost), goal.Cost).Count == missing.Count
+            && RoadForLongest(c, s) is { } longer)
+            return c.PlaceRoad(s, longer);
+        return c.End(s);
+    }
 
     string? MainStep(KhutoryCore c, int s, DateTimeOffset now, bool trade)
     {

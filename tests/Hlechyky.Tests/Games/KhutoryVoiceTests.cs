@@ -141,11 +141,11 @@ public class KhutoryVoiceTests
         var core = CoreOf(h);
         var a = core.Order[0];
         var b = core.Order[1];
-        h.Clock.Advance(41);
+        h.Clock.Advance(61);
         Assert.True(h.Act(b, "timeout").Ok);
-        h.Clock.Advance(41);
+        h.Clock.Advance(61);
         Assert.True(h.Act(a, "timeout").Ok);
-        h.Clock.Advance(41);
+        h.Clock.Advance(61);
         Assert.True(h.Act(a, "timeout").Ok);       // b проспав двічі — Глек за нього
         var away = Said(h).Where(s => MomentOf(s) == KhMoment.Away).ToList();
         Assert.Single(away);
