@@ -127,7 +127,7 @@ function beam(b, p1, p2, w, h, color, rng, jitter = 0.08) {
 const TOP_TINT = {   // верх плитки трохи відрізняється від «пласкої» барви, щоб жителі на ньому читались
   forest: mix(TERRAIN_COLOR.forest, '#6d5b32', 0.32),
   pit: mix(TERRAIN_COLOR.pit, '#d9945c', 0.25),
-  pasture: col(TERRAIN_COLOR.pasture),
+  pasture: mix(TERRAIN_COLOR.pasture, '#5f9440', 0.22),
   field: mix(TERRAIN_COLOR.field, '#b58a3a', 0.28),
   mountain: mix(TERRAIN_COLOR.mountain, '#7b8461', 0.3),
   steppe: col(TERRAIN_COLOR.steppe),
@@ -375,8 +375,17 @@ export function decorate(b, t, cx, cz, rng, out) {
     b.add(new THREE.BoxGeometry(0.07, 0.018, 0.05), mat(wx, by + 0.085, wz + 0.006), '#8d887f', { rng });
     b.add(new THREE.DodecahedronGeometry(0.034, 0), mat(wx, by + 0.155, wz), '#a39e95', { rng, jitter: 0.06 });
     b.add(new THREE.CylinderGeometry(0.03, 0.036, 0.022, 6), mat(wx, by + 0.185, wz), '#8a857c', { rng });
+    // Криниця з журавлем — по другий бік від кургану.
+    const sd = kx > 0 ? -1 : 1, [qx, qz] = P(sd * 0.47, 0.27);
+    b.add(new THREE.CylinderGeometry(0.075, 0.08, 0.065, 8), mat(qx, H + 0.032, qz), '#8d8576', { rng, jitter: 0.1 });
+    b.add(new THREE.CylinderGeometry(0.055, 0.055, 0.004, 8), mat(qx, H + 0.066, qz), '#2c3c48', { rng, jitter: 0 });
+    b.add(new THREE.CylinderGeometry(0.012, 0.015, 0.29, 5), mat(qx + sd * 0.13, H + 0.145, qz), '#6b4a2b', { rng });
+    beam(b, [qx - sd * 0.02, H + 0.37, qz], [qx + sd * 0.32, H + 0.2, qz], 0.014, 0.014, '#7a5532', rng, 0.05);
+    b.add(new THREE.BoxGeometry(0.004, 0.25, 0.004), mat(qx - sd * 0.02, H + 0.245, qz), '#4a3a2a', { rng, jitter: 0 });
+    b.add(new THREE.CylinderGeometry(0.018, 0.014, 0.03, 6), mat(qx - sd * 0.02, H + 0.12, qz), '#6b4a2b', { rng });
+    b.add(new THREE.BoxGeometry(0.04, 0.03, 0.03), mat(qx + sd * 0.31, H + 0.19, qz), '#7d776c', { rng });
     // Ковила, каміння.
-    for (const [x, z] of spots(rng, 9, 0.32, 0.76, 0.1, 0.18, [[kx, kz, 0.38]])) {
+    for (const [x, z] of spots(rng, 9, 0.32, 0.76, 0.1, 0.18, [[kx, kz, 0.38], [sd * 0.47, 0.27, 0.16], [sd * 0.62, 0.27, 0.12]])) {
       const [px, pz] = P(x, z);
       if (rng() < 0.75) b.add(new THREE.ConeGeometry(0.02, 0.08, 3), mat(px, H + 0.04, pz, rng() * 3, 1, 1, 1, (rng() - 0.5) * 0.4), rng() < 0.5 ? '#e4dcb6' : '#c9bf86', { rng });
       else b.add(new THREE.DodecahedronGeometry(0.03, 0), mat(px, H + 0.01, pz, rng() * 3, 1, 0.6, 1), '#a9a294', { rng });

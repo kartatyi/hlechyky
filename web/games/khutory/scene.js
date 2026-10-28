@@ -687,7 +687,8 @@ export async function createScene(host, opts = {}) {
     const ndc = wide ? [0.8, -0.62] : [0.5, -0.84];
     const pl = new THREE.Plane(new THREE.Vector3(0, 1, 0), -sz), P = new THREE.Vector3();
     _ray.setFromCamera(new THREE.Vector2(ndc[0], ndc[1]), cam);
-    if (!_ray.ray.intersectPlane(pl, P)) P.set(5.6, sz, 2.2);
+    if (!wide) P.set(1.0, sz, 3);   // вузький екран: просто перед рамкою (зсув назовні — нижче)
+    else if (!_ray.ray.intersectPlane(pl, P)) P.set(5.6, sz, 2.2);
     const ap = (M.SEA_R + M.FRAME_W) * Math.cos(Math.PI / 6) + 0.38;
     let best = 0, bn = null;
     for (let i = 0; i < 6; i++) {
@@ -858,6 +859,8 @@ export async function createScene(host, opts = {}) {
     geos.forEach((g) => g.dispose());
     mats.forEach((m) => m.dispose());
     [atlas, dieTex, seaMat, tokenMat, ghostWhite, ghostCol, hlMat, matVC, dieMat].forEach((x) => x.dispose());
+    sun.dispose();   // карта тіні
+    renderer.renderLists.dispose();
     renderer.dispose();
     renderer.forceContextLoss?.();
     canvas.remove();
