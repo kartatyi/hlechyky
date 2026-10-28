@@ -1,7 +1,7 @@
 // «Хутори» — 3D-сцена поля («дерев'яна настолка»). API — рівно контракт §10 (docs/games/specs/khutory.md):
 //   const sc = await createScene(host, { onPick, onHover, quality: 'high'|'low', reducedMotion });
 //   sc.setBoard(board); sc.setState(view); sc.setLegal({ kind, v, e, h }); await sc.roll(a, b); await sc.produce(gains);
-//   sc.pop(kind, id); sc.screenPos(kind, id); sc.resetView(); sc.resize(); sc.dispose();
+//   sc.pop(kind, id); sc.screenPos(kind, id); sc.glowHexes(ids | null); sc.resetView(); sc.resize(); sc.dispose();
 // Сцена не знає правил і не шле дій — лише малює й каже, куди клацнули (лише по підсвіченому).
 //
 // Будова: усе нерухоме (плитки, жителі без руху, жетони, пристані, рамка) — ОДИН злитий меш із кольорами вершин;
@@ -11,7 +11,7 @@
 
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
 import * as M from './models.js';
-import { SEAT_COLOR, RES_COLOR } from './consts.js';
+import { SEAT_COLOR, SEAT_LIGHT, RES_COLOR } from './consts.js';
 import { wheelAction, wheelZoomFactor, twoFinger, hintDue } from './gestures.js';
 
 const D2R = Math.PI / 180;
@@ -21,6 +21,7 @@ const S3 = Math.sqrt(3);
 const UP = new THREE.Vector3(0, 1, 0);
 const BG = '#2b1f16';
 const PIECE_S = 1.3;   // фігури трохи більші за «правдиві» — щоб читались здалеку й на телефоні
+const ROOF_LIGHT = '#e6d6b0';   // дах «білих»: кремовий, темніший за білені стіни (кант дає models.roofGeo)
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const easeOut = (k) => 1 - Math.pow(1 - k, 3);
@@ -110,11 +111,24 @@ export async function createScene(host, opts = {}) {
   const chipRim = inst(new THREE.CylinderGeometry(0.142, 0.142, 0.018, 6), 60, { shadow: false, mat: new THREE.MeshBasicMaterial({ color: '#1e1208' }) });
   const _white = new THREE.Color(1, 1, 1);
 
+  // Знак гравця на даху (●▲■◆): по InstancedMesh на фігуру — малюються лише ті, що є на полі (≤ 4 виклики), без тіней.
+  const flags = [0, 1, 2, 3].map((k) => { const m = inst(M.flagGeo(k), 44, { color: true, shadow: false }); m.receiveShadow = false; return m; });
+
+  // Підсвітка (khutory-look.md §3): золото з темним кантом, під ним м'яке світіння, на шляхах — «мурашки».
   const hlMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false });
+  const glowTex = M.glowTexture(), antsTex = M.antsTexture();
+  const glowMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, toneMapped: false });
+  const antsMat = new THREE.MeshBasicMaterial({ map: antsTex, transparent: true, depthWrite: false, toneMapped: false });
+  const showMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, toneMapped: false,
+    blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const hlGlow = inst(M.glowGeo(), 72, { shadow: false, mat: glowMat });
   const hlRings = inst(M.ringGeo(), 54, { shadow: false, mat: hlMat });
   const hlStrips = inst(M.stripGeo(), 72, { shadow: false, mat: hlMat });
+  const hlAnts = inst(M.antsGeo(), 72, { shadow: false, mat: antsMat });
   const hlHex = inst(M.hexRingGeo(), 19, { shadow: false, mat: hlMat });
-  for (const m of [hlRings, hlStrips, hlHex]) { m.receiveShadow = false; m.renderOrder = 5; }
+  const showHex = inst(M.hexGlowGeo(), 19, { shadow: false, mat: showMat });
+  for (const m of [hlGlow, hlRings, hlStrips, hlAnts, hlHex, showHex]) m.receiveShadow = false;
+  showHex.renderOrder = 3; hlGlow.renderOrder = 4; hlRings.renderOrder = hlStrips.renderOrder = hlHex.renderOrder = 5; hlAnts.renderOrder = 6;
 
   const robber = new THREE.Mesh(M.robberGeo(), matVC);
   robber.castShadow = quality === 'high'; robber.visible = false;
@@ -229,7 +243,7 @@ export async function createScene(host, opts = {}) {
     scene.add(boardGroup);
     animBg(0, true);
     fit();
-    placePieces(); placeRobber(true); rebuildLegal();
+    placePieces(); placeRobber(true); rebuildLegal(); rebuildShow();
     dirty = true;
   }
 
@@ -304,20 +318,22 @@ export async function createScene(host, opts = {}) {
       return [Math.max(0.001, backOut(clamp(k, 0, 1))), (1 - easeOut(clamp(k, 0, 1))) * 0.35];
     };
     let nt = 0, nc = 0, nr = 0;
+    flagList.length = 0;
     if (view && board) {
       for (const t of view.towns || []) {
         const P = vxPos[t.v]; if (!P) continue;
         const [s, dy] = popS('v' + t.v);
         const ry = ((t.v * 37) % 9 - 4) * 0.045;
-        const c = colorOf(t.seat);
+        const c = colorOf(t.seat), roofC = SEAT_LIGHT[seatIdx(t.seat)] ? _roofLight : c;
+        flagList.push({ P, ry, s: s * PIECE_S, dy, city: !!t.city, shape: seatIdx(t.seat), c });
         if (t.city) {
           if (nc >= cityWalls.instanceMatrix.count) continue;
           setM(cityWalls, nc, P.x, P.y + dy, P.z, 0, ry, 0, s * PIECE_S); setM(cityColor, nc, P.x, P.y + dy, P.z, 0, ry, 0, s * PIECE_S);
-          cityColor.setColorAt(nc, c); nc++;
+          cityColor.setColorAt(nc, roofC); nc++;
         } else {
           if (nt >= townWalls.instanceMatrix.count) continue;
           setM(townWalls, nt, P.x, P.y + dy, P.z, 0, ry, 0, s * PIECE_S); setM(townRoof, nt, P.x, P.y + dy, P.z, 0, ry, 0, s * PIECE_S);
-          townRoof.setColorAt(nt, c); nt++;
+          townRoof.setColorAt(nt, roofC); nt++;
         }
       }
       for (const r of view.roads || []) {
@@ -325,7 +341,7 @@ export async function createScene(host, opts = {}) {
         const [s, dy] = popS('e' + r.e);
         setM(roads, nr, E.mid.x, E.mid.y + dy - 0.005, E.mid.z, 0, E.ry, 0, s, s * 1.15);
         roads.getMatrixAt(nr, _mw); _mw.scale(_sv.set(1, 1, 1.25)); roads.setMatrixAt(nr, _mw);
-        roads.setColorAt(nr, colorOf(r.seat)); nr++;
+        roads.setColorAt(nr, SEAT_LIGHT[seatIdx(r.seat)] ? _roofLight : colorOf(r.seat)); nr++;
       }
     }
     for (const [m, n] of [[townWalls, nt], [townRoof, nt], [cityWalls, nc], [cityColor, nc], [roads, nr]]) {
@@ -334,7 +350,31 @@ export async function createScene(host, opts = {}) {
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
     for (const [k, p] of popT) if (p.seen === false && now - p.t > 3000) popT.delete(k);
+    placeFlags();
     return anyPop;
+  }
+
+  // Прапорці стоять на гребені й табличкою повернуті до камери (азимут; нахил — наполовину), тож фігуру видно з
+  // будь-якого кута. Перераховуються з кожним рухом камери (applyCam) — це ≤ 44 матриці.
+  const flagList = [], _roofLight = new THREE.Color(ROOF_LIGHT), _fo = new THREE.Vector3();
+  function seatIdx(seat) { const p = (view?.players || []).find((x) => x.seat === seat); return ((p ? p.color : seat) % 4 + 4) % 4; }
+  function placeFlags() {
+    const n = [0, 0, 0, 0];
+    const tilt = -(Math.PI / 2 - cs.pol) * 0.5;
+    for (const f of flagList) {
+      const m = flags[f.shape], i = n[f.shape];
+      if (i >= m.instanceMatrix.count) continue;
+      const [ox, oy, oz] = M.FLAG_AT[f.city ? 'city' : 'town'];
+      _fo.set(ox, oy, oz).applyAxisAngle(UP, f.ry).multiplyScalar(f.s);
+      setM(m, i, f.P.x + _fo.x, f.P.y + f.dy + _fo.y, f.P.z + _fo.z, tilt, cs.az, 0, f.s);
+      m.setColorAt(i, f.c);
+      n[f.shape]++;
+    }
+    flags.forEach((m, k) => {
+      m.count = n[k]; m.visible = n[k] > 0;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    });
   }
 
   // Кармелюк.
@@ -397,27 +437,46 @@ export async function createScene(host, opts = {}) {
     const k = pickKind(), list = board ? legalList() : [];
     const pulse = reduced ? 1 : 1 + 0.08 * Math.sin(t * 4.2);
     let n = 0;
-    for (const m of [hlRings, hlStrips, hlHex]) { m.count = 0; m.visible = false; }
+    for (const m of [hlRings, hlStrips, hlHex, hlGlow, hlAnts]) { m.count = 0; m.visible = false; }
     if (!k || !list.length) return;
+    const glowK = reduced ? 1 : 0.9 + 0.1 * Math.sin(t * 3.1);
     list.forEach((id, i) => {
       const hov = hover && hover.id === id;
       const s = (hov ? 1.35 : 1) * (reduced ? 1 : 1 + 0.08 * Math.sin(t * 4.2 + i * 0.6));
       if (k === 'v') {
         const P = vxPos[id]; if (!P) return;
         const big = legal.kind === 'city' ? 1.75 : 1;
-        setM(hlRings, n++, P.x, P.y + 0.014, P.z, 0, 0, 0, s * big, 1);
+        setM(hlGlow, n, P.x, P.y + 0.008, P.z, 0, 0, 0, 0.95 * big * glowK * (hov ? 1.3 : 1), 1);
+        setM(hlRings, n++, P.x, P.y + 0.016, P.z, 0, 0, 0, s * big, 1);
       } else if (k === 'e') {
         const E = edgeInfo[id]; if (!E) return;
-        setM(hlStrips, n++, E.mid.x, E.mid.y + 0.012, E.mid.z, 0, E.ry, 0, hov ? 1.15 : 1, 1);
+        setM(hlGlow, n, E.mid.x, E.mid.y + 0.008, E.mid.z, 0, E.ry, 0, 1, 1);
+        hlGlow.getMatrixAt(n, _mw); _mw.scale(_sv.set(1.08 * glowK * (hov ? 1.12 : 1), 1, 0.72 * glowK * (hov ? 1.3 : 1))); hlGlow.setMatrixAt(n, _mw);
+        setM(hlAnts, n, E.mid.x, E.mid.y + 0.02, E.mid.z, 0, E.ry, 0, hov ? 1.15 : 1, 1);
+        setM(hlStrips, n++, E.mid.x, E.mid.y + 0.02, E.mid.z, 0, E.ry, 0, hov ? 1.15 : 1, 1);
         if (!reduced) { hlStrips.getMatrixAt(n - 1, _mw); _mw.scale(_sv.set(1, 1, s)); hlStrips.setMatrixAt(n - 1, _mw); }
       } else {
         const P = hexPos[id]; if (!P) return;
-        setM(hlHex, n++, P.x, P.y + 0.012, P.z, 0, 0, 0, (hov ? 0.9 : 1) * (reduced ? 1 : 1 + 0.02 * Math.sin(t * 4.2 + i * 0.5)), 1);
+        setM(hlHex, n++, P.x, P.y + 0.014, P.z, 0, 0, 0, (hov ? 0.9 : 1) * (reduced ? 1 : 1 + 0.02 * Math.sin(t * 4.2 + i * 0.5)), 1);
       }
     });
-    const m = k === 'v' ? hlRings : k === 'e' ? hlStrips : hlHex;
-    m.count = n; m.visible = n > 0; m.instanceMatrix.needsUpdate = true;
-    hlMat.opacity = reduced ? 0.95 : 0.78 + 0.2 * (pulse - 0.92) / 0.16;
+    const ms = k === 'v' ? [hlRings, hlGlow] : k === 'e' ? [hlStrips, hlGlow, hlAnts] : [hlHex];
+    for (const m of ms) { m.count = n; m.visible = n > 0; m.instanceMatrix.needsUpdate = true; }
+    hlMat.opacity = reduced ? 1 : 0.84 + 0.16 * (pulse - 0.92) / 0.16;
+  }
+
+  // «Показ» гексів (glowHexes): м'яке золоте світіння без клікабельності — для смуги «що дасть число» тощо.
+  let shown = [];
+  function glowHexes(ids) {
+    shown = Array.isArray(ids) ? ids.filter((h) => Number.isInteger(h)) : [];
+    rebuildShow(clockT);
+    dirty = true;
+  }
+  function rebuildShow(t = clockT) {
+    let n = 0;
+    if (board) for (const h of shown) { const P = hexPos[h]; if (P) setM(showHex, n++, P.x, P.y + 0.006, P.z, 0, 0, 0, 1, 1); }
+    showHex.count = n; showHex.visible = n > 0; showHex.instanceMatrix.needsUpdate = true;
+    showMat.opacity = reduced ? 0.9 : 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t * 2.4));
   }
   function setHover(h) {
     const same = (h?.id ?? null) === (hover?.id ?? null) && (h?.kind ?? null) === (hover?.kind ?? null);
@@ -448,6 +507,7 @@ export async function createScene(host, opts = {}) {
     cam.lookAt(cs.target);
     cam.updateMatrixWorld();
     scene.fog.near = d + 4; scene.fog.far = d + 26;
+    if (flagList.length) placeFlags();
   }
   const _pj = new THREE.Vector3();
   function fit() {
@@ -455,7 +515,8 @@ export async function createScene(host, opts = {}) {
     defPol = W / H < 0.9 ? PORTRAIT_POLAR : DEF_POLAR;   // вузька висока рамка — дивимось згори, поле виходить вищим
     cs.az = 0; cs.pol = defPol; cs.zoom = 1; cs.target.set(0, 0, 0);
     // Вузька рамка (телефон): впритул до суші й пристаней — кути моря й рамки можна обрізати, а поле стає вдвічі помітнішим.
-    const R = W / H < 0.9 ? 5.1 : M.SEA_R + M.FRAME_W, pts = [];
+    // Широка — теж ближче (khutory-look.md §3): раніше поле займало ~60 % рамки, решта — стільниця й море.
+    const R = W / H < 0.9 ? 5.1 : 5.2, pts = [];
     for (let i = 0; i < 6; i++) for (const y of [0, 0.25]) pts.push(new THREE.Vector3(R * Math.cos(i * Math.PI / 3), y, R * Math.sin(i * Math.PI / 3)));
     const lim = W / H < 0.8 ? 0.97 : 0.93;
     // Відстань — двійковим пошуком, потім зсув цілі вглиб/до себе, щоб рамка стояла посередині по вертикалі; двічі.
@@ -779,7 +840,11 @@ export async function createScene(host, opts = {}) {
     const t = new THREE.Vector3(-bn.z, 0, bn.x);
     const A = P.clone().addScaledVector(t, 0.3), B = P.clone().addScaledVector(t, -0.3);
     const sx = (v) => Math.abs(_pj.copy(v).project(cam).x);
-    return sx(A) < sx(B) ? [B.addScaledVector(bn, 0.12), A] : [A.addScaledVector(bn, 0.12), B];
+    const out = sx(A) < sx(B) ? [B.addScaledVector(bn, 0.12), A] : [A.addScaledVector(bn, 0.12), B];
+    // Камера ближча (поле на всю рамку) — за рамкою кубики могли вилізти з кадру: підтягуємо до центру, доки видно.
+    const seen = (v) => { _pj.copy(v).project(cam); return Math.abs(_pj.x) < 0.9 && Math.abs(_pj.y) < 0.86; };
+    for (let k = 0; k < 24 && !(seen(out[0]) && seen(out[1])); k++) for (const v of out) { v.x *= 0.97; v.z *= 0.97; }
+    return out;
   }
   function restSpots() { return (diceRest || [new THREE.Vector3(5.75, 0.18, 1.75), new THREE.Vector3(5.3, 0.18, 2.45)]).map((v) => v.clone()); }
   function restDice(a, b) {
@@ -889,7 +954,11 @@ export async function createScene(host, opts = {}) {
     if (runTweens(now)) active = true;
     if (popT.size) { popping = placePieces(now); if (popping) active = true; }
     if (bgAnim && boardGroup) { animBg(clockT); active = true; }
-    if (legal.kind && !reduced) { rebuildLegal(clockT); active = true; }
+    if (legal.kind && !reduced) {
+      rebuildLegal(clockT); active = true;
+      if (legal.kind === 'road') antsTex.offset.x = (antsTex.offset.x - dt * 1.4) % 1;
+    }
+    if (shown.length && !reduced) { rebuildShow(clockT); active = true; }
     if (active || dirty) {
       renderer.render(scene, cam);
       dirty = false;
@@ -943,7 +1012,7 @@ export async function createScene(host, opts = {}) {
     });
     geos.forEach((g) => g.dispose());
     mats.forEach((m) => m.dispose());
-    [atlas, dieTex, seaMat, tokenMat, ghostWhite, ghostCol, hlMat, matVC, dieMat].forEach((x) => x.dispose());
+    [atlas, dieTex, seaMat, tokenMat, ghostWhite, ghostCol, hlMat, matVC, dieMat, glowTex, antsTex, glowMat, antsMat, showMat].forEach((x) => x.dispose());
     sun.dispose();   // карта тіні
     renderer.renderLists.dispose();
     renderer.dispose();
@@ -958,6 +1027,7 @@ export async function createScene(host, opts = {}) {
     roll: (a, b) => alive ? (kick(), roll(a, b)) : Promise.resolve(),
     produce: (g) => alive ? (kick(), produce(g)) : Promise.resolve(),
     pop: wrap(pop),
+    glowHexes: wrap(glowHexes),
     screenPos: (k, id) => alive ? screenPos(k, id) : null,
     resetView: wrap(resetView),
     resize: wrap(() => { W = H = 0; resize(); }),

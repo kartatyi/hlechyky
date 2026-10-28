@@ -383,3 +383,32 @@ export function myMoment(timeline, seat, seats, rounds = 0) {
 export function chartLines(geom, seats) {
   return seats.filter((s) => geom.lines[s]).map((s) => ({ seat: s, pts: geom.lines[s] }));
 }
+
+/** Кармелюк: що буде на кожному дозволеному гексі (бейджі на полі, khutory-look.md §2). Для кожного h з view.me.robber
+ *  (або всіх гексів, крім поточного, якщо me нема): own — тут стоїть і моя хата/містечко; victims — чужі гравці з фігурами
+ *  на гексі [{ seat, cards }] (за зростанням seat); best — «⭐ Глек радить»: один гекс без моєї хати з жертвами, де
+ *  найбільше «крапок» × жертв, а при рівності — де лідер (Σ відкритих очок жертв). Нікого нема — best ні в кого. */
+export function robberInfo(view, seat) {
+  const b = view && view.board;
+  if (!b || !Array.isArray(b.hexes)) return [];
+  const list = view.me && Array.isArray(view.me.robber) ? view.me.robber : b.hexes.map((_, i) => i).filter((i) => i !== view.robber);
+  const pl = new Map((view.players || []).map((p) => [p.seat, p]));
+  const towns = view.towns || [];
+  let bi = -1, bs = 0;
+  const out = list.map((h, i) => {
+    const hx = b.hexes[h];
+    const vs = new Set(hx ? hx.v : []);
+    const on = towns.filter((t) => vs.has(t.v));
+    const own = seat != null && on.some((t) => t.seat === seat);
+    const seats = [...new Set(on.map((t) => t.seat).filter((s) => s !== seat))].sort((a, c) => a - c);
+    const victims = seats.map((s) => ({ seat: s, cards: (pl.get(s) || {}).cards || 0 }));
+    if (!own && victims.length) {
+      const score = (PIPS[hx.num] || 0) * victims.length + 0.3 * seats.reduce((a, s) => a + ((pl.get(s) || {}).points || 0), 0)
+        + 0.01 * victims.reduce((a, x) => a + x.cards, 0);
+      if (score > bs) { bs = score; bi = i; }
+    }
+    return { h, own, victims, best: false };
+  });
+  if (bi >= 0) out[bi].best = true;
+  return out;
+}
