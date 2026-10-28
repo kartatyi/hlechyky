@@ -319,7 +319,8 @@
 
   /// Поки є позначки (зірки, бейджі Кармелюка, подія на полі) — ставимо їх щокадру (камеру крутять мишею/пальцем;
   /// таймер на 250 мс відставав). Пишемо лише transform/атрибут і лише коли змінився — без innerHTML щокадру.
-  const following = (st) => !!(st.marks.length || st.rob || st.fxCur);
+  /// Пласка карта (2D) камери не має — там позиції ставлять лише paint і ResizeObserver, без циклу щокадру.
+  const following = (st) => !st.dead && st.scKind !== '2d' && !!(st.marks.length || st.rob || st.fxCur);
   function followMarks(st) {
     if (st.mrAF || !following(st)) return;
     const loop = () => {
@@ -613,7 +614,7 @@
     } else if (me && me.must === 'discard') {
       h += '<button type="button" class="khu-big primary" data-a="disc-open">🃏 Скинути карти</button>';
     }
-    if (me && v.phase === 'main' && v.turn != null && isBot(v, v.turn) && !myTurn && !incList(v, me).length) h += '<p class="khu-note">🤖 Зараз ходить Глек — він міняє лише з банком. Твоя черга торгуватись — у твій хід</p>';
+    if (me && v.phase === 'main' && v.turn != null && isBot(v, v.turn) && !myTurn && !incList(v, me).length) h += '<p class="khu-note">🤖 Зараз хід Глека: на його пропозицію можна відповісти, а свою запропонувати — у свій хід</p>';
     setHtml(st.el.act, h);
   }
 
@@ -748,22 +749,22 @@
     return { cur: list[i], i, n: list.length, list };
   }
 
-  /// До коли пропозиція жива: строк ходу (deadline) або кінець очікування Глека (botIn, KhutoryBot.OfferWaitMs) — що ближче.
-  function incEnd(st, v, o) {
-    let end = v.deadline ? Date.parse(v.deadline) : Infinity;
-    if (o.from === v.turn && isBot(v, o.from) && st.botAt) end = Math.min(end, st.botAt);
-    return end;
+  /// До коли пропозиція жива: її власний строк (o.until — Глек чекає відповідей, KhutoryBot.OfferWaitMs) або строк
+  /// ходу (deadline) — що ближче. Не botIn: то найближчий крок будь-якого Глека (~1 с), а не строк пропозиції.
+  function incEnd(v, o) {
+    const end = v.deadline ? Date.parse(v.deadline) : Infinity;
+    const own = o.until ? Date.parse(o.until) : NaN;
+    return own < end ? own : end;
   }
 
   function renderInc(st, v, me) {
-    if (st.botV !== v) { st.botV = v; st.botAt = typeof v.botIn === 'number' ? Date.now() + v.botIn : null; }
     const P = incPick(st, v, me);
     st.inc = null;
     if (!P) { setHtml(st.el.inc, ''); setHtml(st.el.incm, ''); return; }
     const { o, kind } = P.cur, K = M.K, hand = me.hand || {};
     st.incSeen = st.incSeen || {};
     if (!st.incSeen[o.id]) st.incSeen[o.id] = Date.now();
-    st.inc = { id: o.id, t0: st.incSeen[o.id], end: incEnd(st, v, o) };
+    st.inc = { id: o.id, t0: st.incSeen[o.id], end: incEnd(v, o) };
     const lack = K.lacking(hand, o.get), can = !Object.keys(lack).length;
     const head = kind === 'counter' ? whoS(v, o.from) + '&nbsp;відповідає зустрічною' : whoS(v, o.from) + '&nbsp;пропонує обмін' + (o.to === me.seat ? ' тобі' : '');
     const bar = st.inc.end < Infinity ? '<div class="khu-ibar"><i data-ibar></i></div>' : '';
@@ -1679,8 +1680,11 @@
     unmount(root) {
       const st = root._kh;
       if (st) {
-        clearInterval(st.tick); clearTimeout(st.nt); clearTimeout(st.flashT); clearTimeout(st.fxT); clearTimeout(st.feedT); cancelAnimationFrame(st.mrAF);
+        st.dead = true;   // недограні async-події (кубики, Кармелюк) не заводять цикл позначок на розібраній сцені
+        clearInterval(st.tick); clearTimeout(st.nt); clearTimeout(st.flashT); clearTimeout(st.fxT); clearTimeout(st.feedT);
+        clearTimeout(st.popT); clearTimeout(st.numT); cancelAnimationFrame(st.mrAF); st.mrAF = 0;
         if (st.ro) st.ro.disconnect();
+        if (st.ro2) st.ro2.disconnect();
         if (st.onClick) root.removeEventListener('click', st.onClick);
         if (st.sc) { try { st.sc.dispose(); } catch (e) { /* уже прибрано */ } }
         if (st.snd) { try { st.snd.dispose(); } catch (e) { /* уже прибрано */ } st.snd = null; }

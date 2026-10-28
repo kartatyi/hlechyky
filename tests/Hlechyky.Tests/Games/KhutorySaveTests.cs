@@ -33,7 +33,7 @@ public class KhutorySaveTests
         KhutoryBotTests.Give(c, s, wood, clay, wool, grain, ore);
 
     /// <summary>Перезапуск «на місці»: знімок → пауза → нова гра в ту саму кімнату так, як це робить RoomsFreeze.Resume.</summary>
-    static Khutory Restart(RoomHarness h, TimeSpan pause)
+    internal static Khutory Restart(RoomHarness h, TimeSpan pause)
     {
         var room = h.Room;
         lock (room.Sync)
@@ -54,8 +54,11 @@ public class KhutorySaveTests
 
     static readonly int?[] Viewers = [0, 1, 2, 3, null];
 
-    /// <summary>Види всіх місць і глядача без строку (він законно зсувається) + сам строк окремо.</summary>
-    static (string[] views, DateTimeOffset? deadline) Look(Func<int?, JsonElement> view)
+    /// <summary>
+    /// Види всіх місць і глядача без строку (він законно зсувається) + сам строк окремо. Строки пропозицій Глека
+    /// (<c>offers[].until</c>) теж зсуваються на паузу — їх відкочуємо на <paramref name="shift"/>, щоб види збіглись.
+    /// </summary>
+    static (string[] views, DateTimeOffset? deadline) Look(Func<int?, JsonElement> view, TimeSpan shift = default)
     {
         DateTimeOffset? deadline = null;
         var list = new List<string>();
@@ -64,12 +67,14 @@ public class KhutorySaveTests
             var o = JsonNode.Parse(view(seat).GetRawText())!.AsObject();
             if (o["deadline"] is { } d) deadline = d.GetValue<DateTimeOffset>();
             o.Remove("deadline");
+            foreach (var of in o["offers"]!.AsArray())
+                if (of!["until"] is { } u) of["until"] = (u.GetValue<DateTimeOffset>() - shift).ToString("O");
             list.Add(o.ToJsonString());
         }
         return ([.. list], deadline);
     }
 
-    static (string[] views, DateTimeOffset? deadline) Look(RoomHarness h) => Look(h.View);
+    static (string[] views, DateTimeOffset? deadline) Look(RoomHarness h, TimeSpan shift = default) => Look(h.View, shift);
 
     /// <summary>Перезапустити й звірити: види ті самі, строк — пізніший рівно на паузу.</summary>
     static void Same(RoomHarness h)
@@ -77,7 +82,7 @@ public class KhutorySaveTests
         var (before, dl) = Look(h);
         var game = Restart(h, Pause);
         Assert.Same(game, h.Room.Game);
-        var (after, dl2) = Look(h);
+        var (after, dl2) = Look(h, Pause);
         for (var i = 0; i < before.Length; i++) Assert.Equal(before[i], after[i]);
         Assert.Equal(dl + (dl is null ? TimeSpan.Zero : Pause), dl2);
     }
@@ -440,7 +445,7 @@ public class KhutorySaveTests
         {
             lock (room.Sync) return Views.Json(room.Game.View(seat));
         }
-        var (after, dl2) = Look(View);
+        var (after, dl2) = Look(View, Pause);
         for (var i = 0; i < before.Length; i++) Assert.Equal(before[i], after[i]);
         Assert.Equal(dl + Pause, dl2);
 

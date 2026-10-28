@@ -75,6 +75,18 @@ public sealed partial class KhutoryBot
         return now < until ? until : null;
     }
 
+    /// <summary>
+    /// Строк пропозиції <paramref name="id"/> для виду (контракт §5, <c>offers[].until</c>): до коли Глек чекає відповідей
+    /// на неї; null — це не пропозиція Глека, що чекає (людська — живе до кінця ходу). Після перезапуску <see cref="Shift"/>
+    /// уже зсунув <c>_since</c>, тож строк правильний і тоді.
+    /// </summary>
+    public DateTimeOffset? OfferUntil(int id)
+    {
+        for (var s = 0; s < KhutoryCore.MaxSeats; s++)
+            if (_pending[s] == id) return _since[s].AddMilliseconds(OfferWaitMs);
+        return null;
+    }
+
     // =========================================================================================
     // Хід
     // =========================================================================================

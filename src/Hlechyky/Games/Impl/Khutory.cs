@@ -656,6 +656,7 @@ public sealed partial class Khutory : Game
             {
                 id = o.Id, from = o.From, to = o.To, give = KhutoryCore.ResMap(o.Give), get = KhutoryCore.ResMap(o.Get),
                 acc = o.Acc.ToArray(), dec = o.Dec.ToArray(),
+                until = over ? null : _brain.OfferUntil(o.Id),   // Глек чекає відповідей до…; людська — null (до deadline)
             }).ToArray(),
             events,
             seq = c.Seq,
