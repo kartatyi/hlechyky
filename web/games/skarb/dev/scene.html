@@ -44,18 +44,20 @@
     <button id="rot" title="поворот вибраної карти (R)">⟲ 180°</button>
   </div>
   <div class="row"><button id="cur">курсор</button><button id="focus">focus(8,0)</button><button id="brk">зламати мені</button></div>
+  <div class="row" id="styles">стиль: </div>
   <div class="row"><button id="qLow">low</button><button id="qHigh">high</button><button id="rm">reducedMotion</button><button id="reset">reset</button></div>
   <div id="stats">…</div>
   <div id="log"></div>
 </div>
 <script type="module">
-import { createScene } from '../scene.js';
+import { createScene, SCENE_STYLES } from '../scene.js';
 import { GRID, SHAPES, rot180, STEP, OPP, BIT } from '../consts.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 let quality = qs.get('q') === 'low' ? 'low' : 'high';
 let reduced = qs.has('rm');
+let style = SCENE_STYLES.includes(qs.get('style')) ? qs.get('style') : 'classic';
 if (qs.has('shot')) document.body.classList.add('shot');
 let sc = null, view = null, legalKind = null, rot = 0, cursorOn = false, cursorI = 0;
 const picks = [];
@@ -94,7 +96,7 @@ async function boot() {
   if (sc) sc.dispose();
   try {
     sc = await createScene($('host'), {
-      quality, reducedMotion: reduced,
+      quality, reducedMotion: reduced, style,
       onPick: (k, a, b) => { log('pick', k, a, b ?? ''); onPicked(k, a, b); },
       onHover: (k, a, b) => {
         const tip = $('tip');
@@ -109,6 +111,12 @@ async function boot() {
   load(sel.value);
   $('qLow').classList.toggle('on', quality === 'low'); $('qHigh').classList.toggle('on', quality === 'high');
   $('rm').classList.toggle('on', reduced);
+  document.querySelectorAll('[data-st]').forEach((b) => b.classList.toggle('on', b.dataset.st === style));
+}
+for (const st of SCENE_STYLES) {
+  const b = document.createElement('button'); b.textContent = st; b.dataset.st = st;
+  b.onclick = () => { style = st; const u = new URL(location.href); u.searchParams.set('style', st); history.replaceState(null, '', u); boot(); };
+  $('styles').append(b);
 }
 
 function load(name) {
@@ -285,7 +293,7 @@ setInterval(() => {
   const now = performance.now(), f = d.stats.frames;
   const fps = Math.round((f - lastF) * 1000 / (now - last)); lastF = f; last = now;
   const info = d.renderer.info;
-  const txt = `${fps} к/с · draw ${info.render.calls} · tri ${(info.render.triangles / 1000).toFixed(1)}k · ${quality}${reduced ? ' · rm' : ''}`;
+  const txt = `${fps} к/с · draw ${info.render.calls} · tri ${(info.render.triangles / 1000).toFixed(1)}k · ${style} · ${quality}${reduced ? ' · rm' : ''}`;
   $('stats').textContent = txt;
   window.stats = { fps, calls: info.render.calls, tris: info.render.triangles, geos: info.memory.geometries, frames: f };
 }, 500);

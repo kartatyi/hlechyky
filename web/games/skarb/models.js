@@ -128,8 +128,8 @@ const ZP = new V3(0, 0, 1);
 
 /** Грудка ґрунту: кубик 1/3 × 1/3 × 0.6 з фаскою спереду й легенькою «опуклістю» лиця. Біла — колір дає екземпляр.
  *  Центр — (0, 0, −0.3): передня грань на z = 0. Задньої грані нема (її ніколи не видно). */
-export function lumpTris() {
-  const w = L / 2, c = 0.05, bul = 0.024, fz = 0, bz = -c, zb = -LUMP_D;
+export function lumpTris(c = 0.05, bul = 0.024) {
+  const w = L / 2, fz = 0, bz = -c, zb = -LUMP_D;
   const arr = [];
   const A = [-w + c, w - c, fz], B = [w - c, w - c, fz], C = [w - c, -w + c, fz], D = [-w + c, -w + c, fz], O = [0.01, 0.006, fz + bul];
   const A2 = [-w, w, bz], B2 = [w, w, bz], C2 = [w, -w, bz], D2 = [-w, -w, bz];
@@ -141,8 +141,15 @@ export function lumpTris() {
   quad(arr, C2, D2, D3, C3, new V3(0, -1, 0)); quad(arr, D2, A2, A3, D3, new V3(-1, 0, 0));
   return arr;
 }
-export function lumpGeo() {
+export function lumpGeo(opt = null) {
   const b = new Builder();
+  if (opt) {
+    // Стилі: фаска/опуклість на вибір і градієнт боків — що глибше в тунель, то темніше (вирізьблена глибина).
+    const c = opt.c ?? 0.05, deep = opt.deep ?? 0.32;
+    const k = (z) => z >= -0.001 ? 1 : z >= -c - 0.001 ? 1 - 0.16 * (-z / c) : 0.84 - (0.84 - deep) * Math.min(1, (-z - c) / (LUMP_D - c));
+    b.add(rawGeo(lumpTris(c, opt.bul ?? 0.024)), null, null, { rng: rngOf(3), jitter: 0.05, vertexColor: (v) => new THREE.Color(k(v.z), k(v.z) * 0.97, k(v.z) * 0.94) });
+    return b.geometry();
+  }
   // Лице світліше, боки темніші (у тунелі видно саме боки) — так грудки читаються навіть без тіней.
   b.add(rawGeo(lumpTris()), null, (c) => c.z > -0.01 ? col('#ffffff') : c.z > -0.06 ? col('#d9d1c8') : col('#a39a92'),
     { rng: rngOf(3), jitter: 0.05 });
@@ -188,8 +195,23 @@ export function lanternGlassGeo() {
 }
 
 /** Пляма світла: диск, яскравий у центрі й чорний по краю (для адитивного змішування). Лежить у площині XY. */
-export function glowGeo(seg = 20) {
+export function glowGeo(seg = 20, soft = false) {
   const arr = [], cols = [];
+  if (soft) {
+    // м'який ореол: кілька кілець із гаусовим спадом — без видимого краю
+    const R = [0, 0.15, 0.3, 0.45, 0.6, 0.78, 1], f = (r) => (Math.exp(-r * r * 4.5) - Math.exp(-4.5)) / (1 - Math.exp(-4.5));
+    for (let k = 0; k + 1 < R.length; k++) for (let i = 0; i < seg; i++) {
+      const a0 = i / seg * Math.PI * 2, a1 = (i + 1) / seg * Math.PI * 2, r0 = R[k], r1 = R[k + 1], v0 = f(r0), v1 = f(r1);
+      const P = (r, a) => [Math.cos(a) * r, Math.sin(a) * r, 0];
+      if (k === 0) { arr.push(0, 0, 0, ...P(r1, a0), ...P(r1, a1)); cols.push(v0, v0, v0, v1, v1, v1, v1, v1, v1); continue; }
+      arr.push(...P(r0, a0), ...P(r1, a0), ...P(r1, a1), ...P(r0, a0), ...P(r1, a1), ...P(r0, a1));
+      cols.push(v0, v0, v0, v1, v1, v1, v1, v1, v1, v0, v0, v0, v1, v1, v1, v0, v0, v0);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    return g;
+  }
   for (let i = 0; i < seg; i++) {
     const a0 = i / seg * Math.PI * 2, a1 = (i + 1) / seg * Math.PI * 2;
     arr.push(0, 0, 0, Math.cos(a0), Math.sin(a0), 0, Math.cos(a1), Math.sin(a1), 0);
@@ -412,22 +434,24 @@ export function cursorGeo() {
  *         скеля внизу); glow — світлі вікна (без світла); sky — небо, пагорби, місяць, зорі (без туману й світла).
  *   craneArm / craneRope — рухомі частини журавля (жердина з противагою відносно pivot; мотузка з відром відносно tip).
  */
-export function buildStatic(grid, bgHex) {
+export function buildStatic(grid, bgHex, o = {}) {
   const { x0, x1, y0, y1 } = grid;
   const sx = grid.shaft?.length ? grid.shaft[0][0] : (grid.start?.[0] ?? 0);
   const surfY = -y0 + 0.5, botY = -y1 - 0.5;
   const XL = x0 - 0.5, XR = x1 + 0.5;
-  const lit = new Builder(), glow = new Builder(), sky = new Builder();
+  const lit = new Builder(), glow = new Builder(), sky = new Builder(), halo = new Builder();
+  const olR = [];   // діапазони lit.p, що мають контур (стиль toon)
+  const mark = () => lit.p.length, olAdd = (a) => { if (o.outline) olR.push([a, lit.p.length]); };
   const r = rngOf(101);
   const bg = col(bgHex);
 
   // Задня стінка тунелів — темна, з ледь помітними плямами.
   const back = new THREE.PlaneGeometry(XR - XL, surfY - botY, Math.round(XR - XL), Math.round(surfY - botY));
-  lit.add(back, mat((XL + XR) / 2, (surfY + botY) / 2, BACK_Z), () => col(PAL.tunnel).clone().multiplyScalar(0.85 + r() * 0.3), { rng: r, jitter: 0.04 });
+  lit.add(back, mat((XL + XR) / 2, (surfY + botY) / 2, BACK_Z), () => col(PAL.tunnel).clone().multiplyScalar((0.85 + r() * 0.3) * (o.backMul ?? 1)), { rng: r, jitter: 0.04 });
 
   // Декоративні стовпці землі ліворуч і праворуч — темнішають до кольору тьми («тонуть у тумані»).
-  const lump = rawGeo(lumpTris());
-  for (const side of [-1, 1]) {
+  const lump = rawGeo(o.lump ? lumpTris(o.lump.c, o.lump.bul) : lumpTris());
+  if (!o.soil) for (const side of [-1, 1]) {
     for (let k = 1; k <= 3; k++) {
       const x = side < 0 ? x0 - k : x1 + k;
       const fade = k === 1 ? 0.38 : k === 2 ? 0.66 : 0.86;
@@ -441,8 +465,19 @@ export function buildStatic(grid, bgHex) {
   }
   lump.dispose();
 
-  // Скеля під полем.
-  for (let x = XL - 3; x < XR + 3; x += 0.5) {
+  // Скеля під полем: суцільний ґрунт — ряд обкатаних пласких каменів; грудки — кубічна скеля.
+  if (o.soil) {
+    const tones = ['#6e6862', '#7c756e', '#645e58', '#86807a'];
+    for (const [row, yy, hh] of [[0, botY - 0.2, 0.42], [1, botY - 0.62, 0.46]]) {
+      let x = XL - 3.4 + (row ? 0.3 : 0);
+      while (x < XR + 3.4) {
+        const w = 0.55 + r() * 0.45, out = Math.max(0, Math.max(XL - x, x - XR)) / 3;
+        const c = col(tones[Math.floor(r() * 4)]).clone().multiplyScalar(0.85 + r() * 0.25).lerp(bg, Math.min(0.9, 0.15 + out * 0.7 + row * 0.3));
+        lit.add(new THREE.IcosahedronGeometry(0.5, 1), mat(x + w / 2, yy + (r() - 0.5) * 0.05, -0.12 + (r() - 0.5) * 0.05, r() * 0.6, w * 0.98, hh * 0.98, 0.32, 0, (r() - 0.5) * 0.12), c, { rng: r, jitter: 0.05 });
+        x += w + 0.02;
+      }
+    }
+  } else for (let x = XL - 3; x < XR + 3; x += 0.5) {
     for (const [y, hh] of [[botY - 0.2, 0.4], [botY - 0.62, 0.44]]) {
       const out = Math.max(0, Math.max(XL - x, x - XR)) / 3;
       const c = col('#5d5a57').clone().multiplyScalar(0.75 + r() * 0.3).lerp(bg, Math.min(0.9, 0.25 + out * 0.7 + (y < botY - 0.5 ? 0.25 : 0)));
@@ -495,6 +530,7 @@ export function buildStatic(grid, bgHex) {
   lit.add(new THREE.CylinderGeometry(0.05, 0.04, 0.08, 8), mat(sx + 0.035, wb + 0.04 + 0.12, -0.12), '#7a5232', { rng: r, jitter: 0.06 });
   lit.add(new THREE.TorusGeometry(0.05, 0.006, 3, 8), mat(sx + 0.035, wb + 0.13 + 0.12, -0.12, 0, 1, 1, 1, 0), '#3b3634', { rng: r, jitter: 0 });
 
+  const olWell = mark();
   // ---- зруб колодязя на поверхні (розрізаний разом із землею: видно лише задню половину)
   for (let k = 0; k < 4; k++) {
     const y = surfY + 0.04 + k * 0.085;
@@ -503,6 +539,8 @@ export function buildStatic(grid, bgHex) {
   }
   lit.add(new THREE.PlaneGeometry(0.6, 0.55), mat(sx, surfY + 0.012, -0.33, 0, 1, 1, 1, -Math.PI / 2), '#0e0906', { rng: r, jitter: 0 });
 
+  olAdd(olWell);
+  const olCrane = mark();
   // ---- журавель: стовп-сошка (нерухомий); жердина з противагою та мотузка з відром — рухомі.
   const pivot = new V3(sx - 1.35, surfY + 1.5, -0.2);
   log(lit, [pivot.x, surfY - 0.05, pivot.z], [pivot.x, pivot.y - 0.02, pivot.z], 0.06, '#6b4a2b', r, 6);
@@ -520,6 +558,8 @@ export function buildStatic(grid, bgHex) {
   for (const y of [-ropeLen - 0.01, -ropeLen - 0.09]) rope.add(new THREE.CylinderGeometry(0.088, 0.088, 0.016, 8, 1, true), mat(0, y, 0), '#3b3634', { rng: r, jitter: 0 });
   rope.add(new THREE.TorusGeometry(0.075, 0.006, 3, 10, Math.PI), mat(0, -ropeLen + 0.02, 0), '#3b3634', { rng: r, jitter: 0 });
 
+  olAdd(olCrane);
+  const olHouse = mark();
   // ---- хата: призьба, білені стіни, віконця з теплим світлом, двері, стріха.
   const hx = sx + 3.4, hz = -1.75, hw = 1.75, hd = 1.05, hh = 0.78;
   lit.add(new THREE.BoxGeometry(hw + 0.14, 0.13, hd + 0.14), mat(hx, surfY + 0.065, hz), '#8a4f33', { rng: r, jitter: 0.05 });
@@ -557,6 +597,15 @@ export function buildStatic(grid, bgHex) {
     lit.add(new THREE.BoxGeometry(0.14, 0.34, 0.14), mat(hx + 0.35, yb - 0.08, hz - 0.15), PAL.wall, { rng: r, jitter: 0.03 });
   }
 
+  olAdd(olHouse);
+  const chimney = new V3(sx + 3.4 + 0.35, -y0 + 0.5 + 0.13 + 0.78 - 0.02 + 0.78 + 0.1, -1.75 - 0.15);
+  // вікна світять назовні — м'які ореоли (адитивно), і тепла пляма на призьбі
+  if (o.halo) {
+    const hx = sx + 3.4, fz = -1.75 + 1.05 / 2, wy = surfY + 0.13 + 0.78 * 0.55;
+    for (const wx of [hx + 0.05, hx + 0.55]) halo.add(new THREE.CircleGeometry(0.42, 18), mat(wx, wy, fz + 0.04), null, { jitter: 0, vertexColor: fadeVC('#c07a2a', 0.42, 1.6) });
+    halo.add(new THREE.CircleGeometry(0.6, 18), mat(hx + 0.3, surfY + 0.02, fz + 0.3, 0, 1.4, 1, 1, -Math.PI / 2), null, { jitter: 0, vertexColor: fadeVC('#6a3a12', 0.6, 1.4) });
+  }
+  if (o.decor) decorWell(lit, sx, surfY, r, o);
   // ---- тин позаду, з глечиками на кілках
   const fenceZ = -3.3;
   const posts = [];
@@ -574,6 +623,7 @@ export function buildStatic(grid, bgHex) {
   }
 
   // ---- вишні
+  const olTrees = mark();
   for (const [tx, tz, s] of [[sx + 6.2, -1.3, 1], [sx - 3.3, -2.2, 0.9]]) {
     log(lit, [tx, surfY, tz], [tx + 0.04, surfY + 0.75 * s, tz], 0.05 * s, '#4a3020', r, 6);
     log(lit, [tx + 0.02, surfY + 0.55 * s, tz], [tx + 0.3 * s, surfY + 0.85 * s, tz + 0.05], 0.03 * s, '#4a3020', r, 5);
@@ -598,35 +648,40 @@ export function buildStatic(grid, bgHex) {
     lit.add(new THREE.CylinderGeometry(0.09, 0.09, 0.035, 10), mat(fx + 0.02, hy, fzz + 0.045, 0, 1, 1, 1, Math.PI / 2 - 0.25), '#4a2e18', { rng: r, jitter: 0.06 });
   });
 
+  olAdd(olTrees);
   // ---- копиця
   {
+    const olHay = mark();
     const kx = sx + 9.7, kz = -1.4;
     lit.add(new THREE.SphereGeometry(0.55, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), mat(kx, surfY - 0.02, kz, 0.3, 1, 1.35, 1), '#cfa84a', { rng: r, jitter: 0.1 });
     lit.add(new THREE.ConeGeometry(0.22, 0.3, 8), mat(kx, surfY + 0.8, kz), '#b89238', { rng: r, jitter: 0.1 });
     log(lit, [kx, surfY + 0.85, kz], [kx + 0.03, surfY + 1.15, kz], 0.015, '#5e3f26', r, 4);
+    olAdd(olHay);
   }
 
   // ---- небо: градієнт skyTop → skyLow, пагорби, вогники хуторів, місяць, зорі.
   const SZ = -18, SX0 = -70, SX1 = 80, SY0 = surfY - 4, SY1 = surfY + 60;
   const skyAt = (y) => {
     const k = Math.max(0, Math.min(1, (y - (surfY - 0.3)) / 3.2));
-    return mix(PAL.skyLow, PAL.skyTop, Math.pow(k, 0.45));
+    return mix(o.skyLow || PAL.skyLow, o.skyTop || PAL.skyTop, Math.pow(k, o.skyPow ?? 0.45));
   };
   sky.add(new THREE.PlaneGeometry(SX1 - SX0, SY1 - SY0, 1, 24), mat((SX0 + SX1) / 2, (SY0 + SY1) / 2, SZ), null, { jitter: 0, vertexColor: (v) => skyAt(v.y + (SY0 + SY1) / 2) });
   // Місяць з ореолом.
   const mx = sx + 16.5, my = surfY + 2.6;
   for (const [rr, kk] of [[1.5, 0.18], [1.0, 0.3]]) sky.add(new THREE.CircleGeometry(rr, 28), mat(mx, my, SZ + 0.03 + kk * 0.1), null, { jitter: 0, vertexColor: (v) => (Math.hypot(v.x, v.y) < 0.1 ? skyAt(my).clone().lerp(col('#c8d0ee'), kk) : skyAt(my + v.y)) });
-  sky.add(new THREE.CircleGeometry(0.62, 20), mat(mx, my, SZ + 0.1), '#f4f1dc', { jitter: 0 });
+  sky.add(new THREE.CircleGeometry(0.62 * (o.moonS ?? 1), 20), mat(mx, my, SZ + 0.1), o.moonC || '#f4f1dc', { jitter: 0 });
   sky.add(new THREE.CircleGeometry(0.15, 10), mat(mx + 0.2, my + 0.14, SZ + 0.12), '#dcd8c0', { jitter: 0 });
   sky.add(new THREE.CircleGeometry(0.1, 8), mat(mx - 0.18, my - 0.2, SZ + 0.12), '#d6d2ba', { jitter: 0 });
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < (o.stars ?? 70); i++) {
     const x = -16 + r() * 40, y = surfY + 1.2 + r() * (i < 45 ? 3 : 14), s = 0.025 + r() * 0.05;
     if (Math.hypot(x - mx, y - my) < 1.6) continue;
     const c = mix('#fff6dc', '#cfe0ff', r());
-    sky.add(new THREE.CircleGeometry(s, 4), mat(x, y, SZ + 0.15, 0, 1, 1, 1, 0, r()), c, { jitter: 0 });
+    if (o.clouds === 'toon') sky.add(starGeo(s * 1.9), mat(x, y, SZ + 0.15, 0, 1, 1, 1, 0, r()), c, { jitter: 0 });
+    else sky.add(new THREE.CircleGeometry(s, 4), mat(x, y, SZ + 0.15, 0, 1, 1, 1, 0, r()), c, { jitter: 0 });
   }
+  if (o.clouds) clouds(sky, o.clouds, sx, surfY, SZ, mx, my, r);
   // Пагорби: дальні (синюваті) і ближчі (темні), вогники хуторів.
-  for (const [z, base, amp, c, seed] of [[SZ + 1, surfY - 0.1, 1.1, '#2b3552', 1.3], [SZ + 4, surfY - 0.5, 0.8, '#1d2a2a', 2.1]]) {
+  for (const [z, base, amp, c, seed] of [[SZ + 1, surfY - 0.1, 1.1, o.hillA || '#2b3552', 1.3], [SZ + 4, surfY - 0.5, 0.8, o.hillB || '#1d2a2a', 2.1]]) {
     const arr = [];
     for (let x = SX0; x < SX1; x += 1.5) {
       const hgt = (xx) => base + amp * (0.5 + 0.35 * Math.sin(xx * 0.13 + seed) + 0.25 * Math.sin(xx * 0.31 + seed * 3));
@@ -639,6 +694,470 @@ export function buildStatic(grid, bgHex) {
     sky.add(new THREE.PlaneGeometry(0.07, 0.06), mat(x, y, SZ + 1.2), r() < 0.5 ? '#ffcf6b' : '#f2a04e', { jitter: 0 });
   }
 
+  let outline = null;
+  if (o.outline && olR.length) {
+    const p = [];
+    for (const [a, b2] of olR) for (let i = a; i < b2; i++) p.push(lit.p[i]);
+    outline = new THREE.BufferGeometry();
+    outline.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+    outline = smoothNormals(outline);
+  }
   return { lit: lit.geometry(), glow: glow.geometry(), sky: sky.geometry(), craneArm: arm.geometry(), craneRope: rope.geometry(),
-    pivot, tip: tipL, surfY, botY };
+    halo: halo.empty ? null : halo.geometry(), outline, chimney, pivot, tip: tipL, surfY, botY };
+}
+
+// ---------------------------------------------------------------------------------------------------------- стилі
+// Нижче — деталі для стилів warm / toon / dramatic (classic їх не бере).
+
+/** Колір вершини, що згасає від центру диска (r = 0) до краю R — для адитивних ореолів. */
+export function fadeVC(hex, R, pow = 1) {
+  const c = col(hex);
+  return (v) => c.clone().multiplyScalar(Math.pow(Math.max(0, 1 - Math.hypot(v.x, v.y) / R), pow));
+}
+
+/** Згладжені нормалі (усереднені по однакових вершинах) — для контуру «вивернутою оболонкою»: без щілин на ребрах. */
+export function smoothNormals(g) {
+  const pos = g.attributes.position, n = pos.count;
+  const acc = new Map(), keys = new Array(n);
+  const a = new V3(), b = new V3(), c = new V3(), u = new V3(), w = new V3();
+  const kOf = (v) => Math.round(v.x * 2000) + ',' + Math.round(v.y * 2000) + ',' + Math.round(v.z * 2000);
+  for (let i = 0; i + 2 < n; i += 3) {
+    a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2);
+    u.subVectors(b, a); w.subVectors(c, a); u.cross(w);
+    const len = u.length(); if (len > 1e-12) u.divideScalar(len);
+    for (const [k, v] of [[0, a], [1, b], [2, c]]) {
+      const kk = kOf(v); keys[i + k] = kk;
+      let e = acc.get(kk); if (!e) { e = [0, 0, 0]; acc.set(kk, e); }
+      e[0] += u.x; e[1] += u.y; e[2] += u.z;
+    }
+  }
+  const nn = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const e = acc.get(keys[i]) || [0, 0, 1], l = Math.hypot(e[0], e[1], e[2]) || 1;
+    nn[i * 3] = e[0] / l; nn[i * 3 + 1] = e[1] / l; nn[i * 3 + 2] = e[2] / l;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(pos.array), 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nn, 3));
+  out.computeBoundingSphere();
+  if (out !== g) g.dispose();
+  return out;
+}
+
+/** Чотирипроменева зірочка (площина XY), радіус r. */
+export function starGeo(r) {
+  const arr = [], t = r * 0.28;
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI / 2, a1 = a + Math.PI / 4, a2 = a - Math.PI / 4;
+    tri(arr, [0, 0, 0], [Math.cos(a2) * t, Math.sin(a2) * t, 0], [Math.cos(a) * r, Math.sin(a) * r, 0], ZP);
+    tri(arr, [0, 0, 0], [Math.cos(a) * r, Math.sin(a) * r, 0], [Math.cos(a1) * t, Math.sin(a1) * t, 0], ZP);
+  }
+  return rawGeo(arr);
+}
+
+/** Хмари на небі: 'toon' — пухкі світлі; 'dark' — темні смуги, що пливуть повз місяць. */
+function clouds(sky, kind, sx, surfY, SZ, mx, my, r) {
+  if (kind === 'toon') {
+    for (const [cx, cy, s] of [[sx - 9, surfY + 3.6, 1.1], [sx + 3.5, surfY + 4.6, 0.9], [sx + 10.5, surfY + 3.3, 1.25], [sx + 21, surfY + 4.2, 1], [sx - 18, surfY + 5.2, 0.8]]) {
+      const puffs = [[0, 0, 0.55], [0.55, 0.12, 0.45], [-0.55, 0.05, 0.42], [0.2, 0.38, 0.42], [-0.25, 0.3, 0.36], [1.0, -0.05, 0.3], [-0.95, -0.08, 0.28]];
+      puffs.forEach(([x, y, rr], i) => {
+        sky.add(new THREE.CircleGeometry(rr * s * 1.06, 14), mat(cx + x * s, cy + y * s - 0.04, SZ + 0.3), '#8f86c8', { jitter: 0 });
+        sky.add(new THREE.CircleGeometry(rr * s, 14), mat(cx + x * s, cy + y * s, SZ + 0.32 + i * 0.001), i % 2 ? '#fbf3ff' : '#f1e6ff', { jitter: 0 });
+      });
+      sky.add(new THREE.PlaneGeometry(2.1 * s, 0.3 * s), mat(cx, cy - 0.2 * s, SZ + 0.33), '#e6dcf6', { jitter: 0 });
+    }
+  } else {
+    for (const [cx, cy, w, h, c] of [[mx - 0.6, my - 0.35, 5.5, 0.32, '#151a28'], [mx + 1.4, my + 0.4, 4.2, 0.22, '#1b2030'], [sx - 6, surfY + 3.2, 9, 0.4, '#11151f'], [sx + 6, surfY + 4.4, 7, 0.3, '#141826']])
+      sky.add(new THREE.CircleGeometry(1, 16), mat(cx, cy, SZ + 0.2, 0, w / 2, h / 2, 1), c, { jitter: 0 });
+  }
+}
+
+/** Біля колодязя й хати: камінці довкола зрубу, корито, відро на зрубі, лава, дровітня. */
+function decorWell(lit, sx, surfY, r, o) {
+  const stone = ['#7c7e84', '#8d8f94', '#6f7177'];
+  for (let k = 0; k <= 10; k++) {
+    const a = Math.PI + k / 10 * Math.PI;
+    lit.add(new THREE.DodecahedronGeometry(0.05 + r() * 0.03, 0), mat(sx + Math.cos(a) * 0.5, surfY + 0.02, -0.34 + Math.sin(a) * 0.42, r() * 3, 1, 0.6, 1),
+      stone[k % 3], { rng: r, jitter: 0.1 });
+  }
+  // корито
+  lit.add(new THREE.BoxGeometry(0.55, 0.11, 0.18), mat(sx + 0.8, surfY + 0.055, -0.62), '#6b4528', { rng: r, jitter: 0.08 });
+  lit.add(new THREE.BoxGeometry(0.47, 0.01, 0.11), mat(sx + 0.8, surfY + 0.1, -0.62), '#2a4a62', { rng: r, jitter: 0.04 });
+  // відро на зрубі
+  lit.add(new THREE.CylinderGeometry(0.06, 0.05, 0.1, 8), mat(sx - 0.28, surfY + 0.4, -0.6), '#7a5232', { rng: r, jitter: 0.06 });
+  lit.add(new THREE.CylinderGeometry(0.062, 0.062, 0.012, 8, 1, true), mat(sx - 0.28, surfY + 0.43, -0.6), '#3b3634', { rng: r, jitter: 0 });
+  // лава під хатою
+  const hx = sx + 3.4, fz = -1.75 + 0.525;
+  lit.add(new THREE.BoxGeometry(0.62, 0.03, 0.13), mat(hx - 0.05, surfY + 0.16, fz + 0.2), '#8a5f36', { rng: r, jitter: 0.08 });
+  for (const s of [-1, 1]) lit.add(new THREE.BoxGeometry(0.03, 0.15, 0.1), mat(hx - 0.05 + s * 0.25, surfY + 0.075, fz + 0.2), '#5e3f26', { rng: r, jitter: 0.08 });
+  lit.add(new THREE.LatheGeometry([[0, 0], [0.035, 0], [0.05, 0.035], [0.04, 0.07], [0.025, 0.085], [0, 0.085]].map(([a, b]) => new THREE.Vector2(a, b)), 7),
+    mat(hx + 0.12, surfY + 0.175, fz + 0.2), '#b8643f', { rng: r, jitter: 0.06 });
+  // дровітня збоку хати
+  for (let i = 0; i < 9; i++) {
+    const row = i < 4 ? 0 : i < 7 ? 1 : 2, k = i < 4 ? i : i < 7 ? i - 4 : i - 7;
+    const x = hx - 1.15 + (k - (row === 0 ? 1.5 : row === 1 ? 1 : 0.5)) * 0.1, y = surfY + 0.045 + row * 0.085;
+    log(lit, [x, y, -2.05], [x, y, -1.6], 0.042, ['#7a5232', '#8a6040', '#6b4528'][i % 3], r, 6);
+  }
+}
+
+/** Вкраплення в ґрунт: кістка, черепок горщика, корінь. Лежать на лиці грудки (площина XY). */
+export function boneGeo() {
+  const b = new Builder(), r = rngOf(201), c = '#b8ab90';
+  b.add(new THREE.CylinderGeometry(0.011, 0.011, 0.14, 5), mat(0, 0, 0, 0, 1, 1, 1, 0, Math.PI / 2), c, { rng: r, jitter: 0.05 });
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) b.add(new THREE.IcosahedronGeometry(0.019, 0), mat(sx * 0.072, sy * 0.012, 0), c, { rng: r, jitter: 0.06 });
+  return b.geometry();
+}
+export function potGeo() {
+  const b = new Builder(), r = rngOf(203);
+  const pts = [[0.07, -0.05], [0.085, -0.02], [0.08, 0.02], [0.06, 0.045], [0.064, 0.06]].map(([a, c]) => new THREE.Vector2(a, c));
+  b.add(new THREE.LatheGeometry(pts, 8, -0.9, 1.8), mat(0, 0, -0.05, 0, 1, 1, 1, 0, 0.3), (c) => c.y > 0.0 && c.y < 0.025 ? col('#3a2216') : col('#b0603a'), { rng: r, jitter: 0.08 });
+  return b.geometry();
+}
+export function rootGeo() {
+  const b = new Builder(), r = rngOf(207);
+  let x = 0, y = 0.06;
+  for (let i = 0; i < 4; i++) {
+    const nx = x + (r() - 0.5) * 0.06, ny = y - 0.045;
+    log(b, [x, y, 0], [nx, ny, 0], 0.009 - i * 0.0015, '#5a3a22', r, 4, 0.05);
+    x = nx; y = ny;
+  }
+  log(b, [0.005, 0.02, 0], [0.05, -0.01, 0], 0.005, '#6b4a30', r, 4, 0.05);
+  return b.geometry();
+}
+
+/** Кріплення розвилки (центр карти з ≥ 3 ходами): два стовпи, сволок, укоси, балки стелі. */
+export function junctionGeo() {
+  const b = new Builder(), r = rngOf(211), dark = mix(PAL.wood, '#2a1a0e', 0.35);
+  for (const s of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.05, L, 0.05), mat(s * 0.15, 0, -0.41), PAL.wood, { rng: r, jitter: 0.1 });
+    b.add(new THREE.BoxGeometry(0.13, 0.028, 0.03), mat(s * 0.1, L / 2 - 0.08, -0.4, 0, 1, 1, 1, 0, s * 0.75), dark, { rng: r, jitter: 0.08 });
+    b.add(new THREE.BoxGeometry(0.045, 0.045, 0.42), mat(s * 0.15, L / 2 - 0.024, -0.2), dark, { rng: r, jitter: 0.08 });
+  }
+  b.add(new THREE.BoxGeometry(L + 0.03, 0.055, 0.065), mat(0, L / 2 - 0.028, -0.4), mix(PAL.wood, '#2a1a0e', 0.2), { rng: r, jitter: 0.08 });
+  return b.geometry();
+}
+/** Колія з дощок у горизонтальному ході: шпали й дві рейки, довжина L уздовж X, низ — y = 0. */
+export function trackGeo() {
+  const b = new Builder(), r = rngOf(213);
+  for (const x of [-0.11, 0, 0.11]) b.add(new THREE.BoxGeometry(0.06, 0.018, 0.3), mat(x + (r() - 0.5) * 0.01, 0.009, -0.24, (r() - 0.5) * 0.12), mix(PAL.wood, '#3a2414', 0.3), { rng: r, jitter: 0.1 });
+  for (const z of [-0.33, -0.15]) b.add(new THREE.BoxGeometry(L + 0.002, 0.016, 0.014), mat(0, 0.026, z), '#6a6e75', { rng: r, jitter: 0.04 });
+  return b.geometry();
+}
+/** Драбина на задній стінці у вертикальному ході: висота L уздовж Y. */
+export function ladderGeo() {
+  const b = new Builder(), r = rngOf(217);
+  for (const x of [-0.065, 0.065]) b.add(new THREE.BoxGeometry(0.02, L + 0.002, 0.02), mat(x, 0, -0.42), '#8a5f36', { rng: r, jitter: 0.08 });
+  for (const y of [-0.08, 0.08]) b.add(new THREE.BoxGeometry(0.15, 0.016, 0.016), mat(0, y, -0.415), '#9a6b3c', { rng: r, jitter: 0.08 });
+  return b.geometry();
+}
+
+/** Травинка (двобічна), основа в нулі, висота ≈ 0.16; від темної основи до світлого кінчика. */
+export function grassBladeGeo() {
+  const arr = [];
+  const P = [[-0.016, 0], [0.016, 0], [-0.01, 0.08], [0.012, 0.085], [0.012, 0.165]];
+  const q = (a, b2, c) => { arr.push(...a, ...b2, ...c); arr.push(...a, ...c, ...b2); };
+  const v = (i, z = 0) => [P[i][0] + P[i][1] * P[i][1] * 0.9, P[i][1], z];
+  q(v(0), v(1), v(3)); q(v(0), v(3), v(2)); q(v(2), v(3), v(4));
+  const b = new Builder();
+  b.add(rawGeo(arr), null, null, { jitter: 0.04, rng: rngOf(219), vertexColor: (p) => mix('#24391a', '#9bc95a', Math.min(1, p.y / 0.165)) });
+  return b.geometry();
+}
+
+/** Дошка мітки з деревним волокном і кованими кутиками. Габарити — як у goalBoardGeo. */
+export function goalBoardGeo2() {
+  const b = new Builder(), r = rngOf(223);
+  const tones = ['#9a6b3c', '#8c5f34', '#a5753f'];
+  for (let i = -1; i <= 1; i++) {
+    const base = col(tones[i + 1]), ph = r() * 6;
+    b.add(new THREE.BoxGeometry(0.285, 0.86, 0.06, 6, 8, 1), mat(i * 0.29, (r() - 0.5) * 0.02, 0, 0, 1, 1, 1, 0, (r() - 0.5) * 0.02), null, { rng: r, jitter: 0.05,
+      vertexColor: (v) => base.clone().multiplyScalar(0.86 + 0.16 * Math.sin(v.x * 70 + Math.sin(v.y * 7 + ph) * 2.2 + ph) + (v.z < 0 ? -0.2 : 0)) });
+  }
+  for (const y of [0.28, -0.28]) b.add(new THREE.BoxGeometry(0.84, 0.07, 0.03, 8, 1, 1), mat(0, y, 0.035), null, { rng: r, jitter: 0.05,
+    vertexColor: (v) => col('#7a4f2a').clone().multiplyScalar(0.85 + 0.15 * Math.sin(v.x * 40 + v.y * 30)) });
+  for (const a of [Math.PI / 4, -Math.PI / 4]) {
+    b.add(new THREE.BoxGeometry(0.66, 0.12, 0.01), mat(0, 0, 0.052, 0, 1, 1, 1, 0, a), '#4a2a14', { rng: r, jitter: 0.04 });
+    b.add(new THREE.BoxGeometry(0.6, 0.065, 0.01), mat(0, 0, 0.058, 0, 1, 1, 1, 0, a), '#140c07', { rng: r, jitter: 0.03 });
+  }
+  const iron = '#34302e', rivet = '#8a8f96';
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    const cx = sx * 0.405, cy = sy * 0.405;
+    b.add(new THREE.BoxGeometry(0.17, 0.045, 0.014), mat(cx - sx * 0.062, cy, 0.037), iron, { rng: r, jitter: 0.05 });
+    b.add(new THREE.BoxGeometry(0.045, 0.17, 0.014), mat(cx, cy - sy * 0.062, 0.037), iron, { rng: r, jitter: 0.05 });
+    for (const [dx, dy] of [[0, 0], [-sx * 0.1, 0], [0, -sy * 0.1]])
+      b.add(new THREE.CylinderGeometry(0.011, 0.011, 0.012, 6), mat(cx + dx, cy + dy, 0.047, 0, 1, 1, 1, Math.PI / 2), rivet, { rng: r, jitter: 0 });
+  }
+  return b.geometry();
+}
+
+/** Іскорка: чотирипроменева зірка, яскрава в центрі (кольори вершин) — для адитивного змішування. */
+export function sparkleGeo() {
+  const arr = [], cols = [], t = 0.16;
+  for (let k = 0; k < 4; k++) {
+    const a = k * Math.PI / 2;
+    for (const s of [-1, 1]) {
+      const a2 = a + s * Math.PI / 4;
+      arr.push(0, 0, 0, Math.cos(a) * 1, Math.sin(a) * 1, 0, Math.cos(a2) * t, Math.sin(a2) * t, 0);
+      cols.push(1, 1, 1, 0, 0, 0, 0.35, 0.35, 0.35);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  return g;
+}
+
+/** Копач детальніший: штани, чоботи, кушак із пряжкою, кожушок, руки, голова з носом, вусами й бородою, бриль зі стрічкою. */
+export function figBodyGeo2() {
+  const b = new Builder(), r = rngOf(227), skin = '#e3b38a';
+  for (const s of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.038, 0.1, 0.044), mat(s * 0.024, 0.08, 0), '#2f3a4a', { rng: r, jitter: 0.05 });
+    b.add(new THREE.BoxGeometry(0.046, 0.04, 0.066), mat(s * 0.025, 0.048, 0.01), '#241a14', { rng: r, jitter: 0.04 });
+    b.add(new THREE.IcosahedronGeometry(0.02, 0), mat(s * 0.082, 0.145, 0.012), skin, { rng: r, jitter: 0.03 });
+  }
+  b.add(new THREE.CylinderGeometry(0.071, 0.073, 0.026, 8), mat(0, 0.143, 0), '#c0392b', { rng: r, jitter: 0.04 });
+  b.add(new THREE.BoxGeometry(0.03, 0.026, 0.01), mat(0, 0.143, 0.072), '#d4a537', { rng: r, jitter: 0 });
+  b.add(new THREE.CylinderGeometry(0.054, 0.079, 0.12, 8, 1, true, 0.55, Math.PI * 2 - 1.1), mat(0, 0.215, 0), '#5a3c24', { rng: r, jitter: 0.06 });
+  b.add(new THREE.IcosahedronGeometry(0.052, 1), mat(0, 0.33, 0), skin, { rng: r, jitter: 0.03 });
+  b.add(new THREE.IcosahedronGeometry(0.013, 0), mat(0, 0.328, 0.052), '#d09a72', { rng: r, jitter: 0 });
+  for (const s of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.04, 0.012, 0.012), mat(s * 0.022, 0.313, 0.047, 0, 1, 1, 1, 0, -s * 0.45), '#3a2616', { rng: r, jitter: 0 });
+    b.add(new THREE.BoxGeometry(0.011, 0.011, 0.006), mat(s * 0.019, 0.342, 0.049), '#1a120c', { rng: r, jitter: 0 });
+  }
+  b.add(new THREE.ConeGeometry(0.04, 0.075, 6), mat(0, 0.272, 0.025, 0, 1, 1, 0.75, Math.PI + 0.25), '#6b4a2e', { rng: r, jitter: 0.06 });
+  b.add(new THREE.CylinderGeometry(0.1, 0.104, 0.014, 14), mat(0, 0.368, 0), '#e8c86a', { rng: r, jitter: 0.06 });
+  b.add(new THREE.CylinderGeometry(0.046, 0.054, 0.058, 10), mat(0, 0.4, 0), '#dcbc60', { rng: r, jitter: 0.05 });
+  b.add(new THREE.CylinderGeometry(0.0555, 0.0555, 0.016, 10), mat(0, 0.381, 0), '#7a2a1a', { rng: r, jitter: 0 });
+  return b.geometry();
+}
+/** Кирка з вигнутим дзьобом і обоймою. Держак уздовж Y (центр у нулі). */
+export function pickGeo2() {
+  const b = new Builder(), r = rngOf(229);
+  b.add(new THREE.CylinderGeometry(0.01, 0.012, 0.33, 5), null, '#9a6b3c', { rng: r, jitter: 0.06 });
+  b.add(new THREE.BoxGeometry(0.032, 0.036, 0.03), mat(0, 0.14, 0), '#4a4d52', { rng: r, jitter: 0.04 });
+  for (const s of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.06, 0.024, 0.022), mat(s * 0.042, 0.142, 0, 0, 1, 1, 1, 0, -s * 0.12), '#8a9099', { rng: r, jitter: 0.05 });
+    b.add(new THREE.ConeGeometry(0.012, 0.06, 4), mat(s * 0.092, 0.127, 0, 0, 1, 1, 1, 0, s * (Math.PI / 2 + 0.45)), '#a6acb4', { rng: r, jitter: 0.05 });
+  }
+  return b.geometry();
+}
+/** Зламана кирка на землі: держак надвоє, скалки, залізо окремо. Основа в нулі, лежить уздовж X. */
+export function brokenPickGeo() {
+  const b = new Builder(), r = rngOf(231);
+  b.add(new THREE.CylinderGeometry(0.01, 0.012, 0.17, 5), mat(-0.02, 0.012, 0, 0.2, 1, 1, 1, 0, Math.PI / 2), '#9a6b3c', { rng: r, jitter: 0.06 });
+  b.add(new THREE.CylinderGeometry(0.012, 0.01, 0.13, 5), mat(0.13, 0.012, 0.05, -0.6, 1, 1, 1, 0, Math.PI / 2), '#8c5f34', { rng: r, jitter: 0.06 });
+  for (const [x, z, a] of [[0.065, 0.0, 0.5], [0.075, 0.03, -0.4]]) b.add(new THREE.ConeGeometry(0.008, 0.035, 3), mat(x, 0.012, z, a, 1, 1, 1, 0, Math.PI / 2), '#c49a62', { rng: r, jitter: 0 });
+  b.add(new THREE.BoxGeometry(0.032, 0.036, 0.03), mat(-0.13, 0.018, 0.02, 0.4), '#4a4d52', { rng: r, jitter: 0.04 });
+  for (const s of [-1, 1]) b.add(new THREE.BoxGeometry(0.024, 0.022, 0.06), mat(-0.13 + s * 0.01, 0.014, 0.02 + s * 0.04, 0.4), '#8a9099', { rng: r, jitter: 0.05 });
+  return b.geometry();
+}
+
+/** М'яка світна рамка законної клітинки (адитивно): яскрава лінія й ореол усередину й назовні, ледь помітна заливка. */
+export function frameSoftGeo() {
+  const arr = [], vs = [];
+  const C = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+  const band = (a, b2, ca, cb) => {
+    for (let k = 0; k < 4; k++) {
+      const [x1, y1] = C[k], [x2, y2] = C[(k + 1) % 4];
+      arr.push(x1 * a, y1 * a, 0, x2 * a, y2 * a, 0, x2 * b2, y2 * b2, 0, x1 * a, y1 * a, 0, x2 * b2, y2 * b2, 0, x1 * b2, y1 * b2, 0);
+      vs.push(ca, ca, cb, ca, cb, cb);
+    }
+  };
+  band(0.34, 0.44, 0, 0.7); band(0.44, 0.47, 0.9, 0.9); band(0.47, 0.62, 0.7, 0);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(vs.flatMap((v) => [v, v, v]), 3));
+  return g;
+}
+
+/** Пергамент з обпаленими краями, плямами, пунктиром і хрестиком. x ∈ [0, 1], висота 0.62. */
+export function mapSheetGeo2() {
+  const b = new Builder(), r = rngOf(233), H = 0.62;
+  b.add(new THREE.PlaneGeometry(1, H, 12, 6), mat(0.5, 0, 0), null, { rng: r, jitter: 0.03, vertexColor: (v) => {
+    const ex = Math.min(v.x + 0.5, 0.5 - v.x) * 2, ey = Math.min(v.y + H / 2, H / 2 - v.y) / (H / 2);
+    const e = Math.min(ex * 4, ey * 2.2, 1);
+    const st = 0.06 * Math.sin(v.x * 23 + v.y * 17) * Math.sin(v.x * 9 - v.y * 31);
+    return mix('#6a4320', PAL.map, Math.pow(e, 0.6)).multiplyScalar(0.96 + st);
+  } });
+  const path = [];
+  for (let i = 0; i <= 8; i++) { const t = i / 8; path.push([0.1 + t * 0.72, -0.2 + t * 0.32 + Math.sin(t * 7) * 0.07]); }
+  for (let i = 0; i < path.length - 1; i++) {
+    const [x1, y1] = path[i], [x2, y2] = path[i + 1];
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, a = Math.atan2(y2 - y1, x2 - x1);
+    b.add(new THREE.BoxGeometry(0.045, 0.014, 0.004), mat(mx, my, 0.004, 0, 1, 1, 1, 0, a), '#b8302a', { rng: r, jitter: 0 });
+  }
+  for (const a of [Math.PI / 4, -Math.PI / 4]) b.add(new THREE.BoxGeometry(0.11, 0.024, 0.004), mat(0.86, 0.15, 0.005, 0, 1, 1, 1, 0, a), '#b8302a', { rng: r, jitter: 0 });
+  b.add(new THREE.BoxGeometry(0.05, 0.035, 0.003), mat(0.08, -0.23, 0.004), '#6b4a2b', { rng: r, jitter: 0 });
+  for (const [x, y, s] of [[0.32, 0.16, 1], [0.4, 0.19, 0.8], [0.6, -0.16, 1.1]])
+    b.add(new THREE.ConeGeometry(0.035 * s, 0.06 * s, 3), mat(x, y, 0.004, 0, 1, 1, 0.1), '#7a5a3a', { rng: r, jitter: 0 });
+  return b.geometry();
+}
+
+// ---------------------------------------------------------------------------------------------------------- суцільний ґрунт
+/**
+ * Мальований розріз землі (процедурно, у <canvas>): м'які шари з хвилястими межами, зерно й цятки, плями, камінці,
+ * корінці, ряд обкатаного каміння внизу, ледь помітні «+» у кутах клітинок; збоку — тоне в темряві.
+ * ext = { X0, X1, Y0, Y1 } (світові), ppu — пікселів на одиницю; field = { XL, XR, surfY, botY, y0 }; tone(hex) → css.
+ */
+export function paintSoil(cv, ext, ppu, field, tone, bgHex, seed = 7) {
+  const W = cv.width, H = cv.height, g = cv.getContext('2d');
+  const r = rngOf(seed);
+  const px = (X) => (X - ext.X0) * ppu, py = (Y) => (ext.Y1 - Y) * ppu;
+  const { XL, XR, surfY, botY, y0 } = field;
+  // межі шарів: світові Y між рядками (за STRATA), хвилясті
+  const LIFT = [1.0, 1.22, 1.08, 1.04, 1.0];   // суглинок трохи світліший — як у 2D-концепті
+  const bands = STRATA.map((s, k) => ({ c: '#' + col(s.color).clone().multiplyScalar(LIFT[k] ?? 1).getHexString(), top: -(s.y0 - 0.5), bot: -(s.y1 + 0.5) }));
+  const wav = (k, X) => 0.14 * Math.sin(0.83 * X + k * 1.7) + 0.07 * Math.sin(2.1 * X + k * 0.9) + 0.035 * Math.sin(4.7 * X + k * 2.3);
+  const edge = (k, X) => k === 0 ? ext.Y1 + 1 : k >= bands.length ? ext.Y0 - 1 : bands[k].top + wav(k, X);
+  const shade = (hex, k) => { const c = col(hex).clone().multiplyScalar(k); return tone('#' + c.getHexString()); };
+  for (let k = 0; k < bands.length; k++) {
+    g.beginPath();
+    for (let x = 0; x <= W; x += 4) g.lineTo(x, py(edge(k, ext.X0 + x / ppu)));
+    for (let x = W; x >= 0; x -= 4) g.lineTo(x, py(edge(k + 1, ext.X0 + x / ppu)));
+    g.closePath();
+    const t = py(bands[k].top + 0.15), b = py(bands[k].bot - 0.15);
+    const gr = g.createLinearGradient(0, Math.max(0, t), 0, Math.min(H, b));
+    gr.addColorStop(0, shade(bands[k].c, 1.08)); gr.addColorStop(0.55, shade(bands[k].c, 1.0)); gr.addColorStop(1, shade(bands[k].c, 0.88));
+    g.fillStyle = gr; g.fill();
+    // тонка темніша «лінія» по межі шарів
+    if (k > 0) {
+      g.beginPath();
+      for (let x = 0; x <= W; x += 4) g.lineTo(x, py(edge(k, ext.X0 + x / ppu)));
+      g.strokeStyle = shade(bands[k - 1].c, 0.7); g.globalAlpha = 0.45; g.lineWidth = Math.max(1, ppu * 0.05); g.stroke(); g.globalAlpha = 1;
+    }
+    // осадові смужки всередині шару
+    for (let i = 0; i < 4; i++) {
+      const yb = bands[k].bot + (bands[k].top - bands[k].bot) * (0.2 + 0.6 * r()), ph = r() * 6;
+      g.beginPath();
+      for (let x = 0; x <= W; x += 6) { const X = ext.X0 + x / ppu; g.lineTo(x, py(yb + 0.08 * Math.sin(X * 0.9 + ph) + wav(k, X) * 0.6)); }
+      g.strokeStyle = r() < 0.5 ? shade(bands[k].c, 1.22) : shade(bands[k].c, 0.8);
+      g.globalAlpha = 0.12 + r() * 0.1; g.lineWidth = Math.max(1, ppu * (0.02 + r() * 0.05)); g.stroke(); g.globalAlpha = 1;
+    }
+  }
+  const bandAt = (X, Y) => { for (let k = 0; k < bands.length; k++) if (Y > edge(k + 1, X)) return k; return bands.length - 1; };
+  // м'які плями
+  for (let i = 0; i < 70; i++) {
+    const X = ext.X0 + r() * (ext.X1 - ext.X0), Y = ext.Y0 + r() * (ext.Y1 - ext.Y0), R = (0.4 + r() * 1.1) * ppu;
+    const gr = g.createRadialGradient(px(X), py(Y), 0, px(X), py(Y), R);
+    const dark = r() < 0.55;
+    gr.addColorStop(0, dark ? 'rgba(20,10,4,0.16)' : 'rgba(255,230,190,0.10)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(px(X) - R, py(Y) - R, 2 * R, 2 * R);
+  }
+  // зерно й цятки
+  const nSp = Math.round((ext.X1 - ext.X0) * (ext.Y1 - ext.Y0) * 26);
+  for (let i = 0; i < nSp; i++) {
+    const X = ext.X0 + r() * (ext.X1 - ext.X0), Y = ext.Y0 + r() * (ext.Y1 - ext.Y0), k = bandAt(X, Y);
+    const lt = r() < 0.5;
+    g.fillStyle = shade(bands[k].c, lt ? 1.35 + r() * 0.3 : 0.55 + r() * 0.2); g.globalAlpha = 0.35 + r() * 0.4;
+    const s2 = Math.max(1, ppu * (0.012 + r() * 0.025));
+    g.fillRect(px(X), py(Y), s2, s2);
+  }
+  g.globalAlpha = 1;
+  // камінці (більше в піску й над каменем)
+  for (let i = 0; i < 130; i++) {
+    const X = ext.X0 + r() * (ext.X1 - ext.X0), Y = botY + 0.9 + r() * (surfY - botY - 1.0), k = bandAt(X, Y);
+    if (k <= 1 && r() < 0.6) continue;
+    const rx = (0.035 + r() * 0.06) * ppu, ry = rx * (0.55 + r() * 0.35), a = r() * 3;
+    const base = ['#8a8780', '#a2927a', '#77706a', '#b5a27e'][Math.floor(r() * 4)];
+    g.save(); g.translate(px(X), py(Y)); g.rotate(a);
+    g.beginPath(); g.ellipse(0, ry * 0.25, rx, ry, 0, 0, Math.PI * 2); g.fillStyle = 'rgba(20,10,5,0.35)'; g.fill();
+    g.beginPath(); g.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    const gr = g.createRadialGradient(-rx * 0.3, -ry * 0.4, 0, 0, 0, rx);
+    gr.addColorStop(0, shade(base, 1.25)); gr.addColorStop(1, shade(base, 0.75));
+    g.fillStyle = gr; g.fill(); g.restore();
+  }
+  // корінці у верхньому шарі
+  for (let i = 0; i < 18; i++) {
+    let X = XL + r() * (XR - XL), Y = surfY - 0.02;
+    g.beginPath(); g.moveTo(px(X), py(Y));
+    const len = 0.5 + r() * 1.1, steps = 6;
+    for (let s2 = 0; s2 < steps; s2++) { X += (r() - 0.5) * 0.18; Y -= len / steps; g.lineTo(px(X), py(Y)); }
+    g.strokeStyle = tone('#2a1a10'); g.globalAlpha = 0.55; g.lineWidth = Math.max(1, ppu * (0.025 - i * 0.0006)); g.lineCap = 'round'; g.stroke(); g.globalAlpha = 1;
+  }
+  // нижній шар — обкатані камені рядами
+  const kb = bands.length - 1;
+  for (let row = 0; row < 2; row++) {
+    let X = ext.X0 - 0.3 + row * 0.35;
+    while (X < ext.X1) {
+      const w = 0.4 + r() * 0.5, h = 0.24 + r() * 0.16, Yc = bands[kb].bot + 0.2 + row * 0.42 + (r() - 0.5) * 0.08;
+      const x0 = px(X), y0p = py(Yc + h / 2), ww = w * ppu, hh = h * ppu, rr = Math.min(ww, hh) * 0.45;
+      g.beginPath(); g.roundRect ? g.roundRect(x0, y0p, ww, hh, rr) : g.rect(x0, y0p, ww, hh);
+      const gr = g.createLinearGradient(0, y0p, 0, y0p + hh);
+      const base = ['#7d7670', '#6c655f', '#878079', '#736a62'][Math.floor(r() * 4)];
+      gr.addColorStop(0, shade(base, 1.2)); gr.addColorStop(1, shade(base, 0.8));
+      g.fillStyle = gr; g.fill();
+      g.strokeStyle = 'rgba(25,16,10,0.4)'; g.lineWidth = Math.max(1, ppu * 0.025); g.stroke();
+      X += w + 0.03;
+    }
+  }
+  // «+» у кутах клітинок — ледь помітна сітка для орієнтиру
+  g.strokeStyle = 'rgba(255,236,200,0.16)'; g.lineWidth = Math.max(1, ppu * 0.018);
+  for (let X = XL; X <= XR + 0.01; X += 1) for (let Y = botY + 1; Y < surfY - 0.5; Y += 1) {
+    const a = 0.05 * ppu;
+    g.beginPath(); g.moveTo(px(X) - a, py(Y)); g.lineTo(px(X) + a, py(Y)); g.moveTo(px(X), py(Y) - a); g.lineTo(px(X), py(Y) + a); g.stroke();
+  }
+  // тінь під дерном
+  { const gr = g.createLinearGradient(0, py(surfY), 0, py(surfY - 0.35)); gr.addColorStop(0, 'rgba(8,5,3,0.55)'); gr.addColorStop(1, 'rgba(8,5,3,0)');
+    g.fillStyle = gr; g.fillRect(0, py(surfY), W, 0.35 * ppu); }
+  // за межами поля — тоне в темряві
+  const bg = '#' + col(bgHex).getHexString();
+  for (const [a, b2] of [[XL, XL - 3], [XR, XR + 3]]) {
+    const gr = g.createLinearGradient(px(a), 0, px(b2), 0);
+    gr.addColorStop(0, bg + '00'); gr.addColorStop(0.35, bg + '70'); gr.addColorStop(1, bg + 'e0');
+    g.fillStyle = gr; g.fillRect(Math.min(px(a), px(b2)), 0, Math.abs(px(b2) - px(a)), H);
+  }
+}
+
+/** Лице розрізу — суцільна площина з легеньким рельєфом (лише западини, щоб не лізти поперед дощок). */
+export function soilPlaneGeo(ext, segPerUnit) {
+  const w = ext.X1 - ext.X0, h = ext.Y1 - ext.Y0;
+  const g = new THREE.PlaneGeometry(w, h, Math.round(w * segPerUnit), Math.round(h * segPerUnit));
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const X = p.getX(i) + (ext.X0 + ext.X1) / 2, Y = p.getY(i) + (ext.Y0 + ext.Y1) / 2;
+    const top = Math.min(1, Math.max(0, (ext.Y1 - Y) / 0.3));
+    const n = 0.5 + 0.3 * Math.sin(X * 2.3 + Math.sin(Y * 1.7) * 1.5) * Math.sin(Y * 2.9 + X * 0.6) + 0.2 * Math.sin(X * 5.1 - Y * 4.3);
+    p.setXYZ(i, X, Y, -0.028 * n * top);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Точки заокругленого квадрата (півсторона h, радіус кутів r), n точок на кут; проти годинникової. */
+function rrPts(h, r, n = 7) {
+  const out = [], c = h - r;
+  for (const [cx, cy, a0] of [[c, c, 0], [-c, c, Math.PI / 2], [-c, -c, Math.PI], [c, -c, Math.PI * 1.5]])
+    for (let i = 0; i <= n; i++) { const a = a0 + i / n * Math.PI / 2; out.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+  return out;
+}
+/** Кільце між двома заокругленими квадратами; v — яскравість (колір вершин) на внутрішньому/зовнішньому краї. */
+function rrRing(arr, vs, hA, rA, vA, hB, rB, vB, z = 0) {
+  const A = rrPts(hA, rA), B = rrPts(hB, rB), n = A.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    arr.push(A[i][0], A[i][1], z, B[i][0], B[i][1], z, B[j][0], B[j][1], z, A[i][0], A[i][1], z, B[j][0], B[j][1], z, A[j][0], A[j][1], z);
+    vs.push(vA, vB, vB, vA, vB, vA);
+  }
+}
+function vsGeo(arr, vs) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(vs.flatMap((v) => [v, v, v]), 3));
+  return g;
+}
+/** Заокруглена рамка законної клітинки (суцільний ґрунт): темний обідок і світла смуга. */
+export function frameRoundGeo() {
+  const arr = [], vs = [];
+  rrRing(arr, vs, 0.4, 0.1, 0.1, 0.475, 0.17, 0.1, 0);
+  rrRing(arr, vs, 0.418, 0.115, 1, 0.455, 0.15, 1, 0.004);
+  return vsGeo(arr, vs);
+}
+/** М'яке заокруглене сяйво законної клітинки (адитивно): ледь світла заливка, ореол усередину й назовні. */
+export function glowRoundGeo() {
+  const arr = [], vs = [];
+  const C = rrPts(0.3, 0.06);
+  for (let i = 0; i < C.length; i++) { const j = (i + 1) % C.length; arr.push(0, 0, 0, C[i][0], C[i][1], 0, C[j][0], C[j][1], 0); vs.push(0.14, 0.14, 0.14); }
+  rrRing(arr, vs, 0.3, 0.06, 0.14, 0.43, 0.12, 0.6);
+  rrRing(arr, vs, 0.43, 0.12, 0.6, 0.47, 0.15, 0.6);
+  rrRing(arr, vs, 0.47, 0.15, 0.6, 0.64, 0.3, 0);
+  return vsGeo(arr, vs);
 }

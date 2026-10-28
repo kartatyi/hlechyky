@@ -66,7 +66,7 @@
   const root = $('hroot');
   const mod = HGames.mods.skarb;
   const q = new URLSearchParams(location.search);
-  const S = { sc: q.get('sc') || 'play', seat: q.has('seat') ? q.get('seat') : '0', w: q.get('w') || 'laptop', view: q.get('view') || '2d', v: null, mounted: false };
+  const S = { sc: q.get('sc') || 'play', seat: q.has('seat') ? q.get('seat') : '0', w: q.get('w') || 'laptop', view: q.get('view') || q.get('board') || '2d', v: null, mounted: false };
   if (q.has('shot')) document.body.classList.add('shot');
   for (const s of SCENARIOS) $('hsc').insertAdjacentHTML('beforeend', '<option>' + s + '</option>');
   for (let i = 0; i < 10; i++) $('hseat').insertAdjacentHTML('beforeend', '<option value="' + i + '">місце ' + i + '</option>');
@@ -143,6 +143,12 @@
       S.v = { ...r, seq: v.seq + 1, events: [...v.events, makeEvent('end', { seq: v.seq + 1, n: r.roundEnd.n, side: r.roundEnd.side, finisher: r.roundEnd.finisher })] };
       push();
     }
+  }
+  // ?theme=fairy|wood|night — тема пласкої мапи (board2d.setTheme), поки картка сама її не передає.
+  if (q.has('theme')) {
+    const th = q.get('theme');
+    const t0 = Date.now();
+    const iv = setInterval(() => { const sc = root._sk && root._sk.sc; if (sc && sc.setTheme) { sc.setTheme(th); clearInterval(iv); } else if (Date.now() - t0 > 8000) clearInterval(iv); }, 50);
   }
   window.__load = (sc, seat = '0', w = 'laptop', view = '2d') => { Object.assign(S, { sc, seat: String(seat ?? ''), w, view }); load(); };
   window.__view = () => S.v;

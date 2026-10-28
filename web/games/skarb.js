@@ -3,10 +3,14 @@
   що бачить і натискає гравець. Контракт виду й дій — docs/games/specs/skarb.md (§5–§9, §12).
 
   Поле — 3D-розріз (/games/skarb/scene.js) або пласка SVG-мапа (/games/skarb/board2d.js) з тим самим API; обидві
-  вантажаться через import(). Сталі — /games/skarb/consts.js, чисті розрахунки — /games/skarb/hud-calc.js.
+  вантажаться через import(). Сталі — /games/skarb/consts.js, чисті розрахунки — /games/skarb/hud-calc.js, малюнки
+  трьох виглядів (іконки, карти, портрети) — /games/skarb/theme-art.js.
+
+  Три вигляди на вибір гравця («🎨 Вигляд», localStorage 'skb.theme'): fairy «Казкова ніч», wood «Дерев'яна настолка»
+  (типовий), night «Ніч копачів». Вигляд обирає і розкладку картки, і стиль 3D (toon / warm / dramatic), і тему 2D.
 
   Головне — новачок без правил у кожну мить бачить, що робити: смуга «що зараз», рука віялом, тап по карті підсвічує,
-  куди її можна зіграти (законні місця рахує сервер — me.legal), «⟲ 180°», «🗑 Скинути», «💡 Глек радить».
+  куди її можна зіграти (законні місця рахує сервер — me.legal), «⟲ Повернути», «🗑 Скинути», «💡 Глек радить».
 */
 (() => {
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
@@ -14,14 +18,14 @@
     + '<path d="M2.5 7.5Q8 2.5 13.5 7.5" fill="#a86a32" stroke="var(--accent)" stroke-width="1.1"/>'
     + '<circle cx="8" cy="10.4" r="1.4" fill="var(--accent)"/><path d="M2.5 10h11" stroke="var(--accent)" stroke-width=".8"/></svg>';
 
-  let M = null;           // { C: consts, K: hud-calc, S: sound | null } — після load()
+  let M = null;           // { C: consts, K: hud-calc, S: sound | null, A: theme-art } — після load()
   let loading = null;
   let cur = null;         // root змонтованої картки (onKey, pad)
 
   function load() {
     if (!loading) {
-      loading = Promise.all([import('/games/skarb/consts.js'), import('/games/skarb/hud-calc.js'), import('/games/skarb/sound.js').catch(() => null)])
-        .then(([C, K, S]) => { M = { C, K, S }; return M; })
+      loading = Promise.all([import('/games/skarb/consts.js'), import('/games/skarb/hud-calc.js'), import('/games/skarb/sound.js').catch(() => null), import('/games/skarb/theme-art.js')])
+        .then(([C, K, S, A]) => { M = { C, K, S, A }; return M; })
         .catch((e) => { loading = null; throw e; });
     }
     return loading;
@@ -39,8 +43,21 @@
     set(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* без пам'яті */ } },
   };
   /// «⛏» без VS16 частина шрифтів малює текстовою стрілкою — просимо емодзі-вигляд.
-  const emo = (html) => String(html).replace(/⛏(?!\uFE0F)/g, '⛏\uFE0F');
+  const emo = (html) => String(html).replace(/⛏(?!️)/g, '⛏️');
   function setHtml(el, html) { if (el && el._h !== html) { el._h = html; el.innerHTML = emo(html); } }
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+  // ─── Вигляд (§12) ───────────────────────────────────────────────────────
+  /// fairy «Казкова ніч» (колонки ліворуч і праворуч, пергаментні карти, 3D toon) · wood «Дерев'яна настолка» (стіл,
+  /// паперові мати обабіч поля у вишиваній рамці, 3D warm; типовий) · night «Ніч копачів» (кіно: поле на все, HUD
+  /// поверх, 3D dramatic). Пам'ять — localStorage 'skb.theme'; ?theme= в адресі — теж (запам'ятовується).
+  const THEMES = ['fairy', 'wood', 'night'];
+  const STYLE_OF = { fairy: 'toon', wood: 'warm', night: 'dramatic' };
+  function themeOf() {
+    try { const q = new URLSearchParams(location.search).get('theme'); if (q && THEMES.includes(q)) store.set('skb.theme', q); } catch (e) { /* без адреси */ }
+    const s = store.get('skb.theme');
+    return THEMES.includes(s) ? s : 'wood';
+  }
 
   // ─── Хто є хто ───────────────────────────────────────────────────────────
   const playerOf = (v, seat) => ((v && v.players) || []).find((p) => p.seat === seat) || null;
@@ -54,13 +71,15 @@
   const dot = (v, seat) => '<i class="skb-pdot" style="--pc:' + colorOf(v, seat) + '"></i>';
   const who = (v, seat) => dot(v, seat) + '<b>' + esc(nickOf(v, seat)) + '</b>';
   const plural = (n, a, b, c) => M.C.plural(n, a, b, c);
+  const cleanNick = (s) => String(s || '').replace(/\s*🤖\s*/g, '').trim();
 
   function state(root) {
     return root._sk || (root._sk = {
-      built: false, ctx: null, view: null, sc: null, scKind: null, scLoading: false, no3d: false, gridSig: null, legalSig: null,
+      built: false, ctx: null, view: null, sc: null, scKind: null, scLoading: false, scGen: 0, no3d: false, gridSig: null, legalSig: null,
       sel: null, cur: null, arm: null, fixPick: null, seq: null, queue: [], running: false, hover: null,
-      logOpen: store.get('skb.log') !== '0', tick: 0, nt: 0, toKey: null, toAt: 0, nextKey: null, ro: null,
-      reveal: null, revealT: 0, roleHold: false, sumAnim: null, lp: null, drag: null, noClick: 0,
+      tick: 0, nt: 0, toKey: null, toAt: 0, nextKey: null, ro: null,
+      reveal: null, revealT: 0, roleHold: false, lp: null, drag: null, noClick: 0,
+      theme: themeOf(), mode: null, fitRaf: 0, sumMin: false, sumKey: null, logOv: false, pop: false,
     });
   }
 
@@ -68,14 +87,41 @@
   function whatNow(v, me, st) {
     const w = M.K.whatNow(v, me, selCard(st, v), (s) => nickOf(v, s), esc);
     const p = me && v && v.phase === 'play' ? playerOf(v, me.seat) : null;
-    if (p && p.away) w.l = '<b>🤖 За тебе зараз копає Глек</b> (ти двічі проспав хід). Зроби будь-що сам — і копатимеш далі.<br>' + w.l;
+    if (p && p.away) { w.l = '<b>🤖 За тебе зараз копає Глек</b> (ти двічі проспав хід). Зроби будь-що сам — і копатимеш далі.<br>' + w.l; w.imp = true; }
     const ctx = st && st.ctx;
     if (!me && ctx && ctx.seat == null && ctx.playing && ownAway(v, ctx.me && ctx.me.nick)) {
       w.s = 'Твоя лопата чекає';
       w.l = '<b>⛏ Твоя лопата на місці:</b> поки тебе не було, за тебе копав Глек. Повертайся — роль, рука й злитки ті самі.'
         + ' <button type="button" class="primary skb-back" data-a="rejoin">' + REJOIN + '</button><br>' + w.l;
+      w.imp = true;
     }
     return w;
+  }
+
+  /// Коротко для стрічки над полем: заголовок і підпис (довге пояснення — у «що зараз» поруч із рукою).
+  function brief(v, me, st) {
+    const C = M.C, K = M.K;
+    if (!v.phase) return { t: 'Стіл збирається', s: '' };
+    if (v.over || v.phase === 'over') return { t: whatNow(v, me, st).s || 'Партію скінчено', s: 'підсумок партії — на полі' };
+    if (v.phase === 'round') {
+      const re = v.roundEnd || {};
+      return { t: 'Раунд ' + (re.n || v.round) + ': ' + (C.SIDE_NAME[re.side] || 'скінчився'), s: v.round < v.rounds ? 'далі — раунд ' + (v.round + 1) : 'далі — підсумок партії' };
+    }
+    if (me && me.must === 'play') {
+      const p = playerOf(v, me.seat) || {};
+      const s = selCard(st, v);
+      let sub = 'Поклади хід від колодязя — або зіграй дію';
+      if (p.away) sub = 'За тебе копає Глек — зроби будь-що сам';
+      else if (s) {
+        const list = (me.legal || {})[s.card.id] || [];
+        sub = !list.length ? 'Цю карту лише скинути'
+          : { path: 'Клацни світлу клітинку', break: 'Тицни світлого гравця', fix: 'Кому полагодити? Тицни гравця', map: 'Тицни світлу мітку', rockfall: 'Тицни світлу карту на полі' }[s.card.k] || '';
+      } else if (K.brokenText(p.broken)) sub = K.brokenText(p.broken) + ' — полагодь або зіграй дію';
+      return { t: 'Твій хід', s: sub, mine: true };
+    }
+    if (v.turn == null) return { t: '', s: '' };
+    const tp = playerOf(v, v.turn) || {};
+    return { t: 'Копає ' + cleanNick(tp.nick), s: tp.bot || tp.away ? '🤖 Глек думає…' : me ? 'чекаємо на хід…' : 'ти дивишся збоку' };
   }
 
   /// Вибрана карта (ще є в руці, мій хід) — { card, r } або null.
@@ -87,26 +133,28 @@
   }
 
   // ─── Каркас DOM ─────────────────────────────────────────────────────────
+  /// Усі частини — прямі діти .skb (CSS-сітка за виглядом і режимом кладе їх у свої клітинки; що не треба — ховає).
+  const PARTS = ['bg', 'brand', 'players', 'players2', 'fcell', 'fieldwrap', 'field', 'band', 'turn', 'meta', 'goals', 'piles', 'log', 'glek',
+    'say', 'acts', 'hand', 'info', 'tip', 'flash', 'tools', 'rolebadge', 'dlg', 'sum', 'pop', 'reveal', 'fx'];
   function build(root, st) {
-    root.innerHTML = '<div class="skb">'
-      + '<div class="skb-players"></div>'
-      + '<div class="skb-sum" hidden></div>'
-      + '<div class="skb-say" aria-live="polite"></div>'
-      + '<div class="skb-fieldwrap"><div class="skb-field"></div><div class="skb-tip" hidden></div><div class="skb-flash" hidden></div>'
-      + '<div class="skb-tools"><button type="button" class="skb-view" data-a="view"></button><button type="button" class="skb-view" data-a="reset" title="Показати все поле" aria-label="Показати все поле">⤢</button>'
-      + '<button type="button" class="skb-view skb-snd" data-a="snd"></button></div>'
+    root.innerHTML = '<div class="skb">' + M.A.defs()
+      + '<div class="skb-bg" aria-hidden="true"></div>'
+      + '<div class="skb-brand"></div>'
+      + '<div class="skb-players"></div><div class="skb-players2"></div>'
+      + '<div class="skb-fcell" aria-hidden="true"></div>'
+      + '<div class="skb-fieldwrap"><i class="skb-band" aria-hidden="true"></i><div class="skb-field"></div>'
+      + '<div class="skb-tip" hidden></div><div class="skb-flash" hidden></div><div class="skb-tools"></div>'
       + '<div class="skb-rolebadge" hidden></div><div class="skb-dlg" hidden></div></div>'
-      + '<div class="skb-bar"><div class="skb-acts"></div><div class="skb-hand"></div></div>'
-      + '<div class="skb-log"></div>'
+      + '<div class="skb-turn" aria-live="polite"></div><div class="skb-meta"></div>'
+      + '<div class="skb-goals"></div><div class="skb-piles"></div><div class="skb-log"></div><div class="skb-glek"></div>'
+      + '<div class="skb-say" aria-live="polite"></div><div class="skb-acts"></div><div class="skb-hand"></div><div class="skb-info"></div>'
+      + '<div class="skb-sum" hidden></div><div class="skb-pop" hidden></div>'
       + '<div class="skb-reveal" hidden></div><div class="skb-fx"></div>'
       + '</div>';
     st.el = {};
-    for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'tip', 'flash', 'rolebadge', 'fx', 'dlg', 'bar', 'acts', 'hand', 'log', 'reveal', 'snd'])
-      st.el[k] = root.querySelector('.skb-' + k);
-    st.el.view = root.querySelector('.skb-view[data-a="view"]');
+    for (const k of PARTS) st.el[k] = root.querySelector('.skb-' + k);
     st.el.root = root.querySelector('.skb');
     try { st.snd = M.S && M.S.createSound ? M.S.createSound() : null; } catch (e) { st.snd = null; }
-    paintSnd(st);
     st.onClick = (e) => onClick(root, e);
     root.addEventListener('click', st.onClick);
     // Довгий тап / права кнопка на чипі — моя позначка підозри; «👁 Моя роль» — натисни й тримай.
@@ -114,29 +162,43 @@
     st.onUp = (e) => onUp(root, e);
     st.onMove = (e) => onMove(root, e);
     st.onCtx = (e) => { const chip = e.target.closest('.skb-pl'); if (chip && root.contains(chip)) { e.preventDefault(); cycleSus(root, +chip.dataset.seat); } };
+    st.onDocDown = (e) => { if (st.pop && !e.target.closest('.skb-pop, [data-a="pop"]')) { st.pop = false; renderPop(st); } };
     root.addEventListener('pointerdown', st.onDown);
     window.addEventListener('pointerup', st.onUp);
     window.addEventListener('pointercancel', st.onUp);
     window.addEventListener('pointermove', st.onMove);
+    document.addEventListener('pointerdown', st.onDocDown, true);
     root.addEventListener('contextmenu', st.onCtx);
     st.ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (st.sc) st.sc.resize(); }) : null;
     if (st.ro) st.ro.observe(st.el.field);
+    // «На весь екран»: ширина картки (балачки відкрили/згорнули), висота картки каркаса (рядок місць), висоти смуг.
+    st.ro2 = typeof ResizeObserver === 'function' ? new ResizeObserver(() => refit(root, st)) : null;
+    if (st.ro2) {
+      for (const k of ['root', 'players', 'turn', 'hand', 'acts', 'say']) st.ro2.observe(st.el[k]);
+      const gt = root.closest('.gtable');
+      if (gt) st.ro2.observe(gt);
+    }
+    // Місце між шапкою сайту й низом змінилось (вікно, ⛶, шторка, поворот) — переміряти.
+    if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, () => fitLayout(root, st));
+    else window.addEventListener('resize', st.onWin = () => refit(root, st));
     st.tick = setInterval(() => tick(root), 250);
     st.built = true;
+    paintTheme(st);
+  }
+
+  /// Статичні оздоби вигляду: тло, логотип, рамка поля, клас на корені.
+  function paintTheme(st) {
+    const A = M.A, t = st.theme, k = st.el.root;
+    for (const x of THEMES) k.classList.toggle('skb-t-' + x, x === t);
+    setHtml(st.el.bg, t === 'wood' ? A.WOOD_TABLE : '');
+    setHtml(st.el.brand, t === 'fairy' ? '<div class="skb-logo">' + A.chestSvg('skb-chest') + '<b>Скарб Полуботка</b></div>'
+      : t === 'night' ? '<div class="skb-ttl">Скарб <b>Полуботка</b></div>' : '<span class="skb-wtitle"><b>Скарб Полуботка</b></span>');
+    setHtml(st.el.band, t === 'fairy' ? A.ORN + A.ORN : '');
+    if (t === 'wood') st.el.band.style.setProperty('--skb-stitch', A.stitchTileUrl()); else st.el.band.style.removeProperty('--skb-stitch');
   }
 
   // ─── Звук ───────────────────────────────────────────────────────────────
   function sfx(st, name, opts) { if (st.snd) { try { st.snd.play(name, opts); } catch (e) { /* звук не головне */ } } }
-  function paintSnd(st) {
-    const b = st.el && st.el.snd;
-    if (!b) return;
-    b.hidden = !st.snd;
-    const on = !!(st.snd && st.snd.on);
-    b.textContent = on ? '🔊' : '🔇';
-    b.title = on ? 'Звук увімкнено — вимкнути' : 'Звук вимкнено — увімкнути';
-    b.setAttribute('aria-label', b.title);
-    b.setAttribute('aria-pressed', on ? 'true' : 'false');
-  }
   function tickSound(st, v) {
     const me = v.me;
     if (!st.snd || !st.snd.on || !me || me.must !== 'play' || !v.deadline) return;
@@ -148,16 +210,126 @@
     sfx(st, 'tick');
   }
 
+  // ─── «На весь екран»: міряємо місце й розкладаємо (§12) ─────────────────
+  function refit(root, st) {
+    if (st.fitRaf) return;
+    st.fitRaf = requestAnimationFrame(() => { st.fitRaf = 0; if (root._sk === st) fitLayout(root, st); });
+  }
+  const px = (n) => Math.round(n) + 'px';
+  function setVar(el, k, v) { if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v); }
+  const hOf = (el) => (el && el.getClientRects().length ? el.getBoundingClientRect().height : 0);
+
+  /// Режим — від ширини картки й вікна: pc (картка ≥ 700, не планшет стоячи), ls (телефон лежачи: поле ліворуч, рука
+  /// праворуч), ph (телефон стоячи). Висота гри (--skb-h) = вікно − усе над карткою гри (шапка сайту, рядок столу) − що
+  /// під нею в картці каркаса − низ (ПК: нижнє поле <main>; телефон: вкладки, міні-плеєр, шторка — --gdock-h).
+  /// Далі — розміри від геометрії, не від змісту (поле не стрибає щоходу): ширини колонок, висота смуги руки, ширина
+  /// карти (--skb-cw), щільність гравців (skb-d0…d2), рамка поля «настолки» (--skb-fw/fh), відступи полотна «кіно».
+  function fitLayout(root, st) {
+    const k = st.el && st.el.root;
+    if (!k || !k.isConnected) return;
+    const gt = root.closest('.gtable');
+    const W = k.clientWidth || root.clientWidth;
+    if (!W) return;
+    const th = st.theme;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const mode = vw > vh && vh <= 560 && W >= 480 ? 'ls' : W >= 700 && !(vh > vw && W < 860) ? 'pc' : 'ph';
+    const was = st.mode;
+    st.mode = mode;
+    k.classList.add('skb-on');
+    for (const m of ['pc', 'ph', 'ls']) k.classList.toggle('skb-m-' + m, m === mode);
+    if (gt) { gt.classList.add('skb-gt'); for (const x of THEMES) gt.classList.toggle('skb-gt-' + x, x === th); }
+    // «← Лобі», місця й кнопки столу — одним рядком у картці (свого рядка над карткою не займають).
+    if (HGames.ui && HGames.ui.headIn) HGames.ui.headIn(root, true);
+    const de = getComputedStyle(document.documentElement);
+    const dock = parseFloat(de.getPropertyValue('--gdock-h')) || 0;
+    const kr = k.getBoundingClientRect();
+    const box = gt || k, br = box.getBoundingClientRect();
+    const page = box.closest('main');
+    const below = Math.max(0, br.bottom - kr.bottom);
+    const y0 = kr.top + window.scrollY;
+    // ПК: згорнута шторка «💬» — пігулка в правому нижньому куті, висоти не забирає (лише відступ правому низу).
+    const tail = mode === 'pc' ? (page ? parseFloat(getComputedStyle(page).paddingBottom) || 0 : 0) : dock + 6;
+    const minH = mode === 'pc' ? 460 : mode === 'ls' ? 200 : 420;
+    const H = Math.max(minH, Math.floor(vh - tail - y0 - below));
+    setVar(k, '--skb-h', px(H));
+    setVar(k, '--skb-dock', px(mode === 'pc' ? dock : 0));
+    const n = st.view && st.view.players ? st.view.players.length : 5;
+    const nh = Math.max(4, st.view && st.view.me && st.view.me.hand ? st.view.me.hand.length : 5);
+    let hh = 0;
+    // Вужча картка ПК (балачки відкриті на ноутбуці): гравці — рядом угорі (настолка, казка) або стисло (кіно).
+    const narrow = mode === 'pc' && W < 1080;
+    if (narrow !== !!st.narrow) { st.narrow = narrow; k.classList.toggle('skb-narrow', narrow); if (st.view) for (const x of ['players', 'players2']) st.el[x]._h = null; }
+    if (mode === 'pc') {
+      const lw = narrow ? (th === 'night' ? 168 : clamp(W * 0.22, 186, 220))
+        : th === 'wood' ? clamp(W * 0.155, 186, 240) : th === 'fairy' ? clamp(W * 0.16, 184, 250) : clamp(W * 0.16, 196, 236);
+      const rw = narrow ? (th === 'night' ? 200 : clamp(W * 0.25, 210, 250))
+        : th === 'wood' ? lw : th === 'fairy' ? clamp(W * 0.19, 222, 300) : clamp(W * 0.17, 214, 262);
+      hh = Math.round(clamp(H * 0.22, 136, th === 'fairy' ? 176 : 188));
+      setVar(k, '--skb-lw', px(lw));
+      setVar(k, '--skb-rw', px(rw));
+      setVar(k, '--skb-hh', px(hh));
+      k.classList.toggle('skb-wide', W - lw - rw >= 980);
+      // Щільність гравців: скільки висоти на одного (повні → стислі → крихітні).
+      const T = { fairy: [98, 64], wood: [122, 84], night: [70, 52] }[th];
+      const avail = th === 'fairy' ? H - hOf(st.el.brand) - 28 : th === 'wood' ? H - hh - 14 - 236 : H - 150 - hh;
+      const per = avail / (th === 'wood' ? Math.ceil(n / 2) : n);
+      const d = narrow && th === 'night' ? 2 : per >= T[0] ? 0 : per >= T[1] ? 1 : 2;
+      for (const i of [0, 1, 2]) k.classList.toggle('skb-d' + i, i === d);
+    } else {
+      for (const i of [0, 1, 2]) k.classList.toggle('skb-d' + i, false);
+      k.classList.remove('skb-wide');
+      // Телефон стоячи: поле — до плити ≈ 1,55 : 1 (ширше — даремне), решта висоти — руці.
+      setVar(k, '--skb-fph', px(Math.round(W / (th === 'wood' ? 1.5 : 1.55))));
+    }
+    // Карта руки: від місця руки й кількості карт (і від висоти смуги руки на ПК).
+    const hs = getComputedStyle(st.el.hand);
+    const hw = (st.el.hand.clientWidth || W) - (parseFloat(hs.paddingLeft) || 0) - (parseFloat(hs.paddingRight) || 0);
+    const gap = { fairy: 10, wood: -10, night: 14 }[th];
+    const maxW = mode === 'pc' ? Math.min(th === 'fairy' ? 104 : 112, (hh - 34) / 1.4) : mode === 'ls' ? 50 : 78;
+    const g2 = mode === 'pc' ? gap : nh > 5 ? (th === 'wood' ? -9 : -4) : (th === 'wood' ? -2 : 4);
+    const cw = Math.floor(clamp((hw - 12 - (nh - 1) * g2) / nh, 46, maxW));
+    setVar(k, '--skb-cw', px(cw));
+    setVar(k, '--skb-cg', px(g2));
+    // «Настолка»: плита у вишиваній рамці — від клітинки поля, співвідношення ≈ 1,66 : 1, посередині стільниці.
+    if (th === 'wood' && mode === 'pc') {
+      const c = st.el.fcell.getBoundingClientRect();
+      const pad = 44, A = 1.66;
+      const iw = Math.max(200, Math.min(c.width - pad, (c.height - pad) * A));
+      const fw = iw + pad, fh = iw / A + pad;
+      setVar(k, '--skb-fw', px(fw));
+      setVar(k, '--skb-fh', px(fh));
+      setVar(k, '--skb-fx', px(Math.max(0, (c.width - fw) / 2)));
+      setVar(k, '--skb-fy', px(Math.max(0, (c.height - fh) / 2)));
+    }
+    // «Кіно»: полотно — між гравцями ліворуч, HUD праворуч і рукою знизу (самі вони — поверх темного тла).
+    if (th === 'night' && mode === 'pc') {
+      const pr = st.el.players.getBoundingClientRect(), gr = st.el.goals.getBoundingClientRect();
+      setVar(k, '--skb-ovl', px(pr.width ? pr.right - kr.left + 6 : 0));
+      setVar(k, '--skb-ovr', px(narrow || !gr.width ? 0 : kr.right - Math.min(gr.left, st.el.log.getBoundingClientRect().left || gr.left) + 6));
+      setVar(k, '--skb-ovb', px(hh + 8));
+    }
+    if (mode !== 'pc') { st.narrow = false; k.classList.remove('skb-narrow'); }
+    if (mode === 'ph' || mode === 'ls') {
+      setVar(k, '--skb-ovt', px(th === 'night' && mode === 'ph' ? hOf(st.el.turn) + 8 : 0));
+    }
+    if (was !== mode && st.view) paint(root, st.ctx);
+    if (st.sc) st.sc.resize();
+    if (st.el.tip && !st.el.tip.hidden && st.cur && st.cur.t !== 'seat') showTip(st, st.cur, !!st.arm);   // поле зсунулось — підказку за ним
+  }
+
   // ─── Поле: 3D або пласке ────────────────────────────────────────────────
   async function ensureScene(root, st) {
     if (st.sc || st.scLoading) return;
     st.scLoading = true;
+    const gen = st.scGen;
     const host = st.el.field;
     const opts = {
       onPick: (k, a, b) => onPick(root, k, a, b),
       onHover: (k, a, b) => onHover(root, k, a, b),
       quality: coarse() || (navigator.hardwareConcurrency || 8) <= 4 ? 'low' : 'high',
       reducedMotion: reduced(),
+      style: STYLE_OF[st.theme],
+      theme: st.theme,
     };
     let sc = null, kind = null;
     if (store.get('skb.view') !== '2d') {
@@ -183,19 +355,40 @@
       }
     }
     st.scLoading = false;
-    if (root._sk !== st) { sc.dispose(); return; }
+    if (root._sk !== st || gen !== st.scGen) {
+      try { sc.dispose(); } catch (e) { /* уже прибрано */ }
+      host.textContent = '';
+      if (root._sk === st) ensureScene(root, st);   // поки вантажили — змінився вигляд чи 3D/2D
+      return;
+    }
     st.sc = sc; st.scKind = kind; st.gridSig = null; st.legalSig = null; st.curSig = null;
     paint(root, st.ctx);
   }
 
-  function switchView(root, st) {
-    const to = st.scKind === '3d' ? '2d' : '3d';
-    store.set('skb.view', to);
-    st.no3d = false;
+  function resetScene(root, st) {
+    st.scGen++;
     if (st.sc) { try { st.sc.dispose(); } catch (e) { /* уже прибрано */ } }
     st.sc = null; st.el.field.textContent = '';
     hideTip(st);
     ensureScene(root, st);
+  }
+  function switchView(root, st, to) {
+    to = to || (st.scKind === '3d' ? '2d' : '3d');
+    if (to === st.scKind && st.sc) return;
+    store.set('skb.view', to);
+    st.no3d = false;
+    resetScene(root, st);
+    renderTools(st);
+  }
+  function switchTheme(root, st, t) {
+    if (!THEMES.includes(t) || t === st.theme) return;
+    st.theme = t;
+    store.set('skb.theme', t);
+    for (const k of PARTS) if (st.el[k]) st.el[k]._h = null;
+    paintTheme(st);
+    resetScene(root, st);
+    fitLayout(root, st);
+    paint(root, st.ctx);
   }
 
   /// Що підсвітити на полі й куди може ходити курсор для вибраної карти.
@@ -360,7 +553,7 @@
     if (c.k === 'path' && t.t === 'cell') {
       const r = M.K.rotFor((v.me.legal || {})[c.id], c.s, s.r, t.x, t.y);
       if (r == null) return '';
-      return '⛏ Сюди ляже «' + esc(C.SHAPE_NAME[c.s]) + '»' + (r !== s.r ? ' — перевернутим ⟲' : '');
+      return 'Сюди ляже <b>«' + esc(C.SHAPE_NAME[c.s]) + '»</b>' + (r !== s.r ? ' — перевернутим ⟲' : '');
     }
     if (c.k === 'rockfall' && t.t === 'cell') {
       const b = (v.board || []).find((q) => q.x === t.x && q.y === t.y);
@@ -368,7 +561,7 @@
     }
     if (c.k === 'map' && t.t === 'goal') {
       const pk = (v.me.peeks || {})[t.i];
-      return '🗺 Зазирнути під ' + C.GOAL_PLACE[t.i] + 'у' + (pk ? ' <span class="muted">(ти вже бачив: ' + (pk === 'gold' ? 'скарб' : 'каміння') + ')</span>' : '');
+      return '🗺 Зазирнути під <b>' + C.GOAL_PLACE[t.i] + 'у</b>' + (pk ? ' <span class="muted">(ти вже бачив: ' + (pk === 'gold' ? 'скарб' : 'каміння') + ')</span>' : '');
     }
     return '';
   }
@@ -385,10 +578,11 @@
     if (!p) return;
     const W = st.el.fieldwrap.clientWidth;
     const w = tip.offsetWidth;
-    const x = Math.max(w / 2 + 6, Math.min(W - w / 2 - 6, p.x));
+    const ox = st.el.field.offsetLeft, oy = st.el.field.offsetTop;   // полотно може відступати від країв рамки
+    const x = Math.max(w / 2 + 6, Math.min(W - w / 2 - 6, p.x + ox));
     const below = p.y < tip.offsetHeight + 40;
     tip.style.left = Math.round(x) + 'px';
-    tip.style.top = Math.round(below ? p.y + 30 : p.y - 28) + 'px';
+    tip.style.top = Math.round((below ? p.y + 30 : p.y - 28) + oy) + 'px';
     tip.classList.toggle('below', below);
   }
   function hideTip(st) { if (st.el && st.el.tip) st.el.tip.hidden = true; }
@@ -405,66 +599,119 @@
     }
     if (!st.built) build(root, st);
     const v = st.view;
-    if (!v) { setHtml(st.el.say, '<b>Чекаємо на початок…</b>'); return; }
+    renderTools(st);
+    if (!v) { setHtml(st.el.turn, '<div class="skb-tt"><b class="skb-t1">Чекаємо на початок…</b></div>'); return; }
     const me = v.me || null;
     if (!selCard(st, v)) { st.sel = null; st.cur = null; st.arm = null; st.fixPick = null; }
     if (st.turnKey !== v.turn + '|' + v.round) { st.turnKey = v.turn + '|' + v.round; st.tipNow = false; }
-    const w = whatNow(v, me, st);
-    setHtml(st.el.say, '<div class="skb-say-t">' + w.l + '</div>' + (st.sel ? '<button type="button" class="skb-x" data-a="cancel">✕ Скасувати</button>' : ''));
-    st.el.say.hidden = !!v.over;
-    st.el.say.classList.toggle('mine', !!(me && me.must === 'play'));
+    renderTurn(st, v, me);
+    renderSay(st, v, me);
+    renderMeta(st, v);
     renderPlayers(st, v, me);
     renderHand(st, v, me);
     renderActs(st, v, me);
+    renderGoals(st, v, me);
+    renderPiles(st, v);
+    renderGlek(st, v, me);
+    renderInfo(st, v);
     renderDlg(st, v, me);
     renderSum(st, v, me);
     renderLog(st, v);
     renderBadge(st, v, me);
-    st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
-    st.el.view.title = st.scKind === '3d' ? 'Показати пласку мапу (легша для слабких пристроїв)' : (st.no3d ? '3D не вдалося — спробувати ще' : 'Показати об\'ємний розріз');
+    renderPop(st);
     queueEvents(root, st, v);
     if (!st.sc) ensureScene(root, st);
     else syncScene(root, st);
     nudge(root, st);
+    refit(root, st);
+  }
+
+  // ─── Стрічка «що зараз» над полем і довге пояснення ────────────────────
+  const ARC = 2 * Math.PI * 15;
+  const arcSvg = (on) => '<svg class="skb-ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="bg" cx="18" cy="18" r="15"/>'
+    + (on ? '<circle class="fg" cx="18" cy="18" r="15" transform="rotate(-90 18 18)" stroke-dasharray="' + ARC.toFixed(1) + '"/>' : '') + '</svg>';
+
+  function renderTurn(st, v, me) {
+    const b = brief(v, me, st);
+    const timed = !!(v.deadline && v.phase === 'play');
+    const tm = timed ? '<span class="skb-tm skb-arc">' + arcSvg(true) + '<b data-sec="n"></b></span>' : '';
+    const who2 = b.mine && me ? cleanNick(nickOf(v, me.seat)) : '';
+    setHtml(st.el.turn, tm + '<span class="skb-tt"><b class="skb-t1">' + esc(b.t) + (who2 && st.theme === 'fairy' ? '!' : '') + '</b>'
+      + (b.s ? '<small class="skb-t2">' + esc(b.s) + '</small>' : '') + '</span>'
+      + (st.sel ? '<button type="button" class="skb-x" data-a="cancel" title="Скасувати (Esc)" aria-label="Скасувати">✕</button>' : ''));
+    st.el.turn.classList.toggle('mine', !!b.mine);
+    st.el.turn.hidden = !!v.over && st.mode !== 'ph';
+  }
+
+  function renderSay(st, v, me) {
+    const w = whatNow(v, me, st);
+    const keys = me && me.must === 'play' && !coarse() ? '<small class="skb-keys">1–' + Math.min(9, (me.hand || []).length) + ' обрати · R повернути · Esc скасувати</small>' : '';
+    setHtml(st.el.say, '<div class="skb-say-t">' + w.l + '</div>' + keys);
+    st.el.say.hidden = !!v.over || !w.l;
+    st.el.say.classList.toggle('mine', !!(me && me.must === 'play'));
+    st.el.say.classList.toggle('imp', !!w.imp);
+  }
+
+  function renderMeta(st, v) {
+    if (!v.phase) { setHtml(st.el.meta, ''); return; }
+    const n = v.rounds || 3, r = v.round || 1;
+    let dots = '';
+    for (let i = 1; i <= n; i++) dots += '<i class="' + (i < r ? 'skb-rdd' : i === r ? 'skb-rdn' : '') + '">' + i + '</i>';
+    const moles = (v.pack || {}).moles || 0;
+    setHtml(st.el.meta, '<span class="skb-mr"><span class="skb-ml">Раунд</span> <b>' + r + '</b><span class="skb-mof"><span class="skb-sl"> / </span><span class="skb-sz"> з </span>' + n + '</span><span class="skb-rd">' + dots + '</span></span>'
+      + '<span class="skb-mm" title="Кротів у колоді ролей (може бути й на одного менше)">🕳 <span class="skb-ml">кротів</span> <b>до ' + moles + '</b></span>'
+      + '<button type="button" class="skb-ibtn" data-a="pop" title="Вигляд і налаштування" aria-label="Вигляд і налаштування">⋯</button>');
   }
 
   // ─── Гравці ─────────────────────────────────────────────────────────────
   const susKey = (st, v) => 'skb.sus.' + ((st.ctx && st.ctx.room && st.ctx.room.id) || 'x') + '.' + (v.round || 0);
 
   function renderPlayers(st, v, me) {
-    const C = M.C;
+    const C = M.C, A = M.A;
     const L = legalFor(st, v);
     const tgt = new Set((L && L.seats) || []);
     const sus = sess.get(susKey(st, v)) || {};
     const showRole = v.phase === 'round' || v.phase === 'over';
-    const ARC = 2 * Math.PI * 15;
     const curSeat = st.cur && st.cur.t === 'seat' ? st.cur.s : null;
     const tip = tipFor(st, v);
-    const h = v.players.map((p) => {
+    const chip = (p) => {
       const mine = me && me.seat === p.seat;
       const turn = v.turn === p.seat && v.phase === 'play';
       const isT = tgt.has(p.seat);
       const tag = isT ? 'button' : 'div';
-      const tools = C.TOOLS.map((t) => '<i class="skb-tl' + ((p.broken || []).includes(t) ? ' off' : '') + '" title="' + esc(C.TOOL_NAME[t]) + ((p.broken || []).includes(t) ? ' — зламано' : ' ціла') + '">' + C.TOOL_ICON[t] + '</i>').join('');
+      const col = colorOf(v, p.seat);
+      const broken = p.broken || [];
+      const tools = C.TOOLS.map((t) => { const off = broken.includes(t); return '<i class="skb-tl' + (off ? ' off' : '') + '" title="' + esc(C.TOOL_NAME[t]) + (off ? ' — зламано' : ' ціла') + '">' + A.icoSvg(t, { broken: off }) + '</i>'; }).join('');
       const role = showRole && p.role ? '<span class="skb-role ' + p.role + '" title="' + esc(C.ROLE_NAME[p.role]) + '">' + C.ROLE_ICON[p.role] + '</span>' : '';
       const sm = sus[p.seat] === 1 ? '<span class="skb-sus" title="Твоя позначка: підозрюю">🤔</span>' : sus[p.seat] === 2 ? '<span class="skb-sus" title="Твоя позначка: свій">✅</span>' : '';
       const ally = me && me.allies && me.allies.includes(p.seat) && v.phase === 'play' ? '<span class="skb-sus" title="Свій кріт">🕳</span>' : '';
       const ready = v.phase === 'round' && ((v.ready || []).includes(p.seat) || p.bot || p.away) ? '<span class="skb-ok" title="Готовий">✔</span>' : '';
       const tipM = tip && tip.kind === 'seat' && tip.seat === p.seat && st.sel && st.sel.id === tip.card.id ? '<span class="skb-tipm" title="Глек радить">💡</span>' : '';
       const fin = v.over && v.over.winners && v.over.winners.includes(p.seat) ? ' win' : '';
+      const bt = M.K.brokenText(broken);
+      const why = bt ? (broken.includes('pick') ? 'без кирки' : broken.includes('lamp') ? 'без лампи' : 'без тачки') : '';
+      const brk = broken.length ? '<span class="skb-brk" title="' + esc(bt) + '">' + A.icoSvg(broken[0], { broken: true, ink: '#2a0a06', red: '#fff' }) + '</span>' : '';
+      const nick = cleanNick(p.nick);
       return '<' + tag + (isT ? ' type="button" data-a="tgt" data-seat="' + p.seat + '"' : '') + ' class="skb-pl' + (turn ? ' turn' : '') + (mine ? ' me' : '') + (isT ? ' tgt' : L && L.seats ? ' dim' : '')
-        + (curSeat === p.seat ? ' cur' : '') + fin + '" data-seat="' + p.seat + '" style="--pc:' + colorOf(v, p.seat) + '">'
-        + '<span class="skb-av"><svg viewBox="0 0 36 36" aria-hidden="true"><circle class="bg" cx="18" cy="18" r="15"/>'
-        + (turn && v.deadline ? '<circle class="fg" cx="18" cy="18" r="15" transform="rotate(-90 18 18)" stroke-dasharray="' + ARC.toFixed(1) + '"/>' : '')
-        + '</svg><b>' + (p.bot ? '🤖' : esc(String(p.nick || '?').trim().charAt(0).toUpperCase())) + '</b>' + role + '</span>'
-        + '<span class="skb-pi"><span class="skb-pn">' + esc(p.nick) + (!p.bot && p.away ? ' <span title="Вийшов або проспав — за нього копає Глек">🤖</span>' : '') + (mine ? ' <em>(ти)</em>' : '') + '</span>'
-        + '<span class="skb-ps"><span class="skb-tls">' + tools + '</span><b title="Злитки за партію">🪙' + (p.gold || 0) + '</b><span class="skb-hn" title="Карт у руці">🂠' + (p.hand || 0) + '</span></span></span>'
-        + sm + ally + ready + tipM + (turn && v.deadline ? '<span class="skb-sec" data-sec></span>' : '')
+        + (curSeat === p.seat ? ' cur' : '') + (broken.length ? ' broken' : '') + fin + '" data-seat="' + p.seat + '" style="--pc:' + col + '">'
+        + '<span class="skb-av skb-arc"><span class="skb-disc' + (p.bot ? ' bot' : '') + '">' + A.avatarSvg(p, col) + '</span>' + arcSvg(turn && v.deadline) + role
+        + (turn && v.deadline ? '<span class="skb-sec" data-sec></span>' : '') + '</span>'
+        + '<span class="skb-pi"><span class="skb-pn"><span class="skb-nk">' + esc(nick) + '</span>'
+        + (p.bot || p.away ? '<em class="bot" title="' + (p.bot ? 'Глек-бот' : 'Вийшов або проспав — за нього копає Глек') + '">🤖<span class="skb-lx"> Глек</span></em>' : '')
+        + (mine ? '<em class="you">ти</em>' : '') + '</span>'
+        + '<span class="skb-ps"><b class="skb-pg" title="Злитки за партію">' + A.coinSvg() + (p.gold || 0) + '</b><span class="skb-hn" title="Карт у руці"><i></i>' + (p.hand || 0) + '</span></span>'
+        + '<span class="skb-tls">' + tools + (why ? '<span class="skb-why">' + why + '</span>' : '') + '</span></span>'
+        + '<span class="skb-rc" aria-hidden="true">' + (showRole && p.role ? C.ROLE_ICON[p.role] : '') + '</span>'
+        + brk + sm + ally + ready + tipM
         + '</' + tag + '>';
-    }).join('');
-    const head = v.phase ? '<div class="skb-meta"><b>Раунд ' + (v.round || 1) + '/' + (v.rounds || 3) + '</b><span title="Кротів у колоді ролей (може бути й на одного менше)">🕳 до ' + ((v.pack || {}).moles || 0) + '</span>'
-      + '<span title="Карт у колоді">🂠 ' + (v.deck || 0) + '</span></div>' : '';
-    setHtml(st.el.players, head + '<div class="skb-chips n' + v.players.length + '">' + h + '</div>');
+    };
+    const pl = v.players || [];
+    const split = st.theme === 'wood' && st.mode === 'pc' && !st.narrow;
+    const half = Math.ceil(pl.length / 2);
+    const a = split ? pl.slice(0, half) : pl, b = split ? pl.slice(half) : [];
+    const head = st.theme === 'fairy' ? '<div class="skb-hd">Копачі · ' + pl.length + '</div>' : st.theme === 'night' ? '<div class="skb-hd">Копачі</div>' : '';
+    setHtml(st.el.players, head + '<div class="skb-chips n' + pl.length + '">' + a.map(chip).join('') + '</div>');
+    setHtml(st.el.players2, b.length ? '<div class="skb-chips n' + pl.length + '">' + b.map(chip).join('') + '</div>' : '');
     tickArcs(st);
   }
 
@@ -480,24 +727,15 @@
   }
 
   // ─── Рука ───────────────────────────────────────────────────────────────
-  /// Міні-малюнок тунелю за маскою (SVG 40×40).
-  function tunnelSvg(m, c, cls) {
-    const C = M.C;
-    let s = '<svg class="' + (cls || 'skb-mini') + '" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="4" class="dirt"/>';
-    const seg = { N: [20, 20, 20, 0], E: [20, 20, 40, 20], S: [20, 20, 20, 40], W: [20, 20, 0, 20] };
-    for (const d of C.DIRS) {
-      if (!(m & C.BIT[d])) continue;
-      let [x1, y1, x2, y2] = seg[d];
-      if (!c) { x1 = 20 + (x2 - 20) * 0.45; y1 = 20 + (y2 - 20) * 0.45; }
-      s += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" class="tun"/>';
-    }
-    if (c) s += '<rect x="13.5" y="13.5" width="13" height="13" class="tunf"/><circle cx="20" cy="19" r="2.6" class="lamp"/>';
-    else s += '<circle cx="20" cy="20" r="6.5" class="rock"/>';
-    return s + '</svg>';
+  /// Лице карти у вигляді (theme-art): хід — «тунель у віконці» за маскою з поворотом, дії — ілюстрація.
+  function faceOf(st, c, r) {
+    const K = M.K;
+    return M.A.cardSvg(st.theme, c, c.k === 'path' ? K.maskOf(c.s, r) : 0, K.cardInfo(c).name, st.mode !== 'pc');
   }
 
   function renderHand(st, v, me) {
     if (st.drag && st.drag.ghost) return;   // тягнуть карту: DOM руки не чіпаємо (дотик тримає саме цей елемент)
+    st.el.hand.classList.remove('idle');
     if (!me || v.phase !== 'play') { setHtml(st.el.hand, ''); return; }
     const C = M.C, K = M.K;
     const myTurn = me.must === 'play';
@@ -511,20 +749,19 @@
       const off = myTurn && !list.length;
       const on = st.sel && st.sel.id === c.id;
       const r = on ? st.sel.r : 0;
-      const ang = n > 1 ? (i - (n - 1) / 2) * 3.2 : 0;
-      let face;
-      if (c.k === 'path') face = tunnelSvg(K.maskOf(c.s, r), C.SHAPES[c.s] ? C.SHAPES[c.s].c : true) + '<span class="skb-cn">' + esc(inf.name) + '</span>';
-      else face = '<span class="skb-ci' + (c.k === 'break' ? ' brk' : '') + '">' + inf.icon + '</span><span class="skb-cn">' + esc(inf.name) + '</span>';
+      const kk = i - (n - 1) / 2;
       const why = off ? (me.why || {})[c.id] || 'Нікуди не зіграєш' : '';
       return '<button type="button" class="skb-card k-' + c.k + (on ? ' on' : '') + (off ? ' off' : '') + (c.k === 'path' && !C.SHAPES[c.s].c ? ' dead' : '') + '" data-a="card" data-id="' + c.id + '"'
-        + ' style="--ang:' + ang.toFixed(1) + 'deg" title="' + esc(inf.name + ' — ' + (why || inf.hint)) + '"' + (myTurn ? '' : ' aria-disabled="true"') + '>'
-        + '<span class="skb-ck">' + (i + 1) + '</span>' + face
+        + ' style="--k:' + kk.toFixed(1) + ';--k2:' + (kk * kk).toFixed(2) + '" title="' + esc(inf.name + ' — ' + (why || inf.hint)) + '"' + (myTurn ? '' : ' aria-disabled="true"') + '>'
+        + faceOf(st, c, r)
+        + '<span class="skb-ck">' + (i + 1) + '</span>'
         + (why ? '<span class="skb-cw">' + esc(why) + '</span>' : '')
         + (tip && tip.card.id === c.id ? '<span class="skb-tipm" title="Глек радить цю карту">💡</span>' : '')
-        + (on && r ? '<span class="skb-rot">⟲</span>' : '')
+        + (on && r ? '<span class="skb-rot">⟲ 180°</span>' : '')
         + '</button>';
     }).join('');
-    setHtml(st.el.hand, '<div class="skb-fan">' + h + '</div>');
+    setHtml(st.el.hand, '<div class="skb-fan" style="--n:' + n + '">' + h + '</div>');
+    st.el.hand.classList.toggle('idle', !myTurn);
   }
 
   function renderActs(st, v, me) {
@@ -532,21 +769,118 @@
     const s = selCard(st, v);
     const myTurn = me.must === 'play';
     let h = '';
-    if (myTurn && s) {
-      const c = s.card;
-      if (c.k === 'path' && !M.K.isSym(c.s)) h += '<button type="button" class="skb-btn" data-a="rot" title="Перевернути карту (R)">⟲ 180°</button>';
-      h += '<button type="button" class="skb-btn warn" data-a="pass" title="Скинути цю карту сорочкою догори й пропустити хід (Del)">🗑 Скинути й пропустити</button>';
-      h += '<button type="button" class="skb-btn ghost" data-a="cancel" title="Esc">✕</button>';
-    } else if (myTurn) {
-      h += '<span class="skb-note">Тицни карту в руці' + (coarse() ? '' : ' (1–' + (me.hand || []).length + ')') + '</span>';
+    if (myTurn) {
+      const canRot = !!(s && s.card.k === 'path' && !M.K.isSym(s.card.s));
+      h += '<button type="button" class="skb-btn rot" data-a="rot"' + (canRot ? '' : ' disabled') + ' title="' + (canRot ? 'Перевернути карту на 180° (R)' : 'Обери карту ходу, яку можна перевернути') + '">⟲ Повернути<kbd>R</kbd></button>';
+      h += '<button type="button" class="skb-btn warn" data-a="pass"' + (s ? '' : ' disabled') + ' title="' + (s ? 'Скинути цю карту сорочкою догори й пропустити хід (Del)' : 'Спершу обери карту, яку скинути') + '">🗑 <span>Скинути<span class="skb-lx"> й пропустити</span></span></button>';
+      if (s) h += '<button type="button" class="skb-btn ghost cx" data-a="cancel" title="Скасувати (Esc)" aria-label="Скасувати">✕</button>';
+      if (me.tip) {
+        const on = st.tipNow || tipOn(v);
+        h += '<button type="button" class="skb-btn tipb' + (on ? ' on' : '') + '" data-a="tip" aria-pressed="' + on + '" title="Що зробив би Глек на твоєму місці">' + M.A.glekSvg({ wink: true }) + '<span>Порада</span></button>';
+      }
     } else {
       h += '<span class="skb-note">Твоя рука · ' + (me.hand || []).length + ' ' + plural((me.hand || []).length, 'карта', 'карти', 'карт') + '</span>';
     }
-    if (myTurn && me.tip) {
-      const on = st.tipNow || tipOn(v);
-      h += '<button type="button" class="skb-btn tipb' + (on ? ' on' : '') + '" data-a="tip" aria-pressed="' + on + '" title="Що зробив би Глек на твоєму місці">💡 Глек радить</button>';
-    }
     setHtml(st.el.acts, h);
+  }
+
+  // ─── Три мітки, колода й скид, Глек, рядок телефону ───────────────────
+  function goalState(v, me, i) {
+    const g = (v.goals || [])[i] || {};
+    if (g.open) return g.kind === 'gold' ? 'gold' : 'stone';
+    const pk = me && me.peeks ? me.peeks[i] : null;
+    return pk ? 'peek-' + pk : 'shut';
+  }
+  const XMARK = '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M24 24 L76 76 M76 24 L24 76" stroke="#2a1408" stroke-width="13" stroke-linecap="round"/><path d="M24 24 L76 76 M76 24 L24 76" stroke="#6b3a18" stroke-width="5" stroke-linecap="round"/></svg>';
+  function renderGoals(st, v, me) {
+    const A = M.A, L = legalFor(st, v);
+    const can = new Set(L && L.kind === 'goal' ? L.goals : []);
+    const places = ['верхня', 'середня', 'нижня'];
+    let peekNote = '';
+    const cells = [0, 1, 2].map((i) => {
+      const s = goalState(v, me, i);
+      if (s.startsWith('peek') && !peekNote) peekNote = 'ти бачив ' + places[i] + 'ю';
+      const tag = can.has(i) ? 'button' : 'div';
+      const ic = s === 'gold' ? A.chestSvg() : s === 'stone' ? A.icoSvg('rock') : XMARK;
+      const pk = s.startsWith('peek') ? '<span class="skb-pk" title="Ти бачив під цією міткою">' + (s === 'peek-gold' ? A.chestSvg() : A.icoSvg('rock')) + '</span>' : '';
+      const lab = s === 'gold' || s === 'peek-gold' ? 'скарб' : s === 'stone' || s === 'peek-stone' ? 'камінь' : '?';
+      return '<' + tag + (tag === 'button' ? ' type="button" data-a="goal" data-i="' + i + '"' : '') + ' class="skb-gm ' + s + (can.has(i) ? ' tgt' : '') + '"><i class="skb-gc">' + ic + pk + '</i><b>' + lab + '</b><small>' + places[i] + '</small></' + tag + '>';
+    }).join('');
+    setHtml(st.el.goals, '<div class="skb-hd">Три мітки' + (peekNote ? ' <span>' + peekNote + '</span>' : '') + '</div><div class="skb-gls">' + cells + '</div>');
+  }
+
+  /// Остання зіграна карта цього раунду (з подій): { card, m, line } або null.
+  function lastPlayed(v) {
+    const ev = v.events || [];
+    for (let i = ev.length - 1; i >= 0; i--) {
+      const e = ev[i];
+      if (e.k === 'round' || e.k === 'end') break;
+      const nk = esc(cleanNick(nickOf(v, e.seat)));
+      const to = (s2) => esc(cleanNick(nickOf(v, s2)));
+      if (e.k === 'place') return { card: { k: 'path', s: e.s }, m: e.m, line: '— ' + nk };
+      if (e.k === 'break') return { card: { k: 'break', tool: e.tool }, line: nk + ' → ' + to(e.target) };
+      if (e.k === 'fix') return { card: { k: 'fix', tools: [e.tool] }, line: nk + ' → ' + (e.seat === e.target ? 'собі' : to(e.target)) };
+      if (e.k === 'map') return { card: { k: 'map' }, line: nk + ' · ' + M.C.GOAL_PLACE[e.goal] };
+      if (e.k === 'rockfall') return { card: { k: 'rockfall' }, line: '— ' + nk };
+      if (e.k === 'pass') return { card: null, line: nk + ' · пас, карта сорочкою' };
+    }
+    return null;
+  }
+  function renderPiles(st, v) {
+    const A = M.A, K = M.K;
+    const lp = lastPlayed(v);
+    const disc = lp ? (lp.card ? A.cardSvg(st.theme, lp.card, lp.m || 0, K.cardInfo(lp.card).name, true) : A.backSvg(st.theme)) : '';
+    setHtml(st.el.piles, '<div class="skb-hd">Колода й скид</div><div class="skb-pls">'
+      + '<div class="skb-deck" title="Карт у колоді"><span class="skb-lab">Колода</span><i></i><i></i><i class="top">' + A.backSvg(st.theme) + '</i><b class="skb-dn">' + (v.deck || 0) + '</b><span class="skb-dl">у колоді</span></div>'
+      + '<div class="skb-dsc"><span class="skb-lab">Скид</span>' + (disc ? '<span class="skb-dc">' + disc + '</span>' : '<span class="skb-dc skb-dce"></span>') + '</div>'
+      + '<div class="skb-plbl">' + (lp ? '<b>' + esc(lp.card ? K.cardInfo(lp.card).name : 'Пас') + '</b>' + lp.line : '<b>Скид порожній</b>ще ніхто не грав') + '</div></div>');
+  }
+
+  /// Порада Глека словами (з me.tip).
+  function tipWords(v, me) {
+    const t = M.K.tipTarget(me.tip, me.hand);
+    if (!t) return '';
+    const nm = '«' + esc(M.K.cardInfo(t.card).name) + '»';
+    if (t.kind === 'pass') return 'Я б скинув ' + nm + '.';
+    if (t.kind === 'goal') return 'Я б зазирнув під <b>' + M.C.GOAL_PLACE[t.goal] + 'у</b> — ' + nm + '.';
+    if (t.kind === 'seat') return t.card.k === 'fix' ? 'Я б полагодив ' + (t.seat === me.seat ? 'собі' : '<b>' + esc(cleanNick(nickOf(v, t.seat))) + '</b>') + ' — ' + nm + '.'
+      : 'Я б зіграв ' + nm + ' на <b>' + esc(cleanNick(nickOf(v, t.seat))) + '</b>.';
+    if (t.card.k === 'rockfall') return 'Я б засипав хід — ' + nm + '.';
+    return 'Я б поклав ' + nm + ' — покажу, куди.';
+  }
+  function renderGlek(st, v, me) {
+    const show = !!(me && me.must === 'play' && me.tip);
+    if (!show) { setHtml(st.el.glek, ''); st.el.glek.hidden = true; return; }
+    const on = st.tipNow || tipOn(v);
+    st.el.glek.hidden = false;
+    setHtml(st.el.glek, M.A.glekSvg({ wink: true }) + '<div class="skb-bub"><span class="skb-bt"><b class="skb-bn">Глек радить:</b> '
+      + (on ? tipWords(v, me) : 'хочеш, підкажу, що зробив би я на твоєму місці?') + '</span>'
+      + '<button type="button" class="skb-adv' + (on ? ' on' : '') + '" data-a="tip" aria-pressed="' + on + '">' + (on ? '✓ Показую' : '💡 Покажи') + '</button></div>');
+  }
+
+  /// Колір і значок рядка журналу — за ніком на початку рядка й дієсловом.
+  function logMeta(v, line) {
+    const s = String(line || '');
+    let col = '#9a8a7a';
+    for (const p of v.players || []) { const nk = String(p.nick || ''); if (nk && s.startsWith(nk)) { col = colorOf(v, p.seat); break; } }
+    const k = /засипа|завал/i.test(s) ? 'rock' : /злама|розби|без колеса/i.test(s) ? 'break' : /глян|зазирну|мап/i.test(s) ? 'map' : /лагод/i.test(s) ? 'fix' : 'dig';
+    return { col, k };
+  }
+  function logIcon(k) {
+    const A = M.A;
+    return k === 'rock' ? A.icoSvg('rock') : k === 'break' ? A.icoSvg('pick', { broken: true }) : k === 'map' ? A.icoSvg('map') : k === 'fix' ? A.icoSvg('cart', { wheel: true }) : A.icoSvg('pick');
+  }
+
+  function renderInfo(st, v) {
+    if (st.mode === 'pc' || !v.phase) { setHtml(st.el.info, ''); return; }
+    const me = v.me;
+    const lines = v.log || [];
+    const last = lines[lines.length - 1] || '';
+    const lm = logMeta(v, last);
+    const gl = [0, 1, 2].map((i) => { const s = goalState(v, me, i); return '<i class="skb-ig ' + s + '">' + (s === 'gold' || s === 'peek-gold' ? '💰' : s === 'stone' || s === 'peek-stone' ? '🪨' : '✕') + '</i>'; }).join('');
+    setHtml(st.el.info, '<span class="skb-idk" title="Карт у колоді"><i></i>' + (v.deck || 0) + '</span>'
+      + (last ? '<button type="button" class="skb-ilog" data-a="log" aria-expanded="' + !!st.logOv + '" style="--c:' + lm.col + '"><span class="skb-ji">' + logIcon(lm.k) + '</span><span class="skb-il">' + esc(last) + '</span></button>' : '<span class="skb-ilog"></span>')
+      + '<span class="skb-igl" title="Три мітки">' + gl + '</span>');
   }
 
   function renderDlg(st, v, me) {
@@ -561,6 +895,44 @@
     st.el.dlg.hidden = !h;
   }
 
+  // ─── Кнопки поля й «🎨 Вигляд» ─────────────────────────────────────────
+  function renderTools(st) {
+    if (!st.el) return;
+    const k3 = st.scKind === '3d';
+    const snd = !!(st.snd && st.snd.on);
+    setHtml(st.el.tools, '<span class="skb-seg" role="group" aria-label="Поле">'
+      + '<button type="button" class="skb-view' + (k3 ? ' on' : '') + '" data-a="view3d" aria-pressed="' + k3 + '" title="' + (st.no3d ? '3D не вдалося — спробувати ще' : 'Об\'ємний розріз') + '">🧊 3D</button>'
+      + '<button type="button" class="skb-view' + (st.scKind === '2d' ? ' on' : '') + '" data-a="view2d" aria-pressed="' + (st.scKind === '2d') + '" title="Пласка мапа (легша для слабких пристроїв)">🗺 Пласка</button></span>'
+      + '<button type="button" class="skb-view" data-a="reset" title="Показати все поле" aria-label="Показати все поле">⤢</button>'
+      + (st.snd ? '<button type="button" class="skb-view skb-snd" data-a="snd" aria-pressed="' + snd + '" title="' + (snd ? 'Звук увімкнено — вимкнути' : 'Звук вимкнено — увімкнути') + '" aria-label="Звук">' + (snd ? '🔊' : '🔇') + '</button>' : '')
+      + '<button type="button" class="skb-view skb-thb" data-a="pop" aria-expanded="' + !!st.pop + '" title="Вигляд гри" aria-label="Вигляд гри">🎨<span class="skb-lx"> Вигляд</span></button>');
+  }
+
+  function renderPop(st) {
+    const p = st.el && st.el.pop;
+    if (!p) return;
+    if (!st.pop) { p.hidden = true; setHtml(p, ''); return; }
+    const A = M.A, k3 = st.scKind === '3d', snd = !!(st.snd && st.snd.on);
+    setHtml(p, '<div class="skb-popin" role="dialog" aria-label="Вигляд гри"><div class="skb-poph"><b>🎨 Вигляд</b><button type="button" class="skb-link" data-a="popx" aria-label="Закрити">✕</button></div>'
+      + '<div class="skb-thl">' + THEMES.map((t) => '<button type="button" class="skb-tho' + (t === st.theme ? ' on' : '') + '" data-a="theme" data-t="' + t + '" aria-pressed="' + (t === st.theme) + '">'
+        + A.previewSvg(t) + '<span><b>' + esc(A.THEME_NAME[t]) + '</b><small>' + esc(A.THEME_HINT[t]) + '</small></span></button>').join('') + '</div>'
+      + '<div class="skb-poprow"><span>Поле</span><span class="skb-seg"><button type="button" class="skb-view' + (k3 ? ' on' : '') + '" data-a="view3d">🧊 3D</button><button type="button" class="skb-view' + (k3 ? '' : ' on') + '" data-a="view2d">🗺 Пласка</button></span></div>'
+      + (st.snd ? '<div class="skb-poprow"><span>Звук</span><button type="button" class="skb-view" data-a="snd" aria-pressed="' + snd + '">' + (snd ? '🔊 увімкнено' : '🔇 вимкнено') + '</button></div>' : '')
+      + '</div>');
+    p.hidden = false;
+    // Біля кнопки, що відкрила (або посередині поля).
+    const k = st.el.root.getBoundingClientRect();
+    const fromEl = st.el[st.popAt === 'meta' ? 'meta' : 'tools'].querySelector('[data-a="pop"]');
+    const b = fromEl && fromEl.getClientRects().length ? fromEl.getBoundingClientRect() : null;
+    const w = p.offsetWidth, h = p.offsetHeight;
+    let x = b ? b.left - k.left : (k.width - w) / 2, y = b ? b.top - k.top - h - 8 : 60;
+    if (b && y < 4) y = b.bottom - k.top + 8;
+    x = clamp(x, 6, Math.max(6, k.width - w - 6));
+    y = clamp(y, 4, Math.max(4, k.height - h - 4));
+    p.style.left = Math.round(x) + 'px';
+    p.style.top = Math.round(y) + 'px';
+  }
+
   // ─── Роль: розкриття на старті раунду й «👁 Моя роль» ───────────────────
   function renderBadge(st, v, me) {
     const b = st.el.rolebadge;
@@ -571,7 +943,7 @@
     const allies = me.allies && me.allies.length ? '<small>Свої: ' + me.allies.map((s) => esc(nickOf(v, s))).join(', ') + '</small>' : '';
     setHtml(b, st.roleHold
       ? '<span class="skb-rb-open ' + me.role + '">' + C.ROLE_ICON[me.role] + ' ' + C.ROLE_NAME[me.role] + allies + '</span>'
-      : '<span class="skb-rb-shut" title="Натисни й тримай — побачиш свою роль">👁 Моя роль</span>');
+      : '<span class="skb-rb-shut" title="Натисни й тримай — побачиш свою роль">👁 <span class="skb-rbl">Моя роль</span><small class="skb-lx">тримай</small></span>');
     b.classList.toggle('open', st.roleHold);
   }
 
@@ -582,7 +954,7 @@
     const allies = me.allies && me.allies.length ? '<p class="skb-allies">Свої: ' + me.allies.map((s) => who(v, s)).join(', ') + '</p>' : '';
     st.reveal = { at: Date.now() };
     setHtml(st.el.reveal, '<div class="skb-rv-card ' + me.role + (reduced() ? ' still' : '') + '" data-a="revealx"><div class="skb-rv-in">'
-      + '<div class="skb-rv-back">🏺</div>'
+      + '<div class="skb-rv-back">' + M.A.glekSvg({ wink: true }) + '</div>'
       + '<div class="skb-rv-face"><div class="skb-rv-ic">' + C.ROLE_ICON[me.role] + '</div><h2>' + esc(M.K.roleLine(me.role)) + '</h2>'
       + '<p>' + esc(C.ROLE_HINT[me.role]) + '</p>' + allies + '<p class="skb-rv-n">Раунд ' + v.round + ' з ' + v.rounds + ' · кротів у колоді — до ' + ((v.pack || {}).moles || 0) + '</p></div>'
       + '</div></div>');
@@ -603,8 +975,14 @@
   // ─── Підсумки ───────────────────────────────────────────────────────────
   function renderSum(st, v, me) {
     const el = st.el.sum;
-    if (v.over) { setHtml(el, overHtml(st, v, me)); el.hidden = false; return; }
-    if (v.phase === 'round' && v.roundEnd) { setHtml(el, roundHtml(st, v, me)); el.hidden = false; tickNext(st); return; }
+    const key = v.over ? 'over' : v.phase === 'round' && v.roundEnd ? 'r' + v.roundEnd.n : null;
+    if (key !== st.sumKey) { st.sumKey = key; st.sumMin = false; }   // новий підсумок — знову розгорнуто
+    el.classList.toggle('min', !!st.sumMin);
+    // Поверх поля: «🗺 Подивитись поле» згортає підсумок до шапки, «📊 Підсумок ▾» — назад.
+    const mn = '<button type="button" class="skb-btn ghost skb-summin" data-a="summin" aria-expanded="' + !st.sumMin + '">' + (st.sumMin ? '📊 Підсумок ▾' : '🗺 Подивитись поле') + '</button>';
+    const put = (h) => h.replace('</h3>', '</h3>' + mn);
+    if (v.over) { setHtml(el, put(overHtml(st, v, me))); el.hidden = false; return; }
+    if (v.phase === 'round' && v.roundEnd) { setHtml(el, put(roundHtml(st, v, me))); el.hidden = false; tickNext(st); return; }
     setHtml(el, ''); el.hidden = true;
   }
 
@@ -699,11 +1077,15 @@
   }
 
   // ─── Журнал ─────────────────────────────────────────────────────────────
+  /// ПК — колонкою/блоком вигляду, завжди розгорнутий (найсвіжіше — згори). Телефон — у рядку під полем лише
+  /// останній рядок; тап — шухлядка поверх поля до наступного тапу.
   function renderLog(st, v) {
-    const lines = (v.log || []).slice(-6);
-    if (!lines.length) { setHtml(st.el.log, ''); return; }
-    setHtml(st.el.log, '<button type="button" class="skb-logh" data-a="log" aria-expanded="' + st.logOpen + '">📜 Що було ' + (st.logOpen ? '▾' : '▸') + '</button>'
-      + (st.logOpen ? '<ol>' + lines.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ol>' : '<p class="skb-last">' + esc(lines[lines.length - 1]) + '</p>'));
+    const pc = st.mode === 'pc';
+    const lines = (v.log || []).slice(pc ? -(st.theme === 'night' ? 6 : 10) : -8).reverse();
+    st.el.log.classList.toggle('open', pc || !!st.logOv);
+    if (!lines.length || (!pc && !st.logOv)) { setHtml(st.el.log, pc ? '<div class="skb-hd">Що було</div>' : ''); return; }
+    setHtml(st.el.log, '<div class="skb-hd">Що було' + (pc ? '' : '<button type="button" class="skb-link" data-a="log" aria-label="Згорнути">✕</button>') + '</div><ol>'
+      + lines.map((l) => { const m = logMeta(v, l); return '<li style="--c:' + m.col + '"><span class="skb-ji">' + logIcon(m.k) + '</span><span class="skb-lt">' + esc(l) + '</span></li>'; }).join('') + '</ol>');
   }
 
   // ─── Таймер, Глеки, «час минув», «далі» ────────────────────────────────
@@ -712,13 +1094,13 @@
     if (!v || !st.el) return;
     const left = v.deadline ? Math.max(0, Date.parse(v.deadline) - Date.now()) : null;
     const total = v.timerMs || 60000;
-    const L = 2 * Math.PI * 15;
-    for (const fg of st.el.players.querySelectorAll('.skb-av .fg')) {
-      fg.style.strokeDashoffset = left == null ? 0 : (L * (1 - Math.min(1, left / total))).toFixed(1);
+    const k = st.el.root;
+    for (const fg of k.querySelectorAll('.skb-arc .fg')) {
+      fg.style.strokeDashoffset = left == null ? 0 : (ARC * (1 - Math.min(1, left / total))).toFixed(1);
       fg.classList.toggle('late', left != null && left < 10000);
     }
-    for (const s of st.el.players.querySelectorAll('[data-sec]')) {
-      const t = left == null ? '' : Math.ceil(left / 1000) + ' с';
+    for (const s of k.querySelectorAll('[data-sec]')) {
+      const t = left == null ? '' : s.dataset.sec === 'n' ? String(Math.ceil(left / 1000)) : Math.ceil(left / 1000) + ' с';
       if (s.textContent !== t) s.textContent = t;
     }
   }
@@ -879,8 +1261,9 @@
     st.flashT = setTimeout(() => { f.hidden = true; }, 2600);
   }
 
+  const chipOf = (st, seat) => st.el.root.querySelector('.skb-pl[data-seat="' + seat + '"]');
   function bump(st, seat, cls) {
-    const chip = st.el.players.querySelector('.skb-pl[data-seat="' + seat + '"]');
+    const chip = chipOf(st, seat);
     if (!chip || reduced()) return;
     chip.classList.remove(cls); void chip.offsetWidth; chip.classList.add(cls);
     setTimeout(() => chip.classList.remove(cls), 700);
@@ -893,7 +1276,7 @@
     const wrap = st.el.fieldwrap.getBoundingClientRect(), base = st.el.root.getBoundingClientRect();
     const x0 = wrap.left - base.left + wrap.width / 2, y0 = wrap.top - base.top + wrap.height / 2;
     re.gold.forEach((g, k) => {
-      const chip = st.el.players.querySelector('.skb-pl[data-seat="' + g.seat + '"]');
+      const chip = chipOf(st, g.seat);
       if (!chip) return;
       const b = document.createElement('span');
       b.className = 'skb-gain';
@@ -941,8 +1324,8 @@
     const L = legalFor(st, st.view);
     if (!L || !L.targets.length || !st.sc) return null;
     const host = st.el.field.getBoundingClientRect();
-    const px = cx - host.left, py = cy - host.top;
-    if (px < 0 || py < 0 || px > host.width || py > host.height) return null;
+    const px2 = cx - host.left, py = cy - host.top;
+    if (px2 < 0 || py < 0 || px2 > host.width || py > host.height) return null;
     // Розмір клітинки на екрані — з двох сусідніх клітинок.
     const a = st.sc.screenPos('cell', 0, 0), b = st.sc.screenPos('cell', 1, 0);
     const cell = a && b ? Math.max(20, Math.hypot(b.x - a.x, b.y - a.y)) : 40;
@@ -951,7 +1334,7 @@
       if (t.t === 'seat') continue;
       const p = t.t === 'goal' ? st.sc.screenPos('goal', t.i) : st.sc.screenPos('cell', t.x, t.y);
       if (!p) continue;
-      const d = Math.hypot(p.x - px, p.y - py);
+      const d = Math.hypot(p.x - px2, p.y - py);
       if (d < bd) { bd = d; best = t; }
     }
     return best;
@@ -1009,9 +1392,13 @@
     if (Date.now() - st.noClick < 350 && (b.dataset.a === 'card' || b.dataset.a === 'tgt')) return;   // щойно тягнули / довгий тап
     const ctx = st.ctx, v = st.view;
     switch (b.dataset.a) {
-      case 'view': switchView(root, st); return;
+      case 'view3d': switchView(root, st, '3d'); renderPop(st); return;
+      case 'view2d': switchView(root, st, '2d'); renderPop(st); return;
       case 'reset': if (st.sc) st.sc.resetView(); return;
-      case 'snd': if (st.snd) { st.snd.setOn(!st.snd.on); paintSnd(st); } return;
+      case 'snd': if (st.snd) { st.snd.setOn(!st.snd.on); renderTools(st); renderPop(st); } return;
+      case 'pop': st.pop = !st.pop; st.popAt = b.closest('.skb-meta') ? 'meta' : 'tools'; renderTools(st); renderPop(st); return;
+      case 'popx': st.pop = false; renderTools(st); renderPop(st); return;
+      case 'theme': st.pop = true; switchTheme(root, st, b.dataset.t); renderTools(st); renderPop(st); return;
       case 'again': {
         const rb = (root.closest('.groom') || document).querySelector('[data-do="Rematch"]');
         if (rb) rb.click(); else if (ctx && ctx.toast) ctx.toast('Ще раз зараз не вийде — замало гравців за столом');
@@ -1042,11 +1429,13 @@
         break;
       }
       case 'tgt': play(root, st, { t: 'seat', s: +b.dataset.seat }); return;
+      case 'goal': { const i = +b.dataset.i; const g = v && v.goals && v.goals[i]; if (g) play(root, st, { t: 'goal', i, x: g.x, y: g.y }); return; }
       case 'fixtool': if (st.fixPick) { const s = st.fixPick.seat; st.fixPick = null; play(root, st, { t: 'seat', s, tool: b.dataset.tool }); } return;
       case 'fixno': st.fixPick = null; break;
       case 'next': if (ctx) ctx.act('next', {}); return;
       case 'revealx': hideReveal(root, st); return;
-      case 'log': st.logOpen = !st.logOpen; store.set('skb.log', st.logOpen ? '1' : '0'); break;
+      case 'log': st.logOv = !st.logOv; break;
+      case 'summin': st.sumMin = !st.sumMin; break;
       default: return;
     }
     paint(root, ctx);
@@ -1075,6 +1464,7 @@
     const me = v.me;
     const k = e.key, code = e.code || '';
     if (k === 'Escape') {
+      if (st.pop) { st.pop = false; renderTools(st); renderPop(st); return true; }
       if (st.reveal) { hideReveal(root, st); return true; }
       if (st.sel || st.fixPick) { clearSel(st); paint(root, st.ctx); return true; }
       return false;
@@ -1114,11 +1504,20 @@
         if (st.lp) clearTimeout(st.lp.t);
         if (st.drag && st.drag.ghost) st.drag.ghost.remove();
         if (st.ro) st.ro.disconnect();
+        if (st.ro2) st.ro2.disconnect();
+        cancelAnimationFrame(st.fitRaf); st.fitRaf = 0;
+        if (st.onWin) window.removeEventListener('resize', st.onWin);
+        if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, null);
+        const gt = root.closest('.gtable');
+        if (gt) { gt.classList.remove('skb-gt'); for (const x of THEMES) gt.classList.remove('skb-gt-' + x); }   // картку каркаса може взяти інша гра
+        if (HGames.ui && HGames.ui.headIn) HGames.ui.headIn(root, false);
         if (st.onClick) root.removeEventListener('click', st.onClick);
         if (st.onDown) root.removeEventListener('pointerdown', st.onDown);
         if (st.onCtx) root.removeEventListener('contextmenu', st.onCtx);
+        if (st.onDocDown) document.removeEventListener('pointerdown', st.onDocDown, true);
         if (st.onUp) { window.removeEventListener('pointerup', st.onUp); window.removeEventListener('pointercancel', st.onUp); }
         if (st.onMove) window.removeEventListener('pointermove', st.onMove);
+        st.scGen++;
         if (st.sc) { try { st.sc.dispose(); } catch (e) { /* уже прибрано */ } }
         if (st.snd) { try { st.snd.dispose(); } catch (e) { /* уже прибрано */ } st.snd = null; }
         st.queue.length = 0;
