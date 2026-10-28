@@ -64,16 +64,15 @@
     if (st.glekBox && st.glekBox.isConnected) return;
     const host = api.layer(st, 'front', 'glek');
     host.innerHTML = '<button type="button" class="clkgl-glek" aria-label="Дядько Глек радить"><img src="/static/glek.svg" alt=""><i hidden></i></button>'
-      + '<div class="clkgl-bubble" role="dialog" aria-label="Порада Дядька Глека" hidden></div>'
-      // Постійне посилання на поради саме в хаті — видно й на телефоні (рядок під лічильником там стиснутий).
-      + '<a class="clkgl-how" href="#gonchar/tips">💡 Як грати краще</a>';
+      // Окремої плашки «💡 Як грати краще» в хаті нема (28.10): заступала кота, а те саме посилання є в бульбашці.
+      + '<div class="clkgl-bubble" role="dialog" aria-label="Порада Дядька Глека" hidden></div>';
     st.glekBox = host;
     st.glekBtn = host.querySelector('.clkgl-glek');
     st.glekDot = st.glekBtn.querySelector('i');
     st.glekBub = host.querySelector('.clkgl-bubble');
     // Глек — не коло: натиск по ньому не крутить коло й не ловить нічого під ним.
     for (const ev of ['pointerdown', 'mousedown', 'touchstart']) {
-      host.addEventListener(ev, (e) => { if (e.target.closest('.clkgl-glek, .clkgl-bubble, .clkgl-how')) e.stopPropagation(); }, { passive: true });
+      host.addEventListener(ev, (e) => { if (e.target.closest('.clkgl-glek, .clkgl-bubble')) e.stopPropagation(); }, { passive: true });
     }
     st.glekBtn.onclick = (e) => {
       e.stopPropagation();
