@@ -647,7 +647,7 @@ public class KhutoryTests
         Assert.Equal((1, 4), (info.MinPlayers, info.MaxPlayers));
         Assert.Equal(["vp", "map", "friendly", "timer", "bots"], info.Options!.Select(o => o.Key));
         Assert.Equal("червоні", new Khutory().SeatName(0));
-        Assert.Equal("фіолетові", new Khutory().SeatName(3));
+        Assert.Equal("рожеві", new Khutory().SeatName(3));
     }
 
     [Fact]

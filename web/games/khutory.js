@@ -46,7 +46,7 @@
   const nickOf = (v, seat) => { const p = playerOf(v, seat); return p ? p.nick : 'місце ' + (seat + 1); };
   const colorOf = (v, seat) => {
     const p = playerOf(v, seat);
-    const pal = M ? M.C.SEAT_COLOR : ['#d64541', '#3c78d8', '#e8912d', '#8e6bd8'];
+    const pal = M ? M.C.SEAT_COLOR : ['#d64541', '#3c78d8', '#f1ece0', '#c86fb5'];
     return pal[p ? p.color : seat] || '#999';
   };
   const isBot = (v, seat) => { const p = playerOf(v, seat); return !!(p && (p.bot || p.away)); };
