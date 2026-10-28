@@ -542,14 +542,24 @@
     .khu-tp { overflow: visible; }
   }
 }
-/* Широка колонка: чотири будівлі в один ряд — рука піднімається ближче до кнопок. */
-@container khs (min-width: 330px) {
-  .khu-builds { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
-  .khu-b { padding: 6px 5px; align-items: center; text-align: center; }
-  .khu-bn { font-size: .86em; white-space: normal; line-height: 1.15; }
-  .khu-why { font-size: .72em; }
-  .khu-dot { width: 16px; height: 16px; font-size: 10px; }
-  .khu-fix { font-size: .78em; }
+/* Широка колонка (≥ 290 px): ціни будов — табличкою, будова на рядок: «🏠 Хата +1⭐ | ●●●● | бракує 🧱1» —
+   читається з одного погляду, кружечки не переносяться. */
+@container khs (min-width: 290px) {
+  .khu-builds { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .khu-b { flex-direction: row; align-items: center; gap: 8px; padding: 3px 8px; min-height: 32px; text-align: left; }
+  .khu-bn { flex: 0 0 8.8em; font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15; }
+  .khu-cost { flex: none; flex-wrap: nowrap; }
+  .khu-why { flex: 1 1 auto; min-width: 0; text-align: right; font-size: .8em; }
+  .khu-dot { width: 18px; height: 18px; font-size: 11px; }
+  .khu-bw { gap: 2px; }
+  .khu-fix { font-size: .8em; min-height: 30px; }
+  /* Банк — в один рядок: «🏦 4🪵→1 …» дрібнішими чипами. */
+  .khu-bankr { gap: 4px; }
+  .khu-bl { font-size: .8em; }
+  .khu-blw { display: none; }
+  .khu-dice { min-height: 30px; }
+  .khu-die { width: 28px; height: 28px; padding: 3px; }
+  .khu-bchip { min-height: 30px; padding: 2px 6px; font-size: .9em; }
 }
 /* Вузька ПК-картка: 4 плашки в один ряд — без слів-підписів (лишаються числа й значки з поясненням на дотик). */
 @container khu (min-width: 700px) and (max-width: 1299px) {
@@ -743,3 +753,28 @@
   .khu-log .khu-logall { flex: none; }
 }
 @container khu (min-width: 700px) { .khu.khu-trading .khu-side .khu-nums { display: none; } }
+@container khu (max-width: 699px) {
+  /* Сіра кнопка будови все одно показує ціну: не так блідо, як решта вимкнених. */
+  .khu-bb[data-a="build"]:disabled { opacity: .72; }
+  .khu-bb[data-a="build"]:disabled .i { filter: grayscale(.6); }
+}
+/* Вузький стовпчик (290–359 px): без «+1⭐» біля назви (є в підказці), назва вужча — «бракує …» не мнеться. */
+@container khs (min-width: 290px) and (max-width: 359px) {
+  .khu-bplus { display: none; }
+  .khu-bn { flex-basis: 6.4em; }
+  .khu-dot { width: 16px; height: 16px; }
+  .khu-bchip { padding: 2px 4px; font-size: .85em; }
+}
+/* Тісно (fitPc: колонка однаково не вміщає — вузька картка поряд із балачками): смуга чисел ховається, вкладки — лише
+   заголовок і скільки влізе журналу, рука нижча. Ширше вікно чи згорнуті балачки — усе вертається. */
+@container khu (min-width: 700px) {
+  .khu-main.khu-tight .khu-side .khu-nums { display: none; }
+  .khu-main.khu-tight .khu-cb > .khu-tabs { min-height: 44px; }
+  .khu-main.khu-tight .khu-side .khu-hh { display: none; }
+  .khu-main.khu-tight .khu-side .khu-card { min-height: 54px; }
+  .khu-main.khu-tight .khu-side .khu-cn { display: none; }
+}
+/* Вузька ПК-картка: плашки ~200 px — без смужок (лишаються числа), інакше ніку й картам не лишалось місця. */
+@container khu (min-width: 700px) and (max-width: 1299px) {
+  .khu-pl .khu-aws .khu-mb, .khu-pl > .khu-pp .khu-mb.gold, .khu-pl .khu-aws .khu-port { display: none; }
+}

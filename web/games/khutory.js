@@ -768,7 +768,7 @@
     const K = M.K, hand = me.hand || {};
     const ch = K.bankChips(hand, me.rates);
     if (st.bankGive && !ch.some((c) => c.res === st.bankGive && c.max >= 1)) st.bankGive = null;
-    let h = '<div class="khu-bankr"><span class="khu-bl" title="Банк: віддай однакові — візьми 1 будь-яку">🏦 Банк</span>'
+    let h = '<div class="khu-bankr"><span class="khu-bl" title="Банк: віддай однакові — візьми 1 будь-яку">🏦<span class="khu-blw"> Банк</span></span>'
       + ch.map((c) => '<button type="button" class="khu-bchip' + (st.bankGive === c.res ? ' on' : '') + (c.port ? ' port' : '') + '" data-a="bank-give" data-r="' + c.res + '"'
         + (c.max >= 1 ? '' : ' disabled') + ' title="' + esc(M.C.RES_NAME[c.res]) + ': ' + c.rate + ' на 1' + (c.port ? ' (пристань)' : '') + (c.max >= 1 ? '' : ' — є ' + c.have) + '">'
         + c.rate + RES_ICON[c.res] + '→1' + (c.port ? '<small>⚓</small>' : '') + '</button>').join('') + '</div>';
@@ -1051,14 +1051,18 @@
       k.style.setProperty('--khu-swj', sw + 'px');
       st.el.main.classList.toggle('khu-2c', two);
     };
+    const over = (el) => (el && !el.hidden && el.getClientRects().length ? el.scrollHeight - el.clientHeight : 0);
+    // Скільки колонка не вміщає (торг гортається всередині — його не рахуємо, він має право).
+    const spill = () => Math.max(over(st.el.side), over(st.el.side.firstElementChild), over(st.el.side.lastElementChild),
+      ...st.el.tps.filter((p) => p.dataset.t !== 'trade').map(over));
+    st.el.main.classList.remove('khu-tight');
     k.style.setProperty('--khu-fhj', fh + 'px');
     const two = fieldOk(0.95);
     apply(two);
     // Один стовпчик не вмістив (висока вузька картка, торг) — два, якщо поле лишається хоч 0,6 своєї висоти завширшки.
-    if (!two && fieldOk(0.6)) {
-      const over = (el) => (el && !el.hidden ? el.scrollHeight - el.clientHeight : 0);
-      if (Math.max(over(st.el.side), ...st.el.tps.map(over)) > 24) apply(true);
-    }
+    if (!two && fieldOk(0.6) && Math.max(spill(), ...st.el.tps.map(over)) > 24) apply(true);
+    // Однаково не влазить (вузька картка поряд із балачками) — «тісно»: без смуги чисел, рука нижча.
+    if (spill() > 2) st.el.main.classList.add('khu-tight');
   }
 
   function devState(v, me, d) {
