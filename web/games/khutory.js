@@ -1063,15 +1063,21 @@
     // не ховаємо (воно ліворуч), а низ колонки відсуваємо на її висоту (--khu-sbot).
     const fh = Math.max(300, Math.min(1200, Math.floor(docH - tail - y0 - below)));
     k.style.setProperty('--khu-sbot', Math.max(0, Math.round(dock - tail - below)) + 'px');
-    // Плита в 3D лежить під нахилом і впирається в ШИРИНУ рамки аж до ~1,7 : 1 (заміри 28.10: 1090×722 → плита 889×514,
-    // 1230×722 → 985×566), тож поле тим більше, чим вужча колонка. Ідеал — поле 1,65 своєї висоти завширшки.
-    const gap = 12, SUB = 290, SUBMAX = 430, ONE = 300, ONEMAX = 440, ideal = Math.round(fh * 1.65);
+    // Поле якомога більше (khfit2). Плита в 3D під нахилом: її ширина ≈ min(0,82 × ширини поля, 1,36 × висоти) — заміри
+    // 28.10 (1191×722 → 972, 1090×722 → 889, 1026×507 → 691, 837×507 → 683). Тобто до ~1,65 : 1 вужча колонка = більша
+    // плита, далі — без різниці. Висота поля — від вікна, тож вибір стовпчиків — лише від геометрії, не від змісту: інакше
+    // поле стрибало б щоходу (мій хід — панель вища). Зміст тільки вмикає «тісно» (без смуги чисел, рука нижча) —
+    // це всередині колонки, поле не чіпає.
+    //  · два стовпчики поряд з полем ≥ 1,65 висоти — плита й так найбільша, колонці просторіше: два;
+    //  · інакше, коли висоти вдосталь (≥ 500 px) — один (300–440 px; поле нижче 680 px — одразу 440: ширша колонка
+    //    нижча, мій хід влазить «тісним»): ціни, рука й «що зараз» на місці навіть у мій хід;
+    //  · низьке вікно — два (поле хоч 0,6 висоти завширшки), і «тісно», якщо треба.
+    const gap = 12, SUB = 290, SUBMAX = 430, ONE = 300, ONEMAX = 440, TALL = 500, ROOMY = 680, ideal = Math.round(fh * 1.65);
     const fieldOk = (r) => W - gap - (2 * SUB + 10) >= Math.round(fh * r);   // поле поряд із двома стовпчиками не вужче за r × висоту
-    const apply = (two, w) => {
-      const sw = two ? Math.max(2 * SUB + 10, Math.min(2 * SUBMAX + 10, W - gap - ideal)) : (w || Math.max(ONE, Math.min(ONEMAX, W - gap - ideal)));
+    const apply = (two) => {
+      const sw = two ? Math.max(2 * SUB + 10, Math.min(2 * SUBMAX + 10, W - gap - ideal)) : fh < ROOMY ? ONEMAX : Math.max(ONE, Math.min(ONEMAX, W - gap - ideal));
       k.style.setProperty('--khu-swj', sw + 'px');
       st.el.main.classList.toggle('khu-2c', two);
-      return sw;
     };
     const over = (el) => (el && !el.hidden && el.getClientRects().length ? el.scrollHeight - el.clientHeight : 0);
     // Скільки колонка не вміщає (торг гортається всередині — його не рахуємо, він має право).
@@ -1079,20 +1085,13 @@
       ...st.el.tps.filter((p) => p.dataset.t !== 'trade').map(over));
     st.el.main.classList.remove('khu-tight');
     k.style.setProperty('--khu-fhj', fh + 'px');
-    // Поле якомога більше (khfit2): спершу один стовпчик — він вужчий за два, поле ширше за тієї ж висоти. Не вмістив —
-    // той самий стовпчик ширший (нижчий зміст). Однаково ні (низьке вікно, торг): два стовпчики, якщо поле поряд із ними
-    // лишається ≥ 1,2 своєї висоти завширшки (плита майже та сама); інакше — один «тісний» (без смуги чисел, рука нижча:
-    // ціни, рука й «що зараз» на місці, а плита помітно більша, ніж поряд із двома). І він не вмістив — два, якщо поле
-    // хоч 0,6 висоти завширшки.
-    const bad = () => Math.max(spill(), ...st.el.tps.map(over)) > 24;
-    if (apply(false) < ONEMAX && bad()) apply(false, ONEMAX);
-    if (bad()) {
-      if (fieldOk(1.2)) apply(true);
-      else {
-        st.el.main.classList.add('khu-tight');
-        if (spill() > 2 && fieldOk(0.6)) { st.el.main.classList.remove('khu-tight'); apply(true); }
-      }
-    }
+    const two = fieldOk(1.65) || (fh < TALL && fieldOk(0.6));
+    apply(two);
+    if (spill() > 2) st.el.main.classList.add('khu-tight');
+    // Один стовпчик не вмістився й «тісним» (довгий торг, купа грамот) — тоді вже два, якщо поле хоч 0,6 висоти.
+    // Вкладку журналу «тісний» стискає до заголовка й рядка-двох — її недолік до 24 px не рахуємо.
+    const hard = () => Math.max(over(st.el.side), over(st.el.side.firstElementChild), over(st.el.side.lastElementChild)) > 2 || spill() > 24;
+    if (!two && hard() && fieldOk(0.6)) { st.el.main.classList.remove('khu-tight'); apply(true); }
     // Однаково не влазить (вузька картка поряд із балачками) — «тісно»: без смуги чисел, рука нижча.
     if (spill() > 2) st.el.main.classList.add('khu-tight');
   }

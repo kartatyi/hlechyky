@@ -517,6 +517,9 @@
   .khu-tp { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
   .khu-main.khu-2c .khu-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 10px; overflow: hidden; }
   .khu-main.khu-2c .khu-ca, .khu-main.khu-2c .khu-cb { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  /* Пігулка «💬» — у правому нижньому куті: відступ під неї — лише правому стовпчику, лівий (панель ходу) — на всю висоту. */
+  .khu-main.khu-2c .khu-side { padding-bottom: 0; }
+  .khu-main.khu-2c .khu-cb { box-sizing: border-box; padding-bottom: var(--khu-sbot, 0px); }
   .khu-say { padding: 7px 11px; font-size: .96em; }
   /* Журнал у колонці — 4 останні рядки по одному; цілком — віконцем. */
   .khu-log li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -729,7 +732,13 @@
 .grbox > .gtable.khu-pc > .grhead.gin > .grback { order: 1; }
 .grbox > .gtable.khu-pc > .grhead.gin > .grfull { order: 5; }
 .grbox > .gtable.khu-pc > .grhead.gin > .grother { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.grbox > .gtable.khu-pc > .gseats { flex: 1 1 0; order: 2; justify-content: flex-start; }
+/* Місця — один рядок, що гортається вбік (як аркада на телефоні): поряд із кнопками столу на вужчій картці вони
+   переносились у 2–3 рядки й з'їдали полю 30–70 px. Хто за столом — і так видно на плашках гравців. */
+.grbox > .gtable.khu-pc > .gseats { flex: 1 1 0; order: 2; justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto;
+  overscroll-behavior-x: contain; scrollbar-width: none; }
+.grbox > .gtable.khu-pc > .gseats::-webkit-scrollbar { display: none; }
+.grbox > .gtable.khu-pc > .gseats > * { flex: none; }
+.grbox > .gtable.khu-pc > .gbtns { flex-wrap: nowrap; }
 .grbox > .gtable.khu-pc > .gbtns { flex: none; order: 4; margin: 0; }
 .grbox > .gtable.khu-pc > .gstatus { display: none; }
 .grbox > .gtable.khu-pc > .gextra:empty { display: none; }
@@ -798,6 +807,8 @@
   .khu-main.khu-tight .khu-side .khu-hh { display: none; }
   .khu-main.khu-tight .khu-side .khu-card { min-height: 54px; }
   .khu-main.khu-tight .khu-side .khu-cn { display: none; }
+  /* Причина на сірій будові («бракує 1 дерева й 1 глини») — не більше двох рядків: низьке вікно, мій хід. */
+  .khu-main.khu-tight .khu-why { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 }
 /* Вузька ПК-картка: плашки ~200 px — без смужок (лишаються числа), інакше ніку й картам не лишалось місця. */
 @container khu (min-width: 700px) and (max-width: 1299px) {
