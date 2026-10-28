@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Хутори — стенд звуків</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  /* Стенд, не прод: послухати звуки «Хуторів» (web/games/khutory/sound.js). */
+  body { margin: 0; padding: 16px; background: var(--bg, #1d1712); color: var(--text, #eee); font: 15px/1.45 system-ui, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 10px 0 16px; }
+  button { font: inherit; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line, #5a4a3a); background: var(--panel2, #2c241c); color: inherit; cursor: pointer; }
+  button[aria-pressed="true"] { border-color: var(--accent, #e0a050); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+  .grid button { text-align: left; }
+  .grid small { display: block; opacity: .7; font-size: 12px; }
+  #st, #chk { font: 12px/1.4 ui-monospace, monospace; opacity: .8; white-space: pre-wrap; margin-top: 14px; }
+  label { display: inline-flex; gap: 8px; align-items: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2 style="margin:0">Хутори · звуки</h2>
+  <div class="bar">
+    <button id="tg" type="button" aria-pressed="false">🔈 звук: вимк</button>
+    <label>гучність <input id="vol" type="range" min="0" max="1" step="0.05"> <span id="volv"></span></label>
+    <label>роздача n <input id="n" type="number" min="1" max="8" value="3" style="width:3.5em"></label>
+    <button id="ck" type="button" title="Тихо: рендер в OfflineAudioContext, нічого не грає">🔬 перевірка (тихо)</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div id="st"></div>
+  <div id="chk"></div>
+</div>
+<script type="module">
+import { createSound, SOUND_NAMES, renderOffline } from '../sound.js';
+
+const LABEL = {
+  dice: ['🎲 dice', 'кубики котяться'], place: ['🏠 place', 'хата лягає на поле'], road: ['🪵 road', 'дорога-дошка'],
+  city: ['🏰 city', 'місто: стук + дзвіночок'], coin: ['🌾 coin', 'роздача (n поспіль)'], robber: ['🥷 robber', 'Кармелюк іде'],
+  steal: ['🫳 steal', 'крадіжка — шелест'], trade: ['🤝 trade', 'обмін — два «дзинь»'], card: ['📜 card', 'грамота — папір'],
+  award: ['🏅 award', 'нагорода — трійка'], win: ['🏆 win', 'перемога — мелодія'], turn: ['🔔 turn', 'твій хід'],
+  tick: ['⏱ tick', 'останні 5 с'],
+};
+const snd = createSound();
+window.snd = snd;
+const $ = (id) => document.getElementById(id);
+
+function sync() {
+  $('tg').textContent = (snd.on ? '🔊' : '🔈') + ' звук: ' + (snd.on ? 'увімк' : 'вимк');
+  $('tg').setAttribute('aria-pressed', String(snd.on));
+  $('vol').value = snd.volume; $('volv').textContent = Math.round(snd.volume * 100) + ' %';
+  $('st').textContent = 'AudioContext: ' + (snd.hasContext ? 'є' : 'ще не створено') + (snd.on ? '' : ' · звук вимкнено — кнопки мовчать');
+}
+$('tg').onclick = () => { snd.setOn(!snd.on); sync(); };
+$('vol').oninput = (e) => { snd.setVolume(e.target.value); sync(); };
+const grid = $('grid');
+for (const name of SOUND_NAMES) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.snd = name;
+  b.innerHTML = LABEL[name][0] + '<small>' + LABEL[name][1] + '</small>';
+  b.onclick = () => { snd.play(name, name === 'coin' ? { n: +$('n').value } : undefined); sync(); };
+  grid.appendChild(b);
+}
+// Тиха перевірка: кожен звук рендериться в OfflineAudioContext на гучності 1 і на поточній — пік, NaN, тривалість.
+async function check() {
+  const rows = [];
+  for (const name of SOUND_NAMES) {
+    for (const volume of [snd.volume, 1]) {
+      const r = await renderOffline(name, name === 'coin' ? { n: 8 } : undefined, { volume });
+      rows.push({ ...r, volume });
+    }
+  }
+  return rows;
+}
+window.checkSounds = check;
+$('ck').onclick = async () => {
+  const rows = await check();
+  $('chk').textContent = 'звук       гучн  пік     rms     NaN  трив, с\n' + rows.map((r) =>
+    r.name.padEnd(10) + ' ' + String(r.volume).padEnd(5) + ' ' + String(r.peak).padEnd(7) + ' ' + String(r.rms).padEnd(7) + ' ' + String(r.nan).padEnd(4) + ' ' + r.dur).join('\n');
+};
+sync();
+</script>
+</body>
+</html>
