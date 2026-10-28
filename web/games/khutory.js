@@ -173,12 +173,13 @@
   /// Останні 5 с МОГО строку — «тік» раз на секунду.
   function tickSound(st, v) {
     const me = v.me;
-    if (!st.snd || !st.snd.on || !me || !v.deadline || v.phase === 'over') return;
+    if (!st.snd || !me || !v.deadline || v.phase === 'over') return;   // вимкнено — play сам мовчить (дешево)
     const mine = !!me.must || (v.turn === me.seat && (v.phase === 'main' || v.phase === 'road2'));
     if (!mine) return;
     const left = Date.parse(v.deadline) - Date.now();
     if (!(left > 0 && left <= 5000)) return;
-    const key = v.deadline + '|' + Math.ceil(left / 1000);
+    // Ключ — секунда до строку (не рядок deadline: легкий і повний вид можуть писати час по-різному).
+    const key = Math.ceil((Date.parse(v.deadline) - 500) / 1000) + '|' + Math.ceil(left / 1000);
     if (st.tickKey === key) return;
     st.tickKey = key;
     sfx(st, 'tick');
