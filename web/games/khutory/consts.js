@@ -8,6 +8,8 @@ export const RES = ['wood', 'clay', 'wool', 'grain', 'ore'];
 export const RES_NAME = { wood: 'дерево', clay: 'глина', wool: 'вовна', grain: 'зерно', ore: 'залізо' };
 /** Родовий відмінок — «бракує 2 глини». */
 export const RES_GEN = { wood: 'дерева', clay: 'глини', wool: 'вовни', grain: 'зерна', ore: 'заліза' };
+/** Знахідний відмінок однини — «дає 1 глину», «хоче 1 вовну» (2–4 і 5+ — як називний: «2 глини», «5 глин»). */
+export const RES_ACC = { wood: 'дерево', clay: 'глину', wool: 'вовну', grain: 'зерно', ore: 'залізо' };
 
 /** Землі: що родять і як звуться. steppe — Дике поле, нічого не родить, там починає Кармелюк. */
 export const TERRAIN = ['forest', 'pit', 'pasture', 'field', 'mountain', 'steppe'];

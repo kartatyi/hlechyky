@@ -3,6 +3,7 @@
 // Покрито тестами: web/games/khutory/dev/hud-calc.test.mjs (node --test).
 
 import { RES, PIPS, TERRAIN_RES, RES_NAME } from './consts.js';
+import { RES_ACC } from './consts.js';
 
 /** Форми іменників ресурсів для «1 дерево · 2 дерева · 5 дерев». */
 const FORMS = {
@@ -162,4 +163,81 @@ export function chartGeom(timeline, w, h, target = 0, pad = 22) {
   const lines = [];
   for (let s = 0; s < seats; s++) lines.push(rows.map((row, i) => [x(i), y(row[s] || 0)]));
   return { lines, max, x, y, targetY: target ? y(target) : null };
+}
+
+// ─── Торг і увага (khutory-look.md §1, §10) ─────────────────────────────
+
+/** Знахідний відмінок: «дає 1 глину», «хоче 2 вовни», «5 глин». */
+export function resPhraseAcc(res, n) {
+  const a = Math.abs(n) % 100;
+  if (a % 10 === 1 && a !== 11 && RES_ACC[res]) return n + ' ' + RES_ACC[res];
+  return resPhrase(res, n);
+}
+/** { clay: 1, ore: 2 } → «1 глину, 2 заліза». */
+export function resListAcc(obj, sep = ', ') {
+  const out = [];
+  for (const r of RES) if (obj && obj[r] > 0) out.push(resPhraseAcc(r, obj[r]));
+  return out.join(sep) || 'нічого';
+}
+
+/** Чипи банку: кожен ресурс із найкращим курсом (`me.rates`), скільки разів можна обміняти; порядок — як у руці. */
+export function bankChips(hand, rates) {
+  return RES.map((r) => {
+    const rate = (rates && rates[r]) || 4, have = (hand && hand[r]) || 0;
+    return { res: r, rate, have, max: Math.floor(have / rate), port: rate < 4 };
+  });
+}
+
+/**
+ * «Обміняй і будуй»: чи покриває банк нестачу на ціну `cost` (бракує 1–2 карт) — і як саме.
+ * Повертає обміни `[{ give, get, n }]` (n — скільки ОТРИМАТИ, як у дії `bank`) або null (не бракує / бракує > 2 /
+ * банк не покриє). Віддаємо лише надлишок понад ціну, найдешевший курс першим.
+ */
+export function bankFix(hand, cost, rates, maxLack = 2) {
+  const lack = lacking(hand, cost);
+  const need = total(lack);
+  if (!need || need > maxLack) return null;
+  const spare = {};
+  for (const r of RES) spare[r] = Math.max(0, ((hand && hand[r]) || 0) - ((cost && cost[r]) || 0));
+  const out = [];
+  for (const get of RES) {
+    for (let i = 0; i < (lack[get] || 0); i++) {
+      let best = null;
+      for (const g of RES) {
+        if (g === get || lack[g]) continue;
+        const rate = (rates && rates[g]) || 4;
+        if (spare[g] < rate) continue;
+        if (!best || rate < best.rate || (rate === best.rate && spare[g] > spare[best.res])) best = { res: g, rate };
+      }
+      if (!best) return null;
+      spare[best.res] -= best.rate;
+      const t = out.find((x) => x.give === best.res && x.get === get);
+      if (t) t.n++; else out.push({ give: best.res, get, n: 1, rate: best.rate });
+    }
+  }
+  return out;
+}
+
+/** Мою пропозицію відхилили всі, кому вона була (і ніхто не прийняв). seats — місця всіх гравців. */
+export function allRefused(offer, seats) {
+  if (!offer || (offer.acc || []).length) return false;
+  const dec = new Set(offer.dec || []);
+  const to = offer.to == null ? (seats || []).filter((s) => s !== offer.from) : [offer.to];
+  return to.length > 0 && to.every((s) => dec.has(s));
+}
+
+/**
+ * Пропозиції, що чекають МОЄЇ відповіді, найновіша першою: від поточного гравця мені чи всім (я ще не відповів) —
+ * kind 'offer'; зустрічна мені, коли хід мій, — kind 'counter'.
+ */
+export function incomingOffers(offers, seat, turn) {
+  if (seat == null) return [];
+  const out = [];
+  for (const o of offers || []) {
+    if (o.from === seat) continue;
+    if (o.from === turn) {
+      if ((o.to == null || o.to === seat) && !(o.acc || []).includes(seat) && !(o.dec || []).includes(seat)) out.push({ o, kind: 'offer' });
+    } else if (seat === turn) out.push({ o, kind: 'counter' });
+  }
+  return out.sort((a, b) => b.o.id - a.o.id);
 }

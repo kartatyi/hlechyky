@@ -102,3 +102,66 @@ test('графік очок', () => {
   assert.equal(g.lines[0][2][0], 278);
   assert.equal(chartGeom([], 100, 100).lines.length, 0);
 });
+
+// ─── Торг і увага (khutory-look.md §1, §10) ─────────────────────────────
+import { resPhraseAcc, resListAcc, bankChips, bankFix, allRefused, incomingOffers } from '../hud-calc.js';
+import { COST } from '../consts.js';
+
+test('знахідний відмінок: дає 1 глину, 2 глини, 5 глин, 21 вовну, 11 глин', () => {
+  assert.equal(resPhraseAcc('clay', 1), '1 глину');
+  assert.equal(resPhraseAcc('wool', 1), '1 вовну');
+  assert.equal(resPhraseAcc('wood', 1), '1 дерево');
+  assert.equal(resPhraseAcc('clay', 2), '2 глини');
+  assert.equal(resPhraseAcc('clay', 5), '5 глин');
+  assert.equal(resPhraseAcc('wool', 21), '21 вовну');
+  assert.equal(resPhraseAcc('clay', 11), '11 глин');
+  assert.equal(resListAcc({ wool: 1, clay: 1 }), '1 глину, 1 вовну');
+  assert.equal(resListAcc({}), 'нічого');
+});
+
+test('чипи банку: найкращий курс із me.rates і скільки разів можна', () => {
+  const ch = bankChips({ wood: 9, clay: 2, wool: 0, grain: 4, ore: 1 }, { wood: 4, clay: 3, wool: 3, grain: 2, ore: 4 });
+  assert.deepEqual(ch.map((c) => c.res), ['wood', 'clay', 'wool', 'grain', 'ore']);
+  assert.deepEqual(ch.map((c) => c.max), [2, 0, 0, 2, 0]);
+  assert.deepEqual(ch.map((c) => c.port), [false, true, true, true, false]);
+  assert.equal(bankChips({}, null)[0].rate, 4);
+});
+
+test('обміняй і будуй: бракує 1 вовни — 3 зерна з пристані', () => {
+  const hand = { wood: 2, clay: 1, wool: 0, grain: 4, ore: 0 };
+  assert.deepEqual(bankFix(hand, COST.town, { wood: 4, clay: 4, wool: 4, grain: 3, ore: 4 }), [{ give: 'grain', get: 'wool', n: 1, rate: 3 }]);
+  // зерна лише 3 понад ціну хати (1) — 4 - 1 = 3 ≥ 3: так; при курсі 4 — ні
+  assert.equal(bankFix(hand, COST.town, { wood: 4, clay: 4, wool: 4, grain: 4, ore: 4 }), null);
+});
+
+test('обміняй і будуй: бракує 2 однакових — один обмін n = 2; різних — два; > 2 — ні', () => {
+  const r4 = { wood: 4, clay: 4, wool: 4, grain: 4, ore: 4 };
+  assert.deepEqual(bankFix({ wood: 9, grain: 2, ore: 1 }, COST.city, r4), [{ give: 'wood', get: 'ore', n: 2, rate: 4 }]);
+  assert.deepEqual(bankFix({ wood: 5, clay: 4, grain: 1 }, COST.town, r4), [{ give: 'wood', get: 'wool', n: 1, rate: 4 }]);
+  const two = bankFix({ wood: 4, clay: 5, ore: 1 }, COST.dev, r4);
+  assert.deepEqual(two, [{ give: 'clay', get: 'wool', n: 1, rate: 4 }, { give: 'wood', get: 'grain', n: 1, rate: 4 }]);
+  assert.equal(bankFix({ wood: 20 }, COST.city, r4), null);              // бракує 5
+  assert.equal(bankFix({ wood: 1, clay: 1 }, COST.road, r4), null);      // не бракує
+  assert.equal(bankFix({ wood: 1, clay: 0, grain: 3 }, COST.road, r4), null);   // банк не покриє
+});
+
+test('усі відмовились: усім — коли відмовили всі інші; одному — коли відмовив він', () => {
+  const o = { id: 3, from: 0, to: null, give: { clay: 1 }, get: { wool: 1 }, acc: [], dec: [1, 2, 3] };
+  assert.equal(allRefused(o, [0, 1, 2, 3]), true);
+  assert.equal(allRefused({ ...o, dec: [1, 2] }, [0, 1, 2, 3]), false);
+  assert.equal(allRefused({ ...o, acc: [1] }, [0, 1, 2, 3]), false);
+  assert.equal(allRefused({ ...o, to: 2, dec: [2] }, [0, 1, 2, 3]), true);
+});
+
+test('вхідні пропозиції: мені/усім від поточного без моєї відповіді; зустрічні — лише в мій хід; найновіша першою', () => {
+  const offers = [
+    { id: 1, from: 0, to: null, acc: [], dec: [] },
+    { id: 4, from: 0, to: 1, acc: [], dec: [] },
+    { id: 5, from: 0, to: 2, acc: [], dec: [] },
+    { id: 6, from: 0, to: null, acc: [1], dec: [] },
+    { id: 7, from: 2, to: 0, acc: [], dec: [] },
+  ];
+  assert.deepEqual(incomingOffers(offers, 1, 0).map((x) => x.o.id), [4, 1]);
+  assert.deepEqual(incomingOffers(offers, 0, 0).map((x) => [x.o.id, x.kind]), [[7, 'counter']]);
+  assert.deepEqual(incomingOffers(offers, null, 0), []);
+});
