@@ -49,6 +49,15 @@ public sealed class Khutory : Game
     bool _announced;
     string _reason = "points";
 
+    /// <summary>Голос Глека-ведучого в балачці столу: книга <see cref="KhutoryLines"/> + запобіжник частоти.</summary>
+    readonly KhutoryGlek _glek = new();
+    /// <summary>Остання подія ядра, яку Глек уже «почув» (seq наскрізний, як і в клієнта).</summary>
+    long _heardSeq;
+    /// <summary>Руки після попереднього кроку — щоб з різниці бачити врожай кидка, нестачу банку й улов Ярмарку.</summary>
+    int[][] _handsWas = [.. Enumerable.Range(0, KhutoryCore.MaxSeats).Select(_ => new int[5])];
+    bool _setupSaid, _cityYet, _lastSeven;
+    int? _longestWas;
+
     /// <summary>Правила поточної партії (тести й діагностика).</summary>
     public KhutoryCore Core => _core;
 
@@ -95,6 +104,12 @@ public sealed class Khutory : Game
         _deadline = null;
         _mainKey = "";
         _mainDeadline = null;
+        _heardSeq = seq;
+        _setupSaid = _cityYet = _lastSeven = false;
+        _longestWas = null;
+        foreach (var hand in _handsWas) Array.Clear(hand);
+        _glek.Reset();
+        Glek(KhMoment.Start);
         _core.Begin(seats[Ctx.Rng.Next(seats.Length)]);
         After();
     }
@@ -115,7 +130,11 @@ public sealed class Khutory : Game
         var error = Do(seat, action, payload);
         if (error is not null) return ActResult.Fail(error);
         // Будь-яка своя дія повертає людину з-під опіки Глека.
-        if (_away[seat]) _core.Note($"{Nick(seat)} знову грає сам");
+        if (_away[seat])
+        {
+            _core.Note($"{Nick(seat)} знову грає сам");
+            Glek(KhMoment.Back, Who(seat));
+        }
         _away[seat] = false;
         _missed[seat] = 0;
         After();
@@ -248,6 +267,7 @@ public sealed class Khutory : Game
             {
                 _away[s] = true;
                 _core.Note($"{Nick(s)} задрімав — Глек грає замість нього");
+                Glek(KhMoment.Away, Who(s));
             }
         }
         _deadlineKey = "";   // строк — наново, навіть якщо фаза та сама
@@ -260,6 +280,7 @@ public sealed class Khutory : Game
     {
         foreach (var line in _core.Journal) Ctx.Log($"{Info.Title}: {line}");
         _core.Journal.Clear();
+        Voice();
         Announce();
         Rearm();
         Arm();
@@ -338,7 +359,138 @@ public sealed class Khutory : Game
         _away[seat] = true;
         _core.Note($"Глек сідає замість {nick}");
         Ctx.Log($"{Info.Title}: {nick} встає — за нього грає Глек");
+        Glek(KhMoment.Away, Who(seat));
         After();
+    }
+
+    // =====================================================================================
+    // Глек-ведучий (контракт §7: події ядра → моменти книги KhutoryLines)
+    // =====================================================================================
+
+    /// <summary>Сказати в балачку столу, якщо запобіжник дозволяє (Ctx.Say доходить лише зі Start/Act/OnLeave).</summary>
+    bool Glek(KhMoment m, Dictionary<string, string>? vars = null)
+    {
+        if (_glek.Say(m, Ctx.Clock.UtcNow, Ctx.Rng, vars) is not { } line) return false;
+        Ctx.Say(line);
+        return true;
+    }
+
+    Dictionary<string, string> Who(int seat) => new() { ["who"] = Nick(seat) };
+
+    static object? Field(KhEvent e, string key) => e.Data.FirstOrDefault(d => d.Key == key).Value;
+
+    /// <summary>
+    /// Пройти нові події ядра (seq більший за почутий) і озватися на них. Приховане не виходить назовні: у крадіжці —
+    /// лише хто в кого (без ресурсу), у Ярмарку — відкритий улов, «за крок до перемоги» — за відкритими очками.
+    /// </summary>
+    void Voice()
+    {
+        foreach (var e in _core.Events.ToList())
+        {
+            if (e.Seq <= _heardSeq) continue;
+            _heardSeq = e.Seq;
+            Hear(e);
+        }
+        // «Розставились» — раз за партію; змовчав запобіжник — пробуємо далі, але лише до кінця першого кола.
+        if (!_setupSaid && _core.Phase is not KhPhase.Setup)
+            _setupSaid = _core.Over || _core.Rounds > 0 || Glek(KhMoment.SetupDone);
+        if (!_core.Over && _core.Phase is not KhPhase.Setup)
+            foreach (var s in _core.Order)
+                if (_core.PublicPoints(s) >= _core.Target - 1) Glek(KhMoment.NearWin, Who(s));
+        for (var s = 0; s < KhutoryCore.MaxSeats; s++) Array.Copy(_core.Hand[s], _handsWas[s], 5);
+    }
+
+    /// <summary>Скільки ресурсу <paramref name="r"/> прибуло місцю <paramref name="s"/> за цей крок.</summary>
+    int Gain(int s, int r) => _core.Hand[s][r] - _handsWas[s][r];
+
+    void Hear(KhEvent e)
+    {
+        var seat = Field(e, "seat") as int?;
+        switch (e.K)
+        {
+            case "turn":
+                _glek.NewTurn();
+                break;
+            case "roll" when seat is { } s && Field(e, "d") is int[] { Length: 2 } d:
+                HearRoll(s, d[0] + d[1], Field(e, "gains") as Array);
+                break;
+            case "steal" when seat is { } s && Field(e, "from") is int from:
+                Glek(KhMoment.Steal, new() { ["who"] = Nick(s), ["victim"] = Nick(from) });
+                break;
+            case "build" when seat is { } s && Field(e, "what") as string == "city":
+                if (_cityYet) break;
+                _cityYet = true;
+                Glek(KhMoment.FirstCity, Who(s));
+                break;
+            case "award":
+                if (Field(e, "kind") as string == "army")
+                {
+                    if (seat is { } a) Glek(KhMoment.Army, Who(a));
+                    break;
+                }
+                if (seat is { } l) Glek(KhMoment.Longest, Who(l));
+                else if (_longestWas is { } was) Glek(KhMoment.LongestLost, Who(was));
+                _longestWas = seat;
+                break;
+            case "dev" when seat is { } s && Field(e, "play") is true:
+                HearPlay(s, Field(e, "card") as string);
+                break;
+            case "trade" when seat is { } s:
+                if (Field(e, "with") is int other)
+                    Glek(KhMoment.PlayerTrade, new() { ["who"] = Nick(s), ["other"] = Nick(other) });
+                else Glek(KhMoment.BankTrade, Who(s));
+                break;
+            case "win" when seat is { } w:
+                Glek(KhMoment.Win, new() { ["who"] = Nick(w), ["points"] = _core.Points(w).ToString() });
+                break;
+        }
+    }
+
+    void HearRoll(int s, int sum, Array? gains)
+    {
+        if (sum == 7)
+        {
+            Glek(_lastSeven ? KhMoment.SevenAgain : KhMoment.Seven, Who(s));
+            _lastSeven = true;
+            return;
+        }
+        _lastSeven = false;
+        // Нестача банку: ресурс, що мав родити (число випало, Кармелюка нема, хтось стоїть), а не прибув нікому.
+        for (var r = 0; r < 5; r++)
+        {
+            var due = Enumerable.Range(0, KhutoryGeo.Hexes)
+                .Any(h => _core.B.Num[h] == sum && h != _core.Robber && _core.B.ResOf(h) == r && _core.OwnersAt(h).Any());
+            if (!due || _core.Order.Any(o => Gain(o, r) > 0)) continue;
+            Glek(KhMoment.BankShort, KhutoryLines.ResVars(KhutoryBoard.Res[r]));
+            return;
+        }
+        if (gains is null || gains.Length == 0)
+        {
+            Glek(KhMoment.Drought);
+            return;
+        }
+        var best = _core.Order.MaxBy(o => Enumerable.Range(0, 5).Sum(r => Gain(o, r)));
+        if (Enumerable.Range(0, 5).Sum(r => Gain(best, r)) >= 3) Glek(KhMoment.Harvest, Who(best));
+    }
+
+    void HearPlay(int s, string? card)
+    {
+        switch (card)
+        {
+            case "knight": Glek(KhMoment.Knight, Who(s)); break;
+            case "road": Glek(KhMoment.Toloka, Who(s)); break;
+            case "plenty": Glek(KhMoment.Plenty, Who(s)); break;
+            case "mono":
+                // Ресурс Ярмарку й улов відкриті (ядро пише їх у журнал столу): що найбільше прибуло гравцю.
+                // Порожній Ярмарок (ні в кого не було) з різниці не прочитати — тоді Глек мовчить.
+                var r = Enumerable.Range(0, 5).MaxBy(x => Gain(s, x));
+                if (Gain(s, r) <= 0) break;
+                var vars = KhutoryLines.ResVars(KhutoryBoard.Res[r]);
+                vars["who"] = Nick(s);
+                vars["n"] = Gain(s, r).ToString();
+                Glek(KhMoment.Mono, vars);
+                break;
+        }
     }
 
     // =====================================================================================
