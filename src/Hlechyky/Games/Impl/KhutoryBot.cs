@@ -8,7 +8,7 @@ namespace Hlechyky.Games.Impl;
 /// На чужі пропозиції каже «так», лише коли обмін наближає його ціль і не допомагає тому, хто за 2 очки до перемоги.
 /// Пам'ять (своя пропозиція й коли зроблена) — на партію; новий екземпляр — нова партія.
 /// </summary>
-public sealed class KhutoryBot
+public sealed partial class KhutoryBot
 {
     /// <summary>Крок не зроблено: Глек чекає відповідей на свою пропозицію (див. <see cref="WaitUntil"/>).</summary>
     public const string Wait = "Глек чекає відповідей";

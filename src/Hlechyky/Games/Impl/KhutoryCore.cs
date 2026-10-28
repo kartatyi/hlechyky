@@ -45,7 +45,7 @@ public sealed class KhEvent
 /// Кожен хід — метод, що повертає помилку людською мовою або null; при помилці стан не міняється (як <c>DurakCore</c>).
 /// Ресурси — числа 0..4 (дерево, глина, вовна, зерно, залізо), місця — 0..3.
 /// </summary>
-public sealed class KhutoryCore
+public sealed partial class KhutoryCore
 {
     public const int MaxSeats = 4, RoadPieces = 15, TownPieces = 5, CityPieces = 4, BankEach = 19;
     public const int Knight = 0, Vp = 1, Toloka = 2, Plenty = 3, Mono = 4;
