@@ -22,10 +22,24 @@
   let loading = null;
   let cur = null;         // root змонтованої картки (для onKey)
 
+  // Сайт оновлює гру без F5: khutory.js приходить новий, а import('/games/khutory/x.js') без адреси-версії віддав би
+  // старий модуль із карти модулів сторінки (так після деплою .7 лишався старий кадр сцени). Тож усі модулі — з ?v=
+  // від відбитків УСІХ файлів games/khutory/* у каталозі: змінився будь-який — нові адреси в усіх, а модулі тягнуть
+  // сусідів із тим самим ?v= (const Q = import.meta.url). Старий сервер без відбитків — без ?v=, як було.
+  function modQ() {
+    const files = (HGames.catalog && HGames.catalog.files) || {};
+    const keys = Object.keys(files).filter((k) => k.startsWith('games/khutory/')).sort();
+    if (!keys.length) return '';
+    let h = 0;
+    for (const k of keys) for (const ch of k + '=' + files[k] + ';') h = (Math.imul(h, 31) + ch.charCodeAt(0)) | 0;
+    return '?v=' + (h >>> 0).toString(36);
+  }
+  const mod = (name) => import('/games/khutory/' + name + modQ());
+
   function load() {
     if (!loading) {
       // Звук — не обов'язковий: не завантажився — граємо мовчки.
-      loading = Promise.all([import('/games/khutory/consts.js'), import('/games/khutory/hud-calc.js'), import('/games/khutory/sound.js').catch(() => null)])
+      loading = Promise.all([mod('consts.js'), mod('hud-calc.js'), mod('sound.js').catch(() => null)])
         .then(([C, K, S]) => { M = { C, K, S }; return M; })
         .catch((e) => { loading = null; throw e; });
     }
@@ -245,7 +259,7 @@
     let sc = null, kind = null;
     if (store.get('kh.view') !== '2d') {
       try {
-        const m = await import('/games/khutory/scene.js');
+        const m = await mod('scene.js');
         sc = await m.createScene(host, opts);
         kind = '3d';
       } catch (e) {
@@ -256,7 +270,7 @@
     }
     if (!sc) {
       try {
-        const m = await import('/games/khutory/board2d.js');
+        const m = await mod('board2d.js');
         sc = await m.createBoard2d(host, opts);
         kind = '2d';
       } catch (e) {

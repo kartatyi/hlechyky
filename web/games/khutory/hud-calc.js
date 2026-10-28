@@ -2,8 +2,10 @@
 // графік підсумку. Правил тут нема — сервер вирішує сам; це лише те, що показати людині, щоб вона зрозуміла хід.
 // Покрито тестами: web/games/khutory/dev/hud-calc.test.mjs (node --test).
 
-import { RES, PIPS, TERRAIN_RES, RES_NAME } from './consts.js';
-import { RES_ACC } from './consts.js';
+// Сусідні модулі — з тим самим ?v=, що й у цього файла: сайт оновлює гру без F5, а карта модулів сторінки
+// тримає старі './x.js' назавжди; із відбитком у адресі після деплою підтягнеться нове (khutory.js, modQ).
+const Q = new URL(import.meta.url).search;
+const { RES, PIPS, TERRAIN_RES, RES_NAME, RES_ACC } = await import('./consts.js' + Q);
 
 /** Форми іменників ресурсів для «1 дерево · 2 дерева · 5 дерев». */
 const FORMS = {
