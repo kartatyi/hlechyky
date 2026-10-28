@@ -14,7 +14,7 @@ import * as M from './models.js';
 import { SEAT_COLOR, RES_COLOR } from './consts.js';
 
 const D2R = Math.PI / 180;
-const DEF_POLAR = 50 * D2R, POLAR_MIN = 35 * D2R, POLAR_MAX = 70 * D2R, AZ_LIM = 70 * D2R;
+const DEF_POLAR = 50 * D2R, PORTRAIT_POLAR = 36 * D2R, POLAR_MIN = 35 * D2R, POLAR_MAX = 70 * D2R, AZ_LIM = 70 * D2R;
 const ZOOM_MIN = 0.65, ZOOM_MAX = 1.6;
 const S3 = Math.sqrt(3);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -105,6 +105,9 @@ export async function createScene(host, opts = {}) {
   const cityColor = inst(cg.color, 20, { color: true });
   const roads = inst(M.roadGeo(), 72, { color: true });
   const chips = inst(M.chipGeo(), 60, { color: true, shadow: false });
+  // Темна облямівка під монеткою: колір ресурсу = колір його землі (дерево на лісі зливалось), а так видно на будь-якому гексі.
+  const chipRim = inst(new THREE.CylinderGeometry(0.142, 0.142, 0.018, 6), 60, { shadow: false, mat: new THREE.MeshBasicMaterial({ color: '#1e1208' }) });
+  const _white = new THREE.Color(1, 1, 1);
 
   const hlMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false });
   const hlRings = inst(M.ringGeo(), 54, { shadow: false, mat: hlMat });
@@ -448,8 +451,10 @@ export async function createScene(host, opts = {}) {
   const _pj = new THREE.Vector3();
   function fit() {
     const save = { az: cs.az, pol: cs.pol, zoom: cs.zoom, t: cs.target.clone() };
-    cs.az = 0; cs.pol = DEF_POLAR; cs.zoom = 1; cs.target.set(0, 0, 0);
-    const R = M.SEA_R + M.FRAME_W, pts = [];
+    defPol = W / H < 0.9 ? PORTRAIT_POLAR : DEF_POLAR;   // вузька висока рамка — дивимось згори, поле виходить вищим
+    cs.az = 0; cs.pol = defPol; cs.zoom = 1; cs.target.set(0, 0, 0);
+    // Вузька рамка (телефон): впритул до суші й пристаней — кути моря й рамки можна обрізати, а поле стає вдвічі помітнішим.
+    const R = W / H < 0.9 ? 5.1 : M.SEA_R + M.FRAME_W, pts = [];
     for (let i = 0; i < 6; i++) for (const y of [0, 0.25]) pts.push(new THREE.Vector3(R * Math.cos(i * Math.PI / 3), y, R * Math.sin(i * Math.PI / 3)));
     const lim = W / H < 0.8 ? 0.97 : 0.93;
     // Відстань — двійковим пошуком, потім зсув цілі вглиб/до себе, щоб рамка стояла посередині по вертикалі; двічі.
@@ -466,23 +471,23 @@ export async function createScene(host, opts = {}) {
       baseDist = hi; applyCam();
       let y0 = 1, y1 = -1;
       for (const p of pts) { _pj.copy(p).project(cam); y0 = Math.min(y0, _pj.y); y1 = Math.max(y1, _pj.y); }
-      tz -= (y0 + y1) / 2 * baseDist * Math.tan(cam.fov * D2R / 2) / Math.cos(DEF_POLAR);
+      tz -= (y0 + y1) / 2 * baseDist * Math.tan(cam.fov * D2R / 2) / Math.cos(defPol);
     }
     defTargetZ = tz;
     diceRest = computeRest();
     cs.az = save.az; cs.pol = save.pol; cs.zoom = save.zoom; cs.target.copy(save.t);
-    if (!touchedView) cs.target.set(0, 0, defTargetZ);
+    if (!touchedView) { cs.target.set(0, 0, defTargetZ); cs.pol = defPol; }
     applyCam();
     dirty = true;
   }
-  let defTargetZ = 0, touchedView = false;
+  let defTargetZ = 0, touchedView = false, defPol = DEF_POLAR;
   let resetAnim = null;
   function resetView() {
     touchedView = false;
     vel.az = vel.pol = 0;
     if (resetAnim) resetAnim.cancel();
     const from = { az: cs.az, pol: cs.pol, zoom: cs.zoom, t: cs.target.clone() };
-    const to = { az: 0, pol: DEF_POLAR, zoom: 1, t: new THREE.Vector3(0, 0, defTargetZ) };
+    const to = { az: 0, pol: defPol, zoom: 1, t: new THREE.Vector3(0, 0, defTargetZ) };
     const step = (k) => {
       const e = easeInOut(k);
       cs.az = from.az + (to.az - from.az) * e; cs.pol = from.pol + (to.pol - from.pol) * e; cs.zoom = from.zoom + (to.zoom - from.zoom) * e;
@@ -751,14 +756,14 @@ export async function createScene(host, opts = {}) {
       const hv = board.hexes[g.hex]?.v || [];
       const town = (view?.towns || []).find((t) => t.seat === g.seat && hv.includes(t.v));
       const to = town ? vxPos[town.v].clone() : P.clone();
-      const c = new THREE.Color(RES_COLOR[g.res] ?? '#cccccc');
+      const c = new THREE.Color(RES_COLOR[g.res] ?? '#cccccc').lerp(_white, g.res === 'wood' ? 0.42 : 0.25);   // світліша за землю
       for (let j = 0; j < Math.min(3, g.n || 1) && list.length < chips.instanceMatrix.count; j++)
         list.push({ from: P.clone().setY(M.TILE_H + 0.12), to: to.setY(M.TILE_H + 0.35), delay: Math.min(0.2, (list.length) * 0.05), c, j });
     });
     if (!list.length) return Promise.resolve();
     list.forEach((o, i) => chips.setColorAt(i, o.c));
     chips.instanceColor.needsUpdate = true;
-    chips.count = list.length; chips.visible = true;
+    chips.count = chipRim.count = list.length; chips.visible = chipRim.visible = true;
     produceTw = tween(1000, (k) => {
       list.forEach((o, i) => {
         const kk = clamp((k - o.delay) / 0.78, 0, 1);
@@ -776,11 +781,12 @@ export async function createScene(host, opts = {}) {
         _pv.set(x, y, z); _dirC.copy(cam.position).sub(_pv).normalize();
         _q.setFromUnitVectors(UP, _dirC).multiply(_qa.setFromAxisAngle(UP, kk * 5));
         chips.setMatrixAt(i, _m4.compose(_pv, _q, _sv.setScalar(Math.max(0.001, s * 1.35))));
+        chipRim.setMatrixAt(i, _m4.compose(_pv.addScaledVector(_dirC, -0.012), _q, _sv));
       });
-      chips.instanceMatrix.needsUpdate = true;
-      if (k >= 1) { chips.count = 0; chips.visible = false; }
+      chips.instanceMatrix.needsUpdate = chipRim.instanceMatrix.needsUpdate = true;
+      if (k >= 1) { chips.count = chipRim.count = 0; chips.visible = chipRim.visible = false; }
     });
-    return produceTw.promise.then(() => { chips.count = 0; chips.visible = false; dirty = true; });
+    return produceTw.promise.then(() => { chips.count = chipRim.count = 0; chips.visible = chipRim.visible = false; dirty = true; });
   }
 
   function pop(kind, id) {

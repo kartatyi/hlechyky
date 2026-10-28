@@ -1,7 +1,9 @@
 /* «Хутори» — картка столу. Лише змінні сайту (--accent --ok --clay --muted --panel …); свої — з фолбеком.
    Розкладка — від ширини КАРТКИ (container query), не вікна: < 700 px — «телефон». */
 
-.kh { container: kh / inline-size; display: flex; flex-direction: column; gap: 10px; position: relative; color: var(--text); }
+/* .gbody — flex-колонка з align-items:center: без явної ширини контейнер inline-size стискався в 0 px. */
+.kh { container: kh / inline-size; display: flex; flex-direction: column; gap: 10px; position: relative; color: var(--text);
+  width: 100%; align-self: stretch; min-width: 0; box-sizing: border-box; }
 .kh button { font: inherit; color: inherit; cursor: pointer; }
 .kh button:disabled { cursor: default; }
 .kh .muted { color: var(--muted); }
@@ -45,13 +47,16 @@
 
 /* ─── Поле ───────────────────────────────────────────────── */
 .kh-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 310px); gap: 12px; align-items: start; }
-.kh-fieldwrap { position: relative; height: min(66vh, 600px); min-height: 340px; border-radius: 14px; overflow: hidden;
+/* Висота — від ширини (поле шестикутне, трохи ширше за високе), зі стелею від екрана: висока вузька рамка лишала півполя порожньої стільниці. */
+.kh-fieldwrap { position: relative; width: 100%; box-sizing: border-box; aspect-ratio: 1.12 / 1; max-height: min(72vh, 640px); min-height: 340px; border-radius: 14px; overflow: hidden;
   background: radial-gradient(ellipse at 50% 45%, #6a4a2c 0%, #4a321d 75%); }
 .kh-field { position: absolute; inset: 0; }
 .kh-field > canvas { display: block; width: 100%; height: 100%; }
 .kh-marks { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
-.kh-mark { position: absolute; left: 0; top: 0; background: var(--accent); color: var(--accent-ink, #2a1e03); font-weight: 800; font-size: .78em;
-  padding: 2px 7px; border-radius: 10px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.kh-mark { position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink, #2a1e03); font-size: 12px; line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,.45), 0 0 0 2px rgba(255,255,255,.7);
+  will-change: transform; }
+.kh-mark.best { width: 28px; height: 28px; font-size: 16px; }
 .kh-tip { position: absolute; z-index: 4; transform: translate(-50%, -100%); max-width: min(92%, 340px); background: rgba(16, 26, 20, .95);
   color: var(--text); border: 1px solid var(--accent); border-radius: 10px; padding: 7px 10px; font-size: .9em; line-height: 1.35;
   pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.45); text-align: center; }
@@ -61,6 +66,12 @@
 .kh-flash.go { animation: khflash 2.6s ease-out forwards; }
 @keyframes khflash { 0% { opacity: 0; transform: translate(-50%, -8px); } 10%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 .kh-tools { position: absolute; left: 8px; bottom: 8px; z-index: 3; display: flex; gap: 6px; }
+.kh-fab { display: none; }
+@container kh (max-width: 699px) {
+  .kh-fab { display: block; position: absolute; right: 10px; bottom: 10px; z-index: 3; }
+  .kh-fab:empty { display: none; }
+  .kh-fab button { box-shadow: 0 4px 14px rgba(0,0,0,.5); padding-inline: 18px; }
+}
 .kh-view { background: rgba(16, 26, 20, .82); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; min-height: 36px; font-size: .88em; }
 
 /* Діалоги — поверх поля (людина й так туди дивиться). */
@@ -179,6 +190,8 @@
 .kh-sum { background: var(--panel2); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .kh-sum[hidden] { display: none; }
 .kh-sum h3 { margin: 0; font-size: 1.25em; }
+.kh-sumh { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+.kh-again { flex: none; }
 .kh-sumgrid { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 .kh-rank { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; }
 .kh-rank b { color: var(--accent); }
@@ -209,7 +222,9 @@
   .kh-sum { order: 2; }
   .kh-sumgrid { grid-template-columns: 1fr; }
   .kh-say { order: 3; font-size: .95em; padding: 8px 10px; }
-  .kh-fieldwrap { order: 4; height: auto; aspect-ratio: 1 / .96; max-height: 58vh; min-height: 260px; }
+  /* Поле — головне: ≥ 55 % висоти екрана (3D у вузькій рамці дивиться згори й займає висоту), панель — під ним. */
+  .kh-fieldwrap { order: 4; aspect-ratio: auto; height: 56vh; height: 56svh; max-height: none; min-height: 300px;
+    width: auto; margin-inline: -14px; border-radius: 0; }   /* на всю ширину телефона: поле впирається в ширину, кожен піксель — більші гекси */
   /* Дії — шторкою одразу під полем (не липка: липка закривала б поле на малому екрані). */
   .kh-act { order: 5; background: var(--panel2); padding: 8px; border-radius: 14px; }
   .kh-offers { order: 6; }
