@@ -1819,10 +1819,16 @@
       // Ряди, що на телефоні гортаються вбік (чипи «👥», теми, швидкий запуск), — теж: не стрибати на початок.
       const xs = {};
       v.querySelectorAll('[data-keepx]').forEach((el) => { if (el.scrollLeft) xs[el.dataset.keepx] = el.scrollLeft; });
+      // На мить порожнє лобі — сторінка у висоту вікна, і варто комусь її поміряти (renderLobby бере висоту шапки),
+      // як браузер скидає прокрутку на самий верх: гортаєш каталог — і кожна новина про соло чи стіл викидає
+      // нагору (записка #69). Тож стара висота тримається, поки малюємо нове.
+      v.style.minHeight = v.offsetHeight + 'px';
       v.innerHTML = '';
       if (view.kind === 'panel') renderExtra(v, view.id.slice(2));
       else renderLobby(v);
-      if (keep != null) { const n = v.querySelector('.gfind'); if (n) { n.focus(); n.setSelectionRange(keep, keep); } }
+      v.style.minHeight = '';
+      // Поле пошуку вже могло виїхати за край — фокус повертаємо, але сторінку до нього не тягнемо.
+      if (keep != null) { const n = v.querySelector('.gfind'); if (n) { n.focus({ preventScroll: true }); n.setSelectionRange(keep, keep); } }
       v.querySelectorAll('[data-keepx]').forEach((el) => { if (xs[el.dataset.keepx]) el.scrollLeft = xs[el.dataset.keepx]; });
     }
   }

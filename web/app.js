@@ -178,25 +178,30 @@
   }
 
   // Стрибки прокрутки (записка #69): сторінка сама їде вгору, а відтворити не вдається. Пишемо кожен помітний рух
-  // угору, якого людина не просила (ні коліщатка, ні дотику, ні клавіші, ні затиснутої миші за останні 0,8 с),
-  // і поруч — що могло його дати: хто востаннє гортав зі скрипту, висота сторінки до й після (перемальовка, що на
+  // угору, якого людина не просила (ні коліщатка вгору, ні дотику, ні клавіші, ні затиснутої миші за останні 0,8 с;
+  // коліщатко вниз не рахується — саме під ним і викидало нагору),
+  // і поруч — що могло його дати: хто востаннє гортав зі скрипту (і focus() без preventScroll — він теж тягне
+  // сторінку до поля), висота сторінки до й після (перемальовка, що на
   // мить спорожнила сторінку), пади (правий стік гортає сторінку) і чи вікно було у фокусі. steps 1 — один ривок,
   // багато — повзе кадр за кадром.
   const diagJumps = [];
   {
     let intentAt = 0, held = false, lastY = scrollY, lastH = 0, run = null, scriptAt = 0, scriptBy = '';
     const intent = () => { intentAt = performance.now(); };
-    for (const ev of ['wheel', 'touchmove', 'keydown']) addEventListener(ev, intent, { capture: true, passive: true });
+    addEventListener('wheel', (e) => { if (e.deltaY < 0) intent(); }, { capture: true, passive: true });
+    for (const ev of ['touchmove', 'keydown']) addEventListener(ev, intent, { capture: true, passive: true });
     addEventListener('pointerdown', () => { held = true; intent(); }, true);
     for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { held = false; intent(); }, true);
-    const tag = (name, orig) => function (...a) {
+    const mark = (name) => {
       scriptAt = performance.now();
-      scriptBy = name + ' ← ' + diagCut((new Error().stack || '').split('\n').slice(2, 4).map((s) => s.trim().replace(location.origin, '')).join(' ← '), 240);
-      return orig.apply(this, a);
+      scriptBy = name + ' ← ' + diagCut((new Error().stack || '').split('\n').slice(3, 5).map((s) => s.trim().replace(location.origin, '')).join(' ← '), 240);
     };
+    const tag = (name, orig) => function (...a) { mark(name); return orig.apply(this, a); };
     window.scrollTo = tag('scrollTo', window.scrollTo);
     window.scrollBy = tag('scrollBy', window.scrollBy);
     Element.prototype.scrollIntoView = tag('scrollIntoView', Element.prototype.scrollIntoView);
+    const focusOrig = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (o) { if (!(o && o.preventScroll)) mark('focus'); return focusOrig.call(this, o); };
     addEventListener('scroll', () => {
       const y = scrollY, h = document.documentElement.scrollHeight, now = performance.now();
       if (y < lastY && !held && now - intentAt > 800) {
@@ -3240,7 +3245,7 @@
       if (!t) continue;
       t.value = d.v;
       if (d.v) fbGrow(t);
-      if (d.focus) { t.focus(); try { t.setSelectionRange(d.at, d.at); } catch { /* не текст */ } }
+      if (d.focus) { t.focus({ preventScroll: true }); try { t.setSelectionRange(d.at, d.at); } catch { /* не текст */ } }
     }
   }
   /// Enter — тяпнути, Shift+Enter — новий рядок; send(id, text, textarea, slot) — куди саме. Самий файл без слів — теж можна.
