@@ -5,6 +5,8 @@
 //  зберігає в localStorage і застосовує з наступного рестарту); onRestart — кнопка «Почати заново».
 //  onSeed(seed) — ОПЦІЙНО: поле сіду / «новий сід» (оркестратор має підключити: game.seed = seed; restart()).
 //  Відкрити/закрити — кнопка ⚙ або F1 чи `. Стан звуку не зберігається: на старті завжди 🔇.
+//  Поруч із ⚙ — ⛶ «на весь екран» (уся сторінка гри, і в рамці столу — тому koliya.js дає рамці allow="fullscreen";
+//  нема Fullscreen API — айфон — кнопки нема; вужче 640 px теж нема: там ⛶ столу на сайті). Вихід — ⛶ ще раз або Esc.
 //  K12 (пад): prefs?: { quality: 'high'|'low', rumble: bool } + onPref?(k, v) — розділ «Пристрій» (не правила, діють
 //  одразу); onToggle?(open) — панель відкрилась/закрилась; isOpen(); nav(key) — керування з пада: 'up'/'down' — рядок,
 //  'left'/'right' — значення (повзунок, перемикач) або сусідня кнопка, 'a' — натиснути, 'b'/'menu' — закрити.
@@ -20,6 +22,9 @@ const CSS = `
 .kol-gear{position:fixed;right:8px;top:8px;z-index:30;width:46px;height:46px;border-radius:10px;border:1px solid #fff3;
   background:rgba(15,18,14,.7);color:#eee;font-size:24px;cursor:pointer;line-height:1;touch-action:manipulation}
 .kol-gear:hover{background:rgba(40,46,36,.85)}
+.kol-gear.kol-fs{right:62px;display:flex;align-items:center;justify-content:center;padding:0}
+@media(max-width:640px){.kol-gear.kol-fs{display:none}}
+.kol-gear.kol-fs svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .kol-pan{position:fixed;right:0;top:0;bottom:0;width:340px;max-width:92vw;z-index:29;box-sizing:border-box;
   padding:60px 12px 14px;overflow-y:auto;background:rgba(14,17,13,.9);color:#e8e8e0;font:14px system-ui,sans-serif;
   border-left:1px solid #fff2;transform:translateX(100%);transition:transform .18s ease;backdrop-filter:blur(3px)}
@@ -135,6 +140,24 @@ export function createPanel(root, opts) {
   const gear = el('button', 'kol-gear', '⚙'); gear.title = 'Налаштування (F1 або `)';
   const pan = el('div', 'kol-pan');
   root.append(gear, pan);
+  // ⛶ — кутики малюємо самі (юнікодний ⛶ є не в кожному шрифті), як ⛶ столу в core.js
+  const fsIco = (on) => '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="'
+    + (on ? 'M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4' : 'M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4') + '"/></svg>';
+  const fsBtn = el('button', 'kol-gear kol-fs');
+  const fsSync = () => {
+    const on = !!document.fullscreenElement;
+    fsBtn.innerHTML = fsIco(on); fsBtn.title = on ? 'Вийти з повного екрана (Esc)' : 'Гра на весь монітор';
+  };
+  if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+    fsSync();
+    root.append(fsBtn);
+    fsBtn.addEventListener('click', () => {
+      fsBtn.blur();
+      const p = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      if (p && p.catch) p.catch(() => {});
+    });
+    document.addEventListener('fullscreenchange', fsSync);
+  }
 
   // кліки по кнопках не лишають фокус на панелі — клавіші знову йдуть у гру
   pan.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') e.target.blur(); });
@@ -454,6 +477,6 @@ export function createPanel(root, opts) {
     isOpen: () => pan.classList.contains('kol-open'),
     nav,
     toggle,
-    dispose() { removeEventListener('keydown', onKey); clearTimeout(msgT); gear.remove(); pan.remove(); style.remove(); },
+    dispose() { removeEventListener('keydown', onKey); document.removeEventListener('fullscreenchange', fsSync); clearTimeout(msgT); gear.remove(); fsBtn.remove(); pan.remove(); style.remove(); },
   };
 }

@@ -10,18 +10,21 @@
 //   множимо: більше, ніж на старті, не буває. s.keep = { start: [сокир, кайл, відер], due: [тик появи | 0, ×3] }.
 // 🚂 Потяг виштовхує (trainPush): гравець 1 с нічого не робить (ні руху, ні use), а вагон на ньому — щотику PUSH підодиниць до
 //   найближчої клітинки, де він не зачіпає ні вагона, ні стіни (спершу поза колією); не просувається — ставимо одразу.
-// 👻 Протиснутись крізь вагон (passTick/passMask): тиснеш рух у вагон PASS_T тиків поспіль — далі йдеш крізь
-//   потяг (вузький коридір, обійти нема як). pl.wp — лічильник. Цифри бота до/після — D:\or-wt\_kolia\k33\.
+// 👻 Крізь вагон (passMask/passSpeed): з 28.10 проходиш одразу, але в самому вагоні йдеш повільно (K33.slow ‰
+//   швидкості, ~1 с крізь вагон) — видно, що протискаєшся (render.js пригинає гравця), і потяг не стіна у вузькому
+//   коридорі. До того (passT > 0) треба було тиснути в вагон passT тиків поспіль, а далі — на повній швидкості; гравці
+//   сприймали це як «потяг не пускає». pl.wp — лічильник старого способу. Цифри бота до/після — D:\or-wt\_kolia\k33\.
 // 🎒 Вихід зі столу (leaveHold): річ з рук — на підлогу поруч; нема місця — дерево/залізо у склад, рейки в майстерню,
 //   інструмент (і що не влізло) — біля кінця колії.
 // 🆘 Порятунок (rescue): гравець RESCUE_T тиків тисне рух і не зрушує з місця, а пішки до колії не дійти (обгороджений
 //   водою/скелями) — переносимо до хвоста потяга, подія { t:'rescue', x, y, p }. pl.sk — лічильник.
 // Нове в стані (s.keep, pl.wp, pl.sk) іде в hash() загально (K6).
 // УВАГА: цикл імпорту rules → lost → rules: на верхньому рівні тут — лише літерали.
-import { U, G, I, WAGONS, PR, cellBlocked, wagonAt, wagonPos, putDrop, hitsAt, wagonsXY, slide } from './rules.js';
+import { U, G, I, WAGONS, PR, WAGON_HALF, cellBlocked, wagonAt, wagonPos, putDrop, hitsAt, wagonsXY, slide, circleBox } from './rules.js';
 
-/** Числа K33. Змінювати лише для дослідів (k33/botrun.mjs) — у грі це сталі, однакові в усіх. */
-export const K33 = { keep: 1, push: 1, passT: 10, rescue: 1 };
+/** Числа K33. Змінювати лише для дослідів (k33/botrun.mjs) — у грі це сталі, однакові в усіх.
+ *  passT: -1 — крізь вагони не пройти; 0 — одразу, але повільно (slow ‰ швидкості); > 0 — тиснути passT тиків (до 28.10). */
+export const K33 = { keep: 1, push: 1, passT: 0, slow: 300, rescue: 1 };
 const CHECK = 10;          // тиків між перевірками інструментів (0,5 с)
 const RESPAWN = 200;       // 10 с без інструмента — з'являється знову
 const PUSH = 150;          // підодиниць/тик, з якими вагон відсуває гравця (3 клітинки/с)
@@ -67,9 +70,21 @@ export function passMask(pl) {
   return K33.passT >= 0 && (pl.wp | 0) >= K33.passT ? (1 << WAGONS.length) - 1 : 0;
 }
 
+/** Чи гравець (коло в x,y) зачіпає якийсь вагон — тобто протискається крізь потяг (render.js теж) */
+export function inWagon(s, x, y, wag = wagonsXY(s)) {
+  for (const w of wag) if (circleBox(x, y, PR, w.x - WAGON_HALF, w.y - WAGON_HALF, w.x + WAGON_HALF, w.y + WAGON_HALF)) return true;
+  return false;
+}
+
+/** Швидкість руху цього тику (підодиниць): у вагоні — slow ‰ від v (passT = 0) */
+export function passSpeed(s, pl, v, wag) {
+  if (K33.passT !== 0 || !v || !inWagon(s, pl.x, pl.y, wag)) return v;
+  return Math.max(1, Math.round(v * K33.slow / 1000));
+}
+
 /** Рух гравця (до зсуву): тисне в вагон (а не в стіну) — лічильник протискання росте, інакше скидається */
 export function passTick(s, pl) {
-  if (K33.passT < 0) return;
+  if (K33.passT <= 0) return;
   let push = false;
   if (wants(pl)) {
     const wag = wagonsXY(s), ax = Math.abs(pl.mx), ay = Math.abs(pl.my), P = 60;

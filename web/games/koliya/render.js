@@ -5,7 +5,7 @@
 //  events — події тику (s.ev): тріски, бризки, пара, конфеті.
 // Світ: 1 клітинка = 1 одиниця; x стану → X, y стану → Z; підлога на Y = 0. Моделі дивляться в +X.
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
-import { U, G, O, I, WAGONS, canLay } from './rules.js';
+import { U, G, O, I, WAGONS, PR, WAGON_HALF, canLay, wagonsXY } from './rules.js';
 import { createExtrasRender } from './extras-render.js';   // K11: гуси й таблички станції
 import { LOOKS, CAM_DIST, loadPrefs, savePrefs } from './looks.js';   // K5: вигляди
 import { isChumak, onTheme } from './theme.js';   // K25: тема «Чумацький шлях» (лише вигляд)
@@ -402,6 +402,19 @@ function makeCraft() {
   const rails = new THREE.Group(); rails.position.set(-0.3, 0.26, 0); g.add(rails);
   mergeGroup(g); addBlob(g, 1.1, 0.85, 0, 0, -0.09);
   return { g, rails, nR: -1, stack: new THREE.Vector3(0.3, 0.84, 0.15) };
+}
+
+// K33 (з 28.10): крізь вагон гравець іде повільно (lost.js passSpeed) — малюємо, що він перелазить верхом: щойно коло
+// зачепило вагон, піднімаємо на дах (ROOF — висота даху з урахуванням scale 1.2), на виході — опускаємо
+const ROOF = [0.62, 0.45, 0.78];   // паротяг, склад, майстерня
+function climbY(wag, x, z) {
+  let y = 0;
+  for (let k = 0; k < wag.length; k++) {
+    const w = wag[k], d = Math.max(Math.abs(x * U - w.x), Math.abs(z * U - w.y)) - WAGON_HALF;
+    const f = Math.min(1, Math.max(0, (PR - d) / (PR + 150)));
+    if (f > 0) y = Math.max(y, f * f * (3 - 2 * f) * (ROOF[k] ?? 0.5));
+  }
+  return y;
 }
 
 // =====================================================================================
@@ -1529,6 +1542,7 @@ export function createRenderer(canvas) {
     // гравці
     const crowd = [];      // x гравців у грі — для камери гурту
     const plaus = dt * (s.params?.playerSpeed || 5) * 1.6 + 0.05;   // скільки гравець може пройти за кадр
+    const wagXY = s.train ? wagonsXY(s) : [];
     s.players.forEach((pl, k) => {
       const m = W.players[k]; if (!m) return;
       const a = A.pl[k] || B.pl[k], b = B.pl[k] || a;
@@ -1549,7 +1563,7 @@ export function createRenderer(canvas) {
       const speed = dt > 0 ? dist / dt : 0;
       const gi = Math.floor(z) * s.w + Math.floor(x);
       const gy = gi >= 0 && gi < W.n ? topOf(s.ground[gi], Math.floor(x), Math.floor(z)) : 0;
-      m.root.position.set(x, Math.max(0, gy), z);
+      m.root.position.set(x, Math.max(0, gy) + climbY(wagXY, x, z), z);   // K33: крізь вагон — перелазить верхом (повільно)
       const yaw = Math.atan2(-pl.fy, pl.fx);
       let dy = yaw - m.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
       m.yaw += dy * Math.min(1, dt * 14);
