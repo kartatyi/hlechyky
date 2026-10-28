@@ -331,7 +331,7 @@
     const v = st.view;
     if (!v) { setHtml(st.el.say, '<b>Чекаємо на початок…</b>'); return; }
     const me = v.me || null;
-    if (me && me.must !== 'discard') st.disc.key = null;
+    if (me && me.must !== 'discard') { st.disc.key = null; st.disc.hidden = false; }
     if (st.dlg && !(me && v.turn === me.seat && v.phase === 'main')) st.dlg = null;
     if (st.trade.open && !(me && v.phase === 'main')) st.trade.open = false;
 
@@ -923,6 +923,13 @@
       return false;
     },
     status(ctx) {
+      const room = (ctx && ctx.room) || {};
+      if (room.status === 'lobby') {
+        let people = 0;
+        for (let i = 0; i < 4; i++) if (ctx.nickOf(i)) people++;
+        const bots = +((room.options || {}).bots || 0);
+        return people + bots < 2 ? 'Треба щонайменше двоє: поклич когось або додай 🤖 Глека' : '';
+      }
       const v = ctx && ctx.view;
       if (!v || !v.players) return '';
       const st = cur && cur._kh;
