@@ -131,6 +131,11 @@ public sealed partial class KhutoryCore
     public int Sevens, Rounds;
     public List<int[]> Timeline = [];
     public int[] Trades = new int[MaxSeats], Got = new int[MaxSeats], Stolen = new int[MaxSeats];
+    /// <summary>Скільки разів у гравця крали (Кармелюк після сімки чи козака) — звання «Улюбленець Кармелюка».</summary>
+    public int[] Robbed = new int[MaxSeats];
+    /// <summary>Останні суми кидків цієї партії (до <see cref="RollsKeep"/>; найсвіжіша — остання) — смуга «Останні кидки».</summary>
+    public List<int> Rolls = [];
+    public const int RollsKeep = 8;
     public int[][] Built = [.. Enumerable.Range(0, MaxSeats).Select(_ => new int[3])];
 
     public KhutoryCore(KhutoryBoard board, IEnumerable<int> seats, Random rng)
@@ -598,6 +603,8 @@ public sealed partial class KhutoryCore
         Rolled = true;
         var sum = a + b;
         DiceCount[sum - 2]++;
+        Rolls.Add(sum);
+        if (Rolls.Count > RollsKeep) Rolls.RemoveRange(0, Rolls.Count - RollsKeep);
         Say($"{NameOf(s)} кидає {a} + {b} = {sum}");
         if (sum == 7)
         {
@@ -702,6 +709,7 @@ public sealed partial class KhutoryCore
         Hand[victim][r]--;
         Hand[s][r]++;
         Stolen[s]++;
+        Robbed[victim]++;
         Emit("steal", [("seat", s), ("from", victim)], "res", KhutoryBoard.Res[r], [s, victim]);
         Say($"{NameOf(s)} забирає карту в {NameOf(victim)}");
         StealFrom = [];

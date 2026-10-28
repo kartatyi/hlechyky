@@ -101,7 +101,7 @@
     v.board.hexes.forEach((h, i) => { if (h.num === sum && i !== v.robber) for (const t of v.towns) if (h.v.includes(t.v)) gains.push({ hex: i, seat: t.seat, res: { forest: 'wood', pit: 'clay', pasture: 'wool', field: 'grain', mountain: 'ore' }[h.t], n: t.city ? 2 : 1 }); });
     const hand = v.me ? { ...v.me.hand } : null;
     if (hand) for (const g of gains) if (g.seat === v.me.seat) hand[g.res] += g.n;
-    S.v = { ...v, seq, dice: [a, b], events: [...v.events, { seq, k: 'roll', seat: v.turn ?? 0, d: [a, b], gains }].slice(-30),
+    S.v = { ...v, seq, dice: [a, b], rolls: [...(v.rolls || []), sum].slice(-8), events: [...v.events, { seq, k: 'roll', seat: v.turn ?? 0, d: [a, b], gains }].slice(-30),
       me: v.me ? { ...v.me, hand } : null, log: [...v.log, 'Кидок ' + a + ' + ' + b + ' = ' + sum].slice(-12) };
     push();
   };

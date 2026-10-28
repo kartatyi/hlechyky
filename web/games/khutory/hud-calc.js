@@ -163,3 +163,145 @@ export function chartGeom(timeline, w, h, target = 0, pad = 22) {
   for (let s = 0; s < seats; s++) lines.push(rows.map((row, i) => [x(i), y(row[s] || 0)]));
   return { lines, max, x, y, targetY: target ? y(target) : null };
 }
+
+// ─── Плашки гравців, смуга чисел, звання підсумку (khutory-look.md §4, §9, §12) ───────────────────────
+
+/**
+ * Скільки бракує до нагород: «🛤 3/7», «⚔ 1/3». Шлях — щонайменше 5 і на 1 довший за власника; сотня — щонайменше 3
+ * козаки і на 1 більше за власника. has — нагорода в цього гравця; near — за крок до нагороди.
+ */
+export function awardNeed(longest, army, p) {
+  const one = (holder, n, base) => {
+    const has = !!holder && holder.seat === p.seat;
+    const need = Math.max(base, holder && !has ? holder.n + 1 : base);
+    return { n, need, has, near: !has && n >= need - 1, pct: Math.min(100, Math.round(n / need * 100)) };
+  };
+  return {
+    road: one(longest ? { seat: longest.seat, n: longest.len } : null, p.road || 0, 5),
+    army: one(army ? { seat: army.seat, n: army.n } : null, p.knights || 0, 3),
+  };
+}
+
+/** Пристані, біля яких стоять хати/містечка гравця: ['any', 'wood', …] без повторів (any — першою). */
+export function seatPorts(board, towns, seat) {
+  const out = [];
+  for (const t of towns || []) {
+    if (t.seat !== seat) continue;
+    const p = portAt(board, t.v);
+    if (p && out.indexOf(p.kind) < 0) out.push(p.kind);
+  }
+  return out.sort((a, b) => (a === 'any' ? -1 : b === 'any' ? 1 : RES.indexOf(a) - RES.indexOf(b)));
+}
+
+/**
+ * Що дасть кожне число 2..12 місцю seat: [{ n, pips, res: { wood: 2 }, cnt, hexes, robbed }] і avg — скільки карт
+ * у середньому за один кидок. Містечко — ×2; гекс із Кармелюком не родить (robbed — там мої землі під ним).
+ * hexes — усі гекси з цим числом (для підсвітки на полі).
+ */
+export function numberYield(view, seat) {
+  const b = view.board, mine = (view.towns || []).filter((t) => t.seat === seat);
+  const cells = [];
+  let avg = 0;
+  for (let n = 2; n <= 12; n++) {
+    const cell = { n, pips: n === 7 ? 6 : PIPS[n] || 0, res: {}, cnt: 0, hexes: [], robbed: false };
+    if (n !== 7) {
+      b.hexes.forEach((hx, i) => {
+        if (hx.num !== n) return;
+        cell.hexes.push(i);
+        const res = TERRAIN_RES[hx.t];
+        if (!res) return;
+        let k = 0;
+        for (const t of mine) if (hx.v.indexOf(t.v) >= 0) k += t.city ? 2 : 1;
+        if (!k) return;
+        if (i === view.robber) { cell.robbed = true; return; }
+        cell.res[res] = (cell.res[res] || 0) + k;
+        cell.cnt += k;
+      });
+    }
+    avg += cell.pips / 36 * cell.cnt;
+    cells.push(cell);
+  }
+  return { cells, avg };
+}
+
+/**
+ * Звання підсумку: [{ seat|null, icon, name, desc }]. Лише чесний лідер (значення > 0, без нічиєї), не більше двох
+ * звань на людину (у порядку важливості). Загальні (seat null — «Щасливе число») — у кінці.
+ * over — view.over; ctx — { longest, army, players } з виду (нагороди й козаки на кінець партії).
+ */
+export function sumTitles(over, ctx = {}) {
+  const st = (over && over.stats) || {}, S = st.seats || [];
+  const out = [], per = {};
+  const give = (seat, icon, name, desc) => {
+    if (seat == null || (per[seat] || 0) >= 2) return;
+    per[seat] = (per[seat] || 0) + 1;
+    out.push({ seat, icon, name, desc });
+  };
+  /** Лідер за f (або найменший, low) без нічиєї; для «найменше» — ще й відрив хоча б 20 % від наступного. */
+  const lead = (rows, f, low = false, min = 1) => {
+    if (rows.length < 2) return null;
+    const sorted = [...rows].sort((a, b) => (low ? f(a) - f(b) : f(b) - f(a)));
+    const a = f(sorted[0]), b = f(sorted[1]);
+    if (a === b) return null;
+    if (!low && a < min) return null;   // «1 обмін» — не звання
+    if (low && b - a < Math.max(1, Math.round(b * 0.2))) return null;
+    return sorted[0];
+  };
+  const players = ctx.players || [];
+  const kn = (s) => { const p = players.find((x) => x.seat === s); return p ? p.knights || 0 : 0; };
+  const forms = (n, a, b, c) => { const m = Math.abs(n) % 100, d = m % 10; return m > 10 && m < 20 ? c : d === 1 ? a : d >= 2 && d <= 4 ? b : c; };
+
+  if (ctx.longest && ctx.longest.seat != null) give(ctx.longest.seat, '🐂', 'Чумак року', 'найдовший шлях — ' + ctx.longest.len + ' ' + forms(ctx.longest.len, 'відтинок', 'відтинки', 'відтинків'));
+  else { const r = lead(S, (x) => (x.built || {}).road || 0, false, 4); if (r) give(r.seat, '🐂', 'Чумак року', r.built.road + ' ' + forms(r.built.road, 'шлях', 'шляхи', 'шляхів') + ' прокладено'); }
+  const ot = ctx.army && ctx.army.seat != null ? { seat: ctx.army.seat, n: ctx.army.n } : (() => { const r = lead(S, (x) => kn(x.seat), false, 2); return r ? { seat: r.seat, n: kn(r.seat) } : null; })();
+  if (ot) give(ot.seat, '⚔', 'Отаман', ot.n + ' ' + forms(ot.n, 'козак', 'козаки', 'козаків') + ' зіграно');
+  const rb = lead(S, (x) => x.robbed || 0, false, 2);
+  if (rb) give(rb.seat, '😿', 'Улюбленець Кармелюка', 'обкрадали ' + rb.robbed + ' ' + forms(rb.robbed, 'раз', 'рази', 'разів'));
+  const tr = lead(S, (x) => x.trades || 0, false, 2);
+  if (tr) give(tr.seat, '🤝', 'Майстер торгу', tr.trades + ' ' + forms(tr.trades, 'обмін', 'обміни', 'обмінів'));
+  const sl = lead(S, (x) => x.stolen || 0, false, 2);
+  if (sl) give(sl.seat, '🥷', 'Кармелюків побратим', sl.stolen + ' ' + forms(sl.stolen, 'раз', 'рази', 'разів') + ' обібрав сусідів');
+  const gt = lead(S, (x) => x.got || 0);
+  if (gt) give(gt.seat, '🌾', 'Багатий урожай', gt.got + ' ' + forms(gt.got, 'карта', 'карти', 'карт') + ' з полів');
+  const bd = lead(S, (x) => ((x.built || {}).town || 0) + ((x.built || {}).city || 0) * 2, false, 3);
+  if (bd) { const tw = (bd.built || {}).town || 0, ct = (bd.built || {}).city || 0; give(bd.seat, '🏗', 'Будівничий', tw + ' ' + forms(tw, 'хата', 'хати', 'хат') + ', ' + ct + ' ' + forms(ct, 'містечко', 'містечка', 'містечок')); }
+  const lo = lead(S, (x) => x.got || 0, true);
+  if (lo) give(lo.seat, '🙈', 'Кубики не люблять', 'лише ' + lo.got + ' ' + forms(lo.got, 'карта', 'карти', 'карт') + ' з полів');
+  const di = st.dice || [];
+  if (di.length === 11) {
+    const mx = Math.max(...di);
+    if (mx > 0) {
+      const n = di.indexOf(mx) + 2;
+      out.push({ seat: null, icon: '🎲', name: 'Щасливе число ' + n, desc: 'випало ' + mx + ' ' + forms(mx, 'раз', 'рази', 'разів') + (n === 7 ? ' — Кармелюк не вилазив із хуторів' : '') });
+    }
+  }
+  return out;
+}
+
+/**
+ * «Твій момент»: коло, де місце seat найбільше піднялось у таблиці (рівні — більший приріст очок).
+ * timeline[i][seat] — очки ЗА НОМЕРАМИ місць; seats — хто грав. null — моменту нема (ні підйому, ні очок).
+ * round — номер кола (приблизно, за часткою від rounds), place — місце після нього (1 — перше; tie — ділить його), up/gain.
+ */
+export function myMoment(timeline, seat, seats, rounds = 0) {
+  const tl = timeline || [];
+  if (tl.length < 2 || seat == null) return null;
+  // Місце в таблиці (рівні — спільне), а для «піднявся» нічия рахується як «позаду»: вийти з нічиї вперед — теж підйом.
+  const place = (row) => 1 + seats.filter((s) => s !== seat && (row[s] || 0) > (row[seat] || 0)).length;
+  const strict = (row) => 1 + seats.filter((s) => s !== seat && (row[s] || 0) >= (row[seat] || 0)).length;
+  let mo = null;
+  for (let i = 1; i < tl.length; i++) {
+    const up = strict(tl[i - 1]) - strict(tl[i]), gain = (tl[i][seat] || 0) - (tl[i - 1][seat] || 0);
+    if (up <= 0 && gain <= 0) continue;
+    const sc = Math.max(0, up) * 10 + gain;
+    if (!mo || sc > mo.sc) mo = { i, up, gain, sc, place: place(tl[i]), tie: seats.some((s) => s !== seat && (tl[i][s] || 0) === (tl[i][seat] || 0)) };
+  }
+  if (!mo) return null;
+  mo.round = Math.max(1, Math.round((rounds || tl.length - 1) * mo.i / (tl.length - 1)));
+  return mo;
+}
+
+/** Графік за місцями: лінії лише тих, хто грав (timeline — за НОМЕРАМИ місць, з нулями на порожніх). */
+export function chartLines(geom, seats) {
+  return seats.filter((s) => geom.lines[s]).map((s) => ({ seat: s, pts: geom.lines[s] }));
+}

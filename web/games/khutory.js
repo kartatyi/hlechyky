@@ -158,6 +158,13 @@
     st.el = {};
     for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'fab', 'snd'])
       st.el[k] = root.querySelector('.khu-' + k);
+    // Смуга «що дасть кожне число» — одразу під панеллю ходу (кубики — в ній); поповер значків плашки — над картою.
+    st.el.act.insertAdjacentHTML('afterend', '<div class="khu-nums" hidden></div>');
+    st.el.nums = root.querySelector('.khu-nums');
+    st.el.nums.addEventListener('click', (e) => onNums(root, e));
+    st.el.players.insertAdjacentHTML('afterend', '<div class="khu-pop" role="tooltip" hidden></div>');
+    st.el.pop = root.querySelector('.khu-pop');
+    st.el.players.parentElement.addEventListener('click', (e) => onPlateTap(root, e));
     // Звук: типово вимкнено, стан пам'ятає сам модуль; AudioContext — лише на першому play() при ввімкненому.
     try { st.snd = M.S && M.S.createSound ? M.S.createSound() : null; } catch (e) { st.snd = null; }
     paintSnd(st);
@@ -181,14 +188,14 @@
     b.setAttribute('aria-label', b.title);
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
-  /// Останні 5 с МОГО строку — «тік» раз на секунду.
+  /// Останні 10 с МОГО строку — «тік» раз на секунду (лише коли звук увімкнено: вимкнений play мовчить).
   function tickSound(st, v) {
     const me = v.me;
     if (!st.snd || !me || !v.deadline || v.phase === 'over') return;   // вимкнено — play сам мовчить (дешево)
     const mine = !!me.must || (v.turn === me.seat && (v.phase === 'main' || v.phase === 'road2'));
     if (!mine) return;
     const left = Date.parse(v.deadline) - Date.now();
-    if (!(left > 0 && left <= 5000)) return;
+    if (!(left > 0 && left <= 10000)) return;
     // Ключ — секунда до строку (не рядок deadline: легкий і повний вид можуть писати час по-різному).
     const key = Math.ceil((Date.parse(v.deadline) - 500) / 1000) + '|' + Math.ceil(left / 1000);
     if (st.tickKey === key) return;
@@ -421,6 +428,7 @@
     renderHand(st, v, me);
     renderDlg(st, v, me);
     renderSum(st, v);
+    renderNumbers(st, v, me);
     st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
     // Телефон: панель дій — під полем, тож головну дію ходу дублюємо кнопкою на самому полі (не гортати щоходу).
     const fab = me && me.must === 'roll' ? '<button type="button" class="khu-big primary" data-a="roll">🎲 Кинути</button>'
@@ -460,34 +468,84 @@
     return die(d[0]) + die(d[1], true) + '<b class="khu-dsum' + (d[0] + d[1] === 7 ? ' seven' : '') + '">= ' + (d[0] + d[1]) + '</b>';
   }
 
+  /// Пояснення значків плашки — поповер на дотик (title на телефоні не видно).
+  const PLATE_TIPS = {
+    pts: (v) => '⭐ <b>Очки.</b> Хата — 1, містечко — 2, «Чумацький шлях» і «Найсильніша сотня» — по 2, скарб — 1. Хто першим набере ' + v.target + ' у свій хід — переміг.',
+    cards: () => '🂠 <b>Карти в руці.</b> Понад 7 — на сімці Кармелюк забере половину (🥷).',
+    dev: () => '📜 <b>Грамоти:</b> козак, скарб, Толока, Врожайний рік, Ярмарок. Що саме — бачить лише власник.',
+    road: (v) => '🛤 <b>Чумацький шлях</b> (+2 ⭐): найдовший безперервний шлях — щонайменше 5 відтинків і довший, ніж у власника'
+      + (v.longest ? ' (зараз ' + esc(nickOf(v, v.longest.seat)) + ', ' + v.longest.len + ')' : '') + '.',
+    army: (v) => '⚔ <b>Найсильніша сотня</b> (+2 ⭐): щонайменше 3 зіграні козаки і більше, ніж у власника'
+      + (v.army ? ' (зараз ' + esc(nickOf(v, v.army.seat)) + ', ' + v.army.n + ')' : '') + '.',
+    port: () => '⚓ <b>Пристані</b> біля хат: «3:1» — будь-які 3 однакові на 1, «2:1» — свій ресурс 2 на 1.',
+    shape: () => '●▲■◆ <b>Фігура гравця</b> — поруч із кольором скрізь: на плашці, на полі, у підсумку.',
+  };
+
   function renderPlayers(st, v, me) {
+    const C = M.C, K = M.K;
     const thinking = new Set();
     if (v.phase === 'discard' && v.discard) for (const s of Object.keys(v.discard)) thinking.add(+s);
     else if (v.turn != null && v.phase !== 'over') thinking.add(v.turn);
     const L = 2 * Math.PI * 19;
+    const tip = (k, html, title) => '<span class="khu-ic" data-tip="' + k + '" title="' + esc(title) + '">' + html + '</span>';
     const h = v.players.map((p) => {
       const mine = me && me.seat === p.seat;
       const fin = v.over && v.over.points ? v.over.points[p.seat] : null;
       const pts = fin != null ? fin : mine && me.points != null ? me.points : p.points;
       const secret = fin == null && mine && me.points > p.points ? '<small title="Скарби в руці бачиш лише ти">+' + (me.points - p.points) + ' потай</small>' : '';
-      const awards = (v.longest && v.longest.seat === p.seat ? '<span class="khu-aw" title="Чумацький шлях: найдовший шлях (' + v.longest.len + '), +2 очки">🛤 +2</span>' : '')
-        + (v.army && v.army.seat === p.seat ? '<span class="khu-aw" title="Найсильніша сотня: найбільше козаків (' + v.army.n + '), +2 очки">⚔ +2</span>' : '');
+      const aw = K.awardNeed(v.longest, v.army, p);
+      const bar = (a) => '<span class="khu-mb"><i style="width:' + a.pct + '%"></i></span>';
+      const award = (k, icon, name, a) => a.has
+        ? tip(k, '<span class="khu-aw has">' + icon + ' <span class="khu-w">' + name + ' </span>+2</span>', name + ': +2 очки')
+        : tip(k, '<span class="khu-aw' + (a.near ? ' near' : '') + '">' + icon + ' ' + a.n + '/' + a.need + bar(a) + '</span>',
+          name + ': ' + a.n + ' з ' + a.need + ' потрібних');
+      const ports = K.seatPorts(v.board, v.towns, p.seat).map((k) => k === 'any' ? '⚓3:1' : RES_ICON[k] + '2:1');
       const think = thinking.has(p.seat);
+      const ci = p.color != null ? p.color : p.seat;
+      const light = !!(C.SEAT_LIGHT && C.SEAT_LIGHT[ci]);
       const name = esc(p.nick) + (p.bot ? '' : p.away ? ' <span title="Вийшов або проспав — за нього грає Глек">🤖</span>' : '');
-      return '<div class="khu-pl' + (v.turn === p.seat && v.phase !== 'over' ? ' turn' : '') + (mine ? ' me' : '') + '" data-seat="' + p.seat + '" style="--pc:' + colorOf(v, p.seat) + '">'
+      return '<div class="khu-pl' + (v.turn === p.seat && v.phase !== 'over' ? ' turn' : '') + (mine ? ' me' : '') + (light ? ' light' : '') + (think && v.deadline ? ' think' : '')
+        + '" data-seat="' + p.seat + '" style="--pc:' + colorOf(v, p.seat) + '">'
         + '<span class="khu-av"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="19"/>'
         + (think && v.deadline ? '<circle class="fg" cx="22" cy="22" r="19" transform="rotate(-90 22 22)" stroke-dasharray="' + L.toFixed(1) + '"/>' : '')
-        + '</svg><b>' + (p.bot ? '🤖' : esc(String(p.nick || '?').trim().charAt(0).toUpperCase())) + '</b></span>'
-        + '<span class="khu-pi"><span class="khu-pn">' + name + (mine ? ' <em>(ти)</em>' : '') + '</span>'
-        + '<span class="khu-ps"><b title="Очки (до ' + v.target + ')">⭐ ' + pts + '</b>' + secret
-        + '<span title="Карт у руці">🂠 ' + p.cards + '</span><span title="Грамот">📜 ' + p.dev + '</span>'
-        + (p.knights ? '<span title="Зіграних козаків">⚔ ' + p.knights + '</span>' : '') + '</span>'
-        + (awards ? '<span class="khu-ps">' + awards + '</span>' : '') + '</span>'
-        + (think ? '<span class="khu-sec" data-sec></span>' : '')
+        + '</svg><b>' + (p.bot ? '🤖' : esc(String(p.nick || '?').trim().charAt(0).toUpperCase())) + '</b>'
+        + '<span class="khu-shp" data-tip="shape" title="Фігура гравця">' + ((C.SEAT_SHAPE || [])[ci] || '●') + '</span></span>'
+        + '<span class="khu-pn">' + name + (mine ? ' <em>(ти)</em>' : '') + '</span>'
+        + '<span class="khu-pp">' + tip('pts', '⭐ <b>' + pts + '</b><span class="khu-w"> з ' + v.target + '</span>', 'Очки (до ' + v.target + ')')
+        + '<span class="khu-mb gold"><i style="width:' + Math.min(100, Math.round(pts / (v.target || 10) * 100)) + '%"></i></span>' + secret + '</span>'
+        + '<span class="khu-ps">' + tip('cards', '🂠 <b>' + p.cards + '</b><span class="khu-w"> ' + plural(p.cards, 'карта', 'карти', 'карт') + '</span>'
+          + (p.cards > 7 ? '<span class="khu-warn">🥷</span>' : ''), p.cards + ' ' + plural(p.cards, 'карта', 'карти', 'карт') + ' у руці' + (p.cards > 7 ? ' — понад 7, світить Кармелюк' : ''))
+        + tip('dev', '📜 <b>' + p.dev + '</b><span class="khu-w"> ' + plural(p.dev, 'грамота', 'грамоти', 'грамот') + '</span>', p.dev + ' ' + plural(p.dev, 'грамота', 'грамоти', 'грамот'))
+        + '</span>'
+        + '<span class="khu-ps khu-aws">' + award('road', '🛤', 'Шлях', aw.road) + award('army', '⚔', 'Сотня', aw.army)
+        + (ports.length ? tip('port', '<span class="khu-port">' + ports.join(' ') + '</span>', 'Пристані: ' + ports.join(', ')) : '') + '</span>'
+        + (think && v.deadline ? '<span class="khu-sec" data-sec></span><span class="khu-tm"><i></i></span>' : '')
         + '</div>';
     }).join('');
     setHtml(st.el.players, '<div class="khu-target" title="Хто першим набере стільки очок у свій хід — переміг">до ' + v.target + ' ⭐</div>' + h);
     tickArcs(st);
+  }
+
+  /// Дотик по значку плашки (🂠/📜/🛤/⚔/⭐/⚓/фігура) — коротке пояснення під ним; дотик деінде — сховати.
+  function onPlateTap(root, e) {
+    const st = root._kh;
+    if (!st || !st.el || !st.el.pop) return;
+    const pop = st.el.pop;
+    const t = e.target.closest('[data-tip]');
+    if (!t || !st.el.players.contains(t) || !st.view) { if (!pop.hidden) pop.hidden = true; return; }
+    const f = PLATE_TIPS[t.dataset.tip];
+    if (!f) return;
+    if (!pop.hidden && pop._for === t.dataset.tip + t.closest('[data-seat]').dataset.seat) { pop.hidden = true; return; }
+    pop._for = t.dataset.tip + t.closest('[data-seat]').dataset.seat;
+    pop.innerHTML = f(st.view);
+    pop.hidden = false;
+    const host = st.el.players.parentElement.getBoundingClientRect(), r = t.getBoundingClientRect();
+    const w = Math.min(260, host.width - 16);
+    pop.style.width = w + 'px';
+    pop.style.left = Math.max(8, Math.min(host.width - w - 8, r.left - host.left + r.width / 2 - w / 2)) + 'px';
+    pop.style.top = (r.bottom - host.top + 6) + 'px';
+    clearTimeout(st.popT);
+    st.popT = setTimeout(() => { pop.hidden = true; }, 6000);
   }
 
   function renderAct(st, v, me) {
@@ -723,25 +781,52 @@
     st.el.sum.hidden = false;
     const K = M.K, s = o.stats || {};
     const pts = o.points || [];
-    const order = v.players.map((p) => p.seat).sort((a, b) => (pts[b] || 0) - (pts[a] || 0));
+    const seats = v.players.map((p) => p.seat);
+    const order = [...seats].sort((a, b) => (pts[b] || 0) - (pts[a] || 0));
+    const whoM = (x) => seatMark(v, x) + '<b>' + esc(nickOf(v, x)) + '</b>';
     // «Ану ще раз» каркаса — під полем і журналом, новачок його не бачить: дублюємо в шапці підсумку (тисне ту саму кнопку).
     const again = st.ctx && st.ctx.mine ? '<button type="button" class="khu-mid primary khu-again" data-a="again">🔁 Ану ще раз</button>' : '';
-    let h = '<div class="khu-sumh"><h3>' + (o.winner != null ? '🏆 Переміг ' + who(v, o.winner) + ' — ' + (pts[o.winner] || 0) + ' ⭐' : '🏁 Партію скінчено')
-      + (o.reason === 'left' ? ' <span class="muted">(решта вийшли)</span>' : '') + '</h3>' + again + '</div>';
-    h += '<div class="khu-sumgrid"><div><ol class="khu-rank">' + order.map((x) => '<li>' + who(v, x) + ' <b>' + (pts[x] || 0) + ' ⭐</b></li>').join('') + '</ol>';
-    if (s.rounds) h += '<p class="muted small">' + s.rounds + ' ' + plural(s.rounds, 'коло', 'кола', 'кіл') + '</p>';
-    h += '</div>';
-    // Графік очок за колами.
+    let h = '<div class="khu-sumh"' + (o.winner != null ? ' style="--pc:' + colorOf(v, o.winner) + '"' : '') + '><span class="khu-cup">' + (o.winner != null ? '🏆' : '🏁') + '</span><div>'
+      + (o.winner != null ? '<div class="muted small">Голова громади</div><h3>' + whoM(o.winner) + ' — ' + (pts[o.winner] || 0) + ' ⭐'
+        + (s.rounds ? ' <span class="muted small">за ' + s.rounds + ' ' + plural(s.rounds, 'коло', 'кола', 'кіл') + '</span>' : '') + '</h3>' : '<h3>Партію скінчено</h3>')
+      + (o.reason === 'left' ? '<span class="muted">(решта вийшли)</span>' : '') + '</div>' + again + '</div>';
+    // Звання (не більше двох на людину) і «твій момент».
+    const titles = K.sumTitles(o, v);
+    if (titles.length) {
+      h += '<div class="khu-titles">' + titles.map((t) => '<div class="khu-ti"' + (t.seat != null ? ' style="--pc:' + colorOf(v, t.seat) + '"' : '') + '>'
+        + '<span class="i">' + t.icon + '</span><div><div class="n">' + esc(t.name) + '</div>'
+        + (t.seat != null ? '<div class="w">' + whoM(t.seat) + '</div>' : '') + '<div class="d">' + esc(t.desc) + '</div></div></div>').join('') + '</div>';
+    }
+    const me = v.me && seats.includes(v.me.seat) ? v.me.seat : null;
+    const mo = me != null ? K.myMoment(s.timeline, me, seats, s.rounds) : null;
+    if (mo) {
+      const place = ['', 'перше', 'друге', 'третє', 'четверте'][mo.place] || mo.place + '-е';
+      h += '<div class="khu-moment">✨ <b>Твій момент</b>: коло ~' + mo.round + ' — '
+        + (mo.up > 0 ? (mo.place === 1 && !mo.tie ? 'ти вирвався вперед' : mo.place === 1 ? 'ти наздогнав лідера' : 'ти обійшов суперника і вийшов на ' + place + ' місце') : '+' + mo.gain + ' ⭐ за коло')
+        + (mo.up > 0 && mo.gain > 0 ? ' (+' + mo.gain + ' ⭐)' : '') + '. '
+        + (o.winner === me ? 'Далі — перемога!' : 'Наприкінці — ' + (pts[me] || 0) + ' ⭐' + (v.target > (pts[me] || 0) ? ', до перемоги бракувало ' + (v.target - (pts[me] || 0)) : '') + '.') + '</div>';
+    }
+    h += '<div class="khu-sumgrid"><div><ol class="khu-rank">' + order.map((x) => '<li>' + whoM(x) + ' <b>' + (pts[x] || 0) + ' ⭐</b></li>').join('') + '</ol></div>';
+    // Графік очок за колами. timeline — за НОМЕРАМИ місць (з нулями на порожніх), тож лінію беремо за p.seat.
     if (s.timeline && s.timeline.length > 1) {
       const W = 320, H = 170;
       const g = K.chartGeom(s.timeline, W, H, v.target);
       let svg = '<svg class="khu-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Очки за колами">';
       for (let p = 0; p <= g.max; p += 2) svg += '<line x1="22" x2="' + (W - 22) + '" y1="' + g.y(p) + '" y2="' + g.y(p) + '" class="grid"/><text x="16" y="' + (g.y(p) + 4) + '" class="ax">' + p + '</text>';
       if (g.targetY != null) svg += '<line x1="22" x2="' + (W - 22) + '" y1="' + g.targetY + '" y2="' + g.targetY + '" class="goal"/><text x="' + (W - 22) + '" y="' + (g.targetY - 4) + '" class="ax" text-anchor="end">мета ' + v.target + '</text>';
-      g.lines.forEach((pl, i) => {
-        const seat = v.players[i] ? v.players[i].seat : i;
-        svg += '<polyline points="' + pl.map((p) => p.join(',')).join(' ') + '" style="stroke:' + colorOf(v, seat) + '"' + (seat === o.winner ? ' class="win"' : '') + '/>';
-      });
+      const lines = K.chartLines(g, seats);
+      for (const ln of lines) {
+        svg += '<polyline points="' + ln.pts.map((p) => p.join(',')).join(' ') + '" style="stroke:' + colorOf(v, ln.seat) + '"' + (ln.seat === o.winner ? ' class="win"' : '') + '/>';
+      }
+      // Фігура гравця на кінці лінії (колір сам не розрізняє всіх); рівні кінці — розсунуті вбік.
+      const used = {};
+      for (const ln of lines) {
+        const [x, y] = ln.pts[ln.pts.length - 1];
+        const k = Math.round(y);
+        const dx = (used[k] = (used[k] || 0) + 1) - 1;
+        const ci = (playerOf(v, ln.seat) || {}).color;
+        svg += '<text x="' + (x + 2 + dx * 11) + '" y="' + (y + 4) + '" class="shp" style="fill:' + colorOf(v, ln.seat) + '">' + (M.C.SEAT_SHAPE || [])[ci != null ? ci : ln.seat] + '</text>';
+      }
       svg += '<text x="' + (W / 2) + '" y="' + (H - 4) + '" class="ax" text-anchor="middle">кола →</text></svg>';
       h += '<div><div class="khu-trl">Очки за колами</div>' + svg + '</div>';
     }
@@ -753,11 +838,81 @@
     }
     h += '</div>';
     if (s.seats && s.seats.length) {
-      h += '<div class="khu-tbl"><table class="khu-stats"><thead><tr><th></th><th>🤝<br><small>обмінів</small></th><th>🂠<br><small>отримав карт</small></th><th>🥷<br><small>вкрав</small></th><th>🛤<br><small>шляхів</small></th><th>🏠<br><small>хат</small></th><th>🏛<br><small>містечок</small></th></tr></thead><tbody>'
-        + s.seats.map((x) => '<tr><td>' + who(v, x.seat) + '</td><td>' + x.trades + '</td><td>' + x.got + '</td><td>' + x.stolen + '</td><td>' + ((x.built || {}).road || 0) + '</td><td>' + ((x.built || {}).town || 0) + '</td><td>' + ((x.built || {}).city || 0) + '</td></tr>').join('')
+      const hasRobbed = s.seats.some((x) => x.robbed != null);
+      h += '<div class="khu-tbl"><table class="khu-stats"><thead><tr><th></th><th>🤝<br><small>обмінів</small></th><th>🂠<br><small>отримав карт</small></th><th>🥷<br><small>вкрав</small></th>'
+        + (hasRobbed ? '<th>😿<br><small>обкрали</small></th>' : '') + '<th>🛤<br><small>шляхів</small></th><th>🏠<br><small>хат</small></th><th>🏛<br><small>містечок</small></th></tr></thead><tbody>'
+        + s.seats.map((x) => '<tr><td>' + whoM(x.seat) + '</td><td>' + x.trades + '</td><td>' + x.got + '</td><td>' + x.stolen + '</td>' + (hasRobbed ? '<td>' + (x.robbed || 0) + '</td>' : '')
+          + '<td>' + ((x.built || {}).road || 0) + '</td><td>' + ((x.built || {}).town || 0) + '</td><td>' + ((x.built || {}).city || 0) + '</td></tr>').join('')
         + '</tbody></table></div>';
     }
     setHtml(st.el.sum, h);
+  }
+
+  /// Знак гравця: його колір + фігура ●▲■◆ (на світлому — темна фігура й кант).
+  function seatMark(v, seat) {
+    const p = playerOf(v, seat), ci = p && p.color != null ? p.color : seat;
+    const light = !!(M.C.SEAT_LIGHT && M.C.SEAT_LIGHT[ci]);
+    return '<i class="khu-pmark' + (light ? ' light' : '') + '" style="--pc:' + colorOf(v, seat) + '" aria-hidden="true">' + ((M.C.SEAT_SHAPE || [])[ci] || '●') + '</i>';
+  }
+
+  /// Смуга «що дасть кожне число» 2…12 (khutory-look.md §9): крапки ймовірності, що дасть МЕНІ, останні кидки.
+  function renderNumbers(st, v, me) {
+    const el = st.el.nums;
+    if (!el) return;
+    if (!me || !v.board || v.over || v.phase === 'setup' || v.phase === 'over') {
+      if (st.numSel != null) glow(st, null);
+      setHtml(el, ''); el.hidden = true; return;
+    }
+    el.hidden = false;
+    if (st.numsOpen == null) st.numsOpen = store.get('kh.nums') !== '0';
+    const { cells, avg } = M.K.numberYield(v, me.seat);
+    const held = rollHeld(st);
+    const cur = !held && v.rolled && v.dice ? v.dice[0] + v.dice[1] : null;
+    const rolls = held && v.rolled ? (v.rolls || []).slice(0, -1) : (v.rolls || []);   // кубики ще котяться — не підглядати
+    const avgTxt = avg.toFixed(2).replace('.', ',');
+    let h = '<div class="khu-numh"><button type="button" class="khu-numt" data-nums="fold" aria-expanded="' + st.numsOpen + '">🎲 Що дасть число ' + (st.numsOpen ? '▴' : '▾') + '</button>'
+      + '<span class="muted small">за кидок тобі в середньому ≈ <b>' + avgTxt + '</b> карти</span></div>';
+    if (st.numsOpen) {
+      h += '<div class="khu-nrow">' + cells.map((c) => {
+        const y = c.n === 7 ? '🥷' : RES.filter((r) => c.res[r]).map((r) => RES_ICON[r] + (c.res[r] > 1 ? '<sup>×' + c.res[r] + '</sup>' : '')).join('');
+        const t = c.n === 7 ? 'Сімка: Кармелюк — у кого понад 7 карт, скидає половину'
+          : (c.cnt ? 'Тобі: ' + M.K.resList(c.res) : 'Тобі нічого') + (c.robbed ? ' (твою землю з цим числом тримає Кармелюк)' : '') + ' — ' + c.pips + ' з 36 кидків';
+        return '<button type="button" class="khu-num' + (c.cnt ? ' mine' : '') + (c.n === 7 ? ' seven' : '') + (c.n === cur ? ' cur' : '') + (c.n === st.numSel ? ' sel' : '') + (c.robbed ? ' robbed' : '')
+          + '" data-num="' + c.n + '" title="' + esc(t) + '">'
+          + '<span class="n' + (c.n === 6 || c.n === 8 ? ' hot' : '') + '">' + c.n + '</span><span class="p">' + '<i></i>'.repeat(c.pips) + '</span>'
+          + '<span class="y">' + (y || (c.robbed ? '🥷' : '<span class="muted">·</span>')) + '</span></button>';
+      }).join('') + '</div>';
+      if (rolls.length) {
+        h += '<div class="khu-rolls"><span class="muted small">Останні кидки:</span>' + rolls.map((n, i) => '<span class="' + (n === 7 ? 's7' : cells[n - 2] && cells[n - 2].cnt ? 'my' : '')
+          + (i === rolls.length - 1 ? ' last' : '') + '">' + n + '</span>').join('') + '</div>';
+      }
+    }
+    setHtml(el, h);
+  }
+
+  /// Підсвітити на полі землі з числом n (null — зняти). Метод сцени може ще не існувати (старий scene.js) — тоді тихо.
+  function glow(st, n) {
+    st.numSel = n;
+    const ids = n == null || !st.view ? [] : st.view.board.hexes.map((hx, i) => (hx.num === n ? i : -1)).filter((i) => i >= 0);
+    if (st.sc && typeof st.sc.glowHexes === 'function') { try { st.sc.glowHexes(ids); } catch (e) { /* підсвітка не головне */ } }
+    clearTimeout(st.numT);
+    if (n != null) st.numT = setTimeout(() => { if (st.numSel === n) { glow(st, null); if (st.view) renderNumbers(st, st.view, st.view.me || null); } }, 8000);
+  }
+
+  function onNums(root, e) {
+    const st = root._kh;
+    if (!st || !st.view) return;
+    const b = e.target.closest('[data-num],[data-nums]');
+    if (!b) return;
+    if (b.dataset.nums === 'fold') {
+      st.numsOpen = !st.numsOpen;
+      store.set('kh.nums', st.numsOpen ? '1' : '0');
+      if (!st.numsOpen && st.numSel != null) glow(st, null);
+    } else {
+      const n = Number(b.dataset.num);
+      glow(st, st.numSel === n ? null : n);
+    }
+    renderNumbers(st, st.view, st.view.me || null);
   }
 
   // ─── Таймер, боти, «час минув» ──────────────────────────────────────────
@@ -767,12 +922,17 @@
     const left = v.deadline ? Math.max(0, Date.parse(v.deadline) - Date.now()) : null;
     const total = v.timerMs || 90000;
     const L = 2 * Math.PI * 19;
+    const frac = left == null ? 1 : Math.min(1, left / total);
+    const late = left != null && left > 0 && left < 10000;
     for (const fg of st.el.players.querySelectorAll('.khu-av .fg')) {
-      fg.style.strokeDashoffset = left == null ? 0 : (L * (1 - Math.min(1, left / total))).toFixed(1);
-      fg.classList.toggle('late', left != null && left < 10000);
+      fg.style.strokeDashoffset = (L * (1 - frac)).toFixed(1);
+      fg.classList.toggle('late', late);
     }
+    // Смужка на всю ширину плашки того, хто думає; останні 10 с — червона рамка пульсує, секунди великим.
+    for (const tm of st.el.players.querySelectorAll('.khu-tm i')) tm.style.width = (frac * 100).toFixed(1) + '%';
+    for (const pl of st.el.players.querySelectorAll('.khu-pl.think')) pl.classList.toggle('late', late);
     for (const s of st.el.players.querySelectorAll('[data-sec]')) {
-      const t = left == null ? '' : Math.ceil(left / 1000) + ' с';
+      const t = left == null ? '' : (late ? '⏱ ' : '') + Math.ceil(left / 1000) + ' с';
       if (s.textContent !== t) s.textContent = t;
     }
   }
