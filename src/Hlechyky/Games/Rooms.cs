@@ -577,6 +577,7 @@ public sealed partial class Rooms
 
     /// <summary>
     /// Сісти посеред партії, коли гра дозволила (<see cref="Game.LateJoin"/>): вечірка кличе назад того, хто відпав.
+    /// Чи гра тримає за ніком його крісло (<see cref="Game.Rejoin"/>): «Хутори» повертають людину на її ж хутір.
     /// null — це не той випадок, далі звичайний Join (він і скаже «місць нема»).
     /// </summary>
     RoomOutcome? LateSeat(Room room, string nick)
@@ -588,11 +589,16 @@ public sealed partial class Rooms
             if (room.Status != RoomStatus.Playing || room.Info.Solo || room.Has(nick)) return null;
             // Заморожено перед перезапуском: знімок уже на диску, а LateJoin може списати викуп (покер) — не пускаємо.
             if (_frozen) return RoomOutcome.Fail(Say.Restarting);
-            var seat = room.FreeSeat;
-            if (seat < 0) return null;
-            if (!room.Game.LateJoin(nick))
-                // Гра може сказати чому («Щоб сісти, треба 100 черепків») — це краще за «місць нема».
-                return room.Game.LateJoinRefusal(nick) is { Length: > 0 } why ? RoomOutcome.Fail(why) : null;
+            // Своє крісло (Game.Rejoin) — лише те, і лише поки вільне; інакше — перше вільне, якщо гра пускає новеньких.
+            var seat = room.Game.Rejoin(nick) is { } own && own >= 0 && own < room.Seats.Length && room.Seats[own] is null ? own : -1;
+            if (seat < 0)
+            {
+                seat = room.FreeSeat;
+                if (seat < 0) return null;
+                if (!room.Game.LateJoin(nick))
+                    // Гра може сказати чому («Щоб сісти, треба 100 черепків») — це краще за «місць нема».
+                    return room.Game.LateJoinRefusal(nick) is { Length: > 0 } why ? RoomOutcome.Fail(why) : null;
+            }
             room.Seats[seat] = nick;
             room.LastActivity = _clock.UtcNow;
             try { hello = room.Game.LateJoinGreeting(nick); }

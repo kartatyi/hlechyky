@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Хутори — стенд картки</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/games/core.css">
+<link rel="stylesheet" href="/games/khutory.css">
+<style>
+  /* Стенд, не прод: картка гри без сервера на підробних видах (dev/fixture.js). */
+  body { padding: 0; margin: 0; background: var(--bg); }
+  .hbar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 20; font-size: 14px; }
+  .hbar select, .hbar button { font: inherit; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); }
+  .hwrap { margin: 12px auto; padding: 12px; background: var(--panel); border-radius: 14px; box-sizing: border-box; }
+  .hwrap.phone { width: 375px; max-width: 100%; padding: 8px; }
+  .hwrap.laptop { width: min(1100px, 100%); }
+  #hstatus { font-weight: 700; color: var(--accent); }
+  #hlog { margin: 0 auto 30px; width: min(1100px, 100%); font: 12px/1.4 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; padding: 0 12px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div class="hbar">
+  <b>Хутори · стенд картки</b>
+  <label>сценарій <select id="hsc"></select></label>
+  <label>хто дивиться <select id="hseat"><option value="0">місце 0</option><option value="1">місце 1</option><option value="2">місце 2</option><option value="3">місце 3</option><option value="">глядач</option></select></label>
+  <label>ширина <select id="hw"><option value="laptop">ноутбук</option><option value="phone">телефон</option></select></label>
+  <label>поле <select id="hview"><option value="2d">🗺 2D</option><option value="3d">🧊 3D</option></select></label>
+  <button id="hroll">подія: кидок</button>
+  <button id="hbuild">подія: будова</button>
+  <button id="hlate">час минув</button>
+  <button id="hbot">бот думає</button>
+  <span>статус: <span id="hstatus"></span></span>
+</div>
+<div id="hwrap" class="hwrap laptop"><div id="hroot"></div></div>
+<pre id="hlog"></pre>
+
+<script>
+  // Мінімальний підробний каркас: лише те, чим користується khutory.js.
+  window.__acts = [];
+  window.__sends = [];
+  const hlog = (s) => { const el = document.getElementById('hlog'); el.textContent = s + '\n' + el.textContent.slice(0, 4000); };
+  window.HGames = {
+    mods: {},
+    register(m) { this.mods[m.id] = m; },
+    send(method, room, action, payload) { window.__sends.push({ method, room, action, payload }); hlog('send ' + method + ' ' + action + ' ' + JSON.stringify(payload)); return Promise.resolve({ ok: true }); },
+    ui: {
+      coarse: () => matchMedia('(pointer: coarse)').matches,
+      human: (e) => e.isTrusted,
+    },
+  };
+</script>
+<script src="/games/khutory.js"></script>
+<script type="module">
+  import { makeView, SCENARIOS } from '/games/khutory/dev/fixture.js';
+  const $ = (id) => document.getElementById(id);
+  const root = $('hroot');
+  const mod = HGames.mods.khutory;
+  const q = new URLSearchParams(location.search);
+  const S = { sc: q.get('sc') || 'main', seat: q.has('seat') ? q.get('seat') : '0', w: q.get('w') || 'laptop', view: q.get('view') || '2d', v: null, mounted: false };
+  for (const s of SCENARIOS) $('hsc').insertAdjacentHTML('beforeend', '<option>' + s + '</option>');
+
+  function ctxOf(v) {
+    const seat = v.me ? v.me.seat : null;
+    return {
+      room: { id: 'khu-dev', status: v.phase === 'over' ? 'done' : 'playing' },
+      seat, view: v, me: 'Smaug', playing: v.phase !== 'over', mine: seat !== null, myTurn: seat !== null && v.turn === seat,
+      act(a, p) { window.__acts.push({ a, p }); hlog('act ' + a + ' ' + JSON.stringify(p)); return Promise.resolve({ ok: true }); },
+      toast: (s) => hlog('toast ' + s), esc: (s) => String(s), seatName: (i) => 'місце ' + i,
+      nickOf: (i) => (v.players.find((p) => p.seat === i) || {}).nick || null, css: () => '', ui: HGames.ui,
+    };
+  }
+  function push() {
+    const c = ctxOf(S.v);
+    if (!S.mounted) { mod.mount(root, c); S.mounted = true; } else mod.update(root, c);
+    $('hstatus').textContent = mod.status(c);
+  }
+  function load() {
+    try { localStorage.setItem('kh.view', S.view); } catch (e) {}
+    if (S.mounted) { mod.unmount(root); root.innerHTML = ''; S.mounted = false; }
+    const seat = S.seat === '' ? null : +S.seat;
+    S.v = makeView(S.sc, { seat });
+    if (seat === null) S.v.me = null;
+    $('hwrap').className = 'hwrap ' + S.w;
+    $('hsc').value = S.sc; $('hseat').value = S.seat; $('hw').value = S.w; $('hview').value = S.view;
+    push();
+  }
+  window.__load = (sc, seat = '0', w = 'laptop', view = '2d') => { Object.assign(S, { sc, seat: String(seat ?? ''), w, view }); load(); };
+  window.__view = () => S.v;
+  window.__push = (patch) => { if (patch) S.v = { ...S.v, ...patch }; push(); };
+  window.__mod = mod;
+  $('hsc').onchange = (e) => { S.sc = e.target.value; load(); };
+  $('hseat').onchange = (e) => { S.seat = e.target.value; load(); };
+  $('hw').onchange = (e) => { S.w = e.target.value; load(); };
+  $('hview').onchange = (e) => { S.view = e.target.value; load(); };
+  $('hroll').onclick = () => {
+    const v = S.v, seq = v.seq + 1, a = 1 + Math.floor(Math.random() * 6), b = 1 + Math.floor(Math.random() * 6);
+    const sum = a + b;
+    const gains = [];
+    v.board.hexes.forEach((h, i) => { if (h.num === sum && i !== v.robber) for (const t of v.towns) if (h.v.includes(t.v)) gains.push({ hex: i, seat: t.seat, res: { forest: 'wood', pit: 'clay', pasture: 'wool', field: 'grain', mountain: 'ore' }[h.t], n: t.city ? 2 : 1 }); });
+    const hand = v.me ? { ...v.me.hand } : null;
+    if (hand) for (const g of gains) if (g.seat === v.me.seat) hand[g.res] += g.n;
+    S.v = { ...v, seq, dice: [a, b], events: [...v.events, { seq, k: 'roll', seat: v.turn ?? 0, d: [a, b], gains }].slice(-30),
+      me: v.me ? { ...v.me, hand } : null, log: [...v.log, 'Кидок ' + a + ' + ' + b + ' = ' + sum].slice(-12) };
+    push();
+  };
+  $('hbuild').onclick = () => {
+    const v = S.v, seq = v.seq + 1, t = v.towns[0];
+    S.v = { ...v, seq, events: [...v.events, { seq, k: 'build', seat: t.seat, what: 'town', at: t.v }] };
+    push();
+  };
+  $('hlate').onclick = () => { S.v = { ...S.v, deadline: new Date(Date.now() - 1000).toISOString() }; push(); };
+  $('hbot').onclick = () => { S.v = { ...S.v, botIn: 300 }; push(); };
+  load();
+</script>
+</body>
+</html>

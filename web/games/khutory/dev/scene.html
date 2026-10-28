@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Хутори — 3D-стенд</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #1d1510; color: #f3e6c8; font: 13px/1.35 system-ui, sans-serif; overflow: hidden; }
+  #host { position: fixed; inset: 0; }
+  #panel { position: fixed; top: 8px; left: 8px; z-index: 2; width: 270px; padding: 8px 10px; border-radius: 10px;
+    background: rgba(32, 22, 14, .86); box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+  #panel.min > :not(.head) { display: none; }
+  .head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 4px; }
+  .row { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0; align-items: center; }
+  button, select { font: inherit; color: #2a1d12; background: #f1e2bf; border: 0; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+  button:hover { background: #ffe9b8; }
+  button.on { background: #e8912d; color: #fff; }
+  #stats { font: 12px ui-monospace, monospace; color: #ffd98a; }
+  #log { height: 120px; overflow: auto; font: 11px ui-monospace, monospace; background: rgba(0,0,0,.25); padding: 4px; border-radius: 6px; }
+  #tip { position: fixed; z-index: 3; pointer-events: none; transform: translate(-50%, -130%); background: #2a1d12; color: #ffe9b8;
+    padding: 3px 8px; border-radius: 6px; font-size: 12px; display: none; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<div id="tip"></div>
+<div id="panel">
+  <div class="head"><span>🧊 Хутори · стенд сцени</span><button id="min" title="згорнути">–</button></div>
+  <div class="row">Сценарій <select id="scn"></select></div>
+  <div class="row">
+    <button id="roll">🎲 Кидок 3+4</button><button id="rollR">🎲 випадковий</button><button id="prod">Роздача</button>
+  </div>
+  <div class="row"><button id="pop">Pop хата</button><button id="popR">Pop шлях</button><button id="rob">Кармелюк →</button></div>
+  <div class="row">Легальні:
+    <button data-l="town">town</button><button data-l="road">road</button><button data-l="city">city</button>
+    <button data-l="robber">robber</button><button data-l="">нічого</button>
+  </div>
+  <div class="row"><button id="qLow">low</button><button id="qHigh">high</button><button id="rm">reducedMotion</button><button id="reset">reset</button></div>
+  <div id="stats">…</div>
+  <div id="log"></div>
+</div>
+<script type="module">
+import { createScene } from '../scene.js';
+import { makeView, SCENARIOS } from './fixture.js';
+
+const $ = (id) => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+let quality = qs.get('q') === 'low' ? 'low' : 'high';
+let reduced = qs.has('rm');
+let sc = null, view = null, legalKind = null;
+const picks = [];
+window.picks = picks;
+
+const sel = $('scn');
+for (const s of SCENARIOS) sel.add(new Option(s, s));
+sel.value = SCENARIOS.includes(qs.get('s')) ? qs.get('s') : 'main';
+
+function log(...a) {
+  const line = a.join(' ');
+  picks.push(line);
+  const d = $('log'); d.textContent = line + '\n' + d.textContent.slice(0, 3000);
+}
+
+async function boot() {
+  if (sc) sc.dispose();
+  sc = await createScene($('host'), {
+    quality, reducedMotion: reduced,
+    onPick: (k, id) => log('pick', k, id),
+    onHover: (k, id) => {
+      log('hover', k, id);
+      const tip = $('tip');
+      if (k == null) { tip.style.display = 'none'; return; }
+      const p = sc.screenPos(k, id);
+      tip.textContent = `${k} ${id}`; tip.style.left = p.x + 'px'; tip.style.top = p.y + 'px'; tip.style.display = 'block';
+    },
+  });
+  window.sc = sc;
+  load(sel.value);
+  $('qLow').classList.toggle('on', quality === 'low'); $('qHigh').classList.toggle('on', quality === 'high');
+  $('rm').classList.toggle('on', reduced);
+}
+
+function autoLegal(v) {
+  const me = v.me;
+  if (!me) return null;
+  if (me.must === 'town' && me.spots) return 'town';
+  if (me.must === 'road' && me.spots) return 'road';
+  if (me.must === 'robber') return 'robber';
+  return null;
+}
+function legalFor(kind) {
+  if (!kind) return null;
+  if (kind === 'town') {
+    const spots = view.me?.spots?.town?.length ? view.me.spots.town : makeView('setup').me.spots.town;
+    const taken = new Set(view.towns.map((t) => t.v));
+    return { kind, v: spots.filter((v) => !taken.has(v)) };
+  }
+  if (kind === 'road') return { kind, e: view.me?.spots?.road?.length ? view.me.spots.road : makeView('main').me.spots.road };
+  if (kind === 'city') return { kind, v: view.towns.filter((t) => !t.city).map((t) => t.v) };
+  if (kind === 'robber') return { kind, h: view.board.hexes.map((_, h) => h).filter((h) => h !== view.robber) };
+  return null;
+}
+function setLegal(kind) {
+  legalKind = kind || null;
+  sc.setLegal(legalFor(legalKind));
+  document.querySelectorAll('[data-l]').forEach((b) => b.classList.toggle('on', (b.dataset.l || null) === legalKind));
+}
+function load(name) {
+  view = makeView(name);
+  window.view = view;
+  sc.setState(view);
+  setLegal(autoLegal(view));
+}
+
+sel.onchange = () => load(sel.value);
+$('roll').onclick = async () => { const t = performance.now(); await sc.roll(3, 4); log('roll done', Math.round(performance.now() - t) + 'ms'); };
+$('rollR').onclick = async () => { const a = 1 + Math.floor(Math.random() * 6), b = 1 + Math.floor(Math.random() * 6); log('roll', a, b); await sc.roll(a, b); };
+$('prod').onclick = async () => {
+  const ev = (view.events || []).find((e) => e.k === 'roll') || makeView('main').events.find((e) => e.k === 'roll');
+  const t = performance.now(); await sc.produce(ev.gains); log('produce done', Math.round(performance.now() - t) + 'ms');
+};
+$('pop').onclick = () => {
+  const free = legalFor('town').v;
+  const v = free[Math.floor(Math.random() * free.length)];
+  view = { ...view, towns: [...view.towns, { v, seat: view.me?.seat ?? 0, city: false }] }; window.view = view;
+  sc.setState(view); sc.pop('town', v); log('pop town', v);
+  if (legalKind) setLegal(legalKind);
+};
+$('popR').onclick = () => {
+  const taken = new Set(view.roads.map((r) => r.e));
+  const free = (legalFor('road').e || []).filter((e) => !taken.has(e));
+  if (!free.length) return;
+  const e = free[0];
+  view = { ...view, roads: [...view.roads, { e, seat: view.me?.seat ?? 0 }] }; window.view = view;
+  sc.setState(view); sc.pop('road', e); log('pop road', e);
+  if (legalKind) setLegal(legalKind);
+};
+$('rob').onclick = () => {
+  const h = (view.robber + 5) % view.board.hexes.length;
+  view = { ...view, robber: h }; window.view = view; sc.setState(view); log('robber →', h);
+  if (legalKind) setLegal(legalKind);
+};
+document.querySelectorAll('[data-l]').forEach((b) => { b.onclick = () => setLegal(b.dataset.l); });
+$('qLow').onclick = () => { quality = 'low'; boot(); };
+$('qHigh').onclick = () => { quality = 'high'; boot(); };
+$('rm').onclick = () => { reduced = !reduced; boot(); };
+$('reset').onclick = () => sc.resetView();
+$('min').onclick = () => $('panel').classList.toggle('min');
+
+// к/с і виклики малювання
+let frames = 0, last = performance.now();
+(function tick() {
+  frames++;
+  const now = performance.now();
+  if (now - last > 500) {
+    const fps = Math.round(frames * 1000 / (now - last)); frames = 0; last = now;
+    const info = sc?._dbg?.renderer.info;
+    $('stats').textContent = `${fps} к/с · draw ${info ? info.render.calls : '?'} · tri ${info ? info.render.triangles : '?'} · ${quality}${reduced ? ' · rm' : ''}`;
+  }
+  requestAnimationFrame(tick);
+})();
+
+boot().catch((e) => { log('ПОМИЛКА', e.message); console.error(e); });
+</script>
+</body>
+</html>
