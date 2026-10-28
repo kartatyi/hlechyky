@@ -1,7 +1,9 @@
 /*
   Дядько Глек у хаті (аналітика кола, етап 4; вибір користувача 25.10 — «Глек на сцені з бульбашкою»). Частина ядра clicker.js.
   Усі графіки й літопис — на окремій сторінці #gonchar (web/gonchar.js). Тут — лише Глек:
-  - маленький глечик-Глек у лівому нижньому куті сцени (шар api.layer front). Є свіжі поради — на ньому крапка;
+  - кругла кнопка-Глек у правому верхньому куті сцени, під кнопками звуку (шар api.layer front; з 28.10 — не на
+    долівці, де кіт). Крапка на ньому — лише коли є порада такого виду, якого гончар не бачив SEEN_DAYS днів: тексти порад
+    живі (числа, щоденна фраза), і порівняння цілого тексту запалювало крапку чи не щоразу, як поради перечитувались;
   - клік по Глеку — бульбашка з однією порадою за раз (‹ 1 / 3 ›), кнопки «Постав» (глину — одразу) / «Показати»
     (вкладка), «Потім» (дія glek — сховати на добу) і «📈 Літопис кола»; поради — GET /api/games/clicker/diary?glek=1;
   - підказка в моменті (вид glek: глина біля кола чи перед виходом, Толока) — Глек підстрибує й сам відкриває
@@ -12,15 +14,37 @@
 
   const LOAD_MS = 120000;
   const MOMENT_MS = 30000;
-  const SEEN_LS = 'clk.glek.seen';
+  const SEEN_LS = 'clk.glek.seen2';       // { вид поради: коли бачив, мс }
+  const SEEN_OLD = 'clk.glek.seen';       // до 28.10: підпис «вид:текст|…» — з нього беремо лише види
+  const SEEN_DAYS = 7;
   /// Куди веде кнопка поради (where з ClickerAdvisor): глину ставимо одразу, решта — вкладка.
   const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire' };
 
   const myNick = (st) => (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
   const goLabel = (where) => (String(where).startsWith('clay:') ? 'Постав' : 'Показати');
-  const sig = (tips) => tips.map((t) => t.kind + ':' + t.text).join('|');
   const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватне вікно */ } };
+
+  /// Які види порад гончар бачив і коли — лише свіжіші за SEEN_DAYS.
+  function seenKinds() {
+    const fresh = Date.now() - SEEN_DAYS * 864e5;
+    let m = {};
+    const raw = lsGet(SEEN_LS);
+    if (raw) {
+      try { m = JSON.parse(raw) || {}; } catch { m = {}; }
+    } else {
+      // Перший раз після оновлення: хто вже відкривав Глека, тому старі види не світимо наново.
+      for (const x of lsGet(SEEN_OLD).matchAll(/(?:^|\|)([a-z][a-z0-9-]*):/g)) m[x[1]] = Date.now();
+    }
+    for (const k of Object.keys(m)) if (!(m[k] > fresh)) delete m[k];
+    return m;
+  }
+  const hasNew = (tips) => { const m = seenKinds(); return tips.some((t) => !m[t.kind]); };
+  function markSeen(tips) {
+    const m = seenKinds();
+    for (const t of tips) m[t.kind] = Date.now();
+    lsSet(SEEN_LS, JSON.stringify(m));
+  }
 
   function load(st, force) {
     if (st.glekBusy || !st.mine || (!force && Date.now() - (st.glekAt || 0) < LOAD_MS)) return;
@@ -31,6 +55,7 @@
       .then((d) => {
         if (!d || !d.ok) return;
         st.glekTips = Array.isArray(d.glek) ? d.glek : [];
+        st.glekNew = hasNew(st.glekTips);
         if (st.glekI >= st.glekTips.length) st.glekI = 0;
         paint(st, window.HClicker.api);
       })
@@ -64,16 +89,15 @@
     if (st.glekBox && st.glekBox.isConnected) return;
     const host = api.layer(st, 'front', 'glek');
     host.innerHTML = '<button type="button" class="clkgl-glek" aria-label="Дядько Глек радить"><img src="/static/glek.svg" alt=""><i hidden></i></button>'
-      + '<div class="clkgl-bubble" role="dialog" aria-label="Порада Дядька Глека" hidden></div>'
-      // Постійне посилання на поради саме в хаті — видно й на телефоні (рядок під лічильником там стиснутий).
-      + '<a class="clkgl-how" href="#gonchar/tips">💡 Як грати краще</a>';
+      // Окремої плашки «💡 Як грати краще» в хаті нема (28.10): заступала кота, а те саме посилання є в бульбашці.
+      + '<div class="clkgl-bubble" role="dialog" aria-label="Порада Дядька Глека" hidden></div>';
     st.glekBox = host;
     st.glekBtn = host.querySelector('.clkgl-glek');
     st.glekDot = st.glekBtn.querySelector('i');
     st.glekBub = host.querySelector('.clkgl-bubble');
     // Глек — не коло: натиск по ньому не крутить коло й не ловить нічого під ним.
     for (const ev of ['pointerdown', 'mousedown', 'touchstart']) {
-      host.addEventListener(ev, (e) => { if (e.target.closest('.clkgl-glek, .clkgl-bubble, .clkgl-how')) e.stopPropagation(); }, { passive: true });
+      host.addEventListener(ev, (e) => { if (e.target.closest('.clkgl-glek, .clkgl-bubble')) e.stopPropagation(); }, { passive: true });
     }
     st.glekBtn.onclick = (e) => {
       e.stopPropagation();
@@ -114,8 +138,9 @@
     }
     st.glekBub.querySelector('.clkgl-x').onclick = () => close(st);
     st.glekBub.hidden = false;
-    // Відкрив — значить бачив: крапка гасне, доки поради не зміняться.
-    lsSet(SEEN_LS, sig(tips));
+    // Відкрив — значить бачив: крапка гасне, доки не з'явиться порада нового виду.
+    markSeen(tips);
+    st.glekNew = false;
     if (st.glekDot) st.glekDot.hidden = true;
   }
 
@@ -123,7 +148,7 @@
     if (!st.mine || !st.front) return;
     build(st, api);
     const tips = st.glekTips || [];
-    st.glekDot.hidden = !tips.length || lsGet(SEEN_LS) === sig(tips);
+    st.glekDot.hidden = !tips.length || !st.glekNew;
     if (!st.glekBub.hidden && !st.glekMoment) open(st, api);   // поради оновились, поки бульбашка відкрита
   }
 
@@ -147,6 +172,7 @@
 
     mount(st) {
       st.glekTips = [];
+      st.glekNew = false;
       st.glekAt = 0;
       st.glekI = 0;
       st.glekBox = null;

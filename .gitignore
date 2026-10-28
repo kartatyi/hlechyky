@@ -67,6 +67,8 @@ build/
 # збірка на підміну й попередня (start.ps1 restart / back)
 build.next/
 build.prev/
+# невдала збірка після відкату деплою — без цього рядка наступний deploy.ps1 бачить «незакомічені зміни» й не викочує
+build.bad/
 # IDE and generated
 .vs/
 .idea/

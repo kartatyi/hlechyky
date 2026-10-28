@@ -377,14 +377,17 @@ public sealed partial class Clicker
     }
 
     /// <summary>
-    /// «Віднести все, що підходить»: спершу найсуворіші рядки (розкішні з розписом, розкішні, з розписом, решта) — тоді
-    /// розкішний не піде туди, де вистачить дзвінкого; у межах суворості — за порядком етапів.
+    /// «Віднести все, що підходить»: спершу етап, який закладатимеш наступним, далі решта — найсуворіші рядки першими
+    /// (розкішні з розписом, розкішні, з розписом, решта): тоді розкішний не піде туди, де вистачить дзвінкого; у межах
+    /// суворості — за порядком етапів. Записка #72: без першого правила розкішні «Делфтські» леви поїхали на «Глек на
+    /// майдані» (рядок «лише розкішний» суворіший), а «Постаменти» просили саме їх — і нестача стрибнула з 16 до 40.
     /// </summary>
     ActResult TolokaStockAll(DateTimeOffset now)
     {
         var rows = TolokaAhead()
             .SelectMany((x, order) => x.B.Stages[x.S].Needs.Select((need, i) => (x.B, x.S, I: i, Need: need, Order: order)))
-            .OrderByDescending(r => r.Need.Q).ThenByDescending(r => r.Need.Style.Length > 0).ThenBy(r => r.Order)
+            .OrderBy(r => r.Order == 0 ? 0 : 1)
+            .ThenByDescending(r => r.Need.Q).ThenByDescending(r => r.Need.Style.Length > 0).ThenBy(r => r.Order)
             .ToList();
         var moved = 0;
         var lux = 0;

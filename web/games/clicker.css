@@ -377,9 +377,11 @@
 }
 /* ---- випадковості на сцені: кіт-мандрівник, зірка вночі, вітер із поля (v9 §A.6) ---- */
 .clk-events { position: absolute; inset: 0; }
-/* Кіт іде по долівці зліва направо (або навпаки — .back) рівно стільки, скільки каже сервер. */
+/* Кіт іде по долівці зліва направо (або навпаки — .back) рівно стільки, скільки каже сервер. z 7 — над
+   усім на долівці: записка #71 — кіт ховався під Глеком і плашкою «💡 Як грати краще», і клік ловили вони (з 28.10 Глек
+   у правому верхньому куті сцени, а плашки нема). */
 .clk-cat {
-  position: absolute; z-index: 5; bottom: .5%; left: -12%; width: 13%; min-width: 46px; max-width: 82px; aspect-ratio: 52 / 34;
+  position: absolute; z-index: 7; bottom: .5%; left: -12%; width: 13%; min-width: 46px; max-width: 82px; aspect-ratio: 52 / 34;
   padding: 0; border: none; background: transparent; color: #c8813f; cursor: pointer; touch-action: manipulation;
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .5)); -webkit-user-select: none; user-select: none;
 }

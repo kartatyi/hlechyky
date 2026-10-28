@@ -120,6 +120,30 @@ public class ClickerTolokaV12Tests
     }
 
     [Fact]
+    public void Stock_all_fills_the_stage_you_lay_next_before_stricter_rows_further_on()
+    {
+        // Записка #72 (Smaug): «Постаменти» — лев ×60 дзвінкий і кращий «Делфтська синь», а «Глек на майдані» далі просить
+        // лева ×60 лише розкішного. Суворіший рядок забирав розкішних «Делфтських», і «Постаментам» лишалось 13 замість 50.
+        var h = Wheel();
+        Give(h, 1e40);
+        Patch(h, s => s["toloka"] = new JsonObject
+        {
+            ["built"] = new JsonArray(Upto("institute").Select(x => (JsonNode)x).ToArray()),
+            ["stage"] = 1,
+        });
+        Items(h, ("lion|delft|3", 13), ("lion|delft|4", 37), ("lion|opishnia|4", 1));
+        var r = Toloka(h, new { @do = "stockAll" });
+        Assert.True(r.Ok, r.Message);
+        var pedestals = DepotBag(h, "hall|1|0");
+        Assert.Equal(50, pedestals.GetValueOrDefault("lion|delft|3") + Item(h, "lion|delft|3")
+            + pedestals.GetValueOrDefault("lion|delft|4") + Item(h, "lion|delft|4"));
+        Assert.InRange(pedestals.Values.Sum(), 45, 50);   // що лишилось у коморі — відкладене під замовлення
+        // Далекому розкішному рядку — лише те, чого «Постаменти» не беруть.
+        Assert.False(DepotBag(h, "bigjug|2|2").ContainsKey("lion|delft|4"));
+        Assert.Equal(1, DepotBag(h, "bigjug|2|2").GetValueOrDefault("lion|opishnia|4"));
+    }
+
+    [Fact]
     public void Stocking_from_an_empty_store_says_what_is_missing()
     {
         var h = Wheel();
