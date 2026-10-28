@@ -274,6 +274,7 @@ const EXTRA = {
   refused(opts) {
     const v = makeView('main', opts);
     v.offers = [{ id: 3, from: 0, to: null, give: { clay: 1 }, get: { wool: 1 }, acc: [], dec: [1, 2, 3] }];
+    if (v.me) v.me.hand = { wood: 2, clay: 1, wool: 0, grain: 4, ore: 0 };   // 3 зерна — у банк на вовну
     return v;
   },
 };

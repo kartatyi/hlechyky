@@ -133,7 +133,7 @@
 .khu-bw { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .khu-bw > .khu-b { flex: 1; }
 .khu-fix { border-radius: 10px; border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel2)); color: var(--text);
-  padding: 4px 6px; min-height: 36px; font-weight: 700; font-size: .85em; line-height: 1.15; }
+  padding: 4px 6px; min-height: 36px; font-weight: 700; font-size: .85em; line-height: 1.15; white-space: normal; overflow-wrap: anywhere; min-width: 0; }
 .khu-fix:disabled { opacity: .5; }
 .khu-bankr, .khu-bpick { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .khu-bl { font-size: .85em; color: var(--muted); font-weight: 700; margin-right: 2px; white-space: nowrap; }
