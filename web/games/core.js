@@ -128,7 +128,7 @@
     ],
     party: [
       { id: 'draw', title: 'Слова й малюнки', icon: '✏', ids: ['pictionary', 'telephone', 'hangman', 'wordle-race', 'pozyvni', 'dotepy'] },
-      { id: 'bluff', title: 'Блеф і вечірка', icon: '🕵', ids: ['mafia', 'spy', 'bluff', 'dice', 'vechirka'] },
+      { id: 'bluff', title: 'Блеф і вечірка', icon: '🕵', ids: ['mafia', 'spy', 'skarb', 'bluff', 'dice', 'vechirka'] },
       { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'memy', 'geese'] },
     ],
     solo: [

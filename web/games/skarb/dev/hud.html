@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Скарб Полуботка — стенд картки</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/games/core.css">
+<link rel="stylesheet" href="/games/skarb.css">
+<style>
+  /* Стенд, не прод: картка гри без сервера на підробних видах (dev/fixture.js). */
+  body { padding: 0; margin: 0; background: var(--bg); }
+  .hbar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 20; font-size: 13px; }
+  .hbar select, .hbar button { font: inherit; padding: 3px 7px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); }
+  .hwrap { margin: 12px auto; padding: 12px; background: var(--panel); border-radius: 14px; box-sizing: border-box; }
+  .hwrap.phone { width: 375px; max-width: 100%; padding: 8px; }
+  .hwrap.laptop { width: min(1100px, 100%); }
+  #hstatus { font-weight: 700; color: var(--accent); }
+  #hlog { margin: 0 auto 30px; width: min(1100px, 100%); font: 12px/1.4 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; padding: 0 12px; box-sizing: border-box; }
+  body.shot .hbar, body.shot #hlog { display: none; }
+  body.shot .hwrap { margin: 0 auto; border-radius: 0; }
+</style>
+</head>
+<body>
+<div class="hbar">
+  <b>Скарб · стенд картки</b>
+  <label>сценарій <select id="hsc"></select></label>
+  <label>хто дивиться <select id="hseat"></select></label>
+  <label>ширина <select id="hw"><option value="laptop">ноутбук</option><option value="phone">телефон 375</option></select></label>
+  <label>поле <select id="hview"><option value="2d">🗺 2D</option><option value="3d">🧊 3D</option></select></label>
+  <button data-ev="round">раунд (роль)</button>
+  <button data-ev="place">хід</button>
+  <button data-ev="goldflip">мітка: скарб</button>
+  <button data-ev="stoneflip">мітка: камінь</button>
+  <button data-ev="rockfall">завал</button>
+  <button data-ev="peekme">мапа моя</button>
+  <button data-ev="peekother">мапа чужа</button>
+  <button data-ev="break">злам</button>
+  <button data-ev="fix">ремонт</button>
+  <button data-ev="enddig">кінець: копачі</button>
+  <button data-ev="endmole">кінець: кроти</button>
+  <button id="hlate">час минув</button>
+  <button id="hbot">бот думає</button>
+  <span>статус: <span id="hstatus"></span></span>
+</div>
+<div id="hwrap" class="hwrap laptop"><div id="hroot"></div></div>
+<pre id="hlog"></pre>
+
+<script>
+  // Мінімальний підробний каркас: лише те, чим користується skarb.js.
+  window.__acts = [];
+  window.__sends = [];
+  const hlog = (s) => { const el = document.getElementById('hlog'); el.textContent = s + '\n' + el.textContent.slice(0, 4000); };
+  window.HGames = {
+    mods: {},
+    register(m) { this.mods[m.id] = m; },
+    send(method, room, action, payload) { window.__sends.push({ method, room, action, payload }); hlog('send ' + method + ' ' + action + ' ' + JSON.stringify(payload)); return Promise.resolve({ ok: true }); },
+    ui: { coarse: () => matchMedia('(pointer: coarse)').matches, human: (e) => e.isTrusted },
+  };
+</script>
+<script src="/games/skarb.js"></script>
+<script type="module">
+  import { makeView, makeEvent, SCENARIOS, applyAct } from '/games/skarb/dev/fixture.js';
+  const $ = (id) => document.getElementById(id);
+  const root = $('hroot');
+  const mod = HGames.mods.skarb;
+  const q = new URLSearchParams(location.search);
+  const S = { sc: q.get('sc') || 'play', seat: q.has('seat') ? q.get('seat') : '0', w: q.get('w') || 'laptop', view: q.get('view') || '2d', v: null, mounted: false };
+  if (q.has('shot')) document.body.classList.add('shot');
+  for (const s of SCENARIOS) $('hsc').insertAdjacentHTML('beforeend', '<option>' + s + '</option>');
+  for (let i = 0; i < 10; i++) $('hseat').insertAdjacentHTML('beforeend', '<option value="' + i + '">місце ' + i + '</option>');
+  $('hseat').insertAdjacentHTML('beforeend', '<option value="">глядач</option>');
+
+  function ctxOf(v) {
+    const seat = v.me ? v.me.seat : null;
+    return {
+      room: { id: 'skb-dev', status: v.phase == null ? 'lobby' : v.phase === 'over' ? 'done' : 'playing', options: { bots: '0' } },
+      seat, view: v, me: { nick: S.sc === 'spectator' ? 'Ліна' : 'Smaug' }, playing: v.phase != null && v.phase !== 'over', mine: seat !== null,
+      myTurn: seat !== null && v.turn === seat,
+      act(a, p) {
+        window.__acts.push({ a, p }); hlog('act ' + a + ' ' + JSON.stringify(p));
+        if ((a === 'play' || a === 'pass') && S.v.me) {
+          const r = applyAct(S.v, S.v.me.seat, a, p);
+          if (r.error) hlog('  ✗ ' + r.error); else { S.v = r.view; setTimeout(push, 30); }
+        }
+        return Promise.resolve({ ok: true });
+      },
+      toast: (s) => hlog('toast ' + s), esc: (s) => String(s), seatName: (i) => 'місце ' + i,
+      nickOf: (i) => ((v.players || []).find((p) => p.seat === i && !p.bot) || {}).nick || null, css: () => '', ui: HGames.ui,
+    };
+  }
+  function push() {
+    const c = ctxOf(S.v);
+    if (!S.mounted) { mod.mount(root, c); S.mounted = true; } else mod.update(root, c);
+    setTimeout(() => { $('hstatus').textContent = mod.status(c); }, 50);
+  }
+  function load() {
+    try { localStorage.setItem('skb.view', S.view); } catch (e) {}
+    if (S.mounted) { mod.unmount(root); root.innerHTML = ''; S.mounted = false; }
+    const seat = S.seat === '' ? null : +S.seat;
+    S.v = makeView(S.sc, seat);
+    if (seat === null) S.v.me = null;
+    $('hwrap').className = 'hwrap ' + S.w;
+    $('hsc').value = S.sc; $('hseat').value = S.seat; $('hw').value = S.w; $('hview').value = S.view;
+    push();
+    if (S.sc === 'reveal') setTimeout(() => fire('round'), 300);
+  }
+  function addEv(list, patch) {
+    let seq = S.v.seq;
+    const evs = list.map(([k, o]) => makeEvent(k, { ...o, seq: ++seq }));
+    S.v = { ...S.v, ...(patch || {}), seq, events: [...S.v.events, ...evs].slice(-40) };
+    push();
+  }
+  function fire(k) {
+    const v = S.v, me = v.me ? v.me.seat : 0;
+    if (k === 'round') addEv([['round', { n: v.round || 1, first: v.first || 0 }]]);
+    if (k === 'place') {
+      const free = [[5, 0], [5, 1], [6, 1], [3, 2], [1, 1]].find(([x, y]) => !v.board.some((b) => b.x === x && b.y === y)) || [5, 0];
+      const b = { x: free[0], y: free[1], s: 'x', r: 0, m: 15, c: true, by: 4, id: 1 };
+      addEv([['place', { seat: 4, card: 1, x: b.x, y: b.y, s: 'x', r: 0 }]], { board: [...v.board, b], linked: [...(v.linked || []), free] });
+    }
+    if (k === 'goldflip' || k === 'stoneflip') {
+      const i = k === 'goldflip' ? 1 : 0, g = v.goals[i];
+      const e = k === 'goldflip' ? { i, x: g.x, y: g.y, kind: 'gold', s: 'gold', r: 0, m: 15, c: true, by: 4 } : { i, x: g.x, y: g.y, kind: 'stone', s: 'stoneA', r: 0, m: 9, c: true, by: 2 };
+      const goals = v.goals.map((x) => (x.i === i ? { ...x, open: true, kind: e.kind, s: e.s, r: e.r, m: e.m, c: true } : x));
+      addEv([['goal', e]], { goals });
+    }
+    if (k === 'rockfall') {
+      const b = v.board.filter((x) => x.s !== 'start').pop();
+      if (b) addEv([['rockfall', { seat: 2, card: 65, x: b.x, y: b.y, s: b.s }]], { board: v.board.filter((x) => x !== b) });
+    }
+    if (k === 'peekme') addEv([['map', { seat: me, card: 60, goal: 1, kind: 'gold' }]], { me: v.me ? { ...v.me, peeks: { ...v.me.peeks, 1: 'gold' } } : null });
+    if (k === 'peekother') addEv([['map', { seat: 3, card: 61, goal: 0, kind: null }]]);
+    if (k === 'break') addEv([['break', { seat: 3, card: 41, target: me, tool: 'pick' }]], { players: v.players.map((p) => (p.seat === me ? { ...p, broken: ['pick'] } : p)) });
+    if (k === 'fix') addEv([['fix', { seat: 2, card: 52, target: 3, tool: 'lamp' }]], { players: v.players.map((p) => (p.seat === 3 ? { ...p, broken: [] } : p)) });
+    if (k === 'enddig' || k === 'endmole') {
+      const r = makeView('round', me);
+      if (k === 'endmole') {
+        r.roundEnd = { ...r.roundEnd, side: 'moles', finisher: null, gold: [{ seat: 1, n: 3, cards: null }, { seat: 5, n: 3, cards: null }] };
+        r.goals = r.goals.map((g) => ({ ...g, open: g.i === 2 }));
+      }
+      S.v = { ...r, seq: v.seq + 1, events: [...v.events, makeEvent('end', { seq: v.seq + 1, n: r.roundEnd.n, side: r.roundEnd.side, finisher: r.roundEnd.finisher })] };
+      push();
+    }
+  }
+  window.__load = (sc, seat = '0', w = 'laptop', view = '2d') => { Object.assign(S, { sc, seat: String(seat ?? ''), w, view }); load(); };
+  window.__view = () => S.v;
+  window.__push = (patch) => { if (patch) S.v = { ...S.v, ...patch }; push(); };
+  window.__fire = fire;
+  window.__mod = mod;
+  $('hsc').onchange = (e) => { S.sc = e.target.value; load(); };
+  $('hseat').onchange = (e) => { S.seat = e.target.value; load(); };
+  $('hw').onchange = (e) => { S.w = e.target.value; load(); };
+  $('hview').onchange = (e) => { S.view = e.target.value; load(); };
+  for (const b of document.querySelectorAll('[data-ev]')) b.onclick = () => fire(b.dataset.ev);
+  $('hlate').onclick = () => { S.v = { ...S.v, deadline: new Date(Date.now() - 1000).toISOString() }; push(); };
+  $('hbot').onclick = () => { S.v = { ...S.v, botIn: 300 }; push(); };
+  load();
+</script>
+</body>
+</html>

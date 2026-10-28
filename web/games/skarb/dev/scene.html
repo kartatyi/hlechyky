@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Скарб Полуботка — 3D-стенд</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #140d09; color: #f3e6c8; font: 13px/1.35 system-ui, sans-serif; overflow: hidden; }
+  #host { position: fixed; inset: 0; }
+  #panel { position: fixed; top: 8px; left: 8px; z-index: 2; width: 300px; padding: 8px 10px; border-radius: 10px;
+    background: rgba(32, 22, 14, .88); box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+  #panel.min > :not(.head) { display: none; }
+  body.shot #panel, body.shot #tip { display: none; }
+  .head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 4px; }
+  .row { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0; align-items: center; }
+  button, select { font: inherit; color: #2a1d12; background: #f1e2bf; border: 0; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+  button:hover { background: #ffe9b8; }
+  button.on { background: #e8912d; color: #fff; }
+  #stats { font: 12px ui-monospace, monospace; color: #ffd98a; }
+  #log { height: 110px; overflow: auto; font: 11px ui-monospace, monospace; background: rgba(0,0,0,.25); padding: 4px; border-radius: 6px; white-space: pre; }
+  #tip { position: fixed; z-index: 3; pointer-events: none; transform: translate(-50%, -130%); background: #2a1d12; color: #ffe9b8;
+    padding: 3px 8px; border-radius: 6px; font-size: 12px; display: none; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<div id="tip"></div>
+<div id="panel">
+  <div class="head"><span>⛏ Скарб Полуботка · стенд сцени</span><button id="min" title="згорнути">–</button></div>
+  <div class="row">Сценарій <select id="scn"></select> <span id="src" style="opacity:.6"></span></div>
+  <div class="row">
+    <button data-a="dig">dig</button><button data-a="flipGold">flip gold</button><button data-a="flipStone">flip stone</button>
+    <button data-a="rockfall">rockfall</button>
+  </div>
+  <div class="row">
+    <button data-a="peekMine">peek моя</button><button data-a="peekOther">peek чужа</button>
+  </div>
+  <div class="row">finale:
+    <button data-a="finaleDiggers">diggers</button><button data-a="finaleMoles">moles</button><button data-a="finaleNone">none</button>
+  </div>
+  <div class="row">setLegal:
+    <button data-l="place">place</button><button data-l="rockfall">rockfall</button><button data-l="goal">goal</button><button data-l="">null</button>
+    <button id="rot" title="поворот вибраної карти (R)">⟲ 180°</button>
+  </div>
+  <div class="row"><button id="cur">курсор</button><button id="focus">focus(8,0)</button><button id="brk">зламати мені</button></div>
+  <div class="row"><button id="qLow">low</button><button id="qHigh">high</button><button id="rm">reducedMotion</button><button id="reset">reset</button></div>
+  <div id="stats">…</div>
+  <div id="log"></div>
+</div>
+<script type="module">
+import { createScene } from '../scene.js';
+import { GRID, SHAPES, rot180, STEP, OPP, BIT } from '../consts.js';
+
+const $ = (id) => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+let quality = qs.get('q') === 'low' ? 'low' : 'high';
+let reduced = qs.has('rm');
+if (qs.has('shot')) document.body.classList.add('shot');
+let sc = null, view = null, legalKind = null, rot = 0, cursorOn = false, cursorI = 0;
+const picks = [];
+window.picks = picks;
+
+// ── Фікстура: картки «В» (dev/fixture.js), а якщо її нема — поле з §5 контракту.
+let FX = null;
+try { FX = await import('./fixture.js'); } catch (e) { FX = null; }
+const clone = (o) => JSON.parse(JSON.stringify(o));
+function inlineView() {
+  const card = (x, y, s, r, by, id) => ({ x, y, s, r, m: r ? rot180(SHAPES[s].m) : SHAPES[s].m, c: SHAPES[s].c, by, id });
+  const players = ['Smaug', 'Глек 🤖', 'Оксана', 'Макітра 🤖', 'Тарас', 'Ліна', 'Богдан'].map((nick, i) => ({ seat: i, nick, bot: null, color: i, hand: 5, broken: i === 3 ? ['lamp'] : [], gold: 0, role: null, away: false }));
+  return { v: 1, grid: clone(GRID), phase: 'play', round: 2, rounds: 3, players, order: players.map((p) => p.seat), first: 3, turn: 0,
+    board: [{ x: 0, y: 0, s: 'start', r: 0, m: 15, c: true, by: null, id: null }, card(1, 0, 'h', 0, 1, 19), card(2, 0, 'x', 0, 2, 3), card(3, 0, 'h', 0, 0, 20),
+      card(2, 1, 'v', 0, 3, 15), card(2, 2, 'dv', 0, 4, 34), card(4, 0, 'tv', 1, 1, 6), card(4, -1, 'cw', 0, 2, 27)],
+    linked: [[0, 0], [1, 0], [2, 0], [3, 0], [2, 1], [2, 2], [4, 0], [4, -1]],
+    goals: [0, 1, 2].map((i) => ({ i, x: 8, y: GRID.goals[i][1], open: i === 2, kind: i === 2 ? 'stone' : null, s: i === 2 ? 'stoneB' : null, r: i === 2 ? 0 : null, m: i === 2 ? 12 : null, c: i === 2 ? true : null })),
+    deck: 23, goldLeft: 19, events: [], seq: 118, log: [],
+    me: { seat: 0, role: 'digger', allies: null, hand: [{ id: 12, k: 'path', s: 'th' }, { id: 33, k: 'path', s: 'dth' }, { id: 60, k: 'map' }, { id: 65, k: 'rockfall' }],
+      peeks: { 0: 'stone' }, must: 'play', legal: { 12: [[2, -1, 0], [3, -1, 1], [4, 1, 1]], 33: [[2, -1, 0], [3, -1, 1], [4, 1, 1]], 60: [0, 1], 65: [] }, why: {}, tip: null } };
+}
+const SCN = FX?.SCENARIOS?.length ? FX.SCENARIOS : ['play'];
+const makeView = (name) => FX?.makeView ? FX.makeView(name, 0) : inlineView();
+$('src').textContent = FX ? 'fixture.js' : '§5 вбудовано';
+const sel = $('scn');
+for (const s of SCN) sel.add(new Option(s, s));
+sel.value = SCN.includes(qs.get('s')) ? qs.get('s') : (SCN.includes('play') ? 'play' : SCN[0]);
+
+function log(...a) {
+  const line = a.map((x) => typeof x === 'object' ? JSON.stringify(x) : String(x)).join(' ');
+  picks.push(line);
+  const d = $('log'); d.textContent = line + '\n' + d.textContent.slice(0, 4000);
+}
+
+async function boot() {
+  if (sc) sc.dispose();
+  try {
+    sc = await createScene($('host'), {
+      quality, reducedMotion: reduced,
+      onPick: (k, a, b) => { log('pick', k, a, b ?? ''); onPicked(k, a, b); },
+      onHover: (k, a, b) => {
+        const tip = $('tip');
+        if (k == null) { tip.style.display = 'none'; return; }
+        const p = sc.screenPos(k, a, b);
+        tip.textContent = k === 'goal' ? `мітка ${a}` : `(${a}, ${b})`;
+        if (p) { tip.style.left = p.x + 'px'; tip.style.top = p.y + 'px'; tip.style.display = 'block'; }
+      },
+    });
+  } catch (e) { log('ПОМИЛКА createScene:', e.message); throw e; }
+  window.sc = sc;
+  load(sel.value);
+  $('qLow').classList.toggle('on', quality === 'low'); $('qHigh').classList.toggle('on', quality === 'high');
+  $('rm').classList.toggle('on', reduced);
+}
+
+function load(name) {
+  view = makeView(name);
+  window.view = view;
+  sc.setGrid(view.grid || GRID);
+  sc.setState(view);
+  setLegal(view.me?.must === 'play' ? 'place' : null);
+}
+
+// ── setLegal із me.legal (як картка): перша карта ходу з місцями.
+function pathCard() {
+  const me = view.me; if (!me) return null;
+  return me.hand.find((c) => c.k === 'path' && (me.legal?.[c.id] || []).length) || me.hand.find((c) => c.k === 'path') || null;
+}
+function legalFor(kind) {
+  if (!kind) return null;
+  if (kind === 'place') {
+    const c = pathCard(); if (!c) return { kind, cells: [], alt: [] };
+    const L = view.me.legal?.[c.id] || [];
+    const m0 = SHAPES[c.s].m, sym = rot180(m0) === m0;
+    const cur = L.filter(([, , r]) => sym || r === rot).map(([x, y]) => [x, y]);
+    const ck = new Set(cur.map(([x, y]) => x + ',' + y));
+    const alt = sym ? [] : L.filter(([x, y, r]) => r !== rot && !ck.has(x + ',' + y)).map(([x, y]) => [x, y]);
+    const m = rot ? rot180(m0) : m0;
+    return { kind, cells: cur, alt, ghost: { m, mAlt: rot180(m), c: SHAPES[c.s].c }, card: c };
+  }
+  if (kind === 'rockfall') return { kind, cells: view.board.filter((b) => b.s !== 'start').map((b) => [b.x, b.y]) };
+  if (kind === 'goal') return { kind, goals: view.goals.filter((g) => !g.open).map((g) => g.i) };
+  return null;
+}
+let curLegal = null;
+function setLegal(kind) {
+  legalKind = kind || null;
+  curLegal = legalFor(legalKind);
+  sc.setLegal(curLegal);
+  document.querySelectorAll('[data-l]').forEach((b) => b.classList.toggle('on', (b.dataset.l || null) === legalKind));
+  if (cursorOn) moveCursor(0);
+}
+function cursorList() {
+  if (!curLegal) return [];
+  if (curLegal.kind === 'goal') return curLegal.goals.map((i) => [view.goals[i].x, view.goals[i].y]);
+  return [...(curLegal.cells || []), ...(curLegal.alt || [])];
+}
+function moveCursor(d) {
+  const l = cursorList();
+  if (!cursorOn || !l.length) { sc.setCursor(null); return; }
+  cursorI = (cursorI + d + l.length) % l.length;
+  sc.setCursor(l[cursorI][0], l[cursorI][1]);
+}
+
+// ── Події: анімація → setState (порядок картки, §10).
+async function play(events, next) {
+  for (const ev of events) {
+    const t = performance.now();
+    if (ev.k === 'place') await sc.dig(ev);
+    else if (ev.k === 'goal') await sc.flip(ev);
+    else if (ev.k === 'rockfall') await sc.rockfall(ev);
+    else if (ev.k === 'map') await sc.peek(ev, ev.seat === view.me?.seat ? ev.kind : null);
+    else continue;
+    log(ev.k, 'done', Math.round(performance.now() - t) + 'ms');
+  }
+  if (next) { view = next; window.view = view; sc.setState(view); }
+  setLegal(legalKind);
+}
+const key = (x, y) => x + ',' + y;
+function relink(v) {
+  if (FX?.linkedCells) { v.linked = FX.linkedCells(v); return v; }
+  v.linked = v.board.map((b) => [b.x, b.y]); return v;
+}
+function freeSpot(v) {
+  // любе законне місце для карти з руки або сусідня з'єднана клітинка
+  const c = pathCard();
+  const L = c ? (v.me.legal?.[c.id] || []) : [];
+  if (L.length) { const [x, y, r] = L[0]; const m0 = SHAPES[c.s].m; return { x, y, s: c.s, r, m: r ? rot180(m0) : m0, c: SHAPES[c.s].c, card: c.id }; }
+  const taken = new Set(v.board.map((b) => key(b.x, b.y)));
+  for (const b of v.board) for (const d of ['E', 'S', 'N', 'W']) if (b.m & BIT[d]) {
+    const x = b.x + STEP[d][0], y = b.y + STEP[d][1];
+    if (taken.has(key(x, y)) || x < GRID.x0 || x > GRID.x1 || y < GRID.y0 || y > GRID.y1 || (x === 0 && y < 0) || (x === 8 && [-2, 0, 2].includes(y))) continue;
+    return { x, y, s: 'x', r: 0, m: 15, c: true, card: 1 };
+  }
+  return null;
+}
+const A = {
+  async dig() {
+    const p = freeSpot(view); if (!p) return log('нема куди копати');
+    const seat = view.me?.seat ?? 0;
+    if (FX?.applyAct && view.me && view.turn === seat && view.me.hand.some((c) => c.id === p.card)) {
+      const { view: nv, error } = FX.applyAct(view, seat, 'play', { card: p.card, x: p.x, y: p.y, r: p.r });
+      if (!error) return play(nv.events.filter((e) => e.seq > view.seq), nv);
+      log('applyAct:', error);
+    }
+    const nv = clone(view);
+    nv.board.push({ x: p.x, y: p.y, s: p.s, r: p.r, m: p.m, c: p.c, by: seat, id: p.card });
+    relink(nv);
+    return play([{ k: 'place', seat, card: p.card, x: p.x, y: p.y, s: p.s, r: p.r, m: p.m, c: p.c }], nv);
+  },
+  async flipGold() { return flipGoal(1, 'gold', 'gold', 15); },
+  async flipStone() { return flipGoal(0, 'stone', 'stoneA', 9); },
+  async rockfall() {
+    const b = [...view.board].reverse().find((q) => q.s !== 'start'); if (!b) return log('нема що завалювати');
+    const nv = clone(view); nv.board = nv.board.filter((q) => !(q.x === b.x && q.y === b.y)); relink(nv);
+    return play([{ k: 'rockfall', seat: 2, card: 65, x: b.x, y: b.y, s: b.s }], nv);
+  },
+  async peekMine() {
+    const g = view.goals.find((q) => !q.open && !(view.me?.peeks || {})[q.i]) || view.goals.find((q) => !q.open); if (!g) return log('усі відкриті');
+    const kind = g.i === 1 ? 'gold' : 'stone';
+    const nv = clone(view); if (nv.me) nv.me.peeks = { ...(nv.me.peeks || {}), [g.i]: kind };
+    return play([{ k: 'map', seat: view.me?.seat ?? 0, card: 60, goal: g.i, kind }], nv);
+  },
+  async peekOther() {
+    const g = view.goals.find((q) => !q.open); if (!g) return log('усі відкриті');
+    return play([{ k: 'map', seat: 3, card: 61, goal: g.i, kind: null }], clone(view));
+  },
+  async finaleDiggers() { const t = performance.now(); await sc.finale('diggers'); log('finale diggers', Math.round(performance.now() - t) + 'ms'); },
+  async finaleMoles() { const t = performance.now(); await sc.finale('moles'); log('finale moles', Math.round(performance.now() - t) + 'ms'); },
+  async finaleNone() { const t = performance.now(); await sc.finale('none'); log('finale none', Math.round(performance.now() - t) + 'ms'); },
+};
+async function flipGoal(i, kind, s, m) {
+  const nv = clone(view);
+  const g = nv.goals[i];
+  if (g.open) return log('мітка', i, 'вже відкрита');
+  Object.assign(g, { open: true, kind, s, r: 0, m, c: true });
+  return play([{ k: 'goal', i, x: g.x, y: g.y, kind, s, r: 0, m, c: true, by: 0 }], nv);
+}
+window.runAnim = (name) => A[name]?.();
+window.setLegalKind = (k) => setLegal(k);
+
+async function onPicked(k, a, b) {
+  if (!FX?.applyAct || !view.me) return;
+  const seat = view.me.seat;
+  let act = null;
+  if (legalKind === 'place' && k === 'cell' && curLegal?.card) {
+    const L = view.me.legal[curLegal.card.id] || [];
+    const hit = L.find(([x, y, r]) => x === a && y === b && r === rot) || L.find(([x, y]) => x === a && y === b);
+    if (hit) act = ['play', { card: curLegal.card.id, x: a, y: b, r: hit[2] }];
+  } else if (legalKind === 'rockfall' && k === 'cell') {
+    const c = view.me.hand.find((q) => q.k === 'rockfall'); if (c) act = ['play', { card: c.id, x: a, y: b }];
+  } else if (legalKind === 'goal' && k === 'goal') {
+    const c = view.me.hand.find((q) => q.k === 'map'); if (c) act = ['play', { card: c.id, goal: a }];
+  }
+  if (!act) return;
+  const { view: nv, error } = FX.applyAct(view, seat, act[0], act[1]);
+  if (error) return log('помилка:', error);
+  await play(nv.events.filter((e) => e.seq > view.seq), nv);
+}
+
+sel.onchange = () => load(sel.value);
+document.querySelectorAll('[data-a]').forEach((b) => { b.onclick = () => A[b.dataset.a](); });
+document.querySelectorAll('[data-l]').forEach((b) => { b.onclick = () => setLegal(b.dataset.l); });
+$('rot').onclick = () => { rot ^= 1; setLegal(legalKind); };
+$('cur').onclick = () => { cursorOn = !cursorOn; $('cur').classList.toggle('on', cursorOn); moveCursor(0); };
+$('focus').onclick = () => sc.focus(8, 0);
+$('brk').onclick = () => {
+  const nv = clone(view); const p = nv.players.find((q) => q.seat === (nv.me?.seat ?? 0)); if (!p) return;
+  p.broken = p.broken.length ? [] : ['pick']; view = nv; window.view = view; sc.setState(view); log('broken', p.broken.join(',') || '—');
+};
+$('qLow').onclick = () => { quality = 'low'; boot(); };
+$('qHigh').onclick = () => { quality = 'high'; boot(); };
+$('rm').onclick = () => { reduced = !reduced; boot(); };
+$('reset').onclick = () => sc.resetView();
+$('min').onclick = () => $('panel').classList.toggle('min');
+addEventListener('keydown', (e) => {
+  if (e.key === 'r' || e.key === 'R') { rot ^= 1; setLegal(legalKind); }
+  else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') moveCursor(1);
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') moveCursor(-1);
+  else if (e.key === 'Escape') setLegal(null);
+});
+
+// к/с (кадри, що справді намальовано — рендер на вимогу) і виклики малювання останнього кадру
+let lastF = 0, last = performance.now();
+setInterval(() => {
+  const d = sc?._dbg; if (!d) return;
+  const now = performance.now(), f = d.stats.frames;
+  const fps = Math.round((f - lastF) * 1000 / (now - last)); lastF = f; last = now;
+  const info = d.renderer.info;
+  const txt = `${fps} к/с · draw ${info.render.calls} · tri ${(info.render.triangles / 1000).toFixed(1)}k · ${quality}${reduced ? ' · rm' : ''}`;
+  $('stats').textContent = txt;
+  window.stats = { fps, calls: info.render.calls, tris: info.render.triangles, geos: info.memory.geometries, frames: f };
+}, 500);
+
+await boot();
+window.ready = true;
+</script>
+</body>
+</html>
