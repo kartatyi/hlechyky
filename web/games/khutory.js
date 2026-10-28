@@ -18,14 +18,15 @@
   const DEV_ICON = { knight: '⚔️', vp: '💰', road: '🛤', plenty: '🌻', mono: '🎪' };
   const BUILD_ICON = { road: '🛤', town: '🏠', city: '🏛', dev: '📜' };
 
-  let M = null;           // { C: consts, K: hud-calc } — після load()
+  let M = null;           // { C: consts, K: hud-calc, S: sound | null } — після load()
   let loading = null;
   let cur = null;         // root змонтованої картки (для onKey)
 
   function load() {
     if (!loading) {
-      loading = Promise.all([import('/games/khutory/consts.js'), import('/games/khutory/hud-calc.js')])
-        .then(([C, K]) => { M = { C, K }; return M; })
+      // Звук — не обов'язковий: не завантажився — граємо мовчки.
+      loading = Promise.all([import('/games/khutory/consts.js'), import('/games/khutory/hud-calc.js'), import('/games/khutory/sound.js').catch(() => null)])
+        .then(([C, K, S]) => { M = { C, K, S }; return M; })
         .catch((e) => { loading = null; throw e; });
     }
     return loading;
@@ -136,7 +137,7 @@
       + '<div class="kh-say" aria-live="polite"></div>'
       + '<div class="kh-main">'
       + '<div class="kh-fieldwrap"><div class="kh-field"></div><div class="kh-marks"></div><div class="kh-tip" hidden></div>'
-      + '<div class="kh-flash" hidden></div><div class="kh-tools"><button type="button" class="kh-view" data-a="view"></button></div>'
+      + '<div class="kh-flash" hidden></div><div class="kh-tools"><button type="button" class="kh-view" data-a="view"></button><button type="button" class="kh-view kh-snd" data-a="snd"></button></div>'
       + '<div class="kh-fab"></div>'
       + '<div class="kh-dlg" hidden></div></div>'
       + '<div class="kh-side"><div class="kh-act"></div><div class="kh-trade"></div><div class="kh-offers"></div><div class="kh-log"></div></div>'
@@ -144,14 +145,43 @@
       + '<div class="kh-hand"></div>'
       + '</div>';
     st.el = {};
-    for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'fab'])
+    for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'fab', 'snd'])
       st.el[k] = root.querySelector('.kh-' + k);
+    // Звук: типово вимкнено, стан пам'ятає сам модуль; AudioContext — лише на першому play() при ввімкненому.
+    try { st.snd = M.S && M.S.createSound ? M.S.createSound() : null; } catch (e) { st.snd = null; }
+    paintSnd(st);
     st.onClick = (e) => onClick(root, e);
     root.addEventListener('click', st.onClick);
     st.ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (st.sc) st.sc.resize(); placeMarks(st); }) : null;
     if (st.ro) st.ro.observe(st.el.field);
     st.tick = setInterval(() => tick(root), 250);
     st.built = true;
+  }
+
+  // ─── Звук ───────────────────────────────────────────────────────────────
+  function sfx(st, name, opts) { if (st.snd) { try { st.snd.play(name, opts); } catch (e) { /* звук не головне */ } } }
+  function paintSnd(st) {
+    const b = st.el && st.el.snd;
+    if (!b) return;
+    b.hidden = !st.snd;
+    const on = !!(st.snd && st.snd.on);
+    b.textContent = on ? '🔊' : '🔇';
+    b.title = on ? 'Звук увімкнено — вимкнути' : 'Звук вимкнено — увімкнути';
+    b.setAttribute('aria-label', b.title);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  /// Останні 5 с МОГО строку — «тік» раз на секунду.
+  function tickSound(st, v) {
+    const me = v.me;
+    if (!st.snd || !st.snd.on || !me || !v.deadline || v.phase === 'over') return;
+    const mine = !!me.must || (v.turn === me.seat && (v.phase === 'main' || v.phase === 'road2'));
+    if (!mine) return;
+    const left = Date.parse(v.deadline) - Date.now();
+    if (!(left > 0 && left <= 5000)) return;
+    const key = v.deadline + '|' + Math.ceil(left / 1000);
+    if (st.tickKey === key) return;
+    st.tickKey = key;
+    sfx(st, 'tick');
   }
 
   // ─── Поле: 3D або пласке ────────────────────────────────────────────────
@@ -746,6 +776,7 @@
     if (!st || !st.view) return;
     tickArcs(st);
     if (st.marks.length) placeMarks(st);
+    tickSound(st, st.view);
     // Строк минув — будь-хто за столом штовхає сервер (той звірить із годинником і зробить автохід).
     const v = st.view, ctx = st.ctx;
     if (!v.deadline || !ctx || !ctx.mine || !ctx.playing || !ctx.room || v.phase === 'over') return;
@@ -768,10 +799,8 @@
       HGames.send('Act', st.ctx.room.id, 'bot', null);
       st.nt = setTimeout(fire, 1500);
     };
-    // Хід «задрімалої» людини (away): Глек грає за неї, але даємо 5 с, щоб вона встигла натиснути сама й повернутись.
-    const who = v.discard ? null : playerOf(v, v.turn);
-    const grace = who && who.away && !who.bot && v.phase === 'roll' ? 5000 : 0;
-    st.nt = setTimeout(fire, v.botIn + 60 + grace + myRank(v, ctx) * 700);
+    // Хід «задрімалої» людини (away): 5 с на повернення дає сервер — botIn тоді вже ≥ 5000.
+    st.nt = setTimeout(fire, v.botIn + 60 + myRank(v, ctx) * 700);
   }
 
   // ─── Події: анімації по черзі ───────────────────────────────────────────
@@ -811,14 +840,27 @@
     if (e.k === 'roll') {
       const sum = (e.d || [0, 0])[0] + (e.d || [0, 0])[1];
       st.rolling = true;
+      sfx(st, 'dice');
+      if (me) {
+        const n = (e.gains || []).filter((g) => g.seat === me.seat).reduce((a, g) => a + (g.n || 0), 0);
+        if (n > 0) setTimeout(() => { if (st.view) sfx(st, 'coin', { n }); }, sc ? 1300 : 300);
+      }
       try { if (sc) await cap(sc.roll(e.d[0], e.d[1]), 1400); } finally { st.rolling = false; st.diceShown = e.d; }
       flash(st, '🎲 ' + esc(nickOf(v, e.seat)) + ' кидає ' + sum + (sum === 7 ? ' — Кармелюк іде!' : ''));
       if (st.view) renderAct(st, st.view, st.view.me);
       gainsToChips(st, v, e.gains || []);
       if (sc && e.gains && e.gains.length) await sc.produce(e.gains);
     } else if (e.k === 'build') {
+      sfx(st, e.what === 'road' ? 'road' : e.what === 'city' ? 'city' : 'place');
       if (sc) sc.pop(e.what === 'road' ? 'e' : 'v', e.at);
+    } else if (e.k === 'robber') {
+      sfx(st, 'robber');
+    } else if (e.k === 'trade') {
+      if (me && (e.seat === me.seat || e.with === me.seat)) sfx(st, 'trade');
+    } else if (e.k === 'dev' && !e.play) {
+      if (me && e.seat === me.seat) sfx(st, 'card');
     } else if (e.k === 'steal' && me && (e.seat === me.seat || e.from === me.seat)) {
+      sfx(st, 'steal');
       const r = e.res ? ' ' + RES_ICON[e.res] + ' ' + C.RES_NAME[e.res] : ' карту';
       flash(st, e.seat === me.seat ? '🥷 Ти забрав у ' + esc(nickOf(v, e.from)) + r : '🥷 Кармелюк забрав у тебе' + r + ' для ' + esc(nickOf(v, e.seat)));
     } else if (e.k === 'dev' && e.play) {
@@ -826,10 +868,13 @@
       const dk = e.card || e.dev || null;
       flash(st, (DEV_ICON[dk] || '📜') + ' ' + esc(nickOf(v, e.seat)) + ' грає ' + esc(C.DEV_NAME[dk] || 'грамоту'));
     } else if (e.k === 'award') {
+      if (e.seat != null) sfx(st, 'award');
       if (e.seat != null) flash(st, (e.kind === 'longest' ? '🛤 Чумацький шлях' : '⚔ Найсильніша сотня') + ' — у ' + esc(nickOf(v, e.seat)) + ' (+2 ⭐)');
     } else if (e.k === 'turn' && me && e.seat === me.seat) {
+      sfx(st, 'turn');
       flash(st, '👉 Твій хід!');
     } else if (e.k === 'win') {
+      if (st.wonSeq !== e.seq) { st.wonSeq = e.seq; sfx(st, 'win'); }
       flash(st, '🏆 ' + esc(nickOf(v, e.seat)) + ' перемагає!');
     }
   }
@@ -869,6 +914,7 @@
     const act = (name, p) => ctx && ctx.act(name, p);
     switch (a) {
       case 'view': switchView(root, st); return;
+      case 'snd': if (st.snd) { st.snd.setOn(!st.snd.on); paintSnd(st); } return;
       case 'again': {
         const rb = (root.closest('.groom') || document).querySelector('[data-do="Rematch"]');
         if (rb) rb.click(); else if (ctx && ctx.toast) ctx.toast('Ще раз зараз не вийде — замало гравців за столом');
@@ -961,6 +1007,7 @@
         if (st.ro) st.ro.disconnect();
         if (st.onClick) root.removeEventListener('click', st.onClick);
         if (st.sc) { try { st.sc.dispose(); } catch (e) { /* уже прибрано */ } }
+        if (st.snd) { try { st.snd.dispose(); } catch (e) { /* уже прибрано */ } st.snd = null; }
         st.queue.length = 0;
       }
       root._kh = null;
