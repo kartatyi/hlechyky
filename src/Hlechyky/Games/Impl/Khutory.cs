@@ -40,6 +40,9 @@ public sealed class Khutory : Game
     DateTimeOffset? _deadline;
     int _deadlineMs;
     string _deadlineKey = "";
+    /// <summary>Строк main — один на хід: Кармелюк (козак) чи Толока посеред ходу його не поновлюють.</summary>
+    string _mainKey = "";
+    DateTimeOffset? _mainDeadline;
     DateTimeOffset? _botAt;
     /// <summary>Розумний Глек (пам'ять його пропозицій — на партію).</summary>
     KhutoryBot _brain = new();
@@ -82,12 +85,16 @@ public sealed class Khutory : Game
         Array.Clear(_away);
         Array.Clear(_missed);
         var board = _starter ? KhutoryBoard.Starter() : KhutoryBoard.Random(Ctx.Rng);
-        _core = new KhutoryCore(board, seats, Ctx.Rng) { Target = _target, Friendly = _friendly, NameOf = Nick };
+        // seq подій — наскрізний через усі партії столу: клієнт тримає найбільший побачений і анімує лише новіші.
+        var seq = _core.Seq;
+        _core = new KhutoryCore(board, seats, Ctx.Rng) { Target = _target, Friendly = _friendly, NameOf = Nick, Seq = seq };
         _brain = new KhutoryBot();
         _announced = false;
         _reason = "points";
         _deadlineKey = "";
         _deadline = null;
+        _mainKey = "";
+        _mainDeadline = null;
         _core.Begin(seats[Ctx.Rng.Next(seats.Length)]);
         After();
     }
@@ -266,7 +273,16 @@ public sealed class Khutory : Game
             : $"{_core.Phase}|{_core.Turn}|{_core.SetupIdx}|{_core.SetupRoad}";
         if (key == _deadlineKey) return;
         _deadlineKey = key;
-        _deadlineMs = _core.Phase == KhPhase.Main ? _timerMs : Math.Min(_timerMs, ShortMs);
+        if (_core.Phase == KhPhase.Main)
+        {
+            var main = $"{_core.Turn}|{_core.Rounds}|{_core.TurnIdx}";
+            _deadlineMs = _timerMs;
+            if (main == _mainKey && _mainDeadline is { } md) { _deadline = md; return; }
+            _mainKey = main;
+            _deadline = _mainDeadline = Ctx.Clock.UtcNow.AddMilliseconds(_timerMs);
+            return;
+        }
+        _deadlineMs = Math.Min(_timerMs, ShortMs);
         _deadline = Ctx.Clock.UtcNow.AddMilliseconds(_deadlineMs);
     }
 
@@ -298,7 +314,9 @@ public sealed class Khutory : Game
             Ctx.Finish([], $"{Info.Title}: партію покинули — переможця нема", scores);
             return;
         }
-        int[] winners = Ctx.Seated(w) && !IsBot(w) ? [w] : [];
+        // Переможець — місце навіть тоді, коли там Глек (бот чи за людину, що вийшла): решта людей програли, а не нічия.
+        // Каркас це вміє: виплата ставок і гімн шукають нік за місцем і порожнє/Глекове пропускають (як у Доміно).
+        int[] winners = [w];
         var rest = string.Join(", ", _core.Order.Where(s => s != w).Select(s => $"{Nick(s)} {_core.Points(s)}"));
         Ctx.Finish(winners, $"{Info.Title}: перемагає {Nick(w)} — {_core.Points(w)} очок ({rest})", scores);
     }

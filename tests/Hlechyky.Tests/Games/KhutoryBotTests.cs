@@ -140,7 +140,7 @@ public class KhutoryBotTests(ITestOutputHelper output)
     // Пропозиції з людьми (кімната)
     // =========================================================================================
 
-    static RoomHarness Table(string bots = "1", int seed = 5)
+    internal static RoomHarness Table(string bots = "1", int seed = 5)
     {
         var h = new RoomHarness("khutory", new { map = "starter", timer = "180", bots }, seed: seed);
         h.Join("Оля");
@@ -155,7 +155,7 @@ public class KhutoryBotTests(ITestOutputHelper output)
             .GetProperty("seat").GetInt32();
 
     /// <summary>Розставити всіх (автоходом прямо в ядрі), руки — порожні, фаза main, хід <paramref name="turn"/>.</summary>
-    static KhutoryCore Main(RoomHarness h, int turn)
+    internal static KhutoryCore Main(RoomHarness h, int turn)
     {
         var c = CoreOf(h);
         var rng = new Random(1);
@@ -171,11 +171,11 @@ public class KhutoryBotTests(ITestOutputHelper output)
     }
 
     /// <summary>Після ручної правки ядра — перерахувати строк і botIn, як після будь-якої дії.</summary>
-    static void Rearm(RoomHarness h) =>
+    internal static void Rearm(RoomHarness h) =>
         typeof(Khutory).GetMethod("After", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
             .Invoke(h.Room.Game, null);
 
-    static void Give(KhutoryCore c, int s, int wood = 0, int clay = 0, int wool = 0, int grain = 0, int ore = 0)
+    internal static void Give(KhutoryCore c, int s, int wood = 0, int clay = 0, int wool = 0, int grain = 0, int ore = 0)
     {
         int[] a = [wood, clay, wool, grain, ore];
         for (var r = 0; r < 5; r++) { c.Bank[r] -= a[r]; c.Hand[s][r] += a[r]; }
@@ -370,5 +370,92 @@ public class KhutoryBotTests(ITestOutputHelper output)
         Assert.DoesNotContain(journal, l => l.Contains("кидає") || l.Contains("ставить хату"));
         Assert.Contains(journal, l => l.Contains("перемагає"));
         Assert.True(journal.Count(l => l.Contains("ставить містечко")) <= 4);
+    }
+}
+
+/// <summary>Правки за рецензією правил: наскрізний seq, один строк main на хід, зустрічна без оплати, переможець-Глек.</summary>
+public class KhutoryReviewTests
+{
+    /// <summary>Дограти партію поштовхами Глеків і таймаутами (людина за столом мовчить).</summary>
+    static void PlayOut(RoomHarness h)
+    {
+        for (var steps = 0; h.Finished.Count == 0; steps++)
+        {
+            Assert.True(steps < 8000, "партія не кінчається");
+            if (h.View(0).GetProperty("botIn") is { ValueKind: JsonValueKind.Number } b)
+            {
+                h.Clock.AdvanceMs(Math.Max(1, b.GetInt32()));
+                Assert.True(h.Act(0, "bot").Ok);
+            }
+            else
+            {
+                h.Clock.Advance(181);
+                Assert.True(h.Act(0, "timeout").Ok);
+            }
+        }
+    }
+
+    [Fact]
+    public void Event_seq_keeps_growing_after_rematch_and_a_glek_winner_means_a_loss_for_people()
+    {
+        var h = KhutoryBotTests.Table(bots: "3", seed: 3);
+        PlayOut(h);
+        var end = h.View(0);
+        var last = end.GetProperty("seq").GetInt64();
+        var winner = end.GetProperty("over").GetProperty("winner").GetInt32();
+        // Переміг Глек чи людина — переможець у результаті є, не нічия.
+        var result = h.Finished[0].Result;
+        Assert.False(result.Draw);
+        Assert.Equal([winner], result.Winners);
+
+        Assert.True(h.Rematch().Ok);
+        var again = h.View(0);
+        Assert.True(again.GetProperty("seq").GetInt64() >= last);
+        Assert.All(again.GetProperty("events").EnumerateArray(), e => Assert.True(e.GetProperty("seq").GetInt64() > last));
+        if (again.GetProperty("botIn") is { ValueKind: JsonValueKind.Number } b) h.Clock.AdvanceMs(b.GetInt32());
+        else h.Clock.Advance(41);
+        Assert.True(h.Act(0, again.GetProperty("botIn").ValueKind == JsonValueKind.Number ? "bot" : "timeout").Ok);
+        var first = h.View(0).GetProperty("events").EnumerateArray().Select(e => e.GetProperty("seq").GetInt64()).ToList();
+        Assert.NotEmpty(first);
+        Assert.True(first.Min() > last, $"перша подія нової партії {first.Min()} ≤ {last}");
+    }
+
+    [Fact]
+    public void Knight_in_the_middle_of_a_turn_does_not_renew_the_main_timer()
+    {
+        var h = KhutoryBotTests.Table(bots: "1");
+        var c = KhutoryBotTests.Main(h, 0);
+        KhutoryBotTests.Rearm(h);
+        h.Clock.Advance(170);
+        c.Devs[0].Add(new KhDev { K = KhutoryCore.Knight });
+        Assert.True(h.Act(0, "play", new { k = "knight" }).Ok);
+        var me = h.View(0).GetProperty("me");
+        Assert.Equal("robber", me.GetProperty("must").GetString());
+        Assert.True(h.Act(0, "robber", new { h = me.GetProperty("robber")[0].GetInt32() }).Ok);
+        me = h.View(0).GetProperty("me");
+        if (me.GetProperty("must").ValueKind == JsonValueKind.String)
+            Assert.True(h.Act(0, "steal", new { seat = me.GetProperty("steal")[0].GetInt32() }).Ok);
+        var v = h.View(0);
+        Assert.Equal("main", v.GetProperty("phase").GetString());
+        var left = (v.GetProperty("deadline").GetDateTimeOffset() - h.Clock.UtcNow).TotalSeconds;
+        Assert.InRange(left, 9, 11);
+        Assert.Equal(180_000, v.GetProperty("timerMs").GetInt32());
+    }
+
+    [Fact]
+    public void Counter_offer_disappears_when_the_current_player_can_no_longer_pay()
+    {
+        var c = new KhutoryCore(KhutoryBoard.Starter(), Enumerable.Range(0, 4), new Random(1));
+        c.Begin(0);
+        c.Phase = KhPhase.Main;
+        c.Turn = 0;
+        c.TurnIdx = 0;
+        c.Rolled = true;
+        KhutoryBotTests.Give(c, 0, wool: 1, grain: 1, ore: 1);
+        KhutoryBotTests.Give(c, 1, wood: 1);
+        Assert.Null(c.Offer(1, [1, 0, 0, 0, 0], [0, 0, 0, 0, 1], null));
+        Assert.Single(c.Offers);
+        Assert.Null(c.Buy(0));   // залізо пішло на грамоту — платити за зустрічну нічим
+        Assert.Empty(c.Offers);
     }
 }

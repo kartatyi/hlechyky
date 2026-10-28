@@ -912,6 +912,8 @@ public sealed class KhutoryCore
     void Prune()
     {
         Offers.RemoveAll(o => !Has(Hand[o.From], o.Give));
+        // Зустрічна, за яку поточному вже нема чим платити, — теж зникає (§6).
+        Offers.RemoveAll(o => o.From != Turn && !Has(Hand[Turn], o.Get));
         foreach (var o in Offers) o.Acc.RemoveAll(a => !Has(Hand[a], o.Get));
     }
 
