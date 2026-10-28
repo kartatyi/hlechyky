@@ -338,6 +338,7 @@
     pulseHand(st, me);
     const w = whatNow(v, me, st);
     setHtml(st.el.say, '<div class="kh-say-t">' + w.l + '</div>' + (st.pick ? '<button type="button" class="kh-x" data-a="pick-cancel">✕ Передумав</button>' : ''));
+    st.el.say.hidden = !!v.over;
     st.el.say.classList.toggle('mine', !!(me && (me.must || v.turn === me.seat) && v.phase !== 'over'));
     renderPlayers(st, v, me);
     renderAct(st, v, me);
@@ -389,8 +390,9 @@
     const L = 2 * Math.PI * 19;
     const h = v.players.map((p) => {
       const mine = me && me.seat === p.seat;
-      const pts = mine && me.points != null ? me.points : p.points;
-      const secret = mine && me.points > p.points ? '<small title="Скарби в руці бачиш лише ти">+' + (me.points - p.points) + ' потай</small>' : '';
+      const fin = v.over && v.over.points ? v.over.points[p.seat] : null;
+      const pts = fin != null ? fin : mine && me.points != null ? me.points : p.points;
+      const secret = fin == null && mine && me.points > p.points ? '<small title="Скарби в руці бачиш лише ти">+' + (me.points - p.points) + ' потай</small>' : '';
       const awards = (v.longest && v.longest.seat === p.seat ? '<span class="kh-aw" title="Чумацький шлях: найдовший шлях (' + v.longest.len + '), +2 очки">🛤 +2</span>' : '')
         + (v.army && v.army.seat === p.seat ? '<span class="kh-aw" title="Найсильніша сотня: найбільше козаків (' + v.army.n + '), +2 очки">⚔ +2</span>' : '');
       const think = thinking.has(p.seat);
@@ -669,9 +671,9 @@
     }
     h += '</div>';
     if (s.seats && s.seats.length) {
-      h += '<table class="kh-stats"><thead><tr><th></th><th title="Обмінів">🤝</th><th title="Отримано карт">🂠</th><th title="Вкрадено Кармелюком">🥷</th><th title="Шляхів">🛤</th><th title="Хат">🏠</th><th title="Містечок">🏛</th></tr></thead><tbody>'
+      h += '<div class="kh-tbl"><table class="kh-stats"><thead><tr><th></th><th>🤝<br><small>обмінів</small></th><th>🂠<br><small>отримав карт</small></th><th>🥷<br><small>вкрав</small></th><th>🛤<br><small>шляхів</small></th><th>🏠<br><small>хат</small></th><th>🏛<br><small>містечок</small></th></tr></thead><tbody>'
         + s.seats.map((x) => '<tr><td>' + who(v, x.seat) + '</td><td>' + x.trades + '</td><td>' + x.got + '</td><td>' + x.stolen + '</td><td>' + ((x.built || {}).road || 0) + '</td><td>' + ((x.built || {}).town || 0) + '</td><td>' + ((x.built || {}).city || 0) + '</td></tr>').join('')
-        + '</tbody></table>';
+        + '</tbody></table></div>';
     }
     setHtml(st.el.sum, h);
   }

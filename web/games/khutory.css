@@ -83,7 +83,7 @@
 .kh-link { background: none; border: 0; color: var(--muted); text-decoration: underline; align-self: center; padding: 4px; }
 
 /* ─── Панель ходу ────────────────────────────────────────── */
-.kh-side { display: flex; flex-direction: column; gap: 10px; max-height: min(66vh, 600px); min-height: 0; overflow: auto; }
+.kh-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .kh-act { display: flex; flex-direction: column; gap: 8px; }
 .kh-act:empty { display: none; }
 .kh-dice { display: flex; align-items: center; gap: 6px; min-height: 36px; }
@@ -244,3 +244,23 @@
 .kh-help li:last-child { color: var(--text); }
 .kh-log { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
 .kh-logh { text-align: left; }
+
+/* Крокомір ресурсу: значок і число зверху, − і + знизу. */
+.kh-step { grid-template-columns: 1fr 1fr; align-items: center; gap: 3px; padding: 5px 3px; }
+.kh-step .kh-ri { grid-area: 1 / 1; justify-self: end; }
+.kh-step b { grid-area: 1 / 2; justify-self: start; }
+.kh-step button:first-of-type { grid-area: 2 / 1; }
+.kh-step button:last-of-type { grid-area: 2 / 2; }
+.kh-step button { height: 30px; max-width: none; }
+@container kh (max-width: 699px) { .kh-step button { height: 40px; } }
+.kh-steps { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.kh-step { min-width: 0; }
+.kh-step button { min-width: 0; padding: 0; }
+.kh-say[hidden] { display: none; }
+.kh-stats th { font-weight: 600; vertical-align: bottom; }
+.kh-stats th small { color: var(--muted); font-weight: 400; font-size: .78em; }
+.kh-ob button { max-width: 100%; min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.kh-tbl { overflow-x: auto; max-width: 100%; }
+.kh-stats { table-layout: fixed; }
+.kh-stats th:first-child, .kh-stats td:first-child { width: 30%; overflow: hidden; text-overflow: ellipsis; }
+.kh-stats th small { overflow-wrap: anywhere; }
