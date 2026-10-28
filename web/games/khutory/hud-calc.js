@@ -412,3 +412,23 @@ export function robberInfo(view, seat) {
   if (bi >= 0) out[bi].best = true;
   return out;
 }
+
+/** Будови, ціни яких завжди перед очима (§12 «Ціни будов»), у цьому порядку. */
+export const BUILD_KEYS = ['road', 'town', 'city', 'dev'];
+
+/**
+ * «Є / бракує» по кожній будові за рукою: [{ k, dots: [{ res, have }], lack: { clay: 1 }, n, ok }].
+ * dots — кружечки ціни по одному на карту (у порядку RES), have — чи покриває її рука. hand == null (глядач) —
+ * нейтрально: have = null, ok = false, lack = {}. Лише рахунок карт: чи є місце й фігура — каже сервер (me.can / me.why).
+ */
+export function buildNeeds(hand, costs, keys = BUILD_KEYS) {
+  return keys.map((k) => {
+    const cost = (costs && costs[k]) || {};
+    const dots = [];
+    for (const r of RES) for (let i = 0; i < (cost[r] || 0); i++) dots.push({ res: r, have: hand ? i < (hand[r] || 0) : null });
+    if (!hand) return { k, dots, lack: {}, n: 0, ok: false };
+    const lack = lacking(hand, cost);
+    const n = total(lack);
+    return { k, dots, lack, n, ok: n === 0 };
+  });
+}
