@@ -77,6 +77,8 @@ public sealed class KhCoreSnap
     public int[] Trades { get; set; } = [];
     public int[] Got { get; set; } = [];
     public int[] Stolen { get; set; } = [];
+    public int[] Robbed { get; set; } = [];
+    public List<int> Rolls { get; set; } = [];
     public int[][] Built { get; set; } = [];
 }
 
@@ -151,6 +153,8 @@ public sealed partial class KhutoryCore
         Trades = [.. Trades],
         Got = [.. Got],
         Stolen = [.. Stolen],
+        Robbed = [.. Robbed],
+        Rolls = [.. Rolls],
         Built = [.. Built.Select(b => (int[])b.Clone())],
     };
 
@@ -227,6 +231,8 @@ public sealed partial class KhutoryCore
             Trades = Fit(s.Trades, MaxSeats),
             Got = Fit(s.Got, MaxSeats),
             Stolen = Fit(s.Stolen, MaxSeats),
+            Robbed = Fit(s.Robbed, MaxSeats),
+            Rolls = [.. (s.Rolls ?? []).TakeLast(RollsKeep)],
             Built = [.. Enumerable.Range(0, MaxSeats).Select(i => i < s.Built.Length ? Fit(s.Built[i], 3) : new int[3])],
         };
         c._offerId = s.OfferId;

@@ -253,6 +253,15 @@ public class KhutorySaveTests
         Assert.Equal(from, CoreOf(h).StealFrom);
         Assert.True(h.Act(0, "steal", new { seat = from[0] }).Ok);
         Assert.Equal(KhPhase.Main, CoreOf(h).Phase);
+        // Нова статистика (смуга кидків, «Улюбленець Кармелюка») переживає перезапуск.
+        c = CoreOf(h);
+        var robbed = c.Robbed.ToArray();
+        var rolls = c.Rolls.ToArray();
+        Assert.Equal(1, robbed[from[0]]);
+        Assert.Equal(7, rolls[^1]);
+        Same(h);
+        Assert.Equal(robbed, CoreOf(h).Robbed);
+        Assert.Equal(rolls, CoreOf(h).Rolls);
         PlayOut(h);
     }
 

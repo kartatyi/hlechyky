@@ -110,6 +110,8 @@
   "phase": "main",                   // setup | roll | discard | robber | steal | main | road2 | over
   "setup": { "step": "town", "round": 1 },   // лише у фазі setup; step: town | road
   "dice": [3, 4],                    // останній кидок цього ходу (null до кидка)
+  "rolls": [8, 5, 7, 6],              // останні ≤ 8 сум кидків партії, найсвіжіша — остання (смуга «Останні кидки»)
+  "diceCount": [0,1,2,…],            // 11 чисел: скільки разів випало 2..12 від початку партії (null на розстановці)
   "rolled": true,
   "robber": 9,                       // id гекса
   "towns": [{ "v": 12, "seat": 0, "city": false }],
@@ -239,9 +241,11 @@
 
 `over`: `{ "winner": 2, "reason": "points" | "left", "points": [повні очки за місцями], "stats": {
 "dice": [11 чисел — скільки разів випало 2..12], "sevens": 9, "rounds": 14,
-"timeline": [[очки за місцями після кожного кола]], "seats": [{ "seat", "trades", "got", "stolen",
+"timeline": [[очки за місцями після кожного кола]], "seats": [{ "seat", "trades", "got", "stolen", "robbed",
 "built": { "road", "town", "city" } }] } }`. У `over` скарби всіх відкриті. `Ctx.Finish([winner], "<рядок>",
-scores: повні очки)`. «Ще раз» — нова карта (для `random`), новий перший гравець.
+scores: повні очки)`. `timeline[i]` — за НОМЕРАМИ місць (`timeline[i][seat]`, на порожніх місцях нулі), не за
+порядком `players`. `stolen` — скільки разів крав сам, `robbed` — скільки разів крали в нього (звання «Улюбленець
+Кармелюка»). `rolls` і `robbed` лежать у знімку ядра (`KhCoreSnap`) — переживають перезапуск. «Ще раз» — нова карта (для `random`), новий перший гравець.
 
 ## 10. API 3D-сцени (`web/games/khutory/scene.js`, ES-модуль) — той самий у пласкої карти `board2d.js`
 

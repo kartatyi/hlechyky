@@ -635,6 +635,8 @@ public sealed partial class Khutory : Game
             phase = started ? c.PhaseName : null,
             setup = started && c.Phase == KhPhase.Setup ? new { step = c.SetupRoad ? "road" : "town", round = c.SetupIdx < c.Seats ? 1 : 2 } : null,
             dice = c.Dice is { } d ? (int[])d.Clone() : null,
+            rolls = c.Rolls.ToArray(),
+            diceCount = started && c.Phase != KhPhase.Setup ? (int[])c.DiceCount.Clone() : null,
             rolled = c.Rolled,
             robber = c.Robber,
             towns = Enumerable.Range(0, KhutoryGeo.Verts).Where(v => c.VOwner[v] >= 0)
@@ -717,7 +719,7 @@ public sealed partial class Khutory : Game
                 timeline = c.Timeline.Select(r => (int[])r.Clone()).ToArray(),
                 seats = c.Order.Order().Select(s => new
                 {
-                    seat = s, trades = c.Trades[s], got = c.Got[s], stolen = c.Stolen[s],
+                    seat = s, trades = c.Trades[s], got = c.Got[s], stolen = c.Stolen[s], robbed = c.Robbed[s],
                     built = new { road = c.Built[s][0], town = c.Built[s][1], city = c.Built[s][2] },
                 }).ToArray(),
             },
