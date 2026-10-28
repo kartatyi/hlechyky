@@ -813,7 +813,8 @@
       const now = Date.now();
       if (!(now - (st.vibAt || 0) < 5000)) {
         st.vibAt = now;
-        try { if (navigator.vibrate) navigator.vibrate(top > was.top ? [90, 60, 90] : 120); } catch (e) { /* не всюди можна */ }
+        // До першого дотику браузер вібрацію блокує (і лається в консоль) — тоді й не пробуємо.
+        try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(top > was.top ? [90, 60, 90] : 120); } catch (e) { /* не всюди можна */ }
       }
       if (top > was.top) sfx(st, 'trade');
     }
@@ -1617,6 +1618,7 @@
     onKey(e) {
       if (e.key !== 'Escape' || !cur || !cur._kh) return false;
       const st = cur._kh;
+      if (st.ask) { closeAsk(st); return true; }   // перепитування «тут і твоя хата» — Esc = «Обрати інший»
       if (st.pick || st.trade.open || st.dlg || st.bankGive || st.arm) {
         st.pick = null; st.trade.open = false; st.dlg = null; st.bankGive = null; st.arm = null;
         hideTip(st);
