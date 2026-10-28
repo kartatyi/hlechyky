@@ -36,18 +36,21 @@
     <button data-l="town">town</button><button data-l="road">road</button><button data-l="city">city</button>
     <button data-l="robber">robber</button><button data-l="">нічого</button>
   </div>
+  <div class="row">Тло <select id="bg"></select></div>
   <div class="row"><button id="qLow">low</button><button id="qHigh">high</button><button id="rm">reducedMotion</button><button id="reset">reset</button></div>
   <div id="stats">…</div>
   <div id="log"></div>
 </div>
 <script type="module">
-import { createScene } from '../scene.js';
+import { createScene, BG_VARIANTS, BG_DEFAULT } from '../scene.js';
 import { makeView, SCENARIOS } from './fixture.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
 let quality = qs.get('q') === 'low' ? 'low' : 'high';
 let reduced = qs.has('rm');
+let bg = BG_VARIANTS.includes(qs.get('bg')) ? qs.get('bg') : BG_DEFAULT;   // ?bg=lamp|rushnyk|khata|sea|planks
+if (qs.has('min')) $('panel').classList.add('min');   // ?min — панель згорнута (для знімків)
 let sc = null, view = null, legalKind = null;
 const picks = [];
 window.picks = picks;
@@ -55,6 +58,9 @@ window.picks = picks;
 const sel = $('scn');
 for (const s of SCENARIOS) sel.add(new Option(s, s));
 sel.value = SCENARIOS.includes(qs.get('s')) ? qs.get('s') : 'main';
+for (const b of BG_VARIANTS) $('bg').add(new Option(b, b));
+$('bg').value = bg;
+$('bg').onchange = () => { bg = $('bg').value; boot(); };
 
 function log(...a) {
   const line = a.join(' ');
@@ -65,7 +71,7 @@ function log(...a) {
 async function boot() {
   if (sc) sc.dispose();
   sc = await createScene($('host'), {
-    quality, reducedMotion: reduced,
+    quality, reducedMotion: reduced, bg,
     onPick: (k, id) => log('pick', k, id),
     onHover: (k, id) => {
       log('hover', k, id);
@@ -156,7 +162,7 @@ let frames = 0, last = performance.now();
   if (now - last > 500) {
     const fps = Math.round(frames * 1000 / (now - last)); frames = 0; last = now;
     const info = sc?._dbg?.renderer.info;
-    $('stats').textContent = `${fps} к/с · draw ${info ? info.render.calls : '?'} · tri ${info ? info.render.triangles : '?'} · ${quality}${reduced ? ' · rm' : ''}`;
+    $('stats').textContent = `${fps} к/с · draw ${info ? info.render.calls : '?'} · tri ${info ? info.render.triangles : '?'} · ${quality}${reduced ? ' · rm' : ''} · ${bg}`;
   }
   requestAnimationFrame(tick);
 })();

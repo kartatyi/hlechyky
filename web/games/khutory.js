@@ -22,10 +22,24 @@
   let loading = null;
   let cur = null;         // root змонтованої картки (для onKey)
 
+  // Сайт оновлює гру без F5: khutory.js приходить новий, а import('/games/khutory/x.js') без адреси-версії віддав би
+  // старий модуль із карти модулів сторінки (так після деплою .7 лишався старий кадр сцени). Тож усі модулі — з ?v=
+  // від відбитків УСІХ файлів games/khutory/* у каталозі: змінився будь-який — нові адреси в усіх, а модулі тягнуть
+  // сусідів із тим самим ?v= (const Q = import.meta.url). Старий сервер без відбитків — без ?v=, як було.
+  function modQ() {
+    const files = (HGames.catalog && HGames.catalog.files) || {};
+    const keys = Object.keys(files).filter((k) => k.startsWith('games/khutory/')).sort();
+    if (!keys.length) return '';
+    let h = 0;
+    for (const k of keys) for (const ch of k + '=' + files[k] + ';') h = (Math.imul(h, 31) + ch.charCodeAt(0)) | 0;
+    return '?v=' + (h >>> 0).toString(36);
+  }
+  const mod = (name) => import('/games/khutory/' + name + modQ());
+
   function load() {
     if (!loading) {
       // Звук — не обов'язковий: не завантажився — граємо мовчки.
-      loading = Promise.all([import('/games/khutory/consts.js'), import('/games/khutory/hud-calc.js'), import('/games/khutory/sound.js').catch(() => null)])
+      loading = Promise.all([mod('consts.js'), mod('hud-calc.js'), mod('sound.js').catch(() => null)])
         .then(([C, K, S]) => { M = { C, K, S }; return M; })
         .catch((e) => { loading = null; throw e; });
     }
@@ -142,8 +156,8 @@
 
   // ─── Каркас DOM ─────────────────────────────────────────────────────────
   function build(root, st) {
-    // Розкладка (khutory-look.md §7). ПК: плашки липнуть угорі; поле ліворуч на висоту екрана; праворуч колонка не довша
-    // за поле — «що зараз» + кубики, смуга чисел, рука одразу під кнопками, вкладки «🤝 Торг · 📜 Журнал · ❔ Правила».
+    // Розкладка (контракт §12). ПК «в один екран»: поле ліворуч на всю висоту, що лишилась (fitPc); праворуч колонка тієї ж
+    // висоти — «що зараз» + панель ходу з цінами будов | рука, смуга чисел, вкладки «🤝 Торг · 📜 Журнал» + «❔» (віконцем).
     // Телефон (< 700 px): .khu-main/.khu-side — display: contents, порядок — CSS order; знизу липнуть рука й панель дій.
     root.innerHTML = '<div class="khu">'
       + '<div class="khu-players"></div>'
@@ -154,18 +168,21 @@
       + '<div class="khu-flash" hidden></div><div class="khu-tools"><button type="button" class="khu-view" data-a="view"></button><button type="button" class="khu-view khu-snd" data-a="snd"></button></div>'
       + '<div class="khu-inc"></div>'
       + '<div class="khu-ask" hidden></div>'
-      + '<div class="khu-dlg" hidden></div></div>'
-      + '<div class="khu-side"><div class="khu-say" aria-live="polite"></div><div class="khu-act"></div><div class="khu-hand"></div>'
+      + '<div class="khu-dlg" hidden></div>'
+      + '<div class="khu-modal" hidden role="dialog" aria-modal="false"><div class="khu-modin"><div class="khu-modh"><b class="khu-modt"></b>'
+      + '<button type="button" class="khu-x" data-a="modal-x" aria-label="Закрити">✕</button></div><div class="khu-modb"></div></div></div></div>'
+      // Колонка — два стовпчики (ПК з запасом ширини: .khu-2c) або один: «що зараз» + панель ходу з цінами | рука, числа, вкладки.
+      + '<div class="khu-side"><div class="khu-ca"><div class="khu-say" aria-live="polite"></div><div class="khu-act"></div></div>'
+      + '<div class="khu-cb"><div class="khu-hand"></div>'
       + '<div class="khu-tabs"><div class="khu-tabh" role="tablist"></div>'
       + '<div class="khu-tp" data-t="trade" role="tabpanel"><div class="khu-trade"></div><div class="khu-offers"></div><p class="khu-note khu-tpe"></p></div>'
-      + '<div class="khu-tp" data-t="log" role="tabpanel" hidden><div class="khu-log"></div></div>'
-      + '<div class="khu-tp" data-t="help" role="tabpanel" hidden><div class="khu-help"></div></div></div>'
-      + '</div></div>'
+      + '<div class="khu-tp" data-t="log" role="tabpanel" hidden><div class="khu-log"></div></div></div>'
+      + '</div></div></div>'
       + '<div class="khu-incm"></div>'
       + '<div class="khu-bar"></div>'
       + '</div>';
     st.el = {};
-    for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'help', 'hand', 'view', 'snd', 'tabs', 'tabh', 'tpe', 'bar'])
+    for (const k of ['players', 'sum', 'say', 'main', 'side', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'modal', 'modt', 'modb', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'snd', 'tabs', 'tabh', 'tpe', 'bar'])
       st.el[k] = root.querySelector('.khu-' + k);
     st.el.tps = [...root.querySelectorAll('.khu-tp')];
     // Смуга «що дасть кожне число» — під рукою (рука — одразу під кнопками ходу, §7); поповер значків плашки — над картою.
@@ -188,7 +205,15 @@
     if (st.ro) st.ro.observe(st.el.field);
     // Висоти плашок (ПК: липка смуга й висота поля), руки й нижньої панелі (телефон: липнуть знизу) — у змінні картки.
     st.ro2 = typeof ResizeObserver === 'function' ? new ResizeObserver(() => sizeVars(root, st)) : null;
-    if (st.ro2) for (const k of ['players', 'hand', 'bar']) st.ro2.observe(st.el[k]);
+    if (st.ro2) {
+      for (const k of ['players', 'hand', 'bar']) st.ro2.observe(st.el[k]);
+      // ПК «в один екран»: ширина картки (балачки відкрили/згорнули) і висота картки каркаса (рядок місць, кнопки).
+      st.ro2.observe(root.querySelector('.khu'));
+      const gt = root.closest('.gtable');
+      if (gt) st.ro2.observe(gt);
+    }
+    // Місце між шапкою сайту й низом змінилось (вікно, ⛶, шторка) — переміряти поле.
+    if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, () => sizeVars(root, st));
     st.tick = setInterval(() => tick(root), 250);
     st.built = true;
   }
@@ -234,7 +259,7 @@
     let sc = null, kind = null;
     if (store.get('kh.view') !== '2d') {
       try {
-        const m = await import('/games/khutory/scene.js');
+        const m = await mod('scene.js');
         sc = await m.createScene(host, opts);
         kind = '3d';
       } catch (e) {
@@ -245,7 +270,7 @@
     }
     if (!sc) {
       try {
-        const m = await import('/games/khutory/board2d.js');
+        const m = await mod('board2d.js');
         sc = await m.createBoard2d(host, opts);
         kind = '2d';
       } catch (e) {
@@ -461,6 +486,10 @@
     st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
     renderTabs(st, v, me);
     renderBar(st, v, me);
+    // ПК: торг відкрито або видно пропозиції — смуга чисел ховається, вкладці торгу більше місця; зміст колонки змінився —
+    // переміряти (fitPc).
+    st.el.main.parentElement.classList.toggle('khu-trading', !!st.trade.open || (!!(v.offers || []).length && tabNow(st, v) === 'trade'));
+    sizeVars(root, st);
     st.el.view.title = st.scKind === '3d' ? 'Показати пласку карту (легша для слабких пристроїв)' : (st.no3d ? '3D не вдалося — спробувати ще' : 'Показати об\'ємне поле');
     queueEvents(root, st, v);   // до syncScene: кидок у черзі притримує кубики сцени
     if (!st.sc) ensureScene(root, st);
@@ -476,16 +505,61 @@
     st.prevHand = me && me.hand ? { ...me.hand } : null;
   }
 
-  function costDots(k, hand) {
-    const cost = M.C.COST[k] || {};
-    let h = '';
-    for (const r of RES) {
-      const n = cost[r] || 0, have = (hand && hand[r]) || 0;
-      for (let i = 0; i < n; i++) {
-        h += '<i class="khu-dot' + (i >= have ? ' miss' : '') + '" style="--rc:' + M.C.RES_COLOR[r] + '" title="' + M.C.RES_NAME[r] + (i >= have ? ' — бракує' : '') + '">' + RES_ICON[r] + '</i>';
+  /// Кружечки ціни будови з hud-calc.buildNeeds: є — повний, бракує — порожній обідок; глядачу (have == null) — нейтрально.
+  function costDots(nd) {
+    return ((nd && nd.dots) || []).map((d) => '<i class="khu-dot' + (d.have === false ? ' miss' : '') + '" style="--rc:' + M.C.RES_COLOR[d.res] + '" title="'
+      + M.C.RES_NAME[d.res] + (d.have === false ? ' — бракує' : '') + '">' + RES_ICON[d.res] + '</i>').join('');
+  }
+  /// Ціни будов за моєю рукою (null — глядач). Старий кеш hud-calc без buildNeeds — без кружечків, гра не падає.
+  const needsOf = (me) => (M.K.buildNeeds ? M.K.buildNeeds(me ? me.hand || {} : null, M.C.COST) : []);
+  const lackIcons = (lack) => RES.filter((r) => lack[r]).map((r) => RES_ICON[r] + ' ' + lack[r]).join(' ');
+  /// Що дає будова — підказка й рядок для глядача.
+  const BUILD_GIVES = {
+    road: ['до нових хат', 'Шлях: веде до нових місць для хат; найдовший від 5 відтинків — «Чумацький шлях» (+2 ⭐)'],
+    town: ['+1 ⭐', 'Хата: +1 ⭐ і карти з сусідніх земель, коли випаде їхнє число'],
+    city: ['+1 ⭐ · ×2', 'Містечко (замість своєї хати): ще +1 ⭐ і вдвічі більше карт'],
+    dev: ['козак, скарб…', 'Грамота: козак, скарб (+1 ⭐), Толока, Врожайний рік або Ярмарок — яка випаде'],
+  };
+  const BUILD_PLUS = { town: '+1⭐', city: '+1⭐' };
+
+  /// Ціни будов — завжди перед очима (§12): у мій main — кнопки (причина з me.why, «🔁 обміняй і будуй»), інакше — той самий
+  /// блок без дії: кружечки за рукою й «вистачає ✓» / «бракує 🧱 1» (глядачу — що дає будова).
+  function buildsHtml(st, v, me, main) {
+    const needs = needsOf(me);
+    const nd = (k) => needs.find((x) => x.k === k) || null;
+    const head = (k, label) => '<span class="khu-bn">' + BUILD_ICON[k] + ' ' + label + (BUILD_PLUS[k] ? ' <small class="khu-bplus">' + BUILD_PLUS[k] + '</small>' : '') + '</span>';
+    let h = '<div class="khu-builds' + (main ? '' : ' idle') + '" role="group" aria-label="Ціни будов">';
+    if (!main) {
+      for (const k of ['road', 'town', 'city', 'dev']) {
+        const n = nd(k), mine = !!me;
+        // «бракує 🧱1 🌾2»: кожен ресурс — неподільно (вузька кнопка не рве «🌾» і «2» по рядках).
+        const why = !mine || !n ? esc(BUILD_GIVES[k][0]) : n.ok ? 'вистачає ✓'
+          : 'бракує ' + RES.filter((r) => n.lack[r]).map((r) => '<span class="khu-lk">' + RES_ICON[r] + n.lack[r] + '</span>').join(' ');
+        h += '<div class="khu-b idle' + (mine && n && n.ok ? ' has' : '') + '" title="' + esc(BUILD_GIVES[k][1]) + '">' + head(k, M.C.BUILD_NAME[k])
+          + '<span class="khu-cost">' + costDots(n) + '</span><span class="khu-why' + (mine && n && n.ok ? ' ok' : '') + '">' + why + '</span></div>';
       }
+      return h + '</div>';
     }
-    return h;
+    const can = me.can || {}, why = me.why || {}, sp = me.spots || {};
+    const left = (playerOf(v, me.seat) || {}).left || {};
+    for (const k of ['road', 'town', 'city', 'dev']) {
+      const room = k === 'dev' || (sp[k] || []).length > 0;
+      const ok = !!can[k] && room;
+      const reason = why[k] || (!room && can[k] ? 'нема де поставити' : !can[k] && k === 'dev' && !v.devLeft ? 'грамоти скінчились' : '');
+      const on = st.pick === k;
+      // «🔁 обміняй і будуй»: сірій будівлі бракує 1–2 карт, а банк їх покриває (і місце та фігура є).
+      const fix = !ok && !on && room && (k === 'dev' ? v.devLeft > 0 : left[k] == null || left[k] > 0) ? M.K.bankFix(me.hand, M.C.COST[k], me.rates) : null;
+      const btn = '<button type="button" class="khu-b' + (on ? ' on' : '') + (ok ? ' ok' : '') + '" data-a="build" data-k="' + k + '"' + (ok || on ? '' : ' disabled')
+        + ' title="' + esc(BUILD_GIVES[k][1]) + '">'
+        + head(k, on ? '✕ Скасувати' : M.C.BUILD_NAME[k])
+        + '<span class="khu-cost">' + costDots(nd(k)) + '</span>'
+        + (ok || on ? '<span class="khu-why ok">' + (on ? 'обери місце на полі' : k === 'dev' ? 'купити' : 'можна!') + '</span>' : '<span class="khu-why">' + esc(reason || 'не зараз') + '</span>')
+        + '</button>';
+      h += fix ? '<div class="khu-bw">' + btn + '<button type="button" class="khu-fix" data-a="fix" data-k="' + k + '"' + (st.fixing ? ' disabled' : '')
+        + ' title="Обміняти в банку ' + esc(fix.map((t) => M.K.resPhraseAcc(t.give, t.n * t.rate) + ' на ' + M.K.resPhraseAcc(t.get, t.n)).join(' і ')) + (k === 'dev' ? '' : ' й одразу обрати місце') + '">🔁 '
+        + fix.map((t) => t.n * t.rate + RES_ICON[t.give] + '→' + (t.n > 1 ? t.n : '') + RES_ICON[t.get]).join(' ') + (k === 'dev' ? ' обміняй' : ' і будуй') + '</button></div>' : btn;
+    }
+    return h + '</div>';
   }
 
   function diceHtml(d) {
@@ -577,42 +651,26 @@
 
   function renderAct(st, v, me) {
     let h = '';
-    if (v.phase === 'over' || v.phase === 'setup') { setHtml(st.el.act, ''); return; }
+    if (v.phase === 'over') { setHtml(st.el.act, ''); return; }
     const myTurn = me && v.turn === me.seat;
-    const dice = rollHeld(st) ? null : v.dice;
-    h += '<div class="khu-dice">' + (dice ? diceHtml(dice) : '<span class="muted">' + (v.dice ? '🎲 котяться…' : 'кубики ще не кинуто') + '</span>') + '</div>';
+    const main = !!(myTurn && v.phase === 'main');
+    if (v.phase !== 'setup') {
+      const dice = rollHeld(st) ? null : v.dice;
+      h += '<div class="khu-dice">' + (dice ? diceHtml(dice) : '<span class="muted">' + (v.dice ? '🎲 котяться…' : 'кубики ще не кинуто') + '</span>') + '</div>';
+    }
     if (me && me.must === 'roll') {
       h += '<button type="button" class="khu-big primary" data-a="roll">🎲 Кинути кубики</button>';
       if ((me.dev || []).some((d) => d.k === 'knight' && !d.fresh) && !me.playedDev) h += '<p class="khu-note">Можна спершу зіграти ⚔️ Козака з руки — прогнати Кармелюка зі своєї землі</p>';
-    } else if (myTurn && v.phase === 'main') {
-      const can = me.can || {}, why = me.why || {}, sp = me.spots || {};
-      const left = (playerOf(v, me.seat) || {}).left || {};
-      h += '<div class="khu-builds">';
-      for (const k of ['road', 'town', 'city', 'dev']) {
-        const room = k === 'dev' || (sp[k] || []).length > 0;
-        const ok = !!can[k] && room;
-        const reason = why[k] || (!room && can[k] ? 'нема де поставити' : !can[k] && k === 'dev' && !v.devLeft ? 'грамоти скінчились' : '');
-        const on = st.pick === k;
-        // «🔁 обміняй і будуй»: сірій будівлі бракує 1–2 карт, а банк їх покриває (і місце та фігура є).
-        const fix = !ok && !on && room && (k === 'dev' ? v.devLeft > 0 : left[k] == null || left[k] > 0) ? M.K.bankFix(me.hand, M.C.COST[k], me.rates) : null;
-        const btn = '<button type="button" class="khu-b' + (on ? ' on' : '') + (ok ? ' ok' : '') + '" data-a="build" data-k="' + k + '"' + (ok || on ? '' : ' disabled')
-          + ' title="' + esc(k === 'dev' ? 'Грамота: козак, скарб, Толока, Врожайний рік або Ярмарок' : M.C.BUILD_NAME[k]) + '">'
-          + '<span class="khu-bn">' + BUILD_ICON[k] + ' ' + (on ? '✕ Скасувати' : M.C.BUILD_NAME[k]) + '</span>'
-          + '<span class="khu-cost">' + costDots(k, me.hand) + '</span>'
-          + (ok || on ? '<span class="khu-why ok">' + (on ? 'обери місце на полі' : k === 'dev' ? 'купити' : 'можна!') + '</span>' : '<span class="khu-why">' + esc(reason || 'не зараз') + '</span>')
-          + '</button>';
-        h += fix ? '<div class="khu-bw">' + btn + '<button type="button" class="khu-fix" data-a="fix" data-k="' + k + '"' + (st.fixing ? ' disabled' : '')
-          + ' title="Обміняти в банку ' + esc(fix.map((t) => M.K.resPhraseAcc(t.give, t.n * t.rate) + ' на ' + M.K.resPhraseAcc(t.get, t.n)).join(' і ')) + (k === 'dev' ? '' : ' й одразу обрати місце') + '">🔁 '
-          + fix.map((t) => t.n * t.rate + RES_ICON[t.give] + '→' + (t.n > 1 ? t.n : '') + RES_ICON[t.get]).join(' ') + (k === 'dev' ? ' обміняй' : ' і будуй') + '</button></div>' : btn;
-      }
-      h += '</div>';
+    } else if (me && me.must === 'discard') {
+      h += '<button type="button" class="khu-big primary" data-a="disc-open">🃏 Скинути карти</button>';
+    }
+    h += buildsHtml(st, v, me, main);
+    if (main) {
       h += bankRow(st, v, me);
       h += '<div class="khu-row"><button type="button" class="khu-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Торгувати' + incBadge(v, me) + '</button>'
         + '<button type="button" class="khu-mid primary" data-a="end">✅ Завершити хід</button></div>';
     } else if (me && v.phase === 'main' && v.turn != null && !isBot(v, v.turn) && v.rolled !== false) {
       h += '<button type="button" class="khu-mid' + (st.trade.open ? ' on' : '') + '" data-a="trade">🤝 Запропонувати обмін ' + esc(nickOf(v, v.turn)) + incBadge(v, me) + '</button>';
-    } else if (me && me.must === 'discard') {
-      h += '<button type="button" class="khu-big primary" data-a="disc-open">🃏 Скинути карти</button>';
     }
     if (me && v.phase === 'main' && v.turn != null && isBot(v, v.turn) && !myTurn && !incList(v, me).length) h += '<p class="khu-note">🤖 Зараз хід Глека: на його пропозицію можна відповісти, а свою запропонувати — у свій хід</p>';
     setHtml(st.el.act, h);
@@ -725,7 +783,7 @@
     const K = M.K, hand = me.hand || {};
     const ch = K.bankChips(hand, me.rates);
     if (st.bankGive && !ch.some((c) => c.res === st.bankGive && c.max >= 1)) st.bankGive = null;
-    let h = '<div class="khu-bankr"><span class="khu-bl" title="Банк: віддай однакові — візьми 1 будь-яку">🏦 Банк</span>'
+    let h = '<div class="khu-bankr"><span class="khu-bl" title="Банк: віддай однакові — візьми 1 будь-яку">🏦<span class="khu-blw"> Банк</span></span>'
       + ch.map((c) => '<button type="button" class="khu-bchip' + (st.bankGive === c.res ? ' on' : '') + (c.port ? ' port' : '') + '" data-a="bank-give" data-r="' + c.res + '"'
         + (c.max >= 1 ? '' : ' disabled') + ' title="' + esc(M.C.RES_NAME[c.res]) + ': ' + c.rate + ' на 1' + (c.port ? ' (пристань)' : '') + (c.max >= 1 ? '' : ' — є ' + c.have) + '">'
         + c.rate + RES_ICON[c.res] + '→1' + (c.port ? '<small>⚓</small>' : '') + '</button>').join('') + '</div>';
@@ -866,20 +924,35 @@
     + '<li>📜 <b>Грамоти</b> (🧶 + 🌾 + ⛏️): ⚔️ Козак — пересунь Кармелюка й візьми карту; 💰 Скарб — +1 ⭐ потай; 🛤 Толока — два шляхи задарма; 🌻 Врожайний рік — дві карти з банку; 🎪 Ярмарок — усі віддають тобі названий ресурс. Одна грамота за хід, куплену — не того ж ходу. Тицни грамоту в руці — побачиш, що вона робить</li>'
     + '<li>Перший, хто набере потрібні ⭐ у свій хід, — <b>переміг</b></li></ol>';
 
-  /// Журнал і правила — кожне у своїй вкладці (khutory-look.md §7): журнал — усі рядки з виду, найновіший знизу.
+  /// У колонці — лише LOG_SHORT останніх рядків (колонка без своєї прокрутки); увесь журнал і правила — віконцем над полем.
+  const LOG_SHORT = 4;
   function renderLog(st, v) {
     const lines = v.log || [];
-    setHtml(st.el.log, lines.length ? '<ol>' + lines.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ol>'
+    const tail = lines.slice(-LOG_SHORT);
+    setHtml(st.el.log, lines.length ? '<ol>' + tail.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ol>'
+      + (lines.length > LOG_SHORT ? '<button type="button" class="khu-link khu-logall" data-a="modal" data-m="log">📜 Увесь журнал (' + lines.length + ') ▸</button>' : '')
       : '<p class="khu-note">Поки тихо — тут буде, хто що зробив.</p>');
-    setHtml(st.el.help, HELP);
+    renderModal(st, v);
   }
 
-  // ─── Вкладки «🤝 Торг · 📜 Журнал · ❔ Правила» ──────────────────────────
-  /// Обрана вкладка: сам обрав — та; інакше розстановка — правила, торг відкрито чи є пропозиції — торг, решта — журнал.
+  /// Віконце над полем: «❔ Як грати» або «📜 Журнал» цілком (прокрутка — лише тут, усередині довгого списку).
+  function renderModal(st, v) {
+    const m = st.modal;
+    st.el.modal.hidden = !m;
+    if (!m) return;
+    const lines = (v && v.log) || [];
+    st.el.modt.textContent = m === 'help' ? '❔ Як грати' : '📜 Журнал · ' + lines.length;
+    setHtml(st.el.modb, m === 'help' ? '<div class="khu-help">' + HELP + '</div>'
+      : lines.length ? '<ol class="khu-logfull">' + lines.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ol>' : '<p class="khu-note">Поки тихо.</p>');
+    if (m === 'log' && st.modalNew) { st.modalNew = false; st.el.modb.scrollTop = st.el.modb.scrollHeight; }   // найновіше — знизу
+  }
+
+  // ─── Вкладки «🤝 Торг · 📜 Журнал» + «❔» (правила — віконцем) ─────────────
+  /// Обрана вкладка: сам обрав — та; інакше торг відкрито чи є пропозиції — торг, решта — журнал.
   function tabNow(st, v) {
-    if (st.tab) return st.tab;
+    if (st.tab === 'trade' || st.tab === 'log') return st.tab;
     if (st.trade.open || (v.offers || []).length) return 'trade';
-    return v.phase === 'setup' ? 'help' : 'log';
+    return 'log';
   }
 
   function renderTabs(st, v, me) {
@@ -888,7 +961,8 @@
     const badge = nInc ? ' <span class="khu-badge" title="Чекають твоєї відповіді">' + nInc + '</span>'
       : nOff && t !== 'trade' ? ' <span class="khu-badge mute" title="Пропозицій на столі">' + nOff + '</span>' : '';
     const tab = (k, label) => '<button type="button" role="tab" class="khu-tab' + (t === k ? ' on' : '') + '" data-a="tab" data-t="' + k + '" aria-selected="' + (t === k) + '">' + label + '</button>';
-    setHtml(st.el.tabh, tab('trade', '🤝 Торг' + badge) + tab('log', '📜 Журнал') + tab('help', '❔ Правила'));
+    setHtml(st.el.tabh, tab('trade', '🤝 Торг' + badge) + tab('log', '📜 Журнал')
+      + '<button type="button" class="khu-tab khu-qm' + (st.modal === 'help' ? ' on' : '') + '" data-a="modal" data-m="help" title="Як грати: правила коротко" aria-label="Як грати">❔</button>');
     for (const p of st.el.tps) p.hidden = p.dataset.t !== t;
     const empty = !st.trade.open && !nOff;
     setHtml(st.el.tpe, !empty ? '' : me && v.phase === 'main' && v.turn === me.seat
@@ -915,8 +989,16 @@
     let h = '';
     const myTurn = me && v.turn === me.seat;
     const bb = (a, icon, label, opts) => '<button type="button" class="khu-bb' + (opts.cls ? ' ' + opts.cls : '') + '" data-a="' + a + '"'
-      + (opts.k ? ' data-k="' + opts.k + '"' : '') + (opts.off ? ' disabled' : '') + (opts.title ? ' title="' + esc(opts.title) + '"' : '')
-      + '><span class="i">' + icon + '</span><small>' + label + '</small></button>';
+      + (opts.k ? ' data-k="' + opts.k + '"' : '') + (opts.off ? ' disabled' : '') + (opts.title ? ' title="' + esc(opts.title) + '" aria-label="' + esc(opts.title) + '"' : '')
+      + '><span class="i">' + icon + '</span>' + (opts.dots != null ? '<span class="khu-cost mini">' + opts.dots + '</span>' : '<small>' + label + '</small>') + '</button>';
+    const needs = needsOf(me);
+    const nd = (k) => needs.find((x) => x.k === k) || null;
+    // Смужка цін (поза моїм main): 🛤 ●● · 🏠 ●●●● · 🏛 ●●●●● · 📜 ●●● — кожен кружечок за рукою; глядачу — нейтрально.
+    const strip = v.phase === 'over' || !needs.length ? '' : '<div class="khu-cs" role="group" aria-label="Ціни будов">' + ['road', 'town', 'city', 'dev'].map((k) => {
+      const n = nd(k);
+      return '<span class="khu-csi' + (me && n && n.ok ? ' ok' : '') + '" title="' + esc(M.C.BUILD_NAME[k] + ': ' + (me && n ? (n.ok ? 'вистачає' : 'бракує ' + lackIcons(n.lack)) : BUILD_GIVES[k][1])) + '">'
+        + BUILD_ICON[k] + '<span class="khu-cost mini">' + costDots(n) + '</span></span>';
+    }).join('') + '</div>';
     if (!me || v.phase === 'over' || v.phase === 'setup') h = '';
     else if (me.must === 'roll') h = bb('roll', '🎲', 'Кинути кубики', { cls: 'primary wide' });
     else if (me.must === 'discard') h = bb('disc-open', '🃏', 'Скинути карти', { cls: 'primary wide' });
@@ -925,14 +1007,16 @@
       for (const k of ['road', 'town', 'city', 'dev']) {
         const room = k === 'dev' || (sp[k] || []).length > 0;
         const ok = !!can[k] && room, on = st.pick === k;
-        h += bb('build', on ? '✕' : BUILD_ICON[k], on ? 'Скасувати' : M.C.BUILD_NAME[k], { k, cls: on ? 'on' : ok ? 'ok' : '', off: !ok && !on, title: ok || on ? M.C.BUILD_NAME[k] : (why[k] || 'не зараз') });
+        h += bb('build', on ? '✕' : BUILD_ICON[k], on ? 'Скасувати' : M.C.BUILD_NAME[k], { k, cls: on ? 'on' : ok ? 'ok' : '', off: !ok && !on,
+          title: M.C.BUILD_NAME[k] + (on ? ': скасувати' : ok ? '' : ': ' + (why[k] || 'не зараз')), dots: on ? null : costDots(nd(k)) });
       }
       h += bb('trade', '🤝', 'Торг' + incBadge(v, me), { cls: st.trade.open ? 'on' : '' });
       h += bb('end', '➡', 'Завершити', { cls: 'primary' });
     } else if (v.phase === 'main' && v.turn != null && !isBot(v, v.turn) && v.rolled !== false) {
       h = bb('trade', '🤝', 'Зустрічна ' + esc(nickOf(v, v.turn)) + incBadge(v, me), { cls: 'wide' + (st.trade.open ? ' on' : '') });
     }
-    setHtml(st.el.bar, h);
+    const mainNow = me && v.turn === me.seat && v.phase === 'main';
+    setHtml(st.el.bar, (mainNow ? '' : strip) + h);
   }
 
   /// Висоти плашок, руки й панелі — у змінні картки: ПК рахує з них висоту поля, телефон — відступи липких шторок.
@@ -943,6 +1027,57 @@
     k.style.setProperty('--khu-plh', hOf(st.el.players) + 'px');
     k.style.setProperty('--khu-handh', hOf(st.el.hand) + 'px');
     k.style.setProperty('--khu-barh', (st.el.bar.firstChild ? hOf(st.el.bar) : 0) + 'px');
+    fitPc(root, st, k);
+  }
+
+  /// ПК «в один екран» (§12): уся гра — під шапкою сайту без прокрутки сторінки. Поле бере всю висоту, що лишилась від
+  /// рядка столу, плашок і низу картки (міряємо, а не вгадуємо: каркас різний на різних ширинах), колонка — справа:
+  /// два стовпчики, коли ширини вдосталь і поле лишається не вужчим за свою висоту, інакше один.
+  /// Картці каркаса (.gtable) — клас khu-pc: кнопки столу в рядок до місць, без дубля статусу (він — у «що зараз»).
+  function fitPc(root, st, k) {
+    const gt = root.closest('.gtable');
+    const W = k.clientWidth;
+    const portrait = !!(window.matchMedia && window.matchMedia('(orientation: portrait)').matches);
+    const pc = W >= 700 && !(portrait && W < 860);
+    if (gt) gt.classList.toggle('khu-pc', pc);
+    if (!pc) {
+      k.style.removeProperty('--khu-fhj'); k.style.removeProperty('--khu-swj');
+      st.el.main.classList.remove('khu-2c');
+      return;
+    }
+    const fr = st.el.fieldwrap.getBoundingClientRect();
+    if (!fr.height) return;
+    const docH = window.innerHeight;
+    const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h')) || 0;
+    const box = gt || k, br = box.getBoundingClientRect();
+    const page = box.closest('main');
+    // Відступ сторінки під карткою — нижнє поле <main> (сам main буває розтягнутий на всю висоту вікна — його низ не міра).
+    const tail = page ? (parseFloat(getComputedStyle(page).paddingBottom) || 0) : 0;
+    const below = Math.max(0, br.bottom - fr.bottom);                                       // що в картці під полем
+    const y0 = fr.top + window.scrollY;
+    // Низ сторінки — у вікні. Згорнута шторка «💬» (--gdock-h) на ПК — пігулка в правому нижньому куті: поле під нею
+    // не ховаємо (воно ліворуч), а низ колонки відсуваємо на її висоту (--khu-sbot).
+    const fh = Math.max(300, Math.min(1200, Math.floor(docH - tail - y0 - below)));
+    k.style.setProperty('--khu-sbot', Math.max(0, Math.round(dock - tail - below)) + 'px');
+    const gap = 12, SUB = 290, SUBMAX = 430, ideal = Math.round(fh * 1.22);
+    const fieldOk = (r) => W - gap - (2 * SUB + 10) >= Math.round(fh * r);   // поле поряд із двома стовпчиками не вужче за r × висоту
+    const apply = (two) => {
+      const sw = two ? Math.max(2 * SUB + 10, Math.min(2 * SUBMAX + 10, W - gap - ideal)) : Math.max(300, Math.min(440, W - gap - ideal));
+      k.style.setProperty('--khu-swj', sw + 'px');
+      st.el.main.classList.toggle('khu-2c', two);
+    };
+    const over = (el) => (el && !el.hidden && el.getClientRects().length ? el.scrollHeight - el.clientHeight : 0);
+    // Скільки колонка не вміщає (торг гортається всередині — його не рахуємо, він має право).
+    const spill = () => Math.max(over(st.el.side), over(st.el.side.firstElementChild), over(st.el.side.lastElementChild),
+      ...st.el.tps.filter((p) => p.dataset.t !== 'trade').map(over));
+    st.el.main.classList.remove('khu-tight');
+    k.style.setProperty('--khu-fhj', fh + 'px');
+    const two = fieldOk(0.95);
+    apply(two);
+    // Один стовпчик не вмістив (висока вузька картка, торг) — два, якщо поле лишається хоч 0,6 своєї висоти завширшки.
+    if (!two && fieldOk(0.6) && Math.max(spill(), ...st.el.tps.map(over)) > 24) apply(true);
+    // Однаково не влазить (вузька картка поряд із балачками) — «тісно»: без смуги чисел, рука нижча.
+    if (spill() > 2) st.el.main.classList.add('khu-tight');
   }
 
   function devState(v, me, d) {
@@ -1538,7 +1673,9 @@
         if (jb) jb.click(); else if (ctx && ctx.room) HGames.sitAt(ctx.room.id, b);
         return;
       }
-      case 'tab': case 'help': case 'log': st.tab = a === 'tab' ? b.dataset.t : a; break;
+      case 'tab': case 'log': st.tab = a === 'tab' ? b.dataset.t : a; break;
+      case 'help': case 'modal': { const m = a === 'help' ? 'help' : b.dataset.m; st.modal = st.modal === m ? null : m; st.modalNew = st.modal === 'log'; break; }
+      case 'modal-x': st.modal = null; break;
       case 'roll': act('roll', {}); break;
       case 'end': T.open = false; st.pick = null; st.bankGive = null; st.tab = null; act('end', {}); break;
       case 'pick-cancel': st.pick = null; break;
@@ -1685,6 +1822,9 @@
         clearTimeout(st.popT); clearTimeout(st.numT); cancelAnimationFrame(st.mrAF); st.mrAF = 0;
         if (st.ro) st.ro.disconnect();
         if (st.ro2) st.ro2.disconnect();
+        if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, null);
+        const gt = root.closest('.gtable');
+        if (gt) gt.classList.remove('khu-pc');   // картку каркаса може взяти інша гра
         if (st.onClick) root.removeEventListener('click', st.onClick);
         if (st.sc) { try { st.sc.dispose(); } catch (e) { /* уже прибрано */ } }
         if (st.snd) { try { st.snd.dispose(); } catch (e) { /* уже прибрано */ } st.snd = null; }
@@ -1698,6 +1838,7 @@
       if (e.key !== 'Escape' || !cur || !cur._kh) return false;
       const st = cur._kh;
       if (st.ask) { closeAsk(st); return true; }   // перепитування «тут і твоя хата» — Esc = «Обрати інший»
+      if (st.modal) { st.modal = null; paint(cur, st.ctx); return true; }   // віконце правил / журналу
       if (st.pick || st.trade.open || st.dlg || st.bankGive || st.arm) {
         st.pick = null; st.trade.open = false; st.dlg = null; st.bankGive = null; st.arm = null;
         hideTip(st);

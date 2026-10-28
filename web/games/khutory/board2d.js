@@ -2,7 +2,10 @@
 // запасний вигляд для слабких пристроїв / без WebGL і вибір «🗺 Пласка». Правил не знає, дій не шле —
 // лише малює вид і каже картці, куди клацнули (лише по підсвічених місцях).
 
-import { TERRAIN_COLOR, RES_COLOR, SEA_COLOR, SEAT_COLOR, PIPS, TERRAIN_NAME, RES_NAME } from './consts.js';
+// Сусідні модулі — з тим самим ?v=, що й у цього файла: сайт оновлює гру без F5, а карта модулів сторінки
+// тримає старі './x.js' назавжди; із відбитком у адресі після деплою підтягнеться нове (khutory.js, modQ).
+const Q = new URL(import.meta.url).search;
+const { TERRAIN_COLOR, RES_COLOR, SEA_COLOR, SEAT_COLOR, PIPS, TERRAIN_NAME, RES_NAME } = await import('./consts.js' + Q);
 
 // Мова підсвітки — та сама, що в 3D (khutory-look.md §3): золото #ffd23f з темним кантом #2a1a00, «мурашки» по шляхах.
 
@@ -76,12 +79,22 @@ function darker(hex, k = 0.55) {
   return 'rgb(' + c(16) + ',' + c(8) + ',' + c(0) + ')';
 }
 
+// Тло пласкої карти — у тон 3D-тла (scene.js BG_VARIANTS / BG_DEFAULT): темна стільниця під лампою — світло посередині,
+// краї в тінь; «море» — синя глибина. opts.bg — назва варіанта; без неї — темне дерево (типове «lamp»).
+const DARK_WOOD_BG = 'radial-gradient(ellipse 72% 68% at 50% 50%, #4a3020 0%, #2f1e12 55%, #0f0905 100%)';
+const BG2D = {
+  lamp: DARK_WOOD_BG, rushnyk: DARK_WOOD_BG, khata: DARK_WOOD_BG,
+  sea: 'radial-gradient(ellipse 72% 68% at 50% 50%, #3b6d90 0%, #27495f 55%, #1a2f3f 100%)',
+  planks: '',   // старе: тло рамки поля з khutory.css
+};
+
 export async function createBoard2d(host, opts = {}) {
   const o = { onPick() {}, onHover() {}, reducedMotion: false, ...opts };
   const st = { board: null, boardId: null, view: null, figSig: '', legal: null, timers: new Set(), dead: false, centers: [], hot: null };
 
   const svg = el('svg', { class: 'k2', preserveAspectRatio: 'xMidYMid meet', role: 'img', 'aria-label': 'Карта хуторів' });
   el('style', null, svg).textContent = CSS;
+  svg.style.background = BG2D[o.bg] ?? DARK_WOOD_BG;
   const gSea = el('g', null, svg), gPorts = el('g', null, svg), gHex = el('g', null, svg), gTok = el('g', null, svg);
   const gRoads = el('g', null, svg), gTowns = el('g', null, svg), gRob = el('g', { class: 'k2-rob' }, svg);
   const gLegal = el('g', null, svg), gFx = el('g', null, svg);
