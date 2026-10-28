@@ -12,6 +12,7 @@
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
 import * as M from './models.js';
 import { SEAT_COLOR, RES_COLOR } from './consts.js';
+import { wheelAction, wheelZoomFactor, twoFinger, hintDue } from './gestures.js';
 
 const D2R = Math.PI / 180;
 const DEF_POLAR = 50 * D2R, PORTRAIT_POLAR = 36 * D2R, POLAR_MIN = 35 * D2R, POLAR_MAX = 70 * D2R, AZ_LIM = 70 * D2R;
@@ -48,7 +49,7 @@ export async function createScene(host, opts = {}) {
   renderer.shadowMap.enabled = quality === 'high';
   renderer.shadowMap.type = THREE.PCFShadowMap;
   const canvas = renderer.domElement;
-  canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;outline:none;-webkit-tap-highlight-color:transparent;user-select:none';
+  canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:pan-y;outline:none;-webkit-tap-highlight-color:transparent;user-select:none';
   host.appendChild(canvas);
 
   const scene = new THREE.Scene();
@@ -565,9 +566,18 @@ export async function createScene(host, opts = {}) {
   }
 
   // ------------------------------------------------------------------------------------------------ вказівник
+  // Поле не забирає прокрутку сторінки (canvas: touch-action: pan-y). Дотик: один палець угору-вниз — гортає сторінку
+  // (браузер шле pointercancel і веде сам), убік — повертає поле (азимут), тицяння — вибір; два пальці — щипок =
+  // наближення, ведення = зсув, поворот пальців = азимут. Миша: тягнути — обертати, права/середня/Shift — зсув,
+  // колесо — гортає сторінку, Ctrl/⌘ + колесо (і щипок тачпада) — наближення.
   const ptrs = new Map();
-  let drag = null, pinch = null, lastPointerType = 'mouse', lastTap = 0;
+  let drag = null, pinch = null, lastPointerType = 'mouse', lastTap = 0, multi = false;
   const local = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const ROT_DEAD = 0.14;   // ~8°: поки пальці лише розводять, поле не крутиться від тремтіння
+  function startPinch() {
+    const [a, b] = [...ptrs.values()];
+    pinch = { a0: { ...a }, b0: { ...b }, a: { ...a }, b: { ...b }, z0: cs.zoom, rotAcc: 0, rotating: false };
+  }
   function onDown(e) {
     kick();
     lastPointerType = e.pointerType || 'mouse';
@@ -576,11 +586,11 @@ export async function createScene(host, opts = {}) {
     ptrs.set(e.pointerId, { x, y });
     vel.az = vel.pol = 0;
     if (resetAnim) { resetAnim.cancel(); resetAnim = null; }
-    if (ptrs.size === 1) drag = { x0: x, y0: y, x, y, t0: performance.now(), moved: false, pan: e.button === 1 || e.button === 2 || e.shiftKey, lt: performance.now() };
+    if (ptrs.size === 1) drag = { x0: x, y0: y, x, y, t0: performance.now(), moved: false, swiped: false, pan: e.button === 1 || e.button === 2 || e.shiftKey, lt: performance.now() };
     else if (ptrs.size === 2) {
-      const [a, b] = [...ptrs.values()];
-      pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: cs.zoom, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      startPinch();
       if (drag) drag.moved = true;
+      seenHint2f();
     }
   }
   function onMove(e) {
@@ -594,20 +604,29 @@ export async function createScene(host, opts = {}) {
     ptrs.get(e.pointerId).x = x; ptrs.get(e.pointerId).y = y;
     if (ptrs.size >= 2 && pinch) {
       const [a, b] = [...ptrs.values()];
-      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      cs.zoom = clamp(pinch.z0 * d / pinch.d0, ZOOM_MIN, ZOOM_MAX);
-      panBy(mx - pinch.mx, my - pinch.my); pinch.mx = mx; pinch.my = my;
+      cs.zoom = clamp(pinch.z0 * twoFinger(pinch.a0, pinch.b0, a, b).scale, ZOOM_MIN, ZOOM_MAX);
+      const g = twoFinger(pinch.a, pinch.b, a, b);
+      panBy(g.dx, g.dy);
+      if (pinch.rotating) cs.az = clamp(cs.az + g.rot, -AZ_LIM, AZ_LIM);
+      else if (Math.abs(pinch.rotAcc += g.rot) > ROT_DEAD) pinch.rotating = true;
+      pinch.a = { ...a }; pinch.b = { ...b };
       touchedView = true; applyCam(); dirty = true;
       return;
     }
     if (!drag) return;
     const dx = x - drag.x, dy = y - drag.y;
-    if (!drag.moved && Math.hypot(x - drag.x0, y - drag.y0) > (lastPointerType === 'touch' ? 10 : 5)) { drag.moved = true; setHover(null); }
+    const touch = lastPointerType !== 'mouse';
+    if (!drag.moved) {
+      const ox = Math.abs(x - drag.x0), oy = Math.abs(y - drag.y0);
+      // Дотик: рушаємо лише вбік (угору-вниз гортає сторінку браузер); вертикальний змах — уже не тицяння.
+      if (touch) { if (ox > 10 && ox > oy) { drag.moved = true; setHover(null); } else if (oy > 10) drag.swiped = true; }
+      else if (Math.hypot(ox, oy) > 5) { drag.moved = true; setHover(null); }
+    }
     if (drag.moved) {
       const now = performance.now(), dt = Math.max(1, now - drag.lt);
       if (drag.pan) panBy(dx, dy);
       else {
-        const da = -dx * 0.006, dp = -dy * 0.005;
+        const da = -dx * 0.006, dp = touch ? 0 : -dy * 0.005;
         cs.az = clamp(cs.az + da, -AZ_LIM, AZ_LIM); cs.pol = clamp(cs.pol + dp, POLAR_MIN, POLAR_MAX);
         vel.az = 0.6 * vel.az + 0.4 * da / dt; vel.pol = 0.6 * vel.pol + 0.4 * dp / dt;
       }
@@ -629,11 +648,15 @@ export async function createScene(host, opts = {}) {
     ptrs.delete(e.pointerId);
     try { canvas.releasePointerCapture(e.pointerId); } catch { }
     if (ptrs.size < 2) pinch = null;
+    else if (ptrs.size >= 2) { startPinch(); return; }   // третій палець пішов — далі ці два
     if (ptrs.size === 1) { const [q] = [...ptrs.values()]; drag = { x0: q.x, y0: q.y, x: q.x, y: q.y, t0: performance.now(), moved: true, pan: false, lt: performance.now() }; return; }
+    const touch = (e.pointerType || 'mouse') !== 'mouse';
+    // Браузер забрав одне-пальцеве ведення під прокрутку сторінки — раз за сесію кажемо, як крутити поле.
+    if (e.type === 'pointercancel' && touch && drag && !drag.moved && !multi) showHint2f();
     if (!drag || !p || e.type === 'pointercancel') { drag = null; return; }
     const d = drag; drag = null;
     if (d.moved) { if (performance.now() - d.lt > 80) vel.az = vel.pol = 0; return; }
-    const touch = (e.pointerType || 'mouse') !== 'mouse';
+    if (d.swiped) return;
     const hit = hitAt(p.x, p.y, touch);
     if (hit) { lastTap = 0; onPick(hit.kind, hit.id); return; }
     if (touch) {   // подвійний дотик по порожньому — як подвійний клік
@@ -642,13 +665,59 @@ export async function createScene(host, opts = {}) {
     }
   }
   function onWheel(e) {
+    if (wheelAction(e) !== 'zoom') { if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) showHintWheel(); return; }   // гортає сторінку
     e.preventDefault(); kick();
-    cs.zoom = clamp(cs.zoom * Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015)), ZOOM_MIN, ZOOM_MAX);
+    cs.zoom = clamp(cs.zoom * wheelZoomFactor(e.deltaY, e.deltaMode), ZOOM_MIN, ZOOM_MAX);
     touchedView = true; applyCam(); dirty = true;
   }
+  // Два пальці не повинні гортати сторінку (pan-y дозволяє браузеру вести й двома): гасимо touchmove, поки на полі
+  // було ≥ 2 пальців — аж доки не знімуть усі (інакше палець, що лишився після щипка, раптом смикне сторінку).
+  function onTouch(e) {
+    if (e.touches.length >= 2) multi = true;
+    else if (!e.touches.length && (e.type === 'touchend' || e.type === 'touchcancel')) multi = false;
+    if (multi && e.type === 'touchmove' && e.cancelable) e.preventDefault();
+  }
+  const noGesture = (e) => e.preventDefault();   // Safari: щипок поля не масштабує сторінку
   function onDbl(e) { e.preventDefault(); if (!hitAt(...local(e), false)) resetView(); }
   function onLeave() { if (!ptrs.size) { setHover(null); kick(); } }
   const noCtx = (e) => e.preventDefault();
+
+  // Підказка поверх поля (як у Google Maps): колесо без Ctrl — «Ctrl + коліщатко — наблизити» (не частіше раз на 5 с);
+  // дотик — «Двома пальцями — крутити й наближати» раз за сесію, коли одне-пальцеве ведення пішло в прокрутку.
+  const hintEl = document.createElement('div');
+  hintEl.className = 'khu-hint';
+  hintEl.setAttribute('aria-hidden', 'true');
+  hintEl.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;pointer-events:none;'
+    + 'max-width:80%;padding:9px 16px;border-radius:12px;background:rgba(16,26,20,.86);color:#fff;text-align:center;'
+    + 'font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35);opacity:0;transition:opacity .2s;white-space:nowrap';
+  host.appendChild(hintEl);
+  const isMac = /Mac|iP(hone|ad|od)/.test((typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '');
+  const WHEEL_HINT = (isMac ? '⌘' : 'Ctrl') + ' + коліщатко — наблизити';
+  let hintTimer = 0, lastWheelHint = 0;
+  function showHint(text, ms) {
+    hintEl.textContent = text; hintEl.style.opacity = '1';
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => { hintEl.style.opacity = '0'; }, ms);
+  }
+  function showHintWheel() {
+    const now = performance.now();
+    if (!hintDue(now, lastWheelHint, 5000)) return;
+    lastWheelHint = now;
+    showHint(WHEEL_HINT, 1500);
+  }
+  const HINT2F_KEY = 'khu.hint2f';
+  let hint2fSeen = false;
+  try { hint2fSeen = sessionStorage.getItem(HINT2F_KEY) === '1'; } catch { }
+  function seenHint2f() {
+    if (hint2fSeen) return;
+    hint2fSeen = true;
+    try { sessionStorage.setItem(HINT2F_KEY, '1'); } catch { }
+  }
+  function showHint2f() {
+    if (hint2fSeen) return;
+    seenHint2f();
+    showHint('Двома пальцями — крутити й наближати', 2200);
+  }
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
@@ -657,6 +726,9 @@ export async function createScene(host, opts = {}) {
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('dblclick', onDbl);
   canvas.addEventListener('contextmenu', noCtx);
+  for (const t of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) canvas.addEventListener(t, onTouch, { passive: false });
+  canvas.addEventListener('gesturestart', noGesture);
+  canvas.addEventListener('gesturechange', noGesture);
 
   // ------------------------------------------------------------------------------------------------ анімації
   const tweens = new Set();
@@ -857,6 +929,11 @@ export async function createScene(host, opts = {}) {
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('dblclick', onDbl);
     canvas.removeEventListener('contextmenu', noCtx);
+    for (const t of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) canvas.removeEventListener(t, onTouch, { passive: false });
+    canvas.removeEventListener('gesturestart', noGesture);
+    canvas.removeEventListener('gesturechange', noGesture);
+    clearTimeout(hintTimer);
+    hintEl.remove();
     disposeBoard();
     const mats = new Set(), geos = new Set();
     scene.traverse((o) => {
