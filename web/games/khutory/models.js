@@ -692,12 +692,13 @@ export function stripGeo() {
 }
 /** Обвідка гекса. */
 export function hexRingGeo() {
-  const arr = [], y = 0;
-  for (let i = 0; i < 6; i++) {
-    const a = corner(0, 0, 0.92, i, y), b2 = corner(0, 0, 0.92, i + 1, y), c = corner(0, 0, 0.76, i + 1, y), d = corner(0, 0, 0.76, i, y);
-    quad(arr, a, b2, c, d, UP);
-  }
+  const band = (r0, r1, y) => {
+    const arr = [];
+    for (let i = 0; i < 6; i++) quad(arr, corner(0, 0, r1, i, y), corner(0, 0, r1, i + 1, y), corner(0, 0, r0, i + 1, y), corner(0, 0, r0, i, y), UP);
+    return rawGeo(arr);
+  };
   const b = new Builder();
-  b.add(rawGeo(arr), null, '#fff0b0', { jitter: 0 });
+  b.add(band(0.66, 0.95, 0), null, '#3a2a14', { jitter: 0 });
+  b.add(band(0.7, 0.9, 0.003), null, '#fff0b0', { jitter: 0 });
   return b.geometry();
 }

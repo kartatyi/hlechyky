@@ -132,6 +132,7 @@ export async function createScene(host, opts = {}) {
     town: grp(new THREE.Mesh(M.houseWallsGeo(false), ghostWhite), new THREE.Mesh(M.roofGeo(false), ghostCol)),
     city: grp(new THREE.Mesh(cg.walls.clone(), ghostWhite), new THREE.Mesh(cg.color.clone(), ghostCol)),
     road: grp(new THREE.Mesh(M.roadGeo(), ghostCol)),
+    robber: grp(new THREE.Mesh(M.robberGeo(), ghostWhite)),
   };
   function grp(...ms) { const g = new THREE.Group(); ms.forEach((m) => { m.renderOrder = 6; g.add(m); }); g.visible = false; scene.add(g); return g; }
 
@@ -407,7 +408,7 @@ export async function createScene(host, opts = {}) {
         if (!reduced) { hlStrips.getMatrixAt(n - 1, _mw); _mw.scale(_sv.set(1, 1, s)); hlStrips.setMatrixAt(n - 1, _mw); }
       } else {
         const P = hexPos[id]; if (!P) return;
-        setM(hlHex, n++, P.x, P.y + 0.012, P.z, 0, 0, 0, (hov ? 1.04 : 1) * (reduced ? 1 : 1 + 0.02 * Math.sin(t * 4.2)), 1);
+        setM(hlHex, n++, P.x, P.y + 0.012, P.z, 0, 0, 0, (hov ? 0.9 : 1) * (reduced ? 1 : 1 + 0.02 * Math.sin(t * 4.2 + i * 0.5)), 1);
       }
     });
     const m = k === 'v' ? hlRings : k === 'e' ? hlStrips : hlHex;
@@ -419,11 +420,12 @@ export async function createScene(host, opts = {}) {
     hover = h;
     for (const g of Object.values(ghosts)) g.visible = false;
     if (h && lastPointerType === 'mouse') {
-      const g = legal.kind === 'road' ? ghosts.road : legal.kind === 'town' ? ghosts.town : legal.kind === 'city' ? ghosts.city : null;
+      const g = ghosts[legal.kind] || null;
       if (g) {
         if (h.kind === 'e') { const E = edgeInfo[h.id]; g.position.set(E.mid.x, E.mid.y + 0.03, E.mid.z); g.rotation.set(0, E.ry, 0); }
+        else if (h.kind === 'h') { g.position.copy(robberSpot(h.id)); g.rotation.set(0, 0.3, 0); }
         else { const P = vxPos[h.id]; g.position.set(P.x, P.y + 0.04, P.z); g.rotation.set(0, ((h.id * 37) % 9 - 4) * 0.045, 0); }
-        if (h.kind === 'e') g.scale.set(1, 1.15, 1.25); else g.scale.setScalar(PIECE_S);
+        if (h.kind === 'e') g.scale.set(1, 1.15, 1.25); else g.scale.setScalar(h.kind === 'h' ? 1 : PIECE_S);
         g.visible = true;
       }
     }
