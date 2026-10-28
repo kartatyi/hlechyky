@@ -13,7 +13,7 @@
 @keyframes clkgl-ping { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
 
 /* Бульбашка — пергамент над Глеком, з хвостиком до нього. */
-.clkgl-bubble { position: absolute; left: 3%; bottom: calc(2.5% + clamp(38px, 13cqw, 76px) + 10px); width: min(78%, 360px); z-index: 7;
+.clkgl-bubble { position: absolute; left: 3%; bottom: calc(2.5% + clamp(38px, 13cqw, 76px) + 10px); width: min(78%, 360px); z-index: 8;
   padding: 10px 12px 8px; border-radius: 14px 14px 14px 4px; background: #fdf6e3; color: #2b2420; font-size: clamp(12.5px, 3cqw, 14.5px);
   line-height: 1.4; box-shadow: 0 8px 22px rgba(0, 0, 0, .45); animation: clkgl-in .18s ease-out; }
 .clkgl-bubble[hidden] { display: none; }
