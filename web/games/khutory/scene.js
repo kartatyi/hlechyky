@@ -542,7 +542,9 @@ export async function createScene(host, opts = {}) {
   const _pj = new THREE.Vector3();
   function fit() {
     const save = { az: cs.az, pol: cs.pol, zoom: cs.zoom, t: cs.target.clone() };
-    defPol = W / H < 0.9 ? PORTRAIT_POLAR : DEF_POLAR;   // вузька висока рамка — дивимось згори, поле виходить вищим
+    // Вузька висока рамка — дивимось згори, поле виходить вищим; майже квадратна (0,9…1,45) — плавно між ними, щоб
+    // поле заповнювало й висоту, а не лишало смугу стільниці згори й знизу; широка (≥ 1,45) — звичний нахил 50°.
+    defPol = PORTRAIT_POLAR + (DEF_POLAR - PORTRAIT_POLAR) * clamp((W / H - 0.9) / 0.55, 0, 1);
     cs.az = 0; cs.pol = defPol; cs.zoom = 1; cs.target.set(0, 0, 0);
     // Кадр — впритул до суші й табличок пристаней (fitPts із setBoard): кути моря й рамки можна обрізати, поле — на всю рамку.
     // Поки поля нема — шестикутник R = 5,1/5,2 (як було).
