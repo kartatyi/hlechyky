@@ -1,0 +1,217 @@
+/* «Хутори» — стенд-макети «було / стало» (dev/look.html). Не прод: лише показати власнику ідеї вигляду.
+   Кольори — змінні сайту (style.css), дерево — як у khutory.css. Усе своє — з префіксом lk-. */
+
+body { margin: 0; background: var(--bg); color: var(--text); }
+.lk-top { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 14px;
+  background: var(--panel); border-bottom: 1px solid var(--line); font-size: 14px; }
+.lk-top b { color: var(--accent); }
+.lk-top a { color: var(--text); text-decoration: none; padding: 3px 9px; border-radius: 999px; background: var(--panel2); white-space: nowrap; }
+.lk-top a:hover, .lk-top a.on { background: var(--accent); color: #2a1e03; }
+.lk-page { width: min(1240px, 100%); margin: 0 auto; padding: 10px 14px 60px; box-sizing: border-box; }
+.lk-intro { color: var(--muted); max-width: 860px; line-height: 1.45; }
+
+.lk-sec { margin: 26px 0 0; padding: 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); }
+.lk-sec > h2 { margin: 0 0 4px; font-size: 1.25em; }
+.lk-sec > h2 small { color: var(--muted); font-weight: 400; font-size: .7em; margin-left: 6px; }
+.lk-prob { margin: 0 0 12px; color: var(--muted); line-height: 1.4; }
+.lk-prob b { color: var(--danger); font-weight: 600; }
+.lk-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.lk-cols.wide { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+.lk-col { min-width: 0; }
+.lk-tag { display: inline-block; font-weight: 800; font-size: .8em; letter-spacing: .04em; text-transform: uppercase; padding: 2px 10px; border-radius: 999px; margin-bottom: 8px; }
+.lk-tag.was { background: color-mix(in srgb, var(--danger) 25%, var(--panel2)); color: #ffd9d6; }
+.lk-tag.now { background: color-mix(in srgb, var(--ok) 25%, var(--panel2)); color: #d9ffe0; }
+.lk-note { margin: 10px 0 0; color: var(--muted); font-size: .9em; line-height: 1.45; }
+.lk-note li { margin: 2px 0; }
+.lk-note b { color: var(--text); }
+body.lk-one .lk-sec { margin-top: 10px; }
+
+/* Справжні шматки картки (клоновані з прод-модуля) — у своїй рамці. */
+.lk-real { pointer-events: none; }
+.lk-real .khu-pl { flex-basis: 150px; }
+
+/* Поле (2D/3D) у макетах */
+.lk-field { position: relative; width: 100%; aspect-ratio: 1.12 / 1; border-radius: 14px; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 45%, #6a4a2c 0%, #4a321d 75%); }
+.lk-field > svg, .lk-field > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.lk-ov { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.lk-ov svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+
+/* Телефон-рамка */
+.lk-phone { position: relative; width: 375px; max-width: 100%; height: 700px; margin: 0 auto; border-radius: 26px; border: 8px solid #0b1410;
+  background: var(--panel); overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.lk-phone > .lk-scr { position: absolute; inset: 0; overflow: hidden; padding: 8px; box-sizing: border-box; }
+.lk-phone .lk-fold { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 12px; text-align: center; font-weight: 700; font-size: .9em;
+  background: linear-gradient(transparent, rgba(0,0,0,.85) 45%); color: #ffd9d6; }
+
+/* ─── 1. Вхідна пропозиція ─────────────────────────────── */
+.lk-inc { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 10; border-radius: 16px; padding: 10px 12px 12px;
+  background: color-mix(in srgb, var(--accent) 16%, #1b2f25); border: 2px solid var(--accent); box-shadow: 0 -6px 24px rgba(0,0,0,.6);
+  animation: lkup .35s ease-out; }
+.lk-inc.pc { position: absolute; left: 12px; right: auto; bottom: 12px; width: 330px; }
+@keyframes lkup { from { transform: translateY(30px); opacity: 0; } }
+.lk-inc-h { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.lk-inc-h .bell { animation: lkbell 1.2s ease-in-out infinite; transform-origin: 50% 10%; display: inline-block; }
+@keyframes lkbell { 0%, 60%, 100% { transform: rotate(0); } 10% { transform: rotate(18deg); } 25% { transform: rotate(-14deg); } 40% { transform: rotate(8deg); } }
+.lk-inc-h .sec { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--accent); }
+.lk-deal { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 8px 0 4px; font-size: 1.15em; }
+.lk-deal .side { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 12px; border-radius: 12px; background: rgba(0,0,0,.25); }
+.lk-deal .side small { color: var(--muted); font-size: .7em; }
+.lk-deal .arr { font-size: 1.3em; color: var(--accent); }
+.lk-inc-left { text-align: center; color: var(--muted); font-size: .85em; }
+.lk-inc-b { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; margin-top: 8px; }
+.lk-inc-b button { min-height: 44px; border-radius: 12px; font-weight: 700; }
+.lk-bar { height: 5px; border-radius: 3px; background: rgba(0,0,0,.35); overflow: hidden; margin-top: 8px; }
+.lk-bar i { display: block; height: 100%; width: 100%; background: var(--accent); transform-origin: left; animation: lkdrain 10s linear infinite; }
+@keyframes lkdrain { from { transform: scaleX(1); } 70% { background: var(--accent); } to { transform: scaleX(0); background: var(--danger); } }
+.lk-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--danger); color: #fff;
+  font-size: .75em; font-weight: 800; margin-left: 4px; }
+
+/* ─── 2. Кармелюк ──────────────────────────────────────── */
+.lk-hx { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; }
+.lk-hx .v { display: flex; gap: 2px; padding: 2px 5px; border-radius: 999px; background: rgba(15,25,20,.88); color: #fff; font-size: 11px; font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0,0,0,.5); white-space: nowrap; }
+.lk-hx .v i { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--pc); font-style: normal; font-size: 9px; }
+.lk-hx .own { padding: 2px 7px; border-radius: 999px; background: #b3261e; color: #fff; font-size: 11px; font-weight: 800; box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(0,0,0,.5); white-space: nowrap; }
+.lk-hx .none { padding: 1px 6px; border-radius: 999px; background: rgba(0,0,0,.45); color: #ddd; font-size: 10px; }
+.lk-hx .best { padding: 2px 7px; border-radius: 999px; background: var(--accent); color: #2a1e03; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.lk-dim { position: absolute; inset: 0; }
+.lk-ask { position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(300px, 86%); padding: 12px; border-radius: 14px;
+  background: var(--panel); border: 2px solid #e2554a; box-shadow: 0 10px 30px rgba(0,0,0,.6); text-align: center; pointer-events: auto; }
+.lk-ask p { margin: 4px 0 10px; line-height: 1.35; }
+.lk-ask .row { display: flex; gap: 8px; justify-content: center; }
+.lk-ask button { min-height: 40px; border-radius: 10px; padding: 6px 12px; }
+
+/* ─── 3. Підсвітка на 3D ───────────────────────────────── */
+.lk-glow line.g { stroke: #ffd23f; stroke-width: 18; stroke-linecap: round; opacity: .55; filter: blur(4px); }
+.lk-glow line.k { stroke: #2a1a00; stroke-width: 10; stroke-linecap: round; opacity: .75; }
+.lk-glow line.y { stroke: #ffd23f; stroke-width: 6; stroke-linecap: round; }
+.lk-glow line.c { stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 6 8; animation: lkmarch .9s linear infinite; }
+.lk-glow circle.c { fill: rgba(255,255,255,.95); stroke: #f4c542; stroke-width: 3.5; animation: lkpulse 1.1s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.lk-glow circle.end { fill: #fff8d6; }
+@keyframes lkmarch { to { stroke-dashoffset: -32; } }
+@keyframes lkpulse { 50% { transform: scale(1.25); } }
+
+/* ─── 4. Плашки гравців ────────────────────────────────── */
+.lk-pls { display: flex; gap: 8px; flex-wrap: wrap; }
+.lk-pls.phone { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.lk-pl { position: relative; flex: 1 1 230px; max-width: 300px; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 2px 8px; align-items: center;
+  padding: 7px 10px 9px 7px; border-radius: 14px; background: var(--panel2); border: 2px solid transparent; overflow: hidden; }
+.lk-pls.phone .lk-pl { max-width: none; grid-template-columns: 34px minmax(0, 1fr); padding: 5px 7px 8px 5px; font-size: .9em; }
+.lk-pl.turn { border-color: var(--pc); }
+.lk-pl.late { animation: lklate 1s ease-in-out infinite; border-color: var(--danger); }
+@keyframes lklate { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 45%, transparent); } }
+.lk-av { grid-row: span 3; position: relative; width: 44px; height: 44px; border-radius: 50%; background: var(--pc); display: grid; place-items: center;
+  color: #fff; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,.6); box-shadow: inset 0 0 0 2px rgba(0,0,0,.25); }
+.lk-pls.phone .lk-av { width: 34px; height: 34px; grid-row: span 2; }
+.lk-av .shp { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; background: #10201a; display: grid; place-items: center;
+  font-size: 11px; line-height: 1; color: var(--pc); box-shadow: 0 0 0 2px var(--pc); }
+.lk-pn { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lk-pn em { font-style: normal; color: var(--muted); font-weight: 400; font-size: .85em; }
+.lk-row { display: block; font-size: .84em; color: var(--muted); line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lk-row .lk-aw + .lk-aw { margin-left: 10px; }
+.lk-row b { color: var(--text); }
+.lk-pts { display: flex; align-items: center; gap: 6px; font-size: .84em; white-space: nowrap; }
+.lk-pts .t { flex: 1; height: 6px; border-radius: 3px; background: rgba(0,0,0,.3); overflow: hidden; min-width: 30px; }
+.lk-pts .t i { display: block; height: 100%; background: var(--accent); }
+.lk-aw { display: inline-flex; align-items: center; gap: 3px; }
+.lk-aw .t { width: 34px; height: 5px; border-radius: 3px; background: rgba(0,0,0,.3); overflow: hidden; display: inline-block; }
+.lk-aw .t i { display: block; height: 100%; background: var(--muted); }
+.lk-aw.near .t i { background: var(--accent); }
+.lk-aw.has { color: var(--accent); font-weight: 700; }
+.lk-tm { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.3); }
+.lk-tm i { display: block; height: 100%; background: var(--pc); }
+.lk-pl.late .lk-tm i { background: var(--danger); }
+.lk-sec10 { position: absolute; right: 8px; top: 5px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--danger); }
+.lk-legend { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .82em; color: var(--muted); }
+.lk-pal { display: grid; grid-template-columns: auto repeat(3, minmax(0, 1fr)); gap: 6px 10px; align-items: center; margin-top: 12px; font-size: .85em; }
+.lk-pal .sw { display: flex; gap: 4px; }
+.lk-pal .sw span { flex: 1; height: 26px; border-radius: 6px; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 12px; text-shadow: 0 1px 2px rgba(0,0,0,.7); box-shadow: inset 0 0 0 1px rgba(0,0,0,.35); }
+.lk-pal .h { color: var(--muted); text-align: center; }
+
+/* ─── 5. Числа ─────────────────────────────────────────── */
+.lk-nums { display: grid; grid-template-columns: repeat(11, minmax(34px, 1fr)); gap: 4px; }
+.lk-num { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 2px 6px; border-radius: 10px; background: var(--panel2); border: 2px solid transparent;
+  cursor: pointer; font: inherit; color: inherit; min-height: 74px; }
+.lk-num .n { font-weight: 800; font-size: 1.05em; }
+.lk-num .n.hot { color: #ff6b5e; }
+.lk-num .p { display: flex; gap: 1px; height: 6px; }
+.lk-num .p i { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.lk-num .y { font-size: .82em; line-height: 1.1; text-align: center; min-height: 1.1em; }
+.lk-num.mine { background: color-mix(in srgb, var(--ok) 30%, var(--panel2)); box-shadow: inset 0 3px 0 var(--ok); }
+.lk-num.cur { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.lk-num.sel { background: color-mix(in srgb, var(--accent) 25%, var(--panel2)); }
+.lk-num.seven { background: color-mix(in srgb, var(--danger) 18%, var(--panel2)); }
+.lk-numh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.lk-numh .dice { font-size: 1.6em; }
+.lk-hist { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; font-size: .85em; color: var(--muted); margin-top: 8px; }
+.lk-hist span { padding: 1px 8px; border-radius: 999px; background: var(--panel2); color: var(--text); font-weight: 700; }
+.lk-hist span.s7 { background: color-mix(in srgb, var(--danger) 30%, var(--panel2)); }
+.lk-hist span.my { box-shadow: inset 0 0 0 2px var(--ok); }
+.lk-nums.phone { grid-template-columns: repeat(11, 40px); overflow-x: auto; padding-bottom: 4px; }
+
+/* ─── 6. Події на полі ─────────────────────────────────── */
+.lk-bub { position: absolute; transform: translate(-50%, calc(-100% - 14px)); padding: 4px 9px; border-radius: 10px; background: rgba(15,25,20,.92); color: #fff;
+  font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.5); border-left: 4px solid var(--pc); }
+.lk-bub::after { content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: rgba(15,25,20,.92); }
+.lk-rip { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 3px solid var(--pc); animation: lkrip 1.6s ease-out infinite; }
+@keyframes lkrip { from { transform: scale(.6); opacity: 1; } to { transform: scale(3.2); opacity: 0; } }
+.lk-feed { position: absolute; left: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; max-width: 62%; z-index: 4; }
+.lk-feed div { padding: 3px 9px; border-radius: 10px; background: rgba(15,25,20,.85); color: #fff; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-left: 4px solid var(--pc); }
+.lk-feed div.old { opacity: .55; }
+.lk-arrow path { fill: none; stroke: #1b1b1b; stroke-width: 7; stroke-linecap: round; opacity: .55; }
+.lk-arrow path.c { stroke: #ffe27a; stroke-width: 3.5; stroke-dasharray: 8 6; animation: lkmarch .9s linear infinite; opacity: 1; }
+
+/* ─── 7. Торгівля ──────────────────────────────────────── */
+.lk-act { display: flex; flex-direction: column; gap: 8px; }
+.lk-bgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.lk-b { display: flex; flex-direction: column; gap: 3px; padding: 7px 9px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line); text-align: left; }
+.lk-b.ok { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel2)); }
+.lk-b .bn { font-weight: 700; }
+.lk-b .why { font-size: .8em; color: var(--muted); }
+.lk-b .fix { margin-top: 2px; padding: 4px 6px; border-radius: 8px; background: var(--accent); color: #2a1e03; font-weight: 700; font-size: .82em; text-align: center; border: 0; }
+.lk-bank { padding: 8px 10px; border-radius: 12px; background: var(--panel2); }
+.lk-bank .l { font-size: .85em; color: var(--muted); margin-bottom: 6px; }
+.lk-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.lk-chip { padding: 5px 9px; border-radius: 999px; background: var(--panel3); border: 1px solid var(--line); font-size: .9em; white-space: nowrap; }
+.lk-chip.on { background: var(--accent); color: #2a1e03; font-weight: 700; border-color: var(--accent); }
+.lk-chip.off { opacity: .4; }
+.lk-pick { display: flex; gap: 5px; margin-top: 6px; align-items: center; font-size: .9em; }
+.lk-pick button { min-width: 40px; min-height: 40px; border-radius: 10px; font-size: 1.1em; }
+.lk-offer { padding: 9px 11px; border-radius: 12px; background: var(--panel2); border-left: 4px solid var(--danger); }
+.lk-offer .row { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.lk-offer button { min-height: 36px; border-radius: 10px; padding: 4px 10px; }
+.lk-txt { font-size: .88em; line-height: 1.4; }
+.lk-txt s { color: var(--danger); }
+.lk-txt ins { text-decoration: none; color: var(--ok); }
+
+/* ─── 8. Підсумок ──────────────────────────────────────── */
+.lk-win { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 30%, var(--panel2)), var(--panel2)); }
+.lk-win .cup { font-size: 2.4em; }
+.lk-win b { font-size: 1.2em; }
+.lk-titles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-top: 10px; }
+.lk-ti { padding: 9px 10px; border-radius: 12px; background: var(--panel2); border-top: 4px solid var(--pc, var(--accent)); }
+.lk-ti .i { font-size: 1.6em; }
+.lk-ti .n { font-weight: 800; }
+.lk-ti .w { font-size: .9em; }
+.lk-ti .d { font-size: .8em; color: var(--muted); }
+.lk-ti.need { opacity: .75; border-top-style: dashed; }
+.lk-moment { margin-top: 10px; padding: 10px 12px; border-radius: 12px; border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+/* ─── 9. Розкладка (каркаси) ───────────────────────────── */
+.lk-wf { display: grid; gap: 5px; padding: 6px; border-radius: 12px; background: #0e1914; font-size: 11px; color: #cfe3d6; }
+.lk-wf div { border-radius: 7px; padding: 5px 6px; background: #22392d; display: flex; align-items: center; justify-content: center; text-align: center; min-height: 22px; }
+.lk-wf .fld { background: #5a3e25; color: #f3e1c6; }
+.lk-wf .bad { background: #4a2420; color: #ffd0cb; }
+.lk-wf .good { background: #24492f; color: #d4ffdd; }
+.lk-wf .acc { background: #6b5516; color: #fff0c0; }
+.lk-wf .gap { background: repeating-linear-gradient(45deg, #3a1c19 0 6px, #2a1412 6px 12px); color: #ffb3aa; }
+.lk-wfp { width: 180px; margin: 0 auto; }
+
+@media (max-width: 760px) {
+  .lk-cols, .lk-cols.wide { grid-template-columns: minmax(0, 1fr); }
+  .lk-nums { grid-template-columns: repeat(11, 40px); overflow-x: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .lk-bar i, .lk-rip, .lk-glow *, .lk-arrow path.c, .lk-pl.late, .lk-inc-h .bell { animation: none !important; } }

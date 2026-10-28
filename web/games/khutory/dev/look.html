@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Хутори — макети вигляду</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/games/core.css">
+<link rel="stylesheet" href="/games/khutory.css">
+<link rel="stylesheet" href="/games/khutory/dev/look.css">
+</head>
+<body>
+<!-- Стенд, не прод. «Було» — справжні шматки картки (прод-модуль khutory.js на підробних видах fixture.js, клон DOM).
+     «Стало» — макет поверх тих самих видів. ?only=<id> — лише один розділ, ?w=phone — «стало» у телефонній ширині. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="lk-deut" color-interpolation-filters="linearRGB"><feColorMatrix type="matrix" values="0.367 0.861 -0.228 0 0  0.280 0.673 0.047 0 0  -0.012 0.043 0.969 0 0  0 0 0 1 0"/></filter>
+  <filter id="lk-prot" color-interpolation-filters="linearRGB"><feColorMatrix type="matrix" values="0.152 1.053 -0.205 0 0  0.115 0.786 0.099 0 0  -0.004 -0.048 1.052 0 0  0 0 0 1 0"/></filter>
+</svg>
+<nav class="lk-top" id="lk-nav"><b>Хутори · як покращити вигляд</b></nav>
+<div class="lk-page">
+  <p class="lk-intro">Ліворуч у кожному розділі — <b>як є зараз</b> (справжня картка гри на підробних видах, ті самі, що в <code>dev/hud.html</code>).
+    Праворуч — <b>як пропоную</b>. Повний опис, зусилля й ризики — у <code>docs/games/specs/khutory-look.md</code>.</p>
+
+  <section class="lk-sec" id="offers" data-t="📨 Пропозиції">
+    <h2>1. 📨 Пропозиція обміну не згорає мовчки <small>M</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> на телефоні чужа пропозиція — під полем, кнопками й рукою; звук типово вимкнено, бот чекає 10 с — і вона тихо зникає.</p>
+    <div class="lk-cols"><div class="lk-col"><span class="lk-tag was">Було · телефон, перший екран</span><div data-before></div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало</span><div data-after></div></div></div>
+    <ul class="lk-note">
+      <li><b>Шторка знизу</b> поверх усього (телефон) / картка в куті поля (ПК): хто, що дає ⇄ що хоче, що лишиться в руці.</li>
+      <li><b>Смужка 10 с</b> тане — видно, скільки лишилось. ✅ / ❌ / ↩ — великі, ≥ 44 px.</li>
+      <li>🔔 дзвіночок хитається; якщо звук вимкнено — <b>вібрація</b> (телефон) і мигання вкладки «📨 Хутори».</li>
+      <li>Значок <span class="lk-badge">1</span> на «🤝 Торгувати», поки пропозиція жива.</li></ul>
+  </section>
+
+  <section class="lk-sec" id="robber" data-t="🥷 Кармелюк">
+    <h2>2. 🥷 Кармелюк: одразу видно, кого зачепиш — і де твоя хата <small>S–M</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> «кого зачепить» — лише при наведенні мишею (на телефоні — ніяк); на гекс зі своєю хатою ставиться мовчки; підсвітка — бліда обвідка.</p>
+    <div class="lk-cols"><div class="lk-col"><span class="lk-tag was">Було</span><div data-before></div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало</span><div data-after></div></div></div>
+    <ul class="lk-note">
+      <li>На кожному дозволеному гексі — <b>бейдж жертв</b>: кружечок кольору й фігури гравця + скільки в нього карт. Порожній — «нікого».</li>
+      <li>Гекс зі своєю хатою — <b>червоний «⚠ твоя хата»</b>; клік по ньому → перепитати (нижче). Найкращий — «⭐ Глек радить».</li>
+      <li>Працює однаково на ПК і дотиком — без наведення.</li></ul>
+  </section>
+
+  <section class="lk-sec" id="glow" data-t="✨ Підсвітка 3D">
+    <h2>3. ✨ Підсвітка місць на 3D-полі видно з першого погляду <small>M</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> світлі смуги шляхів зливаються з білими хатами й світлими землями; на телефоні їх майже не видно.</p>
+    <div class="lk-cols"><div class="lk-col"><span class="lk-tag was">Було · «Шлях» натиснуто</span><div data-before></div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало · накладка поверх сцени</span><div data-after></div></div></div>
+    <ul class="lk-note">
+      <li>Тонка <b>золота «мурашина» лінія</b> з м'яким світінням — колір, якого нема на полі; рух ловить око.</li>
+      <li>Макет — це HTML/SVG-накладка через <code>sc.screenPos('v', …)</code> (так уже працюють «⭐ Глек радить»), сцену не чіпав.
+        У проді краще зробити те саме в самій сцені (емісивна стрічка + additive-світіння), а накладку лишити як запасний план.</li>
+      <li>Для Кармелюка — той самий прийом: золота обвідка гекса + бейджі з розділу 2.</li></ul>
+  </section>
+
+  <section class="lk-sec" id="plates" data-t="🏅 Плашки">
+    <h2>4. 🏅 Плашка гравця: прогрес нагород, підписи, таймер, фігура замість лише кольору <small>S–M</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> «🛤 4/5», «⚔ 2/3» ніде не видно; що таке 🂠 і 📜 — лише в title; таймер — тонка дуга на аватарці; червоні й помаранчеві для дальтоніка однакові.</p>
+    <div class="lk-cols" style="grid-template-columns:minmax(0,1fr)"><div class="lk-col"><span class="lk-tag was">Було · ПК і телефон</span><div data-before></div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало · ПК і телефон (2×2 замість прокрутки)</span><div data-after></div></div></div>
+    <ul class="lk-note">
+      <li><b>⭐ 4 з 8</b> — смужка до перемоги. <b>🛤 3/7</b> — до «Чумацького шляху» (треба ≥ 5 і довше, ніж у власника), <b>⚔ 1/3</b> — до «Сотні». Близько — смужка золота.</li>
+      <li>Підписи словами («9 карт», «2 грамоти»); понад 7 карт — ⚠ (на сімці скине).</li>
+      <li><b>Таймер</b> — смужка на всю ширину плашки; останні 10 с — червона рамка пульсує, секунди великим шрифтом, і (якщо це ти) короткий «тік».</li>
+      <li><b>Фігура гравця</b> ●▲■◆ — на аватарці, на бейджах поля, на прапорці хати в 3D. Нижче — кольори очима дальтоніка.</li></ul>
+  </section>
+
+  <section class="lk-sec" id="layout" data-t="🗂 Розкладка">
+    <h2>5. 🗂 Розкладка: усе потрібне — в одному екрані <small>M–L</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> ПК — під полем порожньо, права колонка (дії → торгівля → пропозиції → «Як грати» → журнал) тягне сторінку вниз, рука далеко від кнопок, гравці виїжджають за верх. Телефон — усе стовпчиком.</p>
+    <div class="lk-cols"><div class="lk-col"><span class="lk-tag was">Було</span>
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:12px;align-items:start">
+        <div class="lk-wf" style="grid-template-columns:2fr 1fr">
+          <div style="grid-column:span 2">гравці (прокручуються за верх)</div><div style="grid-column:span 2">що зараз</div>
+          <div class="fld" style="grid-row:span 5;min-height:190px">поле</div><div>кубики · будівлі</div><div>🤝 торг (розгортається)</div><div class="bad">📨 пропозиції</div><div>❔ як грати</div><div>📜 журнал ↓↓</div>
+          <div class="gap" style="min-height:40px">порожньо</div><div class="gap">порожньо</div>
+          <div style="grid-column:span 2" class="bad">рука — далеко від кнопок</div></div>
+        <div class="lk-wf lk-wfp" style="width:120px"><div>гравці ⇆</div><div>що зараз</div><div class="fld" style="min-height:90px">поле</div><div>кубики · будівлі</div><div>торг</div><div class="bad">📨 пропозиції ↓</div><div>рука</div><div>як грати</div><div>журнал</div></div>
+      </div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало</span>
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:12px;align-items:start">
+        <div class="lk-wf" style="grid-template-columns:2fr 1fr">
+          <div class="good" style="grid-column:span 2">гравці (липнуть угорі) · ⏱</div>
+          <div class="fld" style="grid-row:span 4;min-height:230px;flex-direction:column;gap:4px">поле<br><span style="font-size:10px">📣 стрічка подій у куті<br>📨 вхідна — картка в куті</span></div>
+          <div class="acc">що зараз + 🎲 кубики + числа 2…12</div><div class="good">будівлі · 🏦 банк (з «обміняй і будуй»)</div>
+          <div class="good">рука одразу під кнопками</div><div>вкладки: 🤝 Торг · 📜 Журнал · ❔ Правила</div></div>
+        <div class="lk-wf lk-wfp" style="width:120px"><div class="good">гравці 2×2</div><div class="fld" style="min-height:120px">поле<br>+ стрічка</div><div class="acc">що зараз · 🎲</div><div class="good">рука (стрічка)</div><div class="good">нижня панель:<br>🎲 🏠 🛤 🤝 ➡</div><div class="acc">📨 шторка поверх</div></div>
+      </div></div></div>
+    <ul class="lk-note">
+      <li><b>ПК:</b> поле ліворуч на всю висоту екрана (без порожнечі під ним); праворуч — «що зараз»+кубики, будівлі з банком, <b>рука прямо під кнопками</b>, а торг/журнал/правила — вкладками однакової висоти. Колонка не довша за поле.</li>
+      <li><b>Телефон:</b> гравці 2×2, поле, «що зараз»; знизу <b>липка панель</b> 🎲 Кинути · 🏠 · 🛤 · 🤝 · ➡ Завершити; рука — горизонтальна стрічка над нею. Торг — шторка.</li></ul>
+  </section>
+
+  <section class="lk-sec" id="events" data-t="📣 Події">
+    <h2>6. 📣 Чужі ходи видно на полі, а не лише в журналі <small>M</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> хтось збудував, Кармелюк перейшов, обмін — лише рядок у журналі з 6 рядків і звук (типово вимкнений). На полі нічого не ворухнулось.</p>
+    <div class="lk-cols"><div class="lk-col"><span class="lk-tag was">Було</span><div data-before></div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало</span><div data-after></div></div></div>
+    <ul class="lk-note">
+      <li><b>Хвиля + бульбашка</b> на місці будови в кольорі гравця («🏠 владік: нова хата»), 3 с.</li>
+      <li><b>Кармелюк</b> — пунктирна стрілка звідки → куди, бульбашка «в кого вкрав». Якщо в тебе — червона.</li>
+      <li><b>Стрічка подій</b> у куті поля — 3 останні, гаснуть за 6 с; повний журнал — у вкладці.</li></ul>
+  </section>
+
+  <section class="lk-sec" id="numbers" data-t="🎲 Числа">
+    <h2>7. 🎲 «Що мені дасть кожне число» і останні кидки <small>M</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> новачок не бачить, які числа годують його хати; статистики кидків нема до кінця партії.</p>
+    <div class="lk-cols wide"><div class="lk-col"><span class="lk-tag was">Було</span><div data-before></div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало · клацни число — підсвітяться землі</span><div data-after></div></div></div>
+    <ul class="lk-note">
+      <li>Смуга 2…12 під кубиками: «крапки» ймовірності, <b>що дасть мені</b> (іконки, ×2 за містечко), зелене — мої числа, 7 — 🥷.</li>
+      <li>Останні 8 кидків стрічкою (з подій <code>roll</code>), «за кидок у середньому ≈ N карт» — видно, чи варто будуватись на 6/8.</li>
+      <li>Телефон — смуга прокручується вбік, або ховається під «🎲 ▾».</li></ul>
+  </section>
+
+  <section class="lk-sec" id="trade" data-t="🤝 Торг">
+    <h2>8. 🤝 Торг: банк в один дотик, «обміняй і будуй», зрозумілі тексти <small>M</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> банк — 3 кліки (Торгувати → 4→1 → ресурс) і лише по 1; сіра «Хата — бракує 1 вовни» не підказує, що вовну можна виміняти; після відмови всіх — «чекаємо…»; «дає 1 глина».</p>
+    <div class="lk-cols"><div class="lk-col"><span class="lk-tag was">Було</span><div data-before></div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало</span><div data-after></div></div></div>
+  </section>
+
+  <section class="lk-sec" id="over" data-t="🏆 Підсумок">
+    <h2>9. 🏆 Підсумок: звання й «твій момент» <small>S–M</small></h2>
+    <p class="lk-prob"><b>Проблема:</b> після партії — суха таблиця; графік гарний, але нема чим похвалитись і за що посміятись.</p>
+    <div class="lk-cols"><div class="lk-col"><span class="lk-tag was">Було</span><div data-before></div></div>
+      <div class="lk-col"><span class="lk-tag now">Стало (графік і гістограма лишаються нижче)</span><div data-after></div></div></div>
+  </section>
+
+  <div id="lk-hold" style="position:absolute;left:-5000px;top:0;width:1200px" aria-hidden="true"></div>
+</div>
+
+<script>
+  // Мінімальний підробний каркас (як у dev/hud.html): лише те, чим користується khutory.js. Нічого не шле й не грає.
+  window.HGames = {
+    mods: {},
+    register(m) { this.mods[m.id] = m; },
+    send() { return Promise.resolve({ ok: true }); },
+    ui: { coarse: () => false, human: (e) => e.isTrusted },
+  };
+  try { localStorage.setItem('kh.view', '2d'); } catch (e) {}
+</script>
+<script src="/games/khutory.js"></script>
+<script type="module" src="/games/khutory/dev/look.js"></script>
+</body>
+</html>
