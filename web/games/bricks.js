@@ -2427,6 +2427,9 @@
     return st;
   }
 
+  /// Порядок фаз у межах одного раунду столу (update: вид, старіший за кадри, фазу назад не відкочує).
+  const PH_RANK = { lobby: 0, start: 1, go: 2, pause: 3, over: 4 };
+
   function update(root, ctx) {
     const st = state(root, ctx);
     st.root = root;
@@ -2439,6 +2442,11 @@
     }
     const now = performance.now();
     const fresh = v.round !== st.round || (v.seed >>> 0) !== st.seed;
+    // Записка #70: каркас кличе update і з видом із кешу, щойно міняється рядок столу в лобі (глядач прийшов чи пішов,
+    // людина пішла на «Ефір»). Видів посеред раунду сервер не шле, тож у кеші — «start» з t = 0, і такий вид відкочував
+    // фазу назад: стіна мовчки ставала, сервер вів її сам, а по поверненні вона перескакувала на його версію. У межах
+    // раунду фаза йде лише вперед — старіший вид пропускаємо (спринт — ні: «Цеглини дня» з тим самим зерном знову «ready»).
+    if (!fresh && !st.sprint && v.phase !== 'lobby' && (PH_RANK[v.phase] || 0) < (PH_RANK[st.phase] || 0)) { frameLoop(st); return; }
     st.view = v;
     st.phase = v.phase;
     st.stage = v.stage | 0;
