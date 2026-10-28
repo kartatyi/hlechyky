@@ -9,7 +9,7 @@
   html, body { margin: 0; height: 100%; background: #1b1f17; color: #eee; font: 14px system-ui, sans-serif; overflow: hidden; }
   #kol-view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; -webkit-touch-callout: none; }   /* K27 */
   #kol-hud { position: fixed; left: 10px; top: 8px; padding: 4px 10px; background: rgba(0,0,0,.45); border-radius: 6px; pointer-events: none; }
-  #kol-panel { position: fixed; right: 0; top: 0; }
+  #kol-panel { position: fixed; right: 0; top: 0; z-index: 26; }   /* над HUD (картка меню в зборі) і банером збору — інакше ⚙ відкривалась під ними */
 </style>
 </head>
 <body>

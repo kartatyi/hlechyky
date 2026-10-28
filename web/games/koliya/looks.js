@@ -104,6 +104,6 @@ export function mountLookUi(panelRoot, view) {
   seg('Кут камери', CAM_ANGLE, 'angle', () => view.setCam({ dist: prefs.dist, angle: prefs.angle }));
   for (const r of view.weather?.rows?.() || []) { prefs[r.key] = r.value; seg(r.label, r.opts, r.key, r.pick); }   // K32: час доби й погода
   const note = pan.querySelector('.kol-note');
-  if (note && note.parentNode === pan) note.after(d); else pan.append(d);
+  if (note && pan.contains(note)) note.after(d); else pan.append(d);   // якір — у вкладці «🎧 Моє» (panel.js)
   return { dispose() { d.remove(); } };
 }

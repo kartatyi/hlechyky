@@ -2,7 +2,11 @@
 // Контракт: createNet(game, { table, nick, input, bot | makeBot(p), onWorld(s), onStep(s) }) → net
 //   net.start() — підключитись до столу (table: id столу, 'new' — новий, 'auto' — перший відкритий «Колії» чи новий);
 //   net.update(now) — щокадру замість локального циклу тиків (крутить game.state); net.alpha — частка тику для draw;
-//   net.restart(seed, params?) — нова партія всім за столом; net.info() — стан для перевірок (KOL.net);
+//   net.restart(seed, params?, mode?) — нова партія всім за столом: params — лише явні (маршрут дня), інакше сервер бере
+//   налаштування столу + mode ('tutorial' | 'normal'); net.info() — стан для перевірок (KOL.net);
+//   net.table — налаштування столу { tp, tb, tv } (спільні: хто змінив і номер зміни), net.setTable(values) — змінити їх
+//   усім (Act 'params', з затримкою на повзунки); opts.onTable(table, mine, pending) — прийшла нова зміна;
+//   game.feel — код свого керування (rules.feelCode): розійшовся зі світом — шлемо 'feel' (кожному гравцю своє);
 //   net.standStill() — «стій» своїм гравцям одразу (start() сам кличе її, коли вкладку сховано чи вікно без фокуса).
 //
 // СХЕМА: сервер (src/Hlechyky/Games/Impl/Koliya.cs) — лише «секретар»: правил не знає, ставить кожній команді номер
@@ -58,8 +62,10 @@ const SMOOTH = 0.55;       // частка зсуву, що лишається �
 const SNAP = 3 * R.U;      // більший стрибок (поява, телепорт) — не згладжуємо
 const CATCH = 2;           // зсув тане не швидше за 2 кроки гравця за тик (разом із ходою — до 3× швидкості)
 const JERK = 3.5;          // замір: стрибок за тик більший за 3,5 кроку — ривок (згладжене не перевищує 1 + CATCH)
+const TABLE_DELAY = 400;  // мс тиші після правки налаштувань столу — тоді шлемо
+const FEEL_GAP = 60;      // тиків між повторами 'feel', поки світ його не знає (3 с: команду могла з'їсти квота)
 export const SNAP_EVERY = 1200;   // K44: тиків між знімками (1 хв); кратне HASH_EVERY — знімок на тику звірки
-const K = { 1: 'in', 2: 'use', 3: 'join', 4: 'leave', 5: 'throw', 6: 'horn' };   // 5, 6 — кооп-фішки K18
+const K = { 1: 'in', 2: 'use', 3: 'join', 4: 'leave', 5: 'throw', 6: 'horn', 7: 'feel' };   // 5, 6 — кооп-фішки K18; 7 — своє керування
 
 /**
  * Згладжування поз гравців для малювання (K6): зсув на перерахунку, тане щотику. Чисте, без DOM — тестується в Node.
@@ -312,6 +318,16 @@ export function watchersText(n) {
 }
 export const WATCH_EVERY = 2000;   // глядач озивається (…/watch) — сервер забуває за 5 с
 
+/** «Встав із цього столу» (sessionStorage вкладки; ставить картка сайту koliya.js left). on — поставити/зняти; без on — прочитати. */
+export function leftHere(room, on) {
+  const k = 'kol-left:' + room;
+  try {
+    if (on === undefined) return !!room && globalThis.sessionStorage?.getItem(k) === '1';
+    if (on) globalThis.sessionStorage?.setItem(k, '1'); else globalThis.sessionStorage?.removeItem(k);
+  } catch { /* приватне вікно / Node */ }
+  return false;
+}
+
 /** K28: мапа p → короткий нік з виду/журналу сервера (nm). */
 export function namesFrom(nm) {
   return Array.isArray(nm) ? nm.map(shortNick) : [];
@@ -323,6 +339,7 @@ export function toCmd(c, j) {
   if (k === 'use') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7], h: c[j + 8] };
   if (k === 'throw') return { p, k, x: c[j + 4], y: c[j + 5], fx: c[j + 6], fy: c[j + 7] };
   if (k === 'join' || k === 'horn') return { p, k };
+  if (k === 'feel') return { p, k, f: c[j + 4] };
   // K24: невідомий вид (новий сервер, стара вкладка без F5) — не 'leave' (вибив би гравця), а порожня команда:
   // rules її пропустить, світ розійдеться лише на цій дії, і звірка хешу це покаже
   return k === 'leave' ? { p, k } : { p, k: 'k' + c[j + 3] };
@@ -421,7 +438,7 @@ function askSeated(other) {
 }
 
 export function createNet(game, opts = {}) {
-  const { input, onWorld, onStep } = opts;
+  const { input, onWorld, onStep, onTable } = opts;
   let table = String(opts.table || 'auto');
   // K55: proto.html?net=… без &nick — нік сайту (той самий origin, app.js тримає його в localStorage), інакше гість
   // без акаунта отримував «Спершу скажи, як тебе кликати»
@@ -452,6 +469,8 @@ export function createNet(game, opts = {}) {
   let lastFrameAt = 0, pg = null;
   let goSent = 0, goPrev = true;        // K62: епоха, де вже казали go; дія була затиснута (чекаємо відпуску)
   const watchPing = createPinger(WATCH_EVERY), wid = Math.random().toString(36).slice(2, 12);   // глядач: номер вкладки
+  let tableTimer = 0, tableWant = null;  // налаштування столу, що ще не пішли (повзунок тягнуть)
+  const feelAt = [-1e9, -1e9];           // [q] — тик, коли востаннє слали 'feel' (не частіше за FEEL_GAP, поки світ не знає)
 
   const net = {
     p: -1, p2: -1, alpha: 0, status: 'старт', desync: -1, wait: false,
@@ -459,7 +478,8 @@ export function createNet(game, opts = {}) {
     get ready() { return ready; },
     get epoch() { return e; },
     get C() { return C; },
-    start, update, restart, draw, go, standStill,
+    table: { tp: {}, tb: null, tv: 0 },
+    start, update, restart, draw, go, standStill, setTable,
     info() {
       return { room, seat, p: net.p, p2: net.p2, e, count, w, cTick: C?.tick, pTick: game.state?.tick, pending: pending.length,
         status: net.status, desync: net.desync, cStatus: C?.status, hash: C ? R.hash(C) : 0, stats: { ...stats },
@@ -502,10 +522,13 @@ font-size:21px;line-height:1;cursor:pointer;transition:opacity .2s}
 .kol-net-re button.cool{opacity:.4}
 .kol-net-re small{position:absolute;right:3px;bottom:1px;font-size:9px;color:#aaa}
 .kol-net-wait{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:24;display:none;align-items:center;gap:10px;
-max-width:calc(100vw - 32px);padding:8px 10px 8px 14px;border-radius:12px;background:rgba(20,26,16,.85);border:1px solid #9bc25a;
+width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;padding:8px 10px 8px 14px;border-radius:12px;background:rgba(20,26,16,.85);border:1px solid #9bc25a;
 font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
 .kol-net-wait button{min-height:40px;padding:0 14px;font:inherit;color:#1d2418;background:#ffd23f;border:0;border-radius:10px;cursor:pointer;white-space:nowrap}
-.kol-net-wait button:disabled{opacity:.6;cursor:default}`;
+.kol-net-wait button:disabled{opacity:.6;cursor:default}
+.kol-net-wait small{display:block;font-weight:500;font-size:12.5px;opacity:.85;margin-top:2px}
+.kol-net-wait small.kol-flash{animation:kol-wflash 3s ease-out}
+@keyframes kol-wflash{0%,50%{color:#ffd23f;opacity:1}100%{color:inherit}}`;
     document.head.appendChild(st);
     const el = document.createElement('div');
     el.className = 'kol-net';
@@ -596,11 +619,19 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
       ui.watch.textContent = playing ? watchersText(n) : `👀 дивишся збоку${n > 1 ? ` · ${watchersText(n).slice(3)}` : ''}`;
       ui.watch.style.display = playing && !n ? 'none' : '';
     }
-    const wk2 = ready && net.wait ? `${waitCount()}|${seat != null ? 1 : 0}|${goSent === e ? 1 : 0}` : '';
+    const wk2 = ready && net.wait ? `${waitCount()}|${seat != null ? 1 : 0}|${goSent === e ? 1 : 0}|${net.table.tv}|${e}` : '';
     if (ui.waitKey !== wk2) {
       ui.waitKey = wk2;
       ui.wait.style.display = wk2 ? 'flex' : 'none';
+      const tt = opts.tableText?.() || '';   // 28.10: з чим граємо — «☕ Затишно · коротка · 🪿» (⚙ → «🚂 Стіл»)
       ui.waitTxt.textContent = `⏳ Чекаємо гравців: ${waitCount()} за столом`;
+      if (tt) {
+        const sm = document.createElement('small'); sm.textContent = `⚙ ${tt}`;
+        if (ui.waitTv != null && ui.waitTv !== net.table.tv) sm.className = 'kol-flash';   // хтось змінив — підсвітити (тост ховає картка меню)
+        ui.waitTxt.append(sm);
+      }
+      ui.waitTv = net.table.tv;
+      ui.waitTxt.title = tt ? 'Налаштування столу — ⚙ → «🚂 Стіл», міняти може кожен' : '';
       ui.goBtn.style.display = seat != null ? '' : 'none';   // глядач без місця не стартує
       ui.goBtn.disabled = goSent === e;
     }
@@ -673,9 +704,14 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
       } else room = table;
       try { const u = new URL(location.href); u.searchParams.set('net', room); history.replaceState(null, '', u); } catch { }
     }
-    const j = await conn.invoke('JoinRoom', room);
-    net.joinMsg = j.ok ? '' : j.message || '';
-    if (!j.ok) console.info('Колія: JoinRoom —', j.message);   // «уже за столом» — це нормально; інше — дивимось збоку (net.joinMsg)
+    // Щойно встав із цього столу «Встати» сайту (koliya.js left) — рамка, що перезавантажилась, не сідає сама знову:
+    // інакше Колія (пускає посеред партії) за пів секунди садила назад, і встати було неможливо (28.10).
+    if (leftHere(room)) net.joinMsg = 'ти встав з-за столу';
+    else {
+      const j = await conn.invoke('JoinRoom', room);
+      net.joinMsg = j.ok ? '' : j.message || '';
+      if (!j.ok) console.info('Колія: JoinRoom —', j.message);   // «уже за столом» — це нормально; інше — дивимось збоку (net.joinMsg)
+    }
     await conn.invoke('WatchRoom', room);
     await resync();
   }
@@ -705,11 +741,14 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
 
   function onRoom(rv) {
     seat = rv.seat ?? null;
+    if (seat != null && leftHere(room)) { leftHere(room, false); net.joinMsg = ''; }   // сів знову («Сісти» на сайті)
     const v = rv.view;
     if (!v) return;
+    tableFrom(v);
     net.p = v.p ?? -1;
     net.p2 = v.p2 ?? -1;
     game.me = net.p;
+    if (ready) sayPlay();   // сів посеред партії («Сісти» на сайті) чи встав — «грає» / «дивишся збоку»
     if (v.nm) game.names = namesFrom(v.nm);   // K28
     if (v.e !== e && !resyncing) resync();
     else if (ready) want2();
@@ -746,6 +785,7 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
       }
       build(j, snap);
       stats.buildMs = Date.now() - t0;
+    seedTable();
     } catch (x) {
       console.warn('Колія: журнал не взявся', x);
       const is404 = /: 404$/.test(x?.message || ''), wait = resyncDelay(++miss, is404);   // K46: без вічних 404
@@ -771,6 +811,7 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
     game.seed = j.seed >>> 0;
     // режим столу (навчання обрав хтось інший чи повернув на звичайну) — щоб «ще раз» звідси не перемикав його назад
     if (game.params) game.params = { ...game.params, mode: C.params?.mode === 'tutorial' ? 'tutorial' : 'normal' };
+    tableFrom(j);
     net.wait = !!j.wait;   // K62
     if (off == null || net.wait) off = j.t * R.TICK_MS - performance.now();
     if (!ingest(j.f | 0, j.c || [], !!snap)) { console.warn('Колія: журнал з дірою'); return; }
@@ -929,7 +970,7 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
       let v;
       if (q === 0 && opts.makeBot && (!bot || bot.p !== p)) bot = opts.makeBot(p);   // справжній бот (bot.js) знає своє p
       if (q === 0 && bot) v = bot.think(s, p);
-      else { ins ??= input?.poll?.() || []; const a = ins[q]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use, throw: !!a.throw, horn: !!a.horn } : null; }
+      else { feelInput(t, q, p, pl); ins ??= input?.poll?.() || []; const a = ins[q]; v = a ? { mx: Math.round(a.mx * 100), my: Math.round(a.my * 100), use: !!a.use, throw: !!a.throw, horn: !!a.horn } : null; }
       if (!v) continue;
       const li = lastIn[q], lu = lastUse[q], Q = q ? { q: 1 } : {};
       const mx = Math.max(-100, Math.min(100, v.mx | 0)), my = Math.max(-100, Math.min(100, v.my | 0));
@@ -1011,13 +1052,58 @@ font:600 15px system-ui,sans-serif;color:#fff;user-select:none}
     goPrev = down;
   }
 
-  async function restart(seed = game.seed, params = game.params) {
+  /** Нова партія всім: params — лише явні (маршрут дня, перевірки); null — налаштування столу (сервер) + mode. */
+  async function restart(seed = game.seed, params = null, mode = 'normal') {
     if (!conn || !room) return;
     let r;
-    try { r = await conn.invoke('Act', room, 'restart', { seed: seed >>> 0, params: params || {} }); }
+    const m = params ? { seed: seed >>> 0, params } : { seed: seed >>> 0, mode: mode === 'tutorial' ? 'tutorial' : 'normal' };
+    try { r = await conn.invoke('Act', room, 'restart', m); }
     catch (x) { console.warn('Колія: перезапуск не дійшов', x); return; }   // QA K21: обрив — без unhandled rejection
     if (!r.ok) console.warn('Колія: перезапуск —', r.message);
     else resync();
+  }
+
+  /** Налаштування столу з виду чи журналу ({ tp, tb, tv }): нова зміна — onTable (mine — моя ж). */
+  let tableSeen = false;   // перший вид/журнал — завжди (і tv 0), далі — лише новіша зміна: вид іде часто, а панель
+  function tableFrom(v) {   // між правкою й відправкою (TABLE_DELAY) не мусить скидатися назад
+    if (!v || !Number.isInteger(v.tv) || (tableSeen && v.tv <= net.table.tv)) return;
+    tableSeen = true;
+    net.table = { tp: v.tp && typeof v.tp === 'object' ? v.tp : {}, tb: v.tb ?? null, tv: v.tv };
+    const me = String(nick || '').toLowerCase(), by = String(net.table.tb || '').toLowerCase();
+    onTable?.(net.table, !!by && (by === me || by === 'гість ' + me), tableWant != null);   // pending — моя новіша правка ще не пішла
+  }
+
+  /** Новий стіл, ніхто ще нічого не ставив (tv 0), а я за ним сам (поставив його): засіяти моїми останніми
+   *  налаштуваннями (раз). Хто підсів другим — ні: стіл того, хто його поставив, хай і з типовими. */
+  let seeded = false;
+  function seedTable() {
+    if (seeded || !ready || net.p < 0) return;
+    seeded = true;
+    if (net.table.tv !== 0 || (game.names || []).filter(Boolean).length > 1) return;
+    const v = opts.firstTable?.();
+    if (v && Object.keys(v).length) setTable(v);
+  }
+
+  /** Змінити налаштування столу всім — за ~0,4 с після останньої правки (повзунок шле десятки змін). */
+  function setTable(values) {
+    tableWant = values;
+    clearTimeout(tableTimer);
+    tableTimer = setTimeout(() => {
+      const v = tableWant; tableWant = null;
+      if (!conn || !room || seat == null || !v) return;
+      lagOut(() => conn.invoke('Act', room, 'params', { params: v }).then((r) => {
+        if (!r?.ok) console.info('Колія: налаштування —', r?.message);
+      }).catch((x) => console.warn('Колія: налаштування', x)));
+    }, TABLE_DELAY);
+  }
+
+  /** Своє керування (game.feel — код rules.feelCode) розійшлось із тим, що знає світ про мого гравця, — 'feel' на тик t. */
+  function feelInput(t, q, p, pl) {
+    const want = game.feel;
+    if (!Number.isInteger(want) || want < 0 || R.feelCode(R.feelOf(game.state, pl)) === want) return;
+    if (t - feelAt[q] < FEEL_GAP && t >= feelAt[q]) return;   // уже пішло — чекаємо луни (перезапуск: тик менший — шлемо)
+    feelAt[q] = t;
+    send('feel', { f: want, ...(q ? { q: 1 } : {}) }, t, { p, k: 'feel', f: want });
   }
 
   return net;

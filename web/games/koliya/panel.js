@@ -17,6 +17,11 @@
 //  K29: music? (createMusic, music.js) — у «Пристрої» «🎵 Музика», «🌿 Тло» (вимк. типово) і гучності музики/тла/ефектів.
 //  K49: у «Пристрої» — «Великий текст HUD», «Кольори для дальтоніків», «Менше блимань» (prefs big/cb/calm); експорт
 //  A11Y / pcol(i) / pmark(i) / setA11y — для hud.js і render.js (див. нижче).
+//  28.10 «Стіл / Моє»: дві вкладки. «🚂 Стіл» — правила світу, одні на всіх за столом (shared: true — мережа; там
+//  onChange іде на сервер, а хто змінив — setTable({ by, mine, wait })): зверху прості вибори — Складність (LEVELS),
+//  Маршрут (ROUTES), Додатки (ADDONS), повзунки й решта перемикачів — під «🔧 Тонко». «🎧 Моє» — лише своє й одразу:
+//  Керування (feel: рух/удар/приціл, onFeel(k, v); у кожного гравця своє — rules 'feel'), «🎨 Вигляд», Пристрій.
+//  tableSummary(values) — коротко для тостів і збору: «☕ Затишно · коротка · 🪿».
 
 const CSS = `
 .kol-gear{position:fixed;right:8px;top:8px;z-index:30;width:46px;height:46px;border-radius:10px;border:1px solid #fff3;
@@ -60,6 +65,18 @@ const CSS = `
 .kol-pres{margin:2px 0 4px;opacity:.75;font-size:12px}
 .kol-preset{font-size:13px;padding:6px 6px}
 .kol-pan.kol-bypad .kol-padnote{display:block}
+.kol-tabs{margin:0 0 8px}
+.kol-tabs button{font-weight:600}
+.kol-tnote{font-size:12px;opacity:.8;margin:0 0 10px;line-height:1.35}
+.kol-tnote b{color:#ffd27a;font-weight:600}
+.kol-seg.kol-wrap{flex-wrap:wrap}
+.kol-seg.kol-wrap button{flex:1 1 45%;border-top:1px solid #fff2}
+.kol-seg.kol-wrap button:nth-child(-n+2){border-top:0}
+.kol-seg.kol-wrap button:nth-child(odd){border-left:0}
+.kol-tog.kol-on{background:#4a6a2a;border-color:#7a9a4a;color:#fff}
+.kol-own{font-size:11.5px;color:#ffd27a;margin:2px 0 0}
+.kol-own:empty{display:none}
+.kol-fine{margin-top:6px}
 `;
 
 // K49: доступність — стан спільний для HUD (hud.js) і світу (render.js); зберігається в kol-prefs (big/cb/calm).
@@ -86,9 +103,9 @@ function a11yClasses() {
 }
 
 // K16: порядок груп і куди йдуть ключі, яким PARAM_META/VARIANTS дає іншу групу (або жодної — перемикачі)
-const GROUPS = ['Відчуття', 'Паротяг', 'Котел', 'Ресурси', 'Гравці', 'Світ', 'Додатки', 'Інше'];
+const GROUPS = ['Паротяг', 'Котел', 'Ресурси', 'Гравці', 'Світ', 'Додатки', 'Інше'];
 const GROUP_OF = {
-  move: 'Відчуття', useMode: 'Відчуття', aim: 'Відчуття', hitMs: 'Відчуття',
+  hitMs: 'Гравці',
   speedCurve: 'Паротяг', overheat: 'Котел',
   bump: 'Гравці', throw: 'Гравці', pass: 'Гравці', stun: 'Гравці',
   geese: 'Додатки', stationMode: 'Додатки',
@@ -114,17 +131,56 @@ const VAL_SHORT = {
   useMode: ['Затиснув', 'Натиском', 'Б’є сам'], aim: ['Перед собою', 'Розумний'], speedCurve: ['Від часу', 'За рейки', 'Від шляху'],
   stationMode: ['Кінець', 'Проміжна'],
 };
-// K16: пресети — від типових; ключі, яких нема в meta/variants, пропускаються
-export const PRESETS = {
-  cozy: { label: '☕ Затишно', note: 'повільний паротяг, багато ресурсів',
+// 28.10: у «Стіл» не йдуть своє керування (move/useMode/aim — «Моє») і mode (навчання вмикає меню)
+const FEEL = ['move', 'useMode', 'aim'];
+const TABLE_SKIP = new Set([...FEEL, 'mode']);
+// Складність — від типових: ключі DIFF скидаються, тоді ставляться v (K16 «Затишно» й «Хаос» — звідси ж)
+export const LEVELS = {
+  cozy: { label: '☕ Затишно', note: 'повільний паротяг, багато ресурсів — для перших вечорів',
     v: { speedStart: 0.07, speedGrowth: 0.015, speedMax: 0.4, startSec: 45, heatSec: 90, fireSec: 20, craftSec: 1.5,
       woodPerTree: 3, ironPerRock: 3, storeMax: 15, railsMax: 12, startRails: 8 } },
-  unrailed: { label: '🚂 Як Unrailed', note: 'клітинками, б\'є сам, розумний приціл',
-    v: { move: 'grid', useMode: 'auto', aim: 'smart' } },
-  chaos: { label: '🌪 Хаос', note: 'швидкий паротяг, гуси, кидки й штовханина',
-    v: { speedStart: 0.2, speedGrowth: 0.06, speedMax: 1.0, startSec: 15, heatSec: 35,
-      geese: 'on', geeseSec: 25, throw: 'on', bump: 'on', stun: 'on', pass: 'on' } },
+  normal: { label: '🚂 Звично', note: 'типові числа гри', v: {} },
+  hard: { label: '🔥 Важко', note: 'паротяг швидший, котел гріється скоріше, рушає раніше',
+    v: { speedStart: 0.28, speedGrowth: 0.08, speedMax: 0.8, startSec: 20, heatSec: 40, fireSec: 10 } },
+  chaos: { label: '🌪 Хаос', note: 'швидкий паротяг, а ще гуси, кидки й штовханина', addons: { geese: 'on', geeseSec: 25, throw: 'on', bump: 'on', stun: 'on', pass: 'on' },
+    v: { speedStart: 0.2, speedGrowth: 0.06, speedMax: 1.0, startSec: 15, heatSec: 35 } },
 };
+const DIFF = [...new Set(Object.values(LEVELS).flatMap((l) => Object.keys(l.v)))];
+// Маршрут: довжина смуги або нескінченна колія (stationMode 'endless')
+export const ROUTES = [
+  { id: 'short', label: 'Коротка', len: 60 }, { id: 'mid', label: 'Звична', len: 100 },
+  { id: 'long', label: 'Довга', len: 160 }, { id: 'endless', label: '♾ Без кінця' },
+];
+// Додатки — перемикачі одним натиском; «Пустощі» — штовханина, кидок і сокира разом
+export const ADDONS = [
+  { id: 'geese', label: '🪿 Гуси', title: 'Гуси-злодюжки крадуть рейки й дрова', keys: { geese: ['on', 'off'] } },
+  { id: 'winter', label: '❄ Зима', title: 'Сніг (повільніше йти) і лід (ковзаєш)', keys: { winter: ['on', 'off'] } },
+  { id: 'fun', label: '🤸 Пустощі', title: 'Штовханина, кидок речі на 3 клітинки, сокирою по партнеру — 1 с зірочок',
+    keys: { bump: ['on', 'off'], throw: ['on', 'off'], stun: ['on', 'off'] } },
+  { id: 'mid', label: '🏪 Станція', title: 'Проміжна станція з покращеннями посеред шляху', keys: { stationMode: ['upgrade', 'end'] } },
+];
+const addonOn = (a, v) => Object.entries(a.keys).every(([k, [on]]) => v[k] === on);
+/** Рівень складності з values (id з LEVELS) чи null — «свої» */
+export function levelOf(v) {
+  const d = Object.fromEntries(Object.entries(PARAM_DEF).filter(([k]) => DIFF.includes(k)));
+  for (const id in LEVELS) if (DIFF.every((k) => +(LEVELS[id].v[k] ?? d[k]) === +v[k])) return id;
+  return null;
+}
+export function routeOf(v) {
+  if (v.stationMode === 'endless') return 'endless';
+  return ROUTES.find((r) => r.len === +v.stripLen)?.id ?? null;
+}
+/** Коротко про налаштування столу: «☕ Затишно · коротка · 🪿❄» (для тостів і збору) */
+export function tableSummary(v) {
+  const lv = levelOf(v), rt = routeOf(v);
+  const parts = [lv ? LEVELS[lv].label : '✏ свої числа', rt ? ROUTES.find((r) => r.id === rt).label.toLowerCase() : `смуга ${v.stripLen}`];
+  const on = ADDONS.filter((a) => addonOn(a, v)).map((a) => a.label.split(' ')[0]).join('');
+  if (on) parts.push(on);
+  return parts.join(' · ');
+}
+let PARAM_DEF = {};
+/** Типові значення для levelOf (main.js дає R.defaultParams()) */
+export function setDefaults(d) { PARAM_DEF = { ...d }; }
 
 export function createPanel(root, opts) {
   const meta = opts.meta || {}, variants = opts.variants || {};
@@ -132,6 +188,7 @@ export function createPanel(root, opts) {
   const defs = {};
   for (const k in meta) defs[k] = meta[k].def;
   for (const k in variants) defs[k] = variants[k].values[0];
+  PARAM_DEF = { ...defs };   // levelOf / tableSummary міряють «Звично» від типових
 
   const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
   const style = el('style'); style.textContent = CSS;
@@ -187,7 +244,7 @@ export function createPanel(root, opts) {
   };
   addEventListener('keydown', onKey);
 
-  // — верх: дії
+  // — верх: дії (спільні для обох вкладок)
   const r1 = el('div', 'kol-row');
   const bRestart = el('button', 'kol-btn kol-main', '↻ Почати заново (R)');
   bRestart.onclick = () => opts.onRestart?.();
@@ -212,21 +269,92 @@ export function createPanel(root, opts) {
   seedIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') bSeedGo.click(); });
   r2.append(el('span', null, 'Сід'), seedIn, bSeedGo, bSeedNew);
 
-  // K16: пресети — лише ставлять значення
-  const r4 = el('div', 'kol-row');
-  for (const id in PRESETS) {
-    const pr = PRESETS[id], b = el('button', 'kol-btn kol-preset', pr.label);
-    b.title = pr.note;
-    b.onclick = () => {
-      const nv = { ...defs };
-      for (const k in pr.v) if (k in defs) nv[k] = pr.v[k];
-      values = { ...values, ...nv }; refresh(); emit();
-      say(`${pr.label}: ${pr.note} — з наступного рестарту (↻ вище)`);
-    };
-    r4.append(b);
+  // — вкладки: «🚂 Стіл» (правила, спільні) і «🎧 Моє» (своє, одразу)
+  const shared = !!opts.shared;
+  let tinfo = { by: null, mine: false, wait: false };
+  const tabs = el('div', 'kol-seg kol-tabs');
+  const tabTable = el('div', 'kol-tab'), tabMine = el('div', 'kol-tab');
+  const tabBtns = [['table', '🚂 Стіл', tabTable], ['mine', '🎧 Моє', tabMine]].map(([id, label, box]) => {
+    const b = el('button', null, label);
+    b.onclick = () => showTab(id);
+    tabs.append(b);
+    return [id, b, box];
+  });
+  function showTab(id) { for (const [k, b, box] of tabBtns) { b.classList.toggle('kol-on', k === id); box.style.display = k === id ? '' : 'none'; } }
+  const msg = el('div', 'kol-msg');
+  pan.append(el('div', 'kol-padnote', '🎮 ✚ ↑↓ — рядок · ←→ — значення · A — натиснути · B — закрити'), r1, tabs, msg, tabTable, tabMine);
+
+  // «Стіл»: кому й коли діє
+  const tnote = el('div', 'kol-tnote');
+  const whenNote = () => (shared ? (tinfo.wait ? 'світ одразу перебудується для всіх' : 'для всіх — з наступної партії') : 'з наступної партії (↻ вище)');
+  function noteHtml() {
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    tnote.innerHTML = shared
+      ? `Одне на всіх за столом — міняти може кожен${tinfo.by ? ` · востаннє: <b>${tinfo.mine ? 'ти' : esc(tinfo.by)}</b>` : ''}. `
+        + (tinfo.wait ? 'Поки не рушили — світ перебудовується одразу.' : 'Зміни — з наступної партії.')
+      : 'Діє з наступної партії (↻ Почати заново).';
   }
-  pan.append(el('div', 'kol-padnote', '🎮 ✚ ↑↓ — рядок · ←→ — значення · A — натиснути · B — закрити'),
-    r1, r2, el('div', 'kol-lab kol-pres', 'Пресети'), r4, el('div', 'kol-note2', 'Зміни світу й правил діють з наступного рестарту.'));
+  noteHtml();
+  tabTable.append(tnote);
+  const simple = [];   // перемальовування простих виборів за values
+  const simpleBox = (label, ctlEl, title) => {
+    const box = el('div', 'kol-p'), lab = el('div', 'kol-lab', label);
+    if (title) lab.title = title;
+    box.append(lab, ctlEl); tabTable.append(box);
+    return box;
+  };
+  // Складність
+  const lvSeg = el('div', 'kol-seg kol-wrap'), lvOwn = el('div', 'kol-own');
+  const lvBtns = Object.entries(LEVELS).map(([id, lv]) => {
+    const b = el('button', null, lv.label); b.title = lv.note;
+    b.onclick = () => {
+      const nv = {};
+      for (const k of DIFF) if (k in defs) nv[k] = lv.v[k] ?? defs[k];
+      if (lv.addons) for (const k in lv.addons) if (k in defs) nv[k] = lv.addons[k];
+      values = { ...values, ...nv }; refresh(); emit();
+      say(`${lv.label}: ${lv.note} — ${whenNote()}`);
+    };
+    lvSeg.append(b); return [id, b];
+  });
+  simpleBox('Складність', lvSeg).append(lvOwn);
+  simple.push(() => {
+    const id = levelOf({ ...defs, ...values });
+    for (const [k, b] of lvBtns) b.classList.toggle('kol-on', k === id);
+    lvOwn.textContent = id ? '' : '✏ свої числа (у «🔧 Тонко»)';
+  });
+  // Маршрут
+  const rtSeg = el('div', 'kol-seg kol-wrap');
+  const rtBtns = ROUTES.map((r) => {
+    const b = el('button', null, r.label);
+    b.title = r.len ? `Смуга ${r.len} клітинок до станції` : 'Нескінченна колія: станція за станцією, доки не зійдете';
+    b.onclick = () => {
+      const nv = r.len ? { stripLen: r.len, stationMode: values.stationMode === 'endless' ? 'end' : values.stationMode } : { stationMode: 'endless' };
+      values = { ...values, ...nv }; refresh(); emit();
+      say(`Маршрут: ${r.label.toLowerCase()} — ${whenNote()}`);
+    };
+    rtSeg.append(b); return [r.id, b];
+  });
+  simpleBox('Маршрут', rtSeg);
+  simple.push(() => { const id = routeOf({ ...defs, ...values }); for (const [k, b] of rtBtns) b.classList.toggle('kol-on', k === id); });
+  // Додатки
+  const adRow = el('div', 'kol-row');
+  const adBtns = ADDONS.map((a) => {
+    const b = el('button', 'kol-btn kol-tog', a.label); b.title = a.title;
+    b.onclick = () => {
+      const on = !addonOn(a, { ...defs, ...values }), nv = {};
+      for (const [k, [yes, no]] of Object.entries(a.keys)) if (k in defs) nv[k] = on ? yes : no;
+      if (on && a.id === 'mid' && values.stationMode === 'endless') { say('🏪 Станція — лише на маршруті зі станцією в кінці'); return; }
+      values = { ...values, ...nv }; refresh(); emit();
+      say(`${a.label}: ${on ? 'так' : 'ні'} — ${whenNote()}`);
+    };
+    adRow.append(b); return [a, b];
+  });
+  simpleBox('Додатки', adRow);
+  simple.push(() => { const v = { ...defs, ...values }; for (const [a, b] of adBtns) b.classList.toggle('kol-on', addonOn(a, v)); });
+  // «🔧 Тонко»: сід, усі повзунки й перемикачі, скинути/копіювати
+  const fine = el('details', 'kol-grp kol-fine');
+  fine.append(el('summary', null, '🔧 Тонко налаштувати'), r2);
+  tabTable.append(fine);
 
   // — пристрій (K12): діє одразу, не правила
   // K49: доступність — main.js читає з kol-prefs лише свої ключі; наші дописуємо в його prefs, щоб onPref зберігав і їх
@@ -313,7 +441,7 @@ export function createPanel(root, opts) {
   const ctl = {};   // k → { set(v) }
   const groups = {}, groupKeys = {};
   const groupOf = (k, own) => GROUP_OF[k] ?? (GROUPS.includes(own) ? own : 'Інше');
-  for (const k in variants) (groupKeys[groupOf(k, variants[k].group)] ??= []).push(k);
+  for (const k in variants) if (!TABLE_SKIP.has(k)) (groupKeys[groupOf(k, variants[k].group)] ??= []).push(k);
   for (const k in meta) (groupKeys[groupOf(k, meta[k].group)] ??= []).push(k);
   for (const g of [...GROUPS, ...Object.keys(groupKeys).filter((g) => !GROUPS.includes(g))]) {
     if (!groupKeys[g]) continue;
@@ -323,12 +451,13 @@ export function createPanel(root, opts) {
     bDef.onclick = (e) => {
       e.preventDefault(); e.stopPropagation();
       for (const k of groupKeys[g]) values[k] = defs[k];
-      refresh(); emit(); say(`«${g}» — типові, з наступного рестарту`);
+      refresh(); emit(); say(`«${g}» — типові, ${whenNote()}`);
     };
     sum.append(bDef); d.append(sum);
-    groups[g] = d; pan.append(d);
+    groups[g] = d; fine.append(d);
   }
   for (const k in variants) {
+    if (TABLE_SKIP.has(k)) continue;
     const v = variants[k];
     const box = el('div', 'kol-p');
     const lab = el('div', 'kol-lab', SHORT[k] ?? v.label ?? k); lab.title = v.label ?? k;
@@ -367,9 +496,43 @@ export function createPanel(root, opts) {
     ctl[k] = { set: put };
   }
 
-  // — пристрій — останнім; перед ним прихований якір .kol-note: «🎨 Вигляд» (K5) стає сюди ж, між «Додатками» й «Пристроєм»
+  // — «Моє»: своє керування (діє одразу — rules 'feel', у кожного гравця своє), прихований якір .kol-note, куди стає
+  //   «🎨 Вигляд» (K5, looks.js), і пристрій
+  const feel = { move: 'free', useMode: 'press', aim: 'front', ...(opts.feel || {}) };
+  const feelCtl = [];
+  const feelGroup = () => {
+    const d = el('details', 'kol-grp'); d.open = true;
+    d.append(el('summary', null, '🎮 Моє керування'));
+    d.append(el('div', 'kol-tnote', 'Лише твій гравець, діє одразу — у друзів за столом своє.'));
+    for (const k of FEEL) {
+      const v = variants[k]; if (!v) continue;
+      const box = el('div', 'kol-p'), lab = el('div', 'kol-lab', SHORT[k] ?? v.label); lab.title = v.label;
+      const sg = el('div', 'kol-seg');
+      const btns = v.values.map((val, i) => {
+        const b = el('button', null, VAL_SHORT[k]?.[i] ?? v.labels?.[i] ?? val); b.title = v.labels?.[i] ?? val;
+        b.onclick = () => { if (feel[k] !== val) { feel[k] = val; put(); opts.onFeel?.(k, val); } };
+        sg.append(b); return b;
+      });
+      const put = () => btns.forEach((b, i) => b.classList.toggle('kol-on', v.values[i] === feel[k]));
+      put(); feelCtl.push(put);
+      box.append(lab, sg); d.append(box);
+    }
+    const r = el('div', 'kol-row'), b = el('button', 'kol-btn kol-preset', '🚂 Як Unrailed');
+    b.title = 'Клітинками, б\'є сам, розумний приціл';
+    b.onclick = () => {
+      for (const [k, val] of [['move', 'grid'], ['useMode', 'auto'], ['aim', 'smart']]) if (feel[k] !== val) { feel[k] = val; opts.onFeel?.(k, val); }
+      feelCtl.forEach((f) => f()); say('🚂 Як Unrailed: клітинками, б\'є сам, розумний приціл');
+    };
+    const b0 = el('button', 'kol-btn kol-preset', 'Типове');
+    b0.onclick = () => {
+      for (const k of FEEL) { const val = variants[k]?.values[0]; if (val && feel[k] !== val) { feel[k] = val; opts.onFeel?.(k, val); } }
+      feelCtl.forEach((f) => f()); say('Керування — типове');
+    };
+    r.append(b, b0); d.append(r);
+    return d;
+  };
   const anchor = el('div', 'kol-note'); anchor.style.display = 'none';
-  pan.append(anchor, devGroup());
+  tabMine.append(feelGroup(), anchor, devGroup());
 
   // — низ: скинути / копіювати / вставити
   const r3 = el('div', 'kol-row'); r3.style.marginTop = '10px';
@@ -377,14 +540,13 @@ export function createPanel(root, opts) {
   const bCopy = el('button', 'kol-btn', '📋 Скопіювати налаштування');
   const bPaste = el('button', 'kol-btn', 'Вставити');
   r3.append(bReset, bCopy, bPaste);
-  const msg = el('div', 'kol-msg');
   const ta = el('textarea', 'kol-ta'); ta.style.display = 'none';
   ta.placeholder = 'JSON налаштувань… (Enter у полі не потрібен — натисни «Вставити» ще раз)';
-  pan.append(r3, msg, ta);
+  fine.append(r3, ta);
   let msgT = 0;
   const say = (t) => { msg.textContent = t; clearTimeout(msgT); msgT = setTimeout(() => { msg.textContent = ''; }, 3000); };
 
-  bReset.onclick = () => { values = { ...values, ...defs }; refresh(); emit(); say('Типові — з наступного рестарту'); };
+  bReset.onclick = () => { const nv = {}; for (const k in defs) if (!TABLE_SKIP.has(k)) nv[k] = defs[k]; values = { ...values, ...nv }; refresh(); emit(); say(`Типові — ${whenNote()}`); };
   bCopy.onclick = async () => {
     const txt = JSON.stringify(values);
     try { await navigator.clipboard.writeText(txt); say('Скопійовано в буфер'); }
@@ -397,7 +559,7 @@ export function createPanel(root, opts) {
       catch { ta.style.display = ''; ta.value = ''; ta.focus(); say('Встав JSON у поле й натисни «Вставити»'); return; }
     }
     if (!apply(txt)) say('Не схоже на налаштування Колії');
-    else { ta.style.display = 'none'; say('Вставлено — з наступного рестарту'); }
+    else { ta.style.display = 'none'; say(`Вставлено — ${whenNote()}`); }
   };
   function apply(txt) {
     let o; try { o = JSON.parse(txt); } catch { return false; }
@@ -405,15 +567,16 @@ export function createPanel(root, opts) {
     let n = 0;
     for (const k in o) {
       if (meta[k] && Number.isFinite(+o[k])) { values[k] = Math.min(meta[k].max, Math.max(meta[k].min, +o[k])); n++; }
-      else if (variants[k] && variants[k].values.includes(o[k])) { values[k] = o[k]; n++; }
+      else if (variants[k] && !TABLE_SKIP.has(k) && variants[k].values.includes(o[k])) { values[k] = o[k]; n++; }
     }
     if (!n) return false;
     refresh(); emit(); return true;
   }
 
   function emit() { opts.onChange?.({ ...values }); }
-  function refresh() { for (const k in ctl) ctl[k].set(values[k] ?? defs[k]); }
+  function refresh() { for (const k in ctl) ctl[k].set(values[k] ?? defs[k]); for (const f of simple) f(); }
   refresh();
+  showTab('table');
 
   // — керування з пада (K12): фокус-рамка ходить по рядках, ←→ міняють значення
   let foc = null;
@@ -474,6 +637,10 @@ export function createPanel(root, opts) {
     set(v) { values = { ...values, ...v }; refresh(); },
     setSeed(s) { seedIn.value = s; },
     setPrefs(p) { Object.assign(prefs, p); prefCtl.forEach((f) => f()); },
+    /** хто змінив налаштування столу і чи стіл ще в зборі (мережа) */
+    setTable(t) { tinfo = { ...tinfo, ...t }; noteHtml(); },
+    setFeel(f) { Object.assign(feel, f); feelCtl.forEach((g) => g()); },
+    say,
     isOpen: () => pan.classList.contains('kol-open'),
     nav,
     toggle,

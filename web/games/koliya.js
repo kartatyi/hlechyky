@@ -6,6 +6,11 @@
     + '<path d="M4 1v14M12 1v14" stroke="var(--muted)" stroke-width="1.4"/>'
     + '<path d="M3 3h10M3 6.5h10M3 10h10M3 13.5h10" stroke="var(--clay)" stroke-width="1.4"/></svg>';
   const frames = new WeakMap();
+  // «Встав із цього столу» — у sessionStorage вкладки (рамка того самого походження читає його ж): рамка, що
+  // перезавантажилась (перенесення картки в DOM, F5), не сідає сама знову (koliya/net.js enter). Сів знову — знімаємо.
+  const LEFT = 'kol-left:';
+  // Лише кнопка «Встати» (left): місце, звільнене обривом зв'язку (Rooms.Grace), — не «встав», рамка сідає назад сама.
+  const mark = (id, on) => { try { if (on) sessionStorage.setItem(LEFT + id, '1'); else sessionStorage.removeItem(LEFT + id); } catch { } };
 
   HGames.register({
     id: 'koliya',
@@ -17,9 +22,18 @@
     // розділи. Зі столу — утримання Ⓑ, як в інших живих іграх.
     pad: { dirs: true, rstick: true, on: (b) => b !== 'b', hint: '{dpad} ходити · {a} рубати, брати, класти · {y} гудок' },
     mount(root, ctx) { this.update(root, ctx); },
+    // core.js — щойно «Встати» вдалось, ще до того, як картка поїде в склад (вид «не сидиш» може прийти пізніше)
+    left(id) { mark(id, true); },
+    // Посеред партії «Сісти» каркас не малює (його canSit — лише поза грою), а Колія пускає будь-коли (Koliya.LateJoin):
+    // хто встав чи дивився збоку, сідає цією кнопкою (JoinRoom → Rooms.LateSeat), поки є вільне місце
+    rejoin(rv) {
+      const seats = (rv.room && rv.room.seats) || [];
+      return seats.some((s) => !(typeof s === 'string' ? s : s && s.nick)) ? 'Сісти' : '';
+    },
     update(root, ctx) {
       const id = ctx.room && ctx.room.id;
       if (!id) return;
+      if (ctx.seat != null) mark(id, false);
       let f = frames.get(root);
       if (f && f.dataset.room === id && f.isConnected) return;
       const nick = (ctx.me && ctx.me.nick) || '';

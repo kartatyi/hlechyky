@@ -328,6 +328,12 @@ public abstract class Game
     /// </summary>
     public virtual TimeSpan HoldEmpty => TimeSpan.Zero;
 
+    /// <summary>
+    /// Чи чекати <see cref="HoldEmpty"/> і тоді, коли останній сам натиснув «Встати». Типово так (вечірка, казино);
+    /// «Колія» — ні: запас там лише на F5 і обрив зв'язку, а хто встав кнопкою, той пішов — стіл зникає одразу.
+    /// </summary>
+    public virtual bool HoldAfterLeave => true;
+
     /// <summary>Persistent: стан у JSON. null — нема чого зберігати.</summary>
     public virtual string? Save() => null;
 

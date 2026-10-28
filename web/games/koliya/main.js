@@ -6,10 +6,10 @@ import * as R from './rules.js';
 import { createInput } from './input.js';        // K2
 import { createBot, zealOf } from './bot.js';    // K2; K60: zealOf — характер бота
 import { createAudio } from './audio.js';        // K4
-import { createPanel } from './panel.js';        // K4
+import { createPanel, tableSummary } from './panel.js';   // K4; 28.10: «Стіл / Моє»
 import { createDebug2d } from './debug2d.js';
 import { createHud, dailySeed, kyivDate } from './hud.js';   // K9; K23: маршрут дня
-import { createNet, createDriver } from './net.js';   // K3: ?net=<стіл>|new|auto&nick=…&drive=1
+import { createNet, createDriver, shortNick } from './net.js';   // K3: ?net=<стіл>|new|auto&nick=…&drive=1
 import { createTips } from './tips.js';          // K10: підказки новачкові (?tips=0 — вимкнено)
 import { drawExtras2d } from './extras-render.js';   // K11
 import { mountLookUi } from './looks.js';            // K5: «🎨 Вигляд» у панелі
@@ -25,6 +25,8 @@ const botZeal = () => (BUDDY ? prefs.zeal : 100);   // K60: характер б�
 const PARAMS_KEY = 'kol-params';
 const U_PER_TICK = R.U / R.TPS;   // 1 клітинка/с у підодиницях за тик
 
+// 28.10: своє керування (рух, удар, приціл) раніше жило в kol-params разом із правилами — переносимо в kol-prefs.feel
+let savedFeel = null;
 // K21: у localStorage можуть лежати ключі й значення попередніх версій — беремо лише відомі, числа в межах повзунка,
 // варіант — лише зі списку (інакше newGame отримав би, скажімо, stripLen 5 чи overheat 'smoke')
 function loadParams() {
@@ -37,7 +39,9 @@ function loadParams() {
       if (typeof v === 'number' && Number.isFinite(v)) p[k] = Math.min(m.max, Math.max(m.min, v));
     }
     for (const k in R.VARIANTS) if (R.VARIANTS[k].values.includes(o[k])) p[k] = o[k];
+    savedFeel = Object.fromEntries(R.FEEL_KEYS.map((k) => [k, p[k]]));
   }
+  for (const k of R.FEEL_KEYS) p[k] = R.VARIANTS[k].values[0];   // у світ іде командою 'feel' кожного гравця
   p.mode = q.get('tut') && q.get('tut') !== '0' ? 'tutorial' : 'normal';   // K22: навчання — лише ?tut=1 чи game.startTutorial(), не з пам'яті
   return p;
 }
@@ -79,6 +83,14 @@ try {   // K21: лише відомі значення (старе 'medium' чи
   if (o.rumble === false) prefs.rumble = false;
   if (o.tips === false) prefs.tips = false;
   if (zealOf(o.zeal) !== null) prefs.zeal = zealOf(o.zeal);   // K60
+  if (R.feelCode(o.feel) >= 0) savedFeel = { ...o.feel };     // 28.10: уже своє керування — воно й головне
+} catch { }
+// 28.10: своє керування — «🎧 Моє» в панелі; у світ іде командою 'feel' (у кожного гравця своє)
+prefs.feel = { ...Object.fromEntries(R.FEEL_KEYS.map((k) => [k, R.VARIANTS[k].values[0]])), ...(R.feelCode(savedFeel) >= 0 ? savedFeel : {}) };
+game.feel = R.feelCode(prefs.feel);
+try {   // перенесене зі старих kol-params — одразу в kol-prefs: перша ж правка столу пише kol-params уже без нього
+  const o = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {};
+  if (R.feelCode(o.feel) < 0) { o.feel = prefs.feel; localStorage.setItem(PREFS_KEY, JSON.stringify(o)); }
 } catch { }
 input.setRumble(prefs.rumble);
 input.setTouch(game.touch = createTouch({ canvas }));   // K27
@@ -91,9 +103,32 @@ const nextRestart = () => {
 const setMode = (mode) => { game.params = { ...game.params, mode }; panel?.set?.({ mode }); restart(); };
 game.startTutorial = () => setMode('tutorial');
 game.stopTutorial = () => setMode('normal');
+/** Налаштування столу — лише відмінні від типових, без свого керування й mode (28.10) */
+function tableOf(v) {
+  const d = R.defaultParams(), o = {};
+  for (const k in d) if (k !== 'mode' && !R.FEEL_KEYS.includes(k) && v[k] !== undefined && v[k] !== d[k]) o[k] = v[k];
+  return o;
+}
+const mySaved = tableOf(game.params);   // мої останні налаштування — ними засіваємо новий стіл (net firstTable)
 const panel = createPanel(document.getElementById('kol-panel'), {
   meta: R.PARAM_META, variants: R.VARIANTS, values: game.params,
-  onChange(values) { game.params = { ...values }; try { localStorage.setItem(PARAMS_KEY, JSON.stringify(values)); } catch { } },
+  shared: !!q.get('net'),   // 28.10: у мережі «🚂 Стіл» — одне на всіх, правки йдуть на сервер
+  onChange(values) {
+    if (net?.ready && net.p < 0) {   // дивишся збоку: стіл міняють ті, хто за ним (сервер глядача й не послухав би)
+      panel.set({ ...R.defaultParams(), ...net.table.tp, mode: game.params.mode });
+      panel.say('👀 Ти дивишся збоку — налаштування столу міняють ті, хто за ним');
+      return;
+    }
+    game.params = { ...values };
+    const t = tableOf(values);
+    try { localStorage.setItem(PARAMS_KEY, JSON.stringify(t)); } catch { }
+    net?.setTable(t);
+  },
+  feel: prefs.feel,
+  onFeel(k, v) {   // своє керування — одразу: світ дізнається командою 'feel' з наступного тику (net.js / tickOnce)
+    prefs.feel = { ...prefs.feel, [k]: v }; game.feel = R.feelCode(prefs.feel);
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { }
+  },
   onRestart: () => restart(),
   seed: game.seed, onSeed: (seed) => restart(seed),
   audio,
@@ -109,8 +144,20 @@ const panel = createPanel(document.getElementById('kol-panel'), {
   onToggle: (open) => input.setMenu(open ? (k) => (k === 'start' ? (panel.toggle(false), nextRestart()) : panel.nav(k)) : null),
 });
 const net = q.get('net') ? createNet(game, { table: q.get('net'), nick: q.get('nick') || '', input,   // K3
+  onTable, firstTable: () => mySaved, tableText: () => tableSummary(game.params),   // 28.10: налаштування столу
   bot: q.get('drive') ? createDriver() : null, makeBot: game.bots ? (p) => createBot(p, { buddy: true, zeal: botZeal() }) : null, onWorld: (s) => { if (!replay.active) view?.setWorld?.(s); }, onStep: (s) => afterStep(s) }) : null;
 window.KOL.net = net;
+
+/** Налаштування столу змінились (хтось за столом чи я): панель — на них; чужа зміна — тост. Луна моєї ж правки, поки
+ *  новіша ще чекає відправки (pending), панель не чіпає — інакше та новіша правка відкотилась би й загубилась. */
+function onTable(t, mine, pending) {
+  if (!(mine && pending)) {
+    game.params = { ...R.defaultParams(), ...t.tp, mode: game.params.mode };
+    panel.set(game.params);
+  }
+  panel.setTable({ by: t.tb && (shortNick(t.tb) || t.tb), mine, wait: !!net?.wait });
+  if (t.tv > 0 && !mine && t.tb) hudUi?.say?.(`⚙ ${shortNick(t.tb) || t.tb}: ${tableSummary(game.params)}`, 5000);
+}
 const report = game.report = createReport(game, { net, prefs });
 input.onMenuKey(() => panel.nav?.('open'));   // K12: Select/View — панель
 
@@ -130,7 +177,7 @@ game.startMenu = (act, o) => {
 function restart(seed = game.seed) {
   if (game.daily && game.daily.seed !== seed >>> 0) game.daily = null;   // K23
   const P = game.daily ? R.defaultParams() : game.params;   // K23
-  if (net) return net.restart(seed, P);   // K3
+  if (net) return net.restart(seed, game.daily ? P : null, P.mode);   // K3; 28.10: без маршруту дня — налаштування столу (сервер)
   if (game.wantLocal) { game.local = game.wantLocal; game.wantLocal = 0; game.bots = Math.min(game.bots, R.MAX_PLAYERS - game.local); input.setPlayers(game.local); }   // K12
   game.seed = seed >>> 0;
   panel?.setSeed?.(game.seed);
@@ -144,6 +191,10 @@ function restart(seed = game.seed) {
 function tickOnce() {
   const s = game.state;
   const cmds = game.cmds.splice(0);
+  for (let i = 0; i < game.local; i++) {   // своє керування (28.10) — командою, щоб і повтор його мав
+    const pl = s.players[i];
+    if (pl && !pl.out && game.feel >= 0 && R.feelCode(R.feelOf(s, pl)) !== game.feel) cmds.push({ p: i, k: 'feel', f: game.feel });
+  }
   const ins = input.poll();
   for (let i = 0; i < game.local; i++) {
     const v = ins[i]; if (!v) continue;
@@ -189,7 +240,7 @@ function frame(now) {
   // K21: пауза — стартовий екран (HUD ставить game.paused) або відкрита панель (лише локально: мережа не чекає)
   const hold = game.paused || (!net && panel.isOpen()) || padLock;   // K59
   if (!hold && dt < 250) slowCheck(dt);   // K12
-  if (net) { if (!padLock) net.update(now); }   // K3; K59
+  if (net) { if (!padLock) net.update(now); if (panelWait !== net.wait) { panelWait = net.wait; panel.setTable({ wait: net.wait }); } }   // K3; K59
   else if (!hold) {
     acc += dt * game.speed;
     while (acc >= R.TICK_MS) { tickOnce(); acc -= R.TICK_MS; }
@@ -205,7 +256,7 @@ function frame(now) {
 }
 
 // K12: перші 6 с гри тягне повільно (середній кадр > 24 мс, < ~40 к/с) — сам вмикаємо «Якість: низька», раз
-let padPoll = 0, slowN = 0, slowSum = 0;
+let padPoll = 0, slowN = 0, slowSum = 0, panelWait = null;
 function slowCheck(dt) {
   if (slowN < 0 || TEST || prefs.quality !== 'high' || typeof view?.setQuality !== 'function') return;
   slowN++; slowSum += dt;
