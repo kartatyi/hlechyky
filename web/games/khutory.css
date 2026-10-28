@@ -505,13 +505,16 @@
   .khu-side .khu-card.dev .khu-cw { font-size: .66em; line-height: 1.15; }
   .khu-side .khu-hh { font-size: .85em; line-height: 1.25; }
 }
-/* Планшет стоячи (картка 700–859 px): поряд із колонкою поле вузьке (≈ 400 px) — тож поле на всю ширину, а колонка — під ним
-   звичайним потоком (без своєї прокрутки): «що зараз», кнопки, рука одразу під ними, числа, вкладки. */
-@container khu (min-width: 700px) and (max-width: 859px) {
-  .khu-main { grid-template-columns: minmax(0, 1fr);
-    --khu-fh: clamp(380px, calc(var(--gfit-h, 100vh) - var(--khu-plh, 80px) - 22px), calc(100cqw * .82)); }
-  .khu-side { height: auto; overflow: visible; }
-  .khu-side > .khu-tabs { flex: none; min-height: 0; }
+/* Планшет стоячи (екран портретний, картка 700–859 px): поряд із колонкою поле вузьке (≈ 400 px) — тож поле на всю ширину,
+   а колонка — під ним звичайним потоком (без своєї прокрутки): «що зараз», кнопки, рука одразу під ними, числа, вкладки.
+   Лежачи (1280×800, Steam Deck: картка ≈ 820 px поряд із балачками) — дві колонки, усе на одному екрані. */
+@media (orientation: portrait) {
+  @container khu (min-width: 700px) and (max-width: 859px) {
+    .khu-main { grid-template-columns: minmax(0, 1fr);
+      --khu-fh: clamp(380px, calc(var(--gfit-h, 100vh) - var(--khu-plh, 80px) - 22px), calc(100cqw * .82)); }
+    .khu-side { height: auto; overflow: visible; }
+    .khu-side > .khu-tabs { flex: none; min-height: 0; }
+  }
 }
 /* Широка колонка: чотири будівлі в один ряд — рука піднімається ближче до кнопок. */
 @container khs (min-width: 330px) {
@@ -557,6 +560,7 @@
   /* «до N ⭐» — не окремим рядком, а на своїй плашці: «⭐ 4 з 8». */
   .khu-players > .khu-target { display: none; }
   .khu-pl.me > .khu-pp .khu-w { display: inline; }
+  .khu-pl.me.think > .khu-pp .khu-w { display: none; }   /* поки йде таймер — місце нікові */
   .khu-players > .khu-pl { grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 5px; row-gap: 0; padding: 3px 6px 6px 3px; line-height: 1.2; }
   .khu-players > .khu-pl .khu-av { width: 30px; height: 30px; grid-row: 1 / span 3; }
   .khu-players > .khu-pl .khu-av b { font-size: .9em; }
