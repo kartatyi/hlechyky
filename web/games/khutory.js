@@ -1040,6 +1040,8 @@
     const portrait = !!(window.matchMedia && window.matchMedia('(orientation: portrait)').matches);
     const pc = W >= 700 && !(portrait && W < 860);
     if (gt) gt.classList.toggle('khu-pc', pc);
+    // Рядок «← Лобі» каркаса — у рядок місць цієї картки (свого рядка над карткою не займає); телефон, планшет стоячи — як був.
+    if (HGames.ui && HGames.ui.headIn) HGames.ui.headIn(root, pc);
     if (!pc) {
       k.style.removeProperty('--khu-fhj'); k.style.removeProperty('--khu-swj');
       st.el.main.classList.remove('khu-2c');
@@ -1047,6 +1049,8 @@
     }
     const fr = st.el.fieldwrap.getBoundingClientRect();
     if (!fr.height) return;
+    // Підсумок (over) на ПК лягає поверх поля — його верх від верху картки.
+    k.style.setProperty('--khu-ftop', Math.round(fr.top - k.getBoundingClientRect().top) + 'px');
     const docH = window.innerHeight;
     const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h')) || 0;
     const box = gt || k, br = box.getBoundingClientRect();
@@ -1059,12 +1063,15 @@
     // не ховаємо (воно ліворуч), а низ колонки відсуваємо на її висоту (--khu-sbot).
     const fh = Math.max(300, Math.min(1200, Math.floor(docH - tail - y0 - below)));
     k.style.setProperty('--khu-sbot', Math.max(0, Math.round(dock - tail - below)) + 'px');
-    const gap = 12, SUB = 290, SUBMAX = 430, ideal = Math.round(fh * 1.22);
+    // Плита в 3D лежить під нахилом і впирається в ШИРИНУ рамки аж до ~1,7 : 1 (заміри 28.10: 1090×722 → плита 889×514,
+    // 1230×722 → 985×566), тож поле тим більше, чим вужча колонка. Ідеал — поле 1,65 своєї висоти завширшки.
+    const gap = 12, SUB = 290, SUBMAX = 430, ONE = 300, ONEMAX = 440, ideal = Math.round(fh * 1.65);
     const fieldOk = (r) => W - gap - (2 * SUB + 10) >= Math.round(fh * r);   // поле поряд із двома стовпчиками не вужче за r × висоту
-    const apply = (two) => {
-      const sw = two ? Math.max(2 * SUB + 10, Math.min(2 * SUBMAX + 10, W - gap - ideal)) : Math.max(300, Math.min(440, W - gap - ideal));
+    const apply = (two, w) => {
+      const sw = two ? Math.max(2 * SUB + 10, Math.min(2 * SUBMAX + 10, W - gap - ideal)) : (w || Math.max(ONE, Math.min(ONEMAX, W - gap - ideal)));
       k.style.setProperty('--khu-swj', sw + 'px');
       st.el.main.classList.toggle('khu-2c', two);
+      return sw;
     };
     const over = (el) => (el && !el.hidden && el.getClientRects().length ? el.scrollHeight - el.clientHeight : 0);
     // Скільки колонка не вміщає (торг гортається всередині — його не рахуємо, він має право).
@@ -1072,10 +1079,20 @@
       ...st.el.tps.filter((p) => p.dataset.t !== 'trade').map(over));
     st.el.main.classList.remove('khu-tight');
     k.style.setProperty('--khu-fhj', fh + 'px');
-    const two = fieldOk(0.95);
-    apply(two);
-    // Один стовпчик не вмістив (висока вузька картка, торг) — два, якщо поле лишається хоч 0,6 своєї висоти завширшки.
-    if (!two && fieldOk(0.6) && Math.max(spill(), ...st.el.tps.map(over)) > 24) apply(true);
+    // Поле якомога більше (khfit2): спершу один стовпчик — він вужчий за два, поле ширше за тієї ж висоти. Не вмістив —
+    // той самий стовпчик ширший (нижчий зміст). Однаково ні (низьке вікно, торг): два стовпчики, якщо поле поряд із ними
+    // лишається ≥ 1,2 своєї висоти завширшки (плита майже та сама); інакше — один «тісний» (без смуги чисел, рука нижча:
+    // ціни, рука й «що зараз» на місці, а плита помітно більша, ніж поряд із двома). І він не вмістив — два, якщо поле
+    // хоч 0,6 висоти завширшки.
+    const bad = () => Math.max(spill(), ...st.el.tps.map(over)) > 24;
+    if (apply(false) < ONEMAX && bad()) apply(false, ONEMAX);
+    if (bad()) {
+      if (fieldOk(1.2)) apply(true);
+      else {
+        st.el.main.classList.add('khu-tight');
+        if (spill() > 2 && fieldOk(0.6)) { st.el.main.classList.remove('khu-tight'); apply(true); }
+      }
+    }
     // Однаково не влазить (вузька картка поряд із балачками) — «тісно»: без смуги чисел, рука нижча.
     if (spill() > 2) st.el.main.classList.add('khu-tight');
   }
@@ -1165,8 +1182,12 @@
 
   function renderSum(st, v) {
     const o = v.over;
-    if (!o) { setHtml(st.el.sum, ''); st.el.sum.hidden = true; return; }
+    if (!o) { setHtml(st.el.sum, ''); st.el.sum.hidden = true; st.sumMin = false; return; }
     st.el.sum.hidden = false;
+    // ПК: підсумок — віконцем поверх поля (прокрутка лише в ньому); «🗺 Подивитись поле» згортає його до шапки з «Ще раз».
+    st.el.sum.classList.toggle('min', !!st.sumMin);
+    const tog = '<button type="button" class="khu-mid khu-sumtog" data-a="sum-min" aria-expanded="' + (st.sumMin ? 'false' : 'true') + '">'
+      + (st.sumMin ? '📊 Підсумок ▾' : '🗺 Подивитись поле') + '</button>';
     const K = M.K, s = o.stats || {};
     const pts = o.points || [];
     const seats = v.players.map((p) => p.seat);
@@ -1177,7 +1198,7 @@
     let h = '<div class="khu-sumh"' + (o.winner != null ? ' style="--pc:' + colorOf(v, o.winner) + '"' : '') + '><span class="khu-cup">' + (o.winner != null ? '🏆' : '🏁') + '</span><div>'
       + (o.winner != null ? '<div class="muted small">Голова громади</div><h3>' + whoM(o.winner) + ' — ' + (pts[o.winner] || 0) + ' ⭐'
         + (s.rounds ? ' <span class="muted small">за ' + s.rounds + ' ' + plural(s.rounds, 'коло', 'кола', 'кіл') + '</span>' : '') + '</h3>' : '<h3>Партію скінчено</h3>')
-      + (o.reason === 'left' ? '<span class="muted">(решта вийшли)</span>' : '') + '</div>' + again + '</div>';
+      + (o.reason === 'left' ? '<span class="muted">(решта вийшли)</span>' : '') + '</div>' + again + tog + '</div>';
     // Звання (не більше двох на людину) і «твій момент».
     const titles = K.sumTitles(o, v);
     if (titles.length) {
@@ -1676,6 +1697,7 @@
       case 'tab': case 'log': st.tab = a === 'tab' ? b.dataset.t : a; break;
       case 'help': case 'modal': { const m = a === 'help' ? 'help' : b.dataset.m; st.modal = st.modal === m ? null : m; st.modalNew = st.modal === 'log'; break; }
       case 'modal-x': st.modal = null; break;
+      case 'sum-min': st.sumMin = !st.sumMin; if (!st.sumMin) st.el.sum.scrollTop = 0; break;
       case 'roll': act('roll', {}); break;
       case 'end': T.open = false; st.pick = null; st.bankGive = null; st.tab = null; act('end', {}); break;
       case 'pick-cancel': st.pick = null; break;
@@ -1825,6 +1847,7 @@
         if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, null);
         const gt = root.closest('.gtable');
         if (gt) gt.classList.remove('khu-pc');   // картку каркаса може взяти інша гра
+        if (HGames.ui && HGames.ui.headIn) HGames.ui.headIn(root, false);
         if (st.onClick) root.removeEventListener('click', st.onClick);
         if (st.sc) { try { st.sc.dispose(); } catch (e) { /* уже прибрано */ } }
         if (st.snd) { try { st.snd.dispose(); } catch (e) { /* уже прибрано */ } st.snd = null; }

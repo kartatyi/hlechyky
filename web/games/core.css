@@ -23,6 +23,10 @@
 .grhead .grsp { flex: 1; }
 .grhead .grtitle { display: inline-flex; align-items: center; gap: 7px; font-family: var(--display); font-weight: 700; font-size: 1.08em; }
 .grhead .grtitle .gico { width: 19px; height: 19px; }
+/* ui.headIn (гра кличе сама): рядок столу — усередині її картки, кнопки стають елементами картки (розкладає гра своїм CSS);
+   назва й 👁 уже є в рядку місць. Ігри, що не кличуть, цього класу не мають. */
+.gtable > .grhead.gin { display: contents; }
+.gtable > .grhead.gin > .grtitle, .gtable > .grhead.gin > .grsp, .gtable > .grhead.gin > .gwatchers { display: none; }
 .grback, .grfull { color: var(--muted); }
 .grfull:hover { color: var(--text); }
 .gfico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }

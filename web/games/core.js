@@ -932,7 +932,29 @@
     });
   }
 
-  const ui = { grid, canvas, dpad, keyboardUa, lerp, frameTime, Clock, Interp, jerkMeter, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit };
+  /// ui.headIn(host, on): рядок столу («← Лобі», назва, 👁, 📣 Гукнути, чипи інших моїх столів, ⛶) — усередину картки цієї
+  /// гри першою дитиною (.grhead.gin, display: contents: його кнопки стають елементами картки, розкладає їх сама гра своїм
+  /// CSS), щоб не тратити на нього окремий рядок над карткою. Прапорець живе на картці: інший стіл, лобі, вихід зі столу —
+  /// рядок сам вертається над картку (placeHead з renderViewNow і dropCard). Гра, що не кличе, — як завжди.
+  function headIn(host, on) {
+    const el = host && host.closest && host.closest('.gtable');
+    const c = el && cards[el.dataset.room];
+    if (!c || !!c.headIn === !!on) return;
+    c.headIn = !!on;
+    placeHead();
+  }
+  function placeHead(drop) {
+    const groom = root && root.querySelector('.groom');
+    const head = groom && root.querySelector('.grhead');
+    if (!head) return;
+    const c = view.kind === 'room' ? cards[view.id] : null;
+    const into = c && c !== drop && c.headIn && c.el.parentElement === groom.querySelector('.grbox') ? c.el : null;
+    if (into) { if (head.parentElement !== into) into.insertBefore(head, into.firstChild); }
+    else if (head.parentElement !== groom) groom.insertBefore(head, groom.firstChild);
+    head.classList.toggle('gin', !!into);
+  }
+
+  const ui = { grid, canvas, dpad, keyboardUa, lerp, frameTime, Clock, Interp, jerkMeter, timerArc, hand, css: cssVar, coarse, human, html: setHtml, fit, onFit, headIn };
 
   // =============================================================================================
   // Хаб
@@ -1782,6 +1804,7 @@
     if (!v) return;
     const room = view.kind === 'room' ? view.id : null;
     placeCards(room);
+    placeHead();
     syncShown();
     root.querySelector('.gbar').hidden = view.kind !== 'panel';
     root.querySelector('.groom').hidden = !room;
@@ -3423,6 +3446,7 @@
     if (!c) return;
     if (c.mounted && c.mod && c.mod.unmount) { try { c.mod.unmount(c.body, c.ctx); } catch (e) { console.warn('[games] unmount', e); } }
     if (window.HTableBets) HTableBets.drop(id);
+    if (c.headIn) placeHead(c);   // рядок столу жив у цій картці — назад над картку, а не разом із нею в нікуди
     c.el.remove();
     delete cards[id];
   }
