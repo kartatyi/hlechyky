@@ -148,6 +148,7 @@
       + '<div class="khu-say" aria-live="polite"></div>'
       + '<div class="khu-main">'
       + '<div class="khu-fieldwrap"><div class="khu-field"></div><div class="khu-marks"></div><div class="khu-tip" hidden></div>'
+      + '<div class="khu-rb"></div><div class="khu-fx"></div><div class="khu-feed" aria-live="polite"></div><div class="khu-ask" role="alertdialog" hidden></div>'
       + '<div class="khu-flash" hidden></div><div class="khu-tools"><button type="button" class="khu-view" data-a="view"></button><button type="button" class="khu-view khu-snd" data-a="snd"></button></div>'
       + '<div class="khu-fab"></div>'
       + '<div class="khu-dlg" hidden></div></div>'
@@ -158,6 +159,8 @@
     st.el = {};
     for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'fab', 'snd'])
       st.el[k] = root.querySelector('.khu-' + k);
+    for (const k of ['rb', 'fx', 'feed', 'ask']) st.el[k] = root.querySelector('.khu-' + k);
+    st.el.ask.addEventListener('click', (e) => onAsk(root, e));
     // Звук: типово вимкнено, стан пам'ятає сам модуль; AudioContext — лише на першому play() при ввімкненому.
     try { st.snd = M.S && M.S.createSound ? M.S.createSound() : null; } catch (e) { st.snd = null; }
     paintSnd(st);
@@ -274,7 +277,10 @@
       st.legalSig = sig; st.legal = L; st.arm = null;
       sc.setLegal(L ? { kind: L.kind, v: L.v || [], e: L.e || [], h: L.h || [] } : { kind: null });
       hideTip(st);
+      closeAsk(st);
     }
+    st.fxRob = v.robber;   // звідки стрибатиме Кармелюк у наступній події (дуга, §8)
+    robBadges(st, v);
     // «Глек радить» — 3 найкращі вершини в розстановці.
     st.marks = [];
     if (v.me && v.me.must === 'town' && v.phase === 'setup') {
@@ -290,12 +296,14 @@
 
   const rollHeld = (st) => !!st.rolling || st.queue.some((e) => e.k === 'roll');
 
-  /// Поки є позначки — ставимо їх щокадру (камеру крутять мишею/пальцем; таймер на 250 мс відставав).
+  /// Поки є позначки (зірки, бейджі Кармелюка, подія на полі) — ставимо їх щокадру (камеру крутять мишею/пальцем;
+  /// таймер на 250 мс відставав). Пишемо лише transform/атрибут і лише коли змінився — без innerHTML щокадру.
+  const following = (st) => !!(st.marks.length || st.rob || st.fxCur);
   function followMarks(st) {
-    if (st.mrAF || !st.marks.length) return;
+    if (st.mrAF || !following(st)) return;
     const loop = () => {
       st.mrAF = 0;
-      if (!st.el || !st.marks.length || !st.sc) return;
+      if (!st.el || !following(st) || !st.sc) return;
       placeMarks(st);
       st.mrAF = requestAnimationFrame(loop);
     };
@@ -314,6 +322,8 @@
       m.hidden = false;
       m.style.transform = 'translate(' + Math.round(p.x) + 'px,' + Math.round(p.y - 16) + 'px) translate(-50%,-100%)';
     });
+    placeRob(st);
+    placeFx(st);
   }
 
   // ─── Клік по полю й підказка ────────────────────────────────────────────
@@ -331,6 +341,8 @@
     }
     st.arm = null;
     hideTip(st);
+    // Своя хата на гексі — не забороняємо (правила дозволяють), а перепитуємо (§2).
+    if (L.kind === 'robber' && (st.rob || []).some((x) => x.h === id && x.own)) { robAsk(st, id); return; }
     if (L.kind === 'road') st.ctx.act('road', { e: id });
     else if (L.kind === 'robber') st.ctx.act('robber', { h: id });
     else st.ctx.act(L.kind, { v: id });
@@ -827,6 +839,7 @@
     const fresh = (v.events || []).filter((e) => e.seq > st.seq).sort((a, b) => a.seq - b.seq);
     st.seq = Math.max(st.seq, v.seq);
     if (!fresh.length) return;
+    fieldEvents(st, v, fresh);
     st.queue.push(...fresh);
     if (st.queue.length > 6) st.queue.splice(0, st.queue.length - 6);   // відстали — показуємо лише свіже
     runQueue(root, st);
@@ -912,6 +925,190 @@
       b.textContent = Object.keys(by[s]).map((r) => '+' + by[s][r] + ' ' + RES_ICON[r]).join(' ');
       chip.appendChild(b);
       setTimeout(() => b.remove(), 1900);
+    }
+  }
+
+  // ─── Поле: бейджі Кармелюка й чужі ходи (khutory-look.md §2, §8) ─────────
+  const hexName = (v, h) => { const x = v.board && v.board.hexes[h]; return x ? M.C.TERRAIN_NAME[x.t] + (x.num ? ' ' + x.num : '') : ''; };
+  /// Знак гравця: кружечок його кольору з фігурою ●▲■◆ (колір сам дальтоніка не рятує, §6); n — число поруч.
+  function seatDot(v, seat, n) {
+    const p = playerOf(v, seat), k = p ? p.color : seat;
+    return '<i class="khu-sd' + (M.C.SEAT_LIGHT[k] ? ' lt' : '') + '" style="--pc:' + colorOf(v, seat) + '">' + (M.C.SEAT_SHAPE[k] || '') + '</i>'
+      + (n != null ? '<b>' + n + '</b>' : '');
+  }
+
+  /// Бейдж під кожним дозволеним гексом, поки я переношу Кармелюка: кого зачепить і скільки в нього карт, «⚠ твоя»,
+  /// «⭐ Глек радить». Текст міняється лише разом із видом (setHtml), позицію веде placeRob.
+  function robBadges(st, v) {
+    const me = v.me;
+    st.rob = me && me.must === 'robber' && st.legal && st.legal.kind === 'robber' ? M.K.robberInfo(v, me.seat) : null;
+    if (st.rob && !st.rob.length) st.rob = null;
+    setHtml(st.el.rb, (st.rob || []).map((x) => {
+      let h = '';
+      if (x.best) h += '<span class="best">⭐ Глек радить</span>';
+      if (x.own) h += '<span class="own">⚠ твоя</span>';
+      if (x.victims.length) h += '<span class="vi">' + x.victims.map((y) => seatDot(v, y.seat, y.cards)).join('') + '</span>';
+      else if (!x.own) h += '<span class="none">нікого</span>';
+      return '<div class="khu-rbx" hidden>' + h + '</div>';
+    }).join(''));
+    if (!st.rob) closeAsk(st);
+  }
+  function placeRob(st) {
+    const v = st.view;
+    if (!st.rob || !v || !st.el) return;
+    const kids = st.el.rb.children, W = st.el.fieldwrap.clientWidth, H = st.el.fieldwrap.clientHeight;
+    st.rob.forEach((x, i) => {
+      const el = kids[i]; if (!el) return;
+      const p = st.sc.screenPos('h', x.h), hx = v.board.hexes[x.h];
+      const c = hx ? st.sc.screenPos('v', hx.v[0]) : null;
+      const R = p && c ? Math.hypot(c.x - p.x, c.y - p.y) : 0;
+      // Поза полем або камеру відвели так далеко, що гекс дрібний, — ховаємо.
+      const ok = !!p && R > 14 && p.x > 10 && p.x < W - 10 && p.y > 10 && p.y < H - 10;
+      if (el.hidden === ok) el.hidden = !ok;
+      if (!ok) return;
+      const tf = 'translate(' + Math.round(p.x) + 'px,' + Math.round(p.y + R * 0.58) + 'px) translate(-50%,-50%)';
+      if (el._tf !== tf) { el._tf = tf; el.style.transform = tf; }
+    });
+  }
+  function robAsk(st, h) {
+    const v = st.view, a = st.el && st.el.ask;
+    if (!v || !a) return;
+    st.ask = { h };
+    a.innerHTML = '<b>⚠ Тут стоїть і твоя хата</b><p>Кармелюк на «' + esc(hexName(v, h)) + '» — і ти сам не отримуватимеш звідси карт, поки його не проженуть.</p>'
+      + '<div class="row"><button type="button" data-k="rob-yes">Все одно сюди</button><button type="button" class="primary" data-k="rob-no">Обрати інший</button></div>';
+    a.hidden = false;
+    const b = a.querySelector('[data-k="rob-no"]');
+    if (b) b.focus({ preventScroll: true });
+  }
+  function closeAsk(st) { if (st.ask) st.ask = null; if (st.el && st.el.ask && !st.el.ask.hidden) st.el.ask.hidden = true; }
+  function onAsk(root, e) {
+    const st = root._kh, b = e.target.closest('[data-k]');
+    if (!st || !b || !st.ask) return;
+    const h = st.ask.h;
+    closeAsk(st);
+    if (b.dataset.k === 'rob-yes' && st.ctx && st.legal && st.legal.kind === 'robber') st.ctx.act('robber', { h });
+  }
+
+  /// Нові події → стрічка в куті поля (3 останні, гаснуть за 6 с) і по одній «бульбашці» на полі (≤ 3 с): лише чужі ходи.
+  const resIcons = (o) => Object.keys(o || {}).filter((r) => o[r] > 0).map((r) => o[r] + (RES_ICON[r] || r)).join(' ') || '—';
+  function fieldEvents(st, v, list) {
+    const me = v.me ? v.me.seat : null;
+    const q = st.fxq || (st.fxq = []);
+    const stealTxt = (e) => (me != null && e.from === me
+      ? { feed: 'забрав карту в <b>тебе</b>', bub: '↘ карта від тебе', red: true }
+      : { feed: 'забрав карту в ' + esc(nickOf(v, e.from)), bub: '↘ карта від ' + esc(nickOf(v, e.from)), red: false });
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      const mine = me != null && (e.seat === me || (e.k === 'trade' && e.with === me));
+      const pc = colorOf(v, e.seat), nk = esc(nickOf(v, e.seat));
+      if (e.k === 'robber') {
+        const from = st.fxRob != null && st.fxRob !== e.hex ? st.fxRob : null;
+        st.fxRob = e.hex;
+        if (mine) continue;
+        const nx = list[i + 1], steal = nx && nx.k === 'steal' && nx.seat === e.seat ? nx : null;
+        if (steal) i++;
+        let feed = '🥷 ' + nk + ' → ' + esc(hexName(v, e.hex)), bub = '🥷 → ' + esc(hexName(v, e.hex)), red = false;
+        if (steal) { const s = stealTxt(steal); feed += ' · ' + s.feed; bub += ' · ' + s.bub; red = s.red; }
+        addFeed(st, feed, pc, red);
+        q.push({ kind: 'h', id: e.hex, from, text: bub, pc, red });
+      } else if (mine) {
+        continue;
+      } else if (e.k === 'build') {
+        const t = e.what === 'road' ? '🛤 ' + nk + ': новий шлях' : e.what === 'city' ? '🏛 ' + nk + ': містечко' : '🏠 ' + nk + ': нова хата';
+        addFeed(st, t, pc);
+        q.push({ kind: e.what === 'road' ? 'e' : 'v', id: e.at, text: t, pc, wave: true });
+      } else if (e.k === 'steal') {
+        const s = stealTxt(e);
+        addFeed(st, '🥷 ' + nk + ' ' + s.feed, pc, s.red);
+        if (v.robber != null) q.push({ kind: 'h', id: v.robber, text: s.bub, pc, red: s.red });
+      } else if (e.k === 'trade') {
+        addFeed(st, '🤝 ' + nk + ' ⇄ ' + (e.with === 'bank' ? 'банк' : esc(nickOf(v, e.with))) + ': ' + resIcons(e.give) + ' → ' + resIcons(e.get), pc);
+      } else if (e.k === 'award' && e.seat != null) {
+        addFeed(st, (e.kind === 'longest' ? '🛤 Чумацький шлях' : '⚔ Найсильніша сотня') + ' — у ' + nk, pc);
+      }
+    }
+    if (q.length > 3) q.splice(0, q.length - 3);   // відстали — лише свіже
+    runFx(st);
+  }
+
+  function addFeed(st, html, pc, red) {
+    const f = st.feed || (st.feed = []);
+    f.push({ html, pc, red: !!red, t: Date.now() });
+    if (f.length > 3) f.splice(0, f.length - 3);
+    renderFeed(st);
+  }
+  function renderFeed(st) {
+    if (!st.el || !st.el.feed) return;
+    const now = Date.now();
+    st.feed = (st.feed || []).filter((x) => now - x.t < 6000);
+    // Найсвіжіше — згори; анімація згасання продовжується з віком рядка (від'ємна затримка), а не починається наново.
+    setHtml(st.el.feed, st.feed.slice().reverse().map((x, i) => '<div class="' + (i ? 'old' : '') + (x.red ? ' red' : '') + '" style="--pc:' + x.pc
+      + ';animation-delay:-' + (now - x.t) + 'ms">' + x.html + '</div>').join(''));
+    clearTimeout(st.feedT);
+    if (st.feed.length) st.feedT = setTimeout(() => renderFeed(st), Math.max(60, 6000 - (now - st.feed[0].t)));
+  }
+
+  /// По одній події на полі: хвиля (будова), дуга звідки→куди (Кармелюк), бульбашка. ≤ 3 с; черга — швидше.
+  function runFx(st) {
+    if (st.fxCur || !st.fxq || !st.fxq.length || !st.el || !st.sc) return;
+    const f = st.fxq.shift();
+    st.fxCur = f;
+    const box = st.el.fx, NS = 'http://www.w3.org/2000/svg';
+    box.textContent = '';
+    f.els = {};
+    if (f.from != null) {
+      const svg = document.createElementNS(NS, 'svg');
+      svg.innerHTML = '<path/><path class="c"/><circle r="6"/>';
+      box.appendChild(svg);
+      f.els.svg = svg;
+    }
+    if (f.wave && !reduced()) {
+      const r = document.createElement('div');
+      r.className = 'khu-rip'; r.style.setProperty('--pc', f.pc);
+      box.appendChild(r);
+      f.els.rip = r;
+    }
+    const b = document.createElement('div');
+    b.className = 'khu-bub' + (f.red ? ' red' : '');
+    b.style.setProperty('--pc', f.pc);
+    b.innerHTML = f.text;
+    box.appendChild(b);
+    f.els.bub = b;
+    placeFx(st);
+    followMarks(st);
+    clearTimeout(st.fxT);
+    st.fxT = setTimeout(() => {
+      st.fxCur = null;
+      if (st.el) st.el.fx.textContent = '';
+      runFx(st);
+    }, st.fxq.length ? 1600 : 3000);
+  }
+  function placeFx(st) {
+    const f = st.fxCur;
+    if (!f || !f.els || !st.sc || !st.el) return;
+    const p = st.sc.screenPos(f.kind, f.id);
+    const vis = !!p;
+    for (const k in f.els) if (f.els[k].style.display !== (vis ? '' : 'none')) f.els[k].style.display = vis ? '' : 'none';
+    if (!p) return;
+    const W = st.el.fieldwrap.clientWidth;
+    const { rip, bub, svg } = f.els;
+    if (rip) { const t = 'translate(' + Math.round(p.x) + 'px,' + Math.round(p.y) + 'px)'; if (rip._tf !== t) { rip._tf = t; rip.style.transform = t; } }
+    const bw = f.bw || (f.bw = bub.offsetWidth || 120), top = f.kind === 'h' ? p.y - 14 : p.y;
+    const below = top < 54;
+    const x = Math.max(bw / 2 + 6, Math.min(W - bw / 2 - 6, p.x)), y = below ? p.y + 14 : top;
+    const pos = Math.round(x) + ',' + Math.round(y) + below;
+    if (bub._pos !== pos) { bub._pos = pos; bub.style.left = Math.round(x) + 'px'; bub.style.top = Math.round(y) + 'px'; bub.classList.toggle('below', below); }
+    if (svg) {
+      const a = st.sc.screenPos('h', f.from);
+      if (a) {
+        const ey = p.y - 14, mx = (a.x + p.x) / 2, my = Math.min(a.y, ey) - 40 - Math.abs(a.x - p.x) * 0.1;
+        const d = 'M' + Math.round(a.x) + ',' + Math.round(a.y) + ' Q' + Math.round(mx) + ',' + Math.round(my) + ' ' + Math.round(p.x) + ',' + Math.round(ey);
+        if (svg._d !== d) {
+          svg._d = d;
+          svg.children[0].setAttribute('d', d); svg.children[1].setAttribute('d', d);
+          svg.children[2].setAttribute('cx', Math.round(p.x)); svg.children[2].setAttribute('cy', Math.round(ey));
+        }
+      }
     }
   }
 

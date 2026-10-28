@@ -75,6 +75,60 @@
 }
 .khu-view { background: rgba(16, 26, 20, .82); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; min-height: 36px; font-size: .88em; }
 
+/* Кармелюк: бейджі жертв на кожному дозволеному гексі (khutory-look.md §2). Позиції ставить placeMarks (лише transform). */
+.khu-rb, .khu-fx { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.khu-rbx { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; will-change: transform; }
+.khu-rbx[hidden] { display: none; }
+.khu-rbx > span { padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 800; line-height: 1.35; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.khu-rbx .vi { display: flex; align-items: center; gap: 2px; padding: 2px 5px; background: rgba(15, 25, 20, .9); color: #fff; }
+.khu-rbx .vi b { margin: 0 3px 0 1px; }
+.khu-rbx .own { background: #b3261e; color: #fff; box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(0,0,0,.5); }
+.khu-rbx .none { padding: 1px 6px; background: rgba(0, 0, 0, .5); color: #ddd; font-size: 10px; font-weight: 600; }
+.khu-rbx .best { background: #ffd23f; color: #2a1e03; }
+/* Знак гравця: колір + фігура ●▲■◆ (на світлому кольорі — темна фігура й кант). */
+.khu-sd { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--pc); color: #fff;
+  font-style: normal; font-size: 9px; line-height: 1; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.khu-sd.lt { color: #2a1d12; box-shadow: 0 0 0 1.5px #2a1d12; }
+.khu-ask { position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(310px, 88%); padding: 12px 14px;
+  border-radius: 14px; background: var(--panel); border: 2px solid #e2554a; box-shadow: 0 10px 30px rgba(0,0,0,.6); text-align: center; }
+.khu-ask[hidden] { display: none; }
+.khu-ask p { margin: 4px 0 10px; line-height: 1.35; color: var(--muted); }
+.khu-ask .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.khu-ask button { min-height: 44px; border-radius: 10px; padding: 6px 12px; border: 1px solid var(--line); background: var(--panel2); font-weight: 700; }
+
+/* Чужі ходи на полі (§8): хвиля в кольорі гравця, бульбашка, дуга Кармелюка, стрічка 3 останніх подій. */
+.khu-fx svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.khu-fx path { fill: none; stroke: #1b1b1b; stroke-width: 7; stroke-linecap: round; opacity: .55; }
+.khu-fx path.c { stroke: #ffe27a; stroke-width: 3.5; stroke-dasharray: 8 6; opacity: 1; animation: khmarch .9s linear infinite; }
+.khu-fx circle { fill: #ffe27a; stroke: #1b1b1b; stroke-width: 2; }
+@keyframes khmarch { to { stroke-dashoffset: -28; } }
+.khu-rip { position: absolute; left: 0; top: 0; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 3px solid var(--pc);
+  box-shadow: 0 0 0 1.5px rgba(0,0,0,.45); animation: khrip 1.5s ease-out infinite; }
+@keyframes khrip { from { transform: scale(.6); opacity: 1; } to { transform: scale(3.4); opacity: 0; } }
+.khu-bub { position: absolute; left: 0; top: 0; transform: translate(-50%, calc(-100% - 14px)); padding: 4px 9px; border-radius: 10px;
+  background: rgba(15, 25, 20, .93); color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.5);
+  border-left: 4px solid var(--pc); animation: khbub .25s ease-out; }
+.khu-bub::after { content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: rgba(15, 25, 20, .93); }
+.khu-bub.below { transform: translate(-50%, 16px); }
+.khu-bub.below::after { bottom: auto; top: -6px; border: 6px solid transparent; border-top: 0; border-bottom-color: rgba(15, 25, 20, .93); }
+.khu-bub.red { background: #b3261e; border-left-color: #fff; }
+.khu-bub.red::after { border-top-color: #b3261e; }
+.khu-bub.red.below::after { border-bottom-color: #b3261e; border-top-color: transparent; }
+@keyframes khbub { from { opacity: 0; } }
+.khu-feed { position: absolute; left: 8px; top: 8px; z-index: 3; display: flex; flex-direction: column; gap: 4px; max-width: min(62%, 360px); pointer-events: none; }
+.khu-feed div { padding: 3px 9px; border-radius: 10px; background: rgba(15, 25, 20, .86); color: #fff; font-size: 12px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; border-left: 4px solid var(--pc); animation: khfeed 6s linear forwards; }
+.khu-feed div.old { opacity: .62; }
+.khu-feed div.red { background: rgba(150, 30, 24, .92); }
+@keyframes khfeed { 0% { transform: translateX(-6px); } 4%, 85% { transform: none; filter: none; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .khu-fx path.c, .khu-rip, .khu-bub, .khu-feed div { animation: none; } }
+/* Телефон < 400 px: бейджі Кармелюка без чисел — лише кружечки (18 гексів тісно). */
+@media (max-width: 399px) {
+  .khu-rbx .vi b { display: none; }
+  .khu-rbx > span { font-size: 10px; padding: 1px 5px; }
+  .khu-feed div { font-size: 11px; }
+}
+
 /* Діалоги — поверх поля (людина й так туди дивиться). */
 .khu-dlg { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; padding: 10px;
   background: rgba(8, 14, 10, .55); }
