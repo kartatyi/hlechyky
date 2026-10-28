@@ -225,6 +225,8 @@ ui.timerArc(host, untilIso, totalMs)      → { el, set(untilIso, totalMs), stop
 ui.hand(host, items, { onItem(item, i, on), selectable, multi?, render? }) → { el, selected(), clear() }
 ui.lerp(a, b, t);  ui.Interp() → { push(f), at() → { a, b, t }, reset() }
 ui.css(varName, fallback);  ui.coarse();  ui.human(ev)   // human: миша, палець, клавіатура або пад
+ui.headIn(host, on)   // рядок «← Лобі» (назва, 👁, 📣, інші столи, ⛶) — у картку цієї гри (.grhead.gin, display: contents;
+                      // розкладає гра своїм CSS); інший стіл / лобі / вихід — вертається над картку сам. Хутори на ПК
 ```
 
 Усі вони ідемпотентні: кличте з `mount()` і з кожного `update()` — елемент буде один, а колбеки братимуться

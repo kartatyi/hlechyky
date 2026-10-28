@@ -1032,8 +1032,9 @@
 
   /// ПК «в один екран» (§12): уся гра — під шапкою сайту без прокрутки сторінки. Поле бере всю висоту, що лишилась від
   /// рядка столу, плашок і низу картки (міряємо, а не вгадуємо: каркас різний на різних ширинах), колонка — справа:
-  /// два стовпчики, коли ширини вдосталь і поле лишається не вужчим за свою висоту, інакше один.
-  /// Картці каркаса (.gtable) — клас khu-pc: кнопки столу в рядок до місць, без дубля статусу (він — у «що зараз»).
+  /// один чи два стовпчики — від геометрії, щоб плита була якомога більшою (див. нижче).
+  /// Картці каркаса (.gtable) — клас khu-pc: «← Лобі» (HGames.ui.headIn), місця й кнопки столу — одним рядком, без
+  /// дубля статусу (він — у «що зараз»).
   function fitPc(root, st, k) {
     const gt = root.closest('.gtable');
     const W = k.clientWidth;
@@ -1044,7 +1045,7 @@
     if (HGames.ui && HGames.ui.headIn) HGames.ui.headIn(root, pc);
     if (!pc) {
       k.style.removeProperty('--khu-fhj'); k.style.removeProperty('--khu-swj');
-      st.el.main.classList.remove('khu-2c');
+      st.el.main.classList.remove('khu-2c', 'khu-tight');
       return;
     }
     const fr = st.el.fieldwrap.getBoundingClientRect();
