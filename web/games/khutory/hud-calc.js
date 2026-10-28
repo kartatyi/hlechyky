@@ -238,12 +238,12 @@ export function sumTitles(over, ctx = {}) {
     out.push({ seat, icon, name, desc });
   };
   /** Лідер за f (або найменший, low) без нічиєї; для «найменше» — ще й відрив хоча б 20 % від наступного. */
-  const lead = (rows, f, low = false) => {
+  const lead = (rows, f, low = false, min = 1) => {
     if (rows.length < 2) return null;
     const sorted = [...rows].sort((a, b) => (low ? f(a) - f(b) : f(b) - f(a)));
     const a = f(sorted[0]), b = f(sorted[1]);
     if (a === b) return null;
-    if (!low && a <= 0) return null;
+    if (!low && a < min) return null;   // «1 обмін» — не звання
     if (low && b - a < Math.max(1, Math.round(b * 0.2))) return null;
     return sorted[0];
   };
@@ -252,19 +252,19 @@ export function sumTitles(over, ctx = {}) {
   const forms = (n, a, b, c) => { const m = Math.abs(n) % 100, d = m % 10; return m > 10 && m < 20 ? c : d === 1 ? a : d >= 2 && d <= 4 ? b : c; };
 
   if (ctx.longest && ctx.longest.seat != null) give(ctx.longest.seat, '🐂', 'Чумак року', 'найдовший шлях — ' + ctx.longest.len + ' ' + forms(ctx.longest.len, 'відтинок', 'відтинки', 'відтинків'));
-  else { const r = lead(S, (x) => (x.built || {}).road || 0); if (r) give(r.seat, '🐂', 'Чумак року', r.built.road + ' ' + forms(r.built.road, 'шлях', 'шляхи', 'шляхів') + ' прокладено'); }
-  const ot = ctx.army && ctx.army.seat != null ? { seat: ctx.army.seat, n: ctx.army.n } : (() => { const r = lead(S, (x) => kn(x.seat)); return r ? { seat: r.seat, n: kn(r.seat) } : null; })();
+  else { const r = lead(S, (x) => (x.built || {}).road || 0, false, 4); if (r) give(r.seat, '🐂', 'Чумак року', r.built.road + ' ' + forms(r.built.road, 'шлях', 'шляхи', 'шляхів') + ' прокладено'); }
+  const ot = ctx.army && ctx.army.seat != null ? { seat: ctx.army.seat, n: ctx.army.n } : (() => { const r = lead(S, (x) => kn(x.seat), false, 2); return r ? { seat: r.seat, n: kn(r.seat) } : null; })();
   if (ot) give(ot.seat, '⚔', 'Отаман', ot.n + ' ' + forms(ot.n, 'козак', 'козаки', 'козаків') + ' зіграно');
-  const rb = lead(S, (x) => x.robbed || 0);
+  const rb = lead(S, (x) => x.robbed || 0, false, 2);
   if (rb) give(rb.seat, '😿', 'Улюбленець Кармелюка', 'обкрадали ' + rb.robbed + ' ' + forms(rb.robbed, 'раз', 'рази', 'разів'));
-  const tr = lead(S, (x) => x.trades || 0);
+  const tr = lead(S, (x) => x.trades || 0, false, 2);
   if (tr) give(tr.seat, '🤝', 'Майстер торгу', tr.trades + ' ' + forms(tr.trades, 'обмін', 'обміни', 'обмінів'));
-  const sl = lead(S, (x) => x.stolen || 0);
+  const sl = lead(S, (x) => x.stolen || 0, false, 2);
   if (sl) give(sl.seat, '🥷', 'Кармелюків побратим', sl.stolen + ' ' + forms(sl.stolen, 'раз', 'рази', 'разів') + ' обібрав сусідів');
   const gt = lead(S, (x) => x.got || 0);
   if (gt) give(gt.seat, '🌾', 'Багатий урожай', gt.got + ' ' + forms(gt.got, 'карта', 'карти', 'карт') + ' з полів');
-  const bd = lead(S, (x) => ((x.built || {}).town || 0) + ((x.built || {}).city || 0) * 2);
-  if (bd) give(bd.seat, '🏗', 'Будівничий', ((bd.built || {}).town || 0) + ' хат, ' + ((bd.built || {}).city || 0) + ' містечок');
+  const bd = lead(S, (x) => ((x.built || {}).town || 0) + ((x.built || {}).city || 0) * 2, false, 3);
+  if (bd) { const tw = (bd.built || {}).town || 0, ct = (bd.built || {}).city || 0; give(bd.seat, '🏗', 'Будівничий', tw + ' ' + forms(tw, 'хата', 'хати', 'хат') + ', ' + ct + ' ' + forms(ct, 'містечко', 'містечка', 'містечок')); }
   const lo = lead(S, (x) => x.got || 0, true);
   if (lo) give(lo.seat, '🙈', 'Кубики не люблять', 'лише ' + lo.got + ' ' + forms(lo.got, 'карта', 'карти', 'карт') + ' з полів');
   const di = st.dice || [];
