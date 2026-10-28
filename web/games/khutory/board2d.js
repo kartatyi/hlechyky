@@ -2,7 +2,10 @@
 // запасний вигляд для слабких пристроїв / без WebGL і вибір «🗺 Пласка». Правил не знає, дій не шле —
 // лише малює вид і каже картці, куди клацнули (лише по підсвічених місцях).
 
-import { TERRAIN_COLOR, RES_COLOR, SEA_COLOR, SEAT_COLOR, PIPS, TERRAIN_NAME, RES_NAME } from './consts.js';
+// Сусідні модулі — з тим самим ?v=, що й у цього файла: сайт оновлює гру без F5, а карта модулів сторінки
+// тримає старі './x.js' назавжди; із відбитком у адресі після деплою підтягнеться нове (khutory.js, modQ).
+const Q = new URL(import.meta.url).search;
+const { TERRAIN_COLOR, RES_COLOR, SEA_COLOR, SEAT_COLOR, PIPS, TERRAIN_NAME, RES_NAME } = await import('./consts.js' + Q);
 
 // Мова підсвітки — та сама, що в 3D (khutory-look.md §3): золото #ffd23f з темним кантом #2a1a00, «мурашки» по шляхах.
 

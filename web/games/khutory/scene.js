@@ -10,9 +10,12 @@
 // екрана (великий «хітбокс» для пальця), для гексів — перетин променя з площиною поля.
 
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
-import * as M from './models.js';
-import { SEAT_COLOR, SEAT_LIGHT, RES_COLOR } from './consts.js';
-import { wheelAction, wheelZoomFactor, twoFinger, hintDue } from './gestures.js';
+// Сусідні модулі — з тим самим ?v=, що й у цього файла: сайт оновлює гру без F5, а карта модулів сторінки
+// тримає старі './x.js' назавжди; із відбитком у адресі після деплою підтягнеться нове (khutory.js, modQ).
+const Q = new URL(import.meta.url).search;
+const M = await import('./models.js' + Q);
+const { SEAT_COLOR, SEAT_LIGHT, RES_COLOR } = await import('./consts.js' + Q);
+const { wheelAction, wheelZoomFactor, twoFinger, hintDue } = await import('./gestures.js' + Q);
 
 const D2R = Math.PI / 180;
 const DEF_POLAR = 50 * D2R, PORTRAIT_POLAR = 36 * D2R, POLAR_MIN = 35 * D2R, POLAR_MAX = 70 * D2R, AZ_LIM = 70 * D2R;

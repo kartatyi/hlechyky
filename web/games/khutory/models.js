@@ -8,7 +8,10 @@
 // Система координат: поле в площині XZ, x — праворуч, z — «униз екрана» (y контракту), висота — Y.
 
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
-import { TERRAIN_COLOR, RES_COLOR, SEA_COLOR, PIPS, RES_NAME } from './consts.js';
+// Сусідні модулі — з тим самим ?v=, що й у цього файла: сайт оновлює гру без F5, а карта модулів сторінки
+// тримає старі './x.js' назавжди; із відбитком у адресі після деплою підтягнеться нове (khutory.js, modQ).
+const Q = new URL(import.meta.url).search;
+const { TERRAIN_COLOR, RES_COLOR, SEA_COLOR, PIPS, RES_NAME } = await import('./consts.js' + Q);
 
 export const TILE_H = 0.18;        // висота плитки гекса
 export const SEA_Y = 0.06;         // рівень моря
