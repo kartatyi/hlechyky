@@ -51,11 +51,12 @@
 .khu-pp { display: flex; align-items: center; gap: 6px; font-size: .86em; color: var(--muted); white-space: nowrap; min-width: 0; }
 .khu-pp b { color: var(--text); }
 .khu-pp small { color: var(--accent); }
-.khu-mb { display: inline-block; height: 5px; border-radius: 3px; background: rgba(0,0,0,.3); overflow: hidden; vertical-align: middle; width: 30px; margin-left: 3px; }
+.khu-mb { display: inline-block; height: 5px; border-radius: 3px; background: rgba(0,0,0,.3); overflow: hidden; vertical-align: middle; width: 24px; margin-left: 3px; }
 .khu-mb i { display: block; height: 100%; background: var(--muted); }
 .khu-mb.gold { flex: 1 1 auto; min-width: 24px; height: 6px; margin-left: 0; }
 .khu-mb.gold i, .khu-aw.near .khu-mb i { background: var(--accent); }
 .khu-pl .khu-ps { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; gap: 0 9px; min-width: 0; }
+.khu-pl .khu-aws { gap: 0 6px; }
 .khu-ic { cursor: help; border-radius: 6px; }
 .khu-ic:hover { background: rgba(255,255,255,.06); }
 .khu-aw { font-weight: 600; color: var(--muted); }
