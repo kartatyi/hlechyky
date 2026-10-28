@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Сорочинський ярмарок — 3D-стенд</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #1c1626; color: #f3e6c8; font: 13px/1.35 system-ui, sans-serif; overflow: hidden; }
+  #host { position: fixed; inset: 0; }
+  #panel { position: fixed; top: 8px; left: 8px; z-index: 5; width: 330px; max-height: calc(100% - 16px); overflow: auto; padding: 8px 10px; border-radius: 10px;
+    background: rgba(32, 22, 14, .88); box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+  #panel.min > :not(.head) { display: none; }
+  body.shot #panel, body.shot #tip { display: none; }
+  .head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 4px; }
+  .row { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0; align-items: center; }
+  button, select { font: inherit; color: #2a1d12; background: #f1e2bf; border: 0; border-radius: 6px; padding: 3px 7px; cursor: pointer; }
+  button:hover { background: #ffe9b8; }
+  button.on { background: #e8912d; color: #fff; }
+  #stats { font: 12px ui-monospace, monospace; color: #ffd98a; }
+  #log { height: 110px; overflow: auto; font: 11px ui-monospace, monospace; background: rgba(0,0,0,.25); padding: 4px; border-radius: 6px; white-space: pre; }
+  #tip { position: fixed; z-index: 6; pointer-events: none; transform: translate(-50%, -130%); background: #2a1d12; color: #ffe9b8;
+    padding: 3px 8px; border-radius: 6px; font-size: 12px; display: none; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<div id="tip"></div>
+<div id="panel">
+  <div class="head"><span>🧺 Сорочинський ярмарок · стенд сцени</span><button id="min" title="згорнути">–</button></div>
+  <div class="row">Сценарій <select id="scn"></select> <span id="src" style="opacity:.6"></span></div>
+  <div class="row">Гравців <button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button> · дивиться <select id="who"></select></div>
+  <div class="row">
+    <button data-a="take">take</button><button data-a="take2">take 2</button><button data-a="takeOther">take чужий</button>
+  </div>
+  <div class="row">
+    <button data-a="reserveRow">reserve ряд</button><button data-a="reserveBlind">наосліп</button><button data-a="reserveNoGold">без дуката</button><button data-a="reserveOther">чужа наосліп</button>
+  </div>
+  <div class="row">
+    <button data-a="buyRow">buy з ряду</button><button data-a="buyRes">buy з броні</button><button data-a="buyOther">buy чужий</button>
+  </div>
+  <div class="row">
+    <button data-a="refill">refill</button><button data-a="refillEmpty">refill порожньо</button><button data-a="discard">discard</button><button data-a="guest">guest</button>
+  </div>
+  <div class="row">
+    <button data-a="starNone">старшина з нікого</button><button data-a="starFrom">від когось</button><button data-a="bulava">bulava</button><button data-a="finale">finale</button>
+  </div>
+  <div class="row">setLegal:
+    <button data-l="turn">мій хід</button><button data-l="guests">гості</button><button data-l="">null</button>
+  </div>
+  <div class="row"><button id="marks">setMarks</button><button id="pick">setPick</button><button id="sel">setSelected</button></div>
+  <div class="row"><button id="qLow">low</button><button id="qHigh">high</button><button id="rm">reducedMotion</button><button id="reset">reset</button></div>
+  <div id="stats">…</div>
+  <div id="log"></div>
+</div>
+<script type="module">
+import { createScene } from '../scene.js';
+import { GOODS, TOKENS, BONUSES, DECK, GUESTS, HAND_MAX } from '../consts.js';
+
+const $ = (id) => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+let quality = qs.get('q') === 'low' ? 'low' : 'high';
+let reduced = qs.has('rm');
+if (qs.has('shot')) document.body.classList.add('shot');
+let sc = null, view = null, legalKind = null, marksOn = false, pickOn = false, selOn = false, nPlayers = 3, who = 0;
+const picks = [];
+window.picks = picks;
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+// ── Вид §5 контракту (рівно), і похідні сценарії; якщо картка «В» поклала dev/fixture.js — його сценарії теж.
+function mid() {
+  return {
+    v: 1, phase: 'play', target: 16, round: 9, maxRounds: 40, last: false,
+    players: [
+      { seat: 0, nick: 'Smaug', bot: null, color: 0, tokens: { linen: 1, fish: 2, herbs: 0, clay: 1, wool: 0, gold: 1 }, ntok: 5,
+        bonus: { linen: 2, fish: 2, herbs: 1, clay: 0, wool: 0, fern: 0 }, cards: [3, 8, 13, 22, 44],
+        reserved: [{ id: 74, tier: 3, blind: true }], guests: [], icons: 1, points: 2, starshyna: false, bulava: false, away: false },
+      { seat: 1, nick: 'Глек 🤖', bot: 'Глек 🤖', color: 1, tokens: { linen: 0, fish: 1, herbs: 2, clay: 0, wool: 1, gold: 0 }, ntok: 4,
+        bonus: { linen: 0, fish: 1, herbs: 0, clay: 1, wool: 2, fern: 0 }, cards: [10, 26, 33, 36], reserved: [], guests: [], icons: 0, points: 0,
+        starshyna: false, bulava: false, away: false },
+      { seat: 2, nick: 'Оксана', bot: null, color: 2, tokens: { linen: 2, fish: 0, herbs: 1, clay: 1, wool: 2, gold: 1 }, ntok: 7,
+        bonus: { linen: 1, fish: 1, herbs: 1, clay: 2, wool: 1, fern: 0 }, cards: [1, 16, 24, 35, 46, 58],
+        reserved: [{ id: 62, tier: 2, blind: false }, { id: null, tier: 3, blind: true }], guests: [], icons: 3, points: 5, starshyna: true, bulava: false, away: false },
+    ],
+    order: [0, 1, 2], first: 1, turn: 0,
+    bank: { linen: 2, fish: 2, herbs: 2, clay: 3, wool: 2, gold: 3 },
+    rows: [[0, 17, 30, 38], [41, 52, 60, 66], [70, 77, 85, 88]], decks: [24, 22, 14],
+    guests: [{ id: 0, by: null }, { id: 3, by: null }, { id: 6, by: null }, { id: 8, by: null }],
+    starshyna: { seat: 2, icons: 3 }, bulava: null, discard: null, events: [], seq: 212, deadline: null, timerMs: 60000,
+    bots: [null, 'Глек 🤖', null, null], botIn: null, log: [], over: null,
+    me: { seat: 0, reserved: [{ id: 74, tier: 3, blind: true }], must: 'act', discard: 0, guests: [],
+      take: { piles: ['linen', 'fish', 'herbs', 'clay', 'wool'], need: 3, two: [] },
+      can: { take: true, reserve: true, reserveDeck: [true, true, true], pass: false }, why: {}, cards: {}, bulava: { points: 14, goods: ['clay', 'wool', 'fern'] }, tip: { act: 'buy', card: 38 } },
+  };
+}
+const MAKITRA = { seat: 3, nick: 'Макітра 🤖', bot: 'Макітра 🤖', color: 3, tokens: { linen: 0, fish: 1, herbs: 0, clay: 1, wool: 1, gold: 1 }, ntok: 4,
+  bonus: {}, cards: [9, 18, 27, 32, 39, 47, 53], reserved: [{ id: 40, tier: 2, blind: false }], guests: [], icons: 1, points: 0, starshyna: false, bulava: false, away: false };
+function withPlayers(v, n) {
+  v = clone(v);
+  if (n === 2) {
+    v.players = v.players.slice(0, 2); v.order = [0, 1]; v.first = 0;
+    v.guests = v.guests.slice(0, 3); v.starshyna = null;
+    v.bank = { linen: 2, fish: 1, herbs: 2, clay: 3, wool: 2, gold: 4 };
+  } else if (n === 4) {
+    v.players.push(clone(MAKITRA)); v.order = [0, 1, 2, 3];
+    v.guests.push({ id: 9, by: null });
+    v.bank = { linen: 4, fish: 4, herbs: 4, clay: 5, wool: 4, gold: 2 };
+    // у мене 3 броні, з них 2 наосліп
+    v.players[0].reserved = [{ id: 74, tier: 3, blind: true }, { id: 63, tier: 2, blind: false }, { id: 20, tier: 1, blind: true }];
+    v.me.reserved = clone(v.players[0].reserved);
+  }
+  return recount(v);
+}
+function late() {
+  const v = withPlayers(mid(), 4);
+  const p = v.players;
+  p[0].cards = [3, 8, 13, 22, 44, 0, 4, 6, 7, 2, 1, 12, 14, 49, 61, 75, 86];   // 6 полотна → далі висота
+  p[0].guests = [0]; p[0].tokens = { linen: 2, fish: 1, herbs: 3, clay: 2, wool: 1, gold: 1 };
+  p[1].cards = [10, 26, 33, 36, 31, 65, 66, 68, 82]; p[1].guests = [];
+  p[2].cards = [1, 16, 24, 35, 46, 58, 52, 55, 64, 80, 87]; p[2].guests = [3]; p[2].starshyna = true;
+  p[3].cards = [9, 18, 27, 32, 39, 47, 53, 57, 76]; p[3].bulava = true;
+  v.guests = [{ id: 0, by: 0 }, { id: 3, by: 2 }, { id: 6, by: null }, { id: 8, by: null }, { id: 9, by: null }];
+  v.bulava = 3; v.last = true;
+  v.rows = [[11, 19, 30, 38], [41, 50, 60, null], [70, 77, 85, 88]]; v.decks = [6, 0, 3];
+  return recount(v);
+}
+function recount(v) {
+  for (const p of v.players) {
+    p.bonus = Object.fromEntries(BONUSES.map((b) => [b, 0]));
+    for (const id of p.cards) p.bonus[DECK[id][2]]++;
+    p.ntok = TOKENS.reduce((s, g) => s + (p.tokens[g] | 0), 0);
+    p.icons = p.cards.reduce((s, id) => s + DECK[id][4], 0);
+  }
+  if (v.me) {
+    const me = v.players.find((p) => p.seat === v.me.seat);
+    v.me.reserved = clone(me.reserved);
+    v.me.cards = {};
+    const ids = [...v.rows.flat().filter((x) => x != null), ...me.reserved.filter((r) => r.id != null).map((r) => r.id)];
+    for (const id of ids) {
+      const c = DECK[id][5]; let gap = 0; const pay = {}; const need = {};
+      GOODS.forEach((g, i) => { const req = Math.max(0, c[i] - (me.bonus[g] | 0)); const t = Math.min(req, me.tokens[g] | 0); if (t) pay[g] = t; if (req - t > 0) { need[g] = req - t; gap += req - t; } });
+      const short = Math.max(0, gap - (me.tokens.gold | 0));
+      if (!short && gap) pay.gold = gap;
+      v.me.cards[id] = short ? { ok: false, need, short } : { ok: true, pay };
+    }
+  }
+  return v;
+}
+function spectator() { const v = mid(); v.me = null; return v; }
+function empty() {
+  const v = mid();
+  v.rows = [[0, null, 30, null], [null, 52, null, null], [70, null, null, 88]]; v.decks = [0, 0, 0];
+  v.bank = { linen: 0, fish: 1, herbs: 0, clay: 1, wool: 0, gold: 0 };
+  return recount(v);
+}
+function overV() {
+  const v = late(); v.phase = 'over'; v.turn = null;
+  v.over = { winners: [2], reason: 'bulava', bulava: 3, points: [17, 12, 19, 15], cards: [17, 9, 11, 9] };
+  return v;
+}
+const INLINE = { mid: () => recount(mid()), two: () => withPlayers(mid(), 2), four: () => withPlayers(mid(), 4), late, spectator, empty, over: overV };
+let FX = null;
+try { FX = await import('./fixture.js'); if (!FX?.makeView) FX = null; } catch (e) { FX = null; }
+const SCN = [...Object.keys(INLINE), ...(FX?.SCENARIOS || []).map((s) => 'fx:' + s)];
+$('src').textContent = FX ? '+ fixture.js' : '§5 вбудовано';
+const sel = $('scn');
+for (const s of SCN) sel.add(new Option(s, s));
+sel.value = SCN.includes(qs.get('s')) ? qs.get('s') : 'mid';
+function makeView(name) {
+  if (name.startsWith('fx:')) return FX.makeView(name.slice(3), who);
+  const v = INLINE[name] ? INLINE[name]() : INLINE.mid();
+  if (name !== 'spectator' && v.me && who !== v.me.seat && v.players.some((p) => p.seat === who)) { v.me.seat = who; recount(v); }
+  return v;
+}
+
+function log(...a) {
+  const line = a.map((x) => typeof x === 'object' ? JSON.stringify(x) : String(x)).join(' ');
+  picks.push(line);
+  const d = $('log'); d.textContent = line + '\n' + d.textContent.slice(0, 4000);
+}
+
+async function boot() {
+  if (sc) sc.dispose();
+  try {
+    sc = await createScene($('host'), {
+      quality, reducedMotion: reduced,
+      onPick: (k, id) => { log('pick', k, id); if (k === 'card') { selOn = true; sc.setSelected(id); $('sel').classList.add('on'); } },
+      onHover: (k, id) => {
+        const tip = $('tip');
+        if (k == null) { tip.style.display = 'none'; return; }
+        const p = sc.screenPos(k, id);
+        tip.textContent = k === 'card' ? `🛒 ${id} ${DECK[id] ? '' : ''}` : `${k} ${id}`;
+        if (p) { tip.style.left = p.x + 'px'; tip.style.top = p.y + 'px'; tip.style.display = 'block'; }
+      },
+    });
+  } catch (e) { log('ПОМИЛКА createScene:', e.message); throw e; }
+  window.sc = sc;
+  load(sel.value);
+  $('qLow').classList.toggle('on', quality === 'low'); $('qHigh').classList.toggle('on', quality === 'high');
+  $('rm').classList.toggle('on', reduced);
+}
+function refreshWho() {
+  const w = $('who'); w.innerHTML = '';
+  for (const p of view.players) w.add(new Option(p.nick, p.seat));
+  w.value = view.me ? view.me.seat : '';
+}
+function load(name) {
+  view = makeView(name);
+  window.view = view;
+  nPlayers = view.players.length;
+  document.querySelectorAll('[data-n]').forEach((b) => b.classList.toggle('on', +b.dataset.n === nPlayers));
+  refreshWho();
+  sc.setState(view);
+  applyModes();
+}
+function applyModes() {
+  setLegal(legalKind);
+  sc.setMarks(marksOn ? marksOf(view) : null);
+  sc.setPick(pickOn ? { fish: 1, herbs: 1, clay: 1 } : null);
+}
+// Позначки — як картка (§12): ok без дукатів → buy; ok з дукатами → gold; short ≤ 2 → near.
+function marksOf(v) {
+  const out = {};
+  for (const [id, c] of Object.entries(v.me?.cards || {})) out[id] = c.ok ? (c.pay?.gold ? 'gold' : 'buy') : c.short <= 2 ? 'near' : null;
+  for (const k of Object.keys(out)) if (!out[k]) delete out[k];
+  return out;
+}
+function setLegal(kind) {
+  legalKind = kind || null;
+  let l = null;
+  if (kind === 'turn' && view.me) {
+    const res = view.players.find((p) => p.seat === view.me.seat).reserved.filter((r) => r.id != null).map((r) => r.id);
+    l = { cards: [...view.rows.flat().filter((x) => x != null), ...res], decks: [1, 2, 3].filter((t) => view.decks[t - 1] > 0),
+      piles: GOODS.filter((g) => view.bank[g] > 0), guests: [] };
+  } else if (kind === 'guests') l = { cards: [], decks: [], piles: [], guests: view.guests.filter((g) => g.by == null).slice(0, 2).map((g) => g.id) };
+  sc.setLegal(l);
+  document.querySelectorAll('[data-l]').forEach((b) => b.classList.toggle('on', (b.dataset.l || null) === legalKind));
+}
+
+// ── Події: застосувати до копії виду (як сервер), програти анімацію → setState (порядок картки, §10).
+const P = (v, s) => v.players.find((p) => p.seat === s);
+function unused(v, tier) {
+  const used = new Set([...v.rows.flat(), ...v.players.flatMap((p) => [...p.cards, ...p.reserved.map((r) => r.id)])]);
+  for (let id = 0; id < 90; id++) if (DECK[id][1] === tier && !used.has(id)) return id;
+  return null;
+}
+function apply(v, ev) {
+  const p = ev.seat != null ? P(v, ev.seat) : null;
+  if (ev.k === 'take') for (const [g, n] of Object.entries(ev.got)) { v.bank[g] -= n; p.tokens[g] += n; }
+  if (ev.k === 'reserve') {
+    if (ev.slot != null) v.rows[ev.tier - 1][ev.slot] = null; else v.decks[ev.tier - 1]--;
+    p.reserved.push({ id: ev.slot == null && v.me?.seat !== ev.seat ? null : ev.card, tier: ev.tier, blind: ev.slot == null });
+    if (ev.gold) { v.bank.gold--; p.tokens.gold++; }
+  }
+  if (ev.k === 'buy') {
+    if (ev.from === 'row') v.rows[DECK[ev.card][1] - 1][ev.slot] = null; else p.reserved.splice(ev.slot, 1);
+    for (const [g, n] of Object.entries(ev.pay)) { p.tokens[g] -= n; v.bank[g] += n; }
+    p.cards.push(ev.card);
+  }
+  if (ev.k === 'refill') { v.rows[ev.tier - 1][ev.slot] = ev.card; if (ev.card != null) v.decks[ev.tier - 1]--; }
+  if (ev.k === 'discard') for (const [g, n] of Object.entries(ev.gave)) { p.tokens[g] -= n; v.bank[g] += n; }
+  if (ev.k === 'guest') { v.guests.find((g) => g.id === ev.guest).by = ev.seat; p.guests.push(ev.guest); }
+  if (ev.k === 'starshyna') { for (const q of v.players) q.starshyna = q.seat === ev.seat; v.starshyna = { seat: ev.seat, icons: ev.icons }; }
+  if (ev.k === 'bulava') { v.bulava = ev.seat; p.bulava = true; v.last = true; }
+  return recount(v);
+}
+const ANIM = { take: 'take', reserve: 'reserve', buy: 'buy', refill: 'refill', discard: 'discard', guest: 'guest', starshyna: 'starshyna', bulava: 'bulava' };
+let busy = false;
+async function play(events) {
+  if (busy) return log('зачекай — ще грає');
+  busy = true;
+  try {
+    for (const ev of events) {
+      const nv = apply(clone(view), ev);
+      const t = performance.now();
+      await sc[ANIM[ev.k]](ev);
+      log(ev.k, 'done', Math.round(performance.now() - t) + 'ms');
+      view = nv; window.view = view; sc.setState(view);
+    }
+  } finally { busy = false; }
+  applyModes();
+}
+const meSeat = () => view.me?.seat ?? view.order[0];
+const other = () => view.order.find((s) => s !== meSeat());
+function refillEv(v, tier, slot) { return { k: 'refill', tier, slot, card: unused(v, tier) }; }
+function payFor(p, id) {
+  const c = DECK[id][5], pay = {}; let gap = 0;
+  GOODS.forEach((g, i) => { const req = Math.max(0, c[i] - (p.bonus[g] | 0)); const t = Math.min(req, p.tokens[g] | 0); if (t) pay[g] = t; gap += req - t; });
+  const gold = Math.min(gap, p.tokens.gold | 0); if (gold) pay.gold = gold;
+  return pay;
+}
+const A = {
+  take() { const piles = GOODS.filter((g) => view.bank[g] > 0).slice(0, 3); return play([{ k: 'take', seat: meSeat(), got: Object.fromEntries(piles.map((g) => [g, 1])) }]); },
+  take2() { const g = GOODS.find((q) => view.bank[q] >= 2); if (!g) return log('нема купи'); return play([{ k: 'take', seat: meSeat(), got: { [g]: 2 } }]); },
+  takeOther() { const piles = GOODS.filter((g) => view.bank[g] > 0).slice(-3); return play([{ k: 'take', seat: other(), got: Object.fromEntries(piles.map((g) => [g, 1])) }]); },
+  reserveRow(seat = meSeat(), gold = true) {
+    const p = P(view, seat); if (p.reserved.length >= 3) return log('броні вже 3');
+    const tier = 2, slot = view.rows[1].findIndex((x) => x != null); if (slot < 0) return log('ряд порожній');
+    const card = view.rows[1][slot];
+    const ev = { k: 'reserve', seat, tier, slot, card, gold: gold && view.bank.gold > 0 ? 1 : 0 };
+    const v2 = apply(clone(view), ev);
+    return play([ev, refillEv(v2, tier, slot)]);
+  },
+  reserveBlind(seat = meSeat()) {
+    const p = P(view, seat); if (p.reserved.length >= 3) return log('броні вже 3');
+    if (!view.decks[2]) return log('колода III порожня');
+    const id = unused(view, 3);
+    return play([{ k: 'reserve', seat, tier: 3, slot: null, card: seat === view.me?.seat ? id : null, gold: view.bank.gold > 0 ? 1 : 0 }]);
+  },
+  reserveNoGold() { view.bank.gold = 0; sc.setState(view); return A.reserveRow(meSeat(), false); },
+  reserveOther() { return A.reserveBlind(other()); },
+  buyRow(seat = meSeat()) {
+    const p = P(view, seat);
+    const id = view.rows[0].find((x) => x != null) ?? view.rows.flat().find((x) => x != null); if (id == null) return log('ряди порожні');
+    const t = DECK[id][1], slot = view.rows[t - 1].indexOf(id);
+    const ev = { k: 'buy', seat, card: id, from: 'row', slot, pay: payFor(p, id), bonus: DECK[id][2], pts: DECK[id][3] };
+    const v2 = apply(clone(view), ev);
+    return play([ev, refillEv(v2, t, slot)]);
+  },
+  buyRes() {
+    const p = P(view, meSeat()); const i = p.reserved.findIndex((r) => r.id != null); if (i < 0) return log('нема броні');
+    const id = p.reserved[i].id;
+    return play([{ k: 'buy', seat: p.seat, card: id, from: 'reserve', slot: i, pay: payFor(p, id), bonus: DECK[id][2], pts: DECK[id][3] }]);
+  },
+  buyOther() { return A.buyRow(other()); },
+  refill() { const t = 1, slot = view.rows[0].findIndex((x) => x == null); if (slot < 0) { view.rows[0][3] = null; sc.setState(view); return play([refillEv(view, 1, 3)]); } return play([refillEv(view, t, slot)]); },
+  refillEmpty() { const slot = 2; view.rows[1][slot] = null; sc.setState(view); return play([{ k: 'refill', tier: 2, slot, card: null }]); },
+  discard() {
+    const p = P(view, meSeat()); const gave = {}; let n = 2;
+    for (const g of TOKENS) { const k = Math.min(n, p.tokens[g] | 0); if (k) { gave[g] = k; n -= k; } if (!n) break; }
+    if (n === 2) return log('нема жетонів');
+    return play([{ k: 'discard', seat: p.seat, gave }]);
+  },
+  guest() { const g = view.guests.find((q) => q.by == null); if (!g) return log('гостей нема'); return play([{ k: 'guest', seat: meSeat(), guest: g.id }]); },
+  starNone() { view.starshyna = null; for (const p of view.players) p.starshyna = false; sc.setState(view); return play([{ k: 'starshyna', seat: meSeat(), from: null, icons: 3 }]); },
+  starFrom() {
+    const cur = view.starshyna?.seat ?? null;
+    const to = view.order.find((s) => s !== cur && s !== null);
+    return play([{ k: 'starshyna', seat: to, from: cur, icons: 4 }]);
+  },
+  bulava() { if (view.bulava != null) { view.bulava = null; for (const p of view.players) p.bulava = false; sc.setState(view); } return play([{ k: 'bulava', seat: other() }]); },
+  async finale() {
+    const t = performance.now();
+    const w = view.order.find((s) => s !== meSeat());
+    await sc.finale({ winners: [w], reason: 'bulava', points: view.order.map(() => 10) });
+    log('finale done', Math.round(performance.now() - t) + 'ms');
+  },
+};
+window.runAnim = (name) => A[name]?.();
+window.setLegalKind = (k) => setLegal(k);
+window.load = (n) => { sel.value = n; load(n); };
+
+sel.onchange = () => load(sel.value);
+document.querySelectorAll('[data-a]').forEach((b) => { b.onclick = () => A[b.dataset.a](); });
+document.querySelectorAll('[data-l]').forEach((b) => { b.onclick = () => setLegal(b.dataset.l); });
+document.querySelectorAll('[data-n]').forEach((b) => { b.onclick = () => { const n = +b.dataset.n; load(n === 2 ? 'two' : n === 4 ? 'four' : 'mid'); sel.value = n === 2 ? 'two' : n === 4 ? 'four' : 'mid'; }; });
+$('who').onchange = () => { who = +$('who').value; load(sel.value); };
+$('marks').onclick = () => { marksOn = !marksOn; $('marks').classList.toggle('on', marksOn); applyModes(); };
+$('pick').onclick = () => { pickOn = !pickOn; $('pick').classList.toggle('on', pickOn); applyModes(); };
+$('sel').onclick = () => {
+  selOn = !selOn; $('sel').classList.toggle('on', selOn);
+  sc.setSelected(selOn ? (view.rows[1].find((x) => x != null) ?? null) : null);
+};
+$('qLow').onclick = () => { quality = 'low'; boot(); };
+$('qHigh').onclick = () => { quality = 'high'; boot(); };
+$('rm').onclick = () => { reduced = !reduced; boot(); };
+$('reset').onclick = () => sc.resetView();
+$('min').onclick = () => $('panel').classList.toggle('min');
+addEventListener('keydown', (e) => { if (e.key === 'Escape') { setLegal(null); sc.setSelected(null); } });
+
+// к/с (кадри, що справді намальовано — рендер на вимогу) і виклики малювання останнього кадру
+let lastF = 0, last = performance.now();
+setInterval(() => {
+  const d = sc?._dbg; if (!d) return;
+  const now = performance.now(), f = d.stats.frames;
+  const fps = Math.round((f - lastF) * 1000 / (now - last)); lastF = f; last = now;
+  const info = d.renderer.info;
+  const txt = `${fps} к/с · draw ${info.render.calls} · tri ${(info.render.triangles / 1000).toFixed(1)}k · geo ${info.memory.geometries} · ${quality}${reduced ? ' · rm' : ''}`;
+  $('stats').textContent = txt;
+  window.stats = { fps, calls: info.render.calls, tris: info.render.triangles, geos: info.memory.geometries, frames: f };
+}, 500);
+
+if (qs.get('l')) legalKind = qs.get('l');
+if (qs.has('marks')) { marksOn = true; $('marks').classList.add('on'); }
+if (qs.has('pick')) { pickOn = true; $('pick').classList.add('on'); }
+await boot();
+window.ready = true;
+</script>
+</body>
+</html>
