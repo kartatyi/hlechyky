@@ -4,7 +4,7 @@ namespace Hlechyky.Games.Impl;
 
 /// <summary>
 /// «Хутори» — Катан по-нашому на 2–4 (контракт <c>docs/games/specs/khutory.md</c>). Правила — у <see cref="KhutoryCore"/>,
-/// бот і автохід — у <see cref="KhutoryAuto"/>; тут каркас: опції, розсадка з Глеками, таймер ходу, вихід і вид.
+/// Глеки — <see cref="KhutoryBot"/>, автохід за того, хто проспав, — <see cref="KhutoryAuto"/>; тут каркас: опції, розсадка з Глеками, таймер ходу, вихід і вид.
 /// Гра прихована (<c>Hidden</c>): рука й грамоти кожного їдуть лише йому.
 /// </summary>
 public sealed class Khutory : Game
@@ -41,6 +41,8 @@ public sealed class Khutory : Game
     int _deadlineMs;
     string _deadlineKey = "";
     DateTimeOffset? _botAt;
+    /// <summary>Розумний Глек (пам'ять його пропозицій — на партію).</summary>
+    KhutoryBot _brain = new();
     bool _announced;
     string _reason = "points";
 
@@ -81,6 +83,7 @@ public sealed class Khutory : Game
         Array.Clear(_missed);
         var board = _starter ? KhutoryBoard.Starter() : KhutoryBoard.Random(Ctx.Rng);
         _core = new KhutoryCore(board, seats, Ctx.Rng) { Target = _target, Friendly = _friendly, NameOf = Nick };
+        _brain = new KhutoryBot();
         _announced = false;
         _reason = "points";
         _deadlineKey = "";
@@ -166,21 +169,26 @@ public sealed class Khutory : Game
         }
     }
 
-    /// <summary>Хід Глека (штовхає клієнт людини): один крок першого, на кого чекає стіл, від поточного.</summary>
+    /// <summary>
+    /// Хід Глека (штовхає клієнт людини): один крок першого, на кого чекає стіл, від поточного. Глек, що чекає
+    /// відповідей на свою пропозицію, пропускає — тим часом відповідають інші Глеки.
+    /// </summary>
     ActResult BotTurn()
     {
         if (_core.Over || _botAt is not { } at || Ctx.Clock.UtcNow < at) return ActResult.Fail("Глек ще думає");
         foreach (var s in Waiting())
         {
             if (!Auto(s)) continue;
-            var err = KhutoryAuto.Step(_core, s, Ctx.Rng);
+            // Людину, що відійшла, веде той самий Глек, але без власних пропозицій.
+            var err = _brain.Step(_core, s, Ctx.Rng, Ctx.Clock.UtcNow, trade: IsBot(s));
+            if (err == KhutoryBot.Wait) continue;
             // Крок, що не вдався (не мав би), — завершити хід, щоб стіл не завис.
             if (err is not null && _core.Phase is KhPhase.Main or KhPhase.Road2 && _core.Turn == s) _core.ForceEnd(s);
             After();
             return ActResult.Done;
         }
-        _botAt = null;
-        return ActResult.Fail("Глекам нема що робити");
+        Arm();
+        return ActResult.Fail(_botAt is null ? "Глекам нема що робити" : "Глек чекає відповідей");
     }
 
     /// <summary>Місця, від яких стіл чогось чекає, починаючи з поточного.</summary>
@@ -266,7 +274,14 @@ public sealed class Khutory : Game
     {
         _botAt = null;
         if (_core.Over) return;
-        if (Waiting().Any(Auto)) _botAt = Ctx.Clock.UtcNow.AddMilliseconds(BoardBots.ThinkMs);
+        // Глек, що чекає відповідей на свою пропозицію, — до кінця очікування (хтось відповів — After перерахує).
+        var now = Ctx.Clock.UtcNow;
+        foreach (var s in Waiting())
+        {
+            if (!Auto(s)) continue;
+            var at = _brain.WaitUntil(_core, s, now) ?? now.AddMilliseconds(BoardBots.ThinkMs);
+            if (_botAt is null || at < _botAt) _botAt = at;
+        }
     }
 
     void Announce()
