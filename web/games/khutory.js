@@ -899,10 +899,10 @@
     if (st.toTrade) {
       st.toTrade = false;
       requestAnimationFrame(() => {
-        const side = st.el.tabs.parentElement, tabs = st.el.tabs;
+        const side = st.el.tabs.parentElement, tabs = st.el.tabs, behavior = reduced() ? 'auto' : 'smooth';
         try {
-          if (side && getComputedStyle(side).overflowY === 'auto') side.scrollTo({ top: side.scrollTop + tabs.getBoundingClientRect().top - side.getBoundingClientRect().top, behavior: 'smooth' });
-          else tabs.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          if (side && getComputedStyle(side).overflowY === 'auto') side.scrollTo({ top: side.scrollTop + tabs.getBoundingClientRect().top - side.getBoundingClientRect().top, behavior });
+          else tabs.scrollIntoView({ block: 'start', behavior });
         } catch (e) { /* не головне */ }
       });
     }
@@ -1601,7 +1601,7 @@
         const o = ((v && v.offers) || []).find((x) => x.id === id);
         if (!o) break;
         act('cancel', { id });
-        if (a === 'of-edit') { T.open = true; T.give = { ...o.give }; T.get = { ...o.get }; T.to = o.to; st.pick = null; }
+        if (a === 'of-edit') { T.open = true; T.give = { ...o.give }; T.get = { ...o.get }; T.to = o.to; st.pick = null; st.tab = 'trade'; st.toTrade = true; }
         else {
           const ch = M.K.bankChips(me.hand, me.rates).filter((c) => c.res !== r && c.max >= 1).sort((x, y) => x.rate - y.rate || y.have - x.have);
           st.bankGive = ch.length ? ch[0].res : null; st.bankN = 1; st.bankWant = r; T.open = false;
@@ -1628,8 +1628,7 @@
           T.open = true; T.give = { ...o.get }; T.get = { ...o.give };
           T.to = me && v.turn === me.seat ? o.from : null;   // у свій хід — відповідь автору зустрічної
           st.incHid = id;                                     // картку — у смужку, щоб не закривала торг
-          // Торг на телефоні — під рукою: підвезти до нього.
-          setTimeout(() => { try { st.el.trade.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch (e) { /* нема куди */ } }, 30);
+          st.tab = 'trade'; st.toTrade = true;                // вкладка «🤝 Торг» і підвезти до неї (renderTabs)
         }
         break;
       }

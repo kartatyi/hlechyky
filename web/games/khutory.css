@@ -480,14 +480,14 @@
   .khu-players > .khu-pl { flex: 1 1 0; min-width: 0; }
   .khu-main { --khu-sw: clamp(290px, 34cqw, 400px);
     /* Висота екрана мінус шапка, смуга гравців і проміжки; стеля — від ширини поля (вища рамка — порожня стільниця). */
-    --khu-fh: clamp(400px, calc(var(--gfit-h, 100vh) - var(--khu-plh, 80px) - 22px), calc((100cqw - var(--khu-sw) - 12px) * 1.2));
+    --khu-fh: clamp(400px, calc(var(--gfit-h, 100vh) - var(--khu-plh, 80px) - 22px), calc((100cqw - var(--khu-sw) - 12px) * 1.12));
     grid-template-columns: minmax(0, 1fr) var(--khu-sw); }
   .khu-fieldwrap { aspect-ratio: auto; height: var(--khu-fh); max-height: none; min-height: 0; }
   .khu-side { height: var(--khu-fh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; gap: 8px; container: khs / inline-size; }
   .khu-side > * { flex: none; }
   /* Вкладки забирають решту колонки — однакова висота, хоч яка відкрита; довше (торг, правила) подовжує колонку,
      і гортається вся колонка — без прокрутки в прокрутці. */
-  .khu-side > .khu-tabs { flex: 1 0 auto; min-height: 210px; }
+  .khu-side > .khu-tabs { flex: 1 0 auto; min-height: 210px; scroll-margin-top: calc(var(--gtop-h, 0px) + var(--khu-plh, 80px) + 8px); }
   .khu-tp { flex: 1 0 auto; }
   .khu-say { padding: 8px 12px; font-size: .98em; }
   /* Рука одразу під кнопками: 5 карт в один ряд на всю колонку, грамоти — за ними (переносяться). */
@@ -504,6 +504,14 @@
   .khu-side .khu-card.dev .khu-dn { font-size: .82em; }
   .khu-side .khu-card.dev .khu-cw { font-size: .66em; line-height: 1.15; }
   .khu-side .khu-hh { font-size: .85em; line-height: 1.25; }
+}
+/* Планшет стоячи (картка 700–859 px): поряд із колонкою поле вузьке (≈ 400 px) — тож поле на всю ширину, а колонка — під ним
+   звичайним потоком (без своєї прокрутки): «що зараз», кнопки, рука одразу під ними, числа, вкладки. */
+@container khu (min-width: 700px) and (max-width: 859px) {
+  .khu-main { grid-template-columns: minmax(0, 1fr);
+    --khu-fh: clamp(380px, calc(var(--gfit-h, 100vh) - var(--khu-plh, 80px) - 22px), calc(100cqw * .82)); }
+  .khu-side { height: auto; overflow: visible; }
+  .khu-side > .khu-tabs { flex: none; min-height: 0; }
 }
 /* Широка колонка: чотири будівлі в один ряд — рука піднімається ближче до кнопок. */
 @container khs (min-width: 330px) {
@@ -535,7 +543,7 @@
   .khu-sumgrid { grid-template-columns: 1fr; }
   /* Поле — на перший екран разом із гравцями й «що зараз»: висота = місце між шапкою й липким низом мінус вони. */
   .khu-fieldwrap { order: 3; aspect-ratio: auto; max-height: none; min-height: 260px;
-    height: clamp(260px, calc(var(--gfit-h, 640px) - var(--khu-plh, 120px) - var(--khu-handh, 0px) - var(--khu-barh, 0px) - 74px), 60svh);
+    height: clamp(260px, calc(var(--gfit-h, 640px) - var(--khu-plh, 120px) - var(--khu-handh, 0px) - var(--khu-barh, 0px) - 92px), 60svh);
     width: auto; margin-inline: var(--khu-bleed); border-radius: 0; }   /* на всю ширину телефона: поле впирається в ширину, кожен піксель — більші гекси */
   .khu-say { order: 4; font-size: .95em; padding: 8px 10px; }
   .khu-act { order: 5; background: var(--panel2); padding: 8px; border-radius: 14px; }
@@ -545,17 +553,22 @@
   .khu-incm { order: 21; }
   .khu-bar { order: 22; }
 
-  /* Гравці 2×2, низькі — два рядки: нік; ⭐ · карти й грамоти · нагороди (смужки й підписи — у поповері на дотик). */
-  .khu-players > .khu-target { font-size: .78em; padding: 0 2px; line-height: 1.2; }
-  .khu-players > .khu-pl { grid-template-columns: 30px auto minmax(0, 1fr) auto; column-gap: 5px; row-gap: 0; padding: 3px 6px 6px 3px; }
-  .khu-players > .khu-pl .khu-av { width: 30px; height: 30px; grid-row: 1 / span 2; }
+  /* Гравці 2×2, низькі — нік і ⭐; карти й грамоти; нагороди (смужки й підписи — у поповері на дотик). */
+  /* «до N ⭐» — не окремим рядком, а на своїй плашці: «⭐ 4 з 8». */
+  .khu-players > .khu-target { display: none; }
+  .khu-pl.me > .khu-pp .khu-w { display: inline; }
+  .khu-players > .khu-pl { grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 5px; row-gap: 0; padding: 3px 6px 6px 3px; line-height: 1.2; }
+  .khu-players > .khu-pl .khu-av { width: 30px; height: 30px; grid-row: 1 / span 3; }
   .khu-players > .khu-pl .khu-av b { font-size: .9em; }
   .khu-players > .khu-pl .khu-shp { width: 15px; height: 15px; font-size: 9px; right: -3px; bottom: -3px; }
-  .khu-pl > .khu-pn { grid-column: 2 / -1; grid-row: 1; font-size: .9em; }
-  .khu-pl > .khu-pp { grid-column: 2; grid-row: 2; font-size: .78em; }
+  .khu-pl > .khu-pn { grid-column: 2; grid-row: 1; font-size: .9em; }
+  .khu-pl > .khu-pp { grid-column: 3; grid-row: 1; font-size: .8em; }
   .khu-pl > .khu-pp .khu-mb, .khu-pl > .khu-pp small { display: none; }
-  .khu-pl > .khu-ps { grid-column: 3; grid-row: 2; font-size: .78em; }
-  .khu-pl > .khu-ps.khu-aws { grid-column: 4; grid-row: 2; }
+  .khu-pl.think .khu-pn, .khu-pl.late .khu-pn { padding-right: 0; }
+  .khu-pl.think > .khu-pp { padding-right: 2.3em; }
+  .khu-pl.late > .khu-pp { padding-right: 3.3em; }
+  .khu-pl > .khu-ps { grid-column: 2 / -1; grid-row: 2; font-size: .76em; line-height: 1.25; }
+  .khu-pl > .khu-ps.khu-aws { grid-row: 3; }
   .khu-pl .khu-aws .khu-mb, .khu-pl .khu-aws .khu-port { display: none; }
 
   /* Панель ходу: кинути, торг і «Завершити» — у нижній панелі; тут — ціни, причини, банк і «обміняй і будуй». */
