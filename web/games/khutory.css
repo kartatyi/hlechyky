@@ -48,7 +48,7 @@
 /* ─── Поле ───────────────────────────────────────────────── */
 .kh-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 310px); gap: 12px; align-items: start; }
 /* Висота — від ширини (поле шестикутне, трохи ширше за високе), зі стелею від екрана: висока вузька рамка лишала півполя порожньої стільниці. */
-.kh-fieldwrap { position: relative; aspect-ratio: 1.12 / 1; max-height: min(72vh, 640px); min-height: 340px; border-radius: 14px; overflow: hidden;
+.kh-fieldwrap { position: relative; width: 100%; box-sizing: border-box; aspect-ratio: 1.12 / 1; max-height: min(72vh, 640px); min-height: 340px; border-radius: 14px; overflow: hidden;
   background: radial-gradient(ellipse at 50% 45%, #6a4a2c 0%, #4a321d 75%); }
 .kh-field { position: absolute; inset: 0; }
 .kh-field > canvas { display: block; width: 100%; height: 100%; }
@@ -66,6 +66,12 @@
 .kh-flash.go { animation: khflash 2.6s ease-out forwards; }
 @keyframes khflash { 0% { opacity: 0; transform: translate(-50%, -8px); } 10%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 .kh-tools { position: absolute; left: 8px; bottom: 8px; z-index: 3; display: flex; gap: 6px; }
+.kh-fab { display: none; }
+@container kh (max-width: 699px) {
+  .kh-fab { display: block; position: absolute; right: 10px; bottom: 10px; z-index: 3; }
+  .kh-fab:empty { display: none; }
+  .kh-fab button { box-shadow: 0 4px 14px rgba(0,0,0,.5); padding-inline: 18px; }
+}
 .kh-view { background: rgba(16, 26, 20, .82); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; min-height: 36px; font-size: .88em; }
 
 /* Діалоги — поверх поля (людина й так туди дивиться). */
@@ -217,7 +223,8 @@
   .kh-sumgrid { grid-template-columns: 1fr; }
   .kh-say { order: 3; font-size: .95em; padding: 8px 10px; }
   /* Поле — головне: ≥ 55 % висоти екрана (3D у вузькій рамці дивиться згори й займає висоту), панель — під ним. */
-  .kh-fieldwrap { order: 4; aspect-ratio: auto; height: 56vh; height: 56svh; max-height: none; min-height: 300px; }
+  .kh-fieldwrap { order: 4; aspect-ratio: auto; height: 56vh; height: 56svh; max-height: none; min-height: 300px;
+    width: auto; margin-inline: -14px; border-radius: 0; }   /* на всю ширину телефона: поле впирається в ширину, кожен піксель — більші гекси */
   /* Дії — шторкою одразу під полем (не липка: липка закривала б поле на малому екрані). */
   .kh-act { order: 5; background: var(--panel2); padding: 8px; border-radius: 14px; }
   .kh-offers { order: 6; }

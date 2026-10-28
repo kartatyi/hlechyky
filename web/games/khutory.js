@@ -137,13 +137,14 @@
       + '<div class="kh-main">'
       + '<div class="kh-fieldwrap"><div class="kh-field"></div><div class="kh-marks"></div><div class="kh-tip" hidden></div>'
       + '<div class="kh-flash" hidden></div><div class="kh-tools"><button type="button" class="kh-view" data-a="view"></button></div>'
+      + '<div class="kh-fab"></div>'
       + '<div class="kh-dlg" hidden></div></div>'
       + '<div class="kh-side"><div class="kh-act"></div><div class="kh-trade"></div><div class="kh-offers"></div><div class="kh-log"></div></div>'
       + '</div>'
       + '<div class="kh-hand"></div>'
       + '</div>';
     st.el = {};
-    for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view'])
+    for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'fab'])
       st.el[k] = root.querySelector('.kh-' + k);
     st.onClick = (e) => onClick(root, e);
     root.addEventListener('click', st.onClick);
@@ -379,6 +380,10 @@
     renderDlg(st, v, me);
     renderSum(st, v);
     st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
+    // Телефон: панель дій — під полем, тож головну дію ходу дублюємо кнопкою на самому полі (не гортати щоходу).
+    const fab = me && me.must === 'roll' ? '<button type="button" class="kh-big primary" data-a="roll">🎲 Кинути</button>'
+      : me && me.must === 'discard' && st.disc.hidden ? '<button type="button" class="kh-big primary" data-a="disc-open">🃏 Скинути</button>' : '';
+    setHtml(st.el.fab, fab);
     st.el.view.title = st.scKind === '3d' ? 'Показати пласку карту (легша для слабких пристроїв)' : (st.no3d ? '3D не вдалося — спробувати ще' : 'Показати об\'ємне поле');
     queueEvents(root, st, v);   // до syncScene: кидок у черзі притримує кубики сцени
     if (!st.sc) ensureScene(root, st);
