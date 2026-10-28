@@ -64,7 +64,15 @@
 
   // ─── Що зараз робити (смуга над полем і status) ─────────────────────────
   function whatNow(v, me, st) {
+    const w = whatNow0(v, me, st);
+    const p = me && v && v.phase !== 'over' ? playerOf(v, me.seat) : null;
+    if (p && p.away) w.l = '<b>🤖 За тебе зараз ходить Глек</b> (ти двічі проспав хід). Зроби будь-що сам — і гратимеш далі.<br>' + w.l;
+    return w;
+  }
+  function whatNow0(v, me, st) {
     if (!v || !v.players) return { s: '', l: '' };
+    // До старту сервер шле вид без гравців (phase setup, turn 0) — це ще збори, а не «хтось ставить хату».
+    if (!v.players.length) return { s: '', l: '🪑 Стіл збирається. Сідай на вільне місце — щойно господар натисне «Почати», почнемо ставити хати. Порожні місця займе Глек 🤖, якщо його додали' };
     if (v.phase === 'over' || v.over) {
       const o = v.over || {};
       if (o.winner == null) return { s: 'Партію скінчено', l: '🏁 Партію скінчено' };
@@ -560,6 +568,8 @@
       if (counterToMe) {
         const lack = K.lacking(hand, o.get);
         btn.push('<button type="button" class="primary" data-a="deal" data-id="' + o.id + '" data-seat="' + o.from + '"' + (Object.keys(lack).length ? ' disabled' : '') + '>🤝 Обміняти з ' + esc(nickOf(v, o.from)) + '</button>');
+        btn.push('<button type="button" data-a="ans" data-id="' + o.id + '" data-ok="0">❌ Ні</button>');
+        if (Object.keys(lack).length) btn.push('<span class="muted small">бракує ' + esc(K.resList(lack)) + '</span>');
       }
       if (btn.length) s += '<div class="kh-ob">' + btn.join('') + '</div>';
       return s + '</div>';
@@ -667,8 +677,10 @@
     const K = M.K, s = o.stats || {};
     const pts = o.points || [];
     const order = v.players.map((p) => p.seat).sort((a, b) => (pts[b] || 0) - (pts[a] || 0));
-    let h = '<h3>' + (o.winner != null ? '🏆 Переміг ' + who(v, o.winner) + ' — ' + (pts[o.winner] || 0) + ' ⭐' : '🏁 Партію скінчено')
-      + (o.reason === 'left' ? ' <span class="muted">(решта вийшли)</span>' : '') + '</h3>';
+    // «Ану ще раз» каркаса — під полем і журналом, новачок його не бачить: дублюємо в шапці підсумку (тисне ту саму кнопку).
+    const again = st.ctx && st.ctx.mine ? '<button type="button" class="kh-mid primary kh-again" data-a="again">🔁 Ану ще раз</button>' : '';
+    let h = '<div class="kh-sumh"><h3>' + (o.winner != null ? '🏆 Переміг ' + who(v, o.winner) + ' — ' + (pts[o.winner] || 0) + ' ⭐' : '🏁 Партію скінчено')
+      + (o.reason === 'left' ? ' <span class="muted">(решта вийшли)</span>' : '') + '</h3>' + again + '</div>';
     h += '<div class="kh-sumgrid"><div><ol class="kh-rank">' + order.map((x) => '<li>' + who(v, x) + ' <b>' + (pts[x] || 0) + ' ⭐</b></li>').join('') + '</ol>';
     if (s.rounds) h += '<p class="muted small">' + s.rounds + ' ' + plural(s.rounds, 'коло', 'кола', 'кіл') + '</p>';
     h += '</div>';
@@ -751,7 +763,10 @@
       HGames.send('Act', st.ctx.room.id, 'bot', null);
       st.nt = setTimeout(fire, 1500);
     };
-    st.nt = setTimeout(fire, v.botIn + 60 + myRank(v, ctx) * 700);
+    // Хід «задрімалої» людини (away): Глек грає за неї, але даємо 5 с, щоб вона встигла натиснути сама й повернутись.
+    const who = v.discard ? null : playerOf(v, v.turn);
+    const grace = who && who.away && !who.bot && v.phase === 'roll' ? 5000 : 0;
+    st.nt = setTimeout(fire, v.botIn + 60 + grace + myRank(v, ctx) * 700);
   }
 
   // ─── Події: анімації по черзі ───────────────────────────────────────────
@@ -849,6 +864,11 @@
     const act = (name, p) => ctx && ctx.act(name, p);
     switch (a) {
       case 'view': switchView(root, st); return;
+      case 'again': {
+        const rb = (root.closest('.groom') || document).querySelector('[data-do="Rematch"]');
+        if (rb) rb.click(); else if (ctx && ctx.toast) ctx.toast('Ще раз зараз не вийде — замало гравців за столом');
+        return;
+      }
       case 'help': st.helpOpen = !(st.helpOpen != null ? st.helpOpen : v && v.phase === 'setup'); break;
       case 'log': st.logOpen = !st.logOpen; store.set('kh.log', st.logOpen ? '1' : '0'); break;
       case 'roll': act('roll', {}); break;

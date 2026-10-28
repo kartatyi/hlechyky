@@ -105,6 +105,9 @@ export async function createScene(host, opts = {}) {
   const cityColor = inst(cg.color, 20, { color: true });
   const roads = inst(M.roadGeo(), 72, { color: true });
   const chips = inst(M.chipGeo(), 60, { color: true, shadow: false });
+  // Темна облямівка під монеткою: колір ресурсу = колір його землі (дерево на лісі зливалось), а так видно на будь-якому гексі.
+  const chipRim = inst(new THREE.CylinderGeometry(0.142, 0.142, 0.018, 6), 60, { shadow: false, mat: new THREE.MeshBasicMaterial({ color: '#1e1208' }) });
+  const _white = new THREE.Color(1, 1, 1);
 
   const hlMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false });
   const hlRings = inst(M.ringGeo(), 54, { shadow: false, mat: hlMat });
@@ -450,7 +453,8 @@ export async function createScene(host, opts = {}) {
     const save = { az: cs.az, pol: cs.pol, zoom: cs.zoom, t: cs.target.clone() };
     defPol = W / H < 0.9 ? PORTRAIT_POLAR : DEF_POLAR;   // вузька висока рамка — дивимось згори, поле виходить вищим
     cs.az = 0; cs.pol = defPol; cs.zoom = 1; cs.target.set(0, 0, 0);
-    const R = M.SEA_R + M.FRAME_W, pts = [];
+    // Вузька рамка (телефон): впритул до суші й пристаней — кути моря й рамки можна обрізати, а поле стає вдвічі помітнішим.
+    const R = W / H < 0.9 ? 5.1 : M.SEA_R + M.FRAME_W, pts = [];
     for (let i = 0; i < 6; i++) for (const y of [0, 0.25]) pts.push(new THREE.Vector3(R * Math.cos(i * Math.PI / 3), y, R * Math.sin(i * Math.PI / 3)));
     const lim = W / H < 0.8 ? 0.97 : 0.93;
     // Відстань — двійковим пошуком, потім зсув цілі вглиб/до себе, щоб рамка стояла посередині по вертикалі; двічі.
@@ -752,14 +756,14 @@ export async function createScene(host, opts = {}) {
       const hv = board.hexes[g.hex]?.v || [];
       const town = (view?.towns || []).find((t) => t.seat === g.seat && hv.includes(t.v));
       const to = town ? vxPos[town.v].clone() : P.clone();
-      const c = new THREE.Color(RES_COLOR[g.res] ?? '#cccccc');
+      const c = new THREE.Color(RES_COLOR[g.res] ?? '#cccccc').lerp(_white, g.res === 'wood' ? 0.42 : 0.25);   // світліша за землю
       for (let j = 0; j < Math.min(3, g.n || 1) && list.length < chips.instanceMatrix.count; j++)
         list.push({ from: P.clone().setY(M.TILE_H + 0.12), to: to.setY(M.TILE_H + 0.35), delay: Math.min(0.2, (list.length) * 0.05), c, j });
     });
     if (!list.length) return Promise.resolve();
     list.forEach((o, i) => chips.setColorAt(i, o.c));
     chips.instanceColor.needsUpdate = true;
-    chips.count = list.length; chips.visible = true;
+    chips.count = chipRim.count = list.length; chips.visible = chipRim.visible = true;
     produceTw = tween(1000, (k) => {
       list.forEach((o, i) => {
         const kk = clamp((k - o.delay) / 0.78, 0, 1);
@@ -777,11 +781,12 @@ export async function createScene(host, opts = {}) {
         _pv.set(x, y, z); _dirC.copy(cam.position).sub(_pv).normalize();
         _q.setFromUnitVectors(UP, _dirC).multiply(_qa.setFromAxisAngle(UP, kk * 5));
         chips.setMatrixAt(i, _m4.compose(_pv, _q, _sv.setScalar(Math.max(0.001, s * 1.35))));
+        chipRim.setMatrixAt(i, _m4.compose(_pv.addScaledVector(_dirC, -0.012), _q, _sv));
       });
-      chips.instanceMatrix.needsUpdate = true;
-      if (k >= 1) { chips.count = 0; chips.visible = false; }
+      chips.instanceMatrix.needsUpdate = chipRim.instanceMatrix.needsUpdate = true;
+      if (k >= 1) { chips.count = chipRim.count = 0; chips.visible = chipRim.visible = false; }
     });
-    return produceTw.promise.then(() => { chips.count = 0; chips.visible = false; dirty = true; });
+    return produceTw.promise.then(() => { chips.count = chipRim.count = 0; chips.visible = chipRim.visible = false; dirty = true; });
   }
 
   function pop(kind, id) {
