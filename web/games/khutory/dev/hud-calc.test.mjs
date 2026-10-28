@@ -102,3 +102,43 @@ test('графік очок', () => {
   assert.equal(g.lines[0][2][0], 278);
   assert.equal(chartGeom([], 100, 100).lines.length, 0);
 });
+
+import { robberInfo } from '../hud-calc.js';
+import { makeView } from './fixture.js';
+
+test('Кармелюк: бейджі жертв, своя хата, «Глек радить»', () => {
+  const v = makeView('robber', { seat: 0 });
+  const info = robberInfo(v, 0);
+  assert.equal(info.length, v.me.robber.length);
+  assert.ok(!info.some((x) => x.h === v.robber));
+  for (const x of info) {
+    const vs = new Set(v.board.hexes[x.h].v);
+    const on = v.towns.filter((t) => vs.has(t.v));
+    assert.equal(x.own, on.some((t) => t.seat === 0));
+    assert.deepEqual(x.victims.map((y) => y.seat), [...new Set(on.map((t) => t.seat).filter((s) => s !== 0))].sort());
+    for (const y of x.victims) assert.equal(y.cards, v.players.find((p) => p.seat === y.seat).cards);
+  }
+  const best = info.filter((x) => x.best);
+  assert.equal(best.length, 1);
+  assert.ok(!best[0].own && best[0].victims.length > 0);
+  assert.ok(info.some((x) => x.own), 'у фікстурі є гекс із моєю хатою');
+});
+
+test('Кармелюк: «Глек радить» — більше крапок × жертв', () => {
+  const b = board();
+  // Дві жертви на гексі 4 (pit 6, 5 крапок) і одна — на гексі 0 (forest 10, 3 крапки).
+  const v = { board: b, robber: 9, players: [{ seat: 0, cards: 3, points: 2 }, { seat: 1, cards: 5, points: 2 }, { seat: 2, cards: 0, points: 2 }],
+    towns: [{ v: b.hexes[4].v[0], seat: 1 }, { v: b.hexes[4].v[3], seat: 2 }, { v: b.hexes[0].v[0], seat: 1 }], me: { seat: 0, robber: [0, 4, 7] } };
+  const info = robberInfo(v, 0);
+  assert.deepEqual(info.map((x) => x.best), [false, true, false]);
+  assert.deepEqual(info[1].victims, [{ seat: 1, cards: 5 }, { seat: 2, cards: 0 }]);
+  assert.deepEqual(info[2].victims, []);
+  // Моя хата на найкращому — порада переходить на інший.
+  v.towns.push({ v: b.hexes[4].v[1], seat: 0 });
+  const i2 = robberInfo(v, 0);
+  assert.equal(i2[1].own, true);
+  assert.deepEqual(i2.map((x) => x.best), [true, false, false]);
+  // Глядач (seat null) — своїх нема, жертви всі.
+  assert.equal(robberInfo({ ...v, me: null }, null).filter((x) => x.own).length, 0);
+  assert.deepEqual(robberInfo({ board: null }, 0), []);
+});
