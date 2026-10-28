@@ -63,7 +63,7 @@
       built: false, ctx: null, view: null, sc: null, scKind: null, scLoading: false, boardId: null, legalSig: null, legal: null,
       pick: null, arm: null, seq: null, queue: [], running: false,
       trade: { open: false, give: {}, get: {}, to: null }, bankGive: null,
-      disc: { key: null, plan: null }, dlg: null, logOpen: store.get('kh.log') !== '0',
+      disc: { key: null, plan: null }, dlg: null, tab: null,
       prevHand: null, pulse: {}, tick: 0, nt: 0, toKey: null, toAt: 0, ro: null, hover: null, marks: [],
     });
   }
@@ -142,28 +142,34 @@
 
   // ─── Каркас DOM ─────────────────────────────────────────────────────────
   function build(root, st) {
+    // Розкладка (khutory-look.md §7). ПК: плашки липнуть угорі; поле ліворуч на висоту екрана; праворуч колонка не довша
+    // за поле — «що зараз» + кубики, смуга чисел, рука одразу під кнопками, вкладки «🤝 Торг · 📜 Журнал · ❔ Правила».
+    // Телефон (< 700 px): .khu-main/.khu-side — display: contents, порядок — CSS order; знизу липнуть рука й панель дій.
     root.innerHTML = '<div class="khu">'
       + '<div class="khu-players"></div>'
       + '<div class="khu-sum" hidden></div>'
-      + '<div class="khu-say" aria-live="polite"></div>'
       + '<div class="khu-main">'
       + '<div class="khu-fieldwrap"><div class="khu-field"></div><div class="khu-marks"></div><div class="khu-tip" hidden></div>'
       + '<div class="khu-rb"></div><div class="khu-fx"></div><div class="khu-feed" aria-live="polite"></div><div class="khu-rbask" role="alertdialog" hidden></div>'
       + '<div class="khu-flash" hidden></div><div class="khu-tools"><button type="button" class="khu-view" data-a="view"></button><button type="button" class="khu-view khu-snd" data-a="snd"></button></div>'
-      + '<div class="khu-fab"></div>'
       + '<div class="khu-inc"></div>'
       + '<div class="khu-ask" hidden></div>'
       + '<div class="khu-dlg" hidden></div></div>'
-      + '<div class="khu-side"><div class="khu-act"></div><div class="khu-trade"></div><div class="khu-offers"></div><div class="khu-log"></div></div>'
-      + '</div>'
-      + '<div class="khu-hand"></div>'
+      + '<div class="khu-side"><div class="khu-say" aria-live="polite"></div><div class="khu-act"></div><div class="khu-hand"></div>'
+      + '<div class="khu-tabs"><div class="khu-tabh" role="tablist"></div>'
+      + '<div class="khu-tp" data-t="trade" role="tabpanel"><div class="khu-trade"></div><div class="khu-offers"></div><p class="khu-note khu-tpe"></p></div>'
+      + '<div class="khu-tp" data-t="log" role="tabpanel" hidden><div class="khu-log"></div></div>'
+      + '<div class="khu-tp" data-t="help" role="tabpanel" hidden><div class="khu-help"></div></div></div>'
+      + '</div></div>'
       + '<div class="khu-incm"></div>'
+      + '<div class="khu-bar"></div>'
       + '</div>';
     st.el = {};
-    for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'hand', 'view', 'fab', 'snd'])
+    for (const k of ['players', 'sum', 'say', 'fieldwrap', 'field', 'marks', 'tip', 'flash', 'dlg', 'act', 'trade', 'offers', 'log', 'help', 'hand', 'view', 'snd', 'tabs', 'tabh', 'tpe', 'bar'])
       st.el[k] = root.querySelector('.khu-' + k);
-    // Смуга «що дасть кожне число» — одразу під панеллю ходу (кубики — в ній); поповер значків плашки — над картою.
-    st.el.act.insertAdjacentHTML('afterend', '<div class="khu-nums" hidden></div>');
+    st.el.tps = [...root.querySelectorAll('.khu-tp')];
+    // Смуга «що дасть кожне число» — під рукою (рука — одразу під кнопками ходу, §7); поповер значків плашки — над картою.
+    st.el.hand.insertAdjacentHTML('afterend', '<div class="khu-nums" hidden></div>');
     st.el.nums = root.querySelector('.khu-nums');
     st.el.nums.addEventListener('click', (e) => onNums(root, e));
     st.el.players.insertAdjacentHTML('afterend', '<div class="khu-pop" role="tooltip" hidden></div>');
@@ -180,6 +186,9 @@
     root.addEventListener('click', st.onClick);
     st.ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (st.sc) st.sc.resize(); placeMarks(st); }) : null;
     if (st.ro) st.ro.observe(st.el.field);
+    // Висоти плашок (ПК: липка смуга й висота поля), руки й нижньої панелі (телефон: липнуть знизу) — у змінні картки.
+    st.ro2 = typeof ResizeObserver === 'function' ? new ResizeObserver(() => sizeVars(root, st)) : null;
+    if (st.ro2) for (const k of ['players', 'hand', 'bar']) st.ro2.observe(st.el[k]);
     st.tick = setInterval(() => tick(root), 250);
     st.built = true;
   }
@@ -449,10 +458,8 @@
     renderSum(st, v);
     renderNumbers(st, v, me);
     st.el.view.textContent = st.scKind === '3d' ? '🗺 Пласка' : '🧊 3D';
-    // Телефон: панель дій — під полем, тож головну дію ходу дублюємо кнопкою на самому полі (не гортати щоходу).
-    const fab = me && me.must === 'roll' ? '<button type="button" class="khu-big primary" data-a="roll">🎲 Кинути</button>'
-      : me && me.must === 'discard' && st.disc.hidden ? '<button type="button" class="khu-big primary" data-a="disc-open">🃏 Скинути</button>' : '';
-    setHtml(st.el.fab, fab);
+    renderTabs(st, v, me);
+    renderBar(st, v, me);
     st.el.view.title = st.scKind === '3d' ? 'Показати пласку карту (легша для слабких пристроїв)' : (st.no3d ? '3D не вдалося — спробувати ще' : 'Показати об\'ємне поле');
     queueEvents(root, st, v);   // до syncScene: кидок у черзі притримує кубики сцени
     if (!st.sc) ensureScene(root, st);
@@ -848,7 +855,7 @@
     st.blinkT = null;
   }
 
-  const HELP = '<div class="khu-box khu-help"><div class="khu-boxh">❔ Як грати<button type="button" class="khu-x" data-a="help" aria-label="Сховати">✕</button></div><ol>'
+  const HELP = '<ol>'
     + '<li><b>Кидай кубики</b> 🎲 — кожна земля з цим числом дає карту всім, чия хата стоїть на її куті. 🔴 6 і 8 випадають найчастіше</li>'
     + '<li><b>Будуй</b> за карти: 🛤 шлях веде до нових місць, 🏠 хата = 1 ⭐, 🏛 містечко = 2 ⭐ і вдвічі більше карт</li>'
     + '<li><b>Правило відстані:</b> хату ставиш на перехресті, не ближче ніж через одне перехрестя від будь-якої іншої хати. Після розстановки — лише біля свого шляху</li>'
@@ -856,15 +863,85 @@
     + '<li>Випала <b>сімка</b> — приходить Кармелюк 🥷: хто має понад 7 карт, віддає половину; той, хто кинув, ставить Кармелюка на землю (вона не родить) і забирає карту в сусіда</li>'
     + '<li><b>Нагороди</b> по +2 ⭐: 🛤 <b>Чумацький шлях</b> — найдовший шлях без розривів, щонайменше 5; ⚔ <b>Найсильніша сотня</b> — найбільше зіграних козаків, щонайменше 3. Хто переважить — забирає</li>'
     + '<li>📜 <b>Грамоти</b> (🧶 + 🌾 + ⛏️): ⚔️ Козак — пересунь Кармелюка й візьми карту; 💰 Скарб — +1 ⭐ потай; 🛤 Толока — два шляхи задарма; 🌻 Врожайний рік — дві карти з банку; 🎪 Ярмарок — усі віддають тобі названий ресурс. Одна грамота за хід, куплену — не того ж ходу. Тицни грамоту в руці — побачиш, що вона робить</li>'
-    + '<li>Перший, хто набере потрібні ⭐ у свій хід, — <b>переміг</b></li></ol></div>';
+    + '<li>Перший, хто набере потрібні ⭐ у свій хід, — <b>переміг</b></li></ol>';
 
+  /// Журнал і правила — кожне у своїй вкладці (khutory-look.md §7): журнал — усі рядки з виду, найновіший знизу.
   function renderLog(st, v) {
-    const lines = (v.log || []).slice(-6);
-    const help = st.helpOpen != null ? st.helpOpen : v.phase === 'setup';
-    const hb = help ? HELP : '<button type="button" class="khu-logh" data-a="help">❔ Як грати</button>';
-    if (!lines.length) { setHtml(st.el.log, hb); return; }
-    setHtml(st.el.log, hb + '<button type="button" class="khu-logh" data-a="log" aria-expanded="' + st.logOpen + '">📜 Що було ' + (st.logOpen ? '▾' : '▸') + '</button>'
-      + (st.logOpen ? '<ol>' + lines.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ol>' : '<p class="khu-last">' + esc(lines[lines.length - 1]) + '</p>'));
+    const lines = v.log || [];
+    setHtml(st.el.log, lines.length ? '<ol>' + lines.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ol>'
+      : '<p class="khu-note">Поки тихо — тут буде, хто що зробив.</p>');
+    setHtml(st.el.help, HELP);
+  }
+
+  // ─── Вкладки «🤝 Торг · 📜 Журнал · ❔ Правила» ──────────────────────────
+  /// Обрана вкладка: сам обрав — та; інакше розстановка — правила, торг відкрито чи є пропозиції — торг, решта — журнал.
+  function tabNow(st, v) {
+    if (st.tab) return st.tab;
+    if (st.trade.open || (v.offers || []).length) return 'trade';
+    return v.phase === 'setup' ? 'help' : 'log';
+  }
+
+  function renderTabs(st, v, me) {
+    const t = tabNow(st, v);
+    const nOff = (v.offers || []).length, nInc = incList(v, me).length;
+    const badge = nInc ? ' <span class="khu-badge" title="Чекають твоєї відповіді">' + nInc + '</span>'
+      : nOff && t !== 'trade' ? ' <span class="khu-badge mute" title="Пропозицій на столі">' + nOff + '</span>' : '';
+    const tab = (k, label) => '<button type="button" role="tab" class="khu-tab' + (t === k ? ' on' : '') + '" data-a="tab" data-t="' + k + '" aria-selected="' + (t === k) + '">' + label + '</button>';
+    setHtml(st.el.tabh, tab('trade', '🤝 Торг' + badge) + tab('log', '📜 Журнал') + tab('help', '❔ Правила'));
+    for (const p of st.el.tps) p.hidden = p.dataset.t !== t;
+    const empty = !st.trade.open && !nOff;
+    setHtml(st.el.tpe, !empty ? '' : me && v.phase === 'main' && v.turn === me.seat
+      ? 'Обмін із сусідами — «🤝 Торгувати» вище; з банком — чипами «4🪵→1». Тут з’являться пропозиції.'
+      : 'Тут з’являться пропозиції обміну. Свою — у свій хід кнопкою «🤝 Торгувати».');
+    st.el.tpe.hidden = !empty;
+    // Торг відкрито з нижньої панелі телефона чи з кнопки — показати його. ПК: гортаємо лише колонку (вкладки — до її верху;
+    // сторінку не чіпаємо, бо плашки липнуть угорі й закрили б початок); телефон: сторінку — до вкладок під шапкою.
+    if (st.toTrade) {
+      st.toTrade = false;
+      requestAnimationFrame(() => {
+        const side = st.el.tabs.parentElement, tabs = st.el.tabs;
+        try {
+          if (side && getComputedStyle(side).overflowY === 'auto') side.scrollTo({ top: side.scrollTop + tabs.getBoundingClientRect().top - side.getBoundingClientRect().top, behavior: 'smooth' });
+          else tabs.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        } catch (e) { /* не головне */ }
+      });
+    }
+  }
+
+  // ─── Телефон: липка нижня панель дій ────────────────────────────────────
+  /// 🎲 Кинути · 🛤 · 🏠 · 🏛 · 📜 · 🤝 · ➡ Завершити — ті самі data-a, що й у панелі ходу (renderAct); на ПК схована CSS-ом.
+  function renderBar(st, v, me) {
+    let h = '';
+    const myTurn = me && v.turn === me.seat;
+    const bb = (a, icon, label, opts) => '<button type="button" class="khu-bb' + (opts.cls ? ' ' + opts.cls : '') + '" data-a="' + a + '"'
+      + (opts.k ? ' data-k="' + opts.k + '"' : '') + (opts.off ? ' disabled' : '') + (opts.title ? ' title="' + esc(opts.title) + '"' : '')
+      + '><span class="i">' + icon + '</span><small>' + label + '</small></button>';
+    if (!me || v.phase === 'over' || v.phase === 'setup') h = '';
+    else if (me.must === 'roll') h = bb('roll', '🎲', 'Кинути кубики', { cls: 'primary wide' });
+    else if (me.must === 'discard') h = bb('disc-open', '🃏', 'Скинути карти', { cls: 'primary wide' });
+    else if (myTurn && v.phase === 'main') {
+      const can = me.can || {}, why = me.why || {}, sp = me.spots || {};
+      for (const k of ['road', 'town', 'city', 'dev']) {
+        const room = k === 'dev' || (sp[k] || []).length > 0;
+        const ok = !!can[k] && room, on = st.pick === k;
+        h += bb('build', on ? '✕' : BUILD_ICON[k], on ? 'Скасувати' : M.C.BUILD_NAME[k], { k, cls: on ? 'on' : ok ? 'ok' : '', off: !ok && !on, title: ok || on ? M.C.BUILD_NAME[k] : (why[k] || 'не зараз') });
+      }
+      h += bb('trade', '🤝', 'Торг' + incBadge(v, me), { cls: st.trade.open ? 'on' : '' });
+      h += bb('end', '➡', 'Завершити', { cls: 'primary' });
+    } else if (v.phase === 'main' && v.turn != null && !isBot(v, v.turn) && v.rolled !== false) {
+      h = bb('trade', '🤝', 'Зустрічна ' + esc(nickOf(v, v.turn)) + incBadge(v, me), { cls: 'wide' + (st.trade.open ? ' on' : '') });
+    }
+    setHtml(st.el.bar, h);
+  }
+
+  /// Висоти плашок, руки й панелі — у змінні картки: ПК рахує з них висоту поля, телефон — відступи липких шторок.
+  function sizeVars(root, st) {
+    const k = root.querySelector('.khu');
+    if (!k || !st.el) return;
+    const hOf = (el) => (el && el.getClientRects().length ? Math.round(el.getBoundingClientRect().height) : 0);
+    k.style.setProperty('--khu-plh', hOf(st.el.players) + 'px');
+    k.style.setProperty('--khu-handh', hOf(st.el.hand) + 'px');
+    k.style.setProperty('--khu-barh', (st.el.bar.firstChild ? hOf(st.el.bar) : 0) + 'px');
   }
 
   function devState(v, me, d) {
@@ -1460,10 +1537,9 @@
         if (jb) jb.click(); else if (ctx && ctx.room) HGames.sitAt(ctx.room.id, b);
         return;
       }
-      case 'help': st.helpOpen = !(st.helpOpen != null ? st.helpOpen : v && v.phase === 'setup'); break;
-      case 'log': st.logOpen = !st.logOpen; store.set('kh.log', st.logOpen ? '1' : '0'); break;
+      case 'tab': case 'help': case 'log': st.tab = a === 'tab' ? b.dataset.t : a; break;
       case 'roll': act('roll', {}); break;
-      case 'end': T.open = false; st.pick = null; st.bankGive = null; act('end', {}); break;
+      case 'end': T.open = false; st.pick = null; st.bankGive = null; st.tab = null; act('end', {}); break;
       case 'pick-cancel': st.pick = null; break;
       case 'build': {
         const k = b.dataset.k;
@@ -1474,7 +1550,7 @@
       }
       case 'trade':
         T.open = !T.open; st.bankGive = null;
-        if (T.open) { st.pick = null; T.give = {}; T.get = {}; T.to = null; }
+        if (T.open) { st.pick = null; T.give = {}; T.get = {}; T.to = null; st.tab = 'trade'; st.toTrade = true; } else st.tab = null;
         break;
       case 'tr-add': case 'tr-sub': {
         const side = b.dataset.side, other = side === 'give' ? 'get' : 'give';
