@@ -38,7 +38,10 @@ public sealed record RoomSummary(
     DateTimeOffset? FinishedAt,
     EveningDto? Evening = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<int>? Ready = null);
+    IReadOnlyList<int>? Ready = null,
+    /// <summary>Хто підглядає в цю соло-гру («👁 Оля» у шапці, <see cref="Rooms.PeekNicks"/>); null — ніхто.</summary>
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? Peek = null);
 
 /// <summary>
 /// «Рахунок вечора» (п. 225): скільки партій дограли за цим столом за всі «Ану ще раз» і хто скільки взяв.
@@ -83,9 +86,9 @@ public sealed record RoomView(RoomSummary Room, int? Seat, object? View, long Se
 
 /// <summary>
 /// Рядок події <c>solo</c>: хто зараз у своїй соло-грі. Приватні кімнати в лобі не потрапляють, тож без цього
-/// ніхто б і не знав, що Оля саме крутить Гончарне коло.
+/// ніхто б і не знав, що Оля саме крутить Гончарне коло. <c>Room</c> — її кімната: туди можна «👁 Підглянути» (RoomsPeek.cs).
 /// </summary>
-public sealed record SoloPlayer(string Game, string Nick);
+public sealed record SoloPlayer(string Game, string Nick, string? Room = null);
 
 /// <summary>
 /// Одна партія: гра, місця, статус, глядачі. Усе, що міняє стан кімнати, робиться під <see cref="Sync"/>;
@@ -124,6 +127,11 @@ public sealed class Room
     /// <see cref="Watchers"/>: на свою кімнату браузер підписаний і з лобі, а тут — лише поки людина справді в грі.
     /// </summary>
     public ConcurrentDictionary<string, byte> OnScreen { get; } = new();
+    /// <summary>
+    /// Ті з <see cref="Watchers"/>, хто підглядає в чужу соло-гру (RoomsPeek.cs): connectionId → нік. «Ніхто не дивиться»
+    /// і прибирання соло їх не рахують — дивитись мусить сам гравець.
+    /// </summary>
+    public ConcurrentDictionary<string, string> Peeks { get; } = new();
     /// <summary>Замок кімнати: хід, тик, вхід, вихід — усе під ним. Await під ним не буває.</summary>
     public object Sync { get; } = new();
     public required int Seed { get; set; }
@@ -262,7 +270,7 @@ public sealed class Room
             Id, Info.Id, Status.ToString().ToLowerInvariant(), slots, names, Host,
             Info.MinPlayers, Info.MaxPlayers, Options, Stake, Round, Watchers.Count,
             Result is { } r ? new RoomResultDto(r.Winners, r.Draw, r.Text, r.Verdict) : null,
-            CreatedAt, StartedAt, FinishedAt, EveningSummary(), ReadySeats());
+            CreatedAt, StartedAt, FinishedAt, EveningSummary(), ReadySeats(), Rooms.PeekNicks(this));
     }
 
     /// <summary>Місця готових людей — лише поки готовність щось значить (лобі чи дограний стіл); інакше поле на дріт не йде.</summary>

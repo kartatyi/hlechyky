@@ -28,6 +28,8 @@ public static class EconomySetup
         services.AddSingleton<Ratings>();
         services.AddSingleton<Achievements>();
         services.AddSingleton<Daily>();
+        // 👁 у щоденну — лише після своєї (Rooms.PeekRefusal)
+        services.AddSingleton<IDailyPeek>(sp => new DailyPeek(sp.GetRequiredService<Daily>()));
         services.AddSingleton<Leaderboards>();
 
         services.AddSingleton<Rewards>();

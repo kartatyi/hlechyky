@@ -701,7 +701,7 @@ public class RoomsTests
         Assert.Empty(h.Rooms.SoloNow());                                     // кімната є, а на екрані її ще нема
 
         Assert.Single(h.Rooms.Focus("c1", "Оля", h.RoomId).OfType<SoloChanged>());
-        Assert.Equal([new SoloPlayer("t-solo", "Оля")], h.Rooms.SoloNow());
+        Assert.Equal([new SoloPlayer("t-solo", "Оля", h.RoomId)], h.Rooms.SoloNow());
         Assert.Empty(h.Rooms.Focus("c1", "Оля", h.RoomId));                  // повтор нікому нічого не шле
 
         Assert.Single(h.Rooms.Focus("c1", "Оля", null).OfType<SoloChanged>());   // пішла в лобі
@@ -732,7 +732,7 @@ public class RoomsTests
 
         rooms.Focus("c1", "Оля", solo);
         rooms.Focus("c2", "оля", solo);
-        Assert.Equal([new SoloPlayer("t-solo", "Оля")], rooms.SoloNow());
+        Assert.Equal([new SoloPlayer("t-solo", "Оля", solo)], rooms.SoloNow());
 
         rooms.Focus("c1", "Оля", mines);                                     // перша вкладка перейшла в сапера
         Assert.Equal(["mines-daily", "t-solo"], rooms.SoloNow().Select(p => p.Game));

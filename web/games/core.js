@@ -43,7 +43,8 @@
   const cards = {};             // id кімнати → картка на екрані
   const watched = new Set();    // на що зараз підписані WatchRoom
   const pinned = new Set();     // щойно відкриті соло/приватні кімнати: їх нема в лобі, дивимось за roomId
-  let soloNow = [];             // останній 'solo': хто зараз у своїй соло-грі — [{ game, nick }]
+  const peeking = new Set();    // чужі соло-кімнати, у які підглядаємо (👁): живуть, поки їх сторінка на екрані
+  let soloNow = [];             // останній 'solo': хто зараз у своїй соло-грі — [{ game, nick, room }]
   let focusSent;                // що востаннє сказали FocusRoom: id кімнати або null; undefined — ще нічого
   let away = false;             // вкладка давно схована або людина давно нічого не чіпала
   let wallet = null;            // баланс черепків, null — ще не питали
@@ -1040,6 +1041,45 @@
     return r;
   }
 
+  /// 👁 Підглянути в чужу соло-гру (Games/RoomsPeek.cs): сервер пускає, поки людина справді грає, а в щоденну — коли
+  /// свою вже розгадано (інакше каже чому — тостом). Ходити там не можна: вид глядача, як за звичайним столом.
+  async function peekRoom(id, btn) {
+    if (!me.nick) { askNick(); return null; }
+    const run = async () => {
+      const r = await call('PeekSolo', id);
+      if (!r.ok) return r;
+      peeking.add(id);
+      pinned.add(id);
+      go('#games/room/' + encodeURIComponent(id));
+      syncWatch();
+      setTimeout(() => {
+        if (pinned.has(id) && !views[id]) { pinned.delete(id); peeking.delete(id); syncWatch(); }
+      }, PIN_TTL);
+      return r;
+    };
+    return btn ? busy(btn, 'мить…', run) : run();
+  }
+
+  /// Пішли зі сторінки чужої соло-гри — відписуємось і забуваємо її: з лобі за нею стежити ні до чого.
+  function dropPeeks() {
+    let gone = false;
+    for (const id of [...peeking]) {
+      if (view.kind === 'room' && view.id === id) continue;
+      peeking.delete(id);
+      pinned.delete(id);
+      dropCard(id);
+      delete views[id];
+      gone = true;
+    }
+    if (gone) syncWatch();
+  }
+
+  /// Чия це соло-гра, у яку я підглядаю, і чи людина досі в ній: { nick, on } або null (це не підглядання).
+  function peekOf(rv) {
+    if (!rv || rv.seat != null || !peeking.has(rv.room.id)) return null;
+    return { nick: nickAt(rv.room, 0) || '', on: soloNow.some((p) => p.room === rv.room.id) };
+  }
+
   /// Так/ні окремим вікном. Проміс: true — натиснули дію, false — передумали (Скасувати, Esc, клік повз картку).
   /// `html` уже екранований тим, хто його зібрав; `text` екрануємо самі.
   function ask(o) {
@@ -1138,7 +1178,7 @@
     if (shown) {
       if (view.kind === 'room' && view.id) want.add(view.id);
       for (const id of pinned) want.add(id);
-      for (const id in views) if (views[id].seat != null || views[id].loose) want.add(id);
+      for (const id in views) if (views[id].seat != null || (views[id].loose && !peeking.has(id))) want.add(id);
     } else {
       // Поза «Іграми» стежимо лише за покроковими столами, де сидимо: щоб сказати «🎲 Твій хід» з ефіру чи бібліотеки.
       // Реалтайм сюди не беремо — там 25 кадрів на секунду, а хід і так не чекає.
@@ -1722,6 +1762,7 @@
     // нерозгаданою (записка #52).
     if (view.kind === 'room' && next.kind === 'lobby') dailyAt = 0;
     view = next;
+    dropPeeks();
     if (view.kind !== 'room') setFull(false);
     if (!same) chromeFor = null;          // повернулись у підрозділ — перечитуємо профіль/таблицю
     renderShell();
@@ -1872,6 +1913,15 @@
   const FULL_ICON = (on) => '<svg class="gfico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<path d="' + (on ? 'M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4' : 'M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4') + '"/></svg>';
 
+  /// «👁 N» — скільки дивиться на стіл. У соло — хто підглядає («👁 Оля», RoomsPeek.cs): своя вкладка там завжди одна.
+  function watchersHtml(r) {
+    if (!r) return '';
+    if (r.maxPlayers === 1) {
+      return r.peek && r.peek.length ? '<span class="gwatchers gpeekers" title="Підглядають за грою">👁 ' + esc(r.peek.join(', ')) + '</span>' : '';
+    }
+    return r.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + r.watchers + '</span>' : '';
+  }
+
   function renderRoomHead(id) {
     const head = root.querySelector('.grhead');
     const rv = views[id];
@@ -1887,7 +1937,7 @@
     const canCall = !!(rv && r && rv.seat != null && r.maxPlayers > 1 && r.status !== 'playing' && freeSeat(r) >= 0);
     head.innerHTML = '<button class="ghost grback" title="Назад у лобі — Esc">← Лобі</button>'
       + '<span class="grtitle">' + (r ? iconOf(r.game) + esc(titleOf(r.game)) : 'Стіл') + '</span>'
-      + (r && r.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + r.watchers + '</span>' : '')
+      + watchersHtml(r)
       + (canCall ? '<button class="grcall" type="button" title="Гукнути когось за цей стіл" aria-haspopup="true">📣 Гукнути</button>' : '')
       + '<span class="grsp"></span>' + others
       + '<button class="ghost grfull" title="' + (full ? 'Повернути балачки й підрозділи' : 'На весь екран') + '"'
@@ -2665,13 +2715,18 @@
     const narrowed = !!(want || pl || tag || onlyNew);
 
     // Соло-ігри в каталозі стоять останніми, тож хто в них зараз, видно й тут, нагорі.
-    // Натиск відкриває свою таку саму: побачив, що Оля крутить коло, — сів і собі.
+    // Натиск відкриває свою таку саму: побачив, що Оля крутить коло, — сів і собі. Поруч — «👁 Оля»: підглянути,
+    // як вона грає (Games/RoomsPeek.cs). Себе (і всіх, коли сервер ще не каже кімнату) — просто ніком у грі.
     const soloGames = [...new Set(soloNow.map((p) => p.game))];
     const soloLine = soloGames.length
       ? '<div class="gsolo"><span class="muted small">🏺 Хто тусить у соло:</span>' + soloGames.map((id) => {
         const who = playingIn(id);
-        return '<button class="chip gsolo-g" data-solo="' + esc(id) + '" title="' + esc(whoTitle(who) + ' — ану й ти') + '">'
-          + iconOf(id) + '<b>' + esc(titleOf(id)) + '</b><span class="gw">· ' + esc(whoShort(who, 3)) + '</span></button>';
+        const peeks = soloNow.filter((p) => p.game === id && p.room && !sameNick(p.nick, me.nick));
+        const plain = who.filter((n) => !peeks.some((p) => sameNick(p.nick, n)));
+        return '<span class="gsolo-one"><button class="chip gsolo-g" data-solo="' + esc(id) + '" title="' + esc(whoTitle(who) + ' — ану й ти') + '">'
+          + iconOf(id) + '<b>' + esc(titleOf(id)) + '</b>' + (plain.length ? '<span class="gw">· ' + esc(whoShort(plain, 3)) + '</span>' : '') + '</button>'
+          + peeks.map((p) => '<button class="chip gsolo-peek" data-peek="' + esc(p.room) + '" title="' + esc('Підглянути, як ' + p.nick + ' грає')
+            + '">👁 ' + esc(p.nick) + '</button>').join('') + '</span>';
       }).join('') + '</div>'
       : '';
 
@@ -2935,6 +2990,7 @@
       if (!me.nick) { askNick(); return; }
       busy(e.currentTarget, 'мить…', () => openRoom('OpenSolo', b.dataset.solo, null));
     });
+    box.querySelectorAll('[data-peek]').forEach((b) => b.onclick = (e) => peekRoom(b.dataset.peek, e.currentTarget));
     box.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => go('#games/room/' + encodeURIComponent(b.dataset.open)));
     box.querySelectorAll('[data-sit]').forEach((b) => b.onclick = async (e) => {
       if (await joinRoom(b.dataset.sit, e.currentTarget)) go('#games/room/' + encodeURIComponent(b.dataset.sit));
@@ -3492,6 +3548,15 @@
     ctx.tell = (action, payload) => tell('Act', room.id, action, payload === undefined ? null : payload);
     ctx.online = linked;
     ctx.input = (action, payload) => send('Input', room.id, action, payload === undefined ? null : payload);
+    // 👁 Чужа соло-гра: ходу сервер однаково не прийме, а модуль, що шле щось сам (таймер, «я тут»), сипав би тостами
+    // «Ти тут не граєш». Тож мовчки нічого. ctx.peek — чия це гра (null — не підглядання).
+    const peek = peekOf(rv);
+    ctx.peek = peek ? peek.nick : null;
+    if (peek) {
+      ctx.act = () => Promise.resolve({ ok: false, message: '' });
+      ctx.tell = () => Promise.resolve(null);
+      ctx.input = () => {};
+    }
     // Повний вид (Game.Snapshot) ще раз, лише мені — коли в легкому виді розсилки бракує того, чого модуль не має
     // (прохід №3, п. 247). Не частіше ніж раз на 1,5 с: вид сам прийде подією 'room'.
     ctx.resync = () => {
@@ -3538,7 +3603,7 @@
       + modeChips(room)
       + (room.stake ? '<span class="gmode stake">🏺' + room.stake + '</span>' : '')
       + chips.join('')
-      + (room.watchers ? '<span class="gwatchers" title="Скільки дивиться">👁 ' + room.watchers + '</span>' : '')
+      + watchersHtml(room)
       // Рахунок вечора — між партіями (лобі столу й підсумок); посеред гри шапку не ширимо.
       + (room.status !== 'playing' && eveningText(room) ? '<span class="gevening" title="' + esc(eveningTitle(room)) + '">'
         + esc(eveningText(room)) + '</span>' : '');
@@ -3668,6 +3733,12 @@
     if (rv.seat != null) { if (!ownLeave(rv)) out.push('<button class="ghost" data-do="LeaveRoom">' + (solo ? 'Закрити' : 'Встати') + '</button>'); }
     // сісти нема куди (або сидиш за іншим столом) — хоч скажемо, чому кнопок нема
     else if (!solo && !canSit && !back) out.push('<span class="muted small">Дивлюсь збоку</span>');
+    // 👁 чужа соло-гра: чия вона й чи людина ще в ній (подія 'solo')
+    else if (peekOf(rv)) {
+      const p = peekOf(rv);
+      out.push(p.on ? '<span class="muted small gpeek">👁 Підглядаєш, як грає <b>' + esc(p.nick) + '</b> — ходити тут не можна</span>'
+        : '<span class="muted small gpeek">🚪 <b>' + esc(p.nick) + '</b> уже не грає</span><button class="ghost" data-go="#games">← До лобі</button>');
+    }
     return out.join('');
   }
 
@@ -3708,7 +3779,8 @@
 
     const sig = JSON.stringify([rv.room.status, rv.room.seats, rv.room.seatNames, rv.room.watchers, rv.room.stake,
       rv.room.options, rv.room.result, rv.room.evening, rv.room.ready, rv.seat, turnOf(rv), rv.room.host, me.nick, !!card.mod,
-      botOffered(rv), !!(rv.view && rv.view.botWanted), ownLeave(rv), rejoinLabel(rv), window.HTournament && HTournament.barSig ? HTournament.barSig(id) : '']);
+      botOffered(rv), !!(rv.view && rv.view.botWanted), ownLeave(rv), rejoinLabel(rv), window.HTournament && HTournament.barSig ? HTournament.barSig(id) : '',
+      rv.room.peek, peekOf(rv)]);
     const roomChanged = sig !== card.sig;
     if (roomChanged) {
       card.sig = sig;
@@ -3735,6 +3807,7 @@
       card.btns.querySelectorAll('[data-ready]').forEach((b) => b.onclick = (e) =>
         busy(e.currentTarget, '…', () => call('ReadyRoom', id, b.dataset.ready === '1')));
       card.btns.querySelectorAll('[data-set]').forEach((b) => b.onclick = () => openSettings(id));
+      card.btns.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => go(b.dataset.go));
       card.btns.querySelectorAll('[data-bot]').forEach((b) => b.onclick = (e) => busy(e.currentTarget, '…', () => {
         const v = views[id] && views[id].view;
         return call('Act', id, 'bot', { on: !(v && v.botWanted) });
@@ -4235,6 +4308,7 @@
       c.on('solo', (list) => {
         soloNow = Array.isArray(list) ? list : [];
         if (shown && view.kind === 'lobby') renderView();
+        else if (view.kind === 'room' && peeking.has(view.id)) refreshCard(view.id);   // «🚪 Оля вже не грає»
       });
       c.on('rooms', (list) => {
         rooms = list || [];
@@ -4282,6 +4356,8 @@
           // приватна соло-кімната в 'rooms' не приходить — тягнемо її за собою по панелях
           loose: old ? old.loose : !rooms.some((r) => r.id === id),
         };
+        // Чужа соло-гра без мого місця — це підглядання (👁), і після F5 теж, коли peeking уже порожній.
+        if (views[id].seat == null && views[id].loose && rv.room.maxPlayers === 1) peeking.add(id);
         pinned.delete(id);
         if (view.kind === 'room' && view.id === id && !cards[id]) renderView();
         else if (cards[id]) {
@@ -4289,7 +4365,8 @@
           // Шапку столу малювали ще до першого виду (соло, вхід за посиланням) — там лишалось «Стіл» замість назви гри,
           // а на ≤480 назва тепер лише в шапці. Перемальовуємо на першому виді й коли міняється те, що вона показує.
           if (view.kind === 'room' && view.id === id
-            && (!old || old.room.status !== rv.room.status || old.room.watchers !== rv.room.watchers)) renderRoomHead(id);
+            && (!old || old.room.status !== rv.room.status || old.room.watchers !== rv.room.watchers
+              || String(old.room.peek || '') !== String(rv.room.peek || ''))) renderRoomHead(id);
         }
         else if (view.kind === 'lobby') renderView();      // «твій хід» на резюме в лобі
         syncWatch();
@@ -4389,6 +4466,9 @@
     titleOf,
     roomOf,
     soloOf,
+    /// Кімната, куди можна підглянути, як нік зараз грає соло (👁), або null.
+    peekOf: (nick) => { const p = soloNow.find((x) => x.room && sameNick(x.nick, nick)); return p && !sameNick(nick, me.nick) ? p.room : null; },
+    peek: (id) => peekRoom(id, null),
     myWaitingRoom,
 
     /// Активний стіл — той, що зараз на екрані (шар джойстика питає, чи не забрала гра напрямки собі).

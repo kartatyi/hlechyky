@@ -227,7 +227,7 @@ public sealed partial class Rooms
             if (!room.Info.Solo || room.OnScreen.IsEmpty) continue;
             string? nick;
             lock (room.Sync) nick = room.Seats[0];
-            if (nick is not null) list.Add(new SoloPlayer(room.Info.Id, nick));
+            if (nick is not null) list.Add(new SoloPlayer(room.Info.Id, nick, room.Id));
         }
         // Дві кімнати однієї гри в одного ніка теж бувають: щоденна вчорашня й сьогоднішня в двох вкладках.
         return [.. list
@@ -958,15 +958,20 @@ public sealed partial class Rooms
 
     // ---------- глядачі ----------
 
-    /// <summary>Підписати з'єднання на кімнату. У приватну пускаємо лише господаря.</summary>
+    /// <summary>
+    /// Підписати з'єднання на кімнату. У приватну пускаємо господаря, а в чужу соло-гру — підглядача, поки людина в ній
+    /// грає (<see cref="PeekRefusal(Room, string)"/>, RoomsPeek.cs).
+    /// </summary>
     public Outbox Watch(string id, string connId, string nick)
     {
         var outbox = new Outbox();
         if (Find(id) is not { } room) return outbox;
-        if (room.Info.Private && !string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase)) return outbox;
+        var peek = room.Info.Private && !string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase);
+        if (peek && PeekRefusal(room, nick) is not null) return outbox;
         // Повторний Watch тим самим з'єднанням — то вже підписаний: інакше клієнт у циклі множив би
         // розсилку на всіх глядачів кімнати в обхід квот хаба.
         if (!room.Watchers.TryAdd(connId, 0)) return outbox;
+        if (peek) room.Peeks[connId] = nick;
         outbox.Add(new RoomViews(room.Id));
         return outbox;
     }
@@ -1151,18 +1156,21 @@ public sealed partial class Rooms
     public Outbox Unwatch(string id, string connId)
     {
         var outbox = new Outbox();
-        if (Find(id) is { } room && room.Watchers.TryRemove(connId, out _)) NoWatchers(room);
+        if (Find(id) is { } room && room.Watchers.TryRemove(connId, out _)) Unsubscribed(room, connId, outbox);
         return outbox;
     }
 
-    /// <summary>Останній глядач пішов — сказати грі (<see cref="Game.Unwatched"/>). Кривий гачок гри хабу не заважає.</summary>
+    /// <summary>
+    /// Останній глядач пішов — сказати грі (<see cref="Game.Unwatched"/>). Підглядачі в чужу соло-гру тут не глядачі:
+    /// дивитись мусить сам гравець. Кривий гачок гри хабу не заважає.
+    /// </summary>
     void NoWatchers(Room room)
     {
-        if (!room.Watchers.IsEmpty) return;
+        if (!OwnerGone(room)) return;
         try
         {
             lock (room.Sync)
-                if (room.Watchers.IsEmpty) room.Game.Unwatched();
+                if (OwnerGone(room)) room.Game.Unwatched();
         }
         catch (Exception ex)
         {
@@ -1180,7 +1188,7 @@ public sealed partial class Rooms
         var left = false;
         foreach (var room in Live())
         {
-            if (room.Watchers.TryRemove(connId, out _)) NoWatchers(room);
+            if (room.Watchers.TryRemove(connId, out _)) Unsubscribed(room, connId, outbox);
             left |= room.OnScreen.TryRemove(connId, out _);
         }
         if (left) outbox.Add(new SoloChanged());
@@ -1451,7 +1459,7 @@ public sealed partial class Rooms
                     // самотній стіл у лобі — засиджений, навіть якщо гра дозволяє почати самому («Скільки?»)
                     || (room.Status == RoomStatus.Lobby && room.Occupied < Math.Max(2, room.Info.MinPlayers) && now - room.LastActivity > LobbyLife)
                     || (room.Status == RoomStatus.Finished && room.FinishedAt is { } at && now - at > FinishedLife)
-                    || (room.Info.Solo && room.Watchers.IsEmpty && now - room.LastActivity > SoloLife));
+                    || (room.Info.Solo && OwnerGone(room) && now - room.LastActivity > SoloLife));
                 // Партію на черепки покинули всі й не повернулись: перш ніж прибрати стіл, розрахувати банк столу
                 // (Finish → SettleBank) — інакше черепки, що лежать за столом, зникли б разом із ним.
                 if (drop && room.Status == RoomStatus.Playing && room.Bank.Held > 0)

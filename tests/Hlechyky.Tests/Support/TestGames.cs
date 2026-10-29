@@ -134,6 +134,11 @@ public sealed class TestSolo : Game
 
     public override object View(int? seat) => new { turn = (int?)null, value = _value };
 
+    /// <summary>Скільки разів каркас сказав «ніхто не дивиться» (Game.Unwatched) — для тестів підглядання.</summary>
+    public int UnwatchedCount { get; private set; }
+
+    public override void Unwatched() => UnwatchedCount++;
+
     public override string? Save() => JsonSerializer.Serialize(new { value = _value });
 
     public override void Load(string json) => _value = JsonDocument.Parse(json).RootElement.GetProperty("value").GetInt64();

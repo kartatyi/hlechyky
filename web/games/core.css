@@ -448,6 +448,13 @@
 @media (hover: hover) { .gsolo-g:hover { background: var(--panel3); } }  /* на дотику :hover «прилипав» після тапу */
 .gsolo-g .gico { width: 14px; height: 14px; }
 .gsolo-g .gw { color: var(--ok); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* «👁 Оля» поруч із грою — підглянути (RoomsPeek.cs): пунктир, щоб не сплутати з «грати самому» */
+.gsolo-one { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; max-width: 100%; min-width: 0; }
+.gsolo-peek { cursor: pointer; padding: 4px 9px; font-size: .82em; color: var(--text); border: 1px dashed var(--glive); }
+@media (hover: hover) { .gsolo-peek:hover { background: var(--panel3); } }
+/* гравцеві — хто підглядає; підглядачеві — чия це гра */
+.gwatchers.gpeekers { color: var(--accent); }
+.gpeek b { color: var(--text); }
 @media (prefers-reduced-motion: no-preference) {
   .gdot { animation: gdot 1.8s ease-out infinite; }
 }

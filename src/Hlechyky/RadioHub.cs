@@ -494,9 +494,26 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
     public async Task WatchRoom(string roomId)
     {
         if (!Allow(input: true)) return;   // підписка теж коштує розсилки, тож і вона під квотою
+        await Subscribe(roomId ?? "");
+    }
+
+    /// <summary>
+    /// «👁 Підглянути» в чужу соло-гру (Games/RoomsPeek.cs): чому ні — тостом тому, хто тиснув; так — підписка, як у
+    /// WatchRoom. Окремий метод, бо WatchRoom мовчить, а тут людина має знати, чому не пустило (щоденну ще не розгадала).
+    /// </summary>
+    public async Task<RoomReply> PeekSolo(string roomId)
+    {
+        if (!Allow(input: false)) return RoomReply.Fail(Games.Say.TooFast);
         var id = roomId ?? "";
+        if (rooms.PeekRefusal(id, Nick()) is { } no) return RoomReply.Fail(no);
+        await Subscribe(id);
+        return new RoomReply(true, "", id);
+    }
+
+    async Task Subscribe(string id)
+    {
         var outbox = rooms.Watch(id, Context.ConnectionId, Nick());
-        if (outbox.Count == 0) return;   // кімнати нема або вона чужа приватна — мовчки нічого
+        if (outbox.Count == 0) return;   // кімнати нема, вона чужа приватна чи вже підписані — мовчки нічого
         await Groups.AddToGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(id));
         // Розмову столу знімаємо вже з групою: так між знімком і підпискою не загубиться жоден рядок.
         if (rooms.TalkHistory(id, Context.ConnectionId) is { } history) outbox.Add(history);
@@ -518,8 +535,9 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
     public async Task UnwatchRoom(string roomId)
     {
         if (!Allow(input: true)) return;
-        rooms.Unwatch(roomId ?? "", Context.ConnectionId);
+        var outbox = rooms.Unwatch(roomId ?? "", Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, Broadcaster.RoomGroup(roomId ?? ""));
+        await broadcaster.FlushAsync(outbox);   // підглядач пішов — у шапці гравця його вже нема
     }
 
     /// <summary>

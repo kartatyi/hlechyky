@@ -205,7 +205,8 @@
     const g = G();
     const room = g && g.roomOf ? g.roomOf(nick) : null;
     const solo = g && g.soloOf ? g.soloOf(nick) : null;
-    return { online, listening, room, solo };
+    const peek = g && g.peekOf ? g.peekOf(nick) : null;   // кімната соло-гри, куди можна підглянути (👁)
+    return { online, listening, room, solo, peek };
   }
   function whereHtml(nick) {
     const w = whereIs(nick);
@@ -231,6 +232,7 @@
     const mine = myWaitingRoom();
     if (mine && w.online && !(w.room && w.room.id === mine.id)) out.push('<button type="button" data-pa="invite" title="Гукнути за мій стіл">📣 Гукнути</button>');
     if (w.room && w.room.canSit) out.push('<button type="button" data-pa="sit" title="Сісти за той самий стіл">🎲 Підсісти</button>');
+    if (w.peek) out.push('<button type="button" data-pa="peek" title="Подивитись збоку, як грає в ' + esc(titleOf(w.solo)) + '">👁 Підглянути</button>');
     if (me.account && !isGuestNick(nick)) {
       out.push('<button type="button" data-pa="gift" title="Подарувати щось із Лавки Дядька Глека — лишиться назавжди">🎁 Подарувати</button>');
       // 😈 прокльон (docs/games/specs/flair.md §1.5): на трьох програшах людини звучить твій звук; від кого — секрет
@@ -254,6 +256,9 @@
       } else if (a === 'sit') {
         const w = whereIs(nick);
         if (w.room && g) await g.sitAt(w.room.id, e.currentTarget);
+      } else if (a === 'peek') {
+        const w = whereIs(nick);
+        if (w.peek && g) await o.busy(e.currentTarget, 'мить…', () => g.peek(w.peek));
       }
       if (after) after(a);
     });
