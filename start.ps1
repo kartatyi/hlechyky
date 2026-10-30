@@ -17,7 +17,7 @@
   logs      — хвіст логу сервера
   autostart — завдання «Hlechyky» у Планувальнику: при вході у Windows і щохвилини запускає watchdog
   watchdog  — одна перевірка: піднімає те, що впало (сервер, Caddy, liquidsoap), завислий сервер
-              перезапускає. Пише в logs\watchdog.log лише тоді, коли щось робить
+              перезапускає, як і сервер, у якого оновлення .NET стерло рантайм (у паузі між партіями). Пише в logs\watchdog.log лише тоді, коли щось робить
 
   liquidsoap живе в tools\liquidsoap (звичайна Windows-збірка, качає setup.ps1) і сам віддає потік на 127.0.0.1:8001/radio.mp3 —
   ні Docker, ні Icecast більше не потрібні. Без tools\caddy\caddy.exe крок Caddy пропускається. Дивись CONTRIBUTING.md.
@@ -361,7 +361,7 @@ function Write-Watch([string]$Message) {
 }
 
 function Read-WatchState {
-    $d = [ordered]@{ lastRun = 0; httpFails = 0; mountMisses = 0; clockMisses = 0; liqClock = 0; liqClockAt = 0; liqRestartAt = 0; liqStarts = @(); serverStarts = @() }
+    $d = [ordered]@{ lastRun = 0; httpFails = 0; mountMisses = 0; clockMisses = 0; liqClock = 0; liqClockAt = 0; liqRestartAt = 0; liqStarts = @(); serverStarts = @(); runtimeGoneAt = 0 }
     $s = $null
     try { if (Test-Path $WatchState) { $s = Get-Content $WatchState -Raw | ConvertFrom-Json } } catch { }
     if ($s) { foreach ($k in @($d.Keys)) { if ($null -ne $s.$k) { $d[$k] = $s.$k } } }
@@ -459,6 +459,46 @@ function Watch-Radio($st, [long]$now) {
     if ($st.liqStarts.Count -ge 5) { Write-Watch "  liquidsoap запускався $($st.liqStarts.Count) разів за пів години — далі пробую раз на 10 хв, дивись logs\liquidsoap.prev.log" }
 }
 
+# Хто зараз грає так, що перезапуск це перервав би (як у deploy.ps1). $null — сервер не сказав (лежить чи ще старий).
+function Get-Busy {
+    if (-not (Test-Path $ControlKey)) { return $null }
+    try {
+        $key = (Get-Content $ControlKey -Raw).Trim()
+        $r = Invoke-RestMethod -Uri "http://127.0.0.1:$(Get-ListenPort)/api/internal/busy" -Headers @{ 'X-Control-Key' = $key } -TimeoutSec 5
+        return ,@($r.busy)   # кома: інакше порожній список PowerShell розгорне в $null — «сервер не сказав»
+    } catch { return $null }
+}
+
+# Тека рантайму .NET, з якої сервер стартував, а її вже нема; $null — усе на місці (чи процес не дав глянути).
+function Get-GoneRuntime($p) {
+    try {
+        $dirs = @($p.Modules | ForEach-Object { $_.FileName } | Where-Object { $_ -like '*\dotnet\shared\*' } | ForEach-Object { Split-Path $_ -Parent } | Select-Object -Unique)
+        return $dirs | Where-Object { -not (Test-Path -LiteralPath $_) } | Select-Object -First 1
+    }
+    catch { return $null }
+}
+
+# Оновлення .NET ставить новий патч і стирає теку старого з-під живого сервера: завантажене працює далі, а все, що він
+# довантажить уперше, падає з FileNotFoundException. 29.10.2026 так зламався вхід через Google (500): бібліотека Google
+# уперше попросила System.Runtime.Serialization.Formatters з теки 10.0.13, якої вже не було. Лікує лише перезапуск —
+# робимо його в паузі між партіями, як деплой.
+function Watch-Runtime($p, $st, [long]$now) {
+    $gone = Get-GoneRuntime $p
+    if (-not $gone) { $st.runtimeGoneAt = 0; return }
+    if (-not $st.runtimeGoneAt) {
+        $st.runtimeGoneAt = $now
+        Write-Watch "сервер (pid $($p.Id)) працює на рантаймі, якого вже нема ($gone — оновили .NET) — перезапущу в паузі між партіями"
+    }
+    $busy = Get-Busy
+    if ($busy -and $busy.Count) { return }   # $null — сервер не каже, хто грає: перезапускаємо, як і деплой
+    Write-Watch "  пауза — перезапускаю сервер на свіжий рантайм (чекав $([int](($now - [long]$st.runtimeGoneAt) / 60)) хв)"
+    Invoke-Freeze | Out-Null
+    Stop-Server | Out-Null
+    Start-Server | Out-Null
+    $st.runtimeGoneAt = 0
+    $st.serverStarts = @(@($st.serverStarts) | Where-Object { $now - [long]$_ -lt 1800 }) + $now
+}
+
 function Watch-Server($st, [long]$now) {
     $p = Get-Server
     if (-not $p) {
@@ -467,8 +507,9 @@ function Watch-Server($st, [long]$now) {
     }
     if ($p) {
         Set-Priority $p
-        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 'http://127.0.0.1:8080/api/me' | Out-Null; $st.httpFails = 0; return }
+        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 'http://127.0.0.1:8080/api/me' | Out-Null; $st.httpFails = 0 }
         catch { $st.httpFails++ }
+        if ($st.httpFails -eq 0) { Watch-Runtime $p $st $now; return }
         if ($st.httpFails -lt 3) { return }
     }
 
