@@ -11,16 +11,9 @@
   --bm-sq: #5d4a3a;   /* стіни стискання — темніші за стовпи, щоб було видно, що вони нові */
 }
 
-.bboard { max-width: 420px; }
-/* Просторе поле 19×15 (прохід №3): ширше за класичне, інакше клітинки дрібнішають */
-.bboard.bm-big { max-width: 480px; }
-/* Ноутбук, Дека (1280×800) і Full HD: поле 15×13 на 420 px губилось посеред порожньої картки — даємо йому
-   рости, але так, щоб повний стіл (шість чіпів у два ряди, рядок гравців, статус і кнопки) влазив по висоті.
-   Прохід 28.09: раніше правило діяло лише від 1500×860, і на MacBook 1512×862 сторінка вже прокручувалась. */
-@media (min-width: 1000px) and (min-height: 700px) {
-  .bboard { max-width: min(600px, calc((100vh - 410px) * 15 / 13)); }
-  .bboard.bm-big { max-width: min(680px, calc((100vh - 410px) * 19 / 15)); }
-}
+/* Розмір поля рахує каркас (core.css: --g-fh × --gar, ширина картки, у ⛶ — увесь екран): рядок рахунку, стрічка й
+   хрестовина вже відняті з --g-fh, тож поле росте, скільки є місця, і кнопки не йдуть під меню. Раніше тут були стелі
+   420/600 px і формули від 100vh — на 1920 і в ⛶ поле лишалось 600×520 посеред порожньої картки. */
 
 /* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
 .gseat.bb { color: var(--bblue); }
@@ -89,13 +82,6 @@
   .bbomb { width: 72px; height: 72px; font-size: 1.6em; }
   .bpad { gap: 14px; }
 }
-/* Телефон стоячи: поле не вище, ніж лишає місця під рядок гравців, стрічку й хрестовину (≈260 px), —
-   інакше на 360×740 хрестовина лягала під нижнє меню. --gfit-h ставить каркас; без нього — екран мінус шапка й меню. */
-@media (pointer: coarse) and (max-width: 900px) {
-  .bboard { max-width: min(420px, max(240px, calc((var(--gfit-h, calc(100dvh - 124px)) - 262px) * 15 / 13))); }
-  .bboard.bm-big { max-width: min(480px, max(240px, calc((var(--gfit-h, calc(100dvh - 124px)) - 262px) * 19 / 15))); }
-}
-
 /* Вузький телефон і повний стіл: шість чіпів з апгрейдами ставали стовпчиком і штовхали поле за екран.
    Тут у чужих чіпах лишаємо номер, нік і рахунок, апгрейди — лише свої */
 @media (max-width: 480px) {
@@ -164,3 +150,7 @@ body.g-land .gtable:has(> .gbody > canvas.bboard.gcanvas) > .gbody > .bm-sum { g
 body.g-land .gtable:has(> .gbody > canvas.bboard.gcanvas) > .gseats { display: none; }
 body.g-land .gtable:has(> .gbody > canvas.bboard.gcanvas) > .gbody > .bm-feed { font-size: .72em; }
 body.g-land .gtable:has(> .gbody > canvas.bboard.gcanvas) > .gbody > .bm-sum { font-size: .78em; padding: 6px 8px; }
+
+/* Дрібнота (31.10): номер місця в чіпі не дрібніший за 11 px, «⚡ наперед» — під палець. */
+.bchip i { font-size: max(.82em, 11px); }
+@media (pointer: coarse) { .bchip.bmode { min-height: 32px; } }

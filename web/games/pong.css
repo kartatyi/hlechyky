@@ -12,11 +12,9 @@
 
 /* Канвас уже має max-width із core.css; тут лише пропорція й поведінка пальця. */
 .pongboard { aspect-ratio: 16 / 10; }
-/* Арена квадратна: на ноутбуці 560 px заввишки вже не влазить разом із шапкою картки. Над полем ≈175 px
-   (шапки сайту й столу), під ним ≈185 (легенда, звук, статус, «Встати»): з −290 на MacBook 1512×862 сторінку
-   доводилось гортати на 55 px, на 1280×800 — на 67. Смужка підказок пада (Steam Deck) забирає ще 50. */
-.pongboard.arena { aspect-ratio: 1; max-width: min(560px, calc(100vh - 360px)); min-width: min(280px, 100%); }
-body.pad-on .pongboard.arena { max-width: min(560px, calc(100vh - 410px)); }
+/* Арена квадратна. Розмір обох полів рахує каркас (core.css: --g-fh × --gar у ширині картки; легенда, звук,
+   кнопки й смужка пада вже відняті з --g-fh). Стелю 560 px і формули від 100vh прибрано (31.10). */
+.pongboard.arena { aspect-ratio: 1; }
 /* Гравцеві рух пальцем по полю — це ракетка, а не скрол сторінки; глядачеві скрол лишаємо. */
 .pongboard.play { touch-action: none; cursor: ns-resize; }
 .pongboard.arena.play { cursor: ew-resize; }
@@ -51,7 +49,6 @@ body.pad-on .pongboard.arena { max-width: min(560px, calc(100vh - 410px)); }
 
 @media (max-width: 480px) {
   .pongpad { grid-template-columns: repeat(2, 1fr); width: 100%; }
-  .pongboard.arena { max-width: 100%; }
 }
 .ponglegend .sh { font-style: normal; }
 
@@ -66,10 +63,8 @@ body.pad-on .pongboard.arena { max-width: min(560px, calc(100vh - 410px)); }
   .pongpad button { -webkit-user-select: none; -webkit-touch-callout: none; }
   .pongboard { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 }
-/* Телефон лежачи: поле за висотою видимої смуги (класиці стелі не було — низ і кнопки йшли під меню). */
+/* Телефон лежачи: поле ліворуч за висотою картки (каркас), кнопки ракетки — праворуч під великим пальцем. */
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
-  .pongboard:not(.arena) { max-width: min(100%, calc((var(--gfit-h, calc(100vh - 114px)) - 8px) * 1.6)); }
-  .pongboard.arena { max-width: min(100%, calc(var(--gfit-h, calc(100vh - 114px)) - 8px)); min-width: 0; }
   /* g-land (каркас: поле ліворуч, решта праворуч): ↑ над ↓ стовпчиком під правим великим пальцем */
   body.g-land .gbody > .pongpad[data-mode="duo"] { grid-template-columns: 96px; grid-template-rows: 84px 84px; width: auto; }
   body.g-land .gbody > .pongpad[data-mode="arena"] { grid-template-columns: repeat(2, 72px); width: auto; }

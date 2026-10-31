@@ -13,12 +13,8 @@
   --tbot: #b0524a;      /* ворожі 🤖 хвиль */
 }
 
-.tboard { max-width: 620px; }
-/* Ноутбук, Дека й Full HD: мапа росте, поки повний стіл (чіпи місць, рядок гравців, статус, кнопки) влазить по
-   висоті. Прохід 28.09: на MacBook 1512×862 стара межа (−330 px) пускала сторінку в прокрутку. */
-@media (min-width: 1000px) and (min-height: 700px) {
-  .tboard { max-width: min(860px, calc((100vh - 415px) * 1.4)); }   /* 415: ще рядок стрічки подій під полем */
-}
+/* Розмір мапи рахує каркас (core.css: --g-fh × --gar у ширині картки; у ⛶ — увесь екран): рядок гравців,
+   стрічка подій і хрестовина вже відняті з --g-fh. Стелі 620/860 px і формули від 100vh прибрано (31.10). */
 /* п'яте й шосте місця: чіпи місць у каркасі знають лише x/o/c/d */
 .gseat.tb { color: var(--tblue); }
 .gseat.tp { color: var(--tpink); }
@@ -137,3 +133,6 @@ body.g-land .gbody > .tpad > .tdirs {
 body.g-land .gbody > .tpad > .tfire { grid-column: 3; width: 80px; height: 80px; margin: 6px 0; }
 body.g-land .gbody > .thud { flex-direction: column; align-items: stretch; }
 body.g-land .gbody > .thud .tchip { justify-content: space-between; }
+
+/* Дрібнота (31.10): номер місця в чіпі не дрібніший за 11 px. */
+.tchip i { font-size: max(.82em, 11px); }
