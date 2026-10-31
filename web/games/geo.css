@@ -32,7 +32,16 @@
 .geo-s9 { --geo-c: var(--geo-p9); }
 .gseat[class*="geo-s"] { color: var(--geo-c); }
 
-.geowrap { width: 100%; container-type: inline-size; display: flex; flex-direction: column; gap: 10px; }
+.geowrap { width: 100%; container-type: inline-size; display: flex; flex-direction: column; gap: 10px;
+  /* Висота під фото й мапу — від місця картки, яке рахує каркас (--g-fh: без шапки сайту, рядка столу, вкладок, банера),
+     мінус рядок раунду й рядок «Готово». Без каркаса (віконце в куточку до столу) — як було, від вікна. */
+  --geo-room: max(200px, calc(var(--g-fh, calc(100dvh - 220px)) - 110px)); }
+/* Одна колонка (планшет стоячи, телефон): фото НАД мапою — кожному половина висоти, інакше мапа йшла нижче екрана
+   на 250–370 px. На телефоні стоячи ширину не стискаємо дрібніше за нижню межу каркаса (--g-fminw). */
+@container (max-width: 719px) {
+  .geomain { --geo-room: max(150px, calc((var(--g-fh, calc(200dvh - 260px)) - 130px) / 2)); }
+  .geoframe, .geomain .geomap { min-width: min(100%, var(--g-fminw, 0px)); }
+}
 
 /* ---------- шапка: раунд, дуга, чіпи ---------- */
 .geotop { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; min-height: 40px; }
@@ -121,6 +130,7 @@
 .geozoom button:hover { border-color: var(--accent2); }
 .geozoomb { display: none; flex: none; }
 @media (pointer: coarse) {
+  .geosnd { min-width: 44px; min-height: 44px; }
   .geozoomm { display: none; }
   .geozoomb:not([hidden]) { display: flex; }
   .geozoom button, .geofullbtn { width: 44px; height: 44px; }
@@ -234,7 +244,7 @@
   .geoarea { order: 2; min-height: 50px; min-width: 50px; padding: 0 10px; }
   .geoarea span { display: none; }
 }
-.geoattr { position: absolute; left: 6px; bottom: 3px; font-size: 9.5px; line-height: 1.2; color: var(--muted); opacity: .75; text-decoration: none; pointer-events: auto; }
+.geoattr { position: absolute; left: 6px; bottom: 3px; font-size: 11px; line-height: 1.2; color: var(--muted); opacity: .75; text-decoration: none; pointer-events: auto; }
 .geoattr[hidden] { display: none; }
 
 /* «📸 Мої фото» (п. 52): кнопка в шапці й панель поверх гри (на телефоні — на весь екран) */
@@ -279,6 +289,18 @@
 @media (orientation: landscape) and (max-height: 500px) {
   :root { --geo-room: max(180px, calc(100dvh - 180px)); }
 }
+/* Телефон лежачи (каркас: g-land): «Готово», масштаб і підказка — колонкою праворуч від мапи, а не рядком під нею;
+   фото й мапа — на висоту картки мінус місця, рядок раунду й «Встати». Раніше картка горталась на ~90–120 px,
+   і «Готово» лежало за низом екрана. */
+body.g-land .geowrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 170px); gap: 6px 10px; align-items: center;
+  --geo-room: max(140px, calc(var(--gland-h, 330px) - 150px)); }
+body.g-land .geowrap > * { grid-column: 1 / -1; }
+body.g-land .geowrap > .geotop { min-height: 0; }
+body.g-land .geowrap > .geomain { grid-column: 1; }
+body.g-land .geowrap > .geobar { grid-column: 2; flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+body.g-land .geobar .geozoomb { justify-content: space-between; }
+body.g-land .geobar .geogo { order: 0; flex: none; min-width: 0; }
+body.g-land .geobar .geohint { order: 0; flex: none; }
 
 /* 🤝 Виклик (пакет 4): кинути, список, порівняння по раундах */
 .geoch { margin: 8px 0; }
