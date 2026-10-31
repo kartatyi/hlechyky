@@ -723,7 +723,8 @@
     // Спершу вкладки того розділу, де ми стоїмо, і лише потім балачки: інакше розгорнута
     // панель балачок забирала б LT/RT собі з будь-якого місця сайту.
     const cls = document.body.classList;
-    const rows = cls.contains('route-games') ? ['.gfilters', '#chatTabs']
+    // Лобі ігор «Світлиці»: ряд розділів каталогу — .gl-tabs (кнопки з .on); на столі його нема — тоді балачки.
+    const rows = cls.contains('route-games') ? ['.globby .gl-tabs', '#chatTabs']
       : cls.contains('route-lib') ? ['#libTabs', '#chatTabs']
         : cls.contains('route-stats') ? ['#statsTabs', '.stper', '#chatTabs']
           : cls.contains('route-lavka') ? ['.lv-tabs', '#chatTabs'] : ['#chatTabs'];

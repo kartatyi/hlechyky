@@ -47,16 +47,9 @@
 }
 .gpanel { scroll-margin-top: 72px; }   /* «Глянути» з «Що нового на сайті» гортає до каталогу — не під шапку */
 .gpanel h3 { margin: 0; font-family: var(--display); font-size: 1.05em; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-.gfilters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .gchip { cursor: pointer; border: 1px solid transparent; padding: 4px 11px; font-size: .88em; }
 @media (hover: hover) { .gchip:hover { background: var(--panel3); color: var(--text); } }  /* на дотику :hover «прилипав» після тапу */
 .gchip.on { background: var(--panel3); color: var(--text); border-color: var(--line); }
-/* два класи, бо input[type=search] у style.css тягне width: 100% і виграє в одинарного класу */
-.gfilters .gfind {
-  margin-left: auto; width: 180px; font: inherit; font-size: .9em; color: var(--text);
-  background: var(--bg2); border: 1px solid var(--line); border-radius: 9px; padding: 5px 10px; outline: none;
-}
-.gfilters .gfind:focus { border-color: var(--accent2); }
 
 /* ---- резюме столу в лобі: окремий елемент, а не копія картки ---- */
 .gsums { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; align-items: start; }
@@ -657,7 +650,6 @@
   .gdaily { grid-template-columns: 1fr; }
   .gsums { grid-template-columns: 1fr; }
   .gbar { gap: 6px; }
-  .gfilters .gfind { margin-left: 0; width: 100%; }
   /* Чипи «👥», швидкий запуск — один рядок із прокруткою вбік, як теми; плитка-рядок без тегів (шукаються й так). */
   .gtag-sug { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin-right: -4px; padding-right: 4px; }
   .gtag-sug::-webkit-scrollbar { display: none; }
