@@ -891,7 +891,7 @@
     // місце змінилось — усім видимим; ні — лише тим, хто пропустив зміну схованим і тепер знову на екрані
     for (const host of changed ? fitHosts : fitStale) {
       if (!host.isConnected) { fitHosts.delete(host); fitStale.delete(host); continue; }
-      if (fitHidden(host)) { fitStale.add(host); continue; }
+      if (fitHidden(host) || inDock(host)) { fitStale.add(host); continue; }   // у куточку — місце зі столу
       fitStale.delete(host);
       try { if (host._hgFit) host._hgFit(f); } catch (e) { console.error(e); }
     }
@@ -927,7 +927,7 @@
     if (!fitBooted) refit();
     if (!had || fitStale.has(host)) requestAnimationFrame(() => {
       if (!host.isConnected || !host._hgFit) return;
-      if (fitHidden(host)) { fitStale.add(host); return; }
+      if (fitHidden(host) || inDock(host)) { fitStale.add(host); return; }
       fitStale.delete(host);
       host._hgFit(fit());
     });
@@ -1175,6 +1175,9 @@
   /// за останніми треба стежити й з лобі («твій хід» на резюме), решта — десятки повідомлень на секунду дарма.
   function syncWatch() {
     const want = new Set();
+    // Стіл у куточку, що показує гру, — і реалтайм теж: віконце для того й є, щоб бачити, що там діється.
+    const dk = dockRoom();
+    if (dk && dockLive(dk)) want.add(dk);
     if (shown) {
       if (view.kind === 'room' && view.id) want.add(view.id);
       for (const id of pinned) want.add(id);
@@ -1534,7 +1537,8 @@
 
   const isModuleFile = (f) => catalog.games.some((g) => moduleOf(g) === f);
   const fileOfRoom = (id) => { const g = views[id] && byId[views[id].room.game]; return g ? moduleOf(g) : null; };
-  const openNow = (f) => shown && view.kind === 'room' && !!cards[view.id] && fileOfRoom(view.id) === f;
+  const openNow = (f) => (shown && view.kind === 'room' && !!cards[view.id] && fileOfRoom(view.id) === f)
+    || (dockLive(dockRoom()) && !!cards[dockId] && fileOfRoom(dockId) === f);   // і стіл у куточку, що показує гру
   /// Модуль сам довантажив свої частини: games/<файл>-щось.js, що не є окремим модулем.
   const hasParts = (f) => [...document.scripts].some((s) => {
     const m = /^\/games\/([^/]+)\.js$/.exec(new URL(s.src || '', location.href).pathname);
@@ -1761,6 +1765,7 @@
     // Вийшли з кімнати в лобі — «☀ Сьогодні» тягнемо свіже: щойно зіграна щоденна інакше до хвилини висіла б
     // нерозгаданою (записка #52).
     if (view.kind === 'room' && next.kind === 'lobby') dailyAt = 0;
+    if (view.kind === 'room' && !same) dockLeave(view.id);   // стіл, з якого пішли, — у куточок
     view = next;
     dropPeeks();
     if (view.kind !== 'room') setFull(false);
@@ -1813,24 +1818,300 @@
     if (onTable) { try { onTable(t, { full }); } catch (e) { console.warn('[games] onTable', e); } }
   }
 
-  /// Картки лише переносяться між складом і сторінкою столу й ховаються через hidden.
+  /// Картки лише переносяться між складом, сторінкою столу й віконцем «Стіл у куточку» і ховаються через hidden.
   /// Рамку (iframe — «Колія») appendChild перезавантажує: гра вантажилась наново на кожен перехід лобі ↔ стіл. moveBefore
   /// (Chrome 133+) переносить, не чіпаючи вмісту; де його нема — як було.
   function placeCards(openId) {
     const box = root.querySelector('.grbox');
     const store = root.querySelector('.gtables');
+    if (!box || !store) return;
+    if (!shown) openId = null;   // розділ «Ігри» сховано: сторінки столу не видно, хоч view досі 'room'
     if (openId) ensureCard(openId, box);
+    const dk = dockRoom();
+    if (dk) {
+      dockPrep(dk);
+      // ‹ › на стіл, якого ця вкладка ще не відкривала, чи картку зняло оновлення модуля: збираємо одразу у віконці
+      if (!cards[dk] && views[dk] && !dockPrefs.mini) ensureCard(dk, dockStage);
+    }
     for (const id in cards) {
       const c = cards[id];
       const here = id === openId;
-      const host = here ? box : store;
+      const docked = !here && id === dk;
+      const host = here ? box : docked ? dockStage : store;
       if (c.el.parentElement !== host) {
         if (host.moveBefore && c.el.isConnected && c.el.querySelector('iframe')) {
           try { host.moveBefore(c.el, null); } catch { host.appendChild(c.el); }
         } else host.appendChild(c.el);
       }
-      c.el.hidden = !here;
+      c.el.hidden = !here && !docked;
+      if (!!c.docked !== docked) { c.docked = docked; c.el.inert = docked; }
+      if (dockRO && !c.ro) { c.ro = true; dockRO.observe(c.el); }
     }
+    paintDock();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Стіл у куточку (Світлиця, 31.10). Пішов зі сторінки столу — у лобі, ефір, бібліотеку, «Хто скільки» — і картка
+  // столу їде не на склад, а в міні-віконце в куті: гра живе (кадри, rAF, ctx.shown), видно, що там діється, але
+  // керувати не можна — картка inert (ні вказівника, ні фокуса), а клавіші й пад каркас і так дає лише картці в .grbox.
+  // Клік по віконцю чи ⤢ — назад на стіл. «✕» ховає віконце (зі столу не встаєш, стіл — у «Живих столах»), «—» —
+  // пігулка з іконкою й станом; обидва — без кадрів і без rAF, покроковий стіл далі стежить за «Твій хід».
+  // Картка тримає свою ширину зі сторінки столу (--gdk-w) і свої --gfit-h/--gtop-h/--gdock-h, а у віконце вписується
+  // transform: scale — інакше модулі через ResizeObserver/ui.onFit перекроїли б полотна під крихітне віконце й стрибали
+  // б по розгортанню. ui.onFit віконцю нічого не каже (fitStale): нове місце гра дізнається вже на столі.
+  // Віконце — лише поза сторінкою столу; Here/FocusRoom/балачка столу його «за столом» не рахують.
+  // ---------------------------------------------------------------------------------------------
+  const DOCK_KEY = 'gamesDock';
+  const DOCK_W = { s: 260, m: 360, l: 480 };          // ширина віконця на широкому екрані
+  const DOCK_W_PHONE = { s: 140, m: 180, l: 230 };    // на телефоні — менше й лише знизу, над вкладками
+  const DOCK_SIZES = ['s', 'm', 'l'];
+  const DOCK_SIZE_NAME = { s: 'мале', m: 'середнє', l: 'велике' };
+  const FIT_VARS = ['--gtop-h', '--gdock-h', '--gfit-h'];
+  const dockPrefs = { off: false, corner: 'br', size: 'm', mini: false };
+  try { Object.assign(dockPrefs, JSON.parse(localStorage.getItem(DOCK_KEY) || '{}')); } catch { /* приватне вікно */ }
+  if (!DOCK_SIZES.includes(dockPrefs.size)) dockPrefs.size = 'm';
+  if (!/^[tb][lr]$/.test(dockPrefs.corner)) dockPrefs.corner = 'br';
+  const saveDock = () => { try { localStorage.setItem(DOCK_KEY, JSON.stringify(dockPrefs)); } catch { /* приватне вікно */ } };
+  let dockId = null;            // стіл у віконці — той, з чиєї сторінки пішли останнім (або обраний ‹ ›)
+  let dockShut = null;          // віконце цього столу сховали «✕» — до наступного заходу на стіл
+  let dockEl = null, dockStage = null, dockBox = null, dockSig = '', dockLay = '';
+  const dockPhone = () => window.matchMedia('(max-width: 900px)').matches;
+  const onRoomPage = () => shown && view.kind === 'room';
+  /// Стіл, картка якого зараз живе у віконці (зокрема пігулкою), або null.
+  function dockRoom() {
+    if (dockPrefs.off || !dockId || onRoomPage() || dockShut === dockId || !root) return null;
+    return cards[dockId] || views[dockId] ? dockId : null;
+  }
+  /// Віконце справді показує гру: не пігулка, не сховане. Лише тоді — кадри, підписка реалтайму й visible(true).
+  const dockLive = (id) => !!id && id === dockRoom() && !dockPrefs.mini;
+  const inDock = (host) => !!dockStage && dockStage.contains(host);
+  /// Пішли зі сторінки столу id (route, hide). Картка ще на столі — беремо її ширину й місце, яке каркас їй дав.
+  function dockLeave(id) {
+    const c = id && cards[id];
+    if (dockPrefs.off || !c || !views[id] || peeking.has(id)) return;
+    const box = root && root.querySelector('.grbox');
+    if (!box || c.el.parentElement !== box) return;   // не зі сторінки столу (уже у віконці чи на складі)
+    dockId = id;
+    dockShut = null;
+    if (c.el.offsetWidth) c.natW = c.el.offsetWidth;
+    // і поля картки: на телефоні вони вужчі (core.css), а інші поля — інша ширина полотна всередині
+    c.natPad = getComputedStyle(c.el).padding;
+    const rs = document.documentElement.style;
+    c.fitVars = FIT_VARS.map((k) => [k, rs.getPropertyValue(k)]);
+  }
+  /// Столи для ‹ ›: той, що у віконці, і всі, де сиджу.
+  function dockList() {
+    const ids = Object.keys(views).filter((x) => views[x].seat != null && !peeking.has(x));
+    if (dockId && !ids.includes(dockId)) ids.unshift(dockId);
+    return ids;
+  }
+  const dockDefW = () => (dockPhone() ? Math.max(320, window.innerWidth - 24) : Math.min(960, Math.round(window.innerWidth * 0.6)));
+  function ensureDockEl() {
+    if (dockEl) return;
+    dockEl = document.createElement('div');
+    dockEl.className = 'gdock';
+    dockEl.hidden = true;
+    dockEl.setAttribute('role', 'region');
+    dockEl.setAttribute('aria-label', 'Стіл у куточку');
+    dockEl.innerHTML = '<div class="gdk-head">'
+      + '<span class="gdk-ico"></span><span class="gdk-txt"><b class="gdk-title"></b><small class="gdk-st"></small></span>'
+      + '<span class="gdk-nav"><button type="button" class="ghost" data-dk="prev" title="Попередній мій стіл">‹</button>'
+      + '<span class="gdk-n"></span><button type="button" class="ghost" data-dk="next" title="Наступний мій стіл">›</button></span>'
+      + '<button type="button" class="ghost gdk-size" data-dk="size"></button>'
+      + '<button type="button" class="ghost gdk-mini" data-dk="mini"></button>'
+      + '<button type="button" class="ghost gdk-open" data-dk="open" title="Розгорнути — до столу" aria-label="Розгорнути — до столу">⤢</button>'
+      + '<button type="button" class="ghost gdk-shut" data-dk="shut" title="Сховати віконце (зі столу не встаєш — він у «Живих столах»)"'
+      + ' aria-label="Сховати віконце">✕</button></div>'
+      + '<div class="gdk-view" role="button" tabindex="0" title="Розгорнути — до столу" aria-label="Розгорнути — до столу">'
+      + '<div class="gdk-stage"></div>'
+      + '<div class="gdk-end" hidden><span class="gdk-endt"></span><button type="button" class="primary" data-dk="open">Ще раз?</button></div></div>';
+    dockStage = dockEl.querySelector('.gdk-stage');
+    dockBox = dockEl.querySelector('.gdk-view');
+    dockEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-dk]');
+      if (b) { e.stopPropagation(); dockDo(b.dataset.dk); }
+    });
+    dockEl.addEventListener('pointerdown', dockDrag);
+    dockBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dockDo('open'); } });
+    document.body.appendChild(dockEl);
+    window.addEventListener('resize', () => { dockLay = ''; dockSig = ''; paintDock(); });
+  }
+  /// Сцена під стіл id: його ширина й місце (FIT_VARS) — до того, як картка туди переїде чи змонтується.
+  function dockPrep(id) {
+    ensureDockEl();
+    const c = cards[id];
+    const w = (c && c.natW) || dockDefW();
+    const sig = id + '|' + w + '|' + ((c && c.natPad) || '') + '|' + ((c && c.fitVars) ? c.fitVars.join() : '');
+    if (dockStage.dataset.sig !== sig) {
+      dockStage.dataset.sig = sig;
+      dockStage.style.setProperty('--gdk-w', w + 'px');
+      if (c && c.natPad) dockStage.style.setProperty('--gdk-pad', c.natPad); else dockStage.style.removeProperty('--gdk-pad');
+      const rs = document.documentElement.style;
+      const vars = (c && c.fitVars) || FIT_VARS.map((k) => [k, rs.getPropertyValue(k)]);
+      for (const [k, v] of vars) { if (v) dockStage.style.setProperty(k, v); else dockStage.style.removeProperty(k); }
+      dockLay = '';
+    }
+  }
+  /// Вписати картку у віконце: ширина — за розміром S/M/L, висота — скільки треба, але не вище стелі;
+  /// дуже високу картку (коло, хутори) спершу трохи стискаємо, а далі показуємо верх (там поле гри).
+  function dockFit() {
+    const id = dockRoom();
+    const c = id && cards[id];
+    if (!c || !dockBox || dockPrefs.mini || c.el.parentElement !== dockStage) return;
+    const phone = dockPhone();
+    const natW = c.natW || dockDefW();
+    const natH = c.el.offsetHeight || Math.round(natW * 0.7);
+    const want = Math.min((phone ? DOCK_W_PHONE : DOCK_W)[dockPrefs.size] || DOCK_W.m, window.innerWidth - 24);
+    const maxH = phone ? Math.min(want * 1.35, window.innerHeight * 0.34) : Math.min(want * 0.95, window.innerHeight * 0.6);
+    let s = Math.min(1, want / natW);
+    if (natH * s > maxH) s = Math.max(maxH / natH, s * 0.62);
+    dockStage.style.transform = 'scale(' + s.toFixed(4) + ')';
+    dockBox.style.width = Math.round(natW * s) + 'px';
+    dockEl.style.width = (Math.round(natW * s) + 2) + 'px';   // шапка не розпирає віконце довгою назвою
+    dockBox.style.height = Math.round(Math.min(natH * s, maxH)) + 'px';
+  }
+  const dockRO = window.ResizeObserver ? new ResizeObserver((es) => {
+    let lay = false;
+    for (const e of es) {
+      const el = e.target, c = cards[el.dataset.room];
+      if (!c) continue;
+      if (c.docked) lay = true;
+      else if (el.offsetWidth && el.parentElement && el.parentElement.classList.contains('grbox')) c.natW = el.offsetWidth;
+    }
+    if (lay) dockFit();
+  }) : null;
+  /// Шапка віконця: іконка, назва, стан (з .gstatus картки), «🎲 Твій хід», ‹ 1/2 ›; кінець партії — «Кінець: … Ще раз?».
+  /// Кличеться і з кожного кадру (paintStatus) — тож дешево: міняємо лише те, що змінилось.
+  function paintDock() {
+    const id = dockRoom();
+    const c = id && cards[id], rv = id && views[id];
+    if (!rv || (!c && !dockPrefs.mini)) {
+      if (dockEl && !dockEl.hidden) { dockEl.hidden = true; dockSig = ''; dockLay = ''; }
+      return;
+    }
+    ensureDockEl();
+    const r = rv.room;
+    const phone = dockPhone();
+    const list = dockList();
+    const at = list.indexOf(id);
+    const done = r.status === 'finished';
+    const turn = r.status === 'playing' && r.maxPlayers > 1 && rv.seat != null && turnOf(rv) === rv.seat;
+    const st = (c && c.statusEl.textContent) || (r.status === 'lobby' ? 'Чекаємо на гравців' : r.status === 'playing' ? 'Іде гра' : '');
+    const stText = turn ? '🎲 ' + (/хід/i.test(st) ? st : 'Твій хід' + (st ? ' · ' + st : '')) : st;
+    const corner = phone ? 'b' + (String(dockPrefs.corner).endsWith('l') ? 'l' : 'r') : dockPrefs.corner;
+    const sig = [id, r.game, stText, turn, done, list.length, at, dockPrefs.mini, dockPrefs.size, corner, !!infoOf(r.game)].join('|');
+    if (dockEl.hidden) dockEl.hidden = false;
+    if (sig !== dockSig) {
+      const old = dockSig.split('|');
+      dockSig = sig;
+      const q = (s) => dockEl.querySelector(s);
+      if (old[0] !== id || old[1] !== r.game || old[10] !== String(!!infoOf(r.game))) {
+        q('.gdk-ico').innerHTML = iconOf(r.game);
+        q('.gdk-title').textContent = titleOf(r.game);
+      }
+      q('.gdk-st').textContent = stText;
+      dockEl.classList.toggle('turn', turn);
+      dockEl.classList.toggle('done', done);
+      dockEl.classList.toggle('mini', !!dockPrefs.mini);
+      dockEl.dataset.corner = corner;
+      q('.gdk-nav').hidden = list.length < 2;
+      q('.gdk-n').textContent = (at + 1) + '/' + list.length;
+      const sz = q('.gdk-size');
+      sz.textContent = dockPrefs.size.toUpperCase();
+      sz.title = 'Розмір віконця: ' + DOCK_SIZE_NAME[dockPrefs.size] + ' — натисни, щоб змінити';
+      const mi = q('.gdk-mini');
+      mi.textContent = dockPrefs.mini ? '▢' : '—';
+      mi.title = dockPrefs.mini ? 'Показати гру у віконці' : 'Згорнути до пігулки';
+      mi.setAttribute('aria-label', mi.title);
+      q('.gdk-end').hidden = !done;
+      if (done) q('.gdk-endt').textContent = 'Кінець: ' + (st || 'партію зіграно');
+      dockEl.title = dockPrefs.mini ? titleOf(r.game) + (stText ? ' — ' + stText : '') : '';
+    }
+    const lay = [id, dockPrefs.mini, dockPrefs.size, phone, c ? c.natW : 0].join('|');
+    if (lay !== dockLay) { dockLay = lay; if (dockPrefs.mini) dockEl.style.width = ''; else dockFit(); }
+  }
+  function dockDo(what) {
+    const id = dockRoom();
+    if (!id) return;
+    if (what === 'open') { go('#games/room/' + encodeURIComponent(id)); return; }
+    if (what === 'shut') {
+      dockShut = id;
+      toast('Сховав віконце. Стіл нікуди не дівся — він у «Живих столах»', 'ok');
+    } else if (what === 'mini') { dockPrefs.mini = !dockPrefs.mini; saveDock(); }
+    else if (what === 'size') {
+      dockPrefs.size = DOCK_SIZES[(DOCK_SIZES.indexOf(dockPrefs.size) + 1) % DOCK_SIZES.length];
+      saveDock();
+    } else if (what === 'prev' || what === 'next') {
+      const list = dockList();
+      if (list.length < 2) return;
+      dockId = list[(list.indexOf(id) + (what === 'next' ? 1 : list.length - 1)) % list.length];
+    }
+    dockSync();
+  }
+  /// Переставити картки й сказати всім, що змінилось: видимість (rAF), підписки, оновлення модулів, що чекали.
+  function dockSync() {
+    if (!root) return;
+    placeCards(onRoomPage() ? view.id : null);
+    syncShown();
+    syncWatch();
+    if (staleMods.size) flushStale();
+  }
+  /// Тягнути за шапку чи саму гру — в будь-який кут, з прилипанням (на телефоні — лише нижні, а свайп убік ховає).
+  /// Просто клік: по грі — розгорнути, по шапці пігулки — показати гру.
+  function dockDrag(e) {
+    if ((e.button && e.button !== 0) || e.target.closest('button')) return;
+    const phone = dockPhone();
+    const r0 = dockEl.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY, pid = e.pointerId;
+    let moved = false, dx = 0, dy = 0;
+    try { dockEl.setPointerCapture(pid); } catch { /* уже відпущено */ }
+    const move = (ev) => {
+      if (ev.pointerId !== pid) return;
+      dx = ev.clientX - sx; dy = phone ? 0 : ev.clientY - sy;
+      if (!moved && Math.hypot(dx, ev.clientY - sy) < 7) return;
+      moved = true;
+      dockEl.classList.add('drag');
+      dockEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      if (phone) dockEl.style.opacity = String(Math.max(0.25, 1 - Math.abs(dx) / (r0.width * 1.2)));
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== pid) return;
+      dockEl.removeEventListener('pointermove', move);
+      dockEl.removeEventListener('pointerup', up);
+      dockEl.removeEventListener('pointercancel', up);
+      dockEl.classList.remove('drag');
+      dockEl.style.opacity = '';
+      if (!moved) {
+        dockEl.style.transform = '';
+        if (ev.type === 'pointercancel') return;
+        if (dockPrefs.mini) dockDo('mini');
+        else if (!e.target.closest('.gdk-head')) dockDo('open');
+        return;
+      }
+      if (phone && Math.abs(dx) > r0.width * 0.45) {
+        dockEl.classList.add('snap');
+        dockEl.style.transform = 'translate(' + (dx > 0 ? window.innerWidth : -window.innerWidth) + 'px,0)';
+        setTimeout(() => { if (!dockEl) return; dockEl.classList.remove('snap'); dockEl.style.transform = ''; dockDo('shut'); }, 180);
+        return;
+      }
+      const cx = r0.left + r0.width / 2 + dx, cy = r0.top + r0.height / 2 + dy;
+      const corner = (!phone && cy < window.innerHeight / 2 ? 't' : 'b') + (cx < window.innerWidth / 2 ? 'l' : 'r');
+      const before = dockEl.getBoundingClientRect();
+      dockEl.style.transform = '';
+      dockPrefs.corner = corner;
+      saveDock();
+      dockSig = '';
+      paintDock();
+      const after = dockEl.getBoundingClientRect();
+      dockEl.style.transform = 'translate(' + Math.round(before.left - after.left) + 'px,' + Math.round(before.top - after.top) + 'px)';
+      void dockEl.offsetWidth;
+      dockEl.classList.add('snap');
+      dockEl.style.transform = '';
+      setTimeout(() => dockEl && dockEl.classList.remove('snap'), 220);
+    };
+    dockEl.addEventListener('pointermove', move);
+    dockEl.addEventListener('pointerup', up);
+    dockEl.addEventListener('pointercancel', up);
   }
 
   function renderView() {
@@ -1913,6 +2194,9 @@
   const FULL_ICON = (on) => '<svg class="gfico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<path d="' + (on ? 'M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4' : 'M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4') + '"/></svg>';
 
+  /// «Стіл у куточку»: віконце в правому нижньому куті рамки; увімкнено — кутик зафарбовано.
+  const DOCK_ICON = '<svg class="gfico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v10H2z"/><path class="gdkf" d="M8.5 8.5h4v3h-4z"/></svg>';
+
   /// «👁 N» — скільки дивиться на стіл. У соло — хто підглядає («👁 Оля», RoomsPeek.cs): своя вкладка там завжди одна.
   function watchersHtml(r) {
     if (!r) return '';
@@ -1935,15 +2219,28 @@
       }).join('');
     // Сидиш за столом, де ще є вільні місця й партія не йде, — можна кликати людей (усіх або когось особисто).
     const canCall = !!(rv && r && rv.seat != null && r.maxPlayers > 1 && r.status !== 'playing' && freeSeat(r) >= 0);
+    // ◲ «Стіл у куточку» — на вузькому телефоні поруч із «📣 Гукнути» не влазить у рядок: там його нема (є в партії й після)
+    const dockBtn = !(canCall && window.matchMedia('(max-width: 480px)').matches);
     head.innerHTML = '<button class="ghost grback" title="Назад у лобі — Esc">← Лобі</button>'
       + '<span class="grtitle">' + (r ? iconOf(r.game) + esc(titleOf(r.game)) : 'Стіл') + '</span>'
       + watchersHtml(r)
       + (canCall ? '<button class="grcall" type="button" title="Гукнути когось за цей стіл" aria-haspopup="true">📣 Гукнути</button>' : '')
       + '<span class="grsp"></span>' + others
+      + (!dockBtn ? '' : '<button class="ghost grdock' + (dockPrefs.off ? '' : ' on') + '" type="button" aria-pressed="' + !dockPrefs.off + '" title="'
+      + (dockPrefs.off ? 'Стіл у куточку вимкнено — натисни, щоб гра, з якої йдеш, лишалась віконцем у кутку'
+        : 'Стіл у куточку: підеш зі столу — гра лишиться віконцем у кутку. Натисни, щоб не згортати') + '"'
+      + ' aria-label="Стіл у куточку">' + DOCK_ICON + '</button>')
       + '<button class="ghost grfull" title="' + (full ? 'Повернути балачки й підрозділи' : 'На весь екран') + '"'
       + ' aria-label="' + (full ? 'Повернути балачки й підрозділи' : 'На весь екран') + '">' + FULL_ICON(full) + '</button>';
     head.querySelector('.grback').onclick = () => go('#games');
     head.querySelector('.grfull').onclick = () => { setFull(!full); renderRoomHead(id); };
+    if (dockBtn) head.querySelector('.grdock').onclick = () => {
+      dockPrefs.off = !dockPrefs.off;
+      saveDock();
+      if (dockPrefs.off) dockId = null;
+      toast(dockPrefs.off ? 'Добре, столи більше не згортаю в куточок' : 'Тепер стіл, з якого йдеш, лишається віконцем у кутку', 'ok');
+      renderRoomHead(id);
+    };
     head.querySelectorAll('[data-room]').forEach((b) => b.onclick = () => go('#games/room/' + encodeURIComponent(b.dataset.room)));
     const cb = head.querySelector('.grcall');
     if (cb) cb.onclick = (e) => { e.stopPropagation(); callMenu(id, cb); };
@@ -3483,8 +3780,8 @@
   // а необов'язковий mod.visible(root, ctx, on) кличеться лише на зміну (після mount; сам mount бачить ctx.shown).
   // Старий модуль без visible нічого не помітить.
   // ---------------------------------------------------------------------------------------------
-  const cardOn = (c) => shown && !document.hidden && view.kind === 'room' && view.id === c.id && !c.el.hidden
-    && c.el.isConnected;
+  const cardOn = (c) => !document.hidden && c.el.isConnected && ((shown && view.kind === 'room' && view.id === c.id && !c.el.hidden)
+    || (!!c.docked && dockLive(c.id)));   // «Стіл у куточку»: віконце показує гру — хай живе
   function syncShown() {
     for (const id in cards) {
       const c = cards[id];
@@ -3503,8 +3800,10 @@
     if (c.mounted && c.mod && c.mod.unmount) { try { c.mod.unmount(c.body, c.ctx); } catch (e) { console.warn('[games] unmount', e); } }
     if (window.HTableBets) HTableBets.drop(id);
     if (c.headIn) placeHead(c);   // рядок столу жив у цій картці — назад над картку, а не разом із нею в нікуди
+    if (dockRO) dockRO.unobserve(c.el);
     c.el.remove();
     delete cards[id];
+    if (id === dockId) paintDock();   // стіл зник (чи модуль оновився) — віконце теж
   }
 
   function seatNameOf(rv, i) {
@@ -3856,6 +4155,7 @@
     if (card.statusEl.textContent !== text) card.statusEl.textContent = text;
     const cls = 'gstatus' + (rv.room.status === 'finished' ? ' done' : '') + (card.ctx && card.ctx.myTurn ? ' my' : '');
     if (card.statusEl.className !== cls) card.statusEl.className = cls;
+    if (card.docked) paintDock();
   }
 
   const refreshAll = () => { for (const id in cards) refreshCard(id); };
@@ -4449,8 +4749,10 @@
     },
 
     hide() {
+      if (shown && view.kind === 'room') dockLeave(view.id);   // пішли зі столу в інший розділ — стіл у куточок
       shown = false;
       anthemPage();
+      if (root) placeCards(null);
       syncShown();
       setFull(false);
       document.body.classList.remove('g-room', 'g-arcade');
