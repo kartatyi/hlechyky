@@ -269,6 +269,7 @@
 /* Палець: плаваюча кнопка «💬 Стіл» каркаса не лягає на нижню картку. */
 @media (pointer: coarse) {
   .bluff-opts { padding-bottom: 64px; }
+  .bluff-snd { min-height: 40px; min-width: 44px; }   /* 🔈 під палець: було 40×31 */
   .bluff-cell, .bluff-note, .bluff-me, .bluff-score { scroll-margin-bottom: 180px; }
 }
 
