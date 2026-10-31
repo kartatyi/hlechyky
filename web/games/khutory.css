@@ -604,7 +604,7 @@
   .khu-sumgrid { grid-template-columns: 1fr; }
   /* Поле — на перший екран разом із гравцями й «що зараз»: висота = місце між шапкою й липким низом мінус вони. */
   .khu-fieldwrap { order: 3; aspect-ratio: auto; max-height: none; min-height: 260px;
-    height: clamp(260px, calc(var(--gfit-h, 640px) - var(--khu-plh, 120px) - var(--khu-handh, 0px) - var(--khu-barh, 0px) - 92px), 60svh);
+    height: clamp(260px, min(var(--khu-fhp, 100svh), calc(var(--gfit-h, 640px) - var(--khu-plh, 120px) - var(--khu-handh, 0px) - var(--khu-barh, 0px) - 92px)), 60svh);
     width: auto; margin-inline: var(--khu-bleed); border-radius: 0; }   /* на всю ширину телефона: поле впирається в ширину, кожен піксель — більші гекси */
   .khu-say { order: 4; font-size: .95em; padding: 8px 10px; }
   .khu-act { order: 5; background: var(--panel2); padding: 8px; border-radius: 14px; }

@@ -18,7 +18,7 @@
    не менші за 15 px шрифту; лежачи — щоб усе влізло у висоту. Усі розміри нижче — в em від цього шрифту. */
 .durak {
   display: flex; flex-direction: column; gap: .62em; align-items: center;
-  font-size: clamp(13px, min(max(15px, calc(var(--g-aw, 640px) / 44)), calc(var(--g-ah, 560px) / 24)), 26px);
+  font-size: clamp(13px, min(max(15px, calc(var(--g-aw, 640px) / 44)), calc(var(--g-ah, 560px) / 24)), 40px);   /* стеля 26 → 40: у ⛶ на 2K стіл був 936 px посеред порожнечі */
   width: min(100%, 36em);
 }
 /* Лежачи на телефоні стіл — ліворуч на всю висоту (каркас), а шрифт — від висоти картки. */
@@ -38,7 +38,7 @@ body.g-land .gtable .durak { font-size: clamp(12px, calc(var(--gland-h, 330px) /
 .durak .dfoe.isfool { box-shadow: 0 0 0 2px var(--durak-red); opacity: 1; }
 .durak .dwho { display: flex; align-items: center; gap: 4px; max-width: 100%; font-size: max(.88em, 12px); font-weight: 600; }
 .durak .dwho, .durak .dchip.me { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.durak u { text-decoration: none; font-size: .9em; }
+.durak u { text-decoration: none; font-size: max(.9em, 11px); }
 .durak .s0 u { color: var(--durak-s0); } .durak .s1 u { color: var(--durak-s1); } .durak .s2 u { color: var(--durak-s2); }
 .durak .s3 u { color: var(--durak-s3); } .durak .s4 u { color: var(--durak-s4); } .durak .s5 u { color: var(--durak-s5); }
 .durak .dcnt { display: flex; align-items: center; gap: 5px; }

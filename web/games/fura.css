@@ -1,5 +1,9 @@
 /* «Чумаки-далекобійники»: картка столу й гра на весь екран (префікс fura-). */
-.fura-card { max-width: 560px; line-height: 1.45; }
+/* Картка-вхід: на телефоні стоячи — одна колонка (плитки режимів по дві), де ширше 700 px (лежачи, ПК) — дві колонки:
+   ліворуч режим і «Їхати», праворуч хто в рейсі, гараж і поради. На великому ПК картка й шрифт ростуть з місцем. */
+.fura-card { width: min(100%, 62em); line-height: 1.45; container-type: inline-size; margin-inline: auto; }
+@container (min-width: 700px) { .fura-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1.4em; align-items: start; } }
+@media (min-width: 1100px) and (pointer: fine) { .fura-card { font-size: clamp(1em, calc(var(--g-aw, 1000px) / 70), 1.6em); } }
 .fura-title { font-size: 1.25em; font-weight: 700; margin-bottom: .4em; }
 .fura-stage { font-size: .7em; font-weight: 400; color: var(--muted); margin-left: .4em; }
 .fura-dev { margin: .5em 0 1em; padding-left: 1.2em; }
@@ -8,11 +12,11 @@
 .fura-card .fura-row { display: flex; gap: .6em; flex-wrap: wrap; }
 .fura-err { margin-top: .6em; min-height: 1.2em; }
 /* Вхід «🚚 Чумаки» (C1): режим двома плитками, велика «Їхати», хто в рейсі, тихий полігон; усе ≥ 48 px для пада */
-.fura-modes { display: grid; grid-template-columns: 1fr 1fr; gap: .6em; margin: .6em 0; }
-.fura-mode-b { display: flex; align-items: center; gap: .6em; min-height: 56px; padding: .55em .8em; text-align: left; cursor: pointer;
+.fura-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6em; margin: .6em 0; }
+.fura-mode-b { min-width: 0; display: flex; align-items: center; gap: .6em; min-height: 56px; padding: .55em .8em; text-align: left; cursor: pointer;
   border-radius: 12px; border: 2px solid var(--line, rgba(127, 127, 127, .3)); background: var(--card2, rgba(127, 127, 127, .08)); color: inherit; font: inherit; }
 .fura-mode-b .i { font-size: 1.8em; line-height: 1; }
-.fura-mode-b .t { display: flex; flex-direction: column; line-height: 1.25; }
+.fura-mode-b .t { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; white-space: normal; }
 .fura-mode-b small { color: var(--muted); font-size: .8em; }
 .fura-mode-b[aria-checked="true"] { border-color: var(--accent, #d08a2c); background: color-mix(in srgb, var(--accent, #d08a2c) 16%, transparent); }
 .fura-mode-b[aria-checked="true"] b::after { content: ' ✓'; color: var(--accent, #d08a2c); }
@@ -30,7 +34,16 @@
 .fura-table.here .fura-tnick::after { content: ' · цей стіл'; color: var(--muted); font-size: .85em; }
 .fura-table button { min-height: 44px; }
 .fura-none { padding: .3em 0; }
-@media (max-width: 520px) { .fura-modes { grid-template-columns: 1fr; } }
+/* Телефон (стоячи чи лежачи): плитки по дві в рядку, без підрядка (він — у підказці й у рядку під «Їхати») */
+@media (max-width: 520px), (max-height: 500px) {
+  .fura-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45em; margin: .45em 0; }
+  .fura-mode-b { min-width: 0; min-height: 44px; padding: .35em .55em; gap: .45em; }
+  .fura-mode-b .i { font-size: 1.35em; }
+  .fura-mode-b small { display: none; }
+  .fura-mode-b b { overflow-wrap: anywhere; line-height: 1.2; }
+  .fura-card .fura-title { font-size: 1.1em; margin-bottom: .2em; }
+  .fura-go-main { min-height: 50px; font-size: 1.2em; }
+}
 
 /* Сама гра — поверх усього сайту */
 .fura-app { position: fixed; inset: 0; z-index: 2147483000; background: #9ec7e6; overflow: hidden; color: #fff;
@@ -215,3 +228,10 @@
   font-style: normal; font-size: 12px; line-height: 18px; text-align: center; }
 .fura-gr-it.can { box-shadow: inset 3px 0 0 #5fb04a; }
 .fura-gr-it.can.on { box-shadow: inset 0 0 0 2px #d08a2c, inset 5px 0 0 #5fb04a; }
+/* Лежачи на телефоні — ще щільніше, щоб ліва колонка (режими й «Їхати») влазила у висоту */
+@media (max-height: 500px) {
+  .fura-card { line-height: 1.35; }
+  .fura-modes { margin: .3em 0; }
+  .fura-go-main { min-height: 46px; }
+  .fura-sub { margin-top: .2em; }
+}

@@ -117,3 +117,33 @@
 }
 /* Телефон лежачи: висоти обмаль — шибениця менша, щоб клавіатура влізла без прокрутки картки. */
 @media (max-height: 500px) { .hgal { width: 72px; } .hl { font-size: 1.35em; } .hwrap { gap: 8px; } }
+
+/* fix-land (31.10): широка картка на ПК (≥ 900 px і висоти > 500) — шибениця з рисками слова під нею ліворуч на всю
+   висоту під гру (--g-ah каркаса; у ⛶ — увесь екран, стеля --g-fmax чи 760 px), рахунок, поле слова й клавіатура —
+   колонкою праворуч. Раніше шибениця стояла над усім і не росла більше 210 px. .hwrap лишається коробкою (не
+   display: contents) — віконце «Стіл у куточку» вирізає саме її: шибеницю й слово. */
+@media (min-width: 900px) and (min-height: 501px) {
+  .gbody:has(> .hwrap) { display: grid; grid-template-columns: auto minmax(300px, 620px); justify-content: center;
+    grid-template-rows: 1fr auto auto auto 1fr; align-items: center; column-gap: 32px; row-gap: 10px; }
+  .gbody:has(> .hwrap) > .hscores { grid-row: 2; }
+  .gbody:has(> .hwrap) > .hword { grid-row: 3; }
+  .gbody:has(> .hwrap) > .gkbd { grid-row: 4; }
+  .gbody:has(> .hwrap) > .hwrap { grid-column: 1; grid-row: 1 / span 5; flex-direction: column; flex-wrap: nowrap; gap: 10px; width: auto; }
+  .gbody:has(> .hwrap) .hgal { width: clamp(150px, min(calc(var(--g-ah, 420px) - 120px), calc(var(--g-aw, 900px) - 380px)), var(--g-fmax, 760px)); }
+  .gbody:has(> .hwrap) > :not(.hwrap) { grid-column: 2; justify-self: center; }
+  .gbody:has(> .hwrap) > .gkbd { justify-self: stretch; }
+  .gbody:has(> .hwrap) > .hword { justify-self: stretch; max-width: none; }
+  .gbody:has(> .hwrap) .hl { font-size: clamp(1.55em, calc(var(--g-ah, 420px) * .045), 2.6em); }
+}
+/* Телефон лежачи: шибениця з рисками, рахунок і поле слова — ліворуч, клавіатура — праворуч на всю висоту: уся гра
+   в картці без прокрутки. */
+@media (max-height: 500px) and (min-width: 600px) {
+  .gbody:has(> .hwrap) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); column-gap: 14px; row-gap: 6px; align-items: center; }
+  .gbody:has(> .hwrap) > :not(.gkbd) { grid-column: 1; justify-self: center; }
+  .gbody:has(> .hwrap) > .hwrap { justify-self: stretch; flex-wrap: nowrap; }   /* довге слово — риски переносяться, а не шибениця під них */
+  .gbody:has(> .hwrap) .hgal { width: 100px; }
+  .gbody:has(> .hwrap) .hl { min-width: 16px; font-size: 1.2em; }
+  .gbody:has(> .hwrap) > .gkbd { grid-column: 2; grid-row: 1 / span 6; align-self: center; width: 100%; }
+  .gbody:has(> .hword) > .gkbd { gap: 4px; }
+  .gbody:has(> .hword) > .gkbd .gkey { min-height: 36px; }
+}

@@ -149,8 +149,12 @@
   /// Широка картка (ПК, ⇔, ⛶): дошка ліворуч на всю висоту картки, табло дня, клавіатура й решта — колонкою праворуч.
   /// Раніше все стояло стовпчиком: на 1440×900 картка була вища за вікно, а на 2K/⛶ дошка лишалась 300 px.
   function fitWide(root, f) {
-    const on = !!(f && f.aw >= 780) && !document.body.classList.contains('g-land');
+    const land = document.body.classList.contains('g-land');
+    const on = !!(f && f.aw >= 780) && !land;
     if (root.classList.contains('wd-wide') !== on) root.classList.toggle('wd-wide', on);
+    // Лежачи на телефоні: дошка ліворуч (сітка каркаса), але права колонка — на все, що лишилось, а не 38vw:
+    // інакше 12 клавіш у ряд виходять по 23 px. Стилі — wordle.css, «Лежачи».
+    if (root.classList.contains('wd-land') !== land) root.classList.toggle('wd-land', land);
   }
 
   function paint(root, ctx) {

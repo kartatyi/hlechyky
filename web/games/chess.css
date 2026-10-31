@@ -32,6 +32,13 @@ body:not(.g-land) .gbody.chs-wide {
   justify-content: center; align-content: start; align-items: center;
 }
 body.g-fs .gbody.chs-wide { --chs-cap: var(--g-fmax, 4000px); }
+/* Лежачи на телефоні (сітка каркаса «поле ліворуч, решта праворуч»): колонка дошки — за самою дошкою (на висоту
+   картки), права — решта. Раніше права колонка брала max-content довгого рядка задачі дня, і дошці лишалось 103 px. */
+body.g-land .gtable.g-board:has(> .gbody.chs-root) { grid-template-columns: max-content minmax(0, 1fr); }
+body.g-land .gtable.g-board > .gbody.chs-root > .board.chessb { --chs-lw: min(56vw, calc(var(--gland-h, 330px) - 40px)); width: var(--chs-lw); height: var(--chs-lw); }
+body.g-land .gbody.chs-root .chessmoves { min-height: 0; max-height: 2.9em; font-size: .88em; }
+body.g-land .gbody.chs-root .chessacts { font-size: .86em; gap: 4px; }
+body.g-land .gbody.chs-root .chs-puz { margin-bottom: 2px; line-height: 1.35; }
 body:not(.g-land) .gbody.chs-wide > * { grid-column: 1; justify-self: center; }
 body:not(.g-land) .gbody.chs-wide > .chs-side {
   grid-row: 1 / span var(--chs-span, 3);

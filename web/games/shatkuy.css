@@ -209,15 +209,31 @@
   .shk-rv-h { margin: 0; white-space: nowrap; font-size: 12px; }
   .shk-rv-l { flex-direction: row; gap: 5px; }
   .shk-rv { min-width: 96px; max-width: 140px; padding: 4px 7px; }
+  /* Суперники — сіткою на всю ширину, з переносом: раніше смуга гортається вбік, і третього-четвертого не видно */
+  .shk-riv { overflow: visible; }
+  .shk-rv-l { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); }
+  .shk-rv-l > .shk-rv { min-width: 0; max-width: none; }
   .shk-rv .sc { font-size: 15px; }
   .shk-rv .nm { font-size: 12px; }
 }
 
+@media (max-width: 420px) { .shk-rv-h { display: none; } }
 @media (max-width: 560px) {
   .shk-stage { height: max(300px, var(--g-fh, clamp(360px, 74vh, 640px))); border-radius: 12px; }
   .shk-hud { left: 8px; right: 8px; top: 20px; }
   .shk-c { padding: 13px 14px; }
   .shk-c ul { font-size: 13px; }
+}
+/* Лежачи на телефоні: картка «перед стартом» — у дві колонки (правила ліворуч, назва, рекорд і «Поїхали!» праворуч),
+   щоб уся влазила в низьку сцену без внутрішньої прокрутки, а кнопка старту була на виду. */
+@media (max-height: 500px) {
+  .shk-stage { height: max(200px, var(--g-fh, clamp(320px, 68vh, 680px))); }
+  .shk-ready { width: min(680px, 100%); align-self: center; margin-top: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+    column-gap: 14px; align-items: center; padding: 10px 14px; }
+  .shk-ready > ul { grid-column: 1; grid-row: 1 / span 4; margin: 0; font-size: 13px; gap: 3px; }
+  .shk-ready > :not(ul) { grid-column: 2; }
+  .shk-ready h3 { font-size: 19px; margin-bottom: 4px; }
+  .shk-ready .shk-go { padding: 10px 12px; font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .shk-glek, .shk-time.hot b, .shk-newrec, .shk-tint.burn { animation: none; }

@@ -71,11 +71,11 @@
   }
 
   function card(root) {
-    root.innerHTML = '<div class="fura-card">'
+    root.innerHTML = '<div class="fura-card"><div class="fura-cols"><div class="fura-l">'
       + '<div class="fura-title">🚚 Чумаки-далекобійники <span class="fura-stage">колона до 8 фур · версія 0.0.8</span></div>'
       + '<div class="fura-modes fura-maps" role="radiogroup" aria-label="Мапа" hidden></div>'
       + '<div class="fura-modes" role="radiogroup" aria-label="Чужі фури"></div>'
-      + '<div class="fura-main"></div>'
+      + '<div class="fura-main"></div></div><div class="fura-r">'
       + '<div class="fura-tables"></div>'
       + '<div class="fura-row fura-btns"><button class="btn fura-quiet" type="button" data-do="garage" title="Тягачі, причепи й тюнінг за досвід водія й черепки; вигляд фури — у Лавці">🔧 Гараж</button>'
       + '<button class="btn fura-quiet" type="button" data-do="polygon" title="Майданчик з конусами: потренуватись чіплятись заднім ходом, без замовлень і без інших фур">🏋 Полігон</button></div>'
@@ -88,7 +88,7 @@
       + '<ul class="fura-dev"><li>🛞 <b>Кермо</b> (G29 та інші) — при першому вході гра попросить відкалібрувати</li>'
       + '<li>🎮 <b>Пад / Steam Deck</b> — лівий стік кермо, R2 газ, L2 гальмо, Ⓐ зчепити</li>'
       + '<li>⌨ <b>Клавіатура</b> — W/S газ і гальмо, A/D кермо, T зчепити, C камера</li></ul></details>'
-      + '<div class="fura-err muted small" role="status"></div></div>';
+      + '<div class="fura-err muted small" role="status"></div></div></div></div>';
     root.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-do]');
       if (b && !b.disabled) press(root, b);
@@ -115,7 +115,7 @@
     const showMaps = !!(maps && maps.length > 1);
     const mh = !showMaps ? '' : Object.keys(MAP_TILE).filter(mapOk).map((k) => {
       const [ico, name, sub] = MAP_TILE[k];
-      return '<button class="fura-mode-b" type="button" role="radio" data-do="map" data-map="' + k + '" aria-checked="' + (k === wmap) + '">'
+      return '<button class="fura-mode-b" type="button" role="radio" data-do="map" data-map="' + k + '" title="' + esc(sub) + '" aria-checked="' + (k === wmap) + '">'
         + '<span class="i">' + ico + '</span><span class="t"><b>' + name + '</b><small>' + sub + '</small></span></button>';
     }).join('');
     if (mapsEl._html !== mh) { mapsEl.innerHTML = mh; mapsEl._html = mh; mapsEl.hidden = !showMaps; }
@@ -124,7 +124,7 @@
     const modes = root.querySelector('.fura-modes:not(.fura-maps)');
     const m = Object.keys(MODE_TILE).map((k) => {
       const [ico, name, sub] = MODE_TILE[k];
-      return '<button class="fura-mode-b" type="button" role="radio" data-do="mode" data-mode="' + k + '" aria-checked="' + (k === wm) + '">'
+      return '<button class="fura-mode-b" type="button" role="radio" data-do="mode" data-mode="' + k + '" title="' + esc(sub) + '" aria-checked="' + (k === wm) + '">'
         + '<span class="i">' + ico + '</span><span class="t"><b>' + name + '</b><small>' + sub + '</small></span></button>';
     }).join('');
     if (modes._html !== m) { modes.innerHTML = m; modes._html = m; }
