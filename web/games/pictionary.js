@@ -1051,6 +1051,9 @@
     if (!wrap || !main || !main.isConnected) return;
     const top = Math.round(main.getBoundingClientRect().top + window.scrollY) + 'px';
     if (wrap.style.getPropertyValue('--pctop') !== top) wrap.style.setProperty('--pctop', top);
+    // Світлиця: від верху .pcwrap до .pcmain (рядок «Коло 1 з 2 · слово · дуга») — решту висоти дає каркас (--g-ah).
+    const off = Math.round(main.getBoundingClientRect().top - wrap.getBoundingClientRect().top) + 'px';
+    if (wrap.style.getPropertyValue('--pcoff') !== off) wrap.style.setProperty('--pcoff', off);
   }
 
   function render(root, ctx) {
