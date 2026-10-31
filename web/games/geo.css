@@ -87,6 +87,9 @@
   background: var(--bg2); border-radius: 10px; overflow: hidden; }
 /* телефон: фото трохи нижче (16:10) — мапа піднімається на ~20 px; тап — фото на весь екран */
 @container (max-width: 560px) { .geoframe { aspect-ratio: 16 / 10; } }
+/* fix-screens: одна колонка — фото не вище за --geo-phh (місце над мапою, рахує geo.js), мапа лишається на всю ширину */
+@container (max-width: 719px) { .geomain .geoframe { min-width: 0; width: min(100%, calc(var(--geo-phh, 9999px) * 1.5)); } }
+@container (max-width: 560px) { .geomain .geoframe { width: min(100%, calc(var(--geo-phh, 9999px) * 1.6)); } }
 .geoimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; cursor: zoom-in;
   -webkit-user-select: none; user-select: none; transition: filter .35s ease-out; }
 .geoframe.empty .geoimg { visibility: hidden; }

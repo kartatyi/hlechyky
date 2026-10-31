@@ -337,7 +337,7 @@
     const top = Math.max(fit.top, cv.getBoundingClientRect().top + (window.scrollY || 0));
     const mh = st.me && !st.me.hidden ? st.me.offsetHeight : 0;
     const below = (mh || (coarse() ? 104 : 112)) + 14;
-    const floor = coarse() ? 220 : 300;
+    const floor = coarse() ? 220 : 250;   // ПК: було 300 — на 1366×768 кошик із «Хапай» ішов за екран на 16 px
     const tb = tableRoom(st);
     const avail = tb ? Math.max(floor, tb.h) : Math.max(floor, fit.h - fit.dock - top - below);
     const pref = (coarse() ? 110 : 150) + (coarse() ? 66 : 76) * (n + 1);

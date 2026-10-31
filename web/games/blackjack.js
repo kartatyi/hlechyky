@@ -567,6 +567,12 @@
       skeleton(root);
       st.tick = setInterval(() => tick(root), 1000);
       paint(root, ctx);
+      // Світлиця (fix-screens): широка й низька картка — ставки, хід і низ (підказки, чесна колода) праворуч від панелі ставок (blackjack.css).
+      if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, (f) => {
+        const el = root.querySelector('.bj');
+        const on = !!(f && f.aw >= 820 && f.ah > 0 && f.ah < 620);   // лише низький широкий екран (1366×768): на 1920 сукно на всю ширину
+        if (el && el.classList.contains('bj-wide') !== on) el.classList.toggle('bj-wide', on);
+      });
     },
 
     update(root, ctx) {
@@ -578,6 +584,7 @@
     status: statusText,
 
     unmount(root) {
+      if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, null);
       const st = root._bj;
       if (!st) return;
       clearInterval(st.tick);

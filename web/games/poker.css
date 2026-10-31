@@ -176,6 +176,20 @@
 .pk .pk-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .pk .pk-btns:empty { display: none; }
 
+/* Світлиця (fix-screens): низький широкий екран (клас .pk-lside ставить poker.js, коли картка ≥ 860 px завширшки, а місця
+   у висоту < 620 px — 1366×768): мої карти й панель ходу — колонкою праворуч від столу, стіл — на всю висоту картки. */
+.pk.pk-lside {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 300px); column-gap: 14px; row-gap: 8px;
+  grid-template-areas: "top top" "table mine" "table panel" "btns btns"; grid-template-rows: auto 1fr auto auto;
+  --pk-th: clamp(240px, min(calc(var(--g-ah, 600px) - 82px), calc((var(--g-aw, 900px) - 316px) / 2.1)), 860px);
+}
+.pk.pk-lside > .pk-top { grid-area: top; }
+.pk.pk-lside > .pk-table { grid-area: table; align-self: center; }
+.pk.pk-lside > .pk-mine { grid-area: mine; align-self: end; }
+.pk.pk-lside > .pk-panel { grid-area: panel; align-self: start; }
+.pk.pk-lside > .pk-btns { grid-area: btns; }
+.pk.pk-lside .pk-b { min-width: 0; flex: 1 1 40%; }
+
 /* ---- телефон: стіл вужчий і вищий, панель ходу на всю ширину ---- */
 /* Великий стіл (2K, ⛶): плашки гравців і їхні карти — пропорційно більші, інакше губляться на сукні. */
 @media (min-width: 2000px) and (min-height: 1300px) {

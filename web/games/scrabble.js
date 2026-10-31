@@ -147,8 +147,40 @@
     const quick = v.bagTotal && v.bagTotal < 104 ? ' · швидка' : '';
     chips.push('<span class="scr-bag" title="Фішок у мішку">🎒 ' + (v.bag || 0) + quick + '</span>');
     if (v.smallDict) chips.push('<span class="scr-warn" title="Великого словника нема: слова приймаються, але їх можна оскаржити">малий словник</span>');
+    const st = ctx._scr;
+    if (st && zoomable(st)) {
+      const t = st.zoom ? 'Уся дошка' : 'Крупніше: клітинки під палець, дошка гортається';
+      chips.push('<button type="button" class="ghost scr-zoombtn' + (st.zoom ? ' on' : '') + '" data-pad-skip title="' + t + '" aria-label="' + t + '">' + (st.zoom ? '🔍−' : '🔍+') + '</button>');
+    }
     const html = chips.join('');
     setHtml(host, html);
+  }
+
+  // ---------------------------------------------------------------- зум дошки (fix-screens)
+  // На дотику клітинка 15×15 — 24 px стоячи, 19 лежачи, 30 на планшеті: фішку кладеш навмання. «🔍 Крупніше» — клітинки
+  // по 40 px, дошка гортається пальцем в обидва боки в межах місця під поле; вмикаючи, гортаємо туди, де щойно ходили.
+  const coarse = () => window.matchMedia('(pointer: coarse)').matches;
+  function zoomable(st) { return coarse() && (st.zoom || (st.nat > 0 && st.nat < 32)); }
+  function zoomSync(root, st) {
+    const host = root.querySelector('.scr-board');
+    if (!host) return;
+    const on = !!st.zoom && coarse();
+    host.classList.toggle('scr-zoom', on);
+    if (!on && coarse()) {
+      const c = host.querySelector('.cell');
+      const nat = c ? c.getBoundingClientRect().width : 0;
+      if (nat > 0 && Math.abs(nat - (st.nat || 0)) > 0.5) { st.nat = nat; head(root.querySelector('.scr-top'), st.ctx || {}); }
+      else if (!nat && !st.natT) st.natT = requestAnimationFrame(() => { st.natT = 0; if (root._scr === st) zoomSync(root, st); });
+    }
+  }
+  function zoomTo(root, st) {
+    const host = root.querySelector('.scr-board.scr-zoom');
+    if (!host) return;
+    const cells = host.querySelectorAll('.cell');
+    const c = host.querySelector('.cell.pend, .cell.cur, .cell.last') || cells[Math.floor(cells.length / 2)];
+    if (!c) return;
+    host.scrollLeft = Math.max(0, c.offsetLeft - (host.clientWidth - c.offsetWidth) / 2);
+    host.scrollTop = Math.max(0, c.offsetTop - (host.clientHeight - c.offsetHeight) / 2);
   }
 
   // ---------------------------------------------------------------- дошка
@@ -441,8 +473,10 @@
 
   function repaint(root, ctx) {
     const st = state(root, ctx);
+    st.ctx = ctx;
     head(root.querySelector('.scr-top'), ctx);
     board(root.querySelector('.scr-board'), ctx, st);
+    zoomSync(root, st);
     legend(root.querySelector('.scr-legend'), ctx);
     rackRow(root.querySelector('.scr-rack'), ctx, st);
     blankBox(root.querySelector('.scr-blank'), ctx, st);
@@ -477,7 +511,18 @@
       root.innerHTML = '<div class="scr-top"></div><div class="scr-board g-field"></div><div class="scr-legend"></div>'
         + '<div class="scr-dock"><div class="scr-rack"></div><div class="scr-blank"></div><div class="scr-hint"></div>'
         + '<div class="scr-btns"></div></div><div class="scr-log"></div>';
-      state(root, ctx);
+      const st0 = state(root, ctx);
+      try { st0.zoom = localStorage.getItem('scrZoom') === '1'; } catch { /* приватне вікно */ }
+      root.addEventListener('click', (e) => {
+        if (!e.target.closest('.scr-zoombtn')) return;
+        const st = root._scr;
+        if (!st) return;
+        st.zoom = !st.zoom;
+        try { localStorage.setItem('scrZoom', st.zoom ? '1' : '0'); } catch { /* приватне вікно */ }
+        zoomSync(root, st);
+        head(root.querySelector('.scr-top'), st.ctx);
+        if (st.zoom) zoomTo(root, st);
+      });
       repaint(root, ctx);
     },
 

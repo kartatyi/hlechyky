@@ -347,7 +347,8 @@
   .sor-sum { order: 2; }
   .sor-sumgrid { grid-template-columns: 1fr; }
   .sor-fieldwrap { order: 3; aspect-ratio: auto; max-height: none; min-height: 300px; width: auto; margin-inline: var(--sor-bleed); border-radius: 0;
-    height: clamp(300px, min(calc(var(--gfit-h, 100svh) - var(--sor-plh, 100px) - var(--sor-striph, 0px) - var(--sor-barh, 0px) - 16px), calc((100cqw + 32px) * 1.36)), 88svh); }
+    height: clamp(300px, min(var(--sor-ph, calc(var(--gfit-h, 100svh) - var(--sor-plh, 100px) - var(--sor-striph, 0px) - var(--sor-barh, 0px) - 16px)), calc((100cqw + 32px) * 1.36)), 88svh); }
+  /* --sor-ph (fix-screens, sizeVars): від верху поля до низу екрана над вкладками, крамницею й панеллю дій */
   .sor-say { order: 4; font-size: .95em; padding: 8px 10px; }
   .sor-res { order: 5; }
   .sor-awards { order: 6; }
