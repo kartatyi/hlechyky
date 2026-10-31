@@ -37,7 +37,7 @@
 
 /* Ставок квадратний; на ноутбуці ширину під висоту вікна ставить fit() у thinice.js, тут — запасна стеля. */
 .tiboard {
-  aspect-ratio: 1; width: 100%; max-width: min(600px, calc(100vh - 300px)); min-width: min(300px, 100%);
+  aspect-ratio: 1; width: 100%; max-width: min(var(--g-fmax, 1100px), var(--g-fh, calc(100vh - 300px))); min-width: min(300px, 100%);
   background: var(--ti-water); border-radius: 14px;
 }
 .tiboard.play { touch-action: none; }
@@ -50,7 +50,7 @@
   transition: opacity .3s;
 }
 .tichip i {
-  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
+  font-style: normal; font-size: max(.82em, 11px); font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
   display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
 }
 .tichip .tinick { overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 11em; }
@@ -101,7 +101,7 @@
   }
   .tijump > * { position: relative; z-index: 1; pointer-events: none; }
   .tijump span { font-size: 1.9em; line-height: 1; font-weight: 800; }
-  .tijump small { font-size: .62em; color: var(--muted); }
+  .tijump small { font-size: max(.62em, 11px); color: var(--muted); }
   .tijump.ready { border-color: var(--ti-ice-edge); box-shadow: 0 0 14px rgba(156, 203, 231, .55); }
   .tijump.ready::before { background: var(--panel3); }
   .tijump.off { opacity: .45; }
@@ -112,7 +112,9 @@
 @media (max-width: 480px) {
   .tihud { gap: 4px; font-size: .74em; }
   .tichip { padding: 2px 7px; gap: 4px; }
-  .tiboard { max-width: 100%; }
+  /* ставок — за висотою рядка поля від каркаса, але не вужчий за 80 % картки (--g-fminw): з кнопками під ним
+     картка майже в екран, а не на 140 px нижче */
+  .tiboard { max-width: min(100%, max(var(--g-fminw, 100%), var(--g-fh, 100vw))); margin: 0 auto; }
 }
 @media (max-width: 380px) {
   .tistick { width: 108px; height: 108px; }

@@ -988,15 +988,27 @@
       if (cv.style.maxWidth) cv.style.maxWidth = '';
       return;
     }
-    const card = root.parentElement || root;
-    const r = cv.getBoundingClientRect();
-    const top = r.top + window.scrollY;
-    const cb = card.getBoundingClientRect().bottom;
-    const gap = Math.max(0, Math.min(24, document.documentElement.scrollHeight - (cb + window.scrollY)));
-    const below = Math.max(0, cb - r.bottom) + gap;
-    const big = window.innerWidth >= 1500 && window.innerHeight >= 860;
-    let size = Math.floor(window.innerHeight - top - below);
-    size = Math.max(300, Math.min(size, big ? 760 : 680, root.clientWidth || 680));
+    // Світлиця: каркас уже порахував місце під ставок (--g-fh: вікно мінус шапки, HUD, статус, кнопки; у ⇔ і ⛶ —
+    // своє) — беремо його, стеля 1100 (у ⛶ на 2K ставок великий); нема (картка ще не була на столі) — як раніше.
+    // У вечірці (embedded) ui.box віддає місце всієї картки вечірки — там беремо --g-ah рамки міні-гри (його кладе
+    // вечірка) мінус HUD і кнопки під ставком.
+    const emb = !!(st.ctx && st.ctx.embedded);
+    const box = !emb && HGames.ui.box ? HGames.ui.box(root) : null;
+    const embH = emb ? parseFloat(getComputedStyle(root).getPropertyValue('--g-ah')) || 0 : 0;
+    let size;
+    if (box && box.fh > 0) size = Math.max(300, Math.min(Math.floor(box.fh), 1100, root.clientWidth || 680));
+    else if (embH > 0) size = Math.max(240, Math.min(Math.floor(embH - Math.max(0, root.offsetHeight - cv.offsetHeight) - 4), 1100, root.clientWidth || 680));
+    else {
+      const card = root.parentElement || root;
+      const r = cv.getBoundingClientRect();
+      const top = r.top + window.scrollY;
+      const cb = card.getBoundingClientRect().bottom;
+      const gap = Math.max(0, Math.min(24, document.documentElement.scrollHeight - (cb + window.scrollY)));
+      const below = Math.max(0, cb - r.bottom) + gap;
+      const big = window.innerWidth >= 1500 && window.innerHeight >= 860;
+      size = Math.floor(window.innerHeight - top - below);
+      size = Math.max(300, Math.min(size, big ? 760 : 680, root.clientWidth || 680));
+    }
     const cur = parseFloat(cv.style.maxWidth);
     if (!(Math.abs(cur - size) < 2)) cv.style.maxWidth = size + 'px';
   }
