@@ -810,7 +810,7 @@
     st.pal = palette();
     st.palAt = now;
     const dpr = Math.min(3, window.devicePixelRatio || 1);
-    const S = Math.min(2, dpr * (st.mode === 'port' ? 1.4 : 1));
+    const S = Math.min(2, Math.max(dpr * (st.mode === 'port' ? 1.4 : 1), st.cv ? Math.ceil(st.cv.el.width / st.cv.w * 4) / 4 : 1));   // задник не дрібніший за полотно (crisp)
     const key = S + '|' + st.pal.grass + st.pal.sky + st.pal.wood;
     if (st.stat && st.statKey === key) return true;
     st.S = S;
@@ -1618,10 +1618,37 @@
 
   /// Луг 10:3 має влізти у вікно разом зі статусом і кнопками під ним: ширину рахуємо від того, де сцена справді
   /// починається, і скільки займає все під нею до низу картки, плюс смужка пада на Деку.
+  /// Світлиця (fit-core): на сторінці столу місце під картку вже порахував каркас (ui.box → ah — висота під увесь
+  /// .gbody з урахуванням ⇔, ⛶, телефона, шапки й низу сайту). Сцені лишається ah мінус решта .gbody (фішки,
+  /// підсумок, хрестовина) і смужка пада. 0 — каркас не міряв (вечірка вбудувала гру, картка ще не була на столі):
+  /// тоді, як було, від вікна.
+  function stageRoom(st) {
+    const el = st.stageEl, body = el && el.parentElement;
+    if (!body || !body.classList.contains('gbody') || !HGames.ui.box) return 0;
+    const f = HGames.ui.box(body), bh = body.getBoundingClientRect().height;
+    if (!f || !f.ah || !bh) return 0;
+    return f.ah - (bh - el.getBoundingClientRect().height) - st.padH;
+  }
+
+  /// Полотно ширше за світ (⛶, 2K, ⇔): задник — за справжнім розміром на екрані, а не «світ × dpr», інакше мапа
+  /// розтягується й мила ніки. Стеля — 2880 px задника (кадр 25 Гц малює все одно лише видиме).
+  function crisp(st) {
+    const c = st.cv, css = c && c.el.clientWidth;
+    if (!css) return;
+    const pw = Math.min(2880, Math.round(css * Math.min(3, window.devicePixelRatio || 1)));
+    if (pw > c.el.width + 8) { c.el.width = pw; c.el.height = Math.round(pw * c.h / c.w); }
+  }
+
   function sizeStage(st, mode) {
     const el = st.stageEl;
     if (!el || !el.isConnected) return;
     if (mode === 'port') { if (el.style.maxWidth) el.style.maxWidth = ''; return; }
+    const room = stageRoom(st);
+    if (room > 0) {                              // каркас поміряв: на все місце, без стелі 960 (⛶, 2K)
+      const fw = clamp(Math.floor(room * WW / WH), 420, 3200);
+      if (Math.abs((parseFloat(el.style.maxWidth) || 0) - fw) >= 3) el.style.maxWidth = fw + 'px';
+      return;
+    }
     const r = el.getBoundingClientRect();
     const card = el.closest('.gtable');
     const below = Math.max(48, card ? card.getBoundingClientRect().bottom - r.bottom : 92) + 22;
@@ -1651,6 +1678,7 @@
       placePad(root, st);
       placeSeats(root, st);
     } else st.cv.resize();
+    crisp(st);
     const css = st.cv.el.clientWidth;
     if (css) st.cssK = css / (mode === 'port' ? PW : WW);
   }

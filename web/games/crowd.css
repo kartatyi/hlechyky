@@ -56,7 +56,7 @@
 .crowd-clock.hot { color: var(--danger); animation: crowd-pulse 1s ease-in-out infinite; }
 @keyframes crowd-pulse { 50% { opacity: .55; } }
 .crowd-stones i, .crowd-list i { font-style: normal; }
-.crowd-list small { color: var(--muted); font-size: .86em; margin-right: 1px; }
+.crowd-list small { color: var(--muted); font-size: .92em; margin-right: 1px; }
 .crowd-stones i.used { opacity: .25; filter: grayscale(1); }
 .crowd-list i.done { opacity: .45; }
 .crowd-seat i { width: .7em; height: .7em; border-radius: 50%; background: currentColor; display: inline-block; }
@@ -193,3 +193,9 @@ body.g-land .gtable:has(> .gbody.crowd-body) > .gbody > .crowd-pad > .crowd-acts
 @media (pointer: coarse) {
   .crowd-pad, .crowd-pad * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 }
+
+/* Світлиця: фішки над мапою не дрібніші за 11,5 px (було ~9 px на всіх екранах); кнопки в рядку фішок — під палець */
+.crowd-hud { font-size: max(11.5px, .82em); }
+.crowd-chips { font-size: inherit; }   /* був ще раз .82em усередині .82em — 9–10 px */
+@media (max-width: 480px) { .crowd-hud { font-size: max(11px, .76em); } }
+@media (pointer: coarse) { .crowd-mute { min-height: 34px; min-width: 40px; justify-content: center; } }

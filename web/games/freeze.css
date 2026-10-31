@@ -166,3 +166,9 @@ body.g-land .gtable:has(> .gbody.freeze-body) > .gbody > .freeze-pad > .freeze-a
 @media (pointer: coarse) {
   .freeze-pad, .freeze-pad * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 }
+
+/* Світлиця: фішки над мапою не дрібніші за 11,5 px (було ~9 px на всіх екранах); кнопки в рядку фішок — під палець */
+.freeze-hud { font-size: max(11.5px, .82em); }
+.freeze-chips { font-size: inherit; }   /* був ще раз .82em усередині .82em — 9–10 px */
+@media (max-width: 480px) { .freeze-hud { font-size: max(11px, .76em); } }
+@media (pointer: coarse) { .freeze-mute { min-height: 34px; min-width: 40px; justify-content: center; } }

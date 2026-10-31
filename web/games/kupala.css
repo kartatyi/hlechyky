@@ -193,3 +193,9 @@ body.g-land .gtable:has(> .gbody.kupala-body) > .gbtns { order: 1; margin: 0; fl
 body.g-land .gtable:has(> .gbody.kupala-body) > .gbody { order: 2; flex: 1 0 100%; min-width: 0; }
 body.g-land .kupala-body.kupala-land { max-height: calc(var(--gland-h, 330px) - 59px); grid-template-rows: minmax(0, auto) minmax(0, 1fr); }
 body.g-land .kupala-land > .kupala-hud { max-height: calc(var(--gland-h, 330px) - 135px); }
+
+/* Світлиця: фішки над мапою не дрібніші за 11,5 px (було ~9 px на всіх екранах); кнопки в рядку фішок — під палець */
+.kupala-hud { font-size: max(11.5px, .82em); }
+.kupala-chips { font-size: inherit; }   /* був ще раз .82em усередині .82em — 9–10 px */
+@media (max-width: 480px) { .kupala-hud { font-size: max(11px, .76em); } }
+@media (pointer: coarse) { .kupala-torch, .kupala-mute { min-height: 34px; min-width: 40px; justify-content: center; } }

@@ -211,3 +211,9 @@ body.g-land .gtable:has(> .gbody.dance-body) > .gbody > .dance-ctl > .dance-figs
   .dance-ctl { gap: 10px; }
   .dance-figs { grid-template-columns: repeat(3, 52px); }
 }
+
+/* Світлиця: фішки над мапою не дрібніші за 11,5 px (було ~9 px на всіх екранах); кнопки в рядку фішок — під палець */
+.dance-hud { font-size: max(11.5px, .82em); }
+.dance-chips { font-size: inherit; }   /* був ще раз .82em усередині .82em — 9–10 px */
+@media (max-width: 480px) { .dance-hud { font-size: max(11px, .76em); } }
+@media (pointer: coarse) { .dance-mute { min-height: 34px; min-width: 40px; justify-content: center; } }
