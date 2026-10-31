@@ -37,7 +37,7 @@ public sealed class KoliyaReportsTests : IDisposable
         Assert.Equal(400, await inbox.Accept("Оля", "1.2.3.4", 5, Body("[1,2]"), 40_000));
         Assert.Equal(400, await inbox.Accept("Оля", "1.2.3.4", 5, Body("{оля"), 50_000));
 
-        await _log.Drain(TimeSpan.FromSeconds(3));
+        await _log.Drain(TimeSpan.FromSeconds(20));
         var path = _log.PathOf("koliya", DateTime.Now);
         var lines = File.ReadAllLines(path).Where(l => l.Length > 0).Select(l => JsonDocument.Parse(l).RootElement.Clone()).ToList();
         Assert.Equal(3, lines.Count);
@@ -59,7 +59,7 @@ public sealed class KoliyaReportsTests : IDisposable
         Assert.Equal(429, await inbox.Accept("гість", "5.6.7.8", ok.Length, Body(ok), 10_500, id: "b2"));
         Assert.Equal(200, await inbox.Accept("гість", "5.6.7.8", ok.Length, Body(ok), 20_000, id: "c3"));
         Assert.Equal(429, await inbox.Accept("гість", "5.6.7.8", ok.Length, Body(ok), 30_000, id: "d4"));   // стеля доби
-        await _log.Drain(TimeSpan.FromSeconds(3));
+        await _log.Drain(TimeSpan.FromSeconds(20));
         Assert.Equal(3, File.ReadAllLines(_log.PathOf("koliya", DateTime.Now)).Count(l => l.Length > 0));
     }
 }

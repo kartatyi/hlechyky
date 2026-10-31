@@ -23,7 +23,8 @@ public sealed class TickHealthTests : IDisposable
 
     List<JsonElement> Lines(string kind)
     {
-        _log.Drain(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
+        // запис іде фоном у пулі потоків; під навантаженням повного набору пул буває зайнятий секундами
+        _log.Drain(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
         var path = _log.PathOf(kind, DateTime.Now);
         if (!File.Exists(path)) return [];
         return [.. File.ReadAllLines(path).Where(l => l.Length > 0).Select(l => JsonDocument.Parse(l).RootElement.Clone())];
