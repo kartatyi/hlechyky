@@ -82,15 +82,25 @@ public sealed class TablesKeeper(Rooms rooms, Tournament? tournament, IClock clo
     {
         // Той самий знімок, що й минулого разу (усі сидять у лобі й мовчать), — диск не смикаємо. Але не довше за
         // пів MaxAge: старт бере лише свіжий знімок, а час у файлі мусить бути правдою.
-        var probe = JsonSerializer.SerializeToUtf8Bytes(tables with { At = default }, Json);
-        if (!tables.Clean && _probe is not null && probe.AsSpan().SequenceEqual(_probe) && tables.At - _probeAt < MaxAge / 2) return;
+        // Серіалізуємо один раз (було двічі: окремо «без часу» для порівняння і ще раз для запису). Час — друге поле
+        // знімка, тож для порівняння беремо все від «clean» далі: решта байтів і є столами.
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(tables, Json);
+        var probe = Probe(bytes);
+        if (!tables.Clean && _probe is not null && probe.SequenceEqual(_probe) && tables.At - _probeAt < MaxAge / 2) return;
         var path = PathOf(FileName);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var tmp = path + ".tmp";
-        File.WriteAllBytes(tmp, JsonSerializer.SerializeToUtf8Bytes(tables, Json));
+        File.WriteAllBytes(tmp, bytes);
         File.Move(tmp, path, overwrite: true);
-        _probe = probe;
+        _probe = probe.ToArray();
         _probeAt = tables.At;
+    }
+
+    /// <summary>Знімок без часу: усе від поля <c>clean</c> (воно йде одразу за <c>at</c>). Не знайшлось — увесь знімок.</summary>
+    static ReadOnlySpan<byte> Probe(byte[] bytes)
+    {
+        var at = bytes.AsSpan().IndexOf(",\"clean\":"u8);
+        return at < 0 ? bytes : bytes.AsSpan(at);
     }
 
     byte[]? _probe;
