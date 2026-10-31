@@ -106,10 +106,14 @@ body:not(.g-land) .gbody.mn-wide > .mn-btns button { justify-content: center; }
   .gbody > .mn-wrap:has(.huge) { width: calc(100vw - 6px); max-width: none; margin-inline: calc(50% - 50vw + 3px); }
   .board.mines.huge { width: 100%; gap: 1px; }
   .board.mines.huge .cell { border-radius: 3px; }
-  .mn-wrap.mn-zoom { overflow: auto hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
-    mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
-  .mn-wrap.mn-zoom .board.mines.huge { width: 527px; max-width: none; margin: 0 12px; }
+}
+/* «🔍 Крупніше» на дотику (fix-screens): клітинка 36 px, поле гортається пальцем в обидва боки й не вище за місце під
+   поле (--g-fh), смуги прокрутки видно. Було лише стоячи на телефоні й лише вбік (клітинка 32, решта сторінки гортається). */
+@media (pointer: coarse) {
+  .gbody > .mn-wrap.mn-zoom { width: 100%; max-width: 100%; margin-inline: 0; overflow: auto; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch; max-height: max(220px, var(--g-fh, 70vh)); border-radius: 8px; }
+  .mn-wrap.mn-zoom .board.mines, .mn-wrap.mn-zoom .board.mines.huge { width: calc(var(--cols, 16) * 38px); max-width: none; margin: 0; gap: 2px; }
+  body:not(.g-land) .gbody.mn-wide > .mn-wrap.mn-zoom { width: min(100%, var(--mn-room, 100%)); }
 }
 
 /* табло дня (прохід №3): один-два рядки над полем, свій рядок підсвічено; вогник — серія днів */

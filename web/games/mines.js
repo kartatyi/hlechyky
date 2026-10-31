@@ -330,8 +330,9 @@
     if (daily && ctx.mine && ctx.playing && !v.solved && !v.resigned)
       out.push('<button type="button" class="ghost" data-m="resign">' + (st.resignArm > Date.now() ? '🏳 Точно? Ще раз' : '🏳 Здаюсь') + '</button>');
     if (!daily && ctx.mine && ctx.playing && !dead) out.push('<button type="button" class="ghost" data-m="resign">Здаюсь</button>');
-    // Велике поле на телефоні вписане в ширину (клітинка ~23 px); кому дрібно — крупніше з прокруткою вбік.
-    if ((v.w || (daily ? 16 : 9)) > 12 && window.matchMedia('(max-width: 480px)').matches)
+    // Дотик (fix-screens): клітинка дрібніша за 32 px (Сапер дня на телефоні — 22, лежачи — 17; дуель лежачи — 31) —
+    // «🔍 Крупніше»: клітинки по 36 px, поле гортається пальцем в обидва боки в межах місця під поле.
+    if (zoomable(st))
       out.push('<button type="button" class="ghost mn-zoombtn" data-m="zoom">' + (st.zoom ? '🔍 Ціле поле' : '🔍 Крупніше') + '</button>');
     if (daily && v.solved && v.ghost) {
       const g = st.ghost;
@@ -351,7 +352,13 @@
         setTimeout(() => { if (root._mines === st) buttons(root, st.ctx || ctx, daily); }, 3100);
         return;
       }
-      if (b.dataset.m === 'zoom') { st.zoom = !st.zoom; paint(root, ctx, daily); return; }
+      if (b.dataset.m === 'zoom') {
+        st.zoom = !st.zoom;
+        try { localStorage.setItem('minesZoom', st.zoom ? '1' : '0'); } catch { /* приватне вікно */ }
+        paint(root, ctx, daily);
+        if (st.zoom) zoomTo(root, st);
+        return;
+      }
       if (b.dataset.m === 'ghost') { ghostStart(root, ctx); buttons(root, ctx, daily); return; }
       if (b.dataset.m === 'gstop') { ghostStop(root); paint(root, ctx, daily); return; }
       if (b.dataset.m === 'gspeed') {
@@ -435,6 +442,19 @@
     });
   }
 
+  const coarse = () => window.matchMedia('(pointer: coarse)').matches;
+  /// Чи давати «🔍»: лише на дотику й лише коли клітинка без зуму дрібніша за 32 px (st.nat — заміряна без зуму).
+  function zoomable(st) { return coarse() && (st.zoom || (st.nat > 0 && st.nat < 32)); }
+  /// Увімкнули зум — поле прокручене туди, де щойно тиснули (або в середину), а не в лівий верхній куток.
+  function zoomTo(root, st) {
+    const wrap = root.querySelector(':scope > .mn-wrap');
+    if (!wrap || !wrap.classList.contains('mn-zoom')) return;
+    const c = wrap.querySelector('.cell.last') || wrap.querySelectorAll('.cell')[Math.floor(wrap.querySelectorAll('.cell').length / 2)];
+    if (!c) return;
+    wrap.scrollLeft = Math.max(0, c.offsetLeft - (wrap.clientWidth - c.offsetWidth) / 2);
+    wrap.scrollTop = Math.max(0, c.offsetTop - (wrap.clientHeight - c.offsetHeight) / 2);
+  }
+
   function boardHost(root) {
     let el = root.querySelector(':scope > .mn-wrap');
     if (!el) {
@@ -465,7 +485,8 @@
     const lastCls = v.lastBy != null ? ' by' + v.lastBy : '';
 
     const wrap = boardHost(root);
-    wrap.classList.toggle('mn-zoom', !!st.zoom && w > 12);
+    const zoomOn = !!st.zoom && coarse();
+    wrap.classList.toggle('mn-zoom', zoomOn);
     const board = HGames.ui.grid(wrap, {
       cols: w,
       // до першого виду cells порожній: малюємо поле повного розміру, а не смужку в один ряд
@@ -480,6 +501,20 @@
     });
     board._mflag = (i) => { if (closed(cells[i])) ctx.act('flag', { cell: i }); };
     wire(board);
+    // Розмір клітинки без зуму (для «🔍»). Зум — як людина обрала востаннє (localStorage); типово — ціле поле.
+    if (!zoomOn && coarse()) {
+      const c = board.querySelector('.cell');
+      const nat = c ? c.getBoundingClientRect().width : 0;
+      if (nat > 0) st.nat = nat;
+      // картка ще не в документі (перший mount) — заміряємо з наступним кадром
+      else if (!st.natT) st.natT = requestAnimationFrame(() => { st.natT = 0; if (root._mines === st && st.ctx && !st.nat) paint(root, st.ctx, daily); });
+      if (st.zoom == null && st.nat > 0) {
+        let pref = null;
+        try { pref = localStorage.getItem('minesZoom'); } catch { /* приватне вікно */ }
+        st.zoom = pref === '1' && st.nat < 32;
+        if (st.zoom) { paint(root, ctx, daily); zoomTo(root, st); return; }
+      }
+    }
     buttons(root, ctx, daily);
   }
 
