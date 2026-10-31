@@ -1863,6 +1863,15 @@
       st.sg = st.stat.getContext('2d');
       cssColors(st, ctx);
       bindPointer(st);
+      // fix-screens: телефон стоячи (одна колонка) — мапа (поле гри) на всю ширину, а фото — скільки лишиться над нею
+      // (не дрібніше 110 px заввишки; тап — фото на весь екран). Було: фото на всю ширину, мапа на 79 px нижче екрана.
+      if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, (f) => {
+        const wrap = root.querySelector('.geowrap'), main = root.querySelector('.geomain'), map = root.querySelector('.geomap');
+        if (!wrap || !main || !map || !f || !f.ah) return;
+        const one = wrap.clientWidth > 0 && wrap.clientWidth < 720 && !document.body.classList.contains('g-land');
+        const v = one ? Math.max(110, Math.floor(f.ah - (wrap.offsetHeight - main.offsetHeight) - map.offsetHeight - 10)) + 'px' : '';
+        if (wrap.style.getPropertyValue('--geo-phh') !== v) { if (v) wrap.style.setProperty('--geo-phh', v); else wrap.style.removeProperty('--geo-phh'); }
+      });
 
       const img = root.querySelector('.geoimg');
       root.querySelector('.geogo').onclick = () => readyOrNext(st);
@@ -2045,6 +2054,7 @@
     },
 
     unmount(root) {
+      if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, null);
       const st = root._geo;
       if (!st) return;
       cancelAnimationFrame(st.raf);
