@@ -17,6 +17,10 @@
   display: flex; flex-wrap: wrap; gap: 10px; width: 100%; align-items: flex-start;
 }
 .skmain { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+/* Порожні блоки (ставка, команди, підсумок… поки нема) не займають місця: інакше кожен давав ще 10 px проміжку —
+   лежачи на телефоні це ~100 px, і поле відповіді йшло за край. */
+.skmain > :empty { display: none; }
+@media (max-height: 500px) { .skmain { gap: 6px; } .sktop { min-height: 40px; } }
 
 .sktop { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 46px; }
 /* Без uppercase: «Питання 1 з 5» великими читається як «1 3 5» — «З» і трійка тут близнюки. */
