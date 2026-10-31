@@ -937,7 +937,7 @@
   ///   --g-ah    висота під увесь .gbody — щоб картка разом із рядком столу влізла у вікно без прокрутки сторінки;
   ///   --g-fh    висота під рядок поля: --g-ah мінус решта дітей .gbody (рахунок, хрестовина, рука…). Поле — .g-field
   ///             (будь-де в .gbody), інакше пряма дитина .gbody: полотно ui.canvas чи дошка ui.grid;
-  ///   --g-fminw нижня межа ширини поля (телефон стоячи: не дрібніше за 80 % ширини, далі вже прокрутка), інакше 0.
+  ///   --g-fminw нижня межа ширини поля (телефон стоячи без ⛶: уся ширина, як було; далі вже прокрутка), інакше 0.
   /// Ті самі числа — у fit для ui.onFit (aw, ah, fh), ui.box(host) і ui.fitBox(host, ar). Картку у віконці «Стіл у
   /// куточку» не міряємо: вона тримає змінні зі столу (вони inline на ній) і вписується transform-ом.
   const FIELD_MIN = 200;
@@ -1002,7 +1002,9 @@
       fh = top ? Math.max(FIELD_MIN, ah - (br.height - top.getBoundingClientRect().height)) : ah;
     }
     aw = Math.round(aw); ah = Math.floor(ah); fh = Math.floor(fh);
-    const minw = coarse() && !f.imm && !f.land && window.innerWidth < 700 ? Math.round(aw * 0.8) : 0;
+    // Телефон стоячи без ⛶: поле — на всю ширину, як і було (дошка 273 px замість 341 заради «Встати» внизу — гірше;
+    // низ картки догортається). За висотою вписуємо на ПК, лежачи і в ⛶.
+    const minw = coarse() && !f.imm && !f.land && window.innerWidth < 700 ? aw : 0;
     const o = c.fitBox;
     if (o && Math.abs(o.aw - aw) < 2 && Math.abs(o.ah - ah) < 2 && Math.abs(o.fh - fh) < 2 && o.minw === minw) return false;
     // захист від гойдалки (гра міняє щось у .gbody від розміру поля): понад 12 змін за секунду — пауза на секунду,
