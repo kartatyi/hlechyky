@@ -781,7 +781,7 @@ public class SkleiTests(ITestOutputHelper output)
         var h = new PartyHarness("sklei", humans: 0, bots: 8, level: LiveBots.Level.Hard, seed: 4);
         h.Start();
         var g = (Sklei)h.Game;
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++) { h.Clock.AdvanceMs(Sklei.TickMillis); g.Tick(); g.View(i % 8); }
         sw.Stop();
         output.WriteLine($"1000 тиків × 8 ботів + вид: {sw.ElapsedMilliseconds} мс");

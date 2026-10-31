@@ -870,7 +870,7 @@ public class BomberTests
     {
         var core = new BomberCore(new Random(11));
         core.Reset(All(4));
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < BomberCore.RoundTicks; i++)
         {
             for (var seat = 0; seat < BomberCore.Seats; seat++)
@@ -893,7 +893,7 @@ public class BomberTests
         // 16 разів на секунду. Тому міряємо саме кімнатний тик разом із розсилкою (TESTING.md §4.4).
         var h = Table(6);
         Ready(h);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < BomberCore.RoundTicks; i++)
         {
             if (i % 9 == 0) h.Input(i % BomberCore.Seats, "move", new { dir = (i / 9) % 4 });

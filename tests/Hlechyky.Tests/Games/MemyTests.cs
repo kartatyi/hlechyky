@@ -1061,7 +1061,7 @@ public class MemyPerfTests(ITestOutputHelper output)
         using var c = new MemyCache();
         var h = MemyTests.Table(c, 12, new { rounds = "15", seconds = "15" });
         var rng = new Random(5);
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var matches = 1;
         for (var t = 0; t < 1000; t++)
         {

@@ -1,0 +1,143 @@
+{
+ "game": "potato",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 1,
+   "issues": [
+    "field-capped:612px"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 1,
+   "issues": [
+    "field-capped:1104px"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 1,
+   "issues": [
+    "field-capped:1294px"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 1,
+   "issues": [
+    "field-capped:1620px"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 1,
+   "issues": [
+    "field-capped:1645px"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 1,
+   "issues": [
+    "field-capped:1833px"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 1,
+   "issues": [
+    "tiny-fonts:1"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 1,
+   "issues": [
+    "card-below-fold:40"
+   ],
+   "below": 0,
+   "el": "div.potato-stage.potato-portmode",
+   "cardBelow": 40,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.potato-stage.potato-portmode",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 4,
+   "issues": [
+    "field-capped:406px",
+    "inner-scroll:1",
+    "clipped-text:1"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 4,
+   "issues": [
+    "field-capped:406px",
+    "inner-scroll:1",
+    "clipped-text:1"
+   ],
+   "below": 0,
+   "el": "div.potato-stage",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

@@ -624,7 +624,7 @@ public class GeeseTests
         var h = new RoomHarness("geese", seed: 5);
         for (var i = 0; i < 8; i++) h.Join("Гравець" + i);
         h.Start();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             h.Tick();

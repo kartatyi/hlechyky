@@ -497,7 +497,7 @@ public class DuelTests
     public void A_thousand_ticks_of_one_street_are_instant()
     {
         var h = Street();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             // обидва щоразу поспішають: раунд переграється, партія не кінчається — тик має справжню роботу

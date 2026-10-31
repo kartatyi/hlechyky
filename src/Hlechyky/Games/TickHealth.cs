@@ -311,19 +311,26 @@ public sealed class DiagLog
                     await File.AppendAllTextAsync(PathOf(kind, DateTime.Now), line + "\n");
                 }
                 catch (Exception ex) { log?.LogWarning(ex, "замір {Kind} не записався", kind); }
+                finally { Interlocked.Decrement(ref _busy); }
             }
         });
     }
 
     public string PathOf(string kind, DateTime day) => Path.Combine(_dir, $"{kind}-{day:yyyy-MM-dd}.jsonl");
 
-    public void Write(string kind, object entry) => _queue.Writer.TryWrite((kind, JsonSerializer.Serialize(entry, Json)));
+    /// <summary>Рядків у черзі й у записі: Drain чекає, поки дописано й останній, узятий із черги.</summary>
+    int _busy;
 
-    /// <summary>Для тестів: дочекатись, поки черга спорожніє.</summary>
+    public void Write(string kind, object entry)
+    {
+        Interlocked.Increment(ref _busy);
+        if (!_queue.Writer.TryWrite((kind, JsonSerializer.Serialize(entry, Json)))) Interlocked.Decrement(ref _busy);
+    }
+
+    /// <summary>Для тестів: дочекатись, поки черга спорожніє й останній рядок ляже у файл.</summary>
     public async Task Drain(TimeSpan max)
     {
         var until = DateTime.UtcNow + max;
-        while (_queue.Reader.Count > 0 && DateTime.UtcNow < until) await Task.Delay(10);
-        await Task.Delay(30);
+        while (Volatile.Read(ref _busy) > 0 && DateTime.UtcNow < until) await Task.Delay(10);
     }
 }

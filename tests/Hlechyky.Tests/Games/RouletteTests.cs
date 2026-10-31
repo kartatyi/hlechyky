@@ -1232,7 +1232,7 @@ public class RouletteTests
     {
         var people = Enumerable.Range(1, 8).Select(i => ($"Гравець{i}", 1_000_000)).ToArray();
         var k = RouletteKit.Table(people);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var t = 0; t < 1000; t++)
         {
             if (k.S.Phase == Bets && t % 4 == 0)

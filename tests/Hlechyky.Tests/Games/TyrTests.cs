@@ -479,7 +479,7 @@ public class TyrTests
     {
         var h = new PartyHarness("tyr", humans: 0, bots: 8, level: LiveBots.Level.Hard, seed: 4);
         h.Start();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.TickSub(1000);
         for (var i = 0; i < 50; i++) _ = Views.Json(h.Game.Frame()!);
         sw.Stop();

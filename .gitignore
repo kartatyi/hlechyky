@@ -60,6 +60,9 @@ tools/*
 # імпорт мап OSM для «Чумаків» (Python) — у гіті; кеш завантажень лежить поза репо
 !tools/osm/
 tools/osm/__pycache__/
+# заміри екранів ігор перед деплоєм (fitcheck.py + база base/) — у гіті
+!tools/fitcheck/
+tools/fitcheck/__pycache__/
 # build output
 bin/
 obj/

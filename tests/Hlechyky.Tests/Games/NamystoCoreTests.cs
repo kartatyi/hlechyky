@@ -379,7 +379,7 @@ public class NamystoCoreTests(ITestOutputHelper output)
     [Trait("Category", "Perf")]
     public void Bot_can_clear_the_first_tracks_and_a_full_game_runs_fast()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         long steps = 0;
         foreach (var (every, err) in new[] { (12, 0), (36, 0), (36, 14) })
             foreach (var lv in NamystoTracks.Levels)

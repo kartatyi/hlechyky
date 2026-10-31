@@ -454,7 +454,7 @@ public class ShatkuyPartyPerfTests
         var p = (ShatkuyParty)h.Room.Game;
         h.Clock.AdvanceMs(ShatkuyParty.LeadMs);
         var w = 0;
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1_000 && !p.Over; i++)
         {
             for (var s = 0; s < ShatkuyParty.Seats; s++)

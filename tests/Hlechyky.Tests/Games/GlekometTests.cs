@@ -1473,7 +1473,7 @@ public partial class GlekometTests(Xunit.Abstractions.ITestOutputHelper output)
             var game = Game(h);
             var rng = new Random(attempt);
             Ready(h);
-            var sw = new Stopwatch();
+            var sw = new CpuWatch();
             for (var t = 0; t < 3000; t++)
             {
                 if (h.Room.Status != RoomStatus.Playing) { h.Rematch(); continue; }

@@ -1478,7 +1478,7 @@ public class IcefloeTests(ITestOutputHelper output)
         ToGo(h);
         // прогрів JIT — щоб міряти гру, а не компілятор
         h.Tick(50);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var ticks = 0;
         var parties = 1;
         for (var t = 0; t < 3000; t++)
@@ -1510,7 +1510,7 @@ public class IcefloeTests(ITestOutputHelper output)
         // Голе ядро без кімнати: сама фізика
         var core = Bare(8, radius: 1100);
         core.NewRound(1100);
-        var st = Stopwatch.StartNew();
+        var st = CpuWatch.StartNew();
         for (var t = 0; t < 3000; t++)
         {
             for (var s = 0; s < 8; s++)

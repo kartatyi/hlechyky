@@ -263,7 +263,7 @@ public class CurveSweep3Tests
         var fun = Table(8, new { bonus = "1", walls = "1" });
         fun.Tick(CurveCore.ReadyTicks);
         var game = Game(fun);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var ticks = 0;
         for (var i = 0; i < 2500; i++)
         {

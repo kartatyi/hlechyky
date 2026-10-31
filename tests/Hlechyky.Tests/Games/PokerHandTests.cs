@@ -93,7 +93,7 @@ public class PokerHandTests
     {
         var rng = new Random(1);
         var deck = Enumerable.Range(0, 52).ToArray();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var sum = 0L;
         for (var i = 0; i < 1000; i++)
         {

@@ -389,7 +389,7 @@ public class TerritoryTests
         var core = new TerritoryCore(new Random(11));
         core.Reset([true, true, true, true]);
         var dirs = new int[4];
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < ticks; i++)
         {
             // Поворот праворуч кожні три тики — це маленькі петлі, тобто заливка й пожежі раз по раз,
@@ -895,7 +895,7 @@ public class TerritoryTests
     {
         var core = new TerritoryCore(new Random(5), TerritoryCore.BigW, TerritoryCore.BigH);
         core.Reset([true, true, true, true, true, true]);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var t = 0; t < TerritoryCore.RoundTicks; t++)
         {
             for (var s = 0; s < 6; s++)

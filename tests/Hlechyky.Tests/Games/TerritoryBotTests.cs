@@ -229,7 +229,7 @@ public class TerritoryBotTests(ITestOutputHelper log)
         var core = new TerritoryCore(rng);
         core.Reset([true, true, true, false, false, false]);
         var bots = Enumerable.Range(0, 3).Select(_ => new TerritoryBot(LiveBots.Level.Hard)).ToArray();
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         double worst = 0;
         var n = 0;
         while (core.TicksLeft > 0)

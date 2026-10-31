@@ -792,7 +792,7 @@ public class BlackjackTests
     {
         var people = Enumerable.Range(0, 5).Select(i => ($"Гравець{i}", 1_000_000)).ToArray();
         var k = BlackjackKit.Table(people);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var t = 0; t < 1000; t++)
         {
             if (k.S.Phase == Bets && k.S.Bets.Count == 0)

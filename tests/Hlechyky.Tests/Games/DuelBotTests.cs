@@ -221,7 +221,7 @@ public class DuelBotTests
     public void The_bot_thinks_cheaply()
     {
         var h = Alone();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000 && h.Room.Status == RoomStatus.Playing; i++) h.Tick();
         sw.Stop();
         // Тик разом із каркасом харнеса; сама думка бота — копійки, але межа щедра на повільну машину.

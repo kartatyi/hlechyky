@@ -2182,8 +2182,8 @@ public class DotepyPerfTests(ITestOutputHelper output)
     {
         var h = DotepyTests.Table(8, voice: new DotepyTests.FakeVoice());
         var game = DotepyTests.Game(h);
-        var tick = new Stopwatch();
-        var views = new Stopwatch();
+        var tick = new CpuWatch();
+        var views = new CpuWatch();
         var ticks = 0;
         var viewTicks = 0;
         long bytes = 0;
@@ -2224,7 +2224,7 @@ public class DotepyPerfTests(ITestOutputHelper output)
         var matchTicks = ticks;
         var matchMs = tick.Elapsed.TotalMilliseconds;
         // решта до 3000 — холості тики дограної партії (так тикав би стіл, якби каркас не зупинявся)
-        var idle = Stopwatch.StartNew();
+        var idle = CpuWatch.StartNew();
         for (; ticks < 3000; ticks++)
             lock (h.Room.Sync) game.Tick();
         idle.Stop();

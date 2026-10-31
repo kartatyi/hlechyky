@@ -592,7 +592,7 @@ public class SkyrtaTests(ITestOutputHelper output)
     [Trait("Category", "Perf")]
     public void Thousand_ticks_with_eight_hard_bots_are_fast()
     {
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var p = new PartyHarness("skyrta", humans: 0, bots: 8, level: LiveBots.Level.Hard, seed: 2);
         p.Start();
         for (var i = 0; i < 1000 && !p.Host.Over; i++)

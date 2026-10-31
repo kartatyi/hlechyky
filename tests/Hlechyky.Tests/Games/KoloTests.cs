@@ -804,7 +804,7 @@ public class KoloPerfTests
     {
         var people = Enumerable.Range(0, Kolo.MaxSeats).Select(i => ($"гравець {i}", 100_000)).ToArray();
         var k = new KoloKit(people);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             if (k.S.Phase == Kolo.Bets && k.S.Bets.Count == 0)

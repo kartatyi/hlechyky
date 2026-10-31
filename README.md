@@ -300,6 +300,28 @@ powershell -ExecutionPolicy Bypass -File D:\or\start.ps1 autostart   # авто�
 **Підстраховка вебхука.** GitHub чекає відповіді 10 с і подію, що не вклалась, більше не шле, а до домашнього сайту він часом їде 6–9 с. Тому сервер раз на `Deploy:PollMinutes` (3 хв) сам питає GitHub API (`Deploy:Repo`, без токена) про найсвіжішу зелену збірку `main`. Якщо `build\` зібрано не з неї, він запускає `deploy.ps1 -Via poll`, так само як вебхук (у `logs\deploy.log` видно, хто запустив). Кожен коміт пробується один раз (`data\deploy.tried`): деплой, що впав і відкотився, не перезапускає сайт по колу. Повторити можна новим комітом, Redeliver на GitHub або `deploy.ps1` руками. Опитувач працює лише там, де є `WebhookSecret` і `data\built.sha` від `start.ps1`; вимкнути його — `Deploy:PollMinutes: 0`.
 
 Вимкнути — `Deploy:Enabled: false` в `appsettings.Local.json` (підхоплюється наживо, без перезапуску); при порожньому `WebhookSecret` ендпоінт узагалі відповідає 404. Що прилітало від GitHub і з якою відповіддю видно в Settings → Webhooks → Recent Deliveries, там же кнопка Redeliver, якщо сервер саме лежав.
+### Перед деплоєм: тести й заміри екранів
+
+1. `./test.cmd -All` — увесь набір (~7 тис. тестів). Тести швидкодії міряють час процесора свого потоку (`CpuWatch` у
+   `tests/Hlechyky.Tests/Support/`), а не стінний годинник, тож не червоніють, коли поруч щось крутиться (повний набір,
+   Chrome із замірами, збірка); новий замір швидкодії — теж через `CpuWatch`, а `Stopwatch` лишати там, де міряєте
+   чекання (I/O, ffmpeg, таймери).
+2. **Заміри екранів** — чи не стала якась гра гіршою на ПК, планшеті й телефоні (поле нижче екрана, прокрутка вбік,
+   дрібні кнопки, внутрішні скролбари…). Підніми dev із кодом, що піде на прод (`dev.ps1 up`, :8100), і:
+
+   ```
+   C:/Users/Ya/AppData/Local/Python/pythoncore-3.14-64/python.exe tools/fitcheck/fitcheck.py check
+   ```
+
+   Міряє лише ігри, змінені від замірів бази (`git diff` від коміту бази: модулі `web/games/<гра>.*`, `web/games/<гра>/`;
+   зачеплено каркас — `core.*`, `static/style.css`, `index.html`, `dock.*` — усі ігри), і порівнює з базою
+   `tools/fitcheck/base/<гра>.json`. Вихід 0 — не гірше; 1 — список «гра екран: що погіршилось» (виправ або, якщо так
+   задумано, `fitcheck.py update --games <ігри>`); 2 — не вдалося міряти (сервер/Chrome/git). Гість `fitcheck`, звук
+   німий, свій headless Chrome на :9890, столи закриваються одразу. `--all` — увесь каталог (~30 хв), `--games a,b` —
+   ці ігри, `--since <ref>` — змінені від коміту, `--base http://127.0.0.1:<порт>` — інший dev.
+   Після злиття гілок чи свідомих змін вигляду — перезняти базу однією командою й закомітити `tools/fitcheck/base/`:
+   `fitcheck.py update` (усі ігри) або `fitcheck.py update --games <ігри>`. Подробиці — шапка `tools/fitcheck/fitcheck.py`.
+
 ### Домен і https (Caddy)
 
 `hlechyky.pp.ua` куплений на nic.ua, DNS там же (name servers NIC.UA, записи `@` і `www` типу A на зовнішню IP сервера). У name servers на nic.ua своя дата закінчення, окремо від домену: не дай їй проскочити.
@@ -326,6 +348,7 @@ src/Hlechyky/Mcp/         MCP-сервер для аі-агентів: POST /mcp
 web/                      фронт без збірки: index.html, app.js, static/ (style.css, fonts/ (Onest, OFL), glek.svg, icon.svg)
 liquidsoap/               radio.liq, .env (ключ callback'а, порти; шаблон .env.example)
 tools/liquidsoap/         liquidsoap.exe (офіційна Windows-збірка, setup.ps1 качає; у шляху не має бути «\цифра»)
+tools/fitcheck/           заміри екранів ігор перед деплоєм: fitcheck.py check / update, база в base/
 tools/yt-dlp/             yt-dlp.exe, ffmpeg.exe, ffprobe.exe (setup.ps1 качає)
 cache/                    завантажені треки і голосові (voice-<id>.mp3)
 data/                     hlechyky.db (акаунти, історія, лайки, чат, черга, плейлисти, кеш Last.fm), ключі cookie, data/caddy (сертифікати)

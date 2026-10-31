@@ -1,0 +1,149 @@
+{
+ "game": "dance",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 1,
+   "issues": [
+    "field-capped:552px"
+   ],
+   "below": 0,
+   "el": "div.dance-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 1,
+   "issues": [
+    "field-capped:1017px"
+   ],
+   "below": 0,
+   "el": "div.dance-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 1,
+   "issues": [
+    "field-capped:1041px"
+   ],
+   "below": 0,
+   "el": "div.dance-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 1,
+   "issues": [
+    "field-capped:1230px"
+   ],
+   "below": 0,
+   "el": "div.dance-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 1,
+   "issues": [
+    "field-capped:1557px"
+   ],
+   "below": 0,
+   "el": "div.dance-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 1,
+   "issues": [
+    "field-capped:1581px"
+   ],
+   "below": 0,
+   "el": "div.dance-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 1,
+   "issues": [
+    "field-capped:1770px"
+   ],
+   "below": 0,
+   "el": "div.dance-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 2,
+   "issues": [
+    "field-capped:606px",
+    "tiny-fonts:6"
+   ],
+   "below": 0,
+   "el": "div.dance-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 3,
+   "issues": [
+    "card-below-fold:58",
+    "tiny-fonts:5",
+    "clipped-text:3"
+   ],
+   "below": 0,
+   "el": "div.dance-stage.dance-portmode",
+   "cardBelow": 58,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 2,
+   "issues": [
+    "tiny-fonts:5",
+    "clipped-text:3"
+   ],
+   "below": 0,
+   "el": "div.dance-stage.dance-portmode",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 3,
+   "issues": [
+    "inner-scroll:1",
+    "tiny-fonts:5"
+   ],
+   "below": 0,
+   "el": "div.dance-stage.dance-portmode",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 3,
+   "issues": [
+    "inner-scroll:1",
+    "tiny-fonts:5"
+   ],
+   "below": 0,
+   "el": "div.dance-stage.dance-portmode",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

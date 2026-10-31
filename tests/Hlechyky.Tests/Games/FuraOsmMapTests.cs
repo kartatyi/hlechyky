@@ -16,7 +16,7 @@ public sealed class FuraOsmMapTests
     static readonly Lazy<(FuraMap Map, double Ms)> Loaded = new(() =>
     {
         var json = File.ReadAllText(Paths.Resolve(File_));
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var map = FuraMap.Parse("zhytomyr", json);
         return (map, sw.Elapsed.TotalMilliseconds);
     });

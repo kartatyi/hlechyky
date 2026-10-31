@@ -259,7 +259,7 @@ public class SnakeTests
     {
         var core = new SnakeCore(new Random(11));
         core.Reset();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             if (i % 17 == 0) core.Turn(0, i / 17 % 4);

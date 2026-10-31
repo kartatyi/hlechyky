@@ -1,0 +1,140 @@
+{
+ "game": "brid",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 2,
+   "issues": [
+    "tiny-fonts:1",
+    "small-buttons:1"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 4,
+   "issues": [
+    "card-below-fold:105",
+    "tiny-fonts:1",
+    "clipped-text:4",
+    "small-buttons:1"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 105,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 2,
+   "issues": [
+    "clipped-text:4",
+    "small-buttons:1"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 5,
+   "issues": [
+    "field-capped:200.725px",
+    "inner-scroll:1",
+    "clipped-text:3",
+    "small-buttons:1"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 5,
+   "issues": [
+    "field-capped:200.725px",
+    "inner-scroll:1",
+    "clipped-text:3",
+    "small-buttons:1"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.brboard.play",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

@@ -423,7 +423,7 @@ public class ShatkuyPerfTests
     {
         var (h, g) = ShatkuyTests.Open("shatkuy-fair");
         ShatkuyTests.Go(h, g);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         ShatkuyTests.Bot(h, g, 1_000);
         for (var i = 0; i < 50; i++) h.View(0);
         Assert.True(sw.ElapsedMilliseconds < 2_000, $"{sw.ElapsedMilliseconds} мс");

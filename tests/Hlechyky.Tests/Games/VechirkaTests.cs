@@ -368,7 +368,7 @@ public sealed class VechirkaPerfTests
         var h = VechirkaTests.Table(1, 7);
         h.Start();
         h.Tick(200);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.Tick(1000);
         Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
     }
@@ -386,7 +386,7 @@ public sealed class VechirkaPerfTests
         for (var k = 0; k < 50 * 900 && c.S.Phase != "mg"; k++) h.Tick();
         Assert.Equal("mg", c.S.Phase);
         h.Tick(50);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.Tick(1000);
         Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
     }

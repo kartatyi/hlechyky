@@ -105,7 +105,7 @@ public class ZirkaTests
     [Fact]
     public void Random_full_games_end_and_stay_fast()
     {
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         foreach (var players in new[] { 2, 3 })
         {
             var h = Table(players, seed: players);

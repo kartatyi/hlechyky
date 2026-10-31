@@ -71,7 +71,7 @@ public class SkarbBotTests(ITestOutputHelper output)
     [Trait("Category", "Perf")]
     public void Ten_thousand_bot_games_finish_legally_and_the_sides_are_balanced()
     {
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var t = new Tally();
         for (var seed = 1; seed <= 10_000; seed++)
         {

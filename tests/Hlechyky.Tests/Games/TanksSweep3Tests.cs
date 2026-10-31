@@ -545,14 +545,14 @@ public class TanksSweep3Tests
                 if (i % 5 == s) h.Input(s, "fire");
             }
             h.Clock.AdvanceMs(TanksCore.TickMs);
-            var t0 = Stopwatch.GetTimestamp();
+            var t0 = CpuWatch.GetTimestamp();
             var outbox = h.Rooms.Tick(h.Room);
-            ticks += Stopwatch.GetTimestamp() - t0;
+            ticks += CpuWatch.GetTimestamp() - t0;
             n++;
             foreach (var o in outbox)
                 if (o is RoomFrame f) maxFrame = Math.Max(maxFrame, Encoding.UTF8.GetByteCount(Views.Text(f.Frame)));
         }
-        var avg = ticks * 1000.0 / Stopwatch.Frequency / n;
+        var avg = ticks * 1000.0 / CpuWatch.Frequency / n;
         Assert.True(avg < 0.25, $"середній тик {avg} мс");
         Assert.True(maxFrame <= 1500, $"найбільший кадр {maxFrame} Б");
     }

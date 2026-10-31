@@ -187,7 +187,7 @@ public class KavunyCoreTests(ITestOutputHelper output)
     [Fact, Trait("Category", "Perf")]
     public void Ten_million_rounds_of_perfect_play_return_at_most_97_percent()
     {
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var cap = new KavunyOptions().MaxX * 100;
         var s = Run(10_000_000, cap, 2);
         output.WriteLine($"за {sw.Elapsed.TotalSeconds:F1} с");

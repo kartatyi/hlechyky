@@ -826,7 +826,7 @@ public class KhutorySelfPlayTests
     [Trait("Category", "Perf")]
     public void Two_hundred_bot_games_end_with_a_winner_and_keep_invariants()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var turnsTotal = 0;
         for (var seed = 1; seed <= 200; seed++)
         {

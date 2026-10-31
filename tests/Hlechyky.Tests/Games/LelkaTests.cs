@@ -518,7 +518,7 @@ public class LelkaPerfTests
     public void Thousand_ticks_are_fast()
     {
         var k = new LelkaKit(("Оля", 1000), ("Петро", 1000), ("Іра", 1000));
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             if (k.S.Phase == Lelka.Bets && k.S.Bets.Count == 0)

@@ -713,7 +713,7 @@ public class SnakeModesTests
         var coop = Coop();
 
         var ticked = 0;
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             ticked += Pump(tron, i);

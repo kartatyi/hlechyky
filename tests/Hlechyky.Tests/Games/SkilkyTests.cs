@@ -1275,7 +1275,7 @@ public class SkilkyTests
     public void A_thousand_ticks_of_a_full_table_are_instant()
     {
         var h = Table(Skilky.MaxSeats);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             if (h.Room.Status == RoomStatus.Finished) h.Rematch();

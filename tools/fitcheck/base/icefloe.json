@@ -1,0 +1,140 @@
+{
+ "game": "icefloe",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 3,
+   "issues": [
+    "card-below-fold:112",
+    "field-capped:600px",
+    "tiny-fonts:4"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 112,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 3,
+   "issues": [
+    "card-below-fold:67",
+    "tiny-fonts:3",
+    "clipped-text:3"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 67,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 2,
+   "issues": [
+    "tiny-fonts:3",
+    "clipped-text:3"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 8,
+   "issues": [
+    "field-below-fold:20",
+    "inner-scroll:1",
+    "tiny-fonts:3",
+    "clipped-text:3"
+   ],
+   "below": 20,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 8,
+   "issues": [
+    "field-below-fold:20",
+    "inner-scroll:1",
+    "tiny-fonts:3",
+    "clipped-text:3"
+   ],
+   "below": 20,
+   "el": "canvas.gcanvas.ifboard.play",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

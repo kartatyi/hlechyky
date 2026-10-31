@@ -1588,7 +1588,7 @@ public class DicePerfTests(ITestOutputHelper output)
         var moves = 0;
         var viewBytes = 0L;
         var views = 0;
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 3000; i++)
         {
             var sent = h.Outbox.Count;
@@ -1614,7 +1614,7 @@ public class DicePerfTests(ITestOutputHelper output)
         for (var i = 0; i < 6; i++) g.Tick();
         var game = DiceTests.Game(g);
         Assert.Equal(DicePhase.Bid, game.Phase);
-        var quiet = Stopwatch.StartNew();
+        var quiet = CpuWatch.StartNew();
         const int N = 200_000;
         lock (g.Room.Sync)
             for (var i = 0; i < N; i++)

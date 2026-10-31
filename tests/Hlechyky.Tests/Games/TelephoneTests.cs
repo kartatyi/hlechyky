@@ -636,7 +636,7 @@ public class TelephonePerfTests(Xunit.Abstractions.ITestOutputHelper output)
         foreach (var nick in new[] { "Оля", "Петро", "Ганна", "Іван", "Марта", "Богдан", "Софія", "Тарас", "Мар'яна", "Остап" }) h.Join(nick);
         h.Start();
         var rng = new Random(3);
-        var ticks = new System.Diagnostics.Stopwatch();
+        var ticks = new CpuWatch();
         int tickCount = 0;
         long stepViewMax = 0, revealViews = 0, revealBytes = 0, revealMax = 0, snapMax = 0;
 

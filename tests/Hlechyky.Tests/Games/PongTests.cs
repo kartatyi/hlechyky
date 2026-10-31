@@ -356,7 +356,7 @@ public class PongTests
     {
         var core = new PongCore(new Random(11));
         core.Reset();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 5000; i++)
         {
             if (i % 7 == 0) core.Aim(0, i % 100);

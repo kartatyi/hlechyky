@@ -76,7 +76,7 @@ public class KhutoryBotTests(ITestOutputHelper output)
     [Trait("Category", "Perf")]
     public void Four_smart_gleks_play_to_a_win_trade_with_each_other_and_keep_invariants()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var turnsTotal = 0;
         var deals = 0;
         var samples = new List<string>();

@@ -302,7 +302,7 @@ public class PokerPerfTests
     {
         var h = PokerKit.Table(new { format = "fun", bots = "5" }, 29, "Оля", "Петро");
         h.Start();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.Tick(1000);
         sw.Stop();
         Assert.True(sw.ElapsedMilliseconds < 2000, $"1000 тиків за {sw.ElapsedMilliseconds} мс");

@@ -403,7 +403,7 @@ public class PongArenaTests
     {
         var a = new PongArena(new Random(1));
         a.Reset([true, true, true, true]);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             if (i % 5 == 0) a.Aim(i % 4, i % 120);

@@ -709,7 +709,7 @@ public class StorksTests
         ToRun(h);
         var room = h.Room;
         for (var i = 0; i < 50; i++) h.Rooms.Tick(room);
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var measured = 0;
         for (var guard = 0; measured < 3000 && guard < 20000; guard++)
         {

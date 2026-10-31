@@ -225,7 +225,7 @@ public partial class RallyTests
         var core = Core(h);
         var pilot = new RallyPilot(game.Track);
         long maxBytes = 0;
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var n = 0;
         for (var i = 0; i < 3000 && h.Room.Status == RoomStatus.Playing; i++)
         {

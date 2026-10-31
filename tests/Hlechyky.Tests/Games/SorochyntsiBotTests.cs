@@ -94,7 +94,7 @@ public class SorochyntsiBotTests(ITestOutputHelper output)
     [Trait("Category", "Perf")]
     public void Ten_thousand_bot_games_are_legal_finish_by_bulava_and_take_at_most_thirty_rounds()
     {
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var games = new List<Game>();
         for (var seed = 1; seed <= 10_000; seed++) games.Add(Play(Core(2 + seed % 3, seed)));
         sw.Stop();

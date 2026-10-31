@@ -1,0 +1,139 @@
+{
+ "game": "khutory",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 5,
+   "issues": [
+    "card-below-fold:46",
+    "field-below-fold:35"
+   ],
+   "below": 35,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 46,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 5,
+   "issues": [
+    "card-below-fold:46",
+    "field-below-fold:35"
+   ],
+   "below": 35,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 46,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 1,
+   "issues": [
+    "card-below-fold:386"
+   ],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 386,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 3,
+   "issues": [
+    "card-below-fold:252",
+    "tiny-fonts:14",
+    "clipped-text:1"
+   ],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 252,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 3,
+   "issues": [
+    "card-below-fold:234",
+    "tiny-fonts:14",
+    "clipped-text:1"
+   ],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 234,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 2,
+   "issues": [
+    "inner-scroll:2"
+   ],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 2,
+   "issues": [
+    "inner-scroll:2"
+   ],
+   "below": 0,
+   "el": "div.khu-fieldwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

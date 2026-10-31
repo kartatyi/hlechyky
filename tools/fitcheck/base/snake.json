@@ -1,0 +1,129 @@
+{
+ "game": "snake",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "lobby",
+  "t": "lobby"
+ },
+ "screens": {
+  "d1366": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d1920w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d1920f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d2560": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d2560w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d2560f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "t768": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "m375": {
+   "score": 1,
+   "issues": [
+    "card-below-fold:26"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 26,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "m375f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "l812": {
+   "score": 4,
+   "issues": [
+    "field-capped:453.556px",
+    "inner-scroll:1",
+    "clipped-text:1"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "l812f": {
+   "score": 4,
+   "issues": [
+    "field-capped:453.556px",
+    "inner-scroll:1",
+    "clipped-text:1"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.snakeboard",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "lobby"
+  }
+ }
+}

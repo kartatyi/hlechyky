@@ -361,7 +361,7 @@ public class ShootoutTests
     public void A_thousand_ticks_on_four_are_quick()
     {
         var h = Street(4);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000 && h.Room.Status == RoomStatus.Playing; i++)
         {
             h.Tick();

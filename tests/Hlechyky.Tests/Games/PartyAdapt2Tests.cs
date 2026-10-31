@@ -229,7 +229,7 @@ public class PartyAdapt2Tests
         {
             var h = new PartyHarness(id, humans: 0, bots: id == "skilky" ? 8 : 2, seed: 2);
             h.Start();
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             h.Tick(1000);
             Assert.True(sw.ElapsedMilliseconds < 2000, $"{id}: {sw.ElapsedMilliseconds} мс");
         }

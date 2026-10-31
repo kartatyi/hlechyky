@@ -496,7 +496,7 @@ public class BridTests
     {
         var h = new PartyHarness("brid", humans: 0, bots: 8, level: LiveBots.Level.Hard, seed: 5);
         h.Start();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.TickSub(1000);
         sw.Stop();
         Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
@@ -506,7 +506,7 @@ public class BridTests
     public void Thousand_room_ticks_with_eight_humans_under_2s()
     {
         var h = Table(8);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var t = 0; t < 1000 && h.Room.Status == RoomStatus.Playing; t++)
         {
             for (var s = 0; s < 8; s++) if ((t + s) % 7 == 0) h.Input(s, "step", new { d = (t / 7 + s) % 4 });
