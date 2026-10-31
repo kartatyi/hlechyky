@@ -214,6 +214,11 @@ body:has(.spy) .tchat.drawer.open .tc-body { flex: none; }
      каркаса й на десятьох на Деці було видно без прокрутки. */
   .spy-grid.spy-solo .spy-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 8px; }
   .spy-side { position: sticky; top: 8px; }
+  /* Світлиця: колода з 24 локацій не штовхає картку за екран — колонка «хто я + колода» не вища за місце під гру
+     (--g-ah каркаса), решта гортається всередині з видимою смугою. */
+  .spy-side { max-height: max(360px, var(--g-ah, 100vh)); overflow-y: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+  .spy-side > * { flex: none; }
+  @media (pointer: fine) { .spy-loc { min-height: 34px; padding: 4px 8px; } .spy-locs { gap: 4px; } }
   .spy-side .spy-me { align-self: stretch; border-radius: 12px; }
   /* Широка картка: бейджі в рядок із ніком — десятеро вміщаються без прокрутки навіть на Деці. */
   .spy-p { min-height: 40px; padding: 3px 8px; }
