@@ -232,5 +232,9 @@ body.gfull .vcbubble:not([hidden]), body.g-imm .vcbubble:not([hidden]) { display
 .gtable .gseat.vc-in::after { content: '🎙'; margin-left: 4px; font-size: .8em; }
 .gtable .gseat.vc-talk { box-shadow: 0 0 0 2px var(--ok); }
 .gtable .gseat.gvc { cursor: pointer; border-style: dashed; }
+/* Під палець «🎙 Говорити» була 26–28 px заввишки — тепер не нижча за 36. */
+@media (pointer: coarse) {
+  .gtable .gseat.gvc { min-height: 36px; display: inline-flex; align-items: center; padding-inline: 12px; }
+}
 .gtable .gseat.gvc.on { border-style: solid; border-color: color-mix(in srgb, var(--ok) 60%, var(--line)); background: color-mix(in srgb, var(--ok) 22%, var(--panel2)); }
 .vc-rulebar { font-size: .88em; padding: 6px 9px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 12%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }

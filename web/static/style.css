@@ -804,10 +804,13 @@ button.vplay { padding: 3px 8px; }
 /* Тут лишається тільки місце під розділ: усе, що всередині нього, — у web/games/core.css. */
 #colGames { min-width: 0; }
 /* Ширина однакова в усіх розділах (1600): раніше «Ігри» були ширші, і балачки стрибали вбік на 50 px. */
-/* ⛶ — стіл на весь екран: балачки згортаються, лишається лише шапка сайту. */
+/* ⇔ «на всю ширину» (на телефоні — ⛶): балачки згортаються, лишається лише шапка сайту. */
 body.gfull { --rail: 0px; --rail-gap: 0px; }
 body.gfull #colChat { display: none; }
 body.gfull main { max-width: none; padding: 10px 12px; }
+/* Сторінка столу на 2K/4K: стеля 1600 робила з гри колону 1186 px посеред 2560 — тут вона ширша (рейка балачок та сама).
+   Гончарне коло тримає свою (clk-big нижче, за масштабом столу). */
+body.g-room:not(.gfull):not(.g-imm):not([data-ggame="clicker"]) main { max-width: min(2240px, 100%); }
 /* Стіл «Гончарного кола» на 2K/4K (клас і --clk-z ставить clicker.js, лише поки стіл кола на екрані): стеля росте
    разом із масштабом столу, інакше збільшений стіл лишався б у тих самих 1600 px. */
 body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }
@@ -2034,6 +2037,9 @@ body.g-imm main {
   padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
 }
 body.g-imm .toasts { top: calc(6px + env(safe-area-inset-top)); bottom: auto; }
+/* ⛶ на ПК (games/core.js, Fullscreen API): темне тло навколо гри. */
+body.g-fs { background: #08120d; }
+body.g-fs main { padding: 10px 16px; }
 
 /* ---- екранна клавіатура поля вводу (iOS не стискає макет, fixed-низ лишається під клавіатурою) ----
    --kb (app.js, visualViewport) — скільки знизу закрила клавіатура. Поки пишеш — вкладки не потрібні. */

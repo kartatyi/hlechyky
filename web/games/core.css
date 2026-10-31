@@ -27,8 +27,10 @@
    назва й 👁 уже є в рядку місць. Ігри, що не кличуть, цього класу не мають. */
 .gtable > .grhead.gin { display: contents; }
 .gtable > .grhead.gin > .grtitle, .gtable > .grhead.gin > .grsp, .gtable > .grhead.gin > .gwatchers { display: none; }
-.grback, .grfull { color: var(--muted); }
-.grfull:hover { color: var(--text); }
+.grback, .grfull, .grwide, .grmore { color: var(--muted); }
+.grfull:hover, .grwide:hover, .grmore:hover { color: var(--text); }
+.grwide.on, .grfull.on { color: var(--accent); }
+.grmore { display: none; padding-inline: 9px; letter-spacing: 1px; }
 .gfico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .grother { background: var(--panel2); color: var(--text); cursor: pointer; border: 1px solid var(--line); gap: 5px; }
 .grother .gico { width: 14px; height: 14px; }
@@ -217,7 +219,7 @@
 .gevening { flex-basis: 100%; color: var(--muted); font-size: .8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gs-ev { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gseat { padding: 3px 9px; border-radius: 999px; background: var(--bg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42%; }
-.gseat i { font-style: normal; color: var(--muted); font-size: .82em; margin-right: 5px; }
+.gseat i { font-style: normal; color: var(--muted); font-size: max(11px, .82em); margin-right: 5px; }
 .gseat.x { color: var(--accent); }
 .gseat.o { color: var(--ok); }
 .gseat.c { color: var(--clay); }
@@ -240,8 +242,14 @@
 
 /* ---- дошка з клітинок (хрестики, чотири в ряд, сапер) ---- */
 /* Спільна дошка з клітинок (хрестики, чотири в ряд, сапер). Шахи, шашки й ерудит ставлять
-   свою стелю у власному css — кожна гра піднімає її в себе, коли захоче більше місця. */
-.board { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 7px; width: min(360px, 100%); margin: 0 auto; }
+   свою стелю у власному css — кожна гра піднімає її в себе, коли захоче більше місця.
+   Світлиця (fit-core): дошка вписується в місце під поле, яке каркас міряє на картці (--g-fh — висота рядка поля,
+   --cols/--rows ставить ui.grid), а не в стелю 360 px; стеля — --g-fmax (типово 560 px: хрестики на 1000 px — це
+   вже не гра, а плакат). Без змінних (картка, змонтована просто у віконці) — як було, 360 px. */
+.board {
+  display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 7px; margin: 0 auto;
+  width: min(100%, var(--g-fmax, var(--g-bmax, 560px)), max(var(--g-fminw, 0px), calc((var(--g-fh, 372px) - 12px) * var(--cols, 3) / var(--rows, var(--cols, 3)))));
+}
 .board .cell {
   aspect-ratio: 1; padding: 0; display: grid; place-items: center; font-size: 2.1em; font-weight: 700;
   background: var(--bg2); border-radius: 12px; justify-content: center;
@@ -254,7 +262,10 @@
 /* Зникаючі хрестики: мітка, яку наступний хід свого ж господаря змете з поля. */
 .board .cell.fading { animation: blink 1.4s infinite; }
 /* Чотири в ряд: поле ширше, клітинки круглі, фішка це заливка. */
-.board.discs { width: min(460px, 100%); gap: 5px; padding: 6px; background: var(--bg2); border-radius: 12px; }
+.board.discs {
+  gap: 5px; padding: 6px; background: var(--bg2); border-radius: 12px;
+  width: min(100%, var(--g-fmax, var(--g-bmax, 820px)), max(var(--g-fminw, 0px), calc((var(--g-fh, 406px) - 12px) * var(--cols, 7) / var(--rows, 6))));
+}
 .board.discs .cell { border-radius: 50%; background: var(--panel); border-color: transparent; font-size: 0; }
 .board.discs .cell.x { background: var(--accent); }
 .board.discs .cell.o { background: var(--ok); }
@@ -263,9 +274,13 @@
 @media (hover: hover) { .board.discs .cell:not(:disabled):hover { background: var(--panel3); } }  /* на дотику :hover «прилипав» після тапу */
 
 /* ---- канвас реалтайму (змійка, понг, кривуля) ---- */
-/* Стеля ширини реалтайм-канваса. На сторінці столу місця тепер вистачає, тож канвас більший;
-   логічний розмір у модулі не змінюється — розтягується лише картинка. */
+/* Логічний розмір у модулі не змінюється — розтягується лише картинка. Полотно, що є прямою дитиною .gbody (чи
+   позначене .g-field), вписується в місце під поле (--g-fh × --gar, ширина картки), стеля — --g-fmax; вкладене
+   десь глибше — як було, до 560 px. :where — щоб власна стеля гри (.hkboard { max-width: … }) і далі перебивала. */
 .gcanvas { width: 100%; max-width: 560px; display: block; margin: 0 auto; border-radius: 10px; background: var(--bg2); }
+:where(.gbody > canvas, canvas.g-field).gcanvas {
+  max-width: min(100%, var(--g-fmax, 100%), max(var(--g-fminw, 0px), calc(var(--g-fh, 350px) * var(--gar, 1.6))));
+}
 .gscore { font-variant-numeric: tabular-nums; font-size: .95em; color: var(--muted); white-space: nowrap; }
 .gscore b { color: var(--text); }
 
@@ -651,6 +666,23 @@
   .gadvice { flex-wrap: wrap; }
   .grcall { padding: 5px 9px; }
 }
+/* Рядок столу на телефоні — один рядок (було у дві лінії, 78 px): «📣» без слова, інші мої столи й глядачі — за «⋯»,
+   назва гри стискається еліпсисом. Розгорнуте «⋯» (.more) — як раніше, з переносом. */
+@media (max-width: 480px) {
+  .grhead { flex-wrap: nowrap; gap: 6px; }
+  .grhead > * { flex: none; }
+  .grhead > .grtitle { flex: 0 1 auto; }
+  .grhead > .grsp { flex: 1 1 0; min-width: 0; }
+  .grhead .grcall-t { display: none; }
+  .grhead .grmore { display: inline-flex; }
+  .grhead:not(.more) > .grother, .grhead:not(.more) > .gwatchers { display: none; }
+  .grhead.more { flex-wrap: wrap; }
+  .grhead.more .grmore { color: var(--accent); }
+}
+/* Дотик: кнопки рядка столу — під палець (← Лобі було 71×31). */
+@media (pointer: coarse) {
+  .grhead > button { min-height: 36px; }
+}
 .gseat.gmany { display: none; border: 0; font: inherit; color: var(--text); cursor: pointer; }
 @media (max-width: 480px) {
   /* Назва гри й глядачі вже є в рядку столу (.grhead) — у шапці картки вдруге не треба. */
@@ -739,11 +771,11 @@ body.g-imm .grbox .gseats .gtitle, body.g-imm .grbox .gseats .gwatchers { displa
    перерахунку стилів кожній важкій грі, 22.10). .gbody тоді display: contents — його діти
    (полотно, хрестовина, рахунок) стають у сітку картки поруч із місцями, статусом і кнопками. Гра зі своєю
    розкладкою робить її під body.g-land сама (специфічніше за ці правила). */
-body.g-land .gtable.g-canvas {
+body.g-land .gtable.g-canvas, body.g-land .gtable.g-board {
   display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 12px; row-gap: 0;
   align-items: center; align-content: center; align-content: safe center; justify-items: center;   /* safe: вища за картку колонка не вилазить угору, куди не догорнути */
 }
-body.g-land .gtable.g-canvas > .gbody { display: contents; }
+body.g-land .gtable.g-canvas > .gbody, body.g-land .gtable.g-board > .gbody { display: contents; }
 /* Стіл лежачи — рівно на видимий екран: --gland-h = висота картки (екран мінус рядок столу 31 + проміжок 6 і
    відступи main). Вищою картка не буває: якщо права колонка довша, вона гортається всередині картки, а полотно
    (sticky) лишається на місці — сторінка під пальцем не їде. Ігри зі своєю розкладкою рахують від --gland-h. */
@@ -751,20 +783,38 @@ body.g-land {
   --gland-h: calc(var(--gfit-h, 100dvh) - 37px - max(4px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)));
 }
 body.g-land main { padding-top: max(4px, env(safe-area-inset-top)); padding-bottom: max(4px, env(safe-area-inset-bottom)); }
-body.g-land .grbox > .gtable { max-height: var(--gland-h); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
-body.g-land .grbox > .gtable::-webkit-scrollbar { display: none; }
+/* Вища за екран картка гортається всередині — з тонкою видимою смугою (раніше її ховали, і про кнопки внизу ніхто не знав). */
+body.g-land .grbox > .gtable { max-height: var(--gland-h); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+body.g-land .grbox > .gtable::-webkit-scrollbar { width: 4px; }
+body.g-land .grbox > .gtable::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 body.g-land .gtable > .gbody > canvas.gcanvas {
   grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center; position: sticky; top: 0;
   /* права колонка (хрестовина, місця, кнопки) бере свою природну ширину, полотно — решту, але не вище за картку
      (мінус її відступи 6 + 8 і рамку) */
   width: 100%; max-width: calc((var(--gland-h, 330px) - 16px) * var(--gar)); height: auto; justify-self: center;
 }
+/* Дошка ui.grid чи поле .g-field лежачи — так само ліворуч, квадратом (чи cols / rows) за висотою картки. */
+body.g-land .gtable.g-board > .gbody > :is(.board, .g-field) {
+  grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center; position: sticky; top: 0; justify-self: center;
+}
+body.g-land .gtable.g-board > .gbody > .board {
+  width: min(100%, calc((var(--gland-h, 330px) - 28px) * var(--cols, 3) / var(--rows, var(--cols, 3))));
+}
 body.g-land .gtable.g-canvas > :not(.gbody),
-body.g-land .gtable.g-canvas > .gbody > :not(canvas.gcanvas) { grid-column: 2; max-width: 38vw; margin: 2px 0; }
-body.g-land .gtable.g-canvas > .gseats { font-size: .82em; }
+body.g-land .gtable.g-canvas > .gbody > :not(canvas.gcanvas),
+body.g-land .gtable.g-board > :not(.gbody),
+body.g-land .gtable.g-board > .gbody > :not(.board, .g-field) { grid-column: 2; max-width: 38vw; margin: 2px 0; }
+body.g-land .gtable.g-canvas > .gseats, body.g-land .gtable.g-board > .gseats { font-size: .82em; }
 body.g-land .gtable > .grx { display: none; }
-/* ⛶ стоячи (телефон): полотно — за висотою, якщо воно вище за видиме місце. */
-body.g-imm:not(.g-land) .gbody > canvas.gcanvas { max-width: min(100%, calc((var(--gfit-h, 100dvh) - 150px) * var(--gar))); }
+/* ⛶ стоячи (телефон): полотно за висотою дає загальне правило з --g-fh (вище, «канвас реалтайму»). */
+
+/* ---- ⛶ «на весь екран» на ПК (body.g-fs + g-imm, Fullscreen API) ----
+   Шапки сайту, рейки й шторки нема (g-imm, style.css); стіл — посередині екрана на темному тлі, рядок столу тонкий. */
+body.g-fs .groom { min-height: calc(100dvh - 20px); justify-content: center; }
+body.g-fs .grbox > .gtable { background: color-mix(in srgb, var(--panel) 70%, #08120d); }
+body.g-fs .grhead .grdock, body.g-fs .grhead .grwide { display: none; }
+/* На весь екран дошкам — без типової стелі 560/820 px: ⛶ тиснуть саме для того, щоб поле було велике. */
+body.g-fs .gtable { --g-bmax: 100%; }
 /* Попап «Поставити стіл»: на короткому екрані картка гортається разом із тлом (style.css .modal), а рядок кнопок —
    пришпилений до низу, щоб «Поставити стіл» було видно, поки перебираєш опції. */
 .gmodal .card > .grow:last-child:has(> [data-go]) {
