@@ -108,3 +108,10 @@
   .gbody:has(> .hword) > .gkbd { gap: 7px; }
   .gbody:has(> .hword) > .gkbd .gkey { min-height: 48px; touch-action: manipulation; }
 }
+
+/* Світлиця: на широкій картці шибениця й слово ростуть із місцем під гру (--g-ah каркаса; ⛶ — ще більше),
+   а не стоять 104-піксельною марочкою посеред порожнечі. Без каркаса — як було. */
+@media (min-width: 481px) {
+  .hgal { width: clamp(104px, calc((var(--g-ah, 0px) - 360px) * .75), 210px); }
+  .hl { font-size: clamp(1.55em, calc((var(--g-ah, 0px) - 360px) * .12), 2.3em); min-width: 1em; }
+}
