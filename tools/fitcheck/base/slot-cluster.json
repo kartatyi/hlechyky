@@ -1,0 +1,134 @@
+{
+ "game": "slot-cluster",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 2,
+   "issues": [
+    "tiny-fonts:2",
+    "small-buttons:6"
+   ],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 3,
+   "issues": [
+    "card-below-fold:177",
+    "tiny-fonts:2",
+    "small-buttons:6"
+   ],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 177,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 3,
+   "issues": [
+    "card-below-fold:187",
+    "tiny-fonts:2",
+    "small-buttons:1"
+   ],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 187,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 1,
+   "issues": [
+    "small-buttons:6"
+   ],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 1,
+   "issues": [
+    "small-buttons:6"
+   ],
+   "below": 0,
+   "el": "div.slotwrap.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

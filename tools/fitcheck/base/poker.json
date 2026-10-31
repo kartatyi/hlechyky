@@ -1,0 +1,133 @@
+{
+ "game": "poker",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 1,
+   "issues": [
+    "card-below-fold:110"
+   ],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 110,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 1,
+   "issues": [
+    "field-small:0.55"
+   ],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 3,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 3,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 2,
+   "issues": [
+    "card-below-fold:275",
+    "clipped-text:1"
+   ],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 275,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 2,
+   "issues": [
+    "card-below-fold:85",
+    "clipped-text:1"
+   ],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 85,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 2,
+   "issues": [
+    "inner-scroll:1"
+   ],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 2,
+   "issues": [
+    "inner-scroll:1"
+   ],
+   "below": 0,
+   "el": "div.pk-table.g-field",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

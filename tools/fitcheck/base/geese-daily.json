@@ -1,0 +1,147 @@
+{
+ "game": "geese-daily",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 2,
+   "issues": [
+    "card-below-fold:9",
+    "field-capped:760px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.gsboard",
+   "cardBelow": 9,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 1,
+   "issues": [
+    "field-capped:760px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.gsboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 2,
+   "issues": [
+    "field-small:0.41",
+    "field-capped:760px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.gsboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 2,
+   "issues": [
+    "field-small:0.47",
+    "field-capped:760px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.gsboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 2,
+   "issues": [
+    "field-small:0.42",
+    "field-capped:760px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.gsboard",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 2,
+   "issues": [
+    "field-small:0.34",
+    "field-capped:760px"
+   ],
+   "below": 0,
+   "el": "div.gsw",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 2,
+   "issues": [
+    "field-small:0.44",
+    "field-capped:760px"
+   ],
+   "below": 0,
+   "el": "div.gsw",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.gsw",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.gsw",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.gsw",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 9,
+   "issues": [
+    "field-below-fold:146",
+    "field-taller-than-screen:431/329",
+    "inner-scroll:1"
+   ],
+   "below": 146,
+   "el": "div.gsw",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 9,
+   "issues": [
+    "field-below-fold:188",
+    "field-taller-than-screen:380/329",
+    "inner-scroll:1"
+   ],
+   "below": 188,
+   "el": "canvas.gcanvas.gsboard",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

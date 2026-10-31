@@ -1,0 +1,139 @@
+{
+ "game": "melody",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "finished",
+  "t": "finished"
+ },
+ "screens": {
+  "d1366": {
+   "score": 1,
+   "issues": [
+    "field-small:0.55"
+   ],
+   "below": 0,
+   "el": "div.mgstage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "d1920": {
+   "score": 1,
+   "issues": [
+    "field-small:0.49"
+   ],
+   "below": 0,
+   "el": "div.mgstage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "d1920w": {
+   "score": 1,
+   "issues": [
+    "field-small:0.34"
+   ],
+   "below": 0,
+   "el": "div.mgstage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "d1920f": {
+   "score": 1,
+   "issues": [
+    "field-small:0.4"
+   ],
+   "below": 0,
+   "el": "div.mgstage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "d2560": {
+   "score": 1,
+   "issues": [
+    "field-small:0.4"
+   ],
+   "below": 0,
+   "el": "div.mgstage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "d2560w": {
+   "score": 1,
+   "issues": [
+    "field-small:0.29"
+   ],
+   "below": 0,
+   "el": "div.mgstage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "d2560f": {
+   "score": 1,
+   "issues": [
+    "field-small:0.34"
+   ],
+   "below": 0,
+   "el": "div.mgstage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "t768": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.mgstage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "m375": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.mgwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "m375f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.mgwrap",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "l812": {
+   "score": 6,
+   "issues": [
+    "field-below-fold:7",
+    "inner-scroll:1"
+   ],
+   "below": 7,
+   "el": "div.mgstage",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "finished"
+  },
+  "l812f": {
+   "score": 6,
+   "issues": [
+    "field-below-fold:7",
+    "inner-scroll:1"
+   ],
+   "below": 7,
+   "el": "div.mgstage",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "finished"
+  }
+ }
+}

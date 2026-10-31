@@ -1,0 +1,128 @@
+{
+ "game": "dice",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "lobby",
+  "t": "lobby"
+ },
+ "screens": {
+  "d1366": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d1920w": {
+   "score": 2,
+   "issues": [
+    "field-small:0.57",
+    "field-capped:1080px"
+   ],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d1920f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d2560": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d2560w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "d2560f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "t768": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "m375": {
+   "score": 1,
+   "issues": [
+    "card-below-fold:103"
+   ],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 103,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "m375f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "l812": {
+   "score": 2,
+   "issues": [
+    "inner-scroll:1"
+   ],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "lobby"
+  },
+  "l812f": {
+   "score": 2,
+   "issues": [
+    "inner-scroll:1"
+   ],
+   "below": 0,
+   "el": "div.dice.g-field",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "lobby"
+  }
+ }
+}

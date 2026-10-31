@@ -1,0 +1,142 @@
+{
+ "game": "tavern",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 1,
+   "issues": [
+    "field-capped:564px"
+   ],
+   "below": 0,
+   "el": "div.tavern-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.tavern-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 1,
+   "issues": [
+    "field-capped:1098px"
+   ],
+   "below": 0,
+   "el": "div.tavern-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 1,
+   "issues": [
+    "field-capped:1288px"
+   ],
+   "below": 0,
+   "el": "div.tavern-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 1,
+   "issues": [
+    "field-capped:1614px"
+   ],
+   "below": 0,
+   "el": "div.tavern-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 1,
+   "issues": [
+    "field-capped:1639px"
+   ],
+   "below": 0,
+   "el": "div.tavern-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 1,
+   "issues": [
+    "field-capped:1827px"
+   ],
+   "below": 0,
+   "el": "div.tavern-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 2,
+   "issues": [
+    "field-capped:591px",
+    "tiny-fonts:1"
+   ],
+   "below": 0,
+   "el": "div.tavern-stage",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 1,
+   "issues": [
+    "card-below-fold:93"
+   ],
+   "below": 0,
+   "el": "div.tavern-stage.tavern-portmode",
+   "cardBelow": 93,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "div.tavern-stage.tavern-portmode",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 3,
+   "issues": [
+    "field-capped:340px",
+    "inner-scroll:1"
+   ],
+   "below": 3,
+   "el": "div.tavern-stage.tavern-portmode",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 3,
+   "issues": [
+    "field-capped:340px",
+    "inner-scroll:1"
+   ],
+   "below": 3,
+   "el": "div.tavern-stage.tavern-portmode",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

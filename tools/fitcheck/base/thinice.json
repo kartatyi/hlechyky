@@ -1,0 +1,150 @@
+{
+ "game": "thinice",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 1,
+   "issues": [
+    "field-capped:407px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 1,
+   "issues": [
+    "field-capped:719px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 1,
+   "issues": [
+    "field-capped:735px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 1,
+   "issues": [
+    "field-capped:861px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 1,
+   "issues": [
+    "field-capped:1079px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 1,
+   "issues": [
+    "field-capped:1095px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 1,
+   "issues": [
+    "field-capped:1100px"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 3,
+   "issues": [
+    "field-capped:415px",
+    "tiny-fonts:1",
+    "clipped-text:4"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 2,
+   "issues": [
+    "card-below-fold:115",
+    "clipped-text:4"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 115,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 1,
+   "issues": [
+    "clipped-text:4"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 4,
+   "issues": [
+    "field-capped:314px",
+    "inner-scroll:1",
+    "clipped-text:4"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 4,
+   "issues": [
+    "field-capped:314px",
+    "inner-scroll:1",
+    "clipped-text:4"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.tiboard.play",
+   "cardBelow": 1,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}

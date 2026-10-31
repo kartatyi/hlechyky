@@ -1,0 +1,126 @@
+{
+ "game": "glekomet",
+ "sha": "5e211ad6c9",
+ "at": "2026-10-31 21:04",
+ "open": {
+  "d": "playing",
+  "t": "playing"
+ },
+ "screens": {
+  "d1366": {
+   "score": 2,
+   "issues": [
+    "card-below-fold:6",
+    "field-small:0.51"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 6,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d1920f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560w": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "d2560f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "t768": {
+   "score": 1,
+   "issues": [
+    "tiny-fonts:1"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375": {
+   "score": 1,
+   "issues": [
+    "card-below-fold:64"
+   ],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 64,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "m375f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  },
+  "l812f": {
+   "score": 0,
+   "issues": [],
+   "below": 0,
+   "el": "canvas.gcanvas.gk-canvas.gk-grab",
+   "cardBelow": 0,
+   "hOver": 0,
+   "status": "playing"
+  }
+ }
+}
