@@ -32,7 +32,7 @@
   --bj-c500: #2a2420;
 }
 
-.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 1100px; margin: 0 auto; min-width: 0; }
+.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: var(--g-fmax, 1100px); margin: 0 auto; min-width: 0; }
 .bj .muted { color: var(--muted); }
 
 /* ---- шапка ---- */
@@ -80,6 +80,13 @@
    Розмір карти — від висоти картки (каркас: --g-ah): на звичайному ноуті як був (40 px), на великому екрані й у ⛶
    росте до 80 px — карти видно з дивана. Телефон (≤520) лишається на своїх розмірах. */
 .bj { --bj-cw: clamp(40px, calc(40px + (var(--g-ah, 600px) - 640px) * .3), 80px); }
+/* ⛶ і 2K на ПК: стіл (1100 px) лишався острівцем на 42 % екрана — тут увесь стіл більшає разом із текстом і кнопками.
+   Лише на сторінці столу (у віконці «Стіл у куточку» — як було). */
+body.g-room.g-fs .gtable .bj { zoom: 1.2; }
+@media (min-width: 2000px) and (min-height: 1300px) {
+  body.g-room .gtable .bj { zoom: 1.4; }
+  body.g-room.g-fs .gtable .bj { zoom: 1.45; }
+}
 .bj-cards { display: flex; align-items: center; min-height: calc(var(--bj-cw) * 1.4); }
 .bj-cards > .bjc + .bjc { margin-left: calc(var(--bj-cw) * -.3); }
 .bjc {
