@@ -145,6 +145,8 @@
     if (st.ro) st.ro.observe(st.el.field);
     st.ro2 = typeof ResizeObserver === 'function' ? new ResizeObserver(() => sizeVars(root, st)) : null;
     if (st.ro2) for (const k of ['players', 'strip', 'bar', 'root']) st.ro2.observe(st.el[k]);
+    // fix-screens: ⛶, поворот, плашка над сторінкою — місце під поле міняється без зміни розміру картки
+    if (window.HGames && HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, () => sizeVars(root, st));
     st.tick = setInterval(() => tick(root), 250);
     st.built = true;
   }
@@ -157,6 +159,17 @@
     k.style.setProperty('--sor-plh', hOf(st.el.players) + 'px');
     k.style.setProperty('--sor-striph', (st.el.strip.firstChild ? hOf(st.el.strip) : 0) + 'px');
     k.style.setProperty('--sor-barh', (st.el.bar.firstChild ? hOf(st.el.bar) : 0) + 'px');
+    // fix-screens: телефон стоячи (картка < 700 px) — поле від свого верху до низу екрана над вкладками, крамницею й
+    // панеллю дій (вони липнуть знизу). Було від --gfit-h (усе вікно без шапки сайту) — без ⛶ поле йшло нижче на 106 px.
+    if (k.clientWidth > 0 && k.clientWidth < 700 && !document.body.classList.contains('g-land')) {
+      const card = k.closest('.gtable');
+      if (!(card && card.scrollTop)) {
+        const top = st.el.fieldwrap.getBoundingClientRect().top + window.scrollY;
+        const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h')) || 0;
+        const h = Math.round(window.innerHeight - top - dock - hOf(st.el.strip) - hOf(st.el.bar) - 8) + 'px';
+        if (k.style.getPropertyValue('--sor-ph') !== h) k.style.setProperty('--sor-ph', h);
+      }
+    } else if (k.style.getPropertyValue('--sor-ph')) k.style.removeProperty('--sor-ph');
     // Телефон лежачи (картка ≥ 700 px): поле ліворуч на висоту від свого верху до низу екрана — без прокрутки.
     const land = document.body.classList.contains('g-land') && k.clientWidth >= 700;
     if (k.classList.contains('land') !== land) k.classList.toggle('land', land);
@@ -1221,6 +1234,7 @@
     mount(root, ctx) { cur = root; paint(root, ctx); },
     update(root, ctx) { cur = root; paint(root, ctx); },
     unmount(root) {
+      if (window.HGames && HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, null);
       const st = root._so;
       if (st) {
         clearInterval(st.tick); clearTimeout(st.nt); clearTimeout(st.flashT); clearTimeout(st.banT); clearTimeout(st.fxT); clearTimeout(st.feedT);
