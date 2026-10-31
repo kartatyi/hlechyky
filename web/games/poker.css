@@ -54,7 +54,7 @@
 .pk .pk-center {
   position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 1;
   display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; width: 72%;
-  font-size: clamp(14px, calc(var(--pk-th, 400px) * .024), 21px);
+  font-size: clamp(1em, calc(var(--pk-th, 400px) * .024), 21px);
 }
 .pk .pk-pot { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 1.2em; color: var(--pk-on-felt); }
 .pk .pk-potsum { background: var(--pk-shade); border-radius: 999px; padding: 2px 12px; font-size: .92em; }
