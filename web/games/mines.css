@@ -34,7 +34,7 @@
    420/480/560 px; стеля 640 px (16×16 — 720), у ⛶ — без стелі. Цифри й прапорці ростуть із клітинкою (cqi —
    відсоток ширини поля): --mn-f ≈ 46 % клітинки. */
 .board.mines {
-  width: min(var(--mn-room, 100%), var(--g-fmax, var(--g-bmax, 640px)), max(var(--g-fminw, 0px), calc((var(--g-fh, 432px) - 4px) * var(--cols, 9) / var(--rows, var(--cols, 9)))));
+  width: min(var(--mn-room, 100%), var(--mn-cap, var(--g-fmax, var(--g-bmax, 640px))), max(var(--g-fminw, 0px), calc((var(--g-fh, 432px) - 4px) * var(--cols, 9) / var(--rows, var(--cols, 9)))));
   gap: 3px; container-type: inline-size; --mn-f: max(11px, calc(46cqi / var(--cols, 9)));
 }
 .board.mines .cell {
@@ -44,7 +44,7 @@
 }
 /* Середнє й велике поле: клітинки дрібніші, тож і поле ширше. */
 .board.mines.tiny { gap: 2px; }
-.board.mines.huge { width: min(var(--mn-room, 100%), var(--g-fmax, var(--g-bmax, 720px)), max(var(--g-fminw, 0px), calc((var(--g-fh, 432px) - 4px) * var(--cols, 16) / var(--rows, var(--cols, 16))))); }
+.board.mines.huge { --mn-cap: var(--mn-capb, var(--g-fmax, var(--g-bmax, 720px))); width: min(var(--mn-room, 100%), var(--mn-cap), max(var(--g-fminw, 0px), calc((var(--g-fh, 432px) - 4px) * var(--cols, 16) / var(--rows, var(--cols, 16))))); }
 .board.mines.tiny .cell { border-radius: 4px; }
 
 .board.mines .cell.open { background: var(--bg2); box-shadow: none; }
@@ -77,11 +77,13 @@
 
 /* Широка картка (.mn-wide): над полем — рахунок/час і перемикач полів, праворуч від поля — табло дня чи правило
    (угорі) і кнопки (унизу). Дві речі в одній клітинці сітки не накладаються: поле вище за табло й кнопки разом. */
+/* Стеля тут лише в px: поле в колонці auto, а відсоткова (--g-bmax: 100% у ⛶) там циклічна — поле зсихалось. */
 body:not(.g-land) .gbody.mn-wide {
-  --mn-room: calc(var(--g-aw, 1000px) - 320px);
+  --mn-room: calc(var(--g-aw, 1000px) - 320px); --mn-cap: var(--g-fmax, 640px); --mn-capb: var(--g-fmax, 720px);
   display: grid; grid-template-columns: auto minmax(240px, 300px); column-gap: 20px; row-gap: 8px;
   grid-template-areas: "bar size" "field side"; justify-content: center; align-content: start; align-items: center;
 }
+body.g-fs .gbody.mn-wide { --mn-cap: var(--g-fmax, 4000px); --mn-capb: var(--g-fmax, 4000px); }
 body:not(.g-land) .gbody.mn-wide > .mn-bar { grid-area: bar; }
 body:not(.g-land) .gbody.mn-wide > .mn-size { grid-area: size; margin: 0; }
 body:not(.g-land) .gbody.mn-wide > .mn-wrap { grid-area: field; width: auto; }
@@ -122,5 +124,7 @@ body:not(.g-land) .gbody.mn-wide > .mn-btns button { justify-content: center; }
 /* пакет 4: перемикач полів дня (16×16 / 9×9) і підсвічене своє поле в табло */
 .mn-size { display: flex; justify-content: center; gap: 6px; margin: 0 8px 4px; flex-wrap: wrap; }
 .mn-size button { font-size: .85em; padding: 3px 12px; min-height: 0; }
+/* Дотик: перемикач полів — ціль під палець (було 26 px заввишки). */
+@media (pointer: coarse) { .mn-size button { min-height: 38px; padding: 6px 14px; } }
 .mn-day .mn-dl.own { color: var(--text); font-weight: 600; }
 .mn-day .mn-week { display: inline-block; margin-top: 2px; }

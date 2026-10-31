@@ -23,11 +23,15 @@
 }
 .chs-side { display: contents; }
 /* Широка картка (ПК, ⇔, ⛶): дошка з годинниками ліворуч на всю висоту, ходи й кнопки — колонкою праворуч. */
+/* У широкій сітці дошка стоїть у колонці auto: відсоткова стеля (--g-bmax: 100% у ⛶) там циклічна й давала дошку
+   в 16 px — тож стеля тут лише в px: 720, у ⛶ — 4000 (по суті без стелі; межу дає висота). */
 body:not(.g-land) .gbody.chs-wide {
-  --chs-room: calc(var(--g-aw, 1000px) - 320px);
+  --chs-room: calc(var(--g-aw, 1000px) - 320px); --chs-cap: var(--g-fmax, 720px);
+  --chs-w: min(var(--chs-room), var(--chs-cap), max(var(--g-fminw, 0px), calc(var(--g-fh, 424px) - 4px)));
   display: grid; grid-template-columns: auto minmax(240px, 300px); column-gap: 20px; row-gap: 6px;
   justify-content: center; align-content: start; align-items: center;
 }
+body.g-fs .gbody.chs-wide { --chs-cap: var(--g-fmax, 4000px); }
 body:not(.g-land) .gbody.chs-wide > * { grid-column: 1; justify-self: center; }
 body:not(.g-land) .gbody.chs-wide > .chs-side {
   grid-row: 1 / span var(--chs-span, 3);

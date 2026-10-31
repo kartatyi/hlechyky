@@ -171,10 +171,13 @@
 /* Широка картка: дошка з рахунком і годинниками ліворуч на всю висоту, кнопки й налаштування — колонкою праворуч. */
 body:not(.g-land) .gbody.rv-wide {
   --rv-room: calc(var(--g-aw, 1000px) - 320px);
-  --rv-w: min(var(--rv-room), var(--g-fmax, var(--g-bmax, 720px)), max(var(--g-fminw, 0px), calc(var(--g-fh, 448px) - 8px)));
+  /* стеля лише в px: у колонці auto відсоткова (--g-bmax: 100% у ⛶) циклічна — дошка зсихалась би */
+  --rv-cap: var(--g-fmax, 720px);
+  --rv-w: min(var(--rv-room), var(--rv-cap), max(var(--g-fminw, 0px), calc(var(--g-fh, 448px) - 8px)));
   display: grid; grid-template-columns: auto minmax(240px, 300px); column-gap: 20px; row-gap: 6px;
   justify-content: center; align-content: start; align-items: center;
 }
+body.g-fs .gbody.rv-wide { --rv-cap: var(--g-fmax, 4000px); }
 body:not(.g-land) .gbody.rv-wide > * { grid-column: 1; justify-self: center; }
 body:not(.g-land) .gbody.rv-wide > .rvacts {
   grid-row: 1 / span var(--rv-span, 3); grid-column: 2; width: auto; min-width: 0; align-self: center; gap: 10px; }
