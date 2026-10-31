@@ -939,7 +939,7 @@
     hud.innerHTML =
       '<div class="sk-stat sk-bal"><small>баланс</small><b><i>🏺</i> <span class="sk-bal-v">0</span></b></div>'
       + '<div class="sk-stat sk-betbox"><small>ставка</small><div class="sk-bet"><button class="sk-bm" aria-label="менша ставка">−</button><b class="sk-bet-v">0</b><button class="sk-bp" aria-label="більша ставка">+</button></div></div>'
-      + '<div class="sk-stat sk-winbox"><small class="sk-win-l">виграш</small><b class="sk-win-v">0</b><span class="sk-msg"></span></div>'
+      + '<div class="sk-stat sk-winbox"><small class="sk-win-l">виграш</small><b class="sk-win-v">0</b><span class="sk-msg"><span></span></span></div>'
       + '<div class="sk-extra"></div>'
       + '<div class="sk-ctrl">'
       + '<button class="sk-ico sk-info" title="Таблиця виплат" aria-label="таблиця виплат">ⓘ</button>'
@@ -1101,7 +1101,7 @@
       if (md && ms) moodT = ctx.timeout(() => { moodT = 0; if (gh.dataset.mood === md) gh.removeAttribute('data-mood'); }, ms);
     }
     function say(text, ms) {
-      const m = hud.querySelector('.sk-msg'); if (m) m.textContent = text || '';
+      const m = hud.querySelector('.sk-msg > span'); if (m) m.textContent = text || '';
       if (bubT) { ctx.clearTimer(bubT); bubT = 0; }
       if (!text) { bub.classList.remove('on'); return; }
       sayAt = performance.now();
