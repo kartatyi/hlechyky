@@ -251,3 +251,13 @@ body.g-room.g-fs .gtable .bj { zoom: 1.2; }
   .bj-glek img, .bj-glek .bj-badge, .bjc, .bj-say, .bj-chipbtn { animation: none !important; transition: none !important; }
   .bj-glek img { transform: none !important; }
 }
+
+/* Лежачи на телефоні: сукно ліворуч, ставки, кнопки й низ — колонкою праворуч (було стовпчиком, сукно під краєм). */
+body.g-land .gtable .bj {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 38%); grid-auto-rows: min-content;
+  align-content: start; column-gap: 10px; row-gap: 6px; max-width: none;
+}
+body.g-land .gtable .bj > * { grid-column: 2; min-width: 0; }
+body.g-land .gtable .bj > .bj-felt { grid-column: 1; grid-row: 1 / span 8; align-self: start; margin: 7px 7px 9px; padding: 8px 10px 10px; }
+body.g-land .gtable .bj-stage { grid-template-columns: 60px minmax(0, 1fr); min-height: 84px; }
+body.g-land .gtable .bj-rules { margin: 4px 0 6px; }
