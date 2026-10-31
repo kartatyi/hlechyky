@@ -139,7 +139,7 @@
     width: 76px; height: 84px; border-radius: 18px; display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 2px; font-size: 1.6em; line-height: 1; background: var(--panel3); touch-action: none;
   }
-  .rnr-tbtn small { font-size: .42em; color: var(--muted); }
+  .rnr-tbtn small { font-size: max(12px, .42em); color: var(--muted); }
   .rnr-tbtn:active { background: var(--clay); }
   .rnr-tbtn.rnr-wait { opacity: .55; }
   .rnr-tbtn[hidden] { display: flex; visibility: hidden; }
