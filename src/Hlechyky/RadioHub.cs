@@ -35,6 +35,7 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
         try { lobby = rooms.Snapshot(); }
         catch (Exception) { lobby = []; }
         await Clients.Caller.SendAsync("rooms", lobby);
+        broadcaster.LobbyServed();   // її знімок свіжіший за розісланий: наступна зміна має долетіти й до неї
         // Хто зараз у своїй соло-грі — теж одразу, а не з першою зміною: плитки в лобі мають знати це з порога.
         try { await Clients.Caller.SendAsync("solo", rooms.SoloNow()); } catch (Exception) { /* так само не привід не пустити */ }
         // Хто в Посиденьках і за якими столами говорять — шапка показує це з порога, навіть гостеві.

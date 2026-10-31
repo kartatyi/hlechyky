@@ -539,6 +539,11 @@ public sealed record RoomViews(string RoomId) : Outgoing;
 public sealed record RoomSnapshot(string RoomId, string ConnectionId) : Outgoing;
 public sealed record RoomFrame(string RoomId, object Frame) : Outgoing;
 /// <summary>
+/// З'єднання підписалось на стіл (<see cref="Rooms.Watch"/>). Розсилки не має: новенькому летить свій
+/// <see cref="RoomSnapshot"/>, а решті групи новий глядач повного виду не вартий — лічильник 👀 оновиться з найближчим видом.
+/// </summary>
+public sealed record RoomWatched(string RoomId, string ConnectionId) : Outgoing;
+/// <summary>
 /// Рядок у Журнал усім. <paramref name="RoomId"/> — живий стіл, про який цей рядок: браузер малює біля
 /// нього кнопку «Сісти»/«Дивитись» (PROTOCOL §2). null — просто рядок.
 /// </summary>

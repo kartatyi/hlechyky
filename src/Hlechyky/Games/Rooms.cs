@@ -971,8 +971,14 @@ public sealed partial class Rooms
         // Повторний Watch тим самим з'єднанням — то вже підписаний: інакше клієнт у циклі множив би
         // розсилку на всіх глядачів кімнати в обхід квот хаба.
         if (!room.Watchers.TryAdd(connId, 0)) return outbox;
-        if (peek) room.Peeks[connId] = nick;
-        outbox.Add(new RoomViews(room.Id));
+        outbox.Add(new RoomWatched(room.Id, connId));
+        // Повний вид усій групі — лише коли зміниться шапка гравця: «👁 Петро» підглядає в його соло-гру. Звичайний
+        // глядач нікому нічого не коштує (аудит столів №3: кожен F5 глядача бив повним видом усім за столом).
+        if (peek)
+        {
+            room.Peeks[connId] = nick;
+            outbox.Add(new RoomViews(room.Id));
+        }
         return outbox;
     }
 
@@ -1231,22 +1237,37 @@ public sealed partial class Rooms
     long _viewSeq = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
 
     /// <summary>Готова розкладка кімнати для Broadcaster: види по місцях, вид глядача, список з'єднань.</summary>
-    public RoomBroadcast? ViewsFor(string roomId)
+    public RoomBroadcast? ViewsFor(string roomId) => ViewsFor(roomId, null);
+
+    /// <summary>
+    /// Те саме, але вид місця рахується лише тоді, коли з цього місця хтось дивиться: <paramref name="nickOf"/> — нік
+    /// з'єднання з групи. Гравець на «Ефірі» (чи реалтайм поза «Іграми») не підписаний — і його вид однаково нікуди б
+    /// не полетів, а в Мафії на 12 це 12 зайвих View під замком кімнати (аудит столів №4). null — усі зайняті місця.
+    /// </summary>
+    public RoomBroadcast? ViewsFor(string roomId, Func<string, string?>? nickOf)
     {
         if (Find(roomId) is not { } room) return null;
         try
         {
             lock (room.Sync)
             {
+                string[] watchers = [.. room.Watchers.Keys];
+                HashSet<int>? wanted = null;
+                if (nickOf is not null)
+                {
+                    wanted = [];
+                    foreach (var conn in watchers)
+                        if (room.SeatOf(nickOf(conn)) is { } s) wanted.Add(s);
+                }
                 var seatViews = new Dictionary<int, object?>();
                 for (var i = 0; i < room.Seats.Length; i++)
                 {
-                    if (room.Seats[i] is null) continue;
+                    if (room.Seats[i] is null || wanted is not null && !wanted.Contains(i)) continue;
                     seatViews[i] = SafeView(room, i);
                 }
                 return new RoomBroadcast(
                     room.Id, room.Summary(), room.Info.Hidden, (string?[])room.Seats.Clone(),
-                    seatViews, SafeView(room, null), [.. room.Watchers.Keys], Interlocked.Increment(ref _viewSeq));
+                    seatViews, SafeView(room, null), watchers, Interlocked.Increment(ref _viewSeq));
             }
         }
         catch (Exception ex)
