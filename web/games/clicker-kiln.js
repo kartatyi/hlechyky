@@ -277,7 +277,7 @@
     st.kUi.damp.addEventListener('pointerdown', (e) => { if (human(e) && (e.pointerType !== 'mouse' || e.button === 0)) { e.preventDefault(); doAct(st, api, st.kb && st.kb.sim.open ? CLOSE : OPEN); } });
     for (const b of [st.kUi.stoke, st.kUi.damp]) b.addEventListener('contextmenu', (e) => e.preventDefault());
     st.kKey = (e) => {
-      if (!human(e) || e.repeat || !kilnVisible(st) || !st.kb || api.overlayOpen(st)) return;
+      if (!human(e) || e.repeat || !kilnVisible(st) || !kilnKeys(st) || !st.kb || api.overlayOpen(st)) return;
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); doAct(st, api, STOKE); }
@@ -288,6 +288,9 @@
 
   /// Чи дивиться гравець просто зараз на горно (воно — верх вкладки «Ремесло»).
   const kilnVisible = (st) => st.tab === 'craft' || st.tab === 'kiln';
+  /// Клавіші горна — лише коли картка кола справді на сторінці столу: не в міні-віконці в куточку (там вона inert),
+  /// не з іншого розділу (Ефір, бібліотека — ctx.shown = false). Інакше ↑/↓ там піддавали жару й гасили прокрутку.
+  const kilnKeys = (st) => !!(st.ctx && st.ctx.shown) && !(st.kUi && st.kUi.top && st.kUi.top.closest('[inert], .gdock'));
 
   // ---------- мінігра жару ----------
 
