@@ -2064,11 +2064,11 @@
       : r.status === 'finished' ? 'дограли'
         : free ? 'чекає, хто підсяде' : 'ось-ось почнуть';
     const btns = mine
-      ? '<button class="primary" data-open="' + esc(r.id) + '">Відкрити</button>'
+      ? '<button class="primary" data-open="' + esc(r.id) + '">Повернутись</button>'
       : (free > 0 && r.status !== 'playing' ? '<button class="primary" data-sit="' + esc(r.id) + '">Сісти</button>' : '')
         + '<button data-open="' + esc(r.id) + '">Дивитись</button>';
     return '<div class="gsum' + (mine ? ' mine' : '') + '">'
-      + '<div class="gs-head"><span class="gtitle">' + iconOf(r.game) + esc(titleOf(r.game)) + '</span>'
+      + '<div class="gs-head"><span class="gtitle">' + artIcon(r.game) + esc(titleOf(r.game)) + '</span>'
       + modeChips(r, true)
       + (r.stake ? '<span class="gmode stake">🏺' + r.stake + '</span>' : '')
       + '<span class="chip">' + (all > 1 ? took + '/' + all : 'соло') + '</span></div>'
@@ -2707,13 +2707,15 @@
         : 'ще не розгадано' + (sc ? ' · ' + sc + ' вже розгадали' : '');
       // скільки ця головоломка дала сьогодні (з серією) — з daily.money; старий сервер не шле
       const got = daily && daily.money && daily.money.byGame ? daily.money.byGame[p.game] || 0 : 0;
-      return '<div class="gdc gday ' + (solved ? 'done' : p.me ? 'miss' : 'todo') + (seat && seat.hot ? ' hot' : '') + '" data-pre="' + esc(p.game) + '">'
+      // Два рядки: назва і стан. Зіграна — свій результат; ще ні — що каже Січ («попереду Оля… · до +3») або «ще не розгадано».
+      const line = (solved || p.me || !seat ? what : seat.line) + (p.streak ? ' · 🔥 ' + p.streak : '') + (got > 0 ? ' · +' + got + ' 🏺' : '');
+      const tip = dayTitle(p) + '\n' + what + (seat ? '\nСіч: ' + seat.line : '');
+      return '<div class="gdc gday ' + (solved ? 'done' : p.me ? 'miss' : 'todo') + (seat && seat.hot ? ' hot' : '') + '" data-pre="' + esc(p.game) + '" title="' + esc(tip) + '">'
         + '<span class="gday-ic">' + artIcon(p.game) + '</span><div><b>' + esc(dayTitle(p)) + '</b>'
-        + '<span class="small gday-st">' + esc(what) + (p.streak ? ' · 🔥 ' + p.streak : '') + (got > 0 ? ' · +' + got + ' 🏺' : '') + '</span>'
-        + (seat ? '<span class="small gdc-seats">' + (seat.dots ? '<span class="sich-dots">' + seat.dots + '</span>' : '') + '<span>' + esc(seat.line) + '</span></span>' : '')
+        + '<span class="small gday-st">' + (seat && seat.dots ? '<span class="sich-dots">' + seat.dots + '</span>' : '') + '<span>' + esc(line) + '</span></span>'
         + '</div>'
-        + '<button class="' + (solved ? 'ghost' : 'primary') + ' gmain" data-solo="' + esc(p.game) + '"'
-        + (solved ? '' : ' title="Розгадай — і хапай щоденний глек"') + '>' + (solved ? 'Глянути' : 'Грати') + '</button></div>';
+        + '<button class="' + (solved ? 'ghost' : 'primary') + ' gmain gday-go" data-solo="' + esc(p.game) + '" aria-label="' + (solved ? 'Глянути' : 'Грати') + '"'
+        + (solved ? '' : ' title="Розгадай — і хапай щоденний глек"') + '><span>' + (solved ? 'Глянути' : 'Грати') + '</span></button></div>';
     }).join('');
     const extras = sichCard() + giftCard() + tourCard() + padelCard();
     const board = sichBoard();

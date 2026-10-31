@@ -4,11 +4,12 @@
   Кольори розділів — змінні --cat-*; плитка, вкладка й заголовок розділу беруть їх через клас cat-<розділ> (--cc, --cc2).
 */
 :root {
-  --cat-board: #1f8a78;  --cat-board2: #0d3b34;   /* Настільні — глибокий бірюзово-зелений */
-  --cat-live: #e2643a;   --cat-live2: #5e1d10;    /* Жваві — помаранчево-червоний */
-  --cat-party: #8b5fd8;  --cat-party2: #2f1b57;   /* Компанія — фіолетовий */
-  --cat-solo: #3f80e0;   --cat-solo2: #142a57;    /* Соло — синій */
-  --cat-azart: #c8355f;  --cat-azart2: #4a0f26;   /* Азарт — малиновий (із золотом) */
+  /* з ART-STYLE.md (світлий / основний / темний / найтемніший): --cat-X — основний, --cat-X2 — темний */
+  --cat-board: #1e7268;  --cat-board2: #0d3a36;   /* Настільні — бірюзово-зелений */
+  --cat-live: #d0512a;   --cat-live2: #7a2312;    /* Жваві — помаранчево-червоний */
+  --cat-party: #7647b5;  --cat-party2: #3a1f66;   /* Компанія — фіолетовий */
+  --cat-solo: #2e69b3;   --cat-solo2: #15335f;    /* Соло — синій */
+  --cat-azart: #ad224b;  --cat-azart2: #590d28;   /* Азарт — малиновий (із золотом) */
 }
 /* запасні кольори — з нульовою вагою (:where), щоб клас розділу їх перебивав, хоч би де стояв */
 :where(.gtile, .gmini, .glrow) { --cc: var(--panel3); --cc2: var(--bg2); }
@@ -226,7 +227,7 @@
 .gmini.live { border-color: var(--glive); }
 .gmini .gb-tl .gnew, .gmini .gb-tl .gupd { font-size: .64em; }
 .gm-t {
-  padding: 6px 9px 0; font-weight: 600; font-size: .92em; line-height: 1.25; height: 2.5em; overflow: hidden;
+  padding: 6px 9px 0; font-weight: 600; font-size: .92em; line-height: 1.25; height: calc(2.5em + 6px); overflow: hidden; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
 }
 .gm-a { padding: 0 9px 7px; font-size: .74em; color: var(--muted); }
@@ -339,3 +340,28 @@
   .gl-find, .gl-tool, .gl-tools .gviewsw { height: 40px; }
   .gl-tab { padding: 5px 11px; font-size: .9em; }
 }
+body.pad-on .gb .gstar { opacity: 1; }
+/* одна картка в «Зараз» — на всю ширину, а не вузька з «Гончаре…» */
+.gl-strip > :only-child { flex: 1 1 auto; max-width: 560px; }
+.gs-head .gartw { width: 18px; height: 18px; }
+/* картка щоденної: два рядки й кругла ▶; ширша за 290 px — кнопка зі словом «Грати» / «Глянути» */
+.gday { container-type: inline-size; padding: 8px 10px; gap: 9px; min-height: 54px; }
+.gday b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gday .gday-st { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.gday .gday-st > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.gday .sich-dots { flex: none; display: inline-flex; }
+.gday-go { width: 34px; height: 34px; padding: 0; justify-content: center; border-radius: 50%; flex: none; }
+.gday-go > span { display: none; }
+.gday-go::before { content: '▶'; font-size: .78em; margin-left: 2px; }
+.gday.done .gday-go::before { content: '✓'; margin: 0; font-size: .95em; color: var(--ok); }
+@container (min-width: 290px) {
+  .gday-go { width: auto; height: auto; padding: 6px 12px; border-radius: 10px; }
+  .gday-go > span { display: inline; }
+  .gday-go::before, .gday.done .gday-go::before { content: none; }
+}
+/* турнір, Падельня, Січ-стрілка в ряду щоденних: назва, під нею тихий підпис — нічого не налазить */
+.gday-cards .gdc-link { grid-template-columns: auto minmax(0, 1fr); row-gap: 1px; align-content: center; min-height: 54px; }
+.gday-cards .gdc-link > .gemo { grid-row: span 2; }
+.gday-cards .gdc-link > b, .gday-cards .gdc-link > .muted { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gday-cards .gdc.tour > div > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gday-cards .gdc.tour > button { padding: 6px 11px; }
