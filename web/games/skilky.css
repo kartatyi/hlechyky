@@ -145,7 +145,7 @@
 .skphoto img[src] { cursor: zoom-in; }
 /* Висота фото — від місця картки (каркас: --g-ah), а не від вікна: питання, поле відповіді й рядок гравців лишаються
    на екрані (айфон 390×664, Steam Deck 1280×800, лежачи), а у ⛶ фото більше; дрібниці — тап, і фото на весь екран. */
-.gtable .skphoto img { max-height: clamp(90px, calc(var(--g-ah, 700px) - 250px), 720px); }
+.gtable .skphoto img { max-height: clamp(110px, calc(var(--g-ah, 700px) - 330px), 640px); } /* 330 — питання, поле, гравці, підпис */
 @media (max-height: 700px) { .skphoto img { min-height: 90px; } }
 .gtable .skphoto.skzoom img { max-height: 92vh; } /* фото на весь екран — без стелі картки */
 .skphoto.skzoom img { position: fixed; inset: 0; margin: auto; z-index: 60; max-width: 96vw; max-height: 92vh; cursor: zoom-out;

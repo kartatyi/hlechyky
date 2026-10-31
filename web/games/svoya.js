@@ -617,7 +617,7 @@
     if (box && box.ah && !HGames.ui.coarse()) {
       const rest = wrap.getBoundingClientRect().height - p.getBoundingClientRect().height;
       const room = Math.floor(box.ah - rest - 4);
-      if (room >= 260) mh = room + 'px';
+      mh = Math.max(room, 200) + 'px';   // низький ноут (1366×768): хоч 200 px списку, решта — прокруткою всередині
     }
     if (p.style.maxHeight !== mh) p.style.maxHeight = mh;
   }
