@@ -199,7 +199,7 @@
     if (S.el) return;
     root.classList.add('kh');
     root.innerHTML = '<div class="kh-bar"></div><div class="kh-goals"></div><div class="kh-tip muted small"></div>'
-      + '<div class="kh-stage"><div class="kh-board"><div class="kh-cells"></div><div class="kh-tiles"></div><div class="kh-fx"></div>'
+      + '<div class="kh-stage g-field"><div class="kh-board"><div class="kh-cells"></div><div class="kh-tiles"></div><div class="kh-fx"></div>'
       + '<div class="kh-cur" hidden></div></div><div class="kh-over" hidden></div></div><div class="kh-side"></div>';
     S.el = {
       bar: root.querySelector('.kh-bar'),
@@ -216,6 +216,11 @@
     };
     wireBoard(S);
     root.addEventListener('click', (e) => onClick(S, e));
+    // toggle не спливає — ловимо на захопленні: що людина розгорнула/згорнула, те й лишається між оновленнями
+    root.addEventListener('toggle', (e) => {
+      const d = e.target;
+      if (d && d.dataset && d.dataset.kiln != null) (S.kilns || (S.kilns = {}))[d.dataset.kiln] = d.open;
+    }, true);
     S.timer = setInterval(() => tick(S), 200);
   }
 
@@ -229,6 +234,7 @@
     const el = S.el;
     el.board.style.setProperty('--w', b.w);
     el.board.style.setProperty('--h', b.h);
+    el.stage.style.setProperty('--kh-ar', b.w / b.h);   // поле вписується в місце картки за пропорцією (kakhli.css)
     let html = '';
     for (let c = 0; c < m.n; c++) html += '<div class="kh-c' + (m.holes[c] ? ' hole' : '') + '"></div>';
     el.cells.innerHTML = html;
@@ -807,13 +813,23 @@
     if (v.mode === 'path' && v.phase === 'map') {
       const kilns = v.kilns || [];
       const lv = v.levels || [];
-      for (let k = 0; k < Math.ceil(lv.length / 10); k++) {
-        html += '<div class="kh-kiln"><h4>🔥 ' + ctx.esc(kilns[k] || 'Піч ' + (k + 1)) + '</h4><div class="kh-levels">';
-        for (const l of lv.slice(k * 10, k * 10 + 10)) {
+      // Печі згортаються: розгорнута лише та, де наступний рівень (і ті, що людина розгорнула сама) — мапа на 30 рівнів
+      // інакше на телефоні втричі вища за екран. Замкнена піч — один рядок «після рівня N».
+      const nk = Math.ceil(lv.length / 10);
+      let cur = lv.findIndex((l) => l.open && !l.stars);
+      cur = cur < 0 ? nk - 1 : Math.floor(cur / 10);
+      for (let k = 0; k < nk; k++) {
+        const part = lv.slice(k * 10, k * 10 + 10);
+        const got = part.reduce((a, l) => a + (l.stars || 0), 0);
+        const shut = !part.some((l) => l.open);
+        const open = S.kilns && k in S.kilns ? S.kilns[k] : k === cur;
+        html += '<details class="kh-kiln" data-kiln="' + k + '"' + (open && !shut ? ' open' : '') + '><summary>🔥 ' + ctx.esc(kilns[k] || 'Піч ' + (k + 1))
+          + ' <span class="kh-kst">' + (shut ? '🔒 після рівня ' + (k * 10) : '★ ' + got + ' з ' + part.length * 3) + '</span></summary><div class="kh-levels">';
+        for (const l of part) {
           html += '<button type="button" class="kh-lv' + (l.stars ? ' done' : '') + '" data-level="' + l.n + '"' + (l.open ? '' : ' disabled')
             + ' title="' + ctx.esc(l.name) + '"><b>' + (l.open ? l.n + 1 : '🔒') + '</b>' + stars(l.stars) + '<i>' + ctx.esc(l.name) + '</i></button>';
         }
-        html += '</div></div>';
+        html += '</div></details>';
       }
       html = '<div class="kh-map">' + html + '<p class="muted small">За кожну нову зірку — 🏺. Зірки — за очки, перша — за виконані цілі.</p></div>';
     } else if (v.mode === 'path' && v.phase === 'play') {
