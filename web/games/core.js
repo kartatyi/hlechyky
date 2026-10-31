@@ -313,6 +313,8 @@
     el._o = o;
     el.style.setProperty('--cols', cols);
     el.style.setProperty('--rows', rows);   // core.css вписує дошку у висоту з пропорцією cols / rows
+    // Висока дошка (рядків більше, ніж стовпців): «уся ширина» телефона стоячи (--g-fminw) зробила б її вищою за екран
+    if (rows > cols) el.style.setProperty('--g-fminw', '0px'); else el.style.removeProperty('--g-fminw');
     if (o.cell) {
       const kids = el.children;
       for (let i = 0; i < n; i++) {
@@ -343,6 +345,9 @@
     markCanvas(host.closest && host.closest('.gtable'));
     el.style.aspectRatio = w + ' / ' + h;
     el.style.setProperty('--gar', String(w / h));   // core.css стелить полотно за висотою (g-land, ⛶)
+    // Високе полотно (--gar < 1, хокей стоячи): нижня межа «уся ширина» (--g-fminw) витягала б його за низ екрана —
+    // вписуємо лише за висотою поля, як на ПК (рядок fit-core «--g-fminw не для високих полів»)
+    if (w < h) el.style.setProperty('--g-fminw', '0px'); else el.style.removeProperty('--g-fminw');
     const c = { el, ctx: el.getContext('2d'), w, h, resize };
     function resize() {
       const dpr = Math.min(3, window.devicePixelRatio || 1);
@@ -844,7 +849,15 @@
   /// Сховані картки («на складі», display: none у предка) колбеків не отримують — лише позначку; колбек прийде,
   /// щойно картку знову видно (наступний applyFit чи повторний onFit із update гри).
   const fitStale = new Set();
-  const fitHidden = (host) => !host.getClientRects().length;
+  /// Схований — нема рамок у самого host і в предків, що мають display: contents (лежачи .gbody карток g-canvas/g-board
+  /// стає display: contents: рамок у нього нема, але картку видно — інакше ui.onFit на .gbody лежачи не кликався, games-7).
+  const fitHidden = (host) => {
+    for (let e = host; e && e.nodeType === 1; e = e.parentElement) {
+      if (e.getClientRects().length) return false;
+      if (getComputedStyle(e).display !== 'contents') return true;
+    }
+    return true;
+  };
   function safeBottom() {
     if (!fitProbe) {
       fitProbe = document.createElement('div');
@@ -1007,9 +1020,12 @@
       const full = Math.max(el.getBoundingClientRect().height, el.scrollHeight + el.offsetHeight - el.clientHeight);
       // лежачи картка має стелю (max-height = --gland-h): більше, ніж вона, поле не отримає
       const mh = parseFloat(cs.maxHeight);
-      ah = Math.max(FIELD_MIN, (mh > 0 ? Math.min(avail, mh) : avail) - (full - br.height));
+      // Нижня межа 200 — лише стоячи й на ПК: лежачи вся картка ~330 px, і 200 під поле при 140 на місця/статус/кнопки
+      // давали поле, вище за справжнє місце (games-2, games-10) — там межа 120, як у сітці g-land вище.
+      const floor = f.land ? 120 : FIELD_MIN;
+      ah = Math.max(floor, (mh > 0 ? Math.min(avail, mh) : avail) - (full - br.height));
       const top = fieldTop(body);
-      fh = top ? Math.max(FIELD_MIN, ah - (br.height - top.getBoundingClientRect().height)) : ah;
+      fh = top ? Math.max(floor, ah - (br.height - top.getBoundingClientRect().height)) : ah;
     }
     aw = Math.round(aw); ah = Math.floor(ah); fh = Math.floor(fh);
     // Телефон стоячи без ⛶: поле — на всю ширину, як і було (дошка 273 px замість 341 заради «Встати» внизу — гірше;
