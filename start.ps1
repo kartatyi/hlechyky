@@ -257,10 +257,23 @@ function Stop-Liquidsoap {
     else { Write-Host 'liquidsoap не працював' }
 }
 
-# Автозапуск і автонагляд — завдання в Планувальнику, як у LeBot: при вході у Windows і далі щохвилини.
+# Автозапуск і автонагляд — завдання в Планувальнику, як у LeBot: при старті Windows, при вході і далі щохвилини.
 # Кожен запуск — коротка перевірка start.ps1 watchdog, тож окремий вічний процес-наглядач не потрібен (і сам не впаде).
+# Працює й тоді, коли ніхто не ввійшов (S4U, пароль не зберігається): після перезавантаження сайт не чекає на вхід
+# (31.10.2026). Процеси тоді живуть у сесії 0, без вікон. Зареєструвати S4U дозволено лише адміну — просимо UAC.
 function Install-Autostart {
     $ps1 = Join-Path $Root 'start.ps1'
+    $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $admin) {
+        Write-Host 'Потрібні права адміністратора — підтвердь запит UAC'
+        $p = Start-Process -FilePath (Get-Process -Id $PID).Path -Verb RunAs -Wait -PassThru `
+            -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$ps1`"", 'autostart'
+        if ($p.ExitCode -ne 0) { throw "autostart з правами адміністратора не вдався (код $($p.ExitCode))" }
+        $t = Get-ScheduledTask -TaskName $TaskName
+        Write-Host "Автозапуск і автонагляд встановлено: завдання «$TaskName» ($($t.Principal.LogonType)), лог дій: $WatchLog"
+        return
+    }
     # wscript ховає вікно повністю (сам powershell -WindowStyle Hidden блимав би консоллю щохвилини) і не чекає на скрипт
     @(
         'Set sh = CreateObject("WScript.Shell")'
@@ -268,17 +281,19 @@ function Install-Autostart {
     ) | Set-Content $Vbs -Encoding ASCII
     $user = "$env:USERDOMAIN\$env:USERNAME"
     $action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "//B //Nologo `"$Vbs`"" -WorkingDirectory $Root
+    $boot = New-ScheduledTaskTrigger -AtStartup
+    $boot.Delay = 'PT30S'   # мережа й служби встигнуть піднятись
     $logon = New-ScheduledTaskTrigger -AtLogOn -User $user
     $every = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 1)
     $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) `
         -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $logon, $every -Settings $settings -Principal $principal `
-        -Description "Глечики: піднімає сайт після входу у Windows і щохвилини перевіряє, чи ніщо не впало ($ps1 watchdog)" -Force | Out-Null
+    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType S4U -RunLevel Limited
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $boot, $logon, $every -Settings $settings -Principal $principal `
+        -Description "Глечики: піднімає сайт при старті Windows (і без входу) і щохвилини перевіряє, чи ніщо не впало ($ps1 watchdog)" -Force | Out-Null
     # Старий автозапуск (Hlechyky.vbs в автозавантаженні) робив start і змагався б з автонаглядом
     $legacy = Join-Path ([Environment]::GetFolderPath('Startup')) 'Hlechyky.vbs'
     if (Test-Path $legacy) { Remove-Item $legacy -Force }
-    Write-Host "Автозапуск і автонагляд встановлено: завдання «$TaskName» у Планувальнику (при вході і щохвилини), лог дій: $WatchLog"
+    Write-Host "Автозапуск і автонагляд встановлено: завдання «$TaskName» у Планувальнику (при старті, при вході і щохвилини, і без входу), лог дій: $WatchLog"
 }
 
 # Сервер і Caddy — вище звичайного пріоритету. Планувальник запускає автонагляд (а з ним і деплой, і restart) з
@@ -349,8 +364,10 @@ function Stop-Caddy {
 
 # Один start/stop/restart/watchdog за раз: інакше автонагляд підняв би старий сервер посеред restart, поки publish
 # переписує build\. М'ютекс звільняється сам, навіть якщо процес убили (тоді наступний отримає AbandonedMutexException — це теж «моє»).
+# Global, не Local: автонагляд без входу живе в сесії 0, а restart руками чи деплой — у сесії користувача, і Local-м'ютекс
+# у кожній сесії свій — вони б одне одного не бачили.
 function Enter-Launcher([int]$WaitSeconds) {
-    $script:mutex = New-Object Threading.Mutex($false, 'Local\Hlechyky-launcher')
+    $script:mutex = New-Object Threading.Mutex($false, 'Global\Hlechyky-launcher')
     try { return $script:mutex.WaitOne([TimeSpan]::FromSeconds($WaitSeconds)) }
     catch { if ($_.Exception.GetBaseException() -is [Threading.AbandonedMutexException]) { return $true }; throw }
 }
