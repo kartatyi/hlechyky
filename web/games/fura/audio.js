@@ -40,14 +40,16 @@ export class Sound {
     this.pitch = 1; this.hornKind = null; this.hv = null;
     this.onVis = () => {
       if (!this.ctx) return;
-      if (document.hidden) this.ctx.suspend(); else this.ctx.resume();
+      // .catch: закрили гру, поки resume/suspend ще чекав, — InvalidStateError у консолі без потреби.
+      const p = document.hidden ? this.ctx.suspend() : this.ctx.resume();
+      if (p && p.catch) p.catch(() => {});
     };
     document.addEventListener('visibilitychange', this.onVis);
   }
 
   /** Викликати з обробника натиску. */
   start() {
-    if (this.ctx) { if (this.ctx.state === 'suspended' && !document.hidden) this.ctx.resume(); return; }
+    if (this.ctx) { if (this.ctx.state === 'suspended' && !document.hidden) { const p = this.ctx.resume(); if (p && p.catch) p.catch(() => {}); } return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.build(new AC());
