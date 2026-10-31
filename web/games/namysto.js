@@ -139,7 +139,7 @@
       + '<button type="button" class="ghost nm-snd" title="Звук (типово вимкнено)">🔇</button>'
       + '<button type="button" class="ghost nm-pause" title="Пауза: Esc, P або Ⓑ">⏸</button>';
     const stage = document.createElement('div');
-    stage.className = 'nm-stage';
+    stage.className = 'nm-stage g-field';   // каркас міряє під нього --g-fh (namysto.css)
     const el = document.createElement('canvas');
     el.className = 'gcanvas nm-field';
     el.setAttribute('aria-label', 'Поле «Намиста»');

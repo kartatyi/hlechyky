@@ -5,19 +5,20 @@
 
 .nm-hud {
   display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; justify-content: space-between;
-  width: 100%; max-width: min(720px, 100%); font-size: .95em;
+  width: 100%; max-width: min(960px, 100%); font-size: .95em;
 }
 .nm-hud > span { min-height: 1.4em; white-space: nowrap; }
 .nm-where { color: var(--muted); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .nm-score { font-family: var(--display); font-weight: 800; font-size: 1.35em; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
 .nm-left, .nm-bon { font-variant-numeric: tabular-nums; }
 .nm-bon { color: var(--accent); font-weight: 700; }
-.nm-hud button { padding: 3px 9px; min-width: 2.4em; }
+.nm-hud button { padding: 4px 10px; min-width: 2.6em; min-height: 36px; }
 
-/* Сцена: квадрат під висоту екрана, щоб поле влазило без прокрутки (шапка й рядок столу — ~190 px). */
+/* Сцена (.g-field): квадрат за місцем під поле від каркаса (--g-fh — з ⛶, ⇔, лежачи), стеля 960 px; без змінних
+   (віконце «у куточку», перший кадр) — як було, від висоти вікна. */
 .nm-stage {
   position: relative; width: 100%;
-  max-width: min(720px, 100%, max(300px, calc(var(--gfit-h, 100dvh) - 190px)));
+  max-width: min(var(--g-fmax, 960px), 100%, max(var(--g-fminw, 0px), var(--g-fh, max(300px, calc(var(--gfit-h, 100dvh) - 190px)))));
   aspect-ratio: 1 / 1;
 }
 .nm-stage[hidden] { display: none; }
@@ -54,7 +55,8 @@
 .nm-help { max-width: min(720px, 100%); text-align: center; min-height: 1.2em; }
 
 /* Список трас: чотири місця по три траси. */
-.nm-pick { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 10px; }
+/* на широкому — місця по два в ряд (було стовпцем 830 px заввишки: на 1920 картка вилазила за екран) */
+.nm-pick { width: 100%; max-width: 1180px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px 18px; }
 .nm-pick[hidden] { display: none; }
 .nm-place h4 { margin: 4px 0 6px; }
 .nm-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
