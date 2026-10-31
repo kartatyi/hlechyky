@@ -2066,6 +2066,8 @@ body.g-imm.g-immland .tchat.drawer:not(.open) {
 }
 body.g-imm.g-immland .tchat.drawer:not(.open) .tc-head { padding: 5px 9px; gap: 4px; opacity: .88; }
 body.g-imm.g-immland .tchat.drawer:not(.open) .tc-last { display: none; }
+/* Є нові (лічильник) — кнопка не напівпрозора й обведена золотом: у мафії й шпигуні лежачи балачка — частина гри. */
+body.g-imm.g-immland .tchat.drawer:not(.open) .tc-head:has(> .tc-badge:not([hidden])) { opacity: 1; border-color: var(--accent); }
 body.g-imm.g-immland.g-arcade .tchat.drawer:not(.open) { display: none; }
 /* ⛶ на ПК (games/core.js, Fullscreen API): темне тло навколо гри. */
 body.g-fs { background: #08120d; }

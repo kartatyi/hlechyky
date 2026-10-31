@@ -765,7 +765,8 @@ body.g-imm .grbox .gseats .gtitle, body.g-imm .grbox .gseats .gwatchers { displa
    (полотно, хрестовина, рахунок) стають у сітку картки поруч із місцями, статусом і кнопками. Гра зі своєю
    розкладкою робить її під body.g-land сама (специфічніше за ці правила). */
 body.g-land .gtable.g-canvas, body.g-land .gtable.g-board {
-  display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 12px; row-gap: 0;
+  /* права колонка — --g-landside гри (core.js кладе копію --g-landcol на картку), типово — природна ширина до 38vw */
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--g-landcol, max-content); column-gap: 12px; row-gap: 0;
   align-items: center; align-content: center; align-content: safe center; justify-items: center;   /* safe: вища за картку колонка не вилазить угору, куди не догорнути */
 }
 body.g-land .gtable.g-canvas > .gbody, body.g-land .gtable.g-board > .gbody { display: contents; }
@@ -796,7 +797,7 @@ body.g-land .gtable.g-board > .gbody > .board {
 body.g-land .gtable.g-canvas > :not(.gbody),
 body.g-land .gtable.g-canvas > .gbody > :not(canvas.gcanvas),
 body.g-land .gtable.g-board > :not(.gbody),
-body.g-land .gtable.g-board > .gbody > :not(.board, .g-field) { grid-column: 2; max-width: 38vw; margin: 2px 0; }
+body.g-land .gtable.g-board > .gbody > :not(.board, .g-field) { grid-column: 2; max-width: var(--g-landcol, 38vw); margin: 2px 0; }
 body.g-land .gtable.g-canvas > .gseats, body.g-land .gtable.g-board > .gseats { font-size: .82em; }
 body.g-land .gtable > .grx { display: none; }
 /* ⛶ стоячи (телефон): полотно за висотою дає загальне правило з --g-fh (вище, «канвас реалтайму»). */

@@ -892,15 +892,15 @@
       fs: fsOn || (full && coarse()), wide: full && !coarse() };
   }
   /// Занурений режим (g-imm): на телефоні ⛶ — будь-яка гра; телефон лежить (≤ 500 px заввишки) — теж будь-яка, крім
-  /// тих, де розмова і є гра (мафія: потрібна шторка балачки), і Гончарного кола (свій розклад, гортається сторінкою);
+  /// Гончарного кола (свій розклад, гортається сторінкою). Ігри, де розмова і є гра (talk: 'main' — мафія, шпигун), теж:
+  /// інакше шапка сайту лишала полю 107 px з 375; балачка там — «💬» з лічильником нових у рядку столу (g-immland);
   /// на ПК — ⛶ «на весь екран» (fsOn). style.css/core.css тоді ховають шапку, вкладки, міні-плеєр і шторку;
   /// g-land (лише телефон лежачи) — ще й поле ліворуч, керування праворуч; g-fs — ⛶ на ПК (гра по центру, темне тло).
   function syncImm() {
     const b = document.body.classList;
     const land = window.innerWidth > window.innerHeight;
     const g = document.body.dataset.ggame || '';
-    const mod = g && modules[g];
-    const lowLand = land && window.innerHeight <= 500 && g !== 'clicker' && !(mod && mod.talk === 'main');
+    const lowLand = land && window.innerHeight <= 500 && g !== 'clicker';
     const room = shown && view.kind === 'room';
     const imm = !!(room && (fsOn || (coarse() && (full || lowLand))));
     if (b.contains('g-imm') !== imm) {
@@ -1072,6 +1072,11 @@
     // Телефон стоячи без ⛶: поле — на всю ширину, як і було (дошка 273 px замість 341 заради «Встати» внизу — гірше;
     // низ картки догортається). За висотою вписуємо на ПК, лежачи і в ⛶.
     const minw = coarse() && !f.imm && !f.land && window.innerWidth < 700 ? aw : 0;
+    // --g-landside: ширина правої колонки лежачи (g-board/g-canvas), гра ставить її на .gbody (чи картку) — CSS-ом
+    // чи style; сітка картки читає її копію --g-landcol (на картці inline: інакше .gbody успадкувала б її назад).
+    // До «нічого не змінилось»: колонка може змінитись і без зміни місця.
+    const ls = getComputedStyle(body).getPropertyValue('--g-landside').trim();
+    if (ls !== el.style.getPropertyValue('--g-landcol')) { if (ls) el.style.setProperty('--g-landcol', ls); else el.style.removeProperty('--g-landcol'); }
     const o = c.fitBox;
     if (f.wide) pinTablePill();   // рядок столу міг змінитись (чипи інших столів, 👁) — пігулка балачки за ним
     if (o && Math.abs(o.aw - aw) < 2 && Math.abs(o.ah - ah) < 2 && Math.abs(o.fh - fh) < 2 && o.minw === minw) return false;
@@ -2234,11 +2239,22 @@
     const cr = c.el.getBoundingClientRect();
     if (!cr.width) return null;
     const k = natW / cr.width;                     // екранні пікселі → пікселі картки (знімаємо поточний scale)
+    // Обгортка з display: contents (0×0, своєї рамки нема) — не «дитина», а її діти: інакше вона випадала,
+    // і вирізка бралась не з того блоку (Шибениця, fix-land). Сама .gbody/обгортка така — міряємо за карткою.
+    const isC = (x) => getComputedStyle(x).display === 'contents';
+    const kidsOf = (p, out = [], d = 0) => {
+      for (const x of p.children) {
+        if (d < 4 && isC(x)) { kidsOf(x, out, d + 1); continue; }
+        const r = x.getBoundingClientRect();
+        if (r.width > 2 && r.height > 2) out.push(x);
+      }
+      return out;
+    };
     let el = c.body;
     let kids = [];
     for (let depth = 0; depth < 5 && el; depth++) {
-      kids = [...el.children].filter((x) => { const r = x.getBoundingClientRect(); return r.width > 2 && r.height > 2; });
-      const r = el.getBoundingClientRect();
+      kids = kidsOf(el);
+      const r = isC(el) ? cr : el.getBoundingClientRect();
       if (kids.length === 1 && kids[0].getBoundingClientRect().width >= r.width * 0.9) { el = kids[0]; continue; }
       break;
     }
