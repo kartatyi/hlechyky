@@ -890,6 +890,7 @@
   const GLAZE = [['--bk-i', '#4fc3c7'], ['--bk-o', '#e6c15a'], ['--bk-t', '#9a6fc9'], ['--bk-s', '#7bb661'],
     ['--bk-z', '#d9534f'], ['--bk-j', '#4f78d1'], ['--bk-l', '#e08a3c'], ['--bk-g', '#7a6a5e']];
   const ROWS = 22;           // малюємо ряди 0..21: два над стіною — там з'являються фігурки
+  const CELL_MAX = 52;       // стеля клітинки: 34 px тримала стіну 374 px заввишки й на 2K у ⛶
   const LBL_H = 40;          // підпис чужої стіни: два рядки (нік і ★; ряди й ціль)
   const STRIP_W = 96;        // стовпчик смужок чужих стін на телефоні
   const cssPx = (name) => { try { return parseFloat(getComputedStyle(document.body).getPropertyValue(name)) || 0; } catch { return 0; } };
@@ -1144,6 +1145,12 @@
     }
     const below = land ? 14 + padBar : (narrow && touch ? chrome + 10 : under) + (touch ? 64 : 0) + padBar, hud = st.sprint ? 50 : 30;   // у спринті HUD вищий: великий секундомір
     let hAvail = Math.max(260, vh - Math.max(0, top) - below - hud - (st.fitCut || 0));
+    // Каркас (Світлиця) уже порахував місце під картку: --g-fh — висота, за якої картка влазить у вікно (з ⛶, ⇔,
+    // лежачи). Беремо її, коли є (на столі), — так стіна росте у ⛶ на 2K, а не тримає висоту з власних замірів вікна.
+    const fb = HGames.ui.box ? HGames.ui.box(root) : null;
+    if (fb && fb.fh > 0 && !(narrow && touch)) {
+      hAvail = Math.max(240, fb.fh - hud - (touch && !land ? 64 : 0) - padBar - (land ? 14 : 6) - (st.fitCut || 0));
+    }
     let c;
     let kind;
     let mini = 0;
@@ -1170,19 +1177,22 @@
       mini = n === 1 ? Math.max(4, Math.floor(c * k)) : 0;
     } else {
       kind = 'wide';
-      const extra = others.length === 0 ? 0 : others.length === 1 ? 10.8 : 11.2;
+      // Телефон лежачи з кнопками обабіч стіни: двом-трьом чужим мікростінам місця нема (вилазили за лівий край) —
+      // смужки небезпеки, як стоячи.
+      strips = land && touch && others.length >= 2;
+      const extra = others.length === 0 || strips ? 0 : others.length === 1 ? 10.8 : 11.2;
       // три чужі стіни — у два ряди, і кожен ряд має ще й підпис: своя стіна мусить лишити їм місце
       const extraH = others.length > 2 ? 2 * LBL_H + 12 - 30 : 0;
-      const tw = land && touch ? 252 : 0;   // лежачи: по дві колонки кнопок 56 px ліворуч і праворуч від стіни
-      c = Math.floor(Math.min((W - 40 - tw) / (15.6 + extra), (hAvail - extraH) / ROWS));
+      const tw = (land && touch ? 252 : 0) + (strips ? STRIP_W + 18 : 0);   // лежачи: по дві колонки кнопок 56 px ліворуч і праворуч від стіни
+      c = Math.floor(Math.min((W - 40 - tw) / (15.6 + extra), (strips ? hAvail : hAvail - extraH) / ROWS));
     }
-    c = Math.max(kind === 'narrow' ? 10 : 12, Math.min(34, c | 0));
-    if (kind === 'wide') mini = others.length > 1 ? Math.max(6, Math.floor(c / 2)) : c;
+    c = Math.max(kind === 'narrow' ? 10 : 12, Math.min(CELL_MAX, c | 0));
+    if (kind === 'wide') mini = strips ? 0 : others.length > 1 ? Math.max(6, Math.floor(c / 2)) : c;
     if (kind === 'watch') mini = c;
     // Три чужі на широкому екрані (Full HD): рядком вони більші, ніж квадратом 2×2 з діркою. Рахуємо ширину своєї
     // стіни з кишенею й чергою (як у build) і беремо рядок, лише якщо він справді дає більшу клітинку.
     let row3 = false;
-    if (kind === 'wide' && others.length === 3) {
+    if (kind === 'wide' && others.length === 3 && !strips) {
       const pc = Math.max(7, Math.round(c * 0.56)), side = Math.round(pc * 4.6);
       const own = side * 2 + Math.max(4, Math.round(c * 0.25)) * 2 + Math.max(4, Math.round(c * 0.36)) + 10 * c + 18;
       const m3 = Math.min(Math.floor((W - own - 30) / 31.2), Math.floor(c * 0.7), Math.floor((ROWS * c - LBL_H) / ROWS));
@@ -2446,7 +2456,13 @@
     // людина пішла на «Ефір»). Видів посеред раунду сервер не шле, тож у кеші — «start» з t = 0, і такий вид відкочував
     // фазу назад: стіна мовчки ставала, сервер вів її сам, а по поверненні вона перескакувала на його версію. У межах
     // раунду фаза йде лише вперед — старіший вид пропускаємо (спринт — ні: «Цеглини дня» з тим самим зерном знову «ready»).
-    if (!fresh && !st.sprint && v.phase !== 'lobby' && (PH_RANK[v.phase] || 0) < (PH_RANK[st.phase] || 0)) { frameLoop(st); return; }
+    // Але перебудову, яку просили resize/поворот/⛶ (st.layout = ''), робимо й тут — інакше посеред раунду стіна лишалась
+    // старого розміру (телефон, повернутий набік, тримав «широку» розкладку за краєм екрана).
+    if (!fresh && !st.sprint && v.phase !== 'lobby' && (PH_RANK[v.phase] || 0) < (PH_RANK[st.phase] || 0)) {
+      if (!st.layout && st.view) { build(root, st); summary(st); }
+      frameLoop(st);
+      return;
+    }
     st.view = v;
     st.phase = v.phase;
     st.stage = v.stage | 0;

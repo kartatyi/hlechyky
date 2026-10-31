@@ -43,7 +43,7 @@
 
 /* HUD — один рядок сталої висоти: довге ім'я цілі обрізається трьома крапками, а стіна під ним не з'їжджає */
 .bricks-hud {
-  display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; justify-content: center; height: 26px;
+  display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; justify-content: center; height: 30px;
   font-size: .86em; color: var(--muted); font-variant-numeric: tabular-nums; max-width: 100%; min-width: 0;
 }
 .bricks-me > .bricks-hud { align-self: stretch; }
@@ -59,7 +59,7 @@
 .bricks-pbline.good { color: var(--ok); }
 .bricks-pbline.bad { color: var(--danger); }
 .bricks-snd {
-  flex: none; padding: 0 6px; min-height: 24px; font-size: .95em; background: transparent; border: 1px solid var(--line);
+  flex: none; padding: 0 8px; min-height: 30px; min-width: 38px; font-size: .95em; background: transparent; border: 1px solid var(--line);
   border-radius: 999px; cursor: pointer;
 }
 
