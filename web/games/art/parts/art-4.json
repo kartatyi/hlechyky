@@ -1,0 +1,27 @@
+{
+ "b": {
+  "bakhne": "bakhne",
+  "brid": "brid",
+  "crowd": "crowd",
+  "dance": "crowd",
+  "freeze": "crowd",
+  "grushi": "grushi",
+  "kupala": "crowd",
+  "potato": "crowd",
+  "skate": "crowd",
+  "tavern": "crowd"
+ },
+ "i": {
+  "bakhne": "bakhne",
+  "brid": "brid",
+  "crowd": "crowd",
+  "dance": "dance",
+  "freeze": "freeze",
+  "grushi": "grushi",
+  "kupala": "kupala",
+  "potato": "potato",
+  "skate": "skate",
+  "tavern": "tavern"
+ },
+ "v": 1
+}
