@@ -184,6 +184,22 @@
     return r && r.height ? Math.max(0, innerHeight - r.top) : 0;
   }
 
+  /// Сцена за місцем картки: каркас дає --g-ah (висота під увесь .gbody, у ⛶ — увесь екран), а що в «.duel» стоїть
+  /// над і під сценою (табло, шкала, «Стріляти», рекорди, сітка кубка), міряємо самі — --d-rest. duel.css бере
+  /// ширину 16:9 з різниці. Раніше — стелі 416/640/760 px і «100vh − 460/520/560»: у ⛶ і на 2K сцена лишалась
+  /// третиною місця. Лежачи (.duel — display: contents) і у вечірці (місце дає господар) — не чіпаємо.
+  function fitScene(st, ctx) {
+    const w = st.els && st.els.wrap, sc = w && w.querySelector(':scope > .dscene');
+    if (!sc || ctx.embedded) return;
+    const wh = w.offsetHeight, sh = sc.offsetHeight;
+    if (!wh || !sh) return;
+    const rest = Math.ceil(wh - sh);
+    // Лише росте: шкала між раундами й рядок рекордів то є, то нема — сцена не має стрибати щораунду (раз зменшилась
+    // і так стоїть). Справжня зміна місця (поворот, ⛶, ⇔) скидає запас — fitHook.
+    if (rest > (st.dRest || 0) + 2) { st.dRest = rest; w.style.setProperty('--d-rest', rest + 'px'); }
+    if (!w.classList.contains('dfit')) w.classList.add('dfit');
+  }
+
   /// Телефон: у Перестрілці на чотирьох шапка столу й табло штовхали сцену вниз, і кнопка «Стріляти»
   /// ховалась під нижнім меню та «💬 Стіл». Раз на партію (room.startedAt), коли вона пішла, прокручуємо
   /// так, щоб рахунок, сцена й кнопка стали між шапкою сайту й меню. Усе й так видно — не чіпаємо.
@@ -196,13 +212,17 @@
       st.fitW = innerWidth; st.fitH = innerHeight;
       st.fitHook = (f) => {
         const w = (f && f.w) || innerWidth, h = (f && f.h) || innerHeight;
-        if (st.fitW === w && Math.abs(st.fitH - h) < 100) return;
+        const real = !(st.fitW === w && Math.abs(st.fitH - h) < 100);
+        if (real) st.dRest = 0;
+        if (st.ctx) fitScene(st, st.ctx);
+        if (!real) return;
         st.fitW = w; st.fitH = h;
         st.fitFor = null;
         if (st.ctx) fitPhone(st, st.ctx);
       };
       ctx.ui.onFit(host, st.fitHook);
     }
+    fitScene(st, ctx);
     if (!st.els || !ctx.mine || !ctx.playing || !ctx.room || !ctx.ui.coarse()) return;
     const key = ctx.room.startedAt || '';
     if (st.fitFor === key) return;

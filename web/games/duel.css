@@ -278,3 +278,10 @@ body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > .dscene
 body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > .dmsg { min-height: 0; }
 body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > .dcup { max-height: 42vh; overflow: auto; }
 body.g-land .gtable:has(> .gbody > .duel:not(.shoot)) > .gbody > .duel > .dfire { order: 9; width: 30vw; min-height: 64px; }
+
+/* ---- Сцена за місцем картки (31.10): --g-ah від каркаса мінус те, що в «.duel» над і під сценою (--d-rest міряє
+   duel.js, клас .dfit), — сцена 16:9 росте на ⇔/⛶/2K і не штовхає «Стріляти» за екран. Без змінних (вечірка) —
+   старі стелі вище. Лежачи — правила g-land вище (вони специфічніші). ---- */
+.duel.dfit > .dscene, .duel.dfit > .dscale, .duel.shoot.dfit > .dscene, .duel.shoot.dfit > .dscale {
+  max-width: min(100%, var(--g-fmax, 1700px), max(var(--g-fminw, 0px), 300px, calc((var(--g-ah, 640px) - var(--d-rest, 280px) - 6px) * 16 / 9)));
+}
