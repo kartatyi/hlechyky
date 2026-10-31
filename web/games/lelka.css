@@ -276,3 +276,20 @@
   .lk-gy { min-width: 44px; height: 32px; padding: 0 10px; }
   .lk-gq { font-size: 13px; }
 }
+
+/* Світлиця (fix-screens): дотик — усе, що тиснуть пальцем, не нижче 32–40 px (замір: прапорець автозабору 16×16,
+   «так/ні» 52×30, сальдо й чесна сума 21/18 px заввишки, швидкі суми лежачи 30 px завширшки). */
+@media (pointer: coarse) {
+  .lk-sw { min-height: 34px; gap: 8px; }
+  .lk-sw input { width: 32px; height: 32px; flex: none; }
+  .lk-gy { height: 36px; }
+  .lk-q button { height: 36px; min-width: 34px; }
+  .lk.L-wide .lk-q { flex-wrap: wrap; }
+  .lk.L-wide .lk-q button { min-width: 34px; }
+  .lk-sal, .lk-hash { min-height: 32px; display: inline-flex; align-items: center; }
+  /* панель від цього вища (планшет ~36 px, телефон ~16) — сцена на стільки ж нижча, щоб кнопка ставки не з'їхала */
+  .lk:not(.L-wide) .lk-stage { height: clamp(200px, calc(42vh - 36px), 294px); }
+}
+@media (pointer: coarse) and (max-width: 420px) {
+  .lk:not(.L-wide) .lk-stage { height: clamp(184px, calc(30vh - 16px), 330px); }
+}
