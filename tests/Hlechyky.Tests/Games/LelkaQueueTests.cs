@@ -120,6 +120,7 @@ public class LelkaQueueTests
 }
 
 /// <summary>Замір M1: пауза тіку на зльоті й автозаборах із 12 ставками на справжній SQLite.</summary>
+[Collection(SerialPerf.Name)]
 public class LelkaQueuePerfTests(ITestOutputHelper output)
 {
     [Fact]
@@ -151,9 +152,12 @@ public class LelkaQueuePerfTests(ITestOutputHelper output)
             for (var i = 0; i < 400 && k.S.Phase != Lelka.Crashed; i++)
             {
                 var flying = k.S.Phase == Lelka.Flight;
+                // найдовший ОДИН тік: збирання сміття, яке цей тік випадково запустив за всю купу (у повному наборі її
+                // наїдають сусіди), — не каса в тіку; її SQLite-пауза лишається в замірі
+                var gc0 = GC.GetTotalPauseDuration();
                 var sw = CpuWatch.StartNew();
                 k.H.Tick();
-                var ms = sw.Elapsed.TotalMilliseconds;
+                var ms = Math.Max(0, sw.Elapsed.TotalMilliseconds - (GC.GetTotalPauseDuration() - gc0).TotalMilliseconds);
                 if (round > 0)   // перший раунд — розігрів JIT і SQLite
                 {
                     max = Math.Max(max, ms);
