@@ -782,14 +782,15 @@ body.g-land .grbox > .gtable { max-height: var(--gland-h); overflow-y: auto; ove
 body.g-land .grbox > .gtable::-webkit-scrollbar { width: 4px; }
 body.g-land .grbox > .gtable::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 body.g-land .gtable > .gbody:not(.g-ownland) > canvas.gcanvas {   /* g-ownland — своя розкладка лежачи (core.js, markCanvas) */
-  grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center; position: sticky; top: 0;
+  grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center; position: sticky; top: 0; bottom: 0;
   /* права колонка (хрестовина, місця, кнопки) бере свою природну ширину, полотно — решту, але не вище за картку
-     (мінус її відступи 6 + 8 і рамку) */
+     (мінус її відступи 6 + 8 і рамку). bottom: 0 — права колонка вища за картку: по центру її висоти полотно
+     з'їжджало під низ екрана (Танчики, Слівце), а так липне до видимого низу картки. */
   width: 100%; max-width: calc((var(--gland-h, 330px) - 16px) * var(--gar)); height: auto; justify-self: center;
 }
 /* Дошка ui.grid чи поле .g-field лежачи — так само ліворуч, квадратом (чи cols / rows) за висотою картки. */
 body.g-land .gtable.g-board > .gbody > :is(.board, .g-field) {
-  grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center; position: sticky; top: 0; justify-self: center;
+  grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center; position: sticky; top: 0; bottom: 0; justify-self: center;
 }
 body.g-land .gtable.g-board > .gbody > .board {
   width: min(100%, calc((var(--gland-h, 330px) - 28px) * var(--cols, 3) / var(--rows, var(--cols, 3))));
