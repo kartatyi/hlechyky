@@ -59,7 +59,7 @@
 .brclock.hot { color: var(--bad, #ff6b5a); }
 .brsnd { min-width: 34px; min-height: 30px; padding: 0 6px; font-size: 1em; line-height: 1; }
 /* на дотику — зона пальця 44 px, але невидимою облямівкою: рядок гравців не росте й не краде висоту в річки */
-@media (pointer: coarse) { .brsnd { position: relative; } .brsnd::after { content: ''; position: absolute; inset: -7px -5px; } }
+@media (pointer: coarse) { .brhud { margin-bottom: 0; } .brsnd { position: relative; min-width: 40px; min-height: 36px; } .brsnd::after { content: ''; position: absolute; inset: -4px -3px; } }   /* fix-screens: сама кнопка ≥ 36 px (була 34×30) */
 
 /* легенда під полем: що означають сухий камінь, слід і хвилі */
 .brlegend { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 14px; margin: 6px 4px 0; color: var(--muted); font-size: .8em; }
