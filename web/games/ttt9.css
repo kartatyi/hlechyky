@@ -2,9 +2,12 @@
   Ультимативні хрестики (№214): велике поле 3×3 з малих полів 3×3. Товсті межі — проміжки між малими полями;
   поле, куди можна ходити, світиться; взяте поле накрите великою міткою.
 */
+/* Світлиця: поле (.g-field) вписується в місце під поле від каркаса, а не в 520 px / 64vh; стеля 720 px, у ⛶ —
+   без стелі. Мітки ростуть разом із полем (cqi — відсоток ширини поля). */
 .t9-big {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-  width: min(520px, 100%, 64vh); margin: 0 auto; padding: 6px;
+  width: min(100%, var(--g-fmax, var(--g-bmax, 720px)), max(var(--g-fminw, 0px), calc(var(--g-fh, 520px) - 4px)));
+  margin: 0 auto; padding: 6px; container-type: inline-size;
   background: var(--line); border-radius: 14px;
 }
 .t9-sub {
@@ -16,7 +19,7 @@
 
 .t9-c {
   aspect-ratio: 1; min-width: 0; padding: 0; display: grid; place-items: center;
-  font-size: clamp(13px, 3.9vw, 1.45em); font-weight: 700; line-height: 1;
+  font-size: max(13px, 4.4cqi); font-weight: 700; line-height: 1;
   background: var(--bg2); border: 0; border-radius: 5px; color: var(--text);
 }
 .t9-c:disabled { opacity: 1; cursor: default; }
@@ -34,7 +37,7 @@
 .t9-closed .t9-c.t9-row { opacity: .6; }
 .t9-own {
   position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
-  font-size: clamp(44px, 12vw, 120px); font-weight: 800; line-height: 1;
+  font-size: max(44px, 23cqi); font-weight: 800; line-height: 1;
 }
 .t9-x > .t9-own { color: var(--accent); }
 .t9-o > .t9-own { color: var(--ok); }
@@ -61,7 +64,7 @@
 /* Телефон: 81 клітинка в картці 332 px — це 32 px (28 на 360). Поле на всю ширину екрана поза відступами картки
    й тонші проміжки — ~37 px на 390, ~34 на 360. */
 @media (max-width: 480px) {
-  .gbody > .t9-big { width: min(calc(100vw - 6px), 64vh); max-width: none; margin-inline: 0; gap: 5px; padding: 3px; }  /* ширша за картку — flex-центр виводить порівну на обидва боки */
+  .gbody > .t9-big { width: min(calc(100vw - 6px), max(var(--g-fminw, 0px), calc(var(--g-fh, 64vh) - 4px))); max-width: none; margin-inline: 0; gap: 5px; padding: 3px; }  /* ширша за картку — flex-центр виводить порівну на обидва боки */
   .t9-sub { gap: 2px; padding: 2px; }
   .t9-c { border-radius: 4px; }
 }

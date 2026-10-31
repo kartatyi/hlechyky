@@ -26,7 +26,7 @@
     let big = root.querySelector(':scope > .t9-big');
     if (big) return big;
     big = document.createElement('div');
-    big.className = 't9-big';
+    big.className = 't9-big g-field';
     let html = '';
     for (let b = 0; b < 9; b++) {
       html += '<div class="t9-sub" data-b="' + b + '">';
