@@ -49,7 +49,7 @@
 .sor-bns { display: flex; min-width: 0; }
 .sor-bns .sor-ic { display: flex; gap: 2px; }
 .sor-bc { display: inline-grid; place-items: center; width: 17px; height: 15px; border-radius: 4px; background: var(--gc); color: var(--gi); font-style: normal;
-  font-size: 10px; font-weight: 800; line-height: 1; box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); }
+  font-size: 11px; font-weight: 800; line-height: 1; box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); }
 .sor-bc.miss { background: transparent; box-shadow: none; border: 1px dashed color-mix(in srgb, var(--gc) 70%, var(--muted)); opacity: .7; box-sizing: border-box; }
 .sor-ps { display: flex; flex-wrap: nowrap; gap: 0 8px; font-size: .84em; color: var(--muted); white-space: nowrap; overflow: hidden; min-width: 0; }
 .sor-ps b { color: var(--text); }
@@ -176,29 +176,29 @@
 .sor-deck { flex: none; width: 52px; height: 68px; border-radius: 8px; display: grid; place-items: center; background: #6e4523; border: 2px solid #d9a933; color: #d9a933; font-weight: 900; font-size: 1.3em; }
 
 /* Крамниця в HTML (панель, бронь). */
-.sor-card { position: relative; flex: none; display: flex; flex-direction: column; width: 78px; height: 100px; border-radius: 8px; overflow: hidden;
+.sor-card { position: relative; flex: none; display: flex; flex-direction: column; width: 82px; height: 104px; border-radius: 8px; overflow: hidden;
   background: #f6efdc; color: #2a1d17; border: 2px solid #6e4523; box-sizing: border-box; box-shadow: 0 2px 6px rgba(0,0,0,.35); text-align: left; }
 .sor-cb { display: flex; align-items: center; gap: 2px; padding: 2px 4px; background: var(--gc); color: var(--gi); min-height: 22px; box-sizing: border-box; }
 .sor-cb b { font-size: 1.05em; font-weight: 900; line-height: 1; }
-.sor-cb small { font-size: .6em; }
+.sor-cb small { font-size: 11px; }
 .sor-ck { font-weight: 900; font-size: .85em; }
 .sor-cg { margin-left: auto; font-size: .95em; }
-.sor-cn { font-size: .62em; font-weight: 700; line-height: 1.12; padding: 3px 4px 0; max-height: 3.5em; overflow: hidden; }
+.sor-cn { font-size: 11px; font-weight: 700; line-height: 1.08; padding: 3px 3px 0; max-height: 3.3em; overflow: hidden; letter-spacing: -.01em; white-space: normal; overflow-wrap: anywhere; }
 .sor-cc { position: absolute; left: 3px; right: 3px; bottom: 3px; display: flex; flex-wrap: wrap-reverse; gap: 2px; }
 .sor-cd { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--gc); color: var(--gi); font-style: normal;
   font-size: 11px; font-weight: 800; line-height: 1; box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.3); }
 .sor-cost .sor-cd { width: 20px; height: 20px; }
-.sor-ct { position: absolute; right: 4px; top: 24px; font-size: .6em; font-weight: 800; color: #6e4523; opacity: .6; }
+.sor-ct { position: absolute; right: 4px; top: 24px; font-size: 11px; font-weight: 800; color: #6e4523; opacity: .6; }
 .sor-cm { position: absolute; right: 3px; bottom: 24px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 900; }
 .sor-cm.buy { background: #3fbf5f; color: #fff; }
 .sor-cm.gold { background: #e9b838; }
 .sor-cm.near { background: transparent; border: 2px dashed #e9b838; color: #8a6400; box-sizing: border-box; }
 .sor-cbl { position: absolute; left: 4px; bottom: 24px; font-size: .9em; color: #b3262e; }
-.sor-card.small { width: 64px; height: 84px; }
-.sor-card.small .sor-cn { font-size: .55em; }
-.sor-card.small .sor-cm { width: 15px; height: 15px; font-size: 9px; bottom: 20px; }
+.sor-card.small { width: 72px; height: 92px; }
+.sor-card.small .sor-cn { font-size: 11px; letter-spacing: -.02em; }
+.sor-card.small .sor-cm { width: 16px; height: 16px; font-size: 11px; bottom: 20px; }
 .sor-card.small .sor-cbl { bottom: 20px; }
-.sor-card.small .sor-cd { width: 15px; height: 15px; font-size: 9.5px; }
+.sor-card.small .sor-cd { width: 16px; height: 16px; font-size: 11px; }
 
 /* Мій прилавок. */
 .sor-mine, .sor-res, .sor-awards { background: var(--panel2); border-radius: 12px; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
@@ -292,8 +292,11 @@
     /* Висота поля — з місця картки від каркаса (--g-ah: усе під .gbody без прокрутки сторінки) мінус плашки. */
     --sor-fh: clamp(360px, calc(var(--g-ah, calc(var(--gfit-h, 100vh) - 120px)) - var(--sor-plh, 80px) - 12px), calc((100cqw - var(--sor-sw) - 12px) * 1.1));
     grid-template-columns: minmax(0, 1fr) var(--sor-sw); }
-  .sor-fieldwrap { aspect-ratio: auto; height: var(--sor-fh); max-height: none; min-height: 0; }
-  .sor-side { height: var(--sor-fh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; gap: 8px; }
+  /* Поле липне під плашками, а колонка праворуч — своєї висоти: довга колонка гортає сторінку, поле лишається на
+     екрані (раніше колонка гортилась усередині на висоту поля — 860 px «схованого» вмісту на 1366). */
+  .sor-fieldwrap { aspect-ratio: auto; height: var(--sor-fh); max-height: none; min-height: 0;
+    position: sticky; top: calc(var(--gtop-h, 0px) + var(--sor-plh, 0px) + 6px); z-index: 3; }
+  .sor-side { gap: 8px; }
   .sor-col { display: contents; }
   .sor-side > *, .sor-col > * { flex: none; }
   .sor-col > .sor-tabs { flex: 1 0 auto; min-height: 160px; }
@@ -304,12 +307,31 @@
 @container sor (min-width: 1100px) {
   .sor-main { --sor-sw: clamp(600px, 48cqw, 860px); }
   .sor-side { flex-direction: row; overflow: visible; gap: 10px; }
-  .sor-col { display: flex; flex: 1 1 0; min-width: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; gap: 8px; }
+  .sor-col { display: flex; flex: 1 1 0; min-width: 0; gap: 8px; }
 }
 /* Телефон лежачи (картка ≥ 700 px, а екран ~375 заввишки): плашки не липнуть (з'їли б третину екрана), поле й колонка —
    на висоту картки (вона сама гортається; над нею — рядок столу ~46 px): гортнув раз під плашки — і бачиш увесь ярмарок. */
-body.g-land .sor-players { position: static; }
-body.g-land .sor-main { --sor-fh: max(240px, calc(100svh - 62px)); }
+/* Телефон лежачи (клас .land ставить JS, коли картка ≥ 700 px): поле ліворуч на всю висоту під рядком місць — влазить без
+   прокрутки й липне, поки картка гортається; праворуч плашки 2×2 і колонка ходу. --sor-lh — місце до низу екрана (JS). */
+.sor.land { display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: auto auto 1fr;
+  grid-template-areas: "sum sum" "f p" "f s"; gap: 8px 10px; align-items: start; }
+.sor.land > .sor-main { display: contents; }
+.sor.land > .sor-sum { grid-area: sum; }
+.sor.land .sor-fieldwrap { grid-area: f; height: var(--sor-lh, 240px); top: 0; }
+.sor.land > .sor-players { grid-area: p; position: static; margin: 0; padding: 0; background: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5px; }
+.sor.land .sor-side { grid-area: s; }
+.sor.land .sor-pl { max-width: none; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 5px; row-gap: 1px; padding: 3px 6px 6px 3px; line-height: 1.2; border-radius: 11px; }
+.sor.land .sor-pl > .sor-av { width: 30px; height: 30px; grid-row: 1 / span 3; }
+.sor.land .sor-pl .sor-av > b { font-size: .85em; }
+.sor.land .sor-pl > .sor-pn { grid-column: 2; grid-row: 1; font-size: .86em; }
+.sor.land .sor-pl > .sor-pp { grid-column: 3; grid-row: 1; font-size: .8em; }
+.sor.land .sor-pl > .sor-pp .sor-mb, .sor.land .sor-pl .sor-w, .sor.land .sor-pn em { display: none; }
+.sor.land .sor-pl > .sor-bns { grid-column: 2 / -1; grid-row: 2; }
+.sor.land .sor-pl > .sor-ps { grid-column: 2 / -1; grid-row: 3; font-size: max(11px, .74em); gap: 0 6px; }
+.sor.land .sor-pl.think .sor-pn, .sor.land .sor-pl.late .sor-pn { padding-right: 0; }
+.sor.land .sor-pl.think > .sor-pp { padding-right: 2.4em; }
+.sor.land .sor-pl.late > .sor-pp { padding-right: 3.4em; }
+.sor.land .sor-pl .sor-sec { right: 4px; top: 2px; font-size: 11px; }
 @container sor (min-width: 700px) and (max-width: 1049px) {
   .sor-pl .sor-w { display: none; }
 }
@@ -345,8 +367,9 @@ body.g-land .sor-main { --sor-fh: max(240px, calc(100svh - 62px)); }
   .sor-pl { max-width: none; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 5px; row-gap: 1px; padding: 3px 6px 6px 3px; line-height: 1.2; border-radius: 11px; }
   .sor-pl > .sor-av { width: 30px; height: 30px; grid-row: 1 / span 3; }
   .sor-pl .sor-av > b { font-size: .85em; }
-  .sor-pl .sor-shp { width: 14px; height: 14px; font-size: 8.5px; right: -3px; bottom: -3px; }
+  .sor-pl .sor-shp { width: 16px; height: 16px; font-size: 11px; right: -4px; bottom: -4px; }
   .sor-pl > .sor-pn { grid-column: 2; grid-row: 1; font-size: .86em; }
+  .sor-pn em { display: none; } /* «(ти)» — свою плашку й так видно за підсвіткою */
   .sor-pl > .sor-pp { grid-column: 3; grid-row: 1; font-size: .8em; }
   .sor-pl > .sor-pp .sor-mb, .sor-pl .sor-w { display: none; }
   .sor-pl > .sor-bns { grid-column: 2 / -1; grid-row: 2; }
@@ -354,9 +377,9 @@ body.g-land .sor-main { --sor-fh: max(240px, calc(100svh - 62px)); }
   .sor-pl.think .sor-pn, .sor-pl.late .sor-pn { padding-right: 0; }
   .sor-pl.think > .sor-pp { padding-right: 2.2em; }
   .sor-pl.late > .sor-pp { padding-right: 3.2em; }
-  .sor-pl .sor-sec { right: 4px; top: 2px; font-size: .68em; }
+  .sor-pl .sor-sec { right: 4px; top: 2px; font-size: 11px; }
   .sor-pl.late .sor-sec { font-size: .82em; }
-  .sor-bc { width: 15px; height: 13px; font-size: 9px; }
+  .sor-bc { width: 16px; height: 14px; font-size: 11px; }
 
   .sor-g { max-width: 54px; }
   .sor-goods { gap: 4px; }
@@ -381,14 +404,14 @@ body.g-land .sor-main { --sor-fh: max(240px, calc(100svh - 62px)); }
   .sor-sc .tk { background: color-mix(in srgb, var(--tc) 28%, var(--panel2)); color: var(--text); }
   .sor-sc.miss .bn { background: transparent; color: var(--muted); box-shadow: none; outline: 1.5px dashed #d9a933; outline-offset: -2px; }
   .sor-sn { display: grid; place-items: center; padding: 0 6px; border-radius: 8px; background: var(--panel2); font-weight: 900; font-size: .95em; font-variant-numeric: tabular-nums; }
-  .sor-sn small { font-size: .7em; color: var(--muted); font-weight: 600; }
+  .sor-sn small { font-size: 11px; color: var(--muted); font-weight: 600; }
   .sor-sn.full { color: var(--danger); }
 
   /* Панель дій — цілі ≥ 48 px. */
   .sor-bb { flex: 1 1 0; min-width: 0; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
     padding: 3px 2px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); line-height: 1.1; }
   .sor-bb .i { font-size: 1.25em; line-height: 1; }
-  .sor-bb small { font-size: .68em; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sor-bb small { font-size: 11px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sor-bb.wide { flex-direction: row; gap: 8px; }
   .sor-bb.wide small { font-size: 1em; }
   .sor-bb.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--panel2)); }

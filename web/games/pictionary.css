@@ -267,3 +267,28 @@
   .pcfloat i { font-size: 24px; }
   .pcthumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ======================= Світлиця: телефон лежачи ======================= */
+/* Полотно ліворуч на всю висоту від верху гри до низу екрана (4:3), праворуч колонкою: слово з таймером, інструменти,
+   далі здогадки й рахунок. Раніше полотно стояло над інструментами й виходило на 184 px нижче екрана — малювати лежачи
+   доводилось наосліп. --pctop модуль міряє сам (верх .pcmain = верх гри, бо рядок слова тут винесено вбік). */
+body.g-land .pcwrap { position: relative; --pcsw: calc(max(180px, 100dvh - var(--pctop, 120px) - 8px) * 4 / 3); }
+body.g-land .pcwrap:not(.lobby) .pctop { position: absolute; top: 0; right: 0; width: calc(100% - var(--pcsw) - 10px); min-height: 40px;
+  grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
+body.g-land .pcwrap:not(.lobby) .pcword { grid-column: 1 / -1; order: 3; font-size: 1.1em; }
+body.g-land .pcwrap:not(.lobby) .pctime { width: 110px; }
+body.g-land .pcwrap:not(.lobby) .pcmain { grid-template-columns: var(--pcsw) minmax(0, 1fr); grid-template-areas: "stage hd" "stage tools" "stage side";
+  grid-template-rows: var(--pctoph, 64px) auto 1fr; justify-content: stretch; gap: 6px 10px; }
+body.g-land .pcwrap:not(.lobby) .pcstage { width: auto; justify-self: stretch; }
+body.g-land .pcwrap:not(.lobby) .pcside { align-self: start; }
+body.g-land .pcwrap:not(.lobby) .pctools .pcrow { max-width: none; }
+body.g-land .pcwrap:not(.lobby) .pcfeed { max-height: 96px; }
+/* Лобі лежачи: полотна ще нема — картка правил на всю ширину у дві колонки (правила | слова компанії й альбом); рахунок
+   і рядок «чекаємо» тут порожні й дублюють рядок стану — ховаємо, щоб «Почати» було видно без прокрутки. */
+body.g-land .pcwrap.lobby .pctop, body.g-land .pcwrap.lobby .pcside { display: none; }
+body.g-land .pcwrap.lobby .pcmain { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage"; }
+body.g-land .pcwrap.lobby .pcbox { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 6px 14px; padding: 6px 10px; text-align: left; }
+body.g-land .pcwrap.lobby .pcbox > * { grid-column: 1; }
+body.g-land .pcwrap.lobby .pcbox > :is(.pchome, :last-child) { grid-column: 2; }
+body.g-land .pcwrap.lobby .pcbox > .pchome { grid-row: 1 / span 3; align-self: start; }
+body.g-land .pcwrap.lobby .pcrules { max-width: none; font-size: .9em; line-height: 1.3; }

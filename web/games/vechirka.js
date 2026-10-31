@@ -1325,8 +1325,9 @@
         : '<p class="muted small">Ботів додає й вечірку починає господар столу.</p>')
       + '<div class="vl-row"><span>🕰 Вечір: <b>' + (v.lobby && v.lobby.len ? '≈ ' + v.lobby.len + ' хв · ' : '') + ((v.lobby && v.lobby.rounds) || '?') + ' кіл</b></span><span>👥 За столом: <b>' + total + '</b>/8</span></div>'
       + '<div class="vo-avs">' + pl.map((p) => '<span>' + avaHtml(p, esc) + '<small>' + esc(p.name) + '</small></span>').join('') + '</div>'
-      // «Як грати» на телефоні згорнуто (картка лобі там ~250 px заввишки, а правила — ще на 1000 px); на ПК — розгорнуто
-      + '<details class="vh-d"' + (isPhone(st) ? '' : ' open') + '><summary>❓ Як грати</summary>'
+      // «Як грати» згорнуто всюди: розгорнуте (≈1000 px) гортало картку лобі всередині рамки дошки й на ПК (1366, 1920);
+      // ті самі правила — і за кнопкою ❓ угорі
+      + '<details class="vh-d"><summary>❓ Як грати</summary>'
       + '<div class="vh-g">' + (t.howto || []).map((s) => '<div class="vh-s"><span class="vh-ic">' + esc(s.icon) + '</span><div><b>' + esc(s.title) + '</b><p>' + esc(s.text) + '</p></div></div>').join('') + '</div></details></div>';
     st.el.top.innerHTML = '<span class="vt-r">🏺 <b>Глечикова вечірка</b> · лобі</span><span class="vt-sp"></span><button type="button" class="vt-b" data-pop="help" title="Як грати">❓</button>';
     st.topH = '';

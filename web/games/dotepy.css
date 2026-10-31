@@ -28,7 +28,7 @@
 .dt {
   container-type: inline-size;
   width: 100%;
-  max-width: 920px;
+  max-width: var(--g-fmax, max(920px, min(1280px, 60vw))); /* великий екран і ⛶ — ширше, але рядок ще читається */
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -87,6 +87,16 @@
 /* лобі */
 .dt-how { display: flex; flex-direction: column; gap: 10px; padding: 8px 4px; }
 .dt-howrow { display: flex; gap: 12px; align-items: flex-start; line-height: 1.35; }
+/* «Як грати» — згортка лише на вузькій картці (телефон стоячи); ширше заголовка нема, правила розгорнуті (JS тримає open). */
+.dt-howd > summary { display: none; }
+.dt-howrows { display: flex; flex-direction: column; gap: 10px; }
+@container (max-width: 560px) {
+  .dt-howd > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 40px; cursor: pointer; padding: 4px 8px;
+    border-radius: 10px; background: var(--bg2); list-style: none; }
+  .dt-howd > summary::-webkit-details-marker { display: none; }
+  .dt-howd[open] > summary .muted { display: none; }
+  .dt-howd[open] > .dt-howrows { padding-top: 10px; }
+}
 .dt-howrow b { font-size: 1.5em; line-height: 1; flex: none; width: 1.5em; text-align: center; }
 .dt-howrow i { font-style: normal; font-weight: 700; color: var(--accent); }
 .dt-howtip { padding: 6px 10px; border-radius: 10px; background: var(--bg2); }
@@ -347,3 +357,19 @@
 .dt-like.on { color: #e86aa0; }
 .dt-alfoot { display: flex; justify-content: center; padding-top: 10px; }
 .dt-alempty { padding: 18px 4px; line-height: 1.4; }
+
+/* Лежачи на телефоні: правила лобі — плиткою 2×2, під ними своє завдання й альбом в один рядок; «Від двох…» — те саме,
+   що вже пише рядок стану. «💬» тут у рядку шапки, тож запас знизу під пігулку не потрібен. Так лобі влазить у висоту екрана. */
+body.g-land .dt-stage { padding-bottom: 0; }
+body.g-land .dt-top { min-height: 38px; }
+body.g-land .dt-stage.dt-lobby .dt-how { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 0; gap: 8px 12px; align-items: center; }
+body.g-land .dt-stage.dt-lobby .dt-how > :is(.dt-howd, .dt-howtip, .dt-ownst) { grid-column: 1 / -1; }
+body.g-land .dt-stage.dt-lobby .dt-howrows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 14px; align-items: start; }
+body.g-land .dt-stage.dt-lobby .dt-howrow { line-height: 1.22; font-size: .9em; gap: 8px; }
+body.g-land .dt-stage.dt-lobby .dt-howrows > .dt-howsmall { display: none; }
+body.g-land .dt-stage.dt-lobby .dt-how > .dt-own { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
+body.g-land .dt-stage.dt-lobby .dt-albumbtn { min-height: 40px; align-self: stretch; justify-self: start; }
+body.g-land .dt-stage.dt-lobby .dt-ownin, body.g-land .dt-stage.dt-lobby .dt-ownbtn { min-height: 40px; }
+body.g-land .dt-stage.dt-lobby .dt-ownin { min-width: 0; }
+/* ⛶ на ПК: картки, відповіді й правила — крупніше, щоб сцена не губилась на великому екрані. */
+body.g-fs .dt { font-size: 1.12em; }
