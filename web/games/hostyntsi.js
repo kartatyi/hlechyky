@@ -308,7 +308,21 @@
     return out;
   }
 
+  /// Світлиця (fit-core): місце під полотно на сторінці столу — від каркаса (ui.box: ah — висота під увесь .gbody з
+  /// ⇔/⛶), мінус решта картки гри (рядок, кошик із «Хапай», пам'ятка). null — вечірка вбудувала, каркас не міряв.
+  /// offset*, не rect: у віконці «в куточку» картка під transform.
+  function tableRoom(st) {
+    const body = st.root;
+    if (!body || !body.classList.contains('gbody') || !HGames.ui.box || !st.cv.offsetHeight) return null;
+    const f = HGames.ui.box(body);
+    if (!f || !f.ah || !f.aw || !body.offsetHeight) return null;
+    const meGone = !st.me || st.me.hidden ? (coarse() ? 104 : 112) + 8 : 0;   // у лобі кошика ще нема — резерв, щоб не стрибало
+    return { aw: f.aw, h: f.ah - (body.offsetHeight - st.cv.offsetHeight) - meGone };
+  }
+
   /// Полотно — своє, бо висота залежить від кількості станцій і місця на екрані (міряємо root, не вікно).
+  /// На великому екрані (ПК, ⛶, 2K) жолоб не розтягуємо (геометрія в пікселях: вигини, гостинці), а збільшуємо
+  /// все полотно цілим — масштаб z до 2× (задник теж у z разів щільніший, не мило).
   function size(st) {
     const cv = st.cv;
     if (!cv || !cv.isConnected) return false;
@@ -324,18 +338,21 @@
     const mh = st.me && !st.me.hidden ? st.me.offsetHeight : 0;
     const below = (mh || (coarse() ? 104 : 112)) + 14;
     const floor = coarse() ? 220 : 300;
-    const avail = Math.max(floor, fit.h - fit.dock - top - below);
+    const tb = tableRoom(st);
+    const avail = tb ? Math.max(floor, tb.h) : Math.max(floor, fit.h - fit.dock - top - below);
     const pref = (coarse() ? 110 : 150) + (coarse() ? 66 : 76) * (n + 1);
     const H = Math.round(Math.max(floor, Math.min(avail, pref, 760)));
-    const dpr = Math.min(2.5, window.devicePixelRatio || 1);
+    const z = tb && W >= 560 && !coarse() ? Math.max(1, Math.floor(Math.min(2, tb.aw / W, tb.h / H) * 20) / 20) : 1;
+    const dpr = Math.min(2.5, window.devicePixelRatio || 1) * z;
     if (W === st.W && H === st.H && dpr === st.dpr) return false;
     st.W = W;
     st.H = H;
     st.dpr = dpr;
     cv.width = Math.round(W * dpr);
     cv.height = Math.round(H * dpr);
-    cv.style.width = W + 'px';
-    cv.style.height = H + 'px';
+    cv.style.width = Math.round(W * z) + 'px';
+    cv.style.height = Math.round(H * z) + 'px';
+    if (st.el) st.el.style.maxWidth = z > 1 ? Math.round(W * z) + 'px' : '';
     st.bg = null;
     st.flakes = null;
     return true;
