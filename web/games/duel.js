@@ -193,7 +193,8 @@
     if (!sc || ctx.embedded) return;
     const wh = w.offsetHeight, sh = sc.offsetHeight;
     if (!wh || !sh) return;
-    const rest = Math.ceil(wh - sh);
+    // шкала реакції з'являється лише між раундами (≈ 50 px) — місце під неї тримаємо одразу, щоб сцена не смикалась
+    const rest = Math.ceil(wh - sh) + (w.querySelector(':scope > .dscale:empty') ? 50 : 0);
     // Лише росте: шкала між раундами й рядок рекордів то є, то нема — сцена не має стрибати щораунду (раз зменшилась
     // і так стоїть). Справжня зміна місця (поворот, ⛶, ⇔) скидає запас — fitHook.
     if (rest > (st.dRest || 0) + 2) { st.dRest = rest; w.style.setProperty('--d-rest', rest + 'px'); }
