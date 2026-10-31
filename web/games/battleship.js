@@ -619,7 +619,7 @@
     let wrap = root.querySelector(':scope > .bs');
     if (!wrap) {
       wrap = document.createElement('div');
-      wrap.className = 'bs';
+      wrap.className = 'bs g-field';   // g-field: каркас дає висоту під поля (--g-fh), лежачи ставить їх ліворуч
       wrap.innerHTML = '<div class="bs-seas"></div>';
       root.insertBefore(wrap, root.firstChild);
     }
