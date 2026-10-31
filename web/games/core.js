@@ -962,6 +962,12 @@
     // плашки над сторінкою («Повітряна тривога», нічна, «Сайт оновився»): з'явилась чи зникла — стіл зсунувся
     document.querySelectorAll('body > .nightbar, body > .hellobar').forEach((b) => fieldRO.observe(b));
   }
+  // 🚨 Смужка тривоги на сторінці столу — компактна (style.css); натиск на неї (не на «Мапа»/✕) — розгорнути як було.
+  document.addEventListener('click', (e) => {
+    const bar = e.target && e.target.closest && e.target.closest('#tryBar');
+    if (!bar || e.target.closest('a, button') || !document.body.classList.contains('g-room')) return;
+    bar.classList.toggle('tb-open');
+  });
   /// Рядок поля — дитина .gbody, у якій стоїть головне поле гри, або null.
   function fieldTop(body) {
     let f = body.querySelector('.g-field') || body.querySelector(':scope > canvas.gcanvas, :scope > .board');
