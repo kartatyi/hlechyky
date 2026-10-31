@@ -1,0 +1,35 @@
+{
+ "b": {
+  "battleship": "battleship",
+  "c4": "c4",
+  "c4x": "c4",
+  "checkers": "checkers",
+  "domino": "domino",
+  "durak": "durak",
+  "khutory": "khutory",
+  "reversi": "reversi",
+  "reversi-glek": "reversi",
+  "sorochyntsi": "sorochyntsi",
+  "ttt": "ttt",
+  "ttt3": "ttt",
+  "ttt9": "ttt",
+  "zirka": "checkers"
+ },
+ "i": {
+  "battleship": "battleship",
+  "c4": "c4",
+  "c4x": "c4",
+  "checkers": "checkers",
+  "domino": "domino",
+  "durak": "durak",
+  "khutory": "khutory",
+  "reversi": "reversi",
+  "reversi-glek": "reversi",
+  "sorochyntsi": "sorochyntsi",
+  "ttt": "ttt",
+  "ttt3": "ttt",
+  "ttt9": "ttt",
+  "zirka": "zirka"
+ },
+ "v": 1
+}
