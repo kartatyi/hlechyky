@@ -1942,8 +1942,20 @@
     const below = Math.max(0, cb - r.bottom) + gap + barH;
     const big = window.innerWidth >= 1500 && window.innerHeight >= 860;
     let size = Math.floor(window.innerHeight - top - below);
+    let cap = big ? 760 : 680;
+    // Світлиця (fit-core): на сторінці столу місце вже порахував каркас (ui.box: ah — висота під увесь .gbody з ⇔/⛶,
+    // шапкою й низом сайту) — ставок на все, що лишилось від стовпчиків і рядків під ним; стеля — 1300 (у ⛶ і на 2K),
+    // а не 760. offset*, не rect: у віконці «в куточку» картка під transform. Вечірка вбудувала — як було, від вікна.
+    const fb = root.classList.contains('gbody') && HGames.ui.box ? HGames.ui.box(root) : null;
+    if (fb && fb.ah && root.offsetHeight && cv.offsetHeight) {
+      // рядок ставка — найвищий із ставка й стовпчиків обабіч (на вісьмох стовпчик буває вищий); віднімаємо решту
+      let row = cv.offsetHeight;
+      if (side) for (const el of root.children) if (el !== cv && el.offsetHeight && el.offsetTop <= cv.offsetTop + 2) row = Math.max(row, el.offsetTop - cv.offsetTop + el.offsetHeight);
+      size = Math.floor(fb.ah - (root.offsetHeight - row) - barH);
+      cap = 1300;
+    }
     const wide = side ? root.clientWidth - 2 * 130 - 28 : root.clientWidth;
-    size = Math.max(300, Math.min(size, big ? 760 : 680, wide));
+    size = Math.max(300, Math.min(size, cap, wide));
     const cur = side ? parseFloat(cv.style.width) : parseFloat(cv.style.maxWidth);
     if (!(Math.abs(cur - size) < 2)) {
       if (side) { cv.style.width = size + 'px'; cv.style.maxWidth = 'none'; }
