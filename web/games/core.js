@@ -1964,14 +1964,51 @@
     const phone = dockPhone();
     const natW = c.natW || dockDefW();
     const natH = c.el.offsetHeight || Math.round(natW * 0.7);
+    // Поле гри, вужче за картку (шахи, сітки — дошка ~360 px посеред картки на всю колонку): показуємо лише його,
+    // інакше у віконці дошка дрібна, а довкола порожньо. Полотно на всю ширину (реалтайм, коло) — уся картка.
+    const crop = dockCrop(c, natW, natH);
+    const cut = crop || { x: 0, y: 0, w: natW, h: natH };
     const want = Math.min((phone ? DOCK_W_PHONE : DOCK_W)[dockPrefs.size] || DOCK_W.m, window.innerWidth - 24);
     const maxH = phone ? Math.min(want * 1.35, window.innerHeight * 0.34) : Math.min(want * 0.95, window.innerHeight * 0.6);
-    let s = Math.min(1, want / natW);
-    if (natH * s > maxH) s = Math.max(maxH / natH, s * 0.62);
-    dockStage.style.transform = 'scale(' + s.toFixed(4) + ')';
-    dockBox.style.width = Math.round(natW * s) + 'px';
-    dockEl.style.width = (Math.round(natW * s) + 2) + 'px';   // шапка не розпирає віконце довгою назвою
-    dockBox.style.height = Math.round(Math.min(natH * s, maxH)) + 'px';
+    let s = Math.min(1, want / cut.w);
+    // вирізане поле влазить ціле; уся картка, що вища за стелю, — трохи стискаємо, а далі показуємо верх
+    if (cut.h * s > maxH) s = crop ? maxH / cut.h : Math.max(maxH / cut.h, s * 0.62);
+    dockStage.style.transform = 'translate(' + Math.round(-cut.x * s) + 'px,' + Math.round(-cut.y * s) + 'px) scale(' + s.toFixed(4) + ')';
+    const w = Math.round(cut.w * s);
+    dockBox.style.width = w + 'px';
+    dockEl.style.width = (w + 2) + 'px';   // шапка не розпирає віконце довгою назвою
+    dockBox.style.height = Math.round(Math.min(cut.h * s, maxH)) + 'px';
+  }
+  /// Де в картці саме поле гри (у пікселях картки без масштабу) — або null, коли воно й так майже на всю ширину.
+  /// Спускаємось .gbody крізь обгортки на всю ширину й беремо охоплення того, що всередині.
+  function dockCrop(c, natW, natH) {
+    const cr = c.el.getBoundingClientRect();
+    if (!cr.width) return null;
+    const k = natW / cr.width;                     // екранні пікселі → пікселі картки (знімаємо поточний scale)
+    let el = c.body;
+    let kids = [];
+    for (let depth = 0; depth < 5 && el; depth++) {
+      kids = [...el.children].filter((x) => { const r = x.getBoundingClientRect(); return r.width > 2 && r.height > 2; });
+      const r = el.getBoundingClientRect();
+      if (kids.length === 1 && kids[0].getBoundingClientRect().width >= r.width * 0.9) { el = kids[0]; continue; }
+      break;
+    }
+    if (!kids.length) return null;
+    // Поле — найбільше за площею; до нього — сусіди, що не ширші за нього (підписи над і під дошкою). Рядок кнопок
+    // на всю ширину (шахи: «здатись», налаштування Глека) у віконці не потрібен — його не беремо.
+    const rs = kids.map((x) => x.getBoundingClientRect());
+    const main = rs.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a));
+    const slack = main.width * 0.2;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const r of rs) {
+      if (r !== main && (r.left < main.left - slack || r.right > main.right + slack)) continue;
+      x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom);
+    }
+    const pad = 12;
+    const x = Math.max(0, (x0 - cr.left) * k - pad), w = Math.min(natW - x, (x1 - x0) * k + pad * 2);
+    if (w > natW * 0.8 || w < 120) return null;
+    const y = Math.max(0, (y0 - cr.top) * k - pad), h = Math.min(natH - y, (y1 - y0) * k + pad * 2);
+    return h > 80 ? { x, y, w, h } : null;
   }
   const dockRO = window.ResizeObserver ? new ResizeObserver((es) => {
     let lay = false;
