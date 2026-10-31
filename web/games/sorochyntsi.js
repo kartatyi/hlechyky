@@ -144,7 +144,7 @@
     st.ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (st.sc) st.sc.resize(); placeFx(st); }) : null;
     if (st.ro) st.ro.observe(st.el.field);
     st.ro2 = typeof ResizeObserver === 'function' ? new ResizeObserver(() => sizeVars(root, st)) : null;
-    if (st.ro2) for (const k of ['players', 'strip', 'bar']) st.ro2.observe(st.el[k]);
+    if (st.ro2) for (const k of ['players', 'strip', 'bar', 'root']) st.ro2.observe(st.el[k]);
     st.tick = setInterval(() => tick(root), 250);
     st.built = true;
   }
@@ -157,6 +157,15 @@
     k.style.setProperty('--sor-plh', hOf(st.el.players) + 'px');
     k.style.setProperty('--sor-striph', (st.el.strip.firstChild ? hOf(st.el.strip) : 0) + 'px');
     k.style.setProperty('--sor-barh', (st.el.bar.firstChild ? hOf(st.el.bar) : 0) + 'px');
+    // Телефон лежачи (картка ≥ 700 px): поле ліворуч на висоту від свого верху до низу екрана — без прокрутки.
+    const land = document.body.classList.contains('g-land') && k.clientWidth >= 700;
+    if (k.classList.contains('land') !== land) k.classList.toggle('land', land);
+    if (land && !(k.closest('.gtable') || {}).scrollTop) { // картку гортнули — поле липне, верх уже не той; лишаємо старе
+      const card = k.closest('.gtable');
+      const top = st.el.fieldwrap.getBoundingClientRect().top + (card ? card.scrollTop : 0) + window.scrollY;
+      const h = Math.max(200, Math.round(window.innerHeight - top - 6)) + 'px';
+      if (k.style.getPropertyValue('--sor-lh') !== h) k.style.setProperty('--sor-lh', h);
+    }
   }
 
   // ─── Звук ───────────────────────────────────────────────────────────────
