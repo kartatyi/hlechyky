@@ -354,18 +354,27 @@
   }
 
   /// Телефон стоячи: висота рядка вертикального поля (14 рядків) — щоб сцена, поле й панель ставок влізли в місце картки
-  /// (--g-ah від каркаса). 26…40 px: нижче — пальцем не влучити, тоді краще догорнути. Велике число після кола (.rl-big)
+  /// (--g-ah від каркаса). 22…40 px (fix-screens: було 26; нижче 26 — лише разом із меншим колесом): нижче — пальцем не влучити, тоді краще догорнути. Велике число після кола (.rl-big)
   /// не рахуємо — воно на кілька секунд, поле не має смикатись. Без заміру каркаса (віконце в куточку) — як було, 40.
   function fitRows(st, f) {
     const el = st.el, b = el && el.board;
     if (!b) return;
     let rh = '';
     if (st.layout === 'vert' && f && f.ah) {
-      const big = el.big.offsetHeight ? el.big.offsetHeight + 4 : 0;
-      const used = el.stage.offsetHeight - big + 12 + el.panel.offsetHeight + 10 + (el.legend.offsetHeight ? el.legend.offsetHeight + 10 : 0)
-        + (el.closed.hidden ? 0 : el.closed.offsetHeight + 10) + 20;   // 12/10 — проміжки сітки, 20 — рамка й відступ поля
-      rh = Math.max(26, Math.min(40, Math.floor((f.ah - used - 32) / 13))) + 'px';   // останній рядок («2:1») — від 32 px
-    }
+      const used = () => {
+        const big = el.big.offsetHeight ? el.big.offsetHeight + 4 : 0;
+        return el.stage.offsetHeight - big + 12 + el.panel.offsetHeight + 10 + (el.legend.offsetHeight ? el.legend.offsetHeight + 10 : 0)
+          + (el.closed.hidden ? 0 : el.closed.offsetHeight + 10) + 20;   // 12/10 — проміжки сітки, 20 — рамка й відступ поля
+      };
+      // fix-screens: за спільним столом (рядок місць вищий, унизу ще «💬 Стіл») рядкам бракувало місця — поле йшло під
+      // екран на 63 px. Тоді колесо меншає (124 → 92 px), а рядок може бути до 22 px (у рядку три числа по ~85 px завширшки).
+      const box = el.box;
+      let raw = (f.ah - used() - 32) / 13;
+      const tight = box.style.getPropertyValue('--rl-vw') !== '';
+      if (raw < 26 && !tight) { box.style.setProperty('--rl-vw', '92px'); raw = (f.ah - used() - 32) / 13; }
+      else if (tight && raw >= 30) { box.style.removeProperty('--rl-vw'); raw = (f.ah - used() - 32) / 13; }
+      rh = Math.max(22, Math.min(40, Math.floor(raw))) + 'px';   // останній рядок («2:1») — від 32 px
+    } else if (el.box && el.box.style.getPropertyValue('--rl-vw')) el.box.style.removeProperty('--rl-vw');
     if (b.style.getPropertyValue('--rl-rh') !== rh) { if (rh) b.style.setProperty('--rl-rh', rh); else b.style.removeProperty('--rl-rh'); }
   }
 
