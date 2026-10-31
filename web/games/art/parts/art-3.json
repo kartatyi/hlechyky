@@ -1,0 +1,33 @@
+{
+ "v": 1,
+ "i": {
+  "curve": "curve",
+  "dino": "dino",
+  "dino-daily": "dino",
+  "icefloe": "icefloe",
+  "koliya": "koliya",
+  "storks": "storks",
+  "territory": "territory",
+  "thinice": "thinice",
+  "tron": "tron",
+  "tron-party": "tron",
+  "typerace": "typerace",
+  "typerace-solo": "typerace",
+  "vohnyk": "vohnyk"
+ },
+ "b": {
+  "curve": "curve",
+  "dino": "dino",
+  "dino-daily": "dino",
+  "icefloe": "icefloe",
+  "koliya": "koliya",
+  "storks": "dino",
+  "territory": "territory",
+  "thinice": "thinice",
+  "tron": "tron",
+  "tron-party": "tron",
+  "typerace": "typerace",
+  "typerace-solo": "typerace",
+  "vohnyk": "vohnyk"
+ }
+}
