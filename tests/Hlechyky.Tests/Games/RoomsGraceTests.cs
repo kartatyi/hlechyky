@@ -36,6 +36,10 @@ public class RoomsGraceTests
         var seat = h.Room.Summary().Seats[1];
         Assert.Equal(since + Rooms.TurnGrace, seat.Away);
         Assert.Null(h.Room.Summary().Seats[0].Away);
+        // на дроті: «away» лише в того, хто відпав
+        var wire = Views.Json(h.Room.Summary()).GetProperty("seats");
+        Assert.Equal(since + Rooms.TurnGrace, wire[1].GetProperty("away").GetDateTimeOffset());
+        Assert.False(wire[0].TryGetProperty("away", out _));
 
         Drop(h, TimeSpan.FromSeconds(60));
         Assert.Equal("Петро", h.Room.Seats[1]);
