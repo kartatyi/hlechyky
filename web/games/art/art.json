@@ -1,0 +1,38 @@
+{
+ "b": {
+  "bricks": "bricks",
+  "bricks-daily": "bricks",
+  "bricks-duel": "bricks",
+  "bricks-sprint": "bricks",
+  "chess": "chess",
+  "chess-daily": "chess",
+  "chess-glek": "chess",
+  "clicker": "clicker",
+  "mafia": "mafia",
+  "slot-glek": "slot-glek",
+  "snake": "snake",
+  "snake-coop": "snake",
+  "snake-party": "snake",
+  "wordle": "wordle",
+  "wordle-archive": "wordle"
+ },
+ "i": {
+  "bricks": "bricks",
+  "bricks-daily": "bricks",
+  "bricks-duel": "bricks",
+  "bricks-sprint": "bricks",
+  "chess": "chess",
+  "chess-daily": "chess",
+  "chess-glek": "chess",
+  "clicker": "clicker",
+  "mafia": "mafia",
+  "slot-glek": "slot-glek",
+  "snake": "snake",
+  "snake-coop": "snake",
+  "snake-party": "snake",
+  "wordle": "wordle",
+  "wordle-archive": "wordle",
+  "wordle-race": "wordle"
+ },
+ "v": 1
+}
