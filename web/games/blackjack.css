@@ -32,7 +32,7 @@
   --bj-c500: #2a2420;
 }
 
-.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 900px; margin: 0 auto; min-width: 0; }
+.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 1100px; margin: 0 auto; min-width: 0; }
 .bj .muted { color: var(--muted); }
 
 /* ---- шапка ---- */
@@ -58,7 +58,7 @@
 .bj-glek { grid-area: glek; position: relative; align-self: center; }
 .bj-glek img { display: block; width: 100%; height: auto; transform-origin: 50% 92%; filter: drop-shadow(0 4px 6px var(--bj-shadow)); user-select: none; -webkit-user-drag: none; }
 .bj-badge { position: absolute; right: -6px; top: -8px; font-size: 1.3em; line-height: 1; pointer-events: none; }
-.bj-dealer { grid-area: dealer; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 72px; }
+.bj-dealer { grid-area: dealer; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: max(72px, calc(var(--bj-cw) * 1.7 + 4px)); }
 .bj-dtot:empty { display: none; }
 .bj-say {
   grid-area: say; position: relative; justify-self: start; max-width: 100%;
@@ -72,25 +72,28 @@
 }
 .bj-say.on { opacity: 1; transform: none; }
 .bj-rules {
-  text-align: center; font-size: .72em; letter-spacing: .02em; opacity: .75; margin: 6px 0 8px;
+  text-align: center; font-size: max(.72em, 12px); letter-spacing: .02em; opacity: .75; margin: 6px 0 8px;
   border-top: 1px dashed var(--bj-line); border-bottom: 1px dashed var(--bj-line); padding: 3px 0;
 }
 
-/* ---- карти (як у покері) ---- */
-.bj-cards { display: flex; align-items: center; min-height: 56px; }
-.bj-cards > .bjc + .bjc { margin-left: -12px; }
+/* ---- карти (як у покері) ----
+   Розмір карти — від висоти картки (каркас: --g-ah): на звичайному ноуті як був (40 px), на великому екрані й у ⛶
+   росте до 80 px — карти видно з дивана. Телефон (≤520) лишається на своїх розмірах. */
+.bj { --bj-cw: clamp(40px, calc(40px + (var(--g-ah, 600px) - 640px) * .3), 80px); }
+.bj-cards { display: flex; align-items: center; min-height: calc(var(--bj-cw) * 1.4); }
+.bj-cards > .bjc + .bjc { margin-left: calc(var(--bj-cw) * -.3); }
 .bjc {
   position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  width: 40px; height: 56px; border-radius: 6px; background: var(--bj-face); color: var(--bj-ink);
+  width: var(--bj-cw); height: calc(var(--bj-cw) * 1.4); font-size: calc(var(--bj-cw) * .4); border-radius: 6px; background: var(--bj-face); color: var(--bj-ink);
   border: 1px solid var(--bj-card-edge); box-shadow: 0 1px 3px var(--bj-shadow); font-weight: 800; line-height: 1; flex: none;
 }
 .bjc b { font-size: 1.05em; }
 .bjc i { font-style: normal; font-size: 1.2em; }
 .bjc.red { color: var(--bj-red); }
 .bjc.back { background: repeating-linear-gradient(45deg, var(--bj-back) 0 4px, var(--bj-back2) 4px 8px); border: 2px solid var(--bj-face); }
-.bj-dcards .bjc { width: 48px; height: 68px; font-size: 1.12em; }
+.bj-dcards .bjc { width: calc(var(--bj-cw) * 1.2); height: calc(var(--bj-cw) * 1.7); font-size: calc(var(--bj-cw) * .45); }
 .bj-dcards > .bjc + .bjc { margin-left: -10px; }
-.bj-slot { width: 48px; height: 68px; border-radius: 6px; border: 1px dashed var(--bj-slot-edge); flex: none; }
+.bj-slot { width: calc(var(--bj-cw) * 1.2); height: calc(var(--bj-cw) * 1.7); border-radius: 6px; border: 1px dashed var(--bj-slot-edge); flex: none; }
 .bj-slot + .bj-slot { margin-left: 6px; }
 .bjc.in { animation: bj-deal .34s ease-out both; }
 .bjc.flip { animation: bj-flip .42s ease-out both; }
@@ -229,7 +232,7 @@
   .bj-box { padding: 5px 6px 6px; }
   .bjc { width: 34px; height: 48px; font-size: .9em; }
   .bj-cards > .bjc + .bjc { margin-left: -13px; }
-  .bj-rules { font-size: .66em; }
+  .bj-rules { font-size: 11px; }
   .bj-moves button { flex-basis: calc(50% - 6px); }
 }
 @media (max-width: 360px) {
