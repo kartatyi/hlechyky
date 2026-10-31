@@ -329,7 +329,16 @@
     // над полем — шапка картки, рядок картинки й перегони; під ним — підказка: усе разом має влізти в екран
     const card = st.root.closest('.gtable') || st.root;
     const off = Math.max(0, st.stage.getBoundingClientRect().top - card.getBoundingClientRect().top);
-    const availH = Math.max(260, H - Math.min(off, 260) - 52);
+    let availH = Math.max(260, H - Math.min(off, 260) - 52);
+    // Світлиця: за своїм столом каркас дав місце під усе тіло картки (--g-ah: вікно мінус шапки, місця, статус, кнопки;
+    // у ⇔ і ⛶ — своє): поле — це воно мінус рядок картинки й перегони над полем і підказка під ним.
+    const bx = !st.ctx.embedded && HGames.ui.box ? HGames.ui.box(st.root) : null;
+    if (bx && bx.ah > 0) {
+      const gb = st.root.closest('.gbody') || st.root;
+      const above = Math.max(0, st.stage.getBoundingClientRect().top - gb.getBoundingClientRect().top);
+      const tip = st.tip && st.tip.offsetHeight ? st.tip.offsetHeight + 8 : 26;
+      availH = Math.max(180, Math.floor(bx.ah - above - tip - 6));
+    }
     const side = W >= 560;
     let tw = B, th = B, ww, wh, s;
     if (side) { tw = Math.round(1.15 * B); th = Math.round(1.08 * B); }   // рушник трохи більший за рамку: черепки не налазять
@@ -345,7 +354,7 @@
       const th2 = Math.round(0.72 * B), s2 = Math.min(W / (ww + 2 * PAD), availH / (B + th2 + GAP + 2 * PAD));
       if (s < s2 * 0.9) { th = th2; wh = B + GAP + th; s = s2; }
     }
-    if (!st.demo) s = clamp(s, 210 / B, 560 / B);
+    if (!st.demo) s = clamp(s, 210 / B, 900 / B);
     const tray = side ? { x: B + GAP, y: 0, w: tw, h: th } : { x: 0, y: B + GAP, w: tw, h: th };
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const key = [N, side, th, s.toFixed(4), dpr, !!st.demo].join('|');

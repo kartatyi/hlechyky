@@ -364,6 +364,14 @@
     const phone = W < 640;
     const emb = !!st.ctx.embedded;
     let H = phone ? clamp(fh - (emb ? 190 : 150), 360, 760) : clamp(fh - (emb ? 260 : 210), 340, 640);
+    // Світлиця: за своїм столом каркас уже порахував місце картки (--g-ah: вікно мінус шапки, місця, статус, кнопки;
+    // у ⇔ і ⛶ — своє) — полотну лишаємо його мінус рядок HUD і підказку: картка рівно в екран, у ⛶ скирта росте.
+    const bx = !emb && HGames.ui.box ? HGames.ui.box(st.el.parentElement) : null;
+    if (bx && bx.ah > 0) {
+      const hud = st.el.querySelector('.sk-hud');
+      const rest = (hud ? hud.offsetHeight : 30) + (st.hint ? st.hint.offsetHeight : 0) + 14;
+      H = clamp(Math.floor(bx.ah - rest), 200, 1200);
+    }
     // У вечірці сторінку не прокручуємо (toView там мовчить), тож полотно мусить стати цілим від свого справжнього
     // верху до доку: над ним — шапка вечірки й картка правил, яких сталий відступ не знає; під ним — підказка.
     const fitH = emb && fit ? Math.floor(fit.h - fit.dock - Math.max(fit.top, st.wrap.getBoundingClientRect().top)
@@ -394,10 +402,12 @@
         // мініатюрами (на 7 — по ~40 px: крапка кольору й висота, без імені), щоб поле влізло до доку.
         const row1 = emb && k > 4;
         const cols = row1 ? k : Math.min(k, 4), rows = Math.ceil(k / cols);
-        const mh = row1 ? 84 : rows > 1 ? 96 : (emb ? 108 : 124);
+        // за своїм столом висоту дав каркас (bx): мініатюри нижчі й своє поле без підлоги 312 — картка в екран
+        const fitted = !!(bx && bx.ah > 0);
+        const mh = row1 ? 84 : rows > 1 ? 96 : (emb ? 108 : fitted ? 100 : 124);
         const sg = row1 ? 4 : 6;
         const strip = rows * mh + (rows - 1) * sg;
-        H = Math.max(H, strip + gap + (emb ? 240 : 312));
+        H = Math.max(H, strip + gap + (emb ? 240 : fitted ? 210 : 312));
         const cw = (W - (cols - 1) * sg) / cols;
         others.forEach((s, i) => P.push({ seat: s, x: (i % cols) * (cw + sg), y: Math.floor(i / cols) * (mh + sg), w: cw, h: mh }));
         P.push({ seat: me, x: 0, y: strip + gap, w: W, h: H - strip - gap, big: true });
