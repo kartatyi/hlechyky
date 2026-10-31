@@ -17,7 +17,7 @@
 .lk-stage { grid-area: stage; position: relative; overflow: hidden; border-radius: 16px; background: #2b1f55;
   height: clamp(240px, 42vh, 330px); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .25); user-select: none; -webkit-user-select: none; }
 /* широко висоту .lk ставить JS під екран (ui.fit): сцена бере все, що лишає компактна панель */
-.lk.L-wide .lk-stage { height: auto; min-height: 380px; }
+.lk.L-wide .lk-stage { height: auto; min-height: 240px; } /* 380 на ноуті наїжджало на панель ставки */
 .lk-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .lk-stage.lk-ease .lk-village, .lk-stage.lk-ease .lk-hills, .lk-stage.lk-ease .lk-sun, .lk-stage.lk-ease .lk-clouds,
 .lk-stage.lk-ease .lk-stars, .lk-stage.lk-ease .lk-space { transition: transform 1.2s cubic-bezier(.3, .7, .2, 1), opacity 1s; }
@@ -237,6 +237,11 @@
   .lk-q button { font-size: 12px; min-width: 28px; }
   .lk-pm { width: 34px; }
   .lk-box { padding: 7px 8px; }
+}
+/* палець: швидкі суми й «гей» — не нижче 36 px */
+@media (pointer: coarse) {
+  .lk-q button { height: 36px; }
+  .lk-gy { height: 36px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lk-go.M-cash, .lk-big .lk-m, .lk-stage.shake { animation: none !important; }

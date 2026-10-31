@@ -1309,10 +1309,18 @@
     }
     // широко — гра на всю висоту ігрової зони: сцена росте, панель компактна знизу, ставки праворуч на всю висоту
     if (lay === 'wide') {
-      let f = null;
-      try { f = HGames.ui && HGames.ui.fit ? HGames.ui.fit() : null; } catch (e) { f = null; }
-      const top = root.getBoundingClientRect().top + (window.scrollY || 0);
-      const hh = Math.round(clamp((f ? f.h - f.dock : window.innerHeight) - top - 14, 560, 1150));
+      // місце картки від каркаса (--g-ah: уже без шапок, банера, рядка столу, статусу й «Встати») — інакше
+      // старий розрахунок від вікна з нижньою межею 560 px штовхав «Встати» за низ екрана навіть у ⛶
+      let b = null;
+      try { b = HGames.ui && HGames.ui.box ? HGames.ui.box(root) : null; } catch (e) { b = null; }
+      let hh;
+      if (b && b.ah) hh = Math.round(clamp(b.ah - 4, 380, 1150));
+      else {
+        let f = null;
+        try { f = HGames.ui && HGames.ui.fit ? HGames.ui.fit() : null; } catch (e) { f = null; }
+        const top = root.getBoundingClientRect().top + (window.scrollY || 0);
+        hh = Math.round(clamp((f ? f.h - f.dock : window.innerHeight) - top - 14, 560, 1150));
+      }
       if (st.boxH !== hh) { st.boxH = hh; st.el.box.style.height = hh + 'px'; }
     } else if (st.boxH) { st.boxH = 0; st.el.box.style.height = ''; }
     if (build(root, st)) {
