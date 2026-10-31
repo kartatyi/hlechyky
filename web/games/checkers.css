@@ -12,9 +12,14 @@
   --cklast: rgba(123, 211, 137, .3);   /* слід попереднього ходу */
 }
 
+/* Світлиця: дошка вписується в місце під поле (--g-fh від каркаса), а не в 420 px; стеля 720 px, у ⛶ — без стелі.
+   Годинники — тієї ж ширини, що й дошка. */
+.gbody.ck-root {
+  --ck-w: min(100%, var(--g-fmax, var(--g-bmax, 720px)), max(var(--g-fminw, 0px), calc(var(--g-fh, 424px) - 4px)));
+}
 .board.ck {
   gap: 0;
-  width: min(420px, 100%);
+  width: var(--ck-w, min(420px, 100%));
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -73,7 +78,7 @@
 /* ---- годинник, чим скінчилось, серія (той самий вигляд, що в шахах) ---- */
 .ck-clock {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  width: min(92vw, 420px); padding: 4px 10px; border-radius: 8px; background: var(--bg2);
+  width: var(--ck-w, min(92vw, 420px)); padding: 4px 10px; border-radius: 8px; background: var(--bg2);
   font-variant-numeric: tabular-nums; color: var(--muted); font-size: .92em;
 }
 .ck-clock .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -100,8 +105,6 @@
 .ckacts:empty { display: none; }
 
 @media (max-width: 480px) {
-  .board.ck { width: min(320px, 100%); }
-  .ck-clock { width: min(92vw, 320px); }
   /* Пальцем цілитись: «Здатись» стоїть поруч із «Нічия?», тож ціль має бути на всю подушечку. */
   .ckacts button { padding: 10px 12px; min-height: 44px; }
 }

@@ -269,7 +269,7 @@
     icon: ICON,
     seatNames: ['білі', 'чорні'],
     seatClass: ['c', 'd'],
-    mount(root, ctx) { paint(root, ctx); },
+    mount(root, ctx) { root.classList.add('ck-root'); paint(root, ctx); },
     update(root, ctx) {
       paint(root, ctx);
       const st = state(root);
@@ -285,7 +285,7 @@
       paint(ctx._ckRoot, ctx);
       return true;
     },
-    unmount(root) { if (root._ck) clearTimeout(root._ck.t); root._ck = null; stopClock(root); },
+    unmount(root) { if (root._ck) clearTimeout(root._ck.t); root._ck = null; stopClock(root); root.classList.remove('ck-root'); },
 
     // Піддавки: новачок має з першого погляду зрозуміти, що мета навпаки. Порожньо — каркас пише своє.
     status(ctx) {
