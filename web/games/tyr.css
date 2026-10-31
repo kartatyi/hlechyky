@@ -12,8 +12,9 @@
 
 /* Ширина поля 5:3 — з місця, що порахував каркас (--g-fh: висота під рядок поля за вирахуванням рахунку, набоїв,
    табло й легенди; у ⛶ — увесь екран). Та сама ширина — рядкам над і під полем, щоб усе стояло одним стовпчиком.
-   Раніше стеля 820 px: на 1920 і в ⛶ поле займало половину місця. */
-.tyr { --tyr-w: min(100%, var(--g-fmax, 100%), max(var(--g-fminw, 0px), min(100%, 520px), calc(var(--g-fh, 492px) * 5 / 3))); }
+   Раніше стеля 820 px: на 1920 і в ⛶ поле займало половину місця. Нижня межа — 400 px (була 520: на 1366×768 поле
+   впиралось у неї й штовхало низ картки за екран на 7 px, у Тирі дня — на 31). */
+.tyr { --tyr-w: min(100%, var(--g-fmax, 100%), max(var(--g-fminw, 0px), min(100%, 400px), calc(var(--g-fh, 492px) * 5 / 3))); }
 .tyr .tyrfield {
   max-width: var(--tyr-w);
   background: #3a1d12;
@@ -89,6 +90,15 @@
 
 .tyrsum { max-width: var(--tyr-w); margin: 10px auto 0; }
 .tyrsum[hidden] { display: none; }
+/* Світлиця (fix-screens): низький широкий екран (1366×768) — підсумок і табло дня праворуч від поля, а не під ним:
+   картка Тиру дня після партії вилазила за екран на 110+ px. */
+@media (min-width: 1200px) and (max-height: 860px) and (hover: hover) {
+  body:not(.g-land) .gbody.tyr:has(> .tyrsum:not([hidden])) {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 360px); column-gap: 18px; align-items: start; align-content: start;
+  }
+  body:not(.g-land) .gbody.tyr:has(> .tyrsum:not([hidden])) > * { grid-column: 1; }
+  body:not(.g-land) .gbody.tyr:has(> .tyrsum:not([hidden])) > .tyrsum { grid-column: 2; grid-row: 1 / span 8; max-width: none; margin: 0; align-self: center; }
+}
 /* Лежачи на телефоні, партію зіграно: головне — підсумок, тож йому ширша права колонка (таблиця в рядок, а не
    переносами по 38vw), а полотно з «Ярмарок закрито» — менше ліворуч. Усе влазить у картку без прокрутки. */
 body.g-land .gtable.g-canvas:has(> .gbody.tyr > .tyrsum:not([hidden])) { grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); }
