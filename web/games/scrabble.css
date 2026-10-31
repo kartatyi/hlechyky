@@ -116,6 +116,17 @@
 .scr-row i { font-style: normal; color: var(--muted); min-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scr-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ---- зум дошки на дотику (fix-screens; кнопка «🔍» у шапці ставить .scr-zoom) ----
+   Клітинки по ~40 px, дошка гортається пальцем в обидва боки й не вища за місце під поле (--g-fh), смуги видно. */
+.scr-zoombtn { font-size: .9em; min-height: 36px; min-width: 44px; padding: 2px 8px; border-radius: 999px; margin-block: -6px; }   /* ціль 36 px, а рядок рахунку не вищає */
+.scr-zoombtn.on { border-color: var(--accent); color: var(--accent); }
+@media (pointer: coarse) {
+  .gbody > .scr-board.scr-zoom { overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; justify-content: flex-start;
+    max-height: max(240px, calc(var(--g-fh, 60vh) - 4px)); }
+  .gbody > .scr-board.scr-zoom > .board.scr-sboard { width: 640px; max-width: none; height: auto; max-height: none; aspect-ratio: 1 / 1;
+    flex: none; align-self: flex-start; gap: 2px; padding: 3px; }
+}
+
 /* ---- телефон ---- */
 @media (max-width: 480px) {
   /* Дошка на всю ширину екрана (поза відступами картки), без прихованої прокрутки вбік: 15 клітинок по ~25 px
@@ -194,3 +205,8 @@
 }
 /* Лежачи на телефоні дошка ліворуч на всю висоту картки (каркас, .g-field). */
 body.g-land .gtable .board.scr-sboard { width: max(240px, calc(var(--g-fh, 330px) - 10px)); gap: 1px; padding: 2px; }
+/* fix-screens: лежачи права колонка ширша (каркас: --g-landside) — свій нік у рядку місць і в рахунку не обрізається;
+   дошка квадратна й так не займала всієї лівої колонки. */
+body.g-land .gbody.scr-g { --g-landside: min(44vw, 340px); }
+body.g-land .gtable.scr-table .gseats .gseat.me { max-width: none; }
+body.g-land .gbody.scr-g .scr-p { max-width: 100%; }
