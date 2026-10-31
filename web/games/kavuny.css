@@ -6,14 +6,15 @@
   --kv-red: #ff5a4a;
   --kv-green: #5ccf6a;
   --kv-box: rgba(255, 255, 255, .045);
-  display: grid; gap: 10px; position: relative; color: var(--text, #ecf1ea);
+  display: grid; gap: 10px; position: relative; color: var(--text, #ecf1ea); width: 100%;   /* .gbody — flex по центру: без width ярмарок стискався (лежачи поле 131 px) */
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: 'stage' 'panel';
 }
 
 /* ---------------- сцена ---------------- */
 .kv-stage { grid-area: stage; position: relative; overflow: hidden; border-radius: 16px; background: #45260f;
-  height: clamp(280px, 50vh, 560px); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .3); user-select: none; -webkit-user-select: none;
+  /* висота — місце картки (--g-fh від каркаса) мінус панель під полем (~194 px одним рядком); без змінних — 50vh */
+  height: clamp(280px, calc(var(--g-fh, calc(50vh + 194px)) - 194px), 900px); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .3); user-select: none; -webkit-user-select: none;
   -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .kv-cv { position: absolute; inset: 0; display: block; touch-action: none; cursor: crosshair; }
 .kv-stage.shake { animation: kv-shake .42s cubic-bezier(.36, .07, .19, .97); }
@@ -143,7 +144,7 @@
 }
 /* телефон: поле й кнопка «Забрати» влазять над нижніми вкладками */
 @media (max-width: 480px) {
-  .kv-stage { height: clamp(260px, 46vh, 420px); }
+  .kv-stage { height: clamp(240px, calc(var(--g-fh, calc(46vh + 262px)) - 262px), 520px); }   /* панель стовпцем ~252 px */
   .kv-panel { gap: 6px 8px; }
   .kv-box { padding: 7px 8px; }
   .kv-go { min-height: 60px; }
