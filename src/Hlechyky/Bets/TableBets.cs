@@ -427,7 +427,7 @@ public sealed class TableBets(Rooms rooms, BetBook book, BetsStore store, Econom
         if (book.Open(BetSources.Table, refKey).Count == 0) return BetSettlement.Empty;
         var ec = eco.CurrentValue;
         string? back = null;
-        if (e.Seats.All(s => s is null)) back = Abandoned;
+        if (e.Seats.All(s => s is null) || e.Void) back = Abandoned;   // покинуту партію (без результату) не розраховуємо
         else if (e.Moves < ec.MinRewardMoves && (e.FinishedAt - e.StartedAt).TotalSeconds < ec.MinRewardSeconds) back = Short;
         var s = back is not null ? book.Refund(BetSources.Table, refKey, back) : book.Settle(BetSources.Table, refKey, b => Decide(e, b));
         if (s.Closed.Count == 0) return s;

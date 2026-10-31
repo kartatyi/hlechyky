@@ -34,6 +34,14 @@ public sealed class Broadcaster(
     ILogger<Broadcaster> log) : IOutbox
 {
     readonly ConcurrentQueue<Outgoing> _posted = new();
+    readonly LobbyThrottle _lobby = new();
+    static readonly System.Text.Json.JsonSerializerOptions LobbyJson = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// Людина щойно отримала лобі напряму (OnConnectedAsync шле їй свій знімок): наступну розсилку <c>rooms</c> не
+    /// відкидати як «той самий знімок» — він той самий для решти, а не для неї.
+    /// </summary>
+    public void LobbyServed() => _lobby.Forget();
 
     /// <summary>Група глядачів кімнати.</summary>
     public static string RoomGroup(string id) => "room:" + id;
@@ -51,6 +59,8 @@ public sealed class Broadcaster(
     public async Task FlushAsync(IEnumerable<Outgoing> messages, CancellationToken ct = default)
     {
         var all = Drain(messages);
+        // Лобі — не частіше ніж раз на LobbyThrottle.GapMs: решту відкладено, і TickEngine (коло 10 мс) донесе його сам.
+        _lobby.Gate(all, Environment.TickCount64);
         if (all.Count == 0) return;
         try { Flushed?.Invoke(all); }
         catch (Exception ex) { log.LogWarning(ex, "підписник розсилки впав"); }
@@ -64,10 +74,12 @@ public sealed class Broadcaster(
         {
             // Усе, що в Журнал пишуть ігри й сервіси (столи, підсумки, ачівки, турнір), — під фільтром «🎮 Ігри».
             // Рядок-заклик — не Журнал, а репліка в Балачках від імені того, хто кличе (kind invite).
-            sends = Plan(all, rooms.Snapshot, rooms.SoloNow, rooms.ViewsFor, presence.Get, presence.ConnectionsOf,
+            // Види — лише для місць, на які хтось із групи дивиться (решта однаково нікуди не полетить).
+            sends = Plan(all, rooms.Snapshot, rooms.SoloNow, id => rooms.ViewsFor(id, presence.Get), presence.Get, presence.ConnectionsOf,
                 (text, roomId) => db.AddChat(site.CurrentValue.Name, text, "system", roomId, topic: "games"),
                 (by, text, roomId) => db.AddChat(by, text, "invite", roomId),
-                (roomId, conn) => rooms.SnapshotFor(roomId, conn, presence.Get(conn)));
+                (roomId, conn) => rooms.SnapshotFor(roomId, conn, presence.Get(conn)),
+                list => _lobby.Fresh(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(list, LobbyJson)));
         }
         catch (Exception ex)
         {
@@ -149,7 +161,8 @@ public sealed class Broadcaster(
     /// кадрів однієї кімнати лишається останній. <see cref="DjSays"/> сюди не потрапляє: його вміє лише RadioEngine.
     /// Балачка столу (<see cref="TableSaid"/>, <see cref="TableHistory"/>) не склеюється: кожна репліка — окрема.
     /// <paramref name="inviteLine"/> — записати в базу загальний рядок-заклик (хто кличе, текст, стіл) і віддати те, що
-    /// полетить у <c>chat</c>; null — загальних рядків-закликів ця розсилка не пише.
+    /// полетить у <c>chat</c>; null — загальних рядків-закликів ця розсилка не пише. <paramref name="lobbyFresh"/> — чи цей знімок
+    /// лобі не той самий, що полетів минулого разу (false — <c>rooms</c> не шлемо); null — шлемо завжди.
     /// </summary>
     public static List<Send> Plan(
         IReadOnlyList<Outgoing> messages,
@@ -160,7 +173,8 @@ public sealed class Broadcaster(
         Func<string, IReadOnlyList<string>> connectionsOf,
         Func<string, string?, object> journal,
         Func<string, string, string, object>? inviteLine = null,
-        Func<string, string, RoomView?>? snapshotFor = null)
+        Func<string, string, RoomView?>? snapshotFor = null,
+        Func<List<RoomSummary>, bool>? lobbyFresh = null)
     {
         var keep = Coalesce(messages);
         var sends = new List<Send>();
@@ -183,7 +197,8 @@ public sealed class Broadcaster(
                     // Знімок лобі рахується від живого стану, а не від місця в черзі, тож і летить першим
                     // (нижче). Інакше рядок «Оля і Петро сідають грати» доходив би до браузера раніше за
                     // новину, що за тим столом уже нема місця, і кнопка на ньому кликала б сідати.
-                    lobby = new Send(new ToAll(), "rooms", snapshot());
+                    var list = snapshot();
+                    if (lobbyFresh is null || lobbyFresh(list)) lobby = new Send(new ToAll(), "rooms", list);
                     break;
                 case SoloChanged:
                     sends.Add(new Send(new ToAll(), "solo", soloNow()));
@@ -358,5 +373,78 @@ public sealed class Broadcaster(
         var mine = seated.Values.SelectMany(x => x).ToList();
         if (skip is not null) mine.AddRange(skip);
         yield return new Send(new ToGroupExcept(RoomGroup(b.RoomId), mine), "room", new RoomView(b.Summary, null, b.WatcherView, b.Seq));
+    }
+}
+
+/// <summary>
+/// Лобі (<c>rooms</c>) — повний знімок усіх столів, і летить він КОЖНОМУ з'єднанню сайту (аудит столів 31.10: 12 столів, що
+/// встали по черзі, — 41 КБ слухачеві радіо). Тож не частіше ніж раз на <see cref="GapMs"/>: перша зміна летить одразу,
+/// наступні в цьому вікні — одним знімком наприкінці (його доносить TickEngine, що кличе розсилку кожні 10 мс, навіть
+/// порожню). Пачка з рядком Журналу чи закликом шле лобі одразу, як завжди: «Оля сідає грати» не має обганяти новину,
+/// що за тим столом уже нема місця. І той самий знімок, що полетів минулого разу, не шлемо зовсім (<see cref="Fresh"/>).
+/// Потокобезпечний: розсилку кличуть і хаб (кожна дія), і TickEngine.
+/// </summary>
+public sealed class LobbyThrottle
+{
+    public const int GapMs = 250;
+
+    readonly object _sync = new();
+    long _sentAt = long.MinValue / 2;
+    bool _dirty;
+    byte[]? _last;
+
+    /// <summary>Чи чекає відкладене лобі (для тестів).</summary>
+    public bool Pending { get { lock (_sync) return _dirty; } }
+
+    /// <summary>
+    /// Пропустити, відкласти чи дописати <see cref="LobbyChanged"/> у пачку <paramref name="batch"/> (міняє її на місці).
+    /// <paramref name="nowMs"/> — монотонний час у мс.
+    /// </summary>
+    public void Gate(List<Outgoing> batch, long nowMs)
+    {
+        var has = false;
+        var urgent = false;
+        foreach (var m in batch)
+        {
+            if (m is LobbyChanged) has = true;
+            else if (m is Journal or Invite or InviteLine) urgent = true;
+        }
+        lock (_sync)
+        {
+            var due = nowMs - _sentAt >= GapMs;
+            if (has)
+            {
+                if (urgent || due)
+                {
+                    _sentAt = nowMs;
+                    _dirty = false;
+                    return;
+                }
+                _dirty = true;
+                batch.RemoveAll(m => m is LobbyChanged);
+                return;
+            }
+            if (!_dirty || !due) return;
+            _dirty = false;
+            _sentAt = nowMs;
+            batch.Insert(0, new LobbyChanged());
+        }
+    }
+
+    /// <summary>Чи відрізняється знімок від того, що полетів минулого разу; так — запам'ятати його як останній.</summary>
+    public bool Fresh(byte[] bytes)
+    {
+        lock (_sync)
+        {
+            if (_last is not null && _last.AsSpan().SequenceEqual(bytes)) return false;
+            _last = bytes;
+            return true;
+        }
+    }
+
+    /// <summary>Забути останній знімок: наступний полетить, навіть якщо такий самий.</summary>
+    public void Forget()
+    {
+        lock (_sync) _last = null;
     }
 }

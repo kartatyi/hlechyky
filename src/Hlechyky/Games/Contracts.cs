@@ -434,7 +434,8 @@ public sealed record RoomFinishedEvent(
     int Stake,
     DateTimeOffset StartedAt, DateTimeOffset FinishedAt,
     int Moves,                          // скільки Act прийнято за партію (0 для реалтайму)
-    bool TableMoney = false);           // за столом ходили черепки (банк столу): звичайних нагород за партію не дають
+    bool TableMoney = false,           // за столом ходили черепки (банк столу): звичайних нагород за партію не дають
+    bool Void = false);                 // партію покинуто (годину без руху): без результату — ні Ело, ні нагород, ставки назад
 
 /// <summary><paramref name="Missed"/> — щоденна головоломка не вдалась (<see cref="IGameContext.DailyMiss"/>): Score тоді 0.</summary>
 public sealed record SoloScoreEvent(string GameId, string Nick, double Score, ScoreOrder Order, string? Key, DateTimeOffset At,
@@ -538,6 +539,11 @@ public sealed record RoomViews(string RoomId) : Outgoing;
 /// <summary>Повний вид (<see cref="Game.Snapshot"/>) одному з'єднанню — новенькому за столом (прохід №3, п. 247).</summary>
 public sealed record RoomSnapshot(string RoomId, string ConnectionId) : Outgoing;
 public sealed record RoomFrame(string RoomId, object Frame) : Outgoing;
+/// <summary>
+/// З'єднання підписалось на стіл (<see cref="Rooms.Watch"/>). Розсилки не має: новенькому летить свій
+/// <see cref="RoomSnapshot"/>, а решті групи новий глядач повного виду не вартий — лічильник 👀 оновиться з найближчим видом.
+/// </summary>
+public sealed record RoomWatched(string RoomId, string ConnectionId) : Outgoing;
 /// <summary>
 /// Рядок у Журнал усім. <paramref name="RoomId"/> — живий стіл, про який цей рядок: браузер малює біля
 /// нього кнопку «Сісти»/«Дивитись» (PROTOCOL §2). null — просто рядок.

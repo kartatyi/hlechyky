@@ -323,6 +323,7 @@ public sealed partial class Rooms
             Seed = SeedOverride ?? unchecked((int)(now.Ticks ^ Interlocked.Increment(ref _seedCounter))),
             CreatedAt = f.CreatedAt,
             LastActivity = now,
+            HostActiveAt = now,
         };
         room.Host = f.Host;
         room.Round = f.Round;

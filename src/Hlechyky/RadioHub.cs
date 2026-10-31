@@ -25,7 +25,7 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
         var http = Context.GetHttpContext();
         var nick = http is null ? Auth.Guest : Auth.Nick(http);
         presence.Set(Context.ConnectionId, nick);
-        rooms.NoteOnline(nick);
+        var back = rooms.NoteOnline(nick);   // повернувся до Grace — «⏳ відпав» у шапках його столів зникає
         if (http is not null && Auth.IsUser(http)) db.TouchAccount(nick);
         if (http is not null) moderation.NoteIp(nick, Auth.Ip(http));
         await Clients.Caller.SendAsync("chatHistory", db.RecentChat(100, 120));
@@ -35,6 +35,8 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
         try { lobby = rooms.Snapshot(); }
         catch (Exception) { lobby = []; }
         await Clients.Caller.SendAsync("rooms", lobby);
+        broadcaster.LobbyServed();   // її знімок свіжіший за розісланий: наступна зміна має долетіти й до неї
+        if (back.Count > 0) await broadcaster.FlushAsync(back);
         // Хто зараз у своїй соло-грі — теж одразу, а не з першою зміною: плитки в лобі мають знати це з порога.
         try { await Clients.Caller.SendAsync("solo", rooms.SoloNow()); } catch (Exception) { /* так само не привід не пустити */ }
         // Хто в Посиденьках і за якими столами говорять — шапка показує це з порога, навіть гостеві.
@@ -55,7 +57,7 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
         rates.Forget(Context.ConnectionId);
         LastTyping.TryRemove(Context.ConnectionId, out _);
         // Місце тримається ще grace-час: F5 і провал зв'язку в метро не мають коштувати партії.
-        if (gone is not null && !presence.IsOnline(gone)) rooms.NoteOffline(gone, clock.UtcNow);
+        if (gone is not null && !presence.IsOnline(gone)) left.Adopt(rooms.NoteOffline(gone, clock.UtcNow));
         await Clients.All.SendAsync("state", engine.Snapshot());
         // Закрив вкладку з відкритим Гончарним колом — з плиток лобі його ім'я теж зникає.
         await broadcaster.FlushAsync(left);
@@ -316,8 +318,9 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
         if (old == fresh) return;
         presence.Set(Context.ConnectionId, fresh);
         if (http is not null) moderation.NoteIp(fresh, Auth.Ip(http));
-        rooms.NoteOnline(Nick());
+        var back = rooms.NoteOnline(Nick());
         await Clients.All.SendAsync("state", engine.Snapshot());
+        if (back.Count > 0) await broadcaster.FlushAsync(back);
         // Свідома зміна ніка — це те саме, що встати з-за столу: grace тут ні до чого.
         if (old is not null && !presence.IsOnline(old)) await broadcaster.FlushAsync(rooms.DropNick(old));
     }
@@ -455,11 +458,11 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
     /// </summary>
     public Task<RoomReply> StartRoom(string roomId) => Play(GameOf(roomId), () => rooms.StartByHost(roomId ?? "", Nick(), force: false));
 
-    public Task<RoomReply> StartRoomAnyway(string roomId) => Play(GameOf(roomId), () => rooms.StartByHost(roomId ?? "", Nick(), force: true));
+    public Task<RoomReply> StartRoomAnyway(string roomId) => Play(GameOf(roomId), () => rooms.StartByHost(roomId ?? "", Nick(), force: true, dropAway: true));
 
     public Task<RoomReply> Rematch(string roomId) => Play(GameOf(roomId), () => rooms.Rematch(roomId ?? "", Nick(), force: false));
 
-    public Task<RoomReply> RematchAnyway(string roomId) => Play(GameOf(roomId), () => rooms.Rematch(roomId ?? "", Nick(), force: true));
+    public Task<RoomReply> RematchAnyway(string roomId) => Play(GameOf(roomId), () => rooms.Rematch(roomId ?? "", Nick(), force: true, dropAway: true));
 
     /// <summary>«✋ Готовий» за столом, за яким сидиш: <paramref name="on"/> — бажаний стан, не перемикач (подвійний клік не гасить).</summary>
     public Task<RoomReply> ReadyRoom(string roomId, bool on) => Act(() => rooms.SetReady(roomId ?? "", Nick(), on));

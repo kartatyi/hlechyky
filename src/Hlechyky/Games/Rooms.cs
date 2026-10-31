@@ -128,6 +128,9 @@ static class Say
     /// <summary>Сервер «заморозив» столи перед перезапуском (<see cref="Rooms.Freeze"/>): за мить буде той самий стіл.</summary>
     public const string Restarting = "⏳ Сайт оновлюється — за пару секунд продовжимо";
     public static string NotReady(IReadOnlyList<string> nicks) => "Ще не готові: " + string.Join(", ", nicks);
+    /// <summary>Хтось за столом зараз не на зв'язку (у відліку Grace): «Почати» без force його чекає.</summary>
+    public static string Away(IReadOnlyList<string> nicks) =>
+        "Не на зв'язку: " + string.Join(", ", nicks) + ". Можна зачекати, а можна почати все одно — тоді місце звільниться";
 }
 
 /// <summary>
@@ -142,6 +145,17 @@ public sealed partial class Rooms
     public const int MaxRooms = 12;
     /// <summary>Скільки чекаємо на реконект, перш ніж звільнити місця (F5 і метро в тунелі).</summary>
     public static readonly TimeSpan Grace = TimeSpan.FromSeconds(20);
+    /// <summary>
+    /// Те саме для покрокової посеред партії (<see cref="GraceFor"/>): телефон, що заснув у шахах, — ще не техпоразка.
+    /// iOS рве сокет у фоні за 10–30 с, і 20 с на всі ігри однаково коштували людям партій (аудит столів №7).
+    /// </summary>
+    public static readonly TimeSpan TurnGrace = TimeSpan.FromSeconds(120);
+    /// <summary>Покрокова партія, де стільки ніхто нічого не робив, — покинута: кінець без переможців, ставки назад.</summary>
+    public static readonly TimeSpan PlayingIdle = TimeSpan.FromMinutes(60);
+    /// <summary>Господар у лобі мовчить довше — «Почати» може будь-хто за столом (і стає господарем).</summary>
+    public static readonly TimeSpan HostQuiet = TimeSpan.FromMinutes(10);
+    /// <summary>Дограний стіл без глядачів, старший за це, поступиться місцем новому, коли столів уже <see cref="MaxRooms"/>.</summary>
+    static readonly TimeSpan EvictAfter = TimeSpan.FromMinutes(1);
     static readonly TimeSpan LobbyLife = TimeSpan.FromMinutes(30);
     static readonly TimeSpan FinishedLife = TimeSpan.FromMinutes(15);
     static readonly TimeSpan SoloLife = TimeSpan.FromMinutes(30);
@@ -162,7 +176,50 @@ public sealed partial class Rooms
     readonly List<Room> _rooms = [];
     /// <summary>Ніки, чиї з'єднання зникли: тримаємо місце ще <see cref="Grace"/>, раптом це був F5.</summary>
     readonly Dictionary<string, DateTimeOffset> _offline = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Ніки, що саме зараз сідають (<see cref="Join"/>), під <c>_lock</c>. Перевірка «сидиш деінде» і сама посадка — під
+    /// різними замками, і дві вкладки (Сісти тут + Поставити там) садили один нік за два столи (аудит столів №9).
+    /// </summary>
+    readonly HashSet<string> _seating = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Коли нік востаннє кликав усіх (новий стіл чи «Покликати ще раз»), під <c>_lock</c>.</summary>
+    readonly Dictionary<string, DateTimeOffset> _calledAll = new(StringComparer.OrdinalIgnoreCase);
     long _seedCounter;
+
+    /// <summary>
+    /// Скільки чекати на реконект за цим столом: у покроковій посеред партії — <see cref="TurnGrace"/>, решта (лобі,
+    /// дограний, реалтайм, соло) — <see cref="Grace"/>.
+    /// </summary>
+    public static TimeSpan GraceFor(Room room) =>
+        room.Status == RoomStatus.Playing && !room.Info.RealTime && !room.Info.Solo ? TurnGrace : Grace;
+
+    /// <summary>Господар щось зробив — він не «мовчить» (<see cref="HostQuiet"/>). Під замком кімнати.</summary>
+    void Seen(Room room, string nick)
+    {
+        if (string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase)) room.HostActiveAt = _clock.UtcNow;
+    }
+
+    /// <summary>
+    /// Чи кликати всіх від цього ніка зараз — і запам'ятати, що кликав. Новий стіл щоразу кликав усіх тостом і рядком у
+    /// Балачках, і «встав — поставив» п'ять разів давало десять рядків у чаті (аудит столів №12): тепер не частіше за
+    /// <see cref="Calls.AgainGap"/> з ніка, хоч би й за різні столи. Журнал «Новий стіл» пишеться однаково.
+    /// </summary>
+    internal bool CallAll(string nick, DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            if (_calledAll.TryGetValue(nick, out var at) && now - at < Calls.AgainGap) return false;
+            if (_calledAll.Count > 256)
+                foreach (var old in _calledAll.Where(p => now - p.Value >= Calls.AgainGap).Select(p => p.Key).ToList()) _calledAll.Remove(old);
+            _calledAll[nick] = now;
+            return true;
+        }
+    }
+
+    /// <summary>«Покликати ще раз» — теж заклик від ніка: новий стіл одразу після нього всіх уже не кличе.</summary>
+    internal void CalledAll(string nick, DateTimeOffset now)
+    {
+        lock (_lock) _calledAll[nick] = now;
+    }
 
     public Rooms(Registry registry, IClock clock, GameEvents events, IStakes stakes, IGameStore store,
         IServiceProvider services, ILogger<Rooms>? log = null)
@@ -275,14 +332,16 @@ public sealed partial class Rooms
 
         room.Seats[0] = nick;
         room.Host = nick;
+        room.HostActiveAt = _clock.UtcNow;
         var raced = false;
+        Room? evicted = null;
         // Перевірка й додавання — однією секцією: інакше дві вкладки одного ніка створять два столи,
         // а дванадцятеро одночасних творців проб'ють MaxRooms.
         lock (_lock)
         {
             if (_frozen) return RoomOutcome.Fail(Say.Restarting);
-            if (_rooms.Any(r => !r.Info.Solo && r.Has(nick))) return RoomOutcome.Fail(Say.Seated);
-            if (_rooms.Count(r => !r.Info.Solo) >= MaxRooms) return RoomOutcome.Fail(Say.TooMany);
+            if (_seating.Contains(nick) || _rooms.Any(r => !r.Info.Solo && r.Has(nick))) return RoomOutcome.Fail(Say.Seated);
+            if (_rooms.Count(r => !r.Info.Solo) >= MaxRooms && (evicted = Evict(_clock.UtcNow)) is null) return RoomOutcome.Fail(Say.TooMany);
             // Спільний стіл, що з'явився, поки будували цей (двоє натиснули разом), — туди; наш так і не народився.
             raced = _registry.Shared(gameId) && _rooms.Any(r => SharedOpen(r, gameId));
             if (!raced) _rooms.Add(room);
@@ -316,12 +375,10 @@ public sealed partial class Rooms
                 if (failed is null) reply = new RoomReply(true, "", room.Id);
             }
             waiting = room.Status == RoomStatus.Lobby;
-            // Створення столу — уже заклик: «Покликати ще раз» відлічує свою паузу від нього (Calls.AgainGap).
-            if (waiting && !info.Private) room.CalledAt = now;
         }
         // Drop бере спільний замок, тому робиться поза замком кімнати: один напрямок вкладення на весь файл.
         if (failed is not null) { Drop(room); return new RoomOutcome(outbox, RoomReply.Fail(failed)); }
-        if (!info.Private) outbox.Add(new LobbyChanged());
+        if (!info.Private || evicted is { Info.Private: false }) outbox.Add(new LobbyChanged());
         // Стіл мають побачити й ті, хто зараз не в «Іграх»: рядок у Журналі з кнопкою до столу, заклик тостом і
         // рядок-заклик у Балачках (Журнал — окрема вкладка, а тост живе десять секунд: хто відволікся, той пропустив).
         // Коли партія стартувала одразу (повний стіл із першого разу), кликати вже нікого — про початок напише
@@ -329,11 +386,33 @@ public sealed partial class Rooms
         if (!info.Private && waiting)
         {
             outbox.Add(new Journal($"Новий стіл: {info.Title} ({PlayersLabel(info)}) · господар {nick}", room.Id));
-            Calls.Everyone(outbox, room.Id, info, nick, now);
+            // Створення столу — уже заклик: «Покликати ще раз» відлічує свою паузу від нього (Calls.AgainGap). Кликав
+            // усіх щойно (за інший стіл) — лише Журнал, а «Покликати ще раз» за цей стіл тоді доступне одразу.
+            if (CallAll(nick, now))
+            {
+                Calls.Everyone(outbox, room.Id, info, nick, now);
+                lock (room.Sync) room.CalledAt = now;
+            }
         }
         outbox.Add(new RoomViews(room.Id));
         outbox.RunAfter(_log);
         return new RoomOutcome(outbox, reply);
+    }
+
+    /// <summary>
+    /// Столів уже <see cref="MaxRooms"/>: прибрати найстаріший дограний, на який ніхто не дивиться (дограні живуть 15 хв і
+    /// займали слоти — ввечері «Столів уже задосить» при 3–4 живих, аудит столів №6). Свіжий дограний (хвилину) лишається:
+    /// там іще можуть тиснути «Ще раз». Під <c>_lock</c>. null — прибрати нема що.
+    /// </summary>
+    Room? Evict(DateTimeOffset now)
+    {
+        var old = _rooms
+            .Where(r => !r.Info.Solo && r.Status == RoomStatus.Finished && r.Watchers.IsEmpty
+                && r.FinishedAt is { } at && now - at >= EvictAfter)
+            .OrderBy(r => r.FinishedAt)
+            .FirstOrDefault();
+        if (old is not null) _rooms.Remove(old);
+        return old;
     }
 
     /// <summary>Стіл спільної гри (<see cref="ISharedTable"/>), за який ще можна сісти: живий і з вільним місцем.</summary>
@@ -528,8 +607,16 @@ public sealed partial class Rooms
         lock (_lock)
         {
             if (_rooms.Any(r => r != room && !r.Info.Solo && r.Has(nick))) return RoomOutcome.Fail(Say.Seated);
+            // Друга вкладка сідає саме зараз (тут чи деінде) — хай спершу доїде перша.
+            if (!_seating.Add(nick)) return RoomOutcome.Fail(Say.TooFast);
         }
+        try { return Seat(room, nick); }
+        finally { lock (_lock) _seating.Remove(nick); }
+    }
 
+    /// <summary>Сама посадка (Join без перевірки «сидиш деінде»): нік тим часом тримається в <see cref="_seating"/>.</summary>
+    RoomOutcome Seat(Room room, string nick)
+    {
         if (LateSeat(room, nick) is { } late) return late;
 
         var outbox = new Outbox();
@@ -665,9 +752,13 @@ public sealed partial class Rooms
             Persist(room, outbox);
         }
         room.Seats[seat] = null;
+        if (nick is not null) room.Away.TryRemove(nick, out _);
         CrewChanged(room, outbox);
         if (string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase))
+        {
             room.Host = room.Seats.FirstOrDefault(s => s is not null) ?? room.Host;
+            room.HostActiveAt = _clock.UtcNow;
+        }
         if (!room.Info.Private) outbox.Add(new LobbyChanged());
         // «Закрити» соло — це вихід із гри, навіть якщо вкладка ще не встигла сказати FocusRoom(null).
         if (room.Info.Solo && !room.OnScreen.IsEmpty)
@@ -713,8 +804,13 @@ public sealed partial class Rooms
     /// Господар тисне «Почати» в грі з <see cref="StartMode.ByHost"/>. <paramref name="force"/> false — спершу спитати
     /// «✋ Готовий»: хтось не готовий → відмова зі списком (<see cref="RoomReply.NotReady"/>). Типово true: турнір,
     /// тести й решта внутрішніх викликів починають, не питаючи; хаб і агенти передають, що натиснула людина.
+    /// <para>
+    /// Господар мовчить у лобі довше за <see cref="HostQuiet"/> — почати може будь-хто за столом і стає господарем: інакше
+    /// гості сиділи й чекали «мовчуна» (аудит столів №14). <paramref name="dropAway"/> — «Почати все одно» від людини: хто
+    /// зараз не на зв'язку, того місце звільняється до старту (<see cref="Unready"/>).
+    /// </para>
     /// </summary>
-    public RoomOutcome StartByHost(string id, string nick, bool force = true)
+    public RoomOutcome StartByHost(string id, string nick, bool force = true, bool dropAway = false)
     {
         if (Find(id) is not { } room) return RoomOutcome.Fail(Say.NoRoom);
         if (Closed(room.Info.Id) is { } off) return RoomOutcome.Fail(off);
@@ -722,12 +818,20 @@ public sealed partial class Rooms
         lock (room.Sync)
         {
             if (_frozen) return RoomOutcome.Fail(Say.Restarting);
-            if (!string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase)) return RoomOutcome.Fail(Say.HostOnly);
+            var host = string.Equals(room.Host, nick, StringComparison.OrdinalIgnoreCase);
+            if (!host && !(room.Status == RoomStatus.Lobby && room.Has(nick) && _clock.UtcNow - room.HostActiveAt > HostQuiet))
+                return RoomOutcome.Fail(Say.HostOnly);
+            if (host) Seen(room, nick);
             if (room.Status != RoomStatus.Lobby) return RoomOutcome.Fail(room.Status == RoomStatus.Playing ? Say.Waiting : Say.Played);
             if (room.Occupied < room.Info.MinPlayers) return RoomOutcome.Fail(Say.TooFew(room.Info.MinPlayers));
             if (room.Game.CanStart() is { } why) return RoomOutcome.Fail(why);
-            if (Unready(room, nick, force, outbox) is { } wait) return new RoomOutcome(outbox, wait);
+            if (Unready(room, nick, force, outbox, dropAway) is { } wait) return new RoomOutcome(outbox, wait);
             if (StartRound(room, outbox) is { } no) return new RoomOutcome(outbox, RoomReply.Fail(no));
+            if (!host)
+            {
+                room.Host = nick;
+                room.HostActiveAt = _clock.UtcNow;
+            }
         }
         outbox.Add(new LobbyChanged());
         outbox.Add(new RoomViews(room.Id));
@@ -739,7 +843,7 @@ public sealed partial class Rooms
     /// «Ще раз» тим самим складом: місця зсуваються, щоб починав інший, раунд росте, ставка списується знову. Тисне
     /// будь-хто за столом; <paramref name="force"/> — як у <see cref="StartByHost"/>.
     /// </summary>
-    public RoomOutcome Rematch(string id, string nick, bool force = true)
+    public RoomOutcome Rematch(string id, string nick, bool force = true, bool dropAway = false)
     {
         if (Find(id) is not { } room) return RoomOutcome.Fail(Say.NoRoom);
         if (Closed(room.Info.Id) is { } off) return RoomOutcome.Fail(off);
@@ -748,10 +852,11 @@ public sealed partial class Rooms
         {
             if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (!room.Has(nick)) return RoomOutcome.Fail(Say.NotPlaying);
+            Seen(room, nick);
             if (room.Status != RoomStatus.Finished) return RoomOutcome.Fail(Say.NotFinished);
             if (room.Occupied < room.Info.MinPlayers) return RoomOutcome.Fail(Say.TooFew(room.Info.MinPlayers));
             if (room.Game.CanStart() is { } why) return RoomOutcome.Fail(why);
-            if (Unready(room, nick, force, outbox) is { } wait) return new RoomOutcome(outbox, wait);
+            if (Unready(room, nick, force, outbox, dropAway) is { } wait) return new RoomOutcome(outbox, wait);
 
             // Зсуваємо тих, хто сидить, по зайнятих місцях: у грі на двох це звичайний обмін ✕↔◯,
             // у компанії — «наступний починає», а порожні місця лишаються порожніми.
@@ -864,6 +969,7 @@ public sealed partial class Rooms
         {
             if (_frozen) return RoomOutcome.Fail(Say.Restarting);
             if (room.SeatOf(nick) is not { } seat) return RoomOutcome.Fail(Say.NotPlaying);
+            Seen(room, nick);
             // Налаштування столу до старту (Game.ActsInLobby) — теж хід; решта ігор у лобі чекає на гравців.
             if (room.Status == RoomStatus.Lobby && !room.Game.ActsInLobby) return RoomOutcome.Fail(Say.Waiting);
             // За дограним столом — лише те, що гра сама назвала налаштуванням на наступну партію («🤖 + бот»).
@@ -971,8 +1077,14 @@ public sealed partial class Rooms
         // Повторний Watch тим самим з'єднанням — то вже підписаний: інакше клієнт у циклі множив би
         // розсилку на всіх глядачів кімнати в обхід квот хаба.
         if (!room.Watchers.TryAdd(connId, 0)) return outbox;
-        if (peek) room.Peeks[connId] = nick;
-        outbox.Add(new RoomViews(room.Id));
+        outbox.Add(new RoomWatched(room.Id, connId));
+        // Повний вид усій групі — лише коли зміниться шапка гравця: «👁 Петро» підглядає в його соло-гру. Звичайний
+        // глядач нікому нічого не коштує (аудит столів №3: кожен F5 глядача бив повним видом усім за столом).
+        if (peek)
+        {
+            room.Peeks[connId] = nick;
+            outbox.Add(new RoomViews(room.Id));
+        }
         return outbox;
     }
 
@@ -1012,6 +1124,12 @@ public sealed partial class Rooms
             if (_frozen) return (outbox, Say.Restarting);
             if (Silenced(room, connId, nick) is { } why) return (outbox, why);
             outbox.Add(new TableSaid(room.Id, AppendTalk(room, nick, text, kind)));
+            // Хто за столом говорить, той тут: стіл, де балакають, не «покинутий» для прибирання (лобі, PlayingIdle).
+            if (room.Has(nick))
+            {
+                room.LastActivity = _clock.UtcNow;
+                Seen(room, nick);
+            }
         }
         return (outbox, null);
     }
@@ -1231,22 +1349,37 @@ public sealed partial class Rooms
     long _viewSeq = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
 
     /// <summary>Готова розкладка кімнати для Broadcaster: види по місцях, вид глядача, список з'єднань.</summary>
-    public RoomBroadcast? ViewsFor(string roomId)
+    public RoomBroadcast? ViewsFor(string roomId) => ViewsFor(roomId, null);
+
+    /// <summary>
+    /// Те саме, але вид місця рахується лише тоді, коли з цього місця хтось дивиться: <paramref name="nickOf"/> — нік
+    /// з'єднання з групи. Гравець на «Ефірі» (чи реалтайм поза «Іграми») не підписаний — і його вид однаково нікуди б
+    /// не полетів, а в Мафії на 12 це 12 зайвих View під замком кімнати (аудит столів №4). null — усі зайняті місця.
+    /// </summary>
+    public RoomBroadcast? ViewsFor(string roomId, Func<string, string?>? nickOf)
     {
         if (Find(roomId) is not { } room) return null;
         try
         {
             lock (room.Sync)
             {
+                string[] watchers = [.. room.Watchers.Keys];
+                HashSet<int>? wanted = null;
+                if (nickOf is not null)
+                {
+                    wanted = [];
+                    foreach (var conn in watchers)
+                        if (room.SeatOf(nickOf(conn)) is { } s) wanted.Add(s);
+                }
                 var seatViews = new Dictionary<int, object?>();
                 for (var i = 0; i < room.Seats.Length; i++)
                 {
-                    if (room.Seats[i] is null) continue;
+                    if (room.Seats[i] is null || wanted is not null && !wanted.Contains(i)) continue;
                     seatViews[i] = SafeView(room, i);
                 }
                 return new RoomBroadcast(
                     room.Id, room.Summary(), room.Info.Hidden, (string?[])room.Seats.Clone(),
-                    seatViews, SafeView(room, null), [.. room.Watchers.Keys], Interlocked.Increment(ref _viewSeq));
+                    seatViews, SafeView(room, null), watchers, Interlocked.Increment(ref _viewSeq));
             }
         }
         catch (Exception ex)
@@ -1304,18 +1437,42 @@ public sealed partial class Rooms
 
     // ---------- присутність ----------
 
-    /// <summary>Нік знову онлайн — жодних відліків, місце нікуди не дінеться.</summary>
-    public void NoteOnline(string nick)
+    /// <summary>
+    /// Нік знову онлайн — жодних відліків, місце нікуди не дінеться. Повертає види столів, де він уже значився «відпав»
+    /// (<see cref="SeatSlot.Away"/>): хай шапка в решти теж знає, що він повернувся.
+    /// </summary>
+    public Outbox NoteOnline(string nick)
     {
-        if (!Named(nick)) return;
-        lock (_lock) _offline.Remove(nick);
+        var outbox = new Outbox();
+        if (!Named(nick)) return outbox;
+        bool was;
+        lock (_lock) was = _offline.Remove(nick);
+        if (!was) return outbox;
+        foreach (var room in Live())
+            if (room.Away.TryRemove(nick, out _)) outbox.Add(new RoomViews(room.Id));
+        return outbox;
     }
 
-    /// <summary>Останнє з'єднання ніка закрилось: тримаємо місце ще <see cref="Grace"/>.</summary>
-    public void NoteOffline(string nick, DateTimeOffset now)
+    /// <summary>
+    /// Останнє з'єднання ніка закрилось: тримаємо місце ще <see cref="GraceFor"/> (20 с, у покроковій посеред партії —
+    /// 120 с). Столи, де він сидить, дістають «відпав до» (<see cref="SeatSlot.Away"/>) і свіжий вид.
+    /// </summary>
+    public Outbox NoteOffline(string nick, DateTimeOffset now)
     {
-        if (!Named(nick)) return;
+        var outbox = new Outbox();
+        if (!Named(nick)) return outbox;
         lock (_lock) _offline[nick] = now;
+        foreach (var room in Live())
+        {
+            if (room.Info.Solo) continue;
+            lock (room.Sync)
+            {
+                if (!room.Has(nick)) continue;
+                room.Away[nick] = now;
+            }
+            outbox.Add(new RoomViews(room.Id));
+        }
+        return outbox;
     }
 
     /// <summary>Хто не повернувся за grace — того місця звільняються. Кличе TickEngine раз на секунду.</summary>
@@ -1323,29 +1480,45 @@ public sealed partial class Rooms
     {
         var outbox = new Outbox();
         if (_frozen) return outbox;   // з'єднання зараз урвуться всі разом — це перезапуск, а не люди пішли
-        List<string> gone;
-        lock (_lock)
-        {
-            gone = [.. _offline.Where(p => now - p.Value >= Grace).Select(p => p.Key)];
-            foreach (var nick in gone) _offline.Remove(nick);
-        }
-        foreach (var nick in gone) outbox.Adopt(DropNick(nick));
+        List<KeyValuePair<string, DateTimeOffset>> due;
+        lock (_lock) due = [.. _offline.Where(p => now - p.Value >= Grace)];
+        foreach (var (nick, since) in due) outbox.Adopt(DropGone(nick, since, now));
         return outbox;
     }
 
     /// <summary>Той самий відлік, але для одного ніка (зручно в тестах).</summary>
     public Outbox DropIfGone(string nick, DateTimeOffset now)
     {
+        DateTimeOffset since;
         lock (_lock)
+            if (!_offline.TryGetValue(nick, out since) || now - since < Grace) return new Outbox();
+        return DropGone(nick, since, now);
+    }
+
+    /// <summary>
+    /// Звільнити місця ніка, що відпав о <paramref name="since"/>, там, де його відлік (<see cref="GraceFor"/>) уже минув. Де
+    /// ще ні (покрокова посеред партії) — нік лишається у відліку, і TickEngine спитає знову за секунду.
+    /// </summary>
+    Outbox DropGone(string nick, DateTimeOffset since, DateTimeOffset now)
+    {
+        var outbox = DropNick(nick, room => now - since >= GraceFor(room));
+        var waits = false;
+        foreach (var room in Live())
         {
-            if (!_offline.TryGetValue(nick, out var since) || now - since < Grace) return new Outbox();
-            _offline.Remove(nick);
+            if (room.Info.Solo) continue;
+            lock (room.Sync) waits |= room.Has(nick);
         }
-        return DropNick(nick);
+        if (!waits)
+            lock (_lock)
+                if (_offline.TryGetValue(nick, out var at) && at == since) _offline.Remove(nick);
+        return outbox;
     }
 
     /// <summary>Звільнити всі місця ніка негайно: свідома зміна ніка — це те саме, що встати.</summary>
-    public Outbox DropNick(string nick)
+    public Outbox DropNick(string nick) => DropNick(nick, null);
+
+    /// <summary><paramref name="due"/> — за яким столом уже пора (під замком кімнати); null — за всіма.</summary>
+    Outbox DropNick(string nick, Func<Room, bool>? due)
     {
         var outbox = new Outbox();
         if (!Named(nick) || _frozen) return outbox;
@@ -1357,7 +1530,7 @@ public sealed partial class Rooms
             lock (room.Sync)
             {
                 // Під замком ще раз: заморозка могла статись після перевірки на вході, а знімок цього столу — уже бути.
-                if (_frozen || room.SeatOf(nick) is not { } seat) continue;
+                if (_frozen || room.SeatOf(nick) is not { } seat || due is not null && !due(room)) continue;
                 Vacate(room, seat, outbox);
             }
             Sweep(room, outbox);
@@ -1456,10 +1629,28 @@ public sealed partial class Rooms
                 drop = !_frozen && (
                     (room.Occupied == 0
                         && !(room.Status == RoomStatus.Playing && now - room.LastActivity < room.Game.HoldEmpty))
-                    // самотній стіл у лобі — засиджений, навіть якщо гра дозволяє почати самому («Скільки?»)
-                    || (room.Status == RoomStatus.Lobby && room.Occupied < Math.Max(2, room.Info.MinPlayers) && now - room.LastActivity > LobbyLife)
+                    // засиджене лобі розходиться, скільки б людей там не сиділо: стіл, де пів години ніхто не почав, не
+                    // має вічно висіти «Чекають» і займати слот (аудит столів №5). Самотній — так само, як було.
+                    || (room.Status == RoomStatus.Lobby && now - room.LastActivity > LobbyLife)
                     || (room.Status == RoomStatus.Finished && room.FinishedAt is { } at && now - at > FinishedLife)
                     || (room.Info.Solo && OwnerGone(room) && now - room.LastActivity > SoloLife));
+                // Лобі, де сиділи двоє й більше, — рядок у Журнал: людей, що чекали, варто попередити, куди подівся стіл.
+                if (drop && room.Status == RoomStatus.Lobby && !room.Info.Private && room.Occupied >= 2)
+                {
+                    var gone = new Outbox();
+                    gone.Add(new Journal($"{room.Info.Title}: стіл розійшовся — пів години ніхто не почав"));
+                    settled.Add(gone);
+                }
+                // Покрокова партія, у якій годину ніхто нічого не зробив, хоч усі й на зв'язку (тож Grace її не закінчить), —
+                // покинута: кінець без переможців (ставки й банк столу — назад), далі як дограний стіл. Ігри, що вміють
+                // чекати самі (HoldEmpty, Resumable, Persistent), реалтайм і соло — не чіпаємо.
+                if (!drop && !_frozen && Abandoned(room, now))
+                {
+                    var fin = new Outbox();
+                    var ctx = (RoomContext)room.Game.Ctx;
+                    using (ctx.Collect(fin)) ctx.Abandon($"{room.Info.Title}: партію покинуто — годину ніхто не ходив, без результату");
+                    settled.Add(fin);
+                }
                 // Партію на черепки покинули всі й не повернулись: перш ніж прибрати стіл, розрахувати банк столу
                 // (Finish → SettleBank) — інакше черепки, що лежать за столом, зникли б разом із ним.
                 if (drop && room.Status == RoomStatus.Playing && room.Bank.Held > 0)
@@ -1485,6 +1676,12 @@ public sealed partial class Rooms
         if (removed > 0) _log.LogDebug("прибрано кімнат: {Count}", removed);
         return outbox;
     }
+
+    /// <summary>Покрокова партія без жодного руху довше за <see cref="PlayingIdle"/> (див. Housekeeping). Під замком кімнати.</summary>
+    static bool Abandoned(Room room, DateTimeOffset now) =>
+        room.Status == RoomStatus.Playing && !room.Info.RealTime && !room.Info.Solo && !room.Info.Persistent
+        && room.Game.HoldEmpty <= TimeSpan.Zero && !room.Game.Resumable
+        && now - room.LastActivity > PlayingIdle;
 
     // ---------- дрібниці ----------
 
@@ -1635,7 +1832,7 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         room.Result = new RoomResult(winners, winners.Length == 0, log, scores,
             string.IsNullOrWhiteSpace(verdict) ? null : verdict.Trim());
         room.Status = RoomStatus.Finished;
-        room.TallyEvening(winners, scores);
+        if (!_void) room.TallyEvening(winners, scores);   // покинута партія в «Рахунок вечора» не йде
         room.FinishedAt = now;
         room.LastActivity = now;
 
@@ -1650,8 +1847,22 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
 
         var finished = new RoomFinishedEvent(
             room.Id, room.Info.Id, room.Info, room.Round, (string?[])room.Seats.Clone(),
-            room.Result, room.Stake, room.StartedAt ?? now, now, room.Moves, room.Bank.Used);
+            room.Result, room.Stake, room.StartedAt ?? now, now, room.Moves, room.Bank.Used, _void);
         outbox?.After(() => rooms.Events.Raise(finished));
+    }
+
+    bool _void;
+
+    /// <summary>
+    /// Партію покинуто (Housekeeping: годину без руху) — кінець «без результату», а не нічия: ставки й банк столу назад,
+    /// як у нічиї, але подія несе <see cref="RoomFinishedEvent.Void"/>, і Ело, нагороди, ачівки, «Рахунок вечора» та
+    /// ставки на столі (назад) її не рахують як партію. Під замком кімнати, з outbox (Collect).
+    /// </summary>
+    internal void Abandon(string log)
+    {
+        _void = true;
+        try { Finish([], log, verdict: "Партію покинуто — без результату"); }
+        finally { _void = false; }
     }
 
     /// <summary>Банк переможцям порівну, нічия — повернення. Ідемпотентність тримає ref, тож подвійний Finish не подвоїть виплату.</summary>

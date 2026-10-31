@@ -46,7 +46,7 @@ public sealed partial class Rooms
             if ((fresh ? Renew(room, next) : Retune(room, next)) is { } failed) return RoomOutcome.Fail(failed);
 
             room.Options = next;
-            room.LastActivity = _clock.UtcNow;
+            room.LastActivity = room.HostActiveAt = _clock.UtcNow;
             CrewChanged(room, outbox);
             outbox.Add(new TableSaid(room.Id, AppendTalk(room, DjName, Line(nick, changed, next, fresh), "dj")));
         }

@@ -175,13 +175,13 @@ public sealed class AgentTools(Rooms rooms, Registry registry, IAgentChat chat, 
     public Task<object> StartGame(AgentSession s, string? roomId, bool force = false)
     {
         if (Which(s, roomId) is not { } id) return Task.FromResult(NoRoom());
-        return Run(s, () => rooms.StartByHost(id, s.Nick, force));
+        return Run(s, () => rooms.StartByHost(id, s.Nick, force, dropAway: force));
     }
 
     public Task<object> Rematch(AgentSession s, string? roomId, bool force = false)
     {
         if (Which(s, roomId) is not { } id) return Task.FromResult(NoRoom());
-        return Run(s, () => rooms.Rematch(id, s.Nick, force));
+        return Run(s, () => rooms.Rematch(id, s.Nick, force, dropAway: force));
     }
 
     /// <summary>«✋ Готовий» агента: люди за столом бачать, що він чекає саме на них.</summary>
