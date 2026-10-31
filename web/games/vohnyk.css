@@ -58,6 +58,13 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
   max-width: min(1200px, calc((100vh - var(--vh-chrome) - var(--vh-pad, 0px)) * var(--vh-ratio, 1.76)));
   min-width: min(100%, 300px);
 }
+/* Світлиця: висоту під поле міряє каркас (--g-fh — рядок .vh-stage, бо .vh-wrap має .g-field): шапка сайту, смуга
+   тривоги, чипи, статус і кнопки — усе враховано, і в ⇔/⛶ поле росте на весь екран. Правило вище — запасне для
+   картки без змінних (віконце «Стіл у куточку» до першого столу). Стеля 1200 px знята: полотно й так не
+   масштабує рівень понад ×2 (fit у модулі). */
+.vh.vh-play .vh-wrap.g-field {
+  max-width: min(var(--g-fmax, 100%), max(var(--g-fminw, 0px), calc(var(--g-fh, calc(100vh - var(--vh-chrome))) * var(--vh-ratio, 1.76))));
+}
 .vh-wrap .vh-board.gcanvas { width: 100%; max-width: none; border-radius: 10px; background: var(--vh-bg); touch-action: none; user-select: none; }
 .vh-stage { display: flex; flex-direction: column; gap: 8px; min-width: 0; align-self: stretch; width: 100%; }
 /* кінець партії: підсумок і рекорди поверх затемненого полотна — «Ще раз» лишається на екрані */
@@ -122,7 +129,7 @@ button.vh-chip:disabled { cursor: default; opacity: .85; }
   }
   .vh.vh-play > .vh-stage { grid-column: 2; grid-row: 1; }
   .vh.vh-play > .vh-turn, .vh.vh-play > .vh-pick { grid-column: 1 / -1; }
-  .vh.vh-play .vh-wrap { max-width: none; min-width: 0; width: 100%; }
+  .vh.vh-play .vh-wrap, .vh.vh-play .vh-wrap.g-field { max-width: none; min-width: 0; width: 100%; }
   .vh-chip { padding: 1px 7px; }
   .vh-tl { left: auto; right: calc(100% + 12px); bottom: 0; gap: 8px; }
   .vh-tl button { width: 58px; height: 58px; font-size: 22px; }

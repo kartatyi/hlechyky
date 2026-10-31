@@ -1645,7 +1645,7 @@
   function build(root, st) {
     root.classList.add('vh');
     root.innerHTML = '<div class="vh-hud"></div><div class="vh-turn">🔄 Поверни телефон боком — так видно більше</div>'
-      + '<div class="vh-stage"><div class="vh-wrap"><div class="vh-over" hidden></div></div><div class="vh-bestbox" hidden></div></div>'
+      + '<div class="vh-stage"><div class="vh-wrap g-field"><div class="vh-over" hidden></div></div><div class="vh-bestbox" hidden></div></div>'
       + '<div class="vh-pick" hidden></div>';
     st.hudEl = root.querySelector('.vh-hud');
     st.wrap = root.querySelector('.vh-wrap');
