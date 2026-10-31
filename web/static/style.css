@@ -231,6 +231,15 @@ header .chat-toggle .badge { position: absolute; top: -4px; right: -4px; }
 .updbar .nb-moon { font-size: 1.4em; }
 .updbar .nb-text { flex: 1; min-width: 0; }
 .updbar button { flex: none; }
+/* ---- 🚨 тривога на сторінці столу: компактна смужка в один рядок (повна плашка з'їдала 58–90 px висоти поля).
+   «🚨 Повітряна тривога — де · що · скільки» лишається, хвіст ріжеться трикрапкою; натиск на смужку — розгорнути як
+   було (.tb-open, games/core.js), ще раз — згорнути. Каркас столу переміряє місце під поле сам (ResizeObserver). */
+body.g-room .trybar:not(.tb-open) { margin-top: 6px; }
+body.g-room .trybar:not(.tb-open) > div { padding: 3px 4px 3px 10px; gap: 8px; font-size: .86em; line-height: 1.3; cursor: pointer; }
+body.g-room .trybar:not(.tb-open) .nb-moon { font-size: 1.15em; }
+body.g-room .trybar:not(.tb-open) .nb-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.g-room .trybar:not(.tb-open) a.primary { padding: 3px 10px; border-radius: 8px; font-size: .92em; }
+body.g-room .trybar:not(.tb-open) .tryx { width: 28px; height: 28px; min-height: 0; padding: 0; }
 
 /* ---- layout ---- */
 main {
@@ -792,6 +801,12 @@ button.vplay { padding: 3px 8px; }
 .tchat.drawer .tc-head:hover { border-color: var(--accent2); }
 .tchat.drawer .tc-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88em; color: var(--muted); }
 .tchat.drawer .tc-body { display: none; }
+/* ⇔ на ПК: згорнута шторка — у рядку столу, у порожньому місці перед кнопками праворуч (games/core.js, pinTablePill);
+   absolute в координатах документа — гортається разом із рядком. Розгорнута — як завжди, внизу праворуч. */
+body.g-tcpin .tchat.drawer:not(.open) {
+  position: absolute; top: var(--tcpin-y); right: var(--tcpin-x); bottom: auto; transform: translateY(-50%);
+}
+body.g-tcpin .tchat.drawer:not(.open) .tc-head { padding: 5px 12px; max-width: var(--tcpin-w, 360px); box-shadow: none; }
 .tchat.drawer.open .tc-head { display: none; }
 /* Заввишки з розмову, але не вище за стелю: `.tc-body { flex: 1 }` однаково перебивав height (шторка була з вміст), тож
    прямо — flex: none, height: auto і max-height; стрічка всередині гортається. */
@@ -2042,6 +2057,16 @@ body.g-imm main {
   padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
 }
 body.g-imm .toasts { top: calc(6px + env(safe-area-inset-top)); bottom: auto; }
+/* Занурення лише «телефон лежить» (g-immland, не ⛶): згорнута шторка «💬» — маленька кругла кнопка в рядку шапки столу,
+   одразу ліворуч від ⛶ (там порожньо: шапка тулиться ліворуч), а не на полі; посеред живої аркади її нема (g-arcade),
+   як і стоячи. Розгорнута — як завжди. */
+body.g-imm.g-immland .tchat.drawer:not(.open) {
+  display: flex; top: max(5px, env(safe-area-inset-top)); bottom: auto; left: auto;
+  right: calc(max(8px, env(safe-area-inset-right)) + 42px);
+}
+body.g-imm.g-immland .tchat.drawer:not(.open) .tc-head { padding: 5px 9px; gap: 4px; opacity: .88; }
+body.g-imm.g-immland .tchat.drawer:not(.open) .tc-last { display: none; }
+body.g-imm.g-immland.g-arcade .tchat.drawer:not(.open) { display: none; }
 /* ⛶ на ПК (games/core.js, Fullscreen API): темне тло навколо гри. */
 body.g-fs { background: #08120d; }
 body.g-fs main { padding: 10px 16px; }

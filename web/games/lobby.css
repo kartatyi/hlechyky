@@ -271,9 +271,9 @@
 .gday-chip.gold { color: var(--accent); background: rgba(244, 197, 66, .13); font-weight: 600; }
 .gday-chip.ok { color: var(--ok); background: rgba(123, 211, 137, .11); }
 .gday-chip.hot { color: #ffcf8f; background: rgba(197, 118, 58, .2); }
-.gtoday .gtoday-pay, .gtoday .gtoday-night { margin: 0; }
+.gdaybox .gtoday-pay, .gdaybox .gtoday-night { margin: 0; }
 .gday-body { display: grid; gap: 10px; min-width: 0; }
-.gtoday.split .gday-body { grid-template-columns: minmax(0, 1fr) 290px; align-items: start; }
+.gdaybox.split .gday-body { grid-template-columns: minmax(0, 1fr) 290px; align-items: start; }
 .gday-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 8px; min-width: 0; }
 .gday { cursor: pointer; }
 .gday-ic { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; }
@@ -300,7 +300,7 @@
 
 /* ---------------------------------------------------------------- планшет і телефон */
 @media (max-width: 900px) {
-  .gtoday.split .gday-body { grid-template-columns: 1fr; }
+  .gdaybox.split .gday-body { grid-template-columns: 1fr; }
   /* щоденні — стрічкою вбік */
   .gday-cards {
     display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none;

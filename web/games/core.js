@@ -133,9 +133,9 @@
       { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'memy', 'geese'] },
     ],
     solo: [
-      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'namysto', 'shatkuy', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
+      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'namysto', 'shatkuy', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo', 'fura'] },
       // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
-      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'kakhli-daily', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
+      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'wordle-archive', 'kakhli-daily', 'mines-daily', 'mines-daily-easy', 'chess-daily', 'bricks-daily', 'dino-daily',
         'tyr-daily', 'namysto-daily', 'shatkuy-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
@@ -313,6 +313,8 @@
     el._o = o;
     el.style.setProperty('--cols', cols);
     el.style.setProperty('--rows', rows);   // core.css вписує дошку у висоту з пропорцією cols / rows
+    // Висока дошка (рядків більше, ніж стовпців): «уся ширина» телефона стоячи (--g-fminw) зробила б її вищою за екран
+    if (rows > cols) el.style.setProperty('--g-fminw', '0px'); else el.style.removeProperty('--g-fminw');
     if (o.cell) {
       const kids = el.children;
       for (let i = 0; i < n; i++) {
@@ -343,6 +345,9 @@
     markCanvas(host.closest && host.closest('.gtable'));
     el.style.aspectRatio = w + ' / ' + h;
     el.style.setProperty('--gar', String(w / h));   // core.css стелить полотно за висотою (g-land, ⛶)
+    // Високе полотно (--gar < 1, хокей стоячи): нижня межа «уся ширина» (--g-fminw) витягала б його за низ екрана —
+    // вписуємо лише за висотою поля, як на ПК (рядок fit-core «--g-fminw не для високих полів»)
+    if (w < h) el.style.setProperty('--g-fminw', '0px'); else el.style.removeProperty('--g-fminw');
     const c = { el, ctx: el.getContext('2d'), w, h, resize };
     function resize() {
       const dpr = Math.min(3, window.devicePixelRatio || 1);
@@ -361,9 +366,12 @@
   function markCanvas(table) {
     if (!table) return;
     const body = table.querySelector(':scope > .gbody');
-    const on = !!(body && body.querySelector(':scope > canvas.gcanvas'));
+    // Гра зі своєю розкладкою лежачи ставить на .gbody клас g-ownland: каркас тоді не вмикає «поле ліворуч, решта
+    // праворуч» (g-canvas/g-board), а .g-field і --g-fh лишаються — заміри місця працюють як завжди (games-8, Ковзанка).
+    const own = !!(body && body.classList.contains('g-ownland'));
+    const on = !own && !!(body && body.querySelector(':scope > canvas.gcanvas'));
     if (table.classList.contains('g-canvas') !== on) table.classList.toggle('g-canvas', on);
-    const bd = !on && !!(body && body.querySelector(':scope > .board, :scope > .g-field'));
+    const bd = !on && !own && !!(body && body.querySelector(':scope > .board, :scope > .g-field'));
     if (table.classList.contains('g-board') !== bd) table.classList.toggle('g-board', bd);
   }
 
@@ -844,7 +852,15 @@
   /// Сховані картки («на складі», display: none у предка) колбеків не отримують — лише позначку; колбек прийде,
   /// щойно картку знову видно (наступний applyFit чи повторний onFit із update гри).
   const fitStale = new Set();
-  const fitHidden = (host) => !host.getClientRects().length;
+  /// Схований — нема рамок у самого host і в предків, що мають display: contents (лежачи .gbody карток g-canvas/g-board
+  /// стає display: contents: рамок у нього нема, але картку видно — інакше ui.onFit на .gbody лежачи не кликався, games-7).
+  const fitHidden = (host) => {
+    for (let e = host; e && e.nodeType === 1; e = e.parentElement) {
+      if (e.getClientRects().length) return false;
+      if (getComputedStyle(e).display !== 'contents') return true;
+    }
+    return true;
+  };
   function safeBottom() {
     if (!fitProbe) {
       fitProbe = document.createElement('div');
@@ -893,11 +909,33 @@
     }
     const gland = imm && land && coarse();
     if (b.contains('g-land') !== gland) b.toggle('g-land', gland);
+    // Занурення лише тому, що телефон лежить (не ⛶): шапки й вкладок нема, але балачка столу лишається маленькою
+    // плаваючою кнопкою вгорі праворуч (style.css, g-immland) — інакше в картах лежачи столу не відписати.
+    const immLand = imm && !fsOn && !full;
+    if (b.contains('g-immland') !== immLand) b.toggle('g-immland', immLand);
     if (b.contains('g-fs') !== (room && fsOn)) b.toggle('g-fs', room && fsOn);
+  }
+  /// ⇔ на ПК: рейки балачок нема, і балачка столу — шторка. Її згорнута пігулка внизу праворуч забирала низ під себе
+  /// (--gdock-h ≈ 57 px, «знизу порожньо», games-8). Тепер вона стає в рядок столу — у порожнє місце між «Гукнути» і
+  /// кнопками праворуч (.grsp); fit() її тоді знизу не рахує. Місця нема (рядок у картці, вузько) — лишається внизу.
+  function pinTablePill() {
+    const b = document.body.classList;
+    const head = full && !coarse() && shown && view.kind === 'room' && root ? root.querySelector('.groom > .grhead') : null;
+    const sp = head && head.querySelector(':scope > .grsp');
+    const r = sp && sp.getBoundingClientRect(), hr = head && head.getBoundingClientRect();
+    const on = !!(r && r.width >= 110 && hr.height > 0);
+    if (on) {
+      const rs = document.documentElement.style;
+      rs.setProperty('--tcpin-y', Math.round(hr.top + window.scrollY + hr.height / 2) + 'px');
+      rs.setProperty('--tcpin-x', Math.max(0, Math.round(document.documentElement.clientWidth - r.right + 6)) + 'px');
+      rs.setProperty('--tcpin-w', Math.round(r.width - 12) + 'px');
+    }
+    if (b.contains('g-tcpin') !== on) b.toggle('g-tcpin', on);
   }
   function applyFit() {
     fitRaf = 0;
     syncImm();
+    pinTablePill();
     const f = fit();
     const key = [f.w, f.h, f.top, f.dock, f.imm, f.land, f.fs, f.wide].join();
     const changed = key !== fitLast;
@@ -921,8 +959,28 @@
   function fitFor(host, f) {
     const el = host && host.closest && host.closest('.gtable');
     const c = el && cards[el.dataset.room];
-    const b = c && c.fitBox;
+    let b = c && c.fitBox;
+    // Вкладена гра (вечірка, HGames.embed): місце — з рамки .gembed, а не вся картка вечірки (games-8: Гостинці
+    // вилазили на 28 px, Замри — 601×180)
+    const emb = b && host.closest('.gembed');
+    if (emb && c.body.contains(emb)) b = embedBox(b, c.body, emb);
     return Object.assign({}, f || fit(), b ? { aw: b.aw, ah: b.ah, fh: b.fh } : null);
+  }
+  /// Місце під вкладену гру: ширина рамки .gembed; висота — місце картки мінус те, що вечірка тримає над і під рамкою.
+  /// Ті самі числа — CSS-змінними --g-aw/--g-ah/--g-fh на самій рамці (вони перебивають змінні картки).
+  function embedBox(b, body, emb) {
+    const er = emb.getBoundingClientRect(), br = body.getBoundingClientRect();
+    const rest = br.height > 0 ? Math.max(0, br.height - er.height) : 0;
+    const aw = Math.round(emb.clientWidth || b.aw);
+    const ah = Math.max(120, Math.floor(b.ah - rest));
+    let top = emb.querySelector('.g-field') || emb.querySelector(':scope > canvas.gcanvas, :scope > .board');
+    while (top && top.parentElement && top.parentElement !== emb) top = top.parentElement;
+    const fh = top && top.parentElement === emb ? Math.max(120, Math.floor(ah - (er.height - top.getBoundingClientRect().height))) : ah;
+    const st = emb.style;
+    if (st.getPropertyValue('--g-ah') !== ah + 'px' || st.getPropertyValue('--g-fh') !== fh + 'px' || st.getPropertyValue('--g-aw') !== aw + 'px') {
+      st.setProperty('--g-aw', aw + 'px'); st.setProperty('--g-ah', ah + 'px'); st.setProperty('--g-fh', fh + 'px');
+    }
+    return { aw, ah, fh };
   }
   function callFit(host, f) {
     if (!host.isConnected || !host._hgFit) return;
@@ -958,6 +1016,12 @@
     // плашки над сторінкою («Повітряна тривога», нічна, «Сайт оновився»): з'явилась чи зникла — стіл зсунувся
     document.querySelectorAll('body > .nightbar, body > .hellobar').forEach((b) => fieldRO.observe(b));
   }
+  // 🚨 Смужка тривоги на сторінці столу — компактна (style.css); натиск на неї (не на «Мапа»/✕) — розгорнути як було.
+  document.addEventListener('click', (e) => {
+    const bar = e.target && e.target.closest && e.target.closest('#tryBar');
+    if (!bar || e.target.closest('a, button') || !document.body.classList.contains('g-room')) return;
+    bar.classList.toggle('tb-open');
+  });
   /// Рядок поля — дитина .gbody, у якій стоїть головне поле гри, або null.
   function fieldTop(body) {
     let f = body.querySelector('.g-field') || body.querySelector(':scope > canvas.gcanvas, :scope > .board');
@@ -997,15 +1061,19 @@
       const full = Math.max(el.getBoundingClientRect().height, el.scrollHeight + el.offsetHeight - el.clientHeight);
       // лежачи картка має стелю (max-height = --gland-h): більше, ніж вона, поле не отримає
       const mh = parseFloat(cs.maxHeight);
-      ah = Math.max(FIELD_MIN, (mh > 0 ? Math.min(avail, mh) : avail) - (full - br.height));
+      // Нижня межа 200 — лише стоячи й на ПК: лежачи вся картка ~330 px, і 200 під поле при 140 на місця/статус/кнопки
+      // давали поле, вище за справжнє місце (games-2, games-10) — там межа 120, як у сітці g-land вище.
+      const floor = f.land ? 120 : FIELD_MIN;
+      ah = Math.max(floor, (mh > 0 ? Math.min(avail, mh) : avail) - (full - br.height));
       const top = fieldTop(body);
-      fh = top ? Math.max(FIELD_MIN, ah - (br.height - top.getBoundingClientRect().height)) : ah;
+      fh = top ? Math.max(floor, ah - (br.height - top.getBoundingClientRect().height)) : ah;
     }
     aw = Math.round(aw); ah = Math.floor(ah); fh = Math.floor(fh);
     // Телефон стоячи без ⛶: поле — на всю ширину, як і було (дошка 273 px замість 341 заради «Встати» внизу — гірше;
     // низ картки догортається). За висотою вписуємо на ПК, лежачи і в ⛶.
     const minw = coarse() && !f.imm && !f.land && window.innerWidth < 700 ? aw : 0;
     const o = c.fitBox;
+    if (f.wide) pinTablePill();   // рядок столу міг змінитись (чипи інших столів, 👁) — пігулка балачки за ним
     if (o && Math.abs(o.aw - aw) < 2 && Math.abs(o.ah - ah) < 2 && Math.abs(o.fh - fh) < 2 && o.minw === minw) return false;
     // захист від гойдалки (гра міняє щось у .gbody від розміру поля): понад 12 змін за секунду — пауза на секунду,
     // потім ще один замір (інакше лишилось би число з середини гойдалки)
@@ -1021,6 +1089,7 @@
     st.setProperty('--g-ah', ah + 'px');
     st.setProperty('--g-fh', fh + 'px');
     st.setProperty('--g-fminw', minw + 'px');
+    for (const emb of body.querySelectorAll('.gembed')) embedBox(c.fitBox, body, emb);   // вкладені ігри вечірки
     if (notify) for (const host of fitHosts) if (el.contains(host)) callFit(host);
     return true;
   }
@@ -1133,12 +1202,15 @@
 
   /// Виклик хаба, що повертає RoomReply: помилку показуємо тостом, успіх — лише якщо є що сказати.
   async function call(method, ...args) {
+    const at = location.hash;   // звідки кликали: «встати?» до нового столу не має виринати вже на іншій сторінці
     if (!(await connected(6000))) { toast('Халепа: зв\'язку з сервером нема', 'err'); return { ok: false, message: '' }; }
     // Новий стіл звідусіль (попап, Лелека, пакет Своєї гри, виклик у Клавоперегонах…): сидиш за іншим — спершу «встати?».
-    if (method === 'CreateRoom' && !(await leaveForNew(args[0]))) return { ok: false, message: '' };
+    if (method === 'CreateRoom' && !(await leaveForNew(args[0], at))) return { ok: false, message: '' };
     try {
       let r = await conn.invoke(method, ...args);
       if (r && !r.ok && String(r.message || '').startsWith(RESTARTING) && (await afterRestart())) r = await conn.invoke(method, ...args);
+      // Встав сам (кнопка, «встати й сісти туди», покер) — стіл за тобою в куточок не їде і підписку не тримає.
+      if (method === 'LeaveRoom' && (!r || r.ok)) dockForget(args[0]);
       if (!r) return { ok: true, message: '' };
       // «Не всі готові» (✋) — не помилка: питаємо «почати все одно?» (startAsked) тут, щоб і «Ще раз» з модулів ігор
       // (ралі з трасою, Вогник, Цеглинки…) не мовчав. Відповідь — уже повторного виклику (чи ця, якщо «Чекати»).
@@ -1234,8 +1306,12 @@
         if (!wrap.isConnected) return;
         wrap.remove();
         document.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('hashchange', onRoute);
         done(v);
       };
+      // o.route: питання про це місце — пішов на іншу сторінку (Esc зі столу, «Ефір», назад) — це «ні»
+      const onRoute = () => close(false);
+      if (o.route) window.addEventListener('hashchange', onRoute);
       // Ловимо Esc раніше за всіх: інакше він вийшов би ще й зі столу, над яким висить це вікно.
       const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); } };
       wrap.addEventListener('click', (e) => { if (e.target === wrap) close(false); });
@@ -1276,6 +1352,7 @@
           : ' — партія ще не почалась, встати можна без наслідків.'),
       ok: playing && !free ? labels[1] : labels[0],
       cancel: 'Лишитись там',
+      route: true,
     });
   }
 
@@ -1285,12 +1362,14 @@
 
   /// Новий стіл гри `gameId`, а сидиш за іншим: раніше сервер відмовляв «Встань, якщо хочеш новий», і треба було йти
   /// туди, вставати й вертатись. Тепер питаємо тут і встаємо самі. true — можна ставити (або й не заважало нічого).
-  async function leaveForNew(gameId) {
+  async function leaveForNew(gameId, at) {
     const g = gameOf(gameId);
     if (g && (g.maxPlayers <= 1 || g.private)) return true;   // соло — своя кімната, місце за столом їй не заважає
     const other = seatedAt(null);
     if (!other || other.id === leftForNew) return true;
     if (g && g.shared && other.game === gameId) return true;   // спільний стіл тієї ж гри: сервер просто скаже «ти тут»
+    // Поки чекали зв'язку, людина пішла на іншу сторінку — питання вже не до місця (games-3: виринало над «Колією»)
+    if (at != null && location.hash !== at) return false;
     if (!(await askLeave(other, ['Встати й поставити', 'Все одно встати']))) return false;
     if (!(await call('LeaveRoom', other.id)).ok) return false;
     leftForNew = other.id;
@@ -1905,10 +1984,12 @@
     // нерозгаданою (записка #52).
     if (view.kind === 'room' && next.kind === 'lobby') dailyAt = 0;
     if (view.kind === 'room' && !same) dockLeave(view.id);   // стіл, з якого пішли, — у куточок
+    if (next.kind === 'room') dockLeft.delete(next.id);       // прийшов на стіл знову (дивитись чи сісти) — віконце можна
     view = next;
     dropPeeks();
     if (view.kind !== 'room') { setFull(false); setFs(false); }
-    else if (!same && !coarse()) setFull(widePref());   // ⇔ на ПК пам'ятаємо між столами
+    // ⇔ на ПК пам'ятаємо між столами — і тоді, коли вернулись на той самий стіл з іншого розділу (hide() його знімав)
+    else if (!coarse() && (!same || full !== widePref())) setFull(widePref());
     refit();   // занурений режим лежачи й місце під поле — і тоді, коли сторінку відкрили одразу на столі
     if (!same) chromeFor = null;          // повернулись у підрозділ — перечитуємо профіль/таблицю
     renderShell();
@@ -2035,6 +2116,7 @@
   const saveDock = () => { try { localStorage.setItem(DOCK_KEY, JSON.stringify(dockPrefs)); } catch { /* приватне вікно */ } };
   let dockId = null;            // стіл у віконці — той, з чиєї сторінки пішли останнім (або обраний ‹ ›)
   let dockShut = null;          // віконце цього столу сховали «✕» — до наступного заходу на стіл
+  const dockLeft = new Set();   // столи, з яких встав сам: у віконце не беремо, поки знову не зайдеш на сторінку столу
   let dockEl = null, dockStage = null, dockBox = null, dockSig = '', dockLay = '';
   const dockPhone = () => window.matchMedia('(max-width: 900px)').matches;
   const onRoomPage = () => shown && view.kind === 'room';
@@ -2049,7 +2131,7 @@
   /// Пішли зі сторінки столу id (route, hide). Картка ще на столі — беремо її ширину й місце, яке каркас їй дав.
   function dockLeave(id) {
     const c = id && cards[id];
-    if (dockPrefs.off || !c || !views[id] || peeking.has(id)) return;
+    if (dockPrefs.off || !c || !views[id] || peeking.has(id) || dockLeft.has(id)) return;
     const box = root && root.querySelector('.grbox');
     if (!box || c.el.parentElement !== box) return;   // не зі сторінки столу (уже у віконці чи на складі)
     dockId = id;
@@ -2059,6 +2141,15 @@
     c.natPad = getComputedStyle(c.el).padding;
     const rs = document.documentElement.style;
     c.fitVars = FIT_VARS.map((k) => [k, rs.getPropertyValue(k)]);
+  }
+  /// Встав зі столу id сам (call → LeaveRoom): прибрати його з віконця й з «тримати кадри» — інакше решта за столом
+  /// бачила б тебе «👁 глядачем», поки не натиснеш ✕ (рецензія №3).
+  function dockForget(id) {
+    if (!id) return;
+    dockLeft.add(id);
+    pinned.delete(id);
+    if (dockId === id) { dockId = null; dockShut = null; }
+    dockSync();
   }
   /// Столи для ‹ ›: той, що у віконці, і всі, де сиджу.
   function dockList() {
@@ -3263,7 +3354,8 @@
           pay.fullNeed + ' різних щоденних за день — ще +' + pay.fullBonus + ' 🏺'));
     }
     const nl = nightLine(m);
-    return '<section class="gpanel gtoday' + (board ? ' split' : '') + '">'
+    // gdaybox, а не gtoday: .gtoday — клас Січі (sich.css), CssClashTests не дає двом файлам ділити клас
+    return '<section class="gpanel gdaybox' + (board ? ' split' : '') + '">'
       + '<div class="gday-head">' + (all.length ? ringHtml(played, all.length) : '')
       + '<div class="gday-ht"><h3>☀ Сьогодні' + (daily && daily.no ? ' <span class="muted small">· щоденний глек №' + daily.no + '</span>' : '') + '</h3>'
       + (chips.length ? '<div class="gday-chips">' + chips.join('') + '</div>' : '') + '</div></div>'
@@ -4949,11 +5041,13 @@
       mod = modules[gameId] || null;
       if (!ok || !mod) { box.innerHTML = '<div class="gempty">Модуль гри «' + esc(gameId) + '» не завантажився</div>'; return false; }
       build();
+      fitFor(box);   // --g-aw/--g-ah/--g-fh рамки — ще до mount: перша розкладка підгри вже за своїм місцем
       try {
         mod.mount(box, ctx);
         if (mod.update) mod.update(box, ctx);
         if (ctx.frame && mod.frame) mod.frame(box, ctx, ctx.frame);
       } catch (e) { console.warn('[games] embed mount ' + gameId, e); return false; }
+      requestAnimationFrame(() => { if (!dead && box.isConnected) fitFor(box); });   // уже з вмістом — точніше
       return true;
     });
     return h;
@@ -4981,8 +5075,11 @@
       try { handled = c.mod.onKey(e, c.ctx); } catch (err) { console.warn('[games] onKey', err); }
     }
     if (handled) { e.preventDefault(); return; }
-    // F — повний екран (ПК: ⛶, телефон із клавіатурою: та сама ⛶), якщо гра клавішу не з'їла. e.code — і в українській розкладці.
-    if (e.code === 'KeyF' && !e.shiftKey && !e.repeat && !e.defaultPrevented && view.kind === 'room' && view.id
+    // F — повний екран (ПК: ⛶, телефон із клавіатурою: та сама ⛶), якщо гра клавішу не з'їла. Лише латинська f за e.key:
+    // e.code 'KeyF' — це ще й українська «а», і в літерних іграх (повний рядок, не твій хід) сторінка злітала б у ⛶.
+    // Ігри з власною клавіатурою слів (ui.keyboardUa) клавішу не віддають зовсім: там і латиниця — це літери.
+    if ((e.key === 'f' || e.key === 'F') && !e.shiftKey && !e.repeat && !e.defaultPrevented && view.kind === 'room' && view.id
+      && !(c && c.el && c.el.querySelector('.gkbd'))
       && !document.querySelector('.modal:not([hidden])')) {
       e.preventDefault();
       if (coarse()) { setFull(!full); renderRoomHead(view.id); } else setFs(!fsOn);
