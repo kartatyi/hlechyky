@@ -157,7 +157,7 @@
   // ---- тло: вода, береги, камені під водою — у буфер, раз на розмір і тему ----
   function background(st, pal) {
     const c = st.cv;
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const dpr = st.k || Math.min(3, window.devicePixelRatio || 1);   // щільність полотна (crisp у fit)
     const key = [st.cols, st.rows, dpr, pal.water, pal.sand, pal.stone].join('|');
     if (st.bg && st.bgKey === key) return st.bg;
     const bg = document.createElement('canvas');
@@ -913,6 +913,14 @@
     const w = Math.round((st.cols + 2 * MX) * S), h = Math.round((st.rows + 2 * BANK) * SH);
     if (st.cv && st.cv.w === w && st.cv.h === h) return;
     st.cv = HGames.ui.canvas(st.root, { w, h, cls: 'brboard' });
+    // своя щільність замість «світ × dpr»: на великому полі (⛶, 2K) річка інакше розмита
+    const c = st.cv;
+    c.resize = () => {
+      const k = st.k || Math.min(3, window.devicePixelRatio || 1);
+      const pw = Math.round(c.w * k), ph = Math.round(c.h * k);
+      if (c.el.width !== pw || c.el.height !== ph) { c.el.width = pw; c.el.height = ph; }
+      c.ctx.setTransform(k, 0, 0, k, 0, 0);
+    };
     st.bg = null;
     fit(st);
   }
@@ -933,15 +941,41 @@
       // стоїть наш root; лише не віддаємо шапці більше половини екрана, щоб поле не стало крихітним.
       above = Math.min(Math.max(rt, F.top), F.top + F.h * 0.5);
     } else above = rt > F.top && rt < F.h * 0.6 ? rt : F.top + (F.imm ? 10 : 100);
-    const maxH = Math.max(300, F.h - above - F.dock - hudH - 44);
+    let maxH = Math.max(300, F.h - above - F.dock - hudH - 44), cap = 620;
+    // Світлиця (fit-core): на сторінці столу висоту під поле вже порахував каркас (ui.box: ah — під увесь .gbody з
+    // ⇔/⛶, шапкою, банером і низом сайту): річці — ah мінус решта .gbody, стеля 1100 (⛶, 2K). Лежачи на телефоні
+    // полотно — пряма дитина .gbody, і каркас сам ставить його ліворуч на всю висоту картки: inline-ширину знімаємо
+    // (було 274×429 при екрані 329 — річка під краєм). offset*, не rect: у віконці «в куточку» картка під transform.
+    const onTable = !(st.ctx && st.ctx.embedded) && root.classList.contains('gbody') && HGames.ui.box;
+    if (onTable && document.body.classList.contains('g-land')) {
+      if (cv.el.style.width || cv.el.style.maxWidth) { cv.el.style.width = ''; cv.el.style.maxWidth = ''; }
+      crisp(st);
+      st.dirty = true;
+      return;
+    }
+    const fb = onTable ? HGames.ui.box(root) : null;
+    if (fb && fb.ah && root.offsetHeight && cv.el.offsetHeight) {
+      let row = cv.el.offsetHeight;   // широко: поруч стовпчик гравців — рядок поля той, що вищий
+      if (wide) for (const el of root.children) if (el !== cv.el && el.offsetHeight && el.offsetTop <= cv.el.offsetTop + 2) row = Math.max(row, el.offsetTop - cv.el.offsetTop + el.offsetHeight);
+      maxH = Math.max(240, fb.ah - (root.offsetHeight - row));
+      cap = 1100;
+    }
     const room = wide ? rw - 240 : rw;
     // Вузький екран: камінь не нижчий за ~40 px (палець; ширший він і так ~48) — хай краще сторінка трохи
     // прокрутиться, ніж мазати. 40, а не 44: на 360×780 з шістьма гравцями берег тоді ще не ховається під док.
     const minW = rw < 480 ? Math.ceil(40 * cv.w / SH) : 240;
-    const w = Math.max(Math.min(rw, minW), Math.floor(Math.min(room, maxH * (cv.w / cv.h), 620)));
+    const w = Math.max(Math.min(rw, minW), Math.floor(Math.min(room, maxH * (cv.w / cv.h), cap)));
     cv.el.style.width = w + 'px';
     cv.el.style.maxWidth = '100%';
+    crisp(st);
     st.dirty = true;
+  }
+  /// Щільність полотна: не менша за dpr і така, щоб на екрані був 1 піксель задника на піксель (стеля 4×).
+  function crisp(st) {
+    const cv = st.cv, css = cv && cv.el.clientWidth;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const k = css ? Math.min(4, Math.max(dpr, Math.ceil(css * dpr / cv.w * 4) / 4)) : dpr;
+    if (k !== st.k) { st.k = k; st.bg = null; }
   }
 
   // ---- рядок гравців і легенда (DOM) ----
@@ -1062,6 +1096,10 @@
       st.onFit = () => { const s = root._brid; if (s) { fit(s); s.dirty = true; spin(s); } };
       if (HGames.ui.onFit) HGames.ui.onFit(root, st.onFit);
       else window.addEventListener('resize', st.onFit);
+      // лежачи .gbody — display: contents, і каркас не кличе onFit (нема client rects): поворот ловимо самі, після того як
+      // каркас поставив/зняв g-land (він робить це в rAF після resize)
+      st.onTurn = () => { clearTimeout(st.turnT); st.turnT = setTimeout(st.onFit, 150); };
+      window.addEventListener('resize', st.onTurn);
       fit(st);
       spin(st);
     },
@@ -1110,6 +1148,7 @@
       st.raf = 0;
       if (HGames.ui.onFit) HGames.ui.onFit(root, null);
       else window.removeEventListener('resize', st.onFit);
+      if (st.onTurn) { window.removeEventListener('resize', st.onTurn); clearTimeout(st.turnT); }
       root.classList.remove('brroot', 'brwide');
       live.delete(st);
       st.cv = null;
