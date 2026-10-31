@@ -1625,9 +1625,9 @@
   function stageRoom(st) {
     const el = st.stageEl, body = el && el.parentElement;
     if (!body || !body.classList.contains('gbody') || !HGames.ui.box) return 0;
-    const f = HGames.ui.box(body), bh = body.getBoundingClientRect().height;
+    const f = HGames.ui.box(body), bh = body.offsetHeight;   // offset*, не rect: у віконці «в куточку» картка під transform
     if (!f || !f.ah || !bh) return 0;
-    return f.ah - (bh - el.getBoundingClientRect().height) - st.padH;
+    return f.ah - (bh - el.offsetHeight) - st.padH;
   }
 
   /// Полотно ширше за світ (⛶, 2K, ⇔): задник — за справжнім розміром на екрані, а не «світ × dpr», інакше мапа
