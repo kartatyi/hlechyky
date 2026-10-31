@@ -1,16 +1,27 @@
 /* Слоти на сайті: автомат SlotKit на всю ігрову зону картки (вписується сам — масштабом). */
-.slot-card { padding: 0; }
+/* Картка — гнучкий рядок: смуги турніру й 🎁 поруч (на широкому), під ними автомат на всю ширину. */
+.slot-card { padding: 0; display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+.slot-card > .slot-tour { flex: 1 1 340px; margin: 0; min-width: 0; }
 /* назва автомата вже є в рядку «← Лобі · …» над карткою й на табло самого автомата — рядок картки зайвий */
 .gtable:has(> .slot-card) > .gseats { display: none; }
+/* Автомат — поле каркаса (.g-field): висота = --g-fh (місце під поле без смуг), росте в ⇔/⛶ без стелі.
+   Без змінних (віконце «Стіл у куточку» до першого заміру) — як було: від --gfit-h і власного заміру верху. */
 .slotwrap {
-  position: relative; width: 100%;
-  height: calc(var(--gfit-h, 100vh) - var(--slot-top, 170px) - 12px);
-  min-height: 380px; max-height: 960px;
+  position: relative; width: 100%; flex: 1 1 100%;
+  height: var(--g-fh, calc(var(--gfit-h, 100vh) - var(--slot-top, 170px) - 12px));
+  min-height: 260px;
   border-radius: 14px; overflow: hidden; background: #0b1410;
-}
-@supports (height: 100dvh) {
-  .slotwrap { height: calc(var(--gfit-h, 100dvh) - var(--slot-top, 170px) - 12px); }
 }
 .slotwrap > .sk-root { position: absolute; inset: 0; }
 .slot-load { display: flex; align-items: center; justify-content: center; height: 100%; color: #cfc7a6; }
-@media (max-width: 600px) { .slotwrap { border-radius: 10px; min-height: 520px; } }
+/* Телефон стоячи: автомат (420×864) — першим і на всю видиму висоту картки (--g-ah), смуги турніру й 🎁 — під ним
+   (догортаються). Так кнопка «Крутити» завжди на екрані, а барабани не дрібнішають через смуги. */
+@media (max-width: 699px) {
+  .slotwrap {
+    order: -1; border-radius: 10px;
+    height: max(var(--g-fh, 0px), min(var(--g-ah, 640px), calc(var(--g-aw, 100vw) * 2.06)));
+    min-height: 380px;
+  }
+}
+/* Лежачи (g-land): автомат ліворуч на всю висоту картки, смуги — колонкою праворуч (сітка каркаса). */
+body.g-land .gtable.g-board > .slot-card > .slotwrap { height: max(200px, var(--g-fh, calc(var(--gland-h, 330px) - 16px))); min-height: 0; order: 0; }

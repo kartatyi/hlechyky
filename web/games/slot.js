@@ -174,7 +174,7 @@
 
   async function mount(root, ctx) {
     root.classList.add('slot-card');
-    root.innerHTML = '<div class="slotwrap"><div class="slot-load muted">Глек протирає барабани…</div></div>';
+    root.innerHTML = '<div class="slotwrap g-field"><div class="slot-load muted">Глек протирає барабани…</div></div>';
     const st = { ctx, wrap: root.firstChild, inst: null, seenSeq: (ctx.view && ctx.view.last && ctx.view.last.seq) || 0, dead: false, waitSpin: null, waitG: null, placed: false };
     roots.set(root, st);
     quiet(true);

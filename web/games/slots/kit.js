@@ -1312,7 +1312,10 @@
     // ----- вписування в контейнер -----
     function fit() {
       const w = root.clientWidth, h = root.clientHeight; if (!w || !h) return;
-      const orient = w / h < 0.78 ? 'port' : 'land';
+      // Розкладка — та, де автомат виходить більшим (а не за пропорцією 0,78: на 341×430 «лежача» давала кнопки по 9 px).
+      // Стояча має бути помітно більшою (×1,15), бо лежача показує ще й табло виплат і сцену.
+      const kl = Math.min(w / SK.LAYOUT.land.w, h / SK.LAYOUT.land.h), kp = Math.min(w / SK.LAYOUT.port.w, h / SK.LAYOUT.port.h);
+      const orient = kp > kl * 1.15 ? 'port' : 'land';
       const L = SK.LAYOUT[orient];
       const k = Math.min(w / L.w, h / L.h);
       box.style.width = L.w + 'px'; box.style.height = L.h + 'px';
