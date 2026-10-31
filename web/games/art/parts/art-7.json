@@ -1,0 +1,43 @@
+{
+ "b": {
+  "fura": "fura",
+  "kakhli": "kakhli",
+  "kakhli-blitz": "kakhli",
+  "kakhli-daily": "kakhli",
+  "kolo": "kolo",
+  "namysto": "namysto",
+  "namysto-daily": "namysto",
+  "roulette": "roulette",
+  "roulette-solo": "roulette",
+  "shatkuy": "shatkuy",
+  "shatkuy-daily": "shatkuy",
+  "shatkuy-fair": "shatkuy",
+  "shatkuy-party": "shatkuy",
+  "shatkuy-zen": "shatkuy",
+  "slot-cascade": "slot-cascade",
+  "slot-cluster": "slot-cluster",
+  "slot-hold": "slot-hold",
+  "slot-slidy": "slot-slidy"
+ },
+ "i": {
+  "fura": "fura",
+  "kakhli": "kakhli",
+  "kakhli-blitz": "kakhli",
+  "kakhli-daily": "kakhli",
+  "kolo": "kolo",
+  "namysto": "namysto",
+  "namysto-daily": "namysto",
+  "roulette": "roulette",
+  "roulette-solo": "roulette",
+  "shatkuy": "shatkuy",
+  "shatkuy-daily": "shatkuy",
+  "shatkuy-fair": "shatkuy",
+  "shatkuy-party": "shatkuy",
+  "shatkuy-zen": "shatkuy",
+  "slot-cascade": "slot-cascade",
+  "slot-cluster": "slot-cluster",
+  "slot-hold": "slot-hold",
+  "slot-slidy": "slot-slidy"
+ },
+ "v": 1
+}
