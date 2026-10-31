@@ -547,6 +547,38 @@
     root.addEventListener('click', (e) => onClick(st, e));
     st.ro = new ResizeObserver(() => { layout(st); if (st.data) { applyCam(st); kick(st); } });
     st.ro.observe(st.el.bw);
+    // каркас переміряв місце картки (⇔, ⛶, поворот, рядок місць переніс) — дошка під нове місце
+    if (HGames.ui.onFit) HGames.ui.onFit(root, () => { if (!st.dead) layout(st); });
+  }
+
+  /// Скільки дошці можна заввишки за своїм столом: місце під тіло картки від каркаса (--g-ah; у ⇔ і ⛶ — своє) мінус
+  /// усе, що у вечірці не дошка (шапка, на телефоні — рядок гравців і шторка ходу). 0 — каркас ще не міряв.
+  /// Міні-гра всередині вечірки: модуль іншої гри читає місце з CSS-змінних каркаса (--g-aw/--g-ah/--g-fh), а вони
+  /// успадковуються від картки вечірки — тобто «уся вечірка», і поле міні-гри виходило вищим за рамку (сторінка
+  /// гортається посеред гри). Кладемо на рамку міні-гри (.vmg-b) її власне місце: висота дошки мінус заголовок.
+  function mgVars(st) {
+    const b = st.el.mg && st.el.mg.querySelector('.vmg-b');
+    if (!b || !st.mgOn) return;
+    const head = st.el.mg.querySelector('.vmg-h');
+    // висота рамки: min-height .vch-mg (на ПК — --vch-h, на телефоні — 60dvh), уже в px
+    const vh = parseFloat(getComputedStyle(st.el.mg).minHeight) || parseFloat(getComputedStyle(st.el.vch).getPropertyValue('--vch-h')) || 0;
+    const w = Math.floor(st.el.mg.clientWidth - 16);
+    const h = Math.floor(vh - 16 - 6 - (head ? head.offsetHeight : 28));
+    if (!(w > 0 && h > 0)) return;
+    const k = w + 'x' + h;
+    if (b._vchK === k) return;
+    b._vchK = k;
+    b.style.setProperty('--g-aw', w + 'px');
+    b.style.setProperty('--g-ah', Math.max(200, h) + 'px');
+    b.style.setProperty('--g-fh', Math.max(200, h) + 'px');
+    b.style.setProperty('--g-fminw', '0px');
+  }
+
+  function fitCap(st) {
+    const bx = HGames.ui.box ? HGames.ui.box(st.root) : null;
+    if (!bx || !(bx.ah > 0)) return 0;
+    const other = Math.max(0, st.el.vch.offsetHeight - st.el.bw.offsetHeight);
+    return Math.floor(bx.ah - other - 2);
   }
 
   /// Ширина картки: телефон (< 760), середня (ПК поруч із балачкою) чи широка. Висота дошки на ПК — під ширину,
@@ -563,13 +595,17 @@
     if (phone) {
       // дошка + шторка мають влізти в екран під шапкою сайту: кнопка «Кинути» — без прокрутки
       const top = st.root.getBoundingClientRect().top + window.scrollY;
-      const h = Math.round(clamp(window.innerHeight - top - 250, 230, 480));
+      const cap = fitCap(st);
+      const h = Math.round(cap ? clamp(cap, 230, 560) : clamp(window.innerHeight - top - 250, 230, 480));
       if (st.lastH !== h) { st.lastH = h; st.el.vch.style.setProperty('--vch-h', h + 'px'); }
+      mgVars(st);
       return;
     }
     const bw = st.el.bw.clientWidth || W - 250;
-    const h = Math.round(clamp(bw * 0.625 + 110, 400, Math.min(window.innerHeight * 0.78, 900)));
+    const cap = fitCap(st);
+    const h = Math.round(cap ? clamp(bw * 0.625 + 110, Math.min(360, Math.max(220, cap)), Math.max(220, cap)) : clamp(bw * 0.625 + 110, 400, Math.min(window.innerHeight * 0.78, 900)));
     if (st.lastH !== h) { st.lastH = h; st.el.vch.style.setProperty('--vch-h', h + 'px'); }
+    mgVars(st);
   }
 
   function later(st, fn, ms) {
@@ -1269,6 +1305,7 @@
           input: (a, p) => st.ctx.input('mg', { a, p }),
         }));
       } catch (e) { console.warn('[vechirka] embed ' + m.id, e); st.emb = null; }
+      mgVars(st);
     } else if (st.emb) st.emb.update(embOpts(st, v));
   }
 
@@ -1467,6 +1504,7 @@
       if (st.arcD) st.arcD.stop();
       if (st.arcO) st.arcO.stop();
       if (st.ro) st.ro.disconnect();
+      if (HGames.ui.onFit) HGames.ui.onFit(root, null);
       if (st.audio) { try { st.audio.pause(); } catch (e) { /* нічого */ } }
       live.delete(st);
       root._vch = null;
