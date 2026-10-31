@@ -39,18 +39,9 @@
 .gseat.ar2 i::before { content: '▲ '; color: var(--moto2); }
 .gseat.ar3 i::before { content: '◆ '; color: var(--moto3); }
 
-/* Велике поле (34×24) ширше за змійчине — даємо йому трохи місця, але не на весь Full HD.
-   Ширину тримає ще й висота вікна: над полем шапка сайту, столу й табло, під ним статус і кнопки (≈300 px),
-   а коли горить смужка підказок пада (Steam Deck, body.pad-on) — ще 50. Без цього на Деці в кіоску (1024×640)
-   і на невисоких ноутбуках поле з кнопками «Встати»/«Ще раз» не вміщалось і сторінку треба було гортати.
-   Нижня межа 300 px — для телефона, покладеного набік: хай гортає, але поле лишається полем. */
-.arenaboard { max-width: min(560px, max(300px, calc((100vh - 300px) * 26 / 18))); }
-.arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 300px) * 34 / 24))); }
-body.pad-on .arenaboard { max-width: min(560px, max(300px, calc((100vh - 350px) * 26 / 18))); }
-body.pad-on .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 350px) * 34 / 24))); }
-@media (min-width: 1600px) and (min-height: 900px) {
-  .arenaboard.big { max-width: min(780px, calc((100vh - 300px) * 34 / 24)); }
-}
+/* Розмір поля (і 26×18, і велике 34×24) задає каркас (Світлиця, core.css): полотно вписується в ширину картки й
+   висоту рядка поля (--g-fh) з його пропорцією — на ноутбуці, Деці, в ⇔/⛶ і лежачи. Колишні стелі 560/680/780 px
+   і «100vh − 300/360» прибрано. Щільність малювання під справжній розмір — у модулі (sharpen). */
 
 /* Табло над полем: хто скільки раундів узяв; вибулі — бліді й закреслені до кінця раунду. */
 .ascore {
@@ -94,21 +85,5 @@ body.pad-on .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 350
 }
 .dpad .moto-boost:disabled { opacity: .35; filter: grayscale(1); }
 @media (pointer: fine) { .dpad .moto-boost { display: none; } }
-/* Під табло мотоциклів — ще й стрічка «хто кого» (≈20 px) і запас ~15 px — поле на стільки ж нижче, щоб «Встати» лишалось на екрані й на 1280×800 (Дека). */
-.moto-feed ~ .arenaboard { max-width: min(560px, max(300px, calc((100vh - 360px) * 26 / 18))); }
-.moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 360px) * 34 / 24))); }
-body.pad-on .moto-feed ~ .arenaboard { max-width: min(560px, max(300px, calc((100vh - 410px) * 26 / 18))); }
-body.pad-on .moto-feed ~ .arenaboard.big { max-width: min(680px, max(300px, calc((100vh - 410px) * 34 / 24))); }
-@media (min-width: 1600px) and (min-height: 900px) {
-  .moto-feed ~ .arenaboard.big { max-width: min(780px, calc((100vh - 360px) * 34 / 24)); }
-}
-
-/* Телефон лежачи: нижня межа 300 px вище не зважала на висоту — поле з'їжджало під нижні вкладки. Тут поле —
-   за видимою висотою (--gfit-h від каркаса: без шапки й меню; мінус рядок столу й табло). У зануреному режимі
-   (body.g-land, я граю) розмір полотна задає каркас — його правило специфічніше. */
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
-  .arenaboard, .moto-feed ~ .arenaboard { max-width: min(560px, calc((var(--gfit-h, 100dvh) - 110px) * 26 / 18)); }
-  .arenaboard.big, .moto-feed ~ .arenaboard.big { max-width: min(680px, calc((var(--gfit-h, 100dvh) - 110px) * 34 / 24)); }
-}
 /* Лежачи (body.g-land): чіпи місць каркаса ховаємо — ті самі гравці з рахунком уже є в табло праворуч, а висоти обмаль. */
 body.g-land .gtable:has(> .gbody > .ascore) > .gseats { display: none; }

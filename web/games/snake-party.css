@@ -16,15 +16,8 @@
 .gseat.snp-s2 i::before { content: '▲ '; color: var(--snp2); }
 .gseat.snp-s3 i::before { content: '◆ '; color: var(--snp3); }
 
-/* Поле тримає й висота вікна: над ним шапка сайту, столу й табло, під ним статус, кнопки й панель кидків (≈300 px),
-   на Деці зі смужкою пада — ще 50. Нижня межа 300 px — для телефона набік. */
-.snp-board { max-width: min(560px, max(300px, calc((100vh - 300px) * 26 / 18))); }
-.snp-board.snp-big { max-width: min(680px, max(300px, calc((100vh - 300px) * 34 / 24))); }
-body.pad-on .snp-board { max-width: min(560px, max(300px, calc((100vh - 350px) * 26 / 18))); }
-body.pad-on .snp-board.snp-big { max-width: min(680px, max(300px, calc((100vh - 350px) * 34 / 24))); }
-@media (min-width: 1600px) and (min-height: 900px) {
-  .snp-board.snp-big { max-width: min(780px, calc((100vh - 300px) * 34 / 24)); }
-}
+/* Розмір поля задає каркас (Світлиця, core.css): полотно вписується в ширину картки й висоту рядка поля (--g-fh)
+   з пропорцією поля. Колишні стелі 560/680/780 px і «100vh − 300» прибрано. Щільність малювання — у модулі (sharpen). */
 
 /* Табло над полем: раунд серії, годинник «на час», хто скільки взяв; вибулі — бліді й закреслені до кінця раунду. */
 .snp-score {
@@ -59,14 +52,6 @@ body.pad-on .snp-board.snp-big { max-width: min(680px, max(300px, calc((100vh - 
 }
 .snp-drop button.snp-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .snp-drop span { min-width: 8em; text-align: center; font-variant-numeric: tabular-nums; }
-
-/* Телефон лежачи: нижня межа 300 px вище не зважала на висоту — поле з'їжджало під нижні вкладки. Тут поле —
-   за видимою висотою (--gfit-h від каркаса: без шапки й меню; мінус рядок столу й табло). У зануреному режимі
-   (body.g-land, я граю) розмір полотна задає каркас — його правило специфічніше. */
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
-  .snp-board { max-width: min(560px, calc((var(--gfit-h, 100dvh) - 110px) * 26 / 18)); }
-  .snp-board.snp-big { max-width: min(680px, calc((var(--gfit-h, 100dvh) - 110px) * 34 / 24)); }
-}
 
 /* Лежачи (body.g-land): чіпи місць каркаса ховаємо — ті самі гравці з рахунком уже є в табло праворуч, а висоти обмаль. */
 body.g-land .gtable:has(> .gbody > .snp-score) > .gseats { display: none; }

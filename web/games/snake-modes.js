@@ -267,7 +267,7 @@
 
     mount(root, ctx) {
       const st = coopState(root, ctx);
-      st.cv = HGames.ui.canvas(root, { w: W * PX, h: H * PX, cls: 'arenaboard' });
+      st.cv = sharpen(HGames.ui.canvas(root, { w: W * PX, h: H * PX, cls: 'arenaboard' }), () => { const s = root._coop; if (s && s.ctx) drawCoop(s, s.last, !s.ctx.playing); });
       swipe(st.cv.el, () => { const s = root._coop; return s && s.ctx.mine && s.ctx.playing ? (d) => coopTurn(s.ctx, d) : null; });
     },
 
@@ -397,9 +397,42 @@
     return true;
   }
 
+  /// Світлиця: поле тепер росте з місцем картки (⇔/⛶ на Full HD — до ~1500 px), а ui.canvas тримає щільність
+  /// «логічний розмір × DPR» — і розтягнуте втричі поле милилось. Тут щільність — під справжню ширину на екрані:
+  /// міряє ResizeObserver (не щокадру), крок 0,25, стеля ~4 Мп. Зміна — перелаштувати полотно й перемалювати.
+  function sharpen(cv, redraw) {
+    const el = cv.el;
+    let k = 0;
+    const want = () => {
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      const k1 = Math.max(dpr, dpr * (el.clientWidth || 0) / cv.w);
+      return Math.ceil(Math.min(k1, Math.sqrt(4e6 / (cv.w * cv.h))) * 4) / 4;
+    };
+    cv.resize = () => {
+      if (!k) k = want();
+      const pw = Math.round(cv.w * k), ph = Math.round(cv.h * k);
+      if (el.width !== pw || el.height !== ph) { el.width = pw; el.height = ph; }
+      cv.ctx.setTransform(k, 0, 0, k, 0, 0);
+    };
+    if (el._sharp) el._sharp.disconnect();
+    if (window.ResizeObserver) {
+      el._sharp = new ResizeObserver(() => {
+        const k2 = want();
+        if (k2 === k || !el.isConnected) return;
+        k = k2;
+        cv.resize();
+        if (redraw) redraw();
+      });
+      el._sharp.observe(el);
+    }
+    cv.resize();
+    return cv;
+  }
+
   /// Поле буває більшим для трьох-чотирьох: розмір беремо з виду, канвас каркаса перелаштовується сам.
   function partyCanvas(root, st) {
-    st.cv = HGames.ui.canvas(root, { w: st.w * PX, h: st.h * PX, cls: 'arenaboard' + (st.w > W ? ' big' : '') });
+    st.cv = sharpen(HGames.ui.canvas(root, { w: st.w * PX, h: st.h * PX, cls: 'arenaboard' + (st.w > W ? ' big' : '') }),
+      () => { if (st.ctx && !st.rp) drawParty(st, st.ctx, st.waiting); });
   }
 
   /// Довжини слідів зараз — одна «фотографія» для повтору.
