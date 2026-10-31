@@ -157,4 +157,37 @@ public class RoomsGraceTests
         Assert.True(h.Rooms.StartByHost(h.RoomId, "Оля", force: true).Reply.Ok);
         Assert.Equal("Петро", h.Room.Seats[1]);
     }
+
+    // ---------- рецензія сервера №1: перехрест «відключився / підключився» ----------
+
+    [Fact]
+    public void A_new_connection_that_beat_the_old_disconnect_keeps_the_seat_and_no_away_mark()
+    {
+        var h = Duel();
+        // нове з'єднання (F5) вже під'єдналось і сказало NoteOnline, а старе тільки тепер дописує «відпав»
+        h.Rooms.NoteOnline("Петро");
+        var gone = h.Rooms.NoteGone("Петро", h.Clock.UtcNow, _ => true);
+        Assert.Contains(gone, m => m is RoomViews);
+        Assert.Null(h.Room.Summary().Seats[1].Away);
+
+        Drop(h, Rooms.TurnGrace + TimeSpan.FromSeconds(5));
+        Assert.Equal("Петро", h.Room.Seats[1]);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+    }
+
+    [Fact]
+    public void An_away_mark_left_without_a_countdown_is_cleared_when_the_nick_is_online()
+    {
+        var h = Duel();
+        // NoteOnline устряв між записом відліку й позначкою за столом: відліку нема, а «⏳ відпав» лишився б
+        h.Rooms.NoteOffline("Петро", h.Clock.UtcNow);
+        h.Rooms.NoteOnline("Петро");
+        h.Room.Away["Петро"] = h.Clock.UtcNow;
+        Assert.Single(h.Rooms.NoteOnline("петро").OfType<RoomViews>());
+        Assert.Null(h.Room.Summary().Seats[1].Away);
+
+        // і без перехресту NoteGone поводиться як NoteOffline
+        Assert.Contains(h.Rooms.NoteGone("Оля", h.Clock.UtcNow, _ => false), m => m is RoomViews);
+        Assert.NotNull(h.Room.Summary().Seats[0].Away);
+    }
 }

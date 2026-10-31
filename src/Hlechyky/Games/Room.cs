@@ -126,8 +126,11 @@ public sealed class Room
     public required DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }
-    /// <summary>З'єднання, які зараз дивляться на цю кімнату. Ключ — connectionId, значення нікого не цікавить.</summary>
-    public ConcurrentDictionary<string, byte> Watchers { get; } = new();
+    /// <summary>
+    /// З'єднання, які зараз дивляться на цю кімнату: connectionId → нік (за ніком видно, що господар чекає за столом, а не
+    /// «мовчить», — <see cref="Rooms.HostQuiet"/>).
+    /// </summary>
+    public ConcurrentDictionary<string, string> Watchers { get; } = new();
     /// <summary>
     /// Вкладки власника, у яких ця соло-кімната зараз на екрані (<see cref="Rooms.Focus"/>). Не те саме, що
     /// <see cref="Watchers"/>: на свою кімнату браузер підписаний і з лобі, а тут — лише поки людина справді в грі.
@@ -149,8 +152,13 @@ public sealed class Room
     public int Moves { get; set; }
     /// <summary>Останній рух у кімнаті — за ним прибирання розуміє, що тут уже нікого нема.</summary>
     public DateTimeOffset LastActivity { get; set; }
-    /// <summary>Коли господар востаннє щось робив за столом: мовчить у лобі довше за <see cref="Rooms.HostQuiet"/> — «Почати» може будь-хто.</summary>
+    /// <summary>
+    /// Коли господар востаннє щось робив за столом або дивився на нього (прибирання раз на секунду оновлює, поки його
+    /// з'єднання серед <see cref="Watchers"/>): мовчить у лобі довше за <see cref="Rooms.HostQuiet"/> — «Почати» може будь-хто.
+    /// </summary>
     public DateTimeOffset HostActiveAt { get; set; }
+    /// <summary>Стіл позначено до прибирання під новий (Rooms.Evict): «Ще раз» за ним уже не почнеться. Під замком кімнати.</summary>
+    public bool Evicted { get; set; }
     /// <summary>Хто з тих, що сидять, зараз не на зв'язку і відколи (нік → час, коли закрилось останнє з'єднання).</summary>
     public ConcurrentDictionary<string, DateTimeOffset> Away { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>З кого цього раунду списано ставку — щоб виплата й повернення знали, кому й скільки.</summary>

@@ -60,8 +60,21 @@ public sealed class Broadcaster(
     {
         var all = Drain(messages);
         // Лобі — не частіше ніж раз на LobbyThrottle.GapMs: решту відкладено, і TickEngine (коло 10 мс) донесе його сам.
-        _lobby.Gate(all, Environment.TickCount64);
-        if (all.Count == 0) return;
+        if (!_lobby.Gate(all, Environment.TickCount64))
+        {
+            if (all.Count > 0) await SendAsync(all, ct);
+            return;
+        }
+        // Дві розсилки лобі разом: знімки могли розминутись із порядком, у якому їх записав дедуп, — хвіст без дедупу.
+        if (Interlocked.Increment(ref _lobbyInFlight) > 1) _lobby.Resend();
+        try { await SendAsync(all, ct); }
+        finally { Interlocked.Decrement(ref _lobbyInFlight); }
+    }
+
+    int _lobbyInFlight;
+
+    async Task SendAsync(List<Outgoing> all, CancellationToken ct)
+    {
         try { Flushed?.Invoke(all); }
         catch (Exception ex) { log.LogWarning(ex, "підписник розсилки впав"); }
 
@@ -84,6 +97,7 @@ public sealed class Broadcaster(
         catch (Exception ex)
         {
             deadline.Dispose();
+            if (all.Exists(m => m is LobbyChanged)) _lobby.Resend();   // знімок міг записатись у дедуп як «полетів», а не полетів
             log.LogWarning(ex, "не вдалось скласти розсилку");
             return;
         }
@@ -383,6 +397,10 @@ public sealed class Broadcaster(
 /// порожню). Пачка з рядком Журналу чи закликом шле лобі одразу, як завжди: «Оля сідає грати» не має обганяти новину,
 /// що за тим столом уже нема місця. І той самий знімок, що полетів минулого разу, не шлемо зовсім (<see cref="Fresh"/>).
 /// Потокобезпечний: розсилку кличуть і хаб (кожна дія), і TickEngine.
+/// <para>Самолікування (рецензія сервера №2): після кожного негайного лобі ставимо «хвіст» — через <see cref="GapMs"/>
+/// TickEngine перераховує знімок ще раз. Такий самий, як останній, — не летить (дедуп), інакший — летить. Дві розсилки
+/// лобі, що йшли одночасно, могли долетіти в іншому порядку, ніж записали <see cref="Fresh"/>: тоді розсилка кличе
+/// <see cref="Resend"/>, і хвіст летить без дедупу. Хвіст сам хвоста не ставить — у тиші лобі не крутиться.</para>
 /// </summary>
 public sealed class LobbyThrottle
 {
@@ -391,6 +409,7 @@ public sealed class LobbyThrottle
     readonly object _sync = new();
     long _sentAt = long.MinValue / 2;
     bool _dirty;
+    bool _resend;
     byte[]? _last;
 
     /// <summary>Чи чекає відкладене лобі (для тестів).</summary>
@@ -398,9 +417,9 @@ public sealed class LobbyThrottle
 
     /// <summary>
     /// Пропустити, відкласти чи дописати <see cref="LobbyChanged"/> у пачку <paramref name="batch"/> (міняє її на місці).
-    /// <paramref name="nowMs"/> — монотонний час у мс.
+    /// <paramref name="nowMs"/> — монотонний час у мс. Повертає, чи лобі в пачці лишилось (полетить).
     /// </summary>
-    public void Gate(List<Outgoing> batch, long nowMs)
+    public bool Gate(List<Outgoing> batch, long nowMs)
     {
         var has = false;
         var urgent = false;
@@ -417,18 +436,29 @@ public sealed class LobbyThrottle
                 if (urgent || due)
                 {
                     _sentAt = nowMs;
-                    _dirty = false;
-                    return;
+                    _dirty = true;   // хвіст: через GapMs — ще раз, і дедуп вирішить, чи треба
+                    return true;
                 }
                 _dirty = true;
                 batch.RemoveAll(m => m is LobbyChanged);
-                return;
+                return false;
             }
-            if (!_dirty || !due) return;
+            if (!_dirty || !due) return false;
             _dirty = false;
             _sentAt = nowMs;
+            if (_resend) { _resend = false; _last = null; }
             batch.Insert(0, new LobbyChanged());
+            return true;
         }
+    }
+
+    /// <summary>
+    /// Не певні, що в людей останній знімок (дві розсилки лобі йшли разом або розсилка впала): наступний хвіст летить,
+    /// навіть якщо такий самий, як записаний у <see cref="Fresh"/>.
+    /// </summary>
+    public void Resend()
+    {
+        lock (_sync) { _resend = true; _dirty = true; }
     }
 
     /// <summary>Чи відрізняється знімок від того, що полетів минулого разу; так — запам'ятати його як останній.</summary>
