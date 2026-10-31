@@ -55,7 +55,7 @@
     let el = root.querySelector(':scope > .durak');
     if (el) return el;
     el = document.createElement('div');
-    el.className = 'durak';
+    el.className = 'durak g-field';   // g-field: каркас міряє місце під стіл, лежачи ставить його ліворуч на всю висоту
     el.innerHTML = '<div class="dfoes"></div><div class="dtop"></div><div class="dtable"></div>'
       + '<div class="dsay"></div><div class="dhand"></div><div class="dbtns"></div>';
     root.appendChild(el);

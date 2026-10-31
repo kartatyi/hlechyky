@@ -14,35 +14,43 @@
   --durak-s5: #5fd4c8;
 }
 
-.durak { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+/* Розмір усього столу — від місця картки (каркас: --g-aw/--g-ah): на великому екрані карти більші, на телефоні —
+   не менші за 15 px шрифту; лежачи — щоб усе влізло у висоту. Усі розміри нижче — в em від цього шрифту. */
+.durak {
+  display: flex; flex-direction: column; gap: .62em; align-items: center;
+  font-size: clamp(13px, min(max(15px, calc(var(--g-aw, 640px) / 44)), calc(var(--g-ah, 560px) / 24)), 26px);
+  width: min(100%, 36em);
+}
+/* Лежачи на телефоні стіл — ліворуч на всю висоту (каркас), а шрифт — від висоти картки. */
+body.g-land .gtable .durak { font-size: clamp(12px, calc(var(--gland-h, 330px) / 22), 16px); gap: .4em; }
 
 /* ---- суперники: нік, сорочки, роль у відбої ---- */
 .durak .dfoes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; width: 100%; }
 .durak .dfoes:empty { display: none; }
 .durak .dfoe {
-  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 84px; max-width: 150px;
-  padding: 5px 8px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 5.25em; max-width: 9.4em;
+  padding: .3em .5em; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line);
   transition: box-shadow .2s, opacity .2s;
 }
 .durak .dfoe.now { box-shadow: 0 0 0 2px var(--accent); }
 .durak .dfoe.isdef { border-color: var(--accent2); }
 .durak .dfoe.gone { opacity: .55; }
 .durak .dfoe.isfool { box-shadow: 0 0 0 2px var(--durak-red); opacity: 1; }
-.durak .dwho { display: flex; align-items: center; gap: 4px; max-width: 100%; font-size: .88em; font-weight: 600; }
+.durak .dwho { display: flex; align-items: center; gap: 4px; max-width: 100%; font-size: max(.88em, 12px); font-weight: 600; }
 .durak .dwho, .durak .dchip.me { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .durak u { text-decoration: none; font-size: .9em; }
 .durak .s0 u { color: var(--durak-s0); } .durak .s1 u { color: var(--durak-s1); } .durak .s2 u { color: var(--durak-s2); }
 .durak .s3 u { color: var(--durak-s3); } .durak .s4 u { color: var(--durak-s4); } .durak .s5 u { color: var(--durak-s5); }
 .durak .dcnt { display: flex; align-items: center; gap: 5px; }
-.durak .dcnt b { font-variant-numeric: tabular-nums; font-size: .85em; color: var(--muted); }
-.durak .dbacks { display: inline-flex; height: 18px; }
+.durak .dcnt b { font-variant-numeric: tabular-nums; font-size: max(.85em, 12px); color: var(--muted); }
+.durak .dbacks { display: inline-flex; height: 1.12em; }
 .durak .dbacks i {
-  width: 11px; height: 17px; margin-left: -6px; border-radius: 2px; background: var(--durak-back);
+  width: .7em; height: 1.06em; margin-left: -.38em; border-radius: 2px; background: var(--durak-back);
   border: 1px solid rgba(255, 255, 255, .45); box-shadow: 1px 0 2px rgba(0, 0, 0, .35);
 }
 .durak .dbacks i:first-child { margin-left: 0; }
 .durak .drole { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; min-height: 1.1em; }
-.durak .drole em { font-style: normal; font-size: .76em; color: var(--muted); white-space: nowrap; }
+.durak .drole em { font-style: normal; font-size: max(.76em, 11px); color: var(--muted); white-space: nowrap; }
 .durak .drole .def { color: var(--accent); }
 .durak .drole .atk { color: var(--text); }
 .durak .drole .safe { color: var(--ok); }
@@ -53,7 +61,7 @@
 .durak .dtop { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
 .durak .dtop:empty { display: none; }
 .durak .dchip {
-  display: inline-flex; align-items: center; gap: 5px; font-size: .88em; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 5px; font-size: max(.88em, 12px); color: var(--muted);
   background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
 }
 .durak .dchip b { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -66,23 +74,23 @@
 /* ---- сама карта ---- */
 .durak .dcard {
   display: inline-flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
-  min-width: 30px; padding: 6px 4px; border-radius: 6px; background: var(--durak-face); color: var(--durak-ink);
+  min-width: 1.9em; padding: .38em .25em; border-radius: .38em; background: var(--durak-face); color: var(--durak-ink);
   border: 1px solid rgba(0, 0, 0, .25); font-weight: 700;
 }
 .durak .dcard i { font-style: normal; font-size: 1.05em; }
 .durak .dcard.red { color: var(--durak-red); }
-.durak .dcard.sm { min-width: 24px; padding: 3px 4px; font-size: .85em; }
+.durak .dcard.sm { min-width: 1.75em; padding: .2em .3em; font-size: max(.85em, 11px); }
 
 /* ---- стіл: атака, а поверх неї зі зсувом — захист ---- */
 .durak .dtable {
   display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: flex-start;
-  min-height: 78px; width: 100%; padding: 8px; background: var(--bg2);
+  min-height: 4.9em; width: 100%; padding: .5em; background: var(--bg2);
   border: 1px solid var(--line); border-radius: 12px; box-sizing: border-box;
 }
 .durak .dempty { color: var(--muted); font-size: .9em; align-self: center; text-align: center; }
-.durak .dpair { position: relative; width: 46px; height: 66px; border-radius: 8px; }
-.durak .dpair .atk { position: absolute; left: 0; top: 0; width: 34px; box-sizing: border-box; }
-.durak .dpair .def { position: absolute; left: 12px; top: 22px; width: 34px; box-sizing: border-box; box-shadow: -2px -2px 6px rgba(0, 0, 0, .35); }
+.durak .dpair { position: relative; width: 2.9em; height: 4.1em; border-radius: .5em; }
+.durak .dpair .atk { position: absolute; left: 0; top: 0; width: 2.12em; box-sizing: border-box; }
+.durak .dpair .def { position: absolute; left: .75em; top: 1.38em; width: 2.12em; box-sizing: border-box; box-shadow: -2px -2px 6px rgba(0, 0, 0, .35); }
 .durak .dpair.hot { cursor: pointer; background: var(--durak-hot); box-shadow: 0 0 0 2px var(--accent2); }
 .durak .dpair.pick { background: var(--durak-hot); box-shadow: 0 0 0 3px var(--accent); }
 .durak .dpair.beaten { opacity: .85; }
@@ -100,7 +108,7 @@
 .durak .dplace { background: var(--panel2); border-radius: 999px; padding: 3px 10px; font-size: .9em; }
 
 /* ---- підказка «що робити зараз» ---- */
-.durak .dsay { color: var(--muted); font-size: .88em; text-align: center; min-height: 1.2em; }
+.durak .dsay { color: var(--muted); font-size: max(.88em, 12px); text-align: center; min-height: 1.2em; }
 .durak .dsay:empty { display: none; }
 
 /* ---- рука: віяло каркаса (.ghand/.gcard), карти лише перефарбовуємо ---- */
@@ -108,7 +116,7 @@
 .durak .ghand .gcard {
   background: var(--durak-face); color: var(--durak-ink); border-color: rgba(0, 0, 0, .25);
   display: inline-flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1;
-  min-width: 42px; padding: 9px 6px; font-weight: 700;
+  min-width: 2.6em; padding: .56em .38em; font-weight: 700; font-size: 1em; border-radius: .5em;
 }
 .durak .ghand .gcard.red { color: var(--durak-red); }
 .durak .ghand .gcard i { font-style: normal; font-size: 1.15em; }
@@ -119,22 +127,13 @@
 
 .durak .dbtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .durak .dbtns:empty { display: none; }
-.durak .dbtns button { min-width: 96px; }
-
-/* Великий екран: карти більші, їх видно з дивана. */
-@media (min-width: 1600px) {
-  .durak .ghand .gcard { min-width: 50px; padding: 12px 8px; font-size: 1.1em; }
-  .durak .dpair { width: 54px; height: 80px; }
-  .durak .dpair .def { left: 14px; top: 26px; }
-  .durak .dpair .atk, .durak .dpair .def { width: 40px; }
-  .durak .dcard { font-size: 1.08em; }
-}
+.durak .dbtns button { min-width: 6em; font-size: max(.8em, 14px); padding: .45em .9em; }
 
 /* На телефоні стіл вужчий за шість пар — хай переносяться, а карти лишаються під палець. */
 @media (max-width: 480px) {
   .durak .dtable { gap: 6px; padding: 6px; }
   .durak .ghand { gap: 4px; }
-  .durak .ghand .gcard { min-width: 38px; padding: 8px 5px; }
+  .durak .ghand .gcard { min-width: 2.4em; padding: .5em .3em; }
   .durak .dfoe { min-width: 0; flex: 1 1 28%; padding: 4px 5px; }
   .durak.many .dbacks { display: none; }
   .durak .dbtns button { flex: 1 1 40%; }
