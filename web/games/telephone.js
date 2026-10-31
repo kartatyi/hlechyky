@@ -826,6 +826,8 @@
     if (!wrap || !el || !el.isConnected) return;
     const top = Math.round(el.getBoundingClientRect().top + window.scrollY) + 'px';
     if (wrap.style.getPropertyValue('--tptop') !== top) wrap.style.setProperty('--tptop', top);
+    const off = Math.round(el.getBoundingClientRect().top - wrap.getBoundingClientRect().top) + 'px';   // Світлиця: решту дає каркас (--g-ah)
+    if (wrap.style.getPropertyValue('--tpoff') !== off) wrap.style.setProperty('--tpoff', off);
   }
 
   function render(root, ctx) {

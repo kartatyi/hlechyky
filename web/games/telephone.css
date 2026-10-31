@@ -17,13 +17,16 @@
   «Готово» ховалась під нижній край (прохід 28.09). --tptop — де на сторінці починається полотно (модуль міряє сам),
   під ним ~170 px: палітра, інструменти, «Готово» й рядок «ще працюють».
 */
-.tpwrap { --tpw: min(560px, max(300px, calc((100vh - var(--tptop, 300px) - 170px) * 4 / 3))); }
+.tpwrap { --tpw: min(var(--g-fmax, 900px), max(300px, calc((var(--tproom, 100vh - var(--tptop, 300px)) - 154px) * 4 / 3))); }
 @supports (height: 100dvh) {
-  .tpwrap { --tpw: min(560px, max(300px, calc((100dvh - var(--tptop, 300px) - 170px) * 4 / 3))); }
+  .tpwrap { --tpw: min(var(--g-fmax, 900px), max(300px, calc((var(--tproom, 100dvh - var(--tptop, 300px)) - 154px) * 4 / 3))); }
   /* пальцем палітра у два рядки по десять — під нею треба ще ~50 px */
-  @media (pointer: coarse) { .tpwrap { --tpw: min(560px, max(300px, calc((100dvh - var(--tptop, 300px) - 252px) * 4 / 3))); } }
+  @media (pointer: coarse) { .tpwrap { --tpw: min(var(--g-fmax, 900px), max(300px, calc((var(--tproom, 100dvh - var(--tptop, 300px)) - 252px) * 4 / 3))); } }
 }
-.tpbody > .tpcanvas, .tpbody > .tpshow.big, .tpbody > .tptools { max-width: var(--tpw); }
+/* Світлиця: висоту під гру дає каркас (--g-ah; ⛶ і ⇔ теж), --tpoff — де в .tpwrap починається полотно (модуль міряє
+   сам). Без каркаса (віконце в куточку) — як було: вікно мінус --tptop. Стеля 560 → 900: у ⛶ малювати є де. */
+.tpwrap { --tproom: calc(var(--g-ah, calc(100dvh - var(--tptop, 300px) + var(--tpoff, 0px))) - var(--tpoff, 0px)); }
+.tpbody > .tpcanvas, .tpbody > .tpshow.big, .tpbody > .tptools { max-width: var(--tpw); width: 100%; }
 /* на телефоні в екран однаково не влізе — там полотно на всю ширину: пальцем на більшому малювати легше */
 @container (max-width: 520px) { .tpbody > .tpcanvas, .tpbody > .tpshow.big, .tpbody > .tptools { max-width: 560px; } }
 
