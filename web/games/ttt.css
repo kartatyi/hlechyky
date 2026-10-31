@@ -2,7 +2,10 @@
   Хрестики-нолики (класика й зникаючі). Основа поля — у core.css (.board); тут те, що додав нічний
   прохід 24.09: мітка «вистрибує», остання підсвічена, виграшний ряд перекреслено, серія під полем.
 */
-.board.tttb { position: relative; }
+.board.tttb { position: relative; container-type: inline-size; }
+/* Світлиця: поле росте з місцем (до 560 px, у ⛶ — більше) — мітка росте з клітинкою (половина її ширини), а не
+   стоїть 34 px посеред клітинки на 170. */
+.board.tttb .cell { font-size: max(2.1em, calc(50cqi / var(--cols, 3))); }
 .board.tttb .cell.last { box-shadow: inset 0 0 0 2px var(--line); }
 .board.tttb .cell.pop { animation: tttpop .38s cubic-bezier(.3, 1.6, .5, 1) both; }
 @keyframes tttpop {
