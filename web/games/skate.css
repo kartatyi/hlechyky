@@ -27,7 +27,8 @@
 .skate-stage {
   position: relative;
   width: 100%;
-  max-width: min(960px, calc((100vh - 300px) * 1.5));
+  /* Світлиця: точну ширину ставить модуль від місця картки (--g-ah мінус HUD); тут — запас до першого заміру */
+  max-width: min(var(--g-fmax, 1920px), calc(var(--g-fh, calc(100vh - 300px)) * 1.5));
 }
 .skate-board {
   width: 100%;
@@ -40,9 +41,13 @@
 }
 .skate-board.skate-port { touch-action: none; }
 
+/* телефон стоячи — в'юпорт 4:3 (PW×PH) на всю ширину картки (--g-fminw від каркаса: дрібніше не стискаємо — модуль
+   сам докручує сторінку так, щоб мапа й кнопки стали в екран) */
+.skate-stage.skate-portmode { max-width: min(100%, max(var(--g-fminw, 0px), calc(var(--g-fh, 360px) * 4 / 3))); margin: 0 auto; }
+
 /* ---- фішки над мапою ---- */
 .skate-hud, .skate-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
-.skate-chips { display: contents; }
+.skate-chips { display: contents; font-size: 1em; }   /* display: contents, але шрифт дітям передає — без другого ×.82 */
 .skate-hud .skate-seats { display: contents; }
 .skate-body > .skate-seats { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; font-size: .76em; }
 .skate-chip, .skate-seat {
@@ -54,7 +59,7 @@
 .skate-clock.hot { color: var(--danger); animation: skate-pulse 1s ease-in-out infinite; }
 @keyframes skate-pulse { 50% { opacity: .55; } }
 .skate-list i { font-style: normal; }
-.skate-list small { color: var(--muted); font-size: .86em; margin-right: 1px; }
+.skate-list small { color: var(--muted); font-size: max(.86em, 11px); margin-right: 1px; }
 .skate-list i.done { opacity: .45; }
 .skate-seat i { width: .7em; height: .7em; border-radius: 50%; background: currentColor; display: inline-block; }
 .skate-seat b { color: var(--text); }
@@ -151,7 +156,7 @@
 /* ---- телефон (live2) ---- */
 @media (pointer: coarse) {
   /* звук — під палець; кнопки дій не зумлять подвійним тапом і не кличуть лупу/меню */
-  .skate-mute { min-width: 40px; min-height: 36px; }
+  .skate-mute { min-width: 44px; min-height: 40px; }
   .skate-acts button, .skate-mute { touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   .skate-pad { -webkit-touch-callout: none; }
   /* лежачи (клас ставить модуль): skate-stick ліворуч, мапа посередині за висотою, рядок гравців і кнопки праворуч */

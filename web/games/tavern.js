@@ -1795,11 +1795,19 @@
     const el = st.stageEl;
     if (!el || !el.isConnected) return;
     if (mode === 'port') { if (el.style.maxWidth) el.style.maxWidth = ''; return; }
-    const r = el.getBoundingClientRect();
-    const card = el.closest('.gtable');
-    const below = Math.max(48, card ? card.getBoundingClientRect().bottom - r.bottom : 92) + 22;
-    const h = window.innerHeight - (r.top + (window.scrollY || 0)) - below - st.padH;
-    const w = clamp(Math.floor(h * 1.5), 480, 960);
+    // Світлиця: каркас уже порахував місце під тіло картки (--g-ah: вікно мінус шапки, місця, статус, кнопки; у ⇔ і ⛶ —
+    // своє) — мапі лишаємо його мінус решту тіла (HUD, підсумок, рядок місць). Не g-field: лежачи в модуля своя
+    // розкладка (g-land), каркасна «поле ліворуч» її б перебила. Нема замірів (картка ще не була на столі) — від вікна.
+    const box = HGames.ui.box ? HGames.ui.box(el.parentElement) : null;
+    let h;
+    if (box && box.ah > 0) h = box.ah - Math.max(0, el.parentElement.offsetHeight - el.offsetHeight) - st.padH - 4;
+    else {
+      const r = el.getBoundingClientRect();
+      const card = el.closest('.gtable');
+      const below = Math.max(48, card ? card.getBoundingClientRect().bottom - r.bottom : 92) + 22;
+      h = window.innerHeight - (r.top + (window.scrollY || 0)) - below - st.padH;
+    }
+    const w = clamp(Math.floor(h * 1.5), 480, 1920);
     const cur = parseFloat(el.style.maxWidth) || 0;
     if (Math.abs(cur - w) >= 3) el.style.maxWidth = w + 'px';
   }

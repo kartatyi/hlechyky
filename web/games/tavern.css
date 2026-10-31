@@ -29,7 +29,8 @@
 .tavern-stage {
   position: relative;
   width: 100%;
-  max-width: min(960px, calc((100vh - 300px) * 1.5));
+  /* Світлиця: точну ширину ставить модуль від місця картки (--g-ah мінус HUD); тут — запас до першого заміру */
+  max-width: min(var(--g-fmax, 1920px), calc(var(--g-fh, calc(100vh - 300px)) * 1.5));
 }
 .tavern-board {
   width: 100%;
@@ -43,7 +44,7 @@
 
 /* ---- фішки над мапою ---- */
 .tavern-hud, .tavern-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; align-items: center; font-size: .82em; }
-.tavern-chips { display: contents; }
+.tavern-chips { display: contents; font-size: 1em; }   /* display: contents, але шрифт дітям передає — без другого ×.82 */
 .tavern-seats { display: contents; }
 .tavern-body > .tavern-seats { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; font-size: .8em; }
 .tavern-chip, .tavern-seat {
@@ -72,6 +73,10 @@
 .tavern-mute {
   padding: 2px 8px; border-radius: 999px; background: var(--bg2); border: 0; cursor: pointer; font-size: 1em; line-height: 1.4;
 }
+@media (pointer: coarse) { .tavern-mute { min-width: 44px; min-height: 40px; } }
+/* телефон стоячи — в'юпорт 4:3 (PW×PH) на всю ширину картки (--g-fminw від каркаса: дрібніше не стискаємо — модуль
+   сам докручує сторінку так, щоб мапа й кнопки стали в екран) */
+.tavern-stage.tavern-portmode { max-width: min(100%, max(var(--g-fminw, 0px), calc(var(--g-fh, 360px) * 4 / 3))); margin: 0 auto; }
 
 /* кольори місць: чіпи, ніки в новинах і підсумку */
 .tavern-s0 { color: var(--accent); }
