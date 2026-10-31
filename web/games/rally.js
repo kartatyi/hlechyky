@@ -2565,7 +2565,7 @@
     const hud = document.createElement('div');
     hud.className = 'rl-hud';
     const wrap = document.createElement('div');
-    wrap.className = 'rl-wrap';
+    wrap.className = 'rl-wrap g-field';
     const cv = document.createElement('canvas');
     cv.className = 'gcanvas rl-cv';
     wrap.appendChild(cv);
@@ -2706,6 +2706,16 @@
     }
     st.onResize = () => { st.fitDirty = true; st.fitGrow = true; wake(st, true); };
     window.addEventListener('resize', st.onResize);
+    // каркас переміряв місце картки (⇔, ⛶, рядок місць переніс) — підігнати трасу (у гонці — лише меншати, див. fitHeight)
+    if (HGames.ui.onFit) {
+      let last = '';
+      HGames.ui.onFit(root, (f) => {
+        const k = (f.fh | 0) + ':' + (f.aw | 0) + ':' + !!f.fs + ':' + !!f.wide;
+        if (k === last) return;
+        const mode = last.split(':').slice(2).join(':') !== k.split(':').slice(2).join(':');
+        last = k; st.fitDirty = true; if (mode) st.fitGrow = true; wake(st, true);
+      });
+    }
   }
 
   const phoneLandscape = () => !!(window.matchMedia && window.matchMedia('(pointer: coarse) and (orientation: landscape) and (max-height: 500px)').matches);
@@ -2724,11 +2734,16 @@
     let px = 0;
     if (table && !coarse() && window.innerHeight > 500) {
       const r = wrap.getBoundingClientRect(), tb = table.getBoundingClientRect();
-      const above = r.top + window.scrollY, below = tb.bottom - r.bottom + FIT_PAD;
       const room = (st.root && st.root.clientWidth) || r.width;
       // у лобі канвас — лише показ траси: хай менший, аби «Почати» лишалась на екрані Деки й з шістьма
       const floor = st.view && st.view.ph === 0 ? 320 : 480;
-      px = Math.max(Math.min(floor, room), Math.floor((window.innerHeight - above - below) * 16 / 9));
+      // Світлиця: каркас уже порахував місце під поле (--g-fh: вікно мінус шапки, місця, HUD, статус, кнопки; у ⇔ і ⛶
+      // — своє) — беремо його; нема (картка ще не була на столі) — міряємо, як раніше.
+      const box = HGames.ui.box ? HGames.ui.box(st.root) : null;
+      const fh = box && box.fh > 0 ? box.fh : 0;
+      const above = r.top + window.scrollY, below = tb.bottom - r.bottom + FIT_PAD;
+      const h = fh || (window.innerHeight - above - below);
+      px = Math.max(Math.min(floor, room), Math.floor(h * 16 / 9));
     }
     const ph = st.f ? st.f.ph : 0;
     const racing = ph === 1 || ph === 2;
@@ -2740,7 +2755,7 @@
     if (px && st.fitPx && racing && same && px > st.fitPx && !grow) return;
     if (!!px === !!st.fitPx && Math.abs(px - (st.fitPx || 0)) < 6) return;
     st.fitPx = px;
-    wrap.style.maxWidth = px ? 'min(1280px, ' + px + 'px)' : '';
+    wrap.style.maxWidth = px ? 'min(var(--g-fmax, 1920px), ' + px + 'px)' : '';
   }
 
   /// Прокрутити сторінку так, щоб канвас став посередині видимого: під липкою шапкою сайту, над вкладками й
@@ -3273,6 +3288,7 @@
       if (table) table.classList.remove('rl-champtrk');
       const st = root._rally;
       if (!st) return;
+      if (HGames.ui.onFit) HGames.ui.onFit(root, null);
       cancelAnimationFrame(st.raf);
       st.raf = 0;
       clearTimeout(st.idleT);

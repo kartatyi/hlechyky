@@ -16,13 +16,14 @@
 
 .rl-body { width: 100%; }
 
-/* ---- канвас 16:9: уся траса в екрані без прокрутки (250 px — шапки сайту й картки, статус, HUD) ---- */
+/* ---- канвас 16:9: уся траса в екрані без прокрутки. .rl-wrap — g-field: --g-fh від каркаса = місце картки мінус HUD,
+   вибір машини, рекорди (у лобі) — тож і в ⇔, і в ⛶, і на 2K траса росте, а «Почати» лишається на екрані.
+   Фолбек (картка ще не була на столі, напр. одразу в куточку) — як було, від висоти вікна. ---- */
 .rl-wrap {
   position: relative; width: 100%; margin: 0 auto;
-  max-width: min(1280px, calc((100vh - 250px) * 16 / 9));
+  max-width: min(var(--g-fmax, 1920px), calc(var(--g-fh, calc(100vh - 250px)) * 16 / 9));
 }
-/* у лобі під канвасом ще вибір машини й рекорди (~150 px), а «Почати» має лишитись на екрані */
-.rl-body.rl-lobby .rl-wrap { max-width: min(1280px, calc((100vh - 430px) * 16 / 9)); min-width: min(100%, 320px); }
+.rl-body.rl-lobby .rl-wrap { max-width: min(var(--g-fmax, 1920px), calc(var(--g-fh, calc(100vh - 430px)) * 16 / 9)); min-width: min(100%, 320px); }
 .rl-wrap.rl-live { touch-action: none; user-select: none; -webkit-user-select: none; }
 .rl-cv.gcanvas { width: 100%; max-width: none; aspect-ratio: 16 / 9; height: auto; display: block; border-radius: 10px; background: var(--rl-grass); }
 
@@ -34,7 +35,7 @@
 }
 .rl-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
 .rl-chip i {
-  font-style: normal; font-size: .82em; font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
+  font-style: normal; font-size: max(.82em, 11px); font-weight: 700; min-width: 1.35em; height: 1.35em; border-radius: 50%;
   display: inline-grid; place-items: center; border: 1.5px solid currentColor; line-height: 1;
 }
 .rl-chip.s0 { color: var(--accent); }
@@ -84,6 +85,9 @@
 .rl-turn, .rl-fullhint { display: none; }
 @media (pointer: coarse) and (orientation: portrait) {
   .rl-turn { display: block; font-size: .82em; color: var(--muted); text-align: center; }
+  /* стоячи в гонці чіпи місць — два-три зайві рядки над трасою (ніки над машинами, коло й місце — на канвасі й у
+     статусі), а сторінка тоді гортається; як і лежачи, ховаємо */
+  .rl-body.rl-racing .rl-hud .rl-chip { display: none; }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   /* у рамці канваса, згори посередині (на полях — див. .rl-side нижче) */
@@ -93,7 +97,7 @@
   }
   body.gfull .rl-fullhint { display: none; }
   /* між липкою шапкою сайту (~57 px) і тим, що прибито внизу (вкладки, міні-плеєр; у ⛶ плеєра нема) */
-  .rl-wrap { max-width: calc((100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px)) * 16 / 9); }
+  .rl-wrap { max-width: calc(var(--g-fh, calc(100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px))) * 16 / 9); }
   /* у гонці чіпи місць — зайвий рядок (ніки й так над машинами, коло й місце — на канвасі й у статусі) */
   .rl-body.rl-racing .rl-hud .rl-chip { display: none; }
 }
@@ -162,7 +166,7 @@ body:has(.rl-body.rl-side) .tchat.drawer:not(.open) .tc-last { display: none; }
 
 /* ---- телефон у ландшафті: канвас на всю висоту, HUD компактний, рекорди сховані ---- */
 @media (max-height: 500px) {
-  .rl-wrap { max-width: calc((100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px)) * 16 / 9); }
+  .rl-wrap { max-width: calc(var(--g-fh, calc(100vh - 72px - var(--tabs-h, 0px) - var(--mini-h, 0px))) * 16 / 9); }
   .rl-hud { font-size: .72em; gap: 4px; min-height: 0; }
   .rl-chip { padding: 1px 7px; }
   .rl-records { display: none; }
@@ -238,7 +242,7 @@ body:has(.rl-body.rl-side) .tchat.drawer:not(.open) .tc-last { display: none; }
 }
 /* Лежачи: траса — за видимою смугою від каркаса (--gfit-h; у ⛶/g-imm шапки й меню нема, і стеля росте сама). */
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
-  .rl-wrap { max-width: calc((var(--gfit-h, calc(100vh - 56px - var(--tabs-h, 0px) - var(--mini-h, 0px))) - 16px) * 16 / 9); }
+  .rl-wrap { max-width: calc(var(--g-fh, calc(var(--gfit-h, calc(100vh - 56px - var(--tabs-h, 0px) - var(--mini-h, 0px))) - 16px)) * 16 / 9); }
 }
 /* Лежачи (body.g-land, аркада): траса ліворуч на всю висоту картки (--gland-h від каркаса), праворуч колонкою —
    статус, 🔇, «⛽ автогаз» і «Встати». Раніше рядок HUD стояв над трасою, «Встати» — під нею, сторінка була 600 px
