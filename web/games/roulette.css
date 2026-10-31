@@ -52,11 +52,15 @@
   grid-template-areas: "glek wheel say" "big big big" "hist hist hist";
   justify-content: center;
 }
+/* Телефон стоячи: сцена в один низький рядок — колесо, Глек, а праворуч хмарка й історія чисел. Так поле ставок
+   (рядки — --rl-rh, рахує fitZoom у roulette.js) влазить у висоту екрана, а не гортається на 300–400 px нижче. */
 .L-vert .rl-stage {
-  grid-template-columns: 72px 180px minmax(0, 1fr);
-  grid-template-areas: "glek wheel say" "big big big" "hist hist hist";
-  gap: 6px;
+  grid-template-columns: var(--rl-vw, 124px) 48px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "wheel glek say" "wheel glek hist" "big big big";
+  gap: 4px 6px;
 }
+.L-vert .rl-wheelbox { align-self: center; }
 .rl-glek { grid-area: glek; position: relative; align-self: center; }
 .L-wide .rl-glek { align-self: start; z-index: 2; }
 .rl-say { grid-area: say; }
@@ -100,29 +104,13 @@
 }
 .rl-say.on { opacity: 1; transform: none; }
 .L-wide .rl-say { align-self: start; margin-top: 18px; }
-.L-vert .rl-say { font-size: .74em; padding: 5px 7px; border-radius: 10px; }
+.L-vert .rl-say { font-size: .78em; padding: 5px 7px; border-radius: 10px; align-self: end; }
 .rl-say:empty { display: none; }
-/* Вузький телефон (≤ 440: 320…412): поруч із колесом хмарці лишалось 50…115 px — висока вузька стрічка. Тут Глек і колесо
-   (72 + 6 + 180 = 258 px) по центру, а хмарка — окремим рядком під ними на всю ширину, хвостиком угору до Глека (його
-   середина — 93 px лівіше від середини сцени). Рядок тримає місце й порожнім, щоб поле не стрибало, коли Глек заговорить. */
-@media (max-width: 440px) {
-  .L-vert .rl-stage {
-    grid-template-columns: minmax(0, 1fr) 72px 180px minmax(0, 1fr);
-    grid-template-areas: ". glek wheel ." "say say say say" "big big big big" "hist hist hist hist";
-  }
-  .L-vert .rl-say, .L-vert .rl-say:empty {
-    display: block; justify-self: stretch; margin-top: 4px; min-height: calc(2 * 1.28em + 10px);
-    font-size: .8em; text-align: center;
-  }
-  .L-vert .rl-say:empty { visibility: hidden; }
-  .L-vert .rl-say::before { left: calc(50% - 99px); top: -6px; margin-top: 0; }
-}
-
 /* колесо й кулька */
 .rl-wheelbox { position: relative; aspect-ratio: 1 / 1; border-radius: 50%; justify-self: center; box-shadow: 0 12px 26px var(--rl-shadow), 0 0 0 2px rgba(0, 0, 0, .3); }
 .L-wide .rl-wheelbox { width: 320px; margin-top: -44px; }
 .L-mid .rl-wheelbox { width: 240px; }
-.L-vert .rl-wheelbox { width: 180px; }
+.L-vert .rl-wheelbox { width: var(--rl-vw, 124px); }
 .rl-wheel { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 50%; will-change: transform; }
 .rl-ballrot { position: absolute; inset: 0; pointer-events: none; will-change: transform; }
 .rl-ballrot.hide { visibility: hidden; }
@@ -164,10 +152,8 @@
 .rl-num.xl { width: 46px; height: 46px; font-size: 1.15em; box-shadow: 0 0 0 3px var(--rl-gold), 0 4px 10px var(--rl-shadow); }
 .rl-hist { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; min-width: 0; }
 .L-vert .rl-hist {
-  flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain;
-  padding: 3px 2px; scrollbar-width: none;
+  flex-wrap: nowrap; justify-content: flex-start; overflow: hidden; padding: 3px 2px; align-self: start;
 }
-.L-vert .rl-hist::-webkit-scrollbar { display: none; }
 
 .rl-closed { text-align: center; padding: 8px 12px; border-radius: 10px; color: var(--danger); background: var(--panel2); border: 1px solid var(--danger); font-weight: 600; }
 
@@ -179,7 +165,8 @@
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .rl-board.h { grid-template-columns: repeat(14, minmax(0, 1fr)); grid-template-rows: repeat(3, 46px) 36px 36px; }
-.rl-board.v { grid-template-columns: 34px repeat(3, minmax(0, 1fr)) 46px; grid-template-rows: repeat(14, 40px); }
+.rl-board.v { grid-template-columns: 34px repeat(3, minmax(0, 1fr)) 46px; grid-template-rows: repeat(13, var(--rl-rh, 40px)) max(32px, var(--rl-rh, 40px)); }   /* «2:1» — кнопки, не нижче 32 */
+.rl-board.v .rl-n span, .rl-board.v .rl-zero span { min-width: min(27px, calc(var(--rl-rh, 40px) - 3px)); height: min(27px, calc(var(--rl-rh, 40px) - 3px)); }
 
 .rl-n, .rl-zero { position: relative; display: grid; place-items: center; border: 1px solid var(--rl-line); min-width: 0; transition: background .12s; }
 .rl-n span, .rl-zero span {
@@ -292,9 +279,21 @@
 /* ---------------- панель фішок і кнопок ---------------- */
 .rl-panel { display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); }
 .L-vert .rl-panel.on {
-  position: sticky; bottom: var(--gdock-h, 0px); z-index: 5; padding: 7px 8px; gap: 6px;
+  position: sticky; bottom: var(--gdock-h, 0px); z-index: 5; padding: 6px 8px; gap: 5px;
   box-shadow: 0 -6px 18px var(--rl-shadow);
+  /* фішки й кнопки — двома рядками, «Крутити» — велика праворуч на обидва */
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  grid-template-areas: "tip tip tip tip tip" "row row row row go" "u c r d go" "info info info info info" "note note note note note";
 }
+.L-vert .rl-panel.on > .rl-tip { grid-area: tip; font-size: .78em; min-height: 0; }
+.L-vert .rl-panel.on > .rl-row { grid-area: row; justify-content: flex-start; }
+.L-vert .rl-panel.on > .rl-btns { display: contents; }
+.L-vert .rl-panel.on > .rl-info { grid-area: info; font-size: .8em; }
+.L-vert .rl-panel.on > .rlt-note { grid-area: note; }
+.L-vert .rl-btns [data-act="undo"] { grid-area: u; } .L-vert .rl-btns [data-act="clear"] { grid-area: c; }
+.L-vert .rl-btns [data-act="repeat"] { grid-area: r; } .L-vert .rl-btns [data-act="double"] { grid-area: d; }
+.L-vert .rl-btns .rl-go { grid-area: go; align-self: stretch; padding: 4px 10px; min-width: 74px; max-width: 96px; white-space: normal; line-height: 1.15; }
+.L-vert .rl-btns button:not(.rl-go) { min-height: 34px; padding: 4px 2px; justify-content: center; }
 .rl-tip { font-size: .84em; color: var(--muted); text-align: center; min-height: 1.25em; line-height: 1.25; }
 .rl-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .rl-clock { flex: none; }
@@ -303,13 +302,13 @@
 .rl-chiprow { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 /* Телефон: ряд фішок не переноситься, а стискається — на 320 px поруч із годинником фішки ~34 px замість 40, без вилазу. */
 .L-vert .rl-row { min-width: 0; }
-.L-vert .rl-chiprow { gap: 5px; flex-wrap: nowrap; flex: 0 1 auto; min-width: 0; }
+.L-vert .rl-chiprow { gap: 4px; flex-wrap: nowrap; flex: 0 1 auto; min-width: 0; }
 .rlt-chip {
   position: relative; width: 46px; height: 46px; padding: 0; flex: none; border-radius: 50%;
   background: transparent; border: 2px solid transparent; justify-content: center; align-items: center; transition: transform .12s, border-color .12s, opacity .12s;
 }
 /* Стискання флексом (width: auto) на 320 px схлопувало фішки до голих цифр — тож розмір явний: ~30 px на 320, 40 від ~412. */
-.L-vert .rlt-chip { flex: none; width: clamp(30px, calc((100vw - 120px) / 6.6), 40px); height: clamp(30px, calc((100vw - 120px) / 6.6), 40px); align-self: center; }
+.L-vert .rlt-chip { flex: none; width: clamp(32px, calc((100vw - 172px) / 6.6), 40px); height: clamp(32px, calc((100vw - 172px) / 6.6), 40px); align-self: center; }
 .rlt-chip:hover { background: transparent; }
 .rlt-chip .rl-sh { inset: 3px; --pc: rgba(0, 0, 0, .5); }
 .rlt-chip b {
@@ -321,7 +320,6 @@
 .rlt-chip:disabled.sel { transform: none; }
 .rl-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .rl-btns button { padding: 6px 11px; }
-.L-vert .rl-btns button { padding: 6px 9px; }
 .L-vert .rl-btns .lg { display: none; }
 .rl-btns button:disabled { opacity: .45; cursor: default; }
 .rl-btns .rl-go { font-size: 1.04em; padding: 8px 18px; }
@@ -330,6 +328,7 @@
 .rl-stay { display: block; font-size: .9em; opacity: .85; }
 .rl-snd { font-size: .86em; padding: 3px 9px; }
 @media (pointer: coarse) { .rl-snd { min-height: 36px; padding: 4px 12px; } }
+.L-vert .rl-info .rl-snd, .L-vert .rl-info .rl-wh { min-height: 32px; padding: 2px 9px; }
 .rl-tools { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 /* Колесо: соло — перемикач «🇪🇺 одне зеро / 🇺🇸 з 00», стіл — мітка американського колеса. */
 .rl-wh { font-size: .86em; padding: 3px 9px; min-height: 40px; }
@@ -415,3 +414,17 @@
   .rl-wheel, .rl-ballrot, .rl-drop { transition: none !important; animation: none !important; }
   .rlt-chip.sel { transform: none; }
 }
+
+/* Телефон лежачи (середня розкладка, 812×375): колесо з Глеком — колонкою ліворуч, поле й панель — праворуч.
+   Було стовпчиком: сцена 269 px, і поле ставок опинялось під краєм екрана. */
+body.g-land .gtable .rl.L-mid { grid-template-columns: 190px minmax(0, 1fr); gap: 8px; }
+body.g-land .gtable .rl.L-mid .rl-stage {
+  grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: "glek say" "wheel wheel" "big big" "hist hist"; gap: 4px 6px;
+}
+body.g-land .gtable .rl.L-mid .rl-wheelbox { width: 168px; }
+body.g-land .gtable .rl.L-mid .rl-say { font-size: .76em; padding: 4px 7px; }
+body.g-land .gtable .rl.L-mid .rl-main { gap: 6px; }
+body.g-land .gtable .rl.L-mid .rl-board.h { grid-template-rows: repeat(3, 38px) 32px 32px; }
+body.g-land .gtable .rl.L-mid .rl-panel { padding: 6px 8px; gap: 5px; }
+body.g-land .gtable .rl.L-mid .rl-tip { font-size: .78em; }
+body.g-land .gtable .rl.L-mid .rlt-chip { width: 38px; height: 38px; }
