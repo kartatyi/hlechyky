@@ -315,3 +315,13 @@ body.g-land .gtable .bs { --bs-sw: max(200px, calc(var(--g-fh, 300px) - 54px)); 
 /* У бою лежачи ціль — на всю висоту, своє поле трохи менше: удвох вони вміщаються ліворуч. */
 body.g-land .gtable .bs-seas.battle.n2 { grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); }
 body.g-land .gtable .bs-seas.battle .bs-side.mine { width: min(calc(var(--bs-sw) * .8), 100%); }
+
+/* Лежачи на телефоні (body.g-land): поля ліворуч на всю висоту картки, праворуч — місця, кораблі, час і кнопки на всю
+   решту ширини (а не вузькою колонкою 38vw — там палітра кораблів ставала в п'ять рядів і картка гортається). */
+body.g-land .gtable.g-board:has(> .gbody > .bs) { grid-template-columns: max-content minmax(0, 1fr); column-gap: 14px; }
+body.g-land .gtable.g-board:has(> .gbody > .bs) > :not(.gbody),
+body.g-land .gtable.g-board > .gbody > .bs-tools { max-width: none; width: 100%; }
+body.g-land .gtable.g-board > .gbody > .bs { --bs-sw: calc(var(--gland-h, 330px) - 30px); width: min(64vw, var(--bs-sw)); }
+body.g-land .gtable.g-board > .gbody > .bs:has(> .bs-seas.n2) { width: min(64vw, calc(var(--bs-sw) * 2 + 12px)); }
+body.g-land .gtable.g-board > .gbody > .bs:has(> .bs-seas:is(.n3, .n4)) { width: 64vw; }
+body.g-land .bs-side { gap: 2px; }
