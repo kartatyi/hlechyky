@@ -328,6 +328,98 @@
 .gstake.on, .gpick.on { background: var(--clay); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 .grow { display: flex; gap: 8px; }
 .grow .primary { flex: 1; justify-content: center; }
+/* ---- попап столу «Світлиці» (openCreate/openSettings → popShell): банер, тіло гортається само, низ липкий ---- */
+.modal .card.gpop {
+  width: min(94vw, 540px); max-height: min(92dvh, 860px); padding: 0; gap: 0; overflow: hidden;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .7);
+}
+.gpop-hd { position: relative; flex: none; }
+.gpop-hd .gb { aspect-ratio: 3 / 1; max-height: 24dvh; width: 100%; }
+.gpop-hd .gb-ico > svg, .gpop-hd .gb-ico > .gico, .gpop-hd .gb-ico > img { width: 15cqw; height: 15cqw; }
+/* банер тане в панель — назва під ним читається як продовження картинки */
+.gpop-hd .gb.gb::after {
+  display: block; content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 38%; opacity: 1;
+  background: linear-gradient(180deg, transparent, var(--panel));
+}
+.gpop-x {
+  position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; padding: 0; justify-content: center; border-radius: 50%;
+  background: rgba(15, 31, 24, .62); border-color: transparent; color: var(--text); font-size: 15px; backdrop-filter: blur(4px);
+}
+.gpop-x:hover { background: rgba(15, 31, 24, .85); }
+.gpop-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 14px; padding: 4px 20px 16px;
+}
+.gpop-tt { display: flex; flex-direction: column; gap: 6px; }
+.gpop-tt h3 { font-family: var(--display, inherit); font-size: 22px; line-height: 1.15; margin: 0; }
+.gpop-facts { display: flex; gap: 6px; flex-wrap: wrap; }
+.gpop-facts span {
+  font-size: 12.5px; padding: 2px 9px; border-radius: 999px; color: var(--muted); background: var(--bg2); border: 1px solid var(--line);
+}
+.gpop-hint { color: var(--muted); line-height: 1.45; font-size: 14px; }
+.gvar { display: flex; flex-direction: column; gap: 14px; }
+.gpop-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 12px; }
+.gpop-opts > div.gopt { grid-column: 1 / -1; }   /* multi-чипи — на всю ширину */
+.gpop-ft {
+  flex: none; display: flex; gap: 8px; align-items: center; padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--panel);
+}
+.gpop-ft .primary { flex: 1; justify-content: center; padding-top: 10px; padding-bottom: 10px; }
+.gpop-ft .gpop-def { margin-right: auto; }
+.gpop-ft .gpop-def:disabled { opacity: .35; cursor: default; background: transparent; }
+
+/* режими родини — картки з іконкою, підписом і скільки людей */
+.gmodes.gmc { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.gmode {
+  display: flex; align-items: center; gap: 9px; padding: 9px 11px; text-align: left; white-space: normal; min-width: 0;
+  border-radius: 12px; background: var(--bg2); border: 1px solid var(--line);
+}
+.gmode.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--bg2)); box-shadow: inset 0 0 0 1px var(--accent); }
+.gmode .gmode-i, .gmode .gmode-i.gico { width: 30px; height: 30px; flex: none; }
+.gmode-i > img, .gmode-i > svg { width: 100%; height: 100%; }
+.gmode-t { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gmode-t b { font-weight: 600; line-height: 1.2; }
+.gmode-t small { color: var(--muted); font-size: 12px; }
+.gmode.on .gmode-t small { color: var(--text); opacity: .8; }
+
+/* «🪑 Оля чекає» — сісти до тих, хто вже за столом */
+.gpop-wait { display: flex; flex-direction: column; gap: 6px; }
+.gpop-wait[hidden] { display: none; }
+.gwait {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--ok) 11%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
+}
+.gwait-e { font-size: 20px; line-height: 1; flex: none; }
+.gwait-t { flex: 1; min-width: 0; line-height: 1.3; }
+.gwait-t small { display: block; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gwait .primary { flex: none; }
+
+/* «🤖 Одразу з ботом» */
+.gbotq {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  background: var(--bg2); border: 1px solid var(--line); transition: border-color .15s, background .15s;
+}
+.gbotq.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); }
+.gbotq input { accent-color: var(--accent); width: 18px; height: 18px; margin: 1px 0 0; flex: none; }
+.gbotq b { font-weight: 600; }
+.gbotq small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.gpop-stakes[hidden] { display: none; }
+
+/* телефон: на весь екран, гортається лише середина */
+@media (max-width: 560px) {
+  .modal.gpopw { padding: 0; }
+  .modal .card.gpop { width: 100vw; height: 100dvh; max-height: none; border-radius: 0; border: 0; }
+  .gpop-body { padding: 2px 16px 14px; }
+  .gpop-ft { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .gpop-tt h3 { font-size: 20px; }
+  .gmodes.gmc { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-height: 520px) { .gpop-hd .gb { max-height: 28dvh; } }
+
+/* «⏳ Оля без зв’язку — чекаємо ще 1:40» у шапці столу (seats[i].away; відлік — awayTick) */
+.gaway { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; color: var(--accent); font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent); }
+.gseat.away { opacity: .55; }
 
 /* ---- попап «ти вже за столом» ---- */
 .gask .card { max-width: 380px; }

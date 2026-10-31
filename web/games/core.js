@@ -2038,6 +2038,8 @@
     const turn = r.status === 'playing' && r.maxPlayers > 1 && rv.seat != null && turnOf(rv) === rv.seat;
     const st = (c && c.statusEl.textContent) || (r.status === 'lobby' ? 'Чекаємо на гравців' : r.status === 'playing' ? 'Іде гра' : '');
     let stText = turn ? '🎲 ' + (/хід/i.test(st) ? st : 'Твій хід' + (st ? ' · ' + st : '')) : st;
+    const aw = awayList(r);
+    if (aw.length) { stText = awayLine(aw[0].nick, aw[0].t, true) + ' · ' + stText; awayWatch(); }
     // дуга-таймер гри (ui.timerArc) — секунди в шапку: у зменшеному віконці цифру на дузі не розгледіти
     const arc = c && !done && c.el.querySelector('.garc b');
     const secs = arc && arc.offsetParent !== null ? parseInt(arc.textContent, 10) : 0;
@@ -3648,92 +3650,279 @@
     if (any) any.classList.toggle('on', !chips.some((x) => x !== any && x.classList.contains('on')));
   }
 
-  /// Попап «поставити стіл». fam — родина (кілька режимів однієї гри): тоді згори чипи режимів, і опції,
+  // ---- «Світлиця», пакет C: пам'ять попапа, «вже чекають», «одразу з ботом», шапка з банером ----
+
+  /// Що людина ставила минулого разу (localStorage['gamesOpts:'+id] = { o: {key: value}, stake, bot }) — щоб не
+  /// клацати ті самі 5+3 щоразу. Пише «Поставити стіл» і «⚙ Налаштування»; «↺ Типові» стирає.
+  const OPTS_KEY = (id) => 'gamesOpts:' + id;
+  function loadOpts(id) {
+    try { const s = JSON.parse(localStorage.getItem(OPTS_KEY(id)) || 'null'); return s && typeof s === 'object' ? s : null; }
+    catch (e) { return null; }
+  }
+  function saveOpts(id, v) { try { localStorage.setItem(OPTS_KEY(id), JSON.stringify(v)); } catch (e) { /* приватне вікно — не біда */ } }
+  function dropOpts(id) { try { localStorage.removeItem(OPTS_KEY(id)); } catch (e) { /* те саме */ } }
+  /// Режим родини, який обирали востаннє: він важить більше за «що частіше грають усі» (defaultMode).
+  const MODE_KEY = (fid) => 'gamesMode:' + fid;
+  function loadMode(fid) { try { return localStorage.getItem(MODE_KEY(fid)) || ''; } catch (e) { return ''; } }
+  function saveMode(fid, id) { try { localStorage.setItem(MODE_KEY(fid), id); } catch (e) { /* не біда */ } }
+
+  /// Збережене значення опції, якщо воно ще є серед її значень; інакше null — і стане типове. multi — лишаємо ті
+  /// частини, що ще є (гра могла прибрати один із варіантів); не лишилось жодної — типове.
+  function validOpt(o, v) {
+    if (v == null) return null;
+    const vals = optPairs(o).map((p) => String(p[0]));
+    if (o.multi) { const on = String(v).split(',').filter((x) => vals.includes(x)); return on.length ? on.join(',') : null; }
+    return vals.includes(String(v)) ? String(v) : null;
+  }
+  const optDefaults = (g) => { const d = {}; for (const o of g.options || []) d[o.key] = String(o.default || ''); return d; };
+
+  /// Як гра бере бота: 'seat' — опція bots (Глек сідає на порожні місця, скільки скажеш: дурень, хутори, морський бій);
+  /// 'live' — «🤖 + бот» живих ігор (LiveBots: опція botlvl і дія 'bot' у лобі); '' — без бота. Соло тут ні до чого.
+  function botKind(g) {
+    if (!g || g.maxPlayers < 2) return '';
+    const os = g.options || [];
+    return os.some((o) => o.key === 'bots') ? 'seat' : os.some((o) => o.key === 'botlvl') ? 'live' : '';
+  }
+
+  const plOf = (x) => (x.maxPlayers === 1 ? 'сам' : x.minPlayers === x.maxPlayers ? x.maxPlayers + ' 👤' : x.minPlayers + '–' + x.maxPlayers + ' 👤');
+  const EMO_HEAD = /^[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}][️‍\p{Extended_Pictographic}]*\s*/u;
+
+  /// Оболонка попапа столу: шапка-банер гри (арт «Світлиці», а нема — градієнт розділу з іконкою), тіло, що гортається
+  /// само, і липкий низ із кнопками. На телефоні — на весь екран. Вертає { wrap, card, body, foot, close, head(g) }.
+  function popShell(g, key, label) {
+    loadArt();
+    const wrap = document.createElement('div');
+    wrap.className = 'modal gmodal gpopw';
+    wrap.innerHTML = '<div class="card gpop" role="dialog" aria-modal="true" aria-label="' + esc(label) + '">'
+      + '<div class="gpop-hd"></div><div class="gpop-body"></div><div class="gpop-ft"></div></div>';
+    const card = wrap.firstChild;
+    const hd = card.querySelector('.gpop-hd');
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+    const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey, true); if (createPop && createPop.wrap === wrap) createPop = null; };
+    const head = (x) => {
+      const at = placeOf(key, x.id, x.group);
+      const b = art && (art.b[x.id] || art.b[key]);
+      hd.className = 'gpop-hd cat-' + at.group;
+      hd.innerHTML = '<span class="gb' + (b ? ' has-art' : '') + '" aria-hidden="true"><span class="gb-ico">' + artIcon(x.id) + '</span>'
+        + (b ? '<img class="gb-img" src="/games/art/b/' + encodeURIComponent(b) + '.svg" alt="" decoding="async" draggable="false">' : '') + '</span>'
+        + '<button type="button" class="gpop-x" data-close title="Закрити (Esc)" aria-label="Закрити">✕</button>';
+      hd.querySelector('[data-close]').onclick = close;
+    };
+    head(g);
+    document.body.appendChild(wrap);
+    document.addEventListener('keydown', onKey, true);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    return { wrap, card, body: card.querySelector('.gpop-body'), foot: card.querySelector('.gpop-ft'), close, head };
+  }
+
+  /// Назва й коротко про гру під банером: скільки людей, рейтинг, бот.
+  function popTitle(title, g) {
+    const facts = [plOf(g) === 'сам' ? '🧍 сам на сам' : '👥 ' + plOf(g).replace(' 👤', '')];
+    if (g.rated && g.maxPlayers > 1) facts.push('🏆 на рейтинг');
+    if (botKind(g)) facts.push('🤖 можна з ботом');
+    return '<div class="gpop-tt"><h3>' + esc(title) + '</h3><div class="gpop-facts">'
+      + facts.map((f) => '<span>' + esc(f) + '</span>').join('') + '</div></div>';
+  }
+
+  /// Столи, де вже хтось чекає на цю гру (чи режим родини): у лобі, з вільним місцем. Свій — першим.
+  function waitingAt(ids) {
+    return rooms.filter((r) => ids.includes(r.game) && r.status === 'lobby' && r.maxPlayers > 1 && takenSeats(r) > 0 && freeSeat(r) >= 0)
+      .sort((a, b) => (seatOfMe(b) != null) - (seatOfMe(a) != null) || takenSeats(b) - takenSeats(a));
+  }
+
+  let createPop = null;   // відкритий попап «+ Стіл» — щоб 'rooms' оновили в ньому «вже чекають»
+
+  /// Попап «поставити стіл». fam — родина (кілька режимів однієї гри): тоді згори картки режимів, і опції,
   /// підказка та ставки під ними міняються разом із режимом. Сервер про родини не знає — ставимо стіл вибраної гри.
   function openCreate(g, fam) {
     if (!g) return;
-    const wrap = document.createElement('div');
-    wrap.className = 'modal gmodal';
+    if (createPop) createPop.close();
     const modes = fam && fam.list && fam.list.length > 1 ? fam.list : null;
-    const pl = (x) => (x.minPlayers === x.maxPlayers ? x.maxPlayers : x.minPlayers + '–' + x.maxPlayers) + ' 👤';
-    wrap.innerHTML = '<div class="card">'
-      + '<h3>' + iconOf(g.id) + esc(modes ? fam.title : g.title) + '</h3>'
-      + (modes ? '<div class="gopt"><span class="muted small">Режим</span><div class="gmodes">' + modes.map((x) =>
-        '<button type="button" class="gpick' + (x.g.id === g.id ? ' on' : '') + '" data-mode="' + esc(x.g.id) + '">'
-        + esc(x.label) + ' <span class="muted small">' + pl(x.g) + '</span></button>').join('') + '</div></div>' : '')
-      + '<div class="gvar"></div>'
-      + '<div class="grow"><button class="primary" data-go>Поставити стіл</button><button class="ghost" data-close>Скасувати</button></div>'
-      + '</div>';
-    document.body.appendChild(wrap);
-    const close = () => wrap.remove();
-    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
-    wrap.querySelector('[data-close]').onclick = close;
-    // Частина, що залежить від режиму: підказка, опції, ставка.
-    const paintVar = () => {
-      // Соло-режим родини (Шахи з Глеком) — не «стіл», а гра, що відкривається одразу.
-      const go = wrap.querySelector('[data-go]');
-      if (go) go.textContent = g.maxPlayers === 1 ? 'Грати' : 'Поставити стіл';
+    const famId = modes ? (fam.f ? fam.f.id : fam.key) : (familyOf[g.id] ? familyOf[g.id].id : '');
+    if (modes) {
+      const last = loadMode(famId);
+      const m = last && modes.find((x) => x.g.id === last);
+      if (m) g = m.g;
+    }
+    const title = modes ? fam.title : g.title;
+    const P = popShell(g, modes ? (fam.key || famId) : g.id, title);
+    const { body, foot, close } = P;
+    // Картки режимів: свої іконки, коли в режимів вони різні (Юрма), — і тоді емодзі з підпису вже зайве.
+    const distinct = modes && new Set(modes.map((x) => (art && art.i[x.g.id]) || x.g.id)).size > 1;
+    body.innerHTML = '<div class="gpop-ttw"></div><div class="gpop-wait" hidden></div>'
+      + (modes ? '<div class="gopt"><span class="muted small">Режим</span><div class="gmodes gmc">' + modes.map((x) =>
+        '<button type="button" class="gmode' + (x.g.id === g.id ? ' on' : '') + '" data-mode="' + esc(x.g.id) + '" aria-pressed="' + (x.g.id === g.id) + '">'
+        + (distinct ? artIcon(x.g.id, 'gmode-i') : '')
+        + '<span class="gmode-t"><b>' + esc(distinct ? x.label.replace(EMO_HEAD, '') : x.label) + '</b>'
+        + '<small>' + esc(plOf(x.g)) + (x.g.rated && x.g.maxPlayers > 1 ? ' · 🏆' : '') + '</small></span></button>').join('') + '</div></div>' : '')
+      + '<div class="gvar"></div>';
+    foot.innerHTML = '<button type="button" class="ghost gpop-def" data-def title="Скинути все на типові значення">↺ Типові</button>'
+      + '<button type="button" class="ghost" data-close>Скасувати</button><button type="button" class="primary" data-go>Поставити стіл</button>';
+    foot.querySelector('[data-close]').onclick = close;
+    const box = body.querySelector('.gvar');
+    const goBtn = foot.querySelector('[data-go]');
+    const defBtn = foot.querySelector('[data-def]');
+    const ttw = body.querySelector('.gpop-ttw');
+
+    // «🪑 Оля чекає» — столи цієї гри (чи будь-якого режиму родини), де вже сидять і є місце: сісти до них, а не ставити свій.
+    const waitBox = body.querySelector('.gpop-wait');
+    const ids = modes ? modes.map((x) => x.g.id) : [g.id];
+    const paintWait = () => {
+      const list = waitingAt(ids);
+      waitBox.hidden = !list.length;
+      const shownList = list.slice(0, 3);
+      const html = shownList.map((r) => {
+        const mine = seatOfMe(r) != null;
+        const nicks = [];
+        for (let i = 0; i < seatCount(r); i++) { const n = nickAt(r, i); if (n) nicks.push(n); }
+        const who = mine ? 'Ти вже чекаєш тут' : '<b>' + nicks.slice(0, 2).map(esc).join(', ') + '</b>' + (nicks.length > 2 ? ' і ще ' + (nicks.length - 2) : '')
+          + (nicks.length > 1 ? ' чекають' : ' чекає');
+        const mode = modes && modes.find((x) => x.g.id === r.game);
+        const bits = [(mode ? mode.label : titleOf(r.game)), takenSeats(r) + ' з ' + seatCount(r)];
+        if (r.stake > 0) bits.push('🏺 ' + r.stake);
+        return '<div class="gwait"><span class="gwait-e" aria-hidden="true">🪑</span><span class="gwait-t">' + who
+          + '<small>' + esc(bits.join(' · ')) + '</small></span>'
+          + '<button type="button" class="primary" data-sit="' + esc(r.id) + '"' + (mine ? ' data-mine="1"' : '') + '>' + (mine ? 'До столу' : 'Підсісти') + '</button></div>';
+      }).join('') + (list.length > shownList.length ? '<div class="muted small">…і ще ' + (list.length - shownList.length) + ' — усі в лобі</div>' : '');
+      if (waitBox._h === html) return;
+      waitBox._h = html;
+      waitBox.innerHTML = html;
+      waitBox.querySelectorAll('[data-sit]').forEach((b) => b.onclick = async (e) => {
+        const id = b.dataset.sit;
+        if (b.dataset.mine) { close(); go('#games/room/' + encodeURIComponent(id)); return; }
+        if (await joinRoom(id, e.currentTarget)) { close(); go('#games/room/' + encodeURIComponent(id)); }
+      });
+    };
+    paintWait();
+    createPop = { wrap: P.wrap, close, paintWait };
+
+    let botOn = false;
+    const stakesOf = () => (stakeable(g) ? (catalog.stakes || []) : []);
+    // Частина, що залежить від режиму: підказка, «одразу з ботом», опції, ставка. saved — що ставили минулого разу (null — типові).
+    const paintVar = (saved) => {
       const opts = g.options || [];
-      const stakes = stakeable(g) ? (catalog.stakes || []) : [];
-      const box = wrap.querySelector('.gvar');
-      box.innerHTML = (g.hint ? '<div class="muted small">' + esc(g.hint) + '</div>' : '')
-        + opts.map((o) => optHtml(o)).join('')   // не map(optHtml): другим аргументом прийде індекс, і optHtml візьме його за «поточне»
-        + (stakes.length > 1 ? '<div class="gopt"><span class="muted small">Ставка з кожного</span><div class="gstakes">'
-          + stakes.map((s, i) => '<button type="button" class="gstake' + (i === 0 ? ' on' : '') + '" data-stake="' + s + '">🏺' + s + '</button>').join('')
+      const stakes = stakesOf();
+      const kind = botKind(g);
+      botOn = !!(kind && saved && saved.bot);
+      const so = (saved && saved.o) || {};
+      const st = saved && stakes.includes(+saved.stake) ? +saved.stake : stakes[0];
+      ttw.innerHTML = popTitle(title, g);
+      box.innerHTML = (g.hint || (modes && fam.hint) ? '<div class="gpop-hint">' + esc(g.hint || fam.hint) + '</div>' : '')
+        + (kind ? '<label class="gbotq"><input type="checkbox" data-botq' + (botOn ? ' checked' : '') + '>'
+          + '<span><b class="gbotq-t"></b><small>Без чекання: стіл одразу стартує з ботом. Без нагород і рейтингу.</small></span></label>' : '')
+        + (opts.length ? '<div class="gpop-opts">' + opts.map((o) => optHtml(o, validOpt(o, so[o.key]))).join('') + '</div>' : '')   // не map(optHtml): другим аргументом прийде індекс
+        + (stakes.length > 1 ? '<div class="gopt gpop-stakes"><span class="muted small">Ставка з кожного</span><div class="gstakes">'
+          + stakes.map((s) => '<button type="button" class="gstake' + (s === st ? ' on' : '') + '" data-stake="' + s + '">🏺' + s + '</button>').join('')
           + '</div></div>' : '');
       box.querySelectorAll('.gstake').forEach((b) => b.onclick = () => {
         box.querySelectorAll('.gstake').forEach((x) => x.classList.toggle('on', x === b));
       });
       box.querySelectorAll('.gpicks').forEach((p) => p.querySelectorAll('.gpick').forEach((b) => b.onclick = () => togglePick(p, b)));
+      const q = box.querySelector('[data-botq]');
+      const bs = box.querySelector('select[data-key="bots"]');
+      if (q) q.onchange = () => {
+        botOn = q.checked;
+        if (botOn && bs && bs.value === '0') bs.value = '1';   // Глек мусить сісти хоч один
+        refresh();
+      };
+      if (bs) bs.addEventListener('change', () => { if (bs.value === '0' && botOn) { botOn = false; q.checked = false; } refresh(); });
+      refresh();
     };
-    paintVar();
-    wrap.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => {
+    // Підписи й стани, що залежать від вибору: кнопка, «ботом/ботами», ставки (з ботом їх нема), «↺ Типові».
+    const refresh = () => {
+      const kind = botKind(g);
+      const bs = box.querySelector('select[data-key="bots"]');
+      const lvl = (g.options || []).find((o) => o.key === 'botlvl');
+      const many = kind === 'seat' ? !!(bs && +bs.value > 1) : !!(lvl && /ботів/.test(lvl.label));
+      const t = box.querySelector('.gbotq-t');
+      if (t) t.textContent = many ? '🤖 Одразу з ботами' : '🤖 Одразу з ботом';
+      const lab = box.querySelector('.gbotq');
+      if (lab) lab.classList.toggle('on', botOn);
+      const sk = box.querySelector('.gpop-stakes');
+      if (sk) sk.hidden = botOn;
+      goBtn.textContent = g.maxPlayers === 1 ? 'Грати' : botOn ? (many ? 'Грати з ботами' : 'Грати з ботом') : 'Поставити стіл';
+      const now = optValues(box), def = optDefaults(g);
+      const stOn = box.querySelector('.gstake.on');
+      const stakes = stakesOf();
+      defBtn.disabled = !botOn && Object.keys(def).every((k) => now[k] === def[k]) && (!stOn || +stOn.dataset.stake === stakes[0]);
+    };
+    box.addEventListener('click', () => refresh());
+    box.addEventListener('change', () => refresh());
+    paintVar(loadOpts(g.id));
+    defBtn.onclick = () => { dropOpts(g.id); paintVar(null); };
+    body.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => {
       const next = gameOf(b.dataset.mode);
-      if (!next) return;
+      if (!next || next === g) return;
       g = next;
-      wrap.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b));
-      paintVar();
+      body.querySelectorAll('[data-mode]').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+      P.head(g);
+      paintVar(loadOpts(g.id));
     });
     // «Встати з попереднього столу?» (записка #59) — до того, як кнопка закрутиться: поки людина читає питання, «ставлю…» недоречне.
-    wrap.querySelector('[data-go]').onclick = async (e) => {
+    goBtn.onclick = async (e) => {
       const btn = e.currentTarget;   // після await його вже нема: currentTarget живе лише поки триває подія
-      if (await leaveForNew(g.id)) busy(btn, 'ставлю…', put);
+      if (await leaveForNew(g.id)) busy(btn, botOn ? 'кличу бота…' : 'ставлю…', put);
     };
     const put = async () => {
-      const box = wrap.querySelector('.gvar');
       const payload = optValues(box);
       const st = box.querySelector('.gstake.on');
-      if (st) payload.stake = +st.dataset.stake;
+      const withBot = botOn && !!botKind(g);
+      if (st && !withBot) payload.stake = +st.dataset.stake;
+      saveOpts(g.id, { o: optValues(box), stake: st ? +st.dataset.stake : undefined, bot: withBot });
+      if (famId) saveMode(famId, g.id);
       const r = await openRoom('CreateRoom', g.id, payload);
-      if (r.ok) { close(); if (r.roomId) go('#games/room/' + encodeURIComponent(r.roomId)); }
+      if (!r.ok) return r;
+      // «🤖 Одразу з ботом»: живим іграм — покликати бота (LiveBots, дія 'bot'), а Глек опції bots уже сидить; далі «Почати».
+      // Не вийшло — стіл однаково стоїть: ведемо до нього, тост скаже чому.
+      if (withBot && r.roomId) {
+        const okBot = botKind(g) === 'seat' || (await call('Act', r.roomId, 'bot', { on: true })).ok;
+        if (okBot) await call('StartRoom', r.roomId);
+      }
+      close();
+      if (r.roomId) go('#games/room/' + encodeURIComponent(r.roomId));
+      return r;
     };
   }
 
-  /// «⚙ Налаштування» поставленого столу (господар, між партіями): ті самі опції, що в попапі створення, з тим, що
-  /// стоїть зараз. За дограним столом сервер (Rooms.Reconfigure) вертає стіл у лобі з новою партією — кажемо це наперед.
+  /// «⚙ Налаштування» поставленого столу (господар, між партіями): ті самі опції й та сама оболонка, що в попапі
+  /// створення, з тим, що стоїть зараз. За дограним столом сервер (Rooms.Reconfigure) вертає стіл у лобі з новою партією —
+  /// кажемо це наперед. Збережене стає й пам'яттю попапа «+ Стіл» цієї гри.
   function openSettings(id) {
     const rv = views[id];
     const g = rv && gameOf(rv.room.game);
     if (!g || !(g.options || []).length) return;
     const room = rv.room;
-    const wrap = document.createElement('div');
-    wrap.className = 'modal gmodal';
-    wrap.innerHTML = '<div class="card">'
-      + '<h3>⚙ ' + iconOf(g.id) + esc(g.title) + '</h3>'
+    const P = popShell(g, familyOf[g.id] ? familyOf[g.id].id : g.id, 'Налаштування столу');
+    const { body, foot, close } = P;
+    body.innerHTML = '<div class="gpop-tt"><h3>⚙ Налаштування столу</h3><div class="gpop-facts"><span>' + esc(g.title) + '</span></div></div>'
       + (room.status !== 'lobby' || room.startedAt
-        ? '<div class="muted small">Стіл знову стане в лобі — далі «Почати», коли всі готові. Рахунок вечора лишається.</div>'
+        ? '<div class="gpop-hint">Стіл знову стане в лобі — далі «Почати», коли всі готові. Рахунок вечора лишається.</div>'
         : '')
-      + '<div class="gvar">' + g.options.map((o) => optHtml(o, room.options ? room.options[o.key] : null)).join('') + '</div>'
-      + '<div class="grow"><button class="primary" data-go>Зберегти</button><button class="ghost" data-close>Скасувати</button></div>'
-      + '</div>';
-    document.body.appendChild(wrap);
-    const close = () => wrap.remove();
-    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
-    wrap.querySelector('[data-close]').onclick = close;
-    wrap.querySelectorAll('.gpicks').forEach((p) => p.querySelectorAll('.gpick').forEach((b) => b.onclick = () => togglePick(p, b)));
-    wrap.querySelector('[data-go]').onclick = (e) => busy(e.currentTarget, 'мить…', async () => {
-      const r = await call('ConfigureRoom', id, optValues(wrap.querySelector('.gvar')));
-      if (r.ok) close();
+      + '<div class="gvar"><div class="gpop-opts"></div></div>';
+    foot.innerHTML = '<button type="button" class="ghost gpop-def" data-def title="Скинути все на типові значення">↺ Типові</button>'
+      + '<button type="button" class="ghost" data-close>Скасувати</button><button type="button" class="primary" data-go>Зберегти</button>';
+    foot.querySelector('[data-close]').onclick = close;
+    const box = body.querySelector('.gvar');
+    const defBtn = foot.querySelector('[data-def]');
+    const refresh = () => { const now = optValues(box), def = optDefaults(g); defBtn.disabled = Object.keys(def).every((k) => now[k] === def[k]); };
+    const paint = (vals) => {
+      box.firstChild.innerHTML = g.options.map((o) => optHtml(o, vals ? vals[o.key] : null)).join('');
+      box.querySelectorAll('.gpicks').forEach((p) => p.querySelectorAll('.gpick').forEach((b) => b.onclick = () => togglePick(p, b)));
+      refresh();
+    };
+    box.addEventListener('click', refresh);
+    box.addEventListener('change', refresh);
+    paint(room.options || null);
+    defBtn.onclick = () => paint(null);
+    foot.querySelector('[data-go]').onclick = (e) => busy(e.currentTarget, 'мить…', async () => {
+      const vals = optValues(box);
+      const r = await call('ConfigureRoom', id, vals);
+      if (r.ok) {
+        const was = loadOpts(g.id) || {};
+        saveOpts(g.id, { o: vals, stake: was.stake, bot: !!was.bot });
+        close();
+      }
+      return r;
     });
   }
   // =============================================================================================
@@ -4144,10 +4333,37 @@
     return ctx;
   }
 
+  /// «⏳ Оля без зв'язку — чекаємо ще 1:40»: сервер (Rooms, seats[i].away) каже, до якого часу тримає місце того, хто
+  /// відпав посеред партії. Старий сервер поля не шле — тоді й позначки нема. Відлік живе сам (awayTick раз на секунду).
+  function awayList(room) {
+    const out = [];
+    if (room && room.seats) for (const s of room.seats) {
+      if (!s || typeof s !== 'object' || !s.nick || !s.away) continue;
+      const t = Date.parse(s.away);
+      if (t) out.push({ nick: s.nick, t });
+    }
+    return out;
+  }
+  const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const awayLine = (nick, t, short) => (t - Date.now() > 0
+    ? '⏳ ' + nick + ' без зв’язку' + (short ? ' · ' : ' — чекаємо ще ') + mmss(t - Date.now())
+    : '⏳ ' + nick + ' без зв’язку' + (short ? '' : ' — місце ось-ось звільниться'));
+  let awayTimer = 0;
+  function awayTick() {
+    const els = document.querySelectorAll('[data-away]');
+    els.forEach((el) => { el.textContent = awayLine(el.dataset.anick, +el.dataset.away); });
+    const dk = dockRoom();
+    const dkAway = !!(dk && views[dk] && awayList(views[dk].room).length);
+    if (dkAway) paintDock();
+    if (!els.length && !dkAway) { clearInterval(awayTimer); awayTimer = 0; }
+  }
+  const awayWatch = () => { if (!awayTimer) awayTimer = setInterval(awayTick, 1000); };
+
   function headHtml(rv) {
     const room = rv.room;
     const solo = room.maxPlayers === 1;
     const chips = [];
+    const aw = awayList(room);
     if (!solo) {
       // На великих столах (мафія, піктіонарі — до 12) чіпи вільних місць займали на телефоні три рядки над грою:
       // від трьох вільних показуємо їх одним «вільно ×N».
@@ -4166,11 +4382,13 @@
         // ✋ — готовий до партії (Rooms.SetReady); бот готовий завжди. Посеред партії позначки нема: питати вже пізно.
         const ready = room.status !== 'playing' && takenSeats(room) > 1 && (human ? readyAt(room, i) : !!nick);
         chips.push('<span class="gseat ' + seatClassOf(rv, i) + (nick ? '' : ' free') + (turn ? ' turn' : '')
-          + (i === rv.seat ? ' me' : '') + (ready ? ' ready' : '') + '"' + (human ? ' data-nick="' + esc(human) + '"' : '')
+          + (i === rv.seat ? ' me' : '') + (ready ? ' ready' : '') + (human && aw.some((a) => sameNick(a.nick, human)) ? ' away' : '') + '"' + (human ? ' data-nick="' + esc(human) + '"' : '')
           + (ready ? ' title="готовий"' : '') + '>' + (ready ? '<b class="gready-mark" aria-label="готовий">✋</b>' : '')
           + '<i>' + esc(seatNameOf(rv, i)) + '</i>' + esc(nick || 'вільно') + '</span>');
       }
       if (fold) chips.push('<span class="gseat free gfreeall">вільно ×' + free + '</span>');
+      for (const a of aw) chips.push('<span class="gaway" data-away="' + a.t + '" data-anick="' + esc(a.nick) + '">' + esc(awayLine(a.nick, a.t)) + '</span>');
+      if (aw.length) awayWatch();
       if (taken > 4) chips.push('<button type="button" class="gseat gmany" data-many title="Показати всіх за столом">👥 '
         + taken + '</button>');
     }
@@ -4889,6 +5107,7 @@
       c.on('rooms', (list) => {
         rooms = list || [];
         leftForNew = null;
+        if (createPop) createPop.paintWait();   // «🪑 Оля чекає» у відкритому попапі «+ Стіл»
         // Щойно столи взагалі є — беремо назви ігор: без них балачки писали б «mafia» замість «Мафія».
         // Модулі при цьому не тягнемо: слухачеві, який у «Ігри» не заходить, вони ні до чого.
         if (rooms.length) ensureNames().catch(() => { /* напишемо id, це не привід шуміти */ });
