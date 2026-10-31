@@ -941,7 +941,7 @@
   /// Ті самі числа — у fit для ui.onFit (aw, ah, fh), ui.box(host) і ui.fitBox(host, ar). Картку у віконці «Стіл у
   /// куточку» не міряємо: вона тримає змінні зі столу (вони inline на ній) і вписується transform-ом.
   const FIELD_MIN = 200;
-  let fieldRaf = 0, fieldBurst = 0, fieldBurstAt = 0, fieldWatched = null;
+  let fieldRaf = 0, fieldBurst = 0, fieldBurstAt = 0, fieldWatched = null, fieldRetry = 0;
   const fieldRO = window.ResizeObserver ? new ResizeObserver(() => {
     if (!fieldRaf) fieldRaf = requestAnimationFrame(() => { fieldRaf = 0; measureField(true); });
   }) : null;
@@ -955,6 +955,8 @@
     fieldRO.observe(c.body);
     const head = root && root.querySelector('.grhead');
     if (head) fieldRO.observe(head);
+    // плашки над сторінкою («Повітряна тривога», нічна, «Сайт оновився»): з'явилась чи зникла — стіл зсунувся
+    document.querySelectorAll('body > .nightbar, body > .hellobar').forEach((b) => fieldRO.observe(b));
   }
   /// Рядок поля — дитина .gbody, у якій стоїть головне поле гри, або null.
   function fieldTop(body) {
@@ -976,7 +978,10 @@
     const head = root.querySelector('.grhead');
     let headH = 0;
     if (head && head.parentElement !== el && boxOf(head)) headH = head.offsetHeight + (parseFloat(getComputedStyle(head.parentElement).rowGap) || 0);
-    const avail = f.h - f.top - f.dock - padT - padB - headH;
+    // Верх столу — де він стоїть у документі (над ним бувають плашки «Сайт оновився», нічна тощо), але не вище шапки.
+    const groom = root.querySelector('.groom');
+    const gTop = groom ? groom.getBoundingClientRect().top + window.scrollY : 0;
+    const avail = f.h - f.dock - padB - headH - Math.max(f.top + padT, Math.min(gTop, f.h / 3));
     const body = c.body, cs = getComputedStyle(el);
     let aw, ah, fh;
     if (getComputedStyle(body).display === 'contents') {
@@ -987,7 +992,12 @@
     } else {
       const br = body.getBoundingClientRect();
       aw = body.clientWidth;
-      ah = Math.max(FIELD_MIN, avail - (el.getBoundingClientRect().height - br.height));
+      // Повна висота картки — і тоді, коли вона гортається всередині (лежачи max-height): інакше «решта картки»
+      // залежала б від уміщеного вмісту, і --g-ah гойдався б разом із ним (знахідка games-6).
+      const full = Math.max(el.getBoundingClientRect().height, el.scrollHeight + el.offsetHeight - el.clientHeight);
+      // лежачи картка має стелю (max-height = --gland-h): більше, ніж вона, поле не отримає
+      const mh = parseFloat(cs.maxHeight);
+      ah = Math.max(FIELD_MIN, (mh > 0 ? Math.min(avail, mh) : avail) - (full - br.height));
       const top = fieldTop(body);
       fh = top ? Math.max(FIELD_MIN, ah - (br.height - top.getBoundingClientRect().height)) : ah;
     }
@@ -995,10 +1005,14 @@
     const minw = coarse() && !f.imm && !f.land && window.innerWidth < 700 ? Math.round(aw * 0.8) : 0;
     const o = c.fitBox;
     if (o && Math.abs(o.aw - aw) < 2 && Math.abs(o.ah - ah) < 2 && Math.abs(o.fh - fh) < 2 && o.minw === minw) return false;
-    // захист від гойдалки (гра міняє щось у .gbody від розміру поля): понад 12 змін за секунду — до наступного resize
+    // захист від гойдалки (гра міняє щось у .gbody від розміру поля): понад 12 змін за секунду — пауза на секунду,
+    // потім ще один замір (інакше лишилось би число з середини гойдалки)
     const now = performance.now();
     if (now - fieldBurstAt > 1000) { fieldBurstAt = now; fieldBurst = 0; }
-    if (++fieldBurst > 12) return false;
+    if (++fieldBurst > 12) {
+      if (!fieldRetry) fieldRetry = setTimeout(() => { fieldRetry = 0; measureField(true); }, 1100);
+      return false;
+    }
     c.fitBox = { aw, ah, fh, minw };
     const st = el.style;
     st.setProperty('--g-aw', aw + 'px');
@@ -1033,6 +1047,9 @@
     // миша ↔ дотик (планшет із клавіатурою, емулятор) — розміри ті самі, а режим інший
     const mq = window.matchMedia('(pointer: coarse)');
     if (mq.addEventListener) mq.addEventListener('change', refit);
+    // поворот: на частині телефонів resize приходить раніше, ніж оновлюються innerWidth/innerHeight, — ще й за орієнтацією
+    const mo = window.matchMedia('(orientation: landscape)');
+    if (mo.addEventListener) mo.addEventListener('change', () => { refit(); setTimeout(refit, 250); });
     const ro = window.ResizeObserver ? new ResizeObserver(refit) : null;
     const watch = () => { if (ro) document.querySelectorAll('header, nav.mtabs, .tchat').forEach((el) => ro.observe(el)); };
     watch();
@@ -1890,6 +1907,7 @@
     dropPeeks();
     if (view.kind !== 'room') { setFull(false); setFs(false); }
     else if (!same && !coarse()) setFull(widePref());   // ⇔ на ПК пам'ятаємо між столами
+    refit();   // занурений режим лежачи й місце під поле — і тоді, коли сторінку відкрили одразу на столі
     if (!same) chromeFor = null;          // повернулись у підрозділ — перечитуємо профіль/таблицю
     renderShell();
     renderView();
@@ -5257,6 +5275,9 @@
       root = o.root || (o.$ ? o.$('games') : document.getElementById('games'));
       if (root) { root.addEventListener('pointerover', prefetchFrom, { passive: true }); root.addEventListener('focusin', prefetchFrom); }
       booted = true;
+      // Слухачі місця — одразу, а не з першого refit: інакше поворот чи resize, що прийшли до першого заходу на стіл
+      // (перезавантаження лежачи), губились, і g-imm/g-land не вмикались (знахідка games-1).
+      if (!fitBooted) fitBoot();
       renderShell();
       // Каталог і модуль кожної гри тягнемо в show(): слухачеві, який у «Ігри» не заходить,
       // ці два десятки запитів ні до чого.

@@ -809,8 +809,13 @@ body.gfull { --rail: 0px; --rail-gap: 0px; }
 body.gfull #colChat { display: none; }
 body.gfull main { max-width: none; padding: 10px 12px; }
 /* Сторінка столу на 2K/4K: стеля 1600 робила з гри колону 1186 px посеред 2560 — тут вона ширша (рейка балачок та сама).
-   Гончарне коло тримає свою (clk-big нижче, за масштабом столу). */
-body.g-room:not(.gfull):not(.g-imm):not([data-ggame="clicker"]) main { max-width: min(2240px, 100%); }
+   Лише від 2000 px: на 1920 рейка інакше стрибала б убік між лобі й столом. Гончарне коло тримає свою (clk-big нижче). */
+@media (min-width: 2000px) {
+  body.g-room:not(.gfull):not(.g-imm):not([data-ggame="clicker"]) main { max-width: min(2240px, 100%); }
+}
+/* За столом ⇔/⛶ перемикають рейку різко, без анімації колонок: перервана (чи заморожена у фоновій вкладці) анімація
+   grid-template-columns лишала рейку балачок вузькою, ~110 px (знахідка games-9, 31.10). */
+body.g-room main, body.g-room #colChat { transition: none; }
 /* Стіл «Гончарного кола» на 2K/4K (клас і --clk-z ставить clicker.js, лише поки стіл кола на екрані): стеля росте
    разом із масштабом столу, інакше збільшений стіл лишався б у тих самих 1600 px. */
 body.clk-big:not(.gfull) main { max-width: calc(1600px * var(--clk-z, 1)); }

@@ -215,6 +215,7 @@
 /* Варіант, обраний при створенні столу (зникаючі хрестики, ставка) — підписуємо чіпом. */
 .gmode { padding: 2px 8px; border-radius: 999px; border: 1px dashed var(--line); color: var(--muted); font-size: .78em; }
 .gmode.stake { color: var(--clay); border-style: solid; }
+.gseats .gmode { font-size: max(12px, .78em); }   /* на телефоні .78 від .86 давали 10,7 px */
 /* Рахунок вечора за столом: окремим рядком під чіпами, дрібно, щоб не пхатись поперед гри */
 .gevening { flex-basis: 100%; color: var(--muted); font-size: .8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gs-ev { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
