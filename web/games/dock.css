@@ -1,0 +1,107 @@
+/* «Стіл у куточку» (web/games/core.js, однойменна секція): картка столу, з якого пішли, — міні-віконцем у куті.
+   Картка всередині — у своїй ширині зі столу (--gdk-w), у віконце її вписує transform: scale з core.js (dockFit).
+   Керувати не можна: картка inert, сцена без вказівника; клік по віконцю — назад до столу. */
+.gdock {
+  position: fixed; z-index: 20; display: flex; flex-direction: column; max-width: calc(100vw - 16px);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, .5);
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  /* правий край — край лівої колонки: балачки праворуч віконце не накриває */
+  --gdk-x: calc(max(0px, (100vw - 1600px) / 2) + 18px);
+  --gdk-xr: calc(max(0px, (100vw - 1600px) / 2) + 18px + var(--rail, 0px) + var(--rail-gap, 0px));
+  --gdk-yb: 16px;
+  --gdk-yt: calc(var(--gtop-h, 64px) + 12px);
+}
+.gdock[hidden] { display: none; }
+.gdock[data-corner="br"] { right: var(--gdk-xr); bottom: var(--gdk-yb); }
+.gdock[data-corner="bl"] { left: var(--gdk-x); bottom: var(--gdk-yb); }
+.gdock[data-corner="tr"] { right: var(--gdk-xr); top: var(--gdk-yt); }
+.gdock[data-corner="tl"] { left: var(--gdk-x); top: var(--gdk-yt); }
+.gdock.drag { opacity: .92; box-shadow: 0 20px 44px rgba(0, 0, 0, .6); }
+.gdock.snap { transition: transform .18s ease-out, opacity .18s ease-out; }
+
+.gdk-head {
+  display: flex; align-items: center; gap: 3px; min-width: 0; min-height: 34px; padding: 3px 4px 3px 8px; cursor: grab;
+  background: color-mix(in srgb, var(--panel) 82%, #000); border-bottom: 1px solid var(--line);
+}
+.gdock.drag .gdk-head { cursor: grabbing; }
+.gdk-ico { flex: none; display: inline-flex; align-items: center; }
+.gdk-ico svg, .gdk-ico .gico { width: 18px; height: 18px; }
+.gdk-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.15; margin-left: 3px; }
+.gdk-title { font-family: var(--display); font-size: .84em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gdk-st { font-size: .72em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gdk-st:empty { display: none; }
+.gdock.turn .gdk-st { color: var(--accent); font-weight: 600; }
+.gdock.done .gdk-st { color: var(--ok); }
+.gdk-head button {
+  flex: none; padding: 2px 5px; min-width: 24px; min-height: 24px; font-size: .84em; line-height: 1;
+  border-radius: 7px; color: var(--muted); justify-content: center;
+}
+.gdk-head button:hover { color: var(--text); }
+.gdk-size { font-size: .7em !important; font-weight: 700; letter-spacing: .02em; }
+.gdk-nav { flex: none; display: inline-flex; align-items: center; font-size: .74em; color: var(--muted); }
+.gdk-nav[hidden] { display: none; }
+.gdk-nav button { min-width: 20px; padding: 2px 3px; font-size: 1.15em; }
+
+.gdk-view { position: relative; overflow: hidden; cursor: pointer; background: var(--bg); outline: none; }
+.gdk-view:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.gdk-stage { position: absolute; left: 0; top: 0; width: var(--gdk-w, 720px); transform-origin: 0 0; pointer-events: none; }
+.gdk-stage > .gtable {
+  width: 100%; background: var(--panel); border-radius: 0; padding: var(--gdk-pad, 14px 16px 16px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+/* кнопки столу у віконці однаково не натиснути — не тратимо на них місце */
+.gdk-stage > .gtable > .gbtns, .gdk-stage > .gtable > .gextra, .gdk-stage > .gtable > .grx { display: none; }
+/* «⤢ до столу» — підказкою при наведенні */
+.gdk-view::after {
+  content: '⤢ До столу'; position: absolute; right: 6px; top: 6px; padding: 3px 8px; border-radius: 999px;
+  font-size: .72em; font-weight: 600; background: rgba(8, 18, 13, .82); color: var(--text); opacity: 0;
+  transition: opacity .15s; pointer-events: none;
+}
+.gdk-view:hover::after { opacity: 1; }
+.gdk-end {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 14px 8px 6px;
+  background: linear-gradient(transparent, rgba(8, 18, 13, .94) 45%); font-size: .8em; font-weight: 600;
+}
+.gdk-end[hidden] { display: none; }
+.gdk-endt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdk-end button { flex: none; padding: 4px 10px; font-size: .95em; }
+
+/* мій хід — віконце кличе до себе */
+.gdock.turn { border-color: var(--accent); animation: gdk-pulse 1.6s ease-in-out infinite; }
+@keyframes gdk-pulse {
+  0%, 100% { box-shadow: 0 14px 36px rgba(0, 0, 0, .5), 0 0 0 0 rgba(244, 197, 66, .55); }
+  50% { box-shadow: 0 14px 36px rgba(0, 0, 0, .5), 0 0 0 7px rgba(244, 197, 66, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gdock.turn { animation: none; box-shadow: 0 14px 36px rgba(0, 0, 0, .5), 0 0 0 2px var(--accent); }
+  .gdock.snap { transition: none; }
+}
+
+/* «—» — пігулка: іконка, назва й стан; гра стоїть (visibility), але своє місце й розмір не губить */
+.gdock.mini { border-radius: 999px; max-width: min(320px, calc(100vw - 16px)); }
+.gdock.mini .gdk-head { border-bottom: 0; background: var(--panel); padding: 3px 4px 3px 10px; cursor: pointer; }
+.gdock.mini .gdk-view { position: absolute; width: 0 !important; height: 0 !important; visibility: hidden; }
+.gdock.mini .gdk-size, .gdock.mini .gdk-open, .gdock.mini .gdk-nav { display: none; }
+
+/* перемикач у шапці столу: кутик зафарбовано — згортання ввімкнено */
+.grdock { color: var(--muted); }
+.grdock:hover { color: var(--text); }
+.grdock .gdkf { fill: none; }
+.grdock.on .gdkf { fill: currentColor; }
+
+@media (max-width: 900px) {
+  /* на телефоні — лише знизу, над міні-плеєром і вкладками */
+  .gdock {
+    --gdk-x: max(8px, env(safe-area-inset-left)); --gdk-xr: max(8px, env(safe-area-inset-right));
+    --gdk-yb: calc(var(--tabs-h, 0px) + var(--mini-h, 0px) + 8px); border-radius: 10px;
+  }
+  .gdk-size, .gdk-open { display: none; }
+  .gdk-view::after { display: none; }
+  .gdk-head { min-height: 30px; padding: 2px 2px 2px 6px; }
+  .gdk-head button { min-width: 26px; min-height: 26px; }
+  .gdk-title { font-size: .78em; }
+  .gdk-st { font-size: .68em; }
+  .gdk-end { padding: 10px 6px 4px; font-size: .72em; gap: 4px; }
+  .gdk-end button { padding: 3px 7px; }
+}
