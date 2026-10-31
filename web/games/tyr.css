@@ -89,6 +89,12 @@
 
 .tyrsum { max-width: var(--tyr-w); margin: 10px auto 0; }
 .tyrsum[hidden] { display: none; }
+/* Лежачи на телефоні, партію зіграно: головне — підсумок, тож йому ширша права колонка (таблиця в рядок, а не
+   переносами по 38vw), а полотно з «Ярмарок закрито» — менше ліворуч. Усе влазить у картку без прокрутки. */
+body.g-land .gtable.g-canvas:has(> .gbody.tyr > .tyrsum:not([hidden])) { grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); }
+body.g-land .gtable.g-canvas:has(> .gbody.tyr > .tyrsum:not([hidden])) > .gbody.tyr > :not(canvas) { max-width: none; width: 100%; }
+body.g-land .gbody.tyr > .tyrsum { margin-top: 4px; }
+body.g-land .gbody.tyr > .tyrsum .tyrday { margin-top: 6px; padding: 6px 10px; gap: 4px; }
 .tyrtab { width: 100%; border-collapse: collapse; font-size: .92em; }
 .tyrtab th { color: var(--muted); font-weight: 600; text-align: left; padding: 3px 6px; font-size: .9em; }
 .tyrtab td { padding: 5px 6px; border-top: 1px solid var(--line); }
