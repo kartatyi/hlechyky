@@ -350,6 +350,8 @@
    і «Почати» — далеко внизу). */
 .vch.lobby .vch-ov { padding: 10px; }
 .vch.lobby .vo-card { scrollbar-width: thin; overscroll-behavior: contain; }
+.vh-d > summary { cursor: pointer; font-weight: 700; margin: 8px 0 4px; min-height: 32px; display: flex; align-items: center; justify-content: center; }
+.vh-d[open] > summary { color: var(--muted); }
 .vch.phone.lobby .vch-ov { padding: 6px; }
 .vch.lobby .vch-bw { overflow: hidden; }
 .vch.lobby .vch-board { position: absolute; inset: 0; }

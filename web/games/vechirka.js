@@ -1319,12 +1319,15 @@
     const pl = seats.map((n, k) => ({ i: k, nick: n, name: n, color: k })).concat(bots.map((b, k) => ({ i: 100 + k, bot: true, name: b.name, color: seats.length + k })));
     const h = '<div class="vo-card vo-lobby"><div class="vo-mgh"><span class="vo-big vo-glek">🏺</span><div><h2>Глечикова вечірка</h2>'
       + '<p class="muted">Настільна вечірка на 2–8: ходиш селом, збираєш шеляги й купуєш у Дядька Глека золоті глеки. Між колами — міні-ігри.</p></div></div>'
-      + '<div class="vl-row"><span>🕰 Вечір: <b>' + (v.lobby && v.lobby.len ? '≈ ' + v.lobby.len + ' хв · ' : '') + ((v.lobby && v.lobby.rounds) || '?') + ' кіл</b></span><span>👥 За столом: <b>' + total + '</b>/8</span></div>'
-      + '<div class="vo-avs">' + pl.map((p) => '<span>' + avaHtml(p, esc) + '<small>' + esc(p.name) + '</small></span>').join('') + '</div>'
+      // кнопки ботів — одразу під назвою: на телефоні картка лобі низька, а це головна дія господаря
       + (host ? '<div class="vd-row">' + optBtn(esc, 'bot', { on: true }, '🤖 + бот', { off: total >= 8 }) + optBtn(esc, 'bot', { on: false }, '− бот', { off: !bots.length }) + '</div>'
         + '<p class="muted small">' + (total < 2 ? 'Треба хоча б двоє — поклич друзів або додай ботів.' : 'Усі на місці? Тисни «Почати».') + '</p>'
         : '<p class="muted small">Ботів додає й вечірку починає господар столу.</p>')
-      + '<div class="vh-g">' + (t.howto || []).map((s) => '<div class="vh-s"><span class="vh-ic">' + esc(s.icon) + '</span><div><b>' + esc(s.title) + '</b><p>' + esc(s.text) + '</p></div></div>').join('') + '</div></div>';
+      + '<div class="vl-row"><span>🕰 Вечір: <b>' + (v.lobby && v.lobby.len ? '≈ ' + v.lobby.len + ' хв · ' : '') + ((v.lobby && v.lobby.rounds) || '?') + ' кіл</b></span><span>👥 За столом: <b>' + total + '</b>/8</span></div>'
+      + '<div class="vo-avs">' + pl.map((p) => '<span>' + avaHtml(p, esc) + '<small>' + esc(p.name) + '</small></span>').join('') + '</div>'
+      // «Як грати» на телефоні згорнуто (картка лобі там ~250 px заввишки, а правила — ще на 1000 px); на ПК — розгорнуто
+      + '<details class="vh-d"' + (isPhone(st) ? '' : ' open') + '><summary>❓ Як грати</summary>'
+      + '<div class="vh-g">' + (t.howto || []).map((s) => '<div class="vh-s"><span class="vh-ic">' + esc(s.icon) + '</span><div><b>' + esc(s.title) + '</b><p>' + esc(s.text) + '</p></div></div>').join('') + '</div></details></div>';
     st.el.top.innerHTML = '<span class="vt-r">🏺 <b>Глечикова вечірка</b> · лобі</span><span class="vt-sp"></span><button type="button" class="vt-b" data-pop="help" title="Як грати">❓</button>';
     st.topH = '';
     st.el.ov.hidden = false;
