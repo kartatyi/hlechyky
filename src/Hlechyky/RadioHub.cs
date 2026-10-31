@@ -57,7 +57,7 @@ public sealed partial class RadioHub(Presence presence, RadioEngine engine, Db d
         rates.Forget(Context.ConnectionId);
         LastTyping.TryRemove(Context.ConnectionId, out _);
         // Місце тримається ще grace-час: F5 і провал зв'язку в метро не мають коштувати партії.
-        if (gone is not null && !presence.IsOnline(gone)) left.Adopt(rooms.NoteOffline(gone, clock.UtcNow));
+        if (gone is not null && !presence.IsOnline(gone)) left.Adopt(rooms.NoteGone(gone, clock.UtcNow, presence.IsOnline));
         await Clients.All.SendAsync("state", engine.Snapshot());
         // Закрив вкладку з відкритим Гончарним колом — з плиток лобі його ім'я теж зникає.
         await broadcaster.FlushAsync(left);

@@ -243,4 +243,91 @@ public class RoomsHousekeepingTests
         Assert.True(rooms.Join(a, "Петро").Reply.Ok);
         Assert.Empty(seating);   // після посадки нік відпущено
     }
+
+    // ---------- рецензія сервера №3–5 ----------
+
+    [Fact]
+    public void A_host_who_watches_the_table_is_waiting_not_silent()
+    {
+        var h = new RoomHarness("t-party");
+        h.Join("Оля");
+        h.Join("Петро");
+        h.Rooms.Watch(h.RoomId, "c-оля", "Оля");
+
+        Sweep(h, TimeSpan.FromMinutes(11));
+        Assert.Equal("Почати може лише господар", h.Rooms.StartByHost(h.RoomId, "Петро").Reply.Message);
+
+        h.Rooms.DropWatcher("c-оля");                  // закрила стіл: відлік — від останнього разу, як дивилась
+        h.Clock.Advance(TimeSpan.FromMinutes(9));
+        Assert.Equal("Почати може лише господар", h.Rooms.StartByHost(h.RoomId, "Петро").Reply.Message);
+        h.Clock.Advance(TimeSpan.FromMinutes(2));
+        var started = h.Rooms.StartByHost(h.RoomId, "Петро");
+        Assert.True(started.Reply.Ok, started.Reply.Message);
+        Assert.Equal("Петро", h.Room.Host);
+    }
+
+    [Fact]
+    public void A_host_who_watches_but_has_dropped_off_counts_as_silent()
+    {
+        var h = new RoomHarness("t-party");
+        h.Join("Оля");
+        h.Join("Петро");
+        h.Rooms.Watch(h.RoomId, "c-оля", "Оля");
+        h.Room.Away["Оля"] = h.Clock.UtcNow;            // з'єднання ще не прибрали, а вона вже «відпала»
+        h.Clock.Advance(TimeSpan.FromMinutes(11));
+        Assert.True(h.Rooms.StartByHost(h.RoomId, "Петро").Reply.Ok);
+    }
+
+    [Fact]
+    public void Calling_again_keeps_the_lobby_alive_and_the_host_awake()
+    {
+        var clock = new FakeClock();
+        var rooms = New(clock);
+        var calls = new Calls(rooms, new Presence(), clock);
+        var id = rooms.Create("Оля", "t-party", null).Reply.RoomId!;
+        Assert.True(rooms.Join(id, "Петро").Reply.Ok);
+
+        clock.Advance(TimeSpan.FromMinutes(25));
+        Assert.True(calls.Again("Оля", id).Reply.Ok);
+        clock.Advance(TimeSpan.FromMinutes(5));        // господар щойно кликав — не «мовчун»
+        Assert.Equal("Почати може лише господар", rooms.StartByHost(id, "Петро").Reply.Message);
+        clock.Advance(TimeSpan.FromMinutes(20));       // 50 хв від створення, 25 — від заклику
+        rooms.Housekeeping(clock.UtcNow);
+        Assert.NotNull(rooms.Find(id));
+
+        clock.Advance(TimeSpan.FromMinutes(6));
+        rooms.Housekeeping(clock.UtcNow);
+        Assert.Null(rooms.Find(id));                   // далі — як було: пів години без руху, і стіл розходиться
+    }
+
+    [Fact]
+    public void A_table_picked_for_eviction_no_longer_lets_a_rematch_start()
+    {
+        var clock = new FakeClock();
+        var rooms = New(clock);
+        var ids = new List<string>();
+        for (var i = 0; i < Rooms.MaxRooms; i++)
+        {
+            ids.Add(rooms.Create($"А{i}", "t-duel", null).Reply.RoomId!);
+            Assert.True(rooms.Join(ids[^1], $"Б{i}").Reply.Ok);
+        }
+        Assert.True(rooms.Act(ids[3], "А3", "win", default).Reply.Ok);
+        Assert.True(rooms.Act(ids[4], "А4", "win", default).Reply.Ok);
+        clock.Advance(TimeSpan.FromMinutes(2));
+
+        // «Ще раз» устигло першим — цей стіл знову грає і не прибирається, хоч дограли його раніше за інші
+        Assert.True(rooms.Rematch(ids[3], "А3").Reply.Ok);
+        var victim = rooms.Find(ids[4])!;
+        Assert.True(rooms.Create("Новенька", "t-duel", null).Reply.Ok);
+        Assert.NotNull(rooms.Find(ids[3]));
+        Assert.Null(rooms.Find(ids[4]));
+        Assert.True(victim.Evicted);
+
+        // хто знайшов стіл, поки його позначили, але ще не прибрали, і тисне «Ще раз», — партія в нікуди не почнеться
+        Assert.True(rooms.Act(ids[5], "А5", "win", default).Reply.Ok);
+        var marked = rooms.Find(ids[5])!;
+        marked.Evicted = true;
+        Assert.Equal("Такого столу вже нема", rooms.Rematch(ids[5], "А5").Reply.Message);
+        Assert.Equal(RoomStatus.Finished, marked.Status);
+    }
 }

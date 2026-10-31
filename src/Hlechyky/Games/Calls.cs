@@ -61,6 +61,9 @@ public sealed class Calls(Rooms rooms, Presence presence, IClock clock, IRings? 
             if (Refusal(room, by, everyone: true) is { } no) return RoomOutcome.Fail(no);
             if (room.CalledAt is { } at && now - at < AgainGap) return RoomOutcome.Fail($"Щойно кликали — ще {Seconds(at + AgainGap - now)} с");
             room.CalledAt = now;
+            // Кличуть — отже, стіл живий: засиджене лобі не розходиться (рецензія сервера №4), а господар не «мовчить».
+            room.LastActivity = now;
+            if (string.Equals(room.Host, by, StringComparison.OrdinalIgnoreCase)) room.HostActiveAt = now;
         }
         rooms.CalledAll(by, now);   // новий стіл одразу після цього заклику всіх уже не кличе (пауза з ніка)
         var outbox = new Outbox();

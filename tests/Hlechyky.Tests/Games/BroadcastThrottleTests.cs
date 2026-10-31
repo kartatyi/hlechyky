@@ -195,4 +195,72 @@ public class BroadcastThrottleTests
         Assert.NotNull(h.Rooms.ViewsFor(h.RoomId));
         Assert.Equal(new[] { 0, 1, 2, 3 }, game.Seen.Keys.Order());
     }
+
+    // ---------- рецензія сервера №2: хвіст після негайного лобі ----------
+
+    [Fact]
+    public void After_an_immediate_lobby_the_tick_recounts_it_once_and_the_same_snapshot_does_not_fly()
+    {
+        var gate = new LobbyThrottle();
+        var h = new RoomHarness("ttt");
+        h.Join("Оля");
+        bool Fresh(List<RoomSummary> list) => gate.Fresh(JsonSerializer.SerializeToUtf8Bytes(list));
+
+        var first = new List<Outgoing> { new LobbyChanged() };
+        Assert.True(gate.Gate(first, 1000));
+        Assert.Single(Plan(h, first, fresh: Fresh), s => s.Event == "rooms");
+        Assert.True(gate.Pending);                     // хвіст стоїть
+
+        var early = new List<Outgoing>();
+        Assert.False(gate.Gate(early, 1100));
+        Assert.Empty(early);
+        var tail = new List<Outgoing>();
+        Assert.True(gate.Gate(tail, 1250));
+        Assert.IsType<LobbyChanged>(Assert.Single(tail));
+        Assert.DoesNotContain(Plan(h, tail, fresh: Fresh), s => s.Event == "rooms");   // нічого не змінилось — не летить
+        Assert.False(gate.Pending);
+
+        var idle = new List<Outgoing>();
+        Assert.False(gate.Gate(idle, 3000));
+        Assert.Empty(idle);                            // хвіст хвоста не ставить: у тиші лобі не крутиться
+    }
+
+    [Fact]
+    public void The_tail_heals_a_lobby_that_changed_without_a_lobby_change()
+    {
+        var gate = new LobbyThrottle();
+        var h = new RoomHarness("ttt");
+        h.Join("Оля");
+        bool Fresh(List<RoomSummary> list) => gate.Fresh(JsonSerializer.SerializeToUtf8Bytes(list));
+
+        var first = new List<Outgoing> { new LobbyChanged() };
+        gate.Gate(first, 1000);
+        Plan(h, first, fresh: Fresh);
+        h.Join("Петро");                               // зміна, що в цю розсилку вже не потрапила
+        var tail = new List<Outgoing>();
+        gate.Gate(tail, 1250);
+        Assert.Single(Plan(h, tail, fresh: Fresh), s => s.Event == "rooms");
+    }
+
+    [Fact]
+    public void Two_lobby_sends_at_once_make_the_tail_fly_even_when_it_looks_the_same()
+    {
+        // A порахувала S1, B — S2 і віддала першою; дедуп записав S2, а в людей S1. Розсилка це бачить і кличе Resend.
+        var gate = new LobbyThrottle();
+        var h = new RoomHarness("ttt");
+        h.Join("Оля");
+        bool Fresh(List<RoomSummary> list) => gate.Fresh(JsonSerializer.SerializeToUtf8Bytes(list));
+
+        var b = new List<Outgoing> { new LobbyChanged(), new Journal("рядок") };
+        gate.Gate(b, 1000);
+        Plan(h, b, fresh: Fresh);
+        gate.Resend();
+        var tail = new List<Outgoing>();
+        gate.Gate(tail, 1250);
+        Assert.Single(Plan(h, tail, fresh: Fresh), s => s.Event == "rooms");   // той самий знімок — але летить
+
+        var next = new List<Outgoing> { new LobbyChanged() };
+        gate.Gate(next, 2000);
+        Assert.DoesNotContain(Plan(h, next, fresh: Fresh), s => s.Event == "rooms");   // далі дедуп як був
+    }
 }
