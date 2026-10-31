@@ -86,11 +86,15 @@ public class GeeseTests
     {
         for (var seed = 0; seed < 300; seed++)
         for (var level = 0; level <= GeeseParade.MaxLevel; level++)
+        foreach (var pre in new[] { true, false })
         {
             var rng = new Random(seed * 13 + level);
             var traits = GeeseParade.PickTraits(rng);
             Assert.InRange(traits.Length, 2, 3);
-            var r = GeeseParade.Make(rng, level, level < 3, traits);
+            var r = GeeseParade.Make(rng, level, pre, traits);
+            var counts = r.Animals.GroupBy(a => a.K).ToDictionary(g => g.Key, g => g.Count());
+            // На пам'ять — лише вибір «кого більше»; рахувати число — тільки коли питання видно наперед.
+            if (!pre) Assert.True(r.Q.Choice, $"seed {seed} level {level}: {r.Q.Type}");
             Assert.InRange(r.Animals.Length, GeeseParade.MinAnimals, GeeseParade.MaxAnimals);
             Assert.Equal(GeeseParade.Lanes(level), r.Lanes);
             Assert.All(r.Animals, a =>
@@ -111,11 +115,31 @@ public class GeeseTests
             {
                 case "most":
                     var best = r.Q.Opts![r.Answer];
-                    var counts = r.Animals.GroupBy(a => a.K).ToDictionary(g => g.Key, g => g.Count());
                     Assert.Single(counts, kv => kv.Value == counts.Values.Max());
                     Assert.Equal(counts.Values.Max(), counts[best]);
                     Assert.Equal(counts[best], r.Hits.Length);
                     Assert.Equal(r.Q.Opts!.Distinct().Count(), r.Q.Opts!.Length);
+                    // Лідер — з відривом, видно оком.
+                    Assert.True(counts[best] - counts.Where(kv => kv.Key != best).Max(kv => kv.Value) >= GeeseParade.Lead("most", r.Animals.Length), $"seed {seed} level {level}");
+                    break;
+                case "vs":
+                    Assert.False(pre);
+                    Assert.Equal(2, r.Q.Opts!.Length);
+                    Assert.NotEqual(r.Q.Opts[0], r.Q.Opts[1]);
+                    var win = r.Q.Opts[r.Answer];
+                    var lose = r.Q.Opts[1 - r.Answer];
+                    Assert.True(counts.GetValueOrDefault(win) - counts.GetValueOrDefault(lose) >= GeeseParade.Lead("vs", r.Animals.Length), $"seed {seed} level {level}");
+                    Assert.True(counts.GetValueOrDefault(lose) >= 1);
+                    Assert.Equal(counts[win] + counts[lose], r.Hits.Length);
+                    break;
+                case "side":
+                    Assert.False(pre);
+                    Assert.Equal(["left", "right"], r.Q.Opts!);
+                    var left = r.Animals.Count(a => a.D < 0);
+                    var right = r.Animals.Length - left;
+                    Assert.Equal(left > right ? 0 : 1, r.Answer);
+                    Assert.True(Math.Abs(left - right) >= GeeseParade.Lead("side", r.Animals.Length), $"seed {seed} level {level}: {left}:{right}");
+                    Assert.True(Math.Min(left, right) >= 1, $"seed {seed} level {level}: {left}:{right}");
                     break;
                 case "trait":
                     Assert.True(r.Answer >= 1);
@@ -147,8 +171,12 @@ public class GeeseTests
         Assert.Equal(Make(5), Make(5));
         Assert.NotEqual(Make(5), Make(6));
         var types = new HashSet<string>();
-        for (var s = 0; s < 200; s++) types.Add(GeeseParade.Make(new Random(s), 5, false, ["hustka", "chorna"]).Q.Type);
+        for (var s = 0; s < 200; s++) types.Add(GeeseParade.Make(new Random(s), 5, true, ["hustka", "chorna"]).Q.Type);
         Assert.Equal(["count", "dir", "most", "sum", "trait"], types.Order());
+        // На пам'ять — лише три «кого більше».
+        types.Clear();
+        for (var s = 0; s < 200; s++) types.Add(GeeseParade.Make(new Random(s), 5, false, ["hustka", "chorna"]).Q.Type);
+        Assert.Equal(["most", "side", "vs"], types.Order());
         // Двічі поспіль той самий тип — не даємо.
         for (var s = 0; s < 100; s++)
             Assert.NotEqual("most", GeeseParade.Make(new Random(s), 3, false, ["bant"], lastType: "most").Q.Type);
@@ -271,7 +299,9 @@ public class GeeseTests
         Assert.Equal([1], h.Finished.Single().Result.Winners);
         Assert.Contains(h.Awards, a => a.Reason == "ach:geese-shepherd" && a.Nick == "Оля");
         Assert.Contains(h.Awards, a => a.Reason == "ach:geese-shepherd" && a.Nick == "Петро");
-        if (!g.Rounds[^1].Q.Choice) Assert.Contains(h.Awards, a => a.Reason == "ach:geese-eagle");
+        // Орлине око — найшвидшому правильному в останньому параді (Петро відповідав першим).
+        Assert.Contains(h.Awards, a => a.Reason == "ach:geese-eagle" && a.Nick == "Петро");
+        Assert.DoesNotContain(h.Awards, a => a.Reason == "ach:geese-eagle" && a.Nick == "Оля");
         var recap = h.View(0).GetProperty("recap");
         Assert.Equal(7, recap.GetArrayLength());
     }

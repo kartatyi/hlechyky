@@ -46,7 +46,15 @@
     } catch (e) { /* лишаємо лебедя */ }
     return gooseEmoCache;
   }
-  const emo = (k) => (k === 'goose' ? gooseEmo() : (KINDS[k] || {}).emo || '❔');
+  // Варіанти питання «куди бігло більше» — боки, не живність (GeeseParade.Opt).
+  const SIDES = { left: { emo: '⬅️', one: 'ліворуч' }, right: { emo: '➡️', one: 'праворуч' } };
+  const emo = (k) => (k === 'goose' ? gooseEmo() : (KINDS[k] || SIDES[k] || {}).emo || '❔');
+  const oneOf = (k) => (KINDS[k] || SIDES[k] || {}).one || '';
+  // Дві групи показу («X чи Y», «ліворуч чи праворуч») — свої кольори підсвітки й номерів.
+  const GROUP = [
+    { glow: '255,226,90', fill: '#ffd23f', ink: '#2a1e03', edge: '#6b4a00' },
+    { glow: '120,200,255', fill: '#7cc8ff', ink: '#06233a', edge: '#1d4f7a' },
+  ];
 
   // ---------- стан столу ----------
 
@@ -96,6 +104,8 @@
     return { H, back, laneH, S, lanes };
   }
   const laneMid = (g, l) => g.back + 4 + g.laneH * (l + 0.5);
+  /// Розмір тварини на доріжці: дальня (згори) — трохи менша, ближня — повна; так двір має глибину.
+  const laneS = (g, l) => g.S * (g.lanes === 1 ? 1 : 0.82 + 0.18 * l / (g.lanes - 1));
 
   // ---------- малювання: тло ----------
 
@@ -115,66 +125,145 @@
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     const G = geom(H, lanes);
     const r = rng(7 + lanes * 31);
-    // небо
+    // небо: згори синє, до обрію світлішає; сонце з ореолом і кілька хмар
     const sky = g.createLinearGradient(0, 0, 0, G.back);
-    sky.addColorStop(0, '#8fd0f2');
-    sky.addColorStop(1, '#d9f0e6');
+    sky.addColorStop(0, '#6fbde9');
+    sky.addColorStop(1, '#d6f0ee');
     g.fillStyle = sky;
     g.fillRect(0, 0, W, G.back + 2);
-    g.fillStyle = '#ffe680';
-    g.beginPath(); g.arc(W * 0.1, G.back * 0.38, G.back * 0.22, 0, 7); g.fill();
-    // хата під стріхою праворуч
-    const hx = W * 0.74, hb = G.back - 2, hw = W * 0.16, hh = G.back * 0.5;
-    g.fillStyle = '#f6f1e4';
+    const sx0 = W * 0.09, sy0 = G.back * 0.36, sr = G.back * 0.2;
+    const halo = g.createRadialGradient(sx0, sy0, sr * 0.6, sx0, sy0, sr * 2.6);
+    halo.addColorStop(0, 'rgba(255,240,170,.55)');
+    halo.addColorStop(1, 'rgba(255,240,170,0)');
+    g.fillStyle = halo;
+    g.fillRect(0, 0, sx0 + sr * 2.6, G.back);
+    g.fillStyle = '#ffe58a';
+    g.beginPath(); g.arc(sx0, sy0, sr, 0, 7); g.fill();
+    for (const [cx, cy, cs] of [[0.27, 0.3, 1], [0.5, 0.18, 0.75], [0.9, 0.24, 0.85]]) {
+      const x = W * cx, y = G.back * cy, u = G.back * 0.13 * cs;
+      g.fillStyle = 'rgba(255,255,255,.92)';
+      g.beginPath();
+      g.ellipse(x, y + u * 0.3, u * 2.6, u * 0.8, 0, 0, 7);
+      g.arc(x - u * 1.1, y, u * 0.95, 0, 7);
+      g.arc(x + u * 0.2, y - u * 0.35, u * 1.25, 0, 7);
+      g.arc(x + u * 1.3, y + u * 0.05, u * 0.85, 0, 7);
+      g.fill();
+    }
+    // далекі пагорби й тополі — за тином, щоб двір мав глибину
+    g.fillStyle = '#a6cf86';
+    g.beginPath(); g.moveTo(0, G.back);
+    for (let x = 0; x <= W; x += 24) g.lineTo(x, G.back * (0.62 + 0.08 * Math.sin(x * 0.009 + 1.3)));
+    g.lineTo(W, G.back); g.closePath(); g.fill();
+    g.fillStyle = '#8dbf6c';
+    g.beginPath(); g.moveTo(0, G.back);
+    for (let x = 0; x <= W; x += 24) g.lineTo(x, G.back * (0.74 + 0.06 * Math.sin(x * 0.014 + 4)));
+    g.lineTo(W, G.back); g.closePath(); g.fill();
+    for (const tx of [W * 0.2, W * 0.235, W * 0.66]) {
+      g.fillStyle = '#5f9a4a';
+      g.beginPath(); g.ellipse(tx, G.back * 0.5, G.back * 0.07, G.back * 0.34, 0, 0, 7); g.fill();
+      g.fillStyle = 'rgba(255,255,255,.12)';
+      g.beginPath(); g.ellipse(tx - G.back * 0.02, G.back * 0.44, G.back * 0.025, G.back * 0.22, 0, 0, 7); g.fill();
+    }
+    // біла хата під стріхою праворуч: тінь на стіні, вікна в синіх лиштвах, двері
+    const hx = W * 0.74, hb = G.back - 2, hw = W * 0.17, hh = G.back * 0.52;
+    g.fillStyle = 'rgba(40,60,30,.18)';
+    g.fillRect(hx + 4, hb - hh + 4, hw, hh);
+    g.fillStyle = '#fbf7ec';
     g.fillRect(hx, hb - hh, hw, hh);
-    g.fillStyle = '#5d8fc4';
-    g.fillRect(hx + hw * 0.18, hb - hh * 0.72, hw * 0.16, hh * 0.38);
-    g.fillRect(hx + hw * 0.62, hb - hh * 0.72, hw * 0.16, hh * 0.38);
-    g.fillStyle = '#c49a3c';
+    g.fillStyle = 'rgba(160,140,110,.18)';
+    g.fillRect(hx, hb - hh, hw, hh * 0.18);
+    g.fillStyle = '#c94f3d';
+    g.fillRect(hx, hb - hh * 0.12, hw, hh * 0.12);
+    for (const wx of [0.12, 0.7]) {
+      g.fillStyle = '#3f74b0';
+      g.fillRect(hx + hw * wx - 2, hb - hh * 0.76 - 2, hw * 0.18 + 4, hh * 0.4 + 4);
+      g.fillStyle = '#bfe3f7';
+      g.fillRect(hx + hw * wx, hb - hh * 0.76, hw * 0.18, hh * 0.4);
+      g.fillStyle = '#3f74b0';
+      g.fillRect(hx + hw * (wx + 0.085), hb - hh * 0.76, 2, hh * 0.4);
+    }
+    g.fillStyle = '#8a5a2e';
+    g.fillRect(hx + hw * 0.42, hb - hh * 0.72, hw * 0.16, hh * 0.72);
+    g.fillStyle = '#e8c35a';
+    g.beginPath(); g.arc(hx + hw * 0.55, hb - hh * 0.36, 1.6, 0, 7); g.fill();
+    const roof = g.createLinearGradient(0, hb - hh - G.back * 0.42, 0, hb - hh + 2);
+    roof.addColorStop(0, '#d9b04c');
+    roof.addColorStop(1, '#a87d2c');
+    g.fillStyle = roof;
     g.beginPath();
-    g.moveTo(hx - hw * 0.1, hb - hh + 2); g.lineTo(hx + hw * 0.5, hb - hh - G.back * 0.42); g.lineTo(hx + hw * 1.1, hb - hh + 2);
+    g.moveTo(hx - hw * 0.12, hb - hh + 4); g.lineTo(hx + hw * 0.5, hb - hh - G.back * 0.42); g.lineTo(hx + hw * 1.12, hb - hh + 4);
     g.closePath(); g.fill();
-    g.strokeStyle = 'rgba(120,84,30,.45)';
+    g.strokeStyle = 'rgba(110,76,24,.5)';
     g.lineWidth = 1;
-    for (let i = 0; i < 9; i++) {
-      g.beginPath(); g.moveTo(hx + hw * 0.5, hb - hh - G.back * 0.4); g.lineTo(hx - hw * 0.08 + i * hw * 0.15, hb - hh + 1); g.stroke();
+    for (let i = 0; i < 11; i++) {
+      g.beginPath(); g.moveTo(hx + hw * 0.5, hb - hh - G.back * 0.4); g.lineTo(hx - hw * 0.1 + i * hw * 0.122, hb - hh + 3); g.stroke();
     }
     // соняхи за тином
     for (const sx of [W * 0.3, W * 0.36, W * 0.58]) {
       g.strokeStyle = '#4f8a3a'; g.lineWidth = 2.5;
       g.beginPath(); g.moveTo(sx, G.back); g.lineTo(sx, G.back * 0.35); g.stroke();
+      g.fillStyle = '#4f8a3a';
+      g.beginPath(); g.ellipse(sx + 5, G.back * 0.62, 6, 2.5, -0.5, 0, 7); g.fill();
       g.fillStyle = '#f2c230';
-      g.beginPath(); g.arc(sx, G.back * 0.33, G.back * 0.13, 0, 7); g.fill();
+      for (let k = 0; k < 10; k++) {
+        const a = k * Math.PI / 5;
+        g.beginPath(); g.ellipse(sx + Math.cos(a) * G.back * 0.09, G.back * 0.33 + Math.sin(a) * G.back * 0.09, G.back * 0.06, G.back * 0.03, a, 0, 7); g.fill();
+      }
       g.fillStyle = '#6b4320';
-      g.beginPath(); g.arc(sx, G.back * 0.33, G.back * 0.06, 0, 7); g.fill();
+      g.beginPath(); g.arc(sx, G.back * 0.33, G.back * 0.065, 0, 7); g.fill();
     }
-    // трава
-    g.fillStyle = '#7fb95a';
+    // трава: дальня світліша, ближня соковитіша
+    const grass = g.createLinearGradient(0, G.back, 0, H);
+    grass.addColorStop(0, '#93c86a');
+    grass.addColorStop(1, '#6aa846');
+    g.fillStyle = grass;
     g.fillRect(0, G.back, W, H - G.back);
     // задній тин уздовж неба
     wattle(g, 0, G.back - G.back * 0.34, W, G.back + 3, r);
+    g.fillStyle = 'rgba(40,60,20,.18)';
+    g.fillRect(0, G.back + 3, W, 5);
     // кущики трави
     g.strokeStyle = '#5c9a3e';
     g.lineWidth = 1.6;
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < 90; i++) {
       const x = r() * W, y = G.back + 6 + r() * (H - G.back - 8);
       g.beginPath(); g.moveTo(x - 3, y); g.lineTo(x - 1, y - 6); g.moveTo(x, y); g.lineTo(x + 1, y - 8); g.moveTo(x + 3, y); g.lineTo(x + 4, y - 5); g.stroke();
     }
-    // стежки
+    // польові квіточки
+    for (let i = 0; i < 36; i++) {
+      const x = r() * W, y = G.back + 8 + r() * (H - G.back - 12);
+      g.fillStyle = ['#ffffff', '#ffe066', '#f0717a', '#b9a2f0'][i % 4];
+      g.beginPath(); g.arc(x, y, 1.8 + r() * 1.2, 0, 7); g.fill();
+    }
+    // стежки: втоптана земля з темнішим краєм
     for (let l = 0; l < lanes; l++) {
       const y = laneMid(G, l);
       const ph = G.laneH * 0.62;
-      g.fillStyle = '#d7b98a';
-      g.beginPath();
-      g.moveTo(0, y - ph * 0.42);
-      for (let x = 0; x <= W; x += 40) g.lineTo(x, y - ph * 0.42 + Math.sin(x * 0.02 + l) * 3);
-      g.lineTo(W, y + ph * 0.55);
-      for (let x = W; x >= 0; x -= 40) g.lineTo(x, y + ph * 0.55 + Math.sin(x * 0.017 + l * 2) * 3);
-      g.closePath();
-      g.fill();
+      const path = new Path2D();
+      path.moveTo(0, y - ph * 0.42);
+      for (let x = 0; x <= W; x += 40) path.lineTo(x, y - ph * 0.42 + Math.sin(x * 0.02 + l) * 3);
+      path.lineTo(W, y + ph * 0.55);
+      for (let x = W; x >= 0; x -= 40) path.lineTo(x, y + ph * 0.55 + Math.sin(x * 0.017 + l * 2) * 3);
+      path.closePath();
+      const dirt = g.createLinearGradient(0, y - ph * 0.42, 0, y + ph * 0.55);
+      dirt.addColorStop(0, '#cfae7c');
+      dirt.addColorStop(1, '#dcc093');
+      g.fillStyle = dirt;
+      g.fill(path);
+      g.strokeStyle = 'rgba(110,80,40,.28)';
+      g.lineWidth = 2;
+      g.stroke(path);
       g.fillStyle = 'rgba(140,100,55,.22)';
       for (let i = 0; i < 40; i++) g.fillRect(r() * W, y - ph * 0.3 + r() * ph * 0.8, 3 + r() * 5, 1.5);
+      g.fillStyle = 'rgba(255,255,255,.18)';
+      for (let i = 0; i < 14; i++) { g.beginPath(); g.arc(r() * W, y - ph * 0.2 + r() * ph * 0.6, 1.5 + r() * 1.5, 0, 7); g.fill(); }
     }
+    // м'яке затемнення по краях — погляд іде в середину двору
+    const vig = g.createRadialGradient(W / 2, H * 0.55, H * 0.35, W / 2, H * 0.55, W * 0.62);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(20,30,10,.22)');
+    g.fillStyle = vig;
+    g.fillRect(0, 0, W, H);
     st.bg = c;
     st.bgKey = key;
     return c;
@@ -255,19 +344,7 @@
       g.fillRect(0, 0, c.width, c.height); g.restore();
     };
     if (k === 'cat') tint(tr === 'rudyi' ? '#ff7a12' : '#8a8f99', tr === 'rudyi' ? 0.62 : 0.55);   // звичайний кіт сірий, щоб рудого не сплутати
-    if (tr === 'chorna') {
-      tint('#1d1a1a', 0.72);
-      // Чорна курка на траві — темна пляма: світлий обвід повертає їй силует курки (гребінь просвічує крізь тон).
-      const src = document.createElement('canvas');
-      src.width = c.width;
-      src.height = c.height;
-      src.getContext('2d').drawImage(c, 0, 0);
-      g.clearRect(0, 0, c.width, c.height);
-      const o = Math.max(1, px * 0.035);
-      for (let a = 0; a < 8; a++) g.drawImage(src, Math.cos(a * Math.PI / 4) * o, Math.sin(a * Math.PI / 4) * o);
-      tint('#f3ead2', 1);
-      g.drawImage(src, 0, 0);
-    }
+    if (tr === 'chorna') tint('#1d1a1a', 0.72);   // гребінь просвічує крізь тон; силует повертає обвід нижче
     const u = px;   // одиниця — розмір тварини
     const hx = cx - u * 0.22, hy = cy - u * 0.28;   // приблизно голова (ліва верхня чверть)
     if (tr === 'hustka') {
@@ -307,6 +384,21 @@
       g.fillStyle = '#1d5bb0';
       g.beginPath(); g.arc(bx, by, u * 0.045, 0, 7); g.fill();
     }
+    // Світлий обвід, як у наліпки: на зеленому й на возі силует читається одразу (у чорної курки — товстіший,
+    // інакше вона темна пляма).
+    const src = document.createElement('canvas');
+    src.width = c.width;
+    src.height = c.height;
+    src.getContext('2d').drawImage(c, 0, 0);
+    g.clearRect(0, 0, c.width, c.height);
+    const o = Math.max(1, px * (tr === 'chorna' ? 0.035 : 0.024));
+    for (let a = 0; a < 8; a++) g.drawImage(src, Math.cos(a * Math.PI / 4) * o, Math.sin(a * Math.PI / 4) * o);
+    tint(tr === 'chorna' ? '#f3ead2' : '#fffbf0', 1);
+    if (tr !== 'chorna') {
+      // обвід напівпрозорий: прибираємо частину альфи, не чіпаючи кольору
+      g.save(); g.globalCompositeOperation = 'destination-out'; g.globalAlpha = 0.3; g.fillRect(0, 0, c.width, c.height); g.restore();
+    }
+    g.drawImage(src, 0, 0);
     if (st.sprites.size > 120) st.sprites.clear();
     st.sprites.set(key, c);
     return c;
@@ -331,14 +423,28 @@
     return st.prep;
   }
 
-  function markHits(P, hits) {
-    const key = (hits || []).join(',');
+  /// Групи показу: «X чи Y» лічить кожен вид окремо, «куди більше» — кожен бік; решта — одна група.
+  /// Повертає ключі груп у порядку варіантів і функцію «тварина → ключ».
+  function groupsOf(v) {
+    const q = v.q || {};
+    if (q.type === 'vs' && q.opts) return { keys: q.opts.map((o) => o.k), of: (a) => a.k };
+    if (q.type === 'side') return { keys: ['left', 'right'], of: (a) => (a.d < 0 ? 'left' : 'right') };
+    return null;
+  }
+
+  /// Номери влучних — у порядку появи, у кожній групі свій лік; a.grp — індекс групи (колір).
+  function markHits(P, hits, groups) {
+    const key = (hits || []).join(',') + '|' + (groups ? groups.keys.join(',') : '');
     if (P.hitsKey === key) return;
     P.hitsKey = key;
     const set = new Set(hits || []);
     const order = P.all.filter((a) => set.has(a.i)).sort((a, b) => a.enter - b.enter || a.i - b.i);
-    for (const a of P.all) a.hit = 0;
-    order.forEach((a, n) => { a.hit = n + 1; });
+    for (const a of P.all) { a.hit = 0; a.grp = 0; }
+    const n = [0, 0];
+    for (const a of order) {
+      a.grp = groups ? Math.max(0, groups.keys.indexOf(groups.of(a))) : 0;
+      a.hit = ++n[a.grp];
+    }
     P.hitOrder = order;
   }
 
@@ -371,50 +477,54 @@
     else wattle(g, x0, y - G.laneH * 0.02, x1, y + G.laneH * 0.44, null);
   }
 
-  function badge(g, x, y, n, r) {
-    g.fillStyle = '#ffd23f';
-    g.strokeStyle = '#6b4a00';
+  function badge(g, x, y, n, r, grp) {
+    const c = GROUP[grp || 0];
+    g.fillStyle = c.fill;
+    g.strokeStyle = c.edge;
     g.lineWidth = 2;
     g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke();
-    g.fillStyle = '#2a1e03';
+    g.fillStyle = c.ink;
     g.font = '700 ' + Math.round(r * 1.2) + 'px system-ui, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillText(String(n), x, y + 1);
   }
 
-  /// Парад на мить t (мс від початку параду). reveal — підсвітка влучних і їхні номери.
+  /// Парад на мить t (мс від початку параду). reveal — підсвітка влучних і їхні номери; повертає, скільки влучних
+  /// кожної групи вже вийшло на двір ([група 0, група 1]).
   function drawParade(g, st, p, G, t, dpr, reveal) {
     const P = prep(st, p);
     const m = p.m || 0.08;
-    let count = 0;
+    const count = [0, 0];
     for (let l = 0; l < P.lanes.length; l++) {
       const L = P.lanes[l];
       const yl = laneMid(G, l);
+      const S = laneS(G, l);
       const badges = [];
       for (const a of L.animals) {
         const pos = (t - a.t0) / 1000 * a.v;
         if (pos < 0) continue;
         const x = a.d > 0 ? -m + pos : 1 + m - pos;
-        if (x < -m || x > 1 + m) { if (reveal && a.hit && t >= a.enter) count++; continue; }
+        if (x < -m || x > 1 + m) { if (reveal && a.hit && t >= a.enter) count[a.grp]++; continue; }
         const px = x * W, py = yl + a.y * G.laneH * 0.55;
         let alpha = 1;
         if (reveal) {
           if (a.hit) {
-            if (t >= a.enter) count++;
-            const glow = g.createRadialGradient(px, py, G.S * 0.1, px, py, G.S * 0.7);
-            glow.addColorStop(0, 'rgba(255,226,90,.75)');
-            glow.addColorStop(1, 'rgba(255,226,90,0)');
+            if (t >= a.enter) count[a.grp]++;
+            const rgb = GROUP[a.grp].glow;
+            const glow = g.createRadialGradient(px, py, S * 0.1, px, py, S * 0.7);
+            glow.addColorStop(0, 'rgba(' + rgb + ',.75)');
+            glow.addColorStop(1, 'rgba(' + rgb + ',0)');
             g.fillStyle = glow;
-            g.beginPath(); g.arc(px, py, G.S * 0.7, 0, 7); g.fill();
-            if (t >= a.enter) badges.push([px, py - G.S * 0.62, a.hit]);
+            g.beginPath(); g.arc(px, py, S * 0.7, 0, 7); g.fill();
+            if (t >= a.enter) badges.push([px, py - S * 0.62, a.hit, a.grp]);
           } else alpha = 0.3;
         }
-        drawAnimal(g, st, a, px, py, G.S, t, dpr, alpha);
+        drawAnimal(g, st, a, px, py, S, t, dpr, alpha);
       }
       for (const c of L.covers) drawCover(g, G, c);
       // номери — поверх тину: інакше схованого за возом не порахуєш
-      for (const b of badges) badge(g, b[0], Math.max(b[1], G.back * 0.5), b[2], Math.max(10, G.S * 0.2));
+      for (const b of badges) badge(g, b[0], Math.max(b[1], G.back * 0.5), b[2], Math.max(10, S * 0.2), b[3]);
     }
     return count;
   }
@@ -430,7 +540,7 @@
       const x = d > 0 ? -m + pos : 1 + m - pos;
       const l = i % G.lanes;
       drawAnimal(g, st, { k: kinds[i], tr: i === 3 ? 'hustka' : i === 0 ? 'hlechyk' : null, d, v, ph: i * 1.3 }, x * W,
-        laneMid(G, l) + (i % 3 - 1) * G.laneH * 0.12, G.S * 0.9, now, dpr, 1);
+        laneMid(G, l) + (i % 3 - 1) * G.laneH * 0.12, laneS(G, l) * 0.9, now, dpr, 1);
     }
   }
 
@@ -439,10 +549,43 @@
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.lineWidth = Math.max(3, size * 0.12);
+    g.lineJoin = 'round';
     g.strokeStyle = 'rgba(30,20,8,.75)';
     g.strokeText(text, x, y);
     g.fillStyle = fill || '#fff';
     g.fillText(text, x, y);
+  }
+
+  /// Плашка поверх двору: темна напівпрозора смуга із заокругленням, текст по центру.
+  function plate(g, text, x, y, size, fill, maxW) {
+    const room = (maxW || W - 24) - size * 1.2;
+    g.font = '800 ' + size + 'px system-ui, sans-serif';
+    const tw = g.measureText(text).width;
+    // довгий текст не ріжемо — стискаємо шрифт під ширину двору
+    if (tw > room) { size = Math.floor(size * room / tw); g.font = '800 ' + size + 'px system-ui, sans-serif'; }
+    const w = Math.min(maxW || W - 24, g.measureText(text).width + size * 1.2);
+    g.fillStyle = 'rgba(28,20,8,.62)';
+    roundRect(g, x - w / 2, y - size * 0.85, w, size * 1.7, size * 0.5);
+    g.fill();
+    bigText(g, text, x, y + 1, size, fill);
+  }
+
+  /// Лічильник показу вгорі праворуч: «🪿 7» або для двох груп «🪿 7 : 🐖 4» кольорами груп.
+  function counter(g, parts, sc) {
+    const fs = Math.round(34 * sc);
+    g.font = '800 ' + fs + 'px system-ui, sans-serif';
+    const gap = 14;
+    const widths = parts.map((pt) => g.measureText(pt.text).width);
+    const w = widths.reduce((a, b) => a + b, 0) + gap * (parts.length - 1) + 28;
+    const x0 = W - 12 - w;
+    g.fillStyle = 'rgba(28,20,8,.62)';
+    roundRect(g, x0, 12, w, 54, 14);
+    g.fill();
+    let x = x0 + 14;
+    parts.forEach((pt, i) => {
+      bigText(g, pt.text, x + widths[i] / 2, 40, fs, pt.fill);
+      x += widths[i] + gap;
+    });
   }
 
   function draw(st) {
@@ -454,7 +597,9 @@
     const dpr = Math.min(3, window.devicePixelRatio || 1);
     const ph = v.ph || 'lobby';
     const p = v.parade;
-    const lanes = p ? p.lanes : 2;
+    // Доріжки — як у GeeseParade.Lanes: на «готуйсь» параду у виді ще нема, а двір не мусить перемальовуватись.
+    const lvl = v.level || 0;
+    const lanes = p ? p.lanes : v.round ? (lvl < 2 ? 1 : lvl < 4 ? 2 : 3) : 2;
     const G = geom(H, lanes);
     const now = performance.now();
     const t = phaseT(st);
@@ -463,32 +608,30 @@
     if (ph === 'parade' && p) {
       drawParade(g, st, p, G, Math.min(t, p.ms), dpr, false);
     } else if (ph === 'reveal' && p && v.reveal) {
-      markHits(prep(st, p), v.reveal.hits);
+      const groups = groupsOf(v);
+      markHits(prep(st, p), v.reveal.hits, groups);
       const rt = Math.min(t * (p.rx || 2.5), p.ms);
-      const n = drawParade(g, st, p, G, rt, dpr, true);
+      const cnt = drawParade(g, st, p, G, rt, dpr, true);
+      const n = cnt[0] + cnt[1];
       if (n !== st.lastCount) { st.lastCount = n; st.pulse = now; }
       const done = rt >= p.ms;
-      const sc = 1 + Math.max(0, 1 - (now - st.pulse) / 220) * 0.35;
-      const label = revealIcon(v) + ' ' + n;
-      const fs = Math.round(40 * sc);
-      g.fillStyle = 'rgba(255,255,255,.85)';
-      roundRect(g, W - 190, 10, 178, 60, 14);
-      g.fill();
-      bigText(g, label, W - 101, 41, fs, '#ffd23f');
-      if (done) {
-        g.fillStyle = 'rgba(20,14,4,.45)';
-        g.fillRect(0, H * 0.36, W, H * 0.28);
-        bigText(g, 'Правильно: ' + answerText(v), W / 2, H * 0.5, Math.round(H * 0.12), '#ffe680');
-      }
+      const sc = 1 + Math.max(0, 1 - (now - st.pulse) / 220) * 0.3;
+      counter(g, groups
+        ? groups.keys.map((k, i) => ({ text: emo(k) + ' ' + cnt[i], fill: GROUP[i].fill }))
+        : [{ text: revealIcon(v) + ' ' + n, fill: GROUP[0].fill }], sc);
+      if (done) plate(g, 'Правильно: ' + answerText(v), W / 2, H * 0.52, Math.round(H * 0.1), '#ffe680');
       st.revealDone = done;
     } else if (ph === 'lobby' || ph === 'done') {
       drawIdle(g, st, G, now, dpr);
     } else if (ph === 'ready') {
+      g.fillStyle = 'rgba(20,14,4,.18)';
+      g.fillRect(0, 0, W, H);
       const left = Math.max(0, (v.dur || 3000) - t);
       const n = Math.ceil(left / 1000);
       const fr = 1 - (left / 1000 - Math.floor(left / 1000));
-      if (n > 0) bigText(g, String(n), W / 2, H * 0.52, Math.round(H * (0.32 + 0.1 * (1 - fr))), '#ffe680');
-      bigText(g, v.pre ? 'Рахуй, що спитали' : 'Дивись уважно — питання буде потім', W / 2, H * 0.84, Math.round(H * 0.058));
+      if (n > 0) bigText(g, String(n), W / 2, H * 0.48, Math.round(H * (0.32 + 0.1 * (1 - fr))), '#ffe680');
+      const hint = v.pre ? 'Рахуй, що спитали' : (v.note || 'Дивись уважно — питання буде потім');
+      plate(g, hint, W / 2, H * 0.84, Math.round(H * 0.065), '#fff');
     } else if (ph === 'answer') {
       g.fillStyle = 'rgba(20,14,4,.28)';
       g.fillRect(0, 0, W, H);
@@ -517,7 +660,7 @@
 
   function revealIcon(v) {
     const q = v.q || {};
-    if (q.type === 'dir') return '⬅';
+    if (q.type === 'dir') return '⬅️';
     if (q.type === 'most' && v.reveal && v.reveal.kind) return emo(v.reveal.kind);
     return (q.kinds || []).map(emo).join('');
   }
@@ -525,7 +668,7 @@
   function answerText(v) {
     const r = v.reveal || {};
     const q = v.q || {};
-    if (q.opts && r.kind) return emo(r.kind) + ' ' + ((KINDS[r.kind] || {}).one || '');
+    if (q.opts && r.kind) return emo(r.kind) + ' ' + oneOf(r.kind);
     return String(r.answer);
   }
 
@@ -569,7 +712,8 @@
     if (ph === 'done') return '';
     const q = v.q;
     if (!q) return '<div class="gsq gsnote">👀 ' + ctx.esc(v.note || 'Дивись уважно — питання буде потім') + '</div>';
-    const icons = q.type === 'dir' ? '⬅' : q.type === 'most' ? '🏆' : (q.kinds || []).map(emo).join('');
+    const icons = q.type === 'dir' ? '⬅️' : q.type === 'side' ? '↔️' : q.type === 'most' ? '🏆' : q.type === 'vs' ? (q.kinds || []).map(emo).join('⚖️')
+      : (q.kinds || []).map(emo).join('');
     return '<div class="gsq"><span class="gsqi">' + icons + '</span><span>' + ctx.esc(q.text) + '</span></div>';
   }
 
@@ -578,7 +722,7 @@
     const d = v.daily;
     if (ph === 'lobby') {
       return '<div class="gsrules">🪿 Через двір біжить парад живності — рахуй, бо потім Дядько Глек спитає «скільки?». '
-        + 'Точно — <b>3</b> очки, мимо на одну — <b>1</b>, найшвидшому з точних <b>+1</b>. Перші три паради — питання наперед, далі — на пам\'ять.</div>';
+        + 'Точно — <b>3</b> очки, мимо на одну — <b>1</b>, найшвидшому з точних <b>+1</b>. Перші три паради — питання наперед, далі — на пам\'ять: лише <b>кого більше</b> й <b>куди бігло більше</b>.</div>';
     }
     const no = v.round ? (d ? '☀ Гуси дня №' + d.no + ' · ' : '') + 'Парад ' + v.round + ' з ' + v.rounds : '';
     const lvl = v.round ? ' · ' + '🔥'.repeat(Math.min(3, 1 + Math.floor((v.level || 0) / 2))) : '';
@@ -884,6 +1028,17 @@
       spin(st);
     },
 
+    news: {
+      v: '2026-10-31',
+      title: 'Порахуй гусей: на пам\'ять — лише «кого більше», новий двір',
+      items: [
+        '🧠 Коли питання після параду, рахувати більше не треба: лише «Кого найбільше?», «Куди бігло більше?» чи «Кого більше: гусей чи поросят?» — і різницю видно оком',
+        '🪿 Перші паради густіші — тварин від 10',
+        '🏡 Новий двір: хмари, пагорби, біла хата, квіти; тварин видно чіткіше, дальня стежка — далі',
+        '⬅️➡️ На показі «X чи Y» і «куди більше» лічать дві групи різними кольорами',
+      ],
+    },
+
     /// Кадр — лише годинник фази й хто вже відповів; фазу міняє вид (сервер шле його на кожну зміну).
     frame(root, ctx, f) {
       const st = root._geese;
@@ -911,7 +1066,7 @@
         return host ? 'Тисни «Почати» — можна й самому, а хто встигне, підсяде' : 'Чекаємо, поки господар почне парад';
       }
       if (ph === 'ready') return v.pre && v.q ? 'Готуйсь: ' + v.q.text : 'Готуйсь — питання буде після параду';
-      if (ph === 'parade') return v.q ? 'Рахуй! ' + v.q.text : 'Дивись уважно — рахуй усіх';
+      if (ph === 'parade') return v.q ? 'Рахуй! ' + v.q.text : 'Стеж, кого більше й куди біжать';
       if (ph === 'answer') {
         if (!ctx.mine || !(v.players || []).includes(ctx.seat)) return 'Гравці відповідають…';
         if (v.mine != null) return 'Відповідь є — чекаємо решту';

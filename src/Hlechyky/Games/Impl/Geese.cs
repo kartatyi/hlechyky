@@ -17,7 +17,8 @@ public abstract class GeeseBase : Game
     public const int Exact = 3, Near = 1, FastBonus = 1;
     /// <summary>У скільки разів швидше крутиться повтор параду на показі.</summary>
     public const double RevealSpeed = 2.5;
-    public const string AfterNote = "Дивись уважно — питання буде потім";
+    /// <summary>Підказка раунду на пам'ять: питання буде лише «кого більше», тож стежити треба за видами й боками.</summary>
+    public const string AfterNote = "Питання буде потім: кого більше й куди бігли";
 
     // ---------- розклад партії (нащадки переозначують) ----------
 
@@ -297,7 +298,7 @@ public abstract class GeeseBase : Game
             foreach (var s in playing.Where(Ctx.Seated))
             {
                 if (_hist.All(h => h.Pts[s] >= Exact)) Ctx.Award(s, 0, "ach:geese-shepherd");
-                if (_hist.Count > 0 && !_rounds[^1].Q.Choice && _hist[^1].Ans[s] == _rounds[^1].Answer && _rounds[^1].Level >= GeeseParade.MaxLevel)
+                if (_hist.Count > 0 && _hist[^1].Fast[s] && _rounds[^1].Level >= GeeseParade.MaxLevel)
                     Ctx.Award(s, 0, "ach:geese-eagle");
             }
             if (_winners.Length == 1 && _says < 3 && Ctx.Rng.Next(2) == 0)
@@ -377,7 +378,7 @@ public abstract class GeeseBase : Game
         text = r.Q.Text,
         kinds = r.Q.Kinds,
         trait = r.Q.Trait,
-        opts = r.Q.Opts?.Select(k => { var kind = GeeseParade.Kind(k); return new { k, name = kind.One, emo = kind.Emoji }; }).ToArray(),
+        opts = r.Q.Opts?.Select(k => { var (one, emoji) = GeeseParade.Opt(k); return new { k, name = one, emo = emoji }; }).ToArray(),
         max = GeeseParade.MaxAnswer,
     };
 
@@ -410,8 +411,8 @@ public abstract class GeeseBase : Game
     object[] Recap(int me) => [.. _hist.Select((h, i) => (object)new
     {
         q = _rounds[i].Q.Text,
-        answer = _rounds[i].Q.Choice ? GeeseParade.Kind(_rounds[i].Q.Opts![_rounds[i].Answer]).One : _rounds[i].Answer.ToString(CultureInfo.InvariantCulture),
-        mine = h.Ans[me] is not { } a ? null : _rounds[i].Q.Choice ? GeeseParade.Kind(_rounds[i].Q.Opts![a]).One : a.ToString(CultureInfo.InvariantCulture),
+        answer = _rounds[i].Q.Choice ? GeeseParade.Opt(_rounds[i].Q.Opts![_rounds[i].Answer]).One : _rounds[i].Answer.ToString(CultureInfo.InvariantCulture),
+        mine = h.Ans[me] is not { } a ? null : _rounds[i].Q.Choice ? GeeseParade.Opt(_rounds[i].Q.Opts![a]).One : a.ToString(CultureInfo.InvariantCulture),
         pts = h.Pts[me],
     })];
 
@@ -491,7 +492,8 @@ public static class GeeseBot
         var hard = (round.Level >= 4 ? 0.1 : 0) + (round.Pre ? 0 : 0.1);
         if (round.Q.Choice)
         {
-            var p = i switch { 0 => 0.45, 1 => 0.7, _ => 0.88 } - hard;
+            // «Кого більше» — з відривом, тож навіть легкий бот влучає частіше, ніж навмання; густий парад — трохи збиває.
+            var p = i switch { 0 => 0.6, 1 => 0.78, _ => 0.9 } - (round.Level >= 4 ? 0.05 : 0);
             if (rng.NextDouble() < p || round.Q.Opts!.Length < 2) return (at, round.Answer);
             var other = rng.Next(round.Q.Opts!.Length - 1);
             return (at, other >= round.Answer ? other + 1 : other);

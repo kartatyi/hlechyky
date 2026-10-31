@@ -19,7 +19,9 @@ public sealed record GeeseCover(string Kind, int L, double X0, double X1);
 
 /// <summary>
 /// Питання раунду. <see cref="Type"/>: <c>count</c> (один вид), <c>sum</c> (два види разом), <c>trait</c> (з прикметою),
-/// <c>most</c> (кого найбільше — вибір з <see cref="Opts"/>), <c>dir</c> (скільки бігло ліворуч).
+/// <c>most</c> (кого найбільше — вибір з <see cref="Opts"/>), <c>dir</c> (скільки бігло ліворуч); на пам'ять (питання
+/// після параду) — лише вибір: <c>most</c>, <c>side</c> (куди бігло більше — <c>left</c>/<c>right</c>) і <c>vs</c>
+/// (кого більше з двох видів).
 /// </summary>
 public sealed record GeeseQuestion(string Type, string Text, string[] Kinds, string? Trait, string[]? Opts)
 {
@@ -40,7 +42,7 @@ public static class GeeseParade
     /// <summary>Поле за краєм двору (частка ширини): тварина виходить з-за краю й зникає за іншим.</summary>
     public const double Margin = 0.08;
     public const int MaxLevel = 6;
-    public const int MinAnimals = 8, MaxAnimals = 30;
+    public const int MinAnimals = 10, MaxAnimals = 30;
     /// <summary>Найбільше число, яке можна відповісти.</summary>
     public const int MaxAnswer = 60;
     /// <summary>Найдовша дорога тварини через двір — частка параду: решта йде на те, щоб тварини виходили весь парад.</summary>
@@ -67,6 +69,26 @@ public static class GeeseParade
     ];
 
     public static GeeseKind Kind(string id) => Kinds.First(k => k.Id == id);
+
+    /// <summary>Варіант відповіді на вибір: вид живності або бік (<c>left</c>/<c>right</c> у питанні <c>side</c>).</summary>
+    public static (string One, string Emoji) Opt(string id) => id switch
+    {
+        "left" => ("ліворуч", "⬅️"),
+        "right" => ("праворуч", "➡️"),
+        _ => (Kind(id).One, Kind(id).Emoji),
+    };
+
+    /// <summary>
+    /// На скільки переможець питання «кого більше» випереджає решту: на пам'ять це має бути видно оком, а не рахунком.
+    /// Найбільше — щонайменше на 2 (на густому параді — на 15 % тварин), бік — на 30 % (≈ удвічі більше), пара
+    /// видів — на 10 % (найтонше з трьох, як і просив користувач).
+    /// </summary>
+    public static int Lead(string type, int n) => type switch
+    {
+        "side" => Math.Max(3, (int)Math.Ceiling(n * 0.3)),
+        "vs" => Math.Max(2, (int)Math.Ceiling(n * 0.1)),
+        _ => Math.Max(2, (int)Math.Ceiling(n * 0.15)),
+    };
     public static GeeseTrait Trait(string id) => Traits.First(t => t.Id == id);
 
     /// <summary>Прикмети на гру: 2–3 з п'яти.</summary>
@@ -91,11 +113,23 @@ public static class GeeseParade
         var paradeMs = ms ?? ParadeMs(level);
         var n = Math.Clamp(Count(level) + rng.Next(3) - 1, MinAnimals, MaxAnimals);
 
-        // Тип питання — до параду: під нього й складаємо парад, щоб питання завжди мало сенс.
-        var types = new List<string> { "count" };
-        if (level >= 1) { types.Add("sum"); types.Add("most"); }
-        if (level >= 2 && traits.Length > 0) types.Add("trait");
-        if (both) types.Add("dir");
+        // Тип питання — до параду: під нього й складаємо парад, щоб питання завжди мало сенс. Наперед — рахувати
+        // (знаєш, за ким стежити); на пам'ять рахувати все підряд нереально, тож там лише «кого більше» з явним
+        // відривом: кого найбільше, куди бігло більше, кого більше з двох.
+        var types = new List<string>();
+        if (pre)
+        {
+            types.Add("count");
+            if (level >= 1) { types.Add("sum"); types.Add("most"); }
+            if (level >= 2 && traits.Length > 0) types.Add("trait");
+            if (both) types.Add("dir");
+        }
+        else
+        {
+            types.Add("most");
+            types.Add("vs");
+            if (both) types.Add("side");
+        }
         if (types.Count > 1 && lastType is not null) types.Remove(lastType);
         var type = types[rng.Next(types.Count)];
         var trait = type == "trait" ? Trait(traits[rng.Next(traits.Length)]) : null;
@@ -115,12 +149,19 @@ public static class GeeseParade
             while (roll >= weights[j]) roll -= weights[j++];
             counts[kinds[j]]++;
         }
+        string[]? pair = null;
         if (type == "most")
         {
-            // «Кого найбільше» мусить мати одну відповідь: при рівних перекладаємо одну тварину до першого з рівних.
-            var max = counts.Values.Max();
-            var tied = kinds.Where(k => counts[k] == max).ToList();
-            if (tied.Count > 1) { counts[tied[1]]--; counts[tied[0]]++; }
+            // «Кого найбільше» — одна відповідь і з відривом: переносимо тварин від суперників до лідера.
+            var best = kinds.OrderByDescending(k => counts[k]).First();
+            Pull(counts, best, [.. kinds.Where(k => k != best)], Lead(type, n), null);
+        }
+        else if (type == "vs")
+        {
+            // Пара видів: більший — з відривом (рівних розводимо навмання). Тварин беремо в інших видів, а як нема — у меншого.
+            pair = [.. kinds.OrderBy(_ => rng.Next()).Take(2).OrderBy(k => Array.FindIndex(Kinds, x => x.Id == k))];
+            var win = counts[pair[0]] != counts[pair[1]] ? (counts[pair[0]] > counts[pair[1]] ? pair[0] : pair[1]) : pair[rng.Next(2)];
+            Pull(counts, win, [win == pair[0] ? pair[1] : pair[0]], Lead(type, n), [.. kinds.Where(k => !pair.Contains(k))]);
         }
         if (trait is not null && counts[trait.Kind] < 2)
         {
@@ -143,12 +184,31 @@ public static class GeeseParade
         units = [.. units.OrderBy(_ => rng.Next())];
 
         // Напрямки: з рівня 2 частина біжить ліворуч (на рівні 2 — менше).
-        var leftShare = level >= 4 ? 0.5 : 0.3;
+        var leftShare = level >= 4 || type == "side" ? 0.5 : 0.3;
         var dirs = units.Select(_ => both && rng.NextDouble() < leftShare ? -1 : 1).ToArray();
         if (type == "dir")
         {
             if (!dirs.Contains(-1)) dirs[rng.Next(dirs.Length)] = -1;
             if (!dirs.Contains(1) && dirs.Length > 1) dirs[(Array.IndexOf(dirs, -1) + 1) % dirs.Length] = 1;
+        }
+        if (type == "side")
+        {
+            // «Куди більше» — з відривом: повертаємо найменші групи меншого боку, доки бік не переважить на Lead.
+            int Side(int d) => Enumerable.Range(0, units.Count).Where(u => dirs[u] == d).Sum(u => units[u].Size);
+            var major = Side(1) != Side(-1) ? (Side(1) > Side(-1) ? 1 : -1) : (rng.Next(2) == 0 ? 1 : -1);
+            var need = Lead(type, n);
+            while (Side(major) - Side(-major) < need)
+            {
+                var flip = Enumerable.Range(0, units.Count).Where(u => dirs[u] == -major).OrderBy(u => units[u].Size).FirstOrDefault(-1);
+                if (flip < 0) break;
+                dirs[flip] = major;
+            }
+            // Хтось та мусить бігти й у другий бік, інакше питання ні про що.
+            if (!dirs.Contains(-major))
+            {
+                var one = Enumerable.Range(0, units.Count).Where(u => units[u].Size == 1).FirstOrDefault(-1);
+                if (one >= 0 && Side(major) - 2 >= need) dirs[one] = -major;
+            }
         }
 
         // Час виходу: рівні проміжки з тремтінням, щоб двір не пустував і тварини не виходили купою.
@@ -199,11 +259,30 @@ public static class GeeseParade
         }
 
         var list = animals.OrderBy(a => a.T0).ThenBy(a => a.L).ToArray();
-        var (q, answer, hits) = Ask(rng, type, trait, kinds, list);
+        var (q, answer, hits) = Ask(rng, type, trait, kinds, list, pair);
         return new GeeseRound(level, pre, paradeMs, lanes, list, [.. covers], q, answer, hits);
     }
 
-    static (GeeseQuestion Q, int Answer, int[] Hits) Ask(Random rng, string type, GeeseTrait? trait, List<string> kinds, GeeseAnimal[] list)
+    /// <summary>
+    /// Переносить тварин до <paramref name="win"/>, доки він не випереджає кожного з <paramref name="rivals"/> на
+    /// <paramref name="lead"/>. Беремо в найбільшого з <paramref name="donors"/>, а без них — у найбільшого суперника;
+    /// кожен вид лишається хоч з однією твариною, загальне число параду не міняється.
+    /// </summary>
+    static void Pull(Dictionary<string, int> counts, string win, List<string> rivals, int lead, List<string>? donors)
+    {
+        for (var guard = 0; guard < 200; guard++)
+        {
+            var rival = rivals.OrderByDescending(k => counts[k]).First();
+            if (counts[win] - counts[rival] >= lead) return;
+            var from = (donors ?? []).Where(k => counts[k] > 1).OrderByDescending(k => counts[k]).FirstOrDefault()
+                ?? rivals.Where(k => counts[k] > 1).OrderByDescending(k => counts[k]).FirstOrDefault();
+            if (from is null) return;
+            counts[from]--;
+            counts[win]++;
+        }
+    }
+
+    static (GeeseQuestion Q, int Answer, int[] Hits) Ask(Random rng, string type, GeeseTrait? trait, List<string> kinds, GeeseAnimal[] list, string[]? vsPair)
     {
         int[] Where(Func<GeeseAnimal, bool> f) => [.. Enumerable.Range(0, list.Length).Where(i => f(list[i]))];
         int Of(string k) => list.Count(a => a.K == k);
@@ -230,6 +309,19 @@ public static class GeeseParade
             {
                 var hits = Where(a => a.D < 0);
                 return (new GeeseQuestion(type, "Скільки тварин бігло ліворуч?", [], null, null), hits.Length, hits);
+            }
+            case "side":
+            {
+                // Показ підсвічує всіх і лічить обидва боки окремо; правильний — більший.
+                var left = list.Count(a => a.D < 0);
+                return (new GeeseQuestion(type, "Куди бігло більше тварин?", [], null, ["left", "right"]), left * 2 > list.Length ? 0 : 1, Where(_ => true));
+            }
+            case "vs":
+            {
+                var pair = vsPair!;
+                var best = Of(pair[0]) > Of(pair[1]) ? pair[0] : pair[1];
+                return (new GeeseQuestion(type, $"Кого було більше: {Kind(pair[0]).Many} чи {Kind(pair[1]).Many}?", pair, null, pair),
+                    Array.IndexOf(pair, best), Where(a => pair.Contains(a.K)));
             }
             default:
             {
