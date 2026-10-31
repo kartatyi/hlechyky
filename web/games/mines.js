@@ -425,11 +425,21 @@
 
   /// Поле живе у власній обгортці, а не просто в корені картки: на телефоні велике поле краще дати
   /// прокрутити вбік, ніж стиснути до клітинки в палець завтовшки (решта — у mines.css).
+  /// Світлиця: на широкій картці (ПК, ⇔, ⛶) табло дня, правило й кнопки — колонкою праворуч, а поле бере всю
+  /// висоту. Широко — коли праворуч від поля на всю висоту картки лишається місце на колонку; міряємо aw/ah картки
+  /// (від розкладки .gbody не залежать — без гойдалки). Лежачи на телефоні — своя сітка каркаса.
+  function fitWide(root) {
+    HGames.ui.onFit(root, (f) => {
+      const wide = !!(f && f.aw && f.ah) && f.aw >= 700 && f.aw > f.ah + 120 && !f.land && !document.body.classList.contains('g-land');
+      if (root.classList.contains('mn-wide') !== wide) root.classList.toggle('mn-wide', wide);
+    });
+  }
+
   function boardHost(root) {
     let el = root.querySelector(':scope > .mn-wrap');
     if (!el) {
       el = document.createElement('div');
-      el.className = 'mn-wrap';
+      el.className = 'mn-wrap g-field';   // Світлиця: обгортка — «поле» для каркаса (--g-fh)
       root.appendChild(el);
     }
     return el;
@@ -478,9 +488,11 @@
     icon: ICON,
     seatNames: ['жовтий', 'зелений', 'глиняний', 'сірий'],
     seatClass: ['x', 'o', 'c', 'd'],
-    mount(root, ctx) { ctx._root = root; paint(root, ctx, daily); },
-    update(root, ctx) { ctx._root = root; paint(root, ctx, daily); },
+    mount(root, ctx) { ctx._root = root; paint(root, ctx, daily); fitWide(root); },
+    update(root, ctx) { ctx._root = root; paint(root, ctx, daily); fitWide(root); },
     unmount(root) {
+      HGames.ui.onFit(root, null);
+      root.classList.remove('mn-wide');
       const st = root._mines;
       if (st && st.timer) clearInterval(st.timer);
       ghostStop(root);

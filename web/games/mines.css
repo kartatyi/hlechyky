@@ -30,26 +30,30 @@
 /* ---- поле ---- */
 /* Обгортка поля: на широкому екрані нічого не робить, на телефоні дає полю прокрутку вбік. */
 .mn-wrap { display: block; width: 100%; }   /* .gbody — колонка з align-items: center: без ширини обгортка стискалась до 240 px */
-.board.mines { width: min(420px, 100%); gap: 3px; }
+/* Світлиця: поле вписується в місце під поле (--g-fh від каркаса; поле — обгортка .mn-wrap.g-field), а не в
+   420/480/560 px; стеля 640 px (16×16 — 720), у ⛶ — без стелі. Цифри й прапорці ростуть із клітинкою (cqi —
+   відсоток ширини поля): --mn-f ≈ 46 % клітинки. */
+.board.mines {
+  width: min(var(--mn-room, 100%), var(--g-fmax, var(--g-bmax, 640px)), max(var(--g-fminw, 0px), calc((var(--g-fh, 432px) - 4px) * var(--cols, 9) / var(--rows, var(--cols, 9)))));
+  gap: 3px; container-type: inline-size; --mn-f: max(11px, calc(46cqi / var(--cols, 9)));
+}
 .board.mines .cell {
-  font-size: 1.05em; font-weight: 700; border-radius: 6px;
+  font-size: var(--mn-f); font-weight: 700; border-radius: 6px;
   background: var(--panel3); box-shadow: inset 0 -2px 0 var(--gmine-lid);
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 /* Середнє й велике поле: клітинки дрібніші, тож і поле ширше. */
-.board.mines.tiny { width: min(480px, 100%); gap: 2px; }
-.board.mines.huge { width: min(560px, 100%); }
-.board.mines.tiny .cell { font-size: .8em; border-radius: 4px; }
+.board.mines.tiny { gap: 2px; }
+.board.mines.huge { width: min(var(--mn-room, 100%), var(--g-fmax, var(--g-bmax, 720px)), max(var(--g-fminw, 0px), calc((var(--g-fh, 432px) - 4px) * var(--cols, 16) / var(--rows, var(--cols, 16))))); }
+.board.mines.tiny .cell { border-radius: 4px; }
 
 .board.mines .cell.open { background: var(--bg2); box-shadow: none; }
 @media (hover: hover) { .board.mines .cell.closed:not(:disabled):hover { filter: brightness(1.22); } }
 /* відкрите число в дні можна тиснути (відкрити сусідів) — підсвічуємо лише під мишею */
 .board.mines .cell.chord:not(:disabled) { cursor: pointer; }
 @media (hover: hover) { .board.mines .cell.chord:not(:disabled):hover { background: var(--panel); } }
-.board.mines .cell.flag { color: var(--danger); font-size: .9em; }
-.board.mines.tiny .cell.flag { font-size: .68em; }
-.board.mines .cell.bomb { background: var(--danger); color: var(--accent-ink); box-shadow: none; font-size: .9em; }
-.board.mines.tiny .cell.bomb { font-size: .68em; }
+.board.mines .cell.flag { color: var(--danger); font-size: calc(var(--mn-f) * .86); }
+.board.mines .cell.bomb { background: var(--danger); color: var(--accent-ink); box-shadow: none; font-size: calc(var(--mn-f) * .86); }
 /* Куди щойно тиснули — щоб після каскаду було видно, з чого він пішов; у дуелі — кольором того, хто тиснув. */
 .board.mines .cell.last { box-shadow: 0 0 0 2px var(--accent2) inset; }
 .board.mines .cell.last.by0 { box-shadow: 0 0 0 2px var(--accent) inset; }
@@ -71,15 +75,28 @@
 .board.mines .cell.n4, .board.mines .cell.n5, .board.mines .cell.n6,
 .board.mines .cell.n7, .board.mines .cell.n8 { color: var(--accent); }
 
+/* Широка картка (.mn-wide): над полем — рахунок/час і перемикач полів, праворуч від поля — табло дня чи правило
+   (угорі) і кнопки (унизу). Дві речі в одній клітинці сітки не накладаються: поле вище за табло й кнопки разом. */
+body:not(.g-land) .gbody.mn-wide {
+  --mn-room: calc(var(--g-aw, 1000px) - 320px);
+  display: grid; grid-template-columns: auto minmax(240px, 300px); column-gap: 20px; row-gap: 8px;
+  grid-template-areas: "bar size" "field side"; justify-content: center; align-content: start; align-items: center;
+}
+body:not(.g-land) .gbody.mn-wide > .mn-bar { grid-area: bar; }
+body:not(.g-land) .gbody.mn-wide > .mn-size { grid-area: size; margin: 0; }
+body:not(.g-land) .gbody.mn-wide > .mn-wrap { grid-area: field; width: auto; }
+body:not(.g-land) .gbody.mn-wide > :is(.mn-day, .mn-rule) { grid-area: side; align-self: start; margin: 0; }
+body:not(.g-land) .gbody.mn-wide > .mn-btns { grid-area: side; align-self: end; flex-direction: column; align-items: stretch; }
+body:not(.g-land) .gbody.mn-wide > .mn-btns button { justify-content: center; }
+
 /* ---- кнопки під полем ---- */
 .mn-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .mn-btns .mn-flag.on { background: var(--clay); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 
 @media (max-width: 480px) {
   .board.mines { gap: 2px; }
-  .board.mines .cell { border-radius: 5px; font-size: .95em; }
-  .board.mines.tiny .cell { font-size: .85em; border-radius: 3px; }
-  .board.mines.tiny .cell.flag, .board.mines.tiny .cell.bomb { font-size: .75em; }
+  .board.mines .cell { border-radius: 5px; }
+  .board.mines.tiny .cell { border-radius: 3px; }
   .mn-bar { gap: 7px; font-size: .88em; }
   /* Велике поле (16×16): у картці 332 px видно було лише 12 колонок, решта — прихована прокрутка вбік.
      Тепер поле на всю ширину екрана поза відступами картки: 16 клітинок по ~23 px (390) / ~21 px (360),
@@ -91,7 +108,6 @@
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
     mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
   .mn-wrap.mn-zoom .board.mines.huge { width: 527px; max-width: none; margin: 0 12px; }
-  .mn-wrap.mn-zoom .board.mines.huge .cell { font-size: 1em; }
 }
 
 /* табло дня (прохід №3): один-два рядки над полем, свій рядок підсвічено; вогник — серія днів */
