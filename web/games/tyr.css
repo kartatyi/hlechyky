@@ -10,8 +10,12 @@
 .gseat.ty7, .ty7 { --tyc: var(--ty7, #f48fb1); }
 .gseat.ty0, .gseat.ty1, .gseat.ty2, .gseat.ty3, .gseat.ty4, .gseat.ty5, .gseat.ty6, .gseat.ty7 { color: var(--tyc); }
 
+/* Ширина поля 5:3 — з місця, що порахував каркас (--g-fh: висота під рядок поля за вирахуванням рахунку, набоїв,
+   табло й легенди; у ⛶ — увесь екран). Та сама ширина — рядкам над і під полем, щоб усе стояло одним стовпчиком.
+   Раніше стеля 820 px: на 1920 і в ⛶ поле займало половину місця. */
+.tyr { --tyr-w: min(100%, var(--g-fmax, 100%), max(var(--g-fminw, 0px), calc(var(--g-fh, 492px) * 5 / 3))); }
 .tyr .tyrfield {
-  max-width: min(820px, 100%);
+  max-width: var(--tyr-w);
   background: #3a1d12;
   border-radius: 12px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
@@ -26,7 +30,7 @@
 
 .tyrhud {
   display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap;
-  max-width: 820px; margin: 0 auto 6px; font-size: .95em;
+  max-width: var(--tyr-w); margin: 0 auto 6px; font-size: .95em;
 }
 .tyrhud > span { min-height: 1.4em; }
 .tyrstand { color: var(--muted); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -37,7 +41,7 @@
 
 .tyrctl {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  max-width: 820px; margin: 8px auto 0;
+  max-width: var(--tyr-w); margin: 8px auto 0;
 }
 .tyrctl[hidden] { display: none; }
 .tyrdrum { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-height: 44px; }
@@ -54,7 +58,7 @@
 
 .tyrboard {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
-  max-width: 820px; margin: 8px auto 0;
+  max-width: var(--tyr-w); margin: 8px auto 0;
 }
 .tyrboard[hidden] { display: none; }
 .tyrchip {
@@ -75,7 +79,7 @@
 
 .tyrleg {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px;
-  max-width: 820px; margin: 8px auto 0; font-size: .88em; color: var(--muted);
+  max-width: var(--tyr-w); margin: 8px auto 0; font-size: .88em; color: var(--muted);
 }
 .tyrleg[hidden] { display: none; }
 .tyrlegi { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
@@ -83,7 +87,7 @@
 .tyrlegi b { color: var(--ok); }
 .tyrlegi.bad b { color: var(--danger); }
 
-.tyrsum { max-width: 820px; margin: 10px auto 0; }
+.tyrsum { max-width: var(--tyr-w); margin: 10px auto 0; }
 .tyrsum[hidden] { display: none; }
 .tyrtab { width: 100%; border-collapse: collapse; font-size: .92em; }
 .tyrtab th { color: var(--muted); font-weight: 600; text-align: left; padding: 3px 6px; font-size: .9em; }
