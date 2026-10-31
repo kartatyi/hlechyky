@@ -1,20 +1,18 @@
 {
  "game": "blackjack",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
  },
  "screens": {
   "d1366": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:38"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.bj-felt.g-field",
-   "cardBelow": 38,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },
@@ -86,11 +84,11 @@
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:141"
+    "card-below-fold:99"
    ],
    "below": 0,
    "el": "div.bj-felt.g-field",
-   "cardBelow": 141,
+   "cardBelow": 99,
    "hOver": 0,
    "status": "playing"
   },

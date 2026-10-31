@@ -1,7 +1,7 @@
 {
  "game": "melody",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "finished",
   "t": "finished"
@@ -21,7 +21,7 @@
   "d1920": {
    "score": 1,
    "issues": [
-    "field-small:0.49"
+    "field-small:0.52"
    ],
    "below": 0,
    "el": "div.mgstage",
@@ -32,7 +32,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-small:0.34"
+    "field-small:0.33"
    ],
    "below": 0,
    "el": "div.mgstage",

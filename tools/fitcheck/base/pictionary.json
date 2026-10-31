@@ -1,15 +1,17 @@
 {
  "game": "pictionary",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "lobby",
   "t": "lobby"
  },
  "screens": {
   "d1366": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "field-small:0.58"
+   ],
    "below": 0,
    "el": "div.pcstage",
    "cardBelow": 0,
@@ -28,7 +30,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-small:0.44"
+    "field-small:0.47"
    ],
    "below": 0,
    "el": "div.pcstage",
@@ -59,7 +61,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.52"
+    "field-small:0.54"
    ],
    "below": 0,
    "el": "div.pcstage",
@@ -90,11 +92,11 @@
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:168"
+    "card-below-fold:126"
    ],
    "below": 0,
    "el": "div.pcstage",
-   "cardBelow": 168,
+   "cardBelow": 126,
    "hOver": 0,
    "status": "lobby"
   },

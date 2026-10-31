@@ -1,7 +1,7 @@
 {
  "game": "c4x",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "lobby",
   "t": "lobby"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-small:0.54"
+    "field-small:0.58"
    ],
    "below": 0,
    "el": "div.board.discs.c4b",
@@ -48,7 +48,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-small:0.5"
+    "field-small:0.49"
    ],
    "below": 0,
    "el": "div.board.discs.c4b",
@@ -59,7 +59,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.5"
+    "field-small:0.48"
    ],
    "below": 0,
    "el": "div.board.discs.c4b",
@@ -104,10 +104,8 @@
    "status": "lobby"
   },
   "l812": {
-   "score": 1,
-   "issues": [
-    "clipped-text:1"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.board.discs.c4b",
    "cardBelow": 0,
@@ -115,10 +113,8 @@
    "status": "lobby"
   },
   "l812f": {
-   "score": 1,
-   "issues": [
-    "clipped-text:1"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.board.discs.c4b",
    "cardBelow": 0,

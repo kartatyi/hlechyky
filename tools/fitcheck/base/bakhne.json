@@ -1,7 +1,7 @@
 {
  "game": "bakhne",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -53,8 +53,10 @@
    "status": "finished"
   },
   "d2560w": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "field-small:0.59"
+   ],
    "below": 0,
    "el": "div.bk-stage.ouch.quake",
    "cardBelow": 0,
@@ -82,15 +84,14 @@
    "status": "playing"
   },
   "m375": {
-   "score": 3,
+   "score": 2,
    "issues": [
-    "card-below-fold:44",
     "tiny-fonts:4",
     "clipped-text:3"
    ],
    "below": 0,
    "el": "div.bk-stage",
-   "cardBelow": 44,
+   "cardBelow": 2,
    "hOver": 0,
    "status": "playing"
   },

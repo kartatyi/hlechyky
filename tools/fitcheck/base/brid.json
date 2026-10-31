@@ -1,7 +1,7 @@
 {
  "game": "brid",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -71,10 +71,9 @@
    "status": "playing"
   },
   "t768": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "tiny-fonts:1",
-    "small-buttons:1"
+    "tiny-fonts:1"
    ],
    "below": 0,
    "el": "canvas.gcanvas.brboard.play",
@@ -83,24 +82,21 @@
    "status": "playing"
   },
   "m375": {
-   "score": 4,
+   "score": 2,
    "issues": [
-    "card-below-fold:105",
-    "tiny-fonts:1",
-    "clipped-text:4",
-    "small-buttons:1"
+    "card-below-fold:63",
+    "clipped-text:3"
    ],
    "below": 0,
    "el": "canvas.gcanvas.brboard.play",
-   "cardBelow": 105,
+   "cardBelow": 63,
    "hOver": 0,
    "status": "playing"
   },
   "m375f": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "clipped-text:4",
-    "small-buttons:1"
+    "clipped-text:3"
    ],
    "below": 0,
    "el": "canvas.gcanvas.brboard.play",
@@ -109,12 +105,11 @@
    "status": "playing"
   },
   "l812": {
-   "score": 5,
+   "score": 4,
    "issues": [
     "field-capped:200.725px",
     "inner-scroll:1",
-    "clipped-text:3",
-    "small-buttons:1"
+    "clipped-text:3"
    ],
    "below": 0,
    "el": "canvas.gcanvas.brboard.play",
@@ -123,12 +118,11 @@
    "status": "playing"
   },
   "l812f": {
-   "score": 5,
+   "score": 4,
    "issues": [
     "field-capped:200.725px",
     "inner-scroll:1",
-    "clipped-text:3",
-    "small-buttons:1"
+    "clipped-text:3"
    ],
    "below": 0,
    "el": "canvas.gcanvas.brboard.play",

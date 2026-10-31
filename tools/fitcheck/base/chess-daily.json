@@ -1,17 +1,15 @@
 {
  "game": "chess-daily",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
  },
  "screens": {
   "d1366": {
-   "score": 1,
-   "issues": [
-    "field-small:0.58"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.board.chessb",
    "cardBelow": 0,
@@ -48,7 +46,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-small:0.56"
+    "field-small:0.55"
    ],
    "below": 0,
    "el": "div.board.chessb",
@@ -59,7 +57,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.56"
+    "field-small:0.54"
    ],
    "below": 0,
    "el": "div.board.chessb",
@@ -88,11 +86,11 @@
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:138"
+    "card-below-fold:96"
    ],
    "below": 0,
    "el": "div.board.chessb",
-   "cardBelow": 138,
+   "cardBelow": 96,
    "hOver": 0,
    "status": "playing"
   },

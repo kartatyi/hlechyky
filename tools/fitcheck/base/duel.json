@@ -1,7 +1,7 @@
 {
  "game": "duel",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "lobby",
   "t": "lobby"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-small:0.23"
+    "field-small:0.25"
    ],
    "below": 0,
    "el": "svg.dfig",
@@ -21,7 +21,7 @@
   "d1920": {
    "score": 1,
    "issues": [
-    "field-small:0.36"
+    "field-small:0.37"
    ],
    "below": 0,
    "el": "svg.dfig",
@@ -32,7 +32,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-small:0.37"
+    "field-small:0.38"
    ],
    "below": 0,
    "el": "svg.dfig",
@@ -65,7 +65,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.44"
+    "field-small:0.45"
    ],
    "below": 0,
    "el": "svg.dfig",
@@ -94,13 +94,11 @@
    "status": "lobby"
   },
   "m375": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:46"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "svg.dfig",
-   "cardBelow": 46,
+   "cardBelow": 4,
    "hOver": 0,
    "status": "lobby"
   },

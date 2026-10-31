@@ -1,7 +1,7 @@
 {
  "game": "spy",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "lobby",
   "t": "lobby"
@@ -80,13 +80,11 @@
    "status": "lobby"
   },
   "m375": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:18"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.spy-grid",
-   "cardBelow": 18,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "lobby"
   },

@@ -1,7 +1,7 @@
 {
  "game": "storks",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -56,10 +56,10 @@
    "score": 0,
    "issues": [],
    "below": 0,
-   "el": "div.rnr-stage",
+   "el": "div.rnr-stage.rnr-live",
    "cardBelow": 0,
    "hOver": 0,
-   "status": "finished"
+   "status": "playing"
   },
   "d2560f": {
    "score": 0,

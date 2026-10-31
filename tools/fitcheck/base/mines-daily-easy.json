@@ -1,7 +1,7 @@
 {
  "game": "mines-daily-easy",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -46,7 +46,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-small:0.5"
+    "field-small:0.49"
    ],
    "below": 0,
    "el": "div.mn-wrap.g-field",
@@ -57,7 +57,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.5"
+    "field-small:0.48"
    ],
    "below": 0,
    "el": "div.mn-wrap.g-field",
@@ -86,11 +86,11 @@
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:93"
+    "card-below-fold:51"
    ],
    "below": 0,
    "el": "div.mn-wrap.g-field",
-   "cardBelow": 93,
+   "cardBelow": 51,
    "hOver": 0,
    "status": "playing"
   },

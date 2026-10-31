@@ -1,7 +1,7 @@
 {
  "game": "rally",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-capped:656px"
+    "field-capped:730px"
    ],
    "below": 0,
    "el": "div.rl-wrap.g-field.rl-live",
@@ -30,7 +30,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-capped:1287px"
+    "field-capped:1361px"
    ],
    "below": 0,
    "el": "div.rl-wrap.g-field.rl-live",
@@ -41,7 +41,7 @@
   "d1920f": {
    "score": 1,
    "issues": [
-    "field-capped:1511px"
+    "field-capped:1512px"
    ],
    "below": 0,
    "el": "div.rl-wrap.g-field.rl-live",

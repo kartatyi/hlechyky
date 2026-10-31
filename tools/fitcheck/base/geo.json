@@ -1,7 +1,7 @@
 {
  "game": "geo",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-small:0.51"
+    "field-small:0.48"
    ],
    "below": 0,
    "el": "canvas.geocanvas",
@@ -86,25 +86,22 @@
    "status": "playing"
   },
   "m375": {
-   "score": 5,
+   "score": 1,
    "issues": [
-    "card-below-fold:231",
-    "field-below-fold:79"
+    "card-below-fold:86"
    ],
-   "below": 79,
+   "below": 0,
    "el": "canvas.geocanvas",
-   "cardBelow": 231,
+   "cardBelow": 86,
    "hOver": 0,
    "status": "playing"
   },
   "m375f": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:5"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "canvas.geocanvas",
-   "cardBelow": 5,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },

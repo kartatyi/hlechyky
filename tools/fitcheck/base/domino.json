@@ -1,7 +1,7 @@
 {
  "game": "domino",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -17,10 +17,12 @@
    "status": "playing"
   },
   "d1920": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "field-small:0.48"
+   ],
    "below": 0,
-   "el": "div.dom-line",
+   "el": "div.ghand",
    "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
@@ -98,24 +100,20 @@
    "status": "playing"
   },
   "l812": {
-   "score": 2,
-   "issues": [
-    "inner-scroll:1"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.dom-line",
-   "cardBelow": 1,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },
   "l812f": {
-   "score": 2,
-   "issues": [
-    "inner-scroll:1"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.dom-line",
-   "cardBelow": 1,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   }

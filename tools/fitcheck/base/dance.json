@@ -1,7 +1,7 @@
 {
  "game": "dance",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-capped:552px"
+    "field-capped:615px"
    ],
    "below": 0,
    "el": "div.dance-stage",
@@ -19,10 +19,8 @@
    "status": "playing"
   },
   "d1920": {
-   "score": 1,
-   "issues": [
-    "field-capped:1017px"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.dance-stage",
    "cardBelow": 0,
@@ -32,7 +30,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-capped:1041px"
+    "field-capped:1104px"
    ],
    "below": 0,
    "el": "div.dance-stage",
@@ -54,7 +52,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-capped:1557px"
+    "field-capped:1620px"
    ],
    "below": 0,
    "el": "div.dance-stage",
@@ -65,7 +63,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-capped:1581px"
+    "field-capped:1644px"
    ],
    "below": 0,
    "el": "div.dance-stage",
@@ -85,9 +83,8 @@
    "status": "playing"
   },
   "t768": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "field-capped:606px",
     "tiny-fonts:6"
    ],
    "below": 0,
@@ -99,13 +96,13 @@
   "m375": {
    "score": 3,
    "issues": [
-    "card-below-fold:58",
+    "card-below-fold:16",
     "tiny-fonts:5",
     "clipped-text:3"
    ],
    "below": 0,
    "el": "div.dance-stage.dance-portmode",
-   "cardBelow": 58,
+   "cardBelow": 16,
    "hOver": 0,
    "status": "playing"
   },

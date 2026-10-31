@@ -1,7 +1,7 @@
 {
  "game": "ttt9",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "lobby",
   "t": "lobby"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-small:0.56"
+    "field-small:0.59"
    ],
    "below": 0,
    "el": "div.t9-big.g-field",
@@ -48,7 +48,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-small:0.56"
+    "field-small:0.55"
    ],
    "below": 0,
    "el": "div.t9-big.g-field",
@@ -59,7 +59,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.56"
+    "field-small:0.54"
    ],
    "below": 0,
    "el": "div.t9-big.g-field",
@@ -86,13 +86,11 @@
    "status": "lobby"
   },
   "m375": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:25"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.t9-big.g-field",
-   "cardBelow": 25,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "lobby"
   },

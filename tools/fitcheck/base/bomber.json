@@ -1,7 +1,7 @@
 {
  "game": "bomber",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -84,12 +84,12 @@
   "m375": {
    "score": 2,
    "issues": [
-    "card-below-fold:91",
+    "card-below-fold:49",
     "clipped-text:4"
    ],
    "below": 0,
    "el": "canvas.gcanvas.bboard",
-   "cardBelow": 91,
+   "cardBelow": 49,
    "hOver": 0,
    "status": "playing"
   },

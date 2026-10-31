@@ -1,7 +1,7 @@
 {
  "game": "sorochyntsi",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,11 +10,11 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "card-below-fold:837"
+    "card-below-fold:813"
    ],
    "below": 0,
    "el": "div.sor-fieldwrap",
-   "cardBelow": 837,
+   "cardBelow": 813,
    "hOver": 0,
    "status": "playing"
   },
@@ -73,27 +73,25 @@
    "status": "playing"
   },
   "t768": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "card-below-fold:716",
-    "clipped-text:1"
+    "card-below-fold:718"
    ],
    "below": 0,
    "el": "div.sor-fieldwrap",
-   "cardBelow": 716,
+   "cardBelow": 718,
    "hOver": 0,
    "status": "playing"
   },
   "m375": {
-   "score": 6,
+   "score": 2,
    "issues": [
-    "card-below-fold:1080",
-    "field-below-fold:106",
-    "clipped-text:2"
+    "card-below-fold:920",
+    "clipped-text:1"
    ],
-   "below": 106,
+   "below": 0,
    "el": "div.sor-fieldwrap",
-   "cardBelow": 1080,
+   "cardBelow": 920,
    "hOver": 0,
    "status": "playing"
   },
@@ -101,7 +99,7 @@
    "score": 2,
    "issues": [
     "card-below-fold:899",
-    "clipped-text:2"
+    "clipped-text:1"
    ],
    "below": 0,
    "el": "div.sor-fieldwrap",

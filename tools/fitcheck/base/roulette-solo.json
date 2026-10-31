@@ -1,7 +1,7 @@
 {
  "game": "roulette-solo",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -71,35 +71,31 @@
    "status": "playing"
   },
   "t768": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:37"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.rl-stage",
-   "cardBelow": 37,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:200"
+    "card-below-fold:95"
    ],
    "below": 0,
    "el": "div.rl-board.v",
-   "cardBelow": 200,
+   "cardBelow": 95,
    "hOver": 0,
    "status": "playing"
   },
   "m375f": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:27"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.rl-board.v",
-   "cardBelow": 27,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },

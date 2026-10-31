@@ -1,7 +1,7 @@
 {
  "game": "tanks",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -82,14 +82,13 @@
    "status": "playing"
   },
   "m375": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "card-below-fold:27",
     "clipped-text:4"
    ],
    "below": 0,
    "el": "canvas.gcanvas.tboard",
-   "cardBelow": 27,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },

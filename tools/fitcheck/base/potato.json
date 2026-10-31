@@ -1,7 +1,7 @@
 {
  "game": "potato",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-capped:612px"
+    "field-capped:675px"
    ],
    "below": 0,
    "el": "div.potato-stage",
@@ -30,7 +30,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-capped:1104px"
+    "field-capped:1167px"
    ],
    "below": 0,
    "el": "div.potato-stage",
@@ -52,7 +52,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-capped:1620px"
+    "field-capped:1683px"
    ],
    "below": 0,
    "el": "div.potato-stage",
@@ -63,7 +63,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-capped:1645px"
+    "field-capped:1708px"
    ],
    "below": 0,
    "el": "div.potato-stage",
@@ -94,13 +94,11 @@
    "status": "playing"
   },
   "m375": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:40"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.potato-stage.potato-portmode",
-   "cardBelow": 40,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },
@@ -118,7 +116,7 @@
    "issues": [
     "field-capped:406px",
     "inner-scroll:1",
-    "clipped-text:1"
+    "clipped-text:2"
    ],
    "below": 0,
    "el": "div.potato-stage",
@@ -131,7 +129,7 @@
    "issues": [
     "field-capped:406px",
     "inner-scroll:1",
-    "clipped-text:1"
+    "clipped-text:2"
    ],
    "below": 0,
    "el": "div.potato-stage",

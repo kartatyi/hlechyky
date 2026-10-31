@@ -1,7 +1,7 @@
 {
  "game": "thinice",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-capped:407px"
+    "field-capped:448px"
    ],
    "below": 0,
    "el": "canvas.gcanvas.tiboard.play",
@@ -21,7 +21,7 @@
   "d1920": {
    "score": 1,
    "issues": [
-    "field-capped:719px"
+    "field-capped:761px"
    ],
    "below": 0,
    "el": "canvas.gcanvas.tiboard.play",
@@ -32,7 +32,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-capped:735px"
+    "field-capped:777px"
    ],
    "below": 0,
    "el": "canvas.gcanvas.tiboard.play",
@@ -54,7 +54,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-capped:1079px"
+    "field-capped:1100px"
    ],
    "below": 0,
    "el": "canvas.gcanvas.tiboard.play",
@@ -65,7 +65,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-capped:1095px"
+    "field-capped:1100px"
    ],
    "below": 0,
    "el": "canvas.gcanvas.tiboard.play",
@@ -87,7 +87,7 @@
   "t768": {
    "score": 3,
    "issues": [
-    "field-capped:415px",
+    "field-capped:457px",
     "tiny-fonts:1",
     "clipped-text:4"
    ],
@@ -100,12 +100,12 @@
   "m375": {
    "score": 2,
    "issues": [
-    "card-below-fold:115",
+    "card-below-fold:73",
     "clipped-text:4"
    ],
    "below": 0,
    "el": "canvas.gcanvas.tiboard.play",
-   "cardBelow": 115,
+   "cardBelow": 73,
    "hOver": 0,
    "status": "playing"
   },

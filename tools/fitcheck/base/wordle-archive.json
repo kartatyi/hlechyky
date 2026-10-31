@@ -1,7 +1,7 @@
 {
  "game": "wordle-archive",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -80,13 +80,11 @@
    "status": "playing"
   },
   "m375": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:5"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.walist",
-   "cardBelow": 5,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },

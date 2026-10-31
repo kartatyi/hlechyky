@@ -1,30 +1,27 @@
 {
  "game": "namysto",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
  },
  "screens": {
   "d1366": {
-   "score": 3,
+   "score": 1,
    "issues": [
-    "card-below-fold:11",
-    "field-small:0.16",
-    "clipped-text:6"
+    "field-small:0.11"
    ],
    "below": 0,
    "el": "canvas",
-   "cardBelow": 11,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },
   "d1920": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "field-small:0.1",
-    "clipped-text:6"
+    "field-small:0.1"
    ],
    "below": 0,
    "el": "canvas",
@@ -33,10 +30,9 @@
    "status": "playing"
   },
   "d1920w": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "field-small:0.1",
-    "clipped-text:6"
+    "field-small:0.1"
    ],
    "below": 0,
    "el": "canvas",
@@ -45,10 +41,9 @@
    "status": "playing"
   },
   "d1920f": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "field-small:0.12",
-    "clipped-text:6"
+    "field-small:0.12"
    ],
    "below": 0,
    "el": "canvas",
@@ -57,10 +52,9 @@
    "status": "playing"
   },
   "d2560": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "field-small:0.08",
-    "clipped-text:6"
+    "field-small:0.07"
    ],
    "below": 0,
    "el": "canvas",
@@ -69,10 +63,9 @@
    "status": "playing"
   },
   "d2560w": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "field-small:0.07",
-    "clipped-text:6"
+    "field-small:0.07"
    ],
    "below": 0,
    "el": "canvas",
@@ -81,10 +74,9 @@
    "status": "playing"
   },
   "d2560f": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "field-small:0.1",
-    "clipped-text:6"
+    "field-small:0.1"
    ],
    "below": 0,
    "el": "canvas",
@@ -95,23 +87,23 @@
   "t768": {
    "score": 1,
    "issues": [
-    "card-below-fold:226"
+    "card-below-fold:184"
    ],
    "below": 0,
    "el": "canvas",
-   "cardBelow": 226,
+   "cardBelow": 184,
    "hOver": 0,
    "status": "playing"
   },
   "m375": {
    "score": 2,
    "issues": [
-    "card-below-fold:348",
+    "card-below-fold:306",
     "clipped-text:6"
    ],
    "below": 0,
    "el": "canvas",
-   "cardBelow": 348,
+   "cardBelow": 306,
    "hOver": 0,
    "status": "playing"
   },

@@ -1,7 +1,7 @@
 {
  "game": "slot-slidy",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -71,11 +71,8 @@
    "status": "playing"
   },
   "t768": {
-   "score": 2,
-   "issues": [
-    "tiny-fonts:2",
-    "small-buttons:6"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.slotwrap.g-field",
    "cardBelow": 0,
@@ -83,11 +80,9 @@
    "status": "playing"
   },
   "m375": {
-   "score": 3,
+   "score": 1,
    "issues": [
-    "card-below-fold:177",
-    "tiny-fonts:2",
-    "small-buttons:6"
+    "card-below-fold:177"
    ],
    "below": 0,
    "el": "div.slotwrap.g-field",
@@ -96,11 +91,9 @@
    "status": "playing"
   },
   "m375f": {
-   "score": 3,
+   "score": 1,
    "issues": [
-    "card-below-fold:187",
-    "tiny-fonts:2",
-    "small-buttons:1"
+    "card-below-fold:187"
    ],
    "below": 0,
    "el": "div.slotwrap.g-field",
@@ -109,24 +102,24 @@
    "status": "playing"
   },
   "l812": {
-   "score": 1,
+   "score": 2,
    "issues": [
-    "small-buttons:6"
+    "inner-scroll:1"
    ],
    "below": 0,
    "el": "div.slotwrap.g-field",
-   "cardBelow": 0,
+   "cardBelow": 1,
    "hOver": 0,
    "status": "playing"
   },
   "l812f": {
-   "score": 1,
+   "score": 2,
    "issues": [
-    "small-buttons:6"
+    "inner-scroll:1"
    ],
    "below": 0,
    "el": "div.slotwrap.g-field",
-   "cardBelow": 0,
+   "cardBelow": 1,
    "hOver": 0,
    "status": "playing"
   }

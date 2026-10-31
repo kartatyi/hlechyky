@@ -1,20 +1,18 @@
 {
  "game": "poker",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
  },
  "screens": {
   "d1366": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:110"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.pk-table.g-field",
-   "cardBelow": 110,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },
@@ -28,10 +26,8 @@
    "status": "playing"
   },
   "d1920w": {
-   "score": 1,
-   "issues": [
-    "field-small:0.55"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.pk-table.g-field",
    "cardBelow": 3,
@@ -84,22 +80,20 @@
    "status": "playing"
   },
   "m375": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "card-below-fold:275",
-    "clipped-text:1"
+    "card-below-fold:233"
    ],
    "below": 0,
    "el": "div.pk-table.g-field",
-   "cardBelow": 275,
+   "cardBelow": 233,
    "hOver": 0,
    "status": "playing"
   },
   "m375f": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "card-below-fold:85",
-    "clipped-text:1"
+    "card-below-fold:85"
    ],
    "below": 0,
    "el": "div.pk-table.g-field",

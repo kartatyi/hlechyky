@@ -1,7 +1,7 @@
 {
  "game": "reversi-glek",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -46,7 +46,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-small:0.56"
+    "field-small:0.55"
    ],
    "below": 0,
    "el": "div.board.rv",
@@ -57,7 +57,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.56"
+    "field-small:0.54"
    ],
    "below": 0,
    "el": "div.board.rv",
@@ -86,7 +86,7 @@
   "m375": {
    "score": 1,
    "issues": [
-    "clipped-text:2"
+    "clipped-text:1"
    ],
    "below": 0,
    "el": "div.board.rv",
@@ -97,7 +97,7 @@
   "m375f": {
    "score": 1,
    "issues": [
-    "clipped-text:2"
+    "clipped-text:1"
    ],
    "below": 0,
    "el": "div.board.rv",

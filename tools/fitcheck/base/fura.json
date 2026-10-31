@@ -1,7 +1,7 @@
 {
  "game": "fura",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -80,13 +80,11 @@
    "status": "playing"
   },
   "m375": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:44"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.fura-card",
-   "cardBelow": 44,
+   "cardBelow": 2,
    "hOver": 0,
    "status": "playing"
   },

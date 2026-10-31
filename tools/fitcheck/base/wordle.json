@@ -1,24 +1,29 @@
 {
  "game": "wordle",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
  },
  "screens": {
   "d1366": {
-   "score": 0,
-   "issues": [],
+   "score": 2,
+   "issues": [
+    "card-below-fold:89",
+    "tiny-fonts:1"
+   ],
    "below": 0,
    "el": "div.board.wtiles",
-   "cardBelow": 0,
+   "cardBelow": 89,
    "hOver": 0,
    "status": "playing"
   },
   "d1920": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "tiny-fonts:1"
+   ],
    "below": 0,
    "el": "div.board.wtiles",
    "cardBelow": 0,
@@ -26,8 +31,10 @@
    "status": "playing"
   },
   "d1920w": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "tiny-fonts:1"
+   ],
    "below": 0,
    "el": "div.board.wtiles",
    "cardBelow": 0,
@@ -35,8 +42,10 @@
    "status": "playing"
   },
   "d1920f": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "tiny-fonts:1"
+   ],
    "below": 0,
    "el": "div.board.wtiles",
    "cardBelow": 0,
@@ -44,8 +53,10 @@
    "status": "playing"
   },
   "d2560": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "tiny-fonts:1"
+   ],
    "below": 0,
    "el": "div.board.wtiles",
    "cardBelow": 0,
@@ -53,8 +64,10 @@
    "status": "playing"
   },
   "d2560w": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "tiny-fonts:1"
+   ],
    "below": 0,
    "el": "div.board.wtiles",
    "cardBelow": 0,
@@ -62,8 +75,10 @@
    "status": "playing"
   },
   "d2560f": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "tiny-fonts:1"
+   ],
    "below": 0,
    "el": "div.board.wtiles",
    "cardBelow": 0,
@@ -82,11 +97,11 @@
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:92"
+    "card-below-fold:50"
    ],
    "below": 0,
    "el": "div.board.wtiles",
-   "cardBelow": 92,
+   "cardBelow": 50,
    "hOver": 0,
    "status": "playing"
   },

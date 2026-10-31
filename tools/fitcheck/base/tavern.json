@@ -1,7 +1,7 @@
 {
  "game": "tavern",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-capped:564px"
+    "field-capped:669px"
    ],
    "below": 0,
    "el": "div.tavern-stage",
@@ -30,7 +30,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-capped:1098px"
+    "field-capped:1161px"
    ],
    "below": 0,
    "el": "div.tavern-stage",
@@ -52,7 +52,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-capped:1614px"
+    "field-capped:1677px"
    ],
    "below": 0,
    "el": "div.tavern-stage",
@@ -63,7 +63,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-capped:1639px"
+    "field-capped:1702px"
    ],
    "below": 0,
    "el": "div.tavern-stage",
@@ -83,9 +83,8 @@
    "status": "playing"
   },
   "t768": {
-   "score": 2,
+   "score": 1,
    "issues": [
-    "field-capped:591px",
     "tiny-fonts:1"
    ],
    "below": 0,
@@ -97,11 +96,11 @@
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:93"
+    "card-below-fold:51"
    ],
    "below": 0,
    "el": "div.tavern-stage.tavern-portmode",
-   "cardBelow": 93,
+   "cardBelow": 51,
    "hOver": 0,
    "status": "playing"
   },

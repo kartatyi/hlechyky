@@ -1,7 +1,7 @@
 {
  "game": "geo-solo",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-small:0.51"
+    "field-small:0.48"
    ],
    "below": 0,
    "el": "canvas.geocanvas",
@@ -88,11 +88,11 @@
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:152"
+    "card-below-fold:7"
    ],
    "below": 0,
    "el": "canvas.geocanvas",
-   "cardBelow": 152,
+   "cardBelow": 7,
    "hOver": 0,
    "status": "playing"
   },

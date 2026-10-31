@@ -1,7 +1,7 @@
 {
  "game": "shootout",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "lobby",
   "t": "lobby"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-small:0.41"
+    "field-small:0.49"
    ],
    "below": 0,
    "el": "svg.slines",

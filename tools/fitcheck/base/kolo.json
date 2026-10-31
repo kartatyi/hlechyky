@@ -1,7 +1,7 @@
 {
  "game": "kolo",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -46,7 +46,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-small:0.58"
+    "field-small:0.56"
    ],
    "below": 0,
    "el": "div.ko-stage",
@@ -57,7 +57,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.57"
+    "field-small:0.55"
    ],
    "below": 0,
    "el": "div.ko-stage",
@@ -77,22 +77,22 @@
   "t768": {
    "score": 1,
    "issues": [
-    "card-below-fold:176"
+    "card-below-fold:134"
    ],
    "below": 0,
    "el": "div.ko-stage",
-   "cardBelow": 176,
+   "cardBelow": 134,
    "hOver": 0,
    "status": "playing"
   },
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:376"
+    "card-below-fold:334"
    ],
    "below": 0,
    "el": "div.ko-stage",
-   "cardBelow": 376,
+   "cardBelow": 334,
    "hOver": 0,
    "status": "playing"
   },

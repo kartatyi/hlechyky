@@ -1,7 +1,7 @@
 {
  "game": "snake-party",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -23,7 +23,7 @@
    "el": "canvas.gcanvas.snp-board.snp-big",
    "cardBelow": 0,
    "hOver": 0,
-   "status": "finished"
+   "status": "playing"
   },
   "d1920w": {
    "score": 0,
@@ -32,7 +32,7 @@
    "el": "canvas.gcanvas.snp-board.snp-big",
    "cardBelow": 0,
    "hOver": 0,
-   "status": "finished"
+   "status": "playing"
   },
   "d1920f": {
    "score": 0,
@@ -41,7 +41,7 @@
    "el": "canvas.gcanvas.snp-board.snp-big",
    "cardBelow": 0,
    "hOver": 0,
-   "status": "finished"
+   "status": "playing"
   },
   "d2560": {
    "score": 0,

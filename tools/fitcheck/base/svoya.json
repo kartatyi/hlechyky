@@ -1,7 +1,7 @@
 {
  "game": "svoya",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "lobby",
   "t": "lobby"
@@ -79,22 +79,22 @@
   "t768": {
    "score": 1,
    "issues": [
-    "card-below-fold:159"
+    "card-below-fold:117"
    ],
    "below": 0,
    "el": "div.svstage",
-   "cardBelow": 159,
+   "cardBelow": 117,
    "hOver": 0,
    "status": "lobby"
   },
   "m375": {
    "score": 1,
    "issues": [
-    "card-below-fold:694"
+    "card-below-fold:652"
    ],
    "below": 0,
    "el": "div.svstage",
-   "cardBelow": 694,
+   "cardBelow": 652,
    "hOver": 0,
    "status": "lobby"
   },

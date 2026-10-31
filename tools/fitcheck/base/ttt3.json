@@ -1,7 +1,7 @@
 {
  "game": "ttt3",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "lobby",
   "t": "lobby"
@@ -17,8 +17,10 @@
    "status": "lobby"
   },
   "d1920": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "field-small:0.59"
+   ],
    "below": 0,
    "el": "div.board.tttb",
    "cardBelow": 0,
@@ -26,8 +28,10 @@
    "status": "lobby"
   },
   "d1920w": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "field-small:0.58"
+   ],
    "below": 0,
    "el": "div.board.tttb",
    "cardBelow": 0,
@@ -46,7 +50,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-small:0.44"
+    "field-small:0.43"
    ],
    "below": 0,
    "el": "div.board.tttb",
@@ -57,7 +61,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.44"
+    "field-small:0.42"
    ],
    "below": 0,
    "el": "div.board.tttb",

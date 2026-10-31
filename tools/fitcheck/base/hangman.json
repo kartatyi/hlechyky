@@ -1,7 +1,7 @@
 {
  "game": "hangman",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-small:0.53"
+    "field-small:0.56"
    ],
    "below": 0,
    "el": "svg",
@@ -46,8 +46,10 @@
    "status": "playing"
   },
   "d2560": {
-   "score": 0,
-   "issues": [],
+   "score": 1,
+   "issues": [
+    "field-small:0.58"
+   ],
    "below": 0,
    "el": "svg",
    "cardBelow": 0,
@@ -57,7 +59,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-small:0.59"
+    "field-small:0.57"
    ],
    "below": 0,
    "el": "svg",
@@ -102,20 +104,24 @@
    "status": "playing"
   },
   "l812": {
-   "score": 0,
-   "issues": [],
+   "score": 2,
+   "issues": [
+    "inner-scroll:1"
+   ],
    "below": 0,
    "el": "svg",
-   "cardBelow": 0,
+   "cardBelow": 1,
    "hOver": 0,
    "status": "playing"
   },
   "l812f": {
-   "score": 0,
-   "issues": [],
+   "score": 2,
+   "issues": [
+    "inner-scroll:1"
+   ],
    "below": 0,
    "el": "svg",
-   "cardBelow": 0,
+   "cardBelow": 1,
    "hOver": 0,
    "status": "playing"
   }

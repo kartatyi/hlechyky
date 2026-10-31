@@ -1,7 +1,7 @@
 {
  "game": "skate",
- "sha": "5e211ad6c9",
- "at": "2026-10-31 21:04",
+ "sha": "704edf6d86",
+ "at": "2026-11-01 00:00",
  "open": {
   "d": "playing",
   "t": "playing"
@@ -10,7 +10,7 @@
   "d1366": {
    "score": 1,
    "issues": [
-    "field-capped:606px"
+    "field-capped:667px"
    ],
    "below": 0,
    "el": "div.skate-stage",
@@ -30,7 +30,7 @@
   "d1920w": {
    "score": 1,
    "issues": [
-    "field-capped:1098px"
+    "field-capped:1162px"
    ],
    "below": 0,
    "el": "div.skate-stage",
@@ -41,7 +41,7 @@
   "d1920f": {
    "score": 1,
    "issues": [
-    "field-capped:1288px"
+    "field-capped:1287px"
    ],
    "below": 0,
    "el": "div.skate-stage",
@@ -52,7 +52,7 @@
   "d2560": {
    "score": 1,
    "issues": [
-    "field-capped:1614px"
+    "field-capped:1677px"
    ],
    "below": 0,
    "el": "div.skate-stage",
@@ -63,7 +63,7 @@
   "d2560w": {
    "score": 1,
    "issues": [
-    "field-capped:1639px"
+    "field-capped:1702px"
    ],
    "below": 0,
    "el": "div.skate-stage",
@@ -94,13 +94,11 @@
    "status": "playing"
   },
   "m375": {
-   "score": 1,
-   "issues": [
-    "card-below-fold:42"
-   ],
+   "score": 0,
+   "issues": [],
    "below": 0,
    "el": "div.skate-stage.skate-portmode",
-   "cardBelow": 42,
+   "cardBelow": 0,
    "hOver": 0,
    "status": "playing"
   },
@@ -118,7 +116,7 @@
    "issues": [
     "field-capped:406px",
     "inner-scroll:1",
-    "clipped-text:1"
+    "clipped-text:2"
    ],
    "below": 0,
    "el": "div.skate-stage",
@@ -131,7 +129,7 @@
    "issues": [
     "field-capped:406px",
     "inner-scroll:1",
-    "clipped-text:1"
+    "clipped-text:2"
    ],
    "below": 0,
    "el": "div.skate-stage",
