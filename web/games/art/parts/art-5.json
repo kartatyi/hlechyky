@@ -1,0 +1,27 @@
+{
+ "b": {
+  "dotepy": "dotepy",
+  "hangman": "hangman",
+  "hostyntsi": "hostyntsi",
+  "pictionary": "pictionary",
+  "pozyvni": "pozyvni",
+  "sklei": "sklei",
+  "skyrta": "skyrta",
+  "spy": "spy",
+  "telephone": "telephone",
+  "wordle-race": "wordle-race"
+ },
+ "i": {
+  "dotepy": "dotepy",
+  "hangman": "hangman",
+  "hostyntsi": "hostyntsi",
+  "pictionary": "pictionary",
+  "pozyvni": "pozyvni",
+  "sklei": "sklei",
+  "skyrta": "skyrta",
+  "spy": "spy",
+  "telephone": "telephone",
+  "wordle-race": "wordle-race"
+ },
+ "v": 1
+}
