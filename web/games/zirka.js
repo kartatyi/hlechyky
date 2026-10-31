@@ -79,7 +79,7 @@
     let board = root.querySelector(':scope > .zk-board');
     if (!board) {
       board = document.createElement('div');
-      board.className = 'zk-board';
+      board.className = 'zk-board g-field';
       root.appendChild(board);
     }
     // Невидимі «зони дотику» на всю відстань між лунками: сама лунка на телефоні — 16 px, пальцем не влучиш.
