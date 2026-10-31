@@ -280,3 +280,16 @@
   .kh-lv { padding: 5px 1px; }
   .kh-cap { font-size: 1.35em; }
 }
+
+/* ---- без поля (мапа шляху, таблиця дня; клас .kh-onlyside ставить kakhli.js) ----
+   Мапа — головне на картці: на ПК росте з місцем (ширина й шрифт), де ширше 640 px — десять рівнів у ряд;
+   лежачи на телефоні — на всю ширину картки, а не вузькою правою колонкою сітки каркаса (38vw). */
+.kh.kh-onlyside > .kh-side { width: min(100%, 52em); container-type: inline-size; }
+@container (min-width: 560px) { .kh-onlyside .kh-levels { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+@media (min-width: 1100px) and (pointer: fine) { .kh.kh-onlyside > .kh-side { font-size: clamp(1em, calc(var(--g-aw, 1000px) / 64), 1.6em); } }
+body.g-land .gtable.g-board > .gbody.kh.kh-onlyside > .kh-side { grid-column: 1; grid-row: 1 / span 12; max-width: none; width: 100%; align-self: center; }
+@media (max-height: 500px) {
+  .kh-onlyside .kh-kiln > summary { min-height: 36px; padding: 4px; }
+  .kh-onlyside .kh-kiln > .kh-levels { padding-bottom: 6px; }
+  .kh-onlyside .kh-map > p { margin: 4px 0; }
+}

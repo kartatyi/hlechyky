@@ -865,6 +865,8 @@
     }
     const g = v.game;
     S.el.stage.hidden = !g && !(v.mode === 'blitz' && v.phase === 'ready');
+    // без поля (мапа шляху, таблиця дня) права колонка стає головною: лежачи — на всю ширину, на ПК — росте (kakhli.css)
+    if (root.classList.contains('kh-onlyside') !== S.el.stage.hidden) root.classList.toggle('kh-onlyside', S.el.stage.hidden);
     if (g) enqueue(S, g);
     else if (S.m) clearBoard(S);
     S.el.board.classList.toggle('kh-empty', !g);
