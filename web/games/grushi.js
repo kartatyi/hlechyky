@@ -1090,6 +1090,36 @@
 
   /// Телефон, своя картка: на старті партії підкручуємо сторінку, щоб сад і стік стали між шапкою й низом.
   /// У вечірці (embedded) сторінкою керує господар — не чіпаємо.
+  /// Світлиця (fit-core): сад — квадрат на все місце під поле. На столі — від каркаса (ui.box: ah — висота під увесь
+  /// .gbody з ⇔/⛶/телефоном), мінус рядок над садом, табличка комор і стік; лежачи на телефоні (g-land) — від висоти
+  /// картки (стік і «👊» тоді обабіч саду, css). Вечірка вбудувала (root — не .gbody) — як було, стелею в css.
+  /// offset*, не rect: у віконці «в куточку» картка під transform.
+  function sizeCv(st) {
+    const cv = st.cv && st.cv.el, body = st.wrap && st.wrap.parentElement;
+    if (!cv || !cv.isConnected || !body || !body.classList.contains('gbody') || !HGames.ui.box) return;
+    let room = 0;
+    if (document.body.classList.contains('g-land')) {
+      const card = body.closest('.gtable');
+      if (!card) return;
+      const cs = getComputedStyle(card);
+      let top = Infinity, bot = -Infinity;
+      for (const el of card.children) { if (!el.offsetHeight) continue; top = Math.min(top, el.offsetTop); bot = Math.max(bot, el.offsetTop + el.offsetHeight); }
+      if (bot < top) return;
+      room = card.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - (bot - top - cv.offsetHeight) - 4;
+    } else {
+      const f = HGames.ui.box(body);
+      if (!f || !f.ah || !body.offsetHeight) return;
+      room = f.ah - (body.offsetHeight - cv.offsetHeight);
+      // телефон стоячи: каркас каже «не вужче за всю ширину» (--g-fminw) — далі вже краще догорнути сторінку
+      const card = body.closest('.gtable'), minw = card ? parseFloat(card.style.getPropertyValue('--g-fminw')) || 0 : 0;
+      room = Math.max(room, Math.min(minw, f.aw || minw));
+    }
+    const w = Math.max(220, Math.min(1400, Math.floor(room)));
+    if (Math.abs((st.cvW || 0) - w) < 3) return;
+    st.cvW = w;
+    cv.style.maxWidth = 'min(100%, ' + w + 'px)';
+  }
+
   function fitView(st) {
     if (!st.cv || !HGames.ui.coarse() || st.ctx.embedded || !HGames.ui.fit) return;
     const a = st.cv.el.getBoundingClientRect();
@@ -1178,7 +1208,7 @@
       shell(root, st);
       takeView(st, ctx.view);
       if (ctx.view && ctx.view.frame) { st.last = ctx.view.frame; st.interp.push(st.last); }
-      st.onResize = () => { st.lkAt = 0; spin(st); };
+      st.onResize = () => { st.lkAt = 0; sizeCv(st); spin(st); };
       window.addEventListener('resize', st.onResize);
       if (HGames.ui.onFit) HGames.ui.onFit(root, () => st.onResize());
       hud(st);
@@ -1205,6 +1235,7 @@
       st.cv.resize();
       hud(st);
       controls(root, st);
+      sizeCv(st);
       // «Ще раз» і F5: сервер не знає про клавішу, яку не відпускали — досилаємо намір
       if (ctx.playing && ctx.mine && !st.was) { st.sent = null; send(st, true); setTimeout(() => fitView(st), 80); }
       if (!ctx.playing) st.sent = null;

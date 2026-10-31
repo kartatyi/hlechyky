@@ -31,7 +31,7 @@
 /* Сад квадратний; стеля — скільки лишається між шапкою й низом екрана (каркас тримає --gfit-h). */
 .gcanvas.grboard {
   display: block; width: 100%; aspect-ratio: 1; margin: 0 auto; border-radius: 14px;
-  max-width: min(100%, 720px, max(300px, calc(var(--gfit-h, 100dvh) - 190px)));
+  max-width: min(100%, 720px, max(300px, calc(var(--gfit-h, 100dvh) - 190px)));   /* запасне: на столі ширину ставить модуль (sizeCv) */
   background: #4f8a36; box-shadow: 0 2px 14px rgba(0, 0, 0, .25);
 }
 .gcanvas.grboard.play { touch-action: none; cursor: crosshair; }
@@ -110,3 +110,18 @@
   .grstick { width: 106px; height: 106px; }
   .grbtn { width: 74px; height: 74px; }
 }
+
+/* Світлиця: телефон лежачи — стік ліворуч від саду, «👊» праворуч, рядок і комори над садом (було стовпцем: сад
+   260 px і стік під ним за краєм екрана). Ширину саду ставить модуль від висоти картки. */
+body.g-land .grwrap.hasctl {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px;
+  align-items: center; justify-items: center;
+}
+body.g-land .grwrap.hasctl > .grhud { grid-column: 1 / -1; grid-row: 1; }
+body.g-land .grwrap.hasctl > .grscore { grid-column: 1 / -1; grid-row: 2; }
+body.g-land .grwrap.hasctl > .grstage { grid-column: 2; grid-row: 3; }
+body.g-land .grwrap.hasctl > .grctl { display: contents; }
+body.g-land .grwrap.hasctl .grstick { grid-column: 1; grid-row: 3; }
+body.g-land .grwrap.hasctl .grbtn { grid-column: 3; grid-row: 3; }
+/* табличка комор на телефоні гортається вбік — без смуги людина не знає, що там ще хтось */
+@media (pointer: coarse) { .grwrap.hasctl .grscore { scrollbar-width: thin; } .grwrap.hasctl .grscore::-webkit-scrollbar { display: initial; height: 3px; } }
