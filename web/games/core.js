@@ -893,6 +893,10 @@
     }
     const gland = imm && land && coarse();
     if (b.contains('g-land') !== gland) b.toggle('g-land', gland);
+    // Занурення лише тому, що телефон лежить (не ⛶): шапки й вкладок нема, але балачка столу лишається маленькою
+    // плаваючою кнопкою вгорі праворуч (style.css, g-immland) — інакше в картах лежачи столу не відписати.
+    const immLand = imm && !fsOn && !full;
+    if (b.contains('g-immland') !== immLand) b.toggle('g-immland', immLand);
     if (b.contains('g-fs') !== (room && fsOn)) b.toggle('g-fs', room && fsOn);
   }
   function applyFit() {
@@ -1139,6 +1143,8 @@
     try {
       let r = await conn.invoke(method, ...args);
       if (r && !r.ok && String(r.message || '').startsWith(RESTARTING) && (await afterRestart())) r = await conn.invoke(method, ...args);
+      // Встав сам (кнопка, «встати й сісти туди», покер) — стіл за тобою в куточок не їде і підписку не тримає.
+      if (method === 'LeaveRoom' && (!r || r.ok)) dockForget(args[0]);
       if (!r) return { ok: true, message: '' };
       // «Не всі готові» (✋) — не помилка: питаємо «почати все одно?» (startAsked) тут, щоб і «Ще раз» з модулів ігор
       // (ралі з трасою, Вогник, Цеглинки…) не мовчав. Відповідь — уже повторного виклику (чи ця, якщо «Чекати»).
@@ -1905,10 +1911,12 @@
     // нерозгаданою (записка #52).
     if (view.kind === 'room' && next.kind === 'lobby') dailyAt = 0;
     if (view.kind === 'room' && !same) dockLeave(view.id);   // стіл, з якого пішли, — у куточок
+    if (next.kind === 'room') dockLeft.delete(next.id);       // прийшов на стіл знову (дивитись чи сісти) — віконце можна
     view = next;
     dropPeeks();
     if (view.kind !== 'room') { setFull(false); setFs(false); }
-    else if (!same && !coarse()) setFull(widePref());   // ⇔ на ПК пам'ятаємо між столами
+    // ⇔ на ПК пам'ятаємо між столами — і тоді, коли вернулись на той самий стіл з іншого розділу (hide() його знімав)
+    else if (!coarse() && (!same || full !== widePref())) setFull(widePref());
     refit();   // занурений режим лежачи й місце під поле — і тоді, коли сторінку відкрили одразу на столі
     if (!same) chromeFor = null;          // повернулись у підрозділ — перечитуємо профіль/таблицю
     renderShell();
@@ -2035,6 +2043,7 @@
   const saveDock = () => { try { localStorage.setItem(DOCK_KEY, JSON.stringify(dockPrefs)); } catch { /* приватне вікно */ } };
   let dockId = null;            // стіл у віконці — той, з чиєї сторінки пішли останнім (або обраний ‹ ›)
   let dockShut = null;          // віконце цього столу сховали «✕» — до наступного заходу на стіл
+  const dockLeft = new Set();   // столи, з яких встав сам: у віконце не беремо, поки знову не зайдеш на сторінку столу
   let dockEl = null, dockStage = null, dockBox = null, dockSig = '', dockLay = '';
   const dockPhone = () => window.matchMedia('(max-width: 900px)').matches;
   const onRoomPage = () => shown && view.kind === 'room';
@@ -2049,7 +2058,7 @@
   /// Пішли зі сторінки столу id (route, hide). Картка ще на столі — беремо її ширину й місце, яке каркас їй дав.
   function dockLeave(id) {
     const c = id && cards[id];
-    if (dockPrefs.off || !c || !views[id] || peeking.has(id)) return;
+    if (dockPrefs.off || !c || !views[id] || peeking.has(id) || dockLeft.has(id)) return;
     const box = root && root.querySelector('.grbox');
     if (!box || c.el.parentElement !== box) return;   // не зі сторінки столу (уже у віконці чи на складі)
     dockId = id;
@@ -2059,6 +2068,15 @@
     c.natPad = getComputedStyle(c.el).padding;
     const rs = document.documentElement.style;
     c.fitVars = FIT_VARS.map((k) => [k, rs.getPropertyValue(k)]);
+  }
+  /// Встав зі столу id сам (call → LeaveRoom): прибрати його з віконця й з «тримати кадри» — інакше решта за столом
+  /// бачила б тебе «👁 глядачем», поки не натиснеш ✕ (рецензія №3).
+  function dockForget(id) {
+    if (!id) return;
+    dockLeft.add(id);
+    pinned.delete(id);
+    if (dockId === id) { dockId = null; dockShut = null; }
+    dockSync();
   }
   /// Столи для ‹ ›: той, що у віконці, і всі, де сиджу.
   function dockList() {
@@ -4981,8 +4999,11 @@
       try { handled = c.mod.onKey(e, c.ctx); } catch (err) { console.warn('[games] onKey', err); }
     }
     if (handled) { e.preventDefault(); return; }
-    // F — повний екран (ПК: ⛶, телефон із клавіатурою: та сама ⛶), якщо гра клавішу не з'їла. e.code — і в українській розкладці.
-    if (e.code === 'KeyF' && !e.shiftKey && !e.repeat && !e.defaultPrevented && view.kind === 'room' && view.id
+    // F — повний екран (ПК: ⛶, телефон із клавіатурою: та сама ⛶), якщо гра клавішу не з'їла. Лише латинська f за e.key:
+    // e.code 'KeyF' — це ще й українська «а», і в літерних іграх (повний рядок, не твій хід) сторінка злітала б у ⛶.
+    // Ігри з власною клавіатурою слів (ui.keyboardUa) клавішу не віддають зовсім: там і латиниця — це літери.
+    if ((e.key === 'f' || e.key === 'F') && !e.shiftKey && !e.repeat && !e.defaultPrevented && view.kind === 'room' && view.id
+      && !(c && c.el && c.el.querySelector('.gkbd'))
       && !document.querySelector('.modal:not([hidden])')) {
       e.preventDefault();
       if (coarse()) { setFull(!full); renderRoomHead(view.id); } else setFs(!fsOn);
