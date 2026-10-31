@@ -199,7 +199,9 @@
     if (v.jackpot != null) SlotKit.setLive({ jackpot: v.jackpot });
     if (!SlotKit.live.lines) SlotKit.setLive({ lines: [] });
     SlotKit.setLive({ saldo: v.saldo || null, daily: v.daily || 0 });   // пакет 5: сальдо одразу, а не з першим обертом
-    st.inst = SlotKit.mount(st.wrap, id, { balance: liveBal() != null ? liveBal() : v.balance != null ? v.balance : 0, bet: v.bet, bets: v.bets, api: makeApi(st) });
+    // телефон лежачи (g-land): панель керування автомата — у праву колонку картки, одразу під автоматом (над смугами)
+    const padHost = () => (document.body.classList.contains('g-land') && st.wrap.parentNode === root ? { parent: root, before: st.wrap.nextSibling } : null);
+    st.inst = SlotKit.mount(st.wrap, id, { balance: liveBal() != null ? liveBal() : v.balance != null ? v.balance : 0, bet: v.bet, bets: v.bets, api: makeApi(st), padHost });
     // поле останнього оберту — без програвання
     const sp = v.last && v.last.script && (v.last.script.steps || []).find((s) => s.t === 'spin' || s.t === 'set');
     const place = () => {

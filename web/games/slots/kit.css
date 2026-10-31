@@ -424,3 +424,92 @@
   background: linear-gradient(#ffe9a6, #f5b942); border: 2px solid #8a4a10; box-shadow: 0 4px 14px rgba(0,0,0,.35), 0 0 18px rgba(255,214,90,.55); }
 .sk-dobavka b { color: #7a2a00; }
 .sk-port .sk-dobavka { font-size: 14px; padding: 3px 9px; }
+
+/* ---- панель керування поза масштабом (телефон, дотик, вузьке вікно; kit.js placePad) ----
+   Той самий .sk-hud (ті самі кнопки й слухачі), лише винесений з коробки креслення: звичайні px, кнопки 44, «Крутити» —
+   широка. .sk-pad-in — під автоматом у .sk-root; .sk-pad-side — у правій колонці картки (сайт, телефон лежачи).
+   Рядки складає flex-wrap: вузько — «баланс · виграш · ставка» / «перемикачі · Крутити», широко — один рядок. */
+.sk-hud.sk-pad {
+  --sk-gold: #f4c542; --sk-gold2: #d9a92f; --sk-ink: #2a1e03; --sk-text: #ecf1ea; --sk-muted: #9db3a5;
+  --sk-panel: rgba(16, 34, 26, .82); --sk-line: rgba(244, 197, 66, .28);
+  display: flex; flex-wrap: wrap; align-items: stretch; align-content: center; gap: 6px; padding: 4px 8px 5px;
+  font-family: 'Onest', system-ui, sans-serif; color: var(--sk-text); line-height: 1.15; box-sizing: border-box;
+  user-select: none; -webkit-user-select: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.sk-hud.sk-pad button { font-family: inherit; color: inherit; cursor: pointer; }
+.sk-hud.sk-pad-in { position: absolute; left: 0; right: 0; bottom: 0; z-index: 21; }
+.sk-hud.sk-pad-side { order: -1; position: relative; width: 100%; padding: 8px; border: 1px solid var(--sk-line); border-radius: 12px;
+  background: linear-gradient(180deg, #14291f, #0b1610); }
+.sk-hud.sk-pad .sk-bal { order: 1; flex: 1 1 92px; }
+.sk-hud.sk-pad .sk-winbox { order: 2; flex: 1 1 92px; }
+.sk-hud.sk-pad .sk-betbox { order: 3; flex: 0 0 auto; }
+.sk-hud.sk-pad .sk-ctrl { order: 4; display: flex; gap: 6px; align-items: center; }
+.sk-hud.sk-pad .sk-spin { order: 5; }
+/* комірки: 44 px заввишки, числа — 18–20 px справжніх */
+.sk-hud.sk-pad .sk-stat { position: relative; min-height: 44px; padding: 4px 10px; border-radius: 12px; justify-content: center; gap: 1px; box-sizing: border-box; }
+.sk-hud.sk-pad .sk-stat small { font-size: 11px; line-height: 13px; }
+.sk-hud.sk-pad .sk-stat b { font-size: 18px; line-height: 22px; }
+.sk-hud.sk-pad .sk-win-v { font-size: 19px !important; }
+.sk-hud.sk-pad .sk-bal b i { font-size: 15px; }
+.sk-hud.sk-pad .sk-winbox { padding: 4px 10px 4px 34px; }
+.sk-hud.sk-pad .sk-host { left: 3px; bottom: 4px; width: 28px; height: 32px; }
+/* ставка: − 50 + у висоту комірки, підпис «ставка» дрібно над числом */
+.sk-hud.sk-pad .sk-betbox { padding: 0 3px; align-items: center; }
+.sk-hud.sk-pad .sk-betbox > small { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-size: 11px; line-height: 12px; }
+.sk-hud.sk-pad .sk-bet { gap: 2px; height: 100%; align-items: center; }
+.sk-hud.sk-pad .sk-bet b { min-width: 36px; font-size: 16px; padding-top: 11px; }
+.sk-hud.sk-pad .sk-bet button { width: 40px; height: 40px; font-size: 22px; }
+/* ⓘ 🔈 ⚡ ↻ — по 44; «турбо»/«авто» — підписом під значком (місця досить, текст не ховаємо) */
+.sk-hud.sk-pad .sk-ico, .sk-hud.sk-pad .sk-tog { width: 44px; height: 44px; padding: 0; border-radius: 12px; justify-content: center; font-size: 19px; }
+.sk-hud.sk-pad .sk-tog { flex-direction: column; gap: 1px; font-size: 11px; line-height: 12px; font-weight: 700; }
+.sk-hud.sk-pad .sk-tog span { font-size: 16px; line-height: 17px; }
+.sk-hud.sk-pad .sk-auto.on { font-size: 12px; }
+/* «Крутити» — широка кнопка на решту рядка */
+.sk-hud.sk-pad .sk-spin { flex: 1 1 112px; width: auto; min-width: 112px; max-width: 360px; height: 50px; border-radius: 25px;
+  flex-direction: row; gap: 8px; justify-self: auto;
+  box-shadow: 0 0 0 3px rgba(42, 30, 3, .85), 0 0 0 5px rgba(244, 197, 66, .55), 0 6px 16px rgba(0, 0, 0, .5), inset 0 -5px 10px rgba(120, 70, 0, .45); }
+.sk-hud.sk-pad .sk-spin-i { width: 26px; height: 26px; stroke-width: 10; }
+.sk-hud.sk-pad .sk-spin-t { font-size: 17px; margin: 0; }
+.sk-hud.sk-pad .sk-spin.auto::before { inset: -6px; border-radius: 32px; background: none; -webkit-mask: none; mask: none;
+  border: 3px solid rgba(255, 236, 160, .9); animation: sk-padauto 1s ease-in-out infinite alternate; }
+@keyframes sk-padauto { from { opacity: .3; } to { opacity: 1; } }
+.sk-hud.sk-pad .sk-ripple { border-radius: inherit; }
+/* Ворожка тощо (.sk-extra): під автоматом — над панеллю, щоб барабани не стрибали; збоку — окремим рядком */
+.sk-hud.sk-pad .sk-extra { order: 6; justify-content: center; }
+.sk-hud.sk-pad .sk-extra:empty { display: none; }
+.sk-hud.sk-pad-in .sk-extra { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); z-index: 2; }
+.sk-hud.sk-pad-side .sk-extra { flex: 1 1 100%; }
+/* збоку (≈300 px): баланс · виграш / ставка · Крутити / перемикачі */
+.sk-hud.sk-pad-side .sk-bal, .sk-hud.sk-pad-side .sk-winbox { flex: 1 1 40%; }
+.sk-hud.sk-pad-side .sk-spin { order: 4; }
+.sk-hud.sk-pad-side .sk-ctrl { order: 5; flex: 1 1 100%; justify-content: space-around; }
+/* «сьогодні» — уся комірка балансу кнопкою, текст — на місці підпису «баланс» */
+.sk-hud.sk-pad .sk-saldo { position: absolute; inset: 0; z-index: 1; display: flex; align-items: flex-start; justify-content: flex-start; gap: 4px;
+  padding: 4px 10px; border: 0; border-radius: inherit; background: transparent; font-size: 11px; line-height: 13px; overflow: hidden; }
+.sk-hud.sk-pad .sk-saldo[hidden], .sk-hud.sk-pad.sk-tourney .sk-saldo { display: none; }
+.sk-hud.sk-pad:not(.sk-tourney) .sk-bal.sk-has-saldo > small { visibility: hidden; }
+.sk-hud.sk-pad .sk-saldo b { font-size: 11px; line-height: 13px; }
+.sk-hud.sk-pad .sk-saldo:active { background: rgba(255, 255, 255, .06); }
+/* меню автогри — посеред екрана (панель низько чи в колонці, що гортається) */
+.sk-hud.sk-pad .sk-menu { position: fixed; left: 50%; top: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); z-index: 1000;
+  width: min(300px, calc(100vw - 24px)); box-sizing: border-box; }
+.sk-hud.sk-pad .sk-menu-n button, .sk-hud.sk-pad .sk-menu-loss button { height: 44px; }
+.sk-hud.sk-pad .sk-chk { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+/* вузький телефон: усе ще два рядки — ставка й перемикачі тісніші, Глек-ведучий ховається */
+.sk-hud.sk-pad-narrow { gap: 5px 4px; padding-left: 6px; padding-right: 6px; }
+.sk-hud.sk-pad-narrow .sk-bal, .sk-hud.sk-pad-narrow .sk-winbox { flex-basis: 60px; padding-left: 7px; padding-right: 7px; }
+.sk-hud.sk-pad-narrow .sk-bal { flex: 1 1 82px; }
+.sk-hud.sk-pad-narrow .sk-winbox { flex: 1 1 54px; }
+.sk-hud.sk-pad-narrow .sk-host { display: none; }
+.sk-hud.sk-pad-narrow .sk-stat b { font-size: 16px; }
+.sk-hud.sk-pad-narrow .sk-win-v { font-size: 17px !important; }
+.sk-hud.sk-pad-narrow .sk-bet b { min-width: 28px; font-size: 15px; }
+.sk-hud.sk-pad-narrow .sk-ctrl { gap: 4px; }
+.sk-hud.sk-pad-narrow .sk-ico, .sk-hud.sk-pad-narrow .sk-tog { width: 40px; }
+.sk-hud.sk-pad-narrow .sk-spin { min-width: 84px; flex-basis: 84px; gap: 5px; }
+.sk-hud.sk-pad-narrow .sk-spin-t { font-size: 15px; }
+.sk-hud.sk-pad-narrow .sk-saldo { padding-left: 7px; padding-right: 5px; gap: 3px; }
+.sk-hud.sk-pad .sk-bub { max-width: 260px; font-size: 13px; padding: 7px 12px; }
+.sk-hud.sk-pad .sk-bub.below { transform: translateY(-8px) scale(.9); transform-origin: var(--tail, 30px) 0; }
+.sk-hud.sk-pad .sk-bub.below.on { transform: none; }
+.sk-hud.sk-pad .sk-bub.below::after { top: -9px; bottom: auto; border: 9px solid transparent; border-top: 0; border-bottom-color: #f7f0de; }

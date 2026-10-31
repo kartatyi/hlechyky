@@ -700,7 +700,9 @@
     const calm = SK.calm(), fast = ctx.turbo || calm;
     ctx.emit('dobavka', amt);
     const wb = ctx.hud.querySelector('.sk-winbox') || ctx.hud;
-    const [x, y] = ctx.rel(wb, ctx.box);
+    let [x, y] = ctx.rel(wb, ctx.box);
+    // панель поза кресленням (телефон) — табличка внизу коробки, над панеллю, а не за її межами
+    if (ctx.ext) { const bw = ctx.box.offsetWidth, bh = ctx.box.offsetHeight; x = clamp(x, 110, bw - 110); y = Math.min(y, bh - 8); }
     const tag = div('sk-dobavka', '🏺 Глек докинув <b>+' + fmt(amt) + '</b>');
     tag.style.left = x + 'px'; tag.style.top = y + 'px';
     ctx.layer.appendChild(tag);
@@ -990,7 +992,7 @@
       if (!t && ctx.tourney && ctx.tourneyBet0) ctx.bet = ctx.tourneyBet0;
       ctx.tourney = t || null;
       if (t) { ctx.bet = t.bet; ctx.balance = t.chips; }
-      root.classList.toggle('sk-tourney', !!t);
+      root.classList.toggle('sk-tourney', !!t); hud.classList.toggle('sk-tourney', !!t);   // панель може бути поза .sk-root
       updateHud();
     };
     // 🎁 безкоштовні прокрути (gift.js): f = { bet, left } — ставка прокруту, баланс не чіпаємо; null — назад на свою ставку
@@ -1109,7 +1111,10 @@
       // над Глеком, у межах HUD; хвостик — на Глека
       const hw = hud.offsetWidth, bw = Math.min(bub.offsetWidth || 200, hw - 16);
       const [hx, hy] = ctx.rel(gh, hud), x = clamp(hx - 36, 8, hw - bw - 8);
-      bub.style.left = x + 'px'; bub.style.top = (hy - gh.offsetHeight / 2 - 6) + 'px';
+      // панель у колонці картки (лежачи) — над нею мало місця, бульбашка під Глеком
+      const below = hud.classList.contains('sk-pad-side');
+      bub.classList.toggle('below', below);
+      bub.style.left = x + 'px'; bub.style.top = (below ? hy + gh.offsetHeight / 2 + 8 : hy - gh.offsetHeight / 2 - 6) + 'px';
       bub.style.setProperty('--tail', clamp(hx - x, 14, bw - 14) + 'px');
       restart(bub, 'on');
       gh.classList.add('talk'); if (talkT) ctx.clearTimer(talkT); talkT = ctx.timeout(() => gh.classList.remove('talk'), Math.min(1400, 300 + text.length * 40));
@@ -1279,18 +1284,21 @@
     function renderSaldo() {
       if (ctx.busy) return;   // поки барабани крутяться, не підглядаємо в результат
       const S = SK.live && SK.live.saldo, p = S && (saldoAll ? S.all : S.day);
-      if (!p) { if (!saldoEl.hidden) { saldoEl.hidden = true; saldoKey = ''; } return; }
-      const key = [saldoAll, ctx.orient, p.bet, p.win].join('|');
+      if (!p) { if (!saldoEl.hidden) { saldoEl.hidden = true; saldoKey = ''; saldoMark(); } return; }
+      const key = [saldoAll, ctx.orient, ctx.ext, p.bet, p.win].join('|');
       if (key === saldoKey) return;
       saldoKey = key;
       const net = (p.win || 0) - (p.bet || 0), head = saldoAll ? 'весь час' : 'сьогодні';
       const netT = (net > 0 ? '+' : net < 0 ? '−' : '') + fmt(Math.abs(net));
       const netH = '<b class="' + (net > 0 ? 'up' : net < 0 ? 'down' : '') + '">' + netT + '</b>';
       const full = 'поставив ' + fmt(p.bet) + ' · повернув ' + fmt(p.win) + ' · ';
-      saldoEl.innerHTML = ctx.orient === 'port' ? '<i>' + head + '</i> ' + netH : '<i>' + head + ':</i> ' + full + netH;
+      saldoEl.innerHTML = ctx.orient === 'port' || ctx.ext ? '<i>' + head + '</i> ' + netH : '<i>' + head + ':</i> ' + full + netH;
       saldoEl.title = 'Автомати разом, ' + head + ': ' + full + netT + ' 🏺. Торкнись — ' + (saldoAll ? 'сьогодні' : 'весь час');
       saldoEl.hidden = false;
+      saldoMark();
     }
+    // у панелі «сьогодні» стоїть замість підпису «баланс» — комірці треба знати, чи воно є
+    function saldoMark() { const b = saldoEl.parentNode; if (b && b.classList) b.classList.toggle('sk-has-saldo', !saldoEl.hidden); }
     ctx.listen(saldoEl, 'click', (e) => {
       e.stopPropagation(); saldoAll = !saldoAll; ctx.sound('click');
       try { localStorage.setItem(SALDO_KEY, saldoAll ? 'all' : 'day'); } catch (er) { /* приватне вікно */ }
@@ -1309,17 +1317,57 @@
     const sc = art && art.scene;
     if (sc && sc.base) sceneEl.appendChild(div('sk-sc sk-sc-base', sc.base));
 
+    // ----- панель керування поза масштабом (телефон, дотик, вузьке вікно) -----
+    // Креслення масштабується цілим (стоячи ×0,55, лежачи ×0,36) — кнопки HUD ставали 12–31 px. На дотику й вузькому
+    // екрані той самий елемент .sk-hud (ті самі кнопки й слухачі) виносимо з коробки: він стає звичайною панеллю
+    // .sk-pad у справжніх px — під автоматом у .sk-root або там, куди скаже opts.padHost() (сайт лежачи — у праву
+    // колонку картки). Коробка тоді без смуги HUD, барабани ті самі. ПК (миша, ≥ 700 px) — як було. «Стіл у куточку»
+    // показує картку зменшеною копією (розмір .sk-root той самий) — там панель така ж, як на столі.
+    const coarseMQ = window.matchMedia ? matchMedia('(pointer: coarse)') : null;
+    const saldoHome = () => ticker.querySelector('.sk-feed');
+    function extWanted() {
+      return !!(coarseMQ && coarseMQ.matches) || window.innerWidth < 700;
+    }
+    function placePad(ext) {
+      let parent = box, before = layer;
+      if (ext) {
+        const w = opts.padHost ? opts.padHost() : null;
+        parent = (w && w.parent) || root; before = (w && w.parent && w.before) || null;
+      }
+      if (before === hud) before = hud.nextSibling;
+      if (hud.parentNode !== parent || (before && hud.nextSibling !== before)) parent.insertBefore(hud, before);
+      const side = ext && parent !== root;
+      hud.classList.toggle('sk-pad', ext);
+      hud.classList.toggle('sk-pad-in', ext && !side);
+      hud.classList.toggle('sk-pad-side', side);
+      root.classList.toggle('sk-ext', ext);
+      // «сьогодні» — у комірку балансу (уся комірка — кнопка), без панелі — назад у тікер
+      const bal = hud.querySelector('.sk-bal');
+      if (ext && saldoEl.parentNode !== bal) bal.appendChild(saldoEl);
+      if (!ext && saldoEl.parentNode !== ticker) { bal.classList.remove('sk-has-saldo'); ticker.insertBefore(saldoEl, saldoHome()); }
+      if (ext !== ctx.ext) { ctx.ext = ext; saldoKey = ''; renderSaldo(); closeMenus(); }
+    }
+
     // ----- вписування в контейнер -----
     function fit() {
-      const w = root.clientWidth, h = root.clientHeight; if (!w || !h) return;
+      const ext = extWanted();
+      placePad(ext);
+      const w = root.clientWidth, h0 = root.clientHeight; if (!w || !h0) return;
+      // вузький телефон (< 330 px під автомат): дрібніші проміжки, без Глека в комірці — щоб панель лишалась у два рядки
+      hud.classList.toggle('sk-pad-narrow', ext && hud.parentNode === root && w < 330);
+      const ph = ext && hud.parentNode === root ? hud.offsetHeight : 0, h = Math.max(1, h0 - ph);
       // Розкладка — та, де автомат виходить більшим (а не за пропорцією 0,78: на 341×430 «лежача» давала кнопки по 9 px).
-      // Стояча має бути помітно більшою (×1,15), бо лежача показує ще й табло виплат і сцену.
-      const kl = Math.min(w / SK.LAYOUT.land.w, h / SK.LAYOUT.land.h), kp = Math.min(w / SK.LAYOUT.port.w, h / SK.LAYOUT.port.h);
+      // Стояча має бути помітно більшою (×1,15), бо лежача показує ще й табло виплат і сцену. (Вибір — як без панелі:
+      // за всім місцем і повним кресленням, тож розкладка та сама, що й була; панель лише віддає барабанам смугу HUD.)
+      const kl = Math.min(w / SK.LAYOUT.land.w, h0 / SK.LAYOUT.land.h), kp = Math.min(w / SK.LAYOUT.port.w, h0 / SK.LAYOUT.port.h);
       const orient = kp > kl * 1.15 ? 'port' : 'land';
-      const L = SK.LAYOUT[orient];
-      const k = Math.min(w / L.w, h / L.h);
-      box.style.width = L.w + 'px'; box.style.height = L.h + 'px';
-      box.style.setProperty('--ticker', L.ticker + 'px'); box.style.setProperty('--hud', L.hud + 'px');
+      const L = SK.LAYOUT[orient], LH = ext ? L.h - L.hud : L.h;
+      const k = Math.min(w / L.w, h / LH);
+      box.style.width = L.w + 'px'; box.style.height = LH + 'px';
+      box.style.setProperty('--ticker', L.ticker + 'px'); box.style.setProperty('--hud', (ext ? 0 : L.hud) + 'px');
+      box.style.top = ph ? (h / 2).toFixed(1) + 'px' : '';
+      // 1/масштаб — автомати збільшують ним свої кнопки в кресленні на телефоні (Ворожка): calc(42px * var(--sk-inv))
+      box.style.setProperty('--sk-inv', ext ? (1 / k).toFixed(3) : '1');
       box.style.transform = 'translate(-50%,-50%) scale(' + k.toFixed(4) + ')';
       ctx.scale = k;
       if (orient !== ctx.orient || !ctx.built) {
@@ -1340,6 +1388,7 @@
     }
     const ro = new ResizeObserver(() => fit());
     ro.observe(root);
+    ro.observe(hud);   // панель під автоматом виросла (рядок Ворожки, перенос) — коробка поступається місцем
     fit(); updateHud();
 
     // ----- блиск у спокої: setTimeout, без rAF -----
@@ -1537,6 +1586,7 @@
         ctx.auto = 0; ctx.skip(); loop.stop(); ctx.fx.destroy(); ro.disconnect();
         timers.forEach(clearTimeout); intervals.forEach(clearInterval); timers.clear(); intervals.clear();
         offs.forEach((f) => f()); if (machine.destroy) try { machine.destroy(ctx); } catch (e) { console.error(e); }
+        if (!root.contains(hud)) hud.remove();   // панель у колонці картки (лежачи)
         root.remove();
       },
     };

@@ -150,3 +150,8 @@
 .slot-slot-glek .sk-cell.gl-snz::before { content: ''; position: absolute; inset: 7%; border-radius: 50%; z-index: -1; pointer-events: none;
   background: radial-gradient(circle, rgba(170, 225, 255, .5), rgba(170, 225, 255, 0) 70%); box-shadow: 0 0 0 2px rgba(120, 200, 255, .55), 0 0 14px rgba(120, 200, 255, .45); }
 @media (prefers-reduced-motion: reduce) { .gl-sz-cloud { display: none; } }
+/* Телефон (kit: .sk-ext, панель поза масштабом): кнопки Ворожки в кресленні — щоб на екрані були ≥ 40 px
+   (--sk-inv = 1/масштаб; стоячи ≈ ×1,8, лежачи ≈ ×2,8, зі стелею) */
+.sk-ext .gl-f-btns { flex-wrap: wrap; justify-content: center; }
+.sk-ext .gl-f-btns button, .sk-ext .gl-f-take { height: min(120px, calc(46px * var(--sk-inv, 1))); padding: 0 min(30px, calc(14px * var(--sk-inv, 1)));
+  border-radius: min(30px, calc(13px * var(--sk-inv, 1))); font-size: min(34px, calc(15px * var(--sk-inv, 1))); }
