@@ -54,12 +54,15 @@ public class CpuWatchTests
     public async Task Interval_that_ends_on_another_thread_falls_back_to_the_wall_clock()
     {
         var before = Environment.CurrentManagedThreadId;
+        var wall = Stopwatch.StartNew();
         var w = CpuWatch.StartNew();
         await Task.Delay(100).ConfigureAwait(false);
         await Task.Run(() => Thread.Sleep(1)).ConfigureAwait(false);
         var ms = w.Elapsed.TotalMilliseconds;
-        // інший потік — такти чужі, тож чесний стінний час; той самий — лише трохи роботи
-        if (Environment.CurrentManagedThreadId != before) Assert.InRange(ms, 95, 5000);
-        else Assert.InRange(ms, 0, 50);
+        var wallMs = wall.Elapsed.TotalMilliseconds;
+        // інший потік — такти чужі, тож чесний стінний час. Той самий — потік пулу міг тим часом виконувати чужу
+        // роботу (A → B → A), і вона потрапить у замір: так замір лише суворіший, але ніколи не довший за стінний
+        if (Environment.CurrentManagedThreadId != before) Assert.InRange(ms, 95, wallMs + 1);
+        else Assert.InRange(ms, 0, wallMs + 1);
     }
 }
