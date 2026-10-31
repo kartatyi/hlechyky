@@ -9,7 +9,7 @@
   --svno: rgba(229, 115, 115, .16);
 }
 
-.svwrap { width: 100%; max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.svwrap { width: 100%; max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 .svtop { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 22px; }
 .svtime { position: relative; width: min(180px, 45%); height: 22px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
 .svtime i { position: absolute; inset: 0 auto 0 0; background: var(--accent2); transition: width .25s linear; }
@@ -17,6 +17,7 @@
 .svtime span { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8em; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .svstage { min-height: 220px; display: flex; flex-direction: column; gap: 10px; }
+.sv-lobby .svstage { min-height: 0; } /* у лобі сцени ще нема — не тримати під неї 220 px */
 .svwait { color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 18px 0; }
 .svwho { text-align: center; color: var(--muted); }
 .svmode { text-align: center; }
@@ -27,15 +28,22 @@
 .svround { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .svround b { margin-right: 4px; }
 .svsearch { padding: 9px 12px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
-.svpicker { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
-.svgroup { display: flex; flex-direction: column; gap: 5px; }
+.svsearch { width: min(100%, 420px); }
+/* Пакети — плитками (на ПК 2–4 в ряд): раніше колонка в 420 px гортались усередині вже з 7 пакетами. Висоту списку на ПК
+   ставить svoya.js (fitPicker) — за місцем картки; на телефоні гортається сторінка, без другої прокрутки. */
+.svpicker { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.svgroup { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 6px; }
+.svgroup > .muted { grid-column: 1 / -1; }
 .svpack {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; min-width: 0;
   padding: 9px 12px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
 }
 .svpack:hover { border-color: var(--accent2); }
 .svpack.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-.svthemes { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.svthemes {
+  color: var(--muted); overflow: hidden; max-width: 100%; white-space: normal;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; /* усі теми — у підказці */
+}
 
 /* ---------- вступ раунду ---------- */
 .svintro { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 0; }
@@ -50,16 +58,18 @@
 
 /* ---------- поле ---------- */
 .svboard {
+  /* висота клітинки росте з місцем картки (⛶, 2K): поле займає екран, а не смужку вгорі */
+  --svh: clamp(48px, calc((var(--g-ah, 0px) - 230px) / 6), 104px);
   display: grid; grid-template-columns: minmax(90px, 1.6fr) repeat(var(--cols), minmax(44px, 1fr)); gap: 4px;
   background: #0b1830; padding: 6px; border-radius: 12px;
 }
 .svtheme {
   display: flex; align-items: center; padding: 6px 8px; background: var(--svboard); color: #fff;
-  font-weight: 700; font-size: .85em; text-transform: uppercase; letter-spacing: .02em; border-radius: 6px; overflow-wrap: anywhere;
+  font-weight: 700; font-size: max(.85em, calc(var(--svh) * .2)); text-transform: uppercase; letter-spacing: .02em; border-radius: 6px; overflow-wrap: anywhere;
 }
 .svcell {
-  min-height: 48px; display: grid; place-items: center; background: var(--svboard2); color: var(--accent);
-  font-family: var(--display); font-weight: 800; font-size: 1.2em; border: 0; border-radius: 6px; font-variant-numeric: tabular-nums;
+  min-height: var(--svh); display: grid; place-items: center; background: var(--svboard2); color: var(--accent);
+  font-family: var(--display); font-weight: 800; font-size: max(1.2em, calc(var(--svh) * .36)); border: 0; border-radius: 6px; font-variant-numeric: tabular-nums;
 }
 button.svcell:not(:disabled) { cursor: pointer; }
 button.svcell:not(:disabled):hover { background: var(--accent); color: var(--accent-ink); }
@@ -68,13 +78,14 @@ button.svcell:disabled { opacity: 1; cursor: default; }
 
 /* ---------- телевізор ---------- */
 .svtv {
-  background: var(--svboard); color: #fff; border-radius: 14px; padding: 16px 18px 20px; min-height: 200px;
+  background: var(--svboard); color: #fff; border-radius: 14px; padding: 16px 18px 20px;
+  min-height: clamp(200px, calc(var(--g-ah, 0px) - 330px), 560px); /* на великому екрані «телевізор» більший */
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;
 }
 .svq-head { align-self: stretch; display: flex; justify-content: space-between; gap: 10px; font-size: .85em; text-transform: uppercase; letter-spacing: .03em; opacity: .8; }
 .svq-head b { color: var(--accent); font-size: 1.2em; }
 .svq-text { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; font-size: clamp(1.1em, 2.6vw, 1.7em); font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; max-width: 40ch; }
-.svmedia.q, .svmedia.a { max-width: 100%; max-height: 46vh; border-radius: 8px; }
+.svmedia.q, .svmedia.a { max-width: 100%; max-height: min(46vh, calc(var(--g-ah, 100vh) * .55)); border-radius: 8px; }
 audio.svmedia { width: min(420px, 100%); }
 .svanswer { font-family: var(--display); font-size: 1.5em; font-weight: 800; color: var(--accent); overflow-wrap: anywhere; }
 .svcomment { opacity: .85; max-width: 50ch; }

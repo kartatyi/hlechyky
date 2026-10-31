@@ -90,7 +90,7 @@
 
   function packRow(p, chosen, v) {
     const themes = (p.rounds || []).filter((r) => !r.final).map((r) => r.themes.join(', ')).join(' · ');
-    return '<button type="button" class="svpack' + (chosen ? ' on' : '') + '" data-do="pack" data-id="' + esc(p.id) + '">'
+    return '<button type="button" class="svpack' + (chosen ? ' on' : '') + '" data-do="pack" data-id="' + esc(p.id) + '"' + (themes ? ' title="' + esc(themes) + '"' : '') + '>'
       + '<b>' + esc(p.title) + '</b>'
       + '<span class="muted small">' + esc(p.author) + ' · ' + questionsWord(questionsOf(p, chosen, v || {})) + (p.plays ? ' · зіграно ' + p.plays : '') + '</span>'
       + (themes ? '<span class="svthemes small">' + esc(themes) + '</span>' : '')
@@ -132,8 +132,10 @@
           + r.themes.map((t) => '<span class="chip">' + esc(t) + '</span>').join(' ') + '</div>').join('')
         + '</div>'
       : '<div class="svwait">' + (me.canChoosePack ? 'Обери пакет запитань нижче' : 'Господар обирає пакет…') + '</div>';
+    // Список пакетів — окремим блоком під пошуком (.svpickbox): пошук стоїть над списком, а не над «Ведучий: …»
+    s.pickerHtml = '';
     if (!me.canChoosePack) return head + chosen;
-    if (!s.packs) { loadPacks(root, ctx); return head + chosen + '<div class="svwait"><span class="spin"></span> мить, дістаю пакети…</div>'; }
+    if (!s.packs) { loadPacks(root, ctx); s.pickerHtml = '<div class="svwait"><span class="spin"></span> мить, дістаю пакети…</div>'; return head + chosen; }
     const q = s.query.trim().toLowerCase();
     const fits = (p) => !q || (p.title + ' ' + p.author + ' ' + (p.rounds || []).map((r) => r.themes.join(' ')).join(' ')).toLowerCase().includes(q);
     const group = (title, list) => {
@@ -145,9 +147,10 @@
     const list = (special.length ? '<div class="svgroup"><div class="muted small">Особливі</div>'
         + special.map((p) => specialRow(p, v.pack && v.pack.id === p.id, v)).join('') + '</div>' : '')
       + group('Від Глечиків', s.packs.builtin) + group('Мої', s.packs.mine) + group('Публічні', s.packs.public);
-    return head + chosen + '<div class="svpicker">'
+    s.pickerHtml = '<div class="svpicker">'
       + (list || '<div class="svwait">' + (q ? 'Овва, нічого не знайшлось' : 'Пакетів ще нема — зроби свій у «🎯 Своя гра» праворуч') + '</div>')
       + '</div>';
+    return head + chosen;
   }
 
   // ---------- поле ----------
@@ -603,6 +606,22 @@
     return sayHtml(v) + pressesHtml(ctx, v) + triesHtml(ctx, v) + appealsHtml(ctx, v);
   }
 
+  /// Список пакетів на ПК — у межах картки: висота = місце картки від каркаса (--g-ah) мінус усе інше в ній;
+  /// якщо місця обмаль (телефон, низьке вікно) — без своєї прокрутки, гортається сторінка (дві прокрутки — гірше).
+  function fitPicker(root) {
+    const p = root.querySelector('.svpicker');
+    if (!p) return;
+    const box = HGames.ui.box ? HGames.ui.box(root) : null;
+    const wrap = root.querySelector('.svwrap');
+    let mh = '';
+    if (box && box.ah && !HGames.ui.coarse()) {
+      const rest = wrap.getBoundingClientRect().height - p.getBoundingClientRect().height;
+      const room = Math.floor(box.ah - rest - 4);
+      if (room >= 260) mh = room + 'px';
+    }
+    if (p.style.maxHeight !== mh) p.style.maxHeight = mh;
+  }
+
   function set(el, html) { if (el._html !== html) { el._html = html; el.innerHTML = html; } }
 
   function render(root, ctx) {
@@ -612,7 +631,12 @@
     const head = root.querySelector('.svhead');
     const text = headText(ctx, v);
     if (head.textContent !== text) head.textContent = text;
+    const lobby = v.phase === 'lobby' || (ctx.room && ctx.room.status === 'lobby');
+    const wrap0 = root.querySelector('.svwrap');
+    if (wrap0.classList.contains('sv-lobby') !== lobby) wrap0.classList.toggle('sv-lobby', lobby);
     set(root.querySelector('.svstage'), stageHtml(root, ctx, v));
+    set(root.querySelector('.svpickbox'), lobby ? st(root).pickerHtml || '' : '');
+    fitPicker(root);
     set(root.querySelector('.svhostbox'), hostHtml(ctx, v));
     set(root.querySelector('.svtail'), tailHtml(ctx, v));
     set(root.querySelector('.svscores'), ctx.playing || v.phase === 'done' ? scoresHtml(ctx, v) : '');
@@ -730,8 +754,9 @@
         + '<div class="svtop"><div class="svhead muted small"></div><button type="button" class="ghost small svspk"></button>'
         + '<div class="svtime"><i></i><span></span></div></div>'
         + '<audio class="svvoice" preload="auto"></audio>'
-        + '<input class="svsearch" type="search" placeholder="знайти пакет…" hidden>'
         + '<div class="svstage"></div>'
+        + '<input class="svsearch" type="search" placeholder="знайти пакет…" hidden>'
+        + '<div class="svpickbox"></div>'
         + '<div class="svhostbox"></div>'
         + '<button type="button" class="svbuzz" data-do="buzz" hidden>🔔</button>'
         + '<form class="svform" hidden><input type="text" maxlength="120" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" placeholder="твоя відповідь…">'
@@ -754,6 +779,8 @@
       a.addEventListener('ended', () => spoke(root));
       // F5 посеред репліки — стару не повторюємо: звучить лише те, що ведучий скаже вже при нас
       s.sayId = (ctx.view && ctx.view.say && ctx.view.say.id) || 0;
+      // місце картки змінилось (⛶, ⇔, поворот) — список пакетів знову під висоту картки
+      if (HGames.ui.onFit) HGames.ui.onFit(root, () => fitPicker(root));
       const search = root.querySelector('.svsearch');
       search.addEventListener('input', () => { s.query = search.value; if (root._ctx) render(root, root._ctx); });
       root.querySelector('.svnum').addEventListener('submit', (e) => {
