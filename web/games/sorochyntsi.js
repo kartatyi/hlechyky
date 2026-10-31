@@ -122,12 +122,13 @@
       + '<div class="sor-tip" hidden></div><div class="sor-flash" hidden></div><div class="sor-banner" hidden></div>'
       + '<div class="sor-tools"><button type="button" class="sor-view" data-a="view"></button><button type="button" class="sor-view sor-snd" data-a="snd"></button></div>'
       + '<div class="sor-dlg" hidden></div></div>'
-      + '<div class="sor-side"><div class="sor-say" aria-live="polite"></div><div class="sor-panel"></div><div class="sor-mine"></div><div class="sor-res"></div>'
-      + '<div class="sor-awards"></div>'
+      // Дві підколонки: на широкій картці (⇔, ⛶, 1920+) стоять поруч, щоб колонка не горталась; вужче — одна під одною.
+      + '<div class="sor-side"><div class="sor-col a"><div class="sor-say" aria-live="polite"></div><div class="sor-panel"></div><div class="sor-mine"></div></div>'
+      + '<div class="sor-col b"><div class="sor-res"></div><div class="sor-awards"></div>'
       + '<div class="sor-tabs"><div class="sor-tabh" role="tablist"></div>'
       + '<div class="sor-tp" data-t="log" role="tabpanel"><div class="sor-log"></div></div>'
       + '<div class="sor-tp" data-t="help" role="tabpanel" hidden><div class="sor-help"></div></div></div>'
-      + '</div></div>'
+      + '</div></div></div>'
       + '<div class="sor-strip"></div><div class="sor-bar"></div>'
       + '</div>';
     st.el = {};

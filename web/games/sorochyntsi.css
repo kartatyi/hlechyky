@@ -38,8 +38,8 @@
 .sor-av > b { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
 .sor-pl.light .sor-av > b { color: #1d1a14; text-shadow: none; }
 .sor-pl.light .sor-av .bg { stroke: #3a3328; stroke-width: 2.5; }
-.sor-shp { position: absolute; right: -4px; bottom: -4px; width: 17px; height: 17px; border-radius: 50%; background: #1d140d; color: var(--pc);
-  display: grid; place-items: center; font-size: 10px; line-height: 1; box-shadow: 0 0 0 1.5px var(--panel2); cursor: help; }
+.sor-shp { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; background: #1d140d; color: var(--pc);
+  display: grid; place-items: center; font-size: 11px; line-height: 1; box-shadow: 0 0 0 1.5px var(--panel2); cursor: help; }
 .sor-pn { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .sor-pn em { font-style: normal; color: var(--muted); font-weight: 400; font-size: .85em; }
 .sor-pp { display: flex; align-items: center; gap: 6px; font-size: .86em; color: var(--muted); white-space: nowrap; min-width: 0; }
@@ -137,7 +137,7 @@
 .sor-tipg { position: absolute; right: 10px; top: 8px; color: var(--accent); font-weight: 800; font-size: .85em; }
 
 /* ─── Колонка ────────────────────────────────────────────── */
-.sor-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sor-side, .sor-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .sor-panel:empty, .sor-mine:empty, .sor-res:empty, .sor-awards:empty, .sor-strip:empty, .sor-bar:empty { display: none; }
 .sor-box { position: relative; background: var(--panel2); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .sor-shx { position: absolute; right: 6px; top: 4px; min-width: 40px; min-height: 36px; border: 0; background: none; color: var(--muted); font-size: 1.1em; }
@@ -289,14 +289,27 @@
 @container sor (min-width: 700px) {
   .sor-players { position: sticky; top: var(--gtop-h, 0px); z-index: 8; margin: -6px -6px 0; padding: 6px; background: var(--panel, #2a1d14); border-radius: 0 0 12px 12px; }
   .sor-main { --sor-sw: clamp(300px, 34cqw, 400px);
-    --sor-fh: clamp(420px, calc(var(--gfit-h, 100vh) - var(--sor-plh, 80px) - 22px), calc((100cqw - var(--sor-sw) - 12px) * 1.1));
+    /* Висота поля — з місця картки від каркаса (--g-ah: усе під .gbody без прокрутки сторінки) мінус плашки. */
+    --sor-fh: clamp(360px, calc(var(--g-ah, calc(var(--gfit-h, 100vh) - 120px)) - var(--sor-plh, 80px) - 12px), calc((100cqw - var(--sor-sw) - 12px) * 1.1));
     grid-template-columns: minmax(0, 1fr) var(--sor-sw); }
   .sor-fieldwrap { aspect-ratio: auto; height: var(--sor-fh); max-height: none; min-height: 0; }
   .sor-side { height: var(--sor-fh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; gap: 8px; }
-  .sor-side > * { flex: none; }
-  .sor-side > .sor-tabs { flex: 1 0 auto; min-height: 160px; }
+  .sor-col { display: contents; }
+  .sor-side > *, .sor-col > * { flex: none; }
+  .sor-col > .sor-tabs { flex: 1 0 auto; min-height: 160px; }
   .sor-say { padding: 8px 10px; font-size: .96em; }
 }
+/* Широка картка (⇔, ⛶, 1920+): колонка — дві підколонки поруч, кожна на висоту поля зі своєю прокруткою (зазвичай без неї):
+   ліворуч «що зараз» → хід → мій прилавок, праворуч бронь → гості й нагороди → журнал. */
+@container sor (min-width: 1100px) {
+  .sor-main { --sor-sw: clamp(600px, 48cqw, 860px); }
+  .sor-side { flex-direction: row; overflow: visible; gap: 10px; }
+  .sor-col { display: flex; flex: 1 1 0; min-width: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; gap: 8px; }
+}
+/* Телефон лежачи (картка ≥ 700 px, а екран ~375 заввишки): плашки не липнуть (з'їли б третину екрана), поле й колонка —
+   на висоту картки (вона сама гортається; над нею — рядок столу ~46 px): гортнув раз під плашки — і бачиш увесь ярмарок. */
+body.g-land .sor-players { position: static; }
+body.g-land .sor-main { --sor-fh: max(240px, calc(100svh - 62px)); }
 @container sor (min-width: 700px) and (max-width: 1049px) {
   .sor-pl .sor-w { display: none; }
 }
@@ -306,8 +319,8 @@
    крамниця), мій прилавок стрічкою (6 стовпчиків: знижка / жетони) і панель дій. */
 @container sor (max-width: 699px) {
   .sor { gap: 8px; }
-  .sor > *, .sor-main > *, .sor-side > * { --sor-bleed: max(-16px, calc((100cqw - 100vw) / 2)); }
-  .sor-main, .sor-side { display: contents; }
+  .sor > *, .sor-main > *, .sor-col > * { --sor-bleed: max(-16px, calc((100cqw - 100vw) / 2)); }
+  .sor-main, .sor-side, .sor-col { display: contents; }
   .sor-players { order: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5px; }
   .sor-sum { order: 2; }
   .sor-sumgrid { grid-template-columns: 1fr; }
