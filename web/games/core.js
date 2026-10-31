@@ -755,7 +755,10 @@
       if (!el.isConnected) return;
       const left = leftMs();
       const s = String(Math.ceil(left / 1000));
-      if (num.textContent !== s) num.textContent = s;
+      if (num.textContent !== s) {
+        num.textContent = s;
+        if (inDock(el)) paintDock();   // «⏱ N с» у шапці віконця «Стіл у куточку»
+      }
       if (!st.shown && el.offsetParent !== null) run();
       else if (st.shown && el.offsetParent === null) st.shown = false;
       // На нулі дуга вже порожня: далі — тиша, поки фаза чекає сервера; новий час принесе set().
@@ -1997,7 +2000,11 @@
     const done = r.status === 'finished';
     const turn = r.status === 'playing' && r.maxPlayers > 1 && rv.seat != null && turnOf(rv) === rv.seat;
     const st = (c && c.statusEl.textContent) || (r.status === 'lobby' ? 'Чекаємо на гравців' : r.status === 'playing' ? 'Іде гра' : '');
-    const stText = turn ? '🎲 ' + (/хід/i.test(st) ? st : 'Твій хід' + (st ? ' · ' + st : '')) : st;
+    let stText = turn ? '🎲 ' + (/хід/i.test(st) ? st : 'Твій хід' + (st ? ' · ' + st : '')) : st;
+    // дуга-таймер гри (ui.timerArc) — секунди в шапку: у зменшеному віконці цифру на дузі не розгледіти
+    const arc = c && !done && c.el.querySelector('.garc b');
+    const secs = arc && arc.offsetParent !== null ? parseInt(arc.textContent, 10) : 0;
+    if (secs > 0) stText = '⏱ ' + secs + ' с · ' + stText;
     const corner = phone ? 'b' + (String(dockPrefs.corner).endsWith('l') ? 'l' : 'r') : dockPrefs.corner;
     const sig = [id, r.game, stText, turn, done, list.length, at, dockPrefs.mini, dockPrefs.size, corner, !!infoOf(r.game)].join('|');
     if (dockEl.hidden) dockEl.hidden = false;
