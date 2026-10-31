@@ -956,8 +956,28 @@
   function fitFor(host, f) {
     const el = host && host.closest && host.closest('.gtable');
     const c = el && cards[el.dataset.room];
-    const b = c && c.fitBox;
+    let b = c && c.fitBox;
+    // Вкладена гра (вечірка, HGames.embed): місце — з рамки .gembed, а не вся картка вечірки (games-8: Гостинці
+    // вилазили на 28 px, Замри — 601×180)
+    const emb = b && host.closest('.gembed');
+    if (emb && c.body.contains(emb)) b = embedBox(b, c.body, emb);
     return Object.assign({}, f || fit(), b ? { aw: b.aw, ah: b.ah, fh: b.fh } : null);
+  }
+  /// Місце під вкладену гру: ширина рамки .gembed; висота — місце картки мінус те, що вечірка тримає над і під рамкою.
+  /// Ті самі числа — CSS-змінними --g-aw/--g-ah/--g-fh на самій рамці (вони перебивають змінні картки).
+  function embedBox(b, body, emb) {
+    const er = emb.getBoundingClientRect(), br = body.getBoundingClientRect();
+    const rest = br.height > 0 ? Math.max(0, br.height - er.height) : 0;
+    const aw = Math.round(emb.clientWidth || b.aw);
+    const ah = Math.max(120, Math.floor(b.ah - rest));
+    let top = emb.querySelector('.g-field') || emb.querySelector(':scope > canvas.gcanvas, :scope > .board');
+    while (top && top.parentElement && top.parentElement !== emb) top = top.parentElement;
+    const fh = top && top.parentElement === emb ? Math.max(120, Math.floor(ah - (er.height - top.getBoundingClientRect().height))) : ah;
+    const st = emb.style;
+    if (st.getPropertyValue('--g-ah') !== ah + 'px' || st.getPropertyValue('--g-fh') !== fh + 'px' || st.getPropertyValue('--g-aw') !== aw + 'px') {
+      st.setProperty('--g-aw', aw + 'px'); st.setProperty('--g-ah', ah + 'px'); st.setProperty('--g-fh', fh + 'px');
+    }
+    return { aw, ah, fh };
   }
   function callFit(host, f) {
     if (!host.isConnected || !host._hgFit) return;
@@ -1066,6 +1086,7 @@
     st.setProperty('--g-ah', ah + 'px');
     st.setProperty('--g-fh', fh + 'px');
     st.setProperty('--g-fminw', minw + 'px');
+    for (const emb of body.querySelectorAll('.gembed')) embedBox(c.fitBox, body, emb);   // вкладені ігри вечірки
     if (notify) for (const host of fitHosts) if (el.contains(host)) callFit(host);
     return true;
   }
@@ -5009,11 +5030,13 @@
       mod = modules[gameId] || null;
       if (!ok || !mod) { box.innerHTML = '<div class="gempty">Модуль гри «' + esc(gameId) + '» не завантажився</div>'; return false; }
       build();
+      fitFor(box);   // --g-aw/--g-ah/--g-fh рамки — ще до mount: перша розкладка підгри вже за своїм місцем
       try {
         mod.mount(box, ctx);
         if (mod.update) mod.update(box, ctx);
         if (ctx.frame && mod.frame) mod.frame(box, ctx, ctx.frame);
       } catch (e) { console.warn('[games] embed mount ' + gameId, e); return false; }
+      requestAnimationFrame(() => { if (!dead && box.isConnected) fitFor(box); });   // уже з вмістом — точніше
       return true;
     });
     return h;
