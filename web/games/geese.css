@@ -13,9 +13,18 @@
 .gseat.gs6 { color: #f08cb8; }
 .gseat.gs7 { color: #b7c2bd; }
 
-.gsw { display: flex; flex-direction: column; gap: 8px; max-width: 760px; margin: 0 auto; width: 100%; min-width: 0; }
+/* .gsw — сам root гри (.gbody за столом, рамка у вечірці): частини лежать прямо в ньому, двір — .g-field */
+.gsw { display: flex; flex-direction: column; gap: 8px; align-items: stretch; width: 100%; min-width: 0; }
 .gsw > div:empty { display: none; }
-.gsboard { max-width: 760px; border-radius: 14px; background: #7fb95a; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); touch-action: manipulation; }
+.gsw > .gsyard { display: flex; justify-content: center; min-width: 0; }
+/* Двір росте з карткою: у ширину картки й у висоту рядка двору (--g-fh каркаса) з пропорцією полотна; стеля — 2200 px.
+   Телефон стоячи — уся ширина (--g-fminw), як і було. Без змінних (вечірка до заміру, віконце) — ~760 px. */
+.gsboard {
+  max-width: min(100%, var(--g-fmax, 2200px), max(var(--g-fminw, 0px), calc(var(--g-fh, 380px) * var(--gar, 2))));
+  border-radius: 14px; background: #7fb95a; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); touch-action: manipulation;
+}
+/* питання, гравці й табло на широкому дворі не розтягуються на 2K — тримаються середньої ширини */
+.gsw > .gshead, .gsw > .gsqbox, .gsw > .gsrev { width: 100%; max-width: 900px; margin: 0 auto; }
 
 .gsno { text-align: center; }
 .gsrules { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; line-height: 1.45; }
@@ -72,7 +81,7 @@
 .gsdone1 b { color: var(--accent); font-size: 1.2em; }
 
 /* показ */
-.gsrevh { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; align-items: baseline; text-align: center; font-size: 20px; }
+.gsrevh { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; align-items: baseline; text-align: center; font-size: 20px; min-height: 1.65em; }
 .gsrevh b { color: var(--accent); font-size: 1.25em; }
 .gsmsg { font-weight: 700; }
 
@@ -86,8 +95,9 @@
 .gsmarks { letter-spacing: 1px; }
 .gsrecap { max-width: 520px; width: 100%; margin: 0 auto; }
 .gsrecap summary { cursor: pointer; text-align: center; color: var(--muted); padding: 4px; }
-.gsrecap ol { margin: 6px 0 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; }
-.gsrecap li > span { display: block; }
+.gsrecap ol { margin: 6px 0 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; }
+.gsrecap li > span:first-child { display: block; }
+.gsrecap li b { margin-left: 6px; }   /* «правильно 4, ти — 5 +1» — одним рядком: розбір на 7 парадів удвічі коротший */
 .gsrecap li b { color: var(--muted); }
 .gsrecap li b.p1 { color: var(--accent); }
 .gsrecap li b.p3, .gsrecap li b.p4 { color: var(--ok); }
@@ -103,8 +113,8 @@
   .gsp { font-size: 13px; padding: 3px 8px; }
 }
 
-/* поки відповідаєш, двору не видно — лише питання, табло й смужка часу */
-.gsanswering .gsyard { display: none; }
+/* поки відповідаєш, двору не видно — лише питання, табло й смужка часу (лежачи — видно: див. нижче) */
+.gsw.gsanswering > .gsyard { display: none; }
 /* На вузькому телефоні з 8 гравцями (вечірка) чипи в три ряди зсували ✓ під нижню навігацію: поки відповідаєш —
    чипи в один ряд із прокруткою, клавіші трохи нижчі (44 px — ще під палець). */
 @media (max-width: 420px) {
@@ -112,7 +122,7 @@
   .gsanswering .gsppl::-webkit-scrollbar { display: none; }
   .gsanswering .gsp { flex: none; }
   .gsanswering .gsno { display: none; }
-  .gsanswering .gsw { gap: 6px; }
+  .gsw.gsanswering { gap: 6px; }
   .gsanswering .gsnum button { width: 52px; height: 52px; }
   .gsanswering .gsval { font-size: 40px; line-height: 52px; }
   .gsanswering .gskeys button { height: 44px; }
@@ -122,3 +132,41 @@
 .gstbar { display: block; width: 100%; max-width: 360px; height: 6px; border-radius: 3px; background: var(--panel3); overflow: hidden; }
 .gstbar b { display: block; height: 100%; width: 100%; background: var(--accent); transition: width .1s linear; }
 .gstbar b.low { background: var(--danger); }
+
+/* ---- телефон лежачи (body.g-land): каркас ставить двір (.g-field) ліворуч на всю висоту картки, решту — колонкою
+   праворуч (--g-landside). Двір видно й тоді, коли відповідаєш (там «?»), — розкладка не скаче між фазами; табло
+   стискаємо: цифри — два ряди по шість, кнопки 40–44 px (під палець), питання дрібніше. */
+body.g-land .gtable.g-board > .gsw { --g-landside: min(44vw, 340px); }
+body.g-land .gtable.g-board > .gsw > .gsyard { width: 100%; }
+body.g-land .gtable.g-board > .gsw.gsanswering > .gsyard { display: flex; }
+body.g-land .gtable.g-board > .gsw > .gsyard > .gsboard { max-width: min(100%, calc((var(--gland-h, 330px) - 16px) * var(--gar, 1.5))); border-radius: 10px; }
+body.g-land .gsw > :not(.gsyard) { width: 100%; }
+body.g-land .gsw .gsq { font-size: 16px; padding: 5px 8px; gap: 6px; }
+body.g-land .gsw .gsq.gsnote { font-size: 15px; }
+body.g-land .gsw .gsans { gap: 5px; }
+body.g-land .gsw .gsnum button { width: 44px; height: 40px; font-size: 26px; border-radius: 12px; }
+body.g-land .gsw .gsval { font-size: 30px; line-height: 40px; border-radius: 12px; }
+body.g-land .gsw .gskeys { grid-template-columns: repeat(6, 1fr); gap: 4px; }
+body.g-land .gsw .gskeys button { height: 38px; font-size: 20px; border-radius: 10px; }
+body.g-land .gsw .gsopts { gap: 6px; }
+body.g-land .gsw .gsopt { min-height: 56px; padding: 4px; font-size: 14px; }
+body.g-land .gsw .gsopt .gse { font-size: 26px; }
+body.g-land .gsw .gsgo { min-height: 44px; font-size: 18px; }
+body.g-land .gsw .gsrevh { font-size: 16px; }
+body.g-land .gsw .gsrules { font-size: 13px; padding: 6px 8px; line-height: 1.35; }
+body.g-land .gsw .gsdone1 { font-size: 16px; padding: 6px; }
+body.g-land .gsw .gstitle { font-size: 17px; }
+/* місце під рядок повтору на параді (revealHtml) — лише тримає висоту */
+.gsrevh.gsslot { visibility: hidden; }
+/* лежачи, поки відповідаєш: колонка праворуч — лише питання й табло. Хто вже відповів і номер параду — у рядку місць
+   картки й після відповіді; час — смужка й секунди на дворі (draw, фаза answer). */
+body.g-land .gsw.gsanswering > :is(.gshead, .gsppl) { display: none; }
+body.g-land .gsw.gsanswering .gstimer { display: none; }
+/* підсумок «Гусей дня» на широкій картці: твій розбір ліворуч, таблиця дня праворуч — на 1366 картка не тягнеться
+   на півтора екрана вниз (розбір відкритий одразу: це й є суть щоденки) */
+@media (min-width: 900px) {
+  body:not(.g-land) .gsw.gsfin2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; align-items: start; }
+  body:not(.g-land) .gsw.gsfin2 > * { grid-column: 1 / -1; }
+  body:not(.g-land) .gsw.gsfin2 > .gsdone { grid-column: 1; display: flex; flex-direction: column; gap: 8px; }
+  body:not(.g-land) .gsw.gsfin2 > .gsdaily { grid-column: 2; }
+}

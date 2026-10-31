@@ -92,7 +92,10 @@
   // ---------- двір: розміри ----------
 
   /// Широка картка — двір 2:1; телефон — 3:2, щоб три доріжки не злипались у смужки.
+  /// Пропорція двору: широка (2 : 1) на ПК, вища (1,5 : 1) на вузькій картці й лежачи на телефоні — там двір ліворуч
+  /// на всю висоту, а колонка праворуч забирає ширину. Лежачи .gbody — display: contents (clientWidth 0), тож — за класом.
   function fitH(root) {
+    if (document.body.classList.contains('g-land')) return 480;
     const w = root.clientWidth || 600;
     return w < 560 ? 480 : 360;
   }
@@ -594,7 +597,7 @@
     const v = view(st);
     const g = cv.ctx;
     const H = cv.h;
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const dpr = st.k || Math.min(3, window.devicePixelRatio || 1);
     const ph = v.ph || 'lobby';
     const p = v.parade;
     // Доріжки — як у GeeseParade.Lanes: на «готуйсь» параду у виді ще нема, а двір не мусить перемальовуватись.
@@ -636,6 +639,8 @@
       g.fillStyle = 'rgba(20,14,4,.28)';
       g.fillRect(0, 0, W, H);
       bigText(g, '?', W / 2, H * 0.52, Math.round(H * 0.42), '#ffe680');
+      // двір на «?» видно лише лежачи на телефоні (табло праворуч, рядок часу там прихований) — секунди тут
+      if (v.dur) plate(g, Math.ceil(Math.max(0, v.dur - t) / 1000) + ' с', W / 2, H * 0.88, Math.round(H * 0.075), '#fff');
     }
     // час фази — тонка смужка вгорі
     if (ph !== 'lobby' && ph !== 'done' && v.dur) {
@@ -783,6 +788,9 @@
   }
 
   function revealHtml(ctx, v, st) {
+    // Готуйсь і парад: порожній рядок завбільшки з рядок повтору — двір росте з карткою (--g-fh мінус решта), тож без
+    // нього на повторі він щоразу меншав би на цей рядок, а на новому параді знову ріс (на ПК — стрибок на ~80 px ширини).
+    if ((v.ph === 'ready' || v.ph === 'parade') && !ctx.ui.coarse()) return '<div class="gsrevh gsslot" aria-hidden="true">&nbsp;</div>';
     if (v.ph !== 'reveal' || !v.reveal) return '';
     if (!st.revealDone) return '<div class="gsrevh muted">Повтор ×' + String((v.parade || {}).rx || 2.5).replace('.', ',') + ' — рахуємо разом…</div>';
     const r = v.reveal;
@@ -869,6 +877,8 @@
     st.revealShown = st.revealDone;
     // Відповідаєш — двір із «?» лише з'їдав би місце під цифри (на телефоні табло падало за край екрана).
     root.classList.toggle('gsanswering', !!e.ans.querySelector('.gskeys, .gsopts'));
+    // підсумок «Гусей дня»: «Як рахував ти» й таблиця дня — на ПК поруч (geese.css), а не одне під одним
+    root.classList.toggle('gsfin2', v.ph === 'done' && !!(v.daily && v.daily.board));
     if (v.ph === 'answer') paintTimer(st);
   }
 
@@ -967,14 +977,21 @@
 
   // ---------- модуль ----------
 
+  /// Частини гри — прямо в root (.gbody за столом, рамка .gembed у вечірці), двір — .g-field: так каркас міряє місце
+  /// саме під двір (--g-fh = картка мінус питання, гравці, табло), а лежачи ставить двір ліворуч на всю висоту картки.
   function build(root, st) {
-    if (st.el && st.el.wrap.isConnected) return;
-    root.innerHTML = '<div class="gsw"><div class="gshead"></div><div class="gsqbox"></div><div class="gsyard"></div>'
-      + '<div class="gsppl"></div><div class="gsrev"></div><div class="gsans"></div><div class="gsdone"></div><div class="gsdaily"></div></div>';
-    const q = (s) => root.querySelector(s);
-    st.el = { wrap: q('.gsw'), head: q('.gshead'), q: q('.gsqbox'), yard: q('.gsyard'), ppl: q('.gsppl'), rev: q('.gsrev'), ans: q('.gsans'), done: q('.gsdone'), daily: q('.gsdaily') };
+    if (st.el && st.el.yard.isConnected && st.el.yard.parentElement === root) return;
+    root.classList.add('gsw');
+    root.innerHTML = '<div class="gshead"></div><div class="gsqbox"></div><div class="gsyard g-field"></div>'
+      + '<div class="gsppl"></div><div class="gsrev"></div><div class="gsans"></div><div class="gsdone"></div><div class="gsdaily"></div>';
+    const q = (s) => root.querySelector(':scope > ' + s);
+    st.el = { wrap: root, head: q('.gshead'), q: q('.gsqbox'), yard: q('.gsyard'), ppl: q('.gsppl'), rev: q('.gsrev'), ans: q('.gsans'), done: q('.gsdone'), daily: q('.gsdaily') };
     st.htmlCache = new Map();
-    st.el.wrap.addEventListener('click', (e) => onClick(st, e));
+    // Слухач — на root, що переживає перемонтування: один на root, стан — завжди свіжий root._geese.
+    if (!root._gsClick) {
+      root._gsClick = (e) => { if (root._geese) onClick(root._geese, e); };
+      root.addEventListener('click', root._gsClick);
+    }
   }
 
   function canvasFit(root, st) {
@@ -982,7 +999,25 @@
     if (!st.cv || st.cv.h !== H) {
       st.cv = HGames.ui.canvas(st.el.yard, { w: W, h: H, cls: 'gsboard' });
       st.bg = null;
-    } else st.cv.resize();
+      st.k = 0;
+      if (st.ro) st.ro.observe(st.cv.el);
+    }
+    sharpen(st);
+  }
+
+  /// Чіткість: полотно тепер росте з карткою (на 2K — утричі ширше за логічні 720), тож пікселів у ньому — за його
+  /// справжньою шириною × devicePixelRatio (крок 0,25, щоб не перемальовувати тло на кожен піксель), до 3× логічного.
+  /// На телефоні виходить менше, ніж 720 × dpr: дешевше малювати, а оку — те саме.
+  function sharpen(st) {
+    const cv = st.cv;
+    const cw = cv.el.clientWidth;
+    if (!cw) { if (!st.k) st.k = Math.min(3, window.devicePixelRatio || 1); return; }
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const k = Math.max(0.5, Math.min(3, Math.ceil(dpr * cw / W * 4) / 4));
+    const pw = Math.round(W * k), ph = Math.round(cv.h * k);
+    if (cv.el.width !== pw || cv.el.height !== ph) { cv.el.width = pw; cv.el.height = ph; }
+    cv.ctx.setTransform(k, 0, 0, k, 0, 0);
+    if (st.k !== k) { st.k = k; st.bg = null; st.sprites.clear(); }
   }
 
   function takeView(st) {
@@ -1008,12 +1043,12 @@
     mount(root, ctx) {
       const st = state(root, ctx);
       build(root, st);
-      canvasFit(root, st);
-      takeView(st);
       if (typeof ResizeObserver === 'function') {
-        st.ro = new ResizeObserver(() => { if (root._geese) { canvasFit(root, st); draw(st); } });
+        st.ro = new ResizeObserver(() => { if (root._geese === st) { canvasFit(root, st); draw(st); } });
         st.ro.observe(root);
       }
+      canvasFit(root, st);
+      takeView(st);
       paint(root, st);
       draw(st);
       spin(st);
@@ -1087,7 +1122,7 @@
       if (st.raf) cancelAnimationFrame(st.raf);
       st.raf = 0;
       if (st.ro) st.ro.disconnect();
-      root.classList.remove('gsanswering');
+      root.classList.remove('gsanswering', 'gsw', 'gsfin2');
       st.sprites.clear();
       st.bg = null;
       st.cv = null;
