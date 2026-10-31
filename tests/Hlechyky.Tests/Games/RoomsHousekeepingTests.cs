@@ -80,6 +80,41 @@ public class RoomsHousekeepingTests
     }
 
     [Fact]
+    public void An_abandoned_rated_game_has_no_result_no_elo_no_rewards_and_stakes_go_back()
+    {
+        using var rig = new EconomyRig();
+        var stakes = new FakeStakes().Set("Оля", 20).Set("Петро", 20).Set("Яся", 20).Set("Сем", 20);
+        var rooms = new Rooms(RoomHarness.NewRegistry(), rig.Clock, rig.Events, stakes, new FakeStore(), RoomHarness.Empty());
+        var stake = new Dictionary<string, string> { ["stake"] = "10" };
+
+        // покинута: годину ніхто не ходив
+        var gone = rooms.Create("Оля", "t-duel", stake).Reply.RoomId!;
+        Assert.True(rooms.Join(gone, "Петро").Reply.Ok);
+        // для порівняння — справжня нічия за сусіднім столом, щоб тест не проходив «сам собою»
+        var draw = rooms.Create("Яся", "t-duel", stake).Reply.RoomId!;
+        Assert.True(rooms.Join(draw, "Сем").Reply.Ok);
+        rig.Clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.True(rooms.Act(draw, "Яся", "draw", default).Reply.Ok);
+        rig.Clock.Advance(TimeSpan.FromMinutes(56));
+
+        var outbox = rooms.Housekeeping(rig.Clock.UtcNow);
+
+        var room = rooms.Find(gone)!;
+        Assert.Equal(RoomStatus.Finished, room.Status);
+        Assert.Equal("Партію покинуто — без результату", room.Result!.Verdict);
+        Assert.Null(room.Summary().Evening);   // у «Рахунок вечора» не пішла
+        Assert.Contains(outbox.OfType<Journal>(), j => j.Text.Contains("без результату"));
+        foreach (var nick in new[] { "Оля", "Петро" })
+        {
+            Assert.Equal(0, rig.Ratings.Of(nick, "t-duel").Games);
+            Assert.Equal(0, rig.Store.CountResults(Hlechyky.Games.Economy.Economy.Key(nick), "t-duel", null, DateTimeOffset.MinValue));
+            Assert.Equal(0, rig.Paid(nick, "play:"));
+            Assert.Equal(20, stakes.Balance(nick));   // ставку повернуто
+        }
+        Assert.Equal(1, rig.Ratings.Of("Яся", "t-duel").Games);   // а справжня нічия — партія, як і була
+    }
+
+    [Fact]
     public void A_move_resets_the_hour()
     {
         var h = new RoomHarness("t-party");

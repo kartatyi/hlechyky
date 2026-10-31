@@ -434,7 +434,8 @@ public sealed record RoomFinishedEvent(
     int Stake,
     DateTimeOffset StartedAt, DateTimeOffset FinishedAt,
     int Moves,                          // скільки Act прийнято за партію (0 для реалтайму)
-    bool TableMoney = false);           // за столом ходили черепки (банк столу): звичайних нагород за партію не дають
+    bool TableMoney = false,           // за столом ходили черепки (банк столу): звичайних нагород за партію не дають
+    bool Void = false);                 // партію покинуто (годину без руху): без результату — ні Ело, ні нагород, ставки назад
 
 /// <summary><paramref name="Missed"/> — щоденна головоломка не вдалась (<see cref="IGameContext.DailyMiss"/>): Score тоді 0.</summary>
 public sealed record SoloScoreEvent(string GameId, string Nick, double Score, ScoreOrder Order, string? Key, DateTimeOffset At,

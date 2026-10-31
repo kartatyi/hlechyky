@@ -49,6 +49,8 @@ public sealed class Rewards(GameEvents events, Economy economy, EconomyStore sto
     void Finish(RoomFinishedEvent e)
     {
         names.Learn(e.Info);
+        // Покинута партія (Rooms: годину без руху) — не нічия, а «без результату»: ні рядка в результатах, ні Ело, ні нагород.
+        if (e.Void) return;
         var seated = e.Seats
             .Select((nick, seat) => (Nick: nick, Seat: seat))
             .Where(x => !string.IsNullOrWhiteSpace(x.Nick))

@@ -1648,7 +1648,7 @@ public sealed partial class Rooms
                 {
                     var fin = new Outbox();
                     var ctx = (RoomContext)room.Game.Ctx;
-                    using (ctx.Collect(fin)) ctx.Finish([], $"{room.Info.Title}: партію покинуто — годину ніхто не ходив");
+                    using (ctx.Collect(fin)) ctx.Abandon($"{room.Info.Title}: партію покинуто — годину ніхто не ходив, без результату");
                     settled.Add(fin);
                 }
                 // Партію на черепки покинули всі й не повернулись: перш ніж прибрати стіл, розрахувати банк столу
@@ -1832,7 +1832,7 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
         room.Result = new RoomResult(winners, winners.Length == 0, log, scores,
             string.IsNullOrWhiteSpace(verdict) ? null : verdict.Trim());
         room.Status = RoomStatus.Finished;
-        room.TallyEvening(winners, scores);
+        if (!_void) room.TallyEvening(winners, scores);   // покинута партія в «Рахунок вечора» не йде
         room.FinishedAt = now;
         room.LastActivity = now;
 
@@ -1847,8 +1847,22 @@ sealed class RoomContext(Room room, Rooms rooms) : IRoomContext
 
         var finished = new RoomFinishedEvent(
             room.Id, room.Info.Id, room.Info, room.Round, (string?[])room.Seats.Clone(),
-            room.Result, room.Stake, room.StartedAt ?? now, now, room.Moves, room.Bank.Used);
+            room.Result, room.Stake, room.StartedAt ?? now, now, room.Moves, room.Bank.Used, _void);
         outbox?.After(() => rooms.Events.Raise(finished));
+    }
+
+    bool _void;
+
+    /// <summary>
+    /// Партію покинуто (Housekeeping: годину без руху) — кінець «без результату», а не нічия: ставки й банк столу назад,
+    /// як у нічиї, але подія несе <see cref="RoomFinishedEvent.Void"/>, і Ело, нагороди, ачівки, «Рахунок вечора» та
+    /// ставки на столі (назад) її не рахують як партію. Під замком кімнати, з outbox (Collect).
+    /// </summary>
+    internal void Abandon(string log)
+    {
+        _void = true;
+        try { Finish([], log, verdict: "Партію покинуто — без результату"); }
+        finally { _void = false; }
     }
 
     /// <summary>Банк переможцям порівну, нічия — повернення. Ідемпотентність тримає ref, тож подвійний Finish не подвоїть виплату.</summary>
