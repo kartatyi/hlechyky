@@ -43,6 +43,12 @@ SlotKit.define({
 420×628). Орієнтація — `ctx.orient` ('land'|'port'), розмір зони — `ctx.areaW`/`ctx.areaH`. Малюй у px дизайну —
 кіт масштабує все разом. `build` кличеться при кожній зміні орієнтації: старий DOM зноситься, поле зберігається
 (`ctx.keepGrid` — makeReels підхопить сам).
+**Телефон (дотик чи вікно < 700 px), з 31.10:** HUD (`ctx.hud` — ті самі кнопки) кіт виносить із коробки в панель
+`.sk-pad` у справжніх px (кнопки 40–44, «Крутити» широка); `ctx.ext` = true, на `.sk-root` — `sk-ext`, коробка без смуги
+HUD (висота 864−206 / 800−120), `ctx.area` та сама. Панель — під автоматом у `.sk-root` (`.sk-pad-in`) або там, куди
+скаже `opts.padHost()` → `{ parent, before }` (сайт лежачи — права колонка картки, `.sk-pad-side`). Розкладка (port/land)
+обирається, як і без панелі. Свої кнопки в кресленні на телефоні збільшуй через `var(--sk-inv)` (= 1/масштаб) на
+коробці: `.sk-ext .my-btn { height: calc(42px * var(--sk-inv, 1)) }` — тоді на екрані ≈ 42 px.
 ```js
 build(ctx) {
   const st = document.createElement('div'); st.className = 'my-stage'; ctx.area.appendChild(st);
@@ -139,6 +145,7 @@ gravity, color, life})` (x,y — px відносно `ctx.root`), `ctx.fx.at(el,
 - Тікер: `SlotKit.setLive({ jackpot, mustHit?, lines })` — живі сума («впаде до N», якщо є `mustHit`) і рядки заносів;
   без `SlotKit.live` — мок `SK.jackpot()`/`SK.feed` (стенд).
 - `opts.bets` — набір ставок з сервера (інакше `machine.bets`/`SK.BETS`).
+- `opts.padHost()` — куди класти панель керування на телефоні (див. розділ 3); `null` — під автомат.
 - `ctx.morphCell(c, r, key)` — перетворити без очікування; `ctx.rel(el, base?)` — центр у px дизайну (base — `ctx.area`
   чи `ctx.box`); `ctx.flyTo(from, to, html, {ms, cls, arc, from, to, burst, delay})` → Promise — політ між елементами;
   `ctx.animate(el, keyframes, opts)` — WAAPI, яку тап/пробіл доводить до кінця, у турбо коротша.
