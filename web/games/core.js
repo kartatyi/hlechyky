@@ -912,9 +912,27 @@
     if (b.contains('g-immland') !== immLand) b.toggle('g-immland', immLand);
     if (b.contains('g-fs') !== (room && fsOn)) b.toggle('g-fs', room && fsOn);
   }
+  /// ⇔ на ПК: рейки балачок нема, і балачка столу — шторка. Її згорнута пігулка внизу праворуч забирала низ під себе
+  /// (--gdock-h ≈ 57 px, «знизу порожньо», games-8). Тепер вона стає в рядок столу — у порожнє місце між «Гукнути» і
+  /// кнопками праворуч (.grsp); fit() її тоді знизу не рахує. Місця нема (рядок у картці, вузько) — лишається внизу.
+  function pinTablePill() {
+    const b = document.body.classList;
+    const head = full && !coarse() && shown && view.kind === 'room' && root ? root.querySelector('.groom > .grhead') : null;
+    const sp = head && head.querySelector(':scope > .grsp');
+    const r = sp && sp.getBoundingClientRect(), hr = head && head.getBoundingClientRect();
+    const on = !!(r && r.width >= 110 && hr.height > 0);
+    if (on) {
+      const rs = document.documentElement.style;
+      rs.setProperty('--tcpin-y', Math.round(hr.top + window.scrollY + hr.height / 2) + 'px');
+      rs.setProperty('--tcpin-x', Math.max(0, Math.round(document.documentElement.clientWidth - r.right + 6)) + 'px');
+      rs.setProperty('--tcpin-w', Math.round(r.width - 12) + 'px');
+    }
+    if (b.contains('g-tcpin') !== on) b.toggle('g-tcpin', on);
+  }
   function applyFit() {
     fitRaf = 0;
     syncImm();
+    pinTablePill();
     const f = fit();
     const key = [f.w, f.h, f.top, f.dock, f.imm, f.land, f.fs, f.wide].join();
     const changed = key !== fitLast;
@@ -1032,6 +1050,7 @@
     // низ картки догортається). За висотою вписуємо на ПК, лежачи і в ⛶.
     const minw = coarse() && !f.imm && !f.land && window.innerWidth < 700 ? aw : 0;
     const o = c.fitBox;
+    if (f.wide) pinTablePill();   // рядок столу міг змінитись (чипи інших столів, 👁) — пігулка балачки за ним
     if (o && Math.abs(o.aw - aw) < 2 && Math.abs(o.ah - ah) < 2 && Math.abs(o.fh - fh) < 2 && o.minw === minw) return false;
     // захист від гойдалки (гра міняє щось у .gbody від розміру поля): понад 12 змін за секунду — пауза на секунду,
     // потім ще один замір (інакше лишилось би число з середини гойдалки)

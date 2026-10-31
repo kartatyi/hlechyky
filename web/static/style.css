@@ -801,6 +801,12 @@ button.vplay { padding: 3px 8px; }
 .tchat.drawer .tc-head:hover { border-color: var(--accent2); }
 .tchat.drawer .tc-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88em; color: var(--muted); }
 .tchat.drawer .tc-body { display: none; }
+/* ⇔ на ПК: згорнута шторка — у рядку столу, у порожньому місці перед кнопками праворуч (games/core.js, pinTablePill);
+   absolute в координатах документа — гортається разом із рядком. Розгорнута — як завжди, внизу праворуч. */
+body.g-tcpin .tchat.drawer:not(.open) {
+  position: absolute; top: var(--tcpin-y); right: var(--tcpin-x); bottom: auto; transform: translateY(-50%);
+}
+body.g-tcpin .tchat.drawer:not(.open) .tc-head { padding: 5px 12px; max-width: var(--tcpin-w, 360px); box-shadow: none; }
 .tchat.drawer.open .tc-head { display: none; }
 /* Заввишки з розмову, але не вище за стелю: `.tc-body { flex: 1 }` однаково перебивав height (шторка була з вміст), тож
    прямо — flex: none, height: auto і max-height; стрічка всередині гортається. */
