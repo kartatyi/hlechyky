@@ -23,24 +23,25 @@
 }
 .chs-side { display: contents; }
 /* Широка картка (ПК, ⇔, ⛶): дошка з годинниками ліворуч на всю висоту, ходи й кнопки — колонкою праворуч. */
-.gbody.chs-wide {
+body:not(.g-land) .gbody.chs-wide {
   --chs-room: calc(var(--g-aw, 1000px) - 320px);
   display: grid; grid-template-columns: auto minmax(240px, 300px); column-gap: 20px; row-gap: 6px;
   justify-content: center; align-content: start; align-items: center;
 }
-.gbody.chs-wide > * { grid-column: 1; justify-self: center; }
-.gbody.chs-wide > .chs-side {
+body:not(.g-land) .gbody.chs-wide > * { grid-column: 1; justify-self: center; }
+body:not(.g-land) .gbody.chs-wide > .chs-side {
+  grid-row: 1 / span var(--chs-span, 3);
   grid-column: 2; align-self: center;
   display: flex; flex-direction: column; align-items: stretch; gap: 12px; min-width: 0; max-height: var(--g-fh, 620px);
 }
-.gbody.chs-wide .chessmoves {
+body:not(.g-land) .gbody.chs-wide .chessmoves {
   height: auto; min-height: calc(3 * 1.4em + 4px); max-height: calc(12 * 1.4em); flex: 0 1 auto;
   justify-content: flex-start; padding: 6px 8px; border-radius: 10px; background: var(--bg2); font-size: .92em;
 }
-.gbody.chs-wide .chessmoves:empty::before { content: 'Тут будуть ходи'; opacity: .7; }
-.gbody.chs-wide .chessacts { flex-direction: column; align-items: stretch; }
-.gbody.chs-wide .chessacts > * { text-align: center; }
-.gbody.chs-wide .chs-glek { flex-direction: column; align-items: center; }
+body:not(.g-land) .gbody.chs-wide .chessmoves:empty::before { content: 'Тут будуть ходи'; opacity: .7; }
+body:not(.g-land) .gbody.chs-wide .chessacts { flex-direction: column; align-items: stretch; }
+body:not(.g-land) .gbody.chs-wide .chessacts > * { text-align: center; }
+body:not(.g-land) .gbody.chs-wide .chs-glek { flex-direction: column; align-items: center; }
 .board.chessb {
   width: var(--chs-w, min(92vw, 420px)); gap: 0; border-radius: 10px; overflow: hidden; container-type: inline-size;
   border: 1px solid var(--line); background: var(--gchess-dk);

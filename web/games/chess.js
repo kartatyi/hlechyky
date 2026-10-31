@@ -211,14 +211,13 @@
   /// Міряємо aw/ah картки (від розкладки .gbody не залежать — без гойдалки); лежачи на телефоні — своя сітка каркаса.
   function fitWide(root) {
     HGames.ui.onFit(root, (f) => {
-      const wide = !!(f && f.aw && f.ah) && f.aw >= 700 && f.aw > f.ah + 120 && !document.body.classList.contains('g-land');
+      const wide = !!(f && f.aw && f.ah) && f.aw >= 700 && f.aw > f.ah + 120 && !f.land && !document.body.classList.contains('g-land');
       if (root.classList.contains('chs-wide') !== wide) root.classList.toggle('chs-wide', wide);
     });
     // Колонка праворуч займає рівно стільки рядків сітки, скільки елементів ліворуч (задача, годинники, взяті,
     // дошка): зайві порожні рядки сітка розтягувала б, і дошці лишалось би менше висоти.
-    const sd = root.querySelector(':scope > .chs-side');
-    const span = '1 / span ' + Math.max(1, root.children.length - 1);
-    if (sd && sd.style.gridRow !== span) sd.style.gridRow = span;
+    const span = String(Math.max(1, root.children.length - 1));
+    if (root.style.getPropertyValue('--chs-span') !== span) root.style.setProperty('--chs-span', span);
   }
 
   function promoBar(root, ctx) {

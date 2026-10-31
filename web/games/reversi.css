@@ -11,10 +11,15 @@
   --rvhint-w: rgba(255, 255, 255, .32);
 }
 
+/* Світлиця: дошка вписується в місце під поле (--g-fh від каркаса), а не в 440 px; стеля 720 px, у ⛶ — без стелі.
+   Годинники й кнопки — тієї ж ширини, що й дошка. */
+.gbody.rv-root {
+  --rv-w: min(100%, var(--g-fmax, var(--g-bmax, 720px)), max(var(--g-fminw, 0px), calc(var(--g-fh, 448px) - 8px)));
+}
 .board.rv {
   position: relative;
   gap: 1px;
-  width: min(440px, 100%);
+  width: var(--rv-w, min(440px, 100%));
   padding: 0;
   background: var(--rvline);
   border: 3px solid var(--rvline);
@@ -128,7 +133,7 @@
 /* Годинник — як у шашках. */
 .rv-clock {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  width: min(92vw, 440px); padding: 4px 10px; border-radius: 8px; background: var(--bg2);
+  width: var(--rv-w, min(92vw, 440px)); padding: 4px 10px; border-radius: 8px; background: var(--bg2);
   font-variant-numeric: tabular-nums; color: var(--muted); font-size: .92em;
 }
 .rv-clock .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -142,7 +147,7 @@
 @media (prefers-reduced-motion: reduce) { .rv-clock.low b { animation: none; } }
 
 /* Під дошкою: банер кінця, кнопки, налаштування Глека, серія. */
-.rvacts { display: flex; flex-direction: column; gap: 6px; align-items: center; width: min(440px, 100%); }
+.rvacts { display: flex; flex-direction: column; gap: 6px; align-items: center; width: var(--rv-w, min(440px, 100%)); min-width: min(100%, 340px); }
 .rvacts:empty { display: none; }
 .rvrow { display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
 .rvrow button { padding: 5px 10px; font-size: .88em; }
@@ -163,9 +168,23 @@
 .rv-serie { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .92em; }
 .rv-serie b { color: var(--text); }
 
+/* Широка картка: дошка з рахунком і годинниками ліворуч на всю висоту, кнопки й налаштування — колонкою праворуч. */
+body:not(.g-land) .gbody.rv-wide {
+  --rv-room: calc(var(--g-aw, 1000px) - 320px);
+  --rv-w: min(var(--rv-room), var(--g-fmax, var(--g-bmax, 720px)), max(var(--g-fminw, 0px), calc(var(--g-fh, 448px) - 8px)));
+  display: grid; grid-template-columns: auto minmax(240px, 300px); column-gap: 20px; row-gap: 6px;
+  justify-content: center; align-content: start; align-items: center;
+}
+body:not(.g-land) .gbody.rv-wide > * { grid-column: 1; justify-self: center; }
+body:not(.g-land) .gbody.rv-wide > .rvacts {
+  grid-row: 1 / span var(--rv-span, 3); grid-column: 2; width: auto; min-width: 0; align-self: center; gap: 10px; }
+body:not(.g-land) .gbody.rv-wide > .rvacts .rvrow { flex-direction: column; align-items: stretch; width: 100%; }
+body:not(.g-land) .gbody.rv-wide > .rvacts .rvrow button { justify-content: center; text-align: center; }
+
 /* Телефон: дошка на всю ширину екрана, поза відступами картки (клітинка ≈ 44 px на 360). */
 @media (max-width: 480px) {
-  .board.rv { width: calc(100vw - 6px); max-width: none; margin-inline: calc(50% - 50vw + 3px); border-width: 2px; }
+  /* …але не вища за місце під поле: інакше кнопки під дошкою їхали під нижнє меню. */
+  .board.rv { width: min(calc(100vw - 6px), max(var(--g-fminw, 0px), calc(var(--g-fh, 9999px) - 6px))); max-width: none; margin-inline: calc(50% - 50vw + 3px); border-width: 2px; }
   .rv-clock { width: min(92vw, 440px); }
   .rvside .nm { max-width: 7em; }
 }

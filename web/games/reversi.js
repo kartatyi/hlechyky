@@ -391,9 +391,27 @@
 
   // ---- модуль ---------------------------------------------------------------------------------------
 
+  /// Світлиця: на широкій картці (ПК, ⇔, ⛶) кнопки й налаштування (.rvacts) — колонкою праворуч, а дошка бере
+  /// всю висоту. Широко — коли праворуч від дошки на всю висоту картки лишається місце на колонку; міряємо aw/ah
+  /// картки (від розкладки .gbody не залежать — без гойдалки). Лежачи на телефоні — своя сітка каркаса.
+  function fitWide(root) {
+    HGames.ui.onFit(root, (f) => {
+      const wide = !!(f && f.aw && f.ah) && f.aw >= 700 && f.aw > f.ah + 120 && !f.land && !document.body.classList.contains('g-land');
+      if (root.classList.contains('rv-wide') !== wide) { root.classList.toggle('rv-wide', wide); sideSpan(root); }
+    });
+    sideSpan(root);
+  }
+  /// Колонка займає рівно стільки рядків сітки, скільки елементів ліворуч: порожні рядки сітка розтягувала б.
+  /// Не широко — без рядка (лежачи картка сама сітка каркаса, і чужий grid-row переставив би рахунок униз).
+  function sideSpan(root) {
+    const span = String(Math.max(1, root.children.length - 1));
+    if (root.style.getPropertyValue('--rv-span') !== span) root.style.setProperty('--rv-span', span);
+  }
+
   function update(root, ctx) {
     paint(root, ctx);
     glekPrefs(root, ctx);
+    fitWide(root);
     const st = state(root);
     clearTimeout(st.t);
     // Коли переворот доіграв — перемалювати без класів анімації, щоб наступний вид її не повторив.
@@ -405,9 +423,9 @@
     icon: ICON,
     seatClass: ['d', 'c'],
     added: '2026-09-30',
-    mount(root, ctx) { update(root, ctx); },
+    mount(root, ctx) { root.classList.add('rv-root'); update(root, ctx); },
     update,
-    unmount(root) { if (root._rv) clearTimeout(root._rv.t); root._rv = null; stopClock(root); },
+    unmount(root) { if (root._rv) clearTimeout(root._rv.t); root._rv = null; stopClock(root); HGames.ui.onFit(root, null); root.classList.remove('rv-root', 'rv-wide'); },
 
     onKey(e, ctx) {
       const root = ctx._rvRoot;
