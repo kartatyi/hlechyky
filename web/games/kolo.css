@@ -13,7 +13,12 @@
 }
 
 .ko { width: 100%; max-width: 1180px; margin: 0 auto; display: grid; gap: 12px; align-items: start; position: relative; }
-.ko.ko-wide { grid-template-columns: 360px minmax(0, 1fr); }
+.ko.ko-wide {
+  /* колонка з колесом росте з місцем картки (2K, ⛶): колесо — на висоту картки мінус Глек і смужка часу,
+     але не ширше ~половини картки; без каркаса (віконце в куточку) — як було, ~360 px */
+  --ko-col: clamp(340px, min(calc(var(--g-ah, 490px) - 130px), calc(var(--g-aw, 780px) * .46)), 660px);
+  grid-template-columns: var(--ko-col) minmax(0, 1fr);
+}
 .ko.ko-vert { grid-template-columns: minmax(0, 1fr); }
 .ko .muted { color: var(--muted); }
 .ko .small { font-size: .82em; }
@@ -65,7 +70,13 @@
 
 .ko-wheelbox { grid-area: wheel; position: relative; aspect-ratio: 1 / 1; border-radius: 50%; justify-self: center;
   box-shadow: 0 12px 26px var(--ko-shadow), 0 0 0 2px rgba(0, 0, 0, .3); }
-.ko-wide .ko-wheelbox { width: 320px; }
+.ko-wide .ko-wheelbox { width: calc(var(--ko-col, 360px) - 40px); }
+/* Телефон лежачи (g-land): Глек поруч із колесом, без хмарки (її слова й так лишаються в журналі столу), колесо — на
+   висоту картки; раніше сцена була 434 px на екрані 375 і колесо йшло за низ. */
+body.g-land .ko.ko-wide { --ko-col: clamp(220px, calc(var(--gland-h, 330px) - 30px), 360px); }
+body.g-land .ko-wide .ko-stage { grid-template-columns: 52px minmax(0, 1fr); grid-template-areas: "glek wheel" "bar bar"; position: static; }
+body.g-land .ko-wide .ko-say { display: none; }
+body.g-land .ko-wide .ko-wheelbox { width: min(100%, calc(var(--ko-col) - 90px)); }
 .ko-vert .ko-wheelbox { width: min(240px, 100%); }
 .ko-wheel { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 50%; will-change: transform; }
 /* «палець майстра» вгорі: тут стає сегмент */
