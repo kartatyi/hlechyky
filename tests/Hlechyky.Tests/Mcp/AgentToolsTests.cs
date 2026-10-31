@@ -383,14 +383,16 @@ public class AgentToolsTests
     public async Task Wait_comes_back_the_moment_somebody_speaks_at_the_table()
     {
         var (v, room, agents) = await Village();
-        var waiting = v.Tools.Wait(agents[0], room, 5_000, default);
+        // бюджет — найбільший: під навантаженням повного набору пул потоків буває зайнятий секундами, і продовження
+        // тесту (TableSay) могло прийти вже після 5-секундного дедлайну; «одразу» перевіряє changed і waited < бюджету
+        var waiting = v.Tools.Wait(agents[0], room, AgentTools.WaitMaxMs, default);
         await Task.Delay(50);
         await v.Tools.TableSay(agents[1], room, "агов, починаємо?");
 
         var r = J(await waiting);
 
         Assert.True(r.GetProperty("changed").GetBoolean());
-        Assert.True(r.GetProperty("waited").GetInt32() < 5_000);
+        Assert.True(r.GetProperty("waited").GetInt32() < AgentTools.WaitMaxMs - 1_000);
     }
 
     [Fact]

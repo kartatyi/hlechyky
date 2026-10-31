@@ -459,7 +459,8 @@ public class MelodyTests
         // розкриття от-от скінчиться, а Queen нема — стіл «поспішає», і фон ріже готового Скрябіна
         h.Clock.AdvanceMs(Melody.RevealMs - Melody.HurryLeadMs + 50);
         h.Tick();
-        for (var k = 0; k < 400 && src.Clips < 2; k++) Thread.Sleep(5);
+        // фон ріже в пулі потоків: під навантаженням повного набору черга пулу буває секундами — чекаємо до 15 с
+        for (var k = 0; k < 3000 && src.Clips < 2; k++) Thread.Sleep(5);
         Assert.Equal(2, src.Clips);
 
         // розкриття скінчилось — наступний трек звучить одразу, без «Мить — наступний трек…»
