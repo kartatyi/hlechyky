@@ -106,12 +106,45 @@
     return { tr, c };
   }
 
+  /// Світлиця: поле тепер росте з місцем картки (⇔/⛶ на Full HD — до ~1500 px), а ui.canvas тримає щільність
+  /// «логічний розмір × DPR» — і розтягнуте втричі поле милилось. Тут щільність — під справжню ширину на екрані:
+  /// міряє ResizeObserver (не щокадру), крок 0,25, стеля ~4 Мп. Зміна — перелаштувати полотно й перемалювати.
+  function sharpen(cv, redraw) {
+    const el = cv.el;
+    let k = 0;
+    const want = () => {
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      const k1 = Math.max(dpr, dpr * (el.clientWidth || 0) / cv.w);
+      return Math.ceil(Math.min(k1, Math.sqrt(4e6 / (cv.w * cv.h))) * 4) / 4;
+    };
+    cv.resize = () => {
+      if (!k) k = want();
+      const pw = Math.round(cv.w * k), ph = Math.round(cv.h * k);
+      if (el.width !== pw || el.height !== ph) { el.width = pw; el.height = ph; }
+      cv.ctx.setTransform(k, 0, 0, k, 0, 0);
+    };
+    if (el._sharp) el._sharp.disconnect();
+    if (window.ResizeObserver) {
+      el._sharp = new ResizeObserver(() => {
+        const k2 = want();
+        if (k2 === k || !el.isConnected) return;
+        k = k2;
+        cv.resize();
+        if (redraw) redraw();
+      });
+      el._sharp.observe(el);
+    }
+    cv.resize();
+    return cv;
+  }
+
   /// Канваси під розмір поля: головний (з DPR і нашим масштабом) і прихований канвас сліду.
   function size(root, st, w, h) {
     if (st.W === w && st.H === h && st.cv) return false;
     st.W = w;
     st.H = h;
-    st.cv = HGames.ui.canvas(root, { w: w * st.K, h: h * st.K, cls: 'curveboard' + (w > 300 ? ' big' : '') });
+    st.cv = sharpen(HGames.ui.canvas(root, { w: w * st.K, h: h * st.K, cls: 'curveboard' + (w > 300 ? ' big' : '') }),
+      () => { if (st.ctx && st.lastF !== undefined) paint(st, st.ctx, st.lastF); });
     const t = trailCanvas(w, h);
     st.tr = t.tr;
     st.trc = t.c;
@@ -793,6 +826,9 @@
     mount(root, ctx) {
       const st = state(root, ctx);
       const v = ctx.view || {};
+      // Клас на картці замість :has у curve.css: розкладка «лежачи» (◀ поле · рахунок ▶).
+      const card = root.closest && root.closest('.gtable');
+      if (card) card.classList.add('curve-card');
       size(root, st, v.width || 300, v.height || 200);
       // Каркас віддає модулю лише keydown, а утримання без keyup не буває — слухаємо самі.
       st.up = (e) => {
@@ -921,6 +957,8 @@
     },
 
     unmount(root, ctx) {
+      const card = root.closest && root.closest('.gtable');
+      if (card) card.classList.remove('curve-card');
       const st = root._curve;
       if (!st) return;
       if (st.up) document.removeEventListener('keyup', st.up);

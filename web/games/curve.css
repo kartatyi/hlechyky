@@ -12,14 +12,9 @@
 }
 
 /* Поле. Пропорція 3:2 задається канвасом, тут лише ширина й те, що під пальцем воно не гортається. */
-.curveboard { max-width: 460px; }
-.curveboard.big { max-width: 560px; }
 .curveboard.hold { touch-action: none; }
-/* Ноутбук, Дека й Full HD: 460 px посеред порожньої картки — замало; даємо полю рости, поки повний стіл
-   (вісім чіпів місць, очки, статус, кнопки) влазить по висоті. Прохід 28.09: раніше — лише від 1500×860. */
-@media (min-width: 1000px) and (min-height: 700px) {
-  .curveboard, .curveboard.big { max-width: min(780px, calc((100vh - 380px) * 1.5)); }
-}
+/* Розмір поля задає каркас (Світлиця, core.css): полотно вписується в ширину картки й висоту рядка поля
+   (--g-fh) з пропорцією 3:2 — у ⇔/⛶ на Full HD поле росте на весь екран. Стелі 460/560/780 px прибрано. */
 
 /* Чипи місць у шапці картки: каркас знає лише x/o/c/d */
 .gseat.cb { color: var(--cblue); }
@@ -75,13 +70,21 @@
 .curve-note { flex-basis: 100%; text-align: center; }
 
 /* ---- телефон лежачи (body.g-land ставить каркас) — live1: ◀ під лівим великим пальцем, ▶ — під правим,
-   поле посередині. Каркас клав обидві кнопки в праву колонку — кермувати доводилось одним пальцем. */
-body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) { grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 10px; }
-body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > canvas.curveboard { grid-column: 2; }
-body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > .cpad { display: contents; }
-body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > .cpad > button { width: 92px; min-height: 150px; margin: 0; font-size: 1.6em; }
-body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > .cpad > button[data-d="-1"] { grid-column: 1; grid-row: 1 / span 12; }
-body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > .cpad > button[data-d="1"] { grid-column: 3; order: 9; }
-body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > :not(.gbody), body.g-land .gtable:has(> .gbody > canvas.curveboard.gcanvas) > .gbody > :not(canvas):not(.cpad) { grid-column: 3; max-width: 24vw; }
+   поле посередині. Каркас клав обидві кнопки в праву колонку — кермувати доводилось одним пальцем.
+   Світлиця: ▶ стояв у колонці рахунку останнім — під місцями, статусом і «Встати» він з'їжджав за низ картки
+   (на 812×375 його було видно наполовину, картка гортались). Тепер ▶ — своя колонка біля правого краю на всю
+   висоту, як ◀ ліворуч; рахунок і кнопки — вузькою колонкою між полем і ▶. Клас .curve-card ставить модуль
+   (замість :has на картці — той Chrome перевіряв на кожну зміну DOM). */
+body.g-land .gtable.curve-card { grid-template-columns: max-content minmax(0, 1fr) max-content max-content; column-gap: 8px; }
+body.g-land .gtable.curve-card > .gbody > canvas.curveboard { grid-column: 2; }
+body.g-land .gtable.curve-card > .gbody > .cpad { display: contents; }
+body.g-land .gtable.curve-card > .gbody > .cpad > button {
+  width: 84px; min-height: 150px; margin: 0; font-size: 1.6em; grid-row: 1 / span 12; align-self: stretch;
+}
+body.g-land .gtable.curve-card > .gbody > .cpad > button[data-d="-1"] { grid-column: 1; }
+body.g-land .gtable.curve-card > .gbody > .cpad > button[data-d="1"] { grid-column: 4; }
+body.g-land .gtable.curve-card > :not(.gbody), body.g-land .gtable.curve-card > .gbody > :not(canvas):not(.cpad) { grid-column: 3; max-width: 22vw; }
+/* Чипи місць у вузькій колонці різались до «ж…»; ті самі гравці з очками вже є в рахунку (.cscore) — ховаємо. */
+body.g-land .gtable.curve-card > .gseats { display: none; }
 /* ⚖ фора (пакет 3): множник очок біля імені в рахунку */
 .curve-hc { opacity: .7; font-size: .8em; white-space: nowrap; }
