@@ -12,7 +12,8 @@
 
 /* ---------------- дошка ---------------- */
 .gor-stage { grid-area: stage; position: relative; overflow: hidden; border-radius: 16px; background: #2c1a0e;
-  height: clamp(300px, min(calc(90vw + 30px), 64vh), 600px); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35);
+  /* висота — від місця картки (каркас: --g-ah), щоб під дошкою влазила «Сипнути»; без змінних — як було */
+  height: clamp(260px, min(calc(90vw + 30px), calc(var(--g-ah, 70vh) - 84px)), 720px); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35);
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .gor-cv { position: absolute; inset: 0; display: block; }
 .gor-stage.shake { animation: gor-shake .45s cubic-bezier(.36, .07, .19, .97); }
@@ -71,6 +72,7 @@
 .gor-row { display: flex; align-items: center; gap: 8px; }
 .gor-pm { flex: none; width: 40px; font-size: 20px; }
 .gor-range { flex: 1; min-width: 0; accent-color: var(--accent, #f4c542); height: 28px; }
+@media (pointer: coarse) { .gor-range { height: 36px; } }
 .gor-go { grid-area: go; min-height: 64px; border: 0; border-radius: 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 3px; background: linear-gradient(#9be05a, #5aa62a); color: #10240a; box-shadow: 0 4px 0 #3c7a1a, inset 0 0 0 2px rgba(255, 255, 255, .2);
   font: 900 22px/1 var(--display, sans-serif); transition: transform .08s; }
@@ -114,7 +116,9 @@
 /* широкий екран: дошка ліворуч, панель праворуч */
 @media (min-width: 900px) {
   .gor { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: 'stage panel'; }
-  .gor-stage { height: clamp(440px, 72vh, 780px); }
+  /* дошка — на всю висоту місця під поле (росте в ⇔/⛶ і на 2K), панель праворуч — гортається сама, якщо довша */
+  .gor-stage { height: max(380px, var(--g-fh, 72vh)); }
+  .gor-panel { max-height: max(380px, var(--g-fh, 72vh)); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line, #2f4d3d) transparent; }
 }
 /* телефон: дошка й кнопка влазять над нижніми вкладками */
 @media (max-width: 480px) {
@@ -127,7 +131,9 @@
 /* телефон горизонтально: дошка ліворуч, панель праворуч */
 @media (orientation: landscape) and (max-height: 520px) {
   .gor { grid-template-columns: minmax(0, 1fr) minmax(220px, 36%); grid-template-areas: 'stage panel'; }
-  .gor-stage { height: calc(100vh - 110px); min-height: 240px; }
+  .gor-stage { height: var(--g-ah, calc(100vh - 110px)); min-height: 200px; }
+  /* панель довша за екран — гортається вона, а не вся картка (дошка лишається на місці) */
+  .gor-panel { max-height: var(--g-ah, calc(100vh - 110px)); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line, #2f4d3d) transparent; }
   .gor-panel { gap: 6px; }
   .gor-box { padding: 6px 8px; }
   .gor-go { min-height: 48px; }
