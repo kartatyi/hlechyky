@@ -24,7 +24,13 @@
   --pk-chip-edge: rgba(255, 255, 255, .75);
 }
 
-.pk { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 860px; margin: 0 auto; }
+.pk {
+  display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 1100px; margin: 0 auto;
+  /* Висота столу — від місця картки (каркас: --g-ah) мінус шапка, мої карти й панель ходу (~265 px):
+     уся гра влазить у вікно без прокрутки, а на великому екрані стіл і карти на ньому ростуть. */
+  --pk-th: clamp(280px, calc(var(--g-ah, 660px) - 265px), 600px);
+  --pk-cw: clamp(44px, calc(var(--pk-th) * .125), 66px);
+}
 
 /* ---- шапка: формат, сліпі, гроші ---- */
 .pk .pk-top { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
@@ -36,7 +42,7 @@
 .pk .pk-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* ---- стіл ---- */
-.pk .pk-table { position: relative; width: 100%; height: clamp(320px, 50vw, 440px); }
+.pk .pk-table { position: relative; width: min(100%, calc(var(--pk-th) * 2.1)); margin: 0 auto; height: var(--pk-th); }
 .pk .pk-felt, .pk .pk-ring { position: absolute; inset: 40px 66px; }
 .pk .pk-felt {
   border-radius: 50%;
@@ -54,7 +60,7 @@
 .pk .pk-potsum b { font-variant-numeric: tabular-nums; }
 .pk .pk-side { font-size: .75em; opacity: .85; }
 .pk .pk-board { display: flex; gap: 5px; }
-.pk .pk-slot { width: 44px; height: 62px; border-radius: 6px; border: 1px dashed var(--pk-slot-edge); }
+.pk .pk-slot { width: var(--pk-cw); height: calc(var(--pk-cw) * 1.41); border-radius: 6px; border: 1px dashed var(--pk-slot-edge); }
 .pk .pk-slot:not(:empty) { border-color: transparent; }
 .pk .pk-msg { color: var(--pk-on-felt); font-size: .85em; min-height: 1.2em; display: flex; flex-direction: column; gap: 2px; text-shadow: 0 1px 2px var(--pk-text-shadow); }
 .pk .pk-msg small { opacity: .8; font-size: .9em; }
@@ -73,6 +79,8 @@
   background: repeating-linear-gradient(45deg, var(--pk-back) 0 4px, var(--pk-back2) 4px 8px);
   border: 2px solid var(--pk-face);
 }
+/* Карти на столі (борд) — під розмір столу. */
+.pk .pk-board .pkc { width: var(--pk-cw); height: calc(var(--pk-cw) * 1.41); font-size: calc(var(--pk-cw) * .36); }
 .pk .pkc.sm { width: 24px; height: 34px; font-size: .7em; border-radius: 4px; }
 .pk .pkc.sm.back { border-width: 1.5px; }
 .pk .pkc.lg { width: 60px; height: 84px; font-size: 1.35em; border-radius: 8px; }
@@ -114,7 +122,7 @@
 .pk .pk-dealer {
   left: -8px; width: 20px; height: 20px; font-size: .72em; background: var(--pk-dealer); color: var(--pk-dealer-ink); box-shadow: 0 1px 3px var(--pk-shade-deep);
 }
-.pk .pk-blind { right: -6px; padding: 2px 5px; font-size: .62em; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+.pk .pk-blind { right: -6px; padding: 2px 5px; font-size: max(.62em, 11px); background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
 .pk .pk-arc { position: absolute; right: -14px; top: 50%; translate: 0 -50%; }
 .pk .pk-arc .garc { width: 30px; height: 30px; background: var(--panel); border-radius: 50%; }
 .pk .pk-arc .garc b { font-size: .7em; }
@@ -157,8 +165,10 @@
 .pk .pk-b.fold { color: var(--muted); }
 .pk .pk-parc .garc { width: 36px; height: 36px; }
 .pk .pk-raise { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; width: 100%; }
-.pk .pk-range { flex: 1 1 220px; max-width: 360px; accent-color: var(--accent); }
+.pk .pk-range { flex: 1 1 220px; max-width: 360px; height: 32px; accent-color: var(--accent); cursor: pointer; }
 .pk .pk-qs { display: flex; gap: 4px; }
+.pk .pk-pm { display: none; gap: 4px; align-items: center; justify-content: center; font-size: .85em; color: var(--muted); }
+.pk .pk-pm > span { margin-left: 6px; color: var(--text); }
 .pk .pk-pres { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: .9em; }
 .pk .pk-pre { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
 
@@ -167,7 +177,8 @@
 
 /* ---- телефон: стіл вужчий і вищий, панель ходу на всю ширину ---- */
 @media (max-width: 560px) {
-  .pk .pk-table { height: 372px; }
+  .pk { --pk-th: clamp(300px, calc(var(--g-ah, 640px) - 250px), 372px); }
+  .pk .pk-table { width: 100%; }
   /* мій хід: панель липне до низу екрана — не треба гортати до кнопок */
   .pk .pk-panel.on { position: sticky; bottom: 0; z-index: 5; box-shadow: 0 -6px 16px var(--pk-shadow); }
   .pk .pk-felt, .pk .pk-ring { inset: 38px 40px 44px; }
@@ -187,8 +198,15 @@
   .pk .pk-bet i { width: 11px; height: 11px; }
   .pk .pk-arc { right: -10px; }
   .pk .pk-arc .garc { width: 24px; height: 24px; }
-  .pk .pk-acts { width: 100%; }
-  .pk .pk-b { flex: 1 1 40%; min-width: 0; }
+  .pk .pk-acts { width: 100%; gap: 6px; flex-wrap: nowrap; }
+  /* чотири дії в один рядок — панель нижча, менше закриває стіл */
+  .pk .pk-b { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 6px 4px; font-size: .84em; line-height: 1.15; }
+  .pk .pk-panel.on { padding: 6px 8px; gap: 6px; }
+  .pk .pk-pm { display: flex; }
+  .pk .pk-pm .pkc.sm { width: 28px; height: 38px; font-size: .82em; }
+  .pk .pk-raise { flex-wrap: nowrap; gap: 6px; }
+  .pk .pk-range { flex: 1 1 100px; min-width: 0; }
+  .pk .pk-qs button { padding: 6px 7px; min-height: 36px; }
   .pk .pk-btns button { flex: 1 1 40%; }
 }
 
@@ -196,3 +214,13 @@
   .pk .pkc.in, .pk .pkc.deal, .pk .pkc.flip, .pk .pk-bet.pop, .pk .pk-fly { animation: none; }
   .pk .pk-bet, .pk .pk-seat { transition: none; }
 }
+
+/* Лежачи на телефоні: стіл ліворуч на всю висоту, шапка, мої карти й панель ходу — колонкою праворуч. */
+body.g-land .gtable .pk {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, 36%); grid-auto-rows: min-content;
+  align-content: start; column-gap: 10px; max-width: none; --pk-th: max(240px, calc(var(--g-ah, 300px) - 6px)); --pk-cw: 34px;
+}
+body.g-land .gtable .pk > * { grid-column: 2; }
+body.g-land .gtable .pk > .pk-table { grid-column: 1; grid-row: 1 / span 6; width: 100%; }
+body.g-land .gtable .pk .pk-panel.on { position: static; box-shadow: none; }
+body.g-land .gtable .pk .pk-b { flex: 1 1 40%; min-width: 0; }

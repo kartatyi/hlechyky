@@ -373,7 +373,10 @@
     if (st.amtKey !== key) { st.amtKey = key; st.amt = a.raiseMin; }
     st.amt = Math.max(a.raiseMin, Math.min(a.raiseMax, st.amt || a.raiseMin));
     const bet = a.check;   // ніхто не ставив — це «бет», інакше «рейз до»
-    let html = '<div class="pk-acts">'
+    // На телефоні панель ходу липне до низу й закриває мої великі карти — дублюємо їх малими в панелі (CSS ховає на ПК).
+    const mine = me && me.cards && me.cards.length ? '<div class="pk-pm">' + me.cards.map((c) => card(c, 'sm')).join('')
+      + (v.myHand ? '<span>' + ctx.esc(v.myHand) + '</span>' : '') + '</div>' : '';
+    let html = mine + '<div class="pk-acts">'
       + '<button type="button" class="pk-b fold" data-act="fold" title="F">Фолд</button>'
       + (a.check ? '<button type="button" class="pk-b call" data-act="check" title="C">Чек</button>'
         : '<button type="button" class="pk-b call" data-act="call" title="C">Колл ' + fmt(a.call) + (a.call >= a.allIn ? ' · олл-ін' : '') + '</button>')
