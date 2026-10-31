@@ -1,0 +1,21 @@
+{
+ "v": 1,
+ "i": {
+  "blackjack": "blackjack",
+  "blackjack-solo": "blackjack",
+  "kavuny": "kavuny",
+  "lelka": "lelka",
+  "plinko": "plinko",
+  "poker": "poker",
+  "x-bets": "x-bets"
+ },
+ "b": {
+  "blackjack": "blackjack",
+  "blackjack-solo": "blackjack",
+  "kavuny": "kavuny",
+  "lelka": "lelka",
+  "plinko": "plinko",
+  "poker": "poker",
+  "x-bets": "x-bets"
+ }
+}
