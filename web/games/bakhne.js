@@ -182,22 +182,30 @@
     const coarse = HGames.ui.coarse();
     const wide = w >= 620;
     st.el.classList.toggle('wide', wide);
+    // Телефон лежачи / низьке вікно: дах із Глеком, стрілки й хрестовина — колонкою ліворуч, двори — праворуч на всю
+    // висоту. Раніше все йшло стовпчиком, і свій двір на 812×375 обрізало знизу (його-то й треба бачити).
+    const low = wide && st.yards.size > 0 && avail < 520;
+    st.el.classList.toggle('low', low);
+    const ww = low ? Math.floor(w * 0.7) - 12 : w;
+    // Стеля свого двору: на вузькому — 340–360 px, на широкому (⇔, ⛶, 2K) — до половини ширини, бо раніше двір стояв
+    // 360 px посеред порожньої картки (fill 0,45 на 1920). Висоту однаково обріже замір нижче.
+    const BIG = wide ? clamp(Math.floor((ww - 28) * 0.5), 360, 760) : 360;
     let big = 0, mini;
     if (me != null) {
       if (wide) {
-        big = clamp(Math.min(360, avail - 210), 220, 360);
-        const right = w - big - 28;
+        big = clamp(Math.min(BIG, avail - 210), 220, BIG);
+        const right = ww - big - 28;
         const cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 6 ? 3 : 4;
         const rows = Math.ceil(n / cols) || 1;
-        mini = clamp(Math.min(Math.floor((right - (cols - 1) * 10) / cols), Math.floor((big + 30) / rows) - 34), 64, 150);
+        mini = clamp(Math.min(Math.floor((right - (cols - 1) * 10) / cols), Math.floor((big + 30) / rows) - 34), 64, BIG > 600 ? 230 : BIG > 360 ? 190 : 150);
       } else {
-        mini = n ? clamp(Math.floor((w - 6 * (n - 1)) / n), 40, 84) : 0;
+        mini = n ? clamp(Math.floor((ww - 6 * (n - 1)) / n), 40, 84) : 0;
         const extra = 168 + (n ? mini + 26 : 0) + (coarse ? 128 : 0);
-        big = clamp(Math.min(w - 12, 340, avail - extra), 170, 340);
+        big = clamp(Math.min(ww - 12, 340, avail - extra), 170, 340);
       }
     } else {
       const cols = n <= 1 ? 1 : n <= 2 ? 2 : wide ? (n <= 4 ? n : 4) : (n <= 4 ? 2 : 3);
-      mini = clamp(Math.floor((w - (cols - 1) * 10) / cols) - 4, 70, wide ? 200 : 150);
+      mini = clamp(Math.floor((ww - (cols - 1) * 10) / cols) - 4, 70, wide ? 200 : 150);
     }
     const put = () => st.yards.forEach((y, i) => {
       const s = i === me ? big : mini;
@@ -211,14 +219,21 @@
     if (yb && st.el.offsetParent && fit) {
       // над нами — шапка картки й рядок місць (сторінку не крутимо: у картки своя липка шапка)
       const above = clamp(st.root.getBoundingClientRect().top + (window.scrollY || 0) - fit.top, 0, 260);
-      let room = avail - above - (st.el.offsetHeight - yb.ground.offsetHeight) - 10;
+      const restH = () => low ? yb.el.offsetHeight - yb.ground.offsetHeight + 8 : st.el.offsetHeight - yb.ground.offsetHeight;
+      // каркас знає місце під увесь .gbody (--g-ah: без шапок, рядка столу, статусу й кнопок картки) — точніше за «вікно
+      // мінус те, що над нами»; без нього (вечірка, старий каркас) — як було
+      let bx = null;
+      try { bx = HGames.ui.box ? HGames.ui.box(st.root) : null; } catch { bx = null; }
+      const ah = bx && bx.ah > 0 && !st.ctx.embedded ? bx.ah : 0;
+      const roomOf = () => ah ? ah - restH() - 6 : avail - above - restH() - 10;
+      let room = roomOf();
       // тісно — мініатюри дрібнішають, свій двір важливіший
       if (!wide && room < 230 && mini > 52) {
         mini = Math.max(44, Math.min(mini, 52));
         put();
-        room = avail - above - (st.el.offsetHeight - yb.ground.offsetHeight) - 10;
+        room = roomOf();
       }
-      big = clamp(Math.min(room, wide ? 360 : w - 12, 360), 150, 360);
+      big = clamp(Math.min(room, wide ? BIG : ww - 12, BIG), 150, BIG);
       put();
     }
   }
@@ -630,7 +645,7 @@
       if (v.frame) { st.f = v.frame; takeClock(st, v.frame); events(st, v.frame); }
       st.onResize = () => { layout(st); };
       window.addEventListener('resize', st.onResize);
-      if (HGames.ui.onFit) HGames.ui.onFit(root, () => layout(st));
+      if (HGames.ui.onFit) HGames.ui.onFit(root, () => layout(st, true));
       render(st);
       layout(st, true);
       spin(st);
