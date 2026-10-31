@@ -21,7 +21,7 @@
 /* Канвас 2:1: висоту під поле рахує каркас (--g-fh — без смужки, комори, пульта, статусу й кнопок картки; у ⛶ —
    увесь екран), тут лише ширина за нею. Смужка, комора й пульт — тієї ж ширини (--gk-w), щоб стояли рівно над/під полем.
    Раніше — стеля 1200 px і запас «100vh − 400px». */
-.gk-top, .gk-arms, .gk-ctl, .gcanvas.gk-canvas { --gk-w: min(100%, var(--g-fmax, 100%), max(var(--g-fminw, 0px), calc(var(--g-fh, 300px) * 2))); }
+.gk-top, .gk-arms, .gk-ctl, .gcanvas.gk-canvas { --gk-w: min(100%, var(--g-fmax, 100%), max(var(--g-fminw, 0px), min(100%, 480px), calc(var(--g-fh, 300px) * 2))); }
 .gcanvas.gk-canvas {
   max-width: var(--gk-w);
   min-width: 0; width: 100%; background: #20405a; cursor: default;
