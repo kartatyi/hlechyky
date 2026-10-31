@@ -32,7 +32,19 @@
   --bj-c500: #2a2420;
 }
 
-.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: var(--g-fmax, 1100px); margin: 0 auto; min-width: 0; }
+.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: var(--g-fmax, 1100px); margin: 0 auto; min-width: 0;
+}
+/* Світлиця (fix-screens): широка картка (.bj-wide ставить blackjack.js, коли картка ≥ 820 px завширшки й < 620 px місця у висоту) — ставки, кнопки ходу й низ
+   колонкою праворуч від сукна, а не під ним: на 1366×768 картка вилазила за екран на 38 px під час ставок і на ~150 px
+   посеред роздачі (сукно з руками росте, а сукно ще й мало порожнє місце праворуч). */
+body:not(.g-land) .bj.bj-wide {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 280px); column-gap: 14px; row-gap: 8px;
+  grid-template-areas: "top top" "felt panel" "felt foot"; grid-template-rows: auto auto 1fr; align-items: start;
+}
+body:not(.g-land) .bj.bj-wide > .bj-top { grid-area: top; }
+body:not(.g-land) .bj.bj-wide > .bj-felt { grid-area: felt; }
+body:not(.g-land) .bj.bj-wide > .bj-panel { grid-area: panel; margin-top: 9px; }
+body:not(.g-land) .bj.bj-wide > .bj-foot { grid-area: foot; }
 .bj .muted { color: var(--muted); }
 
 /* ---- шапка ---- */

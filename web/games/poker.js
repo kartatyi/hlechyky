@@ -560,12 +560,21 @@
 
     mount(root, ctx) {
       paint(root, ctx);
+      // Світлиця (fix-screens): низький широкий екран (1366×768 — стіл 280 px і низ картки за екраном на 110 px) —
+      // мої карти й панель ходу стають колонкою праворуч від столу, а не під ним.
+      if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, (f) => {
+        const el = root.querySelector(':scope > .pk');
+        if (!el) return;
+        const side = !document.body.classList.contains('g-land') && f && f.aw >= 860 && f.ah > 0 && f.ah < 620;
+        if (el.classList.contains('pk-lside') !== side) el.classList.toggle('pk-lside', side);
+      });
       const st = state(root);
       clearInterval(st.clock);
       st.clock = setInterval(() => clock(root), 1000);
     },
     update(root, ctx) { paint(root, ctx); },
     unmount(root) {
+      if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, null);
       const st = root._pk;
       if (st) clearInterval(st.clock);
       root.querySelectorAll('.pk-arc, .pk-parc').forEach(stopArc);
