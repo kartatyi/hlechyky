@@ -133,9 +133,9 @@
       { id: 'quiz', title: 'Вікторини', icon: '🧠', ids: ['svoya', 'melody', 'skilky', 'geo', 'memy', 'geese'] },
     ],
     solo: [
-      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'namysto', 'shatkuy', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo'] },
+      { id: 'self', title: 'Сам собі', icon: '🏺', ids: ['clicker', 'kakhli', 'namysto', 'shatkuy', 'bricks-sprint', 'typerace-solo', 'geo-solo', 'memy-solo', 'fura'] },
       // Щоденні є й у смужці «☀ Сьогодні», але в каталозі теж стоять — тут вони разом, а не врозсип по Соло.
-      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'kakhli-daily', 'mines-daily', 'chess-daily', 'bricks-daily', 'dino-daily',
+      { id: 'daily', title: 'Щоденні', icon: '☀', ids: ['wordle', 'wordle-archive', 'kakhli-daily', 'mines-daily', 'mines-daily-easy', 'chess-daily', 'bricks-daily', 'dino-daily',
         'tyr-daily', 'namysto-daily', 'shatkuy-daily', 'geese-daily', 'geo-daily', 'skilky-daily'] },
     ],
     azart: [
@@ -3281,7 +3281,8 @@
           pay.fullNeed + ' різних щоденних за день — ще +' + pay.fullBonus + ' 🏺'));
     }
     const nl = nightLine(m);
-    return '<section class="gpanel gtoday' + (board ? ' split' : '') + '">'
+    // gdaybox, а не gtoday: .gtoday — клас Січі (sich.css), CssClashTests не дає двом файлам ділити клас
+    return '<section class="gpanel gdaybox' + (board ? ' split' : '') + '">'
       + '<div class="gday-head">' + (all.length ? ringHtml(played, all.length) : '')
       + '<div class="gday-ht"><h3>☀ Сьогодні' + (daily && daily.no ? ' <span class="muted small">· щоденний глек №' + daily.no + '</span>' : '') + '</h3>'
       + (chips.length ? '<div class="gday-chips">' + chips.join('') + '</div>' : '') + '</div></div>'
