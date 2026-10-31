@@ -5,7 +5,7 @@
 
 .memy {
   container-type: inline-size;
-  width: 100%; max-width: var(--g-fmax, 1400px); margin: 0 auto;   /* Світлиця: було 1040 — у ⛶ на 1920+ мем був марочкою */
+  width: 100%; max-width: var(--g-fmax, max(1400px, 72%)); margin: 0 auto;   /* Світлиця: було 1040 — у ⛶ на 1920+ мем був марочкою; на 2K ⛶ — 72 % ширини */
   display: flex; flex-direction: column; gap: 10px;
 }
 
@@ -62,6 +62,17 @@
    (картка ще не була на столі) — як було, від висоти вікна. */
 @container (min-width: 760px) {
   .gtable[style*="--g-ah"] .memy-frame { max-width: calc(clamp(240px, var(--g-ah) - 100px, 820px) * 4 / 3); }
+}
+/* Телефон лежачи: мем ліворуч на всю висоту під гру (--g-ah), шапка мему (номер, що вгадуємо, таймер) і відповіді —
+   колонкою праворуч. Раніше шапка стояла над обома колонками, і рамка (не нижча за 240 px) виходила за край. */
+@media (max-height: 500px) and (min-width: 600px) {
+  .memy { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 14px; row-gap: 6px; align-items: start; }
+  .memy > .memy-main { display: contents; }
+  .memy-left { grid-column: 1; grid-row: 1 / span 4; }
+  .memy > :not(.memy-main), .memy-side { grid-column: 2; }
+  .memy-top { min-height: 40px; }
+  .gtable[style*="--g-ah"] .memy-frame, .memy-frame { width: calc((var(--g-ah, 260px) - 8px) * 4 / 3); max-width: 46vw; }
+  .memy-inlobby .memy-frame { aspect-ratio: 4 / 3; height: auto; }
 }
 /* лобі на телефоні: заглушка картинки низька, щоб правила й «Почати» господаря були на екрані */
 @container (max-width: 759px) {
