@@ -379,34 +379,12 @@
     dirtyAll(st);
   }
 
-  /// Поле так, щоб уся картка (смужка, поле, комора, пульт, статус, кнопки) влізла в екран: запас під решту
-  /// міряємо, а не вгадуємо — на шістьох чіпи місць ідуть у два рядки, і сталий запас CSS уже не рятує.
-  /// Телефон і низьке вікно — не чіпаємо: там гортати сторінку нормально.
+  /// Висоту поля тепер рахує каркас (--g-fh: місце під рядок поля за вирахуванням смужки, комори, пульта й підсумку;
+  /// у ⛶ — увесь екран), glekomet.css лише бере звідти ширину 2:1. Раніше тут міряли вікно й ставили inline
+  /// max-width зі стелею 1200 px — у ⛶ на 2560 поле лишалось 1200×600. Лишилось прибрати старий inline-розмір.
   function fitHeight(st) {
     const el = st.cv && st.cv.el;
-    const card = el && el.closest('.gtable');
-    if (!card || !el.offsetParent) return;
-    const vh = window.innerHeight;
-    if (vh < 460 || window.innerWidth < 700) { if (el.style.maxWidth) el.style.maxWidth = ''; return; }
-    const cr = el.getBoundingClientRect();
-    const cardBottom = card.getBoundingClientRect().bottom;
-    let bottom = cardBottom;
-    // Що сторінка має ще під карткою (нижній відступ main тощо): міряємо, коли сторінка вже вилазить за екран, —
-    // тоді scrollHeight задає вміст. Сталі «+10» не вистачало: на Deck і на Full HD у підсумку лишалось 8–11 px прокрутки.
-    const doc = document.documentElement;
-    if (doc.scrollHeight > vh + 1) st.tail = clamp(doc.scrollHeight - (cardBottom + window.scrollY), 0, 60);
-    const tail = st.tail != null ? st.tail : 16;
-    // Підказку про телефон не рахуємо (вона на хвилинку). Підсумок рахуємо, але поле заради нього меншає не
-    // більше ніж до 60 %: на Full HD «Ще раз» тоді видно без прокрутки, а на Deck поле не стискається в марку
-    // (там таблицю на шістьох трохи догортаємо).
-    const tip = st.els.tip, sum = st.els.sum;
-    if (tip && !tip.hidden) bottom -= tip.getBoundingClientRect().height + 8;
-    const sumH = sum && !sum.hidden ? sum.getBoundingClientRect().height + 8 : 0;
-    const other = bottom + window.scrollY - cr.height + Math.ceil(tail) + 4;
-    const full = clamp((vh - other + sumH) * 2, 480, 1200);
-    const want = Math.floor(sumH ? Math.max(clamp((vh - other) * 2, 480, 1200), full * 0.6) : full);
-    const cur = parseFloat(el.style.maxWidth) || 0;
-    if (Math.abs(want - cur) >= 6) el.style.maxWidth = want + 'px';
+    if (el && el.style.maxWidth) el.style.maxWidth = '';
   }
 
   /// gk-grab (touch-action: none) — лише у свій хід: у чужий хід і після руїни свайп по полю гортає сторінку.
