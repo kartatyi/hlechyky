@@ -115,3 +115,5 @@
   .hgal { width: clamp(104px, calc((var(--g-ah, 0px) - 360px) * .75), 210px); }
   .hl { font-size: clamp(1.55em, calc((var(--g-ah, 0px) - 360px) * .12), 2.3em); min-width: 1em; }
 }
+/* Телефон лежачи: висоти обмаль — шибениця менша, щоб клавіатура влізла без прокрутки картки. */
+@media (max-height: 500px) { .hgal { width: 72px; } .hl { font-size: 1.35em; } .hwrap { gap: 8px; } }
