@@ -96,7 +96,7 @@
 .gk-arm .gk-emo { font-size: 1.15em; line-height: 1; }
 .gk-arm .gk-left { color: var(--muted); font-variant-numeric: tabular-nums; }
 .gk-arm .gk-key {
-  font-size: .72em; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 3px;
+  font-size: max(11px, .72em); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 3px;
   line-height: 1.3;
 }
 .gk-arm.on { background: var(--panel3); border-color: var(--accent2); color: var(--text); box-shadow: 0 0 0 1px var(--accent2) inset; }
@@ -201,6 +201,21 @@
 /* Лежачи (body.g-land): права колонка вища за екран — чіпи місць каркаса ховаємо (гравці є в рядку над ручками),
    щоб «💥 Постріл» і «Пропустити» влазили в картку. */
 body.g-land .gtable:has(> .gbody > .gk-top) > .gseats { display: none; }
+/* Лежачи (31.10, fix-land): права колонка — ширша (до 360 px, а не 38vw), снаряди — одним рядом без назв (назва — у
+   підказці), пульт щільніше, статус — одним рядком. Уся колонка влазить у картку: поле не з'їжджає вниз. */
+body.g-land .gtable.g-canvas:has(> .gbody > .gk-top) { grid-template-columns: minmax(0, 1fr) minmax(0, 360px); }
+body.g-land .gtable.g-canvas:has(> .gbody > .gk-top) > :not(.gbody),
+body.g-land .gtable.g-canvas:has(> .gbody > .gk-top) > .gbody > :is(.gk-top, .gk-arms, .gk-ctl, .gk-tip, .gk-sum) { max-width: none; width: 100%; }
+body.g-land .gtable:has(> .gbody > .gk-top) > .gstatus { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .85em; }
+body.g-land .gk-top { flex-wrap: nowrap; }
+body.g-land .gk-chip .gk-nick { display: none; }
+body.g-land .gk-chip .gk-you { display: inline; }
+body.g-land .gk-arms, body.g-land .gk-arms.gk-more-r, body.g-land .gk-arms.gk-more-l { flex-wrap: nowrap; overflow: visible; -webkit-mask-image: none; mask-image: none; gap: 4px; }
+body.g-land .gk-arm { flex: 1 1 0; min-width: 0; justify-content: center; gap: 2px; padding: 3px 2px; min-height: 36px; }
+body.g-land .gk-arm:not(.on) .gk-name { display: none; }
+body.g-land .gk-ctl { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+body.g-land .gk-ctl button { min-height: 38px; min-width: 38px; }
+body.g-land .gk-fire { min-height: 42px; min-width: 120px; }
 
 /* Дрібнота (31.10): «ти» й ❤ у чіпах хат не дрібніші за 11 px; «ясно» в підказці — під палець; цифри-клавіші
    на снарядах дотиковому екрану ні до чого (клавіатури нема). */
@@ -209,3 +224,13 @@ body.g-land .gtable:has(> .gbody > .gk-top) > .gseats { display: none; }
   .gk-tip button { min-height: 32px; padding: 4px 12px; }
   .gk-arm .gk-key { display: none; }
 }
+/* Телефон стоячи: шість снарядів — в один ряд без прокрутки вбік: назва лише в обраного, решта — значок і скільки лишилось
+   (назва — у підказці). «Твій хід» біля годинника — не дрібніше 11 px. */
+@media (max-width: 640px) {
+  .gk-arms { overflow-x: auto; gap: 4px; }
+  .gk-arm { flex: 1 1 auto; justify-content: center; gap: 2px; padding: 5px 3px; font-size: .82em; }
+  .gk-arm:not(.on) .gk-name { display: none; }
+}
+.gk-clock .gk-who { font-size: max(11px, 1em); }
+/* Порада «поверни телефон боком» — лише стоячи: повернув — вона зникає одразу, не чекаючи наступного ходу. */
+@media (orientation: landscape) { .gk-tip { display: none; } }
