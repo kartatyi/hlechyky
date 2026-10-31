@@ -52,15 +52,18 @@
 .scr-board { display: flex; justify-content: center; }
 .board.scr-sboard {
   /* Висота теж рахується: на ноуті 1512×862 і Деці 1280×800 дошка на 520 px виштовхувала «Готово» за край екрана. */
-  width: min(100%, 520px, max(360px, 100vh - 380px)); gap: 2px; padding: 4px; background: var(--bg2); border-radius: 8px;
+  /* Місце під дошку дає каркас (--g-fh — рядок поля, .scr-board.g-field); без нього — як було, від вікна. */
+  width: min(100%, var(--g-fmax, 900px), max(var(--g-fminw, 0px), 300px, calc(var(--g-fh, calc(100vh - 372px)) - 8px)));
+  gap: 2px; padding: 4px; background: var(--bg2); border-radius: 8px;
+  container-type: inline-size;   /* літери й очки — від ширини дошки (cqw), а не вікна */
 }
 .board.scr-sboard .cell {
   font-size: 1em; border-radius: 3px; background: var(--scr-empty); border-color: transparent;
   padding: 0; overflow: hidden; position: relative; line-height: 1;
 }
-.board.scr-sboard .cell b { font-weight: 700; font-size: min(2.6vw, 15px); }
+.board.scr-sboard .cell b { font-weight: 700; font-size: clamp(11px, 3.1cqw, 28px); }
 .board.scr-sboard .cell u { display: none; }
-.board.scr-sboard .cell i { font-style: normal; font-size: min(1.7vw, 9px); color: var(--text); opacity: .72; }
+.board.scr-sboard .cell i { font-style: normal; font-size: clamp(8px, 2.15cqw, 17px); color: var(--text); opacity: .72; }
 @media (hover: hover) { .board.scr-sboard .cell:not(:disabled):hover { background: var(--panel3); } }
 
 .board.scr-sboard .cell.bl2 { background: var(--scr-dl); }
@@ -147,7 +150,7 @@
 /* ---- оновлення 24.09.2026: курсор для друку, легенда, попередній рахунок, великий екран ---- */
 .gbody > .scr-legend { width: 100%; }
 .board.scr-sboard .cell.cur { box-shadow: 0 0 0 2px var(--accent) inset; }
-.board.scr-sboard .cell i.arrow { color: var(--accent); opacity: 1; font-size: min(3vw, 16px); font-weight: 700; }
+.board.scr-sboard .cell i.arrow { color: var(--accent); opacity: 1; font-size: clamp(12px, 3.3cqw, 28px); font-weight: 700; }
 .scr-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: center; font-size: .78em; color: var(--muted); }
 .scr-legend:empty { display: none; }
 .scr-legend i {
@@ -166,11 +169,28 @@
 
 /* Full HD: дошка на 520 px губилась посеред екрана — даємо їй вирости. */
 @media (min-width: 1600px) and (min-height: 900px) {
-  .board.scr-sboard { width: min(100%, 680px, 60vh); }
-  .board.scr-sboard .cell b { font-size: 19px; }
-  .board.scr-sboard .cell i { font-size: 11px; }
   .scr-rack .gcard { min-width: 42px; padding: 9px 8px 6px; }
   .scr-rack .gcard b { font-size: 1.45em; }
 }
 .scr-hint .scr-end { font-size: 1.15em; color: var(--text); }
 .scr-hint .scr-end b { color: var(--accent); }
+
+/* Широка картка (ПК): дошка ліворуч на всю висоту, стійка, кнопки, легенда й журнал — колонкою праворуч.
+   Під дошкою їм місця бракувало: «Готово» виїжджало за низ екрана або дошка ставала дрібною. */
+@media (min-width: 1000px) {
+  .gbody.scr-g {
+    display: grid; grid-template-columns: auto minmax(250px, 340px); column-gap: 18px; row-gap: 10px;
+    grid-template-areas: "top top" "board dock" "board legend" "board log" "board ."; grid-template-rows: auto auto auto auto 1fr;
+    justify-content: center; align-items: start;
+  }
+  .gbody.scr-g > .scr-top { grid-area: top; }
+  .gbody.scr-g > .scr-board { grid-area: board; width: auto; }
+  .gbody.scr-g > .scr-dock { grid-area: dock; }
+  .gbody.scr-g > .scr-legend { grid-area: legend; }
+  .gbody.scr-g > .scr-log { grid-area: log; max-height: calc(var(--g-ah, 600px) * .4); overflow-y: auto; }
+  .gbody.scr-g .board.scr-sboard {
+    width: min(var(--g-fmax, 900px), max(320px, calc(var(--g-aw, 1000px) - 380px)), max(320px, calc(var(--g-ah, 640px) - 92px)));
+  }
+}
+/* Лежачи на телефоні дошка ліворуч на всю висоту картки (каркас, .g-field). */
+body.g-land .gtable .board.scr-sboard { width: max(240px, calc(var(--g-fh, 330px) - 10px)); gap: 1px; padding: 2px; }

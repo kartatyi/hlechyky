@@ -473,7 +473,8 @@
       // Дошка 15×15 у колонці на 300 px не читається — просимо картці цілий ряд.
       const card = root.closest('.gtable');
       if (card) card.classList.add('scr-table');
-      root.innerHTML = '<div class="scr-top"></div><div class="scr-board"></div><div class="scr-legend"></div>'
+      root.classList.add('scr-g');   // маркер розкладки (на широкому — дошка ліворуч, стійка праворуч)
+      root.innerHTML = '<div class="scr-top"></div><div class="scr-board g-field"></div><div class="scr-legend"></div>'
         + '<div class="scr-dock"><div class="scr-rack"></div><div class="scr-blank"></div><div class="scr-hint"></div>'
         + '<div class="scr-btns"></div></div><div class="scr-log"></div>';
       state(root, ctx);
