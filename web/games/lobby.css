@@ -1,0 +1,341 @@
+/*
+  Лобі «Ігор» («Світлиця», 31.10.2026): «🔥 Зараз», «☀ Сьогодні», липка панель (пошук + вкладки розділів + фільтри),
+  полиці й каталог банер-плитками. Розмітку дає web/games/core.js (renderLobby і сусіди). Підключено після core.css.
+  Кольори розділів — змінні --cat-*; плитка, вкладка й заголовок розділу беруть їх через клас cat-<розділ> (--cc, --cc2).
+*/
+:root {
+  --cat-board: #1f8a78;  --cat-board2: #0d3b34;   /* Настільні — глибокий бірюзово-зелений */
+  --cat-live: #e2643a;   --cat-live2: #5e1d10;    /* Жваві — помаранчево-червоний */
+  --cat-party: #8b5fd8;  --cat-party2: #2f1b57;   /* Компанія — фіолетовий */
+  --cat-solo: #3f80e0;   --cat-solo2: #142a57;    /* Соло — синій */
+  --cat-azart: #c8355f;  --cat-azart2: #4a0f26;   /* Азарт — малиновий (із золотом) */
+}
+/* запасні кольори — з нульовою вагою (:where), щоб клас розділу їх перебивав, хоч би де стояв */
+:where(.gtile, .gmini, .glrow) { --cc: var(--panel3); --cc2: var(--bg2); }
+.cat-board { --cc: var(--cat-board); --cc2: var(--cat-board2); }
+.cat-live { --cc: var(--cat-live); --cc2: var(--cat-live2); }
+.cat-party { --cc: var(--cat-party); --cc2: var(--cat-party2); }
+.cat-solo { --cc: var(--cat-solo); --cc2: var(--cat-solo2); }
+.cat-azart { --cc: var(--cat-azart); --cc2: var(--cat-azart2); }
+
+.globby { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.globby [hidden] { display: none !important; }
+
+/* ---------------------------------------------------------------- іконки з арту */
+.gartw { position: relative; display: inline-grid; place-items: center; vertical-align: middle; }
+.gartw > img, .gartw > svg { width: 100%; height: 100%; display: block; }
+.gartw > img { border-radius: 22%; }
+/* щоденна гра: іконка базової + ☀ у куточку */
+.gaday::after {
+  content: '☀'; position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 8px; line-height: 1; background: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 0 0 1.5px var(--panel2);
+}
+
+/* ---------------------------------------------------------------- банер 2:1 */
+.gb {
+  position: relative; display: block; aspect-ratio: 2 / 1; overflow: hidden; container-type: inline-size; flex: none;
+  background:
+    radial-gradient(70% 90% at 50% 58%, rgba(255, 255, 255, .16), transparent 62%),
+    linear-gradient(155deg, var(--cc) 0%, var(--cc2) 100%);
+}
+/* легкий «вишитий» орнамент: ромбики хрестиком, що тануть донизу */
+.gb::before {
+  content: ''; position: absolute; inset: 0; opacity: .13; pointer-events: none;
+  background-image:
+    linear-gradient(45deg, transparent 45%, #fff 46%, #fff 54%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, #fff 46%, #fff 54%, transparent 55%),
+    radial-gradient(circle, #fff 1.3px, transparent 1.8px);
+  background-size: 18px 18px, 18px 18px, 18px 18px;
+  background-position: 0 0, 0 0, 9px 9px;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, .4) 45%, transparent 85%);
+  mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, .4) 45%, transparent 85%);
+}
+/* смужка-рушник унизу банера */
+.gb::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; opacity: .55; pointer-events: none;
+  background: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 9px, var(--clay) 9px 15px, transparent 15px 18px);
+}
+.gb.has-art::before, .gb.has-art::after { display: none; }
+.gb-ico { position: absolute; inset: 0; display: grid; place-items: center; }
+.gb-ico > svg, .gb-ico > .gico, .gb-ico > img { width: 27cqw; height: 27cqw; filter: drop-shadow(0 5px 10px rgba(0, 0, 0, .4)); }
+.gb-ico > .gemo { font-size: 22cqw; line-height: 1; filter: drop-shadow(0 5px 10px rgba(0, 0, 0, .4)); }
+.gb-ico .gaday::after { width: 34%; height: 34%; font-size: 5.5cqw; right: -8%; bottom: -8%; }
+.gb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.gb-tl { position: absolute; left: 7px; top: 7px; display: flex; gap: 4px; }
+.gb-tl .gnew { margin: 0; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.gb-tl .gupd { margin: 0; padding: 2px 7px; border-radius: 999px; background: rgba(15, 31, 24, .78); color: #f3b47f; font-size: .7em; }
+.gb-live {
+  position: absolute; left: 7px; bottom: 9px; display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 14px);
+  padding: 2px 8px; border-radius: 999px; background: rgba(15, 31, 24, .82); color: var(--ok); font-size: .74em;
+}
+.gb-live b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb .gstar {
+  position: absolute; right: 6px; top: 6px; margin: 0; width: 28px; height: 28px; padding: 0; justify-content: center;
+  border-radius: 50%; background: rgba(15, 31, 24, .55); color: #e8eee6; font-size: 1em;
+}
+.gb .gstar.on { color: var(--accent); background: rgba(15, 31, 24, .78); }
+@media (hover: hover) {
+  .gb .gstar { opacity: .0; transition: opacity .15s; }
+  .gb .gstar.on, .gtile:hover .gb .gstar, .gb .gstar:focus-visible { opacity: 1; }
+  .gb .gstar:hover { background: rgba(15, 31, 24, .85); }
+}
+
+/* ---------------------------------------------------------------- плитка каталогу */
+.gtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); gap: 12px; }
+.gtile {
+  position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; cursor: pointer;
+  background: var(--panel2); border: 1px solid transparent; border-radius: 14px;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s;
+}
+@media (hover: hover) {
+  .gtile:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0, 0, 0, .38); border-color: color-mix(in srgb, var(--cc) 65%, transparent); }
+}
+.gtile:focus-within { border-color: color-mix(in srgb, var(--cc) 65%, transparent); }
+.gtile.fresh { border-color: var(--accent2); box-shadow: 0 0 0 1px rgba(244, 197, 66, .22), 0 0 18px rgba(244, 197, 66, .1); }
+.gtile.live { border-color: var(--glive); }
+.gt-body { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px 0; min-width: 0; flex: 1; }
+/* назва — до двох рядків, без «…» посеред слова («Сорочинський ярмарок»); ряд сітки однаковий за висотою сам */
+.gt-name {
+  font-family: var(--display); font-weight: 700; font-size: 1.02em; line-height: 1.25; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.gt-hint { color: var(--muted); font-size: .84em; line-height: 1.3; height: 2.6em; overflow: hidden; }
+.gt-hint > span { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.gt-sub {
+  min-height: 1.35em; font-size: .76em; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--cc) 40%, var(--text) 45%);
+}
+.gt-foot { display: flex; align-items: center; gap: 6px; padding: 8px 11px 11px; min-width: 0; }
+.gt-pl { margin-right: auto; min-width: 0; color: var(--muted); font-size: .8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gt-foot button { flex: none; padding: 5px 12px; font-size: .88em; }
+.gt-foot .gt-extra { padding: 5px 7px; }
+@media (prefers-reduced-motion: reduce) { .gtile, .gtile:hover { transition: none; transform: none; } }
+
+/* ---------------------------------------------------------------- каталог: розділи й теми */
+.gl-cat { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gcatg { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gcatg + .gcatg { margin-top: 14px; }
+.ggroup { margin: 0; display: flex; align-items: center; gap: 9px; font-size: 1.12em; }
+.ggroup[class*='cat-'] {
+  padding: 8px 12px; border-radius: 12px; border-left: 4px solid var(--cc);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--cc) 30%, transparent), transparent 75%);
+}
+.gg-i { font-size: 1.05em; line-height: 1; }
+.gg-n { font-family: var(--font, inherit); font-size: .72em; font-weight: 500; color: var(--muted); }
+.gcatg .gtheme { color: color-mix(in srgb, var(--cc) 35%, var(--text) 60%); font-size: .84em; margin: 2px 0 -2px; }
+.gthemes[class*='cat-'] .gtchip.on { border-color: color-mix(in srgb, var(--cc) 70%, transparent); background: color-mix(in srgb, var(--cc) 22%, var(--panel2)); }
+/* Теми розділу на широкому — блоки в сітці з колонками плитки: тема на 1–3 плитки стає поруч із сусідньою, а не займає
+   цілий ряд. Блок тягнеться на min(плиток, колонок), плитки всередині — у колонках батька (subgrid). Пороги — для
+   колонки 184 px і щілини 12 px: n колонок = n·184 + (n−1)·12. */
+.gthemegrid { container-type: inline-size; display: grid; grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); gap: 16px 12px; }
+.gtblock { --cols: 1; grid-column: span min(var(--n), var(--cols)); display: grid; grid-template-columns: subgrid; row-gap: 8px; align-content: start; min-width: 0; }
+.gtblock > .gtheme { grid-column: 1 / -1; margin: 0; }
+.gtblock > .gtiles { grid-column: 1 / -1; grid-template-columns: subgrid; }
+@container (min-width: 380px) { .gtblock { --cols: 2; } }
+@container (min-width: 576px) { .gtblock { --cols: 3; } }
+@container (min-width: 772px) { .gtblock { --cols: 4; } }
+@container (min-width: 968px) { .gtblock { --cols: 5; } }
+@container (min-width: 1164px) { .gtblock { --cols: 6; } }
+@container (min-width: 1360px) { .gtblock { --cols: 7; } }
+@container (min-width: 1556px) { .gtblock { --cols: 8; } }
+@container (min-width: 1752px) { .gtblock { --cols: 9; } }
+@container (min-width: 1948px) { .gtblock { --cols: 10; } }
+
+/* ---------------------------------------------------------------- липка панель: пошук, інструменти, вкладки */
+.gl-bar {
+  position: sticky; top: var(--ghdr, 56px); z-index: 4; margin: -16px -16px 0; padding: 12px 16px 10px;
+  display: flex; flex-direction: column; gap: 9px; background: var(--panel); border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 10px 12px -12px rgba(0, 0, 0, .6);
+}
+.gl-srow { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.gl-find {
+  flex: 1; min-width: 0; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 12px; cursor: text;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; transition: border-color .15s, box-shadow .15s;
+}
+.gl-find:focus-within { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(244, 197, 66, .14); }
+.gl-fi { display: inline-flex; flex: none; }
+.gl-fi svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; }
+.gl-find .gfind {
+  flex: 1; min-width: 0; width: auto; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; outline: none;
+  background: transparent; box-shadow: none; font: inherit; font-size: 1.02em; color: var(--text);
+}
+.gl-find .gfind::placeholder { color: var(--muted); opacity: .8; }
+.gl-kbd { flex: none; font: inherit; font-size: .74em; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; line-height: 1.5; }
+.gl-bar.searching .gl-kbd, .gl-find:focus-within .gl-kbd { display: none; }
+@media (hover: none) { .gl-kbd { display: none; } }
+.gl-tools { display: inline-flex; gap: 6px; align-items: center; flex: none; }
+.gl-tool { height: 44px; padding: 0 13px; border-radius: 12px; position: relative; gap: 7px; }
+.gl-tool .gfico { width: 17px; height: 17px; }
+.gl-tool.on { background: var(--panel3); border-color: var(--accent2); }
+.gl-tool.act { color: var(--accent); }
+.gl-badge {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  display: grid; place-items: center; font-size: .7em; font-weight: 700; background: var(--accent); color: var(--accent-ink);
+}
+.gl-tools .gviewsw { height: 44px; border-radius: 12px; }
+.gl-tools .gviewsw button { padding: 0 12px; height: 100%; }
+.gl-tabs {
+  display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+  margin: 0 -16px; padding: 1px 16px 2px;
+}
+.gl-tabs::-webkit-scrollbar { display: none; }
+.gl-tab {
+  flex: none; gap: 6px; padding: 7px 13px; border-radius: 999px; background: transparent; border: 1px solid var(--line);
+  color: var(--muted); font-size: .92em;
+}
+.gl-tab .gl-ti { font-size: 1.05em; line-height: 1; }
+.gl-tab .gtc-n { margin-left: 1px; font-size: .8em; opacity: .7; font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .gl-tab:hover { color: var(--text); background: var(--panel2); } }
+.gl-tab.on {
+  color: var(--text); font-weight: 600;
+  background: color-mix(in srgb, var(--cc, var(--accent)) 26%, var(--panel2));
+  border-color: color-mix(in srgb, var(--cc, var(--accent)) 75%, transparent);
+}
+/* фільтри: другим планом, розгортаються кнопкою */
+.gl-filters { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--bg2); animation: fadein .15s ease-out; }
+.gl-frow { display: flex; flex-wrap: wrap; gap: 5px 6px; align-items: center; }
+.gl-frow .gf-l { min-width: 8.5em; }
+.gl-ftags { align-items: flex-start; }
+.gl-ftags .gf-l { padding-top: 4px; }
+.gl-ftags .gtagrow { flex: 1; min-width: 0; }
+.gl-sort { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; }
+.gl-extra { display: flex; flex-direction: column; gap: 8px; }
+.gl-extra .gthemes { margin-top: 0; }
+
+/* ---------------------------------------------------------------- полиці */
+.gl-shelves { display: flex; flex-direction: column; gap: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.gshelf { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.gsh-h { display: flex; align-items: center; gap: 8px; }
+.gsh-h h4 { margin: 0; flex: 1; font-size: 1em; }
+.gsh-n { font-family: var(--font, inherit); font-weight: 400; font-size: .8em; color: var(--muted); }
+.gsh-nav { display: inline-flex; gap: 2px; }
+.gsh-nav button { padding: 2px 10px; font-size: 1.2em; line-height: 1.1; }
+@media (hover: none) { .gsh-nav { display: none; } }
+.gsh-row {
+  display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity;
+  scrollbar-width: none; padding: 2px 2px 6px; margin: 0 -2px;
+}
+.gsh-row::-webkit-scrollbar { display: none; }
+.gmini {
+  flex: 0 0 172px; scroll-snap-align: start; display: flex; flex-direction: column; align-items: stretch; gap: 0;
+  padding: 0; overflow: hidden; text-align: left; white-space: normal; border-radius: 12px; border: 1px solid transparent;
+  background: var(--panel2); transition: transform .15s, box-shadow .15s, border-color .15s;
+}
+@media (hover: hover) { .gmini:hover { background: var(--panel2); transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0, 0, 0, .35); border-color: color-mix(in srgb, var(--cc) 60%, transparent); } }
+.gmini.live { border-color: var(--glive); }
+.gmini .gb-tl .gnew, .gmini .gb-tl .gupd { font-size: .64em; }
+.gm-t {
+  padding: 6px 9px 0; font-weight: 600; font-size: .92em; line-height: 1.25; height: 2.5em; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
+}
+.gm-a { padding: 0 9px 7px; font-size: .74em; color: var(--muted); }
+
+/* ---------------------------------------------------------------- «🔥 Зараз» */
+.gl-strip {
+  display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity;
+  scrollbar-width: thin; padding-bottom: 4px;
+}
+.gl-strip > * { flex: 0 0 280px; max-width: 86vw; scroll-snap-align: start; }
+.gnc {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; min-width: 0; cursor: pointer;
+  background: var(--panel2); border: 1px solid transparent; border-radius: 12px;
+}
+.gnc > svg, .gnc > .gico { width: 34px; height: 34px; flex: none; }
+.gnc > .gemo { font-size: 1.8em; flex: none; }
+.gnc-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gnc-t > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gnc-k { font-size: .68em; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.gnc-who { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: .86em; }
+.gnc-b { flex: 1 1 100%; display: flex; gap: 6px; flex-wrap: wrap; }
+.gnc-b button, .gnc > button { padding: 6px 13px; font-size: .9em; }
+.gnc-cont { border-color: var(--accent2); background: linear-gradient(135deg, rgba(244, 197, 66, .13), var(--panel2) 65%); }
+.gnc-solo { border-color: var(--glive); }
+@media (hover: hover) { .gnc:hover { background: var(--panel3); } .gnc-cont:hover { background: linear-gradient(135deg, rgba(244, 197, 66, .2), var(--panel3) 65%); } }
+.gl-strip .gsum { background: var(--panel2); }
+
+/* ---------------------------------------------------------------- «☀ Сьогодні» */
+.gday-head { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.gday-ring { position: relative; flex: none; width: 60px; height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.gday-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.gday-ring circle { fill: none; stroke-width: 3.4; }
+.gday-ring .bg { stroke: var(--bg2); }
+.gday-ring .fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray .5s ease; }
+.gday-ring.full .fg { stroke: var(--ok); }
+.gday-ring b { font-family: var(--display); font-size: 1.2em; line-height: 1; }
+.gday-ring small { font-size: .62em; color: var(--muted); line-height: 1.1; }
+.gday-ht { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.gday-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.gday-chip { font-size: .8em; padding: 3px 9px; border-radius: 999px; background: var(--bg2); white-space: nowrap; }
+.gday-chip.gold { color: var(--accent); background: rgba(244, 197, 66, .13); font-weight: 600; }
+.gday-chip.ok { color: var(--ok); background: rgba(123, 211, 137, .11); }
+.gday-chip.hot { color: #ffcf8f; background: rgba(197, 118, 58, .2); }
+.gtoday .gtoday-pay, .gtoday .gtoday-night { margin: 0; }
+.gday-body { display: grid; gap: 10px; min-width: 0; }
+.gtoday.split .gday-body { grid-template-columns: minmax(0, 1fr) 290px; align-items: start; }
+.gday-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 8px; min-width: 0; }
+.gday { cursor: pointer; }
+.gday-ic { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; }
+.gday-ic > svg, .gday-ic > .gico { width: 30px; height: 30px; }
+.gday-ic > .gemo { font-size: 1.5em; }
+.gday.todo { border-color: rgba(244, 197, 66, .4); background: linear-gradient(135deg, rgba(244, 197, 66, .1), var(--panel2) 60%); }
+.gday.done { border-color: rgba(123, 211, 137, .28); background: rgba(123, 211, 137, .06); }
+.gday.done .gday-st { color: var(--ok); }
+.gday.miss .gday-st { color: #e8a3a3; }
+.gday.todo .gday-st { color: var(--muted); }
+.gday.hot { box-shadow: inset 0 0 0 1px rgba(197, 118, 58, .35); }
+@media (hover: hover) { .gday:hover { background: var(--panel3); } }
+
+/* ---------------------------------------------------------------- список ☰ і афіші */
+.glrow { border-left: 3px solid color-mix(in srgb, var(--cc, var(--line)) 70%, transparent); }
+.glrow .gartw, .glrow > svg { width: 18px; height: 18px; }
+.glrow.live { border-color: var(--glive); }
+.glr-live { display: inline-flex; align-items: center; color: var(--ok); }
+.glr-live b { display: none; }
+.gp-now { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+.gp-now b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.gposter.live { border-color: var(--glive); }
+.gaz-slot:empty { display: none; }
+
+/* ---------------------------------------------------------------- планшет і телефон */
+@media (max-width: 900px) {
+  .gtoday.split .gday-body { grid-template-columns: 1fr; }
+  /* щоденні — стрічкою вбік */
+  .gday-cards {
+    display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none;
+    margin: 0 -16px; padding: 0 16px 4px;
+  }
+  .gday-cards::-webkit-scrollbar { display: none; }
+  .gday-cards > * { flex: 0 0 min(80vw, 280px); scroll-snap-align: start; }
+}
+@media (max-width: 600px) {
+  .gl-tool { padding: 0 11px; }
+  .gl-tool .gl-tl { display: none; }
+  .gl-bar { padding: 10px 12px 8px; margin: -16px -16px 0; gap: 8px; }
+  .gl-frow .gf-l { min-width: 0; flex: 1 1 100%; }
+  .gl-sort { margin-left: 0; }
+  .gl-strip > * { flex-basis: 250px; }
+  /* каталог — дві колонки: банер, назва, кнопка */
+  .gthemegrid { grid-template-columns: 1fr; row-gap: 14px; }
+  .gtblock { --cols: 1; display: flex; flex-direction: column; }
+  .gtiles, .gtblock > .gtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .gt-hint, .gt-sub { display: none; }
+  .gt-body { padding: 7px 9px 0; }
+  .gt-name { font-size: .95em; }
+  .gt-foot { padding: 6px 9px 9px; gap: 4px; }
+  .gt-foot button { padding: 5px 10px; font-size: .84em; }
+  .gt-foot .gt-extra { display: none; }
+  .gmini { flex-basis: 146px; }
+  .gday-head { gap: 10px; }
+  .gday-ring { width: 52px; height: 52px; }
+  .ggroup { font-size: 1.04em; }
+}
+@media (max-width: 380px) {
+  .gtiles, .gtblock > .gtiles { gap: 8px; }
+  .gt-pl { display: none; }
+  .gt-foot button { flex: 1; justify-content: center; }
+}
+@media (max-width: 600px) {
+  .gl-find, .gl-tool, .gl-tools .gviewsw { height: 40px; }
+  .gl-tab { padding: 5px 11px; font-size: .9em; }
+}
