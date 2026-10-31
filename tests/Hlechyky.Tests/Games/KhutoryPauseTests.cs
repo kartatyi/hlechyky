@@ -25,11 +25,11 @@ public class KhutoryPauseTests
 
     static KhutoryCore CoreOf(RoomHarness h) => ((Khutory)h.Room.Game).Core;
 
-    /// <summary>Телефон заснув: останнє з'єднання закрилось, Grace (20 с) минув — каркас звільняє місце.</summary>
+    /// <summary>Телефон заснув: останнє з'єднання закрилось, Grace (у покроковій посеред партії — 120 с) минув — каркас звільняє місце.</summary>
     static void Gone(RoomHarness h, string nick)
     {
         h.Rooms.NoteOffline(nick, h.Clock.UtcNow);
-        h.Clock.Advance(TimeSpan.FromSeconds(21));
+        h.Clock.Advance(Rooms.TurnGrace + TimeSpan.FromSeconds(1));   // покрокова посеред партії — 120 с
         h.Rooms.DropIfGone(h.Clock.UtcNow);
     }
 

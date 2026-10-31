@@ -73,7 +73,7 @@ public sealed class LateJoinTests
     static void Gone(RoomHarness h, string nick)
     {
         h.Rooms.NoteOffline(nick, h.Clock.UtcNow);
-        h.Clock.Advance(TimeSpan.FromSeconds(21));
+        h.Clock.Advance(Rooms.TurnGrace + TimeSpan.FromSeconds(1));   // покрокова посеред партії — 120 с
         h.Rooms.DropIfGone(h.Clock.UtcNow);
     }
 

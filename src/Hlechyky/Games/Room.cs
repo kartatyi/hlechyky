@@ -8,7 +8,13 @@ namespace Hlechyky.Games;
 /// </summary>
 public sealed record SeatSlot(int I, string? Nick,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    string? Bot = null);
+    string? Bot = null,
+    /// <summary>
+    /// Людина на цьому місці відпала (закрилось останнє з'єднання): до цього часу місце ще за нею, далі каркас її
+    /// підніме (<see cref="Rooms.GraceFor"/>). null — на зв'язку. Шапка столу може показати «⏳ Оля відпала, чекаємо ще 1:40».
+    /// </summary>
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    DateTimeOffset? Away = null);
 
 /// <summary>Підсумок партії для лобі й для картки кімнати. Scores лишаються всередині — лобі вони ні до чого.</summary>
 public sealed record RoomResultDto(int[] Winners, bool Draw, string Text,
@@ -143,6 +149,10 @@ public sealed class Room
     public int Moves { get; set; }
     /// <summary>Останній рух у кімнаті — за ним прибирання розуміє, що тут уже нікого нема.</summary>
     public DateTimeOffset LastActivity { get; set; }
+    /// <summary>Коли господар востаннє щось робив за столом: мовчить у лобі довше за <see cref="Rooms.HostQuiet"/> — «Почати» може будь-хто.</summary>
+    public DateTimeOffset HostActiveAt { get; set; }
+    /// <summary>Хто з тих, що сидять, зараз не на зв'язку і відколи (нік → час, коли закрилось останнє з'єднання).</summary>
+    public ConcurrentDictionary<string, DateTimeOffset> Away { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>З кого цього раунду списано ставку — щоб виплата й повернення знали, кому й скільки.</summary>
     public List<string> Charged { get; } = [];
     /// <summary>Банк столу цієї партії (гра на N на черепки, <see cref="IRoomContext.BuyIn"/>): хто скільки вніс і забрав.</summary>
@@ -263,7 +273,8 @@ public sealed class Room
         var names = new string[Seats.Length];
         for (var i = 0; i < Seats.Length; i++)
         {
-            slots[i] = new SeatSlot(i, Seats[i], Seats[i] is null && Status != RoomStatus.Lobby ? SafeSeatBot(i) : null);
+            DateTimeOffset? away = !Info.Solo && Seats[i] is { } n && Away.TryGetValue(n, out var since) ? since + Rooms.GraceFor(this) : null;
+            slots[i] = new SeatSlot(i, Seats[i], Seats[i] is null && Status != RoomStatus.Lobby ? SafeSeatBot(i) : null, away);
             names[i] = SafeSeatName(i);
         }
         return new RoomSummary(

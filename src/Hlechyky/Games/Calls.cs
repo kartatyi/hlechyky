@@ -62,6 +62,7 @@ public sealed class Calls(Rooms rooms, Presence presence, IClock clock, IRings? 
             if (room.CalledAt is { } at && now - at < AgainGap) return RoomOutcome.Fail($"Щойно кликали — ще {Seconds(at + AgainGap - now)} с");
             room.CalledAt = now;
         }
+        rooms.CalledAll(by, now);   // новий стіл одразу після цього заклику всіх уже не кличе (пауза з ніка)
         var outbox = new Outbox();
         Everyone(outbox, room.Id, room.Info, by, now);
         return new RoomOutcome(outbox, new RoomReply(true, "📣 Заклик полетів усім", room.Id));
