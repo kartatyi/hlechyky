@@ -6,13 +6,8 @@
   --gterr6: #a98bef;
 }
 
-/* Поле 40×30 — воно варте кількох зайвих пікселів проти типових 416 у core.css */
-.gcanvas.territoryboard { max-width: 520px; }
-/* Ноутбук, Дека й Full HD: поле росте, поки повний стіл (чіпи місць, смуга площ, статус, кнопки) влазить по
-   висоті. Прохід 28.09: раніше — лише від 1500×860, і на MacBook 1512×862 край уже прокручувався. */
-@media (min-width: 1000px) and (min-height: 700px) {
-  .gcanvas.territoryboard { max-width: min(760px, calc((100vh - 385px) * 4 / 3)); }
-}
+/* Розмір поля 40×30 задає каркас (Світлиця, core.css): ширина картки й висота рядка поля (--g-fh) з пропорцією
+   4:3, у ⇔/⛶ — на весь екран. Стелі 520/760 px прибрано. */
 
 /* Чипи місць у шапці картки: каркас знає лише x/o/c/d, а четвертий наділ — блакитний, не сірий */
 .gseat.tq { color: var(--gterr4); }
@@ -36,13 +31,13 @@
 }
 
 .gterr-p i {
-  min-width: 15px;
-  height: 15px;
+  min-width: 17px;
+  height: 17px;
   border-radius: 4px;
   display: inline-grid;
   place-items: center;
   font-style: normal;
-  font-size: .72em;
+  font-size: .8em;   /* було .72 — номер місця виходив 10 px */
   font-weight: 700;
   color: var(--bg);
 }
