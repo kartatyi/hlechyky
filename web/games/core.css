@@ -780,7 +780,7 @@ body.g-land main { padding-top: max(4px, env(safe-area-inset-top)); padding-bott
 body.g-land .grbox > .gtable { max-height: var(--gland-h); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 body.g-land .grbox > .gtable::-webkit-scrollbar { width: 4px; }
 body.g-land .grbox > .gtable::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
-body.g-land .gtable > .gbody > canvas.gcanvas {
+body.g-land .gtable > .gbody:not(.g-ownland) > canvas.gcanvas {   /* g-ownland — своя розкладка лежачи (core.js, markCanvas) */
   grid-column: 1; grid-row: 1 / span 12; margin: 0; align-self: center; position: sticky; top: 0;
   /* права колонка (хрестовина, місця, кнопки) бере свою природну ширину, полотно — решту, але не вище за картку
      (мінус її відступи 6 + 8 і рамку) */

@@ -366,9 +366,12 @@
   function markCanvas(table) {
     if (!table) return;
     const body = table.querySelector(':scope > .gbody');
-    const on = !!(body && body.querySelector(':scope > canvas.gcanvas'));
+    // Гра зі своєю розкладкою лежачи ставить на .gbody клас g-ownland: каркас тоді не вмикає «поле ліворуч, решта
+    // праворуч» (g-canvas/g-board), а .g-field і --g-fh лишаються — заміри місця працюють як завжди (games-8, Ковзанка).
+    const own = !!(body && body.classList.contains('g-ownland'));
+    const on = !own && !!(body && body.querySelector(':scope > canvas.gcanvas'));
     if (table.classList.contains('g-canvas') !== on) table.classList.toggle('g-canvas', on);
-    const bd = !on && !!(body && body.querySelector(':scope > .board, :scope > .g-field'));
+    const bd = !on && !own && !!(body && body.querySelector(':scope > .board, :scope > .g-field'));
     if (table.classList.contains('g-board') !== bd) table.classList.toggle('g-board', bd);
   }
 
