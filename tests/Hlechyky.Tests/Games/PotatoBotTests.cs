@@ -292,7 +292,7 @@ public partial class PotatoTests
         var core = Core(h);
         var pilot = G(h).PilotForTests!;
         var v = Pilot(h);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             core.TimersAll();

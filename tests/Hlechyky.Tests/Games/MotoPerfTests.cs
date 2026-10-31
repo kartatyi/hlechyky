@@ -28,7 +28,7 @@ public class MotoPerfTests(ITestOutputHelper output)
         for (var i = 0; i < players; i++) h.Join(Nicks[i]);
         if (h.Room.Status == RoomStatus.Lobby) Assert.True(h.Start().Ok);
         var rng = new Random(seed);
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         long frameBytes = 0;
         int frames = 0, frameMax = 0, viewMax = 0, played = 0, rounds = 0;
         while (played < ticks)

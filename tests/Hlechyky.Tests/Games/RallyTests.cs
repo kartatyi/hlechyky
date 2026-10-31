@@ -1798,7 +1798,7 @@ public partial class RallyTests(ITestOutputHelper output)
         var rng = new Random(1);
         // прогрів JIT
         for (var i = 0; i < 200; i++) { game.Tick(); game.Frame(); }
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 3000; i++)
         {
             if (i % 7 == 0)

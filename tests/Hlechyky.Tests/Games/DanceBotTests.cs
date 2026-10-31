@@ -266,7 +266,7 @@ public class DanceBotTests(ITestOutputHelper output)
                 Assert.True(h.Start().Ok);
             }
             h.Tick(100);
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             h.Tick(1000);
             return sw.Elapsed.TotalMilliseconds;
         }

@@ -113,7 +113,7 @@ public class PongSoloTests(ITestOutputHelper output)
     {
         var h = Solo("hard");
         h.Tick(100);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.Tick(1000);
         sw.Stop();
         output.WriteLine($"1000 тиків партії з ботом — {sw.Elapsed.TotalMilliseconds:0.0} мс");

@@ -32,7 +32,7 @@ public class StilPerfTests(ITestOutputHelper output)
         var game = h.Room.Game;
         var bytes = 0;
         for (var s = 0; s < seats; s++) bytes = Math.Max(bytes, Views.Text(game.View(s)).Length);   // прогрів
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < rounds; i++)
             for (var s = 0; s < seats; s++) Views.Text(game.View(s));
         sw.Stop();
@@ -62,7 +62,7 @@ public class StilPerfTests(ITestOutputHelper output)
                 .Select(e => e.GetInt32()).ToHashSet();
             var free = Enumerable.Range(0, 100).Where(c => !known.Contains(c)).ToArray();
             var cell = free[rng.Next(free.Length)];
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             lock (h.Room.Sync) Assert.True(h.Room.Game.Act(turn, "shoot", Views.Payload(new { cell, at })).Ok);
             actMs += sw.Elapsed.TotalMilliseconds;
             shots++;
@@ -76,7 +76,7 @@ public class StilPerfTests(ITestOutputHelper output)
 
         // Тихий тик у бою (нічого не змінилось) — те, що відбувається 4 рази на секунду весь бій.
         const int N = 100_000;
-        var quiet = Stopwatch.StartNew();
+        var quiet = CpuWatch.StartNew();
         lock (h.Room.Sync)
             for (var i = 0; i < N; i++)
                 if (game.Tick().View) throw new InvalidOperationException("тихий тик щось розіслав");

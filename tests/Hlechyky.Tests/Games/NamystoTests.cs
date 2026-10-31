@@ -422,7 +422,7 @@ public class NamystoTests
         var g = G(h);
         var (local, journal) = NamystoBot.Play(g.Level!, g.Seed, every: 12);
         Assert.True(h.Act(0, "go").Ok);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         Feed(h, journal, local.S + 30);
         Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");
         Assert.Equal(RoomStatus.Finished, h.Room.Status);

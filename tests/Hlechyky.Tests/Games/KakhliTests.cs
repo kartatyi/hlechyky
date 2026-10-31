@@ -763,7 +763,7 @@ public class KakhliPerfTests
     {
         var b = new KakhliBoard(8, 8, 6, 11);
         b.Fill();
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             var m = b.FindMove()!.Value;

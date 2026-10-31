@@ -28,7 +28,7 @@ public class ArenaPerfTests(ITestOutputHelper output)
         public double AvgInputMs => Ms(InputTicks) / Math.Max(1, Inputs);
         public long AvgFrame => FrameBytes / Math.Max(1, Frames);
         public long AvgView => ViewBytes / Math.Max(1, Views);
-        static double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+        static double Ms(long ticks) => ticks * 1000.0 / CpuWatch.Frequency;
 
         public override string ToString() =>
             $"тиків {Ticks}: середній {AvgTickMs:0.0000} мс, найдовший {MaxTickMs:0.000} мс; " +
@@ -49,14 +49,14 @@ public class ArenaPerfTests(ITestOutputHelper output)
         {
             if (h.Room.Status == RoomStatus.Finished) h.Rematch();
             var room = h.Room;
-            var t0 = Stopwatch.GetTimestamp();
+            var t0 = CpuWatch.GetTimestamp();
             s.Inputs += input(h, i);
-            s.InputTicks += Stopwatch.GetTimestamp() - t0;
+            s.InputTicks += CpuWatch.GetTimestamp() - t0;
 
             h.Clock.AdvanceMs(step);
-            t0 = Stopwatch.GetTimestamp();
+            t0 = CpuWatch.GetTimestamp();
             var outbox = h.Rooms.Tick(room);
-            var dt = Stopwatch.GetTimestamp() - t0;
+            var dt = CpuWatch.GetTimestamp() - t0;
             s.Ticks++;
             s.TickTicks += dt;
             s.MaxTickTicks = Math.Max(s.MaxTickTicks, dt);
@@ -73,10 +73,10 @@ public class ArenaPerfTests(ITestOutputHelper output)
                         break;
                     case RoomViews:
                         // Broadcaster будує вид під замком кімнати й серіалізує — рахуємо обидва кроки разом.
-                        var v0 = Stopwatch.GetTimestamp();
+                        var v0 = CpuWatch.GetTimestamp();
                         string text;
                         lock (room.Sync) text = Views.Text(room.Game.View(null));
-                        var vt = Stopwatch.GetTimestamp() - v0;
+                        var vt = CpuWatch.GetTimestamp() - v0;
                         var vb = Encoding.UTF8.GetByteCount(text);
                         s.Views++;
                         s.ViewTicks += vt;

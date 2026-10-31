@@ -219,7 +219,7 @@ public class IcefloeBotTests
         var bot = new IcefloeBot(LiveBots.Level.Hard, 0);
         var rng = new Random(1);
         bot.Think(c, 1, rng);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++) bot.Think(c, 1, rng);
         sw.Stop();
         Assert.True(sw.Elapsed.TotalMilliseconds < 200, $"1000 думок — {sw.Elapsed.TotalMilliseconds:F0} мс");

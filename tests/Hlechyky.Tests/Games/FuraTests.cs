@@ -778,7 +778,7 @@ public sealed class FuraPerfTests
         var h = new RoomHarness("fura");
         Assert.True(h.Solo("Оля").Ok);
         h.Act(0, "take", new { id = 1 });
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             h.Tick();
@@ -795,7 +795,7 @@ public sealed class FuraPerfTests
         var h = new RoomHarness("fura");
         Assert.True(h.Solo("Гравець0").Ok);
         for (var s = 1; s < 8; s++) Assert.True(h.Join($"Гравець{s}").Ok, h.Reply.Message);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             h.Tick();

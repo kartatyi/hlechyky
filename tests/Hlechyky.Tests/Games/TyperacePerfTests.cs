@@ -29,16 +29,16 @@ public class TyperacePerfTests(ITestOutputHelper output)
         const int ticks = 3000;
         long frameBytes = 0, frames = 0, maxFrame = 0;
         var tickTicks = 0L;
-        var total = Stopwatch.StartNew();
+        var total = CpuWatch.StartNew();
         for (var i = 0; i < ticks; i++)
         {
             // кожен гонщик щотику шле новий pos (і інколи червоний) — гірше, ніж у житті (там ≤ 5/с)
             for (var s = 0; s < 10; s++)
                 h.Rooms.Input(h.RoomId, nicks[s], "pos", payloads[(i + s * 7) % len, (i + s) % 9 == 0 ? 1 : 0]);
             h.Clock.AdvanceMs(1);           // годинник ледь іде — заїзд не впирається в стелю
-            var t0 = Stopwatch.GetTimestamp();
+            var t0 = CpuWatch.GetTimestamp();
             var outbox = h.Rooms.Tick(room);
-            tickTicks += Stopwatch.GetTimestamp() - t0;
+            tickTicks += CpuWatch.GetTimestamp() - t0;
             foreach (var f in outbox.OfType<RoomFrame>())
             {
                 var bytes = System.Text.Encoding.UTF8.GetByteCount(Views.Text(f.Frame));
@@ -50,7 +50,7 @@ public class TyperacePerfTests(ITestOutputHelper output)
         total.Stop();
         Assert.Equal(RoomStatus.Playing, room.Status);
         Assert.Equal(ticks, frames);
-        var avgTickMs = tickTicks * 1000.0 / Stopwatch.Frequency / ticks;
+        var avgTickMs = tickTicks * 1000.0 / CpuWatch.Frequency / ticks;
         output.WriteLine($"Клавоперегони: {ticks} тиків × 10 гонщиків — усього {total.ElapsedMilliseconds} мс (разом із pos і серіалізацією), " +
                          $"середній Tick {avgTickMs:0.0000} мс, кадр у середньому {frameBytes / Math.Max(1, frames)} Б, найбільший {maxFrame} Б");
         Assert.True(total.ElapsedMilliseconds < 1000, $"{total.ElapsedMilliseconds} мс");
@@ -68,7 +68,7 @@ public class TyperacePerfTests(ITestOutputHelper output)
         var len = 700;
         var serverMs = log.Ms + 200;
         Assert.Null(TyperaceJudge.Check(len, log.K, log.D, serverMs).Flag);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++) TyperaceJudge.Check(len, log.K, log.D, serverMs);
         sw.Stop();
         output.WriteLine($"Суддя: 1000 журналів по {log.K.Length} подій ({log.K.Length + log.D.Length} Б) — {sw.ElapsedMilliseconds} мс, " +

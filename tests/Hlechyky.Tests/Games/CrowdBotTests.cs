@@ -241,15 +241,15 @@ public class CrowdBotTests(ITestOutputHelper output)
                 Assert.True(h.Start().Ok);
             }
             h.Tick(100);
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             h.Tick(1000);
             return sw.ElapsedTicks;
         }
         Run(true);
         var with = Run(true);
         var without = Run(false);
-        var perTick = (with - without) * 1000.0 / Stopwatch.Frequency;   // мс на 1000 тиків → мкс на тик
-        output.WriteLine($"1000 тиків: з ботами {with * 1000.0 / Stopwatch.Frequency:F1} мс, без {without * 1000.0 / Stopwatch.Frequency:F1} мс, мозок ≈ {perTick:F1} мкс/тик");
-        Assert.True(with * 1000.0 / Stopwatch.Frequency < 1000, "1000 тиків з ботами довше за секунду");
+        var perTick = (with - without) * 1000.0 / CpuWatch.Frequency;   // мс на 1000 тиків → мкс на тик
+        output.WriteLine($"1000 тиків: з ботами {with * 1000.0 / CpuWatch.Frequency:F1} мс, без {without * 1000.0 / CpuWatch.Frequency:F1} мс, мозок ≈ {perTick:F1} мкс/тик");
+        Assert.True(with * 1000.0 / CpuWatch.Frequency < 1000, "1000 тиків з ботами довше за секунду");
     }
 }

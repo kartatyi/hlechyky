@@ -212,7 +212,7 @@ public class CurveBotTests(ITestOutputHelper log)
         var bot = new CurveBot(LiveBots.Level.Hard);
         var rng = new Random(3);
         bot.Think(f, s, rng);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++) bot.Think(f, s, rng);
         sw.Stop();
         var per = sw.Elapsed.TotalMilliseconds / 1000;

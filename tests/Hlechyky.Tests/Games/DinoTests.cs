@@ -767,7 +767,7 @@ public class DinoTests
         var held = new int[8];
         // прогрів JIT
         for (var i = 0; i < 50; i++) h.Rooms.Tick(room);
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var measured = 0;
         // міряємо лише тики бігу: раунд упирається в стелю (6000 кроків = 3000 тиків), тоді — наступний
         for (var guard = 0; measured < 3000 && guard < 20000; guard++)
@@ -807,7 +807,7 @@ public class DinoTests
         var room = h.Room;
         var held = new int[8];
         for (var i = 0; i < 50; i++) h.Rooms.Tick(room);
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var measured = 0;
         for (var guard = 0; measured < 3000 && guard < 20000; guard++)
         {

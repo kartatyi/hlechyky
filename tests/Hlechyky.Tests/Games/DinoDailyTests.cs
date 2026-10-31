@@ -472,7 +472,7 @@ public class DinoDailyTests
             hs.Add(h);
         }
         for (var i = 0; i < 20; i++) foreach (var h in hs) h.Rooms.Tick(h.Room);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var t = 0; t < 1000; t++)
             foreach (var h in hs) h.Rooms.Tick(h.Room);
         sw.Stop();

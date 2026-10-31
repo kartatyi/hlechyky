@@ -632,7 +632,7 @@ public class BattleshipTests
         // «тисяча тиків» після перемоги перетворилась би на тисячу порожніх обертів циклу.
         var h = Battle();
         var cells = Red.SelectMany(s => s).Take(BattleshipRules.Decks - 1).ToArray();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             // перші тики збирають і кадр, і види (влучання лишає хід), решта — найдешевший шлях Tick()
@@ -994,7 +994,7 @@ public class BattleshipTests
     public void A_thousand_ticks_of_a_full_table_are_instant()
     {
         var h = Company(4);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.Tick(1000);
         sw.Stop();
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"1000 тиків зайняли {sw.Elapsed}");

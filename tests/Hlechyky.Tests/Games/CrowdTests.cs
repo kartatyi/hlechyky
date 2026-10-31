@@ -1850,7 +1850,7 @@ public class CrowdTests(ITestOutputHelper output)
             var h = Table(8, seed: 70 + attempt, options: new { crowd = "big", rounds = "5" });
             var game = G(h);
             var rng = new Random(attempt);
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             ticks = 0;
             for (var t = 0; t < 3000 && h.Room.Status == RoomStatus.Playing; t++)
             {
@@ -1881,7 +1881,7 @@ public class CrowdTests(ITestOutputHelper output)
             Go(h);
             var rng = new Random(attempt);
             for (var i = 0; i < 200; i++) game.Tick();                     // прогрів JIT
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             var n = 0;
             for (var t = 0; t < 3000 && game.Phase != Crowd.PhaseOver; t++)
             {

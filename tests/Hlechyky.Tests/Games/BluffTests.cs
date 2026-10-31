@@ -1582,7 +1582,7 @@ public partial class BluffTests(ITestOutputHelper output)
         var bank = BluffBank.All;
         var tried = 0;
         var leaks = new List<string>();
-        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var watch = CpuWatch.StartNew();
         void Try(BluffQuestion q, string lie)
         {
             var text = BluffText.Clean(lie);
@@ -2087,8 +2087,8 @@ public class BluffPerfTests(ITestOutputHelper output)
         for (var attempt = 0; attempt < 3; attempt++)
         {
             var h = BluffTests.Table(8, seed: 3, options: new { questions = "10", pace = "fast" });
-            var ticks = new Stopwatch();
-            var total = Stopwatch.StartNew();
+            var ticks = new CpuWatch();
+            var total = CpuWatch.StartNew();
             var key = "";
             games = 1;
             for (var t = 0; t < 3000; t++)

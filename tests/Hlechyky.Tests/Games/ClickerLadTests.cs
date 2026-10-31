@@ -236,7 +236,7 @@ public class ClickerLadTests
         Patch(h, s => s["craft"]!["items"]!["pot||1"] = 200 - bag.Count + 1);
         Assert.Equal(200, Total(h));
         Put(h, "pleskanets", 4, 10);              // прогрів
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 20; i++) Put(h, "pleskanets", 4, 100_000);
         sw.Stop();
         Assert.Equal(200, Total(h));

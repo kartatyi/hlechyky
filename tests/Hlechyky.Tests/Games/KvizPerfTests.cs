@@ -26,7 +26,7 @@ public class KvizPerfTests(ITestOutputHelper output, WordleWords fx) : IClassFix
     /// <summary>Лічильник заміру: скільки разів і скільки разом.</summary>
     sealed class Meter
     {
-        readonly Stopwatch _sw = new();
+        readonly CpuWatch _sw = new();
         public int Count { get; private set; }
         public T Run<T>(Func<T> f) { _sw.Start(); var r = f(); _sw.Stop(); Count++; return r; }
         public void Run(Action f) { _sw.Start(); f(); _sw.Stop(); Count++; }

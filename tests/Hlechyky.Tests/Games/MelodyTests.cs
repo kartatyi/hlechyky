@@ -782,7 +782,7 @@ public class MelodyPerfTests(ITestOutputHelper output)
         var miss = Views.Json(new { text = "щось зовсім не те, що грає" });
         var game = h.Room.Game;
         for (var k = 0; k < 50; k++) { h.Clock.AdvanceMs(Melody.GuessEveryMs); lock (h.Room.Sync) game.Act(k % 12, "guess", miss); }
-        var act = new Stopwatch();
+        var act = new CpuWatch();
         var acts = 0;
         for (var k = 0; k < 600; k++)
         {
@@ -793,13 +793,13 @@ public class MelodyPerfTests(ITestOutputHelper output)
             acts++;
         }
         // і влучання — уже через кімнату, як із хаба (з розсилкою видів дванадцятьом)
-        var hub = Stopwatch.StartNew();
+        var hub = CpuWatch.StartNew();
         for (var s = 0; s < 12; s++) { h.Clock.AdvanceMs(Melody.GuessEveryMs); h.Act(s, "guess", new { text = "Гурт 0 Пісня 0" }); }
         hub.Stop();
         output.WriteLine($"влучання через кімнату (з видами всім): {hub.Elapsed.TotalMilliseconds / 12:F2} мс");
 
         // вид кожного місця й глядача — як його збирає й серіалізує розсилка
-        var view = Stopwatch.StartNew();
+        var view = CpuWatch.StartNew();
         var bytes = 0;
         const int ViewRuns = 200;
         for (var k = 0; k < ViewRuns; k++)
@@ -807,7 +807,7 @@ public class MelodyPerfTests(ITestOutputHelper output)
         view.Stop();
 
         // тики: дві тисячі (≈ 8 хв гри) з розкриттями й новими раундами
-        var tick = new Stopwatch();
+        var tick = new CpuWatch();
         for (var t = 0; t < 2000 && h.Room.Status == RoomStatus.Playing; t++)
         {
             tick.Start();

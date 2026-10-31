@@ -1823,7 +1823,7 @@ public class BricksPerfTests(ITestOutputHelper output)
         long bytes = 0, frames = 0, maxFrame = 0;
         var seen = 0;
         var tickTime = TimeSpan.Zero;
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 3000; i++)
         {
             if (h.Room.Status == RoomStatus.Finished) h.Rematch();
@@ -1840,7 +1840,7 @@ public class BricksPerfTests(ITestOutputHelper output)
                 }
             }
             // тик кімнати разом із серіалізацією кадра — так, як це платить сервер
-            var t0 = Stopwatch.GetTimestamp();
+            var t0 = CpuWatch.GetTimestamp();
             h.Tick();
             var all = h.Outbox;
             for (; seen < all.Count; seen++)
@@ -1851,7 +1851,7 @@ public class BricksPerfTests(ITestOutputHelper output)
                 frames++;
                 maxFrame = Math.Max(maxFrame, n);
             }
-            tickTime += Stopwatch.GetElapsedTime(t0);
+            tickTime += CpuWatch.GetElapsedTime(t0);
         }
         sw.Stop();
         output.WriteLine($"3000 тиків із ботами: {sw.Elapsed.TotalMilliseconds:F0} мс; чистий Tick() у середньому {tickTime.TotalMilliseconds / 3000:F4} мс; " +
@@ -1879,7 +1879,7 @@ public class BricksPerfTests(ITestOutputHelper output)
             t += 1;
         }
         h.Clock.AdvanceMs(40_000);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         foreach (var p in payloads) h.Rooms.Input(h.RoomId, "Оля", "j", p);
         sw.Stop();
         var us = sw.Elapsed.TotalMilliseconds * 1000 / payloads.Count;

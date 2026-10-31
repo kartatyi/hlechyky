@@ -479,7 +479,7 @@ public class KoliyaPerfTests
         var h = new RoomHarness("koliya", seed: 7);
         foreach (var n in new[] { "Оля", "Петро", "Іра", "Тарас" }) h.Join(n);
         h.Act(0, "go");   // K62
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             h.Tick(1);

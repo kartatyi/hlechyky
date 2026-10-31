@@ -145,7 +145,7 @@ public class ChessGlekTests
     {
         var c = ChessCore.FromFen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
         ChessEngine.Pick(c, ChessEngine.Medium, new Random(1));   // прогрів JIT
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 3; i++) ChessEngine.Pick(c, ChessEngine.Medium, new Random(i));
         Assert.True(sw.ElapsedMilliseconds / 3 < 200, $"середній Глек думав {sw.ElapsedMilliseconds / 3} мс");
     }

@@ -977,7 +977,7 @@ public class RoomsTests
             ids.Add(id);
         }
 
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var t = 0; t < 1000; t++)
         {
             clock.AdvanceMs(120);

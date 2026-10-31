@@ -213,7 +213,7 @@ public class BricksBotPerfTests(ITestOutputHelper output)
         var seen = 0;
         long bytes = 0, frames = 0;
         var tickTime = TimeSpan.Zero;
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 3000; i++)
         {
             if (h.Room.Status == RoomStatus.Finished)
@@ -231,7 +231,7 @@ public class BricksBotPerfTests(ITestOutputHelper output)
                     h.Input(me, "j", new { q = c.Seq + 1, e = new[] { t, keys[step++ % keys.Length], t + 1, keys[step++ % keys.Length], t + 2, 0 }, g = c.Gseq });
                 }
             }
-            var t0 = Stopwatch.GetTimestamp();
+            var t0 = CpuWatch.GetTimestamp();
             h.Tick();
             for (var all = h.Outbox; seen < all.Count; seen++)
             {
@@ -239,7 +239,7 @@ public class BricksBotPerfTests(ITestOutputHelper output)
                 bytes += JsonSerializer.SerializeToUtf8Bytes(f.Frame, Wire).Length;
                 frames++;
             }
-            tickTime += Stopwatch.GetElapsedTime(t0);
+            tickTime += CpuWatch.GetElapsedTime(t0);
         }
         sw.Stop();
         var avg = tickTime.TotalMilliseconds / 3000;

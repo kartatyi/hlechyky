@@ -114,7 +114,7 @@ public class MinesNoGuessTests(ITestOutputHelper output)
             var fails = 0;
             const int days = 60;
             var d0 = new DateOnly(2026, 10, 22);
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             for (var i = 0; i < days; i++)
             {
                 var l = MinesFields.Compute(puzzle, d0.AddDays(i).ToString("yyyy-MM-dd"), w, hh, m, center);

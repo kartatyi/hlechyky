@@ -675,7 +675,7 @@ public class TanksTests
         {
             var h = Table(4);
             Ready(h);
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             for (var i = 0; i < TanksCore.MatchTicks && Phase(h) == "go"; i++)
             {
                 for (var s = 0; s < 4; s++)

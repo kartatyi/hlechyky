@@ -365,7 +365,7 @@ public class MotoSweep3Tests(ITestOutputHelper output)
     {
         var h = Party(1, new { bots = "3", field = "big", turbo = "1", squeeze = "1", map = "columns", series = "5" });
         var game = (ArenaGame)h.Room.Game;
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var ticks = 0;
         var maxFrame = 0;
         for (var i = 0; i < 6000 && h.Room.Status == RoomStatus.Playing; i++)

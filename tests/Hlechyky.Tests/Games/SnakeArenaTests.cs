@@ -501,7 +501,7 @@ public class SnakeArenaTests(ITestOutputHelper output)
             var h = Party(4, opts, seed: 7);
             var game = (SnakePartyGame)h.Room.Game;
             var rng = new Random(7);
-            var sw = new Stopwatch();
+            var sw = new CpuWatch();
             int played = 0, frameMax = 0;
             while (played < 3000)
             {

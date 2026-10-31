@@ -359,7 +359,7 @@ public class ReversiGlekPerfTests
         var h = new RoomHarness("reversi-glek", seed: 5);
         Assert.True(h.Solo("Оля").Ok);
         Assert.True(h.Act(0, "set", new { level = "easy" }).Ok);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var played = 0;
         for (var t = 0; t < 1000; t++)
         {
@@ -390,7 +390,7 @@ public class ReversiGlekPerfTests
             var c = After(plies, seed);
             if (c.Over) continue;
             ReversiEngine.Pick(c, ReversiEngine.Hard, new Random(1));   // прогрів JIT
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             ReversiEngine.Pick(c, ReversiEngine.Hard, new Random(2));
             worst = Math.Max(worst, sw.ElapsedMilliseconds);
         }

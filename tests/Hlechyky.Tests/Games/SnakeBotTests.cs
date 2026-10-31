@@ -212,7 +212,7 @@ public class SnakeBotTests(ITestOutputHelper output)
         {
             var h = WithBot("snake", "hard", seed: 2);
             h.Tick(SnakeCore.StartTicks);
-            var sw = new Stopwatch();
+            var sw = new CpuWatch();
             ticks = 0;
             for (var t = 0; t < 1000 && h.Room.Status == RoomStatus.Playing; t++)
             {
@@ -322,7 +322,7 @@ public class SnakeBotTests(ITestOutputHelper output)
             var brain = new BotBrain();
             var me = new string?[] { "манекен", null };
             var rng = new Random(4);
-            var sw = new Stopwatch();
+            var sw = new CpuWatch();
             ticks = 0;
             for (var t = 0; t < 1000 && h.Room.Status == RoomStatus.Playing; t++)
             {
@@ -437,7 +437,7 @@ public class SnakeBotTests(ITestOutputHelper output)
     static double PartyTick(RoomHarness h)
     {
         h.Tick(SnakeCore.StartTicks);
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var ticks = 0;
         for (var t = 0; t < 740 && h.Room.Status == RoomStatus.Playing; t++)
         {
@@ -469,7 +469,7 @@ public class SnakeBotTests(ITestOutputHelper output)
         var think = BestOf(3, () =>
         {
             var rng = new Random(1);
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             for (var i = 0; i < runs; i++)
             {
                 var b = 1 + i % 2;

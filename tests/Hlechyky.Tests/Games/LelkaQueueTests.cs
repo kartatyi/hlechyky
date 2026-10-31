@@ -151,7 +151,7 @@ public class LelkaQueuePerfTests(ITestOutputHelper output)
             for (var i = 0; i < 400 && k.S.Phase != Lelka.Crashed; i++)
             {
                 var flying = k.S.Phase == Lelka.Flight;
-                var sw = Stopwatch.StartNew();
+                var sw = CpuWatch.StartNew();
                 k.H.Tick();
                 var ms = sw.Elapsed.TotalMilliseconds;
                 if (round > 0)   // перший раунд — розігрів JIT і SQLite

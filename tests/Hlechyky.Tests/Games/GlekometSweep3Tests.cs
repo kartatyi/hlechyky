@@ -346,7 +346,7 @@ public partial class GlekometTests
     {
         var h = Table(6, options: new { mode = "volley", arms = "jokes" });
         Ready(h);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var ticks = 0;
         var biggest = 0;
         for (var round = 0; round < 6 && h.Room.Status == RoomStatus.Playing; round++)

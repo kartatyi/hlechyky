@@ -28,9 +28,9 @@ public class SvoyaPerfTests(ITestOutputHelper output)
         var h = SvoyaTests.Table(nicks: Nine, voice: new FakeSvoyaVoice(), packs: packs, pack: "b_full");
         var game = h.Room.Game;
 
-        var tick = new Stopwatch();
-        var act = new Stopwatch();
-        var view = new Stopwatch();
+        var tick = new CpuWatch();
+        var act = new CpuWatch();
+        var view = new CpuWatch();
         int ticks = 0, acts = 0, views = 0, maxBytes = 0, boardBytes = 0;
         var k = 0;
         var key = "";

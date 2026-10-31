@@ -859,7 +859,7 @@ public class HockeyTests(ITestOutputHelper output)
         // Цілі — наперед, щоб міряти гру, а не серіалізацію тестових анонімних об'єктів.
         var aims = Enumerable.Range(0, 64).Select(_ => Views.Payload(new { x = rng.NextDouble() * 200, y = rng.NextDouble() * 120 })).ToArray();
         h.Tick(80);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         var ticks = 0;
         var matches = 1;
         for (var t = 0; t < 5000; t++)

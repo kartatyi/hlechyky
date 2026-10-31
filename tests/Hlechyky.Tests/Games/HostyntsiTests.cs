@@ -508,7 +508,7 @@ public class HostyntsiTests
     {
         // Звичайна партія на вісьмох (кадр щотику) і вечірка з вісьмома сильними ботами від початку до кінця.
         var h = Table(8);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             h.Room.Game.Tick();

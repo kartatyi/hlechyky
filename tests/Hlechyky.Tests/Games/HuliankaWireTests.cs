@@ -28,7 +28,7 @@ public class HuliankaWireTests(ITestOutputHelper output)
         var rng = new Random(5);
         long bytes = 0;
         int frames = 0, max = 0, viewTicks = 0, viewMax = 0, ticks = 0;
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         for (var t = 0; t < 4000 && h.Room.Status == RoomStatus.Playing; t++)
         {
             if (t % 7 == 0)

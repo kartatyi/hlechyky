@@ -89,7 +89,7 @@ public class ChessTests
     [Trait("Category", "Perf")]
     public void Perft_depth_four_from_the_initial_position()
     {
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         Assert.Equal(197281, ChessCore.Initial().Perft(4));
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"перфт-4 має вкластись у 10 с, а зайняв {sw.Elapsed}");
     }
@@ -106,7 +106,7 @@ public class ChessTests
     [Trait("Category", "Perf")]
     public void Perft_kiwipete_depth_three()
     {
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         Assert.Equal(97862, Core(Kiwipete).Perft(3));
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"Kiwipete-3 має вкластись у 10 с, а зайняв {sw.Elapsed}");
     }

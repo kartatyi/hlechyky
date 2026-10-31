@@ -276,7 +276,7 @@ public class HockeySoloTests(ITestOutputHelper output)
             var c = new HockeyCore(new Random(5)) { BotLevel = lvl };
             c.Reset([true, true, false, false]);
             for (var t = 0; t < 200; t++) { c.BotThink(1); c.Step(); }
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             for (var t = 0; t < 1000; t++) c.BotThink(1);
             sw.Stop();
             output.WriteLine($"{lvl}: 1000 думок бота — {sw.Elapsed.TotalMilliseconds:0.00} мс");

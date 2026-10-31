@@ -561,7 +561,7 @@ public class ThiniceTests(ITestOutputHelper output)
     {
         var h = new PartyHarness("thinice", humans: 0, bots: 8, level: LiveBots.Level.Hard, seed: 3);
         h.Start();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.TickSub(1000);
         sw.Stop();
         output.WriteLine($"1000 тиків: {sw.ElapsedMilliseconds} мс");

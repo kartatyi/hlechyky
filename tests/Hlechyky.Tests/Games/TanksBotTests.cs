@@ -233,7 +233,7 @@ public class TanksBotTests(ITestOutputHelper output)
         core.SetSides(null, false, false);
         core.Reset([true, true, true, true, false, false]);
         var bots = new[] { new TanksBot(1, H), new TanksBot(2, H), new TanksBot(3, H) };
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         for (var t = 0; t < 1000; t++)
         {
             sw.Start();

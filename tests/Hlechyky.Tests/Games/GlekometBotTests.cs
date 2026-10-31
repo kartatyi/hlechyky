@@ -243,7 +243,7 @@ public class GlekometBotTests
         var rng = new Random(1);
         var inv = new[] { -1, 2, 1, 2, 1, 2 };
         b.Plan(core, 1, 0, inv, 6, rng);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++) b.Plan(core, 1, 0, inv, 6, rng);
         sw.Stop();
         // план — раз на хід; навіть так він має бути копійчаним (≲ 0,2 мс)

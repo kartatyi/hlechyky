@@ -1734,7 +1734,7 @@ public class DanceTests(ITestOutputHelper output)
         {
             var h = Table(8, seed: 90 + attempt, options: new { crowd = "big", rounds = "5" });
             var rng = new Random(attempt);
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             for (var t = 0; t < 3000 && h.Room.Status == RoomStatus.Playing; t++)
             {
                 if (t % 10 == 0)
@@ -1763,7 +1763,7 @@ public class DanceTests(ITestOutputHelper output)
             Go(h);
             var rng = new Random(attempt);
             for (var i = 0; i < 200; i++) game.Tick();
-            var sw = Stopwatch.StartNew();
+            var sw = CpuWatch.StartNew();
             var n = 0;
             for (var t = 0; t < 3000 && game.Phase != Dance.PhaseOver; t++)
             {

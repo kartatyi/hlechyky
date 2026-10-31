@@ -1185,8 +1185,8 @@ public class PozyvniPerfTests(Xunit.Abstractions.ITestOutputHelper output)
         h.Start();
         Assert.True(h.Act(0, "go").Ok);
 
-        var ticks = new System.Diagnostics.Stopwatch();
-        var acts = new System.Diagnostics.Stopwatch();
+        var ticks = new CpuWatch();
+        var acts = new CpuWatch();
         int tickCount = 0, actCount = 0;
         long viewMax = 0;
         for (var guard = 0; guard < 2000 && h.Room.Status == RoomStatus.Playing; guard++)

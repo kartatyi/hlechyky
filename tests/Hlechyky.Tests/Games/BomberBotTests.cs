@@ -247,7 +247,7 @@ public class BomberBotTests(ITestOutputHelper output)
         var core = new BomberCore(rng);
         core.Reset([true, true, true, true, false, false]);
         var bots = new[] { new BomberBot(1, H), new BomberBot(2, H), new BomberBot(3, H) };
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var thinks = 0;
         for (var t = 0; t < 1000; t++)
         {

@@ -558,8 +558,8 @@ public class PictionaryPerfTests(Xunit.Abstractions.ITestOutputHelper output)
         h.Start();
 
         var rng = new Random(9);
-        var ticks = new System.Diagnostics.Stopwatch();
-        var acts = new System.Diagnostics.Stopwatch();
+        var ticks = new CpuWatch();
+        var acts = new CpuWatch();
         int tickCount = 0, actCount = 0, stroke = 1, frames = 0;
         long frameBytes = 0, frameMax = 0, viewMax = 0, viewBytes = 0, viewCount = 0;
         var t = 0;

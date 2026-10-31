@@ -326,7 +326,7 @@ public class CurveTests
     {
         var core = new CurveCore(new Random(11));
         core.Reset([true, true, true, true]);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var t = 0; t < 2500; t++)
         {
             // Кривулі гинуть — щоразу піднімаємо їх назад, щоб міряти повне навантаження на чотирьох.
@@ -876,7 +876,7 @@ public class CurveTests
     {
         var core = new CurveCore(new Random(3), true, 420, 280);
         core.Reset([.. Enumerable.Repeat(true, 8)]);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var t = 0; t < 2500; t++)
         {
             for (var s = 0; s < 8; s++)

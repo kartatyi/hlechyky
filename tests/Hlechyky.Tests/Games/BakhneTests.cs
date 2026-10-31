@@ -687,7 +687,7 @@ public class BakhneTests
     {
         var h = new PartyHarness("bakhne", humans: 0, bots: 8, level: LiveBots.Level.Easy, seed: 5);
         h.Start();
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000 && !h.Host.Over; i++) { h.TickSub(); h.Frame(); }
         sw.Stop();
         Assert.True(sw.ElapsedMilliseconds < 2000, $"{sw.ElapsedMilliseconds} мс");

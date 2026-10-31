@@ -1691,8 +1691,8 @@ public class SpyTests(ITestOutputHelper output)
     public void Three_thousand_ticks_of_a_ten_player_table_with_actions_stay_under_a_second()
     {
         var h = Table(10, options: new { rounds = "5" });
-        var sw = new Stopwatch();
-        var tickOnly = new Stopwatch();
+        var sw = new CpuWatch();
+        var tickOnly = new CpuWatch();
         var rounds = 0;
         for (var i = 0; i < 3000; i++)
         {
@@ -1747,7 +1747,7 @@ public class SpyTests(ITestOutputHelper output)
         Assert.All(sizes, n => Assert.True(n < 4096, $"вид {n} Б"));
 
         // Скільки коштує зібрати й серіалізувати всі 11 видів на один «брудний» тик.
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 200; i++)
             foreach (int? s in Seated(h).Cast<int?>().Append(null)) _ = Views.Text(h.Room.Game.View(s));
         sw.Stop();

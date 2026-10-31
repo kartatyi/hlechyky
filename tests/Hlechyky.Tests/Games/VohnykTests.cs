@@ -1663,7 +1663,7 @@ public sealed class VohnykPerfTests(ITestOutputHelper output)
         var game = (Vohnyk)h.Room.Game;
         int[] pattern = [VohnykWorld.KeyRight, VohnykWorld.KeyRight | VohnykWorld.KeyJump, VohnykWorld.KeyLeft, VohnykWorld.KeyLeft | VohnykWorld.KeyJump, 0];
         var payloads = new JsonElement[2][];
-        var sw = new System.Diagnostics.Stopwatch();
+        var sw = new CpuWatch();
         var frames = 0;
         var bytes = 0L;
         lock (h.Room.Sync)

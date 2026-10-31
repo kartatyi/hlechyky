@@ -624,7 +624,7 @@ public class HangmanTests(HangmanWords fx) : IClassFixture<HangmanWords>
     public void A_thousand_ticks_of_a_full_table_are_instant()
     {
         var h = Table(fx.Lots, 5, "Оля", "Петро", "Ганна", "Іван", "Марія", "Богдан");
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         for (var i = 0; i < 1000; i++)
         {
             if (i % 40 == 0) Guess(h, i / 40 % 6, Misses[i / 40 % Misses.Length]);

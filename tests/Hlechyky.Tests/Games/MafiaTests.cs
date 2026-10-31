@@ -1298,7 +1298,7 @@ public class MafiaTests
     public void A_thousand_ticks_of_a_full_table_are_instant()
     {
         var h = Table(12);
-        var sw = Stopwatch.StartNew();
+        var sw = CpuWatch.StartNew();
         h.Tick(1000);
         sw.Stop();
 

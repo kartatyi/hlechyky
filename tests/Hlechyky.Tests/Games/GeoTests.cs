@@ -1257,7 +1257,7 @@ public class GeoPerfTests(ITestOutputHelper output)
         using var c = new GeoCache();
         var h = GeoTests.Table(c, 10, new { rounds = "10", seconds = "30" });
         var rng = new Random(5);
-        var sw = new Stopwatch();
+        var sw = new CpuWatch();
         var ticks = 0;
         var pinnedRound = -1;
         var matches = 1;
@@ -1292,7 +1292,7 @@ public class GeoPerfTests(ITestOutputHelper output)
         var h2 = GeoTests.Table(c, 10, new { seconds = "60" });
         GeoTests.Until(h2, "guess");
         var g2 = h2.Room.Game;
-        var sw2 = Stopwatch.StartNew();
+        var sw2 = CpuWatch.StartNew();
         lock (h2.Room.Sync) for (var i = 0; i < 100_000; i++) g2.Tick();
         sw2.Stop();
         output.WriteLine($"Game.Tick у спокої: {sw2.Elapsed.TotalMilliseconds * 1000 / 100_000:F3} мкс");
