@@ -11,7 +11,8 @@
 
 /* ---------------- сцена ---------------- */
 .shk-stage { position: relative; overflow: hidden; border-radius: 16px; background: #7a4a20;
-  height: clamp(320px, 68vh, 680px); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35), 0 6px 24px rgba(0, 0, 0, .35);
+  /* висота — місце під поле від каркаса (--g-fh: картка влазить у вікно з ⛶, ⇔, лежачи); без нього — як було */
+  height: max(240px, var(--g-fh, clamp(320px, 68vh, 680px))); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35), 0 6px 24px rgba(0, 0, 0, .35);
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .shk-cv { position: absolute; inset: 0; display: block; touch-action: none; cursor: crosshair; }
 .shk.P-go .shk-cv { cursor: none; }
@@ -177,7 +178,7 @@
 .shk.P-party { display: flex; gap: 10px; align-items: stretch; }
 .shk.P-party .shk-stage { flex: 1; min-width: 0; }
 .shk-riv { width: 190px; flex: none; padding: 10px; border-radius: 16px; background: rgba(28, 14, 6, .55); box-shadow: inset 0 0 0 1.5px rgba(255, 230, 190, .14);
-  overflow: auto; max-height: clamp(320px, 68vh, 680px); }
+  overflow: auto; max-height: max(280px, var(--g-fh, clamp(320px, 68vh, 680px))); }
 .shk-riv[hidden] { display: none; }
 .shk-rv-h { font: 800 13px/1.2 var(--display, sans-serif); color: #ffe9c8; margin: 0 2px 8px; }
 .shk-rv-l { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
@@ -203,7 +204,7 @@
 @media (max-width: 760px) {
   .shk.P-party { flex-direction: column; gap: 6px; }
   /* у стовпці flex: 1 з'їдав висоту сцени до нуля; рядок суперників (~60 px) віднімаємо, щоб усе влазило в екран */
-  .shk.P-party .shk-stage { flex: none; height: clamp(320px, calc(74vh - 64px), 580px); }
+  .shk.P-party .shk-stage { flex: none; height: max(280px, calc(var(--g-fh, clamp(384px, 74vh, 644px)) - 64px)); }
   .shk-riv { order: -1; width: auto; max-height: none; padding: 6px; border-radius: 12px; display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; }
   .shk-rv-h { margin: 0; white-space: nowrap; font-size: 12px; }
   .shk-rv-l { flex-direction: row; gap: 5px; }
@@ -213,7 +214,7 @@
 }
 
 @media (max-width: 560px) {
-  .shk-stage { height: clamp(360px, 74vh, 640px); border-radius: 12px; }
+  .shk-stage { height: max(300px, var(--g-fh, clamp(360px, 74vh, 640px))); border-radius: 12px; }
   .shk-hud { left: 8px; right: 8px; top: 20px; }
   .shk-c { padding: 13px 14px; }
   .shk-c ul { font-size: 13px; }
