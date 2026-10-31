@@ -149,6 +149,16 @@
     }
   }
 
+  /// Ширша картка — «Як грати» розгорнуте (заголовка-перемикача там нема); звузилась (повернули телефон) — згортаємо те,
+  /// що розгорнули самі, а не людина.
+  function syncHow(root) {
+    const d = root.querySelector('.dt-stage.dt-lobby .dt-howd');
+    if (!d) return;
+    const wide = root.clientWidth > 560;
+    if (wide && !d.open) { d.open = true; d.dataset.auto = '1'; }
+    else if (!wide && d.dataset.auto) { d.open = false; delete d.dataset.auto; }
+  }
+
   function paintStage(root, ctx, v) {
     const s = st(root);
     const stage = root.querySelector('.dt-stage');
@@ -175,6 +185,10 @@
       const text = lobbyTip(ctx);
       if (tip && tip.textContent !== text) { tip.textContent = text; tip.hidden = !text; }
       refreshOwn(ctx, v, stage);
+      // «Як грати» згортається лише на вузькій картці (телефон стоячи: інакше «Почати» за три екрани внизу); на ширшій
+      // заголовка-перемикача не видно (CSS), тож правила там завжди розгорнуті — навіть якщо телефон повернули.
+      syncHow(root);
+      if (!root._dtHowRO && typeof ResizeObserver === 'function') { root._dtHowRO = new ResizeObserver(() => syncHow(root)); root._dtHowRO.observe(stage); }
     }
     if (key.startsWith('write')) refreshWrite(root, ctx, v, stage);
     else if (key.startsWith('card')) refreshCard(root, ctx, v, stage);
@@ -224,14 +238,14 @@
       : rounds === 'short'
         ? 'Голос — 100 очок. Троє й більше за одного — «Розгром!» А далі — «Останній додеп» з медалями 🥇🥈🥉.'
         : 'Голос — 100 очок, у другому раунді — 200. Троє й більше за одного — «Розгром!»';
-    return '<div class="dt-how">'
-      + '<div class="dt-howrow"><b>✍</b><span><i>Пиши.</i> ' + (rounds === 'blitz' ? 'Одне дурне завдання на всіх' : 'Кожному — дурні завдання')
+    return '<div class="dt-how"><details class="dt-howd"><summary><b>❓ Як грати</b> <span class="muted">✍ пиши · 🗳 голосуй · 🎭 хто це написав</span></summary>'
+      + '<div class="dt-howrows"><div class="dt-howrow"><b>✍</b><span><i>Пиши.</i> ' + (rounds === 'blitz' ? 'Одне дурне завдання на всіх' : 'Кожному — дурні завдання')
       + ', ' + secs + ' с на додеп. Найсмішніша відповідь одним рядком.</span></div>'
       + '<div class="dt-howrow"><b>🗳</b><span><i>Голосуй.</i> Відповіді виходять анонімно — обирай найдодепнішу чужу.</span></div>'
       + '<div class="dt-howrow"><b>🎭</b><span><i>Дивись, хто це написав.</i> ' + votes + '</span></div>'
       + '<div class="dt-howrow"><b>🎯</b><span><i>Теми:</i> ' + themesText(o) + '</span></div>'
       + '<div class="dt-howsmall muted small">Від двох: удвох Дядько Глек сяде третім. ' + (o.voice === 'none' ? 'Цього разу Глек мовчить — усе текстом' : 'Дядько Глек зачитує все вголос')
-      + '; глядачі голосують як публіка 👀 і сміються 😂</div>'
+      + '; глядачі голосують як публіка 👀 і сміються 😂</div></div></details>'
       + '<div class="dt-howtip small" hidden></div>'
       + (ctx.mine ? '<form class="dt-own"><input class="dt-ownin" type="text" maxlength="100" autocomplete="off" spellcheck="true"'
         + ' enterkeyhint="send" placeholder="Своє завдання для друзів — необов\'язково" aria-label="Своє завдання">'
@@ -1147,6 +1161,7 @@
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
       hush(root);
+      if (root._dtHowRO) { root._dtHowRO.disconnect(); root._dtHowRO = null; }
       Object.values(s.draftTimers).forEach((t) => clearTimeout(t));
       s.timers.forEach((t) => clearTimeout(t));
       s.timers.clear();
