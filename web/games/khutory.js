@@ -1041,6 +1041,8 @@
     const portrait = !!(window.matchMedia && window.matchMedia('(orientation: portrait)').matches);
     const pc = W >= 700 && !(portrait && W < 860);
     if (gt) gt.classList.toggle('khu-pc', pc);
+    // Під час партії вільні місця в рядку столу — зайві (сісти вже не можна), а рядок однорядковий і гортався б.
+    if (gt) gt.classList.toggle('khu-on', !!(st.ctx && st.ctx.room && st.ctx.room.status === 'playing'));
     // Рядок «← Лобі» каркаса — у рядок місць цієї картки (свого рядка над карткою не займає); телефон, планшет стоячи — як був.
     if (HGames.ui && HGames.ui.headIn) HGames.ui.headIn(root, pc);
     if (!pc) {

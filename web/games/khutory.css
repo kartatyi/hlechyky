@@ -528,7 +528,7 @@
   .khu-players > .khu-pl { grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 7px; row-gap: 0; padding: 4px 8px 6px 4px; line-height: 1.25; }
   .khu-players > .khu-pl .khu-av { width: 32px; height: 32px; grid-row: 1 / span 2; }
   .khu-players > .khu-pl .khu-av b { font-size: .9em; }
-  .khu-players > .khu-pl .khu-shp { width: 15px; height: 15px; font-size: 9px; right: -3px; bottom: -3px; }
+  .khu-players > .khu-pl .khu-shp { width: 16px; height: 16px; font-size: 11px; right: -3px; bottom: -3px; }
   .khu-pl > .khu-pn { grid-column: 2; grid-row: 1; }
   .khu-pl > .khu-pp { grid-column: 3; grid-row: 1; justify-self: end; }
   .khu-pl > .khu-pp .khu-mb.gold { flex: none; width: 34px; }
@@ -622,7 +622,7 @@
   .khu-players > .khu-pl { grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 5px; row-gap: 0; padding: 3px 6px 6px 3px; line-height: 1.2; }
   .khu-players > .khu-pl .khu-av { width: 30px; height: 30px; grid-row: 1 / span 3; }
   .khu-players > .khu-pl .khu-av b { font-size: .9em; }
-  .khu-players > .khu-pl .khu-shp { width: 15px; height: 15px; font-size: 9px; right: -3px; bottom: -3px; }
+  .khu-players > .khu-pl .khu-shp { width: 16px; height: 16px; font-size: 11px; right: -3px; bottom: -3px; }
   .khu-pl > .khu-pn { grid-column: 2; grid-row: 1; font-size: .9em; }
   .khu-pl > .khu-pp { grid-column: 3; grid-row: 1; font-size: .8em; }
   .khu-pl > .khu-pp .khu-mb, .khu-pl > .khu-pp small { display: none; }
@@ -738,6 +738,7 @@
   overscroll-behavior-x: contain; scrollbar-width: none; }
 .grbox > .gtable.khu-pc > .gseats::-webkit-scrollbar { display: none; }
 .grbox > .gtable.khu-pc > .gseats > * { flex: none; }
+.grbox > .gtable.khu-pc.khu-on > .gseats > .gseat.free { display: none; }
 .grbox > .gtable.khu-pc > .gbtns { flex-wrap: nowrap; }
 .grbox > .gtable.khu-pc > .gbtns { flex: none; order: 4; margin: 0; }
 .grbox > .gtable.khu-pc > .gstatus { display: none; }
