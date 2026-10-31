@@ -329,6 +329,7 @@
 .rl-info b { color: var(--text); font-variant-numeric: tabular-nums; }
 .rl-stay { display: block; font-size: .9em; opacity: .85; }
 .rl-snd { font-size: .86em; padding: 3px 9px; }
+@media (pointer: coarse) { .rl-snd { min-height: 36px; padding: 4px 12px; } }
 .rl-tools { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 /* Колесо: соло — перемикач «🇪🇺 одне зеро / 🇺🇸 з 00», стіл — мітка американського колеса. */
 .rl-wh { font-size: .86em; padding: 3px 9px; min-height: 40px; }

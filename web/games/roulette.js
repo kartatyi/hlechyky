@@ -315,11 +315,41 @@
       // через таймер: синхронна перемальовка в колбеку RO дає «ResizeObserver loop completed…»
       st.ro = new ResizeObserver(() => {
         clearTimeout(st.roT);
-        st.roT = setTimeout(() => { if (root._rl && fitLayout(root, st)) paint(root, st.ctx); }, 0);
+        st.roT = setTimeout(() => { if (!root._rl) return; if (fitLayout(root, st)) paint(root, st.ctx); fitZoom(root, st); }, 0);
       });
       st.ro.observe(root);
     }
+    // ⇔ / ⛶ / великий екран: місце під поле міняється без зміни ширини картки — каркас каже через onFit
+    if (HGames.ui && HGames.ui.onFit) HGames.ui.onFit(root, () => { if (root._rl) fitZoom(root, st); });
+    fitZoom(root, st);
     return st.el;
+  }
+
+  /// Широка розкладка має природний розмір (поле в px, колесо 320, стеля 1180) — на великому екрані, у ⇔ і ⛶ вона
+  /// лишалась острівцем на 44 % місця. Тепер росте CSS-zoom-ом до місця під поле картки (--g-aw × --g-fh), ×1…×2.
+  /// Лише на ПК (миша): на дотиковому зум не потрібен (там «телефонна» чи середня розкладка). Ставки влучають і з
+  /// зумом (spotAt рахує частками від getBoundingClientRect); якщо браузер рахує зум по-старому (прямокутник не
+  /// зріс разом із zoom) — вимикаємо.
+  function fitZoom(root, st) {
+    const box = st.el && st.el.box, ui = window.HGames && HGames.ui;
+    if (!box || !ui || !ui.box) return;
+    const f = ui.box(root);
+    let z = 1;
+    if (st.layout === 'wide' && f && f.aw && f.fh && !(ui.coarse && ui.coarse()) && !st.noZoom) {
+      const was = box.style.zoom;
+      if (was) box.style.zoom = '';
+      const w = box.offsetWidth, h = box.offsetHeight;   // природний розмір без зуму
+      if (w && h) z = Math.min(2, f.aw / w, (f.fh - 6) / h);
+      if (!(z >= 1.06)) z = 1;
+      if (was && z === 1) { /* лишаємо знятим */ }
+    }
+    const v = z === 1 ? '' : z.toFixed(3);
+    if (box.style.zoom !== v) box.style.zoom = v;
+    st.zoom = z;
+    if (z !== 1) {
+      const r = box.getBoundingClientRect();
+      if (Math.abs(r.width - box.offsetWidth * z) > 3) { st.noZoom = true; st.zoom = 1; box.style.zoom = ''; }
+    }
   }
 
   /// Розкладка за шириною картки (§8.2): ≥ 900 — широко, 640…900 — середньо, < 640 — телефон (поле вертикальне).
@@ -678,6 +708,14 @@
     st.animNo = sp.no;
     st.landAt = Date.now() + T;
     const el = st.el;
+    // Телефон (поле вертикальне): «Крутити» тиснуть, догорнувши до поля, — колесо тоді за верхом екрана. Своє коло
+    // показуємо: плавно догортаємо до колеса (лише якщо його не видно і картка — на сторінці столу, не у віконці).
+    const myBet = myRow(v);
+    if (ctx.mine && myBet && myBet.total > 0 && st.layout === 'vert' && !root.closest('.gdk-stage')) {
+      const r = el.wheelbox.getBoundingClientRect(), pr = el.panel.getBoundingClientRect();
+      const low = Math.min(window.innerHeight, pr.top > 0 ? pr.top : window.innerHeight);
+      if (r.height && (r.top < 56 || r.bottom > low)) el.wheelbox.scrollIntoView({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' });
+    }
     el.ballrot.classList.remove('hide');
     el.drop.classList.remove('down');
     el.drop.style.animation = 'none';
@@ -960,17 +998,17 @@
       if (!root._rl) return;
       st.rakedNo = no;   // далі перемальовка ставить «raked» — стос уже в Глека
       const gr = el.gimg.getBoundingClientRect();
-      const gx = gr.left + gr.width / 2, gy = gr.top + gr.height * 0.6;
+      const gx = gr.left + gr.width / 2, gy = gr.top + gr.height * 0.6, z = st.zoom || 1;   // --rx/--ry — у px під зумом
       el.chips.querySelectorAll('.rl-stk.lose').forEach((s) => {
         const r = s.getBoundingClientRect();
-        s.style.setProperty('--rx', Math.round(gx - (r.left + r.width / 2)) + 'px');
-        s.style.setProperty('--ry', Math.round(gy - (r.top + r.height / 2)) + 'px');
+        s.style.setProperty('--rx', Math.round((gx - (r.left + r.width / 2)) / z) + 'px');
+        s.style.setProperty('--ry', Math.round((gy - (r.top + r.height / 2)) / z) + 'px');
         s.classList.add('raking');
       });
       el.box.querySelectorAll('.rl-oc .rl-stk.lose').forEach((s) => {
         const r = s.getBoundingClientRect();
-        s.style.setProperty('--rx', Math.round(gx - (r.left + r.width / 2)) + 'px');
-        s.style.setProperty('--ry', Math.round(gy - (r.top + r.height / 2)) + 'px');
+        s.style.setProperty('--rx', Math.round((gx - (r.left + r.width / 2)) / z) + 'px');
+        s.style.setProperty('--ry', Math.round((gy - (r.top + r.height / 2)) / z) + 'px');
         s.classList.add('raking');
       });
     }, 900);
