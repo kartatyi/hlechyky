@@ -5,7 +5,7 @@
 
 .memy {
   container-type: inline-size;
-  width: 100%; max-width: 1040px; margin: 0 auto;
+  width: 100%; max-width: var(--g-fmax, 1400px); margin: 0 auto;   /* Світлиця: було 1040 — у ⛶ на 1920+ мем був марочкою */
   display: flex; flex-direction: column; gap: 10px;
 }
 
@@ -57,6 +57,12 @@
   background: color-mix(in srgb, var(--bg2) 55%, transparent);
 }
 .memy-frame.memy-empty .memy-cover { background: transparent; }
+/* Світлиця: на широкій картці (мем ліворуч, відповіді праворуч) висота рамки — від місця під гру, яке рахує каркас
+   (--g-ah: вікно мінус шапка й кнопки картки; ⛶ і ⇔ теж), мінус шапка мему й підпис під рамкою (~100 px). Без каркаса
+   (картка ще не була на столі) — як було, від висоти вікна. */
+@container (min-width: 760px) {
+  .gtable[style*="--g-ah"] .memy-frame { max-width: calc(clamp(240px, var(--g-ah) - 100px, 820px) * 4 / 3); }
+}
 /* лобі на телефоні: заглушка картинки низька, щоб правила й «Почати» господаря були на екрані */
 @container (max-width: 759px) {
   .memy-inlobby .memy-frame { aspect-ratio: auto; height: 130px; }
