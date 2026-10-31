@@ -2042,6 +2042,16 @@ body.g-imm main {
   padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
 }
 body.g-imm .toasts { top: calc(6px + env(safe-area-inset-top)); bottom: auto; }
+/* Занурення лише «телефон лежить» (g-immland, не ⛶): згорнута шторка «💬» — маленька кругла кнопка в рядку шапки столу,
+   одразу ліворуч від ⛶ (там порожньо: шапка тулиться ліворуч), а не на полі; посеред живої аркади її нема (g-arcade),
+   як і стоячи. Розгорнута — як завжди. */
+body.g-imm.g-immland .tchat.drawer:not(.open) {
+  display: flex; top: max(5px, env(safe-area-inset-top)); bottom: auto; left: auto;
+  right: calc(max(8px, env(safe-area-inset-right)) + 42px);
+}
+body.g-imm.g-immland .tchat.drawer:not(.open) .tc-head { padding: 5px 9px; gap: 4px; opacity: .88; }
+body.g-imm.g-immland .tchat.drawer:not(.open) .tc-last { display: none; }
+body.g-imm.g-immland.g-arcade .tchat.drawer:not(.open) { display: none; }
 /* ⛶ на ПК (games/core.js, Fullscreen API): темне тло навколо гри. */
 body.g-fs { background: #08120d; }
 body.g-fs main { padding: 10px 16px; }
