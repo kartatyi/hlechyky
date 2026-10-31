@@ -141,3 +141,14 @@
 @media (prefers-reduced-motion: reduce) {
   .gor-stage.shake, .gor-stage.glow, .gor-glek.pour, .gor-auto.on, .gor-strip i.new { animation: none !important; }
 }
+/* Низький ПК (1366×768) і телефон лежачи: панель праворуч гортала сама себе (на 1366 — ще 55 px). Фішки ставки — в один
+   рядок, проміжки й «Кинути» — нижчі: уся панель у висоту дошки. */
+@media (min-width: 900px) and (max-height: 900px), (orientation: landscape) and (max-height: 520px) {
+  .gor-panel { gap: 6px; }
+  .gor-bet .gor-chips { flex-wrap: nowrap; gap: 4px; }
+  .gor-bet .gor-chips button { min-width: 0; padding: 6px 2px; font-size: 13px; }
+  .gor-go { min-height: 54px; }
+  .gor-lab { margin-bottom: 4px; }
+}
+/* Пальцем: печатка чесності (🔒 хеш) — 20 px заввишки, не влучити */
+@media (pointer: coarse) { .gor-hash { min-height: 34px; padding: 6px 8px; } }

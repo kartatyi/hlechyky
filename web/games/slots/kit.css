@@ -406,6 +406,17 @@
 .sk-saldo b.up { color: #6fdc8c; }
 .sk-saldo b.down { color: #ff7a6b; }
 .sk-port .sk-saldo { font-size: 11px; padding: 2px 8px; gap: 4px; }
+/* Пальцем стоячи: автомат (420×864) вписується масштабом ×0,55…0,8 — кнопки по 40 px ставали 22–31 px на екрані.
+   Тут вони 48 px у кресленні (на ⛶ телефона — ~37 px), колонка керування ширша; «сьогодні» — на всю висоту смуги. */
+@media (pointer: coarse) {
+  .sk-port .sk-hud { grid-template-columns: 104px 1fr 1.1fr; }
+  .sk-port .sk-ctrl { grid-template-columns: 48px 48px; }
+  .sk-port .sk-ico, .sk-port .sk-tog { width: 48px; height: 48px; }
+  .sk-port .sk-ico { font-size: 21px; }
+  .sk-port .sk-tog span { font-size: 20px; }
+  .sk-port .sk-bet button { width: 48px; height: 48px; }
+  .sk-port .sk-saldo { align-self: stretch; padding: 2px 10px; font-size: 12px; }
+}
 .sk-port .sk-jp-l { display: none; }
 /* доплата Глека — табличка над лічильником виграшу (крок dobavka) */
 .sk-dobavka { position: absolute; z-index: 8; pointer-events: none; white-space: nowrap; transform: translate(-50%,-130%);

@@ -51,7 +51,7 @@
         + '<div class="pk-bet" data-pos="' + p + '" hidden><i></i><b></b></div>';
     }
     el.innerHTML = '<div class="pk-top"></div>'
-      + '<div class="pk-table"><div class="pk-felt"></div><div class="pk-ring">'
+      + '<div class="pk-table g-field"><div class="pk-felt"></div><div class="pk-ring">'
       + '<div class="pk-center"><div class="pk-pot"></div><div class="pk-board">'
       + '<span class="pk-slot"></span><span class="pk-slot"></span><span class="pk-slot"></span><span class="pk-slot"></span><span class="pk-slot"></span>'
       + '</div><div class="pk-msg" aria-live="polite"></div></div>' + seats + '</div></div>'

@@ -25,11 +25,11 @@
 }
 
 .pk {
-  display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 1100px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: var(--g-fmax, 1800px); margin: 0 auto;
   /* Висота столу — від місця картки (каркас: --g-ah) мінус шапка, мої карти й панель ходу (~265 px):
      уся гра влазить у вікно без прокрутки, а на великому екрані стіл і карти на ньому ростуть. */
-  --pk-th: clamp(280px, calc(var(--g-ah, 660px) - 265px), 600px);
-  --pk-cw: clamp(44px, calc(var(--pk-th) * .125), 66px);
+  --pk-th: clamp(280px, calc(var(--g-ah, 660px) - 265px), 860px);   /* ⩾ 2K / ⛶: стіл росте до 860 */
+  --pk-cw: clamp(44px, calc(var(--pk-th) * .125), 92px);
 }
 
 /* ---- шапка: формат, сліпі, гроші ---- */
@@ -54,6 +54,7 @@
 .pk .pk-center {
   position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 1;
   display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; width: 72%;
+  font-size: clamp(1em, calc(var(--pk-th, 400px) * .024), 21px);
 }
 .pk .pk-pot { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 1.2em; color: var(--pk-on-felt); }
 .pk .pk-potsum { background: var(--pk-shade); border-radius: 999px; padding: 2px 12px; font-size: .92em; }
@@ -176,6 +177,16 @@
 .pk .pk-btns:empty { display: none; }
 
 /* ---- телефон: стіл вужчий і вищий, панель ходу на всю ширину ---- */
+/* Великий стіл (2K, ⛶): плашки гравців і їхні карти — пропорційно більші, інакше губляться на сукні. */
+@media (min-width: 2000px) and (min-height: 1300px) {
+  .pk { --pk-th: clamp(280px, calc(var(--g-ah, 660px) - 290px), 860px); }
+  .pk .pk-seat { width: 136px; font-size: 1.12em; }
+  .pk .pk-box { max-width: 136px; min-width: 104px; }
+  .pk .pk-hole { height: 42px; }
+  .pk .pkc.sm { width: 30px; height: 42px; }
+  .pk .pkc.lg { width: 72px; height: 101px; font-size: 1.55em; }
+}
+
 @media (max-width: 560px) {
   .pk { --pk-th: clamp(300px, calc(var(--g-ah, 640px) - 250px), 372px); }
   .pk .pk-table { width: 100%; }
@@ -206,7 +217,7 @@
   .pk .pk-pm .pkc.sm { width: 28px; height: 38px; font-size: .82em; }
   .pk .pk-raise { flex-wrap: nowrap; gap: 6px; }
   .pk .pk-range { flex: 1 1 100px; min-width: 0; }
-  .pk .pk-qs button { padding: 6px 7px; min-height: 36px; }
+  .pk .pk-qs button { padding: 6px 7px; min-height: 36px; min-width: 34px; }
   .pk .pk-btns button { flex: 1 1 40%; }
 }
 

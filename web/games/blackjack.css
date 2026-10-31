@@ -32,7 +32,7 @@
   --bj-c500: #2a2420;
 }
 
-.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 1100px; margin: 0 auto; min-width: 0; }
+.bj { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: var(--g-fmax, 1100px); margin: 0 auto; min-width: 0; }
 .bj .muted { color: var(--muted); }
 
 /* ---- шапка ---- */
@@ -80,6 +80,13 @@
    Розмір карти — від висоти картки (каркас: --g-ah): на звичайному ноуті як був (40 px), на великому екрані й у ⛶
    росте до 80 px — карти видно з дивана. Телефон (≤520) лишається на своїх розмірах. */
 .bj { --bj-cw: clamp(40px, calc(40px + (var(--g-ah, 600px) - 640px) * .3), 80px); }
+/* ⛶ і 2K на ПК: стіл (1100 px) лишався острівцем на 42 % екрана — тут увесь стіл більшає разом із текстом і кнопками.
+   Лише на сторінці столу (у віконці «Стіл у куточку» — як було). */
+body.g-room.g-fs .gtable .bj { zoom: 1.2; }
+@media (min-width: 2000px) and (min-height: 1300px) {
+  body.g-room .gtable .bj { zoom: 1.4; }
+  body.g-room.g-fs .gtable .bj { zoom: 1.45; }
+}
 .bj-cards { display: flex; align-items: center; min-height: calc(var(--bj-cw) * 1.4); }
 .bj-cards > .bjc + .bjc { margin-left: calc(var(--bj-cw) * -.3); }
 .bjc {
@@ -244,3 +251,13 @@
   .bj-glek img, .bj-glek .bj-badge, .bjc, .bj-say, .bj-chipbtn { animation: none !important; transition: none !important; }
   .bj-glek img { transform: none !important; }
 }
+
+/* Лежачи на телефоні: сукно ліворуч, ставки, кнопки й низ — колонкою праворуч (було стовпчиком, сукно під краєм). */
+body.g-land .gtable .bj {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 38%); grid-auto-rows: min-content;
+  align-content: start; column-gap: 10px; row-gap: 6px; max-width: none;
+}
+body.g-land .gtable .bj > * { grid-column: 2; min-width: 0; }
+body.g-land .gtable .bj > .bj-felt { grid-column: 1; grid-row: 1 / span 8; align-self: start; margin: 7px 7px 9px; padding: 8px 10px 10px; }
+body.g-land .gtable .bj-stage { grid-template-columns: 60px minmax(0, 1fr); min-height: 84px; }
+body.g-land .gtable .bj-rules { margin: 4px 0 6px; }

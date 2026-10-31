@@ -31,7 +31,7 @@
 .dice {
   --di-s: 44px;
   container-type: inline-size;
-  width: 100%; max-width: 760px; margin: 0 auto;
+  width: 100%; max-width: 840px; margin: 0 auto;
   display: flex; flex-direction: column; gap: 10px;
 }
 .dice .s0 { --di-c: var(--di-s0); } .dice .s1 { --di-c: var(--di-s1); } .dice .s2 { --di-c: var(--di-s2); }
@@ -346,7 +346,7 @@
 /* Full HD: стіл ширший, усе більше — на 1920 760 px губились посеред картки, а висоти лишалось на пів екрана.
    Навіть розкриття на шістьох із таким масштабом стає в 1080 без прокрутки. */
 @media (min-width: 1600px) and (min-height: 900px) {
-  .dice { max-width: 980px; --di-s: 50px; font-size: 1.1em; }
+  .dice { max-width: 1080px; --di-s: 50px; font-size: 1.1em; }
   .di-p { min-width: 118px; max-width: 180px; }
   .di-pc { height: 28px; }
   .di-p .di-cup { width: 24px; height: 26px; }
@@ -408,7 +408,7 @@
   .di-melabel { font-size: .8em; }
   .di-act { gap: 6px; }
   /* на телефоні пігулка «Стіл» є завжди — і там, де :has ще не вміють */
-  .dice { padding-bottom: 60px; }
+  .dice { margin-bottom: 60px; }   /* відступом зовні, а не всередині: стіл не «довший» за екран */
   .di-rxb { width: 32px; height: 28px; }
 }
 
@@ -444,7 +444,7 @@
 /* ---------------------------------------------------------------- телефон лежачи */
 /* Лежачи стіл ішов стовпчиком на півтора екрана (537 px у картці на 344): суперники й ставка — ліворуч,
    мої кісточки й керування — праворуч, усе в один екран. */
-body.g-land .gtable .dice { max-width: none; padding-bottom: 0; }
+body.g-land .gtable .dice { max-width: none; padding-bottom: 0; margin-bottom: 0; }
 body.g-land .gtable .di-table {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; align-items: start;
 }
@@ -458,3 +458,18 @@ body.g-land .gtable .di-face { min-height: 46px; padding: 3px 2px 2px; }
 body.g-land .gtable .di-act { gap: 4px; }
 body.g-land .gtable .di-qrow button { width: 40px; height: 40px; }
 body.g-land .gtable .di-go, body.g-land .gtable .di-row2 button { min-height: 40px; }
+
+/* ⛶ і 2K на ПК: стіл стояв острівцем 980×400 (41–54 % місця) — тут увесь стіл більшає разом із кісточками й кнопками.
+   Лише на сторінці столу (у віконці «Стіл у куточку» — як було). */
+body.g-room.g-fs .gtable .dice { zoom: 1.3; }
+@media (min-width: 2000px) and (min-height: 1300px) {
+  body.g-room .gtable .dice { zoom: 1.4; }
+  body.g-room.g-fs .gtable .dice { zoom: 1.5; }
+}
+/* Лежачи, лобі: правила — колонкою праворуч, глек із кісточками й «чекаємо» — ліворуч (було на 385 px у картці на 329). */
+body.g-land .gtable .di-how {
+  display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); column-gap: 14px; row-gap: 6px;
+  align-items: center; max-width: none; text-align: left;
+}
+body.g-land .gtable .di-how > * { grid-column: 1; justify-self: center; text-align: center; }
+body.g-land .gtable .di-how > ol { grid-column: 2; grid-row: 1 / span 6; justify-self: stretch; text-align: left; }

@@ -265,7 +265,7 @@
     '<path d="M5 81H20V95H5L9 88Z" fill="#8a0a1e" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
     '<path d="M95 81H80V95H95L91 88Z" fill="#8a0a1e" stroke="' + I + '" stroke-width="2.2" stroke-linejoin="round"/>' +
     '<path d="M14 79H86V93H14Z" fill="url(#sg-ribbon)" stroke="' + I + '" stroke-width="2.4" stroke-linejoin="round"/>' +
-    '<text x="50" y="90.4" text-anchor="middle" font-family="Onest, system-ui, sans-serif" font-weight="900" font-size="10.5" letter-spacing=".6" fill="#ffe27a" stroke="' + I + '" stroke-width="2.2" paint-order="stroke" stroke-linejoin="round">ДИКИЙ</text>' +
+    '<text x="50" y="90.4" text-anchor="middle" font-family="Onest, system-ui, sans-serif" font-weight="900" font-size="12.5" letter-spacing=".3" fill="#ffe27a" stroke="' + I + '" stroke-width="2.2" paint-order="stroke" stroke-linejoin="round">ДИКИЙ</text>' +
     spark(30, 30, 10));
 
   /* ---------- extras ---------- */

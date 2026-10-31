@@ -20,7 +20,7 @@
   const ICON = '<svg class="gico" viewBox="0 0 16 16" aria-hidden="true">'
     + '<rect x="1.6" y="3.2" width="7.6" height="10.6" rx="1.4" fill="var(--panel2)" stroke="var(--muted)" stroke-width="1" transform="rotate(-12 5.4 8.5)"/>'
     + '<rect x="6.6" y="2.2" width="7.6" height="10.6" rx="1.4" fill="var(--panel2)" stroke="var(--accent)" stroke-width="1.3" transform="rotate(10 10.4 7.5)"/>'
-    + '<text x="10.5" y="10.3" text-anchor="middle" font-size="5.4" font-weight="800" fill="var(--accent)" transform="rotate(10 10.4 7.5)">21</text></svg>';
+    + '<path d="M10.4 4.6c1.6 1.7 2.9 2.7 2.9 4 0 1-.8 1.6-1.6 1.6-.5 0-.9-.2-1.1-.5l.5 1.9H9.7l.5-1.9c-.2.3-.6.5-1.1.5-.8 0-1.6-.6-1.6-1.6 0-1.3 1.3-2.3 2.9-4z" fill="var(--accent)" transform="rotate(10 10.4 7.5)"/></svg>';
 
   const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const CODE = /^[2-9TJQKA][shdc]$/;
@@ -71,7 +71,7 @@
     const box = document.createElement('div');
     box.className = 'bj';
     box.innerHTML = '<div class="bj-top"></div>'
-      + '<div class="bj-felt">'
+      + '<div class="bj-felt g-field">'
       + '<div class="bj-stage">'
       + '<div class="bj-glek" data-mood="idle"><img src="/static/glek.svg" alt="Дядько Глек" draggable="false"><span class="bj-badge"></span></div>'
       + '<div class="bj-say" aria-live="polite"></div>'

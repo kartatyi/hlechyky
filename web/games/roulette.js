@@ -345,11 +345,28 @@
     }
     const v = z === 1 ? '' : z.toFixed(3);
     if (box.style.zoom !== v) box.style.zoom = v;
+    fitRows(st, f);
     st.zoom = z;
     if (z !== 1) {
       const r = box.getBoundingClientRect();
       if (Math.abs(r.width - box.offsetWidth * z) > 3) { st.noZoom = true; st.zoom = 1; box.style.zoom = ''; }
     }
+  }
+
+  /// Телефон стоячи: висота рядка вертикального поля (14 рядків) — щоб сцена, поле й панель ставок влізли в місце картки
+  /// (--g-ah від каркаса). 26…40 px: нижче — пальцем не влучити, тоді краще догорнути. Велике число після кола (.rl-big)
+  /// не рахуємо — воно на кілька секунд, поле не має смикатись. Без заміру каркаса (віконце в куточку) — як було, 40.
+  function fitRows(st, f) {
+    const el = st.el, b = el && el.board;
+    if (!b) return;
+    let rh = '';
+    if (st.layout === 'vert' && f && f.ah) {
+      const big = el.big.offsetHeight ? el.big.offsetHeight + 4 : 0;
+      const used = el.stage.offsetHeight - big + 12 + el.panel.offsetHeight + 10 + (el.legend.offsetHeight ? el.legend.offsetHeight + 10 : 0)
+        + (el.closed.hidden ? 0 : el.closed.offsetHeight + 10) + 20;   // 12/10 — проміжки сітки, 20 — рамка й відступ поля
+      rh = Math.max(26, Math.min(40, Math.floor((f.ah - used - 32) / 13))) + 'px';   // останній рядок («2:1») — від 32 px
+    }
+    if (b.style.getPropertyValue('--rl-rh') !== rh) { if (rh) b.style.setProperty('--rl-rh', rh); else b.style.removeProperty('--rl-rh'); }
   }
 
   /// Розкладка за шириною картки (§8.2): ≥ 900 — широко, 640…900 — середньо, < 640 — телефон (поле вертикальне).
@@ -1053,7 +1070,7 @@
     const tip = st.press ? tipOf(st.press.spot) : st.hover ? tipOf(st.hover) : flash ? flash
       : st.curOn ? tipOf(st.out >= 0 ? OUTSIDE[st.out] : spotAt(st.cur.x, st.cur.y, st.us) || 'straight:0')
         : v.closed ? 'Каса зачинена — спробуй трохи згодом'
-          : can ? (ctx.ui.coarse() ? 'Торкнись поля — фішка ляже. Край клітинки — спліт, ріжок — кут' : 'Клікни поле — фішка ляже. Край клітинки — спліт, ріжок — кут')
+          : can ? (ctx.ui.coarse() ? (st.layout === 'vert' ? 'Торкнись поля: край клітинки — спліт, ріжок — кут' : 'Торкнись поля — фішка ляже. Край клітинки — спліт, ріжок — кут') : 'Клікни поле — фішка ляже. Край клітинки — спліт, ріжок — кут')
             : v.phase === 'spin' ? 'Ставки зроблено — колесо крутиться' : v.phase === 'result' ? 'Глек рахує виграші — ставки за мить' : '';
     let chips = '';
     for (const c of CHIPS) {

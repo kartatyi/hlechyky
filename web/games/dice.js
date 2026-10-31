@@ -148,7 +148,8 @@
     let el = root.querySelector(':scope > .dice');
     if (el) return el;
     el = document.createElement('div');
-    el.className = 'dice';
+    el.className = 'dice g-field';   // поле каркаса (--g-fh, заміри); лежачи розкладка своя — g-ownland
+    root.classList.add('g-ownland');
     const faces = [1, 2, 3, 4, 5, 6].map((f) => '<button type="button" class="di-face" data-f="' + f + '"'
       + ' aria-label="' + (f === 1 ? 'глечики' : 'грань ' + f) + '">' + die(f) + '<small></small></button>').join('');
     el.innerHTML = '<div class="di-lobby" hidden></div>'
