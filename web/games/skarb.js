@@ -238,6 +238,8 @@
     k.classList.add('skb-on');
     for (const m of ['pc', 'ph', 'ls']) k.classList.toggle('skb-m-' + m, m === mode);
     if (gt) { gt.classList.add('skb-gt'); for (const x of THEMES) gt.classList.toggle('skb-gt-' + x, x === th); }
+    // Під час партії місця в рядку столу дублюють плашки гравців на столі (до 10 — рядок гортався б): ховаємо.
+    if (gt) gt.classList.toggle('skb-gt-play', !!(st.ctx && st.ctx.room && st.ctx.room.status === 'playing'));
     // «← Лобі», місця й кнопки столу — одним рядком у картці (свого рядка над карткою не займають).
     if (HGames.ui && HGames.ui.headIn) HGames.ui.headIn(root, true);
     const de = getComputedStyle(document.documentElement);
@@ -250,7 +252,15 @@
     // ПК: згорнута шторка «💬» — пігулка в правому нижньому куті, висоти не забирає (лише відступ правому низу).
     const tail = mode === 'pc' ? (page ? parseFloat(getComputedStyle(page).paddingBottom) || 0 : 0) : dock + 6;
     const minH = mode === 'pc' ? 460 : mode === 'ls' ? 200 : 420;
-    const H = Math.max(minH, Math.floor(vh - tail - y0 - below));
+    let H = Math.max(minH, Math.floor(vh - tail - y0 - below));
+    // Телефон лежачи (body.g-land): картка каркаса сама — вікно з прокруткою, нижча за екран; гра — до її нижнього поля,
+    // а не до низу вікна (інакше рука виходила на ~45 px нижче й картку доводилось гортати).
+    const gcs = mode === 'ls' && gt ? getComputedStyle(gt) : null;
+    const gmax = gcs && /auto|scroll/.test(gcs.overflowY) ? parseFloat(gcs.maxHeight) : NaN;   // картка росте за змістом до max-height
+    if (gmax > 0) {
+      const inner = br.top + gmax - (parseFloat(gcs.paddingBottom) || 0) - (parseFloat(gcs.borderBottomWidth) || 0);
+      H = Math.max(minH, Math.min(H, Math.floor(inner - (kr.top + gt.scrollTop))));
+    }
     setVar(k, '--skb-h', px(H));
     setVar(k, '--skb-dock', px(mode === 'pc' ? dock : 0));
     const n = st.view && st.view.players ? st.view.players.length : 5;
@@ -592,6 +602,8 @@
     const st = state(root);
     st.ctx = ctx;
     st.view = ctx && ctx.view && ctx.view.grid ? ctx.view : null;
+    const gt0 = root.closest('.gtable');
+    if (gt0 && gt0.classList.contains('skb-gt')) gt0.classList.toggle('skb-gt-play', !!(ctx && ctx.room && ctx.room.status === 'playing'));
     if (!M) {
       if (!root.firstChild) root.innerHTML = '<p class="skb-wait muted">Копаємо до скарбу…</p>';
       load().then(() => { if (root._sk === st) paint(root, st.ctx); }, (e) => { root.innerHTML = '<p class="skb-err">Не вдалося завантажити гру. Онови сторінку.</p>'; console.warn(e); });

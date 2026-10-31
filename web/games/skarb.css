@@ -53,6 +53,9 @@
 .grbox > .gtable.skb-gt > .grhead.gin > .grother { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .grbox > .gtable.skb-gt > .gseats { flex: 1 1 0; order: 2; justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 .grbox > .gtable.skb-gt > .gseats::-webkit-scrollbar { display: none; }
+.grbox > .gtable.skb-gt.skb-gt-play > .gseats > :is(.gseat, .gfreeall) { display: none; }
+/* У лобі столу місця — головне (хто сів, куди сісти): переносяться рядками, а не ховаються за прихованою прокруткою. */
+.grbox > .gtable.skb-gt:not(.skb-gt-play) > .gseats { flex-wrap: wrap; overflow-x: visible; }
 .grbox > .gtable.skb-gt > .gseats > * { flex: none; }
 .grbox > .gtable.skb-gt > .gbtns { flex: none; order: 4; margin: 0; flex-wrap: nowrap; }
 .grbox > .gtable.skb-gt > .gstatus { display: none; }
@@ -587,7 +590,7 @@ button.skb-gm.tgt .skb-gc { animation: skglow 1.1s ease-in-out infinite alternat
 .skb-t-wood .skb-disc { inset: 5px; background: radial-gradient(circle at 50% 30%, #fff6e0, color-mix(in srgb, var(--pc) 55%, #f7eedb)); box-shadow: inset 0 0 0 2px #2a160b; }
 .skb-t-wood .skb-ring .fg { stroke: #b3261e; stroke-width: 3; }
 .skb-t-wood .skb-pn { font-weight: 900; font-size: 15px; }
-.skb-t-wood .skb-pn em { background: #e2d2ae; color: #6e5440; font-size: 10.5px; }
+.skb-t-wood .skb-pn em { background: #e2d2ae; color: #6e5440; font-size: 11px; }
 .skb-t-wood .skb-pn em.you { background: #b3261e; color: #fff; }
 .skb-t-wood .skb-pn em .skb-lx { display: inline; }
 .skb-t-wood .skb-ps { font-weight: 900; gap: 10px; }
@@ -668,6 +671,7 @@ button.skb-gm.tgt .skb-gc { animation: skglow 1.1s ease-in-out infinite alternat
 .skb-t-wood .skb-adv { min-height: 30px; font-size: 12px; margin-top: 6px; background: linear-gradient(180deg, #fff1c8, #f2c14e); box-shadow: inset 0 0 0 1.5px #2a160b, 0 3px 0 #3a1d0a; }
 .skb-t-wood .skb-gls { gap: 8px; padding-top: 10px; }
 .skb-t-wood .skb-gm { color: #6e5440; font-weight: 700; font-size: 11px; }
+.skb-gm small { font-size: 11px; }
 .skb-t-wood .skb-gm b { color: #2a160b; }
 .skb-t-wood .skb-gc { height: 52px; margin-bottom: 4px; border-radius: 8px; background: linear-gradient(145deg, #c58a4e, #7a4a22); box-shadow: inset 0 0 0 2px #2a160b, 0 3px 0 #5a3519; }
 .skb-t-wood .skb-gc > svg { width: 34px; height: 34px; }
@@ -680,7 +684,7 @@ button.skb-gm.tgt .skb-gc { animation: skglow 1.1s ease-in-out infinite alternat
 .skb-t-wood .skb-log::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 1.5px; background: rgba(200, 40, 40, .45); }
 .skb-t-wood .skb-log::after { content: ''; position: absolute; left: 50%; top: -10px; width: 86px; height: 22px; transform: translateX(-50%) rotate(-3deg); background: rgba(240, 225, 180, .75); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
 .skb-t-wood .skb-log .skb-hd { font-size: 13px; letter-spacing: .04em; margin-bottom: 2px; }
-.skb-t-wood .skb-log ol { overflow: auto; scrollbar-width: none; font-size: 12.5px; line-height: 22px; }
+.skb-t-wood .skb-log ol { overflow: auto; scrollbar-width: thin; font-size: 12.5px; line-height: 22px; }
 .skb-t-wood .skb-log li { align-items: baseline; gap: 7px; }
 .skb-t-wood .skb-log li .skb-ji { width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px #2a160b; transform: translateY(1px); }
 .skb-t-wood .skb-log li .skb-ji svg { display: none; }
@@ -774,7 +778,7 @@ button.skb-gm.tgt .skb-gc { animation: skglow 1.1s ease-in-out infinite alternat
 .skb-t-night .skb-ring .fg { stroke: var(--sk-gold2); }
 .skb-t-night .skb-sec { background: rgba(10, 8, 10, .85); color: var(--sk-gold2); box-shadow: inset 0 0 0 1px var(--sk-gold); }
 .skb-t-night .skb-pn { font-weight: 700; font-size: 14.5px; }
-.skb-t-night .skb-pn em { background: none; padding: 0; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.skb-t-night .skb-pn em { background: none; padding: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 .skb-t-night .skb-pn em.you { color: var(--sk-gold2); }
 .skb-t-night .skb-pn em .skb-lx { display: inline; }
 .skb-t-night .skb-ps { font-size: 13px; color: var(--muted); }
