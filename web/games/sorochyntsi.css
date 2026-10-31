@@ -73,11 +73,11 @@
 .sor-pm.light { color: #1d1a14; box-shadow: 0 0 0 1.5px #3a3328; }
 
 /* ─── Що зараз ───────────────────────────────────────────── */
-.sor-say { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: var(--panel2); line-height: 1.35; }
+.sor-say { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 9px 12px; border-radius: 12px; background: var(--panel2); line-height: 1.35; }
 .sor-say.mine { background: color-mix(in srgb, var(--accent) 18%, var(--panel2)); border-left: 4px solid var(--accent); }
-.sor-say-t { flex: 1; min-width: 0; }
+.sor-say-t { flex: 1 1 190px; min-width: 0; }
 .sor-tipl { margin-top: 3px; font-size: .9em; color: var(--accent); }
-.sor-tipb { flex: none; min-height: 40px; min-width: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel3, var(--panel)); padding: 4px 10px; font-weight: 700; }
+.sor-tipb { flex: none; margin-left: auto; min-height: 40px; min-width: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel3, var(--panel)); padding: 4px 10px; font-weight: 700; }
 .sor-tipb.on { border-color: var(--accent); color: var(--accent); }
 .sor-back { margin: 6px 0 2px; min-height: 40px; padding: 6px 14px; border-radius: 10px; }
 
