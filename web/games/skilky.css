@@ -24,7 +24,7 @@
 
 /* Питання — головне на картці, тому воно й найбільше. */
 .skq {
-  text-align: center; font-size: 1.15em; line-height: 1.35; font-weight: 600;
+  text-align: center; font-size: clamp(1.15em, calc(var(--g-aw, 600px) * .022), 2em); line-height: 1.35; font-weight: 600; /* росте з карткою (⛶, 2K) */
   min-height: 2.6em; display: grid; place-items: center; padding: 0 2px;
 }
 .skq.wait { color: var(--muted); font-weight: 400; font-size: 1em; }
@@ -143,9 +143,11 @@
 .skphoto img { display: block; margin: 0 auto; max-width: 100%; max-height: min(52vh, 460px); border-radius: 10px;
   background: var(--panel2, rgba(127,127,127,.12)); min-height: 120px; object-fit: contain; }
 .skphoto img[src] { cursor: zoom-in; }
-/* Низький екран (айфон 390×664, Steam Deck 1280×800): фото нижче, щоб поле відповіді не тікало за край; дрібниці — тап, і фото на весь екран. */
-@media (max-height: 820px) { .skphoto img { max-height: 40vh; } }
-@media (max-height: 700px) { .skphoto img { max-height: 28vh; min-height: 90px; } }
+/* Висота фото — від місця картки (каркас: --g-ah), а не від вікна: питання, поле відповіді й рядок гравців лишаються
+   на екрані (айфон 390×664, Steam Deck 1280×800, лежачи), а у ⛶ фото більше; дрібниці — тап, і фото на весь екран. */
+.gtable .skphoto img { max-height: clamp(90px, calc(var(--g-ah, 700px) - 250px), 720px); }
+@media (max-height: 700px) { .skphoto img { min-height: 90px; } }
+.gtable .skphoto.skzoom img { max-height: 92vh; } /* фото на весь екран — без стелі картки */
 .skphoto.skzoom img { position: fixed; inset: 0; margin: auto; z-index: 60; max-width: 96vw; max-height: 92vh; cursor: zoom-out;
   box-shadow: 0 0 0 100vmax rgba(0,0,0,.82); }
 .skcredit { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
