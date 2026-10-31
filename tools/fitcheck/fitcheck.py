@@ -299,20 +299,25 @@ def compare(base, now, tol):
                 out.append((True, f"{g} {m}: не виміряно (у базі бал {b['score']})"))
             continue
         bt, nt = {i.split(":")[0] for i in b["issues"]}, {i.split(":")[0] for i in n["issues"]}
+        bad, good = [], []   # один рядок на гру/екран
         if n["score"] > b["score"]:
-            new = [next(i for i in n["issues"] if i.startswith(t)) for t in sorted(nt - bt)]
+            new = [next(i for i in n["issues"] if i.startswith(t)) for t in sorted(nt - bt, key=lambda t: -W.get(t, 1))]
             gone = sorted(bt - nt)
-            out.append((True, f"{g} {m}: бал {b['score']} → {n['score']}"
-                        + (f"; з'явилось: {', '.join(UA.get(i.split(':')[0], i) + ' ' + i.partition(':')[2] for i in new)}" if new else "")
-                        + (f"; зникло: {', '.join(UA.get(t, t) for t in gone)}" if gone else "")))
+            bad.append(f"бал {b['score']} → {n['score']}"
+                       + (f" (з'явилось: {', '.join(UA.get(i.split(':')[0], i) + ' ' + i.partition(':')[2] for i in new)})" if new else "")
+                       + (f" (зникло: {', '.join(UA.get(t, t) for t in gone)})" if gone else ""))
         elif n["score"] < b["score"]:
-            out.append((False, f"{g} {m}: краще — бал {b['score']} → {n['score']}"))
+            good.append(f"бал {b['score']} → {n['score']}")
         if n["below"] > max(4, b["below"] + tol):
-            out.append((True, f"{g} {m}: поле нижче екрана {b['below']} → {n['below']} px (`{n['el']}`)"))
+            bad.append(f"поле нижче екрана {b['below']} → {n['below']} px `{n['el']}`")
         elif b["below"] > 4 and n["below"] < b["below"] - tol:
-            out.append((False, f"{g} {m}: краще — поле нижче екрана {b['below']} → {n['below']} px"))
+            good.append(f"поле нижче екрана {b['below']} → {n['below']} px")
         if n["hOver"] > b["hOver"] + 1:
-            out.append((True, f"{g} {m}: сторінка прокручується вбік на {n['hOver']} px (у базі {b['hOver']})"))
+            bad.append(f"прокрутка вбік {b['hOver']} → {n['hOver']} px")
+        if bad:
+            out.append((True, f"{g} {m}: " + "; ".join(bad)))
+        elif good:
+            out.append((False, f"{g} {m}: краще — " + "; ".join(good)))
     return out
 
 
