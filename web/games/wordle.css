@@ -9,9 +9,20 @@
 }
 
 /* Дошка вужча за звичайну (п'ять колонок на шість рядів), тож і плитка менша. */
-.board.wtiles { width: min(300px, 100%); gap: 6px; }
+.board.wtiles { width: min(300px, 100%); gap: 6px; container-type: inline-size; }
+/* Дошка — за місцем під поле від каркаса (--g-fh: висота картки мінус табло, клавіатура, підвал), не вище за 360 px
+   стовпчиком; дрібніше 190 px не стискаємо — далі краще прокрутити, ніж мружитись. */
+.gbody > .board.wtiles {
+  width: min(100%, 360px, max(200px, calc((var(--g-fh, 380px) - 12px) * var(--cols, 5) / var(--rows, 6))));
+}
+/* Широка картка (клас ставить wordle.js): дошка ліворуч на всю висоту, решта — колонкою праворуч. */
+.gbody.wd-wide { display: grid; grid-template-columns: auto minmax(320px, 460px); justify-content: center; align-items: center;
+  align-content: center; column-gap: 32px; row-gap: 10px; grid-auto-flow: row dense; }
+.gbody.wd-wide > * { grid-column: 2; min-width: 0; }
+.gbody.wd-wide > .board.wtiles { grid-column: 1; grid-row: 1 / span 12;
+  width: min(var(--g-fmax, 620px), max(240px, calc((var(--g-ah, 480px) - 12px) * var(--cols, 5) / var(--rows, 6))), calc(var(--g-aw, 900px) - 360px)); }
 .board.wtiles .cell {
-  font-size: 1.6em; font-weight: 700; text-transform: uppercase; border-radius: 8px;
+  font-size: max(1.35em, 8.5cqi); font-weight: 700; text-transform: uppercase; border-radius: 8px;
   background: var(--panel); border: 2px solid var(--line); color: var(--text);
 }
 /* Набрана, але ще не відправлена літера: рамка яскравіша, тла нема — плитка ще «порожня». */
@@ -51,7 +62,7 @@
 
 @media (max-width: 480px) {
   .board.wtiles { gap: 5px; }
-  .board.wtiles .cell { font-size: 1.35em; border-width: 2px; }
+  .board.wtiles .cell { border-width: 2px; }
 }
 
 /* Невисокий телефон (айфон — видно 390×664): дошка на всю ширину забирала екран, і клавіатура опинялась під
@@ -59,12 +70,7 @@
    (а з нею й висота: плитки квадратні, 5×6) рахується від висоти екрана так, щоб дошка й клавіатура
    стали разом між шапкою сайту й нижніми вкладками. 348 px — усе, що над дошкою й під нею (шапка сайту й
    столу, клавіатура з клавішами 42 px під палець — core.css). Нижче 190 px не стискаємо: далі краще прокрутити, ніж мружитись. */
-@media (max-width: 900px) {
-  .gbody > .board.wtiles {
-    width: min(300px, 100%, max(190px, calc((100vh - var(--tabs-h, 0px) - 348px) * .83)));
-    width: min(300px, 100%, max(190px, calc((100dvh - var(--tabs-h, 0px) - 348px) * .83)));
-  }
-}
+/* (Було: ширина від 100dvh − 348 px на вузькому. Тепер те саме, але точніше, дає --g-fh каркаса — правило вгорі.) */
 
 @media (prefers-reduced-motion: reduce) {
   .board.wtiles .cell.flip, .board.wtiles .cell.bad { animation: none; }
@@ -197,9 +203,10 @@
    Прохід №3 (29.09): дошки на 4 і 6 літер, 💡 підказка, спринт, серія й розподіл спроб.
    ================================================================================================ */
 /* Чотири колонки — плитка ширша, тож і дошка вужча, щоб шість рядів не з'їли екран; шість — навпаки. */
-.board.wtiles.wl4 { width: min(236px, 100%); }
-.board.wtiles.wl6 { width: min(330px, 100%); }
-.board.wtiles.wl6 .cell { font-size: 1.35em; }
+/* (Соло-дошку прямо в картці рахує правило вгорі за --cols/--rows; ці стелі — для дошок усередині наввипередки й архіву.) */
+:not(.gbody) > .board.wtiles.wl4 { width: min(236px, 100%); }
+:not(.gbody) > .board.wtiles.wl6 { width: min(330px, 100%); }
+.board.wtiles.wl6 .cell { font-size: max(1.15em, 7cqi); }
 .board.wtiles.wl4 .cell.flip:nth-child(4n + 1), .board.wtiles.wl6 .cell.flip:nth-child(6n + 1) { animation-delay: 0s; }
 .board.wtiles.wl4 .cell.flip:nth-child(4n + 2), .board.wtiles.wl6 .cell.flip:nth-child(6n + 2) { animation-delay: .08s; }
 .board.wtiles.wl4 .cell.flip:nth-child(4n + 3), .board.wtiles.wl6 .cell.flip:nth-child(6n + 3) { animation-delay: .16s; }
@@ -216,7 +223,6 @@
     width: min(300px, 100%, max(200px, calc((100vh - var(--tabs-h, 0px) - var(--wr-reserve, 370px)) * 1)));
     width: min(300px, 100%, max(200px, calc((100dvh - var(--tabs-h, 0px) - var(--wr-reserve, 370px)) * 1)));
   }
-  .board.wtiles.wl6 .cell { font-size: 1.15em; }
 }
 
 /* 💡 Підказана літера: стоїть блідо на своєму місці в рядку, який зараз набираєш. */
@@ -265,12 +271,7 @@
   .board.wtiles ~ .gkbd .gkey { min-height: 48px; padding: 0; font-size: 1.05em; border-radius: 7px; }
   .board.wtiles ~ .gkbd .gkey.wide { font-size: .85em; }
 }
-/* Клавіатура вища на ~20 px — дошка під висоту екрана стискається на стільки ж (348/370/420 — у правилах вище). */
-@media (pointer: coarse) and (max-width: 900px) {
-  .gbody > .board.wtiles {
-    width: min(300px, 100%, max(190px, calc((100dvh - var(--tabs-h, 0px) - 368px) * .83)));
-  }
-}
+/* Клавіатура вища на ~20 px — її висоту каркас уже відняв у --g-fh, дошка стискається сама (правило вгорі). */
 @media (pointer: coarse) and (max-width: 560px) {
   .wrme { --wr-reserve: 390px; }
   .wrme.wtools { --wr-reserve: 440px; }
@@ -312,6 +313,12 @@
 .walist { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; width: min(640px, 100%); margin: 0 auto; }
 .walist[hidden], .wabody[hidden] { display: none; }
 .walist > div { grid-column: 1 / -1; text-align: center; }
+/* Телефон: 30 днів — три в ряд (номер і дата зверху, стан під ними), а не два: список удвічі коротший. */
+@media (max-width: 560px) {
+  .walist { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 5px; }
+  .walist .waday { flex-wrap: wrap; gap: 0 6px; padding: 6px 8px; justify-content: flex-start; }
+  .walist .waday .wrst { flex: 1 1 100%; font-size: .85em; }
+}
 .waday { display: flex; gap: 6px; align-items: baseline; justify-content: space-between; text-align: left; }
 .waday.done { opacity: .8; }
 .wabody { display: flex; flex-direction: column; align-items: center; gap: 8px; align-self: stretch; }

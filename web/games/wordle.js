@@ -146,8 +146,16 @@
     });
   }
 
+  /// Широка картка (ПК, ⇔, ⛶): дошка ліворуч на всю висоту картки, табло дня, клавіатура й решта — колонкою праворуч.
+  /// Раніше все стояло стовпчиком: на 1440×900 картка була вища за вікно, а на 2K/⛶ дошка лишалась 300 px.
+  function fitWide(root, f) {
+    const on = !!(f && f.aw >= 780) && !document.body.classList.contains('g-land');
+    if (root.classList.contains('wd-wide') !== on) root.classList.toggle('wd-wide', on);
+  }
+
   function paint(root, ctx) {
     const st = state(root);
+    if (HGames.ui.onFit) HGames.ui.onFit(root, (f) => fitWide(root, f));
     st.ctx = ctx;
     if (ctx.room) roots[ctx.room.id] = root;
     const v = ctx.view || {};
