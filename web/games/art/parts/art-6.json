@@ -1,0 +1,41 @@
+{
+ "v": 1,
+ "i": {
+  "bluff": "bluff",
+  "dice": "dice",
+  "geese": "geese",
+  "geese-daily": "geese",
+  "geo": "geo",
+  "geo-challenge": "geo",
+  "geo-daily": "geo",
+  "geo-solo": "geo",
+  "melody": "melody",
+  "memy": "memy",
+  "memy-solo": "memy",
+  "mgprobe": "vechirka",
+  "skarb": "skarb",
+  "skilky": "skilky",
+  "skilky-daily": "skilky",
+  "svoya": "svoya",
+  "vechirka": "vechirka"
+ },
+ "b": {
+  "bluff": "bluff",
+  "dice": "dice",
+  "geese": "geese",
+  "geese-daily": "geese",
+  "geo": "geo",
+  "geo-challenge": "geo",
+  "geo-daily": "geo",
+  "geo-solo": "geo",
+  "melody": "melody",
+  "memy": "memy",
+  "memy-solo": "memy",
+  "mgprobe": "vechirka",
+  "skarb": "skarb",
+  "skilky": "skilky",
+  "skilky-daily": "skilky",
+  "svoya": "svoya",
+  "vechirka": "vechirka"
+ }
+}
