@@ -28,7 +28,9 @@
 .mf-rules:empty { display: none; }
 
 /* ---- село ---- */
-.mf-players { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+/* Світлиця: на широкій картці село — колонками (12 гравців — 4 рядки, а не 12), на телефоні стоячи — одна колонка.
+   Лежачи на телефоні це половина висоти картки. */
+.mf-players { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 4px 6px; width: 100%; }
 .mf-p {
   display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px;
   background: var(--panel); min-height: 38px;
