@@ -5,6 +5,7 @@ fitcheck — чи не стала якась гра гіршою на екран
 міряє measure.js-ом (поле нижче екрана, горизонтальна прокрутка, дрібні кнопки/клітинки, внутрішні скролбари, обрізаний
 текст…) і порівнює з базою `tools/fitcheck/base/<гра>.json`. Гостьовий нік (не адмін), звук німий (Chrome --mute-audio +
 muted на play()), свій Chrome на своєму порті з тимчасовим профілем, кожен стіл закривається одразу після замірів.
+Плашка повітряної тривоги схована: вона жива, і без цього замір залежав би від того, чи зараз тривога.
 
   PY=C:/Users/Ya/AppData/Local/Python/pythoncore-3.14-64/python.exe   # потрібен пакет websocket-client
   $PY tools/fitcheck/fitcheck.py check                  # ігри, змінені від замірів бази (git diff), — порівняти з базою
@@ -157,6 +158,10 @@ def measure_games(a, ids, modes, log=lambda s: print(s, flush=True)):
                     "this.volume=0;return p.apply(this,arguments)}}catch(e){}")
     # гостьовий нік — ще до скриптів сторінки; вікно «Хто прийшов?» закриваємо в load()
     tab.call("Page.addScriptToEvaluateOnNewDocument", source="try{localStorage.setItem('nick', %s)}catch(e){}" % json.dumps(a.nick))
+    # плашка повітряної тривоги — справжня й жива: з нею картка нижча на 40–80 px, і замір залежав би від того, чи зараз тривога
+    tab.call("Page.addScriptToEvaluateOnNewDocument",
+             source="document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');"
+                    "s.textContent='#tryBar{display:none!important}';document.head.appendChild(s)})")
 
     def ev(expr, timeout=100000):
         r = tab.call("Runtime.evaluate", expression="(async()=>{var __fitLib=1;" + expr + "})()",
