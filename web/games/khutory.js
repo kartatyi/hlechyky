@@ -1048,6 +1048,14 @@
     if (!pc) {
       k.style.removeProperty('--khu-fhj'); k.style.removeProperty('--khu-swj');
       st.el.main.classList.remove('khu-2c', 'khu-tight');
+      // Телефон: поле — від свого верху до липкої руки й панелі дій (над вкладками сайту), щоб низ поля не ховався під
+      // ними. Плита впирається в ширину телефона, тож нижче поле її не зменшує. Стеля й нижня межа — у khutory.css.
+      const fw = st.el.fieldwrap, fr = fw.getBoundingClientRect();
+      if (fr.height) {
+        const cs = getComputedStyle(fw), px = (n) => parseFloat(cs.getPropertyValue(n)) || 0;
+        const h = Math.round(window.innerHeight - px('--gdock-h') - px('--khu-handh') - px('--khu-barh') - (fr.top + window.scrollY) - 6);
+        k.style.setProperty('--khu-fhp', Math.max(260, h) + 'px');
+      }
       return;
     }
     const fr = st.el.fieldwrap.getBoundingClientRect();
@@ -1064,7 +1072,8 @@
     const y0 = fr.top + window.scrollY;
     // Низ сторінки — у вікні. Згорнута шторка «💬» (--gdock-h) на ПК — пігулка в правому нижньому куті: поле під нею
     // не ховаємо (воно ліворуч), а низ колонки відсуваємо на її висоту (--khu-sbot).
-    const fh = Math.max(300, Math.min(1200, Math.floor(docH - tail - y0 - below)));
+    // Нижня межа 300 — для ПК; телефон лежачи (вікно ≤ 500) — поле рівно на решту висоти, хай і нижче (інакше йшло за край).
+    const fh = Math.max(docH <= 500 ? 180 : 300, Math.min(1200, Math.floor(docH - tail - y0 - below)));
     k.style.setProperty('--khu-sbot', Math.max(0, Math.round(dock - tail - below)) + 'px');
     // Поле якомога більше (khfit2). Плита в 3D під нахилом: її ширина ≈ min(0,82 × ширини поля, 1,36 × висоти) — заміри
     // 28.10 (1191×722 → 972, 1090×722 → 889, 1026×507 → 691, 837×507 → 683). Тобто до ~1,65 : 1 вужча колонка = більша
@@ -1088,6 +1097,14 @@
       ...st.el.tps.filter((p) => p.dataset.t !== 'trade').map(over));
     st.el.main.classList.remove('khu-tight');
     k.style.setProperty('--khu-fhj', fh + 'px');
+    // Телефон лежачи: висоти мало — поле важливіше за колонку. Один вузький стовпчик «тісно» (гортається всередині з
+    // видимою смугою), поле — решта ширини: плита ~340 px, а не ~145 px поряд із двома стовпчиками.
+    if (docH <= 500) {
+      k.style.setProperty('--khu-swj', ONE + 'px');
+      st.el.main.classList.remove('khu-2c');
+      st.el.main.classList.add('khu-tight');
+      return;
+    }
     const two = fieldOk(1.65) || (fh < TALL && fieldOk(0.6));
     apply(two);
     if (spill() > 2) st.el.main.classList.add('khu-tight');
