@@ -162,7 +162,7 @@
     promoBar(root, ctx);
     // Список ходів вищий за своє віконце вже з десятого ходу, тож після кожного нового ходу дотягуємо
     // прокрутку донизу: цікавий рівно останній рядок, а не початок партії.
-    const mv = ensure(root, 'chessmoves');
+    const mv = ensure(side(root), 'chessmoves');
     const moves = movesHtml(v.moves || []);
     if (mv._h !== moves) {
       setHtml(mv, moves);
@@ -203,9 +203,27 @@
     paint(root, ctx);
   }
 
+  /// Бічна колонка (Світлиця): перетворення, ходи й кнопки. Поки екран вузький — display: contents, і вони
+  /// стоять під дошкою, як завжди; на широкій картці (.chs-wide) — колонкою праворуч, а дошка бере всю висоту.
+  function side(root) { return ensure(root, 'chs-side'); }
+
+  /// Широко — коли праворуч від дошки на всю висоту картки лишається місце на колонку ходів і кнопок.
+  /// Міряємо aw/ah картки (від розкладки .gbody не залежать — без гойдалки); лежачи на телефоні — своя сітка каркаса.
+  function fitWide(root) {
+    HGames.ui.onFit(root, (f) => {
+      const wide = !!(f && f.aw && f.ah) && f.aw >= 700 && f.aw > f.ah + 120 && !document.body.classList.contains('g-land');
+      if (root.classList.contains('chs-wide') !== wide) root.classList.toggle('chs-wide', wide);
+    });
+    // Колонка праворуч займає рівно стільки рядків сітки, скільки елементів ліворуч (задача, годинники, взяті,
+    // дошка): зайві порожні рядки сітка розтягувала б, і дошці лишалось би менше висоти.
+    const sd = root.querySelector(':scope > .chs-side');
+    const span = '1 / span ' + Math.max(1, root.children.length - 1);
+    if (sd && sd.style.gridRow !== span) sd.style.gridRow = span;
+  }
+
   function promoBar(root, ctx) {
     const st = state(root);
-    const el = ensure(root, 'chesspromo');
+    const el = ensure(side(root), 'chesspromo');
     if (!st.promo) { setHtml(el, ''); el.hidden = true; return; }
     el.hidden = false;
     setHtml(el, '<span class="muted small">У кого перетворити?</span>'
@@ -222,7 +240,7 @@
   function buttons(root, ctx) {
     const v = ctx.view || {};
     const st = state(root);
-    const el = ensure(root, 'chessacts');
+    const el = ensure(side(root), 'chessacts');
     const kind = kindOf(ctx);
     if (kind === 'glek') { glekBar(root, ctx, el); return; }
     if (kind === 'daily') { dailyBar(root, ctx, el); return; }
@@ -495,7 +513,7 @@
     seatNames: ['білі', 'чорні'],
     seatClass: ['x', 'd'],
 
-    mount(root, ctx) { state(root); paint(root, ctx); puzzleHead(root, ctx); glekPrefs(root, ctx); },
+    mount(root, ctx) { root.classList.add('chs-root'); state(root); paint(root, ctx); puzzleHead(root, ctx); glekPrefs(root, ctx); fitWide(root); },
 
     update(root, ctx) {
       const st = state(root);
@@ -504,6 +522,7 @@
       paint(root, ctx);
       puzzleHead(root, ctx);
       glekPrefs(root, ctx);
+      fitWide(root);
       // Коли фігура доїде — перемалювати без класу slide, щоб наступний кадр її вже не смикав.
       clearTimeout(st.t);
       if (performance.now() < st.slideUntil) st.t = setTimeout(() => root._chess && paint(root, ctx), SLIDE_MS + 30);
@@ -528,6 +547,8 @@
       if (root._chess) { clearTimeout(root._chess.t); clearInterval(root._chess.puzTimer); }
       root._chess = null;
       stopClock(root);
+      HGames.ui.onFit(root, null);
+      root.classList.remove('chs-root', 'chs-wide');
     },
 
     news: {
