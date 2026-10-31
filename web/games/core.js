@@ -1202,9 +1202,10 @@
 
   /// Виклик хаба, що повертає RoomReply: помилку показуємо тостом, успіх — лише якщо є що сказати.
   async function call(method, ...args) {
+    const at = location.hash;   // звідки кликали: «встати?» до нового столу не має виринати вже на іншій сторінці
     if (!(await connected(6000))) { toast('Халепа: зв\'язку з сервером нема', 'err'); return { ok: false, message: '' }; }
     // Новий стіл звідусіль (попап, Лелека, пакет Своєї гри, виклик у Клавоперегонах…): сидиш за іншим — спершу «встати?».
-    if (method === 'CreateRoom' && !(await leaveForNew(args[0]))) return { ok: false, message: '' };
+    if (method === 'CreateRoom' && !(await leaveForNew(args[0], at))) return { ok: false, message: '' };
     try {
       let r = await conn.invoke(method, ...args);
       if (r && !r.ok && String(r.message || '').startsWith(RESTARTING) && (await afterRestart())) r = await conn.invoke(method, ...args);
@@ -1305,8 +1306,12 @@
         if (!wrap.isConnected) return;
         wrap.remove();
         document.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('hashchange', onRoute);
         done(v);
       };
+      // o.route: питання про це місце — пішов на іншу сторінку (Esc зі столу, «Ефір», назад) — це «ні»
+      const onRoute = () => close(false);
+      if (o.route) window.addEventListener('hashchange', onRoute);
       // Ловимо Esc раніше за всіх: інакше він вийшов би ще й зі столу, над яким висить це вікно.
       const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); } };
       wrap.addEventListener('click', (e) => { if (e.target === wrap) close(false); });
@@ -1347,6 +1352,7 @@
           : ' — партія ще не почалась, встати можна без наслідків.'),
       ok: playing && !free ? labels[1] : labels[0],
       cancel: 'Лишитись там',
+      route: true,
     });
   }
 
@@ -1356,12 +1362,14 @@
 
   /// Новий стіл гри `gameId`, а сидиш за іншим: раніше сервер відмовляв «Встань, якщо хочеш новий», і треба було йти
   /// туди, вставати й вертатись. Тепер питаємо тут і встаємо самі. true — можна ставити (або й не заважало нічого).
-  async function leaveForNew(gameId) {
+  async function leaveForNew(gameId, at) {
     const g = gameOf(gameId);
     if (g && (g.maxPlayers <= 1 || g.private)) return true;   // соло — своя кімната, місце за столом їй не заважає
     const other = seatedAt(null);
     if (!other || other.id === leftForNew) return true;
     if (g && g.shared && other.game === gameId) return true;   // спільний стіл тієї ж гри: сервер просто скаже «ти тут»
+    // Поки чекали зв'язку, людина пішла на іншу сторінку — питання вже не до місця (games-3: виринало над «Колією»)
+    if (at != null && location.hash !== at) return false;
     if (!(await askLeave(other, ['Встати й поставити', 'Все одно встати']))) return false;
     if (!(await call('LeaveRoom', other.id)).ok) return false;
     leftForNew = other.id;
