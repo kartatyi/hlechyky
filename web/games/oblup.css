@@ -1,0 +1,278 @@
+/*
+  «Як облупленого». Кольори — змінними style.css; свої — тут на :root: полюси шкали (бірюза ліворуч, глина праворуч)
+  і червона риска, як у коробці настолки.
+*/
+:root {
+  --ob-l: #3fae9c;
+  --ob-r: #d9824a;
+  --ob-line: #ff5a3c;
+  --ob-rim: rgba(244, 197, 66, .2);
+}
+
+/* Картка міряє себе сама (container-type): рахунок праворуч, де є місце, інакше — під грою. */
+.obw { container-type: inline-size; display: flex; flex-wrap: wrap; gap: 10px; width: 100%; align-items: flex-start; }
+.obmain { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.obmain > :empty, .obmain > [hidden] { display: none; }
+.obtop { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 40px; }
+.obno { letter-spacing: .4px; }
+
+@keyframes obin { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes obpulse { 50% { opacity: .45; } }
+@keyframes obdot { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+
+/* ---- шапка: хто в центрі, питання ---- */
+.obbanner {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px 12px; text-align: center;
+  border-radius: var(--radius); animation: obin .45s ease-out both;
+  background: radial-gradient(ellipse at 50% 0%, rgba(244, 197, 66, .18), transparent 70%), var(--panel2);
+}
+.obbanner b { font-family: var(--display); font-size: clamp(1.3em, calc(var(--g-aw, 600px) * .032), 2.2em); line-height: 1.2; }
+.obbanner small { color: var(--muted); }
+.obbanner.lobby b { color: var(--accent); }
+.obask { text-align: center; color: var(--muted); }
+.obask b { color: var(--accent); }
+.obq {
+  text-align: center; font-family: var(--display); font-weight: 650; line-height: 1.28; padding: 0 4px;
+  font-size: clamp(1.25em, calc(var(--g-aw, 600px) * .03), 2.2em); animation: obin .35s ease-out both;
+}
+.obown { font-size: .8em; color: var(--accent); white-space: nowrap; }
+.obwaitq { text-align: center; font-size: 1.1em; padding: 22px 0; }
+.obwaitq b { color: var(--accent); }
+.obdots i { font-style: normal; animation: obdot 1.2s infinite; }
+.obdots i:nth-child(2) { animation-delay: .2s; }
+.obdots i:nth-child(3) { animation-delay: .4s; }
+
+/* ---- вибір питання ---- */
+.obpick { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.obcard {
+  display: flex; flex-direction: column; gap: 10px; align-items: stretch; text-align: center; padding: 16px 14px;
+  border-radius: var(--radius); border: 2px solid var(--line); background: var(--panel2); color: var(--text);
+  font: inherit; cursor: pointer; transition: transform .12s, border-color .12s, background .12s; animation: obin .35s ease-out both;
+  white-space: normal; min-width: 0; overflow-wrap: break-word;
+}
+.obcard:nth-child(2) { animation-delay: .08s; }
+.obcard:hover, .obcard.sel, .obcard:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+.obcard:hover { background: var(--panel3); }
+.obcard b { font-family: var(--display); font-size: 1.15em; line-height: 1.3; }
+.obcp { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: .88em; }
+.obcp i { flex: 1 1 0; min-width: 0; overflow-wrap: break-word; font-style: normal; color: var(--ob-l); text-align: left; }
+.obcp i:last-child { color: var(--ob-r); text-align: right; }
+.obcp em { font-style: normal; color: var(--muted); flex: none; }
+.obcard small { color: var(--accent); }
+
+/* ---- шкала ---- */
+.obscale { display: flex; flex-direction: column; gap: 8px; padding: 2px; }
+.obpoles { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; font-weight: 650; line-height: 1.25; }
+.obl { color: var(--ob-l); text-align: left; max-width: 48%; }
+.obr { color: var(--ob-r); text-align: right; max-width: 48%; }
+.obscale .obl::before { content: '◀ '; opacity: .6; font-size: .75em; }
+.obscale .obr::after { content: ' ▶'; opacity: .6; font-size: .75em; }
+.obbar {
+  position: relative; height: clamp(56px, calc(var(--g-fh, 320px) * .18), 88px); border-radius: 18px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ob-l) 70%, var(--bg)) 0%, var(--panel3) 50%, color-mix(in srgb, var(--ob-r) 70%, var(--bg)) 100%);
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, .4), 0 1px 0 rgba(255, 255, 255, .05);
+  touch-action: none; user-select: none; -webkit-user-select: none; outline: none;
+}
+.obbar.live { cursor: pointer; }
+.obbar.hero { margin-top: 20px; }
+.obbar:focus-visible { box-shadow: inset 0 2px 10px rgba(0, 0, 0, .4), 0 0 0 2px var(--accent); }
+/* Поділки через кожну десяту, середина — помітніша. Лише риски, без чисел: шкала — це відчуття, не лінійка. */
+.obticks {
+  position: absolute; inset: 32% 0; pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(255, 255, 255, .16) calc(10% - 1px) 10%);
+}
+.obticks::after { content: ''; position: absolute; left: 50%; top: -30%; bottom: -30%; width: 2px; margin-left: -1px; background: rgba(255, 255, 255, .28); }
+.obghost {
+  position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255, 255, 255, .78);
+  font-size: .95em; pointer-events: none; animation: obpulse 1.6s ease-in-out infinite; text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+}
+.obghost[hidden], .obrim[hidden], .obpin[hidden] { display: none; }
+.obrim {
+  position: absolute; top: 6px; bottom: 6px; border: 3px solid var(--accent); border-radius: 13px; background: var(--ob-rim);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 4px 16px rgba(0, 0, 0, .4); display: grid; place-items: center;
+  pointer-events: none; transition: left .05s linear, width .15s ease;
+}
+.obrim b { font-size: .95em; color: var(--accent); text-shadow: 0 1px 3px rgba(0, 0, 0, .7); }
+.obrim.n b, .obrim[data-size="n"] b { font-size: .78em; }
+.obpin {
+  position: absolute; top: -8px; bottom: -8px; width: 4px; margin-left: -2px; border-radius: 2px; pointer-events: none;
+  background: var(--text); box-shadow: 0 0 10px rgba(255, 255, 255, .55); transition: left .05s linear;
+}
+.obpin i {
+  position: absolute; top: -16px; left: 50%; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-style: normal; font-weight: 800; font-size: .85em;
+  background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
+}
+
+/* ---- ширина рамки ---- */
+.obsizes { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.obsz {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; cursor: pointer;
+  border: 2px solid var(--line); background: var(--panel2); color: var(--text); font: inherit;
+  transition: border-color .12s, background .12s;
+}
+.obsz.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel2)); }
+.obszi { display: inline-block; height: 14px; width: calc(var(--w) * 1.25px); min-width: 13px; border: 2px solid var(--accent); border-radius: 5px; }
+.obsz span { color: var(--muted); }
+.obsz.on span { color: var(--text); }
+.obsz b { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+.obact { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.obgo { min-width: 180px; font-size: 1.05em; padding: 10px 22px; }
+.obgo.ready { animation: obready 1.3s ease-in-out infinite; }
+@keyframes obready { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 35%, transparent); } }
+.obmy { text-align: center; min-height: 1.1em; }
+
+/* ---- риска: доріжки всіх одна під одною ---- */
+.obboard {
+  display: grid; grid-template-columns: minmax(3.5em, max-content) minmax(0, 1fr) 2.8em; gap: 6px 10px; align-items: center;
+}
+.obboard > .obpoles { font-size: .85em; }
+.obname { font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9em; color: var(--muted); text-align: right; }
+.obname.hero { color: var(--accent); font-weight: 700; }
+.obname.me { color: var(--text); font-weight: 600; }
+.obtrack {
+  position: relative; height: clamp(26px, calc(var(--g-fh, 320px) / 13), 40px); border-radius: 10px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ob-l) 28%, var(--bg2)), var(--bg2) 50%, color-mix(in srgb, var(--ob-r) 28%, var(--bg2)));
+}
+.obtrack.herot {
+  height: clamp(32px, calc(var(--g-fh, 320px) / 10), 48px); margin-top: 16px;   /* голівка мітки не лізе на підписи полюсів */
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ob-l) 60%, var(--bg)), var(--panel3) 50%, color-mix(in srgb, var(--ob-r) 60%, var(--bg)));
+}
+.obtrack.me { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.obtrack .obpin { top: -4px; bottom: -4px; }
+.obtrack .obpin i { top: -12px; width: 22px; height: 22px; font-size: .72em; }
+.obtrack .obrim { top: 3px; bottom: 3px; border-width: 2px; border-radius: 8px; transition: none; }
+.obtrack .obrim b { font-size: .78em; }
+.obtrack.miss .obrim { border-color: color-mix(in srgb, var(--muted) 70%, transparent); background: rgba(255, 255, 255, .05); }
+.obtrack.miss .obrim b { color: var(--muted); }
+.obtrack.hit .obrim { animation: obhit .55s ease-out both; animation-delay: calc(var(--i) * 140ms + 480ms); }
+.obtrack.hit .obrim b { animation: obhitb .55s ease-out both; animation-delay: calc(var(--i) * 140ms + 480ms); }
+.obtrack.hit .obrim.bull { animation-name: obbull; }
+/* У вузькій рамці на доріжці «+6» не влазить — очки й так праворуч від доріжки. */
+.obtrack .obrim.n b { display: none; }
+@keyframes obhit {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.1); border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok), 0 0 22px color-mix(in srgb, var(--ok) 80%, transparent); }
+  100% { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 26%, transparent); box-shadow: 0 0 12px color-mix(in srgb, var(--ok) 45%, transparent); }
+}
+@keyframes obbull {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.2); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent), 0 0 28px var(--accent); }
+  100% { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 34%, transparent); box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 60%, transparent); }
+}
+@keyframes obhitb { to { color: #fff; } }
+/* Риска падає згори вниз: у кожній доріжці свій відрізок, з затримкою за номером — разом це одна лінія, що з'їжджає крізь стіл. */
+.obcut {
+  position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; border-radius: 2px; z-index: 2; pointer-events: none;
+  background: var(--ob-line); box-shadow: 0 0 9px var(--ob-line); transform-origin: top;
+  animation: obdrop .28s ease-in both; animation-delay: calc(var(--i) * 140ms + 300ms);
+}
+@keyframes obdrop { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+.obpts { font-variant-numeric: tabular-nums; font-weight: 700; opacity: 0; animation: obfade .3s both; animation-delay: calc(var(--i) * 140ms + 620ms); }
+.obpts.hit { color: var(--ok); }
+.obpts.miss { color: var(--muted); font-weight: 400; }
+@keyframes obfade { to { opacity: 1; } }
+.obnone { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; font-size: .8em; color: var(--muted); }
+.obsay {
+  display: flex; gap: 8px; align-items: center; justify-content: center; text-align: left; font-size: .95em; line-height: 1.35;
+  animation: obin .4s ease-out both; animation-delay: calc(var(--i) * 140ms + 650ms);
+}
+.obsay img { width: 30px; height: 30px; flex: none; }
+
+/* ---- хто вже поставив ---- */
+.obwho { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.obchip { padding: 3px 10px; border-radius: 999px; background: var(--bg2); color: var(--muted); font-size: .85em; border: 1px solid var(--line); }
+.obchip.on { color: var(--text); border-color: var(--ok); }
+.obchip.hero { border-style: dashed; }
+.obrules { text-align: center; line-height: 1.45; max-width: 38em; margin: 0 auto; }
+.obrules b { color: var(--text); font-weight: 600; }
+
+/* ---- рахунок ---- */
+.obscore { flex: 1 1 100%; display: flex; flex-direction: column; gap: 2px; }
+.obscore:empty { display: none; }
+.obsrow { display: flex; align-items: center; gap: 8px; padding: 3px 9px; font-size: .88em; color: var(--muted); border-radius: 8px; }
+.obsrow > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obsrow b { color: var(--text); font-variant-numeric: tabular-nums; }
+.obsrow.win { color: var(--text); background: rgba(244, 197, 66, .12); }
+.obhc { font-style: normal; font-size: .8em; color: var(--muted); }
+.obshard { font-style: normal; font-size: .9em; color: var(--accent); white-space: nowrap; }
+
+/* ---- кінець партії ---- */
+.obend { display: flex; flex-direction: column; gap: 12px; animation: obin .4s ease-out both; }
+.obend > .muted { text-align: center; }
+.obwin { text-align: center; font-size: 1.2em; line-height: 1.35; }
+.obwin b { color: var(--accent); }
+.obknows { display: flex; flex-direction: column; gap: 5px; background: var(--panel2); border-radius: var(--radius); padding: 10px 12px; }
+.obh { font-family: var(--display); font-weight: 700; text-align: center; margin-bottom: 2px; }
+.obkrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; justify-content: center; }
+.obkrow .by { color: var(--accent); }
+.obkrow i { font-style: normal; color: var(--ok); font-size: .9em; }
+.obbadges { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.obbadge { padding: 6px 12px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); font-size: .9em; }
+.obbadge i { font-style: normal; color: var(--muted); font-size: .9em; }
+.obrounds summary { cursor: pointer; text-align: center; color: var(--muted); }
+.obrounds ol { margin: 8px 0 0; padding-left: 1.6em; display: flex; flex-direction: column; gap: 8px; }
+.obrounds li { line-height: 1.35; }
+.obrline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 3px; }
+.obmini { display: inline-flex; align-items: center; gap: 6px; font-size: .78em; max-width: 100%; }
+.obmini i { font-style: normal; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obmini i.l { color: var(--ob-l); }
+.obmini i.r { color: var(--ob-r); }
+.obminibar { position: relative; width: 110px; height: 8px; border-radius: 4px; flex: none; background: linear-gradient(90deg, var(--ob-l), var(--panel3), var(--ob-r)); }
+.obminibar b { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; background: var(--ob-line); border-radius: 2px; box-shadow: 0 0 5px var(--ob-line); }
+
+/* ---- своє питання ---- */
+.obmine { border: 1px dashed var(--line); border-radius: var(--radius); padding: 6px 12px; }
+.obmine summary { cursor: pointer; color: var(--muted); }
+.obmine[open] summary { color: var(--text); }
+.obmform { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.obmform[hidden] { display: none; }
+.obmlr { display: flex; gap: 6px; }
+.obmlr input { flex: 1 1 0; min-width: 0; }
+.obmform input { padding: 8px 10px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+.obmform input:focus { outline: none; border-color: var(--accent2); }
+.obmadd { align-self: flex-end; }
+.obmlist { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.obmlist:empty { display: none; }
+.obmlist li { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: .9em; }
+.obmdel { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1em; padding: 2px 6px; }
+.obmdel:hover { color: var(--danger); }
+.obmnote { margin-top: 6px; }
+
+/* ---- широка картка: рахунок праворуч ---- */
+@container (min-width: 560px) {
+  .obscore { flex: 0 0 160px; padding-left: 12px; border-left: 1px solid var(--line); }
+}
+/* ---- вузька (телефон): усе в 343 px без горизонтальної прокрутки ---- */
+@container (max-width: 420px) {
+  .obboard { grid-template-columns: minmax(2.8em, 5.2em) minmax(0, 1fr) 2.3em; gap: 5px 6px; }
+  .obname { font-size: .8em; }
+  /* Три рамки — в один рядок: значок ширини ховаємо, назва й очки лишаються. */
+  .obsz { padding: 6px 10px; gap: 6px; font-size: .92em; }
+  .obszi { display: none; }
+  .obmini i { max-width: 6em; }
+  .obminibar { width: 80px; }
+  .obgo { min-width: 150px; }
+}
+/* ---- телефон лежачи: усе тісніше ---- */
+/* Висота тут — найдорожче: «Де стане Оля?» уже є в рядку статусу над грою, тож тут його ховаємо, шкала й доріжки нижчі,
+   а підказка під «Ставлю» поступається пульсу самої кнопки. Мета — шкала, рамки й кнопка на одному екрані без прокрутки. */
+@media (max-height: 500px) {
+  .obmain { gap: 6px; }
+  .obtop { min-height: 34px; }
+  .obbanner { padding: 8px 10px; }
+  .obwaitq { padding: 10px 0; }
+  .obcard { padding: 10px; gap: 6px; }
+  .obq { font-size: 1.05em; }
+  .obhead .obask { display: none; }
+  .obscale { gap: 4px; }
+  .obpoles { font-size: .9em; }
+  .obbar { height: 46px; border-radius: 14px; }
+  .obbar.hero { margin-top: 16px; }
+  .obsz { padding: 4px 10px; }
+  .obgo { padding: 6px 20px; }
+  .obmy { display: none; }
+  .obtrack { height: 24px; }
+  .obtrack.herot { height: 28px; margin-top: 12px; }
+}

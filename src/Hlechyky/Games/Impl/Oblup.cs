@@ -278,6 +278,7 @@ public sealed class Oblup : Game
         }
 
         if (_phase == PhasePick) return ActResult.Fail(seat == Hero ? "Спершу обери питання" : "Мить — питання ще обирають");
+        if (_phase == PhaseBetween) return ActResult.Fail("Мить — зараз буде питання");
         if (_phase != PhaseGuess) return ActResult.Fail("Зараз не ставлять — дивись на риску");
         if (now >= _endsAt) return ActResult.Fail("От халепа — час вийшов");
         if (Int(payload, "pos") is not { } pos) return ActResult.Fail("Тут треба місце на шкалі");
