@@ -118,7 +118,7 @@
     board: [
       { id: 'chess', title: 'Шахи й шашки', icon: '♟', ids: ['chess', 'checkers', 'reversi'] },
       { id: 'cards', title: 'Карти й доміно', icon: '🃏', ids: ['durak', 'domino'] },
-      { id: 'field', title: 'На полі', icon: '⭕', ids: ['khutory', 'sorochyntsi', 'ttt', 'c4', 'battleship', 'mines', 'scrabble'] },
+      { id: 'field', title: 'На полі', icon: '⭕', ids: ['khutory', 'sorochyntsi', 'solyanyi', 'ttt', 'c4', 'battleship', 'mines', 'scrabble'] },
     ],
     live: [
       { id: 'shoot', title: 'Стрілялки', icon: '🎯', ids: ['duel', 'tyr', 'tanks', 'bomber', 'glekomet'] },

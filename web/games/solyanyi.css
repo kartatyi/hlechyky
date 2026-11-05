@@ -1,0 +1,866 @@
+/* «Соляний шлях» — картка столу. Три вигляди (solyanyi-look.md), кожен зі своєю розкладкою: .sol-t-parchment «Стара мапа»
+   (шкіряна колонка ліворуч, торба внизу), .sol-t-board «Настілка на столі» (горіховий стіл, рахівниця, картки праворуч, рука
+   віялом), .sol-t-petryk «Петриківка» (чорний лак, колонка праворуч, вишиті шви). Режими (ставить fitLayout у solyanyi.js):
+   .sol-m-pc, .sol-m-ph (телефон стоячи), .sol-m-ls (телефон лежачи). Гра — CSS-сітка заввишки --sol-h; усі частини — прямі діти
+   .sol, сітка кожного вигляду кладе їх у свої клітинки. Панелі ПК масштабує --sol-u. Малюнки — solyanyi/theme-art.js. */
+
+.gseat.sol0 { color: #e06a66; } .gseat.sol1 { color: #6b9be6; } .gseat.sol2 { color: #4fb37f; } .gseat.sol3 { color: #e8a24d; } .gseat.sol4 { color: #b08ae3; }
+
+/* ─── Рядок картки каркаса ─────────────────────────────────── */
+.grbox > .gtable.sol-gt { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 6px; }
+.grbox > .gtable.sol-gt > * { flex: 1 1 100%; min-width: 0; order: 10; }
+.grbox > .gtable.sol-gt > .grhead.gin > * { flex: none; order: 3; }
+.grbox > .gtable.sol-gt > .grhead.gin > .grback { order: 1; }
+.grbox > .gtable.sol-gt > .grhead.gin > .grfull { order: 5; }
+.grbox > .gtable.sol-gt > .grhead.gin > .grother { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grbox > .gtable.sol-gt > .gseats { flex: 1 1 0; order: 2; justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.grbox > .gtable.sol-gt > .gseats::-webkit-scrollbar { display: none; }
+.grbox > .gtable.sol-gt.sol-gt-play > .gseats > .gseat, .grbox > .gtable.sol-gt.sol-gt-play > .gseats > .gfreeall { display: none; }
+.grbox > .gtable.sol-gt:not(.sol-gt-play) > .gseats { flex-wrap: wrap; overflow-x: visible; }
+.grbox > .gtable.sol-gt.sol-gt-play > .gseats { min-width: 0; }
+/* Над підсумком шапка та сама, що під час гри: «Гукнути» — лише значком, усе в один рядок */
+.grbox > .gtable.sol-gt.sol-gt-play > .grhead.gin .grcall-t { display: none; }
+.grbox > .gtable.sol-gt.sol-gt-play > .gbtns > * { white-space: nowrap; }
+@media (max-width: 760px) {
+  /* Телефон: шапка столу в один рядок, ці кнопки є й у меню каркаса, а мапі потрібна висота */
+  .grbox > .gtable.sol-gt.sol-gt-play > .grhead.gin > .grdock { display: none; }
+  /* Над підсумком: «Ще раз» є в самому підсумку, налаштування — значком, шапка лишається одним рядком */
+  .grbox > .gtable.sol-gt.sol-gt-play > .gbtns [data-do="Rematch"] { display: none; }
+  .grbox > .gtable.sol-gt.sol-gt-play > .gbtns [data-set] { font-size: 0; padding-left: 7px; padding-right: 7px; }
+  .grbox > .gtable.sol-gt.sol-gt-play > .gbtns [data-set]::before { content: '⚙'; font-size: 17px; }
+  .grbox > .gtable.sol-gt.sol-gt-play { row-gap: 2px; }
+}
+.grbox > .gtable.sol-gt > .gseats > * { flex: none; }
+.grbox > .gtable.sol-gt > .gbtns { flex: none; order: 4; margin: 0; flex-wrap: nowrap; }
+.grbox > .gtable.sol-gt > .gstatus { display: none; }
+.grbox > .gtable.sol-gt > .gextra:empty { display: none; }
+.grbox > .gtable.sol-gt > .gbody { align-items: stretch; }
+.grbox > .gtable.sol-gt-parchment { background: #2a190e; padding: 6px 8px 8px; }
+.grbox > .gtable.sol-gt-board { background: linear-gradient(#6e4324, #4a2b15); padding: 6px 8px 8px; }
+.grbox > .gtable.sol-gt-petryk { background: #0a0812; padding: 6px 8px 8px; }
+
+/* ─── Основа ───────────────────────────────────────────────── */
+.sol { position: relative; width: 100%; min-width: 0; box-sizing: border-box; align-self: stretch; display: flex; flex-direction: column; font-family: 'Onest', system-ui, -apple-system, sans-serif;
+  --sol-serif: Georgia, 'Noto Serif', 'Times New Roman', serif; --sol-u: 1; color: var(--text); -webkit-font-smoothing: antialiased; }
+.sol *, .sol *::before, .sol *::after { box-sizing: border-box; }
+.sol button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; touch-action: manipulation; white-space: normal; }
+.sol button:disabled { cursor: default; }
+.sol [hidden] { display: none !important; }
+.sol svg { display: block; }
+.sol h1, .sol h2, .sol h3, .sol p, .sol ul, .sol ol { margin: 0; padding: 0; }
+.sol ul, .sol ol { list-style: none; }
+.sol em { font-style: normal; }
+.sol kbd { position: absolute; left: 3px; bottom: 2px; font: 700 9px/1 'Onest', sans-serif; opacity: .55; color: #fff; text-shadow: 0 1px 1px #000; pointer-events: none; }
+.sol-wait, .sol-err { padding: 30px 10px; text-align: center; }
+.sol-err { color: var(--danger, #e06a66); }
+.sol-defs { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+.sol-ic { width: 1.15em; height: 1em; display: inline-block; flex: none; vertical-align: -.1em; }
+.sol-gks { width: 100%; height: 100%; }
+.sol-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; border-radius: inherit; }
+.sol-bg:empty { display: none; }
+.sol-table { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sol-fx { position: absolute; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; }
+.sol-fly { position: absolute; border-radius: 6px; overflow: hidden; box-shadow: 0 6px 14px rgba(0, 0, 0, .55); }
+.sol-fly .sol-top { position: absolute; inset: 0; display: block; }
+.sol-fly .sol-art { width: 100%; height: 100%; }
+.sol-fly .sol-cn { display: none; }
+
+.sol.sol-on { display: grid; height: var(--sol-h, auto); min-height: 0; overflow: hidden; }
+.sol.sol-on > * { min-width: 0; min-height: 0; }
+.sol.sol-on > :where(.sol-banner, .sol-players, .sol-bar, .sol-fieldwrap, .sol-market, .sol-hand, .sol-tickets, .sol-log, .sol-route, .sol-glek, .sol-title, .sol-seam) { position: relative; z-index: 1; }
+.sol-lobby :is(.sol-hand, .sol-market, .sol-tickets, .sol-bar, .sol-route, .sol-glek) { display: none !important; }
+
+/* Поле */
+.sol-fieldwrap { grid-area: field; position: relative; min-height: 0; overflow: hidden; }
+.sol-field { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.sol-field > canvas, .sol-field > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sol-railh { position: absolute; inset: 0; pointer-events: none; }
+.sol-railh:empty { display: none; }
+.sol-railsvg { position: absolute; left: 0; top: 0; }
+.sol-railsvg text { font-family: 'Onest', sans-serif; }
+
+/* 2D сама друкує назву на мапі (Настілка, Петриківка); 3D — ні, тоді вона в HUD. Квіти й віз обидва поля малюють самі */
+.sol-t-board.sol-sc2d .sol-title, .sol-t-petryk.sol-sc2d .sol-title { display: none !important; }
+/* Телефон: надрукована на мапі назва в наближенні стає велетенською й лише закриває мапу */
+:is(.sol-m-ph, .sol-m-ls) .sol2-nm { display: none; }
+
+/* Поки будується поле: заглушка в тон вигляду, а не тло сцени з купою голих написів */
+.sol-load { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; font: italic 400 20px/1.2 var(--sol-serif); pointer-events: none; }
+.sol-loadin { display: inline-flex; align-items: center; gap: 10px; padding: 9px 18px; border-radius: 10px; }
+.sol-loadd { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid currentColor; border-right-color: transparent; animation: sol-spin 1s linear infinite; }
+@keyframes sol-spin { to { transform: rotate(360deg); } }
+.sol-t-parchment .sol-load { background: radial-gradient(90% 90% at 50% 45%, #efdcae, #cdb079 80%, #a78a58); color: #5a2a14; }
+.sol-t-parchment .sol-loadin { background: rgba(255, 246, 216, .72); box-shadow: inset 0 0 0 1px rgba(90, 58, 30, .4); }
+.sol-t-board .sol-load { background: linear-gradient(170deg, #4db2e8, #2f97d3); color: #fff; font: 800 18px/1.2 'Onest', sans-serif; }
+.sol-t-board .sol-loadin { background: rgba(42, 22, 11, .55); }
+.sol-t-board.sol-m-pc .sol-load { inset: calc(var(--sol-tk, 31px) + 3px); }
+.sol-t-petryk .sol-load { background: radial-gradient(90% 90% at 50% 45%, #171236, #08070f 80%); color: #ffe08a; font: 800 18px/1.2 'Onest', sans-serif; }
+.sol-t-petryk .sol-loadin { box-shadow: inset 0 0 0 1.5px #6d5a1e; background: rgba(10, 8, 18, .8); }
+
+/* Кнопки поля */
+.sol-tools { position: absolute; z-index: 8; display: flex; align-items: center; gap: 4px; }
+.sol-seg { display: inline-flex; border-radius: 9px; overflow: hidden; }
+.sol-view { min-height: 30px; padding: 3px 9px !important; font-size: 12.5px !important; font-weight: 600 !important; white-space: nowrap; display: inline-flex; align-items: center; background: rgba(20, 12, 6, .78) !important; color: #f2e6cc !important; }
+.sol-view:not(.sol-seg .sol-view) { border-radius: 9px; }
+.sol-view.on { background: var(--sol-acc, #f4c542) !important; color: #2a1e03 !important; }
+.sol-zoom { position: absolute; z-index: 8; display: flex; gap: 4px; }
+.sol-zoom button { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 19px !important; line-height: 1; font-weight: 700 !important; background: #f6e9c3 !important; color: #2b1a0d !important; box-shadow: 0 0 0 1.5px #2b1a0d, 0 2px 4px rgba(30, 15, 0, .45); }
+.sol-mini { position: absolute; left: 6px; bottom: 6px; z-index: 7; width: 96px; height: 68px; border-radius: 5px; overflow: hidden; background: #d9c493; box-shadow: 0 0 0 1.5px #2b1a0d, 0 2px 5px rgba(0, 0, 0, .5); }
+.sol-mini button { display: block; width: 100%; height: 100%; }
+.sol-mini svg { width: 100%; height: 100%; }
+.sol-mml { fill: var(--sol-mmland, #f1e3bd); stroke: var(--sol-mmedge, #2b1a0d); stroke-width: 14; }
+.sol-mmp { stroke: #b3261e; stroke-width: 22; stroke-dasharray: 60 50; fill: none; }
+.sol-mmv { fill: rgba(255, 217, 92, .4); stroke: #b3261e; stroke-width: 32; }
+.sol-mm { width: 96px; height: 66px; flex: none; border-radius: 5px; background: var(--sol-mmbg, #c9d6c4); }
+
+/* Бульбашка, банери, стрічка */
+.sol-bubble { position: absolute; z-index: 12; transform: translate(-50%, -115%); width: max-content; max-width: calc(100% - 12px); text-align: center; padding: 5px 11px; border-radius: 10px; background: #1b120a; color: #fff5dc; font-size: 13.5px; font-weight: 600; pointer-events: none; box-shadow: 0 3px 10px rgba(0, 0, 0, .55); }
+.sol-bubble b { color: #ffd95c; }
+.sol-bubble::after { content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: #1b120a; }
+.sol-bubble.corner { transform: translate(-50%, 0); }
+.sol-bubble.corner::before { content: '↗ '; color: #ffd95c; }
+.sol-bubble.corner::after { display: none; }
+.sol-bubble.go { animation: sol-pop .22s ease-out; }
+@keyframes sol-pop { from { opacity: 0; scale: .8; } to { opacity: 1; scale: 1; } }
+.sol-ticker { position: absolute; z-index: 7; display: flex; flex-direction: column; gap: 3px; pointer-events: none; max-width: min(320px, 70%); }
+.sol-tkr { padding: 3px 9px; border-radius: 8px; background: rgba(20, 12, 6, .82); color: #f7ecd2; font-size: 12px; line-height: 1.25; transition: opacity .5s; width: fit-content; animation: sol-pop .2s ease-out; }
+.sol-tkr b { color: #ffd95c; }
+.sol-tkr.out { opacity: 0; }
+.sol-lastban { position: absolute; left: 8%; right: 8%; top: 32%; z-index: 14; padding: 18px 20px; border-radius: 12px; text-align: center; background: rgba(27, 18, 10, .94); color: #ffd95c; font: 700 clamp(17px, 2.4vw, 25px)/1.25 var(--sol-serif); box-shadow: 0 8px 26px rgba(0, 0, 0, .6); pointer-events: none; }
+.sol-lastban.go { animation: sol-pop .28s ease-out; }
+.sol-flash { position: absolute; left: 50%; bottom: 16px; z-index: 13; transform: translateX(-50%); padding: 6px 13px; border-radius: 10px; background: rgba(27, 18, 10, .92); color: #fff5dc; font-size: 13px; font-weight: 600; max-width: 86%; text-align: center; pointer-events: none; }
+.sol-flash.go { animation: sol-pop .2s ease-out; }
+.sol-hov { position: absolute; z-index: 11; transform: translate(-50%, -125%); padding: 3px 9px; border-radius: 8px; background: rgba(20, 12, 6, .92); color: #f7ecd2; font-size: 12px; white-space: nowrap; pointer-events: none; }
+.sol-hov b { color: #ffe9a8; }
+.sol-hov small { display: block; color: #e8a58f; font-size: 11px; }
+.sol-which { position: absolute; z-index: 15; width: 224px; padding: 6px; border-radius: 10px; background: #fbf4e0; color: #2b1a0d; box-shadow: 0 6px 18px rgba(0, 0, 0, .55); }
+.sol-whichh { display: block; padding: 2px 6px 4px; font-size: 12.5px; }
+
+/* Карти */
+.sol-art { width: 100%; height: auto; }
+.sol-mc { position: relative; display: block; min-width: 0; border-radius: 6px; transition: transform .12s; }
+.sol-mc.can:hover { transform: translateY(-2px); }
+.sol-mc.off:not(.sol-deck):not(.empty) { opacity: .92; }
+.sol-mc.nogo { filter: grayscale(.85) brightness(.75); }
+.sol-mc.empty { display: grid; place-items: center; border: 1.5px dashed rgba(255, 255, 255, .35); color: rgba(255, 255, 255, .5); font-size: 10.5px; }
+.sol-mc.want::before { content: ''; position: absolute; inset: -3px; z-index: 2; border-radius: 8px; border: 2px solid #ffd95c; box-shadow: 0 0 12px 2px rgba(255, 215, 90, .75); pointer-events: none; animation: sol-glow 1.2s ease-in-out infinite alternate; }
+@keyframes sol-glow { from { opacity: .6; } to { opacity: 1; } }
+.sol-mc.in { animation: sol-slide .32s ease-out; }
+.sol-mc.outin { animation: sol-wipe .42s ease-in-out; }
+@keyframes sol-slide { from { transform: translateY(-14px) scale(.92); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sol-wipe { 0% { transform: none; } 45% { transform: translateY(12px) rotate(4deg); opacity: 0; } 55% { transform: translateY(-12px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.sol-wanttag { position: absolute; right: -4px; top: -7px; z-index: 3; padding: 1px 7px 2px; border-radius: 9px; background: #ffd95c; color: #2b1a0d; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+.sol-wtag { position: absolute; left: 50%; bottom: 2px; z-index: 2; transform: translateX(-50%); padding: 0 5px; border-radius: 6px; background: rgba(27, 18, 10, .88); color: #ffe9a8; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.sol-cnt { position: absolute; right: -3px; top: -4px; z-index: 3; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; display: grid; place-items: center; font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; background: #2b1a0d; color: #fff5dc; box-shadow: 0 0 0 1.5px #e9cf94; }
+.sol-hc { position: relative; min-width: 0; }
+.sol-hc .sol-top { display: block; position: relative; z-index: 1; border-radius: 6px; transition: transform .15s; }
+.sol-hc.zero { opacity: .34; filter: grayscale(.8); }
+.sol-hc.use .sol-top { transform: translateY(-5px); }
+.sol-hc.use .sol-top::after { content: ''; position: absolute; inset: -1px; border-radius: 7px; border: 2.5px solid #ffd95c; box-shadow: 0 0 10px rgba(255, 215, 90, .75); pointer-events: none; }
+.sol-tile { width: 28px; height: 28px; flex: none; display: inline-block; }
+.sol-tile.miss { display: inline-grid; place-items: center; border: 1.8px dashed #b3261e; border-radius: 5px; color: #b3261e; font-weight: 800; font-style: normal; font-size: 14px; background: rgba(179, 38, 30, .08); }
+.sol-deck { color: inherit; }
+.sol-dn { position: absolute; left: 50%; top: 42%; z-index: 2; transform: translate(-50%, -50%); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sol-dl { position: absolute; left: 0; right: 0; bottom: 5px; z-index: 2; text-align: center; font-size: 10.5px; font-weight: 500; }
+.sol-disc { font-size: 11px; opacity: .8; white-space: nowrap; }
+
+/* Жетони гравців */
+.sol-av { position: relative; display: inline-grid; place-items: center; flex: none; width: var(--sol-av, 38px); height: var(--sol-av, 38px); color: #fff0d8; }
+.sol-av > b { position: relative; font-size: calc(var(--sol-av, 38px) * .46); line-height: 1; font-weight: 700; }
+.sol-wax { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .55)); }
+.sol-avg { position: relative; display: block; width: 82%; height: 82%; }
+.sol-avg > .sol-gks { position: absolute; left: 0; top: 0; }
+.sol-emb { position: absolute; right: -3px; bottom: -3px; width: 40%; height: 40%; }
+.sol-sh { font-style: normal; font-size: 1.05em; }
+.sol-pl { position: relative; }
+.sol-pl.away { opacity: .72; }
+.sol-st.low, .sol-st.w.low b { color: #e8574a !important; }
+.sol-st { display: inline-flex; align-items: center; gap: 3px; justify-content: center; font-variant-numeric: tabular-nums; }
+.sol-st b { font-weight: 500; }
+.sol-small, .sol-ti, .sol-lg, .sol-rd { margin-left: 4px; padding: 0 5px 1px; border-radius: 4px; font-size: 10px; font-weight: 700; vertical-align: 1px; white-space: nowrap; }
+.sol-rd { color: #7ad36b; font-size: 12px; padding: 0; }
+.sol-gain { position: absolute; left: 50%; top: 0; z-index: 9; padding: 1px 7px; border-radius: 8px; background: #ffd95c; color: #2b1a0d; font-size: 12px; font-weight: 700; white-space: nowrap; pointer-events: none; animation: sol-gain 1.5s ease-out forwards; }
+@keyframes sol-gain { 0% { transform: translate(-50%, 6px); opacity: 0; } 20% { transform: translate(-50%, -4px); opacity: 1; } 75% { opacity: 1; } 100% { transform: translate(-50%, -14px); opacity: 0; } }
+.sol-botm { font-size: .82em; }
+
+/* Кнопки панелей */
+.sol-btns { display: flex; gap: 7px; margin-top: 7px; }
+.sol-btn { flex: 1 1 auto; min-height: 36px; padding: 4px 11px !important; border-radius: 8px; font-size: 13px !important; font-weight: 700 !important; line-height: 1.12; text-align: center; background: rgba(255, 255, 255, .12) !important; }
+.sol-primary { background: linear-gradient(180deg, #ffdc62, #f4c542 55%, #d9a92f) !important; color: #2a1e03 !important; box-shadow: 0 0 0 1.2px #6d4a0e, 0 2px 0 #7d5a0e; }
+.sol-primary:disabled { opacity: .5; }
+.sol-locked { background: repeating-linear-gradient(-45deg, #e3d5b4 0 7px, #d9c9a4 7px 14px) !important; color: #6e5440 !important; box-shadow: inset 0 0 0 1.2px #a58e66; }
+.sol-x { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px !important; opacity: .7; }
+.sol-x:hover { opacity: 1; }
+.sol-claim { font-size: 14.5px !important; min-height: 40px; }
+.sol-newt { margin-left: auto; padding: 2px 8px !important; min-height: 24px; border-radius: 7px; font-size: 11.5px !important; font-weight: 700 !important; font-family: 'Onest', sans-serif !important; white-space: nowrap; background: var(--sol-acc, #ffd95c) !important; color: #2b1a0d !important; }
+.sol-newt:disabled { opacity: .4; }
+.sol-newt.want { outline: 2px solid #ffd95c; box-shadow: 0 0 10px 2px rgba(255, 215, 90, .7); }
+
+/* Панель шляху */
+.sol-route { z-index: 6 !important; }
+.sol-rh { display: flex; align-items: center; gap: 8px; }
+.sol-rh h3 { display: flex; align-items: center; gap: 6px; font-size: 17px; line-height: 1.12; min-width: 0; }
+.sol-rh h3 .sol-tile { width: 22px; height: 22px; }
+.sol-rm { margin-left: auto; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.sol-rm b { font-weight: 800; }
+.sol-rw { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 6px; }
+.sol-note { margin-left: 6px; font-size: 12px; font-weight: 500; line-height: 1.2; }
+.sol-note b { display: block; font-size: 13px; font-weight: 800; color: #b3261e; }
+.sol-note.ok { color: #2a6a33; font-weight: 700; }
+.sol-why { margin-left: 6px; font-size: 12.5px; font-weight: 600; color: #b3261e; }
+.sol-ownr { font-size: 20px; }
+.sol-twin { margin-top: 4px; font-size: 11.5px; opacity: .8; }
+.sol-combos { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.sol-combo { display: inline-flex; align-items: center; gap: 3px; min-height: 34px; padding: 2px 6px !important; border-radius: 7px; box-shadow: inset 0 0 0 1.2px rgba(60, 40, 20, .35); font-size: 12.5px !important; font-weight: 700; }
+.sol-combo .sol-tile { width: 20px; height: 20px; }
+.sol-combo.on { box-shadow: inset 0 0 0 2px #b3261e; background: rgba(255, 217, 92, .3) !important; }
+
+/* Замовлення */
+.sol-tklist { display: flex; flex-direction: column; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sol-tk { position: relative; display: grid; width: 100%; text-align: left; }
+.sol-hint { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; line-height: 1.2; }
+.sol-hint.ok { color: #2a6a33; font-weight: 600; }
+.sol-hint.bad { color: #b3261e; font-weight: 700; }
+.sol-pips { display: inline-flex; gap: 1.5px; flex: none; }
+.sol-pips i { width: 7px; height: 7px; border-radius: 1.5px; background: #fff7df; box-shadow: inset 0 0 0 1px #6d4f2a; }
+.sol-pips i.on { background: #c0392b; box-shadow: inset 0 0 0 1px #5e140d; }
+.sol-tsum { font-size: 11.5px; line-height: 1.3; padding-top: 3px; opacity: .85; }
+.sol-tkb { min-width: 0; }
+.sol-rt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Журнал і правила */
+.sol-tabs { display: flex; gap: 3px; margin-bottom: 4px; }
+.sol-tab { padding: 1px 8px !important; min-height: 24px; border-radius: 7px; font-size: 12px !important; font-weight: 600 !important; opacity: .65; white-space: nowrap; }
+.sol-tab.on { opacity: 1; box-shadow: inset 0 -2px 0 currentColor; }
+.sol-log { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.sol-loglist { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sol-loglist li { display: grid; grid-template-columns: 11px minmax(0, 1fr); gap: 6px; padding: 1.5px 0; font-size: 12.3px; line-height: 1.26; }
+.sol-dot { width: 10px; height: 10px; margin-top: 3px; font-size: 8px; line-height: 10px; text-align: center; color: rgba(255, 255, 255, .9); font-style: normal; border-radius: 50%; background: #888; overflow: hidden; }
+.sol-loglist b { font-weight: 600; }
+.sol-loglist em { font-weight: 600; color: var(--sol-acc, #ffd95c); }
+.sol-rules { flex: 1; min-height: 0; overflow: auto; font-size: 12.3px; line-height: 1.32; }
+.sol-rules li { padding: 2px 0; }
+.sol-rules b { font-weight: 700; }
+
+/* Глек */
+.sol-glek { display: flex; align-items: flex-end; z-index: 5 !important; }
+.sol-glk { flex: none; width: 64px; height: 64px; position: relative; z-index: 2; filter: drop-shadow(0 3px 3px rgba(20, 8, 0, .45)); }
+.sol-say { position: relative; font-size: 12.5px; line-height: 1.28; }
+.sol-back { display: block; margin-top: 5px; width: 100%; }
+
+/* Вибір замовлень */
+.sol-keep { grid-area: field; align-self: center; justify-self: center; z-index: 20 !important; position: relative; width: min(440px, 96%); max-height: 96%; display: flex; flex-direction: column; padding: 12px 14px; border-radius: 12px; overflow: auto; background: linear-gradient(170deg, #fff6d8, #efdca8); color: #2b1a0d; box-shadow: 0 10px 34px rgba(0, 0, 0, .6); zoom: var(--sol-u); }
+.sol-keep h3 { font-size: 18px; }
+.sol-keeph { font-size: 12.5px; opacity: .8; margin: 2px 0 8px !important; }
+.sol-offs { display: flex; flex-direction: column; gap: 6px; }
+.sol-off { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 72px; padding: 3px 8px 3px 3px !important; border-radius: 9px; text-align: left; background: rgba(255, 255, 255, .55) !important; box-shadow: inset 0 0 0 1.2px rgba(60, 40, 20, .3); }
+.sol-off.on { background: rgba(255, 217, 92, .42) !important; box-shadow: inset 0 0 0 2px #b3261e; }
+.sol-offb { flex: 1; min-width: 0; }
+.sol-offb b { display: block; font-size: 14.5px; line-height: 1.15; }
+.sol-offb small { font-size: 12px; opacity: .8; }
+.sol-offp { font-weight: 800; font-size: 14.5px; white-space: nowrap; }
+.sol-chk { flex: none; width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font-style: normal; font-weight: 800; color: #fff; background: rgba(60, 40, 20, .15); box-shadow: inset 0 0 0 1.5px rgba(60, 40, 20, .45); }
+.sol-off.on .sol-chk { background: #2c7a3a; }
+.sol-who2 { margin-top: 7px !important; font-size: 12px; }
+
+/* Шторка */
+.sol-sheet { position: absolute !important; z-index: 30 !important; left: 0; right: 0; bottom: 0; max-height: 70%; display: flex; flex-direction: column; padding: 8px 12px 10px; border-radius: 14px 14px 0 0; background: #fbf4e0; color: #2b1a0d; box-shadow: 0 -8px 26px rgba(0, 0, 0, .55); }
+.sol-shh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 15px; }
+.sol-shb { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.sol-search { width: 100%; min-height: 40px; margin-bottom: 6px; padding: 6px 10px; border-radius: 9px; border: 1.2px solid rgba(60, 40, 20, .35); background: #fff; color: #2b1a0d; font: inherit; font-size: 16px; }
+.sol-pkg { position: sticky; top: 0; z-index: 1; padding: 5px 2px 3px; font-size: 12px; font-weight: 800; background: inherit; color: #6e5440; background: #fbf4e0; }
+.sol-pk { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 3px 4px !important; text-align: left; border-bottom: 1px solid rgba(60, 40, 20, .14) !important; }
+.sol-pk b { display: block; font-size: 14px; font-weight: 700; line-height: 1.15; }
+.sol-pk small { font-size: 11.5px; opacity: .78; }
+.sol-pk small i { font-style: normal; color: #8d7b66; }
+.sol-pk.ok b { color: #2a6a33; }
+
+/* Вигляд */
+.sol-pop { position: absolute !important; z-index: 40 !important; width: min(340px, 96%); }
+.sol-popin { padding: 10px; border-radius: 12px; background: #fbf4e0; color: #2b1a0d; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); }
+.sol-poph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.sol-thl { display: flex; flex-direction: column; gap: 6px; }
+.sol-tho { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 4px !important; border-radius: 9px; text-align: left; box-shadow: inset 0 0 0 1.2px rgba(60, 40, 20, .25); }
+.sol-tho.on { box-shadow: inset 0 0 0 2.5px #b3261e; background: rgba(255, 217, 92, .3) !important; }
+.sol-tho b { display: block; font-size: 14px; }
+.sol-tho small { display: block; font-size: 11.5px; line-height: 1.2; opacity: .75; }
+.sol-pv { flex: none; width: 96px; height: 56px; border-radius: 6px; }
+.sol-poprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 13px; }
+
+/* Підсумок */
+.sol-sum { grid-area: field; align-self: center; justify-self: center; z-index: 25 !important; position: relative; width: min(980px, 96%); max-height: 96%; overflow: auto; padding: 10px 16px 12px; border-radius: 12px; background: linear-gradient(170deg, #fff6d8, #efdca8); color: #2b1a0d; box-shadow: 0 12px 40px rgba(0, 0, 0, .65); zoom: var(--sol-u); }
+.sol-sum.tight .sol-chart { max-height: 92px; }
+.sol-sum.tight .sol-stats td { padding: 2px 5px; }
+.sol-sum.tight .sol-sumgrid { margin-top: 4px; }
+.sol-sum.min { align-self: start; width: auto; padding: 6px 10px; overflow: hidden; margin-top: 8px; }
+.sol-sum.min > :not(.sol-sumh) { display: none; }
+.sol-sumh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.sol-sumh h3 { font: 700 22px/1.15 var(--sol-serif); color: #7c1610; }
+.sol-sum.min h3 { font-size: 15px; }
+.sol-sumb { display: flex; gap: 6px; margin-left: auto; }
+.sol-sumb .sol-btn { flex: none; min-height: 32px; background: rgba(60, 40, 20, .1) !important; }
+.sol-sumb .sol-primary { background: linear-gradient(180deg, #ffdc62, #f4c542 55%, #d9a92f) !important; }
+.sol-sump { margin-top: 2px !important; font-size: 12.5px; color: #5a3a1e; }
+.sol-tbl { overflow-x: auto; margin-top: 8px; }
+.sol-stats { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sol-stats th { padding: 2px 6px; font-size: 11.5px; font-weight: 600; color: #6e5440; text-align: center; white-space: nowrap; border-bottom: 1.5px solid rgba(60, 40, 20, .4); }
+.sol-stats td { padding: 4px 6px; text-align: center; font-variant-numeric: tabular-nums; border-bottom: 1px solid rgba(60, 40, 20, .18); vertical-align: top; }
+.sol-stats td:first-child { text-align: left; min-width: 170px; }
+.sol-stats .tot { font-weight: 800; font-size: 15px; }
+.sol-stats .ok { color: #2a6a33; } .sol-stats .no { color: #b3261e; }
+.sol-stats tr.win td { background: rgba(255, 217, 92, .35); }
+.sol-stats tr.me .sol-sumn b { text-decoration: underline; }
+.sol-stats tr.cur td { background: rgba(179, 38, 30, .1); }
+.sol-sumn { display: flex; align-items: center; gap: 5px; }
+.sol-sumt { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 11.5px; line-height: 1.3; margin-top: 1px !important; }
+.sol-sumt .ok { color: #2a6a33; } .sol-sumt .no { color: #b3261e; } .sol-sumt .hid { opacity: .45; }
+.sol-sumgrid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 10px 18px; margin-top: 8px; }
+.sol-trl { font-size: 12px; font-weight: 800; color: #6e5440; margin-bottom: 2px; }
+.sol-chart { width: 100%; height: auto; max-height: 150px; }
+.sol-gl { stroke: rgba(60, 40, 20, .18); }
+.sol-ax { font-size: 9.5px; fill: #6e5440; }
+.sol-chs { font-size: 13px; font-weight: 800; }
+.sol-titles { font-size: 12.5px; line-height: 1.34; }
+.sol-mut { opacity: .7; }
+
+/* Шви й підписи рядів на телефоні */
+.sol-rl { flex: none; width: 34px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; text-align: center; line-height: 1.05; }
+.sol-rl small { display: block; font-size: 11.5px; margin-top: 1px; opacity: .9; }
+.sol-burn { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; display: block; background: #cdb783; overflow: hidden; }
+.sol-burn > i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #8e1a14, #d4542a); transition: width .25s linear; }
+.sol-late .sol-burn > i { background: #d9301f; }
+.sol-late .sol-timer { animation: sol-late 1s ease-in-out infinite alternate; border-radius: 8px; }
+@keyframes sol-late { from { box-shadow: 0 0 0 0 rgba(217, 48, 31, 0); } to { box-shadow: 0 0 0 3px rgba(217, 48, 31, .9); } }
+.sol-timer { position: relative; display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.sol-timer b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.sol-hg { width: 22px; height: 30px; }
+.sol-rose { width: 100%; height: 100%; }
+.sol-rose .sol-pt { color: var(--pt); }
+.sol-rose .sol-pt.off { color: #2c2740; }
+.sol-trose { display: inline-grid; place-items: center; }
+.sol-trose > .sol-rose { grid-area: 1 / 1; }
+.sol-trose > b { grid-area: 1 / 1; z-index: 1; color: #ffe08a; font-weight: 900; }
+
+/* ═══════════════════ ПК: спільне ═══════════════════ */
+.sol-m-pc .sol-tools, .sol-m-pc .sol-zoom, .sol-m-pc .sol-banner, .sol-m-pc .sol-players, .sol-m-pc .sol-bar, .sol-m-pc .sol-market, .sol-m-pc .sol-hand, .sol-m-pc .sol-tickets, .sol-m-pc .sol-log, .sol-m-pc .sol-route, .sol-m-pc .sol-glek, .sol-m-pc .sol-title { zoom: var(--sol-u); }
+.sol-m-pc .sol-seam, .sol-m-ph .sol-seam, .sol-m-ls .sol-seam { display: none; }
+.sol-m-pc .sol-rl, .sol-m-pc .sol-disc { display: none; }
+.sol-m-pc .sol-bar { display: flex; gap: 5px; flex-wrap: wrap; }
+.sol-bb { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 30px; padding: 2px 9px !important; border-radius: 8px; font-size: 12.5px !important; font-weight: 600 !important; white-space: nowrap; }
+.sol-bbg.on { box-shadow: inset 0 0 0 1.5px var(--sol-acc, #ffd95c); }
+.sol-m-pc .sol-sheet { left: 12px; right: auto; width: min(430px, 90%); max-height: 86%; bottom: 8px; border-radius: 12px; zoom: var(--sol-u); }
+.sol-t-parchment.sol-m-pc .sol-sheet { left: calc((var(--sol-lw, 332px) + 12px) / var(--sol-u)); }
+.sol-sds { display: inline-flex; gap: 2px; }
+.sol-sd { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-style: normal; font-size: 10.5px; font-weight: 700; color: #ffe9cd; background: #a51d16; box-shadow: inset 0 0 0 1px rgba(255, 220, 190, .35); }
+.sol-sd.d { background: #3e7a44; } .sol-sd.x { background: #5a4a3e; }
+
+/* ═══════════════════ «Стара мапа» ═══════════════════ */
+.sol-t-parchment { --sol-acc: #f4d78d; --sol-mmland: #f1e3bd; --sol-mmedge: #2b1a0d; --sol-mmbg: #a9c2b4; background-color: #2a190e; color: #f7efd9; }
+.sol-t-parchment.sol-on { background-image: radial-gradient(120% 60% at 30% 0, #40281699, transparent 70%), var(--sol-leather); }
+.sol-t-parchment .sol-fieldwrap { background: #a9c2b4; }
+.sol-t-parchment .sol-title { background: linear-gradient(170deg, #f8eecf, #ecdcae); color: #2b1a0d; border: 1.5px solid #2b1a0d; outline: 1px solid #2b1a0d; outline-offset: 3px; border-radius: 3px; text-align: center; box-shadow: 0 3px 10px rgba(40, 20, 0, .4); }
+.sol-stars { width: 100%; height: 24px; }
+.sol-t-parchment .sol-title h1 { font: 400 31px/1.05 var(--sol-serif); color: #7c1610; margin-top: -2px; }
+.sol-t-parchment .sol-title p { margin-top: 3px; font: italic 12px/1.22 var(--sol-serif); color: #5a3a1e; }
+.sol-cartoon { width: 118px; height: 42px; margin: 2px auto -4px; }
+.sol-t-parchment :is(.sol-h3) { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font: 400 16px/1.1 var(--sol-serif); color: #f4d78d; margin-bottom: 4px; }
+.sol-t-parchment .sol-h3 em { font: italic 11.5px var(--sol-serif); color: #c9b184; margin-left: auto; }
+.sol-t-parchment .sol-bb { color: #f4d78d; background: rgba(244, 215, 141, .12); box-shadow: inset 0 0 0 1px rgba(224, 188, 110, .35); }
+.sol-t-parchment .sol-newt { background: rgba(244, 215, 141, .16) !important; color: #f4d78d !important; box-shadow: inset 0 0 0 1px rgba(224, 188, 110, .5); }
+.sol-t-parchment .sol-primary { color: #2a1e03 !important; }
+
+.sol-t-parchment.sol-m-pc { grid-template-columns: var(--sol-lw, 332px) minmax(0, 1fr); grid-template-rows: max-content max-content max-content minmax(0, max-content) minmax(30px, 1fr) max-content; grid-template-areas: "banner field" "players field" "bar field" "tickets field" "log field" "market field"; }
+.sol-t-parchment.sol-m-pc .sol-bg { display: none; }
+.sol-t-parchment.sol-m-pc::after { content: ''; position: absolute; left: 5px; top: 5px; bottom: 5px; width: calc(var(--sol-lw, 332px) - 10px); border: 1.5px dashed #b48d55; border-radius: 6px; opacity: .5; pointer-events: none; z-index: 2; }
+.sol-t-parchment.sol-m-pc .sol-banner { grid-area: banner; position: relative; margin: 10px 12px 8px; padding: 8px 8px 12px 12px; display: flex; align-items: flex-start; border-radius: 5px; overflow: hidden; background: linear-gradient(170deg, #fff4d2, #efdba4); color: #2b1a0d; border: 1px solid #7a5a33; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
+.sol-t-parchment .sol-btx { flex: 1; min-width: 0; }
+.sol-t-parchment.sol-m-pc .sol-btx small { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #5a3a1e; }
+.sol-t-parchment.sol-m-pc .sol-btx h2 { font: 400 22px/1.05 var(--sol-serif); color: #8e1a14; margin: 1px 0 2px; }
+.sol-t-parchment.sol-m-pc .sol-btx p { font-size: 12px; line-height: 1.25; color: #4d3419; }
+.sol-t-parchment.sol-m-pc .sol-timer { flex-direction: column; width: 56px; gap: 1px; color: #8e1a14; font-size: 18px; }
+.sol-t-parchment.sol-m-pc .sol-players { grid-area: players; margin: 0 12px; }
+.sol-t-parchment .sol-thead, .sol-t-parchment.sol-m-pc .sol-pl { display: grid; grid-template-columns: 42px minmax(0, 1fr) 38px 34px 34px 28px; align-items: center; }
+.sol-t-parchment .sol-thead { padding: 0 8px 1px; color: #c9b184; font-size: 10.5px; min-height: 18px; }
+.sol-t-parchment .sol-thead > span { display: flex; justify-content: center; }
+/* Низький ноутбук (1366×650): колонка не влазить, тому без підказки в банері й шапки таблиці — на замовлення лишається більше. */
+.sol-t-parchment.sol-short .sol-btx p, .sol-t-parchment.sol-short .sol-thead { display: none; }
+.sol-t-parchment .sol-thead > .sol-h3 { grid-column: 1 / 3; justify-content: flex-start; margin: 0 0 0 -8px; }
+.sol-t-parchment.sol-m-pc .sol-pl { min-height: 42px; padding: 0 8px; border-radius: 5px; border-bottom: 1px solid rgba(224, 188, 110, .16); }
+.sol-t-parchment.sol-m-pc .sol-pl.turn { background: rgba(244, 215, 141, .15); box-shadow: inset 3px 0 0 #f4d78d; }
+.sol-t-parchment .sol-pnm { font-size: 14px; font-weight: 600; color: #f7efd9; padding-left: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sol-t-parchment .sol-ti { background: #f4d78d; color: #2b1a0d; }
+.sol-t-parchment .sol-lg { background: rgba(244, 215, 141, .2); color: #f4d78d; }
+.sol-t-parchment .sol-pts { text-align: center; font: 400 21px/1 var(--sol-serif); color: #f4d78d; }
+.sol-t-parchment .sol-pts b { font-weight: 400; }
+.sol-t-parchment.sol-m-pc .sol-st { font-size: 13.5px; color: #eadfc6; }
+.sol-t-parchment.sol-m-pc .sol-st .sol-ic { display: none; }
+.sol-t-parchment.sol-m-pc .sol-bar { grid-area: bar; margin: 5px 12px 7px; }
+.sol-t-parchment.sol-m-pc .sol-tickets { grid-area: tickets; margin: 0 12px; display: flex; flex-direction: column; min-height: 0; }
+.sol-t-parchment .sol-tk { grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 6px; padding: 3px 8px 4px 5px; margin-bottom: 4px; flex: none; color: #2b1a0d; border-radius: 2px; background: linear-gradient(175deg, #f8edcb, #ebd9a8); box-shadow: 0 2px 4px rgba(0, 0, 0, .55); transform: rotate(var(--r)); clip-path: polygon(0 0, 100% 0, 99.4% 22%, 100% 48%, 99.5% 76%, 100% 100%, 0 100%, .4% 70%, 0 40%); }
+.sol-t-parchment .sol-tk.on { background: linear-gradient(175deg, #fff4bd, #f3d98a); outline: 2px solid #b3261e; outline-offset: -2px; }
+.sol-sealart { width: 40px; height: 40px; filter: drop-shadow(0 1px 1px rgba(30, 10, 0, .6)); }
+.sol-t-parchment .sol-rt { font: 400 15px/1.15 var(--sol-serif); }
+.sol-dash { color: #8e1a14; }
+.sol-t-parchment .sol-hint { color: #5a3a1e; margin-top: 2px; }
+.sol-t-parchment .sol-hint.ok { color: #2a6a33; } .sol-t-parchment .sol-hint.bad { color: #a51d16; }
+.sol-t-parchment .sol-tk.done .sol-rt { text-decoration: line-through; text-decoration-color: rgba(42, 106, 51, .7); }
+.sol-t-parchment .sol-tsum { color: #d9caa6; }
+.sol-t-parchment.sol-m-pc .sol-log { grid-area: log; margin: 7px 12px 0; color: #e7dcc1; }
+.sol-t-parchment .sol-tab { color: #f4d78d; font-family: var(--sol-serif) !important; font-size: 14px !important; font-weight: 400 !important; }
+.sol-t-parchment .sol-loglist b { color: #fff5dc; }
+.sol-t-parchment.sol-m-pc .sol-market { grid-area: market; margin: 8px 12px 12px; }
+.sol-t-parchment.sol-m-pc .sol-mrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px 6px; }
+.sol-mnote { grid-column: span 2; align-self: center; padding: 0 2px 0 6px; font-size: 12px; line-height: 1.3; color: #d9caa6; }
+.sol-mnote b { display: block; color: #fff5dc; font-weight: 600; margin-bottom: 2px; }
+.sol-mnote small { display: block; font-size: 11px; color: #c9b184; margin-top: 2px; }
+.sol-t-parchment .sol-deck { color: #f7efd9; }
+.sol-t-parchment .sol-deck .sol-dn { display: grid; place-items: center; min-width: 26px; height: 22px; padding: 0 4px; border-radius: 11px; background: #2b1a0d; color: #fff5dc; font-size: 13px; box-shadow: 0 0 0 1.5px #e9cf94; }
+.sol-t-parchment.sol-m-pc .sol-hand { grid-area: field; align-self: end; justify-self: start; width: 392px; padding: 8px 12px 10px; color: #f7efd9; border-top-right-radius: 16px; background-color: #2a190e; background-image: radial-gradient(120% 60% at 30% 0, #40281699, transparent 70%), var(--sol-leather); box-shadow: 3px -3px 14px rgba(20, 8, 0, .55); z-index: 4; }
+.sol-t-parchment.sol-m-pc .sol-hand::after { content: ''; position: absolute; inset: 5px 5px 5px 0; border: 1.5px dashed #b48d55; border-left: 0; border-radius: 0 12px 6px 0; opacity: .55; pointer-events: none; }
+.sol-flap { display: flex; align-items: baseline; justify-content: space-between; }
+.sol-tot { font-size: 12px; font-weight: 500; color: #d4bf94; }
+.sol-t-parchment.sol-m-pc .sol-hgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px 6px; }
+.sol-pile { position: absolute; inset: 0; border-radius: 6px; box-shadow: 1.5px 1.5px 0 #1a0d05, 3px 3px 0 #6a4524; }
+.sol-wag { display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #b48d55; border-radius: 6px; text-align: center; color: #f4d78d; }
+.sol-wag .sol-ic { width: 30px; height: 22px; }
+.sol-wag b { font: 400 22px/1 var(--sol-serif); margin-top: 2px; }
+.sol-wag small { font-size: 10.5px; line-height: 1.1; color: #d9caa6; margin-top: 2px; }
+.sol-t-parchment .sol-route { color: #2b1a0d; background: linear-gradient(170deg, #fff6d8, #efdca8); border: 1.5px solid #2b1a0d; outline: 2px solid #ffcf3f; border-radius: 4px; box-shadow: 0 3px 10px rgba(30, 15, 0, .45); padding: 6px 8px 8px 12px; }
+.sol-t-parchment .sol-rh h3 { font: 400 18px/1.1 var(--sol-serif); }
+.sol-t-parchment .sol-rm b { color: #8e1a14; }
+.sol-t-parchment.sol-m-pc .sol-route { grid-area: field; align-self: end; justify-self: start; width: 372px; margin: 0 0 244px 10px; }
+.sol-t-parchment.sol-m-pc .sol-title { grid-area: field; align-self: start; justify-self: end; width: 258px; margin: 12px 16px 0 0; padding: 6px 14px 8px; transform: rotate(.6deg); pointer-events: none; z-index: 3; }
+.sol-t-parchment .sol-glek { color: #2f1e10; }
+.sol-t-parchment.sol-m-pc .sol-glek { grid-area: field; align-self: end; justify-self: end; width: 280px; margin: 0 8px 8px 0; }
+.sol-t-parchment .sol-say { padding: 7px 10px 8px 16px; margin-left: -8px; background: linear-gradient(175deg, #fff8e3, #f0e0b4); border: 1.5px solid #2b1a0d; border-radius: 3px 12px 12px 3px; box-shadow: 0 2px 8px rgba(30, 15, 0, .4); }
+.sol-t-parchment .sol-say b { display: block; font: 400 14px var(--sol-serif); color: #7c1610; margin-bottom: 1px; }
+.sol-t-parchment.sol-m-pc .sol-tools { right: 14px; top: 176px; }
+.sol-t-parchment.sol-m-pc .sol-zoom { right: 14px; top: 212px; }
+.sol-t-parchment.sol-m-pc .sol-ticker { left: 10px; top: 10px; }
+
+/* ═══════════════════ «Настілка на столі» ═══════════════════ */
+.sol-t-board { --sol-acc: #ffd35a; --sol-mmland: #a8d868; --sol-mmedge: #355a2d; --sol-mmbg: #3aa8e4; background: #5d3820; color: #2a160b; }
+.sol-t-board .sol-lbl { font-size: 11.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: #f8e3bb; text-shadow: 0 1px 1px rgba(0, 0, 0, .65); }
+.sol-t-board .sol-lbl2 { font-size: 11.5px; font-weight: 600; color: #f8e3bb; text-shadow: 0 1px 1px rgba(0, 0, 0, .65); margin-left: auto; }
+.sol-t-board .sol-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.sol-t-board .sol-newt { margin-left: 2px; }
+.sol-t-board .sol-bb { background: linear-gradient(180deg, #fdf7e8, #f1e4c8); color: #2a160b; box-shadow: 0 1px 1px rgba(30, 12, 2, .5), 0 3px 6px rgba(20, 8, 2, .42); }
+.sol-t-board .sol-bb.sol-primary { background: linear-gradient(180deg, #ffdc62, #f4c542 55%, #d9a92f) !important; }
+.sol-t-board.sol-m-pc { grid-template-columns: var(--sol-bw, 1fr) minmax(0, 1fr); grid-template-rows: auto auto auto auto auto minmax(0, auto) minmax(56px, 1fr) auto; grid-template-areas: "field banner" "field players" "field bar" "field route" "field market" "field tickets" "field log" "field glek"; column-gap: 12px; row-gap: calc(7px * var(--sol-u)); padding: 4px 12px; }
+.sol-t-board .sol-bg { display: block; }
+.sol-t-board.sol-m-pc .sol-fieldwrap { grid-area: field; align-self: center; width: var(--sol-bw, 100%); height: var(--sol-bh, 100%); border-radius: 7px; background: #e9ddc0; overflow: visible; box-shadow: 0 1px 0 #fff6dd inset, 0 3px 0 #cdbb93, 0 5px 0 #a58f64, 0 7px 0 #7d6a48, 0 16px 26px rgba(10, 4, 0, .62); }
+.sol-t-board.sol-m-pc .sol-field { inset: calc(var(--sol-tk, 31px) + 3px); background: #3aa8e4; box-shadow: 0 0 0 2px #2a160b; }
+.sol-t-board.sol-m-pc .sol-railh { z-index: 3; }
+.sol-t-board.sol-m-pc .sol-banner { grid-area: banner; position: relative; display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 5px 11px 9px 8px; border-radius: 10px; color: #2a160b; background: linear-gradient(180deg, #d7a062 0%, #bb8346 55%, #a26c35 100%); box-shadow: inset 0 1.5px 0 rgba(255, 235, 195, .65), inset 0 -2px 0 rgba(70, 34, 8, .5), 0 1px 1px rgba(20, 8, 2, .55), 0 7px 12px rgba(15, 6, 1, .5); }
+.sol-tdisc { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 18px; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .35), 0 0 0 1.5px #2a160b; }
+.sol-t-board .sol-btx { flex: 1; min-width: 0; }
+.sol-t-board .sol-btx small { display: none; }
+.sol-t-board.sol-m-pc .sol-btx h2 { font-size: 19.5px; font-weight: 900; line-height: 1.05; }
+.sol-t-board.sol-m-pc .sol-btx p { font-size: 12px; font-weight: 700; color: #4a2a10; margin-top: 2px; line-height: 1.15; }
+.sol-t-board.sol-m-pc .sol-timer { padding: 3px 9px 3px 6px; border-radius: 9px; background: #fbf4e4; box-shadow: inset 0 0 0 1.5px #2a160b; font-size: 19px; font-weight: 900; }
+.sol-t-board.sol-m-pc .sol-burn { left: 10px; right: 10px; bottom: 3.5px; height: 4px; border-radius: 2px; background: rgba(58, 29, 10, .42); }
+.sol-t-board.sol-m-pc .sol-burn > i { background: #ffe066; }
+.sol-t-board.sol-m-pc .sol-players { grid-area: players; }
+.sol-t-board.sol-m-pc .sol-pls { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.sol-t-board.sol-m-pc .sol-pl { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 7px; align-items: center; min-height: 58px; padding: 10px 8px 3px 7px; border-radius: 8px; background: linear-gradient(180deg, #fdf7e8, #f1e4c8); box-shadow: 0 1px 1px rgba(30, 12, 2, .5), 0 6px 10px rgba(20, 8, 2, .42); }
+.sol-band { position: absolute; left: 0; right: 0; top: 0; height: 7px; border-radius: 8px 8px 0 0; background: var(--pc); box-shadow: inset 0 -1.5px 0 rgba(0, 0, 0, .25); }
+.sol-t-board.sol-m-pc .sol-pl.turn { box-shadow: 0 0 0 2.5px #ffd35a, 0 0 0 4px #2a160b, 0 6px 10px rgba(20, 8, 2, .42); }
+.sol-t-board.sol-m-pc .sol-av { grid-row: 1 / 3; }
+.sol-t-board .sol-av { color: #fff; --c: inherit; }
+.sol-t-board .sol-av > b { width: 100%; height: 100%; display: grid; place-items: center; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px #2a160b, inset 0 0 0 2px rgba(255, 255, 255, .3); }
+.sol-t-board .sol-avg { width: 100%; height: 100%; border-radius: 50%; background: #fbf4e4; box-shadow: 0 0 0 1.5px #2a160b; overflow: hidden; }
+.sol-t-board .sol-pnm { font-size: 13px; font-weight: 800; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sol-t-board .sol-ti { background: #b3261e; color: #fff; }
+.sol-t-board .sol-lg { background: #f4c542; color: #2a160b; }
+.sol-t-board .sol-rd { color: #2f7a4a; }
+.sol-t-board.sol-m-pc .sol-pts { grid-column: 3; grid-row: 1 / 3; text-align: center; line-height: .95; }
+.sol-t-board.sol-m-pc .sol-pts b { display: block; font-size: 24px; font-weight: 900; letter-spacing: -.02em; }
+.sol-t-board.sol-m-pc .sol-pts i { font-style: normal; font-size: 9.5px; font-weight: 700; color: #6e5440; }
+.sol-tight .sol-pts i, .sol-tight .sol-tools .sol-bl { display: none; }
+.sol-tight.sol-t-board .sol-pts { grid-row: 1 !important; }
+.sol-tight.sol-t-board .sol-pts b { font-size: 19px !important; }
+.sol-tight.sol-t-board .sol-sts { grid-column: 2 / 4; gap: 6px; }
+.sol-tight.sol-t-board .sol-pl { padding-top: 9px !important; min-height: 50px !important; }
+.sol-t-board.sol-m-pc .sol-lg { position: absolute; right: 3px; top: -3px; margin: 0; }
+.sol-t-board .sol-sts { display: flex; gap: 7px; font-size: 12px; color: #4a3524; white-space: nowrap; }
+.sol-t-board .sol-sts b { font-weight: 800; }
+.sol-t-board.sol-m-pc .sol-bar { grid-area: bar; }
+.sol-t-board .sol-route { color: #2a160b; background: linear-gradient(180deg, #fdf7e8, #f1e4c8); border-top: 6px solid var(--rc, #888); border-radius: 8px; padding: 7px 11px 9px; box-shadow: 0 1px 1px rgba(30, 12, 2, .5), 0 7px 13px rgba(20, 8, 2, .48); }
+.sol-t-board.sol-m-pc .sol-route { grid-area: route; }
+.sol-t-board .sol-rh h3 { font-size: 18px; font-weight: 900; }
+.sol-t-board .sol-rm b { color: #b3261e; font-size: 15px; }
+.sol-t-board.sol-m-pc .sol-market { grid-area: market; }
+.sol-t-board.sol-m-pc .sol-mrow { display: grid; grid-template-columns: repeat(5, 1fr) 1.02fr; gap: 6px; }
+.sol-t-board .sol-mc { aspect-ratio: 100 / 134; border-radius: 7px; overflow: hidden; filter: drop-shadow(0 1px 1px rgba(25, 10, 2, .6)) drop-shadow(0 4px 6px rgba(20, 8, 2, .42)); }
+.sol-t-board .sol-mc.want { overflow: visible; }
+.sol-t-board .sol-mc .sol-art { width: 100%; height: 100%; }
+.sol-cn { position: absolute; left: 0; right: 0; bottom: 3%; text-align: center; font-weight: 800; font-size: 10px; line-height: 1; color: #2a160b; white-space: nowrap; font-style: normal; }
+.sol-bk { position: absolute; inset: 0; border-radius: 6px; background: linear-gradient(145deg, #8a5324, #5e3314); box-shadow: inset 0 0 0 3px #fbf4e4, inset 0 0 0 4px #2a160b; }
+.sol-bk:nth-child(1) { transform: translate(3px, -3px) rotate(1.5deg); }
+.sol-bk:nth-child(2) { transform: translate(1.5px, -1.5px) rotate(.6deg); }
+.sol-t-board .sol-deck { overflow: visible; color: #fff0cf; }
+.sol-t-board .sol-deck .sol-dn { font-size: 20px; font-weight: 900; top: 42%; }
+.sol-t-board .sol-deck .sol-dl { font-size: 9.5px; font-weight: 700; bottom: 26%; }
+.sol-t-board.sol-m-pc .sol-tickets { grid-area: tickets; display: flex; flex-direction: column; min-height: 0; }
+.sol-t-board .sol-tklist { gap: 5px; }
+.sol-t-board .sol-tk { grid-template-columns: 38px minmax(0, 1fr); flex: none; min-height: 42px; border-radius: 7px; background: linear-gradient(180deg, #fdf7e8, #f1e4c8); color: #2a160b; box-shadow: 0 1px 1px rgba(30, 12, 2, .5), 0 4px 7px rgba(20, 8, 2, .4); overflow: hidden; }
+.sol-t-board .sol-tk.on { box-shadow: 0 0 0 2.5px #ffd35a, 0 0 0 4px #2a160b; }
+.sol-seal { display: grid; place-items: center; font-weight: 900; }
+.sol-t-board .sol-seal { color: #fff; font-size: 17px; background: #b3261e; border-right: 2px dashed #fdf7e8; }
+.sol-t-board .sol-tk.done .sol-seal { background: #2f7a4a; }
+.sol-t-board .sol-tk.dead .sol-seal { background: #6e5440; }
+.sol-t-board .sol-tkb { padding: 3px 8px 3px 9px; }
+.sol-t-board .sol-rt { font-size: 14px; font-weight: 800; line-height: 1.2; }
+.sol-t-board .sol-rt em { color: #2f7a4a; font-weight: 900; }
+.sol-t-board .sol-dash { color: #b3261e; font-weight: 900; }
+.sol-t-board .sol-hint { font-size: 11.5px; font-weight: 600; color: #5d4631; margin-top: 2px; }
+.sol-t-board .sol-tsum { color: #f8e3bb; text-shadow: 0 1px 1px rgba(0, 0, 0, .65); }
+.sol-t-board.sol-m-pc .sol-log { grid-area: log; padding: 6px 10px; border-radius: 8px; background: linear-gradient(180deg, #fdf7e8, #f1e4c8); box-shadow: 0 1px 1px rgba(30, 12, 2, .5), 0 6px 11px rgba(20, 8, 2, .45); }
+.sol-t-board .sol-tab { font-size: 11.5px !important; font-weight: 800 !important; letter-spacing: .06em; color: #6e5440; }
+.sol-t-board .sol-loglist li { font-size: 12px; font-weight: 600; }
+.sol-t-board .sol-loglist em { color: #b3261e; }
+.sol-t-board.sol-m-pc .sol-glek { grid-area: glek; }
+.sol-t-board .sol-glk { width: 58px; height: 58px; margin-bottom: -3px; }
+.sol-t-board .sol-say { flex: 1; margin-left: 7px; padding: 7px 10px; border-radius: 11px; font-weight: 600; color: #2a160b; background: linear-gradient(180deg, #fdf7e8, #f1e4c8); box-shadow: 0 1px 1px rgba(30, 12, 2, .5), 0 6px 11px rgba(20, 8, 2, .45); }
+/* Рука віялом — поверх дошки */
+.sol-t-board.sol-m-pc .sol-hand { grid-area: field; align-self: end; justify-self: start; width: 410px; margin: 0 0 calc((var(--sol-h) - var(--sol-bh, var(--sol-h))) / 2 / var(--sol-u) + 4px) 16px; z-index: 6; pointer-events: none; }
+.sol-handtag { display: inline-flex; align-items: baseline; gap: 6px; margin: 0 0 8px 5px; padding: 3px 9px; border-radius: 7px; font-size: 12.5px; font-weight: 900; background: linear-gradient(180deg, #d7a062, #a26c35); box-shadow: 0 2px 4px rgba(15, 6, 1, .5); pointer-events: auto; }
+.sol-handtag span { font-weight: 600; color: #4a2a10; font-size: 11.5px; }
+.sol-paytag { margin-left: 6px; padding: 1px 7px !important; border-radius: 6px; background: #2a160b; color: #ffe066 !important; font-size: 11px !important; font-weight: 800 !important; white-space: nowrap; }
+.sol-fan { position: relative; height: 122px; }
+.sol-fan .sol-hc { position: absolute; width: 86px; height: 120px; transform-origin: 50% 130%; pointer-events: auto; }
+.sol-fan .sol-top { width: 100%; height: 100%; }
+.sol-fan .sol-art { width: 100%; height: 100%; }
+.sol-fan .sol-top, .sol-stk { filter: drop-shadow(0 1px 1px rgba(25, 10, 2, .6)) drop-shadow(0 4px 6px rgba(20, 8, 2, .42)); }
+.sol-stk { position: absolute; inset: 0; display: block; }
+.sol-stk .sol-cn { display: none; }
+.sol-fan .sol-cn { font-size: 11px; bottom: 5.5%; text-align: left; padding-left: 9px; }
+.sol-fan .sol-hc:last-child .sol-cn { text-align: center; padding-left: 0; }
+.sol-fan .sol-hc.k-wild .sol-cn { font-size: 9.2px; }
+.sol-t-board .sol-cnt { left: -7px; right: auto; top: -7px; min-width: 27px; height: 27px; font-size: 15px; font-weight: 900; color: #2a160b; background: radial-gradient(circle at 35% 28%, #ffe9bb, #e3b273 70%, #c48c4b); box-shadow: inset 0 0 0 1.5px #2a160b, 0 2px 0 #3a1d0a, 0 3px 5px rgba(0, 0, 0, .5); }
+.sol-fan .sol-hc.use .sol-top { transform: none; }
+.sol-t-board .sol-title { color: #2a160b; text-align: center; background: #fff6da; border: 1.5px solid #2a160b; border-radius: 9px; box-shadow: 3px 4px 0 rgba(58, 36, 16, .35); position: relative; }
+.sol-t-board .sol-title::after { content: ''; position: absolute; inset: 3.5px; border: 1.2px dashed #c5392b; border-radius: 6px; pointer-events: none; }
+.sol-t-board .sol-title h1 { font-size: 23.5px; font-weight: 900; color: #b3261e; line-height: 1.15; }
+.sol-t-board .sol-title small { display: block; font-size: 9px; font-weight: 700; color: #6e5440; }
+.sol-ptrow { display: flex; justify-content: center; gap: 6px; margin-top: 5px; font-size: 10px; font-weight: 700; color: #6e5440; }
+.sol-ptrow i { font-style: normal; display: inline-block; padding: 0 3px; margin-right: 1px; border-radius: 3px; background: #d9cfb6; color: #2a160b; font-weight: 900; box-shadow: inset 0 0 0 .9px #2a160b; }
+.sol-ptrow b { color: #b3261e; font-weight: 900; font-size: 11px; margin-left: 1px; }
+.sol-t-board.sol-m-pc .sol-title { grid-area: field; align-self: start; justify-self: end; width: 214px; padding: 8px 8px 9px; margin: calc((var(--sol-h) - var(--sol-bh, var(--sol-h))) / 2 / var(--sol-u) + var(--sol-tk, 31px) / var(--sol-u) + 20px) calc(var(--sol-tk, 31px) / var(--sol-u) + 18px) 0 0; z-index: 4; pointer-events: none; }
+.sol-t-board.sol-m-pc .sol-deco { grid-area: field; position: relative; pointer-events: none; z-index: 4; display: block; }
+.sol-tea { position: absolute; right: calc(var(--sol-tk, 31px) + 16px); bottom: calc((var(--sol-h) - var(--sol-bh, var(--sol-h))) / 2 + var(--sol-tk, 31px) + 8px); width: 138px; height: 138px; zoom: var(--sol-u); }
+.sol-salt { position: absolute; right: calc(var(--sol-tk, 31px) + 150px); bottom: calc((var(--sol-h) - var(--sol-bh, var(--sol-h))) / 2 + var(--sol-tk, 31px) + 12px); zoom: var(--sol-u); }
+.sol-t-board.sol-m-pc .sol-tools { left: calc((var(--sol-tk, 31px) + 8px) / var(--sol-u)); top: calc((var(--sol-tk, 31px) + 8px) / var(--sol-u)); }
+.sol-t-board.sol-m-pc .sol-zoom { left: calc((var(--sol-tk, 31px) + 8px) / var(--sol-u)); top: calc((var(--sol-tk, 31px) + 8px) / var(--sol-u) + 36px); }
+.sol-t-board.sol-m-pc .sol-ticker { left: calc(var(--sol-tk, 31px) + 130px); top: calc(var(--sol-tk, 31px) + 8px + 36px * var(--sol-u)); }
+
+/* ═══════════════════ «Петриківка» ═══════════════════ */
+.sol-t-petryk { --sol-acc: #ffd34d; --sol-mmland: #6a5a94; --sol-mmedge: #0a0812; --sol-mmbg: #0a0812; background: #0a0812; color: #fbf1da; font-feature-settings: 'tnum'; }
+.sol-t-petryk .sol-fieldwrap { background: #08070f; }
+.sol-t-petryk .sol-h3 { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #ffd34d; margin-bottom: 6px; }
+.sol-t-petryk .sol-h3 em { letter-spacing: .02em; text-transform: none; color: #a79fbe; font-weight: 600; font-size: 12px; }
+.sol-t-petryk .sol-lgd > span { margin-left: auto; letter-spacing: 0; text-transform: none; color: #a79fbe; font-weight: 600; font-size: 11.5px; display: inline-flex; align-items: center; gap: 3px; }
+.sol-t-petryk .sol-bb { color: #ffe08a; background: #191530; box-shadow: inset 0 0 0 1.5px #6d5a1e; font-weight: 800 !important; }
+.sol-t-petryk .sol-newt { background: #191530 !important; color: #ffe08a !important; box-shadow: inset 0 0 0 1.5px #6d5a1e; letter-spacing: 0; text-transform: none; min-height: 26px; }
+.sol-t-petryk.sol-m-pc { grid-template-columns: minmax(0, 1fr) 14px var(--sol-rw, 346px); grid-template-rows: max-content max-content minmax(0, max-content) minmax(30px, 1fr) max-content; grid-template-areas: "field seam players" "field seam market" "field seam tickets" "field seam log" "field seam bar"; }
+.sol-t-petryk.sol-m-pc .sol-seam { display: block; grid-area: seam; background: #0a0812 var(--sol-stitch) repeat-y center top / 10px 10px; z-index: 2; }
+.sol-t-petryk.sol-m-pc::before { content: ''; grid-column: 3; grid-row: 1 / -1; background: #100d1e; z-index: 0; }
+.sol-t-petryk.sol-m-pc .sol-fieldwrap::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 8px; z-index: 3; background: #0a0812 var(--sol-stitch) repeat-x left center / 8px 8px; }
+.sol-t-petryk.sol-m-pc :is(.sol-market, .sol-tickets, .sol-log) { padding: calc(10px + 9px) 14px 8px; background: var(--sol-stitch) repeat-x left top / 10px 10px; }
+.sol-t-petryk.sol-m-pc .sol-players { grid-area: players; padding: 10px 14px 8px; }
+.sol-t-petryk.sol-m-pc .sol-pl { display: flex; align-items: center; gap: 12px; padding: 5px 10px; border-radius: 12px; }
+.sol-t-petryk.sol-m-pc .sol-pl.turn { background: #241e42; box-shadow: inset 0 0 0 1.5px #ffd34d; }
+.sol-t-petryk .sol-av { color: #fff; }
+.sol-t-petryk .sol-av > b, .sol-t-petryk .sol-avg { width: 100%; height: 100%; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px #0a0812, 0 0 0 3.5px color-mix(in srgb, var(--c) 60%, #fff); font-weight: 900; }
+.sol-t-petryk .sol-av > b { display: grid; place-items: center; }
+.sol-t-petryk .sol-avg { background: #e9dfc5; overflow: hidden; }
+.sol-t-petryk .sol-emb { right: -4px; bottom: -4px; width: 46%; height: 46%; }
+.sol-who { flex: 1; min-width: 0; }
+.sol-t-petryk .sol-pnm { font-size: 14.5px; font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sol-t-petryk .sol-ti { background: #2a2542; color: #a79fbe; }
+.sol-t-petryk .sol-lg { background: #ffd34d; color: #1b0f06; }
+.sol-t-petryk .sol-sts { display: flex; gap: 11px; margin-top: 3px; font-size: 12.5px; color: #a79fbe; }
+.sol-t-petryk .sol-sts b { font-weight: 700; }
+.sol-t-petryk.sol-m-pc .sol-pts { font-size: 26px; font-weight: 900; min-width: 38px; text-align: right; line-height: 1; }
+.sol-t-petryk .sol-pts b { font-weight: 900; }
+.sol-t-petryk.sol-m-pc .sol-pl.lead .sol-pts { color: #ffd34d; }
+.sol-t-petryk.sol-m-pc .sol-market { grid-area: market; }
+.sol-t-petryk.sol-m-pc .sol-mrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.sol-t-petryk .sol-mc { aspect-ratio: 120 / 74; border-radius: 9px; overflow: hidden; box-shadow: 0 0 0 2px #0a0812; }
+.sol-t-petryk .sol-mc.want { overflow: visible; box-shadow: 0 0 0 2.5px #ffd34d, 0 0 16px rgba(255, 211, 77, .5); }
+.sol-t-petryk .sol-mc.want::before { display: none; }
+.sol-t-petryk .sol-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sol-t-petryk .sol-mc.want .sol-art { border-radius: 9px; }
+.sol-t-petryk .sol-cn { left: 0; right: 0; bottom: 0; padding: 1px 6px 2px; font-size: 11.5px; font-weight: 800; box-shadow: 0 -1px 0 rgba(0, 0, 0, .25); }
+.sol-t-petryk kbd { left: auto; right: 3px; bottom: auto; top: 3px; }
+.sol-t-petryk .sol-mc .sol-wtag { bottom: auto; top: 3px; left: 3px; transform: none; }
+.sol-t-petryk .sol-wanttag { right: 4px; top: 4px; background: #ffd34d; color: #1b0f06; font-size: 10.5px; font-weight: 900; }
+.sol-t-petryk .sol-deck { background: #1a1430; color: #ffe08a; box-shadow: 0 0 0 2px #ffd34d, 3px 3px 0 0 #0a0812, 3px 3px 0 2px #6d5a1e, 6px 6px 0 0 #0a0812, 6px 6px 0 2px #4b3e16; overflow: hidden; }
+.sol-t-petryk .sol-deck .sol-art { opacity: .34; }
+.sol-t-petryk .sol-deck .sol-dn { font-size: 22px; font-weight: 900; top: 40%; }
+.sol-t-petryk .sol-deck .sol-dl { font-size: 12px; font-weight: 800; bottom: 12%; }
+.sol-t-petryk.sol-m-pc .sol-tickets { grid-area: tickets; display: flex; flex-direction: column; min-height: 0; }
+.sol-t-petryk .sol-tklist { gap: 7px; }
+.sol-t-petryk .sol-tk { grid-template-columns: 24px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; flex: none; color: #fbf1da; }
+.sol-t-petryk .sol-tk.on { outline: 1.5px solid #ffd34d; outline-offset: 2px; border-radius: 6px; }
+.sol-t-petryk .sol-seal { width: 24px; height: 24px; border-radius: 50%; background: #ffd34d; color: #1b0f06; font-size: 13.5px; box-shadow: 0 0 0 1.5px #0a0812; }
+.sol-t-petryk .sol-rt { font-size: 13.5px; font-weight: 800; }
+.sol-tpts { font-size: 17px; font-weight: 900; color: #ffe08a; }
+.sol-prog { grid-column: 2 / 4; display: flex; gap: 2px; margin-top: 4px; }
+.sol-prog i { flex: 1; height: 7px; border-radius: 2px; background: #322c4d; }
+.sol-prog i.on { background: #ef7d1a; }
+.sol-via { grid-column: 2 / 4; margin-top: 3px; font-size: 11.2px; font-weight: 500; line-height: 1.25; color: #a79fbe; }
+.sol-t-petryk .sol-tk.done { opacity: .9; }
+.sol-t-petryk .sol-tk.done .sol-seal { background: #2f9e4a; color: #fff; }
+.sol-t-petryk .sol-tk.done .sol-rt { color: #a79fbe; font-weight: 700; }
+.sol-t-petryk .sol-tk.done .sol-tpts { color: #7ad36b; }
+.sol-t-petryk .sol-hint.bad { grid-column: 2 / 4; color: #ff8a70; }
+.sol-t-petryk .sol-tsum { color: #a79fbe; }
+.sol-t-petryk.sol-m-pc .sol-log { grid-area: log; color: #cfc8df; }
+.sol-t-petryk .sol-tab { color: #ffd34d; font-size: 11.5px !important; font-weight: 800 !important; letter-spacing: .08em; }
+.sol-t-petryk .sol-loglist b { color: #fff; font-weight: 700; }
+.sol-t-petryk.sol-m-pc .sol-bar { grid-area: bar; padding: 0 14px 10px; }
+.sol-t-petryk.sol-m-pc .sol-banner { grid-area: field; align-self: start; justify-self: start; display: flex; align-items: flex-start; gap: 10px; margin: 14px 0 0 10px; z-index: 4; pointer-events: none; max-width: 60%; }
+.sol-t-petryk.sol-m-pc .sol-trose { width: 92px; height: 92px; font-size: 18px; }
+.sol-t-petryk.sol-m-pc .sol-btx h2 { padding-top: 6px; font-size: 24px; font-weight: 900; color: #ffe08a; line-height: 1.02; letter-spacing: -.01em; text-shadow: 0 2px 0 #000; white-space: nowrap; }
+.sol-t-petryk.sol-m-pc .sol-btx p { margin-top: 3px; font-size: 12.5px; font-weight: 500; line-height: 1.25; text-shadow: 0 1px 2px #000; max-width: 300px; }
+.sol-t-petryk.sol-m-pc .sol-title { grid-area: field; align-self: start; justify-self: end; margin: 14px 200px 0 0; text-align: right; pointer-events: none; z-index: 4; }
+.sol-t-petryk .sol-title h1 { font-size: 34px; font-weight: 900; color: #ffe08a; line-height: 1; letter-spacing: -.02em; text-shadow: 0 2px 0 #000; }
+.sol-t-petryk.sol-m-pc .sol-hand { grid-area: field; align-self: end; justify-self: start; width: 418px; margin: 0 0 10px 10px; z-index: 4; }
+.sol-t-petryk .sol-hl { margin: 0 0 7px 2px; }
+.sol-t-petryk.sol-m-pc .sol-hgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 11px; }
+.sol-t-petryk.sol-m-pc .sol-hc { aspect-ratio: 120 / 62; }
+.sol-t-petryk .sol-top { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 2px #0a0812; background: #000; }
+.sol-t-petryk .sol-hc.use .sol-top { transform: none; box-shadow: 0 0 0 2.5px #ffd34d, 0 0 14px rgba(255, 211, 77, .45); }
+.sol-t-petryk .sol-hc.use .sol-top::after { display: none; }
+.sol-st1, .sol-st2 { position: absolute; inset: 0; border-radius: 10px; background: #0a0812; box-shadow: inset 0 0 0 1.5px #d9cda8; }
+.sol-st1 { transform: translate(3px, 3px); } .sol-st2 { transform: translate(6px, 6px); }
+.sol-t-petryk .sol-cnt { right: -6px; top: -7px; min-width: 28px; height: 28px; background: #0a0812; color: #ffe08a; font-size: 16px; font-weight: 900; box-shadow: 0 0 0 2px #ffd34d; }
+.sol-t-petryk .sol-hc.zero .sol-cnt { background: #1c1830; color: #8a83a0; box-shadow: 0 0 0 1.5px #3b3556; }
+.sol-t-petryk .sol-hc.zero { opacity: 1; filter: none; }
+.sol-t-petryk .sol-hc.zero .sol-top { filter: grayscale(.75) brightness(.55); }
+.sol-t-petryk .sol-route { background: #0a0812; color: #fbf1da; border-radius: 14px; box-shadow: 0 0 0 2px #ffd34d; padding: 8px 11px 9px; }
+.sol-t-petryk.sol-m-pc .sol-route { grid-area: field; align-self: end; justify-self: start; width: 418px; margin: 0 0 280px 10px; z-index: 5; }
+.sol-t-petryk .sol-rh h3 { font-size: 16px; font-weight: 900; color: #ffe08a; }
+.sol-t-petryk .sol-rm { color: #fbf1da; }
+.sol-t-petryk .sol-note { color: #fbf1da; }
+.sol-t-petryk .sol-note b { color: #ffd34d; }
+.sol-t-petryk .sol-note.ok { color: #7ad36b; }
+.sol-t-petryk .sol-why { color: #ff8a70; }
+.sol-t-petryk .sol-tile.miss { border-color: #ffd34d; color: #ffd34d; background: none; }
+.sol-t-petryk .sol-locked { background: #231e3a !important; color: #b6aecb !important; box-shadow: inset 0 0 0 1.5px #4b4468; }
+.sol-t-petryk .sol-primary { background: #ffd34d !important; color: #1b0f06 !important; box-shadow: 0 3px 0 #a87a10; font-weight: 900 !important; }
+.sol-t-petryk .sol-combo { box-shadow: inset 0 0 0 1.5px #4b4468; }
+.sol-t-petryk .sol-combo.on { box-shadow: inset 0 0 0 2px #ffd34d; background: #241e42 !important; }
+.sol-t-petryk.sol-m-pc .sol-glek { grid-area: field; align-self: end; justify-self: end; width: 224px; flex-direction: row-reverse; margin: 0 6px 6px 0; }
+.sol-t-petryk .sol-glk { filter: drop-shadow(0 3px 0 #000); margin-left: -6px; }
+.sol-t-petryk .sol-say { background: #fbf1da; color: #1b0f06; border-radius: 14px 14px 3px 14px; padding: 7px 10px; font-weight: 600; margin-bottom: 12px; box-shadow: 0 0 0 2px #0a0812; }
+.sol-t-petryk.sol-m-pc .sol-tools { right: 12px; top: 52px; }
+.sol-t-petryk.sol-m-pc .sol-zoom { right: 12px; top: 88px; }
+.sol-t-petryk.sol-m-pc .sol-ticker { left: 10px; top: calc(70px * var(--sol-u)); }
+.sol-t-petryk .sol-zoom button { background: #0a0812e8 !important; color: #ffe08a !important; box-shadow: inset 0 0 0 1.5px #ffd34d; border-radius: 12px; }
+.sol-t-petryk .sol-view { background: #0a0812e8 !important; box-shadow: inset 0 0 0 1px #5a5272; color: #fbf1da !important; }
+.sol-t-petryk .sol-view.on { background: #ffd34d !important; color: #1b0f06 !important; }
+.sol-t-petryk :is(.sol-sheet, .sol-popin, .sol-which) { background: #191530; color: #fbf1da; box-shadow: 0 0 0 2px #ffd34d, 0 10px 30px rgba(0, 0, 0, .7); }
+.sol-t-petryk .sol-pkg { background: #191530; color: #ffd34d; }
+.sol-t-petryk .sol-pk { border-bottom-color: #322c4d !important; }
+.sol-t-petryk .sol-pk.ok b { color: #7ad36b; }
+.sol-t-petryk .sol-pk small i { color: #a79fbe; }
+.sol-t-petryk .sol-search { background: #0a0812; color: #fbf1da; border-color: #4b4468; }
+.sol-t-petryk .sol-tho { box-shadow: inset 0 0 0 1.2px #4b4468; }
+.sol-t-petryk .sol-tho.on { box-shadow: inset 0 0 0 2.5px #ffd34d; background: #241e42 !important; }
+.sol-t-petryk :is(.sol-keep, .sol-sum) { background: #100d1e; color: #fbf1da; box-shadow: 0 0 0 2px #ffd34d, 0 12px 40px rgba(0, 0, 0, .7); }
+.sol-t-petryk .sol-off { background: #191530 !important; box-shadow: inset 0 0 0 1.2px #4b4468; }
+.sol-t-petryk .sol-off.on { background: #241e42 !important; box-shadow: inset 0 0 0 2px #ffd34d; }
+.sol-t-petryk .sol-chk { background: #0a0812; box-shadow: inset 0 0 0 1.5px #6d5a1e; }
+.sol-t-petryk .sol-off.on .sol-chk { background: #2f9e4a; }
+.sol-t-petryk .sol-sumh h3 { color: #ffe08a; font-family: inherit; font-weight: 900; }
+.sol-t-petryk .sol-sump, .sol-t-petryk .sol-trl, .sol-t-petryk .sol-stats th { color: #a79fbe; }
+.sol-t-petryk .sol-stats td, .sol-t-petryk .sol-stats th { border-bottom-color: #322c4d; }
+.sol-t-petryk .sol-stats .ok, .sol-t-petryk .sol-sumt .ok { color: #7ad36b; }
+.sol-t-petryk .sol-stats .no, .sol-t-petryk .sol-sumt .no { color: #ff8a70; }
+.sol-t-petryk .sol-stats tr.win td { background: #241e42; }
+.sol-t-petryk .sol-gl { stroke: #322c4d; } .sol-t-petryk .sol-ax { fill: #a79fbe; }
+.sol-t-petryk .sol-sumb .sol-btn:not(.sol-primary) { background: #231e3a !important; }
+
+/* ═══════════════════ Телефон стоячи ═══════════════════ */
+.sol-m-ph { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto auto; grid-template-areas: "players" "field" "market" "hand" "bar"; }
+.sol-m-ph :is(.sol-title, .sol-deco, .sol-log, .sol-tickets, .sol-mnote, .sol-disc, .sol-thead, .sol-h3, .sol-hd, .sol-flap, .sol-handtag) { display: none !important; }
+.sol-m-ls :is(.sol-title, .sol-deco, .sol-log, .sol-tickets, .sol-mnote, .sol-disc, .sol-thead, .sol-h3, .sol-hd, .sol-flap, .sol-handtag) { display: none !important; }
+:is(.sol-m-ph, .sol-m-ls) .sol-players { grid-area: players; display: flex; align-items: center; gap: 4px; padding: 3px 5px; min-height: 48px; min-width: 0; }
+:is(.sol-m-ph, .sol-m-ls) .sol-pls { flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+:is(.sol-m-ph, .sol-m-ls) .sol-pls::-webkit-scrollbar { display: none; }
+:is(.sol-m-ph, .sol-m-ls) .sol-pl { flex: 1 0 auto; display: flex; align-items: center; justify-content: center; gap: 4px; height: 42px; padding: 0 4px; border-radius: 8px; --sol-av: 30px; min-width: 60px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-pl.turn { background: rgba(255, 217, 92, .18); box-shadow: inset 0 -3px 0 var(--sol-acc); }
+.sol-ptxt { display: flex; flex-direction: column; line-height: 1; min-width: 0; }
+.sol-pn { font-size: 17px; font-weight: 800; }
+.sol-pw { display: flex; align-items: center; gap: 2px; margin-top: 2px; font-size: 11px; font-weight: 600; }
+.sol-pw.low { color: #e8574a; }
+.sol-pw .sol-ic { width: 12px; height: 10px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-timer { height: 40px; padding: 0 6px; font-size: 14px; border-radius: 6px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-hg { width: 14px; height: 20px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-trose { width: 44px; height: 44px; font-size: 10px; padding: 0; }
+:is(.sol-m-ph, .sol-m-ls) .sol-banner { grid-area: field; align-self: start; justify-self: start; z-index: 5 !important; pointer-events: none; }
+.sol-bs { display: block; font-size: 14px; line-height: 1; white-space: nowrap; }
+:is(.sol-m-ph, .sol-m-ls) .sol-market { grid-area: market; display: flex; align-items: stretch; gap: 3px; padding: 3px 5px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-mrow { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-mc { height: var(--sol-mh, 56px); aspect-ratio: auto; }
+:is(.sol-m-ph, .sol-m-ls) .sol-mc .sol-art { width: 100%; height: 100%; }
+:is(.sol-m-ph, .sol-m-ls) .sol-hand { grid-area: hand; display: flex; align-items: stretch; gap: 3px; padding: 5px 5px 3px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-hgrid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 2px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-hc { height: var(--sol-hh, 50px); }
+:is(.sol-m-ph, .sol-m-ls) .sol-hc .sol-top { width: 100%; height: 100%; position: relative; }
+:is(.sol-m-ph, .sol-m-ls) .sol-hc .sol-art { width: 100%; height: 100%; }
+:is(.sol-m-ph, .sol-m-ls) .sol-hc .sol-cn { display: none; }
+:is(.sol-m-ph, .sol-m-ls) .sol-cnt { right: -1px; top: -2px; min-width: 18px; height: 18px; font-size: 11.5px; padding: 0 3px; left: auto; }
+:is(.sol-m-ph, .sol-m-ls) .sol-hc.use .sol-top { transform: none; }
+:is(.sol-m-ph, .sol-m-ls) .sol-wanttag { font-size: 9.5px; padding: 0 4px; right: -2px; top: -4px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-wtag { font-size: 8.5px; padding: 0 3px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-bar { grid-area: bar; display: flex; align-items: stretch; gap: 4px; padding: 3px 6px 5px; min-height: 52px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-bb { flex: 1 1 0; min-height: 44px; padding: 2px 5px !important; font-size: 13px !important; }
+:is(.sol-m-ph, .sol-m-ls) .sol-bbt { flex: 2 1 0; }
+:is(.sol-m-ph, .sol-m-ls) .sol-bbg { flex: .6 1 0; }
+:is(.sol-m-ph, .sol-m-ls) .sol-route { grid-area: field; align-self: end; margin: 0 4px 4px; max-height: 58%; overflow: auto; z-index: 6 !important; }
+:is(.sol-m-ph, .sol-m-ls) .sol-rh h3 { font-size: 15px !important; }
+:is(.sol-m-ph, .sol-m-ls) .sol-rh .sol-tile { width: 20px; height: 20px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-rw .sol-tile { width: 24px; height: 24px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-btn { min-height: 44px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-combo { min-height: 40px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-x { width: 40px; height: 40px; margin: -6px -4px -6px 0; }
+:is(.sol-m-ph, .sol-m-ls) .sol-glek { grid-area: field; align-self: end; justify-self: start; max-width: 74%; margin: 0 0 4px 4px; z-index: 5 !important; pointer-events: none; }
+:is(.sol-m-ph, .sol-m-ls) .sol-glek .sol-back { pointer-events: auto; }
+:is(.sol-m-ph, .sol-m-ls) .sol-glk { width: 42px; height: 42px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-say { font-size: 12px; padding: 5px 9px !important; margin-bottom: 4px !important; }
+:is(.sol-m-ph, .sol-m-ls) .sol-glek .sol-say b { display: inline; font-size: 12px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-zoom { right: 6px; top: 6px; flex-direction: column; }
+:is(.sol-m-ph, .sol-m-ls) .sol-zoom button { width: 44px; height: 44px; font-size: 24px !important; }
+:is(.sol-m-ph, .sol-m-ls) .sol-tools { left: 6px; top: 36px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-view { min-height: 40px; min-width: 40px; padding: 2px 8px !important; justify-content: center; }
+:is(.sol-m-ph, .sol-m-ls) .sol-tab { min-height: 40px; }
+:is(.sol-m-ph, .sol-m-ls) :is(.sol-seg, .sol-snd), :is(.sol-m-ph, .sol-m-ls) .sol-thb .sol-bl, :is(.sol-m-ph, .sol-m-ls) .sol-stats .sol-bl { display: none; }
+:is(.sol-m-ph, .sol-m-ls) .sol-wtag i { display: none; font-style: normal; }
+.sol-wtag i { font-style: normal; }
+:is(.sol-m-ph, .sol-m-ls) .sol-ticker { left: 6px; top: 80px; max-width: 72%; }
+.sol-minion:is(.sol-m-ph, .sol-m-ls) .sol-glek { margin-left: 106px; max-width: calc(100% - 160px); }
+:is(.sol-m-ph, .sol-m-ls) .sol-keep { align-self: end; justify-self: stretch; width: auto; max-height: min(60vh, 96%); margin: 0; border-radius: 14px 14px 0 0; grid-row: 1 / -1; grid-column: 1 / -1; }
+:is(.sol-m-ph, .sol-m-ls) .sol-off { min-height: 60px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-mm { width: 78px; height: 54px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-sum { grid-row: 1 / -1; grid-column: 1 / -1; align-self: stretch; justify-self: stretch; width: auto; max-height: none; border-radius: 0; padding: 8px 10px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-sum.min { align-self: start; margin: 0; padding: 4px 8px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-sumgrid { grid-template-columns: minmax(0, 1fr); }
+:is(.sol-m-ph, .sol-m-ls) .sol-sumh h3 { font-size: 18px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-stats td:first-child { min-width: 0; }
+:is(.sol-m-ph, .sol-m-ls) .sol-stats td, :is(.sol-m-ph, .sol-m-ls) .sol-stats th { padding: 3px 2px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-sumt { font-size: 10.5px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-stats { font-size: 12px; }
+:is(.sol-m-ph, .sol-m-ls) .sol-sumb .sol-btn { min-height: 40px; font-size: 12px !important; }
+.sol-m-ph .sol-tk, .sol-m-ls .sol-tk { min-height: 44px; }
+.sol-m-ls .sol-glek .sol-say { max-width: 300px; }
+.sol-sheet .sol-tklist { gap: 5px; }
+
+/* Телефон стоячи: мапа — головне. Ринок і рука — тонкі рядки, кнопки поля — рядком у нижньому куті, стрічка — один рядок під смугою */
+.sol-m-ph .sol-players { padding: 1px 5px; min-height: 42px; }
+.sol-m-ph .sol-pl { height: 38px; --sol-av: 26px; }
+.sol-m-ph .sol-market { padding: 2px 5px; }
+.sol-m-ph .sol-hand { padding: 2px 5px; }
+.sol-m-ph .sol-bar { min-height: 46px; padding: 2px 6px 3px; }
+.sol-m-ph .sol-bb { min-height: 42px; }
+.sol-m-ph .sol-rl { width: 30px; font-size: 10px; }
+.sol-m-ph .sol-rl small { font-size: 10px; margin-top: 0; }
+.sol-m-ph .sol-cnt { min-width: 16px; height: 16px; font-size: 10.5px; padding: 0 2px; right: 0; top: 0; }
+.sol-m-ph .sol-zoom { left: auto; right: 6px; top: auto; bottom: 6px; flex-direction: row; }
+.sol-m-ph .sol-tools { left: auto; right: calc(6px + 3 * 44px + 3 * 4px); top: auto; bottom: 6px; }
+.sol-m-ph .sol-view { min-height: 44px; min-width: 44px; }
+.sol-m-ph .sol-ticker { left: 6px; right: 6px; top: 36px; max-width: none; }
+:is(.sol-m-ph, .sol-m-ls) .sol-tkr { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sol-m-ph .sol-bbj { flex: .6 1 0; }
+.sol-m-ph .sol-bbj .sol-bl { display: none; }
+.sol-m-ph .sol-glek { margin-bottom: 54px; max-width: 86%; }
+.sol-m-ph .sol-glek .sol-say { font-size: 11.5px; line-height: 1.2; }
+.sol-minion.sol-m-ph .sol-glek { margin-left: 4px; max-width: 86%; margin-bottom: 78px; }
+.sol-m-ph .sol-flash { bottom: 56px; }
+.sol-m-ph .sol-mini { bottom: 6px; }
+
+/* Шкура телефона: Стара мапа */
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-banner { padding: 6px 16px 6px 9px; background: #8e1a14; color: #fff3da; font-family: var(--sol-serif); clip-path: polygon(0 0, 100% 0, 92% 50%, 100% 100%, 0 100%); margin-top: 2px; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-bs { font-weight: 400; font-size: 15px; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-pn { font: 400 19px/1 var(--sol-serif); color: #f4d78d; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-pw { color: #d9caa6; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-timer { background: linear-gradient(170deg, #fff4d2, #efdba4); color: #8e1a14; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-rl { font: 400 13.5px/1.1 var(--sol-serif); color: #f4d78d; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-rl small { font: 600 11.5px 'Onest', sans-serif; color: #d9caa6; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-route { outline-offset: 0; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-fieldwrap { border-top: 2px solid #120a04; border-bottom: 2px solid #120a04; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-bb { color: #2b1a0d; background: linear-gradient(170deg, #f8edcb, #e9d7a5); font: 400 14px/1 var(--sol-serif) !important; box-shadow: inset 0 0 0 1px #7a5a33; border-radius: 8px 8px 4px 4px; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-deck .sol-dn { top: 50%; }
+.sol-t-parchment:is(.sol-m-ph, .sol-m-ls) .sol-deck .sol-dl { display: none; }
+
+/* Шкура телефона: Настілка */
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-players { background: linear-gradient(180deg, #a26c35, #82522a); box-shadow: inset 0 1.5px 0 rgba(255, 235, 195, .45), 0 3px 6px rgba(0, 0, 0, .5); z-index: 3; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-pl { background: linear-gradient(180deg, #fdf7e8, #efe0c2); box-shadow: inset 0 -3px 0 var(--pc), 0 1px 2px rgba(20, 8, 2, .6); margin: 0 1px; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-pl.turn { box-shadow: inset 0 -3px 0 var(--pc), 0 0 0 2px #ffe066, 0 0 0 3.2px #2a160b; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-pl { --sol-av: 26px; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-pn { font-weight: 900; color: #2a160b; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-pw { color: #4a3524; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-timer { background: #2a160b; color: #ffe066; box-shadow: inset 0 0 0 1.2px #ffe066; font-weight: 900; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-timer .sol-hg { display: none; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-banner { margin: 5px 0 0 5px; padding: 4px 10px; border-radius: 8px; background: linear-gradient(180deg, #d7a062, #a26c35); color: #2a160b; box-shadow: 0 2px 5px rgba(20, 8, 2, .5); }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-bs { font-weight: 900; font-size: 13px; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-rl { writing-mode: vertical-rl; transform: rotate(180deg); width: 17px; border-radius: 5px; font-size: 9.5px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; color: #fff0cf; background: rgba(30, 14, 5, .72); flex-direction: row; gap: 3px; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-rl small { margin: 0; font-size: 10px; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-mc { overflow: hidden; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-mc .sol-cn { font-size: 9px; bottom: 2px; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-deck { overflow: visible; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-deck .sol-dn { font-size: 17px; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-deck .sol-dl { font-size: 9px; bottom: 16%; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-hc .sol-top { overflow: hidden; border-radius: 5px; filter: drop-shadow(0 1px 1px rgba(25, 10, 2, .6)); }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-bb { background: linear-gradient(180deg, #d7a062, #a26c35); color: #2a160b; font-weight: 800 !important; box-shadow: inset 0 1.5px 0 rgba(255, 235, 195, .65), inset 0 -2px 0 rgba(70, 34, 8, .5), 0 2px 5px rgba(15, 6, 1, .5); }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-field { background: #3aa8e4; }
+.sol-t-board:is(.sol-m-ph, .sol-m-ls) .sol-railh { display: none; }
+
+/* Шкура телефона: Петриківка */
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-players { background: #100d1e; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-pl.turn { background: #241e42; box-shadow: inset 0 0 0 1.5px #ffd34d; border-radius: 10px; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-pl { --sol-av: 28px; gap: 6px; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-pn { color: #ffe08a; font-weight: 900; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-pw { color: #a79fbe; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-banner { margin: 8px 0 0 8px; padding: 0 12px; height: 30px; display: flex; align-items: center; border-radius: 15px; background: #ffd34d; color: #1b0f06; box-shadow: 0 0 0 2px #0a0812; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-banner:not(.mine) { background: #241e42; color: #ffe08a; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-bs { font-weight: 900; font-size: 12.5px; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-fieldwrap::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 8px; z-index: 3; background: #0a0812 var(--sol-stitch) repeat-x left center / 8px 8px; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-rl { font-size: 10px; font-weight: 800; letter-spacing: .04em; color: #ffd34d; text-transform: uppercase; width: 36px; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-rl small { color: #ffe08a; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) :is(.sol-market, .sol-hand, .sol-bar) { background: #100d1e; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-mc { border-radius: 8px; box-shadow: 0 0 0 1.5px #000; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-mc.want { box-shadow: 0 0 0 2px #ffd34d; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-deck { box-shadow: 0 0 0 1.5px #ffd34d, 2px 2px 0 1.5px #5b4b1a; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-deck .sol-dn { font-size: 17px; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-deck .sol-dl { font-size: 9.5px; bottom: 8%; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-top { position: relative; border-radius: 8px; box-shadow: 0 0 0 1.5px #000; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-cnt { min-width: 19px; height: 19px; font-size: 12px; box-shadow: 0 0 0 1.5px #ffd34d; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-bb { background: #191530; color: #a79fbe; box-shadow: none; }
+.sol-t-petryk:is(.sol-m-ph, .sol-m-ls) .sol-bbt { background: #241e42; color: #ffe08a; box-shadow: inset 0 0 0 1.5px #6d5a1e; }
+.sol-t-petryk .sol-sd { background: #ffd34d; color: #1b0f06; }
+.sol-t-petryk .sol-sd.d { background: #2f9e4a; color: #fff; }
+
+/* ═══════════════════ Телефон лежачи ═══════════════════ */
+.sol-m-ls .sol-ticker { top: 80px; }
+.sol-m-ls { grid-template-columns: minmax(0, 1fr) var(--sol-rw, 300px); grid-template-rows: auto auto auto 1fr; grid-template-areas: "field players" "field market" "field hand" "field bar"; overflow: hidden; }
+.sol-m-ls .sol-players { padding: 2px 4px; min-height: 40px; }
+.sol-m-ls .sol-pl { height: 36px; min-width: 44px; --sol-av: 24px !important; }
+.sol-m-ls .sol-pw { display: none; }
+.sol-m-ls .sol-pn { font-size: 14px !important; }
+.sol-m-ls .sol-timer { height: 34px; font-size: 12.5px; }
+.sol-m-ls .sol-trose { width: 36px; height: 36px; font-size: 8.5px; }
+.sol-m-ls .sol-rl { display: none; }
+.sol-m-ls .sol-bar { align-self: start; min-height: 46px; }
+.sol-m-ls .sol-bb { min-height: 40px; font-size: 12px !important; }
+.sol-m-ls .sol-bl { display: none; }
+.sol-m-ls .sol-bbt > span:last-child { display: none; }
+.sol-m-ls .sol-sheet { right: auto; left: 8px; width: min(380px, 60%); max-height: 96%; border-radius: 12px; bottom: 4px; }
+.sol-m-ls .sol-keep { grid-column: 1; max-height: 96%; }
+.sol-m-ls .sol-off { min-height: 44px; }
+.sol-m-ls .sol-mm { display: none; }
+.sol-m-ls .sol-zoom { flex-direction: row; right: 6px; top: 6px; }
+.sol-m-ls .sol-route { grid-column: 1; }
+@media (prefers-reduced-motion: reduce) { .sol-mc, .sol-mc.in, .sol-mc.outin, .sol-bubble.go, .sol-lastban.go, .sol-flash.go, .sol-tkr, .sol-gain, .sol-mc.want::before, .sol-late .sol-timer { animation: none !important; transition: none !important; } }

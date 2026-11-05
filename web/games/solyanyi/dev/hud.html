@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Соляний шлях — стенд картки</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/games/core.css">
+<link rel="stylesheet" href="/games/solyanyi.css">
+<style>
+  /* Стенд, не прод: картка гри без сервера на підробних видах (dev/fixture.js). */
+  body { padding: 0; margin: 0; background: var(--bg); overflow-x: hidden; }
+  .hbar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 13px; }
+  .hbar select, .hbar button { font: inherit; padding: 3px 7px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); }
+  #hstatus { font-weight: 700; color: var(--accent); }
+  #hlog { margin: 0 auto 30px; font: 12px/1.4 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; padding: 0 12px; max-height: 120px; overflow: auto; }
+  body.shot .hbar, body.shot #hlog { display: none; }
+  .hsite { height: 56px; background: #0f1f18; border-bottom: 1px solid #2f4d3d; color: #ecf1ea; display: flex; align-items: center; gap: 12px; padding: 0 16px; font: 700 17px system-ui, sans-serif; position: sticky; top: 0; z-index: 30; }
+  body:not(.shot) .hsite { position: static; }
+  .hsite span { font-weight: 500; font-size: 14px; color: #9db3a5; }
+  .hdock { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: #0f1f18; border-top: 1px solid #2f4d3d; color: #9db3a5; display: none; align-items: center; justify-content: space-around; font: 500 11px system-ui; z-index: 30; }
+  body.hasdock { --gdock-h: 64px; }
+  body.hasdock .hdock { display: flex; }
+</style>
+</head>
+<body>
+<div class="hbar" id="hbar">
+  <b>Соляний шлях · стенд картки</b>
+  <label>сценарій <select id="hsc"></select></label>
+  <label>хто дивиться <select id="hseat"></select></label>
+  <label>поле <select id="hview"><option value="2d">🗺 2D</option><option value="3d">🧊 3D</option></select></label>
+  <label>тема <select id="hth"><option>parchment</option><option>board</option><option>petryk</option></select></label>
+  <button data-ev="claim1">шлях 1</button><button data-ev="claim3">шлях 3</button><button data-ev="claim6">шлях 6</button>
+  <button data-ev="drawme">карта мені</button><button data-ev="drawother">карта чужа</button><button data-ev="wipe">заміна ринку</button>
+  <button data-ev="done">виконано</button><button data-ev="last">останнє коло</button><button data-ev="longest">валка</button>
+  <button data-ev="tickets">чужі замовлення</button><button id="hlate">час минув</button><button id="hbot">бот думає</button>
+  <span>статус: <span id="hstatus"></span></span>
+</div>
+<div class="hsite" id="hsite">Глечики <span>🎮 Ігри · Соляний шлях</span></div>
+<div id="hroot"></div>
+<pre id="hlog"></pre>
+<div class="hdock">📻 Ефір · 🎵 Бібліотека · 🎮 Ігри · 📊 Хто скільки · 💬 Балачки</div>
+
+<script>
+  // Мінімальний підробний каркас: лише те, чим користується solyanyi.js.
+  window.__acts = [];
+  window.__sends = [];
+  const q0 = new URLSearchParams(location.search);
+  if (q0.has('stub')) {
+    // Поле ще редагують — підставляємо заглушку: картка тягне той самий шлях модуля.
+    const m = document.createElement('script');
+    m.type = 'importmap';
+    m.textContent = JSON.stringify({ imports: { '/games/solyanyi/board2d.js': '/games/solyanyi/dev/board-stub.js', '/games/solyanyi/scene.js': '/games/solyanyi/dev/board-stub.js' } });
+    document.head.appendChild(m);
+  }
+  const hlog = (s) => { const el = document.getElementById('hlog'); el.textContent = s + '\n' + el.textContent.slice(0, 4000); };
+  window.HGames = {
+    mods: {},
+    register(m) { this.mods[m.id] = m; },
+    send(method, room, action, payload) { window.__sends.push({ method, room, action, payload }); hlog('send ' + method + ' ' + action + ' ' + JSON.stringify(payload)); return Promise.resolve({ ok: true }); },
+    ui: { coarse: () => matchMedia('(pointer: coarse)').matches, human: (e) => e.isTrusted, onFit(host, fn) { addEventListener('resize', () => fn && fn()); }, headIn() {} },
+  };
+</script>
+<script src="/games/solyanyi.js"></script>
+<script type="module">
+  import { makeView, makeEvent, SCENARIOS, applyAct } from '/games/solyanyi/dev/fixture.js';
+  const $ = (id) => document.getElementById(id);
+  const root = $('hroot');
+  const mod = HGames.mods.solyanyi;
+  const q = new URLSearchParams(location.search);
+  const S = { sc: q.get('sc') || 'mid', seat: q.has('seat') ? q.get('seat') : '0', view: q.get('view') || '2d', v: null, mounted: false };
+  if (q.has('shot')) document.body.classList.add('shot');
+  if (q.has('dock')) document.body.classList.add('hasdock');
+  if (q.has('nosite')) $('hsite').style.display = 'none';
+  for (const s of SCENARIOS) $('hsc').insertAdjacentHTML('beforeend', '<option>' + s + '</option>');
+  for (let i = 0; i < 5; i++) $('hseat').insertAdjacentHTML('beforeend', '<option value="' + i + '">місце ' + i + '</option>');
+  $('hseat').insertAdjacentHTML('beforeend', '<option value="">глядач</option>');
+  $('hth').value = localStorage.getItem('sol.theme') || 'parchment';
+
+  function ctxOf(v) {
+    const seat = v.me ? v.me.seat : null;
+    return {
+      room: { id: 'sol-dev', status: v.phase == null ? 'lobby' : v.phase === 'over' ? 'done' : 'playing', options: { bots: '1' } },
+      seat, view: v, me: { nick: S.sc === 'spectator' ? 'Ліна' : 'Smaug' }, playing: v.phase != null && v.phase !== 'over', mine: seat !== null,
+      myTurn: seat !== null && v.turn === seat,
+      act(a, p) {
+        window.__acts.push({ a, p }); hlog('act ' + a + ' ' + JSON.stringify(p));
+        if (S.v.me) {
+          const r = applyAct(S.v, S.v.me.seat, a, p);
+          if (r.error) hlog('  ✗ ' + r.error); else { S.v = r.view; setTimeout(push, 30); }
+        }
+        return Promise.resolve({ ok: true });
+      },
+      toast: (s) => hlog('toast ' + s), esc: (s) => String(s), seatName: (i) => 'місце ' + i,
+      nickOf: (i) => ((v.players || []).find((p) => p.seat === i && !p.bot) || {}).nick || null, css: () => '', ui: HGames.ui,
+    };
+  }
+  function push() {
+    const c = ctxOf(S.v);
+    if (!S.mounted) { mod.mount(root, c); S.mounted = true; } else mod.update(root, c);
+    setTimeout(() => { $('hstatus').textContent = mod.status(c); }, 50);
+  }
+  function load() {
+    try { localStorage.setItem('sol.view', S.view); } catch (e) {}
+    if (S.mounted) { mod.unmount(root); root.innerHTML = ''; S.mounted = false; }
+    S.v = makeView(S.sc, S.seat === '' ? null : +S.seat);
+    $('hsc').value = S.sc; $('hseat').value = S.seat; $('hview').value = S.view;
+    push();
+  }
+  function addEv(list, patch) {
+    let seq = S.v.seq;
+    const evs = list.map(([k, o]) => makeEvent(k, { ...o, seq: ++seq }));
+    const vv = { ...S.v, ...(patch || {}), seq, events: [...S.v.events, ...evs].slice(-40) };
+    Object.defineProperty(vv, '_S', { value: S.v._S, enumerable: false });
+    S.v = vv;
+    push();
+  }
+  const freeOf = (L) => { const free = Object.keys(S.v.me ? S.v.me.claims : {}).map(Number); const taken = new Set((S.v.claimed || []).map((c) => c.route)); for (let id = 0; id < 102; id++) if (!taken.has(id) && !free.includes(id)) free.push(id); return free; };
+  function fire(k) {
+    const v = S.v;
+    if (k.startsWith('claim')) {
+      const want = +k.slice(5), seat = (v.players.find((p) => p.seat !== (v.me ? v.me.seat : -1)) || {}).seat ?? 0;
+      import('/games/solyanyi/consts.js').then(({ ROUTES }) => {
+        const taken = new Set(v.claimed.map((c) => c.route));
+        const rr = ROUTES.find((r) => r[4] === want && !taken.has(r[0]));
+        if (!rr) return;
+        addEv([['claim', { seat, route: rr[0], c: rr[3] === 'grey' ? 'salt' : rr[3], n: rr[4], w: 0, pts: { 1: 1, 2: 2, 3: 4, 4: 7, 5: 10, 6: 15 }[rr[4]] }]], { claimed: [...v.claimed, { route: rr[0], seat }] });
+      });
+    }
+    if (k === 'drawme') addEv([['draw', { seat: v.me ? v.me.seat : 0, from: 'market', slot: 1, pick: 1, card: v.market[1] || 'salt' }], ['refill', { slot: 1, card: 'grain' }]]);
+    if (k === 'drawother') addEv([['draw', { seat: 1, from: 'deck', slot: null, pick: 1, card: null }], ['draw', { seat: 1, from: 'market', slot: 2, pick: 2, card: v.market[2] || 'fish' }], ['refill', { slot: 2, card: 'tar' }]]);
+    if (k === 'wipe') addEv([['wipe', { cards: v.market.map((c) => c || 'salt') }], ...[0, 1, 2, 3, 4].map((i) => ['refill', { slot: i, card: v.market[i] || 'salt' }])]);
+    if (k === 'done') addEv([['done', { seat: v.me ? v.me.seat : 0, ticket: 34 }]]);
+    if (k === 'last') addEv([['last', { seat: 2, wagons: 2 }]], { last: true, left: v.players.length });
+    if (k === 'longest') addEv([['longest', { seats: [2], len: 12, routes: { 2: (v.players[2] || v.players[0]).routes.slice(0, 4) } }]]);
+    if (k === 'tickets') addEv([['tickets', { seat: 1, n: 3, ids: null }], ['keep', { seat: 1, kept: 2, back: 1 }]]);
+  }
+  window.__fire = fire; window.__S = S;
+  for (const b of document.querySelectorAll('[data-ev]')) b.addEventListener('click', () => fire(b.dataset.ev));
+  $('hsc').addEventListener('change', (e) => { S.sc = e.target.value; load(); });
+  $('hseat').addEventListener('change', (e) => { S.seat = e.target.value; load(); });
+  $('hview').addEventListener('change', (e) => { S.view = e.target.value; load(); });
+  $('hth').addEventListener('change', (e) => { localStorage.setItem('sol.theme', e.target.value); load(); });
+  $('hlate').addEventListener('click', () => { const vv = { ...S.v, deadline: new Date(Date.now() - 1000).toISOString() }; Object.defineProperty(vv, '_S', { value: S.v._S, enumerable: false }); S.v = vv; push(); });
+  $('hbot').addEventListener('click', () => { const vv = { ...S.v, botIn: 800 }; Object.defineProperty(vv, '_S', { value: S.v._S, enumerable: false }); S.v = vv; push(); });
+  document.addEventListener('keydown', (e) => { if (mod.onKey(e)) e.preventDefault(); });
+  load();
+</script>
+</body>
+</html>

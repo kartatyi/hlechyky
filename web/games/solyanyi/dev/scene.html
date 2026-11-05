@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Соляний шлях — 3D-стенд</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #111; color: #f3e6c8; font: 13px/1.35 system-ui, sans-serif; overflow: hidden; }
+  #host { position: fixed; inset: 0; }
+  #panel { position: fixed; top: 8px; left: 8px; z-index: 5; width: 320px; max-height: calc(100% - 16px); overflow: auto; padding: 8px 10px; border-radius: 10px;
+    background: rgba(32, 22, 14, .9); box-shadow: 0 4px 18px rgba(0,0,0,.35); }
+  #panel.min > :not(.head) { display: none; }
+  body.shot #panel { display: none; }
+  .head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 4px; }
+  .row { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0; align-items: center; }
+  button, select { font: inherit; color: #2a1d12; background: #f1e2bf; border: 0; border-radius: 6px; padding: 3px 7px; cursor: pointer; }
+  button:hover { background: #ffe9b8; }
+  button.on { background: #e8912d; color: #fff; }
+  #stats { font: 12px ui-monospace, monospace; color: #ffd98a; white-space: pre-wrap; }
+  #log { height: 90px; overflow: auto; font: 11px ui-monospace, monospace; background: rgba(0,0,0,.25); padding: 4px; border-radius: 6px; white-space: pre; }
+  #err { position: fixed; left: 8px; bottom: 8px; color: #f88; font: 13px monospace; white-space: pre-wrap; z-index: 9; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<div id="err"></div>
+<div id="panel">
+  <div class="head"><span>🐂 Соляний шлях · стенд сцени</span><button id="min" title="згорнути">–</button></div>
+  <div class="row">Сценарій <select id="scn"></select> <span id="src" style="opacity:.6"></span></div>
+  <div class="row">Гравців <button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button></div>
+  <div class="row" id="themes"></div>
+  <div class="row" id="qual"></div>
+  <div class="row">
+    <button data-a="claim1">claim 1</button><button data-a="claim3">claim 3</button><button data-a="claim6">claim 6</button>
+    <button data-a="ticketDone">ticketDone</button><button data-a="last">last</button><button data-a="longest">longest</button><button data-a="finale">finale</button>
+  </div>
+  <div class="row">
+    <button data-a="legal">setLegal</button><button data-a="legalC">міста</button><button data-a="marks">setMarks</button><button data-a="path">setPath</button>
+    <button data-a="tickets">setTickets</button><button data-a="sel">setSelected</button><button data-a="cursor">setCursor</button><button data-a="clear">зняти</button>
+  </div>
+  <div class="row">
+    <button data-a="reset">reset</button><button data-a="zin">➕</button><button data-a="zout">➖</button>
+    <button data-a="fRoute">focus шлях</button><button data-a="fCity">focus місто</button><button data-a="fAll">focus all</button><button data-a="frame">кадр?</button>
+  </div>
+  <div id="stats"></div>
+  <div id="log"></div>
+</div>
+<script type="module">
+import { ROUTES, CITIES, TICKETS, routeName } from '/games/solyanyi/consts.js';
+import { createScene } from '/games/solyanyi/scene.js';
+
+const q = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+if (q.has('shot')) document.body.classList.add('shot');
+window.picks = [];
+const log = (s) => { window.picks.push(s); const e = $('log'); e.textContent = (s + '\n' + e.textContent).slice(0, 2000); };
+
+// Фікстура В, якщо вже є; інакше — власні види: вид §5 (mid) і кінець партії на 180 возів (five).
+let fixture = null;
+try { fixture = await import('/games/solyanyi/dev/fixture.js'); } catch { /* ще нема */ }
+
+function ownView(name, n) {
+  const seats = Array.from({ length: n }, (_, i) => i);
+  const routesOf = Object.fromEntries(seats.map((s) => [s, []]));
+  const claimed = [], closed = [], left = seats.map(() => 45);
+  if (name === 'mid') {
+    const M = { 0: [57, 19, 21, 39, 22, 41], 1: [9, 33, 1, 83, 84, 3], 2: [36, 51, 48, 60, 85, 53] };
+    for (const s of Object.keys(M)) for (const r of M[s]) { if (+s < n) { claimed.push({ route: r, seat: +s }); routesOf[s].push(r); } }
+    closed.push(91, 96);
+  } else if (name === 'five' || name === 'two' || name === 'last') {
+    const want = name === 'five' ? 180 : name === 'two' ? 60 : 110;
+    let total = 0, k = 0;
+    const twinOwner = {};
+    for (const id of ROUTES.map((r) => r[0]).sort((a, b) => (a * 37 % 101) - (b * 37 % 101))) {
+      if (total >= want) break;
+      const [, , , , len, twin] = ROUTES[id];
+      if (name === 'two' && twin !== null && twinOwner[twin] !== undefined) continue;
+      let s = seats[k % n], tries = 0;
+      while ((left[s] < len || (twin !== null && twinOwner[twin] === s)) && tries++ < n) s = seats[++k % n];
+      if (left[s] < len || (twin !== null && twinOwner[twin] === s)) continue;
+      claimed.push({ route: id, seat: s }); routesOf[s].push(id); left[s] -= len; total += len; twinOwner[id] = s; k++;
+    }
+    if (name === 'two') for (const c of claimed) { const t = ROUTES[c.route][5]; if (t !== null) closed.push(t); }
+  }
+  claimed.sort((a, b) => a.route - b.route);
+  return { phase: name === 'over' ? 'over' : 'play', board: { sig: '01c5d1de', doubles: n >= 4 ? 'both' : 'one' }, claimed, closed, players: seats.map((s) => ({ seat: s, color: s, routes: routesOf[s], wagons: left[s] })), turn: 0 };
+}
+const OWN = ['mid', 'five', 'two', 'last', 'empty'];
+const scenarios = fixture?.SCENARIOS || OWN;
+const viewOf = (name) => { try { if (fixture?.makeView) return fixture.makeView(name, 0); } catch (e) { console.warn(e); } return ownView(name, name === 'five' ? 5 : name === 'two' ? 2 : name === 'last' ? 4 : 3); };
+
+for (const s of scenarios) $('scn').append(new Option(s, s));
+$('src').textContent = fixture ? 'fixture.js' : 'свої';
+// ?crop — телефонний кадр; ?frame — після старту заміряти кадр (dev/frame-check.js), результат у window.__frame і журналі стенду.
+const opts = { crop: q.has('crop') ? q.get('crop') !== '0' : undefined, theme: q.get('theme') || 'parchment', quality: q.get('q') || (Math.min(innerWidth, innerHeight) < 600 ? 'low' : 'high'), reducedMotion: q.has('rm') };
+let sc = null, view = null, nextFree = 0;
+
+async function boot() {
+  sc?.dispose();
+  window.__ready = false;
+  const t0 = performance.now();
+  sc = await createScene($('host'), {
+    ...opts,
+    onPick: (k, id) => log(`pick ${k} ${id}` + (k === 'route' ? ' ' + routeName(id) : k === 'city' ? ' ' + CITIES[id][2] : '')),
+    onHover: (k, id) => { if (k) log(`hover ${k} ${id}`); },
+  });
+  window.sc = sc; window.__sc = sc; window.__buildMs = performance.now() - t0;
+  loadScn(q.get('scn') || $('scn').value);
+  if (q.has('frame')) A.frame();
+  window.__ready = true;
+}
+function loadScn(name) {
+  $('scn').value = name; view = viewOf(name);
+  view.claimed ||= []; view.players ||= []; view.closed ||= [];
+  sc.setBoard(view.board); sc.setState(view);
+  sc.setLegal(null); sc.setMarks(null); sc.setPath(null); sc.setSelected(null); sc.setTickets([]);
+}
+$('scn').onchange = () => loadScn($('scn').value);
+// Гравців: той самий вид, зайняте перекладене на n місць.
+document.querySelectorAll('[data-n]').forEach((b) => { b.onclick = () => {
+  const n = +b.dataset.n; view = viewOf($('scn').value);
+  view.claimed ||= []; view.closed ||= [];
+  for (const c of view.claimed || []) c.seat %= n;
+  view.players = Array.from({ length: n }, (_, s) => ({ seat: s, color: s, routes: (view.claimed || []).filter((c) => c.seat === s).map((c) => c.route) }));
+  sc.setState(view);
+}; });
+for (const id of ['parchment', 'board', 'petryk']) {
+  const b = document.createElement('button'); b.textContent = id; b.dataset.t = id; b.onclick = async () => { opts.theme = id; const t0 = performance.now(); await sc.setTheme(id); log(`тема ${id}: ${Math.round(performance.now() - t0)} мс`); mark(); }; $('themes').append(b);
+}
+for (const [label, fn] of [['high', () => { opts.quality = 'high'; boot(); }], ['low', () => { opts.quality = 'low'; boot(); }], ['reducedMotion', () => { opts.reducedMotion = !opts.reducedMotion; boot(); }]]) {
+  const b = document.createElement('button'); b.textContent = label; b.onclick = fn; $('qual').append(b);
+}
+const mark = () => { for (const b of document.querySelectorAll('[data-t]')) b.classList.toggle('on', b.dataset.t === sc?.theme); };
+$('min').onclick = () => $('panel').classList.toggle('min');
+const freeRoute = (len) => { const taken = new Set(view.claimed.map((c) => c.route)); return ROUTES.find((r) => r[4] === len && !taken.has(r[0]))?.[0] ?? ROUTES.find((r) => !taken.has(r[0]))?.[0]; };
+async function claimN(len) {
+  const id = freeRoute(len), seat = (view.turn || 0);
+  const t0 = performance.now();
+  await sc.claim({ seat, route: id });
+  log(`claim ${routeName(id)}: ${Math.round(performance.now() - t0)} мс`);
+  view.claimed.push({ route: id, seat }); view.players.find((p) => p.seat === seat)?.routes.push(id);
+  sc.setState(view);
+}
+const A = {
+  claim1: () => claimN(1), claim3: () => claimN(3), claim6: () => claimN(6),
+  ticketDone: async () => { const own = view.claimed.filter((c) => c.seat === 0).map((c) => c.route); const r = ROUTES[own[0] ?? 0]; const t = TICKETS.findIndex((x) => x[1] === r[1] || x[2] === r[1]); const t0 = performance.now(); await sc.ticketDone({ seat: 0, ticket: Math.max(0, t) }); log(`ticketDone ${Math.round(performance.now() - t0)} мс`); },
+  last: async () => { const t0 = performance.now(); await sc.last({ seat: 0, wagons: 2 }); log(`last ${Math.round(performance.now() - t0)} мс`); },
+  longest: async () => { const own = view.claimed.filter((c) => c.seat === 0).map((c) => c.route); const t0 = performance.now(); await sc.longest({ seats: [0], len: 10, routes: { 0: own } }); log(`longest ${Math.round(performance.now() - t0)} мс`); },
+  finale: async () => { const own = view.claimed.filter((c) => c.seat === 0).map((c) => c.route); view.phase = 'over'; const t0 = performance.now(); await sc.finale({ winners: [0], longest: { len: 10, seats: [0], routes: { 0: own.slice(0, 8) } } }); log(`finale ${Math.round(performance.now() - t0)} мс`); },
+  legal: () => { const taken = new Set(view.claimed.map((c) => c.route)); sc.setLegal({ routes: ROUTES.map((r) => r[0]).filter((id) => !taken.has(id) && id % 3 === 0), cities: [] }); },
+  legalC: () => sc.setLegal({ routes: [], cities: [0, 5, 16, 41] }),
+  marks: () => sc.setMarks({ 37: 'plan', 34: 'ok', 8: 'near', 27: 'ok', 62: 'near', 63: 'plan' }),
+  path: () => sc.setPath([37, 8, 12, 14]),
+  tickets: () => sc.setTickets([{ a: 29, b: 0, done: false }, { a: 6, b: 25, done: false }, { a: 1, b: 5, done: true }]),
+  sel: () => sc.setSelected(37),
+  cursor: () => sc.setCursor('route', 47),
+  clear: () => { sc.setLegal(null); sc.setMarks(null); sc.setPath(null); sc.setSelected(null); sc.setTickets([]); sc.setCursor(null); },
+  reset: () => sc.resetView(), zin: () => sc.zoomBy(1.4), zout: () => sc.zoomBy(1 / 1.4),
+  frame: async () => {
+    const m = await import('/games/solyanyi/dev/frame-check.js'), h = $('host');
+    const r = q.has('crop') ? m.cropCheck(sc, h.clientWidth, h.clientHeight) : m.frameCheck(sc, h.clientWidth, h.clientHeight, {});
+    window.__frame = r;
+    log('кадр ' + (r.ok ? 'OK' : 'НЕ ТАК') + ' ' + JSON.stringify(r));
+    return r;
+  },
+  fRoute: () => sc.focus('route', 37), fCity: () => sc.focus('city', 0), fAll: () => sc.focus('all'),
+};
+document.querySelectorAll('[data-a]').forEach((b) => { b.onclick = () => A[b.dataset.a](); });
+window.A = A;
+
+let fT = performance.now(), fN = 0;
+setInterval(() => {
+  if (!sc?._dbg) return;
+  const i = sc._dbg.renderer.info.render, now = performance.now(), f = sc._dbg.stats.frames, fps = Math.round((f - fN) * 1000 / (now - fT));
+  fT = now; fN = f;
+  $('stats').textContent = `draw ${i.calls} · tri ${(i.triangles / 1000).toFixed(1)}k · ${fps} к/с · zoom ${sc._dbg.cs.zoom.toFixed(2)} · ${sc._dbg.pxPerUnit.toFixed(3)} px/од · віз ${sc._dbg.useNear ? 'близький' : 'далекий'}`;
+  mark();
+}, 700);
+window.addEventListener('error', (e) => { $('err').textContent = e.message; window.__err = e.message; });
+window.addEventListener('unhandledrejection', (e) => { $('err').textContent = String(e.reason && e.reason.stack || e.reason); window.__err = String(e.reason); });
+boot().catch((e) => { $('err').textContent = String(e && e.stack || e); window.__err = String(e && e.stack || e); });
+</script>
+</body>
+</html>
