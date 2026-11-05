@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Соляний шлях — діорама</title>
+<style>html,body{margin:0;height:100%;background:#111;overflow:hidden}#host{position:fixed;inset:0}#err{position:fixed;left:8px;top:8px;color:#f88;font:13px monospace;white-space:pre-wrap;z-index:9}</style></head>
+<body><div id="host"></div><div id="err"></div>
+<script type="module">
+import { createScene } from './scene.js';
+const q = new URLSearchParams(location.search);
+const look = q.get('look') || 'board';
+const narrow = Math.min(innerWidth, innerHeight) < 600 || /Mobi|Android|iPhone/i.test(navigator.userAgent);
+const quality = q.get('q') || (narrow ? 'low' : 'high');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+createScene(document.getElementById('host'), { look, quality, reducedMotion, onPick: (id) => console.log('pick', id) })
+  .then((sc) => { window.__sc = sc; window.__ready = true; })
+  .catch((e) => { document.getElementById('err').textContent = String(e && e.stack || e); window.__err = String(e && e.stack || e); console.error(e); });
+window.addEventListener('error', (e) => { document.getElementById('err').textContent = e.message; });
+</script></body></html>
