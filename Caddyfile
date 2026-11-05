@@ -52,3 +52,7 @@ http://:8000 {
 		respond "Глечики: потік — /radio.mp3" 404
 	}
 }
+
+# Інші сайти на цьому ж ПК (зараз — портал EKTA на imperium.pp.ua). Їхні блоки лежать у data\sites\*.caddy, поза git:
+# там бувають хеші паролів. Нема файлів (dev-копії) — нічого не підтягується.
+import {$HLECHYKY_ROOT}/data/sites/*.caddy

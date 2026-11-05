@@ -330,7 +330,8 @@ Caddy (`tools\caddy\caddy.exe`, конфіг `Caddyfile`) слухає 80/443, �
 
 - На MikroTik прокинуті 80, 443, 8080, 8000 на цей ПК. Правила мають бути з hairpin (як для 8000), інакше з домашньої мережі домен не відкриється.
 - Windows Firewall при першому старті Caddy питає дозвіл: треба натиснути "Дозволити", інакше ззовні буде тиша.
-- Змінив `Caddyfile`: `tools\caddy\caddy.exe reload --config Caddyfile --adapter caddyfile` (без розриву потоку слухачам). `start.ps1 restart` Caddy навмисно не перезапускає.
+- Змінив `Caddyfile`: `tools\caddy\caddy.exe reload --config Caddyfile --adapter caddyfile` (без розриву потоку слухачам). Спершу `$env:HLECHYKY_ROOT = 'D:\or'`: без нього Caddy шукатиме сертифікати й `data\sites` не там. `start.ps1 restart` Caddy навмисно не перезапускає.
+- Той самий Caddy віддає й інші сайти цього ПК: їхні блоки лежать у `data\sites\*.caddy` (поза git, бо там бувають хеші паролів), `Caddyfile` підтягує їх рядком `import`. Зараз там `ekta-portal.caddy`: демо порталу EKTA на `imperium.pp.ua` за паролем (як влаштовано, описано в `E:\ekta-portal\DEPLOY.md`). `stop.cmd` зупиняє Caddy, тож лягає й портал.
 - Сервер за проксі довіряє заголовкам X-Forwarded-* лише з localhost, тому кукі логіну на https отримує прапорець Secure.
 
 ## Структура
