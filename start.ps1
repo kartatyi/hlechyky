@@ -51,6 +51,7 @@ $StopFlag = Join-Path $Root 'data\stopped.flag'
 $WatchState = Join-Path $Root 'data\watchdog.json'
 $WatchLog = Join-Path $Root 'logs\watchdog.log'
 $DeployLock = Join-Path $Root 'data\deploy.lock'
+$StopRequest = Join-Path $Root 'data\stop.request'   # pid, який автонагляд має зупинити замість нас (Stop-Ours)
 $TaskName = 'Hlechyky'
 $Vbs = Join-Path $Root 'Hlechyky.vbs'
 $env:HLECHYKY_ROOT = $Root   # читають і сервер, і Caddyfile ({$HLECHYKY_ROOT})
@@ -253,7 +254,7 @@ function Stop-Liquidsoap {
     if (-not (Test-Path $Liq)) { Write-Host "liquidsoap пропускаю: нема $Liq"; return }
     $p = Get-Liquidsoap
     if (-not $p) { $p = Find-Listener ([int](Read-LiqEnv).TELNET_PORT) 'liquidsoap' }
-    if ($p) { Stop-Process -Id $p.Id -Force; Remove-Item $LiqPidFile -ErrorAction SilentlyContinue; Write-Host 'liquidsoap зупинено' }
+    if ($p) { Stop-Ours $p 'liquidsoap'; Remove-Item $LiqPidFile -ErrorAction SilentlyContinue; Write-Host 'liquidsoap зупинено' }
     else { Write-Host 'liquidsoap не працював' }
 }
 
@@ -325,10 +326,67 @@ function Start-Server {
     Write-Host "Сервер запущено (pid $($p.Id)), лог: $Log"
 }
 
+# Зупинити свій процес (сервер, Caddy, liquidsoap). Після перезавантаження їх піднімає автонагляд — завдання
+# Планувальника (S4U, сесія 0), і з сесії користувача (deploy.ps1, restart руками) Stop-Process на них — «Access is
+# denied»: 07.11.2026 так упали і деплой, і його відкат. Автонагляд живе в тому самому контексті й такі процеси гасить
+# (liquidsoap після витоку — раз у раз), тож просимо його: pid у data\stop.request і Start-ScheduledTask (своє завдання
+# можна запустити й без адміна). Він зупиняє процес першим ділом, ще до м'ютекса, який тримаємо ми (Invoke-StopRequest).
+function Stop-Ours($p, [string]$What) {
+    try { Stop-Process -Id $p.Id -Force -ErrorAction Stop; return }
+    catch {
+        if (-not (Get-Process -Id $p.Id -ErrorAction SilentlyContinue)) { return }   # устиг зникнути сам
+        $why = $_.Exception.Message
+    }
+    if ($Cmd -eq 'watchdog') { throw "$What (pid $($p.Id)) не зупиняється: $why" }   # автонагляд і є той контекст
+    Write-Host "$What (pid $($p.Id)) звідси не зупинити — його підняв автонагляд в іншій сесії. Прошу автонагляд"
+    New-Item -ItemType Directory -Force (Join-Path $Root 'data') | Out-Null
+    Set-Content $StopRequest $p.Id -Encoding ASCII
+    try { Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop }
+    catch {
+        Remove-Item $StopRequest -ErrorAction SilentlyContinue
+        throw "$What (pid $($p.Id)) не зупиняється ($why), а завдання «$TaskName» не запустилось: $($_.Exception.Message)"
+    }
+    $until = (Get-Date).AddSeconds(30)
+    while ((Get-Process -Id $p.Id -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 250 }
+    Remove-Item $StopRequest -ErrorAction SilentlyContinue
+    if (Get-Process -Id $p.Id -ErrorAction SilentlyContinue) { throw "$What (pid $($p.Id)) не зупинився й через автонагляд за 30 с (дивись logs\watchdog.log)" }
+    Write-Host "  автонагляд зупинив $What (pid $($p.Id))"
+}
+
+# Прохання з Stop-Ours. Лише свіже (до хвилини) і лише коли pid — справді наш сервер, Caddy чи liquidsoap: старий
+# прапорець не має гасити того, хто відтоді отримав той самий pid.
+function Invoke-StopRequest {
+    if (-not (Test-Path $StopRequest)) { return }
+    try {
+        $age = ((Get-Date) - (Get-Item $StopRequest).LastWriteTime).TotalSeconds
+        $id = [int](Get-Content $StopRequest -Raw).Trim()
+        Remove-Item $StopRequest -Force -ErrorAction SilentlyContinue
+        if ($age -gt 60) { Write-Watch "старе прохання зупинити pid $id ($([int]$age) с тому) — пропускаю"; return }
+        $ours = @(Get-Server; Find-Listener 8080 'dotnet'; Get-Caddy; Find-Listener 443 'caddy'; Get-Liquidsoap
+            Find-Listener ([int](Read-LiqEnv).TELNET_PORT) 'liquidsoap')
+        $p = $ours | Where-Object { $_ -and $_.Id -eq $id } | Select-Object -First 1
+        if (-not $p) { Write-Watch "прохання зупинити pid $id — це не сервер, не Caddy і не liquidsoap, пропускаю"; return }
+        Stop-Process -Id $id -Force
+        Write-Watch "$($p.ProcessName) (pid $id) зупинив на прохання restart/деплою: з сесії користувача його не зупинити"
+    }
+    catch { Write-Watch "прохання зупинити процес не виконав: $($_.Exception.Message)" }
+}
+
+# Сервер так і не зупинився — столи назад: заморожені, вони відмовляють новим партіям (сам сервер розморозить лише за хвилину).
+function Invoke-Thaw {
+    if (-not (Test-Path $ControlKey)) { return }
+    try {
+        $key = (Get-Content $ControlKey -Raw).Trim()
+        Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$(Get-ListenPort)/api/internal/thaw" -Headers @{ 'X-Control-Key' = $key } -TimeoutSec 5 | Out-Null
+        Write-Host 'Столи розморожено: сервер працює далі'
+    }
+    catch { Write-Host "Столи: розморозити не вийшло ($($_.Exception.Message)) — сервер сам розморозить за хвилину" }
+}
+
 function Stop-Server {
     $p = Get-Server
     if ($p) {
-        Stop-Process -Id $p.Id -Force
+        try { Stop-Ours $p 'сервер' } catch { Invoke-Thaw; throw }
         # Чекаємо, поки процес справді зникне: доти він тримає build\ і порт, і підміна теки чи новий старт спіткнулись би
         try { $p.WaitForExit(10000) | Out-Null } catch { }
         Remove-Item $PidFile -ErrorAction SilentlyContinue
@@ -356,7 +414,7 @@ function Start-Caddy {
 
 function Stop-Caddy {
     $p = Get-Caddy
-    if ($p) { Stop-Process -Id $p.Id -Force; Remove-Item $CaddyPidFile -ErrorAction SilentlyContinue; Write-Host 'Caddy зупинено' }
+    if ($p) { Stop-Ours $p 'Caddy'; Remove-Item $CaddyPidFile -ErrorAction SilentlyContinue; Write-Host 'Caddy зупинено' }
     else { Write-Host 'Caddy не працював' }
 }
 
@@ -574,6 +632,7 @@ function Invoke-Watchdog {
 # ---------- команди ----------
 
 $locked = $false
+if ($Cmd -eq 'watchdog') { Invoke-StopRequest }   # до м'ютекса: restart чи деплой, що просить, сам його тримає
 if ($Cmd -in 'start', 'stop', 'restart', 'back', 'radio', 'watchdog') {
     $wait = if ($Cmd -eq 'watchdog') { 0 } else { 600 }
     $locked = Enter-Launcher $wait
