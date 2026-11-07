@@ -259,6 +259,24 @@ public class ClickerTradeTests
     }
 
     [Fact]
+    public void What_waits_for_the_toloka_goes_aboard_only_when_the_player_says_so()
+    {
+        // Записка #77: Толока на 80 баранців тримала всі 45 — корабель, що відпливав, не брав жодного й не давав як.
+        var h = Wheel();
+        Pier(h);
+        TradeRow(h, 0, Ship(h, 1, "tile", 3, 30));
+        Items(h, ("tile||3", 100));
+        var s = Ships(h).Single();
+        Assert.Equal(0, s.GetProperty("can").GetInt32());
+        Assert.Equal(30, s.GetProperty("canToloka").GetInt32());
+        Assert.False(Load(h, 1).Ok);
+        var r = h.Act(0, "trade", new { @do = "loadAll", id = 1, keep = false });
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(70, Item(h, "tile||3"));
+        Assert.Empty(Ships(h));
+    }
+
+    [Fact]
     public void Luxury_seats_take_only_luxurious_and_wait_for_them()
     {
         var h = Wheel();

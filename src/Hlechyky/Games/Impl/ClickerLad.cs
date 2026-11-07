@@ -105,8 +105,9 @@ public sealed partial class Clicker
     IEnumerable<(int Why, Func<ItemInfo, bool> Match, int Need)> LadHolds(DateTimeOffset now, TakeFor? who = null)
     {
         foreach (var h in WagonHolds(now, who)) yield return h;
-        // Склад толоки (v12) сам і є толока: її вимоги для нього не чужі.
-        if (who?.Kind == "depot" || TolokaCurrent() is not { } b) yield break;
+        // Склад толоки (v12) сам і є толока: її вимоги для нього не чужі. Корабель — лише коли гравець сказав «Точно? 🔒»
+        // (ShipPlan, записка #77): Толока — своя будова без строку, а корабель відпливає.
+        if (who?.Kind is "depot" or "ship" || TolokaCurrent() is not { } b) yield break;
         var s = Math.Clamp(_tStage, 0, b.Stages.Length - 1);
         var st = b.Stages[s];
         // Закладений етап свої вироби вже забрав — тримати нічого. Закладає саме толока — свого етапу теж не тримаємо.

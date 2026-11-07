@@ -75,7 +75,7 @@
 /* Що дасть «Завантажити все» — над кнопками, дрібно. */
 .clkt-sum { color: var(--muted); font-size: .78em; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .clkt-onwheel { color: var(--muted); }
-.clkt-rel.armed { color: #ffb27a; border-color: #8a4a2a; }
+.clkt-rel.armed, .clkt-kept.armed { color: #ffb27a; border-color: #8a4a2a; }
 .clkt-next { text-align: right; }
 .clkt-next.empty { text-align: center; padding: 4px 8px; border: 1px dashed var(--line); border-radius: 10px; }
 

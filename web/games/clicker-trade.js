@@ -71,10 +71,16 @@
     const rest = s.n - s.loaded;
     if (luxLeft > 0 && luxLeft === rest) return 'Лишились місця для розкішних (' + luxLeft + ')';
     const what = s.ware ? wareName(st, s.ware).toLowerCase() : 'добрих і кращих виробів';
+    // Записка #77: «баранці не відкладені» — у картці Толоки вони без 🔒 і з «📦 +5», а корабель казав «відкладено».
+    // Толока тримає з комори все, чого бракує її етапу, — кажемо це прямо й даємо кнопку (tolokaBtn).
+    if (tolokaN(s) > 0) return 'Вільних нема: ' + what + ' в коморі чекають етапу Толоки — без твого слова корабель їх не бере';
     const items = (st.craft && st.craft.items) || [];
     if (items.some((it) => it.n > 0 && fits(s, it, false))) return 'Вільних нема: ' + what + ' в коморі відкладено під Толоку чи замовлення — корабель їх не бере';
     return 'У коморі нема: ' + what + (s.style ? ' «' + styleName(st, s.style) + '»' : '') + ', ' + (s.q >= 3 ? 'дзвінкі й кращі' : 'добрі й кращі');
   }
+
+  /// Скільки візьме корабель, якщо віддати йому й те, що Толока тримає під свій етап (сервер: view canToloka, записка #77).
+  const tolokaN = (s) => Math.max(0, Math.min(s.canToloka || 0, s.n - s.loaded));
 
   /// Звідки якість, якої просить корабель: ліпленням її не обереш — вона від горна. Дзвінкі дає й підмайстер (QA-4),
   /// а розкішні — лише розписана партія з рук.
@@ -128,7 +134,7 @@
   function infoText() {
     return 'Кораблі приходять до Пристані на Ворсклі раз на 40 хвилин (і без тебе), біля неї чекає до трьох, кожен стоїть 8 годин. '
       + 'Вантажити можна частинами. Корабель бере лише вільне — те, що відкладене під Толоку, замовлення сіл і гостей чи майстерштук, '
-      + 'лишається в коморі. За кожен виріб — хвилини гри й Слава у світі: що краща якість і розпис світу, то більше; повний корабель — ще +10 %. '
+      + 'лишається в коморі; відкладене під Толоку можна віддати й кораблю — кнопкою «🔒», коли вільних нема.За кожен виріб — хвилини гри й Слава у світі: що краща якість і розпис світу, то більше; повний корабель — ще +10 %. '
       + 'Слава не витрачається й не згорає при обпалі: вона відчиняє шість заморських майстерень у «Майстерні».';
   }
 
@@ -192,9 +198,22 @@
       : '<button type="button" class="ghost small clkt-rel' + (armed ? ' armed' : '') + (k.busy ? ' off" aria-disabled="true' : '') + '" data-rel="' + s.id + '"'
         + ' title="Корабель відпливе з тим, що вже на борту (за нього заплачено), а новий прийде за ' + GAP_MIN + ' хв">'
         + (armed ? '⚓ Точно відпустити?' : '⚓ Відпустити корабель') + '</button>';
-    const btns = (s.ware ? formBtn(st, api, s) : '') + rel;
+    const btns = tolokaBtn(st, api, s) + (s.ware ? formBtn(st, api, s) : '') + rel;
     return '<div class="clkt-why small">' + esc(lack(st, api, s)) + (hint ? ' · ' + esc(hint) : '') + '</div>'
       + (btns ? '<div class="clkt-btns">' + btns + '</div>' : '');
+  }
+
+  /// «🔒 Завантажити й відкладене під Толоку (N)»: перший натиск — «Точно?», другий за ARM_MS — trade { do: 'loadAll',
+  /// keep: false }, як «Точно? 🔒» у воза. Толока — своя будова без строку, а корабель відпливає (записка #77); замовлень
+  /// сіл і гостей та майстерштука сервер і так не віддасть.
+  function tolokaBtn(st, api, s) {
+    const n = tolokaN(s);
+    if (!n) return '';
+    const k = st.trade;
+    const armed = k.armT && k.armT.id === s.id && Date.now() - k.armT.at < ARM_MS;
+    return '<button type="button" class="ghost small clkt-kept' + (armed ? ' armed' : '') + (k.busy ? ' off" aria-disabled="true' : '') + '" data-loadt="' + s.id + '"'
+      + ' title="Толока тримає їх під свій етап, бо там їх бракує. Віддаси кораблю — на етап доведеться назбирати знову">'
+      + (armed ? '🔒 Точно? Толоці бракуватиме ще ' + n : '🔒 Завантажити й відкладене під Толоку (' + n + ')') + '</button>';
   }
 
   /// «🏺 Ліпити миску (Межигірський фаянс)»: виріб на коло й розпис замовлення на партію в горні — одна дія form (23.10).
@@ -418,10 +437,31 @@
     const rest = s.n - s.loaded;
     const want = btn.dataset.all ? rest : Math.min(PLUS, rest);
     if (!s.can) return;                    // сіра лише поки летить попередній вантаж
-    const full = s.can >= rest && want >= rest;
+    send(st, api, btn.dataset.all ? { do: 'loadAll', id } : { do: 'load', id, n: PLUS }, s.can >= rest && want >= rest);
+  }
+
+  /// «🔒 Завантажити й відкладене під Толоку»: перший натиск — «Точно?», другий за ARM_MS — усе разом з відкладеним.
+  function loadKept(st, api, btn, e) {
+    const k = st.trade;
+    if (!human(e) || !st.mine || !k || !k.v || k.busy) return;
+    const id = +btn.dataset.loadt;
+    const s = k.v.ships.find((x) => x.id === id);
+    if (!s || !tolokaN(s)) return;
+    if (!(k.armT && k.armT.id === id && Date.now() - k.armT.at < ARM_MS)) {
+      k.armT = { id, at: Date.now() };
+      api.sfx('tap');
+      paint(st, api);
+      return;
+    }
+    k.armT = null;
+    send(st, api, { do: 'loadAll', id, keep: false }, tolokaN(s) >= s.n - s.loaded);
+  }
+
+  function send(st, api, payload, full) {
+    const k = st.trade;
     k.busy = true;
     paint(st, api);
-    api.act(st, 'trade', btn.dataset.all ? { do: 'loadAll', id } : { do: 'load', id, n: PLUS }).then((r) => {
+    api.act(st, 'trade', payload).then((r) => {
       const kk = st.trade;
       if (!kk) return;
       kk.busy = false;
@@ -467,6 +507,8 @@
     if (f) { if (human(e) && st.mine) formIt(st, api, f.dataset.form, f.dataset.fstyle || ''); return; }
     const rel = e.target.closest('[data-rel]');
     if (rel) { release(st, api, rel, e); return; }
+    const kept = e.target.closest('[data-loadt]');
+    if (kept) { loadKept(st, api, kept, e); return; }
     const b = e.target.closest('[data-load]');
     if (b) load(st, api, b, e);
   }
@@ -550,7 +592,7 @@
 
     mount(st, api) {
       st.trade = {
-        v: null, el: null, cds: [], dirty: false, busy: false, arm: null, seen: {}, opened: null, saidAt: 0, openToast: null, gate: null,
+        v: null, el: null, cds: [], dirty: false, busy: false, arm: null, armT: null, seen: {}, opened: null, saidAt: 0, openToast: null, gate: null,
         known: null, levels: null,
         toloka: false, noteText: null, shopNote: null, looked: 0,
       };
