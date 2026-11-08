@@ -43,6 +43,7 @@ public sealed partial class ClickerGlekBook
         ["toloka-collect"] = ["building", "stage", "first"],
         ["wallet"] = ["spent"],
         ["fire"] = ["items"],
+        ["stoker-asleep"] = ["minutes"],
     };
 
     readonly Dictionary<string, string[]> _pools;
@@ -283,6 +284,10 @@ public sealed partial class Clicker
                 break;
             case "wallet":
                 v["spent"] = PotsShort(t.Cost);
+                break;
+            case "stoker-asleep":
+                var mins = Convert.ToInt32(t.Facts["minutes"], Uk);
+                v["minutes"] = mins.ToString(Uk) + " " + Plural(mins, "хвилину", "хвилини", "хвилин");
                 break;
             case "fire":
                 var items = Convert.ToInt64(t.Facts["items"], Uk);

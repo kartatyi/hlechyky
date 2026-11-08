@@ -1016,7 +1016,28 @@ public sealed partial class Clicker
     /// </summary>
     internal bool KilnAutoCan => _guildRank >= GuildJourneyman || CraftLevel("stoker") >= 1;
 
-    bool KilnAutoOn => KilnAutoCan && !_autoKilnOff;
+    /// <summary>
+    /// Режим палія (v13 Б): <c>Always</c> — палить, хто б не стояв біля кола; <c>Away</c> — лише коли гончаря нема
+    /// (<see cref="KilnPotterHere"/>); <c>Hands</c> — не палить зовсім, горно тільки руками.
+    /// </summary>
+    internal enum KilnAutoMode { Always, Away, Hands }
+
+    /// <summary>Скільки палій мовчить, поки гончар біля кола, — і скільки сушарня мусить простояти повною, щоб Глек це помітив.</summary>
+    public static readonly TimeSpan StokerAsleepAfter = TimeSpan.FromMinutes(30);
+
+    string KilnAutoModeKey => _kilnAutoMode.ToString().ToLowerInvariant();
+
+    bool KilnAutoOn => KilnAutoCan && _kilnAutoMode != KilnAutoMode.Hands;
+
+    /// <summary>
+    /// Чи гончар зараз біля кола: не «пішов» (<c>_goneAt</c> — «Закрити», інша вкладка, обрив) і його руки торкались чогось
+    /// менш як <see cref="AwayFrom"/> тому. Руки (<c>_handsAt</c>), а не будь-який look: відкрита картка шле їх сама.
+    /// <paramref name="now"/> — кінець кроку офлайн-прогону, а не годинник: ніч вважаємо «нема» з перших п'яти хвилин.
+    /// </summary>
+    bool KilnPotterHere(DateTimeOffset now) => !(_goneAt != default && now >= _goneAt) && now - _handsAt < AwayFrom;
+
+    /// <summary>Коли сушарня стала повною при режимі «лише руками» (лише в пам'яті): Глек питає про палія, якщо це надовго.</summary>
+    DateTimeOffset _rackFullAt;
 
     /// <summary>«Блиск» партії палія: рівень «Палія» і «Вогонь роду» (див. <see cref="KilnHeat.AutoShine"/>).</summary>
     double AutoShine => KilnHeat.AutoShine(CraftLevel("stoker"), Has("ember"));
@@ -1421,7 +1442,12 @@ public sealed partial class Clicker
     /// </summary>
     void AutoKiln(DateTimeOffset now)
     {
+        // Режим «лише руками» і повна сушарня: відлік для поради Глека «палій сидить» (ClickerAdvisor.cs).
+        if (KilnAutoCan && _kilnAutoMode == KilnAutoMode.Hands && _rack.Count >= RackSize) { if (_rackFullAt == default) _rackFullAt = now; }
+        else _rackFullAt = default;
         if (!KilnAutoOn || _litAt != default || now < _coolUntil || _kiln.Count > 0) return;
+        // «Коли мене нема»: поки гончар тут, палій не бере ні неповної, ні повної сушарні — усе його (v13 Б).
+        if (_kilnAutoMode == KilnAutoMode.Away && KilnPotterHere(now)) return;
         // Гравець уже взявся за партію (обрав розпис, малює чи намалював) — підмайстри не забирають її з-під рук.
         // Обраний розпис сам по собі партією не є: після KilnFinish він лишається як побажання «пали в косівському»,
         // і без цієї поправки палій офлайн не вмикався б ніколи в того, хто хоч раз розписав партію (рецензія v9).
@@ -1550,6 +1576,7 @@ public sealed partial class Clicker
             strawPrice = StrawPrice,
             // Палій: чи палить сам, чи вимкнений вимикачем і який у нього «блиск» — панель горна це пояснює на місці.
             auto = KilnAutoOn,
+            autoMode = KilnAutoModeKey,
             autoCan = KilnAutoCan,
             autoShine = AutoShine,
             autoBatches = _kilnAuto,

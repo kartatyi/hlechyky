@@ -29,6 +29,8 @@
     lo: 830, hi: 1010, hi0: 350, softUnder: 100, softOver: 60, crackFree: 300, crackScale: 3000, crackMax: 0.5,
   };
   const STOKE = 0, OPEN = 1, CLOSE = 2;
+  // Режими палія (v13 Б): ключ — як у дії guild { op: 'auto', mode } і в k.autoMode.
+  const AUTO_MODES = [['always', '🔥 завжди'], ['away', '🌙 коли мене нема'], ['hands', '✋ лише руками']];
   const T_MAX = 1300;                       // верх термометра
   const OPEN_AFTER_MS = 350;                // після кінця обпалу — трохи зачекати, щоб серверне «зараз» точно дійшло
   const MAX_POINTS = 480;                   // сервер бере до 500
@@ -689,17 +691,25 @@
       : '';
 
     // Палій: коли він доступний, гончар мусить бачити, що горно може палати й без нього — і вміти це спинити.
+    // v13 Б: три режими замість галочки — завжди / коли мене нема / лише руками.
+    const mode = k.autoMode || (k.auto ? 'always' : 'hands');
     const auto = k.autoCan
-      ? '<label class="clkk-auto small"><input type="checkbox" class="clkk-autobox"' + (k.auto ? ' checked' : '')
-        + (mine ? '' : ' disabled') + '> 🧑‍🏭 Палій палить сам'
-        + api.info('Коли горно холодне, партії ніхто не почав і сухих назбиралось хоч трохи (або горна не чіпали '
-          + Math.round((((cat(st) && cat(st).autoIdleMs) || 180000) / 60000)) + ' хв), палій розпалює сам — без тріщин, '
-          + 'в обраному розписі, але без «краси» з мінігри. За ніч він так обпалює десятки партій. Прокачаний «Палій» пече дзвінкіше.') + '</label>'
+      ? '<div class="clkk-auto small"><span>🧑‍🏭 Палій</span>'
+        + '<span class="clkk-modes" role="group" aria-label="Коли палить палій">'
+        + AUTO_MODES.map(([key, label]) => '<button type="button" class="ghost small clkk-mode' + (mode === key ? ' on' : '') + '" data-mode="' + key
+          + '" aria-pressed="' + (mode === key) + '"' + (mine ? '' : ' disabled') + '>' + label + '</button>').join('')
+        + '</span>'
+        + api.info('Палій розпалює горно сам, без тріщин, в обраному розписі, але без «краси» з мінігри; за ніч так обпалюються десятки партій. '
+          + 'Прокачаний «Палій» пече дзвінкіше. Режими: '
+          + '🔥 завжди — палить, коли горно холодне й сухих назбиралось хоч трохи (або горна не чіпали '
+          + Math.round((((cat(st) && cat(st).autoIdleMs) || 180000) / 60000)) + ' хв), хоч би ти стояв біля кола; '
+          + '🌙 коли мене нема — палить лише коли ти пішов (5 хв без дій руками чи «Закрити»), поки ти тут, сушарня й горно твої; '
+          + '✋ лише руками — не палить зовсім.') + '</div>'
       : '';
 
     if (api.swap(ui.fire, fire + straw + auto)) {
       const f = (sel) => ui.fire.querySelector(sel);
-      if (f('.clkk-autobox')) f('.clkk-autobox').onchange = (e) => api.order(st, 'guild', { op: 'auto', on: e.target.checked });
+      for (const b of ui.fire.querySelectorAll('.clkk-mode')) b.onclick = () => { if (!b.classList.contains('on')) api.order(st, 'guild', { op: 'auto', mode: b.dataset.mode }); };
       for (const b of ui.fire.querySelectorAll('.clkk-buystraw')) b.onclick = () => api.order(st, 'kiln', { op: 'straw', n: +b.dataset.n });
       if (f('.clkk-strawon')) f('.clkk-strawon').onchange = (e) => api.storeSet('clk.kiln.straw', e.target.checked ? '1' : '0');
       for (const el of ui.fire.querySelectorAll('[data-self]')) {

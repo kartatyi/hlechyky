@@ -22,7 +22,7 @@
   const OFF_LS = 'clk.glek.off';          // '1' — підказки Глека вимкнено
   const OFF_TIP = 'Підказки Глека вимкнено — клацни, щоб увімкнути знову';
   /// Куди веде кнопка поради (where з ClickerAdvisor): глину ставимо одразу, решта — вкладка.
-  const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire' };
+  const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire', kiln: 'craft' };
 
   const myNick = (st) => (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
   const goLabel = (where) => (String(where).startsWith('clay:') ? 'Постав' : 'Показати');

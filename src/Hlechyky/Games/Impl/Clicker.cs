@@ -1181,6 +1181,9 @@ public sealed partial class Clicker : Game
         DiaryAfterAct(action, quiet, Ctx.Clock.UtcNow);
         if (!quiet && result.Ok && TakeShanaToast() is { Length: > 0 } shana)
             result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + shana : shana);
+        // v13 Б: палій, якого вимикали галочкою, відтепер палить «коли мене нема» — гончар має про це знати (раз).
+        if (!quiet && result.Ok && TakeStokerToast() is { Length: > 0 } stoker)
+            result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + stoker : stoker);
         // Подарунок майстерні (ClickerGifts.cs) — після вдалої справжньої дії: гончар тут і побачить тост.
         if (!quiet && result.Ok && TakeGifts() is { Length: > 0 } gift)
             result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + gift : gift);

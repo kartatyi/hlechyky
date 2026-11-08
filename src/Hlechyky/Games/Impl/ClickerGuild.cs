@@ -87,7 +87,10 @@ public sealed partial class Clicker
     int _treatsSent;
     readonly List<GuildGift> _giftShelf = [];
     DateTimeOffset _bragAt;
-    bool _autoKilnOff;
+    /// <summary>Коли палій палить сам (v13 Б): завжди, лише коли гончаря нема, чи ніколи. Раніше було bool «вимкнено».</summary>
+    KilnAutoMode _kilnAutoMode;
+    /// <summary>Збереження ще з галочкою «вимкнено» перевели на «коли мене нема» — гончар про це дізнається тостом один раз.</summary>
+    bool _stokerMigrated;
     /// <summary>Підмайстер друга гостює до цієї миті: ліплення ×0,5 роботи (§E.2).</summary>
     DateTimeOffset _lendUntil;
     string _lendFrom = "";
@@ -115,7 +118,7 @@ public sealed partial class Clicker
     /// перевіряє цей прапорець у своєму Sync: сушарня повна й горно холодне → <c>TakeDry</c> усе сухе, <c>AddFired</c>,
     /// <c>PutItems(…, quality: 1)</c>. Гравець може вимкнути (дія <c>guild { op: "auto", on }</c>).
     /// </summary>
-    internal bool GuildAutoKiln => _guildRank >= GuildJourneyman && !_autoKilnOff;
+    internal bool GuildAutoKiln => _guildRank >= GuildJourneyman && _kilnAutoMode != KilnAutoMode.Hands;
 
     /// <summary>Майстер цеху: +2 місця в горні, старійшина: +4 (горно додає до своєї місткості).</summary>
     internal int GuildKilnSlots => _guildRank >= GuildElder ? ElderKilnSlots : _guildRank >= GuildMaster ? MasterKilnSlots : 0;
@@ -164,12 +167,13 @@ public sealed partial class Clicker
         int Rank = 0, long Given = 0, int Claims = 0, int GiftsSent = 0, int GiftsGot = 0,
         List<GuildGift>? Shelf = null, DateTimeOffset BragAt = default, bool AutoOff = false,
         GuildBuffs? Buffs = null, int TreatsSent = 0, List<GuildGot>? Got = null,
-        long? LuxFired = null, int LendsSent = 0, Dictionary<string, int>? Shana = null);
+        long? LuxFired = null, int LendsSent = 0, Dictionary<string, int>? Shana = null, string? AutoMode = null);
 
-    GuildRow? SaveGuild() => new(_guildRank, _guildGiven, _guildClaims, _giftsSent, _giftsGot, _giftShelf.ToList(), _bragAt, _autoKilnOff,
+    GuildRow? SaveGuild() => new(_guildRank, _guildGiven, _guildClaims, _giftsSent, _giftsGot, _giftShelf.ToList(), _bragAt, _kilnAutoMode == KilnAutoMode.Hands,
         new GuildBuffs(_lendUntil, _lendFrom, _cheerUntil, _cheerFrom, _treatAt, _treatFrom, _treatPots), _treatsSent,
         _helpGot.Count > 0 ? _helpGot.ToList() : null,
-        _luxFired, _lendsSent, _shanaSeen.Count > 0 ? new Dictionary<string, int>(_shanaSeen, StringComparer.Ordinal) : null);
+        _luxFired, _lendsSent, _shanaSeen.Count > 0 ? new Dictionary<string, int>(_shanaSeen, StringComparer.Ordinal) : null,
+        _kilnAutoMode.ToString().ToLowerInvariant());
 
     /// <summary>Запам'ятати прийняту допомогу (найсвіжіше першим, не більше <see cref="HelpGotKept"/>).</summary>
     void HelpGot(string kind, string from, DateTimeOffset now, string? what = null)
@@ -197,7 +201,15 @@ public sealed partial class Clicker
         foreach (var g in row.Shelf ?? [])
             if (ValidGift(g) is { } ok && _giftShelf.Count < ClickerGuildService.ShelfSize) _giftShelf.Add(ok);
         _bragAt = row.BragAt;
-        _autoKilnOff = row.AutoOff;
+        // v13 Б: нове поле є — беремо його; нема, а стара галочка була знята, — «коли мене нема» (слово користувача 08.11)
+        // і один тост про це; решта — як було, «завжди». AutoOff лишається в збереженні (= Hands), щоб відкат гілки не вмикав палія.
+        if (row.AutoMode is { } am)
+            _kilnAutoMode = Enum.TryParse<KilnAutoMode>(am, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed : KilnAutoMode.Always;
+        else if (row.AutoOff)
+        {
+            _kilnAutoMode = KilnAutoMode.Away;
+            _stokerMigrated = true;
+        }
         if (row.Buffs is { } b)
         {
             // Баф не може тривати довше за стелю продовжень: правлена руками база не дасть вічного підмайстра.
@@ -250,7 +262,8 @@ public sealed partial class Clicker
         _shanaToast = "";
         _giftShelf.Clear();
         _bragAt = default;
-        _autoKilnOff = false;
+        _kilnAutoMode = KilnAutoMode.Always;
+        _stokerMigrated = false;
         _lendUntil = default;
         _lendFrom = "";
         _cheerUntil = default;
@@ -883,9 +896,29 @@ public sealed partial class Clicker
     ActResult GuildAuto(JsonElement payload)
     {
         if (!KilnAutoCan) return ActResult.Fail("Автогорно — перк челядника або прокачаного Палія");
-        var on = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("on", out var v) && v.ValueKind == JsonValueKind.True;
-        _autoKilnOff = !on;
-        return ActResult.Accept(on ? "🔥 Підмайстри палитимуть повну сушарню самі" : "🔥 Горно — лише твоїми руками");
+        // v13 Б: { mode: "always" | "away" | "hands" }; старе { on: bool } приймаємо й далі (true — завжди, решта — лише руками).
+        KilnAutoMode mode;
+        if (Str(payload, "mode") is { Length: > 0 } m)
+        {
+            if (!Enum.TryParse(m, ignoreCase: true, out mode) || !Enum.IsDefined(mode)) return ActResult.Fail("Такого режиму палія нема");
+        }
+        else mode = Flag(payload, "on") ? KilnAutoMode.Always : KilnAutoMode.Hands;
+        _kilnAutoMode = mode;
+        _stokerMigrated = false;
+        return ActResult.Accept(mode switch
+        {
+            KilnAutoMode.Always => "🔥 Палій палитиме повну сушарню сам, хай ти й біля кола",
+            KilnAutoMode.Away => "🌙 Палій палитиме, коли тебе нема",
+            _ => "✋ Горно — лише твоїми руками",
+        });
+    }
+
+    /// <summary>Тост про перехід «вимкнено» → «коли мене нема» (v13 Б) — один раз, на першій справжній дії.</summary>
+    string TakeStokerToast()
+    {
+        if (!_stokerMigrated) return "";
+        _stokerMigrated = false;
+        return "🌙 Палій тепер палить, коли тебе нема — змінити можна в горні";
     }
 
     /// <summary>
@@ -944,7 +977,8 @@ public sealed partial class Clicker
             given = _guildGiven,
             next = NextRankView(),
             autoKiln = KilnAutoOn,
-            autoOff = _autoKilnOff,
+            autoOff = _kilnAutoMode == KilnAutoMode.Hands,
+            autoMode = KilnAutoModeKey,
             kilnSlots = GuildKilnSlots,
             wagonMult = WagonRank,
             bragAt = _bragAt,
