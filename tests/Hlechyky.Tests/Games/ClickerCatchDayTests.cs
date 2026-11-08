@@ -214,4 +214,23 @@ public class ClickerCatchDayTests
             Assert.Empty(three.BoardCatch(Day));
         });
     }
+
+    [Fact]
+    public void The_catcher_day_cap_stops_counting_points_above_it_so_a_script_cannot_win_all_day()
+    {
+        var svc = Svc(new FakeStakes(), new FakeClock { UtcNow = Noon });
+        svc.AddCatch("Оля", 400, Noon);
+        svc.AddCatch("Оля", 400, Noon.AddMinutes(1));
+        svc.AddCatch("Оля", 50, Noon.AddMinutes(2));
+        Assert.Equal(500, svc.BoardCatch(Day).Single().Points);                          // типова стеля CatchMaxPoints
+
+        var small = Svc(new FakeStakes(), new FakeClock { UtcNow = Noon }, new ClickerDayOptions { CatchMaxPoints = 100 });
+        small.AddCatch("Тарас", 60, Noon);
+        small.AddCatch("Тарас", 60, Noon);
+        Assert.Equal(100, small.BoardCatch(Day).Single().Points);
+        var free = Svc(new FakeStakes(), new FakeClock { UtcNow = Noon }, new ClickerDayOptions { CatchMaxPoints = 0 });
+        free.AddCatch("Іван", 900, Noon);
+        free.AddCatch("Іван", 900, Noon);
+        Assert.Equal(1800, free.BoardCatch(Day).Single().Points);                        // 0 — без стелі
+    }
 }

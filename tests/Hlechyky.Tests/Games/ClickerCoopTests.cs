@@ -419,4 +419,20 @@ public class ClickerCoopTests
         Spin(h);
         Assert.Equal(plain * 1.2 * 1.1, PerSecond(h), plain * 1e-9 + 1e-6);
     }
+
+    // ---------- рецензія v13 ----------
+
+    [Fact]
+    public void One_potter_cannot_close_the_order_alone_his_ceiling_is_a_quarter_of_the_volume()
+    {
+        var k = new Kit();
+        Chosen(k, out _, out _, out var volume);
+        Assert.Equal(125, ClickerWeekService.MaxPart(volume, k.Svc.O.CoopMaxShare, k.Svc.O.CoopMinShare));
+        Assert.Equal(125, k.Svc.CoopAdd("Оля", 500, Wed));
+        Assert.Equal(0, k.Svc.CoopAdd("Оля", 1, Wed));                                  // стеля вичерпана
+        Assert.Equal(0, k.Svc.CoopRoom("Оля", Wed));
+        Assert.Equal(125, k.Svc.CoopRoom("Тарас", Wed));
+        Assert.False(k.Svc.CoopNow(Wed)!.Fulfilled);
+        Assert.Equal(125, k.Svc.CoopMine("Оля", Wed));
+    }
 }

@@ -473,4 +473,19 @@ public class ClickerWishTests
         Assert.Contains("мішок глеків", got.Message);
         Assert.True(Pots(petro) > before);
     }
+
+    [Fact]
+    public void A_full_mailbox_refuses_the_gift_and_the_wish_stays_with_the_giver()
+    {
+        var g = new Tsekh();
+        var ola = g.Potter("Оля");
+        g.Potter("Петро");
+        for (var i = 0; i < ClickerGuildService.MailMax; i++)
+            Assert.Null(g.Svc.SendWish("k" + i, "Друг" + i, "Петро", "feast", g.Clock.UtcNow));
+        Offer(ola, "feast", "basket", "money");
+        var r = Wish(ola, "feast", "Петро");
+        Assert.False(r.Ok);
+        Assert.Equal("Скринька Петро повна — спробуй пізніше", r.Message);
+        Assert.Equal(3, Cards(ola).Count);                              // бажання не з'їдено
+    }
 }

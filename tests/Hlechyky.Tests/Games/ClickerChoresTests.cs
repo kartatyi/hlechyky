@@ -453,4 +453,79 @@ public class ClickerChoresTests
         Assert.Equal(1, Streak(h));
         Assert.False(Claim(h).Ok);                                      // забрана скриня лишилась забраною
     }
+
+    // ---------- рецензія v13 ----------
+
+    [Fact]
+    public void The_festival_chore_is_not_given_when_the_next_festival_is_later_than_the_end_of_the_day()
+    {
+        var seenLate = new HashSet<string>();
+        var seenSoon = new HashSet<string>();
+        for (var i = 0; i < 40; i++)
+        {
+            var (h, _) = Wheel("пізній" + i);
+            Rich(h);
+            Patch(h, s => { s["toloka"]!["festivalNext"] = h.Clock.UtcNow.AddHours(30).ToString("O"); s["chores"] = null; });
+            foreach (var k in Picks(h)) seenLate.Add(k);
+            var (g, _) = Wheel("ранній" + i);
+            Rich(g);
+            Patch(g, s => { s["toloka"]!["festivalNext"] = g.Clock.UtcNow.AddMinutes(10).ToString("O"); s["chores"] = null; });
+            foreach (var k in Picks(g)) seenSoon.Add(k);
+        }
+        Assert.DoesNotContain("fest", seenLate);
+        Assert.Contains("fest", seenSoon);
+    }
+
+    [Fact]
+    public void The_guest_chore_needs_a_guest_order_not_only_a_met_guest()
+    {
+        var seen = new HashSet<string>();
+        var seenWith = new HashSet<string>();
+        var guest = Clicker.Guests[0].Key;
+        for (var i = 0; i < 40; i++)
+        {
+            var (h, _) = Wheel("без" + i);
+            Rich(h);
+            var now = h.Clock.UtcNow;
+            Patch(h, s =>
+            {
+                s["guests"] = new JsonObject { ["met"] = new JsonObject { [guest] = now.AddHours(-1).ToString("O") }, ["rep"] = new JsonObject(), ["orders"] = new JsonArray() };
+                s["chores"] = null;
+            });
+            foreach (var k in Picks(h)) seen.Add(k);
+            var (g, _) = Wheel("з" + i);
+            Rich(g);
+            Patch(g, s =>
+            {
+                s["guests"] = new JsonObject
+                {
+                    ["met"] = new JsonObject { [guest] = now.AddHours(-1).ToString("O") }, ["rep"] = new JsonObject(),
+                    ["orders"] = new JsonArray(new JsonObject
+                    {
+                        ["id"] = 7, ["guest"] = guest, ["who"] = 0, ["ware"] = "pot", ["style"] = "", ["quality"] = 1, ["count"] = 2,
+                        ["at"] = now.ToString("O"), ["until"] = now.AddMinutes(200).ToString("O"),
+                    }),
+                    ["orderId"] = 100, ["next"] = now.AddMinutes(40).ToString("O"), ["delivered"] = 0,
+                };
+                s["chores"] = null;
+            });
+            foreach (var k in Picks(g)) seenWith.Add(k);
+        }
+        Assert.DoesNotContain("guest", seen);
+        Assert.Contains("guest", seenWith);
+    }
+
+    [Fact]
+    public void The_streak_survives_the_clock_change_day_because_yesterday_is_found_by_the_calendar()
+    {
+        var (h, _) = Wheel();
+        Rich(h);
+        // Київ переводить годинник 25.10.2026: доба на 25 годин. Остання година 25.10 за 24 год тому вже «25.10» — не «вчора».
+        h.Clock.UtcNow = new DateTimeOffset(2026, 10, 25, 21, 30, 0, TimeSpan.Zero);   // 23:30 за київським 25.10
+        Assert.Equal("2026-10-25", Days.Of(h.Clock.UtcNow));
+        Patch(h, s => s["chores"] = new JsonObject { ["day"] = "2026-10-25", ["pick"] = new JsonArray("catch", "gold", "fire"), ["prog"] = new JsonArray(30, 3, 1), ["taken"] = false, ["streak"] = 3, ["last"] = "2026-10-24" });
+        var r = Claim(h);
+        Assert.True(r.Ok, r.Message);
+        Assert.Equal(4, Streak(h));
+    }
 }
