@@ -431,6 +431,7 @@ public sealed partial class Clicker
         // Плейтест 21.10 (B10): тост казав «шана +8», а додавалось +14 — множники Зали й печатки до тексту не доходили.
         var text = $"{g.Emoji} {GuestWho(o)}: «{GuestLine(g, o.Ware)}» +{PotsShort(pay)} · шана +{GuestRepReal(rep)}";
         if (up > 0) text += $" · ⭐ {g.Name}: шана {GuestLevel(g.Key)}";
+        ChoreBump("guest");
         return ActResult.Accept(text);
     }
 

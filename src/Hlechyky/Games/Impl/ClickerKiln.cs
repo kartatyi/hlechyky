@@ -1293,7 +1293,9 @@ public sealed partial class Clicker
         // Шана «Горно» I/IV: підмайстер розписує партію в обраному розписі (краса 15, далі 30) — бувають і розкішні.
         // Палій пече без розпису й без тріщин, зате з власним невеликим «блиском» від прокачки (v9).
         // Одинадцяте оновлення: Інститут керамології й «Родовий жар» додають до блиску (стеля — та сама одиниця в QualityOf).
-        var shine = (manual ? KilnHeat.Shine(heat, beauty) : AutoShine) * (1 + TolokaShineBonus + Relic("ember3"));
+        // v13 Г7: бажання «Жар палія» — партія палія виходить, як на ідеальному ручному жарі (дзвінких 30 %).
+        var autoShine = at < _wishStokerUntil ? Math.Max(AutoShine, WishStokerShine) : AutoShine;
+        var shine = (manual ? KilnHeat.Shine(heat, beauty) : autoShine) * (1 + TolokaShineBonus + Relic("ember3"));
         var paint = manual ? Math.Clamp(beauty, 0, 100) / 100.0 : style.Length > 0 ? ShanaAutoPaint : 0;
         var luxMult = ShanaLuxMult;
         var outs = new List<KilnOutRow>(_kiln.Count);
@@ -1336,6 +1338,8 @@ public sealed partial class Clicker
         // Звання: «Бездоганне горно» — десять таких обпалів за весь час, «Перепалив» — обпали з тріщинами (лише власноруч).
         TitlesOnKiln(manual, perfect, outs.Any(o => o.Q == 0));
         if (outs.Any(o => o.Q == 4)) Achieve("potter-q4");
+        // v13 Г3: доручення «обпали руками розписну партію» — ручне горно з розписом (палій і підмайстер не рахуються).
+        if (manual && style.Length > 0) ChoreBump("fire");
         if (!manual && ++_kilnAuto == AutoBatchesAch) Achieve("potter-stoker");
         // v12: Майстер дня — лише ручне горно: дзвінкий 1, розкішний 3 (ClickerDay.cs).
         if (manual && outs.Sum(o => o.Q >= 4 ? DayPointsQ4 : o.Q == 3 ? DayPointsQ3 : 0) is var day and > 0)

@@ -314,6 +314,8 @@ public sealed partial class Clicker
         // перезапуск сервера до першого кліка загубив би дарунок назавжди.
         if (!_inAct) return;
         TakeBoosts(svc, now);
+        // Подяки за подаровані мною бажання: друг прийняв — хвилини гри (ClickerWish.cs).
+        WishCredits(svc);
         // Посилки з чужих толок (v11): у рядки вимог поточного етапу, решта — у комору.
         TakeTolokaMail(svc, now);
         if (svc.TakeMail(GuildKey) is not { } mail) return;
@@ -344,6 +346,8 @@ public sealed partial class Clicker
         foreach (var b in box)
         {
             var from = Who(b.From) is { Length: > 0 } f ? f : "друг";
+            // v13 Г7: подароване бажання чарівного глека застосовується одразу (ClickerWish.cs).
+            if (b.Kind.StartsWith(ClickerGuildService.WishPrefix, StringComparison.Ordinal)) { WishGiven(svc, b, from, now); continue; }
             var minutes = Math.Clamp(b.Minutes, 0, ClickerGuildService.LendHours * 60);
             switch (b.Kind)
             {
@@ -738,6 +742,7 @@ public sealed partial class Clicker
         if (svc.Gift(GuildKey, GuildNick, to, it, now, perks) is { } why) return ActResult.Fail(why);
         TakeItems(x => x == it, 1);
         _giftsSent++;
+        ChoreBump("gift");
         TitlesGiftTo(to, now);
         if (_giftsSent == GiftsForAchievement) Achieve("potter-gift");
         return ActResult.Accept($"🎁 {Capital(ItemWords(it, style: false))} — дарунок для {NickGen(to)} уже в дорозі"

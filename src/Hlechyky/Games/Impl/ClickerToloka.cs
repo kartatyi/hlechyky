@@ -358,6 +358,7 @@ public sealed partial class Clicker
             bag[ik] = bag.GetValueOrDefault(ik) + n;
             moved += n;
         }
+        ChoreBump("toloka", moved);
         return moved;
     }
 
@@ -445,7 +446,7 @@ public sealed partial class Clicker
             if (have < left) lack.Add($"{NeedWord(st.Needs[i])} — ще {left - have}");
         }
         if (lack.Count > 0) return ActResult.Fail("Бракує виробів: " + string.Join("; ", lack));
-        for (var i = 0; i < st.Needs.Length; i++) TakeItems(TolokaMatch(st.Needs[i]), TolokaLeft(st, i), new TakeFor("toloka"));
+        for (var i = 0; i < st.Needs.Length; i++) ChoreBump("toloka", TakeItems(TolokaMatch(st.Needs[i]), TolokaLeft(st, i), new TakeFor("toloka")));
         // Склад цього етапу пішов на будову разом із коморою.
         for (var i = 0; i < st.Needs.Length; i++) _tDepot.Remove(DepotKey(b.Key, Math.Clamp(_tStage, 0, b.Stages.Length - 1), i));
         _pots -= st.Pay;
@@ -463,6 +464,7 @@ public sealed partial class Clicker
         _festUntil = now + FestivalFor;
         _festNext = now + FestivalEvery;
         Achieve("potter-festival");
+        ChoreBump("fest");
         return ActResult.Accept($"🎉 Гуляй, майдане! Година ×{FestivalMult:0} до всього");
     }
 
@@ -495,6 +497,7 @@ public sealed partial class Clicker
     {
         if (n <= 0) return;
         var before = _tHelped;
+        ChoreBump("toloka", n);
         _tHelped = (int)Math.Min(int.MaxValue, (long)_tHelped + n);
         if (before < TolokaHelpForAchievement && _tHelped >= TolokaHelpForAchievement) Achieve("potter-toloka-helper");
     }

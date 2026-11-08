@@ -49,6 +49,7 @@ public sealed partial class Clicker
         var now = Ctx.Clock.UtcNow;
         if (Flag(payload, "on"))
         {
+            if (CatAwake) return ActResult.Fail("🐈 Кіт стоїть на варті до шостої ранку — молока не хоче (бажання чарівного глека)");
             if (Napping) return ActResult.Done;
             _napAt = now;
             if (FallFlying(now)) return ActResult.Accept("🥛 Кіт доскидає цей глек — лови! — і засне");

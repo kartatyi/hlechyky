@@ -1087,6 +1087,8 @@ public sealed partial class Clicker : Game
         ScheduleWind(_lastSync);
         ResetHouse(_lastSync);
         ResetFeast();
+        ResetChores();
+        ResetWish();
         ResetCraft();
         ResetKiln(_lastSync);
         ResetAlbum(_lastSync);
@@ -1122,7 +1124,7 @@ public sealed partial class Clicker : Game
         // Справжня дія — гончар знову біля кола (ClickerLate.cs). Після Sync: глек, що пролетів без нього, уже вирішено.
         if (!quiet) _backSpared = Back(Ctx.Clock.UtcNow);
         // Руки гончаря — лише те, що він зробив сам; таймер клієнта, що питає свіжий вид, серію за нього не стереже.
-        if (!quiet && !Poll(action, payload)) _handsAt = Ctx.Clock.UtcNow;
+        if (!quiet && !Poll(action, payload)) { _handsAt = Ctx.Clock.UtcNow; WishTouch(_handsAt); }
         // Звання дня рахуються київськими днями: учорашнє — цехові, сьогоднішнє — з нуля (ClickerTitles.cs).
         TitlesDayRoll(Ctx.Clock.UtcNow);
         // Ачівки, що назбирались у видах (офлайн-прогрес рахується вже на відкритті), — тепер, коли каркас їх прийме.
@@ -1143,7 +1145,8 @@ public sealed partial class Clicker : Game
             "sight" => Sight(payload),
             // Випадковості на сцені (v9): погладити кота, загадати бажання на зірку, «бачив, що нового».
             "pet" => Pet(),
-            "wish" => Wish(),
+            // «wish {pick}» — бажання чарівного глека (ClickerWish.cs); без pick — бажання на падаючу зірку.
+            "wish" => payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("pick", out _) ? MagicWish(payload) : Wish(),
             "news" => SeenNews(payload),
             // «Бачив» вікно-церемонію гривні чи червоних золотих (v10 §6).
             "coin" => SeenCoin(payload),
@@ -1176,7 +1179,7 @@ public sealed partial class Clicker : Game
             "glek" => GlekAct(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
             _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
-                ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActTrade(action, payload) ?? ActFeast(action, payload)
+                ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActTrade(action, payload) ?? ActFeast(action, payload) ?? ActChores(action, payload)
                 ?? ActResult.Fail("Тут так не ходять"),
         };
         // Дія могла почати чи скінчити мінігру — глеки відкладаються під неї або вертаються до свого часу.
@@ -1307,6 +1310,8 @@ public sealed partial class Clicker : Game
                 if (_fallStreak > 0 && Tool("apron") && !_apronUsed) _apronUsed = true;
                 else Crack();
             }
+            // v13 Г7: чарівний глек розбився — спроба витрачена лише тоді, коли гончар був тут і міг його спіймати.
+            if (_fall.Magic) MagicMissed(!asked && !Idle(_fall, now) && !Unwitnessed(_fall), now);
             ScheduleFall(now);
         }
         // Мінігра на час (розпис, ручний обпал) — глеки чекають її кінця (записка №29, ClickerFallHold.cs).
@@ -1418,11 +1423,13 @@ public sealed partial class Clicker : Game
     {
         // Кіт спить — наступного глека нема, доки не прокинеться (ClickerCatNap.cs).
         if (Napping) { ParkFall(); return; }
-        var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
+        var (min, max) = Has("cat") || CatAwake ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
         _fallPlanned = default;
         var at = from + TimeSpan.FromSeconds((min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * RelicWaitMult("cat3")
             * (1 - Perk(MarkEffect.FallOften)));
-        _fall = new FallRow(at, at + (Tool("sponge") ? FallShownLong : FallShown), Ctx.Rng.Next(8, 80));
+        // v13 Г7: чарівний глек падає замість звичайного, коли настав його час і гончар біля кола (ClickerWish.cs).
+        var magic = MagicDue(from, at);
+        _fall = new FallRow(at, at + (magic ? MagicShown : Tool("sponge") ? FallShownLong : FallShown), Ctx.Rng.Next(8, 80), magic);
     }
 
     // ---------- випадковості на сцені: кіт, зірка, вітер (§A.6) ----------
@@ -1936,6 +1943,7 @@ public sealed partial class Clicker : Game
                 break;
         }
         _caught++;
+        ChoreBump("gold");
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_caught == GoldenForAchievement) Ctx.Award(0, 0, "ach:potter-golden");
         return ActResult.Accept(text + tail + TreasureRoll(1) + AskAfter(now));
@@ -2000,6 +2008,8 @@ public sealed partial class Clicker : Game
             return ActResult.Fail("Спершу Око майстра: покажи, що ти не автоклікер");
         _broken = null;
         _caughtFall = _fall;
+        // Чарівний глек у руках: на сьогодні досить, наступний звичайний не повинен знову стати чарівним (ClickerWish.cs).
+        if (_fall.Magic) { _mwDone = true; _mwAt = default; }
         // Наступний — на полицю ще до відповіді: поки глек летить, майстер не питає (AskAfter → BonusOn).
         ScheduleFall(now);
         return Grabbed(now, "🤲 Спіймав!");
@@ -2021,9 +2031,12 @@ public sealed partial class Clicker : Game
         TitlesGrab(now);
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
+        // v13 Г3: доручення «спіймай 30 з полиці»; Г7: чарівний глек дає вікно з трьома бажаннями.
+        ChoreBump("catch");
+        var wishText = _caughtFall is { Magic: true } ? MagicCaught(now) : "";
         return ActResult.Accept($"{head} +{PotsShort(gain)}"
             + (wished ? " · зірка не збрехала (×3)" : "")
-            + (_fallStreak > 1 ? $" · серія {_fallStreak}" : "") + TreasureRoll(0) + AskAfter(now));
+            + (_fallStreak > 1 ? $" · серія {_fallStreak}" : "") + TreasureRoll(0) + wishText + AskAfter(now));
     }
 
     /// <summary>
@@ -2541,6 +2554,8 @@ public sealed partial class Clicker : Game
             day = ViewDay(Ctx.Clock.UtcNow),
             week = ViewWeek(Ctx.Clock.UtcNow),
             buffs = ViewFeast(Ctx.Clock.UtcNow),
+            // v13 Г3 + Г7 одним масивом (межа розміру виду, ClickerSpeedTests): [доручення, серія, скриню забрано, бажання, черепки скрині].
+            chores = ViewChores(Ctx.Clock.UtcNow),
             relics = RelicsView(),
             away = AwayView(),
             catalog = CatalogView(),
@@ -2605,7 +2620,7 @@ public sealed partial class Clicker : Game
 
     sealed record GoldenRow(DateTimeOffset At, DateTimeOffset Until, GoldenKind Kind, int X, int Y);
 
-    sealed record FallRow(DateTimeOffset At, DateTimeOffset Until, int X);
+    sealed record FallRow(DateTimeOffset At, DateTimeOffset Until, int X, bool Magic = false);
 
     sealed record Snapshot(
         double Pots, double Total, double Carry, DateTimeOffset LastSync,
@@ -2645,7 +2660,9 @@ public sealed partial class Clicker : Game
         // Поради Дядька Глека, відкладені «потім» (ClickerGlek.cs, 25.10): вид → до коли. Старе збереження — нічого.
         Dictionary<string, DateTimeOffset>? GlekLater = null,
         // v13 Г: банки хвилин «Свята» й «Щасливого кошика», їхні відрізки й забрані призи дня (ClickerFeast.cs). Старе — порожньо.
-        FeastRow? Feast = null);
+        FeastRow? Feast = null,
+        // v13 Г3, Г7: доручення Глека й серія скринь; чарівний глек, бажання та їхні ефекти (ClickerChores.cs, ClickerWish.cs).
+        ChoresRow? Chores = null, WishRow? Wish = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2661,7 +2678,7 @@ public sealed partial class Clicker : Game
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
             _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt,
             _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList(),
-            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt, SaveGlek(), SaveFeast()),
+            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt, SaveGlek(), SaveFeast(), SaveChores(), SaveWish()),
         Wire);
 
     public override void Load(string json)
@@ -2778,6 +2795,8 @@ public sealed partial class Clicker : Game
         // Торгівля — після Толоки (Пристань) і комори (перший корабель рахує вільні вироби — у Sync, не тут).
         LoadTrade(s.Trade);
         LoadFeast(s.Feast);
+        LoadChores(s.Chores);
+        LoadWish(s.Wish);
         _achQueue.Clear();
         foreach (var key in s.Achievements ?? []) if (key is { Length: > 0 and < 64 } && !_achQueue.Contains(key)) _achQueue.Add(key);
         // Що належить напевно, але в хаті не лежить (зірку спіймано, а Скалки нема) — після черги ачівок, щоб її не стерло.

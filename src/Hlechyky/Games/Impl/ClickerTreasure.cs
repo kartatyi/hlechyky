@@ -294,6 +294,7 @@ public sealed partial class Clicker
         var pick = Str(payload, "pick");
         if (!riddle.Options.Contains(pick)) return ActResult.Fail("Такого варіанту в загадці нема");
         _rdDone = true;
+        ChoreBump("riddle");
         _rdPick = pick;
         _rdRight = pick == riddle.Item;
         _viewVersion++;

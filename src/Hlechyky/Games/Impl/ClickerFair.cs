@@ -644,6 +644,7 @@ public sealed partial class Clicker
         if (bear) text += " · 🐻 ведмідь наворожив подвійну плату";
         if (MktBazaarOn(now)) text += " · 🛒 базарний день";
         if (up > 0) text += $" · ⭐ {village.Name}: шана {MktLevel(o.Village)}";
+        ChoreBump("village");
         return ActResult.Accept(text);
     }
 

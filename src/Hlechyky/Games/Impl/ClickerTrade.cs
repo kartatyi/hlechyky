@@ -476,6 +476,7 @@ public sealed partial class Clicker
             treasure = TreasureRoll(2, TreasurePortPick(s.Port));
         }
         _viewVersion++;
+        ChoreBump("ship");
         var opened = OverseasTiers.FirstOrDefault(k => _slava >= SlavaGate[k] && _slava - slava - Math.Max(0, bonusSlava) < SlavaGate[k]);
         var text = $"{(s.Envoy ? "👑" : "⛵")} {(s.Envoy ? "Посольський корабель" : "Корабель")} з {PortOf(s.Port).From} повний і відплив: +{PotsShort(pay + bonusPay)} · Слава +{Count(slava + Math.Max(0, bonusSlava))}";
         if (opened is not null) text += $" · 🌍 відкрито «{Shop.First(u => u.Key == opened).Name}» у Майстерні" + OpenedPrice(opened);
