@@ -2116,7 +2116,7 @@
   /// Тло хати — дим, вогонь, хмари, вітрила, візки, прапорці, маятники — крокує 15 разів на секунду і все разом, а не
   /// щокадру кожне саме по собі. Chrome щокадру обслуговує кожну SVG-анімацію (стилі, розкладка SVG, перемальовування),
   /// і в пізній хаті їх ~70: на телефоні це було 30 кадрів/с проти 48 з тлом «на 15» (заміри 13.10, CPU ×4). Живе —
-  /// люди, худоба, майстер, кіт, усе ігрове — лишається плавним: його в списку нема. (Живе «на 30» і лічильник у тих
+  /// люди, худоба, майстер, кіт, усе ігрове — плавніше: його в списку тла нема (на ПК — «на 30», нижче). (Живе «на 30» і лічильник у тих
   /// самих кадрах пробували — процесора йшло більше, а не менше: кожен ручний крок анімації — повна перекладка шарів.)
   /// Як: CSS-анімацію ставимо на паузу (Web Animations) і самі пересуваємо їй час. Лише записи — читання playState
   /// чи стилю між ними змусило б браузер перераховувати стилі на кожну анімацію окремо (так було ще гірше).
@@ -2125,11 +2125,32 @@
   /// якщо подія проскочила до першого кадру).
   /// Горно на свій ручний обпал — не тло: на нього дивляться впритул, і полум'я «на 15» рвалось (скарга 14.10). Поки
   /// палиш сам (.clkk.burn), його вогонь і дим крутить браузер, а коли догорить — знову крокують разом з тлом.
+  /// Живе на ПК (08.11) теж крокує, але 30 разів на секунду: вільне воно крутилось на частоті монітора (180 Гц у
+  /// владіка), і кожен кадр перемальовував хату в GPU-процесі Chrome — а він один на всі вікна браузера (скарга: YouTube
+  /// на другому моніторі зупинявся й смикався, поки грали в коло). Заміри (RTX 5060 Ti, 2560×1440, сусіднє вікно з
+  /// відео): з колом GPU-процес 530–840 мс/с проти 53 з порожньою сторінкою; крок «на 30» знімає з нього 20–35 % (A/B
+  /// в одному запуску Chrome — між запусками рівень плаває вдвічі). 30, а не 15: руки гончаря міняють бік за 0,32 с, і «на
+  /// 15» смикались би. На телефоні — як було: там живе «на 30» коштувало головному потоку більше (див. вище).
   const DECOR = new Set(['clks-smoke', 'clks-ember', 'clkflame', 'clks-drift', 'clks-sail', 'clks-farsail', 'clks-cart',
     'clks-train', 'clks-lane', 'clks-twinkle', 'clks-ripple', 'clks-glint', 'clks-beam', 'clks-flag', 'clks-sway',
     'clks-pend', 'clks-hoist', 'clks-spin', 'clkkhsmoke', 'clkksmoke', 'clkkrsmoke', 'clkkflicker', 'clkkflame']);
   const DECOR_MS = 1000 / 15;
   const DECOR_SCAN_MS = 3000;
+  const ALIVE_MS = window.matchMedia && window.matchMedia('(pointer: fine)').matches ? 1000 / 30 : 0;
+  const COMPOSITED = new Set(['transform', 'opacity', 'translate', 'rotate', 'scale']);
+  /// Анімація, яку браузер однаково крутить на головному потоці: SVG-вузол усередині малюнка (їх композитор не
+  /// бере) або властивість, яку композитор не вміє (box-shadow тощо). Решту — transform/opacity на HTML — крутить
+  /// композитор без головного потоку й без перемальовування; крок її б лише зіпсував.
+  function mainThreadAnim(a) {
+    const t = a.effect && a.effect.target;
+    if (!t) return false;
+    if (t.ownerSVGElement) return true;
+    for (const k of a.effect.getKeyframes()) for (const p in k) {
+      if (p === 'offset' || p === 'computedOffset' || p === 'easing' || p === 'composite') continue;
+      if (!COMPOSITED.has(p)) return true;
+    }
+    return false;
+  }
 
   function paintDecor(st) {
     if (!st.el.getAnimations) return;
@@ -2137,8 +2158,11 @@
     const burn = !!(st.kUi && st.kUi.root && st.kUi.root.classList.contains('burn'));
     let d = st.decor;
     if (!d) {
-      d = st.decor = { list: [], tick: 0, scanAt: t, fresh: new Set() };
-      st.el.addEventListener('animationstart', (e) => { if (DECOR.has(e.animationName)) d.fresh.add(e.target); });
+      // finite — назви скінченних анімацій («+N», бризки — щокліку): їх кроком не водимо, тож і не шукаємо.
+      d = st.decor = { list: [], tick: 0, atick: 0, scanAt: t, fresh: new Set(), finite: new Set() };
+      st.el.addEventListener('animationstart', (e) => {
+        if (DECOR.has(e.animationName) || (ALIVE_MS && !d.finite.has(e.animationName))) d.fresh.add(e.target);
+      });
       scanDecor(st, d, t, st.el.getAnimations({ subtree: true }), false, burn);
     }
     if (d.fresh.size) {
@@ -2148,9 +2172,13 @@
       scanDecor(st, d, t, got, false, burn);
     }
     if (t - d.scanAt >= DECOR_SCAN_MS) { d.scanAt = t; scanDecor(st, d, t, st.el.getAnimations({ subtree: true }), true, burn); }
+    // Два годинники: тло — 15 кроків на секунду, живе — 30 (крок тла припадає на крок живого).
     const tick = Math.floor(t / DECOR_MS);
-    if (tick === d.tick) return;
+    const atick = ALIVE_MS ? Math.floor(t / ALIVE_MS) : 0;
+    if (tick === d.tick && atick === d.atick) return;
+    const decorStep = tick !== d.tick;
     d.tick = tick;
+    d.atick = atick;
     // Хата поза екраном (clicker-scene.js ставить .clks-off) — її тло стоїть; CSS тут уже не командує, бо пауза наша.
     const off = !!st.stage && st.stage.classList.contains('clks-off');
     // Спершу всі читання, потім усі записи: playState перераховує стилі, якщо після останнього запису щось змінилось, —
@@ -2164,6 +2192,7 @@
       // при цьому стрибне, але оком того не видно: клас горна саме міняється з «палає» на «холоне»).
       if (x.kiln && burn) { if (!x.free) { x.free = true; x.a.play(); } continue; }
       if (x.free) { x.free = false; x.a.pause(); }
+      if (!x.alive && !decorStep) continue;
       if (!(off && x.inStage)) x.a.currentTime = t + x.shift;
     }
   }
@@ -2174,12 +2203,15 @@
     if (full) { const have = new Set(anims); d.list = d.list.filter((x) => have.has(x.a)); }
     const known = new Set(d.list.map((x) => x.a));
     for (const a of anims) {
-      if (known.has(a) || !DECOR.has(a.animationName) || a.effect.getTiming().iterations !== Infinity) continue;
+      if (known.has(a) || !a.animationName) continue;
+      if (a.effect.getTiming().iterations !== Infinity) { d.finite.add(a.animationName); continue; }
+      const alive = !DECOR.has(a.animationName);
+      if (alive && !(ALIVE_MS && mainThreadAnim(a))) continue;
       const shift = (a.currentTime || 0) - t;
       const kiln = !!a.effect.target.closest('.clkk-svg');
       const free = kiln && burn;
       if (!free) a.pause();
-      d.list.push({ a, shift, kiln, free, inStage: !!st.stage && st.stage.contains(a.effect.target) });
+      d.list.push({ a, shift, kiln, free, alive, inStage: !!st.stage && st.stage.contains(a.effect.target) });
       known.add(a);
     }
   }

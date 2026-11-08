@@ -42,8 +42,9 @@ export const TIER_NAME = { 1: 'Ятки', 2: 'Майстерні', 3: 'Слав�
 export const GUEST_POINTS = 3;
 export const STARSHYNA = { name: 'Січова старшина', points: 3, icons: 3 };
 export const BULAVA_NAME = 'Гетьманська булава';
-/** Опція vp («Грати до»), типово 16; запобіжник — щонайбільше 40 кіл. */
-export const TARGETS = [14, 16, 18];
+/** Опція vp («Грати до»), типово 16; опція rounds — межа кіл, типово 40. */
+export const TARGETS = [12, 16, 20];
+export const ROUND_CAPS = [20, 25, 30, 40];
 export const MAX_ROUNDS = 40;
 
 /**

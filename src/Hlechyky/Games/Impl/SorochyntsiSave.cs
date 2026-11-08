@@ -33,6 +33,11 @@ public sealed class SoSnap
     // Глек-ведучий: що вже казав за партію (запобіжник частоти — наново).
     public int[] Bought { get; set; } = [];
     public bool T3Said { get; set; }
+    /// <summary>
+    /// Ніки, кому вже звучало «майже булава» (раз на гравця за партію). null — знімок старої збірки, де цього поля ще не
+    /// було: тоді вважаємо попередженими всіх, хто зараз «майже при булаві», — щоб не повторювати.
+    /// </summary>
+    public string[]? NearSaid { get; set; }
 }
 
 /// <summary>Ядро цілком: колоди в тому ж порядку, ряди, банк, прилавки, бронь з blind, гості, нагороди, фаза, події, статистика.</summary>
@@ -40,6 +45,8 @@ public sealed class SoCoreSnap
 {
     public bool[] In { get; set; } = [];
     public int Target { get; set; }
+    /// <summary>Межа кіл (опція rounds); 0 — знімок до опції, тоді 40.</summary>
+    public int RoundCap { get; set; }
     public bool Started { get; set; }
     public int Phase { get; set; }
     public int Round { get; set; }
@@ -96,6 +103,7 @@ public sealed partial class SorochyntsiCore
     {
         In = [.. In],
         Target = Target,
+        RoundCap = RoundCap,
         Started = Started,
         Phase = (int)Phase,
         Round = Round,
@@ -146,6 +154,7 @@ public sealed partial class SorochyntsiCore
         var c = new SorochyntsiCore(Enumerable.Range(0, n).Where(i => i < s.In.Length && s.In[i]))
         {
             Target = s.Target,
+            RoundCap = s.RoundCap is >= 2 and <= SorochyntsiCards.MaxRounds ? s.RoundCap : SorochyntsiCards.MaxRounds,
             Started = s.Started,
             Phase = (SoPhase)s.Phase,
             Round = s.Round,
@@ -289,6 +298,7 @@ public sealed partial class Sorochyntsi
             Announced = _announced,
             Bought = [.. _bought.Order()],
             T3Said = _t3Said,
+            NearSaid = _glek.NearSaidAll(),
         };
         return JsonSerializer.Serialize(snap, SnapJson);
     }
@@ -322,6 +332,11 @@ public sealed partial class Sorochyntsi
         foreach (var s in snap.Bought) _bought.Add(s);
         _t3Said = snap.T3Said;
         _glek.Reset();
+        if (snap.NearSaid is { } near)
+            foreach (var who in near) _glek.MarkNear(who);
+        else
+            foreach (var s in _core.Order)
+                if (NearBulava(s)) _glek.MarkNear(Nick(s));
         _heardSeq = _core.Seq;
     }
 

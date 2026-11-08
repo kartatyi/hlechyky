@@ -68,7 +68,8 @@
   function whatNow(v, me, st) {
     const w = whatNow0(v, me, st);
     const p = me && v && v.phase !== 'over' ? playerOf(v, me.seat) : null;
-    if (p && p.away) w.l = '<b>🤖 За тебе зараз торгує Глек</b> (ти двічі проспав хід). Зроби будь-що сам — і торгуватимеш далі.<br>' + w.l;
+    if (p && p.away) w.l = '<b>🤖 За тебе зараз торгує Глек</b> (ти двічі проспав хід). Повертайся — і торгуватимеш далі сам.'
+      + ' <button type="button" class="primary sor-back" data-a="back">🙋 Я тут</button><br>' + w.l;
     const ctx = st && st.ctx;
     if (!me && ctx && ctx.seat == null && ctx.playing && ownAway(v, ctx.me && ctx.me.nick)) {
       w.s = 'Твій прилавок чекає';
@@ -92,7 +93,7 @@
     let last = '';
     if (v.last) {
       const left = me ? M.K.turnsLeft(v, me.seat) : 0;
-      last = (v.bulava != null ? '⚜ Булава — у ' + esc(nickOf(v, v.bulava)) + ': останнє коло' : '🔔 Коло ' + v.round + ' — останнє')
+      last = (v.bulava != null ? '⚜ Булава: ' + esc(nickOf(v, v.bulava)) + ' — останнє коло' : '🔔 Коло ' + v.round + ' — останнє')
         + (me ? (me.must ? ': це твій останній хід' : ': ' + (left ? 'ще 1 хід у тебе' : 'твоїх ходів більше нема')) : '') + '. ';
     }
     if (me && me.must) {
@@ -120,6 +121,7 @@
       + '<div class="sor-main">'
       + '<div class="sor-fieldwrap"><div class="sor-field"></div><div class="sor-fx"></div><div class="sor-feed" aria-live="polite"></div>'
       + '<div class="sor-tip" hidden></div><div class="sor-flash" hidden></div><div class="sor-banner" hidden></div>'
+      + '<div class="sor-fpop sor-box" hidden></div><div class="sor-gpop sor-box" hidden></div>'
       + '<div class="sor-tools"><button type="button" class="sor-view" data-a="view"></button><button type="button" class="sor-view sor-snd" data-a="snd"></button></div>'
       + '<div class="sor-dlg" hidden></div></div>'
       // Дві підколонки: на широкій картці (⇔, ⛶, 1920+) стоять поруч, щоб колонка не горталась; вужче — одна під одною.
@@ -132,7 +134,7 @@
       + '<div class="sor-strip"></div><div class="sor-bar"></div>'
       + '</div>';
     st.el = {};
-    for (const k of ['players', 'pop', 'sum', 'fieldwrap', 'field', 'fx', 'feed', 'tip', 'flash', 'banner', 'dlg', 'say', 'panel', 'mine', 'res', 'awards', 'tabs', 'tabh', 'log', 'help', 'strip', 'bar', 'snd'])
+    for (const k of ['players', 'pop', 'sum', 'fieldwrap', 'field', 'fx', 'feed', 'tip', 'flash', 'banner', 'dlg', 'say', 'panel', 'mine', 'res', 'awards', 'tabs', 'tabh', 'log', 'help', 'strip', 'bar', 'snd', 'fpop', 'gpop'])
       st.el[k] = root.querySelector('.sor-' + k);
     st.el.view = root.querySelector('.sor-view[data-a="view"]');
     st.el.root = root.querySelector('.sor');
@@ -141,7 +143,7 @@
     paintSnd(st);
     st.onClick = (e) => onClick(root, e);
     root.addEventListener('click', st.onClick);
-    st.ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (st.sc) st.sc.resize(); placeFx(st); }) : null;
+    st.ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (st.sc) st.sc.resize(); placeFx(st); renderFieldPops(st); }) : null;
     if (st.ro) st.ro.observe(st.el.field);
     st.ro2 = typeof ResizeObserver === 'function' ? new ResizeObserver(() => sizeVars(root, st)) : null;
     if (st.ro2) for (const k of ['players', 'strip', 'bar', 'root']) st.ro2.observe(st.el[k]);
@@ -159,20 +161,28 @@
     k.style.setProperty('--sor-plh', hOf(st.el.players) + 'px');
     k.style.setProperty('--sor-striph', (st.el.strip.firstChild ? hOf(st.el.strip) : 0) + 'px');
     k.style.setProperty('--sor-barh', (st.el.bar.firstChild ? hOf(st.el.bar) : 0) + 'px');
-    // fix-screens: телефон стоячи (картка < 700 px) — поле від свого верху до низу екрана над вкладками, крамницею й
-    // панеллю дій (вони липнуть знизу). Було від --gfit-h (усе вікно без шапки сайту) — без ⛶ поле йшло нижче на 106 px.
+    // Телефон стоячи (картка < 700 px): поле — на весь екран між шапкою сайту й липким низом (вкладки, мій прилавок
+    // стрічкою, панель дій), незалежно від того, що над ним: на свій хід сторінка сама під'їжджає до поля (fieldIntoView).
+    // Було «від свого верху до низу екрана» — над полем стояли чипи місць і плашки 2×2, і полю лишалось 300 px (картка
+    // ряду ~46 px замість ≥ 72).
     if (k.clientWidth > 0 && k.clientWidth < 700 && !document.body.classList.contains('g-land')) {
-      const card = k.closest('.gtable');
-      if (!(card && card.scrollTop)) {
-        const top = st.el.fieldwrap.getBoundingClientRect().top + window.scrollY;
-        const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gdock-h')) || 0;
-        const h = Math.round(window.innerHeight - top - dock - hOf(st.el.strip) - hOf(st.el.bar) - 8) + 'px';
-        if (k.style.getPropertyValue('--sor-ph') !== h) k.style.setProperty('--sor-ph', h);
-      }
+      const cs = getComputedStyle(k);
+      const fit = parseFloat(cs.getPropertyValue('--gfit-h'))
+        || (window.innerHeight - (parseFloat(cs.getPropertyValue('--gtop-h')) || 0) - (parseFloat(cs.getPropertyValue('--gdock-h')) || 0));
+      const h = Math.round(fit - hOf(st.el.strip) - hOf(st.el.bar) - 8) + 'px';
+      if (k.style.getPropertyValue('--sor-ph') !== h) k.style.setProperty('--sor-ph', h);
     } else if (k.style.getPropertyValue('--sor-ph')) k.style.removeProperty('--sor-ph');
     // Телефон лежачи (картка ≥ 700 px): поле ліворуч на висоту від свого верху до низу екрана — без прокрутки.
     const land = document.body.classList.contains('g-land') && k.clientWidth >= 700;
     if (k.classList.contains('land') !== land) k.classList.toggle('land', land);
+    // ПК: сітка «поле + одна вузька колонка» (sorochyntsi.css, .sor.pc) — контейнерний запит сам контейнер не стилює.
+    const pc = k.clientWidth >= 700 && !land;
+    if (k.classList.contains('pc') !== pc) k.classList.toggle('pc', pc);
+    // Розкладка змінилась (межа 700 px, поворот, лежачи) — телефон, лежачи й ПК малюються по-різному (шторки, віконця на
+    // полі, частини мапи): перемалювати. Без цього шторка «Товари» лишалась відкритою на пів екрана, а лежачи з першого
+    // кадру висіла ПК-підказка «тапни купи на полі» без панелі товарів.
+    const lay = layOf(st);
+    if (lay && st.paintLay !== lay && st.ctx) requestAnimationFrame(() => { if (root._so === st) paint(root, st.ctx); });
     if (land && !(k.closest('.gtable') || {}).scrollTop) { // картку гортнули — поле липне, верх уже не той; лишаємо старе
       const card = k.closest('.gtable');
       const top = st.el.fieldwrap.getBoundingClientRect().top + (card ? card.scrollTop : 0) + window.scrollY;
@@ -217,7 +227,8 @@
       reducedMotion: reduced(),
     };
     let sc = null, kind = null;
-    if (store.get('sor.view') !== '2d') {
+    // Типово — пласке поле: у 3D на ноутбуці й телефоні лиця крамниць не прочитати. 3D — кнопкою «🧊 3D», вибір пам'ятаємо.
+    if (store.get('sor.view') === '3d') {
       try {
         const m = await import('/games/sorochyntsi/scene.js');
         sc = await m.createScene(host, opts);
@@ -279,6 +290,102 @@
     return st.tipNow || (n < 2 && !!(v && v.me && v.me.must));
   }
 
+  /// Що пласке поле малює, крім ринку й банку (board2d.setParts): на ПК суперники — у плашках колонки, мій прилавок — у
+  /// колонці, а гості й нагороди — на полі першим рядком із моїм поступом (з колонки їх прибрано); на телефоні мій
+  /// прилавок — у стрічці знизу. Телефон лежачи й невідома ширина — усе, як було.
+  function fieldParts(st) {
+    const lay = layOf(st);
+    if (!lay || lay === 'land') return null;
+    return lay === 'phone' ? { mine: false } : { opp: false, guests: true, awards: true, mine: false };
+  }
+  /// Розкладка картки: телефон (< 700 px), лежачи (≥ 700 px і body.g-land від каркаса) чи ПК; null — ширини ще нема.
+  /// «Лежачи» — одразу з класу каркаса, а не з .land картки (його ставить sizeVars пізніше першого малювання).
+  function layOf(st) {
+    const w = st.el && st.el.root ? st.el.root.clientWidth : 0;
+    if (!w) return null;
+    return w < 700 ? 'phone' : document.body.classList.contains('g-land') ? 'land' : 'pc';
+  }
+  /// ПК (не телефон, не лежачи): вибір товарів і крамниці — віконцями просто на полі, гості — на пласкому полі.
+  const pcField = (st) => layOf(st) === 'pc';
+  const guestsOnField = (st) => pcField(st) && st.scKind === '2d';
+
+  /// Де на полі обрана крамниця чи колода (екранні px у полі) — для віконця поруч; null — віконце в колонці.
+  function selAnchor(st) {
+    const s = st.sel, sc = st.sc;
+    if (!s || !sc || !pcField(st)) return null;
+    const leg = s.k === 'card' ? st.el.field.querySelector('.sor-m-leg[data-k="card"][data-id="' + s.id + '"]')
+      : st.el.field.querySelector('.sor-m-leg[data-k="deck"][data-id="' + s.tier + '"]');
+    const f = st.el.fieldwrap.getBoundingClientRect();
+    if (leg) { const r = leg.getBoundingClientRect(); return { x: r.left - f.left + r.width / 2, y: r.top - f.top + r.height / 2, hw: r.width / 2, hh: r.height / 2 }; }
+    const p = s.k === 'card' ? sc.screenPos('card', s.id) : sc.screenPos('deck', s.tier);   // 3D: без розміру
+    return p ? { x: p.x, y: p.y, hw: 46, hh: 60 } : null;
+  }
+  /// Віконце «🧺 Взяти» — ліворуч від банку, на висоті середньої купи.
+  function bankAnchor(st) {
+    const sc = st.sc;
+    if (!sc || !pcField(st)) return null;
+    const f = st.el.fieldwrap.getBoundingClientRect();
+    const leg = st.el.field.querySelector('.sor-m-leg[data-k="pile"][data-id="herbs"]');
+    if (leg) { const r = leg.getBoundingClientRect(); return { x: r.left - f.left + r.width / 2, y: r.top - f.top + r.height / 2, hw: r.width / 2, hh: r.height / 2 }; }
+    const p = sc.screenPos('pile', 'herbs');
+    return p ? { x: p.x, y: p.y, hw: 26, hh: 26 } : null;
+  }
+
+  function goodsPopHtml(st, v, me) {
+    const C = M.C, K = M.K, bank = v.bank || {};
+    const ts = K.takeState(me.take || {}, st.pick, bank);
+    const picked = C.GOODS.filter((g) => n0(st.pick[g])).map((g) => '<button type="button" class="sor-gpk" data-a="g-" data-g="' + g + '" style="--gc:' + C.GOOD_COLOR[g] + ';--gi:' + C.GOOD_INK[g] + '" title="Прибрати: ' + esc(C.GOOD_NAME[g]) + '">'
+      + C.GOOD_ICON[g] + (st.pick[g] > 1 ? '×' + st.pick[g] : '') + ' <small>−</small></button>').join('');
+    const warn = K.overflowText(K.ntokOf(playerOf(v, me.seat)), K.total(st.pick));
+    const line = st.note ? '<span class="sor-no">' + esc(st.note) + '</span>'
+      : ts.ok ? '<span class="sor-ok">✓ ' + (ts.mode === 'two' ? 'два однакові' : ts.goods.length === 3 ? 'три різні' : 'по одному з кожної купи') + '</span>'
+        : ts.why ? '<span class="sor-no">' + esc(ts.why) + '</span>' : '<span class="muted">' + esc(ts.hint) + '</span>';
+    return '<div class="sor-gpr">' + picked + '</div><div class="sor-gl small">' + line + (warn ? ' <span class="sor-warn">⚠ ' + esc(warn) + '</span>' : '') + '</div>'
+      + '<div class="sor-row"><button type="button" class="sor-btn primary" data-a="take"' + (ts.ok ? '' : ' disabled') + '>🧺 Взяти</button>'
+      + '<button type="button" class="sor-btn ghost" data-a="pick-x" title="Скинути вибір (Esc)">✕</button></div>';
+  }
+
+  /// Віконця на полі (ПК): обрана крамниця чи колода — поруч із нею, вибрані товари — біля банку.
+  function renderFieldPops(st) {
+    const v = st.view, me = v && v.me, el = st.el;
+    if (!el || !el.fpop) return;
+    const sa = me ? selAnchor(st) : null;
+    const ch = sa ? selHtml(st, v, me) : '';
+    setHtml(el.fpop, ch);
+    el.fpop.hidden = !ch;
+    if (ch) placePop(st, el.fpop, sa);
+    const ba = me && me.must === 'act' && M.K.total(st.pick) ? bankAnchor(st) : null;
+    const gh = ba ? goodsPopHtml(st, v, me) : '';
+    setHtml(el.gpop, gh);
+    el.gpop.hidden = !gh;
+    // Пласка мапа: ліворуч від банку (праворуч — край мапи); 3D: праворуч — там порожній стіл, ліворуч сам ринок.
+    if (gh) placePop(st, el.gpop, ba, st.scKind === '3d' ? 'right' : 'left');
+  }
+  /// Поставити віконце біля цілі: праворуч, якщо ціль у лівій половині поля, інакше ліворуч; по висоті — навпроти цілі.
+  function placePop(st, pop, a, side) {
+    const W = st.el.fieldwrap.clientWidth, H = st.el.fieldwrap.clientHeight;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    const right = side === 'left' ? false : side === 'right' ? true : a.x < W / 2;
+    let x = right ? a.x + a.hw + 8 : a.x - a.hw - 8 - pw;
+    x = Math.max(6, Math.min(W - pw - 6, x));
+    const y = Math.max(6, Math.min(H - ph - 6, a.y - ph / 2));
+    pop.style.left = Math.round(x) + 'px';
+    pop.style.top = Math.round(y) + 'px';
+  }
+
+  /// Телефон стоячи: на свій хід — поле на весь екран під шапкою (не смикаємо, коли пишеш у балачку чи поле вже видно).
+  function fieldIntoView(st) {
+    const k = st.el && st.el.root, f = st.el && st.el.fieldwrap, ctx = st.ctx;
+    if (!k || !f || !(k.clientWidth > 0 && k.clientWidth < 700) || k.classList.contains('land')) return;
+    if (!ctx || !ctx.room || location.hash.indexOf(encodeURIComponent(ctx.room.id)) < 0) return;   // віконце на іншій сторінці
+    const a = document.activeElement;
+    if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+    const cs = getComputedStyle(k), top = parseFloat(cs.getPropertyValue('--gtop-h')) || 0;
+    const r = f.getBoundingClientRect();
+    if (Math.abs(r.top - top) < 24) return;
+    f.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
+  }
+
   function syncScene(root, st) {
     const v = st.view, sc = st.sc;
     if (!sc || !v || !v.rows) return;
@@ -289,6 +396,11 @@
       st.scSig[name] = s;
       try { sc[name](arg); } catch (e) { console.warn('Сорочинці: сцена ' + name, e); }
     };
+    if (sc.setParts) {
+      const parts = fieldParts(st);
+      st.el.root.classList.toggle('slim', !!(parts && parts.opp === false));
+      call('setParts', parts);
+    } else st.el.root.classList.remove('slim');
     try { sc.setState(v); } catch (e) { console.warn('Сорочинці: setState', e); }
     call('setLegal', legalFor(v));
     call('setMarks', v.me ? M.K.marks(v.me.cards) : {});
@@ -397,6 +509,7 @@
     const st = root._so;
     if (!st || !st.el) return;
     if (kind !== 'card' || coarse()) { hideTip(st); return; }
+    if (st.el.fpop && !st.el.fpop.hidden && st.sel && st.sel.k === 'card' && st.sel.id === +id) { hideTip(st); return; }   // віконце вже поруч
     showTip(st, +id);
   }
   function showTip(st, id) {
@@ -431,13 +544,20 @@
       return;
     }
     if (!st.built) build(root, st);
+    st.paintLay = layOf(st);   // з якою розкладкою малюємо (sizeVars перемалює, коли вона зміниться)
     const v = st.view;
     if (!v) { setHtml(st.el.say, '<b>Чекаємо на початок…</b>'); return; }
     const me = v.me || null;
     validate(st, v, me);
+    if (me && me.must === 'act' && st.scrolledFor !== st.turnKey) { st.scrolledFor = st.turnKey; requestAnimationFrame(() => { if (root._so === st) fieldIntoView(st); }); }
     const w = whatNow(v, me, st);
     const tipLine = me && me.must && me.tip && tipOn(st, v) ? '<div class="sor-tipl">💡 Глек би: ' + esc(M.K.tipText(me.tip, cardName)) + '</div>' : '';
-    setHtml(st.el.say, '<div class="sor-say-t">' + w.l + tipLine + '</div>'
+    // ПК: товарів у колонці нема — береш їх просто з купи на полі (віконце «Взяти» з'являється біля банку).
+    const can = (me && me.can) || {};
+    const pcAct = me && me.must === 'act' && pcField(st) && st.sc;
+    const how = pcAct && can.take && !M.K.total(st.pick) && !st.sel ? '<div class="sor-how small muted">🧺 Тапни купи на полі (або 1–5), 🛒 — крамницю</div>' : '';
+    const passB = pcAct && can.pass ? ' <button type="button" class="primary sor-back" data-a="pass">🤷 Пропустити хід</button>' : '';
+    setHtml(st.el.say, '<div class="sor-say-t">' + w.l + passB + how + tipLine + '</div>'
       + (me && me.must && me.tip ? '<button type="button" class="sor-tipb' + (st.tipNow ? ' on' : '') + '" data-a="tip" title="Що зробив би Глек на твоєму місці">💡<span class="sor-w"> Глек радить</span></button>' : ''));
     st.el.say.hidden = !!v.over;
     st.el.say.classList.toggle('mine', !!(me && me.must));
@@ -454,9 +574,13 @@
     attention(st, v, me);
     setHtml(st.el.view, st.scKind === '3d' ? '🗺<span class="sor-w"> Пласка</span>' : '🧊<span class="sor-w"> 3D</span>');
     st.el.view.title = st.scKind === '3d' ? 'Показати пласке поле (легше для слабких пристроїв)' : (st.no3d ? '3D не вдалося — спробувати ще' : 'Показати об\'ємний стіл');
+    // Партія йде: чипи місць і рядок статусу каркаса над карткою ховаємо (sorochyntsi.css) — гравці й «що зараз» уже є
+    // в самій картці, а місце над полем дорожче (на ноутбуці 36 + 30 px).
+    st.el.root.classList.toggle('live', v.phase === 'play' || v.phase === 'discard' || v.phase === 'guest');
     queueEvents(root, st, v);
     if (!st.sc) ensureScene(root, st);
     else syncScene(root, st);
+    renderFieldPops(st);
     nudge(root, st);
   }
 
@@ -485,8 +609,8 @@
     },
     guests: (v, p) => '🏠 <b>Гості:</b> ' + ((p.guests || []).length ? (p.guests || []).map((g) => esc(M.K.guestName(g))).join(', ') + ' — по +3 ⭐' : 'ще ніхто не завітав. Гість приходить сам, щойно знижки покривають його вимогу.'),
     icons: (v, p) => '⚔ <b>Козацькі позначки</b> на крамницях: ' + (p.icons || 0) + '. Хто першим має 3 — бере 🎖 Січову старшину (+3 ⭐); перебирає той, у кого строго більше.'
-      + (v.starshyna ? ' Зараз — у ' + esc(nickOf(v, v.starshyna.seat)) + ' (' + v.starshyna.icons + ' ⚔).' : ''),
-    bulava: (v) => '⚜ <b>Гетьманська булава</b> — у ' + esc(nickOf(v, v.bulava)) + '. Догравається коло, переможе той, у кого найбільше ⭐.',
+      + (v.starshyna ? ' Зараз: ' + esc(nickOf(v, v.starshyna.seat)) + ' (' + v.starshyna.icons + ' ⚔).' : ''),
+    bulava: (v) => '⚜ <b>Гетьманська булава</b>: ' + esc(nickOf(v, v.bulava)) + '. Догравається коло, переможе той, у кого найбільше ⭐.',
     shape: () => '●▲■◆ <b>Фігура гравця</b> — поруч із кольором скрізь: на плашці, на полі, у підсумку.',
   };
 
@@ -523,7 +647,14 @@
         + (think && v.deadline ? '<span class="sor-sec" data-sec></span><span class="sor-tm"><i></i></span>' : '')
         + '</div>';
     }).join('');
-    setHtml(st.el.players, h);
+    // Коло — над плашками (опитування 08.11: «поточний раунд ніде не видно»), з межею кіл столу (опція rounds); останнє
+    // коло — підсвічене.
+    const rnd = v.phase != null && !v.over && v.round
+      ? '<div class="sor-rnd' + (v.last ? ' last' : '') + '" title="Межа кіл цього столу — ' + (v.maxRounds || 40) + '; булава кінчає партію раніше">'
+        + (v.last ? '🔔 <b>Останнє коло</b> · ' + v.round + ' з ' + (v.maxRounds || 40) : '🔔 Коло <b>' + v.round + '</b> з ' + (v.maxRounds || 40))
+        + ' · грати до ' + v.target + ' ⭐</div>'
+      : '';
+    setHtml(st.el.players, rnd + h);
     tickArcs(st);
   }
 
@@ -573,8 +704,11 @@
   function renderPanel(st, v, me) {
     let h = '';
     const phone = phoneLayout(st);
-    if (st.sel) h += selHtml(st, v, me);
-    if (me && me.must === 'act' && (!phone || st.sheet === 'goods' || !st.sel)) h += goodsHtml(st, v, me);
+    // ПК з готовим полем: крамниця — віконцем біля неї, товари — віконцем біля банку (renderFieldPops); у колонці лише
+    // те, чого на полі нема (моя бронь, коли мій прилавок не на полі).
+    const onField = !phone && pcField(st) && !!st.sc;
+    if (st.sel && !(onField && selAnchor(st))) h += selHtml(st, v, me);
+    if (me && me.must === 'act' && !onField && (!phone || st.sheet === 'goods' || !st.sel)) h += goodsHtml(st, v, me);
     const open = !!h && (!phone || st.sheet != null);
     setHtml(st.el.panel, h ? '<div class="sor-box">' + (phone && st.sheet ? '<button type="button" class="sor-shx" data-a="sheet-x" aria-label="Згорнути">▾</button>' : '') + h + '</div>' : '');
     st.el.panel.classList.toggle('open', open);
@@ -615,6 +749,8 @@
   function selHtml(st, v, me) {
     const C = M.C, K = M.K, s = st.sel;
     const myAct = me && me.must === 'act';
+    // Телефон: «Купити» / «Бронь» — у панелі дій під пальцем; у шторці лише опис (раніше кнопки стояли двічі).
+    const phone = phoneLayout(st);
     const can = (me && me.can) || {};
     const goldNote = (v.bank || {}).gold > 0 ? ' (+🪙)' : '';
     if (s.k === 'deck') {
@@ -623,8 +759,8 @@
       return '<div class="sor-sel"><div class="sor-selh"><span class="sor-deck">' + C.TIER_ROMAN[s.tier] + '</span><div><b>Колода ' + C.TIER_ROMAN[s.tier] + ' — «' + esc(C.TIER_NAME[s.tier]) + '»</b>'
         + '<div class="muted small">' + ((v.decks || [])[s.tier - 1] || 0) + ' крамниць · наосліп: верхню бачиш лише ти</div></div></div>'
         + (ok ? '' : '<div class="sor-no small">' + esc(why || 'не зараз') + '</div>')
-        + '<div class="sor-row"><button type="button" class="sor-btn primary" data-a="reserve"' + (ok ? '' : ' disabled') + '>📌 Забронювати наосліп з колоди ' + C.TIER_ROMAN[s.tier] + goldNote + '</button>'
-        + '<button type="button" class="sor-btn ghost" data-a="sel-x" title="Esc">✕</button></div></div>';
+        + (phone ? '' : '<div class="sor-row"><button type="button" class="sor-btn primary" data-a="reserve"' + (ok ? '' : ' disabled') + '>📌 Забронювати наосліп з колоди ' + C.TIER_ROMAN[s.tier] + goldNote + '</button>'
+        + '<button type="button" class="sor-btn ghost" data-a="sel-x" title="Esc">✕</button></div>') + '</div>';
     }
     const id = s.id, c = C.card(id);
     if (!c) return '';
@@ -641,7 +777,9 @@
     if (info) h += info.ok ? '<div class="sor-pay">заплатиш: <b>' + (Object.keys(info.pay || {}).length ? K.iconsText(info.pay) : 'нічого') + '</b></div>'
       : '<div class="sor-no small">' + esc(info.why) + '</div>';
     if (cl.length) h += '<div class="sor-cl small">закриє: ' + cl.map((x) => esc(x.text)).join(' · ') + '</div>';
-    if (myAct) {
+    if (myAct && phone) {
+      if (inRow && !can.reserve && (me.why || {}).reserve) h += '<div class="muted small">' + esc(me.why.reserve) + '</div>';
+    } else if (myAct) {
       h += '<div class="sor-row">';
       h += '<button type="button" class="sor-btn primary" data-a="buy" data-id="' + id + '"' + (info && info.ok ? '' : ' disabled') + '>🛒 Купити</button>';
       if (inRow) h += '<button type="button" class="sor-btn" data-a="reserve"' + (can.reserve ? '' : ' disabled title="' + esc((me.why || {}).reserve || '') + '"') + '>📌 Забронювати' + goldNote + '</button>';
@@ -686,7 +824,8 @@
 
   // ─── Гості й нагороди ───────────────────────────────────────────────────
   function renderAwards(st, v, me) {
-    if (v.phase == null) { setHtml(st.el.awards, ''); return; }
+    // ПК з пласким полем: гості, старшина й булава — на полі з моїм поступом (board2d), у колонці не дублюємо.
+    if (v.phase == null || (guestsOnField(st) && !v.over)) { setHtml(st.el.awards, ''); return; }
     const C = M.C, K = M.K;
     const p = me ? playerOf(v, me.seat) : null;
     const b = (p && p.bonus) || {};
@@ -703,9 +842,9 @@
     // Старшина.
     const s = v.starshyna;
     const need = me ? K.starshynaNeed(v, me.seat) : 0;
-    h += '<div class="sor-aw"><span class="i">🎖</span><div><b>Січова старшина</b> (+3 ⭐) — ' + (s ? 'у ' + who(v, s.seat) + ' (' + s.icons + ' ⚔)' : 'ще нічия: першому з 3 ⚔')
+    h += '<div class="sor-aw"><span class="i">🎖</span><div><b>Січова старшина</b> (+3 ⭐) — ' + (s ? who(v, s.seat) + ' (' + s.icons + ' ⚔)' : 'ще нічия: першому з 3 ⚔')
       + (me ? '<div class="small muted">' + (s && s.seat === me.seat ? 'Твоя! Перебере лише той, у кого стане більше ⚔' : 'Тобі, щоб ' + (s ? 'перебрати' : 'взяти') + ': ' + need + ' ⚔ (є ' + ((p && p.icons) || 0) + ')') + '</div>' : '') + '</div></div>';
-    h += '<div class="sor-aw"><span class="i">⚜</span><div><b>' + esc(C.BULAVA_NAME) + '</b> — ' + (v.bulava != null ? 'у ' + who(v, v.bulava) + ': догравається коло' : 'ще нічия')
+    h += '<div class="sor-aw"><span class="i">⚜</span><div><b>' + esc(C.BULAVA_NAME) + '</b> — ' + (v.bulava != null ? who(v, v.bulava) + ' — догравається коло' : 'ще нічия')
       + '<div class="small muted">Бере перший, у кого ≥ ' + v.target + ' ⭐ і знижка кожним із шести товарів (разом із 🌸 цвітом папороті).</div></div></div>';
     setHtml(st.el.awards, h);
   }
@@ -763,7 +902,7 @@
     const rank = order.slice().sort((a, b) => (at(o.points, b) || 0) - (at(o.points, a) || 0) || (at(o.cards, a) || 0) - (at(o.cards, b) || 0));
     const w = o.winners || [];
     const again = st.ctx && st.ctx.mine ? '<button type="button" class="sor-btn primary sor-again" data-a="again">🔁 Ще раз</button>' : '';
-    const reason = o.reason === 'bulava' ? '⚜ булава в ' + esc(nickOf(v, o.bulava != null ? o.bulava : v.bulava)) : o.reason === 'rounds' ? 'ярмарок зачинився після 40 кіл' : o.reason === 'stall' ? 'товари скінчились' : '';
+    const reason = o.reason === 'bulava' ? '⚜ булава: ' + esc(nickOf(v, o.bulava != null ? o.bulava : v.bulava)) : o.reason === 'rounds' ? 'ярмарок зачинився після ' + (v.maxRounds || 40) + ' кіл' : o.reason === 'stall' ? 'товари скінчились' : '';
     let h = '<div class="sor-sumh"' + (w.length === 1 ? ' style="--pc:' + colorOf(v, w[0]) + '"' : '') + '><span class="sor-cup">' + (w.length > 1 ? '🤝' : '🏆') + '</span><div>'
       + '<div class="muted small">' + (w.length > 1 ? 'Ярмарок поділили' : 'Голова ярмарку') + (reason ? ' · ' + reason : '') + '</div>'
       + '<h3>' + (w.length ? w.map((x) => who(v, x)).join(', ') + ' — ' + (at(o.points, w[0]) || 0) + ' ⭐' : 'Партію скінчено')
@@ -845,23 +984,26 @@
     let h = '';
     const bb = (a, icon, label, o = {}) => '<button type="button" class="sor-bb' + (o.cls ? ' ' + o.cls : '') + '" data-a="' + a + '"' + (o.id != null ? ' data-id="' + o.id + '"' : '') + (o.off ? ' disabled' : '')
       + (o.title ? ' title="' + esc(o.title) + '"' : '') + '><span class="i">' + icon + '</span><small>' + label + '</small></button>';
+    const away = me && !v.over && (playerOf(v, me.seat) || {}).away;
+    if (away) h += bb('back', '🙋', 'Я тут', { cls: 'primary', title: 'За тебе торгує Глек — повернутись і грати самому' });
     if (me && me.must === 'act') {
+      const gold = (v.bank || {}).gold > 0 ? ' +🪙' : '';
       const can = me.can || {};
-      if (can.pass) h = bb('pass', '🤷', 'Пропустити хід', { cls: 'primary wide' });
+      if (can.pass) h += bb('pass', '🤷', 'Пропустити хід', { cls: 'primary wide' });
       else {
         h += bb('sheet-goods', '🧺', 'Товари', { cls: st.sheet === 'goods' ? 'on' : '', off: !can.take });
         if (st.sel && st.sel.k === 'card') {
           const info = (me.cards || {})[st.sel.id];
           h += bb('buy', '🛒', 'Купити', { id: st.sel.id, cls: info && info.ok ? 'primary' : '', off: !(info && info.ok), title: info && !info.ok ? info.why : '' });
-          h += bb('reserve', '📌', 'Бронь', { off: !(can.reserve && rowIds(v).includes(st.sel.id)) });
-        } else if (st.sel && st.sel.k === 'deck') h += bb('reserve', '📌', 'Наосліп ' + M.C.TIER_ROMAN[st.sel.tier], { cls: 'primary', off: !(can.reserveDeck || [])[st.sel.tier - 1] });
+          if (rowIds(v).includes(st.sel.id)) h += bb('reserve', '📌', 'Бронь' + gold, { off: !can.reserve, title: can.reserve ? '' : (me.why || {}).reserve });
+        } else if (st.sel && st.sel.k === 'deck') h += bb('reserve', '📌', 'Наосліп ' + M.C.TIER_ROMAN[st.sel.tier] + gold, { cls: 'primary', off: !(can.reserveDeck || [])[st.sel.tier - 1] });
         else {
           const ts = M.K.takeState(me.take, st.pick, v.bank);
           h += bb('take', '✅', 'Взяти', { cls: ts.ok ? 'primary' : '', off: !ts.ok });
         }
         if (me.tip) h += bb('tip', '💡', 'Глек радить', { cls: st.tipNow ? 'on' : '' });
       }
-    } else if (me && me.must === 'discard') h = bb('disc-open', '↩', 'Повернути ' + me.discard, { cls: 'primary wide' });
+    } else if (me && me.must === 'discard') h += bb('disc-open', '↩', 'Повернути ' + me.discard, { cls: 'primary wide' });
     setHtml(st.el.bar, h);
   }
 
@@ -1001,7 +1143,7 @@
     const run = (name, ms) => (sc && typeof sc[name] === 'function' ? cap(sc[name](e), ms) : null);
     switch (e.k) {
       case 'round':
-        if (e.n === 1) flash(st, '🧺 Ярмарок відкрито! Першим торгує ' + N(e.first));
+        if (e.n === 1) flash(st, '🧺 Ярмарок відкрито! Перший хід: ' + (mine(e.first) ? 'твій' : N(e.first)));
         break;
       case 'turn':
         if (mine(e.seat)) { sfx(st, 'turn'); flash(st, '👉 Твій хід!'); }
@@ -1014,12 +1156,13 @@
       case 'guest':
         sfx(st, 'guest');
         await run('guest', 1300);
-        flash(st, '🏠 До ' + (mine(e.seat) ? 'тебе' : N(e.seat)) + ' у гості — ' + esc(M.K.guestName(e.guest)) + ' (+3 ⭐)');
+        // Нік — лише в називному (родового від ніка не зробиш): «Хівря в гостях · Оксана».
+        flash(st, '🏠 ' + esc(M.K.guestName(e.guest)) + ' в гостях' + (mine(e.seat) ? ' у тебе' : ' · ' + N(e.seat)) + ' (+3 ⭐)');
         break;
       case 'starshyna':
         sfx(st, 'starshyna');
         await run('starshyna', 1100);
-        flash(st, '🎖 Січова старшина — у ' + (mine(e.seat) ? 'тебе' : N(e.seat)) + ' (' + e.icons + ' ⚔)' + (e.from != null ? ', від ' + N(e.from) : ''));
+        flash(st, '🎖 Січова старшина ' + (mine(e.seat) ? '— твоя' : '→ ' + N(e.seat)) + ' (' + e.icons + ' ⚔)' + (e.from != null ? ' · до того: ' + (mine(e.from) ? 'твоя' : N(e.from)) : ''));
         break;
       case 'bulava':
         sfx(st, 'bulava');
@@ -1124,6 +1267,13 @@
     if (!st) return;
     if (onPlateTap(root, e)) return;
     const b = e.target.closest('[data-a]');
+    // Клік по порожньому місцю плаского поля (не по крамниці, купі, колоді) — закрити віконце крамниці. У 3D не можна:
+    // там вибір іде через полотно, і цей самий клік уже вибрав крамницю.
+    if (!b && st.sel && st.scKind === '2d' && st.el && st.el.field.contains(e.target) && !e.target.closest('.sor-m-leg')) {
+      st.sel = null; if (st.sheet === 'card') st.sheet = null;
+      paint(root, st.ctx);
+      return;
+    }
     if (!b || !root.contains(b) || b.disabled) return;
     const ctx = st.ctx, v = st.view, me = v && v.me;
     const a = b.dataset.a, g = b.dataset.g;
@@ -1154,6 +1304,7 @@
       case 'sheet-x': st.sheet = null; break;
       case 'sheet-goods': st.sheet = st.sheet === 'goods' ? null : 'goods'; if (st.sheet) st.sel = null; break;
       case 'tip': applyTip(root, st); return;
+      case 'back': act(st, 'back', {}); return;   // «🙋 Я тут»: Глек більше не торгує за мене (сервер: дія back)
       case 'd+': case 'd-':
         if (st.disc.plan) { st.disc.plan[g] = Math.max(0, (st.disc.plan[g] || 0) + (a === 'd+' ? 1 : -1)); st.disc.plan = M.K.compact(st.disc.plan); }
         break;

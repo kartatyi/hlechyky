@@ -72,6 +72,8 @@ public sealed partial class SorochyntsiCore
     public int[] Order = [];
     public int Seats => Order.Length;
     public int Target = 16;
+    /// <summary>Межа кіл (опція rounds, 20–40): коло RoundCap — останнє, далі кінець за ⭐ (§2.9).</summary>
+    public int RoundCap = MaxRounds;
     public Func<int, string> NameOf = s => $"гравець {s + 1}";
 
     public bool Started;
@@ -166,7 +168,7 @@ public sealed partial class SorochyntsiCore
         Round = 1;
         Turn = First;
         Emit("round", ("n", Round), ("first", First));
-        Say($"Ярмарок відкрито — першим торгує {NameOf(First)}");
+        Say($"Ярмарок відкрито — перший хід: {NameOf(First)}");
         Emit("turn", ("seat", Turn));
     }
 
@@ -438,7 +440,8 @@ public sealed partial class SorochyntsiCore
         int? slot;
         if (card is { } c)
         {
-            if (InRows(c) is not { } at) return "Цієї крамниці в рядах нема";
+            // Порожнє місце в ряду — теж -1: без IsCard «card: -1» знайшло б дірку, і Deck[-1] звалив би стіл.
+            if (!IsCard(c) || InRows(c) is not { } at) return "Цієї крамниці в рядах нема";
             (id, t, slot) = (c, at.Tier, at.Slot);
         }
         else
@@ -524,7 +527,7 @@ public sealed partial class SorochyntsiCore
         var from = Starshyna;
         Starshyna = s;
         Emit("starshyna", ("seat", s), ("from", from >= 0 ? from : (int?)null), ("icons", Icons[s]));
-        Say($"Січова старшина — у {NameOf(s)} ({Icons[s]} ⚔)", journal: true);
+        Say($"🎖 Січова старшина → {NameOf(s)} ({Icons[s]} ⚔)", journal: true);
     }
 
     public string? Pass(int s)
@@ -625,7 +628,7 @@ public sealed partial class SorochyntsiCore
         GuestBy[g] = s;
         GuestsOf[s].Add(g);
         Emit("guest", ("seat", s), ("guest", g));
-        Say($"До {NameOf(s)} у гості — {Guests[g].Name} (+{GuestPoints} ⭐)");
+        Say($"🏠 {Guests[g].Name} в гостях · {NameOf(s)} +{GuestPoints} ⭐");
     }
 
     /// <summary>3. Булава, 4. хід до наступного (нове коло, кінець партії).</summary>
@@ -654,12 +657,12 @@ public sealed partial class SorochyntsiCore
                 return;
             }
             Round++;
-            if (Round >= MaxRounds)
+            if (Round >= RoundCap)
             {
                 Last = true;
                 LastReason = "rounds";
                 Emit("last", ("reason", "rounds"));
-                Say($"Коло {MaxRounds} — останнє: ярмарок зачиняється", journal: true);
+                Say($"Коло {RoundCap} — останнє: ярмарок зачиняється", journal: true);
             }
             Emit("round", ("n", Round), ("first", First));
         }
@@ -681,7 +684,7 @@ public sealed partial class SorochyntsiCore
         Winners = [.. tied.Where(o => Cards[o].Count == fewest)];
         Emit("over", ("winners", (int[])Winners.Clone()), ("reason", reason), ("points", Order.Select(Points).ToArray()));
         var names = string.Join(", ", Winners.Select(NameOf));
-        var why = reason switch { "stall" => "товари скінчились", "rounds" => $"ярмарок зачинився після {MaxRounds} кіл", _ => $"булава в {NameOf(Bulava)}" };
+        var why = reason switch { "stall" => "товари скінчились", "rounds" => $"ярмарок зачинився після {RoundCap} кіл", _ => $"⚜ булава: {NameOf(Bulava)}" };
         Say(Winners.Length == 1
             ? $"Голова ярмарку — {names}: {top} ⭐ ({why})"
             : $"Ярмарок поділили: {names} — по {top} ⭐ ({why})", journal: true);

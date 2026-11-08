@@ -47,7 +47,7 @@ public class SorochyntsiRejoinTests
         Assert.True(h.Act(o, "timeout").Ok);
         Assert.Equal(o, c.Turn);
         Assert.True(c.NTok(s) > 0 || c.Reserved[s].Count > 0 || c.Cards[s].Count > 0);
-        Assert.Contains($"{nick} задрімав — Глек торгує за нього", Log(h));
+        Assert.Contains($"{nick}: час вийшов — хід доробив Глек", Log(h));
         Assert.False(Away(h, s));
         // Новий хід — новий строк.
         Assert.Equal(60, Left(h, h.View(o)), 3);
@@ -64,7 +64,90 @@ public class SorochyntsiRejoinTests
         // Своя дія знімає away.
         Tip(h, s);
         Assert.False(Away(h, s));
-        Assert.Contains($"{nick} знову торгує сам", Log(h));
+        Assert.Contains($"{nick} знову торгує без Глека", Log(h));
+    }
+
+    /// <summary>Людина <paramref name="s"/> двічі поспіль проспала свій хід — за неї грає Глек (away); тепер хід суперника.</summary>
+    static void Doze(RoomHarness h, int s, int o)
+    {
+        var c = SoRig.CoreOf(h);
+        for (var i = 0; i < 2; i++)
+        {
+            while (c.Turn != s) Tip(h, c.Turn);
+            h.Clock.Advance(61);
+            Assert.True(h.Act(o, "timeout").Ok);
+        }
+        Assert.True(Away(h, s));
+        Assert.NotEqual(s, c.Turn);
+    }
+
+    [Fact]
+    public void Ya_tut_takes_the_stall_back_without_a_move_and_the_count_of_missed_turns_starts_over()
+    {
+        var h = SoRig.Table(2);
+        var c = SoRig.CoreOf(h);
+        var s = c.Turn;
+        var o = c.Order.First(x => x != s);
+        var nick = h.NickOf(s);
+        Assert.Equal("Ти й так за прилавком", h.Act(s, "back").Message);
+        Doze(h, s, o);
+        var tokens = (int[])c.Tok[s].Clone();
+        var turn = c.Turn;
+        var said = h.Outbox.OfType<TableSaid>().Count();
+        Assert.True(h.Act(s, "back", new { }).Ok);
+        Assert.False(Away(h, s));
+        Assert.Equal(turn, c.Turn);
+        Assert.Equal(tokens, c.Tok[s]);
+        Assert.Contains($"{nick} знову торгує без Глека", Log(h));
+        Assert.Contains(h.Outbox.OfType<TableSaid>().Skip(said), t => t.Line.Text.Contains(nick));
+        Assert.Equal("Ти й так за прилавком", h.Act(s, "back").Message);
+        // Лічильник проспаних — з нуля: один проспаний хід ще не away.
+        while (c.Turn != s) Tip(h, c.Turn);
+        h.Clock.Advance(61);
+        Assert.True(h.Act(o, "timeout").Ok);
+        Assert.False(Away(h, s));
+    }
+
+    [Fact]
+    public void Ya_tut_on_my_own_turn_stops_the_waiting_bot_and_gives_a_fresh_deadline()
+    {
+        var h = SoRig.Table(2);
+        var c = SoRig.CoreOf(h);
+        var s = c.Turn;
+        var o = c.Order.First(x => x != s);
+        Doze(h, s, o);
+        Tip(h, o);
+        Assert.Equal(s, c.Turn);
+        Assert.Equal(Sorochyntsi.AwayGraceMs, h.View(o).GetProperty("botIn").GetInt32());
+        h.Clock.Advance(3);
+        Assert.True(h.Act(s, "back").Ok);
+        var v = h.View(s);
+        Assert.Equal(JsonValueKind.Null, v.GetProperty("botIn").ValueKind);
+        Assert.Equal(60, Left(h, v), 3);
+        Assert.Equal("act", v.GetProperty("me").GetProperty("must").GetString());
+        h.Clock.Advance(10);
+        Assert.Equal("Глекам нема що робити", h.Act(o, BoardBots.Nudge).Message);
+        Assert.Equal("Ще є час", h.Act(o, "timeout").Message);
+        Assert.Equal(s, c.Turn);
+        Tip(h, s);
+        Assert.Equal(o, c.Turn);
+    }
+
+    [Fact]
+    public void Ya_tut_is_only_for_a_person_at_the_table_while_the_game_goes_on()
+    {
+        var h = SoRig.Table(1, bots: "1");
+        var game = SoRig.GameOf(h);
+        lock (h.Room.Sync)
+        {
+            Assert.Equal("Ти не граєш за цим столом", game.Act(3, "back", NoPayload).Message);
+            Assert.Equal("Ти не граєш за цим столом", game.Act(-1, "back", NoPayload).Message);
+            Assert.Equal("Тут грає Глек", game.Act(1, "back", NoPayload).Message);
+        }
+        for (var i = 0; i < 3000 && h.Finished.Count == 0; i++) SoRig.Step(h, 0);
+        Assert.Single(h.Finished);
+        // Кімната після Finish сама відповідає «Ану ще раз»; гра — своїм текстом.
+        lock (h.Room.Sync) Assert.Equal("Партія вже скінчилась", SoRig.GameOf(h).Act(0, "back", NoPayload).Message);
     }
 
     [Fact]
@@ -137,7 +220,7 @@ public class SorochyntsiRejoinTests
         Assert.Null(h.Room.Seats[1]);
         Assert.Equal(RoomStatus.Playing, h.Room.Status);
         Assert.True(Away(h, 1));
-        Assert.Contains("Глек сідає замість Петро", Log(h));
+        Assert.Contains("Петро встає — за прилавком Глек", Log(h));
         // Партія йде без нього: на його ході Глек ходить за поштовхом.
         for (var i = 0; i < 12; i++)
         {
@@ -232,7 +315,7 @@ public class SorochyntsiRejoinTests
         var h = SoRig.Table(2, bots: "1");
         h.Leave("Петро");
         Assert.True(Away(h, 1));
-        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("Петро встає — за нього торгує Глек"));
+        Assert.Contains(h.Outbox.OfType<Journal>(), j => j.Text.Contains("Петро встає — за прилавком Глек"));
         var c = SoRig.CoreOf(h);
         for (var i = 0; i < 400 && h.Finished.Count == 0; i++) SoRig.Step(h, 0);
         Assert.Single(h.Finished);

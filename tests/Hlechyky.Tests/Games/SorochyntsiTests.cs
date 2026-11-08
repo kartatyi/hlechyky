@@ -253,6 +253,38 @@ public class SorochyntsiTests
     }
 
     [Fact]
+    public void Reserving_card_minus_one_with_an_empty_slot_in_the_rows_is_refused_and_moves_nothing()
+    {
+        // Порожнє місце в ряду — теж -1: раніше «card: -1» знаходило дірку, брало дукат і падало на Deck[-1] (стіл — зламаний).
+        var c = SoRig.Core(3);
+        var s = c.Turn;
+        c.Decks[2].Clear();
+        Assert.Null(c.Reserve(s, c.Rows[2][0], null));
+        Assert.Equal(-1, c.Rows[2][0]);
+        s = c.Turn;
+        var before = SoRig.State(c);
+        Assert.Equal("Цієї крамниці в рядах нема", c.Reserve(s, -1, null));
+        Assert.Equal("Цієї крамниці в рядах нема", c.Reserve(s, 90, null));
+        Assert.Equal(before, SoRig.State(c));
+        Assert.Equal(0, c.Tok[s][Gold]);
+        Assert.Empty(c.Reserved[s]);
+
+        // І через кімнату: стіл не ламається, дукат лишається в банку.
+        var h = SoRig.Table(2);
+        var core = SoRig.CoreOf(h);
+        core.Decks[0].Clear();
+        var t = core.Turn;
+        Assert.True(h.Act(t, "reserve", new { card = core.Rows[0][3] }).Ok);
+        Assert.Equal(-1, core.Rows[0][3]);
+        t = core.Turn;
+        var gold = core.Bank[Gold];
+        Assert.Equal("Цієї крамниці в рядах нема", h.Act(t, "reserve", new { card = -1 }).Message);
+        Assert.Equal(gold, core.Bank[Gold]);
+        Assert.Equal(RoomStatus.Playing, h.Room.Status);
+        Assert.True(h.Act(t, "take", new { goods = new[] { "linen", "fish", "herbs" } }).Ok);
+    }
+
+    [Fact]
     public void Blind_reserve_takes_the_top_card_and_hides_it_from_the_others()
     {
         var c = SoRig.Core(3);
@@ -440,7 +472,7 @@ public class SorochyntsiTests
         Assert.Equal([0], c.GuestsOf[s]);
         Assert.Equal(s, c.GuestBy[0]);
         Assert.Equal(3, c.Points(s));
-        Assert.Contains($"До {c.NameOf(s)} у гості — Солопій Черевик (+3 ⭐)", c.Log);
+        Assert.Contains($"🏠 Солопій Черевик в гостях · {c.NameOf(s)} +3 ⭐", c.Log);
         Assert.Equal($"{{\"seat\":{s},\"guest\":0}}", SoRig.Wire(c.Events.Last(e => e.K == "guest"), null, "seat", "guest"));
     }
 
@@ -484,7 +516,7 @@ public class SorochyntsiTests
         Assert.Equal(a, c.Starshyna);
         Assert.Equal($"{{\"seat\":{a},\"from\":null,\"icons\":3}}", SoRig.Wire(c.Events.Last(e => e.K == "starshyna"), null, "seat", "from", "icons"));
         Assert.Equal(3, c.Points(a));
-        Assert.Contains($"Січова старшина — у {c.NameOf(a)} (3 ⚔)", c.Log);
+        Assert.Contains($"🎖 Січова старшина → {c.NameOf(a)} (3 ⚔)", c.Log);
 
         // Рівність — у власника.
         SoRig.Row(c, 40, 0);                      // ⚔, «Ткацький верстат»: 2 риби, 2 зілля, 3 вовни
@@ -590,8 +622,9 @@ public class SorochyntsiTests
     }
 
     [Theory]
-    [InlineData(14, true)]
-    [InlineData(18, false)]
+    [InlineData(12, true)]
+    [InlineData(16, true)]
+    [InlineData(20, false)]
     public void Target_option_decides_how_many_stars_the_bulava_needs(int target, bool taken)
     {
         var h = SoRig.Table(2, vp: target.ToString());
@@ -660,6 +693,44 @@ public class SorochyntsiTests
         Assert.Contains("Коло 40 — останнє: ярмарок зачиняється", c.Log);
     }
 
+    [Fact]
+    public void Round_cap_option_makes_its_round_the_last_one_and_survives_a_restart()
+    {
+        var h = new RoomHarness("sorochyntsi", new { bots = "1", rounds = "20", vp = "20" }, seed: 5);
+        h.Join("Оля");
+        Assert.True(h.Start().Ok);
+        var c = SoRig.CoreOf(h);
+        Assert.Equal((20, 20), (c.RoundCap, c.Target));
+        Assert.Equal(20, h.View(0).GetProperty("maxRounds").GetInt32());
+        Assert.Equal(20, SorochyntsiCore.FromSnapshot(c.Snapshot()).RoundCap);
+        var old = c.Snapshot();
+        old.RoundCap = 0;   // знімок, зроблений до опції
+        Assert.Equal(40, SorochyntsiCore.FromSnapshot(old).RoundCap);
+
+        c.Target = 99;   // булави не буде — кінець лише за межею
+        c.Round = 18;
+        for (var i = 0; i < 100 && !c.Over; i++) SorochyntsiBot.Step(c, c.Turn);
+        Assert.True(c.Over);
+        Assert.Equal(("rounds", 20), (c.Reason, c.Round));
+        Assert.Contains("Коло 20 — останнє: ярмарок зачиняється", c.Log);
+        Assert.Contains(c.Log, l => l.Contains("ярмарок зачинився після 20 кіл"));
+    }
+
+    [Theory]
+    [InlineData(null, 16, 40)]
+    [InlineData("12", 12, 40)]
+    [InlineData("14", 16, 40)]   // старе збережене налаштування лобі (14/18) — каркас бере типове
+    [InlineData("20", 20, 40)]
+    [InlineData("99", 16, 40)]
+    public void Vp_and_rounds_options_fall_back_to_defaults(string? vp, int target, int cap)
+    {
+        var h = vp is null ? new RoomHarness("sorochyntsi", new { bots = "1", rounds = "7" }, seed: 2)
+            : new RoomHarness("sorochyntsi", new { bots = "1", vp }, seed: 2);
+        h.Join("Оля");
+        Assert.True(h.Start().Ok);
+        Assert.Equal((target, cap), (SoRig.CoreOf(h).Target, SoRig.CoreOf(h).RoundCap));
+    }
+
     // ---------- через кімнату ----------
 
     [Fact]
@@ -669,8 +740,16 @@ public class SorochyntsiTests
         h.Join("Оля");
         var info = h.Room.Info;
         Assert.Equal(("Сорочинський ярмарок", GameGroup.Board, 1, 4, StartMode.ByHost, true, false), (info.Title, info.Group, info.MinPlayers, info.MaxPlayers, info.Start, info.Hidden, info.Rated));
-        Assert.Equal(["bots", "vp", "timer"], info.Options!.Select(o => o.Key));
-        Assert.Equal("16", info.Options!.Single(o => o.Key == "vp").Default);
+        Assert.Equal(["bots", "glek", "vp", "rounds", "timer"], info.Options!.Select(o => o.Key));
+        var glek = info.Options!.Single(o => o.Key == "glek");
+        Assert.Equal(("🤖 Який Глек", "smart"), (glek.Label, glek.Default));
+        Assert.Equal([("smart", "хитрий"), ("easy", "простий")], glek.Values);
+        var vpo = info.Options!.Single(o => o.Key == "vp");
+        Assert.Equal("16", vpo.Default);
+        Assert.Equal(["12", "16", "20"], vpo.Values.Select(x => x.Item1));
+        var ro = info.Options!.Single(o => o.Key == "rounds");
+        Assert.Equal(("⏳ Кіл щонайбільше", "40"), (ro.Label, ro.Default));
+        Assert.Equal(["20", "25", "30", "40"], ro.Values.Select(x => x.Item1));
         Assert.Equal("60", info.Options!.Single(o => o.Key == "timer").Default);
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("phase").ValueKind);
         Assert.Equal(JsonValueKind.Null, h.View(0).GetProperty("me").ValueKind);
@@ -790,9 +869,9 @@ internal static class SoRig
 {
     public static readonly string[] Crew = ["Оля", "Петро", "Іра", "Влад"];
 
-    public static RoomHarness Table(int people, string bots = "0", string timer = "60", string vp = "16", int seed = 5)
+    public static RoomHarness Table(int people, string bots = "0", string timer = "60", string vp = "16", int seed = 5, string glek = "smart")
     {
-        var h = new RoomHarness("sorochyntsi", new { timer, bots, vp }, seed: seed);
+        var h = new RoomHarness("sorochyntsi", new { timer, bots, vp, glek }, seed: seed);
         for (var i = 0; i < people; i++) h.Join(Crew[i]);
         Assert.True(h.Start().Ok, h.Reply.Message);
         return h;
