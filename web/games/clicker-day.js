@@ -4,6 +4,7 @@
   minPoints, minPlayers, person, mine {place, points}, board [{place, nick, points, me}], players, last {day, line}.
   v13 Г2: поруч із «Майстром» — вкладка «🧺 Ловець дня»: view.day.catcher {prizes, minutes [хв «Кошика»], minPoints,
   minPlayers, mine, board, players, last} — та сама форма табло (null — Ловця вимкнено).
+  v13 Г3, Г7: окрема картка «📜 Доручення Глека» (view.chores, див. нижче) і вікно «✨ Глек з бажанням».
   v13 Г4, Г5: третя вкладка «⛵ Тиждень»: view.week (ClickerWeek.cs) {ends, person, grow {prizes, sails, days, mine {place, x, days, ok},
   board [{nick, x, ok, me}], last}, coop {ware, q, vol, done, mine, min, fin, pct, people}}; чинні нагороди тижня — view.buffs.week
   {sails {pct, until}, coop {pct, until}}. «Довезти» — дія guild { op: 'coop', n }.
@@ -55,8 +56,8 @@
   /// Місце розділу — перед возом цеху (st.guildBody), а якщо є кораблі — одразу за ними: такий порядок у рядку переходів
   /// «Села» (Гості · Толока · Кораблі · Майстер дня · Віз). Перевіряємо лише порядок, а не сусідство: інакше дві частини,
   /// що обидві хочуть стояти «перед возом», переставляли б одна одну на кожному виді.
-  function place(st) {
-    const pane = st.guildPane, el = st.dayEl;
+  function place(st, card) {
+    const pane = st.guildPane, el = card || st.dayEl;
     if (!pane || !el) return;
     const body = st.guildBody && st.guildBody.parentElement === pane ? st.guildBody : null;
     const trade = pane.querySelector(':scope > [data-sec="trade"]');
@@ -421,6 +422,187 @@
     else box.prepend(line);
   }
 
+  // ---------- v13 Г3: «📜 Доручення Глека» (ClickerChores.cs) ----------
+  //
+  // view.chores — масив (межа розміру виду): [0] рядок «код+зроблено» («c12g1f0»), [1] серія днів, [2] скриню забрано (1/0),
+  // [3] чарівний глек і бажання (див. нижче) чи відсутнє, [4] черепки скрині [звичайної, сьомого дня] — лише коли можна забирати.
+  // Цілі й тексти знає клієнт за кодом: ті самі, що ChoreCatalog / ChoreCodes на сервері.
+
+  const CH = {
+    c: { ic: '🤲', tx: 'Спіймай 30 глеків з полиці', g: 30 },
+    g: { ic: '🎪', tx: 'Спіймай 3 розписні глеки', g: 3 },
+    f: { ic: '🔥', tx: 'Обпали руками розписну партію', g: 1 },
+    s: { ic: '🚢', tx: 'Завантаж корабель до повного', g: 1 },
+    v: { ic: '📜', tx: 'Відвези замовлення в село', g: 1 },
+    u: { ic: '🧳', tx: 'Віддай гостю замовлення', g: 1 },
+    t: { ic: '🏗', tx: 'Поклади 20 виробів на Толоку', g: 20 },
+    i: { ic: '🎁', tx: 'Подаруй дарунок другові', g: 1 },
+    e: { ic: '🎉', tx: 'Влаштуй фестиваль', g: 1 },
+    r: { ic: '❓', tx: 'Відповідай на загадку Глека', g: 1 },
+  };
+  const STREAK_MAX = 7;
+
+  function parseChores(st, v, api) {
+    if (v.trade !== undefined) st.choresTrade = !!(v.trade && typeof v.trade === 'object');
+    if (v.chores === undefined) return;
+    const c = v.chores;
+    const prev = st.chores;
+    if (!Array.isArray(c)) { st.chores = null; st.wish = null; return; }
+    const tasks = [];
+    const re = /([a-z])(\d+)/g;
+    let m;
+    while ((m = re.exec(String(c[0] || ''))) && tasks.length < 3) {
+      const d = CH[m[1]];
+      if (d) tasks.push({ code: m[1], d, n: Math.min(d.g, parseInt(m[2], 10) || 0) });
+    }
+    const taken = c[2] === 1;
+    const ready = tasks.length > 0 && !taken && tasks.every((t) => t.n >= t.d.g);
+    st.chores = { tasks, streak: c[1] | 0, taken, ready, rw: Array.isArray(c[4]) ? c[4] : null };
+    st.wish = c[3] && typeof c[3] === 'object' ? c[3] : null;
+    // Тост «виконано» — за зміною прогресу між видами (ті самі доручення того ж дня); сервер у повідомлення дій їх не пише.
+    if (prev && st.mine && prev.tasks.map((t) => t.code).join() === tasks.map((t) => t.code).join()) {
+      if (ready && !prev.ready && !prev.taken) api.toast(st, '📜 Усі доручення Глека виконано — забирай скриню!', 'ok');
+      else {
+        const t = tasks.find((x, i) => x.n >= x.d.g && prev.tasks[i].n < x.d.g);
+        if (t) api.toast(st, '📜 Доручення виконано: ' + t.d.tx.toLowerCase(), 'ok');
+      }
+    }
+  }
+
+  function chestLine(st) {
+    const c = st.chores;
+    const next = c.taken ? c.streak : c.streak + 1;
+    const big = !c.taken && next === STREAK_MAX;
+    const bits = ['30 хв гри грошима', st.choresTrade ? 'Слава +200' : 'ще 15 хв гри'];
+    if (c.rw) bits.push(c.rw[0] + (big ? ' + ' + c.rw[1] : '') + ' 🏺');
+    else bits.push('черепки' + (big ? ' (і ще за сьомий день)' : ''));
+    if (big) bits.push('🎉 «Свято» 60 хв');
+    return (big ? '👑 Велика скриня сьомого дня: ' : '📦 У скрині: ') + bits.join(' · ');
+  }
+
+  function paintChores(st, api) {
+    const c = st.chores;
+    if (!c || !c.tasks.length || !st.guildPane || !st.mine) {
+      if (st.choresEl && st.choresEl.parentElement) st.choresEl.remove();
+      return;
+    }
+    if (!st.choresEl) {
+      st.choresEl = document.createElement('section');
+      st.choresEl.className = 'clkg-card clkmd clkch';
+      st.choresEl.dataset.sec = 'chores';
+      st.choresEl.dataset.fold = 'd.chores';
+      st.choresEl.addEventListener('click', (e) => {
+        const claim = e.target.closest('.clkch-claim');
+        if (claim && !claim.disabled) {
+          claim.disabled = true;
+          api.act(st, 'chores', { op: 'claim' }).then((r) => { if (r && r.ok) api.sfx('gift'); });
+          return;
+        }
+        if (e.target.closest('.clkch-wishbtn')) { api.sfx('tap'); openWish(st, api); }
+      });
+    }
+    place(st, st.choresEl);
+    const esc = (x) => api.esc(st, x);
+    const done = c.tasks.filter((t) => t.n >= t.d.g).length;
+    const rows = c.tasks.map((t) => {
+      const ok = t.n >= t.d.g;
+      return '<div class="clkch-row' + (ok ? ' done' : '') + '"><span class="clkch-ic">' + t.d.ic + '</span>'
+        + '<div class="clkch-tx"><div>' + esc(t.d.tx) + '</div><div class="clkch-bar"><i style="width:' + Math.round(100 * t.n / t.d.g) + '%"></i></div></div>'
+        + '<span class="clkch-n">' + (ok ? '✓' : t.n + '/' + t.d.g) + '</span></div>';
+    }).join('');
+    // Сім кружечків серії: пройдені залиті, наступний — кільцем, сьомий — корона.
+    const next = c.taken ? 0 : c.streak + 1;
+    let dots = '';
+    for (let i = 1; i <= STREAK_MAX; i++) {
+      dots += '<span class="clkch-dot' + (i <= c.streak ? ' on' : i === next ? ' next' : '') + (i === STREAK_MAX ? ' big' : '') + '" title="День '
+        + i + (i === STREAK_MAX ? ' — велика скриня' : '') + '">' + (i === STREAK_MAX ? '👑' : '') + '</span>';
+    }
+    const offer = st.wish && Array.isArray(st.wish.offer) && st.wish.offer.length;
+    const btn = c.taken
+      ? '<button type="button" class="clkmd-coopbtn clkch-claim" disabled>✓ Скриню забрано — завтра нові доручення</button>'
+      : '<button type="button" class="clkmd-coopbtn clkch-claim"' + (c.ready ? '' : ' disabled') + '>📦 Забрати скриню</button>';
+    const html = api.foldHead('📜 Доручення Глека <span class="muted small">· ' + done + '/' + c.tasks.length + (c.streak ? ' · серія ' + c.streak : '') + '</span>')
+      + '<div class="clkmd-body">' + rows
+      + '<div class="clkch-streak" aria-label="Серія днів">' + dots + '<span class="muted small">серія днів, пропустиш — з першого</span></div>'
+      + '<div class="small muted clkch-chest">' + esc(chestLine(st)) + '</div>' + btn
+      + (offer ? '<button type="button" class="clkmd-coopbtn clkch-wishbtn">✨ Чарівний глек: обери бажання</button>' : '') + '</div>';
+    api.swap(st.choresEl, html);
+  }
+
+  // ---------- v13 Г7: «✨ Глек з бажанням» (ClickerWish.cs) ----------
+  //
+  // view.chores[3] = { magic, offer: [{k, icon, name, text, can}], until, stoker, cat } (offer — лише поки вибір чекає). Світіння
+  // чарівного глека на полиці — клас .magic на .clk-fall / .clk-fly (st.fallMagic, його читає paintFall в clicker.js).
+  // Вікно: три картки; «Взяти собі» — wish { pick }, «🎁 Подарувати другові» — вибір друга з округи й wish { pick, gift }.
+
+  function openWish(st, api) {
+    const w = st.wish;
+    if (!w || !Array.isArray(w.offer) || !w.offer.length || !st.ctx || !st.mine) return false;
+    if (api.overlayOpen(st)) return false;
+    const esc = (x) => api.esc(st, x);
+    const left = w.until ? Math.max(0, Date.parse(w.until) - api.serverNow(st)) : 0;
+    const hours = Math.ceil(left / 36e5);
+    const cards = w.offer.map((c) => '<div class="clkw-card' + (c.can ? '' : ' off') + '">'
+      + '<div class="clkw-ic">' + esc(c.icon) + '</div><div class="clkw-tx"><b>' + esc(c.name) + '</b><div class="small muted">' + esc(c.text) + '</div></div>'
+      + '<div class="clkw-btns"><button type="button" class="primary" data-pick="' + esc(c.k) + '"' + (c.can ? '' : ' disabled title="Тобі це зараз нікуди прикласти"') + '>Взяти собі</button>'
+      + '<button type="button" class="ghost" data-gift="' + esc(c.k) + '">🎁 Подарувати другові</button></div></div>').join('');
+    const html = '<div class="clk-news clkw"><h3 style="padding-right:30px">✨ Глек з бажанням</h3>'
+      + '<p class="small muted">Чарівний глек у твоїх руках! Обери одне бажання' + (hours ? ' — воно чекатиме ще ' + hours + ' год' : '') + '.</p>'
+      + cards + '<div class="clkw-friends" hidden></div><div class="clkw-msg small" role="status"></div></div>';
+    const body = api.overlay(st, html, { cls: 'clk-newsbox' });
+    api.sfx('rare');
+    const msg = body.querySelector('.clkw-msg');
+    const box = body.querySelector('.clkw-friends');
+    let busy = false;
+    const send = (payload) => {
+      if (busy) return;
+      busy = true;
+      api.act(st, 'wish', payload).then((r) => {
+        busy = false;
+        if (r && r.ok) { api.sfx('gift'); api.closeOverlay(st); } else if (msg) msg.textContent = (r && r.message) || 'Не вийшло — спробуй ще';
+      });
+    };
+    body.addEventListener('click', (e) => {
+      const pick = e.target.closest('[data-pick]');
+      if (pick && !pick.disabled) { send({ pick: pick.dataset.pick }); return; }
+      const gift = e.target.closest('[data-gift]');
+      if (gift) { showFriends(st, api, box, gift.dataset.gift, send); return; }
+      const f = e.target.closest('[data-friend]');
+      if (f) send({ pick: f.dataset.pick, gift: f.dataset.friend });
+    });
+    return true;
+  }
+
+  /// Друзі для подарунка: гончарі з округи, крім мене (список цеху вже може бути в st.guildRoster; ні — питаємо).
+  function showFriends(st, api, box, pick, send) {
+    if (!box) return;
+    const esc = (x) => api.esc(st, x);
+    const draw = (list) => {
+      box.hidden = false;
+      box.innerHTML = list.length
+        ? '<div class="small muted">Кому подарувати? Бажання спрацює в нього, щойно прийме, а ти отримаєш 10 хв гри.</div>'
+          + list.map((p) => '<button type="button" class="ghost small" data-pick="' + esc(pick) + '" data-friend="' + esc(p.nick) + '">' + esc(p.nick) + '</button>').join(' ')
+        : '<div class="small muted">Поки нікому дарувати: у цеху ще нема інших гончарів.</div>';
+    };
+    const mine = (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
+    const have = st.guildRoster && Array.isArray(st.guildRoster.potters) ? st.guildRoster.potters : null;
+    const people = (d) => d.filter((p) => p && !p.me && p.nick && p.nick !== mine);
+    if (have) { draw(people(have)); return; }
+    box.hidden = false;
+    box.textContent = 'Кличемо гончарів…';
+    fetch('/api/games/clicker/guild', { headers: { 'X-Nick': encodeURIComponent(mine) } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => draw(d && Array.isArray(d.potters) ? people(d.potters) : []))
+      .catch(() => { box.textContent = 'Не вдалося покликати гончарів — спробуй ще.'; });
+  }
+
+  /// Вікно виринає само раз на пропозицію (ключ — її термін); закрив не вибравши — лишається кнопка в картці доручень.
+  function maybeWish(st, api) {
+    const w = st.wish;
+    if (!w || !Array.isArray(w.offer) || !w.offer.length || st.wishShown === w.until) return;
+    if (openWish(st, api)) st.wishShown = w.until;
+  }
+
   window.HClicker.part({
     id: 'day',
     order: 64.5,
@@ -436,9 +618,20 @@
       st.dayTab = 'm';
       st.week = null;
       st.weekBuffs = null;
+      st.chores = null;
+      st.choresEl = null;
+      st.choresTrade = false;
+      st.wish = null;
+      st.wishShown = '';
+      st.fallMagic = false;
     },
 
     update(st, v, api) {
+      // v13 Г3, Г7: доручення Глека й чарівний глек (view.chores) — окрема картка в «Селі» та вікно бажань.
+      parseChores(st, v, api);
+      st.fallMagic = !!(st.wish && st.wish.magic);
+      paintChores(st, api);
+      maybeWish(st, api);
       // Старий сервер виду day не шле (undefined) — лишаємо, що було; null — Майстра дня вимкнено в конфігу.
       if (v.day !== undefined) {
         const d = v.day;
@@ -484,6 +677,7 @@
     },
 
     slow(st, api) {
+      maybeWish(st, api);
       if (!st.day && !(st.dayChip && !st.dayChip.hidden)) return;
       tick(st, api);
       markReveal(st, api);
@@ -493,6 +687,11 @@
       if (st.dayRo) { st.dayRo.disconnect(); st.dayRo = null; }
       if (st.dayChip) st.dayChip.remove();
       if (st.dayEl) st.dayEl.remove();
+      if (st.choresEl) st.choresEl.remove();
+      st.choresEl = null;
+      st.chores = null;
+      st.wish = null;
+      st.fallMagic = false;
       st.dayChip = null;
       st.dayEl = null;
       st.dayLeftEl = null;

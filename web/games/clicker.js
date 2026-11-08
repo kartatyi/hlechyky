@@ -1579,6 +1579,9 @@
     const wasFly = !!st.flyFall && !st.flyFall.hidden;
     // Сцени не видно (прокрутили, відкрите вікно) — глек летить поверх усього, у смузі справа (записка №29).
     const away = show && aside(st);
+    // v13 Г7: чарівний глек світиться (clicker-day.js ставить st.fallMagic з view.chores[3].magic) — і на полиці, і в смузі.
+    b.classList.toggle('magic', !!st.fallMagic);
+    if (st.flyFall) st.flyFall.classList.toggle('magic', !!st.fallMagic);
     flyFall(st, away, f, now);
     pinCatch(st);
     const here = show && !away;
