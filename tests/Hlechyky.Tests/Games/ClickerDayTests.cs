@@ -80,6 +80,28 @@ public class ClickerDayTests
         Assert.Contains(stakes.Reasons, kv => kv.Value == "clicker-day:2026-10-21");
     }
 
+    /// <summary>
+    /// Записка #76 (Smaug, 04.11): приз прийшов тостом «clicker-day:2026-11-04» — сирим кодом причини, бо підпису для неї
+    /// не було. Тепер тост каже місце, а історія гаманця — людську назву з датою.
+    /// </summary>
+    [Fact]
+    public void A_prize_reads_as_a_place_in_the_toast_and_a_name_in_the_wallet()
+    {
+        var stakes = new FakeStakes();
+        var clock = new FakeClock { UtcNow = Local(2026, 11, 4, 12, 0) };
+        var svc = Svc(stakes, clock);
+        svc.Add("Smaug", 112, clock.UtcNow);
+        svc.Add("Назар", 80, clock.UtcNow);
+        svc.Settle(Local(2026, 11, 4, 23, 30));
+        Assert.Equal("+200 черепків: 🏆 Майстер дня в колі — 1 місце", stakes.Texts["clicker-day:2026-11-04:1"]);
+        Assert.Equal("+100 черепків: 🏆 Майстер дня в колі — 2 місце", stakes.Texts["clicker-day:2026-11-04:2"]);
+
+        using var eco = new EconomyRig();
+        Assert.Equal("🏆 Майстер дня в колі — приз за 04.11", eco.Economy.Reason("clicker-day:2026-11-04"));
+        Assert.Equal("🏆 Січ щоденних — приз тижня", eco.Economy.Reason("sich-week"));
+        Assert.Equal("Січ щоденних — номінація тижня", eco.Economy.Reason("sich-nom:iron"));
+    }
+
     [Fact]
     public void Switched_off_it_counts_nothing_and_shows_nothing()
     {

@@ -556,22 +556,22 @@ public class ClickerProgressTests
         Patch(h, s => s["stamps"] = 35);
         Give(h, 10_000);
 
-        Assert.Equal(23, View(h).GetProperty("cap").GetInt32());
+        Assert.Equal(53, View(h).GetProperty("cap").GetInt32());
         Assert.Equal(3, View(h).GetProperty("stampCap").GetInt32());
-        Assert.True(Act(h, "sell", new { pots = 2_300 }).Ok);
+        Assert.True(Act(h, "sell", new { pots = 5_300 }).Ok);
 
         var award = Assert.Single(h.Awards);
-        Assert.Equal("clicker:23", award.Reason);
-        Assert.Equal(23, award.Shards);
+        Assert.Equal("clicker:53", award.Reason);
+        Assert.Equal(53, award.Shards);
         Assert.Equal("Сьогодні черепки скінчились, приходь завтра", Act(h, "sell", new { pots = 100 }).Message);
     }
 
     [Fact]
-    public void Stamps_add_at_most_twenty_shards_a_day()
+    public void Stamps_add_at_most_fifty_shards_a_day()
     {
         var h = Wheel();
         Patch(h, s => s["stamps"] = 5_000);
-        Assert.Equal(40, View(h).GetProperty("cap").GetInt32());
+        Assert.Equal(100, View(h).GetProperty("cap").GetInt32());
     }
 
     /// <summary>Кімната з налаштуваннями економіки, як на проді.</summary>
@@ -678,7 +678,7 @@ public class ClickerProgressTests
         Assert.Equal(260.9, PerSecond(h), 1);
         Assert.Equal(0, View(h).GetProperty("stamps").GetInt32());
         Assert.True(GoldenAt(h) > h.Clock.UtcNow);
-        Assert.Equal(20, View(h).GetProperty("cap").GetInt32());
+        Assert.Equal(50, View(h).GetProperty("cap").GetInt32());
     }
 
     [Fact]

@@ -210,7 +210,8 @@ public sealed class ClickerDayService : BackgroundService
             {
                 for (var i = 0; i < winners.Count; i++)
                     if (prizes[i] > 0 && _stakes is not null)
-                        _stakes.Grant(winners[i].Nick, prizes[i], $"clicker-day:{day}", $"clicker-day:{day}:{i + 1}");
+                        _stakes.Grant(winners[i].Nick, prizes[i], $"clicker-day:{day}", $"clicker-day:{day}:{i + 1}",
+                            $"+{prizes[i]} {Economy.Economy.Shards(prizes[i])}: 🏆 Майстер дня в колі — {i + 1} місце");
             }
             catch (Exception ex)
             {

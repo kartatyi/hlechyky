@@ -184,21 +184,21 @@ public class RewardsTests
     public void Clicker_exchange_stops_at_the_daily_cap()
     {
         using var rig = new EconomyRig();
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 12; i++)
             rig.Events.Raise(new AwardEvent("clicker", "room1", "Оля", 5, "clicker"));
 
-        Assert.Equal(20, rig.Paid("Оля", "clicker"));    // ClickerDailyCap = 20
+        Assert.Equal(50, rig.Paid("Оля", "clicker"));    // ClickerDailyCap = 50 (з 08.11; було 20)
     }
 
     [Theory]
-    [InlineData("clicker:25", 25)]   // клейма майстра підняли стелю — віримо
-    [InlineData("clicker:99", 40)]   // але не вище за ClickerDailyCapMax
-    [InlineData("clicker:5", 20)]    // і не нижче за типову
-    [InlineData("clicker:ой", 20)]   // зіпсоване число — як без клейм
+    [InlineData("clicker:70", 70)]   // клейма майстра підняли стелю — віримо
+    [InlineData("clicker:199", 100)] // але не вище за ClickerDailyCapMax
+    [InlineData("clicker:5", 50)]    // і не нижче за типову
+    [InlineData("clicker:ой", 50)]   // зіпсоване число — як без клейм
     public void Clicker_stamps_raise_the_cap_only_within_the_settings(string reason, int paid)
     {
         using var rig = new EconomyRig();
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < 30; i++)
             rig.Events.Raise(new AwardEvent("clicker", "room1", "Оля", 5, reason));
 
         Assert.Equal(paid, rig.Paid("Оля", "clicker"));

@@ -951,9 +951,13 @@
     const label = 'Обміняти все (' + num(many * st.per) + ' 🏺)';
     if (st.all.textContent !== label) st.all.textContent = label;
     // Новачок одним дотиком міг вилити ранні глеки в черепки сайту (QA-3): значок — лише з «Клеймами» і коли весь
-    // сьогоднішній обмін — не більше відсотка глеків на руках.
-    const go = one || isGated(st, 'fire') || Math.min(st.canSell, ready) * st.rateOf > sure * 0.01 ? '' : '🏺 ' + few(Math.min(st.canSell, ready));
-    if (st.shardGo.textContent !== go) { st.shardGo.textContent = go; st.shardGo.hidden = !go; st.shardGo.title = 'Обміняти глеки на черепки — вкладка «Клейма»'; }
+    // сьогоднішній обмін — не більше відсотка глеків на руках. Число — черепки, як на «Обміняти все»: canSell і ready
+    // у сотнях глеків, і значок казав «🏺 40», коли обмін давав 400 (записка #75, курс ×10 з 15.10).
+    const go = one || isGated(st, 'fire') || many * st.rateOf > sure * 0.01 ? '' : '🏺 ' + few(many * st.per);
+    if (st.shardGo.textContent !== go) {
+      st.shardGo.textContent = go; st.shardGo.hidden = !go;
+      st.shardGo.title = 'Обміняти глеки на ' + num(many * st.per) + ' 🏺 — вкладка «Клейма»';
+    }
   }
 
   /// Розділи Майстерні (<details>), знайдені раз на картку. Розгорнули розділ — його кнопки й відліки оживають

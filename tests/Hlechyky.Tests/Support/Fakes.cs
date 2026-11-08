@@ -57,6 +57,15 @@ public sealed class FakeStakes : IStakes
         return true;
     }
 
+    /// <summary>Свій рядок тоста, з яким просили виплату: ключ → «+200 черепків: 🏆 … — 1 місце».</summary>
+    public Dictionary<string, string> Texts { get; } = new(StringComparer.Ordinal);
+
+    public void Grant(string nick, int amount, string reason, string refKey, string text)
+    {
+        if (!_refs.Contains(refKey)) Texts[refKey] = text;
+        Grant(nick, amount, reason, refKey);
+    }
+
     public void Grant(string nick, int amount, string reason, string refKey)
     {
         OnGrant?.Invoke();

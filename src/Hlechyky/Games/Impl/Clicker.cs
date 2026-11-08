@@ -146,9 +146,12 @@ public sealed partial class Clicker : Game
     /// <summary>Більше кліків за секунду — це вже не палець, а скрипт; зайве мовчки відкидаємо.</summary>
     public const int MaxClicksPerSecond = 12;
     /// <summary>Скільки черепків на день можна виміняти, коли економіки поруч нема (тести, гола гра).</summary>
-    public const int DefaultDailyCap = 20;
-    /// <summary>Скільки черепків до денної стелі додають клейма: одне місце на кожні <see cref="StampsPerCap"/>, не більше.</summary>
-    public const int MaxStampCap = 20;
+    public const int DefaultDailyCap = 50;
+    /// <summary>
+    /// Скільки черепків до денної стелі додають клейма: одне місце на кожні <see cref="StampsPerCap"/>, не більше.
+    /// 08.11 (рішення користувача «500–1000»): стеля 50 → 100 сотень, тобто × курс 10 — 500 🏺 без клейм, до 1000 з ними.
+    /// </summary>
+    public const int MaxStampCap = 50;
     public const int StampsPerCap = 10;
     /// <summary>За скільки офлайну коло ще платить. Далі — тиша: інакше відпустка коштувала б грі балансу.</summary>
     public static readonly TimeSpan OfflineCap = TimeSpan.FromHours(8);

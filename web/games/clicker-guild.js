@@ -1531,6 +1531,9 @@
     { k: 'wagon', t: '🐴 Віз' },
     { k: 'friends', t: '🤝 Друзі' },
     { k: 'titles', t: '🎖 Звання' },
+    // Шана сіл лежить у самому низу «Села», згорнута (її малює ярмарок, clicker-fair.js). Без переходу її не знаходили:
+    // «де подивитись славу в селах?» (записка #79, Smaug 07.11) — порада Глека про шану казала цифри, а не де вона.
+    { k: 'rep', t: '🎪 Шана сіл', el: (st) => { const e = st.fair && st.fair.repEl; return shownIn(e, st.guildPane) ? e : null; } },
     { k: 'orders', t: '📜 Замовлення ↗', tab: 'craft', el: (st) => { const e = st.fair && st.fair.ordersEl; return e && e.isConnected && e.firstElementChild ? e : null; } },
   ].map((n) => (n.el ? n : Object.assign(n, { el: (st) => secOf(st, n.k) })));
   /// Скільки гостей і кораблів зараз біля двору й Пристані — числом на кнопці переходу (UI-прохід 21.10: «у мене 2
@@ -1587,10 +1590,12 @@
     if (st.guildNavTop !== top) { st.guildNavTop = top; nav.style.setProperty('--clkg-nav-top', top + 'px'); }
   }
 
+  /// Перейти до розділу «Села» (кнопка рядка переходів; кнопка «Показати» в пораді Глека — через st.guildGo).
+  /// false — розділу зараз нема (ще не намальований чи не відкритий гравцеві).
   function navGo(st, api, key) {
     const n = NAV.find((x) => x.k === key);
     const el = n && n.el(st);
-    if (!el) return;
+    if (!el) return false;
     api.sfx('tap');
     if (n.tab) api.showTab(st, n.tab);
     // Згорнутий розділ — розгортаємо: перейти до самого заголовка — це лише півдії.
@@ -1614,6 +1619,7 @@
       }
     };
     requestAnimationFrame(() => { place(); setTimeout(place, 150); });
+    return true;
   }
 
   /// Перший вхід у «Село» — одне речення «що це й навіщо» (плейтест новачка 21.10: вкладка відкрилась, а що з нею
@@ -1654,6 +1660,7 @@
       st.guildNav.hidden = true;
       st.guildNav.setAttribute('aria-label', 'Розділи «Села»');
       st.guildNav.addEventListener('click', (e) => { const b = e.target.closest('[data-nav]'); if (b) navGo(st, api, b.dataset.nav); });
+      st.guildGo = (key) => navGo(st, api, key);
       st.guildNav.addEventListener('scroll', () => navMore(st), { passive: true });
       st.guildPane.appendChild(st.guildNav);
       st.guildIntro = document.createElement('div');

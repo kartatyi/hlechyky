@@ -23,6 +23,8 @@
   const OFF_TIP = 'Підказки Глека вимкнено — клацни, щоб увімкнути знову';
   /// Куди веде кнопка поради (where з ClickerAdvisor): глину ставимо одразу, решта — вкладка.
   const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire' };
+  /// …а в «Селі» — ще й до розділу (ключі рядка переходів, clicker-guild.js NAV).
+  const WHERE_SEC = { village: 'rep', guests: 'guests', pier: 'trade', toloka: 'toloka' };
 
   const myNick = (st) => (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
   const goLabel = (where) => (String(where).startsWith('clay:') ? 'Постав' : 'Показати');
@@ -79,6 +81,10 @@
     }
     const tab = WHERE_TAB[head];
     if (tab) api.showTab(st, tab);
+    // У «Селі» розділів багато, і шана сіл — у самому низу, згорнута: «Показати» веде до самого розділу, а не лише на
+    // вкладку (записка #79). Вкладка щойно відкрилась — розділ міг ще не намалюватись, тож друга спроба за мить.
+    const sec = WHERE_SEC[head];
+    if (sec && st.guildGo) requestAnimationFrame(() => { if (!st.guildGo(sec)) setTimeout(() => st.guildGo(sec), 400); });
     return Promise.resolve();
   }
 

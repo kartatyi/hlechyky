@@ -84,18 +84,18 @@ public class EconomyBoostTests
         // коло множить саме (воно ж показує курс): 30 — це вже 3 сотні × 10
         rig.Events.Raise(new AwardEvent("clicker", "c1", "Оля", 30, "clicker"));
         Assert.Equal(30, rig.Paid("Оля", "clicker"));
-        // стеля 20 × 10 = 200: ще 170 влазить, наступні 10 — ні
-        rig.Events.Raise(new AwardEvent("clicker", "c1", "Оля", 170, "clicker"));
+        // стеля 50 × 10 = 500 (з 08.11; була 20): ще 470 влазить, наступні 10 — ні
+        rig.Events.Raise(new AwardEvent("clicker", "c1", "Оля", 470, "clicker"));
         rig.Events.Raise(new AwardEvent("clicker", "c1", "Оля", 10, "clicker"));
-        Assert.Equal(200, rig.Paid("Оля", "clicker"));
+        Assert.Equal(500, rig.Paid("Оля", "clicker"));
 
-        // клейма піднімають стелю: «clicker:340» пускає до 340, вище за 40 × 10 = 400 — не пускає
-        rig.Events.Raise(new AwardEvent("clicker", "c2", "Петро", 340, "clicker:340"));
-        rig.Events.Raise(new AwardEvent("clicker", "c2", "Петро", 10, "clicker:340"));
-        Assert.Equal(340, rig.Paid("Петро", "clicker"));
-        rig.Events.Raise(new AwardEvent("clicker", "c3", "Яся", 400, "clicker:9999"));
+        // клейма піднімають стелю: «clicker:840» пускає до 840, вище за 100 × 10 = 1000 — не пускає
+        rig.Events.Raise(new AwardEvent("clicker", "c2", "Петро", 840, "clicker:840"));
+        rig.Events.Raise(new AwardEvent("clicker", "c2", "Петро", 10, "clicker:840"));
+        Assert.Equal(840, rig.Paid("Петро", "clicker"));
+        rig.Events.Raise(new AwardEvent("clicker", "c3", "Яся", 1000, "clicker:9999"));
         rig.Events.Raise(new AwardEvent("clicker", "c3", "Яся", 10, "clicker:9999"));
-        Assert.Equal(400, rig.Paid("Яся", "clicker"));
+        Assert.Equal(1000, rig.Paid("Яся", "clicker"));
     }
 
     [Fact]

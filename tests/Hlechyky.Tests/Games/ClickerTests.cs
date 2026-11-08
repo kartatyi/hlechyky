@@ -423,36 +423,37 @@ public class ClickerTests
     }
 
     [Fact]
-    public void Twenty_shards_a_day_and_not_a_shard_more()
+    public void Fifty_shards_a_day_and_not_a_shard_more()
     {
+        // Стеля без клейм — 50 сотень (08.11, «500–1000»; була 20).
         var h = Wheel();
-        Give(h, 2_500);
+        Give(h, 5_500);
 
-        Assert.Equal("Сьогодні лишилось 20 — більше не візьму", Sell(h, 2_100).Message);
-        Assert.True(Sell(h, 2_000).Ok);
-        Assert.Equal(20, h.View(0).GetProperty("soldToday").GetInt32());
+        Assert.Equal("Сьогодні лишилось 50 — більше не візьму", Sell(h, 5_100).Message);
+        Assert.True(Sell(h, 5_000).Ok);
+        Assert.Equal(50, h.View(0).GetProperty("soldToday").GetInt32());
         Assert.Equal(0, h.View(0).GetProperty("canSellToday").GetInt32());
         Assert.Equal("Сьогодні черепки скінчились, приходь завтра", Sell(h, 100).Message);
-        Assert.Equal(20, Assert.Single(h.Awards).Shards);
+        Assert.Equal(50, Assert.Single(h.Awards).Shards);
     }
 
     [Fact]
     public void The_counter_starts_over_after_kyiv_midnight()
     {
         var h = Wheel();
-        Give(h, 2_500);
-        Sell(h, 2_000);
+        Give(h, 5_500);
+        Sell(h, 5_000);
 
         h.Clock.Advance(TimeSpan.FromHours(12));   // 15:00 → 03:00 наступного дня за Києвом
         Assert.Equal(0, h.View(0).GetProperty("soldToday").GetInt32());
-        Assert.Equal(20, h.View(0).GetProperty("canSellToday").GetInt32());
+        Assert.Equal(50, h.View(0).GetProperty("canSellToday").GetInt32());
 
         Assert.True(Sell(h, 500).Ok);
         Assert.Equal(2, h.Awards.Count);
         // Головне тут — не сам факт обміну, а лічильник ПІСЛЯ нього: доти, доки вчорашня сума переїжджала
         // в сьогодні, перший же обмін нового дня закривав гончареві всю денну стелю.
         Assert.Equal(5, h.View(0).GetProperty("soldToday").GetInt32());
-        Assert.Equal(15, h.View(0).GetProperty("canSellToday").GetInt32());
+        Assert.Equal(45, h.View(0).GetProperty("canSellToday").GetInt32());
     }
 
     [Fact]
@@ -460,17 +461,17 @@ public class ClickerTests
     {
         var h = Wheel();
         Give(h, 100_000);
-        Assert.True(Sell(h, 2_000).Ok);            // учора вибрано всю стелю до останнього черепка
+        Assert.True(Sell(h, 5_000).Ok);            // учора вибрано всю стелю до останнього черепка
 
         h.Clock.Advance(TimeSpan.FromHours(12));   // київська північ позаду
 
         Assert.True(Sell(h, 100).Ok);
         Assert.Equal(1, h.View(0).GetProperty("soldToday").GetInt32());
-        Assert.Equal(19, h.View(0).GetProperty("canSellToday").GetInt32());
-        Assert.True(Sell(h, 1_900).Ok);            // решта стелі того самого дня на місці
-        Assert.Equal(20, h.View(0).GetProperty("soldToday").GetInt32());
+        Assert.Equal(49, h.View(0).GetProperty("canSellToday").GetInt32());
+        Assert.True(Sell(h, 4_900).Ok);            // решта стелі того самого дня на місці
+        Assert.Equal(50, h.View(0).GetProperty("soldToday").GetInt32());
         Assert.Equal(0, h.View(0).GetProperty("canSellToday").GetInt32());
-        Assert.Equal(new[] { 20, 1, 19 }, h.Awards.Select(a => a.Shards));
+        Assert.Equal(new[] { 50, 1, 49 }, h.Awards.Select(a => a.Shards));
     }
 
     [Fact]
@@ -481,12 +482,12 @@ public class ClickerTests
         var h = Wheel();
         Give(h, 300_000_000_000);
 
-        Assert.Equal("Сьогодні лишилось 20 — більше не візьму", Sell(h, 300_000_000_000).Message);
+        Assert.Equal("Сьогодні лишилось 50 — більше не візьму", Sell(h, 300_000_000_000).Message);
         Assert.Equal(300_000_000_000, Pots(h));
         Assert.Empty(h.Awards);
 
-        Assert.True(Sell(h, 2_000).Ok);
-        Assert.Equal(20, Assert.Single(h.Awards).Shards);
+        Assert.True(Sell(h, 5_000).Ok);
+        Assert.Equal(50, Assert.Single(h.Awards).Shards);
     }
 
     [Fact]
@@ -580,8 +581,8 @@ public class ClickerTests
         Assert.Equal(1, v.GetProperty("perClick").GetInt64());
         Assert.Equal(0, v.GetProperty("perSecond").GetDouble());
         Assert.Equal(100, v.GetProperty("rate").GetInt32());
-        Assert.Equal(20, v.GetProperty("cap").GetInt32());
-        Assert.Equal(20, v.GetProperty("canSellToday").GetInt32());
+        Assert.Equal(50, v.GetProperty("cap").GetInt32());
+        Assert.Equal(50, v.GetProperty("canSellToday").GetInt32());
         Assert.Equal(0, v.GetProperty("soldToday").GetInt32());
         Assert.Equal(JsonValueKind.String, v.GetProperty("lastSync").ValueKind);
         // Серверне «зараз» поруч із міткою: клієнт міряє простій ним, а не своїм годинником.

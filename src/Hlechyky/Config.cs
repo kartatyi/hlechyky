@@ -240,9 +240,9 @@ public sealed class EconomyOptions
         return reward <= 0 || pct <= 0 ? 0 : (int)Math.Round(reward * pct / 100.0, MidpointRounding.AwayFromZero);
     }
     /// <summary>Скільки черепків на день можна виміняти в гончарному колі.</summary>
-    public int ClickerDailyCap { get; set; } = 20;
+    public int ClickerDailyCap { get; set; } = 50;
     /// <summary>Вище цього клейма майстра стелю обміну не піднімуть, хоч скільки їх набери.</summary>
-    public int ClickerDailyCapMax { get; set; } = 40;
+    public int ClickerDailyCapMax { get; set; } = 100;
     /// <summary>Скільки черепків на день можуть принести всі позастандартні нагороди разом.</summary>
     public int AwardDailyCap { get; set; } = 30;
     /// <summary>
