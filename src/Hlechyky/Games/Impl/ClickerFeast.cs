@@ -5,7 +5,7 @@ namespace Hlechyky.Games.Impl;
 
 /// <summary>Збережені запаси й відрізки бафів «Свято» та «Щасливий кошик» (v13 Г) і ключі вже забраних призів дня.</summary>
 public sealed record FeastRow(int Feast = 0, int Basket = 0, DateTimeOffset FeastUntil = default, DateTimeOffset BasketUntil = default,
-    List<string>? Taken = null);
+    List<string>? Taken = null, double Sails = 0, DateTimeOffset SailsUntil = default, double Coop = 0, DateTimeOffset CoopUntil = default);
 
 /// <summary>
 /// Бафи-запаси оновлення v13 (docs/games/specs/clicker-v13.md, розділ «Г»). Дві банки хвилин у збереженні (стеля
@@ -92,8 +92,9 @@ public sealed partial class Clicker
     object? ViewFeast(DateTimeOffset now)
     {
         DateTimeOffset? feast = _feastUntil > now ? _feastUntil : null, basket = _basketUntil > now ? _basketUntil : null;
-        if (_feastBank == 0 && _basketBank == 0 && feast is null && basket is null) return null;
-        return new { feast = new { bank = _feastBank, until = feast }, basket = new { bank = _basketBank, until = basket } };
+        var week = ViewWeekBuffs(now);
+        if (_feastBank == 0 && _basketBank == 0 && feast is null && basket is null && week is null) return null;
+        return new { feast = new { bank = _feastBank, until = feast }, basket = new { bank = _basketBank, until = basket }, week };
     }
 
     // ---------- призи дня (Г1, Г2) ----------
@@ -119,7 +120,7 @@ public sealed partial class Clicker
     static string? PrizeDay(string key)
     {
         var parts = key.Split(':');
-        return parts.Length >= 3 && parts[0] == "day" && DateOnly.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture,
+        return parts.Length >= 3 && parts[0] is "day" or "week" && DateOnly.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture,
             DateTimeStyles.None, out _) ? parts[1] : null;
     }
 
@@ -131,13 +132,17 @@ public sealed partial class Clicker
         _feastUntil = _basketUntil = default;
         _prizeTaken.Clear();
         _feastToasts.Clear();
+        _sailsPct = _coopPct = 0;
+        _sailsUntil = _coopUntil = default;
     }
 
     FeastRow? SaveFeast() =>
         _feastBank == 0 && _basketBank == 0 && _feastUntil == default && _basketUntil == default && _prizeTaken.Count == 0
+        && _sailsUntil == default && _coopUntil == default
             ? null
             : new FeastRow(_feastBank, _basketBank, _feastUntil, _basketUntil,
-                _prizeTaken.Count == 0 ? null : _prizeTaken.Order(StringComparer.Ordinal).ToList());
+                _prizeTaken.Count == 0 ? null : _prizeTaken.Order(StringComparer.Ordinal).ToList(),
+                _sailsUntil == default ? 0 : _sailsPct, _sailsUntil, _coopUntil == default ? 0 : _coopPct, _coopUntil);
 
     void LoadFeast(FeastRow? row)
     {
@@ -150,5 +155,11 @@ public sealed partial class Clicker
         _feastUntil = row.FeastUntil > max ? max : row.FeastUntil;
         _basketUntil = row.BasketUntil > max ? max : row.BasketUntil;
         foreach (var k in row.Taken ?? []) if (k is { Length: > 0 and < 64 }) _prizeTaken.Add(k);
+        // Вітрила тижня й бонус спільного замовлення (v13 Г4, Г5): відсоток і кінець; правлена база — відсоток до сотні, кінець до місяця.
+        var weekMax = Ctx.Clock.UtcNow + TimeSpan.FromDays(31);
+        _sailsPct = double.IsFinite(row.Sails) ? Math.Clamp(row.Sails, 0, 100) : 0;
+        _sailsUntil = row.SailsUntil > weekMax ? weekMax : row.SailsUntil;
+        _coopPct = double.IsFinite(row.Coop) ? Math.Clamp(row.Coop, 0, 100) : 0;
+        _coopUntil = row.CoopUntil > weekMax ? weekMax : row.CoopUntil;
     }
 }

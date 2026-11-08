@@ -757,7 +757,9 @@ public sealed partial class Clicker : Game
         // Тринадцяте: Зала скарбів — +2 % за річ, уся зала ще +10 % (ClickerTreasure.cs).
         * TreasureAllMult
         // Г (v13): «🎉 Свято» — година ×2 з банки хвилин, окремо від фестивалю Толоки (ClickerFeast.cs).
-        * FeastAllMult;
+        * FeastAllMult
+        // Г4, Г5 (v13): «⛵ Вітрила тижня» й +% за спільне замовлення округи — гаснуть самі (ClickerWeekGame.cs).
+        * WeekAllMult;
 
     /// <summary>Скільки глеків за секунду дає один наступний рівень верстата (без ярмарку).</summary>
     double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult * (1 + Perk(MarkEffect.Passive));
@@ -2537,6 +2539,7 @@ public sealed partial class Clicker : Game
             toloka = ViewToloka(Ctx.Clock.UtcNow),
             trade = ViewTrade(Ctx.Clock.UtcNow),
             day = ViewDay(Ctx.Clock.UtcNow),
+            week = ViewWeek(Ctx.Clock.UtcNow),
             buffs = ViewFeast(Ctx.Clock.UtcNow),
             relics = RelicsView(),
             away = AwayView(),

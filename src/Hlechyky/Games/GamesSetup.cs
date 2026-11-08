@@ -42,6 +42,7 @@ public static class GamesSetup
         services.AddSingleton<TablesKeeper>();
         services.AddHostedService(sp => sp.GetRequiredService<TablesKeeper>());
         Impl.ClickerGuildSetup.AddClickerGuild(services);   // цех Гончарного кола: віз, дарунки, хата друга
+        Impl.ClickerWeekSetup.Add(services);                // Тиждень кола: «Хто більше виріс» і спільне замовлення округи (v13 Г4, Г5)
         Impl.ClickerDaySetup.Add(services);                 // «Майстер дня» Гончарного кола: табло й призи о 23:30 (v12)
         Impl.ClickerDiarySetup.Add(services);
         Impl.ClickerRiddleSetup.Add(services);              // загадки Глека для Зали скарбів: data/clicker/riddles.json

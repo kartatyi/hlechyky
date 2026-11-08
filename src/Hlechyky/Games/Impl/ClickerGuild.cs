@@ -400,6 +400,8 @@ public sealed partial class Clicker
         if (action != "guild") return null;
         // Вимикач палія — річ горна, а не цеху: працює й без сервісу (прокачаний «Палій» без рангу).
         if (Str(payload, "op") == "auto") return GuildAuto(payload);
+        // Спільне замовлення округи (v13 Г5) — зі своєї комори, цех не потрібен.
+        if (Str(payload, "op") == "coop") return GuildCoop(payload, Ctx.Clock.UtcNow);
         if (_guildSvc is not { } svc || GuildKey.Length == 0) return ActResult.Fail("Цех зараз зачинений");
         var now = Ctx.Clock.UtcNow;
         return Str(payload, "op") switch

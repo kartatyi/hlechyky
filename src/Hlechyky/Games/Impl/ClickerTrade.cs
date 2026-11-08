@@ -75,6 +75,12 @@ public sealed partial class Clicker
         ClaimDayPrizes(svc, Ctx.Clock.UtcNow);
     }
 
+    /// <summary>Нагороди тижня (v13 Г4, Г5): «⛵ Вітрила» й бонус спільного замовлення гончар забирає сам, як і призи дня.</summary>
+    void SyncWeek()
+    {
+        if (WeekSvc() is { } svc) ClaimWeekPrizes(svc, Ctx.Clock.UtcNow);
+    }
+
     /// <summary>Звідки корабель: родовий відмінок для «Корабель з …» і розпис тих країв (порожній — свого нема).</summary>
     public sealed record ClickerPort(string Key, string From, string Style);
 
@@ -233,6 +239,7 @@ public sealed partial class Clicker
     void SyncTrade(DateTimeOffset now)
     {
         SyncDay();
+        SyncWeek();
         if (!TradeOpen) return;
         // «Поки тебе не було» — один рядок на прибулі й один на ті, що відпливли (калібрування §17: неповних ~7 на добу,
         // і поштучні рядки витісняли купців, дарунки й Толоку з восьми нотаток).
