@@ -10,8 +10,10 @@
 .trybar.lvl-yellow > div { background: linear-gradient(100deg, #3d300a, #5a4510); border-color: #a07a1c; color: #fff4d6; }
 .trybar.lvl-stale > div { background: var(--panel2); border-color: var(--line); color: var(--text); }
 .trybar.lvl-red a.primary { background: #e5534d; color: #fff; }
+/* Блимає кілька разів і стає рівно: тривога триває годинами, а нескінченне блимання весь цей час змушувало браузер
+   малювати кожен кадр монітора на будь-якій сторінці сайту (у колі — +225…+600 мс/с GPU-процесу, заміри 08.11). */
 @media (prefers-reduced-motion: no-preference) {
-  .trybar.lvl-red .nb-moon, .trybar.lvl-yellow .nb-moon { animation: tv-blink 1.6s ease-in-out infinite; }
+  .trybar.lvl-red .nb-moon, .trybar.lvl-yellow .nb-moon { animation: tv-blink 1.6s ease-in-out 4; }
 }
 @keyframes tv-blink { 50% { opacity: .35; } }
 
@@ -24,8 +26,9 @@ header .trybtn .try-dot { position: absolute; top: 3px; right: 3px; width: 9px; 
 header .trybtn.on .try-dot { display: block; background: #e5534d; }
 header .trybtn.yellow .try-dot { background: var(--accent); }
 header .trybtn.stale .try-dot { display: block; background: var(--muted); }
+/* Як і плашка: кілька пульсів — і крапка горить рівно. */
 @media (prefers-reduced-motion: no-preference) {
-  header .trybtn.on .try-dot { animation: tv-pulse 1.8s ease-out infinite; }
+  header .trybtn.on .try-dot { animation: tv-pulse 1.8s ease-out 4; }
 }
 @keyframes tv-pulse { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
 

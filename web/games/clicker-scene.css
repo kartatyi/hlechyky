@@ -13,8 +13,11 @@
 }
 
 /* ---- небо ---- */
-.clks-sunpos { transform: translate(var(--clks-sunx), var(--clks-suny)); transition: transform 20s linear; }
-.clks-moonpos { transform: translate(var(--clks-moonx), var(--clks-moony)); transition: transform 20s linear; }
+/* Сонце й місяць переставляються раз на 20 с (SKY_MS) — на піксель, тож без переходу: 20-секундний перехід, що щоразу
+   починався знову, був вічним рухом — сторінка ні на мить не стояла, і браузер малював усі кадри монітора (до 180 на
+   секунду) заради зсуву, якого око не бачить (заміри 08.11). */
+.clks-sunpos { transform: translate(var(--clks-sunx), var(--clks-suny)); }
+.clks-moonpos { transform: translate(var(--clks-moonx), var(--clks-moony)); }
 .clks-tw { animation: clks-twinkle 3.2s ease-in-out infinite alternate; }
 .clks-stars circle:nth-child(3n).clks-tw { animation-delay: -1.4s; }
 .clks-cloud { animation: clks-drift 80s ease-in-out infinite alternate; }

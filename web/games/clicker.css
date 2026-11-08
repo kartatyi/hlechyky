@@ -1007,7 +1007,8 @@
 }
 .clk .clk-firebox .clk-bar i { transition: transform .3s; }
 .clk .clk-ubar i { transition: transform .3s; }
-.clk .clk-stbar i { transition: transform .12s linear; }
+/* Смужка кроку «Далі» — без переходу (08.11): її пишуть щокадру кроком у пів відсотка (~пів пікселя), і 0,12-секундний
+   перехід, що щоразу починався знову, не згладжував нічого, лише не давав сторінці стояти ні кадру. */
 .clk .clk-nxbar i { transition: transform .6s ease-out; }
 
 /* Круг кола — окремий шар композитора: крутиться шар, а не SVG-група всередині спільного <svg> (та щокадру змушувала

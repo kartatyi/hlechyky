@@ -3149,7 +3149,8 @@
 
   function squash(st, big) {
     const el = st.scn && st.scn.squash;
-    if (!el || REDUCED() || !el.animate) return;
+    // Тихий хід кола (вікно без фокусу) — без пружини глини, як і без бризок (clicker.js, pop).
+    if (!el || st.quiet || REDUCED() || !el.animate) return;
     try {
       if (st.scn.squashAnim) st.scn.squashAnim.cancel();
       const k = big ? 1.6 : 1;

@@ -973,40 +973,94 @@
   const secOpen = (st, key) => { const el = secEls(st)[key]; return !el || el.open; };
 
   /// Круг кола (диск, борозни, цятка) — в окремому <svg> під рештою кола, окремим шаром композитора (will-change у
-  /// clicker.css, блок «швидкість»), і крутиться сам шар. Поворот SVG-групи всередині спільного <svg> щокадру міняв
-  /// дерево властивостей малювання: Chrome перекомпоновував шари всієї сторінки й перемальовував коло — ~5 % головного
-  /// потоку навіть без кліків (десяте оновлення, §10). Глек, руки гончаря й «пружина» глини лишаються в першому
-  /// <svg> кола, як і були, — тож і querySelector('svg') частин знаходить саме його: круг додаємо після нього.
+  /// clicker.css, блок «швидкість»), і крутиться сам шар — анімацією композитора (spinDisc). Поворот SVG-групи всередині
+  /// спільного <svg> щокадру міняв дерево властивостей малювання: Chrome перекомпоновував шари всієї сторінки й
+  /// перемальовував коло — ~5 % головного потоку навіть без кліків (десяте оновлення, §10). Глек, руки гончаря й
+  /// «пружина» глини лишаються в першому <svg> кола, як і були, — тож і querySelector('svg') частин знаходить саме його:
+  /// круг додаємо після нього.
+  /// Шар — HTML-обгортка навколо <svg> (08.11): анімацій SVG-елементів, і зовнішнього <svg> теж, Chrome композитору не
+  /// віддає — крутив би їх головний потік щокадру, і сторінка перемальовувалась би на всі 180 кадрів монітора.
   function discLayer(st) {
-    if (st.discSvg && st.discSvg.parentNode === st.wheel) return st.discSvg;
+    if (st.discEl && st.discEl.parentNode === st.wheel) return st.discEl;
     const turn = st.wheel && st.wheel.querySelector('.clk-turn');
     if (!turn) return null;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.setAttribute('class', 'clk-disc-layer');
     turn.style.transform = '';
     svg.appendChild(turn);
-    st.wheel.appendChild(svg);
-    st.discSvg = svg;
-    return svg;
+    const box = document.createElement('div');
+    box.className = 'clk-disc-layer';
+    box.setAttribute('aria-hidden', 'true');
+    box.appendChild(svg);
+    st.wheel.appendChild(box);
+    st.discEl = box;
+    return box;
+  }
+
+  /// Круг крутить композитор (08.11): одна нескінченна Web-анімація «оберт за секунду», а швидкість — її playbackRate.
+  /// Раніше JS щокадру писав style.transform = rotate(…). Поворот на довільний кут Chrome не пропускає швидким шляхом
+  /// композитора (зміна transform «без вирівнювання осей»), окремий шар (will-change) тут не рятує — і кожен кадр
+  /// коштував повної перекладки шарів сторінки: Layerize 4–6 мс на ПК 2560×1440, коло ловило 83–87 кадрів зі 180
+  /// (заміри 08.11; з композитором — 139–153, Layerize ~1 мс). Швидкість міняємо не частіше SPIN_RATE_MS і лише на
+  /// помітну різницю: кожна зміна перезапускає анімацію в композиторі — це одна перекладка, а не сотня на секунду.
+  /// Тихий хід (quietNow: вікно без фокусу) — композитор круг не крутить: круг крокує разом із тлом хати 15 разів на
+  /// секунду (loop малює лише на кроці тла), бо обертовий круг сам тримав GPU-процес Chrome, спільний для всіх вікон,
+  /// на ~280 мс/с — і саме тоді, коли дивишся відео в іншому вікні.
+  const SPIN_MS = 1000;
+  const SPIN_RATE_MS = 150;
+  function spinDisc(st, speed, t) {
+    const el = discLayer(st);
+    if (!el || !el.animate) {
+      // Без окремого шару чи Web Animations — як було: поворот щокадру з JS.
+      const dt = st.angleAt ? Math.min(0.1, (t - st.angleAt) / 1000) : 0;
+      st.angleAt = t;
+      const disc = el || st.turn;
+      if (speed > 0 && dt > 0 && disc) {
+        st.angle = (st.angle + speed * dt) % 360;
+        disc.style.transform = 'rotate(' + st.angle.toFixed(1) + 'deg)';
+      }
+      return;
+    }
+    let s = st.spin;
+    if (!s || s.el !== el) {
+      if (s) s.anim.cancel();
+      const anim = el.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: SPIN_MS, iterations: Infinity });
+      anim.pause();
+      anim.currentTime = ((st.angle || 0) / 360) * SPIN_MS;
+      s = st.spin = { el, anim, rate: 0, at: t, quiet: false, pos: anim.currentTime };
+    }
+    const rate = speed / 360;
+    if (st.quiet) {
+      // Крок тихого ходу: самі пересуваємо час призупиненої анімації.
+      if (!s.quiet) { s.quiet = true; s.pos = (s.anim.currentTime || 0) % SPIN_MS; s.anim.pause(); s.at = t; }
+      s.pos = (s.pos + rate * Math.min(250, t - s.at)) % SPIN_MS;
+      s.at = t;
+      s.anim.currentTime = s.pos;
+      return;
+    }
+    if (s.quiet) {
+      s.quiet = false;
+      s.anim.currentTime = s.pos;
+      s.rate = -1;
+    }
+    if (rate === s.rate) return;
+    if (rate === 0) { s.anim.pause(); s.rate = 0; s.at = t; return; }
+    if (s.rate > 0 && (t - s.at < SPIN_RATE_MS || Math.abs(rate - s.rate) < Math.max(0.005, s.rate * 0.03))) return;
+    if (s.anim.playState === 'paused') { s.anim.playbackRate = rate; s.anim.play(); }
+    else s.anim.updatePlaybackRate(rate);
+    s.rate = rate;
+    s.at = t;
   }
 
   /// Коло крутиться від пасиву й від розгону, кільце навколо нього — це розгін, сяйво — теж. Усе за кадр і
   /// лише різницями: стилі пишемо тоді, коли число справді зрушило.
   function paintWheel(st) {
     const t = performance.now();
-    const dt = st.angleAt ? Math.min(0.1, (t - st.angleAt) / 1000) : 0;
-    st.angleAt = t;
     const frac = heatFrac(st);
     const sec = secondNow(st);
     // Градусів за секунду: без підмайстрів коло стоїть, з піччю повільно пливе, а від швидких кліків розкручується.
     const speed = (sec > 0 ? 30 + 30 * Math.log10(1 + sec) : 0) + 420 * frac;
-    if (speed > 0 && dt > 0) {
-      st.angle = (st.angle + speed * dt) % 360;
-      const disc = discLayer(st) || st.turn;
-      disc.style.transform = 'rotate(' + st.angle.toFixed(1) + 'deg)';
-    }
+    spinDisc(st, speed, t);
     const off = Math.round(RING * (1 - frac) * 10) / 10;
     if (off !== st.ringOff) { st.ringOff = off; st.heatRing.style.strokeDashoffset = off; }
     const glow = Math.round(frac * 50) / 50;
@@ -1122,7 +1176,7 @@
     for (const k of BUFF_KINDS) {
       const b = els[k.key];
       if (!on.has(k.key)) {
-        if (!b.el.hidden) { b.el.hidden = true; if (b.anim) { b.anim.cancel(); b.anim = null; } b.until = 0; b.level = -1; }
+        if (!b.el.hidden) { b.el.hidden = true; if (b.anim) { b.anim.cancel(); b.anim = null; } b.until = 0; b.level = -1; b.fq = -1; }
         continue;
       }
       const x = now.find((y) => y.key === k.key);
@@ -1159,10 +1213,18 @@
           b.sec.classList.toggle('w3', x.long || secs >= 100);
           // Довгі бафи друзів рахують хвилинами й годинами («44 хв») — суфікс «с» їм не належить.
           b.sec.classList.toggle('long', !!x.long);
-          if (stepped) buffBar(b, left, x.span);
+          if (stepped && !x.long) buffBar(b, left, x.span);
+        }
+        if (x.long) {
+          // Бафи друзів тривають години: смужка тане на піксель раз на кілька хвилин — тож кроком тут, а не вічною
+          // анімацією композитора (08.11: та тримала всі кадри монітора, поки баф діяв, — до доби).
+          if (b.anim) { b.anim.cancel(); b.anim = null; }
+          const f = Math.floor(Math.max(0, Math.min(1, left / x.span)) * 200) / 200;
+          if (b.fq !== f) { b.fq = f; b.bar.style.transform = 'scaleX(' + f + ')'; }
+          b.until = x.until;
         }
         // Новий баф чи той самий, але подовжений (ще один розписний глек) — смужка стартує наново від свого залишку.
-        if (Math.abs(b.until - x.until) > 50) { b.until = x.until; buffBar(b, left, x.span); }
+        else if (Math.abs(b.until - x.until) > 50) { b.until = x.until; buffBar(b, left, x.span); }
         const end = left <= BUFF_END_MS;
         if (b.el.classList.contains('end') !== end) b.el.classList.toggle('end', end);
       } else {
@@ -1948,7 +2010,10 @@
     const pct = Math.max(0, Math.min(100, ((liveTotal - from) / (to - from)) * 100));
     const f = st.fire;
     // Масштабом, а не шириною (clicker.css, блок «швидкість»): смужка тягнеться щотакту, а ширина — це розкладка.
-    const bar = 'scaleX(' + (pct / 100).toFixed(3) + ')';
+    // Кроком у пів відсотка (~1–2 px), а не в тисячну (08.11, «Клейма крутять анімацію впусту»): кожен новий запис
+    // перезапускав 0,3-секундний перехід смужки, а писали п'ять разів на секунду — перехід не закінчувався ніколи, і
+    // браузер малював усі кадри монітора заради зсуву на частку пікселя.
+    const bar = 'scaleX(' + Math.floor(pct * 2) / 200 + ')';
     if (f._bar.style.transform !== bar) f._bar.style.transform = bar;
     // Скільки ще, а не «на 19,6 млн (зараз 19,6 млн)»: на великих числах ціль і «зараз» друкувались однаково (QA-2).
     // У пізній грі число міняється щосекунди (12 різних за 3 с, QA-3) — рядок раз на хвилину, смужка живе й так.
@@ -2055,7 +2120,8 @@
   /// самих кадрах пробували — процесора йшло більше, а не менше: кожен ручний крок анімації — повна перекладка шарів.)
   /// Як: CSS-анімацію ставимо на паузу (Web Animations) і самі пересуваємо їй час. Лише записи — читання playState
   /// чи стилю між ними змусило б браузер перераховувати стилі на кожну анімацію окремо (так було ще гірше).
-  /// Лише нескінченні: скінченна на паузі не дійшла б до animationend. Нові (хата перемалювалась) ловимо за
+  /// Лише нескінченні: скінченна на паузі не дійшла б до animationend (на ПК — ще й довгі скінченні, LONG_FINITE_MS:
+  /// їх у кінці доводимо finish(), і animationend приходить як завжди). Нові (хата перемалювалась) ловимо за
   /// animationstart: getAnimations по всій картці — ~5 мс на телефоні, тож цілком — на старті й раз на 3 с (про запас,
   /// якщо подія проскочила до першого кадру).
   /// Горно на свій ручний обпал — не тло: на нього дивляться впритул, і полум'я «на 15» рвалось (скарга 14.10). Поки
@@ -2072,28 +2138,18 @@
   const DECOR_MS = 1000 / 15;
   const DECOR_SCAN_MS = 3000;
   const ALIVE_MS = window.matchMedia && window.matchMedia('(pointer: fine)').matches ? 1000 / 30 : 0;
-  const COMPOSITED = new Set(['transform', 'opacity', 'translate', 'rotate', 'scale']);
-  /// Анімація, яку браузер однаково крутить на головному потоці: SVG-вузол усередині малюнка (їх композитор не
-  /// бере) або властивість, яку композитор не вміє (box-shadow тощо). Решту — transform/opacity на HTML — крутить
-  /// композитор без головного потоку й без перемальовування; крок її б лише зіпсував.
-  function mainThreadAnim(a) {
-    const t = a.effect && a.effect.target;
-    if (!t) return false;
-    if (t.ownerSVGElement) return true;
-    for (const k of a.effect.getKeyframes()) for (const p in k) {
-      if (p === 'offset' || p === 'computedOffset' || p === 'easing' || p === 'composite') continue;
-      if (!COMPOSITED.has(p)) return true;
-    }
-    return false;
-  }
 
-  function paintDecor(st) {
+  /// Скінченні анімації довші за цю (гості хати — 80 с, кільце гостя ярмарку — 20 с) на ПК теж ідуть кроком: вільні вони
+  /// тримали всі 180 кадрів монітора. Короткі («+N», бризки, клік) — самі: їх мало й вони швидкі.
+  const LONG_FINITE_MS = 3000;
+
+  function paintDecor(st, t0) {
     if (!st.el.getAnimations) return;
-    const t = performance.now();
+    const t = t0 || performance.now();
     const burn = !!(st.kUi && st.kUi.root && st.kUi.root.classList.contains('burn'));
     let d = st.decor;
     if (!d) {
-      // finite — назви скінченних анімацій («+N», бризки — щокліку): їх кроком не водимо, тож і не шукаємо.
+      // finite — назви коротких скінченних анімацій («+N», бризки — щокліку): їх кроком не водимо, тож і не шукаємо.
       d = st.decor = { list: [], tick: 0, atick: 0, scanAt: t, fresh: new Set(), finite: new Set() };
       st.el.addEventListener('animationstart', (e) => {
         if (DECOR.has(e.animationName) || (ALIVE_MS && !d.finite.has(e.animationName))) d.fresh.add(e.target);
@@ -2107,9 +2163,9 @@
       scanDecor(st, d, t, got, false, burn);
     }
     if (t - d.scanAt >= DECOR_SCAN_MS) { d.scanAt = t; scanDecor(st, d, t, st.el.getAnimations({ subtree: true }), true, burn); }
-    // Два годинники: тло — 15 кроків на секунду, живе — 30 (крок тла припадає на крок живого).
+    // Два годинники: тло — 15 кроків на секунду, живе — 30 (крок тла припадає на крок живого). Тихий хід — лише 15.
     const tick = Math.floor(t / DECOR_MS);
-    const atick = ALIVE_MS ? Math.floor(t / ALIVE_MS) : 0;
+    const atick = ALIVE_MS && !st.quiet ? Math.floor(t / ALIVE_MS) : 0;
     if (tick === d.tick && atick === d.atick) return;
     const decorStep = tick !== d.tick;
     d.tick = tick;
@@ -2118,17 +2174,21 @@
     const off = !!st.stage && st.stage.classList.contains('clks-off');
     // Спершу всі читання, потім усі записи: playState перераховує стилі, якщо після останнього запису щось змінилось, —
     // упереміш це було б ~70 перерахунків на крок, а так один. Скасовану (хату сховали чи перемалювали — CSS створив
-    // нову) прибираємо: запис currentTime її б «воскресив», і та сама анімація крутилась би двічі.
+    // нову) прибираємо: запис currentTime її б «воскресив», і та сама анімація крутилась би двічі. Скінченну, що дійшла
+    // до кінця (finish), — теж.
     let gone = false;
-    for (const x of d.list) if (x.a.playState === 'idle') x.gone = gone = true;
+    for (const x of d.list) if (x.a.playState === 'idle' || x.a.playState === 'finished') x.gone = gone = true;
     if (gone) d.list = d.list.filter((x) => !x.gone);
     for (const x of d.list) {
       // Горно під ручним обпалом — пускаємо самопливом; догоріло — знову на паузу й до спільного кроку (фаза вогню
       // при цьому стрибне, але оком того не видно: клас горна саме міняється з «палає» на «холоне»).
       if (x.kiln && burn) { if (!x.free) { x.free = true; x.a.play(); } continue; }
       if (x.free) { x.free = false; x.a.pause(); }
-      if (!x.alive && !decorStep) continue;
-      if (!(off && x.inStage)) x.a.currentTime = t + x.shift;
+      if (!decorStep && (!x.alive || st.quiet)) continue;
+      const T = t + x.shift;
+      // Скінченна (гості) — і поза екраном іде далі, а в кінці finish(): animationend приходить, як і без кроку.
+      if (x.end != null) { if (T >= x.end) x.a.finish(); else x.a.currentTime = T; continue; }
+      if (!(off && x.inStage)) x.a.currentTime = T;
     }
   }
 
@@ -2138,25 +2198,46 @@
     if (full) { const have = new Set(anims); d.list = d.list.filter((x) => have.has(x.a)); }
     const known = new Set(d.list.map((x) => x.a));
     for (const a of anims) {
-      if (known.has(a) || !a.animationName) continue;
-      if (a.effect.getTiming().iterations !== Infinity) { d.finite.add(a.animationName); continue; }
+      // Скінченна, яку ми вже довели до кінця, з fill: forwards лишається в getAnimations — її не чіпаємо.
+      if (known.has(a) || !a.animationName || a.playState === 'finished') continue;
+      const target = a.effect.target;
+      const tm = a.effect.getTiming();
+      let end = null;
+      if (tm.iterations !== Infinity) {
+        end = (tm.delay || 0) + tm.duration * tm.iterations;
+        if (!ALIVE_MS || !(end >= LONG_FINITE_MS)) { d.finite.add(a.animationName); continue; }
+      }
       const alive = !DECOR.has(a.animationName);
-      if (alive && !(ALIVE_MS && mainThreadAnim(a))) continue;
+      // Живе на ПК — усе нескінченне в картці, і композиторне теж (08.11): будь-яка вільна анімація змушує браузер малювати
+      // кожен кадр монітора (180 на секунду) — підскок гостя ярмарку й значків у його стрічці тримав їх навіть тоді, коли
+      // решта стояла. Крок однаково перекладає шари раз на кадр кроку, скільки б анімацій у ньому не було.
+      if (alive && !ALIVE_MS) continue;
       const shift = (a.currentTime || 0) - t;
-      const kiln = !!a.effect.target.closest('.clkk-svg');
+      const kiln = !!target.closest('.clkk-svg');
       const free = kiln && burn;
       if (!free) a.pause();
-      d.list.push({ a, shift, kiln, free, alive, inStage: !!st.stage && st.stage.contains(a.effect.target) });
+      d.list.push({ a, shift, kiln, free, alive, inStage: !!st.stage && st.stage.contains(target), end });
       known.add(a);
     }
   }
+
+  /// Тихий хід (08.11): вікно з колом без фокусу — дивишся відео чи працюєш в іншому вікні. Тоді все коло — круг,
+  /// лічильник, живе хати — малюється лише на кроці тла, 15 разів на секунду: GPU-процес Chrome один на всі вікна, і коло
+  /// не відбирає його в того, на що ти зараз дивишся. HClicker.quiet — для замірів і перевірок: true/false силоміць,
+  /// null — за фокусом.
+  const quietNow = () => (H.quiet != null ? !!H.quiet : !document.hasFocus());
 
   /// Цикл живе від mount до unmount. Картку каркас монтує ще до того, як вставить у сторінку (повторне
   /// відкриття з готовим видом), тож «не в документі» — це не кінець, а «ще не видно»: чекаємо, не малюючи.
   /// Раніше цикл на цьому й зупинявся — і пасив між діями не тікав, а розписний глек так і не з'являвся б.
   function loop(st) {
     if (!st.el) { st.raf = 0; return; }
-    if (visible(st)) { paintDecor(st); paint(st); }
+    if (visible(st)) {
+      const t = performance.now();
+      st.quiet = quietNow();
+      const q = st.quiet ? Math.floor(t / DECOR_MS) : -1;
+      if (q < 0 || q !== st.quietTick) { st.quietTick = q; paintDecor(st, t); paint(st); }
+    }
     // Картку догорнули далеко з екрана (але вона на сторінці) — глеки однаково летять, поверх усього (записка №29).
     else if (st.stageLaid && st.el.isConnected && !document.hidden) { paintGolden(st); paintFall(st); }
     // Картки нема на сторінці (інша сторінка сайту) — шару теж нема (aside()).
@@ -2173,7 +2254,10 @@
   }
 
   /// «+12», що злітає над колом; при розкрученому колі — гарячіше й більше.
+  /// Тихий хід (вікно без фокусу — на коло не дивляться) — без «+N», написів і бризок: підмайстер доліплює виріб кожні
+  /// кілька секунд, і його іскри та «на сушарню» на секунду-півтори знову змушували браузер малювати всі кадри монітора.
   function pop(st, amount, cls) {
+    if (st.quiet) return;
     if (st.pops.childElementCount > 12) return;   // палець швидший за око: більше однаково не роздивитись
     const el = document.createElement('span');
     el.className = 'clk-pop' + (cls ? ' ' + cls : '');
@@ -2184,6 +2268,7 @@
 
   /// Напис у довільному місці сцени (x, y — у відсотках): «+N» над спійманим глеком, «трісь» над розбитим.
   function popAt(st, text, cls, x, y) {
+    if (st.quiet) return;
     const el = document.createElement('span');
     el.className = 'clk-pop ' + cls;
     el.textContent = text;
@@ -2194,7 +2279,7 @@
 
   /// Бризки глини (або золоті іскри) з точки (x, y у відсотках host-а; без них — з центру кола).
   function sparks(st, host, count, gold, x, y) {
-    if (host.childElementCount > 48) return;
+    if (st.quiet || host.childElementCount > 48) return;
     for (let i = 0; i < count; i++) {
       const el = document.createElement('i');
       el.className = 'clk-spark' + (gold ? ' gold' : '');

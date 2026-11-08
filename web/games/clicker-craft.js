@@ -335,13 +335,14 @@
     }
   }
 
-  /// Смужка прогресу кроком у тисячну: пишемо стиль лише тоді, коли число справді зрушило.
+  /// Смужка прогресу кроком у пів відсотка: пишемо стиль лише тоді, коли число справді зрушило. Раніше крок був у
+  /// тисячну, і смужки (вузькі, ~90 px) перемальовувались щокадру без видимої різниці (08.11).
   function setBar(el, frac) {
     if (!el) return;
-    const k = Math.max(0, Math.min(1000, Math.round(frac * 1000)));
+    const k = Math.max(0, Math.min(200, Math.floor(frac * 200)));
     if (el._k === k) return;
     el._k = k;
-    el.style.transform = 'scaleX(' + k / 1000 + ')';
+    el.style.transform = 'scaleX(' + k / 200 + ')';
   }
 
   /// Сирці на полиці над колом: до десяти, решта — «+N». Мокрі темніші; висохлі — світлі й чекають горна.
@@ -353,7 +354,13 @@
     const sig = shown.map((r) => r.ware + (r.clay || '') + (r.thin ? '*' : '') + (r.dryAt <= now ? 'd' : 'w')).join(',') + '|' + c.rack.length;
     if (st.shelfJugs._craft === sig) return;
     st.shelfJugs._craft = sig;
-    let s = shown.map((r, i) => '<span class="clkw-rack' + (r.dryAt <= now ? ' dry' : '') + (r.thin ? ' thin' : '') + '" title="' + wareName(st, r.ware)
+    // «Підскок» висохлого (clkwdry) — лише тому, хто висох саме зараз (08.11). Полиця перебудовується цілком на кожен новий
+    // сирець, і раніше разом підскакували всі сухі — щокілька секунд, а з ними й увесь кадр сторінки.
+    const was = st.shelfJugs._dry || null;
+    const dry = new Set(shown.filter((r) => r.dryAt <= now).map((r) => r.ware + '@' + r.dryAt));
+    st.shelfJugs._dry = dry;
+    let s = shown.map((r, i) => '<span class="clkw-rack' + (r.dryAt <= now ? ' dry' : '') + (r.dryAt <= now && was && !was.has(r.ware + '@' + r.dryAt) ? ' just' : '')
+      + (r.thin ? ' thin' : '') + '" title="' + wareName(st, r.ware)
       + (r.thin ? ' — тонкий з каоліну, з горна вийде розкішним' : '') + (r.dryAt <= now ? ' — сухий, чекає горна' : ' — сохне') + '">'
       + wareSvg(api, r.ware, { raw: true, dry: r.dryAt <= now, clay: clayBody(st, r.clay), slot: 'rack-' + i }) + '</span>').join('');
     if (c.rack.length > shown.length) s += '<span class="clkw-more">+' + (c.rack.length - shown.length) + '</span>';
