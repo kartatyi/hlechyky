@@ -2317,7 +2317,7 @@ public sealed partial class Clicker : Game
     public static string PotsShort(double n) =>
         Math.Abs(n) >= Hryvnia ? Short(n) : $"{Short(n)} {(Math.Abs(n) >= 1_000_000 ? "глеків" : Pots(n))}";
 
-    static string Plural(double n, string one, string few, string many)
+    internal static string Plural(double n, string one, string few, string many)
     {
         if (!double.IsFinite(n)) return many;
         if (n % 100 is >= 11 and <= 14) return many;

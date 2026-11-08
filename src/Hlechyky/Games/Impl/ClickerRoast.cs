@@ -6,7 +6,8 @@ namespace Hlechyky.Games.Impl;
 
 /// <summary>
 /// Книга фраз прожарки дня (<c>data/clicker/roast.json</c>): на кожен вид — кілька фраз Глека з підстановками
-/// <c>{nick} {n} {points} {days}</c> і парами роду <c>{виграв|виграла}</c>. Ключі з підкресленням — коментарі автора; невідомий
+/// <c>{nick}</c>, числами з відмінюванням <c>{n:раз|рази|разів}</c> (також <c>points</c>, <c>days</c>: число й форма слова
+/// за ним — 1 раз, 2 рази, 5 разів, 11 разів, 21 раз) і парами роду <c>{виграв|виграла}</c>. Ключі з підкресленням — коментарі автора; невідомий
 /// вид чи підстановка — рядок у лозі, а не тиша на проді (так само, як книга порад Глека).
 /// </summary>
 public sealed class ClickerRoastBook
@@ -56,9 +57,33 @@ public sealed class ClickerRoastBook
     /// <summary>Підстановки рядка, яких прожарка не знає (пари роду {а|б} не рахуються).</summary>
     static IEnumerable<string> Unknown(string line)
     {
-        var s = System.Text.RegularExpressions.Regex.Replace(line, @"\{[^{}|]+\|[^{}|]+\}", "");
+        var s = System.Text.RegularExpressions.Regex.Replace(line, @"\{(?:n|points|days):[^{}|:]+\|[^{}|:]+\|[^{}|:]+\}", "");
+        // Відмінювання не за зразком: чужа змінна або не три форми — {x:а|б|в}, {n:раз|рази}.
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(s, @"\{(\w+):"))
+            yield return m.Groups[1].Value + ":…";
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\{[^{}|]+\|[^{}|]+\}", "");
         foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(s, @"\{(\w+)\}"))
             if (!Vars.Contains(m.Groups[1].Value)) yield return m.Groups[1].Value;
+    }
+
+    static readonly System.Text.RegularExpressions.Regex Declined =
+        new(@"\{(n|points|days):([^{}|:]+)\|([^{}|:]+)\|([^{}|:]+)\}", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Підставити у фразу нік, числа й рід. <c>{n:раз|рази|разів}</c> стає «12 разів» — число з пробілом між тисячами й форма
+    /// слова за ним (1 раз, 2 рази, 5 разів, 11 разів, 21 раз, 22 рази); голе <c>{n}</c> — лише число.
+    /// </summary>
+    public static string Fill(string template, string nick, long n, long points, int days, bool she)
+    {
+        var s = Declined.Replace(template, m =>
+        {
+            var v = m.Groups[1].Value switch { "n" => n, "points" => points, _ => days };
+            return ClickerRoast.Num(v) + " " + Clicker.Plural(v, m.Groups[2].Value, m.Groups[3].Value, m.Groups[4].Value);
+        });
+        return ClickerGlekBook.Fill(s, new Dictionary<string, string>
+        {
+            ["nick"] = nick, ["n"] = ClickerRoast.Num(n), ["points"] = ClickerRoast.Num(points), ["days"] = days.ToString(CultureInfo.InvariantCulture),
+        }, she);
     }
 }
 
@@ -194,10 +219,7 @@ public static class ClickerRoast
         {
             var template = book.Pick(kind, rng);
             if (template.Length == 0) return;
-            lines.Add(ClickerGlekBook.Fill(template, new Dictionary<string, string>
-            {
-                ["nick"] = nick, ["n"] = Num(n), ["points"] = Num(points), ["days"] = days.ToString(CultureInfo.InvariantCulture),
-            }, she(nick)));
+            lines.Add(ClickerRoastBook.Fill(template, nick, n, points, days, she(nick)));
             named.Add(Auth.NickKey(nick));
         }
 
@@ -239,5 +261,5 @@ public static class ClickerRoast
     }
 
     /// <summary>Число з пробілом між тисячами: «12 345».</summary>
-    static string Num(long n) => n.ToString("#,##0", CultureInfo.InvariantCulture).Replace(',', ' ');
+    internal static string Num(long n) => n.ToString("#,##0", CultureInfo.InvariantCulture).Replace(',', ' ');
 }

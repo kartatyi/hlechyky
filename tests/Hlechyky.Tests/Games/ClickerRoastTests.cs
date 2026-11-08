@@ -50,15 +50,58 @@ public class ClickerRoastTests
     {
         var (book, _) = ClickerRoastBook.Parse(File.ReadAllText(BookPath()));
         var rng = new Random(7);
-        var vars = new Dictionary<string, string> { ["nick"] = "Оля", ["n"] = "12", ["points"] = "34", ["days"] = "3" };
         foreach (var kind in ClickerRoastBook.Kinds)
             for (var i = 0; i < 60; i++)
                 foreach (var she in new[] { false, true })
                 {
-                    var text = ClickerGlekBook.Fill(book.Pick(kind, rng), vars, she);
+                    var text = ClickerRoastBook.Fill(book.Pick(kind, rng), "Оля", 12, 34, 3, she);
                     Assert.DoesNotContain("{", text);
                     Assert.DoesNotContain("}", text);
                 }
+    }
+
+    [Theory]
+    [InlineData(1, "1 раз")]
+    [InlineData(2, "2 рази")]
+    [InlineData(4, "4 рази")]
+    [InlineData(5, "5 разів")]
+    [InlineData(11, "11 разів")]
+    [InlineData(12, "12 разів")]
+    [InlineData(21, "21 раз")]
+    [InlineData(22, "22 рази")]
+    [InlineData(25, "25 разів")]
+    [InlineData(101, "101 раз")]
+    [InlineData(111, "111 разів")]
+    [InlineData(12345, "12 345 разів")]
+    public void A_declined_number_takes_the_right_form(long n, string expected) =>
+        Assert.Equal(expected, ClickerRoastBook.Fill("{n:раз|рази|разів}", "Оля", n, n, (int)n, false));
+
+    [Fact]
+    public void Declension_works_for_n_points_and_days_and_keeps_gender_pairs()
+    {
+        Assert.Equal("Оля 2 дні 3 бали 21 клацання, вона пішла",
+            ClickerRoastBook.Fill("{nick} {days:день|дні|днів} {points:бал|бали|балів} {n:клацання|клацання|клацань}, {він|вона} {пішов|пішла}", "Оля", 21, 3, 2, true));
+        Assert.Equal("5 днів і 1 день", ClickerRoastBook.Fill("{days:день|дні|днів} і {n:день|дні|днів}", "x", 1, 0, 5, false));
+    }
+
+    [Fact]
+    public void A_broken_declension_is_a_problem()
+    {
+        var (_, problems) = ClickerRoastBook.Parse("""{"intro":["{n:раз|рази}"],"outro":["{x:а|б|в}"],"clicks":["{n:раз|рази|разів} {nick}"]}""");
+        Assert.Contains(problems, p => p.StartsWith("intro:"));
+        Assert.Contains(problems, p => p.StartsWith("outro:"));
+        Assert.DoesNotContain(problems, p => p.StartsWith("clicks:"));
+    }
+
+    [Fact]
+    public void No_real_phrase_leaves_a_bare_number_next_to_a_noun()
+    {
+        // Голе {n}/{points}/{days} у справжній книзі — це «2 днів»: число завжди з формами слова.
+        var json = File.ReadAllText(BookPath());
+        using var doc = JsonDocument.Parse(json);   // JSON валідний
+        foreach (var prop in doc.RootElement.EnumerateObject().Where(p => !p.Name.StartsWith('_')))
+            foreach (var line in prop.Value.EnumerateArray().Select(x => x.GetString()!))
+                Assert.DoesNotMatch(@"\{(n|points|days)\}", line);
     }
 
     [Fact]
