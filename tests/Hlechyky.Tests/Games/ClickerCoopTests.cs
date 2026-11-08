@@ -121,13 +121,16 @@ public class ClickerCoopTests
         var k = new Kit();
         Chosen(k, out _, out _, out var volume);
         Assert.Equal(500, volume);
-        Assert.Equal(300, k.Svc.CoopAdd("Оля", 300, Wed));
-        Assert.Equal(200, k.Svc.CoopAdd("Тарас", 400, Wed));                            // лишалось 200
-        Assert.Equal(0, k.Svc.CoopAdd("Оля", 10, Wed));                                 // виконано
+        Assert.Equal(125, k.Svc.CoopAdd("Оля", 300, Wed));                              // стеля одного — 25 % обсягу
+        Assert.Equal(125, k.Svc.CoopAdd("Тарас", 400, Wed));
+        Assert.Equal(125, k.Svc.CoopAdd("Іван", 125, Wed));
+        Assert.Equal(100, k.Svc.CoopAdd("Марко", 100, Wed));                            // лишилось 25
+        Assert.Equal(25, k.Svc.CoopAdd("Ігор", 400, Wed));                              // і це — решта: більше не візьме
+        Assert.Equal(0, k.Svc.CoopAdd("Богдан", 10, Wed));                              // виконано
         var order = k.Svc.CoopNow(Wed)!;
         Assert.True(order.Fulfilled);
         Assert.Equal(500, order.Done);
-        Assert.Equal(300, k.Svc.CoopMine("Оля", Wed));
+        Assert.Equal(125, k.Svc.CoopMine("Оля", Wed));
         var line = Assert.Single(k.Wire.Chats, c => c.Contains("Округа виконала спільне замовлення"));
         Assert.Contains("500", line);
     }
@@ -178,8 +181,10 @@ public class ClickerCoopTests
         var k = new Kit();
         Chosen(k, out _, out _, out _);                                                 // 500 → поріг 25
         k.Svc.CoopAdd("Іван", 24, Wed);                                                 // на одиницю менше
-        k.Svc.CoopAdd("Оля", 276, Wed);
-        k.Svc.CoopAdd("Тарас", 200, Wed);
+        k.Svc.CoopAdd("Оля", 276, Wed);                                                 // стеля 125
+        k.Svc.CoopAdd("Тарас", 200, Wed);                                               // стеля 125
+        k.Svc.CoopAdd("Марко", 200, Wed);                                               // стеля 125
+        k.Svc.CoopAdd("Ігор", 200, Wed);                                                // лишилось 101
         Assert.True(k.Svc.CoopNow(Wed)!.Fulfilled);
         Assert.Empty(k.Svc.PrizesFor("Оля", Wed));                                      // виконали, але до підбиття нагород нема
 
@@ -188,9 +193,10 @@ public class ClickerCoopTests
         Assert.Equal(($"week:{Week}:coop", "coop", 10.0), (olya.Key, olya.Kind, olya.Pct));
         Assert.Equal(Ends().AddDays(7), olya.Until);
         Assert.Single(k.Svc.PrizesFor("Тарас", Settled));
+        Assert.Single(k.Svc.PrizesFor("Ігор", Settled));
         Assert.Empty(k.Svc.PrizesFor("Іван", Settled));
         Assert.Empty(k.Svc.PrizesFor("Богдан", Settled));
-        Assert.Contains(k.Wire.Chats, c => c.Contains("Спільне замовлення округи підбито") && c.Contains("2 гончарів"));
+        Assert.Contains(k.Wire.Chats, c => c.Contains("Спільне замовлення округи підбито") && c.Contains("4 гончарів"));
         Assert.Empty(k.Svc.PrizesFor("Оля", Ends().AddDays(7).AddMinutes(1)));
     }
 
@@ -199,7 +205,10 @@ public class ClickerCoopTests
     {
         var k = new Kit();
         Chosen(k, out _, out _, out _);
-        k.Svc.CoopAdd("Оля", 400, Wed);
+        k.Svc.CoopAdd("Оля", 125, Wed);
+        k.Svc.CoopAdd("Тарас", 125, Wed);
+        k.Svc.CoopAdd("Іван", 125, Wed);
+        k.Svc.CoopAdd("Марко", 25, Wed);
         k.Svc.Settle(Settled);
         Assert.Empty(k.Svc.PrizesFor("Оля", Settled));
         Assert.Contains(k.Wire.Chats, c => c.Contains("не довезли: 400 з 500"));
@@ -305,15 +314,17 @@ public class ClickerCoopTests
         Items(h, ("pot||3", 300));
         Assert.False(Coop(h, 0).Ok);
         Assert.Equal(0, k.Svc.CoopMine("Оля", Wed));
-        var big = Coop(h, 600);                                                         // просить більше, ніж є: везе все вільне
+        var big = Coop(h, 600);                                                         // просить більше, ніж є: везе все вільне, але не вище стелі 25 %
         Assert.True(big.Ok, big.Message);
-        Assert.Equal(300, k.Svc.CoopMine("Оля", Wed));
-        Assert.Equal(0, Have(h, "pot||3"));
-        Items(h, ("pot||3", 300));
-        var rest = Coop(h, 600);                                                        // лишалось 200 — більше не візьме
-        Assert.True(rest.Ok, rest.Message);
-        Assert.Equal(500, k.Svc.CoopMine("Оля", Wed));
-        Assert.Equal(100, Have(h, "pot||3"));
+        Assert.Equal(125, k.Svc.CoopMine("Оля", Wed));
+        Assert.Equal(175, Have(h, "pot||3"));
+        var capped = Coop(h, 10);                                                       // стеля вичерпана — відмова, нічого не списано
+        Assert.False(capped.Ok);
+        Assert.Contains("стеля", capped.Message);
+        Assert.Equal(175, Have(h, "pot||3"));
+        k.Svc.CoopAdd("Тарас", 125, Wed);
+        k.Svc.CoopAdd("Іван", 125, Wed);
+        k.Svc.CoopAdd("Марко", 125, Wed);
         var done = Coop(h, 10);
         Assert.False(done.Ok);
         Assert.Contains("виконала", done.Message);
@@ -328,7 +339,7 @@ public class ClickerCoopTests
     }
 
     [Fact]
-    public void The_coop_pays_like_a_village_order_of_the_same_wares()
+    public void The_coop_pays_by_the_ware_price_without_the_village_play_minutes_floor()
     {
         var (a, _) = Wheel();
         Items(a, ("pot||3", 3));
@@ -345,7 +356,10 @@ public class ClickerCoopTests
         var coop = Pots(b) - beforeB;
 
         Assert.True(village > 0);
-        Assert.Equal(village, coop);
+        Assert.True(coop > 0);
+        // Село має підлогу за хвилинами гри, довіз — лише ціна виробу (рецензія v13): свіжому гончареві, де хвилина гри
+        // вагоміша за ціну горщика, село платить більше.
+        Assert.True(village > coop);
     }
 
     [Fact]
@@ -361,7 +375,10 @@ public class ClickerCoopTests
         Assert.Contains("до бонусу ще 1", nine.Message);
         var r = Coop(h, 1);
         Assert.Contains("на бонус вистачає", r.Message);
-        k.Svc.CoopAdd("Тарас", 475, Wed);                                               // решту довозить друг
+        k.Svc.CoopAdd("Тарас", 125, Wed);                                               // решту довозять друзі
+        k.Svc.CoopAdd("Іван", 125, Wed);
+        k.Svc.CoopAdd("Марко", 125, Wed);
+        k.Svc.CoopAdd("Ігор", 100, Wed);
         Assert.True(k.Svc.CoopNow(Wed)!.Fulfilled);
 
         Assert.DoesNotContain("Спільне замовлення округи", Spin(h).Message);            // до підбиття нагороди нема
@@ -394,6 +411,9 @@ public class ClickerCoopTests
         Spin(h);
         var plain = PerSecond(h);
         k.Svc.CoopAdd("Оля", 500, Wed);
+        k.Svc.CoopAdd("Тарас", 125, Wed);
+        k.Svc.CoopAdd("Іван", 125, Wed);
+        k.Svc.CoopAdd("Марко", 125, Wed);
         h.Clock.UtcNow = Settled;
         k.Svc.Settle(Settled);
         Spin(h);

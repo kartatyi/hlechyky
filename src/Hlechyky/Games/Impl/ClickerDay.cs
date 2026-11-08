@@ -20,6 +20,8 @@ public sealed class ClickerDayOptions
     public int[]? CatchPrizes { get; set; }
     public int CatchMinPlayers { get; set; } = 2;
     public int CatchMinPoints { get; set; } = 20;
+    /// <summary>Денна стеля очок одного гончара в «Ловці дня» (рецензія v13): понад — не рахується, щоб скрипт цілий день не виграв. 0 — без стелі.</summary>
+    public int CatchMaxPoints { get; set; } = 500;
     /// <summary>Хвилини «Щасливого кошика» за 1-ше, 2-ге, 3-тє місце «Ловця дня».</summary>
     public int[]? BasketMinutes { get; set; }
 
@@ -216,9 +218,9 @@ public sealed class ClickerDayService : BackgroundService
     public void Add(string nick, int points, DateTimeOffset now) => AddTo(_m, nick, points, now, O.Enabled);
 
     /// <summary>Очки «Ловця дня»: спійманий руками глек з полиці — 1. Гості й боти — не в табло.</summary>
-    public void AddCatch(string nick, int points, DateTimeOffset now) => AddTo(_c, nick, points, now, O.Enabled && O.CatchEnabled);
+    public void AddCatch(string nick, int points, DateTimeOffset now) => AddTo(_c, nick, points, now, O.Enabled && O.CatchEnabled, O.CatchMaxPoints > 0 ? O.CatchMaxPoints : int.MaxValue);
 
-    void AddTo(Track t, string nick, int points, DateTimeOffset now, bool on)
+    void AddTo(Track t, string nick, int points, DateTimeOffset now, bool on, int cap = int.MaxValue)
     {
         if (points <= 0 || !on || !IsPerson(nick)) return;
         var key = Auth.NickKey(nick);
@@ -229,7 +231,8 @@ public sealed class ClickerDayService : BackgroundService
             if (t.Paid.Contains(day)) return;
             if (!t.Entries.TryGetValue((day, key), out var e)) t.Entries[(day, key)] = e = new Entry { Day = day, Key = key };
             e.Nick = nick;
-            e.Points += points;
+            if (e.Points >= cap) return;
+            e.Points = (int)Math.Min(cap, (long)e.Points + points);
             // Рівні — хто раніше набрав своє: час останнього приросту.
             e.At = now;
             t.Dirty.Add((day, key));

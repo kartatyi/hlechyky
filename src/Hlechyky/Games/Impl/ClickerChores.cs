@@ -61,10 +61,11 @@ public sealed partial class Clicker
         "fire" => _styles.Count > 0,
         "ship" => TradeOpen,
         "village" => FiredTotal >= 1,
-        "guest" => _gMet.Count > 0,
+        "guest" => _gMet.Count > 0 && _gOrders.Count > 0,   // рецензія v13: лише коли є замовлення гостей
         "toloka" => TolokaOpen,
         "gift" => GuildOpen && _guildSvc is not null && GuildKey.Length > 0,
-        "fest" => TolokaHas("festival"),
+        // Рецензія v13: не брати, якщо наступний фестиваль пізніше за кінець доби (виконати не вийде).
+        "fest" => TolokaHas("festival") && (_festNext == default || _festNext <= Days.NextMidnight(Ctx.Clock.UtcNow)),
         "riddle" => TreasureOpen && RiddleBook is { Riddles.Count: > 0 },
         _ => false,
     };
@@ -127,12 +128,17 @@ public sealed partial class Clicker
 
     bool ChoresAllDone => _chPick.Count > 0 && _chPick.Select((k, j) => _chProg[j] >= ChoreOf(k).Goal).All(x => x);
 
+    /// <summary>Попередня доба до "yyyy-MM-dd" — календарем, а не відніманням доби від моменту (перехід часу не рве серію).</summary>
+    static string DayBefore(string day) =>
+        DateOnly.ParseExact(day, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture).AddDays(-1)
+            .ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>Яка серія зараз: остання скриня була вчора чи сьогодні — її лічба, інакше (і після сьомої) — нуль.</summary>
     int ChoresStreakNow(string today)
     {
         if (_chStreak <= 0 || _chLast.Length == 0) return 0;
         if (_chLast == today) return _chStreak;
-        return _chLast == Days.Of(Ctx.Clock.UtcNow.AddDays(-1)) && _chStreak < ChoresStreakMax ? _chStreak : 0;
+        return _chLast == DayBefore(today) && _chStreak < ChoresStreakMax ? _chStreak : 0;
     }
 
     ActResult? ActChores(string action, JsonElement payload)
@@ -145,7 +151,7 @@ public sealed partial class Clicker
         if (!ChoresAllDone) return ActResult.Fail("Скриня відчиняється, коли виконано всі доручення");
         var now = Ctx.Clock.UtcNow;
         var today = Days.Today(Ctx.Clock);
-        var next = _chLast == Days.Of(now.AddDays(-1)) && _chStreak is > 0 and < ChoresStreakMax ? _chStreak + 1 : 1;
+        var next = _chLast == DayBefore(today) && _chStreak is > 0 and < ChoresStreakMax ? _chStreak + 1 : 1;
         var big = next == ChoresStreakMax;
         var shards = ChoreEarn(ChestShards) + (big ? ChoreEarn(ChestBigShards) : 0);
         // Черепки — першими: ключ леджера на добу, тож повтор після збою не заплатить удруге, а збій не з'їсть скриню.

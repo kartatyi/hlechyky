@@ -98,25 +98,30 @@
     const items = ((st.craft && st.craft.items) || []).filter((it) => it.n > 0);
     const free = new Map(items.map((it) => [it, freeOf(it)]));
     const later = (it) => (worldStyle(st, it.style) ? 0 : 1);
-    const pick = (lux, n) => {
+    const pay = (st.trade.v && st.trade.v.pay) || PAY;
+    // Шана «Розкіш» II: розкішний виріб займає кілька місць (pay.luxWeight, як сервер), а платить як один.
+    const lw = Math.max(1, pay.luxWeight || 1);
+    const pick = (lux, n, places) => {
       const out = [];
       for (const it of items.filter((x) => fits(s, x, lux)).sort((a, b) => a.q - b.q || later(a) - later(b))) {
-        if (n <= 0) break;
-        const take = Math.min(free.get(it), n);
+        if (n <= 0 || places <= 0) break;
+        const wt = it.q >= 4 ? lw : 1;
+        const take = Math.min(free.get(it), n, Math.ceil(places / wt));
         if (take <= 0) continue;
         free.set(it, free.get(it) - take);
         out.push([it, take]);
         n -= take;
+        places -= Math.min(places, take * wt);
       }
       return out;
     };
     const luxLeft = Math.max(0, s.lux - s.loadedLux);
-    const plan = pick(true, Math.min(want, luxLeft));
+    const plan = pick(true, Math.min(want, Math.ceil(luxLeft / lw)), luxLeft);
     const luxN = plan.reduce((a, x) => a + x[1], 0);
-    plan.push(...pick(false, Math.min(want - luxN, s.n - s.loaded - luxLeft)));
-    const pay = (st.trade.v && st.trade.v.pay) || PAY;
+    plan.push(...pick(false, want - luxN, s.n - s.loaded - luxLeft));
     // Посол платить ×2 хвилин гри й ×3 Слави за виріб, а за повний — +25 % плати й +50 % Слави (Clicker.Envoy*).
-    const em = s.envoy ? pay.envoyMinutes || 2 : 1;
+    // «Заморська вітрина» повна: +25 % плати за кожен завантажений виріб (pay.treasureMult), у посла теж.
+    const em = (s.envoy ? pay.envoyMinutes || 2 : 1) * (pay.treasureMult || 1);
     const es = s.envoy ? pay.envoySlava || 3 : 1;
     const fullPay = s.envoy ? (pay.envoyFull == null ? 0.25 : pay.envoyFull) : pay.full;
     const fullSlava = s.envoy ? pay.envoyFullSlava || 50 : pay.fullSlava;
@@ -130,7 +135,7 @@
       if (q >= 4) sum.q4 += c;
     }
     // Сервер знає більше (інше вікно щойно щось узяло) — решту рахуємо за ціною замовлення.
-    if (sum.n < want) { sum.minutes += (want - sum.n) * s.minutes; sum.slava += (want - sum.n) * s.slavaPer; sum.n = want; }
+    if (sum.n < want) { sum.minutes += (want - sum.n) * s.minutes * (pay.treasureMult || 1); sum.slava += (want - sum.n) * s.slavaPer; sum.n = want; }
     if (s.loaded + sum.n >= s.n) { sum.minutes *= 1 + fullPay; sum.slava += Math.ceil((sum.slava * fullSlava) / 100); }
     return sum;
   }

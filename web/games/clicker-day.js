@@ -158,14 +158,16 @@
     const free = coopFree(st, c);
     const left = Math.max(0, c.vol - c.done);
     const can = st.mine && w.person && !c.fin;
-    const send = Math.min(left, free);
+    const room = c.max > 0 ? Math.max(0, c.max - c.mine) : left;
+    const send = Math.min(left, free, room);
     const mineLine = !w.person ? '' : c.mine >= c.min
       ? '<div class="small">Твій внесок: <b>' + api.num(c.mine) + '</b> ✓ <span class="muted">— на бонус вистачає</span></div>'
       : '<div class="small">Твій внесок: <b>' + api.num(c.mine) + '</b> <span class="muted">— до бонусу ще ' + api.num(c.min - c.mine) + ' (від ' + api.num(c.min) + ', це 5 %)'
         + (free + c.mine >= c.min ? ', у коморі вистачає' : free > 0 ? ', у коморі не вистачає' : '') + '</span></div>';
     const btn = !can ? '' : '<div class="clkmd-coop"><button type="button" class="clkmd-coopbtn" data-coop="' + send + '"' + (send > 0 ? '' : ' disabled') + '>'
-      + (send > 0 ? '🤝 Довезти ' + api.num(send) : 'Нема вільних') + '</button>'
-      + '<span class="small muted">вільних у коморі: ' + api.num(free) + ' (відкладене під замовлення й Толоку не чіпаю)</span></div>';
+      + (send > 0 ? '🤝 Довезти ' + api.num(send) : room <= 0 ? 'Стелю довезено' : 'Нема вільних') + '</button>'
+      + '<span class="small muted">вільних у коморі: ' + api.num(free) + ' (відкладене під замовлення й Толоку не чіпаю)'
+      + (c.max > 0 ? ' · твоя стеля ' + api.num(c.max) + ' (25 % обсягу), ще можна ' + api.num(room) : '') + '</span></div>';
     return '<div class="clkmd-wk"><div class="clkmd-wh">🤝 Спільне замовлення округи</div>'
       + '<div>' + api.esc(st, name.charAt(0).toUpperCase() + name.slice(1)) + ' якості ' + c.q + '+ — <b>' + api.num(c.vol) + '</b> шт. Везе кожен зі своєї комори, платить як село.</div>'
       + '<div class="clkmd-bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + c.vol + '" aria-valuenow="' + c.done + '"><i style="width:' + pct + '%"></i></div>'
@@ -660,7 +662,7 @@
             days: w.grow.days || 3, mine: w.grow.mine || null, board: Array.isArray(w.grow.board) ? w.grow.board : [], last: w.grow.last || null,
           } : null,
           coop: w.coop ? {
-            ware: w.coop.ware, q: w.coop.q || 3, vol: w.coop.vol || 0, done: w.coop.done || 0, mine: w.coop.mine || 0, min: w.coop.min || 0,
+            ware: w.coop.ware, q: w.coop.q || 3, vol: w.coop.vol || 0, done: w.coop.done || 0, mine: w.coop.mine || 0, min: w.coop.min || 0, max: w.coop.max || 0,
             fin: !!w.coop.fin, pct: w.coop.pct || 0, people: w.coop.people || 0,
           } : null,
         } : null;

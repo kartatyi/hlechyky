@@ -857,8 +857,24 @@ public sealed partial class Clicker : Game
     /// (10.10, заміри smaug і владіка), і купець, Око, гості, села, купці хати, віз, гостинці платили копійки. Мірка
     /// своя в кожного: багатий не ламає гру бідному, а бідному вона й так менша.
     /// </summary>
-    public double PlayMinute =>
-        60 * (FallGain(plain: true) / FallWaitAvg + ClickBase * MomentumMax * (1 + LuckyShare * (LuckyMult - 1)) * PlayCps);
+    public double PlayMinute
+    {
+        get
+        {
+            // Рецензія v13: мірка плати — без тимчасових бафів («Свято», фестиваль Толоки, підбадьорення цеху), інакше
+            // все, що платиться хвилинами гри, можна свідомо забрати під ×2/×4. Постійні множники й «Вітрила» лишаються.
+            var was = _plainMeasure;
+            _plainMeasure = true;
+            try
+            {
+                return 60 * (FallGain(plain: true) / FallWaitAvg + ClickBase * MomentumMax * (1 + LuckyShare * (LuckyMult - 1)) * PlayCps);
+            }
+            finally { _plainMeasure = was; }
+        }
+    }
+
+    /// <summary>Вимикає тимчасові бафи в <see cref="AllMult"/> лише на час обчислення <see cref="PlayMinute"/>.</summary>
+    bool _plainMeasure;
 
     /// <summary>Стільки хвилин гри — у глеках.</summary>
     internal double PlayPay(double minutes) => ToPots(PlayMinute * minutes);

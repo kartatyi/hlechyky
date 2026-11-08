@@ -74,7 +74,7 @@ public sealed partial class Clicker
     /// <summary>
     /// Довезти до спільного замовлення округи: <c>{ n }</c> (немає — скільки вільного є, але не більше, ніж ще бракує). Беремо лише
     /// те, чого ніхто не чекає (<see cref="SparePlan"/>: замовлення сіл і гостей, майстерштук, Толока), платимо як село —
-    /// «як є», без торгу (<see cref="MktMult"/> і підлога за хвилинами гри).
+    /// «як є», без торгу (<see cref="MktMult"/>), але без підлоги за хвилинами гри; внесок одного — до 25 % обсягу.
     /// </summary>
     ActResult GuildCoop(JsonElement payload, DateTimeOffset now)
     {
@@ -85,7 +85,9 @@ public sealed partial class Clicker
         var left = order.Volume - order.Done;
         var raw = Num(payload, "n");
         if (raw is <= 0) return ActResult.Fail("Скільки довезти — хоч один");
-        var want = (int)Math.Min(raw ?? int.MaxValue, left);
+        var room = svc.CoopRoom(nick, now);
+        if (room <= 0) return ActResult.Fail("Ти вже довіз свою частку — стеля внеску одного гончара 25 % обсягу, решту довезуть інші");
+        var want = (int)Math.Min(Math.Min(raw ?? int.MaxValue, left), room);
         var plan = SparePlan(it => it.Ware == order.Ware && it.Quality >= order.Quality, want, new TakeFor("coop"));
         var free = plan.Sum(x => x.N);
         if (free <= 0)
@@ -104,9 +106,10 @@ public sealed partial class Clicker
             rest -= t;
         }
         // Плата — як за замовлення села «як є» (ClickerFair.cs): множник дзвінкого виробу без шани села й торгу.
+        // Рецензія v13: лише за ціною виробу, без підлоги за хвилинами гри (не як село) — довіз не залежить від «хвилини гри».
         var mult = FairOrderMult + FairOrderStep * ((order.Quality >= 2 ? 1 : 0) + (order.Quality >= 3 ? 1 : 0));
         var row = new FairOrderRow(0, "", -1, order.Ware, "", order.Quality, accepted, mult, now, now);
-        var pay = Math.Max(1, ToPots(Math.Max(value * MktMult(row), MktPlayPay(row))));
+        var pay = Math.Max(1, ToPots(value * MktMult(row)));
         Add(pay);
         var mine = svc.CoopMine(nick, now);
         var min = ClickerWeekService.MinPart(order.Volume, svc.O.CoopMinShare);

@@ -32,7 +32,7 @@ public sealed partial class Clicker
     readonly List<string> _feastToasts = [];
 
     /// <summary>×2 до всього, поки триває «Свято».</summary>
-    double FeastAllMult => Ctx.Clock.UtcNow < _feastUntil ? FeastMult : 1;
+    double FeastAllMult => !_plainMeasure && Ctx.Clock.UtcNow < _feastUntil ? FeastMult : 1;
 
     /// <summary>×3 до глеків з полиці, поки триває «Щасливий кошик».</summary>
     double BasketFallMult => Ctx.Clock.UtcNow < _basketUntil ? BasketMult : 1;

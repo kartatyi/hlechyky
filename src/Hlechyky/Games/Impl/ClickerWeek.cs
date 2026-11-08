@@ -32,6 +32,8 @@ public sealed class ClickerWeekOptions
     public int CoopQuality { get; set; } = 3;
     /// <summary>Скільки від обсягу мусить довезти гончар, щоб дістати бонус.</summary>
     public double CoopMinShare { get; set; } = 0.05;
+    /// <summary>Стеля внеску одного гончара — частка обсягу (рецензія v13: один сильний гравець не закриває замовлення сам).</summary>
+    public double CoopMaxShare { get; set; } = 0.25;
     public double CoopBonusPct { get; set; } = 10;
 
     /// <summary>Скільки діб діють нагороди тижня від підбиття.</summary>
@@ -273,8 +275,23 @@ public sealed class ClickerWeekService : BackgroundService
     /// <summary>Скільки найменше мусить довезти гончар, щоб дістати бонус.</summary>
     public static int MinPart(int volume, double share) => Math.Max(1, (int)Math.Ceiling(volume * share - 1e-9));
 
+    /// <summary>Стеля внеску одного гончара: не менша за поріг бонусу.</summary>
+    public static int MaxPart(int volume, double share, double minShare) =>
+        Math.Max(MinPart(volume, minShare), (int)Math.Floor(volume * share + 1e-9));
+
+    /// <summary>Скільки ще може довезти цей гончар до своєї стелі (0 — немає замовлення чи стеля вичерпана).</summary>
+    public int CoopRoom(string nick, DateTimeOffset now)
+    {
+        var week = WeekOf(now);
+        var key = Auth.NickKey(nick);
+        lock (_gate)
+            return _coops.TryGetValue(week, out var c)
+                ? Math.Max(0, MaxPart(c.Volume, O.CoopMaxShare, O.CoopMinShare) - c.Parts.GetValueOrDefault(key).N)
+                : 0;
+    }
+
     /// <summary>
-    /// Записати довезене: не більше, ніж ще бракує до обсягу. Повертає, скільки прийнято (0 — замовлення нема, вже виконане, тиждень
+    /// Записати довезене: не більше, ніж ще бракує до обсягу, і не вище за стелю внеску одного гончара. Повертає, скільки прийнято (0 — замовлення нема, вже виконане, тиждень
     /// скінчився чи гончар не людина) — стільки гра й забирає з комори. Останнє довезене закриває замовлення й пише рядок у Балачки.
     /// </summary>
     public int CoopAdd(string nick, int n, DateTimeOffset now)
@@ -289,6 +306,7 @@ public sealed class ClickerWeekService : BackgroundService
         {
             if (!_coops.TryGetValue(week, out var c) || c.Settled || c.Done != default || Ends(week) <= now) return 0;
             take = Math.Min(n, c.Volume - c.Total);
+            take = Math.Min(take, MaxPart(c.Volume, O.CoopMaxShare, O.CoopMinShare) - c.Parts.GetValueOrDefault(key).N);
             if (take <= 0) return 0;
             c.Parts[key] = (nick, c.Parts.GetValueOrDefault(key).N + take);
             c.Dirty = true;
@@ -395,7 +413,7 @@ public sealed class ClickerWeekService : BackgroundService
                     coop = new
                     {
                         ware = c.Ware, q = c.Quality, vol = c.Volume, done = c.Total, mine = c.Parts.GetValueOrDefault(key).N,
-                        min = MinPart(c.Volume, o.CoopMinShare), fin = c.Done != default, pct = o.CoopBonusPct,
+                        min = MinPart(c.Volume, o.CoopMinShare), max = MaxPart(c.Volume, o.CoopMaxShare, o.CoopMinShare), fin = c.Done != default, pct = o.CoopBonusPct,
                         people = c.Parts.Count,
                     };
             }

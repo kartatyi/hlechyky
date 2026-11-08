@@ -137,7 +137,7 @@ public sealed partial class Clicker
     }
 
     /// <summary>Похвала друга: +10 % до всього, поки не вистигла (§E.2).</summary>
-    double GuildAllMult => Ctx.Clock.UtcNow < _cheerUntil ? ClickerGuildService.CheerMult : 1;
+    double GuildAllMult => !_plainMeasure && Ctx.Clock.UtcNow < _cheerUntil ? ClickerGuildService.CheerMult : 1;
 
     /// <summary>Підмайстер друга в гостях: робота ліплення вдвічі менша, поки він не пішов (§E.2).</summary>
     internal double GuildWorkMult => Ctx.Clock.UtcNow < _lendUntil ? ClickerGuildService.LendWork : 1;

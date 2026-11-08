@@ -187,7 +187,7 @@ public sealed partial class Clicker
 
     bool TolokaHas(string key) => _tBuilt.Contains(key);
 
-    double TolokaAllMult => (1 + TolokaAllBonus * _tBuilt.Count) * (Ctx.Clock.UtcNow < _festUntil ? FestivalMult : 1);
+    double TolokaAllMult => (1 + TolokaAllBonus * _tBuilt.Count) * (!_plainMeasure && Ctx.Clock.UtcNow < _festUntil ? FestivalMult : 1);
     double TolokaDryMult => TolokaHas("well") ? WellDryMult : 1;
     double TolokaWindWait => TolokaHas("mill") ? MillWindWait : 1;
     int TolokaStoreExtra => TolokaHas("forge") ? ForgeStore : 0;

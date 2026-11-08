@@ -39,8 +39,10 @@ public sealed partial class ClickerGuildService
         {
             var s = S();
             if (!s.Boosts.TryGetValue(toKey, out var box)) s.Boosts[toKey] = box = [];
+            // Рецензія v13: повна скринька не губить подарунок мовчки (колись обрізала найстаріше) — відмовляємо дарувальнику,
+            // бажання лишається в нього.
+            if (box.Count >= MailMax) return $"Скринька {who} повна — спробуй пізніше";
             box.Add(new GuildBoost(fromNick.Trim(), WishPrefix + wish, 0, now));
-            if (box.Count > MailMax) box.RemoveRange(0, box.Count - MailMax);
             Save();
         }
         Ring(who, "wish", fromNick);
