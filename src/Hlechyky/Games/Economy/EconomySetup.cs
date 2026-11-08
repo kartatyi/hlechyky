@@ -37,6 +37,7 @@ public static class EconomySetup
         services.AddSingleton<EconomyTicker>();
         services.AddHostedService(sp => sp.GetRequiredService<EconomyTicker>());
         services.AddSingleton<PlayClock>();
+        services.AddSingleton<IPlayTime>(sp => sp.GetRequiredService<PlayClock>());   // нічна година відбою (Curfew)
         services.AddHostedService(sp => sp.GetRequiredService<PlayClock>());
         // сальдо азарту (пакет 5): поставив / повернув у слотах і Лелеці — сьогодні й за весь час, з пам'яті
         services.AddSingleton(sp => new AzartSaldo(sp.GetService<Db>(), sp.GetRequiredService<Economy>(),

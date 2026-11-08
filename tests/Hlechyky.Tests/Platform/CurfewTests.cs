@@ -1,4 +1,5 @@
 using Hlechyky.Games;
+using Hlechyky.Games.Economy;
 using Hlechyky.Tests.Support;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -7,15 +8,134 @@ namespace Hlechyky.Tests.Platform;
 
 public class CurfewTests
 {
-    // 24 вересня 00:30 за Києвом (UTC+3 влітку)
+    // 24 вересня 00:30 за Києвом (UTC+3 влітку), четвер
     static readonly DateTimeOffset Night = new(2026, 9, 23, 21, 30, 0, TimeSpan.Zero);
     static readonly DateTimeOffset Midnight = new(2026, 9, 23, 21, 0, 0, TimeSpan.Zero);
+    const string NightDay = "2026-09-24";
 
-    static (Curfew Curfew, FakeClock Clock) Make(DateTimeOffset now, string text = "", string games = "clicker")
+    /// <summary>Скільки хто де «награв» — замість PlayClock.</summary>
+    sealed class FakePlayTime : IPlayTime
+    {
+        public readonly Dictionary<(string Nick, string Place, string Day), int> At = [];
+        public int Seconds(string nick, string place, string day) => At.GetValueOrDefault((Auth.NickKey(nick), place, day));
+        public void Played(string nick, string game, double minutes, string day = NightDay) =>
+            At[(Auth.NickKey(nick), PlayClock.Game(game), day)] = (int)(minutes * 60);
+    }
+
+    /// <param name="minutes">Нічна година; 0 — ніч зачинена вся (як відбій до 08.11) — так перевіряємо самі правила «кого й коли».</param>
+    static (Curfew Curfew, FakeClock Clock) Make(DateTimeOffset now, string text = "", string games = "clicker", int minutes = 0, FakePlayTime? played = null)
     {
         var clock = new FakeClock { UtcNow = now };
-        var options = new FixedOptions<CurfewOptions>(new CurfewOptions { Nicks = ["владік", "микола ( справжній )"], Games = games, Text = text });
-        return (new Curfew(options, new EphemeralDataProtectionProvider(), clock), clock);
+        var options = new FixedOptions<CurfewOptions>(new CurfewOptions
+        {
+            Nicks = ["владік", "микола ( справжній )"], Games = games, Text = text, Minutes = minutes,
+        });
+        return (new Curfew(options, new EphemeralDataProtectionProvider(), clock, played ?? new FakePlayTime()), clock);
+    }
+
+    static object? Prop(object o, string name) => o.GetType().GetProperty(name)!.GetValue(o);
+
+    static DefaultHttpContext AccountCtx(string nick)
+    {
+        var c = new DefaultHttpContext();
+        c.Items["account"] = new Account(nick, "", "salt", "member");
+        c.Items["nick"] = nick;
+        return c;
+    }
+
+    [Fact]
+    public void Night_hour_is_open_until_it_is_played_out()
+    {
+        var played = new FakePlayTime();
+        var (curfew, clock) = Make(Night, minutes: 60, played: played);
+        var wheel = new RoomHarness("clicker");
+        Assert.True(wheel.Solo("владік").Ok);
+
+        played.Played("владік", "clicker", 59);
+        Assert.Equal(60, curfew.Left("владік", null));
+        Assert.Null(curfew.Refusal("владік", null, "clicker"));
+        Assert.Null(curfew.MoveRefusal("владік", null, wheel.Room));
+
+        played.Played("владік", "clicker", 60);
+        clock.Advance(Curfew.UsedFresh.TotalSeconds + 1);   // порахована година трохи тримається — питають на кожен клік
+        Assert.Equal(0, curfew.Left("владік", null));
+        Assert.Contains("Нічна година вийшла", curfew.Refusal("владік", null, "clicker"));
+        Assert.StartsWith("🌙", curfew.MoveRefusal("владік", null, wheel.Room));
+
+        // у кожного своя година; кого відбій не стосується — лічильник не питаємо зовсім
+        Assert.Null(curfew.Refusal("микола ( справжній )", null, "clicker"));
+        played.Played("Назар", "clicker", 300);
+        Assert.Null(curfew.Refusal("Назар", null, "clicker"));
+        Assert.Null(curfew.Left("Назар", null));
+    }
+
+    [Fact]
+    public void Night_hour_counts_only_closed_games_since_midnight()
+    {
+        var played = new FakePlayTime();
+        var (curfew, _) = Make(Night, minutes: 60, played: played);
+        played.Played("владік", "chess", 120);                         // інші ігри — не нічна година
+        played.Played("владік", "clicker", 300, day: "2026-09-23");   // учорашній день — до опівночі
+        Assert.Equal(3600, curfew.Left("владік", null));
+        Assert.Null(curfew.Refusal("владік", null, "clicker"));
+        Assert.Null(curfew.Refusal("владік", null, "chess"));
+    }
+
+    [Fact]
+    public void Night_hour_does_not_touch_day_or_weekend()
+    {
+        var played = new FakePlayTime();
+        var day = new DateTimeOffset(2026, 9, 24, 9, 0, 0, TimeSpan.Zero);   // четвер 12:00
+        var (curfew, _) = Make(day, minutes: 60, played: played);
+        played.Played("владік", "clicker", 300);
+        Assert.Null(curfew.Left("владік", null));
+        Assert.Null(curfew.Refusal("владік", null, "clicker"));
+
+        var sat = new DateTimeOffset(2026, 10, 9, 21, 30, 0, TimeSpan.Zero);   // субота 10.10, 00:30
+        played.Played("владік", "clicker", 300, day: "2026-10-10");
+        var (weekend, _) = Make(sat, minutes: 60, played: played);
+        Assert.Null(weekend.Refusal("владік", null, "clicker"));
+    }
+
+    [Fact]
+    public void Night_before_midnight_is_not_counted_yet()
+    {
+        var played = new FakePlayTime();
+        var evening = new DateTimeOffset(2026, 9, 23, 20, 30, 0, TimeSpan.Zero);   // середа 23:30, ніч з 23:00
+        var options = new FixedOptions<CurfewOptions>(new CurfewOptions { Nicks = ["владік"], From = 23, To = 6, Minutes = 60 });
+        var curfew = new Curfew(options, new EphemeralDataProtectionProvider(), new FakeClock { UtcNow = evening }, played);
+        played.Played("владік", "clicker", 300, day: "2026-09-23");   // увесь день до вечора
+        Assert.Equal(3600, curfew.Left("владік", null));
+    }
+
+    [Fact]
+    public void Night_hour_is_for_accounts_only_guests_in_their_browser_still_sleep()
+    {
+        var (curfew, _) = Make(Night, minutes: 60);
+        var mine = AccountCtx("владік");
+        var me = curfew.ForMe(mine)!;
+        Assert.Equal(60, Prop(me, "minutes"));
+        Assert.Equal(3600, Prop(me, "left"));
+        Assert.Null(curfew.Refusal("владік", mine, "clicker"));
+
+        var guest = new DefaultHttpContext();
+        guest.Request.Headers.Cookie = mine.Response.Headers.SetCookie.ToString().Split(';')[0];
+        guest.Items["nick"] = "гість Влад";
+        Assert.Equal(0, curfew.Left("гість Влад", guest));
+        Assert.Contains("лише з акаунта", curfew.Refusal("гість Влад", guest, "clicker"));
+        var theirs = curfew.ForMe(guest)!;
+        Assert.Equal(0, Prop(theirs, "minutes"));
+        Assert.Equal(Curfew.GuestText, Prop(theirs, "text"));
+    }
+
+    [Fact]
+    public void Me_says_left_only_at_night()
+    {
+        var (curfew, _) = Make(new DateTimeOffset(2026, 9, 24, 9, 0, 0, TimeSpan.Zero), minutes: 60);
+        var me = curfew.ForMe(AccountCtx("владік"))!;
+        Assert.Null(Prop(me, "left"));
+        Assert.Equal(60, Prop(me, "minutes"));
+        Assert.Contains("Нічна година вийшла", (string)Prop(me, "text")!);
     }
 
     [Fact]
@@ -160,7 +280,7 @@ public class CurfewTests
         {
             Nicks = ["владік", "не дефолтний розробник"], NoticeV = "v1", Notice = "Помилувано!", NoticeNicks = ["Владік"],
         });
-        var curfew = new Curfew(options, new EphemeralDataProtectionProvider(), new FakeClock { UtcNow = Night });
+        var curfew = new Curfew(options, new EphemeralDataProtectionProvider(), new FakeClock { UtcNow = Night }, new FakePlayTime());
         object? NoticeOf(string nick)
         {
             var c = new DefaultHttpContext();

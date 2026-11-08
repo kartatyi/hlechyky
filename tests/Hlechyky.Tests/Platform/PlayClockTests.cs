@@ -51,6 +51,25 @@ public class PlayClockTests
     }
 
     [Fact]
+    public void Seconds_today_add_written_unwritten_and_running()
+    {
+        using var rig = new Rig();
+        var today = Days.Of(rig.Eco.Clock.UtcNow);
+        rig.Clock.Set("c1", "Оля", W, "game:clicker");
+        rig.Wait(70);
+        rig.Clock.Flush();                                   // 70 — уже в базі
+        rig.Wait(20.5);
+        Assert.Equal(90, rig.Clock.Seconds("Оля", "game:clicker", today));   // + відрізок, що йде зараз
+
+        rig.Clock.Set("c1", "Оля", W, "lobby");             // вийшла з кола — 20,5 с чекають запису
+        rig.Wait(300);
+        Assert.Equal(90, rig.Clock.Seconds("оля", "game:clicker", today));
+        Assert.Equal(300, rig.Clock.Seconds("оля", "lobby", today));
+        Assert.Equal(0, rig.Clock.Seconds("оля", "lobby", "2000-01-01"));   // інший день — без живого відрізка
+        Assert.Equal(0, rig.Clock.Seconds("Назар", "game:clicker", today));
+    }
+
+    [Fact]
     public void Two_tabs_in_the_same_place_count_once()
     {
         using var rig = new Rig();

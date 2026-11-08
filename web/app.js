@@ -4758,9 +4758,12 @@
   }
 
   // ---------- нічний відбій ----------
-  // Кого він стосується, каже /api/me (night: { from, to, days, text, notice }), решті там null. Котра година й день
-  // у Києві — рахуємо тут і щопівхвилини: плашка має з'явитись опівночі й зникнути о шостій без перезавантаження.
-  // days — у які ночі (день ранку, 0 — неділя), null — щоночі. Не пускає за стіл однаково сервер; плашка лише каже, чому.
+  // Кого він стосується, каже /api/me (night: { from, to, days, minutes, left, text, notice }), решті там null. Котра
+  // година й день у Києві — рахуємо тут і щопівхвилини: плашка має з'явитись опівночі й зникнути о шостій без
+  // перезавантаження. days — у які ночі (день ранку, 0 — неділя), null — щоночі. minutes — нічна година (хвилин активної
+  // гри за ніч, 0 — ніч зачинена вся), left — скільки секунд її лишилось (null — /api/me питали ще не вночі): поки є,
+  // плашка пише «лишилось N хв», вийшла — text. Уночі плашка щопівхвилини перепитує /api/night. Не пускає за стіл
+  // однаково сервер; плашка лише каже, чому.
   const WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   function kyivNow() {
     for (const timeZone of ['Europe/Kyiv', 'Europe/Kiev']) {
@@ -4781,10 +4784,37 @@
       const morning = n.from < n.to || h < n.to ? d : (d + 1) % 7;   // ночі на суботу й неділю — вихідні
       on = n.days.includes(morning);
     }
-    if (on) $('nightBar').querySelector('.nb-text').textContent = n.text;
+    if (on) $('nightBar').querySelector('.nb-text').textContent = nightText(n);
     $('nightBar').hidden = !on;
+    return on;
   }
-  setInterval(paintNight, 30000);
+  function nightLeft(n) {
+    if (!(n.minutes > 0)) return 0;
+    return typeof n.left === 'number' ? n.left : n.minutes * 60;   // ще не перепитали — уся година, сервер поправить
+  }
+  function nightText(n) {
+    const left = nightLeft(n);
+    if (left <= 0) return n.text;
+    return 'Нічна година: у Гончарному колі лишилось ' + Math.max(1, Math.ceil(left / 60)) + ' хв із ' + n.minutes
+      + '. Рахується, лише поки крутиш, — а тоді до ранку спати.';
+  }
+  let nightWarned = false;
+  async function nightTick() {
+    if (!paintNight() || document.hidden) return;
+    try {
+      const r = await api('GET', '/api/night');
+      if (!r || !('night' in r)) return;
+      me.night = r.night || null;
+      if (!paintNight()) return;
+      const left = nightLeft(me.night);
+      if (left > 300 || left <= 0) nightWarned = false;
+      else if (!nightWarned) {
+        nightWarned = true;
+        toast('🌙 Лишилось ' + Math.ceil(left / 60) + ' хв нічної години — доліплюй, Глек уже позіхає.');
+      }
+    } catch { /* сервер мовчить — перепитаємо за пів хвилини */ }
+  }
+  setInterval(nightTick, 30000);
 
   // Указ Дядька Глека (night.notice: { v, title, text }) — велике вікно тим, кого відбій стосується, один раз на v.
   // «Бачив» пам'ятає сервер (/api/games/news, ключ curfew-notice), тож з телефона вдруге не вискочить.

@@ -32,6 +32,9 @@ public static class Endpoints
     {
         var api = app.MapGroup("/api");
 
+        // нічна година відбою: плашка вночі раз на пів хвилини перепитує, скільки лишилось (лише ті, кому /api/me дав night)
+        api.MapGet("/night", (HttpContext c, Curfew curfew) => new { night = curfew.ForMe(c) });
+
         api.MapGet("/me", (HttpContext c, TrackBans bans, IGoogleVerifier google, Curfew curfew, IOptionsMonitor<ShardShopOptions> shop,
             IOptionsMonitor<Games.GamesOptions> games, IOptionsMonitor<Padel.PadelOptions> padel, IOptionsMonitor<Bets.BetsOptions> bets,
             IOptionsMonitor<Games.Impl.SlotsOptions> slots,

@@ -1,4 +1,5 @@
 using Hlechyky.Games;
+using Hlechyky.Games.Economy;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 
@@ -21,6 +22,12 @@ public sealed class CurfewOptions
     public int From { get; set; } = 0;
     public int To { get; set; } = 6;
     /// <summary>
+    /// Нічна година: скільки хвилин активної гри за ніч у цих іграх (рахує PlayClock, як вкладка «⏱ Час»: у колі — лише
+    /// поки клікаєш). Лічильник — київська доба ранку, тобто від опівночі; якщо ніч починається раніше (From більше
+    /// за To), час до опівночі не рахується. 0 — ніч зачинена вся, як був відбій до 08.11.
+    /// </summary>
+    public int Minutes { get; set; } = 60;
+    /// <summary>
     /// У які ночі відбій — дні тижня ранку, яким ніч закінчується (mon,tue,…,sun через кому). Типово будні: ночі
     /// на суботу й неділю вільні. Порожньо — щоночі.
     /// </summary>
@@ -34,37 +41,56 @@ public sealed class CurfewOptions
     /// <summary>Кому з <see cref="Nicks"/> показати указ. Порожньо — усім зі списку.</summary>
     public List<string> NoticeNicks { get; set; } = [];
     public string Notice { get; set; } = "";
-    /// <summary>Що бачать ті, кого це стосується: плашка на сайті й відмова в грі. Порожньо — загальний текст.</summary>
+    /// <summary>
+    /// Що бачать ті, кого це стосується, коли нічна година вийшла: плашка на сайті й відмова в грі. Поки година ще
+    /// є, плашка сама пише, скільки лишилось. Порожньо — загальний текст.
+    /// </summary>
     public string Text { get; set; } = "";
 }
 
 /// <summary>
 /// Нічний відбій: з <see cref="CurfewOptions.From"/> до <see cref="CurfewOptions.To"/> за київським часом гравцям
-/// зі списку зачинено ігри з <see cref="CurfewOptions.Games"/> (типово — лише Гончарне коло): ні відкрити, ні сісти,
-/// ні почати, ні ходити. Решта ігор, радіо, балачки й усі інші люди живуть як завжди. Якщо в списку колись опиниться
-/// гра на кількох, партію, яку почали ще до відбою разом із кимось, кого він не стосується, дограємо — інакше
-/// заборона двох зупинила б гру всім за тим столом.
+/// зі списку в іграх з <see cref="CurfewOptions.Games"/> (типово — лише Гончарне коло) дано нічну годину
+/// (<see cref="CurfewOptions.Minutes"/> активної гри). Вийшла — до ранку ні відкрити, ні сісти, ні почати, ні ходити.
+/// Решта ігор, радіо, балачки й усі інші люди живуть як завжди. Якщо в списку колись опиниться гра на кількох,
+/// партію, яку почали ще до відбою разом із кимось, кого він не стосується, дограємо — інакше заборона двох
+/// зупинила б гру всім за тим столом.
 /// Вийти з акаунта й грати гостем не вийде: браузер гравця зі списку дістає позначку-куку, і гість із нею вночі
-/// теж не грає (інакше гостьове добро зранку переїхало б на акаунт — див. Accounts.Adopt).
+/// в ці ігри не грає зовсім — нічна година лише з акаунта (інакше гостьове добро зранку переїхало б на акаунт —
+/// див. Accounts.Adopt, — а кожен вихід з акаунта давав би ще одну годину).
 /// </summary>
-public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtectionProvider protection, IClock clock)
+public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtectionProvider protection, IClock clock, IPlayTime played)
 {
     public const string Cookie = "hlechyky_night";
+
+    /// <summary>Скільки тримаємо пораховану нічну годину: відмова питає на кожен клік кола, а база змінюється раз на хвилину.</summary>
+    public static readonly TimeSpan UsedFresh = TimeSpan.FromSeconds(10);
 
     CurfewOptions O => options.CurrentValue;
     IDataProtector Protector => protection.CreateProtector("hlechyky.night");
 
-    /// <summary>Що кажемо гравцеві під відбоєм — і на плашці, і у відмові.</summary>
-    public string Text => string.IsNullOrWhiteSpace(O.Text)
-        ? $"Пора спати! У будні з {O.From:00}:00 до {O.To:00}:00 Гончарне коло для тебе зачинене. Це нічне правило лише для кількох гравців — решта грає як звичайно."
-        : O.Text.Trim();
+    readonly object _lock = new();
+    readonly Dictionary<string, (DateTimeOffset At, int Seconds)> _used = [];
 
-    string Refused => "🌙 " + Text;
+    /// <summary>Нічна година словами: «година», «2 год», «30 хв».</summary>
+    string Hour => O.Minutes % 60 == 0 ? (O.Minutes == 60 ? "година" : $"{O.Minutes / 60} год") : $"{O.Minutes} хв";
+
+    /// <summary>Що кажемо гравцеві, коли нічна година вийшла, — і на плашці, і у відмові.</summary>
+    public string Text => !string.IsNullOrWhiteSpace(O.Text) ? O.Text.Trim()
+        : O.Minutes > 0
+            ? $"Пора спати! Нічна година вийшла: у будні з {O.From:00}:00 до {O.To:00}:00 Гончарне коло для тебе — лише {Hour} гри за ніч. Це нічне правило лише для кількох гравців — решта грає як звичайно."
+            : $"Пора спати! У будні з {O.From:00}:00 до {O.To:00}:00 Гончарне коло для тебе зачинене. Це нічне правило лише для кількох гравців — решта грає як звичайно.";
+
+    /// <summary>Гість у браузері, де заходив хтось зі списку: уночі коло лише з акаунта.</summary>
+    public const string GuestText = "Уночі Гончарне коло в цьому браузері — лише з акаунта: увійди, і Глек порахує твою нічну годину.";
+
+    string Refused(string? nick) => "🌙 " + (Listed(nick) ? Text : GuestText);
 
     /// <summary>Чи зачиняє відбій цю гру.</summary>
     public bool Covers(string? gameId) =>
-        !string.IsNullOrEmpty(gameId)
-        && O.Games.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Contains(gameId, StringComparer.OrdinalIgnoreCase);
+        !string.IsNullOrEmpty(gameId) && GameIds.Contains(gameId, StringComparer.OrdinalIgnoreCase);
+
+    string[] GameIds => O.Games.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>Чи стоїть нік у списку (котра зараз година — байдуже).</summary>
     public bool Listed(string? nick)
@@ -116,17 +142,50 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
         return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(start, Days.Kyiv), TimeSpan.Zero);
     }
 
+    /// <summary>
+    /// Скільки секунд нічної години гравець уже витратив: активний час у зачинених іграх за київську добу ранку
+    /// (від опівночі). Вечірня частина ночі до опівночі (From більше за To) не рахується. Тримаємо
+    /// <see cref="UsedFresh"/>: відмову питають на кожен клік.
+    /// </summary>
+    public int Used(string? nick)
+    {
+        var now = clock.UtcNow;
+        var key = Auth.NickKey(nick);
+        if (key.Length == 0) return 0;
+        lock (_lock)
+            if (_used.TryGetValue(key, out var hit) && now >= hit.At && now - hit.At < UsedFresh) return hit.Seconds;
+        var seconds = 0;
+        if (!(O.From > O.To && TimeZoneInfo.ConvertTime(now, Days.Kyiv).Hour >= O.From))
+        {
+            var day = Days.Of(now);
+            foreach (var game in GameIds) seconds += played.Seconds(nick!, PlayClock.Game(game), day);
+        }
+        lock (_lock) _used[key] = (now, seconds);
+        return seconds;
+    }
+
+    /// <summary>
+    /// Скільки секунд нічної години лишилось цьому гравцеві просто зараз; null — зараз не ніч або відбій його не
+    /// стосується. Гостеві в позначеному браузері й за <see cref="CurfewOptions.Minutes"/> = 0 — одразу 0.
+    /// </summary>
+    public int? Left(string? nick, HttpContext? http)
+    {
+        if (NightStart() is null || !Applies(nick, http)) return null;
+        if (O.Minutes <= 0 || !Listed(nick)) return 0;
+        return Math.Max(0, O.Minutes * 60 - Used(nick));
+    }
+
     /// <summary>Відкрити, сісти, почати, ще раз у грі <paramref name="gameId"/>: текст відмови, якщо цьому гравцеві зараз не можна; null — можна.</summary>
     public string? Refusal(string nick, HttpContext? http, string? gameId) =>
-        Covers(gameId) && NightStart() is not null && Applies(nick, http) ? Refused : null;
+        Covers(gameId) && Left(nick, http) == 0 ? Refused(nick) : null;
 
     /// <summary>Хід чи ввід за столом <paramref name="room"/>. Те саме, що <see cref="Refusal"/>, але партію до ночі з іншими дограємо.</summary>
     public string? MoveRefusal(string nick, HttpContext? http, Room? room)
     {
-        if (room is null || !Covers(room.Info.Id) || NightStart() is not { } start || !Applies(nick, http)) return null;
+        if (room is null || !Covers(room.Info.Id) || NightStart() is not { } start || Left(nick, http) != 0) return null;
         lock (room.Sync)
             if (Finishing(room.Status, room.Info.Solo, room.StartedAt, room.Seats, start)) return null;
-        return Refused;
+        return Refused(nick);
     }
 
     /// <summary>Партія, яку дограємо: іде, не соло, почалась до ночі, і за столом є хтось, кого відбій не стосується.</summary>
@@ -134,9 +193,10 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
         status == RoomStatus.Playing && !solo && startedAt < nightStart && seats.Any(s => s is not null && !Listed(s));
 
     /// <summary>
-    /// Для /api/me: тим, кого відбій стосується, — години й текст плашки (котра зараз година, браузер рахує сам,
-    /// щоб плашка з'являлась опівночі без перезавантаження); решті — null, про чужий відбій їм знати нічого.
-    /// Заодно ставить браузерові гравця зі списку позначку на рік.
+    /// Для /api/me і /api/night: тим, кого відбій стосується, — години, нічна година й текст плашки (котра зараз
+    /// година, браузер рахує сам, щоб плашка з'являлась опівночі без перезавантаження; скільки лишилось — <c>left</c>,
+    /// секунди, null — зараз не ніч, плашка вночі перепитує /api/night); решті — null, про чужий відбій їм знати
+    /// нічого. Заодно ставить браузерові гравця зі списку позначку на рік.
     /// </summary>
     public object? ForMe(HttpContext c)
     {
@@ -148,11 +208,14 @@ public sealed class Curfew(IOptionsMonitor<CurfewOptions> options, IDataProtecti
                 Expires = DateTimeOffset.UtcNow.AddDays(365),
             });
         if (!Applies(nick, c)) return null;
+        var listed = Listed(nick);
         return new
         {
-            from = O.From, to = O.To, text = Text,
+            from = O.From, to = O.To, text = listed ? Text : GuestText,
+            minutes = listed ? Math.Max(0, O.Minutes) : 0,   // 0 — нічної години нема, ніч зачинена вся
+            left = Left(nick, c),
             days = ParseDays(O.Days)?.Select(d => (int)d).Order().ToArray(),   // 0 — неділя, як getDay() у браузері; null — щоночі
-            notice = Listed(nick) && NoticeFor(nick) && !string.IsNullOrWhiteSpace(O.Notice) && !string.IsNullOrWhiteSpace(O.NoticeV)
+            notice = listed && NoticeFor(nick) && !string.IsNullOrWhiteSpace(O.Notice) && !string.IsNullOrWhiteSpace(O.NoticeV)
                 ? new { v = O.NoticeV.Trim(), title = O.NoticeTitle.Trim(), text = O.Notice.Trim() } : null,
         };
     }

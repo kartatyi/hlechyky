@@ -1,5 +1,11 @@
 namespace Hlechyky.Games.Economy;
 
+/// <summary>Скільки секунд нік провів у місці за київський день — з базою, ще не записаним і тим, що йде просто зараз.</summary>
+public interface IPlayTime
+{
+    int Seconds(string nick, string place, string day);
+}
+
 /// <summary>
 /// Хто де скільки часу провів. Кожна вкладка має кілька незалежних каналів: <see cref="Where"/> — де саме людина
 /// зараз (гра, глядач, лобі, решта сайту), <see cref="Site"/> — чи вона взагалі на сайті, <see cref="Listen"/> —
@@ -8,7 +14,7 @@ namespace Hlechyky.Games.Economy;
 /// один час, а не подвійний. Секунди копляться в пам'яті й раз на хвилину лягають у economy_counters
 /// (<see cref="EconomyStore.TimePrefix"/>, по київських днях), тож падіння сервера губить щонайбільше хвилину.
 /// </summary>
-public sealed class PlayClock(EconomyStore store, IClock clock, ILogger<PlayClock> log) : BackgroundService
+public sealed class PlayClock(EconomyStore store, IClock clock, ILogger<PlayClock> log) : BackgroundService, IPlayTime
 {
     public static readonly TimeSpan Period = TimeSpan.FromMinutes(1);
 
@@ -94,6 +100,24 @@ public sealed class PlayClock(EconomyStore store, IClock clock, ILogger<PlayCloc
     {
         var k = (at.Key, at.Place, Days.Of(now));
         _owed[k] = _owed.GetValueOrDefault(k) + seconds;
+    }
+
+    /// <summary>
+    /// Секунди ніка <paramref name="nick"/> у місці <paramref name="place"/> за день <paramref name="day"/>: записане в
+    /// базу, ще не записане й відрізок, що йде зараз (його рахуємо лише за сьогодні). Нічна година відбою — звідси.
+    /// </summary>
+    public int Seconds(string nick, string place, string day)
+    {
+        var key = Economy.Key(nick);
+        if (key.Length == 0 || string.IsNullOrEmpty(place)) return 0;
+        double total = store.Counter(key, EconomyStore.TimePrefix + place, day);
+        var now = clock.UtcNow;
+        lock (_lock)
+        {
+            total += _owed.GetValueOrDefault((key, place, day));
+            if (day == Days.Of(now) && _runs.TryGetValue((key, place), out var run)) total += (now - run.From).TotalSeconds;
+        }
+        return Math.Max(0, (int)total);
     }
 
     /// <summary>Зарахувати все, що набігло, і записати в базу. Публічний — тестам, сторінці «Час» і зупинці сервера.</summary>
