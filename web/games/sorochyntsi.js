@@ -172,17 +172,17 @@
       const h = Math.round(fit - hOf(st.el.strip) - hOf(st.el.bar) - 8) + 'px';
       if (k.style.getPropertyValue('--sor-ph') !== h) k.style.setProperty('--sor-ph', h);
     } else if (k.style.getPropertyValue('--sor-ph')) k.style.removeProperty('--sor-ph');
-    // Картка перейшла межу 700 px (поворот планшета, вікно) — телефонна й ПК-розкладка малюються по-різному (шторки,
-    // частини поля): без перемальовування шторка «Товари» лишалась відкритою на пів екрана.
-    const phone = k.clientWidth > 0 && k.clientWidth < 700;
-    if (st.wasPhone != null && st.wasPhone !== phone && st.ctx) requestAnimationFrame(() => { if (root._so === st) paint(root, st.ctx); });
-    if (k.clientWidth > 0) st.wasPhone = phone;
     // Телефон лежачи (картка ≥ 700 px): поле ліворуч на висоту від свого верху до низу екрана — без прокрутки.
     const land = document.body.classList.contains('g-land') && k.clientWidth >= 700;
     if (k.classList.contains('land') !== land) k.classList.toggle('land', land);
     // ПК: сітка «поле + одна вузька колонка» (sorochyntsi.css, .sor.pc) — контейнерний запит сам контейнер не стилює.
     const pc = k.clientWidth >= 700 && !land;
     if (k.classList.contains('pc') !== pc) k.classList.toggle('pc', pc);
+    // Розкладка змінилась (межа 700 px, поворот, лежачи) — телефон, лежачи й ПК малюються по-різному (шторки, віконця на
+    // полі, частини мапи): перемалювати. Без цього шторка «Товари» лишалась відкритою на пів екрана, а лежачи з першого
+    // кадру висіла ПК-підказка «тапни купи на полі» без панелі товарів.
+    const lay = layOf(st);
+    if (lay && st.paintLay !== lay && st.ctx) requestAnimationFrame(() => { if (root._so === st) paint(root, st.ctx); });
     if (land && !(k.closest('.gtable') || {}).scrollTop) { // картку гортнули — поле липне, верх уже не той; лишаємо старе
       const card = k.closest('.gtable');
       const top = st.el.fieldwrap.getBoundingClientRect().top + (card ? card.scrollTop : 0) + window.scrollY;
@@ -294,12 +294,19 @@
   /// колонці, а гості й нагороди — на полі першим рядком із моїм поступом (з колонки їх прибрано); на телефоні мій
   /// прилавок — у стрічці знизу. Телефон лежачи й невідома ширина — усе, як було.
   function fieldParts(st) {
-    const k = st.el && st.el.root, w = k ? k.clientWidth : 0;
-    if (!w || k.classList.contains('land')) return null;
-    return w < 700 ? { mine: false } : { opp: false, guests: true, awards: true, mine: false };
+    const lay = layOf(st);
+    if (!lay || lay === 'land') return null;
+    return lay === 'phone' ? { mine: false } : { opp: false, guests: true, awards: true, mine: false };
+  }
+  /// Розкладка картки: телефон (< 700 px), лежачи (≥ 700 px і body.g-land від каркаса) чи ПК; null — ширини ще нема.
+  /// «Лежачи» — одразу з класу каркаса, а не з .land картки (його ставить sizeVars пізніше першого малювання).
+  function layOf(st) {
+    const w = st.el && st.el.root ? st.el.root.clientWidth : 0;
+    if (!w) return null;
+    return w < 700 ? 'phone' : document.body.classList.contains('g-land') ? 'land' : 'pc';
   }
   /// ПК (не телефон, не лежачи): вибір товарів і крамниці — віконцями просто на полі, гості — на пласкому полі.
-  const pcField = (st) => !!(st.el && st.el.root && st.el.root.clientWidth >= 700 && !st.el.root.classList.contains('land'));
+  const pcField = (st) => layOf(st) === 'pc';
   const guestsOnField = (st) => pcField(st) && st.scKind === '2d';
 
   /// Де на полі обрана крамниця чи колода (екранні px у полі) — для віконця поруч; null — віконце в колонці.
@@ -351,13 +358,14 @@
     const gh = ba ? goodsPopHtml(st, v, me) : '';
     setHtml(el.gpop, gh);
     el.gpop.hidden = !gh;
-    if (gh) placePop(st, el.gpop, ba, 'left');
+    // Пласка мапа: ліворуч від банку (праворуч — край мапи); 3D: праворуч — там порожній стіл, ліворуч сам ринок.
+    if (gh) placePop(st, el.gpop, ba, st.scKind === '3d' ? 'right' : 'left');
   }
   /// Поставити віконце біля цілі: праворуч, якщо ціль у лівій половині поля, інакше ліворуч; по висоті — навпроти цілі.
   function placePop(st, pop, a, side) {
     const W = st.el.fieldwrap.clientWidth, H = st.el.fieldwrap.clientHeight;
     const pw = pop.offsetWidth, ph = pop.offsetHeight;
-    const right = side === 'left' ? false : a.x < W / 2;
+    const right = side === 'left' ? false : side === 'right' ? true : a.x < W / 2;
     let x = right ? a.x + a.hw + 8 : a.x - a.hw - 8 - pw;
     x = Math.max(6, Math.min(W - pw - 6, x));
     const y = Math.max(6, Math.min(H - ph - 6, a.y - ph / 2));
@@ -536,6 +544,7 @@
       return;
     }
     if (!st.built) build(root, st);
+    st.paintLay = layOf(st);   // з якою розкладкою малюємо (sizeVars перемалює, коли вона зміниться)
     const v = st.view;
     if (!v) { setHtml(st.el.say, '<b>Чекаємо на початок…</b>'); return; }
     const me = v.me || null;
