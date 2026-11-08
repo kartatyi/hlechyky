@@ -51,6 +51,15 @@
 }
 @media (prefers-reduced-motion: reduce) { .memy-frame.memy-flash .memy-img { animation: none; } }
 
+/* Кліп мему на розкритті (YouTube) — поверх картинки в тій самій рамці */
+.memy-clip { position: absolute; inset: 0; z-index: 2; background: #000; }
+.memy-clip iframe, .memy-plclip iframe, .memy-clip video, .memy-plclip video { width: 100%; height: 100%; border: 0; display: block; }
+.memy-clip video, .memy-plclip video { object-fit: contain; background: #000; }
+.memy-nextbox { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.memy-nextbox .memy-go { flex: 1 1 auto; min-width: 9em; }
+.memy-nextbox .memy-snd { flex: none; margin-left: auto; min-width: 2.6em; }
+@media (pointer: coarse) { .memy-nextbox button { min-height: 46px; } }
+
 .memy-cover {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
   padding: 16px; text-align: center; color: var(--muted);
@@ -198,6 +207,12 @@
 .memy-pl { display: flex; gap: 10px; align-items: center; padding: 6px; border-radius: 10px; background: var(--bg2); min-width: 0; }
 .memy-thumb { flex: none; width: 72px; aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; background: var(--panel2); }
 .memy-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.memy-thumbclip { position: relative; padding: 0; border: 0; cursor: pointer; }
+.memy-play { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; color: #fff; font-size: 1.1em;
+  background: color-mix(in srgb, #000 38%, transparent); }
+.memy-thumbclip:hover .memy-play { background: color-mix(in srgb, #000 55%, transparent); }
+.memy-pl.memy-plopen { flex-wrap: wrap; grid-column: 1 / -1; }
+.memy-plclip { flex: 1 0 100%; aspect-ratio: 16 / 9; max-height: 60vh; border-radius: 8px; overflow: hidden; background: #000; }
 .memy-plt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 .memy-plt b, .memy-plt i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .memy-plt i { color: var(--muted); font-size: .85em; }

@@ -462,13 +462,15 @@
   let duckBy = 1;
   // Гімн переможця притишує радіо своїм множником (до 20 %): Посиденьки й гімн не перетирають одне одному duckBy.
   let duckAnthem = 1;
+  // Кліп мему на розкритті «Мемології» (memy.js) притишує радіо так само, як гімн: window.HRadioDuck(true/false).
+  let duckGame = 1;
   let anthemEl = null;            // один Audio на весь сайт — для гімнів за столом і прослуховування в Лавці
   let anth = null;                // що звучить зараз: { a, preview, onEnd, timer } або null
   function setVolPos(p, save) {
     p = Math.min(100, Math.max(0, p));
     vol.value = p;
     const v = posToVol(p);
-    audio.volume = v * duckBy * duckAnthem;
+    audio.volume = v * duckBy * duckAnthem * duckGame;
     // гімн іде тією ж гучністю, що й радіо: крутнули повзунок — і він за ним
     if (anth && anthemEl) { try { anthemEl.volume = v; } catch { /* iOS: лише читання */ } anthemEl.muted = p === 0; }
     vol.title = p ? `Гучність ${p} (${(20 * Math.log10(v)).toFixed(1)} дБ) · колесо миші — по кроку` : 'Гучність: тиша';
@@ -1618,7 +1620,8 @@
     } catch { done(); }
   }
   /// Радіо — на повзунок з усіма притишеннями (Посиденьки × гімн).
-  const radioVolume = () => { audio.volume = posToVol(+vol.value) * duckBy * duckAnthem; };
+  const radioVolume = () => { audio.volume = posToVol(+vol.value) * duckBy * duckAnthem * duckGame; };
+  window.HRadioDuck = (on) => { duckGame = on ? ANTHEM_DUCK : 1; radioVolume(); };
   /// a — { url, title?, emoji?, nick? }; opt.preview — людина тисне ▶ сама (вимикач гімнів тоді не діє),
   /// opt.from/opt.len — грати лише шматок (прослуховування свого файла до завантаження; дзвінок — перші 4 с),
   /// opt.fade — шматок у кінці м'яко згасає (дзвінок), opt.ring — це дзвінок заклику: він не перебиває того, що звучить,
@@ -4904,7 +4907,7 @@
   // 🎙 Посиденьки (web/voice.js): duck — притишити радіо (1 — як на повзунку), onRoster — хто в голосі змінився.
   if (window.HVoice) HVoice.init({
     $, esc, toast, me, askNick,
-    duck: (f) => { duckBy = f; audio.volume = posToVol(+vol.value) * duckBy * duckAnthem; },
+    duck: (f) => { duckBy = f; audio.volume = posToVol(+vol.value) * duckBy * duckAnthem * duckGame; },
     onRoster: () => { if (state) renderOnline(); },
   });
   // onTable — біля якого столу ми стоїмо (балачка столу), openTable — кнопка «До суперечки» в картці гри,

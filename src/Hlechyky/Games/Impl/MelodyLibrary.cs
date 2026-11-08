@@ -690,7 +690,7 @@ public static class MelodyAnswer
         return sb.ToString();
     }
 
-    static int Distance(string a, string b)
+    internal static int Distance(string a, string b)
     {
         var prev = new int[b.Length + 1];
         var cur = new int[b.Length + 1];

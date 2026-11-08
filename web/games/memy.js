@@ -8,12 +8,18 @@
       canWrite, choices: string[]|null, choicesAt, choicesOpen,
       me: null | { text, how: 'write'|'pick', hit, blocked, points, frame },
       found: [{ seat, hit, blocked, points, frame }], skip: seat[],          // у play — без чужих текстів
-      answer: null | { id, mode, name, phrase, year, about, page, sources[], image },   // лише reveal/done
-      answers: null | [{ seat, text, how, hit, blocked, points, frame }],
-      played: null | [{ id, name, phrase, year, page, image }],             // лише done
+      answer: null | { id, mode, name, phrase, year, about, page, sources[], image, clip },   // лише reveal/done
+      answers: null | [{ seat, text, how, hit, blocked, points, frame }], next: seat[],     // next — хто тиснув «⏭ Далі»
+      played: null | [{ id, name, phrase, year, page, image, clip }],       // лише done
+      clip: null | { id: '<11 символів YouTube>', from, to }               // цілі секунди: сам момент мему
+            | { src: '/api/games/memy/<токен>.mp4', from: 0, to }        // свій кліп (вирізаний на сервері з 404.com.ua)
       scores[12], left[], note, error, result: { winners, scores, nicks } }
   Хід: Act('guess', { text }) — промах приходить відмовою «Мимо» (її кажемо в рядку під полем, а не тостом);
-       Act('pick', { i }) — варіант, одна спроба; Act('skip') — «не знаю — далі» (ще раз — передумав).
+       Act('pick', { i }) — варіант, одна спроба; Act('skip') — «не знаю — далі» (ще раз — передумав);
+       на розкритті Act('skip') — «⏭ Далі» (теж перемикач; усі тиснули — наступний мем).
+  Кліп (08.11.2026): на розкритті мему з clip у рамці замість картинки грає сам момент мему зі звуком — свій mp4 (<video>)
+  чи плеєр YouTube;
+  радіо сайту на цей час притихає (window.HRadioDuck з app.js). 🔇 — вимкнути звук кліпів, пам'ятається в браузері.
   Гра реалтаймова (тик 500 мс): після дії вид приходить із найближчим тиком, тож влучання й тицьнутий варіант
   позначаємо одразу самі, ще до виду.
 */
@@ -35,6 +41,38 @@
   /// Посилання з банку — лише https: решту (javascript:, http) не показуємо взагалі.
   const safeUrl = (u) => (typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(u) ? u : '');
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return 'джерело'; } };
+
+  // ---- кліп YouTube ----
+  /// Звук кліпів — вибір глядача (🔇 на розкритті), у браузері; нема сховища — зі звуком.
+  const SOUND_KEY = 'memy.clipSound';
+  const clipSound = () => { try { return localStorage.getItem(SOUND_KEY) !== '0'; } catch { return true; } };
+  const setClipSound = (on) => { try { localStorage.setItem(SOUND_KEY, on ? '1' : '0'); } catch { /* приватне вікно */ } };
+  const clipFile = (c) => !!(c && typeof c.src === 'string' && /^\/api\/games\/memy\/[0-9a-f]{24}\.mp4$/.test(c.src));
+  const clipOk = (c) => !!(c && (clipFile(c) || /^[A-Za-z0-9_-]{11}$/.test(String(c.id))) && Number.isInteger(c.from) && Number.isInteger(c.to) && c.to > c.from);
+  /// Вбудований плеєр без кук; enablejsapi — щоб 🔇 вимикав звук на льоту (postMessage), а не перезапускав кліп.
+  function clipSrc(c, sound) {
+    return 'https://www.youtube-nocookie.com/embed/' + c.id + '?start=' + c.from + '&end=' + c.to
+      + '&autoplay=1&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&fs=0&enablejsapi=1'
+      + '&origin=' + encodeURIComponent(location.origin) + (sound ? '' : '&mute=1');
+  }
+  /// Свій кліп — <video> (controls — у підсумку партії; на розкритті керує гра), YouTube — вбудований плеєр.
+  const clipFrame = (c, sound, title, controls) => clipFile(c)
+    ? '<video src="' + esc(c.src) + '" playsinline preload="auto"' + (controls ? ' controls autoplay' + (sound ? '' : ' muted') : '')
+      + ' aria-label="' + esc(title || 'Відео мему') + '"></video>'
+    : '<iframe src="' + esc(clipSrc(c, sound)) + '" title="' + esc(title || 'Відео мему') + '"'
+      + ' allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+  /// Свій кліп на розкритті: зі звуком, якщо браузер дасть (жест на сторінці вже був — відповідь); не дав — без звуку,
+  /// а 🔊 увімкне звук одним дотиком (тоді жест є).
+  function playVideo(v, sound) {
+    v.muted = !sound;
+    const pr = v.play();
+    if (pr && pr.catch) pr.catch(() => { v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => {}); });
+  }
+  function clipCommand(iframe, func) {
+    try { iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args: [] }), '*'); } catch { /* ще вантажиться */ }
+  }
+  /// Радіо сайту притишити на час кліпу (app.js; на сторінці без радіо — нічого).
+  const duck = (on) => { try { if (window.HRadioDuck) window.HRadioDuck(!!on); } catch { /* без радіо */ } };
   /// Корінь картки з ctx: onKey і pad.when отримують лише ctx, а карток на складі може бути кілька.
   const rootOf = (ctx) => (ctx && ctx._memyRoot && ctx._memyRoot._memy ? ctx._memyRoot : null);
 
@@ -198,8 +236,33 @@
     }
     frame.classList.toggle('memy-revealed', rv);
     paintCover(root, ctx, v);
+    paintClip(root, ctx, v);
     root.querySelector('.memy-left').hidden = v.phase === 'done' && !lobby;
     paintSteps(root, ctx, v);
+  }
+
+  /// Кліп мему на розкритті — поверх картинки в тій самій рамці. Один на раунд: перемальовування виду його не чіпає;
+  /// кінець розкриття (наступний мем, кінець партії, вийшов) — плеєр геть, радіо назад.
+  function paintClip(root, ctx, v) {
+    const s = st(root);
+    const frame = root.querySelector('.memy-frame');
+    const c = v.phase === 'reveal' && v.answer && clipOk(v.answer.clip) && !lobbyOf(ctx) ? v.answer.clip : null;
+    const key = c ? v.round + ':' + (c.src || c.id) + ':' + c.from + '-' + c.to : '';
+    frame.classList.toggle('memy-hasclip', !!c);
+    if (key === s.clipKey) return;
+    const had = !!s.clipKey;
+    s.clipKey = key;
+    const old = frame.querySelector('.memy-clip');
+    if (old) old.remove();
+    if (!c) { if (had) duck(false); return; }
+    const sound = clipSound();
+    const box = document.createElement('div');
+    box.className = 'memy-clip';
+    box.innerHTML = clipFrame(c, sound, v.answer.name, false);
+    frame.appendChild(box);
+    const vid = box.querySelector('video');
+    if (vid) playVideo(vid, sound);
+    duck(sound);
   }
 
   /// Шар поверх рамки: лобі, «Глек дістає мем», картинка ще їде чи не прийшла.
@@ -408,6 +471,40 @@
     const show = v.phase === 'reveal' && !!v.answer && !lobbyOf(ctx);
     setHtml(el, show ? revealHtml(ctx, v) : '');
     el.hidden = !show;
+    paintNext(root, ctx, v, show);
+  }
+
+  /// «⏭ Далі» (перемикач: усі тиснули — наступний мем, не чекаючи кінця кліпу) і 🔇 звуку кліпів.
+  function paintNext(root, ctx, v, show) {
+    const el = root.querySelector('.memy-nextbox');
+    const clip = show && clipOk(v.answer.clip);
+    const can = show && !!ctx.mine && !!ctx.playing && !gone(ctx, v);
+    let html = '';
+    if (can || clip) {
+      const next = v.next || [];
+      const mine = next.indexOf(ctx.seat) >= 0;
+      let present = 0;
+      for (let i = 0; i < seatsOf(ctx); i++) if (ctx.nickOf(i) && (v.left || []).indexOf(i) < 0) present++;
+      html = (can ? '<button type="button" class="' + (mine ? 'primary' : 'ghost') + ' memy-go">' + (mine ? '↩ Ще подивлюсь' : '⏭ Далі') + '</button>'
+          + (isSolo(ctx) || present < 2 ? '' : '<span class="muted small">готові ' + next.length + ' з ' + present + '</span>') : '')
+        + (clip ? '<button type="button" class="ghost memy-snd" title="' + (clipSound() ? 'Вимкнути звук кліпів' : 'Увімкнути звук кліпів') + '">'
+          + (clipSound() ? '🔊' : '🔇') + '</button>' : '');
+    }
+    if (setHtml(el, html)) {
+      const go = el.querySelector('.memy-go');
+      if (go) go.onclick = () => skip(root);
+      const snd = el.querySelector('.memy-snd');
+      if (snd) snd.onclick = () => {
+        const on = !clipSound();
+        setClipSound(on);
+        const f = root.querySelector('.memy-clip iframe');
+        if (f) { clipCommand(f, on ? 'unMute' : 'mute'); duck(on); }
+        const vid = root.querySelector('.memy-clip video');
+        if (vid) { vid.muted = !on; if (on && vid.paused && !vid.ended) playVideo(vid, true); duck(on); }
+        if (root._ctx) paintNext(root, root._ctx, V(root._ctx), true);
+      };
+    }
+    el.hidden = !html;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -473,13 +570,29 @@
       + (played.length ? '<div class="memy-subh">Що було в партії</div><div class="memy-played">'
         + played.map((m) => {
           const page = safeUrl(m.page);
-          return '<div class="memy-pl">'
-            + '<span class="memy-thumb">' + (m.image ? '<img loading="lazy" alt="" src="' + esc(m.image) + '">' : '') + '</span>'
+          const clip = clipOk(m.clip);
+          const open = clip && st(root).playId === m.id;
+          const thumb = (m.image ? '<img loading="lazy" alt="" src="' + esc(m.image) + '">' : '') + (clip ? '<i class="memy-play">' + (open ? '✕' : '▶') + '</i>' : '');
+          return '<div class="memy-pl' + (open ? ' memy-plopen' : '') + '">'
+            + (clip ? '<button type="button" class="memy-thumb memy-thumbclip" data-play="' + esc(m.id) + '" aria-label="' + (open ? 'Сховати відео' : 'Дивитись відео') + '">' + thumb + '</button>'
+              : '<span class="memy-thumb">' + thumb + '</span>')
             + '<span class="memy-plt"><b>' + esc(m.name) + '</b>' + (m.phrase ? '<i>«' + esc(m.phrase) + '»</i>' : '')
-            + '<small class="muted">' + (m.year ? esc(m.year) : '') + (page ? (m.year ? ' · ' : '') + '<a href="' + esc(page) + '" target="_blank" rel="noopener noreferrer">звідки ↗</a>' : '') + '</small></span>'
+            + '<small class="muted">' + (m.year ? esc(m.year) : '') + (clip ? (m.year ? ' · ' : '') + '<a href="#" data-play="' + esc(m.id) + '">' + (open ? '✕ сховати' : '▶ дивитись') + '</a>' : '')
+            + (page ? (m.year || clip ? ' · ' : '') + '<a href="' + esc(page) + '" target="_blank" rel="noopener noreferrer">звідки ↗</a>' : '') + '</small></span>'
+            + (open ? '<div class="memy-plclip">' + clipFrame(m.clip, clipSound(), m.name, true) + '</div>' : '')
             + '</div>';
         }).join('') + '</div>' : '');
-    setHtml(el, html);
+    if (setHtml(el, html)) {
+      el.querySelectorAll('[data-play]').forEach((b) => {
+        b.onclick = (e) => {
+          e.preventDefault();
+          const s2 = root._memy;
+          if (!s2) return;
+          s2.playId = s2.playId === b.dataset.play ? '' : b.dataset.play;
+          if (root._ctx) paintDone(root, root._ctx, V(root._ctx));
+        };
+      });
+    }
   }
 
   /// Рекорд тренування — з «Таблиці» (`/api/games/leaderboard`, соло-рядки {nick, best, tries}). Рядок у базу каркас
@@ -513,7 +626,7 @@
     const ans = o.answer || 'both';
     const at = { 8: 'за 8 с до кінця', 5: 'за 5 с до кінця', half: 'з половини раунду' }[o.choicesAt || '8'] || 'під кінець';
     const bits = [
-      '🖼 ' + (o.rounds || 10) + ' мемів по ' + (o.seconds || 20) + ' с — вгадуй ' + what,
+      '🖼 ' + (o.rounds || 10) + ' мемів по ' + (o.seconds || 30) + ' с — вгадуй ' + what + ' (досить головних слів)',
       (o.show || 'pixels') === 'pixels' ? '🧩 Картинка проявляється з пікселів: влучив на першому кадрі — +50, на другому — +25' : '⚡ Картинка одразу ціла: хто швидше, тому більше',
       ans === 'pick' ? '👆 Лише варіанти: одна спроба, по 50 очок' : ans === 'write' ? '✍ Лише писати: 100 очок за влучання, спроб скільки завгодно'
         : '✍ Спершу пишеш сам (100 очок), ' + at + ' з\'являться 4 варіанти — відтоді пів ціни',
@@ -598,6 +711,7 @@
         + '<div class="memy-skipbox" hidden></div>'
         + '<div class="memy-found" hidden></div>'
         + '</div>'
+        + '<div class="memy-nextbox" hidden></div>'
         + '<div class="memy-reveal" hidden></div>'
         + '<div class="memy-done" hidden></div>'
         + '<div class="memy-scores" hidden></div>'
@@ -626,6 +740,9 @@
       const arc = root.querySelector('.garc');
       if (arc && arc._arc) arc._arc.stop();
       if (root._ctx && root._ctx._memyRoot === root) root._ctx._memyRoot = null;
+      const clip = root.querySelector('.memy-clip');
+      if (clip) clip.remove();
+      if (s.clipKey) duck(false);
       root._memy = null;
     },
 
