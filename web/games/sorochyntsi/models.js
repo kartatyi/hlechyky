@@ -189,7 +189,10 @@ function coin(g, x, y, r, good, n, rim) {
   g.fillStyle = GOOD_COLOR[good]; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
   g.fillStyle = gr; g.fill();
   g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
-  g.lineWidth = Math.max(2, r * 0.14); g.strokeStyle = rim || (good === 'linen' ? '#8a6a3a' : 'rgba(20,10,0,.55)'); g.stroke();
+  if (rim) {   // на арті: темний зовнішній обвід + тонкий світлий усередині — читається і на світлій сцені, і на нічній
+    g.lineWidth = r * 0.24; g.strokeStyle = '#2a1d17'; g.stroke();
+    g.beginPath(); g.arc(x, y, r * 0.82, 0, Math.PI * 2); g.lineWidth = Math.max(1.5, r * 0.08); g.strokeStyle = rim; g.stroke();
+  } else { g.lineWidth = Math.max(2, r * 0.14); g.strokeStyle = good === 'linen' ? '#8a6a3a' : 'rgba(20,10,0,.55)'; g.stroke(); }
   g.fillStyle = GOOD_INK[good];
   g.font = `bold ${Math.round(r * 1.35)}px ${SANS}`; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(String(n), x, y + r * 0.07);

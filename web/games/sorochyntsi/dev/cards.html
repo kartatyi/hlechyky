@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Сорочинці — усі крамниці</title>
+<style>
+  body { margin: 0; padding: 12px; background: #14211a; color: #f6efdc; font: 13px system-ui, sans-serif; }
+  .b { width: min(100%, 760px); aspect-ratio: 604 / 440; margin: 0 0 14px; position: relative; border-radius: 14px; overflow: hidden; background: #6a4124; }
+  h2 { margin: 6px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<p>Усі 90 крамниць так, як вони на полі (по 12 на «стіл»). <code>?ids=41,79,…</code> — лише ці.</p>
+<div id="out"></div>
+<script type="module">
+import { createBoard2d } from '../board2d.js';
+import { DECK } from '../consts.js';
+const q = new URLSearchParams(location.search);
+const ids = q.get('ids') ? q.get('ids').split(',').map(Number) : DECK.map((d) => d[0]).sort((a, b) => DECK[b][1] - DECK[a][1] || a - b);
+const out = document.getElementById('out');
+for (let i = 0; i < ids.length; i += 12) {
+  const part = ids.slice(i, i + 12);
+  const h = document.createElement('h2'); h.textContent = part.join(' · '); out.appendChild(h);
+  const host = document.createElement('div'); host.className = 'b'; out.appendChild(host);
+  const sc = await createBoard2d(host, { parts: { opp: false, guests: false, awards: false, mine: false } });
+  const rows = [part.slice(8, 12), part.slice(4, 8), part.slice(0, 4)];   // ряд I, II, III (III — згори)
+  sc.setState({ v: 1, phase: 'play', players: [{ seat: 0, nick: 'стенд', color: 0, tokens: {}, bonus: {} }], order: [0], me: null,
+    rows, decks: [1, 1, 1], bank: { linen: 4, fish: 4, herbs: 4, clay: 4, wool: 4, gold: 5 }, guests: [] });
+}
+</script>
+</body>
+</html>

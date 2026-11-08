@@ -313,22 +313,25 @@ export async function createBoard2d(host, opts = {}) {
     const lines = wrap2(c.name, 13), nh = lines.length > 1 ? 24 : 14;
     el('rect', { x: 28, y: CH - 4 - nh, width: CW - 31, height: nh, rx: 4, fill: 'rgba(255,250,240,.93)', stroke: T.edge, 'stroke-width': 0.8 }, k);
     lines.forEach((l, i) => txt(k, 28 + (CW - 31) / 2, CH - 4 - nh + 10.5 + i * 10.5, l, { 'font-size': 9.4, 'font-weight': 800, fill: INK, 'text-anchor': 'middle' }));
-    // ціна — кружечки зі світлим обідком поверх сцени
+    // ціна — кружечки поверх сцени: темний обвід (читається на світлій стіні й небі) і тонкий світлий усередині (на темній ночі)
     let cy = CH - 13.5;
     for (let i = GOODS.length - 1; i >= 0; i--) {
       const gd = GOODS[i], n = c.cost[gd];
       if (!n) continue;
-      el('circle', { cx: 15, cy: cy + 1.2, r: 10.4, fill: 'rgba(40,20,5,.32)' }, k);
-      el('circle', { cx: 15, cy, r: 10.4, fill: 'url(#' + U + 'k' + gd + ')', stroke: '#fffaf0', 'stroke-width': 1.6 }, k);
+      el('circle', { cx: 15.4, cy: cy + 1.4, r: 11.2, fill: 'rgba(40,20,5,.4)' }, k);
+      el('circle', { cx: 15, cy, r: 11, fill: INK }, k);
+      el('circle', { cx: 15, cy, r: 9.4, fill: 'url(#' + U + 'k' + gd + ')', stroke: 'rgba(255,250,240,.9)', 'stroke-width': 1 }, k);
       txt(k, 15, cy + 4.8, String(n), { 'font-size': 13.5, 'font-weight': 900, fill: GOOD_INK[gd], 'text-anchor': 'middle' });
       cy -= 22.5;
     }
     // «купиш» — значок угорі праворуч на сцені (низ праворуч — назва)
     if (mark === 'buy') {
-      el('circle', { cx: CW - 13, cy: 44, r: 11, fill: PAL.buy, stroke: '#fffaf0', 'stroke-width': 1.8 }, k);
+      el('circle', { cx: CW - 13, cy: 44, r: 11.6, fill: INK }, k);
+      el('circle', { cx: CW - 13, cy: 44, r: 10, fill: PAL.buy, stroke: '#fffaf0', 'stroke-width': 1.2 }, k);
       el('path', { d: 'M' + (CW - 18.2) + ' 44l3.8 4 7-7.8', fill: 'none', stroke: '#fff', 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, k);
     } else if (mark === 'gold') {
-      el('circle', { cx: CW - 13, cy: 44, r: 11, fill: 'url(#' + U + 'kgold)', stroke: '#fffaf0', 'stroke-width': 1.6 }, k);
+      el('circle', { cx: CW - 13, cy: 44, r: 11.6, fill: INK }, k);
+      el('circle', { cx: CW - 13, cy: 44, r: 10, fill: 'url(#' + U + 'kgold)', stroke: '#fffaf0', 'stroke-width': 1.2 }, k);
       svgIcon(k, 'gold', CW - 13, 44, 15, { fill: '#fff0b0', detail: '#8a5e00' });
     }
   }
