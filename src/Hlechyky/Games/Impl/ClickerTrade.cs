@@ -324,14 +324,20 @@ public sealed partial class Clicker
 
     /// <summary>
     /// Посол відплив повним — єдине місце для всього, що за це належить (ачівка «Посол» і лічильники для Зали скарбів).
-    /// Сюди ж Д2 допише гарантовану річ «⛵ Заморської вітрини».
+    /// Тут же гарантована річ «⛵ Заморської вітрини» (річ за портом); повертає хвіст для тосту.
     /// </summary>
-    void EnvoyDone(ShipRow s, DateTimeOffset now)
+    string EnvoyDone(ShipRow s, DateTimeOffset now)
     {
         _envoysFull++;
         _envoyFullAt = now;
         if (_envoysFull == EnvoysForAchievement) Achieve("potter-envoy-10");
+        return TreasureRoll(2, TreasurePortPick(s.Port), sure: true);
     }
+
+    /// <summary>Номер речі Заморської вітрини (0…5) за портом корабля; невідомий порт — випадкова.</summary>
+    int? TreasurePortPick(string? port) =>
+        port is not null && TreasurePortItem.TryGetValue(port, out var key)
+            ? Array.FindIndex(Treasures, t => t.Key == key) - 2 * TreasurePerCase : null;
 
     /// <summary>Записати зміни рядка назад: посол живе окремо від звичайних.</summary>
     void ShipPut(ShipRow s)
@@ -426,7 +432,7 @@ public sealed partial class Clicker
             var key = ItemKey(item.Ware, item.Style, item.Quality);
             if (_items[key] == n) _items.Remove(key);
             else _items[key] -= n;
-            minutes += TradeMinutesFor(item.Quality, item.Style) * ShanaLuxPayFor(item.Quality) * n * (s.Envoy ? EnvoyMinutesMul : 1);
+            minutes += TradeMinutesFor(item.Quality, item.Style) * ShanaLuxPayFor(item.Quality) * n * (s.Envoy ? EnvoyMinutesMul : 1) * TreasureShipMult;
             slava += (long)SlavaFor(item.Quality, item.Style) * n * (s.Envoy ? EnvoySlavaMul : 1);
         }
         var pay = PlayPay(minutes);
@@ -445,10 +451,11 @@ public sealed partial class Clicker
         if (s.First) bonusSlava = Math.Max(bonusSlava, SlavaGate[OverseasTiers[0]] - _slava);
         Add(bonusPay);
         _slava += Math.Max(0, bonusSlava);
+        var treasure = "";
         if (s.Envoy)
         {
             _envoy = null;
-            EnvoyDone(s, now);
+            treasure = EnvoyDone(s, now);
         }
         else
         {
@@ -457,12 +464,13 @@ public sealed partial class Clicker
             if (s.First) _firstShipDone = true;
             if (_shipsFull == 1) Achieve("potter-ship-first");
             if (_shipsFull == ShipsForAchievement) Achieve("potter-ship-100");
+            treasure = TreasureRoll(2, TreasurePortPick(s.Port));
         }
         _viewVersion++;
         var opened = OverseasTiers.FirstOrDefault(k => _slava >= SlavaGate[k] && _slava - slava - Math.Max(0, bonusSlava) < SlavaGate[k]);
         var text = $"{(s.Envoy ? "👑" : "⛵")} {(s.Envoy ? "Посольський корабель" : "Корабель")} з {PortOf(s.Port).From} повний і відплив: +{PotsShort(pay + bonusPay)} · Слава +{Count(slava + Math.Max(0, bonusSlava))}";
         if (opened is not null) text += $" · 🌍 відкрито «{Shop.First(u => u.Key == opened).Name}» у Майстерні" + OpenedPrice(opened);
-        return ActResult.Accept(text);
+        return ActResult.Accept(text + treasure);
     }
 
     /// <summary>

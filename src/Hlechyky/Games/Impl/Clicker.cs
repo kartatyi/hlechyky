@@ -753,7 +753,9 @@ public sealed partial class Clicker : Game
         // Десяте оновлення: шана заморських гостей (ClickerGuests.cs).
         * GuestsAllMult
         // Одинадцяте: будови Толоки (+5 % кожна) і фестиваль на майдані (ClickerToloka.cs).
-        * TolokaAllMult;
+        * TolokaAllMult
+        // Тринадцяте: Зала скарбів — +2 % за річ, уся зала ще +10 % (ClickerTreasure.cs).
+        * TreasureAllMult;
 
     /// <summary>Скільки глеків за секунду дає один наступний рівень верстата (без ярмарку).</summary>
     double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult * (1 + Perk(MarkEffect.Passive));
@@ -888,7 +890,8 @@ public sealed partial class Clicker : Game
     {
         var raw = PassiveBase * FallSeconds + ClickBase * FallClicks;
         var mult = (1 + BasketBonus * Level("basket") + Perk(MarkEffect.Fall) + GuestsFallBonus + Relic("basket3")) * (1 + StreakMult)
-            * (!plain && FairOn ? FairMultNow : 1) * ClayNow.Loot * HouseFallMult * (!plain && _starWish ? StarFallMult : 1);
+            * (!plain && FairOn ? FairMultNow : 1) * ClayNow.Loot * HouseFallMult * (!plain && _starWish ? StarFallMult : 1)
+            * TreasureFallMult;
         return ToPots(raw * mult) + FallFloor;
     }
 
@@ -1391,7 +1394,7 @@ public sealed partial class Clicker : Game
         _goldenPlanned = default;
         // Чорна глина й глиняний свисток скорочують чекання; собака під лавою стереже глек трохи довше.
         var wait = seconds ?? (min + Ctx.Rng.NextDouble() * (max - min)) * ClayNow.Events * (Tool("whistle") ? WhistleEvents : 1) * GuestsGoldenWait
-            * (1 - Perk(MarkEffect.GoldenOften));
+            * (1 - Perk(MarkEffect.GoldenOften)) * TreasureGoldenWait;
         var at = from + TimeSpan.FromSeconds(wait);
         // Кидок 40/30/30 на користь ярмарку (26.09): купець і натхнення по 30.
         var roll = Ctx.Rng.Next(100);
@@ -1927,7 +1930,7 @@ public sealed partial class Clicker : Game
         _caught++;
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_caught == GoldenForAchievement) Ctx.Award(0, 0, "ach:potter-golden");
-        return ActResult.Accept(text + tail + AskAfter(now));
+        return ActResult.Accept(text + tail + TreasureRoll(1) + AskAfter(now));
     }
 
     /// <summary>
@@ -2010,7 +2013,7 @@ public sealed partial class Clicker : Game
         if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
         return ActResult.Accept($"{head} +{PotsShort(gain)}"
             + (wished ? " · зірка не збрехала (×3)" : "")
-            + (_fallStreak > 1 ? $" · серія {_fallStreak}" : "") + AskAfter(now));
+            + (_fallStreak > 1 ? $" · серія {_fallStreak}" : "") + TreasureRoll(0) + AskAfter(now));
     }
 
     /// <summary>

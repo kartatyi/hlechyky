@@ -338,3 +338,41 @@
 .clka-colh.shut { position: relative; opacity: .55; }
 .clka-lock { position: absolute; right: -2px; bottom: -2px; font-size: 10px; font-style: normal; line-height: 1; }
 .clka-cell.shut { opacity: .45; }
+
+/* ---- Зала скарбів (v13) ---- */
+.clka-hallsec[hidden] { display: none; }
+.clka-hall { display: flex; flex-direction: column; gap: 10px; }
+.clka-hcase { border: 1px solid var(--line); border-radius: 12px; padding: 8px; background: rgba(0, 0, 0, .12); }
+.clka-hcase.full { border-color: rgba(244, 197, 66, .6); background: radial-gradient(circle at 50% 0, rgba(244, 197, 66, .12), rgba(0, 0, 0, .12) 70%); }
+.clka-hch { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 6px; margin-bottom: 6px; }
+.clka-hsh { margin-left: auto; }
+.clka-hgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.clka-hcell {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; text-align: center; min-width: 0;
+  border-radius: 10px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(0, 0, 0, .25), var(--panel));
+}
+.clka-hcell span { line-height: 1.15; font-size: .72em; color: var(--muted); overflow-wrap: anywhere; }
+.clka-hcell.have { border-color: rgba(217, 136, 74, .6); background: radial-gradient(circle at 50% 35%, rgba(244, 197, 66, .16), var(--panel) 70%); }
+.clka-hcell.have span { color: inherit; }
+.clka-hcell:not(.have) .clka-he { filter: grayscale(1) brightness(.4); opacity: .5; }
+.clka-he { font-style: normal; font-size: 26px; line-height: 1.2; }
+.clka-hb { margin-top: 6px; }
+.clka-hb.on { color: #f4c542; }
+.clka-riddle { border: 1px dashed rgba(217, 136, 74, .7); border-radius: 12px; padding: 8px; background: rgba(217, 136, 74, .07); }
+.clka-rt { white-space: pre-line; margin: 6px 0 8px; line-height: 1.35; }
+.clka-ropts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
+.clka-hopt {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; min-width: 0; white-space: normal;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel); text-align: center;
+}
+.clka-hopt span { font-size: .78em; line-height: 1.15; overflow-wrap: anywhere; }
+.clka-hopt:disabled { opacity: .75; }
+.clka-hopt.right { border-color: #5fbf6a; background: rgba(95, 191, 106, .18); opacity: 1; }
+.clka-hopt.wrong { border-color: #d9534f; background: rgba(217, 83, 79, .15); opacity: 1; }
+.clka-hv.ok { color: #7bd88a; }
+.clka-hv.no { color: #e08a86; }
+@media (min-width: 640px) {
+  .clka-hall { flex-direction: row; flex-wrap: wrap; }
+  .clka-hcase { flex: 1 1 260px; }
+  .clka-riddle { flex: 1 1 100%; }
+}

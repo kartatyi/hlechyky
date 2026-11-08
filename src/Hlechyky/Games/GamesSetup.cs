@@ -44,6 +44,7 @@ public static class GamesSetup
         Impl.ClickerGuildSetup.AddClickerGuild(services);   // цех Гончарного кола: віз, дарунки, хата друга
         Impl.ClickerDaySetup.Add(services);                 // «Майстер дня» Гончарного кола: табло й призи о 23:30 (v12)
         Impl.ClickerDiarySetup.Add(services);
+        Impl.ClickerRiddleSetup.Add(services);              // загадки Глека для Зали скарбів: data/clicker/riddles.json
         Impl.ClickerGlekSetup.Add(services);                // поради Дядька Глека в колі: книга фраз data/clicker/glek-tips.json               // щоденник гончаря: знімок дня й години гри для аналітики кола
         // «Вгадай мелодію»: один на всі столи — щоб пісню з добірки не качали двічі два столи водночас
         services.AddSingleton(sp => new Impl.MelodyLibrary(

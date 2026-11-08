@@ -60,7 +60,7 @@ public sealed partial class Clicker
         var luckyF = 1 + LuckyShare * (LuckyMult - 1);
         var fm = FairMultNow;
         var gmid = Has("omen") ? (OmenMinSeconds + OmenMaxSeconds) / 2.0 : (GoldenMinSeconds + GoldenMaxSeconds) / 2.0;
-        var g = gmid * clay.Events * (Tool("whistle") ? WhistleEvents : 1) * GuestsGoldenWait;
+        var g = gmid * clay.Events * (Tool("whistle") ? WhistleEvents : 1) * GuestsGoldenWait * TreasureGoldenWait;
         // Частка часу під ярмарком і натхненням: розписний — раз на g секунд, ловиться весь.
         var f = 1 - Math.Exp(-0.4 * BuffLonger(FairFor).TotalSeconds / g);
         var i = 1 - Math.Exp(-0.3 * BuffLonger(InspireFor).TotalSeconds / g);

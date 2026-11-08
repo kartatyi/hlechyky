@@ -11,6 +11,7 @@
   4) кахляна піч (SVG): 12 гнізд, кахлі в їхніх розписах; тап по гнізду — поміняти кахлю (album { op: "tile", slot }),
      кнопки знизу — вставити з комори; та сама піч маленька в хаті (шар back);
   5) 📌 Виставка: до трьох клітинок на видноту (album { op: "show", keys }) — хата ставить їх на полицю;
+  7) Зала скарбів (v13): 18 речей у трьох вітринах, загадка Глека (album { op: "riddle", pick }).
   6) трипільський музей: вісім вітрин, уламки, «склеїти» (album { op: "glue" }); знахідка — «🏺 знахідка!» над сценою.
 
   Правила рахує сервер (view.album); числа бонусів і тексти фактів — у каталозі (catalog.album). Нічого про розмір
@@ -677,6 +678,65 @@
     if (g) g.onclick = () => (st.albumGlueAt = Date.now(), api.act(st, 'album', { op: 'glue' })).then((r) => { if (r && r.ok) api.sfx('glue'); });
   }
 
+  // ---------- Зала скарбів (v13): друга зала музею ----------
+
+  /** Розділ «🏛 Зала скарбів»: три вітрини по шість речей, уламки, бонуси й загадка Глека (album { op: "riddle", pick }). */
+  function paintHall(st, api) {
+    const ui = st.albumUi.hall;
+    const h = st.album.hall;
+    const hc = cat(st) && cat(st).hall;
+    if (!h || !hc) { ui.hidden = true; return; }
+    ui.hidden = false;
+    const r = h.riddle;
+    const sig = h.mask + '|' + h.shards.join(',') + '|' + st.mine + '|'
+      + (r ? r.text.length + r.options.join('') + r.done + (r.pick || '') : '-');
+    if (ui._sig === sig) return;
+    ui._sig = sig;
+    const esc = (x) => api.esc(st, x);
+    const byKey = {};
+    for (const it of hc.items) byKey[it.key] = it;
+    const per = hc.items.length / hc.cases.length;
+    const have = pc(h.mask);
+    if (have >= hc.items.length) ui.dataset.fdef = '0'; else delete ui.dataset.fdef;
+    const cases = hc.cases.map((c, ci) => {
+      const items = hc.items.filter((it) => it.case === ci);
+      const n = items.filter((it) => (h.mask >> hc.items.indexOf(it)) & 1).length;
+      const full = n >= per;
+      return '<div class="clka-hcase' + (full ? ' full' : '') + '">'
+        + '<div class="clka-hch"><b>' + c.emoji + ' ' + esc(c.name) + '</b><span class="muted small"> · ' + n + ' з ' + per + '</span>'
+        + (full ? '' : '<span class="clka-hsh small">🧩 уламки ' + h.shards[ci] + '/' + hc.glue + '</span>') + '</div>'
+        + '<div class="clka-hgrid">' + items.map((it) => {
+          const got = (h.mask >> hc.items.indexOf(it)) & 1;
+          return '<div class="clka-hcell' + (got ? ' have' : '') + '"' + (got ? '' : ' title="' + esc(c.hint) + '"') + '>'
+            + '<i class="clka-he">' + (got ? it.emoji : '?') + '</i><span class="small">' + (got ? esc(it.name) : 'ще не знайдено') + '</span></div>';
+        }).join('') + '</div>'
+        + '<div class="clka-hb small ' + (full ? 'on' : 'muted') + '">' + (full ? '✓ Повна: ' : 'Повна вітрина: ') + esc(c.bonus) + '</div>'
+        + (full ? '' : '<div class="clka-hb small muted">' + esc(c.hint) + '</div>') + '</div>';
+    }).join('');
+    let riddle = '';
+    if (r) {
+      const optBtn = (k) => {
+        const it = byKey[k] || { emoji: '?', name: k };
+        const cls = r.done ? (k === r.item ? ' right' : (k === r.pick ? ' wrong' : '')) : '';
+        return '<button type="button" class="clka-hopt' + cls + '" data-k="' + esc(k) + '"' + (r.done || !st.mine ? ' disabled' : '') + '>'
+          + '<i class="clka-he">' + it.emoji + '</i><span>' + esc(it.name) + '</span></button>';
+      };
+      const verdict = !r.done ? '<div class="muted small">Одна спроба на добу. Вгадаєш — уламок вітрини цієї речі.</div>'
+        : r.right ? '<div class="clka-hv ok small">✅ Вгадав — це ' + esc((byKey[r.item] || {}).name || '') + '. Уламок у вітрині!</div>'
+          : '<div class="clka-hv no small">❌ Це була ' + esc((byKey[r.item] || {}).name || '') + '. Завтра Глек загадає ще.</div>';
+      riddle = '<div class="clka-riddle"><div class="clka-rh"><b>❓ Загадка Глека</b></div>'
+        + '<div class="clka-rt">' + esc(r.text) + '</div>'
+        + '<div class="clka-ropts">' + r.options.map(optBtn).join('') + '</div>' + verdict + '</div>';
+    }
+    ui.innerHTML = api.foldHead('🏛 Зала скарбів · ' + have + ' з ' + hc.items.length + '<span class="muted small"> · річ +'
+      + pct(api, hc.item) + ', уся зала ще +' + pct(api, hc.hall) + '</span>'
+      + api.info('Друга зала музею: вісімнадцять речей у трьох вітринах. Сільські падають зі спійманих глеків з полиці, козацькі — зі '
+        + 'спійманих розписних, заморські — з повних кораблів (посольський дає напевно, річ — за портом). Друга така сама річ — уламок вітрини; '
+        + hc.glue + ' уламків склеюються в те, чого бракує. Повна вітрина дає свій бонус. Раз на добу Глек загадує загадку.'))
+      + '<div class="clka-hall">' + cases + riddle + '</div>';
+    for (const b of ui.querySelectorAll('.clka-hopt[data-k]')) b.onclick = () => api.act(st, 'album', { op: 'riddle', pick: b.dataset.k });
+  }
+
   // ---------- картки ----------
 
   function openCell(st, api, r, c) {
@@ -889,6 +949,7 @@
         + '<section class="clka-sec clka-showsec"' + api.fold('a.show') + '></section>'
         + '<section class="clka-sec clka-stovesec"' + api.fold('a.stove') + '></section>'
         + '<section class="clka-sec clka-museumsec"' + api.fold('a.museum') + '></section>'
+        + '<section class="clka-sec clka-hallsec" hidden' + api.fold('a.hall') + '></section>'
         + '</div>';
       st.albumUi = {
         pane,
@@ -901,6 +962,7 @@
         show: pane.querySelector('.clka-showsec'),
         stove: pane.querySelector('.clka-stovesec'),
         museum: pane.querySelector('.clka-museumsec'),
+        hall: pane.querySelector('.clka-hallsec'),
       };
       // Розписи купуються за глеки, тож живуть у Майстерні поруч із рештою покупок (їх туди кладе ядро).
       st.albumHouse = api.layer(st, 'back', 'album');
@@ -919,6 +981,7 @@
         rows: a.rows || 0, cols: a.cols || 0, starOpen: a.starOpen || 0, starRows: a.starRows || 0,
         stove: a.stove || [], stoveRing: !!a.stoveRing, stoveBonus: a.stoveBonus || 0, show: a.show || [],
         finds: a.finds || 0, shards: a.shards || 0, find: a.find || null, bonus: a.bonus || 0,
+        hall: a.hall || null,
         // v11: стовпчики світу — скільки «домашніх» і що відкрито у світі (старий сервер їх не шле — тоді світу нема).
         homeColumns: a.homeColumns || 0, worldOpen: a.worldOpen || 0, worldSize: a.worldSize || 0, worldFull: !!a.worldFull,
       };
@@ -938,6 +1001,7 @@
       paintShow(st, api);
       paintStove(st, api);
       paintMuseum(st, api);
+      paintHall(st, api);
       paintHouseStove(st, api);
     },
 
