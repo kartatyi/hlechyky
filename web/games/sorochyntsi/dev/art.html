@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Сорочинці — стенд арту</title>
+<style>
+  body { margin: 0; padding: 12px; background: #6a4124; color: #f6efdc; font: 12px system-ui, sans-serif; }
+  .g { display: grid; grid-template-columns: repeat(auto-fill, 150px); gap: 10px; }
+  .c { position: relative; width: 150px; }
+  .c svg { display: block; width: 150px; height: 153px; border-radius: 6px; background: #f2e7d0; }
+  .c .z1 { position: absolute; left: 4px; top: 30px; width: 34px; height: 118px; border: 1px dashed rgba(255,0,0,.6); }
+  .c .z2 { position: absolute; right: 4px; bottom: 6px; width: 104px; height: 34px; border: 1px dashed rgba(0,0,255,.6); }
+  body.clean .z1, body.clean .z2 { display: none; }
+  .c b { display: block; margin-top: 2px; font-size: 11px; }
+  .c i { color: #f2c94c; font-style: normal; }
+  .miss svg { background: repeating-linear-gradient(45deg, #5a361d 0 6px, #4e2f19 6px 12px); }
+  h2 { margin: 14px 0 6px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+<script type="module">
+import { artSvg, hasArt, lore } from '../art.js';
+import { card, TIER_NAME } from '../consts.js';
+const q = new URLSearchParams(location.search);
+if (q.has('clean')) document.body.classList.add('clean');
+const from = +(q.get('from') ?? 0), to = +(q.get('to') ?? 89);
+let h = '';
+for (const t of [3, 2, 1]) {
+  const ids = [];
+  for (let id = 0; id < 90; id++) if (card(id).tier === t && id >= from && id <= to) ids.push(id);
+  if (!ids.length) continue;
+  h += '<h2>' + TIER_NAME[t] + '</h2><div class="g">';
+  for (const id of ids) {
+    const c = card(id), ok = hasArt(id);
+    h += '<div class="c' + (ok ? '' : ' miss') + '">' + (ok ? artSvg(id) : '<svg viewBox="0 0 100 102"></svg>') + '<span class="z1"></span><span class="z2"></span>'
+      + '<b>' + id + ' · ' + c.name + ' <i>' + c.bonus + '</i></b>' + (q.has('lore') ? '<small>' + lore(id) + '</small>' : '') + '</div>';
+  }
+  h += '</div>';
+}
+document.getElementById('out').innerHTML = h;
+</script>
+</body>
+</html>

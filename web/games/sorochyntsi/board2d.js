@@ -103,6 +103,8 @@ export async function createBoard2d(host, opts = {}) {
     parts: { ...ALL, ...(opts.parts || {}) } };
 
   const U = 'sm' + Math.random().toString(36).slice(2, 7);   // id градієнтів цього поля
+  // Арт крамниць (опитування 09.11): сценки — art.js; не завантажився — крамниці з емблемою, як до арту.
+  const ART = await import('./art.js').catch(() => null);
   const svg = el('svg', { class: 'sor-m', preserveAspectRatio: 'xMidYMid meet', role: 'group', 'aria-label': 'Ярмарковий стіл' });
   el('style', null, svg).textContent = CSS;
   {
@@ -112,6 +114,9 @@ export async function createBoard2d(host, opts = {}) {
       stops.forEach(([o, c, a]) => el('stop', { offset: o, 'stop-color': c, 'stop-opacity': a == null ? 1 : a }, g));
     };
     grad('linearGradient', 'p', { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, TH.paper[0]], [1, TH.paper[1]]]);
+    // тіло крамниці (під смугою) із заокругленим низом — рамка для сцени
+    el('path', { d: 'M0 26h' + CW + 'v' + (CH - 34) + 'a8 8 0 0 1-8 8H8a8 8 0 0 1-8-8z' }, el('clipPath', { id: U + 'cb' }, defs));
+    st.defs = defs;
     grad('linearGradient', 't', { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, TH.table[0]], [1, TH.table[1]]]);
     [...TOKENS, 'fern'].forEach((gd) => {
       const c = GOOD_COLOR[gd];
@@ -266,6 +271,68 @@ export async function createBoard2d(host, opts = {}) {
     embroid(gBase, 0, ry1 - 5, W, 10, false, T.band);
   }
 
+  /** Сцена крамниці як <symbol> у defs (раз на поле) — у крамницях лише <use>. null — сцени нема. */
+  function artSym(id) {
+    if (!ART || !st.defs) return null;
+    const key = U + 'a' + id;
+    if (st.arts && st.arts.has(id)) return st.arts.get(id);
+    st.arts = st.arts || new Map();
+    const inner = ART.artInner(id);
+    if (!inner) { st.arts.set(id, null); return null; }
+    const sym = el('symbol', { id: key, viewBox: '0 0 100 102', preserveAspectRatio: 'xMidYMid slice' }, st.defs);
+    sym.innerHTML = '<rect width="100" height="102" fill="#f2e7d0"/>' + inner;
+    st.arts.set(id, key);
+    return key;
+  }
+
+  /** Крамниця з артом (розкладка B, опитування 09.11): сцена на все тіло, ціна стовпчиком поверх ліворуч, назва стрічкою внизу. */
+  function drawCardArt(g, c, x, y, s, mark, sym) {
+    const T = TH;
+    const k = el('g', { transform: 'translate(' + x + ',' + y + ') scale(' + s + ')' }, g);
+    el('rect', { x: 1.2, y: 2.6, width: CW, height: CH, rx: 8, fill: T.shadow }, k);
+    el('rect', { x: 0, y: 0, width: CW, height: CH, rx: 8, fill: '#f2e7d0' }, k);
+    el('use', { href: '#' + sym, x: 0, y: 26, width: CW, height: CH - 26, 'clip-path': 'url(#' + U + 'cb)' }, k);
+    el('rect', { x: 0, y: 0, width: CW, height: CH, rx: 8, fill: 'none', stroke: T.edge, 'stroke-width': 1.6 }, k);
+    const col = BAND[c.bonus], ink = GOOD_INK[c.bonus];
+    el('path', { d: 'M0,8 a8,8 0 0 1 8,-8 h' + (CW - 16) + ' a8,8 0 0 1 8,8 v18 h-' + CW + ' z', fill: col, stroke: T.edge, 'stroke-width': 1.6 }, k);
+    let pr = '', pk = '';
+    for (let i = 0; i < 11; i++) {
+      const cx = 7 + i * 8.6, cy = 30;
+      const d = 'M' + cx + ' ' + (cy - 2.3) + 'l2.3 2.3-2.3 2.3-2.3-2.3z';
+      if (i % 2) pk += d; else pr += d;
+    }
+    el('path', { d: pr, fill: PAL.embroideryRed, opacity: 0.85 }, k);
+    el('path', { d: pk, fill: PAL.embroideryBlack, opacity: 0.75 }, k);
+    if (c.pts) {
+      txt(k, 7, 21, String(c.pts), { 'font-size': 20, 'font-weight': 900, fill: ink, stroke: c.bonus === 'linen' ? '#fff6e0' : darker(col, 0.55), 'stroke-width': 2.4, 'paint-order': 'stroke' });
+      svgIcon(k, 'star', c.pts >= 10 ? 33 : 25, 13, 13, { fill: '#ffd23f', stroke: '#7a5400', sw: 2.4 });
+    }
+    if (c.k) svgIcon(k, 'sabres', CW - 33, 13, 16, { fill: ink, lw: 3 });
+    svgIcon(k, c.bonus, CW - 13, 13, 19, bandIcon(c.bonus));
+    // назва — стрічкою внизу праворуч від ціни, до 2 рядків
+    const lines = wrap2(c.name, 13), nh = lines.length > 1 ? 24 : 14;
+    el('rect', { x: 28, y: CH - 4 - nh, width: CW - 31, height: nh, rx: 4, fill: 'rgba(255,250,240,.93)', stroke: T.edge, 'stroke-width': 0.8 }, k);
+    lines.forEach((l, i) => txt(k, 28 + (CW - 31) / 2, CH - 4 - nh + 10.5 + i * 10.5, l, { 'font-size': 9.4, 'font-weight': 800, fill: INK, 'text-anchor': 'middle' }));
+    // ціна — кружечки зі світлим обідком поверх сцени
+    let cy = CH - 13.5;
+    for (let i = GOODS.length - 1; i >= 0; i--) {
+      const gd = GOODS[i], n = c.cost[gd];
+      if (!n) continue;
+      el('circle', { cx: 15, cy: cy + 1.2, r: 10.4, fill: 'rgba(40,20,5,.32)' }, k);
+      el('circle', { cx: 15, cy, r: 10.4, fill: 'url(#' + U + 'k' + gd + ')', stroke: '#fffaf0', 'stroke-width': 1.6 }, k);
+      txt(k, 15, cy + 4.8, String(n), { 'font-size': 13.5, 'font-weight': 900, fill: GOOD_INK[gd], 'text-anchor': 'middle' });
+      cy -= 22.5;
+    }
+    // «купиш» — значок угорі праворуч на сцені (низ праворуч — назва)
+    if (mark === 'buy') {
+      el('circle', { cx: CW - 13, cy: 44, r: 11, fill: PAL.buy, stroke: '#fffaf0', 'stroke-width': 1.8 }, k);
+      el('path', { d: 'M' + (CW - 18.2) + ' 44l3.8 4 7-7.8', fill: 'none', stroke: '#fff', 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, k);
+    } else if (mark === 'gold') {
+      el('circle', { cx: CW - 13, cy: 44, r: 11, fill: 'url(#' + U + 'kgold)', stroke: '#fffaf0', 'stroke-width': 1.6 }, k);
+      svgIcon(k, 'gold', CW - 13, 44, 15, { fill: '#fff0b0', detail: '#8a5e00' });
+    }
+  }
+
   /** Крамниця: тінь, папір, смуга кольору товару з вишитим пояском, ⭐ і ⚔ значками, повнобарвна емблема. */
   function drawCardN(g, c, x, y, s, mark) {
     const T = TH;
@@ -315,7 +382,9 @@ export async function createBoard2d(host, opts = {}) {
   /** Крамниця 100×128 у (x, y), масштаб s; mark — 'buy' | 'gold' (значок у куті). */
   function drawCard(g, id, x, y, s = 1, mark) {
     const c = cardOf(id);
-    if (c) drawCardN(g, c, x, y, s, mark);
+    if (!c) return;
+    const sym = artSym(id);
+    if (sym) drawCardArt(g, c, x, y, s, mark, sym); else drawCardN(g, c, x, y, s, mark);
   }
 
   /** Колода сорочкою: темне дерево, золотий кант, ромби, римська цифра й кількість. n == null — без числа (бронь наосліп). */
@@ -631,7 +700,8 @@ export async function createBoard2d(host, opts = {}) {
     o.onPick(g.dataset.k, idOf(g));
   }
   function onOver(e) {
-    const g = legalAt(e.target);
+    const any = e.target && e.target.closest && e.target.closest('[data-k="card"]');
+    const g = legalAt(e.target) || (any && svg.contains(any) ? any : null);
     if (g === st.hot) return;
     st.hot = g;
     if (g) o.onHover(g.dataset.k, idOf(g)); else o.onHover(null, null);

@@ -182,14 +182,14 @@ function starIcon(g, x, y, s) {
   canvasIcon(g, 'star', x, y, s * 1.2, { fill: '#6b4a00' });
   canvasIcon(g, 'star', x, y, s, { fill: '#ffd23f' });
 }
-function coin(g, x, y, r, good, n) {
+function coin(g, x, y, r, good, n, rim) {
   g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.arc(x + 1.5, y + 2, r, 0, Math.PI * 2); g.fill();
   const gr = g.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
   gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(0.6, 'rgba(255,255,255,0)');
   g.fillStyle = GOOD_COLOR[good]; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
   g.fillStyle = gr; g.fill();
   g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
-  g.lineWidth = Math.max(2, r * 0.14); g.strokeStyle = good === 'linen' ? '#8a6a3a' : 'rgba(20,10,0,.55)'; g.stroke();
+  g.lineWidth = Math.max(2, r * 0.14); g.strokeStyle = rim || (good === 'linen' ? '#8a6a3a' : 'rgba(20,10,0,.55)'); g.stroke();
   g.fillStyle = GOOD_INK[good];
   g.font = `bold ${Math.round(r * 1.35)}px ${SANS}`; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(String(n), x, y + r * 0.07);
@@ -267,6 +267,64 @@ function drawBack(g, tier) {
   g.lineWidth = 6; g.strokeStyle = '#2a1a0e'; rr(g, 3, 3, W - 6, H - 6, 12); g.stroke();
 }
 /** Атлас: одна текстура на всі 90 лиць + 3 сорочки. */
+/** Лице з артом (опитування 09.11, розкладка B): сцена на все тіло, ціна стовпчиком поверх, назва стрічкою внизу. */
+function drawFaceArt(g, id, img) {
+  const [, , bonus, pts, k, cost] = DECK[id];
+  const W = ATLAS.cw, H = ATLAS.ch, band = 50;
+  g.fillStyle = '#f2e7d0'; g.fillRect(0, 0, W, H);
+  g.drawImage(img, 0, band, W, H - band);
+  g.fillStyle = bonus === 'linen' ? '#dccba0' : GOOD_COLOR[bonus]; g.fillRect(0, 0, W, band);
+  g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(0, band - 3, W, 3);
+  for (let x = 6; x < W; x += 15) {
+    g.fillStyle = (x / 15) % 2 < 1 ? PAL.embroideryRed : PAL.embroideryBlack;
+    g.beginPath(); g.moveTo(x, band + 6); g.lineTo(x + 4.5, band + 1.5); g.lineTo(x + 9, band + 6); g.lineTo(x + 4.5, band + 10.5); g.closePath(); g.fill();
+  }
+  canvasIcon(g, bonus, W - 24, band / 2, 38, bonus === 'linen' ? { fill: '#fffaf0', detail: '#b3262e', lw: 2.2 } : { ...tokenIconColors(bonus, GOOD_COLOR[bonus]), lw: 2.2 });
+  if (pts > 0) {
+    g.font = `bold 44px ${SERIF}`; g.textAlign = 'left'; g.textBaseline = 'middle';
+    g.lineWidth = 6; g.strokeStyle = bonus === 'linen' ? '#fff6e0' : 'rgba(0,0,0,.55)'; g.strokeText(String(pts), 9, band / 2 + 3);
+    g.fillStyle = bonus === 'linen' ? '#3a2a1a' : '#ffffff'; g.fillText(String(pts), 9, band / 2 + 3);
+    starIcon(g, 46, band / 2 + 2, 18);
+  }
+  if (k) canvasIcon(g, 'sabres', W - 62, band / 2, 26, { fill: bonus === 'linen' ? '#3a2a1a' : '#ffffff', lw: 3.2 });
+  // назва — стрічка внизу праворуч
+  g.font = `bold 15px ${SANS}`;
+  const lines = wrapText(g, CARD_NAME[id], W - 64).slice(0, 2), nh = lines.length > 1 ? 40 : 24;
+  g.fillStyle = 'rgba(255,250,240,.94)'; rr(g, 50, H - 8 - nh, W - 56, nh, 7); g.fill();
+  g.strokeStyle = PAL.plaqueEdge; g.lineWidth = 1.5; g.stroke();
+  g.fillStyle = '#2a1d17'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  lines.forEach((l, i) => g.fillText(l, 50 + (W - 56) / 2, H - 8 - nh + 12 + i * 17));
+  const nz = GOODS.map((gd, i) => [gd, cost[i]]).filter(([, n]) => n > 0);
+  nz.forEach(([gd, n], i) => coin(g, 25, H - 24 - (nz.length - 1 - i) * 37, 16.5, gd, n, '#fffaf0'));
+  g.lineWidth = 6; g.strokeStyle = PAL.plaqueEdge; rr(g, 3, 3, W - 6, H - 6, 12); g.stroke();
+}
+/** Довантажити сцени (art.js) у атлас: кожна — SVG → Image → клітинка; tex.needsUpdate після кожної партії. */
+export async function paintAtlasArt(atlas, isDead = () => false) {
+  let A;
+  try { A = await import('./art.js'); } catch (e) { return; }
+  const { cv, tex, size } = atlas, g = cv.getContext('2d'), k = size / 2048;
+  const load = (id) => new Promise((res) => {
+    const s = A.artSvg(id, { w: 340 });
+    if (!s) { res(null); return; }
+    const img = new Image();
+    img.onload = () => res(img); img.onerror = () => res(null);
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
+  });
+  for (let a = 0; a < 90; a += 15) {
+    const imgs = await Promise.all(Array.from({ length: Math.min(15, 90 - a) }, (_, i) => load(a + i)));
+    if (isDead()) return;
+    imgs.forEach((img, i) => {
+      if (!img) return;
+      const cell = a + i, cx = cell % ATLAS.cols, cy = Math.floor(cell / ATLAS.cols);
+      g.save(); g.translate(cx * ATLAS.cw * k, cy * ATLAS.ch * k); g.scale(k, k);
+      g.beginPath(); g.rect(0, 0, ATLAS.cw, ATLAS.ch); g.clip();
+      drawFaceArt(g, cell, img);
+      g.restore();
+    });
+    tex.needsUpdate = true;
+    atlas.onUpdate && atlas.onUpdate();
+  }
+}
 export function makeCardAtlas(hi) {
   const size = hi ? 2048 : 1024, k = size / 2048;
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
@@ -285,7 +343,7 @@ export function makeCardAtlas(hi) {
   tex.anisotropy = hi ? 8 : 2;
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
-  return { tex, size };
+  return { tex, size, cv };
 }
 
 // ---------------------------------------------------------------------------------------------------------- атлас плиток
@@ -515,8 +573,8 @@ export function emblemGeo(good, tier) {
   }
   return b.geometry();
 }
-/** Де на плашці стоїть емблема (local x, z для плашки масштабу 1): праворуч унизу, вільне від ціни й назви. */
-export const EMBLEM_AT = [0.25, 0.47];
+/** Де на плашці стоїть емблема (local x, z для плашки масштабу 1): праворуч угорі на арті, під смугою — внизу стрічка з назвою, ліворуч ціна. */
+export const EMBLEM_AT = [0.27, -0.2];
 /** Емблема менша за плашку: не закриває назви й ціни. */
 export const EMBLEM_S = 0.6;
 

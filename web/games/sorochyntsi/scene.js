@@ -116,6 +116,9 @@ export async function createScene(host, opts = {}) {
   const clothTex = M.clothTexture(hi);
   const matCloth = new THREE.MeshStandardMaterial({ map: clothTex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const atlas = M.makeCardAtlas(hi);
+  // Арт крамниць (опитування 09.11): сцени довантажуються в атлас після першого кадру — лиця оновлюються самі.
+  atlas.onUpdate = () => { if (alive) wake(); };
+  setTimeout(() => { M.paintAtlasArt(atlas, () => !alive); }, 60);
   const matFaces = new THREE.MeshStandardMaterial({ map: atlas.tex, roughness: 0.72, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
   matFaces.onBeforeCompile = (sh) => {
     sh.vertexShader = 'attribute float aLift;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed.y += aLift;');

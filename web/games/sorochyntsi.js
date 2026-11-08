@@ -19,8 +19,8 @@
     if (!loading) {
       // Звук — не обов'язковий: не завантажився — граємо мовчки.
       loading = Promise.all([import('/games/sorochyntsi/consts.js'), import('/games/sorochyntsi/hud-calc.js'), import('/games/sorochyntsi/sound.js').catch(() => null),
-        import('/games/sorochyntsi/icons.js').catch(() => null)])
-        .then(([C, K, S, I]) => { M = { C, K, S, I }; return M; })
+        import('/games/sorochyntsi/icons.js').catch(() => null), import('/games/sorochyntsi/art.js').catch(() => null)])
+        .then(([C, K, S, I, A]) => { M = { C, K, S, I, A }; return M; })
         .catch((e) => { loading = null; throw e; });
     }
     return loading;
@@ -532,30 +532,38 @@
   function onHover(root, kind, id) {
     const st = root._so;
     if (!st || !st.el) return;
+    clearTimeout(st.tipT);
     if (kind !== 'card' || coarse()) { hideTip(st); return; }
     if (st.el.fpop && !st.el.fpop.hidden && st.sel && st.sel.k === 'card' && st.sel.id === +id) { hideTip(st); return; }   // віконце вже поруч
-    showTip(st, +id);
+    // Велика картка «розглядати» (опитування 09.11): за ~0,4 с під курсором; уже відкрита — переходить одразу.
+    if (st.el.tip && !st.el.tip.hidden) showTip(st, +id);
+    else st.tipT = setTimeout(() => { if (root._so === st) showTip(st, +id); }, 380);
   }
+  /** Сцена крамниці (art.js) рядком <svg>; crop — [y0, h] у полі 100 × 102. Нема модуля чи сцени — ''. */
+  const artOf = (id, crop) => (M && M.A ? M.A.artSvg(id, { crop, cls: 'sor-artsvg' }) : '');
+  const loreOf = (id) => (M && M.A ? M.A.lore(id) : '');
   function showTip(st, id) {
     const tip = st.el.tip, v = st.view, sc = st.sc;
     if (!tip || !sc || !v) return;
     const c = M.C.card(id);
     if (!c) { hideTip(st); return; }
     const info = v.me && (v.me.cards || {})[id];
-    let h = '<b>' + esc(c.name) + '</b> · ' + gIc(c.bonus) + (c.pts ? ' +' + c.pts + ' ⭐' : '') + (c.k ? ' ⚔' : '');
-    if (info) h += '<br>' + (info.ok ? '<span class="sor-ok">✓ можна купити' + (info.pay && Object.keys(info.pay).length ? ': ' + iconize(M.K.iconsText(info.pay)) : ' задарма') + '</span>' : '<span class="sor-no">' + esc(info.why) + '</span>');
-    tip.innerHTML = h;
+    const art = artOf(id, [6, 82]), lo = loreOf(id);
+    let h = (art ? '<div class="sor-tart">' + art + '</div>' : '')
+      + '<div class="sor-tb" style="--gc:' + (c.bonus === 'linen' ? '#dccba0' : M.C.GOOD_COLOR[c.bonus]) + ';--gi:' + M.C.GOOD_INK[c.bonus] + '">' + (c.pts ? '<b>' + c.pts + ' ⭐</b>' : '') + '<span>' + M.C.TIER_ROMAN[c.tier] + '</span><span class="g">' + gIc(c.bonus, true) + ' ' + esc(M.C.GOOD_NAME[c.bonus]) + (c.k ? ' · ⚔' : '') + '</span></div>'
+      + '<div class="sor-tt"><b>' + esc(c.name) + '</b>' + (lo ? '<i>' + esc(lo) + '</i>' : '') + '<div class="sor-cost">ціна ' + costDots(c.cost) + '</div>';
+    if (info) h += '' + (info.ok ? '<span class="sor-ok">✓ можна купити' + (info.pay && Object.keys(info.pay).length ? ': ' + iconize(M.K.iconsText(info.pay)) : ' задарма') + '</span>' : '<span class="sor-no">' + esc(info.why) + '</span>');
+    tip.innerHTML = h + '</div>';
     tip.hidden = false;
     const p = sc.screenPos('card', id);
     if (!p) return;
-    const W = st.el.fieldwrap.clientWidth, w = tip.offsetWidth;
-    const x = Math.max(w / 2 + 6, Math.min(W - w / 2 - 6, p.x));
-    const below = p.y < tip.offsetHeight + 70;
-    tip.style.left = Math.round(x) + 'px';
-    tip.style.top = Math.round(below ? p.y + 64 : p.y - 60) + 'px';
-    tip.classList.toggle('below', below);
+    // поруч із крамницею (праворуч, а як не влазить — ліворуч), по висоті — у межах поля
+    const W = st.el.fieldwrap.clientWidth, H = st.el.fieldwrap.clientHeight, w = tip.offsetWidth, th = tip.offsetHeight;
+    const side = p.x + 66 + w <= W - 6 ? p.x + 66 : p.x - 66 - w;
+    tip.style.left = Math.round(Math.max(6, Math.min(W - w - 6, side))) + 'px';
+    tip.style.top = Math.round(Math.max(6, Math.min(H - th - 6, p.y - th / 2))) + 'px';
   }
-  function hideTip(st) { if (st.el && st.el.tip) st.el.tip.hidden = true; }
+  function hideTip(st) { clearTimeout(st.tipT); if (st.el && st.el.tip) st.el.tip.hidden = true; }
 
   // ─── Малювання ──────────────────────────────────────────────────────────
   function paint(root, ctx) {
@@ -799,11 +807,13 @@
     const mine = myReserve(v).find((r) => r.id === id);
     const after = me ? K.costAfter(id, (playerOf(v, me.seat) || {}).bonus) : c.cost;
     const cl = me ? K.closes(id, v, me.seat) : [];
-    let h = '<div class="sor-sel"><div class="sor-selh">' + cardHtml(id, { mark: info ? K.marks({ [id]: info })[id] : null, blind: mine && mine.blind })
+    const art = artOf(id, [10, 58]), lo = loreOf(id);
+    let h = '<div class="sor-sel">' + (art ? '<div class="sor-selart">' + art + '</div>' : '') + '<div class="sor-selh">' + cardHtml(id, { mark: info ? K.marks({ [id]: info })[id] : null, blind: mine && mine.blind })
       + '<div class="sor-seli"><b>' + esc(c.name) + '</b><div class="muted small">' + C.TIER_ROMAN[c.tier] + ' · ' + esc(C.TIER_NAME[c.tier]) + (mine ? ' · 📌 твоя бронь' : '') + '</div>'
       + '<div class="small">знижка ' + gIc(c.bonus) + ' ' + esc(C.GOOD_NAME[c.bonus]) + (c.pts ? ' · <b>+' + c.pts + ' ⭐</b>' : '') + (c.k ? ' · ⚔ козак' : '') + '</div>'
       + '<div class="small sor-cost">ціна ' + costDots(c.cost) + '</div>'
-      + (me ? '<div class="small sor-cost">тобі ' + (Object.keys(after).length ? costDots(after) : '<b class="sor-ok">задарма</b>') + '</div>' : '') + '</div></div>';
+      + (me ? '<div class="small sor-cost">тобі ' + (Object.keys(after).length ? costDots(after) : '<b class="sor-ok">задарма</b>') + '</div>' : '') + '</div></div>'
+      + (lo ? '<div class="sor-lore">' + esc(lo) + '</div>' : '');
     if (info) h += info.ok ? '<div class="sor-pay">заплатиш: <b>' + (Object.keys(info.pay || {}).length ? iconize(K.iconsText(info.pay)) : 'нічого') + '</b></div>'
       : '<div class="sor-no small">' + esc(info.why) + '</div>';
     if (cl.length) h += '<div class="sor-cl small">закриє: ' + iconize(cl.map((x) => esc(x.text)).join(' · ')) + '</div>';

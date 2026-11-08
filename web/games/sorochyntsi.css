@@ -91,10 +91,19 @@
   border-radius: 14px; overflow: hidden; background: linear-gradient(#86562f, #6a4124); }   /* = стільниця пласкої мапи (board2d TH.table) */
 .sor-field { position: absolute; inset: 0; }
 .sor-field > canvas, .sor-field > svg { display: block; width: 100%; height: 100%; }
-.sor-tip { position: absolute; z-index: 4; transform: translate(-50%, -100%); max-width: min(92%, 300px); background: rgba(28, 18, 11, .95);
-  color: var(--text); border: 1px solid var(--accent); border-radius: 10px; padding: 6px 10px; font-size: .88em; line-height: 1.35;
-  pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.45); text-align: center; }
-.sor-tip.below { transform: translate(-50%, 0); }
+/* велика картка «розглядати» під курсором (ПК): сцена, смуга товару, назва, легенда, ціна (опитування 09.11) */
+.sor-tip { position: absolute; z-index: 4; width: min(270px, 46%); background: #fffaf0; color: #2a1d17; border: 2px solid #6e4523;
+  border-radius: 12px; overflow: hidden; font-size: .88em; line-height: 1.35; pointer-events: none; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.sor-tart .sor-artsvg, .sor-selart .sor-artsvg { display: block; width: 100%; height: auto; }
+.sor-tb { display: flex; gap: 8px; align-items: center; padding: 4px 10px; background: var(--gc); color: var(--gi); font-weight: 700; font-size: .92em; white-space: nowrap; }
+.sor-tb .g { margin-left: auto; }
+.sor-tt { padding: 6px 10px 9px; display: flex; flex-direction: column; gap: 3px; }
+.sor-tt > b { font-size: 1.12em; }
+.sor-tt > i { color: #5a4030; }
+.sor-tt .sor-no { color: #b3262e; }
+.sor-tt .sor-ok { color: #2e7d32; }
+.sor-selart { margin: -2px -2px 2px; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); }
+.sor-lore { font-style: italic; color: var(--muted); font-size: .9em; line-height: 1.35; }
 .sor-flash { position: absolute; z-index: 4; left: 50%; top: 10px; transform: translateX(-50%); background: rgba(28, 18, 11, .92);
   border-radius: 12px; padding: 7px 14px; font-weight: 700; max-width: 90%; text-align: center; pointer-events: none; }
 .sor-flash.go { animation: sor-flash 2.6s ease-out forwards; }

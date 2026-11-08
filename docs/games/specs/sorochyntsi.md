@@ -973,6 +973,17 @@ Lo-poly, пласке затінення, тепле вечірнє світло
 емблема на плашці — `EMBLEM_S` 0,6 у правому нижньому куті (ятки й арки не закривають назву й ціну), мій прилавок
 ближче (`COUNTER.bottom` z 3,25), камера `DEF_POLAR` 38° — ринок більший.
 
+**Арт крамниць** (опитування 09.11): на кожній із 90 крамниць своя сценка кодом — `web/games/sorochyntsi/art.js`
+(`artInner(id)` / `artSvg(id, { crop })` / `lore(id)`), сцени — `art/t1.js` (I), `art/t2.js` (II), `art/t3.js` (III) з
+«декорацій» `art/lib.js` (хата, ятка, тин, люди з убранням, вівці, воли, віз, піч, глечики, рушники, килими…), легенди —
+`art/lore.js`, стенд — `dev/art.html` (усі 90; червоне/синє — зони, які накриють ціна й назва). Поле сцени 100 × 102 (тіло
+крамниці під смугою). Розкладка B: сцена на все тіло, ціна стовпчиком кружечків зі світлим обідком поверх ліворуч, назва —
+стрічкою внизу праворуч (до 2 рядків), «купиш» — значок угорі праворуч. 2D: сцени — `<symbol>` у defs раз на поле, у
+крамниці — `<use>`; 3D: атлас лиць малюється без арту, потім `paintAtlasArt` довантажує сцени (SVG → Image) і
+перемальовує клітинки, емблема — праворуч угорі (`EMBLEM_AT`). Не завантажився art.js — крамниці з емблемою, як раніше.
+Велика картка «розглядати»: на ПК під курсором за ~0,4 с (будь-яка крамниця, і в чужий хід) — сцена, смуга товару, назва,
+легенда, ціна, «можна купити»; у віконці / шторці обраної крамниці — сцена згори й легенда курсивом.
+
 **2D (`board2d.js`)** — той самий API, SVG. Ринок: три ряди (III згори) по 4 картки-прямокутники (смуга кольору бонуса,
 ⭐, ⚔, стовпчик ціни кружечками з числами, назва), ліворуч — стос колоди з числом; банк — 6 кружечків з числами
 (широке поле — стовпчиком праворуч; вузьке, висота > ширини, — рядком над ринком); гості — рядком над ринком
@@ -1093,6 +1104,7 @@ Lo-poly, пласке затінення, тепле вечірнє світло
 | `tests/Hlechyky.Tests/Games/SorochyntsiTests.cs`, `SorochyntsiBotTests.cs`, `SorochyntsiViewTests.cs`, `SorochyntsiRejoinTests.cs`, `SorochyntsiSaveTests.cs`, `SorochyntsiLinesTests.cs` | **А** |
 | `web/games/sorochyntsi/scene.js`, `web/games/sorochyntsi/models.js`, `web/games/sorochyntsi/dev/scene.html` | **Б** 3D |
 | `web/games/sorochyntsi/icons.js` (значки для 2D, 3D і картки), `web/games/sorochyntsi/dev/icons.html` (стенд значків) | вигляд 09.11 |
+| `web/games/sorochyntsi/art.js`, `art/lib.js`, `art/t1.js`, `art/t2.js`, `art/t3.js`, `art/lore.js`, `dev/art.html` (стенд арту) | арт 09.11 |
 | `web/games/sorochyntsi.js`, `web/games/sorochyntsi.css`, `web/games/sorochyntsi/board2d.js`, `web/games/sorochyntsi/hud-calc.js` (чисті розрахунки: `takeState`, `suggestDiscard`, `guestProgress`, `marks`, перелік «бракує», звання), `web/games/sorochyntsi/sound.js`, `web/games/sorochyntsi/dev/fixture.js`, `web/games/sorochyntsi/dev/hud.html`, `web/games/sorochyntsi/dev/hud-calc.test.mjs` | **В** картка |
 | `web/games/core.js` (THEMES), `web/games/tags.js`, реліз і «Що нового» | оркестратор при зведенні |
 
