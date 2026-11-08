@@ -1182,7 +1182,10 @@
         if (b.level !== level) { b.level = level; b.bar.style.transform = 'scaleX(' + Math.max(0, level) + ')'; }
       }
     }
-    const any = now.length > 0 || paintStock(st) > 0;
+    // paintStock — першим і завжди: коротке замикання `now.length > 0 || paintStock(...)` не малювало чипи запасу, поки світиться
+    // хоч одна плашка (розгін, серія) — тобто майже завжди.
+    const stocks = paintStock(st);
+    const any = now.length > 0 || stocks > 0;
     if (st.buffs.hidden === any) st.buffs.hidden = !any;
   }
 

@@ -569,17 +569,17 @@
     const esc = (x) => api.esc(st, x);
     const left = w.until ? Math.max(0, Date.parse(w.until) - api.serverNow(st)) : 0;
     const hours = Math.ceil(left / 36e5);
-    const cards = w.offer.map((c) => '<div class="clkw-card' + (c.can ? '' : ' off') + '">'
-      + '<div class="clkw-ic">' + esc(c.icon) + '</div><div class="clkw-tx"><b>' + esc(c.name) + '</b><div class="small muted">' + esc(c.text) + '</div></div>'
-      + '<div class="clkw-btns"><button type="button" class="primary" data-pick="' + esc(c.k) + '"' + (c.can ? '' : ' disabled title="Тобі це зараз нікуди прикласти"') + '>Взяти собі</button>'
+    const cards = w.offer.map((c) => '<div class="clkwi-card' + (c.can ? '' : ' off') + '">'
+      + '<div class="clkwi-ic">' + esc(c.icon) + '</div><div class="clkwi-tx"><b>' + esc(c.name) + '</b><div class="small muted">' + esc(c.text) + '</div></div>'
+      + '<div class="clkwi-btns"><button type="button" class="primary" data-pick="' + esc(c.k) + '"' + (c.can ? '' : ' disabled title="Тобі це зараз нікуди прикласти"') + '>Взяти собі</button>'
       + '<button type="button" class="ghost" data-gift="' + esc(c.k) + '">🎁 Подарувати другові</button></div></div>').join('');
-    const html = '<div class="clk-news clkw"><h3 style="padding-right:30px">✨ Глек з бажанням</h3>'
+    const html = '<div class="clk-news clkwish"><h3 style="padding-right:30px">✨ Глек з бажанням</h3>'
       + '<p class="small muted">Чарівний глек у твоїх руках! Обери одне бажання' + (hours ? ' — воно чекатиме ще ' + hours + ' год' : '') + '.</p>'
-      + cards + '<div class="clkw-friends" hidden></div><div class="clkw-msg small" role="status"></div></div>';
+      + cards + '<div class="clkwi-friends" hidden></div><div class="clkwi-msg small" role="status"></div></div>';
     const body = api.overlay(st, html, { cls: 'clk-newsbox' });
     api.sfx('rare');
-    const msg = body.querySelector('.clkw-msg');
-    const box = body.querySelector('.clkw-friends');
+    const msg = body.querySelector('.clkwi-msg');
+    const box = body.querySelector('.clkwi-friends');
     let busy = false;
     const send = (payload) => {
       if (busy) return;
