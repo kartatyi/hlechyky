@@ -144,16 +144,19 @@ public class ClickerWeekGrowTests
         k.Day("Зоя", "2026-11-03", 1e30, 1.1e30);
         var w = JsonSerializer.SerializeToElement(k.Svc.Wire("Тарас", Wed));
         var grow = w.GetProperty("grow");
-        Assert.Equal(2, grow.GetProperty("mine").GetProperty("place").GetInt32());
-        Assert.Equal(2.0, grow.GetProperty("mine").GetProperty("x").GetDouble());
+        // mine = [місце, ріст, дні, у заліку 1/0]; рядок табло = [нік, ріст, у заліку 1/0]; призи й вітрила — у каталозі.
+        Assert.Equal(2, grow.GetProperty("mine")[0].GetInt32());
+        Assert.Equal(2.0, grow.GetProperty("mine")[1].GetDouble());
         Assert.Equal(5, grow.GetProperty("board").GetArrayLength());
-        Assert.True(grow.GetProperty("board")[1].GetProperty("me").GetBoolean());
-        Assert.Equal([300, 150, 75], grow.GetProperty("prizes").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal("Тарас", grow.GetProperty("board")[1][0].GetString());
+        Assert.False(grow.TryGetProperty("prizes", out _));
+        using var cat = JsonDocument.Parse(JsonSerializer.Serialize(k.Svc.CatalogWire()));
+        Assert.Equal([300, 150, 75], cat.RootElement.GetProperty("prizes").EnumerateArray().Select(x => x.GetInt32()));
         Assert.Equal(Ends(), w.GetProperty("ends").GetDateTimeOffset());
 
         var empty = JsonSerializer.SerializeToElement(new Kit().Svc.Wire("Оля", Wed)).GetProperty("grow");
         Assert.Equal(0, empty.GetProperty("board").GetArrayLength());
-        Assert.Equal(JsonValueKind.Null, empty.GetProperty("mine").ValueKind);
+        Assert.False(empty.TryGetProperty("mine", out _));
     }
 
     // ---------- підбиття ----------

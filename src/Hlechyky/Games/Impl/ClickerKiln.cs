@@ -1577,7 +1577,7 @@ public sealed partial class Clicker
             dry = _rack.Count(r => r.DryAt <= now),
             straw = _straw,
             strawMax = StrawMaxNow,
-            strawPrice = StrawPrice,
+            strawPrice = Sig(StrawPrice),
             // Палій: чи палить сам, чи вимкнений вимикачем і який у нього «блиск» — панель горна це пояснює на місці.
             auto = KilnAutoOn,
             autoMode = KilnAutoModeKey,

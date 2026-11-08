@@ -55,8 +55,7 @@ public class ClickerV12CraftViewTests
 
     static int[]? Kept(RoomHarness h, string key)
     {
-        var k = Item(h, key).GetProperty("kept");
-        return k.ValueKind == JsonValueKind.Null ? null : k.EnumerateArray().Select(x => x.GetInt32()).ToArray();
+        return Item(h, key).TryGetProperty("kept", out var k) ? k.EnumerateArray().Select(x => x.GetInt32()).ToArray() : null;   // нічого відкладеного — ключа нема
     }
 
     [Fact]

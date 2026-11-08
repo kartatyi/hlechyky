@@ -557,16 +557,16 @@ public sealed partial class Clicker
         var plan = ahead.Where(x => near.Contains(x.B.Key) || x.B.Stages[x.S].Needs.Where((_, i) => DepotCount(DepotKey(x.B.Key, x.S, i)) > 0).Any()).Select(x => new
         {
             building = x.B.Key, index = x.S,
-            needs = x.B.Stages[x.S].Needs.Select((n, i) => new { ware = n.Ware, n = n.N, q = n.Q, style = n.Style, depot = DepotCount(DepotKey(x.B.Key, x.S, i)) }).ToList(),
+            // Рядок потреби — масив [виріб, скільки, якість, розпис, на складі]: вид летить щопачки кліків (ClickerSpeedTests).
+            needs = x.B.Stages[x.S].Needs.Select((n, i) => (object)new object[] { n.Ware, n.N, n.Q, n.Style, DepotCount(DepotKey(x.B.Key, x.S, i)) }).ToList(),
         }).ToList();
         var totals = ahead.SelectMany(x => x.B.Stages[x.S].Needs.Select((n, i) => (n, depot: DepotCount(DepotKey(x.B.Key, x.S, i)))))
             .GroupBy(x => (x.n.Ware, x.n.Q, x.n.Style))
-            .Select(g => new
-            {
-                ware = g.Key.Ware, q = g.Key.Q, style = g.Key.Style, n = g.Sum(x => x.n.N), depot = g.Sum(x => x.depot),
-                have = ItemCount(TolokaMatch(new TolokaNeed(g.Key.Ware, 0, g.Key.Q, g.Key.Style))),
-            })
-            .OrderByDescending(x => x.q).ThenBy(x => x.ware, StringComparer.Ordinal).ToList();
+            .Select(g => (Ware: g.Key.Ware, Q: g.Key.Q, Style: g.Key.Style, N: g.Sum(x => x.n.N), Depot: g.Sum(x => x.depot),
+                Have: ItemCount(TolokaMatch(new TolokaNeed(g.Key.Ware, 0, g.Key.Q, g.Key.Style)))))
+            .OrderByDescending(x => x.Q).ThenBy(x => x.Ware, StringComparer.Ordinal)
+            // Рядок підсумку — масив [виріб, якість, розпис, треба, на складі, у коморі].
+            .Select(x => (object)new object[] { x.Ware, x.Q, x.Style, x.N, x.Depot, x.Have }).ToList();
         return new
         {
             built = Buildings.Where(x => _tBuilt.Contains(x.Key)).Select(x => x.Key).ToList(),

@@ -40,7 +40,7 @@ public class ClickerEnvoyTests
 
     static JsonElement Trade(RoomHarness h) => h.View(0).GetProperty("trade");
     static JsonElement? Envoy(RoomHarness h) =>
-        Trade(h).GetProperty("envoy") is { ValueKind: JsonValueKind.Object } e ? e : null;
+        Trade(h).TryGetProperty("envoy", out var e) && e.ValueKind == JsonValueKind.Object ? e : null;       // посла нема — ключа нема
     static int Count(JsonElement e) => e.GetProperty("n").GetInt32();
     static long Slava(RoomHarness h) => Trade(h).GetProperty("slava").GetInt64();
     static double Pots(RoomHarness h) => h.View(0).GetProperty("pots").GetDouble();
@@ -120,7 +120,7 @@ public class ClickerEnvoyTests
         for (var i = 0; i < 3; i++) h.Clock.Advance(Clicker.TradeGap);
         var ships = Trade(h).GetProperty("ships").EnumerateArray().ToList();
         Assert.Equal(Clicker.TradeShipsMax, ships.Count);
-        Assert.All(ships, s => Assert.False(s.GetProperty("envoy").GetBoolean()));
+        Assert.All(ships, s => Assert.False(s.Flag("envoy")));
         Assert.NotNull(Envoy(h));
     }
 

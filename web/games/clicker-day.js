@@ -5,6 +5,9 @@
   v13 Г2: поруч із «Майстром» — вкладка «🧺 Ловець дня»: view.day.catcher {prizes, minutes [хв «Кошика»], minPoints,
   minPlayers, mine, board, players, last} — та сама форма табло (null — Ловця вимкнено).
   v13 Г3, Г7: окрема картка «📜 Доручення Глека» (view.chores, див. нижче) і вікно «✨ Глек з бажанням».
+  Вид стислий (межа розміру виду, ClickerSpeedTests): призи, хвилини, пороги, вітрила — у каталозі (catalog.day, catalog.week),
+  рядки табло — масиви ([нік, очки]; тиждень — [нік, ріст, 1/0]), mine — [місце, очки], гість — guest: true; trackOf/growOf
+  розгортають їх у ті самі об'єкти, що малює решта файлу.
   v13 Г4, Г5: третя вкладка «⛵ Тиждень»: view.week (ClickerWeek.cs) {ends, person, grow {prizes, sails, days, mine {place, x, days, ok},
   board [{nick, x, ok, me}], last}, coop {ware, q, vol, done, mine, min, fin, pct, people}}; чинні нагороди тижня — view.buffs.week
   {sails {pct, until}, coop {pct, until}}. «Довезти» — дія guild { op: 'coop', n }.
@@ -103,6 +106,28 @@
       : 'якщо від ' + min + ' ' + pointsWord(api, min) + ' наберуть хоча б ' + (FEW[need] || need + ' гравців');
     return '<div class="small clkmd-prize">Призи о ' + d.at + ': ' + list + ', ' + who
       + (need > 1 ? ' <span class="muted">(зараз — ' + have + ')</span>' : '') + '</div>';
+  }
+
+  /// Табло дошки дня з виду: рядок — [нік, очки], місце — номер у списку, «я» — рядок із моїм місцем; mine — [місце, очки].
+  /// (Старий вигляд — об'єкти {place, nick, points, me} — теж приймаємо.)
+  function trackOf(t) {
+    const m = t.mine;
+    const mine = Array.isArray(m) ? { place: m[0], points: m[1] } : m || null;
+    const board = (Array.isArray(t.board) ? t.board : []).map((r, i) => (Array.isArray(r)
+      ? { place: i + 1, nick: r[0], points: r[1], me: !!mine && mine.place === i + 1 } : r));
+    return { mine, board, players: t.players || 0, last: t.last || null };
+  }
+
+  /// Табло росту тижня: рядок — [нік, ріст, у заліку 1/0]; mine — [місце, ріст, дні, у заліку 1/0]; призи й вітрила — з каталогу.
+  function growOf(g, cat) {
+    const m = g.mine;
+    const mine = Array.isArray(m) ? { place: m[0], x: m[1], days: m[2], ok: !!m[3] } : m || null;
+    const board = (Array.isArray(g.board) ? g.board : []).map((r, i) => (Array.isArray(r)
+      ? { nick: r[0], x: r[1], ok: !!r[2], me: !!mine && mine.place === i + 1 } : r));
+    return {
+      prizes: Array.isArray(cat.prizes) ? cat.prizes : [], sails: Array.isArray(cat.sails) ? cat.sails : [],
+      days: cat.days || 3, mine, board, last: g.last || null,
+    };
   }
 
   // ---------- вкладка «⛵ Тиждень» (v13 Г4, Г5) ----------
@@ -637,33 +662,34 @@
       // Старий сервер виду day не шле (undefined) — лишаємо, що було; null — Майстра дня вимкнено в конфігу.
       if (v.day !== undefined) {
         const d = v.day;
+        const cat = (st.catalog && st.catalog.day) || {};
+        const person = !!d && !d.guest;
         st.day = d && d.ends ? {
           // Кінець доби й «23:30» — раз на вид: відлік у slow кличеться чотири рази на секунду.
           day: d.day || '', ends: d.ends, endsMs: Date.parse(d.ends), at: closeAt(d.ends),
-          prizes: Array.isArray(d.prizes) ? d.prizes : [], minPoints: d.minPoints || 0, minPlayers: d.minPlayers || 0,
-          person: !!d.person, mine: d.mine || null, board: Array.isArray(d.board) ? d.board : [], players: d.players || 0,
-          last: d.last || null, feast: Array.isArray(d.feast) ? d.feast : [],
+          // Призи, хвилини й пороги — з каталогу (catalog.day): вид летить щопачки кліків і їх не несе.
+          prizes: Array.isArray(cat.prizes) ? cat.prizes : [], minPoints: cat.minPoints || 0, minPlayers: cat.minPlayers || 0,
+          person, ...trackOf(d), feast: Array.isArray(cat.feast) ? cat.feast : [],
           // v13 Г2: «Ловець дня» — табло тієї самої форми; at/day/person ділить із «Майстром».
           catcher: d.catcher ? {
-            day: d.day || '', at: closeAt(d.ends), person: !!d.person,
-            prizes: Array.isArray(d.catcher.prizes) ? d.catcher.prizes : [], minutes: Array.isArray(d.catcher.minutes) ? d.catcher.minutes : [],
-            minPoints: d.catcher.minPoints || 0, minPlayers: d.catcher.minPlayers || 0, mine: d.catcher.mine || null,
-            board: Array.isArray(d.catcher.board) ? d.catcher.board : [], players: d.catcher.players || 0, last: d.catcher.last || null,
+            day: d.day || '', at: closeAt(d.ends), person, ...trackOf(d.catcher),
+            prizes: Array.isArray((cat.catcher || {}).prizes) ? cat.catcher.prizes : [],
+            minutes: Array.isArray((cat.catcher || {}).minutes) ? cat.catcher.minutes : [],
+            minPoints: (cat.catcher || {}).minPoints || 0, minPlayers: (cat.catcher || {}).minPlayers || 0,
           } : null,
         } : null;
       }
       // v13 Г4, Г5: тиждень — той самий принцип: undefined лишає, null — змагань нема.
       if (v.week !== undefined) {
         const w = v.week;
+        const wcat = (st.catalog && st.catalog.week) || {};
         st.week = w && w.ends ? {
-          ends: w.ends, endsMs: Date.parse(w.ends), at: closeAt(w.ends), person: !!w.person,
-          grow: w.grow ? {
-            prizes: Array.isArray(w.grow.prizes) ? w.grow.prizes : [], sails: Array.isArray(w.grow.sails) ? w.grow.sails : [],
-            days: w.grow.days || 3, mine: w.grow.mine || null, board: Array.isArray(w.grow.board) ? w.grow.board : [], last: w.grow.last || null,
-          } : null,
+          ends: w.ends, endsMs: Date.parse(w.ends), at: closeAt(w.ends), person: !w.guest,
+          // Призи, вітрила, поріг днів і відсоток бонусу замовлення — з каталогу (catalog.week); у виді лише табло.
+          grow: w.grow ? growOf(w.grow, wcat) : null,
           coop: w.coop ? {
             ware: w.coop.ware, q: w.coop.q || 3, vol: w.coop.vol || 0, done: w.coop.done || 0, mine: w.coop.mine || 0, min: w.coop.min || 0, max: w.coop.max || 0,
-            fin: !!w.coop.fin, pct: w.coop.pct || 0, people: w.coop.people || 0,
+            fin: !!w.coop.fin, pct: wcat.pct || 0, people: w.coop.people || 0,
           } : null,
         } : null;
       }

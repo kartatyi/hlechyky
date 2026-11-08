@@ -164,7 +164,9 @@ public class ClickerCatchDayTests
         Assert.Empty(svc.BoardCatch(Day));
         Assert.Single(svc.Board(Day));
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(svc.Wire("Оля", Noon)));
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("catcher").ValueKind);
+        Assert.False(doc.RootElement.TryGetProperty("catcher", out _));                  // Ловця нема — і ключа нема
+        using var cat0 = JsonDocument.Parse(JsonSerializer.Serialize(svc.CatalogWire()));
+        Assert.Equal(JsonValueKind.Null, cat0.RootElement.GetProperty("catcher").ValueKind);
     }
 
     [Fact]
@@ -176,16 +178,26 @@ public class ClickerCatchDayTests
         svc.AddCatch("Тарас", 50, Noon);
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(svc.Wire("Оля", Noon)));
         var w = doc.RootElement;
-        Assert.Equal(12, w.GetProperty("mine").GetProperty("points").GetInt32());
-        Assert.Equal([60, 30, 15], w.GetProperty("feast").EnumerateArray().Select(x => x.GetInt32()));
+        // Вид стислий: mine = [місце, очки], рядок табло = [нік, очки]; призи й пороги — у каталозі.
+        Assert.Equal(12, w.GetProperty("mine")[1].GetInt32());
+        Assert.False(w.TryGetProperty("feast", out _));
+        Assert.False(w.TryGetProperty("prizes", out _));
         var c = w.GetProperty("catcher");
-        Assert.Equal([1000, 500, 250], c.GetProperty("prizes").EnumerateArray().Select(x => x.GetInt32()));
-        Assert.Equal([60, 30, 15], c.GetProperty("minutes").EnumerateArray().Select(x => x.GetInt32()));
-        Assert.Equal(20, c.GetProperty("minPoints").GetInt32());
-        Assert.Equal(2, c.GetProperty("minPlayers").GetInt32());
-        Assert.Equal(2, c.GetProperty("mine").GetProperty("place").GetInt32());
-        Assert.Equal("Тарас", c.GetProperty("board")[0].GetProperty("nick").GetString());
-        Assert.True(c.GetProperty("board")[1].GetProperty("me").GetBoolean());
+        Assert.Equal(2, c.GetProperty("mine")[0].GetInt32());
+        Assert.Equal(44, c.GetProperty("mine")[1].GetInt32());
+        Assert.Equal("Тарас", c.GetProperty("board")[0][0].GetString());
+        Assert.Equal(50, c.GetProperty("board")[0][1].GetInt32());
+        Assert.Equal("Оля", c.GetProperty("board")[1][0].GetString());
+        Assert.Equal(2, c.GetProperty("players").GetInt32());
+        using var cat = JsonDocument.Parse(JsonSerializer.Serialize(svc.CatalogWire()));
+        var k = cat.RootElement;
+        Assert.Equal(new[] { 2000, 1000, 500 }, k.GetProperty("prizes").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal([60, 30, 15], k.GetProperty("feast").EnumerateArray().Select(x => x.GetInt32()));
+        var kc = k.GetProperty("catcher");
+        Assert.Equal([1000, 500, 250], kc.GetProperty("prizes").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal([60, 30, 15], kc.GetProperty("minutes").EnumerateArray().Select(x => x.GetInt32()));
+        Assert.Equal(20, kc.GetProperty("minPoints").GetInt32());
+        Assert.Equal(2, kc.GetProperty("minPlayers").GetInt32());
     }
 
     [Fact]

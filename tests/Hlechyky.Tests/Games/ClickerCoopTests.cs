@@ -145,7 +145,8 @@ public class ClickerCoopTests
         Assert.Equal(0, k.Svc.CoopAdd("Оля", -3, Wed));
         Assert.Equal(0, k.Svc.CoopAdd("Оля", 50, Local(2026, 11, 8, 23, 30)));          // тиждень уже скінчився
         Assert.Equal(0, k.Svc.CoopNow(Wed)!.Done);
-        Assert.False(JsonSerializer.SerializeToElement(k.Svc.Wire("бот Вася", Wed)).GetProperty("person").GetBoolean());
+        Assert.True(JsonSerializer.SerializeToElement(k.Svc.Wire("бот Вася", Wed)).GetProperty("guest").GetBoolean());
+        Assert.False(JsonSerializer.SerializeToElement(k.Svc.Wire("Оля", Wed)).TryGetProperty("guest", out _));          // людині ключа нема
     }
 
     [Fact]

@@ -5,6 +5,8 @@ using System.Text.Json.Nodes;
 using Hlechyky.Games;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
+using Microsoft.Extensions.DependencyInjection;
+using Xunit.Abstractions;
 
 namespace Hlechyky.Tests.Games;
 
@@ -13,11 +15,12 @@ namespace Hlechyky.Tests.Games;
 /// (pv ≥ 10) — лише стан, незмінні тексти (назви, описи, ціни) — у каталозі, що їде раз; вкладка зі старим clicker.js
 /// і далі бачить повний вид, як до v10; вид топ-гончаря вкладається в 25 КБ.
 /// </summary>
-public class ClickerSpeedTests
+public class ClickerSpeedTests(ITestOutputHelper output)
 {
-    static RoomHarness Wheel(string nick = "Оля", int seed = 1)
+    static RoomHarness Wheel(string nick = "Оля", int seed = 1, IServiceProvider? services = null, DateTimeOffset? at = null)
     {
-        var h = new RoomHarness("clicker", seed: seed);
+        var h = new RoomHarness("clicker", seed: seed, services: services);
+        if (at is { } start) h.Clock.UtcNow = start;
         h.Solo(nick);
         return h;
     }
@@ -218,9 +221,9 @@ public class ClickerSpeedTests
     /// Топ-гончар пізньої гри: уся драбина на 200-х рівнях, половина віх, усі секрети й розписи, повна хата (глина,
     /// знаряддя, прикраси, оздоба, шістнадцять дивовиж), повна сушарня й комора на два десятки різних виробів.
     /// </summary>
-    static RoomHarness TopPotter()
+    static RoomHarness TopPotter(IServiceProvider? services = null, DateTimeOffset? at = null)
     {
-        var h = Wheel("Владік");
+        var h = Wheel("Владік", services: services, at: at);
         var now = h.Clock.UtcNow;
         Patch(h, s =>
         {
@@ -291,6 +294,121 @@ public class ClickerSpeedTests
         foreach (var w in Clicker.Wares) Assert.Contains(Json(w.Name), catalog);
         foreach (var u in Clicker.CraftUps) { Assert.Contains(Json(u.Name), catalog); Assert.Contains(Json(u.Desc), catalog); }
         Assert.Contains("\"shopCatalog\":{", full);
+    }
+
+    // ---------- реалістичний вид: з сервісами дня, тижня й книгою загадок ----------
+
+    static readonly DateTimeOffset Wed = ClickerWeekGrowTests.Local(2026, 11, 4, 12, 0);
+
+    static readonly string[] Names =
+    [
+        "Владік", "Smaug", "Назар", "Микола", "Оксана_гончарка", "Тарас Шевч", "Ірина", "Данило_Л", "Мала Мальва", "Богдан",
+        "Соломія", "Олесь_Піч", "Ярослав", "Зореслава", "Катруся",
+    ];
+
+    /// <summary>
+    /// Топ-гончар у справжньому сайті: сервіс дня (повні табло «Майстра» й «Ловця», підсумок вчорашнього дня), сервіс тижня
+    /// (табло росту з п'ятьма й більше рядками, спільне замовлення, підсумок минулого тижня), книга загадок, три кораблі й
+    /// посол, запаси хвилин, доручення. Саме такий вид іде на проді на кожну пачку кліків.
+    /// </summary>
+    static RoomHarness RealWorld()
+    {
+        var clock = new FakeClock { UtcNow = Wed };
+        var stakes = new FakeStakes();
+        var day = new ClickerDayService(null, stakes, () => new ClickerDayOptions(), clock, person: _ => true) { Earn = n => n * 10 };
+        var before = ClickerWeekGrowTests.Local(2026, 11, 3, 14, 0);
+        for (var i = 0; i < Names.Length; i++)
+        {
+            day.Add(Names[i], 400 - i * 17, before);
+            day.AddCatch(Names[i], 300 - i * 11, before);
+            day.Add(Names[i], 380 - i * 15, Wed);
+            day.AddCatch(Names[i], 280 - i * 9, Wed);
+        }
+        Assert.True(day.Settle(Wed) > 0, "вчорашній день мав підбитися");
+
+        var week = new ClickerWeekGrowTests.Kit(ClickerWeekGrowTests.Local(2026, 10, 28, 12, 0));
+        string[] heavy = ["Оля", "Тарас", "Ірина", "Микола", "Зореслава", "Катруся", "Богдан", "Владік"];
+        void Fire(string nick, string d, double start, double total, int pot)
+        {
+            var at = ClickerWeekGrowTests.Local(int.Parse(d[..4]), int.Parse(d[5..7]), int.Parse(d[8..10]), 12, 0);
+            week.Diary.Put(nick, d, at, string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"{{\"total\":{total:R},\"dayStart\":{start:R},\"fired\":{{\"pot\":{pot},\"jug\":{pot / 3}}}}}"));
+            week.Diary.AddHour(nick, at, 600, 0, 0, 0);
+        }
+        // Минулий тиждень 26.10–01.11: у кожного три доби гри і ріст у кілька разів.
+        for (var i = 0; i < heavy.Length; i++)
+            foreach (var d in new[] { "2026-10-27", "2026-10-29", "2026-10-31" })
+                Fire(heavy[i], d, 1e30 * (i + 1), 2e30 * (i + 2) * (1 + (d[^1] - '0') / 10.0), 900 + i * 40);
+        week.Svc.Settle(week.Clock.UtcNow);
+        week.Clock.UtcNow = Wed;
+        for (var i = 0; i < heavy.Length; i++)
+            foreach (var d in new[] { "2026-11-02", "2026-11-03", "2026-11-04" })
+                Fire(heavy[i], d, 3e30 * (i + 1), 4e30 * (i + 3) * (1 + (d[^1] - '0') / 10.0), 500 + i * 10);
+        week.Svc.Settle(Wed);
+        var order = week.Svc.CoopNow(Wed) ?? throw new InvalidOperationException("спільного замовлення нема");
+        foreach (var n in heavy.Take(6)) week.Svc.CoopAdd(n, Math.Max(1, order.Volume / 12), Wed);
+
+        var sp = new ServiceCollection().AddSingleton(day).AddSingleton(week.Svc).AddSingleton<IStakes>(stakes)
+            .AddSingleton(new ClickerRiddleService()).BuildServiceProvider();
+        var h = TopPotter(sp, Wed);
+        Patch(h, s =>
+        {
+            s["toloka"] = new JsonObject { ["built"] = Arr(["well", "pier"]) };
+            // Альбом із відкритими клітинками (Зала скарбів і загадка дня відчиняються від першої клітинки), кілька зірок.
+            var cells = new JsonObject();
+            var stars = new JsonObject();
+            foreach (var w in Clicker.Wares.Take(10))
+            {
+                cells[w.Key] = Arr(new[] { "" }.Concat(Clicker.Styles.Take(4).Select(x => x.Key)));
+                stars[w.Key] = Arr(new[] { "" });
+            }
+            s["album"] = new JsonObject { ["cells"] = cells, ["stars"] = stars };
+            var ships = new JsonArray();
+            string[] ports = ["delft", "iznik", "meissen"];
+            for (var i = 0; i < ports.Length; i++)
+                ships.Add(new JsonObject
+                {
+                    ["id"] = i + 1, ["port"] = ports[i], ["ware"] = Clicker.Wares[i].Key, ["style"] = Clicker.Styles[i].Key, ["quality"] = 3,
+                    ["count"] = 40 + i, ["lux"] = 5, ["at"] = Wed.ToString("O"), ["until"] = Wed.AddHours(8).ToString("O"), ["envoy"] = false,
+                });
+            s["trade"] = new JsonObject
+            {
+                ["slava"] = 900_000, ["firstDone"] = true, ["next"] = Wed.AddMinutes(40).ToString("O"), ["shipId"] = 5, ["ships"] = ships,
+                ["envoy"] = new JsonObject
+                {
+                    ["id"] = 4, ["port"] = "sevres", ["ware"] = "", ["style"] = Clicker.OverseasTiers.First(), ["quality"] = 4, ["count"] = 90, ["lux"] = 10,
+                    ["at"] = Wed.ToString("O"), ["until"] = Wed.AddHours(12).ToString("O"), ["envoy"] = true,
+                },
+                ["envoyNext"] = Wed.AddHours(12).ToString("O"), ["envoyFull"] = 3, ["envoyFullAt"] = Wed.AddHours(-2).ToString("O"),
+            };
+            s["feast"] = new JsonObject
+            {
+                ["feast"] = 90, ["basket"] = 60, ["feastUntil"] = Wed.AddMinutes(30).ToString("O"), ["basketUntil"] = Wed.AddMinutes(20).ToString("O"),
+                ["sails"] = 20, ["sailsUntil"] = Wed.AddDays(3).ToString("O"), ["coop"] = 10, ["coopUntil"] = Wed.AddDays(3).ToString("O"),
+            };
+        });
+        return h;
+    }
+
+    [Fact]
+    public void The_realistic_view_of_a_top_potter_with_all_services_fits_in_23_5_kb()
+    {
+        var h = RealWorld();
+        Slim(h);
+        var view = JsonNode.Parse(View(h).GetRawText())!.AsObject();
+        var total = Bytes(view);
+        output.WriteLine($"усього {total} Б");
+        foreach (var (name, node) in view.Select(kv => (kv.Key, kv.Value)).OrderByDescending(kv => Bytes(kv.Value)).Take(18))
+            output.WriteLine($"  {name,-10} {Bytes(node),6} Б");
+        output.WriteLine($"  chores     {Bytes(view["chores"]),6} Б");
+        foreach (var name in new[] { "day", "week", "trade", "buffs", "album" })
+            if (view[name] is JsonObject o)
+                foreach (var (k, v) in o.OrderByDescending(kv => Bytes(kv.Value)).Take(6))
+                    output.WriteLine($"    {name}.{k,-10} {Bytes(v),6} Б");
+        Assert.NotNull(view["day"]);
+        Assert.NotNull(view["week"]);
+        Assert.NotNull(view["album"]!["hall"]!["riddle"]);
+        Assert.True(total < 23_500, $"реалістичний вид топ-гончаря важить {total} Б, а мусить < 23 500");
     }
 
     /// <summary>Рядок так, як його пише System.Text.Json у GetRawText (кирилиця — \uXXXX, апостроф теж екранований).</summary>

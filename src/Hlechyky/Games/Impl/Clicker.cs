@@ -1836,7 +1836,23 @@ public sealed partial class Clicker : Game
             ? (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1)
             : Math.Pow(2, MarksOf(up));
         if (_slim)
-            return new { level, price, max = MaxOf(up), gain, marks = MarksOf(up), boost, nextMark = NextMark(up), open = Opened(index) };
+        {
+            // Вид летить щопачки кліків (межа ClickerSpeedTests): числа — дев'ятьма цифрами (17-значний хвіст на екрані не
+            // видно), а nextMark — лише коли ще є що купувати.
+            var slim = new Dictionary<string, object?>
+            {
+                ["level"] = level, ["price"] = Sig(price), ["marks"] = MarksOf(up),
+            };
+            // Приріст — лише в пасивних і множників (інші 0); множник віх — лише в кола: в решти це 2^marks, клієнт рахує сам.
+            if (gain != 0) slim["gain"] = Sig(gain);
+            if (up.Kind == ClickerKind.Click) slim["boost"] = boost;
+            // Стеля рівнів (max) — лише в тих, у кого вона є; 0 клієнт читає як «без стелі» (u.max > 0).
+            if (MaxOf(up) > 0) slim["max"] = MaxOf(up);
+            if (NextMark(up) is { } next) slim["nextMark"] = next;
+            // Відкритий (типово) не шлемо: закритих мало, а вид летить щопачки кліків.
+            if (!Opened(index)) slim["open"] = false;
+            return slim;
+        }
         return new
         {
             level, price, name = up.Name, desc = up.Desc, max = MaxOf(up), kind = up.Kind.ToString().ToLowerInvariant(), gain,
@@ -2317,6 +2333,14 @@ public sealed partial class Clicker : Game
     public static string PotsShort(double n) =>
         Math.Abs(n) >= Hryvnia ? Short(n) : $"{Short(n)} {(Math.Abs(n) >= 1_000_000 ? "глеків" : Pots(n))}";
 
+    /// <summary>
+    /// Число для виду з дев'ятьма значущими цифрами: вид летить щопачки кліків, а 17-значний хвіст ціни чи приросту на екрані
+    /// не видно (клієнт показує Short/«млн»). Цілі до мільярда лишаються як є.
+    /// </summary>
+    internal static double Sig(double v) =>
+        v == 0 || !double.IsFinite(v) || (Math.Abs(v) < 1e9 && v == Math.Floor(v)) ? v
+            : double.Parse(v.ToString("G9", System.Globalization.CultureInfo.InvariantCulture), System.Globalization.CultureInfo.InvariantCulture);
+
     internal static string Plural(double n, string one, string few, string many)
     {
         if (!double.IsFinite(n)) return many;
@@ -2444,16 +2468,16 @@ public sealed partial class Clicker : Game
         {
             pots = _pots,
             total = _total,
-            perClick = PerClick,
+            perClick = Sig(PerClick),
             // Клік без натхнення й ярмарку: бонуси кінчаються між видами, і клієнт мусить знати, до чого вертатись.
-            clickBase = ClickBase,
-            perSecond = PerSecond,
+            clickBase = Sig(ClickBase),
+            perSecond = Sig(PerSecond),
             // Без ярмарку: клієнт доліковує сам і сам вимикає ярмарок, коли той скінчиться.
-            baseSecond = passive,
+            baseSecond = Sig(passive),
             // v12 §7 п. 2 (пакет D2): окупність Майстерні — у часі гри, а прогноз глини — «клік X, пасив Y». Клієнт сам
             // не знає ні хвилини гри, ні того, яка частина кліка — відсоток пасиву (вона росте разом із пасивом).
-            playMinute = PlayMinute,
-            clickPassive = (Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1) * passive / ClayNow.Passive * ClayNow.Click * ClickShare,
+            playMinute = Sig(PlayMinute),
+            clickPassive = Sig((Perk(MarkEffect.ClickDouble) > 0 ? 2 : 1) * passive / ClayNow.Passive * ClayNow.Click * ClickShare),
             // Лише те, що міняється: назви, описи, вид верстата, ріст ціни й віхи — у shopCatalog (десяте оновлення §10:
             // вид летить щопачки кліків, а незмінні тексти двадцяти семи верстатів важили кілобайти щоразу).
             upgrades = Shop.Select((u, index) => (u, index)).ToDictionary(x => x.u.Key, x => UpgradeView(x.u, x.index, passive), StringComparer.Ordinal),
@@ -2461,7 +2485,7 @@ public sealed partial class Clicker : Game
             marks = Shop.SelectMany(u => u.Steps.Select((m, i) => (u, m, i)))
                 .Where(x => Level(x.u.Key) >= x.m.Level && !_marks.Contains(MarkKey(x.u, x.i)))
                 .Select(x => _slim
-                    ? (object)new { key = MarkKey(x.u, x.i) }
+                    ? (object)MarkKey(x.u, x.i)
                     : new { key = MarkKey(x.u, x.i), on = x.u.Key, level = x.m.Level, name = x.m.Name, desc = MarkDesc(x.u, x.i), price = x.u.MarkPrice(x.i) })
                 .ToList(),
             // Скільки віх уже є і скільки всього (v10): «Віхи · 12 із 162».
@@ -2508,12 +2532,13 @@ public sealed partial class Clicker : Game
             fireKeep = Math.Clamp(KeepShare, 0, 0.5),
             fireMarks = !Has("memory"),
             // Секрети й розписи — лише «чи є»; тексти й ціни — у shopCatalog.
-            secrets = Secrets.Select(s => _slim
-                ? (object)new { key = s.Key, owned = _secrets.Contains(s.Key) }
-                : new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
-            styles = Styles.Select((s, i) => _slim
-                ? (object)new { key = s.Key, owned = _styles.Contains(s.Key) }
-                : new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key), album = i < AlbumStyles }),
+            // Худому виду — лише ключі того, що є (список усіх, з назвами й цінами, клієнт бере з shopCatalog і відмічає ці як owned).
+            secrets = _slim
+                ? Secrets.Where(s => _secrets.Contains(s.Key)).Select(s => (object)s.Key)
+                : Secrets.Select(s => (object)new { key = s.Key, name = s.Name, desc = s.Desc, price = s.Price, ring = s.Ring, owned = _secrets.Contains(s.Key) }),
+            styles = _slim
+                ? Styles.Where(s => _styles.Contains(s.Key)).Select(s => (object)s.Key)
+                : Styles.Select((s, i) => (object)new { key = s.Key, name = s.Name, price = s.Price, owned = _styles.Contains(s.Key), album = i < AlbumStyles }),
             wear = _wear,
             // Розгін: скільки гарячих кліків зараз і що з них виходить. Клієнт веде той самий рахунок між видами.
             heat,

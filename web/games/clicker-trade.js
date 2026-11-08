@@ -25,7 +25,7 @@
   const LOOK_GRACE_MS = 1500;             // прийшов час корабля — стільки чекаємо, перш ніж спитати свіжий вид
   const ARM_MS = 4500;                    // «Точно?» на «Відпустити корабель» чекає другого натиску стільки
   const GAP_MIN = 40;                     // новий корабель — раз на стільки хвилин (Clicker.TradeGap)
-  /// Плата корабля за виріб (індекс — якість) — сервер шле її у виді (trade.pay, Clicker.TradePlayQ*, SlavaQ*); це — лише
+  /// Плата корабля за виріб (індекс — якість) — сервер шле її в каталозі (catalog.tradePay, Clicker.TradePlayQ*, SlavaQ*); це — лише
   /// на випадок старого сервера. Потрібна тільки для підсумку перед «Завантажити все»: платить сервер.
   const PAY = { minutes: [0, 0, 2, 3, 8], slava: [0, 0, 1, 2, 5], style: 1.5, styleSlava: 1, full: 0.1, fullSlava: 10 };
   const OPEN_MS = 10 * 60 * 1000;         // «→ у Майстерню» в розділі — до натиску, але не довше
@@ -625,13 +625,15 @@
       if (!t) {
         k.v = null;
       } else {
+        // Плата кораблів — у каталозі (catalog.tradePay); у виді лише гончарево: lw (місць на розкішний) і tm (вітрина).
+        const pay = Object.assign({}, (st.catalog && st.catalog.tradePay) || PAY, { luxWeight: t.lw || 1, treasureMult: t.tm || 1 });
         const mapShip = (s) => ({
-          id: s.id, port: s.port, from: s.from || s.port, ware: s.ware || '', style: s.style || '', q: s.q || 2, n: s.n || 0,
+          id: s.id, port: s.port, from: s.from || (pay.ports && pay.ports[s.port]) || s.port, ware: s.ware || '', style: s.style || '', q: s.q || 2, n: s.n || 0,
           lux: s.lux || 0, loaded: s.loaded || 0, loadedLux: s.loadedLux || 0, until: ms(s.until), first: !!s.first,
-          can: s.can || 0, minutes: s.minutes || 0, slavaPer: s.slavaPer || 0, envoy: !!s.envoy,
+          can: s.can || 0, canToloka: s.canToloka == null ? s.can || 0 : s.canToloka, minutes: s.minutes || 0, slavaPer: s.slavaPer || 0, envoy: !!s.envoy,
         });
         k.v = {
-          slava: t.slava || 0, next: t.next ? ms(t.next) : 0, full: t.full || 0, gate: t.gate || null, pay: t.pay || null,
+          slava: t.slava || 0, next: t.next ? ms(t.next) : 0, full: t.full || 0, gate: t.gate || null, pay,
           envoy: t.envoy ? mapShip(t.envoy) : null, ships: (t.ships || []).map(mapShip),
         };
         gateMoved(st, api, k.gate);

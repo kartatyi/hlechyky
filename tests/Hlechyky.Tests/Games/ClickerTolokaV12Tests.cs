@@ -63,7 +63,7 @@ public class ClickerTolokaV12Tests
     {
         foreach (var st in T(h).GetProperty("plan").EnumerateArray())
             if (st.GetProperty("building").GetString() == b && st.GetProperty("index").GetInt32() == s)
-                return st.GetProperty("needs")[i].GetProperty("depot").GetInt32();
+                return st.GetProperty("needs")[i][4].GetInt32();            // рядок потреби — [виріб, скільки, якість, розпис, на складі]
         return -1;
     }
 

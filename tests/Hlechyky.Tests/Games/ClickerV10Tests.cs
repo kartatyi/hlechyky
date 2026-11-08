@@ -570,7 +570,7 @@ public class ClickerV10Tests
 
         Assert.True(Act(h, "look", new { pv = Clicker.ProtocolVersion }).Ok); // новий клієнт — худий
         Assert.False(Up(h, "sich").TryGetProperty("name", out _));
-        Assert.False(View(h).GetProperty("secrets")[0].TryGetProperty("desc", out _));
+        Assert.All(View(h).GetProperty("secrets").EnumerateArray(), x => Assert.Equal(JsonValueKind.String, x.ValueKind));   // худий вид — лише ключі наявного
 
         h.Clock.Advance(1);
         Assert.True(Act(h, "spin", PotterHands.Human(1)).Ok);                // той самий гончар відкрив стару вкладку

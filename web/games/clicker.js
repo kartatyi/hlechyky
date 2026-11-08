@@ -3407,6 +3407,10 @@
     }
     const ups = v.craft && v.craft.ups;
     if (ups && ups.length && ups[0].name == null && !c.craftUps) return 'craft';
+    // v13: призи й пороги дошок дня й тижня та плата кораблів їдуть у каталозі, а не щопачки кліків у виді.
+    if (v.day && v.day.ends && !c.day) return 'day';
+    if (v.week && v.week.ends && !c.week) return 'week';
+    if (v.trade && !c.tradePay) return 'tradePay';
     return '';
   }
 
@@ -3819,11 +3823,20 @@
       u.desc = s.desc;
       u.kind = s.kind;
       u.growth = s.growth;
+      // Худий вид шле множник віх лише для кола (там він від навичок); в решти це 2^віх, як рахує сервер.
+      if (u.boost == null) u.boost = s.kind === 'click' ? 1 : Math.pow(2, u.marks || 0);
+      // Нулі й порожнє худий вид не шле (межа розміру): ні приросту — 0, ні стелі — 0, ні наступної віхи — null.
+      if (u.gain == null) u.gain = 0;
+      if (u.max == null) u.max = 0;
+      if (u.nextMark === undefined) u.nextMark = null;
+      if (u.open === undefined) u.open = true;                  // шлеться лише закритий (open: false)
       // Вид міг прийти вдруге (refreshCard) уже доповненим — тоді nextMark уже об'єкт, лишаємо як є.
       if (typeof u.nextMark === 'number') u.nextMark = (s.marks || []).find((m) => m.level === u.nextMark) || null;
     }
     if (Array.isArray(v.marks)) {
       v.marks = v.marks.map((m) => {
+        // Худий вид шле віху рядком-ключем «верстат:рівень», повний — об'єктом з назвою.
+        if (typeof m === 'string') m = { key: m };
         const [on, lv] = String(m.key).split(':');
         const s = c.upgrades && c.upgrades[on];
         const mk = s && (s.marks || []).find((x) => x.level === +lv);
@@ -3831,7 +3844,8 @@
         return mk ? { key: m.key, on, level: +lv, name: mk.name, desc: mk.desc, price: mk.price, effect: mk.effect, amount: mk.amount } : null;
       }).filter(Boolean);
     }
-    const owned = (list) => new Set((list || []).filter((x) => x.owned).map((x) => x.key));
+    // Худий вид шле лише ключі того, що є (рядки), повний — об'єкти з прапорцем owned.
+    const owned = (list) => new Set((list || []).map((x) => (typeof x === 'string' ? x : x.owned ? x.key : null)).filter(Boolean));
     if (Array.isArray(v.secrets) && c.secrets) {
       const own = owned(v.secrets);
       v.secrets = c.secrets.map((s) => ({ ...s, owned: own.has(s.key) }));

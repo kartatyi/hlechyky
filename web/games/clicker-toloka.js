@@ -34,7 +34,7 @@
     (st.hands, st.inflight), тож живе з кожною пачкою, а не стрибає раз на вид. Відлік будови — той самий рахунок.
   - «Ліпити X» ставить і розпис рядка (дія wear); «Далі» в простої — найбільша нестача на наступні етапи.
   Дані v12: stage.needs[].depot, stage.work, plan [{ building, index, needs [{ ware, n, q, style, depot }] }],
-    totals [{ ware, q, style, n, depot, have }], depot; каталог — workCut, workKeep, workBars, workPerHour.
+    totals [[ware, q, style, n, depot, have]], depot; каталог — workCut, workKeep, workBars, workPerHour.
 */
 (() => {
   const human = HGames.ui.human;
@@ -1227,9 +1227,15 @@
         // Поки етап будується — що треба на наступний (сервер дає лише тоді; have — з моєї комори).
         next: t.next || null,
         // v12: план (поточна й наступна будова поетапно), підсумок до кінця й скільки всього на складі.
+        // Сервер шле рядки масивами (межа розміру виду): потреба — [виріб, скільки, якість, розпис, на складі],
+        // підсумок — [виріб, якість, розпис, треба, на складі, у коморі]; об'єкти старої форми теж читаємо.
         plan: (t.plan || []).map((p) => ({ building: p.building, index: p.index || 0,
-          needs: (p.needs || []).map((n) => ({ ware: n.ware, n: n.n || 0, q: n.q || 1, style: n.style || '', depot: n.depot || 0 })) })),
-        totals: (t.totals || []).map((g) => ({ ware: g.ware, q: g.q || 1, style: g.style || '', n: g.n || 0, depot: g.depot || 0, have: g.have || 0 })),
+          needs: (p.needs || []).map((n) => (Array.isArray(n)
+            ? { ware: n[0], n: n[1] || 0, q: n[2] || 1, style: n[3] || '', depot: n[4] || 0 }
+            : { ware: n.ware, n: n.n || 0, q: n.q || 1, style: n.style || '', depot: n.depot || 0 })) })),
+        totals: (t.totals || []).map((g) => (Array.isArray(g)
+          ? { ware: g[0], q: g[1] || 1, style: g[2] || '', n: g[3] || 0, depot: g[4] || 0, have: g[5] || 0 }
+          : { ware: g.ware, q: g.q || 1, style: g.style || '', n: g.n || 0, depot: g.depot || 0, have: g.have || 0 })),
         depot: t.depot || 0,
       };
       wentWhere(st, api);

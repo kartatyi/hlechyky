@@ -85,6 +85,8 @@ public sealed class ClickerDayService : BackgroundService
     public static readonly TimeSpan FlushEvery = TimeSpan.FromSeconds(5), SettleEvery = TimeSpan.FromSeconds(30);
     /// <summary>Скільки рядків табло шле вид.</summary>
     public const int BoardShown = 10;
+    /// <summary>Скільки рядків табло їде у вигляді (решту видно в «і ще N нижче»); решта табло — лише в моєму рядку.</summary>
+    public const int BoardTop = 5;
     /// <summary>Скільки днів сервіс пам'ятає непрочитані призи до кола (гравець, що не заходив довше, їх губить).</summary>
     public const int AwardKeepDays = 14;
 
@@ -260,26 +262,56 @@ public sealed class ClickerDayService : BackgroundService
                 .OrderBy(a => a.Key, StringComparer.Ordinal).Select(a => new ClickerDayPrize(a.Key, a.Kind, a.Minutes, a.Why))];
     }
 
-    object WireTrack(Track t, string day, string key, int[] shards, int[] minutes, int minPoints, int minPlayers)
+    /// <summary>
+    /// Табло однієї дошки для виду, коротко (межа розміру виду топ-гончаря, ClickerSpeedTests): рядок — <c>[нік, очки]</c>, місце — це
+    /// номер у списку; моє місце — <c>mine = [місце, очки]</c> (поза п'ятіркою клієнт малює його окремим рядком); пустого нема
+    /// (немає мене — немає mine, ніхто не грав — board = []). Призи, хвилини й пороги — у каталозі (<see cref="CatalogWire"/>).
+    /// Підсумок минулого дня — лише першу добу після підбиття: далі це вага, що летить щопачки кліків.
+    /// </summary>
+    Dictionary<string, object?> WireTrack(Track t, string day, string key, DateTimeOffset now)
     {
         var board = BoardLocked(t, day);
         var mine = board.FirstOrDefault(r => Auth.NickKey(r.Nick) == key);
+        var fresh = t.Last is { } l && now < Ends(l.Day).AddDays(1) ? l : ((string Day, string Summary)?)null;
+        var wire = new Dictionary<string, object?>
+        {
+            ["board"] = board.Take(BoardTop).Select(r => new object[] { r.Nick, r.Points }),
+            ["players"] = board.Count,
+        };
+        if (mine is not null) wire["mine"] = new[] { mine.Place, mine.Points };
+        if (fresh is { } f) wire["last"] = new { day = f.Day, line = BodyOf(f.Summary) };
+        return wire;
+    }
+
+    /// <summary>
+    /// Підсумок без заголовка («🏆 Майстер дня в Гончарному колі: ») — у виді він повторював би заголовок вкладки, а клієнт його
+    /// однаково зрізає (lastLine у clicker-day.js); у Балачки рядок іде повний.
+    /// </summary>
+    static string BodyOf(string summary) =>
+        System.Text.RegularExpressions.Regex.Replace(summary, @"^(?:🏆|🧺)\s*(?:Майстер|Ловець) дня(?: в Гончарному колі)?:\s*", "");
+
+    /// <summary>
+    /// Незмінне про дошки дня для каталогу (їде раз, а не щопачки кліків): призи, хвилини «Свята» й «Кошика», пороги.
+    /// null — «Майстра дня» вимкнено.
+    /// </summary>
+    public object? CatalogWire()
+    {
+        var o = O;
+        if (!o.Enabled) return null;
         return new
         {
-            prizes = shards,
-            minutes,
-            minPoints,
-            minPlayers,
-            mine = mine is null ? null : new { place = mine.Place, points = mine.Points },
-            board = board.Take(BoardShown).Select(r => new { place = r.Place, nick = r.Nick, points = r.Points, me = Auth.NickKey(r.Nick) == key }),
-            players = board.Count,
-            last = t.Last is { } l ? new { day = l.Day, line = l.Summary } : null,
+            prizes = Prizes,
+            feast = o.FeastList,
+            minPoints = o.MinPoints,
+            minPlayers = o.MinPlayers,
+            catcher = o.CatchEnabled ? new { prizes = CatchPrizes, minutes = o.BasketList, minPoints = o.CatchMinPoints, minPlayers = o.CatchMinPlayers } : null,
         };
     }
 
     /// <summary>
-    /// Вид для кола: день, до коли, призи, моє місце й очки, табло (перші десять), учорашній підсумок — це «Майстер дня»
-    /// (як було у v12); поруч <c>catcher</c> — така сама дошка «Ловця дня» (null, поки її вимкнено).
+    /// Вид для кола: день, до коли, моє місце й очки, табло (перші п'ять), учорашній підсумок — це «Майстер дня»
+    /// (як було у v12); поруч <c>catcher</c> — така сама дошка «Ловця дня» (немає, поки її вимкнено). Не людина (гість,
+    /// бот) — <c>guest: true</c>; порожнього не шлемо (див. <see cref="WireTrack"/>).
     /// </summary>
     public object? Wire(string nick, DateTimeOffset now)
     {
@@ -289,23 +321,12 @@ public sealed class ClickerDayService : BackgroundService
         var key = Auth.NickKey(nick);
         lock (_gate)
         {
-            var board = BoardLocked(_m, day);
-            var mine = board.FirstOrDefault(r => Auth.NickKey(r.Nick) == key);
-            return new
-            {
-                day,
-                ends = Ends(day),
-                prizes = Prizes,
-                feast = o.FeastList,
-                minPoints = o.MinPoints,
-                minPlayers = o.MinPlayers,
-                person = IsPerson(nick),
-                mine = mine is null ? null : new { place = mine.Place, points = mine.Points },
-                board = board.Take(BoardShown).Select(r => new { place = r.Place, nick = r.Nick, points = r.Points, me = Auth.NickKey(r.Nick) == key }),
-                players = board.Count,
-                last = _m.Last is { } l ? new { day = l.Day, line = l.Summary } : null,
-                catcher = o.CatchEnabled ? WireTrack(_c, day, key, CatchPrizes, o.BasketList, o.CatchMinPoints, o.CatchMinPlayers) : null,
-            };
+            var wire = WireTrack(_m, day, key, now);
+            wire["day"] = day;
+            wire["ends"] = Ends(day);
+            if (!IsPerson(nick)) wire["guest"] = true;
+            if (o.CatchEnabled) wire["catcher"] = WireTrack(_c, day, key, now);
+            return wire;
         }
     }
 

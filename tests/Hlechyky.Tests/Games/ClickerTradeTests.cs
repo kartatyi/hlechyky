@@ -102,7 +102,7 @@ public class ClickerTradeTests
         Items(h, ("jug||2", 30), ("bowl||1", 50));
         var ships = Ships(h);
         var first = Assert.Single(ships);
-        Assert.True(first.GetProperty("first").GetBoolean());
+        Assert.True(first.Flag("first"));
         Assert.Equal(Clicker.TradeFirstCount, first.GetProperty("n").GetInt32());
         Assert.Equal("", first.GetProperty("ware").GetString());
 
@@ -115,7 +115,7 @@ public class ClickerTradeTests
         Assert.True(r.Ok, r.Message);
         Assert.Contains("відкрито", r.Message);
         Assert.EndsWith("перший рівень уже по кишені", r.Message);
-        Assert.DoesNotContain(Ships(h), s => s.GetProperty("first").GetBoolean());
+        Assert.DoesNotContain(Ships(h), s => s.Flag("first"));
         Assert.True(Slava(h) >= Clicker.SlavaGate["athens"]);
         Assert.Equal(10, Item(h, "jug||2"));          // звичайні (Q1) кораблеві не годяться
         Assert.Equal(50, Item(h, "bowl||1"));
@@ -149,9 +149,9 @@ public class ClickerTradeTests
         var h = Wheel();
         Pier(h);
         Items(h, ("jug||2", 30));
-        Assert.True(Ships(h).Single().GetProperty("first").GetBoolean());
+        Assert.True(Ships(h).Single().Flag("first"));
         h.Clock.Advance(Clicker.TradeStay + TimeSpan.FromHours(4));
-        var first = Ships(h).Single(s => s.GetProperty("first").GetBoolean());
+        var first = Ships(h).Single(s => s.Flag("first"));
         var r = Load(h, first.GetProperty("id").GetInt32());
         Assert.True(r.Ok, r.Message);
         Assert.True(Slava(h) >= Clicker.SlavaGate["athens"]);
@@ -159,11 +159,11 @@ public class ClickerTradeTests
         var k = Wheel("Іра");
         Pier(k);
         Items(k, ("jug||2", 30));
-        Assert.True(Ships(k).Single().GetProperty("first").GetBoolean());
+        Assert.True(Ships(k).Single().Flag("first"));
         k.Clock.Advance(Clicker.TradeFirstStay);
-        Assert.DoesNotContain(Ships(k), s => s.GetProperty("first").GetBoolean());
+        Assert.DoesNotContain(Ships(k), s => s.Flag("first"));
         k.Clock.Advance(TimeSpan.FromDays(1));
-        Assert.DoesNotContain(Ships(k), s => s.GetProperty("first").GetBoolean());
+        Assert.DoesNotContain(Ships(k), s => s.Flag("first"));
     }
 
     [Fact]
@@ -409,4 +409,10 @@ public class ClickerTradeTests
         Assert.Equal(Clicker.AlbumStyles, Clicker.AlbumStyleIndex(Clicker.OverseasTiers[^1]));
         Assert.All(Clicker.OverseasTiers, k => Assert.Equal(k, Clicker.Styles.Single(s => s.Key == k).Tier));
     }
+}
+
+/// <summary>Прапорець у виді: ключа нема — прапорець опущено, тобто false (вид летить щопачки кліків, порожнього не шле).</summary>
+internal static class ViewFlags
+{
+    public static bool Flag(this System.Text.Json.JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.GetBoolean();
 }

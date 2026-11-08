@@ -1132,7 +1132,7 @@ public sealed partial class Clicker
             orders = _mktOrders.Select(o => new
             {
                 id = o.Id, village = o.Village, who = o.Who, ware = o.Ware, style = o.Style, q = o.Quality, n = o.Count,
-                have = ItemCount(MktMatch(o)), until = o.Until, mult = MktMult(o), pay = MktPay(o),
+                have = ItemCount(MktMatch(o)), until = o.Until, mult = MktMult(o), pay = Sig(MktPay(o)),
                 lord = o.Lord, sour = o.Sour, chance = MktChance(o), rep = MktRepFor(o),
             }),
             nextOrderAt = _mktOrderNext,

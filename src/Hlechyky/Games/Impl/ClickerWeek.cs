@@ -380,8 +380,10 @@ public sealed class ClickerWeekService : BackgroundService
     static string X(double x) => x >= 100 ? x.ToString("0", CultureInfo.InvariantCulture) : x.ToString("0.0", CultureInfo.InvariantCulture).Replace('.', ',');
 
     /// <summary>
-    /// Вид для кола, коротко: кінець тижня, табло росту (перші п'ять і моє місце) і спільне замовлення (що, скільки, моя частка).
-    /// null — змагань вимкнено. Усе, що клієнт знає сам (пороги, відсотки вітрил), їде лише тим, що залежить від налаштувань.
+    /// Вид для кола, коротко (межа розміру виду топ-гончаря, ClickerSpeedTests): кінець тижня, табло росту (перші п'ять) і
+    /// спільне замовлення (що, скільки, моя частка). Рядок табло — <c>[нік, ріст, у заліку 1/0]</c>, місце — номер у списку;
+    /// <c>grow.mine = [місце, ріст, дні, у заліку]</c>. null — змагань вимкнено; порожнього (нема мене, нічого не довезено,
+    /// не гість) не шлемо. Призи, вітрила, поріг днів і відсоток бонусу замовлення — у каталозі (<see cref="CatalogWire"/>).
     /// </summary>
     public object? Wire(string nick, DateTimeOffset now)
     {
@@ -389,36 +391,47 @@ public sealed class ClickerWeekService : BackgroundService
         if (!o.Enabled) return null;
         var key = Auth.NickKey(nick);
         var week = WeekOf(now);
-        object? grow = null, coop = null;
+        var wire = new Dictionary<string, object?> { ["ends"] = Ends(week) };
+        if (!IsPerson(nick)) wire["guest"] = true;
         if (o.GrowEnabled)
         {
             var board = Board(now);
             var mine = board.FirstOrDefault(r => Auth.NickKey(r.Nick) == key);
-            grow = new
+            var grow = new Dictionary<string, object?>
             {
-                prizes = o.GrowPrizeList.Select(Earn),
-                sails = o.SailsList,
-                days = o.GrowMinDays,
-                mine = mine is null ? null : new { place = mine.Place, x = Math.Round(mine.X, 2), days = mine.Days, ok = mine.Ok },
-                board = board.Take(BoardShown).Select(r => new { nick = r.Nick, x = Math.Round(r.X, 2), ok = r.Ok, me = Auth.NickKey(r.Nick) == key }),
-                // Підсумок минулого тижня видно перші три доби: далі це лише вага у виді, що летить щопачки кліків.
-                last = _last is { } l && now - Ends(l.Week) < TimeSpan.FromDays(3) ? l.Summary : null,
+                ["board"] = board.Take(BoardShown).Select(r => new object[] { r.Nick, Math.Round(r.X, 2), r.Ok ? 1 : 0 }),
             };
+            if (mine is not null) grow["mine"] = new object[] { mine.Place, Math.Round(mine.X, 2), mine.Days, mine.Ok ? 1 : 0 };
+            // Підсумок минулого тижня видно перші три доби: далі це лише вага у виді, що летить щопачки кліків.
+            if (_last is { } l && now - Ends(l.Week) < TimeSpan.FromDays(3))
+                grow["last"] = System.Text.RegularExpressions.Regex.Replace(l.Summary, @"^⛵\s*Хто більше виріс за тиждень у Гончарному колі:\s*", "");   // заголовок клієнт знає
+            wire["grow"] = grow;
         }
         if (o.CoopEnabled)
         {
             lock (_gate)
             {
                 if (_coops.TryGetValue(week, out var c))
-                    coop = new
+                {
+                    var coop = new Dictionary<string, object?>
                     {
-                        ware = c.Ware, q = c.Quality, vol = c.Volume, done = c.Total, mine = c.Parts.GetValueOrDefault(key).N,
-                        min = MinPart(c.Volume, o.CoopMinShare), max = MaxPart(c.Volume, o.CoopMaxShare, o.CoopMinShare), fin = c.Done != default, pct = o.CoopBonusPct,
-                        people = c.Parts.Count,
+                        ["ware"] = c.Ware, ["q"] = c.Quality, ["vol"] = c.Volume, ["done"] = c.Total, ["mine"] = c.Parts.GetValueOrDefault(key).N,
+                        ["min"] = MinPart(c.Volume, o.CoopMinShare), ["max"] = MaxPart(c.Volume, o.CoopMaxShare, o.CoopMinShare), ["people"] = c.Parts.Count,
                     };
+                    if (c.Done != default) coop["fin"] = true;
+                    wire["coop"] = coop;
+                }
             }
         }
-        return new { ends = Ends(week), person = IsPerson(nick), grow, coop };
+        return wire;
+    }
+
+    /// <summary>Незмінне про змагання тижня для каталогу (їде раз): призи й вітрила за місця, скільки днів гри треба, бонус замовлення.</summary>
+    public object? CatalogWire()
+    {
+        var o = O;
+        if (!o.Enabled) return null;
+        return new { prizes = o.GrowPrizeList.Select(Earn).ToArray(), sails = o.SailsList, days = o.GrowMinDays, pct = o.CoopBonusPct };
     }
 
     // ---------- підбиття ----------
