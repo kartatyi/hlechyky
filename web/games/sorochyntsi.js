@@ -18,8 +18,9 @@
   function load() {
     if (!loading) {
       // Звук — не обов'язковий: не завантажився — граємо мовчки.
-      loading = Promise.all([import('/games/sorochyntsi/consts.js'), import('/games/sorochyntsi/hud-calc.js'), import('/games/sorochyntsi/sound.js').catch(() => null)])
-        .then(([C, K, S]) => { M = { C, K, S }; return M; })
+      loading = Promise.all([import('/games/sorochyntsi/consts.js'), import('/games/sorochyntsi/hud-calc.js'), import('/games/sorochyntsi/sound.js').catch(() => null),
+        import('/games/sorochyntsi/icons.js').catch(() => null)])
+        .then(([C, K, S, I]) => { M = { C, K, S, I }; return M; })
         .catch((e) => { loading = null; throw e; });
     }
     return loading;
@@ -53,6 +54,25 @@
     return '<i class="sor-pm' + (light ? ' light' : '') + '" style="--pc:' + colorOf(v, seat) + '" aria-hidden="true">' + ((M && M.C.SEAT_SHAPE[ci]) || '●') + '</i>';
   }
   const who = (v, seat) => mark(v, seat) + '<b>' + esc(nickOf(v, seat)) + '</b>';
+  // Значки товарів (icons.js, опитування 09.11): на кольоровому чипі — як на жетоні, у тексті — повнобарвні. Не завантажились — емодзі.
+  const gIc = (g, chip) => {
+    const I = M && M.I;
+    if (!I) return M ? M.C.GOOD_ICON[g] : '';
+    // темна вовна в тексті на темній колонці зникала — світліша
+    const txtCol = g === 'wool' ? { fill: '#8a7c6e', detail: '#f3ead7' } : {};
+    return I.iconHtml(g, { size: 16, cls: 'sor-gi', ...(chip ? I.tokenIconColors(g, M.C.GOOD_COLOR[g]) : txtCol) });
+  };
+  // Емодзі товарів у вже готовому HTML (тексти hud-calc: «🧵1 🏺1», «🐟🐟», «закриє: 🌸 для булави») → значки.
+  // Лише текст між тегами, атрибути не чіпаємо.
+  let emoRe = null, emoG = null;
+  const iconize = (html) => {
+    if (!M || !M.I || html == null) return html;
+    if (!emoRe) {
+      emoG = Object.fromEntries(Object.entries(M.C.GOOD_ICON).map(([k, e]) => [e, k]));
+      emoRe = new RegExp(Object.values(M.C.GOOD_ICON).join('|'), 'gu');
+    }
+    return String(html).replace(/(^|>)([^<]*)/g, (m, a, t) => a + t.replace(emoRe, (e) => gIc(emoG[e])));
+  };
   const cardName = (id) => { const c = M && M.C.card(id); return c ? c.name : 'крамниця'; };
 
   function state(root) {
@@ -339,11 +359,11 @@
     const C = M.C, K = M.K, bank = v.bank || {};
     const ts = K.takeState(me.take || {}, st.pick, bank);
     const picked = C.GOODS.filter((g) => n0(st.pick[g])).map((g) => '<button type="button" class="sor-gpk" data-a="g-" data-g="' + g + '" style="--gc:' + C.GOOD_COLOR[g] + ';--gi:' + C.GOOD_INK[g] + '" title="Прибрати: ' + esc(C.GOOD_NAME[g]) + '">'
-      + C.GOOD_ICON[g] + (st.pick[g] > 1 ? '×' + st.pick[g] : '') + ' <small>−</small></button>').join('');
+      + gIc(g, true) + (st.pick[g] > 1 ? '×' + st.pick[g] : '') + ' <small>−</small></button>').join('');
     const warn = K.overflowText(K.ntokOf(playerOf(v, me.seat)), K.total(st.pick));
     const line = st.note ? '<span class="sor-no">' + esc(st.note) + '</span>'
       : ts.ok ? '<span class="sor-ok">✓ ' + (ts.mode === 'two' ? 'два однакові' : ts.goods.length === 3 ? 'три різні' : 'по одному з кожної купи') + '</span>'
-        : ts.why ? '<span class="sor-no">' + esc(ts.why) + '</span>' : '<span class="muted">' + esc(ts.hint) + '</span>';
+        : ts.why ? '<span class="sor-no">' + iconize(esc(ts.why)) + '</span>' : '<span class="muted">' + iconize(esc(ts.hint)) + '</span>';
     return '<div class="sor-gpr">' + picked + '</div><div class="sor-gl small">' + line + (warn ? ' <span class="sor-warn">⚠ ' + esc(warn) + '</span>' : '') + '</div>'
       + '<div class="sor-row"><button type="button" class="sor-btn primary" data-a="take"' + (ts.ok ? '' : ' disabled') + '>🧺 Взяти</button>'
       + '<button type="button" class="sor-btn ghost" data-a="pick-x" title="Скинути вибір (Esc)">✕</button></div>';
@@ -522,8 +542,8 @@
     const c = M.C.card(id);
     if (!c) { hideTip(st); return; }
     const info = v.me && (v.me.cards || {})[id];
-    let h = '<b>' + esc(c.name) + '</b> · ' + M.C.GOOD_ICON[c.bonus] + (c.pts ? ' +' + c.pts + ' ⭐' : '') + (c.k ? ' ⚔' : '');
-    if (info) h += '<br>' + (info.ok ? '<span class="sor-ok">✓ можна купити' + (info.pay && Object.keys(info.pay).length ? ': ' + M.K.iconsText(info.pay) : ' задарма') + '</span>' : '<span class="sor-no">' + esc(info.why) + '</span>');
+    let h = '<b>' + esc(c.name) + '</b> · ' + gIc(c.bonus) + (c.pts ? ' +' + c.pts + ' ⭐' : '') + (c.k ? ' ⚔' : '');
+    if (info) h += '<br>' + (info.ok ? '<span class="sor-ok">✓ можна купити' + (info.pay && Object.keys(info.pay).length ? ': ' + iconize(M.K.iconsText(info.pay)) : ' задарма') + '</span>' : '<span class="sor-no">' + esc(info.why) + '</span>');
     tip.innerHTML = h;
     tip.hidden = false;
     const p = sc.screenPos('card', id);
@@ -555,7 +575,7 @@
     validate(st, v, me);
     if (me && me.must === 'act' && st.scrolledFor !== st.turnKey) { st.scrolledFor = st.turnKey; requestAnimationFrame(() => { if (root._so === st) fieldIntoView(st); }); }
     const w = whatNow(v, me, st);
-    const tipLine = me && me.must && me.tip && tipOn(st, v) ? '<div class="sor-tipl">💡 Глек би: ' + esc(M.K.tipText(me.tip, cardName)) + '</div>' : '';
+    const tipLine = me && me.must && me.tip && tipOn(st, v) ? '<div class="sor-tipl">💡 Глек би: ' + iconize(esc(M.K.tipText(me.tip, cardName))) + '</div>' : '';
     // ПК: товарів у колонці нема — береш їх просто з купи на полі (віконце «Взяти» з'являється біля банку).
     const can = (me && me.can) || {};
     const pcAct = me && me.must === 'act' && pcField(st) && st.sc;
@@ -700,9 +720,9 @@
   function cardHtml(id, opt = {}) {
     const C = M.C, c = C.card(id);
     if (!c) return '';
-    const m = opt.mark ? '<span class="sor-cm ' + opt.mark + '">' + (opt.mark === 'buy' ? '✓' : opt.mark === 'gold' ? '🪙' : '≈') + '</span>' : '';
+    const m = opt.mark ? '<span class="sor-cm ' + opt.mark + '">' + (opt.mark === 'buy' ? '✓' : opt.mark === 'gold' ? gIc('gold', true) : '≈') + '</span>' : '';
     return '<span class="sor-card' + (opt.small ? ' small' : '') + '" style="--gc:' + C.GOOD_COLOR[c.bonus] + ';--gi:' + C.GOOD_INK[c.bonus] + '">'
-      + '<span class="sor-cb"><b>' + (c.pts || '') + '</b>' + (c.pts ? '<small>⭐</small>' : '') + (c.k ? '<span class="sor-ck">⚔</span>' : '') + '<span class="sor-cg">' + C.GOOD_ICON[c.bonus] + '</span></span>'
+      + '<span class="sor-cb"><b>' + (c.pts || '') + '</b>' + (c.pts ? '<small>⭐</small>' : '') + (c.k ? '<span class="sor-ck">⚔</span>' : '') + '<span class="sor-cg">' + gIc(c.bonus, true) + '</span></span>'
       + '<span class="sor-cn">' + esc(c.name) + '</span>'
       + '<span class="sor-cc">' + costDots(c.cost) + '</span>'
       + '<span class="sor-ct">' + C.TIER_ROMAN[c.tier] + '</span>' + m
@@ -738,17 +758,17 @@
       return '<span class="sor-gw' + (pk ? ' on' : '') + '">'
         + '<button type="button" class="sor-g" data-a="g+" data-g="' + g + '" style="--gc:' + C.GOOD_COLOR[g] + ';--gi:' + C.GOOD_INK[g] + '"' + (ok ? '' : ' disabled')
         + ' title="' + esc(C.GOOD_NAME[g]) + ': у банку ' + n + (coarse() ? '' : ' (' + (i + 1) + ')') + '" aria-label="' + esc(C.GOOD_NAME[g]) + ', у банку ' + n + '">'
-        + '<span class="i">' + C.GOOD_ICON[g] + '</span><span class="n">' + n + '</span>'
+        + '<span class="i">' + gIc(g, true) + '</span><span class="n">' + n + '</span>'
         + (pk ? '<span class="pk">+' + pk + '</span>' : '') + (tip && tip[g] ? '<span class="sor-tipm" title="Глек радить">💡</span>' : '') + '</button>'
         + (pk ? '<button type="button" class="sor-gm" data-a="g-" data-g="' + g + '" aria-label="менше ' + esc(C.GOOD_GEN[g]) + '">−</button>' : '')
         + '</span>';
     }).join('')
-      + '<span class="sor-gw gold"><span class="sor-g off" style="--gc:' + C.GOOD_COLOR.gold + ';--gi:' + C.GOOD_INK.gold + '" title="Дукати: беруться лише з бронею"><span class="i">🪙</span><span class="n">' + (bank.gold || 0) + '</span></span></span>';
+      + '<span class="sor-gw gold"><span class="sor-g off" style="--gc:' + C.GOOD_COLOR.gold + ';--gi:' + C.GOOD_INK.gold + '" title="Дукати: беруться лише з бронею"><span class="i">' + gIc('gold', true) + '</span><span class="n">' + (bank.gold || 0) + '</span></span></span>';
     const total = K.total(st.pick);
     const warn = total ? K.overflowText(K.ntokOf(playerOf(v, me.seat)), total) : '';
     const line = st.note ? '<span class="sor-no">' + esc(st.note) + '</span>'
       : ts.ok ? '<span class="sor-ok">✓ можна: ' + (ts.mode === 'two' ? 'два однакові' : ts.goods.length === 3 ? 'три різні' : 'по одному з кожної купи') + '</span>'
-        : ts.why ? '<span class="sor-no">' + esc(ts.why) + '</span>' : '<span class="muted">' + esc(ts.hint) + '</span>';
+        : ts.why ? '<span class="sor-no">' + iconize(esc(ts.why)) + '</span>' : '<span class="muted">' + iconize(esc(ts.hint)) + '</span>';
     return '<div class="sor-gh"><b>🧺 Товари</b> <span class="muted small">' + esc(ts.rule) + '</span></div>'
       + '<div class="sor-goods">' + btns + '</div>'
       + '<div class="sor-gl">' + line + (warn ? ' <span class="sor-warn">⚠ ' + esc(warn) + '</span>' : '') + '</div>'
@@ -781,12 +801,12 @@
     const cl = me ? K.closes(id, v, me.seat) : [];
     let h = '<div class="sor-sel"><div class="sor-selh">' + cardHtml(id, { mark: info ? K.marks({ [id]: info })[id] : null, blind: mine && mine.blind })
       + '<div class="sor-seli"><b>' + esc(c.name) + '</b><div class="muted small">' + C.TIER_ROMAN[c.tier] + ' · ' + esc(C.TIER_NAME[c.tier]) + (mine ? ' · 📌 твоя бронь' : '') + '</div>'
-      + '<div class="small">знижка ' + C.GOOD_ICON[c.bonus] + ' ' + esc(C.GOOD_NAME[c.bonus]) + (c.pts ? ' · <b>+' + c.pts + ' ⭐</b>' : '') + (c.k ? ' · ⚔ козак' : '') + '</div>'
+      + '<div class="small">знижка ' + gIc(c.bonus) + ' ' + esc(C.GOOD_NAME[c.bonus]) + (c.pts ? ' · <b>+' + c.pts + ' ⭐</b>' : '') + (c.k ? ' · ⚔ козак' : '') + '</div>'
       + '<div class="small sor-cost">ціна ' + costDots(c.cost) + '</div>'
       + (me ? '<div class="small sor-cost">тобі ' + (Object.keys(after).length ? costDots(after) : '<b class="sor-ok">задарма</b>') + '</div>' : '') + '</div></div>';
-    if (info) h += info.ok ? '<div class="sor-pay">заплатиш: <b>' + (Object.keys(info.pay || {}).length ? K.iconsText(info.pay) : 'нічого') + '</b></div>'
+    if (info) h += info.ok ? '<div class="sor-pay">заплатиш: <b>' + (Object.keys(info.pay || {}).length ? iconize(K.iconsText(info.pay)) : 'нічого') + '</b></div>'
       : '<div class="sor-no small">' + esc(info.why) + '</div>';
-    if (cl.length) h += '<div class="sor-cl small">закриє: ' + cl.map((x) => esc(x.text)).join(' · ') + '</div>';
+    if (cl.length) h += '<div class="sor-cl small">закриє: ' + iconize(cl.map((x) => esc(x.text)).join(' · ')) + '</div>';
     if (myAct && phone) {
       if (inRow && !can.reserve && (me.why || {}).reserve) h += '<div class="muted small">' + esc(me.why.reserve) + '</div>';
     } else if (myAct) {
@@ -805,15 +825,15 @@
     const C = M.C, K = M.K, p = playerOf(v, me.seat) || {};
     const b = p.bonus || {}, t = p.tokens || {};
     const miss = new Set(me.bulava ? me.bulava.goods : []);
-    const col = (g) => '<th class="' + (miss.has(g) ? 'miss' : '') + '" style="--gc:' + C.GOOD_COLOR[g] + '" title="' + esc(C.GOOD_NAME[g]) + (miss.has(g) ? ' — бракує для булави' : '') + '">' + C.GOOD_ICON[g] + '</th>';
+    const col = (g) => '<th class="' + (miss.has(g) ? 'miss' : '') + '" style="--gc:' + C.GOOD_COLOR[g] + '" title="' + esc(C.GOOD_NAME[g]) + (miss.has(g) ? ' — бракує для булави' : '') + '">' + gIc(g, true) + '</th>';
     const cell = (g, n, cls) => '<td class="' + (miss.has(g) ? 'miss ' : '') + (cls || '') + (n ? '' : ' z') + '">' + n + '</td>';
     let h = '<div class="sor-mh"><b>Мій прилавок</b> · ' + (p.cards || []).length + ' ' + plural((p.cards || []).length, 'крамниця', 'крамниці', 'крамниць')
       + ' · <span class="' + (K.ntokOf(p) >= 10 ? 'sor-no' : '') + '">🧺 ' + K.ntokOf(p) + '/10</span></div>';
     if (me.bulava) {
-      const g = me.bulava.goods.map((x) => C.GOOD_ICON[x]).join(' ');
+      const g = me.bulava.goods.map((x) => gIc(x)).join(' ');
       h += '<div class="sor-bl">⚜ до булави: ' + (me.bulava.points ? '<b>' + me.bulava.points + ' ⭐</b>' : '<b class="sor-ok">⭐ досить</b>') + (g ? ' і ' + g : ' — товари всі є') + '</div>';
     }
-    h += '<table class="sor-tbl"><thead><tr><th></th>' + C.BONUSES.map(col).join('') + '<th style="--gc:' + C.GOOD_COLOR.gold + '" title="Дукати">🪙</th></tr></thead><tbody>'
+    h += '<table class="sor-tbl"><thead><tr><th></th>' + C.BONUSES.map(col).join('') + '<th style="--gc:' + C.GOOD_COLOR.gold + '" title="Дукати">' + gIc('gold', true) + '</th></tr></thead><tbody>'
       + '<tr><th>знижка</th>' + C.BONUSES.map((g) => cell(g, b[g] || 0, 'b')).join('') + '<td class="na">—</td></tr>'
       + '<tr><th>жетони</th>' + C.BONUSES.map((g) => (g === 'fern' ? '<td class="na' + (miss.has(g) ? ' miss' : '') + '">—</td>' : cell(g, t[g] || 0))).join('') + cell('gold', t.gold || 0) + '</tr>'
       + '<tr class="sum"><th>разом</th>' + C.BONUSES.map((g) => cell(g, (b[g] || 0) + (g === 'fern' ? 0 : t[g] || 0))).join('') + cell('gold', t.gold || 0) + '</tr>'
@@ -843,7 +863,7 @@
     h += (v.guests || []).map((gs) => {
       const gp = K.guestProgress(gs.id, b);
       const taken = gs.by != null;
-      const prog = gp.items.map((x) => '<span class="sor-gq' + (p && x.ok ? ' ok' : '') + '" style="--gc:' + C.GOOD_COLOR[x.g] + '">' + C.GOOD_ICON[x.g] + ' ' + (p && !taken ? x.have + '/' : '') + x.need + '</span>').join('');
+      const prog = gp.items.map((x) => '<span class="sor-gq' + (p && x.ok ? ' ok' : '') + '" style="--gc:' + C.GOOD_COLOR[x.g] + '">' + gIc(x.g) + ' ' + (p && !taken ? x.have + '/' : '') + x.need + '</span>').join('');
       const tipG = me && me.tip && me.tip.act === 'guest' && me.tip.guest === gs.id;
       return '<div class="sor-gu' + (taken ? ' taken' : p && gp.done ? ' ready' : '') + '"><div class="sor-gn"><b>' + esc(K.guestName(gs.id)) + '</b>'
         + (taken ? ' <span class="small">у ' + who(v, gs.by) + '</span>' : p && gp.done ? ' <span class="sor-ok small">✓ прийде до тебе</span>' : p ? ' <span class="muted small">бракує ' + gp.left + '</span>' : '')
@@ -876,13 +896,13 @@
         + '<p>У руці щонайбільше 10. Глек уже підібрав — з тих, яких найбільше (дукати — останніми). Можна поправити.</p>'
         + '<div class="sor-disc">' + C.TOKENS.map((g) => {
           const has = tok[g] || 0, n = plan[g] || 0;
-          return '<div class="sor-dr' + (has ? '' : ' z') + '" style="--gc:' + C.GOOD_COLOR[g] + ';--gi:' + C.GOOD_INK[g] + '"><span class="sor-dt">' + C.GOOD_ICON[g] + '</span><small>є ' + has + '</small>'
+          return '<div class="sor-dr' + (has ? '' : ' z') + '" style="--gc:' + C.GOOD_COLOR[g] + ';--gi:' + C.GOOD_INK[g] + '"><span class="sor-dt">' + gIc(g) + '</span><small>є ' + has + '</small>'
             + '<button type="button" data-a="d+" data-g="' + g + '"' + (n < has && sum < need ? '' : ' disabled') + ' aria-label="повернути більше ' + esc(C.GOOD_GEN[g] || 'дукатів') + '">+</button>'
             + '<b>' + n + '</b>'
             + '<button type="button" data-a="d-" data-g="' + g + '"' + (n ? '' : ' disabled') + ' aria-label="повернути менше">−</button></div>';
         }).join('') + '</div>'
         + '<button type="button" class="sor-btn big primary" data-a="discard"' + (sum === need ? '' : ' disabled') + '>'
-        + (sum === need ? '↩ Повернути ' + K.iconsText(plan) : sum < need ? 'Обери ще ' + (need - sum) : 'Забагато на ' + (sum - need)) + '</button>'
+        + (sum === need ? '↩ Повернути ' + iconize(K.iconsText(plan)) : sum < need ? 'Обери ще ' + (need - sum) : 'Забагато на ' + (sum - need)) + '</button>'
         + '<button type="button" class="sor-link" data-a="disc-hide">глянути на поле</button>';
     } else if (me && me.must === 'guest') {
       const tg = me.tip && me.tip.act === 'guest' ? me.tip.guest : null;
@@ -891,7 +911,7 @@
           const gp = K.guestProgress(id, (playerOf(v, me.seat) || {}).bonus);
           const near = (v.players || []).filter((x) => x.seat !== me.seat).map((x) => ({ s: x.seat, left: K.guestProgress(id, x.bonus).left })).sort((a, b) => a.left - b.left)[0];
           return '<button type="button" class="sor-gcb' + (tg === id ? ' tip' : '') + '" data-a="guest" data-id="' + id + '"><b>' + esc(K.guestName(id)) + '</b>'
-            + '<span class="sor-gr">' + gp.items.map((x) => '<span class="sor-gq ok" style="--gc:' + C.GOOD_COLOR[x.g] + '">' + C.GOOD_ICON[x.g] + ' ' + x.need + '</span>').join('') + '</span>'
+            + '<span class="sor-gr">' + gp.items.map((x) => '<span class="sor-gq ok" style="--gc:' + C.GOOD_COLOR[x.g] + '">' + gIc(x.g) + ' ' + x.need + '</span>').join('') + '</span>'
             + '<small class="muted">' + esc(C.GUEST_HINT[id] || '') + '</small>'
             + (near ? '<small>найближче до нього: ' + esc(nickOf(v, near.s)) + ' (бракує ' + near.left + ')</small>' : '')
             + (tg === id ? '<span class="sor-tipg">⭐ Глек радить</span>' : '') + '</button>';
@@ -985,7 +1005,7 @@
     const h = C.BONUSES.map((g) => {
       const tg = g === 'fern' ? 'gold' : g;
       return '<span class="sor-sc' + (miss.has(g) ? ' miss' : '') + '" style="--gc:' + C.GOOD_COLOR[g] + ';--gi:' + C.GOOD_INK[g] + ';--tc:' + C.GOOD_COLOR[tg] + ';--ti:' + C.GOOD_INK[tg] + '" title="' + esc(C.GOOD_NAME[g]) + ': знижка ' + (b[g] || 0) + ', ' + (tg === 'gold' ? 'дукатів ' : 'жетонів ') + (t[tg] || 0) + '">'
-        + '<b class="bn">' + C.GOOD_ICON[g] + (b[g] || 0) + '</b><b class="tk">' + (tg === 'gold' ? '🪙' : '') + (t[tg] || 0) + '</b></span>';
+        + '<b class="bn">' + gIc(g, true) + (b[g] || 0) + '</b><b class="tk">' + (tg === 'gold' ? gIc('gold', true) : '') + (t[tg] || 0) + '</b></span>';
     }).join('');
     setHtml(st.el.strip, '<div class="sor-sl">' + h + '<span class="sor-sn' + (K.ntokOf(p) >= 10 ? ' full' : '') + '">' + K.ntokOf(p) + '<small>/10</small></span></div>');
   }
@@ -1224,8 +1244,8 @@
       else if (e.k === 'discard') { bub = '↩ повертає ' + K.iconsText(e.gave); feed = '↩ ' + nk + ' повертає ' + K.iconsText(e.gave); }
       else if (e.k === 'pass') { bub = '🤷 пропускає'; feed = '🤷 ' + nk + ' пропускає хід'; }
       else if (e.k === 'starshyna') feed = '🎖 ' + nk + ' — Січова старшина';
-      if (feed) addFeed(st, feed, pc);
-      if (bub) st.fxq.push({ seat: e.seat, text: bub, pc });
+      if (feed) addFeed(st, iconize(feed), pc);
+      if (bub) st.fxq.push({ seat: e.seat, text: iconize(bub), pc });
     }
     if (st.fxq.length > 3) st.fxq.splice(0, st.fxq.length - 3);
     runFx(st);

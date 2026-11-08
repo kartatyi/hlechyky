@@ -11,6 +11,7 @@
 import * as THREE from '/static/vendor/three-0.186.1/three.module.js';
 import { GOODS, BONUSES, TOKENS, GOOD_COLOR, GOOD_INK, GOOD_ICON, DECK, CARD_NAME, GUESTS, TIER_ROMAN, TIER_NAME, PAL,
   STARSHYNA, GUEST_POINTS } from './consts.js';
+import { canvasIcon, tokenIconColors } from './icons.js';
 
 const V3 = THREE.Vector3;
 const UP = new V3(0, 1, 0);
@@ -33,7 +34,7 @@ export const PED_H = 0.3;                            // висота підст�
 export const TABLE = { x0: -7.5, x1: 7.5, z0: -6.5, z1: 4.9 };
 /** Прилавки: центр смуги й поворот (local x — праворуч від власника, local z — до власника). */
 export const COUNTER = {
-  bottom: { x: 0, z: 4.0, ry: 0 },
+  bottom: { x: 0, z: 3.25, ry: 0 },
   top: { x: 0, z: -5.6, ry: Math.PI },
   left: { x: -6.4, z: -0.8, ry: -Math.PI / 2 },
   right: { x: 6.4, z: -0.8, ry: Math.PI / 2 },
@@ -176,9 +177,18 @@ function wrapText(g, text, maxW) {
   if (cur) lines.push(cur);
   return lines;
 }
+/** ⭐ значком (емодзі в canvas на різних системах різні): темний обвід і золото. */
+function starIcon(g, x, y, s) {
+  canvasIcon(g, 'star', x, y, s * 1.2, { fill: '#6b4a00' });
+  canvasIcon(g, 'star', x, y, s, { fill: '#ffd23f' });
+}
 function coin(g, x, y, r, good, n) {
   g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.arc(x + 1.5, y + 2, r, 0, Math.PI * 2); g.fill();
+  const gr = g.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
+  gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(0.6, 'rgba(255,255,255,0)');
   g.fillStyle = GOOD_COLOR[good]; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  g.fillStyle = gr; g.fill();
+  g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
   g.lineWidth = Math.max(2, r * 0.14); g.strokeStyle = good === 'linen' ? '#8a6a3a' : 'rgba(20,10,0,.55)'; g.stroke();
   g.fillStyle = GOOD_INK[good];
   g.font = `bold ${Math.round(r * 1.35)}px ${SANS}`; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -202,21 +212,19 @@ function drawFace(g, id) {
     g.beginPath(); g.moveTo(x, band + 5); g.lineTo(x + 5, band + 1); g.lineTo(x + 10, band + 5); g.lineTo(x + 5, band + 9); g.closePath(); g.fill();
   }
   // значок товару в смузі
-  g.font = `38px ${EMOJI}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(GOOD_ICON[bonus], W / 2 + 12, band / 2 + 2);
+  canvasIcon(g, bonus, W / 2 + 14, band / 2 + 1, 44, bonus === 'linen' ? { fill: '#fffaf0', detail: '#b3262e', lw: 2.2 } : { ...tokenIconColors(bonus, GOOD_COLOR[bonus]), lw: 2.2 });
   // ⭐ — велике число ліворуч угорі
   if (pts > 0) {
     g.font = `bold 50px ${SERIF}`; g.textAlign = 'left'; g.textBaseline = 'middle';
     g.lineWidth = 6; g.strokeStyle = bonus === 'linen' ? '#fff6e0' : 'rgba(0,0,0,.55)'; g.strokeText(String(pts), 9, band / 2 + 3);
     g.fillStyle = bonus === 'linen' ? '#3a2a1a' : '#ffffff'; g.fillText(String(pts), 9, band / 2 + 3);
-    g.font = `17px ${EMOJI}`; g.fillText('⭐', 38, band / 2 + 15);
+    starIcon(g, 47, band / 2 + 14, 19);
   }
   // ⚔ праворуч угорі
   if (k) {
     g.fillStyle = '#2a1d17'; g.beginPath(); g.arc(W - 22, 22, 17, 0, Math.PI * 2); g.fill();
     g.strokeStyle = PAL.gild; g.lineWidth = 2.5; g.stroke();
-    g.fillStyle = '#ffe7a8'; g.font = `bold 22px ${SANS}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('⚔', W - 22, 23);
+    canvasIcon(g, 'sabres', W - 22, 22, 24, { fill: '#ffe7a8', lw: 3.2 });
   }
   // назва
   g.fillStyle = '#3a2414'; g.font = `bold 15px ${SANS}`; g.textAlign = 'center'; g.textBaseline = 'top';
@@ -301,7 +309,7 @@ export function makeTileAtlas() {
       const r = req.length === 2 ? 22 : 18, step = req.length === 2 ? 50 : 40;
       req.forEach(([gd, n], j) => coin(g, S / 2 + (j - (req.length - 1) / 2) * step, S - 27, r, gd, n));
       g.fillStyle = '#6e4523'; g.font = `bold 17px ${SANS}`; g.textAlign = 'left'; g.textBaseline = 'middle';
-      g.fillText('+' + GUEST_POINTS, 8, 30); g.font = `13px ${EMOJI}`; g.fillText('⭐', 30, 31);
+      g.fillText('+' + GUEST_POINTS, 8, 30); starIcon(g, 37, 30, 15);
       g.lineWidth = 5; g.strokeStyle = PAL.plaqueEdge; rr(g, 2.5, 2.5, S - 5, S - 5, 10); g.stroke();
     } else {
       g.fillStyle = '#9e1f28'; g.fillRect(0, 0, S, S);
@@ -311,7 +319,7 @@ export function makeTileAtlas() {
         g.beginPath(); g.moveTo(x, S - 16); g.lineTo(x + 4, S - 20); g.lineTo(x + 8, S - 16); g.lineTo(x + 4, S - 12); g.closePath(); g.fill();
       }
       g.fillStyle = '#ffe7a8'; g.font = `bold 30px ${SERIF}`; g.textAlign = 'left'; g.textBaseline = 'middle';
-      g.fillText(String(STARSHYNA.points), 16, 34); g.font = `22px ${EMOJI}`; g.fillText('⭐', 36, 36);
+      g.fillText(String(STARSHYNA.points), 16, 34); starIcon(g, 47, 34, 22);
       g.fillStyle = '#ffe7a8'; g.font = `bold 13px ${SANS}`; g.textAlign = 'center';
       g.fillText('СТАРШИНА', S / 2, S - 32);
     }
@@ -508,7 +516,9 @@ export function emblemGeo(good, tier) {
   return b.geometry();
 }
 /** Де на плашці стоїть емблема (local x, z для плашки масштабу 1): праворуч унизу, вільне від ціни й назви. */
-export const EMBLEM_AT = [0.17, 0.34];
+export const EMBLEM_AT = [0.25, 0.47];
+/** Емблема менша за плашку: не закриває назви й ціни. */
+export const EMBLEM_S = 0.6;
 
 // ---------------------------------------------------------------------------------------------------------- жетони
 /** Кружальце: темніший обідок, світлий верх, рельєф-емблема (та сама, пласка). Низ — Y = 0. */
@@ -698,10 +708,13 @@ export const STAR_HOME = { x: AWARD.x + 0.42, y: PED_H, z: AWARD.z };
 export function addCounter(b, P, colorHex, shape, light) {
   const r = rngOf(600 + shape);
   const M0 = mat(P.x, 0, P.z, P.ry);
-  const base = col(colorHex), kant = light ? col('#8a7a5a') : dark(colorHex, 0.45);
-  const top = light ? col(colorHex) : mix(colorHex, '#f4e6c6', 0.18);
+  const base = col(colorHex), kant = col('#4a2e1a');
   const add = (g, m, c, j = 0.04) => b.add(g, M0.clone().multiply(m), c, { rng: r, jitter: j });
-  add(new THREE.BoxGeometry(COUNTER_W, BOARD_H, COUNTER_D), mat(0, BOARD_H / 2, 0), top);
+  // дерев'яна дошка з дощечок; колір місця — рушник-доріжка вздовж мого краю й кант
+  const NPL = 5, pw = COUNTER_D / NPL;
+  for (let i = 0; i < NPL; i++) add(new THREE.BoxGeometry(COUNTER_W, BOARD_H, pw - 0.012), mat(0, BOARD_H / 2, -COUNTER_D / 2 + pw * (i + 0.5)), mix('#a5703f', '#7a4f2c', (i % 2) * 0.35 + r() * 0.2), 0.05);
+  add(new THREE.BoxGeometry(COUNTER_W - 0.1, 0.012, 0.2), mat(0, BOARD_H + 0.006, COUNTER_D / 2 - 0.16), base, 0.02);
+  add(new THREE.BoxGeometry(COUNTER_W - 0.1, 0.014, 0.03), mat(0, BOARD_H + 0.007, COUNTER_D / 2 - 0.27), PAL.embroideryBlack, 0);
   add(new THREE.BoxGeometry(COUNTER_W + 0.08, 0.035, 0.08), mat(0, BOARD_H + 0.012, COUNTER_D / 2), kant);
   add(new THREE.BoxGeometry(COUNTER_W + 0.08, 0.035, 0.08), mat(0, BOARD_H + 0.012, -COUNTER_D / 2), kant);
   add(new THREE.BoxGeometry(0.08, 0.035, COUNTER_D), mat(COUNTER_W / 2, BOARD_H + 0.012, 0), kant);
@@ -732,15 +745,15 @@ export const SPOT = {
 };
 
 // ---------------------------------------------------------------------------------------------------------- підсвітка
-/** Рамка довкола плашки (кант PAL.legalEdge і золото PAL.legal) — у площині XZ, w × d — внутрішній розмір. */
-export function frameGeo(w, d, t = 0.07) {
+/** Рамка довкола плашки (кант PAL.legalEdge і колір color, типово золото PAL.legal) — у площині XZ, w × d — внутрішній розмір. */
+export function frameGeo(w, d, t = 0.07, color = PAL.legal) {
   const b = new Builder();
   const ring = (ww, dd, tt, y, c) => {
     for (const [x, z, sx, sz] of [[0, -dd / 2 - tt / 2, ww + 2 * tt, tt], [0, dd / 2 + tt / 2, ww + 2 * tt, tt], [-ww / 2 - tt / 2, 0, tt, dd], [ww / 2 + tt / 2, 0, tt, dd]])
       b.add(new THREE.BoxGeometry(sx, 0.012, sz), mat(x, y, z), c, { jitter: 0 });
   };
   ring(w + 0.02, d + 0.02, t + 0.04, 0.004, PAL.legalEdge);
-  ring(w + 0.04, d + 0.04, t, 0.01, PAL.legal);
+  ring(w + 0.04, d + 0.04, t, 0.01, color);
   return b.geometry();
 }
 /** Пунктирна рамка (позначка near). */

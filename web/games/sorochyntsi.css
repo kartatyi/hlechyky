@@ -88,7 +88,7 @@
 /* ─── Поле ───────────────────────────────────────────────── */
 .sor-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
 .sor-fieldwrap { position: relative; width: 100%; box-sizing: border-box; aspect-ratio: .93 / 1; max-height: min(78vh, 720px); min-height: 320px;
-  border-radius: 14px; overflow: hidden; background: radial-gradient(ellipse at 50% 40%, #8a5a35 0%, #5e3b21 80%); }
+  border-radius: 14px; overflow: hidden; background: linear-gradient(#86562f, #6a4124); }   /* = стільниця пласкої мапи (board2d TH.table) */
 .sor-field { position: absolute; inset: 0; }
 .sor-field > canvas, .sor-field > svg { display: block; width: 100%; height: 100%; }
 .sor-tip { position: absolute; z-index: 4; transform: translate(-50%, -100%); max-width: min(92%, 300px); background: rgba(28, 18, 11, .95);
@@ -147,6 +147,8 @@
 .sor-dr b { font-size: 1.3em; }
 .sor-dr small { color: var(--muted); }
 .sor-dt { font-size: 1.3em; }
+/* значки товарів (icons.js) — ростуть зі шрифтом, як емодзі */
+.sor-gi { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -.22em; flex: none; }
 .sor-dr button { width: 100%; max-width: 44px; height: 40px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel3, var(--panel)); font-weight: 800; }
 .sor-link { background: none; border: 0; color: var(--muted); text-decoration: underline; align-self: center; padding: 6px; min-height: 40px; }
 .sor-gch { display: flex; flex-direction: column; gap: 8px; }

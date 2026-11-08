@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><title>Сорочинці — значки</title>
+<style>body{margin:0;padding:16px;background:#3b2616;font:13px system-ui;color:#f3ead7}.row{display:flex;gap:14px;align-items:center;margin:8px 0}svg{display:block}</style></head>
+<body><div id="a"></div>
+<script type="module">
+import { ICONS, svgIcon, iconHtml, tokenIconColors } from '../icons.js';
+import { GOOD_COLOR, GOOD_INK } from '../consts.js';
+const keys = Object.keys(ICONS);
+const NS = 'http://www.w3.org/2000/svg';
+const sv = document.createElementNS(NS, 'svg'); sv.setAttribute('width', 1000); sv.setAttribute('height', 330);
+const bg = document.createElementNS(NS, 'rect'); bg.setAttribute('width', 1000); bg.setAttribute('height', 330); bg.setAttribute('fill', '#f6efdc'); sv.appendChild(bg);
+keys.forEach((k, i) => {
+  svgIcon(sv, k, 50 + i * 82, 50, 64);
+  const tok = GOOD_COLOR[k];
+  if (tok) {
+    const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', 50 + i * 82); c.setAttribute('cy', 150); c.setAttribute('r', 34); c.setAttribute('fill', tok); sv.appendChild(c);
+    svgIcon(sv, k, 50 + i * 82, 150, 42, tokenIconColors(k, tok));
+  }
+  svgIcon(sv, k, 50 + i * 82, 250, 24);
+});
+document.getElementById('a').appendChild(sv);
+</script></body></html>

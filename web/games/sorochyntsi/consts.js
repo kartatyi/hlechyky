@@ -218,7 +218,7 @@ export const ICON = { star: '⭐', icon: '⚔', starshyna: '🎖', bulava: '⚜'
 
 /** Палітра столу (3D бере за основу, 2D — як є). */
 export const PAL = {
-  table: '#8a5a35', tableDark: '#5e3b21', cloth: '#f3ead7', embroideryRed: '#b3262e', embroideryBlack: '#2a1d17',
+  table: '#8a5a35', tableDark: '#5e3b21', cloth: '#e9dcbd', embroideryRed: '#b3262e', embroideryBlack: '#2a1d17',
   plaque: '#c8955a', plaqueEdge: '#6e4523', gild: '#d9a933', skyTop: '#2b2f55', skyLow: '#e79a5f',
   lantern: '#ffcf6b', legal: '#ffd23f', legalEdge: '#2a1a00', buy: '#3fbf5f', near: '#ffd23f', bad: '#d64541',
 };

@@ -18,7 +18,7 @@ import { GOODS, BONUSES, TOKENS, DECK, SEAT_COLOR, SEAT_LIGHT, PAL } from './con
 import { wheelAction, wheelZoomFactor, twoFinger, hintDue } from '/games/khutory/gestures.js';
 
 const D2R = Math.PI / 180;
-const FOV = 40, DEF_POLAR = 35 * D2R, PORTRAIT_POLAR = 30 * D2R, POLAR_MIN = 25 * D2R, POLAR_MAX = 70 * D2R, AZ_LIM = 40 * D2R;
+const FOV = 40, DEF_POLAR = 38 * D2R, PORTRAIT_POLAR = 30 * D2R, POLAR_MIN = 25 * D2R, POLAR_MAX = 70 * D2R, AZ_LIM = 40 * D2R;
 const ZOOM_MIN = 0.6, ZOOM_MAX = 1.8;
 const TARGET = new THREE.Vector3(0, 0, -0.6);
 const BG = '#1c1626';
@@ -215,6 +215,7 @@ export async function createScene(host, opts = {}) {
 
   // Підсвітка й позначки.
   const frames = inst(M.frameGeo(M.PLAQUE.w, M.PLAQUE.d), 32, { mat: matFrame, order: 5 });
+  const buyFrames = inst(M.frameGeo(M.PLAQUE.w, M.PLAQUE.d, 0.07, PAL.buy), 16, { mat: matFrame, order: 5 });
   const tileFrames = inst(M.frameGeo(M.TILE, M.TILE, 0.06), 8, { mat: matFrame, order: 5 });
   const nears = inst(M.dashedFrameGeo(M.PLAQUE.w, M.PLAQUE.d), 32, { mat: matNear, order: 5 });
   const rings = inst(M.pileRingGeo(), 6, { mat: matFrame, order: 5 });
@@ -450,8 +451,8 @@ export async function createScene(host, opts = {}) {
     for (const e of PL) {
       if (!e.em) continue;
       _eu.set(0, e.ry, 0, 'YXZ');
-      _m4.compose(_pv.set(e.x, e.y + e.h + e.lift, e.z), _q.setFromEuler(_eu), _sv.set(e.s, e.s, e.s));
-      put(e.em, _m5.copy(_m4).multiply(_em.makeTranslation(M.EMBLEM_AT[0], 0, M.EMBLEM_AT[1])));
+      _m4.compose(_pv.set(e.x, e.y + e.h + e.lift, e.z), _q.setFromEuler(_eu), _sv.set(e.s * M.EMBLEM_S, e.s * M.EMBLEM_S, e.s * M.EMBLEM_S));
+      put(e.em, _m5.copy(_m4).multiply(_em.makeTranslation(M.EMBLEM_AT[0] / M.EMBLEM_S, 0, M.EMBLEM_AT[1] / M.EMBLEM_S)));
     }
     for (const f of flyers) {
       if (!f.busy || !f.em || !f.g.visible) continue;
@@ -595,20 +596,25 @@ export async function createScene(host, opts = {}) {
 
   function placeHL(t = clockT) {
     const pulse = reduced ? 1 : 0.5 + 0.5 * Math.sin(t * 4.2);
-    let nf = 0, ng = 0, nn = 0, ni = 0, nr = 0, nt = 0, nrg = 0;
+    // Підсвітка (опитування 09.11, як у 2D): рамка лише на тому, що можна купити (зелена; з дукатом — золота; у свій хід
+    // пульсує), решта законного — золота рамка лише під курсором (підйом — як і був). Гість на вибір — завжди.
+    let nf = 0, nb = 0, ng = 0, nn = 0, ni = 0, nr = 0, nt = 0, nrg = 0;
     for (const e of PL) {
       const lg = e.pk && isLegal(e.pk, e.pid);
       const sel = e.pk === 'card' && selected != null && e.pid === selected;
       const top = e.y + e.h + e.lift;
-      if (lg) {
-        const s = e.s * (1 + 0.025 * pulse);
-        setM(frames, nf++, e.x, top + 0.004, e.z, 0, e.ry, 0, s, 1, s);
+      const mk = e.id != null && (e.kind === 'row' || (e.kind === 'res' && e.seat === S.me)) ? marks[e.id] : null;
+      const hov = lg && hover && e.pk === hover.kind && e.pid === hover.id;
+      const buyMk = mk === 'buy' || mk === 'gold';
+      if (buyMk || hov) {
+        const s = e.s * (1 + (lg ? 0.025 * pulse : 0));
+        if (mk === 'buy') setM(buyFrames, nb++, e.x, top + 0.004, e.z, 0, e.ry, 0, s, 1, s);
+        else setM(frames, nf++, e.x, top + 0.004, e.z, 0, e.ry, 0, s, 1, s);
       }
-      if (lg || sel) {
+      if ((lg && (buyMk || hov)) || sel) {
         const k = sel ? 1.25 : 1;
         setM(glows, ng++, e.x, 0.008 + (e.kind === 'res' ? M.BOARD_H : 0), e.z, 0, e.ry, 0, e.s * 1.7 * k, 1, e.s * 2.1 * k);
       }
-      const mk = e.id != null && (e.kind === 'row' || (e.kind === 'res' && e.seat === S.me)) ? marks[e.id] : null;
       if (mk === 'near') setM(nears, nn++, e.x, top + 0.003, e.z, 0, e.ry, 0, e.s, 1, e.s);
       if (mk === 'buy' || mk === 'gold') {
         _eu.set(0, e.ry, 0); _q.setFromEuler(_eu);
@@ -624,6 +630,8 @@ export async function createScene(host, opts = {}) {
     for (const g of legal.piles) {
       const gi = TOKENS.indexOf(g); if (gi < 0) continue;
       const hov = hover && hover.kind === 'pile' && hover.id === g;
+      const pk = pick && pick[g];
+      if (!hov && !pk) continue;   // купи — кільцем лише під курсором і коли з них щось обрано
       const s = (hov ? 1.12 : 1) * (1 + 0.04 * pulse);
       setM(rings, nr++, M.BANK_X, 0.006, M.bankZ(gi), 0, 0, 0, s, 1, s);
       setM(roundGlows, nrg++, M.BANK_X, 0.007, M.bankZ(gi), 0, 0, 0, 1.15, 1, 1.15);
@@ -636,7 +644,7 @@ export async function createScene(host, opts = {}) {
       setM(tileFrames, nt++, p.x, 0.004 + M.TILE_H + 0.004, p.z, 0, 0, 0, s, 1, s);
       setM(roundGlows, nrg++, p.x, 0.007, p.z, 0, 0, 0, 1.9, 1, 1.9);
     });
-    finish(frames, nf); finish(glows, ng); finish(nears, nn); finish(icons, ni); finish(rings, nr); finish(tileFrames, nt); finish(roundGlows, nrg);
+    finish(frames, nf); finish(buyFrames, nb); finish(glows, ng); finish(nears, nn); finish(icons, ni); finish(rings, nr); finish(tileFrames, nt); finish(roundGlows, nrg);
     matFrame.opacity = reduced ? 1 : 0.78 + 0.22 * pulse;
     matGlow.opacity = reduced ? 0.75 : 0.55 + 0.35 * pulse;
     matRound.opacity = reduced ? 0.7 : 0.45 + 0.3 * pulse;

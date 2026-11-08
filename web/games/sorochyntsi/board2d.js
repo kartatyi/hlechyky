@@ -9,13 +9,31 @@
 // телефоні — без мого прилавка (він у стрічці знизу).
 
 import {
-  GOODS, BONUSES, TOKENS, GOOD_ICON, GOOD_COLOR, GOOD_INK, GOOD_NAME, TIER_ROMAN, TIER_NAME, GUESTS, SEAT_COLOR, SEAT_SHAPE,
+  GOODS, BONUSES, TOKENS, GOOD_COLOR, GOOD_INK, GOOD_NAME, TIER_ROMAN, TIER_NAME, GUESTS, SEAT_COLOR, SEAT_SHAPE,
   SEAT_LIGHT, PAL, card as cardOf,
 } from './consts.js';
+import { svgIcon, tokenIconColors, ICON_FILL, ICON_DETAIL } from './icons.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const CW = 100, CH = 128, GAP = 8;   // крамниця в одиницях viewBox
 const INK = '#2a1d17';
+
+// ─── Вигляд (опитування 09.11, «Тепле дерево»): стільниця з дошками, ряди на доріжці з вишитою каймою, власні значки
+// (icons.js) замість емодзі, тіні й об'єм у жетонах. Палітра — тут, кольори товарів — consts.js.
+const TH = {
+  table: ['#86562f', '#6a4124'], planks: 'rgba(0,0,0,.14)', runner: 'rgba(40,18,6,.28)', band: '#efe3c4',
+  paper: ['#fffaf0', '#f1e3c3'], edge: '#6e4523', shadow: 'rgba(28,12,2,.38)',
+  tile: '#4e2f19', tileEdge: '#c8955a', tileInk: '#f6efdc', ok: '#8ee09a', muted: 'rgba(246,239,220,.55)', near: '#ffd23f',
+  deck: '#5e3b21', deckEdge: '#d9a933', deckOrn: '#c23a32', deckInk: '#f6efdc', empty: 'rgba(255,255,255,.28)', count: 'rgba(0,0,0,.35)',
+};
+/** Смуга крамниці — колір товару; полотно — темніше за лице, щоб смуга не зникала. */
+const BAND = { ...GOOD_COLOR, linen: '#dccba0' };
+const bandIcon = (gd) => (gd === 'linen' ? { fill: '#fffaf0', detail: '#b3262e' } : tokenIconColors(gd, GOOD_COLOR[gd]));
+function mixHex(a, b, k) {
+  const p = (h) => [1, 3, 5].map((i) => parseInt(String(h).slice(i, i + 2), 16));
+  const x = p(a), y = p(b);
+  return 'rgb(' + x.map((v, i) => Math.round(v + (y[i] - v) * k)).join(',') + ')';
+}
 
 const CSS = `
 .sor-m { width: 100%; height: 100%; display: block; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
@@ -36,7 +54,13 @@ const CSS = `
 .sor-m .turn { stroke: ${PAL.lantern}; stroke-width: 3.5; }
 .sor-m .fin { stroke: ${PAL.gild}; stroke-width: 5; animation: sor-m-pulse .9s ease-in-out 3 alternate; }
 @keyframes sor-m-pulse { from { stroke-opacity: .55; } to { stroke-opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .sor-m-leg > .lg, .sor-m .fin { animation: none; } .sor-m .lift { transition: none; } }
+.sor-m-leg > .lh { fill: none; stroke: transparent; stroke-width: 3.5; }
+.sor-m-leg:hover > .lh, .sor-m-leg:focus-visible > .lh { stroke: #fff3c4; }
+.sor-m .lgB { fill: none; stroke: #3fbf5f; stroke-width: 3.5; }
+.sor-m .lgG { fill: none; stroke: #e9b838; stroke-width: 3.5; }
+.sor-m .pz { animation: sor-m-pulse 1.1s ease-in-out infinite alternate; }
+.sor-m text.serif { font-family: Georgia, 'Times New Roman', serif; }
+@media (prefers-reduced-motion: reduce) { .sor-m-leg > .lg, .sor-m .fin, .sor-m .pz { animation: none; } .sor-m .lift { transition: none; } }
 `;
 
 function el(tag, attrs, parent) {
@@ -78,8 +102,22 @@ export async function createBoard2d(host, opts = {}) {
   const st = { view: null, legal: null, marks: {}, pick: null, sel: null, mode: null, sig: '', pos: {}, timers: new Set(), dead: false, hot: null,
     parts: { ...ALL, ...(opts.parts || {}) } };
 
+  const U = 'sm' + Math.random().toString(36).slice(2, 7);   // id градієнтів цього поля
   const svg = el('svg', { class: 'sor-m', preserveAspectRatio: 'xMidYMid meet', role: 'group', 'aria-label': 'Ярмарковий стіл' });
   el('style', null, svg).textContent = CSS;
+  {
+    const defs = el('defs', null, svg);
+    const grad = (tag, id, attrs, stops) => {
+      const g = el(tag, { id: U + id, ...attrs }, defs);
+      stops.forEach(([o, c, a]) => el('stop', { offset: o, 'stop-color': c, 'stop-opacity': a == null ? 1 : a }, g));
+    };
+    grad('linearGradient', 'p', { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, TH.paper[0]], [1, TH.paper[1]]]);
+    grad('linearGradient', 't', { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, TH.table[0]], [1, TH.table[1]]]);
+    [...TOKENS, 'fern'].forEach((gd) => {
+      const c = GOOD_COLOR[gd];
+      grad('radialGradient', 'k' + gd, { cx: 0.38, cy: 0.32, r: 0.78 }, [[0, mixHex(c, '#ffffff', gd === 'gold' ? 0.5 : 0.24)], [0.62, c], [1, darker(c, 0.78)]]);
+    });
+  }
   const gBase = el('g', null, svg), gFx = el('g', { 'pointer-events': 'none' }, svg);
   host.appendChild(svg);
   if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
@@ -165,74 +203,158 @@ export async function createBoard2d(host, opts = {}) {
     const leg = legalSet(kind === 'card' ? 'cards' : kind === 'deck' ? 'decks' : kind === 'pile' ? 'piles' : 'guests').has(id);
     const sel = kind === 'card' && st.sel === id;
     const g = el('g', { class: (leg ? 'sor-m-leg' : '') + (sel ? ' sor-m-sel' : ''), 'data-k': kind, 'data-id': id }, parent);
+    // Підсвітка (опитування 09.11): рамка лише на тому, що можна купити (зелена; з дукатом — золота; у свій хід
+    // пульсує), решта законного — рамка під курсором і фокусом. Гостя на вибір — яскраво: це обов'язковий вибір.
+    const loud = kind === 'guest';
     if (leg) {
       g.setAttribute('tabindex', '0');
       g.setAttribute('role', 'button');
       g.setAttribute('data-pad-focus', '');
       g.setAttribute('aria-label', label);
-      el('rect', { class: 'lk', x: x - 4, y: y - 4, width: w + 8, height: h + 8, rx: rx + 3 }, g);
-      el('rect', { class: 'lg', x: x - 4, y: y - 4, width: w + 8, height: h + 8, rx: rx + 3 }, g);
-    } else if (sel) el('rect', { class: 'sg', x: x - 4, y: y - 4, width: w + 8, height: h + 8, rx: rx + 3 }, g);
-    if (marked === 'near') el('rect', { class: 'near', x: x - 2, y: y - 2, width: w + 4, height: h + 4, rx: rx + 2 }, g);
+      if (loud) {
+        el('rect', { class: 'lk', x: x - 4, y: y - 4, width: w + 8, height: h + 8, rx: rx + 3 }, g);
+        el('rect', { class: 'lg', x: x - 4, y: y - 4, width: w + 8, height: h + 8, rx: rx + 3 }, g);
+      } else if (!sel) {
+        el('rect', { class: 'lh', x: x - 4, y: y - 4, width: w + 8, height: h + 8, rx: rx + 3 }, g);
+      }
+    }
+    if (sel && !(leg && loud)) el('rect', { class: 'sg', x: x - 4, y: y - 4, width: w + 8, height: h + 8, rx: rx + 3 }, g);
+    if (!loud && !sel && (marked === 'buy' || marked === 'gold')) {
+      el('rect', { class: (marked === 'buy' ? 'lgB' : 'lgG') + (leg ? ' pz' : ''), x: x - 3.5, y: y - 3.5, width: w + 7, height: h + 7, rx: rx + 2.5 }, g);
+    }
+    if (marked === 'near') el('rect', { class: 'near', x: x - 2, y: y - 2, width: w + 4, height: h + 4, rx: rx + 2, style: 'stroke:' + TH.near + ';stroke-width:2.6;stroke-dasharray:0.1 5.6;stroke-linecap:round' }, g);
     const lift = el('g', { class: 'lift' }, g);
     if (leg) el('rect', { class: 'hit', x: x - 8, y: y - 8, width: w + 16, height: h + 16 }, g);
     return lift;
   }
 
-  /** Крамниця 100×128 у (x, y), масштаб s. */
-  function drawCard(g, id, x, y, s = 1, mark) {
-    const c = cardOf(id);
-    if (!c) return;
+  /** Вишита смуга: ромбики червоний/чорний уздовж відрізка (горизонтально чи вертикально) на світлій стрічці. */
+  function embroid(parent, x, y, len, h, vert, bg) {
+    const g = el('g', null, parent);
+    if (bg) el('rect', vert ? { x, y, width: h, height: len, fill: bg } : { x, y, width: len, height: h, fill: bg }, g);
+    const r = h * 0.3, step = h * 1.25;
+    let pr = '', pk = '';
+    for (let t = step / 2, i = 0; t < len - r; t += step, i++) {
+      const cx = vert ? x + h / 2 : x + t, cy = vert ? y + t : y + h / 2;
+      const d = 'M' + cx + ' ' + (cy - r) + 'l' + r + ' ' + r + '-' + r + ' ' + r + '-' + r + '-' + r + 'z';
+      if (i % 2) pk += d; else pr += d;
+    }
+    el('path', { d: pr, fill: PAL.embroideryRed }, g);
+    el('path', { d: pk, fill: PAL.embroideryBlack }, g);
+    const lw = Math.max(0.8, h * 0.09);
+    if (vert) { el('rect', { x, y, width: lw, height: len, fill: PAL.embroideryRed }, g); el('rect', { x: x + h - lw, y, width: lw, height: len, fill: PAL.embroideryRed }, g); }
+    else { el('rect', { x, y, width: len, height: lw, fill: PAL.embroideryRed }, g); el('rect', { x, y: y + h - lw, width: len, height: lw, fill: PAL.embroideryRed }, g); }
+    return g;
+  }
+
+  /** Стільниця: дерево з дошками, під рядами — темніша доріжка з вишитою каймою згори й знизу. */
+  function drawTable(L) {
+    const T = TH, W = L.W, H = L.H;
+    el('rect', { x: 0, y: 0, width: W, height: H, rx: 14, fill: 'url(#' + U + 't)' }, gBase);
+    const ry0 = L.rowY(0) - 8, ry1 = L.rowY(2) + CH + 8;
+    {
+      let off = 0;
+      for (let y = 30; y < H - 6; y += 38) {
+        el('rect', { x: 4, y, width: W - 8, height: 1.3, fill: T.planks }, gBase);
+        el('rect', { x: 4, y: y + 1.3, width: W - 8, height: 1, fill: 'rgba(255,225,180,.07)' }, gBase);
+        off = (off + 137) % W;
+        el('rect', { x: off, y: y - 38 + 2, width: 1.3, height: 36, fill: T.planks }, gBase);
+      }
+    }
+    el('rect', { x: 0, y: ry0, width: W, height: ry1 - ry0, fill: T.runner }, gBase);
+    embroid(gBase, 0, ry0 - 5, W, 10, false, T.band);
+    embroid(gBase, 0, ry1 - 5, W, 10, false, T.band);
+  }
+
+  /** Крамниця: тінь, папір, смуга кольору товару з вишитим пояском, ⭐ і ⚔ значками, повнобарвна емблема. */
+  function drawCardN(g, c, x, y, s, mark) {
+    const T = TH;
     const k = el('g', { transform: 'translate(' + x + ',' + y + ') scale(' + s + ')' }, g);
-    el('rect', { x: 0, y: 0, width: CW, height: CH, rx: 8, fill: '#f6efdc', stroke: PAL.plaqueEdge, 'stroke-width': 2 }, k);
-    const col = GOOD_COLOR[c.bonus], ink = GOOD_INK[c.bonus];
-    el('path', { d: 'M0,8 a8,8 0 0 1 8,-8 h' + (CW - 16) + ' a8,8 0 0 1 8,8 v20 h-' + CW + ' z', fill: col, stroke: PAL.plaqueEdge, 'stroke-width': 2 }, k);
-    if (c.pts) txt(k, 8, 22, String(c.pts), { 'font-size': 21, 'font-weight': 800, fill: ink });
-    if (c.pts) txt(k, c.pts >= 10 ? 30 : 21, 21, '⭐', { class: 'em', 'font-size': 11 });
-    if (c.k) txt(k, c.pts ? 38 : 8, 21, '⚔', { 'font-size': 15, 'font-weight': 800, fill: ink });
-    txt(k, CW - 7, 21, GOOD_ICON[c.bonus], { class: 'em', 'font-size': 17, 'text-anchor': 'end' });
-    // Назва — дрібно під смугою, праворуч від ціни; емблема — велика бліда.
-    txt(k, 66, 84, GOOD_ICON[c.bonus], { class: 'em', 'font-size': 34, 'text-anchor': 'middle', opacity: 0.32 });
-    wrap2(c.name, 12).forEach((l, i) => txt(k, 66, 42 + i * 12, l, { 'font-size': 10.5, 'font-weight': 700, fill: INK, 'text-anchor': 'middle' }));
-    let cy = CH - 13;
+    el('rect', { x: 1.2, y: 2.6, width: CW, height: CH, rx: 8, fill: T.shadow }, k);
+    el('rect', { x: 0, y: 0, width: CW, height: CH, rx: 8, fill: 'url(#' + U + 'p)', stroke: T.edge, 'stroke-width': 1.6 }, k);
+    const col = BAND[c.bonus], ink = GOOD_INK[c.bonus];
+    el('path', { d: 'M0,8 a8,8 0 0 1 8,-8 h' + (CW - 16) + ' a8,8 0 0 1 8,8 v18 h-' + CW + ' z', fill: col, stroke: T.edge, 'stroke-width': 1.6 }, k);
+    // вишитий поясок під смугою
+    let pr = '', pk = '';
+    for (let i = 0; i < 11; i++) {
+      const cx = 7 + i * 8.6, cy = 30;
+      const d = 'M' + cx + ' ' + (cy - 2.3) + 'l2.3 2.3-2.3 2.3-2.3-2.3z';
+      if (i % 2) pk += d; else pr += d;
+    }
+    el('path', { d: pr, fill: PAL.embroideryRed, opacity: 0.85 }, k);
+    el('path', { d: pk, fill: PAL.embroideryBlack, opacity: 0.75 }, k);
+    if (c.pts) {
+      txt(k, 7, 21, String(c.pts), { 'font-size': 20, 'font-weight': 900, fill: ink, stroke: c.bonus === 'linen' ? '#fff6e0' : darker(col, 0.55), 'stroke-width': 2.4, 'paint-order': 'stroke' });
+      svgIcon(k, 'star', c.pts >= 10 ? 33 : 25, 13, 13, { fill: '#ffd23f', stroke: '#7a5400', sw: 2.4 });
+    }
+    if (c.k) svgIcon(k, 'sabres', CW - 33, 13, 16, { fill: ink, lw: 3 });
+    svgIcon(k, c.bonus, CW - 13, 13, 19, bandIcon(c.bonus));
+    wrap2(c.name, 12).forEach((l, i) => txt(k, 63, 46 + i * 12, l, { 'font-size': 10.5, 'font-weight': 800, fill: INK, 'text-anchor': 'middle' }));
+    const big = c.bonus === 'linen' ? { stroke: '#9c8355', sw: 1.4 } : { stroke: darker(ICON_FILL[c.bonus], 0.55), sw: 0.9 };
+    el('ellipse', { cx: 63, cy: 110, rx: 16, ry: 3, fill: 'rgba(60,30,10,.12)' }, k);
+    svgIcon(k, c.bonus, 63, 89, 40, { fill: ICON_FILL[c.bonus], detail: ICON_DETAIL[c.bonus], ...big });
+    let cy = CH - 13.5;
     for (let i = GOODS.length - 1; i >= 0; i--) {
       const gd = GOODS[i], n = c.cost[gd];
       if (!n) continue;
-      el('circle', { cx: 15, cy, r: 10.5, fill: GOOD_COLOR[gd], stroke: darker(GOOD_COLOR[gd], 0.55), 'stroke-width': 1.6 }, k);
-      txt(k, 15, cy + 5, String(n), { 'font-size': 14, 'font-weight': 800, fill: GOOD_INK[gd], 'text-anchor': 'middle' });
-      cy -= 23;
+      el('circle', { cx: 15, cy: cy + 1, r: 10.4, fill: 'rgba(40,20,5,.22)' }, k);
+      el('circle', { cx: 15, cy, r: 10.4, fill: 'url(#' + U + 'k' + gd + ')', stroke: darker(GOOD_COLOR[gd], 0.5), 'stroke-width': 1.3 }, k);
+      txt(k, 15, cy + 4.8, String(n), { 'font-size': 13.5, 'font-weight': 900, fill: GOOD_INK[gd], 'text-anchor': 'middle' });
+      cy -= 22.5;
     }
-    // Рівень — римська цифра в куті.
-    txt(k, CW - 7, CH - 7, TIER_ROMAN[c.tier], { 'font-size': 10, 'font-weight': 800, fill: PAL.plaqueEdge, 'text-anchor': 'end', opacity: 0.7 });
+    if (!mark) txt(k, CW - 7, CH - 6, TIER_ROMAN[c.tier], { class: 'serif', 'font-size': 10, 'font-weight': 700, fill: T.edge, 'text-anchor': 'end', opacity: 0.7 });
     if (mark === 'buy') {
-      el('circle', { cx: CW - 14, cy: CH - 30, r: 12, fill: PAL.buy, stroke: '#0d3a17', 'stroke-width': 2 }, k);
-      txt(k, CW - 14, CH - 24.5, '✓', { 'font-size': 16, 'font-weight': 900, fill: '#fff', 'text-anchor': 'middle' });
+      el('circle', { cx: CW - 14, cy: CH - 14, r: 11.5, fill: PAL.buy, stroke: '#0d3a17', 'stroke-width': 1.8 }, k);
+      el('path', { d: 'M' + (CW - 19.5) + ' ' + (CH - 14) + 'l4 4.2 7.4-8.2', fill: 'none', stroke: '#fff', 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, k);
     } else if (mark === 'gold') {
-      el('circle', { cx: CW - 14, cy: CH - 30, r: 12, fill: GOOD_COLOR.gold, stroke: '#5a3e00', 'stroke-width': 2 }, k);
-      txt(k, CW - 14, CH - 25.5, '🪙', { class: 'em', 'font-size': 13, 'text-anchor': 'middle' });
+      el('circle', { cx: CW - 14, cy: CH - 14, r: 11.5, fill: 'url(#' + U + 'kgold)', stroke: '#6b4a00', 'stroke-width': 1.6 }, k);
+      svgIcon(k, 'gold', CW - 14, CH - 14, 15, { fill: '#fff0b0', detail: '#8a5e00' });
     }
   }
 
+  /** Крамниця 100×128 у (x, y), масштаб s; mark — 'buy' | 'gold' (значок у куті). */
+  function drawCard(g, id, x, y, s = 1, mark) {
+    const c = cardOf(id);
+    if (c) drawCardN(g, c, x, y, s, mark);
+  }
+
+  /** Колода сорочкою: темне дерево, золотий кант, ромби, римська цифра й кількість. n == null — без числа (бронь наосліп). */
   function drawBack(g, tier, x, y, w, h, n) {
-    const k = el('g', null, g);
-    if (n > 1) el('rect', { x: x + 3, y: y + 4, width: w, height: h, rx: 8, fill: PAL.tableDark, stroke: '#2a1a0c', 'stroke-width': 1.5 }, k);
-    if (n > 0) {
-      el('rect', { x, y, width: w, height: h, rx: 8, fill: '#6e4523', stroke: PAL.gild, 'stroke-width': 2 }, k);
-      el('rect', { x: x + 5, y: y + 5, width: w - 10, height: h - 10, rx: 5, fill: 'none', stroke: PAL.embroideryRed, 'stroke-width': 2, 'stroke-dasharray': '6 4' }, k);
-      txt(k, x + w / 2, y + h / 2 - 2, TIER_ROMAN[tier], { 'font-size': w > 60 ? 26 : 20, 'font-weight': 900, fill: PAL.gild, 'text-anchor': 'middle' });
+    const T = TH, k = el('g', null, g);
+    if (n == null || n > 0) {
+      if (n > 1) el('rect', { x: x + 3, y: y + 4, width: w, height: h, rx: 8, fill: darker(T.deck, 0.55) }, k);
+      el('rect', { x: x + 1.2, y: y + 2.6, width: w, height: h, rx: 8, fill: T.shadow }, k);
+      el('rect', { x, y, width: w, height: h, rx: 8, fill: T.deck, stroke: T.deckEdge, 'stroke-width': 2 }, k);
+      el('rect', { x: x + 5, y: y + 5, width: w - 10, height: h - 10, rx: 5, fill: 'none', stroke: T.deckEdge, 'stroke-width': 1, opacity: 0.55 }, k);
+      const nR = Math.max(3, Math.floor((w - 14) / 9));
+      let pr = '', pk = '';
+      for (let i = 0; i < nR; i++) {
+        const cx = x + w / 2 + (i - (nR - 1) / 2) * 9;
+        for (const cy of [y + 14, y + h - 14]) {
+          const d = 'M' + cx + ' ' + (cy - 3.2) + 'l3.2 3.2-3.2 3.2-3.2-3.2z';
+          if (i % 2) pk += d; else pr += d;
+        }
+      }
+      el('path', { d: pr, fill: T.deckOrn }, k);
+      el('path', { d: pk, fill: T.deckEdge }, k);
+      txt(k, x + w / 2, y + h / 2 + (n != null ? 0 : 9), TIER_ROMAN[tier], { class: 'serif', 'font-size': w > 60 ? 30 : 22, 'font-weight': 900, fill: T.deckEdge, 'text-anchor': 'middle' });
     } else {
-      el('rect', { x, y, width: w, height: h, rx: 8, fill: 'none', stroke: 'rgba(255,255,255,.3)', 'stroke-width': 2, 'stroke-dasharray': '6 5' }, k);
+      el('rect', { x, y, width: w, height: h, rx: 8, fill: 'none', stroke: T.empty, 'stroke-width': 2, 'stroke-dasharray': '6 5' }, k);
     }
-    if (n != null) txt(k, x + w / 2, y + h / 2 + 22, String(n), { 'font-size': 15, 'font-weight': 800, fill: n > 0 ? '#f6efdc' : 'rgba(255,255,255,.45)', 'text-anchor': 'middle' });
+    if (n != null) {
+      el('rect', { x: x + w / 2 - 15, y: y + h / 2 + 9, width: 30, height: 17, rx: 8.5, fill: n > 0 ? T.count : 'none' }, k);
+      txt(k, x + w / 2, y + h / 2 + 22, String(n), { 'font-size': 13, 'font-weight': 800, fill: n > 0 ? T.deckInk : T.empty, 'text-anchor': 'middle' });
+    }
   }
 
   function token(g, gd, x, y, r, n, ring) {
-    el('circle', { cx: x, cy: y, r, fill: GOOD_COLOR[gd], stroke: darker(GOOD_COLOR[gd], 0.5), 'stroke-width': 2.5 }, g);
-    el('circle', { cx: x, cy: y, r: r * 0.74, fill: 'none', stroke: 'rgba(255,255,255,.28)', 'stroke-width': 1.5 }, g);
-    txt(g, x, y + r * 0.32, GOOD_ICON[gd], { class: 'em', 'font-size': r * 0.95, 'text-anchor': 'middle' });
+    el('circle', { cx: x + r * 0.05, cy: y + r * 0.13, r, fill: 'rgba(0,0,0,.3)' }, g);
+    el('circle', { cx: x, cy: y, r, fill: 'url(#' + U + 'k' + gd + ')', stroke: darker(GOOD_COLOR[gd], 0.5), 'stroke-width': Math.max(1.2, r * 0.08) }, g);
+    el('circle', { cx: x, cy: y, r: r * 0.8, fill: 'none', stroke: gd === 'gold' ? 'rgba(122,84,0,.5)' : gd === 'linen' ? 'rgba(120,90,50,.35)' : 'rgba(255,255,255,.32)', 'stroke-width': Math.max(0.8, r * 0.05), 'stroke-dasharray': (r * 0.14) + ' ' + (r * 0.1) }, g);
+    svgIcon(g, gd, x, y, r * 1.12, tokenIconColors(gd, GOOD_COLOR[gd]));
     if (n != null) {
       el('circle', { cx: x + r * 0.78, cy: y + r * 0.78, r: r * 0.5, fill: '#1c120b', stroke: ring || '#f6efdc', 'stroke-width': 1.5 }, g);
-      txt(g, x + r * 0.78, y + r * 0.78 + r * 0.2, String(n), { 'font-size': r * 0.58, 'font-weight': 800, fill: '#fff', 'text-anchor': 'middle' });
+      txt(g, x + r * 0.78, y + r * 0.78 + r * 0.2, String(n), { 'font-size': r * 0.6, 'font-weight': 900, fill: '#fff', 'text-anchor': 'middle' });
     }
   }
 
@@ -255,10 +377,7 @@ export async function createBoard2d(host, opts = {}) {
     const ratio = L.tall ? Math.round(L.H / L.W * 1e4) / 1e4 : null;
     if (st.ratio !== ratio) { st.ratio = ratio; o.onLayout(ratio); }
     // Стільниця й скатертина під рядами.
-    el('rect', { x: 0, y: 0, width: L.W, height: L.H, rx: 14, fill: PAL.table }, gBase);
-    const ry0 = L.rowY(0) - 8, ry1 = L.rowY(2) + CH + 8;
-    el('rect', { x: 2, y: ry0, width: L.W - 4, height: ry1 - ry0, rx: 10, fill: PAL.cloth, opacity: 0.16 }, gBase);
-    el('rect', { x: 2, y: ry0, width: L.W - 4, height: ry1 - ry0, rx: 10, fill: 'none', stroke: PAL.embroideryRed, 'stroke-width': 3, 'stroke-dasharray': '10 4 3 4', opacity: 0.8 }, gBase);
+    drawTable(L);
     const S = seats();
     if (L.parts.opp) drawOpps(L, S);
     if (L.parts.guests) drawGuests(L);
@@ -287,7 +406,8 @@ export async function createBoard2d(host, opts = {}) {
       const nick = String(p.nick || '').replace(' 🤖', '') + (p.bot || p.away ? ' 🤖' : '');
       const maxc = Math.max(4, Math.floor((w - 80) / 7));
       txt(g, x + 31, y + 18, nick.length > maxc ? nick.slice(0, maxc - 1) + '…' : nick, { 'font-size': 12.5, 'font-weight': 700, fill: '#fff' });
-      txt(g, x + w - 6, y + 18, '⭐' + (p.points || 0), { class: 'em', 'font-size': 12.5, 'font-weight': 800, fill: PAL.lantern, 'text-anchor': 'end' });
+      txt(g, x + w - 6, y + 18, String(p.points || 0), { 'font-size': 12.5, 'font-weight': 800, fill: PAL.lantern, 'text-anchor': 'end' });
+      svgIcon(g, 'star', x + w - 22 - String(p.points || 0).length * 4, y + 13.5, 12, { fill: '#ffd23f', stroke: '#7a5400', sw: 2.4 });
       // Знижки — крихітні чипи; нульові — тьмяні.
       // Хвіст «🪙1 ·7 📌2» праворуч; знижки — ліворуч, лише коли влазять (вузьке поле на 4 — без них, вони є на плашках).
       const tailW = 84, cw = Math.min(16, (w - 18 - tailW) / 6 - 2);
@@ -322,10 +442,12 @@ export async function createBoard2d(host, opts = {}) {
       if (!gd) return;
       const lift = wrapLegal(gBase, 'guest', gs.id, 'Гість ' + gd[1], x, y, tw, h, 8);
       const g = el('g', gs.by != null ? { class: 'dim' } : null, lift);
-      el('rect', { x, y, width: tw, height: h, rx: 8, fill: PAL.tableDark, stroke: PAL.plaque, 'stroke-width': 1.5 }, g);
+      el('rect', { x: x + 1.2, y: y + 2.4, width: tw, height: h, rx: 8, fill: TH.shadow }, g);
+      el('rect', { x, y, width: tw, height: h, rx: 8, fill: TH.tile, stroke: TH.tileEdge, 'stroke-width': 1.5 }, g);
       const tall = L.tall;
-      wrap2(gd[1], tall ? 11 : 12).forEach((l, j) => txt(g, x + tw / 2, y + 13 + j * 11, l, { 'font-size': tall ? 9.5 : 10, 'font-weight': 700, fill: '#f6efdc', 'text-anchor': 'middle' }));
-      txt(g, x + tw - 5, y + h - 6, '+3⭐', { class: 'em', 'font-size': 9.5, 'font-weight': 800, fill: PAL.lantern, 'text-anchor': 'end' });
+      wrap2(gd[1], tall ? 11 : 12).forEach((l, j) => txt(g, x + tw / 2, y + 13 + j * 11, l, { 'font-size': tall ? 9.5 : 10, 'font-weight': 700, fill: TH.tileInk, 'text-anchor': 'middle' }));
+      txt(g, x + tw - 15, y + h - 6, '+3', { 'font-size': 10, 'font-weight': 900, fill: TH.tileInk, 'text-anchor': 'end' });
+      svgIcon(g, 'star', x + tw - 9, y + h - 9.5, 10, { fill: '#ffd23f', stroke: '#7a5400', sw: 2.4 });
       const req = GOODS.map((k, j) => [k, gd[2][j]]).filter((r) => r[1]);
       const rr = tall ? 8 : 9, step = rr * 2 + 3, x0 = x + tw / 2 - (req.length - 1) * step / 2;
       // Мій поступ (ПК, гості на полі замість колонки): під кожним кружечком «є/треба»; усе зібрано — зелена рамка.
@@ -333,11 +455,11 @@ export async function createBoard2d(host, opts = {}) {
       if (prog && req.every(([k, n]) => (myB[k] || 0) >= n)) el('rect', { x: x + 1.5, y: y + 1.5, width: tw - 3, height: h - 3, rx: 7, fill: 'none', stroke: PAL.buy, 'stroke-width': 3 }, g);
       req.forEach(([k, n], j) => {
         const cx = x0 + j * step, cy = prog ? y + 47 : y + h - (tall ? 24 : 28);
-        el('circle', { cx, cy, r: rr, fill: GOOD_COLOR[k], stroke: darker(GOOD_COLOR[k], 0.5), 'stroke-width': 1.3 }, g);
+        el('circle', { cx, cy, r: rr, fill: 'url(#' + U + 'k' + k + ')', stroke: darker(GOOD_COLOR[k], 0.5), 'stroke-width': 1.3 }, g);
         txt(g, cx, cy + rr * 0.45, String(n), { 'font-size': rr * 1.25, 'font-weight': 800, fill: GOOD_INK[k], 'text-anchor': 'middle' });
         if (prog) {
           const b = Math.min(myB[k] || 0, n);
-          txt(g, cx, cy + rr + 12, b + '/' + n, { 'font-size': 10, 'font-weight': 800, fill: b >= n ? '#8ee09a' : b ? '#f3ead7' : 'rgba(243,234,215,.55)', 'text-anchor': 'middle' });
+          txt(g, cx, cy + rr + 12, b + '/' + n, { 'font-size': 10, 'font-weight': 800, fill: b >= n ? TH.ok : b ? TH.tileInk : TH.muted, 'text-anchor': 'middle' });
         }
       });
       if (gs.by != null) seatBadge(lift, gs.by, x + 10, y + h - 10, 7);
@@ -347,18 +469,24 @@ export async function createBoard2d(host, opts = {}) {
 
   function drawAwards(L) {
     const v = st.view, A = L.awards;
-    const tiles = [['starshyna', '🎖', v.starshyna ? v.starshyna.seat : null, '3⭐'], ['bulava', '⚜', v.bulava, '']];
-    tiles.forEach(([k, icon, owner, sub], i) => {
+    const tiles = [['starshyna', v.starshyna ? v.starshyna.seat : null], ['bulava', v.bulava]];
+    tiles.forEach(([k, owner], i) => {
       const x = A.x + i * (A.w + 6), y = A.y, g = el('g', null, gBase);
-      el('rect', { x, y, width: A.w, height: A.h, rx: 8, fill: k === 'bulava' ? '#7a1f22' : PAL.tableDark, stroke: PAL.gild, 'stroke-width': owner != null ? 2.5 : 1.2 }, g);
-      txt(g, x + A.w / 2, y + A.h * 0.55, icon, { class: 'em', 'font-size': A.h * 0.42, 'text-anchor': 'middle', fill: PAL.gild, opacity: owner != null ? 1 : 0.85 });
-      if (sub) txt(g, x + 4, y + A.h - 5, sub, { class: 'em', 'font-size': 9, 'font-weight': 800, fill: PAL.lantern });
+      el('rect', { x: x + 1.2, y: y + 2.4, width: A.w, height: A.h, rx: 8, fill: TH.shadow }, g);
+      el('rect', { x, y, width: A.w, height: A.h, rx: 8, fill: k === 'bulava' ? '#7a1f22' : TH.tile, stroke: PAL.gild, 'stroke-width': owner != null ? 2.5 : 1.2 }, g);
+      // старшина — схрещені шаблі й «3 ⭐»; булава — пернач на червоній подушці
+      svgIcon(g, k === 'bulava' ? 'bulava' : 'sabres', x + A.w / 2, y + A.h * (k === 'bulava' ? 0.5 : 0.52), A.h * (k === 'bulava' ? 0.56 : 0.4),
+        k === 'bulava' ? { fill: '#e2b23a', detail: '#7a4a00', stroke: '#4a1010', sw: 1.2 } : { fill: PAL.gild, lw: 2.6 });
+      if (k === 'starshyna') {
+        txt(g, x + 5, y + A.h - 5, '3', { 'font-size': 10, 'font-weight': 900, fill: TH.tileInk });
+        svgIcon(g, 'star', x + 16, y + A.h - 8.5, 9.5, { fill: '#ffd23f', stroke: '#7a5400', sw: 2.4 });
+      }
       if (owner != null) seatBadge(g, owner, x + A.w - 10, y + A.h - 10, 7);
       // Мій поступ до старшини: «мої ⚔ / скільки треба, щоб узяти чи перебрати» (своя — ✓).
       const mp = k === 'starshyna' ? mineForProg(L) : null;
       if (mp) {
         const mine = owner != null && owner === mp.seat, need = owner == null ? 3 : (v.starshyna.icons || 0) + 1;
-        txt(g, x + A.w / 2, y + 13, mine ? '✓ твоя' : '⚔ ' + (mp.icons || 0) + '/' + need, { class: 'em', 'font-size': 10, 'font-weight': 800, fill: mine ? '#8ee09a' : '#f3ead7', 'text-anchor': 'middle' });
+        txt(g, x + A.w / 2, y + 13, mine ? '✓ твоя' : (mp.icons || 0) + '/' + need, { 'font-size': 10, 'font-weight': 800, fill: mine ? TH.ok : TH.tileInk, 'text-anchor': 'middle' });
       }
       st.pos[k] = [x + A.w / 2, y + A.h / 2];
     });
@@ -377,7 +505,7 @@ export async function createBoard2d(host, opts = {}) {
         const x = L.cardX(s), id = row[s];
         st.pos['slot' + tier + '_' + s] = [x + CW / 2, y + CH / 2];
         if (id == null) {
-          el('rect', { x, y, width: CW, height: CH, rx: 8, fill: 'none', stroke: 'rgba(255,255,255,.22)', 'stroke-width': 2, 'stroke-dasharray': '6 5' }, gBase);
+          el('rect', { x, y, width: CW, height: CH, rx: 8, fill: 'none', stroke: TH.empty, 'stroke-width': 2, 'stroke-dasharray': '6 5' }, gBase);
           continue;
         }
         const c = cardOf(id);
@@ -421,16 +549,18 @@ export async function createBoard2d(host, opts = {}) {
     if (v.over && !win) g.setAttribute('class', 'dim');
     el('rect', { x: M.x, y: M.y, width: 7, height: M.h, rx: 3, fill: colorOf(seat) }, g);
     seatBadge(g, seat, M.x + 21, M.y + 17, 10);
-    txt(g, M.x + 22, M.y + 44, '⭐' + (p.points || 0), { class: 'em', 'font-size': L.tall ? 11 : 13, 'font-weight': 800, fill: PAL.lantern, 'text-anchor': 'middle' });
+    svgIcon(g, 'star', M.x + 14, M.y + 39.5, L.tall ? 11 : 12.5, { fill: '#ffd23f', stroke: '#7a5400', sw: 2.4 });
+    txt(g, M.x + 21, M.y + 44, String(p.points || 0), { 'font-size': L.tall ? 11 : 13, 'font-weight': 800, fill: PAL.lantern });
     txt(g, M.x + 21, M.y + 60, (p.ntok || 0) + '/10', { 'font-size': 10.5, 'font-weight': 700, fill: (p.ntok || 0) >= 10 ? '#ff8a80' : '#f3ead7', 'text-anchor': 'middle' });
-    if (p.starshyna || p.bulava) txt(g, M.x + 21, M.y + 76, (p.starshyna ? '🎖' : '') + (p.bulava ? '⚜' : ''), { class: 'em', 'font-size': 12, 'text-anchor': 'middle' });
+    if (p.starshyna) svgIcon(g, 'sabres', M.x + (p.bulava ? 14 : 21), M.y + 72, 13, { fill: PAL.gild, lw: 2.8 });
+    if (p.bulava) svgIcon(g, 'bulava', M.x + (p.starshyna ? 29 : 21), M.y + 72, 14, { fill: '#e2b23a', detail: '#7a4a00' });
     // 6 стовпчиків: знижка (стос) зверху, жетони — під нею; під цвітом — дукати.
     const x0 = M.x + 42, colW = L.tall ? 43 : 48;
     BONUSES.forEach((gd, j) => {
       const cx = x0 + j * colW + colW / 2, nb = (p.bonus || {})[gd] || 0;
       const by = M.y + 8, bw = colW - 8, bh = L.tall ? 32 : 38;
       el('rect', { x: cx - bw / 2, y: by, width: bw, height: bh, rx: 5, fill: nb ? GOOD_COLOR[gd] : 'none', stroke: nb ? darker(GOOD_COLOR[gd], 0.5) : 'rgba(255,255,255,.45)', 'stroke-width': 1.5, 'stroke-dasharray': nb ? null : '3 3' }, g);
-      txt(g, cx - bw / 2 + 4, by + 13, GOOD_ICON[gd], { class: 'em', 'font-size': 11 });
+      svgIcon(g, gd, cx - bw / 2 + 9, by + 9, 12, nb ? bandIcon(gd) : { fill: 'rgba(255,255,255,.55)', detail: 'rgba(0,0,0,.3)' });
       txt(g, cx + bw / 2 - 4, by + bh - 6, String(nb), { 'font-size': L.tall ? 16 : 18, 'font-weight': 900, fill: nb ? GOOD_INK[gd] : 'rgba(255,255,255,.55)', 'text-anchor': 'end' });
       const tg = gd === 'fern' ? 'gold' : gd, nt = (p.tokens || {})[tg] || 0;
       const ty = by + bh + (L.tall ? 18 : 22), tr = L.tall ? 13 : 15;
@@ -562,16 +692,16 @@ export async function createBoard2d(host, opts = {}) {
     const gd = GUESTS[ev.guest];
     await fly(at('guest', ev.guest), at('seat', ev.seat), (g) => {
       el('rect', { x: -30, y: -24, width: 60, height: 48, rx: 7, fill: PAL.tableDark, stroke: PAL.gild, 'stroke-width': 2 }, g);
-      txt(g, 0, 4, '🏠', { class: 'em', 'font-size': 20, 'text-anchor': 'middle' });
+      svgIcon(g, 'guest', 0, -4, 20, { fill: PAL.gild, detail: PAL.tableDark });
       txt(g, 0, 18, gd ? gd[1].split(' ')[0] : '', { 'font-size': 9, fill: '#fff', 'text-anchor': 'middle' });
     }, 380);
   }
   const badge = (icon) => (g) => {
     el('circle', { r: 20, fill: '#7a1f22', stroke: PAL.gild, 'stroke-width': 3 }, g);
-    txt(g, 0, 8, icon, { class: 'em', 'font-size': 22, 'text-anchor': 'middle' });
+    svgIcon(g, icon, 0, 0, 26, icon === 'bulava' ? { fill: '#e2b23a', detail: '#7a4a00' } : { fill: PAL.gild, lw: 2.6 });
   };
-  async function starshyna(ev) { await fly(ev.from != null ? at('seat', ev.from) : at('starshyna'), at('seat', ev.seat), badge('🎖'), 380); }
-  async function bulava(ev) { await fly(at('bulava'), at('seat', ev.seat), badge('⚜'), 400); }
+  async function starshyna(ev) { await fly(ev.from != null ? at('seat', ev.from) : at('starshyna'), at('seat', ev.seat), badge('sabres'), 380); }
+  async function bulava(ev) { await fly(at('bulava'), at('seat', ev.seat), badge('bulava'), 400); }
   async function finale() {
     if (o.reducedMotion) return;
     await sleep(380);
