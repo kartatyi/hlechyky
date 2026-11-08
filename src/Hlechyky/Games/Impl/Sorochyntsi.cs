@@ -17,7 +17,12 @@ public sealed partial class Sorochyntsi : Game
         Options:
         [
             BoardBots.Option(3),
-            new GameOption("vp", "Грати до", [("14", "14 ⭐ · коротша"), ("16", "16 ⭐ · звичайна"), ("18", "18 ⭐ · довга")], "16"),
+            new GameOption("glek", "🤖 Який Глек", [("smart", "хитрий"), ("easy", "простий")], "smart"),
+            // 12/16/20 (опитування 08.11): з 14/16/18 медіана була 28/29/30 кіл — «коротша» й «довга» майже не різнились;
+            // тепер 26/29/31 (симуляція хитрих Глеків, удвох). Старі збережені 14/18 каркас сам замінює на типове 16.
+            new GameOption("vp", "Грати до", [("12", "12 ⭐ · коротша"), ("16", "16 ⭐ · звичайна"), ("20", "20 ⭐ · довга")], "16"),
+            // Межа кіл: останнє коло — для всіх, переможець — за ⭐ (булава, якщо її взяли раніше, теж лише кінчає коло).
+            new GameOption("rounds", "⏳ Кіл щонайбільше", [("20", "20"), ("25", "25"), ("30", "30"), ("40", "40 · запобіжник")], "40"),
             new GameOption("timer", "Час на хід", [("none", "без часу"), ("45", "45 с"), ("60", "60 с"), ("90", "90 с")], "60"),
         ],
         Hint: "Сорочинський ярмарок — на 2–4: бери товари, купуй крамниці, що дають знижку назавжди, клич гостей і першим "
@@ -37,8 +42,11 @@ public sealed partial class Sorochyntsi : Game
     public override bool HoldAfterLeave => false;
 
     int _target = 16;
+    int _roundCap = MaxRounds;
     int _timerMs = 60_000;
     int _botsWanted;
+    /// <summary>Рівень Глеків за столом і того, хто доробляє хід за задрімалого (опція glek); «💡 Глек радить» — завжди хитрий.</summary>
+    SoBotLevel _level = SoBotLevel.Smart;
 
     SorochyntsiCore _core = new([]);
     string?[] _bots = new string?[MaxSeats];
@@ -64,12 +72,17 @@ public sealed partial class Sorochyntsi : Game
 
     public override void Configure(IReadOnlyDictionary<string, string> options)
     {
-        _target = options.TryGetValue("vp", out var vp) && vp is "14" or "16" or "18" ? int.Parse(vp) : 16;
+        _target = options.TryGetValue("vp", out var vp) && vp is "12" or "16" or "20" ? int.Parse(vp) : 16;
+        _roundCap = options.TryGetValue("rounds", out var rc) && rc is "20" or "25" or "30" or "40" ? int.Parse(rc) : MaxRounds;
         _timerMs = options.TryGetValue("timer", out var t)
             ? t switch { "none" => 0, "45" => 45_000, "90" => 90_000, _ => 60_000 }
             : 60_000;
         _botsWanted = BoardBots.Read(options, 3);
+        _level = SorochyntsiBot.Level(options.TryGetValue("glek", out var gl) ? gl : null);
     }
+
+    /// <summary>Рівень Глеків цього столу (тести).</summary>
+    public SoBotLevel BotLevel => _level;
 
     public override string? CanStart()
     {
@@ -94,7 +107,7 @@ public sealed partial class Sorochyntsi : Game
         Array.Clear(_missed);
         // seq подій — наскрізний через усі партії столу: клієнт тримає найбільший побачений і анімує лише новіші.
         var seq = _core.Seq;
-        _core = new SorochyntsiCore(seats) { Target = _target, NameOf = Nick, Seq = seq };
+        _core = new SorochyntsiCore(seats) { Target = _target, RoundCap = _roundCap, NameOf = Nick, Seq = seq };
         _announced = false;
         _turnKey = _phaseKey = "";
         _deadline = _botAt = null;
@@ -123,6 +136,7 @@ public sealed partial class Sorochyntsi : Game
         if (action == "timeout") return Timeout();
         if (seat < 0 || seat >= MaxSeats || !_core.In[seat]) return ActResult.Fail("Ти не граєш за цим столом");
         if (IsBot(seat)) return ActResult.Fail("Тут грає Глек");
+        if (action == "back") return Back(seat);
         var error = action switch
         {
             "take" => _core.Take(seat, Strings(payload, "goods")),
@@ -135,15 +149,34 @@ public sealed partial class Sorochyntsi : Game
         };
         if (error is not null) return ActResult.Fail(error);
         // Будь-яка своя дія повертає людину з-під опіки Глека.
-        if (_away[seat])
-        {
-            _core.Note($"{Nick(seat)} знову торгує сам");
-            Glek(SoMoment.Back, Who(seat));
-        }
+        if (_away[seat]) TakeBack(seat);
         _away[seat] = false;
         _missed[seat] = 0;
         After();
         return ActResult.Done;
+    }
+
+    /// <summary>
+    /// «Я тут» (<c>back</c>, §6): людина за столом, за яку грає Глек (<c>away</c>), забирає прилавок, не ходячи. Її хід —
+    /// Глек, що чекав пільгу, не ходить, а строк — свіжий (як при поверненні тим самим ніком).
+    /// </summary>
+    ActResult Back(int seat)
+    {
+        if (!Ctx.Seated(seat)) return ActResult.Fail("Ти не граєш за цим столом");
+        if (!_away[seat]) return ActResult.Fail("Ти й так за прилавком");
+        TakeBack(seat);
+        if (_core.Turn == seat) _turnKey = "";
+        After();
+        return ActResult.Done;
+    }
+
+    /// <summary>Глек віддає прилавок людині: away знімається, лічильник проспаних — з нуля, журнал і голос.</summary>
+    void TakeBack(int seat)
+    {
+        _away[seat] = false;
+        _missed[seat] = 0;
+        _core.Note($"{Nick(seat)} знову торгує без Глека");
+        Glek(SoMoment.Back, Who(seat));
     }
 
     /// <summary>Хід Глека (штовхає клієнт людини): увесь хід того, чия черга, — дія, повернення зайвого, вибір гостя.</summary>
@@ -153,7 +186,7 @@ public sealed partial class Sorochyntsi : Game
         if (Ctx.Clock.UtcNow < at) return ActResult.Fail("Глек ще думає");
         var s = _core.Turn;
         if (!Auto(s)) return ActResult.Fail("Глекам нема що робити");
-        SorochyntsiBot.Step(_core, s);
+        SorochyntsiBot.Step(_core, s, _level);
         After();
         return ActResult.Done;
     }
@@ -165,10 +198,10 @@ public sealed partial class Sorochyntsi : Game
         if (_deadline is not { } dl || Ctx.Clock.UtcNow < dl) return ActResult.Fail("Ще є час");
         var s = _core.Turn;
         var human = !Auto(s);
-        SorochyntsiBot.Step(_core, s);
+        SorochyntsiBot.Step(_core, s, _level);
         if (human)
         {
-            _core.Note($"{Nick(s)} задрімав — Глек торгує за нього");
+            _core.Note($"{Nick(s)}: час вийшов — хід доробив Глек");
             if (++_missed[s] >= 2)
             {
                 _away[s] = true;
@@ -297,8 +330,8 @@ public sealed partial class Sorochyntsi : Game
             After();
             return;
         }
-        _core.Note($"Глек сідає замість {nick}");
-        Ctx.Log($"{Info.Title}: {nick} встає — за нього торгує Глек");
+        _core.Note($"{nick} встає — за прилавком Глек");
+        Ctx.Log($"{Info.Title}: {nick} встає — за прилавком Глек");
         Glek(SoMoment.Away, Who(seat));
         After();
     }
@@ -365,14 +398,25 @@ public sealed partial class Sorochyntsi : Game
         if (c.Over || c.Bulava >= 0) return;
         foreach (var s in c.Order)
         {
-            var shortBy = Math.Max(0, c.Target - c.Points(s));
+            if (!NearBulava(s) || _glek.NearSaid(Nick(s))) continue;
             var missing = Enumerable.Range(0, 6).Where(g => c.Bonus[s][g] == 0).ToList();
-            if (shortBy > 3 || missing.Count > 1 || (shortBy == 0 && missing.Count == 0) || _glek.NearSaid(Nick(s))) continue;
+            // {need} — лише те, чого справді бракує: «2 ⭐ і риби», «2 ⭐» чи «цвіту папороті» (не «бракує 0 ⭐»).
             Glek(SoMoment.NearBulava, new()
             {
-                ["who"] = Nick(s), ["points"] = shortBy.ToString(), ["good"] = missing.Count == 1 ? GoodAcc[missing[0]] : "",
+                ["who"] = Nick(s),
+                ["need"] = SorochyntsiLines.Need(Math.Max(0, c.Target - c.Points(s)), missing.Count == 1 ? missing[0] : -1),
             });
         }
+    }
+
+    /// <summary>«Майже при булаві» (§14.1): булава ще нічия, бракує ≤ 3 ⭐ і щонайбільше однієї знижки — але не нічого.</summary>
+    bool NearBulava(int s)
+    {
+        var c = _core;
+        if (c.Over || c.Bulava >= 0) return false;
+        var shortBy = Math.Max(0, c.Target - c.Points(s));
+        var missing = Enumerable.Range(0, 6).Count(g => c.Bonus[s][g] == 0);
+        return shortBy <= 3 && missing <= 1 && (shortBy > 0 || missing > 0);
     }
 
     // =====================================================================================
@@ -410,7 +454,7 @@ public sealed partial class Sorochyntsi : Game
             phase = !started ? null : c.Phase switch { SoPhase.Play => "play", SoPhase.Discard => "discard", SoPhase.Guest => "guest", _ => "over" },
             target = c.Target,
             round = c.Round,
-            maxRounds = MaxRounds,
+            maxRounds = c.RoundCap,
             last = c.Last,
             players,
             order = (int[])c.Order.Clone(),
@@ -486,7 +530,8 @@ public sealed partial class Sorochyntsi : Game
             why = act ? new Dictionary<string, string>(legal.Why) : [],
             cards,
             bulava,
-            tip = must is null ? null : Tip(SorochyntsiBot.Decide(c, s)),
+            // Радить завжди хитрий Глек — хоч би який сидів за столом.
+            tip = must is null ? null : Tip(SorochyntsiBot.Decide(c, s, SoBotLevel.Smart)),
         };
     }
 

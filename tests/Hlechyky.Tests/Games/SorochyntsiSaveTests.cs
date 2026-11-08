@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Hlechyky.Games;
 using Hlechyky.Games.Impl;
 using Hlechyky.Tests.Support;
 
@@ -117,6 +118,107 @@ public class SorochyntsiSaveTests
         Assert.True(h.Act(0, "guest", new { guest = 0 }).Ok);
         Assert.Equal([0], g.GuestsOf[0]);
         Assert.Equal(1, g.Turn);
+    }
+
+    static bool Away(RoomHarness h, int seat) =>
+        h.View(null).GetProperty("players").EnumerateArray().Single(p => p.GetProperty("seat").GetInt32() == seat).GetProperty("away").GetBoolean();
+
+    [Fact]
+    public void Ya_tut_works_after_a_restart_and_a_restart_after_it_changes_nothing()
+    {
+        var h = Table(7);
+        var c = SoRig.CoreOf(h);
+        // Оля (місце 0) двічі проспала свій хід — за неї Глек.
+        for (var i = 0; i < 2; i++)
+        {
+            while (c.Turn != 0) SoRig.Step(h, 1);
+            h.Clock.Advance(61);
+            Assert.True(h.Act(1, "timeout").Ok);
+            c = SoRig.CoreOf(h);
+        }
+        Assert.True(Away(h, 0));
+        Same(h);
+        Assert.True(Away(h, 0));
+        Assert.True(h.Act(0, "back").Ok);
+        Assert.False(Away(h, 0));
+        Same(h);
+        Assert.False(Away(h, 0));
+        Assert.Equal("Ти й так за прилавком", h.Act(0, "back").Message);
+    }
+
+    /// <summary>Рядки «майже булава» серед того, що Глек сказав за столом, про <paramref name="nick"/>.</summary>
+    static int NearLines(RoomHarness h, string nick, int skip)
+    {
+        var re = SorochyntsiLines.Lines(SoMoment.NearBulava)
+            .Select(t => new System.Text.RegularExpressions.Regex("^" + System.Text.RegularExpressions.Regex.Replace(
+                System.Text.RegularExpressions.Regex.Escape(t), @"\\\{\w+}", ".+?") + "$")).ToList();
+        return h.Outbox.OfType<TableSaid>().Skip(skip).Count(s => s.Line.Text.Contains(nick) && re.Any(r => r.IsMatch(s.Line.Text)));
+    }
+
+    /// <summary>Один простий хід того, чия черга: товари (перші купи), повернути перші жетони, перший гість.</summary>
+    static void Plain(RoomHarness h)
+    {
+        var c = SoRig.CoreOf(h);
+        var s = c.Turn;
+        var me = h.View(s).GetProperty("me");
+        var must = me.GetProperty("must").GetString();
+        if (must == "discard")
+        {
+            var give = new Dictionary<string, int>();
+            var left = me.GetProperty("discard").GetInt32();
+            for (var i = 0; i < 6 && left > 0; i++)
+            {
+                var n = Math.Min(left, c.Tok[s][i]);
+                if (n > 0) give[SorochyntsiCards.Tokens[i]] = n;
+                left -= n;
+            }
+            Assert.True(h.Act(s, "discard", new { give }).Ok);
+        }
+        else if (must == "guest") Assert.True(h.Act(s, "guest", new { guest = me.GetProperty("guests")[0].GetInt32() }).Ok);
+        else if (me.GetProperty("can").GetProperty("take").GetBoolean())
+        {
+            var take = me.GetProperty("take");
+            var goods = take.GetProperty("piles").EnumerateArray().Take(take.GetProperty("need").GetInt32()).Select(x => x.GetString()).ToArray();
+            Assert.True(h.Act(s, "take", new { goods }).Ok);
+        }
+        else if (me.GetProperty("can").GetProperty("reserveDeck")[0].GetBoolean()) Assert.True(h.Act(s, "reserve", new { tier = 1 }).Ok);
+        else Assert.True(h.Act(s, "pass", new { }).Ok);
+    }
+
+    [Theory]
+    [InlineData("said", 0)]      // знімок пам'ятає, що Глек уже попередив Олю — після перезапуску не повторює
+    [InlineData("old", 0)]       // знімок старої збірки без поля: хто зараз «майже при булаві» — уже попереджений
+    [InlineData("fresh", 1)]     // контроль: нікого не попереджав — і після перезапуску скаже (раз)
+    public void Near_bulava_is_said_once_per_person_even_across_a_restart(string snapshot, int expected)
+    {
+        var h = new RoomHarness("sorochyntsi", new { timer = "none", bots = "0", vp = "16" }, seed: 3);
+        h.Join("Оля");
+        h.Join("Петро");
+        Assert.True(h.Start().Ok);
+        var c = SoRig.CoreOf(h);
+        SoRig.Own(c, 0, 7, 15, 23, 31, 39, 70, 73);       // 13 ⭐, усі буденні знижки, без цвіту — «майже при булаві»
+        var room = h.Room;
+        lock (room.Sync)
+        {
+            var old = (Sorochyntsi)room.Game;
+            var node = JsonNode.Parse(old.Save()!)!.AsObject();
+            if (snapshot == "said") node["nearSaid"] = new JsonArray("Оля");
+            else if (snapshot == "old") node.Remove("nearSaid");
+            else node["nearSaid"] = new JsonArray();
+            var g = new Sorochyntsi { Ctx = old.Ctx };
+            g.Configure(room.Options);
+            g.Start();
+            g.Load(node.ToJsonString());
+            room.Game = g;
+        }
+        var skip = h.Outbox.OfType<TableSaid>().Count();
+        for (var i = 0; i < 40; i++)
+        {
+            h.Clock.Advance(25);
+            Plain(h);
+        }
+        Assert.Equal(expected, NearLines(h, "Оля", skip));
+        Assert.Equal(-1, SoRig.CoreOf(h).Bulava);
     }
 
     [Fact]

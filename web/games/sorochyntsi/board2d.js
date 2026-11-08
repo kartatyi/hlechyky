@@ -5,6 +5,8 @@
 // Розкладка (§11, «2D»): широке поле — прилавки суперників смугами згори, гості рядком (старшина й булава праворуч),
 // три ряди крамниць (III згори) з колодою ліворуч, банк стовпчиком праворуч, мій прилавок смугою внизу. Вузьке
 // (висота > ширини) — банк рядком над гостями. На 375 px картка ряду ≥ 72 px завширшки.
+// setParts (лише тут, 3D його не має): картка ховає те, що й так видно в HUD — на ПК лишаються ринок і банк, на
+// телефоні — без мого прилавка (він у стрічці знизу).
 
 import {
   GOODS, BONUSES, TOKENS, GOOD_ICON, GOOD_COLOR, GOOD_INK, GOOD_NAME, TIER_ROMAN, TIER_NAME, GUESTS, SEAT_COLOR, SEAT_SHAPE,
@@ -70,7 +72,11 @@ function wrap2(s, n) {
 
 export async function createBoard2d(host, opts = {}) {
   const o = { onPick() {}, onHover() {}, reducedMotion: false, ...opts };
-  const st = { view: null, legal: null, marks: {}, pick: null, sel: null, mode: null, sig: '', pos: {}, timers: new Set(), dead: false, hot: null };
+  // Що малювати, крім ринку й банку: картка ховає те, що й так видно поруч у HUD (ПК — плашки й колонка, телефон — стрічка
+  // мого прилавка), щоб ринок був більший. Типово — усе (стенди, лежачий телефон).
+  const ALL = { opp: true, guests: true, awards: true, mine: true };
+  const st = { view: null, legal: null, marks: {}, pick: null, sel: null, mode: null, sig: '', pos: {}, timers: new Set(), dead: false, hot: null,
+    parts: { ...ALL, ...(opts.parts || {}) } };
 
   const svg = el('svg', { class: 'sor-m', preserveAspectRatio: 'xMidYMid meet', role: 'group', 'aria-label': 'Ярмарковий стіл' });
   el('style', null, svg).textContent = CSS;
@@ -100,22 +106,32 @@ export async function createBoard2d(host, opts = {}) {
   function layout() {
     const r = host.getBoundingClientRect();
     const tall = r.height > r.width * 1.02;
-    const L = { tall };
+    const P = st.parts;
+    const L = { tall, parts: P };
     const nOpp = Math.max(1, seats().others.length);
     if (!tall) {
       const deckW = 74, mx = 8, mw = deckW + 10 + 4 * CW + 3 * GAP;   // 508
       const bankX = mx + mw + 16;
       L.W = bankX + 56 + 8;
       L.opp = { y: 6, h: 48, x: mx, w: L.W - 2 * mx - 96, n: nOpp };   // праворуч угорі — місце для «🧊 3D / 🔇» картки
-      L.guests = { y: 62, h: 80, x: mx, tw: 82, gap: 6 };
-      L.awards = { y: 62, h: 80, w: 62, x: L.W - mx - 2 * 62 - 6 };
-      L.rowY = (i) => 152 + i * (CH + GAP);
+      // Без смуг суперників (ПК: вони в плашках) гості й нагороди — першим рядком, вищі (під ними мій поступ), а ліве
+      // верхнє місце над колодами вільне — там стоять «🧊 3D / 🔇» картки.
+      const gy = P.opp ? 62 : 6, gh = P.opp ? 80 : 92;
+      L.prog = !P.opp;
+      L.guests = { y: gy, h: gh, x: P.opp ? mx : mx + deckW + 10, tw: 82, gap: 6 };
+      L.awards = { y: gy, h: gh, w: 62, x: L.W - mx - 2 * 62 - 6 };
+      // Лише ринок: ряди від самого верху; «🧊 3D / 🔇» — стовпчиком у правому верхньому куті над банком, тож банк
+      // починається нижче (кружальця щільніше, але не впритул).
+      const top = P.opp || P.guests || P.awards;
+      const r0 = !top ? 8 : P.opp ? 152 : gy + gh + 10;
+      L.rowY = (i) => r0 + i * (CH + GAP);
       L.deck = { x: mx, w: deckW };
       L.cardX = (slot) => mx + deckW + 10 + slot * (CW + GAP);
-      const bankTop = L.rowY(0) + 26, bankStep = (3 * (CH + GAP) - GAP - 52) / 5;
-      L.pile = (i) => ({ x: bankX + 28, y: bankTop + i * bankStep, r: 24 });
+      const free = top ? 0 : 92, rr = top ? 24 : 22;
+      const bankTop = L.rowY(0) + 26 + free, bankStep = (3 * (CH + GAP) - GAP - 52 - free) / 5;
+      L.pile = (i) => ({ x: bankX + 28, y: bankTop + i * bankStep, r: rr });
       L.mine = { y: L.rowY(3) + 4, h: 96, x: mx, w: L.W - 2 * mx };
-      L.H = L.mine.y + L.mine.h + 8;
+      L.H = P.mine ? L.mine.y + L.mine.h + 8 : L.rowY(2) + CH + 12;
     } else {
       const deckW = 50, mx = 8;
       L.W = mx + deckW + 8 + 4 * CW + 3 * GAP + mx;   // 498
@@ -128,9 +144,16 @@ export async function createBoard2d(host, opts = {}) {
       L.deck = { x: mx, w: deckW };
       L.cardX = (slot) => mx + deckW + 8 + slot * (CW + GAP);
       L.mine = { y: L.rowY(3) + 2, h: 84, x: mx, w: L.W - 2 * mx };
-      L.H = L.mine.y + L.mine.h + 6;
+      L.H = P.mine ? L.mine.y + L.mine.h + 6 : L.rowY(2) + CH + 12;
     }
     return L;
+  }
+
+  /// Прилавки, яких на полі нема (сховані частини), — точки за краєм: суперники вгорі (там плашки), я — внизу. Туди
+  /// летять жетони й крамниці, там з'являються бульбашки чужих ходів.
+  function offSeats(L, S) {
+    if (!L.parts.opp) S.others.forEach((seat, i) => { st.pos.seat[seat] = [L.W * (i + 1) / (S.others.length + 1), 4]; });
+    if (!L.parts.mine && S.me != null) st.pos.seat[S.me] = [L.W / 2, L.H - 4];
   }
 
   // ─── Малювання ───────────────────────────────────────────────────────────
@@ -230,12 +253,13 @@ export async function createBoard2d(host, opts = {}) {
     el('rect', { x: 2, y: ry0, width: L.W - 4, height: ry1 - ry0, rx: 10, fill: PAL.cloth, opacity: 0.16 }, gBase);
     el('rect', { x: 2, y: ry0, width: L.W - 4, height: ry1 - ry0, rx: 10, fill: 'none', stroke: PAL.embroideryRed, 'stroke-width': 3, 'stroke-dasharray': '10 4 3 4', opacity: 0.8 }, gBase);
     const S = seats();
-    drawOpps(L, S);
-    drawGuests(L);
-    drawAwards(L);
+    if (L.parts.opp) drawOpps(L, S);
+    if (L.parts.guests) drawGuests(L);
+    if (L.parts.awards) drawAwards(L);
     drawMarket(L);
     drawBank(L);
-    drawMine(L, S);
+    if (L.parts.mine) drawMine(L, S);
+    offSeats(L, S);
   }
 
   function drawOpps(L, S) {
@@ -271,9 +295,17 @@ export async function createBoard2d(host, opts = {}) {
     });
   }
 
+  /// Мої знижки й позначки — для поступу на плитках гостей і старшини (лише гравцю, і лише в режимі L.prog).
+  function mineForProg(L) {
+    const v = st.view;
+    if (!L.prog || !v || !v.me) return null;
+    return pOf(v.me.seat);
+  }
+
   function drawGuests(L) {
     const v = st.view, G = L.guests;
     const list = v.guests || [];
+    const mp = mineForProg(L), myB = mp ? mp.bonus || {} : null;
     const tw = Math.min(G.tw, list.length ? (L.awards.x - G.x - 8 - (list.length - 1) * G.gap) / list.length : G.tw);
     list.forEach((gs, i) => {
       const x = G.x + i * (tw + G.gap), y = G.y, h = G.h;
@@ -287,10 +319,17 @@ export async function createBoard2d(host, opts = {}) {
       txt(g, x + tw - 5, y + h - 6, '+3⭐', { class: 'em', 'font-size': 9.5, 'font-weight': 800, fill: PAL.lantern, 'text-anchor': 'end' });
       const req = GOODS.map((k, j) => [k, gd[2][j]]).filter((r) => r[1]);
       const rr = tall ? 8 : 9, step = rr * 2 + 3, x0 = x + tw / 2 - (req.length - 1) * step / 2;
+      // Мій поступ (ПК, гості на полі замість колонки): під кожним кружечком «є/треба»; усе зібрано — зелена рамка.
+      const prog = myB && gs.by == null;
+      if (prog && req.every(([k, n]) => (myB[k] || 0) >= n)) el('rect', { x: x + 1.5, y: y + 1.5, width: tw - 3, height: h - 3, rx: 7, fill: 'none', stroke: PAL.buy, 'stroke-width': 3 }, g);
       req.forEach(([k, n], j) => {
-        const cx = x0 + j * step, cy = y + h - (tall ? 24 : 28);
+        const cx = x0 + j * step, cy = prog ? y + 47 : y + h - (tall ? 24 : 28);
         el('circle', { cx, cy, r: rr, fill: GOOD_COLOR[k], stroke: darker(GOOD_COLOR[k], 0.5), 'stroke-width': 1.3 }, g);
         txt(g, cx, cy + rr * 0.45, String(n), { 'font-size': rr * 1.25, 'font-weight': 800, fill: GOOD_INK[k], 'text-anchor': 'middle' });
+        if (prog) {
+          const b = Math.min(myB[k] || 0, n);
+          txt(g, cx, cy + rr + 12, b + '/' + n, { 'font-size': 10, 'font-weight': 800, fill: b >= n ? '#8ee09a' : b ? '#f3ead7' : 'rgba(243,234,215,.55)', 'text-anchor': 'middle' });
+        }
       });
       if (gs.by != null) seatBadge(lift, gs.by, x + 10, y + h - 10, 7);
       st.pos.guest[gs.id] = [x + tw / 2, y + h / 2];
@@ -306,6 +345,12 @@ export async function createBoard2d(host, opts = {}) {
       txt(g, x + A.w / 2, y + A.h * 0.55, icon, { class: 'em', 'font-size': A.h * 0.42, 'text-anchor': 'middle', fill: PAL.gild, opacity: owner != null ? 1 : 0.85 });
       if (sub) txt(g, x + 4, y + A.h - 5, sub, { class: 'em', 'font-size': 9, 'font-weight': 800, fill: PAL.lantern });
       if (owner != null) seatBadge(g, owner, x + A.w - 10, y + A.h - 10, 7);
+      // Мій поступ до старшини: «мої ⚔ / скільки треба, щоб узяти чи перебрати» (своя — ✓).
+      const mp = k === 'starshyna' ? mineForProg(L) : null;
+      if (mp) {
+        const mine = owner != null && owner === mp.seat, need = owner == null ? 3 : (v.starshyna.icons || 0) + 1;
+        txt(g, x + A.w / 2, y + 13, mine ? '✓ твоя' : '⚔ ' + (mp.icons || 0) + '/' + need, { class: 'em', 'font-size': 10, 'font-weight': 800, fill: mine ? '#8ee09a' : '#f3ead7', 'text-anchor': 'middle' });
+      }
       st.pos[k] = [x + A.w / 2, y + A.h / 2];
     });
   }
@@ -407,7 +452,7 @@ export async function createBoard2d(host, opts = {}) {
     const r = host.getBoundingClientRect();
     const tall = r.height > r.width * 1.02;
     return JSON.stringify([tall, v && [v.players, v.rows, v.decks, v.bank, v.guests, v.starshyna, v.bulava, v.turn, v.phase, v.over && v.over.winners, v.me && v.me.reserved, v.order],
-      st.legal, st.marks, st.pick, st.sel]);
+      st.legal, st.marks, st.pick, st.sel, st.parts]);
   }
   function paint() {
     const s = sigNow();
@@ -430,6 +475,8 @@ export async function createBoard2d(host, opts = {}) {
   function setMarks(m) { st.marks = m ? { ...m } : {}; paint(); }
   function setPick(p) { st.pick = p && Object.keys(p).length ? { ...p } : null; paint(); }
   function setSelected(id) { st.sel = id == null ? null : id; paint(); }
+  /// Лише пласке поле: { opp, guests, awards, mine } — що малювати поруч із ринком (див. ALL).
+  function setParts(p) { st.parts = { ...ALL, ...(p || {}) }; paint(); }
 
   function legalAt(target) {
     const g = target && target.closest && target.closest('.sor-m-leg');
@@ -551,7 +598,7 @@ export async function createBoard2d(host, opts = {}) {
 
   return {
     kind: '2d',
-    setState, setLegal, setMarks, setPick, setSelected,
+    setState, setLegal, setMarks, setPick, setSelected, setParts,
     take, reserve, buy, refill, discard, guest, starshyna, bulava, finale, screenPos,
     resetView() {}, resize() { paint(); }, dispose,
   };

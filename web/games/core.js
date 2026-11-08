@@ -1205,6 +1205,9 @@
     return connected(15000);
   }
 
+  /// Метод, чий успіх цього разу показувати не треба (quietOk = 'CreateRoom' на час «🤖 Одразу з ботом»: «Стіл готовий,
+  /// можна гукнути друзів» там бреше — партія стартує сама за мить). Помилки показуємо завжди.
+  let quietOk = null;
   /// Виклик хаба, що повертає RoomReply: помилку показуємо тостом, успіх — лише якщо є що сказати.
   async function call(method, ...args) {
     const at = location.hash;   // звідки кликали: «встати?» до нового столу не має виринати вже на іншій сторінці
@@ -1221,7 +1224,7 @@
       // (ралі з трасою, Вогник, Цеглинки…) не мовчав. Відповідь — уже повторного виклику (чи ця, якщо «Чекати»).
       if (!r.ok && r.notReady && r.notReady.length && (method === 'Rematch' || method === 'StartRoom')) return await startAsked(args[0], method, r);
       if (!r.ok) { if (!(r.notReady && r.notReady.length)) errToast(r.message || 'От халепа — не вийшло'); }
-      else if (r.message) toast(r.message, 'ok');
+      else if (r.message && quietOk !== method) toast(r.message, 'ok');
       return r;
     } catch (e) {
       toast('Ой-йой, не вийшло: ' + e.message, 'err');
@@ -4156,7 +4159,9 @@
       if (st && !withBot) payload.stake = +st.dataset.stake;
       saveOpts(g.id, { o: optValues(box), stake: st ? +st.dataset.stake : undefined, bot: withBot });
       if (famId) saveMode(famId, g.id);
-      const r = await openRoom('CreateRoom', g.id, payload);
+      let r;
+      quietOk = withBot ? 'CreateRoom' : null;
+      try { r = await openRoom('CreateRoom', g.id, payload); } finally { quietOk = null; }
       if (!r.ok) return r;
       // «🤖 Одразу з ботом»: живим іграм — покликати бота (LiveBots, дія 'bot'), а Глек опції bots уже сидить; далі «Почати».
       // Не вийшло — стіл однаково стоїть: ведемо до нього, тост скаже чому.
