@@ -222,6 +222,8 @@
     const host = st.el.field;
     const opts = {
       onPick: (k, id) => onPick(root, k, id),
+      // Пласка стояча мапа — висота її поля за пропорцією (телефон: без порожніх смуг над і під мапою); 3D — як було.
+      onLayout: (r) => { if (r) st.el.fieldwrap.style.setProperty('--sor-mapr', String(r)); else st.el.fieldwrap.style.removeProperty('--sor-mapr'); },
       onHover: (k, id) => onHover(root, k, id),
       quality: coarse() || (navigator.hardwareConcurrency || 8) <= 4 ? 'low' : 'high',
       reducedMotion: reduced(),
@@ -295,8 +297,10 @@
   /// прилавок — у стрічці знизу. Телефон лежачи й невідома ширина — усе, як було.
   function fieldParts(st) {
     const lay = layOf(st);
-    if (!lay || lay === 'land') return null;
-    return lay === 'phone' ? { mine: false } : { opp: false, guests: true, awards: true, mine: false };
+    if (!lay) return null;
+    // Суперники — лише в плашках (там і жетони кольорами): смуга на мапі їх повторювала (опитування 08.11, телефон і лежачи
+    // — як на ПК). Лежачи мій прилавок лишається на мапі — стрічки там нема.
+    return lay === 'phone' ? { opp: false, mine: false } : lay === 'land' ? { opp: false } : { opp: false, guests: true, awards: true, mine: false };
   }
   /// Розкладка картки: телефон (< 700 px), лежачи (≥ 700 px і body.g-land від каркаса) чи ПК; null — ширини ще нема.
   /// «Лежачи» — одразу з класу каркаса, а не з .land картки (його ставить sizeVars пізніше першого малювання).
@@ -599,7 +603,7 @@
   const PLATE_TIPS = {
     pts: (v) => '⭐ <b>Очки:</b> ⭐ куплених крамниць + 3 за кожного гостя + 3 за Січову старшину. Булаву бере той, у кого ≥ ' + v.target + ' ⭐ і знижка кожним товаром разом із 🌸.',
     bonus: () => '🧵🐟🌿🏺🐑🌸 <b>Знижки</b> — куплені крамниці кожного товару: стільки цього товару менше платиш за кожну наступну. Тьмяні з пунктиром — ще нема (бракує для булави).',
-    tok: () => '🪙 <b>Дукати й жетони в руці.</b> Більше 10 наприкінці ходу не можна — зайві повертаєш у банк. Дукат іде за будь-який товар; береться лише разом із бронею.',
+    tok: () => '● <b>Жетони в руці</b> — кружечки під знижками; під 🌸 (цвіт жетонів не має) — 🪙 дукати. «7/10» — скільки всього: більше 10 наприкінці ходу не можна, зайві повертаєш у банк. Дукат іде за будь-який товар; береться лише разом із бронею.',
     res: (v, p) => {
       const rs = p.reserved || [];
       if (!rs.length) return '📌 <b>Бронь</b> — до 3 відкладених крамниць (купити зможе лише власник). Поки порожньо.';
@@ -628,6 +632,12 @@
         const n = (p.bonus || {})[g] || 0;
         return '<i class="sor-bc' + (n ? '' : ' miss') + '" style="--gc:' + C.GOOD_COLOR[g] + ';--gi:' + C.GOOD_INK[g] + '" title="' + esc(C.GOOD_NAME[g]) + ': ' + n + '">' + (n || '') + '</i>';
       }).join('');
+      // Жетони в руці — кружечками під знижками (опитування 08.11: «у 3D бачу фішки друзів, а в 2D — ні»); під 🌸 (жетонів
+      // цвіту нема) — 🪙 дукати, як у стрічці мого прилавка на телефоні.
+      const toks = C.BONUSES.map((g) => {
+        const k = g === C.RARE ? 'gold' : g, n = (p.tokens || {})[k] || 0;
+        return '<i class="sor-tc' + (n ? '' : ' z') + '" style="--gc:' + C.GOOD_COLOR[k] + ';--gi:' + C.GOOD_INK[k] + '" title="' + esc(C.GOOD_NAME[k]) + ': ' + n + '">' + (n || '') + '</i>';
+      }).join('');
       const nt = K.ntokOf(p), gold = (p.tokens || {}).gold || 0;
       const won = v.over && (v.over.winners || []).includes(p.seat);
       const name = esc(p.nick) + (p.bot ? '' : p.away ? ' <span title="Вийшов або проспав — за нього торгує Глек">🤖</span>' : '');
@@ -639,8 +649,8 @@
         + '<span class="sor-pn">' + name + (mine ? ' <em>(ти)</em>' : '') + (p.bulava ? ' ' + tip('bulava', '⚜', 'Гетьманська булава') : '') + '</span>'
         + '<span class="sor-pp">' + tip('pts', '⭐ <b>' + pts + '</b><span class="sor-w"> з ' + v.target + '</span>', 'Очки (булава — від ' + v.target + ')')
         + '<span class="sor-mb"><i style="width:' + Math.min(100, Math.round(pts / (v.target || 16) * 100)) + '%"></i></span></span>'
-        + '<span class="sor-bns">' + tip('bonus', bonus, 'Знижки') + '</span>'
-        + '<span class="sor-ps">' + tip('tok', '🪙' + gold + ' · <b class="' + (nt >= 10 ? 'full' : '') + '">' + nt + '</b>/10', 'Дукатів ' + gold + ', жетонів ' + nt + ' з 10')
+        + '<span class="sor-bns">' + tip('bonus', bonus, 'Знижки') + tip('tok', toks, 'Жетони в руці (під 🌸 — дукати)') + '</span>'
+        + '<span class="sor-ps">' + tip('tok', '<b class="' + (nt >= 10 ? 'full' : '') + '">' + nt + '</b>/10', 'Жетонів ' + nt + ' з 10, з них дукатів ' + gold)
         + ((p.reserved || []).length ? tip('res', '📌' + p.reserved.length, 'Бронь') : '')
         + ((p.guests || []).length ? tip('guests', '🏠' + p.guests.length, 'Гості') : '')
         + tip('icons', (p.starshyna ? '🎖' : '⚔') + (p.icons || 0), p.starshyna ? 'Січова старшина' : 'Козацькі позначки') + '</span>'

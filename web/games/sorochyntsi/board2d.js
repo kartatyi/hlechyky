@@ -71,7 +71,7 @@ function wrap2(s, n) {
 }
 
 export async function createBoard2d(host, opts = {}) {
-  const o = { onPick() {}, onHover() {}, reducedMotion: false, ...opts };
+  const o = { onPick() {}, onHover() {}, onLayout() {}, reducedMotion: false, ...opts };
   // Що малювати, крім ринку й банку: картка ховає те, що й так видно поруч у HUD (ПК — плашки й колонка, телефон — стрічка
   // мого прилавка), щоб ринок був більший. Типово — усе (стенди, лежачий телефон).
   const ALL = { opp: true, guests: true, awards: true, mine: true };
@@ -136,10 +136,12 @@ export async function createBoard2d(host, opts = {}) {
       const deckW = 50, mx = 8;
       L.W = mx + deckW + 8 + 4 * CW + 3 * GAP + mx;   // 498
       L.opp = { y: 4, h: 40, x: mx, w: L.W - 2 * mx - 112, n: nOpp };
-      const by = 52;
-      L.pile = (i) => ({ x: mx + 26 + i * 56, y: by + 24, r: 22 });
+      // Без смуги суперників (телефон: вони в плашках над полем) купи й гості — від самого верху, а над колодами лишається
+      // стовпчик під «🧊 3D / 🔇» (.sor.slim): купи щільніші, гості трохи вужчі.
+      const by = P.opp ? 52 : 4, gx = P.opp ? mx : mx + deckW + 8, step = P.opp ? 56 : 50;
+      L.pile = (i) => ({ x: gx + 26 + i * step, y: by + 24, r: 22 });
       L.awards = { y: by, h: 50, w: 56, x: L.W - mx - 2 * 56 - 6 };
-      L.guests = { y: by + 56, h: 70, x: mx, tw: (L.W - 2 * mx - 4 * 6) / 5, gap: 6 };
+      L.guests = { y: by + 56, h: 70, x: gx, tw: (L.W - mx - gx - 4 * 6) / 5, gap: 6 };
       L.rowY = (i) => by + 56 + 76 + i * (CH + GAP);
       L.deck = { x: mx, w: deckW };
       L.cardX = (slot) => mx + deckW + 8 + slot * (CW + GAP);
@@ -247,6 +249,11 @@ export async function createBoard2d(host, opts = {}) {
     const L = layout();
     st.mode = L.tall ? 'tall' : 'wide';
     svg.setAttribute('viewBox', '0 0 ' + L.W + ' ' + L.H);
+    // Стояча мапа (телефон) впирається в ширину: картка підганяє висоту поля під її пропорцію (onLayout), а що лишиться —
+    // унизу, не порожньою смугою над купами.
+    svg.setAttribute('preserveAspectRatio', L.tall ? 'xMidYMin meet' : 'xMidYMid meet');
+    const ratio = L.tall ? Math.round(L.H / L.W * 1e4) / 1e4 : null;
+    if (st.ratio !== ratio) { st.ratio = ratio; o.onLayout(ratio); }
     // Стільниця й скатертина під рядами.
     el('rect', { x: 0, y: 0, width: L.W, height: L.H, rx: 14, fill: PAL.table }, gBase);
     const ry0 = L.rowY(0) - 8, ry1 = L.rowY(2) + CH + 8;
@@ -306,7 +313,9 @@ export async function createBoard2d(host, opts = {}) {
     const v = st.view, G = L.guests;
     const list = v.guests || [];
     const mp = mineForProg(L), myB = mp ? mp.bonus || {} : null;
-    const tw = Math.min(G.tw, list.length ? (L.awards.x - G.x - 8 - (list.length - 1) * G.gap) / list.length : G.tw);
+    // Нагороди в тому ж рядку (широка мапа) — гості до них; стояча мапа — нагороди рядком вище, гості на всю ширину.
+    const right = L.awards.y === G.y ? L.awards.x - 8 : L.W - 8;
+    const tw = Math.min(G.tw, list.length ? (right - G.x - (list.length - 1) * G.gap) / list.length : G.tw);
     list.forEach((gs, i) => {
       const x = G.x + i * (tw + G.gap), y = G.y, h = G.h;
       const gd = GUESTS[gs.id];
@@ -587,6 +596,7 @@ export async function createBoard2d(host, opts = {}) {
 
   function dispose() {
     st.dead = true;
+    if (st.ratio != null) o.onLayout(null);
     for (const t of st.timers) clearTimeout(t);
     st.timers.clear();
     svg.removeEventListener('click', onClick);

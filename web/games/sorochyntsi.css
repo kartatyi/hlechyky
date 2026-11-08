@@ -46,11 +46,15 @@
 .sor-pp b { color: var(--text); }
 .sor-mb { flex: 1 1 auto; min-width: 24px; height: 6px; border-radius: 3px; background: rgba(0,0,0,.3); overflow: hidden; }
 .sor-mb i { display: block; height: 100%; background: var(--accent); }
-.sor-bns { display: flex; min-width: 0; }
+/* Знижки (квадратики) — над жетонами в руці (кружечки, під 🌸 — 🪙 дукати): стовпчик на товар, як у стрічці мого прилавка. */
+.sor-bns { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
 .sor-bns .sor-ic { display: flex; gap: 2px; }
 .sor-bc { display: inline-grid; place-items: center; width: 17px; height: 15px; border-radius: 4px; background: var(--gc); color: var(--gi); font-style: normal;
   font-size: 11px; font-weight: 800; line-height: 1; box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); }
 .sor-bc.miss { background: transparent; box-shadow: none; border: 1px dashed color-mix(in srgb, var(--gc) 70%, var(--muted)); opacity: .7; box-sizing: border-box; }
+.sor-tc { display: inline-grid; place-items: center; width: 15px; height: 15px; margin: 0 1px; border-radius: 50%; background: var(--gc); color: var(--gi); font-style: normal;
+  font-size: 10.5px; font-weight: 800; line-height: 1; box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.35), 0 1px 0 rgba(0,0,0,.35); font-variant-numeric: tabular-nums; }
+.sor-tc.z { background: transparent; box-shadow: none; border: 1px dashed color-mix(in srgb, var(--gc) 60%, var(--muted)); opacity: .45; box-sizing: border-box; }
 .sor-ps { display: flex; flex-wrap: nowrap; gap: 0 8px; font-size: .84em; color: var(--muted); white-space: nowrap; overflow: hidden; min-width: 0; }
 .sor-ps b { color: var(--text); }
 .sor-ps b.full { color: var(--danger); }
@@ -386,7 +390,8 @@
   .sor-sum { order: 2; }
   .sor-sumgrid { grid-template-columns: 1fr; }
   .sor-fieldwrap { order: 3; aspect-ratio: auto; max-height: none; min-height: 300px; width: auto; margin-inline: var(--sor-bleed); border-radius: 0;
-    height: clamp(300px, min(var(--sor-ph, calc(var(--gfit-h, 100svh) - var(--sor-plh, 100px) - var(--sor-striph, 0px) - var(--sor-barh, 0px) - 16px)), calc((100cqw + 32px) * 1.36)), 88svh); }
+    height: clamp(300px, min(var(--sor-ph, calc(var(--gfit-h, 100svh) - var(--sor-plh, 100px) - var(--sor-striph, 0px) - var(--sor-barh, 0px) - 16px)), calc((100cqw + 32px) * var(--sor-mapr, 1.36))), 88svh); }
+  /* --sor-mapr — висота/ширина пласкої мапи (board2d → onLayout): поле не вище за мапу, що впирається в ширину екрана. */
   /* --sor-ph (fix-screens, sizeVars): від верху поля до низу екрана над вкладками, крамницею й панеллю дій */
   .sor-say { order: 4; font-size: .95em; padding: 8px 10px; }
   .sor-res { order: 5; }
@@ -420,6 +425,7 @@
   .sor-pl .sor-sec { right: 4px; top: 2px; font-size: 11px; }
   .sor-pl.late .sor-sec { font-size: .82em; }
   .sor-bc { width: 16px; height: 14px; font-size: 11px; }
+  .sor-tc { width: 14px; height: 14px; font-size: 10px; }
 
   .sor-g { max-width: 54px; }
   .sor-goods { gap: 4px; }
