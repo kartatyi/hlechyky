@@ -6,8 +6,11 @@ namespace Hlechyky.Games.Impl;
 /// </summary>
 public sealed record SoCard(int Id, int Tier, int Bonus, int Pts, int K, int[] Cost, string Name);
 
-/// <summary>Гість ярмарку (§1.2): вимагає знижок (куплених крамниць), не жетонів; дає 3 ⭐.</summary>
-public sealed record SoGuest(int Id, string Name, int[] Need);
+/// <summary>
+/// Гість ярмарку (§1.2): вимагає знижок (куплених крамниць), не жетонів; дає 3 ⭐. <see cref="Female"/> — щоб Глек
+/// узгоджував дієслово з гостем («Хівря завітала»); з ніками гравців — ніколи (рід гравця невідомий).
+/// </summary>
+public sealed record SoGuest(int Id, string Name, int[] Need, bool Female = false);
 
 /// <summary>
 /// Сталі «Сорочинського ярмарку» без Ctx (контракт §1, §4): товари й відмінки, колода 90 крамниць з id, гості, банк за
@@ -183,8 +186,8 @@ public static class SorochyntsiCards
     public static readonly SoGuest[] Guests =
     [
         new(0, "Солопій Черевик", [4, 4, 0, 0, 0]),
-        new(1, "Хівря", [0, 4, 4, 0, 0]),
-        new(2, "Параска", [0, 0, 4, 4, 0]),
+        new(1, "Хівря", [0, 4, 4, 0, 0], Female: true),
+        new(2, "Параска", [0, 0, 4, 4, 0], Female: true),
         new(3, "Грицько Голопупенко", [0, 0, 0, 4, 4]),
         new(4, "Кум Цибуля", [4, 0, 0, 0, 4]),
         new(5, "Попович Афанасій Іванович", [3, 3, 3, 0, 0]),

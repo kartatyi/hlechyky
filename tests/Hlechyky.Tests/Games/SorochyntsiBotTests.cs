@@ -63,8 +63,11 @@ public class SorochyntsiBotTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>Дограти партію лише Глеками; кожен крок — законний (помилка — виняток), інваріанти після кожного ходу.</summary>
-    internal static Game Play(SorochyntsiCore c, bool check = true)
+    /// <summary>
+    /// Дограти партію лише Глеками (рівень місця — <paramref name="level"/>, типово хитрий); кожен крок — законний
+    /// (помилка — виняток), інваріанти після кожного ходу.
+    /// </summary>
+    internal static Game Play(SorochyntsiCore c, bool check = true, Func<int, SoBotLevel>? level = null)
     {
         var guard = 0;
         while (!c.Over)
@@ -73,7 +76,7 @@ public class SorochyntsiBotTests(ITestOutputHelper output)
             var turns = c.Turns;
             while (!c.Over && c.Turn == s && c.Turns == turns)
             {
-                var m = SorochyntsiBot.Decide(c, s);
+                var m = SorochyntsiBot.Decide(c, s, level?.Invoke(s) ?? SoBotLevel.Smart);
                 var err = SorochyntsiBot.Apply(c, s, m);
                 if (err is not null) throw new Xunit.Sdk.XunitException($"незаконний крок {m.Act}: {err}");
                 if (++guard > 5000) throw new Xunit.Sdk.XunitException("партія не кінчається");
@@ -114,6 +117,42 @@ public class SorochyntsiBotTests(ITestOutputHelper output)
         }
         output.WriteLine($"час: {sw.Elapsed.TotalSeconds:F1} с");
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(60), $"10 000 партій — {sw.Elapsed.TotalSeconds:F1} с");
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Smart_glek_clearly_beats_the_easy_one_and_the_easy_one_still_plays_legally()
+    {
+        var sw = CpuWatch.StartNew();
+        // Удвох, місця по черзі (хто перший — вирішує сід): хитрий виграє ≥ 65 % (нічия — навпіл).
+        double smart = 0;
+        const int duels = 2000;
+        for (var seed = 1; seed <= duels; seed++)
+        {
+            var sm = seed % 2;
+            var g = Play(Core(2, 50_000 + seed), level: s => s == sm ? SoBotLevel.Smart : SoBotLevel.Easy);
+            smart += g.Winners.Count(w => w == sm) / (double)g.Winners.Length;
+        }
+        output.WriteLine($"удвох: хитрий виграє {smart / duels:P1}");
+        Assert.True(smart / duels >= 0.65, $"хитрий виграє лише {smart / duels:P1}");
+        // Утрьох — один хитрий проти двох простих: більше половини.
+        double three = 0;
+        for (var seed = 1; seed <= 600; seed++)
+        {
+            var sm = seed % 3;
+            var g = Play(Core(3, 60_000 + seed), level: s => s == sm ? SoBotLevel.Smart : SoBotLevel.Easy);
+            three += g.Winners.Count(w => w == sm) / (double)g.Winners.Length;
+        }
+        output.WriteLine($"утрьох (1 хитрий, 2 прості): хитрий виграє {three / 600:P1}");
+        Assert.True(three / 600 > 0.5, $"утрьох хитрий виграє лише {three / 600:P1}");
+        // Простий — як був: законно до кінця, переважно булавою.
+        var easy = new List<Game>();
+        for (var seed = 1; seed <= 1500; seed++) easy.Add(Play(Core(2 + seed % 3, seed), level: _ => SoBotLevel.Easy));
+        Assert.True(easy.Count(x => x.Reason == "bulava") >= 0.95 * easy.Count);
+        Assert.All(easy, x => Assert.True(x.Rounds <= MaxRounds));
+        sw.Stop();
+        output.WriteLine($"час: {sw.Elapsed.TotalSeconds:F1} с");
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(30), $"{sw.Elapsed.TotalSeconds:F1} с");
     }
 }
 
@@ -194,6 +233,99 @@ public class SorochyntsiBotRoomTests
             Assert.Single(h.Finished);
             SorochyntsiBotTests.Invariants(SoRig.CoreOf(h));
         }
+    }
+
+    /// <summary>Підказка з виду і крок Глека — в одному записі для порівняння.</summary>
+    static string TipText(JsonElement tip) => tip.GetProperty("act").GetString() switch
+    {
+        "take" => "take|" + string.Join(",", tip.GetProperty("goods").EnumerateArray().Select(x => x.GetString())),
+        "buy" => $"buy|{tip.GetProperty("card").GetInt32()}",
+        "reserve" when tip.TryGetProperty("card", out var card) => $"reserve|{card.GetInt32()}",
+        "reserve" => $"reserve|t{tip.GetProperty("tier").GetInt32()}",
+        var a => a!,
+    };
+
+    static string MoveText(SoMove m) => m.Act switch
+    {
+        "take" => "take|" + string.Join(",", m.Goods()),
+        "buy" => $"buy|{m.Card}",
+        "reserve" when m.Card >= 0 => $"reserve|{m.Card}",
+        "reserve" => $"reserve|t{m.Tier}",
+        var a => a,
+    };
+
+    [Fact]
+    public void Glek_option_sets_the_bots_level_and_the_tip_is_always_the_smart_one()
+    {
+        Assert.Equal(SoBotLevel.Smart, SoRig.GameOf(SoRig.Table(1, bots: "1")).BotLevel);
+        Assert.Equal(SoBotLevel.Smart, SorochyntsiBot.Level("щось"));
+        var h = SoRig.Table(1, bots: "1", glek: "easy", seed: 9);
+        Assert.Equal(SoBotLevel.Easy, SoRig.GameOf(h).BotLevel);
+        var c = SoRig.CoreOf(h);
+        var differ = 0;
+        for (var i = 0; i < 400 && h.Finished.Count == 0; i++)
+        {
+            var s = c.Turn;
+            if (s == 1)
+            {
+                // Хід Глека за столом — простий: те саме, що зробив би простий на копії.
+                var copy = c.Clone();
+                SorochyntsiBot.Step(copy, 1, SoBotLevel.Easy);
+                SoRig.Step(h, 0);
+                Assert.Equal(copy.Tok[1], c.Tok[1]);
+                Assert.Equal(copy.Cards[1], c.Cards[1]);
+                Assert.Equal(copy.Reserved[1], c.Reserved[1]);
+                continue;
+            }
+            var tip = h.View(0).GetProperty("me").GetProperty("tip");
+            if (c.Phase == SoPhase.Play)
+            {
+                Assert.Equal(MoveText(SorochyntsiBot.Decide(c, 0, SoBotLevel.Smart)), TipText(tip));
+                if (MoveText(SorochyntsiBot.Decide(c, 0, SoBotLevel.Easy)) != TipText(tip)) differ++;
+            }
+            Assert.True(SoRig.PlayTip(h, 0, tip).Ok);
+        }
+        Assert.True(differ > 0, "хитрий і простий ні разу не розійшлися — перевірка нічого не каже");
+    }
+
+    [Fact]
+    public void Smart_glek_does_not_take_a_bulava_that_loses_and_takes_one_that_wins()
+    {
+        foreach (var (rival, takes) in new[] { (new[] { 72, 75, 78, 81 }, false), (new[] { 0 }, true) })
+        {
+            var c = SoRig.Core(2);
+            SoRig.First(c, 0);
+            // Місце 0: усі шість знижок і 14 ⭐; «Рибальська артіль» (+2 ⭐) дала б булаву.
+            SoRig.Own(c, 0, 7, 15, 23, 31, 39, 86, 70, 44);
+            Assert.Equal(14, c.Points(0));
+            SoRig.Row(c, 50, 0);
+            SoRig.Hand(c, 0, linen: 2);
+            SoRig.Own(c, 1, rival);
+            var easy = SorochyntsiBot.Decide(c, 0, SoBotLevel.Easy);
+            var smart = SorochyntsiBot.Decide(c, 0, SoBotLevel.Smart);
+            Assert.Equal(("buy", 50), (easy.Act, easy.Card));
+            // У суперника 20 ⭐ — булава з 16 ⭐ лише програла б: хитрий будує далі. 0 ⭐ — бере.
+            Assert.Equal(takes, smart.Act == "buy" && smart.Card == 50);
+            Assert.Null(SorochyntsiBot.Apply(c, 0, smart));
+        }
+    }
+
+    [Fact]
+    public void In_the_last_round_smart_glek_buys_the_most_stars_and_never_a_shop_without_them()
+    {
+        var c = SoRig.Core(2);
+        SoRig.First(c, 0);
+        c.Last = true;
+        // Лише «Рушничок» (3 риби, без ⭐): купівля нічого не дає, а зайва крамниця псує рівність — краще взяти товари.
+        SoRig.Row(c, 6, 0);
+        SoRig.Hand(c, 0, fish: 3);
+        Assert.Equal([6], c.Legal(0).Buys.Select(q => q.Id));
+        Assert.NotEqual("buy", SorochyntsiBot.Decide(c, 0, SoBotLevel.Smart).Act);
+        // «Юшка в казанку» (4 вовни, +1 ⭐) поруч — бере її.
+        SoRig.Row(c, 15, 1);
+        SoRig.Hand(c, 0, fish: 3, wool: 4);
+        var m = SorochyntsiBot.Decide(c, 0, SoBotLevel.Smart);
+        Assert.Equal(("buy", 15), (m.Act, m.Card));
     }
 
     [Fact]

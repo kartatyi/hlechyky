@@ -30,10 +30,63 @@ public class SorochyntsiLinesTests
             foreach (var line in lines)
                 Assert.All(SorochyntsiLines.Slots(line), s => Assert.Contains(s, SorochyntsiLines.Known));
         }
-        Assert.Equal("До Оля завітав Кобзар. Ставте вареники — +3 ⭐",
-            SorochyntsiLines.Fill(SorochyntsiLines.Lines(SoMoment.Guest)[0], new Dictionary<string, string> { ["who"] = "Оля", ["guest"] = "Кобзар" }));
+        Assert.Equal("Хівря завітала в гості — Оля +3 ⭐. Ставте вареники!",
+            SorochyntsiLines.Fill(SorochyntsiLines.Lines(SoMoment.Guest)[0], new Dictionary<string, string> { ["who"] = "Оля", ["guest"] = "Хівря", ["came"] = "завітала" }));
         Assert.DoesNotContain("{", SorochyntsiLines.Fill(SorochyntsiLines.Lines(SoMoment.StarshynaLost)[0], null));
         Assert.Equal(18, Enum.GetValues<SoMoment>().Length);
+    }
+
+    [Fact]
+    public void A_nick_always_stays_in_the_nominative_and_no_verb_agrees_with_the_players_gender()
+    {
+        // Рід гравця невідомий: ні «до/у/в/від {who}» (родовий), ні дієслова минулого часу чи «сам/його/нього/він» поруч із ніком.
+        var genitive = new Regex(@"(?:\b(?:до|у|в|від|за|з|для|біля|замість)\s+)\{(?:who|other)\}", RegexOptions.IgnoreCase);
+        var past = new Regex(@"\{(?:who|other)\}\s+(?:уже\s+|не\s+)?\p{L}+(?:ав|ив|ів|ов|ув|ла)\b|\b\p{L}+(?:ав|ив|ів|ов|ув|ла)\s+\{(?:who|other)\}");
+        var pronoun = new Regex(@"\b(?:його|йому|нього|ним|він|сам|сама)\b");
+        foreach (var m in Enum.GetValues<SoMoment>())
+            foreach (var line in SorochyntsiLines.Lines(m))
+            {
+                if (!line.Contains("{who}") && !line.Contains("{other}")) continue;
+                Assert.False(genitive.IsMatch(line), $"{m}: нік у родовому — «{line}»");
+                Assert.False(past.IsMatch(line), $"{m}: дієслово в роді гравця — «{line}»");
+                // «поторгую поки сам» — це Глек про себе.
+                if (m != SoMoment.Away) Assert.False(pronoun.IsMatch(line), $"{m}: займенник у роді — «{line}»");
+            }
+        // Журнал — так само: нік у називному («🏠 … в гостях · Оля», «🎖 Січова старшина → Оля»).
+        var c = SorochyntsiBotTests.Core(3, 4);
+        c.NameOf = _ => "Оля";
+        var s = c.Turn;
+        c.Table = [0, 5, 7, 9];
+        SoRig.Own(c, s, 0, 1, 2, 4, 8, 9, 10, 12, 3, 11, 19);   // 5 полотна, 5 риби, 3 ⚔
+        SoRig.Row(c, 27, 0);                                      // «Миски» з ⚔ — за 1 глину
+        SoRig.Hand(c, s, clay: 1);
+        Assert.Null(c.Buy(s, 27));
+        Assert.Contains("🏠 Солопій Черевик в гостях · Оля +3 ⭐", c.Log);
+        Assert.Contains("🎖 Січова старшина → Оля (4 ⚔)", c.Log);
+        Assert.All(c.Log, l => Assert.False(genitive.IsMatch(l.Replace("Оля", "{who}")), $"журнал: «{l}»"));
+    }
+
+    [Fact]
+    public void Guests_have_their_gender_and_near_bulava_says_only_what_is_missing()
+    {
+        Assert.Equal(["Хівря", "Параска"], SorochyntsiCards.Guests.Where(g => g.Female).Select(g => g.Name));
+        var c = SorochyntsiBotTests.Core(2, 3);
+        string Nick(int s) => s == 0 ? "Оля" : "Петро";
+        var khivria = SorochyntsiLines.Hear(new SoEvent { K = "guest", Data = [new("seat", 0), new("guest", 1)] }, c, Nick, false, false)!.Value;
+        Assert.Equal(("завітала", "обрала"), (khivria.Vars["came"], khivria.Vars["chose"]));
+        var kobzar = SorochyntsiLines.Hear(new SoEvent { K = "guest", Data = [new("seat", 1), new("guest", 8)] }, c, Nick, false, false)!.Value;
+        Assert.Equal(("завітав", "обрав", "Петро"), (kobzar.Vars["came"], kobzar.Vars["chose"], kobzar.Vars["who"]));
+        Assert.All(SorochyntsiLines.Lines(SoMoment.Guest), l => Assert.Contains("{guest}", l));
+
+        Assert.Equal("2 ⭐ і риби", SorochyntsiLines.Need(2, SorochyntsiCards.Fish));
+        Assert.Equal("3 ⭐", SorochyntsiLines.Need(3, -1));
+        Assert.Equal("цвіту папороті", SorochyntsiLines.Need(0, SorochyntsiCards.Fern));
+        foreach (var line in SorochyntsiLines.Lines(SoMoment.NearBulava))
+        {
+            Assert.DoesNotContain("{points}", line);
+            var said = SorochyntsiLines.Fill(line, new Dictionary<string, string> { ["who"] = "Оля", ["need"] = SorochyntsiLines.Need(0, SorochyntsiCards.Fern) });
+            Assert.DoesNotContain("0 ⭐", said);
+        }
     }
 
     [Fact]

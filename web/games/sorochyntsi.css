@@ -102,6 +102,21 @@
 .sor-banner.go > div { animation: sor-ban 2.5s ease-out forwards; }
 @keyframes sor-ban { 0% { opacity: 0; transform: scale(.6); } 12% { opacity: 1; transform: scale(1.06); } 20%, 82% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-10px); } }
 .sor-tools { position: absolute; right: 6px; top: 6px; z-index: 3; display: flex; gap: 5px; }
+/* ПК, пласке поле без смуг суперників (board2d.setParts): кнопки — стовпчиком у лівому верхньому куті, над колодами (там
+   місце вільне: гості починаються від першої крамниці), а не поверх крамниці III рівня. Підписи сховані — лише значки. */
+.sor.slim .sor-tools { left: 6px; right: auto; flex-direction: column; }
+.sor.slim .sor-view .sor-w { display: none; }
+.sor-awards:empty, .sor-res:empty { display: none; }
+/* «🔔 Коло 12 з 25 · грати до 16 ⭐» — над плашками; на телефоні — через обидві колонки плашок 2×2. */
+.sor-rnd { grid-column: 1 / -1; flex: 1 0 100%; font-size: .86em; color: var(--muted); padding: 1px 4px; }
+.sor-rnd b { color: var(--text); }
+.sor-rnd.last { color: var(--accent); font-weight: 700; }
+.sor-rnd.last b { color: var(--accent); }
+/* Партія йде: чипи місць і рядок статусу каркаса над карткою — геть (гравці й «що зараз» — у самій картці; на ноутбуці
+   це 66 px висоти поля). У лобі й після партії вони потрібні: сісти, «Ще раз». */
+.gtable:has(> .gbody .sor.live) > .gseats, .gtable:has(> .gbody .sor.live) > .gstatus { display: none; }
+/* Телефон: на свій хід поле під'їжджає під липку шапку сайту (fieldIntoView). */
+.sor-fieldwrap { scroll-margin-top: var(--gtop-h, 0px); }
 .sor-view { background: rgba(28, 18, 11, .82); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; min-height: 40px; min-width: 40px; font-size: .88em; }
 .sor-fx { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
 .sor-bub { position: absolute; left: 0; top: 0; transform: translate(-50%, calc(-100% - 8px)); padding: 4px 9px; border-radius: 10px;
@@ -287,30 +302,54 @@
 /* Висоти плашок, стрічки й панелі пише JS (sizeVars): --sor-plh, --sor-striph, --sor-barh. Місце між шапкою сайту й низом —
    від каркаса (core.js): --gtop-h (шапка), --gdock-h (вкладки, міні-плеєр), --gfit-h. */
 @container sor (min-width: 700px) {
-  .sor-players { position: sticky; top: var(--gtop-h, 0px); z-index: 8; margin: -6px -6px 0; padding: 6px; background: var(--panel, #2a1d14); border-radius: 0 0 12px 12px; }
-  .sor-main { --sor-sw: clamp(300px, 34cqw, 400px);
-    /* Висота поля — з місця картки від каркаса (--g-ah: усе під .gbody без прокрутки сторінки) мінус плашки. */
-    --sor-fh: clamp(360px, calc(var(--g-ah, calc(var(--gfit-h, 100vh) - 120px)) - var(--sor-plh, 80px) - 12px), calc((100cqw - var(--sor-sw) - 12px) * 1.1));
-    grid-template-columns: minmax(0, 1fr) var(--sor-sw); }
-  /* Поле липне під плашками, а колонка праворуч — своєї висоти: довга колонка гортає сторінку, поле лишається на
-     екрані (раніше колонка гортилась усередині на висоту поля — 860 px «схованого» вмісту на 1366). */
-  .sor-fieldwrap { aspect-ratio: auto; height: var(--sor-fh); max-height: none; min-height: 0;
-    position: sticky; top: calc(var(--gtop-h, 0px) + var(--sor-plh, 0px) + 6px); z-index: 3; }
-  .sor-side { gap: 8px; }
+  /* Опитування 08.11 (варіант B): поле ліворуч на всю висоту картки, праворуч ОДНА вузька колонка — плашки гравців
+     рядками → що зараз → мій прилавок → бронь → журнал. Плашки над полем і чипи місць каркаса з'їдали 140 px висоти, і
+     полю на 1280×800 лишалось 360 px (картку обмежує висота, не ширина). Товари й крамниця — віконцями на полі, гості й
+     нагороди — на полі (sorochyntsi.js: renderFieldPops, fieldParts). */
+  /* Сітку самої .sor ставить клас .pc (JS, sizeVars): контейнерний запит не стилює сам контейнер. */
+  .sor > .sor-main { display: contents; }
+  .sor > .sor-sum { grid-area: sum; }
+  /* Поле липне під шапкою сайту, колонка праворуч — своєї висоти (довга гортає сторінку, поле лишається на екрані).
+     Висота — усе місце картки від каркаса (--g-ah: під .gbody без прокрутки сторінки); стеля — від ширини поля (мапа з
+     гостями ~596 × 522, вища не стане). */
+  .sor-fieldwrap { grid-area: f; aspect-ratio: auto; max-height: none; min-height: 0;
+    height: clamp(360px, calc(var(--g-ah, calc(var(--gfit-h, 100vh) - 120px)) - 6px), calc((100cqw - clamp(290px, 26cqw, 360px) - 12px) * .92));
+    position: sticky; top: calc(var(--gtop-h, 0px) + 6px); z-index: 3; }
+  .sor > .sor-players { grid-area: p; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .sor-side { grid-area: s; gap: 8px; }
   .sor-col { display: contents; }
   .sor-side > *, .sor-col > * { flex: none; }
   .sor-col > .sor-tabs { flex: 1 0 auto; min-height: 160px; }
   .sor-say { padding: 8px 10px; font-size: .96em; }
-}
-/* Широка картка (⇔, ⛶, 1920+): колонка — дві підколонки поруч, кожна на висоту поля зі своєю прокруткою (зазвичай без неї):
-   ліворуч «що зараз» → хід → мій прилавок, праворуч бронь → гості й нагороди → журнал. */
-@container sor (min-width: 1100px) {
-  .sor-main { --sor-sw: clamp(600px, 48cqw, 860px); }
-  .sor-side { flex-direction: row; overflow: visible; gap: 10px; }
-  .sor-col { display: flex; flex: 1 1 0; min-width: 0; gap: 8px; }
+  /* Плашки — рядками: аватар │ нік і ⭐ │ знижки й решта рядком нижче. */
+  .sor > .sor-players .sor-pl { max-width: none; grid-template-columns: 30px minmax(0, 1fr) auto; column-gap: 6px; row-gap: 0; padding: 3px 8px 5px 3px; line-height: 1.2; border-radius: 11px; }
+  .sor > .sor-players .sor-pl > .sor-av { width: 30px; height: 30px; grid-row: 1 / span 2; }
+  .sor > .sor-players .sor-pl .sor-av > b { font-size: .85em; }
+  .sor > .sor-players .sor-pl > .sor-pn { grid-column: 2; grid-row: 1; font-size: .92em; }
+  .sor > .sor-players .sor-pl > .sor-pp { grid-column: 3; grid-row: 1; font-size: .84em; }
+  .sor > .sor-players .sor-pl > .sor-pp .sor-mb { display: none; }
+  .sor > .sor-players .sor-pl > .sor-bns { grid-column: 2; grid-row: 2; }
+  .sor > .sor-players .sor-pl > .sor-ps { grid-column: 3; grid-row: 2; font-size: .8em; gap: 0 6px; }
+  .sor > .sor-players .sor-pl.think .sor-pn, .sor > .sor-players .sor-pl.late .sor-pn { padding-right: 0; }
+  .sor > .sor-players .sor-pl.think > .sor-pp { padding-right: 2.6em; }
+  .sor > .sor-players .sor-pl.late > .sor-pp { padding-right: 3.4em; }
+  .sor > .sor-players .sor-pl .sor-sec { right: 6px; top: 3px; font-size: 11px; }
+  .sor-pl .sor-w { display: none; }
+  /* Віконця на полі (ПК): обрана крамниця чи колода — поруч із нею, вибрані товари — біля банку. */
+  .sor-fpop, .sor-gpop { position: absolute; z-index: 6; width: min(320px, 50%); box-shadow: 0 8px 26px rgba(0,0,0,.55);
+    border: 1px solid var(--accent); background: var(--panel, #2a1d14); }
+  .sor-fpop .sor-btn, .sor-gpop .sor-btn { min-height: 40px; padding: 6px 10px; white-space: nowrap; font-size: .92em; }
+  .sor-gpop { width: min(230px, 40%); }
+  .sor-gpr { display: flex; flex-wrap: wrap; gap: 5px; }
+  .sor-gpk { border: 0; border-radius: 10px; padding: 4px 9px; min-height: 34px; background: var(--gc); color: var(--gi); font-weight: 800; box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); }
+  .sor-gpk small { opacity: .8; }
+  .sor-how { margin-top: 3px; }
 }
 /* Телефон лежачи (картка ≥ 700 px, а екран ~375 заввишки): плашки не липнуть (з'їли б третину екрана), поле й колонка —
    на висоту картки (вона сама гортається; над нею — рядок столу ~46 px): гортнув раз під плашки — і бачиш увесь ярмарок. */
+/* ПК (клас .pc ставить JS, коли картка ≥ 700 px і не лежачи): поле ліворуч, одна вузька колонка праворуч (див. вище). */
+.sor.pc { display: grid; --sor-sw: clamp(290px, 26%, 360px); grid-template-columns: minmax(0, 1fr) var(--sor-sw);
+  grid-template-rows: auto auto 1fr; grid-template-areas: "sum sum" "f p" "f s"; gap: 8px 12px; align-items: start; }
 /* Телефон лежачи (клас .land ставить JS, коли картка ≥ 700 px): поле ліворуч на всю висоту під рядком місць — влазить без
    прокрутки й липне, поки картка гортається; праворуч плашки 2×2 і колонка ходу. --sor-lh — місце до низу екрана (JS). */
 .sor.land { display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: auto auto 1fr;
