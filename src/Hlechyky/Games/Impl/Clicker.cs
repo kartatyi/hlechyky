@@ -271,7 +271,7 @@ public sealed partial class Clicker : Game
     /// пропустив v11.1, тому клієнт допише й ті рядки.
     /// «v12» — «Заморська торгівля» (docs/games/specs/clicker-v12.md §9) і подарунок (TakeGiftV12); старі рядки — згорткою.
     /// </summary>
-    public const string NewsVersion = "v12";
+    public const string NewsVersion = "v13";
 
     // ---------- розгін кола ----------
 
@@ -2222,7 +2222,7 @@ public sealed partial class Clicker : Game
         // тому новини v11 гривню не пояснюють, і його церемонія (скажімо, «Червоні золоті»), якщо ще чекає, лишається.
         // Хто бачив v11, той блок v10 або вже бачив, або прочитав у вікні v11 — v11.1 його не показує.
         // v12: блок v10 пояснює лише гривню й золоті — дукача він не знає, тож його церемонія лишається за будь-яких новин.
-        if (_news is not ("v10" or "v10.1" or "v11" or "v11.1" or "v11.2")) _coinSeen = Math.Max(_coinSeen, Math.Min(2, CoinLevel));
+        if (_news is not ("v10" or "v10.1" or "v11" or "v11.1" or "v11.2" or "v12")) _coinSeen = Math.Max(_coinSeen, Math.Min(2, CoinLevel));
         _news = NewsVersion;
         // Подарунки: округи (v9.2), десятого й одинадцятого оновлень — кожен раз на гончаря; хто пропустив старі,
         // забирає їх разом із новим.

@@ -385,7 +385,7 @@ public class ClickerTradeTests
         var h = Wheel();
         Pier(h, pots: 0);
         Patch(h, s => { s["news"] = "v11.2"; s["titles"] = new JsonObject { ["gifts"] = new JsonArray("v9.2", Clicker.GiftV10Key, Clicker.GiftV11Key) }; });
-        Assert.Equal("v12", View(h).GetProperty("news").GetString());
+        Assert.Equal(Clicker.NewsVersion, View(h).GetProperty("news").GetString());
         var before = Pots(h);
         var r = h.Act(0, "news", new { v = Clicker.NewsVersion });
         Assert.True(r.Ok, r.Message);
