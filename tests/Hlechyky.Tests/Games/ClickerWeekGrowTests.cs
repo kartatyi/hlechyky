@@ -317,6 +317,39 @@ public class ClickerWeekGrowTests
     }
 
     [Fact]
+    public void A_friends_house_shows_the_pennant_while_the_sails_last()
+    {
+        var (h, k) = Wheel("Оля");
+        Settle(h, k);
+        Spin(h);
+        var save = h.Room.Game.Save()!;
+        var snap = JsonSerializer.SerializeToElement(ClickerGuildService.HouseSnapshot("Оля", save));
+        var pennant = snap.GetProperty("pennant");
+        Assert.Equal(20, pennant.GetProperty("pct").GetDouble());
+        Assert.Equal(Ends().AddDays(7), pennant.GetProperty("until").GetDateTimeOffset());
+
+        var plain = new RoomHarness("clicker");                                         // без вітрил вимпела в знімку нема
+        plain.Solo("Тарас");
+        Spin(plain);
+        var none = JsonSerializer.SerializeToElement(ClickerGuildService.HouseSnapshot("Тарас", plain.Room.Game.Save()!));
+        Assert.Equal(JsonValueKind.Null, none.GetProperty("pennant").ValueKind);
+    }
+
+    [Fact]
+    public void The_week_part_of_the_view_is_short_even_with_a_full_board_and_an_order()
+    {
+        var (h, k) = Wheel("Оля");
+        k.Season();
+        k.Svc.Settle(Wed);
+        k.Svc.CoopAdd("Оля", 10, Wed);
+        var week = JsonSerializer.Serialize(k.Svc.Wire("Оля", Wed));
+        Assert.True(week.Length < 1200, $"тиждень у виді — {week.Length} Б");
+        Assert.Contains("\"coop\"", week);
+        Assert.Equal(JsonValueKind.Object, h.View(0).GetProperty("week").ValueKind);
+        Assert.False(h.View(0).TryGetProperty("buffs", out var b) && b.ValueKind == JsonValueKind.Object);   // нічого не діє — бафів нема
+    }
+
+    [Fact]
     public void Someone_elses_sails_and_a_potter_without_the_service_get_nothing()
     {
         var (h, k) = Wheel("Богдан");

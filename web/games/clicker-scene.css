@@ -63,6 +63,10 @@
 .clks-eyes { transform-box: fill-box; transform-origin: center; animation: clks-blink 6s infinite; }
 .clks-rhead { transform-box: fill-box; transform-origin: 20% 90%; animation: clks-peck 5s ease-in-out infinite; }
 .clks-dtail { transform-origin: -18px -4px; animation: clks-wag .5s ease-in-out infinite alternate; }
+/* Вимпел «Вітрил тижня» (v13 Г4) на гребені даху: ледь тріпоче за вітром. */
+.clks-wave { transform-box: fill-box; transform-origin: 0 50%; animation: clkswave 2.6s ease-in-out infinite alternate; }
+@keyframes clkswave { from { transform: skewY(-4deg) scaleX(1); } to { transform: skewY(5deg) scaleX(.93); } }
+@media (prefers-reduced-motion: reduce) { .clks-wave { animation: none; } }
 .clks-flick { transform-box: fill-box; transform-origin: 50% 100%; animation: clkflame .9s ease-in-out infinite alternate; }
 .clks-glow { opacity: calc(var(--clks-lamp) * .35); }
 .clks-embers circle { transform-box: fill-box; transform-origin: center; animation: clks-ember 1.8s ease-out infinite; }

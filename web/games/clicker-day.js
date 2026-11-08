@@ -4,6 +4,9 @@
   minPoints, minPlayers, person, mine {place, points}, board [{place, nick, points, me}], players, last {day, line}.
   v13 Г2: поруч із «Майстром» — вкладка «🧺 Ловець дня»: view.day.catcher {prizes, minutes [хв «Кошика»], minPoints,
   minPlayers, mine, board, players, last} — та сама форма табло (null — Ловця вимкнено).
+  v13 Г4, Г5: третя вкладка «⛵ Тиждень»: view.week (ClickerWeek.cs) {ends, person, grow {prizes, sails, days, mine {place, x, days, ok},
+  board [{nick, x, ok, me}], last}, coop {ware, q, vol, done, mine, min, fin, pct, people}}; чинні нагороди тижня — view.buffs.week
+  {sails {pct, until}, coop {pct, until}}. «Довезти» — дія guild { op: 'coop', n }.
   Правила рахує сервер; тут лише малюємо, а очки за горно — та сама формула, що в KilnFinish (лише для відгуку).
 */
 (() => {
@@ -101,6 +104,92 @@
       + (need > 1 ? ' <span class="muted">(зараз — ' + have + ')</span>' : '') + '</div>';
   }
 
+  // ---------- вкладка «⛵ Тиждень» (v13 Г4, Г5) ----------
+
+  // Ті самі числа, що GrowMinMinutes/GrowMinTotal у ClickerWeekOptions: лише щоб сказати умову словами.
+  const WEEK_MIN = 5, WEEK_TOTAL = '1e30';
+  const fx = (x) => (x >= 100 ? String(Math.round(x)) : x.toFixed(1).replace('.', ','));
+  const dm = (iso) => { const t = new Date(iso); return String(t.getDate()).padStart(2, '0') + '.' + String(t.getMonth() + 1).padStart(2, '0'); };
+
+  const wareNameOf = (st, key) => {
+    const list = (st.craft && st.craft.wares) || (st.catalog && st.catalog.wares) || [];
+    const w = list.find((x) => x.key === key);
+    return w ? w.name : key;
+  };
+
+  /// Скільки з комори можна довезти: придатні вироби мінус відкладене (кожен ключ несе kept = [Толока, замовлення, майстерштук]).
+  function coopFree(st, c) {
+    let free = 0;
+    for (const it of ((st.craft && st.craft.items) || [])) {
+      if (it.ware !== c.ware || it.q < c.q) continue;
+      free += Math.max(0, it.n - (Array.isArray(it.kept) ? it.kept.reduce((a, b) => a + b, 0) : 0));
+    }
+    return free;
+  }
+
+  function weekGrowHtml(st, api, w) {
+    const g = w.grow;
+    const esc = (x) => api.esc(st, x);
+    const rows = g.board.map((r, i) => '<li class="clkmd-row' + (r.me ? ' me' : '') + (r.ok ? '' : ' dim') + '"'
+      + (r.ok ? '' : ' title="Ще не виконав умову: ' + g.days + ' дні гри і total від ' + WEEK_TOTAL + '"') + '>'
+      + '<span class="clkmd-pl">' + (r.ok ? (MEDAL[i] || (i + 1) + '.') : '·') + '</span>'
+      + '<span class="clkmd-nick">' + esc(r.nick) + '</span>' + (r.me ? '<span class="clkmd-you">ти</span>' : '')
+      + '<b class="clkmd-pts">×' + fx(r.x) + '</b></li>');
+    const m = g.mine;
+    const me = !st.mine ? '' : !w.person ? '<div class="small muted">Змагання — для тих, хто увійшов.</div>'
+      : !m ? '<div class="small">Ти ще без росту цього тижня — зайди в гру, і табло тебе побачить.</div>'
+        : '<div class="small">Твій ріст: <b>×' + fx(m.x) + '</b> · дні гри: <b>' + m.days + '</b> з ' + g.days
+          + (m.ok ? ' ✓ <span class="muted">— ти в заліку</span>' : ' <span class="muted">— в залік: ' + g.days + ' дні гри по ' + WEEK_MIN + ' хв і total від ' + WEEK_TOTAL + '</span>') + '</div>';
+    const prizes = (g.prizes || []).map((p, i) => (MEDAL[i] || (i + 1) + '.') + ' ' + api.num(p)).join(' · ');
+    const sails = (g.sails || []).map((p) => '+' + p).join(' · ');
+    return '<div class="clkmd-wk"><div class="clkmd-wh">⛵ Хто більше виріс</div>'
+      + '<div class="small muted">Очки — у скільки разів виріс твій загальний заробіток за тиждень.</div>' + me
+      + (rows.length ? '<ol class="clkmd-board">' + rows.join('') + '</ol>' : '<div class="muted small">Ніхто ще не набрав росту цього тижня.</div>')
+      + '<div class="small clkmd-prize">Призи в неділю о ' + w.at + ': ' + prizes + ' 🏺 + <b>⛵ Вітрила тижня</b> ' + sails + ' % до всього на 7 діб і вимпел на хаті.</div>'
+      + (g.last ? '<div class="small clkmd-last"><span class="muted">Минулий тиждень:</span> ' + esc(String(g.last).replace(/^⛵\s*Хто більше виріс за тиждень у Гончарному колі:\s*/, '')) + '</div>' : '')
+      + '</div>';
+  }
+
+  function weekCoopHtml(st, api, w) {
+    const c = w.coop;
+    const name = wareNameOf(st, c.ware).toLowerCase();
+    const pct = Math.min(100, Math.floor(100 * c.done / Math.max(1, c.vol)));
+    const free = coopFree(st, c);
+    const left = Math.max(0, c.vol - c.done);
+    const can = st.mine && w.person && !c.fin;
+    const send = Math.min(left, free);
+    const mineLine = !w.person ? '' : c.mine >= c.min
+      ? '<div class="small">Твій внесок: <b>' + api.num(c.mine) + '</b> ✓ <span class="muted">— на бонус вистачає</span></div>'
+      : '<div class="small">Твій внесок: <b>' + api.num(c.mine) + '</b> <span class="muted">— до бонусу ще ' + api.num(c.min - c.mine) + ' (від ' + api.num(c.min) + ', це 5 %)'
+        + (free + c.mine >= c.min ? ', у коморі вистачає' : free > 0 ? ', у коморі не вистачає' : '') + '</span></div>';
+    const btn = !can ? '' : '<div class="clkmd-coop"><button type="button" class="clkmd-coopbtn" data-coop="' + send + '"' + (send > 0 ? '' : ' disabled') + '>'
+      + (send > 0 ? '🤝 Довезти ' + api.num(send) : 'Нема вільних') + '</button>'
+      + '<span class="small muted">вільних у коморі: ' + api.num(free) + ' (відкладене під замовлення й Толоку не чіпаю)</span></div>';
+    return '<div class="clkmd-wk"><div class="clkmd-wh">🤝 Спільне замовлення округи</div>'
+      + '<div>' + api.esc(st, name.charAt(0).toUpperCase() + name.slice(1)) + ' якості ' + c.q + '+ — <b>' + api.num(c.vol) + '</b> шт. Везе кожен зі своєї комори, платить як село.</div>'
+      + '<div class="clkmd-bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + c.vol + '" aria-valuenow="' + c.done + '"><i style="width:' + pct + '%"></i></div>'
+      + '<div class="small">Довезли: <b>' + api.num(c.done) + '</b> з ' + api.num(c.vol) + ' · ' + c.people + ' ' + api.plural(c.people, 'гончар', 'гончарі', 'гончарів') + '</div>'
+      + (c.fin ? '<div class="small clkmd-ok">🎉 Округа виконала замовлення! Бонус +' + c.pct + ' % — після підсумку тижня о ' + w.at + ', тим, хто довіз від ' + api.num(c.min) + '.</div>'
+        : '<div class="small muted">Виконаємо до неділі ' + w.at + ' — кожен, хто довіз від ' + api.num(c.min) + ' (5 %), дістане +' + c.pct + ' % до всього на 7 діб.</div>')
+      + mineLine + btn + '</div>';
+  }
+
+  /// Чинні нагороди тижня: що вже тримає множник і до коли.
+  function weekBuffsHtml(st) {
+    const b = st.weekBuffs;
+    if (!b) return '';
+    const out = [];
+    if (b.sails && Date.parse(b.sails.until) > Date.now()) out.push('⛵ Вітрила тижня +' + b.sails.pct + ' % до ' + dm(b.sails.until));
+    if (b.coop && Date.parse(b.coop.until) > Date.now()) out.push('🤝 Спільне замовлення +' + b.coop.pct + ' % до ' + dm(b.coop.until));
+    return out.length ? '<div class="small clkmd-act">Діє зараз: ' + out.join(' · ') + '</div>' : '';
+  }
+
+  function weekHtml(st, api) {
+    const w = st.week;
+    return '<div class="clkmd-me"><span class="muted small">Тиждень — до неділі о ' + w.at + '</span><span class="clkmd-left muted small"></span></div>'
+      + weekBuffsHtml(st) + (w.grow ? weekGrowHtml(st, api, w) : '') + (w.coop ? weekCoopHtml(st, api, w) : '');
+  }
+
   function lastLine(st, api, d) {
     const l = d.last;
     if (!l || !l.line) return '';
@@ -124,9 +213,19 @@
       st.dayEl.dataset.fold = 'd.day';
       // Вкладки «Майстер / Ловець»: делегування на самій картці — вміст під нею перемальовується щоразу.
       st.dayEl.addEventListener('click', (e) => {
+        // v13 Г5: «Довезти» — зі своєї комори у спільне замовлення (сервер сам бере лише вільне й платить як село).
+        const coop = e.target.closest('.clkmd-coopbtn');
+        if (coop) {
+          const n = parseInt(coop.dataset.coop, 10) || 0;
+          if (n > 0 && !coop.disabled) {
+            coop.disabled = true;
+            api.act(st, 'guild', { op: 'coop', n }).then((r) => { if (r && r.ok) api.sfx('gift'); });
+          }
+          return;
+        }
         const b = e.target.closest('.clkmd-tab');
         if (!b || !st.day) return;
-        const t = b.dataset.t === 'c' ? 'c' : 'm';
+        const t = b.dataset.t === 'c' ? 'c' : b.dataset.t === 'w' ? 'w' : 'm';
         if (st.dayTab === t) return;
         api.sfx('tap');
         st.dayTab = t;
@@ -136,9 +235,12 @@
     }
     place(st);
     const c = d.catcher;
+    const wk = st.week;
     if (!c && st.dayTab === 'c') st.dayTab = 'm';
-    // Вкладка: «Майстер» чи «Ловець» (v13 Г2). Ловця вимкнено — вкладок нема, усе як було.
-    const tab = c && st.dayTab === 'c' ? c : d;
+    if (!wk && st.dayTab === 'w') st.dayTab = 'm';
+    const onWeek = !!wk && st.dayTab === 'w';
+    // Вкладка: «Майстер», «Ловець» (v13 Г2) чи «Тиждень» (Г4, Г5). Ловця й тижня нема — вкладок нема, усе як було.
+    const tab = c && st.dayTab === 'c' && !onWeek ? c : d;
     const head = d.person && d.mine ? ' <span class="muted small">· місце ' + d.mine.place + ' · ' + api.num(d.mine.points) + '</span>' : '';
     const headC = d.person && c && c.mine ? ' <span class="muted small">· 🧺 ' + c.mine.place + '-й</span>' : '';
     // Чуже коло (глядач): «твоє місце» тут — місце господаря, тож цього рядка глядачеві не пишемо.
@@ -147,18 +249,22 @@
       : tab.mine ? '<span>Твоє місце: <b>' + tab.mine.place + '</b> · <b>' + api.num(tab.mine.points) + '</b> ' + pointsWord(api, tab.mine.points) + '</span>'
         : '<span>Ти сьогодні ще без очок</span>')
       + '<span class="clkmd-left muted small"></span></div>';
-    const tabs = !c ? '' : '<div class="clkmd-tabs" role="tablist">'
-      + '<button type="button" role="tab" class="clkmd-tab' + (tab === d ? ' on' : '') + '" data-t="m" aria-selected="' + (tab === d) + '">🏆 Майстер'
+    const tabs = !c && !wk ? '' : '<div class="clkmd-tabs" role="tablist">'
+      + '<button type="button" role="tab" class="clkmd-tab' + (!onWeek && tab === d ? ' on' : '') + '" data-t="m" aria-selected="' + (!onWeek && tab === d) + '">🏆 Майстер'
       + (d.person && d.mine ? ' · ' + d.mine.place + '-й' : '') + '</button>'
-      + '<button type="button" role="tab" class="clkmd-tab' + (tab === c ? ' on' : '') + '" data-t="c" aria-selected="' + (tab === c) + '">🧺 Ловець'
-      + (d.person && c.mine ? ' · ' + c.mine.place + '-й' : '') + '</button></div>';
-    const body = tab === d
+      + (c ? '<button type="button" role="tab" class="clkmd-tab' + (!onWeek && tab === c ? ' on' : '') + '" data-t="c" aria-selected="' + (!onWeek && tab === c) + '">🧺 Ловець'
+        + (d.person && c.mine ? ' · ' + c.mine.place + '-й' : '') + '</button>' : '')
+      + (wk ? '<button type="button" role="tab" class="clkmd-tab' + (onWeek ? ' on' : '') + '" data-t="w" aria-selected="' + onWeek + '">⛵ Тиждень'
+        + (wk.person && wk.grow && wk.grow.mine ? ' · ×' + fx(wk.grow.mine.x) : '') + '</button>' : '')
+      + '</div>';
+    const body = onWeek ? weekHtml(st, api) : tab === d
       ? boardHtml(st, api, d, 'Сьогодні ще ніхто не набрав очок — перше дзвінке горно виведе тебе нагору.') + prizeLine(st, api, d, d.feast, '🎉 Свято')
         + '<div class="small muted clkmd-how">Як набирати: ручне горно — дзвінкий 1, розкішний 3; палій і підмайстри не рахуються.</div>'
       : boardHtml(st, api, c, 'Сьогодні ще ніхто не ловив — перший глек з полиці, спійманий руками, виведе тебе нагору.') + prizeLine(st, api, c, c.minutes, '🧺 Кошик')
         + '<div class="small muted clkmd-how">Як набирати: кожен глек з полиці, спійманий руками, — одне очко; комора, кіт і підмайстри не рахуються.</div>';
-    const html = api.foldHead((c ? '🏆 Майстер і Ловець дня' : '🏆 Майстер дня') + head + headC)
-      + '<div class="clkmd-body">' + tabs + me + body + lastLine(st, api, tab) + '</div>';
+    const title = c && wk ? '🏆 Майстер, Ловець і Тиждень' : c ? '🏆 Майстер і Ловець дня' : wk ? '🏆 Майстер дня і Тиждень' : '🏆 Майстер дня';
+    const html = api.foldHead(title + head + headC)
+      + '<div class="clkmd-body">' + tabs + (onWeek ? '' : me) + body + (onWeek ? '' : lastLine(st, api, tab)) + '</div>';
     if (api.swap(st.dayEl, html) || !st.dayLeftEl) { st.dayLeftEl = st.dayEl.querySelector('.clkmd-left'); st.dayLeftKey = ''; }
   }
 
@@ -168,7 +274,11 @@
     const ms = d ? d.endsMs - api.serverNow(st) : 0;
     const at = d ? d.at : '';
     if (d && st.dayLeftEl) {
-      const t = ms > 0 ? 'до ' + at + ' — ' + leftText(ms, true) : 'підбиваємо підсумок…';
+      // Вкладка «Тиждень» лічить до неділі, решта — до кінця доби (чип у рядку статусу завжди про добу).
+      const onWeek = !!st.week && st.dayTab === 'w';
+      const wms = onWeek ? st.week.endsMs - api.serverNow(st) : 0;
+      const t = onWeek ? (wms > 0 ? 'до неділі ' + st.week.at + ' — ' + leftText(wms, true) : 'підбиваємо підсумок тижня…')
+        : ms > 0 ? 'до ' + at + ' — ' + leftText(ms, true) : 'підбиваємо підсумок…';
       if (st.dayLeftKey !== t) { st.dayLeftKey = t; st.dayLeftEl.textContent = t; }
     }
     paintChip(st, api, ms, at);
@@ -324,6 +434,8 @@
       st.dayKiln = null;
       st.dayRo = null;
       st.dayTab = 'm';
+      st.week = null;
+      st.weekBuffs = null;
     },
 
     update(st, v, api) {
@@ -345,6 +457,22 @@
           } : null,
         } : null;
       }
+      // v13 Г4, Г5: тиждень — той самий принцип: undefined лишає, null — змагань нема.
+      if (v.week !== undefined) {
+        const w = v.week;
+        st.week = w && w.ends ? {
+          ends: w.ends, endsMs: Date.parse(w.ends), at: closeAt(w.ends), person: !!w.person,
+          grow: w.grow ? {
+            prizes: Array.isArray(w.grow.prizes) ? w.grow.prizes : [], sails: Array.isArray(w.grow.sails) ? w.grow.sails : [],
+            days: w.grow.days || 3, mine: w.grow.mine || null, board: Array.isArray(w.grow.board) ? w.grow.board : [], last: w.grow.last || null,
+          } : null,
+          coop: w.coop ? {
+            ware: w.coop.ware, q: w.coop.q || 3, vol: w.coop.vol || 0, done: w.coop.done || 0, mine: w.coop.mine || 0, min: w.coop.min || 0,
+            fin: !!w.coop.fin, pct: w.coop.pct || 0, people: w.coop.people || 0,
+          } : null,
+        } : null;
+      }
+      if (v.buffs !== undefined) st.weekBuffs = (v.buffs && v.buffs.week) || null;
       const l = v.kiln && v.kiln.last;
       if (l && l.at) {
         const at = Date.parse(l.at);
@@ -369,6 +497,8 @@
       st.dayEl = null;
       st.dayLeftEl = null;
       st.day = null;
+      st.week = null;
+      st.weekBuffs = null;
     },
   });
 })();

@@ -72,3 +72,22 @@
 }
 @keyframes clkmdplus { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .clkmd-plus { animation: none; } }
+
+/* ---- вкладка «⛵ Тиждень» (v13 Г4, Г5) ---- */
+.clkmd-wk { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.clkmd-wk + .clkmd-wk { padding-top: 8px; border-top: 1px solid var(--panel3); }
+.clkmd-wh { font-weight: 600; }
+.clkmd-row.dim { opacity: .6; }
+.clkmd-act, .clkmd-ok { overflow-wrap: anywhere; color: var(--accent); }
+/* Смужка довезеного: тонка, кольором акценту; ширину тримає style, текст поруч каже число. */
+.clkmd-bar { height: 10px; border-radius: 999px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--panel3); overflow: hidden; }
+.clkmd-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--accent2); transition: width .4s ease; }
+.clkmd-coop { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.clkmd-coopbtn {
+  min-height: 40px; padding: 4px 14px; border-radius: 10px; border: 0; cursor: pointer; font: inherit; font-weight: 600;
+  background: var(--accent2); color: var(--panel); box-shadow: inset 0 0 0 1px var(--accent2);
+}
+.clkmd-coopbtn:disabled { cursor: default; opacity: .5; background: var(--panel2); color: var(--muted); }
+.clkmd-coopbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.clkmd-coop > .small { min-width: 0; flex: 1 1 10em; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .clkmd-bar > i { transition: none; } }
