@@ -20,6 +20,16 @@
 .clkmd-row.me .clkmd-pts { color: var(--accent); }
 .clkmd-gap { text-align: center; color: var(--muted); line-height: 1; }
 .clkmd-prize, .clkmd-last { overflow-wrap: anywhere; }
+/* v13 Г2: вкладки «Майстер / Ловець» над табло. Два рівні кнопки в рядку, на вузькому екрані — переносяться; ціль для пальця ≥ 36 px. */
+.clkmd-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.clkmd-tab {
+  flex: 1 1 8em; min-width: 0; min-height: 36px; padding: 4px 10px; border-radius: 10px; border: 0; cursor: pointer;
+  background: var(--panel); color: var(--muted); font: inherit; font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: inset 0 0 0 1px var(--panel3);
+}
+.clkmd-tab.on { background: var(--panel2); color: var(--text); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent2); }
+.clkmd-tab:hover { background: var(--panel2); }
+.clkmd-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ---- чип у рядку статусу кола (.clk-rr: швидкість · суперник) ----
    Той самий рядок, що й суперник: та сама висота, тож коло під ним не рухається. Ціль для пальця — 40 px за рахунок

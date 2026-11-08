@@ -428,6 +428,8 @@
 /* Бафи від друзів (цех): похвала — тепла рожева, підмайстер — бірюзова; без фону плашка губилась між сусідніми. */
 .clk-buff.fcheer { background: #5a2a3e; color: #ffc6dc; }
 .clk-buff.flend { background: #1e3f4a; color: #a6e3f0; }
+.clk-buff.feast { background: #5a3d0a; color: #ffe08a; }
+.clk-buff.basket { background: #25451f; color: #c9f0b8; }
 .clk-pop.lucky { color: #ffe9a3; text-shadow: 0 0 16px var(--accent), 0 1px 3px rgba(0, 0, 0, .6); }
 
 /* Золотий дощ, коли майстер кивнув і заплатив (v9 §A.1). */
@@ -1138,6 +1140,18 @@
 .clk .clk-buff.wish .clk-bnum { color: #c3b4ff; }
 .clk .clk-buff.fcheer .clk-bnum { color: #ff9cc4; }
 .clk .clk-buff.flend .clk-bnum { color: #7fd8ee; }
+.clk .clk-buff.feast .clk-bnum { color: #ffd166; }
+.clk .clk-buff.basket .clk-bnum { color: #8fe388; }
+/* v13 Г: чип запасу «🎉 60 хв · Увімкнути» — кнопка в тій самій сітці, що й плашки; пунктир каже, що її можна натиснути.
+   Ціль для пальця більша за саму клітинку: невидиме поле довкола (::after), висота рядка плашок не міняється. */
+.clk .clk-buff.clk-stock {
+  cursor: pointer; font-family: inherit; border: 1px dashed currentColor; text-align: left; animation: none;
+}
+.clk .clk-buff.clk-stock[hidden] { display: none; }
+.clk .clk-buff.clk-stock::after { content: ''; position: absolute; inset: -6px -2px; }
+.clk .clk-buff.clk-stock:hover { filter: brightness(1.15); }
+.clk .clk-buff.clk-stock:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.clk .clk-buff.clk-stock .clk-bt { font-weight: 700; text-decoration: underline dotted; text-underline-offset: 2px; }
 /* Останні п'ять секунд: плашка червоніє й пульсує (пульс — лише прозорістю, без руху). */
 .clk .clk-buff.end { box-shadow: inset 0 0 0 1.5px #ff7b5c; }
 .clk .clk-buff.end .clk-bsec { color: #ffb4a0; }

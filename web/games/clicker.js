@@ -1041,6 +1041,9 @@
       ? 'Серія чекає: кіт спить, глеки з полиці не падають — серія не росте й не тріскає'
       : 'Серія спійманих глеків з полиці: наступний дасть на ' + Math.round(st.streakBonus * 100) + ' % більше' },
     { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
+    // v13 Г: баф з банки хвилин, яку гончар вмикає сам (чип «Увімкнути» нижче) — з відліком у хвилинах, як бафи друзів.
+    { key: 'feast', icon: '🎉', name: () => 'Свято', what: () => 'Свято: усе ×2' },
+    { key: 'basket', icon: '🧺', name: () => 'Кошик', what: () => 'Щасливий кошик: глеки з полиці ×3' },
     // Бафи від друзів (цех, clicker-guild.js): з відліком і від кого — отримувач бачить їх просто під колом.
     { key: 'flend', icon: '🧑‍🎓', name: (st) => 'від ' + friendBuffFrom(st, 'lend'), what: (st) => 'Підмайстер від ' + friendBuffFrom(st, 'lend') + ' у гостях: ліплення вдвічі швидше' },
     { key: 'fcheer', icon: '👏', name: (st) => 'від ' + friendBuffFrom(st, 'cheer'), what: (st) => 'Похвала від ' + friendBuffFrom(st, 'cheer') + ': +10 % до всього' },
@@ -1068,6 +1071,8 @@
     // Кіт спить (ClickerCatNap.cs) — серія чекає: 💤 замість відсотка, якого зараз однаково ніхто не отримає.
     if (st.fallStreak > 1) out.push({ key: 'streak', mult: st.fallNap === 'on' ? '💤' : '+' + Math.round(st.streakBonus * 100) + ' %' });
     if (st.starWish) out.push({ key: 'wish', mult: '×3' });
+    if (sn < (st.feastUntil || 0)) out.push({ key: 'feast', mult: '×2', until: st.feastUntil, span: st.feastSpan || 36e5, long: true });
+    if (sn < (st.basketUntil || 0)) out.push({ key: 'basket', mult: '×3', until: st.basketUntil, span: st.basketSpan || 36e5, long: true });
     const gb = st.guild && st.guild.enabled && st.guild.buffs;
     if (gb) {
       const lend = gb.lend ? Date.parse(gb.lend.until) || 0 : 0;
@@ -1177,8 +1182,65 @@
         if (b.level !== level) { b.level = level; b.bar.style.transform = 'scaleX(' + Math.max(0, level) + ')'; }
       }
     }
-    const any = now.length > 0;
+    const any = now.length > 0 || paintStock(st) > 0;
     if (st.buffs.hidden === any) st.buffs.hidden = !any;
+  }
+
+  // ---------- запаси «Свята» й «Щасливого кошика» (v13 Г) ----------
+  // Банка хвилин лежить у збереженні (стеля 180 хв), поповнюють її призи «Майстра» й «Ловця дня». Чип у тій самій сітці, що
+  // й плашки: «🎉 60 хв · Увімкнути». Тап витрачає всю банку одним відрізком (дія buff), плашка вище рахує його вниз.
+  const STOCK_KINDS = [
+    { kind: 'feast', icon: '🎉', word: 'Свято', order: 50, what: 'Свято: година ×2 до всього, поки тече запас. Тап — витратити весь запас одним відрізком' },
+    { kind: 'basket', icon: '🧺', word: 'Кошик', order: 51, what: 'Щасливий кошик: глеки з полиці ×3, поки тече запас. Тап — витратити весь запас одним відрізком' },
+  ];
+
+  function stockEls(st) {
+    if (st.stockEls && st.stockEls.host === st.buffs) return st.stockEls;
+    const els = { host: st.buffs };
+    for (const k of STOCK_KINDS) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'clk-buff clk-stock ' + k.kind;
+      el.hidden = true;
+      el.style.order = k.order;
+      el.title = k.what;
+      el.innerHTML = '<span class="clk-bico" aria-hidden="true">' + k.icon + '</span>'
+        + '<b class="clk-bnum"><span class="clk-bmul"></span><span class="clk-bsec long">хв</span></b>'
+        + '<span class="clk-bname"><span class="clk-bw">' + k.word + '</span><span class="clk-bt">Увімкнути</span></span>';
+      el.addEventListener('click', () => turnOnStock(st, k.kind));
+      st.buffs.appendChild(el);
+      els[k.kind] = { el, mul: el.querySelector('.clk-bmul'), min: -1 };
+    }
+    st.stockEls = els;
+    return els;
+  }
+
+  /// Скільки чипів запасу видно; текст міняємо, лише коли змінилась банка. Чужому колу (глядач) вмикати нічого — чипів нема.
+  function paintStock(st) {
+    if (!st.buffs) return 0;
+    const els = stockEls(st);
+    let shown = 0;
+    for (const k of STOCK_KINDS) {
+      const b = els[k.kind];
+      const min = st.mine ? st[k.kind + 'Bank'] || 0 : 0;
+      if (b.min !== min) {
+        b.min = min;
+        b.mul.textContent = String(min);
+        b.el.setAttribute('aria-label', k.word + ': ' + min + ' хв у запасі — увімкнути');
+      }
+      const on = min > 0;
+      if (b.el.hidden === on) b.el.hidden = !on;
+      if (on) shown++;
+    }
+    return shown;
+  }
+
+  function turnOnStock(st, kind) {
+    if (!st.mine || !st.ctx || (st[kind + 'Bank'] || 0) <= 0) return;
+    H.api.sfx('tap');
+    st.ctx.act('buff', { kind }).then((r) => {
+      if (r && r.message && st.ctx) st.ctx.toast(r.message, r.ok ? 'ok' : 'err');
+    });
   }
 
   /// Те, що не мусить жити шістдесят разів на секунду: рядок швидкості, бонуси, суперник, прогрес клейм.
@@ -4861,6 +4923,14 @@
         st.fairUntil = (v.fair && Date.parse(v.fair.until)) || 0;
         st.fairMult = (v.fair && v.fair.mult) || 7;
         st.inspireUntil = (v.inspire && Date.parse(v.inspire.until)) || 0;
+        // v13 Г: банки «Свята» й «Кошика» (null — запасів нема і нічого не тече). Смужка плашки тане від довжини відрізка.
+        for (const kind of ['feast', 'basket']) {
+          const b = v.buffs && v.buffs[kind];
+          const until = (b && b.until && Date.parse(b.until)) || 0;
+          if (until && until !== st[kind + 'Until']) st[kind + 'Span'] = Math.max(6e4, until - serverNow(st));
+          st[kind + 'Until'] = until;
+          st[kind + 'Bank'] = (b && b.bank) || 0;
+        }
         st.inspireMult = (v.inspire && v.inspire.mult) || 25;
         st.inspireShare = (v.inspire && v.inspire.share) || 0;
         // Скільки триває весь баф (з «Довгим ярмарком» — удвічі): від цього смужка під плашкою знає, з якої частки танути.

@@ -1,7 +1,9 @@
 /*
   «Майстер дня» Гончарного кола (v12, docs/games/specs/clicker-v12.md §5). Частина ядра clicker.js — пакет C.
-  Табло дня в «Селі» й чип у рядку статусу кола. Дані — view.day (ClickerDay.cs): day, ends, prizes, minPoints,
-  minPlayers, person, mine {place, points}, board [{place, nick, points, me}], players, last {day, line}.
+  Табло дня в «Селі» й чип у рядку статусу кола. Дані — view.day (ClickerDay.cs): day, ends, prizes, feast [хв «Свята»],
+  minPoints, minPlayers, person, mine {place, points}, board [{place, nick, points, me}], players, last {day, line}.
+  v13 Г2: поруч із «Майстром» — вкладка «🧺 Ловець дня»: view.day.catcher {prizes, minutes [хв «Кошика»], minPoints,
+  minPlayers, mine, board, players, last} — та сама форма табло (null — Ловця вимкнено).
   Правила рахує сервер; тут лише малюємо, а очки за горно — та сама формула, що в KilnFinish (лише для відгуку).
 */
 (() => {
@@ -63,7 +65,7 @@
     else pane.appendChild(el);
   }
 
-  function boardHtml(st, api, d) {
+  function boardHtml(st, api, d, empty) {
     const esc = (x) => api.esc(st, x);
     const rows = d.board.map((r) => '<li class="clkmd-row' + (r.me ? ' me' : '') + '">'
       + '<span class="clkmd-pl">' + (MEDAL[r.place - 1] || r.place + '.') + '</span>'
@@ -76,8 +78,7 @@
         + '<span class="clkmd-nick">ти</span><b class="clkmd-pts">' + api.num(d.mine.points) + '</b></li>');
     }
     if (!rows.length) {
-      return '<div class="muted small">' + (d.person ? 'Сьогодні ще ніхто не набрав очок — перше дзвінке горно виведе тебе нагору.'
-        : 'Сьогодні ще ніхто не набрав очок.') + '</div>';
+      return '<div class="muted small">' + (d.person ? empty : 'Сьогодні ще ніхто не набрав очок.') + '</div>';
     }
     const more = d.players - d.board.length - (outside ? 1 : 0);
     return '<ol class="clkmd-board">' + rows.join('') + '</ol>'
@@ -85,10 +86,12 @@
   }
 
   /// Призи й поріг одним рядком, з тим, скільки людей поріг уже взяли (з першої десятки — нижче за неї поріг і так не взяти).
-  function prizeLine(st, api, d) {
+  /// mins/name — хвилини бафа за ті самі місця («🎉 Свято» 60 · 30 · 15 хв): призи до кола лягають у запас, гончар вмикає сам.
+  function prizeLine(st, api, d, mins, name) {
     const prizes = d.prizes.filter((p) => p > 0);
     if (!prizes.length) return '';
-    const list = prizes.map((p, i) => (MEDAL[i] || (i + 1) + '.') + ' ' + api.num(p)).join(' · ') + ' 🏺';
+    const bonus = (mins || []).some((m) => m > 0) ? ' + ' + name + ' ' + mins.filter((m) => m > 0).join(' · ') + ' хв' : '';
+    const list = prizes.map((p, i) => (MEDAL[i] || (i + 1) + '.') + ' ' + api.num(p)).join(' · ') + ' 🏺' + bonus;
     const need = Math.max(1, d.minPlayers || 1);
     const min = d.minPoints || 0;
     const have = d.board.filter((r) => r.points >= min).length;
@@ -102,9 +105,9 @@
     const l = d.last;
     if (!l || !l.line) return '';
     // У Балачках рядок починається з «🏆 Майстер дня в Гончарному колі:» — тут, під тим самим заголовком, це повтор.
-    const text = String(l.line).replace(/^🏆\s*Майстер дня(?: в Гончарному колі)?:\s*/, '');
+    const text = String(l.line).replace(/^(?:🏆|🧺)\s*(?:Майстер|Ловець) дня(?: в Гончарному колі)?:\s*/, '');
     const day = String(l.day || '');
-    const when = day === dayBefore(d.day) ? 'Учора' : day.slice(8, 10) + '.' + day.slice(5, 7);
+    const when = day === dayBefore(d.day || '') ? 'Учора' : day.slice(8, 10) + '.' + day.slice(5, 7);
     return '<div class="small clkmd-last"><span class="muted">' + when + ':</span> ' + api.esc(st, text) + '</div>';
   }
 
@@ -119,19 +122,43 @@
       st.dayEl.className = 'clkg-card clkmd';
       st.dayEl.dataset.sec = 'day';
       st.dayEl.dataset.fold = 'd.day';
+      // Вкладки «Майстер / Ловець»: делегування на самій картці — вміст під нею перемальовується щоразу.
+      st.dayEl.addEventListener('click', (e) => {
+        const b = e.target.closest('.clkmd-tab');
+        if (!b || !st.day) return;
+        const t = b.dataset.t === 'c' ? 'c' : 'm';
+        if (st.dayTab === t) return;
+        api.sfx('tap');
+        st.dayTab = t;
+        paint(st, api);
+        tick(st, api);
+      });
     }
     place(st);
+    const c = d.catcher;
+    if (!c && st.dayTab === 'c') st.dayTab = 'm';
+    // Вкладка: «Майстер» чи «Ловець» (v13 Г2). Ловця вимкнено — вкладок нема, усе як було.
+    const tab = c && st.dayTab === 'c' ? c : d;
     const head = d.person && d.mine ? ' <span class="muted small">· місце ' + d.mine.place + ' · ' + api.num(d.mine.points) + '</span>' : '';
+    const headC = d.person && c && c.mine ? ' <span class="muted small">· 🧺 ' + c.mine.place + '-й</span>' : '';
     // Чуже коло (глядач): «твоє місце» тут — місце господаря, тож цього рядка глядачеві не пишемо.
     const me = !st.mine ? '' : '<div class="clkmd-me' + (d.person ? '' : ' guest') + '">' + (!d.person
       ? '<span>Табло — для тих, хто увійшов. Увійди, щоб змагатись.</span>'
-      : d.mine ? '<span>Твоє місце: <b>' + d.mine.place + '</b> · <b>' + api.num(d.mine.points) + '</b> ' + pointsWord(api, d.mine.points) + '</span>'
+      : tab.mine ? '<span>Твоє місце: <b>' + tab.mine.place + '</b> · <b>' + api.num(tab.mine.points) + '</b> ' + pointsWord(api, tab.mine.points) + '</span>'
         : '<span>Ти сьогодні ще без очок</span>')
       + '<span class="clkmd-left muted small"></span></div>';
-    const html = api.foldHead('🏆 Майстер дня' + head)
-      + '<div class="clkmd-body">' + me + boardHtml(st, api, d) + prizeLine(st, api, d)
-      + '<div class="small muted clkmd-how">Як набирати: ручне горно — дзвінкий 1, розкішний 3; палій і підмайстри не рахуються.</div>'
-      + lastLine(st, api, d) + '</div>';
+    const tabs = !c ? '' : '<div class="clkmd-tabs" role="tablist">'
+      + '<button type="button" role="tab" class="clkmd-tab' + (tab === d ? ' on' : '') + '" data-t="m" aria-selected="' + (tab === d) + '">🏆 Майстер'
+      + (d.person && d.mine ? ' · ' + d.mine.place + '-й' : '') + '</button>'
+      + '<button type="button" role="tab" class="clkmd-tab' + (tab === c ? ' on' : '') + '" data-t="c" aria-selected="' + (tab === c) + '">🧺 Ловець'
+      + (d.person && c.mine ? ' · ' + c.mine.place + '-й' : '') + '</button></div>';
+    const body = tab === d
+      ? boardHtml(st, api, d, 'Сьогодні ще ніхто не набрав очок — перше дзвінке горно виведе тебе нагору.') + prizeLine(st, api, d, d.feast, '🎉 Свято')
+        + '<div class="small muted clkmd-how">Як набирати: ручне горно — дзвінкий 1, розкішний 3; палій і підмайстри не рахуються.</div>'
+      : boardHtml(st, api, c, 'Сьогодні ще ніхто не ловив — перший глек з полиці, спійманий руками, виведе тебе нагору.') + prizeLine(st, api, c, c.minutes, '🧺 Кошик')
+        + '<div class="small muted clkmd-how">Як набирати: кожен глек з полиці, спійманий руками, — одне очко; комора, кіт і підмайстри не рахуються.</div>';
+    const html = api.foldHead((c ? '🏆 Майстер і Ловець дня' : '🏆 Майстер дня') + head + headC)
+      + '<div class="clkmd-body">' + tabs + me + body + lastLine(st, api, tab) + '</div>';
     if (api.swap(st.dayEl, html) || !st.dayLeftEl) { st.dayLeftEl = st.dayEl.querySelector('.clkmd-left'); st.dayLeftKey = ''; }
   }
 
@@ -296,6 +323,7 @@
       st.dayChip = null;
       st.dayKiln = null;
       st.dayRo = null;
+      st.dayTab = 'm';
     },
 
     update(st, v, api) {
@@ -307,7 +335,14 @@
           day: d.day || '', ends: d.ends, endsMs: Date.parse(d.ends), at: closeAt(d.ends),
           prizes: Array.isArray(d.prizes) ? d.prizes : [], minPoints: d.minPoints || 0, minPlayers: d.minPlayers || 0,
           person: !!d.person, mine: d.mine || null, board: Array.isArray(d.board) ? d.board : [], players: d.players || 0,
-          last: d.last || null,
+          last: d.last || null, feast: Array.isArray(d.feast) ? d.feast : [],
+          // v13 Г2: «Ловець дня» — табло тієї самої форми; at/day/person ділить із «Майстром».
+          catcher: d.catcher ? {
+            day: d.day || '', at: closeAt(d.ends), person: !!d.person,
+            prizes: Array.isArray(d.catcher.prizes) ? d.catcher.prizes : [], minutes: Array.isArray(d.catcher.minutes) ? d.catcher.minutes : [],
+            minPoints: d.catcher.minPoints || 0, minPlayers: d.catcher.minPlayers || 0, mine: d.catcher.mine || null,
+            board: Array.isArray(d.catcher.board) ? d.catcher.board : [], players: d.catcher.players || 0, last: d.catcher.last || null,
+          } : null,
         } : null;
       }
       const l = v.kiln && v.kiln.last;
