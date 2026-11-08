@@ -370,7 +370,7 @@ public sealed partial class Clicker
     /// <summary>Скільки глеків несе гостинець на стільки хвилин: свій пасив, а на голому колі — дно з кліків.</summary>
     /// <remarks>10.10: хвилина гостинця — щонайменше 1/<see cref="FairPlayQuarter"/> хвилини гри: пасив у пізній грі нічого не важить.</remarks>
     double TreatGain(double minutes) =>
-        ToPots(Math.Max(Math.Max(PassiveBase * minutes * 60, ClickBase * minutes * WagonClicksPerMinute), PlayMinute * minutes / FairPlayQuarter));
+        ToPots(Math.Max(Math.Max(PayPassive * minutes * 60, PayClick * minutes * WagonClicksPerMinute), PayMinute * minutes / FairPlayQuarter));
 
     // ---------- дія guild { op, … } ----------
 
@@ -679,11 +679,12 @@ public sealed partial class Clicker
         minutes = ((ClickerGuildService.TierMinutes[Math.Clamp(tier, 0, last)] - before) * WagonShare(mine, per) + before * grown)
             * WagonRank;
         if (minutes <= 0) return 0;
-        var byPassive = PassiveBase * minutes * 60;
-        var floor = ClickBase * minutes * WagonClicksPerMinute;
+        // Віз не чує глини на колі (08.11): міряється своєю чорною, і перемкнути глину перед возом нічого не дає.
+        var byPassive = PayPassive * minutes * 60;
+        var floor = PayClick * minutes * WagonClicksPerMinute;
         // 10.10: віз з'їдав вироби дорожче, ніж привозив, — хвилина воза тепер щонайменше чверть хвилини гри
         // (шана «Вози» II — пів хвилини).
-        return ToPots(Math.Max(Math.Max(byPassive, floor), PlayMinute * minutes / ShanaWagonPart));
+        return ToPots(Math.Max(Math.Max(byPassive, floor), PayMinute * minutes / ShanaWagonPart));
     }
 
     ActResult GuildClaim(ClickerGuildService svc, JsonElement payload, DateTimeOffset now)

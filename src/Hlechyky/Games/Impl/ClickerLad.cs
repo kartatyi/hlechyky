@@ -21,8 +21,8 @@ public sealed partial class Clicker
         var memo = _memoOn;
         if (!memo)
         {
-            _memoPassive = PassiveBase;
-            _memoClick = ClickBase;
+            _memoPassive = PayPassive;
+            _memoClick = PayClick;
             _memoOn = true;
         }
         try

@@ -671,7 +671,7 @@ public sealed partial class Clicker
 
     // 10.10: щонайменше «звичайний» глек з полиці — три хвилини пасиву в пізній грі були менші за клік.
     double MktMagpie() =>
-        Math.Max(FairMagpieFloor, ToPots(Math.Max(Math.Max(PassiveBase * FairMagpieSeconds, ClickBase * FairMagpieClicks), FallGain(plain: true))));
+        Math.Max(FairMagpieFloor, ToPots(Math.Max(Math.Max(PayPassive * FairMagpieSeconds, PayClick * FairMagpieClicks), FallGainOn(PayClay, plain: true))));
 
     void MktBuffAdd(string kind, double mult, TimeSpan span, string src, DateTimeOffset now)
     {
@@ -787,7 +787,7 @@ public sealed partial class Clicker
                     // П'ять хвилин пасиву за рівень; на голому колі (пасиву ще нема) — кліками, як у сороки.
                     var sec = FairGiftMinutes * 60 * level;
                     // 10.10: щонайменше чверть хвилини гри за кожну хвилину — пасив у пізній грі нічого не важить.
-                    var gain = Math.Max(FairMagpieFloor, ToPots(Math.Max(Math.Max(PassiveBase * sec, ClickBase * sec / 5), PlayMinute * sec / 60 / FairPlayQuarter)));
+                    var gain = Math.Max(FairMagpieFloor, ToPots(Math.Max(Math.Max(PayPassive * sec, PayClick * sec / 5), PayMinute * sec / 60 / FairPlayQuarter)));
                     Add(gain);
                     what = $"+{PotsShort(gain)} за поміч селу";
                     break;
@@ -864,13 +864,13 @@ public sealed partial class Clicker
                     if (sec > 0)
                     {
                         // На голому колі пасиву нема — тоді кліками: хвилина ≈ дванадцять.
-                        var gain = Math.Max(5, ToPots(Math.Max(Math.Max(PassiveBase * sec, ClickBase * sec / 5), PlayMinute * sec / 60 / FairPlayQuarter)));
+                        var gain = Math.Max(5, ToPots(Math.Max(Math.Max(PayPassive * sec, PayClick * sec / 5), PayMinute * sec / 60 / FairPlayQuarter)));
                         Add(gain);
                         notes.Add($"+{PotsShort(gain)}");
                     }
                     else if (sec < 0)
                     {
-                        var loss = Math.Min(ToPots(PassiveBase * -sec), ToPots(_pots * FairEventLoss));
+                        var loss = Math.Min(ToPots(PayPassive * -sec), ToPots(_pots * FairEventLoss));
                         if (loss > 0)
                         {
                             _pots -= loss;

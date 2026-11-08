@@ -562,12 +562,28 @@ public class ClickerFairTests
         Assert.Equal(40, View(h).GetProperty("craft").GetProperty("need").GetInt32());
     }
 
+    /// <summary>Скільки дав би глек з полиці, якби на колі стояла своя чорна глина, — мірка нагород з 08.11; глина вертається.</summary>
+    static double BlackShelf(RoomHarness h)
+    {
+        static void Put(JsonObject s, string clay)
+        {
+            var house = (s["house"] as JsonObject) ?? (JsonObject)(s["house"] = new JsonObject());
+            house["clays"] = new JsonArray("black");
+            house["clay"] = clay;
+        }
+        Patch(h, s => Put(s, "black"));
+        var gain = View(h).GetProperty("fall").GetProperty("gain").GetDouble();
+        Patch(h, s => Put(s, ""));
+        return gain;
+    }
+
     [Fact]
     public void The_magpie_brings_three_minutes_of_passive_or_a_pot_from_the_shelf()
     {
         var h = Wheel();
-        // З 10.10 — щонайменше «звичайний» глек з полиці: на голому колі він більший за шістдесят кліків.
-        var shelf = View(h).GetProperty("fall").GetProperty("gain").GetDouble();
+        // З 10.10 — щонайменше «звичайний» глек з полиці: на голому колі він більший за шістдесят кліків. З 08.11 нагороди
+        // міряються своєю чорною глиною, хоч що на колі, — тож і глек сороки той, що впав би на чорній.
+        var shelf = BlackShelf(h);
         Assert.True(shelf > Clicker.FairMagpieClicks);
         Guest(h, "magpie");
         Assert.True(Fair(h, new { op = "guest" }).Ok);
@@ -576,7 +592,7 @@ public class ClickerFairTests
         var rich = Wheel();
         Patch(rich, s => s["upgrades"]!["kiln"] = 100);
         var passive = View(rich).GetProperty("baseSecond").GetDouble();
-        var shelfRich = View(rich).GetProperty("fall").GetProperty("gain").GetDouble();
+        var shelfRich = BlackShelf(rich);
         var before = Pots(rich);
         Guest(rich, "magpie");
         Assert.True(Fair(rich, new { op = "guest" }).Ok);

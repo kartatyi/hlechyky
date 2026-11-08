@@ -72,7 +72,8 @@ public sealed partial class Clicker
             Click: click,
             Fall: fall,
             Eye: cps * 3600 / AdviseEyeClicks * EyeGain,
-            Merchant: 3600 / g * 0.3 * p * MerchantSecondsNow * clay.Loot,
+            // Купець, як і Око, не чує глини на колі (08.11) — лише чорна додає свій ×1,5 «для ловця».
+            Merchant: 3600 / g * 0.3 * PayPassive * MerchantSecondsNow * clay.Loot,
             Idle: 3600 * p);
     }
 

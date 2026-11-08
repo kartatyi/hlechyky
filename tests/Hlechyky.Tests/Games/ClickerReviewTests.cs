@@ -52,14 +52,15 @@ public class ClickerReviewTests
         Patch(h, s => { s["guard"]!["left"] = 0; s["guard"]!["clicks"] = 0; });
         Human(h);                                       // єдиний клік — він і покликав майстра
         Assert.NotEqual(JsonValueKind.Null, Guard(h).ValueKind);
-        // Повна платня — 46 000; за один клік із шести тисяч майстер дає його частку, тобто копійки.
+        // Повна платня — ≈455 000 (з 08.11 Око міряється хвилиною гри на своїй чорній глині); за один клік із шести тисяч
+        // майстер дає його частку, тобто копійки.
         var gain = Guard(h).GetProperty("gain").GetDouble();
-        Assert.InRange(gain, 0, 442_000.0 / ClickerGuard.CalmMin + 1);
+        Assert.InRange(gain, 0, 460_000.0 / ClickerGuard.CalmMin + 1);
 
         var before = Pots(h);
         var r = PotterHands.Pass(h);
         Assert.True(r.Ok);
-        Assert.InRange(Pots(h) - before, 0, 442_000.0 / ClickerGuard.CalmMin + 1);
+        Assert.InRange(Pots(h) - before, 0, 460_000.0 / ClickerGuard.CalmMin + 1);
     }
 
     [Fact]

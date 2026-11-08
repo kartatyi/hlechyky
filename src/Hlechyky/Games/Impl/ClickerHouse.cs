@@ -643,8 +643,9 @@ public sealed partial class Clicker
     {
         _board.Clear();
         _boardUntil = now + BoardEvery;
-        var passive = PassiveBase;
-        var play = PlayMinute;
+        // Ціни купців не чують глини на колі (08.11), як і всі нагороди.
+        var passive = PayPassive;
+        var play = PayMinute;
         var styles = _styles.Order(StringComparer.Ordinal).ToList();
         var size = BoardSizeNow;
         for (var i = 0; i < size; i++)

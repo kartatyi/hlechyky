@@ -759,17 +759,39 @@ public sealed partial class Clicker : Game
     double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult * (1 + Perk(MarkEffect.Passive));
 
     /// <summary>Глеків за секунду без тебе — без ярмарку розписного глека.</summary>
-    double PassiveBase
+    double PassiveBase => PassiveOn(ClayNow);
+
+    /// <summary>Пасив на глині <paramref name="clay"/>: на тій, що на колі, — <see cref="PassiveBase"/>, на звичайній — <see cref="PayPassive"/>.</summary>
+    double PassiveOn(ClickerClay clay)
     {
-        get
-        {
-            var sum = 0.0;
-            for (var u = 0; u < Shop.Length; u++)
-                if (Shop[u].Kind == ClickerKind.Idle) sum += Level(Shop[u].Key) * Shop[u].Rate * Math.Pow(2, _dbl[u]);
-            // Біла глина — для того, хто чекає; відро з водою — трохи до всього пасиву; віхи «пасив +25 %» (v10).
-            return sum * AllMult * ClayNow.Passive * (Tool("bucket") ? BucketPassive : 1) * (1 + Perk(MarkEffect.Passive));
-        }
+        var sum = 0.0;
+        for (var u = 0; u < Shop.Length; u++)
+            if (Shop[u].Kind == ClickerKind.Idle) sum += Level(Shop[u].Key) * Shop[u].Rate * Math.Pow(2, _dbl[u]);
+        // Біла глина — для того, хто чекає; відро з водою — трохи до всього пасиву; віхи «пасив +25 %» (v10).
+        return sum * AllMult * clay.Passive * (Tool("bucket") ? BucketPassive : 1) * (1 + Perk(MarkEffect.Passive));
     }
+
+    // ---------- нагороди не чують глини на колі (08.11) ----------
+    // Було: віз, гості, ярмарок, Око, купець, гостинці й ціна виробів брали глину, що на колі в мить виплати, — і кожен міг
+    // поставити іншу на 10 хв перед возом (владік, 08.11: «як я поставив червону — ціна возу стала більша»). Тепер мірка
+    // нагород одна для всіх — так, ніби на колі СВОЯ чорна глина, з тим рівнем, до якого гравець її довів (рішення
+    // користувача 08.11: так ніхто не втрачає — smaug на чорній отримує рівно як було, решта ×1,85–3,3). Глина на колі
+    // міняє лише те, що обіцяє її підпис: клік, пасив, полицю й ліплення; купцеві чорна на колі ще й додає свій ×1,5.
+
+    /// <summary>Мірка всіх нагород: своя чорна глина з її рівнем (поки на ній нічого не виліплено — свіжа).</summary>
+    ClickerClay PayClay => ClayOf("black");
+
+    /// <summary>
+    /// Пасив для нагород і цін виробів. Чорна не чіпає ні пасиву, ні кліку (×1 на всіх рівнях,
+    /// <c>ClickerClayPayTests</c>), тож тут — без глини: ця мірка кличеться в кожному кліку, і зайва копія глини ні до чого.
+    /// </summary>
+    double PayPassive => PassiveOn(Clays[0]);
+
+    /// <summary>Клік для нагород і цін виробів — як <see cref="PayPassive"/>: чорна його не міняє.</summary>
+    double PayClick => ClickOn(Clays[0]);
+
+    /// <summary>Хвилина гри для нагород — на своїй чорній. <see cref="PlayMinute"/> лишається для окупності: це твій справжній темп.</summary>
+    public double PayMinute => PlayMinuteOn(PayClay);
 
     bool FairOn => Ctx.Clock.UtcNow < _fairUntil;
 
@@ -800,19 +822,18 @@ public sealed partial class Clicker : Game
     /// екрані виглядало б як помилка, тож множник глини тут округлюємо, а дробову частину віддаємо пасиву,
     /// де вона рахується чесно.
     /// </summary>
-    double ClickBase
+    double ClickBase => ClickOn(ClayNow);
+
+    /// <summary>Клік на глині <paramref name="clay"/>: на тій, що на колі, — <see cref="ClickBase"/>, на звичайній — <see cref="PayClick"/>.</summary>
+    double ClickOn(ClickerClay clay)
     {
-        get
-        {
-            // Глина множить увесь клік — і руки, і частку пасиву в ньому, а пасив для цієї частки береться без глини (23.10).
-            // Було: глина множила лише руки, а частка пасиву несла її пасивний множник — у пізній грі, де клік майже весь із
-            // пасиву, червона (клік ×2, пасив ×0,7) давала клік менший, ніж біла (клік ×0,5, пасив ×1,5).
-            var clay = ClayNow;
-            var hands = (1 + Level("wheel")) * (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * AllMult * (Tool("ribs") ? RibsClick : 1);
-            var click = Math.Max(1, ToPots(Math.Round((hands + PassiveBase / clay.Passive * ClickShare) * clay.Click, MidpointRounding.AwayFromZero)));
-            // «Обома руками» (коло 200): увесь клік ×2, разом із пасивом у ньому.
-            return Perk(MarkEffect.ClickDouble) > 0 ? click * 2 : click;
-        }
+        // Глина множить увесь клік — і руки, і частку пасиву в ньому, а пасив для цієї частки береться без глини (23.10).
+        // Було: глина множила лише руки, а частка пасиву несла її пасивний множник — у пізній грі, де клік майже весь із
+        // пасиву, червона (клік ×2, пасив ×0,7) давала клік менший, ніж біла (клік ×0,5, пасив ×1,5).
+        var hands = (1 + Level("wheel")) * (Perk(MarkEffect.HandsDouble) > 0 ? 2 : 1) * AllMult * (Tool("ribs") ? RibsClick : 1);
+        var click = Math.Max(1, ToPots(Math.Round((hands + PayPassive * ClickShare) * clay.Click, MidpointRounding.AwayFromZero)));
+        // «Обома руками» (коло 200): увесь клік ×2, разом із пасивом у ньому.
+        return Perk(MarkEffect.ClickDouble) > 0 ? click * 2 : click;
     }
 
     /// <summary>
@@ -835,13 +856,12 @@ public sealed partial class Clicker : Game
     double LuckyShare => LuckyChance * Level("lucky") + Perk(MarkEffect.Lucky);
 
     /// <summary>Скільки в середньому чекати глека з полиці (як у <see cref="ScheduleFall"/>).</summary>
-    double FallWaitAvg
+    double FallWaitAvg => FallWaitOn(ClayNow);
+
+    double FallWaitOn(ClickerClay clay)
     {
-        get
-        {
-            var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
-            return (min + max) / 2.0 * ClayNow.Events * RelicWaitMult("cat3") * (1 - Perk(MarkEffect.FallOften));
-        }
+        var (min, max) = Has("cat") ? (CatMinSeconds, CatMaxSeconds) : (FallMinSeconds, FallMaxSeconds);
+        return (min + max) / 2.0 * clay.Events * RelicWaitMult("cat3") * (1 - Perk(MarkEffect.FallOften));
     }
 
     /// <summary>
@@ -851,11 +871,13 @@ public sealed partial class Clicker : Game
     /// (10.10, заміри smaug і владіка), і купець, Око, гості, села, купці хати, віз, гостинці платили копійки. Мірка
     /// своя в кожного: багатий не ламає гру бідному, а бідному вона й так менша.
     /// </summary>
-    public double PlayMinute =>
-        60 * (FallGain(plain: true) / FallWaitAvg + ClickBase * MomentumMax * (1 + LuckyShare * (LuckyMult - 1)) * PlayCps);
+    public double PlayMinute => PlayMinuteOn(ClayNow);
 
-    /// <summary>Стільки хвилин гри — у глеках.</summary>
-    internal double PlayPay(double minutes) => ToPots(PlayMinute * minutes);
+    double PlayMinuteOn(ClickerClay clay) =>
+        60 * (FallGainOn(clay, plain: true) / FallWaitOn(clay) + ClickOn(clay) * MomentumMax * (1 + LuckyShare * (LuckyMult - 1)) * PlayCps);
+
+    /// <summary>Стільки хвилин гри — у глеках, як платять нагороди: на звичайній глині (<see cref="PayMinute"/>).</summary>
+    internal double PlayPay(double minutes) => ToPots(PayMinute * minutes);
 
     /// <summary>«хвилину / хвилини / хвилин» — для описів віх (половина — «хвилини»).</summary>
     static string MinutesWord(double n) => n % 1 != 0 ? "хвилини" : Plural(n, "хвилину", "хвилини", "хвилин");
@@ -884,11 +906,14 @@ public sealed partial class Clicker : Game
     /// кошик, серію і ярмарок, плюс дно. Ця сама сума їде у вид — клієнт малює її над спійманим глеком, не чекаючи відповіді.
     /// </summary>
     /// <param name="plain">Без ярмарку й бажання на зірку — «звичайний» глек для <see cref="PlayMinute"/> і всього, що платить глеками з полиці.</param>
-    double FallGain(bool plain = false)
+    double FallGain(bool plain = false) => FallGainOn(ClayNow, plain);
+
+    /// <summary>Глек з полиці на глині <paramref name="clay"/>: на своїй чорній (<see cref="PayClay"/>) — для нагород (<see cref="PayMinute"/>, сорока).</summary>
+    double FallGainOn(ClickerClay clay, bool plain)
     {
-        var raw = PassiveBase * FallSeconds + ClickBase * FallClicks;
+        var raw = PassiveOn(clay) * FallSeconds + ClickOn(clay) * FallClicks;
         var mult = (1 + BasketBonus * Level("basket") + Perk(MarkEffect.Fall) + GuestsFallBonus + Relic("basket3")) * (1 + StreakMult)
-            * (!plain && FairOn ? FairMultNow : 1) * ClayNow.Loot * HouseFallMult * (!plain && _starWish ? StarFallMult : 1);
+            * (!plain && FairOn ? FairMultNow : 1) * clay.Loot * HouseFallMult * (!plain && _starWish ? StarFallMult : 1);
         return ToPots(raw * mult) + FallFloor;
     }
 
@@ -1636,7 +1661,7 @@ public sealed partial class Clicker : Game
     /// інакше автоклікер із господарем при ньому доїв би майстра щодві хвилини.
     /// </summary>
     /// <remarks>10.10: ще <see cref="EyePlay"/> хвилин гри й віхи «+N хвилин гри» — доба пасиву в пізній грі важила 0,8 % заробітку.</remarks>
-    double EyeGain => PassiveBase * EyeSeconds + ClickBase * EyeClicks + PlayMinute * (EyePlay + Perk(MarkEffect.Eye));
+    double EyeGain => PayPassive * EyeSeconds + PayClick * EyeClicks + PayMinute * (EyePlay + Perk(MarkEffect.Eye));
 
     /// <summary>Скільки хвилин гри платить пройдена спокійна полиця понад добу пасиву.</summary>
     public const double EyePlay = 10;
@@ -1915,8 +1940,9 @@ public sealed partial class Clicker : Game
                 break;
             default:
                 // Години золота за секунду: купець мусить важити поруч із ярмарком і натхненням (30.09).
-                var gain = Math.Max(ToPots(PassiveBase * MerchantSecondsNow * ClayNow.Loot) + 13,
-                    ToPots(PlayMinute * (MerchantPlay + Perk(MarkEffect.Merchant)) * ClayNow.Loot));
+                // Хвилина гри для нагород — на своїй чорній (08.11), і чорна на колі ще додає свій ×1,5 «для ловця», як і було.
+                var gain = Math.Max(ToPots(PayPassive * MerchantSecondsNow * ClayNow.Loot) + 13,
+                    ToPots(PayMinute * (MerchantPlay + Perk(MarkEffect.Merchant)) * ClayNow.Loot));
                 Add(gain);
                 text = $"🧺 Щедрий купець: +{PotsShort(gain)}";
                 break;
@@ -2389,8 +2415,9 @@ public sealed partial class Clicker : Game
         finally { _quietSync = false; }
         var all = AllMult;
         var passive = PassiveBase;
-        _memoPassive = passive;
-        _memoClick = ClickBase;
+        // Ціни виробів не чують глини на колі (08.11), як і всі нагороди.
+        _memoPassive = PayPassive;
+        _memoClick = PayClick;
         _memoOn = true;
         var spent = StampsSpent;
         var stampsAll = StampsFor(_total);

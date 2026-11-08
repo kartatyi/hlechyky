@@ -88,10 +88,13 @@ public class ClickerAdvisorTests
     }
 
     [Fact]
-    public void Early_on_with_no_streak_white_is_still_best_at_the_wheel()
+    public void The_eye_pays_the_same_on_every_clay_so_white_no_longer_wins_the_wheel_by_it()
     {
+        // До 08.11 Око платило добу пасиву з глиною на колі — біла (пасив ×1,5) вигравала годину біля кола навіть без
+        // серії. Тепер нагороди міряються на звичайній глині (ClickerClayPayTests), і Око в моделі однакове на всіх.
         var a = Advise(Wheel(s => Clays(s, "white", "white", "black")));
-        Assert.DoesNotContain(a.Tips, t => t.Kind == "clay-play");
+        Assert.Single(a.Clays.Select(c => c.Hour.Eye).Distinct());
+        Assert.True(a.Clays.Single(c => c.Key == "white").Hour.Eye > 0);
     }
 
     [Fact]

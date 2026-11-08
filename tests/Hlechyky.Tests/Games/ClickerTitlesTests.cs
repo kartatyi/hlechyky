@@ -161,8 +161,11 @@ public class ClickerTitlesTests
         Assert.Contains("Подарунок округи", r.Message);
         // З десятого оновлення новини v10 несуть ще й свій подарунок (чотири години): хто пропустив звання, дістає обидва.
         // З одинадцятого — ще й подарунок «Толоки» (три години).
-        Assert.Equal(Math.Floor(perSecond * Clicker.GiftMinutes * 60) + Math.Floor(perSecond * Clicker.GiftV10Minutes * 60)
-            + Math.Floor(perSecond * Clicker.GiftV11Minutes * 60), Pots(h) - before);
+        // Кожен — як гостинець (TreatGain): години пасиву, але щонайменше чверть хвилини гри за хвилину (10.10), а хвилина
+        // гри з 08.11 — на своїй чорній глині.
+        double Gift(double minutes) => Math.Floor(Math.Max(Math.Max(perSecond * minutes * 60, v.GetProperty("clickBase").GetDouble() * minutes * Clicker.WagonClicksPerMinute),
+            ClickerPlay.Minute(h) * minutes / Clicker.FairPlayQuarter));
+        Assert.Equal(Gift(Clicker.GiftMinutes) + Gift(Clicker.GiftV10Minutes) + Gift(Clicker.GiftV11Minutes), Pots(h) - before);
         Assert.True(T(h).GetProperty("gift").GetBoolean());
 
         // Удруге нічого: новини вже бачив, подарунок уже забрав.

@@ -381,7 +381,7 @@ public sealed partial class Clicker
         var price = Shop.First(u => u.Key == key).Price(Level(key));
         var need = price - _pots;
         if (need <= 0) return " — перший рівень уже по кишені";
-        var perMinute = PlayPay(1);
+        var perMinute = ToPots(PlayMinute);          // скільки чекати — твій справжній темп, з глиною на колі
         var minutes = perMinute > 0 ? need / perMinute : double.PositiveInfinity;
         return minutes <= 600
             ? $" — перший рівень за {PotsShort(price)} (≈ {Hours(TimeSpan.FromMinutes(Math.Ceiling(minutes)))} гри)"

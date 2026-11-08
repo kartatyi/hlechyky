@@ -306,9 +306,9 @@ public sealed partial class Clicker
         if (WareOf(ware) is not { } w) return 0;
         // Шана «Розкіш» III: розкішне — ×1,5.
         var q = QualityMult[Math.Clamp(quality, 1, QualityMax)] * ShanaLuxPayFor(quality);
-        var byPassive = (_memoOn ? _memoPassive : PassiveBase) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware)
+        var byPassive = (_memoOn ? _memoPassive : PayPassive) * w.Seconds * q * StyleValue(style) * AlbumValueMult(ware) * FairValueMult(ware)
             * (1 + GuestsValueBonus) * TolokaValueMult;
-        var floor = (_memoOn ? _memoClick : ClickBase) * WorkPlain(w) * ValueFloorClicks * q;
+        var floor = (_memoOn ? _memoClick : PayClick) * WorkPlain(w) * ValueFloorClicks * q;
         return Math.Max(1, ToPots(Math.Max(byPassive, floor)));
     }
 
