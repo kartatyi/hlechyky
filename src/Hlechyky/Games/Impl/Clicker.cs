@@ -755,7 +755,9 @@ public sealed partial class Clicker : Game
         // Одинадцяте: будови Толоки (+5 % кожна) і фестиваль на майдані (ClickerToloka.cs).
         * TolokaAllMult
         // Тринадцяте: Зала скарбів — +2 % за річ, уся зала ще +10 % (ClickerTreasure.cs).
-        * TreasureAllMult;
+        * TreasureAllMult
+        // Г (v13): «🎉 Свято» — година ×2 з банки хвилин, окремо від фестивалю Толоки (ClickerFeast.cs).
+        * FeastAllMult;
 
     /// <summary>Скільки глеків за секунду дає один наступний рівень верстата (без ярмарку).</summary>
     double GainOf(ClickerUpgrade up) => up.Rate * Math.Pow(2, MarksOf(up)) * AllMult * (1 + Perk(MarkEffect.Passive));
@@ -891,7 +893,7 @@ public sealed partial class Clicker : Game
         var raw = PassiveBase * FallSeconds + ClickBase * FallClicks;
         var mult = (1 + BasketBonus * Level("basket") + Perk(MarkEffect.Fall) + GuestsFallBonus + Relic("basket3")) * (1 + StreakMult)
             * (!plain && FairOn ? FairMultNow : 1) * ClayNow.Loot * HouseFallMult * (!plain && _starWish ? StarFallMult : 1)
-            * TreasureFallMult;
+            * TreasureFallMult * (!plain ? BasketFallMult : 1);
         return ToPots(raw * mult) + FallFloor;
     }
 
@@ -1082,6 +1084,7 @@ public sealed partial class Clicker : Game
         ScheduleStar(_lastSync);
         ScheduleWind(_lastSync);
         ResetHouse(_lastSync);
+        ResetFeast();
         ResetCraft();
         ResetKiln(_lastSync);
         ResetAlbum(_lastSync);
@@ -1171,7 +1174,7 @@ public sealed partial class Clicker : Game
             "glek" => GlekAct(payload),
             // Пакети сьомого оновлення — кожен зі своєю одною дією: kiln, album, fair, guild.
             _ => ActHouse(action, payload) ?? ActKiln(action, payload) ?? ActAlbum(action, payload) ?? ActFair(action, payload) ?? ActGuild(action, payload)
-                ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActTrade(action, payload)
+                ?? ActTitles(action, payload) ?? ActGuests(action, payload) ?? ActToloka(action, payload) ?? ActTrade(action, payload) ?? ActFeast(action, payload)
                 ?? ActResult.Fail("Тут так не ходять"),
         };
         // Дія могла почати чи скінчити мінігру — глеки відкладаються під неї або вертаються до свого часу.
@@ -1187,6 +1190,9 @@ public sealed partial class Clicker : Game
         // v13 Б: палій, якого вимикали галочкою, відтепер палить «коли мене нема» — гончар має про це знати (раз).
         if (!quiet && result.Ok && TakeStokerToast() is { Length: > 0 } stoker)
             result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + stoker : stoker);
+        // v13 Г: призи «Майстра» й «Ловця дня», що лягли в банки хвилин, — один тост.
+        if (!quiet && result.Ok && TakeFeastToast() is { Length: > 0 } feast)
+            result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + feast : feast);
         // Подарунок майстерні (ClickerGifts.cs) — після вдалої справжньої дії: гончар тут і побачить тост.
         if (!quiet && result.Ok && TakeGifts() is { Length: > 0 } gift)
             result = ActResult.Accept(result.Message.Length > 0 ? result.Message + " · " + gift : gift);
@@ -2008,6 +2014,8 @@ public sealed partial class Clicker : Game
         _apronUsed = false;
         _cracks = 0;
         _grabbed++;
+        // v13 Г2: «Ловець дня» — очко за кожен глек з полиці, спійманий руками (ClickerDay.cs).
+        DaySvc()?.AddCatch(Ctx.NickOf(0), 1, now);
         TitlesGrab(now);
         _guard.Spend(ClickerGuard.CatchWeight);
         if (_grabbed == GrabsForAchievement) Ctx.Award(0, 0, "ach:potter-grab");
@@ -2529,6 +2537,7 @@ public sealed partial class Clicker : Game
             toloka = ViewToloka(Ctx.Clock.UtcNow),
             trade = ViewTrade(Ctx.Clock.UtcNow),
             day = ViewDay(Ctx.Clock.UtcNow),
+            buffs = ViewFeast(Ctx.Clock.UtcNow),
             relics = RelicsView(),
             away = AwayView(),
             catalog = CatalogView(),
@@ -2631,7 +2640,9 @@ public sealed partial class Clicker : Game
         // Тріщини серії поспіль і коли кіт заснув (ClickerCatNap.cs, 21.10). Старе збереження — тріщин нема, кіт не спить.
         int Cracks = 0, DateTimeOffset NapAt = default,
         // Поради Дядька Глека, відкладені «потім» (ClickerGlek.cs, 25.10): вид → до коли. Старе збереження — нічого.
-        Dictionary<string, DateTimeOffset>? GlekLater = null);
+        Dictionary<string, DateTimeOffset>? GlekLater = null,
+        // v13 Г: банки хвилин «Свята» й «Щасливого кошика», їхні відрізки й забрані призи дня (ClickerFeast.cs). Старе — порожньо.
+        FeastRow? Feast = null);
 
     public override string? Save() => JsonSerializer.Serialize(
         new Snapshot(_pots, _total, _carry, _lastSync,
@@ -2647,7 +2658,7 @@ public sealed partial class Clicker : Game
             SaveToloka(), _relics.Count == 0 ? null : new Dictionary<string, int>(_relics, StringComparer.Ordinal),
             _fairHeld.TotalSeconds, _inspireHeld.TotalSeconds, _goneAt,
             _takenGifts.Count == 0 ? null : _takenGifts.Order(StringComparer.Ordinal).ToList(),
-            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt, SaveGlek()),
+            _letters.Count == 0 ? null : _letters.Order(StringComparer.Ordinal).ToList(), SaveTrade(), _cracks, _napAt, SaveGlek(), SaveFeast()),
         Wire);
 
     public override void Load(string json)
@@ -2763,6 +2774,7 @@ public sealed partial class Clicker : Game
         LoadGuests(s.Guests);
         // Торгівля — після Толоки (Пристань) і комори (перший корабель рахує вільні вироби — у Sync, не тут).
         LoadTrade(s.Trade);
+        LoadFeast(s.Feast);
         _achQueue.Clear();
         foreach (var key in s.Achievements ?? []) if (key is { Length: > 0 and < 64 } && !_achQueue.Contains(key)) _achQueue.Add(key);
         // Що належить напевно, але в хаті не лежить (зірку спіймано, а Скалки нема) — після черги ачівок, щоб її не стерло.

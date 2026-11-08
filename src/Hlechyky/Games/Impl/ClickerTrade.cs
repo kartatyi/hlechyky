@@ -71,6 +71,8 @@ public sealed partial class Clicker
         var wins = svc.WinsOf(Ctx.NickOf(0));
         if (wins >= 1) Achieve("potter-day-win");
         if (wins >= 7) Achieve("potter-day-7");
+        // v13 Г1/Г2: призи «Свято» й «Кошик» за місця дня гончар забирає сам (ClickerFeast.cs).
+        ClaimDayPrizes(svc, Ctx.Clock.UtcNow);
     }
 
     /// <summary>Звідки корабель: родовий відмінок для «Корабель з …» і розпис тих країв (порожній — свого нема).</summary>

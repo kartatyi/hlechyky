@@ -150,6 +150,29 @@ public sealed class ClickerDiaryService : BackgroundService
         return [.. rows.Values.OrderBy(r => r.Day, StringComparer.Ordinal)];
     }
 
+    /// <summary>
+    /// Рядки щоденника всіх гончарів за дні <paramref name="fromDay"/>…<paramref name="toDay"/> (включно), від старих до нових:
+    /// записані й ще не записані з пам'яті (новіший знімок того самого дня заміняє). Для прожарки дня (ClickerRoast.cs).
+    /// </summary>
+    public List<ClickerDiaryRow> Range(string fromDay, string toDay)
+    {
+        var rows = new Dictionary<(string Day, string Key), ClickerDiaryRow>();
+        _db?.With(c =>
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT day, nick_key, nick, at, json, restored FROM clicker_diary WHERE day >= $a AND day <= $b";
+            cmd.Parameters.AddWithValue("$a", fromDay);
+            cmd.Parameters.AddWithValue("$b", toDay);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                rows[(r.GetString(0), r.GetString(1))] = new ClickerDiaryRow(r.GetString(0), r.GetString(2), ParseAt(r.GetString(3)), r.GetString(4), r.GetInt64(5) != 0);
+        });
+        lock (_gate)
+            foreach (var s in _snaps.Values.Where(s => string.CompareOrdinal(s.Day, fromDay) >= 0 && string.CompareOrdinal(s.Day, toDay) <= 0))
+                rows[(s.Day, Auth.NickKey(s.Nick))] = s;
+        return [.. rows.Values.OrderBy(r => r.Day, StringComparer.Ordinal).ThenBy(r => r.Nick, StringComparer.Ordinal)];
+    }
+
     /// <summary>Години гончаря (записані плюс ще не записані), від старих до нових.</summary>
     public List<ClickerHourRow> Hours(string nick)
     {
