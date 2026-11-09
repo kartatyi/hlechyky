@@ -53,6 +53,11 @@
     "at": 3,
     "page": "https://www.youtube.com/watch?v=BpO7cy0PovU"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=BpO7cy0PovU",
+    "from": 2,
+    "to": 10
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/ukrainian-farmers-vs-russian-army",
@@ -143,6 +148,11 @@
     "video": "https://www.youtube.com/watch?v=b66swPVumO4",
     "at": 6,
     "page": "https://www.youtube.com/watch?v=b66swPVumO4"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=b66swPVumO4",
+    "from": 0,
+    "to": 5
    },
    "crop": [
     0,
@@ -281,6 +291,7 @@
     "at": 6,
     "page": "https://www.youtube.com/watch?v=QGUDxW9i1kg"
    },
+   "clip": false,
    "crop": null,
    "sources": [
     "https://www.unian.ua/society/avtor-mema-vova-yeb-sh-jih-bl-d-zirkoyu-sebe-ne-vidchuvayu-novini-ukrajini-11815938.html",
@@ -343,6 +354,11 @@
     "url": "https://i.ytimg.com/vi/aFFy2phaI6I/hqdefault.jpg",
     "page": "https://www.youtube.com/watch?v=aFFy2phaI6I"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=aFFy2phaI6I",
+    "from": 13,
+    "to": 21
+   },
    "crop": [
     0,
     0.125,
@@ -374,6 +390,11 @@
    "image": {
     "url": "https://i.ytimg.com/vi/Fk_SmJQ0__k/hqdefault.jpg",
     "page": "https://www.youtube.com/watch?v=Fk_SmJQ0__k"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=Fk_SmJQ0__k",
+    "from": 20,
+    "to": 28
    },
    "crop": [
     0,
@@ -408,6 +429,11 @@
    "image": {
     "url": "https://i.ytimg.com/vi/7Bo4CTIXx-A/hqdefault.jpg",
     "page": "https://www.youtube.com/watch?v=7Bo4CTIXx-A"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=r4-CqBvrHzM",
+    "from": 0,
+    "to": 7
    },
    "crop": [
     0,
@@ -474,6 +500,11 @@
     "url": "https://i.ytimg.com/vi/ZO_q5yCqtjU/maxresdefault.jpg",
     "page": "https://www.youtube.com/watch?v=ZO_q5yCqtjU"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=ZO_q5yCqtjU",
+    "from": 2,
+    "to": 11
+   },
    "crop": null,
    "sources": [
     "https://uk.wikipedia.org/wiki/%D0%9B%D1%8F%D1%88%D0%BA%D0%BE_%D0%9E%D0%BB%D0%B5%D0%B3_%D0%92%D0%B0%D0%BB%D0%B5%D1%80%D1%96%D0%B9%D0%BE%D0%B2%D0%B8%D1%87"
@@ -501,6 +532,7 @@
     "url": "https://i.ytimg.com/vi/1QW-pXDJj6A/maxresdefault.jpg",
     "page": "https://www.youtube.com/watch?v=1QW-pXDJj6A"
    },
+   "clip": false,
    "crop": [
     0.36,
     0,
@@ -564,6 +596,11 @@
     "at": 3,
     "page": "https://www.youtube.com/watch?v=uj3LyFxxS1E"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=uj3LyFxxS1E",
+    "from": 1,
+    "to": 9
+   },
    "crop": [
     0,
     0,
@@ -601,6 +638,11 @@
     "at": 14,
     "page": "https://www.youtube.com/watch?v=KeKT8k9fqv8"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=KeKT8k9fqv8",
+    "from": 11,
+    "to": 17
+   },
    "crop": [
     0,
     0.05,
@@ -635,6 +677,11 @@
     "video": "https://www.youtube.com/watch?v=DetW-0QnaPo",
     "at": 4.5,
     "page": "https://www.youtube.com/watch?v=DetW-0QnaPo"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=DetW-0QnaPo",
+    "from": 0,
+    "to": 7
    },
    "crop": [
     0.335,
@@ -673,6 +720,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MjE1LCJwdXIiOiJibG9iX2lkIn19--ce8f4896959c0670f4bb8d68c22297dab4ae63a6/ne-z-takoi.jpg/",
     "page": "https://404.com.ua/meme/ya-ne-z-takoyi-sim-yi/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTQyLCJwdXIiOiJibG9iX2lkIn19--1ecda62472ef32f44b0c1e8d7e31bd67166b017a/ne-z-takoi-short.mp4",
+    "from": 10,
+    "to": 25
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/ya-ne-z-takoyi-sim-yi/"
@@ -703,6 +755,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjY5LCJwdXIiOiJibG9iX2lkIn19--66d11c5edbd8763468f998ce70f77ddf07365244/petro-shur.jpg/",
     "page": "https://404.com.ua/meme/petro-shchur-mamini-svitlitsi/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjY4LCJwdXIiOiJibG9iX2lkIn19--68cb7c310981b8172502541eb7e5334c4908979a/petro-shur-full.mp4",
+    "from": 88,
+    "to": 104
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/petro-shchur-mamini-svitlitsi/"
@@ -730,6 +787,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzExLCJwdXIiOiJibG9iX2lkIn19--73a704e2bc505f82c2e1762ab5c872ee8bc117e0/kulia-v-lob.jpg/",
     "page": "https://404.com.ua/meme/kulya-v-lob/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTU0LCJwdXIiOiJibG9iX2lkIn19--6fb35bd2b7214802ab6e7ad5a66f44a1a979904d/kulia-v-lob.mp4",
+    "from": 0,
+    "to": 9
    },
    "crop": null,
    "sources": [
@@ -760,6 +822,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjAsInB1ciI6ImJsb2JfaWQifX0=--12f9091c0d2319100b4f9bc06b7eaaf55646c4f1/dopomogi.jpg/",
     "page": "https://404.com.ua/meme/propalo-vse/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDMwLCJwdXIiOiJibG9iX2lkIn19--3416a5ff24865a1cb927535c56c3cd2842acf305/YTDown_YouTube_Media_2od8yID7Ss8_001_480p.mp4",
+    "from": 17,
+    "to": 25
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/propalo-vse/"
@@ -787,6 +854,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzQ1LCJwdXIiOiJibG9iX2lkIn19--60388041fbe0df0b59284e8e90c8bab532c8a9f1/yake-konchene.jpg/",
     "page": "https://404.com.ua/meme/bozhe-yake-konchene/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTIxLCJwdXIiOiJibG9iX2lkIn19--d91b5d7720734831398e079603c445b7990fc7c1/yake-konchene.mp4",
+    "from": 0,
+    "to": 4
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/bozhe-yake-konchene/"
@@ -813,6 +885,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MTA3LCJwdXIiOiJibG9iX2lkIn19--2496b75099d3a9a6b84f70187dab828bb06a60b5/36caa9fd50.jpg",
     "page": "https://404.com.ua/meme/yanukovich-i-vinok/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDYyLCJwdXIiOiJibG9iX2lkIn19--a9ec0aaf1ebd3adfb0cfa3788a826922f9dd3ea6/short.mp4",
+    "from": 1,
+    "to": 10
    },
    "crop": null,
    "sources": [
@@ -844,6 +921,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjksInB1ciI6ImJsb2JfaWQifX0=--4ee3e5feb71e20cbeeadbfea9090e10f568fc1bd/hochu-shokolad.jpg/",
     "page": "https://404.com.ua/meme/khochu-shokoladku/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDM1LCJwdXIiOiJibG9iX2lkIn19--8bc975d2da09fb615c3da5df36466583a003040f/short.mp4",
+    "from": 0,
+    "to": 7
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/khochu-shokoladku/"
@@ -872,6 +954,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjAzLCJwdXIiOiJibG9iX2lkIn19--40bc0f6c74d9bfab2eb98afc12add184f8010eae/pered-kazhdou-igrou.jpg/",
     "page": "https://404.com.ua/meme/komu-molitisya/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjAxLCJwdXIiOiJibG9iX2lkIn19--16ef781936253b6db5815cc3257b8a4b75f28267/YTDown.com_YouTube_Media_FMzaIpmGPeM_001_360p.mp4",
+    "from": 0,
+    "to": 23
    },
    "crop": [
     0,
@@ -907,6 +994,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MjA3LCJwdXIiOiJibG9iX2lkIn19--08f6d7b4c1be25a1de4ae03e8bbbc32f51d618f2/ce-merzost.jpg/",
     "page": "https://404.com.ua/meme/tse-merzost/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDg4LCJwdXIiOiJibG9iX2lkIn19--add38500211c896aad2e1538a13bb9b8c9884bde/ze-merzost-short.mp4",
+    "from": 0,
+    "to": 9
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/tse-merzost/"
@@ -936,6 +1028,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzMxLCJwdXIiOiJibG9iX2lkIn19--0bf8ff2cb0923cbcb39e0ed3a6b0cad243051272/otsi-ruki.jpg/",
     "page": "https://404.com.ua/meme/otsi-ruki/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzMwLCJwdXIiOiJibG9iX2lkIn19--78f64e759d000099f08d605fba9221eb36ea3ceb/ozi-ruki.mp4",
+    "from": 0,
+    "to": 3
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/otsi-ruki/"
@@ -962,6 +1059,11 @@
    "image": {
     "url": "https://www.stb.ua/wp-content/uploads/sites/20/2017/12/04/Screenshot-6.png",
     "page": "https://404.com.ua/meme/sokiable/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTE4LCJwdXIiOiJibG9iX2lkIn19--b71aa3781f070aef3321c81b9ef1abae1c3b5fc2/short.mp4",
+    "from": 11,
+    "to": 21
    },
    "crop": null,
    "sources": [
@@ -991,6 +1093,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjQ3LCJwdXIiOiJibG9iX2lkIn19--ccf22da4fbc417d8aa88082a1576d4fc4279e5ea/2541120.jpg",
     "page": "https://404.com.ua/meme/i-potim-pomremo/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6Njg3LCJwdXIiOiJibG9iX2lkIn19--2ce4908e5f9bd560f38d10d2b5ec017d1cdc809d/ipomrem.mp4",
+    "from": 11,
+    "to": 18
    },
    "crop": null,
    "sources": [
@@ -1022,6 +1129,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjU2LCJwdXIiOiJibG9iX2lkIn19--27bb5414427d90f3064137538cf39fbeb18cf52f/yarik-bachok.jpg/",
     "page": "https://404.com.ua/meme/yarik-bachok-potik/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjUyLCJwdXIiOiJibG9iX2lkIn19--f5f814856f3e072e7ee9663e7281e04fc4d9dfa7/yarik-bachok.mp4",
+    "from": 15,
+    "to": 23
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/yarik-bachok-potik/"
@@ -1051,6 +1163,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MTY5LCJwdXIiOiJibG9iX2lkIn19--f83c13819b238ae47416068de262a22964f1f9fc/sasha-nalyi-meni.jpg/",
     "page": "https://404.com.ua/meme/yanukovich-sasha-naliy-meni/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDc3LCJwdXIiOiJibG9iX2lkIn19--f1d29c93beaf9d3bf31f19d1de57c4a9eb7435ba/short-sasha-nalui.mp4",
+    "from": 1,
+    "to": 10
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/yanukovich-sasha-naliy-meni/"
@@ -1078,6 +1195,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzI1LCJwdXIiOiJibG9iX2lkIn19--febb30cd8c14bfbd19f61eaf5f34a920f7b0721f/pamyatnik-svinni.jpg/",
     "page": "https://404.com.ua/meme/pam-yatnik-svini/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzI0LCJwdXIiOiJibG9iX2lkIn19--d299d1879c84d682e7ad140681b1ed0fe0bd6b2f/pamyatnik-svini.mp4",
+    "from": 0,
+    "to": 7
    },
    "crop": null,
    "sources": [
@@ -1108,6 +1230,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzA4LCJwdXIiOiJibG9iX2lkIn19--582c4238848eba79c64dc218e544f8ace7ae80de/yatsenuk-morkovka.jpg/",
     "page": "https://404.com.ua/meme/simvol-prezidentskoyi-vladi/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTExLCJwdXIiOiJibG9iX2lkIn19--b315b503f5c96df4dbdb6c701e5ed97fe14985da/morkva-short.mp4",
+    "from": 0,
+    "to": 12
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/simvol-prezidentskoyi-vladi/"
@@ -1134,6 +1261,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MjgzLCJwdXIiOiJibG9iX2lkIn19--ca2cc0d80a029a6735e5b604587f184873f1b7c8/zela-potuzhno.jpg/",
     "page": "https://404.com.ua/meme/potuzhno/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTUxLCJwdXIiOiJibG9iX2lkIn19--9e89ff517169485ecb1a7e6ce5dce9b69292799f/potuzhno.mp4",
+    "from": 0,
+    "to": 7
    },
    "crop": null,
    "sources": [
@@ -1164,6 +1296,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MTA0LCJwdXIiOiJibG9iX2lkIn19--7d766aa6f9a6d88fdfe0ee02ab9331c0ee0b4061/eslib-ne-sohranivsya.jpg/",
     "page": "https://404.com.ua/meme/yakbi-ya-ne-zberigsya/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDUxLCJwdXIiOiJibG9iX2lkIn19--8e02f5698f4f6e36a5e48886c4012f26bfb564df/short.mp4",
+    "from": 0,
+    "to": 8
    },
    "crop": [
     0.3,
@@ -1199,6 +1336,11 @@
     "at": 8,
     "page": "https://www.youtube.com/watch?v=zN2_mzuVJD0"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTc3LCJwdXIiOiJibG9iX2lkIn19--bed487a76076605170e802b673683f48d575d39b/40grn.mp4",
+    "from": 2,
+    "to": 13
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/shtany-za-40-griven/"
@@ -1227,6 +1369,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzYyLCJwdXIiOiJibG9iX2lkIn19--27c02250f1e040dcd59be8c919cf8af56631d0fc/1.jpg",
     "page": "https://404.com.ua/meme/kapotnya-krishka/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzYwLCJwdXIiOiJibG9iX2lkIn19--31ab09d54c4987692c4bd2ee9d510cd92f62b834/kapotnya-krishka.mp4",
+    "from": 1,
+    "to": 9
    },
    "crop": [
     0,
@@ -1263,6 +1410,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6OTksInB1ciI6ImJsb2JfaWQifX0=--9bba61c1cdfb9f3c0115689560d74babaf80ff06/shastya-zdorovlya.jpg/",
     "page": "https://404.com.ua/meme/shchastya-zdorovlya/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDQ3LCJwdXIiOiJibG9iX2lkIn19--2c2fe6285d9ec49655566c9b7f464fb36c573a17/short.mp4",
+    "from": 0,
+    "to": 25
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/shchastya-zdorovlya/"
@@ -1295,6 +1447,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzAxLCJwdXIiOiJibG9iX2lkIn19--351671f2b5d47da9e18f4115abd5f545fa7967e1/zela-rozbiynik.jpg/",
     "page": "https://404.com.ua/meme/viydi-rozbiynik/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTA5LCJwdXIiOiJibG9iX2lkIn19--c8c5645ef13bf250ae5b098cba4a4d5a421e51d6/rozbiynik.mp4",
+    "from": 0,
+    "to": 9
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/viydi-rozbiynik/"
@@ -1326,6 +1483,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjAwLCJwdXIiOiJibG9iX2lkIn19--a2bf8fcf9df243e4dca575d9b533aa053ce517a4/brusivka-kabina.jpg/",
     "page": "https://404.com.ua/meme/priyidu-v-brusivku/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTk4LCJwdXIiOiJibG9iX2lkIn19--0a4723987a69acfadc5cb2b9288f86333f6d2e6c/brusivka.mp4",
+    "from": 0,
+    "to": 11
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/priyidu-v-brusivku/"
@@ -1352,6 +1514,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6Nzg5LCJwdXIiOiJibG9iX2lkIn19--86928e827f06e99911a8c9a8234412722c642131/viktorovich-penki.jpg/",
     "page": "https://404.com.ua/meme/penki-v-mezhigir-yi/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6Nzg4LCJwdXIiOiJibG9iX2lkIn19--87cd769b9063efe6290f09232c827d8fc1692c2a/penki-short.mp4",
+    "from": 0,
+    "to": 9
    },
    "crop": null,
    "sources": [
@@ -1384,6 +1551,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTgzLCJwdXIiOiJibG9iX2lkIn19--1ba14688950d141ce605db1167429277210f27a5/ne-tvoya.jpg/",
     "page": "https://404.com.ua/meme/tse-ne-tvoya-ditina/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTgxLCJwdXIiOiJibG9iX2lkIn19--551178be562abb16355ba3b8c4a6c2ffb18eaa18/ne-tvoya-ditina.mp4",
+    "from": 0,
+    "to": 12
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/tse-ne-tvoya-ditina/"
@@ -1415,6 +1587,11 @@
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzE4LCJwdXIiOiJibG9iX2lkIn19--805e6fe8e2f917ebff27a25ae3a18c0d680bc0c4/yulia.jpg/",
     "page": "https://404.com.ua/meme/yulya-yulya/"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTU2LCJwdXIiOiJibG9iX2lkIn19--80a436f8ff2fbb8f02d81a95210b4b52620e82c3/yuilia-short.mp4",
+    "from": 0,
+    "to": 7
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/yulya-yulya/"
@@ -1445,6 +1622,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzMyLCJwdXIiOiJibG9iX2lkIn19--429fe3aa7b0065d8a9dcf9051f69f48ef445c33f/846fd5aa6a71e97727639594c471ff38.jpg",
     "page": "https://404.com.ua/meme/yakiy-zhakh/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NzUyLCJwdXIiOiJibG9iX2lkIn19--9b0683b401e026dd420d5888f250549700ad38b1/yakiy-zhah.mp4",
+    "from": 0,
+    "to": 7
    },
    "crop": [
     0,
@@ -1479,6 +1661,11 @@
     "at": 13,
     "page": "https://www.youtube.com/watch?v=w1anCkzI06U"
    },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDY4LCJwdXIiOiJibG9iX2lkIn19--70cfd2271637385f67f3e16a509f528b41f9e8dd/pen-short.mp4",
+    "from": 0,
+    "to": 5
+   },
    "crop": null,
    "sources": [
     "https://404.com.ua/meme/yanukovich-ruchka/"
@@ -1506,6 +1693,11 @@
    "image": {
     "url": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MzYyLCJwdXIiOiJibG9iX2lkIn19--dcde6a710f1db5bfbb263e248e0269e120753b2b/klichko-sosiska.jpg/",
     "page": "https://404.com.ua/meme/sosiska/"
+   },
+   "clip": {
+    "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTI3LCJwdXIiOiJibG9iX2lkIn19--2aa87a7c6e3e71d92010caf90a9868137f55487a/klichko-sosiska-short.mp4",
+    "from": 0,
+    "to": 10
    },
    "crop": null,
    "sources": [
@@ -1537,6 +1729,11 @@
     "video": "https://www.youtube.com/watch?v=EUAIulcmNYI",
     "at": 36,
     "page": "https://www.youtube.com/watch?v=EUAIulcmNYI"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=EUAIulcmNYI",
+    "from": 27,
+    "to": 34
    },
    "crop": [
     0,
@@ -1575,6 +1772,11 @@
     "at": 24.5,
     "page": "https://www.youtube.com/watch?v=6wBMYOnrGL0"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=6wBMYOnrGL0",
+    "from": 0,
+    "to": 26
+   },
    "crop": [
     0,
     0.02,
@@ -1608,6 +1810,11 @@
     "video": "https://www.youtube.com/watch?v=8gC9r4V9E9Y",
     "at": 22.5,
     "page": "https://www.youtube.com/watch?v=8gC9r4V9E9Y"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=8gC9r4V9E9Y",
+    "from": 20,
+    "to": 27
    },
    "crop": [
     0.5,
@@ -1647,6 +1854,11 @@
     "at": 24.5,
     "page": "https://www.youtube.com/watch?v=wqT4vAMM_IM"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=1FWK-TM0S08",
+    "from": 7,
+    "to": 28
+   },
    "crop": [
     0,
     0.08,
@@ -1682,6 +1894,11 @@
     "at": 158.3,
     "page": "https://www.youtube.com/watch?v=cglRydj3HoY"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=cglRydj3HoY",
+    "from": 155,
+    "to": 163
+   },
    "crop": null,
    "sources": [
     "https://uk.wikipedia.org/wiki/%D0%90%D0%B2%D0%B0%D0%BA%D0%BE%D0%B2_%D0%90%D1%80%D1%81%D0%B5%D0%BD_%D0%91%D0%BE%D1%80%D0%B8%D1%81%D0%BE%D0%B2%D0%B8%D1%87",
@@ -1715,6 +1932,11 @@
     "at": 3.0,
     "page": "https://www.youtube.com/watch?v=LjksMBsL5Zk"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=LjksMBsL5Zk",
+    "from": 0,
+    "to": 6
+   },
    "crop": null,
    "sources": [
     "https://www.youtube.com/watch?v=fLGdvWLL1dU",
@@ -1747,6 +1969,11 @@
     "video": "https://www.youtube.com/watch?v=wctXD7hyLyw",
     "at": 0.5,
     "page": "https://www.youtube.com/watch?v=wctXD7hyLyw"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=wctXD7hyLyw",
+    "from": 0,
+    "to": 7
    },
    "crop": [
     0.026,
@@ -1899,6 +2126,11 @@
    "image": {
     "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b1/President_Trump_and_Ukrainian_President_Zelenskyy_Clash_During_Meeting_in_Oval_Office%2C_Feb._28%2C_2025.jpg/960px-President_Trump_and_Ukrainian_President_Zelenskyy_Clash_During_Meeting_in_Oval_Office%2C_Feb._28%2C_2025.jpg",
     "page": "https://commons.wikimedia.org/wiki/File:President_Trump_and_Ukrainian_President_Zelenskyy_Clash_During_Meeting_in_Oval_Office,_Feb._28,_2025.jpg"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=Hk6-o5KR6pw",
+    "from": 44,
+    "to": 52
    },
    "crop": null,
    "sources": [
@@ -2053,6 +2285,7 @@
     "url": "https://i.imgflip.com/30b1gx.jpg",
     "page": "https://knowyourmeme.com/memes/drakeposting"
    },
+   "clip": false,
    "crop": [
     0,
     0,
@@ -2179,6 +2412,11 @@
     "url": "https://i.imgflip.com/1otk96.jpg",
     "page": "https://knowyourmeme.com/memes/mocking-spongebob"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=aQgyKjBK7Ow",
+    "from": 6,
+    "to": 13
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/mocking-spongebob"
@@ -2293,6 +2531,11 @@
    "image": {
     "url": "https://i.imgflip.com/26jxvz.jpg",
     "page": "https://knowyourmeme.com/memes/grus-plan"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=yXcWolrJZ08",
+    "from": 0,
+    "to": 11
    },
    "crop": null,
    "sources": [
@@ -2475,6 +2718,11 @@
     "url": "https://i.imgflip.com/3oevdk.jpg",
     "page": "https://knowyourmeme.com/memes/i-am-once-again-asking-for-your-financial-support"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=-Icw0lIgbws",
+    "from": 0,
+    "to": 5
+   },
    "crop": [
     0,
     0.11,
@@ -2593,6 +2841,11 @@
     "url": "https://i.imgflip.com/2za3u1.jpg",
     "page": "https://knowyourmeme.com/memes/theyre-the-same-picture"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=Iloby6ZXRjI",
+    "from": 0,
+    "to": 9
+   },
    "crop": [
     0,
     0.52,
@@ -2658,6 +2911,11 @@
     "url": "https://i.imgflip.com/27qxmb.jpg",
     "page": "https://knowyourmeme.com/memes/im-something-of-a-scientist-myself"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=D_oTxsHK5d8",
+    "from": 0,
+    "to": 6
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/im-something-of-a-scientist-myself"
@@ -2687,6 +2945,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/029/223/Here_We_Go_Again_Meme_censored_banner.jpg",
     "page": "https://knowyourmeme.com/memes/ah-shit-here-we-go-again"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=QK_Ro6fHNwI",
+    "from": 0,
+    "to": 11
    },
    "crop": [
     0,
@@ -2723,6 +2986,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/photos/images/original/001/488/684/184.jpg",
     "page": "https://knowyourmeme.com/memes/press-f-to-pay-respects"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=HlY4m-Cpu6Q",
+    "from": 103,
+    "to": 113
    },
    "crop": [
     0.12,
@@ -2826,6 +3094,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/027/257/perfectly-balanced-as-all-things-should-be.jpg",
     "page": "https://knowyourmeme.com/memes/perfectly-balanced"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=Vx5prDjKAcw",
+    "from": 0,
+    "to": 12
+   },
    "crop": [
     0,
     0.2,
@@ -2863,6 +3136,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/030/029/cover2.jpg",
     "page": "https://knowyourmeme.com/memes/youre-breathtaking"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=5F_Kj5xgAcg",
+    "from": 16,
+    "to": 25
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/youre-breathtaking"
@@ -2892,6 +3170,11 @@
    "image": {
     "url": "https://i.imgflip.com/5c7lwq.png",
     "page": "https://knowyourmeme.com/memes/for-the-better-right"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=WNSq5wYdwb0",
+    "from": 68,
+    "to": 80
    },
    "crop": null,
    "sources": [
@@ -2923,6 +3206,11 @@
     "url": "https://i.imgflip.com/5b8f.jpg",
     "page": "https://imgflip.com/memetemplate/Psy-Horse-Dance"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=9bZkp7q19f0",
+    "from": 62,
+    "to": 72
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/gangnam-style"
@@ -2952,6 +3240,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/030/967/spongebob.jpg",
     "page": "https://knowyourmeme.com/memes/ight-imma-head-out"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=YyXTvfLqfjc",
+    "from": 0,
+    "to": 10
    },
    "crop": [
     0,
@@ -2989,6 +3282,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/039/342/edcover.jpg",
     "page": "https://knowyourmeme.com/memes/emotional-damage"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=miD_TWmdGIY",
+    "from": 68,
+    "to": 78
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/emotional-damage"
@@ -3015,6 +3313,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/033/381/dancing_coffin.jpg",
     "page": "https://knowyourmeme.com/memes/dancing-pallbearers"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=EroOICwfD3g",
+    "from": 22,
+    "to": 32
    },
    "crop": null,
    "sources": [
@@ -3070,6 +3373,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/021/971/Salt-Bae-001.jpg",
     "page": "https://knowyourmeme.com/memes/salt-bae"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=rgDwiCP0PTA",
+    "from": 31,
+    "to": 36
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/salt-bae"
@@ -3096,6 +3404,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/035/736/Screenshot_19.jpg",
     "page": "https://knowyourmeme.com/memes/cat-vibing-to-street-musicians-ievan-polkka"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=y2l_3iSpi9Q",
+    "from": 0,
+    "to": 10
    },
    "crop": null,
    "sources": [
@@ -3242,6 +3555,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/039/973/9.JPG",
     "page": "https://knowyourmeme.com/memes/will-smith-slapping-chris-rock"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=myjEoDypUD8",
+    "from": 36,
+    "to": 49
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/will-smith-slapping-chris-rock"
@@ -3328,6 +3646,11 @@
     "url": "https://i.imgflip.com/4acd7j.png",
     "page": "https://knowyourmeme.com/memes/leonardo-dicaprio-laughing"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=HlvmBITSgs4",
+    "from": 0,
+    "to": 10
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/leonardo-dicaprio-laughing"
@@ -3354,6 +3677,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/051/257/cover2.jpg",
     "page": "https://knowyourmeme.com/memes/moo-deng-the-baby-hippo"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=bdAaAZBn5TM",
+    "from": 0,
+    "to": 10
    },
    "crop": null,
    "sources": [
@@ -3416,6 +3744,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/000/007/bd6.jpg",
     "page": "https://knowyourmeme.com/memes/rickroll"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "from": 43,
+    "to": 53
    },
    "crop": null,
    "sources": [
@@ -3535,6 +3868,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/005/608/nyan-cat-01-625x450.jpg",
     "page": "https://knowyourmeme.com/memes/nyan-cat"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=2yJgwwDcgV8",
+    "from": 0,
+    "to": 10
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/nyan-cat"
@@ -3565,6 +3903,11 @@
    "image": {
     "url": "https://i.ytimg.com/vi/J---aiyznGQ/hqdefault.jpg",
     "page": "https://www.youtube.com/watch?v=J---aiyznGQ"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=DK7CVqbtW0A",
+    "from": 0,
+    "to": 10
    },
    "crop": [
     0,
@@ -3632,6 +3975,7 @@
     "url": "https://i.imgflip.com/1bij.jpg",
     "page": "https://imgflip.com/memetemplate/One-Does-Not-Simply"
    },
+   "clip": false,
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/one-does-not-simply-walk-into-mordor"
@@ -3663,6 +4007,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/000/131/tdy_or_charlie_150501.today-inline-vid-featured-desktop.jpg",
     "page": "https://knowyourmeme.com/memes/charlie-bit-my-finger"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=0EqSXDwTq6U",
+    "from": 25,
+    "to": 36
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/charlie-bit-my-finger"
@@ -3693,6 +4042,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/000/016/brittnee.jpg",
     "page": "https://knowyourmeme.com/memes/leave-britney-alone"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=ElXi7yDHyWo",
+    "from": 0,
+    "to": 10
    },
    "crop": null,
    "sources": [
@@ -3756,6 +4110,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/000/070/Picture_61.png",
     "page": "https://knowyourmeme.com/memes/numa-numa"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=Cqd1Gvq-RBY",
+    "from": 62,
+    "to": 72
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/numa-numa"
@@ -3784,6 +4143,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/000/019/dramatic-chipmunk.gif",
     "page": "https://knowyourmeme.com/memes/dramatic-chipmunk"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=mfhBM_Yay6w",
+    "from": 0,
+    "to": 6
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/dramatic-chipmunk"
@@ -3810,6 +4174,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/003/128/rainbow.jpg",
     "page": "https://knowyourmeme.com/memes/double-rainbow"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=OQSNhk5ICTI",
+    "from": 54,
+    "to": 65
    },
    "crop": null,
    "sources": [
@@ -3840,6 +4209,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/000/554/picard-facepalm.jpg",
     "page": "https://knowyourmeme.com/memes/facepalm"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=uSvJaYxRoB4",
+    "from": 0,
+    "to": 7
    },
    "crop": null,
    "sources": [
@@ -3899,6 +4273,11 @@
    "image": {
     "url": "https://i.imgflip.com/3si4.jpg",
     "page": "https://imgflip.com/memetemplate/Shut-Up-And-Take-My-Money-Fry"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=dT3tl8wFOro",
+    "from": 0,
+    "to": 7
    },
    "crop": null,
    "sources": [
@@ -3966,6 +4345,11 @@
     "url": "https://i.imgflip.com/vx58.jpg",
     "page": "https://imgflip.com/meme/1489292/Vegeta-over-9000"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=SiMHTK15Pik",
+    "from": 7,
+    "to": 15
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/its-over-9000"
@@ -3997,6 +4381,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/000/026/Gerard-Butler-This-Is-Sparta.jpg",
     "page": "https://knowyourmeme.com/memes/this-is-sparta"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=4Prc1UfuokY",
+    "from": 125,
+    "to": 134
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/this-is-sparta"
@@ -4026,6 +4415,11 @@
     "url": "https://i.kym-cdn.com/entries/icons/original/000/002/892/saxguy.jpg",
     "page": "https://knowyourmeme.com/memes/epic-sax-guy"
    },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=pHXDMe6QV-U",
+    "from": 47,
+    "to": 57
+   },
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/epic-sax-guy"
@@ -4052,6 +4446,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/000/191/leeroy-jenkins.jpg",
     "page": "https://knowyourmeme.com/memes/leeroy-jenkins"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=mLyOj_QD4a4",
+    "from": 90,
+    "to": 101
    },
    "crop": null,
    "sources": [
@@ -4080,6 +4479,11 @@
    "image": {
     "url": "https://i.kym-cdn.com/entries/icons/original/000/004/457/challenge.jpg",
     "page": "https://knowyourmeme.com/memes/challenge-accepted"
+   },
+   "clip": {
+    "video": "https://www.youtube.com/watch?v=NOAScKZKTUg",
+    "from": 0,
+    "to": 5
    },
    "crop": null,
    "sources": [

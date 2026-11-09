@@ -21,6 +21,12 @@ public class Memy : Game
     /// <summary>Скільки місць: як у «Скільки?» і «Вгадай мелодію» — кожен вгадує сам, черги нема.</summary>
     public const int Seats = 12;
     public const int RevealMs = 6_000;
+    /// <summary>
+    /// Розкриття мему з кліпом: кліп плюс <see cref="RevealClipLead"/> (плеєр вантажиться, назву треба прочитати), але не
+    /// довше за <see cref="RevealClipMax"/> — найдовший кліп банку грає до кінця (09.11 користувач: «можна і більше показувати»).
+    /// «⏭ Далі» від усіх — наступний мем одразу.
+    /// </summary>
+    public const int RevealClipLead = 3_000, RevealClipMax = MemyBank.ClipMax * 1000 + RevealClipLead;
     /// <summary>Скільки стіл чекає на картинку (перший запуск — меми ще качаються), перш ніж здатись.</summary>
     public const int LoadTimeoutMs = 60_000;
     /// <summary>Як часто можна писати: спроби необмежені, але не перебором.</summary>
@@ -47,7 +53,9 @@ public class Memy : Game
     public const string SeenGame = "memy";
 
     public static readonly int[] RoundChoices = [5, 10, 15];
-    public static readonly int[] SecondChoices = [15, 20, 30];
+    /// <summary>Типово 30 с (з 08.11.2026; було 20 — довгий мем не встигали дописати до варіантів).</summary>
+    public static readonly int[] SecondChoices = [15, 20, 30, 45];
+    public const int SecondsDefault = 30;
 
     // значення опцій (specs/memy.md §3, «Як реалізовано»)
     public const string WhatName = "name", WhatPhrase = "phrase", WhatMix = "mix";
@@ -68,7 +76,7 @@ public class Memy : Game
         Options:
         [
             new GameOption("rounds", "Раундів", [.. RoundChoices.Select(n => (Str(n), Str(n)))], "10"),
-            new GameOption("seconds", "Час на раунд", [.. SecondChoices.Select(n => (Str(n), $"{n} с"))], "20"),
+            new GameOption("seconds", "Час на раунд", [.. SecondChoices.Select(n => (Str(n), $"{n} с"))], Str(SecondsDefault)),
             new GameOption("what", "Що вгадуємо", [(WhatName, "Назву"), (WhatPhrase, "Підпис"), (WhatMix, "Упереміш")], WhatMix),
             new GameOption("answer", "Відповідь",
                 [(AnswerBoth, "Спершу пиши, потім варіанти"), (AnswerWrite, "Лише писати"), (AnswerPick, "Лише варіанти")], AnswerBoth),
@@ -78,7 +86,7 @@ public class Memy : Game
             new GameOption("cat", "Меми", MemyCats.List, MemyCats.All, Multi: true),
             new GameOption("level", "Складність", [(LevelAll, "Усякі"), (LevelEasy, "Відомі"), (LevelHard, "Для знавців")], LevelAll),
         ],
-        Hint: "Мем без підпису проявляється з пікселів — пиши назву чи фразу. Під кінець з'являться варіанти, але за пів ціни");
+        Hint: "Мем без підпису проявляється з пікселів — пиши назву чи фразу, досить головних слів. Під кінець з'являться варіанти, але за пів ціни");
 
     static string Str(int n) => n.ToString(CultureInfo.InvariantCulture);
 
@@ -88,7 +96,11 @@ public class Memy : Game
     public override string SeatName(int seat) => (seat + 1).ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Раунд: мем, що вгадуємо (фразу чи назву), варіанти з номером правильного і токени трьох кадрів.</summary>
-    sealed record Round(MemyMeme Meme, bool Phrase, string[] Choices, int Right, string[] Tokens);
+    sealed record Round(MemyMeme Meme, bool Phrase, string[] Choices, int Right, string[] Tokens)
+    {
+        /// <summary>Токен вирізаного кліпу (<c>clip.file</c>) — видається на розкритті, коли кліп уже готовий; інакше null.</summary>
+        public string? ClipToken { get; set; }
+    }
 
     /// <summary>Що місце зробило в раунді: останнє написане чи тицьнуте, влучив, на якому кадрі, скільки взяв.</summary>
     sealed class Attempt
@@ -106,7 +118,7 @@ public class Memy : Game
     GameSeen? _seenMemo;
 
     // опції
-    int _rounds = 10, _seconds = 20;
+    int _rounds = 10, _seconds = SecondsDefault;
     string _what = WhatMix, _answer = AnswerBoth, _choicesAt = At8, _show = ShowPixels, _level = LevelAll;
     IReadOnlySet<string> _cats = MemyCats.Parse(null);
 
@@ -123,6 +135,8 @@ public class Memy : Game
     readonly int[] _pixelHits = new int[Seats];
     readonly HashSet<int> _left = [];
     readonly HashSet<int> _skip = [];
+    /// <summary>Хто на розкритті тиснув «⏭ Далі»: усі присутні — наступний мем, не чекаючи кінця кліпу.</summary>
+    readonly HashSet<int> _next = [];
     readonly Dictionary<int, DateTimeOffset> _lastGuess = [];
     Dictionary<int, Attempt> _att = [];
     int _frame;
@@ -140,7 +154,7 @@ public class Memy : Game
         string Of(string key, string fallback, params string[] allowed) =>
             options.TryGetValue(key, out var v) && allowed.Contains(v) ? v : fallback;
         _rounds = Int("rounds", RoundChoices, 10);
-        _seconds = Int("seconds", SecondChoices, 20);
+        _seconds = Int("seconds", SecondChoices, SecondsDefault);
         _what = Of("what", WhatMix, WhatName, WhatPhrase, WhatMix);
         _answer = Of("answer", AnswerBoth, AnswerBoth, AnswerWrite, AnswerPick);
         _choicesAt = Of("choicesAt", At8, At8, At5, AtHalf);
@@ -169,6 +183,7 @@ public class Memy : Game
         Array.Clear(_pixelHits);
         _left.Clear();
         _skip.Clear();
+        _next.Clear();
         _lastGuess.Clear();
         _att = [];
         _played.Clear();
@@ -354,10 +369,17 @@ public class Memy : Game
     {
         _phase = PhaseReveal;
         _frame = MemyImages.Clear;
-        _totalMs = RevealMs;
-        _until = Now.AddMilliseconds(RevealMs);
+        // кліп із файла — лише вже вирізаний: не готовий — мем розкривається картинкою, звичні 6 с
+        if (_cur is { Meme.Clip.IsFile: true } r) r.ClipToken ??= _images?.IssueClip(r.Meme.Id);
+        _totalMs = _cur is null || HasClip(_cur) ? RevealFor(_cur?.Meme) : RevealMs;
+        _until = Now.AddMilliseconds(_totalMs);
+        _next.Clear();
         _dirty = true;
     }
+
+    /// <summary>Скільки триває розкриття: з кліпом — щоб кліп догрався, без — <see cref="RevealMs"/>.</summary>
+    public static int RevealFor(MemyMeme? m) =>
+        m?.Clip is { } c ? Math.Clamp(c.Seconds * 1000 + RevealClipLead, RevealMs, RevealClipMax) : RevealMs;
 
     bool IsPresent(int s) => Ctx.Seated(s) && !_left.Contains(s);
 
@@ -432,6 +454,7 @@ public class Memy : Game
         _left.Add(seat);
         _dirty = true;
         if (!AnyPresent()) Over(null);
+        else HurryReveal();
     }
 
     // =========================================================================================
@@ -472,7 +495,7 @@ public class Memy : Game
         mine.How = "write";
         _dirty = true;
         var answers = _cur!.Phrase ? _cur.Meme.PhraseAnswers : _cur.Meme.NameAnswers;
-        return SvoyaAnswer.Hits(text, answers) ? Hit(seat, mine, now) : ActResult.Fail("Мимо");
+        return MemyAnswer.Hits(text, answers, Bank) ? Hit(seat, mine, now) : ActResult.Fail("Мимо");
     }
 
     ActResult Pick(int seat, Attempt? mine, JsonElement payload)
@@ -518,6 +541,7 @@ public class Memy : Game
     /// <summary>«Не знаю — далі» — перемикач: натиснув ще раз — передумав. Коли всі своє зробили чи пропускають, раунд кінчається.</summary>
     ActResult Skip(int seat)
     {
+        if (_phase == PhaseReveal) return Next(seat);
         if (_phase != PhasePlay) return ActResult.Fail("Зараз нема чого пропускати");
         if (!IsPresent(seat)) return ActResult.Fail("Ти вже не за столом");
         if (Finished(seat)) return ActResult.Fail("Ти вже своє зробив — чекаємо інших");
@@ -526,11 +550,43 @@ public class Memy : Game
         return ActResult.Done;
     }
 
+    /// <summary>«⏭ Далі» на розкритті — теж перемикач; коли тиснули всі присутні, наступний мем на найближчому тику.</summary>
+    ActResult Next(int seat)
+    {
+        if (!IsPresent(seat)) return ActResult.Fail("Ти вже не за столом");
+        if (!_next.Remove(seat)) _next.Add(seat);
+        _dirty = true;
+        HurryReveal();
+        return ActResult.Done;
+    }
+
+    /// <summary>Усі присутні тиснули «Далі» (або той, хто не тиснув, пішов) — розкриття кінчається на найближчому тику.</summary>
+    void HurryReveal()
+    {
+        if (_phase != PhaseReveal || _next.Count == 0) return;
+        for (var s = 0; s < Seats; s++) if (IsPresent(s) && !_next.Contains(s)) return;
+        if (_until > Now) _until = Now;
+    }
+
     // =========================================================================================
     // Вид
     // =========================================================================================
 
     static string Url(string token) => $"/api/games/memy/{token}.jpg";
+
+    /// <summary>Чи буде в раунді кліп: YouTube — завжди, з файла — коли вже вирізаний (є токен).</summary>
+    static bool HasClip(Round r) => r.Meme.Clip is { } c && (!c.IsFile || r.ClipToken is not null);
+
+    /// <summary>
+    /// Кліп у виді: YouTube — <c>{id, from, to}</c> (клієнт вбудовує плеєр); свій файл — <c>{src, from: 0, to}</c> (уже
+    /// вирізаний момент, грає від початку). Не готовий — null.
+    /// </summary>
+    static object? Clip(Round r) => r.Meme.Clip switch
+    {
+        { IsFile: false } c => new { id = c.Id, from = c.From, to = c.To },
+        { } c when r.ClipToken is { } t => new { src = $"/api/games/memy/{t}.mp4", from = 0, to = c.Seconds },
+        _ => null,
+    };
 
     public override object View(int? seat)
     {
@@ -580,7 +636,11 @@ public class Memy : Game
                 page = cur.Meme.ImagePage,
                 sources = cur.Meme.Sources,
                 image = Url(cur.Tokens[MemyImages.Clear]),
+                // кліп YouTube — сам момент мему; клієнт вбудовує плеєр замість картинки
+                clip = Clip(cur),
             } : null,
+            // хто на розкритті тиснув «⏭ Далі»
+            next = _phase == PhaseReveal ? _next.Order().ToArray() : [],
             // чужі відповіді — лише після раунду: що писав чи тицяв кожен, влучив чи ні, скільки взяв
             answers = open
                 ? _att.Where(kv => kv.Value.Text.Length > 0).OrderBy(kv => kv.Key)
@@ -590,7 +650,7 @@ public class Memy : Game
             // після партії — усе, що було: історія з картинками й посиланнями на джерела
             played = _phase == PhaseDone
                 ? _played.Select(r => new { id = r.Meme.Id, name = r.Meme.Name, phrase = r.Meme.Phrase, year = r.Meme.Year, page = r.Meme.ImagePage,
-                    image = Url(r.Tokens[MemyImages.Clear]) }).ToArray()
+                    image = Url(r.Tokens[MemyImages.Clear]), clip = Clip(r) }).ToArray()
                 : null,
             scores = (int[])_scores.Clone(),
             left = _left.Order().ToArray(),

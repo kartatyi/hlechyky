@@ -46,6 +46,15 @@ public static class MemySetup
             memes = images.Bank.Memes.Count,
             ready = images.ReadyCount,
             video = images.Bank.Memes.Count(m => m.IsVideo),
+            // кліпи для розкриття: з YouTube (плеєр) і з файлів (вирізані тут, у cache/memes)
+            clips = new
+            {
+                youtube = images.Bank.Memes.Count(m => m.Clip is { IsFile: false }),
+                files = images.Bank.Memes.Count(m => m.Clip is { IsFile: true }),
+                ready = images.ClipReadyCount,
+                failed = images.ClipFailed.OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                    .Select(kv => new { id = kv.Key, name = images.Bank.Find(kv.Key)?.Name, url = images.Bank.Find(kv.Key)?.Clip?.File, why = kv.Value }),
+            },
             rejected = images.Bank.Problems,
             // url — адреса картинки чи «відео&t=Ns»; asleep — до рестарту не пробуватиметься, false — ще спробує (мережа, 429)
             failed = images.Failed.OrderBy(kv => kv.Key, StringComparer.Ordinal)
@@ -54,16 +63,19 @@ public static class MemySetup
     }
 
     /// <summary>
-    /// Кадр за токеном. Лише «&lt;24 hex&gt;.jpg» живого токена — інакше 404 (жодних списків теки, жодних імен файлів
-    /// ззовні, жодного «..»); віддане — <c>private</c> і <c>nosniff</c>.
+    /// Кадр (<c>.jpg</c>) чи кліп (<c>.mp4</c>) за токеном. Лише «&lt;24 hex&gt;.jpg|.mp4» живого токена, і розширення має
+    /// збігтися з файлом — інакше 404 (жодних списків теки, жодних імен файлів ззовні, жодного «..»); віддане —
+    /// <c>private</c> і <c>nosniff</c>; кліп — з Range (Safari без нього відео не грає, а перемотування — це Range).
     /// </summary>
     public static IResult Serve(string file, MemyImages images, HttpContext c)
     {
-        if (!file.EndsWith(".jpg", StringComparison.Ordinal)) return Results.NotFound();
-        if (images.Resolve(file[..^4]) is not { } path || !File.Exists(path)) return Results.NotFound();
+        var ext = file.EndsWith(".jpg", StringComparison.Ordinal) ? ".jpg" : file.EndsWith(".mp4", StringComparison.Ordinal) ? ".mp4" : null;
+        if (ext is null) return Results.NotFound();
+        if (images.Resolve(file[..^4]) is not { } path || !path.EndsWith(ext, StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+            return Results.NotFound();
         GeoPhotos.Touch(path);
         c.Response.Headers.CacheControl = "private, max-age=1800";
         c.Response.Headers["X-Content-Type-Options"] = "nosniff";
-        return Results.File(path, "image/jpeg");
+        return ext == ".mp4" ? Results.File(path, "video/mp4", enableRangeProcessing: true) : Results.File(path, "image/jpeg");
     }
 }

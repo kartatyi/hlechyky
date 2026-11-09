@@ -153,10 +153,10 @@ public class MemyTests
         Assert.True(info.Hidden);
         Assert.Equal(ScoreOrder.HigherIsBetter, info.Score);
         Assert.Equal(["rounds", "seconds", "what", "answer", "choicesAt", "show", "cat", "level"], info.Options!.Select(o => o.Key));
-        Assert.Equal(["10", "20", "mix", "both", "8", "pixels", "all", "all"], info.Options!.Select(o => o.Default));
+        Assert.Equal(["10", "30", "mix", "both", "8", "pixels", "all", "all"], info.Options!.Select(o => o.Default));
         Assert.True(info.Options!.Single(o => o.Key == "cat").Multi);
         Assert.Equal(["5", "10", "15"], info.Options!.Single(o => o.Key == "rounds").Values.Select(v => v.Value));
-        Assert.Equal(["15", "20", "30"], info.Options!.Single(o => o.Key == "seconds").Values.Select(v => v.Value));
+        Assert.Equal(["15", "20", "30", "45"], info.Options!.Single(o => o.Key == "seconds").Values.Select(v => v.Value));
         Assert.Equal("1", new Memy().SeatName(0));
         Assert.Equal("12", new Memy().SeatName(11));
 
@@ -460,7 +460,7 @@ public class MemyTests
     public void Points_full_price_frame_bonus_first_and_half_after_choices()
     {
         using var c = new MemyCache();
-        var h = Table(c, 4);
+        var h = Table(c, 4, new { seconds = "20" });
         var r0 = Write(h, 0, Right(h, c));
         Assert.True(r0.Ok);
         Assert.Contains("🥇", r0.Message);
@@ -483,7 +483,7 @@ public class MemyTests
     public void Writing_after_the_choices_opened_is_also_half_price()
     {
         using var c = new MemyCache();
-        var h = Table(c, 2);
+        var h = Table(c, 2, new { seconds = "20" });
         Sec(h, 12);
         Assert.True(Write(h, 1, Right(h, c)).Ok);
         Assert.Equal(Memy.Half + Memy.FirstBonus, Score(h, 1));
@@ -493,7 +493,7 @@ public class MemyTests
     public void Without_pixels_speed_bonus_is_linear_in_time()
     {
         using var c = new MemyCache();
-        var h = Table(c, 2, new { show = "whole", answer = "write" });
+        var h = Table(c, 2, new { show = "whole", answer = "write", seconds = "20" });
         Assert.True(Write(h, 0, Right(h, c)).Ok);
         Assert.Equal(Memy.Full + Memy.FastMax + Memy.FirstBonus, Score(h, 0));
         Sec(h, 10);
@@ -531,7 +531,7 @@ public class MemyTests
     public void Wrong_choice_blocks_until_the_end_of_the_round()
     {
         using var c = new MemyCache();
-        var h = Table(c, 2);
+        var h = Table(c, 2, new { seconds = "20" });
         Sec(h, 12);
         var bad = h.Act(0, "pick", new { i = WrongIndex(h, c) });
         Assert.True(bad.Ok);
@@ -551,7 +551,7 @@ public class MemyTests
     public void Round_ends_early_when_everyone_is_done_or_skips()
     {
         using var c = new MemyCache();
-        var h = Table(c, 3);
+        var h = Table(c, 3, new { seconds = "20" });
         Assert.True(Write(h, 0, Right(h, c)).Ok);
         Sec(h, 12);
         Assert.True(h.Act(1, "pick", new { i = WrongIndex(h, c) }).Ok);
@@ -571,7 +571,7 @@ public class MemyTests
     public void Phrase_mode_plays_only_memes_with_a_phrase_and_takes_phrases()
     {
         using var c = new MemyCache();
-        var h = Table(c, 2, new { what = "phrase", rounds = "5" });
+        var h = Table(c, 2, new { what = "phrase", rounds = "5", seconds = "20" });
         Assert.Equal(4, h.View(null).GetProperty("rounds").GetInt32());     // фраз у банку лише чотири
         Assert.Contains("лише 4", h.View(null).GetProperty("note").GetString());
         for (var guard = 0; guard < 10 && Playing(h); guard++)
@@ -687,7 +687,7 @@ public class MemyTests
     public void Illegal_acts_do_not_change_any_view()
     {
         using var c = new MemyCache();
-        var h = Table(c, 2);
+        var h = Table(c, 2, new { seconds = "20" });
         string Snap() => h.View(0).GetRawText() + h.View(1).GetRawText() + h.View(null).GetRawText();
         void Refused(int seat, string action, object? payload)
         {
@@ -710,7 +710,7 @@ public class MemyTests
         Refused(1, "skip", null);
         Until(h, Memy.PhaseReveal);
         Refused(0, "guess", new { text = Current(h, c).Name });
-        Refused(0, "skip", null);
+        Refused(0, "pick", new { i = 0 });                        // на розкритті «skip» — це «⏭ Далі» (MemyAnswerTests)
     }
 
     // ================================================================== кінці
@@ -779,7 +779,7 @@ public class MemyTests
 
     static List<string> Script(MemyCache c, int seed)
     {
-        var h = Table(c, 2, new { rounds = "10" }, seed);
+        var h = Table(c, 2, new { rounds = "10", seconds = "20" }, seed);
         var log = new List<string>();
         for (var guard = 0; guard < 30 && Playing(h); guard++)
         {

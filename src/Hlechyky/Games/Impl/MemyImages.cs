@@ -21,6 +21,11 @@ namespace Hlechyky.Games.Impl;
 /// Гра під замком кімнати лише читає множину готових і видає токени — усе в пам'яті; мережа, диск і ffmpeg — тільки
 /// тут, у фоні, і в HTTP-обробнику. Невдалі завантаження — у лог і в <see cref="Failed"/> (для адмінки).
 /// </para>
+/// <para>
+/// Кліпи з файлів (<c>clip.file</c>, 08.11.2026 — mp4 з 404.com.ua): той самий фон качає відеофайл раз, вирізає момент
+/// <c>from</c>–<c>to</c> у свій маленький mp4 (H.264 + AAC, ≤ <see cref="ClipWidth"/> px, faststart) і віддає його за
+/// токеном <c>/api/games/memy/&lt;24 hex&gt;.mp4</c>. Кліп не тримає гру: не готовий — мем розкривається картинкою.
+/// </para>
 /// </summary>
 public sealed class MemyImages : BackgroundService
 {
@@ -29,7 +34,14 @@ public sealed class MemyImages : BackgroundService
     public const int MaxTokens = 4000;
     /// <summary>Скільки можна качати за одну картинку: gif буває важким, а нам із нього потрібен лише перший кадр.</summary>
     public const long MaxBytes = 16L * 1024 * 1024;
-    public const long CacheCap = 200L * 1024 * 1024;
+    public const long CacheCap = 320L * 1024 * 1024;
+    /// <summary>Скільки можна качати за один відеофайл кліпу (цілий ролик з 404.com.ua — до кількох хвилин 480p).</summary>
+    public const long MaxClipBytes = 160L * 1024 * 1024;
+    /// <summary>Ширина вирізаного кліпу (не більша за оригінал).</summary>
+    public const int ClipWidth = 854;
+    static readonly TimeSpan ClipFfmpegTimeout = TimeSpan.FromSeconds(90);
+    /// <summary>Скільки чекати на тіло відповіді: картинку й відеофайл кліпу.</summary>
+    static readonly TimeSpan BodyImage = TimeSpan.FromSeconds(60), BodyVideo = TimeSpan.FromMinutes(4);
     /// <summary>Довша сторона чіткої картинки.</summary>
     public const int MaxSide = 960;
     /// <summary>Кадри проявлення: скільки «пікселів» на довшій стороні (кадр 0, кадр 1). Далі — чітка.</summary>
@@ -77,6 +89,11 @@ public sealed class MemyImages : BackgroundService
     readonly object _readyLock = new();
     /// <summary>Готові меми (усі три кадри на диску). Незмінний знімок: читачі беруть посилання без замка.</summary>
     volatile HashSet<string> _ready = new(StringComparer.Ordinal);
+    /// <summary>Меми, чий кліп із файла вже вирізаний і лежить на диску. Так само незмінний знімок.</summary>
+    volatile HashSet<string> _clips = new(StringComparer.Ordinal);
+    readonly ConcurrentDictionary<string, int> _clipFails = new(StringComparer.Ordinal);
+    readonly ConcurrentDictionary<string, string> _clipFailed = new(StringComparer.Ordinal);
+    readonly ConcurrentDictionary<string, bool> _clipAsleep = new(StringComparer.Ordinal);
     bool _warnedNoFfmpeg;
 
     /// <param name="frames">Кадри з відео; null — меми з <c>image.video</c> не готуються (у <see cref="Failed"/> — чому).</param>
@@ -130,6 +147,16 @@ public sealed class MemyImages : BackgroundService
 
     public string PathFor(MemyMeme m, int frame) => Path.Combine(Dir, FileNameFor(m, frame));
 
+    /// <summary>Ім'я вирізаного кліпу: хеш адреси файла й меж (змінили межі — кліп переріжеться); null — кліп не з файла.</summary>
+    public static string? ClipFileNameFor(MemyMeme m)
+    {
+        if (m.Clip is not { File: { } file } c) return null;
+        var what = $"clip:{file}@{c.From.ToString(CultureInfo.InvariantCulture)}-{c.To.ToString(CultureInfo.InvariantCulture)}";
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(what)))[..32] + ".mp4";
+    }
+
+    public string? ClipPathFor(MemyMeme m) => ClipFileNameFor(m) is { } name ? Path.Combine(Dir, name) : null;
+
     // ---------------------------------------------------------------------------------------
     // готові
     // ---------------------------------------------------------------------------------------
@@ -145,6 +172,16 @@ public sealed class MemyImages : BackgroundService
     /// <summary>Що не вийшло: id → причина (останнє слово). Для адмінки й логів.</summary>
     public IReadOnlyDictionary<string, string> Failed => _failed;
 
+    /// <summary>Кліп мему з файла вирізаний і лежить на диску.</summary>
+    public bool ClipReady(string id) => _clips.Contains(id);
+
+    public int ClipReadyCount => _clips.Count;
+
+    /// <summary>Кліпи з файлів, що не вийшли: id → причина. Для адмінки.</summary>
+    public IReadOnlyDictionary<string, string> ClipFailed => _clipFailed;
+
+    bool ClipGone(string id) => _clipAsleep.ContainsKey(id);
+
     /// <summary>Перечитати теку: що з банку вже лежить на диску всіма трьома кадрами.</summary>
     public void Rescan()
     {
@@ -155,12 +192,20 @@ public sealed class MemyImages : BackgroundService
             for (var f = 0; f < Frames && all; f++) all = File.Exists(PathFor(m, f));
             if (all) next.Add(m.Id);
         }
-        lock (_readyLock) _ready = next;
+        var clips = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var m in Bank.Memes)
+            if (ClipPathFor(m) is { } path && File.Exists(path)) clips.Add(m.Id);
+        lock (_readyLock) { _ready = next; _clips = clips; }
     }
 
     void MarkReady(string id)
     {
         lock (_readyLock) _ready = new HashSet<string>(_ready, StringComparer.Ordinal) { id };
+    }
+
+    void MarkClip(string id)
+    {
+        lock (_readyLock) _clips = new HashSet<string>(_clips, StringComparer.Ordinal) { id };
     }
 
     /// <summary>Здатись на мемі до рестарту: гра його пропустить (і тести так імітують мертве посилання).</summary>
@@ -181,8 +226,22 @@ public sealed class MemyImages : BackgroundService
         if (frame is < 0 or >= Frames) throw new ArgumentOutOfRangeException(nameof(frame));
         var now = _clock.UtcNow;
         if (_tokens.Count >= MaxTokens) Trim(now);
+        return Put(PathFor(m, frame), now);
+    }
+
+    /// <summary>Токен на вирізаний кліп мему (<c>.mp4</c>); null — кліпу з файла нема чи він ще не готовий.</summary>
+    public string? IssueClip(string id)
+    {
+        if (!ClipReady(id) || Bank.Find(id) is not { } m || ClipPathFor(m) is not { } path) return null;
+        var now = _clock.UtcNow;
+        if (_tokens.Count >= MaxTokens) Trim(now);
+        return Put(path, now);
+    }
+
+    string Put(string path, DateTimeOffset now)
+    {
         var token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12));
-        _tokens[token] = (PathFor(m, frame), now + TokenLife);
+        _tokens[token] = (path, now + TokenLife);
         return token;
     }
 
@@ -248,8 +307,76 @@ public sealed class MemyImages : BackgroundService
             if (await FetchAsync(m, ct)) got++;
             if (_pause > TimeSpan.Zero) await _sleep(_pause, ct);
         }
+        // кліпи — після картинок: стіл чекає саме на картинки, кліп лише прикрашає розкриття
+        foreach (var m in Bank.Memes)
+        {
+            if (m.Clip is not { IsFile: true } || ClipReady(m.Id) || ClipGone(m.Id)) continue;
+            ct.ThrowIfCancellationRequested();
+            if (await FetchClipAsync(m, ct)) got++;
+            if (_pause > TimeSpan.Zero) await _sleep(_pause, ct);
+        }
         return got;
     }
+
+    /// <summary>
+    /// Скачати відеофайл кліпу й вирізати момент: <c>from</c>–<c>to</c>, H.264 + AAC, ширина ≤ <see cref="ClipWidth"/>,
+    /// faststart (грає, ще не докачавшись), без метаданих. Безнадійне (404, не відео, ffmpeg не розкодував) засинає одразу,
+    /// мережеве — після трьох спроб.
+    /// </summary>
+    public async Task<bool> FetchClipAsync(MemyMeme m, CancellationToken ct)
+    {
+        if (_http is null || Ffmpeg is null || m.Clip is not { File: { } url } c || ClipPathFor(m) is not { } path) return false;
+        Directory.CreateDirectory(Dir);
+        var stamp = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(4));
+        var raw = Path.Combine(Dir, KeyFor(m) + "." + stamp + ".clip.tmp");
+        var cut = path[..^4] + "." + stamp + ".tmp.mp4";
+        try
+        {
+            var got = await DownloadPolitely(url, raw, ct, MaxClipBytes, video: true);
+            if (got.Later) { _clipFailed[m.Id] = got.Why; return false; }
+            var (ok, final, why) = (got.Ok, got.Final, got.Why);
+            if (ok)
+            {
+                (ok, var err) = await RunAsync(Ffmpeg, ClipArgs(raw, c.From, c.Seconds, cut), ct, ClipFfmpegTimeout);
+                if (ok && (!File.Exists(cut) || new FileInfo(cut).Length == 0)) (ok, err) = (false, "порожній файл");
+                if (ok) File.Move(cut, path, overwrite: true);
+                else (final, why) = (true, "ffmpeg не вирізав кліп: " + err);
+            }
+            if (ok)
+            {
+                _clipFails.TryRemove(m.Id, out _);
+                _clipFailed.TryRemove(m.Id, out _);
+                MarkClip(m.Id);
+                return true;
+            }
+            _log?.LogWarning("Мемологія: кліп {Id} ({Name}) не вийшов — {Why}", m.Id, m.Name, why);
+            _clipFailed[m.Id] = why;
+            if (final || _clipFails.AddOrUpdate(m.Id, 1, (_, n) => n + 1) >= FailsBeforeSleep) _clipAsleep[m.Id] = true;
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            _log?.LogWarning("Мемологія: кліп {Id} спіткнувся — {Error}", m.Id, ex.Message);
+            _clipFailed[m.Id] = ex.Message;
+            return false;
+        }
+        finally
+        {
+            foreach (var t in new[] { raw, cut }) try { if (File.Exists(t)) File.Delete(t); } catch (IOException) { }
+        }
+    }
+
+    /// <summary>Аргументи ffmpeg для кліпу: з <paramref name="from"/> на <paramref name="seconds"/> с, H.264 + AAC, faststart, без метаданих.</summary>
+    public static List<string> ClipArgs(string src, int from, int seconds, string output) =>
+    [
+        "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-threads", "2",
+        "-ss", from.ToString(CultureInfo.InvariantCulture), "-i", src, "-t", seconds.ToString(CultureInfo.InvariantCulture),
+        "-map", "0:v:0", "-map", "0:a:0?",
+        "-vf", $"scale=w='trunc(min({ClipWidth},iw)/2)*2':h=-2",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "96k", "-ac", "2",
+        "-movflags", "+faststart", "-map_metadata", "-1", "-f", "mp4", output,
+    ];
 
     MemyMeme? Next(HashSet<string> tried)
     {
@@ -317,9 +444,12 @@ public sealed class MemyImages : BackgroundService
     /// пауза (Retry-After або 5 → 10 → 20 с… до <see cref="BusyMax"/>), і той самий мем пробуємо ще — до
     /// <see cref="BusyTries"/> разів. <c>Later</c> — не дочекались: без лічби невдач, до наступного проходу.
     /// </summary>
-    async Task<(bool Ok, bool Final, bool Later, string Why)> DownloadPolitely(MemyMeme m, string to, CancellationToken ct)
+    Task<(bool Ok, bool Final, bool Later, string Why)> DownloadPolitely(MemyMeme m, string to, CancellationToken ct) =>
+        DownloadPolitely(m.ImageUrl, to, ct, MaxBytes, video: false);
+
+    async Task<(bool Ok, bool Final, bool Later, string Why)> DownloadPolitely(string url, string to, CancellationToken ct, long maxBytes, bool video)
     {
-        var host = Uri.TryCreate(m.ImageUrl, UriKind.Absolute, out var u) ? u.Host : "";
+        var host = Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : "";
         for (var attempt = 1; ; attempt++)
         {
             if (_busy.TryGetValue(host, out var b) && b.Until > _clock.UtcNow)
@@ -329,7 +459,7 @@ public sealed class MemyImages : BackgroundService
                     return (false, false, true, $"{host} просить почекати ще {(int)Math.Ceiling(wait.TotalMinutes)} хв — спробуємо наступним проходом");
                 await _sleep(wait, ct);
             }
-            var (ok, final, why, retryAfter) = await Download(m.ImageUrl, to, ct);
+            var (ok, final, why, retryAfter) = await Download(url, to, ct, maxBytes, video);
             if (retryAfter is not { } asked)
             {
                 if (ok) _busy.TryRemove(host, out _);
@@ -352,7 +482,7 @@ public sealed class MemyImages : BackgroundService
     /// (вдалось, безнадійно, чому ні, «почекай»: не null — 429 чи 503 з Retry-After; нуль — сервер не сказав скільки).
     /// Пише сирий файл у <paramref name="to"/>.
     /// </summary>
-    async Task<(bool Ok, bool Final, string Why, TimeSpan? RetryAfter)> Download(string url, string to, CancellationToken ct)
+    async Task<(bool Ok, bool Final, string Why, TimeSpan? RetryAfter)> Download(string url, string to, CancellationToken ct, long maxBytes, bool video)
     {
         try
         {
@@ -363,26 +493,31 @@ public sealed class MemyImages : BackgroundService
                 return (false, false, $"відповідь {(int)resp.StatusCode}", asked ?? TimeSpan.Zero);
             if (resp.StatusCode != HttpStatusCode.OK) return (false, resp.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone, $"відповідь {(int)resp.StatusCode}", null);
             var type = resp.Content.Headers.ContentType?.MediaType ?? "";
-            if (!type.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && type != "application/octet-stream" && type.Length > 0)
-                return (false, true, $"не картинка ({type})", null);
-            if (resp.Content.Headers.ContentLength > MaxBytes) return (false, true, "завелике", null);
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+            if (!type.StartsWith(video ? "video/" : "image/", StringComparison.OrdinalIgnoreCase) && type != "application/octet-stream" && type.Length > 0)
+                return (false, true, video ? $"не відео ({type})" : $"не картинка ({type})", null);
+            if (resp.Content.Headers.ContentLength > maxBytes) return (false, true, "завелике", null);
+            // тіло — зі своїм годинником: HttpClient.Timeout (30 с) стосується лише заголовків, а завислий потік не має
+            // тримати весь прохід; відео (до MaxClipBytes) — довше
+            using var body = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            body.CancelAfter(video ? BodyVideo : BodyImage);
+            await using var stream = await resp.Content.ReadAsStreamAsync(body.Token);
             await using (var file = File.Create(to))
             {
                 var buf = new byte[81920];
                 long total = 0;
                 int n;
-                while ((n = await stream.ReadAsync(buf, ct)) > 0)
+                while ((n = await stream.ReadAsync(buf, body.Token)) > 0)
                 {
                     total += n;
-                    if (total > MaxBytes) return (false, true, $"завелике (понад {MaxBytes / (1024 * 1024)} МБ)", null);
-                    await file.WriteAsync(buf.AsMemory(0, n), ct);
+                    if (total > maxBytes) return (false, true, $"завелике (понад {maxBytes / (1024 * 1024)} МБ)", null);
+                    await file.WriteAsync(buf.AsMemory(0, n), body.Token);
                 }
                 if (total == 0) return (false, false, "порожня відповідь", null);
             }
             return (true, false, "", null);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) { return (false, false, $"не докачалось за {(int)(video ? BodyVideo : BodyImage).TotalSeconds} с", null); }
         catch (Exception ex) { return (false, false, ex.Message, null); }
     }
 
@@ -458,7 +593,9 @@ public sealed class MemyImages : BackgroundService
         return args;
     }
 
-    static async Task<(bool Ok, string Error)> RunAsync(string exe, List<string> args, CancellationToken ct)
+    static Task<(bool Ok, string Error)> RunAsync(string exe, List<string> args, CancellationToken ct) => RunAsync(exe, args, ct, FfmpegTimeout);
+
+    static async Task<(bool Ok, string Error)> RunAsync(string exe, List<string> args, CancellationToken ct, TimeSpan timeout)
     {
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
         foreach (var a in args) psi.ArgumentList.Add(a);
@@ -467,13 +604,13 @@ public sealed class MemyImages : BackgroundService
         try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch (Exception) { /* уже вийшов — не біда */ }
         var err = p.StandardError.ReadToEndAsync(ct);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(FfmpegTimeout);
+        cts.CancelAfter(timeout);
         try { await p.WaitForExitAsync(cts.Token); }
         catch (OperationCanceledException)
         {
             try { p.Kill(true); } catch (InvalidOperationException) { }
             if (ct.IsCancellationRequested) throw;
-            return (false, "не вклався в 30 с");
+            return (false, $"не вклався в {(int)timeout.TotalSeconds} с");
         }
         var text = (await err).Trim();
         return (p.ExitCode == 0, text.Length > 200 ? text[..200] : text);
@@ -491,13 +628,18 @@ public sealed class MemyImages : BackgroundService
     {
         if (!Directory.Exists(Dir)) return 0;
         var wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var m in Bank.Memes) for (var f = 0; f < Frames; f++) wanted.Add(FileNameFor(m, f));
+        foreach (var m in Bank.Memes)
+        {
+            for (var f = 0; f < Frames; f++) wanted.Add(FileNameFor(m, f));
+            if (ClipFileNameFor(m) is { } clip) wanted.Add(clip);
+        }
         var removed = 0;
         var now = DateTime.UtcNow;
         var keep = new List<FileInfo>();
         foreach (var file in new DirectoryInfo(Dir).EnumerateFiles())
         {
-            if (file.Name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) || file.Name.EndsWith(".tmp.jpg", StringComparison.OrdinalIgnoreCase))
+            if (file.Name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) || file.Name.EndsWith(".tmp.jpg", StringComparison.OrdinalIgnoreCase)
+                || file.Name.EndsWith(".tmp.mp4", StringComparison.OrdinalIgnoreCase))
             {
                 if (now - file.LastWriteTimeUtc > TimeSpan.FromHours(1) && TryDelete(file)) removed++;
                 continue;

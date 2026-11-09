@@ -11,10 +11,11 @@ namespace Hlechyky.Games.Impl;
 /// <param name="Crop">null або [x, y, w, h] — частки 0–1 від ширини й висоти оригіналу (для відео — кадру).</param>
 /// <param name="Video">Відео YouTube у канонічному вигляді <c>https://www.youtube.com/watch?v=&lt;id&gt;</c>, з якого береться кадр, або null.</param>
 /// <param name="At">Секунда кадру у відео (≥ 0, дробова); без відео — 0.</param>
+/// <param name="Clip">Кліп для розкриття — сам момент мему зі звуком (поле <c>clip</c>); без нього мем розкривається картинкою.</param>
 public sealed record MemyMeme(
     string Id, string Cat, string Name, string[] Names, string? Phrase, string[] Phrases, int Year, int Difficulty,
     string[] Tags, string About, string ImageUrl, string ImagePage, double[]? Crop, string[] Sources,
-    string? Video = null, double At = 0)
+    string? Video = null, double At = 0, MemyClip? Clip = null)
 {
     /// <summary>Картинка мему — кадр із відео (<see cref="Video"/> на секунді <see cref="At"/>), а не файл за адресою.</summary>
     public bool IsVideo => Video is not null;
@@ -30,6 +31,22 @@ public sealed record MemyMeme(
 
     /// <summary>Що зараховується в режимі «Підпис»: канонічна фраза й інші її написання.</summary>
     public IEnumerable<string> PhraseAnswers => Phrase is null ? [] : [Phrase, .. Phrases];
+}
+
+/// <summary>
+/// Кліп для розкриття — сам момент мему, <paramref name="From"/>–<paramref name="To"/> цілими секундами. Звідки — одне з двох:
+/// <list type="bullet">
+/// <item><paramref name="Id"/> — 11 символів id відео YouTube (вбудований плеєр; банк: <c>"clip": {"video": "https://www.youtube.com/watch?v=…", "from", "to"}</c>);</item>
+/// <item><paramref name="File"/> — https-адреса відеофайла (mp4 з 404.com.ua, звідки брали мем; банк: <c>"clip": {"file": "https://…mp4", "from", "to"}</c>):
+/// сервер качає його раз, вирізає момент ffmpeg-ом у свій маленький mp4 (<see cref="MemyImages"/>) і віддає за токеном.</item>
+/// </list>
+/// </summary>
+public sealed record MemyClip(string? Id, int From, int To, string? File = null)
+{
+    public int Seconds => To - From;
+
+    /// <summary>Свій файл (вирізаний на сервері), а не плеєр YouTube.</summary>
+    public bool IsFile => File is not null;
 }
 
 /// <summary>Категорії мемів (опція <c>cat</c>, поле <c>cat</c> банку).</summary>
@@ -71,10 +88,18 @@ public sealed partial class MemyBank
     public const int NameMin = 2, NameMax = 60, AboutMax = 300, PhraseMax = 160, TagsMax = 3;
     /// <summary>Стеля <c>image.at</c>: десять годин — далі це вже точно помилка в банку, а не мем.</summary>
     public const double AtMax = 36000;
+    /// <summary>
+    /// Довжина кліпу: сам момент, не ролик (рішення 08.11.2026 — 5–10 с). 09.11 перевірка: «можна і більше показувати» —
+    /// короткий ролик 404.com.ua (23–26 с) грає цілим, тож стеля 30 с.
+    /// </summary>
+    public const int ClipMin = 2, ClipMax = 30;
+    /// <summary>Мем із кадром із відео, але без <c>clip</c>: кліп від двох секунд до кадру, стільки секунд.</summary>
+    public const int ClipLead = 2, ClipDefault = 8;
 
     public static readonly MemyBank Empty = new([], []);
 
     readonly Dictionary<string, MemyMeme> _byId;
+    IReadOnlyDictionary<string, int>? _words;
 
     public MemyBank(IReadOnlyList<MemyMeme> memes, IReadOnlyList<string> problems)
     {
@@ -89,6 +114,9 @@ public sealed partial class MemyBank
     public IReadOnlyList<string> Problems { get; }
 
     public MemyMeme? Find(string id) => _byId.GetValueOrDefault(id);
+
+    /// <summary>У відповідях скількох мемів трапляється слово (за основою, <see cref="MemyAnswer.Stem"/>) — «кіт» загальне, «ляшко» ні.</summary>
+    public IReadOnlyDictionary<string, int> Words => _words ??= MemyAnswer.Count(Memes);
 
     public static MemyBank Load(string path, ILogger? log)
     {
@@ -133,8 +161,9 @@ public sealed partial class MemyBank
             {
                 n++;
                 var id = e.ValueKind == JsonValueKind.Object ? Str(e, "id") : "";
-                if (Read(e, out var why) is { } meme)
+                if (Read(e, out var why, out var soft) is { } meme)
                 {
+                    if (soft.Length > 0) problems.Add($"{meme.Id}: {soft}");
                     if (!ids.Add(meme.Id)) { problems.Add($"{meme.Id}: повтор id"); continue; }
                     memes.Add(meme);
                 }
@@ -148,10 +177,13 @@ public sealed partial class MemyBank
     [GeneratedRegex(@"^[wuo]\d{3,4}$")]
     private static partial Regex IdShape();
 
-    /// <summary>Один запис за контрактом §4; null і пояснення — що саме не так.</summary>
-    static MemyMeme? Read(JsonElement e, out string why)
+    /// <summary>
+    /// Один запис за контрактом §4; null і пояснення — що саме не так. Кривий <c>clip</c> мему не відкидає — мем грає
+    /// без відео, а <paramref name="soft"/> каже чому.
+    /// </summary>
+    static MemyMeme? Read(JsonElement e, out string why, out string soft)
     {
-        why = "";
+        why = soft = "";
         if (e.ValueKind != JsonValueKind.Object) { why = "не об'єкт"; return null; }
         var id = Str(e, "id");
         var cat = Str(e, "cat");
@@ -209,7 +241,34 @@ public sealed partial class MemyBank
         if (!Strings(e, "sources", out var sources) || sources.Length == 0) { why = "нема sources"; return null; }
         if (sources.FirstOrDefault(s => !Https(s)) is { } bad) { why = $"джерело не https: {bad}"; return null; }
 
-        return new MemyMeme(id, cat, name, names, phrase, phrases, year, d, tags, about, url, page, crop, sources, video, at);
+        var clip = Clip(e, video, at, out soft);
+        return new MemyMeme(id, cat, name, names, phrase, phrases, year, d, tags, about, url, page, crop, sources, video, at, clip);
+    }
+
+    /// <summary>
+    /// Кліп із поля <c>clip</c>; нема поля, а картинка — кадр із відео — той самий ролик довкола кадру; <c>false</c> — свідомо
+    /// без відео (ролик негодящий: запікані титри, російською, мем — сама картинка). Кривий — null і
+    /// пояснення в <paramref name="why"/>.
+    /// </summary>
+    static MemyClip? Clip(JsonElement e, string? video, double at, out string why)
+    {
+        why = "";
+        if (!e.TryGetProperty("clip", out var c) || c.ValueKind == JsonValueKind.Null)
+        {
+            if (video is null) return null;
+            var start = Math.Max(0, (int)Math.Floor(at) - ClipLead);
+            return new MemyClip(video[^11..], start, start + ClipDefault);
+        }
+        if (c.ValueKind == JsonValueKind.False) return null;   // свідомо без відео: кадр із ролика є, а сам ролик не годиться
+        if (c.ValueKind != JsonValueKind.Object) { why = "clip — не об'єкт, мем без відео"; return null; }
+        var (link, file) = (Str(c, "video"), Str(c, "file"));
+        if ((link.Length > 0) == (file.Length > 0)) { why = "clip — або video (YouTube), або file (відеофайл), мем без відео"; return null; }
+        string? v = null;
+        if (link.Length > 0 && (v = YouTube(link)) is null) { why = "clip.video — не https://www.youtube.com/watch?v=<id>, мем без відео"; return null; }
+        if (file.Length > 0 && !Https(file)) { why = "clip.file — не https-адреса, мем без відео"; return null; }
+        if (Int(c, "from") is not { } from || Int(c, "to") is not { } to || from < 0 || to - from is < ClipMin or > ClipMax)
+        { why = $"clip.from/to — не цілі секунди з довжиною {ClipMin}–{ClipMax} с, мем без відео"; return null; }
+        return v is not null ? new MemyClip(v[^11..], from, to) : new MemyClip(null, from, to, file);
     }
 
     [GeneratedRegex(@"^[A-Za-z0-9_-]{11}$")]
