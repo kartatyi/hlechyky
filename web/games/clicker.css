@@ -612,7 +612,6 @@
 .clk-uname b, .clk-mark b { font-size: .92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .clk-udesc { color: var(--muted); font-size: .74em; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clk-secret b { font-size: .95em; }
-.clk-up.best { border-color: var(--accent2); }
 .clk-up.skill { border-color: rgba(255, 138, 61, .45); }
 .clk-mark { border-style: dashed; border-color: var(--accent2); }
 .clk-lvl {
@@ -1449,8 +1448,29 @@
   white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.2;
 }
 .clk-unext { color: var(--accent2); font-size: max(12px, .72em); line-height: 1.25; overflow-wrap: anywhere; }
+/* ★ найвигідніше (09.11, владік: тонку рамку легко проґавити) — золота рамка, тепле тло й бейдж біля назви. Рядок ★
+   ставить paintBest: .best — найвигідніше, .wait — на нього ще бракує («копи на це»). Однаково для верстата, віхи й глини. */
+.clk .clk-up.best, .clk .clk-mark.best, .clk .clk-clay.best {
+  border: 2px solid var(--accent); box-shadow: 0 0 12px rgba(244, 197, 66, .35);
+  background: linear-gradient(90deg, rgba(244, 197, 66, .20), rgba(244, 197, 66, .05) 70%), var(--panel);
+}
+.clk .clk-up.best:not(:disabled):hover, .clk .clk-mark.best:not(:disabled):hover, .clk .clk-clay.best:not(:disabled):hover {
+  background: linear-gradient(90deg, rgba(244, 197, 66, .28), rgba(244, 197, 66, .08) 70%), var(--panel3);
+}
+.clk .clk-up.best .clk-uname::after, .clk .clk-mark.best .clk-udesc::before, .clk .clk-clay.best::before {
+  content: '★ найвигідніше'; flex: none; align-self: center; font-size: 11px; font-weight: 800; line-height: 16px;
+  padding: 0 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); white-space: nowrap;
+}
+.clk .clk-mark.best .clk-udesc::before { display: inline-block; margin-right: 6px; vertical-align: 1px; }
+.clk .clk-up.best.wait .clk-uname::after, .clk .clk-mark.best.wait .clk-udesc::before, .clk .clk-clay.best.wait::before { content: '★ копи на це'; }
+/* «Копи на це» — кнопка вимкнена, а сайтове button:disabled (opacity .5) гасило б і рамку з бейджем. Рамка яскрава, блідне лише
+   вміст (верстат і віха — правилом :disabled .clk-umain вище, глина — тут). */
+.clk .clk-up.best:disabled, .clk .clk-mark.best:disabled, .clk .clk-clay.best:disabled { opacity: 1; }
+.clk .clk-clay.best:disabled > * { opacity: .72; }
+.clk .clk-up.best .clk-pay, .clk .clk-mark.best .clk-pay { color: var(--accent); font-weight: 700; opacity: 1; }
 .clk .clk-up.best .clk-pay::before, .clk .clk-mark.best .clk-pay::before { content: '★ '; }
-.clk .clk-mark.best, .clk .clk-clay.best { border-color: var(--accent2); border-style: solid; box-shadow: 0 0 0 1px var(--accent2); }
+/* Смуга ★ над списком — жовта плашка, щоб її теж не проґавити. */
+.clk .clk-bestgo:not([hidden]) { background: rgba(244, 197, 66, .16); border-color: var(--accent); color: var(--accent); font-weight: 700; }
 /* «Точно?» — друге натискання купує (buyClick). */
 .clk .clk-up.ask { box-shadow: inset 0 0 0 2px var(--clk-fire); }
 .clk .clk-up.ask .clk-price { color: var(--clk-fire); }

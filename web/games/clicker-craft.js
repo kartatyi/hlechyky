@@ -641,6 +641,8 @@
       if (tries < 12) setTimeout(() => { if (st.el) goToGoal(st, api, Object.assign({}, g, { tab: null, tries })); }, 100);
       return;
     }
+    // Рядок у згортці (старі щаблі, «🏠 Хата» з глиною) — спершу розгорнути, інакше дивитись нема на що.
+    if (api.reveal) api.reveal(st, row);
     // v12 §2.6: посередині видимого, над нижнім меню, і з підсвіткою (clicker.js, lookAt).
     if (api.lookAt) { api.lookAt(st, row); return; }
     row.scrollIntoView({ block: 'nearest', behavior: smoothOk() ? 'smooth' : 'auto' });

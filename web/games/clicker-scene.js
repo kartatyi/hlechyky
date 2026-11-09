@@ -3288,37 +3288,23 @@
     if (c && c.rack && c.rackSize && c.rack.length >= c.rackSize) {
       list.push({ icon: EMBLEM.kiln, text: 'Сушарня повна — обпали сухе', sub: 'підмайстри стоять, поки нема місця', pct: 100, eta: -1, tab: 'craft', prio: 0 });
     }
-    // Верстати: що вже можна купити (найкоротша окупність) або що найближче за часом.
-    let bestNow = null;
+    // Покупка — та сама ★, що в Майстерні (api.bestBuy, 09.11): найкоротша окупність разом із часом, щоб назбирати.
+    // Раніше тут була своя мірка — будь-яка віха ×2 перша, верстати за сирим приростом, — і «Далі» радило не те, що ★.
     let near = null;
-    for (const [k, u] of Object.entries(st.ups || {})) {
-      if (u.open === false || (u.max > 0 && u.level >= u.max)) continue;
-      const left = u.price - pots;
-      const g = { icon: EMBLEM[k] || EMBLEM.wheel, key: k, text: u.name + ' · рівень ' + (u.level + 1), pct: (pots / u.price) * 100, eta: eta(left), tab: 'shop', row: '[data-buy="' + k + '"]' };
-      if (left <= 0) {
-        const pay = u.gain > 0 ? u.price / u.gain : Infinity;
-        if (!bestNow || pay < bestNow.pay) bestNow = Object.assign(g, { pay, sub: 'уже можна купити' + (Number.isFinite(pay) ? ' · окупиться за ' + api.span(pay) : '') });
-      } else if (!near || g.eta < near.eta) near = g;
+    const bb = api.bestBuy ? api.bestBuy(st, pots) : null;
+    if (bb) {
+      const u = bb.kind === 'up' ? st.ups[bb.key] : null;
+      const m = bb.kind === 'mark' ? (st.markList || []).find((x) => x.key === bb.key) : null;
+      const on = bb.kind === 'up' ? bb.key : m ? m.on || String(m.key).split(':')[0] : '';
+      const pay = api.payText ? api.payText(st, bb.pay) : api.span(bb.pay);
+      const g = { icon: EMBLEM[on] || EMBLEM.wheel, key: bb.key, pct: Math.min(100, (pots / bb.cost) * 100), eta: bb.wait, tab: 'shop',
+        text: u ? u.name + ' · рівень ' + (u.level + 1) : m ? 'Віха «' + m.name + '» · ' + m.desc : 'Глина «' + bb.name + '»',
+        row: '[data-' + (bb.kind === 'up' ? 'buy' : bb.kind) + '="' + bb.key + '"]',
+        // Мірка — один рівень: у «×10 / макс / до віхи» перемикаємо на ×1, як і ★ (goBest).
+        mode: u && st.mode && st.mode !== '1' ? '1' : undefined };
+      if (bb.wait <= 0) list.push(Object.assign(g, { prio: 1, sub: 'найвигідніше · уже можна купити · окупиться за ' + pay }));
+      else near = Object.assign(g, { sub: 'найвигідніше · окупиться за ' + pay });
     }
-    for (const m of st.markList || []) {
-      const left = m.price - pots;
-      const on = m.on || String(m.key).split(':')[0];
-      const g = { icon: EMBLEM[on] || EMBLEM.wheel, text: 'Віха «' + m.name + '» · ' + m.desc, pct: (pots / m.price) * 100, eta: eta(left), tab: 'shop', row: '[data-mark="' + m.key + '"]' };
-      // Віха ×2 — найвигідніше, що буває: якщо вже по кишені, пропонуємо першою. Модифікатор (v10) — за його силою:
-      // «пасив +25 %» окуповується як чверть пасиву, решта — наче двадцята частина; підпис — що вона справді дає.
-      if (left <= 0) {
-        const dbl = !m.effect || m.effect === 'double';
-        if (dbl) {
-          if (!bestNow || bestNow.pay !== -1 || m.price < bestNow.price) bestNow = Object.assign(g, { pay: -1, price: m.price, sub: 'уже можна купити — ×2 назавжди' });
-        } else {
-          const share = m.effect === 'passive' ? (m.amount || 0.25) : 0.05;
-          const pay = rate > 0 ? m.price / (share * rate) : Infinity;
-          if (!bestNow || (bestNow.pay !== -1 && pay < bestNow.pay)) bestNow = Object.assign(g, { pay, price: m.price, sub: 'уже можна купити — ' + m.desc });
-        }
-      }
-      else if (!near || g.eta < near.eta) near = g;
-    }
-    if (bestNow) list.push(Object.assign(bestNow, { prio: 1 }));
     // Новий виріб на колі. Вироби — з ремесла (clicker-craft.js): там назва й «відкриється на» вже зведені з каталогом.
     const wares = (st.craft && st.craft.wares) || [];
     if (wares.length) {

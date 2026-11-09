@@ -726,6 +726,46 @@
     return playGain(st, markLift(st, m, hm), dH);
   }
 
+  /// Найвигідніша наступна покупка — одна мірка для ★ Майстерні й кроку «Далі» (09.11). Мірка — скільки гри мине, доки
+  /// покупка окупиться, рахуючи й час, щоб на неї назбирати: max(0, ціна − глеки) / дохід + ціна / приріст. Раніше ★
+  /// брала лише те, що купується просто зараз і без «Точно?»: у пізній грі рівень Талавери — понад чверть глеків, тож ★
+  /// діставалась Селадону з окупністю вдвічі довшою (владік, 09.11); а «Далі» мав свою мірку — будь-яка віха ×2 перша,
+  /// хоч би й старому щаблю з десятою відсотка доходу. Кандидати — один крок: рівень верстата, віха, глина.
+  /// → { kind: 'up' | 'mark' | 'clay', key, name, cost, pay, wait } чи null.
+  function bestBuy(st, pots) {
+    if (!st.ups) return null;
+    const hm = houseMult(st);
+    const hand = clicking(st);
+    const income = playGain(st, st.baseSecond, handsOf(st));
+    let best = null, bestScore = Infinity;
+    const take = (kind, key, name, cost, add) => {
+      if (!(add > 0) || !(cost > 0)) return;
+      const wait = cost <= pots ? 0 : income > 0 ? (cost - pots) / income : Infinity;
+      const pay = cost / add;
+      const score = wait + pay;
+      if (score < bestScore) { bestScore = score; best = { kind, key, name, cost, pay, wait }; }
+    };
+    for (const k in st.ups) {
+      const u = st.ups[k];
+      if (u.open === false || (u.max > 0 && u.level >= u.max)) continue;
+      take('up', k, u.name, u.price, upGain(st, u, 1, hm, hand));
+    }
+    for (const m of st.markList || []) take('mark', m.key, m.name, m.price, markGain(st, m, hm, hand));
+    // Глина: купується раз і множить увесь пасив — але й руку (Біла — клік −50 %). Та, що зменшує пасив (Червона), не
+    // йде ніколи: пасив — те, що працює, поки тебе нема. Частка пасиву в кліку від глини не залежить (23.10) — тож
+    // пасив тут без «ліфту».
+    const cur = (st.clays || []).find((c) => c.on);
+    if (cur && cur.passive > 0 && cur.click > 0) {
+      for (const c of st.clays) {
+        if (c.owned || !(c.price > 0) || !(c.click > 0)) continue;
+        const dP = st.baseSecond * (c.passive / cur.passive - 1);
+        const dH = hand ? st.clickBase * (c.click / cur.click - 1) : 0;
+        take('clay', c.key, c.name, c.price, dP >= 0 ? (playLift(st) ? dP + dH * PLAY_CPS * Math.max(1, st.momentumMax || 1) : dP) : 0);
+      }
+    }
+    return best;
+  }
+
   /// Окупність у часі гри (v12 §7 п. 2): «~20 год гри» замість «окуп. 11 220 днів» пасиву. Понад рік — так і пишемо:
   /// мільйони днів ніхто не читає. sec — секунди гри (без «хвилини гри» у виді — секунди пасиву).
   function payText(st, sec) {
@@ -739,6 +779,36 @@
 
   /// Множник «до всього» (v12 §7 п. 12): до ×10 — відсотком («+174 %»), далі — разами («×37 546»), а не «+3 754 460,9 %».
   const allText = (pct) => (pct < 900 ? '+' + dec(pct) + ' %' : '×' + (pct < 9900 ? dec(1 + pct / 100) : num(1 + pct / 100)));
+
+  /// ★ — найвигідніша наступна покупка (bestBuy): рядок світиться, у рядку режимів — назва й окупність, дотик веде до
+  /// нього (goBest). Мірка ★ — один рівень, а кнопка верстата в «×10 / макс / до віхи» купила б пачку: тоді в смузі
+  /// «· ×1», і дотик перемкне на ×1. Ще не по кишені — ★ однаково на ньому (копити варто саме на нього) і каже, скільки
+  /// гри бракує, а не перескакує на гірше, що вже по кишені.
+  function paintBest(st, n) {
+    const b = st.mine ? bestBuy(st, n) : null;
+    const el = !b ? null : b.kind === 'up' ? st.buys.find((x) => x.dataset.buy === b.key)
+      : b.kind === 'mark' ? st.markBtns.find((x) => x.dataset.mark === b.key)
+      : (st.clayBtns || []).find((x) => x.dataset.clay === b.key);
+    st.best = b;
+    st.bestEl = el || null;
+    st.bestMode = b && b.kind === 'up' && st.mode !== '1' ? '1' : '';
+    if (st.bestMark !== st.bestEl) {
+      if (st.bestMark) st.bestMark.classList.remove('best', 'wait');
+      st.bestMark = st.bestEl;
+      if (st.bestEl) st.bestEl.classList.add('best');
+    }
+    const wait = !!b && b.wait > 0;
+    if (st.bestEl && st.bestEl.classList.contains('wait') !== wait) st.bestEl.classList.toggle('wait', wait);
+    // 21.10 тут стояло «★ Найвигідніше:» — без слова гравці не знали, що це за смуга. З 09.11 це слово несе бейдж на
+    // самому рядку («★ найвигідніше»), а смуга коротша, щоб окупність не обрізалась «…».
+    const go = b ? '★ ' + b.name + (st.bestMode ? ' · ×1' : '') + ' · '
+      + (wait ? 'бракує ' + payText(st, b.wait) : 'окуп. ' + payText(st, b.pay)) : '';
+    if (st.bestGo && st.bestGo.textContent !== go) {
+      st.bestGo.textContent = go; st.bestGo.hidden = !go;
+      st.bestGo.title = !b ? '' : (wait ? 'Найвигідніше копити на «' + b.name + '»: назбираєш за ' + payText(st, b.wait) + ', окупиться за '
+        : 'Найшвидше окупиться «' + b.name + '»: за ') + payText(st, b.pay) + ' — тисни, щоб перейти до цього рядка';
+    }
+  }
 
   // ---------- малювання ----------
 
@@ -818,11 +888,6 @@
     if (st.tab === 'shop') {
       const hm = houseMult(st);
       const now = Date.now();
-      const hand = clicking(st);
-      // ★ — найкоротша окупність серед усього, що купується за глеки просто зараз: пачка верстата (саме та, яку купить
-      // кнопка), віха в рядку й глина в хаті (v12 §2.1). Сірого не зірчимо (QA-2: ★ ставала на рядок, якого не купиш).
-      let best = null, bestPay = Infinity, bestName = '';
-      const consider = (el, pay, name, can) => { if (can && pay > 0 && pay < bestPay) { bestPay = pay; best = el; bestName = name; } };
       for (const b of st.buys) {
         const u = st.ups[b.dataset.buy];
         if (!u) continue;
@@ -848,8 +913,6 @@
         const add = upGain(st, u, k, hm);
         const cost = a.n ? a.cost : u.price;
         const pay = add > 0 ? cost / add : 0;
-        const star = upGain(st, u, k, hm, hand);
-        if (star > 0) consider(b, cost / star, u.name, !off && !soft && !needAsk(st, u, a, n, hm));
         // Пізня гра: клік — це відсоток пасиву, і «+1 глек за клік» нічого не дає — кажемо, чому окупності нема.
         const pt = pay ? 'окуп. ' + payText(st, pay) : '';
         if (b._pay && b._pay.textContent !== pt) b._pay.textContent = pt;
@@ -866,51 +929,10 @@
         const m = st.markByKey && st.markByKey[b.dataset.mark];
         const add = markGain(st, m, hm);
         const pay = add > 0 ? m.price / add : 0;
-        const star = markGain(st, m, hm, hand);
-        if (star > 0) consider(b, m.price / star, m.name, !off);
         const pt = pay ? 'окуп. ' + payText(st, pay) : '';
         if (b._pay && b._pay.textContent !== pt) b._pay.textContent = pt;
       }
-      // Глина: купується раз і множить увесь пасив — але й руку (Біла — клік −50 %). Рахуємо обидва (QA-2).
-      const cur = st.clays.find((c) => c.on);
-      for (const b of st.clayBtns) {
-        if (b.dataset.owned === '1' || !cur || !(cur.passive > 0) || !(cur.click > 0)) continue;
-        const c = st.clays.find((x) => x.key === b.dataset.clay);
-        if (!c || !(c.click > 0)) continue;
-        // Глина, що зменшує пасив (Червона), у ★ не йде ніколи: пасив — те, що працює, поки тебе нема.
-        // Клік глина множить увесь, а частка пасиву в ньому від глини не залежить (23.10) — тож пасив тут без «ліфту».
-        const dP = st.baseSecond * (c.passive / cur.passive - 1);
-        const dH = hand ? st.clickBase * (c.click / cur.click - 1) : 0;
-        const add = dP >= 0 ? (playLift(st) ? dP + dH * PLAY_CPS * Math.max(1, st.momentumMax || 1) : dP) : 0;
-        if (add > 0) consider(b, c.price / add, c.name, st.mine && n >= c.price);
-      }
-      // У «макс» (×10, «до віхи») усе, що купується, веде в «Точно?» — ★ з ×1: дотик до неї перемкне на ×1 (goBest).
-      let bestMode = '';
-      if (!best && st.mode !== '1') {
-        for (const b of st.buys) {
-          const u = st.ups[b.dataset.buy];
-          if (!u || (u.max > 0 && u.level >= u.max)) continue;
-          const a1 = afford(u, n, 1);
-          const star = upGain(st, u, 1, hm, hand);
-          if (star > 0) consider(b, a1.cost / star, u.name, st.mine && a1.n >= 1 && n >= a1.cost && !needAsk(st, u, a1, n, hm));
-        }
-        if (best) bestMode = '1';
-      }
-      st.bestMode = bestMode;
-      st.bestEl = best;
-      // Запасна ★ з ×1 у «макс» — лише в рядку режимів: рядок під нею в «макс» спитав би «Точно?», тож його не зірчимо.
-      const mark = bestMode ? null : best;
-      if (st.bestMark !== mark) {
-        if (st.bestMark) st.bestMark.classList.remove('best');
-        st.bestMark = mark;
-        if (mark) mark.classList.add('best');
-      }
-      // «★ Найвигідніше:» — без слова гравці не знали, що це за смуга і що буде від натиску (UI-прохід 21.10).
-      const go = best ? '★ Найвигідніше: ' + bestName + (bestMode ? ' · ×1' : '') + ' · ' + payText(st, bestPay) : '';
-      if (st.bestGo && st.bestGo.textContent !== go) {
-        st.bestGo.textContent = go; st.bestGo.hidden = !go;
-        st.bestGo.title = go ? 'Найшвидше окупиться «' + bestName + '» — тисни, щоб перейти до цього рядка' : '';
-      }
+      paintBest(st, n);
       if (secOpen(st, 'styles')) {
         for (const b of st.styleBtns) {
           const off = !st.mine || (b.dataset.owned !== '1' && n < +b.dataset.price);
@@ -2893,7 +2915,10 @@
       return;
     }
     if (a.n < 1) return;
-    if (needAsk(st, u, a, pots, houseMult(st)) && !(b._ask > Date.now())) {
+    // ★ гра радить сама — один її рівень не питає «Точно?», хоч би й брав понад чверть глеків (у пізній грі рівень
+    // верхнього щабля завжди такий). Пачка (×10, макс) питає й на ★: там «Точно?» береже від зливу всього.
+    const starred = st.bestEl === b && a.n === 1;
+    if (!starred && needAsk(st, u, a, pots, houseMult(st)) && !(b._ask > Date.now())) {
       b._ask = Date.now() + ASK_MS;
       b.classList.add('ask');
       H.api.sfx('tap');
@@ -2960,11 +2985,16 @@
     if (!el || !el.isConnected) return;
     if (st.bestMode && st.bestMode !== st.mode) setMode(st, st.bestMode);
     H.api.sfx('tap');
+    reveal(st, el);
+    lookAt(st, el);
+  }
+
+  /// Розгорнути все, що ховає рядок: згортки (старі щаблі, розділи Майстерні) і картки-згортки.
+  function reveal(st, el) {
     for (let d = el.parentElement; d && d !== st.el; d = d.parentElement) {
       if (d.tagName === 'DETAILS' && !d.open) { if (d.classList.contains('clk-old')) st.oldAuto = true; d.open = true; }
       if (d.dataset && d.dataset.fold && isFolded(d)) toggleFold(st, d);
     }
-    lookAt(st, el);
   }
 
   function prevIdle(ups, key) {
@@ -4091,6 +4121,12 @@
     showTab: (st, key) => setTab(st, key),
     /// «Глянути»: поставити ціль посередині видимого й підсвітити (lookAt).
     lookAt: (st, el) => lookAt(st, el),
+    /// Розгорнути згортки над рядком, щоб «Глянути» було на що дивитись.
+    reveal: (st, el) => { if (el && st.el) reveal(st, el); },
+    /// ★ — найвигідніша наступна покупка (одна мірка для Майстерні й «Далі»): { kind, key, name, cost, pay, wait } чи null.
+    bestBuy: (st, pots) => bestBuy(st, pots),
+    /// Окупність у часі гри: «~16 днів гри».
+    payText: (st, sec) => payText(st, sec),
     /// Свій шар частини: back — <g> у SVG під колом (viewBox 360×450, опорні точки — api.scene з clicker-scene.js),
     /// front — <div> над сценою (координати у відсотках сцени).
     layer(st, name, id) {
