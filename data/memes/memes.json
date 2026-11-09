@@ -722,7 +722,7 @@
    },
    "clip": {
     "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTQyLCJwdXIiOiJibG9iX2lkIn19--1ecda62472ef32f44b0c1e8d7e31bd67166b017a/ne-z-takoi-short.mp4",
-    "from": 0,
+    "from": 10,
     "to": 25
    },
    "crop": null,
@@ -1856,7 +1856,7 @@
    },
    "clip": {
     "video": "https://www.youtube.com/watch?v=1FWK-TM0S08",
-    "from": 11,
+    "from": 7,
     "to": 28
    },
    "crop": [
