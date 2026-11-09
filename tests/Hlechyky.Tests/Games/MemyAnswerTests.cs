@@ -132,7 +132,7 @@ public class MemyAnswerTests(ITestOutputHelper output)
         var ten = MemyCache.Ten();
         WithClip(ten[0], new { video = "https://www.youtube.com/watch?v=EUAIulcmNYI&t=30s", from = 34, to = 41 });
         WithClip(ten[1], new { video = "https://youtu.be/EUAIulcmNYI", from = 1, to = 5 });       // не канонічне
-        WithClip(ten[2], new { video = "https://www.youtube.com/watch?v=EUAIulcmNYI", from = 10, to = 40 }); // задовгий
+        WithClip(ten[2], new { video = "https://www.youtube.com/watch?v=EUAIulcmNYI", from = 10, to = 45 }); // задовгий
         WithClip(ten[3], new { video = "https://www.youtube.com/watch?v=EUAIulcmNYI", from = 3.5, to = 9 }); // не цілі
         var b = MemyBank.Parse(MemyCache.Json(ten), null);
         Assert.Equal(10, b.Memes.Count);                                        // мем лишається, лише без відео
@@ -163,6 +163,19 @@ public class MemyAnswerTests(ITestOutputHelper output)
         var b = MemyBank.Parse(MemyCache.Json([m]), null);
         Assert.Null(b.Find("u040")!.Clip);
         Assert.DoesNotContain(b.Problems, p => p.Contains("clip", StringComparison.Ordinal));
+    }
+
+    /// <summary>09.11: «можна і більше показувати» — короткий ролик 404 (25 с) і кліп на всю стелю (30 с) грають до кінця.</summary>
+    [Fact]
+    public void Long_clip_plays_to_the_end()
+    {
+        var ten = MemyCache.Ten();
+        WithClip(ten[0], new { file = "https://404.com.ua/rails/active_storage/blobs/proxy/abc/short.mp4", from = 0, to = 25 });
+        WithClip(ten[1], new { video = "https://www.youtube.com/watch?v=EUAIulcmNYI", from = 0, to = 30 });
+        var b = MemyBank.Parse(MemyCache.Json(ten), null);
+        Assert.Empty(b.Problems);
+        Assert.Equal(28_000, Memy.RevealFor(b.Find("w001")));
+        Assert.Equal(33_000, Memy.RevealFor(b.Find("w002")));
     }
 
     // ================================================================== за столом

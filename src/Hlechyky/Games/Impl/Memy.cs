@@ -23,9 +23,10 @@ public class Memy : Game
     public const int RevealMs = 6_000;
     /// <summary>
     /// Розкриття мему з кліпом: кліп плюс <see cref="RevealClipLead"/> (плеєр вантажиться, назву треба прочитати), але не
-    /// довше за <see cref="RevealClipMax"/>. «⏭ Далі» від усіх — наступний мем одразу.
+    /// довше за <see cref="RevealClipMax"/> — найдовший кліп банку грає до кінця (09.11 користувач: «можна і більше показувати»).
+    /// «⏭ Далі» від усіх — наступний мем одразу.
     /// </summary>
-    public const int RevealClipLead = 3_000, RevealClipMax = 16_000;
+    public const int RevealClipLead = 3_000, RevealClipMax = MemyBank.ClipMax * 1000 + RevealClipLead;
     /// <summary>Скільки стіл чекає на картинку (перший запуск — меми ще качаються), перш ніж здатись.</summary>
     public const int LoadTimeoutMs = 60_000;
     /// <summary>Як часто можна писати: спроби необмежені, але не перебором.</summary>

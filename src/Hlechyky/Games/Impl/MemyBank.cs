@@ -88,8 +88,11 @@ public sealed partial class MemyBank
     public const int NameMin = 2, NameMax = 60, AboutMax = 300, PhraseMax = 160, TagsMax = 3;
     /// <summary>Стеля <c>image.at</c>: десять годин — далі це вже точно помилка в банку, а не мем.</summary>
     public const double AtMax = 36000;
-    /// <summary>Довжина кліпу: сам момент, не ролик (рішення 08.11.2026 — 5–10 с; межі з запасом).</summary>
-    public const int ClipMin = 2, ClipMax = 20;
+    /// <summary>
+    /// Довжина кліпу: сам момент, не ролик (рішення 08.11.2026 — 5–10 с). 09.11 перевірка: «можна і більше показувати» —
+    /// короткий ролик 404.com.ua (23–26 с) грає цілим, тож стеля 30 с.
+    /// </summary>
+    public const int ClipMin = 2, ClipMax = 30;
     /// <summary>Мем із кадром із відео, але без <c>clip</c>: кліп від двох секунд до кадру, стільки секунд.</summary>
     public const int ClipLead = 2, ClipDefault = 8;
 

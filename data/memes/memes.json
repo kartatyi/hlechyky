@@ -722,8 +722,8 @@
    },
    "clip": {
     "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTQyLCJwdXIiOiJibG9iX2lkIn19--1ecda62472ef32f44b0c1e8d7e31bd67166b017a/ne-z-takoi-short.mp4",
-    "from": 1,
-    "to": 11
+    "from": 0,
+    "to": 25
    },
    "crop": null,
    "sources": [
@@ -757,8 +757,8 @@
    },
    "clip": {
     "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjY4LCJwdXIiOiJibG9iX2lkIn19--68cb7c310981b8172502541eb7e5334c4908979a/petro-shur-full.mp4",
-    "from": 0,
-    "to": 9
+    "from": 88,
+    "to": 104
    },
    "crop": null,
    "sources": [
@@ -957,8 +957,8 @@
    },
    "clip": {
     "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NjAxLCJwdXIiOiJibG9iX2lkIn19--16ef781936253b6db5815cc3257b8a4b75f28267/YTDown.com_YouTube_Media_FMzaIpmGPeM_001_360p.mp4",
-    "from": 17,
-    "to": 22
+    "from": 0,
+    "to": 23
    },
    "crop": [
     0,
@@ -1413,7 +1413,7 @@
    "clip": {
     "file": "https://404.com.ua/rails/active_storage/blobs/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NDQ3LCJwdXIiOiJibG9iX2lkIn19--2c2fe6285d9ec49655566c9b7f464fb36c573a17/short.mp4",
     "from": 0,
-    "to": 10
+    "to": 25
    },
    "crop": null,
    "sources": [
@@ -1774,8 +1774,8 @@
    },
    "clip": {
     "video": "https://www.youtube.com/watch?v=6wBMYOnrGL0",
-    "from": 19,
-    "to": 25
+    "from": 0,
+    "to": 26
    },
    "crop": [
     0,
@@ -1855,9 +1855,9 @@
     "page": "https://www.youtube.com/watch?v=wqT4vAMM_IM"
    },
    "clip": {
-    "video": "https://www.youtube.com/watch?v=wqT4vAMM_IM",
-    "from": 21,
-    "to": 29
+    "video": "https://www.youtube.com/watch?v=1FWK-TM0S08",
+    "from": 11,
+    "to": 28
    },
    "crop": [
     0,
