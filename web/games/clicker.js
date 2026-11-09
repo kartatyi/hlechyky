@@ -59,7 +59,7 @@
   const EVENT_GAP_MS = 2 * 60 * 1000;     // довший простій — гончаря не було: сервер випадковостей йому не рахує
   const LATE_GRAB_MS = 2 * 60 * 1000;     // натиск на глек без зв'язку чекає стільки (Clicker.LateGrab)
   const CLOCK_KEEP_MS = 60 * 1000;        // серверне «зараз» — від найменш запізнілого виду за стільки (див. update)
-  const NEWS_VERSION = 'v12';           // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
+  const NEWS_VERSION = 'v13';           // яку версію «Що нового» знає цей клієнт (те саме, що Clicker.NewsVersion)
   const PV = 10;                          // версія протоколу (Clicker.ProtocolVersion): ми вміємо доповнювати худий вид
   /// Чим клацнули: ті самі номери, що й ClickerGuard.Source на сервері.
   const SRC = { mouse: 0, touch: 1, pen: 2, key: 3 };
@@ -1099,6 +1099,9 @@
       ? 'Серія чекає: кіт спить, глеки з полиці не падають — серія не росте й не тріскає'
       : 'Серія спійманих глеків з полиці: наступний дасть на ' + Math.round(st.streakBonus * 100) + ' % більше' },
     { key: 'wish', icon: '🌠', name: () => 'Бажання', what: () => 'Бажання на зірку: наступний спійманий глек з полиці ×3' },
+    // v13 Г: баф з банки хвилин, яку гончар вмикає сам (чип «Увімкнути» нижче) — з відліком у хвилинах, як бафи друзів.
+    { key: 'feast', icon: '🎉', name: () => 'Свято', what: () => 'Свято: усе ×2' },
+    { key: 'basket', icon: '🧺', name: () => 'Кошик', what: () => 'Щасливий кошик: глеки з полиці ×3' },
     // Бафи від друзів (цех, clicker-guild.js): з відліком і від кого — отримувач бачить їх просто під колом.
     { key: 'flend', icon: '🧑‍🎓', name: (st) => 'від ' + friendBuffFrom(st, 'lend'), what: (st) => 'Підмайстер від ' + friendBuffFrom(st, 'lend') + ' у гостях: ліплення вдвічі швидше' },
     { key: 'fcheer', icon: '👏', name: (st) => 'від ' + friendBuffFrom(st, 'cheer'), what: (st) => 'Похвала від ' + friendBuffFrom(st, 'cheer') + ': +10 % до всього' },
@@ -1126,6 +1129,8 @@
     // Кіт спить (ClickerCatNap.cs) — серія чекає: 💤 замість відсотка, якого зараз однаково ніхто не отримає.
     if (st.fallStreak > 1) out.push({ key: 'streak', mult: st.fallNap === 'on' ? '💤' : '+' + Math.round(st.streakBonus * 100) + ' %' });
     if (st.starWish) out.push({ key: 'wish', mult: '×3' });
+    if (sn < (st.feastUntil || 0)) out.push({ key: 'feast', mult: '×2', until: st.feastUntil, span: st.feastSpan || 36e5, long: true });
+    if (sn < (st.basketUntil || 0)) out.push({ key: 'basket', mult: '×3', until: st.basketUntil, span: st.basketSpan || 36e5, long: true });
     const gb = st.guild && st.guild.enabled && st.guild.buffs;
     if (gb) {
       const lend = gb.lend ? Date.parse(gb.lend.until) || 0 : 0;
@@ -1243,8 +1248,68 @@
         if (b.level !== level) { b.level = level; b.bar.style.transform = 'scaleX(' + Math.max(0, level) + ')'; }
       }
     }
-    const any = now.length > 0;
+    // paintStock — першим і завжди: коротке замикання `now.length > 0 || paintStock(...)` не малювало чипи запасу, поки світиться
+    // хоч одна плашка (розгін, серія) — тобто майже завжди.
+    const stocks = paintStock(st);
+    const any = now.length > 0 || stocks > 0;
     if (st.buffs.hidden === any) st.buffs.hidden = !any;
+  }
+
+  // ---------- запаси «Свята» й «Щасливого кошика» (v13 Г) ----------
+  // Банка хвилин лежить у збереженні (стеля 180 хв), поповнюють її призи «Майстра» й «Ловця дня». Чип у тій самій сітці, що
+  // й плашки: «🎉 60 хв · Увімкнути». Тап витрачає всю банку одним відрізком (дія buff), плашка вище рахує його вниз.
+  const STOCK_KINDS = [
+    { kind: 'feast', icon: '🎉', word: 'Свято', order: 50, what: 'Свято: година ×2 до всього, поки тече запас. Тап — витратити весь запас одним відрізком' },
+    { kind: 'basket', icon: '🧺', word: 'Кошик', order: 51, what: 'Щасливий кошик: глеки з полиці ×3, поки тече запас. Тап — витратити весь запас одним відрізком' },
+  ];
+
+  function stockEls(st) {
+    if (st.stockEls && st.stockEls.host === st.buffs) return st.stockEls;
+    const els = { host: st.buffs };
+    for (const k of STOCK_KINDS) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'clk-buff clk-stock ' + k.kind;
+      el.hidden = true;
+      el.style.order = k.order;
+      el.title = k.what;
+      el.innerHTML = '<span class="clk-bico" aria-hidden="true">' + k.icon + '</span>'
+        + '<b class="clk-bnum"><span class="clk-bmul"></span><span class="clk-bsec long">хв</span></b>'
+        + '<span class="clk-bname"><span class="clk-bw">' + k.word + '</span><span class="clk-bt">Увімкнути</span></span>';
+      el.addEventListener('click', () => turnOnStock(st, k.kind));
+      st.buffs.appendChild(el);
+      els[k.kind] = { el, mul: el.querySelector('.clk-bmul'), min: -1 };
+    }
+    st.stockEls = els;
+    return els;
+  }
+
+  /// Скільки чипів запасу видно; текст міняємо, лише коли змінилась банка. Чужому колу (глядач) вмикати нічого — чипів нема.
+  function paintStock(st) {
+    if (!st.buffs) return 0;
+    const els = stockEls(st);
+    let shown = 0;
+    for (const k of STOCK_KINDS) {
+      const b = els[k.kind];
+      const min = st.mine ? st[k.kind + 'Bank'] || 0 : 0;
+      if (b.min !== min) {
+        b.min = min;
+        b.mul.textContent = String(min);
+        b.el.setAttribute('aria-label', k.word + ': ' + min + ' хв у запасі — увімкнути');
+      }
+      const on = min > 0;
+      if (b.el.hidden === on) b.el.hidden = !on;
+      if (on) shown++;
+    }
+    return shown;
+  }
+
+  function turnOnStock(st, kind) {
+    if (!st.mine || !st.ctx || (st[kind + 'Bank'] || 0) <= 0) return;
+    H.api.sfx('tap');
+    st.ctx.act('buff', { kind }).then((r) => {
+      if (r && r.message && st.ctx) st.ctx.toast(r.message, r.ok ? 'ok' : 'err');
+    });
   }
 
   /// Те, що не мусить жити шістдесят разів на секунду: рядок швидкості, бонуси, суперник, прогрес клейм.
@@ -1583,6 +1648,9 @@
     const wasFly = !!st.flyFall && !st.flyFall.hidden;
     // Сцени не видно (прокрутили, відкрите вікно) — глек летить поверх усього, у смузі справа (записка №29).
     const away = show && aside(st);
+    // v13 Г7: чарівний глек світиться (clicker-day.js ставить st.fallMagic з view.chores[3].magic) — і на полиці, і в смузі.
+    b.classList.toggle('magic', !!st.fallMagic);
+    if (st.flyFall) st.flyFall.classList.toggle('magic', !!st.fallMagic);
     flyFall(st, away, f, now);
     pinCatch(st);
     const here = show && !away;
@@ -3463,6 +3531,10 @@
     }
     const ups = v.craft && v.craft.ups;
     if (ups && ups.length && ups[0].name == null && !c.craftUps) return 'craft';
+    // v13: призи й пороги дошок дня й тижня та плата кораблів їдуть у каталозі, а не щопачки кліків у виді.
+    if (v.day && v.day.ends && !c.day) return 'day';
+    if (v.week && v.week.ends && !c.week) return 'week';
+    if (v.trade && !c.tradePay) return 'tradePay';
     return '';
   }
 
@@ -3542,7 +3614,26 @@
   /// пропустив «v11.1» — бачить і його рядки.
   /// «v12» (docs/games/specs/clicker-v12.md §9) — «Заморська торгівля» з подарунком; старі рядки — згорткою «Що було
   /// раніше» (плейтест 21.10: новачок середини гри діставав 510 слів про Толоку й клейма, яких у нього ще нема).
+  /// «v13» (docs/games/specs/clicker-v13.md) — без подарунка; хто пропустив «v12», бачить і його рядки згорткою.
   const NEWS = {
+    title: '✨ Що нового в Гончарному колі',
+    lead: 'Палій слухняніший, кораблі розкішніші, а в Глека щодня знайдеться для тебе доручення.',
+    lines: [
+      ['🌙', '<b>Палій має три режими.</b> «Завжди», «коли мене нема» і «лише руками». Хто колись вимикав палія, тепер має «коли мене нема» — сам не заважатиме, поки ти біля кола.'],
+      ['👑', '<b>Посольський корабель.</b> Двічі на добу заходить особливий: бере дзвінкі й розкішні в заморському розписі, Слави дає втричі, а платить удвічі.'],
+      ['🏛', '<b>Зала скарбів.</b> В альбомі — 18 речей у трьох вітринах (з полиці, з розписних глеків, з кораблів) і щоденна загадка від мене.'],
+      ['🏆', '<b>Дні майстра й ловця.</b> «Майстер дня» тепер дарує «Свято» — година ×2 до всього, а 🧺 «Ловець дня» — «Щасливий кошик». Запаси вмикаєш сам біля кола.'],
+      ['⛵', '<b>Тижневі змагання в «Селі».</b> «Хто більше виріс» з «Вітрилами тижня» і 🤝 спільне замовлення всієї округи.'],
+      ['📜', '<b>Доручення Глека.</b> Щодня три завдання й скриня за них, а сім днів поспіль — велика скриня.'],
+      ['✨', '<b>Чарівний глек.</b> Раз на добу — глек з бажанням: загадай собі чи подаруй другові.'],
+      ['🔥', '<b>Прожарка дня.</b> Щовечора о пів на дванадцяту я підбиваю день у Балачках — по-свійськи, з перчиком.'],
+    ],
+    ok: 'До кола!',
+    okGift: 'До кола!',
+  };
+
+  /// «v12» (docs/games/specs/clicker-v12.md §9) — для тих, хто пропустив: «Заморська торгівля» з подарунком.
+  const NEWS_12 = {
     title: '✨ Що нового в Гончарному колі',
     lead: 'Заморська торгівля: кораблі біля Пристані, Слава у світі й шість заморських майстерень — а Толоку тепер можна готувати наперед і підганяти власними руками.',
     lines: [
@@ -3835,11 +3926,12 @@
     // v11.2: хто бачив v11.1 — лише нове; хто ні — ще й рядки v11.1, а далі той самий ланцюжок.
     // v12: хто бачив v11.2 — лише нове; хто ні — ще й рядки v11.2 і далі ланцюжок, але все старе — згорткою «Що було
     // раніше»: вікно не розростається на тисячу слів про те, чого в гончаря ще нема. Подарунок v12 — у кожного.
-    const miss112 = seen !== 'v11.2';
+    const miss12 = seen !== 'v12';
+    const miss112 = miss12 && seen !== 'v11.2';
     const miss111 = miss112 && seen !== 'v11.1';
     const miss11 = miss111 && seen !== 'v11';
     const miss10 = miss11 && seen !== 'v10' && seen !== 'v10.1';
-    const old = (miss112 ? block(NEWS_112) : '') + (miss111 ? block(NEWS_111) : '') + (!miss11 ? '' : block(NEWS_11)
+    const old = (miss12 ? block(NEWS_12) : '') + (miss112 ? block(NEWS_112) : '') + (miss111 ? block(NEWS_111) : '') + (!miss11 ? '' : block(NEWS_11)
       + (seen !== 'v10.1' ? block(NEWS_101) : '')
       + (miss10 ? block(NEWS_10) : '')
       + (miss10 && seen !== 'v9.2' ? block(NEWS_92) : '')
@@ -3847,7 +3939,7 @@
     const html = newbie(st) ? startHtml(NEWS.okGift) : '<div class="clk-news"><h3>' + NEWS.title + '</h3><p class="muted small">' + NEWS.lead + '</p><ul>'
       + NEWS.lines.map(li).join('') + '</ul>'
       + (old ? '<details class="clk-news-old"><summary>Що було раніше</summary>' + old + '</details>' : '')
-      + '<button type="button" class="primary clk-news-ok">' + NEWS.okGift + '</button></div>';
+      + '<button type="button" class="primary clk-news-ok">' + (miss12 ? NEWS_12.okGift : NEWS.ok) + '</button></div>';
     // Закрили кнопкою, хрестиком чи затемненням — байдуже: сервер однаково запише «бачив», і вдруге не покаже.
     const body = H.api.overlay(st, html, { cls: 'clk-newsbox', onClose: () => order(st, 'news', { v: NEWS_VERSION }) });
     const ok = body.querySelector('.clk-news-ok');
@@ -3875,11 +3967,20 @@
       u.desc = s.desc;
       u.kind = s.kind;
       u.growth = s.growth;
+      // Худий вид шле множник віх лише для кола (там він від навичок); в решти це 2^віх, як рахує сервер.
+      if (u.boost == null) u.boost = s.kind === 'click' ? 1 : Math.pow(2, u.marks || 0);
+      // Нулі й порожнє худий вид не шле (межа розміру): ні приросту — 0, ні стелі — 0, ні наступної віхи — null.
+      if (u.gain == null) u.gain = 0;
+      if (u.max == null) u.max = 0;
+      if (u.nextMark === undefined) u.nextMark = null;
+      if (u.open === undefined) u.open = true;                  // шлеться лише закритий (open: false)
       // Вид міг прийти вдруге (refreshCard) уже доповненим — тоді nextMark уже об'єкт, лишаємо як є.
       if (typeof u.nextMark === 'number') u.nextMark = (s.marks || []).find((m) => m.level === u.nextMark) || null;
     }
     if (Array.isArray(v.marks)) {
       v.marks = v.marks.map((m) => {
+        // Худий вид шле віху рядком-ключем «верстат:рівень», повний — об'єктом з назвою.
+        if (typeof m === 'string') m = { key: m };
         const [on, lv] = String(m.key).split(':');
         const s = c.upgrades && c.upgrades[on];
         const mk = s && (s.marks || []).find((x) => x.level === +lv);
@@ -3887,7 +3988,8 @@
         return mk ? { key: m.key, on, level: +lv, name: mk.name, desc: mk.desc, price: mk.price, effect: mk.effect, amount: mk.amount } : null;
       }).filter(Boolean);
     }
-    const owned = (list) => new Set((list || []).filter((x) => x.owned).map((x) => x.key));
+    // Худий вид шле лише ключі того, що є (рядки), повний — об'єкти з прапорцем owned.
+    const owned = (list) => new Set((list || []).map((x) => (typeof x === 'string' ? x : x.owned ? x.key : null)).filter(Boolean));
     if (Array.isArray(v.secrets) && c.secrets) {
       const own = owned(v.secrets);
       v.secrets = c.secrets.map((s) => ({ ...s, owned: own.has(s.key) }));
@@ -4982,6 +5084,14 @@
         st.fairUntil = (v.fair && Date.parse(v.fair.until)) || 0;
         st.fairMult = (v.fair && v.fair.mult) || 7;
         st.inspireUntil = (v.inspire && Date.parse(v.inspire.until)) || 0;
+        // v13 Г: банки «Свята» й «Кошика» (null — запасів нема і нічого не тече). Смужка плашки тане від довжини відрізка.
+        for (const kind of ['feast', 'basket']) {
+          const b = v.buffs && v.buffs[kind];
+          const until = (b && b.until && Date.parse(b.until)) || 0;
+          if (until && until !== st[kind + 'Until']) st[kind + 'Span'] = Math.max(6e4, until - serverNow(st));
+          st[kind + 'Until'] = until;
+          st[kind + 'Bank'] = (b && b.bank) || 0;
+        }
         st.inspireMult = (v.inspire && v.inspire.mult) || 25;
         st.inspireShare = (v.inspire && v.inspire.share) || 0;
         // Скільки триває весь баф (з «Довгим ярмарком» — удвічі): від цього смужка під плашкою знає, з якої частки танути.

@@ -905,9 +905,16 @@
       // Шана «Горно» I/IV: підмайстер ще й розписує — так і кажемо, замість «якість звичайна».
       const kiln = v.shana && v.shana.on ? (v.shana.tracks || []).find((t) => t.key === 'kiln') : null;
       const paint = kiln && kiln.level >= 4 ? 30 : kiln && kiln.level >= 1 ? 15 : 0;
-      perks.push('<label class="clkg-auto"><input type="checkbox" class="clkg-autobox"' + (v.autoOff ? '' : ' checked') + (st.mine ? '' : ' disabled') + '> '
-        + '🔥 Автогорно: підмайстри самі палять повну сушарню'
-        + (paint ? ' і розписують її (краса ' + paint + ')' : ' (якість звичайна)') + '</label>');
+      // v13 Б: три режими замість галочки (сервер: guild { op: 'auto', mode }).
+      const mode = v.autoMode || (v.autoOff ? 'hands' : 'always');
+      perks.push('<div class="clkg-auto"><div>🔥 Автогорно: підмайстри самі палять повну сушарню'
+        + (paint ? ' і розписують її (краса ' + paint + ')' : ' (якість звичайна)') + '</div>'
+        + '<div class="clkg-modes" role="group" aria-label="Коли палить палій">'
+        + [['always', '🔥 завжди'], ['away', '🌙 коли мене нема'], ['hands', '✋ лише руками']].map(([key, label]) =>
+          '<button type="button" class="ghost small clkg-mode' + (mode === key ? ' on' : '') + '" data-mode="' + key + '" aria-pressed="' + (mode === key) + '"'
+          + (st.mine ? '' : ' disabled') + '>' + label + '</button>').join('')
+        + info('Завжди — палій палить, хоч би ти стояв біля кола. Коли мене нема — лише коли ти пішов (5 хв без дій руками чи «Закрити»): '
+          + 'поки ти тут, сушарня й горно твої. Лише руками — палій не палить зовсім.') + '</div></div>');
     }
     if (v.rank >= 2) perks.push('<div class="small">🏺 +' + v.kilnSlots + ' ' + api.plural(v.kilnSlots, 'місце', 'місця', 'місць')
       + ' у горні · вироби відкриваються на ' + (v.rank - 1) + ' ' + api.plural(v.rank - 1, 'щабель', 'щаблі', 'щаблів') + ' раніше</div>');
@@ -1397,8 +1404,9 @@
     for (const d of st.guildBody.querySelectorAll('.clkg-sh')) {
       d.ontoggle = () => { if (d.open) shanaOpen(st).add(d.dataset.sh); else shanaOpen(st).delete(d.dataset.sh); };
     }
-    const auto = q('.clkg-autobox');
-    if (auto) auto.onchange = () => act(st, api, { op: 'auto', on: auto.checked }, null);
+    for (const b of st.guildBody.querySelectorAll('.clkg-mode')) {
+      b.onclick = () => { if (!b.classList.contains('on')) act(st, api, { op: 'auto', mode: b.dataset.mode }, null); };
+    }
     for (const b of st.guildBody.querySelectorAll('[data-house]')) b.onclick = () => openHouse(st, api, b.dataset.house);
     st.guildCds = [...st.guildBody.querySelectorAll('.clkg-cd, .clkg-bragcd, .clkg-bufcd')];
     // Щойно поклали — колеса віза крутнуться.
@@ -1708,7 +1716,7 @@
       st.guild = {
         enabled: !!g.enabled, rank: g.rank || 0, day: g.day || null, prev: g.prev || null, claims: g.claims || [],
         gifts: g.gifts || { left: 0, sent: 0, got: 0 }, shelf: g.shelf || [], given: g.given || 0, next: g.next || null,
-        autoKiln: !!g.autoKiln, autoOff: !!g.autoOff, kilnSlots: g.kilnSlots || 0, bragAt: g.bragAt || null,
+        autoKiln: !!g.autoKiln, autoOff: !!g.autoOff, autoMode: g.autoMode || '', kilnSlots: g.kilnSlots || 0, bragAt: g.bragAt || null,
         wagonMult: g.wagonMult || 1,
         shana: g.shana || null, oboz: !!g.oboz,
         all: g.all || { n: 0, keep: 0 },

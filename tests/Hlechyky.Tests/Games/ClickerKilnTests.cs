@@ -1375,7 +1375,7 @@ public class ClickerKilnTests
     public void The_switch_stops_the_stoker_and_without_a_perk_there_is_no_switch()
     {
         var j = Wheel();
-        Patch(j, s => s["guild"] = new JsonObject { ["rank"] = 1, ["autoOff"] = true });
+        Patch(j, s => s["guild"] = new JsonObject { ["rank"] = 1, ["autoMode"] = "hands" });
         Rack(j, dry: 8);
         Assert.Equal("cold", State(j));
         Assert.False(Kiln(j).GetProperty("auto").GetBoolean());

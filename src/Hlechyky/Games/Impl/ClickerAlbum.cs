@@ -333,7 +333,9 @@ public sealed partial class Clicker
             "tile" => StoveTileIn(payload),
             "glue" => GlueShards(),
             "show" => AlbumShowSet(payload),
-            _ => ActResult.Fail("Такого в альбомі не роблять"),
+            // Зала скарбів (v13 Д2): загадка Глека — { op: "riddle", pick: "<ключ речі>" }.
+            "riddle" => Riddle(payload),
+            _ =>ActResult.Fail("Такого в альбомі не роблять"),
         };
     }
 
@@ -461,6 +463,7 @@ public sealed partial class Clicker
         _finds = 0;
         _findShards = 0;
         _lastFind = null;
+        ResetTreasure();
     }
 
     /// <summary>Обпал-престиж альбому не чіпає: клітинки, зірки, кахлі, музей і виставка — назавжди (майстерність — лічильник основи, теж лишається).</summary>
@@ -496,6 +499,8 @@ public sealed partial class Clicker
             finds = _finds,
             shards = _findShards,
             find = _lastFind is { } f ? new { key = f.Key, at = f.At, dup = f.Dup } : null,
+            // Друга зала (v13): речі, уламки вітрин і загадка дня; до відкриття альбому — null.
+            hall = ViewTreasure(),
             // Виставка: що стоїть на видноті (хата й хата друга беруть звідси).
             show = _albumShow.Select(k =>
             {
@@ -534,7 +539,8 @@ public sealed partial class Clicker
         find = FindBonus,
         museumFull = MuseumFullBonus,
         glue = ShardsForGlue,
-        finds = Finds.Select(f => new { key = f.Key, name = f.Name, desc = FindFacts[f.Key] }),
+        hall = CatalogTreasure(),
+        finds =Finds.Select(f => new { key = f.Key, name = f.Name, desc = FindFacts[f.Key] }),
         wares = WareFacts,
         styles = StyleFacts,
     };
@@ -610,11 +616,13 @@ public sealed partial class Clicker
     sealed record AlbumRow(
         Dictionary<string, List<string>>? Cells = null, Dictionary<string, List<string>>? Stars = null,
         List<StoveTile>? Stove = null, List<string>? Finds = null, int Shards = 0, LastFindRow? Last = null,
-        List<string>? Show = null);
+        List<string>? Show = null,
+        List<string>? Hall = null, List<int>? HallShards = null, TreasureRiddleRow? Riddle = null, List<string>? RiddleSeen = null);
 
     AlbumRow? SaveAlbum() => new(MasksToKeys(_albumCells), MasksToKeys(_albumStars), _stove.ToList(),
         Finds.Where((_, i) => (_finds & (1 << i)) != 0).Select(f => f.Key).ToList(), _findShards, _lastFind,
-        _albumShow.Count > 0 ? [.. _albumShow] : null);
+        _albumShow.Count > 0 ? [.. _albumShow] : null,
+        SaveTreasure(), SaveTreasureShards(), SaveRiddle(), SaveRiddleSeen());
 
     void LoadAlbum(AlbumRow? row)
     {
@@ -634,6 +642,7 @@ public sealed partial class Clicker
         }
         _findShards = Math.Clamp(row.Shards, 0, 10_000);
         _lastFind = row.Last is { } l && Finds.Any(f => f.Key == l.Key) ? l : null;
+        LoadTreasure(row.Hall, row.HallShards, row.Riddle, row.RiddleSeen);
         foreach (var key in row.Show ?? [])
             if (key is not null && _albumShow.Count < ShowMax && AlbumCellOpen(key) && !_albumShow.Contains(key, StringComparer.Ordinal))
                 _albumShow.Add(key);

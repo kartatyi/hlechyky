@@ -175,6 +175,7 @@ public static class PeopleEndpoints
         "stake" => "ставки",
         "clicker" => "обмін глеків",
         "clicker-day" => "Майстер дня в колі",
+        "clicker-catch" => "Ловець дня в колі",
         "sich-week" => "Січ щоденних — призи",
         "sich-nom" => "Січ щоденних — номінації",
         "ad" => "реклама",

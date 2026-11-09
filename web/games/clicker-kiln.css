@@ -183,16 +183,13 @@
   border-radius: 6px; background: var(--accent2); color: #24170a; font-weight: 700;
 }
 .clkk-painthint { line-height: 1.3; }
-.clkk-auto { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-/* Свій прапорець (UI-прохід 21.10): системний на темній темі — темний квадрат на темному тлі, його не помічали. */
-.clkk-autobox {
-  appearance: none; -webkit-appearance: none; flex: none; width: 18px; height: 18px; margin: 0; display: inline-grid; place-items: center;
-  border: 2px solid var(--accent2); border-radius: 5px; background: rgba(0, 0, 0, .2); cursor: pointer;
-}
-.clkk-autobox:checked { background: var(--accent2); }
-.clkk-autobox:checked::after { content: '✓'; color: var(--bg); font-size: 13px; font-weight: 800; line-height: 1; }
-.clkk-autobox:disabled { opacity: .5; cursor: default; }
-.clkk-autobox:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.clkk-auto { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--muted); }
+/* v13 Б: три режими палія замість галочки — активний підсвічений, як кнопки способів обпалу. */
+.clkk-modes { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.clkk-mode { padding: 3px 8px; border-radius: 8px; white-space: nowrap; }
+.clkk-mode.on { color: var(--fg); border-color: var(--accent2); background: var(--panel3); box-shadow: inset 0 0 10px rgba(244, 197, 66, .15); }
+.clkk-mode:disabled { opacity: .5; cursor: default; }
+.clkk-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Вибір техніки — компактні плитки (F5/F6, 08.10): значок і назва в рядок, два рядки опису (решта — за ⓘ у шапці),
    на ПК вікно ширше — 4–5 плиток у ряд, на телефоні два стовпці; «🎲 Навмання» — у шапці, а не на дні прокрутки. */
@@ -459,5 +456,5 @@ body.clk-toasts.clkk-revopen .toasts { top: auto; bottom: 18px; }
   .clkk-strawon { width: 22px; height: 22px; }
   .clkk-help > summary { min-height: 40px; display: flex; align-items: center; }
   .clkk-auto { min-height: 40px; }
-  .clkk-autobox { width: 22px; height: 22px; }
+  .clkk-mode { min-height: 40px; padding: 4px 10px; }
 }

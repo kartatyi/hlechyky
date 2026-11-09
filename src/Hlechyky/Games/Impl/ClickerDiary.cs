@@ -103,6 +103,8 @@ public sealed partial class Clicker
         relics = new SortedDictionary<string, int>(_relics, StringComparer.Ordinal),
         slava = _slava,
         shipsFull = _shipsFull,
+        // v13 Г6: скільки посольських відпливло повними за весь час — прожарка дня рахує різницю з учорашнім знімком
+        envoysFull = _envoysFull,
         toloka = new { built = _tBuilt.Order(StringComparer.Ordinal).ToList(), stage = _tStage },
         album = new
         {

@@ -25,7 +25,7 @@
   const LOOK_GRACE_MS = 1500;             // прийшов час корабля — стільки чекаємо, перш ніж спитати свіжий вид
   const ARM_MS = 4500;                    // «Точно?» на «Відпустити корабель» чекає другого натиску стільки
   const GAP_MIN = 40;                     // новий корабель — раз на стільки хвилин (Clicker.TradeGap)
-  /// Плата корабля за виріб (індекс — якість) — сервер шле її у виді (trade.pay, Clicker.TradePlayQ*, SlavaQ*); це — лише
+  /// Плата корабля за виріб (індекс — якість) — сервер шле її в каталозі (catalog.tradePay, Clicker.TradePlayQ*, SlavaQ*); це — лише
   /// на випадок старого сервера. Потрібна тільки для підсумку перед «Завантажити все»: платить сервер.
   const PAY = { minutes: [0, 0, 2, 3, 8], slava: [0, 0, 1, 2, 5], style: 1.5, styleSlava: 1, full: 0.1, fullSlava: 10 };
   const OPEN_MS = 10 * 60 * 1000;         // «→ у Майстерню» в розділі — до натиску, але не довше
@@ -91,39 +91,52 @@
 
   /// Що візьме «Завантажити все» (want штук) — тим самим порядком, що ShipLoad на сервері: спершу розкішні в рядок
   /// «з них K», далі решта, найгірша придатна якість першою, а в межах якості — розпис світу першим.
+  /// Усі кораблі біля Пристані: посол (окремо від трьох звичайних) першим.
+  const everyShip = (k) => (k.v.envoy ? [k.v.envoy, ...k.v.ships] : k.v.ships);
+
   function loadSum(st, s, want) {
     const items = ((st.craft && st.craft.items) || []).filter((it) => it.n > 0);
     const free = new Map(items.map((it) => [it, freeOf(it)]));
     const later = (it) => (worldStyle(st, it.style) ? 0 : 1);
-    const pick = (lux, n) => {
+    const pay = (st.trade.v && st.trade.v.pay) || PAY;
+    // Шана «Розкіш» II: розкішний виріб займає кілька місць (pay.luxWeight, як сервер), а платить як один.
+    const lw = Math.max(1, pay.luxWeight || 1);
+    const pick = (lux, n, places) => {
       const out = [];
       for (const it of items.filter((x) => fits(s, x, lux)).sort((a, b) => a.q - b.q || later(a) - later(b))) {
-        if (n <= 0) break;
-        const take = Math.min(free.get(it), n);
+        if (n <= 0 || places <= 0) break;
+        const wt = it.q >= 4 ? lw : 1;
+        const take = Math.min(free.get(it), n, Math.ceil(places / wt));
         if (take <= 0) continue;
         free.set(it, free.get(it) - take);
         out.push([it, take]);
         n -= take;
+        places -= Math.min(places, take * wt);
       }
       return out;
     };
     const luxLeft = Math.max(0, s.lux - s.loadedLux);
-    const plan = pick(true, Math.min(want, luxLeft));
+    const plan = pick(true, Math.min(want, Math.ceil(luxLeft / lw)), luxLeft);
     const luxN = plan.reduce((a, x) => a + x[1], 0);
-    plan.push(...pick(false, Math.min(want - luxN, s.n - s.loaded - luxLeft)));
-    const pay = (st.trade.v && st.trade.v.pay) || PAY;
+    plan.push(...pick(false, want - luxN, s.n - s.loaded - luxLeft));
+    // Посол платить ×2 хвилин гри й ×3 Слави за виріб, а за повний — +25 % плати й +50 % Слави (Clicker.Envoy*).
+    // «Заморська вітрина» повна: +25 % плати за кожен завантажений виріб (pay.treasureMult), у посла теж.
+    const em = (s.envoy ? pay.envoyMinutes || 2 : 1) * (pay.treasureMult || 1);
+    const es = s.envoy ? pay.envoySlava || 3 : 1;
+    const fullPay = s.envoy ? (pay.envoyFull == null ? 0.25 : pay.envoyFull) : pay.full;
+    const fullSlava = s.envoy ? pay.envoyFullSlava || 50 : pay.fullSlava;
     const sum = { n: 0, minutes: 0, slava: 0, q4: 0 };
     for (const [it, c] of plan) {
       const q = Math.min(4, it.q);
       const wd = worldStyle(st, it.style);
       sum.n += c;
-      sum.minutes += (pay.minutes[q] || 0) * (wd ? pay.style : 1) * c;
-      sum.slava += ((pay.slava[q] || 0) + (wd ? pay.styleSlava : 0)) * c;
+      sum.minutes += (pay.minutes[q] || 0) * (wd ? pay.style : 1) * c * em;
+      sum.slava += ((pay.slava[q] || 0) + (wd ? pay.styleSlava : 0)) * c * es;
       if (q >= 4) sum.q4 += c;
     }
     // Сервер знає більше (інше вікно щойно щось узяло) — решту рахуємо за ціною замовлення.
-    if (sum.n < want) { sum.minutes += (want - sum.n) * s.minutes; sum.slava += (want - sum.n) * s.slavaPer; sum.n = want; }
-    if (s.loaded + sum.n >= s.n) { sum.minutes *= 1 + pay.full; sum.slava += Math.ceil((sum.slava * pay.fullSlava) / 100); }
+    if (sum.n < want) { sum.minutes += (want - sum.n) * s.minutes * (pay.treasureMult || 1); sum.slava += (want - sum.n) * s.slavaPer; sum.n = want; }
+    if (s.loaded + sum.n >= s.n) { sum.minutes *= 1 + fullPay; sum.slava += Math.ceil((sum.slava * fullSlava) / 100); }
     return sum;
   }
 
@@ -133,6 +146,8 @@
 
   function infoText() {
     return 'Кораблі приходять до Пристані на Ворсклі раз на 40 хвилин (і без тебе), біля неї чекає до трьох, кожен стоїть 8 годин. '
+      + 'Окремо від них двічі на добу приходить 👑 посольський корабель: стоїть 12 годин, просить багато дзвінких виробів у розписі світу, '
+      + 'але платить удвічі більше хвилин гри й утричі більше Слави; повний — ще щедріше. '
       + 'Вантажити можна частинами. Корабель бере лише вільне — те, що відкладене під Толоку, замовлення сіл і гостей чи майстерштук, '
       + 'лишається в коморі; відкладене під Толоку можна віддати й кораблю — кнопкою «🔒», коли вільних нема.За кожен виріб — хвилини гри й Слава у світі: що краща якість і розпис світу, то більше; повний корабель — ще +10 %. '
       + 'Слава не витрачається й не згорає при обпалі: вона відчиняє шість заморських майстерень у «Майстерні».';
@@ -166,14 +181,15 @@
     const art = s.ware || ((wareList(st)[0] || {}).key) || 'jug';
     if (!(s.id in k.seen)) k.seen[s.id] = Date.now();
     const fresh = Date.now() - k.seen[s.id] < FRESH_MS;
-    return '<div class="clkt-ship' + (s.first ? ' first' : '') + (all ? ' ready' : '') + (fresh ? ' fresh' : '') + '" data-ship="' + s.id + '">'
+    return '<div class="clkt-ship' + (s.first ? ' first' : '') + (s.envoy ? ' envoy' : '') + (all ? ' ready' : '') + (fresh ? ' fresh' : '') + '" data-ship="' + s.id + '">'
       + '<div class="clkt-art">' + api.wareSvg(art, { style: s.style, quality: Math.max(1, s.q), cls: 'clkt-ware', slot: 'tr-' + s.id })
       + pennant(s.port) + '<span class="clkt-n">×' + s.n + '</span></div>'
       + '<div class="clkt-body">' + firstText
-      + '<div class="clkt-head"><b>Корабель з ' + esc(s.from) + '</b>'
-      + '<span class="clkt-time small muted" title="Скільки ще корабель стоятиме біля Пристані">⏳ <i class="clkt-cd" data-at="' + s.until + '" data-done="відпливає"></i></span></div>'
+      + '<div class="clkt-head"><b>' + (s.envoy ? '👑 Посольський корабель з ' : 'Корабель з ') + esc(s.from) + '</b>'
+      + '<span class="clkt-time small muted" title="Скільки ще ' + (s.envoy ? 'посол' : 'корабель') + ' стоятиме біля Пристані">⏳ <i class="clkt-cd" data-at="' + s.until + '" data-done="відпливає"></i></span></div>'
       + '<div class="clkt-line">просить: <b>' + what + ' ×' + s.n + '</b> <span class="clkt-req">(' + req.filter(Boolean).join(' · ') + ')</span></div>'
-      + '<div class="clkt-pay small">за виріб: <b>' + api.dec(s.minutes) + ' хв гри</b> · <b>🌍 +' + s.slavaPer + '</b> Слави' + worldPay(st, api, s) + '</div>'
+      + '<div class="clkt-pay small">за виріб: <b>' + api.dec(s.minutes) + ' хв гри</b> · <b>🌍 +' + s.slavaPer + '</b> Слави' + (s.envoy ? '' : worldPay(st, api, s)) + '</div>'
+      + (s.envoy ? '<div class="clkt-envoynote small">Слава ×3 · плата ×2 · повний: ще +50 % Слави і +25 % плати</div>' : '')
       + '<div class="clkt-bar"><i style="width:' + share + '%"></i><span>завантажено ' + s.loaded + ' з ' + s.n
       + (s.lux > 0 ? ' · розкішних ' + s.loadedLux + ' з ' + s.lux : '') + '</span></div>'
       + (!st.mine ? '' : all > 0
@@ -194,7 +210,7 @@
     const luxLeft = Math.max(0, s.lux - s.loadedLux);
     const hint = qHint(api, luxLeft > 0 && luxLeft === s.n - s.loaded ? 4 : s.q);
     const armed = k.arm && k.arm.id === s.id && Date.now() - k.arm.at < ARM_MS;
-    const rel = s.first ? ''
+    const rel = s.first || s.envoy ? ''
       : '<button type="button" class="ghost small clkt-rel' + (armed ? ' armed' : '') + (k.busy ? ' off" aria-disabled="true' : '') + '" data-rel="' + s.id + '"'
         + ' title="Корабель відпливе з тим, що вже на борту (за нього заплачено), а новий прийде за ' + GAP_MIN + ' хв">'
         + (armed ? '⚓ Точно відпустити?' : '⚓ Відпустити корабель') + '</button>';
@@ -293,6 +309,7 @@
     let html = '<div class="clk-sub clk-fh clkt-title" tabindex="0">🚢 Заморська торгівля<span class="muted small"> · біля Пристані '
       + live.length + ' з 3</span>' + api.info(esc(infoText())) + '</div>'
       + openedHtml(st, api) + slavaHtml(st, api);
+    if (t.envoy && t.envoy.until > sn) html += '<div class="clkt-envoys">' + shipCard(st, api, t.envoy) + '</div>';
     if (live.length) html += '<div class="clkt-ships">' + live.map((s) => shipCard(st, api, s)).join('') + '</div>';
     if (t.next) {
       html += '<div class="muted small clkt-next' + (live.length ? '' : ' empty') + '">' + (live.length ? '' : 'Біля Пристані порожньо · ')
@@ -342,7 +359,7 @@
     const sn = api.serverNow(st);
     // «🚢2» — скільки кораблів біля Пристані взагалі (UI-прохід 21.10: кораблі без вантажу на ярлику не рахувались, і
     // гравець їх не бачив); гучніше — коли є що вантажити.
-    const here = k.v && st.mine ? k.v.ships.filter((s) => s.until > sn) : [];
+    const here = k.v && st.mine ? everyShip(k).filter((s) => s.until > sn) : [];
     const ships = here.filter((s) => s.can > 0);
     const text = here.length ? '🚢' + here.length : '';
     const prio = ships.some((s) => s.first) ? 1 : ships.length ? 3 : 4;
@@ -374,13 +391,13 @@
   /// Перший вид лише запам'ятовує, що вже стоїть (що прийшло без тебе, каже «Поки тебе не було»).
   function arrivals(st, api) {
     const k = st.trade;
-    const ids = new Set(k.v.ships.map((s) => s.id));
+    const ids = new Set(everyShip(k).map((s) => s.id));
     if (k.known && st.mine) {
-      for (const s of k.v.ships) {
+      for (const s of everyShip(k)) {
         if (k.known.has(s.id) || s.first) continue;
         const all = Math.min(s.can, s.n - s.loaded);
         const what = (s.ware ? wareName(st, s.ware).toLowerCase() : 'вироби') + (s.style ? ' «' + styleName(st, s.style) + '»' : '');
-        api.toast(st, '🚢 До Пристані прийшов корабель з ' + s.from + ': ' + what + ' ×' + s.n
+        api.toast(st, (s.envoy ? '👑 До Пристані прийшов посольський корабель з ' : '🚢 До Пристані прийшов корабель з ') + s.from + ': ' + what + ' ×' + s.n
           + (all > 0 ? ' — можна завантажити ' + all : ' — поки нема чим завантажити'), 'ok');
       }
     }
@@ -432,7 +449,7 @@
     const k = st.trade;
     if (!human(e) || !st.mine || !k || !k.v || k.busy) return;
     const id = +btn.dataset.load;
-    const s = k.v.ships.find((x) => x.id === id);
+    const s = everyShip(k).find((x) => x.id === id);
     if (!s) return;
     const rest = s.n - s.loaded;
     const want = btn.dataset.all ? rest : Math.min(PLUS, rest);
@@ -445,7 +462,7 @@
     const k = st.trade;
     if (!human(e) || !st.mine || !k || !k.v || k.busy) return;
     const id = +btn.dataset.loadt;
-    const s = k.v.ships.find((x) => x.id === id);
+    const s = everyShip(k).find((x) => x.id === id);
     if (!s || !tolokaN(s)) return;
     if (!(k.armT && k.armT.id === id && Date.now() - k.armT.at < ARM_MS)) {
       k.armT = { id, at: Date.now() };
@@ -556,7 +573,7 @@
       };
     }
     const sn = api.serverNow(st);
-    const ships = k.v.ships.filter((s) => s.until > sn && s.can > 0);
+    const ships = everyShip(k).filter((s) => s.until > sn && s.can > 0);
     if (!ships.length) return styleGoal(st, api, ups);
     // Перший — найперше; далі той, що відпливає протягом години; інакше — куди влізе найбільше (не «завантаж 2» поруч із 40).
     const fit = (x) => Math.min(x.can, x.n - x.loaded);
@@ -565,7 +582,7 @@
     const n = fit(s);
     return {
       icon: '<text x="16" y="23" font-size="19" text-anchor="middle">🚢</text>',
-      text: 'Корабель з ' + s.from + ': завантаж ' + n,
+      text: (s.envoy ? '👑 Посол з ' : 'Корабель з ') + s.from + ': завантаж ' + n,
       sub: s.first ? 'перший корабель — відчинить першу майстерню'
         : sumText(api, loadSum(st, s, n)) + ' · відпливе за ' + left(api, s.until - sn),
       pct: (s.loaded / Math.max(1, s.n)) * 100, eta: -0.5, tab: 'guild', row: '[data-ship="' + s.id + '"]', prio: s.first ? 0.5 : 1,
@@ -608,13 +625,16 @@
       if (!t) {
         k.v = null;
       } else {
+        // Плата кораблів — у каталозі (catalog.tradePay); у виді лише гончарево: lw (місць на розкішний) і tm (вітрина).
+        const pay = Object.assign({}, (st.catalog && st.catalog.tradePay) || PAY, { luxWeight: t.lw || 1, treasureMult: t.tm || 1 });
+        const mapShip = (s) => ({
+          id: s.id, port: s.port, from: s.from || (pay.ports && pay.ports[s.port]) || s.port, ware: s.ware || '', style: s.style || '', q: s.q || 2, n: s.n || 0,
+          lux: s.lux || 0, loaded: s.loaded || 0, loadedLux: s.loadedLux || 0, until: ms(s.until), first: !!s.first,
+          can: s.can || 0, canToloka: s.canToloka == null ? s.can || 0 : s.canToloka, minutes: s.minutes || 0, slavaPer: s.slavaPer || 0, envoy: !!s.envoy,
+        });
         k.v = {
-          slava: t.slava || 0, next: t.next ? ms(t.next) : 0, full: t.full || 0, gate: t.gate || null, pay: t.pay || null,
-          ships: (t.ships || []).map((s) => ({
-            id: s.id, port: s.port, from: s.from || s.port, ware: s.ware || '', style: s.style || '', q: s.q || 2, n: s.n || 0,
-            lux: s.lux || 0, loaded: s.loaded || 0, loadedLux: s.loadedLux || 0, until: ms(s.until), first: !!s.first,
-            can: s.can || 0, minutes: s.minutes || 0, slavaPer: s.slavaPer || 0,
-          })),
+          slava: t.slava || 0, next: t.next ? ms(t.next) : 0, full: t.full || 0, gate: t.gate || null, pay,
+          envoy: t.envoy ? mapShip(t.envoy) : null, ships: (t.ships || []).map(mapShip),
         };
         gateMoved(st, api, k.gate);
         k.gate = k.v.gate;
@@ -638,7 +658,7 @@
       }
       if (!k.v) return;
       // Прийшов час нового корабля чи котрийсь відплив, а гончар лише дивиться: раз питаємо свіжий вид — сервер зведе Пристань.
-      const due = Math.min(k.v.next || Infinity, ...k.v.ships.map((s) => s.until));
+      const due = Math.min(k.v.next || Infinity, ...everyShip(k).map((s) => s.until));
       if (Number.isFinite(due) && st.mine && api.visible(st) && sn > due + LOOK_GRACE_MS && k.looked !== due) {
         k.looked = due;
         api.act(st, 'look');

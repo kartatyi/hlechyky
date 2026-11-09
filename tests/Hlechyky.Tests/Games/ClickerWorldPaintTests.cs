@@ -124,6 +124,10 @@ public class ClickerWorldPaintTests
         Assert.False(Act(h, "paint", new { key = "iznik" }).Ok);
         var owned = View(h).GetProperty("styles").EnumerateArray().Where(x => x.GetProperty("owned").GetBoolean()).Select(x => x.GetProperty("key").GetString());
         Assert.Equal(["jingdezhen"], owned);
+        // Худий вид (клієнт v10+) шле лише ключі наявного, решту клієнт бере з shopCatalog.
+        Assert.True(Act(h, "look", new { pv = Clicker.ProtocolVersion }).Ok);
+        owned = View(h).GetProperty("styles").EnumerateArray().Select(x => x.GetString());
+        Assert.Equal(["jingdezhen"], owned);
     }
 
     [Fact]

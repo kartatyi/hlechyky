@@ -1091,7 +1091,17 @@ public sealed partial class ClickerGuildService
             // Шана старійшини, «Розкіш» V (ClickerShana.cs): скринька розкоші в хаті.
             luxBox = Int(guild?["rank"]) >= Clicker.GuildElder
                 && Long(guild?["luxFired"]) >= Clicker.ShanaTracks.First(x => x.Key == Clicker.ShanaLux).Need[^1],
+            // «Вітрила тижня» (v13 Г4): вимпел на хаті друга, поки не скінчився строк — час судить клієнт.
+            pennant = Pennant(root["feast"]),
         };
+    }
+
+    /// <summary>Вимпел «Вітрил тижня» зі збереження (<c>feast.sails</c> і <c>sailsUntil</c>); немає чи нуль — null.</summary>
+    static object? Pennant(JsonNode? feast)
+    {
+        if (feast is not JsonObject f || f["sailsUntil"] is not JsonValue u || !u.TryGetValue<string>(out var until) || until.Length == 0) return null;
+        var pct = f["sails"] is JsonValue p && p.TryGetValue<double>(out var d) && double.IsFinite(d) ? Math.Clamp(d, 0, 100) : 0;
+        return pct > 0 ? new { pct, until } : null;
     }
 
     static List<string> Known(JsonNode? node, Func<string, bool> known) =>

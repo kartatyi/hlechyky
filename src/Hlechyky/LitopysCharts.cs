@@ -227,7 +227,7 @@ public sealed partial class Litopys
         var h when h.StartsWith("lelka", StringComparison.Ordinal) => "🐦 Лелека",
         "ach" => "🏅 ачівки",
         "daily" or "sich-week" or "sich-nom" => "🧩 щоденки",
-        "clicker" or "clicker-day" => "🏺 гончарне коло",
+        "clicker" or "clicker-day" or "clicker-catch" => "🏺 гончарне коло",
         var h when h is "shop" or "gift" || h.StartsWith("curse", StringComparison.Ordinal) => "🛍 Лавка",
         var h when h.StartsWith("ban", StringComparison.Ordinal) || h == "unban" => "🚫 бани треків",
         "liveads" => "🔥 прожарки",

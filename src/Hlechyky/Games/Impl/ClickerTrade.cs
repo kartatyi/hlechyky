@@ -39,6 +39,17 @@ public sealed partial class Clicker
     public const int SlavaQ2 = 1, SlavaQ3 = 2, SlavaQ4 = 5, SlavaStyle = 1, SlavaFullPct = 10;
     /// <summary>Скільки повних кораблів — на ачівку «Морський торговець».</summary>
     public const int ShipsForAchievement = 100;
+    /// <summary>
+    /// 👑 Посольський корабель (v13 §В, docs/games/specs/clicker-v13.md): окремо від трьох звичайних, приходить раз на 12 год і
+    /// стоїть 12 год — тож майже завжди один чекає. Просить 60–120 дзвінких і кращих у розписі світу чи заморському (чверть —
+    /// розкішні). Хвилини гри — ×2, Слава — ×3 від звичайного виробу; повний — Слави ще +50 %, плати ще +25 %.
+    /// </summary>
+    public static readonly TimeSpan EnvoyGap = TimeSpan.FromHours(12), EnvoyStay = TimeSpan.FromHours(12);
+    public const int EnvoyMin = 60, EnvoyMax = 120, EnvoyQuality = 3, EnvoyMinutesMul = 2, EnvoySlavaMul = 3, EnvoySlavaFullPct = 50,
+        EnvoysForAchievement = 10;
+    public const double EnvoyFullPay = 0.25;
+    /// <summary>Вага кожного світового розпису гравця при виборі розпису посла понад вільні в коморі (рецензія v13).</summary>
+    public const int EnvoyStyleBase = 5;
     /// <summary>Очки «Майстра дня» (ClickerDay.cs) за виріб з ручного горна: дзвінкий і розкішний.</summary>
     public const int DayPointsQ3 = 1, DayPointsQ4 = 3;
 
@@ -62,6 +73,14 @@ public sealed partial class Clicker
         var wins = svc.WinsOf(Ctx.NickOf(0));
         if (wins >= 1) Achieve("potter-day-win");
         if (wins >= 7) Achieve("potter-day-7");
+        // v13 Г1/Г2: призи «Свято» й «Кошик» за місця дня гончар забирає сам (ClickerFeast.cs).
+        ClaimDayPrizes(svc, Ctx.Clock.UtcNow);
+    }
+
+    /// <summary>Нагороди тижня (v13 Г4, Г5): «⛵ Вітрила» й бонус спільного замовлення гончар забирає сам, як і призи дня.</summary>
+    void SyncWeek()
+    {
+        if (WeekSvc() is { } svc) ClaimWeekPrizes(svc, Ctx.Clock.UtcNow);
     }
 
     /// <summary>Звідки корабель: родовий відмінок для «Корабель з …» і розпис тих країв (порожній — свого нема).</summary>
@@ -90,11 +109,13 @@ public sealed partial class Clicker
     /// <param name="Ware">Порожній — будь-який виріб (лише перший корабель).</param>
     /// <param name="Lux">Скільки з <paramref name="Count"/> мусять бути розкішними.</param>
     public sealed record ShipRow(int Id, string Port, string Ware, string Style, int Quality, int Count, int Lux,
-        DateTimeOffset At, DateTimeOffset Until, int Loaded = 0, int LoadedLux = 0, double Paid = 0, long SlavaGot = 0, bool First = false);
+        DateTimeOffset At, DateTimeOffset Until, int Loaded = 0, int LoadedLux = 0, double Paid = 0, long SlavaGot = 0, bool First = false,
+        bool Envoy = false);
 
     /// <summary>Стан у збереженні. Усе необов'язкове: старе збереження — «кораблів ще не було».</summary>
     public sealed record TradeRow(long Slava = 0, List<ShipRow>? Ships = null, int ShipId = 0, DateTimeOffset Next = default,
-        int Full = 0, bool FirstDone = false);
+        int Full = 0, bool FirstDone = false, ShipRow? Envoy = null, DateTimeOffset EnvoyNext = default, int EnvoyFull = 0,
+        DateTimeOffset EnvoyFullAt = default);
 
     long _slava;
     readonly List<ShipRow> _ships = [];
@@ -103,6 +124,12 @@ public sealed partial class Clicker
     /// <summary>Скільки кораблів відпливло повними за весь час (ачівки).</summary>
     int _shipsFull;
     bool _firstShipDone;
+    /// <summary>Посол, що чекає біля Пристані (не в <see cref="_ships"/>: місця звичайних не займає), і коли прийде наступний.</summary>
+    ShipRow? _envoy;
+    DateTimeOffset _envoyNext;
+    /// <summary>Скільки послів відпливло повними за весь час і коли востаннє (ачівка «Посол», вітрина Зали скарбів).</summary>
+    int _envoysFull;
+    DateTimeOffset _envoyFullAt;
 
     /// <summary>Торгівля відкрита: Пристань на Ворсклі збудована.</summary>
     bool TradeOpen => TolokaHas("pier");
@@ -201,6 +228,10 @@ public sealed partial class Clicker
         _shipNext = default;
         _shipsFull = 0;
         _firstShipDone = false;
+        _envoy = null;
+        _envoyNext = default;
+        _envoysFull = 0;
+        _envoyFullAt = default;
     }
 
     /// <summary>
@@ -210,6 +241,7 @@ public sealed partial class Clicker
     void SyncTrade(DateTimeOffset now)
     {
         SyncDay();
+        SyncWeek();
         if (!TradeOpen) return;
         // «Поки тебе не було» — один рядок на прибулі й один на ті, що відпливли (калібрування §17: неповних ~7 на добу,
         // і поштучні рядки витісняли купців, дарунки й Толоку з восьми нотаток).
@@ -254,6 +286,77 @@ public sealed partial class Clicker
                 + string.Join(", ", came.Select(s => "з " + PortOf(s.Port).From)));
         // Біля Пристані повно — наступний з'явиться за інтервал після того, як звільниться місце.
         if (_shipNext <= now) _shipNext = now + TradeGap;
+        SyncEnvoy(now);
+    }
+
+    /// <summary>Новий посол: розпис — з тих світових, що в гравця є (нема жодного — посла нема, null).</summary>
+    ShipRow? EnvoyNew(DateTimeOffset at)
+    {
+        var mine = _styles.Where(WorldStyle).Order(StringComparer.Ordinal).ToList();
+        if (mine.Count == 0) return null;
+        // Рецензія v13: жеребкування з вагою «вільного дзвінкого й кращого в коморі + 5» за кожен світовий розпис гравця —
+        // розпис із запасом випадає значно частіше, а порожній усе ж не відрізано (було: випадковий, і посол пустував).
+        var weights = mine.Select(st => ShipFree(it => it.Quality >= EnvoyQuality && it.Style == st) + EnvoyStyleBase).ToList();
+        var pick = Ctx.Rng.NextInt64(weights.Sum(w => (long)w));
+        var style = mine[^1];
+        for (var i = 0; i < mine.Count; i++)
+        {
+            if (pick < weights[i]) { style = mine[i]; break; }
+            pick -= weights[i];
+        }
+        var port = Ports[Ctx.Rng.Next(Ports.Length)];
+        var count = EnvoyMin + Ctx.Rng.Next(EnvoyMax - EnvoyMin + 1);
+        return new ShipRow(++_shipId, port.Key, "", style, EnvoyQuality, count, count / 4, at, at + EnvoyStay, Envoy: true);
+    }
+
+    /// <summary>
+    /// Прибуття й відплив посла за проміжок. Перший приходить на першій синхронізації; з кількох пропущених прибуттів лишається
+    /// найсвіжіше (воно ще не відпливло). Нема розпису світу — посол не приходить, а розклад чекає, щоб прийшов у ту ж мить,
+    /// як тільки розпис з'явиться.
+    /// </summary>
+    void SyncEnvoy(DateTimeOffset now)
+    {
+        if (_envoy is { } old && old.Until <= now)
+        {
+            _envoy = null;
+            AwayNote(old.Loaded > 0
+                ? $"👑 Посольський корабель з {PortOf(old.Port).From} відплив неповним: завантажили {old.Loaded} з {old.Count}"
+                : $"👑 Посольський корабель з {PortOf(old.Port).From} не дочекався вантажу — відплив");
+        }
+        if (_envoy is not null) return;
+        if (_envoyNext == default) _envoyNext = now;
+        if (_envoyNext > now) return;
+        var at = _envoyNext + EnvoyGap * (long)((now - _envoyNext) / EnvoyGap);
+        var e = EnvoyNew(at);
+        if (e is null) { _envoyNext = now; return; }
+        _envoy = e;
+        _envoyNext = at + EnvoyGap;
+        AwayNote($"👑 До Пристані прийшов посольський корабель з {PortOf(e.Port).From}: {e.Count} виробів у розписі «{Styles.FirstOrDefault(x => x.Key == e.Style)?.Name ?? e.Style}»");
+    }
+
+    /// <summary>
+    /// Посол відплив повним — єдине місце для всього, що за це належить (ачівка «Посол» і лічильники для Зали скарбів).
+    /// Тут же гарантована річ «⛵ Заморської вітрини» (річ за портом); повертає хвіст для тосту.
+    /// </summary>
+    string EnvoyDone(ShipRow s, DateTimeOffset now)
+    {
+        _envoysFull++;
+        _envoyFullAt = now;
+        if (_envoysFull == EnvoysForAchievement) Achieve("potter-envoy-10");
+        return TreasureRoll(2, TreasurePortPick(s.Port), sure: true);
+    }
+
+    /// <summary>Номер речі Заморської вітрини (0…5) за портом корабля; невідомий порт — випадкова.</summary>
+    int? TreasurePortPick(string? port) =>
+        port is not null && TreasurePortItem.TryGetValue(port, out var key)
+            ? Array.FindIndex(Treasures, t => t.Key == key) - 2 * TreasurePerCase : null;
+
+    /// <summary>Записати зміни рядка назад: посол живе окремо від звичайних.</summary>
+    void ShipPut(ShipRow s)
+    {
+        if (s.Envoy) { _envoy = s; return; }
+        var i = _ships.FindIndex(x => x.Id == s.Id);
+        if (i >= 0) _ships[i] = s;
     }
 
     ActResult? ActTrade(string action, JsonElement payload)
@@ -263,12 +366,15 @@ public sealed partial class Clicker
         var now = Ctx.Clock.UtcNow;
         var id = Num(payload, "id") ?? -1;
         var i = _ships.FindIndex(s => s.Id == id);
-        if (i < 0 || _ships[i].Until <= now) return ActResult.Fail("Цей корабель уже відплив");
+        var ship = i >= 0 ? _ships[i] : _envoy is { } e && e.Id == id ? e : null;
+        if (ship is null || ship.Until <= now) return ActResult.Fail("Цей корабель уже відплив");
+        var cap = ship.Envoy ? EnvoyMax : TradeMax;
         return Str(payload, "do") switch
         {
             // keep: false — «Точно? 🔒» на картці: узяти й те, що Толока тримає під свій етап (записка #77).
-            "load" => ShipLoad(i, (int)Math.Clamp(Num(payload, "n") ?? 1, 1, TradeMax), now, !KeepFlag(payload)),
-            "loadAll" => ShipLoad(i, TradeMax, now, !KeepFlag(payload)),
+            "load" => ShipLoad(ship, (int)Math.Clamp(Num(payload, "n") ?? 1, 1, cap), now, !KeepFlag(payload)),
+            "loadAll" => ShipLoad(ship, cap, now, !KeepFlag(payload)),
+            "release" when ship.Envoy => ActResult.Fail("Посол сам відпливе, коли мине його строк"),
             "release" => ShipRelease(i, now),
             _ => ActResult.Fail("Біля Пристані так не торгують"),
         };
@@ -293,16 +399,11 @@ public sealed partial class Clicker
     }
 
     /// <summary>
-    /// Завантажити до <paramref name="want"/> виробів: спершу розкішні, яких ще бракує в рядку «з них K розкішних», далі —
-    /// решта, найгірша придатна якість першою. Платимо й даємо Славу одразу за кожен виріб; повний — бонус і відплив.
+    /// Що візьме <see cref="ShipLoad"/> за <paramref name="want"/> виробів, не чіпаючи комори: список (виріб, скільки), скільки
+    /// місць зайняли розкішні й скільки місць разом (розкішний — за <see cref="ShanaShipLuxWeight"/> місць).
     /// </summary>
-    /// <remarks>
-    /// Шана «Розкіш» II: розкішний виріб займає на кораблі два місця (і в рядку «з них K розкішних» — теж за два), а
-    /// платять і дають Славу за нього, як за один. <paramref name="want"/> — скільки виробів узяти з комори.
-    /// </remarks>
-    ActResult ShipLoad(int index, int want, DateTimeOffset now, bool toloka = false)
+    (List<(ItemInfo Item, int N)> Plan, int LuxCredit, int Credit) ShipLoadPlan(ShipRow s, int want, bool toloka)
     {
-        var s = _ships[index];
         var w = ShanaShipLuxWeight;
         var luxLeft = Math.Max(0, s.Lux - s.LoadedLux);
         var left = s.Count - s.Loaded;
@@ -329,6 +430,21 @@ public sealed partial class Clicker
                 if (normal <= 0 || items <= 0) break;
             }
         }
+        return (plan, luxCredit, credit);
+    }
+
+    /// <summary>
+    /// Завантажити до <paramref name="want"/> виробів: спершу розкішні, яких ще бракує в рядку «з них K розкішних», далі —
+    /// решта, найгірша придатна якість першою. Платимо й даємо Славу одразу за кожен виріб; повний — бонус і відплив.
+    /// </summary>
+    /// <remarks>
+    /// Шана «Розкіш» II: розкішний виріб займає на кораблі два місця (і в рядку «з них K розкішних» — теж за два), а
+    /// платять і дають Славу за нього, як за один. <paramref name="want"/> — скільки виробів узяти з комори.
+    /// </remarks>
+    ActResult ShipLoad(ShipRow s, int want, DateTimeOffset now, bool toloka = false)
+    {
+        var luxLeft = Math.Max(0, s.Lux - s.LoadedLux);
+        var (plan, luxCredit, credit) = ShipLoadPlan(s, want, toloka);
         var got = plan.Sum(x => x.N);
         if (got == 0) return ActResult.Fail(ShipLack(s, luxLeft));
 
@@ -339,8 +455,8 @@ public sealed partial class Clicker
             var key = ItemKey(item.Ware, item.Style, item.Quality);
             if (_items[key] == n) _items.Remove(key);
             else _items[key] -= n;
-            minutes += TradeMinutesFor(item.Quality, item.Style) * ShanaLuxPayFor(item.Quality) * n;
-            slava += (long)SlavaFor(item.Quality, item.Style) * n;
+            minutes += TradeMinutesFor(item.Quality, item.Style) * ShanaLuxPayFor(item.Quality) * n * (s.Envoy ? EnvoyMinutesMul : 1) * TreasureShipMult;
+            slava += (long)SlavaFor(item.Quality, item.Style) * n * (s.Envoy ? EnvoySlavaMul : 1);
         }
         var pay = PlayPay(minutes);
         Add(pay);
@@ -348,26 +464,37 @@ public sealed partial class Clicker
         s = s with { Loaded = s.Loaded + credit, LoadedLux = s.LoadedLux + luxCredit, Paid = s.Paid + pay, SlavaGot = s.SlavaGot + slava };
         if (s.Loaded < s.Count)
         {
-            _ships[index] = s;
-            return ActResult.Accept($"🚢 На корабель з {PortOf(s.Port).From}: +{got} · +{PotsShort(pay)} · Слава +{Count(slava)} · ще {s.Count - s.Loaded}");
+            ShipPut(s);
+            return ActResult.Accept($"{(s.Envoy ? "👑" : "🚢")} На корабель з {PortOf(s.Port).From}: +{got} · +{PotsShort(pay)} · Слава +{Count(slava)} · ще {s.Count - s.Loaded}");
         }
 
         // Повний — бонус і відплив.
-        var bonusPay = s.Paid * TradeFullPay;
-        var bonusSlava = (s.SlavaGot * SlavaFullPct + 99) / 100;
+        var bonusPay = s.Paid * (s.Envoy ? EnvoyFullPay : TradeFullPay);
+        var bonusSlava = (s.SlavaGot * (s.Envoy ? EnvoySlavaFullPct : SlavaFullPct) + 99) / 100;
         if (s.First) bonusSlava = Math.Max(bonusSlava, SlavaGate[OverseasTiers[0]] - _slava);
         Add(bonusPay);
         _slava += Math.Max(0, bonusSlava);
-        _ships.RemoveAt(index);
-        _shipsFull++;
-        if (s.First) _firstShipDone = true;
-        if (_shipsFull == 1) Achieve("potter-ship-first");
-        if (_shipsFull == ShipsForAchievement) Achieve("potter-ship-100");
+        var treasure = "";
+        if (s.Envoy)
+        {
+            _envoy = null;
+            treasure = EnvoyDone(s, now);
+        }
+        else
+        {
+            _ships.RemoveAll(x => x.Id == s.Id);
+            _shipsFull++;
+            if (s.First) _firstShipDone = true;
+            if (_shipsFull == 1) Achieve("potter-ship-first");
+            if (_shipsFull == ShipsForAchievement) Achieve("potter-ship-100");
+            treasure = TreasureRoll(2, TreasurePortPick(s.Port));
+        }
         _viewVersion++;
+        ChoreBump("ship");
         var opened = OverseasTiers.FirstOrDefault(k => _slava >= SlavaGate[k] && _slava - slava - Math.Max(0, bonusSlava) < SlavaGate[k]);
-        var text = $"⛵ Корабель з {PortOf(s.Port).From} повний і відплив: +{PotsShort(pay + bonusPay)} · Слава +{Count(slava + Math.Max(0, bonusSlava))}";
+        var text = $"{(s.Envoy ? "👑" : "⛵")} {(s.Envoy ? "Посольський корабель" : "Корабель")} з {PortOf(s.Port).From} повний і відплив: +{PotsShort(pay + bonusPay)} · Слава +{Count(slava + Math.Max(0, bonusSlava))}";
         if (opened is not null) text += $" · 🌍 відкрито «{Shop.First(u => u.Key == opened).Name}» у Майстерні" + OpenedPrice(opened);
-        return ActResult.Accept(text);
+        return ActResult.Accept(text + treasure);
     }
 
     /// <summary>
@@ -406,41 +533,75 @@ public sealed partial class Clicker
     {
         if (!TradeOpen) return null;
         var next = OverseasTiers.FirstOrDefault(k => _slava < SlavaGate[k]);
-        return new
+        var wire = new Dictionary<string, object?>
         {
-            slava = _slava,
-            next = _ships.Count < TradeShipsMax ? _shipNext : (DateTimeOffset?)null,
-            full = _shipsFull,
-            // Таблиця плати за виріб (індекс — якість) — клієнт рахує підсумок «Завантажити все», не тримаючи своїх чисел.
-            pay = new
-            {
-                minutes = new[] { 0, 0, TradePlayQ2, TradePlayQ3, TradePlayQ4 }, slava = new[] { 0, 0, SlavaQ2, SlavaQ3, SlavaQ4 },
-                style = TradeStylePay, styleSlava = SlavaStyle, full = TradeFullPay, fullSlava = SlavaFullPct,
-            },
-            gate = next is null ? null : new { key = next, name = Shop.First(u => u.Key == next).Name, need = SlavaGate[next] },
-            ships = _ships.Select(s =>
-            {
-                var luxLeft = Math.Max(0, s.Lux - s.LoadedLux);
-                var normalLeft = s.Count - s.Loaded - luxLeft;
-                return new
-                {
-                    id = s.Id, port = s.Port, from = PortOf(s.Port).From, ware = s.Ware, style = s.Style, q = s.Quality,
-                    n = s.Count, lux = s.Lux, loaded = s.Loaded, loadedLux = s.LoadedLux, until = s.Until, first = s.First,
-                    // Скільки з вільного (не відкладеного) піде просто зараз — щоб кнопка не обіцяла більше, ніж візьме.
-                    can = Math.Min(luxLeft, ShipFree(ShipMatch(s, lux: true))) + Math.Min(normalLeft, ShipFree(ShipMatch(s, lux: false))),
-                    // А скільки — разом з тим, що Толока тримає під свій етап: кнопка «🔒 … і відкладене під Толоку» (записка #77).
-                    canToloka = Math.Min(luxLeft, ShipFree(ShipMatch(s, lux: true), true))
-                                + Math.Min(normalLeft, ShipFree(ShipMatch(s, lux: false), true)),
-                    // Скільки «хвилин гри» й Слави за звичайний виріб цього замовлення (без бонусу повного).
-                    minutes = TradeMinutesFor(s.Quality, s.Style), slavaPer = SlavaFor(s.Quality, s.Style),
-                };
-            }),
+            ["slava"] = _slava,
+            ["next"] = _ships.Count < TradeShipsMax ? _shipNext : (DateTimeOffset?)null,
+            ["full"] = _shipsFull,
+            ["envoysFull"] = _envoysFull,
+            ["ships"] = _ships.Select(ShipWire),
         };
+        // Таблиця плати за виріб — у каталозі (catalog.tradePay, <see cref="TradePayCatalog"/>): вона незмінна, а вид летить
+        // щопачки кліків. Тут лише те, що залежить від гончаря: скільки місць займає розкішний виріб (шана «Розкіш» II)
+        // і множник «Заморської вітрини» — коли вони не стандартні (≠ 1). Порожнього (нема посла, порога) не шлемо.
+        if (ShanaShipLuxWeight > 1) wire["lw"] = ShanaShipLuxWeight;
+        if (TreasureShipMult != 1) wire["tm"] = TreasureShipMult;
+        if (next is not null) wire["gate"] = new { key = next, name = Shop.First(u => u.Key == next).Name, need = SlavaGate[next] };
+        if (_envoy is not null) wire["envoy"] = ShipWire(_envoy);
+        if (_envoysFull > 0) wire["envoyFullAt"] = _envoyFullAt;
+        return wire;
+    }
+
+    /// <summary>
+    /// Таблиця плати за виріб (індекс — якість) для каталогу: клієнт рахує підсумок «Завантажити все», не тримаючи своїх чисел.
+    /// Незмінна, тож їде раз, а не щопачки кліків (ClickerSpeedTests); гончарево (розкішний виріб, вітрина) — у виді trade.
+    /// </summary>
+    object TradePayCatalog() => new
+    {
+        minutes = new[] { 0, 0, TradePlayQ2, TradePlayQ3, TradePlayQ4 }, slava = new[] { 0, 0, SlavaQ2, SlavaQ3, SlavaQ4 },
+        style = TradeStylePay, styleSlava = SlavaStyle, full = TradeFullPay, fullSlava = SlavaFullPct,
+        envoyMinutes = EnvoyMinutesMul, envoySlava = EnvoySlavaMul, envoyFull = EnvoyFullPay, envoyFullSlava = EnvoySlavaFullPct,
+        // Звідки корабель («з Делфта»): у рядку корабля лише ключ порту — назву клієнт бере тут.
+        ports = Ports.ToDictionary(p => p.Key, p => p.From, StringComparer.Ordinal),
+    };
+
+    /// <summary>Рядок корабля для клієнта (звичайного й посла); у посла хвилини й Слава за виріб уже з множниками ×2 і ×3.</summary>
+    object ShipWire(ShipRow s)
+    {
+        var can = ShipLoadPlan(s, int.MaxValue / 2, false).Plan.Sum(x => x.N);
+        var canToloka = ShipLoadPlan(s, int.MaxValue / 2, true).Plan.Sum(x => x.N);
+        var wire = new Dictionary<string, object?>
+        {
+            ["id"] = s.Id, ["port"] = s.Port, ["ware"] = s.Ware, ["style"] = s.Style, ["q"] = s.Quality,
+            ["n"] = s.Count, ["lux"] = s.Lux, ["loaded"] = s.Loaded, ["loadedLux"] = s.LoadedLux, ["until"] = s.Until,
+            // Скільки з вільного (не відкладеного) піде просто зараз — щоб кнопка не обіцяла більше, ніж візьме.
+            // Рахуємо тим самим планом, що й завантаження: розкішний виробом — за кілька місць (шана «Розкіш» II).
+            ["can"] = can,
+            // Скільки «хвилин гри» й Слави за звичайний виріб цього замовлення (без бонусу повного).
+            ["minutes"] = TradeMinutesFor(s.Quality, s.Style) * (s.Envoy ? EnvoyMinutesMul : 1),
+            ["slavaPer"] = SlavaFor(s.Quality, s.Style) * (s.Envoy ? EnvoySlavaMul : 1),
+        };
+        // А скільки — разом з тим, що Толока тримає під свій етап: кнопка «🔒 … і відкладене під Толоку» (записка #77).
+        // Збігається з can — не шлемо (клієнт бере can; вид летить щопачки кліків, ClickerSpeedTests).
+        if (canToloka != can) wire["canToloka"] = canToloka;
+        // Прапорці — лише коли підняті (посол, перший корабель): вид летить щопачки кліків.
+        if (s.Envoy) wire["envoy"] = true;
+        if (s.First) wire["first"] = true;
+        return wire;
     }
 
     TradeRow? SaveTrade() => _slava == 0 && _ships.Count == 0 && _shipsFull == 0 && !_firstShipDone && _shipNext == default
+                             && _envoy is null && _envoyNext == default && _envoysFull == 0
         ? null
-        : new TradeRow(_slava, _ships.ToList(), _shipId, _shipNext, _shipsFull, _firstShipDone);
+        : new TradeRow(_slava, _ships.ToList(), _shipId, _shipNext, _shipsFull, _firstShipDone, _envoy, _envoyNext, _envoysFull,
+            _envoyFullAt);
+
+    /// <summary>Рядок корабля зрозумілий: відомі порт, виріб, розпис; <paramref name="max"/> — стеля замовлення (посол просить більше).</summary>
+    static bool ShipValid(ShipRow? s, int max) =>
+        s is not null && s.Id > 0 && s.Port is not null && Ports.Any(p => p.Key == s.Port) && s.Ware is not null
+        && (s.Ware.Length == 0 || WareOf(s.Ware) is not null) && s.Style is not null
+        && (s.Style.Length == 0 || Styles.Any(x => x.Key == s.Style)) && s.Quality is >= 1 and <= QualityMax
+        && s.Count >= 1 && s.Count <= max && s.Lux >= 0 && s.Lux <= s.Count && s.Loaded >= 0 && s.Loaded < s.Count && s.Until > s.At;
 
     /// <summary>Збереження торгівлі: чого не зрозуміли (невідомий порт, виріб, розпис) — відкидаємо корабель, а не все.</summary>
     void LoadTrade(TradeRow? row)
@@ -451,18 +612,22 @@ public sealed partial class Clicker
         _slava = Math.Max(0, row.Slava);
         foreach (var s in row.Ships ?? [])
         {
-            if (s is null || s.Id <= 0 || s.Port is null || Ports.All(p => p.Key != s.Port) || s.Ware is null
-                || (s.Ware.Length > 0 && WareOf(s.Ware) is null) || s.Style is null
-                || (s.Style.Length > 0 && Styles.All(x => x.Key != s.Style)) || s.Quality is < 1 or > QualityMax
-                || s.Count is < 1 or > TradeMax || s.Lux < 0 || s.Lux > s.Count || s.Loaded < 0 || s.Loaded >= s.Count
-                || s.Until <= s.At || _ships.Count >= TradeShipsMax + 1)
-                continue;
-            _ships.Add(s with { LoadedLux = Math.Clamp(s.LoadedLux, 0, s.Lux), Paid = double.IsFinite(s.Paid) ? Math.Max(0, s.Paid) : 0,
-                SlavaGot = Math.Max(0, s.SlavaGot) });
+            if (!ShipValid(s, TradeMax) || _ships.Count >= TradeShipsMax + 1) continue;
+            _ships.Add(s! with { LoadedLux = Math.Clamp(s!.LoadedLux, 0, s.Lux), Paid = double.IsFinite(s.Paid) ? Math.Max(0, s.Paid) : 0,
+                SlavaGot = Math.Max(0, s.SlavaGot), Envoy = false });
         }
-        _shipId = Math.Max(Math.Max(0, row.ShipId), _ships.Count == 0 ? 0 : _ships.Max(s => s.Id));
+        if (ShipValid(row.Envoy, EnvoyMax) && row.Envoy!.Ware.Length == 0 && WorldStyle(row.Envoy.Style))
+        {
+            var e = row.Envoy;
+            _envoy = e with { LoadedLux = Math.Clamp(e.LoadedLux, 0, e.Lux), Paid = double.IsFinite(e.Paid) ? Math.Max(0, e.Paid) : 0,
+                SlavaGot = Math.Max(0, e.SlavaGot), Envoy = true, First = false };
+        }
+        _shipId = Math.Max(Math.Max(0, row.ShipId), Math.Max(_ships.Count == 0 ? 0 : _ships.Max(s => s.Id), _envoy?.Id ?? 0));
         _shipNext = row.Next > now + TradeGap ? now + TradeGap : row.Next;
         _shipsFull = Math.Max(0, row.Full);
         _firstShipDone = row.FirstDone;
+        _envoysFull = Math.Max(0, row.EnvoyFull);
+        _envoyFullAt = _envoysFull > 0 ? row.EnvoyFullAt : default;
+        _envoyNext = _envoy is not null ? _envoy.Until : row.EnvoyNext > now + EnvoyGap ? now + EnvoyGap : row.EnvoyNext;
     }
 }

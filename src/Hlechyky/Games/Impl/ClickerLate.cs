@@ -162,6 +162,14 @@ public sealed partial class Clicker
         _apronUsed = b.Apron;
         _cracks = b.Cracks;
         if (b.Busy && _brokenBusy > 0) _brokenBusy--;
+        // Рецензія v13: чарівний глек, спійманий пізно, не з'їдає спробу й не лишає тосту «розбився» (Sync уже встиг їх записати).
+        if (b.Fall.Magic)
+        {
+            _mwTries = Math.Max(0, _mwTries - 1);
+            _mwDone = true;
+            _mwAt = default;
+            _feastToasts.RemoveAll(t => t.StartsWith("✨ Чарівний глек розбився", StringComparison.Ordinal));
+        }
         return Grabbed(now, "📡 Спіймав — зв'язок наздогнав!");
     }
 

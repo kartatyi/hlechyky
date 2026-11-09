@@ -868,6 +868,14 @@
     }
     // Стріха: солом'яний навіс із нерівним краєм; «Новий дах» (Гончарня 25) — світліша й рівніша. Оздоба міняє покрівлю.
     s += roofArt(e);
+    // «Вітрила тижня» (v13 Г4): вимпел на гребені даху — золотий, срібний чи бронзовий за місцем у рості.
+    if (e.sails) {
+      const col = e.sails >= 20 ? '#f4c542' : e.sails >= 10 ? '#d6d9e2' : '#c98a4b';
+      s += '<g class="clks-pennant" transform="translate(190 121)"><path d="M0 2V-36" stroke="#4a3320" stroke-width="2" stroke-linecap="round"/>'
+        + '<circle cx="0" cy="-37" r="2" fill="#f2c230"/>'
+        + '<path class="clks-wave" d="M1.5 -34l25 7-25 7z" fill="' + col + '" stroke="#4a3320" stroke-width=".8" stroke-linejoin="round"/>'
+        + '<path d="M6 -27q6 .4 12 0" stroke="rgba(255,255,255,.75)" stroke-width="1.2" fill="none" stroke-linecap="round"/></g>';
+    }
     if (e.season === 'winter') s += '<path d="M-6 131Q60 120 120 126T240 125T366 128V133Q300 128 240 131T120 132T-6 136z" fill="#f4f7fb"/>';
     // «Вивіска на всю вулицю» (Гончарня 100) — дошка з глечиком на стрісі. Своє ім'я хати вішає дошку й без неї.
     if (e.workshop >= 100 || e.name) {
@@ -2599,7 +2607,17 @@
       toloka: tolokaEnv(st, v),           // v11: майдан Толоки (null — ще нема)
       trade: tradeEnv(st, v),             // v12: кораблі біля Пристані (null — торгівлі ще нема)
       luxBox: luxBoxOf(v),                // шана старійшини, «Розкіш» V: скринька розкоші
+      sails: sailsOf(v),                  // v13 Г4: вимпел «Вітрил тижня» на даху (20 / 10 / 5 — золото, срібло, бронза; 0 — нема)
     };
+  }
+
+  /// «Вітрила тижня» (ClickerWeek.cs): вимпел на даху, поки не скінчився строк. Свій вид шле buffs.week.sails {pct, until},
+  /// хата друга — pennant у публічному знімку (ту саму форму кладе houseSvg у fake.buffs). Сходинками, щоб малюнок не
+  /// перемальовувався від кожної дрібниці: 20+ — золото, 10+ — срібло, решта — бронза.
+  function sailsOf(v) {
+    const s = v && v.buffs && v.buffs.week && v.buffs.week.sails;
+    if (!s || !(s.pct > 0) || !(Date.parse(s.until) > Date.now())) return 0;
+    return s.pct >= 20 ? 20 : s.pct >= 10 ? 10 : 5;
   }
 
   /// Скринька розкоші (ClickerShana.cs): старійшина з «Розкішшю» на п'ятому щаблі. Хата друга шле те саме полем luxBox.
@@ -3469,6 +3487,8 @@
           toloka: h && Array.isArray(h.built) && h.built.length ? { built: h.built } : null,
           // Шана старійшини: скринька розкоші друга.
           luxBox: !!(h && h.luxBox),
+          // Вимпел «Вітрил тижня» друга: pennant {pct, until} із публічного знімка цеху.
+          buffs: { week: { sails: (h && h.pennant) || null } },
         };
         const sky = (st2 && st2.scn && st2.scn.sky) || st.scn.sky;
         // Свої id (градієнти хати друга не мусять зникати, коли головну сцену сховало Око майстра) і ті самі змінні неба.

@@ -228,6 +228,8 @@ public sealed class Economy(EconomyStore store, GameNames names, IClock clock,
             // «🏆 Майстер дня» в колі (ClickerDay.cs): хвіст — київський день «2026-11-04». Без підпису тост і гаманець
             // показували сирий код «clicker-day:2026-11-04» (записка #76); місце — у тості, його пише сам ClickerDay.
             "clicker-day" => "🏆 Майстер дня в колі — приз" + (DateOnly.TryParseExact(tail, "yyyy-MM-dd", out var d) ? $" за {d:dd.MM}" : ""),
+            // «🧺 Ловець дня» (v13, ClickerDay.cs) — та сама дошка дня, свій хвіст-день.
+            "clicker-catch" => "🧺 Ловець дня в колі — приз" + (DateOnly.TryParseExact(tail, "yyyy-MM-dd", out var dc) ? $" за {dc:dd.MM}" : ""),
             // Січ щоденних (Sich.cs): у тості свій рядок з місцем і номінацією, а історія гаманця бере цей
             "sich-week" => "🏆 Січ щоденних — приз тижня",
             "sich-nom" => "Січ щоденних — номінація тижня",

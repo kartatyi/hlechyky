@@ -22,7 +22,7 @@
   const OFF_LS = 'clk.glek.off';          // '1' — підказки Глека вимкнено
   const OFF_TIP = 'Підказки Глека вимкнено — клацни, щоб увімкнути знову';
   /// Куди веде кнопка поради (where з ClickerAdvisor): глину ставимо одразу, решта — вкладка.
-  const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire' };
+  const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire', kiln: 'craft' };
   /// …а в «Селі» — ще й до розділу (ключі рядка переходів, clicker-guild.js NAV).
   const WHERE_SEC = { village: 'rep', guests: 'guests', pier: 'trade', toloka: 'toloka' };
 

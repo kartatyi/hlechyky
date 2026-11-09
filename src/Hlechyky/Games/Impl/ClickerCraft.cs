@@ -684,17 +684,23 @@ public sealed partial class Clicker
             // вартий простий. Назва й «відкриється на» — у каталозі (catalog.wares): вид летить щопачки кліків (десяте
             // оновлення, §10). Старій вкладці — як до v10, з назвою й порогом.
             wares = Wares.Select(x => _slim
-                ? (object)new { key = x.Key, open = WareOpen(x.Key), need = WorkOf(x), fired = FiredOf(x.Key), value = ItemValue(x.Key, "", 1) }
+                ? (object)new { key = x.Key, open = WareOpen(x.Key), need = WorkOf(x), fired = FiredOf(x.Key), value = Sig(ItemValue(x.Key, "", 1)) }
                 : new
                 {
                     key = x.Key, name = x.Name, open = WareOpen(x.Key), unlock = x.Unlock, need = WorkOf(x), fired = FiredOf(x.Key),
                     value = ItemValue(x.Key, "", 1),
                 }),
-            items = AllItems().Select(x => new
+            items = AllItems().Select(x =>
             {
-                key = ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality), ware = x.Item.Ware, style = x.Item.Style, q = x.Item.Quality,
-                n = x.Count, value = ItemValue(x.Item.Ware, x.Item.Style, x.Item.Quality),
-                kept = why.GetValueOrDefault(ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality)),
+                var key = ItemKey(x.Item.Ware, x.Item.Style, x.Item.Quality);
+                var row = new Dictionary<string, object?>
+                {
+                    ["key"] = key, ["ware"] = x.Item.Ware, ["style"] = x.Item.Style, ["q"] = x.Item.Quality,
+                    ["n"] = x.Count, ["value"] = Sig(ItemValue(x.Item.Ware, x.Item.Style, x.Item.Quality)),
+                };
+                // Відкладене під Толоку, замовлення й майстерштук — лише коли щось відкладено (kept = [Толока, замовлення, майстерштук]).
+                if (why.GetValueOrDefault(key) is { } kept) row["kept"] = kept;
+                return row;
             }),
             storeCap = StoreCapNow,
             // Візок хати (+10 %): базар платить value × це — комора показує справжню плату (v12 QA-3, D1).
@@ -758,6 +764,10 @@ public sealed partial class Clicker
             titles = CatalogTitles(),
             guests = CatalogGuests(),
             toloka = CatalogToloka(),
+            // v13: незмінне про дошки дня й тижня та плату кораблів — раз у каталозі, а не щопачки кліків у виді (межа 25 КБ).
+            day = DaySvc()?.CatalogWire(),
+            week = WeekSvc()?.CatalogWire(),
+            tradePay = TradePayCatalog(),
         };
     }
 

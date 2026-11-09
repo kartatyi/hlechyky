@@ -149,7 +149,14 @@
 .clkg-piece.have { border-color: var(--accent2); border-style: solid; }
 .clkg-big { width: 54px; height: 56px; flex: none; }
 .clkg-perks { display: flex; flex-direction: column; gap: 3px; }
-.clkg-auto { display: flex; gap: 6px; align-items: flex-start; font-size: .85em; cursor: pointer; }
+.clkg-auto { display: flex; flex-direction: column; gap: 4px; font-size: .85em; }
+/* v13 Б: три режими палія — активний підсвічений. */
+.clkg-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.clkg-mode { padding: 3px 8px; border-radius: 8px; white-space: nowrap; }
+.clkg-mode.on { color: var(--fg); border-color: var(--accent2); background: var(--panel3); }
+.clkg-mode:disabled { opacity: .5; cursor: default; }
+.clkg-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .clkg-mode { min-height: 40px; padding: 4px 10px; } }
 .clkg-top { padding: 6px; border-radius: 10px; background: rgba(244, 197, 66, .08); }
 /* ---- шана старійшини (ClickerShana.cs) ----
    П'ять гілок одна під одною: рядок «значок назва щабель · смужка · лічильник», під «▾» — п'ять перків, набрані з ✓. */

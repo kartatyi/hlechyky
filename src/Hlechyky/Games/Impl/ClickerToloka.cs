@@ -187,7 +187,7 @@ public sealed partial class Clicker
 
     bool TolokaHas(string key) => _tBuilt.Contains(key);
 
-    double TolokaAllMult => (1 + TolokaAllBonus * _tBuilt.Count) * (Ctx.Clock.UtcNow < _festUntil ? FestivalMult : 1);
+    double TolokaAllMult => (1 + TolokaAllBonus * _tBuilt.Count) * (!_plainMeasure && Ctx.Clock.UtcNow < _festUntil ? FestivalMult : 1);
     double TolokaDryMult => TolokaHas("well") ? WellDryMult : 1;
     double TolokaWindWait => TolokaHas("mill") ? MillWindWait : 1;
     int TolokaStoreExtra => TolokaHas("forge") ? ForgeStore : 0;
@@ -358,6 +358,7 @@ public sealed partial class Clicker
             bag[ik] = bag.GetValueOrDefault(ik) + n;
             moved += n;
         }
+        ChoreBump("toloka", moved);
         return moved;
     }
 
@@ -445,7 +446,7 @@ public sealed partial class Clicker
             if (have < left) lack.Add($"{NeedWord(st.Needs[i])} — ще {left - have}");
         }
         if (lack.Count > 0) return ActResult.Fail("Бракує виробів: " + string.Join("; ", lack));
-        for (var i = 0; i < st.Needs.Length; i++) TakeItems(TolokaMatch(st.Needs[i]), TolokaLeft(st, i), new TakeFor("toloka"));
+        for (var i = 0; i < st.Needs.Length; i++) ChoreBump("toloka", TakeItems(TolokaMatch(st.Needs[i]), TolokaLeft(st, i), new TakeFor("toloka")));
         // Склад цього етапу пішов на будову разом із коморою.
         for (var i = 0; i < st.Needs.Length; i++) _tDepot.Remove(DepotKey(b.Key, Math.Clamp(_tStage, 0, b.Stages.Length - 1), i));
         _pots -= st.Pay;
@@ -463,6 +464,7 @@ public sealed partial class Clicker
         _festUntil = now + FestivalFor;
         _festNext = now + FestivalEvery;
         Achieve("potter-festival");
+        ChoreBump("fest");
         return ActResult.Accept($"🎉 Гуляй, майдане! Година ×{FestivalMult:0} до всього");
     }
 
@@ -495,6 +497,7 @@ public sealed partial class Clicker
     {
         if (n <= 0) return;
         var before = _tHelped;
+        ChoreBump("toloka", n);
         _tHelped = (int)Math.Min(int.MaxValue, (long)_tHelped + n);
         if (before < TolokaHelpForAchievement && _tHelped >= TolokaHelpForAchievement) Achieve("potter-toloka-helper");
     }
@@ -554,16 +557,16 @@ public sealed partial class Clicker
         var plan = ahead.Where(x => near.Contains(x.B.Key) || x.B.Stages[x.S].Needs.Where((_, i) => DepotCount(DepotKey(x.B.Key, x.S, i)) > 0).Any()).Select(x => new
         {
             building = x.B.Key, index = x.S,
-            needs = x.B.Stages[x.S].Needs.Select((n, i) => new { ware = n.Ware, n = n.N, q = n.Q, style = n.Style, depot = DepotCount(DepotKey(x.B.Key, x.S, i)) }).ToList(),
+            // Рядок потреби — масив [виріб, скільки, якість, розпис, на складі]: вид летить щопачки кліків (ClickerSpeedTests).
+            needs = x.B.Stages[x.S].Needs.Select((n, i) => (object)new object[] { n.Ware, n.N, n.Q, n.Style, DepotCount(DepotKey(x.B.Key, x.S, i)) }).ToList(),
         }).ToList();
         var totals = ahead.SelectMany(x => x.B.Stages[x.S].Needs.Select((n, i) => (n, depot: DepotCount(DepotKey(x.B.Key, x.S, i)))))
             .GroupBy(x => (x.n.Ware, x.n.Q, x.n.Style))
-            .Select(g => new
-            {
-                ware = g.Key.Ware, q = g.Key.Q, style = g.Key.Style, n = g.Sum(x => x.n.N), depot = g.Sum(x => x.depot),
-                have = ItemCount(TolokaMatch(new TolokaNeed(g.Key.Ware, 0, g.Key.Q, g.Key.Style))),
-            })
-            .OrderByDescending(x => x.q).ThenBy(x => x.ware, StringComparer.Ordinal).ToList();
+            .Select(g => (Ware: g.Key.Ware, Q: g.Key.Q, Style: g.Key.Style, N: g.Sum(x => x.n.N), Depot: g.Sum(x => x.depot),
+                Have: ItemCount(TolokaMatch(new TolokaNeed(g.Key.Ware, 0, g.Key.Q, g.Key.Style)))))
+            .OrderByDescending(x => x.Q).ThenBy(x => x.Ware, StringComparer.Ordinal)
+            // Рядок підсумку — масив [виріб, якість, розпис, треба, на складі, у коморі].
+            .Select(x => (object)new object[] { x.Ware, x.Q, x.Style, x.N, x.Depot, x.Have }).ToList();
         return new
         {
             built = Buildings.Where(x => _tBuilt.Contains(x.Key)).Select(x => x.Key).ToList(),

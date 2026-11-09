@@ -150,6 +150,29 @@ public sealed class ClickerDiaryService : BackgroundService
         return [.. rows.Values.OrderBy(r => r.Day, StringComparer.Ordinal)];
     }
 
+    /// <summary>
+    /// Рядки щоденника всіх гончарів за дні <paramref name="fromDay"/>…<paramref name="toDay"/> (включно), від старих до нових:
+    /// записані й ще не записані з пам'яті (новіший знімок того самого дня заміняє). Для прожарки дня (ClickerRoast.cs).
+    /// </summary>
+    public List<ClickerDiaryRow> Range(string fromDay, string toDay)
+    {
+        var rows = new Dictionary<(string Day, string Key), ClickerDiaryRow>();
+        _db?.With(c =>
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT day, nick_key, nick, at, json, restored FROM clicker_diary WHERE day >= $a AND day <= $b";
+            cmd.Parameters.AddWithValue("$a", fromDay);
+            cmd.Parameters.AddWithValue("$b", toDay);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                rows[(r.GetString(0), r.GetString(1))] = new ClickerDiaryRow(r.GetString(0), r.GetString(2), ParseAt(r.GetString(3)), r.GetString(4), r.GetInt64(5) != 0);
+        });
+        lock (_gate)
+            foreach (var s in _snaps.Values.Where(s => string.CompareOrdinal(s.Day, fromDay) >= 0 && string.CompareOrdinal(s.Day, toDay) <= 0))
+                rows[(s.Day, Auth.NickKey(s.Nick))] = s;
+        return [.. rows.Values.OrderBy(r => r.Day, StringComparer.Ordinal).ThenBy(r => r.Nick, StringComparer.Ordinal)];
+    }
+
     /// <summary>Години гончаря (записані плюс ще не записані), від старих до нових.</summary>
     public List<ClickerHourRow> Hours(string nick)
     {
@@ -171,6 +194,32 @@ public sealed class ClickerDiaryService : BackgroundService
             }
         return [.. sum.OrderBy(x => x.Key.Day, StringComparer.Ordinal).ThenBy(x => x.Key.Hour)
             .Select(x => new ClickerHourRow(x.Key.Day, x.Key.Hour, (int)x.Value.S, x.Value.F, x.Value.G, x.Value.C))];
+    }
+
+    /// <summary>
+    /// Години всіх гончарів за дні <paramref name="fromDay"/>…<paramref name="toDay"/> (включно): ключ ніка й година гри
+    /// (записані плюс ще не записані з пам'яті). Для тижневих змагань (ClickerWeek.cs): скільки днів тижня гончар грав.
+    /// </summary>
+    public List<(string Key, ClickerHourRow Row)> HoursRange(string fromDay, string toDay)
+    {
+        var sum = new Dictionary<(string Key, string Day, int Hour), (double S, long F, long G, long C)>();
+        _db?.With(c =>
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT nick_key, day, hour, seconds, formed, grabbed, clicks FROM clicker_hours WHERE day >= $a AND day <= $b";
+            cmd.Parameters.AddWithValue("$a", fromDay);
+            cmd.Parameters.AddWithValue("$b", toDay);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) sum[(r.GetString(0), r.GetString(1), r.GetInt32(2))] = (r.GetInt64(3), r.GetInt64(4), r.GetInt64(5), r.GetInt64(6));
+        });
+        lock (_gate)
+            foreach (var (k, h) in _hours.Where(x => string.CompareOrdinal(x.Key.Day, fromDay) >= 0 && string.CompareOrdinal(x.Key.Day, toDay) <= 0))
+            {
+                var o = sum.GetValueOrDefault((k.Key, k.Day, k.Hour));
+                sum[(k.Key, k.Day, k.Hour)] = (o.S + Math.Floor(h.Seconds), o.F + h.Formed, o.G + h.Grabbed, o.C + h.Clicks);
+            }
+        return [.. sum.OrderBy(x => x.Key.Day, StringComparer.Ordinal).ThenBy(x => x.Key.Hour)
+            .Select(x => (x.Key.Key, new ClickerHourRow(x.Key.Day, x.Key.Hour, (int)x.Value.S, x.Value.F, x.Value.G, x.Value.C)))];
     }
 
     static DateTimeOffset ParseAt(string s) =>

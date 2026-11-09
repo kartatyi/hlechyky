@@ -60,7 +60,7 @@ public sealed partial class Clicker
         var luckyF = 1 + LuckyShare * (LuckyMult - 1);
         var fm = FairMultNow;
         var gmid = Has("omen") ? (OmenMinSeconds + OmenMaxSeconds) / 2.0 : (GoldenMinSeconds + GoldenMaxSeconds) / 2.0;
-        var g = gmid * clay.Events * (Tool("whistle") ? WhistleEvents : 1) * GuestsGoldenWait;
+        var g = gmid * clay.Events * (Tool("whistle") ? WhistleEvents : 1) * GuestsGoldenWait * TreasureGoldenWait;
         // Частка часу під ярмарком і натхненням: розписний — раз на g секунд, ловиться весь.
         var f = 1 - Math.Exp(-0.4 * BuffLonger(FairFor).TotalSeconds / g);
         var i = 1 - Math.Exp(-0.3 * BuffLonger(InspireFor).TotalSeconds / g);
@@ -123,6 +123,7 @@ public sealed partial class Clicker
         AdviseGates(tips, reach);
         AdviseToloka(tips);
         AdviseWallet(tips);
+        AdviseStoker(tips);
         AdviseFire(tips, mult);
         mult.Insert(0, new ClickerMultPart("styles", 1 + StyleBonus * _styles.Count, 0));
         mult.Add(new ClickerMultPart("house", HouseAllMult, 0));
@@ -362,6 +363,18 @@ public sealed partial class Clicker
     }
 
     // ---------- обпал ----------
+
+    /// <summary>
+    /// Палій сидить (v13 Б): режим «лише руками», а сушарня повна вже пів години — підмайстри стоять. Не вимірюється
+    /// «×», тож Gain — лише поріг картки (1,01); порада радить «коли мене нема», яке горна біля кола не чіпає.
+    /// </summary>
+    void AdviseStoker(List<ClickerTip> tips)
+    {
+        var now = Ctx.Clock.UtcNow;
+        if (!KilnAutoCan || _kilnAutoMode != KilnAutoMode.Hands || _rackFullAt == default || now - _rackFullAt < StokerAsleepAfter) return;
+        tips.Add(new ClickerTip("stoker-asleep", 1.02, "stoker", 0, "kiln",
+            Facts(("minutes", (int)(now - _rackFullAt).TotalMinutes), ("places", RackSize))));
+    }
 
     void AdviseFire(List<ClickerTip> tips, List<ClickerMultPart> mult)
     {
