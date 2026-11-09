@@ -243,7 +243,8 @@ public sealed partial class MemyBank
     }
 
     /// <summary>
-    /// Кліп із поля <c>clip</c>; нема поля, а картинка — кадр із відео — той самий ролик довкола кадру. Кривий — null і
+    /// Кліп із поля <c>clip</c>; нема поля, а картинка — кадр із відео — той самий ролик довкола кадру; <c>false</c> — свідомо
+    /// без відео (ролик негодящий: запікані титри, російською, мем — сама картинка). Кривий — null і
     /// пояснення в <paramref name="why"/>.
     /// </summary>
     static MemyClip? Clip(JsonElement e, string? video, double at, out string why)
@@ -255,6 +256,7 @@ public sealed partial class MemyBank
             var start = Math.Max(0, (int)Math.Floor(at) - ClipLead);
             return new MemyClip(video[^11..], start, start + ClipDefault);
         }
+        if (c.ValueKind == JsonValueKind.False) return null;   // свідомо без відео: кадр із ролика є, а сам ролик не годиться
         if (c.ValueKind != JsonValueKind.Object) { why = "clip — не об'єкт, мем без відео"; return null; }
         var (link, file) = (Str(c, "video"), Str(c, "file"));
         if ((link.Length > 0) == (file.Length > 0)) { why = "clip — або video (YouTube), або file (відеофайл), мем без відео"; return null; }

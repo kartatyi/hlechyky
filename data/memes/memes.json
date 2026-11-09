@@ -291,11 +291,7 @@
     "at": 6,
     "page": "https://www.youtube.com/watch?v=QGUDxW9i1kg"
    },
-   "clip": {
-    "video": "https://www.youtube.com/watch?v=QGUDxW9i1kg",
-    "from": 9,
-    "to": 14
-   },
+   "clip": false,
    "crop": null,
    "sources": [
     "https://www.unian.ua/society/avtor-mema-vova-yeb-sh-jih-bl-d-zirkoyu-sebe-ne-vidchuvayu-novini-ukrajini-11815938.html",
@@ -536,11 +532,7 @@
     "url": "https://i.ytimg.com/vi/1QW-pXDJj6A/maxresdefault.jpg",
     "page": "https://www.youtube.com/watch?v=1QW-pXDJj6A"
    },
-   "clip": {
-    "video": "https://www.youtube.com/watch?v=1QW-pXDJj6A",
-    "from": 5,
-    "to": 14
-   },
+   "clip": false,
    "crop": [
     0.36,
     0,
@@ -2293,11 +2285,7 @@
     "url": "https://i.imgflip.com/30b1gx.jpg",
     "page": "https://knowyourmeme.com/memes/drakeposting"
    },
-   "clip": {
-    "video": "https://www.youtube.com/watch?v=uxpDa-c-4Mc",
-    "from": 76,
-    "to": 86
-   },
+   "clip": false,
    "crop": [
     0,
     0,
@@ -2426,8 +2414,8 @@
    },
    "clip": {
     "video": "https://www.youtube.com/watch?v=aQgyKjBK7Ow",
-    "from": 0,
-    "to": 10
+    "from": 6,
+    "to": 13
    },
    "crop": null,
    "sources": [
@@ -3569,8 +3557,8 @@
    },
    "clip": {
     "video": "https://www.youtube.com/watch?v=myjEoDypUD8",
-    "from": 40,
-    "to": 50
+    "from": 36,
+    "to": 49
    },
    "crop": null,
    "sources": [
@@ -3987,11 +3975,7 @@
     "url": "https://i.imgflip.com/1bij.jpg",
     "page": "https://imgflip.com/memetemplate/One-Does-Not-Simply"
    },
-   "clip": {
-    "video": "https://www.youtube.com/watch?v=LDX08LOL8gg",
-    "from": 0,
-    "to": 6
-   },
+   "clip": false,
    "crop": null,
    "sources": [
     "https://knowyourmeme.com/memes/one-does-not-simply-walk-into-mordor"

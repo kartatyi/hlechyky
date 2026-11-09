@@ -153,6 +153,18 @@ public class MemyAnswerTests(ITestOutputHelper output)
         Assert.Equal(new MemyClip("EUAIulcmNYI", 34, 42), b.Find("u801")!.Clip);
     }
 
+    /// <summary>09.11: «clip»: false — свідомо без відео, хоч кадр і з ролика (ТСН із запіканими титрами); не помилка банку.</summary>
+    [Fact]
+    public void Clip_false_means_no_video_even_for_a_frame_from_video()
+    {
+        var m = MemyCache.M("u040", "ua", "Поворознюк до Зеленського", [], "Вова, їбаш їх", [], 2019, 2, ["політика"]);
+        m["image"] = JsonSerializer.SerializeToNode(new { video = "https://www.youtube.com/watch?v=EUAIulcmNYI", at = 6, page = "https://www.youtube.com/watch?v=EUAIulcmNYI" });
+        m["clip"] = false;
+        var b = MemyBank.Parse(MemyCache.Json([m]), null);
+        Assert.Null(b.Find("u040")!.Clip);
+        Assert.DoesNotContain(b.Problems, p => p.Contains("clip", StringComparison.Ordinal));
+    }
+
     // ================================================================== за столом
 
     static MemyBank ClipBank()
