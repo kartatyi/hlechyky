@@ -25,6 +25,20 @@
   const WHERE_TAB = { album: 'album', village: 'guild', guests: 'guild', pier: 'guild', toloka: 'guild', shop: 'shop', mark: 'shop', fire: 'fire', kiln: 'craft' };
   /// …а в «Селі» — ще й до розділу (ключі рядка переходів, clicker-guild.js NAV).
   const WHERE_SEC = { village: 'rep', guests: 'guests', pier: 'trade', toloka: 'toloka' };
+  /// Решта — до самого місця (api.go, 09.11: «у всіх подібних місцях — туди»): піч і клітинки альбому, віха (ключ
+  /// «верстат:рівень» після «mark:» — її кнопка в рядку верстата, нема — згортка віх), Майстерня, горно, обпал.
+  const WHERE_EL = {
+    'album:stove': { tab: 'album', el: '.clka-stovesec' },
+    'album:grid': { tab: 'album', el: '.clka-gridbox' },
+    shop: { tab: 'shop', el: '.clk-shop' },
+    kiln: { tab: 'craft', el: '[data-slot="kiln"]' },
+    fire: { tab: 'fire', el: '.clk-firebox' },
+  };
+  const whereEl = (where) => {
+    const w = String(where || '');
+    if (w.startsWith('mark:')) return { tab: 'shop', el: '.clk-mark[data-mark="' + w.slice(5).replace(/"/g, '') + '"]|.clk-markbox|.clk-shop' };
+    return WHERE_EL[w] || null;
+  };
 
   const myNick = (st) => (st.ctx && st.ctx.me && st.ctx.me.nick) || '';
   const goLabel = (where) => (String(where).startsWith('clay:') ? 'Постав' : 'Показати');
@@ -79,6 +93,8 @@
         setTimeout(() => load(st, true), 600);
       });
     }
+    const to = whereEl(where);
+    if (to && api.go && api.go(st, to)) return Promise.resolve();
     const tab = WHERE_TAB[head];
     if (tab) api.showTab(st, tab);
     // У «Селі» розділів багато, і шана сіл — у самому низу, згорнута: «Показати» веде до самого розділу, а не лише на

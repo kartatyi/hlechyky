@@ -1251,7 +1251,7 @@
       const best = items.slice().sort((a, b) => b.q - a.q || (b.style ? 1 : 0) - (a.style ? 1 : 0));
       rows = best.map((it, i) => itemRow(st, api, it, i, '<button type="button" class="ghost small" data-brag="' + esc(it.key) + '"' + (wait > 0 ? ' disabled' : '') + '>Похвалитись</button>')).join('');
     } else return;
-    const html = head + (items.length ? '<div class="clkw-items clkg-pick">' + rows + '</div>' : '<div class="clk-teaser muted small">Комора порожня — спершу обпали щось у горні.</div>');
+    const html = head + (items.length ? '<div class="clkw-items clkg-pick">' + rows + '</div>' : '<div class="clk-teaser muted small">Комора порожня — спершу ' + toKiln(st, api, 'обпали щось у горні') + '.</div>');
     let body;
     if (api.overlayOpen(st) && st.guildOvBody && st.guildOvBody.isConnected) {
       body = st.guildOvBody;
@@ -1531,6 +1531,8 @@
     const e = st.guildPane ? st.guildPane.querySelector('[data-sec="' + key + '"]') : null;
     return shownIn(e, st.guildPane) ? e : null;
   };
+  // «Туди» (09.11): горно — звідки якість і вироби; Ремесло ще закрите — просто текст.
+  const toKiln = (st, api, html) => (api.toLink && api.toOpen(st, 'craft') ? api.toLink(html, { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' }) : html);
   const NAV = [
     { k: 'guests', t: '🏛 Гості' },
     { k: 'toloka', t: '🏗 Толока' },

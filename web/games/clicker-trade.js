@@ -85,6 +85,8 @@
   /// Звідки якість, якої просить корабель: ліпленням її не обереш — вона від горна. Дзвінкі дає й підмайстер (QA-4),
   /// а розкішні — лише розписана партія з рук.
   const qHint = (api, q) => (q >= 4 ? 'розкішні — лише з розписаної партії, яку палиш сам' : '');
+  // «Туди» (09.11): горно — звідки якість і вироби; Ремесло ще закрите — просто текст.
+  const toKiln = (st, api, html) => (api.toLink && api.toOpen(st, 'craft') ? api.toLink(html, { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' }) : html);
 
   /// Скільки з цієї штуки в коморі вільне (вид комори v12: kept = [толока, замовлення, майстерштук]) — корабель бере лише його.
   const freeOf = (it) => Math.max(0, it.n - (it.kept ? (it.kept[0] || 0) + (it.kept[1] || 0) + (it.kept[2] || 0) : 0));
@@ -215,7 +217,7 @@
         + ' title="Корабель відпливе з тим, що вже на борту (за нього заплачено), а новий прийде за ' + GAP_MIN + ' хв">'
         + (armed ? '⚓ Точно відпустити?' : '⚓ Відпустити корабель') + '</button>';
     const btns = tolokaBtn(st, api, s) + (s.ware ? formBtn(st, api, s) : '') + rel;
-    return '<div class="clkt-why small">' + esc(lack(st, api, s)) + (hint ? ' · ' + esc(hint) : '') + '</div>'
+    return '<div class="clkt-why small">' + esc(lack(st, api, s)) + (hint ? ' · ' + toKiln(st, api, esc(hint)) : '') + '</div>'
       + (btns ? '<div class="clkt-btns">' + btns + '</div>' : '');
   }
 

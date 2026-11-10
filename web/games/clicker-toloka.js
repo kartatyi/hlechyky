@@ -162,6 +162,8 @@
   }
 
   const selfFire = (api) => api.storeGet('clk.kiln.self', '0') === '1';
+  // «Туди» (09.11): горно — звідки якість і вироби; Ремесло ще закрите — просто текст.
+  const toKiln = (st, api, html) => (api.toLink && api.toOpen(st, 'craft') ? api.toLink(html, { tab: 'craft', el: '[data-slot="kiln"]', at: 'Ремесло · горно' }) : html);
 
   /// Звідки береться якість рядка: ліпленням її не обереш, вона від горна (і розпису) — кажемо під кнопкою «Ліпити».
   function qHint(api, q) {
@@ -185,14 +187,17 @@
     const sname = n.style ? '«' + styleName(st, n.style) + '»' : '';
     const sty = n.style ? (st.styleList || []).find((x) => x.key === n.style) : null;
     if (n.style && !(sty && sty.owned)) {
-      return '<span class="small clkl-onwheel clkl-nostyle">🎨 розпису ' + esc(sname) + ' ще нема — без нього рядок не прийме</span>';
+      // Розпису ще нема — «розпису «X»» веде до його картки в Майстерні (09.11).
+      const shop = { tab: 'shop', el: '[data-style="' + n.style + '"]|.clk-sec[data-sec="styles"]', at: 'Майстерня · Розписи' };
+      const sx = 'розпису ' + esc(sname);
+      return '<span class="small clkl-onwheel clkl-nostyle">🎨 ' + (api.toLink && api.toOpen(st, 'shop') ? api.toLink(sx, shop) : sx) + ' ще нема — без нього рядок не прийме</span>';
     }
     // Звідки якість — кажемо, щойно виріб став на коло (а не під кожним із двадцяти рядків плану): саме тоді гончар
     // і йде палити.
     const hint = qHint(api, n.q);
     if (api.onWheel(st, n.ware, n.style)) {
       return '<span class="small clkl-onwheel">🏺 ' + esc(name) + ' уже на колі' + (sname ? ' · розпис ' + esc(sname) : '')
-        + (hint ? '<span class="clkl-qhint"> · ' + esc(hint) + '</span>' : '') + '</span>';
+        + (hint ? '<span class="clkl-qhint"> · ' + toKiln(st, api, esc(hint)) + '</span>' : '') + '</span>';
     }
     return '<button type="button" class="ghost small clkl-form" data-lform="' + esc(n.ware) + '" data-lstyle="' + esc(n.style || '') + '"'
       + (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(formLabel(st, n)) + '</button>';
