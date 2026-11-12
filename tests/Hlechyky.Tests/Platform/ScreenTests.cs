@@ -134,6 +134,139 @@ public class ScreenTests
         Assert.Equal(3, heard);
     }
 
+    static object? Prop(object o, string name) => o.GetType().GetProperty(name)!.GetValue(o);
+
+    [Fact]
+    public async Task Measure_request_goes_to_the_screen_and_the_answer_clears_it()
+    {
+        var (s, _, _) = Make();
+        s.Apply(new ScreenPatch(Brightness: 40, Preset: "white"), "a");
+        var wait = s.WaitAsync(s.State.Rev, TimeSpan.FromSeconds(10), CancellationToken.None);
+        var id = s.AskMeasure("владік");
+        var st = await wait.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, id);
+        Assert.Equal(id, st.Measure!.Id);
+        var device = Screen.DeviceView(st);
+        Assert.Equal(id, Prop(Prop(device, "measure")!, "id"));
+
+        var rev = s.State.Rev;
+        Assert.Null(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(id, 0.3127, 0.329, 6504))));
+        Assert.Null(s.State.Measure);                 // відповідь дійшла — запит знято
+        Assert.Equal(rev + 1, s.State.Rev);           // і екран про це дізнається
+        Assert.Null(Prop(Screen.DeviceView(s.State), "measure"));
+        var measures = (Array)Prop(s.AdminView(false), "measures")!;
+        var first = measures.GetValue(0)!;
+        Assert.Equal(6504.0, Prop(first, "k"));
+        Assert.Equal(0.3127, Prop(first, "x"));
+        Assert.Equal(40, Prop(first, "brightness"));  // що екран тоді показував
+        Assert.Equal("white", Prop(first, "preset"));
+    }
+
+    [Fact]
+    public void Measure_without_id_answers_the_pending_one_and_old_ids_do_not_clear_the_new()
+    {
+        var (s, _, _) = Make();
+        var first = s.AskMeasure("a");
+        var second = s.AskMeasure("a");
+        Assert.Null(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(first, 0.3, 0.3, 6000))));
+        Assert.Equal(second, s.State.Measure!.Id);    // запізніла відповідь на старий — новий ще чекає
+        Assert.Null(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(null, 0.31, 0.32, 6500))));
+        Assert.Null(s.State.Measure);
+        Assert.Null(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(null, 0.31, 0.32, 6500))));   // «сам», без запиту
+        Assert.Equal(3, ((Array)Prop(s.AdminView(false), "measures")!).Length);
+        Assert.NotNull(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(99, 0.3, 0.3, 6000))));
+    }
+
+    [Fact]
+    public void Long_measure_keeps_waiting_and_remembers_what_the_screen_showed_when_asked()
+    {
+        var (s, _, clock) = Make();
+        s.Apply(new ScreenPatch(Brightness: 1, Color: 300), "a");
+        var id = s.AskMeasure("a");
+        clock.Advance(TimeSpan.FromMinutes(30));      // на яскравості 1 міряє довго — запит не згорає
+        Assert.Equal(id, s.State.Measure!.Id);
+        s.Apply(new ScreenPatch(Brightness: 50), "a");   // поки міряло, підкрутили
+        Assert.Equal(id, s.State.Measure!.Id);           // запит від цього не зникає
+        Assert.Null(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(id, 0.3, 0.3, 6000))));
+        var m = ((Array)Prop(s.AdminView(false), "measures")!).GetValue(0)!;
+        Assert.Equal(1, Prop(m, "brightness"));         // вимір — про те, що було в мить запиту
+        Assert.Equal(300, Prop(m, "color"));
+        Assert.Equal(true, Prop(m, "changed"));
+        Assert.NotNull(Prop(m, "askedAt"));
+
+        var id2 = s.AskMeasure("a");
+        s.Report(new ScreenReport(Measure: new ScreenMeasureReport(id2, 0.3, 0.3, 6000)));
+        var m2 = ((Array)Prop(s.AdminView(false), "measures")!).GetValue(0)!;
+        Assert.Equal(false, Prop(m2, "changed"));
+        Assert.Equal(50, Prop(m2, "brightness"));
+    }
+
+    [Fact]
+    public async Task Cancel_tells_the_screen_and_a_late_answer_is_still_kept()
+    {
+        var (s, _, _) = Make();
+        Assert.False(s.CancelMeasure());
+        var id = s.AskMeasure("a");
+        var wait = s.WaitAsync(s.State.Rev, TimeSpan.FromSeconds(10), CancellationToken.None);
+        Assert.True(s.CancelMeasure());
+        var st = await wait.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Null(st.Measure);                       // екран бачить: можна перервати
+        var rev = s.State.Rev;
+        Assert.Null(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(id, 0.3, 0.3, 6000))));
+        Assert.Equal(rev, s.State.Rev);                // запиту вже нема — стан не чіпаємо
+        Assert.Single((Array)Prop(s.AdminView(false), "measures")!);
+    }
+
+    [Fact]
+    public void Bad_reports_are_refused()
+    {
+        var (s, _, _) = Make();
+        Assert.NotNull(s.Report(new ScreenReport()));
+        Assert.NotNull(s.Report(new ScreenReport(Temperature: double.NaN)));
+        Assert.NotNull(s.Report(new ScreenReport(Temperature: 1000)));
+        Assert.NotNull(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(null, 0.3, null, 6000))));
+        Assert.NotNull(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(null, 1.3, 0.3, 6000))));
+        Assert.NotNull(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(null, 0.3, 0.3, 0))));
+        Assert.Null(Prop(s.AdminView(false), "temperature"));
+        Assert.Empty((Array)Prop(s.AdminView(false), "measures")!);
+    }
+
+    [Fact]
+    public void Temperature_is_shown_to_admins_without_touching_the_screen_state()
+    {
+        var (s, _, clock) = Make();
+        var heard = 0;
+        s.AdminChanged += _ => heard++;
+        var rev = s.State.Rev;
+        Assert.Null(s.Report(new ScreenReport(Temperature: 41.5)));
+        Assert.Equal(rev, s.State.Rev);               // екрану перемальовувати нічого
+        var t = Prop(s.AdminView(false), "temperature")!;
+        Assert.Equal(41.5, Prop(t, "value"));
+        Assert.Equal(1, heard);
+        s.Report(new ScreenReport(Temperature: 41.5));   // те саме одразу — адмінам не сиплемо
+        Assert.Equal(1, heard);
+        s.Report(new ScreenReport(Temperature: 42));     // змінилась — одразу
+        Assert.Equal(2, heard);
+        clock.Advance(16);
+        s.Report(new ScreenReport(Temperature: 42));     // те саме, але давно — «ще жива»
+        Assert.Equal(3, heard);
+    }
+
+    [Fact]
+    public void Measures_and_their_numbering_survive_restart()
+    {
+        var (s, store, _) = Make();
+        var id = s.AskMeasure("a");
+        s.Report(new ScreenReport(Measure: new ScreenMeasureReport(id, 0.3, 0.31, 5000)));
+        s.AskMeasure("a");                              // висить без відповіді
+        var (again, _, _) = Make(store);
+        Assert.Equal(2, again.State.Measure!.Id);
+        Assert.Single((Array)Prop(again.AdminView(false), "measures")!);
+        Assert.Equal(3, again.AskMeasure("a"));
+        for (var i = 0; i < Screen.MaxMeasures + 5; i++) again.Report(new ScreenReport(Measure: new ScreenMeasureReport(null, 0.3, 0.3, 6000)));
+        Assert.Equal(Screen.MaxMeasures, ((Array)Prop(again.AdminView(false), "measures")!).Length);
+    }
+
     [Fact]
     public void Online_while_a_stream_is_open()
     {
