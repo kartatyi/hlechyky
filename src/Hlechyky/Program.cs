@@ -68,6 +68,9 @@ builder.Services.AddSingleton<ChatFiles>();
 // модерація Балачок: 🗑, 🔇, 🚫, 🐢, 📌 — лише адмін (ChatModeration.cs)
 builder.Services.AddSingleton<ChatModStore>();
 builder.Services.AddSingleton<ChatModeration>();
+// 🖥 віддалений екран: адмін міняє яскравість/колір/калібровку, програма екрана слухає (Screen.cs, docs/screen.md)
+builder.Services.AddSingleton<Screen>();
+builder.Services.AddSingleton<ScreenAdminWire>();
 builder.Services.AddSingleton<VoiceChat>();   // Посиденьки: хто де говорить, листи між браузерами (VoiceChat.cs)
 builder.Services.AddSingleton<Hlechyky.Turn.TurnServer>();   // ретранслятор TURN: друзі за «сірим» NAT говорять через цей ПК
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Hlechyky.Turn.TurnServer>());
@@ -109,6 +112,8 @@ app.Logger.LogInformation("Глечики: root={Root}, port={Port}", root, port
 app.Services.GetRequiredService<TablesKeeper>().RestoreAtStart();
 // Голос столу стежить за розсилкою: мафія заснула, хтось устав — хто кого чує, треба перерахувати.
 app.Services.GetRequiredService<Broadcaster>().Flushed += app.Services.GetRequiredService<VoiceChat>().OnFlushed;
+// Екран змінився — адмінські вкладки «🖥 Екран» на всіх пристроях дізнаються одразу (подія хаба screen).
+app.Services.GetRequiredService<ScreenAdminWire>().Attach();
 
 app.UseHlechykyAuth();
 app.UsePadelSwitch();   // Padel:Enabled = false — /padel/, хаб і API Падельні відповідають 404 (крім «Моїх банків»)
@@ -140,6 +145,7 @@ app.MapHlechykyPadel();
 app.MapHlechykyShardShop();
 app.MapHlechykyBets();
 ChatFiles.Map(app);   // файли в Балачках: POST /api/chat/file, GET /api/chat/file/<хеш>/<ім'я>
+Screen.Map(app);      // 🖥 екран: /api/screen (адмін), /api/screen/device і /api/screen/ws (програма екрана з ключем)
 app.MapFront();    // відбиток web/: відкрита сторінка сама бачить, що після деплою змінилось (Front.cs)
 app.MapHub<RadioHub>("/hub");
 app.Run();

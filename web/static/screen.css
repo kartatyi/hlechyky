@@ -1,0 +1,55 @@
+/* 🖥 Екран — вкладка адміна в Бібліотеці (web/screen.js) */
+.scr { display: flex; flex-direction: column; gap: 18px; max-width: 720px; }
+
+.scr-top { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.scr-tile {
+  --sw: #2b4c3c; --lit: 1;
+  position: relative; flex: 0 0 auto; width: 132px; height: 84px; border-radius: 12px;
+  border: 2px solid var(--line); background: #050806; overflow: hidden;
+  display: grid; place-items: center;
+}
+/* світло екрана: колір під «яскравістю», чорна підкладка просвічує, коли яскравість мала */
+.scr-tile::before { content: ''; position: absolute; inset: 0; background: var(--sw); opacity: var(--lit); transition: background .2s, opacity .2s; }
+.scr-tile-num { position: relative; font: 700 1.6em var(--display); color: var(--text); opacity: calc(.35 + var(--lit) * .65); font-variant-numeric: tabular-nums; }
+.scr-tile-cal {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 0; text-align: center; font-size: .72em; font-weight: 700;
+  color: #111; background: repeating-linear-gradient(45deg, var(--accent) 0 8px, #f7d77a 8px 16px); display: none;
+}
+.scr-tile.cal .scr-tile-cal { display: block; }
+.scr-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 220px; }
+.scr-online { font-weight: 700; color: var(--muted); }
+.scr-online.ok { color: var(--ok); }
+.scr-now { font-size: 1.05em; }
+
+.scr-sec h3 { margin: 0 0 8px; font-size: 1em; }
+.scr-row { display: flex; align-items: center; gap: 12px; transition: opacity .15s; }
+.scr-row.dim { opacity: .55; }
+.scr-row input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--accent); height: 28px; }
+.scr-row input[type=number] { flex: 0 0 84px; width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
+.scr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.scr .chip { cursor: pointer; border: 1px solid var(--line); font-size: .85em; padding: 4px 12px; }
+.scr .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.scr-note { margin-top: 6px; }
+
+.scr-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.scr-preset { flex-direction: column; gap: 6px; padding: 10px 6px; justify-content: center; white-space: normal; }
+.scr-sw { width: 36px; height: 36px; border-radius: 50%; background: var(--sw); border: 2px solid rgba(255, 255, 255, .25); }
+.scr-preset.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; font-weight: 700; }
+
+.scr-switch { gap: 10px; padding: 8px 14px 8px 8px; }
+.scr-knob { position: relative; width: 44px; height: 24px; border-radius: 999px; background: var(--panel3); transition: background .15s; }
+.scr-knob::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); transition: transform .15s; }
+.scr-switch.on .scr-knob { background: var(--accent); }
+.scr-switch.on .scr-knob::after { transform: translateX(20px); background: var(--accent-ink); }
+
+.scr-conn { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--panel2); }
+.scr-conn summary { cursor: pointer; font-weight: 600; }
+.scr-conn p { margin: 10px 0; }
+.scr-kv { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--line); }
+.scr-k { flex: 0 0 100px; font-weight: 600; }
+.scr-kv code { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; font-size: .82em; color: var(--muted); }
+
+@media (max-width: 560px) {
+  .scr-presets { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .scr-k { flex-basis: 100%; }
+}
