@@ -2678,9 +2678,9 @@
   // балачок на телефоні), #history (📜 історія сайту, web/history.js), #tryvoga (🚨 мапа тривог, web/tryvoga.js).
   // Хеш — єдине джерело істини: кнопки лише ставлять його, малює applyRoute(), F5 повертає на місце.
   const ROUTES = ['efir', 'lib', 'games', 'stats', 'who', 'lavka', 'chat', 'history', 'tryvoga', 'gonchar'];
-  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod'];
+  const LIB_TABS = ['history', 'likes', 'playlists', 'bans', 'ads', 'feedback', 'photos', 'mod', 'screen'];
   const ROUTE_TITLE = { efir: 'Ефір', lib: 'Бібліотека', games: 'Ігри', stats: 'Хто скільки', who: 'Профіль', lavka: 'Лавка', chat: 'Балачки', history: 'Історія', tryvoga: 'Тривога', gonchar: 'Літопис кола' };
-  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото й тла людей', mod: 'Модерація Балачок' };
+  const LIB_TITLE = { history: 'Що вже було', likes: 'Улюблене', playlists: 'Плейлисти', bans: 'Бан-лист', ads: 'Реклама', feedback: 'Пропозиції й баги', photos: 'Фото й тла людей', mod: 'Модерація Балачок', screen: 'Екран' };
   // Вкладки зі списком рядків уміють шукати по собі; у плейлистах шукати нічого.
   const LIB_FIND = { history: 'знайти в історії', likes: 'знайти в улюбленому', bans: 'знайти в бан-листі', ads: 'знайти рекламу', feedback: 'знайти в записках', photos: 'знайти за ніком' };
   // Старі адреси (закладки, посилання в балачках) ведуть туди, куди переїхали їхні сторінки.
@@ -4054,6 +4054,9 @@
       } else if (libTab === 'mod') {
         await HModer.renderTab(box);     // «🛡 Модерація»: файли всім, 🐢, 📌, хто обмежений, журнал (web/moder.js)
         return;
+      } else if (libTab === 'screen') {
+        await HScreen.renderTab(box);    // «🖥 Екран»: яскравість, колір, пресети, калібровка (web/screen.js)
+        return;
       }
       wireRows(box);
     } catch (e) { box.innerHTML = `<div class="empty">Ой-йой: ${esc(e.message)}</div>`; }
@@ -4608,6 +4611,7 @@
     });
     conn.on('chatDeleted', (ids) => removeMessages(ids || []));   // адмін прибрав репліки (web/moder.js)
     if (window.HModer) HModer.attach(conn);   // 📌, 🐢, 🔇, 🚫 — подія chatMod
+    if (window.HScreen) HScreen.attach(conn); // 🖥 екран змінили з іншого пристрою — подія screen (лише адмінам)
     conn.on('chatLikes', (x) => {
       const el = x && $('messages').querySelector(`.msg[data-id="${x.id}"]`);
       if (el) paintLikes(el, x.likes || []);
@@ -4904,6 +4908,8 @@
   if (window.HLiveAds) HLiveAds.init({ esc, api, toast, busy, me, askNick, onBalance: () => HLavka.refresh() });
   // 🛡 Модерація Балачок (web/moder.js): 📌 плашка, поле вводу під 🔇, кнопки адміна, вкладка в Бібліотеці
   if (window.HModer) HModer.init({ esc, toast, busy, me, dayTime, conn: () => conn, tableInput: () => tc.input });
+  // 🖥 Екран (web/screen.js): вкладка адміна в Бібліотеці — віддалене керування екраном
+  if (window.HScreen) HScreen.init({ esc, toast, busy, api, me, isOpen: () => route === 'lib' && libTab === 'screen' });
   // 🎙 Посиденьки (web/voice.js): duck — притишити радіо (1 — як на повзунку), onRoster — хто в голосі змінився.
   if (window.HVoice) HVoice.init({
     $, esc, toast, me, askNick,
@@ -4958,8 +4964,9 @@
     $('fbTab').hidden = me.role !== 'admin';
     $('photosTab').hidden = me.role !== 'admin';
     $('modTab').hidden = me.role !== 'admin';
-    // на #lib/ads, записки, фото чи модерацію зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
-    if ((libTab === 'ads' || libTab === 'feedback' || libTab === 'photos' || libTab === 'mod') && me.role !== 'admin') go('#lib/history');
+    $('screenTab').hidden = me.role !== 'admin';
+    // на #lib/ads, записки, фото, модерацію чи екран зайшов не адмін — відкриваємо звичайну вкладку, а не порожню сторінку
+    if ((libTab === 'ads' || libTab === 'feedback' || libTab === 'photos' || libTab === 'mod' || libTab === 'screen') && me.role !== 'admin') go('#lib/history');
     if (me.account || me.nick) {
       // Нік без приставки з часів до акаунтів: сервер уже зве нас «гість …» — запропонуємо закріпити його паролем.
       const plain = !me.account && me.nick && m.nick !== me.nick ? me.nick : null;
