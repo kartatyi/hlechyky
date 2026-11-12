@@ -14,14 +14,15 @@ public class ScreenTests
         return (new Screen(store, clock, NullLogger<Screen>.Instance), store, clock);
     }
 
+    static (int, int, int) Rgb(Screen s) => (s.State.R, s.State.G, s.State.B);
+
     [Fact]
     public void Starts_bright_white_free_and_with_a_key()
     {
         var (s, _, _) = Make();
         Assert.Equal(0, s.State.Rev);
         Assert.Equal(100, s.State.Brightness);
-        Assert.Equal(0, s.State.Color);
-        Assert.Null(s.State.Preset);
+        Assert.Equal((1023, 1023, 1023), Rgb(s));
         Assert.False(s.State.Calibration);
         Assert.True(s.Key.Length >= 30);
         Assert.True(s.KeyOk(s.Key));
@@ -36,50 +37,78 @@ public class ScreenTests
         var (s, _, _) = Make();
         Assert.Null(s.Apply(new ScreenPatch(Brightness: 150), "владік"));
         Assert.Equal(100, s.State.Brightness);
-        Assert.Null(s.Apply(new ScreenPatch(Brightness: -5, Color: 5000), "владік"));
+        Assert.Null(s.Apply(new ScreenPatch(Brightness: -5, R: 5000, G: -3), "владік"));
         Assert.Equal(0, s.State.Brightness);
-        Assert.Equal(1023, s.State.Color);
+        Assert.Equal((1023, 0, 1023), Rgb(s));   // B не слали — лишився
+        Assert.Null(s.Apply(new ScreenPatch(B: 200), "владік"));
+        Assert.Equal((1023, 0, 200), Rgb(s));
         Assert.Null(s.Apply(new ScreenPatch(Calibration: true), "владік"));
         Assert.True(s.State.Calibration);
         Assert.Equal(0, s.State.Brightness);   // не чіпали — лишилось
-        Assert.Equal(3, s.State.Rev);
+        Assert.Equal(4, s.State.Rev);
         Assert.Equal("владік", s.State.By);
         Assert.Equal("Нічого не змінено", s.Apply(new ScreenPatch(), "владік"));
-        Assert.Equal(3, s.State.Rev);
+        Assert.Equal(4, s.State.Rev);
     }
 
     [Fact]
-    public void Preset_holds_until_own_color_is_picked()
+    public void Preset_just_sets_its_rgb_codes()
     {
         var (s, _, _) = Make();
-        s.Apply(new ScreenPatch(Color: 512), "a");
         Assert.Null(s.Apply(new ScreenPatch(Preset: "Red"), "a"));
-        Assert.Equal("red", s.State.Preset);
-        Assert.Equal(512, s.State.Color);           // колір лишився — повернеться, коли пресет знімуть
+        Assert.Equal((1023, 0, 0), Rgb(s));
+        Assert.Null(s.Apply(new ScreenPatch(Preset: "green"), "a"));
+        Assert.Equal((0, 1023, 0), Rgb(s));
+        Assert.Null(s.Apply(new ScreenPatch(Preset: "blue"), "a"));
+        Assert.Equal((0, 0, 1023), Rgb(s));
+        Assert.Null(s.Apply(new ScreenPatch(Preset: "white"), "a"));
+        Assert.Equal((1023, 1023, 1023), Rgb(s));
+        Assert.Null(s.Apply(new ScreenPatch(Preset: "black"), "a"));
+        Assert.Equal((0, 0, 0), Rgb(s));
+        Assert.Null(s.Apply(new ScreenPatch(Preset: "red", G: 300), "a"));   // канал разом із пресетом — важливіший
+        Assert.Equal((1023, 300, 0), Rgb(s));
         s.Apply(new ScreenPatch(Brightness: 40), "a");
-        Assert.Equal("red", s.State.Preset);        // яскравість пресет не знімає
-        s.Apply(new ScreenPatch(Color: 700), "a");
-        Assert.Null(s.State.Preset);                 // свій колір — пресет знято
-        Assert.Equal(700, s.State.Color);
-        s.Apply(new ScreenPatch(Preset: "black"), "a");
-        s.Apply(new ScreenPatch(Preset: ""), "a");
-        Assert.Null(s.State.Preset);
+        Assert.Equal((1023, 300, 0), Rgb(s));     // яскравість колір не чіпає
         Assert.NotNull(s.Apply(new ScreenPatch(Preset: "pink"), "a"));
-        Assert.Null(s.State.Preset);
+        Assert.Equal((1023, 300, 0), Rgb(s));
+        Assert.Contains(Screen.Presets, p => p.Id == "white" && p.R == 1023 && p.G == 1023 && p.B == 1023);
     }
 
     [Fact]
     public void State_and_key_survive_restart()
     {
         var (s, store, _) = Make();
-        s.Apply(new ScreenPatch(Brightness: 33, Preset: "green", Calibration: true), "a");
+        s.Apply(new ScreenPatch(Brightness: 33, R: 10, G: 20, B: 30, Calibration: true), "a");
         var key = s.Key;
         var (again, _, _) = Make(store);
         Assert.Equal(1, again.State.Rev);
         Assert.Equal(33, again.State.Brightness);
-        Assert.Equal("green", again.State.Preset);
+        Assert.Equal((10, 20, 30), Rgb(again));
         Assert.True(again.State.Calibration);
         Assert.Equal(key, again.Key);
+    }
+
+    [Fact]
+    public void Old_single_color_state_turns_into_rgb()
+    {
+        // так лежало на проді до 12.11: Color + Preset, у вимірах і в запиті виміру — так само
+        var store = new MemoryGameStore();
+        store.SaveState(Screen.StoreKey, """
+            {"State":{"Rev":130,"Brightness":5,"Color":0,"Preset":"blue","Calibration":true,"UpdatedAt":"2026-11-12T07:51:04+00:00","By":"владік",
+              "Measure":{"Id":2,"At":"2026-11-12T08:00:00+00:00","By":"владік","Brightness":5,"Color":0,"Preset":"red","Calibration":true}},
+             "Key":"old-key-0123456789012345678901","MeasureSeq":2,
+             "Measures":[{"Id":1,"X":0.3,"Y":0.31,"K":6500,"At":"2026-11-12T07:55:00+00:00","Brightness":5,"Color":512,"Preset":null,"Calibration":true}]}
+            """);
+        var (s, _, _) = Make(store);
+        Assert.Equal(130, s.State.Rev);
+        Assert.Equal(5, s.State.Brightness);
+        Assert.Equal((0, 0, 1023), Rgb(s));             // «синій» → його коди
+        Assert.True(s.State.Calibration);
+        Assert.Equal("old-key-0123456789012345678901", s.Key);
+        Assert.Equal((1023, 0, 0), (s.State.Measure!.R, s.State.Measure.G, s.State.Measure.B));
+        var m = ((Array)Prop(s.AdminView(false), "measures")!).GetValue(0)!;
+        Assert.Equal(1023, Prop(m, "r"));               // число без пресету значення не мало — білим
+        Assert.Equal(3, s.AskMeasure("a"));             // нумерація вимірів тягнеться далі
     }
 
     [Fact]
@@ -110,7 +139,7 @@ public class ScreenTests
     public async Task Waiting_returns_at_once_when_already_behind_and_times_out_otherwise()
     {
         var (s, _, _) = Make();
-        s.Apply(new ScreenPatch(Color: 1), "a");
+        s.Apply(new ScreenPatch(R: 1), "a");
         var st = await s.WaitAsync(0, TimeSpan.FromSeconds(10), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1));
         Assert.Equal(1, st.Rev);
         var same = await s.WaitAsync(1, TimeSpan.FromMilliseconds(100), CancellationToken.None);
@@ -159,7 +188,7 @@ public class ScreenTests
         Assert.Equal(6504.0, Prop(first, "k"));
         Assert.Equal(0.3127, Prop(first, "x"));
         Assert.Equal(40, Prop(first, "brightness"));  // що екран тоді показував
-        Assert.Equal("white", Prop(first, "preset"));
+        Assert.Equal(1023, Prop(first, "g"));          // білий = 1023/1023/1023
     }
 
     [Fact]
@@ -181,7 +210,7 @@ public class ScreenTests
     public void Long_measure_keeps_waiting_and_remembers_what_the_screen_showed_when_asked()
     {
         var (s, _, clock) = Make();
-        s.Apply(new ScreenPatch(Brightness: 1, Color: 300), "a");
+        s.Apply(new ScreenPatch(Brightness: 1, R: 300, G: 0, B: 0), "a");
         var id = s.AskMeasure("a");
         clock.Advance(TimeSpan.FromMinutes(30));      // на яскравості 1 міряє довго — запит не згорає
         Assert.Equal(id, s.State.Measure!.Id);
@@ -190,7 +219,7 @@ public class ScreenTests
         Assert.Null(s.Report(new ScreenReport(Measure: new ScreenMeasureReport(id, 0.3, 0.3, 6000))));
         var m = ((Array)Prop(s.AdminView(false), "measures")!).GetValue(0)!;
         Assert.Equal(1, Prop(m, "brightness"));         // вимір — про те, що було в мить запиту
-        Assert.Equal(300, Prop(m, "color"));
+        Assert.Equal(300, Prop(m, "r"));
         Assert.Equal(true, Prop(m, "changed"));
         Assert.NotNull(Prop(m, "askedAt"));
 

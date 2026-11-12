@@ -2,7 +2,8 @@
   🖥 Екран — вкладка адміна в Бібліотеці (#lib/screen), window.HScreen (12.11.2026). Сервер — Screen.cs,
   інструкція для програми екрана — docs/screen.md.
 
-  Адмін міняє яскравість (0–100), колір (0–1023), пресет (червоний/зелений/синій/білий/чорний) і калібровку.
+  Адмін міняє яскравість (0–100), колір — коди R, G, B по 0–1023 окремо, і калібровку. Пресет (червоний, зелений,
+  синій, білий, чорний; список і коди — з сервера, Screen.Presets) просто ставить свої R/G/B.
   Кожна зміна — POST /api/screen; програма екрана дізнається одразу (WebSocket чи довге опитування), а інші
   відкриті вкладки адміна — з події хаба `screen` (група адмінів). Повзунок шле зміни на ходу, не частіше
   одного запиту за раз: поки летить попередній, нові злипаються в один.
@@ -16,14 +17,8 @@
 (() => {
   'use strict';
 
-  const PRESETS = [
-    ['red', 'Червоний', '#e53935'],
-    ['green', 'Зелений', '#43a047'],
-    ['blue', 'Синій', '#1e88e5'],
-    ['white', 'Білий', '#ffffff'],
-    ['black', 'Чорний', '#000000'],
-  ];
-  const PRESET = Object.fromEntries(PRESETS.map(([id, name, css]) => [id, { name, css }]));
+  const MAXC = 1023;
+  const CH = [['r', 'R', 'червоний'], ['g', 'G', 'зелений'], ['b', 'B', 'синій']];
   const BR_CHIPS = [0, 1, 2, 5, 10, 25, 50, 75, 100];
   const DOC = 'https://github.com/kartatyi/hlechyky/blob/main/docs/screen.md';
 
@@ -32,9 +27,12 @@
   const BR_STEPS = 1000;
   const posToBr = (p) => (p <= 0 ? 0 : Math.max(1, Math.round(100 * Math.pow(10, -BR_DB * (1 - p / BR_STEPS) / 20))));
   const brToPos = (b) => (b <= 0 ? 0 : Math.min(BR_STEPS, Math.max(1, Math.round(BR_STEPS * (1 + 20 * Math.log10(b / 100) / BR_DB)))));
+  const same = (v) => v;
   const FIELDS = {
     brightness: { max: 100, toPos: brToPos, toVal: posToBr },
-    color: { max: 1023, toPos: (v) => v, toVal: (p) => p },
+    r: { max: MAXC, toPos: same, toVal: same },
+    g: { max: MAXC, toPos: same, toVal: same },
+    b: { max: MAXC, toPos: same, toVal: same },
   };
 
   let o = null;          // що дає app.js: esc, toast, busy, api, me, isOpen
@@ -60,7 +58,14 @@
       : d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) + ' ' + hm(t, sec);
   }
   const num = (v, digits) => Number(v).toLocaleString('uk-UA', { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  const showsWhat = (m) => `☀ ${m.brightness} · ${m.preset ? esc(PRESET[m.preset] ? PRESET[m.preset].name : m.preset) : '🎨 ' + m.color}${m.calibration ? ' · 🎯' : ''}`;
+  /// Коди 0–1023 → колір для ока (0–255 на канал).
+  const rgbCss = (c) => `rgb(${[c.r, c.g, c.b].map((v) => Math.round(255 * Math.max(0, Math.min(MAXC, v)) / MAXC)).join(', ')})`;
+  const presets = () => (view && view.presets) || [];
+  const presetOf = (c) => presets().find((p) => p.r === c.r && p.g === c.g && p.b === c.b) || null;
+  const rgbText = (c) => `${c.r} / ${c.g} / ${c.b}`;
+  /// «1023 / 0 / 0 (Червоний)» — коди й назва, якщо це якийсь пресет.
+  const colorText = (c) => { const p = presetOf(c); return rgbText(c) + (p ? ` (${esc(p.name)})` : ''); };
+  const showsWhat = (m) => `☀ ${m.brightness} · <span class="scr-sw sm" style="--sw:${rgbCss(m)}"></span> ${colorText(m)}${m.calibration ? ' · 🎯' : ''}`;
 
   /// Колір точки xy (CIE 1931) для кружечка: у sRGB, найяскравіший канал = 1. Лише щоб око бачило «тепліше/холодніше».
   function xyCss(x, y) {
@@ -83,6 +88,7 @@
       device: v.device || (prev && prev.device),
       temperature: 'temperature' in v ? v.temperature : prev && prev.temperature,
       measures: v.measures || (prev && prev.measures) || [],
+      presets: v.presets || (prev && prev.presets) || [],
       key: v.key || (prev && prev.key) || null,
     });
     const busy = !mine && (pend || inflight);
@@ -96,16 +102,12 @@
   // Відправка
   // =============================================================================================
 
+  /// Пресет шлемо самими кодами R/G/B — тож зміни, що злиплись, лягають у тому порядку, в якому їх клацнули.
   function push(patch) {
     pend = Object.assign(pend || {}, patch);
-    // Свій колір після пресету — пресет знято; пресет після кольору — пресет. Порядок кліків важливіший за злипання.
-    if ('color' in patch && !('preset' in patch)) delete pend.preset;
-    if ('preset' in patch && patch.preset && !('color' in patch)) delete pend.color;
     // одразу показуємо в себе, не чекаючи сервера
     if (view && view.state) {
-      const s = Object.assign({}, view.state, patch);
-      if ('color' in patch && !('preset' in patch)) s.preset = null;
-      view = Object.assign({}, view, { state: s });
+      view = Object.assign({}, view, { state: Object.assign({}, view.state, patch) });
       paint();
     }
     if (!inflight && !timer) timer = setTimeout(flush, 0);
@@ -160,11 +162,18 @@
 
   function skeleton() {
     const chips = BR_CHIPS.map((v) => `<button type="button" class="chip" data-br="${v}">${v}</button>`).join('');
-    const presets = PRESETS.map(([id, name, css]) =>
-      `<button type="button" class="scr-preset" data-preset="${id}" style="--sw:${css}" aria-pressed="false"><span class="scr-sw"></span>${name}</button>`).join('');
+    const presetBtns = presets().map((p) =>
+      `<button type="button" class="scr-preset" data-preset="${esc(p.id)}" style="--sw:${rgbCss(p)}" aria-pressed="false"`
+      + ` title="${p.r} / ${p.g} / ${p.b}"><span class="scr-sw"></span>${esc(p.name)}<span class="scr-pcode">${p.r}/${p.g}/${p.b}</span></button>`).join('');
+    const channels = CH.map(([f, letter, name]) => `
+        <div class="scr-row scr-ch scr-ch-${f}">
+          <span class="scr-chk" aria-hidden="true">${letter}</span>
+          <input type="range" min="0" max="${MAXC}" step="1" data-f="${f}" aria-label="${letter} — ${name}, 0–${MAXC}">
+          <input type="number" min="0" max="${MAXC}" step="1" inputmode="numeric" data-n="${f}" aria-label="${letter} числом">
+        </div>`).join('');
     return `<div class="scr">
       <div class="scr-top">
-        <div class="scr-tile" data-el="tile" aria-hidden="true"><span class="scr-tile-num" data-el="tileNum"></span><span class="scr-tile-cal">калібровка</span></div>
+        <div class="scr-tile" data-el="tile" aria-hidden="true"><span class="scr-tile-cal">калібровка</span></div>
         <div class="scr-info">
           <div class="scr-online" data-el="online"></div>
           <div class="muted small" data-el="who"></div>
@@ -187,17 +196,13 @@
       </section>
 
       <section class="scr-sec">
-        <h3>🎨 Колір</h3>
-        <div class="scr-row">
-          <input type="range" min="0" max="1023" step="1" data-f="color" aria-label="Колір, 0–1023">
-          <input type="number" min="0" max="1023" step="1" inputmode="numeric" data-n="color" aria-label="Колір числом">
-        </div>
-        <div class="scr-note muted small" data-el="presetNote"></div>
+        <h3>🎨 Колір <span class="scr-rgbnow"><span class="scr-sw sm" data-el="rgbSw"></span><span data-el="rgbNow"></span></span></h3>
+        ${channels}
       </section>
 
       <section class="scr-sec">
         <h3>Пресети</h3>
-        <div class="scr-presets">${presets}</div>
+        <div class="scr-presets">${presetBtns}</div>
       </section>
 
       <section class="scr-sec">
@@ -255,34 +260,29 @@
     const set = (sel, v) => { const el = q(sel); if (el && document.activeElement !== el && !held.has(el.dataset.f || el.dataset.n)) el.value = v; };
     set('[data-f="brightness"]', brToPos(s.brightness));
     set('[data-n="brightness"]', s.brightness);
-    set('[data-f="color"]', s.color);
-    set('[data-n="color"]', s.color);
+    for (const [f] of CH) { set(`[data-f="${f}"]`, s[f]); set(`[data-n="${f}"]`, s[f]); }
     q('[data-f="brightness"]').setAttribute('aria-valuetext', String(s.brightness));
     box.querySelectorAll('[data-br]').forEach((b) => b.classList.toggle('on', +b.dataset.br === s.brightness));
+    const active = presetOf(s);
     box.querySelectorAll('[data-preset]').forEach((b) => {
-      const on = b.dataset.preset === s.preset;
+      const on = !!active && b.dataset.preset === active.id;
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    // підказка є завжди (інакше з пресетом усе нижче стрибало б на рядок)
-    q('[data-el="presetNote"]').textContent = s.preset
-      ? `Зараз пресет «${PRESET[s.preset].name}» — посунь повзунок, і екран покаже цей колір.`
-      : 'Число 0–1023 — як його показати, вирішує програма екрана.';
-    q('[data-f="color"]').closest('.scr-row').classList.toggle('dim', !!s.preset);
+    q('[data-el="rgbSw"]').style.setProperty('--sw', rgbCss(s));
+    q('[data-el="rgbNow"]').innerHTML = colorText(s);
 
     const cal = q('[data-el="cal"]');
     cal.setAttribute('aria-checked', s.calibration ? 'true' : 'false');
     cal.classList.toggle('on', !!s.calibration);
     q('[data-el="calText"]').textContent = s.calibration ? 'Увімкнено' : 'Вимкнено';
 
-    // «плитка» — як приблизно виглядає екран: пресет кольором, свій колір — числом; яскравість — світлом
+    // «плитка» — як приблизно виглядає екран: колір із R/G/B, яскравість — світлом
     const tile = q('[data-el="tile"]');
-    tile.style.setProperty('--sw', s.preset ? PRESET[s.preset].css : '#2b4c3c');
+    tile.style.setProperty('--sw', rgbCss(s));
     tile.style.setProperty('--lit', String(0.12 + 0.88 * s.brightness / 100));
-    tile.classList.toggle('preset', !!s.preset);
     tile.classList.toggle('cal', !!s.calibration);
-    q('[data-el="tileNum"]').textContent = s.preset ? '' : s.color;
-    q('[data-el="now"]').innerHTML = `☀ <b>${s.brightness}</b> · 🎨 <b>${s.preset ? esc(PRESET[s.preset].name) : s.color}</b>`
+    q('[data-el="now"]').innerHTML = `☀ <b>${s.brightness}</b> · 🎨 <b>${colorText(s)}</b>`
       + (s.calibration ? ' · 🎯 <b>калібровка</b>' : '');
 
     const on = q('[data-el="online"]');
@@ -389,7 +389,10 @@
       n.addEventListener('keydown', (e) => { if (e.key === 'Enter') n.blur(); });
     }
     box.querySelectorAll('[data-br]').forEach((b) => b.addEventListener('click', () => push({ brightness: +b.dataset.br })));
-    box.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => push({ preset: b.dataset.preset })));
+    box.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+      const p = presets().find((x) => x.id === b.dataset.preset);
+      if (p) push({ r: p.r, g: p.g, b: p.b });
+    }));
     q('[data-el="cal"]').addEventListener('click', () => push({ calibration: !(view && view.state && view.state.calibration) }));
     const mb = q('[data-a="measure"]');
     mb.addEventListener('click', () => {
