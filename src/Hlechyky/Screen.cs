@@ -12,10 +12,31 @@ namespace Hlechyky;
 /// інакше — колір <see cref="Color"/> 0–1023. Яскравість і калібровка діють завжди. <see cref="Rev"/> росте з
 /// кожною зміною: так екран бачить, що щось змінилось, і не перемальовує те саме.
 /// </summary>
-public sealed record ScreenState(long Rev, int Brightness, int Color, string? Preset, bool Calibration, DateTimeOffset? UpdatedAt, string? By);
+public sealed record ScreenState(long Rev, int Brightness, int Color, string? Preset, bool Calibration, DateTimeOffset? UpdatedAt, string? By,
+    ScreenMeasureAsk? Measure = null);
 
 /// <summary>Що міняє адмін; чого нема (null) — лишається як було.</summary>
 public sealed record ScreenPatch(int? Brightness = null, int? Color = null, string? Preset = null, bool? Calibration = null);
+
+/// <summary>
+/// Адмін натиснув «🔬 Виміряти колір»: програма має виміряти й відповісти з цим <see cref="Id"/>. Висить у стані, доки
+/// не відповість (без строку: на малій яскравості вимір іде довго) або доки адмін не скасує. Решта — що екран
+/// показував у мить запиту: вимір належить саме до цього.
+/// </summary>
+public sealed record ScreenMeasureAsk(long Id, DateTimeOffset At, string? By, int Brightness = 0, int Color = 0, string? Preset = null, bool Calibration = false);
+
+/// <summary>
+/// Вимір кольору від програми: координати xy (CIE 1931) і корельована колірна температура в кельвінах; що екран
+/// показував (на мить запиту) і <see cref="Changed"/> — чи міняли налаштування, поки міряло.
+/// </summary>
+public sealed record ScreenMeasure(long Id, double X, double Y, double K, DateTimeOffset At, int Brightness, int Color, string? Preset, bool Calibration,
+    DateTimeOffset? AskedAt = null, bool Changed = false);
+
+/// <summary>Що пише програма екрана: температуру (°C) і/або вимір кольору. Чого нема — не чіпаємо.</summary>
+public sealed record ScreenReport(double? Temperature = null, ScreenMeasureReport? Measure = null);
+
+/// <summary>Вимір у звіті. <see cref="Id"/> — з запиту (<c>measure.id</c> у стані); нема — відповідь на поточний запит або вимір «сам».</summary>
+public sealed record ScreenMeasureReport(long? Id = null, double? X = null, double? Y = null, double? K = null);
 
 /// <summary>
 /// 🖥 Віддалений екран (вкладка «Екран» у Бібліотеці, docs/screen.md). Адмін міняє яскравість, колір, пресет і
@@ -32,6 +53,10 @@ public sealed class Screen
     public static readonly string[] Presets = ["red", "green", "blue", "white", "black"];
     /// <summary>Скільки після останнього запиту екран ще вважаємо «на зв'язку» (довге опитування — раз на ≤ 55 с).</summary>
     public static readonly TimeSpan SeenFresh = TimeSpan.FromSeconds(70);
+    /// <summary>Скільки останніх вимірів кольору пам'ятаємо (новіші — першими).</summary>
+    public const int MaxMeasures = 20;
+    /// <summary>Та сама температура частіше за це адмінам не розсилається (змінилась — розсилаємо одразу).</summary>
+    static readonly TimeSpan TempEcho = TimeSpan.FromSeconds(15);
 
     readonly IGameStore _store;
     readonly IClock _clock;
@@ -42,6 +67,10 @@ public sealed class Screen
     TaskCompletionSource _changed = NewSignal();
     int _streams;              // відкриті WebSocket-и й довгі опитування, що зараз чекають
     DateTimeOffset? _seenAt;   // останній запит екрана будь-яким способом
+    long _measureSeq;          // номер останнього запиту виміру
+    readonly List<ScreenMeasure> _measures = [];
+    (double Value, DateTimeOffset At)? _temp;   // остання температура від програми — лише в пам'яті
+    DateTimeOffset _tempEchoAt;
 
     /// <summary>Комусь із адмінів сказати «екран змінився» (у проді — подія хаба <c>screen</c>).</summary>
     public event Action<object>? AdminChanged;
@@ -60,10 +89,12 @@ public sealed class Screen
         catch (Exception ex) { log.LogWarning(ex, "стан екрана не прочитався — починаю з типового"); }
         _state = saved?.State ?? new ScreenState(0, 100, 0, null, false, null, null);
         _key = string.IsNullOrEmpty(saved?.Key) ? NewKey() : saved!.Key!;
+        _measureSeq = Math.Max(saved?.MeasureSeq ?? 0, _state.Measure?.Id ?? 0);
+        if (saved?.Measures is { } ms) _measures.AddRange(ms.Take(MaxMeasures));
         if (saved?.Key != _key) Save();
     }
 
-    sealed record Saved(ScreenState? State, string? Key);
+    sealed record Saved(ScreenState? State, string? Key, long MeasureSeq = 0, List<ScreenMeasure>? Measures = null);
 
     static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     static string NewKey() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
@@ -117,6 +148,105 @@ public sealed class Screen
         return null;
     }
 
+    /// <summary>
+    /// «🔬 Виміряти колір»: новий запит із наступним номером іде програмі в стані (<c>measure</c>), попередній
+    /// невиконаний ним замінюється. Повертає номер запиту.
+    /// </summary>
+    public long AskMeasure(string by)
+    {
+        TaskCompletionSource old;
+        long id;
+        lock (_gate)
+        {
+            id = ++_measureSeq;
+            var s = _state;
+            _state = s with { Rev = s.Rev + 1, Measure = new ScreenMeasureAsk(id, _clock.UtcNow, by, s.Brightness, s.Color, s.Preset, s.Calibration) };
+            old = _changed;
+            _changed = NewSignal();
+        }
+        old.TrySetResult();
+        Save();
+        AdminChanged?.Invoke(AdminView(withKey: false));
+        return id;
+    }
+
+    /// <summary>Скасувати запит виміру: екран отримає <c>measure: null</c> (може перервати). Не було запиту — false.</summary>
+    public bool CancelMeasure()
+    {
+        TaskCompletionSource old;
+        lock (_gate)
+        {
+            if (_state.Measure is null) return false;
+            _state = _state with { Rev = _state.Rev + 1, Measure = null };
+            old = _changed;
+            _changed = NewSignal();
+        }
+        old.TrySetResult();
+        Save();
+        AdminChanged?.Invoke(AdminView(withKey: false));
+        return true;
+    }
+
+    /// <summary>
+    /// Звіт програми: температура (°C, лише в пам'яті) і/або вимір кольору. Вимір із номером поточного запиту знімає
+    /// запит зі стану (екран дізнається, що відповідь дійшла). Помилка — текст, інакше null.
+    /// </summary>
+    public string? Report(ScreenReport r)
+    {
+        if (r.Temperature is null && r.Measure is null) return "Порожній звіт: чекаю temperature і/або measure";
+        if (r.Temperature is { } t && (!double.IsFinite(t) || t < -100 || t > 300)) return "temperature — градуси Цельсія, від −100 до 300";
+        double x = 0, y = 0, k = 0;
+        if (r.Measure is { } m)
+        {
+            if (m.X is not { } mx || m.Y is not { } my || m.K is not { } mk) return "measure: потрібні x, y і k";
+            if (!double.IsFinite(mx) || !double.IsFinite(my) || mx < 0 || mx > 1 || my < 0 || my > 1) return "measure: x і y — від 0 до 1";
+            if (!double.IsFinite(mk) || mk <= 0 || mk > 1_000_000) return "measure: k — кельвіни, більше 0";
+            (x, y, k) = (mx, my, mk);
+        }
+        var tell = false;
+        var save = false;
+        TaskCompletionSource? old = null;
+        lock (_gate)
+        {
+            var now = _clock.UtcNow;
+            if (r.Measure is { } rm)
+            {
+                var pending = _state.Measure;
+                var id = rm.Id ?? pending?.Id ?? 0;
+                if (id < 0 || id > _measureSeq) return "Нема такого запиту виміру: " + id;
+                var s = _state;
+                // Відповідь на поточний запит — «що показував» беремо з мити запиту і дивимось, чи щось міняли, поки міряло.
+                // Запізніла (запит уже замінили чи скасували) чи «сама» — те, що зараз.
+                var ask = pending is not null && pending.Id == id ? pending : null;
+                _measures.Insert(0, ask is null
+                    ? new ScreenMeasure(id, x, y, k, now, s.Brightness, s.Color, s.Preset, s.Calibration)
+                    : new ScreenMeasure(id, x, y, k, now, ask.Brightness, ask.Color, ask.Preset, ask.Calibration, ask.At,
+                        Changed: ask.Brightness != s.Brightness || ask.Color != s.Color || ask.Preset != s.Preset || ask.Calibration != s.Calibration));
+                if (_measures.Count > MaxMeasures) _measures.RemoveRange(MaxMeasures, _measures.Count - MaxMeasures);
+                if (pending is not null && pending.Id == id)
+                {
+                    _state = s with { Rev = s.Rev + 1, Measure = null };
+                    old = _changed;
+                    _changed = NewSignal();
+                }
+                tell = save = true;
+            }
+            if (r.Temperature is { } temp)
+            {
+                if (_temp is not { } prev || Math.Abs(prev.Value - temp) >= 0.05 || now - _tempEchoAt >= TempEcho)
+                {
+                    tell = true;
+                    _tempEchoAt = now;
+                }
+                _temp = (temp, now);
+            }
+        }
+        old?.TrySetResult();
+        if (save) Save();
+        if (tell) AdminChanged?.Invoke(AdminView(withKey: false));
+        return null;
+    }
+
     /// <summary>Новий ключ: старий одразу перестає пускати (відкриті з'єднання з ним закриваються).</summary>
     public string NewDeviceKey()
     {
@@ -135,7 +265,7 @@ public sealed class Screen
     void Save()
     {
         Saved s;
-        lock (_gate) s = new Saved(_state, _key);
+        lock (_gate) s = new Saved(_state, _key, _measureSeq, [.. _measures]);
         try { _store.SaveState(StoreKey, JsonSerializer.Serialize(s)); }
         catch (Exception ex) { _log.LogWarning(ex, "стан екрана не записався"); }
     }
@@ -197,6 +327,13 @@ public sealed class Screen
     public static object DeviceView(ScreenState s) => new
     {
         rev = s.Rev, brightness = s.Brightness, color = s.Color, preset = s.Preset, calibration = s.Calibration, updatedAt = s.UpdatedAt,
+        measure = s.Measure is { } m ? new { id = m.Id, at = m.At } : null,
+    };
+
+    static object MeasureView(ScreenMeasure m) => new
+    {
+        id = m.Id, x = m.X, y = m.Y, k = m.K, at = m.At, askedAt = m.AskedAt, changed = m.Changed,
+        brightness = m.Brightness, color = m.Color, preset = m.Preset, calibration = m.Calibration,
     };
 
     /// <summary>Що бачить адмін: стан, хто міняв, чи екран на зв'язку; ключ — лише на прямий запит, не в розсилці.</summary>
@@ -206,12 +343,20 @@ public sealed class Screen
         int streams;
         DateTimeOffset? seen;
         string key;
-        lock (_gate) { s = _state; streams = _streams; seen = _seenAt; key = _key; }
+        ScreenMeasure[] measures;
+        (double Value, DateTimeOffset At)? temp;
+        lock (_gate) { s = _state; streams = _streams; seen = _seenAt; key = _key; measures = [.. _measures]; temp = _temp; }
         var online = streams > 0 || (seen is { } t && _clock.UtcNow - t <= SeenFresh);
         return new
         {
-            state = new { rev = s.Rev, brightness = s.Brightness, color = s.Color, preset = s.Preset, calibration = s.Calibration, updatedAt = s.UpdatedAt, by = s.By },
+            state = new
+            {
+                rev = s.Rev, brightness = s.Brightness, color = s.Color, preset = s.Preset, calibration = s.Calibration, updatedAt = s.UpdatedAt, by = s.By,
+                measure = s.Measure is { } m ? new { id = m.Id, at = m.At, by = m.By } : null,
+            },
             device = new { online, streams, seenAt = seen },
+            temperature = temp is { } tt ? new { value = tt.Value, at = tt.At } : null,
+            measures = measures.Select(MeasureView).ToArray(),
             key = withKey ? key : null,
         };
     }
@@ -246,6 +391,27 @@ public sealed class Screen
             if (!Auth.IsAdmin(c)) return Results.Json(new { message = "Це бачить лише адмін" }, statusCode: 403);
             s.NewDeviceKey();
             return Results.Ok(s.AdminView(withKey: true));
+        });
+        app.MapPost("/api/screen/measure", (HttpContext c, Screen s) =>
+        {
+            if (!Auth.IsAdmin(c)) return Results.Json(new { message = "Це бачить лише адмін" }, statusCode: 403);
+            s.AskMeasure(Auth.Nick(c));
+            return Results.Ok(s.AdminView(withKey: false));
+        });
+        app.MapPost("/api/screen/measure/cancel", (HttpContext c, Screen s) =>
+        {
+            if (!Auth.IsAdmin(c)) return Results.Json(new { message = "Це бачить лише адмін" }, statusCode: 403);
+            s.CancelMeasure();
+            return Results.Ok(s.AdminView(withKey: false));
+        });
+
+        // Програма пише: { temperature } і/або { measure: { id, x, y, k } }.
+        app.MapPost("/api/screen/device", (HttpContext c, Screen s, ScreenReport body) =>
+        {
+            if (!s.KeyOk(DeviceKeyOf(c))) return Results.Json(new { message = "Не той ключ екрана" }, statusCode: 401);
+            s.Seen();
+            var err = s.Report(body);
+            return err is null ? Results.Ok(new { ok = true }) : Results.BadRequest(new { message = err });
         });
 
         // ---- екран (ключ пристрою) ----
@@ -295,10 +461,12 @@ public sealed class Screen
         using var ws = await c.WebSockets.AcceptWebSocketAsync();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted);
         using var hold = Stream();
-        // Слухаємо екран: він нічого не мусить слати, але так видно, що з'єднання закрили, — і тоді виходимо.
+        // Слухаємо екран: він може слати звіти (той самий JSON, що й POST /api/screen/device, без відповіді), а ще так
+        // видно, що з'єднання закрили, — і тоді виходимо.
         var reader = Task.Run(async () =>
         {
-            var buf = new byte[1024];
+            var buf = new byte[4096];
+            using var msg = new MemoryStream();
             try
             {
                 while (!stop.IsCancellationRequested)
@@ -306,6 +474,19 @@ public sealed class Screen
                     var r = await ws.ReceiveAsync(buf, stop.Token);
                     if (r.MessageType == WebSocketMessageType.Close) break;
                     Seen();
+                    if (r.MessageType != WebSocketMessageType.Text) continue;
+                    if (msg.Length + r.Count <= 16 * 1024) msg.Write(buf, 0, r.Count);
+                    if (!r.EndOfMessage) continue;
+                    try
+                    {
+                        if (JsonSerializer.Deserialize<ScreenReport>(msg.ToArray(), Web) is { } report)
+                        {
+                            var err = Report(report);
+                            if (err is not null) _log.LogInformation("звіт екрана через WebSocket не прийнято: {Err}", err);
+                        }
+                    }
+                    catch (JsonException ex) { _log.LogInformation("екран прислав не JSON: {Msg}", ex.Message); }
+                    msg.SetLength(0);
                 }
             }
             catch { /* обірвалось — так само виходимо */ }
