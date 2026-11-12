@@ -2,34 +2,38 @@ using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Hlechyky.Games;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Hlechyky;
 
 /// <summary>
-/// Що зараз має показувати екран. <see cref="Preset"/> не null — показати пресет (red/green/blue/white/black),
-/// інакше — колір <see cref="Color"/> 0–1023. Яскравість і калібровка діють завжди. <see cref="Rev"/> росте з
-/// кожною зміною: так екран бачить, що щось змінилось, і не перемальовує те саме.
+/// Що зараз має показувати екран: колір — коди каналів <see cref="R"/>, <see cref="G"/>, <see cref="B"/> по 0–1023,
+/// яскравість 0–100, калібровка. Пресет — лише спосіб поставити готові R/G/B, у стані його нема. <see cref="Rev"/>
+/// росте з кожною зміною: так екран бачить, що щось змінилось, і не перемальовує те саме.
 /// </summary>
-public sealed record ScreenState(long Rev, int Brightness, int Color, string? Preset, bool Calibration, DateTimeOffset? UpdatedAt, string? By,
+public sealed record ScreenState(long Rev, int Brightness, int R, int G, int B, bool Calibration, DateTimeOffset? UpdatedAt, string? By,
     ScreenMeasureAsk? Measure = null);
 
-/// <summary>Що міняє адмін; чого нема (null) — лишається як було.</summary>
-public sealed record ScreenPatch(int? Brightness = null, int? Color = null, string? Preset = null, bool? Calibration = null);
+/// <summary>Що міняє адмін; чого нема (null) — лишається як було. <see cref="Preset"/> ставить його R/G/B, канал, переданий разом із ним, важливіший.</summary>
+public sealed record ScreenPatch(int? Brightness = null, int? R = null, int? G = null, int? B = null, string? Preset = null, bool? Calibration = null);
+
+/// <summary>Пресет кольору: ім'я на сторінці й коди R/G/B, які він ставить.</summary>
+public sealed record ScreenPreset(string Id, string Name, int R, int G, int B);
 
 /// <summary>
 /// Адмін натиснув «🔬 Виміряти колір»: програма має виміряти й відповісти з цим <see cref="Id"/>. Висить у стані, доки
 /// не відповість (без строку: на малій яскравості вимір іде довго) або доки адмін не скасує. Решта — що екран
 /// показував у мить запиту: вимір належить саме до цього.
 /// </summary>
-public sealed record ScreenMeasureAsk(long Id, DateTimeOffset At, string? By, int Brightness = 0, int Color = 0, string? Preset = null, bool Calibration = false);
+public sealed record ScreenMeasureAsk(long Id, DateTimeOffset At, string? By, int Brightness = 0, int R = 0, int G = 0, int B = 0, bool Calibration = false);
 
 /// <summary>
 /// Вимір кольору від програми: координати xy (CIE 1931) і корельована колірна температура в кельвінах; що екран
 /// показував (на мить запиту) і <see cref="Changed"/> — чи міняли налаштування, поки міряло.
 /// </summary>
-public sealed record ScreenMeasure(long Id, double X, double Y, double K, DateTimeOffset At, int Brightness, int Color, string? Preset, bool Calibration,
+public sealed record ScreenMeasure(long Id, double X, double Y, double K, DateTimeOffset At, int Brightness, int R, int G, int B, bool Calibration,
     DateTimeOffset? AskedAt = null, bool Changed = false);
 
 /// <summary>Що пише програма екрана: температуру (°C) і/або вимір кольору. Чого нема — не чіпаємо.</summary>
@@ -39,7 +43,7 @@ public sealed record ScreenReport(double? Temperature = null, ScreenMeasureRepor
 public sealed record ScreenMeasureReport(long? Id = null, double? X = null, double? Y = null, double? K = null);
 
 /// <summary>
-/// 🖥 Віддалений екран (вкладка «Екран» у Бібліотеці, docs/screen.md). Адмін міняє яскравість, колір, пресет і
+/// 🖥 Віддалений екран (вкладка «Екран» у Бібліотеці, docs/screen.md). Адмін міняє яскравість, колір (R/G/B), пресет і
 /// калібровку з будь-якого пристрою — екран (окрема програма) тримає з'єднання з сайтом і дізнається про зміну
 /// одразу: WebSocket <c>/api/screen/ws</c> або довге опитування <c>/api/screen/device?since=</c>.
 /// Програма входить ключем пристрою (не акаунтом): ключ бачить і міняє лише адмін. Стан і ключ — у game_state
@@ -50,7 +54,19 @@ public sealed class Screen
     public const string StoreKey = "screen";
     public const int MaxBrightness = 100;
     public const int MaxColor = 1023;
-    public static readonly string[] Presets = ["red", "green", "blue", "white", "black"];
+
+    /// <summary>Пресети кольору — у такому порядку на сторінці. Новий — рядком сюди, напр. <c>new("magenta", "Маджента", 1023, 0, 1023)</c>.</summary>
+    public static readonly IReadOnlyList<ScreenPreset> Presets =
+    [
+        new("red", "Червоний", MaxColor, 0, 0),
+        new("green", "Зелений", 0, MaxColor, 0),
+        new("blue", "Синій", 0, 0, MaxColor),
+        new("white", "Білий", MaxColor, MaxColor, MaxColor),
+        new("black", "Чорний", 0, 0, 0),
+    ];
+
+    public static ScreenPreset? FindPreset(string? id) =>
+        id is null ? null : Presets.FirstOrDefault(p => string.Equals(p.Id, id.Trim(), StringComparison.OrdinalIgnoreCase));
     /// <summary>Скільки після останнього запиту екран ще вважаємо «на зв'язку» (довге опитування — раз на ≤ 55 с).</summary>
     public static readonly TimeSpan SeenFresh = TimeSpan.FromSeconds(70);
     /// <summary>Скільки останніх вимірів кольору пам'ятаємо (новіші — першими).</summary>
@@ -84,10 +100,10 @@ public sealed class Screen
         try
         {
             var json = store.LoadState(StoreKey);
-            if (json is not null) saved = JsonSerializer.Deserialize<Saved>(json);
+            if (json is not null) saved = JsonSerializer.Deserialize<Saved>(Migrate(json));
         }
         catch (Exception ex) { log.LogWarning(ex, "стан екрана не прочитався — починаю з типового"); }
-        _state = saved?.State ?? new ScreenState(0, 100, 0, null, false, null, null);
+        _state = saved?.State ?? new ScreenState(0, 100, MaxColor, MaxColor, MaxColor, false, null, null);
         _key = string.IsNullOrEmpty(saved?.Key) ? NewKey() : saved!.Key!;
         _measureSeq = Math.Max(saved?.MeasureSeq ?? 0, _state.Measure?.Id ?? 0);
         if (saved?.Measures is { } ms) _measures.AddRange(ms.Take(MaxMeasures));
@@ -95,6 +111,29 @@ public sealed class Screen
     }
 
     sealed record Saved(ScreenState? State, string? Key, long MeasureSeq = 0, List<ScreenMeasure>? Measures = null);
+
+    /// <summary>
+    /// До 12.11 колір був одним числом <c>Color</c> плюс <c>Preset</c>. Тепер — R/G/B: пресет перекладаємо в його коди,
+    /// число без пресету (значення в нього не було) — білим. Стосується стану, запиту виміру й вимірів.
+    /// </summary>
+    internal static string Migrate(string json)
+    {
+        if (JsonNode.Parse(json) is not JsonObject root) return json;
+        static void Fix(JsonNode? n)
+        {
+            if (n is not JsonObject o || o.ContainsKey("R")) return;
+            var p = FindPreset(o["Preset"]?.GetValue<string>());
+            o["R"] = p?.R ?? MaxColor;
+            o["G"] = p?.G ?? MaxColor;
+            o["B"] = p?.B ?? MaxColor;
+            o.Remove("Color");
+            o.Remove("Preset");
+        }
+        Fix(root["State"]);
+        Fix(root["State"]?["Measure"]);
+        if (root["Measures"] is JsonArray list) foreach (var m in list) Fix(m);
+        return root.ToJsonString();
+    }
 
     static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     static string NewKey() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
@@ -109,31 +148,25 @@ public sealed class Screen
         return !string.IsNullOrEmpty(given) && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(given), want);
     }
 
-    /// <summary>Застосувати зміну адміна. Пресет null + колір — вийти з пресету на свій колір. Помилка — текст, інакше null.</summary>
+    /// <summary>Застосувати зміну адміна (пресет = його R/G/B, канал із того ж запиту важливіший). Помилка — текст, інакше null.</summary>
     public string? Apply(ScreenPatch p, string by)
     {
-        string? preset = null;
-        if (p.Preset is not null)
-        {
-            preset = p.Preset.Trim().ToLowerInvariant();
-            if (preset is "" or "none") preset = null;
-            else if (!Presets.Contains(preset)) return "Нема такого пресету: " + p.Preset;
-        }
-        if (p.Brightness is null && p.Color is null && p.Preset is null && p.Calibration is null) return "Нічого не змінено";
+        var preset = FindPreset(p.Preset);
+        if (p.Preset is not null && preset is null) return "Нема такого пресету: " + p.Preset;
+        if (p.Brightness is null && p.R is null && p.G is null && p.B is null && preset is null && p.Calibration is null) return "Нічого не змінено";
+        static int Ch(int? given, int? fromPreset, int was) => given is { } v ? Math.Clamp(v, 0, MaxColor) : fromPreset ?? was;
         TaskCompletionSource old;
         ScreenState now;
         lock (_gate)
         {
             var s = _state;
-            var color = p.Color is { } c ? Math.Clamp(c, 0, MaxColor) : s.Color;
-            // Свій колір без пресету в тому ж запиті — значить, пресет знято; пресет без кольору — колір лишається.
-            var nextPreset = p.Preset is not null ? preset : p.Color is not null ? null : s.Preset;
             now = s with
             {
                 Rev = s.Rev + 1,
                 Brightness = p.Brightness is { } b ? Math.Clamp(b, 0, MaxBrightness) : s.Brightness,
-                Color = color,
-                Preset = nextPreset,
+                R = Ch(p.R, preset?.R, s.R),
+                G = Ch(p.G, preset?.G, s.G),
+                B = Ch(p.B, preset?.B, s.B),
                 Calibration = p.Calibration ?? s.Calibration,
                 UpdatedAt = _clock.UtcNow,
                 By = by,
@@ -160,7 +193,7 @@ public sealed class Screen
         {
             id = ++_measureSeq;
             var s = _state;
-            _state = s with { Rev = s.Rev + 1, Measure = new ScreenMeasureAsk(id, _clock.UtcNow, by, s.Brightness, s.Color, s.Preset, s.Calibration) };
+            _state = s with { Rev = s.Rev + 1, Measure = new ScreenMeasureAsk(id, _clock.UtcNow, by, s.Brightness, s.R, s.G, s.B, s.Calibration) };
             old = _changed;
             _changed = NewSignal();
         }
@@ -219,9 +252,9 @@ public sealed class Screen
                 // Запізніла (запит уже замінили чи скасували) чи «сама» — те, що зараз.
                 var ask = pending is not null && pending.Id == id ? pending : null;
                 _measures.Insert(0, ask is null
-                    ? new ScreenMeasure(id, x, y, k, now, s.Brightness, s.Color, s.Preset, s.Calibration)
-                    : new ScreenMeasure(id, x, y, k, now, ask.Brightness, ask.Color, ask.Preset, ask.Calibration, ask.At,
-                        Changed: ask.Brightness != s.Brightness || ask.Color != s.Color || ask.Preset != s.Preset || ask.Calibration != s.Calibration));
+                    ? new ScreenMeasure(id, x, y, k, now, s.Brightness, s.R, s.G, s.B, s.Calibration)
+                    : new ScreenMeasure(id, x, y, k, now, ask.Brightness, ask.R, ask.G, ask.B, ask.Calibration, ask.At,
+                        Changed: ask.Brightness != s.Brightness || ask.R != s.R || ask.G != s.G || ask.B != s.B || ask.Calibration != s.Calibration));
                 if (_measures.Count > MaxMeasures) _measures.RemoveRange(MaxMeasures, _measures.Count - MaxMeasures);
                 if (pending is not null && pending.Id == id)
                 {
@@ -326,14 +359,14 @@ public sealed class Screen
     /// <summary>Що бачить екран — тільки те, що треба показати.</summary>
     public static object DeviceView(ScreenState s) => new
     {
-        rev = s.Rev, brightness = s.Brightness, color = s.Color, preset = s.Preset, calibration = s.Calibration, updatedAt = s.UpdatedAt,
+        rev = s.Rev, brightness = s.Brightness, r = s.R, g = s.G, b = s.B, calibration = s.Calibration, updatedAt = s.UpdatedAt,
         measure = s.Measure is { } m ? new { id = m.Id, at = m.At } : null,
     };
 
     static object MeasureView(ScreenMeasure m) => new
     {
         id = m.Id, x = m.X, y = m.Y, k = m.K, at = m.At, askedAt = m.AskedAt, changed = m.Changed,
-        brightness = m.Brightness, color = m.Color, preset = m.Preset, calibration = m.Calibration,
+        brightness = m.Brightness, r = m.R, g = m.G, b = m.B, calibration = m.Calibration,
     };
 
     /// <summary>Що бачить адмін: стан, хто міняв, чи екран на зв'язку; ключ — лише на прямий запит, не в розсилці.</summary>
@@ -351,9 +384,10 @@ public sealed class Screen
         {
             state = new
             {
-                rev = s.Rev, brightness = s.Brightness, color = s.Color, preset = s.Preset, calibration = s.Calibration, updatedAt = s.UpdatedAt, by = s.By,
+                rev = s.Rev, brightness = s.Brightness, r = s.R, g = s.G, b = s.B, calibration = s.Calibration, updatedAt = s.UpdatedAt, by = s.By,
                 measure = s.Measure is { } m ? new { id = m.Id, at = m.At, by = m.By } : null,
             },
+            presets = Presets.Select(p => new { id = p.Id, name = p.Name, r = p.R, g = p.G, b = p.B }).ToArray(),
             device = new { online, streams, seenAt = seen },
             temperature = temp is { } tt ? new { value = tt.Value, at = tt.At } : null,
             measures = measures.Select(MeasureView).ToArray(),
@@ -365,7 +399,7 @@ public sealed class Screen
     // HTTP
     // =============================================================================================
 
-    public sealed record PatchBody(int? Brightness, int? Color, string? Preset, bool? Calibration);
+    public sealed record PatchBody(int? Brightness, int? R, int? G, int? B, string? Preset, bool? Calibration);
 
     static string? DeviceKeyOf(HttpContext c)
     {
@@ -383,7 +417,7 @@ public sealed class Screen
         app.MapPost("/api/screen", (HttpContext c, PatchBody body, Screen s) =>
         {
             if (!Auth.IsAdmin(c)) return Results.Json(new { message = "Це бачить лише адмін" }, statusCode: 403);
-            var err = s.Apply(new ScreenPatch(body.Brightness, body.Color, body.Preset, body.Calibration), Auth.Nick(c));
+            var err = s.Apply(new ScreenPatch(body.Brightness, body.R, body.G, body.B, body.Preset, body.Calibration), Auth.Nick(c));
             return err is null ? Results.Ok(s.AdminView(withKey: false)) : Results.BadRequest(new { message = err });
         });
         app.MapPost("/api/screen/key", (HttpContext c, Screen s) =>
