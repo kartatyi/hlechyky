@@ -38,12 +38,13 @@ public class ClickerChoresTests
     }
 
     /// <summary>Гончар із сервісом дня (Economy:Boost = ×10) і фальшивим гаманцем — щоб бачити черепки скрині.</summary>
-    static (RoomHarness H, FakeStakes Stakes) Wheel(string nick = "Оля")
+    static (RoomHarness H, FakeStakes Stakes) Wheel(string nick = "Оля", params ClickerGift[] gifts)
     {
         RoomHarness h = null!;
         var stakes = new FakeStakes();
         var day = new ClickerDayService(null, stakes, () => new ClickerDayOptions(), new Via(() => h.Clock.UtcNow), person: _ => true) { Earn = n => n * 10 };
-        var sp = new ServiceCollection().AddSingleton(day).AddSingleton<IStakes>(stakes).AddSingleton(new ClickerRiddleService()).BuildServiceProvider();
+        var sp = new ServiceCollection().AddSingleton(day).AddSingleton<IStakes>(stakes).AddSingleton(new ClickerRiddleService())
+            .Configure<ClickerOptions>(o => o.Gifts.AddRange(gifts)).BuildServiceProvider();
         h = new RoomHarness("clicker", services: sp);
         h.Solo(nick);
         return (h, stakes);
@@ -527,5 +528,116 @@ public class ClickerChoresTests
         var r = Claim(h);
         Assert.True(r.Ok, r.Message);
         Assert.Equal(4, Streak(h));
+    }
+
+    // ---------- 14.11: толока без будов і подарунок серії днів ----------
+
+    static string DayShift(RoomHarness h, int days) =>
+        DateOnly.ParseExact(Today(h), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture).AddDays(days)
+            .ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+    static void Built(RoomHarness h, IEnumerable<string> keys) =>
+        Patch(h, s =>
+        {
+            if (s["toloka"] is not JsonObject t) s["toloka"] = t = new JsonObject();   // без будов збереження толоки не пише
+            t["built"] = new JsonArray(keys.Select(k => (JsonNode)k).ToArray());
+            s["chores"] = null;
+        });
+
+    [Fact]
+    public void The_toloka_chore_is_not_given_when_there_is_nowhere_left_to_carry()
+    {
+        var all = new HashSet<string>();
+        var oneLeft = new HashSet<string>();
+        var smallOnly = new HashSet<string>();
+        var keys = Clicker.Buildings.Select(b => b.Key).ToList();
+        for (var i = 0; i < 40; i++)
+        {
+            // Назар 12.11: усі 12 будов стоять — 20 виробів нести нікуди.
+            var (h, _) = Wheel("будівник" + i);
+            Rich(h);
+            Built(h, keys);
+            foreach (var k in Picks(h)) all.Add(k);
+            // Ще одна будова лишилась — доручення можна виконати.
+            var (g, _) = Wheel("будівник" + i);
+            Rich(g);
+            Built(g, keys.Take(keys.Count - 1));
+            foreach (var k in Picks(g)) oneLeft.Add(k);
+            // Малі збудовано, а до великих (з червоного золотого) ще не доріс — теж нікуди.
+            var (m, _) = Wheel("будівник" + i);
+            Rich(m, pier: false);
+            Patch(m, s => s["total"] = 1e20);
+            Built(m, Clicker.Buildings.Where(b => !b.Big).Select(b => b.Key));
+            foreach (var k in Picks(m)) smallOnly.Add(k);
+        }
+        Assert.DoesNotContain("toloka", all);
+        Assert.Contains("toloka", oneLeft);
+        Assert.DoesNotContain("toloka", smallOnly);
+    }
+
+    static ClickerGift ChoresSorry(int days, int shards = 0) => new()
+    {
+        Id = "chores-1114-nazar", Nick = "назар", Chores = days, Shards = shards, Note = "📜 Глек вибачається за толоку",
+    };
+
+    [Fact]
+    public void A_chores_gift_continues_yesterday_s_streak_so_today_s_chest_is_day_six_and_tomorrow_the_big_one()
+    {
+        var (h, stakes) = Wheel("Назар", ChoresSorry(4, 300));
+        Rich(h);
+        Force(h, ["catch", "gold", "fire"]);
+        Patch(h, s => { s["chores"]!["streak"] = 1; s["chores"]!["last"] = DayShift(h, -1); });
+        Assert.Equal(1, Streak(h));
+
+        var r = Spin(h);
+        Assert.True(r.Ok, r.Message);
+        Assert.Contains("+4 дні до серії доручень · +300 черепків", r.Message);
+        Assert.Equal(5, Streak(h));
+        Assert.Equal(300, stakes.Balance("Назар"));
+
+        AllDone(h);
+        Assert.True(Claim(h).Ok);
+        Assert.Equal(6, Streak(h));
+        h.Clock.Advance(TimeSpan.FromHours(24));
+        AllDone(h);
+        var big = Claim(h);
+        Assert.True(big.Ok, big.Message);
+        Assert.Contains("Велика скриня", big.Message);
+        Assert.Equal(7, Streak(h));
+
+        // Подарунок один раз: нова серія після сьомої не дістає ще +4.
+        h.Clock.Advance(TimeSpan.FromHours(24));
+        Assert.True(Spin(h).Ok);
+        Assert.Equal(0, Streak(h));
+    }
+
+    [Fact]
+    public void A_chores_gift_after_today_s_chest_still_leads_to_the_big_chest_tomorrow()
+    {
+        var (h, _) = Wheel("Назар", ChoresSorry(4));
+        Rich(h);
+        AllDone(h);
+        Patch(h, s => { s["chores"]!["streak"] = 1; s["chores"]!["last"] = DayShift(h, -1); });
+        Assert.True(Claim(h).Ok);                                      // скриня — день 2, і одразу подарунок
+        Assert.Equal(6, Streak(h));
+        Assert.True(Taken(h));
+        h.Clock.Advance(TimeSpan.FromHours(24));
+        AllDone(h);
+        Assert.Contains("Велика скриня", Claim(h).Message);
+        Assert.Equal(7, Streak(h));
+    }
+
+    [Theory]
+    [InlineData(3, -3, 4)]      // серія вже порвана: від нуля, і сьогоднішня скриня буде п'ятим днем
+    [InlineData(5, -1, 6)]      // стеля — шостий: сьому, велику, гончар відчиняє сам
+    [InlineData(7, 0, 7)]       // сьогодні вже велика скриня — подарунок серію не зменшує
+    public void A_chores_gift_counts_from_the_live_streak_and_stops_at_day_six(int streak, int lastShift, int expected)
+    {
+        var (h, _) = Wheel("Назар", ChoresSorry(4));
+        Rich(h);
+        Force(h, ["catch", "gold", "fire"]);
+        Patch(h, s => { s["chores"]!["streak"] = streak; s["chores"]!["last"] = DayShift(h, lastShift); });
+        Assert.True(Spin(h).Ok);
+        Assert.Equal(expected, Streak(h));
     }
 }

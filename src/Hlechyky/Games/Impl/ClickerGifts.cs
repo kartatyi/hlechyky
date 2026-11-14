@@ -26,6 +26,8 @@ public sealed class ClickerGift
     public string Nick { get; set; } = "";
     /// <summary>Скільки додати до серії глеків з полиці.</summary>
     public int Streak { get; set; }
+    /// <summary>Скільки днів додати до серії «📜 Доручень Глека» (не вище шостого — див. Clicker.ChoresGift).</summary>
+    public int Chores { get; set; }
     /// <summary>Скільки черепків у гаманець — нагородою, без денної стелі.</summary>
     public int Shards { get; set; }
     /// <summary>Короткий рядок у тост, коли листа нема. Порожньо — «🎁 Подарунок від майстерні».</summary>
@@ -67,6 +69,7 @@ public sealed partial class Clicker
                 continue;
             _takenGifts.Add(gift.Id);
             if (gift.Streak > 0) _fallStreak += gift.Streak;
+            if (gift.Chores > 0) ChoresGift(gift.Chores);
             if (gift.Shards > 0 && Ctx.Services.GetService<IStakes>() is { } stakes)
                 stakes.Grant(nick, gift.Shards, GiftReason, $"clicker-gift:{gift.Id}");
             // З листом — вікно в колі (вид, letter); без нього — тост.
@@ -79,7 +82,12 @@ public sealed partial class Clicker
     }
 
     static string GiftWhat(ClickerGift gift) => string.Join(" · ",
-        new[] { gift.Streak > 0 ? $"+{gift.Streak} до серії" : "", gift.Shards > 0 ? $"+{gift.Shards} черепків" : "" }
+        new[]
+        {
+            gift.Streak > 0 ? $"+{gift.Streak} до серії" : "",
+            gift.Chores > 0 ? $"+{gift.Chores} {Plural(gift.Chores, "день", "дні", "днів")} до серії доручень" : "",
+            gift.Shards > 0 ? $"+{gift.Shards} черепків" : "",
+        }
             .Where(s => s.Length > 0));
 
     /// <summary>Перший непрочитаний лист — у вид. Запис з конфігу прибрали — і листа нема.</summary>

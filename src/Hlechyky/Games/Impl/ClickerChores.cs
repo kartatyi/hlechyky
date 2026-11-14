@@ -62,7 +62,9 @@ public sealed partial class Clicker
         "ship" => TradeOpen,
         "village" => FiredTotal >= 1,
         "guest" => _gMet.Count > 0 && _gOrders.Count > 0,   // рецензія v13: лише коли є замовлення гостей
-        "toloka" => TolokaOpen,
+        // 14.11: лише коли є незбудований етап, куди нести. Назар добудував усі 12 будов, а доручення лишилось
+        // (TolokaOpen після останньої будови теж true) — скриня 12.11 не відчинилась, серія днів пішла з першого.
+        "toloka" => TolokaAhead().Any(),
         "gift" => GuildOpen && _guildSvc is not null && GuildKey.Length > 0,
         // Рецензія v13: не брати, якщо наступний фестиваль пізніше за кінець доби (виконати не вийде).
         "fest" => TolokaHas("festival") && (_festNext == default || _festNext <= Days.NextMidnight(Ctx.Clock.UtcNow)),
@@ -139,6 +141,23 @@ public sealed partial class Clicker
         if (_chStreak <= 0 || _chLast.Length == 0) return 0;
         if (_chLast == today) return _chStreak;
         return _chLast == DayBefore(today) && _chStreak < ChoresStreakMax ? _chStreak : 0;
+    }
+
+    /// <summary>
+    /// Подарунок майстерні (<see cref="ClickerGift.Chores"/>): +<paramref name="days"/> до серії днів. Порвана серія
+    /// рахується від нуля і йде від учора, тож сьогоднішня скриня — наступний день. Стеля — шостий: велику скриню
+    /// сьомого дня гончар відчиняє сам, а вже більша серія не зменшується.
+    /// </summary>
+    void ChoresGift(int days)
+    {
+        if (days <= 0) return;
+        var today = Days.Today(Ctx.Clock);
+        var now = ChoresStreakNow(today);
+        var next = Math.Min(ChoresStreakMax - 1, now + days);
+        if (next <= now) return;
+        _chStreak = next;
+        if (_chLast != today) _chLast = DayBefore(today);
+        _viewVersion++;
     }
 
     ActResult? ActChores(string action, JsonElement payload)
