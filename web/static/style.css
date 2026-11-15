@@ -150,9 +150,11 @@ header .vswitch button.turn { color: var(--accent); box-shadow: inset 0 0 0 1px 
 @media (prefers-reduced-motion: no-preference) { header .vswitch button.turn { animation: turnGlow 1.6s ease-in-out infinite; } }
 @keyframes turnGlow { 50% { box-shadow: inset 0 0 0 1px var(--accent2), 0 0 12px rgba(244, 197, 66, .35); } }
 
-/* тонка смужка прогресу треку по всій ширині — видно, скільки лишилось, із будь-якого розділу */
+/* тонка смужка прогресу треку по всій ширині — видно, скільки лишилось, із будь-якого розділу.
+   Без transition (09.11): безперервний перехід ширини тримав перемальовування шапки на кожному кадрі монітора —
+   ширину кроком «по пікселю» ставить app.js (paintBars). */
 .hdrprog { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--bg2); }
-.hdrprog > div { height: 100%; width: 0; background: var(--accent); transition: width 1s linear; }
+.hdrprog > div { height: 100%; width: 0; background: var(--accent); }
 .hdrprog.pending { background: repeating-linear-gradient(90deg, var(--accent2) 0 8px, #8a6a15 8px 16px); animation: stripes .6s linear infinite; }
 .hdrprog.pending > div { background: transparent; }
 header .vswitch { display: flex; gap: 2px; background: var(--bg2); border-radius: 11px; padding: 2px; flex: none; }
@@ -323,7 +325,7 @@ h2 .count { font-weight: 400; color: var(--muted); font-size: .88em; }
 .now .by b { color: var(--text); font-weight: 600; }
 .now .why { color: var(--muted); font-size: .85em; margin-top: 4px; }
 .progress { margin-top: 12px; height: 6px; border-radius: 999px; background: var(--bg2); overflow: hidden; position: relative; }
-.progress > div { height: 100%; width: 0; background: var(--accent); transition: width 1s linear; }
+.progress > div { height: 100%; width: 0; background: var(--accent); } /* без transition — див. .hdrprog */
 .progress.pending > div { background: repeating-linear-gradient(90deg, var(--accent2) 0 8px, #8a6a15 8px 16px); animation: stripes .6s linear infinite; }
 @keyframes stripes { to { background-position: 16px 0; } }
 .times { display: flex; justify-content: space-between; font-size: .8em; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }

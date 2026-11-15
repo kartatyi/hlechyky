@@ -775,10 +775,10 @@
     tick();
   }
 
-  function tick() {
-    if (!state) return;
-    const n = state.now;
-    const live = trackOnAir(n);
+  /// Де зараз трек в ефірі: d — тривалість (0 — міряти нема чого), elapsed — скільки зіграно, с, pct — відсоток.
+  function trackPos() {
+    const n = state && state.now;
+    const live = !!n && trackOnAir(n);
     const d = live ? (n.durationSec || 0) : 0;
     let elapsed = 0, pct = 0;
     if (live) {
@@ -786,10 +786,38 @@
       elapsed = Math.max(0, Math.min(raw, d || raw));
       pct = d ? Math.min(100, (elapsed / d) * 100) : 0;
     }
-    const bar = $('bar'), el = $('tElapsed');
-    if (bar && el) { el.textContent = fmt(elapsed); bar.style.width = d ? pct + '%' : '0%'; }
-    // Смужка під шапкою: скільки лишилось треку видно з будь-якого розділу.
-    $('hdrBar').style.width = d ? pct + '%' : '0%';
+    return { d, elapsed, pct };
+  }
+
+  /// Смужки треку — під шапкою (#hdrBar: скільки лишилось, видно з будь-якого розділу) і на «Ефірі» (#bar) — без
+  /// CSS-переходу (09.11). Був `transition: width 1s linear` під щосекундну нову ширину: смужка рухалась безперервно,
+  /// і Chrome на кожному кадрі монітора (180 Гц у владіка) перекладав і перемальовував шапку — на будь-якій сторінці,
+  /// поки в ефірі трек. GPU-процес у Chrome один на всі вікна, тож YouTube на іншому моніторі губив кадри (заміри,
+  /// RTX 5060 Ti, 2560×1440: GPU 113–194 мс/с і 128–180 кадрів/с — проти 6 і 2 без переходу). Тепер ширину ставимо
+  /// самі й лише тоді, коли смужка шапки зрушить на піксель: трек 3,5 хв на 2560 px — це 82 мс, тож 10 разів на
+  /// секунду (частіше не буває), а короткій смужці на телефоні — рідше, аж до разу на секунду (тоді й tick кличе).
+  let barTimer = 0;
+  function paintBars() {
+    clearTimeout(barTimer);
+    barTimer = 0;
+    const { d, pct } = trackPos();
+    const w = d ? pct.toFixed(2) + '%' : '0%';
+    $('hdrBar').style.width = w;
+    const bar = $('bar');
+    if (bar) bar.style.width = w;
+    // Схована вкладка — нема кому дивитись; повернешся — підхопить найближчий tick.
+    if (!d || pct >= 100 || document.hidden) return;
+    const px = $('hdrProg').clientWidth || 1000;
+    barTimer = setTimeout(paintBars, Math.max(100, Math.min(1000, (d * 1000) / px)));
+  }
+
+  function tick() {
+    if (!state) return;
+    const n = state.now;
+    const { elapsed } = trackPos();
+    const el = $('tElapsed');
+    if (el) el.textContent = fmt(elapsed);
+    paintBars();
     $('hdrProg').classList.toggle('pending', !!n.skipPending);
     // ETAs in the queue: what is left of the current track plus everything queued before the item
     let acc = nowRemaining();
